@@ -1,0 +1,11 @@
+*.sparcf
+*.ppcf
+*.fasl
+*.fas
+*.lib
+*.dfsl
+o-*
+.o-*
+lab
+wip
+.DS_Store
