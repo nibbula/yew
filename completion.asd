@@ -14,6 +14,6 @@
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :license            "None"
     :long-description   "Blah blah blah"
-    :depends-on (:opsys)
+    :depends-on (:opsys :glob)
     :components
     ((:file "completion")))

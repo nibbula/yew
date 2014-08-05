@@ -53,12 +53,6 @@ sed -En -e '/~a/,$p' -e 's/~a//g' | egrep -v '(^#|^$)'"
       `(pager ,@body)
       `(with-pager* ,@body)))
 
-(defun title (&optional string)
-  "Set the title of a terminal window. The terminal is assumed to work like XTerm or something."
-  (format t "~c]0;~a~c" #\escape
-	  (or string (progn (princ "Title? ") (finish-output) (read-line)))
-	  #\^G))
-
 ;; grep -v :
 ;;
 ;; (defun filter-lines (in)

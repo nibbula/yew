@@ -2,7 +2,7 @@
 ;;; opsys.lisp - Interface to operating systems
 ;;;
 
-;;; $Revision: 1.24 $
+;;; $Revision: 1.25 $
 
 ;; This is a thin layer over basic operating system functions which
 ;; are not included in Common Lisp. The goal would be to have the same
@@ -151,6 +151,9 @@
    #:getpwent
    #:endpwent
    #:setpwent
+   #:user-home
+   #:user-name-char-p
+   #:valid-user-name
 
    #:group
    #:group-name
@@ -177,6 +180,7 @@
    #:dir-entry-type
    #:dir-entry-inode
    #:probe-directory
+   #:*directory-separator*
 
    ;; files (low level)
    #:O_RDONLY #:O_WRONLY #:O_RDWR #:O_ACCMODE #:O_NONBLOCK #:O_APPEND
@@ -187,6 +191,7 @@
    #:posix-write
    #:posix-ioctl
    #:with-posix-file
+   #:mkstemp
 
    ;; stat
    #:stat
@@ -379,9 +384,11 @@
 
 #+darwin (config-feature :os-t-has-strerror-r)
 #+darwin (config-feature :os-t-has-vfork)
-#+(and darwin x86-64) (config-feature :64-bit-target)
-#+(and linux x86-64) (config-feature :64-bit-target)
-#+(or x86 ppc sparc arm (and (not 64-bit-target)))
+#+(and (or darwin linux) x86-64) (config-feature :64-bit-target)
+#+ecl (eval-when (:compile-toplevel :load-toplevel :execute)
+	(when (= (cffi:foreign-type-size :long) 8)
+	  (config-feature :64-bit-target)))
+#+(and (not 64-bit-target) (or x86 ppc sparc arm))
   (config-feature :32-bit-target)
 
 #+(and 32-bit-target 64-bit-target) (error "Can't be both 32 & 64 bits!")
@@ -1042,7 +1049,13 @@ string (denoting itself)."
 ;;
 ;; BTW, all this sysctl stuff is probably #+darwin, since it hasn't been
 ;; tested on any other platforms. I suppose on linux we'll have to implement it
-;; by reading from /proc/sys.
+;; by reading from /proc/sys. Specificly, in linux, man sysctl says:
+;;
+;;     don't call it: use of this system call has long been discouraged,
+;;     and it is so unloved that it is likely to disappear in a future kernel
+;;     version.  Since Linux 2.6.24, uses of this system call result in
+;;     warnings in the kernel log.  Remove it from your programs now; use
+;;     the /proc/sys interface instead.
 ;;
 ;; If performance need to be improved, we could consider caching the
 ;; integer values by using sysctlnametomib.
@@ -1167,6 +1180,11 @@ string (denoting itself)."
     (config-feature :os-t-64-bit-inode)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; sysconf
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; User database
 ;; 
 
@@ -1270,6 +1288,24 @@ Return nil for foreign null pointer."
 (defcfun endpwent :void)
 (defcfun setpwent :void)
 
+(defun user-home (user)
+  "Return the namestring of the given USER's home directory or nil if the ~
+user is not found."
+  (setpwent)
+  (loop :with p = nil
+	:while (setf p (getpwent))
+	:do (when (string= (passwd-name p) user)
+	      (return-from user-home (passwd-dir p))))
+  (endpwent))
+
+;; This is probably wrong & system specific
+(defun user-name-char-p (c)
+  "Return true if C is a valid character in a user name."
+  (or (alphanumericp c) (eql #\_ c) (eql #\- c)))
+
+(defun valid-user-name (username)
+  (not (position-if #'(lambda (c) (not (user-name-char-p c))) username)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Group database
 ;; 
@@ -1331,6 +1367,11 @@ Return nil for foreign null pointer."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
+
+(defparameter *directory-separator*
+  #-windows #\/
+  #+windows #\\
+  "Character that separates directories in a path.")
 
 ;; chroot
 
@@ -1819,6 +1860,12 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
        (if (>= ,var 0)
 	   (posix-close ,var)
 	   (error-check ,var)))))
+
+(defcfun mkstemp :int (template :string))
+
+;; (defmacro with-temp-file ((var &optional template) &body body)
+;;   "Evaluate the body with the variable VAR bound to a POSIX file descriptor with a temporary name. The file is supposedly removed after this form is done."
+;;   (unwind-protect (progn @@@
 
 ;; what about ioctl defines?
 
@@ -2619,6 +2666,7 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
     (setf (mem-ref status-ptr :int) 0)
     ;(format t "About to wait for ~d~%" child-pid)
     (let ((status 0) (wait-pid nil))
+      (declare (ignorable status))
       (loop
 	 :do (setf wait-pid (waitpid child-pid status-ptr 0))
 	 :while (/= wait-pid child-pid)
@@ -2705,6 +2753,7 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 	(error-check child-pid "child-pid")
 	(wait-and-report child-pid)))))
 
+;; @@@ Consistently return exit status?
 (defun run-program (cmd &optional args)
 ;  #+(or clisp sbcl ccl) (fork-and-exec cmd args)
   #+clisp (ext:run-program cmd :arguments args)
@@ -2964,7 +3013,7 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 	   (format nil "~a~{ ~a~}" cmd args) :output :stream)
   #+sbcl (sb-ext:process-output
 	  (sb-ext:run-program cmd args :output :stream :search t
-			      ;; @@@ What should we do? Added what version?
+;; @@@ What should we do? Added what version?
 ;;			      :external-format '(:utf-8 :replacement #\?)
 			      ))
   #+cmu (ext:process-output

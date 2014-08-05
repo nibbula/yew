@@ -2,7 +2,7 @@
 ;; ansiterm.lisp - Deal with ANSI-like terminals
 ;;
 
-;; $Revision: 1.1 $
+;; $Revision: 1.3 $
 
 (defpackage :ansiterm
   (:documentation "Deal with ANSI-like terminals")
@@ -42,6 +42,9 @@
    #:tt-cursor-on
    #:tt-standout
    #:tt-standend
+   #:tt-normal
+   #:tt-underline
+   #:tt-color
    #:tt-beep
    #:tt-finish-output
    ))
@@ -309,6 +312,31 @@ i.e. the terminal is \"line buffered\""))
 (defgeneric tt-standend (tty))
 (defmethod tt-standend ((tty terminal))
   (tt-format tty "~c[0m" #\escape))
+
+(defgeneric tt-normal (tty))
+(defmethod tt-normal ((tty terminal))
+  (tt-format tty "~c[0m" #\escape))
+
+(defgeneric tt-underline (tty state))
+(defmethod tt-underline ((tty terminal) state)
+  (tt-format tty "~c[~dm" #\escape (if state 4 24)))
+
+(defparameter *colors*
+  #(:black :red :green :yellow :blue :magenta :cyan :white nil :default))
+
+(defgeneric tt-color (tty fg bg))
+(defmethod tt-color ((tty terminal) fg bg)
+  (let ((fg-pos (position fg *colors*))
+	(bg-pos (position bg *colors*)))
+    (when (not fg-pos)
+      (error "Forground ~a is not a known color." fg))
+    (when (not bg-pos)
+      (error "Background ~a is not a known color." bg))
+    (tt-format tty "~c[~d;~dm" #\escape (+ 30 fg-pos) (+ 40 bg-pos))))
+
+;; 256 color? ^[[ 38;5;color <-fg 48;5;color <- bg
+;; set color tab = ^[] Ps ; Pt BEL
+;;;  4; color-number ; #rrggbb ala XParseColor
 
 (defgeneric tt-beep (tty))
 (defmethod tt-beep ((tty terminal))

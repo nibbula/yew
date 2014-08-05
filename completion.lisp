@@ -2,7 +2,7 @@
 ;; completion.lisp - Complete your words. Fill the gap. Type less.
 ;;
 
-;; $Revision: 1.2 $
+;; $Revision: 1.3 $
 
 ;; TODO:
 ;;   - filename-completion
@@ -20,7 +20,7 @@ from the starting and result position. This allows completion functions
 to look at whatever they want to, and replace whatever they want to,
 even prior to the starting point. When asked for all completions, they return a
  sequence of strings and a count which is the length of the sequence.")
-  (:use :cl :opsys)
+  (:use :cl :opsys :glob)
   (:export
    ;; list
    #:list-completion-function 
@@ -34,6 +34,7 @@ even prior to the starting point. When asked for all completions, they return a
    #:complete-iterator
    ;; symbol
    #:complete-symbol
+   ;; filenames
    #:complete-filename
    ))
 (in-package :completion)
@@ -399,16 +400,18 @@ and return the package and whether we should look for only external symbols."
   "Call read-directory without errors."
   `(ignore-errors (read-directory ,@args)))
 
-(defun filename-completion (w)
+(defun filename-completion (word)
   "Return the first completion for w in the current directory's files ~
  or nil if none was found. The second value is true if the first value ~
  matches a full filename."
-  (let (pos (full-match t)
-	(match nil)
-	match-len
-	(dir-part (directory-namestring (pathname w)))
-	(dir-part-path (pathname-directory (pathname w)))
-	(file-part (file-namestring (pathname w))))
+  (let* (pos
+	 (full-match t)
+	 (match nil)
+	 match-len
+	 (w (expand-tilde word))
+	 (dir-part (directory-namestring (pathname w)))
+	 (dir-part-path (pathname-directory (pathname word)))
+	 (file-part (file-namestring (pathname w))))
     (when (> (length file-part) 0)
       (loop :for f :in (if (> (length dir-part) 0)
 			   (safe-read-directory :dir dir-part)
@@ -437,22 +440,23 @@ and return the package and whether we should look for only external symbols."
   "Print the list of completions for w. Return how many there were."
   (let* (pos
 	 (count 0)
-	 (l '())
-	 (dir-part (directory-namestring (pathname w)))
-	 (file-part (file-namestring (pathname w)))
+	 (result-list '())
+	 (word (expand-tilde w))
+	 (dir-part (directory-namestring (pathname word)))
+	 (file-part (file-namestring (pathname word)))
 	 (dir-list (if (> (length dir-part) 0)
 		       (safe-read-directory :dir dir-part :append-type t)
 		       (safe-read-directory :append-type t))))
 ;    (format t "dir-part = ~a~%file-part = ~a~%" dir-part file-part)
-    (loop :for f :in dir-list
+    (loop :for filename :in dir-list
        :do
 ;      (format t "~f~%" f)
-       (when (and (setf pos (search file-part f :test #'equalp))
+       (when (and (setf pos (search file-part filename :test #'equalp))
 		  (= pos 0))
-	 (push f l)
+	 (push filename result-list)
 	 (incf count)))
-    (setq l (sort l #'string-lessp))
-    (values l count)))
+    (setq result-list (sort result-list #'string-lessp))
+    (values result-list count)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Dictionary completion

@@ -2,13 +2,14 @@
 ;; char-util.lisp - General utility functions dealing with characters.
 ;;
 
-;; $Revision: 1.1 $
+;; $Revision: 1.2 $
 
 (defpackage :char-util
   (:documentation "Utility functions for characters.")
   (:use :cl)
   (:export
    #:meta-char
+   #:ctrl
    #:meta-char-p
    #:un-meta
    #:nice-char 
@@ -19,6 +20,11 @@
   "Turn the meta (8th) bit on in the code representation of the
    given character."
   (code-char (logior (ash 1 7) (char-code c))))
+
+;; Sadly #\^A is not portable. This assumes ASCII or UTF8 or something. 
+(defun ctrl (c)
+  "Return the control character corresponding to the normal character."
+  (code-char (1+ (- (char-code (char-upcase c)) (char-code #\A)))))
 
 (defun meta-char-p (c)
   "Is the given number a meta character as a char code?"

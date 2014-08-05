@@ -69,8 +69,9 @@
 		 nil)))
     (tiny-rl::editor-write-string
      e (format nil "~a~@[:~a~]~:[~*~;:~d~]~a"
-	       #+ccl #+32-bit-target "CCL-32" #+64-bit-target "CCL-64"
-	       #+(not (or 32-bit-target 64-bit-target)) "CCL"
+	       #+(and ccl 32-bit-target) "CCL-32"
+	       #+(and ccl 64-bit-target) "CCL-64"
+	       #+(and ccl (not (or 32-bit-target 64-bit-target))) "CCL"
 	       #+cmu "CMU"
 	       #+lispworks "LW"
 	       #-(or ccl cmu lispworks) (lisp-implementation-type)
@@ -89,14 +90,17 @@
   (error-count	0	:type fixnum)	; the count of errors we have gotten
   (debug	nil	:type boolean))	; true to enter the debugger on errors
 
-(defvar *repl-debug-messages* nil)
+;(defvar *repl-debug-messages* nil)
 ; This should be a macro when things are working well enough.
-(defun dbg (fmt &rest args)
-  (when *repl-debug-messages*
-    (apply #'format t fmt args)))
+;(defun dbg (fmt &rest args)
+;  (when *repl-debug-messages*
+;    (apply #'format t fmt args)))
 
-(define-constant +newline-string+ (string #\newline) ;#.(string #\newline)
-  "So we don't have to keep making one." #'equal)
+;; (define-constant +newline-string+ (string #\newline) ;#.(string #\newline)
+;;   "So we don't have to keep making one." #'equal)
+
+(defvar +newline-string+ (string #\newline)
+  "So we don't have to keep making one.")
 
 (defun read-arg (state)
   "For interceptors to get arguments. First value is the argument.
@@ -183,22 +187,22 @@ Some notable keys are:
          (handler-bind
 	     ((end-of-file #'(lambda (c)
 			       (declare (ignore c))
-			       (dbg "GOT read EOF - Continuing~%")
+			       (dbug "GOT read EOF - Continuing~%")
 			       (signal (make-condition 'repl-read-continue))))
 ; 	      (condition #'(lambda (c)
-; 			     (dbg "GOT something else - debug or signal~%")
+; 			     (dbug "GOT something else - debug or signal~%")
 ; 			     ;; ??? Why can't we just use "debug" here?
 ; 			     (if (repl-state-debug state)
 ; 				 (invoke-debugger c)
 ; 				 (signal c))))
 	      )
 	   (progn
-	    (dbg "editor before = ~a~%" editor)
+	    (dbug "editor before = ~a~%" editor)
 	    (if more
 		(progn
 		  (setf str more)
 		  (setf more nil)
-		  (dbg "Using MORE!~%"))
+		  (dbug "Using MORE!~%"))
 		(if pre-str
 		    (setf (values str editor)
 			  (tiny-rl :eof-value *real-eof-symbol*
@@ -219,20 +223,20 @@ Some notable keys are:
 				     (if prompt-func
 					 prompt-func
 					 #'repl-output-prompt))))))
-	    (dbg "editor after = ~a~%" editor)
+	    (dbug "str = ~a~%editor after = ~a~%" str editor)
 	    (cond
 	      ((and (stringp str) (equal 0 (length str)))
 	       *empty-symbol*)
 	      ((and (stringp str) (equal "." str))
 	       *exit-symbol*)
 	      ((equal str *real-eof-symbol*)
-	       (dbg "You got a *real-eof-symbol* !")
+	       (dbug "You got a *real-eof-symbol* !")
 	       *real-eof-symbol*)
 	      ((equal str *quit-symbol*)
 	       *quit-symbol*)
 ;	      ((eq form *continue-symbol*))
 	      (t
-	       (dbg "Before read: pre-str = ~w str = ~w~%" pre-str str)
+	       (dbug "Before read: pre-str = ~w str = ~w~%" pre-str str)
 	       (let ((cat (if pre-str
 			      (format nil "~a~%~a" pre-str str)
 			      str)))
@@ -256,8 +260,8 @@ Some notable keys are:
     (if (stringp pre-str)
 	(setf pre-str (concatenate 'string pre-str str +newline-string+))
 	(setf pre-str (concatenate 'string str +newline-string+)))
-    (dbg "set pre-str = ~w~%" pre-str)
-    (dbg "DO CONTIUE!!~%"))
+    (dbug "set pre-str = ~w~%" pre-str)
+    (dbug "DO CONTIUE!!~%"))
       result)))
 
 ;; Eval and print
@@ -266,9 +270,9 @@ Some notable keys are:
     (cond
       ((or (eq form *empty-symbol*) (eq form *error-symbol*))
        ;; do nothing
-       (dbg "DO NOTHING!!~%"))
+       (dbug "DO NOTHING!!~%"))
       (t
-       (dbg "Do Something!!~%")
+       (dbug "Do Something!!~%")
        ;; If there is an interceptor, let it have a crack at it.
        ;; If interceptor returns nil, it didn't intercept and we should go on.
        ;; There might be some more arguments for the interceptor which it
@@ -376,7 +380,7 @@ Some notable keys are:
 	       :until (or (equal result *real-eof-symbol*)
 			  (equal result *exit-symbol*))
 	       :do
-		(dbg "~s (~a) ~s~%"
+		(dbug "~s (~a) ~s~%"
 		     result (type-of result)
 		     (eq result *empty-symbol*))
 		(if (equal result *quit-symbol*)
@@ -392,7 +396,7 @@ Some notable keys are:
 		   (format stream "Return to command loop ~d." lvl)))
 	     nil))))
 ; )
-;      do (dbg "rr = ~a result = ~a~%" restart-result result)
+;      do (dbug "rr = ~a result = ~a~%" restart-result result)
       ))
 
     ;; Well, let's hope that this will clear the EOF on *standard-input*
@@ -413,7 +417,7 @@ Some notable keys are:
 	     (format t "*Exit*~%")
 	     nil)
 	    (t
-	     (dbg "~s ~a~%" result (type-of result))
+	     (dbug "~s ~a~%" result (type-of result))
 	     t)))
     (setf *debugger-hook* old-debugger-hook)
     (decf *repl-level*))

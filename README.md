@@ -6,13 +6,13 @@ Nothing here is at all notable yet. I'll let “you know” if it is.
 
 What I've mostly been up to, is:
 
-* First, I am trying to build a shell, that is also a Lisp REPL.
+* I am trying to build a shell, that is also a Lisp REPL.
   I'm kind of used to typing things at a command line.
-* Then I am going to (finish, translate from horrid C++) a user interface
-  framework which should be able to operate in most environments.
-* Then I want make a frobulator. A frobulator is a generic tool for making
-  other things.
 
-With this I can start to build actual things.
+  If you want to try it, just (asdf:load-system :lish) with ASDF somehow*
+  configured to look in this directory. External requirements are:
+    * cl-ppcre
+    * cffi (with sub-dependencies: babel trivial-features alexandria)
+  As you may know, an easy way to get the requirements is with quicklisp.
 
 Pushing the dirt around.

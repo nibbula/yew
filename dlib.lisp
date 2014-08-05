@@ -2,7 +2,7 @@
 ;; dlib.lisp - Dan's redundant miscellany.
 ;;
 
-;; $Revision: 1.34 $
+;; $Revision: 1.35 $
 
 ;; These are mostly solving problems that have already been solved.
 ;; But it's mostly stuff that I need just to start up.
@@ -34,6 +34,9 @@
    #:begins-with
    #:ends-with
    #:s+
+   #:ltrim #:rtrim #:trim
+   #:join
+   #:doseq
    ;; lists
    #:delete-nth
    #:alist-to-hash-table
@@ -211,6 +214,10 @@
 		    (loopy position nil t)
 		    (loopy position nil nil))))))))
 
+;; cl-ppcre's version is better, so I recommend you just use that.
+;;(setf (fdefinition 'split) #'split-sequence)
+
+#|
 (defun test-ss ( #| &key (n 1000) |# )
   (format t "~@{~w~%~}"
 	  (split-sequence #\/ "/usr/local/bin/" :omit-empty t)
@@ -227,6 +234,7 @@
 ; 	  (fake-split-sequence #\/ "/usr/local/bin/"
 ; 			       :omit-empty nil)))
 )
+|#
 
 (defun replace-subseq (from-seq to-seq in-seq &key count)
   "Return a copy of in-seq but with sequences of from-seq replaced with to-seq."
@@ -248,6 +256,7 @@
 	(apply #'concatenate (append '(string) new)))
       in-seq))
 
+;; @@@ compare vs. the ones in alexandria?
 (defun begins-with (this that)
   "True if THAT begins with THIS."
   (let ((pos (search this that)))
@@ -262,6 +271,76 @@
   "Abbreviation for (concatenate 'string ...)"
   (apply #'concatenate 'string s rest))
 
+(defparameter *ascii-whitespace* #(#\space #\tab #\newline #\return #\vt)
+  "Characters considered whitespace in ASCII.")
+
+;; I got this from wikipedia so it's probably not reliable. We should
+;; probably get it from a unicode package that has character attributes.
+(defparameter *unicode-whitespace-codes*
+    #(#x0085				; Next line
+      #x00A0				; no-break space
+      #x1680				; ogham space mark
+      #x2000				; en quad
+      #x2001				; em quad
+      #x2002				; en space
+      #x2003				; em space
+      #x2004				; three-per-em space
+      #x2005				; four-per-em space
+      #x2006				; six-per-em space
+      #x2007				; figure space
+      #x2008				; punctuation space
+      #x2009				; thin space
+      #x200A				; hair space
+      #x2028				; line separator
+      #x2029				; paragraph separator
+      #x202F				; narrow no-break space
+      #x205F				; medium mathematical space
+      #x3000				; ideographic space
+      )
+  "Characters considered whitespace in Unicode")
+
+(defparameter *whitespace* *ascii-whitespace*)
+
+(defun ltrim (string)
+  "Trim whitespace characters from the left of STRING."
+  (let ((pos (position-if #'(lambda (c)
+			      (not (position c *whitespace*))) string)))
+    (subseq string (or pos 0))))
+
+(defun rtrim (string)
+  (let ((pos (position-if #'(lambda (c)
+			      (not (position c *whitespace*))) string
+			      :from-end t)))
+    (subseq string 0 (1+ (or pos (length string))))))
+
+(defun trim (string)
+  (ltrim (rtrim string)))
+
+(defun join (sequence thing)
+;  "Put THING between every element of SEQUENCE."
+  "Return a string with a THING between every element of SEQUENCE. This is basically the reverse of SPLIT-SEQUENCE."
+  (etypecase sequence
+    (list
+     (with-output-to-string (str)
+       (loop :with first = t
+	  :for e :in sequence
+	  :if first
+	    :do (setf first nil)
+	  :else
+	    :do (princ thing str)
+	  :end
+	  :do (princ e str))))
+    (vector
+     (with-output-to-string (str)
+       (loop :with first = t
+	  :for e :across sequence
+	  :if first
+	    :do (setf first nil)
+	  :else
+	    :do (princ thing str)
+	  :end
+	  :do (princ e str))))))
+
 ;; As you may know, improper use of this can cause troublesome bugs.
 (defun delete-nth (n list)
   "Delete the Nth elemnt from LIST."
@@ -273,10 +352,44 @@
         cons))))
 
 (defun alist-to-hash-table (alist table)
-  "Convert an association list into a hash table."
+;  "Convert an association list into a hash table."
+  "Load a hash table with data from an association list."
   (loop :for i :in alist
 	:do (setf (gethash (car i) table) (cdr i)))
   table)
+
+;; I know this is a ruse, but it makes me feel better.
+;; Also, without good optimization, it could be code bloating.
+(defmacro doseq ((var seq) &body body)
+  "Iterate VAR on a \"sequence\" SEQ, which can be a list, vector, hash-table or package. For hash-tables, it iterates on the keys. For packages, it iterates on all accessible symbols."
+  (let ((seq-sym (gensym)))
+    `(let ((,seq-sym ,seq))
+       ;; Could be ctypecase, but a sequence seems an unusual thing for the user
+       ;; to type in. Of course it could be programmatically correctable, but
+       ;; let's just fix those bugs.
+       (etypecase ,seq-sym
+	 (list
+	  (loop :for ,var :in ,seq-sym
+	     :do ,@body))
+	 (vector
+	  (loop :for ,var :across ,seq-sym
+	     :do ,@body))
+	 (hash-table
+	  ;; We pick the key not the value, since you can, of course, get
+	  ;; value from the key.
+	  (loop :for ,var :being :the :hash-keys :of ,seq-sym
+	     :do ,@body))
+	 (package
+	  (loop :for ,var :being :the :symbols :of ,seq-sym
+	     :do ,@body))
+	 #| I might like to have:
+
+	 (collection
+	   (do-forward-iteration ,var ,@body))
+
+	 See wip/collections.lisp.
+	 |#
+	 ))))
 
 ;;; Feature Fiddling
 
@@ -364,15 +477,27 @@
   (missing-implementation 'lisp-args))
 
 #+sbcl
+;(eval-when (:compile-toplevel :load-toplevel :execute)
 (defparameter *sbcl-version*
-  (destructuring-bind (major minor rev)
-      (subseq (split-sequence #\. (lisp-implementation-version)) 0 3)
-    (+ (* 10000 (parse-integer major))
-       (* 100 (parse-integer minor)) 
-       (parse-integer rev))))
+  (let (i spos (sum 0) (pos 0) (mag #(10000 100 1))
+	  (str (substitute #\space #\. (lisp-implementation-version))))
+    (dotimes (n 3)
+      (setf (values i spos) (parse-integer (subseq str pos) :junk-allowed t))
+      (incf sum (* i (aref mag n)))
+      (incf pos spos)
+;      (format t "~a ~a ~a ~a~%" n i pos sum)
+      )
+    sum))
+
+    ;; Have to do this without split-sequence, since it's compile time:
+    ;; (destructuring-bind (major minor rev)
+    ;; 	(subseq (split-sequence #\. (lisp-implementation-version)) 0 3)
+    ;;   (+ (* 10000 (parse-integer major))
+    ;; 	 (* 100 (parse-integer minor)) 
+    ;; 	 (parse-integer rev)))))
 
 #+sbcl (when (> *sbcl-version* 10055)
-	 (add-feature :use-exit))
+	 (d-add-feature :use-exit))
 
 (defun exit-system ()
   "Halt the entire Lisp system."
@@ -398,37 +523,37 @@
   (missing-implementation 'overwhelming-permission))
 
 #| THIS IS TOTALLY FUXORD
-;; Most lisps' with-slots can handle structs too.
-#+(or sbcl clisp ccl)
-  (setf (macro-function 'with-struct-slots) (macro-function 'with-slots))
-;; For other lisps we roll our own. Mostly stolen from slime.
-#-(or sbcl clisp ccl)
-;; @@@ NOT REALLY WORKING YET
-(defmacro with-struct-slots ((&rest names) obj &body body)
-  "Like with-slots but works only for structs and only if the struct type
+;; Most lisps' with-slots can handle structs too. ;
+	 #+(or sbcl clisp ccl)
+	 (setf (macro-function 'with-struct-slots) (macro-function 'with-slots))
+;; For other lisps we roll our own. Mostly stolen from slime. ;
+	 #-(or sbcl clisp ccl)
+;; @@@ NOT REALLY WORKING YET		;
+	 (defmacro with-struct-slots ((&rest names) obj &body body)
+"Like with-slots but works only for structs and only if the struct type
 name matches the accessor names, as is the default with defstruct."
-  (let ((struct-name (gensym "ws-"))
-	(reader-func (gensym "ws-")))
-    `(flet ((,reader-func (slot struct-name)
-	     (intern (concatenate 'string
-				  (symbol-name struct-name) "-"
-				  (symbol-name slot))
-		     (symbol-package struct-name))))
-      (let ((,struct-name (type-of ,obj)))
-; 	  (format t "reader for ~a is ~a~%"
-; 	   (quote ,(first names)) (quote ,(reader (first names))))
-	(symbol-macrolet
-	    ,(loop for name in names collect
-	       (typecase name
-		 (symbol `(,name
-			   ((,reader-func ,name ,struct-name) ,obj)))
-		 (cons   `(,(first name)
-			   ((,reader-func ,(second name) ,struct-name) ,obj)))
-		 (t (error
-		     "A NAME is not symbol or a cons in WITH-STRUCT: ~A"
-		     name))))
-	    ,@body)))))
-|#
+(let ((struct-name (gensym "ws-"))
+(reader-func (gensym "ws-")))
+`(flet ((,reader-func (slot struct-name)
+(intern (concatenate 'string
+(symbol-name struct-name) "-"
+(symbol-name slot))
+(symbol-package struct-name))))
+(let ((,struct-name (type-of ,obj)))
+; 	  (format t "reader for ~a is ~a~%" ;
+; 	   (quote ,(first names)) (quote ,(reader (first names)))) ;
+(symbol-macrolet
+,(loop for name in names collect
+(typecase name
+(symbol `(,name
+((,reader-func ,name ,struct-name) ,obj)))
+(cons   `(,(first name)
+((,reader-func ,(second name) ,struct-name) ,obj)))
+(t (error
+"A NAME is not symbol or a cons in WITH-STRUCT: ~A"
+name))))
+,@body)))))
+	 |#
 
 ;; Be forewarned! You will not get any more stupid defconstant warnings!
 ;; You will undoubtedly suffer the scourge of the silently workring!
@@ -438,31 +563,31 @@ name matches the accessor names, as is the default with defstruct."
 ;; Stolen from alexandria:
 
 #| I really hate this:
-(defun %reevaluate-constant (name value test)
-  (if (not (boundp name))
-      value
-      (let ((old (symbol-value name))
-            (new value))
-        (if (not (constantp name))
-            (prog1 new
-              (cerror "Try to redefine the variable as a constant."
-                      "~@<~S is an already bound non-constant variable ~
+	 (defun %reevaluate-constant (name value test)
+(if (not (boundp name))
+value
+(let ((old (symbol-value name))
+(new value))
+(if (not (constantp name))
+(prog1 new
+(cerror "Try to redefine the variable as a constant."
+"~@<~S is an already bound non-constant variable ~
                        whose value is ~S.~:@>" name old))
-            (if (funcall test old new)
-                old
-                (restart-case
-                    (error "~@<~S is an already defined constant whose value ~
+(if (funcall test old new)
+old
+(restart-case
+(error "~@<~S is an already defined constant whose value ~
                               ~S is not equal to the provided initial value ~S ~
                               under ~S.~:@>" name old new test)
-                  (ignore ()
-                    :report "Retain the current value."
-                    old)
-                  (continue ()
-                    :report "Try to redefine the constant."
-                    new)))))))
+(ignore ()
+:report "Retain the current value."
+old)
+(continue ()
+:report "Try to redefine the constant."
+new)))))))
 
-(defmacro define-constant (name initial-value &optional documentation (test ''eql))
-  "Ensures that the global variable named by NAME is a constant with a value
+	 (defmacro define-constant (name initial-value &optional documentation (test ''eql))
+"Ensures that the global variable named by NAME is a constant with a value
 that is equal under TEST to the result of evaluating INITIAL-VALUE. TEST is a
 /function designator/ that defaults to EQL. If DOCUMENTATION is given, it
 becomes the documentation string of the constant.
@@ -471,19 +596,19 @@ Signals an error if NAME is already a bound non-constant variable.
 
 Signals an error if NAME is already a constant variable whose value is not
 equal under TEST to result of evaluating INITIAL-VALUE."
-  (declare (ignore test))
-  `(defconstant ,name (%reevaluate-constant ',name ,initial-value ,test)
-     ,@(when documentation `(,documentation))))
+(declare (ignore test))
+`(defconstant ,name (%reevaluate-constant ',name ,initial-value ,test)
+,@(when documentation `(,documentation))))
 
-|#
+	 |#
 
 ;; Back to the olde shite:
 
-#+(or sbcl clisp ccl cmu lispworks)
+#+(or sbcl clisp ccl cmu lispworks ecl)
 (defmacro define-constant (name value &optional doc (test 'equal))
   "Like defconstant but works with pendanticly anal SCBL."
   (declare (ignore test))
-  #+(or sbcl clisp cmu lispworks)
+  #+(or sbcl clisp cmu lispworks ecl)
   `(cl:defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
      ,@(when doc (list doc)))
   #+ccl
@@ -491,7 +616,7 @@ equal under TEST to result of evaluating INITIAL-VALUE."
   )
 
 ;; On other lisps just use the real one.
-#-(or sbcl clisp ccl cmu lispworks)
+#-(or sbcl clisp ccl cmu lispworks ecl)
 (setf (macro-function 'define-constant) (macro-function 'cl:defconstant))
 
 (defmacro with-package (package &body body)

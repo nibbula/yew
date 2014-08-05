@@ -14,6 +14,6 @@
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :license            "None"
     :long-description   "Another great example of how to poorly reinvent something stupid. Including, among others, fnmatch, glob, and wordexp."
-    :depends-on (:opsys)
+    :depends-on (:opsys :dlib)
     :components
     ((:file "glob")))

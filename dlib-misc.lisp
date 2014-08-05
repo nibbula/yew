@@ -2,7 +2,7 @@
 ;; dlib-misc.lisp - Dan's library of miscellaneous useful functions.
 ;;
 
-;; $Revision: 1.14 $
+;; $Revision: 1.15 $
 
 ;; See dlib.lisp for the most essential stuff.
 ;; This is for things that are nice, but not essential.
@@ -222,8 +222,8 @@ swaps to do times the length of the array. "
 			 (nos:environ)
 			 (sort (nos:environ) #'string-lessp
 			       :key #'(lambda (x) (symbol-name (car x)))))))
-    (loop for v in sorted-list
-	  do (format t "~va ~30a~%" mv (car v) (cdr v)))))
+    (loop :for v :in sorted-list
+       :do (format t "~va ~30a~%" mv (car v) (cdr v)))))
 
 ;; Perhaps it would be more efficient if we could use the implementation's own
 ;; list, instead of having to go thru non-existent code points here, but it's

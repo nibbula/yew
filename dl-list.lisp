@@ -2,7 +2,7 @@
 ;; dl-list - a doubly-linked list
 ;;
 
-;; $Revision: 1.2 $
+;; $Revision: 1.3 $
 
 ;; People tell me you should never use doubly-linked list.
 ;; I'm not quite sure I believe them, but after this there is a zipper-ish
@@ -26,6 +26,7 @@
    #:make-dl-list
    #:dl-push
    #:dl-pop
+   #:dl-length
    #:dl-list-do
    #:dl-list-do-element
    #:dl-list-do-backward
@@ -33,81 +34,141 @@
    ))
 (in-package :dl-list)
 
-(defclass dl-list ()
-  (
 ; I want to be able to specifiy the types like this:
 ;    (prev :initarg :prev :accessor dl-prev :initform nil
 ; 	 :type (or null dl-list-type))
 ;    (next :initarg :next :accessor dl-next :initform nil
 ; 	 :type (or null dl-list-type))
 ; but it doesn't work. So what should I do? For now I just omit the types.
-   (prev :initarg :prev :accessor dl-prev :initform nil)
-   (next :initarg :next :accessor dl-next :initform nil)
-   (content :initarg :content :accessor dl-content :initform nil))
+
+(defclass dl-list ()
+  ((prev :initarg :prev :accessor %dl-prev :initform nil)
+   (next :initarg :next :accessor %dl-next :initform nil)
+   (content :initarg :content :accessor %dl-content :initform nil))
   (:documentation "A doubly linked list."))
 
 ;; I don't really know if specifing the type will make things faster or not.
 ;; @@@ Perhaps I could test it out.
 (deftype dl-node () '(or null dl-list))
 
+(defun dl-prev (lst)
+  (cond
+    ((typep lst 'dl-list)
+     (%dl-prev lst))
+    ((null lst)
+      nil)
+    (t
+     (error "~w is not a dl-list." lst))))
+
+(defun set-dl-prev (lst newval)
+  (setf (%dl-prev lst) newval))
+
+(defsetf dl-prev set-dl-prev)
+
+(defun dl-next (lst)
+  (cond
+    ((typep lst 'dl-list)
+     (%dl-next lst))
+    ((null lst)
+      nil)
+    (t
+     (error "~w is not a dl-list." lst))))
+
+(defun set-dl-next (lst newval)
+  (setf (%dl-next lst) newval))
+
+(defsetf dl-prev set-dl-prev)
+
+(defun dl-content (lst)
+  (cond
+    ((typep lst 'dl-list)
+     (%dl-content lst))
+    ((null lst)
+      nil)
+    (t
+     (error "~w is not a dl-list." lst))))
+
+(defun set-dl-content (lst newval)
+  (setf (%dl-content lst) newval))
+
+(defsetf dl-content set-dl-content)
+
 (defmacro dl-push (lst obj)
   "Push an element onto the front of the list, modifying it."
 ;  (declare (type dl-list lst))
   `(let ((new (make-instance 'dl-list :next ,lst :content ,obj)))
-    (setf (dl-prev ,lst) new)
-    (setf ,lst new)))
+     (when ,lst
+       (setf (%dl-prev ,lst) new))
+     (setf ,lst new)))
 
 (defmacro dl-pop (lst)
   "Pop an element off from the front of the list, modifying it."
 ;  (declare (type dl-list lst))
-  `(prog1 (dl-content ,lst)
-    (setf ,lst (dl-next ,lst)
-          (dl-prev ,lst) nil)))
+  `(if ,lst
+       (prog1 (%dl-content ,lst)
+	 (setf ,lst (%dl-next ,lst))
+	 (when ,lst
+	   (setf (%dl-prev ,lst) nil)))
+       nil))
 
-(defun make-dl-list (&key from-list)
-  "Gratuitous abbreviation."
-  (let ((l (make-instance 'dl-list)))
-    (when from-list
-      (loop :for i :in from-list :do
-	 (dl-push l i)))
-    l))
+(defun dl-length (lst)
+  "Return the length of a dl-list."
+  (let ((result 0))
+    (loop :for i = lst :then (%dl-next i)
+       :while i
+       :do (incf result))
+    result))
+
+(defun make-dl-list (&optional from-sequence)
+  "Construct a dl-list from a sequence."
+  (if (> (length from-sequence) 0)
+      (let ((l nil))
+	(etypecase from-sequence
+	  (list
+	   (loop :for i :in (reverse from-sequence)
+	      :do (dl-push l i)))
+	  (vector
+	   (loop :for i :across (reverse from-sequence)
+	      :do (dl-push l i))))
+	l)
+      nil))
 
 (defun dl-list-do (list func)
   "Call FUNC with the content each successive element of LIST."
   (declare (type dl-list list))
-  (loop :for i = list :then (dl-next i)
-     :do (funcall func (dl-content i))
+  (loop :for i = list :then (%dl-next i)
+     :do (funcall func (%dl-content i))
      :while (dl-next i)))
 
 (defun dl-list-do-element (list func)
   "Call FUNC with each successive element of LIST."
   (declare (type dl-list list))
-  (loop :for i = list :then (dl-next i)
+  (loop :for i = list :then (%dl-next i)
      :do (funcall func i)
-     :while (dl-next i)))
+     :while (%dl-next i)))
 
 (defun dl-list-do-backward (list func)
   "Call FUNC with the content of each element of LIST, going backwards."
   (declare (type dl-list list))
-  (loop :for i = list :then (dl-prev i)
-	:do (funcall func (dl-content i))
-	:while (dl-prev i)))
+  (loop :for i = list :then (%dl-prev i)
+	:do (funcall func (%dl-content i))
+	:while (%dl-prev i)))
 
 (defun dl-list-do-backward-element (list func)
   "Call FUNC with each element of LIST, going backwards."
   (declare (type dl-list list))
-  (loop :for i = list :then (dl-prev i)
+  (loop :for i = list :then (%dl-prev i)
 	:do (funcall func i)
-	:while (dl-prev i)))
+	:while (%dl-prev i)))
 
 ;; @@@ Actually, it could be able to be readable, right?
 (defmethod print-object ((obj dl-list) stream)
   "Print a dl-list in an unreadable way."
   (print-unreadable-object (obj stream :type t :identity t)
     (write-char #\( stream)
-    (loop :for i = obj :then (dl-next i)
-	  :do (write (dl-content i) :stream stream)
-	  :while (and (dl-next i) (write-char #\space stream)))
+    (loop :for i = obj :then (%dl-next i)
+	  :do (write (%dl-content i) :stream stream)
+	  :while (and (%dl-next i) (write-char #\space stream)))
     (write-char #\) stream)))
 
 ;; @@@ how 'bout some tests?

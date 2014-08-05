@@ -19,6 +19,8 @@
    #:filter-output-stream
    #:filter-io-stream
    #:make-filter-stream
+   #:filter<
+   #:filter>
    ))
 (in-package :filter-stream)
 
@@ -36,6 +38,16 @@
 
 (defmethod stream-element-type ((stream wrapped-stream))
   (stream-element-type (source-stream stream)))
+
+;(defmethod close ((stream wrapped-stream) &key abort &allow-other-keys)
+(defmethod close ((stream wrapped-stream) &key (abort t))
+  (if abort
+      (progn
+	(force-output stream)
+	(force-output (source-stream stream)))
+      (progn
+	(finish-output stream)
+	(finish-output (source-stream stream)))))
 
 ;; (defmethod close ((stream wrapped-stream) &key
 ;;   (close (source-stream stream) :abort abort))
@@ -115,6 +127,10 @@ is used.")
 		(or (and (slot-boundp o 'buffer-size) buffer-size)
 		    *default-buffer-size*))))))))
 
+(defmethod stream-clear-input (stream filter-input-stream)
+  ""
+  (stretchy-truncate (filter-input-stream-buffer stream) 0))
+
 ;; Output
 
 (defclass filter-output-stream (filter-stream
@@ -140,15 +156,6 @@ is used.")
 	       (make-stretchy-string 
 		(or (and (slot-boundp o 'buffer-size) buffer-size)
 		    *default-buffer-size*))))))))
-
-(defmethod close ((stream wrapped-stream) &key abort &allow-other-keys)
-  (if abort
-      (progn
-	(force-output stream)
-	(force-output (source-stream stream)))
-      (progn
-	(finish-output stream)
-	(finish-output (source-stream stream)))))
 
 ;; We will take the default methods for these, which do nothing.
 
@@ -358,5 +365,19 @@ is used.")
 		   :unit unit
 		   :buffer-size buffer-size
 		   :state state)))
+
+(defun filter< (file-or-stream function)
+  "Return an input stream filtered by function."
+  (if (streamp file-or-stream)
+      (make-filter-stream file-or-stream function)
+      (with-open-file (stream file-or-stream)
+	(make-filter-stream stream function))))
+
+(defun filter> (file-or-stream function)
+  "Return an output stream filtered by function."
+  (if (streamp file-or-stream)
+      (make-filter-stream file-or-stream function :direction :output)
+      (with-open-file (stream file-or-stream :direction :output)
+	(make-filter-stream stream function :direction :output))))
 
 ;; EOF

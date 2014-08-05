@@ -9,16 +9,14 @@
 
 ;; TODO:
 ;;   multi line - paren flashing, display bugs (undo, delete word, etc)
-;;   history search
 ;;   history saving
-;;   ...
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 		   (compilation-speed 0)))
 
 (defpackage "TINY-RL"
   (:use :common-lisp :dl-list :stretchy :cffi :opsys :ansiterm :termios
-	:completion :dlib-misc :keymap :char-util)
+	:completion :dlib :dlib-misc :keymap :char-util)
   (:documentation
    "A readline replacement for ANSI terminals.")
   (:export
@@ -27,6 +25,7 @@
    #:tiny-rl
    #:line-editor
    #:show-history
+   #:history-clear
    #:*default-prompt*
    #:*really-limit*
    #:*normal-keymap*
@@ -50,12 +49,22 @@
 ;;;
 ;;; *history* is an alist of (CONTEXT . HISTORY), where CONTEXT is a symbol
 ;;; and HISTORY is a history structure, which contains a dl-list of strings.
+;;;
+;;; I know it's confusing, but the tail is the oldest entry and the head
+;;; is the most recent entry. We push new entries on to the head, but we
+;;; print the list backwards from tail to the head.
 
 (defstruct history
-  "Line entry history."
+  "Line editor history."
   (head nil :type dl-node)		; Start of history list
   (tail nil :type dl-node)		; End of history list
   (cur nil :type dl-node))		; Current node
+
+(defstruct history-entry ;; @@@ not used yet
+  "An entry in the line editor history."
+  time					; a universal time
+  line					; a string
+  (modified nil :type boolean))		; true if the entry has be edited
 
 (defvar *history* '() "Line history of some sort.")
 
@@ -66,59 +75,83 @@
   "Initialize history for CONTEXT."
   (let ((context-hist (assoc context *history*)))
     (when (not context-hist)
-      (let ((l (make-instance 'dl-list)))
-	(setf *history* (acons context (make-history :head l :tail l)
+      (let ((l (make-dl-list)))
+	(setf *history* (acons context (make-history :head l :tail l :cur l)
 			       *history*))))))
 
+(defun history-clear (context)
+  "Clear all of the history for the context."
+  (let ((hist (get-history context))
+	(lst (make-dl-list)))
+    (setf (history-head hist) lst
+	  (history-tail hist) lst
+	  (history-cur hist) lst)))
+
 (defun history-add (context buf)
-  (let ((hist (get-history context)))
-    (when (and (> (length buf) 0)
-	       (not (equalp buf (history-cur hist))))
-      (dl-push (history-head hist) (copy-seq buf))
-;      (setf (history-cur *history*) (history-head *history*))
-      )))
+  "Adds the content BUF as the most recent history item."
+  (let* ((hist (get-history context)))
+    (dl-push (history-head hist) (copy-seq buf))
+    (when (not (history-cur hist))
+      (setf (history-cur hist) (history-head hist)))
+    (when (not (history-tail hist))
+      (setf (history-tail hist) (history-head hist)))))
+
+(defun history-put (context buf)
+  "Save the BUF in the current history item."
+  (let* ((hist (get-history context))
+	 (cur (history-cur hist)))
+    (when cur
+      (setf (dl-content cur) (copy-seq buf)))))
 
 (defun history-prev (context)
+  "Move the current history to the next oldest."
   (let* ((hist (get-history context))
-	 (next (if (history-cur hist)
-		   (dl-next (history-cur hist))
-		   (history-head hist))))
+	 (cur (history-cur hist))
+	 (head (history-head hist))
+	 (next (if cur (dl-next cur) head)))
     (when next
       (setf (history-cur hist) next))))
 
 (defun history-next (context)
-  (let ((hist (get-history context)))
-    ;; can go back to nil
-    (when (history-cur hist)
-      (setf (history-cur hist) (dl-prev (history-cur hist))))))
+  "Move the current history to the next most recent."
+  (let* ((hist (get-history context))
+	 (cur (history-cur hist)))
+    (when (and cur (dl-prev cur))
+      (setf (history-cur hist) (dl-prev cur)))))
 
 (defun history-first (context)
+  "Move the current history to the oldest history item."
   (let ((hist (get-history context)))
-    (setf (history-cur hist) (dl-prev (history-tail hist)))))
+    (setf (history-cur hist) (history-tail hist))))
 
 (defun history-last (context)
+  "Move the current history to the most recent history item."
   (let ((hist (get-history context)))
     (setf (history-cur hist) (history-head hist))))
 
 (defun history-current (context)
+  "Return the content of the current item."
   (let* ((hist (get-history context))
-	 (c (history-cur hist)))
-    (if c (dl-content c) nil)))
+	 (cur (history-cur hist)))
+    (if cur (dl-content cur) nil)))
 
 (defun history-current-get (context)
+  "Return the current history node."
   (history-cur (get-history context)))
 
 (defun history-current-set (context newval)
+  "Set the current history node to NEWVAL."
   (setf (history-cur (get-history context)) newval))
 
-(defsetf history-current history-current-set)
+(defsetf history-current history-current-set
+  "SETF form for the current history node.")
 
 (defun show-history (context)
   "Print the history with numbers."
   (let ((hist (get-history context))
 	(i 1))
     (dl-list-do-backward
-     (dl-prev (history-tail hist))
+     (history-tail hist)
      #'(lambda (x)
 	 (format t "~4d  ~a~%" i x)
 	 (incf i))))
@@ -194,7 +227,7 @@
     :accessor cmd
     :initform nil
     :initarg :cmd
-    :documentation "Current command.")
+    :documentation "Current command. Usually the input character")
    (last-input
     :accessor last-input
     :initform nil
@@ -235,6 +268,11 @@
     :initarg :context
     :initform :tiny
     :documentation "A symbol selecting what line history to use.")
+   (saved-line
+    :accessor saved-line
+    :initarg :saved-line
+    :initform nil
+    :documentation "Current line, saved when navigating history.")
    (undo-history
     :accessor undo-history
     :initform nil
@@ -322,6 +360,8 @@
   )
   (:documentation "State for a stupid little line editor."))
 
+(defvar *initial-line-size* 20)
+
 (defmethod initialize-instance :after ((e line-editor) &rest initargs)
   (declare (ignore initargs))
   (setf (slot-value e 'terminal)
@@ -332,7 +372,7 @@
 	    (make-instance 'terminal)))
   ;; Make a default line sized buffer if one wasn't given.
   (when (or (not (slot-boundp e 'buf)) (not (slot-value e 'buf)))
-    (setf (slot-value e 'buf) (make-stretchy-string 80)))
+    (setf (slot-value e 'buf) (make-stretchy-string *initial-line-size*)))
   (setf *line-editor* e))
 
 (defgeneric freshen (e)
@@ -574,7 +614,7 @@
 (defun undo-one (e)
   "Undo one item from the undo history. Return true if we should undo more."
   (let (item)
-    (if (equal (last-input e) #\^O)	; @@@ bogus #\^O until keymaps, etc
+    (if (equal (last-input e) (ctrl #\O)) ; @@@ bogus ^O until keymaps, etc
       (progn
 	(if (undo-current e)
 	  (progn
@@ -722,6 +762,7 @@
 (tt-alias tt-cursor-on)
 (tt-alias tt-standout)
 (tt-alias tt-standend)
+(tt-alias tt-underline state)
 (tt-alias tt-beep)
 (tt-alias tt-finish-output)
 
@@ -732,7 +773,7 @@
   "Show a little message for debugging."
   (declare (type line-editor e))
   (tt-cursor-off e)
-  (tt-move-to e 10 10)		; The only place we should call this
+  (tt-move-to e 5 5)		; The only place we should call this
   (tt-standout e)
   (apply #'tt-format (cons (line-editor-terminal e) (cons fmt args)))
   (tt-standend e)
@@ -762,32 +803,41 @@
 (defun beep (e fmt &rest args)
   "Beep or display an error message."
   (when (debugging e)
-    (apply #'message fmt args))
+    (apply #'message e fmt args))
   (tt-beep e))
 
 ;; Note: no tab or newline
 (defparameter *control-char-graphics-vec*
-  #((#\Null . #\@) (#\^A . #\A) (#\^B . #\B) (#\^C . #\C) (#\^D . #\D)
-    (#\^E . #\E) (#\^F . #\F) (#\^G . #\G) (#\^H . #\H) (#\^J . #\J)
-    (#\^K . #\K) (#\^L . #\L) (#\^M . #\M) (#\^N . #\N) (#\^O . #\O)
-    (#\^P . #\P) (#\^Q . #\Q) (#\^R . #\R) (#\^S . #\S) (#\^T . #\T)
-    (#\^U . #\U) (#\^V . #\V) (#\^W . #\W) (#\^X . #\X) (#\^Y . #\Y)
-    (#\^Z . #\Z) (#\Escape . #\[) (#\Fs . #\\) (#\Gs . #\]) (#\Rs . #\^)
-    (#\Us . #\_) (#\Rubout . #\?))
+  `((#\Null . #\@) (,(ctrl #\A) . #\A) (,(ctrl #\B) . #\B) (,(ctrl #\C) . #\C)
+    (,(ctrl #\D) . #\D) (,(ctrl #\E) . #\E) (,(ctrl #\F) . #\F)
+    (,(ctrl #\G) . #\G) (,(ctrl #\H) . #\H) (,(ctrl #\J) . #\J)
+    (,(ctrl #\K) . #\K) (,(ctrl #\L) . #\L) (,(ctrl #\M) . #\M)
+    (,(ctrl #\N) . #\N) (,(ctrl #\O) . #\O) (,(ctrl #\P) . #\P)
+    (,(ctrl #\Q) . #\Q) (,(ctrl #\R) . #\R) (,(ctrl #\S) . #\S)
+    (,(ctrl #\T) . #\T) (,(ctrl #\U) . #\U) (,(ctrl #\V) . #\V)
+    (,(ctrl #\W) . #\W) (,(ctrl #\X) . #\X) (,(ctrl #\Y) . #\Y)
+    (,(ctrl #\Z) . #\Z) (#\Escape . #\[) (#\Fs . #\\) (#\Gs . #\])
+    (#\Rs . #\^) (#\Us . #\_) (#\Rubout . #\?))
   "Vector of control characters and corresponding caret notation char.")
 
 (defun pair-vector-to-hash-table (vec table)
-  (loop for (k . v) across vec
-	do (setf (gethash k table) v))
+  (loop :for (k . v) :across vec
+     :do (setf (gethash k table) v))
   table)
+
+;; Moved to dlib
+;; (defun alist-to-hash-table (vec table)
+;;   (loop :for (k . v) :in vec
+;;      :do (setf (gethash k table) v))
+;;   table)
 
 (defparameter *control-char-graphics* nil)
 
 (defun control-char-graphic (c)
   (when (not *control-char-graphics*)
     (setf *control-char-graphics* (make-hash-table :test #'eql))
-    (pair-vector-to-hash-table *control-char-graphics-vec*
-			       *control-char-graphics*))
+    (alist-to-hash-table *control-char-graphics-vec*
+			 *control-char-graphics*))
   (gethash c *control-char-graphics*))
 
 (defgeneric display-length (obj)
@@ -820,9 +870,9 @@ Assumes S is already converted to display characters."
   (let* ((width (terminal-window-columns (line-editor-terminal e)))
 	 (len (length s))
 	 (last-remain (+ (screen-col e) len)))
-     (loop with remain = (max 0 (- len (- width (screen-col e))))
-	  while (> remain 0)
-	  do
+     (loop :with remain = (max 0 (- len (- width (screen-col e))))
+	  :while (> remain 0)
+	  :do
 	  (incf (screen-row e))
 	  (setf (screen-col e) 0)
 	  (decf remain (setf last-remain (min width remain))))
@@ -1132,29 +1182,33 @@ it with ACTION's return value."
 
 (defun previous-history (e)
   "Go to the previous history entry."
+  (history-put (context e) (buf e))
   (history-prev (context e))
   (use-hist e))
 
 (defun next-history (e)
   "Go to the next history entry."
+  (history-put (context e) (buf e))
   (history-next (context e))
   (use-hist e))
 
 (defun beginning-of-history (e)
   "Go to the beginning of the history."
+  (history-put (context e) (buf e))
   (history-first (context e))
   (use-hist e))
 
 (defun end-of-history (e)
   "Go to the end of the history."
+  (history-put (context e) (buf e))
   (history-last (context e))
   (use-hist e))
 
 (defun accept-line (e)
-  (with-slots (buf quit-flag) e
-    (history-add (context e) buf)
-    ;; restart from the bottom
-    (setf (history-cur (get-history (context e))) nil)
+  (with-slots (buf quit-flag context) e
+;    (if (> (length buf) 0)
+    (history-put (context e) (buf e))
+    (history-last (context e))
     (tt-write-char e #\newline)
     (setf quit-flag t)))
 
@@ -1192,29 +1246,102 @@ it with ACTION's return value."
   (let ((code (char-code c)))
     (or (< code 32) (= code 128))))
 
-(defun search-history (e str &optional (direction :backward))
+(defun display-search (e str pos)
+  "Display the current line with the search string highlighted."
+  (with-slots (buf point) e
+    (tt-move-to-col e 0)
+    (tt-erase-to-eol e)
+    (setf (screen-col e) 0)
+    (do-prefix e "isearch: ")
+    (when str
+      (without-undo (e)
+;	(erase-display e)
+	(buffer-delete e 0 (length buf))
+	(buffer-insert e 0 (or (history-current (context e)) ""))
+	(loop :with end = (if pos (+ pos (length str)) nil)
+	   :for c :across buf :and i = 0 :then (1+ i) :do
+	   (cond
+	     ((and pos (= i pos))
+	      (tt-underline e t))
+	     ((and end (= i end))
+	      (tt-underline e nil)))
+	   (display-char e c))
+	(tt-underline e nil)))
+    (tt-finish-output e)))
+
+(defun search-start-forward (context)
+  ;; (or (and (history-current-get context)
+  ;; 	   (dl-prev (history-current-get context)))
+  (or (history-current-get context)
+      (history-head (get-history context))))
+
+(defun search-start-backward (context)
+  ;; (or (and (history-current-get context)
+  ;; 	   (dl-next (history-current-get context)))
+  (or (history-current-get context)
+      (history-tail (get-history context))))
+
+(defun backward-start-pos (str pos)
+  ;; (cond
+  ;;   ((not pos)
+  ;;    (length str))
+  ;;   ((> pos 0)
+  ;;    (min (1- pos) (length str)))
+  ;;   (t 0)))
+  (min (length str)
+       (or pos (length str))))
+
+(defun forward-start-pos (str pos)
+  (cond
+    ((not pos)
+     0)
+    ((< pos (1- (length str)))
+     (1+ pos))
+    (t (length str))))
+
+(defun search-history (e str direction start-from search-pos)
   (with-slots (point context) e
-    (let ((hist (get-history context)))
+    (let ((hist (get-history context))
+	  (first-time t))
+;      (dbug "yoyo context ~w ~w~%" context hist)
       (if (eq direction :backward)
-	  (dl-list-do-element
-	   (history-current-get context)
-	   #'(lambda (x)
-	       (let ((pos (search (dl-content x) str
-				  :from-end t :start1 point)))
-		 (when pos
-		   (setf (history-cur hist) x)
-		   (use-hist e)
-		   (move-backward e (- point pos))
-		   (return-from search-history t)))))
+	  (progn
+;	    (dbug "starting-at ~w~%" start-from)
+	    (dl-list-do-element
+	     start-from
+	     #'(lambda (x)
+		 (when (dl-content x)
+		   (dbug "(search ~w ~w :end2 ~w) search-pos = ~w~%"
+			 str (dl-content x)
+			 (backward-start-pos (dl-content x) search-pos)
+			 search-pos)
+		   (let (pos)
+		     (if first-time
+			 (setf pos (search str (dl-content x)
+					   :from-end t
+					   :end2 (backward-start-pos
+						  (dl-content x) search-pos))
+			       first-time nil)
+			 (setf pos (search str (dl-content x) :from-end t)))
+		     (when pos
+		       (dbug "found pos = ~w in ~w (~w) x=~a~%"
+			     pos (dl-content x) str x)
+		       (setf (history-cur hist) x)
+		       (return-from search-history pos)))))))
 	  (dl-list-do-backward-element
-	   (history-current-get context)
+	   start-from
 	   #'(lambda (x)
-	       (let ((pos (search (dl-content x) str :start1 point)))
-		 (when pos
-		   (setf (history-cur hist) x)
-		   (use-hist e)
-		   (move-forward e (- point pos))
-		   (return-from search-history t))))))))
+	       (when (dl-content x)
+		 (let (pos)
+		   (if first-time
+		       (setf pos (search str (dl-content x)
+					 :start2 (forward-start-pos
+						  (dl-content x) search-pos))
+			     first-time nil)
+		       (setf pos (search str (dl-content x))))
+		   (when pos
+		     (setf (history-cur hist) x)
+		     (return-from search-history pos)))))))))
   nil)
 
 (defun isearch (e &optional (direction :backward))
@@ -1223,30 +1350,65 @@ it with ACTION's return value."
     (let ((quit-now nil)
 	  (start-point point)
 	  (start-hist (history-current-get context))
-	  (search-string (make-stretchy-string 20))
-	  c)
-      (loop :while (not quit-now)
-	 :do
-	 (setf c (get-a-char e))
-	 (case c
-	   (#\^G
-	    (setf point start-point)
-	    (setf (history-current context) start-hist)
-	    (use-hist e)
-	    (setf quit-now t))
-	   (#\^S
-	    (setf direction :forward))
-	   (#\^R
-	    (setf direction :backward))
-	   (t
-	    (cond
-	      ((control-char-p c)
-	       (return-from isearch c))
-	      (t
-	       (stretchy-append search-string c)))))
-	 (if (search-history e search-string direction)
-	     (use-hist e)
-	     (beep e "Not found"))))))
+	  (search-string (make-stretchy-string *initial-line-size*))
+	  (start-from (or (history-current-get context)
+			  (history-head (get-history context))))
+	  (pos point) old-pos c added)
+      (labels ((redisp ()
+		 (tt-move-to-col e 0)
+		 (tt-erase-to-eol e)
+		 (setf (screen-col e) 0)
+		 (do-prefix e "isearch: ")
+		 (display-search e search-string pos))
+	       (resync ()
+		 (buffer-delete e 0 (length buf))
+		 (buffer-insert e 0 (or (history-current (context e)) ""))
+		 (setf point (min (or pos (length buf)) (length buf)))))
+	(redisp)
+	(loop :while (not quit-now)
+	   :do
+	   (when (debugging e)
+	     (message e "pos = ~a start-from = ~a" pos start-from))
+	   (display-search e search-string pos)
+	   (setf c (get-a-char e)
+		 added nil)
+	   (cond
+	     ((eql c (ctrl #\G))
+	      (setf point start-point)
+	      (setf (history-current context) start-hist)
+	      (use-hist e)
+	      (setf quit-now t))
+	     ((eql c (ctrl #\S))
+	      (setf direction :forward
+		    start-from (search-start-forward context)))
+	     ((eql c (ctrl #\R))
+	      (setf direction :backward
+		    start-from (search-start-backward context)))
+	     ((eql c (ctrl #\L))
+	      (redisp))
+	     ((or (eql c (ctrl #\h)) (eql c #\backspace) (eql c #\rubout))
+	      (stretchy-truncate search-string
+				 (max 0 (1- (length search-string)))))
+	     ((or (control-char-p c) (meta-char-p (char-code c)))
+	      (resync)
+	      (redraw e)
+	      (return-from isearch c))
+	     (t
+	      (stretchy-append search-string c)
+	      (setf added t)))
+	   (if (setf pos (search-history
+			  e search-string direction start-from pos))
+	       (progn
+		 (setf old-pos pos
+		       point pos))
+	       (progn
+		 (when added
+		   (stretchy-truncate search-string
+				      (max 0 (1- (length search-string))))
+		   (setf pos old-pos))
+		 (beep e "Not found"))))
+	(resync)
+	(redraw e)))))
 
 (defun redraw-command (e)
   "Clear the screen and redraw the prompt and the input line."
@@ -1311,7 +1473,7 @@ Don't update the display."
   "At the beginning of a blank line, exit, otherwise delete-char."
   (with-slots (point buf last-input quit-flag exit-flag) e
     (if (and (= point 0) (= (length buf) 0)
-	     (not (eql last-input #\^d)))
+	     (not (eql last-input (ctrl #\d))))
 	;; At the beginning of a blank line, we exit,
 	;; so long as the last input wasn't ^D too.
 	(setf quit-flag t
@@ -1545,6 +1707,13 @@ provided, it defaults to the end of the string."
 		  (setf point saved-point)	   ; go back to where we were
 		  (beep e "No completions")))))))) ; ring the bell
 
+(defun do-prefix (e prompt-str)
+  "Output a prefix. The prefix should not span more than one line."
+  (incf (screen-col e) (length prompt-str))
+  (setf (start-col e) (screen-col e))	; save the starting column
+  (tt-write-string e prompt-str)
+  (finish-output))
+
 (defun do-prompt (e prompt output-prompt-func)
   "Output the prompt in a specified way."
 ;  (format t "e = ~w prompt = ~w output-prompt-func = ~w~%"
@@ -1553,10 +1722,7 @@ provided, it defaults to the end of the string."
               (if output-prompt-func
 		  (funcall output-prompt-func e prompt)
 		  (default-output-prompt e prompt)))))
-    (incf (screen-col e) (length s))
-    (setf (start-col e) (screen-col e))	; save the starting column
-    (tt-write-string e s)
-    (finish-output)))
+    (do-prefix e s)))
 
 (defun pop-to-lish (e)
   "If we're inside lish, throw to a quick exit. If we're not in lish,
@@ -1588,7 +1754,9 @@ enter it."
   (declare (ignore e))
   ;; Maybe this should just flash the screen?
   (with-simple-restart (continue "Continue TINY-RL")
-    (invoke-debugger (make-condition 'simple-condition))))
+    (invoke-debugger (make-condition
+		      'simple-condition
+		      :format-control "Abort command"))))
 
 (defun toggle-debugging (e)
   "Toggle debugging output."
@@ -1647,12 +1815,12 @@ enter it."
 (defkeymap *normal-keymap*
   `(
     ;; Movement
-    (#\^B		. backward-char)
-    (#\^F		. forward-char)
-    (#\^A		. beginning-of-line)
-    (#\^E		. end-of-line)
-    (#\^P		. previous-history)
-    (#\^N		. next-history)
+    (,(ctrl #\B)		. backward-char)
+    (,(ctrl #\F)		. forward-char)
+    (,(ctrl #\A)		. beginning-of-line)
+    (,(ctrl #\E)		. end-of-line)
+    (,(ctrl #\P)		. previous-history)
+    (,(ctrl #\N)		. next-history)
     (,(meta-char #\b)	. backward-word)
     (,(meta-char #\f)	. forward-word)
     (,(meta-char #\<)	. beginning-of-history)
@@ -1663,13 +1831,13 @@ enter it."
     (#\newline		. accept-line)
     (#\backspace	. delete-backward-char)
     (#\rubout		. delete-backward-char)
-    (#\^D		. delete-char-or-exit)
-    (#\^W		. backward-kill-word)
-    (#\^K		. kill-line)
-    (#\^@		. set-mark)
-    (#\^Y		. yank)
-    (#\^U		. backward-kill-line)
-    (#\^O		. undo-command)
+    (,(ctrl #\D)		. delete-char-or-exit)
+    (,(ctrl #\W)		. backward-kill-word)
+    (,(ctrl #\K)		. kill-line)
+    (,(ctrl #\@)		. set-mark)
+    (,(ctrl #\Y)		. yank)
+    (,(ctrl #\U)		. backward-kill-line)
+    (,(ctrl #\O)		. undo-command)
     (,(meta-char #\d)	. kill-word)
     (,(meta-char #\rubout) . backward-kill-word)
     (,(meta-char #\u)	. upcase-word)
@@ -1682,12 +1850,12 @@ enter it."
     (#\?		. show-completions)
 
     ;; Misc
-    (#\^L		. redraw-command)
-    (#\^G		. abort-command)
-    (#\^S		. isearch-forward)
-    (#\^R		. isearch-backward)
-    (#\^T		. toggle-debugging) ; @@@ temporary?
-    (#\^Q		. quoted-insert)
+    (,(ctrl #\L)		. redraw-command)
+    (,(ctrl #\G)		. abort-command)
+    (,(ctrl #\S)		. isearch-forward)
+    (,(ctrl #\R)		. isearch-backward)
+    (,(ctrl #\T)		. toggle-debugging) ; @@@ temporary?
+    (,(ctrl #\Q)		. quoted-insert)
 
     ;; key binding
 ;    (,(meta-char #\=)	. describe-key-briefly)
@@ -1695,7 +1863,7 @@ enter it."
 
     ;; Other keymaps
     (#\escape		. *escape-keymap*)
-    (#\^X		. *ctlx-keymap*)
+    (,(ctrl #\X)		. *ctlx-keymap*)
     )
   :default-binding 'self-insert
 )
@@ -1703,18 +1871,18 @@ enter it."
 ;; These ^X commands are quite impoverished.
 (defkeymap *ctlx-keymap*
   `(
-    ;; (#\^F (edit-function))
-    ;; (#\^Q (toggle-read-only))
-    ;; (#\^S (save-history))
-    ;; (#\^Z (suspend))
+    ;; (,(ctrl #\F) (edit-function))
+    ;; (,(ctrl #\Q) (toggle-read-only))
+    ;; (,(ctrl #\S) (save-history))
+    ;; (,(ctrl #\Z) (suspend))
     ;; (#\h (hyperspec-lookup))
     ;; (#\i (insert-file))
     ;; (#\= (describe-cursor-position))
     ;; (#\! (shell-command))
     ;; (#\( (start-macro))
     ;; (#\) (end-macro))
-    (#\^C	. exit-editor)
-    (#\^X	. exchange-point-and-mark)))
+    (,(ctrl #\C)	. exit-editor)
+    (,(ctrl #\X)	. exchange-point-and-mark)))
 ;  :default-binding #| (beep e "C-x ~a is unbound." cmd |#
 
 (defkeymap *escape-raw-keymap*
@@ -1796,6 +1964,7 @@ enter it."
 		     (completion-func #'complete-symbol)
 		     (in-callback nil)
 		     (out-callback nil)
+		     (debug nil)
 		     (editor nil)
 		     (terminal-name nil)
 		     (context :tiny))
@@ -1834,11 +2003,21 @@ Keyword arguments:
 		       :context context
 		       :in-callback in-callback
 		       :out-callback out-callback
+		       :debugging debug
 		       :terminal-device-name terminal-name))))
     (when editor
       (freshen editor))
     (setf (fill-pointer (buf e)) (point e))
     (terminal-start (line-editor-terminal e))
+
+    ;; Don't add blank or duplicate lines.
+    (let* ((cur (history-current-get context))
+	   (prev (dl-prev cur)))
+      (when (not (or (and cur (dl-content cur) (= (length (dl-content cur)) 0))
+		     (and prev (dl-content prev)
+			  (equal (dl-content prev) (dl-content cur)))))
+	(history-add context nil)
+	(history-next context)))
 
     ;; Output the prompt
     (setf (prompt e) prompt (prompt-func e) output-prompt-func)
@@ -1851,11 +2030,11 @@ Keyword arguments:
 	   (loop :do
 	      (finish-output)
 	      (when debugging
-		(message e "~d ~d [~d x ~d] ~a"
+		(message e "~d ~d [~d x ~d] ~w ~w"
 			 (screen-col e) (screen-row e)
 			 (terminal-window-columns terminal)
 			 (terminal-window-rows terminal)
-			 cmd)
+			 cmd (history-current-get context))
 		(show-message-log e))
 	      (setf cmd (get-a-char e))
 	      (log-message e "cmd ~s" cmd)

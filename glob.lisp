@@ -2,7 +2,7 @@
 ;; glob.lisp - Shell style file name pattern matching
 ;;
 
-;; $Revision: 1.1 $
+;; $Revision: 1.2 $
 
 (defpackage :glob
   (:documentation "Shell style file name pattern matching")
@@ -10,6 +10,7 @@
   (:export
    #:pattern-p
    #:fnmatch
+   #:expand-tilde
    #:glob
    #:wordexp
    ))
@@ -335,6 +336,26 @@ Glob patterns:
   '*' doesn't match anything starting with '.', unless it's given explicitly
 |#
 
+(defun expand-tilde (w)
+  "Return a the expansion of the word W starting with tilde '~'."
+  (let* ((end-of-user (or (position-if #'(lambda (c)
+					   (not (user-name-char-p c)))
+				       (subseq w 1))
+			  (1- (length w))))
+	 (username (if (and end-of-user (> end-of-user 0))
+		       (subseq w 1 (1+ end-of-user))
+		       ""))
+	 home)
+    (cond
+      ((and (> (length username) 0) (setf home (user-home username)))
+       (s+ home (subseq w (1+ end-of-user))))
+      ((and (>= (length w) 2) (eql *directory-separator* (aref w 1)))
+       (s+ (namestring (user-homedir-pathname)) (subseq w (+ end-of-user 2))))
+      ((equal w "~")
+       (namestring (user-homedir-pathname)))
+      (t
+       (return-from expand-tilde w)))))
+
 #|
 
 Let's say I have:
@@ -374,10 +395,17 @@ match & dir  - f(prefix: boo) readir boo
 	       (if (and (char= (char d 0) #\/) (= (length d) 1))
 		   (s+ "/" (dir-entry-name f))
 		   (s+ dir "/" (dir-entry-name f)))
-	       (dir-entry-name f))))
+	       (dir-entry-name f)))
+	 (starts-with-dot (p) (char= (char p 0) #\.)))
     (when path
-      (loop :for f :in (read-directory :dir (or dir ".") :full t :omit-hidden t)
-	 :if (fnmatch (car path) (dir-entry-name f))
+      (loop :with p = (car path)
+	 :for f :in (read-directory :dir (or dir ".") :full t
+				    :omit-hidden (not (starts-with-dot p)))
+	 ;; Only match explicit current "." and parent ".." elements.
+	 ;; Only match anything like ".*" when the pattern starts with ".".
+	 :if (or (and (equal "." p) (equal "." (dir-entry-name f)))
+		 (and (equal ".." p) (equal ".." (dir-entry-name f)))
+		 (fnmatch p (dir-entry-name f)))
            :when (= (length path) 1)
 	     :append (list (squip-dir dir f))
            :else :if (eq :dir (dir-entry-type f))
@@ -391,14 +419,17 @@ match & dir  - f(prefix: boo) readir boo
   BRACES true, means allow braces processing.
   TILDE true, means allow tilde processing, which gets users home directories.
   LIMIT as an integer, means limit the number of pathnames to LIMIT."
-  (declare (ignore mark-directories escape sort braces tilde limit))
-  (let ((path (split-sequence #\/ pattern :omit-empty t))
-	(dir (when (char= (char pattern 0) #\/) "/")))
+  (declare (ignore mark-directories escape sort braces limit))
+  (let* ((expanded-pattern (if tilde (expand-tilde pattern) pattern))
+	 (path (split-sequence #\/ expanded-pattern :omit-empty t))
+	 (dir (when (char= (char expanded-pattern 0) #\/) "/")))
     (dir-matches path dir)))
 
 ;; Despite Tim Waugh's <twaugh@redhat.com> wordexp manifesto
 ;; <http://cyberelk.net/tim/articles/cmdline/>, "When is a command line not a
-;; line?", I think all that shell expansion stuff is kind of stupid. I only do
+;; line?", I think all that shell expansion stuff is kind of stupid, even
+;; though I agree if you're going to do something complex, hackish, and
+;; important to get right, you should do it in a reusable library. I only do
 ;; it, even in shell programs, when I'm forced to. It's probably much easier,
 ;; clearer, more secure, more maintainable, to do the equivalent in Lisp,
 ;; POSIX be damned. In the shell you can _only_ get arithmetic evaluation, and

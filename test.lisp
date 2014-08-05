@@ -31,17 +31,21 @@ A: Say: (describe-test 'test-name). It will show you the code that failed.
 Q: What if a bunch of tests fail?
 A: Say (list-tests :failed t), to show all tests that failed.
 
+Q: What if I need to set up pre-conditions for my tests?
+A: You can use :setup and :takedown arguments to deftests.
+
 Q: What if I need to capture the output from my test?
 A: You're on your own.
 
 Q: What if I need to trap exceptions from my tests?
 A: You're on your own.
 
-Q: What if I need to set up pre-conditions for my tests?
+Q: Hey, but what if I'd like to nicely add tests dynamically whilst I'm mucking
+   about in the REPL?
 A: You're on your own.
 
 Q: What if I need to ...
-A: I SAID, you're on your own!
+A: I SAID, you're on your own! (patches welcomed :-)
 ")
   (:use :cl)
   (:export

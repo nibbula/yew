@@ -2,7 +2,7 @@
 ;; glob-test.lisp - Test glob package.
 ;;
 
-;; $Revision: 1.1 $
+;; $Revision: 1.2 $
 
 (defpackage :glob-test
   (:documentation "Test glob package")
@@ -154,6 +154,8 @@
 			  "zoo/quux/snoo"))
   (equal (glob "*/*/*[^c]")
 	 '("boo/bar/corge" "zoo/baz/foo" "zoo/baz/lemon" "zoo/quux/snoo"))
+  (equal (in-directory ("boo") (glob "../*/*/*.c"))
+	 '("../boo/bar/gralt.c" "../zoo/baz/bark.c" "../zoo/quux/pidge.c"))
 )
 
 (defun run-tests ()

@@ -14,6 +14,6 @@
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :license            "None"
     :long-description   "Things that have more dependencies."
-    :depends-on (:dlib :dlib-misc :pager)
+    :depends-on (:dlib :dlib-misc :pager :filter-stream)
     :components
     ((:file "dlib-fancy")))

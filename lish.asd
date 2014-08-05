@@ -2,7 +2,7 @@
 ;;; lish.asd -- System definition for LISH package
 ;;;
 
-;;; $Revision: 1.4 $
+;;; $Revision: 1.5 $
 
 (defpackage :lish-system
     (:use :common-lisp :asdf))
