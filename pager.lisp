@@ -2,7 +2,7 @@
 ;; pager.lisp - Something like more or less
 ;;
 
-;; $Revision: 1.7 $
+;; $Revision: 1.8 $
 
 ;; TODO:
 ;;  - syntax highlighting
@@ -561,7 +561,9 @@ q - Abort")
 (defmacro with-pager (&body body)
   "Evaluate the body with the *standard-output* going to the pager."
   `(let ((*standard-output* (make-string-output-stream)))
-     (prog1 (progn ,@body)
+     (prog1 (with-simple-restart
+		(continue "View the output so far in the pager anyway.")
+	      (progn ,@body))
        (page (make-string-input-stream
 	      (get-output-stream-string *standard-output*))))))
 
@@ -575,7 +577,9 @@ q - Abort")
 	    ;; This doesn't seem to work on clisp :(
 	    (*debug-io* (make-two-way-stream *standard-input* ,str-name))
 	    )
-       (prog1 (progn ,@body)
+       (prog1 (with-simple-restart
+		  (continue "View the output so far in the pager anyway.")
+		(progn ,@body))
 	 (page (make-string-input-stream
 		(get-output-stream-string ,str-name)))))))
 
