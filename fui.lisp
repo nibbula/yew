@@ -6,7 +6,7 @@
 
 (defpackage :fui
   (:documentation "Fake UI")
-  (:use :cl :curses :stretchy :dlib :dlib-misc :opsys)
+  (:use :cl :curses :stretchy :dlib :dlib-misc :opsys :char-util)
   (:export
    #:with-curses
    #:init-colors
@@ -30,6 +30,7 @@
    #:subdirs
    #:make-tree
    #:browse-tree
+   #:browse-packages
    ))
 (in-package :fui)
 
@@ -453,16 +454,19 @@
   "Perform an action from a menu. Menu is an alist of (item . action)."
   ;;; @@@ improve to one loop
   (let ((items (loop :for (i . nil) :in menu :collect i))
-	(funcs (loop :for (nil . f) :in menu :collect f)))
+	(funcs (loop :for (nil . f) :in menu :collect f))
+	(n-sym (gensym)))
     `(block menu
-      (let* ((n (pick-list ',items :by-index t
-			   :message ,message
-			   :selected-item ,selected-item)))
-	(if n
-	    (case n 
+      (let* ((,n-sym (pick-list ',items :by-index t
+				:message ,message
+				:selected-item ,selected-item)))
+	(if ,n-sym
+	    (case ,n-sym
 	    ,@(loop :for i :from 0 :below (length funcs)
-		 :collect (list i (let ((f (elt funcs i)))
-				    (if (listp f) (car f))))))
+;;; Why did I do this?
+;;;		 :collect (list i (let ((f (elt funcs i)))
+;;;				    (if (listp f) (car f))))))
+		 :collect (list i (elt funcs i))))
 	    :quit)))))
 
 (defun show-result (expr)
@@ -558,43 +562,62 @@
 (defgeneric %print-tree (tree &key max-depth indent level key)
   (:documentation "The inner part of print-tree which recurses and does all the work. This is probably the only part which needs to be overridden for other tree types."))
 (defmethod %print-tree ((tree list) &key max-depth (indent 2) (level 0) key)
-  (loop :for n :in tree :do
-     (if (atom n)
-	 (format t "~v,,,va~a~%" (* level indent) #\space ""
-		 (if key (funcall key n) n))
-	 (%print-tree n :level (1+ level)
-		     :indent indent :max-depth max-depth :key key))))
+  (when (or (not max-depth) (< level max-depth))
+    (loop :for n :in tree :do
+       (if (atom n)
+	   (format t "~v,,,va~a~%" (* level indent) #\space ""
+		   (if key (funcall key n) n))
+	   (%print-tree n :level (1+ level)
+			:indent indent :max-depth max-depth :key key)))))
 
 (defun print-tree (tree &key max-depth (indent 2) key)
   "Print a tree up to a depth of MAX-DEPTH. Indent by INDENT spaces for every level. INDENT defaults to 2. Apply KEY function to each element before printing."
   (%print-tree tree :max-depth max-depth :indent indent :key key))
 
+#| This is pretty much obsoleced by browe-packages stuff below.
+
+(defvar *pdt-memo* nil
+  "Memoization for the package dependency tree. An alist of (package . dep-tree) which is bound dynamically for each call.")
+
 ;; I suppose I could just use make-tree, but this has special stuff to ignore
 ;; the common-lisp package.
-(defun %package-dependency-tree (package &key max-depth (depth 0) (flat '()))
+(defun %package-dependency-tree (package &key max-depth (depth 0) flat)
   "Generate a tree of dependencies for PACKAGE, up to a depth of MAX-DEPTH. DEPTH is the current depth in the tree, and FLAT is a flat list of packages encountered to prevent following infinite cycles."
+  (declare
+   (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0))
+   (type (or null fixnum) max-depth)
+   (type fixnum depth)
+   (type package package))
   (when (and max-depth (> depth max-depth))
     (return-from %package-dependency-tree nil))
+  (when (assoc package *pdt-memo*)
+    (return-from %package-dependency-tree (cdr (assoc package *pdt-memo*))))
   (let ((tree '())
 	(deps (package-use-list package)))
     (push (package-name package) tree)
     (pushnew (find-package package) flat)
     (when deps
-      (loop :for p :in deps :do
-	 (when (and (not (find p flat)) ; don't follow circular deps
+      (loop :for p :of-type package :in deps :do
+	 (when (and (not (position p flat)) ; don't follow circular deps
 		    (not (eq (find-package p) (find-package :common-lisp))))
 	   (let ((sub-tree (%package-dependency-tree
-			    p :depth (1+ depth) :flat flat
-			    :max-depth max-depth)))
+	   		    p :depth (the fixnum (+ depth 1)) :flat flat
+	   		    :max-depth max-depth)))
 	     (when sub-tree
-;	       (if (= 1 (length sub-tree))
-;		   (push (first sub-tree) tree)
-		   (push sub-tree tree))))))
-    (reverse tree)))
+;;;		   (if (= 1 (length sub-tree))
+;;;		   (push (first sub-tree) tree)
+	       (push sub-tree tree))))))
+    (let ((result (nreverse tree)))
+      (prog1 result
+	(when (not (assoc package *pdt-memo*))
+	  (acons package result *pdt-memo*))))))
 
 (defun package-dependency-tree (package &key max-depth)
   "Generate a tree of dependencies for PACKAGE, up to a depth of MAX-DEPTH."
-  (%package-dependency-tree package :max-depth max-depth))
+  (let ((*pdt-memo* '()))
+    (%package-dependency-tree package :max-depth max-depth)))
+
+|#
 
 (defun %make-tree (thing func &key max-depth (test #'equal)
 				(depth 0) (flat '()))
@@ -667,10 +690,13 @@
   (apply #'make-instance 'dynamic-node args))
 
 (defmethod node-branches ((node dynamic-node))
+;  (dbug "node-branches(dynamic-node)")
   (if (node-func node)
-      (mapcar #'(lambda (x) (make-dynamic-node
-			     :object x :open t :func (node-func node)))
-	      (funcall (node-func node) (node-object node)))))
+      (mapcar #'(lambda (x)
+		  (make-dynamic-node
+		   :object x :open t :func (node-func node)))
+	      (funcall (node-func node) (node-object node)))
+      nil))
 
 (defmethod node-has-branches ((node dynamic-node))
   "Return true if the node has branches."
@@ -697,15 +723,18 @@
   (apply #'make-instance 'cached-dynamic-node args))
 
 (defmethod node-branches ((node cached-dynamic-node))
+;  (dbug "node-branches(cached-dynamic-node)")
   (if (node-cached node)
-      (node-branches node)
+      (slot-value node 'branches)
       (if (node-func node)
-	  (setf (node-branches node)
+	  (setf (node-cached node) t
+		(slot-value node 'branches)
 		(mapcar #'(lambda (x) (make-cached-dynamic-node
-				       :object x :open t :func (node-func node)
+				       :object x :open nil
+				       :func (node-func node)
 				       :cached nil))
-			(funcall (node-func node) (node-object node)))
-		(node-cached node) t))))
+			(funcall (node-func node) (node-object node))))
+	  nil)))
 
 (defmethod node-has-branches ((node cached-dynamic-node))
   "Return true if the node has branches."
@@ -718,7 +747,7 @@
 
 (defun make-cached-dynamic-tree (thing func)
   "Return a cached dynmaic tree for THING, where FUNC is a function (FUNC THING) which returns a list of the branches of THING."
-  (make-cached-dynamic-node :object thing :func func :open t))
+  (make-cached-dynamic-node :object thing :func func :open nil))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -735,10 +764,27 @@
 	   (return-from all-subnodes-open-p nil))))
   t)
 
-(defun map-tree (func node)
-  (funcall func node)
-  (mapc #'(lambda (x) (map-tree func x))
-	(node-branches node)))
+(defvar *map-tree-count* nil
+  "How many nodes we've processed with map-tree.")
+
+(defvar *map-tree-max-count* nil
+  "When to stop processing with map-tree.")
+
+(defun %map-tree (func node)
+  (incf *map-tree-count*)
+  (when (or (not *map-tree-max-count*)
+	    (< *map-tree-count* *map-tree-max-count*))
+    (funcall func node)
+#|    (when dlib:*dbug*
+      (mvaddstr 5 50 (format nil "~a ~a" *map-tree-count* *map-tree-max-count*))
+      (refresh)) |#
+    (mapc #'(lambda (x) (%map-tree func x))
+	  (node-branches node))))
+
+(defun map-tree (func node &key (max-count 1000))
+  (let ((*map-tree-count* 0)
+	(*map-tree-max-count* max-count))
+    (%map-tree func node)))
 
 (defun close-all-subnodes (node)
   (map-tree #'(lambda (x) (setf (node-open x) nil)) node))
@@ -765,9 +811,10 @@
   (format t "~v,,,va~a ~:[Closed~;Open~]~%" (* level indent) #\space ""
 	  (if key (funcall key (node-object tree)) (node-object tree))
 	  (node-open tree))
-  (loop :for n :in (node-branches tree) :do
-     (%print-tree n :level (1+ level)
-		  :indent indent :max-depth max-depth :key key)))
+  (when (or (not max-depth) (< level max-depth))
+    (loop :for n :in (node-branches tree) :do
+       (%print-tree n :level (1+ level)
+		    :indent indent :max-depth max-depth :key key))))
 
 ;; These are just dynamic. They have no meaning outside of the dynamic scope
 ;; of browse-tree.
@@ -832,7 +879,7 @@
 		   (format nil "~a of ~a top=~a" line *line-count* top))
 	 (move (- line top) 0)
 	 (case (get-char)
-	   ((#\q #\Q #\^C) (loop-finish))
+	   ((#\q #\Q #.(ctrl #\C)) (loop-finish))
 	   ((#\return #\newline)
 	    (return-from browse-tree (node-object (aref *line-index* line))))
 	   (#\space ; toggle
@@ -845,12 +892,12 @@
 	    	(setf (node-open cur) t)))
 	   (#\+		     (setf (node-open cur) t))
 	   (#\-		     (setf (node-open cur) nil))
-	   ((#\n #\^N :down) (incf line))
-	   ((#\p #\^P :up)   (decf line))
-	   (#\^F	     (incf line 15))
-	   (#\^B             (decf line 15))
-	   ((#\^V :npage)    (setf line (min *line-count*
-					     (+ line (- height 1)))))
+	   ((#\n #.(ctrl #\N) :down) (incf line))
+	   ((#\p #.(ctrl #\P) :up)   (decf line))
+	   (#.(ctrl #\F)	     (incf line 15))
+	   (#.(ctrl #\B)	     (decf line 15))
+	   ((#.(ctrl #\V) :npage) (setf line (min *line-count*
+						(+ line (- height 1)))))
 	   (:ppage           (setf line (max 0 (- line (- height 1)))))
 	   (:left	     (decf left 10))
 	   (:right	     (incf left 10))
@@ -901,5 +948,29 @@
        (loop :with exp
 	  :while (setf exp (read stm nil nil))
 	  :collect exp)))))
+
+(defun all-packages-tree ()
+  "Return a tree browser tree of all packages."
+  (labels ((package-mostly-use-list (pkg)
+	     "All packages except the superfluous :COMMON-LISP package."
+	     (remove nil 
+		     (mapcar #'(lambda (p) 
+				 (let ((name (package-name p)))
+				   (when (not (equal name "COMMON-LISP"))
+				     name)))
+			     (package-use-list pkg)))))
+    (make-node
+     :object "All Packages"
+     :open t
+     :branches
+     (loop :for p :in (list-all-packages)
+	:collect (make-cached-dynamic-node
+		  :object (package-name p)
+		  :func #'package-mostly-use-list
+		  :open nil)))))
+
+(defun browse-packages ()
+  "Browse the entire package dependency hierarchy with the tree browser."
+  (browse-tree (all-packages-tree)))
 
 ;; EOF
