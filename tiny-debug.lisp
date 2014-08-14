@@ -278,7 +278,7 @@ number  Invoke that number restart (from the :r list).
 
 (defun try-to-reset-terminal ()
   "Try to reset the terminal to a sane state so when we get in error in some program that messes with the terminal, we can still type at the debugger."
-  (flet ((out (s) (format t "~c~a" #\escape s)))
+  (flet ((out (s) (format *terminal-io* "~c~a" #\escape s)))
     ;; First reset the terminal driver to a sane state.
     (termios:sane)
     ;; Then try to reset the terminal itself to a sane state, assuming an ANSI
