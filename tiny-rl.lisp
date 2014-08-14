@@ -37,7 +37,8 @@
 )
 (in-package "TINY-RL")
 
-; @@@ just for debugging, remove later
+;; This is for debugging, since it can be somewhat unpredictable, especially
+;; with threads. Don't use it for anything important.
 (defvar *line-editor* nil "The last line editor that was instantiated.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -52,7 +53,20 @@
 ;;;
 ;;; I know it's confusing, but the tail is the oldest entry and the head
 ;;; is the most recent entry. We push new entries on to the head, but we
-;;; print the list backwards from tail to the head.
+;;; print the list backwards from tail to the head. So, for example, the
+;;; previous history item is accessed by dl-next.
+;;;
+;;; The lines are editable, and the last line is usually the one we're working
+;;; on. When we go back and edit a line and accept it (hit enter) we don't
+;;; change the history, we just add it at the bottom. If you go back and
+;;; accept a history line, the line you started with gets lost. That's how
+;;; people expect to work, so c'est la vie.
+;;;
+;;; To have things work the way that's expected, we:
+;;;   - Always add a history line initially
+;;;   - When accepting go to the last line and put it (if it meets criteria).
+;;;   - When moving, put and move
+;;;   - When not meeting the criteria, delete the last line.
 
 (defstruct history
   "Line editor history."
@@ -95,6 +109,10 @@
       (setf (history-cur hist) (history-head hist)))
     (when (not (history-tail hist))
       (setf (history-tail hist) (history-head hist)))))
+
+(defun history-delete-last (context)
+  "Delete the last history entry."
+  (dl-pop (history-head (get-history context))))
 
 (defun history-put (context buf)
   "Save the BUF in the current history item."
@@ -1204,11 +1222,27 @@ it with ACTION's return value."
   (history-last (context e))
   (use-hist e))
 
+(defun add-to-history-p (e buf)
+  "Returns true if we should add the current line to the history. Don't add it if it's blank or the same as the previous line."
+  (with-slots (context) e
+    (let* ((cur (history-current-get context))
+	   (prev (dl-next cur)))
+#|
+      (dbug "add-to-history-p = ~w~%  buf = ~w~%  (length buf) = ~w~%  cur = ~w~%  prev = ~w~%  (dl-content prev) = ~w~%"
+	    (not (or (and buf (= (length buf) 0))
+		     (and prev (dl-content prev)
+			  (equal (dl-content prev) buf))))
+	    buf (length buf) cur prev (dl-content prev))
+|#
+      (not (or (and buf (= (length buf) 0))
+	       (and prev (dl-content prev) (equal (dl-content prev) buf)))))))
+
 (defun accept-line (e)
   (with-slots (buf quit-flag context) e
-;    (if (> (length buf) 0)
-    (history-put (context e) (buf e))
-    (history-last (context e))
+    (history-last context)
+    (if (add-to-history-p e buf)
+	(history-put context buf)
+	(history-delete-last context))
     (tt-write-char e #\newline)
     (setf quit-flag t)))
 
@@ -1821,16 +1855,16 @@ enter it."
     (,(ctrl #\E)		. end-of-line)
     (,(ctrl #\P)		. previous-history)
     (,(ctrl #\N)		. next-history)
-    (,(meta-char #\b)	. backward-word)
-    (,(meta-char #\f)	. forward-word)
-    (,(meta-char #\<)	. beginning-of-history)
-    (,(meta-char #\>)	. end-of-history)
+    (,(meta-char #\b)		. backward-word)
+    (,(meta-char #\f)		. forward-word)
+    (,(meta-char #\<)		. beginning-of-history)
+    (,(meta-char #\>)		. end-of-history)
 
     ;; Editing
-    (#\return		. accept-line)
-    (#\newline		. accept-line)
-    (#\backspace	. delete-backward-char)
-    (#\rubout		. delete-backward-char)
+    (#\return			. accept-line)
+    (#\newline			. accept-line)
+    (#\backspace		. delete-backward-char)
+    (#\rubout			. delete-backward-char)
     (,(ctrl #\D)		. delete-char-or-exit)
     (,(ctrl #\W)		. backward-kill-word)
     (,(ctrl #\K)		. kill-line)
@@ -1838,16 +1872,16 @@ enter it."
     (,(ctrl #\Y)		. yank)
     (,(ctrl #\U)		. backward-kill-line)
     (,(ctrl #\O)		. undo-command)
-    (,(meta-char #\d)	. kill-word)
-    (,(meta-char #\rubout) . backward-kill-word)
-    (,(meta-char #\u)	. upcase-word)
-    (,(meta-char #\l)	. downcase-word)
-    (,(meta-char #\c)	. capitalize-word)
-    (,(meta-char #\w)	. copy-region)
+    (,(meta-char #\d)		. kill-word)
+    (,(meta-char #\rubout)	. backward-kill-word)
+    (,(meta-char #\u)		. upcase-word)
+    (,(meta-char #\l)		. downcase-word)
+    (,(meta-char #\c)		. capitalize-word)
+    (,(meta-char #\w)		. copy-region)
 
     ;; Completion
-    (#\tab		. complete)
-    (#\?		. show-completions)
+    (#\tab			. complete)
+    (#\?			. show-completions)
 
     ;; Misc
     (,(ctrl #\L)		. redraw-command)
@@ -2010,14 +2044,9 @@ Keyword arguments:
     (setf (fill-pointer (buf e)) (point e))
     (terminal-start (line-editor-terminal e))
 
-    ;; Don't add blank or duplicate lines.
-    (let* ((cur (history-current-get context))
-	   (prev (dl-prev cur)))
-      (when (not (or (and cur (dl-content cur) (= (length (dl-content cur)) 0))
-		     (and prev (dl-content prev)
-			  (equal (dl-content prev) (dl-content cur)))))
-	(history-add context nil)
-	(history-next context)))
+    ;; Add the new line we're working on.
+    (history-add context nil)
+    (history-next context)
 
     ;; Output the prompt
     (setf (prompt e) prompt (prompt-func e) output-prompt-func)
