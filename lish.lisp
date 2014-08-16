@@ -42,6 +42,7 @@
 
 ;(declaim (optimize (debug 3)))
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;(declaim (optimize (speed 3) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 (defpackage :lish
   (:documentation "Unix Shell & Lisp somehow smushed together.")
@@ -1418,22 +1419,26 @@ end points in the original string."
 			  &key (exp-len (length (shell-expr-words exp))))
   (declare (type shell-expr exp))
   "Return the shell expression's word number that position POS is in."
-  (with-slots (word-start word-end) exp
-    (loop :for w :from 0 :below exp-len
-       :when (and (>= pos (elt word-start w))
-		  (<= pos (elt word-end w)))
-       :return w)))
+;  (with-slots (word-start word-end) exp
+  (loop :for w :from 0 :below exp-len
+     :when (and (>= pos (elt (shell-expr-word-start exp) w))
+		(<= pos (elt (shell-expr-word-end exp) w)))
+     :return w))
 
 (defun read-string (s)
   "Read a lish string. It has similar syntax to a lisp string. ~
 Assumes the opening double quote has already been read. ~
 Read until a double quote. Backslash escapes the special meaning of ~
-the following character."
+the following character. Return the string and how long it is. If we got to ~
+the end and didn't get a close quote the third value is true.~
+"
   (let ((v (make-stretchy-string 10))
-	(i 0))
-    (loop :with do-quote = nil
-       :for c :across s
-       :while (or do-quote (not (eql c #\")))
+	(i 0)
+	(end-quote nil)
+	(do-quote nil))
+    (loop :for c :across s :do
+       (setf end-quote (and (eql c #\") (not do-quote)))
+       :while (not end-quote)
        :do
        (if (and (eql c #\\) (not do-quote))
 	   (setf do-quote t)
@@ -1441,7 +1446,7 @@ the following character."
 	     (setf do-quote nil)
 	     (vector-push-extend c v)))
        (incf i))
-    (values v i)))
+    (values v i (not end-quote))))
 
 ;; I'm not so old fashioned that I think ^L should be in here, but are there
 ;; any other unicode things that should?
@@ -1513,8 +1518,10 @@ The syntax is vaguely like:
 	   ((eql c #\")
 	    (finish-word)
 	    ;; read a string as a separate word
-	    (multiple-value-bind (str ink)
+	    (multiple-value-bind (str ink cont)
 		(read-string (subseq line (1+ i)))
+	      (when cont
+		(return-from shell-read *continue-symbol*))
 	      (push i word-start)
 	      (push str args)
 	      (incf i (+ 2 ink))
@@ -2190,7 +2197,7 @@ complete, and call the appropriate completion function."
 	(let* ((word-num (shell-word-number exp pos))
 	       (word     (if word-num
 			     (elt (shell-expr-words exp) word-num))))
-	  (dbug "~%word-num = ~a word = ~a~%exp ~a~%" word-num word exp)
+	  (dbug "~%word-num = ~w word = ~w~%exp ~w~%" word-num word exp)
 	  (flet ((simple-complete (func word wpos)
 		   (if all
 		       (let ((list (funcall func word all)))
@@ -2243,152 +2250,154 @@ complete, and call the appropriate completion function."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Main
 
+;; Just the state of the REPL-y area to make it easy to pass around.
+(defstruct read-state
+  "The line we've read and the previous line."
+  string
+  prefix-string)
+
+(defun lish-read (sh state)
+  "Read a string with the line editor and convert it shell expressions, handling errors."
+  (with-slots ((str string) (pre-str prefix-string)) state
+    (handler-case
+	(handler-bind
+	    ((condition #'(lambda (c)
+			    (if (lish-debug sh)
+				(invoke-debugger c)
+				(format t "~&~a" c))))
+	     (error #'(lambda (c)
+			(if (lish-debug sh)
+			    (invoke-debugger c)
+			    (progn
+			      #| (format t "~&~a" c) |#
+			      (signal c))))))
+	  (progn
+	    (setf str (tiny-rl
+		       :eof-value *real-eof-symbol*
+		       :quit-value *quit-symbol*
+		       :context :lish
+		       :editor (lish-editor sh)
+		       :prompt
+		       (if pre-str
+			   (lish-sub-prompt sh)
+			   (funcall (lish-prompt-function sh) sh)))))
+	  (cond
+	    ((and (stringp str) (equal 0 (length str))) *empty-symbol*)
+	    ((equal str *real-eof-symbol*)		*real-eof-symbol*)
+	    ((equal str *quit-symbol*)	  		*quit-symbol*)
+	    (t (shell-read (if pre-str
+			       (format nil "~a~%~a" pre-str str)
+			       str)))))
+      (end-of-file () *continue-symbol*)
+      #| (condition (c) |#
+      (error (c)
+	(if (lish-debug sh)
+	    (invoke-debugger c)
+	    (format t "~&~a" c)
+	    )
+	*error-symbol*))))
+
+(defun lish-eval (sh result state)
+  "Evaluate the shell expressions in RESULT."
+  (dbug "~s (~a) ~s~%" result (type-of result) (eq result *empty-symbol*))
+  (with-slots ((str string) (pre-str prefix-string)) state
+    (cond
+      ((eq result *continue-symbol*)
+       (if (stringp pre-str)
+	   (setf pre-str (format nil "~a~%~a" pre-str str))
+	   (setf pre-str (format nil "~a" str)))
+       (dbug "DO CONTIUE!!~%"))
+      ((or (eq result *empty-symbol*) (eq result *error-symbol*))
+       ;; do nothing
+       (dbug "DO NOTHING!!~%"))
+      (t
+       (dbug "Do Something!!~%")
+       (setf pre-str nil)
+       (handler-case
+	   (handler-bind
+	       ((warning
+		 #'(lambda (c)
+		     (format t "Warning: ~a~%" c)
+		     (muffle-warning)))
+		#| #+excl (excl::compiler-note
+		    #'(lambda (c)
+		(format t "Note: ~a~%" c))) |#
+		(serious-condition
+		 #'(lambda (c)
+		     (if (lish-debug sh)
+			 (invoke-debugger c)))))
+	     (force-output)
+	     (multiple-value-bind (vals stream show-vals)
+		 (shell-eval sh result)
+	       (declare (ignore stream))
+	       (when show-vals
+		 (loop :with len = (length vals) :and i = 0
+		    :for v :in vals
+		    :do
+		    (format t "~s" v)
+		    (if (and (> len 1) (< i (- len 1)))
+			(format t " ;~%"))
+		    (incf i)
+		    :finally (format t "~&")))))
+	 ;; (condition (c)
+	 ;; 	 (if (lish-debug sh)
+	 ;; 	     (invoke-debugger c)
+	 ;; 	     (format t "GOO ~a~%" c)))
+	 (error (c)
+	   (if (lish-debug sh)
+	       (invoke-debugger c)
+	       (format t "~a~%" c))))))))
+
 (defun lish (&key debug terminal-name)
   "Unix Shell & Lisp somehow smushed together."
   (let* ((*shell* (make-instance 'shell :debug debug))
-	 (sh *shell*))
-    (declare (special *shell*))
-;    (format t "[RC") (force-output)
+	 (sh *shell*)		; shorthand
+	 (state (make-read-state))
+	 (*lish-level* (if *lish-level*
+			   (funcall #'1+ (symbol-value '*lish-level*))
+			   0)))
+    (declare (special *shell*))	; XXX it's probably already special from defvar
     (update-user-package)
+    (nos:setenv "LISH_LEVEL" (format nil "~d" lish::*lish-level*))
     (load-rc-file sh)
-;    (format t "]")  (force-output)
-    (let ((pre-str nil)
-	  (str nil)
-	  (*lish-level* (if *lish-level*
-			    (funcall #'1+ (symbol-value '*lish-level*))
-			    0)))
-      (nos:setenv "LISH_LEVEL" (format nil "~d" lish::*lish-level*))
-      ;; Make a customized line editor
-      (setf (lish-editor sh) (make-instance
-			      'tiny-rl:line-editor
-			      :non-word-chars *shell-non-word-chars*
-			      :completion-func #'shell-complete
-			      :context :lish
-			      :terminal-device-name terminal-name
-			      :prompt-func nil))
-      (when (not (eq :lish-quick-exit (catch :lish-quick-exit
-      (loop
-	  :with result = nil
-	  :if (lish-exit-flag sh)
-	    :return (values-list (lish-exit-values sh))
-          :end
-	  :do
-	  (setf result			; result of the read
-		(handler-case
-		    (handler-bind
-			((condition #'(lambda (c)
-					(if (lish-debug sh)
-					    (invoke-debugger c)
-					    (format t "~&~a" c))))
-			 (error #'(lambda (c)
-				    (if (lish-debug sh)
-					(invoke-debugger c)
-					(progn
-;					  (format t "~&~a" c)
-					  (signal c))))))
-		      (progn
-			;; bust out the wigglys
-			(setf str (tiny-rl :eof-value *real-eof-symbol*
-					   :quit-value *quit-symbol*
-					   :context :lish
-					   :editor (lish-editor sh)
-					   :prompt
-					   (if pre-str
-					       (lish-sub-prompt sh)
-					       (funcall
-						(lish-prompt-function sh)
-						sh))))
-			(cond
-			  ((and (stringp str) (equal 0 (length str)))
-			   *empty-symbol*)
-			  ((equal str *real-eof-symbol*)
-			   *real-eof-symbol*)
-			  ((equal str *quit-symbol*)
-			   *quit-symbol*)
-			  (t
-			   (if pre-str
-			       (shell-read (format nil "~a~%~a" pre-str str))
-			       (shell-read str))))))
-		  (end-of-file () *continue-symbol*)
-;		  (condition (c)
-		  (error (c)
-			     (if (lish-debug sh)
-				 (invoke-debugger c)
-				 (format t "~&~a" c)
-				 )
-			     *error-symbol*)))
-	  :until (or (equal result *real-eof-symbol*)
-		    (equal result *quit-symbol*))
-	  :do
-; 	(format t "~s (~a) ~s~%"
-; 		result (type-of result) (eq result *empty-symbol*))
-	  (cond				; result
-	    ((eq result *continue-symbol*)
-	     (if (stringp pre-str)
-		 (setf pre-str (format nil "~a~%~a" pre-str str))
-		 (setf pre-str (format nil "~a" str)))
-;	   (format t "DO CONTIUE!!~%")
-	     )
-	    ((or (eq result *empty-symbol*) (eq result *error-symbol*))
-					; do nothing
-;	   (format t "DO NOTHING!!~%")
-	     )
-	    (t
-;	   (format t "Do Something!!~%")
-	     (setf pre-str nil)
-	     (handler-case
-		 (handler-bind
-		     (
- 		      (warning #'(lambda (c)
- 				   (format t "Warning: ~a~%" c)
- 				   (muffle-warning)))
-; 		      #+excl (excl::compiler-note
-; 			      #'(lambda (c)
-; 				  (format t "Note: ~a~%" c)))
-		      (serious-condition
-		       #'(lambda (c)
-			   (if (lish-debug sh)
-			       (invoke-debugger c)
-;;; too much output on error
-;;;			       (format t "~:(~a~): ~a~%" (type-of c) c)
-;;;			       (format t "SERIOUS ~:(~a~): ~a~%" (type-of c) c)
-			       )))
-		      )
-;		   (format t "~&")
-		   (force-output)
-;		   (let ((vals (multiple-value-list (shell-eval sh result))))
-		   (multiple-value-bind (vals stream show-vals)
-		       (shell-eval sh result)
-		     (declare (ignore stream))
-		     (when show-vals
-		       (loop :with len = (length vals) :and i = 0
-			  :for v :in vals
-			  :do
-			  (format t "~s" v)
-			  (if (and (> len 1) (< i (- len 1)))
-			      (format t " ;~%"))
-			  (incf i)
-			  :finally (format t "~&")
-			  ))
-		     ))
-	       ;; (condition (c)
-	       ;; 	 (if (lish-debug sh)
-	       ;; 	     (invoke-debugger c)
-	       ;; 	     (format t "GOO ~a~%" c)))
-	       (error (c)
-		 (if (lish-debug sh)
-		     (invoke-debugger c)
-		     (format t "~a~%" c)
-		     )))))))))
-	(when (lish-exit-flag sh)
-	  (return-from lish (when (lish-exit-values sh)
-			      (values-list (lish-exit-values sh)))))
-	(format t "*EOF*~%"))))
-    ;; Well, let's hope that this will clear the EOF on *standard-input*
-    (clear-input *standard-input*))
+    ;; Make a customized line editor
+    (setf (lish-editor sh)
+	  (make-instance 'tiny-rl:line-editor
+			 :non-word-chars *shell-non-word-chars*
+			 :completion-func #'shell-complete
+			 :context :lish
+			 :terminal-device-name terminal-name
+			 :prompt-func nil))
+    (when (not (eq :lish-quick-exit (catch :lish-quick-exit
+	  (loop
+	     :named pippy
+	     :with result = nil :and lvl = *lish-level*
+	     :if (lish-exit-flag sh)
+	       :return (values-list (lish-exit-values sh))
+	     :end
+	     :do
+	     (restart-case
+		 (progn
+		   (setf result (lish-read sh state))
+		   (when (or (eq result *real-eof-symbol*)
+			     (eq result *quit-symbol*))
+		     (return-from pippy result))
+		   (lish-eval sh result state))
+	       (abort ()
+		 :report
+		 (lambda (stream)
+		   (format stream "Return to Lish ~:[~;TOP ~]level~:[~; ~d~]."
+			   (= lvl 0) (/= lvl 0) lvl))
+		 nil))))))
+      (when (lish-exit-flag sh)
+	(return-from lish (when (lish-exit-values sh)
+			    (values-list (lish-exit-values sh)))))
+      (format t "*EOF*~%")))
+  ;; Well, let's hope that this will clear the EOF on *standard-input*
+  (clear-input *standard-input*))
 
 (defvar *standalone* nil
-  "True if we are nearly just a shell.")
+  "True if we are nearly just a shell.") ; [sic]
 
 (defun lishity-split ()
   "Get out real quick."
@@ -2431,123 +2440,153 @@ complete, and call the appropriate completion function."
   #-(or sbcl clisp) (missing-implementation 'make-standalone)
   )
 
-;; Things that are useful for using in a lish command line or script.
+;|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+					;|| Piping
+					;||
+					;|| Piping, I/O redirection, and I/O functions that are useful for using in a
+					;|| lish command line or script.
 
 (defun lisp-args-to-command (args)
-  (with-output-to-string (str)
-    (loop :with first-time = t
-       :for a :in args :do
-         (if first-time
-	   (setf first-time nil)
-	   (princ " " str))
-       (typecase a
-	 (keyword			; this is sort of goofy
-	  (princ "--" str)
-	  (princ (string-downcase (symbol-name a)) str))
-	 (symbol
-	  (princ (string-downcase (symbol-name a)) str))
-	 (t
-	  (princ a str))))))
+(with-output-to-string (str)
+  (loop :with first-time = t
+     :for a :in args :do
+     (if first-time
+	 (setf first-time nil)
+	 (princ " " str))
+     (typecase a
+       (keyword				; this is sort of goofy
+	(princ "--" str)
+	(princ (string-downcase (symbol-name a)) str))
+       (symbol
+	(princ (string-downcase (symbol-name a)) str))
+       (t
+	(princ a str))))))
 
 (defun input-line-words ()
-  "Return lines from *standard-input* as a string of words."
-  (with-output-to-string (s)
-    (loop :with l = nil :and first = t
-       :while (setf l (read-line *standard-input* nil nil))
-       :do
-       (if first
-	   (progn (format s "~a" l)
-		  (setf first nil))
-	   (format s " ~a" l)))))
+"Return lines from *standard-input* as a string of words."
+(with-output-to-string (s)
+  (loop :with l = nil :and first = t
+     :while (setf l (read-line *standard-input* nil nil))
+     :do
+     (if first
+	 (progn (format s "~a" l)
+		(setf first nil))
+	 (format s " ~a" l)))))
 
 (defun map-output-lines (func command)
-  "Return a list of the results of calling the function FUNC with each output line of COMMAND. COMMAND should probably be a string, and FUNC should take one string as an argument."
-  (multiple-value-bind (vals stream show-vals)
-      (shell-eval *shell* (shell-read command) :pipe t)
-    (declare (ignore show-vals))
-    (when (and vals (> (length vals) 0))
-      (loop :with l = nil
-	 :while (setf l (read-line stream nil nil))
-	 :collect (funcall func l)))))
+"Return a list of the results of calling the function FUNC with each output line of COMMAND. COMMAND should probably be a string, and FUNC should take one string as an argument."
+(multiple-value-bind (vals stream show-vals)
+    (shell-eval *shell* (shell-read command) :pipe t)
+  (declare (ignore show-vals))
+  (when (and vals (> (length vals) 0))
+    (loop :with l = nil
+       :while (setf l (read-line stream nil nil))
+       :collect (funcall func l)))))
 
 ;; This is basically backticks #\` or $() in bash.
 (defun command-output-words (command)
-  "Return lines output from command as a string of words."
-  (labels ((convert-to-words (in-stream out-stream)
-	     (loop :with l = nil :and first-time = t
-		:while (setf l (read-line in-stream nil nil))
-		:do
-		(format out-stream "~:[~; ~]~a" (not first-time) l)
-		(setf first-time nil))))
-    (with-output-to-string (s)
-      (let* ((expr (shell-read command))
-;	     (seq (shell-expr-words expr))
-;	     (cmd (first seq))
-;	     (args (cdr seq))
-	     )
-	;; (nos:with-process-output (proc cmd args)
-	(multiple-value-bind (vals stream show-vals)
-	    (shell-eval *shell* expr :pipe t)
-	  (declare (ignore show-vals))
-	  (when (and vals (> (length vals) 0))
-	    (convert-to-words stream s)))))))
+"Return lines output from command as a string of words."
+(labels ((convert-to-words (in-stream out-stream)
+	   (loop :with l = nil :and first-time = t
+	      :while (setf l (read-line in-stream nil nil))
+	      :do
+	      (format out-stream "~:[~; ~]~a" (not first-time) l)
+	      (setf first-time nil))))
+  (with-output-to-string (s)
+    (let* ((expr (shell-read command))
+					;	     (seq (shell-expr-words expr))
+					;	     (cmd (first seq))
+					;	     (args (cdr seq))
+	   )
+      ;; (nos:with-process-output (proc cmd args)
+      (multiple-value-bind (vals stream show-vals)
+	  (shell-eval *shell* expr :pipe t)
+	(declare (ignore show-vals))
+	(when (and vals (> (length vals) 0))
+	  (convert-to-words stream s)))))))
 
 (defun command-output-list (command)
-  "Return lines output from command as a list."
-  (map-output-lines #'identity command))
+"Return lines output from command as a list."
+(map-output-lines #'identity command))
 
 (defmacro with-lines ((line-var file-or-stream) &body body)
-  "Evaluate BODY with LINE-VAR set to successive lines of FILE-OR-STREAM. FILE-OR-STREAM can be a stream or a pathname or namestring."
-  (let ((line-loop (gensym))
-	(inner-stream-var (gensym))
-	(outer-stream-var (gensym))
-	(stream-var (gensym)))
-    `(labels ((,line-loop (,inner-stream-var)
-		(loop :with ,line-var
-		   :while (setf ,line-var (read-line ,inner-stream-var nil nil))
-		   :do ,@body)))
-       (let ((,stream-var ,file-or-stream)) ; so file-or-stream only eval'd once
-	 (if (streamp ,stream-var)
-	     (,line-loop ,stream-var)
-	     (with-open-file (,outer-stream-var ,stream-var)
-	       (,line-loop ,outer-stream-var)))))))
+"Evaluate BODY with LINE-VAR set to successive lines of FILE-OR-STREAM. FILE-OR-STREAM can be a stream or a pathname or namestring."
+(let ((line-loop (gensym))
+      (inner-stream-var (gensym))
+      (outer-stream-var (gensym))
+      (stream-var (gensym)))
+  `(labels ((,line-loop (,inner-stream-var)
+	      (loop :with ,line-var
+		 :while (setf ,line-var (read-line ,inner-stream-var nil nil))
+		 :do ,@body)))
+     (let ((,stream-var ,file-or-stream)) ; so file-or-stream only eval'd once
+       (if (streamp ,stream-var)
+	   (,line-loop ,stream-var)
+	   (with-open-file (,outer-stream-var ,stream-var)
+	     (,line-loop ,outer-stream-var)))))))
+
+(defvar *buffer-size* (nos:getpagesize))
+
+;; I suppose we could make this generic so that streams can do a special
+;; things with it, but that might be sort of edging into the stream protocol,
+;; which simple-streams and 
+(defun copy-stream (source destination)
+"Copy data from reading from SOURCE and writing to DESTINATION, until we get an EOF on SOURCE."
+;; ^^^ We could try to make *buffer-size* be the minimum of the file size
+;; (if it's a file) and the page size, but I'm pretty sure that the stat
+;; call and possible file I/O is way more inefficient than wasting less than
+;; 4k of memory to momentarily. Of course we could mmap it, but it should
+;; end up doing approximately that anyway and the system should have a
+;; better idea of how big is too big, window sizing and all that. Also,
+;; that's way more complicated. Even this comment is too much. Let's just
+;; imagine that a future IDE will collapse or footnotify comments tagged
+;; with "^^^".
+(let ((buf (make-array *buffer-size*
+		       :element-type (stream-element-type source)))
+      pos)
+  (loop :do
+     (setf pos (read-sequence buf source))
+     (when (> pos 0)
+       (write-sequence buf destination :end pos))
+     :while (= pos *buffer-size*))))
 
 (defun ! (&rest args)
-  (shell-eval *shell* (shell-read (lisp-args-to-command args))))
+"Evaluate the shell command."
+(shell-eval *shell* (shell-read (lisp-args-to-command args))))
 
 (defun !$ (command)
-  "Return lines output from command as a string of words. This is basically like $(command) in bash."
-  (command-output-words command))
+"Return lines output from command as a string of words. This is basically like $(command) in bash."
+(command-output-words command))
 
 (defun !_ (command)
-  "Return a list of the lines of output from the command."
-  (command-output-list command))
+"Return a list of the lines of output from the command."
+(command-output-list command))
 
 (defun !and (&rest commands)
-  "Run commands until one fails."
-  (declare (ignore commands))
-  )
+"Run commands until one fails."
+(declare (ignore commands))
+)
 
 (defun !or (&rest commands)
-  "Run commands if previous command succeeded."
-  (declare (ignore commands))
-  )
+"Run commands if previous command succeeded."
+(declare (ignore commands))
+)
 
 (defun !bg (&rest commands)
-  "Run commands in the background."
-  (declare (ignore commands))
-  )
+"Run commands in the background."
+(declare (ignore commands))
+)
 
 (defun !! (&rest commands)
-  "Pipe output of commands. Return a stream of the output."
-  (multiple-value-bind (vals stream show-vals)
-      (shell-eval *shell* (shell-read (lisp-args-to-command commands)) :pipe t)
-    (declare (ignore show-vals))
-    (if (and vals (> (length vals) 0))
-	stream
-	(progn
-	  (close stream)
-	  nil))))
+"Pipe output of commands. Return a stream of the output."
+(multiple-value-bind (vals stream show-vals)
+    (shell-eval *shell* (shell-read (lisp-args-to-command commands)) :pipe t)
+  (declare (ignore show-vals))
+  (if (and vals (> (length vals) 0))
+      stream
+      (progn
+	(close stream)
+	nil))))
 
 ;; (defvar *files-to-delete* '()
 ;;   "A list of files to delete at the end of a command.")
@@ -2569,34 +2608,49 @@ complete, and call the appropriate completion function."
 ;; 	  nil))))
 
 (defun !> (file-or-stream &rest commands)
-  "Run commands with output to a file or stream."
-  (declare (ignore file-or-stream commands))
-  )
+"Run commands with output to a file or stream."
+(let ((result nil))
+  (multiple-value-bind (vals in-stream show-vals)
+      (shell-eval
+       *shell* (shell-read (lisp-args-to-command commands)) :pipe t)
+    (declare (ignore show-vals))
+    (unwind-protect
+	 (when (and vals (> (length vals) 0))
+	   (if (streamp file-or-stream)
+	       (copy-stream in-stream file-or-stream)
+	       (with-open-file (out-stream file-or-stream
+					   :direction :output
+					   #| :if-exists :overwrite |#
+					   :if-does-not-exist :create)
+		 (copy-stream in-stream out-stream)))
+	   (setf result vals))
+      (close in-stream)))
+  result))
 
 (defun !>> (file-or-stream &rest commands)
-  "Run commands with output appending to a file or stream."
-  (declare (ignore file-or-stream commands))
-  )
+"Run commands with output appending to a file or stream."
+(declare (ignore file-or-stream commands))
+)
 
 (defun !<> (file-or-stream &rest commands)
-  "Run commands with input and output to a file or stream."
-  (declare (ignore file-or-stream commands))
-  )
+"Run commands with input and output to a file or stream."
+(declare (ignore file-or-stream commands))
+)
 
 (defun !>! (file-or-stream &rest commands)
-  "Run commands with output to a file or stream, overwritting it."
-  (declare (ignore file-or-stream commands))
-  )
+"Run commands with output to a file or stream, overwritting it."
+(declare (ignore file-or-stream commands))
+)
 
 (defun !>>! (file-or-stream &rest commands)
-  "Run commands with output appending to a file or stream, overwritting it."
-  (declare (ignore file-or-stream commands))
-  )
+"Run commands with output appending to a file or stream, overwritting it."
+(declare (ignore file-or-stream commands))
+)
 
 (defun !< (file-or-stream &rest commands)
-  "Run commands with input from a file or stream."
-  (declare (ignore file-or-stream commands))
-  )
+"Run commands with input from a file or stream."
+(declare (ignore file-or-stream commands))
+)
 
 ;; @@@ consider features in inferior-shell?
 
