@@ -2,7 +2,7 @@
 ;; fui.lisp - Fake UI
 ;;
 
-;; $Revision: 1.4 $
+;; $Revision: 1.5 $
 
 (defpackage :fui
   (:documentation "Fake UI")
@@ -453,21 +453,27 @@
 (defmacro do-menu (menu &key message selected-item)
   "Perform an action from a menu. Menu is an alist of (item . action)."
   ;;; @@@ improve to one loop
-  (let ((items (loop :for (i . nil) :in menu :collect i))
-	(funcs (loop :for (nil . f) :in menu :collect f))
-	(n-sym (gensym)))
-    `(block menu
-      (let* ((,n-sym (pick-list ',items :by-index t
-				:message ,message
-				:selected-item ,selected-item)))
-	(if ,n-sym
-	    (case ,n-sym
-	    ,@(loop :for i :from 0 :below (length funcs)
+  (cond
+    ((symbolp menu)
+     `(dork-menu ,menu :message ,message :selected-item ,selected-item))
+    ((listp menu)
+     (let ((items (loop :for (i . nil) :in menu :collect i))
+	   (funcs (loop :for (nil . f) :in menu :collect f))
+	   (n-sym (gensym)))
+       `(block menu			; ! anaphoric or un-hygenic ?
+	  (let* ((,n-sym (pick-list ',items :by-index t
+				    :message ,message
+				    :selected-item ,selected-item)))
+	    (if ,n-sym
+		(case ,n-sym
+		  ,@(loop :for i :from 0 :below (length funcs)
 ;;; Why did I do this?
 ;;;		 :collect (list i (let ((f (elt funcs i)))
 ;;;				    (if (listp f) (car f))))))
-		 :collect (list i (elt funcs i))))
-	    :quit)))))
+		       :collect (list i (elt funcs i))))
+		:quit)))))
+    (t
+     (error "do-menu: MENU must be a symbol or a list"))))
 
 (defun show-result (expr)
   (unwind-protect
