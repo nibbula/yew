@@ -2,7 +2,7 @@
 ;; glob.lisp - Shell style file name pattern matching
 ;;
 
-;; $Revision: 1.2 $
+;; $Revision: 1.3 $
 
 (defpackage :glob
   (:documentation "Shell style file name pattern matching")
@@ -338,6 +338,9 @@ Glob patterns:
 
 (defun expand-tilde (w)
   "Return a the expansion of the word W starting with tilde '~'."
+  ;; If we don't start with a tilde, just return now.
+  (when (not (and w (stringp w) (> (length w) 0) (char= (char w 0) #\~)))
+    (return-from expand-tilde w))
   (let* ((end-of-user (or (position-if #'(lambda (c)
 					   (not (user-name-char-p c)))
 				       (subseq w 1))
@@ -353,8 +356,7 @@ Glob patterns:
        (s+ (namestring (user-homedir-pathname)) (subseq w (+ end-of-user 2))))
       ((equal w "~")
        (namestring (user-homedir-pathname)))
-      (t
-       (return-from expand-tilde w)))))
+      (t w))))
 
 #|
 
