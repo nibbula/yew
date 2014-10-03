@@ -2,7 +2,7 @@
 ;; pager.lisp - Something like more or less
 ;;
 
-;; $Revision: 1.8 $
+;; $Revision: 1.9 $
 
 ;; TODO:
 ;;  - syntax highlighting
@@ -17,6 +17,7 @@
    #:with-pager
    #:with-pager*
    #:pager
+   #:browse
    #+lish #:!pager
    ))
 (in-package :pager)
@@ -35,26 +36,96 @@
   text					; text string of the line
 )
 
-(defstruct pager
-  "An instance of a pager."
-  stream				; input stream
-  (lines '())				; list of lines
-  (count 0)				; number of lines
-  (line 0)				; current line (top of the screen)
-  (left 0)				; column to start at
-  (max-width 0)				; maximum line length
-  page-size				; how many lines in a page
-  (got-eof nil)				; true if we got to the end of stream
-  (search-string nil)			; if non-nil search for and highlight
-  (file-list nil)
-  (file-index nil)
-  (message nil)				; Message to display until next input
-  (prefix-arg 0)			; Common numeric argument for commands
-  (quit-flag nil)			; true to quit the pager
-  (input-char nil)			; the current input character
-  ;; options
-  (show-line-numbers nil)		; -l
-)
+(defclass pager ()
+  ((stream
+    :initarg :stream :accessor pager-stream
+    :documentation "Input stream")
+   (lines
+    :initarg :lines :accessor pager-lines :initform '()
+    :documentation "List of lines")
+   (count
+    :initarg :count :accessor pager-count :initform 0
+    :documentation "Number of lines")
+   (line
+    :initarg :line :accessor pager-line :initform 0
+    :documentation "Current line at the top of the screen")
+   (left
+    :initarg :left :accessor pager-left :initform 0
+    :documentation "Column which display starts at")
+   (max-width
+    :initarg :max-width :accessor pager-max-width :initform 0
+    :documentation "maximum line length")
+   (page-size
+    :initarg :page-size :accessor pager-page-size
+    :documentation "how many lines in a page")
+   (got-eof
+    :initarg :got-eof :accessor pager-got-eof :initform nil
+    :documentation "true if we got to the end of stream")
+   (search-string
+    :initarg :search-string :accessor pager-search-string :initform nil
+    :documentation "if non-nil search for and highlight")
+   (file-list
+    :initarg :file-list :accessor pager-file-list :initform nil
+    :documentation "list of files to display")
+   (file-index
+    :initarg :file-index :accessor pager-file-index :initform nil
+    :documentation "where we are in the file list")
+   (message
+    :initarg :message :accessor pager-message :initform nil
+    :documentation "Message to display until next input")
+   (prefix-arg
+    :initarg :prefix-arg :accessor pager-prefix-arg :initform nil
+    :documentation "Common numeric argument for commands")
+   (quit-flag
+    :initarg :quit-flag :accessor pager-quit-flag :initform nil
+    :documentation "true to quit the pager")
+   (input-char
+    :initarg :input-char :accessor pager-input-char :initform nil
+    :documentation "the current input character")
+   (command
+    :initarg :command :accessor pager-command :initform nil
+    :documentation "the current command")
+   (last-command
+    :initarg :last-command :accessor pager-last-command :initform nil
+    :documentation "the previous command")
+   ;; options
+   (show-line-numbers
+    :initarg :show-line-numbers :accessor pager-show-line-numbers :initform nil
+    :documentation "-l"))
+  (:documentation "An instance of a pager."))
+
+(defmethod initialize-instance
+    :after ((o pager) &rest initargs &key &allow-other-keys)
+  "Set up the slots in a pager."
+  (declare (ignore initargs))
+  ;; slot initialization, such as:
+  (when (not (slot-boundp o 'page-size))
+    (setf (pager-page-size o) (1- curses:*lines*))))
+
+(defgeneric freshen (o)
+  (:documentation
+   "Make something fresh. Make it's state like it just got initialized, but perhaps reuse some resources."))
+
+(defmethod freshen ((o pager))
+  (setf (pager-stream o) nil
+	(pager-lines o) nil
+	(pager-count o) 0
+	(pager-line o) 0
+	(pager-left o) 0
+	(pager-max-width o) 0
+;	(pager-page-size o) 0
+	(pager-got-eof o) nil
+	(pager-search-string o) nil
+;	(pager-file-list o) nil
+;	(pager-index o) nil
+	(pager-message o) nil
+	(pager-prefix-arg o) nil
+	(pager-quit-flag o) nil
+	(pager-input-char o) nil
+	(pager-command o) nil
+	(pager-last-command o) nil)
+  ;; Don't reset options?
+  )
 
 (defun read-lines (pager count)
   "Read new lines from the stream. Stop after COUNT lines. If COUNT is zero, read until we get an EOF."
@@ -65,7 +136,8 @@
 	  (lines '()))
       (loop
 	 :while (and (or (< n count) (zerop count))
-		     (setf line (read-line (pager-stream pager) nil nil)))
+		     (setf line
+			   (resilient-read-line (pager-stream pager) nil nil)))
 	 :do (push (make-line :number i
 			      :position (file-position (pager-stream pager))
 			      :text line)
@@ -303,10 +375,11 @@ replacements. So far we support:
 
 (defun next-line (pager)
   "Display the next line."
-  (with-slots (line page-size count) pager
-    (incf (pager-line pager))
-    (if (> (+ line page-size) count)
-	(read-lines pager 1))))
+  (with-slots (line page-size count prefix-arg) pager
+    (let ((n (or prefix-arg 1)))
+      (incf line n)
+      (if (> (+ line page-size) count)
+	  (read-lines pager n)))))
 
 (defun previous-page (pager)
   "Display the previous page."
@@ -315,15 +388,19 @@ replacements. So far we support:
 
 (defun previous-line (pager)
   "Display the previous line."
-  (setf (pager-line pager) (max 0 (- (pager-line pager) 1))))
+  (with-slots (prefix-arg line) pager
+    (let ((n (or prefix-arg 1)))
+      (setf line (max 0 (- line n))))))
 
 (defun scroll-right (pager)
   "Scroll the pager window to the right."
-  (incf (pager-left pager) 10))
+  (with-slots (left prefix-arg) pager
+    (incf left (or prefix-arg 10))))
 
 (defun scroll-left (pager)
   "Scroll the pager window to the left."
-  (setf (pager-left pager) (max 0 (- (pager-left pager) 10))))
+  (with-slots (left prefix-arg) pager
+    (setf left (max 0 (- left (or prefix-arg 10))))))
 
 (defun scroll-beginning (pager)
   "Scroll the pager window to the leftmost edge."
@@ -336,24 +413,22 @@ replacements. So far we support:
 (defun go-to-beginning (pager)
   "Go to the beginning of the stream, or the PREFIX-ARG'th line."
   (with-slots (prefix-arg count line) pager
-    (if (> prefix-arg 0)
+    (if prefix-arg
 	(progn
 	  (read-lines pager (min 1 (- prefix-arg count)))
 	  (setf line (1- prefix-arg)))
-	(setf line 0))
-    (setf prefix-arg 0)))
+	(setf line 0))))
 
 (defun go-to-end (pager)
   "Go to the end of the stream, or the PREFIX-ARG'th line."
   (with-slots (prefix-arg count line page-size) pager
-    (if (> prefix-arg 0)
+    (if prefix-arg
 	(progn
 	  (read-lines pager (min 1 (- prefix-arg count)))
 	  (setf line (1- prefix-arg)))
 	(progn
 	  (read-lines pager 0)
-	  (setf line (max 0 (- count page-size)))))
-    (setf prefix-arg 0)))
+	  (setf line (max 0 (- count page-size)))))))
 
 (defun search-command (pager)
   "Search for something in the stream."
@@ -385,9 +460,11 @@ replacements. So far we support:
 
 (defun digit-argument (pager)
   "Accumulate digits for the PREFIX-ARG."
-  (with-slots (input-char prefix-arg) pager
-  (when (and (characterp input-char) (digit-char-p input-char))
-    (setf prefix-arg (+ (* 10 prefix-arg) (position input-char +digits+))))))
+  (with-slots (input-char prefix-arg message) pager
+    (when (and (characterp input-char) (digit-char-p input-char))
+      (setf prefix-arg (+ (* 10 (or prefix-arg 0))
+			  (position input-char +digits+))
+	    message (format nil "Prefix arg: ~d" prefix-arg)))))
 
 (defkeymap *help-keymap*
   `(
@@ -498,34 +575,35 @@ q - Abort")
   (help-key pager))			; @@@ this could infinitely recurse
 
 (defun perform-key (pager key &optional (keymap *normal-keymap*))
-  (with-slots (message) pager
-    (let ((action (key-definition key keymap)))
-      (cond
-	((not action)
-	 (setf message (format nil "Key ~a is not bound in keymap ~w."
-			       (nice-char key) keymap))
-	 (return-from perform-key))
-	;; a list to apply
-	((consp action)
-	 (if (fboundp (car action))
-	     (apply (car action) (cdr action))
-	     (setf message (format nil "(~S) is not defined." (car action)))))
-	;; something represted by a symbol
-	((symbolp action)
-	 (cond
-	   ((fboundp action)		; a function
-	    (funcall action pager))
-	   ((keymap-p (symbol-value action)) ; a keymap
-	    (perform-key pager (fui:get-char) (symbol-value action)))
-	   (t				; anything else
-	    (setf message
-		  (format nil "Key binding ~S is not a function or a keymap."
-			  action)))))
-	;; a function object
-	((functionp action)
-	 (funcall action pager))
-	(t				; anything else is an error
-	 (error "Weird thing in keymap: ~s." action))))))
+  (with-slots (message command last-command) pager
+    (setf last-command command
+	  command (key-definition key keymap))
+    (cond
+      ((not command)
+       (setf message (format nil "Key ~a is not bound in keymap ~w."
+			     (nice-char key) keymap))
+       (return-from perform-key))
+      ;; a list to apply
+      ((consp command)
+       (if (fboundp (car command))
+	   (apply (car command) (cdr command))
+	   (setf message (format nil "(~S) is not defined." (car command)))))
+      ;; something represted by a symbol
+      ((symbolp command)
+       (cond
+	 ((fboundp command)		; a function
+	  (funcall command pager))
+	 ((keymap-p (symbol-value command)) ; a keymap
+	  (perform-key pager (fui:get-char) (symbol-value command)))
+	 (t				; anything else
+	  (setf message
+		(format nil "Key binding ~S is not a function or a keymap."
+			command)))))
+      ;; a function object
+      ((functionp command)
+       (funcall command pager))
+      (t				; anything else is an error
+       (error "Weird thing in keymap: ~s." command)))))
 
 (defun page (stream &optional pager file-list &aux close-me)
   "View a stream with the pager."
@@ -535,27 +613,35 @@ q - Abort")
 	(when (and (not stream) file-list)
 	  (setf stream (open (first file-list) :direction :input)
 		close-me t))
-	(when (not pager)
-	  (setf pager (make-pager :stream stream :page-size (1- curses:*lines*)
-				  :file-list file-list)))
-	  (with-slots (count line page-size left search-string input-char
-		      file-list file-index message prefix-arg quit-flag) pager
-	    (when file-list (setf file-index 0))
-	    (read-lines pager page-size)
-	    (setf quit-flag nil)
-	    (loop :do
-	       (display-page pager)
-	       (if message
-		   (let ((*pager-prompt* message))
-		     (display-prompt pager)
-		     (setf message nil))
-		   (display-prompt pager))
-	       (refresh)
-	       (setf input-char (fui:get-char))
-	       (perform-key pager input-char)
-	       :while (not quit-flag))))
-	(when (and close-me stream)
-	  (close stream)))))
+	(if (not pager)
+	    (setf pager (make-instance 'pager
+				       :stream stream
+				       :page-size (1- curses:*lines*)
+				       :file-list file-list))
+	    (progn
+	      (freshen pager)
+	      (setf (pager-stream pager) stream)))
+	(with-slots (count line page-size left search-string input-char
+		     file-list file-index message prefix-arg quit-flag
+		     command) pager
+	  (when file-list (setf file-index 0))
+	  (read-lines pager page-size)
+	  (setf quit-flag nil)
+	  (loop :do
+	     (display-page pager)
+	     (if message
+		 (let ((*pager-prompt* message))
+		   (display-prompt pager)
+		   (setf message nil))
+		 (display-prompt pager))
+	     (refresh)
+	     (setf input-char (fui:get-char))
+	     (perform-key pager input-char)
+	     (when (not (equal command 'digit-argument))
+	       (setf prefix-arg nil))
+	     :while (not quit-flag))))
+      (when (and close-me stream)
+	(close stream)))))
 
 ;; This is quite inefficient. But it's easy and it works.
 (defmacro with-pager (&body body)
@@ -611,6 +697,16 @@ press Control-H then 'k' then the key. Press 'q' to exit this help.
 	 (princ "Press 'q' to exit this help.
 " output)))
     (page input)))
+
+(defun browse ()
+  "Look at files."
+  (let ((pager (make-instance 'pager))
+	filename
+	(directory "."))
+    (loop :while (setf (values filename directory)
+		       (pick-file :directory directory))
+       :do (with-open-file (stream filename)
+	     (page stream pager)))))
 
 ;; @@@ Run in a thread:
 ;;
