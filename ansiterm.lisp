@@ -2,7 +2,7 @@
 ;; ansiterm.lisp - Deal with ANSI-like terminals
 ;;
 
-;; $Revision: 1.3 $
+;; $Revision: 1.4 $
 
 (defpackage :ansiterm
   (:documentation "Deal with ANSI-like terminals")
@@ -21,6 +21,7 @@
    #:terminal-start
    #:terminal-end
    #:terminal-done
+   #:with-terminal
    #:tt-format
    #:tt-write-string
    #:tt-write-char
@@ -47,6 +48,7 @@
    #:tt-color
    #:tt-beep
    #:tt-finish-output
+   #:tt-get-char
    ))
 (in-package :ansiterm)
 
@@ -176,6 +178,17 @@
 ;  (format t "[terminal-done]~%")
 ;  (setf *tty* nil)
   (values))
+
+(defmacro with-terminal ((var &optional device-name) &body body)
+  "Evaluate the body with VAR set to a new terminal. Cleans up afterward."
+  `(let ((,var (if ,device-name
+		   (make-instance 'terminal :device-name ,device-name)
+		   (make-instance 'terminal))))
+     (unwind-protect
+	  (progn
+	    (terminal-start ,var)
+	    ,@body)
+       (terminal-done ,var))))
 
 (defgeneric tt-format (tty fmt &rest args)
   (:documentation "Output a formatted string to the terminal."))
@@ -361,5 +374,30 @@ i.e. the terminal is \"line buffered\""))
 ; 	 nil)
 ; 	((= status 1)
 ; 	 (code-char (mem-ref c :unsigned-char)))))))
+
+(defgeneric tt-get-char (tty))
+(defmethod tt-get-char ((tty terminal))
+  "Read a character from the terminal."
+  (tt-finish-output tty)
+  (with-foreign-object (c :unsigned-char)
+    (let (status)
+      (loop
+	 :do (setf status (posix-read (terminal-file-descriptor tty) c 1))
+	 :if (and (< status 0) (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
+	 :do
+	   ;; Probably returning from ^Z or terminal resize, or something,
+	   ;; so keep trying. Enjoy your trip to plusering town.
+	   (terminal-start tty) #| (redraw) |# (tt-finish-output tty)
+	 :else
+	   :return
+	 :end)
+      (cond
+	((< status 0)
+	 (error "Read error ~d ~d ~a~%" status nos:*errno*
+		(nos:strerror nos:*errno*)))
+	((= status 0) ; Another possible plusering extravaganza
+	 nil)
+	((= status 1)
+	 (code-char (mem-ref c :unsigned-char)))))))
 
 ;; EOF
