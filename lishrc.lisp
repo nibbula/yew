@@ -2,7 +2,7 @@
 ;; .lishrc - Lisp shell initialization
 ;;
 
-;; $Revision: 1.9 $
+;; $Revision: 1.10 $
 
 ;; Aliases
 
@@ -125,9 +125,18 @@ alias xvv "xv -vsgeometry 610x796+660+12 -geometry +0+10"
 	  (or string (progn (princ "Title? ") (finish-output) (read-line)))
 	  #\^G))
 
-: (defcommand title (&optional string)
-    '((:name "string" :type string))
-      "Change the title of an xterm compatible terminal window."
-    (title string))
+(defcommand title (&optional string)
+  '((:name "string" :type string))
+  "Change the title of an xterm compatible terminal window."
+  (title string))
+
+(defun snip-ext (file)
+  (let ((pos (position #\. file :from-end t)))
+    (if (and pos (/= pos 0)) (subseq file 0 pos) file)))
+
+(defcommand yuto (file)
+  '((:name "file" :type filename))
+  "Convert mp4 downloaded from youtube (with youtubedown) to audio only."
+  (! "ffmpeg -i \"" file "\" -acodec copy -vn \"" (snip-ext file) ".m4a\""))
 
 ;; EOF
