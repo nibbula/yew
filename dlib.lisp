@@ -27,6 +27,7 @@
    #:overwhelming-permission
    #:exe-in-path-p
    #:try-things
+   #:resilient-read-line
    ;; sequences
    #:initial-span
    #:split-sequence
@@ -268,8 +269,10 @@
     (and pos (= pos (- (length that) (length this))))))
 
 (defun s+ (s &rest rest)
-  "Abbreviation for (concatenate 'string ...)"
-  (apply #'concatenate 'string s rest))
+  "Abbreviation for (concatenate 'string ...), but converting non-string
+arguments into strings as with PRINC."
+  (labels ((as-string (s) (if (stringp s) s (format nil "~a" s))))
+    (apply #'concatenate 'string (as-string s) (mapcar #'as-string rest))))
 
 (defparameter *ascii-whitespace* #(#\space #\tab #\newline #\return #\vt)
   "Characters considered whitespace in ASCII.")
@@ -659,6 +662,72 @@ equal under TEST to result of evaluating INITIAL-VALUE."
 			      (apply #'shell-line cmd)))
 		    (symbol (apply (car cmd) (cdr cmd)))))
      (when result (return result))))
+
+;; This is of course not "safe" in that it may not preserve the actual
+;; bytes of the stream.
+#+nil
+(defun resilient-read-line (&optional input-stream eof-error-p eof-value
+			    recursive-p)
+  "Like ANSI READ-LINE but try to ignore encoding errors. Lossy."
+  #+sbcl
+  (handler-bind
+      ((sb-int:stream-decoding-error
+	(lambda (e)
+	  (let (r)
+	    (cond
+	      ((setf r (find-restart 'sb-int:attempt-resync))
+	       (dbug "Decoding error, resyncing ~s.~%" r)
+	       (invoke-restart r))
+	      ((setf r (find-restart 'sb-int:force-end-of-file))
+	       (dbug "Decoding error, force EOF ~s.~%" r)
+	       (invoke-restart r))
+	      ((setf r (find-restart 'abort e))
+	       (dbug "Decoding error, Who fuking cares? ~s.~%" r)
+	       (format *error-output* "Decoding error.~%")
+	       ;; XXX This is bad. We should really signal an error which, the
+	       ;; above code will catch, and print an appropriate error.
+	       ;; For now, just return NIL as if we got an EOF.
+	       (return-from resilient-read-line nil))
+	      (t
+	       #|
+	       (format t "Decoding error, can't find a restart! So what!~%")
+	       (format t "Cmd: ~s ~s~%" command args)
+	       (format t "Line: ~s~%" line)
+	       |#
+	       (signal e)))))))
+    (read-line input-stream eof-error-p eof-value recursive-p))
+  #+ccl
+  (handler-case
+      (read-line input-stream eof-error-p eof-value recursive-p)
+    (type-error ()
+      (dbug "You probably got a character set decoding error.~%")
+      #| ignore it |# )
+    (error (e)
+      (signal e)))
+  #-(or sbcl ccl)
+  (read-line input-stream eof-error-p eof-value recursive-p)
+  )
+
+;; This makes me feel like I'm sadly going to have to implement my own
+;; UTF8 stuff.
+
+(defun resilient-read-line (&optional input-stream eof-error-p eof-value
+			    recursive-p)
+  #+sbcl
+  (handler-bind
+      ((sb-int:stream-decoding-error
+	(lambda (e)
+	  (declare (ignore e))
+;	  (print e)
+	  (let ((r (find-restart 'sb-int:attempt-resync)))
+;	    (format t "resync: ~w~%" r)
+	    (invoke-restart r)))))
+    (read-line  input-stream eof-error-p eof-value recursive-p))
+  #+ccl
+  (read-line  input-stream eof-error-p eof-value recursive-p)
+  #-(or sbcl ccl)
+  (read-line  input-stream eof-error-p eof-value recursive-p)
+)
 
 ;;;
 ;;; System information features
