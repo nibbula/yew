@@ -2,7 +2,7 @@
 ;;; opsys.lisp - Interface to operating systems
 ;;;
 
-;;; $Revision: 1.25 $
+;;; $Revision: 1.26 $
 
 ;; This is a thin layer over basic operating system functions which
 ;; are not included in Common Lisp. The goal would be to have the same
@@ -77,6 +77,16 @@
 ;;
 ;; Use (missing-implementation) wherever we don't provide a required function.
 ;;
+;; Conventions:
+;;  - Call anything defined by defcstruct like: foreign-<C struct Name>
+;;    This hopefully makes it more obvious that you are dealing with a foreign
+;;    struct instead of a Lisp struct.
+;;  - In foreign-* structs, use the C names, with underscores, for slot names,
+;;    (e.g. "tv_usec"). This make it easier to translate from C code.
+;;  - If there's a C struct that callers need to access, provide a lisp
+;;    struct instead. This avoids having to access it carefully with CFFI
+;;    macros, memory freeing issues, and type conversion issues.
+
 ;; TODO:
 ;;   - Tests! TESTS!!! (see opsys-test.lisp)
 ;;   - Fix sub-process code
@@ -93,6 +103,11 @@
   (:nicknames :nos)
   (:use :cl :cffi)
   (:export
+   ;; types
+   #:time-t #:mode-t #:size-t #:uid-t #:gid-t #:pid-t #:wchar-t #:suseconds-t
+   #:dev-t #:nlink-t #:ino-t #:off-t #:quad-t #:blkcnt-t #:blksize-t #:fixpt-t
+   #:sigset-t #:file-ptr #:fpos-t #:wint-t
+
    ;; error handling
    #:*errno*
    #:strerror
@@ -130,6 +145,7 @@
    #:setenv
    #:lisp-args
    #:sysctl
+   #:getpagesize
    #:getlogin
 
    #:passwd				; struct
@@ -1178,6 +1194,8 @@ string (denoting itself)."
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (when (not (null (search "64" (machine-type))))
     (config-feature :os-t-64-bit-inode)))
+
+(defcfun getpagesize :int)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; sysconf
@@ -2535,8 +2553,8 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 
 (defcstruct foreign-timeval
   "Time for timer."
-  (tv-sec	time-t)
-  (tv-usec	suseconds-t))
+  (tv_sec	time-t)
+  (tv_usec	suseconds-t))
 
 (defstruct timeval
   "Time for timer."
@@ -2597,10 +2615,10 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
       (syscall (real-getrusage val ru))
       (with-foreign-slots ((ru_utime ru_stime) ru (:struct foreign-rusage))
 	(make-rusage
-	 :user (make-timeval :seconds (getf ru_utime 'tv-sec)
-			     :micro-seconds (getf ru_utime 'tv-usec))
-	 :system (make-timeval :seconds (getf ru_stime 'tv-sec)
-			       :micro-seconds (getf ru_stime 'tv-usec)))))))
+	 :user (make-timeval :seconds (getf ru_utime 'tv_sec)
+			     :micro-seconds (getf ru_utime 'tv_usec))
+	 :system (make-timeval :seconds (getf ru_stime 'tv_sec)
+			       :micro-seconds (getf ru_stime 'tv_usec)))))))
 
 
 ;#+os-t-has-vfork (defcfun ("vfork" fork) pid-t)
@@ -2933,7 +2951,7 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 ;     `(defparameter ,(signal-name i) ,i)))
 
 
-(defcstruct sigaction
+(defcstruct foreign-sigaction
   "What to do with a signal, as given to sigaction(2)."
   (sa_handler :pointer)	       ; For our purposes it's the same as sa_sigaction
   (sa_mask sigset-t)
@@ -3007,19 +3025,31 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 
 ;; pipes
 
-(defun popen (cmd args)
+(defun popen (cmd args &key in-stream)
   "Return an input stream with the output of the system command."
-  #+clisp (ext:run-shell-command
-	   (format nil "~a~{ ~a~}" cmd args) :output :stream)
+  #+clisp (if in-stream
+	      (multiple-value-bind (io i o)
+		  (ext:run-shell-command
+		   (format nil "~a~{ ~a~}" cmd args) :output :stream
+		   :input :stream :wait nil)
+		(alexandria:copy-stream in-stream o)) ; !!!
+	      (ext:run-shell-command
+	       (format nil "~a~{ ~a~}" cmd args) :output :stream))
   #+sbcl (sb-ext:process-output
-	  (sb-ext:run-program cmd args :output :stream :search t
 ;; @@@ What should we do? Added what version?
-;;			      :external-format '(:utf-8 :replacement #\?)
-			      ))
+;;	      :external-format '(:utf-8 :replacement #\?)
+	  (if in-stream
+	      (sb-ext:run-program cmd args :output :stream :search t
+				  :stream in-stream)
+	      (sb-ext:run-program cmd args :output :stream :search t)))
   #+cmu (ext:process-output
-	 (ext:run-program cmd args :output :stream))
+	 (if in-stream
+	     (ext:run-program cmd args :output :stream :input in-stream)
+	     (ext:run-program cmd args :output :stream)))
   #+openmcl (ccl::external-process-output-stream
-	     (ccl::run-program cmd args :output :stream))
+	     (if in-stream
+		 (ccl::run-program cmd args :output :stream :input in-stream)
+		 (ccl::run-program cmd args :output :stream)))
   #+ecl (ext:run-program cmd args)
   #+excl (excl:run-shell-command (format nil "~a~{ ~a~}" cmd args)
 				 :output :stream :wait t)
@@ -3056,11 +3086,43 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 
 ;;
 ;; Sockets!
-;;
+;; @@@ please don't do this now
 
+#|
 
+;; protocol families
+(defconstant PF_LOCAL #+darwin )
+(defconstant PF_UNIX )
+(defconstant PF_INET )
+(defconstant PF_ROUTE )
+(defconstant PF_KEY )
+(defconstant PF_INET6 )
+(defconstant PF_SYSTEM )
+(defconstant PF_NDRV )
 
+;; socket types
+(defconstant SOCK_STREAM "Reliable two-way connection based byte streams.")
+(defconstant SOCK_DGRAM "Connectionless unreliable")
+(defconstant SOCK_RAW )
+(defconstant SOCK_SEQPACKET )
+(defconstant SOCK_RDM )
 
+(defcfun socket :int (domain :int) (type :int) (protocol :int))
+;; accept
+;; bind
+;; connect
+;; getsockname
+;; getsockopt
+;; listen
+;; send
+;; shutdown
+;; socketpair
+;; getprotoent
+;; 
+
+|#
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; semaphores: semsys/semctl/semget/semop/semconfig
 ;; messages?: msgsys/msctl/semget/semop/semconfig
@@ -3183,11 +3245,11 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 ; 	    do
 ; 	    (princ (if (= 0 (fd-isset i err-fds)) #\0 #\1)))
 ;       (terpri)
-      (with-foreign-slots ((tv-sec tv-usec) tv (:struct foreign-timeval))
+      (with-foreign-slots ((tv_sec tv_usec) tv (:struct foreign-timeval))
 	(multiple-value-bind (sec frac) (truncate timeout)
-	  (setf tv-sec sec
-		tv-usec (truncate (* frac 1000000))))
-;	(format t "timeval ~d ~d~%" tv-sec tv-usec)
+	  (setf tv_sec sec
+		tv_usec (truncate (* frac 1000000))))
+;	(format t "timeval ~d ~d~%" tv_sec tv_usec)
 	)
       (when (= -1 (setf ret-val (unix-select (1+ nfds)
 					     read-fds write-fds err-fds
