@@ -29,6 +29,7 @@
    #:printenv
    #:char-apropos
    #:date-string
+   #:format-date
    #:simple-parse-time
    #:do-at
    #:print-properties
@@ -250,12 +251,21 @@ swaps to do times the length of the array. "
 ;; alias for
 (setf (symbol-function 'character-apropos) #'char-apropos)
 
+;; @@@ So where would we get this from for other languages?
+;; I suppose we could mine them from strftime.
 (defparameter +day-abbrevs+ #("Mon" "Tue" "Wed"
 			      "Thu" "Fri" "Sat" "Sun")) ; @@@ i18n
+
+(defparameter +weekday+ #("Monday" "Tuesday" "Wednesday"
+			  "Thursday" "Friday" "Saturday" "Sunday")) ; @@@ i18n
 
 (defparameter +month-abbrevs+ #("Jan" "Feb" "Mar" "Apr"
 				"May" "Jun" "Jul" "Aug"
 				"Sep" "Oct" "Nov" "Dec")) ; @@@ i18n
+
+(defparameter +month+ #("January" "February" "March" "April"
+			"May" "June" "July" "August"
+			"September" "October" "November" "December")) ; @@@ i18n
 
 (defun tz-minutes (tz)
   (* 60 (nth-value 1 (truncate tz))))
@@ -300,7 +310,7 @@ current time zone."
 ;; (let ((s1 (gensym)) (s2 (gensym)) (s3 (gensym))) body)
 
 (defmacro format-date (format (&rest values)
-		       &key (time (get-universal-time))
+		       &key (time nil)
 			 (stream nil)
 			 (gmt-p nil))
   "Call #'format with FORMAT and the given date fields in VALUES. 
@@ -314,19 +324,31 @@ VALUES is a sequence of any of the following keywords:
 		     (keyword
 		      (case v
 			(:day-abbrev `(aref +day-abbrevs+ ,day))
-			(:month-abbrev `(aref +month-abbrevs+ (1- ,month)))
+			((:month-abbrev :mon-abbrev)
+			 `(aref +month-abbrevs+ (1- ,month)))
 			(:std-zone
 			 `(format nil "~c~2,'0d~2,'0d"
 				  (if (< ,zone 0) #\+ #\-)
 				  (tz-hours ,zone) (tz-minutes ,zone)))
 			(otherwise
-			 (symbol-name v))))))))
-    `(multiple-value-bind (,seconds ,minutes ,hours ,date ,month ,year ,day
-				    ,daylight-p ,zone)
-	 (if ,gmt-p
-	     (decode-universal-time ,time 0)
-	     (decode-universal-time ,time))
-       (format stream format ,args)))))
+			 (case v
+			   ((:seconds :second :sec) seconds)
+			   ((:minutes :minute :min) minutes)
+			   ((:hours :hour :hrs :hr) hours)
+			   (:date date)
+			   ((:month :mon) month)
+			   ((:year :yr) year)
+			   (:day day)
+			   (:zone zone)
+			   (:daylight-p daylight-p)))))))))
+      `(multiple-value-bind (,seconds ,minutes ,hours ,date ,month ,year ,day
+				      ,daylight-p ,zone)
+	   (if ,gmt-p
+	       (decode-universal-time (or ,time (get-universal-time)) 0)
+	       (decode-universal-time (or ,time (get-universal-time))))
+	 (declare (ignorable ,seconds ,minutes ,hours ,date ,month ,year ,day
+			     ,daylight-p ,zone))
+	 (format ,stream ,format ,@args)))))
 
 (defun simple-parse-time (str)
   "Parse a string into a universal-time. Format is:
