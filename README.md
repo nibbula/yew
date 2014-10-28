@@ -21,7 +21,7 @@ separate libraries, perhaps creating whole separate projects, and perhaps
 posting patches to other appropriate libraries.
 
 Some things that are all mushed up in here right now are:
-  | Name          | Description
+  | Name          | Description                                               |
   | ------------- | --------------------------------------------------------- |
   | dlib          | Basic random pile junk which most other things depend on  |
   | dlib-misc     | dlib things which are not essential                       |
