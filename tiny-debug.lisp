@@ -2,7 +2,7 @@
 ;; tiny-debug.lisp - Multi platform minimal command line debugger
 ;;
 
-;; $Revision: 1.2 $
+;; $Revision: 1.3 $
 
 ;;; - debugger improvements.
 ;;;   - we should probably investigate the feasibility of having the system
@@ -231,21 +231,21 @@ number  Invoke that number restart (from the :r list).
   "Magic command just for me."
   (error "Pizza."))
 
-(defun debugger-interceptor (v state)
+(defun debugger-interceptor (value state)
   "Handle special debugger commands, which are usually keywords."
   (cond
     ;; We use keywords as commands, just in case you have a variable or some
     ;; other symbol clash. I dunno. I 'spose we could use regular symbols,
     ;; and have a "print" command.
-    ((typep v 'keyword)
-     (let ((ks (string v))
+    ((typep value 'keyword)
+     (let ((ks (string value))
 	   (rs (cdr (compute-restarts *interceptor-condition*))))
        (when (and (> (length ks) 1) (equal (aref ks 0) #\R))
 	 (let ((n (parse-integer (subseq ks 1))))
 ;	   (invoke-restart-interactively (nth n (compute-restarts)))))
 ;	   (format t "[Invoking restart ~d (~a)]~%" n (nth n rs))
 	   (invoke-restart-interactively (nth n rs))))
-       (case v
+       (case value
 	 (:b (debugger-backtrace (read-arg state)) t)
 	 (:w (debugger-wacktrace (read-arg state)) t)
 	 (:r (list-restarts rs) t)
@@ -265,11 +265,11 @@ number  Invoke that number restart (from the :r list).
 		   (invoke-restart-interactively borty))))
 	 ((:q :quit) (format *debug-io* "We quit.~%") (nos:exit-lisp) t))))
     ;; Numbers invoke that numbered restart.
-    ((typep v 'number)
+    ((typep value 'number)
      (let ((rs (cdr (compute-restarts *interceptor-condition*))))
-       (if (and (>= v 0) (< v (length rs)))
-	   (invoke-restart-interactively (nth v rs))
-	   (format *debug-io* "~a is not a valid restart number.~%" v))))))
+       (if (and (>= value 0) (< value (length rs)))
+	   (invoke-restart-interactively (nth value rs))
+	   (format *debug-io* "~a is not a valid restart number.~%" value))))))
 
 (defun try-to-reset-curses ()
   "If curses is loaded and active try to reset the terminal to a sane state so when we get in error in curses we can type at the debugger."

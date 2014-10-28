@@ -11,7 +11,7 @@
     :name               "termios"
     :description        "Interface to POSIX termios terminal driver manipulation functions."
     :version            "0.1.0"
-    :author             "Nibby Nebbulous <nibbula@yahoo.com>"
+    :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :licence            "None"
     :long-description   "Kickin' it old school."
     :depends-on (:cffi :opsys)

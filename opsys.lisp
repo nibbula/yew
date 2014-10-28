@@ -2,7 +2,7 @@
 ;;; opsys.lisp - Interface to operating systems
 ;;;
 
-;;; $Revision: 1.26 $
+;;; $Revision: 1.27 $
 
 ;; This is a thin layer over basic operating system functions which
 ;; are not included in Common Lisp. The goal would be to have the same
@@ -237,6 +237,7 @@
    #:is-socket
    #:is-door
    #:is-whiteout
+   #:file-exists
 
    #:umask
    #:chmod #:fchmod
@@ -275,16 +276,21 @@
    #:wait
    #:run-program
    #:fork-and-exec
-   #:getuid
-   #:setuid
-   #:getgid
-   #:setgid
+   #:getuid #:geteuid
+   #:setuid #:seteuid
+   #:getgid #:getegid
+   #:setgid #:setegid
    #:getpid
-   #:kill
+
+   ;; signals
    #:*signal-count*
    #:signal-name
    #:signal-description
+   #:signal-action
+   #:set-signal-action
    #:describe-signals
+   #:kill
+
    #:getpgid
    #:setpgid
    #:popen
@@ -1433,7 +1439,7 @@ if not given."
   #-(or clisp excl openmcl sbcl cmu ecl lispworks) (missing-implementation 'change-directory)
 )
 
-(defcfun getcwd :pointer (buf :pointer) (size size-t))
+(defcfun ("getcwd" real-getcwd) :pointer (buf :pointer) (size size-t))
 (defcfun pathconf :long (path :string) (name :int))
 (defconstant +PC-PATH-MAX+
 	 #+(or darwin sunos) 5
@@ -1446,24 +1452,28 @@ if not given."
 (defparameter *path-max* nil
   "Maximum number of bytes in a path.")
 
+(defun libc-getcwd ()
+  "Return the full path of the current working directory as a string, using the  C library function getcwd."
+  (when (not *path-max*)
+    (setf *path-max* (get-path-max)))
+  (let ((cwd (with-foreign-pointer-as-string (s *path-max*)
+	       (foreign-string-to-lisp (real-getcwd s *path-max*)))))
+    (if (not cwd)		; hopefully it's still valid
+	(error 'posix-error :error-code *errno*)
+	cwd)))
+
 (defun current-directory ()
+  "Return the full path of the current working directory as a string."
+  ;; I would like to use EXT:CD, but it puts an extra slash at the end.
+  #+clisp (libc-getcwd)
   #+excl (excl:current-directory)
-  #+clisp (namestring (ext:cd))
   #+(or openmcl ccl) (ccl::current-directory-name)
   #+ecl (ext:getcwd)
-  #+sbcl (progn
-	   (when (not *path-max*)
-	     (setf *path-max* (get-path-max)))
-	   (let ((cwd (with-foreign-pointer-as-string (s *path-max*)
-			(foreign-string-to-lisp (getcwd s *path-max*)))))
-	     (if (not cwd)		; hopefully it's still valid
-		 (error 'posix-error :error-code *errno*)
-		 cwd)))
+  #+sbcl (libc-getcwd)
   #+cmu (ext:default-directory)
   #+lispworks (hcl:get-working-directory)
   #-(or clisp excl openmcl ccl sbcl cmu ecl lispworks)
-  (missing-implementation 'current-directory)
-)
+  (missing-implementation 'current-directory))
 
 (defmacro in-directory ((dir) &body body)
   "Evaluate the body with the current directory set to DIR."
@@ -1547,7 +1557,7 @@ if not given."
 ;; the word size of executable environment. Will this work on previous OS
 ;; versions? Will it work on a 32 bit kernel? I have no idea. Thanks to
 ;; "clever" hackery with "asm" and CPP, you can change the ancient function
-;; calls right under everybody and "NO ONE WILL KNOW", right. Wrong.
+;; calls right under everybody and "NO ONE WILL KNOW", right? Wrong.
 ;;
 ;; It's a complete mess, and I got this wrong for quite a long time. I think I
 ;; should probably just give in and use a groveler, or at least: check the
@@ -2421,6 +2431,20 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
     (error-check (real-stat path stat-buf) "stat: ~s" path)
     (convert-stat stat-buf)))
 
+(defvar *statbuf* nil
+  "Just some space to put file status in. It's just to make file-exists, 
+quicker. We don't care what's in it.")
+
+;; Sadly I find the need to do this because probe-file might be losing.
+(defun file-exists (filename)
+  "Check that a file with FILENAME exists at the moment. But it might not exist
+for long."
+  (when (not (stringp (setf filename (namestring filename))))
+    (error "FILENAME should be a string or pathname."))
+  (when (not *statbuf*)
+    (setf *statbuf* (foreign-alloc '(:struct foreign-stat))))
+  (= 0 (real-stat filename *statbuf*)))
+
 (defcfun
     (#+darwin "lstat$INODE64"
      #+linux "__xlstat"
@@ -2817,6 +2841,19 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
   (missing-implementation 'run-program)
 )
 
+(defcfun getuid uid-t)
+(defcfun getgid uid-t)
+(defcfun geteuid uid-t)
+(defcfun getegid uid-t)
+(defcfun setuid :int (uid uid-t))
+(defcfun setgid :int (gid uid-t))
+(defcfun seteuid :int (uid uid-t))
+(defcfun setegid :int (gid uid-t))
+(defcfun getpid pid-t)
+
+#|
+Trying to simplify our lives, by just using our own FFI versions, above.
+
 ;; clisp decided to change names at some point
 #+clisp (eval-when (:compile-toplevel :load-toplevel :execute)
 	  (if (and (function-defined '#:uid :posix)
@@ -2827,11 +2864,6 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 #+ecl (config-feature :os-t-use-setuid)
 #+ecl (config-feature :os-t-use-getgid)
 #+ecl (config-feature :os-t-use-setgid)
-
-(defcfun ("getuid" real-getuid) uid-t)
-(defcfun ("getgid" real-getgid) uid-t)
-(defcfun ("setuid" real-setuid) :int (uid uid-t))
-(defcfun ("setgid" real-setgid) :int (gid uid-t))
 
 (defun getuid ()
   #+ccl (ccl::getuid)
@@ -2889,6 +2921,8 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
   #-(or openmcl excl clisp cmu sbcl ecl) (missing-implementation 'getpid)
 )
 
+|#
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Signals
 
@@ -2907,6 +2941,39 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
   #-(or darwin sunos) nil		; @@@ or perhaps 0?
   "Number of signal types, a.k.a. NSIG."
 )
+
+(defconstant SIGHUP	1)  ; Hangup
+(defconstant SIGINT	2)  ; Interrupt
+(defconstant SIGQUIT	3)  ; Quit
+(defconstant SIGILL	4)  ; Illegal instruction
+(defconstant SIGTRAP	5)  ; Trace/BPT trap
+(defconstant SIGABRT	6)  ; Abort trap
+(defconstant SIGPOLL	7)
+(defconstant SIGEMT	7)  ; EMT trap
+(defconstant SIGFPE	8)  ; Floating point exception
+(defconstant SIGKILL	9)  ; Killed
+(defconstant SIGBUS	10) ; Bus error
+(defconstant SIGSEGV	11) ; Segmentation fault
+(defconstant SIGSYS	12) ; Bad system call
+(defconstant SIGPIPE	13) ; Broken pipe
+(defconstant SIGALRM	14) ; Alarm clock
+(defconstant SIGTERM	15) ; Terminated
+(defconstant SIGURG	16) ; Urgent I/O condition
+(defconstant SIGSTOP	17) ; Suspended (signal)
+(defconstant SIGTSTP	18) ; Suspended
+(defconstant SIGCONT	19) ; Continued
+(defconstant SIGCHLD	20) ; Child exited
+(defconstant SIGTTIN	21) ; Stopped (tty input)
+(defconstant SIGTTOU	22) ; Stopped (tty output)
+(defconstant SIGIO	23) ; I/O possible
+(defconstant SIGXCPU	24) ; Cputime limit exceeded
+(defconstant SIGXFSZ	25) ; Filesize limit exceeded
+(defconstant SIGVTALRM	26) ; Virtual timer expired
+(defconstant SIGPROF	27) ; Profiling timer expired
+(defconstant SIGWINCH	28) ; Window size changes
+(defconstant SIGINFO	29) ; Information request
+(defconstant SIGUSR1	30) ; User defined signal 1
+(defconstant SIGUSR2	31) ; User defined signal 2
 
 #+sunos (defparameter SIG2STR_MAX 64 "Bytes for signal name.")
 #+sunos (defcfun sig2str :int (signum :int) (str :pointer))
@@ -2935,12 +3002,6 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
   #-(or darwin sunos) (missing-implementation 'signal-description)
 )
 
-(defun describe-signals ()
-  "List the POSIX signals that are known to the operating system."
-  (loop :for i :from 1 :to *signal-count*
-        :do (format t "~2a ~8a ~a~%"
-		   i (signal-name i) (signal-description i))))
-
 ;(defparameter signal-names (make-hash-table 
 ;(defun signal-number (name)
 
@@ -2949,7 +3010,6 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 ;   (loop for i from 0 to *signal-count*
 ;     do
 ;     `(defparameter ,(signal-name i) ,i)))
-
 
 (defcstruct foreign-sigaction
   "What to do with a signal, as given to sigaction(2)."
@@ -2971,6 +3031,57 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 (defconstant SA_SIGINFO   #x0040 "Deliver with sa_siginfo args.")
 
 (defcfun sigaction :int (sig :int) (action :pointer) (old-action :pointer))
+
+(defparameter *handler-actions*
+  `((,SIG_DFL . :default) (,SIG_IGN . :ignore) (,SIG_HOLD . :hold)))
+
+(defun action-to-handler (action)
+  "Return the posix handler value for the ACTION keyword."
+  (let ((a (find action *handler-actions* :key #'cdr)))
+    (if a (car a) action)))
+
+(defun handler-to-action (handler)
+  "Return the action keyword for the posix HANDLER value."
+  (let ((h (assoc handler *handler-actions*)))
+    (if h (cdr h) handler)))
+
+(defun signal-action (signal)
+  "Return the action that given SIGNAL triggers."
+  (with-foreign-object (old-action '(:struct foreign-sigaction))
+    (syscall (sigaction signal (null-pointer) old-action))
+    (let* ((ptr (foreign-slot-value
+		 old-action '(:struct foreign-sigaction) 'sa_handler))
+	   (num (pointer-address ptr)))
+      (if (<= num SIG_HOLD)
+	  (handler-to-action num)
+	  ptr))))
+
+(defun set-signal-action (signal action)
+  "Set the ACTION that given SIGNAL triggers."
+  (let ((handler (action-to-handler action)))
+    (with-foreign-object (act '(:struct foreign-sigaction))
+      (with-foreign-slots ((sa_handler sa_mask sa_flags)
+			   act (:struct foreign-sigaction))
+	(setf sa_handler (if (not (pointerp handler))
+			     (make-pointer handler)
+			     handler)
+	      sa_mask 0
+	      sa_flags 0))
+      (syscall (sigaction signal act (null-pointer))))))
+
+(defsetf signal-action set-signal-action
+  "Set the ACTION that given SIGNAL triggers.")
+
+(defun describe-signals ()
+  "List the POSIX signals that are known to the operating system."
+  (format t "#  SIG~11tDescription~42tDisposition~%~
+             -- ---~11t-----------~42t-----------~%")
+  (loop :for i :from 1 :below *signal-count*
+        :do (format t "~2a ~:@(~7a~) ~30a ~a~%"
+		   i (signal-name i) (signal-description i)
+		   (if (not (find i '(9 17)))
+		       (signal-action i)
+		       "N/A"))))
 
 (defun kill (pid sig)
   #+clisp (posix:kill pid sig)
@@ -3032,6 +3143,7 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 		  (ext:run-shell-command
 		   (format nil "~a~{ ~a~}" cmd args) :output :stream
 		   :input :stream :wait nil)
+		(declare (ignore io i))
 		(alexandria:copy-stream in-stream o)) ; !!!
 	      (ext:run-shell-command
 	       (format nil "~a~{ ~a~}" cmd args) :output :stream))
@@ -3040,7 +3152,7 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 ;;	      :external-format '(:utf-8 :replacement #\?)
 	  (if in-stream
 	      (sb-ext:run-program cmd args :output :stream :search t
-				  :stream in-stream)
+				  :input in-stream)
 	      (sb-ext:run-program cmd args :output :stream :search t)))
   #+cmu (ext:process-output
 	 (if in-stream

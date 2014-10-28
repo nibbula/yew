@@ -40,7 +40,7 @@
   (stream-element-type (source-stream stream)))
 
 ;(defmethod close ((stream wrapped-stream) &key abort &allow-other-keys)
-(defmethod close ((stream wrapped-stream) &key (abort t))
+(defmethod close ((stream wrapped-stream) &key (abort t) &allow-other-keys)
   (if abort
       (progn
 	(force-output stream)
@@ -101,6 +101,7 @@ is used.")
 ;;        nil
 ;;        (stream-position stream)))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Input
 
 (defclass filter-input-stream (filter-stream
@@ -127,10 +128,62 @@ is used.")
 		(or (and (slot-boundp o 'buffer-size) buffer-size)
 		    *default-buffer-size*))))))))
 
-(defmethod stream-clear-input (stream filter-input-stream)
+(defmethod stream-clear-input ((stream filter-input-stream))
   ""
   (stretchy-truncate (filter-input-stream-buffer stream) 0))
 
+#|
+
+@@@ TODO.......
+
+(defmethod stream-read-sequence ((stream filter-input-stream)
+				 seq &optional (start 0) end)
+  ;; (let ((pos 0)
+  ;; 	(new-seq    (stream-read-sequence (source-stream)))
+  ;;   (loop :while )
+  ;;   (setf (elt seq pos)
+  ;; 	  )
+  ;;   pos)
+  )
+
+(defmethod stream-read-byte ((stream filter-input-stream))
+  )
+
+(defmethod stream-peek-char ((stream filter-input-stream))
+  (if
+  (stream-peek-char (source-stream stream)))
+
+(defmethod stream-read-char-no-hang ((stream filter-input-stream))
+  (stream-read-char-no-hang (source-stream stream)))
+
+(defmethod stream-read-char ((stream filter-input-stream))
+  (case (filter-stream-unit stream)
+    ((:character :any)
+     (
+     (let ((c (read-char (source-stream stream) nil :eof)))
+       (when (eql c :eof)
+	 (return-from stream-read-char :eof))
+       (when (characterp c)
+	 (incf (stream-position stream))
+	   
+     (funcall (filter-stream-filter-function
+	       (stream-read-char (source-stream stream)))))
+    (:line
+     (
+    (:buffer)
+  )
+
+(defmethod stream-read-line ((stream filter-input-stream))
+  )
+
+(defmethod stream-listen ((stream filter-input-stream))
+  )
+
+(defmethod stream-unread-char ((stream filter-input-stream) character)
+  )
+|#
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Output
 
 (defclass filter-output-stream (filter-stream
@@ -341,11 +394,15 @@ is used.")
 				&optional start end)
   (stream-write-sequence stream string start end))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; I/O
 
 (defclass filter-io-stream (filter-input-stream filter-output-stream)
   ()
   (:documentation "A filtered stream for input and output."))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Convenience functions
 
 (defun make-filter-stream (stream filter-func
 			   &key

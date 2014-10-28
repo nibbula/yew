@@ -2,7 +2,7 @@
 ;;; lish.asd -- System definition for LISH package
 ;;;
 
-;;; $Revision: 1.5 $
+;;; $Revision: 1.6 $
 
 (defpackage :lish-system
     (:use :common-lisp :asdf))
@@ -13,7 +13,7 @@
     :name               "lish"
     :description        "Lispy system command shell."
     :version            "0.1.0"
-    :author             "Nibby Nebbulous <nibbula@yahoo.com>"
+    :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :licence            "None"
     :long-description   "I don't recommend using this."
     :depends-on (:tiny-rl :cl-ppcre :opsys :dlib :dlib-misc :stretchy :glob)

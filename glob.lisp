@@ -2,7 +2,7 @@
 ;; glob.lisp - Shell style file name pattern matching
 ;;
 
-;; $Revision: 1.3 $
+;; $Revision: 1.4 $
 
 (defpackage :glob
   (:documentation "Shell style file name pattern matching")
@@ -413,15 +413,18 @@ match & dir  - f(prefix: boo) readir boo
            :else :if (eq :dir (dir-entry-type f))
 	     :append (dir-matches (cdr path) (squip-dir dir f))))))
 
-(defun glob (pattern &key mark-directories escape sort braces tilde limit)
+(defun glob (pattern &key mark-directories escape sort braces (tilde t) twiddle
+		       limit)
   "PATTERN is a shell pattern as matched by FNMATCH.
   MARK-DIRECTORIES true, means put a slash at the end of directories.
   ESCAPE true, means allow \\ to escape the meaning of special characters.
   SORT true, means sort file names in a directory alphabetically.
   BRACES true, means allow braces processing.
   TILDE true, means allow tilde processing, which gets users home directories.
+  TWIDDLE is a synonym for TILDE.
   LIMIT as an integer, means limit the number of pathnames to LIMIT."
   (declare (ignore mark-directories escape sort braces limit))
+  (setf tilde (or tilde twiddle))
   (let* ((expanded-pattern (if tilde (expand-tilde pattern) pattern))
 	 (path (split-sequence #\/ expanded-pattern :omit-empty t))
 	 (dir (when (char= (char expanded-pattern 0) #\/) "/")))

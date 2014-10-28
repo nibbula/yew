@@ -7,9 +7,10 @@
 ;; Todo:
 ;;  - argument parsing for commands
 ;;    - finish new-posix-to-lisp-args
-;;    - make arg-lambda-list to auto generate lambda lisp given
+;;    - make arg-lambda-list to auto generate lambda list given
 ;;      defcommand arglist
-;;    - make defcommand/builtin macro
+;;    - fix defcommand arg list (make-argument-list) to be like:
+;;      '((name type [:key val]*))
 ;;  - work out error handling
 ;;    - compilation?
 ;;    - other?
@@ -80,16 +81,25 @@
    #:command-output-list
    #:with-lines
    ;; magical punctuation
-   #:! #:!! #:!$ #:!_ #:!and #:!or #:!bg #:!> #:!>> #:!>! #:!>>! #:!<
+   #:! #:!? #:!! #:!$ #:!_ #:!and #:!or #:!bg #:!> #:!>> #:!>! #:!>>! #:!<
    ))
 (in-package :lish)
 
-(defparameter *major-version* 0)
-(defparameter *revision* "$Revision: 1.13 $")
+;; We should almost always provide backwards compatibility as an option, but
+;; releases with the same major version number should always be compatible
+;; in the default configuration.
+(defparameter *major-version* 0
+  "Major version number. Releases with the same major version number should be
+compatible in the default configuration.")
+(defparameter *revision* "$Revision: 1.13 $"
+  "Minor version number. This should change at least for every release,
+probably for every commit to the master.")
 (defparameter *version*
   (format nil "~d.~a" *major-version*
 	  (subseq *revision* (1+ (position #\space *revision*))
 		  (position #\space *revision* :from-end t))))
+(defparameter *shell-name* "Lish"
+  "The somewhat superfluous name of the shell.")
 
 ;; Like on windows this is #\; right? But not cygwin?
 (defvar *path-separator*
@@ -1411,6 +1421,87 @@ Show accumulated times for the shell."
 LISH_LEVEL environment variable.")
 (declaim (special *lish-level*))
 
+(defun fixed-homedir ()
+  "(user-homedir-pathname) with a trailing slash removed if there was one."
+  (let ((h (namestring (user-homedir-pathname))))
+    (if (equal #\/ (aref h (1- (length h))))
+	(subseq h 0 (1- (length h)))
+	h)))
+
+(defun twiddlify (name)
+  "Turn (user-homedir-pathname) occuring in name into a tilde."
+  (replace-subseq (namestring (fixed-homedir)) "~"
+		  (namestring name) :count 1))
+
+;; I personally favor the prompt function, so this is basically a ploy to get
+;; people that just want their bash prompt to work, to use my shell.
+
+(defun format-prompt (sh prompt &optional (escape-char #\%))
+  "Return the prompt string with bash-like formatting character replacements.
+So far we support:
+%%	A percent.
+%a	#\bell
+%e	#\escape
+%n	#\newline
+%r	#\return
+%NNN	The character whose ASCII code is the octal value NNN.
+%s	The name of the shell, which is usually “Lish”.
+%v	Shell version.
+%V	Even more shell version.
+%u	User name.
+%h	Host name truncated at the first dot.
+%H	Host name.
+%w	Working directory, tildified.
+%W	The basename of `$PWD', tildified.
+%$	If the effective UID is 0, `#', otherwise `$'.
+%!	The history number of this command.
+%#	The command number of this command.
+%[	Start of non-printing characters.
+%]	End of non-printing characters.
+%l	The basename of the shell's terminal device name.
+%d      <3 char weekday> <3 char month name> <date>.
+%D{FORMAT}
+	Some date formated by Unix strftime. Without the FORMAT just put some
+	locale-specific date.
+%t	24 hour HH:MM:SS
+%T	12 hour HH:MM:SS
+%@	The time, in 12-hour am/pm format.
+%A	The time, in 24-hour HH:MM format.
+%j	The number of jobs currently managed by the shell.
+"
+  (declare (ignore sh))
+  (with-output-to-string (str)
+    (loop :with c :for i :from 0 :below (length prompt) :do
+       (setf c (aref prompt i))
+       (if (equal c escape-char)
+         (progn
+	   (incf i)
+	   (when (< i (length prompt))
+	     (setf c (aref prompt i))
+	     (case c
+	       (#\% (write-char escape-char str))
+	       (#\a (write-char #\bell str))
+	       (#\e (write-char #\escape str))
+	       (#\n (write-char #\newline str))
+	       (#\r (write-char #\return str))
+	       ((#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
+		(write-char (code-char
+			     (parse-integer (subseq prompt i (+ i 3)) :radix 8))
+			    str))
+	       (#\s (write-string *shell-name* str))
+	       (#\v (write-string *major-version* str))
+	       (#\V (write-string *version* str))
+	       (#\u (write-string (nos:getlogin) str))
+	       (#\h (write-string dlib:*host* str))
+	       (#\H (write-string (machine-instance) str))
+	       (#\w (write-string (twiddlify (nos:current-directory)) str))
+	       (#\W (write-string
+		     (twiddlify (basename (nos:current-directory))) str))
+	       (#\$ (write-char (if (= (nos:geteuid) 0) #\# #\$)))
+;	       (#\d (write-string (format
+	       )))
+	 (write-char c str)))))
+
 (defgeneric make-prompt (shell)
   (:documentation "Return a string to prompt with."))
 (defmethod make-prompt ((sh shell))
@@ -1756,7 +1847,10 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
 	 (format t "~a is the command ~a~%" cmd x)))
       ((setf x (get-command-path cmd))
        (when x
-	 (format t "~a is ~a~%" cmd x))))))
+	 (format t "~a is ~a~%" cmd x)))
+      ((setf x (read-from-string cmd))
+       (when (and (symbolp x) (fboundp x))
+	 (format t "~a is the function ~s~%" cmd (symbol-function x)))))))
 
 (defbuiltin type (&key type-only path-only all names)
   '((:name "type-only" :type boolean :short-arg #\t)
@@ -1783,7 +1877,10 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
 	  (let ((paths (command-paths n)))
 	    (when paths
 	      (format t (format nil "~~{~a is ~~a~~%~~}" n)
-		      paths))))
+		      paths)))
+	  (let* ((obj (read-from-string n)))
+	    (when (and (symbolp obj) (fboundp obj))
+	      (format t "~a is the function ~s~%" n (symbol-function obj)))))
 	 (t
 	  (let ((tt (command-type *shell* n)))
 	    (when tt
@@ -1791,6 +1888,27 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
 		  (format t "~a~%" tt)
 		  (describe-command n))))))
 	 (setf args (cdr args)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Job control
+
+(defun start-job-control ()
+  (setf (signal-action nos::SIGTSTP) :ignore
+	(signal-action nos::SIGTTIN) :ignore
+	(signal-action nos::SIGTTOU) :ignore))
+
+(defun stop-job-control (saved-sigs)
+  (let ((tstp (first saved-sigs))
+	(ttin (second saved-sigs))
+	(ttou (third saved-sigs)))
+    (setf (signal-action nos::SIGTSTP) (if (keywordp tstp) tstp :default)
+	  (signal-action nos::SIGTTIN) (if (keywordp tstp) ttin :default)
+	  (signal-action nos::SIGTTOU) (if (keywordp tstp) ttou :default))))
+
+(defun set-default-job-sigs ()
+  (setf (signal-action nos::SIGTSTP) :default
+	(signal-action nos::SIGTTIN) :default
+	(signal-action nos::SIGTTOU) :default))
 
 ;(defun run (cmd args)
   ; block sigchld & sigint
@@ -1863,6 +1981,7 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
     (if (not path)
 	(error "~a not found." program)
 	(progn
+	  (set-default-job-sigs)
 	  (if out-pipe
 	      (setf result-stream (nos:popen path args :in-stream in-pipe)
 		    result '(0))	; fake it
@@ -1898,85 +2017,14 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
 	    (let ((g (glob:glob w :tilde t)))
 	      (if g
 		(dolist (x g) (push x new-words))
-		(push w new-words))))	; !keep the glob expr if no matches!
+		;; If there's no existing file expansions, but try just twiddle,
+		;; and also keep the glob expression if no matches.
+		(push (glob:expand-tilde w) new-words))))
 	   (t (push w new-words)))
+	 ;; Quoted, so just push it verbatim
 	 (push w new-words)))
     (setf (shell-expr-words expr) (reverse new-words)))
   pos)
-
-#|
-(defun OLD-do-expansions (expr pos)
-  "Perform shell syntax expansions / subsitutions on the expression."
-  (flet ((replace-beginning (word replacement tail-pos)
-	   "Replace the beginning of the word WORD until tail-pos with ~
-            REPLACEMENT"
-	   ;; update pos
-	   (let ((word-in (shell-word-number expr pos)))
-	     (when (and (= word word-in) (>= pos tail-pos))
-	       (setf pos (+ (length replacement) (- pos tail-pos)))))
-	   ;; set the word
-	   (setf (elt (shell-expr-words expr) word)
-		 (concatenate 'string
-			      replacement
-			      (subseq (elt (shell-expr-words expr) word)
-				      tail-pos)))
-	   ;; update the end
-	   (setf (elt (shell-expr-word-end expr) word)
-		 (+ (elt (shell-expr-word-start expr) word)
-		    (length (elt (shell-expr-words expr) word))))))
-    (loop
-      :with i = 0
-      :for w :in (shell-expr-words expr)
-      :do (when (and (stringp w) (> (length w) 0))
-	   (cond
-	     ;; ~ homedir expansion
-	     ((eql #\~ (aref w 0))
-	      (let* ((p (or (position-if #'(lambda (c)
-					     (not (user-name-char-p c)))
-					 (subseq w 1))
-			    (1- (length w))))
-		     (username (if (and p (> p 0)) (subseq w 1 (1+ p)) "")))
-		(cond
-		  ((> (length username) 0) ;; try to look up a user
-		   (let ((home (nos:user-home username)))
-		     (when home
-		       (replace-beginning i home (1+ p)))))
-; 			(setf (elt (shell-expr-words expr) i)
-; 			      (concatenate 'string home (subseq w p)))))
-		    ;; curent user
-		   ((and (>= (length w) 2)
-			 (eql *directory-separator* (aref w 1)))
-; 			(setf (elt (shell-expr-words expr) i)
-; 			      (concatenate 'string
-; 					   (namestring (user-homedir-pathname))
-; 					   (subseq w 2)))))))
-		    (replace-beginning i (namestring
-					  (user-homedir-pathname))
-				       2))
-		   ((equal w "~")
-		    (replace-beginning i (namestring
-					  (user-homedir-pathname)) 1)))))
-	     ;; $ environment variable expansion
-	     ((eql #\$ (aref w 0))
-	      (let ((v (nos:getenv (subseq w 1))))
-		(setf (elt (shell-expr-words expr) i) (if v v ""))))
-	     ;; filename globbing
-	     ((glob:pattern-p w nil nil) ; @@@
-	      (let ((g (glob:glob w)))
-		(when g
-		  (if (> (length g) 1)
-		      ;; splice the expansion in the middle here
-		      (setf (shell-expr-words expr)
-			    (append
-			     (subseq (shell-expr-words expr) 0 i)
-			     g
-			     (subseq (shell-expr-words expr) (1+ i))))
-		      ;; just replace the current word
-		      (setf (elt (shell-expr-words expr) i) (car g))))))
-	     ))
-	(incf i)))
-  pos)
-|#
 
 (defun lisp-exp-eval (words)
   "Evaluate lisp expr in words."
@@ -1993,11 +2041,13 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
         :collect e))
 
 (defun expand-alias (sh alias words in-pipe out-pipe)
-  (let ((new-expr
-	 ;; XXX This trashes the rest of the things in the expr, like
-	 ;; the quoted, etc. which could cause problems.
-	 (make-shell-expr
-	  :words (append (shell-expr-words (shell-read alias)) (cdr words)))))
+  (let* ((expr (shell-read alias))
+	 (new-expr
+	  ;; XXX This trashes the rest of the things in the expr, like
+	  ;; the quoted, etc. which could cause problems.
+	  (make-shell-expr
+	   :words (append (shell-expr-words expr) (cdr words))
+	   :line (format nil "~s ~{~s ~}" (shell-expr-line expr) words))))
     (shell-eval sh new-expr :no-alias t :in-pipe in-pipe :out-pipe out-pipe)))
 
 (defun do-command (command args &optional in-pipe out-pipe)
@@ -2020,13 +2070,20 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
 	   nil))
 	(runky command args))))
 
+(defun read-parenless-args (string)
+  "Read and shell-eval all the expressions possible from a string and return
+them as a list."
+  (loop :with start = 0 :and expr
+     :while (setf (values expr start)
+		  (read-from-string string nil nil :start start))
+     :collect (eval expr)))
+
 (defun shell-eval-command (sh expr &key no-alias in-pipe out-pipe)
   "Evaluate an expression that is a command."
   (let* ((cmd (elt (shell-expr-words expr) 0))
 	 #| (args (subseq (shell-expr-words expr) 1)) |#
 	 (command (gethash cmd (lish-commands sh)))
 	 (alias (gethash cmd (lish-aliases sh)))
-	 #| (symb (intern cmd))) |#
 	 (expanded-words (lisp-exp-eval (shell-expr-words expr)))
 	 result result-stream)
     (dbug "words = ~w~%" (shell-expr-words expr))
@@ -2046,24 +2103,31 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
       ;; Lish command
       (command			
        (do-command command (subseq expanded-words 1) in-pipe out-pipe))
-      ;; ;; Parenless lisp line
-      ;; ((fboundp symb)
-      ;;  (apply (symbol-function symb)
-      ;; 	     (read-from-string
-      ;; 	      (subseq (shell-expr-line expr)
-      ;; 		      0 (elt (shell-expr-word-end expr) 0)))))
       (t
-       ;; System command
-       (setf (values result result-stream)
-	     (do-system-command expanded-words in-pipe out-pipe))
-       (dbug "result = ~w~%" result)
-       (when (not result)
-	 (format t "Command failed.~%"))
-       (force-output)		   ; @@@ is this really a good place for this?
-       (values result result-stream nil)))))
+       ;; Try parenless lisp line
+       (multiple-value-bind (symb pos)
+	   (read-from-string (shell-expr-line expr) nil nil)
+	 (if (and (symbolp symb) (fboundp symb))
+	     (values
+	      (multiple-value-list
+	       (apply (symbol-function symb)
+		      (read-parenless-args
+		       (subseq (shell-expr-line expr) pos))))
+	      nil ;; stream
+	      t) ;; show the values
+	     ;; System command
+	     (progn
+	       (setf (values result result-stream)
+		     (do-system-command expanded-words in-pipe out-pipe))
+	       (dbug "result = ~w~%" result)
+	       (when (not result)
+		 (format t "Command failed.~%"))
+	       (force-output)	   ; @@@ is this really a good place for this?
+	       (values result result-stream nil))))))))
 
 (defun shell-eval (sh expr &key no-alias in-pipe out-pipe)
-  "Evaluate a shell expression."
+  "Evaluate a shell expression. Return a list of the result values, a stream
+or NIL, and a boolean which is T to show the values."
   (typecase expr
     (shell-expr
 ;     (format t "(shell-expr-words expr) = ~w~%" (shell-expr-words expr))
@@ -2084,20 +2148,23 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
 		  (with-input-from-string (in-str
 					   (get-output-stream-string out-str))
 		    (format t "input is ~w~%" (get-output-stream-string out-str))
-		    (shell-eval-command sh expr
-					:no-alias no-alias
-					:in-pipe in-str
-					:out-pipe out-pipe))))))
+		    (with-package *lish-user-package*
+		      (shell-eval-command sh expr
+					  :no-alias no-alias
+					  :in-pipe in-str
+					  :out-pipe out-pipe)))))))
 	   (:and
 	    )
 	   (:or
 	    )
 	   (:sequence
 	    ))
-	 (shell-eval-command sh expr
-			     :no-alias no-alias
-			     :in-pipe in-pipe :out-pipe out-pipe))))
-    (t ; Lisp expression
+	 ;; Not a list
+	 (with-package *lish-user-package*
+	   (shell-eval-command sh expr
+			       :no-alias no-alias
+			       :in-pipe in-pipe :out-pipe out-pipe)))))
+    (t ;; A full Lisp expression all by itself
      (with-package *lish-user-package*
        (values (multiple-value-list (eval expr)) nil t)))))
 
@@ -2137,56 +2204,6 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
 ;   "Check if we are inside a shell quoted string and return it's starting
 ;  position."
 ;   (
-
-#|
-(defun string-completion (str l)
-  "Return the first completion for str in the list of strings~
- or nil if none was found."
-  (let (pos (match nil) match-len)
-    (loop :for s :in l
-      :do
-      (when (and (setf pos (search str s))
- 		 (= pos 0))
-	(if (not match)
- 	      (progn
- 		(setf match s)
- 		(setf match-len (length s)))
- 	      (setf match-len (mismatch match s :end1 match-len)))))
-    (and match (subseq match 0 match-len))))
-
-(defun string-completion-list (str list-in)
-  "Return the list of completions for str and how many there were."
-  (let (pos (count 0) (l '()))
-    (loop :for s :in list-in
-      :do
-      (when (and (setf pos (search str s))
-		 (= pos 0))
-	(push s l)
-	(incf count)))
-    (setq l (sort l #'string-lessp))
-    (values l count)))
-
-(defun get-prefix (context pos &key parsed-exp)
-  "given some shit, return some other shit, okay?!!"
-  (let ((exp (if parsed-exp parsed-exp (shell-read context :partial t))))
-    (if (not (shell-expr-words exp))
-	;; beginning of a blank line
-	(values "" 0)
-	;; normal
-	(let* ((words     (shell-expr-words exp))
-	       (words-len (length (shell-expr-words exp)))
-	       (starts    (shell-expr-word-start exp))
-	       (i         (shell-word-number exp pos :exp-len words-len)))
-	  (if words
-	      (values (subseq context (elt starts i) pos) (elt starts i))
-	      (values "" 0))))))
-
-(defun complete-string-sequence (str all seq)
-  "Completion function for file names."
-  (if all
-      (string-completion-list str seq)
-      (string-completion str seq)))
-|#
 
 (defun complete-env-var (str all)
   ;; (complete-string-sequence
@@ -2262,60 +2279,87 @@ commands are added.")
 ;;   One completion: completion and replacement starting position
 ;;   List:           sequence and sequence length
 
-;; If we can't do at least a good as TOPS20, then we suck.
+;; If we can't do at least a good as Tops-20 COMND% JSYS, then we suck.
+;;
+;; I dream and aspire to be as good as or better than CP, "The Command
+;; Processor Reader" on Symbolics Genera, but since I only used it for a few
+;; short moments, ages ago, in a rudimentary form, I won't know, will I.
+;; Anyway, we're ostensibly driving Unix underneath, which is a bit of a
+;; different beasty.
+;;
+;; I designed this thing without really knowing about the Symbolics stuff but
+;; it turns out I made something quite similar. It seems like having something
+;; like "defcommand" and a reader which does the right thing based on it, and
+;; which can basicly prompt for lambda expressions is an inherently Lispy way
+;; to do it. But the part with translating to Unix style is really quite
+;; crufty.
 
 (defun shell-complete (context pos all)
   (declare (type string context))
   "Analyze the context and try figure out what kind of thing we want to ~
 complete, and call the appropriate completion function."
   (let ((exp (ignore-errors (shell-read context :partial t))))
-    (if exp
-	(let* ((word-num (shell-word-number exp pos))
-	       (word     (if word-num
-			     (elt (shell-expr-words exp) word-num))))
-	  (dbug "~%word-num = ~w word = ~w~%exp ~w~%" word-num word exp)
-	  (flet ((simple-complete (func word wpos)
-		   (if all
-		       (let ((list (funcall func word all)))
-			 (values list (length list)))
-		       (values (funcall func word all) wpos))))
-	    (cond
-	      ((not word-num)		; no words
-	       (simple-complete #'complete-command "" 0))
-	      ((or (symbolp word))
-	       (complete-bang-symbol context pos all))
-	      ((or (consp word))	; (foo)
-	       (complete-symbol context pos all))
-	      ((eql (aref word 0) #\()	; (foo
-	       (complete-symbol context pos all))
-	      ((eql (aref word 0) #\!)	; !foo
-	       (complete-bang-symbol context pos all))
-	      ((eql (aref word 0) #\$)	; $foo
-	       (simple-complete #'complete-env-var
-				(subseq word 1)
-				(1+ (elt (shell-expr-word-start exp)
-					 word-num))))
-	      ((and (eql (aref word 0) #\~) ; ~foo
-		    (valid-user-name (subseq word 1)))
-;	       (format t "CHING! ~a~%" (valid-user-name word))
-	       (simple-complete #'complete-user-name
-				(subseq word 1)
-				(1+ (elt (shell-expr-word-start exp)
-					 word-num))))
-	      ;; first word, when not starting with directory chars
-	      ((and (= word-num 0) (not (position (aref word 0) "/.~")))
-	       (simple-complete #'complete-command context
-				(elt (shell-expr-word-start exp) 0)))
-
-	      (t
-	       (let ((from-end (- (length context) pos)))
-		 (multiple-value-bind (result new-pos)
-		     (complete-filename word (- (length word) from-end) all)
-		   (declare (ignore new-pos))
-		   (values (if (and (not all)
-				    (elt (shell-expr-word-quoted exp) word-num))
-			       (s+ "\"" result) result)
-			   (elt (shell-expr-word-start exp) word-num)))))))))))
+    (typecase exp
+      (shell-expr
+       (let* ((word-num (shell-word-number exp pos))
+	      (word     (if word-num
+			    (elt (shell-expr-words exp) word-num))))
+	 (dbug "~%word-num = ~w word = ~w~%exp ~w~%" word-num word exp)
+	 (flet ((simple-complete (func word wpos)
+		  (if all
+		      (let ((list (funcall func word all)))
+			(values list (length list)))
+		      (values (funcall func word all) wpos))))
+	   (cond
+	     ((not word-num)		; no words
+	      (simple-complete #'complete-command "" 0))
+	     ((not word)		; probably ()
+	      (complete-symbol context pos all))
+	     ((symbolp word)
+	      (complete-bang-symbol context pos all))
+	     ((consp word)		; (foo)
+	      (complete-symbol context pos all))
+	     ((eql (aref word 0) #\()	; (foo
+	      (complete-symbol context pos all))
+	     ((eql (aref word 0) #\!)	; !foo
+	      (complete-bang-symbol context pos all))
+	     ((eql (aref word 0) #\$)	; $foo
+	      (simple-complete #'complete-env-var
+			       (subseq word 1)
+			       (1+ (elt (shell-expr-word-start exp)
+					word-num))))
+	     ((and (eql (aref word 0) #\~) ; ~foo
+		   (valid-user-name (subseq word 1)))
+;;;	      (format t "CHING! ~a~%" (valid-user-name word))
+	      (simple-complete #'complete-user-name
+			       (subseq word 1)
+			       (1+ (elt (shell-expr-word-start exp)
+					word-num))))
+	     ;; first word, when not starting with directory chars
+	     ((and (= word-num 0) (not (position (aref word 0) "/.~")))
+	      ;; try commands
+	      (multiple-value-bind (v1 v2)
+		  (simple-complete #'complete-command context
+				   (elt (shell-expr-word-start exp) 0))
+;		(format t "CMD v1=~s v2=~s~%~%" v1 v2)
+		;; then symbols
+		(when (not v1)
+		  (setf (values v1 v2)
+			(complete-symbol context pos all))
+;		  (format t "SYM v1=~s v2=~s~%~%" v1 v2)
+		  )
+		(values v1 v2)))
+	     (t
+	      (let ((from-end (- (length context) pos)))
+		(multiple-value-bind (result new-pos)
+		    (complete-filename word (- (length word) from-end) all)
+		  (declare (ignore new-pos))
+		  (values (if (and (not all)
+				   (elt (shell-expr-word-quoted exp) word-num))
+			      (s+ "\"" result) result)
+			  (elt (shell-expr-word-start exp) word-num)))))))))
+      (cons
+       (complete-symbol context pos all)))))
 
 (defvar *shell-non-word-chars*
   #(#\space #\tab #\newline #\linefeed #\page #\return
@@ -2407,10 +2451,10 @@ complete, and call the appropriate completion function."
 		     (declare (ignore c))
 		     (format t "~%") (finish-output)
 		     (invoke-restart (find-restart 'abort))))
-		(warning
+		#| (warning
 		 #'(lambda (c)
 		     (format t "Warning: ~a~%" c)
-		     (muffle-warning)))
+		     (muffle-warning))) |#
 		#| #+excl (excl::compiler-note
 		    #'(lambda (c)
 		(format t "Note: ~a~%" c))) |#
@@ -2447,7 +2491,10 @@ complete, and call the appropriate completion function."
 	 (state (make-read-state))
 	 (*lish-level* (if *lish-level*
 			   (funcall #'1+ (symbol-value '*lish-level*))
-			   0)))
+			   0))
+	 (saved-sigs (list (signal-action nos::SIGTSTP)
+			   (signal-action nos::SIGTTIN)
+			   (signal-action nos::SIGTTOU))))
     (declare (special *shell*))	; XXX it's probably already special from defvar
     (update-user-package)
     (nos:setenv "LISH_LEVEL" (format nil "~d" lish::*lish-level*))
@@ -2460,47 +2507,55 @@ complete, and call the appropriate completion function."
 			 :context :lish
 			 :terminal-device-name terminal-name
 			 :prompt-func nil))
-    (when (not (eq :lish-quick-exit (catch :lish-quick-exit
-	  (loop
-	     :named pippy
-	     :with result = nil :and lvl = *lish-level*
-	     :if (lish-exit-flag sh)
-	       :return (values-list (lish-exit-values sh))
-	     :end
-	     :do
-	     (restart-case
-		 (progn
-		   (setf result (lish-read sh state))
-		   (when (or (eq result *real-eof-symbol*)
-			     (eq result *quit-symbol*))
-		     (return-from pippy result))
-		   (lish-eval sh result state))
-	       (abort ()
-		 :report
-		 (lambda (stream)
-		   (format stream "Return to Lish ~:[~;TOP ~]level~:[~; ~d~]."
-			   (= lvl 0) (/= lvl 0) lvl))
-		 nil))))))
-      (when (lish-exit-flag sh)
-	(return-from lish (when (lish-exit-values sh)
-			    (values-list (lish-exit-values sh)))))
-      (format t "*EOF*~%")))
-  ;; Well, let's hope that this will clear the EOF on *standard-input*
-  (clear-input *standard-input*))
+    (unwind-protect
+	 (progn
+	   (start-job-control)
+	   (when (not (eq :lish-quick-exit (catch :lish-quick-exit
+             (loop
+		:named pippy
+		:with result = nil :and lvl = *lish-level*
+		:if (lish-exit-flag sh)
+		  :return (values-list (lish-exit-values sh))
+		:end
+		:do
+		(restart-case
+		    (progn
+		      (setf result (lish-read sh state))
+		      (when (or (eq result *real-eof-symbol*)
+				(eq result *quit-symbol*))
+			(return-from pippy result))
+		      (lish-eval sh result state))
+		  (abort ()
+		    :report
+		    (lambda (stream)
+		      (format stream
+			      "Return to Lish ~:[~;TOP ~]level~:[~; ~d~]."
+			      (= lvl 0) (/= lvl 0) lvl))
+		    nil))))))))
+      (stop-job-control saved-sigs))
+    (when (lish-exit-flag sh)
+      (return-from lish (when (lish-exit-values sh)
+			  (values-list (lish-exit-values sh)))))
+    (format t "*EOF*~%")
+    ;; Well, let's hope that this will clear the EOF on *standard-input*
+    (clear-input *standard-input*)))
 
 (defvar *standalone* nil
   "True if we are nearly just a shell.") ; [sic]
 
+(defun flash-msg (msg)
+  "Temporarity flash a message, nearly subliminally."
+  (format t msg) (finish-output) (sleep .2)
+  (format t "~v,,,va" (length msg) #\backspace #\backspace)
+  (finish-output) (sleep .1)
+  (format t "~v,,,va" (length msg) #\space #\space)
+  (format t "~v,,,va" (length msg) #\backspace #\backspace))
+
 (defun lishity-split ()
   "Get out real quick."
   (if *standalone*
-      (let ((msg "You the man now dog."))
-	(format t msg) (finish-output) (sleep .2)
-	(format t "~v,,,va" (length msg) #\backspace #\backspace)
-	(finish-output) (sleep .1)
-	(format t "~v,,,va" (length msg) #\space #\space)
-	(format t "~v,,,va" (length msg) #\backspace #\backspace))
-      (throw :lish-quick-exit :lish-quick-exit)))
+      (flash-msg "You the man now dog."))
+      (throw :lish-quick-exit :lish-quick-exit))
 
 (defun shell-toplevel (&key debug)
   "For being invoked as a standalone shell."
@@ -2643,9 +2698,25 @@ complete, and call the appropriate completion function."
 	 (write-sequence buf destination :end pos))
        :while (= pos *buffer-size*))))
 
+;;; The problem with these shelly symbols is: even I can't remember them all.
+;;; I think I can remember all the Tetris™ pieces or even all the Blokus™
+;;; pieces, so it's not really not a capacity thing. The issue seems to be
+;;; memorability versus succinctness. Perhaps if I could come up with one
+;;; memorable word for each one of these and then these could be used as
+;;; replacements (even automatcially / abbrev-like). Or maybe one they're
+;;; working and I'm using them regularly, I will figure it out.
+
+;;; I call these the Snormnambulous™®© Shellbilitous Frobmogrifiers.
+;;; [Too. Much. Coffee.]
+
 (defun ! (&rest args)
   "Evaluate the shell command."
   (shell-eval *shell* (shell-read (lisp-args-to-command args))))
+
+(defun !? (&rest args)
+  "Evaluate the shell command, converting Unix shell result code into boolean. This means the 0 is T and anything else is NIL."
+  (let ((result (shell-eval *shell* (shell-read (lisp-args-to-command args)))))
+    (and (numberp result) (zerop result))))
 
 (defun !$ (command)
   "Return lines output from command as a string of words. This is basically like $(command) in bash."
@@ -2702,7 +2773,7 @@ complete, and call the appropriate completion function."
 ;; 	  (close stream)
 ;; 	  nil))))
 
-(defun !> (file-or-stream &rest commands)
+(defun run-with-output-to (file-or-stream commands &key supersede)
   "Run commands with output to a file or stream."
   (let ((result nil))
     (multiple-value-bind (vals in-stream show-vals)
@@ -2715,12 +2786,18 @@ complete, and call the appropriate completion function."
 		 (copy-stream in-stream file-or-stream)
 		 (with-open-file (out-stream file-or-stream
 					     :direction :output
-					     #| :if-exists :overwrite |#
+					     :if-exists
+					     (if supersede
+						 :supersede :error)
 					     :if-does-not-exist :create)
 		   (copy-stream in-stream out-stream)))
 	     (setf result vals))
 	(close in-stream)))
     result))
+
+(defun !> (file-or-stream &rest commands)
+  "Run commands with output to a file or stream."
+  (run-with-output-to file-or-stream commands))
 
 (defun !>> (file-or-stream &rest commands)
   "Run commands with output appending to a file or stream."
@@ -2733,9 +2810,8 @@ complete, and call the appropriate completion function."
   )
 
 (defun !>! (file-or-stream &rest commands)
-  "Run commands with output to a file or stream, overwritting it."
-  (declare (ignore file-or-stream commands))
-  )
+  "Run commands with output to a file or stream, superseding it."
+  (run-with-output-to file-or-stream commands :supersede t))
 
 (defun !>>! (file-or-stream &rest commands)
   "Run commands with output appending to a file or stream, overwritting it."

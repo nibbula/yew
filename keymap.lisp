@@ -2,13 +2,15 @@
 ;; keymap.lisp - Associate functions with keys.
 ;;
 
-;; $Revision: 1.1 $
+;; $Revision: 1.2 $
 
 (defpackage :keymap
   (:documentation "Associate functions with keys.")
   (:use :cl :dlib :char-util)
   (:export
    #:keymap
+   #:keymap-map
+   #:keymap-default-binding
    #:keymap-p
    #:dump-keymap
    #:defkeymap
@@ -40,7 +42,8 @@
 
 (defun keymap-p (object)
   "Return true if OBJECT is a keymap."
-  (eq (type-of object) 'keymap))
+;  (eq (type-of object) 'keymap))
+  (typep object 'keymap))
 
 (defmethod initialize-instance :after ((k keymap) &rest initargs)
   "Initialize a keymap. If the map is an alist convert it into a hash table."
@@ -157,9 +160,11 @@ there is no binding."
   "Return the definition of KEY in KEYMAP-STACK."
   (typecase keymap-stack
     ;; a list of keymaps
-    (cons (loop :with binding = nil
-		:for m :in keymap-stack
-		:when (setf binding (key-binding key m)) return binding))
+    (cons (loop
+	     :with binding = nil
+	     :for m :in keymap-stack
+	     :when (setf binding (key-binding key m))
+	     :return binding))
 ;		(multiple-value-bind (binding is-bound)
 ;		    (gethash key (keymap-map m))
 ;		  (when is-bound (return binding)))))
@@ -210,7 +215,7 @@ there is no binding."
 ;   (loop :for (c . f) :in (keymap-map keymap)
 ; 	:when (and (characterp c) (meta-char-p (char-code c)))
 ; 	:collect (cons (un-meta (char-code c)) f)))
-  (let ((new-keymap (make-instance 'keymap)))
+  (let ((new-keymap (make-instance (type-of keymap))))
     (map-keymap
      (lambda (k f)
        (when (and (characterp k) (meta-char-p (char-code k)))

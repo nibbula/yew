@@ -19,9 +19,6 @@
    #:pause
    #:pick-list
    #:pick-file
-   #:dirname
-   #:basename
-   #:abspath
    #:do-menu
    #:menu-load
    #:display-text
@@ -146,6 +143,59 @@
     (apply #'format *standard-output* prompt args)
     (finish-output *standard-output*)
     (read-line)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+#|
+
+(defclass inator ()
+  ((keymap :initarg :keymap :accessor inator-keymap)
+   (view   :initarg :view   :accessor inator-view)
+   (object :initarg :object :accessor inator-object))
+;  (:default-initargs)
+  (:documentation "A generic contraption."))
+
+(defstruct bbox
+  "Bounding box of something."
+  x y z					; In parent relative coordinates
+  width height depth)
+
+(defclass view ()
+  ((bbox  :initarg :bbox  :accessor view-bbox)
+   (point :initarg :point :accessor view-point)
+   (mark  :initarg :mark  :accessor view-mark)
+   )
+
+(defclass window-view (view)
+  )
+
+(defclass curses-inator (inator)
+  )
+
+(defmethod get-events ((thing curses-inator))
+  (with-curses
+      
+      ))
+
+(defvar *inators* nil
+  "List of inators")
+
+(defun main-loop ()
+  (loop :while (not *stop-flag*) :do
+     (let (event)
+       (loop :for i :in *inators* :do
+	  (update i)
+	  (when (event-pending-p i)
+	    (setf event (get-event i))
+	    (distribute i event))
+	  (await-event)
+	  (when (has-event-p i)
+	    (setf event (get-event i))
+	    (distribute i event))))))
+
+|#
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; TODO:
 ;; goto by typing
@@ -324,62 +374,6 @@
       (when filename
 	(merge-pathnames (pathname filename) dir)))))
 
-;; @@@ This should probably go somewhere else. Opsys? Somewhere else?
-(defun abspath (path)
-  "Turn the PATH into an absolute path."
-  ;; Make sure path is a string.
-  (setf path (etypecase path
-	       (null (return-from abspath nil))
-	       (string path)
-	       (pathname (namestring path))))
-    (let* ((p (if (char= #\/ (char path 0))
-		 path			; already absolute
-		 (concatenate 'string (current-directory) "/" path)))
-	   (pp (split-sequence #\/ p :omit-empty t)))
-      (macrolet
-	  ((get-rid-of (str snip)
-	     "Get rid of occurances of STR by snipping back to SNIP, which
-              is a numerical expression in terms of the current position POS."
-	     `(loop :with start = 0 :and pos
-		 :while (setq pos (position ,str pp
-					    :start start :test #'equal))
-		 :do (setq pp (concatenate 'list
-					   (subseq pp 0 (max 0 ,snip))
-					   (subseq pp (1+ pos)))))))
-	;; Get rid of ".."
-	(dbug "starting with ~s~%" pp)
-	(get-rid-of "." pos)
-	(dbug "after . ~s~%" pp)
-	(get-rid-of ".." (1- pos))
-	(dbug "after .. ~s~%" pp)
-	)
-      (if (zerop (length pp))
-	  "/"
-	  (apply #'concatenate 'string
-		 (loop :for e :in pp :collect "/" :collect e)))))
-
-(defun clip-path (path side)
-  "Return the directory portion of a path."
-  ;; Go backwards from the end until we hit a separator.
-  (let ((i (1- (length path))))
-    (loop :while (and (>= i 0) (char/= #\/ (char path i)))
-       :do (decf i))
-    (if (eq side :dir)
-	(if (< i 0)
-	    (subseq path 0 0)
-	    (subseq path 0 i))
-	(if (< i 0)
-	    path
-	    (subseq path (1+ i))))))
-
-(defun dirname (path)
-  "Return the directory portion of a path."
-  (clip-path path :dir))
-
-(defun basename (path)
-  "Return the last portion of a path."
- (clip-path path :file))
-
 (defun pick-file (&key message (directory ".") (allow-browse t) show-hidden
 		    (pick-directories))
   "Have the user choose a file."
@@ -420,7 +414,8 @@
 	  ;; Just pick from the current directory
 	  (setf filename (pick-list file-list :sort-p t :message message)))
       (when filename
-	(abspath (concatenate 'string dir "/" filename))))))
+	(values (abspath (concatenate 'string dir "/" filename))
+		dir)))))
  
 ;; Has problems because the eval'd code can't reference local variables.
 ;; More evidence that use of eval is usually a problem.
@@ -580,7 +575,7 @@
   "Print a tree up to a depth of MAX-DEPTH. Indent by INDENT spaces for every level. INDENT defaults to 2. Apply KEY function to each element before printing."
   (%print-tree tree :max-depth max-depth :indent indent :key key))
 
-#| This is pretty much obsoleced by browe-packages stuff below.
+#| This is pretty much obsoleced by browse-packages stuff below.
 
 (defvar *pdt-memo* nil
   "Memoization for the package dependency tree. An alist of (package . dep-tree) which is bound dynamically for each call.")
@@ -839,8 +834,9 @@
 
 (defparameter *node-formatter* #'normal-format-node)
 
-(defun display-tree (tree &key max-depth (indent 2) key (top 0) (left 0)
-			    (level 0))
+(defun display-tree (tree func
+		     &key max-depth (indent 2) key (top 0) (left 0)
+		       (level 0))
   "Display the tree. Also create the *line-index*."
   (when (and (>= *line-count* top)
 	     (< *line-count* (+ top (- *lines* 2))))
@@ -860,12 +856,50 @@
   ;; Recurse and display subtrees
   (if (and (node-open tree) (node-branches tree))
       (loop :for n :in (node-branches tree) :do
-	 (display-tree n :level (1+ level)
+	 (funcall func n func :level (1+ level)
+		       :indent indent :max-depth max-depth :key key
+		       :top top :left left))))
+
+(defun display-fat-tree (tree func 
+			 &key max-depth (indent 2) key (top 0) (left 0)
+			   (level 0))
+  "Display the tree. Also create the *line-index*."
+  (when (and (>= *line-count* top)
+	     (< *line-count* (+ top (- *lines* 2))))
+    (let ((str (funcall *node-formatter* tree
+			:level level :indent indent :key key)))
+      (if (> (count #\newline str) 1)
+	  (loop :for line :in (split-sequence #\newline str
+					      :omit-empty t)
+	     :do
+	     (when (> left 0)
+	       (setf line (subseq line (min left (length line)))))
+	     (when (> (length line) (1- *cols*))
+	       (setf line (subseq line 0 (- *cols* 1))))
+	     (addstr line)
+	     (addch (char-code #\newline)))
+	  (progn
+	    ;; horizontal scrolling
+	    (when (> left 0)
+	      (setf str (subseq str (min left (length str)))))
+	    ;; clipping to right edge
+	    (when (> (length str) (1- *cols*))
+	      (setf str (subseq str 0 (- *cols* 1))))
+	    (addstr str)))
+      (addch (char-code #\newline))
+      ))
+  ;; Keep an index of nodes by screen line.
+  (stretchy-set *line-index* *line-count* tree)
+  (incf *line-count*)
+  ;; Recurse and display subtrees
+  (if (and (node-open tree) (node-branches tree))
+      (loop :for n :in (node-branches tree) :do
+	 (funcall func n func :level (1+ level)
 		       :indent indent :max-depth max-depth :key key
 		       :top top :left left))))
 
 ;; @@@ another candidate for keymappificationalismization
-(defun browse-tree (tree)
+(defun browse-tree (tree &optional (display-function #'display-tree))
   "Look at a tree, with expandable and collapsible branches."
   (with-curses
     (when (listp tree)
@@ -880,7 +914,8 @@
       (loop :do
 	 (move 0 0) (erase)
 	 (setf *line-count* 0)
-	 (display-tree tree :top top :left left)
+;	 (display-tree tree :top top :left left)
+	 (funcall display-function tree display-function :top top :left left)
 	 (mvaddstr (1- *lines*) 0
 		   (format nil "~a of ~a top=~a" line *line-count* top))
 	 (move (- line top) 0)

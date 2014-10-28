@@ -9,9 +9,14 @@
 ;;  - convert to using FUI.
 ;;  - convert to using keymaps
 ;;  - improve git mode
+;;    - key binding for push!
 ;;    - show things to pull? (ie changes on remote)
+;;    - binding for reset
+;;  - Consider making a branch editing mode
+;;  - Consider configuration / options editing
+;;     like for "git config ..." or whatever the equivalent is in other systems
 
-;; $Revision: 1.17 $
+;; $Revision: 1.18 $
 
 (defpackage :puca
   (:documentation "Putative Muca")
@@ -118,7 +123,8 @@
 		:list-args	'("status" "--porcelain")
 		:add		"git --no-pager add ~{~a ~}"
 		:diff		"git diff ~{~a ~}"
-		:diff-repo	"git diff --cached HEAD ~{~a ~}"
+;		:diff-repo	"git diff --cached HEAD ~{~a ~}"
+		:diff-repo	"git diff --staged"
 		:commit		"git --no-pager commit ~{~a ~}"
 		:update		"git --no-pager pull ~{~a ~}"
 		:update-all	"git --no-pager pull"

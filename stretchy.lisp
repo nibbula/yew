@@ -31,16 +31,18 @@
 ;;   `(make-array ,n :element-type 'character :fill-pointer 0 :adjustable t))
 
 (defun make-stretchy-string (n)
+  "Make a stretchy string of size N. A stretchy string is an adjustable array of characters with a fill pointer."
   (make-array n :element-type 'character :fill-pointer 0 :adjustable t))
 
 (deftype stretchy-vector ()
-  "An adjustable vector of objects"
+  "An adjustable vector of objects."
   '(and
     (vector)
     (satisfies adjustable-array-p)
     (satisfies array-has-fill-pointer-p)))
 
 (defun make-stretchy-vector (n)
+  "Make a stretchy vector of size N. A stretchy vector is an adjustable array of objects with a fill pointer."
   (make-array n :fill-pointer 0 :adjustable t))
 
 (defvar *default-stretch-factor* 2/3
@@ -109,6 +111,9 @@
 |#
 
 (defun stretchy-append (dst src &key (factor *default-stretch-factor*))
+  "Append SRC to stretchy thing DST. SRC can be a character or a string or a ~
+   symbol if DST is a string, or anything if DST is a vector. FACTOR is the ~
+   amount of the total size to expand by when expansion is needed."
   (when (not (or (typep dst 'stretchy-string) (typep dst 'stretchy-vector)))
     (error "Destination must be a stretchy-string or stretchy-vector"))
   (cond

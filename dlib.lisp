@@ -37,7 +37,7 @@
    #:s+
    #:ltrim #:rtrim #:trim
    #:join
-   #:doseq
+   #-clisp #:doseq
    ;; lists
    #:delete-nth
    #:alist-to-hash-table
@@ -51,7 +51,12 @@
 ;   #:with-struct-slots
    ;; Implementation-ish
    #:without-warning
+   ;; language-ish
    #:define-constant
+   #:λ
+   #:lambda-list
+   #:with-unique-names
+   ;; debugging
    #:*dbug* #:dbug #:with-dbug #:without-dbug
    ;; Environment features
    #:*host*
@@ -363,6 +368,7 @@ arguments into strings as with PRINC."
 
 ;; I know this is a ruse, but it makes me feel better.
 ;; Also, without good optimization, it could be code bloating.
+#-clisp ;; Of course CLisp areeady had this idea and put it in by default.
 (defmacro doseq ((var seq) &body body)
   "Iterate VAR on a \"sequence\" SEQ, which can be a list, vector, hash-table or package. For hash-tables, it iterates on the keys. For packages, it iterates on all accessible symbols."
   (let ((seq-sym (gensym)))
@@ -617,6 +623,22 @@ equal under TEST to result of evaluating INITIAL-VALUE."
   #+ccl
   `(cl:defconstant ,name ,value ,@(when doc (list doc)))
   )
+
+;; This is just to pretend that we're trendy and modern.
+(setf (macro-function 'λ) (macro-function 'cl:lambda))
+
+;; I really don't understand why SBCL doesn't do this. I can only guess that
+;; everyone is to scared to have some weird effect on the compiler.
+(defun lambda-list (fun)
+  #+sbcl (sb-kernel:%fun-lambda-list fun)
+  #-sbcl (function-lambda-list fun))
+
+(defmacro with-unique-names (names &body body)
+  "Bind each symbol in NAMES to a unique symbol and evaluate the BODY.
+Useful for making your macro “hygenic”."
+  `(let ,(loop :for n :in names
+	    :collect `(,n (gensym (symbol-name ',n))))
+     ,@body))
 
 ;; On other lisps just use the real one.
 #-(or sbcl clisp ccl cmu lispworks ecl)

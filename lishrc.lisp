@@ -74,7 +74,7 @@ alias back "cd !*old-pwd*"
 alias down "cd !*old-pwd*"
 
 alias t  "date +%r"
-alias dt "date \"'+%a %h %d (%D) %T'\""
+alias dt "date \"+%a %h %d (%D) %T\""
 alias du "du -k"
 alias q  "quota -v"
 alias ng "unset DISPLAY"
@@ -138,5 +138,12 @@ alias xvv "xv -vsgeometry 610x796+660+12 -geometry +0+10"
   '((:name "file" :type filename))
   "Convert mp4 downloaded from youtube (with youtubedown) to audio only."
   (! "ffmpeg -i \"" file "\" -acodec copy -vn \"" (snip-ext file) ".m4a\""))
+
+;; @@@ This needs work
+(defcommand man (entry)
+  '((:name "entry" :type string)
+;    (:name "apropos" :type string :short-arg #\k)
+    )
+  (pager:pager (!! "/usr/bin/man -P cat " entry)))
 
 ;; EOF

@@ -80,15 +80,26 @@
 	       (if prompt-supplied p *default-prompt*)))))
 
 (defstruct repl-state
-  "Internal state of the REPL."
-  editor				; the current tiny-rl editor
+  "Internal state of the REPL. Slots are:
+  editor	  The current TINY-RL editor. An instance of the class
+                  TINY-RL:LINE-EDITOR.
+  interceptor	  A function of two arguments, a value to be intercepted and
+                  copy of this REPL-STATE.
+  prompt-func   
+  more		  If non-nil, a string of more input.
+  terminal-name   Name of a terminal device or nil.
+  got-error	  A boolean which is true if we got an error.
+  error-count     A fixnum which keeps the count of errors we have gotten.
+  debug           A boolean which is true to enter the debugger on errors.
+"
+  editor
   interceptor
   prompt-func
-  more					; if non-nil, a string of more stuff
-  terminal-name				; name or a terminal or nil
-  (got-error	nil	:type boolean)	; true if we got an error
-  (error-count	0	:type fixnum)	; the count of errors we have gotten
-  (debug	nil	:type boolean))	; true to enter the debugger on errors
+  more
+  terminal-name
+  (got-error	nil	:type boolean)
+  (error-count	0	:type fixnum)
+  (debug	nil	:type boolean))
 
 ;(defvar *repl-debug-messages* nil)
 ; This should be a macro when things are working well enough.
@@ -117,22 +128,22 @@
 	  (setf more (subseq more pos))
 	  (values val nil))))))
 
-(defun snarky-interceptor (v state)
+(defun snarky-interceptor (value state)
   (flet ((matches (s string)
 	   (and (symbolp s)
 		(equal 0 (search (symbol-name s) string :test #'equalp)))))
   (cond
     ;; Parenless function call!
-    ((and (symbolp v) (fboundp v))
+    ((and (symbolp value) (fboundp value))
      (let ((args (loop :with a :and eof
 		    :do
 		    (setf (values a eof) (read-arg state))
 		    :while (not eof)
 		    :collect a)))
-;       (format t "(eval ~s)~%" `(,v ,@args))
-       (format t "~&~s~%" (eval `(,v ,@args))) (finish-output)
+;       (format t "(eval ~s)~%" `(,value ,@args))
+       (format t "~&~s~%" (eval `(,value ,@args))) (finish-output)
        t))
-    ((matches v "Help")
+    ((matches value "Help")
      (format t "~
 Hi. ~@?
 If you're weren't expecting a Lisp REPL, just type \"quit\" now. Otherwise,
@@ -155,7 +166,7 @@ Some notable keys are:
  <F9>         Switch back and forth to LISH, which is a lispy/posixy shell."
 		    ""))
      t)
-    ((matches v "History")
+    ((matches value "History")
      (tiny-rl:show-history (tiny-rl::context (repl-state-editor state)))
      t))))
 
@@ -249,13 +260,15 @@ Some notable keys are:
 			     (subseq cat pos)
 			     nil))
 		   obj))))))
-      (repl-read-continue () *continue-symbol*)
-      (condition (c)
- 		 (setf got-error t)
- 		 (if debug
- 		     (invoke-debugger c)
- 		     (format t "~&~a" c))
- 		 *error-symbol*))))
+	  (repl-read-continue () *continue-symbol*)
+;	  (condition (c)
+	  (error (c)
+	    (setf got-error t)
+	    (if debug
+		(invoke-debugger c)
+		(format t "~&~a" c))
+	    *error-symbol*)
+	  )))
     :do
     (if (stringp pre-str)
 	(setf pre-str (concatenate 'string pre-str str +newline-string+))

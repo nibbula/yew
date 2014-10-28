@@ -29,6 +29,11 @@
 (defvar *pager-prompt* "line %l of %L"
   "The current default prompt.")
 
+;; "text text text"
+;; ((:tag "text") "text" (:tag "text") "text")
+;; (:tag "text")
+;; ("text text " (:tag "text " (:tag "text") " text") "text")
+
 (defstruct line
   "Hold a line of text."
   number				; line number
@@ -127,8 +132,33 @@
   ;; Don't reset options?
   )
 
+(defun process-line (pager line)
+  (declare (ignore pager))
+  line)
+
+#| @@@@
+(defun NEW-process-line (pager line)
+  "Process a line of text read from a stream."
+  (let ((spans '()))
+    (flet ((in-span (tag)
+	     (loop :for s :in spans
+		:do
+		(if :
+	     (position spans
+    (loop
+       :with len = (length line)
+       :for i = 0 :then (1+ i)
+       :do
+       (cond
+	 ((char= (char i line) #\backspace)
+	  (if (char= (char (1+ i) line) (char (1- i) line))
+	      (setf span-start (1- i)
+		    span-tag :bold)))))))
+|#
+
 (defun read-lines (pager count)
-  "Read new lines from the stream. Stop after COUNT lines. If COUNT is zero, read until we get an EOF."
+  "Read new lines from the stream. Stop after COUNT lines. If COUNT is zero,
+read until we get an EOF."
   (when (not (pager-got-eof pager))
     (let ((n 0)
 	  (i (pager-count pager))
@@ -140,7 +170,7 @@
 			   (resilient-read-line (pager-stream pager) nil nil)))
 	 :do (push (make-line :number i
 			      :position (file-position (pager-stream pager))
-			      :text line)
+			      :text (process-line pager line))
 		   lines)
 	 (incf i)
 	 (incf n))

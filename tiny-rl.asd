@@ -11,7 +11,7 @@
     :name               "tiny-rl"
     :description        "A tiny readline replacement for ANSI terminals."
     :version            "0.1.0"
-    :author             "Nibby Nebbulous <nibbula@yahoo.com>"
+    :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :licence            "None"
     :long-description   "E PROTO 'SUP d00d"
     :depends-on (:dl-list :stretchy :cffi :opsys :termios :ansiterm

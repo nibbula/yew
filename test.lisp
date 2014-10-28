@@ -2,7 +2,7 @@
 ;;; test.lisp - Test ting things
 ;;;
 
-;; $Revision: 1.1 $
+;; $Revision: 1.2 $
 
 ;; TODO:
 ;; - test setup and takedown

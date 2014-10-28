@@ -2,15 +2,18 @@
 ;; completion.lisp - Complete your words. Fill the gap. Type less.
 ;;
 
-;; $Revision: 1.3 $
+;; $Revision: 1.4 $
 
 ;; TODO:
-;;   - filename-completion
-;;     - twiddle
-;;     - files with spaces
+;;   - files with spaces in filename-completion
+;;   - finish dictionary completion
 
 (defpackage :completion
-  (:documentation "Complete your words. Fill the gap. Type less.
+  (:documentation
+"The theory is: we know what you're going to type, so we can type it for
+you. The actuality is: Just guess as much as possible to the extent that it's
+not annoying. Usually, we generate a list of possibilities of what can be
+input given the context, usually a prefix.
 
 Completion functions are called with line of context and a position
 where completion was requested. The are asked to return one completion,
@@ -19,7 +22,7 @@ completion and a position where to insert it. Text should be replaced
 from the starting and result position. This allows completion functions
 to look at whatever they want to, and replace whatever they want to,
 even prior to the starting point. When asked for all completions, they return a
- sequence of strings and a count which is the length of the sequence.")
+sequence of strings and a count which is the length of the sequence.")
   (:use :cl :opsys :glob)
   (:export
    ;; list
@@ -55,18 +58,18 @@ even prior to the starting point. When asked for all completions, they return a
 If NOT-IN is provied move over characters for which are not in it.
 DIR is :forward or :backward. Moves over characters in STR starting at POS.
 Returns the new position after moving."
-  (if (and (not func) not-in)
-      (setf func #'(lambda (c) (not (position c not-in)))))
+  (when (and (not func) not-in)
+    (setf func #'(lambda (c) (not (position c not-in)))))
   (if (eql dir :backward)
       ;; backward
-      (loop while (and (> pos 0)
-		       (funcall func (aref str (1- pos))))
-	do (decf pos))
+      (loop :while (and (> pos 0)
+			(funcall func (aref str (1- pos))))
+	 :do (decf pos))
       ;; forward
       (let ((len (length str)))
-	(loop while (and (< pos len)
-			 (funcall func (aref str (1+ pos))))
-	  do (incf pos))))
+	(loop :while (and (< pos len)
+			  (funcall func (aref str (1+ pos))))
+	   :do (incf pos))))
   pos)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -317,7 +320,7 @@ the count of matches."
 
 (defun symbol-completion-list (w &key (package *package*)
 				   (external nil) (include-packages t))
-  "Print the list of completions for W in the symbols of PACKAGE, which defaults to the current package. Return how many symblos there were."
+  "Print the list of completions for W in the symbols of PACKAGE, which defaults to the current package. Return how many symbols there were."
   (let ((count 0)
 	(l '())
 	(case-in (character-case w))
@@ -369,19 +372,6 @@ and return the package and whether we should look for only external symbols."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Filename completion
-
-;; We have to assume the entire context is a filename. Shells that want to
-;; do completion in a command line, will have to arrange for this to be so.
-(defun complete-filename (context pos all &key parsed-exp)
-  "Completion function for file names."
-  (declare (ignore parsed-exp pos))
-  ;; Let's ignore anything after pos for the sake of completion.
-;  (format t "jinko (~a) ~a~%" context pos)
-  (if all
-      (filename-completion-list context)
-      (multiple-value-bind (result full-match) (filename-completion context)
-	(declare (ignore full-match))
-	(values result 0))))
 
 ; (defun directory-files ()
 ;   (directory (make-pathname :name :wild :type :wild))
@@ -457,6 +447,19 @@ and return the package and whether we should look for only external symbols."
 	 (incf count)))
     (setq result-list (sort result-list #'string-lessp))
     (values result-list count)))
+
+;; We have to assume the entire context is a filename. Shells that want to
+;; do completion in a command line, will have to arrange for this to be so.
+(defun complete-filename (context pos all &key parsed-exp)
+  "Completion function for file names."
+  (declare (ignore parsed-exp pos))
+  ;; Let's ignore anything after pos for the sake of completion.
+;  (format t "jinko (~a) ~a~%" context pos)
+  (if all
+      (filename-completion-list context)
+      (multiple-value-bind (result full-match) (filename-completion context)
+	(declare (ignore full-match))
+	(values result 0))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Dictionary completion

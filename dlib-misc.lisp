@@ -7,7 +7,10 @@
 ;; See dlib.lisp for the most essential stuff.
 ;; This is for things that are nice, but not essential.
 ;;
-;; This is mostly separate from dlib so I can depend on other stuff like opsys.
+;; This is mostly separate from dlib so I can depend on other stuff like OPSYS.
+;;
+;; I don't like the name “MISC”. Let’s think of something better.
+;; Maybe something like: dlib dlib-1 dlib-2 etc.
 
 (defpackage :dlib-misc
   (:use :common-lisp :dlib #+mop :mop :opsys)
@@ -32,6 +35,9 @@
    #:print-columns
    #:print-size
    #:dir
+   #:abspath
+   #:dirname
+   #:basename
    #:unintern-conflicts
    #:show-features
    #:describe-environment
@@ -244,8 +250,8 @@ swaps to do times the length of the array. "
 ;; alias for
 (setf (symbol-function 'character-apropos) #'char-apropos)
 
-(defparameter +day-names+ #("Mon" "Tue" "Wed"
-			    "Thu" "Fri" "Sat" "Sun")) ; @@@ i18n
+(defparameter +day-abbrevs+ #("Mon" "Tue" "Wed"
+			      "Thu" "Fri" "Sat" "Sun")) ; @@@ i18n
 
 (defparameter +month-abbrevs+ #("Jan" "Feb" "Mar" "Apr"
 				"May" "Jun" "Jul" "Aug"
@@ -260,9 +266,12 @@ swaps to do times the length of the array. "
 (defun date-string (&key (time (get-universal-time)) format
 			 (gmt-p nil gmt-p-set))
   "Return a formated date string. A universal time can be provided with the ~
-TIME keyword. If FORMAT is :net it returns an RFC822 formatted date, ~
-otherwise it's in some format that Nibby likes. If GMT-P is true, the date ~
-is in Grenwich Mean Time, otherwise it's in the current time zone."
+TIME keyword. FORMAT can be one of:
+  :net          - an RFC822 formatted date. ~
+  :filename     - a format that works well for a user readable file name.
+  anything else - some format that Nibby likes.~
+If GMT-P is true, the date is in Grenwich Mean Time, otherwise it's in the ~
+current time zone."
 ; This makes a format default to GMT:
 ;  (when (and (not gmt-p-set) (find format '(:rfc822 :rfc :net)))
 ;    (setf gmt-p t))
@@ -276,13 +285,48 @@ is in Grenwich Mean Time, otherwise it's in the current time zone."
     (case format
       ((:rfc822 :rfc :net)
        (format nil "~a, ~2,'0d ~a ~4,'0d ~2,'0d:~2,'0d:~2,'0d ~c~2,'0d~2,'0d"
-	       (aref +day-names+ day)
+	       (aref +day-abbrevs+ day)
 	       date (aref +month-abbrevs+ (1- month)) year
 	       hours minutes seconds
 	       (if (< zone 0) #\+ #\-) (tz-hours zone) (tz-minutes zone)))
+      (:filename
+       (format nil "~d-~2,'0d-~2,'0d_~2,'0d-~2,'0d-~2,'0d"
+	       year month date hours minutes seconds))
       (otherwise
        (format nil "~d-~2,'0d-~2,'0d ~2,'0d:~2,'0d:~2,'0d"
 	       year month date hours minutes seconds)))))
+
+;; (ulet (s1 s2 s3) body) ->
+;; (let ((s1 (gensym)) (s2 (gensym)) (s3 (gensym))) body)
+
+(defmacro format-date (format (&rest values)
+		       &key (time (get-universal-time))
+			 (stream nil)
+			 (gmt-p nil))
+  "Call #'format with FORMAT and the given date fields in VALUES. 
+VALUES is a sequence of any of the following keywords:
+  :seconds :minutes :hours :date :month :year :day :daylight-p :zone
+  :day-abbrev :month-abbrev"
+  (with-unique-names (seconds minutes hours date month year day daylight-p zone)
+    (let ((args (loop :for v :in values
+		   :collect
+		   (etypecase v
+		     (keyword
+		      (case v
+			(:day-abbrev `(aref +day-abbrevs+ ,day))
+			(:month-abbrev `(aref +month-abbrevs+ (1- ,month)))
+			(:std-zone
+			 `(format nil "~c~2,'0d~2,'0d"
+				  (if (< ,zone 0) #\+ #\-)
+				  (tz-hours ,zone) (tz-minutes ,zone)))
+			(otherwise
+			 (symbol-name v))))))))
+    `(multiple-value-bind (,seconds ,minutes ,hours ,date ,month ,year ,day
+				    ,daylight-p ,zone)
+	 (if ,gmt-p
+	     (decode-universal-time ,time 0)
+	     (decode-universal-time ,time))
+       (format stream format ,args)))))
 
 (defun simple-parse-time (str)
   "Parse a string into a universal-time. Format is:
@@ -748,5 +792,61 @@ The date part is considered to be the current date."
     (loop :with w
        :while (setf w (read-line stm nil nil))
        :do (soundex-verify w))))
+
+;; I'm not totally convinced that this should be here.
+(defun abspath (path)
+  "Turn the PATH into an absolute path."
+  ;; Make sure path is a string.
+  (setf path (etypecase path
+	       (null (return-from abspath nil))
+	       (string path)
+	       (pathname (namestring path))))
+    (let* ((p (if (char= #\/ (char path 0))
+		 path			; already absolute
+		 (concatenate 'string (current-directory) "/" path)))
+	   (pp (split-sequence #\/ p :omit-empty t)))
+      (macrolet
+	  ((get-rid-of (str snip)
+	     "Get rid of occurances of STR by snipping back to SNIP, which
+              is a numerical expression in terms of the current position POS."
+	     `(loop :with start = 0 :and pos
+		 :while (setq pos (position ,str pp
+					    :start start :test #'equal))
+		 :do (setq pp (concatenate 'list
+					   (subseq pp 0 (max 0 ,snip))
+					   (subseq pp (1+ pos)))))))
+	;; Get rid of ".."
+;	(dbug "starting with ~s~%" pp)
+	(get-rid-of "." pos)
+;	(dbug "after . ~s~%" pp)
+	(get-rid-of ".." (1- pos))
+;	(dbug "after .. ~s~%" pp)
+	)
+      (if (zerop (length pp))
+	  "/"
+	  (apply #'concatenate 'string
+		 (loop :for e :in pp :collect "/" :collect e)))))
+
+(defun clip-path (path side)
+  "Return the directory portion of a path."
+  ;; Go backwards from the end until we hit a separator.
+  (let ((i (1- (length path))))
+    (loop :while (and (>= i 0) (char/= #\/ (char path i)))
+       :do (decf i))
+    (if (eq side :dir)
+	(if (< i 0)
+	    (subseq path 0 0)
+	    (subseq path 0 i))
+	(if (< i 0)
+	    path
+	    (subseq path (1+ i))))))
+
+(defun dirname (path)
+  "Return the directory portion of a path."
+  (clip-path path :dir))
+
+(defun basename (path)
+  "Return the last portion of a path."
+ (clip-path path :file))
 
 ;; End

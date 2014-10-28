@@ -8,8 +8,11 @@
 ;; OK, so I haven't learned my lesson yet.
 
 ;; TODO:
-;;   multi line - paren flashing, display bugs (undo, delete word, etc)
-;;   history saving
+;;   - multi line - paren flashing, display bugs (undo, delete word, etc)
+;;     - fix update-for-delete
+;;   - tab display bugs
+;;   - history saving
+;;   - compose chars (aka cheapo input system)
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 		   (compilation-speed 0)))
@@ -984,7 +987,7 @@ the current cursor position."
 	  (right-len (display-length (subseq buf point))))
       ;; If the rest of the buffer extends past the edge of the window.
       (when (>= (+ col right-len) width)
-	 ;; Cheaty way out: redraw whole thing after point
+	;; Cheaty way out: redraw whole thing after point
 	(without-messing-up-cursor (e)
 	  (let* ((new-col (- width (screen-col e) delete-length))
 		 (from (+ point new-col))) ; wrong XXX
@@ -1643,7 +1646,9 @@ provided, it defaults to the end of the string."
 		    ((and (eql c #\#) (and (< i (1- pos))
 					   (eql #\| (aref str (1+ i)))))
 		     (incf level)))
-		(incf i)))))
+		(incf i)))
+	    ;; vectors, treated just like a list
+	    (#\( (push i starts))))
 	 ;; single line comment
 	 ((eql c #\;)
 	  (loop :while (and (< i pos)
@@ -1892,11 +1897,11 @@ enter it."
     (,(ctrl #\Q)		. quoted-insert)
 
     ;; key binding
-;    (,(meta-char #\=)	. describe-key-briefly)
-;    (,(meta-char #\+)	. set-key-command)
+    (,(meta-char #\=)		. describe-key-briefly)
+    (,(meta-char #\+)		. set-key-command)
 
     ;; Other keymaps
-    (#\escape		. *escape-keymap*)
+    (#\escape			. *escape-keymap*)
     (,(ctrl #\X)		. *ctlx-keymap*)
     )
   :default-binding 'self-insert

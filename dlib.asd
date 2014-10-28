@@ -11,7 +11,7 @@
     :name               "dlib"
     :description        "Dan's lisp library."
     :version            "0.1.0"
-    :author             "Nibby Nebbulous <nibbula@yahoo.com>"
+    :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :licence            "None"
     :long-description   "A new pile of old tires."
     :components
