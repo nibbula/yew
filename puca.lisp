@@ -9,7 +9,6 @@
 ;;  - convert to using FUI.
 ;;  - convert to using keymaps
 ;;  - improve git mode
-;;    - key binding for push!
 ;;    - show things to pull? (ie changes on remote)
 ;;    - binding for reset
 ;;  - Consider making a branch editing mode
@@ -396,7 +395,8 @@
 		  "c - Commit selected"
 		  "u - Update selected"
 		  "U - Update all"
-		  "n,p,^N,^P,up,down - Move around"
+		  "P - Push"
+		  "^N,^P,up,down - Move around"
 		  "< - Top"
 		  "> - Bottom"
 		  "Space,x,Return - Select"
@@ -464,7 +464,7 @@
 	    (#\u (do-command pu t t (backend-update *backend*)
 			     (selected-files pu)))
 	    (#\U (do-command pu t t (backend-update-all *backend*)))
-	    (#\p (do-command pu nil t (backend-push *backend*)))
+	    (#\P (do-command pu nil t (backend-push *backend*)))
 	    (#\v
 	     (pager:pager (selected-files pu))
 	     (draw-screen pu))
