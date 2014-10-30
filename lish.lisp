@@ -2,7 +2,7 @@
 ;; lish.lisp - Unix Shell & Lisp somehow smushed together
 ;;
 
-;; $Revision: 1.13 $
+;; $Revision: 1.14 $
 
 ;; Todo:
 ;;  - argument parsing for commands
@@ -67,8 +67,18 @@
    #:lish-sub-prompt
    #:lish-prompt-char
    #:lish-prompt-function
-   #:lish-commands
    #:lish-aliases
+   ;; arguments
+   #:argument
+   #:arg-name #:arg-type #:arg-value #:arg-default #:arg-repeating
+   #:arg-optional #:arg-hidden #:arg-prompt #:arg-help #:arg-short-arg
+   #:arg-long-arg
+   ;; argument types
+   #:arg-boolean #:arg-number #:arg-integer #:arg-float #:arg-string
+   #:arg-keyword #:arg-date #:arg-pathname
+   #:arg-choice #:arg-choices #:arg-choice-labels
+   ;; argument generics
+   #:convert-arg
    ;; commands
    #:defcommand
    #:!cd #:!pwd #:!pushd #:!popd #:!dirs #:!suspend #:!history #:!echo
@@ -91,7 +101,7 @@
 (defparameter *major-version* 0
   "Major version number. Releases with the same major version number should be
 compatible in the default configuration.")
-(defparameter *revision* "$Revision: 1.13 $"
+(defparameter *revision* "$Revision: 1.14 $"
   "Minor version number. This should change at least for every release,
 probably for every commit to the master.")
 (defparameter *version*
@@ -135,9 +145,6 @@ probably for every commit to the master.")
     :initarg :prompt-function
     :accessor lish-prompt-function
     :documentation "Function returning the prompt string.")
-   (commands
-    :accessor lish-commands
-    :documentation "Hash table of built-in commands.")
    (aliases
     :accessor lish-aliases
     :documentation "Hash table of aliases.")
@@ -273,10 +280,11 @@ probably for every commit to the master.")
   (declare (ignore arg))
   value)
 
-;; (defclass arg-keyword (argument) () (:documentation "A Lisp keyword."))
-;; (defmethod convert-arg ((arg arg-keyword) (value string))
-;;   (if (char/= (char arg 0) #\:)
-;;   value)
+(defclass arg-keyword (argument) () (:documentation "A Lisp keyword."))
+(defmethod convert-arg ((arg arg-keyword) (value string))
+   (if (char/= (char arg 0) #\:)
+       (intern (string-upcase (subseq value 1)) (find-package :keyword))
+       value))
 
 (defclass arg-date (argument) () (:documentation "A date."))
 (defmethod convert-arg ((arg arg-date) (value string))
@@ -368,24 +376,36 @@ probably for every commit to the master.")
 (defparameter *initial-commands* nil
   "List of initial commands.")
 
-(defun init-commands (sh)
-  (loop :for (k v) :in *initial-commands*
-     :do (set-command sh k v)))
-
-(defmethod initialize-instance :after ((sh shell) &rest initargs)
-  (declare (ignore initargs))
-  (setf (slot-value sh 'commands) (make-hash-table :test #'equal))
-  (setf (slot-value sh 'aliases) (make-hash-table :test #'equal))
-  (init-commands sh))
-
 (defparameter *command-list* nil
   "List of command names")
 
-(defun set-command (sh name obj)
-  (setf (gethash name (lish-commands sh)) obj))
+(defvar *lish-commands* nil
+  "Hash table of commands. This means that commands are shared by all shell
+instances.")
 
-(defun get-command (sh name)
-  (gethash name (lish-commands sh)))
+(defun lish-commands ()
+  (when (not *lish-commands*)
+    (setf *lish-commands* (make-hash-table :test #'equal)))
+  *lish-commands*)
+
+(defun set-command (name obj)
+  (setf (gethash name (lish-commands)) obj))
+
+(defun get-command (name)
+  (gethash name (lish-commands)))
+
+(defun init-commands ()
+  "Set up the *LISH-COMMANDS* hash table, and load it with the commands from
+*INITIAL-COMMANDS*, which is likely whatever commands were defined with
+DEFBUILTIN."
+  (loop :for (k v) :in *initial-commands*
+     :do (set-command k v)))
+
+(defmethod initialize-instance :after ((sh shell) &rest initargs)
+  (declare (ignore initargs))
+;  (setf (slot-value sh 'commands) (make-hash-table :test #'equal))
+  (setf (slot-value sh 'aliases) (make-hash-table :test #'equal))
+  (init-commands))
 
 (eval-when (:compile-toplevel :load-toplevel) ; needed by defcommand macro
   (defun command-function-name (n)
@@ -398,43 +418,44 @@ probably for every commit to the master.")
 ;; considered "built-in" and listed in help.
 
 (defmacro defbuiltin (name (&rest params) arglist &body body)
-  "This is like defcommand, but for things that are considered built in to the shell."
+  "This is like defcommand, but for things that are considered built in to the
+shell."
   (let ((func-name (command-function-name name))
-	(name (intern (string name)))
+	(command-name (intern (string name) :lish))
 	(name-string (string-downcase name))
 ;	(name-string (concatenate 'string "\"" (string-downcase name) "\""))
 	)
-   `(progn
-     (defun ,func-name ,params
-       ,@body)
-     (export (quote ,func-name))
-     (push (quote ,name) *command-list*)
-     (push (list ,name-string (make-instance
-			       'command :name ,name-string
-			       :arglist (make-argument-list ,arglist)
-			       :built-in-p t))
-      *initial-commands*))))
+    `(progn
+       (defun ,func-name ,params
+	 ,@body)
+;       (export (quote ,func-name))
+       (push (quote ,command-name) *command-list*)
+       (push (list ,name-string (make-instance
+				 'command :name ,name-string
+				 :arglist (make-argument-list ,arglist)
+				 :built-in-p t))
+	     *initial-commands*))))
 
-;; @@@ perhaps this shouldn't push to *initial-commands* ?
+;; This is differs from DEFBUILTIN in that:
+;;   - It doesn't push to *initial-commands*
+;;   - It doesn't set BUILT-IN-P
+;;   - It doesn't automatically export
 (defmacro defcommand (name (&rest params) arglist &body body)
-  "Define a command for the shell. NAME is the name it is invoked by. ARGLIST is a shell argument list. The body is the body of the function it calls."
+  "Define a command for the shell. NAME is the name it is invoked by. ARGLIST
+is a shell argument list. The BODY is the body of the function it calls."
   (let ((func-name (command-function-name name))
-	(name (intern (string name)))
-	(name-string (string-downcase name))
-;	(name-string (concatenate 'string "\"" (string-downcase name) "\""))
-	)
-   `(progn
-     (defun ,func-name ,params
-       ,@body)
-;;; Don't export stuff because it causes package variance on reloading.
-;;; @@@ Perhaps we should define commands in lish-user instead, so they
-;;; can be exported and used by other packages.
-;     (export (quote ,func-name))
-     (push (quote ,name) *command-list*)
-     (push (list ,name-string (make-instance
-			       'command :name ,name-string
-			       :arglist (make-argument-list ,arglist)))
-      *initial-commands*))))
+	(command-name (intern (string name)))
+	(name-string (string-downcase name)))
+    `(progn
+       (defun ,func-name ,params
+	 ,@body)
+       ;; Don't export stuff because it causes package variance on reloading.
+       ;; @@@ Perhaps we should define commands in the LISH-USER package
+       ;; instead, so they can be exported and used by other packages?
+       (push (quote ,command-name) *command-list*)
+       (set-command ,name-string
+		    (make-instance 'command :name ,name-string
+				   :arglist (make-argument-list ,arglist))))))
 
 (defclass command ()
   ((name :accessor command-name :initarg :name
@@ -745,14 +766,14 @@ rf1 rf2		(&key rf1 rf2)			[-rf1 foo...] [-rf2 bar...]
 
 (defun o-vivi (str &rest args)
   (format t "~w ~{~w ~}~%~w~%~%" str args
-	  (posix-to-lisp-args (get-command *shell* str) args)))
+	  (posix-to-lisp-args (get-command str) args)))
 
 (defun vivi (str p-args l-args)
-  (let ((aa (posix-to-lisp-args (get-command *shell* str) p-args)))
+  (let ((aa (posix-to-lisp-args (get-command str) p-args)))
     (format t "~w ~{~w ~}~%~w~%~%" str p-args aa)
     (assert (equalp aa l-args))))
 
-(defcommand tata (one two)
+(defcommand tata (one two) ;; @@@ just for testing
   '((:name "one" :type boolean :short-arg #\1)
     (:name "two" :type string :short-arg #\2))
   "Test argument conversion."
@@ -784,7 +805,7 @@ rf1 rf2		(&key rf1 rf2)			[-rf1 foo...] [-rf2 bar...]
   (vivi "debug" '("pecan") '())
 )
 
-;(with-dbug (lish::posix-to-lisp-args (lish::get-command *shell* "bind") '("-r" "foo")))
+;(with-dbug (lish::posix-to-lisp-args (lish::get-command "bind") '("-r" "foo")))
 
 (defun posix-synopsis (command)
   "Return a string with the POSIX style argument synopsis."
@@ -917,7 +938,7 @@ rf1 rf2		(&key rf1 rf2)			[-rf1 foo...] [-rf2 bar...]
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Command definitions
 
-(defparameter *old-pwd* nil
+(defparameter *old-pwd* nil		; @@@ should be per shell
   "The last wording directory.")
 
 (defbuiltin cd (&optional dir)
@@ -932,7 +953,7 @@ Change the current directory to DIRECTORY."
 Print the current working directory."
   (format t "~a~%" (nos:current-directory)))
 
-(defvar *dir-list* nil
+(defvar *dir-list* nil			; @@@ should be per shell
   "Directory list for pushd and popd.")
 
 (defbuiltin pushd (&optional dir)
@@ -1046,17 +1067,17 @@ Subjects:
 ;		 #\escape #\escape #\escape #\escape)
 	 (let ((commands
 		(sort
-		 (loop :for k :being :the :hash-keys :of (lish-commands *shell*)
+		 (loop :for k :being :the :hash-keys :of (lish-commands)
 		    :collect k)
 		 #'string-lessp)))
 	   (format t "Built-in commands:~%")
 	   (loop :for k :in commands :do
-	      (let ((b (get-command *shell* k)))
+	      (let ((b (get-command k)))
 		  (when (and b (command-built-in-p b))
 		    (format t "  ~a~%" (posix-synopsis b)))))
 	   (format t "Added commands:~%")
 	   (loop :for k :in commands :do
-	      (let ((b (get-command *shell* k)))
+	      (let ((b (get-command k)))
 		  (when (and b (not (command-built-in-p b)))
 		    (format t "  ~a~%" (posix-synopsis b)))))))
 	((or (equalp subject "editor"))
@@ -1076,7 +1097,7 @@ Some notable keys are:
 	 (format t "Here are the keys active in the editor:~%")
 	 (!bind :print-bindings t))
 	(t ;; Try a specific command
-	 (let* ((b    (get-command *shell* subject))
+	 (let* ((b    (get-command subject))
 		(symb (intern (string-upcase subject) :lish))
 		(doc  (when b (documentation b 'function)))
 		(fdoc (when (fboundp symb)
@@ -1353,7 +1374,7 @@ Show accumulated times for the shell."
     (if (fboundp func-symbol)
 	(progn
 	  (push cmd-symbol *command-list*)
-	  (set-command *shell* cmd-name
+	  (set-command cmd-name
 		       (make-instance 'command
 				      :name cmd-name
 				      :function func-symbol
@@ -1497,7 +1518,7 @@ So far we support:
 	       (#\w (write-string (twiddlify (nos:current-directory)) str))
 	       (#\W (write-string
 		     (twiddlify (basename (nos:current-directory))) str))
-	       (#\$ (write-char (if (= (nos:geteuid) 0) #\# #\$)))
+	       (#\$ (write-char (if (= (nos:geteuid) 0) #\# #\$) str))
 ;	       (#\d (write-string (format
 	       )))
 	 (write-char c str)))))
@@ -1689,7 +1710,8 @@ The syntax is vaguely like:
 		  (push i word-end)
 		  (push nil word-quoted)
 		  (push obj args))
-	      (end-of-file () (do-continue))
+	      (error () (do-continue))
+;	      (end-of-file () (do-continue))
 	      (condition (c) (signal c))))
 	   ;; quote char
 	   ((eql c #\\)
@@ -1831,9 +1853,9 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
 (defun command-type (sh command)
   "Return a string representing the command type of command."
   (cond
-    ((gethash command (lish-commands sh)) "command")
-    ((gethash command (lish-aliases sh))  "alias")
-    ((get-command-path command) "file")
+    ((gethash command (lish-commands))   "command")
+    ((gethash command (lish-aliases sh)) "alias")
+    ((get-command-path command)          "file")
     (t "")))
 
 (defun describe-command (cmd)
@@ -1842,7 +1864,7 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
       ((setf x (gethash cmd (lish-aliases *shell*)))
        (when x
 	 (format t "~a is aliased to ~a~%" cmd x)))
-      ((setf x (gethash cmd (lish-commands *shell*)))
+      ((setf x (gethash cmd (lish-commands)))
        (when x
 	 (format t "~a is the command ~a~%" cmd x)))
       ((setf x (get-command-path cmd))
@@ -1871,7 +1893,7 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
 	  (let ((x (gethash n (lish-aliases *shell*))))
 	    (when x
 	      (format t "~a is aliased to ~a~%" n x)))
-	  (let ((x (gethash n (lish-commands *shell*))))
+	  (let ((x (gethash n (lish-commands))))
 	    (when x
 	      (format t "~a is the command ~a~%" n x)))
 	  (let ((paths (command-paths n)))
@@ -1960,14 +1982,14 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
   (ignore-errors (asdf:find-component nil command)))
 ;  (asdf:find-component nil command))
 
-(defun load-lisp-command (sh command)
+(defun load-lisp-command (command)
   "Load a command in the lisp path."
   (let* ((pkg (intern (string-upcase command) :keyword)))
     (if (ignore-errors (asdf:oos 'asdf:load-op pkg :verbose nil))
 	;; succeeded
 	(progn 
-	  (init-commands sh)
-	  (get-command sh command))
+	  ;; (init-commands sh)
+	  (get-command command))
 	;; failed
 	nil)))
 
@@ -2082,7 +2104,7 @@ them as a list."
   "Evaluate an expression that is a command."
   (let* ((cmd (elt (shell-expr-words expr) 0))
 	 #| (args (subseq (shell-expr-words expr) 1)) |#
-	 (command (gethash cmd (lish-commands sh)))
+	 (command (gethash cmd (lish-commands)))
 	 (alias (gethash cmd (lish-aliases sh)))
 	 (expanded-words (lisp-exp-eval (shell-expr-words expr)))
 	 result result-stream)
@@ -2097,7 +2119,7 @@ them as a list."
        (expand-alias sh alias expanded-words in-pipe out-pipe))
       ;; Autoload
       ((and (in-lisp-path cmd)	
-	    (setf command (load-lisp-command sh cmd)))
+	    (setf command (load-lisp-command cmd)))
        ;; now try it as a command
        (do-command command (subseq expanded-words 1) in-pipe out-pipe))
       ;; Lish command
@@ -2170,10 +2192,10 @@ or NIL, and a boolean which is T to show the values."
 
 (defun load-rc-file (sh)
   "Load the users start up (a.k.a. run commands) file."
-  (without-warning
+;  (without-warning
     (load-file sh (merge-pathnames
 		   (user-homedir-pathname)
-		   (make-pathname :name ".lishrc")))))
+		   (make-pathname :name ".lishrc"))))
 
 (defun load-file (sh file)
   (if (probe-file file)
@@ -2183,15 +2205,15 @@ or NIL, and a boolean which is T to show the values."
 	     :while (and (setf line (read-line streamy nil))
 			 newy-line)
 	     :do
-;	     (format t "  rc> ~a~%" line)
+;	     (format t "  rc> ~s~%" line)
 	     (loop :while (and (eql (setf expr (shell-read line))
 				    *continue-symbol*)
 			       (setf newy-line (read-line streamy nil)))
 		:do
 		(setf line (format nil "~a~%~a" line newy-line))
-;		(format t "cont> ~a~%" line) (force-output)
+;		(format t "cont> ~s~%" line) (force-output)
 		)
-;	     (format t "expr> ~a~%" expr)
+;	     (format t "expr> ~s~%" expr)
 	     (shell-eval sh expr))))))
 
 ;(defvar *shell-non-word-chars* " ")
@@ -2239,7 +2261,7 @@ commands are added.")
 	     (append
 	      (loop :for k :being :the :hash-keys :of (lish-aliases shell)
 		 :collect k)
-	      (loop :for k :being :the :hash-keys :of (lish-commands shell)
+	      (loop :for k :being :the :hash-keys :of (lish-commands)
 		 :collect k)
 	      (loop :for dir :in (split-sequence #\: (nos:getenv "PATH"))
 		 :if (probe-directory dir)

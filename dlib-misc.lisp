@@ -2,7 +2,7 @@
 ;; dlib-misc.lisp - Dan's library of miscellaneous useful functions.
 ;;
 
-;; $Revision: 1.15 $
+;; $Revision: 1.16 $
 
 ;; See dlib.lisp for the most essential stuff.
 ;; This is for things that are nice, but not essential.

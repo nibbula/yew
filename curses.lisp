@@ -1,22 +1,15 @@
 ;;
-;; curses.lisp
+;; curses.lisp - Interface to the curses library
 ;;
 
-;; $Revision: 1.13 $
+;; $Revision: 1.14 $
 
-;; A dreadful half-assed version. Many many missing functions.
-;; This pretty much requires ncurses.
+;; TODO:
+;;   - fix bugs?
+;;     - line drawing chars on 64 bit?
+;;   - Add all the missing functions!
+;;   - More tests, with better coverage
 
-;; If :curses-use-wide is in *features*, then use the wide character version
-;; of the library. If :curses-use-ncurses is in *features* then use ncurses
-;; explicitly, instead of whatever plain curses is.
-;;
-;; The user should put :curses-use-wide and/or :curses-use-ncurses in *features*
-;; before loading this library, and also load CFFI and set
-;; cffi:*foreign-library-directories* if needed before loading this library.
-
-;; CL-NCURSES compatibility, turned on by setting :cl-ncurses in features:
-;; Make sure we don't clash with the actual CL-NCURSES.
 #+cl-ncurses
 (eval-when (:load-toplevel :execute)
   (when (and (find-package :cl-ncurses)
@@ -27,7 +20,24 @@ and also have the original CL-NCURSES loaded. Either remove :cl-ncurses
 from *features* or delete the CL-NCURSES package.")))
 
 (defpackage :curses
-  (:documentation "Interface to the curses terminal screen management library.")
+  (:documentation
+"Interface to the curses terminal screen management library.
+
+This pretty much requires ncurses. I haven't tested it with non-ncurses
+
+HOW TO USE:
+
+If :curses-use-wide is in *features*, then use the wide character version
+of the library. If :curses-use-ncurses is in *features* then use ncurses
+explicitly, instead of whatever plain curses is.
+
+The user should put :curses-use-wide and/or :curses-use-ncurses in *features*
+before loading this library, and also load CFFI and set
+cffi:*foreign-library-directories* if needed before loading this library.
+
+CL-NCURSES compatibility, turned on by setting :cl-ncurses in features:
+Make sure we don't clash with the actual CL-NCURSES.
+")
   (:use :cl :cffi)
 ;  #+sbcl (:shadowing-import-from :sb-ext "TIMEOUT")
   #+sbcl (:shadow "TIMEOUT")
@@ -227,7 +237,8 @@ from *features* or delete the CL-NCURSES package.")))
 |#
 
 ;; Simple curses types:
-(defctype chtype     :unsigned-long)
+;(defctype chtype     :unsigned-long)
+(defctype chtype     :unsigned-int)
 ;(defctype bool       :unsigned-int)
 (defctype bool       :unsigned-char)
 (defctype wchar-t    :int)
@@ -747,6 +758,7 @@ from *features* or delete the CL-NCURSES package.")))
     (nonl)
     (typeahead -1)
     (clear)
+
     (let ((NCOLORS 8)
 	  (has-color (= (has-colors) 1)))
 
@@ -779,7 +791,6 @@ from *features* or delete the CL-NCURSES package.")))
 
       (addch (char-code #\newline))
       (refresh)
-      (getch)
 
       ;; Show the color pairs with bold on
       (addstr (format nil "Bold color pairs~%"))
@@ -792,7 +803,6 @@ from *features* or delete the CL-NCURSES package.")))
 	    (attroff (COLOR-PAIR i)))
       (attroff +a-bold+)
       (refresh)
-      (getch)
 
       ;; Show the color pairs with bold and reverse on
       (let ((y 3))
@@ -808,6 +818,55 @@ from *features* or delete the CL-NCURSES package.")))
 	      (attroff (COLOR-PAIR i))))
       (attroff +a-bold+)
       (attroff +a-reverse+)
+      (refresh)
+      (getch)
+
+      ;; Alternate character set
+      (clear)
+      (let ((alt-chars
+	     `((ulcorner      . ,(acs-ulcorner))
+	       (llcorner      . ,(acs-llcorner))
+	       (urcorner      . ,(acs-urcorner))
+	       (lrcorner      . ,(acs-lrcorner))
+	       (ltee	      . ,(acs-ltee))
+	       (rtee	      . ,(acs-rtee))
+	       (btee	      . ,(acs-btee))
+	       (ttee	      . ,(acs-ttee))
+	       (hline	      . ,(acs-hline))
+	       (vline	      . ,(acs-vline))
+	       (plus	      . ,(acs-plus))
+	       (s1	      . ,(acs-s1))
+	       (s9	      . ,(acs-s9))
+	       (diamond	      . ,(acs-diamond))
+	       (ckboard	      . ,(acs-ckboard))
+	       (degree	      . ,(acs-degree))
+	       (plminus	      . ,(acs-plminus))
+	       (bullet	      . ,(acs-bullet))
+	       (larrow	      . ,(acs-larrow))
+	       (rarrow	      . ,(acs-rarrow))
+	       (darrow	      . ,(acs-darrow))
+	       (uarrow	      . ,(acs-uarrow))
+	       (board	      . ,(acs-board))
+	       (lantern	      . ,(acs-lantern))
+	       (block	      . ,(acs-block))
+	       (s3	      . ,(acs-s3))
+	       (s7	      . ,(acs-s7))
+	       (lequal	      . ,(acs-lequal))
+	       (gequal	      . ,(acs-gequal))
+	       (pi	      . ,(acs-pi))
+	       (nequal	      . ,(acs-nequal))
+	       (sterling      . ,(acs-sterling)))))
+	(loop :with y = 0 :and x = 0
+	   :for (name . c) :in alt-chars :do
+	   (mvaddstr y x (string-downcase (princ-to-string name)))
+	   (attron +a-altcharset+)
+	   (mvaddch y (+ x 11) c)
+	   (attroff +a-altcharset+)
+	   (incf y)
+	   (when (>= y (1- *LINES*))
+	     (setf y 0)
+	     (incf x 20))))
+      (attroff +a-altcharset+)
       (refresh)
       (getch)
 
@@ -837,8 +896,9 @@ from *features* or delete the CL-NCURSES package.")))
 	      (wborder w 0 0 0 0 0 0 0 0)
 	      (wrefresh w)
 	      (refresh)
-	      (when (= (getch) (char-code #\q))
-		(return))
+;	      (when (= (getch) (char-code #\q))
+;		(return))
+	      (sleep .1)
 	      (delwin w)))
       (refresh)
 
@@ -866,6 +926,7 @@ from *features* or delete the CL-NCURSES package.")))
 	      (if has-color
 		  (attroff (COLOR-PAIR color)))))
       (move (- *LINES* 1) 0)
+      (getch)
 
       (reset-shell-mode)
       (endwin)

@@ -127,6 +127,51 @@
 	(progn
 	  (setf more (subseq more pos))
 	  (values val nil))))))
+#|
+(defun make-interceptor (commands)
+  (lambda (value state)
+    (flet ((matches (s string)
+	     (and (symbolp s)
+		  (equal 0 (search (symbol-name s) string :test #'equalp)))))
+      (if (and (symbolp value) (fboundp value))
+	  ;; Parenless function call!
+	  (let ((args (loop :with a :and eof
+			 :do
+			 (setf (values a eof) (read-arg state))
+			 :while (not eof)
+			 :collect a)))
+	    #| (format t "(eval ~s)~%" `(,value ,@args)) |#
+	    (format t "~&~s~%" (eval `(,value ,@args))) (finish-output)
+	    t)
+	  (loop :for c :in commands
+	     :do
+	     (when (matches value "Help")
+     (format t "~
+Hi. ~@?
+If you're weren't expecting a Lisp REPL, just type \"quit\" now. Otherwise,
+you might be interested to know that you are using Dan's TINY-REPL. If you want
+to get back to the normal REPL you can probably type \".\" (a period by
+itself). You can use some Emacs-like commands to edit the command line.
+
+Some notable keys are:
+ <Tab>        Complete lisp symbol.
+ ?            List lisp symbol completions.
+ <Control-D>  Quit, when on an empty line, or delete the following character.
+ <Control-P>  Previous history line.
+ <Control-N>  Next history line.
+ <Control-Q>  Quote next character, like if you want to really type a \"?\".
+ ~@?
+"
+#+clisp "You are probably using CLisp and typed :h expecting some help."
+#-clisp "You probably typed :h by accident, or may even be expecting some help."
+		(if (find-package :lish) "~
+ <F9>         Switch back and forth to LISH, which is a lispy/posixy shell."
+		    ""))
+     t)
+    ((matches value "History")
+     (tiny-rl:show-history (tiny-rl::context (repl-state-editor state)))
+     t))))
+|#
 
 (defun snarky-interceptor (value state)
   (flet ((matches (s string)

@@ -2,7 +2,7 @@
 ;; table.lisp - Generic table data types
 ;;
 
-;; $Revision: 1.2 $
+;; $Revision: 1.3 $
 
 (defpackage :table
   (:documentation "Generic table data types")
@@ -116,7 +116,8 @@
 ;; This is quite inefficient since it gets the whole data set in
 ;; one shot and then goes thru every datum twice. But it's nice for
 ;; small queries since it displays in a somewhat compact form.
-(defun nice-print-table (rows column-names &key (long-titles t))
+(defun nice-print-table (rows column-names &key (long-titles t)
+					     (stream *standard-output*))
   "Print results nicely in horizontal table. ROWS is a list of row, which are lists of values. COLUMN-NAMES is a list of column names to printed on top. Each column-name can be a string or a list of (\"name\" :<justification>), where <justification> is one of the keywords :LEFT or :RIGHT. If LONG-TITLES is true, make the columns at least as wide as the column names."
   (let ((sizes				; Initial column sizes from labels
 	 (loop :for f :in column-names
@@ -146,16 +147,16 @@
 		 fmt (if (eql just :right) "~v@a " "~va "))
 	   (setf str col
 		 fmt "~va "))
-       (format t fmt size
+       (format stream fmt size
 	       (subseq (string-capitalize (substitute #\space #\_ str))
 		       0 (min (length str) size))))
-    (terpri)
+    (terpri stream)
     ;; Lines
     (loop :for				;f in field-names and
        (size) :in sizes
        :do
-       (format t "~v,,,va " size #\- #\-))
-    (terpri)
+       (format stream "~v,,,va " size #\- #\-))
+    (terpri stream)
     ;; Values
     (loop :with fmt
        :for r :in rows :do
@@ -165,8 +166,8 @@
 		(cond ((eql just :right) "~v@a ")
 		      ((typep f 'number) "~v@a ")
 		      (t "~va ")))
-	  (format t fmt size f))
-       (terpri)))
+	  (format stream fmt size f))
+       (terpri stream)))
     (length rows))
 
 ;; EOF

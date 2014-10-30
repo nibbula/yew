@@ -2,7 +2,7 @@
 ;; .lishrc - Lisp shell initialization
 ;;
 
-;; $Revision: 1.10 $
+;; $Revision: 1.11 $
 
 ;; Aliases
 
@@ -112,14 +112,24 @@ alias xvv "xv -vsgeometry 610x796+660+12 -geometry +0+10"
 
 ;; Actually useful commands
 
-;: (defclass arg-asdf-system 
+(defclass arg-system-designator (arg-keyword)
+  ()
+  (:documentation
+   "A system designator, either a keyword or an ASDF/SYSTEM:SYSTEM"))
 
-: (defcommand l (system)
-   '((:name "system" :type asdf-system :optional nil))
-   "Load a system."
-   (asdf:oos 'asdf:load-op system))
+(defmethod convert-arg ((arg arg-system-designator) value)
+  (if (stringp value)
+      (intern (string-upcase (subseq value 1)) (find-package :keyword))
+      value))
 
-: (defun title (&optional string)
+(defcommand l (system)
+  '((:name "system" :type system-designator :optional nil))
+  "Load a system."
+  ;; @@@ it's a string not a keyword since we haven't implemented the 
+  ;; asdf-system argument type.
+  (asdf:oos 'asdf:load-op system))
+
+(defun title (&optional string)
   "Set the title of a terminal window. The terminal is assumed to work like XTerm or something."
   (format t "~c]0;~a~c" #\escape
 	  (or string (progn (princ "Title? ") (finish-output) (read-line)))
@@ -144,6 +154,7 @@ alias xvv "xv -vsgeometry 610x796+660+12 -geometry +0+10"
   '((:name "entry" :type string)
 ;    (:name "apropos" :type string :short-arg #\k)
     )
-  (pager:pager (!! "/usr/bin/man -P cat " entry)))
+;  (pager:pager (!! "/usr/bin/man -P cat " entry)))
+  (pager (!! "/usr/bin/man -P cat " entry)))
 
 ;; EOF

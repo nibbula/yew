@@ -2,7 +2,7 @@
 ;; dlib.lisp - Dan's redundant miscellany.
 ;;
 
-;; $Revision: 1.35 $
+;; $Revision: 1.36 $
 
 ;; These are mostly solving problems that have already been solved.
 ;; But it's mostly stuff that I need just to start up.
@@ -276,7 +276,7 @@
 (defun s+ (s &rest rest)
   "Abbreviation for (concatenate 'string ...), but converting non-string
 arguments into strings as with PRINC."
-  (labels ((as-string (s) (if (stringp s) s (format nil "~a" s))))
+  (labels ((as-string (s) (if (stringp s) s (princ-to-string s))))
     (apply #'concatenate 'string (as-string s) (mapcar #'as-string rest))))
 
 (defparameter *ascii-whitespace* #(#\space #\tab #\newline #\return #\vt)
@@ -627,11 +627,17 @@ equal under TEST to result of evaluating INITIAL-VALUE."
 ;; This is just to pretend that we're trendy and modern.
 (setf (macro-function 'λ) (macro-function 'cl:lambda))
 
-;; I really don't understand why SBCL doesn't do this. I can only guess that
-;; everyone is to scared to have some weird effect on the compiler.
+;; I really don't understand why introspetion isn't better.
 (defun lambda-list (fun)
   #+sbcl (sb-kernel:%fun-lambda-list fun)
   #-sbcl (function-lambda-list fun))
+
+(defun slot-documentation (slot-def)
+  "Return the documentation string for a slot as returned by something like
+MOP:CLASS-SLOTS."
+  (declare (ignorable slot-def))
+  #+sbcl (sb-pcl::%slot-definition-documentation slot-def)
+  #-sbcl (missing-implementation 'slot-documentation))
 
 (defmacro with-unique-names (names &body body)
   "Bind each symbol in NAMES to a unique symbol and evaluate the BODY.

@@ -2,7 +2,7 @@
 ;; tiny-debug.lisp - Multi platform minimal command line debugger
 ;;
 
-;; $Revision: 1.3 $
+;; $Revision: 1.4 $
 
 ;;; - debugger improvements.
 ;;;   - we should probably investigate the feasibility of having the system
@@ -276,6 +276,8 @@ number  Invoke that number restart (from the :r list).
   (when (find-package :curses)
     (funcall (find-symbol (symbol-name '#:endwin) (find-package :curses)))))
 
+;; @@@ It might be nice if we could avoid this duplication and just call the
+;; one in ansiterm.
 (defun try-to-reset-terminal ()
   "Try to reset the terminal to a sane state so when we get in error in some program that messes with the terminal, we can still type at the debugger."
   (flet ((out (s) (format *terminal-io* "~c~a" #\escape s)))

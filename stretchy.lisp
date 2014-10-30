@@ -2,7 +2,7 @@
 ;; stretchy.lisp - Adjustable arrays and strings
 ;;
 
-;; $Revision: 1.3 $
+;; $Revision: 1.4 $
 
 (defpackage :stretchy
   (:documentation "Functions for manipulating stretchy arrays and strings.")

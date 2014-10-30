@@ -2,7 +2,7 @@
 ;; pager.lisp - Something like more or less
 ;;
 
-;; $Revision: 1.9 $
+;; $Revision: 1.10 $
 
 ;; TODO:
 ;;  - syntax highlighting

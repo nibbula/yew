@@ -15,7 +15,7 @@
 ;;  - Consider configuration / options editing
 ;;     like for "git config ..." or whatever the equivalent is in other systems
 
-;; $Revision: 1.18 $
+;; $Revision: 1.19 $
 
 (defpackage :puca
   (:documentation "Putative Muca")
@@ -506,7 +506,7 @@
 	     (when (> top 0)
 	       (setf top 0)
 	       (draw-screen pu)))
-	    ((#\space #\x #\return)
+	    ((#\space #\x #\return #\nul)
 	     (when goo
 	       (setf (goo-selected (elt goo cur))
 		     (not (goo-selected (elt goo cur))))

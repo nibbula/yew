@@ -2,7 +2,7 @@
 ;; ansiterm.lisp - Deal with ANSI-like terminals
 ;;
 
-;; $Revision: 1.4 $
+;; $Revision: 1.5 $
 
 (defpackage :ansiterm
   (:documentation "Deal with ANSI-like terminals")
@@ -49,6 +49,7 @@
    #:tt-beep
    #:tt-finish-output
    #:tt-get-char
+   #:tt-reset
    ))
 (in-package :ansiterm)
 
@@ -399,5 +400,31 @@ i.e. the terminal is \"line buffered\""))
 	 nil)
 	((= status 1)
 	 (code-char (mem-ref c :unsigned-char)))))))
+
+(defgeneric tt-reset (tty))
+(defmethod tt-reset ((tty terminal))
+  "Try to reset the terminal to a sane state, without being too disruptive."
+  (flet ((out (s) (tt-write-string tty (format nil "~c~a" #\escape s))))
+    ;; First reset the terminal driver to a sane state.
+    (termios:sane)
+    ;; Then try to reset the terminal itself to a sane state. We could just do
+    ;; ^[c, which is quite effective, but it's pretty drastic, and usually
+    ;; clears the screen and can even resize the window, which is so amazingly
+    ;; annoying. So let's just try do individual things that need resetting.
+    ;; This is pretty much the idea of termcap/info reset string, usually the
+    ;; "rs2", since "rs" usually just does ^[c.
+    (mapcar
+     #'out '(" F"    ;; 7 bit controls
+	     "[0m"   ;; color and attributes
+	     ">"     ;; normal keypad
+	     "#@"    ;; default char set
+	     "m"     ;; memory unlock
+	     "[4l"   ;; replace mode (vs insert mode)
+	     "[?4l"  ;; jump scroll (vs smooth scroll)
+	     "[?25h" ;; show the cursor
+	     "[?9l"  ;; Don't send position on mouse press
+	     "[?47l" ;; Use normal screen buffer
+	     ))
+    (tt-finish-output tty)))
 
 ;; EOF

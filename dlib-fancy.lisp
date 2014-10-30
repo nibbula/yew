@@ -4,7 +4,7 @@
 
 ;;; This is for things that have more dependencies or are otherwise quirky.
 
-;; $Revision: 1.3 $
+;; $Revision: 1.4 $
 
 (defpackage :dlib-fancy
   (:documentation "Dan's not so fancy junk.")
@@ -14,7 +14,6 @@
    #:check-def
    #:m
    #:mm
-   #:title
    ))
 (in-package :dlib-fancy)
 
