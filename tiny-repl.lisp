@@ -307,12 +307,13 @@ Some notable keys are:
 		   obj))))))
 	  (repl-read-continue () *continue-symbol*)
 ;	  (condition (c)
-	  (error (c)
-	    (setf got-error t)
-	    (if debug
-		(invoke-debugger c)
-		(format t "~&~a" c))
-	    *error-symbol*)
+	  ;; @@@ This hides where errors come from :(
+	  ;; (error (c)
+	  ;;   (setf got-error t)
+	  ;;   (if debug
+	  ;; 	(invoke-debugger c)
+	  ;; 	(format t "~&~a" c))
+	  ;;   *error-symbol*)
 	  )))
     :do
     (if (stringp pre-str)

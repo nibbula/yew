@@ -233,7 +233,11 @@ Second value is where the character set ended."
 ;; some circumstance where they help.
 
 (defun fnmatch (pattern string &key (pattern-start 0) (string-start 0))
-  "Return true if the STRING matches the PATTERN, with shell matching. '*' is any number of characters, '?' is one character, [] is some complictated range stuff that you can look up in unix or something. PATTERN-START and STRING-START are mostly used internally for recursion, but you can go ahead and use them if you want. They are indexes that default to 0."
+  "Return true if the STRING matches the PATTERN, with shell matching. '*' is
+any number of characters, '?' is one character, [] is some complictated range
+stuff that you can look up in unix or something. PATTERN-START and STRING-START
+are mostly used internally for recursion, but you can go ahead and use them if
+you want. They are indexes that default to 0."
   (let ((p pattern-start) (s string-start)
 	(plen (length pattern))
         (slen (length string)))
@@ -390,7 +394,10 @@ match & dir  - f(prefix: boo) readir boo
 ;; This is called recursively for each directory, depth first, for exapnding
 ;; GLOB patterns. Of course most of the work is done by FNMATCH.
 (defun dir-matches (path &optional dir)
-  "Takes a PATH, which is a list of strings which are path elements, usually with GLOB patterns, and a directory DIR, which is a string directory path, without patterns, and returns a list of string paths that match the PATH in the directory DIR and it's subdirectories. Returns NIL if nothing matches."
+  "Takes a PATH, which is a list of strings which are path elements, usually
+with GLOB patterns, and a directory DIR, which is a string directory path,
+without patterns, and returns a list of string paths that match the PATH in
+the directory DIR and it's subdirectories. Returns NIL if nothing matches."
   (flet ((squip-dir (d f)
 	   "Basiclly append the file in name in F to the directory D."
 	   (if d

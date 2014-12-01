@@ -2,7 +2,7 @@
 ;; tiny-debug.lisp - Multi platform minimal command line debugger
 ;;
 
-;; $Revision: 1.4 $
+;; $Revision: 1.5 $
 
 ;;; - debugger improvements.
 ;;;   - we should probably investigate the feasibility of having the system
@@ -106,7 +106,7 @@ number  Invoke that number restart (from the :r list).
     (ccl:map-call-frames
      #'(lambda (p c)
 	 (when (= f n)
-	   (setd frame-ptr p
+	   (setf frame-ptr p
 		 context c)
 	   (incf f)))
      :origin ccl:*top-error-frame*
@@ -325,16 +325,17 @@ number  Invoke that number restart (from the :r list).
 ;      (invoke-restart-interactively nil)
       ;; @@@ how do i invoke a restart to resolve conflicts?
       ;; or set variables?
-      (let ((*interceptor-condition* c)
-	    (*current-frame* 0)
-	    ;; Reset reader vars to sane values:
-	    ;; [probably uneeded since we use with-standard-io-syntax]
-	    (*read-suppress* nil)
-	    (*read-base* 10)
-	    (*read-eval* t)
-	    ;; printer vars
-	    (*print-readably* nil))
-	(with-standard-io-syntax
+      (with-standard-io-syntax
+	(let ((*interceptor-condition* c)
+	      (*current-frame* 0)
+	      ;; Reset reader vars to sane values:
+	      ;; [probably uneeded since we use with-standard-io-syntax]
+	      (*read-suppress* nil)
+	      (*read-base* 10)
+	      (*read-eval* t)
+	      ;; printer vars
+	      (*print-readably* nil)
+	      (*print-circle* t))
 	  (tiny-repl :interceptor #'debugger-interceptor
 		     :prompt-func #'debug-prompt
 		     :debug t

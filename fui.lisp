@@ -2,13 +2,14 @@
 ;; fui.lisp - Fake UI
 ;;
 
-;; $Revision: 1.6 $
+;; $Revision: 1.7 $
 
 (defpackage :fui
   (:documentation "Fake UI")
-  (:use :cl :curses :stretchy :dlib :dlib-misc :opsys :char-util)
+  (:use :cl :dlib :dlib-misc :stretchy :opsys :char-util :curses :inator)
   (:export
    #:with-curses
+   #:with-device
    #:init-colors
    #:color-index
    #:color-attr
@@ -28,6 +29,7 @@
    #:make-tree
    #:browse-tree
    #:browse-packages
+   #:browse-package-dependencies
    ))
 (in-package :fui)
 
@@ -40,10 +42,14 @@
 (defvar *interactive* t
   "True when we can expect user interaction.")
 
+(defvar *device* nil
+  "A device to do run a curses program on.")
+
 (defun start-curses ()
   (when (not *in-curses*)
     (setf *in-curses* t)
-    (initscr)
+    (when (not *device*)
+      (initscr))
     (noecho)
     (nonl)
     ; (raw)
@@ -65,6 +71,7 @@
     (endwin)
     (setf *in-curses* nil)))
 
+;; I wonder if there's a way not to double the code.
 (defmacro with-curses (&body body)
   "Do the stuff in the body with curses initialized. Clean up properly."
   (let ((thunk (gensym "thunk")))
@@ -77,6 +84,31 @@
 		    (,thunk))
 	       (end-curses)))
 	   (,thunk)))))
+
+;; This is quite useful for having interaction go somewhere else when
+;; debugging.
+(defmacro with-device ((device term-type) &body body)
+  "Do something with curses attached to DEVICE of of type TERM-TYPE."
+  (with-unique-names (screen fd-in fd-out)
+    `(let (,screen ,fd-in ,fd-out (*device* ,device))
+       (unwind-protect
+	  (progn
+	    (if (cffi:null-pointer-p (setf ,fd-in (nos:fopen ,device "r")))
+		(error "Can't open curses input device ~a" ,device))
+	    (if (cffi:null-pointer-p (setf ,fd-out (nos:fopen ,device "w")))
+		(error "Can't open curses output device ~a" ,device))
+	    (if (cffi:null-pointer-p (setf ,screen
+				      (newterm ,term-type ,fd-out ,fd-in)))
+		(error "Can't initialize curses terminal ~a" ,term-type))
+	    (set-term ,screen)
+	    (with-curses
+		,@body))
+	 (when ,screen
+	   (delscreen ,screen))
+	 (when ,fd-out
+	   (nos:fclose ,fd-out))
+	 (when ,fd-in
+	   (nos:fclose ,fd-in))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Colors
@@ -110,7 +142,8 @@
   (aref *color-table* fg bg))
 
 (defun color-attr (fg bg)
-  "Return the text attribute, e.g. for passing to setattr, for the foreground FG and background BG."
+  "Return the text attribute, e.g. for passing to setattr, for the
+foreground FG and background BG."
   (color-pair (aref *color-table* fg bg)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -145,55 +178,47 @@
     (read-line)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; FUI-inators
 
-#|
+(defclass fui-inator (inator)
+  ()
+  (:documentation "A curses-inator."))
 
-(defclass inator ()
-  ((keymap :initarg :keymap :accessor inator-keymap)
-   (view   :initarg :view   :accessor inator-view)
-   (object :initarg :object :accessor inator-object))
-;  (:default-initargs)
-  (:documentation "A generic contraption."))
+(defmethod initialize-instance
+    :after ((o fui-inator) &rest initargs &key &allow-other-keys)
+  "Initialize a fui-inator."
+  (declare (ignore initargs))
+  (start-curses))
 
-(defstruct bbox
-  "Bounding box of something."
-  x y z					; In parent relative coordinates
-  width height depth)
+(defmethod update ((i fui-inator))
+  "Update the view of I the FUI-INATOR."
+  (call-next-method)
+  (refresh))
 
-(defclass view ()
-  ((bbox  :initarg :bbox  :accessor view-bbox)
-   (point :initarg :point :accessor view-point)
-   (mark  :initarg :mark  :accessor view-mark)
-   )
+(defmethod stop-inator ((i fui-inator))
+  "Stop a FUI-INATOR."
+  (end-curses)
+  (call-next-method))
 
-(defclass window-view (view)
+(defmethod event-pending-p ((i fui-inator))
+  "Return true if there are any events pending for a FUI-INATOR."
+  (declare (ignore i))
+  nil)
+
+(defmethod has-event-p ((i fui-inator))
+  "Return true if there is an event ready for a FUI-INATOR."
+  (declare (ignore i))
   )
 
-(defclass curses-inator (inator)
-  )
+(defmethod get-event ((i fui-inator))
+  "Get an event from a FUI-INATOR."
+  (declare (ignore i))
+  ;; @@@ turn into an event
+  (get-char))
 
-(defmethod get-events ((thing curses-inator))
-  (with-curses
-      
-      ))
-
-(defvar *inators* nil
-  "List of inators")
-
-(defun main-loop ()
-  (loop :while (not *stop-flag*) :do
-     (let (event)
-       (loop :for i :in *inators* :do
-	  (update i)
-	  (when (event-pending-p i)
-	    (setf event (get-event i))
-	    (distribute i event))
-	  (await-event)
-	  (when (has-event-p i)
-	    (setf event (get-event i))
-	    (distribute i event))))))
-
-|#
+(defclass fui-view (view)
+  ()
+  (:documentation "A curses view of a -inator."))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -206,13 +231,20 @@
 
 (defun pick-list (the-list &key message by-index sort-p default-value
 		  selected-item typing-searches)
-  "Have the user pick a value from THE-LIST. Display the MESSAGE if it's given."
+  "Have the user pick a value from THE-LIST and return it. Arguments:
+  MESSAGE         - A string to be displayed before the list.
+  BY-INDEX        - If true, return the index number of the item picked.
+  SORT-P          - If true sort the list before displaying it.
+  DEFAULT-VALUE   - Return if no item is selected.
+  SELECTED-ITEM   - Item to have initially selected.
+  TYPING-SEARCHES - True to have alphanumeric input search for the item."
   (with-curses
     (clear)
     (let* ((c           0)
 	   (file-line   (or selected-item 0))
-	   (string-list (mapcar #'(lambda (x) (format nil "~a" x)) the-list))
-	   (files       (if sort-p
+	   (string-list (mapcar #'princ-to-string the-list))
+	   (files       (if (not (null sort-p))
+			    ;; Where's the unreachable code??
 			    (sort string-list #'string-lessp) string-list))
 	   (max-line    (length files))
 	   (max-y       (1- curses:*lines*))
@@ -446,7 +478,11 @@
 	  :quit))))
 
 (defmacro do-menu (menu &key message selected-item)
-  "Perform an action from a menu. Menu is an alist of (item . action)."
+  "Perform an action from a menu. MENU is an alist of (ITEM . ACTION), where
+ITEM is something to print, as with princ, and ACTION is a function to call.
+Arguments:
+  MESSAGE is some text to display before the menu.
+  SELECTED-ITEM is the item that is initially selected."
   ;;; @@@ improve to one loop
   (cond
     ((symbolp menu)
@@ -472,13 +508,14 @@
 
 (defun show-result (expr)
   (unwind-protect
-       (progn
-	 (end-curses)
-	 (format t "showing ~s~%" expr)
-	 (let ((vals (multiple-value-list (eval expr))))
-	   (loop :for v :in vals :do (print v))
-	   (pause)))
-    (start-curses)))
+     (progn
+       (end-curses)
+;       (format t "showing ~s~%" expr)
+       (let ((vals (multiple-value-list (eval expr))))
+	 (loop :for v :in vals :do (print v))
+	 (pause)))
+    (start-curses))
+  (values))
 
 (defun menu-load (&optional filename)
   (let* ((fn (or filename (pick-file)))
@@ -638,10 +675,12 @@
 			    :max-depth max-depth)))
 	     (when sub-tree
 	       (push sub-tree tree))))))
-    (reverse tree)))
+    (nreverse tree)))
 
 (defun make-tree (thing func &key max-depth (test #'equal))
-  "Generate a tree for THING, where FUNC is a function (FUNC THING) which returns a list of the brances of THING. Makes a tree of up to a depth of MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
+  "Generate a tree for THING, where FUNC is a function (FUNC THING) which ~
+returns a list of the brances of THING. Makes a tree of up to a depth of ~
+MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
   (%make-tree thing func :max-depth max-depth :test test))
 
 ;; This is handy for a tree generation function.
@@ -680,12 +719,14 @@
 
 (defclass dynamic-node (node)
   ((func
-    :initarg :func :accessor node-func :documentation
-    "A function that given an OBJECT generates a list of branches."))
+    :initarg :func :accessor node-func
+    :documentation "A function that given an OBJECT generates a list of branch~
+objects or nodes."))
   (:default-initargs
    :func nil
    )
-  (:documentation "A dynamic node in a browseable tree. A dynamic node has a function that generates the branches."))
+  (:documentation "A dynamic node in a browseable tree. A dynamic node has a~
+function that generates the branches."))
 
 (defun make-dynamic-node (&rest args &key &allow-other-keys)
   (apply #'make-instance 'dynamic-node args))
@@ -694,8 +735,10 @@
 ;  (dbug "node-branches(dynamic-node)")
   (if (node-func node)
       (mapcar #'(lambda (x)
-		  (make-dynamic-node
-		   :object x :open t :func (node-func node)))
+		  (if (typep x 'node)
+		      x
+		      (make-dynamic-node
+		       :object x :open t :func (node-func node))))
 	      (funcall (node-func node) (node-object node)))
       nil))
 
@@ -718,7 +761,9 @@
   (:default-initargs
    :cached nil
    )
-  (:documentation "A dynamic node in a browseable tree. A dynamic node has a function that generates the branches. It caches the results of the branch generating function, so it will be called only the first time."))
+  (:documentation "A dynamic node in a browseable tree. A dynamic node has a
+function that generates the branches. It caches the results of the branch
+generating function, so it will be called only the first time."))
 
 (defun make-cached-dynamic-node (&rest args &key &allow-other-keys)
   (apply #'make-instance 'cached-dynamic-node args))
@@ -990,28 +1035,101 @@
 	  :while (setf exp (read stm nil nil))
 	  :collect exp)))))
 
-(defun all-packages-tree ()
+(defun package-mostly-use-list (pkg)
+  "All packages except the superfluous :COMMON-LISP package."
+  (loop :with name
+     :for p :in (package-use-list pkg)
+     :do (setf name (package-name p))
+     :if (not (equal name "COMMON-LISP"))
+     :collect name))
+
+(defvar *cl-ext-sym* 
+  (let ((lst ()))
+    (do-external-symbols (s :cl lst) (push s lst)))
+  "External symbols in CL package.")
+
+(defun package-contents (package)
+  (flet ((nn (o &optional b) (make-node :object o :branches b)))
+    (let* ((doc (documentation (find-package package) t))
+	   (nicks (package-nicknames package))
+	   (all (set-difference
+		 (let ((lst ()))
+		   (do-symbols (s package lst) (push s lst)))
+		 *cl-ext-sym*))
+	   (external (sort
+		      (let ((lst ()))
+			(do-external-symbols (s package lst) (push s lst)))
+		      #'(lambda (a b) (string< (string a) (string b)))))
+	   (internal (sort (set-difference all external)
+			   #'(lambda (a b) (string< (string a) (string b)))))
+	   (shadow (package-shadowing-symbols package))
+	   contents)
+      (push (nn "Documentation" (list (nn doc))) contents)
+      (when nicks
+	(push (nn "Nicknames"
+		  (loop :for n :in nicks :collect (nn n))) contents))
+      (push (nn "Uses"
+		(loop :for p :in (package-use-list package)
+		   :collect (make-cached-dynamic-node
+			     :object (package-name p)
+			     :func #'package-mostly-use-list
+			     :open nil)))
+	    contents)
+      (push (nn "Used By"
+		(loop for p in (package-used-by-list package)
+		     collect (make-cached-dynamic-node
+			      :object p
+			      :func #'package-used-by-list
+			      :open nil)))
+	    contents)
+      (push (nn (format nil "External Symbols (~d)" (length external))
+		(loop :for e :in external :collect (nn e))) contents)
+      (push (nn (format nil "Internal Symbols (~d)" (length internal))
+		(loop :for e :in internal :collect (nn e))) contents)
+      (when shadow
+	(push (nn (format nil "Shadowing Symbols (~d)" (length shadow))
+		  (loop :for e :in shadow :collect (nn e))) contents))
+      (nreverse contents))))
+
+;; (defun package-contents-tree ()
+;;   "Return a tree browser tree of all packages."
+;;   (make-node
+;;    :object "All Packages"
+;;    :open t
+;;    :branches
+;;    (loop :for p :in (list-all-packages)
+;;       :collect (package-contents p))))
+
+(defun package-contents-tree ()
   "Return a tree browser tree of all packages."
-  (labels ((package-mostly-use-list (pkg)
-	     "All packages except the superfluous :COMMON-LISP package."
-	     (remove nil 
-		     (mapcar #'(lambda (p) 
-				 (let ((name (package-name p)))
-				   (when (not (equal name "COMMON-LISP"))
-				     name)))
-			     (package-use-list pkg)))))
-    (make-node
-     :object "All Packages"
-     :open t
-     :branches
-     (loop :for p :in (list-all-packages)
-	:collect (make-cached-dynamic-node
-		  :object (package-name p)
-		  :func #'package-mostly-use-list
-		  :open nil)))))
+  (make-node
+   :object "All Packages"
+   :open t
+   :branches
+   (loop :for p :in (list-all-packages)
+      :collect
+      (make-cached-dynamic-node
+       :object (package-name p)
+       :func #'package-contents
+       :open nil))))
 
 (defun browse-packages ()
+  (browse-tree (package-contents-tree)))
+
+(defun all-package-dependencies-tree ()
+  "Return a tree browser tree of all package dependencies."
+  (make-node
+   :object "All Packages"
+   :open t
+   :branches
+   (loop :for p :in (list-all-packages)
+      :collect (make-cached-dynamic-node
+		:object (package-name p)
+		:func #'package-mostly-use-list
+		:open nil))))
+
+(defun browse-package-dependencies ()
   "Browse the entire package dependency hierarchy with the tree browser."
-  (browse-tree (all-packages-tree)))
+  (browse-tree (all-package-dependencies-tree)))
 
 ;; EOF

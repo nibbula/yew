@@ -10,12 +10,11 @@
 ;;  - convert to using keymaps
 ;;  - improve git mode
 ;;    - show things to pull? (ie changes on remote)
-;;    - binding for reset
 ;;  - Consider making a branch editing mode
 ;;  - Consider configuration / options editing
 ;;     like for "git config ..." or whatever the equivalent is in other systems
 
-;; $Revision: 1.19 $
+;; $Revision: 1.20 $
 
 (defpackage :puca
   (:documentation "Putative Muca")
@@ -63,6 +62,7 @@
   list-command
   list-args
   add
+  reset
   diff
   diff-repo
   commit
@@ -80,6 +80,7 @@
 		:list-command	"cvs"
 		:list-args	'("-n" "update")
 		:add		"cvs add ~{~a ~}"
+		:reset		"echo 'No reset in CVS'"
 		:diff		"cvs diff ~{~a ~} | less"
 		:diff-repo	"cvs diff -r HEAD ~{~a ~} | less"
 		:commit		"cvs commit ~{~a ~}"
@@ -121,6 +122,7 @@
 ;		:list-args	'("--no-pager" "diff" "--name-status")
 		:list-args	'("status" "--porcelain")
 		:add		"git --no-pager add ~{~a ~}"
+		:reset		"git --no-pager reset ~{~a ~}"
 		:diff		"git diff ~{~a ~}"
 ;		:diff-repo	"git diff --cached HEAD ~{~a ~}"
 		:diff-repo	"git diff --staged"
@@ -157,10 +159,12 @@
 
 (defparameter *backend-svn*
   (make-backend :name		"SVN"
+		:type		:svn
 		:check-func	#'is-svn
 		:list-command	"svn"
 		:list-args	'("status")
 		:add		"svn add ~{~a ~}"
+		:reset		"svn revert ~{~a ~}"
 		:diff		"svn diff ~{~a ~} | less"
 		:diff-repo	"svn diff -r HEAD ~{~a ~} | less"
 		:commit		"svn commit ~{~a ~}"
@@ -292,11 +296,15 @@
 	(mvaddstr (+ bottom 4) 2 "vvvvvvvvvvvvvvvvvvvvvvv"))
       (refresh))))
 
-(defun do-command (pu relist do-pause format-command &rest format-args)
+(defun do-command (pu command format-args
+		   &key (relist t) (do-pause t) confirm)
   (clear)
   (refresh)
   (endwin)
-  (let ((command (apply #'format nil format-command format-args)))
+  (when (and confirm (not (yes-or-no-p "Are you sure? ")))
+    (return-from do-command (values)))
+  (let* ((format-command (apply command (list *backend*)))
+	 (command (apply #'format nil format-command (list format-args))))
     (system-command command))
   (when do-pause
     (write-string "[Press Return]")
@@ -305,7 +313,8 @@
   (initscr)
   (when relist
     (get-list pu))
-  (draw-screen pu))
+  (draw-screen pu)
+  (values))
 
 (defun selected-files (pu)
   (with-slots (maxima goo cur) pu
@@ -390,6 +399,7 @@
   (display-text pu "Help for Puca"
 		'("q - Quit"
 		  "a - Add file"
+		  "r - Revert file (undo an add)"
 		  "d - Diff"
 		  "D - Diff -r HEAD"
 		  "c - Commit selected"
@@ -453,18 +463,17 @@
 	     (setf quit-flag t))
 	    ((#\? #\h)
 	     (help pu))
-	    (#\a (do-command pu t t (backend-add *backend*)
-			     (selected-files pu)))
-	    (#\d (do-command pu nil nil (backend-diff *backend*)
-			     (selected-files pu)))
-	    (#\D (do-command pu nil nil (backend-diff-repo *backend*)
-			     (selected-files pu)))
-	    (#\c (do-command pu t t (backend-commit *backend*)
-			     (selected-files pu)))
-	    (#\u (do-command pu t t (backend-update *backend*)
-			     (selected-files pu)))
-	    (#\U (do-command pu t t (backend-update-all *backend*)))
-	    (#\P (do-command pu nil t (backend-push *backend*)))
+	    (#\a (do-command pu #'backend-add (selected-files pu)))
+	    (#\r (do-command pu #'backend-reset (selected-files pu)
+			     :confirm t))
+	    (#\d (do-command pu #'backend-diff (selected-files pu)
+			     :relist nil :do-pause nil))
+	    (#\D (do-command pu #'backend-diff-repo (selected-files pu)
+			     :relist nil :do-pause nil))
+	    (#\c (do-command pu #'backend-commit (selected-files pu)))
+	    (#\u (do-command pu #'backend-update (selected-files pu)))
+	    (#\U (do-command pu #'backend-update-all nil))
+	    (#\P (do-command pu #'backend-push nil :relist nil))
 	    (#\v
 	     (pager:pager (selected-files pu))
 	     (draw-screen pu))
@@ -549,10 +558,10 @@
   )
 
 #+lish
-(lish:defcommand puca (&key cvs svn git)
-  '((:name "cvs" :type boolean :short-arg #\c)
-    (:name "svn" :type boolean :short-arg #\s)
-    (:name "git" :type boolean :short-arg #\g))
+(lish:defcommand puca
+  (("cvs" boolean :short-arg #\c)
+   ("svn" boolean :short-arg #\s)
+   ("git" boolean :short-arg #\g))
   "Putative Muca interface to your version control software.
 Arguments are: -c for CVS, -s for SVN, -g GIT."
   (puca :backend-type (cond (cvs :cvs) (svn :svn) (git :git))))

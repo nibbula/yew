@@ -14,6 +14,6 @@
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :licence            "None" ; [sic]
     :long-description   "totally fake old style user interface"
-    :depends-on (:curses :stretchy :dlib :dlib-misc :opsys)
+    :depends-on (:dlib :dlib-misc :stretchy :opsys :char-util :curses :inator)
     :components
     ((:file "fui")))

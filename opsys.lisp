@@ -2,7 +2,7 @@
 ;;; opsys.lisp - Interface to operating systems
 ;;;
 
-;;; $Revision: 1.27 $
+;;; $Revision: 1.28 $
 
 ;; This is a thin layer over basic operating system functions which
 ;; are not included in Common Lisp. The goal would be to have the same
@@ -239,6 +239,26 @@
    #:is-whiteout
    #:file-exists
 
+   #:UF_SETTABLE #:UF_NODUMP #:UF_IMMUTABLE #:UF_APPEND #:UF_OPAQUE
+   #:UF_NOUNLINK #:UF_COMPRESSED #:UF_TRACKED #:UF_HIDDEN #:SF_SETTABLE
+   #:SF_ARCHIVED #:SF_IMMUTABLE #:SF_APPEND #:SF_RESTRICTED #:SF_SNAPSHOT
+   #:flag-user-settable
+   #:flag-user-nodump
+   #:flag-user-immutable
+   #:flag-user-append
+   #:flag-user-opaque
+   #:flag-user-nounlink
+   #:flag-user-compressed
+   #:flag-user-tracked
+   #:flag-user-hidden
+   #:flag-root-settable
+   #:flag-root-archived
+   #:flag-root-immutable
+   #:flag-root-append
+   #:flag-root-restricted
+   #:flag-root-snapshot
+   #:flags-string
+   
    #:umask
    #:chmod #:fchmod
    #:chown #:fchown #:lchown
@@ -1453,7 +1473,8 @@ if not given."
   "Maximum number of bytes in a path.")
 
 (defun libc-getcwd ()
-  "Return the full path of the current working directory as a string, using the  C library function getcwd."
+  "Return the full path of the current working directory as a string, using the
+C library function getcwd."
   (when (not *path-max*)
     (setf *path-max* (get-path-max)))
   (let ((cwd (with-foreign-pointer-as-string (s *path-max*)
@@ -2175,6 +2196,60 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 	(if (is-other-executable mode)
 	    (princ #\x stream)
 	    (princ #\- stream)))))
+
+;; Damnable file files.
+(defconstant UF_SETTABLE     #x0000ffff "Mask of owner changeable flags.")
+(defconstant UF_NODUMP       #x00000001 "Do not dump file.")
+(defconstant UF_IMMUTABLE    #x00000002 "File may not be changed.")
+(defconstant UF_APPEND       #x00000004 "Writes to file may only append.")
+(defconstant UF_OPAQUE       #x00000008 "Directory is opaque wrt. union.")
+(defconstant UF_NOUNLINK     #x00000010 "File may not be removed or renamed.")
+(defconstant UF_COMPRESSED   #x00000020 "File is hfs-compressed.")
+(defconstant UF_TRACKED	     #x00000040
+  "UF_TRACKED is used for dealing with document IDs. We no longer issue
+  notifications for deletes or renames for files which have UF_TRACKED set.")
+(defconstant UF_HIDDEN	     #x00008000
+  "Hint that this item should not be displayed in a GUI.")
+;;; Super-user changeable flags.
+(defconstant SF_SETTABLE     #xffff0000 "Mask of superuser changeable flags.")
+(defconstant SF_ARCHIVED     #x00010000 "File is archived.")
+(defconstant SF_IMMUTABLE    #x00020000 "File may not be changed.")
+(defconstant SF_APPEND	     #x00040000 "Writes to file may only append.")
+(defconstant SF_RESTRICTED   #x00080000 "Restricted access.")
+(defconstant SF_SNAPSHOT     #x00200000 "Snapshot inode.")
+
+(defun flag-user-settable   (flag) (/= (logand flag UF_SETTABLE)   0))
+(defun flag-user-nodump	    (flag) (/= (logand flag UF_NODUMP)	   0))
+(defun flag-user-immutable  (flag) (/= (logand flag UF_IMMUTABLE)  0))
+(defun flag-user-append	    (flag) (/= (logand flag UF_APPEND)	   0))
+(defun flag-user-opaque	    (flag) (/= (logand flag UF_OPAQUE)	   0))
+(defun flag-user-nounlink   (flag) (/= (logand flag UF_NOUNLINK)   0))
+(defun flag-user-compressed (flag) (/= (logand flag UF_COMPRESSED) 0))
+(defun flag-user-tracked    (flag) (/= (logand flag UF_TRACKED)	   0))
+(defun flag-user-hidden	    (flag) (/= (logand flag UF_HIDDEN)	   0))
+(defun flag-root-settable   (flag) (/= (logand flag SF_SETTABLE)   0))
+(defun flag-root-archived   (flag) (/= (logand flag SF_ARCHIVED)   0))
+(defun flag-root-immutable  (flag) (/= (logand flag SF_IMMUTABLE)  0))
+(defun flag-root-append	    (flag) (/= (logand flag SF_APPEND)	   0))
+(defun flag-root-restricted (flag) (/= (logand flag SF_RESTRICTED) 0))
+(defun flag-root-snapshot   (flag) (/= (logand flag SF_SNAPSHOT)   0))
+
+(defun flags-string (flags)
+  (with-output-to-string (str)
+    (when (flag-user-nodump     flags) (princ "nodump "		str))
+    (when (flag-user-immutable  flags) (princ "uimmutable "	str))
+    (when (flag-user-append     flags) (princ "uappend "	str))
+    (when (flag-user-opaque     flags) (princ "opaque "		str))
+    (when (flag-user-nounlink   flags) (princ "nounlink "	str))
+    (when (flag-user-compressed flags) (princ "compressed "	str))
+    (when (flag-user-tracked    flags) (princ "tracked "	str))
+    (when (flag-user-hidden     flags) (princ "hidden "		str))
+
+    (when (flag-root-archived   flags) (princ "archived "	str))
+    (when (flag-root-immutable  flags) (princ "simmutable "	str))
+    (when (flag-root-append     flags) (princ "sappend "	str))
+    (when (flag-root-restricted flags) (princ "restricted "	str))
+    (when (flag-root-snapshot   flags) (princ "snapshot "	str))))
 
  #|
 ;;; @@@ totally not done yet and messed up
@@ -3136,40 +3211,45 @@ Trying to simplify our lives, by just using our own FFI versions, above.
 
 ;; pipes
 
-(defun popen (cmd args &key in-stream)
-  "Return an input stream with the output of the system command."
+(defun popen (cmd args &key in-stream (out-stream :stream))
+  "Return an input stream with the output of the system command. Use IN-STREAM
+as an input stream, if it's supplied. If it's supplied, use OUT-STREAM as the
+output stream. OUT-STREAM can be T to use *standard-output*."
   #+clisp (if in-stream
 	      (multiple-value-bind (io i o)
 		  (ext:run-shell-command
-		   (format nil "~a~{ ~a~}" cmd args) :output :stream
+		   (format nil "~a~{ ~a~}" cmd args) :output out-stream
 		   :input :stream :wait nil)
 		(declare (ignore io i))
 		(alexandria:copy-stream in-stream o)) ; !!!
 	      (ext:run-shell-command
-	       (format nil "~a~{ ~a~}" cmd args) :output :stream))
+	       (format nil "~a~{ ~a~}" cmd args) :output out-stream))
   #+sbcl (sb-ext:process-output
 ;; @@@ What should we do? Added what version?
 ;;	      :external-format '(:utf-8 :replacement #\?)
 	  (if in-stream
-	      (sb-ext:run-program cmd args :output :stream :search t
-				  :input in-stream)
-	      (sb-ext:run-program cmd args :output :stream :search t)))
+	      (sb-ext:run-program cmd args :output out-stream :search t
+				  :input in-stream :wait nil)
+	      (sb-ext:run-program cmd args :output out-stream :search t
+				  :wait nil)))
   #+cmu (ext:process-output
 	 (if in-stream
-	     (ext:run-program cmd args :output :stream :input in-stream)
-	     (ext:run-program cmd args :output :stream)))
+	     (ext:run-program cmd args :output out-stream :input in-stream)
+	     (ext:run-program cmd args :output out-stream)))
   #+openmcl (ccl::external-process-output-stream
 	     (if in-stream
-		 (ccl::run-program cmd args :output :stream :input in-stream)
-		 (ccl::run-program cmd args :output :stream)))
+		 (ccl::run-program cmd args :output out-stream
+				   :input in-stream :wait nil)
+		 (ccl::run-program cmd args :output out-stream
+				   :wait nil)))
   #+ecl (ext:run-program cmd args)
   #+excl (excl:run-shell-command (format nil "~a~{ ~a~}" cmd args)
-				 :output :stream :wait t)
+				 :output out-stream :wait t)
   #+lispworks (multiple-value-bind (result str err-str pid)
 		  (declare (ignore result err-str pid))
 		  (system:run-shell-command
 		   (concatenate 'vector (list cmd) args)
-		   :output :stream
+		   :output out-stream
 		   :wait t)
 		str)
   #-(or clisp sbcl cmu openmcl ecl excl lispworks)
@@ -3498,6 +3578,60 @@ Trying to simplify our lives, by just using our own FFI versions, above.
 				    (list :error)))))
 		    collect thing))))
     results))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; epoll
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; kqueue
+
+;; @@@ need to check these structs with the source
+
+(defcstruct foreign-kevent
+  (ident	(:pointer :uint32))	; XXX uintptr-t
+  (filter	:int16)
+  (flags	:uint16)
+  (fflags	:uint32)
+  (data		(:pointer :int))	; XXX intptr
+  (udata	(:pointer :void)))
+
+(defcstruct foreign-kevent64
+  (ident	:uint64)
+  (filter	:int16)
+  (flags	:uint16)
+  (fflags	:uint32)
+  (data		:int64)
+  (udata	:uint64)
+  (ext		:uint64 :count 2))
+
+(defcfun kqueue :void)
+(defcfun ("kevent" real-kevent) :int
+  (kq :int) (changelist (:pointer (:struct foreign-kevent))) (nchanges :int)
+  (eventlist (:pointer (:struct foreign-kevent))) (nevents :int)
+  (timeout (:pointer (:struct foreign-timespec))))
+
+(defcfun ("kevent64" real-kevent64) :int
+  (kq :int) (changelist (:pointer (:struct foreign-kevent64))) (nchanges :int)
+  (eventlist (:pointer (:struct foreign-kevent64))) (nevents :int)
+  (timeout (:pointer (:struct foreign-timespec))))
+
+(defun ev-set32 (key ident filter flags fflags data udata)
+  (declare (ignore key ident filter flags fflags data udata))
+  )
+
+(defun ev-set64 (key ident filter flags fflags data udata)
+  (declare (ignore key ident filter flags fflags data udata))
+  )
+
+(defun ev-set (key ident filter flags fflags data udata)
+  "Do the appropriate version of EV_SET."
+  (declare (ignore key ident filter flags fflags data udata))
+  )
+
+(defun kevent (kq changelist nchanges eventlist nevents timeout)
+  "Do the appropriate version of kevent."
+  (declare (ignore kq changelist nchanges eventlist nevents timeout))
+  )
 
 ;; It might be nice if could do this on a Lisp stream.
 (defun listen-for (seconds &optional (fd 0))

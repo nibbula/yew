@@ -14,7 +14,7 @@
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :licence            "None"
     :long-description   "E PROTO 'SUP d00d"
-    :depends-on (:dl-list :stretchy :cffi :opsys :termios :ansiterm
-		 :completion :dlib-misc :keymap)
+    :depends-on (:dl-list :stretchy :cffi :opsys :ansiterm :termios
+		 :completion :dlib :dlib-misc :keymap :char-util :syntax-lisp)
     :components
     ((:file "tiny-rl")))

@@ -23,6 +23,7 @@
    #:table-add-column
    #:table-update-column-width
    #:table-set-column-type
+   #:output-table
    #:print-table
    #:nice-print-table
    ))
@@ -107,18 +108,19 @@
   (:method (table (col integer) type)
     (setf (column-type (nth col (table-columns table))) type)))
 
-(defun print-table (table &key (long-titles t))
-  "Print results nicely in horizontal table."
-  (let ((rows (collection-data table))
-	(column-names (mapcar #'column-name (table-columns table))))
-    (nice-print-table rows column-names :long-titles long-titles)))
+(defgeneric output-table (table destination &key long-titles column-names)
+  (:documentation "Output a table."))
 
 ;; This is quite inefficient since it gets the whole data set in
 ;; one shot and then goes thru every datum twice. But it's nice for
 ;; small queries since it displays in a somewhat compact form.
 (defun nice-print-table (rows column-names &key (long-titles t)
 					     (stream *standard-output*))
-  "Print results nicely in horizontal table. ROWS is a list of row, which are lists of values. COLUMN-NAMES is a list of column names to printed on top. Each column-name can be a string or a list of (\"name\" :<justification>), where <justification> is one of the keywords :LEFT or :RIGHT. If LONG-TITLES is true, make the columns at least as wide as the column names."
+  "Print results nicely in horizontal table. ROWS is a list of row, which are
+lists of values. COLUMN-NAMES is a list of column names to printed on top.
+Each column-name can be a string or a list of (\"name\" :<justification>),
+where <justification> is one of the keywords :LEFT or :RIGHT. If LONG-TITLES
+is true, make the columns at least as wide as the column names."
   (let ((sizes				; Initial column sizes from labels
 	 (loop :for f :in column-names
 	    :collect (if long-titles (length f) 0))))
@@ -169,5 +171,89 @@
 	  (format stream fmt size f))
        (terpri stream)))
     (length rows))
+
+#|
+(defun generic-print-table (rows column-names
+			    &key (long-titles t)
+			      (stream *standard-output*)
+			      output-col
+			      output-line
+			      output-title
+			      output-newline)
+  "Print results nicely in horizontal table. ROWS is a list of row, which are
+lists of values. COLUMN-NAMES is a list of column names to printed on top.
+Each column-name can be a string or a list of (\"name\" :<justification>),
+where <justification> is one of the keywords :LEFT or :RIGHT. If LONG-TITLES
+is true, make the columns at least as wide as the column names."
+  (flet ((nl
+  (let ((sizes				; Initial column sizes from labels
+	 (loop :for f :in column-names
+	    :collect (if long-titles (length f) 0))))
+    ;; Adjust column sizes by field data
+    (loop :for r :in rows
+       :do
+       (setf sizes
+	     (loop :for f :in r :and s :in sizes
+		:collect (max s (typecase f
+				  (string (length f))
+				  (otherwise
+				   (length (format nil "~a" f))))))))
+    ;; Get justification
+    (setf sizes
+	  (loop :for col :in column-names :and s :in sizes
+	     :collect
+	     (list s (if (and (listp col) (eql (second col) :right))
+			 :right :left))))
+    ;; Print titles
+    (loop :with str :and fmt = "~va "
+       :for col :in column-names
+       :and (size just) :in sizes
+       :do
+       (if (listp col)
+	   (setf str (first col)
+		 fmt (if (eql just :right) "~v@a " "~va "))
+	   (setf str col
+		 fmt "~va "))
+       (if output-title
+	   (funcall output-title
+		    (format nil fmt size
+			    (subseq (string-capitalize
+				     (substitute #\space #\_ str))
+				    0 (min (length str) size))))
+	   (format t fmt size
+		   (subseq (string-capitalize (substitute #\space #\_ str))
+			   0 (min (length str) size)))))
+    (terpri stream)
+    ;; Lines
+    (loop :for				;f in field-names and
+       (size) :in sizes
+       :do
+       (format stream "~v,,,va " size #\- #\-))
+    (terpri stream)
+    ;; Values
+    (loop :with fmt
+       :for r :in rows :do
+       (loop :for f :in r :and (size just) :in sizes
+	  :do
+	  (setf fmt
+		(cond ((eql just :right) "~v@a ")
+		      ((typep f 'number) "~v@a ")
+		      (t "~va ")))
+	  (format stream fmt size f))
+       (terpri stream)))
+    (length rows))
+|#
+
+(defun print-table (table &key (long-titles t) (stream *standard-output*))
+  "Print results nicely in horizontal table."
+  (let ((rows (collection-data table))
+	(column-names (mapcar #'column-name (table-columns table))))
+    (nice-print-table rows column-names
+		      :long-titles long-titles :stream stream)))
+
+(defmethod output-table ((table table) (destination stream)
+			 &key long-titles column-names)
+  (declare (ignore column-names))
+  (print-table table :long-titles long-titles :stream destination))
 
 ;; EOF

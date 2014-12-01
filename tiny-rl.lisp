@@ -1,5 +1,5 @@
 ;;
-;; tiny-rl.lisp - A tiny readline replacement for ANSI terminals.
+;; tiny-rl.lisp - An input line editor for ANSI terminals.
 ;;
 
 ;; OK, it's getting to be not so tiny anymore.
@@ -19,7 +19,7 @@
 
 (defpackage "TINY-RL"
   (:use :common-lisp :dl-list :stretchy :cffi :opsys :ansiterm :termios
-	:completion :dlib :dlib-misc :keymap :char-util)
+	:completion :dlib :dlib-misc :keymap :char-util :syntax-lisp)
   (:documentation
    "A readline replacement for ANSI terminals.")
   (:export
@@ -242,6 +242,9 @@
   (editor-write-string
    e (format nil "~a" (if prompt-supplied p *default-prompt*))))
 
+(defparameter *normal-keymap* nil
+  "The normal key for use in the line editor.")
+
 ;; The history is not in here because it is shared by all editors.
 (defclass line-editor ()
   ((cmd
@@ -349,6 +352,11 @@
     :initarg :last-completion-unique
     :initform nil
     :documentation "True if the last completion was unique.")
+   (need-to-redraw
+    :accessor need-to-redraw
+    :initarg :need-to-redraw
+    :initform nil
+    :documentation "True if we need to redraw the whole line.")
    (in-callback
     :accessor line-editor-in-callback
     :initarg :in-callback
@@ -378,6 +386,7 @@
   (:default-initargs
     :non-word-chars *default-non-word-chars*
     :prompt *default-prompt*
+    :keymap *normal-keymap*
   )
   (:documentation "State for a stupid little line editor."))
 
@@ -411,6 +420,7 @@
 	(start-col e)		0
 	(undo-history e)	nil
 	(undo-current e)	nil
+	(need-to-redraw e)	nil
 	(quit-flag e)		nil
 	(exit-flag e)		nil))
 
@@ -465,6 +475,7 @@
 
 ;; This can unfortunatly really vary between emulations, so we try
 ;; to code for multiple intpretations.
+;; @@@ this or something like it should probably be moved to ansiterm
 (defun read-function-key (e)
   "Read the part of a function key after the ESC [ and return an
  indicative keyword or nil if we don't recognize the key."
@@ -510,6 +521,7 @@
 	 (t
 	  nil))))))
 
+;; @@@ this or something like it should probably be moved to ansiterm
 (defun read-app-key (e)
   "Read the part of an application mode function key after the ESC O and
  return an indicative keyword or nil if we don't recognize the key."
@@ -558,6 +570,13 @@
 	     (funcall (line-editor-in-callback e) cc)
 	     cc))
 	 (code-char (mem-ref c :unsigned-char)))))))
+
+;; (defvar *key-tree* '())
+;;   "")
+;; @@@@@@@@@@@@@@@@@@@@@ SUPA
+;; (defun record-key (key)
+;;   (
+;;   )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -846,12 +865,6 @@
      :do (setf (gethash k table) v))
   table)
 
-;; Moved to dlib
-;; (defun alist-to-hash-table (vec table)
-;;   (loop :for (k . v) :in vec
-;;      :do (setf (gethash k table) v))
-;;   table)
-
 (defparameter *control-char-graphics* nil)
 
 (defun control-char-graphic (c)
@@ -978,7 +991,35 @@ Assumes S is already converted to display characters."
        (setf (screen-row ,e) ,old-row
 	     (screen-col ,e) ,old-col)))))
 
-(defun update-for-delete (e delete-length)
+(defun buffer-length-to (buf to-length)
+  (loop :with i = 0
+     :for buf-i = 0 :then (1+ buf-i)
+     :while (< i to-length)
+     :do (incf i (display-length (aref buf buf-i)))
+     :finally (return buf-i)))
+
+(defun update-for-delete (e delete-length char-length)
+  "Update the display, assuming DELETE-LENGTH characters were just deleted at 
+the current cursor position."
+  (declare (ignore char-length)) ;; @@@
+  (with-slots (buf point terminal start-col) e
+    (let ((width (terminal-window-columns terminal))
+	  (col (screen-col e))
+	  (right-len (display-length (subseq buf point))))
+      ;; If the rest of the buffer extends past the edge of the window.
+      (when (>= (+ col right-len) width)
+	;; Cheaty way out: redraw whole thing after point
+	(without-messing-up-cursor (e)
+	  (let* ((new-col (- width (screen-col e) delete-length))
+		 (from (+ point (buffer-length-to
+				 buf (- new-col start-col))))) ; wrong XXX
+	    (move-forward e new-col)
+	    (display-buf e from)
+	    (tt-erase-to-eol e)))))))
+
+#|
+
+(defun old-update-for-delete (e delete-length char-length)
   "Update the display, assuming DELETE-LENGTH characters were just deleted at 
 the current cursor position."
   (with-slots (buf point terminal) e
@@ -995,7 +1036,6 @@ the current cursor position."
 	    (display-buf e from)
 	    (tt-erase-to-eol e)))))))
 
-#|
 ;; (defun new-update-for-delete (e delete-length)
 ;;   "Update the display, assuming DELETE-LENGTH characters were just deleted at 
 ;; the current cursor position."
@@ -1077,7 +1117,8 @@ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
   (with-slots (point buf) e
     (when (< point (length buf))
       (let ((disp-len (display-length (subseq buf point))))
-	(move-backward e disp-len)))))
+	(move-backward e disp-len))))
+  (setf (need-to-redraw e) nil))
 
 (defun move-backward (e n)
   "Move backward N columns on the screen. Properly wraps to previous lines.
@@ -1108,6 +1149,16 @@ Updates the screen coordinates."
 	  (tt-forward e (screen-col e))
 	  (tt-down e rows-down))
 	(tt-forward e n))))
+
+(defun tmp-prompt (e fmt &rest args)
+  (tt-move-to-col e 0)
+  (tt-erase-to-eol e)
+  (setf (screen-col e) 0)
+  (do-prefix e (apply #'format `(nil ,fmt ,@args))))
+
+(defun tmp-message (e fmt &rest args)
+  (apply #'tmp-prompt e fmt args)
+  (setf (need-to-redraw e) t))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Commands
@@ -1382,7 +1433,10 @@ it with ACTION's return value."
   nil)
 
 (defun isearch (e &optional (direction :backward))
-  "Incremental search which updates the search position as the user types. The search can be ended by typing a control character, which usually performs a command, or Control-G which stops the search and returns to the start. Control-R searches again backward and Control-S searches again forward."
+  "Incremental search which updates the search position as the user types. The
+search can be ended by typing a control character, which usually performs a
+command, or Control-G which stops the search and returns to the start.
+Control-R searches again backward and Control-S searches again forward."
   (with-slots (point buf cmd context) e
     (let ((quit-now nil)
 	  (start-point point)
@@ -1449,7 +1503,7 @@ it with ACTION's return value."
 
 (defun redraw-command (e)
   "Clear the screen and redraw the prompt and the input line."
-  (with-slots (prompt prompt-func point buf) e
+  (with-slots (prompt prompt-func point buf need-to-redraw) e
     (tt-clear e) (tt-home e)
     (setf (screen-col e) 0 (screen-row e) 0)
     (do-prompt e prompt prompt-func)
@@ -1460,7 +1514,8 @@ it with ACTION's return value."
       (let ((disp-len (display-length (subseq buf point))))
 ;	(message-pause e "~a ~a ~a" (screen-row e) (screen-col e)
 ;		       disp-len)
-	(move-backward e disp-len)))))
+	(move-backward e disp-len)))
+    (setf need-to-redraw nil)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Buffer editing
@@ -1493,7 +1548,7 @@ Don't update the display."
 	(decf point)
 	(move-backward e del-len)
 	(tt-del-char e del-len)
-	(update-for-delete e del-len)))))
+	(update-for-delete e del-len 1)))))
 
 (defun delete-char (e)
   "Delete the character following the cursor."
@@ -1504,7 +1559,7 @@ Don't update the display."
 	  (let ((del-len (display-length (aref buf point))))
 	    (buffer-delete e point (1+ point))
 	    (tt-del-char e del-len)
-	    (update-for-delete e del-len))))))
+	    (update-for-delete e del-len 1))))))
 
 (defun delete-char-or-exit (e)
   "At the beginning of a blank line, exit, otherwise delete-char."
@@ -1530,7 +1585,7 @@ Don't update the display."
 	(tt-del-char e del-len)
 	(setf clipboard region-str)
 	(buffer-delete e point start)
-	(update-for-delete e del-len)))))
+	(update-for-delete e del-len (- start point))))))
 
 (defun kill-word (e)
   (with-slots (buf point non-word-chars clipboard) e
@@ -1544,7 +1599,7 @@ Don't update the display."
 	(setf clipboard region-str)
 	(buffer-delete e point start)
 	(setf point start)
-	(update-for-delete e del-len)))))
+	(update-for-delete e del-len (- start point))))))
 
 (defun kill-line (e)
   (with-slots (clipboard buf point) e
@@ -1602,67 +1657,12 @@ Don't update the display."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; hacks for typing lisp
 
-;; I suppose we could try to use the reader, but I'm not sure I know
-;; how to turn off the stuff we don't want while leaving on the stuff
-;; we do. It's probably easiest to just do simplistic scanning.
-
-(defun matching-paren-pos (str &key (pos (length str)))
-  "Return the position in STR of an open paren matching a, perhaps ~
-hypothetical, one at POS. If there is none, return nil. If POS is not ~
-provided, it defaults to the end of the string."
-  (declare (type string str))
-  (let ((starts nil))
-    (loop
-       :with i = 0 :and c = nil
-       :while (< i pos)
-       :do (setf c (aref str i))
-       (cond
-	 ((or (eql c #\() (eql c #\[)) (push i starts))
-	 ((or (eql c #\)) (eql c #\])) (pop starts))
-	 ((eql c #\")
-	  ;; scan past the string
-	  (incf i)
-	  (loop while (and (< i pos)
-			   (not (eql #\" (setf c (aref str i)))))
-	     do (when (eql c #\\)
-		  (incf i))
-	       (incf i)))
-	 ;; # reader macro char
-	 ((and (eql c #\#) (< i (- pos 2)))
-	  (incf i)
-	  (case (setf c (aref str i))
-	    (#\\ (incf i))		; ignore the quoted char
-	    ;; scan past matched #| comments |#
-	    (#\|
-	     (incf i)
-	     (loop :with level = 1
-		:while (and (< i pos) (> level 0))
-		:do
-		  (setf c (aref str i))
-		  (cond
-		    ((and (eql c #\|) (and (< i (1- pos))
-					   (eql #\# (aref str (1+ i)))))
-		     (decf level))
-		    ((and (eql c #\#) (and (< i (1- pos))
-					   (eql #\| (aref str (1+ i)))))
-		     (incf level)))
-		(incf i)))
-	    ;; vectors, treated just like a list
-	    (#\( (push i starts))))
-	 ;; single line comment
-	 ((eql c #\;)
-	  (loop :while (and (< i pos)
-			    (not (eql #\newline (setf c (aref str i)))))
-	     :do (incf i))))
-	(incf i))
-    (first starts)))
-
 ;; @@@ BUG: this doesn't really work for multi-line
 (defun flash-paren (e c)
   (declare (ignore c))
   (let* ((str (buf e))
 	 (point (point e))
-	 (ppos (matching-paren-pos str :pos point))
+	 (ppos (matching-paren-position str :position point))
 	 (tty-fd (terminal-file-descriptor (line-editor-terminal e))))
     (if ppos
 	(let ((saved-col (screen-col e)))
@@ -1672,9 +1672,17 @@ provided, it defaults to the end of the string."
 	  (tt-move-to-col e saved-col))
 	(beep e "No match."))))
 
+(defun finish-line (e)
+  "Add any missing close parentheses and accept the line."
+  (with-slots (buf) e
+    (loop :while (matching-paren-position buf)
+       :do (insert-char e #\)) (display-char e #\)))
+    (accept-line e)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Completion
 
+; XXX This should depend on the size of the screen.
 (defvar *really-limit* 100
   "How much is too much.")
 
@@ -1704,7 +1712,7 @@ provided, it defaults to the end of the string."
 	      (end-of-line e)
 	      (setf point saved-point))
 	    (tt-write-char e #\newline)
-;		   (tt-format e "~{~a~%~}" comp-list)
+	    #| (tt-format e "~{~a~%~}" comp-list) |#
 	    (print-completions e comp-list)
 	    (setf (screen-col e) 0)
 	    (do-prompt e prompt prompt-func)
@@ -1807,29 +1815,31 @@ enter it."
   (setf (cmd e) (get-a-char e))
   (self-insert e t))
 
-(defun self-insert (e &optional quoted)
+(defun self-insert (e &optional quoted char)
   "Try to insert a character into the buffer."
   (with-slots (cmd buf point) e
-    (if (and (not (graphic-char-p cmd)) (not quoted))
-	(beep e "~a is unbound." cmd)
+    (when (not char)
+      (setf char cmd))
+    (if (and (not (graphic-char-p char)) (not quoted))
+	(beep e "~a is unbound." char)
 	(progn 
 	  ;; a normal character
 	  (if (= (length buf) point)
 	      ;; end of the buf
 	      (progn
-		(display-char e cmd)
+		(display-char e char)
 		;; flash paren and keep going
-		(when (or (eql cmd #\)) (eql cmd #\]))
-		  (flash-paren e cmd))
-		(insert-char e cmd)
+		(when (or (eql char #\)) (eql char #\]))
+		  (flash-paren e char))
+		(insert-char e char)
 		(incf point))
 	      ;; somewhere in the middle
 	      (progn
-		(tt-ins-char e (display-length cmd))
-		(display-char e cmd)
-		(when (or (eql cmd #\)) (eql cmd #\]))
-		  (flash-paren e cmd))
-		(insert-char e cmd)
+		(tt-ins-char e (display-length char))
+		(display-char e char)
+		(when (or (eql char #\)) (eql char #\]))
+		  (flash-paren e char))
+		(insert-char e char)
 		(incf point)
 		;; dumb way out: just rewrite the whole thing
 		;; relying on terminal wrap around
@@ -1844,6 +1854,200 @@ enter it."
 		  (setf (screen-row e) old-row
 			(screen-col e) old-col))))))))
 ;;		(tt-move-to e (screen-row e) (screen-col e))
+
+;; Slow scrollin' pardner.
+(defparameter *unipose*
+  '((#\1 ((#\2 #\½) (#\4 #\¼) (#\^ #\¹)))
+    (#\2 ((#\^ #\²)))
+    (#\3 ((#\^ #\³) (#\4 #\¾)))
+    (#\8 ((#\8 #\∞)))
+    (#\A ((#\^ #\Â) (#\' #\Á) (#\` #\À) (#\" #\Ä) (#\E #\Æ) (#\o #\Å) (#\~ #\Ã)))
+    (#\a ((#\^ #\â) (#\' #\á) (#\` #\à) (#\" #\ä) (#\e #\æ) (#\o #\å) (#\~ #\ã) (#\_ #\ª) (#\p #\)))
+    (#\B ((#\B #\ß)))
+    (#\c (((#\0 #\O) #\©) ((#\/ #\|) #\¢) (#\, #\ç) (#\* #\☪) (#\C #\￠)))
+    (#\C (((#\0 #\O) #\©) ((#\/ #\|) #\￠) (#\, #\Ç) (#\* #\☪)))
+    (#\D ((#\D #\∆) (#\- #\Ð)))
+    (#\d ((#\g #\˚)))
+    (#\E ((#\^ #\Ê) (#\' #\É) (#\` #\È) (#\" #\Ë) ((#\~ #\- #\=) #\€)))
+    (#\f ((#\f #\ƒ)))
+    (#\e ((#\^ #\ê) (#\' #\é) (#\` #\è) (#\" #\ë) ((#\~ #\- #\=) #\€)))
+    (#\I ((#\^ #\Î) (#\' #\Í) (#\` #\Ì) (#\" #\Ï)))
+    (#\i ((#\^ #\î) (#\' #\í) (#\` #\ì) (#\" #\ï)))
+    (#\L ((#\L #\Λ) (#\- #\£)))
+    (#\l ((#\l #\λ)))
+    (#\m ((#\m #\µ)))
+    (#\N ((#\~ #\Ñ)))
+    (#\n ((#\~ #\ñ)))
+    (#\O ((#\^ #\Ô) (#\' #\Ó) (#\` #\Ò) (#\" #\Ö) (#\E #\Œ) (#\~ #\Õ) (#\O #\Ω)))
+    (#\o ((#\^ #\ô) (#\' #\ó) (#\` #\ò) (#\" #\ö) (#\e #\œ) (#\~ #\õ) (#\_ #\º)))
+    (#\P ((#\H #\Φ) (#\P #\¶)))
+    (#\p ((#\h #\φ)))
+    (#\r (((#\0 #\O #\o) #\®)))
+    (#\S ((#\S #\∑)))
+    (#\s ((#\e #\§) (#\r #\√)) (#\s #\ß))
+    (#\T (((#\M #\m) #\™) (#\T #\Þ)))
+    (#\t (((#\M #\m) #\™) (#\T #\þ)))
+    (#\U ((#\^ #\Û) (#\' #\Ú) (#\` #\Ù) (#\" #\Ü)))
+    (#\u ((#\^ #\û) (#\' #\ú) (#\` #\ù) (#\" #\ü)))
+    (#\x ((#\x #\×)))
+    (#\Y ((#\- #\¥) (#\' #\Ý)))
+    (#\y ((#\- #\¥) (#\' #\ý)))
+    (#\^ (;; captial circumflex
+	 (#\A #\Â) (#\C #\Ĉ) (#\E #\Ê) (#\G #\Ĝ) (#\H #\Ĥ) (#\I #\Î) (#\J #\Ĵ)
+	 (#\O #\Ô) (#\S #\Ŝ) (#\U #\Û) (#\W #\Ŵ) (#\Y #\Ŷ)
+	 ;; lower circumflex
+	 (#\a #\â) (#\c #\ĉ) (#\e #\ê) (#\g #\ĝ) (#\h #\ĥ) (#\i #\î) (#\j #\ĵ)
+	 (#\o #\ô) (#\s #\ŝ) (#\u #\û) (#\w #\ŵ) (#\y #\ŷ)))
+    (#\' (;; capital acute
+	 (#\A #\Á) (#\E #\É) (#\I #\Í) (#\O #\Ó) (#\U #\Ú) (#\W #\Ẃ) (#\Y #\Ý)
+	 ;; lower acute
+	 (#\a #\á) (#\e #\é) (#\i #\í) (#\o #\ó) (#\u #\ú) (#\w #\ẃ) (#\y #\ý)
+	 ;; misc acute
+	 (#\' #\´) (#\< #\‘) (#\> #\’)))
+    (#\` (;; capital grave
+	 (#\A #\À) (#\E #\È) (#\I #\Ì) (#\O #\Ò) (#\U #\Ù) (#\W #\Ẁ) (#\Y #\Ỳ)
+	 ;; lower greve
+	 (#\a #\à) (#\e #\è) (#\i #\ì) (#\o #\ò) (#\u #\ù) (#\w #\ẁ) (#\y #\ỳ)))
+    (#\" (;; capital umlat
+	  (#\A #\Ä) (#\E #\Ë) (#\I #\Ï) (#\O #\Ö) (#\U #\Ü) (#\W #\Ẅ) (#\Y #\Ÿ)
+	  ;; lower umlat
+	  (#\a #\ä) (#\e #\ë) (#\i #\ï) (#\o #\ö) (#\u #\ü) (#\w #\ẅ) (#\y #\ÿ)
+	  (#\v #\„) (#\< #\“) (#\> #\”) (#\s #\ß)))
+    (#\~ (;; upper twiddles
+	 (#\A #\Ã) (#\C #\Ç) (#\D #\Ð) (#\G #\Ğ) (#\N #\Ñ) (#\T #\Þ) (#\U #\Ŭ)
+	 ;; lower twiddles
+	 (#\a #\ã) (#\c #\ç) (#\d #\ð) (#\g #\ğ) (#\n #\ñ) (#\t #\þ) (#\u #\ŭ)
+	 ;; misc twiddles
+	 (#\e #\€) (#\p #\¶) (#\s #\§) (#\u #\µ) (#\x #\¤) (#\? #\¿) (#\! #\¡)
+	 (#\$ #\£) (#\. #\·) (#\< #\«) (#\> #\»)))
+    (#\! ((#\! #\‼) (#\v #\¡) (#\? #\⁉) (#\/ #\❢)))
+    (#\? ((#\v #\¿) (#\? #\⁇) (#\! #\⁈) ((#\| #\/) #\‽)))
+    (#\/ ((#\O #\Ø) (#\o #\ø) (#\c #\¢)))
+    (#\| ((#\| #\¦)))
+    (#\+ ((#\- #\±) (#\+ #\†)))
+    (#\- ((#\+ #\±) (#\: #\÷)))
+    (#\= ((#\/ #\≠) (#\/ #\≠) (#\~ #\≈)))
+    (#\_ ((#\^ #\¯)))
+    (#\< ((#\= #\≤) (#\< #\«)))
+    (#\> ((#\= #\≥) (#\> #\»)))
+    (#\: ((#\- #\÷)))
+    (#\. ((#\o #\•) (#\. #\·) (#\- #\⋅) (#\^ #\˚)))
+    (#\$ ((#\$ #\¤)))
+    (#\% ((#\% #\‰))))
+  "Unicode compose character lists.")
+
+;; Since this is probably just for me, does it really matter? 
+(defun save-unipose-for-emacs ()
+  (with-open-file (stream (glob:expand-tilde "~/src/el/unipose-data.el")
+			  :direction :output
+			  :if-exists :supersede)
+    (format stream ";;;~%;;; unipose-data.el~%;;;~%~@
+		    ;;; Automatically generated from TINY-RL at ~a~%~%"
+	    (dlib-misc:date-string))
+    (print-unipose-for-emacs :stream stream)
+    (format stream "~%;; EOF~%")))
+
+(defun print-unipose-for-emacs (&key (tree *unipose*) (stream *standard-output*) (depth 0) (n 0))
+  "Print the unipose list for loading into emacs."
+  (if (= depth 0)
+      (progn
+	(format stream "(setq *unipose*~%  '(")
+	(loop
+	   :for branch :in tree
+	   :for n = 0 :then (+ n 1)
+	   :do
+	   (when (> n 0)
+	     (write-string "   " stream))
+	   (incf depth)
+	   (print-unipose-for-emacs :tree branch :stream stream :depth depth :n n)
+	   (terpri stream))
+	(format stream "   ))~%"))
+      (progn
+	(incf depth)
+	(typecase tree
+	  (null
+	   (write-char #\) stream))
+	  (list
+	   (incf depth)
+	   (when (and (> n 0) (> depth 1))
+	     (write-char #\space stream))
+	   (write-char #\( stream)
+	   (loop
+	      :for l :in tree
+	      :for n = 0 :then (+ n 1)
+	      :do
+	      (print-unipose-for-emacs :tree l :stream stream :depth depth :n n))
+	   (write-char #\) stream))
+	  (character
+	   (when (> n 0)
+	     (write-char #\space stream))
+	   (write-char #\? stream)
+	   (when (char= tree #\")
+	     (write-char #\\ stream))
+	   (write-char tree stream))
+	  (t
+	   (error "Unknown object type in unipose data: ~s ~s~%"
+		  (type-of tree) tree))))))
+
+(defun unipose (e)
+  "Compose unicode characters."
+  (let ((first-ccc (get-a-char e)) second-ccc)
+      (setq second-ccc (get-a-char e))
+      (let ((level2 (cadr (assoc first-ccc *unipose*)))
+	    (found nil))
+	(dolist (level3 level2)
+	  (if (and (listp (car level3)) (position second-ccc (car level3)))
+	      (progn
+		(self-insert e t (cadr level3))
+		(setq found t)
+		(return))
+	      (if (eq (car level3) second-ccc)
+		  (progn
+		    (self-insert e t (cadr level3))
+		    (setq found t)
+		    (return)))))
+	(when (not found)
+	  (beep e "unipose ~c ~c unknown" first-ccc second-ccc)))))
+
+(defun read-key-sequence (e &optional keymap)
+  "Read a key sequence from the user. Descend into keymaps.
+ Return a key or sequence of keys."
+  (let* ((c (get-a-char e))
+	 (action (key-definition c (or keymap (line-editor-keymap e)))))
+    (if (and (symbolp action) (boundp action) (keymap-p (symbol-value action)))
+	(let ((result-seq (read-key-sequence e (symbol-value action))))
+	  (if (listp result-seq)
+	      (append (list c) result-seq)
+	      (list c result-seq)))
+	c)))
+
+(defun ask-function-name (&optional (prompt "Function: "))
+  "Prompt for a function name and return symbol of a function."
+  (let* ((str (tiny-rl :prompt prompt :context :ask-function-name))
+	 (cmd (and str (stringp str)
+		   (ignore-errors (safe-read-from-string str)))))
+    (and (symbolp cmd) (fboundp cmd) cmd)))
+
+(defun set-key-command (e)
+  "Bind a key interactively."
+  (tmp-prompt e "Set key: ")
+  (let* ((key-seq (read-key-sequence e))
+	 (cmd (ask-function-name (format nil "Set key ~a to command: "
+					 (key-sequence-string key-seq)))))
+    (if cmd
+	(set-key key-seq cmd (line-editor-keymap e))
+	(tmp-message e "Not a function."))))
+
+(defun describe-key-briefly (e)
+  "Tell what function a key invokes."
+  (tmp-prompt e "Describe key: ")
+  (let* ((key-seq (read-key-sequence e))
+	 (def (key-sequence-binding key-seq (line-editor-keymap e))))
+    (if def
+	(tmp-message e "Describe key: ~w is bound to ~a"
+		     (key-sequence-string key-seq) def)
+	(tmp-message e "Describe key: ~w is not bound"
+		     (key-sequence-string key-seq)))))
 
 (defun exit-editor (e)
   "Stop editing."
@@ -1920,6 +2124,7 @@ enter it."
     ;; (#\! (shell-command))
     ;; (#\( (start-macro))
     ;; (#\) (end-macro))
+    (#\9		. unipose)
     (,(ctrl #\C)	. exit-editor)
     (,(ctrl #\X)	. exchange-point-and-mark)))
 ;  :default-binding #| (beep e "C-x ~a is unbound." cmd |#
@@ -1928,6 +2133,7 @@ enter it."
   `(
     (#\O	. do-app-key)
     (#\[	. do-function-key)
+    (#\newline  . finish-line)
    ))
 
 (defkeymap *special-keymap*
@@ -2064,14 +2270,16 @@ Keyword arguments:
 	   (loop :do
 	      (finish-output)
 	      (when debugging
-		(message e "~d ~d [~d x ~d] ~w ~w"
+		(message e "~d ~d [~d x ~d] ~w"
 			 (screen-col e) (screen-row e)
 			 (terminal-window-columns terminal)
 			 (terminal-window-rows terminal)
-			 cmd (history-current-get context))
+			 cmd)
 		(show-message-log e))
 	      (setf cmd (get-a-char e))
 	      (log-message e "cmd ~s" cmd)
+	      (when (need-to-redraw e)
+		(redraw e))
 	      (if (equal cmd '(nil))
 		  (if eof-error-p
 		      (error (make-condition 'end-of-file

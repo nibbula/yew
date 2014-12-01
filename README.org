@@ -17,9 +17,9 @@ As you may know, an easy way to get the requirements is with quicklisp.
 
 Most of the things here are subtly interdependent. And many things are
 repeating stuff now available in other libraries in quicklisp (but perhaps
-not when I started). I would like to remedy that, but it means separating
-things out into separate libraries, perhaps creating whole separate projects,
-and perhaps posting patches to other appropriate libraries.
+not when I started). I would like to remedy that, but it means putting
+things into libraries, perhaps creating whole separate projects, or perhaps
+posting patches and resolving differences with other appropriate libraries.
 
 Some things that are all mushed up in here right now are:
   |---------------+----------------------------------------------------------|
@@ -44,13 +44,15 @@ Some things that are all mushed up in here right now are:
   | puca          | Version control interface                                |
   | tiny-debug    | Crappy debugger for tiny-repl                            |
   | tiny-repl     | A shabby REPL that uses tiny-rl                          |
-  | tiny-rl       | Fake and buggy line editing                              |
+  | tiny-rl       | Buggy line editing                                       |
   | lish          | Lisp shell                                               |
+  |---------------+----------------------------------------------------------|
 
 It all used to work on Linux, OSX, and Solaris, but it probably doesn't
-anymore. I'd like it to work on cygwin and even non-cygwin Windows. It has, at
-times, worked on SBCL, CCL, Lispworks, Allegro, CLisp, ECL, CMU. It probably
-only barely works on OSX and SBCL now.
+anymore. I'd like it to work on cygwin and even non-cygwin Windows and
+Android, and actually any platform with a decent CL implementation running.
+It has, at times, worked on SBCL, CCL, Lispworks, Allegro, CLisp, ECL, CMU.
+It probably only barely works on OSX and SBCL now.
 
 I'd like to stop using Bash. When I feel like I can do that, then perhaps it
 will be the time to clean up the above issues so other people can try to use it.

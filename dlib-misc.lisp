@@ -2,7 +2,7 @@
 ;; dlib-misc.lisp - Dan's library of miscellaneous useful functions.
 ;;
 
-;; $Revision: 1.16 $
+;; $Revision: 1.17 $
 
 ;; See dlib.lisp for the most essential stuff.
 ;; This is for things that are nice, but not essential.
@@ -31,17 +31,22 @@
    #:date-string
    #:format-date
    #:simple-parse-time
+   #:minutes #:hours #:days #:weeks
    #:do-at
    #:print-properties
+   #:print-values
+   #:print-values*
    #:print-columns
    #:print-size
    #:dir
    #:abspath
    #:dirname
    #:basename
+   #:quote-filename
    #:unintern-conflicts
    #:show-features
    #:describe-environment
+   #:describe-printing
    #:describe-packages
    #:describe-package
    #:autoload
@@ -275,12 +280,13 @@ swaps to do times the length of the array. "
 
 (defun date-string (&key (time (get-universal-time)) format
 			 (gmt-p nil gmt-p-set))
-  "Return a formated date string. A universal time can be provided with the ~
+  "Return a formated date string. A universal time can be provided with the
 TIME keyword. FORMAT can be one of:
-  :net          - an RFC822 formatted date. ~
+  :net          - an RFC822 formatted date.
   :filename     - a format that works well for a user readable file name.
-  anything else - some format that Nibby likes.~
-If GMT-P is true, the date is in Grenwich Mean Time, otherwise it's in the ~
+  anything else - some format that Nibby likes.
+
+If GMT-P is true, the date is in Grenwich Mean Time, otherwise it's in the 
 current time zone."
 ; This makes a format default to GMT:
 ;  (when (and (not gmt-p-set) (find format '(:rfc822 :rfc :net)))
@@ -316,8 +322,10 @@ current time zone."
   "Call #'format with FORMAT and the given date fields in VALUES. 
 VALUES is a sequence of any of the following keywords:
   :seconds :minutes :hours :date :month :year :day :daylight-p :zone
-  :day-abbrev :month-abbrev"
-  (with-unique-names (seconds minutes hours date month year day daylight-p zone)
+  :day-abbrev :month-abbrev :12-hours :am :pm
+Some abbreviations of the keywords are accepted, like :hrs :min :sec."
+  (dlib:with-unique-names
+      (seconds minutes hours date month year day daylight-p zone)
     (let ((args (loop :for v :in values
 		   :collect
 		   (etypecase v
@@ -330,6 +338,11 @@ VALUES is a sequence of any of the following keywords:
 			 `(format nil "~c~2,'0d~2,'0d"
 				  (if (< ,zone 0) #\+ #\-)
 				  (tz-hours ,zone) (tz-minutes ,zone)))
+			((:12-hours :12-hour :12-hrs :12-hr
+			  :12hours :12hour :12hrs :12hr)
+			 `(let ((p (mod ,hours 12))) (if (zerop p) 12 p)))
+			((:am :pm :am/pm :am-pm)
+			 `(if (> ,hours 12) "PM" "AM"))
 			(otherwise
 			 (case v
 			   ((:seconds :second :sec) seconds)
@@ -340,7 +353,9 @@ VALUES is a sequence of any of the following keywords:
 			   ((:year :yr) year)
 			   (:day day)
 			   (:zone zone)
-			   (:daylight-p daylight-p)))))))))
+			   (:daylight-p daylight-p)
+			   (otherwise
+			    (error "Unknown format-date keyword ~s." v))))))))))
       `(multiple-value-bind (,seconds ,minutes ,hours ,date ,month ,year ,day
 				      ,daylight-p ,zone)
 	   (if ,gmt-p
@@ -405,6 +420,12 @@ The date part is considered to be the current date."
 	(incf hour 12))
       (done))))
 
+;; I know I'm gonna have to end up writing that time lib.
+(defun weeks   (weeks)   (* weeks   #.(* 60 60 24 7)))
+(defun days    (days)    (* days    #.(* 60 60 24)))
+(defun hours   (hours)   (* hours   #.(* 60 60)))
+(defun minutes (minutes) (* minutes 60))
+
 (defmacro do-at (time form)
   "Call func with args at time. Time is a universal time or a string."
   (let ((tm (gensym)))
@@ -428,23 +449,57 @@ The date part is considered to be the current date."
        :do (format t "~va: ~a~%"
 		   label-length
 		   (string-capitalize
-		    (substitute #\space #\_ (substitute #\space #\- name)))
+		    (substitute	  #\space #\_ (substitute #\space #\- name)))
 		   value))))
 
-(defun print-columns (comp-list &key (columns 80) (stream *standard-output*)
-				  (format-char #\a))
-  (let ((len (length comp-list)))
+(defun print-values (value-list &optional (stream t))
+  "Print a vertical list of values. VALUE-LIST is a list of symbols whose
+values are printed. Symbols in the VALUE-LIST must either be dynamic variables
+of fbound to a function, which called with no arguments to get the value.
+Use PRINT-VALUES* if you want to print lexical variables."
+  (let ((max-len (loop :for f :in value-list
+		       :maximize (length (string f)))))
+    (loop :for f :in value-list :do
+       (format stream "~va  : ~s~%"
+	       max-len (string-capitalize f)
+	       (if (fboundp f)
+		   (apply f nil)
+		   (symbol-value f))))))
+
+;; This can do everything the unstarred version can do, but it causes
+;; potential over-abundant code generation, which is why I'm keeping both
+;; versions.
+(defmacro print-values* (value-list &optional (stream t))
+  "Print a vertical list of values. VALUE-LIST is an unquoted list of symbols
+whose values are printed. If the symbol is FBOUND to a function it is called
+with no arguments to get the value. Unlike PRINT-VALUES, this can print
+lexical variables."
+  (let* ((max-len (loop :for f :in value-list
+		     :maximize (length (string f))))
+	 (spudgers
+	  (loop :with snork
+	     :for f :in value-list
+	     :do (setf snork (if (fboundp f) `(apply ',f nil) f))
+	     :collect
+	     `(format ,stream "~va  : ~s~%" ,max-len (string-capitalize ',f)
+		      ,snork))))
+    `(progn ,@spudgers)))
+
+(defun print-columns (list &key (columns 80) (stream *standard-output*)
+			     (format-char #\a))
+  "Print the LIST on STREAM with as many columns as will fit in COLUMNS fixed
+width character cells. Items are sorted down the columns, then across.
+FORMAT-CHAR is used to print the items, as with FORMAT."
+  (let ((len (length list)))
     (let* ((max-len
-	 ;; This, although terse, may be inefficient w/ big lists (@@@ test!):
-; 	 (apply #'max (mapcar #'length comp-list))))
+	    ;; This, although terse, may be inefficient w/big lists (@@@ test!):
 	    (loop :with m = 0
-		  :for c :in comp-list :do
-;		  (setf m (max m (length c)))
-		  (setf m (max m (length
-				  (format nil
-					  (format nil "~~~c" format-char)
-					  c))))
-		  :finally (return (1+ m))))
+	       :for c :in list :do
+	       (setf m (max m (length
+			       (format nil
+				       (format nil "~~~c" format-char)
+				       c))))
+	       :finally (return (1+ m))))
 	   (width (1- columns))
 	   (ccc   (floor width max-len))
 	   (cols  (if (zerop ccc) 1 ccc))
@@ -453,11 +508,8 @@ The date part is considered to be the current date."
 	   (row   0)
 	   (a     (make-array `(,cols ,rows) :initial-element nil)))
       ;; for each line,  for each col , elt mod
-;    (tt-format e "~a~%~{~a~%~}" rows comp-list)
       (when (> max-len width) (setf max-len width))
-;    (tt-format e "max-len = ~d width = ~a cols = ~a rows = ~a len = ~a~%"
-;	       max-len width cols rows len)
-      (loop :for c :in comp-list
+      (loop :for c :in list
 	    :do
 	    (setf (aref a col row) c)
 	    (incf row)
@@ -469,10 +521,6 @@ The date part is considered to be the current date."
 	 (loop :for c :from 0 :below cols
 	    :do
 	    (when (aref a c r)
-	      ;; (format stream
-	      ;; 	    (format nil (format nil "~~v~c"
-	      ;; 				format-char)
-	      ;; 		    max-len (aref a c r)))))
 	      (write-string
 	       (format nil (format nil "~~v~c" format-char)
 		       max-len (aref a c r))
@@ -526,32 +574,19 @@ The date part is considered to be the current date."
   "Print the features list nicely."
   (print-columns (sort (copy-seq *features*) #'string<) :format-char #\s))
 
-(defparameter *env-funcs*
-  '(
-    lisp-implementation-type
-    lisp-implementation-version
-    short-site-name
-    long-site-name
-    machine-instance
-    machine-type
-    machine-version
-    software-type
-    software-version
-    user-homedir-pathname
-    internal-time-units-per-second
-    ))
-
 (defun describe-environment (&optional (stream *standard-output*))
-  "Print out the environmental thingys."
-  (let ((max-len (loop :for f :in *env-funcs*
-		       :maximize (length (string f)))))
-    (loop :for f :in *env-funcs*
-	  :do
-	  (format stream "~va  : ~a~%"
-		  max-len (string-capitalize f)
-		  (if (fboundp f)
-		      (apply f nil)
-		      (symbol-value f)))))
+  "Print the Lisp environmental data."
+  (print-values  '(lisp-implementation-type
+		   lisp-implementation-version
+		   short-site-name
+		   long-site-name
+		   machine-instance
+		   machine-type
+		   machine-version
+		   software-type
+		   software-version
+		   user-homedir-pathname
+		   internal-time-units-per-second))
   (write-string (with-output-to-string (*standard-output*) (room)) stream)
   (values))
 
@@ -649,6 +684,21 @@ The date part is considered to be the current date."
 			    ((fboundp s) (fdefinition s))
 			    ((boundp s) (type-of (symbol-value s)))
 			    (t "<unbound>"))))))))))
+
+
+(defun describe-printing ()
+  "Describe the current Lisp printing parameters."
+  (print-values '(*print-escape*
+		  *print-radix*
+		  *print-base*
+		  *print-circle*
+		  *print-pretty*
+		  *print-level*
+		  *print-gensym*
+		  *print-readably*
+		  *print-right-margin*
+		  *print-miser-width*
+		  *print-lines*)))
 
 (defun dir (&optional (pattern "*.*"))
   "Simple portable CL only directory listing."
@@ -870,5 +920,22 @@ The date part is considered to be the current date."
 (defun basename (path)
   "Return the last portion of a path."
  (clip-path path :file))
+
+;; I am probably unable to express how unfortunate this is.
+(defun quote-filename (namestring)
+  "Try to quote a file name so none of it's characters are noticed specially by the Lisp pathname monster."
+  (let ((result namestring))
+    (flet ((possibly-quote (c)
+	     (when (position c result)
+	       (setf result (join (split-sequence c result) (s+ #\\ c))))))
+      (loop :for c :across "[*;:" :do
+	 (possibly-quote c))
+      result)))
+
+(defun dprobe-file (literal-filename)
+  "Like probe-filename, but treat strings as literal."
+  (probe-file (if (stringp literal-filename)
+		  (quote-filename literal-filename)
+		  literal-filename)))
 
 ;; End

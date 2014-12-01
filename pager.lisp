@@ -1,11 +1,14 @@
 ;;
-;; pager.lisp - Something like more or less
+;; pager.lisp - More or less like more or less.
 ;;
 
-;; $Revision: 1.10 $
+;; $Revision: 1.11 $
 
 ;; TODO:
 ;;  - syntax highlighting
+;;  - grotty & color processing
+;;  - remove & transform lines
+;;  - simpile HTML rendering
 
 (defpackage :pager
   (:documentation "We can only see so much at one time.")
@@ -21,6 +24,9 @@
    #+lish #:!pager
    ))
 (in-package :pager)
+
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+		   (compilation-speed 2)))
 
 (define-constant +digits+ #(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
   "For reading the numeric argument." #'equalp)
@@ -132,29 +138,239 @@
   ;; Don't reset options?
   )
 
-(defun process-line (pager line)
+(defun nop-process-line (pager line)
   (declare (ignore pager))
   line)
 
-#| @@@@
-(defun NEW-process-line (pager line)
-  "Process a line of text read from a stream."
-  (let ((spans '()))
-    (flet ((in-span (tag)
-	     (loop :for s :in spans
-		:do
-		(if :
-	     (position spans
+(defstruct fatchar
+  (c (code-char 0) :type character)
+  (fg nil)
+  (bg nil)
+  (line 0 :type fixnum)
+  (attrs nil :type list))
+
+(defun span-length (span)
+  "Calculate the length in characters of the span."
+  (loop :for e :in span
+     :sum (typecase e
+	    (string (length e))
+	    (cons (span-length e))
+	    (t 0))))
+
+(defun get-span (fat-line start)
+  "Convert a FATCHAR line to tagged spans."
+  (when (= (length fat-line) 0)
+    (return-from get-span fat-line))
+  (let ((str (make-stretchy-string (- (length fat-line) start)))
+	(attr (fatchar-attrs (aref fat-line start)))
+	(i start) (span '()) last)
     (loop
-       :with len = (length line)
-       :for i = 0 :then (1+ i)
+       :with c :and len = (length fat-line)
        :do
-       (cond
-	 ((char= (char i line) #\backspace)
-	  (if (char= (char (1+ i) line) (char (1- i) line))
-	      (setf span-start (1- i)
-		    span-tag :bold)))))))
-|#
+       (setf c (aref fat-line i))
+       (if last
+	 (let ((added
+		(set-difference (fatchar-attrs c) (fatchar-attrs last)))
+	       (removed
+		(set-difference (fatchar-attrs last) (fatchar-attrs c))))
+	   (cond
+	     (removed
+	      (when (/= 0 (length str))
+		(push str span))
+	      (setf span (nreverse span))
+	      (return-from get-span `(,@attr ,@span)))
+	     (added
+	      (when (/= 0 (length str))
+		(push (copy-seq str) span))
+	      (let ((s (get-span fat-line i)))
+		(push s span)
+		(incf i (span-length s)))
+	      (stretchy-truncate str))
+	     (t
+	      (stretchy-append str (fatchar-c c))
+	      (incf i)
+	      (setf last c))))
+	 (progn
+	   (stretchy-append str (fatchar-c c))
+	   (incf i)
+	   (setf last c)))
+       :while (< i len))
+    (when (/= 0 (length str))
+      (push str span))
+    (setf span (nreverse span))
+    `(,@attr ,@span)))
+
+(defmacro dumpy (&rest args)
+  "Print the names and values of the arguments, like NAME=value."
+  (let ((za (loop :for z :in args :collect
+	       `(format t "~a=~a " ',z ,z))))
+    `(progn ,@za (terpri))))
+
+;;; ^[[00m	normal
+;;; ^[[01;34m	bold, blue fg
+;;; ^[[m	normal
+;;; ^[[32m	green fg
+;;; ^[[1m	bold
+
+;; We drink of the color and become the color.
+(defun grok-ansi-color (str)
+  "Take an string with an ANSI terminal color escape sequence, starting after
+the ^[[ and return NIL if there was no valid sequence, or an integer offset
+to after the sequence, the foreground, background and a list of attributes.
+NIL stands for whatever the default is, and :UNSET means that they were not
+set in this string."
+  (let (num (i 0) (len (length str)) inc
+	    (fg :unset) (bg :unset) (attr '()) attr-was-set)
+    (loop
+       :do
+;       (princ "> ") (dumpy num i inc (subseq str i))
+       (setf (values num inc) (parse-integer str :start i :junk-allowed t))
+;       (princ "< ") (dumpy num i inc (subseq str i))
+       (if (or (not num) (not inc))
+	   (progn
+	     (when (eql (char str i) #\m)
+	       (setf attr '() fg nil bg nil attr-was-set t))
+	     (return))
+	   (progn
+	     (setf i inc)
+	     (when (or (eql (char str i) #\;)
+		       (eql (char str i) #\m))
+	       (incf i)
+	       (case num
+		 (0  (setf attr '() fg nil bg nil attr-was-set t))
+		 (1  (pushnew :bold attr)      (setf attr-was-set t))
+		 (4  (pushnew :underline attr) (setf attr-was-set t))
+		 (5  (pushnew :blink attr)     (setf attr-was-set t))
+		 (7  (pushnew :inverse attr)   (setf attr-was-set t))
+		 (8  (pushnew :invisible attr) (setf attr-was-set t))
+		 (22 (setf attr (delete :bold attr))
+		     (setf attr-was-set t))
+		 (24 (setf attr (delete :underline attr))
+		     (setf attr-was-set t))
+		 (25 (setf attr (delete :blink attr))
+		     (setf attr-was-set t))
+		 (27 (setf attr (delete :inverse attr))
+		     (setf attr-was-set t))
+		 (28 (setf attr (delete :invisible attr))
+		     (setf attr-was-set t))
+		 (30 (setf fg :black))
+		 (31 (setf fg :red))
+		 (32 (setf fg :green))
+		 (33 (setf fg :yellow))
+		 (34 (setf fg :blue))
+		 (35 (setf fg :magenta))
+		 (36 (setf fg :cyan))
+		 (37 (setf fg :white))
+		 (39 (setf fg nil))
+		 (40 (setf bg :black))
+		 (41 (setf bg :red))
+		 (42 (setf bg :green))
+		 (43 (setf bg :yellow))
+		 (44 (setf bg :blue))
+		 (45 (setf bg :magenta))
+		 (46 (setf bg :cyan))
+		 (47 (setf bg :white))
+		 (49 (setf bg nil))
+		 (otherwise #| just ignore unknown colors or attrs |#)))))
+       :while (< i len))
+    (values 
+     (if (and (eq fg :unset) (eq bg :unset) (not attr-was-set))
+	 nil i)
+     fg bg (if (not attr-was-set) :unset attr))))
+
+(defun p-a-c-l (fat-line)
+ (let ((new-fat-line '()))
+    (loop :with len = (length fat-line) :and i = 0
+       :and line = (map 'string #'(lambda (x) (fatchar-c x)) fat-line)
+       :and fg :and bg :and c :and attrs
+       :while (< i len)
+       :do
+       (when (and (< i (1- len))
+		  (char= (aref line i) #\escape)
+		  (char= (aref line (1+ i)) #\[))
+	 (multiple-value-bind (inc i-fg i-bg i-attrs)
+	     (grok-ansi-color (subseq line i))
+	   (unless (eq i-fg    :unset) (setf fg i-fg) (format t "FG ~s~%" fg))
+	   (unless (eq i-bg    :unset) (setf bg i-bg) (format t "BG ~s~%" bg))
+	   (unless (eq i-attrs :unset) (setf attrs i-attrs))
+	   (when inc
+	     (incf i inc)))
+	 )
+       (setf c (aref fat-line i)
+	     (fatchar-fg c) fg
+	     (fatchar-bg c) bg
+	     (fatchar-attrs c) (nunion attrs (fatchar-attrs c)))
+       (push c new-fat-line)
+       (incf i))
+    new-fat-line))
+
+(defun process-ansi-colors-line (fat-line)
+  (when (= (length fat-line) 0)
+    (return-from process-ansi-colors-line fat-line))
+  (let ((new-fat-line (make-stretchy-vector (length fat-line)
+					    :element-type 'fatchar)))
+    (loop :with len = (length fat-line) :and i = 0
+       :and line = (map 'string #'(lambda (x) (fatchar-c x)) fat-line)
+       :and fg :and bg :and c :and attrs
+       :while (< i len)
+       :do
+       (when (and (< i (1- len))
+		  (char= (aref line i) #\escape)
+		  (char= (aref line (1+ i)) #\[))
+	 (format t "HOWDY ~s~%" i)
+	 (multiple-value-bind (inc i-fg i-bg i-attrs)
+	     (grok-ansi-color (subseq line i))
+	   (unless (eq i-fg    :unset) (setf fg i-fg) (format t "FG ~s~%" fg))
+	   (unless (eq i-bg    :unset) (setf bg i-bg) (format t "BG ~s~%" bg))
+	   (unless (eq i-attrs :unset) (setf attrs i-attrs))
+	   (when inc
+	     (format t "BONG ~s~%" inc)
+	     (incf i inc))))
+       (setf c (aref fat-line i)
+	     (fatchar-fg c) fg
+	     (fatchar-bg c) bg
+	     (fatchar-attrs c) (nunion attrs (fatchar-attrs c)))
+       (stretchy:stretchy-append new-fat-line c)
+       (incf i))
+    new-fat-line))
+
+(defun process-grotty-line (line)
+  "Convert from grotty typewriter sequences to fatchar strings."
+  (when (= (length line) 0)
+    (return-from process-grotty-line line))
+  (let ((fat-line (make-stretchy-vector (+ (length line) 16)
+					:element-type 'fatchar)))
+    (loop
+       :with i = 0 :and len = (length line) :and attr
+       :do
+       (when (< i (- len 2))
+	 (cond
+	   ((and (char= (char line (+ i 1)) #\backspace)
+		 (char= (char line (+ i 2)) (char line i)))
+	    (incf i 2)
+	    (setf attr :bold))
+	   ((and (char= (char line i) #\_)
+		 (char= (char line (+ i 1)) #\backspace))
+	    (incf i 2)
+	    (setf attr :underline))
+	   (t
+	    (setf attr nil))))
+       (stretchy:stretchy-append
+	fat-line
+	(make-fatchar
+	 :c (char line i) :attrs (and attr (list attr))))
+       (incf i)
+       :while (< i len))
+    fat-line))
+
+(defun process-line (pager line)
+  "Process a line of text read from a stream."
+  (declare (ignore pager))
+  (let ((output (get-span
+		 (process-ansi-colors-line (process-grotty-line line)) 0)))
+    (if (and (= (length output) 1) (stringp (first output)))
+	(first output)
+	output)))
 
 (defun read-lines (pager count)
   "Read new lines from the stream. Stop after COUNT lines. If COUNT is zero,
@@ -210,7 +426,8 @@ replacements. So far we support:
 				     (pager-count pager)))
 			   str))
 	       (#\f
-		(if (typep (pager-stream pager) 'file-stream)
+		(if (and (typep (pager-stream pager) 'file-stream)
+			 (ignore-errors (truename (pager-stream pager))))
 		    (princ (namestring (truename (pager-stream pager))) str)
 		    (format str "~a" (pager-stream pager)))))))
 	 (write-char c str)))))
@@ -263,6 +480,93 @@ replacements. So far we support:
 
 (defvar *pager*) ;; @@@ DEBUG
 
+(defparameter *attr*
+  `((:normal	. ,+a-normal+)
+    (:standout	. ,+a-standout+)
+    (:underline	. ,+a-underline+)
+    (:reverse	. ,+a-reverse+)
+    (:blink	. ,+a-blink+)
+    (:dim	. ,+a-dim+)
+    (:bold	. ,+a-bold+)))
+
+#|
+
+             left         *cols*
+win  :         |------------|
+line : |----||-------||---------||---|
+                                 |
+                                *col*
+|#
+
+(defvar *col*)
+(defvar *left*)
+(defun show-span (s)
+  (when s
+    (typecase s
+      (string
+       (let* ((start (min (1- (length s)) (max 0 (- *left* *col*))))
+	      (end   (min (length s) *cols*))
+	      (len   (- end start)))
+	 (when (> len 0)
+	   (addstr (subseq s start end)))
+	 (incf *col* (length s))))
+      (list
+       (let* ((f (first s))
+	      (tag (and (or (keywordp f) (symbolp f)) f)))
+	 (when tag (attron (cdr (assoc tag *attr*))))
+	 (loop :while (< *col* *cols*)
+	    :for ee :in (or (and tag (cdr s)) s)
+	    :do (show-span ee))
+	 (when tag (attroff (cdr (assoc tag *attr*)))))))))
+
+(defun render-span (pager line-number line)
+  (with-slots (left show-line-numbers) pager
+    (let ((*col* left) (*left* left))
+      (when show-line-numbers
+	(let ((str (format nil "~d: " line-number)))
+	  (incf *col* (length str))
+	  (addstr str)))
+      (show-span (line-text line)))))
+
+(defun render-text-line (pager line-number line)
+  (with-slots (left page-size search-string show-line-numbers) pager
+    (let* ((text1 (line-text line))
+	   (end   (min (length text1) (+ *cols* left)))
+	   (text  (if (> left 0)
+		      (if (< left (length text1))
+			  (subseq text1 left end)
+			  "")
+		      (subseq text1 0 end)))
+	   (ss search-string)
+	   (pos (search ss text :test #'equalp))
+	   old-pos)
+      (if (and ss pos)
+	  (progn
+	    (when show-line-numbers
+	      (addstr (format nil "~d: " line-number)))
+	    (loop :with start = 0
+	       :do
+	       (addstr (subseq text start pos))
+	       (standout)
+	       (addstr (subseq text pos (+ pos (length ss))))
+	       (standend)
+	       (setf start (+ pos (length ss))
+		     old-pos pos
+		     pos (search ss text :test #'equalp :start2 start))
+	       (when (not pos)
+		 (addstr (subseq text (+ old-pos (length ss)))))
+	       :while pos))
+	  (if show-line-numbers
+	      (addstr (format nil "~d: ~a" line-number text))
+	      (addstr text))))))
+
+(defun display-line (pager line-number line)
+  (typecase (line-text line)
+    (string (render-text-line pager line-number line))
+    (list   (render-span pager line-number line))
+    (t (error "Don't know how to render a line of ~s~%"
+	      (type-of (line-text line))))))
+
 (defun display-page (pager)
   "Display the lines already read, starting from the current."
   (move 0 0)
@@ -275,36 +579,8 @@ replacements. So far we support:
 	 :for i :from line :to (+ line (1- page-size))
 	 :while (car l)
 	 :do
-	 (let* ((text1 (line-text (car l)))
-		(end   (min (length text1) (+ *cols* left)))
-		(text  (if (> left 0)
-			   (if (< left (length text1))
-			       (subseq text1 left end)
-			       "")
-			   (subseq text1 0 end))))
-	   (let* ((ss (pager-search-string pager))
-		  (pos (search ss text :test #'equalp))
-		  old-pos)
-	     (if (and ss pos)
-	       (progn
-		 (move y 0)
-		 (when (pager-show-line-numbers pager)
-		   (addstr (format nil "~d: " i)))
-		 (loop :with start = 0
-		    :do
-		    (addstr (subseq text start pos))
-		    (standout)
-		    (addstr (subseq text pos (+ pos (length ss))))
-		    (standend)
-		    (setf start (+ pos (length ss))
-			  old-pos pos
-			  pos (search ss text :test #'equalp :start2 start))
-		    (when (not pos)
-		      (addstr (subseq text (+ old-pos (length ss)))))
-		    :while pos))
-	       (if (pager-show-line-numbers pager)
-		 (mvaddstr y 0 (format nil "~d: ~a" i text))
-		 (mvaddstr y 0 text)))))
+	 (move y 0)
+	 (display-line pager i (car l))
 	 (setf l (cdr l))
 	 (incf y))
       ;; Fill the rest of the screen with twiddles to indicate emptiness.
@@ -341,13 +617,23 @@ replacements. So far we support:
        :while (not done))
     str))
 
+(defun search-line (str line)
+  (typecase line
+    (string
+     (search str line :test #'equalp))
+    (cons
+     (loop :with result
+	:for s :in line
+	:if (setf result (search-line str s))
+	:return result))))
+
 (defun search-for (pager str)
   (with-slots (lines count line page-size) pager
     (let ((ll (nthcdr line lines)) l)
       (loop
 	 :do (setf l (car ll))
 	 :while (and l (< (line-number l) count)
-		     (not (search str (line-text l) :test #'equalp)))
+		     (not (search-line str (line-text l))))
 	 :do
 	 (when (>= (line-number l) (max 0 (- count page-size)))
 	   (read-lines pager page-size))
@@ -374,7 +660,8 @@ replacements. So far we support:
 	(progn
 	  (incf file-index)
 	  (close stream)
-	  (setf stream (open (nth file-index file-list) :direction :input))
+	  (setf stream (open (quote-filename (nth file-index file-list))
+			     :direction :input))
 	  (setf lines '() count 0 line 0 got-eof nil)
 	  (read-lines pager page-size))
 	(message "No next file."))))
@@ -641,7 +928,8 @@ q - Abort")
     (unwind-protect
       (progn
 	(when (and (not stream) file-list)
-	  (setf stream (open (first file-list) :direction :input)
+	  (setf stream (open (quote-filename (first file-list))
+			     :direction :input)
 		close-me t))
 	(if (not pager)
 	    (setf pager (make-instance 'pager
@@ -710,7 +998,8 @@ q - Abort")
       ((consp file-or-files)
        (page nil nil file-or-files))
       (t
-       (with-open-file (stream file-or-files :direction :input)
+       (with-open-file (stream (quote-filename file-or-files)
+			       :direction :input)
 	 (page stream))))))
 
 (defun help (pager)
@@ -735,7 +1024,7 @@ press Control-H then 'k' then the key. Press 'q' to exit this help.
 	(directory "."))
     (loop :while (setf (values filename directory)
 		       (pick-file :directory directory))
-       :do (with-open-file (stream filename)
+       :do (with-open-file (stream (quote-filename filename))
 	     (page stream pager)))))
 
 ;; @@@ Run in a thread:
@@ -762,9 +1051,8 @@ press Control-H then 'k' then the key. Press 'q' to exit this help.
 ;; 	 (page stream))))))
 
 #+lish
-(lish:defcommand pager (&rest files)
-  '((:name files :type pathname :repeating t))
+(lish:defcommand pager ((files pathname :repeating t))
   "Look through files a screenful at a time."
-  (pager files))
+  (pager (or files *standard-input*)))
 
 ;; EOF

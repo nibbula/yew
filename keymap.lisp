@@ -2,7 +2,7 @@
 ;; keymap.lisp - Associate functions with keys.
 ;;
 
-;; $Revision: 1.2 $
+;; $Revision: 1.3 $
 
 (defpackage :keymap
   (:documentation "Associate functions with keys.")
@@ -78,8 +78,8 @@
 
 (defmethod print-object ((obj keymap) stream)
   "Print a KEYMAP on a STREAM."
-  (print-unreadable-object (obj stream :type t)
-    (format stream "keymap [~d]"
+  (print-unreadable-object (obj stream :type t :identity t)
+    (format stream " [~d]"
 	    (hash-table-count (keymap-map obj)))))
 
 ;(defmacro defkeymap (name map &key default-binding)
@@ -143,7 +143,7 @@
 	    ;; simple binding
 	    (typecase map
 	      (cons (define-key (car map) key action))
-	      (keymap (define-key map key action)))))
+	      (keymap (define-key map key def)))))
       ;; Just one key
       (typecase map
 	(cons (define-key (car map) keyseq def))
@@ -158,19 +158,20 @@ there is no binding."
 
 (defun key-definition (key keymap-stack)
   "Return the definition of KEY in KEYMAP-STACK."
-  (typecase keymap-stack
-    ;; a list of keymaps
-    (cons (loop
-	     :with binding = nil
-	     :for m :in keymap-stack
-	     :when (setf binding (key-binding key m))
-	     :return binding))
+  (cond
+    ((consp keymap-stack)    ;; a list of keymaps
+     (loop
+	:with binding = nil
+	:for m :in keymap-stack
+	:when (setf binding (key-binding key m))
+	:return binding))
 ;		(multiple-value-bind (binding is-bound)
 ;		    (gethash key (keymap-map m))
 ;		  (when is-bound (return binding)))))
     ;; handle a single keymap
-    (keymap (key-binding key keymap-stack))
-    (otherwise
+    ((typep keymap-stack 'keymap)
+     (key-binding key keymap-stack))
+    (t
      (error "Key definition must be looked up in either a keymap or a list
  of keymaps."))))
 

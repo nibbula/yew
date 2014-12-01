@@ -2,7 +2,7 @@
 ;; dlib.lisp - Dan's redundant miscellany.
 ;;
 
-;; $Revision: 1.36 $
+;; $Revision: 1.37 $
 
 ;; These are mostly solving problems that have already been solved.
 ;; But it's mostly stuff that I need just to start up.
@@ -16,6 +16,7 @@
   (:documentation
    "Dan's generally useful miscellaneous functions.
  I usually have this loaded automatically at startup.")
+  #+lispworks (:shadow #:lambda-list #:with-unique-names)
   (:export
    ;; System-ish
    #:d-getenv
@@ -27,7 +28,11 @@
    #:overwhelming-permission
    #:exe-in-path-p
    #:try-things
+   ;; io-ish
    #:resilient-read-line
+   #:with-open-file-or-stream
+   #:with-lines
+   #:safe-read-from-string
    ;; sequences
    #:initial-span
    #:split-sequence
@@ -54,8 +59,9 @@
    ;; language-ish
    #:define-constant
    #:λ
-   #:lambda-list
-   #:with-unique-names
+   #-lispworks #:lambda-list 
+   #-lispworks #:with-unique-names
+   #:symbolify
    ;; debugging
    #:*dbug* #:dbug #:with-dbug #:without-dbug
    ;; Environment features
@@ -316,17 +322,20 @@ arguments into strings as with PRINC."
     (subseq string (or pos 0))))
 
 (defun rtrim (string)
+  "Trim whitespace characters from the right of STRING."
   (let ((pos (position-if #'(lambda (c)
 			      (not (position c *whitespace*))) string
 			      :from-end t)))
     (subseq string 0 (1+ (or pos (length string))))))
 
 (defun trim (string)
+  "Trim whitespace characters the beginning and end of STRING."
   (ltrim (rtrim string)))
 
 (defun join (sequence thing)
 ;  "Put THING between every element of SEQUENCE."
-  "Return a string with a THING between every element of SEQUENCE. This is basically the reverse of SPLIT-SEQUENCE."
+  "Return a string with a THING between every element of SEQUENCE. This is
+basically the reverse of SPLIT-SEQUENCE."
   (etypecase sequence
     (list
      (with-output-to-string (str)
@@ -351,7 +360,7 @@ arguments into strings as with PRINC."
 
 ;; As you may know, improper use of this can cause troublesome bugs.
 (defun delete-nth (n list)
-  "Delete the Nth elemnt from LIST."
+  "Delete the Nth elemnt from LIST. This modifies the list."
   (if (zerop n)
     (cdr list)
     (let ((cons (nthcdr (1- n) list)))
@@ -370,12 +379,14 @@ arguments into strings as with PRINC."
 ;; Also, without good optimization, it could be code bloating.
 #-clisp ;; Of course CLisp areeady had this idea and put it in by default.
 (defmacro doseq ((var seq) &body body)
-  "Iterate VAR on a \"sequence\" SEQ, which can be a list, vector, hash-table or package. For hash-tables, it iterates on the keys. For packages, it iterates on all accessible symbols."
+  "Iterate VAR on a ‘sequence’ SEQ, which can be a list, vector, hash-table
+or package. For hash-tables, it iterates on the keys. For packages, it iterates
+on all accessible symbols."
   (let ((seq-sym (gensym)))
     `(let ((,seq-sym ,seq))
-       ;; Could be ctypecase, but a sequence seems an unusual thing for the user
-       ;; to type in. Of course it could be programmatically correctable, but
-       ;; let's just fix those bugs.
+       ;; Could be ctypecase, but a sequence seems an unusual thing for the
+       ;; user to type in. Of course it could be programmatically correctable,
+       ;; but let's just fix those bugs.
        (etypecase ,seq-sym
 	 (list
 	  (loop :for ,var :in ,seq-sym
@@ -522,13 +533,14 @@ arguments into strings as with PRINC."
 ;; a.k.a root
 (defun overwhelming-permission ()
   #+ccl (= (ccl::getuid) 0)
-  #+sbcl (= (sb-unix:unix-getuid) 0)
+  #+(and sbcl unix) (= (sb-unix:unix-getuid) 0)
+  #+(and sbcl win32) nil
   ;; What about posix:getuid ? It seems to be missing on clisp 2.46.
   #+clisp (= (posix:user-info-uid (posix:user-info :default)) 0)
   #+cmu (= (unix:unix-getuid) 0)
   #+ecl (= (ext:getuid) 0)
-;  #+lispworks ()
-  #-(or ccl sbcl clisp cmu ecl)
+  #+lispworks nil
+  #-(or ccl sbcl clisp cmu ecl lispworks)
   (missing-implementation 'overwhelming-permission))
 
 #| THIS IS TOTALLY FUXORD
@@ -625,12 +637,17 @@ equal under TEST to result of evaluating INITIAL-VALUE."
   )
 
 ;; This is just to pretend that we're trendy and modern.
-(setf (macro-function 'λ) (macro-function 'cl:lambda))
+;(setf (macro-function 'λ) (macro-function 'cl:lambda))
+;;Umm actually I mean:
+(defmacro λ (&whole form &rest bvl-decls-and-body)
+  (declare (ignore bvl-decls-and-body))
+  `#'(lambda ,@(cdr form)))
 
 ;; I really don't understand why introspetion isn't better.
 (defun lambda-list (fun)
-  #+sbcl (sb-kernel:%fun-lambda-list fun)
-  #-sbcl (function-lambda-list fun))
+  #+sbcl (sb-kernel:%fun-lambda-list (symbol-function fun))
+  #+ccl (ccl:arglist fun)
+  #-(or sbcl ccl) (function-lambda-list fun))
 
 (defun slot-documentation (slot-def)
   "Return the documentation string for a slot as returned by something like
@@ -645,6 +662,19 @@ Useful for making your macro “hygenic”."
   `(let ,(loop :for n :in names
 	    :collect `(,n (gensym (symbol-name ',n))))
      ,@body))
+
+(defun symbolify (string &key (package *package*) no-new)
+  "Return a symbol, interned in PACKAGE, represent by STRING, after possibly
+doing conventional case conversion. The main reason for this function is to
+wrap the case conversion on implementations that need it. If NO-NEW is true,
+never create a new symbol, and return NIL if the symbol doesn't already exist."
+  (etypecase string
+    (string
+     (if no-new
+	 (find-symbol (string-upcase string) package)
+	 (intern (string-upcase string) package)))
+    (symbol
+     string)))
 
 ;; On other lisps just use the real one.
 #-(or sbcl clisp ccl cmu lispworks ecl)
@@ -756,6 +786,47 @@ Useful for making your macro “hygenic”."
   #-(or sbcl ccl)
   (read-line  input-stream eof-error-p eof-value recursive-p)
 )
+
+(defmacro with-open-file-or-stream ((var file-or-stream &rest args) &body body)
+  "Evaluate BODY with VAR bound to FILE-OR-STREAM if it's already a stream, or
+an open a stream named by FILE-OR-STREAM. ARGS are standard arguments to OPEN."
+  `(let (,var)
+     (if (streamp ,file-or-stream)
+	 (progn
+	   (setf ,var ,file-or-stream)
+	   ,@body)
+	 (with-open-file (,var ,file-or-stream ,@args)
+	   ,@body))))
+
+(defmacro with-lines ((line-var file-or-stream) &body body)
+  "Evaluate BODY with LINE-VAR set to successive lines of FILE-OR-STREAM.
+FILE-OR-STREAM can be a stream or a pathname or namestring."
+  (let ((line-loop	  (gensym "WITH-LINES-LL"))
+	(inner-stream-var (gensym "WITH-LINES-IS"))
+	(outer-stream-var (gensym "WITH-LINES-OS"))
+	(stream-var	  (gensym "WITH-LINES-SV")))
+    `(labels ((,line-loop (,inner-stream-var)
+		(loop :with ,line-var
+		   :while (setf ,line-var (read-line ,inner-stream-var nil nil))
+		   :do ,@body)))
+       (let ((,stream-var ,file-or-stream)) ; so file-or-stream only eval'd once
+	 (if (streamp ,stream-var)
+	     (,line-loop ,stream-var)
+	     (with-open-file (,outer-stream-var ,stream-var)
+	       (,line-loop ,outer-stream-var)))))))
+
+;; Muffle the complaint about using &optional and &key.
+#+sbcl (declaim (sb-ext:muffle-conditions style-warning))
+(defun safe-read-from-string (string &optional (eof-error-p t) eof-value
+			      &key (start 0) end preserve-whitespace)
+  "Read from a string in a hopefully safe manner, such that the content
+cannot cause evaluation."
+  (with-standard-io-syntax
+    (let ((*read-eval* nil))
+      (read-from-string string eof-error-p eof-value
+			:start start :end end
+			:preserve-whitespace preserve-whitespace))))
+#+sbcl (declaim (sb-ext:unmuffle-conditions style-warning))
 
 ;;;
 ;;; System information features

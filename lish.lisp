@@ -2,15 +2,17 @@
 ;; lish.lisp - Unix Shell & Lisp somehow smushed together
 ;;
 
-;; $Revision: 1.14 $
+;; $Revision: 1.15 $
 
 ;; Todo:
+;;  - BUGS:
+;;    - parsing < in first word?
+;;    - glob expansion of filenames with quoted spaces?
+;;    - cd to dir with spaces?
+;;    - tiny-rl display bugs
+;;    - newly defined commands don't get recognized in completion
 ;;  - argument parsing for commands
-;;    - finish new-posix-to-lisp-args
-;;    - make arg-lambda-list to auto generate lambda list given
-;;      defcommand arglist
-;;    - fix defcommand arg list (make-argument-list) to be like:
-;;      '((name type [:key val]*))
+;;    - fix edge cases, more testing for posix-to-lisp-args
 ;;  - work out error handling
 ;;    - compilation?
 ;;    - other?
@@ -19,11 +21,12 @@
 ;;    return value, or lisp return value
 ;;  - at least handle ^Z of subprocess!
 ;;  - fix completion bugs
-;;    - file names with spaces and quoting
+;;    - // or absolute paths
+;;  - fix bug: twiddle expansion when spaces (or quoted chars?) in filename?
 ;;  - process stuff:
-;;    - pipes: |
 ;;    - chains: || &&
 ;;    - background jobs: & fg bg jobs %n ^Z SIGTSTP etc
+;;    - jobs command
 ;;  - redirections: < > << <()
 ;;  - smarter completion, specifically:
 ;;    - completion should use proper completion for command line argument types
@@ -80,18 +83,24 @@
    ;; argument generics
    #:convert-arg
    ;; commands
+   #:command #:command-name #:command-function #:command-arglist
+   #:command-built-in-p #:command-loaded-from
    #:defcommand
    #:!cd #:!pwd #:!pushd #:!popd #:!dirs #:!suspend #:!history #:!echo
    #:!help #:!alias #:!unalias #:!type #:!exit #:!source #:!debug #:!bind
    #:!times #:!time #:!ulimit #:!wait #:!export #:!format
    #:!read #:!kill #:!umask #:!jobs #:!exec #:|!:| #:!hash
    ;; convenience / scripting
+   #:command-pathname
+   #:command-paths
    #:input-line-words
    #:command-output-words
    #:command-output-list
-   #:with-lines
    ;; magical punctuation
-   #:! #:!? #:!! #:!$ #:!_ #:!and #:!or #:!bg #:!> #:!>> #:!>! #:!>>! #:!<
+   #:! #:!? #:!! #:!$ #:!_
+   #:!and #:!or #:!bg
+   #:!> #:!>> #:!>! #:!>>!
+   #:!< #:!!<
    ))
 (in-package :lish)
 
@@ -101,7 +110,7 @@
 (defparameter *major-version* 0
   "Major version number. Releases with the same major version number should be
 compatible in the default configuration.")
-(defparameter *revision* "$Revision: 1.14 $"
+(defparameter *revision* "$Revision: 1.15 $"
   "Minor version number. This should change at least for every release,
 probably for every commit to the master.")
 (defparameter *version*
@@ -180,6 +189,7 @@ probably for every commit to the master.")
 		:accessor arg-value)
    (default	:documentation "Default value, if optional."
 		:initarg :default
+		:initform nil
 		:accessor arg-default)
    (repeating	:type boolean
 		:documentation "True if value can repeat."
@@ -305,7 +315,11 @@ probably for every commit to the master.")
    (choice-labels :type list
 		:documentation "A list of string names for choices."
 		:initarg :choice-labels
-		:accessor arg-choice-labels))
+		:accessor arg-choice-labels)
+   (choice-func :type function
+		:documentation "A function to call to get the list of choices."
+		:initarg :choice-func
+		:accessor arg-choice-func))
   (:documentation "An argument whose value must be one of a list of choices."))
 
 (defmethod convert-arg ((arg arg-choice) (value string))
@@ -333,7 +347,8 @@ probably for every commit to the master.")
 |#
 
 (defun argument-type-class (type)
-  "Return the argument class for a given type. If the type is not a defined ARG-* class, it defaults to the generic ARGUMENT class."
+  "Return the argument class for a given type. If the type is not a defined
+ARG-* class, it defaults to the generic ARGUMENT class."
   (let* (;(pkg (symbol-package type))
 	 class-symbol arg-class)
     (cond
@@ -356,19 +371,133 @@ probably for every commit to the master.")
   (let ((p (position key arglist)))
     (and p (elt arglist (1+ p)))))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
 (defun make-argument-list (arglist)
-  "Take an arglist from defcommand and turn in into a list of argument objects, like in the command object."
-  (declare (type list arglist))
+  "Take an ARGLIST from DEFCOMMAND and turn in into a list of argument objects,
+like in the command object."
+;;;  (declare (type list arglist))
+  (when (not (listp arglist))
+    (error "Command argument list must be a list."))
   (loop :with name :and type
      :for a :in arglist :do
-     (assert (listp a))
-     (setf name (arglist-value a :name)
-	   type (arglist-value a :type))
+;     (assert (listp a))
+     (when (not (listp a))
+       (error "Command argument list element must be a list."))
+     #|   (setf name (arglist-value a :name)
+     type (arglist-value a :type)) |#
+     (setf name (first a)
+	   type (second a))
      (when (not name)
        (error "Arguments must have a name."))
      (when (not type)
        (error "Arguments must have a type."))
-     :collect (apply #'make-instance (argument-type-class type) a)))
+     (setf a (append (list :name name :type type) (cddr a)))
+     :collect (apply #'make-instance (argument-type-class type) a))))
+
+(defun arg-has-flag (arg)
+  (or (arg-short-arg arg) (arg-long-arg arg)))
+
+;; They must be keyworded if there are any flagged arguments.
+(defun args-keyworded (args)
+  "Check if an argument must be keyworded. "
+  (loop :for a :in args :do
+     (when (arg-has-flag a)
+       (return-from args-keyworded t)))
+  nil)
+
+;; Thankfully this is nowhere near as hairy as posix-to-lisp-args.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+(defun shell-to-lisp-args (shell-args)
+  "Return a Lisp argument list for the given lish argument list."
+  (let ((mandatories
+	 (loop :for a :in shell-args
+	    :if (not (arg-optional a))
+	    :collect a))
+	(optionals
+	 (loop :for a :in shell-args
+	    :if (arg-optional a)
+	    :collect a))
+	(repeating
+	 (loop :for a :in shell-args
+	    :if (arg-repeating a)
+	    :collect a))
+	(keyworded (args-keyworded shell-args))
+	(new-list '()))
+    ;; Mandatory arguments
+    (loop :for a :in mandatories :do
+       (push (symbolify (arg-name a)) new-list))
+    ;; This is augmented here to allow paralellism in the let above.
+    (setf keyworded (or keyworded
+			(and optionals repeating
+			     (and (not (equal optionals repeating))
+				  (= (length optionals) 1)))
+			(> (length repeating) 1)))
+    (if keyworded
+	(progn
+	  (push '&key new-list)
+	  (loop :for a :in optionals :do
+	     (push
+	      (if (arg-default a)
+		  (list (symbolify (arg-name a)) (arg-default a))
+		  (symbolify (arg-name a)))
+	      new-list)))
+	(cond
+	  ;; If both optional and repeating, do repeating (i.e. &rest)
+	  (repeating
+	   (push '&rest new-list)
+	   ;; Must be only one repeating, else it would be keyworded.
+	   (push (symbolify (arg-name (first repeating))) new-list))
+	  (optionals
+	   (push '&optional new-list)
+	   (loop :for a :in optionals :do
+	      (push
+	       (if (arg-default a)
+		   (list (symbolify (arg-name a)) (arg-default a))
+		   (symbolify (arg-name a)))
+	       new-list)))))
+    (nreverse new-list))))
+
+(defun vuvu (str l-args)
+  (let ((aa (shell-to-lisp-args (command-arglist (get-command str)))))
+    (format t "~w ~{~w ~}~%~w~%~%" str (command-arglist (get-command str)) aa)
+    (assert (equalp aa l-args))))
+
+;; You probably have to say: (with-package :lish (test-stla))
+;; Unfortunately this may fail if not updated to reflect builtin changes.
+(defun test-stla ()
+  (vuvu "cd"      '(&optional directory))
+  (vuvu "pwd"     '())
+  (vuvu "pushd"   '(&optional directory))
+  (vuvu "popd"    '(&optional number))
+  (vuvu "dirs"    '())
+  (vuvu "suspend" '())
+  (vuvu "history" '(&key clear write read append read-not-read filename
+		    show-times delete))
+  (vuvu ":"       '(&rest args))
+  (vuvu "echo" 	  '(&key no-newline args))
+  (vuvu "help" 	  '(&optional subject))
+  (vuvu "alias"   '(&optional name expansion))
+  (vuvu "unalias" '(name))
+  (vuvu "exit" 	  '(&rest values))
+  (vuvu "source"  '(filename))
+  (vuvu "debug"   '(&optional (state :toggle)))
+  (vuvu "export"  '(&optional name value))
+  (vuvu "jobs" 	  '(&key long))
+  (vuvu "kill" 	  '(&key list-signals (signal 15) pids))
+  (vuvu "format"  '(format-string &rest args))
+  (vuvu "read" 	  '(&key name prompt timeout editing))
+  (vuvu "time" 	  '(&rest command))
+  (vuvu "times"   '())
+  (vuvu "umask"   '(&key print-command symbolic mask))
+  (vuvu "ulimit"  '())
+  (vuvu "wait" 	  '())
+  (vuvu "exec" 	  '(&rest command-words))
+  (vuvu "bind" 	  '(&key print-bindings print-readable-bindings query
+		    remove-function-bindings	remove-key-binding key-sequence
+		    function-name))
+  (vuvu "hash" 	  '(&key rehash commands))
+  (vuvu "type" 	  '(&key type-only path-only all names))
+  (format t "SUCCEED!~%"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Commands
@@ -412,19 +541,35 @@ DEFBUILTIN."
     "Return the normal command function symbol for the given command name."
     (intern (concatenate 'string "!" (string-upcase n)))))
 
+#|
+  (defmacro squirrel-def (package &body body)
+(let ((squirrel-package (s+ package "-DEFS"))
+(defs-sym (gensym "SQUIRREL-DEF")))
+`(if (find-package ,package)
+(progn ,@body)
+(progn
+(when (not (find-package ,squirrel-package))
+(make-package ,squirrel-package)
+(let ((,defs-sym (intern "*DEFS*"
+(find-package ,squirrel-package))))
+(eval `(defvar ,,defs-sym '()))))
+(let ((,defs-sym (intern "*DEFS*" (find-package ,squirrel-package))))
+(set ,defs-sym (cons ',body (symbol-value ,defs-sym))))))))
+  |#
+
 ;; There should be little distinction between a user defined command and
 ;; "built-in" command, except perhaps for a warning if you redefine a
 ;; pre-defined command, and the fact that things defined in here are
 ;; considered "built-in" and listed in help.
 
-(defmacro defbuiltin (name (&rest params) arglist &body body)
+(defmacro defbuiltin (name (&rest arglist) &body body)
   "This is like defcommand, but for things that are considered built in to the
 shell."
   (let ((func-name (command-function-name name))
 	(command-name (intern (string name) :lish))
 	(name-string (string-downcase name))
-;	(name-string (concatenate 'string "\"" (string-downcase name) "\""))
-	)
+;;;	(name-string (concatenate 'string "\"" (string-downcase name) "\""))
+	(params (shell-to-lisp-args (make-argument-list arglist))))
     `(progn
        (defun ,func-name ,params
 	 ,@body)
@@ -432,7 +577,8 @@ shell."
        (push (quote ,command-name) *command-list*)
        (push (list ,name-string (make-instance
 				 'command :name ,name-string
-				 :arglist (make-argument-list ,arglist)
+				 :arglist (make-argument-list ',arglist)
+				 :loaded-from *load-pathname*
 				 :built-in-p t))
 	     *initial-commands*))))
 
@@ -440,34 +586,80 @@ shell."
 ;;   - It doesn't push to *initial-commands*
 ;;   - It doesn't set BUILT-IN-P
 ;;   - It doesn't automatically export
-(defmacro defcommand (name (&rest params) arglist &body body)
+;;
+;; I would wish that defcommand could provide enough documentation to make a
+;; man page, or an info page, or a CLHS like page.
+;;
+;; We should make it easy to indicate man page sections and info links.
+;; We should accept some kind of markdown for doc strings.
+;; We should automatically generate any sections possible.
+;;
+;; Man pages have:
+;;   NAME		name - Less than one line summary
+;;   SYNOPSIS		(should be automatically generated, as in help)
+;;   DESCRIPTION	Pretty much the normal docstring.
+;;   OPTIONS		List options and describe in detail. Generate from
+;;			option docstrings?
+;;   EXAMPLES		very useful
+;;   FILES		<perhaps not so useful / optional>
+;;   ENVIRONMENT	<perhaps not so useful / optional>
+;;   DIAGNOSTICS	populated by gleaning errors?
+;;   BUGS		Of course we don't need this ;)
+;;   AUTHOR		Gleaned from package author
+;;   SEE ALSO		this is useful in CLHS, so...
+;;
+;; Info pages have:
+;;   Up, Prev, Next links
+;;   Menu sub links
+;; 
+;; CLHS pages have:
+;;   Summary  (type, name, args, and return values)
+;;   Arguments and Values
+;;   Description
+;;   Examples
+;;   Exceptional Situations
+;;   Side Effects
+;;   Affected By
+;;   See Also
+;;   Notes
+
+(defmacro defcommand (name (&rest arglist) &body body)
   "Define a command for the shell. NAME is the name it is invoked by. ARGLIST
 is a shell argument list. The BODY is the body of the function it calls."
   (let ((func-name (command-function-name name))
 	(command-name (intern (string name)))
-	(name-string (string-downcase name)))
+	(name-string (string-downcase name))
+	(params (shell-to-lisp-args (make-argument-list arglist))))
     `(progn
        (defun ,func-name ,params
 	 ,@body)
        ;; Don't export stuff because it causes package variance on reloading.
        ;; @@@ Perhaps we should define commands in the LISH-USER package
        ;; instead, so they can be exported and used by other packages?
-       (push (quote ,command-name) *command-list*)
+       (push (quote ,command-name) lish::*command-list*)
+;;;       (set (find-symbol "*COMMAND-LIST*" :lish) (quote ,command-name))
        (set-command ,name-string
-		    (make-instance 'command :name ,name-string
-				   :arglist (make-argument-list ,arglist))))))
+		    (make-instance (find-symbol "COMMAND" :lish)
+				   :name ,name-string
+				   :loaded-from *load-pathname*
+				   :arglist (make-argument-list ',arglist))))))
 
 (defclass command ()
-  ((name :accessor command-name :initarg :name
+  ((name
+    :accessor command-name        :initarg :name
    :documentation "The string word that invokes the command.")
-   (function :accessor command-function :initarg :function
+   (function
+    :accessor command-function    :initarg :function
     :documentation "The function that performs the command.")
-   ;; (synopsis :accessor command-synopsis :initarg :synopsis
-   ;;  :documentation "A one line description of the command line arguments.")
-   (arglist :accessor command-arglist :initarg :arglist
+   (arglist
+    :accessor command-arglist     :initarg :arglist
     :documentation "A list of arguments.")
-   (built-in-p :accessor command-built-in-p :initarg :built-in-p :initform nil
-    :documentation "True if the command is considered “built in”."))
+   (built-in-p
+    :accessor command-built-in-p  :initarg :built-in-p :initform nil
+    :documentation "True if the command is considered ‘built in’.")
+   (loaded-from
+    :accessor command-loaded-from :initarg :loaded-from :initform nil
+    :documentation "Where the command was loaded from."))
   (:documentation "A command defined internally in the shell."))
 
 (defmethod initialize-instance :after ((b command) &rest initargs)
@@ -500,91 +692,91 @@ is a shell argument list. The BODY is the body of the function it calls."
 
 
 #|
-(defclass arg-list ()
-  (arg-list-list)
-  (:documentation "A list of arguments."))
+  (defclass arg-list ()
+(arg-list-list)
+(:documentation "A list of arguments."))
 
-(defgeneric get-args ()
-  (:documentation "Return a string to prompt with."))
-(defmethod get-args (arg-list))
+  (defgeneric get-args ()
+(:documentation "Return a string to prompt with."))
+  (defmethod get-args (arg-list))
 
-(defgeneric args-help ()
-  (:documentation "Return a string to prompt with."))
-(defmethod args-help (arg-list))
-|#
+  (defgeneric args-help ()
+(:documentation "Return a string to prompt with."))
+  (defmethod args-help (arg-list))
+  |#
 
 #|
-;;
-;; The rules for converting POSIX arguments to lambda lists are fairly
-;; complicated.
-;;
-;; m=manditory o=optional r=repeating f=flagged
-;;
-;; When only manditory and optional, we don't need keywords.
-;; Order of manditories vs optionals doesn't matter to lambda lists, but does
-;; to posix.
-;; Non-flagged optionals must come after manditories.
-m1 m2		(m1 m2)				m1 m2
-m1 m2 o1 o2	(m1 m2 &optional o1 o2)		m1 m2 [o1] [o2]
-o1 o2 m1 m2 	(m1 m2 &optional o1 o2)		[o1] [o2] m1 m2  problematic???
-o1 o2		(&optional o1 o1)		[o1] [o2]
+;;					;
+;; The rules for converting POSIX arguments to lambda lists are fairly ;
+;; complicated.				;
+;;					;
+;; m=manditory o=optional r=repeating f=flagged ;
+;;					;
+;; When only manditory and optional, we don't need keywords. ;
+;; Order of manditories vs optionals doesn't matter to lambda lists, but does ;
+;; to posix.				;
+;; Non-flagged optionals must come after manditories. ;
+  m1 m2		(m1 m2)				m1 m2
+  m1 m2 o1 o2	(m1 m2 &optional o1 o2)		m1 m2 [o1] [o2]
+  o1 o2 m1 m2 	(m1 m2 &optional o1 o2)		[o1] [o2] m1 m2  problematic???
+  o1 o2		(&optional o1 o1)		[o1] [o2]
 
-;; We can't have more than one non-flagged repeating
-ro1		(&rest r1)			[ro1...]
-rm1 rm2		ERROR
-ro1 ro2		ERROR
-m1 m2 ro1	(m1 m2 &rest r1)		m1 m2 [ro2...]
-m1 m2 r1 r2	ERROR
-o1 o2 r1	ERROR (o1 and o2 must be flagged)
+;; We can't have more than one non-flagged repeating ;
+  ro1		(&rest r1)			[ro1...]
+  rm1 rm2		ERROR
+  ro1 ro2		ERROR
+  m1 m2 ro1	(m1 m2 &rest r1)		m1 m2 [ro2...]
+  m1 m2 r1 r2	ERROR
+  o1 o2 r1	ERROR (o1 and o2 must be flagged)
 
-rm1		(&rest r1)			r1[...]
-r1 r2		ERROR
-m1 m2 rm1	(m1 m2 &rest r1)		m1 m2 rm1[...]
-m1 m2 ro1	(m1 m2 &rest r1)		m1 m2 [ro1...]
-m1 m2 r1 r2	ERROR
-of1 of2 rm1	(&key of1 of2 r1)		[-12] r1[...]
-of1 of2 ro1	(&key of1 of2 r1)		[-12] [r1...]
+  rm1		(&rest r1)			r1[...]
+  r1 r2		ERROR
+  m1 m2 rm1	(m1 m2 &rest r1)		m1 m2 rm1[...]
+  m1 m2 ro1	(m1 m2 &rest r1)		m1 m2 [ro1...]
+  m1 m2 r1 r2	ERROR
+  of1 of2 rm1	(&key of1 of2 r1)		[-12] r1[...]
+  of1 of2 ro1	(&key of1 of2 r1)		[-12] [r1...]
 
-;; Flagged optional must be done as keywords
-m1 m2 of1 o2	(m1 m2 &key of1 o2)		[-1] m1 m2 [o2]
-m1 m2 o1 of2	(m1 m2 &key o1 of2)		[-2] m1 m2 [o1]
-m1 m2 of1 of2	(m1 m2 &key o1 of2)		[-2] m1 m2 [o1]
-of1 o2 m1 m2 	(m1 m2 &key of1 o2)		[-1] m1 m2 [o2]
-of1 of2 m1 m2 	(m1 m2 &key of1 of2)		[-12] m1 m2
-of1 of2		(&key of1 of2)			[-12]
-o1 of2		(&key of1 of2)			[-2] [o1]
-of1 o2		(&key of1 of2)			[-1] [o2]
+;; Flagged optional must be done as keywords ;
+  m1 m2 of1 o2	(m1 m2 &key of1 o2)		[-1] m1 m2 [o2]
+  m1 m2 o1 of2	(m1 m2 &key o1 of2)		[-2] m1 m2 [o1]
+  m1 m2 of1 of2	(m1 m2 &key o1 of2)		[-2] m1 m2 [o1]
+  of1 o2 m1 m2 	(m1 m2 &key of1 o2)		[-1] m1 m2 [o2]
+  of1 of2 m1 m2 	(m1 m2 &key of1 of2)		[-12] m1 m2
+  of1 of2		(&key of1 of2)			[-12]
+  o1 of2		(&key of1 of2)			[-2] [o1]
+  of1 o2		(&key of1 of2)			[-1] [o2]
 
-;; Flagged manditory must be done as keywords, DOES'T make other manditories
-;; keywords.
-;; Manditory flagged treated as optional flagged, except error afterward if
-;; not present.
-mf1 m2 of1 o2	(m2 &key mf1 of1 o2)		[-of1] [-mf1] [o2] m2
-m1 mf2 o1 of2	(m1 &key mf2 o1 of2)		[-mf2] [-of2] [o1] m1
-mf1 mf2 of1 of2	(&key mf1 mf2 o1 of2)		[-mf1] [-mf2] [-of2] [o1]
-of1 o2 mf1 m2 	(m2 &key of1 o2 mf1)		[-of1] [-mf1] [o2] m2
-of1 of2 m1 mf2 	(m1 &key of1 of2 mf2)		[-of1] [-of2] [-mf2] m1
-mf1 mf2		(&key mf1 mf2)			[-mf1] [-mf2]
+;; Flagged manditory must be done as keywords, DOES'T make other manditories ;
+;; keywords.				;
+;; Manditory flagged treated as optional flagged, except error afterward if ;
+;; not present.				;
+  mf1 m2 of1 o2	(m2 &key mf1 of1 o2)		[-of1] [-mf1] [o2] m2
+  m1 mf2 o1 of2	(m1 &key mf2 o1 of2)		[-mf2] [-of2] [o1] m1
+  mf1 mf2 of1 of2	(&key mf1 mf2 o1 of2)		[-mf1] [-mf2] [-of2] [o1]
+  of1 o2 mf1 m2 	(m2 &key of1 o2 mf1)		[-of1] [-mf1] [o2] m2
+  of1 of2 m1 mf2 	(m1 &key of1 of2 mf2)		[-of1] [-of2] [-mf2] m1
+  mf1 mf2		(&key mf1 mf2)			[-mf1] [-mf2]
 
-;; Repeating flagged: can have more than one, but values can't start with
-;; dashes!
-;; Repeating flagged manditory and optional are treated the same.
-rf1		(&rest rf1)			[-rf1 foo] [...]
- (*stupid but legal)
-rf1 rf2		(&key rf1 rf2)			[-rf1 foo...] [-rf2 bar...]
- (*can be given in any order, e.g.: -rf2 foo bar -rf1 foo bar baz)
+;; Repeating flagged: can have more than one, but values can't start with ;
+;; dashes!				;
+;; Repeating flagged manditory and optional are treated the same. ;
+  rf1		(&rest rf1)			[-rf1 foo] [...]
+  (*stupid but legal)
+  rf1 rf2		(&key rf1 rf2)			[-rf1 foo...] [-rf2 bar...]
+  (*can be given in any order, e.g.: -rf2 foo bar -rf1 foo bar baz)
 
-;; Flagged arguments can appear in POSIX in multiple ways:
-(:short-arg x :type boolean)		[-x]
-((:short-arg x :type boolean)   	[-xy]
- (:short-arg y :type boolean))
-(:short-arg x :type (not boolean))	[-x arg]
-((:short-arg x :type (not boolean))	[-x arg] [-y arg]
- (:short-arg y :type (not boolean)))
-(:long-arg foo :type boolean)   	[--foo]
-(:long-arg foo :type (not boolean))    	[--foo bar]
+;; Flagged arguments can appear in POSIX in multiple ways: ;
+  (:short-arg x :type boolean)		[-x]
+  ((:short-arg x :type boolean)   	[-xy]
+(:short-arg y :type boolean))
+  (:short-arg x :type (not boolean))	[-x arg]
+  ((:short-arg x :type (not boolean))	[-x arg] [-y arg]
+(:short-arg y :type (not boolean)))
+  (:long-arg foo :type boolean)   	[--foo]
+  (:long-arg foo :type (not boolean))    	[--foo bar]
 
-|#
+  |#
 
 ;;
 ;; If there are any optional non-positional args (i.e. optional args with
@@ -594,33 +786,22 @@ rf1 rf2		(&key rf1 rf2)			[-rf1 foo...] [-rf2 bar...]
 ;; validation and completion methods.
 
 #|
-(defun lish-to-lisp-args (args)
-  "Convert a Lish argument list into a Lisp lambda list."
-  (cond
-    ((null args)
-     (list))
-    ;; (x y z...)
-    (every #(lambda (a) (not ())) args)
-    ;; (&optional x y z...)
-    ()
-    ;; (&rest x)
-    ()
-    ;; (x y &rest z)
-    ()
-    ;; (&key x y z)
-    ()))
-|#
-
-(defun arg-has-flag (arg)
-  (or (arg-short-arg arg) (arg-long-arg arg)))
-
-;; They must be keyworded if there are any flagged arguments.
-(defun args-keyworded (args)
-  "Check if an argument must be keyworded. "
-  (loop :for a :in args :do
-     (when (arg-has-flag a)
-       (return-from args-keyworded t)))
-  nil)
+  (defun lish-to-lisp-args (args)
+"Convert a Lish argument list into a Lisp lambda list."
+(cond
+((null args)
+(list))
+    ;; (x y z...)			;
+(every #(lambda (a) (not ())) args)
+    ;; (&optional x y z...)		;
+()
+    ;; (&rest x)			;
+()
+    ;; (x y &rest z)			;
+()
+    ;; (&key x y z)			;
+()))
+  |#
 
 (defmacro move-arg (old new i arg)
   "Move the I'th item from the OLD to the NEW list, and return both."
@@ -642,6 +823,10 @@ rf1 rf2		(&key rf1 rf2)			[-rf1 foo...] [-rf2 bar...]
 (defmacro move-flag (old new i arg)
   `(progn
      (setf ,new (push (arg-key ,arg) ,new))
+;;;     (format t "(nth (1+ ~s) ~s) = ~s~%" ,i ,old (nth ,i ,old))
+;;;     (format t "(convert-arg ~s ~s) = ~s~%" ,arg (nth ,i ,old)
+;;;	     (convert-arg ,arg (nth ,i ,old)))
+;;;     (setf ,new (push (convert-arg ,arg (nth (1+ ,i) ,old)) ,new))
      (setf ,new (push (convert-arg ,arg (nth (1+ ,i) ,old)) ,new))
      (setf ,old (delete-nth ,i ,old))  ; flag
      (setf ,old (delete-nth ,i ,old)))) ; arg
@@ -674,6 +859,93 @@ rf1 rf2		(&key rf1 rf2)			[-rf1 foo...] [-rf2 bar...]
 	   (setf ,old (subseq ,old 0 ,start)))))))
 
 (defun posix-to-lisp-args (command p-args)
+  "Convert POSIX style arguments to lisp arguments. This makes flags like '-t'
+become keyword arguments, in a way specified in the command's arglist."
+  ;; (when (= (length p-args) 0)
+  ;;   (return-from new-posix-to-lisp-args nil))
+  (let ((i 0)
+;	(new-list        '())
+	(old-list        (copy-list p-args)) ; so we don't modify it
+	(new-flags       '())
+	(new-mandatories '())
+	(new-optionals   '())
+	(new-repeating   '())
+	(keyworded (args-keyworded (command-arglist command)))
+	#| (optionals '()) |#)
+    ;; Flagged arguments (optional or manditory)
+    (loop :for a :in p-args :do
+       (if (and (stringp a) (> (length a) 0)
+		(char= (char a 0) #\-)) ; arg starts with dash
+	   (if (eql (char a 1) #\-)		    ; two dash arg
+	       ;; --long-arg
+	       (loop :for arg :in (command-arglist command) :do
+		  ;; @@@ have to deal with repeating?
+		  (if (equalp (subseq a 2) (arg-long-arg arg))
+		      (move-flag old-list new-flags i arg)
+		      (incf i)))
+	       ;; -abcxyz (short args)
+	       (prog (flag-taken boolean-taken)
+		  (loop :for cc :from 1 :below (length a) :do
+		     (setf flag-taken nil)
+		     (loop :for arg :in (command-arglist command) :do
+		       (when (eql (arg-short-arg arg) (char a cc))
+			 (setf flag-taken t)
+			 ;; @@@ have to deal with repeating?
+			 (if (eq (arg-type arg) 'boolean)
+			     (progn
+			       (move-boolean old-list new-flags i arg)
+			       (setf boolean-taken t))
+			     (if (/= cc (1- (length a)))
+				 (error "Unrecognized flag ~a." a)
+				 (move-flag old-list new-flags i arg)))))
+		     (when (not flag-taken)
+		       (warn "Unrecognized option ~a" (char a cc))))
+		  (when boolean-taken
+		    (setf old-list (delete-nth i old-list)))))
+	   (incf i)))
+    (setf new-flags (nreverse new-flags))
+    ;; Non-flagged mandatories.
+    (loop
+       :for arg :in (command-arglist command) :do
+       (if (not (or (arg-optional arg)
+		    (arg-has-flag arg)
+		    (arg-repeating arg)))
+	   (if (> (length old-list) 0)
+	       (move-arg old-list new-mandatories 0 arg)
+	       (error "Missing mandatory argument ~a." (arg-name arg)))
+	   (incf i)))
+    (setf new-mandatories (nreverse new-mandatories))
+    ;; Non-flagged optionals
+    (loop
+       :for arg :in (command-arglist command) :do
+       (if (and (arg-optional arg) (not (arg-repeating arg))
+		(not (arg-has-flag arg)) (> (length old-list) 0))
+	   (move-key old-list new-optionals 0 arg keyworded)
+	   (incf i)))
+    (setf new-optionals (nreverse new-optionals))
+    ;; Repeating
+    (loop #| :with i = 0 :and did-one = nil :and end-flag |#
+       :for arg :in (command-arglist command) :do
+       (if (arg-repeating arg)
+	   (cond
+	     ((and (>= i (length old-list)) (not (arg-optional arg)))
+	      (error "Missing mandatory argument ~a." (arg-name arg)))
+;	     ((setf end-flag (arg-end-flag arg command))
+;	      ;; collect until end flag
+;	      (move-repeating (old-list new-list 0 arg keyworded end-flag)))
+;	     (check-for-multipe-repeats
+;	      ;; error
+;	      )
+	     (t
+	      ;; collect
+	      (move-repeating old-list new-repeating 0 arg keyworded)))))
+    (setf new-repeating (nreverse new-repeating))
+    (when (> (length old-list) 0)
+      (warn "Extra arguments: ~w" old-list))
+    (concatenate
+     'list new-mandatories new-optionals new-repeating new-flags)))
+
+(defun old2-posix-to-lisp-args (command p-args)
   "Convert POSIX style arguments to lisp arguments. This makes flags like '-t' become keyword arguments, in a way specified in the command's arglist."
   ;; (when (= (length p-args) 0)
   ;;   (return-from new-posix-to-lisp-args nil))
@@ -762,7 +1034,7 @@ rf1 rf2		(&key rf1 rf2)			[-rf1 foo...] [-rf2 bar...]
 	      (move-repeating old-list new-list 0 arg keyworded)))))
     (when (> (length old-list) 0)
       (warn "Extra arguments: ~w" old-list))
-    (reverse new-list)))
+    (nreverse new-list)))
 
 (defun o-vivi (str &rest args)
   (format t "~w ~{~w ~}~%~w~%~%" str args
@@ -773,11 +1045,24 @@ rf1 rf2		(&key rf1 rf2)			[-rf1 foo...] [-rf2 bar...]
     (format t "~w ~{~w ~}~%~w~%~%" str p-args aa)
     (assert (equalp aa l-args))))
 
-(defcommand tata (one two) ;; @@@ just for testing
-  '((:name "one" :type boolean :short-arg #\1)
-    (:name "two" :type string :short-arg #\2))
+(defcommand tata  ;; @@@ just for testing
+    (("one" boolean :short-arg #\1)
+     ("two" string  :short-arg #\2))
   "Test argument conversion."
   (format t "one = ~s two = ~s~%" one two))
+
+(defcommand gurp ;; @@@ just for testing
+    (("pattern" string   :optional nil)
+     ("files"   pathname :repeating t)
+     ("invert"  boolean  :short-arg #\i))
+  "Test argument conversion."
+  (format t "pattern = ~s files = ~s invert = ~s~%" pattern files invert))
+
+(defcommand zurp
+    (("section" string :short-arg #\s)
+     ("entry"   string :optional t))
+  "Test argument conversion."
+  (format t "entry = ~s section = ~s~%" entry section))
 
 (defun test-ptla ()
   (vivi ":" '() '())
@@ -802,7 +1087,11 @@ rf1 rf2		(&key rf1 rf2)			[-rf1 foo...] [-rf2 bar...]
   (vivi "debug" '() '())
   (vivi "debug" '("on") '(t))
   (vivi "debug" '("off") '(nil))
-  (vivi "debug" '("pecan") '())
+  ;; This is supposed to fail, since pecan isn't a boolean
+;  (vivi "debug" '("pecan") '()) 
+  (vivi "gurp"  '("-i" "foo" "bar" "baz" "lemon")
+	'("foo" :files ("bar" "baz" "lemon") :invert t))
+  (vivi "zurp"  '("-s" "3" "chflags") '(:entry "chflags" :section "3"))
 )
 
 ;(with-dbug (lish::posix-to-lisp-args (lish::get-command "bind") '("-r" "foo")))
@@ -838,117 +1127,19 @@ rf1 rf2		(&key rf1 rf2)			[-rf1 foo...] [-rf2 bar...]
 	 (when (arg-optional a)
 	   (format str "]"))))))
 
-(defun old-posix-to-lisp-args (command p-args)
-  "Convert POSIX style arguments to lisp arguments. This makes flags like '-t' become keyword arguments, in a way specified in the command's arglist."
-  (let ((old-p-args (copy-list p-args)) (new-args '()) keyworded)
-    (labels ((push-keyword-arg (arg value)
-;	       (format t "(push-keyword-arg ~w ~w)~%" arg value)
-	       (push (intern (string-upcase (arg-name arg))
-			     :keyword) new-args)
-	       (push value new-args))
-	     (push-arg (arg value)
-;	       (format t "(push-arg ~w ~w)~%" arg value)
-	       (if keyworded
-		   (push-keyword-arg arg value)
-		   (push value new-args)))
-	     (do-flag (str-arg arg p-a)
-	       (cond
-		 ((eql 'boolean (arg-type arg))
-		  (push-keyword-arg arg t)
-		  (setf old-p-args (delete str-arg old-p-args)))
-		 ((>= (length p-a) 2)
-		  ;; @@@ should check type
-		  ;; @@@ should consume via type specific consumer
-		  (push-keyword-arg arg (convert-arg arg (second p-a)))
-		  (setf old-p-args (cddr p-a)))
-		 (t
-		  (error "Not enough arguments for ~a" (arg-name arg))))))
-      ;; Check if all args must be keyworded. They must be keyworded if there
-      ;; are any optional flagged arguments.
-      (loop :for z :in (command-arglist command) :do
-	 (when (and (or (arg-short-arg z)
-			(arg-long-arg z))
-		    (arg-optional z))
-	   (setf keyworded t)))
-      ;; Filter out flagged args
-      (loop :with l = old-p-args :and a
-	 :while l
-	 :do
-	 (setf a (car l))
-	 (when (and (stringp a) (> (length a) 0)
-		    (char= (char a 0) #\-)) ; arg starts with dash
-	   (if (eql (char a 1) #\-)			; two dash arg
-	       ;; --long-arg -> :long-arg t
-	       ;; --long-arg value -> :long-arg value
-	       (loop :for z :in (command-arglist command) :do
-		  (when (equalp (subseq a 2) (arg-long-arg z))
-		    (do-flag a z l)))
-	       ;; "-a" -> (:arg t)
-	       (loop :for i :from 1 :below (length a) :do
-		  (loop :for z :in (command-arglist command) :do
-		     (when (eql (arg-short-arg z) (char a i))
-		       ;; @@@ actually for non-booleans we should check that
-		       ;; it's at the end of the group of flags.
-		       (do-flag a z l))))))
-	 (setf l (cdr l)))
-      ;; Only positional args should remain, which should be in proper order
-      ;; in the command arglist.
-;      (format t "keyworded = ~s~%old args before = ~s~%new-args = ~w~%"
-;	      keyworded old-p-args new-args)
-      (loop :with l = old-p-args	; current sublist of old-p-args
-	 :and i = 0			; index in old-p-args
-	 :and a				; current argument in old-p-args
-	 :for z :in (remove-if
-		     #'(lambda (x) (or (arg-short-arg x) (arg-long-arg x)))
-		     (command-arglist command)) ;; Not flagged args
-	 :while l :do
-;	 (format t "l = ~w~%z = ~w~%" l z)
-	 (setf a (car l))
-	 (when (not (eql (arg-type z) 'boolean))
-	   (if (>= (length l) 1)
-	       (progn
-		 ;; @@@ type validation
-		 (if (arg-repeating z)
-		     (progn
-		       ;; consume the rest
-		       (if keyworded
-			   (push-arg z (copy-list l))
-			   (loop :for ll :in l :do
-			      (push ll new-args)))
-;		       (format t "(subseq old-p-args 0 ~a) = ~w~%"
-;			       i (subseq old-p-args 0 i))
-		       (setf old-p-args (subseq old-p-args 0 i))
-		       (setf l nil))
-		     (progn
-		       ;; consume one
-		       (push-arg z a)
-;		       (format t "(delete ~a old-p-args) = ~w~%" a
-;			       (remove a old-p-args))
-		       (setf old-p-args (delete a old-p-args))
-		       (incf i)
-		       (setf l (cdr l)))))
-	       (if (not (arg-optional z))
-		   (error "Missing required argument ~a."
-			  (arg-name z))))))
-      (when (and (length old-p-args) (> (length old-p-args) 0))
-	(error "Extra arguments ~w." old-p-args))
-;      (format t "--> ~w~%" (reverse new-args))
-      (reverse new-args))))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Command definitions
 
 (defparameter *old-pwd* nil		; @@@ should be per shell
   "The last wording directory.")
 
-(defbuiltin cd (&optional dir)
-  '((:name "directory" :type pathname))
+(defbuiltin cd (("directory" pathname))
   "Usage: cd [directory]
 Change the current directory to DIRECTORY."
   (setf *old-pwd* (nos:current-directory))
-  (nos:change-directory dir))
+  (nos:change-directory directory))
 
-(defbuiltin pwd () '()
+(defbuiltin pwd ()
   "Usage: pwd
 Print the current working directory."
   (format t "~a~%" (nos:current-directory)))
@@ -956,44 +1147,42 @@ Print the current working directory."
 (defvar *dir-list* nil			; @@@ should be per shell
   "Directory list for pushd and popd.")
 
-(defbuiltin pushd (&optional dir)
-  '((:name "directory" :type pathname))
+(defbuiltin pushd (("directory" pathname))
   "Usage: pushd [dir]
 Change the current directory to DIR and push it on the the front of the directory stack."
-  (when (not dir)
-    (setf dir (pop *dir-list*)))
+  (when (not directory)
+    (setf directory (pop *dir-list*)))
   (push (nos:current-directory) *dir-list*)
-  (!cd dir))
+  (!cd directory))
 
-(defbuiltin popd (&optional n)
-  '((:name "number" :type number))
+(defbuiltin popd (("number" number))
   "Usage: popd [n]
 Change the current directory to the top of the directory stack and remove it from stack."
-  (declare (ignore n))
+  (declare (ignore number))
   (let ((dir (pop *dir-list*)))
     (!cd dir)
     dir))
 
-(defbuiltin dirs () '()
+(defbuiltin dirs ()
   "Usage: dirs
 Show the directory stack."
   (format t "~a~%" *dir-list*))
 
-(defbuiltin suspend () '()
+(defbuiltin suspend ()
   "Usage: suspend
 Suspend the shell."
 ;  (opsys:kill (opsys:getpid) opsys:sigstop))
   (opsys:kill (opsys:getpid) 17))	; SIGSTOP
 
-(defbuiltin history (&key clear write read append read-not-read filename show-times delete)
-  '((:name "clear" :type boolean :short-arg #\c)
-    (:name "write" :type boolean :short-arg #\w)
-    (:name "read" :type boolean :short-arg #\r)
-    (:name "append" :type boolean :short-arg #\a)
-    (:name "read-not-read" :type boolean :short-arg #\n)
-    (:name "filename" :type filename :short-arg #\f)
-    (:name "show-times" :type boolean :short-arg #\t)
-    (:name "delete" :type integer :short-arg #\d))
+(defbuiltin history
+    (("clear"	      boolean  :short-arg #\c)
+     ("write"	      boolean  :short-arg #\w)
+     ("read"	      boolean  :short-arg #\r)
+     ("append"	      boolean  :short-arg #\a)
+     ("read-not-read" boolean  :short-arg #\n)
+     ("filename"      filename :short-arg #\f)
+     ("show-times"    boolean  :short-arg #\t)
+     ("delete"	      integer  :short-arg #\d))
   "Show a list of the previously entered commands."
   ;; Check argument conflicts
   (cond ;; @@@ Could this kind of thing be done automatically?
@@ -1014,16 +1203,15 @@ Suspend the shell."
     (t
      (tiny-rl:show-history :lish))))
 
-(defbuiltin #:|:| (&rest args)
-  '((:name "args" :type t :repeating t))
+(defbuiltin #:|:| (("args" t :repeating t))
   "Usage: : [args]
 Arguments are evaluated for side effects."
   (declare (ignore args))
   (values))
 
-(defbuiltin echo (&key no-newline args)
-  '((:name "no-newline" :type boolean :short-arg #\n)
-    (:name "args" :type t :repeating t))
+(defbuiltin echo
+    (("no-newline" boolean :short-arg #\n)
+     ("args" t :repeating t))
   "Usage: echo [-n] ...
 Output the arguments. If -n is given, then don't output a newline a the end."
   (format t "~{~a~#[~:; ~]~}" args)
@@ -1038,13 +1226,12 @@ Output the arguments. If -n is given, then don't output a newline a the end."
   "Return a list of choices for a help subject."
   (append *help-subjects* *command-list*))
 
-(defclass help-subject (choice-arg)
+(defclass help-subject (arg-choice)
   ()
   (:default-initargs
    :choice-func #'help-choices))
 
-(defbuiltin help (&optional subject)
-  '((:name "subject" :type help-subject))
+(defbuiltin help (("subject" help-subject))
   "help [subject]         Show help on the subject.
 Without a subject show some subjects that are available."
   (if (not subject)
@@ -1111,9 +1298,12 @@ Some notable keys are:
 
 (defmethod documentation ((b command) (doctype (eql 'function)))
   "Return the documentation string for the given shell command."
-  (format nil "~a~%~a"
-	  (posix-synopsis b)
-	  (documentation (command-function b) 'function)))
+  (with-output-to-string (str)
+    (format str "~a" (posix-synopsis b))
+    (when (documentation (command-function b) 'function)
+      (format str "~%~a" (documentation (command-function b) 'function)))
+    (when (command-loaded-from b)
+      (format str "~%Loaded from ~a" (command-loaded-from b)))))
 
 (defun set-alias (sh name expansion)
   "Define NAME to be an alias for EXPANSION.
@@ -1127,9 +1317,9 @@ NAME is replaced by EXPANSION before any other evaluation."
 (defun get-alias (sh name)
   (gethash name (lish-aliases sh)))
 
-(defbuiltin alias (&optional name expansion)
-  '((:name "name" :type string)
-    (:name "expansion" :type string))
+(defbuiltin alias
+    (("name" string)
+     ("expansion" string))
   "Define NAME to expand to EXPANSION when starting a line."
   (if (not name)
       (loop :for a :being :the :hash-keys :of (lish-aliases *shell*)
@@ -1141,51 +1331,57 @@ NAME is replaced by EXPANSION before any other evaluation."
 		  name (get-alias *shell* name))
 	  (set-alias *shell* name expansion))))
 
-(defbuiltin unalias (name)
-  '((:name "name" :type string :optional nil))
+(defbuiltin unalias (("name" string :optional nil))
   "Remove the definition of NAME as an alias."
   (unset-alias *shell* name))
 
-(defbuiltin exit (&rest values)
-  '((:name "value" :type string :repeating t)) 
+(defbuiltin exit (("values" string :repeating t))
   "Exit from the shell. Optionally return values."
   (when values
     (setf (lish-exit-values *shell*) (loop :for v :in values :collect v)))
   (setf (lish-exit-flag *shell*) t))
 
-(defbuiltin source (filename)
-  '((:name "filename" :type pathname :optional nil))
+(defbuiltin source (("filename" pathname :optional nil))
   "Evalute lish commands in the given file."
   (without-warning (load-file *shell* filename)))
 
+;; This is so if it's not provided, it can toggle.
+(defclass arg-boolean-toggle (arg-boolean)
+  ()
+  (:default-initargs
+   :default :toggle)
+  (:documentation "A true or false value, that can be toggled."))
+;; (defmethod convert-arg ((arg arg-boolean-toggle) (value string))
+;;   (cond
+;;     ((position value +true-strings+ :test #'equalp) t)
+;;     ((position value +false-strings+ :test #'equalp) nil)
+;;     (t (error "Can't convert ~w to a boolean." value))))
+
 ;; @@@ state arg doesn't work right: make designator: 0 off nil
-(defbuiltin debug (&optional (state nil state-provided-p))
-  '((:name "state" :type boolean))
+(defbuiltin debug (("state" boolean-toggle))
   "Toggle shell debugging."
   (setf (lish-debug *shell*)
-	(if state-provided-p
-	    state
-	    (not (lish-debug *shell*))))
+	(if (eql state :toggle)
+	    (not (lish-debug *shell*))
+	    state))
   (format t "Debugging is ~:[OFF~;ON~].~%" (lish-debug *shell*)))
 
 #|
-;; Just use the version from dlib-misc
-;; @@@ Or maybe the version from there should live here, since it's shellish?? 
-(defun printenv (&optional original-order) ; copied from dlib-misc
-  "Like the unix command."
-  (let ((mv (reduce #'max (nos:environ)
-		    :key #'(lambda (x) (length (symbol-name (car x))))))
-	(sorted-list (if original-order
-			 (nos:environ)
-			 (sort (nos:environ) #'string-lessp
-			       :key #'(lambda (x) (symbol-name (car x)))))))
-    (loop :for v :in sorted-list
-       :do (format t "~va ~30a~%" mv (car v) (cdr v)))))
-|#
+;; Just use the version from dlib-misc	;
+;; @@@ Or maybe the version from there should live here, since it's shellish?? ;
+  (defun printenv (&optional original-order) ; copied from dlib-misc ;
+"Like the unix command."
+(let ((mv (reduce #'max (nos:environ)
+:key #'(lambda (x) (length (symbol-name (car x))))))
+(sorted-list (if original-order
+(nos:environ)
+(sort (nos:environ) #'string-lessp
+:key #'(lambda (x) (symbol-name (car x)))))))
+(loop :for v :in sorted-list
+:do (format t "~va ~30a~%" mv (car v) (cdr v)))))
+  |#
 
-(defbuiltin export (&optional name value)
-  '((:name "name" :type string)
-    (:name "value" :type string))
+(defbuiltin export (("name" string) ("value" string))
   "Set environment variable NAME to be VALUE. Omitting VALUE, just makes sure the current value of NAME is exported. Omitting both, prints all the exported environment variables."
   (if name
       (if value
@@ -1193,8 +1389,7 @@ NAME is replaced by EXPANSION before any other evaluation."
 	  (nos:getenv name))		; actually does nothing
       (printenv)))
 
-(defbuiltin jobs (&key long)
-  '((:name "long" :type boolean :short-arg #\l))
+(defbuiltin jobs (("long" boolean :short-arg #\l))
   "Lists spawned processes that are active."
   ;; @@@ totally faked & not working
   (loop :for p :in '(fake old junk)
@@ -1205,10 +1400,10 @@ NAME is replaced by EXPANSION before any other evaluation."
     (ansiterm:terminal-get-size tty)
     (ansiterm:terminal-window-columns tty)))
 
-(defbuiltin kill (&key list-signals signal pids)
-  '((:name "list-signals" :type boolean :short-arg #\l)
-    (:name "signal" :type signal :default 15)
-    (:name "pids" :type integer :repeating t))
+(defbuiltin kill
+    (("list-signals" boolean :short-arg #\l)
+     ("signal" 	     signal  :default   15)
+     ("pids" 	     integer :repeating t))
   ;; @@@ pid should be job # type to support %job
   "Sends SIGNAL to PID."
   ;; @@@ totally faked & not working
@@ -1223,28 +1418,27 @@ NAME is replaced by EXPANSION before any other evaluation."
 ;; they're for shell scripting which you should do in Lisp.
 
 ;;; make printf an alias
-(defbuiltin format (format-string &rest args)
-  '((:name "format-string" :type string :optional nil)
-    (:name "arg" :type t :repeating t))
+(defbuiltin format
+    (("format-string" string :optional nil)
+     ("args" t :repeating t))
   "Formatted output."
   ;; @@@ totally faked & not working
   (apply #'format t format-string args))
 
 ;; Since this is for scripting in other shells, I think we don't need to worry
 ;; about it, since the user can just call READ-LINE-like functions directly.
-(defbuiltin read (&key prompt timeout editing name)
-  '((:name "name" :type string)
-    (:name "prompt" :type string :short-arg #\p)
-    (:name "timeout" :type integer :short-arg #\t)
-    (:name "editing" :type boolean :short-arg #\e))
+(defbuiltin read
+    (("name"    string)
+     ("prompt"  string  :short-arg #\p)
+     ("timeout" integer :short-arg #\t)
+     ("editing" boolean :short-arg #\e))
   "Read a line of input."
   ;; @@@ totally faked & not working
   (declare (ignore timeout name))
   (if editing (tiny-rl:tiny-rl :prompt prompt)
       (read-line nil nil)))
 
-(defbuiltin time (&rest command)
-  '((:name "command" :type string :repeating t))
+(defbuiltin time (("command" string :repeating t))
   "Usage: time command ...
 Shows some time statistics resulting from the execution of COMMNAD."
   (time (shell-eval *shell* (make-shell-expr :words command))))
@@ -1268,7 +1462,7 @@ Shows some time statistics resulting from the execution of COMMNAD."
             (when (>= mins 1) (floor mins))
             secs)))
 
-(defbuiltin times () '()
+(defbuiltin times ()
   "Usage: times
 Show accumulated times for the shell."
   (let ((self (getrusage :SELF))
@@ -1280,10 +1474,10 @@ Show accumulated times for the shell."
 	    (print-timeval (rusage-user children) nil)
 	    (print-timeval (rusage-system children) nil))))
 
-(defbuiltin umask (&key print-command symbolic mask)
-  '((:name "print-command" :type boolean :short-arg #\p)
-    (:name "symbolic" :type boolean :short-arg #\S)
-    (:name "mask" :type string))
+(defbuiltin umask
+    (("print-command" boolean :short-arg #\p)
+     ("symbolic"      boolean :short-arg #\S)
+     ("mask"	     string))
   "Set or print the default file creation mode mask (a.k.a. permission mask). If mode is not given, print the current mode. If PRINT-COMMAND is true, print the mode as a command that can be executed. If SYMBOLIC is true, output in symbolic format, otherwise output in octal."
   (declare (ignore symbolic)) ;; @@@
   (if (not mask)
@@ -1304,27 +1498,24 @@ Show accumulated times for the shell."
 	    (error err))
 	  (nos:umask real-mask)))))
 
-(defbuiltin ulimit () '())
-(defbuiltin wait () '())
+(defbuiltin ulimit ())
+(defbuiltin wait ())
 
-(defbuiltin exec (&rest command-words)
-  '((:name "command-words" :type t :repeating t))
+(defbuiltin exec (("command-words" t :repeating t))
   "Replace the whole Lisp system with another program. This seems like a rather drastic thing to do to a running Lisp system."
   (when command-words
     (let ((path (command-pathname (first command-words))))
       (format t "path = ~w~%command-words = ~w~%" path command-words)
       (nos:exec path command-words))))
 
-(defbuiltin bind (&key print-bindings print-readable-bindings query
-		       remove-function-bindings	remove-key-binding key-sequence
-		       function-name)
-  '((:name "print-bindings" :type boolean :short-arg #\p)
-    (:name "print-readable-bindings" :type boolean :short-arg #\P)
-    (:name "query" :type function :short-arg #\q)
-    (:name "remove-function-bindings" :type function :short-arg #\u)
-    (:name "remove-key-binding" :type key-sequence :short-arg #\r)
-    (:name "key-sequence" :type key-sequence)
-    (:name "function-name" :type function))
+(defbuiltin bind
+    (("print-bindings"		 boolean      :short-arg #\p)
+     ("print-readable-bindings"	 boolean      :short-arg #\P)
+     ("query"			 function     :short-arg #\q)
+     ("remove-function-bindings" function     :short-arg #\u)
+     ("remove-key-binding"	 key-sequence :short-arg #\r)
+     ("key-sequence"		 key-sequence)
+     ("function-name"		 function))
   "Manipulate key bindings."
   (when (> (count t (list print-bindings print-readable-bindings query
 			  remove-function-bindings remove-key-binding)) 1)
@@ -1356,31 +1547,31 @@ Show accumulated times for the shell."
 
 #| Actually I think this is ill advised.
 
-;; This is really just for simple things. You should probably use the
-;; Lisp version instead.
+;; This is really just for simple things. You should probably use the ;
+;; Lisp version instead.		;
 
-;; @@@ This is what I would like to be able to say:
-@ defcommand tf ((file filename :optional nil)) (! "file" ($$ "type -p" file)) 
+;; @@@ This is what I would like to be able to say: ;
+  @ defcommand tf ((file filename :optional nil)) (! "file" ($$ "type -p" file)) 
 
-(defbuiltin defcommand (name function)
-  '((:name "name" :type string :optional nil)
-    (:name "function" :type string :optional nil))
-  "Defines a command which calls a function."
-  (let (;(func-name (command-function-name name))
-	(cmd-name (string-downcase name))
-	(func-symbol (let ((*read-eval* nil))
-		       (read-from-string (string-upcase function))))
-	(cmd-symbol (intern (string name))))
-    (if (fboundp func-symbol)
-	(progn
-	  (push cmd-symbol *command-list*)
-	  (set-command cmd-name
-		       (make-instance 'command
-				      :name cmd-name
-				      :function func-symbol
-				      :arglist '())))
-	(format t "~a is not a function" func-symbol))))
-|#
+  (defbuiltin defcommand
+(("name"     string :optional nil)
+("function" string :optional nil))
+"Defines a command which calls a function."
+(let (;(func-name (command-function-name name)) ;
+(cmd-name (string-downcase name))
+(func-symbol (let ((*read-eval* nil))
+(read-from-string (string-upcase function))))
+(cmd-symbol (intern (string name))))
+(if (fboundp func-symbol)
+(progn
+(push cmd-symbol *command-list*)
+(set-command cmd-name
+(make-instance 'command
+:name cmd-name
+:function func-symbol
+:arglist '())))
+(format t "~a is not a function" func-symbol))))
+  |#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1475,19 +1666,20 @@ So far we support:
 %w	Working directory, tildified.
 %W	The basename of `$PWD', tildified.
 %$	If the effective UID is 0, `#', otherwise `$'.
+%d      <3 char weekday> <3 char month name> <date>.
+%t	24 hour HH:MM:SS
+%T	12 hour HH:MM:SS
+%@	The time, in 12-hour am/pm format.
+%A	The time, in 24-hour HH:MM format.
+Not implemented yet:
 %!	The history number of this command.
 %#	The command number of this command.
 %[	Start of non-printing characters.
 %]	End of non-printing characters.
 %l	The basename of the shell's terminal device name.
-%d      <3 char weekday> <3 char month name> <date>.
 %D{FORMAT}
 	Some date formated by Unix strftime. Without the FORMAT just put some
 	locale-specific date.
-%t	24 hour HH:MM:SS
-%T	12 hour HH:MM:SS
-%@	The time, in 12-hour am/pm format.
-%A	The time, in 24-hour HH:MM format.
 %j	The number of jobs currently managed by the shell.
 "
   (declare (ignore sh))
@@ -1519,7 +1711,20 @@ So far we support:
 	       (#\W (write-string
 		     (twiddlify (basename (nos:current-directory))) str))
 	       (#\$ (write-char (if (= (nos:geteuid) 0) #\# #\$) str))
-;	       (#\d (write-string (format
+	       (#\d (write-string
+		     (format-date "~3a ~3a ~2d"
+				  (:day-abbrev :month-abbrev :date)) str))
+	       (#\t (write-string
+		     (format-date "~2,'0d:~2,'0d:~2,'0d"
+				  (:hours :minutes :seconds)) str))
+	       (#\T (write-string
+		     (format-date "~2,'0d:~2,'0d:~2,'0d"
+				  (:12-hours :minutes :seconds)) str))
+	       (#\@ (write-string
+		     (format-date "~2,'0d:~2,'0d ~2a"
+				  (:12-hours :minutes :am)) str))
+	       (#\A (write-string
+		     (format-date "~2,'0d:~2,'0d" (:hours :minutes)) str))
 	       )))
 	 (write-char c str)))))
 
@@ -1562,8 +1767,11 @@ end points in the original string."
   "Return the shell expression's word number that position POS is in."
 ;  (with-slots (word-start word-end) exp
   (loop :for w :from 0 :below exp-len
-     :when (and (>= pos (elt (shell-expr-word-start exp) w))
-		(<= pos (elt (shell-expr-word-end exp) w)))
+#|
+  :when (and (>= pos (elt (shell-expr-word-start exp) w))
+     (<= pos (elt (shell-expr-word-end exp) w))) 
+  |#
+     :when (in-shell-word exp w pos)
      :return w))
 
 (defun read-string (s)
@@ -1609,6 +1817,10 @@ The syntax is vaguely like:
   ; comment
   command [arg...]
   command \"string\" !*lisp-object* (lisp-code)
+  command word\ with\ spaces \"string \\\" with a double quote\"
+  command | command | ...
+  command < file-name
+  command > file-name
   ([lisp expressions...])"
   (let (word-start word-end word-quoted words
 	(c nil)				; current char
@@ -1619,7 +1831,8 @@ The syntax is vaguely like:
 	(in-word nil)			; t if in word
 	(do-quote nil)			;
 	(did-quote nil))		;
-    (labels ((finish-word ()		; finish the current word
+    (labels ((finish-word ()
+	       "Finish the current word."
 	       (when in-word
 		 (push (copy-seq w) args)
 		 (push i word-end)
@@ -1628,6 +1841,7 @@ The syntax is vaguely like:
 		       in-word nil
 		       did-quote nil)))
 	     (do-continue ()
+	       "Handle when the expression is incomplete."
 	       (if partial
 		   (progn
 		     (push i word-start)
@@ -1643,11 +1857,13 @@ The syntax is vaguely like:
 			:word-end (nreverse word-quoted))))
 		   (return-from shell-read *continue-symbol*)))
 	     (reverse-things ()
+	       "Reverse the things we've been consing, so they're in order."
 	       (setf word-start  (reverse word-start)
 		     word-end    (nreverse word-end)
 		     word-quoted (nreverse word-quoted)
 		     words       (nreverse args)))
 	     (make-the-expr ()
+	       "Make an expression, with it's own copy the lists."
 	       (make-shell-expr
 		:line line
 		:words (copy-seq words)
@@ -1663,6 +1879,8 @@ The syntax is vaguely like:
 	   ;; quoted char
 	   (do-quote
 	       (vector-push-extend c w)
+	     (when (not in-word)
+	       (push (1- i) word-start))
 	     (setf in-word t)
 	     (setf do-quote nil)
 	     (setf did-quote t)
@@ -1732,11 +1950,20 @@ The syntax is vaguely like:
 	    (finish-word)
 	    (reverse-things)
 	    (let ((e (list :pipe (make-the-expr))))
-;	      (format t "e = ~w~%" e)
 	      (setf args (list e)))
 	    (setf word-start (list i))
 	    (incf i)
-;	    (format t "words = ~w~%" words)
+	    (setf word-end (list i)
+		  word-quoted (list nil)))
+	   ;; redirect
+	   ((or (eql c #\<) (eql c #\>))
+	    (finish-word)
+	    (reverse-things)
+	    ;; @@@ need to get the file name as a word
+	    (let ((e (list :redirect (make-the-expr))))
+	      (setf args (list e)))
+	    (setf word-start (list i))
+	    (incf i)
 	    (setf word-end (list i)
 		  word-quoted (list nil)))
 	   ;; any other character: add to word
@@ -1822,9 +2049,9 @@ if there isn't one."
 		result path))))
     result))
 
-(defbuiltin hash (&key rehash commands)
-  '((:name "rehash" :type boolean :short-arg #\r)
-    (:name "commands" :type t :repeating t))
+(defbuiltin hash
+    (("rehash" boolean :short-arg #\r)
+     ("commands" t :repeating t))
   "Usage: hash [-r] [commands...]
 Show remembered full pathnames of commands. If -r is given, forget them all."
   (labels ((pr-cmd (c) (format t "~a~%" c)))
@@ -1874,11 +2101,11 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
        (when (and (symbolp x) (fboundp x))
 	 (format t "~a is the function ~s~%" cmd (symbol-function x)))))))
 
-(defbuiltin type (&key type-only path-only all names)
-  '((:name "type-only" :type boolean :short-arg #\t)
-    (:name "path-only" :type boolean :short-arg #\p)
-    (:name "all" :type boolean :short-arg #\a)
-    (:name "names" :type string :repeating t))
+(defbuiltin type
+    (("type-only" boolean :short-arg #\t)
+     ("path-only" boolean :short-arg #\p)
+     ("all" 	  boolean :short-arg #\a)
+     ("names" 	  string  :repeating t))
   "Describe what kind of command the name is."
   (when names
     (loop :with args = names :and n = nil
@@ -1994,6 +2221,9 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
 	nil)))
 
 (defun do-system-command (command-line &optional in-pipe out-pipe)
+  "Run a system command. IN-PIPE is an input stream to read from, if non-nil.
+OUT-PIPE is T to return a input stream which the output of the command can be
+read from."
   ;; Since run-program can't throw an error when the program is not found, we
   ;; try to do it here.
   (let* ((program (car command-line))
@@ -2004,16 +2234,21 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
 	(error "~a not found." program)
 	(progn
 	  (set-default-job-sigs)
-	  (if out-pipe
-	      (setf result-stream (nos:popen path args :in-stream in-pipe)
-		    result '(0))	; fake it
-	      (progn
-		(setf result
-		      #+(or clisp ecl cmu lispworks) (fork-and-exec path args)
-		      #+sbcl (nos:run-program path args) ;@@@ until fork fixed
-		      #+ccl (nos:system-command path args);@@@ until fork fixed
-		)))))
-    (values result result-stream)))
+	  (cond
+	    (out-pipe
+	     (setf result-stream
+		   (if in-pipe
+		       (nos:popen path args :in-stream in-pipe)
+		       (nos:popen path args))))
+	    (in-pipe
+	     (nos:popen path args :in-stream in-pipe :out-stream t))
+	    (t
+	     (setf result
+		   #+(or clisp ecl cmu lispworks) (fork-and-exec path args)
+		   #+sbcl (nos:run-program path args)	;@@@ until fork fixed
+		   #+ccl (nos:system-command path args)	;@@@ until fork fixed
+		   )))))
+    (values (or result '(0)) result-stream)))
 
 (defun unquoted-string-p (w expr i)
   "True if W in EXPR with index I is _not_ quoted."
@@ -2045,7 +2280,7 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
 	   (t (push w new-words)))
 	 ;; Quoted, so just push it verbatim
 	 (push w new-words)))
-    (setf (shell-expr-words expr) (reverse new-words)))
+    (setf (shell-expr-words expr) (nreverse new-words)))
   pos)
 
 (defun lisp-exp-eval (words)
@@ -2090,7 +2325,10 @@ string. Sometimes gets it wrong for words startings with 'U', 'O', or 'H'."
 		       (runky command args))))
 	   (make-string-input-stream out-str)
 	   nil))
-	(runky command args))))
+	(if in-pipe
+	    (let ((*standard-input* in-pipe))
+	      (runky command args))
+	    (runky command args)))))
 
 (defun read-parenless-args (string)
   "Read and shell-eval all the expressions possible from a string and return
@@ -2126,30 +2364,35 @@ them as a list."
       (command			
        (do-command command (subseq expanded-words 1) in-pipe out-pipe))
       (t
-       ;; Try parenless lisp line
-       (multiple-value-bind (symb pos)
-	   (read-from-string (shell-expr-line expr) nil nil)
-	 (if (and (symbolp symb) (fboundp symb))
-	     (values
-	      (multiple-value-list
-	       (apply (symbol-function symb)
-		      (read-parenless-args
-		       (subseq (shell-expr-line expr) pos))))
-	      nil ;; stream
-	      t) ;; show the values
-	     ;; System command
-	     (progn
-	       (setf (values result result-stream)
-		     (do-system-command expanded-words in-pipe out-pipe))
-	       (dbug "result = ~w~%" result)
-	       (when (not result)
-		 (format t "Command failed.~%"))
-	       (force-output)	   ; @@@ is this really a good place for this?
-	       (values result result-stream nil))))))))
+       (flet ((sys-cmd ()
+		"Do a system command."
+		(setf (values result result-stream)
+		      (do-system-command expanded-words in-pipe out-pipe))
+		(dbug "result = ~w~%" result)
+		(when (not result)
+		  (format t "Command failed.~%"))
+		(force-output)	   ; @@@ is this really a good place for this?
+		(values result result-stream nil)))
+	 ;; If we can find a command in the path, try it first.
+	 (if (get-command-path (first expanded-words))
+	     (sys-cmd)
+	     ;; Otherwise try a parenless Lisp line.
+	     (multiple-value-bind (symb pos)
+		 (read-from-string (shell-expr-line expr) nil nil)
+	       (if (and (symbolp symb) (fboundp symb))
+		   (values
+		    (multiple-value-list
+		     (apply (symbol-function symb)
+			    (read-parenless-args
+			     (subseq (shell-expr-line expr) pos))))
+		    nil ;; stream
+		    t)	;; show the values
+		   ;; Just try a system command anyway, which will likely fail.
+		   (sys-cmd)))))))))
 
 (defun shell-eval (sh expr &key no-alias in-pipe out-pipe)
-  "Evaluate a shell expression. Return a list of the result values, a stream
-or NIL, and a boolean which is T to show the values."
+  "Evaluate a shell expression. If NO-ALIAS is true, don't expand aliases.
+Return a list of the result values, a stream or NIL, and a boolean which is T to show the values."
   (typecase expr
     (shell-expr
 ;     (format t "(shell-expr-words expr) = ~w~%" (shell-expr-words expr))
@@ -2162,19 +2405,19 @@ or NIL, and a boolean which is T to show the values."
 	 (case (first w0)
 	   (:pipe
 	    (multiple-value-bind (vals out-stream show-vals)
-		(shell-eval sh (second w0) :in-pipe in-pipe :out-pipe out-pipe)
+		(shell-eval sh (second w0) :in-pipe in-pipe :out-pipe t)
 	      (declare (ignore show-vals))
 	      (when (and vals (> (length vals) 0))
-		(with-output-to-string (out-str)
-		  (copy-stream out-stream out-str)
-		  (with-input-from-string (in-str
-					   (get-output-stream-string out-str))
-		    (format t "input is ~w~%" (get-output-stream-string out-str))
-		    (with-package *lish-user-package*
-		      (shell-eval-command sh expr
-					  :no-alias no-alias
-					  :in-pipe in-str
-					  :out-pipe out-pipe)))))))
+		(with-package *lish-user-package*
+		  (shell-eval-command
+		   sh
+		   (make-shell-expr
+		    :words (cdr (shell-expr-words expr))
+		    :line (format nil "~{~s ~}"
+				  (cdr (shell-expr-words expr))))
+		   :no-alias no-alias
+		   :in-pipe out-stream
+		   :out-pipe out-pipe)))))
 	   (:and
 	    )
 	   (:or
@@ -2297,6 +2540,23 @@ commands are added.")
 	(values (completion::symbol-completion
 		 word :package pack :external external) word-start))))
 
+(defun quotify (string)
+  "Put a backslash in front of any character that might not be intrepreted
+literally in shell syntax."
+  (let ((result string))
+    (flet ((possibly-quote (c)
+	     (when (position c result)
+	       (setf result (join (split-sequence c result) (s+ #\\ c))))))
+      (loop :for c :across " !$|;[]*?()" :do ;
+  (possibly-quote c))
+      result)))
+
+(defvar *junk-package*
+  (progn
+    (when (find-package :lish-junk)
+      (delete-package :lish-junk))
+    (make-package :lish-junk)))
+
 ;; Remember, a completion functions returns:
 ;;   One completion: completion and replacement starting position
 ;;   List:           sequence and sequence length
@@ -2304,10 +2564,9 @@ commands are added.")
 ;; If we can't do at least a good as Tops-20 COMND% JSYS, then we suck.
 ;;
 ;; I dream and aspire to be as good as or better than CP, "The Command
-;; Processor Reader" on Symbolics Genera, but since I only used it for a few
-;; short moments, ages ago, in a rudimentary form, I won't know, will I.
-;; Anyway, we're ostensibly driving Unix underneath, which is a bit of a
-;; different beasty.
+;; Processor Reader" on Symbolics Genera, but since I never really used it, I
+;; won't know, will I. Anyway, we're ostensibly driving Unix underneath, which
+;; is a bit of a different beasty.
 ;;
 ;; I designed this thing without really knowing about the Symbolics stuff but
 ;; it turns out I made something quite similar. It seems like having something
@@ -2320,7 +2579,8 @@ commands are added.")
   (declare (type string context))
   "Analyze the context and try figure out what kind of thing we want to ~
 complete, and call the appropriate completion function."
-  (let ((exp (ignore-errors (shell-read context :partial t))))
+  (let ((exp (ignore-errors (shell-read context :partial t
+					:package *junk-package*))))
     (typecase exp
       (shell-expr
        (let* ((word-num (shell-word-number exp pos))
@@ -2376,9 +2636,7 @@ complete, and call the appropriate completion function."
 		(multiple-value-bind (result new-pos)
 		    (complete-filename word (- (length word) from-end) all)
 		  (declare (ignore new-pos))
-		  (values (if (and (not all)
-				   (elt (shell-expr-word-quoted exp) word-num))
-			      (s+ "\"" result) result)
+		  (values (if (not all) (quotify result) result)
 			  (elt (shell-expr-word-start exp) word-num)))))))))
       (cons
        (complete-symbol context pos all)))))
@@ -2616,10 +2874,15 @@ complete, and call the appropriate completion function."
 ;;|| a lish command line or script.
 
 (defun lisp-args-to-command (args &key (auto-space nil))
+  "Turn the arguments into a string of arguments for a system command. String
+arguements are concatenated together. Symbols are downcased and turned into
+strings. Keywords are like symbols but prefixed with '--'. Everything else is
+just turned into a string as printed with PRINC. If AUTO-SPACE is true, put
+spaces between every argument."
   (with-output-to-string (str)
     (loop :with first-time = t
        :for a :in args :do
-       (when  auto-space
+       (when auto-space
 	 (if first-time
 	     (setf first-time nil)
 	     (princ " " str)))
@@ -2631,6 +2894,53 @@ complete, and call the appropriate completion function."
 	  (princ (string-downcase (symbol-name a)) str))
 	 (t
 	  (princ a str))))))
+
+(defvar *buffer-size* (nos:getpagesize)
+  "General buffer size for file or stream operations.")
+
+;; I suppose we could make this generic so that streams can do a special
+;; things with it, but that might be sort of edging into the stream protocol,
+;; which simple-streams and 
+(defun copy-stream (source destination)
+  "Copy data from reading from SOURCE and writing to DESTINATION, until we get
+an EOF on SOURCE."
+  ;; ^^^ We could try to make *buffer-size* be the minimum of the file size
+  ;; (if it's a file) and the page size, but I'm pretty sure that the stat
+  ;; call and possible file I/O is way more inefficient than wasting less than
+  ;; 4k of memory to momentarily. Of course we could mmap it, but it should
+  ;; end up doing approximately that anyway and the system should have a
+  ;; better idea of how big is too big, window sizing and all that. Also,
+  ;; that's way more complicated. Even this comment is too much. Let's just
+  ;; imagine that a future IDE will collapse or footnotify comments tagged
+  ;; with "^^^".
+  (let ((buf (make-array *buffer-size*
+			 :element-type (stream-element-type source)))
+	pos)
+    (loop :do
+       (setf pos (read-sequence buf source))
+       (when (> pos 0)
+	 (write-sequence buf destination :end pos))
+       :while (= pos *buffer-size*))))
+
+(defun run-with-output-to (file-or-stream commands &key supersede)
+  "Run commands with output to a file or stream."
+  (let ((result nil))
+    (multiple-value-bind (vals in-stream show-vals)
+	(shell-eval
+	 *shell* (shell-read (lisp-args-to-command commands)) :out-pipe t)
+      (declare (ignore show-vals))
+      (unwind-protect
+	   (when (and vals (> (length vals) 0))
+	     (with-open-file-or-stream (out-stream file-or-stream
+						   :direction :output
+						   :if-exists
+						   (if supersede
+						       :supersede :error)
+						   :if-does-not-exist :create)
+	       (copy-stream in-stream out-stream))
+	     (setf result vals))
+	(close in-stream)))
+    result))
 
 (defun input-line-words ()
   "Return lines from *standard-input* as a string of words."
@@ -2644,7 +2954,9 @@ complete, and call the appropriate completion function."
 	   (format s " ~a" l)))))
 
 (defun map-output-lines (func command)
-  "Return a list of the results of calling the function FUNC with each output line of COMMAND. COMMAND should probably be a string, and FUNC should take one string as an argument."
+  "Return a list of the results of calling the function FUNC with each output
+line of COMMAND. COMMAND should probably be a string, and FUNC should take one
+string as an argument."
   (multiple-value-bind (vals stream show-vals)
       (shell-eval *shell* (shell-read command) :out-pipe t)
     (declare (ignore show-vals))
@@ -2679,53 +2991,32 @@ complete, and call the appropriate completion function."
   "Return lines output from command as a list."
   (map-output-lines #'identity command))
 
-(defmacro with-lines ((line-var file-or-stream) &body body)
-  "Evaluate BODY with LINE-VAR set to successive lines of FILE-OR-STREAM. FILE-OR-STREAM can be a stream or a pathname or namestring."
-  (let ((line-loop (gensym))
-	(inner-stream-var (gensym))
-	(outer-stream-var (gensym))
-	(stream-var (gensym)))
-    `(labels ((,line-loop (,inner-stream-var)
-		(loop :with ,line-var
-		   :while (setf ,line-var (read-line ,inner-stream-var nil nil))
-		   :do ,@body)))
-       (let ((,stream-var ,file-or-stream)) ; so file-or-stream only eval'd once
-	 (if (streamp ,stream-var)
-	     (,line-loop ,stream-var)
-	     (with-open-file (,outer-stream-var ,stream-var)
-	       (,line-loop ,outer-stream-var)))))))
-
-(defvar *buffer-size* (nos:getpagesize))
-
-;; I suppose we could make this generic so that streams can do a special
-;; things with it, but that might be sort of edging into the stream protocol,
-;; which simple-streams and 
-(defun copy-stream (source destination)
-  "Copy data from reading from SOURCE and writing to DESTINATION, until we get an EOF on SOURCE."
-  ;; ^^^ We could try to make *buffer-size* be the minimum of the file size
-  ;; (if it's a file) and the page size, but I'm pretty sure that the stat
-  ;; call and possible file I/O is way more inefficient than wasting less than
-  ;; 4k of memory to momentarily. Of course we could mmap it, but it should
-  ;; end up doing approximately that anyway and the system should have a
-  ;; better idea of how big is too big, window sizing and all that. Also,
-  ;; that's way more complicated. Even this comment is too much. Let's just
-  ;; imagine that a future IDE will collapse or footnotify comments tagged
-  ;; with "^^^".
-  (let ((buf (make-array *buffer-size*
-			 :element-type (stream-element-type source)))
-	pos)
-    (loop :do
-       (setf pos (read-sequence buf source))
-       (when (> pos 0)
-	 (write-sequence buf destination :end pos))
-       :while (= pos *buffer-size*))))
+;; (defvar *files-to-delete* '()
+;;   "A list of files to delete at the end of a command.")
+;;
+;; ;; This has a lot of potential problems / security issues.
+;; (defun != (&rest commands)
+;;   "Temporary file name output substitution."
+;;   (multiple-value-bind (vals stream show-vals)
+;;       (shell-eval *shell* (shell-read (lisp-args-to-command commands))
+;;                   :out-pipe t)
+;;     (declare (ignore show-vals))
+;;     (if (and vals (> (length vals) 0))
+;; 	(let ((fn (nos:mktemp "lish")))
+;; 	  (push fn *files-to-delete*)
+;; 	  (with-posix-file (fd fn (logior O_WRONLY O_CREAT O_EXCL) #o600)
+;; 	    (let ((buf (make-string (buffer-size))))
+;; 	      (loop :while (read-sequence buf stream)
+;; 	(progn
+;; 	  (close stream)
+;; 	  nil))))
 
 ;;; The problem with these shelly symbols is: even I can't remember them all.
 ;;; I think I can remember all the Tetris™ pieces or even all the Blokus™
 ;;; pieces, so it's not really not a capacity thing. The issue seems to be
 ;;; memorability versus succinctness. Perhaps if I could come up with one
 ;;; memorable word for each one of these and then these could be used as
-;;; replacements (even automatcially / abbrev-like). Or maybe one they're
+;;; replacements (even automatcially / abbrev-like). Or maybe once they're
 ;;; working and I'm using them regularly, I will figure it out.
 
 ;;; I call these the Snormnambulous™®© Shellbilitous Frobmogrifiers.
@@ -2775,48 +3066,6 @@ complete, and call the appropriate completion function."
 	  (close stream)
 	  nil))))
 
-;; (defvar *files-to-delete* '()
-;;   "A list of files to delete at the end of a command.")
-;;
-;; ;; This has a lot of potential security issues.
-;; (defun != (&rest commands)
-;;   "Temporary file name output substitution."
-;;   (multiple-value-bind (vals stream show-vals)
-;;       (shell-eval *shell* (shell-read (lisp-args-to-command commands))
-;;                   :out-pipe t)
-;;     (declare (ignore show-vals))
-;;     (if (and vals (> (length vals) 0))
-;; 	(let ((fn (nos:mktemp "lish")))
-;; 	  (push fn *files-to-delete*)
-;; 	  (with-posix-file (fd fn (logior O_WRONLY O_CREAT O_EXCL) #o600)
-;; 	    (let ((buf (make-string (buffer-size))))
-;; 	      (loop :while (read-sequence buf stream)
-;; 	(progn
-;; 	  (close stream)
-;; 	  nil))))
-
-(defun run-with-output-to (file-or-stream commands &key supersede)
-  "Run commands with output to a file or stream."
-  (let ((result nil))
-    (multiple-value-bind (vals in-stream show-vals)
-	(shell-eval
-	 *shell* (shell-read (lisp-args-to-command commands)) :out-pipe t)
-      (declare (ignore show-vals))
-      (unwind-protect
-	   (when (and vals (> (length vals) 0))
-	     (if (streamp file-or-stream)
-		 (copy-stream in-stream file-or-stream)
-		 (with-open-file (out-stream file-or-stream
-					     :direction :output
-					     :if-exists
-					     (if supersede
-						 :supersede :error)
-					     :if-does-not-exist :create)
-		   (copy-stream in-stream out-stream)))
-	     (setf result vals))
-	(close in-stream)))
-    result))
-
 (defun !> (file-or-stream &rest commands)
   "Run commands with output to a file or stream."
   (run-with-output-to file-or-stream commands))
@@ -2842,8 +3091,26 @@ complete, and call the appropriate completion function."
 
 (defun !< (file-or-stream &rest commands)
   "Run commands with input from a file or stream."
-  (declare (ignore file-or-stream commands))
-  )
+  (with-open-file-or-stream (in-stream file-or-stream)
+    (multiple-value-bind (vals stream show-vals)
+	(shell-eval *shell* (shell-read (lisp-args-to-command commands))
+		    :in-pipe in-stream)
+      (declare (ignore stream show-vals))
+      (values-list vals))))
+
+(defun !!< (file-or-stream &rest commands)
+  "Run commands with input from a file or stream and return a stream of output."
+  (with-open-file-or-stream (in-stream file-or-stream)
+    (multiple-value-bind (vals stream show-vals)
+	(shell-eval *shell* (shell-read (lisp-args-to-command commands))
+		    :out-pipe t
+		    :in-pipe in-stream)
+      (declare (ignore show-vals))
+      (if (and vals (> (length vals) 0))
+	  stream
+	  (progn
+	    (close stream)
+	    nil)))))
 
 ;; @@@ consider features in inferior-shell?
 

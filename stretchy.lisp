@@ -2,7 +2,7 @@
 ;; stretchy.lisp - Adjustable arrays and strings
 ;;
 
-;; $Revision: 1.4 $
+;; $Revision: 1.5 $
 
 (defpackage :stretchy
   (:documentation "Functions for manipulating stretchy arrays and strings.")
@@ -31,7 +31,8 @@
 ;;   `(make-array ,n :element-type 'character :fill-pointer 0 :adjustable t))
 
 (defun make-stretchy-string (n)
-  "Make a stretchy string of size N. A stretchy string is an adjustable array of characters with a fill pointer."
+  "Make a stretchy string of size N. A stretchy string is an adjustable array
+of characters with a fill pointer."
   (make-array n :element-type 'character :fill-pointer 0 :adjustable t))
 
 (deftype stretchy-vector ()
@@ -41,16 +42,19 @@
     (satisfies adjustable-array-p)
     (satisfies array-has-fill-pointer-p)))
 
-(defun make-stretchy-vector (n)
-  "Make a stretchy vector of size N. A stretchy vector is an adjustable array of objects with a fill pointer."
-  (make-array n :fill-pointer 0 :adjustable t))
+(defun make-stretchy-vector (n &key (element-type t))
+  "Make a stretchy vector of size N. A stretchy vector is an adjustable array
+of objects with a fill pointer."
+  (make-array n :fill-pointer 0 :adjustable t :element-type element-type))
 
 (defvar *default-stretch-factor* 2/3
   "Default expansion factor for stretchy things.")
 
 (defun stretchy-append-string-or-vector (dst src
-					 &key (factor *default-stretch-factor*))
-  "Append a vector to a stretchy vector. Factor is the amount of the total size to expand by when expansion is needed."
+					 &key (factor
+					       *default-stretch-factor*))
+  "Append a vector to a stretchy vector. Factor is the amount of the total
+size to expand by when expansion is needed."
 ;  (declare (type stretchy-string dst))
 ;  (declare (type (or string stretchy-string) src))
   (let ((src-len (length src))
@@ -65,7 +69,8 @@
 
 
 (defun stretchy-set (vec n value &key (factor *default-stretch-factor*))
-  "Put an element in a stretchy vector. Factor is the amount of the total size to expand by when expansion is needed."
+  "Put an element in a stretchy vector. Factor is the amount of the total size
+to expand by when expansion is needed."
 ;  (let ((len (length vec)))
     (when (>= n (array-total-size vec))
       ;; resize

@@ -2,12 +2,47 @@
 ;; ansiterm.lisp - Deal with ANSI-like terminals
 ;;
 
-;; $Revision: 1.5 $
+;; $Revision: 1.6 $
+
+;; Some people like to tell you how great their software is, and go on about
+;; all it's wonderfull features. I apparently like to apologize for all the
+;; imperfections, and lack of features. Another way of saying it is, that I
+;; can easily imagine software that's much better and I am hopeful that it
+;; will be so in the future.
+;;
+;; I apologize that this particular module even exists. This is probably only
+;; really useful when you don't want to deal with terminfo entries and all
+;; that. This could also be turned generic and subclassed for other terminal
+;; types.
+;;
+;; This was originally part of TINY-RL. The main reason for it's existence is
+;; that I don't want reading a line of input from the REPL to be dependent on
+;; a curses library or even a terminfo database. I would like it to be “pure”
+;; Lisp. We could even make a Lisp only terminal database which could be read
+;; at runtime or compiled in, but I would actually like if the idea of
+;; multiple terminal types just went away. The old ANSI terminal protocol
+;; seems mostly adequate as an efficient way for describing character grid
+;; manipulations, and is actually somewhat extensible. It seems like we could
+;; easily provide for other keyboard keys and other capabilities.
+;;
+;; What I would actually like, would be:
+;;  - CURSES package goes away.
+;;  - Character grid output optimization is still necessary (or at least nice)
+;;    for full screen applications, so we implement the core of curses in a
+;;    separate module. The curses API is in some ways nice, but could use
+;;    paring and improvement.It should be able to have generic output, in
+;;    other words, adaptable to a bitmap, graphics library calls, or terminal
+;;    protocol. This would facilitate all manner of efficent dynamic text
+;;    updating. Perhaps consider things like dual mode TeX or HTML editors.
+;;  - Support all terminal emulators (or even terminals) that speak ANSI, with
+;;    simple Lispy variation descriptions, compiled in or loadable.
+;;  - Things that don't speak ANSI just die (or just use the old curses crap).
 
 (defpackage :ansiterm
-  (:documentation "Deal with ANSI-like terminals")
-  (:use :cl :termios :opsys :cffi)
+  (:documentation "Deal with ANSI-like terminals.")
+  (:use :cl :termios :opsys :cffi :table)
   (:export
+   #:terminal-stream
    #:terminal
    #:terminal-file-descriptor
    #:terminal-device-name
@@ -21,6 +56,7 @@
    #:terminal-start
    #:terminal-end
    #:terminal-done
+   #:make-terminal-stream
    #:with-terminal
    #:tt-format
    #:tt-write-string
@@ -45,6 +81,8 @@
    #:tt-standend
    #:tt-normal
    #:tt-underline
+   #:tt-bold
+   #:tt-inverse
    #:tt-color
    #:tt-beep
    #:tt-finish-output
@@ -53,7 +91,16 @@
    ))
 (in-package :ansiterm)
 
-(defclass terminal ()
+(defclass terminal-stream ()
+  ((output-stream
+    :accessor terminal-output-stream
+    :initarg :output-stream
+    :documentation "Lisp stream for output."))
+  (:documentation
+   "Terminal as purely a Lisp output stream. This can't do input or things that
+require terminal driver support."))
+
+(defclass terminal (terminal-stream)
   ((file-descriptor
     :accessor terminal-file-descriptor
     :initarg :file-descriptor
@@ -62,10 +109,10 @@
     :accessor terminal-device-name
     :initarg :device-name
     :documentation "System device name.")
-   (output-stream
-    :accessor terminal-output-stream
-    :initarg :output-stream
-    :documentation "Lisp stream for output.")
+   ;; (output-stream
+   ;;  :accessor terminal-output-stream
+   ;;  :initarg :output-stream
+   ;;  :documentation "Lisp stream for output.")
    (raw-state
     :accessor terminal-raw-state
     :initarg :terminal-raw-state
@@ -180,6 +227,17 @@
 ;  (setf *tty* nil)
   (values))
 
+;; (defmacro with-terminal-stream ((var stream) &body body)
+;;   "Evaluate the body with VAR set to a new terminal-stream."
+;;   `(let ((,var (make-instance 'terminal-stream :output-stream ,stream)))
+;;      (unwind-protect
+;; 	  (progn
+;; 	    ,@body)
+;;        (terminal-done ,var))))
+
+(defun make-terminal-stream (stream)
+  (make-instance 'terminal-stream :output-stream stream))
+
 (defmacro with-terminal ((var &optional device-name) &body body)
   "Evaluate the body with VAR set to a new terminal. Cleans up afterward."
   `(let ((,var (if ,device-name
@@ -193,7 +251,7 @@
 
 (defgeneric tt-format (tty fmt &rest args)
   (:documentation "Output a formatted string to the terminal."))
-(defmethod tt-format ((tty terminal) fmt &rest args)
+(defmethod tt-format ((tty terminal-stream) fmt &rest args)
   (let ((string (apply #'format nil fmt args))
 	(stream (terminal-output-stream tty)))
     (write-string string stream)
@@ -221,7 +279,7 @@
   (:documentation "
 Output a string to the terminal. Flush output if it contains a newline,
 i.e. the terminal is \"line buffered\""))
-(defmethod tt-write-string ((tty terminal) str)
+(defmethod tt-write-string ((tty terminal-stream) str)
   (let ((stream (terminal-output-stream tty)))
     (write-string str stream)
     (when (position #\newline str)
@@ -231,64 +289,64 @@ i.e. the terminal is \"line buffered\""))
   (:documentation "
 Output a character to the terminal. Flush output if it is a newline,
 i.e. the terminal is \"line buffered\""))
-(defmethod tt-write-char ((tty terminal) char)
+(defmethod tt-write-char ((tty terminal-stream) char)
   (let ((stream (terminal-output-stream tty)))
     (write-char char stream)
     (when (eql char #\newline)
       (finish-output stream))))
 
 (defgeneric tt-move-to (tty row col))
-(defmethod tt-move-to ((tty terminal) row col)
+(defmethod tt-move-to ((tty terminal-stream) row col)
   (tt-format tty "~c[~d;~dH" #\escape (1+ row) (1+ col)))
 
 (defgeneric tt-move-to-col (tty col))
-(defmethod tt-move-to-col ((tty terminal) col)
+(defmethod tt-move-to-col ((tty terminal-stream) col)
   (tt-format tty "~c[~dG" #\escape (1+ col)))
 
 (defgeneric tt-beginning-of-line (tty))
-(defmethod tt-beginning-of-line ((tty terminal))
+(defmethod tt-beginning-of-line ((tty terminal-stream))
   ;; (tt-format tty "~c[G" #\escape))
   ;; How about just:
   (tt-write-char tty #\return))
 
 (defgeneric tt-del-char (tty n))
-(defmethod tt-del-char ((tty terminal) n)
+(defmethod tt-del-char ((tty terminal-stream) n)
   (tt-format tty "~c[~aP" #\escape (if (> n 1) n "")))
 
 (defgeneric tt-ins-char (tty n))
-(defmethod tt-ins-char ((tty terminal) n)
+(defmethod tt-ins-char ((tty terminal-stream) n)
   (tt-format tty "~c[~a@" #\escape (if (> n 1) n "")))
 
 (defgeneric tt-backward (tty n))
-(defmethod tt-backward ((tty terminal) n)
+(defmethod tt-backward ((tty terminal-stream) n)
   (if (> n 0)
       (if (> n 1)
 	  (tt-format tty "~c[~dD" #\escape n)
 	  (tt-format tty "~c[D" #\escape))))
 
 (defgeneric tt-forward (tty n))
-(defmethod tt-forward ((tty terminal) n)
+(defmethod tt-forward ((tty terminal-stream) n)
   (if (> n 0)
       (if (> n 1)
 	  (tt-format tty "~c[~dC" #\escape n)
 	  (tt-format tty "~c[C" #\escape))))
 
 (defgeneric tt-up (tty n))
-(defmethod tt-up ((tty terminal) n)
+(defmethod tt-up ((tty terminal-stream) n)
   (if (> n 0)
       (if (> n 1)
 	  (tt-format tty "~c[~dA" #\escape n)
 	  (tt-format tty "~c[A" #\escape))))
 
 (defgeneric tt-down (tty n))
-(defmethod tt-down ((tty terminal) n)
+(defmethod tt-down ((tty terminal-stream) n)
   (if (> n 0)
       (if (> n 1)
 	  (tt-format tty "~c[~dB" #\escape n)
 	  (tt-format tty "~c[B" #\escape))))
 
 (defgeneric tt-scroll-down (tty n))
-(defmethod tt-scroll-down ((tty terminal) n)
+(defmethod tt-scroll-down ((tty terminal-stream) n)
   (if (> n 0)
       (loop :with stream = (terminal-output-stream tty) and i = 0
 	 :while (< i n)
@@ -296,50 +354,58 @@ i.e. the terminal is \"line buffered\""))
 	 :finally (finish-output stream))))
 
 (defgeneric tt-erase-to-eol (tty))
-(defmethod tt-erase-to-eol ((tty terminal))
+(defmethod tt-erase-to-eol ((tty terminal-stream))
   (tt-format tty "~c[K" #\escape))
 
 (defgeneric tt-erase-line (tty))
-(defmethod tt-erase-line ((tty terminal))
+(defmethod tt-erase-line ((tty terminal-stream))
   (tt-format tty "~c[2K" #\escape))
 
 (defgeneric tt-clear (tty))
-(defmethod tt-clear ((tty terminal))
+(defmethod tt-clear ((tty terminal-stream))
   (tt-format tty "~c[2J" #\escape))
 
 (defgeneric tt-home (tty))
-(defmethod tt-home ((tty terminal))
+(defmethod tt-home ((tty terminal-stream))
   (tt-format tty "~c[H" #\escape))
 
 (defgeneric tt-cursor-off (tty))
-(defmethod tt-cursor-off ((tty terminal))
+(defmethod tt-cursor-off ((tty terminal-stream))
   (tt-format tty "~c7" #\escape))
 
 (defgeneric tt-cursor-on (tty))
-(defmethod tt-cursor-on ((tty terminal))
+(defmethod tt-cursor-on ((tty terminal-stream))
   (tt-format tty "~c8" #\escape))
 
 (defgeneric tt-standout (tty))
-(defmethod tt-standout ((tty terminal))
+(defmethod tt-standout ((tty terminal-stream))
   (tt-format tty "~c[7m" #\escape))
 
 (defgeneric tt-standend (tty))
-(defmethod tt-standend ((tty terminal))
+(defmethod tt-standend ((tty terminal-stream))
   (tt-format tty "~c[0m" #\escape))
 
 (defgeneric tt-normal (tty))
-(defmethod tt-normal ((tty terminal))
+(defmethod tt-normal ((tty terminal-stream))
   (tt-format tty "~c[0m" #\escape))
 
 (defgeneric tt-underline (tty state))
-(defmethod tt-underline ((tty terminal) state)
+(defmethod tt-underline ((tty terminal-stream) state)
   (tt-format tty "~c[~dm" #\escape (if state 4 24)))
+
+(defgeneric tt-bold (tty state))
+(defmethod tt-bold ((tty terminal-stream) state)
+  (tt-format tty "~c[~dm" #\escape (if state 1 22)))
+
+(defgeneric tt-inverse (tty state))
+(defmethod tt-inverse ((tty terminal-stream) state)
+  (tt-format tty "~c[~dm" #\escape (if state 7 27)))
 
 (defparameter *colors*
   #(:black :red :green :yellow :blue :magenta :cyan :white nil :default))
 
 (defgeneric tt-color (tty fg bg))
-(defmethod tt-color ((tty terminal) fg bg)
+(defmethod tt-color ((tty terminal-stream) fg bg)
   (let ((fg-pos (position fg *colors*))
 	(bg-pos (position bg *colors*)))
     (when (not fg-pos)
@@ -353,11 +419,11 @@ i.e. the terminal is \"line buffered\""))
 ;;;  4; color-number ; #rrggbb ala XParseColor
 
 (defgeneric tt-beep (tty))
-(defmethod tt-beep ((tty terminal))
-  (tt-write-char tty #\bell))
+(defmethod tt-beep ((tty terminal-stream))
+  (tt-write-char tty #\bel))		; Not #\bell!!
 
 (defgeneric tt-finish-output (tty))
-(defmethod tt-finish-output ((tty terminal))
+(defmethod tt-finish-output ((tty terminal-stream))
   (finish-output (terminal-output-stream tty)))
 
 ; (defgeneric tt-get-row (tty))
@@ -402,11 +468,9 @@ i.e. the terminal is \"line buffered\""))
 	 (code-char (mem-ref c :unsigned-char)))))))
 
 (defgeneric tt-reset (tty))
-(defmethod tt-reset ((tty terminal))
+(defmethod tt-reset ((tty terminal-stream))
   "Try to reset the terminal to a sane state, without being too disruptive."
   (flet ((out (s) (tt-write-string tty (format nil "~c~a" #\escape s))))
-    ;; First reset the terminal driver to a sane state.
-    (termios:sane)
     ;; Then try to reset the terminal itself to a sane state. We could just do
     ;; ^[c, which is quite effective, but it's pretty drastic, and usually
     ;; clears the screen and can even resize the window, which is so amazingly
@@ -426,5 +490,39 @@ i.e. the terminal is \"line buffered\""))
 	     "[?47l" ;; Use normal screen buffer
 	     ))
     (tt-finish-output tty)))
+
+(defmethod tt-reset ((tty terminal))
+  ;; First reset the terminal driver to a sane state.
+  (termios:sane)
+  (call-next-method)) ;; Do the terminal-stream version
+
+#| @@@@ Make an output-table method, with underlined titles
+
+(defun print-col (tt n v &key no-space)
+  "Print column number N with value V."
+  (let* ((col   (elt *cols* n))
+	 (width (second col))
+	 (left  (eql (third col) :left))
+	 (fmt   (if width (if left "~va" "~v@a") "~a")))
+    (if width
+	(tt-format tt fmt width (subseq v 0 (min width (length v))))
+	(tt-format tt fmt v))
+    (if (= n (1- (length *cols*)))
+	(tt-write-char tt #\newline)
+	(when (not no-space)
+	  (tt-write-char tt #\space)))))
+
+(defun print-title (tt n)
+  (tt-underline tt t)
+  (print-col tt n (first (elt *cols* n)) :no-space t)
+  (tt-underline tt nil)
+  (when (< n (1- (length *cols*)))
+    (tt-write-char tt #\space)))
+  )
+
+(defmethod output-table ((table table) (destination terminal-stream)
+			 &key long-titles column-names)
+  )
+|# 
 
 ;; EOF

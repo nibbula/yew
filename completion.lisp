@@ -2,7 +2,7 @@
 ;; completion.lisp - Complete your words. Fill the gap. Type less.
 ;;
 
-;; $Revision: 1.4 $
+;; $Revision: 1.5 $
 
 ;; TODO:
 ;;   - files with spaces in filename-completion
@@ -23,7 +23,7 @@ from the starting and result position. This allows completion functions
 to look at whatever they want to, and replace whatever they want to,
 even prior to the starting point. When asked for all completions, they return a
 sequence of strings and a count which is the length of the sequence.")
-  (:use :cl :opsys :glob)
+  (:use :cl :dlib :opsys :glob :dlib-misc :syntax-lisp :ansiterm)
   (:export
    ;; list
    #:list-completion-function 
@@ -53,14 +53,14 @@ sequence of strings and a count which is the length of the sequence.")
 ;; removed #\/ since it's common in package names
 
 ;; @@@ Perhaps this should be merged with the one in tiny-rl?
-(defun scan-over-str (str pos dir &key func not-in)
+(defun scan-over-str (str pos direction &key func not-in)
   "If FUNC is provied move over characters for which FUNC is true.
 If NOT-IN is provied move over characters for which are not in it.
-DIR is :forward or :backward. Moves over characters in STR starting at POS.
-Returns the new position after moving."
+DIRECTION is :forward or :backward. Moves over characters in STR starting
+at POS. Returns the new position after moving."
   (when (and (not func) not-in)
     (setf func #'(lambda (c) (not (position c not-in)))))
-  (if (eql dir :backward)
+  (if (eql direction :backward)
       ;; backward
       (loop :while (and (> pos 0)
 			(funcall func (aref str (1- pos))))
@@ -195,7 +195,8 @@ the count of matches."
      i)))
 
 (defun iterator-completion (word iterator)
-  "Return the longest possible unambiguous completion of WORD from the ITERATOR. Second value is true if it's unique."
+  "Return the longest possible unambiguous completion of WORD from the
+ITERATOR. Second value is true if it's unique."
   (let ((match nil) (unique t) (match-len 0) pos)
     (loop :with w = (stringish (funcall iterator t))
        :do
@@ -234,22 +235,114 @@ the count of matches."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Symbol completion
 
-(defun complete-symbol (context pos all)
-  "Completion function for symbols."
-  (let* ((word-start (scan-over-str context pos :backward
+;; @@@ I really want these hacks to go away in favor of real things in
+;; syntax-lisp.
+(defun find-back-pack (context pos)
+  "Check for colons and a package name just prior to the point POS in CONTEXT ~
+and return the package and whether we should look for only external symbols."
+  (when (and (> pos 0) (eql (aref context (1- pos)) #\:))
+    (decf pos)
+    (let ((external t))
+      (when (and (> pos 0) (eql (aref context (1- pos)) #\:))
+	(decf pos)
+	(setf external nil))
+      (let ((p-p pos))
+	(setf pos (scan-over-str context pos
+				 :backward :not-in *lisp-non-word-chars*))
+	(values
+	 (find-package (string-upcase (subseq context pos p-p)))
+	 external)))))
+
+(defun find-forward-pack (context pos)
+  (let ((end (scan-over-str context pos :forward
+			    :not-in *lisp-non-word-chars*)))
+    (if (and end (<= end (length context)) (char= (char context end) #\:))
+	(find-package (string-upcase (subseq context pos end)))
+	nil)))
+
+#|
+(defun try-symbol-help (context pos)
+  "If POS is right before a function in CONTEXT, return a string that shows the
+arguments for that function, otherwise return NIL."
+  (let* ((trimmed (rtrim (subseq context 0 pos)))
+	 (word-start (scan-over-str trimmed (min pos (length trimmed))
+				    :backward
 				    :not-in *lisp-non-word-chars*))
-	 (word (subseq context word-start pos))
-	 (pack nil)
-	 (external nil))
-    (multiple-value-setq (pack external) (find-back-pack context word-start))
-    (if all
-	(symbol-completion-list word :package pack :external external)
-	(multiple-value-bind (completion unique)
-	    (symbol-completion word :package pack :external external)
-	  (values completion word-start unique)))))
+	 (pack (find-back-pack trimmed (length trimmed)))
+	 (sym (and word-start
+		   (symbolify (subseq trimmed word-start)
+			      (or pack *package*)))))
+    (if (fboundp sym)
+	(format nil "~((~a~{ ~a~})~)"
+		sym (lambda-list (symbol-function sym)))
+	nil)))
+|#
+
+(defparameter *lambda-list-keywords*
+  #(&allow-other-keys &aux &key &optional &rest &body &environment &whole))
+
+;;
+;; “the necessary flexibility is provided for individual programs
+;;   to achieve an arbitrary degree of aesthetic control.”
+;;
+(defun function-help (symbol)
+  "Return a string with help for the function designated by SYMBOL."
+  (with-output-to-string (str)
+    (let ((tty (make-instance 'ansiterm:terminal-stream
+			      :output-stream str)))
+      (write-char #\( str)
+      (tt-color tty :red :default)
+      (write symbol :stream str :case :downcase :escape nil)
+      (tt-color tty :default :default)
+      (loop :for s :in (lambda-list symbol) :do
+	 (write-char #\space str)
+	 (if (position s *lambda-list-keywords*)
+	     (progn
+	       (tt-color tty :yellow :default)
+	       (write s :stream str :case :downcase :escape nil :pretty nil)
+	       (tt-color tty :default :default))
+	     ;; @@@ for some reason, pretty is very ugly here
+	     (write s :stream str :case :downcase :escape nil :pretty nil)))
+      (write-char #\) str))))
+
+(defun try-symbol-help (context pos)
+  "If POS is right before a function in CONTEXT, return a string that shows the
+arguments for that function, otherwise return NIL."
+  (let* ((ppos (matching-paren-position context :position pos))
+	 (word-start (or (and ppos (1+ ppos)) 0))
+	 (pack (find-forward-pack context word-start))
+	 (end (1+ (scan-over-str context word-start :forward
+				 :not-in *lisp-non-word-chars*)))
+	 (sym (and word-start
+		   (symbolify (subseq context word-start end)
+			      :package (or pack *package*) :no-new t))))
+;    (format t "~&The symbol: ~w~%" sym)
+    (if (fboundp sym)
+	(function-help sym)
+	nil)))
+
+#|
+(defun try-symbol-help (context pos)
+  "If POS is in a function call in CONTEXT, return a string that shows the
+arguments for that function, otherwise return NIL."
+  (let* ((ppos (matching-paren-position context :position pos))
+	 (word-start (or (and ppos (1+ ppos)) 0))
+	 (sym (read-from-string context nil nil :start word-start
+	 (pack (find-forward-pack context word-start))
+	 (end (1+ (scan-over-str context word-start :forward
+				 :not-in *lisp-non-word-chars*)))
+	 (sym (and word-start
+		   (symbolify (subseq context word-start end)
+			      (or pack *package*)))))
+    (format t "~&The symbol: ~w~%" sym)
+    (if (fboundp sym)
+	(function-help sym)
+	nil)))
+|#
 
 (defmacro do-the-symbols (sym pak ext &body forms)
-  "Evaluate the forms with SYM bound to each symbol in package PAK. If EXT is true, then just look at the external symbols."
+  "Evaluate the forms with SYM bound to each symbol in package PAK. If EXT is
+true, then just look at the external symbols."
   `(if ,ext
     (do-external-symbols (,sym ,pak) ,@forms)
     (do-symbols (,sym ,pak) ,@forms)))
@@ -259,16 +352,16 @@ the count of matches."
   "Return :upper :lower :mixed or :none as a description of the set of~
  character cases in the given string."
   (let ((state :none))
-    (loop for c across s
-	  do
-	  (if (both-case-p c)
-	      (if (upper-case-p c)
-		  (case state
-		    (:lower (return-from character-case :mixed))
-		    (:none  (setf state :upper)))
-		  (case state
-		    (:upper (return-from character-case :mixed))
-		    (:none  (setf state :lower))))))
+    (loop :for c :across s
+       :do
+       (if (both-case-p c)
+	   (if (upper-case-p c)
+	       (case state
+		 (:lower (return-from character-case :mixed))
+		 (:none  (setf state :upper)))
+	       (case state
+		 (:upper (return-from character-case :mixed))
+		 (:none  (setf state :lower))))))
     state))
 
 ;; XXX We make the bogus assumption that the symbols are in uppercase
@@ -277,7 +370,9 @@ the count of matches."
 
 (defun symbol-completion (w &key (package *package*) (external nil)
 			      (include-packages t))
-  "Return the first completion for W in the symbols of PACKAGE, which defaults to the current package. If EXTERNAL is true, use only the external symbols. Return nil if none was found."
+  "Return the first completion for W in the symbols of PACKAGE, which defaults
+to the current package. If EXTERNAL is true, use only the external symbols.
+Return nil if none was found."
 ;  (message (format nil "c: ~w ~w" w package))
   (let ((case-in (character-case w))
 	(match nil) match-len pos
@@ -320,7 +415,8 @@ the count of matches."
 
 (defun symbol-completion-list (w &key (package *package*)
 				   (external nil) (include-packages t))
-  "Print the list of completions for W in the symbols of PACKAGE, which defaults to the current package. Return how many symbols there were."
+  "Print the list of completions for W in the symbols of PACKAGE, which
+defaults to the current package. Return how many symbols there were."
   (let ((count 0)
 	(l '())
 	(case-in (character-case w))
@@ -350,25 +446,23 @@ the count of matches."
       (setf l (mapcar #'string-downcase l)))
     (values l count)))
 
-(defun find-back-pack (context pos)
-  "Check for colons and a package name just prior to the point POS in CONTEXT ~
-and return the package and whether we should look for only external symbols."
-;  (setf pos (scan-over-str context pos :backward :func
-;			   #'(lambda (c) (position c *lisp-non-word-chars*))))
-  (when (and (> pos 0)
-	     (eql (aref context (1- pos)) #\:))
-      (decf pos)
-      (let ((external t))
-	(when (and (> pos 0)
-		   (eql (aref context (1- pos)) #\:))
-	  (decf pos)
-	  (setf external nil))
-	(let ((p-p pos))
-	  (setf pos (scan-over-str context pos
-				   :backward :not-in *lisp-non-word-chars*))
-	  (values
-	   (find-package (string-upcase (subseq context pos p-p)))
-	   external)))))
+(defun complete-symbol (context pos all)
+  "Completion function for symbols."
+  (let* ((word-start (scan-over-str context pos :backward
+				    :not-in *lisp-non-word-chars*))
+	 (word (subseq context word-start pos))
+	 (pack nil)
+	 (external nil)
+	 result)
+    (multiple-value-setq (pack external) (find-back-pack context word-start))
+    (if all
+	(if (and (= (length word) 0)
+		 (setf result (try-symbol-help context pos)))
+	    (values (list result) 1)
+	    (symbol-completion-list word :package pack :external external))
+	(multiple-value-bind (completion unique)
+	    (symbol-completion word :package pack :external external)
+	  (values completion word-start unique)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Filename completion
@@ -390,7 +484,7 @@ and return the package and whether we should look for only external symbols."
   "Call read-directory without errors."
   `(ignore-errors (read-directory ,@args)))
 
-(defun filename-completion (word)
+(defun filename-completion-OLD (word)
   "Return the first completion for w in the current directory's files ~
  or nil if none was found. The second value is true if the first value ~
  matches a full filename."
@@ -426,7 +520,48 @@ and return the package and whether we should look for only external symbols."
 		match-sub)))
      full-match)))
 
-(defun filename-completion-list (w)
+(defun filename-completion (word)
+  "Return the first completion for w in the current directory's files ~
+ or nil if none was found. The second value is true if the first value ~
+ matches a full filename."
+  (let* (pos
+	 (full-match t)
+	 (match nil)
+	 match-len
+	 (w (expand-tilde word))
+;	 (dir-part (directory-namestring (pathname w)))
+;	 (dir-part-path (pathname-directory (pathname word)))
+;	 (file-part (file-namestring (pathname w))))
+	 (dir-part (dirname w))
+	 (dir-part-path (dirname word))
+	 (file-part (basename w)))
+    (when (> (length file-part) 0)
+      (loop :for f :in (if (> (length dir-part) 0)
+			   (safe-read-directory :dir dir-part)
+			   (safe-read-directory))
+	 :do
+	 (when (and (setf pos (search file-part f :test #'equal))
+		    (= pos 0))
+	   (if (not match)
+	       (setf match f
+		     match-len (length f))
+	       (setf match-len (mismatch match f :end1 match-len)
+		     full-match nil)))))
+;    (format t "~&match = ~a~%" match)
+    (values
+     (and match
+	  (let* ((match-sub (subseq match 0 match-len))
+;		 (p (pathname match-sub))
+		 )
+	    (if (> (length dir-part) 0)
+		;; (namestring (make-pathname :directory dir-part-path
+		;; 			   :name (pathname-name p)
+		;; 			   :type (pathname-type p)))
+		(s+ dir-part-path "/" match-sub)
+		match-sub)))
+     full-match)))
+
+(defun filename-completion-list-OLD (w)
   "Print the list of completions for w. Return how many there were."
   (let* (pos
 	 (count 0)
@@ -434,6 +569,30 @@ and return the package and whether we should look for only external symbols."
 	 (word (expand-tilde w))
 	 (dir-part (directory-namestring (pathname word)))
 	 (file-part (file-namestring (pathname word)))
+	 (dir-list (if (> (length dir-part) 0)
+		       (safe-read-directory :dir dir-part :append-type t)
+		       (safe-read-directory :append-type t))))
+;    (format t "dir-part = ~a~%file-part = ~a~%" dir-part file-part)
+    (loop :for filename :in dir-list
+       :do
+;      (format t "~f~%" f)
+       (when (and (setf pos (search file-part filename :test #'equalp))
+		  (= pos 0))
+	 (push filename result-list)
+	 (incf count)))
+    (setq result-list (sort result-list #'string-lessp))
+    (values result-list count)))
+
+(defun filename-completion-list (w)
+  "Print the list of completions for w. Return how many there were."
+  (let* (pos
+	 (count 0)
+	 (result-list '())
+	 (word (expand-tilde w))
+;	 (dir-part (directory-namestring (pathname word)))
+;	 (file-part (file-namestring (pathname word)))
+	 (dir-part (dirname word))
+	 (file-part (basename word))
 	 (dir-list (if (> (length dir-part) 0)
 		       (safe-read-directory :dir dir-part :append-type t)
 		       (safe-read-directory :append-type t))))
