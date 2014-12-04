@@ -1775,10 +1775,10 @@ Don't update the display."
   "If we're inside lish, throw to a quick exit. If we're not in lish,
 enter it."
 ;  (break)
-  (let ((lish-package (find-package :lish)))
+  (let* ((lish-package (find-package :lish))
+	 (level-symbol (intern "*LISH-LEVEL*" lish-package)))
     (when lish-package
-      (if (and (boundp (intern "*LISH-LEVEL*" lish-package))
-	       (numberp (symbol-value (intern "*LISH-LEVEL*" lish-package))))
+      (if (and (boundp level-symbol) (numberp (symbol-value level-symbol)))
 	  (funcall (find-symbol "LISHITY-SPLIT" :lish))
 	  (progn
 	    (tt-beginning-of-line e)
