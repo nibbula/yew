@@ -178,8 +178,8 @@
 (defvar *backend* nil
   "The current backend.")
 
-(defparameter *backends* `((:cvs ,*backend-cvs*)
-			   (:git ,*backend-git*)
+(defparameter *backends* `((:git ,*backend-git*)
+			   (:cvs ,*backend-cvs*)
 			   (:svn ,*backend-svn*))
   "The availible backends.")
 
