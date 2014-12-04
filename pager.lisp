@@ -20,6 +20,7 @@
    #:with-pager
    #:with-pager*
    #:pager
+   #:resume
    #:browse
    #+lish #:!pager
    ))
@@ -32,7 +33,7 @@
   "For reading the numeric argument." #'equalp)
 
 ;; Since *prompt* is taken on some implementations.
-(defvar *pager-prompt* "line %l of %L"
+(defvar *pager-prompt* "%f line %l of %L"
   "The current default prompt.")
 
 ;; "text text text"
@@ -90,6 +91,9 @@
    (quit-flag
     :initarg :quit-flag :accessor pager-quit-flag :initform nil
     :documentation "true to quit the pager")
+   (suspend-flag
+    :initarg :suspend-flag :accessor pager-suspend-flag :initform nil
+    :documentation "true to suspend the pager")
    (input-char
     :initarg :input-char :accessor pager-input-char :initform nil
     :documentation "the current input character")
@@ -132,6 +136,7 @@
 	(pager-message o) nil
 	(pager-prefix-arg o) nil
 	(pager-quit-flag o) nil
+	(pager-suspend-flag o) nil
 	(pager-input-char o) nil
 	(pager-command o) nil
 	(pager-last-command o) nil)
@@ -278,6 +283,11 @@ set in this string."
 	 nil i)
      fg bg (if (not attr-was-set) :unset attr))))
 
+;; Just trying to figure out why I get:
+;;   note: deleting unreachable code
+;; on
+;; (NUNION PAGER::ATTRS (PAGER::FATCHAR-ATTRS PAGER::C))
+
 (defun p-a-c-l (fat-line)
  (let ((new-fat-line '()))
     (loop :with len = (length fat-line) :and i = 0
@@ -298,8 +308,8 @@ set in this string."
 	 )
        (setf c (aref fat-line i)
 	     (fatchar-fg c) fg
-	     (fatchar-bg c) bg
-	     (fatchar-attrs c) (nunion attrs (fatchar-attrs c)))
+	     (fatchar-bg c) bg)
+       (setf (fatchar-attrs c) (nunion attrs (fatchar-attrs c)))
        (push c new-fat-line)
        (incf i))
     new-fat-line))
@@ -683,6 +693,10 @@ line : |----||-------||---------||---|
   "Exit the pager."
   (setf (pager-quit-flag pager) t))
 
+(defun suspend (pager)
+  "Suspend the pager."
+  (setf (pager-suspend-flag pager) t))
+
 (defun next-page (pager)
   "Display the next page."
   (with-slots (line page-size count) pager
@@ -795,6 +809,8 @@ line : |----||-------||---------||---|
   `(
     (#\q		. quit)
     (#\Q		. quit)
+    (#\^C		. quit)
+    (#\^Z		. suspend)
     (#\space		. next-page)
     (:npage		. next-page)
     (#\return		. next-line)
@@ -922,11 +938,19 @@ q - Abort")
       (t				; anything else is an error
        (error "Weird thing in keymap: ~s." command)))))
 
-(defun page (stream &optional pager file-list &aux close-me)
-  "View a stream with the pager."
+(defstruct suspended-pager
+  "State of a suspended pager."
+  pager
+  file-list
+  stream
+  close-me)
+
+(defun page (stream &optional pager file-list close-me suspended)
+  "View a stream with the pager. Return whether we were suspended or not."
   (with-curses
     (unwind-protect
       (progn
+	(curses:raw)
 	(when (and (not stream) file-list)
 	  (setf stream (open (quote-filename (first file-list))
 			     :direction :input)
@@ -936,15 +960,17 @@ q - Abort")
 				       :stream stream
 				       :page-size (1- curses:*lines*)
 				       :file-list file-list))
-	    (progn
+	    (when (not suspended)
 	      (freshen pager)
 	      (setf (pager-stream pager) stream)))
 	(with-slots (count line page-size left search-string input-char
 		     file-list file-index message prefix-arg quit-flag
-		     command) pager
+		     suspend-flag command) pager
 	  (when file-list (setf file-index 0))
 	  (read-lines pager page-size)
-	  (setf quit-flag nil)
+	  (setf quit-flag nil
+		suspend-flag nil
+		suspended nil)
 	  (loop :do
 	     (display-page pager)
 	     (if message
@@ -957,9 +983,26 @@ q - Abort")
 	     (perform-key pager input-char)
 	     (when (not (equal command 'digit-argument))
 	       (setf prefix-arg nil))
-	     :while (not quit-flag))))
-      (when (and close-me stream)
-	(close stream)))))
+	     :while (not (or quit-flag suspend-flag)))
+	  (when suspend-flag
+	    (setf suspended t)
+	    (when (find-package :lish)
+	      (let ((suspy (make-suspended-pager
+			    :pager pager
+			    :file-list file-list
+			    :stream stream
+			    :close-me close-me)))
+		(funcall (find-symbol "SUSPEND-JOB" :lish)
+			 "pager" "" (lambda () (pager:resume suspy)))
+		(format t "Suspended.~%")))
+	    (format t "No shell to suspend to.~%"))))
+      (when (and close-me (not suspended) stream)
+	(close stream))))
+  suspended)
+
+(defun resume (suspended)
+  (with-slots (pager file-list stream close-me) suspended
+    (page stream pager file-list close-me t)))
 
 ;; This is quite inefficient. But it's easy and it works.
 (defmacro with-pager (&body body)
@@ -998,9 +1041,14 @@ q - Abort")
       ((consp file-or-files)
        (page nil nil file-or-files))
       (t
-       (with-open-file (stream (quote-filename file-or-files)
-			       :direction :input)
-	 (page stream))))))
+       (let (stream suspended)
+	 (unwind-protect
+	   (progn
+	     (setf stream (open (quote-filename file-or-files)
+				    :direction :input)
+		   suspended (page stream)))
+	   (when (and stream (not suspended))
+	     (close stream))))))))
 
 (defun help (pager)
   "Show help on pager key commands."

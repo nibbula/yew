@@ -63,6 +63,8 @@ alias nsn "netstat -an -f inet | pager"
 alias pst "pstree -g3 -w | pager"
 alias ta  "type -a"
 alias tp  "type -p"
+alias j   "jobs"
+alias fg  "resume"
 
 alias pd pushd
 alias up  "cd .."
