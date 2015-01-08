@@ -12,7 +12,7 @@
     :description        "Test filter streams."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "None"
+    :license            "GPLv3"
     :long-description   "Test filter streams."
     :depends-on (:filter-stream :cl-ppcre)
     :components

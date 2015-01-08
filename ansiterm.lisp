@@ -40,8 +40,10 @@
 
 (defpackage :ansiterm
   (:documentation "Deal with ANSI-like terminals.")
-  (:use :cl :termios :opsys :cffi :table)
+  (:use :cl :cffi :opsys :termios :table)
   (:export
+   #:*standard-output-has-terminal-attributes*
+   #:has-terminal-attributes
    #:terminal-stream
    #:terminal
    #:terminal-file-descriptor
@@ -88,8 +90,13 @@
    #:tt-finish-output
    #:tt-get-char
    #:tt-reset
+   #:tt-with-saved-cursor
    ))
 (in-package :ansiterm)
+
+(defvar *standard-output-has-terminal-attributes* nil
+  "True if we want programs to treat *standard-output* like it can display
+terminal attributes.")
 
 (defclass terminal-stream ()
   ((output-stream
@@ -138,6 +145,13 @@ require terminal driver support."))
     :terminal-cooked-state	nil
   )
   (:documentation "What we need to know about terminal device."))
+
+(defun has-terminal-attributes (stream)
+  "Return true if we should treat `STREAM` as if it has terminal attributes."
+  (or (and (eq stream *standard-output*)
+	   *standard-output-has-terminal-attributes*)
+      (let ((ss (nos:stream-system-handle stream)))
+	(and ss (file-handle-terminal-p ss)))))
 
 (defun terminal-get-size (tty)
   "Get the window size from the kernel and store it in tty."
@@ -495,6 +509,20 @@ i.e. the terminal is \"line buffered\""))
   ;; First reset the terminal driver to a sane state.
   (termios:sane)
   (call-next-method)) ;; Do the terminal-stream version
+
+(defmacro tt-with-saved-cursor ((tty) &body body)
+  "Save the cursor position, evaluate the body forms, and restore the cursor
+position. Return the result of evaluating the body."
+  (let ((result-sym (gensym "tt-result")))
+    `(progn
+       (tt-format ,tty "~c7" #\escape)
+       (tt-finish-output ,tty)
+       (let (,result-sym)
+	 (unwind-protect
+	      (setf ,result-sym (progn ,@body))
+	   (tt-format ,tty "~c8" #\escape)
+	   (tt-finish-output ,tty))
+	 ,result-sym))))
 
 #| @@@@ Make an output-table method, with underlined titles
 

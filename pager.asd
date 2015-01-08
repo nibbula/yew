@@ -12,7 +12,7 @@
     :description        "something like more or less"
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "None"
+    :license            "GPLv3"
     :long-description   "We can only see so much at one time."
     :depends-on (:dlib :dlib-misc :curses :opsys :fui :stretchy :keymap
 		 :char-util)

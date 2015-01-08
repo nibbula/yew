@@ -12,8 +12,12 @@
     :description        "Command line debugger"
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "None"
-    :long-description   "bleh"
+    :license            "GPLv3"
+    :long-description
+    "This exists because I wanted command line editing in the debugger from my
+REPL. It does afford one that modicum of efficacy, but scant else. Another
+smidgeon is a uniform interface between platforms.
+Unfortunately it's barely usable."
     :depends-on (:tiny-repl)
     :components
     ((:file "tiny-debug")))

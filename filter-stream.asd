@@ -12,7 +12,7 @@
     :description        "Filter a stream by a function."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "None"
+    :license            "GPLv3"
     :long-description   "Streams that filter an underlying stream with a function."
     :depends-on (:trivial-gray-streams :stretchy)
     :components

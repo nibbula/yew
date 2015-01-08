@@ -12,7 +12,7 @@
     :description        "Glops of globby blobby blob glob."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "None"
+    :license            "GPLv3"
     :long-description   "Another great example of how to poorly reinvent something stupid. Including, among others, fnmatch, glob, and wordexp."
     :depends-on (:opsys :dlib)
     :components

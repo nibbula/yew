@@ -13,7 +13,7 @@
 ;(declaim (optimize (debug 3)))
 
 (defpackage "TERMIOS"
-  (:use :common-lisp :cffi :opsys)
+  (:use :cl :cffi :opsys :dlib-misc)
   (:documentation
    "Interface to POSIX (and some non-POSIX BSD) terminal driver.")
   (:export
@@ -71,6 +71,7 @@
    ;; Additional functions
    #:sane
    #:terminal-query
+   #:describe-tty
 
    ;; old fashioned tty ioctls
    #:winsize
@@ -125,6 +126,11 @@
 (defconstant VSTATUS	#+darwin 18  #+sunos nil #+linux nil)
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defconstant NCCS	#+darwin 20  #+sunos 19  #+linux 32))
+
+(defparameter *cchars*
+  '(VDISCARD #-LINUX VDSUSP VEOF VEOL VEOL2 VERASE VINTR VKILL VLNEXT VMIN
+    VQUIT VREPRINT VSTART #+darwin VSTATUS VSTOP VSUSP VTIME VWERASE)
+  "A list of all the control character symbols.")
 
 (defcstruct termios
     "POSIX terminal driver interface structure"
@@ -411,11 +417,20 @@
 	   #+lispworks #x80087467
 	   "set window size")
 
-#+sunos  (defconstant TIOCGWINSZ	(b-tioc 104) "get window size")
-#+sunos  (defconstant TIOCSWINSZ	(b-tioc 103) "set window size")
+#+sunos (defconstant TIOCGWINSZ (b-tioc 104) "get window size")
+#+sunos (defconstant TIOCSWINSZ (b-tioc 103) "set window size")
 
-#+linux  (defconstant TIOCGWINSZ	#x5413 "get window size")
-#+linux  (defconstant TIOCSWINSZ	#x5414 "set window size")
+#+linux (defconstant TIOCGWINSZ #x5413 "get window size")
+#+linux (defconstant TIOCSWINSZ #x5414 "set window size")
+
+(defun get-window-size (tty-fd)
+  "Get the window size. First value is columns, second value is rows."
+  (with-foreign-object (ws '(:struct winsize))
+    (when (< (posix-ioctl tty-fd TIOCGWINSZ ws) 0)
+      (error "Can't get the tty window size."))
+    (values
+     (foreign-slot-value ws '(:struct winsize) 'ws_col)
+     (foreign-slot-value ws '(:struct winsize) 'ws_row))))
 
 #|
 #define	TIOCUCNTL	_IOW('t', 102, int)	; pty: set/clr usr cntl mode 
@@ -438,10 +453,10 @@
 #define	TIOCDSIMICROCODE _IO('t', 85)		/* download microcode to
 						 * DSI Softmodem */
 
-#define	TTYDISC		0		; termios tty line discipline 
-#define	TABLDISC	3		; tablet discipline 
-#define	SLIPDISC	4		; serial IP discipline 
-#define	PPPDISC		5		; PPP discipline 
+#define	TTYDISC		0		; termios tty line discipline
+#define	TABLDISC	3		; tablet discipline
+#define	SLIPDISC	4		; serial IP discipline
+#define	PPPDISC		5		; PPP discipline
 
 /*
  * Defaults on "first" open.
@@ -532,8 +547,12 @@ static cc_t	ttydefchars[NCCS] = {
 ;; Check out the graceful swoop!
 
 (defun raw-echo (tty)
-  "Output each character input immediately without processing. This is like of like \"local\" mode in real old fashioned terminals. This is useful for doing experiments directly with the terminal emulator."
-  (format t "You're talking directly to the terminal now.~c~cPress <ESC> four times in a row to stop.~c~c" #\return #\linefeed #\return #\linefeed)
+  "Output each character input immediately without processing. This is like of
+like 'local' mode in real old fashioned terminals. This is useful for doing
+experiments directly with the terminal emulator."
+  (format t "You're talking directly to the terminal now.~c~c"
+	  #\return #\linefeed)
+  (format t "Press <ESC> four times in a row to stop.~c~c" #\return #\linefeed)
   (let ((escape 0) c)
     (loop :while (< escape 4)
        :do
@@ -544,7 +563,8 @@ static cc_t	ttydefchars[NCCS] = {
 	   (setf escape 0)))))
 
 (defun input-test (tty)
-  (format t "Testing input characters.~c~cPress <ESC> four times in a row to stop.~c~c" #\return #\linefeed #\return #\linefeed)
+  (format t "Testing input characters.~c~c" #\return #\linefeed)
+  (format t "Press <ESC> four times in a row to stop.~c~c" #\return #\linefeed)
   (let ((escape 0) c)
     (loop :while (< escape 4)
        :do
@@ -560,7 +580,13 @@ static cc_t	ttydefchars[NCCS] = {
 	   (setf escape 0)))))
 
 (defun raw-test (func &key debug very-raw timeout)
-  "Test the termio package, by doing something with raw input. FUNC is the thing to do with raw input. It's called with the POSIX file descriptor as it's only argument. It sets up the file descriptor for raw input, and cleans up afterwards. If DEBUG is true, print debugging details. If VERY-RAW is true, set the terminal to the most raw state, which doesn't even process interrupts. If TIMEOUT is true, it's a number of deciseconds to to wait before returning nothing, which is actually VTIME."
+  "Test the termio package, by doing something with raw input.
+FUNC is the thing to do with raw input. It's called with the POSIX file
+descriptor as it's only argument. It sets up the file descriptor for raw
+input, and cleans up afterwards. If DEBUG is true, print debugging details.
+If VERY-RAW is true, set the terminal to the most raw state, which doesn't
+even process interrupts. If TIMEOUT is true, it's a number of deciseconds,
+(by setting VTIME) to wait before returning nothing."
   (let (tty raw cooked raw-check result)
     (unwind-protect
 	 (progn
@@ -651,7 +677,8 @@ static cc_t	ttydefchars[NCCS] = {
   `(raw-test #'(lambda (tty) ,body) :very-raw t))
 
 (defun terminal-query (query &optional (max nil))
-  "Output the string to the terminal and wait for a response. Read up to MAX characters. If we don't get anything after a while, just return what we got."
+  "Output the string to the terminal and wait for a response. Read up to MAX
+characters. If we don't get anything after a while, just return what we got."
   (raw-test
    #'(lambda (tty)
        (with-foreign-string (q query)
@@ -841,5 +868,80 @@ static cc_t	ttydefchars[NCCS] = {
 	(posix-close tty))
       ;; free C memory
       (when sane (foreign-free sane)))))
+
+#|
+speed 38400 baud; 65 rows; 167 columns;
+lflags: icanon isig iexten echo echoe echok echoke -echonl echoctl
+        -echoprt -altwerase -noflsh -tostop -flusho pendin -nokerninfo
+        -extproc
+iflags: -istrip icrnl -inlcr -igncr ixon -ixoff -ixany -imaxbel -iutf8
+        -ignbrk -brkint -inpck -ignpar -parmrk
+oflags: opost onlcr oxtabs onocr onlret
+cflags: cread cs8 parenb -parodd hupcl -clocal -cstopb -crtscts -dsrflow
+        -dtrflow -mdmbuf
+cchars: discard = <undef>; dsusp = <undef>; eof = ^D; eol = <undef>;
+        eol2 = ^@; erase = ^?; intr = ^C; kill = ^U; lnext = ^Q; min = 1;
+        quit = ^\; reprint = <undef>; start = <undef>; status = ^T;
+        stop = <undef>; susp = ^Z; time = 0; werase = <undef>;
+|#
+
+(defun describe-tty (&key (device "/dev/tty") (format :nice))
+  "Describe the termios settings for DEVICE. Much like `stty -a`."
+  (let (tty desc)
+    (unwind-protect
+      (progn
+	(setf tty (posix-open device O_RDWR 0)
+	      desc (foreign-alloc '(:struct termios)))
+	(error-check tty "Error opening ~a~%" device)
+	(error-check (tcgetattr tty desc)
+		     "Can't get terminal description for ~a." device)
+	(with-foreign-slots ((c_iflag c_oflag c_cflag c_lflag c_cc
+			      c_ispeed c_ospeed)
+			     desc (:struct termios))
+	  (case format
+	    (:succinct
+	     (if (= c_ispeed c_ospeed)
+		 (format t "speed ~d baud; " c_ospeed)
+		 (format t "speed input ~d output ~d baud;" c_ispeed c_ospeed))
+	     (multiple-value-bind (cols rows) (get-window-size tty)
+	       (format t " ~d rows; ~d columns;" rows cols))
+	     (terpri)
+	     (format t "lflags: ~x~%" c_lflag)
+	     (format t "iflags: ~x~%" c_iflag)
+	     (format t "oflags: ~x~%" c_oflag)
+	     (format t "cflags: ~x~%" c_cflag)
+	     (format t "cchars: ")
+	     (macrolet ((print-cchar (c)
+			  `(format t "~a ~c" ',c
+				   (mem-aref c_cc :unsigned-char ,c))))
+	       (loop :for c :in *cchars* :do (print-cchar c))))
+	    (:nice
+	     (print-properties
+	      `(,@(if (= c_ispeed c_ospeed)
+		      `(("Speed" ,(format nil "~d baud" c_ospeed)))
+		      `(("Input Speed"
+			 ,(format nil "~d baud" c_ispeed))
+			("Output Speed"
+			 ,(format nil "~d baud" c_ospeed))))
+		  ,@(multiple-value-bind (cols rows) (get-window-size tty)
+		      `(("Rows" ,rows) ("Columns" ,cols)))
+		  ("Local flags" ,c_lflag)
+		  ("Input flags" ,c_iflag)
+		  ("Output flags" ,c_oflag)
+		  ("Control flags" ,c_cflag))
+	      :right-justify t)
+	     (macrolet ((cchar (x)
+	      		  `(list ',x )))
+	       (let ((ll (loop :for c :in *cchars* :collect (cchar c))))
+	      	 (format t "~:c~%" (mem-aref c_cc :unsigned-char VDISCARD))
+;;;		 (print-properties ll :right-justify t)
+		 ))
+	     ))))
+      ;; close the terminal
+      (when (and tty (>= tty 0))
+	(posix-close tty))
+      ;; free C memory
+      (when desc (foreign-free desc))))
+  (values))
 
 ;; EOF

@@ -16,13 +16,24 @@
   (:export
    #:tiny-debug
    #:*default-interceptor*
+   #:toggle
+   #:active-p
    ))
 (in-package :tiny-debug)
+
+(defvar *current-frame* nil
+  "Current frame number. Frames are numbered from the top or innermost 0 to
+the outermost. When entering the debugger the current frame is 0.")
 
 (defun list-restarts (rs)
   (format *debug-io* "Restarts are:~%")
   (loop :with i = 0 :for r :in rs :do
-     (format *debug-io* "~&~d: ~a~%" i r)
+     (format *debug-io* "~&~d: " i)
+     (when (not (ignore-errors (progn (format *debug-io* "~a~%" r) t)))
+       (format *debug-io* "Error printing restart ")
+       (print-unreadable-object (r *debug-io* :type t :identity t)
+	 (format *debug-io* "~a" (restart-name r)))
+       (terpri *debug-io*))
      (incf i)))
 
 (defun debug-prompt (e p)
@@ -101,7 +112,7 @@ number  Invoke that number restart (from the :r list).
   (declare (ignore n)) (debugger-sorry "wacktrace"))
 
 #+ccl
-(defun get-frame (n)
+(defun OLD-get-frame (n)
   (let ((f 0) frame-ptr context)
     (ccl:map-call-frames
      #'(lambda (p c)
@@ -115,17 +126,50 @@ number  Invoke that number restart (from the :r list).
     (values frame-ptr context)))
 
 #+ccl
+(defun get-frame (n)
+  (let ((f 0) frame-ptr context)
+    (ccl:map-call-frames
+     #'(lambda (p c)
+	 (when (= f (1+ n))
+	   (setf frame-ptr p
+		 context c))
+	 (incf f)))
+    (values frame-ptr context)))
+
+;; (ccl:map-call-frames
+;;  #'(lambda (p c)
+;;      (multiple-value-bind (func pc) (ccl:frame-function p c)
+;;        (format t "~s ~s ~4d ~s~%~s~%" p c pc func
+;; 	       (ccl:source-note-filename (ccl:function-source-note func))))))
+
+#+ccl
 (defun debugger-show-source (n)
+  (when (not n)
+    (setf n 0))
   (let ((*print-readably* nil))
     (multiple-value-bind (pointer context) (get-frame n)
       (multiple-value-bind (func pc) (ccl:frame-function pointer context)
-	(if pc
-	    (or (ccl:find-source-note-at-pc function pc)
-		(ccl:function-source-note function))
-	    (ccl:function-source-note func))))))
+	(let ((note (if pc
+			(or (ccl:find-source-note-at-pc func pc)
+			    (ccl:function-source-note func))
+			(ccl:function-source-note func))))
+	  (when note
+	    (cond
+	      ((ccl:source-note-text note)
+	       (format *debug-io* "~a~%" (ccl:source-note-text note)))
+	      ((ccl:source-note-filename note)
+	       (with-open-file (stream (ccl:source-note-filename note))
+		 (file-position stream (ccl:source-note-start-pos note))
+		 (let* ((len (- (ccl:source-note-end-pos note)
+				(ccl:source-note-start-pos note)))
+			(str (make-array (list len) :element-type 'character)))
+		   (read-sequence str stream)
+		   (format *debug-io* "~a~%" str)))))))))))
 
 #+sbcl
 (defun debugger-show-source (frame)
+  (when (not n)
+    (setf n 0))
   ;; @@@ handle NO-DEBUG-BLOCKS !!
   (sb-debug::code-location-source-form
    (sb-di:frame-code-location (or frame (sb-di:top-frame))) 0))
@@ -304,9 +348,6 @@ number  Invoke that number restart (from the :r list).
 	     ))
     (finish-output)))
 
-(defvar *current-frame* nil
-  "Current frame number. Frames are numbered from the top or innermost 0 to the outermost. When entering the debugger the current frame is 0.")
-
 (defun tiny-debug (c hook)
   "Entry point for the tiny debugger, used as the debugger hook."
   (declare (ignore hook))		;@@@ wrong
@@ -345,5 +386,19 @@ number  Invoke that number restart (from the :r list).
 
 ; (defvar *repl-debug* nil
 ;   "True to invoke the debugger when a error occurs.")
+
+(defvar *saved-debugger-hook* nil
+  "The old value of *debugger-hook*, so we can restore it.")
+
+(defun toggle ()
+  "Toggle the ‘Tiny’ debugger on and off."
+  (if (eq *debugger-hook* 'tiny-debug)
+      (setf *debugger-hook* *saved-debugger-hook*)
+      (setf *saved-debugger-hook* *debugger-hook*
+	    *debugger-hook* 'tiny-debug)))
+
+(defun active-p ()
+  "Return true if the debugger is set to activate."
+  (eq *debugger-hook* 'tiny-debug))
 
 ;; EOF

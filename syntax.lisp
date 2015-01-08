@@ -62,7 +62,7 @@ pointless and limiting to specify a required set of token types. We might also
 like to have categories of types, so that we can apply styles to groups of
 types.
 
-For now we'll just have names, and leave it up to style makers to specify what
+For now, we'll just have names, and leave it up to style makers to specify what
 they want. We can make something to enumerate all the currently known token
 types so that you can cover what you want when writing a style.
 

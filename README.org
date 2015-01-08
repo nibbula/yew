@@ -4,14 +4,7 @@ particular pile of junk. Since it's _my_ pile of junk, I happen to like it.
 
 What I've mostly been up to, is:
 
-  I am trying to build a shell, that is also a Lisp REPL.
-
-  I'm quite used to typing things at a command line.
-
-  If you want to try it, just (asdf:load-system :lish) with ASDF somehow
-  configured to look in this directory. External requirements are:
-    * cl-ppcre
-    * cffi (with sub-dependencies: babel trivial-features alexandria)
+  Lish https://github.com/nibbula/lish
 
 As you may know, an easy way to get the requirements is with quicklisp.
 
@@ -45,17 +38,13 @@ Some things that are all mushed up in here right now are:
   | tiny-debug    | Crappy debugger for tiny-repl                            |
   | tiny-repl     | A shabby REPL that uses tiny-rl                          |
   | tiny-rl       | Buggy line editing                                       |
-  | lish          | Lisp shell                                               |
   |---------------+----------------------------------------------------------|
 
 It all used to work on Linux, OSX, and Solaris, but it probably doesn't
-anymore. I'd like it to work on cygwin and even non-cygwin Windows and
-Android, and actually any platform with a decent CL implementation running.
-It has, at times, worked on SBCL, CCL, Lispworks, Allegro, CLisp, ECL, CMU.
-It probably only barely works on OSX and SBCL now.
-
-I'd like to stop using Bash. When I feel like I can do that, then perhaps it
-will be the time to clean up the above issues so other people can try to use it.
+anymore. I'd like it to work on cygwin and non-cygwin Windows and Android, and
+actually any platform with a decent CL implementation running.  It has, at
+times, worked on SBCL, CCL, Lispworks, Allegro, CLisp, ECL, CMU.  It probably
+only barely works on OSX and SBCL now.
 
 Whatever license I have it under at the time, I'm probably willing to license
 it to you under a different license.

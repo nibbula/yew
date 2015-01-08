@@ -18,8 +18,8 @@
 		   (compilation-speed 0)))
 
 (defpackage "TINY-RL"
-  (:use :common-lisp :dl-list :stretchy :cffi :opsys :ansiterm :termios
-	:completion :dlib :dlib-misc :keymap :char-util :syntax-lisp)
+  (:use :cl :dlib :dlib-misc :keymap :char-util :dl-list :stretchy :cffi
+	:opsys :ansiterm :completion :syntax-lisp)
   (:documentation
    "A readline replacement for ANSI terminals.")
   (:export
@@ -1869,10 +1869,10 @@ enter it."
     (#\D ((#\D #\∆) (#\- #\Ð)))
     (#\d ((#\g #\˚)))
     (#\E ((#\^ #\Ê) (#\' #\É) (#\` #\È) (#\" #\Ë) ((#\~ #\- #\=) #\€)))
-    (#\f ((#\f #\ƒ)))
+    (#\f ((#\~ #\ƒ) (#\f #\ﬀ) (#\i #\ﬁ) (#\l #\ﬂ) (#\t #\ﬅ))) ; what about ﬃ ﬄ
     (#\e ((#\^ #\ê) (#\' #\é) (#\` #\è) (#\" #\ë) ((#\~ #\- #\=) #\€)))
     (#\I ((#\^ #\Î) (#\' #\Í) (#\` #\Ì) (#\" #\Ï)))
-    (#\i ((#\^ #\î) (#\' #\í) (#\` #\ì) (#\" #\ï)))
+    (#\i ((#\^ #\î) (#\' #\í) (#\` #\ì) (#\" #\ï) (#\j #\ĳ)))
     (#\L ((#\L #\Λ) (#\- #\£)))
     (#\l ((#\l #\λ)))
     (#\m ((#\m #\µ)))
@@ -1884,7 +1884,7 @@ enter it."
     (#\p ((#\h #\φ)))
     (#\r (((#\0 #\O #\o) #\®)))
     (#\S ((#\S #\∑)))
-    (#\s ((#\e #\§) (#\r #\√)) (#\s #\ß))
+    (#\s ((#\e #\§) (#\r #\√) (#\s #\ß) (#\t #\ﬆ)))
     (#\T (((#\M #\m) #\™) (#\T #\Þ)))
     (#\t (((#\M #\m) #\™) (#\T #\þ)))
     (#\U ((#\^ #\Û) (#\' #\Ú) (#\` #\Ù) (#\" #\Ü)))
@@ -2225,7 +2225,8 @@ Keyword arguments:
   PROMPT (*default-prompt*)
     String to prompt with.
   OUTPUT-PROMPT-FUNC (nil)
-    Function to print out a prompt. Called with the LINE-EDITOR instance and a prompt string.
+    Function to print out a prompt. Called with the LINE-EDITOR instance and a
+    prompt string.
   COMPLETION-FUNC (#'complete-symbol)
     Completion function to use. See the completion package for details.
   EDITOR (nil)
@@ -2234,7 +2235,7 @@ Keyword arguments:
     Name of a terminal device to use.
   CONTEXT (nil)
     Symbol or string which defines the context for keeping history.
-" ;; **Edit the docstring with orgtbl-mode, which I'm not really sure is a good idea.
+" ; There must be a better way to format docstrings.
   (declare (ignore recursive-p))
   (history-init context)
 

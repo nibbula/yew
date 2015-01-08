@@ -12,8 +12,8 @@
     :description        "Complete your words. Fill the gap. Type less."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "None"
+    :license            "GPLv3"
     :long-description   "Blah blah blah"
-    :depends-on (:dlib :opsys :glob :syntax-lisp)
+    :depends-on (:dlib :opsys :glob :dlib-misc :syntax-lisp :ansiterm :cl-ppcre)
     :components
     ((:file "completion")))

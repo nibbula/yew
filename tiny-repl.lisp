@@ -95,6 +95,7 @@
   editor
   interceptor
   prompt-func
+  prompt-string
   more
   terminal-name
   (got-error	nil	:type boolean)
@@ -210,6 +211,8 @@ Some notable keys are:
 		(if (find-package :lish) "~
  <F9>         Switch back and forth to LISH, which is a lispy/posixy shell."
 		    ""))
+     (format t "~%
+The REPL also has a ‘History’ command to list the history.")
      t)
     ((matches value "History")
      (tiny-rl:show-history (tiny-rl::context (repl-state-editor state)))
@@ -234,7 +237,8 @@ Some notable keys are:
   (:report "I hope you never see this."))
 
 (defun repl-read (state)
-  (with-slots (editor debug prompt-func got-error more terminal-name) state
+  (with-slots (editor debug prompt-func prompt-string got-error more
+	       terminal-name) state
     (let ((result nil)
 	  (pre-str nil)
 	  (str nil))
@@ -270,15 +274,22 @@ Some notable keys are:
 		    (progn
 		      ;; (try-to-reset-curses)
 		      (setf (values str editor)
-			    (tiny-rl :eof-value *real-eof-symbol*
-				     :quit-value *quit-symbol*
-				     :editor editor
-				     :terminal-name terminal-name
-				     :context :repl
-				     :output-prompt-func
-				     (if prompt-func
-					 prompt-func
-					 #'repl-output-prompt))))))
+			    (if prompt-string
+				(tiny-rl :eof-value *real-eof-symbol*
+					 :quit-value *quit-symbol*
+					 :editor editor
+					 :terminal-name terminal-name
+					 :context :repl
+					 :prompt-string prompt-string)
+				(tiny-rl :eof-value *real-eof-symbol*
+					 :quit-value *quit-symbol*
+					 :editor editor
+					 :terminal-name terminal-name
+					 :context :repl
+					 :output-prompt-func
+					 (if prompt-func
+					     prompt-func
+					     #'repl-output-prompt)))))))
 	    (dbug "str = ~a~%editor after = ~a~%" str editor)
 	    (cond
 	      ((and (stringp str) (equal 0 (length str)))
@@ -400,10 +411,22 @@ Some notable keys are:
 	(incf error-count)
 	(setf error-count 0))))
 
-(defun tiny-repl (&key (debug t)
-		       (interceptor *default-interceptor*)
-		       prompt-func no-announce terminal-name)
-  "Keep reading and evaluating lisp, with line editing."
+(defun tiny-repl (&key prompt-func prompt-string no-announce terminal-name
+		    (interceptor *default-interceptor*)
+		    (debug t))
+  "Keep reading and evaluating lisp, with line editing.
+PROMPT-FUNC   -- A TINY-RL prompt function, which is called with a with
+                 an instance of TINY-RL:LINE-EDITOR and a prompt string.
+PROMPT-STRING -- 
+NO-ANNOUNCE   -- True to supress the announcement on starting.
+TERMINAL-NAME -- Name of a system terminal device to read from.
+INTERCEPTOR   -- Function that's called with an object to be evaluated and a
+		 TINY-REPL:REPL-STATE. Allows interception of sepcial objects
+                 before they're evaluated, usually used for commands. The
+		 interceptor should return true if does not want evaluation
+		 to happen. Defaults to *DEFAULT-INTERCEPTOR*.
+DEBUG	      -- True to install TINY-DEBUG as the debugger. Default is T.
+"
   ;; Annouce the implemtation and version on systems that don't always do it.
   #-sbcl (when (not no-announce)
 	   (format t "~a ~a~%"
@@ -414,6 +437,7 @@ Some notable keys are:
 		:debug debug
 		:interceptor interceptor
 		:prompt-func prompt-func
+		:prompt-string prompt-string
 		:terminal-name terminal-name))
 	(result nil)
 ;	(restart-result t)

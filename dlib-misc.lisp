@@ -13,7 +13,7 @@
 ;; Maybe something like: dlib dlib-1 dlib-2 etc.
 
 (defpackage :dlib-misc
-  (:use :common-lisp :dlib #+mop :mop :opsys)
+  (:use :cl :dlib #+mop :mop :opsys)
   (:documentation
    "More of Dan's generally useful miscellaneous functions.")
   (:export
@@ -235,7 +235,7 @@ swaps to do times the length of the array. "
 			 (sort (nos:environ) #'string-lessp
 			       :key #'(lambda (x) (symbol-name (car x)))))))
     (loop :for v :in sorted-list
-       :do (format t "~va ~30a~%" mv (car v) (cdr v)))))
+       :do (format t "~v@a ~30a~%" mv (car v) (cdr v)))))
 
 ;; Perhaps it would be more efficient if we could use the implementation's own
 ;; list, instead of having to go thru non-existent code points here, but it's
@@ -440,16 +440,17 @@ The date part is considered to be the current date."
 	:do (sleep .2))
       ,form))))
 
-(defun print-properties (prop-list)
+(defun print-properties (prop-list &key (right-justify nil))
   "Print a set of names and values nicely in two vertical columns."
-  (let ((label-length (loop :for (name nil)
-			 :in prop-list
-			 :maximize (length name))))
+  (let ((label-length (loop :for (name nil) :in prop-list
+			 :maximize (length (princ-to-string name)))))
     (loop :for (name value) :in prop-list
-       :do (format t "~va: ~a~%"
+       :do (format t (if right-justify "~v@a: ~a~%" "~va: ~a~%")
 		   label-length
 		   (string-capitalize
-		    (substitute	  #\space #\_ (substitute #\space #\- name)))
+		    (substitute #\space #\_
+				(substitute #\space #\-
+					    (princ-to-string name))))
 		   value))))
 
 (defun print-values (value-list &optional (stream t))

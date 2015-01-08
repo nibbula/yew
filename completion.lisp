@@ -11,19 +11,19 @@
 (defpackage :completion
   (:documentation
 "The theory is: we know what you're going to type, so we can type it for
-you. The actuality is: Just guess as much as possible to the extent that it's
-not annoying. Usually, we generate a list of possibilities of what can be
-input given the context, usually a prefix.
+you. The actuality is: just guess as much as possible to the extent that it's
+not annoying. Usually, we generate a list of possibilities of what we assume
+can be the input given the context, which is usually a prefix.
 
-Completion functions are called with line of context and a position
-where completion was requested. The are asked to return one completion,
-or all completions. When asked for one completion, they return a
-completion and a position where to insert it. Text should be replaced
-from the starting and result position. This allows completion functions
-to look at whatever they want to, and replace whatever they want to,
-even prior to the starting point. When asked for all completions, they return a
-sequence of strings and a count which is the length of the sequence.")
-  (:use :cl :dlib :opsys :glob :dlib-misc :syntax-lisp :ansiterm)
+Completion functions are called with line of context and a position where
+completion was requested. The are asked to return one completion, or all
+completions. When asked for one completion, they return a completion and a
+position where to insert it. Text should be replaced from the starting and
+result position. This allows completion functions to look at whatever they
+want to, and replace whatever they want to, even prior to the starting
+point. When asked for all completions, they return a sequence of strings and a
+count which is the length of the sequence.")
+  (:use :cl :dlib :opsys :glob :dlib-misc :syntax-lisp :ansiterm :cl-ppcre)
   (:export
    ;; list
    #:list-completion-function 
@@ -305,6 +305,15 @@ arguments for that function, otherwise return NIL."
 	     (write s :stream str :case :downcase :escape nil :pretty nil)))
       (write-char #\) str))))
 
+(defun lisp-token-char-p (c)
+  (not (position c *lisp-non-word-chars*)))
+
+(defun custom-resolver (name)
+  (cond
+    ((string= name "lispy") #'lisp-token-char-p)
+    ((string= name "true") (constantly t))
+    (t (error "Can't resolve ~S." name))))
+
 (defun try-symbol-help (context pos)
   "If POS is right before a function in CONTEXT, return a string that shows the
 arguments for that function, otherwise return NIL."
@@ -316,7 +325,17 @@ arguments for that function, otherwise return NIL."
 	 (sym (and word-start
 		   (symbolify (subseq context word-start end)
 			      :package (or pack *package*) :no-new t))))
-;    (format t "~&The symbol: ~w~%" sym)
+    ;; This is a total stop-gap measure.
+    (let ((ppcre:*property-resolver* #'custom-resolver))
+      (multiple-value-bind (match regs)
+	  (ppcre:scan-to-strings
+	   (ppcre:parse-string "([\\p{lispy}]+?)(:[:]*([\\p{lispy}]+))")
+	   context :sharedp t)
+	(when match
+	  (setf sym (symbolify (elt regs 2)
+			       :package (or (string-upcase (elt regs 0))
+					    *package*)
+			       :no-new t)))))
     (if (fboundp sym)
 	(function-help sym)
 	nil)))

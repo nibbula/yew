@@ -25,6 +25,7 @@
    #:system-command-stream
    #:system-args
    #:exit-system
+   #:save-image-and-exit
    #:overwhelming-permission
    #:exe-in-path-p
    #:try-things
@@ -64,6 +65,7 @@
    #:symbolify
    ;; debugging
    #:*dbug* #:dbug #:with-dbug #:without-dbug
+   #:dump-values
    ;; Environment features
    #:*host*
    #:*arch*
@@ -530,6 +532,15 @@ on all accessible symbols."
   #+ecl (ext:quit)
   #-(or openmcl cmu sbcl excl clisp ecl) (missing-implementation 'exit-system))
 
+(defun save-image-and-exit (image-name &optional initial-function)
+  #+sbcl (sb-ext:save-lisp-and-die image-name :executable t
+				   :toplevel initial-function)
+  #+clisp (ext:saveinitmem image-name :executable t :quiet t :norc t
+			   :init-function initial-function)
+  #+ccl (save-application image-name :prepend-kernel t :toplevel-function initial-function)
+  #-(or sbcl clisp ccl) (declare (ignore image-name initial-function))
+  #-(or sbcl clisp ccl) (missing-implementation 'save-image-and-exit))
+
 ;; a.k.a root
 (defun overwhelming-permission ()
   #+ccl (= (ccl::getuid) 0)
@@ -644,10 +655,37 @@ equal under TEST to result of evaluating INITIAL-VALUE."
   `#'(lambda ,@(cdr form)))
 
 ;; I really don't understand why introspetion isn't better.
+#+cmu
+(defun function-arglist (fun)
+  (let* ((real-fun  (etypecase fun
+		      (function (function-arglist fun))
+		      (symbol (function-arglist (or (macro-function fun)
+						    (symbol-function fun))))))
+	 (arglist
+	  (cond ((eval:interpreted-function-p real-fun)
+		 (eval:interpreted-function-arglist real-fun))
+		((pcl::generic-function-p real-fun)
+		 (pcl:generic-function-lambda-list real-fun))
+		((c::byte-function-or-closure-p real-fun)
+		 (byte-code-function-arglist real-fun))
+		((kernel:%function-arglist (kernel:%function-self real-fun))
+		 (handler-case (read-arglist real-fun)
+		   (error () :not-available)))
+		;; this should work both for compiled-debug-function
+		;; and for interpreted-debug-function
+		(t
+		 (handler-case (debug-function-arglist
+				(di::function-debug-function real-fun))
+		   (di:unhandled-condition () :not-available))))))
+    (check-type arglist (or list (member :not-available)))
+    arglist))
+
 (defun lambda-list (fun)
+  "Return the function's arguments."
   #+sbcl (sb-kernel:%fun-lambda-list (symbol-function fun))
   #+ccl (ccl:arglist fun)
-  #-(or sbcl ccl) (function-lambda-list fun))
+  #+cmu (function-arglist fun)
+  #-(or sbcl ccl cmu) (function-lambda-list fun))
 
 (defun slot-documentation (slot-def)
   "Return the documentation string for a slot as returned by something like
@@ -703,6 +741,12 @@ never create a new symbol, and return NIL if the symbol doesn't already exist."
 
 (defmacro with-dbug    (&body body) `(let ((*dbug* t))   ,@body))
 (defmacro without-dbug (&body body) `(let ((*dbug* nil)) ,@body))
+
+(defmacro dump-values (&rest args)
+  "Print the names and values of the arguments, like NAME=value."
+  (let ((za (loop :for z :in args :collect
+	       `(format *debug-io* "~a=~a " ',z ,z))))
+    `(progn ,@za (terpri))))
 
 (defun exe-in-path-p (name)
   "True if file NAME exists in the current execute path, which is usually the environment variable PATH. Note that this doesn't check if it's executable or not or that you have permission to execute it."
@@ -861,7 +905,8 @@ cannot cause evaluation."
   (cond
     ((search "sparc"   *arch*)	"sparc")
     ((and (search "x86_64"  *arch*)
-	  (or (has-feature :X86-64) (has-feature :64-bit-target)))
+	  (or (has-feature :X86-64) (has-feature :64-bit-target))
+	  #+clisp (not (search "arch i386 " (software-type))))
 	  "x86_64")
     ((search "x86"     *arch*)	"x86")
     ((search "386"     *arch*)	"x86")

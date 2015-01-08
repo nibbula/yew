@@ -70,7 +70,7 @@
 ;; then making opsys.lisp provide only the most general functions, like
 ;; "read-directory" or "system-command". If I implement a whole bunch of unixy
 ;; commands for lish like "df" "ps" "ls" "finfo" "grep" etc, and then abstract
-;; _slightly_ for windows bullshit, then we should have something reasonable.
+;; _slightly_ for windows, then we should have something reasonable.
 ;; The reality is that almost every OS **except windows** (including iOS,
 ;; Android, ChromeOS) has unixy system calls, so starting with that will get
 ;; us to almost everything.
@@ -208,6 +208,7 @@
    #:posix-ioctl
    #:with-posix-file
    #:mkstemp
+   #:stream-system-handle
 
    ;; stat
    #:stat
@@ -346,6 +347,10 @@
 
    #:getmntinfo
 
+   ;; Terminal things (which don't need to be in :termios)
+   #:isatty #:ttyname
+   #:file-handle-terminal-p #:file-handle-terminal-name
+   
    ;; character coding / localization (or similar)
    #:char-width
    #:setlocale
@@ -1548,7 +1553,9 @@ C library function getcwd."
 )
 
 ;; It's hard to fathom how insanely shitty the Unix/POSIX interface to
-;; directories is.
+;; directories is. On the other hand, I might have trouble coming up with
+;; a too much better interface in plain old ‘C’. Just rebuild the kernel.
+;; Works fine in a two person dev team.
 
 ;; We just choose something big here and hope it works.
 (defconstant MAXNAMLEN 1024 "Maximum length of a file name.")
@@ -2018,6 +2025,7 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 ;; On linux:
 ;; (readlink (format nil "/proc/~a/fd/~a" (getpid) fd))
 ;; ssize_t readlink(const char *path, char *buf, size_t bufsiz);
+;; Very unreliable and hackish.
 ;;
 ;; Windows:
 ;;
@@ -2058,6 +2066,64 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 ;;   FileIdExtdDirectoryRestartInfo  = 20, // 0x14
 ;;   MaximumFileInfoByHandlesClass
 ;; } FILE_INFO_BY_HANDLE_CLASS, *PFILE_INFO_BY_HANDLE_CLASS;
+
+(defun stream-system-handle (stream &optional (direction :output))
+  "Return the operating system handle for a stream. If there is more than one
+system handle, return an arbitrary one, or the one specified by `DIRECTION`,
+which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
+  #+sbcl
+  (cond
+    ((and (typep stream 'synonym-stream)
+	  (synonym-stream-symbol stream))
+     (stream-system-handle (symbol-value (synonym-stream-symbol stream))))
+    ((typep stream 'sb-sys:fd-stream)
+     (slot-value stream 'sb-impl::fd)))
+  #+ccl
+  (cond
+    ((and (typep stream 'synonym-stream)
+	  (synonym-stream-symbol stream))
+     (stream-system-handle (symbol-value (synonym-stream-symbol stream))
+			   (or direction
+			       (if (eq stream *standard-output*)
+				   :output
+				   :input))))
+    ((typep stream 'ccl::echoing-two-way-stream)
+     (ccl::ioblock-device
+      (ccl::basic-stream-ioblock
+       (slot-value stream (if (eql direction :output)
+			      'ccl:output-stream
+			      'ccl:input-stream))))))
+  #+cmu
+  (cond
+    ((typep stream 'two-way-stream)
+     (stream-system-handle
+      (cond
+	((or (eq stream *standard-input*) (eq direction :input))
+	 (two-way-stream-input-stream stream))
+	((or (eq stream *standard-output*) (eq direction :output))
+	 (two-way-stream-output-stream stream)))))
+    ((and (typep stream 'synonym-stream)
+	  (synonym-stream-symbol stream))
+     (stream-system-handle (symbol-value (synonym-stream-symbol stream))))
+    ((typep stream 'system:fd-stream)
+     (slot-value stream 'lisp::fd)))
+  #+clisp
+  (cond
+    ((and (typep stream 'synonym-stream)
+	  (synonym-stream-symbol stream))
+     (stream-system-handle (symbol-value (synonym-stream-symbol stream))
+			   (or direction
+			       ;; This trick doesn't work because they're
+			       ;; the same.
+			       (if (eq stream *standard-output*)
+				   :output
+				   :input))))
+    ((typep stream 'stream)
+     (multiple-value-bind (in out) (socket:stream-handles stream)
+       (if (eql direction :output)
+	   out in))))
+  #-(or ccl sbcl cmu clisp)
+  (missing-implementation 'stream-system-handle))
 
 ;; stat / lstat
 
@@ -2905,7 +2971,10 @@ for long."
   #+sbcl (sb-ext:process-exit-code
 	  (sb-ext:run-program cmd args
 			      :search t :output t :input t :error t :pty nil))
-  #+cmu (ext:process-output (ext:run-program cmd args))
+  #+cmu (ext:process-exit-code
+	 (ext:run-program cmd args
+			  :wait t :input t :output t :error t :pty nil))
+  
   #+lispworks (multiple-value-bind (result str err-str pid)
 		  (system:run-shell-command
 		   (concatenate 'vector (list cmd) args)
@@ -3901,6 +3970,25 @@ available."
 (defcfun getfsfile foreign-fstab (file :string))
 (defcfun setfsent :int)
 (defcfun endfsent :void)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; ttys
+
+(defcfun isatty  :int (fd :int))
+(defcfun ttyname :string (fd :int))
+
+(defun file-handle-terminal-p (fd)
+  "Return true if the system file descriptor FD is attached to a terminal."
+  (= (isatty fd) 1))
+;; We could probably check this with something like GetConsoleMode on windows.
+
+(defun file-handle-terminal-name (fd)
+  "Return the device name of the terminal attached to the system file
+descriptor FD."
+;;;  (let ((ttn (ttyname fd)))
+;;;  (and (not (null-pointer-p ttn)) ttn)))
+  (ttyname fd))
+;; perhaps use GetFileInformationByHandleEx on windows?
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Profiling and debugging?

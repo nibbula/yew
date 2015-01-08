@@ -26,8 +26,10 @@
    ))
 (in-package :pager)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
-		   (compilation-speed 2)))
+;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+;; 		   (compilation-speed 2)))
+(declaim (optimize (speed 3) (safety 0) (debug 0) (space 1)
+		   (compilation-speed 0)))
 
 (define-constant +digits+ #(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
   "For reading the numeric argument." #'equalp)
@@ -156,11 +158,11 @@
 
 (defun span-length (span)
   "Calculate the length in characters of the span."
-  (loop :for e :in span
-     :sum (typecase e
-	    (string (length e))
-	    (cons (span-length e))
-	    (t 0))))
+  (the fixnum (loop :for e :in span
+		 :sum (typecase e
+			(string (length e))
+			(cons (span-length e))
+			(t 0)))))
 
 (defun get-span (fat-line start)
   "Convert a FATCHAR line to tagged spans."
@@ -389,13 +391,14 @@ read until we get an EOF."
     (let ((n 0)
 	  (i (pager-count pager))
 	  (line nil)
-	  (lines '()))
+	  (lines '())
+	  (pos (or (file-position (pager-stream pager)) 0)))
       (loop
 	 :while (and (or (< n count) (zerop count))
 		     (setf line
 			   (resilient-read-line (pager-stream pager) nil nil)))
 	 :do (push (make-line :number i
-			      :position (file-position (pager-stream pager))
+			      :position (incf pos (length line))
 			      :text (process-line pager line))
 		   lines)
 	 (incf i)
@@ -450,8 +453,8 @@ replacements. So far we support:
   (addstr (format-prompt pager))
   (standend))
 
-(defun tmp-message (format-string &rest args)
-  "Print a formatted message at the last line."
+(defun message (format-string &rest args)
+  "Display a formatted message at the last line immediately."
   (standout)
   (move (1- *lines*) 0)
   (clrtoeol)
@@ -459,10 +462,14 @@ replacements. So far we support:
   (standend)
   (refresh))
 
-(defun message (format-string &rest args)
+(defun message-pause (format-string &rest args)
   "Print a formatted message at the last line and pause until a key is hit."
   (apply #'tmp-message format-string args)
   (fui:get-char))
+
+(defun tmp-message (pager format-string &rest args)
+  "Display a message at next command loop, until next input."
+  (setf (pager-message pager) (apply #'format nil format-string args)))
 
 (defvar *nibby-color-scheme*
   '((default		:green)
@@ -500,7 +507,6 @@ replacements. So far we support:
     (:bold	. ,+a-bold+)))
 
 #|
-
              left         *cols*
 win  :         |------------|
 line : |----||-------||---------||---|
@@ -659,14 +665,14 @@ line : |----||-------||---------||---|
       ((#\l #\L)
        (setf (pager-show-line-numbers pager)
 	     (not (pager-show-line-numbers pager)))
-       (message "show-line-numbers is ~:[Off~;On~]"
-		(pager-show-line-numbers pager))))))
+       (message-pause "show-line-numbers is ~:[Off~;On~]"
+		      (pager-show-line-numbers pager))))))
 
 (defun next-file (pager)
   "Go to the next file in the set of files."
   (with-slots (count lines line got-eof file-list file-index stream
 	       page-size) pager
-    (if (and file-index (< file-index (length file-list)))
+    (if (and file-index (< file-index (1- (length file-list))))
 	(progn
 	  (incf file-index)
 	  (close stream)
@@ -674,7 +680,7 @@ line : |----||-------||---------||---|
 			     :direction :input))
 	  (setf lines '() count 0 line 0 got-eof nil)
 	  (read-lines pager page-size))
-	(message "No next file."))))
+	(tmp-message pager "No next file."))))
 
 (defun previous-file (pager)
   "Go to the previous file in the set of files."
@@ -687,7 +693,7 @@ line : |----||-------||---------||---|
 	  (setf stream (open (nth file-index file-list) :direction :input))
 	  (setf lines '() count 0 line 0 got-eof nil)
 	  (read-lines pager page-size))
-	(message "No previous file."))))
+	(tmp-message pager "No previous file."))))
 
 (defun quit (pager)
   "Exit the pager."
@@ -695,7 +701,11 @@ line : |----||-------||---------||---|
 
 (defun suspend (pager)
   "Suspend the pager."
-  (setf (pager-suspend-flag pager) t))
+  (if (and (find-package :lish)
+	   (find-symbol "*LISH-LEVEL*" :lish)
+	   (symbol-value (find-symbol "*LISH-LEVEL*" :lish)))
+      (setf (pager-suspend-flag pager) t)
+      (tmp-message pager "No shell to suspend to.~%")))
 
 (defun next-page (pager)
   "Display the next page."
@@ -763,18 +773,18 @@ line : |----||-------||---------||---|
 
 (defun search-command (pager)
   "Search for something in the stream."
-  (with-slots (search-string message) pager
+  (with-slots (search-string) pager
     (setf search-string (ask "/"))
     (when (not (search-for pager search-string))
-      (setf message "--Not found--"))))
+      (tmp-message pager "--Not found--"))))
 
 (defun search-next (pager)
   "Search for the next occurance of the current search in the stream."
-  (with-slots (line search-string message) pager
+  (with-slots (line search-string) pager
     (incf line)
     (when (not (search-for pager search-string))
       (decf line)
-      (setf message "--Not found--"))))
+      (tmp-message pager "--Not found--"))))
 
 (defun clear-search (pager)
   "Clear the search string."
@@ -782,7 +792,7 @@ line : |----||-------||---------||---|
 
 (defun show-info (pager)
   "Show information about the stream."
-  (setf (pager-message pager) "%f %l of %L %b/%B"))
+  (tmp-message pager "%f %l of %L %b/%B"))
 
 (defun redraw (pager)
   "Redraw the display."
@@ -845,7 +855,7 @@ line : |----||-------||---------||---|
     (#\?		. help)
     (#\^H		. help-key)
     (,(meta-char #\=)   . describe-key-briefly)
-    (,(meta-char #\=)   . describe-key)
+;    (,(meta-char #\=)   . describe-key)
     (#\0		. digit-argument)
     (#\1		. digit-argument)
     (#\2		. digit-argument)
@@ -864,17 +874,17 @@ line : |----||-------||---------||---|
 (defun describe-key-briefly (pager)
   "Prompt for a key and say what function it invokes."
   (declare (ignore pager))
-  (tmp-message "Press a key: ")
+  (message "Press a key: ")
   (let* ((key (fui:get-char))
 	 (action (key-definition key *normal-keymap*)))
     (if action
-	(message "~a is bound to ~a" (nice-char key) action)
-	(message "~a is not defined" (nice-char key)))))
+	(tmp-message pager "~a is bound to ~a" (nice-char key) action)
+	(tmp-message pager "~a is not defined" (nice-char key)))))
 
 (defun describe-key (pager)
   "Prompt for a key and describe the function it invokes."
   (declare (ignore pager))
-  (tmp-message "Press a key: ")
+  (message "Press a key: ")
   (let* ((key (fui:get-char))
 	 (action (key-definition key *normal-keymap*)))
     (cond
@@ -887,13 +897,13 @@ line : |----||-------||---------||---|
 		      (documentation action 'function) :stream nil)))
 	   (addstr
 	    (format nil "Sorry, there's no documentation for ~a.~%" action)))
-       (message ""))
+       (tmp-message pager ""))
       (t
-       (message "~a is not defined" (nice-char key))))))
+       (tmp-message pager "~a is not defined" (nice-char key))))))
 
 (defun help-key (pager)
   "Sub-command for help commands."
-  (tmp-message "Help (? for more help): ")
+  (message "Help (? for more help): ")
   (perform-key pager (fui:get-char) *help-keymap*)
   (setf (pager-quit-flag pager) nil))
 
@@ -986,7 +996,7 @@ q - Abort")
 	     :while (not (or quit-flag suspend-flag)))
 	  (when suspend-flag
 	    (setf suspended t)
-	    (when (find-package :lish)
+	    (if (find-package :lish)
 	      (let ((suspy (make-suspended-pager
 			    :pager pager
 			    :file-list file-list
@@ -994,8 +1004,8 @@ q - Abort")
 			    :close-me close-me)))
 		(funcall (find-symbol "SUSPEND-JOB" :lish)
 			 "pager" "" (lambda () (pager:resume suspy)))
-		(format t "Suspended.~%")))
-	    (format t "No shell to suspend to.~%"))))
+		(format t "Suspended.~%"))
+	      (format t "No shell loaded to suspend to.~%")))))
       (when (and close-me (not suspended) stream)
 	(close stream))))
   suspended)

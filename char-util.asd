@@ -12,7 +12,7 @@
     :description        "General utilites for characters."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "None"
+    :license            "GPLv3"
     :long-description   "General utilites for characters."
 ;    :depends-on ()
     :components

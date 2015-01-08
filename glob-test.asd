@@ -12,7 +12,7 @@
     :description        "Test glob package."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "None"
+    :license            "GPLv3"
     :long-description   "Test glob package."
     :depends-on (:glob :test)
     :components
