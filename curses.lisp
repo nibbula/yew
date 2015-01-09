@@ -82,7 +82,8 @@ Make sure we don't clash with the actual CL-NCURSES.
    #:move
    #:clear #:wclear #:erase #:werase #:clrtobot #:wclrtobot
    #:clrtoeol #:wclrtoeol
-   #:getch #:getnstr
+   #:getch #:wgetch #:mvgetch #:mvwgetch #:ungetch
+   #:getnstr #:wgetnstr #:mvgetnstr #:mvwgetnstr
    #:mmask-t #:mevent #:make-mevent #:mevent-id #:mevent-x #:mevent-y
    #:mevent-z #:mevent-bstate
    #:mousemask #:getmouse #:ungetmouse
@@ -525,6 +526,10 @@ Make sure we don't clash with the actual CL-NCURSES.
 (defcfun ungetch :int (ch :int))
 ;(def-curses ("has_key" has-key) (:int) (ch :int)) ; ncurses only
 
+;; I'm not even going to provide the raw non-N versions, like getstr, because
+;; you should never use them. BUT, we could provide a safe lisp equivalents
+;; which would use the N versions and return strings.
+
 ;(defcfun getnstr :int (str (c-ptr :string) :in-out) (n :int))
 ;(defcfun getnstr :int
 ;  #+clisp (str (ffi:c-ptr (ffi:c-array-max ffi:char 256)) :out)
@@ -532,6 +537,10 @@ Make sure we don't clash with the actual CL-NCURSES.
 ;  (str (* (:array :char 256)))
 ;  (n :int))
 (defcfun getnstr :int (str :pointer) (n :int))
+(defcfun wgetnstr :int (win :pointer) (str :pointer) (n :int))
+(defcfun mvgetnstr :int (y :int) (x :int) (str :pointer) (n :int))
+(defcfun mvwgetnstr :int (win :pointer) (y :int) (x :int) (str :pointer)
+	 (n :int))
 
 ;; Mouse input
 (defctype mmask-t :unsigned-long)

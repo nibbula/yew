@@ -51,7 +51,7 @@
 
 (defclass mem-table (table collection)
   ()
-  (:documentation "Table stored in volatile memory."))
+  (:documentation "Table stored in ‘volatile’ memory."))
 
 (defclass db-table (table)
   ((name    :initarg :name

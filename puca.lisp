@@ -18,7 +18,7 @@
 
 (defpackage :puca
   (:documentation "Putative Muca")
-  (:use :cl :dlib :dlib-misc :opsys :curses :pager)
+  (:use :cl :dlib :dlib-misc :opsys :curses :pager :tiny-rl :completion)
   (:export
    ;; Main entry point
    #:puca
@@ -56,6 +56,7 @@
   (extra nil))				; extra lines
 
 (defstruct backend
+  "A specific version control system. Mostly how to do things with it."
   name
   type
   check-func
@@ -214,8 +215,9 @@
   (cbreak)))
 
 (defun message (format-string &rest format-args)
+  (move (- *lines* 2) 2)
   (clrtoeol)
-  (mvaddstr (- *lines* 2) 2 (apply #'format nil format-string format-args))
+  (addstr (apply #'format nil format-string format-args))
   (refresh))
 
 (defun draw-goo (pu i)
@@ -364,7 +366,8 @@
   "Put a centered string STR in window W of width WIDTH at row ROW."
   (mvwaddstr w row (round (- (/ width 2) (/ (length str) 2))) str))
 
-(defun display-text (pu title text-lines)
+;; @@@ Something like this should probably move to FUI.
+(defun display-text (pu title text-lines &key input-func)
   (let* ((mid    (truncate (/ *cols* 2)))
 	 (width  (min (- *cols* 6)
 		      (+ 4 (loop :for l :in text-lines :maximize (length l)))))
@@ -376,27 +379,97 @@
 						 :stream nil)))))
 		      (- *lines* 4)))
 	 (xpos   (truncate (- mid (/ width 2))))
-	 (w 	 (newwin height width 3 xpos)))
-    (box w 0 0)
-    (wcentered w width 0 title)
-    (loop :with i = 2 :for l :in text-lines
-       :do
-       (loop :for sub-line :in (split-sequence
-				#\newline (justify-text l :cols (- width 2)
-							:stream nil))
-	  :do
-	  (mvwaddstr w i 2 sub-line)
-	  (incf i)))
-    (wrefresh w)
-    (get-char)
-    (delwin w))
+	 w result)
+    (unwind-protect
+       (progn
+	 (setf w (newwin height width 3 xpos))
+	 (box w 0 0)
+	 (wcentered w width 0 title)
+	 (loop :with i = 2 :for l :in text-lines
+	    :do
+	    (loop :for sub-line
+	       :in (split-sequence
+		    #\newline (justify-text l :cols (- width 2)
+					    :stream nil))
+	       :do
+	       (mvwaddstr w i 2 sub-line)
+	       (incf i)))
+	 (wrefresh w)
+	 (when input-func
+	   (setf result (funcall input-func pu w))))
+      (when w
+	(delwin w)))
+    result))
+
+(defun info-window (pu title text-lines)
+  (display-text
+   pu title text-lines
+   :input-func #'(lambda (pu w)
+		   (declare (ignore pu w))
+		   (get-char)))
   (clear)
   (refresh)
   (draw-screen pu)
   (refresh))
 
+(defun input-window (pu title text-lines)
+  (prog1
+      (display-text
+       pu title text-lines
+       :input-func #'(lambda (pu w)
+		       (declare (ignore pu))
+		       (cffi:with-foreign-pointer-as-string (str 40)
+			 (curses:echo)
+			 (wgetnstr w str 40)
+			 (curses:noecho))))
+    (clear)
+    (refresh)
+    (draw-screen pu)
+    (refresh)))
+
+(defun puca-yes-or-no-p (pu &optional format &rest arguments)
+  (equalp "Yes" (input-window
+		 pu "Yes or No?"
+		 (list 
+		  (if format
+		      (apply #'format nil format arguments)
+		      "Yes or No?")))))
+
+(defun delete-files (pu)
+  (when (puca-yes-or-no-p
+	 pu "Are you sure you want to delete these files from disk?~%~{~a ~}"
+	 (selected-files pu))
+    (loop :for file :in (selected-files pu) :do
+       (delete-file file))
+    (get-list pu)))
+
+(defparameter *extended-commands*
+  '(("delete" delete-files))
+  "An alist of extended commands, key is the command name, value is a symbol
+for the command-function).")
+
+(defvar *complete-extended-command*
+  (completion:list-completion-function (mapcar #'car *extended-commands*))
+  "Completion function for extended commands.")
+
+(defun extended-command (pu)
+  (move (- *lines* 2) 2)
+  (refresh)
+  (reset-shell-mode)
+  (let ((command (tiny-rl:tiny-rl
+		  :prompt ": "
+		  :completion-func *complete-extended-command*
+		  :context :puca))
+	func)
+    (reset-prog-mode)
+    (setf func (cadr (assoc command *extended-commands* :test #'equalp)))
+    (when (and func (fboundp func))
+      (funcall func pu)))
+  (draw-screen pu)
+  (values))
+
 (defun help (pu)
-  (display-text pu "Help for Puca"
+  (info-window pu "Help for Puca"
 		'("q - Quit"
 		  "a - Add file"
 		  "r - Revert file (undo an add)"
@@ -412,23 +485,26 @@
 		  "Space,x,Return - Select"
 		  "s - Select all"
 		  "S - Select none"
+		  "^@, ^space - Set Mark"
+		  "X - Select region"
 		  "g - Re-list"
 		  "e - Show messages / errors"
+		  ": - Extended command"
 		  "^L - Re-draw"
 		  "?,h - Help")))
 
 (defun show-errors (pu)
   (with-slots (errors) pu
-    (display-text pu "All Errors"
-		  (or errors
-		      '("There are no errors." "So this is" "BLANK")))))
+    (info-window pu "All Errors"
+		 (or errors
+		     '("There are no errors." "So this is" "BLANK")))))
 
 (defun show-extra (pu)
   (with-slots (goo cur) pu
     (let ((ext (and goo (goo-extra-lines (elt goo cur)))))
-      (display-text pu "Errors"
-		    (or ext
-			'("There are no errors." "So this is" "BLANK"))))))
+      (info-window pu "Errors"
+		   (or ext
+		       '("There are no errors." "So this is" "BLANK"))))))
 
 (defun pick-backend (&optional type)
   ;; try find what was asked for
@@ -448,7 +524,7 @@
   (let ((pu (make-puca-app)))
     (with-slots (goo maxima cur top bottom window screen errors) pu
       (init-curses pu device term-type)
-      (let ((*backend* (pick-backend backend-type)) c)
+      (let ((*backend* (pick-backend backend-type)) c mark)
 	(setf goo nil)
 	(draw-screen pu)
 	(get-list pu)
@@ -515,7 +591,19 @@
 	     (when (> top 0)
 	       (setf top 0)
 	       (draw-screen pu)))
-	    ((#\space #\x #\return #\nul)
+	    (#\nul
+	     (setf mark cur)
+	     (message "Set mark."))
+	    (#\X
+	     (if mark
+		 (let ((start (min mark cur))
+		       (end (max mark cur)))
+		   (loop :for i :from start :to end :do
+		      (setf (goo-selected (elt goo i))
+			    (not (goo-selected (elt goo i))))
+		      (draw-line pu i)))
+		 (message "No mark set.")))
+	    ((#\space #\x #\return)
 	     (when goo
 	       (setf (goo-selected (elt goo cur))
 		     (not (goo-selected (elt goo cur))))
@@ -536,6 +624,8 @@
 	     (show-extra pu))
 	    (#\E
 	     (show-errors pu))
+	    (#\:
+	     (extended-command pu))
 	    ((#\^L (code-char 12))	; re-draw
 	     (clear)
 	     (refresh)
