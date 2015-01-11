@@ -873,7 +873,6 @@ line : |----||-------||---------||---|
 
 (defun describe-key-briefly (pager)
   "Prompt for a key and say what function it invokes."
-  (declare (ignore pager))
   (message "Press a key: ")
   (let* ((key (fui:get-char))
 	 (action (key-definition key *normal-keymap*)))
@@ -883,7 +882,6 @@ line : |----||-------||---------||---|
 
 (defun describe-key (pager)
   "Prompt for a key and describe the function it invokes."
-  (declare (ignore pager))
   (message "Press a key: ")
   (let* ((key (fui:get-char))
 	 (action (key-definition key *normal-keymap*)))
