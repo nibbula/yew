@@ -388,7 +388,7 @@ Make sure we don't clash with the actual CL-NCURSES.
   (setf (gethash #o407 *funkeys*) :BACKSPACE) ; backspace key
   (loop :for i :from 0 :to 64 :do	      ; 64 function keys :F<n>
 	(setf (gethash (+ #o410 i) *funkeys*)
-	      (intern (format nil "F~d" i))))
+	      (intern (format nil "F~d" i) :keyword)))
   (setf (gethash #o510 *funkeys*) :DL)	      ; delete-line key
   (setf (gethash #o511 *funkeys*) :IL)	      ; insert-line key
   (setf (gethash #o512 *funkeys*) :DC)	      ; delete-character key
