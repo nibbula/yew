@@ -318,11 +318,45 @@ arguments for that function, otherwise return NIL."
   "If POS is right before a function in CONTEXT, return a string that shows the
 arguments for that function, otherwise return NIL."
   (let* ((ppos (matching-paren-position context :position pos))
+	 (start (or (and ppos (1+ ppos)) 0))
+	 (end (min (1+ (scan-over-str
+			context start :forward
+			:func #'(lambda (c)
+				  (or (not (position c *lisp-non-word-chars*))
+				      (eql c #\:)))))
+		   (length context)))
+	 (word (subseq context start end))
+	 sym
+	 (ppcre:*property-resolver* #'custom-resolver))
+    ;; This is a total stop-gap measure.
+    (multiple-value-bind (match regs)
+	(ppcre:scan-to-strings
+	 (ppcre:parse-string "([\\p{lispy}]+)(:[:]*([\\p{lispy}]+)){0,1}")
+	 word :sharedp t)
+      (when match
+	(setf sym
+	      (if (elt regs 2)
+		  (symbolify (elt regs 2)
+			     :package (or (string-upcase (elt regs 0))
+					  *package*)
+			     :no-new t)
+		  (symbolify (elt regs 0) :package *package* :no-new t)))))
+    (if (fboundp sym)
+	(function-help sym)
+	nil)))
+
+#|
+(defun try-symbol-help (context pos)
+  "If POS is right before a function in CONTEXT, return a string that shows the
+arguments for that function, otherwise return NIL."
+  (let* ((ppos (matching-paren-position context :position pos))
 	 (word-start (or (and ppos (1+ ppos)) 0))
 	 (pack (find-forward-pack context word-start))
-	 (end (1+ (scan-over-str context word-start :forward
-				 :not-in *lisp-non-word-chars*)))
+	 (end (min (1+ (scan-over-str context word-start :forward
+				      :not-in *lisp-non-word-chars*))
+		   (length context)))
 	 (sym (and word-start
+		   (> (- word-start end) 0)
 		   (symbolify (subseq context word-start end)
 			      :package (or pack *package*) :no-new t))))
     ;; This is a total stop-gap measure.
@@ -339,6 +373,7 @@ arguments for that function, otherwise return NIL."
     (if (fboundp sym)
 	(function-help sym)
 	nil)))
+|#
 
 #|
 (defun try-symbol-help (context pos)
