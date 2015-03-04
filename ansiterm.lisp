@@ -2,41 +2,7 @@
 ;; ansiterm.lisp - Deal with ANSI-like terminals
 ;;
 
-;; $Revision: 1.6 $
-
-;; Some people like to tell you how great their software is, and go on about
-;; all it's wonderfull features. I apparently like to apologize for all the
-;; imperfections, and lack of features. Another way of saying it is, that I
-;; can easily imagine software that's much better and I am hopeful that it
-;; will be so in the future.
-;;
-;; I apologize that this particular module even exists. This is probably only
-;; really useful when you don't want to deal with terminfo entries and all
-;; that. This could also be turned generic and subclassed for other terminal
-;; types.
-;;
-;; This was originally part of TINY-RL. The main reason for it's existence is
-;; that I don't want reading a line of input from the REPL to be dependent on
-;; a curses library or even a terminfo database. I would like it to be “pure”
-;; Lisp. We could even make a Lisp only terminal database which could be read
-;; at runtime or compiled in, but I would actually like if the idea of
-;; multiple terminal types just went away. The old ANSI terminal protocol
-;; seems mostly adequate as an efficient way for describing character grid
-;; manipulations, and is actually somewhat extensible. It seems like we could
-;; easily provide for other keyboard keys and other capabilities.
-;;
-;; What I would actually like, would be:
-;;  - CURSES package goes away.
-;;  - Character grid output optimization is still necessary (or at least nice)
-;;    for full screen applications, so we implement the core of curses in a
-;;    separate module. The curses API is in some ways nice, but could use
-;;    paring and improvement.It should be able to have generic output, in
-;;    other words, adaptable to a bitmap, graphics library calls, or terminal
-;;    protocol. This would facilitate all manner of efficent dynamic text
-;;    updating. Perhaps consider things like dual mode TeX or HTML editors.
-;;  - Support all terminal emulators (or even terminals) that speak ANSI, with
-;;    simple Lispy variation descriptions, compiled in or loadable.
-;;  - Things that don't speak ANSI just die (or just use the old curses crap).
+;; I make no further apologies.
 
 (defpackage :ansiterm
   (:documentation "Deal with ANSI-like terminals.")
@@ -90,7 +56,7 @@
    #:tt-finish-output
    #:tt-get-char
    #:tt-reset
-   #:tt-with-saved-cursor
+   #:with-saved-cursor
    ))
 (in-package :ansiterm)
 
@@ -123,11 +89,15 @@ require terminal driver support."))
    (raw-state
     :accessor terminal-raw-state
     :initarg :terminal-raw-state
-    :documentation "A foreign pointer to a POSIX termios struct of the terminal in its raw state.")
+    :documentation
+    "A foreign pointer to a POSIX termios struct of the terminal in its ~
+     raw state.")
    (cooked-state
     :accessor terminal-cooked-state
     :initarg :terminal-cooked-state
-    :documentation "A foreign pointer to a POSIX termios struct of the terminal in its cooked state")
+    :documentation
+    "A foreign pointer to a POSIX termios struct of the terminal in its ~
+     cooked state")
    (window-rows
     :accessor terminal-window-rows
     :initarg :window-rows
@@ -510,7 +480,7 @@ i.e. the terminal is \"line buffered\""))
   (termios:sane)
   (call-next-method)) ;; Do the terminal-stream version
 
-(defmacro tt-with-saved-cursor ((tty) &body body)
+(defmacro with-saved-cursor ((tty) &body body)
   "Save the cursor position, evaluate the body forms, and restore the cursor
 position. Return the result of evaluating the body."
   (let ((result-sym (gensym "tt-result")))
