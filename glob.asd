@@ -16,4 +16,5 @@
     :long-description   "Another great example of how to poorly reinvent something stupid. Including, among others, fnmatch, glob, and wordexp."
     :depends-on (:opsys :dlib)
     :components
-    ((:file "glob")))
+    ((:file "glob"))
+    :in-order-to ((asdf:test-op (asdf:test-op :glob-test))))

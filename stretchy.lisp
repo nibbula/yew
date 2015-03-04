@@ -5,19 +5,27 @@
 ;; $Revision: 1.5 $
 
 (defpackage :stretchy
-  (:documentation "Functions for manipulating stretchy arrays and strings.")
+  (:documentation
+   "Functions for manipulating stretchy arrays and strings.
+
+Common Lisp provides adjustable arrays, and therefore also adjustable strings,
+but the mechanics of the programming interface is s
+")
   (:use :cl)
   (:export
+   #:*default-stretch-factor*
    #:stretchy-string
    #:make-stretchy-string
    #:stretchy-vector
    #:make-stretchy-vector
-   #:*default-stretch-factor*
    #:stretchy-append
    #:stretchy-set
    #:stretchy-truncate
    ))
 (in-package :stretchy)
+
+(defvar *default-stretch-factor* 2/3
+  "Default expansion factor for stretchy things.")
 
 (deftype stretchy-string ()
   "An adjustable string of characters"
@@ -25,10 +33,6 @@
     (vector character)
     (satisfies adjustable-array-p)
     (satisfies array-has-fill-pointer-p)))
-
-;; The point of this being a macro was WHAT?
-;; (defmacro make-stretchy-string (n)
-;;   `(make-array ,n :element-type 'character :fill-pointer 0 :adjustable t))
 
 (defun make-stretchy-string (n)
   "Make a stretchy string of size N. A stretchy string is an adjustable array
@@ -47,45 +51,46 @@ of characters with a fill pointer."
 of objects with a fill pointer."
   (make-array n :fill-pointer 0 :adjustable t :element-type element-type))
 
-(defvar *default-stretch-factor* 2/3
-  "Default expansion factor for stretchy things.")
+(defun resize (array size factor)
+  "Resize the ARRAY to SIZE, expanding by FACTOR."
+  (setf array (adjust-array
+	       array (+ (array-total-size array) size
+			(truncate (* (array-total-size array) factor))))))
 
-(defun stretchy-append-string-or-vector (dst src
-					 &key (factor
-					       *default-stretch-factor*))
-  "Append a vector to a stretchy vector. Factor is the amount of the total
+(defun stretchy-append-string-or-vector (dst src factor)
+  "Append a vector to a stretchy vector. FACTOR is the amount of the total
 size to expand by when expansion is needed."
 ;  (declare (type stretchy-string dst))
 ;  (declare (type (or string stretchy-string) src))
   (let ((src-len (length src))
 	(dst-len (length dst)))
     (when (>= (+ src-len dst-len) (array-total-size dst))
-      ;; resize
-      (setf dst (adjust-array
-		 dst (+ (array-total-size dst) src-len
-			(truncate (* (array-total-size dst) factor))))))
+      (resize dst src-len factor))
     (incf (fill-pointer dst) src-len)
     (setf (subseq dst dst-len (+ dst-len src-len)) src)))
 
+(defun stretchy-append-character (dst char factor)
+  "Append the character CHAR to the stretchy string DST, with FACTOR as the
+amount of the total size to expand by when expansion is needed."
+  (let ((dst-len (length dst)))
+    (when (>= (1+ dst-len) (array-total-size dst))
+      (resize dst 1 factor))
+    (incf (fill-pointer dst))
+    (setf (char dst dst-len) char)))
 
 (defun stretchy-set (vec n value &key (factor *default-stretch-factor*))
   "Put an element in a stretchy vector. Factor is the amount of the total size
 to expand by when expansion is needed."
-;  (let ((len (length vec)))
-    (when (>= n (array-total-size vec))
-      ;; resize
-      (setf vec (adjust-array
-		 vec (+ (array-total-size vec) (- n (array-total-size vec))
-			(truncate (* (array-total-size vec) factor))))))
-    (setf (fill-pointer vec) n) ;; should this really be done?
-    (setf (aref vec n) value))
-
-;;;
-;;; !!! COMMON-LISP-BADNESS-ALERT !!!
-;;;
-;;; I'd like to make methods on a deftype but classes and types are dismorphic!
+  (when (>= n (array-total-size vec))
+    (resize vec (- n (array-total-size vec)) factor))
+  (setf (fill-pointer vec) n) ;; should this really be done?
+  (setf (aref vec n) value))
 
 #|
+
+;;; %%% Common Lisp fail:
+;;; I'd like to make methods on a deftype but classes and types are dismorphic!
+
 (defgeneric stretchy-append (dst src &key factor)
   (:documentation "Append SRC to DST. Expand by FACTOR if necessary."))
 
@@ -122,20 +127,21 @@ to expand by when expansion is needed."
   (when (not (or (typep dst 'stretchy-string) (typep dst 'stretchy-vector)))
     (error "Destination must be a stretchy-string or stretchy-vector"))
   (cond
+    ;; @@@ Just punting and taking the easy way for now.
+    ;; In the future, make these faster specific functions.
     ((or (typep src 'stretchy-string)
 	 (typep src 'stretchy-vector)
 	 (typep src 'string)
 	 (typep src 'vector))
-     (stretchy-append-string-or-vector dst src :factor factor))
+     (stretchy-append-string-or-vector dst src factor))
     ((and (typep dst 'stretchy-string)
-	  (or (typep src 'character) (typep src 'symbol)))
-     ;; @@@ Just punting and taking the easy way for now.
-     ;; In the future, make these faster specific functions.
-     (stretchy-append-string-or-vector dst (string src) :factor factor))
+	  (typep src 'character))
+     (stretchy-append-character dst src factor))
+    ((and (typep dst 'stretchy-string)
+	  (typep src 'symbol))
+     (stretchy-append-string-or-vector dst (string src) factor))
     ((not (typep dst 'stretchy-string))
-     ;; @@@ Just punting and taking the easy way for now.
-     ;; In the future, make these faster specific functions.
-     (stretchy-append-string-or-vector dst (vector src) :factor factor))
+     (stretchy-append-string-or-vector dst (vector src) factor))
     (t
      (error "Can't append a ~(~a~) to a stretchy-string." (type-of src)))))
 

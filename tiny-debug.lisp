@@ -25,68 +25,76 @@
   "Current frame number. Frames are numbered from the top or innermost 0 to
 the outermost. When entering the debugger the current frame is 0.")
 
-(defun list-restarts (rs)
-  (format *debug-io* "Restarts are:~%")
-  (loop :with i = 0 :for r :in rs :do
-     (format *debug-io* "~&~d: " i)
-     (when (not (ignore-errors (progn (format *debug-io* "~a~%" r) t)))
-       (format *debug-io* "Error printing restart ")
-       (print-unreadable-object (r *debug-io* :type t :identity t)
-	 (format *debug-io* "~a" (restart-name r)))
-       (terpri *debug-io*))
-     (incf i)))
-
-(defun debug-prompt (e p)
-;  (format *debug-io* "Debug ~d~a" *repl-level* p)
-  (tiny-rl::editor-write-string		; XXX
-   e
-   (format nil "Debug ~d~a" *repl-level* p))
-;  (finish-output *debug-io*)
-  nil)
-
-(declaim (special *interceptor-condition*))
-
-(defun debugger-help ()
-  (format *debug-io* "Tiny Debugger help:
-:h      Show this help.
-:e      Show the error again.
-:a      Abort to top level.
-:q      Quit the whatever.
-:r      Show restarts.
-:b      Backtrace stack.
-:w      Wacktrace.
-:s [n]	Show source for a frame N, which defaults to the current frame.
-:l [n]	Show local variables for a frame N, which defaults to the current frame.
-number  Invoke that number restart (from the :r list).
-...     Or just type a some lisp code.
-~%")
-  (list-restarts (cdr (compute-restarts *interceptor-condition*))))
+(defvar *saved-frame* nil
+  "Implementation handle to frame that the debugger started from.")
 
 (defun debugger-sorry (x)
   "What to say when we can't do something."
   (format *debug-io* "~%Sorry, don't know how to ~a on ~a. ~
 		       Snarf some slime!~%" x (lisp-implementation-type)))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Implementation specifc functions
+;;
+;; debugger-backtrace n     - Show N frames of normal backtrace
+;; debugger-wacktrace n     - Alternate backtrace
+;; debugger-show-source n   - Show the source for frame N
+;; debugger-show-locals n   - Show local variables for frame N
+;; debugger-internal-frame  - Return the best approximation of the error frame.
+
+#+sbcl
+(defun print-frame (f)
+  "Print a frame."
+  (labels ((print-lambda-list (f arg-list)
+	     (loop :for v :in arg-list
+		:do
+		(cond
+		  ((sb-di::debug-var-p v)
+		   ;;(sb-di::debug-var-symbol v)
+		   (let ((vv (handler-case
+				 (sb-di::debug-var-value v f)
+			       (condition () '#:|<Unavailable>|))))
+		     (when (not (or (eql vv '#:|<Unavailable>|)
+				    (typep vv 'condition)))
+		       (format *debug-io* " ~s" vv))))
+		  ((and (listp v) (eql (car v) :rest))
+		   (format *debug-io* " &rest")
+		   (print-lambda-list f (cdr v)))))))
+    (let* ((loc     (sb-di:frame-code-location f))
+	   (dbg-fun (sb-di:code-location-debug-fun loc))
+	   (name    (sb-di:debug-fun-name dbg-fun)))
+      (format *debug-io* "(")
+      (if (symbolp name)
+	  (let ((pkg (symbol-package name)))
+	    (if (not (eql (find-package :cl) pkg))
+		(format *debug-io* "~(~a~)::" (package-name pkg)))))
+      (format *debug-io* "~(~a~)" name)
+      (print-lambda-list f (sb-di::debug-fun-lambda-list dbg-fun))
+      (format *debug-io* ")"))))
+
+
+#+sbcl
+(defun sbcl-start-frame ()
+  ;; introduced sometime after 1.0.57
+  (let ((sym (find-symbol "BACKTRACE-START-FRAME" :sb-debug)))
+    (if sym
+     (funcall sym :debugger-frame)
+     (sb-di:top-frame))))
+
 #+sbcl
 (defun debugger-wacktrace (n)
   "Our own backtrace for SBCL."
-  (declare (ignore n))
-  (loop with f = (sb-di:top-frame)
-	do
-	(let* ((loc     (sb-di:frame-code-location f))
-	       (dbg-fun (sb-di:code-location-debug-fun loc))
-	       (name    (sb-di:debug-fun-name dbg-fun))
-;	       (fun     (sb-di:debug-fun-fun dbg-fun))
-	       )
-	  (format *debug-io* "~3a ~(~a~a~) ~a ~a~%"
-		  (sb-di:frame-number f)
-		  (if (symbolp name)
-		      (format nil "~a::" (package-name (symbol-package name)))
-		      "")
-		  name
-		  loc dbg-fun
-		  ))
-	(setf f (sb-di:frame-down f)) until (not f)))
+  ;; (or *saved-frame* (sb-di:top-frame))
+  (loop
+     :with f = (sbcl-start-frame)
+     :and i = 0
+     :do
+     (format *debug-io* "~3d " (sb-di:frame-number f))
+     (print-frame f)
+     (terpri *debug-io*)
+     (setf f (sb-di:frame-down f))
+     (incf i)
+     :until (and (not f) (>= i n))))
 
 #+ccl
 (defun debugger-wacktrace (n)
@@ -167,13 +175,18 @@ number  Invoke that number restart (from the :r list).
 		   (format *debug-io* "~a~%" str)))))))))))
 
 #+sbcl
-(defun debugger-show-source (frame)
+(defun debugger-show-source (n)
   (when (not n)
     (setf n 0))
   ;; @@@ handle NO-DEBUG-BLOCKS !!
-  (sb-debug::code-location-source-form
-   (sb-di:frame-code-location (or frame (sb-di:top-frame))) 0))
-  ;;  (sb-introspect:find-
+  ;; (sb-debug::code-location-source-form
+  (let* ((loc	   (sb-di:frame-code-location (frame-number n)))
+	 (src	   (sb-di::code-location-debug-source loc))
+	 (filename (sb-c::debug-source-namestring src))
+	 (dbg-fun  (sb-di:code-location-debug-fun loc))
+	 (name	   (sb-di:debug-fun-name dbg-fun)))
+    (with-open-file (str filename)
+      (format t "~s ~s" name filename))))
 
 #-(or ccl sbcl)
 (defun debugger-show-source (n)
@@ -271,6 +284,53 @@ number  Invoke that number restart (from the :r list).
   #-(or sbcl ccl clisp lispworks ecl)
   (debugger-sorry "backtrace"))
 
+(declaim (inline debugger-internal-frame))
+(defun debugger-internal-frame ()
+  #+sbcl (sb-di::top-frame)
+  #+ccl ccl:*top-error-frame*
+  ;; We don't want to be sorry here, so just be wrong.
+  #-(or sbcl ccl) nil)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Implementation independent functions
+
+(defun list-restarts (rs)
+  (format *debug-io* "Restarts are:~%")
+  (loop :with i = 0 :for r :in rs :do
+     (format *debug-io* "~&~d: " i)
+     (when (not (ignore-errors (progn (format *debug-io* "~a~%" r) t)))
+       (format *debug-io* "Error printing restart ")
+       (print-unreadable-object (r *debug-io* :type t :identity t)
+	 (format *debug-io* "~a" (restart-name r)))
+       (terpri *debug-io*))
+     (incf i)))
+
+(defun debug-prompt (e p)
+;  (format *debug-io* "Debug ~d~a" *repl-level* p)
+  (tiny-rl::editor-write-string		; XXX
+   e
+   (format nil "Debug ~d~a" *repl-level* p))
+;  (finish-output *debug-io*)
+  nil)
+
+(declaim (special *interceptor-condition*))
+
+(defun debugger-help ()
+  (format *debug-io* "Tiny Debugger help:
+:h      Show this help.
+:e      Show the error again.
+:a      Abort to top level.
+:q      Quit the whatever.
+:r      Show restarts.
+:b      Backtrace stack.
+:w      Wacktrace.
+:s [n]	Show source for a frame N, which defaults to the current frame.
+:l [n]	Show local variables for a frame N, which defaults to the current frame.
+number  Invoke that number restart (from the :r list).
+...     Or just type a some lisp code.
+~%")
+  (list-restarts (cdr (compute-restarts *interceptor-condition*))))
+
 (defun debugger-snargle ()
   "Magic command just for me."
   (error "Pizza."))
@@ -351,6 +411,7 @@ number  Invoke that number restart (from the :r list).
 (defun tiny-debug (c hook)
   "Entry point for the tiny debugger, used as the debugger hook."
   (declare (ignore hook))		;@@@ wrong
+  (setf *saved-frame* (debugger-internal-frame))
   (unwind-protect
     (progn
       ;;(try-to-reset-curses)
@@ -379,6 +440,7 @@ number  Invoke that number restart (from the :r list).
 	      (*print-circle* t))
 	  (tiny-repl :interceptor #'debugger-interceptor
 		     :prompt-func #'debug-prompt
+		     :output *debug-io*
 		     :debug t
 		     :no-announce t))))
 ;    (Format *debug-io* "Exiting the debugger level ~d~%" *repl-level*)

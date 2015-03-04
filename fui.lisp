@@ -71,7 +71,6 @@
     (endwin)
     (setf *in-curses* nil)))
 
-;; I wonder if there's a way not to double the code.
 (defmacro with-curses (&body body)
   "Do the stuff in the body with curses initialized. Clean up properly."
   (let ((thunk (gensym "thunk")))
@@ -245,7 +244,8 @@ foreground FG and background BG."
 	   (string-list (mapcar #'princ-to-string the-list))
 	   (files       (if (not (null sort-p))
 			    ;; Where's the unreachable code??
-			    (sort string-list #'string-lessp) string-list))
+			    (sort string-list #'string-lessp)
+			    string-list))
 	   (max-line    (length files))
 	   (max-y       (1- curses:*lines*))
 	   (page-size   (- max-y 2))

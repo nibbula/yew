@@ -230,7 +230,7 @@
 ;; removed #\/ since it's common in package names
 
 (defvar *default-non-word-chars*
-  (concatenate 'vector *lisp-non-word-chars* #(#\-))
+  (concatenate 'vector *lisp-non-word-chars* #(#\- #\/))
   "Characters that are not considered to be part of a word by default.")
 
 (defvar *default-prompt* "> "
@@ -382,6 +382,11 @@
     :initarg :keymap
     :initform nil
     :documentation "The keymap.")
+   (accept-does-newline
+    :accessor accept-does-newline
+    :initarg :accept-does-newline
+    :initform t :type boolean
+    :documentation "True if accept-line outputs a newline.")
    )
   (:default-initargs
     :non-word-chars *default-non-word-chars*
@@ -1292,12 +1297,13 @@ it with ACTION's return value."
 	       (and prev (dl-content prev) (equal (dl-content prev) buf)))))))
 
 (defun accept-line (e)
-  (with-slots (buf quit-flag context) e
+  (with-slots (buf quit-flag context accept-does-newline) e
     (history-last context)
     (if (add-to-history-p e buf)
 	(history-put context buf)
 	(history-delete-last context))
-    (tt-write-char e #\newline)
+    (when accept-does-newline
+      (tt-write-char e #\newline))
     (setf quit-flag t)))
 
 (defun copy-region (e)
@@ -1800,10 +1806,11 @@ enter it."
   "Invoke the debugger from inside."
   (declare (ignore e))
   ;; Maybe this should just flash the screen?
-  (with-simple-restart (continue "Continue TINY-RL")
-    (invoke-debugger (make-condition
-		      'simple-condition
-		      :format-control "Abort command"))))
+  ;; (with-simple-restart (continue "Continue TINY-RL")
+  ;;   (invoke-debugger (make-condition
+  ;; 		      'simple-condition
+  ;; 		      :format-control "Abort command")))
+  (abort))
 
 (defun toggle-debugging (e)
   "Toggle debugging output."
@@ -2212,6 +2219,7 @@ enter it."
 		     (debug nil)
 		     (editor nil)
 		     (terminal-name nil)
+		     (accept-does-newline t)
 		     (context :tiny))
   "Read a line from the terminal, with line editing and completion.
 Return the string read and the line-editor instance created.
@@ -2233,6 +2241,8 @@ Keyword arguments:
     LINE-EDITOR instance to use.
   TERMINAL-NAME (nil)
     Name of a terminal device to use.
+  ACCEPT-DOES-NEWLINE (t)
+    True if accept-line outputs a newline.
   CONTEXT (nil)
     Symbol or string which defines the context for keeping history.
 " ; There must be a better way to format docstrings.
@@ -2250,6 +2260,7 @@ Keyword arguments:
 		       :in-callback in-callback
 		       :out-callback out-callback
 		       :debugging debug
+		       :accept-does-newline accept-does-newline
 		       :terminal-device-name terminal-name))))
     (when editor
       (freshen editor))
@@ -2307,5 +2318,31 @@ Keyword arguments:
 	   :eof-value eof-value
 	   :recursive-p recursive-p
 	   :prompt prompt))
+
+(defun read-filename (&key (prompt *default-prompt*))
+  "Read a file name."
+  (loop :with filename :and editor = nil
+     :do
+     (setf (values filename editor)
+	   (tiny-rl :prompt prompt
+		    :completion-func #'complete-filename
+		    :context :read-filename
+		    :accept-does-newline nil
+		    :editor editor))
+     :until (probe-file filename)
+     :do (tmp-message editor "File not found.")))
+
+(defun read-choice (list &key (prompt *default-prompt*))
+  "Read a choice from a list."
+  (loop :with item :and editor = nil
+     :do
+     (setf (values item editor)
+	   (tiny-rl :prompt prompt
+		    :completion-func (list-completion-function list)
+		    :context :read-choice
+		    :accept-does-newline nil
+		    :editor editor))
+     :until (position item list :key #'princ-to-string :test #'equal)
+     :do (tmp-message editor "~a is not a valid choice." item)))
 
 ;; EOF

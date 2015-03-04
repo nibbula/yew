@@ -88,6 +88,7 @@
   prompt-func   
   more		  If non-nil, a string of more input.
   terminal-name   Name of a terminal device or nil.
+  output          Stream to print output on or nil for the default.
   got-error	  A boolean which is true if we got an error.
   error-count     A fixnum which keeps the count of errors we have gotten.
   debug           A boolean which is true to enter the debugger on errors.
@@ -98,6 +99,7 @@
   prompt-string
   more
   terminal-name
+  output
   (got-error	nil	:type boolean)
   (error-count	0	:type fixnum)
   (debug	nil	:type boolean))
@@ -128,69 +130,27 @@
 	(progn
 	  (setf more (subseq more pos))
 	  (values val nil))))))
-#|
-(defun make-interceptor (commands)
-  (lambda (value state)
-    (flet ((matches (s string)
-	     (and (symbolp s)
-		  (equal 0 (search (symbol-name s) string :test #'equalp)))))
-      (if (and (symbolp value) (fboundp value))
-	  ;; Parenless function call!
-	  (let ((args (loop :with a :and eof
-			 :do
-			 (setf (values a eof) (read-arg state))
-			 :while (not eof)
-			 :collect a)))
-	    #| (format t "(eval ~s)~%" `(,value ,@args)) |#
-	    (format t "~&~s~%" (eval `(,value ,@args))) (finish-output)
-	    t)
-	  (loop :for c :in commands
-	     :do
-	     (when (matches value "Help")
-     (format t "~
-Hi. ~@?
-If you're weren't expecting a Lisp REPL, just type \"quit\" now. Otherwise,
-you might be interested to know that you are using Dan's TINY-REPL. If you want
-to get back to the normal REPL you can probably type \".\" (a period by
-itself). You can use some Emacs-like commands to edit the command line.
 
-Some notable keys are:
- <Tab>        Complete lisp symbol.
- ?            List lisp symbol completions.
- <Control-D>  Quit, when on an empty line, or delete the following character.
- <Control-P>  Previous history line.
- <Control-N>  Next history line.
- <Control-Q>  Quote next character, like if you want to really type a \"?\".
- ~@?
-"
-#+clisp "You are probably using CLisp and typed :h expecting some help."
-#-clisp "You probably typed :h by accident, or may even be expecting some help."
-		(if (find-package :lish) "~
- <F9>         Switch back and forth to LISH, which is a lispy/posixy shell."
-		    ""))
-     t)
-    ((matches value "History")
-     (tiny-rl:show-history (tiny-rl::context (repl-state-editor state)))
-     t))))
-|#
+;; @@@ better interface for custom interceptors: make-interceptor ?
 
 (defun snarky-interceptor (value state)
   (flet ((matches (s string)
 	   (and (symbolp s)
 		(equal 0 (search (symbol-name s) string :test #'equalp)))))
-  (cond
-    ;; Parenless function call!
-    ((and (symbolp value) (fboundp value))
-     (let ((args (loop :with a :and eof
-		    :do
-		    (setf (values a eof) (read-arg state))
-		    :while (not eof)
-		    :collect a)))
-;       (format t "(eval ~s)~%" `(,value ,@args))
-       (format t "~&~s~%" (eval `(,value ,@args))) (finish-output)
-       t))
-    ((matches value "Help")
-     (format t "~
+    (with-slots (output) state
+      (cond
+	;; Parenless function call!
+	((and (symbolp value) (fboundp value))
+	 (let ((args (loop :with a :and eof
+			:do
+			(setf (values a eof) (read-arg state))
+			:while (not eof)
+			:collect a)))
+;;;	   (format t "(eval ~s)~%" `(,value ,@args))
+	   (format output "~&~s~%" (eval `(,value ,@args))) (finish-output output)
+	   t))
+	((matches value "Help")
+	 (format output "~
 Hi. ~@?
 If you're weren't expecting a Lisp REPL, just type \"quit\" now. Otherwise,
 you might be interested to know that you are using Dan's TINY-REPL. If you want
@@ -211,26 +171,26 @@ Some notable keys are:
 		(if (find-package :lish) "~
  <F9>         Switch back and forth to LISH, which is a lispy/posixy shell."
 		    ""))
-     (format t "~%
+	 (format output "~%
 The REPL also has a ‘History’ command to list the history.")
-     t)
-    ((matches value "History")
-     (tiny-rl:show-history (tiny-rl::context (repl-state-editor state)))
-     t))))
+	 t)
+	((matches value "History")
+	 (tiny-rl:show-history (tiny-rl::context (repl-state-editor state)))
+	 t)))))
 
 (defvar *default-interceptor*
   #'snarky-interceptor
   "Help.")
 
 (defun confirm (state level)
-  (declare (ignore state))
-  (or (>= level 1)
-      (progn
-	(format t "~%Do you really want to quit the REPL? ")
-	(finish-output)
-	(let ((l (read-line *standard-input* nil nil)))
-	  (or (not l) 			; EOF = confirm (i.e. hit ^D)
-	      (and (stringp l) (> (length l) 0) (equalp (aref l 0) #\y)))))))
+  (with-slots (output) state
+    (or (>= level 1)
+	(progn
+	  (format output "~%Do you really want to quit the REPL? ")
+	  (finish-output output)
+	  (let ((l (read-line *standard-input* nil nil)))
+	    (or (not l)			; EOF = confirm (i.e. hit ^D)
+		(and (stringp l) (> (length l) 0) (equalp (aref l 0) #\y))))))))
 
 (define-condition repl-read-continue (simple-condition)
   ()
@@ -280,7 +240,7 @@ The REPL also has a ‘History’ command to list the history.")
 					 :editor editor
 					 :terminal-name terminal-name
 					 :context :repl
-					 :prompt-string prompt-string)
+					 :prompt prompt-string)
 				(tiny-rl :eof-value *real-eof-symbol*
 					 :quit-value *quit-symbol*
 					 :editor editor
@@ -323,7 +283,7 @@ The REPL also has a ‘History’ command to list the history.")
 	  ;;   (setf got-error t)
 	  ;;   (if debug
 	  ;; 	(invoke-debugger c)
-	  ;; 	(format t "~&~a" c))
+	  ;; 	(format output "~&~a" c))
 	  ;;   *error-symbol*)
 	  )))
     :do
@@ -336,7 +296,7 @@ The REPL also has a ‘History’ command to list the history.")
 
 ;; Eval and print
 (defun repl-eval (form state)
-  (with-slots (got-error error-count interceptor debug) state
+  (with-slots (got-error error-count interceptor debug output) state
     (cond
       ((or (eq form *empty-symbol*) (eq form *error-symbol*))
        ;; do nothing
@@ -355,18 +315,18 @@ The REPL also has a ‘History’ command to list the history.")
 		 ;; @@@ Probably a bad idea but, ignore warnings in the REPL
 		 (
 ; 		  (warning #'(lambda (c)
-; 			       (format t "~&WARNING: ~a~%" c)
+; 			       (format output "~&WARNING: ~a~%" c)
 ; 			       (muffle-warning)))
 ; 		  #+excl (excl::compiler-note
 ; 			  #'(lambda (c)
-; 			      (format t "Note: ~a~%" c)
+; 			      (format output "Note: ~a~%" c)
 ; 			      (continue)))
 		  (serious-condition
 		   #'(lambda (c)
 		       (dbug "Handler bind~%")
 		       (if debug
 			   (invoke-debugger c)
-			   (format t "Condition: ~a~%" c))))
+			   (format output "Condition: ~a~%" c))))
 		  )
 	       (progn
 		 (setf - form)
@@ -384,42 +344,42 @@ The REPL also has a ‘History’ command to list the history.")
 			(loop :with len = (length vals) :and i = 0
 			      :for v :in vals
 			      :do
-			      (format t "~&~s" v) ; This is the "P" in the REPL
+			      (format output "~&~s" v) ; This is the "P" in the REPL
 			      (when (and (> len 1) (< i (- len 1)))
-				(format t " ;~%")) ; It's kind of a convention
+				(format output " ;~%")) ; It's kind of a convention
 			      (incf i))
-			(terpri))
+			(terpri output))
 		   (setf +++ ++
 			 ++ +
 			 + -))))
 ; 	     #+excl (excl::compiler-note (c)
-;                       (format t "WTF Note: ~a~%" c)
+;                       (format output "WTF Note: ~a~%" c)
 ; 		      (continue))
 	   (serious-condition
 	    (c)
 	     (dbug "Handler case, serious condition~%")
 	     (if debug
 		 (invoke-debugger c)
-		 (format t "~a~%" c)))
+		 (format output "~a~%" c)))
 	   (error (c)
 	     (dbug "Handler case, error~%")
 	     (setf got-error t)
 	     (if debug
 		 (invoke-debugger c)
-		 (format t "~a~%" c)))))))
+		 (format output "~a~%" c)))))))
     (if got-error
 	(incf error-count)
 	(setf error-count 0))))
 
 (defun tiny-repl (&key prompt-func prompt-string no-announce terminal-name
-		    (interceptor *default-interceptor*)
-		    (debug t))
+		    (output *standard-output*) (interceptor *default-interceptor*) (debug t))
   "Keep reading and evaluating lisp, with line editing.
 PROMPT-FUNC   -- A TINY-RL prompt function, which is called with a with
                  an instance of TINY-RL:LINE-EDITOR and a prompt string.
 PROMPT-STRING -- 
 NO-ANNOUNCE   -- True to supress the announcement on starting.
 TERMINAL-NAME -- Name of a system terminal device to read from.
+OUTPUT        -- Stream to print output on.
 INTERCEPTOR   -- Function that's called with an object to be evaluated and a
 		 TINY-REPL:REPL-STATE. Allows interception of sepcial objects
                  before they're evaluated, usually used for commands. The
@@ -429,7 +389,7 @@ DEBUG	      -- True to install TINY-DEBUG as the debugger. Default is T.
 "
   ;; Annouce the implemtation and version on systems that don't always do it.
   #-sbcl (when (not no-announce)
-	   (format t "~a ~a~%"
+	   (format output "~a ~a~%"
 		   (lisp-implementation-type)
 		   (lisp-implementation-version)))
   #+sbcl (declare (ignore no-announce))
@@ -438,7 +398,8 @@ DEBUG	      -- True to install TINY-DEBUG as the debugger. Default is T.
 		:interceptor interceptor
 		:prompt-func prompt-func
 		:prompt-string prompt-string
-		:terminal-name terminal-name))
+		:terminal-name terminal-name
+		:output output))
 	(result nil)
 ;	(restart-result t)
 	(pass-back t)
@@ -486,18 +447,18 @@ DEBUG	      -- True to install TINY-DEBUG as the debugger. Default is T.
     (clear-input *standard-input*)
 
     (when (> (repl-state-error-count state) 8)
-      (format t "Quit due to too many errors.~%"))
+      (format output "Quit due to too many errors.~%"))
 
     (setq pass-back
 	  (cond
 	    ((eq result *real-eof-symbol*)
-	     (format t "*EOF*~%")
+	     (format output "*EOF*~%")
 	     t)
 	    ((eq result *quit-symbol*)
-	     (format t "*Quit*~%")
+	     (format output "*Quit*~%")
 	     t)
 	    ((eq result *exit-symbol*)
-	     (format t "*Exit*~%")
+	     (format output "*Exit*~%")
 	     nil)
 	    (t
 	     (dbug "~s ~a~%" result (type-of result))

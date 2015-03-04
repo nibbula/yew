@@ -16,4 +16,5 @@
     :long-description   "Test glob package."
     :depends-on (:glob :test)
     :components
-    ((:file "glob-test")))
+    ((:file "glob-test"))
+    :perform (asdf:test-op (o c) (uiop:symbol-call :glob-test :run-tests)))

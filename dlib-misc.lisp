@@ -37,12 +37,14 @@
    #:print-values
    #:print-values*
    #:print-columns
+   #:print-columns-sizer
    #:print-size
    #:dir
    #:abspath
    #:dirname
    #:basename
    #:quote-filename
+   #:slurp
    #:unintern-conflicts
    #:show-features
    #:describe-environment
@@ -174,15 +176,20 @@ swaps to do times the length of the array. "
 	       (setf (aref s b) aux))))
   s)
 
-;; This is mostly just here so I can remember how to do it.
-;; It's very consing, but remarkably succinct.
+;; This is very consing, but remarkably succinct.
 ;; It might be nice if it got the COLS from the implementation's idea of it.
 (defun justify-text (s &key (cols 80) (stream *standard-output*)
-			 (prefix "") (separator #\space))
-  "Print the string S right justified by words, into COLS characters wide, on the stream STREAM. SEPARATOR is a character or string which separate the input words. PREFIX is printed in front of each line."
+			 (prefix "") (separator #\space)
+			 omit-first-prefix)
+  "Print the string S right justified by words, into COLS characters wide,
+on the stream STREAM.
+SEPARATOR is a character or string which separates the input words.
+PREFIX is printed in front of each line.
+If OMIT-FIRST-PREFIX is true, don't print the first prefix."
   (format stream (format nil "~a~a~a~d~a"
 			 "~a~{~<~%" prefix "~1," cols ":;~a~> ~}")
-	  prefix (split-sequence separator s :omit-empty t)))
+	  (if omit-first-prefix "" prefix)
+	  (split-sequence separator s :omit-empty t)))
 
 ;; This only works with a MOP
 #+mop
@@ -209,7 +216,8 @@ swaps to do times the length of the array. "
   (values))
 
 (defun show-expansion (form &optional full)
-  "Show a pretty printed macro expansion of the form. If full is true, expand all macros recursively."
+  "Show a pretty printed macro expansion of the form. If full is true,
+expand all macros recursively."
   ;; @@@ This is wrong since it lowercases everything (like strings) too.
   ;; @@@ Fix to use pretty printer customization to lowercase.
   (format t "~%~(~?~%~)~%" "~:w"
@@ -486,47 +494,126 @@ lexical variables."
 		      ,snork))))
     `(progn ,@spudgers)))
 
-(defun print-columns (list &key (columns 80) (stream *standard-output*)
-			     (format-char #\a))
+(defun print-columns-sizer (list &key (columns 80) (stream *standard-output*)
+			     (format-char #\a) prefix suffix smush)
+  "Return how many rows it might take to print list. Also returns the number of
+columns and the maximum width of a column."
+  (declare (ignore stream smush))
+  (let* ((len (length list))
+	 (max-len
+	  ;; This, although terse, may be inefficient w/big lists (@@@ test!):
+	  (loop :with m = 0
+	     :for c :in list :do
+	     (setf m (max m (length
+			     (format nil
+				     (format nil "~~~c" format-char)
+				     c))))
+	     :finally (return (1+ m))))
+	 (width (- (1- columns)
+		   (if prefix (length prefix) 0)
+		   (if suffix (length suffix) 0)))
+	 (ccc   (floor width max-len))
+	 (cols  (if (zerop ccc) 1 ccc))
+	 (rows  (if (zerop cols) len (ceiling len cols))))
+    (when (> max-len width) (setf max-len width))
+    (values rows cols max-len)))
+
+(defun print-columns (list &rest keys
+		      &key (columns 80) (stream *standard-output*)
+			(format-char #\a) prefix suffix smush)
   "Print the LIST on STREAM with as many columns as will fit in COLUMNS fixed
 width character cells. Items are sorted down the columns, then across.
-FORMAT-CHAR is used to print the items, as with FORMAT."
-  (let ((len (length list)))
-    (let* ((max-len
-	    ;; This, although terse, may be inefficient w/big lists (@@@ test!):
-	    (loop :with m = 0
-	       :for c :in list :do
-	       (setf m (max m (length
-			       (format nil
-				       (format nil "~~~c" format-char)
-				       c))))
-	       :finally (return (1+ m))))
-	   (width (1- columns))
-	   (ccc   (floor width max-len))
-	   (cols  (if (zerop ccc) 1 ccc))
-	   (rows  (if (zerop cols) len (ceiling len cols)))
-	   (col   0)
-	   (row   0)
-	   (a     (make-array `(,cols ,rows) :initial-element nil)))
-      ;; for each line,  for each col , elt mod
-      (when (> max-len width) (setf max-len width))
-      (loop :for c :in list
-	    :do
-	    (setf (aref a col row) c)
-	    (incf row)
-	    (when (>= row rows)
-	      (incf col)
-	      (setf row 0)))
-      (loop :for r :from 0 :below rows
-	 :do
-	 (loop :for c :from 0 :below cols
-	    :do
-	    (when (aref a c r)
-	      (write-string
-	       (format nil (format nil "~~v~c" format-char)
-		       max-len (aref a c r))
-	       stream)))
-	 (terpri)))))
+FORMAT-CHAR is used to print the items, as with FORMAT.
+PREFIX is a string to prepend to each row.
+SUFFIX is a string to append to each row."
+  (declare (ignore columns smush))
+  (multiple-value-bind (rows cols max-len)
+      (apply #'print-columns-sizer list keys)
+     (let ((a (make-array `(,cols ,rows) :initial-element nil)))
+       ;; fill in the array from the list
+       (loop :with col = 0 :and row = 0
+	  :for c :in list
+	  :do
+	  (setf (aref a col row) c)
+	  (incf row)
+	  (when (>= row rows)
+	    (incf col)
+	    (setf row 0)))
+       ;; output the array
+       (loop :for r :from 0 :below rows
+	  :do
+	  (when prefix
+	    (write-string prefix stream))
+	  (loop :for c :from 0 :below cols
+	     :do
+	     (if (aref a c r)
+		 (progn
+		   (write-string
+		    (format nil (format nil "~~v~c" format-char)
+			    max-len (aref a c r))
+		    stream))
+		 ;; If we have a suffix, fill out blank space
+		 (if suffix
+		     (write-string
+		      (format nil "~va" max-len #\space)
+		      stream))))
+	  (when suffix
+	    (write-string suffix stream))
+	  (terpri stream)))))
+
+(defun OLD-print-columns (list &key (columns 80) (stream *standard-output*)
+			     (format-char #\a) prefix suffix)
+  "Print the LIST on STREAM with as many columns as will fit in COLUMNS fixed
+width character cells. Items are sorted down the columns, then across.
+FORMAT-CHAR is used to print the items, as with FORMAT.
+PREFIX is a string to prepend to each row.
+SUFFIX is a string to append to each row."
+  (let* ((len (length list))
+	 (max-len
+	  ;; This, although terse, may be inefficient w/big lists (@@@ test!):
+	  (loop :with m = 0
+	     :for c :in list :do
+	     (setf m (max m (length
+			     (format nil
+				     (format nil "~~~c" format-char)
+				     c))))
+	     :finally (return (1+ m))))
+	 (width (- (1- columns)
+		   (if prefix (length prefix) 0)
+		   (if suffix (length suffix) 0)))
+	 (ccc   (floor width max-len))
+	 (cols  (if (zerop ccc) 1 ccc))
+	 (rows  (if (zerop cols) len (ceiling len cols)))
+	 (col   0)
+	 (row   0)
+	 (a     (make-array `(,cols ,rows) :initial-element nil)))
+    ;; for each line,  for each col , elt mod
+    (when (> max-len width) (setf max-len width))
+    (loop :for c :in list
+       :do
+       (setf (aref a col row) c)
+       (incf row)
+       (when (>= row rows)
+	 (incf col)
+	 (setf row 0)))
+    (loop :for r :from 0 :below rows
+       :do
+       (when prefix
+	 (write-string prefix stream))
+       (loop :for c :from 0 :below cols
+	  :do
+	  (if (aref a c r)
+	      (progn
+		(write-string
+		 (format nil (format nil "~~v~c" format-char)
+			 max-len (aref a c r))
+		 stream))
+	      (if suffix
+		  (write-string
+		   (format nil "~va" max-len #\space)))))
+       (when suffix
+	 (write-string suffix stream))
+       (terpri))))
 
 (defparameter *iec-size-prefixes*
   #(nil "kibi" "mebi" "gibi" "tebi" "pebi" "exbi" "zebi" "yobi" "buttload"))
@@ -545,7 +632,11 @@ FORMAT-CHAR is used to print the items, as with FORMAT."
 	      (loop :for i :from 0 :to 10 :collect (expt 1024 i))))
 
 (defun print-size (size &key (stream t) long unit traditional abbrevs)
-  "Print a size with standard binary units. If LONG is true, print the long unit name. If UNIT is supplied, it should be a string of the unit to be prefixed. UNIT defaults to ‘B’ or “byte” depending on LONG. ABBREVS is a custom list of size abbreviations. If TRADITIONAL is non-nil, use traditional units."
+  "Print a size with standard binary units. If LONG is true, print the long
+unit name. If UNIT is supplied, it should be a string of the unit to be
+prefixed. UNIT defaults to ‘B’ or “byte” depending on LONG. ABBREVS is a
+custom list of size abbreviations. If TRADITIONAL is non-nil, use
+traditional units."
   (setf unit (or unit (or (and long "byte") "B")))
   (let ((prefixes (if traditional *traditional-size-prefixes*
 		      *iec-size-prefixes*)))
@@ -602,7 +693,8 @@ FORMAT-CHAR is used to print the items, as with FORMAT."
     sc))
 
 (defun describe-packages (&key include-systems)
-  "List packages in a hopefully consise format. If INCLUDE-SYSTEMS is true, it will also list packages it thinks are ASDF system packages."
+  "List packages in a hopefully consise format. If INCLUDE-SYSTEMS is true,
+it will also list packages it thinks are ASDF system packages."
   (format t "~30a ~5a ~a~%" "Package Name" "Count" "Package Deps")
   (format t "~30,,,'-a ~5,,,'-a ~43,,,'-a~%" "-" "-" "-")
   (let* ((paks (copy-seq (list-all-packages)))
@@ -629,7 +721,8 @@ FORMAT-CHAR is used to print the items, as with FORMAT."
 		 nice-used-by)))))
 
 (defun describe-package (p &key symbols)
-  "Describe a package. SYMBOLS is :ext (or just non-nil) to show external symbols, :all to show internal symbols too."
+  "Describe a package. SYMBOLS is :ext (or just non-nil) to show external
+symbols, :all to show internal symbols too."
   (setf p (find-package p))
   (format t "Package ~a~%" (package-name p))
   (let* ((doc     (documentation p t))
@@ -748,7 +841,11 @@ FORMAT-CHAR is used to print the items, as with FORMAT."
 
 ;; Simple mindless ASDF autoloader.
 (defmacro autoload (symbol system doc-string &optional macro)
-  "Define a function to load an ASDF system which contains a redefinition of that function, and call it. In other words, define a stub function which automatically loads the real function from a package and then calls it. The actual package should be the same name as the ASDF package and define function with the same name. If it's a macro, pass MACRO as true, mmkay?"
+  "Define a function to load an ASDF system which contains a redefinition of
+that function, and call it. In other words, define a stub function which
+automatically loads the real function from a package and then calls it. The
+actual package should be the same name as the ASDF package and define function
+with the same name. If it's a macro, pass MACRO as true, mmkay?"
   (let ((doit
 	 (if macro
 	     `(eval (list* (intern (string ',symbol) ,system) args))
@@ -765,7 +862,8 @@ FORMAT-CHAR is used to print the items, as with FORMAT."
 
 #|
 (defun read-text ()
-  "A very simplistic text reader. Mostly useful if you just want to paste some text into lisp and have it be stored as lines of words."
+  "A very simplistic text reader. Mostly useful if you just want to paste some
+text into lisp and have it be stored as lines of words."
   (loop :with s
      :while (string/= "" (setf s (read-line)))
      :collect (split-sequence #(#\space #\tab) s :omit-empty t :by-group t)))
@@ -938,5 +1036,52 @@ FORMAT-CHAR is used to print the items, as with FORMAT."
   (probe-file (if (stringp literal-filename)
 		  (quote-filename literal-filename)
 		  literal-filename)))
+
+(defparameter *slurp-buffer-size* 4096)
+
+;; This is kind of some duplication from stuff in lish/piping.lisp.
+;;
+;; I don't think this should ever a slurp a URL, because security?.
+;; Anyway drakma does it better.
+
+(defun slurp (file-or-stream)
+  "Return a string (well actually an array of stream-element-type, which
+defaults to character) with the contents of FILE-OR-STREAM."
+  (let (stream (close-me nil) buffer pos len result)
+    (unwind-protect
+	 (progn
+	   (setf stream
+		 (etypecase file-or-stream
+		   (stream
+		    file-or-stream)
+		   (string
+		    (setf close-me t)
+		    (open file-or-stream))))
+	   (if (and (typep stream 'file-stream)
+		    (setf len (file-length stream)))
+	       (progn
+		 ;; Read the whole thing at once.
+		 (setf buffer (make-array len
+					  :element-type
+					  (stream-element-type stream)))
+		 (read-sequence buffer stream)
+		 (setf result buffer))
+	       (progn
+		 ;; Read in chunks an write to a string.
+		 (setf len *slurp-buffer-size*
+		       buffer (make-array len
+					  :element-type
+					  (stream-element-type stream)))
+		 (with-output-to-string (str nil
+					 :element-type
+					 (stream-element-type stream))
+		   (loop :do
+		      (setf pos (read-sequence buffer stream))
+		      (when (> pos 0)
+			(write-sequence buffer str :end pos))
+		      :while (= pos len))))))
+      (if close-me
+	  (close stream)))
+    result))
 
 ;; End

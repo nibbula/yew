@@ -14,6 +14,6 @@
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :licence            "None"
     :long-description   "Kickin' it old school."
-    :depends-on (:cffi :opsys :dlib-misc)
+    :depends-on (:cffi :opsys :dlib-misc :char-util)
     :components
     ((:file "termios")))

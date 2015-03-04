@@ -26,10 +26,10 @@
    ))
 (in-package :pager)
 
-;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
-;; 		   (compilation-speed 2)))
-(declaim (optimize (speed 3) (safety 0) (debug 0) (space 1)
-		   (compilation-speed 0)))
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+ 		   (compilation-speed 2)))
+;;(declaim (optimize (speed 3) (safety 0) (debug 0) (space 1)
+;;		   (compilation-speed 0)))
 
 (define-constant +digits+ #(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
   "For reading the numeric argument." #'equalp)
@@ -108,6 +108,9 @@
    ;; options
    (show-line-numbers
     :initarg :show-line-numbers :accessor pager-show-line-numbers :initform nil
+    :documentation "-l")
+   (wrap-lines
+    :initarg :show-line-numbers :accessor pager-show-line-numbers :initform nil
     :documentation "-l"))
   (:documentation "An instance of a pager."))
 
@@ -156,6 +159,15 @@
   (line 0 :type fixnum)
   (attrs nil :type list))
 
+(defun make-fat-string (string)
+  "Make a fat string from a string."
+  (let ((fs (make-array (list (length string))
+			:element-type 'fatchar
+			:initial-element (make-fatchar))))
+    (loop :for i :from 0 :below (length string) :do
+       (setf (aref fs i) (make-fatchar :c (char string i))))
+    fs))
+
 (defun span-length (span)
   "Calculate the length in characters of the span."
   (the fixnum (loop :for e :in span
@@ -163,6 +175,82 @@
 			(string (length e))
 			(cons (span-length e))
 			(t 0)))))
+
+#|
+(defun get-inner-span (fat-line start tag state)
+  (let ((i start)
+	(len (- (length fat-line) start))
+	(span '())
+	c)
+    (loop :do
+       (setf c (aref fat-line i))
+       (let ((added
+	      (set-difference (fatchar-attrs c) (fatchar-attrs state))
+	     (removed
+	      (set-difference (fatchar-attrs state) (fatchar-attrs c)))))
+	 (when (not (eql (fatchar-fg c) (fatchar-fg state)))
+	   (
+	   (push (fatchar-fg c) added))
+	 (when (not (eql (fatchar-bg c) (fatchar-bg state)))
+	   (push (fatchar-fg c) added))
+	     
+		  
+	 (incf i)
+       :while (< i len))
+    `(,tag ,@span)))
+
+(defun NEW-get-span (fat-line start)
+  "Convert a FATCHAR line to tagged spans."
+  (when (= (length fat-line) 0)
+    (return-from get-span fat-line))
+  (let ((str (make-stretchy-string (- (length fat-line) start)))
+	)
+    (get-inner-span
+
+(defun NEW-get-span (fat-line start)
+  "Convert a FATCHAR line to tagged spans."
+  (when (= (length fat-line) 0)
+    (return-from get-span fat-line))
+  (let ((str (make-stretchy-string (- (length fat-line) start)))
+	(attrs (fatchar-attrs (aref fat-line start)))
+	(i start) (len (length fat-line))
+	(span '())
+	last c)
+    (loop :do
+       (setf c (aref fat-line i))
+       (if last
+	 (let ((added
+		(set-difference (fatchar-attrs c) (fatchar-attrs last)))
+	       (removed
+		(set-difference (fatchar-attrs last) (fatchar-attrs c)))))
+	   (cond
+	     (removed
+	      (when (/= 0 (length str))
+		(push str span))
+	      (setf span (nreverse span))
+	      (return-from get-span `(,@attr ,@span)))
+	     (added
+	      (when (/= 0 (length str))
+		(push (copy-seq str) span))
+	      (let ((s (get-span fat-line i)))
+		(push s span)
+		(incf i (span-length s)))
+	      (stretchy-truncate str))
+	     (t
+	      (stretchy-append str (fatchar-c c))
+	      (incf i)
+	      (setf last c))))
+	 (progn
+	   (stretchy-append str (fatchar-c c))
+	   (incf i)
+	   (setf last c)))
+       :while (< i len))
+    (when (/= 0 (length str))
+      (push str span))
+    (setf span (nreverse span))
+    `(,@attr ,@span)))
+
+|#
 
 (defun get-span (fat-line start)
   "Convert a FATCHAR line to tagged spans."
@@ -226,15 +314,17 @@ the ^[[ and return NIL if there was no valid sequence, or an integer offset
 to after the sequence, the foreground, background and a list of attributes.
 NIL stands for whatever the default is, and :UNSET means that they were not
 set in this string."
-  (let (num (i 0) (len (length str)) inc
-	    (fg :unset) (bg :unset) (attr '()) attr-was-set)
+  (let (num inc attr-was-set
+	(i 0) (len (length str))
+	(fg :unset) (bg :unset) (attr '()))
     (loop
        :do
-;       (princ "> ") (dumpy num i inc (subseq str i))
+       #| (princ "> ") (dumpy num i inc (subseq str i)) |#
        (setf (values num inc) (parse-integer str :start i :junk-allowed t))
-;       (princ "< ") (dumpy num i inc (subseq str i))
+       #| (princ "< ") (dumpy num i inc (subseq str i)) |#
        (if (or (not num) (not inc))
 	   (progn
+	     ;; Just an #\m without arguments means no attrs and unset color
 	     (when (eql (char str i) #\m)
 	       (setf attr '() fg nil bg nil attr-was-set t))
 	     (return))
@@ -278,9 +368,11 @@ set in this string."
 		 (46 (setf bg :cyan))
 		 (47 (setf bg :white))
 		 (49 (setf bg nil))
-		 (otherwise #| just ignore unknown colors or attrs |#)))))
+		 (otherwise #| just ignore unknown colors or attrs |#))
+	       (when (eql (char str (1- i)) #\m)
+		 (return)))))
        :while (< i len))
-    (values 
+    (values
      (if (and (eq fg :unset) (eq bg :unset) (not attr-was-set))
 	 nil i)
      fg bg (if (not attr-was-set) :unset attr))))
@@ -297,7 +389,7 @@ set in this string."
        :and fg :and bg :and c :and attrs
        :while (< i len)
        :do
-       (when (and (< i (1- len))
+#|       (when (and (< i (1- len))
 		  (char= (aref line i) #\escape)
 		  (char= (aref line (1+ i)) #\[))
 	 (multiple-value-bind (inc i-fg i-bg i-attrs)
@@ -307,43 +399,69 @@ set in this string."
 	   (unless (eq i-attrs :unset) (setf attrs i-attrs))
 	   (when inc
 	     (incf i inc)))
-	 )
+       ) |#
+       (when (and (< i (1- len))
+		  (char= (aref line i) #\escape)
+		  (char= (aref line (1+ i)) #\[))
+	 (let ((i-attrs :lumpy))
+	   (unless (eq i-attrs :lumpy)
+	     (setf attrs i-attrs))))
        (setf c (aref fat-line i)
 	     (fatchar-fg c) fg
-	     (fatchar-bg c) bg)
-       (setf (fatchar-attrs c) (nunion attrs (fatchar-attrs c)))
+	     (fatchar-bg c) bg
+	     (fatchar-attrs c) (nunion attrs (fatchar-attrs c))
+	     )
        (push c new-fat-line)
        (incf i))
     new-fat-line))
 
+(defun poo (x)
+  (let ((nfl '()))
+    (loop :with c
+       :for i :from 1 :to 10 :do
+       (setf c (aref x i)
+	     (fatchar-attrs c) (union `(1 ,i 2 3) '(do re me)))
+       (push c nfl))
+    nfl))
+
 (defun process-ansi-colors-line (fat-line)
-  (when (= (length fat-line) 0)
+  (when (zerop (length fat-line))
     (return-from process-ansi-colors-line fat-line))
   (let ((new-fat-line (make-stretchy-vector (length fat-line)
-					    :element-type 'fatchar)))
-    (loop :with len = (length fat-line) :and i = 0
-       :and line = (map 'string #'(lambda (x) (fatchar-c x)) fat-line)
-       :and fg :and bg :and c :and attrs
-       :while (< i len)
-       :do
-       (when (and (< i (1- len))
+					    :element-type 'fatchar))
+	(i 0)
+	(len (length fat-line))
+	(line (map 'string #'(lambda (x) (fatchar-c x)) fat-line))
+	fg bg attrs)
+    (flet ((looking-at-attrs ()
+	     "Return true if might be looking at some attrs."
+	     (and (< i (1- len))
 		  (char= (aref line i) #\escape)
-		  (char= (aref line (1+ i)) #\[))
-	 (format t "HOWDY ~s~%" i)
-	 (multiple-value-bind (inc i-fg i-bg i-attrs)
-	     (grok-ansi-color (subseq line i))
-	   (unless (eq i-fg    :unset) (setf fg i-fg) (format t "FG ~s~%" fg))
-	   (unless (eq i-bg    :unset) (setf bg i-bg) (format t "BG ~s~%" bg))
-	   (unless (eq i-attrs :unset) (setf attrs i-attrs))
-	   (when inc
-	     (format t "BONG ~s~%" inc)
-	     (incf i inc))))
-       (setf c (aref fat-line i)
-	     (fatchar-fg c) fg
-	     (fatchar-bg c) bg
-	     (fatchar-attrs c) (nunion attrs (fatchar-attrs c)))
-       (stretchy:stretchy-append new-fat-line c)
-       (incf i))
+		  (char= (aref line (1+ i)) #\[)))
+	   (get-attrs ()
+	     "Get the attrs we might be looking at."
+	     (incf i 2) ; the ^[ and [
+	     (multiple-value-bind (inc i-fg i-bg i-attrs)
+		 (grok-ansi-color (subseq line i))
+	       (unless (eq i-fg    :unset) (setf fg i-fg))
+	       (unless (eq i-bg    :unset) (setf bg i-bg))
+	       (unless (eq i-attrs :unset) (setf attrs i-attrs))
+	       (when inc
+		 (incf i inc))))	; for the parameters read
+	   (copy-char ()
+	     "Copy the current character to result."
+	     (stretchy:stretchy-append
+	      new-fat-line (make-fatchar
+			    :c (fatchar-c (aref fat-line i))
+			    :fg fg :bg bg
+			    :attrs (nunion
+				    attrs
+				    (fatchar-attrs (aref fat-line i)))))
+	     (incf i)))
+      (loop :while (< i len) :do
+	 (if (looking-at-attrs)
+	     (get-attrs)
+	     (copy-char))))
     new-fat-line))
 
 (defun process-grotty-line (line)

@@ -397,10 +397,11 @@
       (and found-symbol (eql status :external) (fboundp found-symbol)))))
 
 ;; @@@ I should probably really do this with an error type
-(defun missing-implementation (sym)
-  "Complain that something is missing."
-  (error "Somebody needs to provide an implementation for ~a on ~a~%"
-	 sym (lisp-implementation-type)))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun missing-implementation (sym)
+    "Complain that something is missing."
+    (error "Somebody needs to provide an implementation for ~a on ~a~%"
+	   sym (lisp-implementation-type))))
 
 ;; This is in dlib too, but I don't want to depend on it.
 ;; I suppose we could use the one in alexandria, since but it's a dependency
@@ -474,7 +475,14 @@
 (defctype blkcnt-t #+64-bit-target :int64 #+32-bit-target :int32)
 (defctype blksize-t :int32)
 (defctype fixpt-t :uint32)
-(defctype sigset-t :uint32)
+#+(or darwin sunos) (defctype sigset-t :uint32)
+#+linux
+(defcstruct foreign-sigset-t
+  (value :unsigned-long :count
+	 (/ 1024 (* 8 (cffi:foreign-type-size :unsigned-long)))))
+;; unsigned long int __val[(1024 / (8 * sizeof (unsigned long int)))];
+#+linux
+(defctype sigset-t (:struct foreign-sigset-t))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Error handling
@@ -975,30 +983,77 @@ string (denoting itself)."
 	))
 
 ;; _NSGetEnviron()
-#+ecl
+#+(and ecl darwin)
 (progn
   (defcfun ("_NSGetEnviron" ns-get-environ) :pointer)
   (defun real-environ () (mem-ref (ns-get-environ) :pointer)))
 
-#-ecl
+#-(and ecl darwin)
 (progn
 ;  #-clisp (defcvar ("environ" *real-environ*) :pointer "extern char **envrion;")
   #-clisp (defcvar ("environ" *real-environ*) :pointer)
   #+clisp (defcvar ("environ" *real-environ*) :pointer)
   (defun real-environ () *real-environ*))
 
-#+(or ccl ecl lispworks)
-(defun posix-environ ()
-  (loop :with p = (real-environ) and s = nil
-	:while (setf s (mem-ref p :string))
-	:collect (progn
-		  (setf p (inc-pointer p (foreign-type-size :pointer)))
-		  s)))
+(defun make-c-env (lisp-env)
+  "Make a 'C' environment list from a Lisp environment list. The Lisp
+environment is a list of (:KEYWORD . \"STRING\") pairs, as returned by ENVIRON.
+It allocates it in 'C' space, so to free it, use FREE-C-ENV."
+  (let (c-env
+	(len (length lisp-env))
+	(done 0))
+    (unwind-protect
+      (progn
+	(setf c-env (foreign-alloc :string :count (1+ len)))
+	(loop
+	   :for i :from 0 :below len
+	   :for e :in lisp-env
+	   :do
+	   (when (not (symbolp (car e)))
+	     (error "The CAR of an environment pair should be a symbol, not ~s."
+		    (car e)))
+	   (when (not (stringp (cdr e)))
+	     (error "The CDR of an environment pair should be a string, not ~s."
+		    (cdr e)))
+	   (setf (mem-aref c-env :pointer i)
+		 (foreign-string-alloc
+		  (concatenate 'string (princ-to-string (car e)) "=" (cdr e))))
+	   (incf done))
+	(setf (mem-aref c-env :pointer len) (null-pointer)))
+      ;; Clean up, if not done.
+      (when (and (< done len) c-env (not (null-pointer-p c-env)))
+	(loop :for i :from 0 :below done :do
+	   (when (not (null-pointer-p (mem-aref c-env :pointer i)))
+	     (foreign-free (mem-aref c-env :pointer i))))
+	(foreign-free c-env)))
+    c-env))
 
+(defun free-c-env (c-env)
+  "Free the 'C' environment list."
+  (when (and c-env (not (null-pointer-p c-env)))
+    (loop :with p = c-env :and s = nil
+       :while (not (null-pointer-p (setf s (mem-ref p :pointer)))) :do
+       (setf p (inc-pointer p (foreign-type-size :pointer)))
+       (foreign-string-free s))
+    (foreign-free c-env)))
+
+(defun posix-environ (&optional (env (real-environ)))
+  "Convert the 'C' environment list ENV to a list of strings. ENV defaults to
+the current 'C' environment."
+  (loop :with p = env :and s = nil
+     :while (setf s (mem-ref p :string))
+     :collect (progn
+		(setf p (inc-pointer p (foreign-type-size :pointer)))
+		s)))
+
+;; @@@ The whole convert-environ and having it as keywords, might be stupid?
+;; Is this what the SBCL docs describe as the lossy CMU way?
 (defun environ ()
-  "Return an a-list of the system environment. The elements are conses (VARIABLE-NAME . VALUE), where VARIABLE-NAME is a keyword and VALUE is a string."
+  "Return an a-list of the system environment. The elements are conses
+(VARIABLE-NAME . VALUE), where VARIABLE-NAME is a keyword and VALUE is a string."
   #+clisp (convert-environ (ext:getenv))
-  #+sbcl (convert-environ (sb-ext:posix-environ))
+;  #+sbcl (convert-environ (sb-ext:posix-environ))
+  #+sbcl (convert-environ (posix-environ))
   #+ccl (convert-environ (posix-environ))
   #+ecl (convert-environ (posix-environ))
   #+lispworks (convert-environ (posix-environ))
@@ -2071,6 +2126,7 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
   "Return the operating system handle for a stream. If there is more than one
 system handle, return an arbitrary one, or the one specified by `DIRECTION`,
 which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
+  #+sbcl (declare (ignore direction))
   #+sbcl
   (cond
     ((and (typep stream 'synonym-stream)
@@ -2793,10 +2849,15 @@ for long."
 (defcfun execvp :int (path :pointer) (args :pointer))
 (defcfun execve :int (path :pointer) (args :pointer) (env :pointer))
 
-(defun exec (path args)
-  "Replace this program with executable in the string PATH. Run the program with arguments in ARGS, which should be a list of strings. By convention, the first argument should be the command name."
+(defun exec (path args &optional (env *real-environ*))
+  "Replace this program with executable in the string PATH. Run the program with
+arguments in ARGS, which should be a list of strings. By convention, the first
+argument should be the command name. ENV is either a Lisp or 'C' environment
+list, which defaults to the current 'C' environ variable."
   (declare (type string path) (type list args))
-  (let (c-path c-args (argc (length args)))
+  (let ((argc (length args))
+	(c-env (if (pointerp env) env (make-c-env env)))
+	c-path c-args)
     (unwind-protect
       (progn
 	(setf c-path (foreign-string-alloc path)
@@ -2805,14 +2866,16 @@ for long."
 	   (setf (mem-aref c-args :pointer i)
 		 (foreign-string-alloc (elt args i))))
 	(setf (mem-aref c-args :pointer argc) (null-pointer))
-	(syscall (execve c-path c-args *real-environ*)))
+	(syscall (execve c-path c-args c-env)))
       ;; Clean up
       (when (and c-path (not (null-pointer-p c-path)))
 	(foreign-free c-path))
       (when (and c-args (not (null-pointer-p c-args)))
 	(loop :for i :from 0 :below argc :do
 	   (foreign-free (mem-aref c-args :string)))
-	(foreign-free c-args)))))
+	(foreign-free c-args))
+      (when (and c-env (pointerp c-env) (not (pointerp env)))
+	(free-c-env c-env)))))
 
 (defcfun wait pid-t (status :pointer))
 (defcfun waitpid pid-t (wpid pid-t) (status :pointer) (options :int))
@@ -3082,7 +3145,8 @@ Trying to simplify our lives, by just using our own FFI versions, above.
 (defparameter *signal-count*
   #+darwin 32
   #+sunos *nsig*
-  #-(or darwin sunos) nil		; @@@ or perhaps 0?
+  #+linux 32 ;; actually 65 if you count realtime (RT) signals
+  #-(or darwin sunos linux) (missing-implementation) ; @@@ or perhaps 0?
   "Number of signal types, a.k.a. NSIG."
 )
 
@@ -3092,32 +3156,42 @@ Trying to simplify our lives, by just using our own FFI versions, above.
 (defconstant SIGILL	4)  ; Illegal instruction
 (defconstant SIGTRAP	5)  ; Trace/BPT trap
 (defconstant SIGABRT	6)  ; Abort trap
-(defconstant SIGPOLL	7)
-(defconstant SIGEMT	7)  ; EMT trap
+(defconstant SIGPOLL	#+darwin 7 #+linux 29)
+(defconstant SIGEMT	#+darwin 7 #+linux nil)  ; EMT trap
 (defconstant SIGFPE	8)  ; Floating point exception
 (defconstant SIGKILL	9)  ; Killed
-(defconstant SIGBUS	10) ; Bus error
+(defconstant SIGBUS	#+darwin 10 #+linux 7) ; Bus error
 (defconstant SIGSEGV	11) ; Segmentation fault
-(defconstant SIGSYS	12) ; Bad system call
+(defconstant SIGSYS	#+darwin 12 #+linux 31) ; Bad system call
 (defconstant SIGPIPE	13) ; Broken pipe
 (defconstant SIGALRM	14) ; Alarm clock
 (defconstant SIGTERM	15) ; Terminated
-(defconstant SIGURG	16) ; Urgent I/O condition
-(defconstant SIGSTOP	17) ; Suspended (signal)
-(defconstant SIGTSTP	18) ; Suspended
-(defconstant SIGCONT	19) ; Continued
-(defconstant SIGCHLD	20) ; Child exited
+(defconstant SIGURG	#+darwin 16 #+linux 23) ; Urgent I/O condition
+(defconstant SIGSTOP	#+darwin 17 #+linux 19) ; Suspended (signal)
+(defconstant SIGTSTP	#+darwin 18 #+linux 20) ; Suspended
+(defconstant SIGCONT	#+darwin 19 #+linux 18) ; Continued
+(defconstant SIGCHLD	#+darwin 20 #+linux 17) ; Child exited
 (defconstant SIGTTIN	21) ; Stopped (tty input)
 (defconstant SIGTTOU	22) ; Stopped (tty output)
-(defconstant SIGIO	23) ; I/O possible
+(defconstant SIGIO	#+darwin 23 #+linux 29) ; I/O possible
 (defconstant SIGXCPU	24) ; Cputime limit exceeded
 (defconstant SIGXFSZ	25) ; Filesize limit exceeded
 (defconstant SIGVTALRM	26) ; Virtual timer expired
 (defconstant SIGPROF	27) ; Profiling timer expired
 (defconstant SIGWINCH	28) ; Window size changes
-(defconstant SIGINFO	29) ; Information request
-(defconstant SIGUSR1	30) ; User defined signal 1
-(defconstant SIGUSR2	31) ; User defined signal 2
+(defconstant SIGINFO	#+darwin 29 #+linux nil) ; Information request
+(defconstant SIGUSR1	#+darwin 30 #+linux 10)  ; User defined signal 1
+(defconstant SIGUSR2	#+darwin 31 #+linux 12)  ; User defined signal 2
+(defconstant SIGSTKFLT  #+darwin nil #+linux 16) ; Stack fault
+(defconstant SIGPWR     #+darwin nil #+linux 30) ; Power failure restart
+
+#+linux
+(defparameter *signal-name*
+    #(nil
+      "HUP" "INT" "QUIT" "ILL" "TRAP" "ABRT" "BUS" "FPE" "KILL" "USR1"
+      "SEGV" "USR2" "PIPE" "ALRM" "TERM" "STKFLT" "CHLD" "CONT" "STOP"
+      "TSTP" "TTIN" "TTOU" "URG" "XCPU" "XFSZ" "VTALRM" "PROF" "WINCH"
+      "IO" "PWR" "SYS"))
 
 #+sunos (defparameter SIG2STR_MAX 64 "Bytes for signal name.")
 #+sunos (defcfun sig2str :int (signum :int) (str :pointer))
@@ -3130,20 +3204,22 @@ Trying to simplify our lives, by just using our own FFI versions, above.
   (if (< sig *signal-count*)
       (foreign-string-to-lisp
        (mem-aref (get-var-pointer 'sys-signame) :pointer sig)))
-  #-(or darwin sunos) (declare (ignore sig))
-  #-(or darwin sunos) (missing-implementation 'signal-name)
+  #+linux (when (< sig *signal-count*)
+	    (aref *signal-name* sig))
+  #-(or darwin sunos linux) (declare (ignore sig))
+  #-(or darwin sunos linux) (missing-implementation 'signal-name)
 )
 
-#+sunos (defcfun strsignal :string (sig :int))
+#+(or sunos linux) (defcfun strsignal :string (sig :int))
 
 (defun signal-description (sig)
-  #+sunos (strsignal sig)
+  #+(or sunos linux) (strsignal sig)
   #+darwin
   (if (< sig *signal-count*)
       (foreign-string-to-lisp
        (mem-aref (get-var-pointer 'sys-siglist) :pointer sig)))
-  #-(or darwin sunos) (declare (ignore sig))
-  #-(or darwin sunos) (missing-implementation 'signal-description)
+  #-(or darwin sunos linux) (declare (ignore sig))
+  #-(or darwin sunos linux) (missing-implementation 'signal-description)
 )
 
 ;(defparameter signal-names (make-hash-table 
@@ -3159,11 +3235,13 @@ Trying to simplify our lives, by just using our own FFI versions, above.
   "What to do with a signal, as given to sigaction(2)."
   (sa_handler :pointer)	       ; For our purposes it's the same as sa_sigaction
   (sa_mask sigset-t)
-  (sa_flags :int))
+  (sa_flags :int)
+  #+linux (sa_restorer :pointer)
+  )
 
 (defconstant SIG_DFL  0 "Default action.")
 (defconstant SIG_IGN  1 "Ignore the signal.")
-(defconstant SIG_HOLD 5 "Hold on to the signal for later.")
+(defconstant SIG_HOLD #+darwin 5 #+linux 2 "Hold on to the signal for later.")
 (defconstant SIG_ERR -1 "Error?")
 
 (defconstant SA_ONSTACK   #x0001 "Deliver on a stack, given with sigaltstack.")
@@ -3280,10 +3358,11 @@ Trying to simplify our lives, by just using our own FFI versions, above.
 
 ;; pipes
 
-(defun popen (cmd args &key in-stream (out-stream :stream))
+(defun popen (cmd args &key in-stream (out-stream :stream) environment)
   "Return an input stream with the output of the system command. Use IN-STREAM
 as an input stream, if it's supplied. If it's supplied, use OUT-STREAM as the
-output stream. OUT-STREAM can be T to use *standard-output*."
+output stream. OUT-STREAM can be T to use *standard-output*.
+ENVIRONMENT is a list of strings of the form"
   #+clisp (if in-stream
 	      (multiple-value-bind (io i o)
 		  (ext:run-shell-command
@@ -3298,9 +3377,11 @@ output stream. OUT-STREAM can be T to use *standard-output*."
 ;;	      :external-format '(:utf-8 :replacement #\?)
 	  (if in-stream
 	      (sb-ext:run-program cmd args :output out-stream :search t
-				  :input in-stream :wait nil)
+				  :input in-stream :wait nil
+				  :environment environment)
 	      (sb-ext:run-program cmd args :output out-stream :search t
-				  :wait nil)))
+				  :wait nil
+				  :environment environment)))
   #+cmu (ext:process-output
 	 (if in-stream
 	     (ext:run-program cmd args :output out-stream :input in-stream)

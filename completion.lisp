@@ -345,56 +345,7 @@ arguments for that function, otherwise return NIL."
 	(function-help sym)
 	nil)))
 
-#|
-(defun try-symbol-help (context pos)
-  "If POS is right before a function in CONTEXT, return a string that shows the
-arguments for that function, otherwise return NIL."
-  (let* ((ppos (matching-paren-position context :position pos))
-	 (word-start (or (and ppos (1+ ppos)) 0))
-	 (pack (find-forward-pack context word-start))
-	 (end (min (1+ (scan-over-str context word-start :forward
-				      :not-in *lisp-non-word-chars*))
-		   (length context)))
-	 (sym (and word-start
-		   (> (- word-start end) 0)
-		   (symbolify (subseq context word-start end)
-			      :package (or pack *package*) :no-new t))))
-    ;; This is a total stop-gap measure.
-    (let ((ppcre:*property-resolver* #'custom-resolver))
-      (multiple-value-bind (match regs)
-	  (ppcre:scan-to-strings
-	   (ppcre:parse-string "([\\p{lispy}]+?)(:[:]*([\\p{lispy}]+))")
-	   context :sharedp t)
-	(when match
-	  (setf sym (symbolify (elt regs 2)
-			       :package (or (string-upcase (elt regs 0))
-					    *package*)
-			       :no-new t)))))
-    (if (fboundp sym)
-	(function-help sym)
-	nil)))
-|#
-
-#|
-(defun try-symbol-help (context pos)
-  "If POS is in a function call in CONTEXT, return a string that shows the
-arguments for that function, otherwise return NIL."
-  (let* ((ppos (matching-paren-position context :position pos))
-	 (word-start (or (and ppos (1+ ppos)) 0))
-	 (sym (read-from-string context nil nil :start word-start
-	 (pack (find-forward-pack context word-start))
-	 (end (1+ (scan-over-str context word-start :forward
-				 :not-in *lisp-non-word-chars*)))
-	 (sym (and word-start
-		   (symbolify (subseq context word-start end)
-			      (or pack *package*)))))
-    (format t "~&The symbol: ~w~%" sym)
-    (if (fboundp sym)
-	(function-help sym)
-	nil)))
-|#
-
-(defmacro do-the-symbols (sym pak ext &body forms)
+(defmacro do-the-symbols ((sym pak ext) &body forms)
   "Evaluate the forms with SYM bound to each symbol in package PAK. If EXT is
 true, then just look at the external symbols."
   `(if ,ext
@@ -431,7 +382,7 @@ Return nil if none was found."
   (let ((case-in (character-case w))
 	(match nil) match-len pos
 	(unique t))
-    (do-the-symbols sym (or package *package*) external
+    (do-the-symbols (sym (or package *package*) external)
       (when (and (setf pos (search w (string sym) :test #'equalp))
 		 (= pos 0)
 		 ;; (or (boundp sym) (fboundp sym)
@@ -467,22 +418,33 @@ Return nil if none was found."
 		       s)))
 	    unique)))
 
+(defun not-inherited (symbol package)
+  (multiple-value-bind (sym status)
+      (find-symbol (string symbol) (or package *package*))
+    (declare (ignore sym))
+    (case status
+      ((:internal :external) t)
+      (t nil))))
+
 (defun symbol-completion-list (w &key (package *package*)
 				   (external nil) (include-packages t))
   "Print the list of completions for W in the symbols of PACKAGE, which
 defaults to the current package. Return how many symbols there were."
+  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (let ((count 0)
 	(l '())
 	(case-in (character-case w))
 	pos)
-    (do-the-symbols s (or package *package*) external
+    (do-the-symbols (s (or package *package*) external)
+;      (princ (s+ (symbol-package s) "::" s " " #\newline))
       (when (and
 	     ;; It's actually in the package if the package is set
-	     (or (not package) (eql (symbol-package s) package))
+	     (or external (not-inherited s package))
 	     ;; It matches the beginning
 	     (and (setf pos (search w (string s) :test #'equalp))
 		  (= pos 0)))
-	(push (string s) l)
+;;;	(push (string s) l)
+	(pushnew (if (fboundp s) (s+ s " (F)") (string s)) l :test #'equal)
 	(incf count)))
     (when (and include-packages (not package))
       (loop :with s :for p :in (list-all-packages) :do
@@ -682,19 +644,69 @@ defaults to the current package. Return how many symbols there were."
 
 (defparameter *default-word-file* "/usr/share/dict/words")
 
+;; foo
+;; fooble
+;; foozle
+;; fimbar
+;; fill
+;; no
+;; noodle
+;; nog
+;; zibble
+;;
+;; (f (o (o)))
+;; (f (o (o () (b (l (e ()))))))
+
+;; ((f (o (o ())) (b (l (e ()))))
+;;  (n (o ()) (d (l (e ()))) (g ()))
+;;  (z (i (b (b (l (e ())))))))
+
 (defun make-completion-dictionary (file)
-  (let ((dict '()))
+  (let ((dict '(_ )))
     (with-open-file (stm file)
-      (loop :with line
+      (loop :with line :and node
 	 :while (setf line (read-line stm nil nil)) :do
-	 (loop :with node = dict :and n
+	 (setf node dict)
+	 (loop :with n
 	    :for c :across line :do
-	    (if (setf n (find c node :key #'car))
+	    (if (setf n (find (list c) node :key #'car))
 		(setf node n)
 		(progn
 		  (setf n (list c))
-		  (pushnew n node)
-		  (setf node n))))))))
+		  (pushnew n node :key #'car)
+		  (setf node n)))
+	    (format t "~s~%" dict) (finish-output))
+	 (pushnew '() node)))
+    dict))
+
+#|
+(defun add-word (w d)
+  (let ((node d) n)
+    (loop for c across w do
+	 (if (setf n (find-if
+		      (lambda (x)
+			(and x (consp x) (eql (car x) c)))
+		      node))
+	     (setf node n)
+	     (progn (push c node))))
+    d))
+
+(defun dump-dict (dict)
+  (let ((str (make-stretchy-string 25)))
+    (labels ((do-node (node)
+	       (loop :for n :in node
+		  :if (not node)
+		  :then (write-line str)
+		  (do-node
+  (loop :with node
+
+     :for w :in dict :do
+     (setf node w)
+     (loop :while (> (length node) 0)
+	:do
+	(stretchy-append str (car node))
+	(
+|#
 
 (defun dictionary-completion-list (w dict)
   (declare (ignore w dict))

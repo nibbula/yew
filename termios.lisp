@@ -13,7 +13,7 @@
 ;(declaim (optimize (debug 3)))
 
 (defpackage "TERMIOS"
-  (:use :cl :cffi :opsys :dlib-misc)
+  (:use :cl :cffi :opsys :dlib :dlib-misc :char-util)
   (:documentation
    "Interface to POSIX (and some non-POSIX BSD) terminal driver.")
   (:export
@@ -24,7 +24,8 @@
 
    ;; input modes
    #:IGNBRK #:BRKINT #:IGNPAR #:PARMRK #:INPCK #:ISTRIP #:INLCR #:IGNCR #:ICRNL
-   #:IXON #:IXOFF #:IXANY #:IMAXBEL
+   #:IXON #:IXOFF #:IXANY #:IMAXBEL #:IUCLC #:IUTF8 #:DOSMODE
+
    ;; output modes
    #:OPOST #:ONLCR #:OXTABS #:ONOEOT
 
@@ -72,6 +73,7 @@
    #:sane
    #:terminal-query
    #:describe-tty
+   #:set-tty-mode
 
    ;; old fashioned tty ioctls
    #:winsize
@@ -82,6 +84,7 @@
    #:TIOCSTI
    #:TIOCGWINSZ
    #:TIOCSWINSZ
+   #:get-window-size
 
    ;; tests
    #:test
@@ -128,7 +131,7 @@
   (defconstant NCCS	#+darwin 20  #+sunos 19  #+linux 32))
 
 (defparameter *cchars*
-  '(VDISCARD #-LINUX VDSUSP VEOF VEOL VEOL2 VERASE VINTR VKILL VLNEXT VMIN
+  '(VDISCARD #-linux VDSUSP VEOF VEOL VEOL2 VERASE VINTR VKILL VLNEXT VMIN
     VQUIT VREPRINT VSTART #+darwin VSTATUS VSTOP VSUSP VTIME VWERASE)
   "A list of all the control character symbols.")
 
@@ -162,6 +165,14 @@
 (defconstant IUTF8	#+darwin nil        #+sunos nil       #+linux #o0040000)	; @@@ add
 (defconstant DOSMODE	#+darwin nil        #+sunos #o0100000 #+linux nil)		; @@@ add
 
+(defparameter *iflags*
+  '(IGNBRK BRKINT IGNPAR PARMRK INPCK ISTRIP INLCR IGNCR ICRNL
+    IXON IXOFF IXANY IMAXBEL
+    #+(or linux sunos) IUCLC
+    #+linux IUTF8
+    #+sunos DOSMODE)
+  "List of the input flag symbols.")
+
 ;; output flags (c_oflag)
 (defconstant OPOST	#+darwin #x00000001 #+sunos #o0000001 #+linux #o0000001)	; enable following output processing
 (defconstant ONLCR	#+darwin #x00000002 #+sunos #o0000004 #+linux #o0000004)	; map NL to CR-NL (ala CRMOD)
@@ -169,8 +180,8 @@
 (defconstant ONOEOT	#+darwin #x00000008 #+sunos nil       #+linux nil)	; discard EOT's (^D) on output)
 (defconstant OLCUC	#+darwin nil        #+sunos #o0000002 #+linux #o0000002)	; @@@ add
 (defconstant OCRNL	#+darwin nil        #+sunos #o0000010 #+linux #o0000010)	; @@@ add
-(defconstant ONOCR	#+darwin nil        #+sunos #o0000020 #+linux #o0000020)	; @@@ add
-(defconstant ONLRET	#+darwin nil        #+sunos #o0000040 #+linux #o0000040)	; @@@ add
+(defconstant ONOCR	#+darwin #x00000020 #+sunos #o0000020 #+linux #o0000020)	; @@@ add
+(defconstant ONLRET	#+darwin #x00000040 #+sunos #o0000040 #+linux #o0000040)	; @@@ add
 (defconstant OFILL	#+darwin nil        #+sunos #o0000100 #+linux #o0000100)	; @@@ add
 (defconstant OFDEL	#+darwin nil        #+sunos #o0000200 #+linux #o0000200)	; @@@ add
 
@@ -196,8 +207,48 @@
 (defconstant VTDLY      #+darwin nil        #+sunos #o0040000 #+linux #o0040000)
 (defconstant   VT0      #+darwin nil        #+sunos #o0000000 #+linux #o0000000)
 (defconstant   VT1      #+darwin nil        #+sunos #o0040000 #+linux #o0040000)
+(defconstant XTABS      #+darwin nil        #+sunos nil       #+linux #o0014000)
 (defconstant PAGEOUT    #+darwin nil        #+sunos #o0200000 #+linux nil)
 (defconstant WRAP       #+darwin nil        #+sunos #o0400000 #+linux nil)
+
+(defparameter *oflags*
+  '(
+    OPOST
+    ONLCR
+    OXTABS
+    #+darwin ONOEOT
+    #+(or sunos linux) OLCUC
+    #+(or sunos linux) OCRNL
+    ONOCR
+    ONLRET
+    #+(or sunos linux) OFILL
+    #+(or sunos linux) OFDEL
+    #+(or sunos linux) NLDLY
+    #+(or sunos linux)   NL0
+    #+(or sunos linux)   NL1
+    #+(or sunos linux) CRDLY
+    #+(or sunos linux)   CR0
+    #+(or sunos linux)   CR1
+    #+(or sunos linux)   CR2
+    #+(or sunos linux)   CR3
+    #+(or sunos linux) TABDLY
+    #+(or sunos linux)   TAB0
+    #+(or sunos linux)   TAB1
+    #+(or sunos linux)   TAB2
+    #+(or sunos linux)   TAB3
+    #+(or sunos linux) BSDLY
+    #+(or sunos linux)   BS0
+    #+(or sunos linux)   BS1
+    #+(or sunos linux) FFDLY
+    #+(or sunos linux)   FF0
+    #+(or sunos linux)   FF1
+    #+(or sunos linux) VTDLY
+    #+(or sunos linux)   VT0
+    #+(or sunos linux)   VT1
+    #+sunos PAGEOUT
+    #+sunos WRAP
+    )
+  "List of oflags symbols.")
 
 ;; Control flags - hardware control of terminal (c_cflag)
 (defconstant CIGNORE	#+darwin #x00000001 #+sunos nil       #+linux nil) ; ignore control flags
@@ -221,6 +272,17 @@
 (defconstant MDMBUF	#+darwin #x00100000 #+sunos nil       #+linux nil) ; old name for CCAR_OFLOW
 (defconstant CBAUDEX	#+darwin nil        #+sunos nil       #+linux #o0010000)
 
+(defparameter *cflags*
+  '(#+darwin CIGNORE
+    CSIZE CS5 CS6 CS7 CS8 CSTOPB CREAD PARENB PARODD
+    HUPCL CLOCAL CCTS_OFLOW CRTS_IFLOW CRTSCTS
+    #+darwin CDTR_IFLOW
+    #+darwin CDSR_OFLOW
+    #+darwin CCAR_OFLOW
+    #+darwin MDMBUF
+    #+linux CBAUDEX)
+  "List of the control flag symbols.")
+
 ;; local flags (c_lflag)
 (defconstant ECHOKE	#+darwin #x00000001 #+sunos #o0004000 #+linux #o0004000)	; visual erase for line kill
 (defconstant ECHOE	#+darwin #x00000002 #+sunos #o0000010 #+linux #o0000020)	; visually erase chars 
@@ -239,6 +301,16 @@
 (defconstant NOKERNINFO	#+darwin #x02000000 #+sunos nil       #+linux nil)		; no kernel output from VSTATUS 
 (defconstant PENDIN	#+darwin #x20000000 #+sunos #o0040000 #+linux #o0040000)	; XXX retype pending input (state) 
 (defconstant NOFLSH	#+darwin #x80000000 #+sunos #o0000200 #+linux #o0000200)	; don't flush after interrupt
+
+(defparameter *lflags*
+  '(ECHOKE ECHOE ECHOK ECHO ECHONL ECHOPRT ECHOCTL ISIG
+    ICANON #+darwin
+    ALTWERASE IEXTEN
+    #+darwin
+    EXTPROC TOSTOP FLUSHO
+    #+darwin NOKERNINFO
+    PENDIN NOFLSH)
+  "List of lflag symbols.")
 
 #+sunos (defconstant TIOC (ash 84 8))
 
@@ -869,28 +941,13 @@ characters. If we don't get anything after a while, just return what we got."
       ;; free C memory
       (when sane (foreign-free sane)))))
 
-#|
-speed 38400 baud; 65 rows; 167 columns;
-lflags: icanon isig iexten echo echoe echok echoke -echonl echoctl
-        -echoprt -altwerase -noflsh -tostop -flusho pendin -nokerninfo
-        -extproc
-iflags: -istrip icrnl -inlcr -igncr ixon -ixoff -ixany -imaxbel -iutf8
-        -ignbrk -brkint -inpck -ignpar -parmrk
-oflags: opost onlcr oxtabs onocr onlret
-cflags: cread cs8 parenb -parodd hupcl -clocal -cstopb -crtscts -dsrflow
-        -dtrflow -mdmbuf
-cchars: discard = <undef>; dsusp = <undef>; eof = ^D; eol = <undef>;
-        eol2 = ^@; erase = ^?; intr = ^C; kill = ^U; lnext = ^Q; min = 1;
-        quit = ^\; reprint = <undef>; start = <undef>; status = ^T;
-        stop = <undef>; susp = ^Z; time = 0; werase = <undef>;
-|#
-
 (defun describe-tty (&key (device "/dev/tty") (format :nice))
-  "Describe the termios settings for DEVICE. Much like `stty -a`."
+  "Describe the termios settings for DEVICE. Much like `stty -a`.
+FORMAT defaults to :NICE but can also be :STTY."
   (let (tty desc)
     (unwind-protect
       (progn
-	(setf tty (posix-open device O_RDWR 0)
+	(setf tty (posix-open device (logior O_RDWR O_NONBLOCK) 0)
 	      desc (foreign-alloc '(:struct termios)))
 	(error-check tty "Error opening ~a~%" device)
 	(error-check (tcgetattr tty desc)
@@ -898,50 +955,116 @@ cchars: discard = <undef>; dsusp = <undef>; eof = ^D; eol = <undef>;
 	(with-foreign-slots ((c_iflag c_oflag c_cflag c_lflag c_cc
 			      c_ispeed c_ospeed)
 			     desc (:struct termios))
-	  (case format
-	    (:succinct
-	     (if (= c_ispeed c_ospeed)
-		 (format t "speed ~d baud; " c_ospeed)
-		 (format t "speed input ~d output ~d baud;" c_ispeed c_ospeed))
-	     (multiple-value-bind (cols rows) (get-window-size tty)
-	       (format t " ~d rows; ~d columns;" rows cols))
-	     (terpri)
-	     (format t "lflags: ~x~%" c_lflag)
-	     (format t "iflags: ~x~%" c_iflag)
-	     (format t "oflags: ~x~%" c_oflag)
-	     (format t "cflags: ~x~%" c_cflag)
-	     (format t "cchars: ")
-	     (macrolet ((print-cchar (c)
-			  `(format t "~a ~c" ',c
-				   (mem-aref c_cc :unsigned-char ,c))))
-	       (loop :for c :in *cchars* :do (print-cchar c))))
-	    (:nice
-	     (print-properties
-	      `(,@(if (= c_ispeed c_ospeed)
-		      `(("Speed" ,(format nil "~d baud" c_ospeed)))
-		      `(("Input Speed"
-			 ,(format nil "~d baud" c_ispeed))
-			("Output Speed"
-			 ,(format nil "~d baud" c_ospeed))))
-		  ,@(multiple-value-bind (cols rows) (get-window-size tty)
-		      `(("Rows" ,rows) ("Columns" ,cols)))
-		  ("Local flags" ,c_lflag)
-		  ("Input flags" ,c_iflag)
-		  ("Output flags" ,c_oflag)
-		  ("Control flags" ,c_cflag))
-	      :right-justify t)
-	     (macrolet ((cchar (x)
-	      		  `(list ',x )))
-	       (let ((ll (loop :for c :in *cchars* :collect (cchar c))))
-	      	 (format t "~:c~%" (mem-aref c_cc :unsigned-char VDISCARD))
-;;;		 (print-properties ll :right-justify t)
-		 ))
-	     ))))
+	  (multiple-value-bind (cols rows) (get-window-size tty)
+	    (flet ((dump-char (sym c)
+		     (cond
+		       ((= c #xff) "undef")
+		       ((or (eq sym 'VMIN) (eq sym 'VTIME)) c)
+		       (t (nice-char (code-char c) :caret t))))
+		   (s-dump-flags (flags var)
+		     (justify-text
+		      (join (loop
+			       :for f :in flags
+			       :collect
+			       (format nil "~a~(~a~)"
+				       (if (= 0 (logand var (symbol-value f))) #\- "")
+				       (symbol-name f)))
+			    " ")
+		      :omit-first-prefix t
+		      :cols cols :prefix "        "))
+		   (n-dump-flags (flags var)
+		     (print-columns
+		      (loop
+			 :for f :in flags
+			 :collect
+			 (format nil "~a~(~a~)"
+				 (if (= 0 (logand var (symbol-value f))) #\- "")
+				 (symbol-name f)))
+		      :columns cols
+		      :prefix "  ")))
+	      (case format
+		((:succinct :stty)
+		 (if (= c_ispeed c_ospeed)
+		     (format t "speed ~d baud; " c_ospeed)
+		     (format t "speed input ~d output ~d baud;" c_ispeed c_ospeed))
+		 (format t "~d rows; ~d columns;~%" rows cols)
+		 (format t "~&lflags: ") (s-dump-flags *lflags* c_lflag)
+		 (format t "~&iflags: ") (s-dump-flags *iflags* c_iflag)
+		 (format t "~&oflags: ") (s-dump-flags *oflags* c_oflag)
+		 (format t "~&cflags: ") (s-dump-flags *cflags* c_cflag)
+		 (format t "~&cchars: ")
+		 (justify-text
+		  (join (loop :for c :in *cchars*
+			   :collect
+			   (format nil "~(~a~) = ~a; " c
+				   (dump-char c (mem-aref c_cc :unsigned-char (symbol-value c)))))
+			" ")
+		  :cols cols :prefix "        " :omit-first-prefix t)
+		 (terpri))
+		(:nice
+		 (print-properties
+		  `(,@(if (= c_ispeed c_ospeed)
+			  `(("Speed" ,(format nil "~d baud" c_ospeed)))
+			  `(("Input Speed"
+			     ,(format nil "~d baud" c_ispeed))
+			    ("Output Speed"
+			     ,(format nil "~d baud" c_ospeed))))
+		      ("Rows" ,rows) ("Columns" ,cols))
+		  :right-justify t)
+		 (format t "Local flags: #x~x~%" c_lflag)   (n-dump-flags *lflags* c_lflag)
+		 (format t "Input flags: #x~x~%" c_iflag)   (n-dump-flags *iflags* c_iflag)
+		 (format t "Output flags: #x~x~%" c_oflag)  (n-dump-flags *oflags* c_oflag)
+		 (format t "Control flags: #x~x~%" c_cflag) (n-dump-flags *cflags* c_cflag)
+		 (format t "Control chars: ~d~%" (length *cchars*))
+		 (print-columns
+		  (loop :with cc
+		     :for c :in *cchars*
+		     :do (setf cc (mem-aref c_cc :unsigned-char (symbol-value c)))
+		     :collect
+		     (format nil "~(~a~) = ~a"
+			     (subseq (symbol-name c) 1)
+			     (dump-char c cc)))
+		  :columns cols
+		  :prefix "  ")))))))
       ;; close the terminal
       (when (and tty (>= tty 0))
 	(posix-close tty))
       ;; free C memory
       (when desc (foreign-free desc))))
   (values))
+
+(defun set-tty (&key (device "/dev/tty") set-modes unset-modes)
+  "Change the termios settings for DEVICE. Similar to `stty`."
+  (declare (ignore device set-modes unset-modes))
+#|  (let (tty desc)
+    (unwind-protect
+      (progn
+	(setf tty (posix-open device (logior O_RDWR O_NONBLOCK) 0)
+	      desc (foreign-alloc '(:struct termios)))
+	(error-check tty "Error opening ~a~%" device)
+	(error-check (tcgetattr tty desc)
+		     "Can't get terminal description for ~a." device)
+	(with-foreign-slots ((c_iflag c_oflag c_cflag c_lflag c_cc
+			      c_ispeed c_ospeed)
+			     desc (:struct termios))
+	  (loop :for i :in set-modes :do
+	     (if (find i *iflags*)
+	  (loop :for i :in modes :do
+	     (if i
+		 (find i *cchars*
+	  ;; (make-symbol (string-upcase ))
+	  ;; (multiple-value-bind (cols rows) (get-window-size tty)
+	  ;;   modes
+	  ;;   ))
+	  )
+      ;; close the terminal
+      (when (and tty (>= tty 0))
+	(posix-close tty))
+      ;; free C memory
+      (when desc (foreign-free desc))))
+|#
+  (values))
+
+
 
 ;; EOF

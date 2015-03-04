@@ -38,7 +38,7 @@
   "Return the non-meta character verion of character code C"
   (code-char (logand (- (ash 1 7) 1) c)))
 
-(defun nice-char (c)
+(defun nice-char (c &key caret)
   "ASCII dependant nice character formatting"
   (let ((cc (if (characterp c) (char-code c) nil)))
     (cond
@@ -49,9 +49,10 @@
       ((and cc (= cc (char-code #\space)))
        (format nil "SPACE"))
       ((and cc (< cc (char-code #\space)))
-       (format nil "C-~(~c~)" (code-char (+ cc (char-code #\@)))))
+       (format nil "~:[C-~;^~]~(~c~)" caret
+	       (code-char (+ cc (char-code #\@)))))
       ((and cc (= cc 127)
-       (format nil "C-?")))
+       (format nil (if caret "^?" "C-?"))))
      (cc (format nil "~a" c))
      (t (format nil "~s" c)))))
 
