@@ -146,6 +146,7 @@
    #:lisp-args
    #:sysctl
    #:getpagesize
+   #:getauxval
    #:getlogin
 
    #:passwd				; struct
@@ -264,6 +265,8 @@
    #:chmod #:fchmod
    #:chown #:fchown #:lchown
    #:sync
+   #:extended-attribute-list
+   #:extended-attribute-value
 
    #:timespec
    #:timespec-seconds
@@ -451,6 +454,7 @@
 (defctype pid-t :int)
 (defctype wchar-t :int)
 (defctype suseconds-t :int32)
+(defctype ssize-t :long)
 
 #+darwin (defctype dev-t :int32)
 #+sunos  (defctype dev-t :ulong)
@@ -479,7 +483,7 @@
 #+linux
 (defcstruct foreign-sigset-t
   (value :unsigned-long :count
-	 (/ 1024 (* 8 (cffi:foreign-type-size :unsigned-long)))))
+	 #.(/ 1024 (* 8 (cffi:foreign-type-size :unsigned-long)))))
 ;; unsigned long int __val[(1024 / (8 * sizeof (unsigned long int)))];
 #+linux
 (defctype sigset-t (:struct foreign-sigset-t))
@@ -1010,11 +1014,13 @@ It allocates it in 'C' space, so to free it, use FREE-C-ENV."
 	   :for e :in lisp-env
 	   :do
 	   (when (not (symbolp (car e)))
-	     (error "The CAR of an environment pair should be a symbol, not ~s."
-		    (car e)))
+	     (error
+	      "The CAR of an environment pair should be a symbol, not ~s."
+	      (car e)))
 	   (when (not (stringp (cdr e)))
-	     (error "The CDR of an environment pair should be a string, not ~s."
-		    (cdr e)))
+	     (error
+	      "The CDR of an environment pair should be a string, not ~s."
+	      (cdr e)))
 	   (setf (mem-aref c-env :pointer i)
 		 (foreign-string-alloc
 		  (concatenate 'string (princ-to-string (car e)) "=" (cdr e))))
@@ -1282,6 +1288,69 @@ the current 'C' environment."
     (config-feature :os-t-64-bit-inode)))
 
 (defcfun getpagesize :int)
+
+#+linux
+(progn
+  (defconstant +AT-NULL+	        0 "End of vector")
+  (defconstant +AT-IGNORE+        1 "Entry should be ignored")
+  (defconstant +AT-EXECFD+        2 "File descriptor of program")
+  (defconstant +AT-PHDR+	        3 "Program headers for program")
+  (defconstant +AT-PHENT+	        4 "Size of program header entry")
+  (defconstant +AT-PHNUM+	        5 "Number of program headers")
+  (defconstant +AT-PAGESZ+        6 "System page size")
+  (defconstant +AT-BASE+	        7 "Base address of interpreter")
+  (defconstant +AT-FLAGS+	        8 "Flags")
+  (defconstant +AT-ENTRY+	        9 "Entry point of program")
+  (defconstant +AT-NOTELF+       10 "Program is not ELF")
+  (defconstant +AT-UID+	       11 "Real uid")
+  (defconstant +AT-EUID+	       12 "Effective uid")
+  (defconstant +AT-GID+	       13 "Real gid")
+  (defconstant +AT-EGID+	       14 "Effective gid")
+  (defconstant +AT-PLATFORM+     15 "String identifying CPU for optimizations")
+  (defconstant +AT-HWCAP+	       16 "Arch dependent hints at CPU capabilities")
+  (defconstant +AT-CLKTCK+       17 "Frequency at which times() increments")
+  (defconstant +AT-SECURE+       23 "Secure mode boolean")
+  (defconstant +AT-BASE_PLATFORM 24
+    "String identifying real platform, may differ from AT_PLATFORM.")
+  (defconstant +AT-RANDOM+       25 "Address of 16 random bytes")
+  (defconstant +AT-EXECFN+       31 "Filename of program")
+  (defconstant +AT-SYSINFO       32 "")
+  (defconstant +AT-SYSINFO-EHDR+ 33 ""))
+;; AT_* values 18 through 22 are reserved
+
+;; unsigned long getauxval(unsigned long type);
+#+linux
+(defcfun ("getauxval" real-getauxval) :unsigned-long (type :unsigned-long))
+#+linux
+(defun getauxval (type)
+  "Get a value from the kernel auxiliary vector. TYPE is one of the +AT-*+
+constants. The return value varies base on the keyword."
+  (let ((value (real-getauxval type)))
+    (ecase type
+      (+AT-NULL+	  nil)
+      (+AT-IGNORE+	  nil)
+      (+AT-EXECFD+	  value)
+      (+AT-PHDR+	  (make-pointer value))
+      (+AT-PHENT+	  value)
+      (+AT-PHNUM+	  value)
+      (+AT-PAGESZ+	  value)
+      (+AT-BASE+	  (make-pointer value))
+      (+AT-FLAGS+	  nil)
+      (+AT-ENTRY+	  (make-pointer value))
+      (+AT-NOTELF+	  value)
+      (+AT-UID+		  value)
+      (+AT-EUID+	  value)
+      (+AT-GID+		  value)
+      (+AT-EGID		  value)
+      (+AT-PLATFORM+	  (foreign-string-to-lisp (make-pointer value)))
+      (+AT-HWCAP+	  value) ;; Convert to keywords?
+      (+AT-CLKTCK+	  value)
+      (+AT-SECURE+	  value)
+      (+AT-RANDOM+	  value) ;; 16 bytes of random ff ff ff ff  ff ff ff ff
+      (+AT-EXECFN+	  (foreign-string-to-lisp (make-pointer value)))
+      (+AT-BASE-PLATFORM+ (foreign-string-to-lisp (make-pointer value)))
+      (+AT-SYSINFO+	  (make-pointer value))
+      (+AT-SYSINFO_EHDR+  (make-pointer value)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; sysconf
@@ -1912,9 +1981,10 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 				 #-os-t-has-d-type (dirent-name ent)
 				 (dirent-name ent)))))))
 	    (when (not (= result 0))
-	      (error (strerror *errno*)))))
-	dir-list)
-      (if (not (null-pointer-p dirp)) (closedir dirp)))))
+	      (error (strerror *errno*))))))
+      (if (not (null-pointer-p dirp))
+	  (closedir dirp)))
+    dir-list))
 
 (defun probe-directory (dir)
   "Something like probe-file but for directories."
@@ -2714,11 +2784,93 @@ for long."
 
 ;; Apple metadata crap:
 ;; searchfs
-;; setattrlist/getattrlist
 ;; getdirentriesattr
-;; getxattr/setxattr/removexattr/listxattr
 ;;
 ;; Look into file metadata libraries? which will work on windows, etc..
+
+;; OSX file attributes
+
+#|
+(defcstruct attrlist)
+     typedef u_int32_t attrgroup_t;
+
+     struct attrlist {
+         u_short     bitmapcount; /* number of attr. bit sets in list */
+         u_int16_t   reserved;    /* (to maintain 4-byte alignment) */
+         attrgroup_t commonattr;  /* common attribute group */
+         attrgroup_t volattr;     /* volume attribute group */
+         attrgroup_t dirattr;     /* directory attribute group */
+         attrgroup_t fileattr;    /* file attribute group */
+         attrgroup_t forkattr;    /* fork attribute group */
+     };
+     #define ATTR_BIT_MAP_COUNT 5
+
+(defcfun getattrlist :int (path :string)
+	 (attrlist (:pointer (:struct attrlist)))
+	 (attr-buf :pointer)
+	 (attr-buf-size :size-t)
+	 (options :ulong))
+(defcfun fgetattrlist :int (fd :int)
+	 (attrlist (:pointer (:struct attrlist)))
+	 (attr-buf :pointer)
+	 (attr-buf-size :size-t)
+	 (options :ulong))
+	 
+(defcfun setattrlist)
+|#
+
+;; OSX extended attributes
+
+(defconstant +XATTR_NOFOLLOW+		#x0001)
+(defconstant +XATTR_CREATE+		#x0002)
+(defconstant +XATTR_REPLACE+		#x0004)
+(defconstant +XATTR_NOSECURITY+		#x0008)
+(defconstant +XATTR_NODEFAULT+		#x0010)
+(defconstant +XATTR_SHOWCOMPRESSION+	#x0020)
+(defconstant +XATTR_MAXNAMELEN+		127)
+
+#+darwin
+(progn
+  (defcfun listxattr ssize-t (path :string) (namebuff :string) (size size-t)
+	   (options :int))
+  (defcfun flistxattr ssize-t (fd :int) (namebuff :string) (size size-t)
+	   (options :int))
+  (defcfun getxattr ssize-t (path :string) (name :string) (value :pointer)
+	   (size size-t) (position :uint32) (options :int))
+  (defcfun fgetxattr ssize-t (fd :int) (name :string) (value :pointer)
+	   (size size-t) (position :uint32) (options :int))
+  (defcfun setxattr :int (path :string) (name :string) (value :pointer)
+	   (size size-t) (position :uint32) (options :int))
+  (defcfun fsetxattr :int (fd :int) (name :string) (value :pointer)
+	   (size size-t) (position :uint32) (options :int))
+  (defcfun removexattr :int (path :string) (name :string) (options :int))
+  (defcfun fremovexattr :int (fd :int) (name :string) (options :int)))
+
+;; These are defined, but just don't return anything on non-Darwin.
+
+(defun extended-attribute-list (path)
+  #+darwin
+  (let ((size (listxattr path (null-pointer) 0 0))
+	names)
+    (with-foreign-object (f-names :char size)
+      (syscall (listxattr path f-names size +XATTR_SHOWCOMPRESSION+))
+      (setf names (foreign-string-to-lisp f-names :count size))
+      (loop :with i = 0 :and end
+	 :while (< i size)
+	 :do
+	 (setf end (position (code-char 0) names :start i))
+	 :when (and end (< (+ i end) size))
+	 :collect (subseq names i end)
+	 :do (incf i end))))
+  #-darwin '())
+
+(defun extended-attribute-value (path name)
+  #+darwin
+  (let ((size (getxattr path name (null-pointer) 0 0 0)))
+    (with-foreign-object (value :char size)
+      (syscall (getxattr path name value size 0 +XATTR_SHOWCOMPRESSION+))
+      value))
+  #-darwin nil)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Processes
@@ -2850,10 +3002,10 @@ for long."
 (defcfun execve :int (path :pointer) (args :pointer) (env :pointer))
 
 (defun exec (path args &optional (env *real-environ*))
-  "Replace this program with executable in the string PATH. Run the program with
-arguments in ARGS, which should be a list of strings. By convention, the first
-argument should be the command name. ENV is either a Lisp or 'C' environment
-list, which defaults to the current 'C' environ variable."
+  "Replace this program with executable in the string PATH. Run the program
+with arguments in ARGS, which should be a list of strings. By convention, the
+first argument should be the command name. ENV is either a Lisp or 'C'
+environment list, which defaults to the current 'C' environ variable."
   (declare (type string path) (type list args))
   (let ((argc (length args))
 	(c-env (if (pointerp env) env (make-c-env env)))
@@ -2966,7 +3118,7 @@ list, which defaults to the current 'C' environ variable."
 			  child-pid value))))
   )
 
-(defun fork-and-exec (cmd &optional args)
+(defun fork-and-exec (cmd &optional args (environment nil env-p))
   (let* ((cmd-and-args (cons cmd args))
 	 (argc (length cmd-and-args))
 	 child-pid)
@@ -2986,7 +3138,11 @@ list, which defaults to the current 'C' environ variable."
 ;   		    (loop :for i :from 0 :below argc
 ;   			  :collect (mem-aref argv :string i)))
 ;	    (when (= (execvp path argv) -1)
-	    (when (= (execve path argv (real-environ)) -1)
+	    ;; @@@ or we could call the lisp exec?
+	    (when (= (execve path argv (if env-p
+					   (make-c-env environment)
+					   (real-environ)))
+		     -1)
 	      (write-string "Exec of ")
 	      (write-string cmd)
 	      (write-string " failed")
@@ -3000,7 +3156,8 @@ list, which defaults to the current 'C' environ variable."
 	(wait-and-report child-pid)))))
 
 ;; @@@ Consistently return exit status?
-(defun run-program (cmd &optional args)
+;; @@@ Evironment on other than sbcl and cmu?
+(defun run-program (cmd &optional args (environment nil env-p))
 ;  #+(or clisp sbcl ccl) (fork-and-exec cmd args)
   #+clisp (ext:run-program cmd :arguments args)
   #+excl (excl:run-shell-command (concatenate 'vector (list cmd cmd) args)
@@ -3032,12 +3189,15 @@ list, which defaults to the current 'C' environ variable."
 	 (error "Process has unknown status ~a" status)))))
 
   #+sbcl (sb-ext:process-exit-code
-	  (sb-ext:run-program cmd args
-			      :search t :output t :input t :error t :pty nil))
+	  (apply #'sb-ext:run-program
+		 `(,cmd ,args
+		   ,@(when env-p :environment environment)
+		   :search t :output t :input t :error t :pty nil)))
   #+cmu (ext:process-exit-code
-	 (ext:run-program cmd args
-			  :wait t :input t :output t :error t :pty nil))
-  
+	 (apply #'ext:run-program
+		 `(,cmd ,args
+		   ,@(when env-p :environment environment)
+		   :wait t :output t :input t :error t :pty nil)))
   #+lispworks (multiple-value-bind (result str err-str pid)
 		  (system:run-shell-command
 		   (concatenate 'vector (list cmd) args)
@@ -3231,6 +3391,14 @@ Trying to simplify our lives, by just using our own FFI versions, above.
 ;     do
 ;     `(defparameter ,(signal-name i) ,i)))
 
+;; Should we do our own macros/functions?
+
+(defcfun sigaddset :int (set (:pointer sigset-t)) (signo :int))
+(defcfun sigdelset :int (set (:pointer sigset-t)) (signo :int))
+(defcfun sigemptyset :int (set (:pointer sigset-t)))
+(defcfun sigfillset :int (set (:pointer sigset-t)))
+(defcfun sigismember :int (set (:pointer sigset-t)) (signo :int))
+
 (defcstruct foreign-sigaction
   "What to do with a signal, as given to sigaction(2)."
   (sa_handler :pointer)	       ; For our purposes it's the same as sa_sigaction
@@ -3287,8 +3455,8 @@ Trying to simplify our lives, by just using our own FFI versions, above.
 	(setf sa_handler (if (not (pointerp handler))
 			     (make-pointer handler)
 			     handler)
-	      sa_mask 0
-	      sa_flags 0))
+	      sa_flags 0)
+	(sigemptyset (foreign-slot-pointer act '(:struct foreign-sigaction) 'sa_mask)))
       (syscall (sigaction signal act (null-pointer))))))
 
 (defsetf signal-action set-signal-action
@@ -3302,7 +3470,10 @@ Trying to simplify our lives, by just using our own FFI versions, above.
         :do (format t "~2a ~:@(~7a~) ~30a ~a~%"
 		   i (signal-name i) (signal-description i)
 		   (if (not (find i '(9 17)))
-		       (signal-action i)
+		       (let ((act (signal-action i)))
+			 (if (pointerp act)
+			     (format nil "Handler #x~x" (pointer-address act))
+			     act))
 		       "N/A"))))
 
 (defun kill (pid sig)
@@ -3358,11 +3529,15 @@ Trying to simplify our lives, by just using our own FFI versions, above.
 
 ;; pipes
 
-(defun popen (cmd args &key in-stream (out-stream :stream) environment)
+;; @@@ add environment on other than sbcl
+(defun popen (cmd args &key in-stream (out-stream :stream)
+			 (environment nil env-p))
   "Return an input stream with the output of the system command. Use IN-STREAM
 as an input stream, if it's supplied. If it's supplied, use OUT-STREAM as the
 output stream. OUT-STREAM can be T to use *standard-output*.
-ENVIRONMENT is a list of strings of the form"
+ENVIRONMENT is a list of strings of the form NAME=VALUE to be used as the
+process's environment. If ENVIRONMENT is not provided, it defaults to the
+current process's environment."
   #+clisp (if in-stream
 	      (multiple-value-bind (io i o)
 		  (ext:run-shell-command
@@ -3375,13 +3550,10 @@ ENVIRONMENT is a list of strings of the form"
   #+sbcl (sb-ext:process-output
 ;; @@@ What should we do? Added what version?
 ;;	      :external-format '(:utf-8 :replacement #\?)
-	  (if in-stream
-	      (sb-ext:run-program cmd args :output out-stream :search t
-				  :input in-stream :wait nil
-				  :environment environment)
-	      (sb-ext:run-program cmd args :output out-stream :search t
-				  :wait nil
-				  :environment environment)))
+	  (apply #'sb-ext:run-program
+		 `(,cmd ,args :output ,out-stream :search t :wait nil
+			,@(when in-stream `(:input ,in-stream))
+			,@(when env-p `(:environment ,environment)))))
   #+cmu (ext:process-output
 	 (if in-stream
 	     (ext:run-program cmd args :output out-stream :input in-stream)
