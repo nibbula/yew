@@ -146,7 +146,8 @@ NOTE:
 |#
 
 (defun get-char-set (pattern start-pos &optional (compile t))
-  "Return a symbolic character set parsed from the string PATTERN, starting at position START-POS. A symbolic character set is a list consisting of:
+  "Return a symbolic character set parsed from the string PATTERN, starting at
+position START-POS. A symbolic character set is a list consisting of:
  - Characters to match.
  - Character ranges, as a sublist with two character values.
  - Named classes, as a keyword, e.g :digit
@@ -235,7 +236,28 @@ Second value is where the character set ended."
 (defun fnmatch (pattern string &key (pattern-start 0) (string-start 0))
   "Return true if the STRING matches the PATTERN, with shell matching. '*' is
 any number of characters, '?' is one character, [] is some complictated range
-stuff that you can look up in unix or something. PATTERN-START and STRING-START
+stuff that you can look up in unix or something, but breifly: 
+  '^' or '!' - as the first character in the set, negates the set
+  '-'        - anywhere not as the first or last character, is the range of
+               characters 
+  '['        - starts a class name symbol, which we don't fully support yet
+               and is not enitrely POSIX conformant, but is something like:
+     xdigit - hex digits
+     ascii  - ASCII codes, i.e. less than 128
+     word   - alpha or underscore '_'
+     print  - GRAPHIC-CHAR-P
+     graph  - GRAPHIC-CHAR-P but not #\space
+     alnum  - ALPHANUMERICP
+     alpha  - ALPHA-CHAR-P
+     lower  - LOWER-CASE-P
+     upper  - UPPER-CASE-P
+     digit  - DIGIT-CHAR-P
+     cntrl  - Control characters
+     punct  - Things considered punctuation.
+     space  - #\space #\tab #\newline #\formfeed
+     blank  - #\space or #\tab
+
+. PATTERN-START and STRING-START
 are mostly used internally for recursion, but you can go ahead and use them if
 you want. They are indexes that default to 0."
   (let ((p pattern-start) (s string-start)
