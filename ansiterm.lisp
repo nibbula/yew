@@ -404,7 +404,7 @@ i.e. the terminal is \"line buffered\""))
 
 (defgeneric tt-beep (tty))
 (defmethod tt-beep ((tty terminal-stream))
-  (tt-write-char tty #\bel))		; Not #\bell!!
+  (tt-write-char tty #\bel))		; Not #\bell!! 🔔
 
 (defgeneric tt-finish-output (tty))
 (defmethod tt-finish-output ((tty terminal-stream))
