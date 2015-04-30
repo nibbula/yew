@@ -34,6 +34,7 @@
    #:*normal-keymap*
    #:*ctlx-keymap*
    #:*escape-keymap*
+   #:*terminal-name*
    ;; misc
    #:rl-on-device
   )
@@ -2204,6 +2205,9 @@ enter it."
       (t					; anything else is an error
        (error "Weird thing in keymap: ~s." action)))))
 
+(defvar *terminal-name* nil
+  "Device name of the terminal to use for input.")
+
 ;; The main entry point
 
 (defun tiny-rl (&key (input-stream *standard-input*)
@@ -2218,7 +2222,7 @@ enter it."
 		     (out-callback nil)
 		     (debug nil)
 		     (editor nil)
-		     (terminal-name nil)
+		     (terminal-name *terminal-name*)
 		     (accept-does-newline t)
 		     (context :tiny))
   "Read a line from the terminal, with line editing and completion.
@@ -2239,8 +2243,8 @@ Keyword arguments:
     Completion function to use. See the completion package for details.
   EDITOR (nil)
     LINE-EDITOR instance to use.
-  TERMINAL-NAME (nil)
-    Name of a terminal device to use.
+  TERMINAL-NAME (*terminal-name*)
+    Name of a terminal device to use. If NIL 
   ACCEPT-DOES-NEWLINE (t)
     True if accept-line outputs a newline.
   CONTEXT (nil)
