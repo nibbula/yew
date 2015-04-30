@@ -285,6 +285,8 @@ arguments for that function, otherwise return NIL."
 ;; “the necessary flexibility is provided for individual programs
 ;;   to achieve an arbitrary degree of aesthetic control.”
 ;;
+;; Of course this whole thing should be in the syntax colorization module.
+
 (defun function-help (symbol)
   "Return a string with help for the function designated by SYMBOL."
   (with-output-to-string (str)
@@ -301,8 +303,28 @@ arguments for that function, otherwise return NIL."
 	       (tt-color tty :yellow :default)
 	       (write s :stream str :case :downcase :escape nil :pretty nil)
 	       (tt-color tty :default :default))
-	     ;; @@@ for some reason, pretty is very ugly here
-	     (write s :stream str :case :downcase :escape nil :pretty nil)))
+	     ;; @@@ Despite the above quote, pretty is very ugly here.
+	     (typecase s
+	       (cons
+		(write-char #\( str)
+		(loop :with first = t
+		   :for ss :in s :do
+		   (if first
+		       (setf first nil)
+		       (write-char #\space str))
+		   (typecase ss
+		     ((or null keyword number string boolean array)
+		      (tt-color tty :white :default)
+		      (write ss :stream str :case :downcase :escape nil
+			     :pretty nil :readably t)
+		      (tt-color tty :default :default))
+		     (t
+		      (write ss :stream str :case :downcase :escape nil
+			     :pretty nil :readably nil))))
+		(write-char #\) str))
+	       (t
+		(write s :stream str :case :downcase :escape nil :pretty nil
+		       :readably nil)))))
       (write-char #\) str))))
 
 (defun lisp-token-char-p (c)
@@ -349,8 +371,8 @@ arguments for that function, otherwise return NIL."
   "Evaluate the forms with SYM bound to each symbol in package PAK. If EXT is
 true, then just look at the external symbols."
   `(if ,ext
-    (do-external-symbols (,sym ,pak) ,@forms)
-    (do-symbols (,sym ,pak) ,@forms)))
+       (do-external-symbols (,sym ,pak) ,@forms)
+       (do-symbols (,sym ,pak) ,@forms)))
 
 (defun character-case (s)
   (declare (type string s))
@@ -369,12 +391,19 @@ true, then just look at the external symbols."
 		 (:none  (setf state :lower))))))
     state))
 
+(defun not-inherited (symbol package)
+  (multiple-value-bind (sym status)
+      (find-symbol (string symbol) (or package *package*))
+    (declare (ignore sym))
+    (case status
+      ((:internal :external) t)
+      (t nil))))
+
 ;; XXX We make the bogus assumption that the symbols are in uppercase
 ;; already. We should really base it on what the implementation does.
 ;; (probably mostly for Allegro)
 
-(defun symbol-completion (w &key (package *package*) (external nil)
-			      (include-packages t))
+(defun symbol-completion (w &key package (external nil) (include-packages t))
   "Return the first completion for W in the symbols of PACKAGE, which defaults
 to the current package. If EXTERNAL is true, use only the external symbols.
 Return nil if none was found."
@@ -383,12 +412,15 @@ Return nil if none was found."
 	(match nil) match-len pos
 	(unique t))
     (do-the-symbols (sym (or package *package*) external)
-      (when (and (setf pos (search w (string sym) :test #'equalp))
-		 (= pos 0)
-		 ;; (or (boundp sym) (fboundp sym)
-		 ;;     (find-package sym)
+      (when (and
+	     ;; It's actually in the package if the package is set
+	     (or external (not package) (not-inherited sym package))
+	     (setf pos (search w (string sym) :test #'equalp))
+	     (= pos 0)
+	     ;; (or (boundp sym) (fboundp sym)
+	     ;;     (find-package sym)
 		 ;;     (ignore-errors (find-class sym)))
-		 )
+	     )
 	(let ((s (string sym)))
 	  (if (not match)
 	      (progn
@@ -418,28 +450,21 @@ Return nil if none was found."
 		       s)))
 	    unique)))
 
-(defun not-inherited (symbol package)
-  (multiple-value-bind (sym status)
-      (find-symbol (string symbol) (or package *package*))
-    (declare (ignore sym))
-    (case status
-      ((:internal :external) t)
-      (t nil))))
-
-(defun symbol-completion-list (w &key (package *package*)
+(defun symbol-completion-list (w &key package
 				   (external nil) (include-packages t))
   "Print the list of completions for W in the symbols of PACKAGE, which
 defaults to the current package. Return how many symbols there were."
-  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+;;  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (let ((count 0)
 	(l '())
 	(case-in (character-case w))
 	pos)
+;;;    (do-the-symbols (s (or package *package*) external)
     (do-the-symbols (s (or package *package*) external)
 ;      (princ (s+ (symbol-package s) "::" s " " #\newline))
       (when (and
 	     ;; It's actually in the package if the package is set
-	     (or external (not-inherited s package))
+	     (or external (not package) (not-inherited s package))
 	     ;; It matches the beginning
 	     (and (setf pos (search w (string s) :test #'equalp))
 		  (= pos 0)))
@@ -471,6 +496,7 @@ defaults to the current package. Return how many symbols there were."
 	 (external nil)
 	 result)
     (multiple-value-setq (pack external) (find-back-pack context word-start))
+    ;; If the package is NIL, we complete on inherited symbols too.
     (if all
 	(if (and (= (length word) 0)
 		 (setf result (try-symbol-help context pos)))
