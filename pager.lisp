@@ -813,6 +813,21 @@ line : |----||-------||---------||---|
 	  (read-lines pager page-size))
 	(tmp-message pager "No previous file."))))
 
+(defun open-file (pager filename)
+  "Open the given FILENAME."
+  (with-slots (count lines line got-eof stream page-size) pager
+    (let ((new-stream (open (quote-filename filename :direction :input))))
+      (if new-stream
+	  (progn
+	    (close stream)
+	    (setf stream new-stream
+		  lines '()
+		  count 0
+		  line 0
+		  got-eof nil)
+	    (read-lines pager page-size))
+	  (tmp-message pager "Can't open file \"~s\".")))))
+
 (defun quit (pager)
   "Exit the pager."
   (setf (pager-quit-flag pager) t))
@@ -925,6 +940,10 @@ line : |----||-------||---------||---|
 			  (position input-char +digits+))
 	    message (format nil "Prefix arg: ~d" prefix-arg)))))
 
+;; (defun read-command (pager)
+;;   (set cmd (ask ": "))
+;;   (
+
 (defkeymap *help-keymap*
   `(
     (#\c		. describe-key-briefly)
@@ -985,6 +1004,7 @@ line : |----||-------||---------||---|
     (#\8		. digit-argument)
     (#\9		. digit-argument)
     (#\escape		. *escape-keymap*)
+    (#\:		. read-command)
     ))
 
 (defparameter *escape-keymap* (build-escape-map *normal-keymap*))
