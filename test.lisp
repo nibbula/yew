@@ -34,14 +34,23 @@ A: Say (list-tests :failed t), to show all tests that failed.
 Q: What if I need to set up pre-conditions for my tests?
 A: You can use :setup and :takedown arguments to deftests.
 
+Q: Hey, but what if I'd like to nicely add tests dynamically whilst I'm mucking
+   about in the REPL?
+A: Say:
+     (test-in :your-package)
+   then say:
+     (test (some code that returns non-NIL if it succeeds))
+   When you want to run the tests, say:
+     (run-tests)
+   When you're done, say:
+     (save-tests)
+   and it will append them to a file.
+   You will probably have to edit the output to make it reasonable.
+
 Q: What if I need to capture the output from my test?
 A: You're on your own.
 
 Q: What if I need to trap exceptions from my tests?
-A: You're on your own.
-
-Q: Hey, but what if I'd like to nicely add tests dynamically whilst I'm mucking
-   about in the REPL?
 A: You're on your own.
 
 Q: What if I need to ...
@@ -62,6 +71,9 @@ A: I SAID, you're on your own! (patches welcomed :-)
    #:list-tests
    #:describe-test
    #:clear-tests
+   #:test-in
+   #:run-tests
+   #:save-tests
    ))
 (in-package :test)
 
@@ -71,11 +83,17 @@ A: I SAID, you're on your own! (patches welcomed :-)
 (defparameter *verbose* t
   "T to print lines for every test. NIL to just show failures.")
 
+(defvar *group* nil
+  "The default test group to define tests in with the TEST macro.")
+
 (defstruct test
   "Tests have:
-- a NAME which is a symbol, perhaps a keyword if you want to run the tests from a different package than they're defined in.
-- a function FUNC, which returns a truth value indication if the test succeeded or failed.
-- BODY saves the forms of the test, so you don't have to refer back to the source.
+- a NAME which is a symbol, perhaps a keyword if you want to run the tests
+  from a different package than they're defined in.
+- a function FUNC, which returns a truth value indication if the test succeeded
+  or failed.
+- BODY saves the forms of the test, so you don't have to refer back to the
+  source.
 - DOC says something about the test, or not."
    name
    doc
@@ -85,7 +103,8 @@ A: I SAID, you're on your own! (patches welcomed :-)
 
 (defstruct test-group
   "Test groups are:
-- a NAME which is a symbol, perhaps a keyword if you want to run the tests from a different package than they're defined in.
+- a NAME which is a symbol, perhaps a keyword if you want to run the tests
+  from a different package than they're defined in.
 - a list of TESTS, or TEST-GROUPs
 - a documentation string DOC
 - a SETUP function, which is called before the group is run
@@ -176,7 +195,8 @@ A: I SAID, you're on your own! (patches welcomed :-)
       (setf *tests* (delete g *tests*)))))
 
 (defun add-to-group-name (group-name test)
-  "Add the given TEST to the group named GROUP-NAME. Adds the group if it doesn't already exist."
+  "Add the given TEST to the group named GROUP-NAME. Adds the group if it
+doesn't already exist."
   (let ((group (find-group group-name)))
     (if group
 	(push test (test-group-tests group))
@@ -188,7 +208,9 @@ A: I SAID, you're on your own! (patches welcomed :-)
 ;; just clear the group and redefine all the tests.
 
 (defmacro deftests ((group-name &key setup takedown doc) &body body)
-  "Define a group of tests with the given GROUP-NAME. The BODY is any number of forms which return a truth value indicating if the test failed. Each form can optionally be preceded by a string, which is it's documentation."
+  "Define a group of tests with the given GROUP-NAME. The BODY is any number
+of forms which return a truth value indicating if the test failed. Each form
+can optionally be preceded by a string, which is it's documentation."
 ;  (let* ((group (find-group group-name))
 ;         (n (length group)))
   (clear-group group-name)
@@ -277,7 +299,8 @@ A: I SAID, you're on your own! (patches welcomed :-)
 	(format t "FAIL!"))))
 
 (defun list-tests (&key long (bodies t) failed)
-  "List all the tests. If BODIES show the code for each. If LONG, show the documentation."
+  "List all the tests. If BODIES show the code for each. If LONG, show the
+documentation."
   (labels ((print-test (test indent)
 	     (if (test-group-p test)
 		 (progn
@@ -329,5 +352,81 @@ A: I SAID, you're on your own! (patches welcomed :-)
 (defun clear-tests ()
   "Forget about ALL the tests."
   (setf *tests* '()))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Things for interactive test definition
+
+(defun test-in (group)
+  "Set the current test group to GROUP."
+  (setf *group*
+	(etypecase group
+	  ((or symbol keyword)
+	   group)
+	  (string
+	   (intern group))
+	  ((or character number pathname)
+	   (intern (princ-to-string group))))))
+
+(defmacro test (&body test)
+  "Define a test in the current test group. The test is an expression that
+returns non-NIL to succeed."
+  `(deftests (*group*) ,@test))
+
+(defun run-tests (&optional (group *group*))
+  "Run tests in the current test group."
+  (run-group-name group))
+
+;; We can't use the one in dlib-misc, because dependencies.
+(defun date-string ()
+  (multiple-value-bind (seconds minutes hours date month year day
+				daylight-p zone) (get-universal-time)
+    (declare (ignore day daylight-p zone))
+    (format nil "~d-~2,'0d-~2,'0d ~2,'0d:~2,'0d:~2,'0d"
+	    year month date hours minutes seconds)))
+
+(defun save-header (group filename stream)
+  "Write the header for the test group GROUP and a new file named FILENAME
+to STREAM."
+  (let ((name (test-group-name group)))
+    (format stream ";;;~%;;; ~a - Tests for ~a~%;;;~%~%
+(defpackage :~a-test
+  (:documentation \"Tests for ~a\")
+  (:use :cl :test :~a)
+  (:export
+   ))~%" filename name name name name)))
+
+(defun save-tests (&optional (group *group*))
+  "Write tests in GROUP to a file."
+  (let* ((filename (format nil "~(~a~)-test.lisp"
+			   (or (symbolp *group*) (package-name *package*))))
+	 (file-exists (probe-file filename)))
+    (format t "~a tests to ~a..."
+	    (if file-exists "Appending" "Writing") filename)
+    (finish-output)
+    (with-open-file (stream filename :direction :output
+			    :if-exists :append
+			    :if-does-not-exist :create)
+      (when (not file-exists)
+	(save-header group filename stream))
+      (format stream ";;; Tests for ~a generated on ~a~a~%"
+	      *group* (date-string)
+	      (if (find-package :nos)
+		  (concatenate 'string " by "
+			       (funcall (intern "USER-NAME" :nos)))
+		  ""))
+      (when (test-group-doc group)
+	(format stream ";;; ~a:~%;;; ~a~%" (test-group-name group)
+		(test-group-doc group)))
+      (format stream "(deftests (~a)~%" (test-group-name group))
+      (loop :for x :in (test-group-tests group) :do
+	 (cond
+	   ((test-p x)
+	    (format stream "  ~s~%" (test-body x)))
+	   ((test-group-p x)
+	    (error "I don't know how to handle saving sub-groups."))))
+      (format stream ")~%"))
+    (format t "Tests saved to ~a.~%" filename)
+    (format t "NOTE: You will probably have to edit them.~%")
+    (finish-output)))
 
 ;; EOF
