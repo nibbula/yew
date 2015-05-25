@@ -9,9 +9,32 @@
 ;;  - grotty & color processing
 ;;  - remove & transform lines
 ;;  - simpile HTML rendering
+;;  - big stream issues?
 
 (defpackage :pager
-  (:documentation "We can only see so much at one time.")
+  (:documentation "pager - More or less like more or less.
+
+As you may know, we can only see so much at one time. A paginator is the
+traditional solution, which allows one to scroll through textual output.
+The funtionality of a paginator can easily and perhaps better be done by a
+text editor in read-only mode. The problem is that many text editors have
+significant resource requirement and start up time, as well as being ill
+suited to being at the end of a shell pipeline. The paginator is a small,
+modest, and simple program which should start up quickly and be able to be
+conviently used as the last step of an output pipline.
+
+I would like this pager to evolve into a thing that can be used either as an
+editor mode or a standalone program. But for the time being it acts like a
+traditional Unix paginator, except that it lives in a Lisp world, which means
+it should be smartly compiled to a tight executable or used from a Lisp shell.
+
+SYNOPSIS
+  pager files...					[shell command]
+  pager &optional (file-or-files (pick-file))		[function]
+
+The function takes a file name or a stream or a list of such.
+The shell command takes any number of file names.
+")
   (:use :cl :dlib :dlib-misc :curses :opsys :fui :stretchy :keymap :char-util)
   (:export
    #:*pager-prompt*
@@ -74,16 +97,19 @@
     :documentation "how many lines in a page")
    (got-eof
     :initarg :got-eof :accessor pager-got-eof :initform nil
-    :documentation "true if we got to the end of stream")
+    :documentation "True if we got to the end of stream")
    (search-string
     :initarg :search-string :accessor pager-search-string :initform nil
-    :documentation "if non-nil search for and highlight")
+    :documentation "If non-nil search for and highlight")
+   (filter-expr
+    :initarg :filter-expr :accessor pager-filter-expr :initform nil
+    :documentation "Don't show lines matching this regular expression")
    (file-list
     :initarg :file-list :accessor pager-file-list :initform nil
-    :documentation "list of files to display")
+    :documentation "List of files to display")
    (file-index
     :initarg :file-index :accessor pager-file-index :initform nil
-    :documentation "where we are in the file list")
+    :documentation "Where we are in the file list")
    (message
     :initarg :message :accessor pager-message :initform nil
     :documentation "Message to display until next input")
@@ -92,7 +118,7 @@
     :documentation "Common numeric argument for commands")
    (quit-flag
     :initarg :quit-flag :accessor pager-quit-flag :initform nil
-    :documentation "true to quit the pager")
+    :documentation "True to quit the pager")
    (suspend-flag
     :initarg :suspend-flag :accessor pager-suspend-flag :initform nil
     :documentation "true to suspend the pager")
@@ -110,7 +136,7 @@
     :initarg :show-line-numbers :accessor pager-show-line-numbers :initform nil
     :documentation "-l")
    (wrap-lines
-    :initarg :show-line-numbers :accessor pager-show-line-numbers :initform nil
+    :initarg :show-line-numbers :accessor pager-wrap-lines :initform nil
     :documentation "-l"))
   (:documentation "An instance of a pager."))
 
@@ -136,6 +162,7 @@
 ;	(pager-page-size o) 0
 	(pager-got-eof o) nil
 	(pager-search-string o) nil
+	(pager-filter-expr o) nil
 ;	(pager-file-list o) nil
 ;	(pager-index o) nil
 	(pager-message o) nil
@@ -694,6 +721,30 @@ line : |----||-------||---------||---|
 	      (addstr (format nil "~d: ~a" line-number text))
 	      (addstr text))))))
 
+(defun span-matches (span expr)
+  "Return true if the plain text of a SPAN matches the EXPR."
+  ;; This is probably wasteful and slow.
+  (let ((line
+	 (with-output-to-string (str)
+	   (labels ((glom-span (s)
+		      (typecase s
+			(string (princ s str))
+			(list
+			 (loop :for e :in (cdr s) :do (glom-span e)))
+			(t (princ s str))))) ; probably a bit too DWIM-ish
+	     (glom-span span)))))
+    (and (ppcre:all-matches expr line) t)))
+
+(defun filter-this (pager line)
+  "Return true if we should filter this line."
+  (when (pager-filter-expr pager)
+    (typecase (line-text line)
+      (string (and (ppcre:all-matches
+		    (pager-filter-expr pager) (line-text line)) t))
+      (list   (span-matches (pager-filter-expr pager) (line-text line)))
+      (t (error "Don't know how to filter a line of ~s~%"
+		(type-of (line-text line)))))))
+
 (defun display-line (pager line-number line)
   (typecase (line-text line)
     (string (render-text-line pager line-number line))
@@ -709,20 +760,21 @@ line : |----||-------||---------||---|
   (with-slots (line left page-size) pager
     (let ((y 0))
       (loop
-	 :with l = (nthcdr line (pager-lines pager))
-	 :for i :from line :to (+ line (1- page-size))
-	 :while (car l)
+	 :with l = (nthcdr line (pager-lines pager)) :and i = line
+	 :while (and (<= i (+ line (1- page-size))) (car l))
 	 :do
 	 (move y 0)
-	 (display-line pager i (car l))
-	 (setf l (cdr l))
-	 (incf y))
+	 (when (not (filter-this pager (car l)))
+	   (display-line pager i (car l))
+	   (incf y)
+	   (incf i))
+	 (setf l (cdr l)))
       ;; Fill the rest of the screen with twiddles to indicate emptiness.
       (when (< y page-size)
 	(loop :for i :from y :below page-size
 	   :do (mvaddstr i 0 "~"))))))
 
-(defun ask (&optional prompt)
+(defun ask-for (&key prompt space-exits)
   (let ((str (make-stretchy-string 10))
 	(esc-count 0))
     (loop :with c :and done
@@ -735,21 +787,29 @@ line : |----||-------||---------||---|
        (case c
 	 (#\escape
 	  (when (> (incf esc-count) 1)
-	    (return-from ask nil)))
+	    (return-from ask-for nil)))
 	 (#\^G
-	  (return-from ask nil))
+	  (return-from ask-for nil))
 	 ((#\return #\newline)
 	  (setf done t))
 	 ((#\backspace #\rubout :backspace :delete)
-	  (when (> (fill-pointer str) 0)
-	    (decf (fill-pointer str))))
+	  (if (> (fill-pointer str) 0)
+	      (decf (fill-pointer str))
+	      (return-from ask-for nil))) ; backing up past beginning exits
 	 (#\^U
 	  (setf (fill-pointer str) 0))
+	 (#\space
+	  (if space-exits
+	      (setf done t)
+	      (stretchy-append str #\space)))
 	 (t
 	  (when (characterp c)
 	    (stretchy-append str c))))
        :while (not done))
     str))
+
+(defun ask (&optional prompt)
+  (ask-for :prompt prompt))
 
 (defun search-line (str line)
   (typecase line
@@ -775,6 +835,10 @@ line : |----||-------||---------||---|
       (if (and l (< (line-number l) count))
 	  (setf line (line-number l))
 	  nil))))
+
+(defun filter-lines (pager)
+  (let ((filter (ask "&")))
+    (setf (pager-filter-expr pager) filter)))
 
 (defun set-option (pager)
   "Set a pager option. Propmpts for what option to toggle."
@@ -816,7 +880,7 @@ line : |----||-------||---------||---|
 (defun open-file (pager filename)
   "Open the given FILENAME."
   (with-slots (count lines line got-eof stream page-size) pager
-    (let ((new-stream (open (quote-filename filename :direction :input))))
+    (let ((new-stream (open (quote-filename filename) :direction :input)))
       (if new-stream
 	  (progn
 	    (close stream)
@@ -940,9 +1004,64 @@ line : |----||-------||---------||---|
 			  (position input-char +digits+))
 	    message (format nil "Prefix arg: ~d" prefix-arg)))))
 
-;; (defun read-command (pager)
-;;   (set cmd (ask ": "))
-;;   (
+(defmacro sub-page ((stream-var) &body body)
+  "Generate some output and run a sub-instance of the pager on it."
+  (let ((input (gensym "SUB-PAGE-INPUT")))
+    `(with-input-from-string
+	 (,input
+	  (with-output-to-string (,stream-var)
+	    ,@body))
+       (page ,input))))
+
+;; The long commands are a meager attempt at mindless "less" compatibility.
+;; @@@ This points out the need for a curses-ification of tiny-rl.
+
+(defmacro lc (&body body)
+  `(function (lambda (p c) (declare (ignorable c)) ,@body)))
+
+(defparameter *long-commands*
+  (vector
+   `("edit"	  (#\e #\x)  "Examine a different file."
+     ,(lc (open-file p (ask (s+ ":" c #\space)))))
+   `("next"	  (#\n)	    "Examine the next file in the arguments."
+     ,(lc (next-file p)))
+   `("previous"	  (#\p)	    "Examine the previous file in the arguments."
+     ,(lc (previous-file p)))
+   `("help"	  (#\h)	    "Show the pager help."
+     ,(lc (help p)))
+   `("?"	  (#\?)	    "Show this long command help."
+     ,(lc (command-help p)))
+   `("file"	  (#\f)	    "Show the file information."
+     ,(lc (show-info p)))
+   `("quit"	  (#\q)	    "Quit the pager."
+     ,(lc (quit p)))))
+    #| (#\d (remove-file-from-list)) |#
+
+(defun command-help (pager)
+  "Show help on long commands, aka colon commands."
+  (declare (ignore pager))
+  (sub-page (s)
+    (table:nice-print-table
+     (loop :for c :across *long-commands*
+	:collect (list (elt c 0) (elt c 1) (elt c 2)))
+     '("Command" "Abbrev" "Description")
+     :stream s)))
+
+(defun read-command (pager)
+  (let ((cmd (ask-for :prompt ":" :space-exits t)))
+    (when (and cmd (stringp cmd))
+      (let (found)
+	(loop
+	   :for c :across *long-commands*
+	   :do (when (position (char cmd 0) (elt c 1))
+		 (setf found t)
+		 (funcall (elt c 3) pager cmd)))
+	(when (not found)
+	  (message "~a is an unknown command." cmd))))))
+
+;; These bindings are basically "less" compatible, but are also an horrible
+;; mishmash of emacs, vi, less, more, pg, etc. Just pandering to whatever
+;; people are used to scrolling with.
 
 (defkeymap *help-keymap*
   `(
@@ -960,12 +1079,16 @@ line : |----||-------||---------||---|
     (#\^Z		. suspend)
     (#\space		. next-page)
     (:npage		. next-page)
+    (#\^F               . next-page)
+    (#\^V               . next-page)
     (#\return		. next-line)
     (:down		. next-line)
     (#\j		. next-line)
     (#\b		. previous-page)
     (:ppage		. previous-page)
     (#\rubout		. previous-page)
+    (#\^B		. previous-page)
+    (,(meta-char #\v)   . previous-page)
     (#\k		. previous-line)
     (:up		. previous-line)
     (#\l		. scroll-right)
@@ -984,6 +1107,7 @@ line : |----||-------||---------||---|
     (#\n		. search-next)
     (#\=		. show-info)
     (#\^G		. show-info)
+    (#\V                . show-version)
     (#\-		. set-option)
     (#\^L		. redraw)
     (,(meta-char #\u)	. clear-search)
@@ -1005,6 +1129,7 @@ line : |----||-------||---------||---|
     (#\9		. digit-argument)
     (#\escape		. *escape-keymap*)
     (#\:		. read-command)
+    (#\&                . filter-lines)
     ))
 
 (defparameter *escape-keymap* (build-escape-map *normal-keymap*))
