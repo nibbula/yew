@@ -14,6 +14,6 @@
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :licence            "None"
     :long-description   "Putative Muca (A very simple interface to CVS)"
-    :depends-on (:dlib :dlib-misc :opsys :curses :pager)
+    :depends-on (:dlib :dlib-misc :opsys :curses :pager :fui)
     :components
     ((:file "puca")))

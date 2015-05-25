@@ -11,6 +11,7 @@
 ;;  - improve git mode
 ;;    - show things to pull? (ie changes on remote)
 ;;  - Consider making a branch editing mode
+;;  - Consider making a version editing mode
 ;;  - Consider configuration / options editing
 ;;     like for "git config ..." or whatever the equivalent is in other systems
 
@@ -18,7 +19,8 @@
 
 (defpackage :puca
   (:documentation "Putative Muca")
-  (:use :cl :dlib :dlib-misc :opsys :curses :pager :tiny-rl :completion)
+  (:use :cl :dlib :dlib-misc :opsys :curses :pager :tiny-rl :completion :fui
+	:keymap)
   (:export
    ;; Main entry point
    #:puca
@@ -43,15 +45,17 @@
   filename
   extra-lines)
 
-(defstruct puca-app
+(defstruct puca
   "An instance of a version control frontend app."
   (goo nil)				; A list of goo entries.
   (maxima 0)				; Number of items.
   (cur 0)				; Current item.
+  (mark nil)				; One end of the region
   (top 0)				; Top item
-  (bottom nil)				; Bottome item.
+  (bottom nil)				; Bottom item.
   (window nil)				; Curses WINDOW
   (screen nil)				; Curses SCREEN
+  (quit-flag nil)			; set to true to quit
   (errors nil)				; Error output
   (extra nil))				; extra lines
 
@@ -73,6 +77,9 @@
 
 (defgeneric parse-line (pu type line i)
   (:documentation "Take a line and add stuff to goo and/or *errors*."))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; CVS
 
 (defparameter *backend-cvs*
   (make-backend :name		"CVS"
@@ -115,6 +122,9 @@
 	   (setf (goo-extra-lines (first goo)) (nreverse extra))
 	   (setf extra nil)))))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; GIT
+
 (defparameter *backend-git*
   (make-backend :name		"git"
 		:type		:git
@@ -140,7 +150,7 @@
 					   (declare (ignore a))
 					   (or (equal b #\space)
 					       (equal b #\tab))))))
-      (dbug "~s~%" words)
+      ;;(debug-msg "~s" words)
       (cond
 	;; If the first word is more than 1 char long, save it as extra
 	((> (length (car words)) 2)
@@ -157,6 +167,9 @@
 	 (when extra
 	   (setf (goo-extra-lines (car goo)) (nreverse extra))
 	   (setf extra nil)))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; SVN
 
 (defparameter *backend-svn*
   (make-backend :name		"SVN"
@@ -176,6 +189,8 @@
 (defmethod parse-line (pu (type (eql :svn)) line i)
   (parse-line pu :git line i)) ; just use cvs
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defvar *backend* nil
   "The current backend.")
 
@@ -184,6 +199,7 @@
 			   (:svn ,*backend-svn*))
   "The availible backends.")
 
+#|
 (defun init-curses (pu device term-type)
   (with-slots (window screen) pu
     (setf window
@@ -213,6 +229,7 @@
   (init-pair 7 +COLOR-WHITE+    +COLOR-BLACK+)
   (noecho)
   (cbreak)))
+|#
 
 (defun message (format-string &rest format-args)
   (move (- *lines* 2) 2)
@@ -226,18 +243,18 @@
     (let ((g (elt goo i)))
       (let* ((attr
 	      (case (aref (goo-modified g) 0)
-		(#\M 1)			; red     - modified
-		(#\? 0)			; white   - unknown
-		(#\C 5)			; magenta - conflicts
-		(t 2))))		; green   - updated or other
+		(#\M (color-attr +color-red+	 +color-black+)) ; modified
+		(#\? (color-attr +color-white+	 +color-black+)) ; unknown
+		(#\C (color-attr +color-magenta+ +color-black+)) ; conflicts
+		(t   (color-attr +color-green+	 +color-black+))))) ; updated or other
 	(move (+ (- i top) 3) 4)
-					;    (clrtoeol)
-	(attron (color-pair attr))
+	;; (clrtoeol)
+	(attron attr)
 	(addstr (format nil "~a ~a ~30a"
 			(if (goo-selected g) "x" " ")
 			(goo-modified g)
 			(goo-filename g)))
-	(attroff (color-pair attr))
+	(attroff attr)
 	(when (goo-extra-lines g)
 ;; Ugly inline display:
 ;;      (if (= i cur)
@@ -336,6 +353,7 @@
     (loop :for i :from 0 :below maxima
        :do (setf (goo-selected (elt goo i)) nil))))
 
+#|
 (defun get-char ()
   (let ((c (getch)))
     (cond
@@ -344,6 +362,7 @@
       ((> c #xff) (function-key c))
 ;      ((characterp c) (code-char c))
       (t (code-char c)))))
+|#
 
 #|
 (defun fake-draw-screen ()
@@ -367,7 +386,7 @@
   (mvwaddstr w row (round (- (/ width 2) (/ (length str) 2))) str))
 
 ;; @@@ Something like this should probably move to FUI.
-(defun display-text (pu title text-lines &key input-func)
+(defun puca-display-text (pu title text-lines &key input-func)
   (let* ((mid    (truncate (/ *cols* 2)))
 	 (width  (min (- *cols* 6)
 		      (+ 4 (loop :for l :in text-lines :maximize (length l)))))
@@ -402,7 +421,7 @@
     result))
 
 (defun info-window (pu title text-lines)
-  (display-text
+  (puca-display-text
    pu title text-lines
    :input-func #'(lambda (pu w)
 		   (declare (ignore pu w))
@@ -414,7 +433,7 @@
 
 (defun input-window (pu title text-lines)
   (prog1
-      (display-text
+      (puca-display-text
        pu title text-lines
        :input-func #'(lambda (pu w)
 		       (declare (ignore pu))
@@ -513,124 +532,209 @@ for the command-function).")
       (when be (return-from pick-backend (cadr be)))))
   ;; try to figure it out
   (let ((result
-	 (loop :for (tag b) :in *backends* :do
+	 (loop :for (nil b) :in *backends* :do
 	    (when (funcall (backend-check-func b))
 	      (return b)))))
     (if (not result)
 	*backend-cvs*
 	result)))
 
-(defun puca (&key device term-type backend-type)
-  (let ((pu (make-puca-app)))
-    (with-slots (goo maxima cur top bottom window screen errors) pu
-      (init-curses pu device term-type)
-      (let ((*backend* (pick-backend backend-type)) c mark)
+(defun quit (pu)
+  (setf (puca-quit-flag pu) t))
+
+(defun add-command (pu)
+  (do-command pu #'backend-add (selected-files pu)))
+
+(defun reset-command (pu)
+  (do-command pu #'backend-reset (selected-files pu) :confirm t))
+
+(defun diff-command (pu)
+  (do-command pu #'backend-diff (selected-files pu)
+	      :relist nil :do-pause nil))
+
+(defun diff-repo-command (pu)
+  (do-command pu #'backend-diff-repo (selected-files pu)
+	      :relist nil :do-pause nil))
+
+(defun commit-command (pu)
+  (do-command pu #'backend-commit (selected-files pu)))
+
+(defun update-command (pu)
+  (do-command pu #'backend-update (selected-files pu)))
+
+(defun update-all-command (pu)
+  (do-command pu #'backend-update-all nil))
+
+(defun push-command (pu)
+  (do-command pu #'backend-push nil :relist nil))
+
+(defun view-file (pu)
+  (pager:pager (selected-files pu))
+  (draw-screen pu))
+
+(defun previous-line (pu)
+  (with-slots (cur top) pu
+    (decf cur)
+    (when (< cur 0)
+      (setf cur 0))
+    (when (< cur top)
+      (decf top)
+      (draw-screen pu))))
+
+(defun next-line (pu)
+  (with-slots (cur maxima top bottom) pu
+    (incf cur)
+    (when (>= cur maxima)
+      (setf cur (1- maxima)))
+    (when (and (> cur (- bottom 1)) (> bottom 1))
+      (incf top)
+      (draw-screen pu))))
+
+(defun next-page (pu)
+  (with-slots (cur maxima top bottom) pu
+    (setf cur (+ cur 1 (- curses:*lines* 7)))
+    (when (>= cur maxima)
+      (setf cur (1- maxima)))
+    (when (> cur bottom)
+      (setf top (max 0 (- cur (- curses:*lines* 7))))
+      (draw-screen pu))))
+
+(defun previous-page (pu)
+  (with-slots (cur top) pu
+    (setf cur (- cur 1 (- curses:*lines* 7)))
+    (when (< cur 0)
+      (setf cur 0))
+    (when (< cur top)
+      (setf top cur)
+      (draw-screen pu))))
+
+(defun go-to-end (pu)
+  (with-slots (cur maxima top bottom) pu
+    (setf cur (1- maxima))
+    (when (> maxima bottom)
+      (setf top (max 0 (- maxima (- curses:*lines* 7))))
+      (draw-screen pu))))
+
+(defun go-to-beginning (pu)
+  (with-slots (cur top) pu
+    (setf cur 0)
+    (when (> top 0)
+      (setf top 0)
+      (draw-screen pu))))
+
+(defun set-mark (pu)
+  (with-slots (cur mark) pu
+    (setf mark cur)
+    (message "Set mark.")))
+
+(defun toggle-region (pu)
+  (with-slots (cur mark) pu
+    (if mark
+      (let ((start (min mark cur))
+	    (end (max mark cur)))
+	(loop :for i :from start :to end :do
+	   (setf (goo-selected (elt (puca-goo pu) i))
+		 (not (goo-selected (elt (puca-goo pu) i))))
+	   (draw-line pu i)))
+      (message "No mark set."))))
+
+(defun toggle-line (pu)
+  (with-slots (cur goo) pu
+    (when goo
+      (setf (goo-selected (elt (puca-goo pu) cur))
+	    (not (goo-selected (elt (puca-goo pu) cur))))
+      (draw-line pu cur))))
+
+(defun select-all-command (pu)
+  (select-all pu)
+  (draw-screen pu))
+
+(defun select-none-command (pu)
+  (select-none pu)
+  (draw-screen pu))
+
+(defun relist (pu)
+  (clear)
+  (refresh)
+  (get-list pu)
+  (draw-screen pu)
+  (refresh))
+
+(defun redraw (pu)
+  (clear)
+  (refresh)
+  (draw-screen pu)
+  (refresh))
+
+(defkeymap *puca-keymap*
+  `((#\q		. quit)
+    (#\Q		. quit)
+    (#\?		. help)
+    (#\h		. help)
+    (#\a		. add-command)
+    (#\r		. reset-command)
+    (#\d		. diff-command)
+    (#\D		. diff-repo-command)
+    (#\c		. commit-command)
+    (#\u        	. update-command)
+    (#\U        	. update-all-command)
+    (#\P        	. push-command)
+    (#\v        	. view-file)
+    (:UP        	. previous-line)
+    (,(code-char 16)	. previous-line)
+    (#\^p       	. previous-line)
+    (:DOWN      	. next-line)
+    (,(code-char 14)    . next-line)
+    (#\^n		. next-line)
+    (:NPAGE		. next-page)
+    (#\^V		. next-page)
+    (#\^F		. next-page)
+    (:PPAGE		. previous-page)
+    (#\^B		. previous-page)
+    (#\>		. go-to-end)
+    (#\<		. go-to-beginning)
+    (#\nul		. set-mark)
+    (#\X		. toggle-region)
+    (#\space		. toggle-line)
+    (#\x		. toggle-line)
+    (#\return		. toggle-line)
+    (#\s		. select-all-command)
+    (#\S		. select-none-command)
+    (#\g		. relist)
+    (#\e		. show-extra)
+    (#\E		. show-errors)
+    (#\:		. extended-command)
+    (#\^L		. redraw)
+    (,(code-char 12)	. redraw)))
+
+(defun perform-key (pu key)
+  (let ((binding (key-binding key *puca-keymap*)))
+    (if (not binding)
+	(message "No binding for ~a" key)
+	(etypecase binding
+	  ((or symbol function)
+	   (funcall binding pu))
+	  (list
+	   (apply (car binding) pu (cdr binding)))))))
+
+(defun puca (&key #|device term-type |# backend-type)
+  (with-curses
+    ;; (init-curses pu device term-type)
+    (let* ((pu (make-puca))
+	   (*backend* (pick-backend backend-type)) c)
+      (with-slots
+	    (goo maxima cur mark top bottom window screen quit-flag errors) pu
+	(setf window *stdscr*)
 	(setf goo nil)
 	(draw-screen pu)
 	(get-list pu)
 	(draw-screen pu)
 	(when errors (message "**MESSAGES**"))
 	(setf cur 0)
-	(do ((quit-flag nil)) (quit-flag)
+	(do () (quit-flag)
 	  (move (+ (- cur top) 3) 2)
-	  (setf c (get-char))
-	  (case c
-	    ((#\q #\Q)
-	     (setf quit-flag t))
-	    ((#\? #\h)
-	     (help pu))
-	    (#\a (do-command pu #'backend-add (selected-files pu)))
-	    (#\r (do-command pu #'backend-reset (selected-files pu)
-			     :confirm t))
-	    (#\d (do-command pu #'backend-diff (selected-files pu)
-			     :relist nil :do-pause nil))
-	    (#\D (do-command pu #'backend-diff-repo (selected-files pu)
-			     :relist nil :do-pause nil))
-	    (#\c (do-command pu #'backend-commit (selected-files pu)))
-	    (#\u (do-command pu #'backend-update (selected-files pu)))
-	    (#\U (do-command pu #'backend-update-all nil))
-	    (#\P (do-command pu #'backend-push nil :relist nil))
-	    (#\v
-	     (pager:pager (selected-files pu))
-	     (draw-screen pu))
-	    ((:UP (code-char 16) #\^p)
-	     (decf cur)
-	     (when (< cur 0)
-	       (setf cur 0))
-	     (when (< cur top)
-	       (decf top)
-	       (draw-screen pu)))
-	    ((:DOWN (code-char 14) #\^n)
-	     (incf cur)
-	     (when (>= cur maxima)
-	       (setf cur (1- maxima)))
-	     (when (and (> cur (- bottom 1)) (> bottom 1))
-	       (incf top)
-	       (draw-screen pu)))
-	    ((:NPAGE #\^V #\^F)
-	     (setf cur (+ cur 1 (- curses:*lines* 7)))
-	     (when (>= cur maxima)
-	       (setf cur (1- maxima)))
-	     (when (> cur bottom)
-	       (setf top (max 0 (- cur (- curses:*lines* 7))))
-	       (draw-screen pu)))
-	    ((:PPAGE #\^B)
-	     (setf cur (- cur 1 (- curses:*lines* 7)))
-	     (when (< cur 0)
-	       (setf cur 0))
-	     (when (< cur top)
-	       (setf top cur)
-	       (draw-screen pu)))
-	    (#\>
-	     (setf cur (1- maxima))
-	     (when (> maxima bottom)
-	       (setf top (max 0 (- maxima (- curses:*lines* 7))))
-	       (draw-screen pu)))
-	    (#\<
-	     (setf cur 0)
-	     (when (> top 0)
-	       (setf top 0)
-	       (draw-screen pu)))
-	    (#\nul
-	     (setf mark cur)
-	     (message "Set mark."))
-	    (#\X
-	     (if mark
-		 (let ((start (min mark cur))
-		       (end (max mark cur)))
-		   (loop :for i :from start :to end :do
-		      (setf (goo-selected (elt goo i))
-			    (not (goo-selected (elt goo i))))
-		      (draw-line pu i)))
-		 (message "No mark set.")))
-	    ((#\space #\x #\return)
-	     (when goo
-	       (setf (goo-selected (elt goo cur))
-		     (not (goo-selected (elt goo cur))))
-	       (draw-line pu cur)))
-	    (#\s			; select all
-	     (select-all pu)
-	     (draw-screen pu))
-	    (#\S			; select none
-	     (select-none pu)
-	     (draw-screen pu))
-	    (#\g			; re-list
-	     (clear)
-	     (refresh)
-	     (get-list pu)
-	     (draw-screen pu)
-	     (refresh))
-	    (#\e
-	     (show-extra pu))
-	    (#\E
-	     (show-errors pu))
-	    (#\:
-	     (extended-command pu))
-	    ((#\^L (code-char 12))	; re-draw
-	     (clear)
-	     (refresh)
-	     (draw-screen pu)
-	     (refresh)))
+	  (setf c (fui:get-char))
+	  (perform-key pu c)
 ;	  (move (- *lines* 2) 2)
 	  (mvprintw (- *lines* 2) 2 "%-*.*s" :int 40 :int 40 :string "")
 ;	  (mvaddstr (- *lines* 2) 2 (format nil "~a (~a)" c (type-of c))))
