@@ -5,7 +5,15 @@
 ;; $Revision: 1.4 $
 
 (defpackage :glob
-  (:documentation "Shell style file name pattern matching")
+  (:documentation "Shell style file name pattern matching.
+Main functions are:
+ FNMATCH      - Checks whether a string matches a pattern.
+ GLOB         - Returns a list of pathnames that match a pattern.
+ PATTERN-P    - Returns true if the string might have pattern characters.
+ EXPAND-TILDE - Returns the pathname with ~ home directories expanded.
+
+The documentation for FNMATCH describes the pattern syntax a little.
+")
   (:use :cl :dlib :opsys)
   (:export
    #:pattern-p
@@ -413,6 +421,19 @@ match & dir  - f(prefix: boo) readir boo
 
 |#
 
+(defun is-really-a-directory (dir entry)
+  "Return true if the ENTRY in is a directory. ENTRY is a DIR-ENTRY structure."
+  (or (eq :dir (dir-entry-type entry))
+      ;; If it's a link, we have to stat it to check.
+      (and (eq :link (dir-entry-type entry))
+	   (let ((s (ignore-errors (stat (s+ dir *directory-separator*
+					     (dir-entry-name entry))))))
+	     (and s (is-directory (file-status-mode s)))))))
+
+(defun trailing-directory-p (path)
+  "Return true if PATH has a trailing directory indicator."
+  (char= (char path (1- (length path))) *directory-separator*))
+
 ;; This is called recursively for each directory, depth first, for exapnding
 ;; GLOB patterns. Of course most of the work is done by FNMATCH.
 (defun dir-matches (path &optional dir)
@@ -421,26 +442,38 @@ with GLOB patterns, and a directory DIR, which is a string directory path,
 without patterns, and returns a list of string paths that match the PATH in
 the directory DIR and it's subdirectories. Returns NIL if nothing matches."
   (flet ((squip-dir (d f)
-	   "Basiclly append the file in name in F to the directory D."
+	   "Basiclly append the file name in F to the directory D."
 	   (if d
-	       (if (and (char= (char d 0) #\/) (= (length d) 1))
-		   (s+ "/" (dir-entry-name f))
-		   (s+ dir "/" (dir-entry-name f)))
+	       (if (and (char= (char d 0) *directory-separator*)
+			(= (length d) 1))
+		   (s+ *directory-separator* (dir-entry-name f))
+		   (s+ dir *directory-separator* (dir-entry-name f)))
 	       (dir-entry-name f)))
 	 (starts-with-dot (p) (char= (char p 0) #\.)))
     (when path
+      #| (format t "path = ~s dir = ~s~%" path dir) |#
       (loop :with p = (car path)
-	 :for f :in (read-directory :dir (or dir ".") :full t
-				    :omit-hidden (not (starts-with-dot p)))
+	 :for f :in (ignore-errors
+		      (read-directory :dir (or dir ".") :full t
+				      :omit-hidden (not (starts-with-dot p))))
 	 ;; Only match explicit current "." and parent ".." elements.
 	 ;; Only match anything like ".*" when the pattern starts with ".".
 	 :if (or (and (equal "." p) (equal "." (dir-entry-name f)))
 		 (and (equal ".." p) (equal ".." (dir-entry-name f)))
-		 (fnmatch p (dir-entry-name f)))
+		 (or (and (trailing-directory-p p)
+			  (is-really-a-directory dir f)
+			  (fnmatch
+			   (subseq p 0 (position
+					*directory-separator* p
+					:from-end t))
+			   (dir-entry-name f)))
+		     (fnmatch p (dir-entry-name f))))
            :when (= (length path) 1)
 	     :append (list (squip-dir dir f))
-           :else :if (eq :dir (dir-entry-type f))
+           :else :if (is-really-a-directory dir f)
 	     :append (dir-matches (cdr path) (squip-dir dir f))))))
+
+(defparameter *dir-sep-string* (string *directory-separator*))
 
 (defun glob (pattern &key mark-directories escape sort braces (tilde t) twiddle
 		       limit)
@@ -455,8 +488,12 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
   (declare (ignore mark-directories escape sort braces limit))
   (setf tilde (or tilde twiddle))
   (let* ((expanded-pattern (if tilde (expand-tilde pattern) pattern))
-	 (path (split-sequence #\/ expanded-pattern :omit-empty t))
-	 (dir (when (char= (char expanded-pattern 0) #\/) "/")))
+	 (path (split-sequence *directory-separator* expanded-pattern
+			       :omit-empty t))
+	 (dir (when (char= (char expanded-pattern 0) *directory-separator*)
+		*dir-sep-string*)))
+    (when (trailing-directory-p expanded-pattern)
+      (rplaca (last path) (s+ (car (last path)) *dir-sep-string*)))
     (dir-matches path dir)))
 
 ;; Despite Tim Waugh's <twaugh@redhat.com> wordexp manifesto

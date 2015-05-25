@@ -104,6 +104,36 @@
   (fnmatch "[/\\]*" "/foo")
   )
 
+(cffi:defcstruct foreign-glob-t
+  (gl_pathc nos:size-t)
+  (gl_matchc :int)
+  (gl_offs nos:size-t)
+  (gl_flags :int)
+  (gl_pathv (:pointer :string)) ;; char **
+  ;; We don't really care about all those callback functions.
+  (gl_errfunc :pointer)   ;; int (*gl_errfunc)(const char *, int);
+  (gl_closedir :pointer)  ;; void (*gl_closedir)(void *);
+  (gl_readdir :pointer)   ;; struct dirent *(*gl_readdir)(void *);
+  (gl_opendir :pointer)   ;; void *(*gl_opendir)(const char *);
+  (gl_lstat :pointer)     ;; int (*gl_lstat)(const char *, struct stat *);
+  (gl_stat :pointer)      ;; int (*gl_stat)(const char *, struct stat *);
+  )
+
+;; Reference the C functions
+(cffi:defcfun ("fnmatch" real-fnmatch) :int (pattern :string) (string :string) (flags :int))
+(cffi:defcallback glob-error :int ((epath :string) (eerrno :int))
+  (format *error-output* "Glob error ~d for path ~s.~%" eerrno epath))
+(cffi:defcfun ("glob" real-glob) :int (pattern :string) (flags :int)
+	      (errfunc :pointer) (pglob (:pointer (:struct foreign-glob-t))))
+(cffi:defcfun globfree :void (pglob (:pointer (:struct foreign-glob-t))))
+(defun system-glob (pattern &optional (flags 0))
+  (cffi:with-foreign-object (pglob '(:struct foreign-glob-t))
+    (real-glob pattern flags (cffi:callback glob-error) pglob)
+    (cffi:with-foreign-slots ((gl_pathc gl_pathv) pglob
+			      (:struct foreign-glob-t))
+      (loop :for i :from 0 :below gl_pathc
+	 :collect (cffi:mem-aref gl_pathv :string i)))))
+
 (defparameter *test-dir* "zxcv")
 
 (defun touch (name)
@@ -139,9 +169,10 @@
     (mapcar #'delete-directory '("boo/bar" "boo" "zoo/baz" "zoo/quux" "zoo")))
   (delete-directory *test-dir*))
 
-;; @@@ Try:
-;; symbolic links
+;; @@@ !!! Need tests for:
+;; symbolic links, e.g. (glob "/var/*")
 ;; unreadable and/or unsearchable dir and subdirs
+;; trailing slash: e.g. (glob "*/")
 
 (deftests (glob :setup glob-setup
 		:takedown glob-takedown
