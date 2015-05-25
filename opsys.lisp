@@ -171,6 +171,8 @@
    #:user-home
    #:user-name-char-p
    #:valid-user-name
+   #:user-name
+   #:user-full-name
 
    #:group
    #:group-name
@@ -184,6 +186,7 @@
    #:endgrent
 
    ;; directories
+   #:*directory-separator*
    #:change-directory
    #:current-directory
    #:in-directory
@@ -197,7 +200,10 @@
    #:dir-entry-type
    #:dir-entry-inode
    #:probe-directory
-   #:*directory-separator*
+   #:path-to-absolute #:abspath
+   #:path-directory-name #:dirname
+   #:path-file-name #:basename
+   #:quote-filename
 
    ;; files (low level)
    #:O_RDONLY #:O_WRONLY #:O_RDWR #:O_ACCMODE #:O_NONBLOCK #:O_APPEND
@@ -321,6 +327,10 @@
    #:with-process-output
    #:pipe
 
+   ;; time
+   #:+unix-to-universal-time+
+   #:unix-to-universal-time
+
    ;; multiplexed io
    #:lame-poll
    #:lame-select
@@ -433,8 +443,8 @@
 
 ;; Generic things
 
-#+darwin (config-feature :os-t-has-strerror-r)
-#+darwin (config-feature :os-t-has-vfork)
+#+(or darwin linux) (config-feature :os-t-has-strerror-r)
+;#+(or darwin linux) (config-feature :os-t-has-vfork)
 #+(and (or darwin linux) x86-64) (config-feature :64-bit-target)
 #+ecl (eval-when (:compile-toplevel :load-toplevel :execute)
 	(when (= (cffi:foreign-type-size :long) 8)
@@ -1471,6 +1481,18 @@ user is not found."
 	      (return-from user-home (passwd-dir p))))
   (endpwent))
 
+(defun user-name ()
+  "Return the name of the current user."
+  (passwd-name (getpwuid (getuid))))
+
+(defun user-full-name ()
+  "Return the full name of the current user."
+  (let* ((name (passwd-gecos (getpwuid (getuid))))
+	 (comma (position #\, name)))
+    (if comma
+	(subseq name 0 comma)
+	name)))
+
 ;; This is probably wrong & system specific
 (defun user-name-char-p (c)
   "Return true if C is a valid character in a user name."
@@ -1543,7 +1565,7 @@ Return nil for foreign null pointer."
 
 (defparameter *directory-separator*
   #-windows #\/
-  #+windows #\\
+  #+(and windows (not cygwin)) #\\
   "Character that separates directories in a path.")
 
 ;; chroot
@@ -1997,6 +2019,106 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
   (declare (ignore dir))
   #-(or clisp sbcl ccl cmu ecl lispworks)
   (missing-implementation 'probe-directory))
+
+;; This is a workaround for not depending on split-sequence.
+;; so instead of (split-sequence *directory-separator* p :omit-empty t)
+(defun split-path (p)
+  (loop :with i = 0 :and piece
+     :while (< i (length p))
+     :do (setf piece nil)
+     (setf piece
+	   (with-output-to-string (str)
+	      (loop :while (and (< i (length p))
+				(char/= (char p i) *directory-separator*))
+		 :do
+		 (princ (char p i) str)
+		 (incf i))))
+     :if (and piece (/= (length piece) 0))
+     :collect piece
+     :do (incf i)))
+
+(defun path-to-absolute (path)
+  "Return the PATH converted into an absolute path."
+  ;; Make sure path is a string.
+  (setf path (etypecase path
+	       (null (return-from path-to-absolute nil))
+	       (string path)
+	       (pathname (namestring path))))
+    (let* ((p (if (char= *directory-separator* (char path 0))
+		 path			; already absolute
+		 (concatenate 'string (current-directory) "/" path)))
+	   ;; (pp (split-sequence *directory-separator* p :omit-empty t)))
+	   (pp (split-path p)))
+      (macrolet
+	  ((get-rid-of (str snip)
+	     "Get rid of occurances of STR by snipping back to SNIP, which
+              is a numerical expression in terms of the current position POS."
+	     `(loop :with start = 0 :and pos
+		 :while (setq pos (position ,str pp
+					    :start start :test #'equal))
+		 :do (setq pp (concatenate 'list
+					   (subseq pp 0 (max 0 ,snip))
+					   (subseq pp (1+ pos)))))))
+	;; Get rid of ".."
+;	(dbug "starting with ~s~%" pp)
+	(get-rid-of "." pos)
+;	(dbug "after . ~s~%" pp)
+	(get-rid-of ".." (1- pos))
+;	(dbug "after .. ~s~%" pp)
+	)
+      (if (zerop (length pp))
+	  "/"
+	  (apply #'concatenate 'string
+		 (loop :for e :in pp :collect "/" :collect e)))))
+
+(setf (symbol-function 'abspath) #'path-to-absolute)
+
+(defun clip-path (path side)
+  "Return the directory portion of a path."
+  ;; Go backwards from the end until we hit a separator.
+  (let ((i (1- (length path))))
+    (loop :while (and (>= i 0) (char/= #\/ (char path i)))
+       :do (decf i))
+    (if (eq side :dir)
+	(if (< i 0)
+	    (subseq path 0 0)
+	    (subseq path 0 i))
+	(if (< i 0)
+	    path
+	    (subseq path (1+ i))))))
+
+(defun path-directory-name (path)
+  "Return the directory portion of a PATH."
+  (clip-path path :dir))
+(setf (symbol-function 'dirname) #'path-directory-name)
+
+(defun path-file-name (path)
+  "Return the last portion of a PATH."
+ (clip-path path :file))
+(setf (symbol-function 'basename) #'path-file-name)
+
+(defparameter *need-quoting* "[*;:"
+  "Characters that may need escaping in a pathname.")
+
+;; I am probably unable to express how unfortunate this is.
+(defun quote-filename (namestring)
+  "Try to quote a file name so none of it's characters are noticed specially
+by the Lisp pathname monster."
+  (with-output-to-string (str)
+    (loop :for c :across namestring :do
+       (when (position c *need-quoting*)
+	 (princ #\\ str))
+       (princ c str))))
+
+#|  (let ((result namestring))
+      (flet ((possibly-quote (c)
+	     (when (position c result)
+	       ;; It's just not possible to write code this inefficient in C.
+	       (setf result (join (split-sequence c result) (s+ #\\ c))))))
+      (loop :for c :across "[*;:" :do
+	 (possibly-quote c))
+      result)))
+|#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Files
@@ -3162,13 +3284,25 @@ environment list, which defaults to the current 'C' environ variable."
   #+clisp (ext:run-program cmd :arguments args)
   #+excl (excl:run-shell-command (concatenate 'vector (list cmd cmd) args)
 				 :wait t)
-  #+(or openmcl ccl)
-  (let* ((proc (ccl::run-program cmd args
-				 :sharing :external
-				 :input t
-				 :output t
-				 :error t
-				 :wait t)))
+  #+(or openmcl ccl) (apply #'nos:fork-and-exec
+			    `(,cmd ,args
+				   ,@(when env-p :env environment)))
+#|  #+(or openmcl ccl)
+  (let* ((proc
+#|	  (ccl::run-program cmd args
+			    :sharing :external
+			    :input t
+			    :output t
+			    :error t
+			    :wait t) |#
+	   (apply #'ccl::run-program
+		  `(,cmd ,args
+			 ,@(when env-p :env environment)
+			 #| :sharing :external |#
+			 :input t
+			 :output t
+			 :error t
+			 :wait t))))
     (multiple-value-bind (status code-or-sig)
 	(ccl::external-process-status proc)
       (case status
@@ -3187,7 +3321,7 @@ environment list, which defaults to the current 'C' environ variable."
 	     code-or-sig))
 	(t
 	 (error "Process has unknown status ~a" status)))))
-
+|#
   #+sbcl (sb-ext:process-exit-code
 	  (apply #'sb-ext:run-program
 		 `(,cmd ,args
@@ -3476,13 +3610,16 @@ Trying to simplify our lives, by just using our own FFI versions, above.
 			     act))
 		       "N/A"))))
 
+(defcfun ("kill" real-kill) :int (pid pid-t) (signal :int))
+
 (defun kill (pid sig)
   #+clisp (posix:kill pid sig)
-  #+openmcl (#_kill pid sig)
+  #| #+openmcl (#_kill pid sig) |#
+  #+ccl (real-kill pid sig)
   #+cmu (unix:unix-kill pid sig)
   #+sbcl (sb-unix:unix-kill pid sig)
-  #-(or clisp openmcl cmu sbcl) (declare (ignore pid sig))
-  #-(or clisp openmcl cmu sbcl) (missing-implementation 'kill))
+  #-(or clisp openmcl cmu sbcl ccl) (declare (ignore pid sig))
+  #-(or clisp openmcl cmu sbcl ccl) (missing-implementation 'kill))
 
 (defcfun killpg :int (process-group pid-t) (signal :int))
 
@@ -3529,6 +3666,31 @@ Trying to simplify our lives, by just using our own FFI versions, above.
 
 ;; pipes
 
+(defcfun ("pipe" real-pipe) :int (pipefd :pointer))
+
+(defun pipe ()
+  (with-foreign-object (fd :int 2)
+    (syscall (real-pipe fd))
+    (values (mem-aref fd :int 0) (mem-aref fd :int 1))))
+
+#|
+(defun fork-with-pipes (cmd args &key in-stream (out-stream :stream)
+				   (environment nil env-p))
+  (let (in-stream-write-side in-stream-read-side
+        out-stream-write-side out-stream-read-side)
+    (if (and in-stream (streamp in-stream))
+	(progn
+	  (setf (values (in-stream-read-side in-stream-write-side) (pipe)))
+	  ;; return a stream of the write side
+	  (set-stream-fd in-stream write-side)
+	  ;; make the read side be standard input
+	  (dup2 in-stream-read-side 0)
+	  )
+	  (apply #'fork-and-exec
+	       `(,cmd ,args
+		      ,@(when env-p :env environment))))
+|#
+
 ;; @@@ add environment on other than sbcl
 (defun popen (cmd args &key in-stream (out-stream :stream)
 			 (environment nil env-p))
@@ -3558,12 +3720,20 @@ current process's environment."
 	 (if in-stream
 	     (ext:run-program cmd args :output out-stream :input in-stream)
 	     (ext:run-program cmd args :output out-stream)))
-  #+openmcl (ccl::external-process-output-stream
+#|  #+openmcl (ccl::external-process-output-stream
 	     (if in-stream
 		 (ccl::run-program cmd args :output out-stream
 				   :input in-stream :wait nil)
 		 (ccl::run-program cmd args :output out-stream
-				   :wait nil)))
+				   :wait nil))) |#
+  #+(or openmcl ccl)
+  (let ((proc (apply #'ccl::run-program
+		     `(,cmd ,args :wait nil :input t
+			    ,@(when out-stream `(:output ,out-stream))
+			    ,@(when in-stream `(:input ,in-stream))
+			    ,@(when env-p `(:env ,environment))))))
+    (ccl::external-process-output-stream proc))
+  
   #+ecl (ext:run-program cmd args)
   #+excl (excl:run-shell-command (format nil "~a~{ ~a~}" cmd args)
 				 :output out-stream :wait t)
@@ -3578,20 +3748,14 @@ current process's environment."
   (missing-implementation 'popen))
 
 (defmacro with-process-output ((var cmd args) &body body)
-  "Evaluate the body with the variable VAR bound to a stream with the output from the system command CMD with the arguments ARGS."
+  "Evaluate the body with the variable VAR bound to a stream with the output
+from the system command CMD with the arguments ARGS."
   `(let (,var)
     (unwind-protect
 	 (progn
 	   (setf ,var (popen ,cmd ,args))
 	   ,@body)
       (if ,var (close ,var)))))
-
-(defcfun ("pipe" real-pipe) :int (pipefd :pointer))
-
-(defun pipe ()
-  (with-foreign-object (fd :int 2)
-    (syscall (real-pipe fd))
-    (values (mem-aref fd :int 0) (mem-aref fd :int 1))))
 
 ;; There's already "standard-ish" lisp networking? Right? Please?
 ;; NO THERE ISN"T.
@@ -3655,7 +3819,14 @@ current process's environment."
 ;; int gettimeofday(struct timeval *restrict tp, void *restrict tzp);
 ;; int settimeofday(const struct timeval *tp, const struct timezone *tzp);
 
-(defconstant unix-to-universal-time 2208988800)
+(defconstant +unix-to-universal-time+ 2208988800
+  "Value to add to traditional 1970 based Unix time, to get a Common Lisp
+universal time.")
+
+(defun unix-to-universal-time (unix-time)
+  "Return the Common Lisp universal time given a traditional 1970 based
+Unix time integer."
+  (+ +unix-to-universal-time+ unix-time))
 
 ;; struct timezone {
 ;; int     tz_minuteswest; /* of Greenwich */
@@ -3664,17 +3835,17 @@ current process's environment."
 
 
 ;; DESCRIPTION
-;;      The system's notion of the current Greenwich time and the current time
-;;      zone is obtained with the gettimeofday() call, and set with the
-;;      settimeofday() call.  The time is expressed in seconds and microseconds
-;;      since midnight (0 hour), January 1, 1970.  The resolution of the system
-;;      clock is hardware dependent, and the time may be updated continuously or
-;;      in ``ticks.''  If tp is NULL and tzp is non-NULL, gettimeofday() will
-;;      populate the timezone struct in tzp.  If tp is non-NULL and tzp is NULL,
-;;      then only the timeval struct in tp is populated. If both tp and tzp are
-;;      NULL, nothing is returned.
-
-;;      The structures pointed to by tp and tzp are defined in <sys/time.h> as:
+;;   The system's notion of the current Greenwich time and the current time
+;;   zone is obtained with the gettimeofday() call, and set with the
+;;   settimeofday() call.  The time is expressed in seconds and microseconds
+;;   since midnight (0 hour), January 1, 1970.  The resolution of the system
+;;   clock is hardware dependent, and the time may be updated continuously or
+;;   in ``ticks.''  If tp is NULL and tzp is non-NULL, gettimeofday() will
+;;   populate the timezone struct in tzp.  If tp is non-NULL and tzp is NULL,
+;;   then only the timeval struct in tp is populated. If both tp and tzp are
+;;   NULL, nothing is returned.
+;;
+;;   The structures pointed to by tp and tzp are defined in <sys/time.h> as:
 
 
 

@@ -40,10 +40,10 @@
    #:print-columns-sizer
    #:print-size
    #:dir
-   #:abspath
-   #:dirname
-   #:basename
-   #:quote-filename
+   ;; #:abspath
+   ;; #:dirname
+   ;; #:basename
+   ;; #:quote-filename
    #:slurp
    #:unintern-conflicts
    #:show-features
@@ -964,6 +964,7 @@ text into lisp and have it be stored as lines of words."
        :while (setf w (read-line stm nil nil))
        :do (soundex-verify w))))
 
+#|
 ;; I'm not totally convinced that this should be here.
 (defun abspath (path)
   "Turn the PATH into an absolute path."
@@ -1022,14 +1023,17 @@ text into lisp and have it be stored as lines of words."
 
 ;; I am probably unable to express how unfortunate this is.
 (defun quote-filename (namestring)
-  "Try to quote a file name so none of it's characters are noticed specially by the Lisp pathname monster."
+  "Try to quote a file name so none of it's characters are noticed specially
+by the Lisp pathname monster."
   (let ((result namestring))
     (flet ((possibly-quote (c)
 	     (when (position c result)
+	       ;; It's just not possible to write code this inefficient in C.
 	       (setf result (join (split-sequence c result) (s+ #\\ c))))))
       (loop :for c :across "[*;:" :do
 	 (possibly-quote c))
       result)))
+|#
 
 (defun dprobe-file (literal-filename)
   "Like probe-filename, but treat strings as literal."
