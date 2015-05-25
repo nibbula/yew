@@ -2077,12 +2077,15 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
   "Return the directory portion of a path."
   ;; Go backwards from the end until we hit a separator.
   (let ((i (1- (length path))))
-    (loop :while (and (>= i 0) (char/= #\/ (char path i)))
+    (loop :while (and (>= i 0) (char/= *directory-separator* (char path i)))
        :do (decf i))
+    (dlib:dbug "i = ~s~%" i)
     (if (eq side :dir)
 	(if (< i 0)
 	    (subseq path 0 0)
-	    (subseq path 0 i))
+	    (if (and (zerop i) (char= (char path 0) *directory-separator*))
+		(subseq path 0 1)
+		(subseq path 0 i)))
 	(if (< i 0)
 	    path
 	    (subseq path (1+ i))))))

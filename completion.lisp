@@ -589,7 +589,7 @@ defaults to the current package. Return how many symbols there were."
 		     match-len (length f))
 	       (setf match-len (mismatch match f :end1 match-len)
 		     full-match nil)))))
-;    (format t "~&match = ~a~%" match)
+    (dbug "~&match = ~a~%" match)
     (values
      (and match
 	  (let* ((match-sub (subseq match 0 match-len))
@@ -599,7 +599,10 @@ defaults to the current package. Return how many symbols there were."
 		;; (namestring (make-pathname :directory dir-part-path
 		;; 			   :name (pathname-name p)
 		;; 			   :type (pathname-type p)))
-		(s+ dir-part-path "/" match-sub)
+		(if (and (= (length dir-part) 1)
+			 (char= (char dir-part 0) nos:*directory-separator*))
+		    (s+ "/" match-sub)
+		    (s+ dir-part-path "/" match-sub))
 		match-sub)))
      full-match)))
 
