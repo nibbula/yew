@@ -9,7 +9,11 @@
    "Functions for manipulating stretchy arrays and strings.
 
 Common Lisp provides adjustable arrays, and therefore also adjustable strings,
-but the mechanics of the programming interface is s
+but the mechanics of the programming interface is somewhat clumsy. This is an
+attempt to make it better.
+
+Perhaps this is misguided and we should just use WITH-OUTPUT-TO-STRING since
+it seems much faster on most implementations.
 ")
   (:use :cl)
   (:export
@@ -23,6 +27,11 @@ but the mechanics of the programming interface is s
    #:stretchy-truncate
    ))
 (in-package :stretchy)
+
+;; (declaim (optimize (speed 0) (safety 3) (debug 3)
+;; 		   (space 0) (compilation-speed 0)))
+(declaim (optimize (speed 3) (safety 0) (debug 0)
+		   (space 0) (compilation-speed 0)))
 
 (defvar *default-stretch-factor* 2/3
   "Default expansion factor for stretchy things.")
@@ -53,6 +62,9 @@ of objects with a fill pointer."
 
 (defun resize (array size factor)
   "Resize the ARRAY to SIZE, expanding by FACTOR."
+  (declare (type (array * (*)) array)
+	   (type integer size)
+	   (type number factor))
   (setf array (adjust-array
 	       array (+ (array-total-size array) size
 			(truncate (* (array-total-size array) factor))))))
@@ -60,8 +72,7 @@ of objects with a fill pointer."
 (defun stretchy-append-string-or-vector (dst src factor)
   "Append a vector to a stretchy vector. FACTOR is the amount of the total
 size to expand by when expansion is needed."
-;  (declare (type stretchy-string dst))
-;  (declare (type (or string stretchy-string) src))
+  (declare (type (array * (*)) dst src))
   (let ((src-len (length src))
 	(dst-len (length dst)))
     (when (>= (+ src-len dst-len) (array-total-size dst))
@@ -72,6 +83,9 @@ size to expand by when expansion is needed."
 (defun stretchy-append-character (dst char factor)
   "Append the character CHAR to the stretchy string DST, with FACTOR as the
 amount of the total size to expand by when expansion is needed."
+  (declare (type (array character (*)) dst)
+	   (type character char)
+	   (type number factor))
   (let ((dst-len (length dst)))
     (when (>= (1+ dst-len) (array-total-size dst))
       (resize dst 1 factor))
@@ -81,6 +95,9 @@ amount of the total size to expand by when expansion is needed."
 (defun stretchy-set (vec n value &key (factor *default-stretch-factor*))
   "Put an element in a stretchy vector. Factor is the amount of the total size
 to expand by when expansion is needed."
+  (declare (type (array * (*)) vec)
+	   (type integer n)
+	   (type number factor))
   (when (>= n (array-total-size vec))
     (resize vec (- n (array-total-size vec)) factor))
   (setf (fill-pointer vec) n) ;; should this really be done?
@@ -124,6 +141,8 @@ to expand by when expansion is needed."
   "Append SRC to stretchy thing DST. SRC can be a character or a string or a ~
    symbol if DST is a string, or anything if DST is a vector. FACTOR is the ~
    amount of the total size to expand by when expansion is needed."
+  (declare (type (array * (*)) dst)
+	   (type number factor))
   (when (not (or (typep dst 'stretchy-string) (typep dst 'stretchy-vector)))
     (error "Destination must be a stretchy-string or stretchy-vector"))
   (cond
@@ -152,5 +171,26 @@ to expand by when expansion is needed."
   (setf (fill-pointer s) len))
 
 ;;;; TESTS!!
+
+;; Compare performance vs. with-output-to-string
+
+(defun dork1 (n)
+  (let ((ss (make-stretchy-string 100)))
+    (loop :for i fixnum :from 1 :to n :do
+       (stretchy:stretchy-append ss (princ-to-string i)))))
+
+(defun dork2 (n)
+  (with-output-to-string (str)
+    (loop :for i fixnum :from 1 :to n :do (princ i str))))
+
+(defun test-performance ()
+  (format t "STRETCHY:~%")
+  (time (dotimes (n 1000) (dork1 1000)))
+  (time (dotimes (n 1000) (dork1 1000)))
+  (time (dotimes (n 1000) (dork1 1000)))
+  (format t "WITH-OUTPUT-TO_STRING:~%")
+  (time (dotimes (n 1000) (dork2 1000)))
+  (time (dotimes (n 1000) (dork2 1000)))
+  (time (dotimes (n 1000) (dork2 1000))))
 
 ;; EOF
