@@ -95,7 +95,7 @@ Make sure we don't clash with the actual CL-NCURSES.
    #:flash #:beep
    #:resetty #:savetty #:reset-shell-mode #:reset-prog-mode #:cbreak #:nocbreak
    #:echo #:noecho #:nonl #:nl
-   #:raw #:noraw #:meta #:nodelay #:notimeout 
+   #:raw #:noraw #:meta #:nodelay #:notimeout #:halfdelay #:intrflush
    #-sbcl #:timeout
    #:wtimeout #:typeahead
    #:clearok #:idlok #:ikcok #:immedok #:leaveok #:setscrreg #:wsetscrreg
@@ -113,6 +113,7 @@ Make sure we don't clash with the actual CL-NCURSES.
    #:color-pair
    #:border #:wborder #:box
    #:napms
+   #:is_term_resized #:resize_term #:resizeterm
    ;; terminfo
    #:tigetstr #:tigetflag #:tigetnum
    ;; test functions
@@ -373,7 +374,8 @@ Make sure we don't clash with the actual CL-NCURSES.
 (defun BUTTON-TRIPLE-CLICK   (e x) (mouse-event-mask e x #o020))
 (defun BUTTON-RESERVED-EVENT (e x) (mouse-event-mask e x #o040))
 
-(defvar *funkeys* nil)
+(defvar *funkeys* nil
+  "Hash table mapping curses function key codes to our keywords.")
 (defun init-keys ()
   (setf *funkeys* (make-hash-table :test 'equal))
   (setf (gethash #o401 *funkeys*) :break)     ; Break key (unreliable)
@@ -474,6 +476,8 @@ Make sure we don't clash with the actual CL-NCURSES.
 
 ;; Initialization
 (defcfun newterm screen-ptr
+  "Initialize a terminal. Takes a terminal type and an input and output
+file name. Returns a pointer to a SCREEN."
   (term-type :string) (output-file file-ptr) (input-file file-ptr))
 (defcfun delscreen :void (screen screen-ptr))
 (defcfun set-term screen-ptr (new screen-ptr))
@@ -630,18 +634,57 @@ Make sure we don't clash with the actual CL-NCURSES.
 (defcfun savetty :int)
 (defcfun reset-shell-mode :int)
 (defcfun reset-prog-mode :int)
-(defcfun cbreak :int)
-(defcfun nocbreak :int)
-(defcfun echo :int)
-(defcfun noecho :int)
-(defcfun raw :int)
-(defcfun noraw :int)
-(defcfun meta :int (win window-ptr) (bf bool))
-(defcfun nodelay :int (win window-ptr) (bf bool))
-(defcfun notimeout :int (win window-ptr) (bf bool))
-(defcfun timeout :void (delay :int))
-(defcfun wtimeout :void (win window-ptr) (delay :int))
-(defcfun typeahead :int (fd :int))
+(defcfun cbreak :int
+  "Disable line buffering and erase and kill characters.")
+(defcfun nocbreak :int
+  "Put the terminal in cooked mode where lines are buffered and and erase and
+kill characters are processed.")
+(defcfun echo :int
+  "Put the terminal in echo mode, where input characters are printed.")
+(defcfun noecho :int
+  "Put the terminal in noecho mode, where input characters are NOT printed.")
+(defcfun raw :int
+  "Put the terminal in raw mode, where normally interrupting characters are
+passed through as input.")
+(defcfun noraw :int
+  "Put the terminal in NON-raw mode, where interrupt characters are processed
+as normal.")
+(defcfun qiflush :void
+  "Flush queued input on interrupt.")
+(defcfun noqiflush :void "Don't flushed queued input on interrupt.")
+(defcfun meta :int
+  "If BF is true input 8 bits, otherwise input 7 bits. Also send smm and rmm
+terminfo capabilities, to ask the terminal to enabe or disable sending meta
+bits."
+  (win window-ptr) (bf bool))
+(defcfun nodelay :int
+  "If BF is true, causes getch to be non-blocking, so that if no input is read
+it returns ERR. Otherwise getch waits for input."
+  (win window-ptr) (bf bool))
+(defcfun halfdelay :int
+  "Put the terminal in half-delay mode which is like cbreak mode but after
+TENTHS tenths of second, ERR is returned if nothing has been typed. nocbreak
+will leave half-delay mode."
+  (tenths :int))
+(defcfun intrflush :int
+  "If BF is true, when an interrupt key is pressed, all output in the tty
+driver queue will be flushed, giving faster response to an interrupt, but
+probably messing up the screen."
+  (win window-ptr) (bf bool))
+(defcfun notimeout :int
+  "If BF is true, don't time out in escape sequences to differentiate between
+special keys and user input."
+  (win window-ptr) (bf bool))
+(defcfun timeout :void
+  "Set read timeout. Negative DELAY waits indefinitely. Zero DELAY is non-blocking. Positive waits for DELAY milliseconds. ERR is returned if no input is available."
+  (delay :int))
+(defcfun wtimeout :void
+  "Set read timeout for a window. Negative DELAY waits indefinitely. Zero DELAY is non-blocking. Positive waits for DELAY milliseconds. ERR is returned if no input is available."
+  (win window-ptr) (delay :int))
+(defcfun typeahead :int
+  "Use the file descriptor FD to check for typeahead. If FD is -1 no typeahead
+checking is done."
+  (fd :int))
 
 (defcfun clearok :int (win window-ptr) (bf bool))
 (defcfun idlok :int (win window-ptr) (bf bool))
@@ -663,12 +706,15 @@ Make sure we don't clash with the actual CL-NCURSES.
 (defcfun termname :string)
 
 ;; This is hack so that we can provide a function key table
-(defcfun ("keypad" keypad_) :int (win window-ptr) (bf bool))
+(defcfun ("keypad" real-keypad) :int
+  "The unwrapped version of keypad."
+  (win window-ptr) (bf bool))
 (defun keypad (w b)
-  (if (and b (not (= b 0)))
-      (if (not *funkeys*)
-	  (init-keys)))
-  (keypad_ w b))
+  "Enable special keys to be returned as a code."
+  (when (and b (not (= b 0))
+	     (not *funkeys*))
+    (init-keys))
+  (real-keypad w b))
 
 ;; Cursor
 (defcfun curs-set :int (visibility :int))
@@ -676,11 +722,23 @@ Make sure we don't clash with the actual CL-NCURSES.
 (defcfun getcury :int (win window-ptr))
 
 ;; Color and attributes
-(defcfun start-color :int)
-(defcfun has-colors bool)
-(defcfun can-change-color bool)
+(defcfun start-color :int "Enable use of color and initialize color variables.")
+(defcfun has-colors bool "True if the terminal has color capability.")
+(defcfun can-change-color bool "True if colors can be changed.")
 ;(defcfun init-pair :int (pair short) (fg short) (bg short))
-(defcfun init-pair :int (pair :int) (fg :int) (bg :int))
+(defcfun init-pair :int 
+  "Initialize a color pair to use foreground color FG and background color BG."
+  (pair :int) (fg :int) (bg :int))
+(defcfun color-content :int
+  "Return the amount of RED, GREEN and BLUE in a color."
+  (color :int)
+  (red (:pointer :int)) (green (:pointer :int)) (blue (:pointer :int)))
+(defcfun pair-content :int
+  "Return the foreground FG and background BG for a color pair."
+  (pair :int) (fg (:pointer :int)) (bg (:pointer :int)))
+(defcfun ("COLOR_PAIR" color-pair) :int
+  "Return a video attribute given an initialized color pair N."
+  (n :int))
 (defcfun attron :int (attrs :int))
 (defcfun wattron :int (win window-ptr :in) (attrs :int))
 (defcfun attroff :int (attrs :int))
@@ -699,7 +757,6 @@ Make sure we don't clash with the actual CL-NCURSES.
 (defcfun wbkgd :int (win window-ptr :in) (ch chtype))
 (defcfun bkgdset :void (ch chtype))
 (defcfun wbkgdset :void (win window-ptr :in) (ch chtype))
-(defcfun ("COLOR_PAIR" color-pair) :int (n :int))
 
 ;; Boxes and lines
 (defcfun border :int
@@ -714,6 +771,11 @@ Make sure we don't clash with the actual CL-NCURSES.
 
 ;; misc
 (defcfun napms :int (ms :int))
+
+;; ncurses extension
+(defcfun is_term_resized bool (lines :int) (columns :int))
+(defcfun resize_term :int (lines :int) (columns :int))
+(defcfun resizeterm :int (lines :int) (columns :int))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; terminfo
