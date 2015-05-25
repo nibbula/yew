@@ -1083,10 +1083,11 @@ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
     (tt-erase-to-eol e)
     (let* ((cols (terminal-window-columns (line-editor-terminal e)))
 	   (buf-len (length buf))
-	   (lines-to-clear (truncate (+ (screen-col e) buf-len) 80)))
+;;;	   (lines-to-clear (truncate (+ (screen-col e) buf-len) 80)))
+	   (lines-to-clear (truncate (+ (screen-col e) buf-len) cols)))
       (when (> (+ buf-len (screen-col e)) cols)
-	(loop for i from 1 to lines-to-clear
-	      do (tt-down e 1)
+	(loop :for i :from 1 :to lines-to-clear
+	      :do (tt-down e 1)
 	      (tt-erase-line e))
 	(tt-up e lines-to-clear)))))
 
@@ -1341,19 +1342,24 @@ it with ACTION's return value."
   (let ((code (char-code c)))
     (or (< code 32) (= code 128))))
 
+(defparameter *isearch-prompt* "isearch: ")
+
 (defun display-search (e str pos)
   "Display the current line with the search string highlighted."
   (with-slots (buf point) e
+    (setf point (min (or pos (length buf)) (length buf)))
+    (erase-display e)
     (tt-move-to-col e 0)
     (tt-erase-to-eol e)
     (setf (screen-col e) 0)
-    (do-prefix e "isearch: ")
+    (do-prefix e *isearch-prompt*)
     (when str
       (without-undo (e)
-;	(erase-display e)
+;;;	(erase-display e)
 	(buffer-delete e 0 (length buf))
 	(buffer-insert e 0 (or (history-current (context e)) ""))
-	(loop :with end = (if pos (+ pos (length str)) nil)
+	(setf point (min (or pos (length buf)) (length buf))))
+      (loop :with end = (if pos (+ pos (length str)) nil)
 	   :for c :across buf :and i = 0 :then (1+ i) :do
 	   (cond
 	     ((and pos (= i pos))
@@ -1361,7 +1367,7 @@ it with ACTION's return value."
 	     ((and end (= i end))
 	      (tt-underline e nil)))
 	   (display-char e c))
-	(tt-underline e nil)))
+	(tt-underline e nil))
     (tt-finish-output e)))
 
 (defun search-start-forward (context)
@@ -1453,10 +1459,6 @@ Control-R searches again backward and Control-S searches again forward."
 			  (history-head (get-history context))))
 	  (pos point) old-pos c added)
       (labels ((redisp ()
-		 (tt-move-to-col e 0)
-		 (tt-erase-to-eol e)
-		 (setf (screen-col e) 0)
-		 (do-prefix e "isearch: ")
 		 (display-search e search-string pos))
 	       (resync ()
 		 (buffer-delete e 0 (length buf))
@@ -1713,7 +1715,7 @@ Don't update the display."
       (progn
 	(multiple-value-bind (comp-list comp-count)
 	    (funcall completion-func buf point t)
-	  (when (> comp-count 0)
+	  (when (and comp-count (> comp-count 0))
 	    ;; downcased list 1 per line
 	    (let ((saved-point point))
 	      (end-of-line e)
@@ -1779,8 +1781,7 @@ Don't update the display."
     (do-prefix e s)))
 
 (defun pop-to-lish (e)
-  "If we're inside lish, throw to a quick exit. If we're not in lish,
-enter it."
+  "If we're inside lish, throw to a quick exit. If we're not in lish, enter it."
 ;  (break)
   (let* ((lish-package (find-package :lish))
 	 (level-symbol (intern "*LISH-LEVEL*" lish-package)))
