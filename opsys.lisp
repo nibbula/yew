@@ -311,7 +311,21 @@
    #:getgid #:getegid
    #:setgid #:setegid
    #:getpid
-
+   #:process
+   #:make-process
+   #:process-id
+   #:process-parent-id
+   #:process-group-id
+   #:process-terminal
+   #:process-text-size
+   #:process-resident-size
+   #:process-percent-cpu
+   #:process-nice-level
+   #:process-usage
+   #:process-command
+   #:process-args
+   #:process-list
+   
    ;; signals
    #:*signal-count*
    #:signal-name
@@ -497,6 +511,54 @@
 ;; unsigned long int __val[(1024 / (8 * sizeof (unsigned long int)))];
 #+linux
 (defctype sigset-t (:struct foreign-sigset-t))
+(defctype boolean-t :unsigned-int)
+(defctype fixpt-t :uint32)
+(defctype u-quad-t :uint64)
+(defctype segsz-t :int32)
+(defctype caddr-t (:pointer :char))
+
+(defcstruct foreign-timeval
+  "Time for timer."
+  (tv_sec	time-t)
+  (tv_usec	suseconds-t))
+
+#+not ; old darwin?
+(defcstruct foreign-rusage
+  "Resource usage."
+  (utime (:struct foreign-timeval))	; user time used
+  (stime (:struct foreign-timeval))	; system time used
+  (ixrss :long)				; integral shared memory size
+  (idrss :long)				; integral unshared data
+  (isrss :long)				; integral unshared stack
+  (minflt :long)			; page reclaims
+  (majflt :long)			; page faults
+  (nswap :long)				; swaps
+  (inblock :long)			; block input operations
+  (oublock :long)			; block output operations
+  (msgsnd :long)			; messages sent
+  (msgrcv :long)			; messages recieved
+  (nsignals :long)			; signals received
+  (nvcsw :long)				; voluntary context switches
+  (nivcsw :long))			; involuntary context switches
+
+#+(or darwin linux)
+(defcstruct foreign-rusage
+  (ru_utime (:struct foreign-timeval))
+  (ru_stime (:struct foreign-timeval))
+  (ru_maxrss :long)
+  (ru_ixrss :long)
+  (ru_idrss :long)
+  (ru_isrss :long)
+  (ru_minflt :long)
+  (ru_majflt :long)
+  (ru_nswap :long)
+  (ru_inblock :long)
+  (ru_oublock :long)
+  (ru_msgsnd :long)
+  (ru_msgrcv :long)
+  (ru_nsignals :long)
+  (ru_nvcsw :long)
+  (ru_nivcsw :long))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Error handling
@@ -1208,6 +1270,11 @@ the current 'C' environment."
 
 (defconstant +NGROUPS+ 16 "Max supplemental group id's")
 
+(defcstruct foreign-itimerval
+  "Interval timer."
+  (it_interval (:struct foreign-timeval))
+  (it_value    (:struct foreign-timeval)))
+
 (defcstruct foreign-loadavg
   (ldavg  fixpt-t :count 3)		; fixpt_t ldavg[3];
   (fscale :long))			; long    fscale;
@@ -1227,41 +1294,105 @@ the current 'C' environment."
   (p_svgid  gid-t)	    ; /* Saved effective group id. */
   (p_refcnt :int))	    ; /* Number of references. */
 
-#|
+(defcstruct foreign-vmspace
+  (dummy :int32)
+  (dummy2 caddr-t)
+  (dummy3 :int32 :count 5)
+  (dummy4 caddr-t :count 3))
+
+(defconstant +WMESGLEN+ 7 "wchan message length")
+(defconstant +EPROC_CTTY+ #x01 "controlling tty vnode active")
+(defconstant +EPROC_SLEADER+ #x02 "session leader")
+(defconstant +COMPAT_MAXLOGNAME+ 12 "short setlogin() name")
+
+(defcstruct foreign-eproc
+  (e_paddr :pointer)		     ; address of proc (opaque: struct proc *)
+  (e_sess  :pointer)		     ; session pointer (struct session *)
+  (e_pcred (:struct foreign-pcred))  ; process credentials
+  (e_ucred (:struct foreign-ucred))  ; current credentials
+  (e_vm   (:struct foreign-vmspace)) ; address space
+  (e_ppid pid-t)		     ; parent process id
+  (e_pgid pid-t)		     ; process group id
+  (e_jobc :short)		     ; job control counter
+  (e_tdev dev-t)		     ; controlling tty dev
+  (e_tpgid pid-t)		     ; tty process group id
+  (e_tsess :pointer)		     ; tty session pointer (struct session *)
+  (e_wmesg :char :count #.(+ +WMESGLEN+ 1))
+  (e_xsize segsz-t)		      ; text size
+  (e_xrssize :short)		      ; text rss 
+  (e_xccount :short)		      ; text references 
+  (e_xswrss :short)
+  (e_flag :int32)
+  (e_login :char :count #.+COMPAT_MAXLOGNAME+) ; short setlogin() name
+  (e_spare :int32 :count 4))
+
+(defcstruct foreign-p-st1
+  (__p_forw :pointer)
+  (__p_back :pointer))
+
+(defcunion foreign-p-un
+  (p_st1 (:struct foreign-p-st1))
+  (__p_starttime (:struct foreign-timeval)))
+
+(defcstruct foreign-extern-proc
+  (p_un (:union foreign-p-un))
+  (p_vmspace :pointer)			; opaque: struct vmspace *
+  (p_sigacts :pointer)			; opaque: struct sigacts *
+  (p_flag :int)
+  (p_stat :char)
+  (p_pid pid-t)
+  (p_oppid pid-t)
+  (p_dupfd :int)
+  (user_stack caddr-t)
+  (exit_thread (:pointer :void))
+  (p_debugger :int)
+  (sigwait boolean-t)
+  (p_estcpu :unsigned-int)
+  (p_cpticks :int)
+  (p_pctcpu fixpt-t)
+  (p_wchan (:pointer :void))
+  (p_wmesg (:pointer :char))
+  (p_swtime :unsigned-int)
+  (p_slptime :unsigned-int)
+  (p_realtimer (:struct foreign-itimerval))
+  (p_rtime (:struct foreign-timeval))
+  (p_uticks u-quad-t)
+  (p_sticks u-quad-t)
+  (p_iticks u-quad-t)
+  (p_traceflag :int)
+  (p_tracep :pointer)			; opaque: struct vnode *
+  (p_siglist :int)
+  (p_textvp :pointer)			; opaque: struct vnode *
+  (p_holdcnt :int)
+  (p_sigmask sigset-t)
+  (p_sigignore sigset-t)
+  (p_sigcatch sigset-t)
+  (p_priority :unsigned-char)
+  (p_usrpri :unsigned-char)
+  (p_nice :char)
+  (p_comm :char :count #.(+ 16 1))
+  (p_pgrp :pointer)			; opaque: struct pgrp *
+  (p_addr :pointer)			; opaque: struct user *
+  (p_xstat :unsigned-short)
+  (p_acflag :unsigned-short)
+  (p_ru (:pointer (:struct foreign-rusage))))
+
 (defcstruct foreign-kinfo-proc
-  struct	extern_proc kp_proc;			/* proc structure */
-  struct	eproc {
-    struct	proc *e_paddr;		/* address of proc */
-    struct	session *e_sess;	/* session pointer */
-    struct	_pcred e_pcred;		/* process credentials */
-    struct	_ucred e_ucred;		/* current credentials */
-    struct	 vmspace e_vm;		/* address space */
-    pid_t	e_ppid;			/* parent process id */
-    pid_t	e_pgid;			/* process group id */
-    short	e_jobc;			/* job control counter */
-    dev_t	e_tdev;			/* controlling tty dev */
-    pid_t	e_tpgid;		/* tty process group id */
-    struct	session *e_tsess;	/* tty session pointer */
-    ;; #define	WMESGLEN	7
-   char	e_wmesg[WMESGLEN+1];	/* wchan message */
-   segsz_t e_xsize;		/* text size */
-   short	e_xrssize;		/* text rss */
-   short	e_xccount;		/* text references */
-   short	e_xswrss;
-   int32_t	e_flag;
-   ;; #define	EPROC_CTTY	0x01	/* controlling tty vnode active */
-   ;; #define	EPROC_SLEADER	0x02	/* session leader */
-   ;; #define	COMAPT_MAXLOGNAME	12
-   char	e_login[COMAPT_MAXLOGNAME];	/* short setlogin() name */
-   ;; #if CONFIG_LCTX
-   pid_t	e_lcid;
-   int32_t	e_spare[3];
-   ;; #else
-   int32_t	e_spare[4];
-   ;; #endif
-   } kp_eproc;
-};
-|#
+  "Augmented proc structure returned by sysctl KERN_PROC subtype."
+  (kp_proc (:struct foreign-extern-proc))
+  (kp_eproc (:struct foreign-eproc)))
+
+(defun sysctl-name-to-mib (name)
+  "Return a vector of integers which is the numeric MIB for sysctl NAME."
+  (let (result (initial-size 10) result-size)
+    (cffi:with-foreign-objects ((mib :int initial-size) (size-ptr :int))
+      (setf (cffi:mem-ref size-ptr :int) initial-size)
+      (sysctlnametomib name mib size-ptr)
+      (setf result-size (cffi:mem-ref size-ptr :int))
+      (setf result (make-array (list result-size) :element-type 'integer))
+      (loop :for i :from 0 :below result-size
+	 :do (setf (aref result i) (cffi:mem-aref mib :int i))))
+    result))
 
 (defun sysctl (name type)
   (with-foreign-object (oldlenp 'size-t 1)
@@ -3049,53 +3180,10 @@ for long."
 ;;   (seconds time-t)
 ;;   (microseconds suseconds-t))
 
-(defcstruct foreign-timeval
-  "Time for timer."
-  (tv_sec	time-t)
-  (tv_usec	suseconds-t))
-
 (defstruct timeval
   "Time for timer."
   seconds
   micro-seconds)
-
-#+not ; old darwin?
-(defcstruct foreign-rusage
-  "Resource usage."
-  (utime (:struct foreign-timeval))	; user time used
-  (stime (:struct foreign-timeval))	; system time used
-  (ixrss :long)				; integral shared memory size
-  (idrss :long)				; integral unshared data
-  (isrss :long)				; integral unshared stack
-  (minflt :long)			; page reclaims
-  (majflt :long)			; page faults
-  (nswap :long)				; swaps
-  (inblock :long)			; block input operations
-  (oublock :long)			; block output operations
-  (msgsnd :long)			; messages sent
-  (msgrcv :long)			; messages recieved
-  (nsignals :long)			; signals received
-  (nvcsw :long)				; voluntary context switches
-  (nivcsw :long))			; involuntary context switches
-
-#+(or darwin linux)
-(defcstruct foreign-rusage
-  (ru_utime (:struct foreign-timeval))
-  (ru_stime (:struct foreign-timeval))
-  (ru_maxrss :long)
-  (ru_ixrss :long)
-  (ru_idrss :long)
-  (ru_isrss :long)
-  (ru_minflt :long)
-  (ru_majflt :long)
-  (ru_nswap :long)
-  (ru_inblock :long)
-  (ru_oublock :long)
-  (ru_msgsnd :long)
-  (ru_msgrcv :long)
-  (ru_nsignals :long)
-  (ru_nvcsw :long)
-  (ru_nivcsw :long))
 
 (defstruct rusage
   user
@@ -3354,6 +3442,109 @@ environment list, which defaults to the current 'C' environ variable."
 (defcfun seteuid :int (uid uid-t))
 (defcfun setegid :int (gid uid-t))
 (defcfun getpid pid-t)
+
+;; Kernel process filter types
+(defconstant +KERN-PROC-ALL+ 	  0)	; everything
+(defconstant +KERN-PROC-PID+ 	  1)	; by process id		 (pid_t)
+(defconstant +KERN-PROC-PGRP+ 	  2)	; by process group id	 (pid_t)
+(defconstant +KERN-PROC-SESSION+  3)	; by session of pid	 (pid_t)
+(defconstant +KERN-PROC-TTY+ 	  4)	; by controlling tty	 (dev_t)
+(defconstant +KERN-PROC-UID+ 	  5)	; by effective uid	 (uid_t)
+(defconstant +KERN-PROC-RUID+ 	  6)	; by real uid		 (uid_t)
+(defconstant +KERN-PROC-LCID+ 	  7)	; by login context id	 (uid_t)
+
+(defstruct process
+  id
+  parent-id
+  group-id
+  terminal
+  text-size
+  resident-size
+  percent-cpu
+  nice-level
+  usage
+  command
+  args)
+
+(defun process-list ()
+  #+darwin
+  ;; The MIB should look like:
+  ;;   mib[0] = CTL_KERN;
+  ;;   mib[1] = KERN_PROC;
+  ;;   mib[2] = what;
+  ;;   mib[3] = flag;
+  ;; where 'what' is one of:
+  ;;   KERN_PROC_PGRP      pid_t
+  ;;   KERN_PROC_PID       pid_t
+  ;;   KERN_PROC_RUID      uid_t
+  ;;   KERN_PROC_SESSION   pid_t
+  ;;   KERN_PROC_TTY       dev_t
+  ;;   KERN_PROC_UID       uid_t
+  ;;   KERN_PROC_ALL       0
+  ;; and flag points to an array of the appropriate type.
+  (let* ((start-mib (sysctl-name-to-mib "kern.proc"))
+	 (mib-len (+ 2 (length start-mib)))
+	 real-list-size) #| (filter +KERN-PROC-ALL+) |#
+    (with-foreign-objects ((mib :int mib-len)
+			   (list-size :int)
+      			   (new-list-size :int))
+      ;; Copy from the start-MIB to the MIB
+      (loop :for i :from 0 :below (length start-mib)
+	 :do (setf (mem-aref mib :int i) (aref start-mib i)))
+      ;; Add the filter parameters
+      (setf (mem-aref mib :int (- mib-len 2)) +KERN-PROC-ALL+
+	    (mem-aref mib :int (- mib-len 1)) 0)
+      ;; Get the size of the process list
+      (syscall (real-sysctl mib mib-len (null-pointer) list-size
+			    (null-pointer) 0))
+      ;; (loop :for i :from 0 :below 4 do
+      ;; 	   (format t "mib[~d] = ~w~%" i (mem-aref mib :int i)))
+      ;; (format t "mib-len ~d list-size ~d~%" mib-len
+      ;; 	      	      (/ (mem-ref list-size :int)
+      ;; 			 (cffi:foreign-type-size
+      ;; 			  '(:struct foreign-kinfo-proc))))
+      (with-foreign-objects ((proc-list '(:struct foreign-kinfo-proc)
+					(mem-ref list-size :int)))
+	;; Get the real list
+	(syscall (real-sysctl mib mib-len proc-list new-list-size
+			      (null-pointer) 0))
+	;; (format t "~d~%" (/ (mem-ref list-size :int)
+	;; 		    (cffi:foreign-type-size
+	;; 		     '(:struct foreign-kinfo-proc))))
+	(setf real-list-size (/ (mem-ref new-list-size :int)
+				      (cffi:foreign-type-size
+				       '(:struct foreign-kinfo-proc))))
+	;; (format t "~d processes~%" real-list-size)
+	;; (read-line)
+	(loop :with p :and ep :and eep
+	   :for i :from 0 :below real-list-size
+	   :do
+	   (setf p (mem-aptr proc-list '(:struct foreign-kinfo-proc) i))
+	   :while (not (null-pointer-p p))
+	   :do
+	   (setf ep (foreign-slot-pointer
+		     p '(:struct foreign-kinfo-proc) 'kp_proc))
+	   (setf eep (foreign-slot-pointer
+		      p '(:struct foreign-kinfo-proc) 'kp_eproc))
+	   :collect
+	   (with-foreign-slots
+	       ((p_flag p_stat p_pid p_pctcpu p_nice p_comm p_pgrp)
+		ep (:struct foreign-extern-proc))
+	     (with-foreign-slots
+		 ((e_ppid e_pgid e_tdev e_xsize e_xrssize)
+		  eep (:struct foreign-eproc))
+	       (make-process
+		:id p_pid
+		:parent-id e_ppid
+		:group-id e_pgid
+		:terminal e_tdev
+		:text-size e_xsize
+		:resident-size e_xrssize
+		:percent-cpu p_pctcpu
+		:nice-level p_nice
+		:usage nil
+		:command (foreign-string-to-lisp p_comm :max-chars 16)
+		:args nil))))))))
 
 #|
 Trying to simplify our lives, by just using our own FFI versions, above.
