@@ -21,6 +21,8 @@
    given character."
   (code-char (logior (ash 1 7) (char-code c))))
 
+;(
+
 ;; Sadly #\^A is not portable. This assumes ASCII or UTF8 or something. 
 (defun ctrl (c)
   "Return the control character corresponding to the normal character."
@@ -39,7 +41,7 @@
   (code-char (logand (- (ash 1 7) 1) c)))
 
 (defun nice-char (c &key caret)
-  "ASCII dependant nice character formatting"
+  "Nice character formatting, for ASCII compatible encodings."
   (let ((cc (if (characterp c) (char-code c) nil)))
     (cond
       ((and cc (meta-char-p cc))
@@ -53,7 +55,7 @@
 	       (code-char (+ cc (char-code #\@)))))
       ((and cc (= cc 127)
        (format nil (if caret "^?" "C-?"))))
-     (cc (format nil "~a" c))
-     (t (format nil "~s" c)))))
+      (cc (format nil "~a" c))
+      (t (format nil "~s" c)))))
 
 ;; EOF
