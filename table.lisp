@@ -185,10 +185,13 @@ attributes."))
 lists of values. COLUMN-NAMES is a list of column names to printed on top.
 Each column-name can be a string or a list of (\"name\" :<justification>),
 where <justification> is one of the keywords :LEFT or :RIGHT. If LONG-TITLES
-is true, make the columns at least as wide as the column names."
+is true, make the columns at least as wide as the column names. COLUMN-NAMES
+can be NIL to print without column names."
   (let ((sizes				; Initial column sizes from labels
-	 (loop :for f :in column-names
-	    :collect (if long-titles (length f) 0))))
+	 (if column-names
+	     (loop :for f :in column-names
+		:collect (if long-titles (length f) 0))
+	      (make-list (length (first rows)) :initial-element 0))))
     ;; Adjust column sizes by field data
     (loop :for r :in rows
        :do
@@ -200,30 +203,32 @@ is true, make the columns at least as wide as the column names."
 				   (length (format nil "~a" f))))))))
     ;; Get justification
     (setf sizes
-	  (loop :for col :in column-names :and s :in sizes
+	  (loop :for s :in sizes
+	     :for col = column-names :then (cdr col)
 	     :collect
-	     (list s (if (and (listp col) (eql (second col) :right))
+	     (list s (if (and (listp (car col)) (eql (second (car col)) :right))
 			 :right :left))))
     ;; Print titles
-    (loop :with str :and fmt = "~va "
-       :for col :in column-names
-       :and (size just) :in sizes
-       :do
-       (if (listp col)
-	   (setf str (first col)
-		 fmt (if (eql just :right) "~v@a " "~va "))
-	   (setf str col
-		 fmt "~va "))
-       (format stream fmt size
-	       (subseq (string-capitalize (substitute #\space #\_ str))
-		       0 (min (length str) size))))
-    (terpri stream)
-    ;; Lines
-    (loop :for				;f in field-names and
-       (size) :in sizes
-       :do
-       (format stream "~v,,,va " size #\- #\-))
-    (terpri stream)
+    (when column-names
+      (loop :with str :and fmt = "~va "
+	 :for col :in column-names
+	 :and (size just) :in sizes
+	 :do
+	 (if (listp col)
+	     (setf str (first col)
+		   fmt (if (eql just :right) "~v@a " "~va "))
+	     (setf str col
+		   fmt "~va "))
+	 (format stream fmt size
+		 (subseq (string-capitalize (substitute #\space #\_ str))
+			 0 (min (length str) size))))
+      (terpri stream)
+      ;; Lines
+      (loop :for				;f in field-names and
+	 (size) :in sizes
+	 :do
+	 (format stream "~v,,,va " size #\- #\-))
+      (terpri stream))
     ;; Values
     (loop :with fmt
        :for r :in rows :do
