@@ -54,16 +54,23 @@
 	      (alist-to-hash-table (keymap-map k) (make-hash-table))))
       (setf (slot-value k 'map) (make-hash-table))))
 
-(defun dump-keymap (map &optional (stream *standard-output*) prefix)
+(defun dump-keymap (map &key (stream *standard-output*) prefix raw)
   "Show the bindings of a keymap MAP on STREAM. If PREFIX is given it is assumed to be a prefix for all bindings in the keymap."
 ;  (format stream "~:@(~a~):~%" (named-name map))
   (map-keymap
    #'(lambda (key action)
-       (format stream "  ~@[~A ~]~A~20T ~(~A~)~%"
-	       prefix (nice-char key) action)
+       (if raw
+	   (format stream "  ~@[~a ~]~5a ~3d ~3x~20t ~(~a~)~%"
+		   prefix (nice-char key)
+		   (or (and (characterp key) (char-code key)) "")
+		   (or (and (characterp key) (char-code key)) "")
+		   action)
+	   (format stream "  ~@[~a ~]~a~20t ~(~a~)~%"
+		   prefix (nice-char key) action))
        (if (and (symbolp action) (boundp action)
 		(typep (symbol-value action) 'keymap))
-	   (dump-keymap (symbol-value action) stream (nice-char key))))
+	   (dump-keymap (symbol-value action)
+			:stream stream :prefix (nice-char key))))
    map)
   (when (and (slot-boundp map 'default-binding)
 	     (keymap-default-binding map))
@@ -74,7 +81,7 @@
   "Output a description of a keymap."
   (format stream "~a is a keymap with ~a bindings:~%" o
 	  (hash-table-count (keymap-map o)))
-  (dump-keymap o stream nil))
+  (dump-keymap o :stream stream))
 
 (defmethod print-object ((obj keymap) stream)
   "Print a KEYMAP on a STREAM."
@@ -203,7 +210,9 @@ there is no binding."
      (nice-char keyseq))))
 
 (defun add-keymap (source dest)
-  "Add all the key definitions from the SOURCE keymap to the DEST keymap. If there is already a binding for a key in DEST, it gets overwritten by the one in source."
+  "Add all the key definitions from the SOURCE keymap to the DEST keymap.
+If there is already a binding for a key in DEST, it gets overwritten by the
+one in source."
   (loop :for k :being :the :hash-keys :of (keymap-map source)
      :do
      (define-key dest k (gethash k (keymap-map source))))
@@ -211,8 +220,9 @@ there is no binding."
 
 ;; This is very useful if you want Escape and Meta to be equivalent.
 (defun build-escape-map (keymap)
-  "Return a new keymap with only the meta char bindings in KEYMAP
- converted to non-meta char bindings."
+  "Return a new keymap containing only the meta character bindings in KEYMAP
+ converted to non-meta character bindings. This is useful for making a keymap
+to bind to the escape key, so you have escape key equivalents to meta keys."
 ;   (loop :for (c . f) :in (keymap-map keymap)
 ; 	:when (and (characterp c) (meta-char-p (char-code c)))
 ; 	:collect (cons (un-meta (char-code c)) f)))
