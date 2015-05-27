@@ -64,7 +64,8 @@
     (idlok curses:*stdscr* 0)
     (leaveok curses:*stdscr* 0)
     (scrollok curses:*stdscr* 0)
-    (curs-set 1)))
+    (curs-set 1)
+    (init-colors)))
 
 (defun end-curses ()
   (when *in-curses*
@@ -128,12 +129,12 @@
     (setf *color-table* (make-array (list ncolors ncolors)))
     (if (= (has-colors) 1)
     	(prog ((pair 0))
-	   (loop :for fg :from (- ncolors 1) :downto 0 :by 1 :do
-	      (loop :for bg :from 0 :below ncolors :by 1 :do
+	   (loop :for fg :from (- ncolors 1) :downto 0 :do
+	      (loop :for bg :from 0 :below ncolors :do
 		 (when (> pair 0) ;; Pair 0 defaults to WHITE on BLACK
-		   (init-pair pair fg bg)
-		   (setf (aref *color-table* fg bg) pair))
-		 (setq pair (+ pair 1)))))))
+		   (init-pair pair fg bg))
+		 (setf (aref *color-table* fg bg) pair)
+		 (incf pair))))))
   (bkgd (color-pair 0)))
 
 (defun color-index (fg bg)
@@ -535,8 +536,10 @@ Arguments:
   "Put a centered string STR in window W of width WIDTH at row ROW."
   (mvwaddstr w row (round (- (/ width 2) (/ (length str) 2))) str))
 
-(defun display-text (title text-lines)
-  "Display text in a pop up window."
+(defun display-text (title text-lines &key input-func)
+  "Display text in a pop up window. Optionally calls INPUT-FUNC with the
+window as an argument to get input. If no INPUT-FUNC is provided it just
+waits for a key press and then returns."
   (with-curses
       (let* ((mid    (truncate (/ *cols* 2)))
 	     (width  (min (- *cols* 6)
@@ -550,7 +553,8 @@ Arguments:
 						 :stream nil)))))
 		      (- *lines* 4)))
 	     (xpos   (truncate (- mid (/ width 2))))
-	     (w 	 (newwin height width 3 xpos)))
+	     (w      (newwin height width 3 xpos))
+	     result)
 	(box w 0 0)
 	(wcentered w width 0 title)
 	(loop :with i = 2 :for l :in text-lines
@@ -562,10 +566,13 @@ Arguments:
 	      (mvwaddstr w i 2 sub-line)
 	      (incf i)))
 	(wrefresh w)
-	(get-char)
-	(delwin w))
-    (clear)
-    (refresh)))
+	(setf result (if input-func
+			 (funcall input-func w)
+			 (get-char)))
+	(delwin w)
+	(clear)
+	(refresh)
+	result)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Trees
@@ -1019,7 +1026,7 @@ generating function, so it will be called only the first time."))
 
 (defun code-format-node (node &key level indent key)
   (declare (ignore key))
-  (format nil "~v,,,va~c ~s" (* level indent) #\space ""
+  (format nil "~v,,,va~c ~(~s~)" (* level indent) #\space ""
 	  (if (node-branches node)
 	      (if (node-open node) #\- #\+)
 	      #\space)

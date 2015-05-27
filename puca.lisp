@@ -20,7 +20,7 @@
 (defpackage :puca
   (:documentation "Putative Muca")
   (:use :cl :dlib :dlib-misc :opsys :curses :pager :tiny-rl :completion :fui
-	:keymap)
+	:keymap :char-util)
   (:export
    ;; Main entry point
    #:puca
@@ -381,6 +381,7 @@
   (refresh)
   (get-char))
 
+#|
 (defun wcentered (w width row str)
   "Put a centered string STR in window W of width WIDTH at row ROW."
   (mvwaddstr w row (round (- (/ width 2) (/ (length str) 2))) str))
@@ -419,13 +420,15 @@
       (when w
 	(delwin w)))
     result))
+|#
 
 (defun info-window (pu title text-lines)
-  (puca-display-text
+#|  (puca-display-text
    pu title text-lines
    :input-func #'(lambda (pu w)
 		   (declare (ignore pu w))
-		   (get-char)))
+		   (get-char))) |#
+  (fui:display-text title text-lines)
   (clear)
   (refresh)
   (draw-screen pu)
@@ -433,10 +436,9 @@
 
 (defun input-window (pu title text-lines)
   (prog1
-      (puca-display-text
-       pu title text-lines
-       :input-func #'(lambda (pu w)
-		       (declare (ignore pu))
+      (display-text
+       title text-lines
+       :input-func #'(lambda (w)
 		       (cffi:with-foreign-pointer-as-string (str 40)
 			 (curses:echo)
 			 (wgetnstr w str 40)
@@ -693,7 +695,10 @@ for the command-function).")
     (#\^B		. previous-page)
     (#\>		. go-to-end)
     (#\<		. go-to-beginning)
-    (#\nul		. set-mark)
+    (,(meta-char #\>)	. go-to-end)
+    (,(meta-char #\<)	. go-to-beginning)
+    (,(ctrl #\@)	. set-mark)
+    (,(code-char 0)	. set-mark)
     (#\X		. toggle-region)
     (#\space		. toggle-line)
     (#\x		. toggle-line)
@@ -705,17 +710,43 @@ for the command-function).")
     (#\E		. show-errors)
     (#\:		. extended-command)
     (#\^L		. redraw)
-    (,(code-char 12)	. redraw)))
+    (,(code-char 12)	. redraw)
+    (,(meta-char #\=)	. describe-key-briefly)
+    (#\escape		. *puca-escape-keymap*)))
 
-(defun perform-key (pu key)
-  (let ((binding (key-binding key *puca-keymap*)))
-    (if (not binding)
-	(message "No binding for ~a" key)
-	(etypecase binding
-	  ((or symbol function)
-	   (funcall binding pu))
-	  (list
-	   (apply (car binding) pu (cdr binding)))))))
+(defparameter *puca-escape-keymap* (build-escape-map *puca-keymap*))
+
+(defun describe-key-briefly (pu)
+  "Prompt for a key and say what function it invokes."
+  (declare (ignore pu))
+  (message "Press a key: ")
+  (let* ((key (fui:get-char))
+	 (action (key-definition key *puca-keymap*)))
+    (if action
+	(message "~a is bound to ~a" (nice-char key) action)
+	(message "~a is not defined" (nice-char key)))))
+
+(defun perform-key (pu key &optional (keymap *puca-keymap*))
+  ;; Convert positive integer keys to characters
+  (when (and (integerp key) (>= key 0))
+    (setf key (code-char key)))
+  (let ((binding (key-binding key keymap)))
+    (cond
+      ((not binding)
+       (message "No binding for ~a" key))
+      ((symbolp binding)
+       (cond
+	 ((fboundp binding)
+	  (funcall binding pu))
+	 ((keymap-p (symbol-value binding))
+	  (message (princ-to-string (nice-char key)))
+	  (perform-key pu (fui:get-char) (symbol-value binding)))
+	 (t
+	  (error "Unbound symbol ~s in keymap" binding))))
+      ((consp binding)
+       (apply (car binding) pu (cdr binding)))
+      (t
+       (error "Weird thing ~s in keymap" binding)))))
 
 (defun puca (&key #|device term-type |# backend-type)
   (with-curses
@@ -736,7 +767,7 @@ for the command-function).")
 	  (setf c (fui:get-char))
 	  (perform-key pu c)
 ;	  (move (- *lines* 2) 2)
-	  (mvprintw (- *lines* 2) 2 "%-*.*s" :int 40 :int 40 :string "")
+;	  (mvprintw (- *lines* 2) 2 "%-*.*s" :int 40 :int 40 :string "")
 ;	  (mvaddstr (- *lines* 2) 2 (format nil "~a (~a)" c (type-of c))))
 	  (refresh)))
       (endwin))))
