@@ -1072,8 +1072,7 @@ line : |----||-------||---------||---|
     ))
 
 (defkeymap *normal-keymap*
-  `(
-    (#\q		. quit)
+  `((#\q		. quit)
     (#\Q		. quit)
     (#\^C		. quit)
     (#\^Z		. suspend)
@@ -1331,7 +1330,7 @@ q - Abort")
 summary of commands. If you want a description of what a function does,
 press Control-H then 'k' then the key. Press 'q' to exit this help.
 " (pager-input-char pager))
-	 (keymap:dump-keymap *normal-keymap* output)
+	 (keymap:dump-keymap *normal-keymap* :stream output)
 	 (princ "Press 'q' to exit this help.
 " output)))
     (page input)))
