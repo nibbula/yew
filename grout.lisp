@@ -91,6 +91,18 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
     (t
      (make-instance 'dumb :stream stream))))
 
+#|
+(defmacro with-grout ((var &optional (stream *standard-output*)) &body body)
+  "Evaluate the body with a GROUT bound to output."
+  (let ((,grout (gensym "GROUT")))
+  `(let (,grout)
+     `(unwind-protect
+        (progn
+	  (setf ,grout (make-grout ,stream))
+	  ,@body)
+	(close WHAT?)))))
+|#
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Dumb all over. A little ugly on the side.
 
