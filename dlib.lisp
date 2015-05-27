@@ -34,6 +34,8 @@
    #:with-open-file-or-stream
    #:with-lines
    #:safe-read-from-string
+   #:*buffer-size*
+   #:copy-stream
    ;; sequences
    #:initial-span
    #:split-sequence
@@ -871,6 +873,46 @@ cannot cause evaluation."
 			:start start :end end
 			:preserve-whitespace preserve-whitespace))))
 #+sbcl (declaim (sb-ext:unmuffle-conditions style-warning))
+
+;; So it looks like we have at least a few implementations to choose from:
+;;   UIOP/STREAM:COPY-STREAM-TO-STREAM (fbound)
+;;   ALEXANDRIA.0.DEV:COPY-STREAM (fbound)
+;;   LISH::COPY-STREAM (fbound)
+;;   QL-UTIL:COPY-FILE
+;; also for consideration:
+;;   cl-fad-0.6.4/fad.lisp
+;;  xcvb-0.596/driver.lisp
+;;   metatilities-base-20120909-git/dev/copy-file.lisp
+;;   flexi-streams-1.0.14/test/test.lisp
+
+;; The size of this should really be taken from the system's page size or
+;; some other known thing which is optimal for the system.
+(defvar *buffer-size* (* 8 1014)
+  "The default buffer size for efficient copying of streams and files.")
+
+;; I suppose we could make this generic so that streams can do a special
+;; things with it, but that might be sort of edging into the stream protocol,
+;; which simple-streams and 
+(defun copy-stream (source destination &key (buffer-size *buffer-size*))
+  "Copy data from reading from SOURCE and writing to DESTINATION, until we get
+an EOF on SOURCE."
+  ;; ^^^ We could try to make *buffer-size* be the minimum of the file size
+  ;; (if it's a file) and the page size, but I'm pretty sure that the stat
+  ;; call and possible file I/O is way more inefficient than wasting less than
+  ;; 4k of memory to momentarily. Of course we could mmap it, but it should
+  ;; end up doing approximately that anyway and the system should have a
+  ;; better idea of how big is too big, window sizing and all that. Also,
+  ;; that's way more complicated. Even this comment is too much. Let's just
+  ;; imagine that a future IDE will collapse or footnotify comments tagged
+  ;; with "^^^".
+  (let ((buf (make-array buffer-size
+			 :element-type (stream-element-type source)))
+	pos)
+    (loop :do
+       (setf pos (read-sequence buf source))
+       (when (> pos 0)
+	 (write-sequence buf destination :end pos))
+       :while (= pos *buffer-size*))))
 
 ;;;
 ;;; System information features
