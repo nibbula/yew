@@ -804,6 +804,7 @@ symbols, :all to show internal symbols too."
 	 (loop
 	    :for p :in #-clisp (directory pattern)
 	    	       #+clisp (append (directory "*/") (directory "*"))
+	    :when (probe-file p)
 	    :collect
 	    (if (or (pathname-name p) (pathname-type p))
 		;; maybe a normal file
@@ -812,7 +813,10 @@ symbols, :all to show internal symbols too."
 			 (pathname-type p))
 		 (file-author p)
 		 (print-size
-		  (with-open-file (s p) (file-length s)) :stream nil)
+		  (or (ignore-errors
+			(with-open-file (s p) (file-length s)))
+		      0)
+		  :stream nil)
 		 (date-string :time (file-write-date p)))
 		;; possibly a directory
 		(list
