@@ -479,8 +479,8 @@
 ; 	       (string
 ; 		(code-char (mem-ref c :unsigned-char)))))))
 
-;; This can unfortunatly really vary between emulations, so we try
-;; to code for multiple intpretations.
+;; This can unfortunately really vary between emulations, so we try
+;; to code for multiple interpretations.
 ;; @@@ this or something like it should probably be moved to ansiterm
 (defun read-function-key (e)
   "Read the part of a function key after the ESC [ and return an
@@ -1112,21 +1112,6 @@ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 	(replace-buffer e (history-current (context e)))
 	(replace-buffer e ""))))
 
-(defun redraw (e)
-  "Erase and redraw the whole line."
-  (tt-move-to-col e 0)
-  (tt-erase-to-eol e)
-  (setf (screen-col e) 0)
-  (do-prompt e (prompt e) (prompt-func e))
-  (finish-output (terminal-output-stream
-		  (line-editor-terminal e)))
-  (display-buf e)
-  (with-slots (point buf) e
-    (when (< point (length buf))
-      (let ((disp-len (display-length (subseq buf point))))
-	(move-backward e disp-len))))
-  (setf (need-to-redraw e) nil))
-
 (defun move-backward (e n)
   "Move backward N columns on the screen. Properly wraps to previous lines.
 Updates the screen coordinates."
@@ -1156,6 +1141,21 @@ Updates the screen coordinates."
 	  (tt-forward e (screen-col e))
 	  (tt-down e rows-down))
 	(tt-forward e n))))
+
+(defun redraw (e)
+  "Erase and redraw the whole line."
+  (tt-move-to-col e 0)
+  (tt-erase-to-eol e)
+  (setf (screen-col e) 0)
+  (do-prompt e (prompt e) (prompt-func e))
+  (finish-output (terminal-output-stream
+		  (line-editor-terminal e)))
+  (display-buf e)
+  (with-slots (point buf) e
+    (when (< point (length buf))
+      (let ((disp-len (display-length (subseq buf point))))
+	(move-backward e disp-len))))
+  (setf (need-to-redraw e) nil))
 
 (defun tmp-prompt (e fmt &rest args)
   (tt-move-to-col e 0)
@@ -1672,13 +1672,18 @@ Don't update the display."
   (let* ((str (buf e))
 	 (point (point e))
 	 (ppos (matching-paren-position str :position point))
+	 (offset (and ppos (1+ (- point ppos))))
 	 (tty-fd (terminal-file-descriptor (line-editor-terminal e))))
     (if ppos
 	(let ((saved-col (screen-col e)))
-	  (tt-move-to-col e (+ ppos (start-col e)))
+	  (declare (ignore saved-col))
+;;;	  (tt-move-to-col e (+ ppos (start-col e)))
+	  (move-backward e offset)
 	  (tt-finish-output e)
 	  (listen-for .5 tty-fd)
-	  (tt-move-to-col e saved-col))
+;;;	  (tt-move-to-col e saved-col)
+	  (move-forward e offset)
+	  )
 	(beep e "No match."))))
 
 (defun finish-line (e)
