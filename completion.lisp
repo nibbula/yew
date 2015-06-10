@@ -1,28 +1,22 @@
 ;;
-;; completion.lisp - Complete your words. Fill the gap. Type less.
+;; completion.lisp - Pull endings out of somewhere.
 ;;
-
-;; $Revision: 1.5 $
 
 ;; TODO:
 ;;   - files with spaces in filename-completion
 ;;   - finish dictionary completion
+;;   - more languageishnessification
 
 (defpackage :completion
   (:documentation
-"The theory is: we know what you're going to type, so we can type it for
-you. The actuality is: just guess as much as possible to the extent that it's
-not annoying. Usually, we generate a list of possibilities of what we assume
-can be the input given the context, which is usually a prefix.
-
-Completion functions are called with line of context and a position where
+"Completion functions are called with line of context and a position where
 completion was requested. The are asked to return one completion, or all
 completions. When asked for one completion, they return a completion and a
 position where to insert it. Text should be replaced from the starting and
 result position. This allows completion functions to look at whatever they
 want to, and replace whatever they want to, even prior to the starting
-point. When asked for all completions, they return a sequence of strings and a
-count which is the length of the sequence.")
+point. When asked for all completions, they return a sequence of strings and
+a count which is the length of the sequence.")
   (:use :cl :dlib :opsys :glob :dlib-misc :syntax-lisp :ansiterm :cl-ppcre)
   (:export
    ;; list
@@ -287,45 +281,88 @@ arguments for that function, otherwise return NIL."
 ;;
 ;; Of course this whole thing should be in the syntax colorization module.
 
-(defun function-help (symbol)
+(defun function-help (symbol expr-number)
   "Return a string with help for the function designated by SYMBOL."
   (with-output-to-string (str)
     (let ((tty (make-instance 'ansiterm:terminal-stream
-			      :output-stream str)))
+			      :output-stream str))
+	  past-key past-rest did-standout)
       (write-char #\( str)
-      (tt-color tty :red :default)
+      (tt-color tty :magenta :default)
       (write symbol :stream str :case :downcase :escape nil)
       (tt-color tty :default :default)
-      (loop :for s :in (lambda-list symbol) :do
+      (loop
+	 :for s :in (lambda-list symbol) :and i = 1 :then (1+ i)
+	 :do
 	 (write-char #\space str)
 	 (if (position s *lambda-list-keywords*)
 	     (progn
 	       (tt-color tty :yellow :default)
 	       (write s :stream str :case :downcase :escape nil :pretty nil)
-	       (tt-color tty :default :default))
+	       (tt-color tty :default :default)
+	       (when (equal s '&key)
+		 (setf past-key t))
+	       (when (equal s '&rest)
+		 (setf past-rest t)))
 	     ;; @@@ Despite the above quote, pretty is very ugly here.
-	     (typecase s
-	       (cons
-		(write-char #\( str)
-		(loop :with first = t
-		   :for ss :in s :do
-		   (if first
-		       (setf first nil)
-		       (write-char #\space str))
-		   (typecase ss
-		     ((or null keyword number string boolean array)
-		      (tt-color tty :white :default)
-		      (write ss :stream str :case :downcase :escape nil
-			     :pretty nil :readably t)
-		      (tt-color tty :default :default))
-		     (t
-		      (write ss :stream str :case :downcase :escape nil
-			     :pretty nil :readably nil))))
-		(write-char #\) str))
-	       (t
-		(write s :stream str :case :downcase :escape nil :pretty nil
-		       :readably nil)))))
+	     (progn
+	       (if (and (= i expr-number) (not (or past-key past-rest)))
+		   (progn
+		     (tt-standout tty)
+		     (setf did-standout t))
+		   (setf did-standout nil))
+	       (typecase s
+		 (cons
+		  (write-char #\( str)
+		  (loop :with first = t
+		     :for ss :in s :do
+		     (if first
+			 (setf first nil)
+			 (write-char #\space str))
+		     (typecase ss
+		       ((or null keyword number string boolean array)
+			(tt-color tty :white :default)
+			(write ss :stream str :case :downcase :escape nil
+			       :pretty nil :readably t)
+			(tt-color tty :default :default))
+		       (t
+			(write ss :stream str :case :downcase :escape nil
+			       :pretty nil :readably nil))))
+		  (write-char #\) str))
+		 (t
+		  (write s :stream str :case :downcase :escape nil :pretty nil
+			 :readably nil)))
+	       (when did-standout
+		 (tt-standend tty)))))
       (write-char #\) str))))
+
+(defun in-expr (string position)
+  "Given STRING and a POSITION in it, return the Lisp expression number it
+is in, and the start and end position of the expression in STRING."
+  (let ((i 0) (begin 0) (end 0) (pos 0) sym (len (length string)))
+    (loop :do
+       (when (< pos len)
+	 (setf begin pos))
+       (let ((*read-eval* nil))
+         (setf (values sym pos)
+               (with-package :lish-junk
+                 (ignore-errors
+		   (read-from-string string nil nil :start pos)))))
+       (when sym
+	 (setf end (if (= pos len) pos (1- pos)))
+	 (incf i))
+       :while (and sym (<= pos position)))
+    (values i begin (if (< end begin) begin end))))
+
+#|
+(defun tt (s)
+  "test in-expr"
+  (loop :for i :from 0 :below (length s) :do
+     (multiple-value-bind (n st e)
+	 (in-expr s i)
+       (format t "~s ~2d ~2d ~2d ~2d ~s~%~va|~%"
+	       s i n st e (subseq s st e) (1+ i) #\space))))
+|#
 
 (defun lisp-token-char-p (c)
   (not (position c *lisp-non-word-chars*)))
@@ -364,7 +401,7 @@ arguments for that function, otherwise return NIL."
 			     :no-new t)
 		  (symbolify (elt regs 0) :package *package* :no-new t)))))
     (if (fboundp sym)
-	(function-help sym)
+	(function-help sym (in-expr (subseq context start) pos))
 	nil)))
 
 (defmacro do-the-symbols ((sym pak ext) &body forms)
@@ -412,6 +449,7 @@ Return nil if none was found."
 	(match nil) match-len pos
 	(unique t))
     (do-the-symbols (sym (or package *package*) external)
+      #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
       (when (and
 	     ;; It's actually in the package if the package is set
 	     (or external (not package) (not-inherited sym package))
@@ -461,7 +499,8 @@ defaults to the current package. Return how many symbols there were."
 	pos)
 ;;;    (do-the-symbols (s (or package *package*) external)
     (do-the-symbols (s (or package *package*) external)
-;      (princ (s+ (symbol-package s) "::" s " " #\newline))
+      #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+;;;      (princ (s+ (symbol-package s) "::" s " " #\newline))
       (when (and
 	     ;; It's actually in the package if the package is set
 	     (or external (not package) (not-inherited s package))
@@ -476,7 +515,7 @@ defaults to the current package. Return how many symbols there were."
 	 (setf s (package-name p))
 	 (when (and
 		;; It's actually in the package if the package is set
-;		(or (not package) (eql (symbol-package s) package))
+;;;		(or (not package) (eql (symbol-package s) package))
 		;; It matches the beginning
 		(and (setf pos (search w s :test #'equalp))
 		     (= pos 0)))
@@ -670,6 +709,9 @@ defaults to the current package. Return how many symbols there were."
 ;;
 ;; This is completion for a big list of words, presumably in a natural
 ;; language. We read a file of one word per line into a trie.
+
+;; @@@ Of course this should use some generic Trie data structure from
+;; somewhere, IF THERE WAS ONE.
 
 (defparameter *default-word-file* "/usr/share/dict/words")
 

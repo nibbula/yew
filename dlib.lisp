@@ -1,5 +1,5 @@
 ;;
-;; dlib.lisp - Dan's redundant miscellany.
+;; dlib.lisp - Dan's utils of redundant Doom.
 ;;
 
 ;; $Revision: 1.37 $
@@ -12,7 +12,13 @@
 #+debug-rc (progn (format t "[ dlib ") (force-output *standard-output*))
 
 (defpackage :dlib
-  (:use :common-lisp #+mop :mop #+ccl :ccl)
+  (:use :common-lisp
+	;; We must have the MOP motherfuckers!!! Don't ever drop the MOP!
+	#+mop :mop
+	#+sbcl :sb-mop
+	#+cmu :pcl
+	#+ccl :ccl
+	)
   (:documentation
    "Dan's generally useful miscellaneous functions.
  I usually have this loaded automatically at startup.")
@@ -44,11 +50,14 @@
    #:ends-with
    #:s+
    #:ltrim #:rtrim #:trim
+   #:snip-string
    #:join
    #-clisp #:doseq
    ;; lists
    #:delete-nth
    #:alist-to-hash-table
+   ;; objects
+   #:shallow-copy-object
    #:with-package
    #:d-add-feature
    #:d-remove-feature
@@ -62,9 +71,11 @@
    ;; language-ish
    #:define-constant
    #:λ
+   #:likely-callable
    #-lispworks #:lambda-list 
    #-lispworks #:with-unique-names
    #:symbolify
+   #:keywordify
    ;; debugging
    #:*dbug* #:dbug #:with-dbug #:without-dbug
    #:dump-values
@@ -253,7 +264,7 @@
 |#
 
 (defun replace-subseq (from-seq to-seq in-seq &key count)
-  "Return a copy of in-seq but with sequences of from-seq replaced with to-seq."
+  "Return a copy of IN-SEQ but with sequences of FROM-SEQ replaced with TO-SEQ."
   (if (and (> (length from-seq) 0) (or (not count) (> count 0)))
       (let ((pos 0)
 	    (i 0)
@@ -273,14 +284,14 @@
       in-seq))
 
 ;; @@@ compare vs. the ones in alexandria?
-(defun begins-with (this that)
+(defun begins-with (this that &key (test #'eql))
   "True if THAT begins with THIS."
-  (let ((pos (search this that)))
+  (let ((pos (search this that :test test)))
     (and pos (= 0 pos))))
 
-(defun ends-with (this that)
+(defun ends-with (this that &key (test #'eql))
   "True if THAT ends with THIS."
-  (let ((pos (search this that :from-end t)))
+  (let ((pos (search this that :from-end t :test test)))
     (and pos (= pos (- (length that) (length this))))))
 
 (defun s+ (s &rest rest)
@@ -319,22 +330,37 @@ arguments into strings as with PRINC."
 
 (defparameter *whitespace* *ascii-whitespace*)
 
-(defun ltrim (string)
-  "Trim whitespace characters from the left of STRING."
-  (let ((pos (position-if #'(lambda (c)
-			      (not (position c *whitespace*))) string)))
-    (subseq string (or pos 0))))
+(defun ltrim (string &optional (character-bag *whitespace*))
+  "Trim characters CHARACTER-BAG in from the left of STRING. STRING can be any
+sequence of characters. CHARACTER-BAG defaults to *WHITESPACE*."
+  (if (stringp string)
+      (string-left-trim character-bag string)
+      (let ((pos (position-if #'(lambda (c)
+				  (not (position c character-bag))) string)))
+	(subseq string (or pos 0)))))
 
-(defun rtrim (string)
-  "Trim whitespace characters from the right of STRING."
-  (let ((pos (position-if #'(lambda (c)
-			      (not (position c *whitespace*))) string
-			      :from-end t)))
-    (subseq string 0 (1+ (or pos (length string))))))
+(defun rtrim (string &optional (character-bag *whitespace*))
+  "Trim characters in CHARACTER-BAG from the right of STRING. STRING can be any
+sequence of characters. CHARACTER-BAG defaults to *WHITESPACE*."
+  (if (stringp string)
+      (string-right-trim character-bag string)
+      (let ((pos (position-if #'(lambda (c)
+				  (not (position c character-bag))) string
+				  :from-end t)))
+	(subseq string 0 (1+ (or pos (length string)))))))
 
-(defun trim (string)
-  "Trim whitespace characters the beginning and end of STRING."
-  (ltrim (rtrim string)))
+(defun trim (string &optional (character-bag *whitespace*))
+  "Trim characters in CHARACTER-BAG the beginning and end of STRING. STRING
+can be any sequence of characters. CHARACTER-BAG defaults to *WHITESPACE*."
+  (ltrim (rtrim string character-bag) character-bag))
+
+(defun snip-string (string ending &key (test #'eql))
+  "Remove ENDING from the end of STRING. If STRING doesn't end in ENDING,
+just return STRING. Characters are compared with TEST which defaults to EQL."
+  (let ((pos (search ending string :from-end t :test test)))
+    (if (and pos (= pos (- (length string) (length ending))))
+	(subseq string 0 pos)
+	string)))
 
 (defun join (sequence thing)
 ;  "Put THING between every element of SEQUENCE."
@@ -655,32 +681,138 @@ equal under TEST to result of evaluating INITIAL-VALUE."
 (defmacro λ (&whole form &rest bvl-decls-and-body)
   (declare (ignore bvl-decls-and-body))
   `#'(lambda ,@(cdr form)))
+;; Still doesn't work everywhere? WHY?
+
+(defun likely-callable (f)
+  "Return true if F is a function or an FBOUNDP symbol. This does not mean you
+can actually FUNCALL it! Just that it's more likely."
+  (or (functionp f) (and (symbolp f) (fboundp f))))
 
 ;; I really don't understand why introspetion isn't better.
+
 #+cmu
+(progn
+  (defun read-arglist (fn)
+    "Parse the arglist-string of the function object FN."
+    (let ((string (kernel:%function-arglist
+		   (kernel:%function-self fn)))
+	  (package (find-package
+		    (c::compiled-debug-info-package
+		     (kernel:%code-debug-info
+		      (vm::find-code-object fn))))))
+      (with-standard-io-syntax
+	(let ((*package* (or package *package*)))
+	  (read-from-string string)))))
+
+  (defun debug-function-arglist (debug-function)
+    "Derive the argument list of DEBUG-FUNCTION from debug info."
+    (let ((args (di::debug-function-lambda-list debug-function))
+	  (required '())
+	  (optional '())
+	  (rest '())
+	  (key '()))
+      ;; collect the names of debug-vars
+      (dolist (arg args)
+	(etypecase arg
+	  (di::debug-variable
+	   (push (di::debug-variable-symbol arg) required))
+	  ((member :deleted)
+	   (push ':deleted required))
+	  (cons
+	   (ecase (car arg)
+	     (:keyword
+	      (push (second arg) key))
+	     (:optional
+	      (push (debug-variable-symbol-or-deleted (second arg)) optional))
+	     (:rest
+	      (push (debug-variable-symbol-or-deleted (second arg)) rest))))))
+      ;; intersperse lambda keywords as needed
+      (append (nreverse required)
+	      (if optional (cons '&optional (nreverse optional)))
+	      (if rest (cons '&rest (nreverse rest)))
+	      (if key (cons '&key (nreverse key))))))
+
+  (defun debug-variable-symbol-or-deleted (var)
+    (etypecase var
+      (di:debug-variable
+       (di::debug-variable-symbol var))
+      ((member :deleted)
+       '#:deleted)))
+
+  (defun symbol-debug-function-arglist (fname)
+    "Return FNAME's debug-function-arglist and %function-arglist.
+A utility for debugging DEBUG-FUNCTION-ARGLIST."
+    (let ((fn (fdefinition fname)))
+      (values (debug-function-arglist (di::function-debug-function fn))
+	      (kernel:%function-arglist (kernel:%function-self fn)))))
+
+(defun byte-code-function-arglist (fn)
+  ;; There doesn't seem to be much arglist information around for
+  ;; byte-code functions.  Use the arg-count and return something like
+  ;; (arg0 arg1 ...)
+  (etypecase fn
+    (c::simple-byte-function
+     (loop for i from 0 below (c::simple-byte-function-num-args fn)
+           collect (make-arg-symbol i)))
+    (c::hairy-byte-function
+     (hairy-byte-function-arglist fn))
+    (c::byte-closure
+     (byte-code-function-arglist (c::byte-closure-function fn)))))
+
+(defun make-arg-symbol (i)
+  (make-symbol (format nil "~A~D" (string 'arg) i)))
+
+;;; A "hairy" byte-function is one that takes a variable number of
+;;; arguments. `hairy-byte-function' is a type from the bytecode
+;;; interpreter.
+;;;
+(defun hairy-byte-function-arglist (fn)
+  (let ((counter -1))
+    (flet ((next-arg () (make-arg-symbol (incf counter))))
+      ;; (with-struct (c::hairy-byte-function- min-args max-args rest-arg-p
+      ;;                                       keywords-p keywords) fn
+      (with-slots (min-args max-args rest-arg-p keywords-p keywords) fn
+        (let ((arglist '())
+              (optional (- max-args min-args)))
+          ;; XXX isn't there a better way to write this?
+          ;; (Looks fine to me. -luke)
+          (dotimes (i min-args)
+            (push (next-arg) arglist))
+          (when (plusp optional)
+            (push '&optional arglist)
+            (dotimes (i optional)
+              (push (next-arg) arglist)))
+          (when rest-arg-p
+            (push '&rest arglist)
+            (push (next-arg) arglist))
+          (when keywords-p
+            (push '&key arglist)
+            (loop for (key _ __) in keywords
+                  do (push key arglist))
+            (when (eq keywords-p :allow-others)
+              (push '&allow-other-keys arglist)))
+          (nreverse arglist))))))
+
 (defun function-arglist (fun)
-  (let* ((real-fun  (etypecase fun
-		      (function (function-arglist fun))
-		      (symbol (function-arglist (or (macro-function fun)
-						    (symbol-function fun))))))
-	 (arglist
-	  (cond ((eval:interpreted-function-p real-fun)
-		 (eval:interpreted-function-arglist real-fun))
-		((pcl::generic-function-p real-fun)
-		 (pcl:generic-function-lambda-list real-fun))
-		((c::byte-function-or-closure-p real-fun)
-		 (byte-code-function-arglist real-fun))
-		((kernel:%function-arglist (kernel:%function-self real-fun))
-		 (handler-case (read-arglist real-fun)
-		   (error () :not-available)))
-		;; this should work both for compiled-debug-function
-		;; and for interpreted-debug-function
-		(t
-		 (handler-case (debug-function-arglist
-				(di::function-debug-function real-fun))
-		   (di:unhandled-condition () :not-available))))))
-    (check-type arglist (or list (member :not-available)))
-    arglist))
+    (if (and fun (symbolp fun))
+	(function-arglist (or (macro-function fun)
+			      (symbol-function fun)))
+	(cond
+	  ((eval:interpreted-function-p fun)
+	   (eval:interpreted-function-arglist fun))
+	  ((pcl::generic-function-p fun)
+	   (pcl:generic-function-lambda-list fun))
+	  ((c::byte-function-or-closure-p fun)
+	   (byte-code-function-arglist fun)) ; ?
+	  ((kernel:%function-arglist (kernel:%function-self fun))
+	   (handler-case (read-arglist fun) ; ?
+	     (error () :not-available)))
+	  ;; this should work both for compiled-debug-function
+	  ;; and for interpreted-debug-function
+	  (t
+	   (handler-case (debug-function-arglist ;?
+			  (di::function-debug-function fun))
+	     (di:unhandled-condition () :not-available)))))))
 
 (defun lambda-list (fun)
   "Return the function's arguments."
@@ -695,6 +827,17 @@ MOP:CLASS-SLOTS."
   (declare (ignorable slot-def))
   #+sbcl (sb-pcl::%slot-definition-documentation slot-def)
   #-sbcl (missing-implementation 'slot-documentation))
+
+(defun shallow-copy-object (original)
+  "Copy an object (a.k.a class) shallowly, i.e. just set the slots in the copy,
+to the same value as the slots in the original."
+  (let* ((class (class-of original))
+         (copy (allocate-instance class)))
+    (dolist (slot (mapcar #'slot-definition-name (class-slots class)))
+      (when (slot-boundp original slot)
+        (setf (slot-value copy slot)
+              (slot-value original slot))))
+    copy))
 
 (defmacro with-unique-names (names &body body)
   "Bind each symbol in NAMES to a unique symbol and evaluate the BODY.
@@ -715,6 +858,11 @@ never create a new symbol, and return NIL if the symbol doesn't already exist."
 	 (intern (string-upcase string) package)))
     (symbol
      string)))
+
+(defun keywordify (string)
+  "Make a keyword from a string."
+  (or (and (keywordp string) string)
+      (intern (string-upcase string) :keyword)))
 
 ;; On other lisps just use the real one.
 #-(or sbcl clisp ccl cmu lispworks ecl)

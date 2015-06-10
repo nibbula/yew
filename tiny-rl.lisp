@@ -8,11 +8,14 @@
 ;; OK, so I haven't learned my lesson yet.
 
 ;; TODO:
-;;   - multi line - paren flashing, display bugs (undo, delete word, etc)
+;;   - multi line - display bugs (undo, delete word, etc)
 ;;     - fix update-for-delete
 ;;   - tab display bugs
 ;;   - history saving
-;;   - compose chars (aka cheapo input system)
+;;   - M-\ delete-horizontal-space
+;;   - search by :UP (or C-P)
+;;   - fix undo boundaries
+;;   - unicode input gadget (from neox)
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 		   (compilation-speed 0)))
@@ -37,13 +40,15 @@
    #:*terminal-name*
    ;; misc
    #:rl-on-device
+   #:get-lone-key
   )
 )
 (in-package "TINY-RL")
 
-;; This is for debugging, since it can be somewhat unpredictable, especially
-;; with threads. Don't use it for anything important.
-(defvar *line-editor* nil "The last line editor that was instantiated.")
+(defvar *line-editor* nil
+  "The last line editor that was instantiated. This is for debugging, since
+it can be somewhat unpredictable, especially with threads. Don't use it for
+anything important.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; History
@@ -459,6 +464,14 @@
 	     cc))
 	 (code-char (mem-ref c :unsigned-char)))))))
 
+(defun get-lone-key ()
+  "Get a key, but easily usable from outside the editor."
+  (terminal-start (line-editor-terminal *line-editor*))
+  (unwind-protect
+    (progn
+      (get-a-char *line-editor*))
+    (terminal-end (line-editor-terminal *line-editor*))))
+
 ; (defun read-until (tty c &key timeout)
 ;   "Read characters from the tty until the character C is read, or TIMEOUT
 ; seconds have elapsed. Return the result as a string. If the timeout is hit
@@ -675,6 +688,7 @@
 		  item (car (undo-history e)))
 	    (undo-one-item e item))
 	  (beep e "No undo history."))))
+;    (message-pause e "Undid ~s" item)
     (and item (not (typep item 'boundary)))))
 
 (defun undo (e)
@@ -692,6 +706,8 @@
 	(setf (record-undo-p ,e) ,old-undo)))))
 
 (defun undo-command (e)
+  ;;(format t "~s~%" (undo-history e))
+  ;;(undo e) ;; @@@ Please make undo boundries work @@@
   (undo-one e)
   (redraw e))
 
@@ -1183,18 +1199,18 @@ it with ACTION's return value."
     (let (cc)
       (if (eql dir :backward)
 	  ;; backward
-	  (loop while (and (> point 0)
+	  (loop :while (and (> point 0)
 			   (funcall func (aref buf (1- point))))
-	    do
+	    :do
 	    (when action
 	      (when (setf cc (funcall action (aref buf (1- point))))
 		(buffer-replace e (1- point) cc)))
 	    (decf point))
 	  (let ((len (length buf))
 		(did-one nil))
-	    (loop while (and (< point len)
+	    (loop :while (and (< point len)
 			     (funcall func (aref buf point)))
-	      do
+	      :do
 	      (progn
 		(when action
 		  (when (setf cc (funcall action (aref buf point)))
@@ -1204,7 +1220,8 @@ it with ACTION's return value."
 	    (when did-one (decf point)))))))
 
 (defun backward-word (e)
-  "Move the insertion point to the beginning of the previous word or the beginning of the buffer if there is no word."
+  "Move the insertion point to the beginning of the previous word or the
+beginning of the buffer if there is no word."
   (with-slots (point buf non-word-chars) e
     (let ((start point))
       (scan-over e :backward :func #'(lambda (c) (position c non-word-chars)))
@@ -1212,7 +1229,8 @@ it with ACTION's return value."
       (move-backward e (display-length (subseq buf point start))))))
 
 (defun forward-word (e)
-  "Move the insertion point to the end of the next word or the end of the buffer if there is no word."
+  "Move the insertion point to the end of the next word or the end of the
+buffer if there is no word."
   (with-slots (point buf non-word-chars) e
     (let ((start point))
       (scan-over e :forward :func #'(lambda (c) (position c non-word-chars)))
@@ -1650,6 +1668,34 @@ Don't update the display."
 ;      (move-forward e (display-length (subseq buf start point))))))
       (display-buf e start point))))
 
+(defun apply-char-action-to-region (e char-action &optional beginning end)
+  "Apply a function that takes a character and returns a character, to
+every character in the region delimited by BEGINING and END. If BEGINING
+and END aren't given uses the the current region, or gets an error if there
+is none."
+  (with-slots (point mark) e
+    (if (or (not beginning) (not end))
+	(error "Mark must be set if beginning or end not given."))
+    (if (not beginning)
+	(setf beginning (min mark point)))
+    (when (not end)
+      (setf end (max mark point)))
+    (when (> end beginning)
+      (rotatef end beginning))
+    (let ((old-mark mark))
+      (unwind-protect
+	   (progn
+	     (setf mark beginning)
+	     (exchange-point-and-mark e)
+	     (scan-over e :forward :func (constantly t) :action char-action))
+	(setf mark old-mark)))))
+
+(defun downcase-region (e &optional begining end)
+  (apply-char-action-to-region e #'char-downcase begining end))
+
+(defun upcase-region (e &optional begining end)
+  (apply-char-action-to-region e #'char-upcase begining end))
+
 (defun downcase-word (e)
   (forward-word-action e #'(lambda (c) (char-downcase c))))
 
@@ -1663,10 +1709,31 @@ Don't update the display."
 				   (progn (setf bonk t) (char-upcase c))
 				   (char-downcase c))))))
 
+;; This is just an experiment to see how I would do it.
+(defun un-studly-cap (e)
+  "Convert from StupidVarName to stupid-var-name."
+  (with-slots (point buf) e
+    (record-undo e 'boundary)
+    (let ((overall-start point) c start)
+      (loop :do
+	 (setf start point)
+	 (scan-over
+	  e :forward
+	  :func #'(lambda (c) (and (alpha-char-p c) (upper-case-p c))))
+	 (scan-over
+	  e :forward
+	  :func #'(lambda (c) (and (alpha-char-p c) (lower-case-p c))))
+	 (downcase-region e start point)
+	 (setf c (aref buf point))
+	 (when (and (alpha-char-p c) (upper-case-p c))
+	   (insert-char e #\-))
+	 :while (and (alpha-char-p c) (upper-case-p c)))
+      (record-undo e 'boundary)
+      (display-buf e overall-start point))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; hacks for typing lisp
 
-;; @@@ BUG: this doesn't really work for multi-line
 (defun flash-paren (e c)
   (declare (ignore c))
   (let* ((str (buf e))
@@ -1781,7 +1848,7 @@ Don't update the display."
 ;	  e prompt output-prompt-func)
   (let* ((s (with-output-to-string (*standard-output*)
               (if output-prompt-func
-		  (funcall output-prompt-func e prompt)
+		  (ignore-errors (funcall output-prompt-func e prompt))
 		  (default-output-prompt e prompt)))))
     (do-prefix e s)))
 
@@ -2118,6 +2185,9 @@ Don't update the display."
     (,(meta-char #\=)		. describe-key-briefly)
     (,(meta-char #\+)		. set-key-command)
 
+    ;; dorky temporary
+    (,(meta-char #\t)		. un-studly-cap)
+    
     ;; Other keymaps
     (#\escape			. *escape-keymap*)
     (,(ctrl #\X)		. *ctlx-keymap*)
@@ -2217,20 +2287,21 @@ Don't update the display."
 ;; The main entry point
 
 (defun tiny-rl (&key (input-stream *standard-input*)
-		     (eof-error-p t)
-		     (eof-value nil)
-		     (quit-value nil)
-		     (recursive-p nil)
-		     (prompt *default-prompt*)
-		     (output-prompt-func nil)
-		     (completion-func #'complete-symbol)
-		     (in-callback nil)
-		     (out-callback nil)
-		     (debug nil)
-		     (editor nil)
-		     (terminal-name *terminal-name*)
-		     (accept-does-newline t)
-		     (context :tiny))
+		  (eof-error-p t)
+		  (eof-value nil)
+		  (quit-value nil)
+		  (recursive-p nil)
+		  (prompt *default-prompt*)
+		  (output-prompt-func nil)
+		  (completion-func #'complete-symbol)
+		  (in-callback nil)
+		  (out-callback nil)
+		  (debug nil)
+		  (editor nil)
+		  (keymap *normal-keymap*)
+		  (terminal-name *terminal-name*)
+		  (accept-does-newline t)
+		  (context :tiny))
   "Read a line from the terminal, with line editing and completion.
 Return the string read and the line-editor instance created.
 Keyword arguments: 
@@ -2249,13 +2320,15 @@ Keyword arguments:
     Completion function to use. See the completion package for details.
   EDITOR (nil)
     LINE-EDITOR instance to use.
+  KEYMAP (nil)
+    A KEYMAP to use. For when you want to use your own customized keymap.
   TERMINAL-NAME (*terminal-name*)
     Name of a terminal device to use. If NIL 
   ACCEPT-DOES-NEWLINE (t)
     True if accept-line outputs a newline.
   CONTEXT (nil)
     Symbol or string which defines the context for keeping history.
-" ; There must be a better way to format docstrings.
+"			    ; There must be a better way to format docstrings.
   (declare (ignore recursive-p))
   (history-init context)
 
@@ -2270,6 +2343,7 @@ Keyword arguments:
 		       :in-callback in-callback
 		       :out-callback out-callback
 		       :debugging debug
+		       :keymap (or keymap *normal-keymap*)
 		       :accept-does-newline accept-does-newline
 		       :terminal-device-name terminal-name))))
     (when editor
@@ -2289,29 +2363,30 @@ Keyword arguments:
     (with-slots (quit-flag exit-flag cmd buf last-input terminal debugging) e
       (let ((result nil))
 	(unwind-protect
-	   (loop :do
-	      (finish-output)
-	      (when debugging
-		(message e "~d ~d [~d x ~d] ~w"
-			 (screen-col e) (screen-row e)
-			 (terminal-window-columns terminal)
-			 (terminal-window-rows terminal)
-			 cmd)
-		(show-message-log e))
-	      (setf cmd (get-a-char e))
-	      (log-message e "cmd ~s" cmd)
-	      (when (need-to-redraw e)
-		(redraw e))
-	      (if (equal cmd '(nil))
-		  (if eof-error-p
-		      (error (make-condition 'end-of-file
-					     :stream input-stream))
-		      (setf result eof-value))
-		  (progn
-		    (perform-key e cmd *normal-keymap*)
-		    (when exit-flag (setf result quit-value))))
-	      (setf last-input cmd)
-	      :while (not quit-flag))
+	     (loop :do
+		(finish-output)
+		(when debugging
+		  (message e "~d ~d [~d x ~d] ~w"
+			   (screen-col e) (screen-row e)
+			   (terminal-window-columns terminal)
+			   (terminal-window-rows terminal)
+			   cmd)
+		  (show-message-log e))
+		(setf cmd (get-a-char e))
+		(log-message e "cmd ~s" cmd)
+		(when (need-to-redraw e)
+		  (redraw e))
+		(if (equal cmd '(nil))
+		    (if eof-error-p
+			(error (make-condition 'end-of-file
+					       :stream input-stream))
+			(setf result eof-value))
+		    (progn
+;;;		      (perform-key e cmd *normal-keymap*)
+		      (perform-key e cmd (line-editor-keymap e))
+		      (when exit-flag (setf result quit-value))))
+		(setf last-input cmd)
+		:while (not quit-flag))
 	  (block nil
 	    (terminal-end terminal)))
 	(values (if result result buf) e)))))

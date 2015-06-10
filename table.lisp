@@ -179,8 +179,9 @@ attributes."))
 ;; This is quite inefficient since it gets the whole data set in
 ;; one shot and then goes thru every datum twice. But it's nice for
 ;; small queries since it displays in a somewhat compact form.
-(defun nice-print-table (rows column-names &key (long-titles t)
-					     (stream *standard-output*))
+(defun nice-print-table (rows column-names
+			 &key (long-titles t) (stream *standard-output*)
+			   (trailing-spaces t))
   "Print results nicely in horizontal table. ROWS is a list of row, which are
 lists of values. COLUMN-NAMES is a list of column names to printed on top.
 Each column-name can be a string or a list of (\"name\" :<justification>),
@@ -232,12 +233,15 @@ can be NIL to print without column names."
     ;; Values
     (loop :with fmt
        :for r :in rows :do
-       (loop :for f :in r :and (size just) :in sizes
+       (loop :with row-len = (length r)
+	  :for f :in r :and (size just) :in sizes :and i = 0 :then (1+ i)
 	  :do
 	  (setf fmt
-		(cond ((eql just :right) "~v@a ")
-		      ((typep f 'number) "~v@a ")
-		      (t "~va ")))
+		(cond
+		  ((and (= i (1- row-len)) (not trailing-spaces)) "~*~a ")
+		  ((eql just :right) "~v@a ")
+		  ((typep f 'number) "~v@a ")
+		  (t "~va ")))
 	  (format stream fmt size f))
        (terpri stream)))
     (length rows))

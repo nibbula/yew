@@ -62,14 +62,17 @@
   ((filter-function
     :initarg :filter-function
     :accessor filter-stream-filter-function
-    :documentation "A function that performs the filtering. Should accept a unit, and return a filtered unit.")
+    :documentation
+    "A function that performs the filtering. Should accept a unit, and return
+     a filtered unit.")
    (unit
     :initarg :unit
     :accessor filter-stream-unit
     :initform :line
-    :documentation "The unit of data to be filtered at a time. UNIT should be
-one of :character :line :buffer or :any. If UNIT is :buffer, then buffer-size
-is used.")
+    :documentation
+    "The unit of data to be filtered at a time. UNIT should be one of
+     :CHARACTER, :LINE, :BUFFER, or :ANY. If UNIT is :buffer, then buffer-size
+     is used.")
    (buffer-size
     :initarg :buffer-size
     :accessor filter-stream-buffer-size

@@ -25,6 +25,7 @@
    #:key-sequence-string
    #:add-keymap
    #:build-escape-map
+   #:copy-keymap
    ))
 (in-package :keymap)
 
@@ -91,7 +92,8 @@
 
 ;(defmacro defkeymap (name map &key default-binding)
 (defmacro defkeymap (name &body body)
-  "Define a keymap. DEFAULT-BINDING is what keys that aren't defined are bound to."
+  "Define a keymap. DEFAULT-BINDING is what keys that aren't defined are
+bound to."
   (let* (docstring map default-binding)
     ;; See if there's a docstring
     (if (stringp (first body))
@@ -232,6 +234,15 @@ to bind to the escape key, so you have escape key equivalents to meta keys."
        (when (and (characterp k) (meta-char-p (char-code k)))
 	 (define-key new-keymap (un-meta (char-code k)) f)))
      keymap)
+    new-keymap))
+
+(defun copy-keymap (keymap)
+  "Return a new copy of KEYMAP."
+  (let ((new-keymap (make-instance
+		     (type-of keymap)
+		     :default-binding (keymap-default-binding keymap))))
+    (map-keymap #'(lambda (k f) (define-key new-keymap k f))
+		keymap)
     new-keymap))
 
 ;; EOF

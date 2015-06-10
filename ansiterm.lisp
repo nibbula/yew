@@ -41,6 +41,8 @@
    #:tt-scroll-down
    #:tt-erase-to-eol
    #:tt-erase-line
+   #:tt-erase-above
+   #:tt-erase-below
    #:tt-clear
    #:tt-home
    #:tt-cursor-off
@@ -53,6 +55,7 @@
    #:tt-inverse
    #:tt-color
    #:tt-beep
+   #:tt-set-scrolling-region
    #:tt-finish-output
    #:tt-get-char
    #:tt-reset
@@ -345,6 +348,14 @@ i.e. the terminal is \"line buffered\""))
 (defmethod tt-erase-line ((tty terminal-stream))
   (tt-format tty "~c[2K" #\escape))
 
+(defgeneric tt-erase-above (tty))
+(defmethod tt-erase-above ((tty terminal-stream))
+  (tt-format tty "~c[1J" #\escape))
+
+(defgeneric tt-erase-below (tty))
+(defmethod tt-erase-below ((tty terminal-stream))
+  (tt-format tty "~c[0J" #\escape))
+
 (defgeneric tt-clear (tty))
 (defmethod tt-clear ((tty terminal-stream))
   (tt-format tty "~c[2J" #\escape))
@@ -405,6 +416,12 @@ i.e. the terminal is \"line buffered\""))
 (defgeneric tt-beep (tty))
 (defmethod tt-beep ((tty terminal-stream))
   (tt-write-char tty #\bel))		; Not #\bell!! 🔔
+
+(defgeneric tt-set-scrolling-region (tty start end))
+(defmethod tt-set-scrolling-region ((tty terminal-stream) start end)
+  (if (and (not start) (not end))
+      (tt-format tty "~c[r" #\escape)
+      (tt-format tty "~c[~d;~dr" #\escape start end)))
 
 (defgeneric tt-finish-output (tty))
 (defmethod tt-finish-output ((tty terminal-stream))

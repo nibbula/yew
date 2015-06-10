@@ -6,8 +6,6 @@
 ;; why it's poorly organized.
 ;;
 ;; TODO:
-;;  - convert to using FUI.
-;;  - convert to using keymaps
 ;;  - improve git mode
 ;;    - show things to pull? (ie changes on remote)
 ;;  - Consider making a branch editing mode

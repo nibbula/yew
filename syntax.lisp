@@ -15,6 +15,8 @@
    #:guess-language
    #:token
    #:read-token
+   #:parse-syntax
+   #:print-syntax
    ))
 (in-package :syntax)
 

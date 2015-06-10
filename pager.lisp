@@ -409,6 +409,7 @@ set in this string."
 ;; on
 ;; (NUNION PAGER::ATTRS (PAGER::FATCHAR-ATTRS PAGER::C))
 
+#|
 (defun p-a-c-l (fat-line)
  (let ((new-fat-line '()))
     (loop :with len = (length fat-line) :and i = 0
@@ -431,7 +432,7 @@ set in this string."
 		  (char= (aref line i) #\escape)
 		  (char= (aref line (1+ i)) #\[))
 	 (let ((i-attrs :lumpy))
-	   (unless (eq i-attrs :lumpy)
+	   (unless (eql i-attrs :lumpy)
 	     (setf attrs i-attrs))))
        (setf c (aref fat-line i)
 	     (fatchar-fg c) fg
@@ -441,11 +442,12 @@ set in this string."
        (push c new-fat-line)
        (incf i))
     new-fat-line))
+|#
 
 (defun poo (x)
   (let ((nfl '()))
     (loop :with c
-       :for i :from 1 :to 10 :do
+       :for i :from 1 :below (length x) :do
        (setf c (aref x i)
 	     (fatchar-attrs c) (union `(1 ,i 2 3) '(do re me)))
        (push c nfl))
@@ -477,13 +479,15 @@ set in this string."
 		 (incf i inc))))	; for the parameters read
 	   (copy-char ()
 	     "Copy the current character to result."
-	     (stretchy:stretchy-append
-	      new-fat-line (make-fatchar
-			    :c (fatchar-c (aref fat-line i))
-			    :fg fg :bg bg
-			    :attrs (nunion
-				    attrs
-				    (fatchar-attrs (aref fat-line i)))))
+	     (dbug "attrs = ~a~%" attrs)
+	     (dbug "(aref fat-line i) = ~a~%" (aref fat-line i))
+	     (let ((new-attrs (union attrs (fatchar-attrs (aref fat-line i)))))
+	       (stretchy:stretchy-append
+		new-fat-line (make-fatchar
+			      :c (fatchar-c (aref fat-line i))
+			      :fg fg :bg bg
+			      :attrs new-attrs
+			      )))
 	     (incf i)))
       (loop :while (< i len) :do
 	 (if (looking-at-attrs)
@@ -1220,7 +1224,6 @@ q - Abort")
   (with-curses
     (unwind-protect
       (progn
-	(curses:raw)
 	(when (and (not stream) file-list)
 	  (setf stream (open (quote-filename (first file-list))
 			     :direction :input)
@@ -1241,6 +1244,7 @@ q - Abort")
 	  (setf quit-flag nil
 		suspend-flag nil
 		suspended nil)
+	  (curses:raw)		; give a chance to exit during first read
 	  (loop :do
 	     (display-page pager)
 	     (if message
@@ -1370,7 +1374,7 @@ press Control-H then 'k' then the key. Press 'q' to exit this help.
 
 #+lish
 (lish:defcommand pager ((files pathname :repeating t))
-  "Look through files a screenful at a time."
+  "Look through text, one screen-full at a time."
   (pager (or files *standard-input*)))
 
 ;; EOF

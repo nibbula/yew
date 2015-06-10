@@ -666,7 +666,11 @@ waits for a key press and then returns."
 
 (defun %make-tree (thing func &key max-depth (test #'equal)
 				(depth 0) (flat '()))
-  "Generate a tree for THING, where FUNC is a function (FUNC THING) which returns a list of the brances of THING. Makes a tree of up to a depth of MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL. DEPTH is the current depth in the tree, and FLAT is a flat list of things encountered to prevent following infinite cycles."
+  "Generate a tree for THING, where FUNC is a function (FUNC THING) which
+returns a list of the branches of THING. Makes a tree of up to a depth of
+MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL. DEPTH is
+the current depth in the tree, and FLAT is a flat list of things encountered
+to prevent following infinite cycles."
   (declare (ignore test))
   (when (and max-depth (> depth max-depth))
     (return-from %make-tree nil))

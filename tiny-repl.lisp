@@ -4,8 +4,10 @@
 
 ;;; This used to be part of tiny-rl, but it's split out now.
 ;;; It's actually quite broken and incomplete.
-;;; It includes a debugger which is very very shabby.
+;;; It used to include a debugger which is very very shabby, but
+;;; now is seperate as TINY-DEBUG.
 ;;; If you like self deprecating software, this is for you.
+;;; By the way, this currely breaks DRIBBLE, as if anyone cares.
 
 ;;; TODO:
 ;;;   - pasteability?
@@ -22,9 +24,9 @@
 ;#+sbcl (require 'sb-introspect)
 
 (defpackage "TINY-REPL"
-  (:use :common-lisp :tiny-rl :dlib :termios)
+  (:use :common-lisp :tiny-rl :keymap :dlib :termios)
   (:documentation
-   "A tiny REPL replacement to be used with tiny-rl.")
+   "A tiny REPL replacement that works with tiny-rl.")
   (:export
    #:tiny-repl
    #:*repl-level*
@@ -88,6 +90,7 @@
   prompt-func   
   more		  If non-nil, a string of more input.
   terminal-name   Name of a terminal device or nil.
+  keymap          Custom keymap for TINY-RL or nil.
   output          Stream to print output on or nil for the default.
   got-error	  A boolean which is true if we got an error.
   error-count     A fixnum which keeps the count of errors we have gotten.
@@ -99,6 +102,7 @@
   prompt-string
   more
   terminal-name
+  keymap
   output
   (got-error	nil	:type boolean)
   (error-count	0	:type fixnum)
@@ -150,13 +154,15 @@
 	   (format output "~&~s~%" (eval `(,value ,@args))) (finish-output output)
 	   t))
 	((matches value "Help")
-	 (format output "~
-Hi. ~@?
-If you're weren't expecting a Lisp REPL, just type \"quit\" now. Otherwise,
-you might be interested to know that you are using Dan's TINY-REPL. If you want
-to get back to the normal REPL you can probably type \".\" (a period by
-itself). You can use some Emacs-like commands to edit the command line.
-
+	 (let ((cols (ansiterm:terminal-window-columns
+		      (tiny-rl::line-editor-terminal
+		       (repl-state-editor state)))))
+	   (dlib-misc:justify-text (format nil "~
+Hi. ~@? If you're weren't expecting a Lisp REPL, just type \"quit\" now. Otherwise, you might be interested to know that you are using Dan's TINY-REPL. If you want to get back to the normal REPL you can probably type \".\" (a period by itself). You can use some Emacs-like commands to edit the command line.~%"
+#+clisp "You are probably using CLisp and typed :h expecting some help."
+#-clisp "You probably typed :h by accident, or may even be expecting some help."
+) :cols cols :stream output)
+	   (format output "
 Some notable keys are:
  <Tab>        Complete lisp symbol.
  ?            List lisp symbol completions.
@@ -165,17 +171,26 @@ Some notable keys are:
  <Control-N>  Next history line.
  <Control-Q>  Quote next character, like if you want to really type a \"?\".
  ~@?
-"
-#+clisp "You are probably using CLisp and typed :h expecting some help."
-#-clisp "You probably typed :h by accident, or may even be expecting some help."
-		(if (find-package :lish) "~
+" (if (find-package :lish) "~
  <F9>         Switch back and forth to LISH, which is a lispy/posixy shell."
 		    ""))
-	 (format output "~%
-The REPL also has a ‘History’ command to list the history.")
+	   (format output "
+The REPL also has a few commands:
+  History      - list the command history.
+  IP <package> - Abbreviation for (in-package <package>)
+  UP           - Abbreviation for (in-package :cl-user)
+  Help         - You are looking at it.~%"))
 	 t)
 	((matches value "History")
 	 (tiny-rl:show-history (tiny-rl::context (repl-state-editor state)))
+	 t)
+	((matches value "IP")
+	 ;; Since this doesn't work: (in-package (read-arg state))
+	 ;; let's just hope this does enough of the same thing.
+	 (setf *package* (find-package (read-arg state)))
+	 t)
+	((matches value "UP")
+	 (in-package :cl-user)
 	 t)))))
 
 (defvar *default-interceptor*
@@ -198,7 +213,7 @@ The REPL also has a ‘History’ command to list the history.")
 
 (defun repl-read (state)
   (with-slots (editor debug prompt-func prompt-string got-error more
-	       terminal-name) state
+	       terminal-name keymap) state
     (let ((result nil)
 	  (pre-str nil)
 	  (str nil))
@@ -228,6 +243,7 @@ The REPL also has a ‘History’ command to list the history.")
 			  (tiny-rl :eof-value *real-eof-symbol*
 				   :quit-value *quit-symbol*
 				   :editor editor
+				   :keymap keymap
 				   :terminal-name terminal-name
 				   :context :repl
 				   :prompt ""))
@@ -238,6 +254,7 @@ The REPL also has a ‘History’ command to list the history.")
 				(tiny-rl :eof-value *real-eof-symbol*
 					 :quit-value *quit-symbol*
 					 :editor editor
+					 :keymap keymap
 					 :terminal-name terminal-name
 					 :context :repl
 					 :prompt prompt-string)
@@ -245,6 +262,7 @@ The REPL also has a ‘History’ command to list the history.")
 					 :quit-value *quit-symbol*
 					 :editor editor
 					 :terminal-name terminal-name
+					 :keymap keymap
 					 :context :repl
 					 :output-prompt-func
 					 (if prompt-func
@@ -294,6 +312,10 @@ The REPL also has a ‘History’ command to list the history.")
     (dbug "DO CONTIUE!!~%"))
       result)))
 
+(defun repple-stepper (c)
+  (when (find-package :tiny-debug)
+    (funcall (intern "STEPPER" (find-package :tiny-debug)) c)))
+
 ;; Eval and print
 (defun repl-eval (form state)
   (with-slots (got-error error-count interceptor debug output) state
@@ -321,6 +343,7 @@ The REPL also has a ‘History’ command to list the history.")
 ; 			  #'(lambda (c)
 ; 			      (format output "Note: ~a~%" c)
 ; 			      (continue)))
+		  #+sbcl (sb-ext::step-condition 'repple-stepper)
 		  (serious-condition
 		   #'(lambda (c)
 		       (dbug "Handler bind~%")
@@ -342,12 +365,14 @@ The REPL also has a ‘History’ command to list the history.")
 			      ** *
 			      * (car vals))
 			(loop :with len = (length vals) :and i = 0
-			      :for v :in vals
-			      :do
-			      (format output "~&~s" v) ; This is the "P" in the REPL
-			      (when (and (> len 1) (< i (- len 1)))
-				(format output " ;~%")) ; It's kind of a convention
-			      (incf i))
+			   :for v :in vals
+			   :do
+			   ;; This is the "P" in the REPL
+			   (format output "~&~s" v)
+			   (when (and (> len 1) (< i (- len 1)))
+			     ;; It's kind of a convention for multi-vals
+			     (format output " ;~%"))
+			   (incf i))
 			(terpri output))
 		   (setf +++ ++
 			 ++ +
@@ -372,13 +397,16 @@ The REPL also has a ‘History’ command to list the history.")
 	(setf error-count 0))))
 
 (defun tiny-repl (&key prompt-func prompt-string no-announce terminal-name
-		    (output *standard-output*) (interceptor *default-interceptor*) (debug t))
+		    keymap
+		    (output *standard-output*)
+		    (interceptor *default-interceptor*) (debug t))
   "Keep reading and evaluating lisp, with line editing.
 PROMPT-FUNC   -- A TINY-RL prompt function, which is called with a with
                  an instance of TINY-RL:LINE-EDITOR and a prompt string.
 PROMPT-STRING -- 
 NO-ANNOUNCE   -- True to supress the announcement on starting.
 TERMINAL-NAME -- Name of a system terminal device to read from.
+KEYMAP        -- A custom keymap to use for TINY-RL.
 OUTPUT        -- Stream to print output on.
 INTERCEPTOR   -- Function that's called with an object to be evaluated and a
 		 TINY-REPL:REPL-STATE. Allows interception of sepcial objects
@@ -398,6 +426,7 @@ DEBUG	      -- True to install TINY-DEBUG as the debugger. Default is T.
 		:interceptor interceptor
 		:prompt-func prompt-func
 		:prompt-string prompt-string
+		:keymap keymap
 		:terminal-name terminal-name
 		:output output))
 	(result nil)
@@ -407,8 +436,9 @@ DEBUG	      -- True to install TINY-DEBUG as the debugger. Default is T.
     (when (and debug (find-package :tiny-debug))
       ;; @@@ On SBCL we could also set sb-ext:*invoke-debugger-hook*, to catch
       ;; break and such, but let's not for now.
-      (setf *debugger-hook* (find-symbol (symbol-name '#:tiny-debug)
-					 (find-package :tiny-debug))))
+      ;;(setf *debugger-hook* (find-symbol (symbol-name '#:tiny-debug)
+      ;;				 (find-package :tiny-debug)))
+      (funcall (intern "ACTIVATE" (find-package :tiny-debug))))
 
   (unwind-protect
     (progn

@@ -448,18 +448,21 @@ The date part is considered to be the current date."
 	:do (sleep .2))
       ,form))))
 
-(defun print-properties (prop-list &key (right-justify nil))
+(defun print-properties (prop-list &key (right-justify nil) (de-lispify t))
   "Print a set of names and values nicely in two vertical columns."
   (let ((label-length (loop :for (name nil) :in prop-list
 			 :maximize (length (princ-to-string name)))))
-    (loop :for (name value) :in prop-list
+    (flet ((niceify (s)
+	     (string-capitalize
+		    (substitute #\space #\_
+				(substitute #\space #\- s)))))
+      (loop :for (name value) :in prop-list
        :do (format t (if right-justify "~v@a: ~a~%" "~va: ~a~%")
 		   label-length
-		   (string-capitalize
-		    (substitute #\space #\_
-				(substitute #\space #\-
-					    (princ-to-string name))))
-		   value))))
+		   (if de-lispify
+		       (niceify (princ-to-string name))
+		       (string-downcase (princ-to-string name)))
+		   value)))))
 
 (defun print-values (value-list &optional (stream t))
   "Print a vertical list of values. VALUE-LIST is a list of symbols whose
@@ -796,7 +799,7 @@ symbols, :all to show internal symbols too."
 
 (defun dir (&optional (pattern "*.*"))
   "Simple portable CL only directory listing."
-  (declare (optimize (debug 3) (safety 0) (speed 0)))
+;  (declare (optimize (debug 3) (safety 0) (speed 0)))
   (setf pattern (pathname pattern))
   (when (not (pathname-name pattern))
     (setf pattern (merge-pathnames pattern (pathname "*.*"))))

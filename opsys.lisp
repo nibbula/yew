@@ -172,10 +172,12 @@
    #:user-name-char-p
    #:valid-user-name
    #:user-name
+   #:user-id
    #:user-full-name
 
    #:group
    #:group-name
+   #:group-id
    #:group-passwd
    #:group-gid
    #:group-members
@@ -245,6 +247,9 @@
    #:is-socket
    #:is-door
    #:is-whiteout
+   #:file-type-char
+   #:file-type-name
+   #:symbolic-mode
    #:file-exists
 
    #:UF_SETTABLE #:UF_NODUMP #:UF_IMMUTABLE #:UF_APPEND #:UF_OPAQUE
@@ -1300,10 +1305,11 @@ the current 'C' environment."
   (dummy3 :int32 :count 5)
   (dummy4 caddr-t :count 3))
 
-(defconstant +WMESGLEN+ 7 "wchan message length")
-(defconstant +EPROC_CTTY+ #x01 "controlling tty vnode active")
-(defconstant +EPROC_SLEADER+ #x02 "session leader")
-(defconstant +COMPAT_MAXLOGNAME+ 12 "short setlogin() name")
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconstant +WMESGLEN+	     7    "wchan message length")
+  (defconstant +EPROC_CTTY+	     #x01 "controlling tty vnode active")
+  (defconstant +EPROC_SLEADER+	     #x02 "session leader")
+  (defconstant +COMPAT_MAXLOGNAME+   12   "short setlogin() name"))
 
 (defcstruct foreign-eproc
   (e_paddr :pointer)		     ; address of proc (opaque: struct proc *)
@@ -1612,13 +1618,19 @@ user is not found."
 	      (return-from user-home (passwd-dir p))))
   (endpwent))
 
-(defun user-name ()
-  "Return the name of the current user."
-  (passwd-name (getpwuid (getuid))))
+(defun user-name (&optional id)
+  "Return the name of the user with ID, which defaults to the current user."
+  (passwd-name (getpwuid (or id (getuid)))))
 
-(defun user-full-name ()
-  "Return the full name of the current user."
-  (let* ((name (passwd-gecos (getpwuid (getuid))))
+(defun user-id (&optional name)
+  "Return the ID of the user with NAME, which defaults to the current user."
+  (if name
+      (passwd-uid (getpwnam name))
+      (getuid)))
+
+(defun user-full-name (&optional id)
+  "Return the full name of user with ID, which defaults to the current user."
+  (let* ((name (passwd-gecos (getpwuid (or id (getuid)))))
 	 (comma (position #\, name)))
     (if comma
 	(subseq name 0 comma)
@@ -1644,7 +1656,7 @@ user is not found."
   (gr_mem	:pointer)
 )
 
-(defstruct group
+(defstruct group-entry
   "Group database entry."
   name
   passwd
@@ -1662,7 +1674,7 @@ Return nil for foreign null pointer."
 			    gr_gid
 			    gr_mem
 			    ) gr (:struct foreign-group))
-	(make-group
+	(make-group-entry
 	 :name   gr_name
 	 :passwd gr_passwd
 	 :gid    gr_gid
@@ -1670,8 +1682,7 @@ Return nil for foreign null pointer."
 	 (loop :with i = 0
 	    :while (not (null-pointer-p (mem-aref gr_mem :pointer i)))
 	    :collect (mem-aref gr_mem :string i)
-	    :do (incf i))
-	 ))))
+	    :do (incf i))))))
 
 ;; @@@ Should use the re-entrant versions of these functions.
 
@@ -1690,6 +1701,16 @@ Return nil for foreign null pointer."
 (defcfun ("endgrent" real-endgrent) :void)
 (defun endgrent ()
   (real-endgrent))
+
+(defun group-name (&optional id)
+  "Return the name of the group with ID. Defaults to the current group."
+  (group-entry-name (getgrgid (or id (getgid)))))
+
+(defun group-id (&optional name)
+  "Return the ID of the group NAME. Defaults to the current group."
+  (if name
+      (group-entry-gid (getgrnam name))
+      (getgid)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
@@ -2571,18 +2592,45 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
   #-sunos (declare (ignore mode))
   )
 
+(defstruct file-type-info
+  "Store data for file types."
+  test
+  symbol
+  char
+  name)
+
+(defparameter *file-type-data* NIL
+  #|
+  #(#S(OPSYS::FILE-TYPE-INFO :test is-fifo		:symbol :FIFO
+       :char #\F :name "FIFO")
+    #S(OPSYS::FILE-TYPE-INFO :test is-character-device	:symbol :character-special
+       :char #\c :name "character special")
+    #S(OPSYS::FILE-TYPE-INFO :test is-directory	:symbol :directory
+       :char #\d :name "directory")
+    #S(OPSYS::FILE-TYPE-INFO :test is-block-device	:symbol :block-special
+       :char #\b :name "block special")
+    #S(OPSYS::FILE-TYPE-INFO :test is-regular-file	:symbol :regular
+       :char #\r :name "regular")
+    #S(OPSYS::FILE-TYPE-INFO :test is-symbolic-link	:symbol :symbolic-link
+       :char #\s :name "symbolic link")
+    #S(OPSYS::FILE-TYPE-INFO :test is-socket		:symbol :socket
+       :char #\s :name "socket")
+    #S(OPSYS::FILE-TYPE-INFO :test is-door		:symbol :door
+       :char #\d :name "door")
+    #S(OPSYS::FILE-TYPE-INFO :test is-whiteout		:symbol :whiteout
+       :char #\w :name "whiteout"))
+  |#)
+
 (defparameter *mode-tags*
-  '((is-fifo		   	"FIFO ")
-    (is-character-device	"character special ")
-    (is-directory		"directory ")
-    (is-block-device		"block special ")
-    (is-regular-file		"regular ")
-    (is-symbolic-link		"symbolic link ")
-    (is-socket			"socket ")
-    (is-door			"door ")
-    (is-whiteout		"whiteout ")
-    (is-set-uid			"set-UID ")
-    (is-sticky			"sticky "))
+  '((is-fifo		   	"FIFO")
+    (is-character-device	"character special")
+    (is-directory		"directory")
+    (is-block-device		"block special")
+    (is-regular-file		"regular")
+    (is-symbolic-link		"symbolic link")
+    (is-socket			"socket")
+    (is-door			"door")
+    (is-whiteout		"whiteout"))
   "Sequence of test functions and strings for printing modes.")
 
 (defparameter *mode-tag-chars*
@@ -2608,6 +2656,18 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
     (is-other-writable		#\w)
     (is-other-executable	#\x))
   "Sequence of test functions and strings for printing permission bits.")
+
+(defun file-type-char (mode)
+  "Return the character representing the file type of MODE."
+  (loop :for f :in *file-type-data* :do
+     (when (funcall (file-type-info-test f) mode)
+       (return-from file-type-char (file-type-info-char f)))))
+
+(defun file-type-name (mode)
+  "Return the character representing the file type of MODE."
+  (loop :for f :in *mode-tags* :do
+     (when (funcall (file-type-info-test f) mode)
+       (return-from file-type-name (file-type-info-name f)))))
 
 (defun symbolic-mode (mode)
   "Convert a number to mode string. Like strmode."
