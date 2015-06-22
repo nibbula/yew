@@ -114,6 +114,11 @@
     (#\~         . :constituent)
     (#\Rubout    . :constituent)))
 
+(defun char-type (c)
+  "Return the character type of the character C."
+  (check-type c character)
+  (cdr (find c *char-type* :key #'car)))
+
 (deftype token-type ()
   '(member
     :object
@@ -184,5 +189,40 @@ not provided, it defaults to the end of the string."
 	     :do (incf i))))
        (incf i))
     (first starts)))
+
+(defun eat-whitespace (stream)
+  (let (c)
+    (loop :do (setf c (read-char stream))
+       :while (eq (char-type c) :whitespace))
+    (unread-char c stream)))
+#|
+(defun fake-read-token (stream)
+  (eat-whitespace)
+  (prog (c)
+     read
+     (setf c (read-char stream))
+     (when (invalid-character-p c)
+       (error 'reader-error))
+     (case (char-type c)
+       (terminating)
+       (non-terminating))
+     (when (is-number token-buffer)
+       (make-number token-buffer))
+     ))
+
+(defun fake-read (&key (stream *standard-input*)
+		    (eof-error-p t) (eof-value nil) (recursive-p nil))
+  "Pretend to do something similar to READ, but don't. This like if
+READ with *read-suppress* returned objects, but didn't handle any really
+gritty details of a Lisp reader. The most important thing is: don't INTERN
+any new symbols, or fail on unknown packages or symbols."
+  (handler-case
+      (fake-read-token stream)
+    (end-of-file (c)
+      (if (not eof-error-p)
+	  eof-value
+	  (error 'reader-error)))))
+
+|#
 
 ;; EOF

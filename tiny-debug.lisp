@@ -2,12 +2,7 @@
 ;; tiny-debug.lisp - Multi platform minimal debugger
 ;;
 
-;; $Revision: 1.5 $
-
 ;;; - debugger improvements.
-;;;   - we should probably investigate the feasibility of having the system
-;;;     debugger use our readline on the various implementations, or for
-;;;     that matter making the system repl use our readline.
 ;;; - how about using swank?
 
 (defpackage :tiny-debug
@@ -21,6 +16,7 @@
    #:*visual-mode*
    #:toggle
    #:active-p
+   #:activate
    ))
 (in-package :tiny-debug)
 
@@ -36,6 +32,10 @@ the outermost. When entering the debugger the current frame is 0.")
 
 (defvar *saved-frame* nil
   "Implementation handle to frame that the debugger started from.")
+
+;; Temporarily set the feature if the implementation supports breakpoints.
+#+sbcl (eval-when (:compile-toplevel)
+	 (d-add-feature :tdb-has-breakpoints))
 
 (defun debugger-sorry (x)
   "What to say when we can't do something."
@@ -78,9 +78,10 @@ the outermost. When entering the debugger the current frame is 0.")
 	    (if (not (eql (find-package :cl) pkg))
 		(format stream "~(~a~)::" (package-name pkg)))))
       (format stream "~(~a~)" name)
-      (print-lambda-list f (sb-di::debug-fun-lambda-list dbg-fun))
+      (if (sb-di::debug-fun-%lambda-list dbg-fun)
+	  (print-lambda-list f (sb-di::debug-fun-lambda-list dbg-fun))
+	  (princ " <unavailable>" stream))
       (format stream ")"))))
-
 
 #+sbcl
 (defun sbcl-start-frame ()
@@ -299,15 +300,18 @@ the outermost. When entering the debugger the current frame is 0.")
 
 #+sbcl
 (defun debugger-source-path (frame)
-  (let* ((fun (sb-di:code-location-debug-fun
+#|  (let* ((fun (sb-di:code-location-debug-fun
 	       (sb-di:frame-code-location frame)))
 	 (src (and fun (sb-introspect:find-definition-source
 			(symbol-function
 			 (sb-di:debug-fun-name fun))))))
     (if src
 	(definition-source-pathname src)
-	":Unknown")))
-
+	":Unknown"))) |#
+  (let* ((loc (sb-di:frame-code-location frame))
+	 (src (sb-di::code-location-debug-source loc)))
+    (sb-c::debug-source-namestring src)))
+  
 #+ccl
 (defun debugger-source-path (frame &optional (window-size 10))
   (let ((note (debugger-source-note frame)))
@@ -319,21 +323,55 @@ the outermost. When entering the debugger the current frame is 0.")
       (t
        ":Internal"))))
 
+
+#+sbcl
+(defun get-loc-form-offset (loc)
+  (if (sb-di::code-location-unknown-p loc)
+      (sb-c::compiled-debug-fun-tlf-number
+       (sb-di::compiled-debug-fun-compiler-debug-fun
+	(sb-di::compiled-code-location-debug-fun loc)))
+      (sb-di:code-location-toplevel-form-offset loc)))
+
+#+sbcl
+(defun get-snippet-pos (stream loc)
+  (let ((form-offset (get-loc-form-offset loc))
+	start-pos form)
+    (let ((*read-suppress* t)
+	  (eof (cons nil nil)))
+      (loop :with i = 0
+	 :while (and (<= i form-offset)
+		     (not (eq eof
+			      (setf start-pos (file-position stream)
+				    form (read stream nil eof)))))
+	 :do
+	 (incf i)))
+    (values start-pos form)))
+
 #+sbcl
 (defun debugger-source (frame &optional (window-size 10))
-  (let* ((fun (sb-di:code-location-debug-fun
-	       (sb-di:frame-code-location frame)))
-	 (src (and fun (sb-introspect:find-definition-source
-			(symbol-function
-			 (sb-di:debug-fun-name fun))))))
-    (if src
-	(with-open-file (stream (definition-source-pathname src))
-	  (file-position stream (definition-source-character-offset src))
-	  (loop :with line
-	     :for i :from 1 :to window-size
-	     :while (setf line (read-line stream nil nil))
-	     :collect line))
-	(list "Sorry, I can't figure it out."))))
+  (let* ((loc (sb-di:frame-code-location frame))
+	 ;;(fun (and loc (sb-di:code-location-debug-fun loc)))
+	 ;;(src (and fun (sb-introspect:find-definition-source
+	 ;;		(symbol-function
+	 ;;		 (sb-di:debug-fun-name fun)))))
+	 ;;(path (definition-source-pathname src))
+	 ;;(offset (definition-source-character-offset src))
+	 ;;
+	 (src2        (sb-di::code-location-debug-source loc))
+	 ;;(form-num    (sb-di::code-location-form-number loc))
+	 ;;(form-offset (sb-di::code-location-toplevel-form-offset loc))
+	 ;; (sb-di::code-location-source-form loc context??)
+	 ;; (sb-di::get-toplevel-form loc)
+	 (path2       (sb-c::debug-source-namestring src2))
+	 offset)
+;;;    (if src2
+    (with-open-file (stream path2)
+      (setf offset (get-snippet-pos stream loc))
+      (file-position stream offset)
+      (loop :with line
+	 :for i :from 1 :to window-size
+	 :while (setf line (read-line stream nil nil))
+	 :collect line))))
 
 #+ccl
 (defun debugger-source (frame &optional (window-size 10))
@@ -516,8 +554,17 @@ the outermost. When entering the debugger the current frame is 0.")
     ;; (setf *step-form* (sb-ext::step-condition-form c)
     ;;  	  *step-args* (sb-ext::step-condition-args c))
     (format *debug-io* "-- TinY SteppeR --~%")
+    ;; Handle special stepping conditions:
+    (typecase c
+      (sb-ext:step-values-condition
+       (format *debug-io* "Form: ~s~%Result: ~s~%"
+	       (slot-value c 'sb-kernel::form)
+	       (slot-value c 'sb-kernel::result))
+       (finish-output *debug-io*)
+       (return-from stepper)))
     (finish-output *debug-io*)
-    (let ((sb-debug::*stack-top-hint* (sb-di::find-stepped-frame)))
+    (let ((sb-debug::*stack-top-hint* (sb-di::find-stepped-frame))
+	  (sb-ext::*stepper-hook* nil))
       (invoke-debugger c))))
 
 (defun activate-stepper ()
@@ -525,20 +572,97 @@ the outermost. When entering the debugger the current frame is 0.")
   (format *debug-io* "Activating the TINY stepper.~%")
   #+sbcl (setf sb-ext::*stepper-hook* 'stepper))
 
+;; Breakpoints
+
+#+(and sbcl tdb-has-breakpoints)
+(progn
+  (defvar *breakpoints* '()
+    "List of known breakpoints.")
+
+  (defun breaker (frame obj)
+    "Function called when a breakpoint is hit."
+    (declare (ignore obj))
+    (format *debug-io* "You gots breaked!~%")
+    ;; (invoke-debugger (make-condition
+    ;; 		      'simple-condition
+    ;; 		      :format-control "Breakpoint"))
+    (tiny-debug (make-condition
+		 'simple-condition
+		 :format-control "Breakpoint") nil frame))
+
+  (defun set-func-breakpoint (fun)
+    (if (sb-di:fun-debug-fun fun)
+	(let ((bp (sb-di:make-breakpoint
+		   #'breaker
+		   (sb-di:fun-debug-fun fun) :kind :fun-start)))
+	  (if bp
+	      (progn
+		(push bp *breakpoints*)
+		(sb-di:activate-breakpoint bp))
+	      (format *debug-io* "Can't make no breakpoint fer ~s~%" fun)))
+	(format *debug-io* "Ain't no debug fun fer ~s~%" fun)))
+
+  (defun find-breakpoint (n)
+    (nth (1- n) *breakpoints*))
+  
+  (defun activate-breakpoint (n)
+    (let ((bp (find-breakpoint n)))
+      (if bp
+	  (sb-di:activate-breakpoint bp)
+	  (format *debug-io* "No such breakpoint ~a~%" n))))
+
+  (defun deactivate-breakpoint (n)
+    (let ((bp (find-breakpoint n)))
+      (if bp
+	  (sb-di:deactivate-breakpoint bp)
+	  (format *debug-io* "No such breakpoint ~a~%" n))))
+
+  (defun toggle-breakpoint (n)
+    (let ((bp (find-breakpoint n)))
+      (if bp
+	  (if (sb-di:breakpoint-active-p bp)
+	      (sb-di:deactivate-breakpoint bp)
+	      (sb-di:activate-breakpoint bp))
+	  (format *debug-io* "No such breakpoint ~a~%" n))))
+
+  (defun delete-breakpoint (n)
+    (let ((bp (find-breakpoint n)))
+      (if bp
+	  (sb-di:deactivate-breakpoint bp)
+	  (format *debug-io* "No such breakpoint ~a~%" n))))
+
+  (defun list-breakpoints ()
+    (let ((rows
+	   (loop :for b :in *breakpoints* :and i = 1 :then (1+ i)
+	      :collect (list i
+			     (sb-di:breakpoint-active-p b)
+			     (sb-di:breakpoint-kind b)
+			     (sb-di:breakpoint-what b)
+			     (sb-di:breakpoint-info b)))))
+      (table:nice-print-table rows '("#" "Act" "Kind" "What" "Info")
+			      :stream *debug-io*)))
+  )
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Implementation independent functions
 
 (defparameter *box_drawings_light_horizontal*
-  #-ccl #\box_drawings_light_horizontal #+ccl #\U+2500)
+  #+(or sbcl cmu) #\box_drawings_light_horizontal
+  #+(or ccl lispworks) #\U+2500
+  #-(or sbcl cmu ccl lispworks) #\-)
 
 (defparameter *box_drawings_light_vertical_and_left*
-  #-ccl #\box_drawings_light_vertical_and_left #+ccl #\U+2524)
+  #+(or sbcl cmu) #\box_drawings_light_vertical_and_left
+  #+(or ccl lispworks) #\U+2524
+  #-(or sbcl cmu ccl lispworks) #\|)
 
 (defparameter *box_drawings_light_vertical_and_right*
-  #-ccl #\box_drawings_light_vertical_and_right #+ccl #\U+251C)
+  #+(or sbcl cmu) #\box_drawings_light_vertical_and_right
+  #+(or ccl lispworks) #\U+251C
+  #-(or sbcl cmu ccl lispworks) #\|)
 
 (defun horizontal-line (tt &optional note)
-  (tt-color tt :blue :black)
+  (tt-color tt :blue :default)
   (if note
       (progn
 	(tt-write-string tt (s+
@@ -547,61 +671,85 @@ the outermost. When entering the debugger the current frame is 0.")
 			     *box_drawings_light_vertical_and_left*))
 	(tt-color tt :white :black)
 	(tt-write-string tt (s+ " " note " "))
-	(tt-color tt :blue :black)
+	(tt-color tt :blue :default)
 	(tt-write-char tt *box_drawings_light_vertical_and_right*)
 	(tt-format tt "~v,,,va"
 		   (- (terminal-window-columns tt) (length (s+ note)) 6)
 		   *box_drawings_light_horizontal*
 		   *box_drawings_light_horizontal*)
-	(tt-color tt :default :black)
+	(tt-color tt :default :default)
 	(tt-write-char tt #\newline))
       ;; no note, just a line
       (progn
-      	(tt-color tt :blue :black)
+      	(tt-color tt :blue :default)
 	(tt-format tt "~v,,,va~%"
 		   (1- (terminal-window-columns tt))
 		   *box_drawings_light_horizontal*
 		   *box_drawings_light_horizontal*)
-	(tt-color tt :default :black))))
+	(tt-color tt :default :default))))
+
+(defun sanitize-line (line)
+  (when line
+    (if (> (length line) 0)
+	(apply #'s+ (map 'list #'char-util:displayable-char line))
+	line)))
 
 (defun visual ()
   (with-terminal (tt)
-    (let* ((source-height (truncate (/ (terminal-window-rows tt) 3)))
-	   (stack-height (min 10 source-height))
-	   (command-height (- (terminal-window-rows tt)
-			      (+ stack-height source-height 2)))
-	   (command-top (- (terminal-window-rows tt) (1- command-height)))
-	   (src (or (ignore-errors
-		      (debugger-source *current-frame* source-height))
-		    '("Sorry.")))
-	   (path (or (ignore-errors
-		       (debugger-source-path *current-frame*)
-		       "Sorry")))
-	   (stack (or (ignore-errors
-			(debugger-backtrace-lines stack-height))
-		      '("???"))))
-      ;; Source area
-      ;;(tt-clear tt)
-      (tt-move-to tt (+ source-height stack-height) 0)
-      (tt-erase-above tt)
-      (tt-home tt)
-      (loop :for i :from 0 :below source-height :do
-	 (if (and (< i (length src)) (elt src i))
-	     (tt-format tt "~a~%"
-			(subseq (elt src i)
-				0 (min (1- (terminal-window-columns tt))
-				       (length (elt src i)))))
-	     (tt-write-char tt #\newline)))
-      (horizontal-line tt path)
-      ;; Stack area
-      (loop :for line :in stack :do
-	 (tt-format tt "~a~%"
-		    (subseq line
-			    0 (min (1- (terminal-window-columns tt))
-				   (length line)))))
-      (horizontal-line tt)
-      ;; Command area
-      (tt-set-scrolling-region tt command-top (terminal-window-rows tt))
+    (with-saved-cursor (tt)
+      (let* ((source-height (truncate (/ (terminal-window-rows tt) 3)))
+	     (stack-height (min 10 source-height))
+	     (command-height (- (terminal-window-rows tt)
+				(+ stack-height source-height 2)))
+	     (command-top (- (terminal-window-rows tt) (1- command-height)))
+	     (src (or (ignore-errors
+			(debugger-source *current-frame* source-height))
+		      '("Unavailable.")))
+	     (path (or (ignore-errors
+			 (debugger-source-path *current-frame*))
+		       '("Unknown")))
+	     (stack (or (ignore-errors
+			  (debugger-backtrace-lines stack-height))
+			'("????"))))
+	;; Source area
+	;;(tt-clear tt)
+	(tt-move-to tt (+ source-height stack-height 2) 0)
+	(tt-erase-above tt)
+	(tt-home tt)
+	(loop :with line :and sp = src
+	   :for i :from 0 :below source-height :do
+	   (setf line (car sp))
+	   (if line
+	       (progn
+		 (setf line (sanitize-line line))
+		 (tt-format tt "~a~%"
+			    (subseq line
+				    0 (min (- (terminal-window-columns tt) 2)
+					   (length line))))
+		 (setf sp (cdr sp)))
+	       (tt-format tt "~~~%")))
+	(horizontal-line tt path)
+	;; Stack area
+	(loop :with line :and sp = stack
+	   :for i :from 0 :below stack-height :do
+	   (setf line (car sp))
+	   (if line
+	       (progn
+		 (tt-format tt "~a~%"
+			    (subseq line
+				    0 (min (1- (terminal-window-columns tt))
+					   (length line))))
+		 (setf sp (cdr sp)))
+	       (tt-format tt "~~~%")))
+	(horizontal-line tt)
+	;; Command area
+	(tt-set-scrolling-region tt command-top (terminal-window-rows tt))
+	(tt-move-to tt (1- (terminal-window-rows tt)) 0)
+	(tt-finish-output tt)))))
+
+(defun start-visual ()
+  (when *visual-mode*
+    (with-terminal (tt)
       (tt-move-to tt (1- (terminal-window-rows tt)) 0)
       (tt-finish-output tt))))
 
@@ -657,19 +805,34 @@ the outermost. When entering the debugger the current frame is 0.")
 :b      Backtrace stack.
 :w      Wacktrace.
 :s [n]	Show source for a frame N, which defaults to the current frame.
-:l [n]	Show local variables for a frame N, which defaults to the current frame.
+:l [n]	Show local variables for a frame N, which defaults to the current frame.")
+  #+tdb-has-breakpoints
+  (format *debug-io* "
+:lbp    List breakpointss.
+:sbp    Set breakpoints on function.
+:tbp    Toggle breakpoints.
+:abp    Activate breakpoints.
+:dbp    Deactivate breakpoints.
+:xbp    Delete breakpoints.
+")
+  (format *debug-io* "
 number  Invoke that number restart (from the :r list).
 ...     Or just type a some lisp code.
 ~%")
   (list-restarts (cdr (compute-restarts *interceptor-condition*))))
 
-(defun debugger-snargle ()
+(defun debugger-snargle (arg)
   "Magic command just for me."
-  (error "Pizza."))
+  (error "Pizza ~s ~s." arg (type-of arg)))
 
 (defun toggle-visual-mode (state)
   (declare (ignore state))
   (setf *visual-mode* (not *visual-mode*)))
+
+;;; @@@ I actually want to take defcommand out of lish and make it be generic.
+;;; And then also the command completion from lish to generic completion.
+;;; Then we can define debugger commands nicely with completion and the whole
+;;; shebang.
 
 (defun debugger-interceptor (value state)
   "Handle special debugger commands, which are usually keywords."
@@ -685,30 +848,45 @@ number  Invoke that number restart (from the :r list).
 ;	   (invoke-restart-interactively (nth n (compute-restarts)))))
 ;	   (format t "[Invoking restart ~d (~a)]~%" n (nth n rs))
 	   (invoke-restart-interactively (nth n rs))))
+       (or
+	(case value
+	  (:b (debugger-backtrace (read-arg state)) t)
+	  (:w (debugger-wacktrace (read-arg state)) t)
+	  (:r (list-restarts rs) t)
+	  (:s (debugger-show-source (read-arg state)) t)
+	  (:l (debugger-show-locals (read-arg state)) t)
+	  ((:h :help) (debugger-help) t)
+	  (:z (debugger-snargle    (read-arg state)) t)
+	  (:v (toggle-visual-mode  (read-arg state)) t)
+	  (:u (debugger-up-frame   (read-arg state)) t)
+	  (:d (debugger-down-frame (read-arg state)) t)
+	  (:f (debugger-set-frame  (read-arg state)) t)
+	  (:t (debugger-top-frame  (read-arg state)) t)
+	  (:e (format *debug-io* "~a ~a~%"
+		      (type-of *interceptor-condition*)
+		      *interceptor-condition*) t)
+	  (:a (format *debug-io* "Abort.~%")
+	      ;; This is like find-restart, but omits the most recent abort
+	      ;; which is this debugger's.
+	      (let ((borty (find 'abort rs :key #'restart-name)))
+		(if (not borty)
+		    (format *debug-io* "Can't find an abort restart!~%")
+		    (invoke-restart-interactively borty))))
+	  ((:q :quit)
+	   (when (y-or-n-p "Really quit?")
+	     (format *debug-io* "We quit.~%")
+	     (nos:exit-lisp))
+	   t))
+       #+tdb-has-breakpoints
        (case value
-	 (:b (debugger-backtrace (read-arg state)) t)
-	 (:w (debugger-wacktrace (read-arg state)) t)
-	 (:r (list-restarts rs) t)
-	 (:s (debugger-show-source (read-arg state)) t)
-	 (:l (debugger-show-locals (read-arg state)) t)
-	 ((:h :help) (debugger-help) t)
-	 (:z (debugger-snargle) t)
-	 (:v (toggle-visual-mode (read-arg state)) t)
-	 (:u (debugger-up-frame   (read-arg state)) t)
-	 (:d (debugger-down-frame (read-arg state)) t)
-	 (:f (debugger-set-frame  (read-arg state)) t)
-	 (:t (debugger-top-frame  (read-arg state)) t)
-	 (:e (format *debug-io* "~a ~a~%"
-		     (type-of *interceptor-condition*)
-		     *interceptor-condition*) t)
-	 (:a (format *debug-io* "Abort.~%")
-	     ;; This is like find-restart, but omits the most recent abort
-	     ;; which is this debugger's.
-	     (let ((borty (find 'abort rs :key #'restart-name)))
-	       (if (not borty)
-		   (format *debug-io* "Can't find an abort restart!~%")
-		   (invoke-restart-interactively borty))))
-	 ((:q :quit) (format *debug-io* "We quit.~%") (nos:exit-lisp) t))))
+	 ((:lb :lbp :list)	    (list-breakpoints) t)
+	 ((:sb :sbp :set)	    (set-func-breakpoint
+				     (eval (read-arg state))) t)
+	 ((:tb :tbp :toggle)	    (toggle-breakpoint (read-arg state)) t)
+	 ((:ab :abp :activate)	    (activate-breakpoint (read-arg state)) t)
+	 ((:db :dbp :deactivate)    (deactivate-breakpoint (read-arg state)) t)
+	 ((:xb :xbp :delete)	    (delete-breakpoint (read-arg state)) t)
+	 ))))
     ;; Numbers invoke that numbered restart.
     ((typep value 'number)
      (let ((rs (cdr (compute-restarts *interceptor-condition*))))
@@ -717,7 +895,8 @@ number  Invoke that number restart (from the :r list).
 	   (format *debug-io* "~a is not a valid restart number.~%" value))))))
 
 (defun try-to-reset-curses ()
-  "If curses is loaded and active try to reset the terminal to a sane state so when we get in error in curses we can type at the debugger."
+  "If curses is loaded and active, try to reset the terminal to a sane state
+so when we get in error in curses we can type at the debugger."
   (when (find-package :curses)
     (funcall (find-symbol (symbol-name '#:endwin) (find-package :curses)))))
 
@@ -754,21 +933,24 @@ number  Invoke that number restart (from the :r list).
 
 (defun setup-keymap ()
   (setf *debugger-keymap* (copy-keymap tiny-rl:*normal-keymap*))
-  (define-key *debugger-keymap* (meta-char #\i) 'debugger-up-frame-commmand)
-  (define-key *debugger-keymap* (meta-char #\o) 'debugger-down-frame-commmand)
-  (define-key *debugger-escape-keymap* #\escape
-    (build-escape-map *debugger-keymap*)))
+  (define-key *debugger-keymap* (meta-char #\i) 'debugger-up-frame-command)
+  (define-key *debugger-keymap* (meta-char #\o) 'debugger-down-frame-command)
+  (setf *debugger-escape-keymap*
+	(add-keymap tiny-rl::*escape-raw-keymap*
+		    (build-escape-map *debugger-keymap*)))
+  (define-key *debugger-keymap* #\escape '*debugger-escape-keymap*))
 
-(defun tiny-debug (c hook)
+(defun tiny-debug (c hook &optional frame)
   "Entry point for the tiny debugger, used as the debugger hook."
   (declare (ignore hook))		;@@@ wrong
-  (setf *saved-frame* (debugger-internal-frame))
+  (setf *saved-frame* (or frame (debugger-internal-frame)))
   (when (not *debugger-keymap*)
     (setup-keymap))
   (unwind-protect
     (progn
       ;;(try-to-reset-curses)
       (try-to-reset-terminal)
+      (start-visual)
       (when (> *repl-level* 20)
 	(format t "Something has probably gone wrong, so I'm breaking.~%")
 	;; Abort assumes a restart is active, which may not be the case.
@@ -803,23 +985,32 @@ number  Invoke that number restart (from the :r list).
 ; (defvar *repl-debug* nil
 ;   "True to invoke the debugger when a error occurs.")
 
+(defun in-emacs-p ()
+  "Return true if we're being run under Emacs, like probably in SLIME."
+  (d-getenv "EMACS"))
+
 (defun activate ()
-  (format *debug-io* "Activating the TINY debugger.~%")
-  (setf *debugger-hook* 'tiny-debug)
-  (activate-stepper))
+  (when (not (in-emacs-p))
+    (format *debug-io* "Activating the TINY debugger.~%")
+    (setf *debugger-hook* 'tiny-debug)
+    (activate-stepper)))
 
 (defvar *saved-debugger-hook* nil
   "The old value of *debugger-hook*, so we can restore it.")
 
 (defun toggle ()
   "Toggle the ‘Tiny’ debugger on and off."
-  (if (eq *debugger-hook* 'tiny-debug)
-      (setf *debugger-hook* *saved-debugger-hook*)
-      (setf *saved-debugger-hook* *debugger-hook*
-	    *debugger-hook* 'tiny-debug)))
+  (when (not (in-emacs-p))
+    (if (eq *debugger-hook* 'tiny-debug)
+	(setf *debugger-hook* *saved-debugger-hook*)
+	(setf *saved-debugger-hook* *debugger-hook*
+	      *debugger-hook* 'tiny-debug))))
 
 (defun active-p ()
   "Return true if the debugger is set to activate."
   (eq *debugger-hook* 'tiny-debug))
+
+;; Remove temporary features
+#+tbd-has-breakpoints (d-remove-feature :tdb-has-breakpoints)
 
 ;; EOF

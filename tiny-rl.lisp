@@ -426,7 +426,8 @@ anything important.")
 	(last-input e)		nil
 	(point e)		0
 	(fill-pointer (buf e))	0
-	(screen-row e) (terminal-get-cursor-position (line-editor-terminal e))
+;;;	(screen-row e) (terminal-get-cursor-position (line-editor-terminal e))
+	(screen-row e)		0
 	(screen-col e)		0
 	(start-col e)		0
 	(undo-history e)	nil
@@ -988,16 +989,14 @@ Assumes S is already converted to display characters."
   "Display the buffer."
   (with-slots (buf) e
     ;; Just in case write-char does system calls, we output to a string stream.
-    ;; @@@ Maybe we should try to see if this is useful?
-;    (editor-write-string e
-    (tt-write-string e
-     (with-output-to-string (s)
-      (loop :with sub = (if end
-			    (subseq buf start end)
-			    (subseq buf start))
-	 :for c :across sub
-	 :do
-	 (display-char e c))))))
+    (tt-write-string
+     e (with-output-to-string (s)
+	 (loop :with sub = (if end
+			       (subseq buf start end)
+			       (subseq buf start))
+	    :for c :across sub
+	    :do
+	    (display-char e c))))))
 
 (defmacro without-messing-up-cursor ((e) &body body)
   (let ((old-row (gensym))
@@ -1032,7 +1031,7 @@ the current cursor position."
       (when (>= (+ col right-len) width)
 	;; Cheaty way out: redraw whole thing after point
 	(without-messing-up-cursor (e)
-	  (let* ((new-col (- width (screen-col e) delete-length))
+	  (let* ((new-col (+ (- width (screen-col e)) delete-length))
 		 (from (+ point (buffer-length-to
 				 buf (- new-col start-col))))) ; wrong XXX
 	    (move-forward e new-col)
@@ -1164,8 +1163,7 @@ Updates the screen coordinates."
   (tt-erase-to-eol e)
   (setf (screen-col e) 0)
   (do-prompt e (prompt e) (prompt-func e))
-  (finish-output (terminal-output-stream
-		  (line-editor-terminal e)))
+  (finish-output (terminal-output-stream (line-editor-terminal e)))
   (display-buf e)
   (with-slots (point buf) e
     (when (< point (length buf))
@@ -1835,12 +1833,47 @@ is none."
 		  (setf point saved-point)	   ; go back to where we were
 		  (beep e "No completions")))))))) ; ring the bell
 
+#|
+;;; @@@ Consider the issues of merging this with display-length.
+;;; @@@ Consider that this is quite wrong, especially since it would have to
+;;; do everything a terminal would do.
+(defun display-cols (str)
+  "Return the column the cursor is at after outputting STR."
+  (let ((sum 0))
+    (map nil
+	 #'(lambda (c)
+	     (cond
+	       ((graphic-char-p c)
+		(incf sum))
+	       ((eql c #\tab)
+		(incf sum (- 8 (mod sum 8))))
+	       ((eql c #\newline)
+		(setf sum 0))
+	       ((eql c #\backspace)
+		(decf sum))
+	       ((eql c #\escape)
+		#| here's where we're screwed |#)
+	       (t
+		(if (control-char-graphic c)
+		    2			; ^X
+		    4)			; \000
+		)))
+	 s)
+    sum))
+|#
+
 (defun do-prefix (e prompt-str)
   "Output a prefix. The prefix should not span more than one line."
-  (incf (screen-col e) (length prompt-str))
-  (setf (start-col e) (screen-col e))	; save the starting column
+;;;  (incf (screen-col e) (length prompt-str))
+;  (break)
   (tt-write-string e prompt-str)
-  (finish-output))
+  (tt-finish-output e)
+  (multiple-value-bind (row col)
+      (terminal-get-cursor-position (line-editor-terminal e))
+    (setf (screen-row e) row
+	  (screen-col e) col
+	  ;; save end of the prefix as the starting column
+	  (start-col e) col)))
 
 (defun do-prompt (e prompt output-prompt-func)
   "Output the prompt in a specified way."
@@ -1865,7 +1898,10 @@ is none."
 	    (tt-erase-line e)
 	    (finish-output (terminal-output-stream (line-editor-terminal e)))
 	    (terminal-end (line-editor-terminal e))
-	    (funcall (find-symbol "LISH" :lish))
+	    (if (line-editor-terminal-device-name e)
+		(funcall (find-symbol "LISH" :lish)
+			 :terminal-name (line-editor-terminal-device-name e))
+		(funcall (find-symbol "LISH" :lish)))
 	    (tt-beginning-of-line e)
 	    (tt-erase-line e)
 	    (setf (screen-col e) 0)

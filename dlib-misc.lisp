@@ -48,13 +48,18 @@
    #:unintern-conflicts
    #:show-features
    #:describe-environment
-   #:describe-printing
+   #:describe-implementation
    #:describe-packages
    #:describe-package
+   #:describe-printing
+   #:describe-reader
    #:autoload
   )
 )
 (in-package :dlib-misc)
+
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 1)
+		   (compilation-speed 2)))
 
 #+clisp
 (defun load-again (module &rest other-args &key &allow-other-keys)
@@ -332,7 +337,7 @@ VALUES is a sequence of any of the following keywords:
   :seconds :minutes :hours :date :month :year :day :daylight-p :zone
   :day-abbrev :month-abbrev :12-hours :am :pm
 Some abbreviations of the keywords are accepted, like :hrs :min :sec."
-  (dlib:with-unique-names
+  (dlib::with-unique-names
       (seconds minutes hours date month year day daylight-p zone)
     (let ((args (loop :for v :in values
 		   :collect
@@ -667,6 +672,7 @@ traditional units."
 
 (defun show-features ()
   "Print the features list nicely."
+  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (print-columns (sort (copy-seq *features*) #'string<) :format-char #\s))
 
 (defun describe-environment (&optional (stream *standard-output*))
@@ -680,9 +686,81 @@ traditional units."
 		   machine-version
 		   software-type
 		   software-version
+		   ;; @@@ other things
 		   user-homedir-pathname
-		   internal-time-units-per-second))
+		   internal-time-units-per-second
+		   get-internal-run-time)
+		 stream)
   (write-string (with-output-to-string (*standard-output*) (room)) stream)
+  (values))
+
+(defun describe-implementation (&optional (stream *standard-output*))
+  "Print the Lisp implementation data."
+  (print-values  '(lisp-implementation-type
+		   lisp-implementation-version
+		   call-arguments-limit
+		   lambda-list-keywords
+		   lambda-parameters-limit
+		   multiple-values-limit
+		   most-positive-fixnum
+		   most-negative-fixnum
+		   most-positive-short-float
+		   least-positive-short-float
+		   least-positive-normalized-short-float
+		   most-positive-double-float
+		   least-positive-double-float
+		   least-positive-normalized-double-float
+		   most-positive-long-float
+		   least-positive-long-float
+		   least-positive-normalized-long-float
+		   most-positive-single-float
+		   least-positive-single-float
+		   least-positive-normalized-single-float
+		   most-negative-short-float
+		   least-negative-short-float
+		   least-negative-normalized-short-float
+		   most-negative-single-float
+		   least-negative-single-float
+		   least-negative-normalized-single-float
+		   most-negative-double-float
+		   least-negative-double-float
+		   least-negative-normalized-double-float
+		   most-negative-long-float
+		   least-negative-long-float
+		   least-negative-normalized-long-float
+		   short-float-epsilon
+		   short-float-negative-epsilon
+		   single-float-epsilon
+		   single-float-negative-epsilon
+		   double-float-epsilon
+		   double-float-negative-epsilon
+		   long-float-epsilon
+		   long-float-negative-epsilon
+		   char-code-limit
+		   array-dimension-limit
+		   array-rank-limit
+		   array-total-size-limit
+		   *break-on-signals*
+		   *gensym-counter*
+		   *macroexpand-hook*
+		   *debugger-hook*
+		   *compile-print*
+		   *compile-verbose*
+		   *load-print*
+		   *load-verbose*
+		   *modules*
+		   )
+		 stream)
+  ;; Possible other things:
+  ;;  - It might be interesting to make a list of things which
+  ;;    special-operator-p returns true for.
+  ;;  - How about (type-of (expt 2 32)) vs say (type-of (expt 2 30))
+  ;;    and similarly around 64, to determine how many GC bits in an integer.
+  ;;  - Test EQ and EQL
+  ;;  - (stream-external-format *standard-input* -output* *terminal-io* etc
+  ;;  - number formats as in:
+  ;;       (let ((*read-default-float-format* 'double-float))
+  ;;         (read-from-string "(1.0 1.0e0 1.0s0 1.0f0 1.0d0 1.0L0)"))
   (values))
 
 (defun package-symbol-count (pack &key (external nil))
@@ -701,9 +779,12 @@ it will also list packages it thinks are ASDF system packages."
   (format t "~30a ~5a ~a~%" "Package Name" "Count" "Package Deps")
   (format t "~30,,,'-a ~5,,,'-a ~43,,,'-a~%" "-" "-" "-")
   (let* ((paks (copy-seq (list-all-packages)))
-	 (spaks (sort paks #'(lambda (p1 p2)
-			       (string< (package-name p1)
-					(package-name p2)))))
+	 (spaks
+	  (locally
+;;;	      #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+	      (sort paks #'(lambda (p1 p2)
+			     (string< (package-name p1)
+				      (package-name p2))))))
 	 name nicks nice-used-by)
     (loop :for p :in spaks
        :do
@@ -797,9 +878,20 @@ symbols, :all to show internal symbols too."
 		  *print-miser-width*
 		  *print-lines*)))
 
+(defun describe-reader ()
+  "Describe the current Lisp reader parameters."
+  (print-values '(*read-base*
+		  *read-default-float-format*
+		  *read-eval*
+		  *read-suppress*))
+  ;; @@@ perhaps should describe the *readtable*, using get-macro-character
+  ;; and get-dispatch-macro-character
+  (values))
+
 (defun dir (&optional (pattern "*.*"))
   "Simple portable CL only directory listing."
-;  (declare (optimize (debug 3) (safety 0) (speed 0)))
+;;;  (declare (optimize (debug 3) (safety 0) (speed 0)))
+  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (setf pattern (pathname pattern))
   (when (not (pathname-name pattern))
     (setf pattern (merge-pathnames pattern (pathname "*.*"))))

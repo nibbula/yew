@@ -39,15 +39,17 @@
 (defmethod stream-element-type ((stream wrapped-stream))
   (stream-element-type (source-stream stream)))
 
-;(defmethod close ((stream wrapped-stream) &key abort &allow-other-keys)
-(defmethod close ((stream wrapped-stream) &key (abort t) &allow-other-keys)
+;;;(defmethod close ((stream wrapped-stream) &key abort &allow-other-keys)
+;;;(defmethod close ((stream wrapped-stream) &key (abort t) &allow-other-keys)
+(defmethod close ((stream wrapped-stream) &key (abort t))
   (if abort
       (progn
 	(force-output stream)
 	(force-output (source-stream stream)))
       (progn
 	(finish-output stream)
-	(finish-output (source-stream stream)))))
+	(finish-output (source-stream stream))))
+  (values t))
 
 ;; (defmethod close ((stream wrapped-stream) &key
 ;;   (close (source-stream stream) :abort abort))

@@ -15,6 +15,6 @@
     :license            "GPLv3"
     :long-description   "We can only see so much at one time."
     :depends-on (:dlib :dlib-misc :curses :opsys :fui :stretchy :keymap
-		 :char-util)
+		 :char-util :cl-ppcre)
     :components
     ((:file "pager")))

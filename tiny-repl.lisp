@@ -66,6 +66,7 @@
 *package* (if not :cl-user) \":\"
 *repl-*level* \">\""
    ;; ^^ docstring really fucks over emacs (still...) ^^
+   ;; Emacs can finally handle it now (as of 24.4.1)
   (let ((pkg (if (not (eq *package* (find-package :cl-user)))
 		 (shortest-package-nick)
 		 nil)))
@@ -184,7 +185,7 @@ The REPL also has a few commands:
 	((matches value "History")
 	 (tiny-rl:show-history (tiny-rl::context (repl-state-editor state)))
 	 t)
-	((matches value "IP")
+	((or (matches value "IP") (matches value "IN"))
 	 ;; Since this doesn't work: (in-package (read-arg state))
 	 ;; let's just hope this does enough of the same thing.
 	 (setf *package* (find-package (read-arg state)))

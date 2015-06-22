@@ -33,6 +33,7 @@ a count which is the length of the sequence.")
    #:complete-symbol
    ;; filenames
    #:complete-filename
+   #:complete-directory
    ))
 (in-package :completion)
 
@@ -292,7 +293,7 @@ arguments for that function, otherwise return NIL."
       (write symbol :stream str :case :downcase :escape nil)
       (tt-color tty :default :default)
       (loop
-	 :for s :in (lambda-list symbol) :and i = 1 :then (1+ i)
+	 :for s :in (dlib:lambda-list symbol) :and i = 1 :then (1+ i)
 	 :do
 	 (write-char #\space str)
 	 (if (position s *lambda-list-keywords*)
@@ -601,7 +602,7 @@ defaults to the current package. Return how many symbols there were."
 		match-sub)))
      full-match)))
 
-(defun filename-completion (word)
+(defun filename-completion (word &optional extra-test)
   "Return the first completion for w in the current directory's files ~
  or nil if none was found. The second value is true if the first value ~
  matches a full filename."
@@ -615,18 +616,24 @@ defaults to the current package. Return how many symbols there were."
 ;	 (file-part (file-namestring (pathname w))))
 	 (dir-part (dirname w))
 	 (dir-part-path (dirname word))
-	 (file-part (basename w)))
+	 (file-part (basename w))
+	 (hidden (hidden-file-name-p file-part)))
     (when (> (length file-part) 0)
       (loop :for f :in (if (> (length dir-part) 0)
-			   (safe-read-directory :dir dir-part)
-			   (safe-read-directory))
+			   (safe-read-directory :full t :dir dir-part
+						:omit-hidden (not hidden))
+			   (safe-read-directory :full t
+						:omit-hidden (not hidden)))
 	 :do
-	 (when (and (setf pos (search file-part f :test #'equal))
-		    (= pos 0))
+	 (when (and (setf pos (search file-part (dir-entry-name f)
+				      :test #'equal))
+		    (= pos 0)
+		    (or (not extra-test) (funcall extra-test f)))
 	   (if (not match)
-	       (setf match f
-		     match-len (length f))
-	       (setf match-len (mismatch match f :end1 match-len)
+	       (setf match (dir-entry-name f)
+		     match-len (length (dir-entry-name f)))
+	       (setf match-len (mismatch match (dir-entry-name f)
+					 :end1 match-len)
 		     full-match nil)))))
     (dbug "~&match = ~a~%" match)
     (values
@@ -645,29 +652,7 @@ defaults to the current package. Return how many symbols there were."
 		match-sub)))
      full-match)))
 
-(defun filename-completion-list-OLD (w)
-  "Print the list of completions for w. Return how many there were."
-  (let* (pos
-	 (count 0)
-	 (result-list '())
-	 (word (expand-tilde w))
-	 (dir-part (directory-namestring (pathname word)))
-	 (file-part (file-namestring (pathname word)))
-	 (dir-list (if (> (length dir-part) 0)
-		       (safe-read-directory :dir dir-part :append-type t)
-		       (safe-read-directory :append-type t))))
-;    (format t "dir-part = ~a~%file-part = ~a~%" dir-part file-part)
-    (loop :for filename :in dir-list
-       :do
-;      (format t "~f~%" f)
-       (when (and (setf pos (search file-part filename :test #'equalp))
-		  (= pos 0))
-	 (push filename result-list)
-	 (incf count)))
-    (setq result-list (sort result-list #'string-lessp))
-    (values result-list count)))
-
-(defun filename-completion-list (w)
+(defun filename-completion-list (w &optional extra-test)
   "Print the list of completions for w. Return how many there were."
   (let* (pos
 	 (count 0)
@@ -675,18 +660,24 @@ defaults to the current package. Return how many symbols there were."
 	 (word (expand-tilde w))
 ;	 (dir-part (directory-namestring (pathname word)))
 ;	 (file-part (file-namestring (pathname word)))
-	 (dir-part (dirname word))
-	 (file-part (basename word))
+	 (dir-part (path-directory-name word))
+	 (file-part (path-file-name word))
+	 (hidden (hidden-file-name-p file-part))
 	 (dir-list (if (> (length dir-part) 0)
-		       (safe-read-directory :dir dir-part :append-type t)
-		       (safe-read-directory :append-type t))))
+		       (safe-read-directory
+			:full t :dir dir-part :append-type t
+			:omit-hidden (not hidden))
+		       (safe-read-directory
+			:full t :append-type t :omit-hidden (not hidden)))))
 ;    (format t "dir-part = ~a~%file-part = ~a~%" dir-part file-part)
-    (loop :for filename :in dir-list
+    (loop :for file :in dir-list
        :do
 ;      (format t "~f~%" f)
-       (when (and (setf pos (search file-part filename :test #'equalp))
-		  (= pos 0))
-	 (push filename result-list)
+       (when (and (setf pos (search file-part (dir-entry-name file)
+				    :test #'equalp))
+		  (= pos 0)
+		  (or (not extra-test) (funcall extra-test file)))
+	 (push (dir-entry-name file) result-list)
 	 (incf count)))
     (setq result-list (sort result-list #'string-lessp))
     (values result-list count)))
@@ -701,6 +692,22 @@ defaults to the current package. Return how many symbols there were."
   (if all
       (filename-completion-list context)
       (multiple-value-bind (result full-match) (filename-completion context)
+	(declare (ignore full-match))
+	(values result 0))))
+
+;; We have to assume the entire context is a filename. Shells that want to
+;; do completion in a command line, will have to arrange for this to be so.
+(defun complete-directory (context pos all &key parsed-exp)
+  "Completion function for file names."
+  (declare (ignore parsed-exp pos))
+  ;; Let's ignore anything after pos for the sake of completion.
+;  (format t "jinko (~a) ~a~%" context pos)
+  (if all
+      (filename-completion-list
+       context #'(lambda (x) (eq (dir-entry-type x) :dir)))
+      (multiple-value-bind (result full-match)
+	  (filename-completion
+	   context #'(lambda (x) (eq (dir-entry-type x) :dir)))
 	(declare (ignore full-match))
 	(values result 0))))
 

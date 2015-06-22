@@ -140,6 +140,8 @@ bound to."
 
 (defun set-key (keyseq def map)
   "Define a key or sequence of keys in a keymap." ;; @@@ decribe me better
+  (when (not (or (keymap-p map) (consp map)))
+    (error "MAP should be a keymap or a keymap list"))
   (if (or (vectorp keyseq) (listp keyseq))
       (let* ((key (elt keyseq 0))
 	     (action (key-definition key map)))
@@ -215,6 +217,8 @@ there is no binding."
   "Add all the key definitions from the SOURCE keymap to the DEST keymap.
 If there is already a binding for a key in DEST, it gets overwritten by the
 one in source."
+  (check-type source keymap)
+  (check-type dest keymap)
   (loop :for k :being :the :hash-keys :of (keymap-map source)
      :do
      (define-key dest k (gethash k (keymap-map source))))
@@ -228,16 +232,18 @@ to bind to the escape key, so you have escape key equivalents to meta keys."
 ;   (loop :for (c . f) :in (keymap-map keymap)
 ; 	:when (and (characterp c) (meta-char-p (char-code c)))
 ; 	:collect (cons (un-meta (char-code c)) f)))
+  (check-type keymap keymap)
   (let ((new-keymap (make-instance (type-of keymap))))
     (map-keymap
-     (lambda (k f)
-       (when (and (characterp k) (meta-char-p (char-code k)))
-	 (define-key new-keymap (un-meta (char-code k)) f)))
+     #'(lambda (k f)
+	 (when (and (characterp k) (meta-char-p (char-code k)))
+	   (define-key new-keymap (un-meta (char-code k)) f)))
      keymap)
     new-keymap))
 
 (defun copy-keymap (keymap)
   "Return a new copy of KEYMAP."
+  (check-type keymap keymap)
   (let ((new-keymap (make-instance
 		     (type-of keymap)
 		     :default-binding (keymap-default-binding keymap))))

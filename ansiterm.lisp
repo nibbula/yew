@@ -63,6 +63,8 @@
    ))
 (in-package :ansiterm)
 
+(declaim (optimize (debug 3)))
+
 (defvar *standard-output-has-terminal-attributes* nil
   "True if we want programs to treat *standard-output* like it can display
 terminal attributes.")
@@ -148,13 +150,16 @@ require terminal driver support."))
 ;; your own, hence the necessity in most programs of a complete erase and
 ;; redraw user command.
 
-(defun terminal-get-cursor-position (tty)
+(defun terminal-get-cursor-position (tt)
   "Try to somehow get the row of the screen the cursor is on."
-;  (tt-report "~c[6n" #\escape) @@@@
-; fake it till you make it, for now
-  (tt-write-char tty #\return)
-  (values 0 0)
-  )		; acutally should return values ROW COL
+  (let ((row 1) (col 1) sep
+	(result (tt-report tt #\R "~c[6n" #\escape)))
+    (when (and result (>= (length result) 6))
+      (setf sep (position #\; result)
+	    row (parse-integer (subseq result 2 sep) :junk-allowed t)
+	    col (parse-integer (subseq result (1+ sep) (length result))
+			       :junk-allowed t)))
+    (values (1- row) (1- col))))
 
 ;; Just for debugging
 ; (defun terminal-report-size ()
@@ -245,22 +250,47 @@ require terminal driver support."))
     (when (position #\newline string)
       (finish-output stream))))
 
-; (defgeneric tt-report (tty end-char fmt &rest args)
-;   (:documentation
-; "Output a formatted string to the terminal and get an immediate report back.
-; Report parameters are returned as values. Report is assumed to be in the form:
-; #\escape #\[ { p1 { ; pn } } end-char"))
-; (defmethod tt-report ((tty terminal) end-char fmt &rest args) 
-;   (let ((stream (terminal-output-stream tty)))
-;     (apply #'format stream fmt args)
-;     (finish-output stream)
-;     ;; The stream is assumed to be in "char at a time" mode.
-;     (let ((str (read-until #\R :timeout 1))
-; 	  (s ""))
-;       (when (nullp str)
-; 	(error "Terminal failed to report \"~a\"." fmt))
-;       (concatenate 'string #\c)
-;       @@@@@@)))
+(defun read-until (tty stop-char)
+  "Read until STOP-CHAR is read. Return a string of the results.
+TTY is a file descriptor."
+  (let (status cc
+        (result (make-array '(0) :element-type 'base-char
+			    :fill-pointer 0 :adjustable t)))
+    (with-output-to-string (str result)
+      (with-foreign-object (c :char)
+	(loop
+	   :do (setf status (posix-read tty c 1))
+	   :while (= status 1)
+	   :do (setf cc (code-char (mem-ref c :unsigned-char)))
+	   :while (char/= cc stop-char) :do (princ cc str))
+	(cond
+	  ((> status 1)
+	   (error "Read returned too many characters? ~a" status))
+	  ((< status 0)
+	   (error "Read error ~d~%" status))
+	  ((= status 0)
+	   (or (and (length result) result) nil))
+	  (t
+	   (princ cc str)
+	   result))))))
+
+(defgeneric tt-report (tty end-char fmt &rest args)
+  (:documentation
+   "Output a formatted string to the terminal and get an immediate report back.
+Report parameters are returned as values. Report is assumed to be in the form:
+#\escape #\[ { p1 { ; pn } } end-char"))
+(defmethod tt-report ((tty terminal) end-char fmt &rest args)
+  (let ((fd (terminal-file-descriptor tty))
+	(q (apply #'format nil fmt args)))
+    (with-foreign-string (qq q)
+      (let ((str (call-with-raw
+		  fd #'(lambda (x)
+			 (posix-write x qq (length q))
+			 (read-until x end-char))
+		  :very-raw nil :timeout 10)))
+	(when (null str)
+	  (error "Terminal failed to report \"~a\"." fmt))
+	str))))
 
 (defgeneric tt-write-string (tty str)
   (:documentation "
@@ -415,7 +445,7 @@ i.e. the terminal is \"line buffered\""))
 
 (defgeneric tt-beep (tty))
 (defmethod tt-beep ((tty terminal-stream))
-  (tt-write-char tty #\bel))		; Not #\bell!! 🔔
+  (tt-write-char tty #\bel))		; Not #\bell!!
 
 (defgeneric tt-set-scrolling-region (tty start end))
 (defmethod tt-set-scrolling-region ((tty terminal-stream) start end)
@@ -499,7 +529,7 @@ i.e. the terminal is \"line buffered\""))
 
 (defmacro with-saved-cursor ((tty) &body body)
   "Save the cursor position, evaluate the body forms, and restore the cursor
-position. Return the result of evaluating the body."
+position. Return the primary result of evaluating the body."
   (let ((result-sym (gensym "tt-result")))
     `(progn
        (tt-format ,tty "~c7" #\escape)

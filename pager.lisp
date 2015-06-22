@@ -35,7 +35,8 @@ SYNOPSIS
 The function takes a file name or a stream or a list of such.
 The shell command takes any number of file names.
 ")
-  (:use :cl :dlib :dlib-misc :curses :opsys :fui :stretchy :keymap :char-util)
+  (:use :cl :dlib :dlib-misc :curses :opsys :fui :stretchy :keymap :char-util
+	:ppcre)
   (:export
    #:*pager-prompt*
    #:page
@@ -49,7 +50,7 @@ The shell command takes any number of file names.
    ))
 (in-package :pager)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 1)
  		   (compilation-speed 2)))
 ;;(declaim (optimize (speed 3) (safety 0) (debug 0) (space 1)
 ;;		   (compilation-speed 0)))
@@ -134,10 +135,13 @@ The shell command takes any number of file names.
    ;; options
    (show-line-numbers
     :initarg :show-line-numbers :accessor pager-show-line-numbers :initform nil
-    :documentation "-l")
+    :documentation "True to show line numbers along the left side.")
+   (ignore-case
+    :initarg :ignore-case :accessor pager-ignore-case :initform t
+    :documentation "True to ignore case in searches.")
    (wrap-lines
-    :initarg :show-line-numbers :accessor pager-wrap-lines :initform nil
-    :documentation "-l"))
+    :initarg :wrap-lines :accessor pager-wrap-lines :initform nil
+    :documentation "True to wrap lines at the edge of the window."))
   (:documentation "An instance of a pager."))
 
 (defmethod initialize-instance
@@ -613,7 +617,7 @@ replacements. So far we support:
 
 (defun message-pause (format-string &rest args)
   "Print a formatted message at the last line and pause until a key is hit."
-  (apply #'tmp-message format-string args)
+  (apply #'message format-string args)
   (fui:get-char))
 
 (defun tmp-message (pager format-string &rest args)
@@ -694,7 +698,8 @@ line : |----||-------||---------||---|
       (show-span (line-text line)))))
 
 (defun render-text-line (pager line-number line)
-  (with-slots (left page-size search-string show-line-numbers) pager
+  (with-slots (left page-size search-string show-line-numbers ignore-case)
+      pager
     (let* ((text1 (line-text line))
 	   (end   (min (length text1) (+ *cols* left)))
 	   (text  (if (> left 0)
@@ -702,9 +707,14 @@ line : |----||-------||---------||---|
 			  (subseq text1 left end)
 			  "")
 		      (subseq text1 0 end)))
-	   (ss search-string)
-	   (pos (search ss text :test #'equalp))
-	   old-pos)
+	   (ss (if (and search-string ignore-case)
+		   (s+ "(?i)" search-string)
+		   search-string))
+;;;	   (pos (search ss text :test #'equalp))
+	   (matches (and ss (ppcre:all-matches ss text)))
+	   (pos (when matches (car matches)))
+	   (match-end (when matches (cadr matches)))
+	   old-end)
       (if (and ss pos)
 	  (progn
 	    (when show-line-numbers
@@ -713,13 +723,18 @@ line : |----||-------||---------||---|
 	       :do
 	       (addstr (subseq text start pos))
 	       (standout)
-	       (addstr (subseq text pos (+ pos (length ss))))
+;;;	       (addstr (subseq text pos (+ pos (length ss))))
+	       (addstr (subseq text pos match-end))
 	       (standend)
-	       (setf start (+ pos (length ss))
-		     old-pos pos
-		     pos (search ss text :test #'equalp :start2 start))
+	       (setf start (1+ match-end) ;; (+ pos (length ss))
+		     old-end match-end
+;;;		     pos (search ss text :test #'equalp :start2 start))
+		     matches (and ss (ppcre:all-matches ss text :start start))
+		     pos (when matches (car matches))
+		     match-end (when matches (cadr matches)))
 	       (when (not pos)
-		 (addstr (subseq text (+ old-pos (length ss)))))
+;;;		 (addstr (subseq text (+ old-pos (length ss)))))
+		 (addstr (subseq text old-end)))
 	       :while pos))
 	  (if show-line-numbers
 	      (addstr (format nil "~d: ~a" line-number text))
@@ -816,9 +831,12 @@ line : |----||-------||---------||---|
   (ask-for :prompt prompt))
 
 (defun search-line (str line)
+  "Return true if LINE contains the string STR. LINE can be a string, or a
+list containing strings and lists."
   (typecase line
     (string
-     (search str line :test #'equalp))
+;;;     (search str line :test #'equalp))
+     (ppcre:all-matches str line))
     (cons
      (loop :with result
 	:for s :in line
@@ -826,12 +844,14 @@ line : |----||-------||---------||---|
 	:return result))))
 
 (defun search-for (pager str)
-  (with-slots (lines count line page-size) pager
-    (let ((ll (nthcdr line lines)) l)
+  (with-slots (lines count line page-size ignore-case) pager
+    (let ((ll (nthcdr line lines))
+	  (ss (if ignore-case (s+ "(?i)" str) str))
+	  l)
       (loop
 	 :do (setf l (car ll))
 	 :while (and l (< (line-number l) count)
-		     (not (search-line str (line-text l))))
+		     (not (search-line ss (line-text l))))
 	 :do
 	 (when (>= (line-number l) (max 0 (- count page-size)))
 	   (read-lines pager page-size))
@@ -846,13 +866,21 @@ line : |----||-------||---------||---|
 
 (defun set-option (pager)
   "Set a pager option. Propmpts for what option to toggle."
+  (message "Set option: ")
   (let ((char (fui:get-char)))
     (case char
       ((#\l #\L)
        (setf (pager-show-line-numbers pager)
 	     (not (pager-show-line-numbers pager)))
        (message-pause "show-line-numbers is ~:[Off~;On~]"
-		      (pager-show-line-numbers pager))))))
+		      (pager-show-line-numbers pager)))
+      ((#\i #\I)
+       (setf (pager-ignore-case pager)
+	     (not (pager-ignore-case pager)))
+       (message-pause "ignore-case is ~:[Off~;On~]"
+		      (pager-ignore-case pager)))
+      (otherwise
+       (message-pause "Unknown option ~c" (nice-char char))))))
 
 (defun next-file (pager)
   "Go to the next file in the set of files."

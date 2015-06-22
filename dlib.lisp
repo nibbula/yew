@@ -18,6 +18,7 @@
 	#+sbcl :sb-mop
 	#+cmu :pcl
 	#+ccl :ccl
+	#+lispworks :hcl
 	)
   (:documentation
    "Dan's generally useful miscellaneous functions.
@@ -70,7 +71,7 @@
    #:without-warning
    ;; language-ish
    #:define-constant
-   #:λ
+   #-lispworks #:λ
    #:likely-callable
    #-lispworks #:lambda-list 
    #-lispworks #:with-unique-names
@@ -98,6 +99,29 @@
   "Complain that something is missing."
   (format t "You need to provide an implementation for ~a on ~a~%"
 	  sym (lisp-implementation-type)))
+
+(define-condition missing-implementation-error (error)
+  ((symbol
+    :accessor missing-implementation-error-symbol
+    :initarg :symbol
+    :type symbol
+    :documentation "The symbol which is unimplemented.")
+   (format
+    :accessor missing-implementation-error-format
+    :initarg :format
+    :type string
+    :documentation "Format control for error reporting.")
+   (arguments
+    :accessor missing-implementation-error-arguments
+    :initarg :arguments
+    :type list
+    :documentation "Format arguments for error reporting."))
+  (:report (lambda (c s)
+	     (with-slots (symbol format arguments) c
+	       (if format
+		   (format s "~? ~a" format arguments symbol)
+		   (format s "~a" symbol)))))
+  (:documentation "An error from calling a POSIX function."))
 
 (defmacro without-warning (&body body)
   "Get rid of stupid warnings that you don't want to see.
@@ -522,9 +546,10 @@ on all accessible symbols."
   #+cmu ext:*command-line-strings*
   #+ecl (loop :for i :from 0 :below (si:argc) :collecting (si:argv i))
   #+openmcl (ccl::command-line-arguments)
-  #+excl (sys:command-line-arguments) 
-  #-(or sbcl clisp cmu ecl openmcl excl)
-  (missing-implementation 'lisp-args))
+  #+excl (sys:command-line-arguments)
+  #+lispworks sys:*line-arguments-list*
+  #-(or sbcl clisp cmu ecl openmcl excl lispworks)
+  (missing-implementation 'system-args))
 
 #+sbcl
 ;(eval-when (:compile-toplevel :load-toplevel :execute)
@@ -678,6 +703,7 @@ equal under TEST to result of evaluating INITIAL-VALUE."
 ;; This is just to pretend that we're trendy and modern.
 ;(setf (macro-function 'λ) (macro-function 'cl:lambda))
 ;;Umm actually I mean:
+#-lispworks
 (defmacro λ (&whole form &rest bvl-decls-and-body)
   (declare (ignore bvl-decls-and-body))
   `#'(lambda ,@(cdr form)))
@@ -814,12 +840,27 @@ A utility for debugging DEBUG-FUNCTION-ARGLIST."
 			  (di::function-debug-function fun))
 	     (di:unhandled-condition () :not-available)))))))
 
+#+lispworks
+(defun strings-to-symbols (tree)
+  (mapcar #'(lambda (x)
+	      (typecase x
+		(list (strings-to-symbols x))
+		(symbol x)
+		(string (intern x))
+		(t (intern (write-to-string x)))))
+	  tree))
+
 (defun lambda-list (fun)
   "Return the function's arguments."
-  #+sbcl (sb-kernel:%fun-lambda-list (symbol-function fun))
+  #+sbcl 
+  (sb-kernel:%fun-lambda-list (if (macro-function fun)
+				  (macro-function fun)
+				  (symbol-function fun)))
   #+ccl (ccl:arglist fun)
   #+cmu (function-arglist fun)
-  #-(or sbcl ccl cmu) (function-lambda-list fun))
+  #+lispworks (let ((args (lw:function-lambda-list fun)))
+		(and (listp args) (strings-to-symbols args)))
+  #-(or sbcl ccl cmu lispworks) (function-lambda-list fun))
 
 (defun slot-documentation (slot-def)
   "Return the documentation string for a slot as returned by something like
@@ -847,7 +888,7 @@ Useful for making your macro “hygenic”."
      ,@body))
 
 (defun symbolify (string &key (package *package*) no-new)
-  "Return a symbol, interned in PACKAGE, represent by STRING, after possibly
+  "Return a symbol, interned in PACKAGE, represented by STRING, after possibly
 doing conventional case conversion. The main reason for this function is to
 wrap the case conversion on implementations that need it. If NO-NEW is true,
 never create a new symbol, and return NIL if the symbol doesn't already exist."

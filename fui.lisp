@@ -34,7 +34,7 @@
 (in-package :fui)
 
 ;(declaim (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 2)))
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 1) (compilation-speed 2)))
 
 (defvar *in-curses* nil
   "True when curses is active.")
@@ -89,7 +89,7 @@
 ;; debugging.
 (defmacro with-device ((device term-type) &body body)
   "Do something with curses attached to DEVICE of of type TERM-TYPE."
-  (with-unique-names (screen fd-in fd-out)
+  (dlib::with-unique-names (screen fd-in fd-out)
     `(let (,screen ,fd-in ,fd-out (*device* ,device))
        (unwind-protect
 	  (progn

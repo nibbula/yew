@@ -14,7 +14,7 @@
   (:use :cl :dlib :dlib-misc :opsys :ansiterm)
   (:export
    #:grout #:grout-stream
-   #:dumb #:ansi #:slime
+   #:dumb #:ansi #:ansi-stream #:slime
    #:grout-width
    #:grout-height
    #:grout-bold
@@ -27,6 +27,12 @@
    #:grout-clear
    #:grout-beep
    #:grout-object
+   #:grout-write
+   #:grout-format
+   #:grout-finish
+   #:grout-done
+   #:make-grout
+   #:with-grout
    ))
 (in-package :grout)
 
@@ -77,6 +83,23 @@ unknown."))
 (defgeneric grout-object (grout object)
   (:documentation "Output the object in a way that it might be accesible."))
 
+(defgeneric grout-write (grout object
+			 &key
+			   array base case circle escape gensym length level
+			   lines miser-width pprint-dispatch pretty radix
+			   readably right-margin
+			   &allow-other-keys)
+  (:documentation "Write an object to the grout."))
+
+(defgeneric grout-format (grout format-string &rest format-args)
+  (:documentation "Formatted output to the grout."))
+
+(defgeneric grout-finish (grout)
+  (:documentation "Make any pending output be sent to the grout."))
+
+(defgeneric grout-done (grout)
+  (:documentation "Be done with the grout."))
+
 ;; If you need a specific one, just make it yourself.
 (defun make-grout (&optional (stream *standard-output*))
   "Return an appropriate grout instance. Try to figure out what kind to make
@@ -91,17 +114,14 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
     (t
      (make-instance 'dumb :stream stream))))
 
-#|
-(defmacro with-grout ((var &optional (stream *standard-output*)) &body body)
+(defmacro with-grout ((var &optional stream) &body body)
   "Evaluate the body with a GROUT bound to output."
-  (let ((,grout (gensym "GROUT")))
-  `(let (,grout)
-     `(unwind-protect
-        (progn
-	  (setf ,grout (make-grout ,stream))
+  `(let (,var)
+     (unwind-protect
+	(progn
+	  (setf ,var (make-grout (or ,stream *standard-output*)))
 	  ,@body)
-	(close WHAT?)))))
-|#
+       (when ,var (grout-done ,var)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Dumb all over. A little ugly on the side.
@@ -113,12 +133,14 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
 (defmethod grout-width ((g dumb))
   "Return the width of the output, or NIL for infinite or unknown."
   (declare (ignore g))
-  (or (nos:getenv "COLUMNS") 80))
+  (let ((col (nos:getenv "COLUMNS")))
+    (or (and col (parse-integer col)) 80)))
 
 (defmethod grout-height ((g dumb))
   "Return the width of the output, or NIL for infinite or unknown."
   (declare (ignore g))
-  (or (nos:getenv "ROWS") 24))
+  (let ((rows (nos:getenv "ROWS")))
+    (or (and rows (parse-integer rows)) 24)))
 
 (defmethod grout-bold ((g dumb) string)
   "Output the string boldly."
@@ -163,6 +185,39 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
   "Output the object in a way that it might be accesible."
   (write-string (princ-to-string object) (grout-stream g)))
 
+(defmethod grout-write ((g dumb) object &rest args 
+			 &key
+			   (array            *print-array*)
+			   (base             *print-base*)
+			   (case             *print-case*)
+			   (circle           *print-circle*)
+			   (escape           *print-escape*)
+			   (gensym           *print-gensym*)
+			   (length           *print-length*)
+			   (level            *print-level*)
+			   (lines            *print-lines*)
+			   (miser-width      *print-miser-width*)
+			   (pprint-dispatch  *print-pprint-dispatch*)
+			   (pretty           *print-pretty*)
+			   (radix            *print-radix*)
+			   (readably         *print-readably*)
+			   (right-margin     *print-right-margin*)
+			   &allow-other-keys)
+  (declare (ignorable array base case circle escape gensym length level
+		      lines miser-width pprint-dispatch pretty radix
+		      readably right-margin))
+  (apply #'write object :stream (grout-stream g) args))
+
+(defmethod grout-format ((g dumb) format-string &rest format-args)
+  (apply #'format (grout-stream g) format-string format-args))
+
+(defmethod grout-finish ((g dumb))
+  (finish-output (grout-stream g)))
+
+(defmethod grout-done ((g dumb))
+  "Be done with the grout."
+  (declare (ignore g)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ANSI is a bad word.
 
@@ -176,7 +231,8 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
     :after ((o ansi) &rest initargs &key &allow-other-keys)
   "Initialize a ansi."
   (declare (ignore initargs))
-  (setf (slot-value o 'term) (make-instance 'terminal)))
+  (setf (slot-value o 'term) (make-instance 'terminal))
+  (terminal-start (slot-value o 'term)))
 
 (defmethod grout-width ((g ansi))
   "Return the width of the output, or NIL for infinite or unknown."
@@ -202,7 +258,8 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
   (with-slots (term) g
     (tt-underline term t)
     (tt-write-string term string)
-    (tt-underline term nil)))
+    (tt-underline term nil)
+    (tt-finish-output term)))
 
 (defmethod grout-set-underline ((g ansi) flag)
   "Turn underlining on or off."
@@ -233,7 +290,43 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
 
 (defmethod grout-object ((g ansi) object)
   "Output the object in a way that it might be accesible."
-  (write-string (princ-to-string object) (grout-stream g)))
+  (tt-write-string (ansi-term g) (princ-to-string object)))
+
+(defmethod grout-write ((g ansi) object &rest args 
+			 &key
+			   (array            *print-array*)
+			   (base             *print-base*)
+			   (case             *print-case*)
+			   (circle           *print-circle*)
+			   (escape           *print-escape*)
+			   (gensym           *print-gensym*)
+			   (length           *print-length*)
+			   (level            *print-level*)
+			   (lines            *print-lines*)
+			   (miser-width      *print-miser-width*)
+			   (pprint-dispatch  *print-pprint-dispatch*)
+			   (pretty           *print-pretty*)
+			   (radix            *print-radix*)
+			   (readably         *print-readably*)
+			   (right-margin     *print-right-margin*)
+			   &allow-other-keys)
+  (declare (ignorable array base case circle escape gensym length level
+		      lines miser-width pprint-dispatch pretty radix
+		      readably right-margin))
+  (tt-write-string (ansi-term g)
+		   (with-output-to-string (str)
+		     (apply #'write object :stream str args))))
+
+(defmethod grout-format ((g ansi) format-string &rest format-args)
+  (apply #'tt-format (ansi-term g) format-string format-args))
+
+(defmethod grout-finish ((g ansi))
+  (tt-finish-output (ansi-term g)))
+
+(defmethod grout-done ((g ansi))
+  "Be done with the grout."
+  (tt-finish-output (ansi-term g))
+  (terminal-done (ansi-term g)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Slime, with worms.
@@ -304,5 +397,38 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
 (defmethod grout-object ((g slime) object)
   "Output the object in a way that it might be accesible."
   (swank present-repl-results (list object)))
+
+(defmethod grout-write ((g slime) object &rest args
+			 &key
+			   (array            *print-array*)
+			   (base             *print-base*)
+			   (case             *print-case*)
+			   (circle           *print-circle*)
+			   (escape           *print-escape*)
+			   (gensym           *print-gensym*)
+			   (length           *print-length*)
+			   (level            *print-level*)
+			   (lines            *print-lines*)
+			   (miser-width      *print-miser-width*)
+			   (pprint-dispatch  *print-pprint-dispatch*)
+			   (pretty           *print-pretty*)
+			   (radix            *print-radix*)
+			   (readably         *print-readably*)
+			   (right-margin     *print-right-margin*)
+			   &allow-other-keys)
+  (declare (ignorable array base case circle escape gensym length level
+		      lines miser-width pprint-dispatch pretty radix
+		      readably right-margin))
+  (apply #'write object :stream (grout-stream g) args))
+
+(defmethod grout-format ((g slime) format-string &rest format-args)
+  (apply #'format (grout-stream g) format-string format-args))
+
+(defmethod grout-finish ((g slime))
+  (finish-output (grout-stream g)))
+
+(defmethod grout-done ((g slime))
+  "Be done with the grout."
+  (declare (ignore g)))
 
 ;; EOF

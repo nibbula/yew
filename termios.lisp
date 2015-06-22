@@ -10,7 +10,7 @@
 
 ;;; $Revision: 1.16 $
 
-;(declaim (optimize (debug 3)))
+(declaim (optimize (debug 3)))
 
 (defpackage "TERMIOS"
   (:use :cl :cffi :opsys :dlib :dlib-misc :char-util)
@@ -72,6 +72,7 @@
    ;; Additional functions
    #:sane
    #:terminal-query
+   #:call-with-raw
    #:describe-tty
    #:set-tty-mode
 
@@ -651,6 +652,58 @@ experiments directly with the terminal emulator."
 	   (incf escape)
 	   (setf escape 0)))))
 
+(defun call-with-raw (tty func &key very-raw timeout)
+  "Call the FUNC with the TTY set for raw input. FUNC is called with the TTY
+as it's argument. It sets up the file descriptor for raw input, and cleans up
+afterwards. If VERY-RAW is true, set the terminal to the most raw state, which
+doesn't even process interrupts. If TIMEOUT is true, it's a number of
+deciseconds, (by setting VTIME) to wait before a read returns nothing."
+  (let (raw cooked raw-check result)
+    (unwind-protect
+	 (progn
+	   (setf cooked    (foreign-alloc '(:struct termios))
+		 raw       (foreign-alloc '(:struct termios))
+		 raw-check (foreign-alloc '(:struct termios)))
+	   
+	   (syscall (tcgetattr tty cooked))
+	   (syscall (tcgetattr tty raw))
+	   (with-foreign-slots ((c_lflag c_iflag c_oflag c_cc) raw
+				(:struct termios))
+	     (if timeout
+		 ;; Read returns immediately only after one character read,
+		 ;; or times out after TIMEOUT deciseconds.
+		 (progn
+		   (setf (mem-aref c_cc :unsigned-char VMIN) 0)
+		   (setf (mem-aref c_cc :unsigned-char VTIME) timeout))
+		 ;; Read returns immediately only after one character read
+		 (progn
+		   (setf (mem-aref c_cc :unsigned-char VMIN) 1)
+		   (setf (mem-aref c_cc :unsigned-char VTIME) 0)))
+	     ;; Turn off any input processing
+	     (setf c_iflag (logand c_iflag (lognot (logior ISTRIP INLCR IGNCR
+							   ICRNL IXON IXOFF))))
+	     ;; Turn off output processing
+	     (when very-raw
+	       (setf c_oflag (logand c_oflag (lognot (logior OPOST)))))
+	     ;; Turn off canonical input and echo and signals
+	     (if very-raw
+		 (setf c_lflag (logand c_lflag (lognot (logior ICANON ECHO
+							       ISIG))))
+		 (setf c_lflag (logand c_lflag (lognot (logior ICANON ECHO)))))
+	     ;; Actually set it
+	     (syscall (tcsetattr tty TCSANOW raw)))
+
+	   ;; Do something
+	   (setf result (funcall func tty)))
+      (progn
+	;; Clean up
+	(when (and tty (>= tty 0) cooked)
+	  (syscall (tcsetattr tty TCSANOW cooked)))	; reset terminal modes
+	(when cooked (foreign-free cooked))
+	(when raw (foreign-free raw))))
+;;    (format t "result = ~w~%" (map 'list #'identity result))
+    result))
+
 (defun raw-test (func &key debug very-raw timeout)
   "Test the termio package, by doing something with raw input.
 FUNC is the thing to do with raw input. It's called with the POSIX file
@@ -748,7 +801,7 @@ even process interrupts. If TIMEOUT is true, it's a number of deciseconds,
 (defmacro with-very-raw-input (&body body)
   `(raw-test #'(lambda (tty) ,body) :very-raw t))
 
-(defun terminal-query (query &optional (max nil))
+(defun terminal-query (query &key max)
   "Output the string to the terminal and wait for a response. Read up to MAX
 characters. If we don't get anything after a while, just return what we got."
   (raw-test

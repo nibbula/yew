@@ -178,9 +178,11 @@
    #:group
    #:group-name
    #:group-id
-   #:group-passwd
-   #:group-gid
-   #:group-members
+   #:group-entry
+   #:group-entry-name
+   #:group-entry-passwd
+   #:group-entry-gid
+   #:group-entry-members
 
    #:getgrgid
    #:getgrnam
@@ -205,6 +207,7 @@
    #:path-to-absolute #:abspath
    #:path-directory-name #:dirname
    #:path-file-name #:basename
+   #:hidden-file-name-p
    #:quote-filename
 
    ;; files (low level)
@@ -1269,7 +1272,7 @@ the current 'C' environment."
 (defcfun "sysctlnametomib" :int (name :string) (mibp :pointer) (sizep :pointer))
 
 ;(defgeneric sysctl (name type)
-;  (:documentation "Return the sysctl value named NAME. TYPE should be the C type
+; (:documentation "Return the sysctl value named NAME. TYPE should be the C type
 ;of the value, as used by CFFI, such a :string :integer, etc.")
 ;  (:method
 
@@ -2136,7 +2139,7 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 			  (and (eql 0 (setf result (readdir_r dirp ent ptr)))
 			       (not (null-pointer-p (mem-ref ptr :pointer))))
 			 :if (not (and omit-hidden
-				       (equal (char (dirent-name ent) 0) #\.)))
+				       (hidden-file-name-p (dirent-name ent))))
 			 :collect
 			 (if full
 			     (make-dir-entry
@@ -2251,6 +2254,10 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
   "Return the last portion of a PATH."
  (clip-path path :file))
 (setf (symbol-function 'basename) #'path-file-name)
+
+(defun hidden-file-name-p (name)
+  "Return true if the file NAME is normally hidden."
+  (and name (> (length name) 0) (equal (char name 0) #\.)))
 
 (defparameter *need-quoting* "[*;:"
   "Characters that may need escaping in a pathname.")
@@ -2525,7 +2532,8 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
      (multiple-value-bind (in out) (socket:stream-handles stream)
        (if (eql direction :output)
 	   out in))))
-  #-(or ccl sbcl cmu clisp)
+  #+lispworks nil
+  #-(or ccl sbcl cmu clisp lispworks)
   (missing-implementation 'stream-system-handle))
 
 ;; stat / lstat
@@ -2705,7 +2713,7 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
 	    (princ #\x stream)
 	    (princ #\- stream)))))
 
-;; Damnable file files.
+;; Damnable file flags.
 (defconstant UF_SETTABLE     #x0000ffff "Mask of owner changeable flags.")
 (defconstant UF_NODUMP       #x00000001 "Do not dump file.")
 (defconstant UF_IMMUTABLE    #x00000002 "File may not be changed.")
@@ -3487,7 +3495,7 @@ environment list, which defaults to the current 'C' environ variable."
 		  (system:run-shell-command
 		   (concatenate 'vector (list cmd) args)
 		   :output :stream
-		   :wait t)
+		   #| :wait t |#)
 		result)
   #-(or clisp excl openmcl sbcl cmu lispworks)
   (missing-implementation 'run-program)
@@ -3996,7 +4004,7 @@ current process's environment."
 		  (system:run-shell-command
 		   (concatenate 'vector (list cmd) args)
 		   :output out-stream
-		   :wait t)
+		   #| :wait t |#)
 		str)
   #-(or clisp sbcl cmu openmcl ecl excl lispworks)
   (missing-implementation 'popen))
