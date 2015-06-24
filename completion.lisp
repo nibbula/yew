@@ -337,6 +337,25 @@ arguments for that function, otherwise return NIL."
 		 (tt-standend tty)))))
       (write-char #\) str))))
 
+(defun function-keyword-completion (sym context pos word-start all)
+  (dbug "function-keyword-completion ~s ~s~%" sym (subseq context pos))
+  (let* ((args (dlib:lambda-list sym))
+	 (key-pos (position '&key args))
+	 (word (subseq context word-start))
+	 (case-in (character-case word))
+	 (stringser (if (eql case-in :lower) #'string-downcase #'string))
+	 (keywords (loop :for s :in (subseq args (1+ key-pos))
+		      :while (not (position s *lambda-list-keywords*))
+		      :if (symbolp s)
+		      :collect (funcall stringser s)
+		      :if (consp s)
+		      :collect (funcall stringser (car s)))))
+    (if (not all)
+	(multiple-value-bind (comp pos uniq)
+	    (complete-list word (length word) all keywords)
+	  (values comp (+ word-start pos) uniq))
+	(complete-list word (length word) all keywords))))
+
 (defun in-expr (string position)
   "Given STRING and a POSITION in it, return the Lisp expression number it
 is in, and the start and end position of the expression in STRING."
@@ -374,9 +393,17 @@ is in, and the start and end position of the expression in STRING."
     ((string= name "true") (constantly t))
     (t (error "Can't resolve ~S." name))))
 
-(defun try-symbol-help (context pos)
-  "If POS is right before a function in CONTEXT, return a string that shows the
-arguments for that function, otherwise return NIL."
+(defun possible-package-symbol (str1 str2)
+  (if str2
+      (symbolify str2
+		 :package (or (find-package (string-upcase str1))
+			      *package*)
+		 :no-new t)
+      (symbolify str1 :package *package* :no-new t)))
+
+(defun symbol-whose-args-we-are-in (context pos)
+  "Return the symbol in CONTEXT whose argument list POS is in. Second value is
+the index in CONTEXT of the start of the symbol."
   (let* ((ppos (matching-paren-position context :position pos))
 	 (start (or (and ppos (1+ ppos)) 0))
 	 (end (min (1+ (scan-over-str
@@ -386,24 +413,30 @@ arguments for that function, otherwise return NIL."
 				      (eql c #\:)))))
 		   (length context)))
 	 (word (subseq context start end))
-	 sym
 	 (ppcre:*property-resolver* #'custom-resolver))
     ;; This is a total stop-gap measure.
     (multiple-value-bind (match regs)
 	(ppcre:scan-to-strings
 	 (ppcre:parse-string "([\\p{lispy}]+)(:[:]*([\\p{lispy}]+)){0,1}")
 	 word :sharedp t)
-      (when match
-	(setf sym
-	      (if (elt regs 2)
-		  (symbolify (elt regs 2)
-			     :package (or (string-upcase (elt regs 0))
-					  *package*)
-			     :no-new t)
-		  (symbolify (elt regs 0) :package *package* :no-new t)))))
-    (if (fboundp sym)
-	(function-help sym (in-expr (subseq context start) pos))
-	nil)))
+      (values
+       (when match
+	 (possible-package-symbol (elt regs 0) (elt regs 2)))
+       start))))
+
+(defun try-symbol-help (context pos)
+  "If POS is right after a function in CONTEXT, return a string that shows the
+arguments for that function, otherwise return NIL."
+  (multiple-value-bind (sym start) (symbol-whose-args-we-are-in context pos)
+    (let ((word-start (scan-over-str context pos :backward
+				     :not-in *lisp-non-word-chars*)))
+      (if (and sym (fboundp sym))
+	  (if (could-be-a-keyword nil word-start context)
+	      (function-keyword-completion sym context pos word-start t)
+	      (values
+	       (list (function-help sym (in-expr (subseq context start) pos)))
+	       1))
+	  nil))))
 
 (defmacro do-the-symbols ((sym pak ext) &body forms)
   "Evaluate the forms with SYM bound to each symbol in package PAK. If EXT is
@@ -498,7 +531,6 @@ defaults to the current package. Return how many symbols there were."
 	(l '())
 	(case-in (character-case w))
 	pos)
-;;;    (do-the-symbols (s (or package *package*) external)
     (do-the-symbols (s (or package *package*) external)
       #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
 ;;;      (princ (s+ (symbol-package s) "::" s " " #\newline))
@@ -508,7 +540,6 @@ defaults to the current package. Return how many symbols there were."
 	     ;; It matches the beginning
 	     (and (setf pos (search w (string s) :test #'equalp))
 		  (= pos 0)))
-;;;	(push (string s) l)
 	(pushnew (if (fboundp s) (s+ s " (F)") (string s)) l :test #'equal)
 	(incf count)))
     (when (and include-packages (not package))
@@ -527,6 +558,12 @@ defaults to the current package. Return how many symbols there were."
       (setf l (mapcar #'string-downcase l)))
     (values l count)))
 
+(defun could-be-a-keyword (pack word-start context)
+  "True if the thing right before the cursor could be a keyword."
+  (and (not pack)
+       word-start (> word-start 0) (>= (length context) word-start)
+       (eql (aref context (1- word-start)) #\:)))
+
 (defun complete-symbol (context pos all)
   "Completion function for symbols."
   (let* ((word-start (scan-over-str context pos :backward
@@ -537,14 +574,28 @@ defaults to the current package. Return how many symbols there were."
 	 result)
     (multiple-value-setq (pack external) (find-back-pack context word-start))
     ;; If the package is NIL, we complete on inherited symbols too.
-    (if all
-	(if (and (= (length word) 0)
-		 (setf result (try-symbol-help context pos)))
-	    (values (list result) 1)
-	    (symbol-completion-list word :package pack :external external))
-	(multiple-value-bind (completion unique)
-	    (symbol-completion word :package pack :external external)
-	  (values completion word-start unique)))))
+
+    (dbug "pack=~s word-start=~s context=~s~%" pack word-start context)
+    (if (could-be-a-keyword pack word-start context)
+	(progn
+	  (dbug "Could be a keyword ~s~%" (subseq context word-start))
+	  (if all
+	      (if (setf result (multiple-value-list
+				(try-symbol-help context pos)))
+		  (values-list result)
+		  (symbol-completion-list
+		   word :package pack :external external))
+	      (let ((sym (symbol-whose-args-we-are-in context pos)))
+		(dbug "snoopy ~a~%" pos)
+		(function-keyword-completion sym context pos word-start nil))))
+	(if all
+	    (if (and (= (length word) 0)
+		     (setf result (try-symbol-help context pos)))
+		(values (list result) 1)
+		(symbol-completion-list word :package pack :external external))
+	    (multiple-value-bind (completion unique)
+		(symbol-completion word :package pack :external external)
+	      (values completion word-start unique))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Filename completion
@@ -566,6 +617,7 @@ defaults to the current package. Return how many symbols there were."
   "Call read-directory without errors."
   `(ignore-errors (read-directory ,@args)))
 
+#|
 (defun filename-completion-OLD (word)
   "Return the first completion for w in the current directory's files ~
  or nil if none was found. The second value is true if the first value ~
@@ -601,6 +653,7 @@ defaults to the current package. Return how many symbols there were."
 					   :type (pathname-type p)))
 		match-sub)))
      full-match)))
+|#
 
 (defun filename-completion (word &optional extra-test)
   "Return the first completion for w in the current directory's files ~
