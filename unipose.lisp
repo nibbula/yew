@@ -17,6 +17,8 @@
 ;; - It should load *unipose* from $HOME/.unipose or something.
 ;; - It should have an "add your own" function.
 ;; - It should have a "save it" function.
+;; - It should have a set which is RFC 1345
+;; - It should handle arbitrary length / levels
 
 ;; Slow scrollin' pardner.
 (defparameter *unipose*
