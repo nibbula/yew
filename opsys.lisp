@@ -2259,7 +2259,7 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
   "Return true if the file NAME is normally hidden."
   (and name (> (length name) 0) (equal (char name 0) #\.)))
 
-(defparameter *need-quoting* "[*;:"
+(defparameter *need-quoting* "[*?;:"
   "Characters that may need escaping in a pathname.")
 
 ;; I am probably unable to express how unfortunate this is.
