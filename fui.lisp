@@ -20,6 +20,7 @@
    #:pause
    #:pick-list
    #:pick-file
+   #:do-menu*
    #:do-menu
    #:menu-load
    #:display-text
@@ -466,7 +467,7 @@ foreground FG and background BG."
 	    (eval code)
 	    :quit)))))
 
-(defun dork-menu (menu &key message selected-item)
+(defun do-menu* (menu &key message selected-item)
   "Perform an action from a menu. Menu is an alist of (item . action)."
   (let ((items (loop :for m :in menu :collect (car m)))
 	(funcs (loop :for m :in menu :collect (cdr m))))
