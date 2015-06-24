@@ -72,6 +72,7 @@
    ;; language-ish
    #:define-constant
    #-lispworks #:λ
+   #:_
    #:likely-callable
    #-lispworks #:lambda-list 
    #-lispworks #:with-unique-names
@@ -709,12 +710,17 @@ equal under TEST to result of evaluating INITIAL-VALUE."
   `#'(lambda ,@(cdr form)))
 ;; Still doesn't work everywhere? WHY?
 
+;; Is it really worth doing this? Is this gratuitous language mutation?
+(defmacro _ (&rest exprs)
+  "Shorthand for single argument lambda. The single argument is named '_'."
+  `(lambda (_) ,@exprs))
+
 (defun likely-callable (f)
   "Return true if F is a function or an FBOUNDP symbol. This does not mean you
 can actually FUNCALL it! Just that it's more likely."
   (or (functionp f) (and (symbolp f) (fboundp f))))
 
-;; I really don't understand why introspetion isn't better.
+;; I really don't understand why introspection isn't better.
 
 #+cmu
 (progn
