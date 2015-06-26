@@ -527,11 +527,10 @@ Arguments:
 	    (with-open-file (ss fn)
 	      (loop :with line = nil
 		 :while (setf line (ignore-errors (read ss nil)))
-		 :collect (cons (format nil "~s" line) `(show-result ',line))))))
+		 :collect (cons (format nil "~s" line)
+				`(show-result ',line))))))
       (setf lines (append lines (list (cons "[Quit]" :quit))))
-;      (print lines)
-;      (pause)
-      (loop :while (not (eql :quit (dork-menu lines))))))
+      (loop :while (not (eql :quit (do-menu* lines))))))
 
 (defun wcentered (w width row str)
   "Put a centered string STR in window W of width WIDTH at row ROW."
@@ -566,6 +565,7 @@ waits for a key press and then returns."
 	      :do
 	      (mvwaddstr w i 2 sub-line)
 	      (incf i)))
+	(refresh)
 	(wrefresh w)
 	(setf result (if input-func
 			 (funcall input-func w)
@@ -1044,7 +1044,7 @@ generating function, so it will be called only the first time."))
     (let ((*node-formatter* #'code-format-node))
       (browse-tree
        (loop :with exp
-	  :while (setf exp (read stm nil nil))
+	  :while (setf exp (let ((*read-eval* nil)) (read stm nil nil)))
 	  :collect exp)))))
 
 (defun package-mostly-use-list (pkg)

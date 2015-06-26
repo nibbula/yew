@@ -9,6 +9,7 @@
 ;;     - line drawing chars on 64 bit?
 ;;   - Add all the missing functions!
 ;;   - More tests, with better coverage
+;;   - Finish adding docstrings
 
 #+cl-ncurses
 (eval-when (:load-toplevel :execute)
@@ -51,8 +52,8 @@ Make sure we don't clash with the actual CL-NCURSES.
    #:+a-altcharset+ #:+a-invis+ #:+a-protect+ #:+a-horizontal+ #:+a-left+
    #:+a-low+ #:+a-right+ #:+a-top+ #:+a-vertical+
    ;; colors
-   #:+color-black+ #:+color-red+ #:+color-green+ #:+color-yellow+ #:+color-blue+
-   #:+color-magenta+ #:+color-cyan+ #:+color-white+
+   #:+color-black+ #:+color-red+ #:+color-green+ #:+color-yellow+
+   #:+color-blue+ #:+color-magenta+ #:+color-cyan+ #:+color-white+
    ;; acs macros/functions
    #:acs-map #:acs-ulcorner #:acs-llcorner #:acs-urcorner #:acs-lrcorner
    #:acs-ltee #:acs-rtee #:acs-btee #:acs-ttee #:acs-hline #:acs-vline
@@ -479,23 +480,19 @@ Make sure we don't clash with the actual CL-NCURSES.
   "Initialize a terminal. Takes a terminal type and an input and output
 file name. Returns a pointer to a SCREEN."
   (term-type :string) (output-file file-ptr) (input-file file-ptr))
-(defcfun delscreen :void (screen screen-ptr))
-(defcfun set-term screen-ptr (new screen-ptr))
-(defcfun initscr window-ptr)
-(defcfun endwin :int)
-;; (defcfun ("initscr" real-initscr) window-ptr)
-;; (defcfun ("endwin" real-endwin) :int)
-;; Make our own versions that protect against multiple calls
-;; (defvar *curses-active* nil)
-;; (defun initscr ()
-;;   (when (not *curses-active*)
-;;     (real-initscr)
-;;     (setf *curses-active* t)))
-;; (defun endwin ()
-;;   (when *curses-active*
-;;     (real-endwin)
-;;     (setf *curses-active* nil)))
-;; This idea didn't work :( 
+(defcfun delscreen :void
+  "Frees the resources associated with the SCREEN. Should be called when done
+with the screen allocated by newterm."
+  (screen screen-ptr))
+(defcfun set-term screen-ptr
+  "Set the current terminal to SCREEN-PTR. Returns the previous terminal."
+  (new screen-ptr))
+(defcfun initscr window-ptr
+  "Initialize curses and return a window pointer.")
+(defcfun endwin :int
+  "Put the terminal state back to before calling initscr and stop using
+curses. endwin should be called for each terminal before exiting a curses
+application.")
 
 ;; Windows
 (defcfun newwin window-ptr
@@ -630,10 +627,22 @@ file name. Returns a pointer to a SCREEN."
 ;;
 ;; Terminal modes
 ;;
-(defcfun resetty :int)
-(defcfun savetty :int)
-(defcfun reset-shell-mode :int)
-(defcfun reset-prog-mode :int)
+(defcfun resetty :int
+  "Restore the terminal modes to the last call to savetty.")
+(defcfun savetty :int
+  "Save the terminal modes for restoring by resetty.")
+(defcfun def-prog-mode :void
+  "Save the current terminal modes as the 'program' mode, for use by
+reset-prog-mode. Normally done automatically.")
+(defcfun def-shell-mode :void
+  "Save the current terminal modes as the 'shell' mode, for use by
+reset-shell-mode. Normally done by initscr.")
+(defcfun reset-shell-mode :int
+  "Reset the terminal modes to the 'shell', or out of curses, mode. Normally
+done by endwin.")
+(defcfun reset-prog-mode :int
+  "Reset the terminal modes to the 'program', or in curses, mode. Normally
+done by doupdate after an endwin.")
 (defcfun cbreak :int
   "Disable line buffering and erase and kill characters.")
 (defcfun nocbreak :int
@@ -717,12 +726,32 @@ checking is done."
   (real-keypad w b))
 
 ;; Cursor
-(defcfun curs-set :int (visibility :int))
-(defcfun getcurx :int (win window-ptr))
-(defcfun getcury :int (win window-ptr))
+(defcfun curs-set :int 
+  "Set the cursor state indicated by the integer VISIBILITY. 0 for invisible,
+1 for normal, 2 for 'very' visible. The terminal might not support any
+of these, in which case it returns ERR."
+  (visibility :int))
+(defcfun getcurx :int
+  "Return the current X coordinate of the window WIN."
+  (win window-ptr))
+(defcfun getcury :int 
+  "Return the current Y coordinate of the window WIN."
+  (win window-ptr))
+(defmacro getyx (win y x)
+  "Place the cursor position of the window WIN into the variables Y and X."
+  `(setf ,y (getcury ,win)
+	 ,x (getcurx ,win)))
+;; void getparyx(WINDOW *win, int y, int x);
+;; "Place the cursor position of the window WIN into the variables Y and X. If WIN is a subwindow, it gets the coordinates relative to the parent."
+;; void getbegyx(WINDOW *win, int y, int x);
+;; "If WIN is a subwindow, place it's starting coordinates, relative to the parent, into Y and X."
+;; void getmaxyx(WINDOW *win, int y, int x);
+;; "If WIN is a subwindow, place it's size into Y and X."
+
 
 ;; Color and attributes
-(defcfun start-color :int "Enable use of color and initialize color variables.")
+(defcfun start-color :int
+  "Enable use of color and initialize color variables.")
 (defcfun has-colors bool "True if the terminal has color capability.")
 (defcfun can-change-color bool "True if colors can be changed.")
 ;(defcfun init-pair :int (pair short) (fg short) (bg short))
@@ -770,7 +799,7 @@ checking is done."
   (win window-ptr :in) (verch chtype) (horch chtype))
 
 ;; misc
-(defcfun napms :int (ms :int))
+(defcfun napms :int "Sleep for MS milliseconds." (ms :int))
 
 ;; ncurses extension
 (defcfun is_term_resized bool (lines :int) (columns :int))
@@ -831,7 +860,8 @@ checking is done."
     (clear)
 
     (let ((NCOLORS 8)
-	  (has-color (= (has-colors) 1)))
+	  (has-color (= (has-colors) 1))
+	  (normal-color-pairs (min *COLOR-PAIRS* 64)))
 
       ;; Describe the color setup
       (if (not has-color)
@@ -842,7 +872,7 @@ checking is done."
       (addstr (format nil "can_change_color~%"))
       (addstr (format nil "COLOR_PAIRS = ~d~%" *COLOR-PAIRS*))
 
-      ;; Initialize all the color pairs
+      ;; Initialize all the normal color pairs
       (if has-color
 	  (prog ((pair 0))
 	     (loop :for fg :from (- NCOLORS 1) :downto 0 :by 1 :do
@@ -853,7 +883,7 @@ checking is done."
 
       ;; Show the color pairs
       (addstr (format nil "Color pairs~%"))
-      (loop :for i :from 0 :below *COLOR-PAIRS* :by 1 :do
+      (loop :for i :from 0 :below normal-color-pairs :by 1 :do
 	    (if (= (mod i 8) 0)
 		(addch (char-code #\newline)))
 	    (attron (COLOR-PAIR i))
@@ -865,7 +895,7 @@ checking is done."
 
       ;; Show the color pairs with bold on
       (addstr (format nil "Bold color pairs~%"))
-      (loop :for i :from 0 :below *COLOR-PAIRS* :by 1 :do
+      (loop :for i :from 0 :below normal-color-pairs :by 1 :do
 	    (if (= (mod i 8) 0)
 		(addch (char-code #\newline)))
 	    (attron (COLOR-PAIR i))
@@ -879,7 +909,7 @@ checking is done."
       (let ((y 3))
 	(move y 30)
 	(addstr (format nil "Bold and reverse color pairs~%"))
-	(loop :for i :from 0 :below *COLOR-PAIRS* :by 1 :do
+	(loop :for i :from 0 :below normal-color-pairs :by 1 :do
 	      (when (= (mod i 8) 0)
 		(move (incf y) 30))
 	      (attron (COLOR-PAIR i))
@@ -892,6 +922,9 @@ checking is done."
       (refresh)
       (getch)
 
+      (when (> *color-pairs* 64)
+	)
+      
       ;; Alternate character set
       (clear)
       (let ((alt-chars

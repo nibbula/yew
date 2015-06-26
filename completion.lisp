@@ -344,12 +344,20 @@ arguments for that function, otherwise return NIL."
 	 (word (subseq context word-start))
 	 (case-in (character-case word))
 	 (stringser (if (eql case-in :lower) #'string-downcase #'string))
-	 (keywords (loop :for s :in (subseq args (1+ key-pos))
-		      :while (not (position s *lambda-list-keywords*))
-		      :if (symbolp s)
-		      :collect (funcall stringser s)
-		      :if (consp s)
-		      :collect (funcall stringser (car s)))))
+	 keywords)
+    (when (not key-pos)
+      (return-from function-keyword-completion
+	(if all (symbol-completion-list word) (symbol-completion word))))
+    (setf keywords
+	  (loop :for s :in (subseq args (1+ key-pos))
+		:while (not (position s *lambda-list-keywords*))
+		:if (symbolp s)
+		  :collect (funcall stringser s)
+		:else :if (consp s)
+		  :if (consp (car s))
+		    :collect (funcall stringser (caar s))
+		  :else
+		    :collect (funcall stringser (car s))))
     (if (not all)
 	(multiple-value-bind (comp pos uniq)
 	    (complete-list word (length word) all keywords)
@@ -434,7 +442,8 @@ arguments for that function, otherwise return NIL."
 	  (if (could-be-a-keyword nil word-start context)
 	      (function-keyword-completion sym context pos word-start t)
 	      (values
-	       (list (function-help sym (in-expr (subseq context start) pos)))
+;;	       (list (function-help sym (in-expr (subseq context start) pos)))
+	       (function-help sym (in-expr (subseq context start) pos))
 	       1))
 	  nil))))
 
@@ -561,8 +570,9 @@ defaults to the current package. Return how many symbols there were."
 (defun could-be-a-keyword (pack word-start context)
   "True if the thing right before the cursor could be a keyword."
   (and (not pack)
-       word-start (> word-start 0) (>= (length context) word-start)
-       (eql (aref context (1- word-start)) #\:)))
+       word-start (> word-start 1) (>= (length context) word-start)
+       (and (eql (aref context (1- word-start)) #\:)
+	    (eql (aref context (- word-start 2)) #\space))))
 
 (defun complete-symbol (context pos all)
   "Completion function for symbols."

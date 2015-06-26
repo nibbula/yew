@@ -145,7 +145,7 @@
    #:setenv
    #:lisp-args
    #:sysctl
-   #:getpagesize
+   #:getpagesize #:memory-page-size
    #:getauxval
    #:getlogin
 
@@ -1438,6 +1438,9 @@ the current 'C' environment."
     (config-feature :os-t-64-bit-inode)))
 
 (defcfun getpagesize :int)
+(defun memory-page-size ()
+  "Get the system's memory page size, in bytes."
+  (getpagesize))
 
 #+linux
 (progn

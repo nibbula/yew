@@ -285,6 +285,10 @@ anything important.")
     :accessor start-col
     :initform 0
     :documentation "Starting column of the input area after the prompt.")
+   (start-row
+    :accessor start-row
+    :initform 0
+    :documentation "Starting row of the input area after the prompt.")
    (clipboard
     :accessor clipboard
     :initform nil
@@ -353,6 +357,16 @@ anything important.")
     :accessor line-editor-terminal-device-name
     :initarg :terminal-device-name
     :documentation "The name of the terminal device.")
+   (typeahead
+    :accessor typeahead
+    :initform nil
+    :initarg :typeahead
+    :documentation "Things already input, dag blast it.")
+   (typeahead-pos
+    :accessor typeahead-pos
+    :initform nil
+    :initarg :typeahead-pos
+    :documentation "How far into the typeahead we are.")
    (last-completion-unique
     :accessor last-completion-unique
     :initarg :last-completion-unique
@@ -430,6 +444,7 @@ anything important.")
 	(screen-row e)		0
 	(screen-col e)		0
 	(start-col e)		0
+	(start-row e)		0
 	(undo-history e)	nil
 	(undo-current e)	nil
 	(need-to-redraw e)	nil
@@ -440,6 +455,15 @@ anything important.")
   "Read a character from the editor's tty."
   (declare (type line-editor e))
   (tt-finish-output e)
+  (with-slots (typeahead typeahead-pos) e
+    (when typeahead
+      (return-from get-a-char
+	(prog1
+	    (aref typeahead typeahead-pos)
+	  (incf typeahead-pos)
+;	  (format t "ta->~a~%" (incf typeahead-pos))
+	  (when (>= typeahead-pos (length typeahead))
+	    (setf typeahead nil))))))
   (with-foreign-object (c :unsigned-char)
     (let (status (tty (line-editor-terminal e)))
       (loop
@@ -710,7 +734,7 @@ anything important.")
   ;;(format t "~s~%" (undo-history e))
   ;;(undo e) ;; @@@ Please make undo boundries work @@@
   (undo-one e)
-  (redraw e))
+  (redraw e)) ;; @@@ This is overkill! (and screws up multiline prompts)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -1023,73 +1047,30 @@ Assumes S is already converted to display characters."
   "Update the display, assuming DELETE-LENGTH characters were just deleted at 
 the current cursor position."
   (declare (ignore char-length)) ;; @@@
-  (with-slots (buf point terminal start-col) e
-    (let ((width (terminal-window-columns terminal))
-	  (col (screen-col e))
-	  (right-len (display-length (subseq buf point))))
-      ;; If the rest of the buffer extends past the edge of the window.
-      (when (>= (+ col right-len) width)
-	;; Cheaty way out: redraw whole thing after point
-	(without-messing-up-cursor (e)
-	  (let* ((new-col (+ (- width (screen-col e)) delete-length))
-		 (from (+ point (buffer-length-to
-				 buf (- new-col start-col))))) ; wrong XXX
-	    (move-forward e new-col)
-	    (display-buf e from)
-	    (tt-erase-to-eol e)))))))
-
-#|
-
-(defun old-update-for-delete (e delete-length char-length)
-  "Update the display, assuming DELETE-LENGTH characters were just deleted at 
-the current cursor position."
   (with-slots (buf point terminal) e
     (let ((width (terminal-window-columns terminal))
 	  (col (screen-col e))
-	  (right-len (display-length (subseq buf point))))
+	  (right-len (display-length (subseq buf point)))
+	  to-delete)
       ;; If the rest of the buffer extends past the edge of the window.
       (when (>= (+ col right-len) width)
 	;; Cheaty way out: redraw whole thing after point
 	(without-messing-up-cursor (e)
-	  (let* ((new-col (- width (screen-col e) delete-length))
-		 (from (+ point new-col))) ; wrong XXX
-	    (move-forward e new-col)
-	    (display-buf e from)
-	    (tt-erase-to-eol e)))))))
-
-;; (defun new-update-for-delete (e delete-length)
-;;   "Update the display, assuming DELETE-LENGTH characters were just deleted at 
-;; the current cursor position."
-;;   (with-slots (buf point terminal) e
-;;     (let ((width     (terminal-window-columns terminal))
-;; 	  (col       (screen-col e))
-;; 	  (right-len (display-length (subseq buf point))))
-;;       (cond
-;; 	;; If the rest of the buffer extends past the edge of the window.
-;; 	((>= (+ col right-len) width)
-;; 	 ;; Cheaty way out: redraw whole thing after point
-;; 	 (loop
-;; 	   :with remain = 
-;; 	   :while (> remain 0)
-;; 	   :do
-;; 	   (setf sub-remain (min (- pos width)))
-;; 	    (tt-del-char ))
-;; 	 (without-messing-up-cursor (e)
-;; 	   (let* ((new-col (- width (screen-col e) display-length))
-;; 		  (from (+ point new-col))) ; wrong XXX
-;; 	     (move-forward e new-col)
-;; 	     (display-buf e from)
-;; 	     (tt-erase-to-eol e))))
-;; 	;; If the deleted part extends past the edge of the window.
-;; 	((>= (+ col delete-len) width)
-|#
-
-#|
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbb ccccccccccccccccccccccccccccccccccccdddd
-
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ddddeeeee
-
-|#
+	  (display-buf e point)
+	  (tt-del-char e delete-length)
+	  (when (< (- width delete-length) (screen-col e))
+	    (setf to-delete (- delete-length (- width (screen-col e))))
+	    (tt-down e 1)
+	    (incf (screen-row e))
+	    (tt-move-to-col e 0)
+	    (setf (screen-col e) 0)
+	    (tt-erase-to-eol e)
+	    (loop :while (> to-delete 0) :do
+	       (tt-down e 1)
+	       (incf (screen-row e))
+	       (tt-erase-to-eol e)
+;	       (log-message e "Smoot ~a" to-delete)
+	       (decf to-delete width))))))))
 
 (defun erase-display (e)
   "Erase the display of the buffer, but not the buffer itself."
@@ -1862,26 +1843,72 @@ is none."
     sum))
 |#
 
+;; Here's the problem:
+;;
+;; People can put any old stuff in the prompt that they want. This includes
+;; things that move the cursor around, characters that might be of different
+;; widths, escape sequences that may or may not move the cursor. So unless we
+;; emulate the terminal exactly, just to figure out where the cursor is after
+;; the prompt, things can get messed up.
+;;
+;; Since emulating the terminal seems infeasible, unless we wrapped ourselves
+;; in an emulation layer like screen or tmux, if we want to be sure to get
+;; things right, we are stuck with with asking the terminal where the cursor
+;; might be.
+;;
+;; Now the problem with asking the terminal, is that we have to output
+;; something, and then read the coordinates back in. But there might be a
+;; bunch of input, like a giant paste or something, or typing ahead, already
+;; in the terminal's input queue, in front of the response to our "where is
+;; the cursor" query, which blocks us from getting an answer.
+;;
+;; So we have to read all input available, BEFORE asking where the heck the
+;; cursor is. This is the reason for all the otherwise useless 'eat-typeahead'
+;; and 'tty-slurp'ing. Of course this whole thing is quite kludgey and I think
+;; we should really be able ask the terminal where the cursor is with a nice
+;; _function call_, not going through the I/O queue. Of course that would
+;; require the terminal to be in our address space, or to have a separate
+;; command channel if it's far, far away.
+;;
+;; There is still a small opportunity for a race condition, between outputing
+;; the query, and getting an answer back, but it seems unlikely. I wonder if
+;; there's some way to 'lock' the terminal input queue for that time.
+;;
+
+(defun eat-typeahead (e)
+  (let ((ta (termios:call-with-raw
+	     (terminal-file-descriptor (line-editor-terminal e))
+	     (_ (tty-slurp _)) :timeout 1)))
+    (when (and ta (> (length ta) 0))
+;      (log-message e "ta[~a]=~w" (length ta) ta)
+      (if (typeahead e)
+	  (setf (typeahead e) (s+ (typeahead e) ta))
+	  (setf (typeahead e) ta
+		(typeahead-pos e) 0)))))
+
 (defun do-prefix (e prompt-str)
   "Output a prefix. The prefix should not span more than one line."
-;;;  (incf (screen-col e) (length prompt-str))
-;  (break)
   (tt-write-string e prompt-str)
   (tt-finish-output e)
+  (eat-typeahead e)
   (multiple-value-bind (row col)
       (terminal-get-cursor-position (line-editor-terminal e))
     (setf (screen-row e) row
 	  (screen-col e) col
 	  ;; save end of the prefix as the starting column
-	  (start-col e) col)))
+	  (start-col e) col
+	  (start-row e) row)))
 
 (defun do-prompt (e prompt output-prompt-func)
   "Output the prompt in a specified way."
 ;  (format t "e = ~w prompt = ~w output-prompt-func = ~w~%"
 ;	  e prompt output-prompt-func)
   (let* ((s (with-output-to-string (*standard-output*)
-              (if output-prompt-func
-		  (ignore-errors (funcall output-prompt-func e prompt))
+              (if (and output-prompt-func
+		       (or (functionp output-prompt-func)
+			   (fboundp output-prompt-func)))
+		  (or (ignore-errors (funcall output-prompt-func e prompt))
+		      "Your prompt Function failed> ")
 		  (default-output-prompt e prompt)))))
     (do-prefix e s)))
 

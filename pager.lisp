@@ -199,6 +199,14 @@ The shell command takes any number of file names.
        (setf (aref fs i) (make-fatchar :c (char string i))))
     fs))
 
+(defun string-from-fat (fat-string)
+  "Make a string from a fat string."
+  (let ((s (make-array (list (length fat-string))
+		       :element-type 'character)))
+    (loop :for i :from 0 :below (length fat-string) :do
+       (setf (aref s i) (fatchar-c (aref fat-string i))))
+    s))
+
 (defun span-length (span)
   "Calculate the length in characters of the span."
   (the fixnum (loop :for e :in span
@@ -551,9 +559,11 @@ read until we get an EOF."
 		     (setf line
 			   (resilient-read-line (pager-stream pager) nil nil)))
 	 :do (push (make-line :number i
-			      :position (incf pos (length line))
+;;;			      :position (incf pos (length line))
+			      :position pos
 			      :text (process-line pager line))
 		   lines)
+	 (incf pos (length line))
 	 (incf i)
 	 (incf n))
       (when (not line)
@@ -659,6 +669,10 @@ replacements. So far we support:
     (:dim	. ,+a-dim+)
     (:bold	. ,+a-bold+)))
 
+(defun real-attr (a)
+  "Return a curses attribute given a keyword attribute."
+  (or (and a (cdr (assoc a *attr*))) +a-normal+))
+
 #|
              left         *cols*
 win  :         |------------|
@@ -667,41 +681,124 @@ line : |----||-------||---------||---|
                                 *col*
 |#
 
-(defvar *col*)
+;; (defvar *col*)
+;; (defvar *left*)
+;; (defun show-span (s)
+;;   (when s
+;;     (typecase s
+;;       (string
+;;        (let* ((start (min (1- (length s)) (max 0 (- *left* *col*))))
+;; 	      (end   (min (length s) *cols*))
+;; 	      (len   (- end start)))
+;; 	 (when (> len 0)
+;; 	   (addstr (subseq s start end)))
+;; 	 (incf *col* (length s))))
+;;       (list
+;;        (let* ((f (first s))
+;; 	      (tag (and (or (keywordp f) (symbolp f)) f)))
+;; 	 (when tag (attron (cdr (assoc tag *attr*))))
+;; 	 (loop :while (< *col* *cols*)
+;; 	    :for ee :in (or (and tag (cdr s)) s)
+;; 	    :do (show-span ee))
+;; 	 (when tag (attroff (cdr (assoc tag *attr*)))))))))
+
+;; "text text text"
+;; ((:tag "text") "text" (:tag "text") "text")
+;; (:tag "text")
+;; ("text text " (:tag "text " (:tag "text") " text") "text")
+
+(defvar *fat-buf* (make-array 100
+			      :element-type 'fatchar
+			      :initial-element (make-fatchar)
+			      :fill-pointer 0 :adjustable t))
 (defvar *left*)
-(defun show-span (s)
-  (when s
-    (typecase s
-      (string
-       (let* ((start (min (1- (length s)) (max 0 (- *left* *col*))))
-	      (end   (min (length s) *cols*))
-	      (len   (- end start)))
-	 (when (> len 0)
-	   (addstr (subseq s start end)))
-	 (incf *col* (length s))))
-      (list
-       (let* ((f (first s))
-	      (tag (and (or (keywordp f) (symbolp f)) f)))
-	 (when tag (attron (cdr (assoc tag *attr*))))
-	 (loop :while (< *col* *cols*)
-	    :for ee :in (or (and tag (cdr s)) s)
-	    :do (show-span ee))
-	 (when tag (attroff (cdr (assoc tag *attr*)))))))))
+(defvar *col*)
+(defun flatten-span (pager span)
+  "Make a fat string from a span."
+  (setf (fill-pointer *fat-buf*) 0)
+  (let (fg bg attrs #|(col *col*)|#)
+    (labels
+	((spanky (s)
+	   (when s
+	     (typecase s
+	       (string
+		(loop :for c :across s :do
+		   (when (and (>= *col* *left*)
+			      (or (not (pager-wrap-lines pager))
+				  (< *col* *cols*)))
+		     (vector-push-extend
+		      (make-fatchar :c c :fg fg :bg bg :attrs attrs)
+		      *fat-buf*))
+		   (incf *col*)))
+	       (list
+		(let* ((f (first s))
+		       (tag (and (or (keywordp f) (symbolp f)) f)))
+		  (if tag
+		      (progn
+			(push tag attrs)
+			;; (format t "tag ~s attrs ~s (cdr s) ~s~%"
+			;; 	tag attrs (cdr s))
+			(spanky (cdr s))
+			(pop attrs))
+		      (progn
+			(spanky f)
+			(spanky (cdr s))))))))))
+      (spanky span))))
+
+(defun search-a-matize (pager)
+  "Highlight search strings in *fat-buf*."
+  (with-slots (search-string ignore-case) pager
+    (let* ((s (string-from-fat *fat-buf*))
+	   (ss (if (and search-string ignore-case)
+		   (s+ "(?i)" search-string)
+		   search-string))
+	   (matches (and ss (ppcre:all-matches ss s))))
+      (loop :with i = 0
+	 :while (< i (length matches)) :do
+	 (loop :for j :from (elt matches i) :below (elt matches (1+ i))
+	    :do (pushnew :standout (fatchar-attrs (aref *fat-buf* j))))
+	 (incf i 2)))))
+
+(defun show-span (pager s)
+  (when (not s)
+    (return-from show-span 0))
+  (flatten-span pager s)
+  (when (pager-search-string pager)
+    (search-a-matize pager))
+  (loop :with last-attr
+     :and screen-col = 0
+     :and screen-line = (getcury *stdscr*)
+     :for c :across *fat-buf* :do
+     (when (not (equal last-attr (fatchar-attrs c)))
+       (when last-attr (attrset 0))
+       (mapcan (_ (attron (real-attr _))) (fatchar-attrs c)))
+     (addch (char-code (fatchar-c c)))
+     (incf screen-col)
+     (when (and (pager-wrap-lines pager) (> screen-col *cols*))
+       (move screen-line 0)
+       (setf screen-col 0)
+       (incf screen-line))
+     (setf last-attr (fatchar-attrs c)))
+  (attrset 0)
+  1)
 
 (defun render-span (pager line-number line)
   (with-slots (left show-line-numbers) pager
-    (let ((*col* left) (*left* left))
+    (let ((*col* 0) (*left* left))
       (when show-line-numbers
 	(let ((str (format nil "~d: " line-number)))
 	  (incf *col* (length str))
 	  (addstr str)))
-      (show-span (line-text line)))))
+;;;      (show-span pager (line-text line)))))
+      (show-span pager line))))
 
 (defun render-text-line (pager line-number line)
   (with-slots (left page-size search-string show-line-numbers ignore-case)
       pager
     (let* ((text1 (line-text line))
-	   (end   (min (length text1) (+ *cols* left)))
+	   (end   (if (not (pager-wrap-lines pager))
+		      (min (length text1) (+ *cols* left))
+		      (length text1)))
 	   (text  (if (> left 0)
 		      (if (< left (length text1))
 			  (subseq text1 left end)
@@ -729,7 +826,9 @@ line : |----||-------||---------||---|
 	       (setf start (1+ match-end) ;; (+ pos (length ss))
 		     old-end match-end
 ;;;		     pos (search ss text :test #'equalp :start2 start))
-		     matches (and ss (ppcre:all-matches ss text :start start))
+		     matches (and ss (ppcre:all-matches
+				      ss text
+				      :start (min start (1- (length text)))))
 		     pos (when matches (car matches))
 		     match-end (when matches (cadr matches)))
 	       (when (not pos)
@@ -766,8 +865,9 @@ line : |----||-------||---------||---|
 
 (defun display-line (pager line-number line)
   (typecase (line-text line)
-    (string (render-text-line pager line-number line))
-    (list   (render-span pager line-number line))
+;;;    (string (render-text-line pager line-number line))
+    (string (render-span pager line-number (list (line-text line))))
+    (list   (render-span pager line-number (line-text line)))
     (t (error "Don't know how to render a line of ~s~%"
 	      (type-of (line-text line))))))
 
@@ -780,12 +880,12 @@ line : |----||-------||---------||---|
     (let ((y 0))
       (loop
 	 :with l = (nthcdr line (pager-lines pager)) :and i = line
-	 :while (and (<= i (+ line (1- page-size))) (car l))
+;;;	 :while (and (<= i (+ line (1- page-size))) (car l))
+	 :while (and (<= y (1- page-size)) (car l))
 	 :do
 	 (move y 0)
 	 (when (not (filter-this pager (car l)))
-	   (display-line pager i (car l))
-	   (incf y)
+	   (incf y (display-line pager i (car l)))
 	   (incf i))
 	 (setf l (cdr l)))
       ;; Fill the rest of the screen with twiddles to indicate emptiness.
@@ -879,8 +979,13 @@ list containing strings and lists."
 	     (not (pager-ignore-case pager)))
        (message-pause "ignore-case is ~:[Off~;On~]"
 		      (pager-ignore-case pager)))
+      ((#\w #\S) ;; S is for compatibility with less
+       (setf (pager-wrap-lines pager)
+	     (not (pager-wrap-lines pager)))
+       (message-pause "wrap-lines is ~:[Off~;On~]"
+		      (pager-wrap-lines pager)))
       (otherwise
-       (message-pause "Unknown option ~c" (nice-char char))))))
+       (message-pause "Unknown option '~a'" (nice-char char))))))
 
 (defun next-file (pager)
   "Go to the next file in the set of files."
@@ -1019,14 +1124,34 @@ list containing strings and lists."
   "Clear the search string."
   (setf (pager-search-string pager) nil))
 
+(defun seekable (pager)
+  (let* ((pos (file-position (pager-stream pager)))
+	 (result (file-position (pager-stream pager) pos)))
+    result))
+
 (defun show-info (pager)
   "Show information about the stream."
-  (tmp-message pager "%f %l of %L %b/%B"))
+  (tmp-message pager "%f %l of %L %b/%B ~:[un~;~]seekable" (seekable pager)))
 
 (defun redraw (pager)
   "Redraw the display."
   (declare (ignore pager))
   (clear) (refresh))
+
+(defun reread (pager)
+  (if (seekable pager)
+      (with-slots (stream line lines got-eof count page-size) pager
+	(let ((l (nth line lines)))
+	  (file-position stream (or (and l (line-position l)) 0)))
+	(setf got-eof nil)
+	(if (= line 0)
+	    (setf lines nil count 0)
+	    (progn
+	      (setf count line)
+	      ;; drop all following lines
+	      (rplacd (nthcdr (1- line) lines) nil)))
+	(read-lines pager page-size))
+      (tmp-message pager "Can't re-read an unseekable stream.")))
 
 (defun digit-argument (pager)
   "Accumulate digits for the PREFIX-ARG."
@@ -1141,6 +1266,7 @@ list containing strings and lists."
     (#\V                . show-version)
     (#\-		. set-option)
     (#\^L		. redraw)
+    (#\R		. reread)
     (,(meta-char #\u)	. clear-search)
     (,(meta-char #\n)	. next-file)
     (,(meta-char #\p)	. previous-file)
@@ -1367,11 +1493,11 @@ press Control-H then 'k' then the key. Press 'q' to exit this help.
 " output)))
     (page input)))
 
-(defun browse ()
+(defun browse (&optional (dir "."))
   "Look at files."
   (let ((pager (make-instance 'pager))
 	filename
-	(directory "."))
+	(directory dir))
     (loop :while (setf (values filename directory)
 		       (pick-file :directory directory))
        :do (with-open-file (stream (quote-filename filename))

@@ -27,6 +27,8 @@
    #:make-terminal-stream
    #:with-terminal
    #:tt-format
+   #:tt-slurp
+   #:tty-slurp
    #:tt-write-string
    #:tt-write-char
    #:tt-move-to
@@ -87,10 +89,6 @@ require terminal driver support."))
     :accessor terminal-device-name
     :initarg :device-name
     :documentation "System device name.")
-   ;; (output-stream
-   ;;  :accessor terminal-output-stream
-   ;;  :initarg :output-stream
-   ;;  :documentation "Lisp stream for output.")
    (raw-state
     :accessor terminal-raw-state
     :initarg :terminal-raw-state
@@ -249,6 +247,35 @@ require terminal driver support."))
     (write-string string stream)
     (when (position #\newline string)
       (finish-output stream))))
+
+(defgeneric tt-slurp (tty)
+  (:documentation "Read all the input available on the terminal."))
+(defmethod tt-slurp ((tty terminal))
+  (tty-slurp (terminal-file-descriptor tty)))
+
+(defmethod tty-slurp (tty)
+  "Read until EOF. Return a string of the results. TTY is a file descriptor."
+  (let* ((size (nos:memory-page-size))
+	 (result (make-array size
+			     :element-type 'base-char
+			     :fill-pointer 0 :adjustable t))
+	 status)
+    (with-output-to-string (str result)
+      (with-foreign-object (buf :char size)
+	(loop
+	   :do (setf status (posix-read tty buf size))
+	   :while (= status size)
+	   :do (princ (cffi:foreign-string-to-lisp buf) str))
+	(cond
+	  ((> status size)
+	   (error "Read returned too many characters? ~a" status))
+	  ((< status 0)
+	   (error "Read error ~d~%" status))
+	  ((= status 0)
+	   (or (and (length result) result) nil))
+	  (t
+	   (princ (cffi:foreign-string-to-lisp buf :count status) str)
+	   result))))))
 
 (defun read-until (tty stop-char)
   "Read until STOP-CHAR is read. Return a string of the results.
