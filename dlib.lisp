@@ -387,31 +387,35 @@ just return STRING. Characters are compared with TEST which defaults to EQL."
 	(subseq string 0 pos)
 	string)))
 
-(defun join (sequence thing)
-;  "Put THING between every element of SEQUENCE."
+;; I think I will regret this.
+(defgeneric join (this that &key &allow-other-keys)
+  (:documentation "Join this to that."))
+
+(defmethod join ((this list) thing &key &allow-other-keys)
   "Return a string with a THING between every element of SEQUENCE. This is
 basically the reverse of SPLIT-SEQUENCE."
-  (etypecase sequence
-    (list
-     (with-output-to-string (str)
-       (loop :with first = t
-	  :for e :in sequence
-	  :if first
-	    :do (setf first nil)
-	  :else
-	    :do (princ thing str)
-	  :end
-	  :do (princ e str))))
-    (vector
-     (with-output-to-string (str)
-       (loop :with first = t
-	  :for e :across sequence
-	  :if first
-	    :do (setf first nil)
-	  :else
-	    :do (princ thing str)
-	  :end
-	  :do (princ e str))))))
+  (with-output-to-string (str)
+    (loop :with first = t
+       :for e :in this
+       :if first
+	 :do (setf first nil)
+       :else
+	 :do (princ thing str)
+       :end
+       :do (princ e str))))
+
+(defmethod join ((this vector) thing &key &allow-other-keys)
+  "Return a string with a THING between every element of SEQUENCE. This is
+basically the reverse of SPLIT-SEQUENCE."
+  (with-output-to-string (str)
+    (loop :with first = t
+       :for e :across this
+       :if first
+	 :do (setf first nil)
+       :else
+	 :do (princ thing str)
+       :end
+       :do (princ e str))))
 
 ;; As you may know, improper use of this can cause troublesome bugs.
 (defun delete-nth (n list)
