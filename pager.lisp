@@ -724,8 +724,8 @@ line : |----||-------||---------||---|
 	       (string
 		(loop :for c :across s :do
 		   (when (and (>= *col* *left*)
-			      (or (not (pager-wrap-lines pager))
-				  (< *col* *cols*)))
+			      (or (pager-wrap-lines pager)
+				  (< (- *col* *left*) *cols*)))
 		     (vector-push-extend
 		      (make-fatchar :c c :fg fg :bg bg :attrs attrs)
 		      *fat-buf*))
@@ -759,28 +759,58 @@ line : |----||-------||---------||---|
 	    :do (pushnew :standout (fatchar-attrs (aref *fat-buf* j))))
 	 (incf i 2)))))
 
+#+clisp
+(defun show-utf8 (str)
+  "Output a UTF8 string to the screen."
+  (loop :for c :across
+     (ext:convert-string-to-bytes str custom:*terminal-encoding*)
+     :do (addch c)))
+
+;;; @@@@ We need to work out what is the right way to output UTF-8 chars
+#+clisp
+(defun add-char (c)
+  (let ((cc (char-code c)))
+    (if (> cc #xff)
+	(show-utf8 (string c))
+	(addch (char-code c)))))
+;    (addch (char-code c))))
+
+#+sbcl
+(defvar f-char (cffi:foreign-alloc :int :count 2))
+#+sbcl
+(defun add-char (c)
+  (setf (cffi:mem-aref f-char :int 0) (char-code c))
+  (addnwstr f-char 1))
+
+#-(or clisp sbcl)
+(defun add-char (c)
+  (addch (char-code c)))
+
 (defun show-span (pager s)
   (when (not s)
     (return-from show-span 0))
   (flatten-span pager s)
   (when (pager-search-string pager)
     (search-a-matize pager))
-  (loop :with last-attr
-     :and screen-col = 0
-     :and screen-line = (getcury *stdscr*)
-     :for c :across *fat-buf* :do
-     (when (not (equal last-attr (fatchar-attrs c)))
-       (when last-attr (attrset 0))
-       (mapcan (_ (attron (real-attr _))) (fatchar-attrs c)))
-     (addch (char-code (fatchar-c c)))
-     (incf screen-col)
-     (when (and (pager-wrap-lines pager) (> screen-col *cols*))
-       (move screen-line 0)
-       (setf screen-col 0)
-       (incf screen-line))
-     (setf last-attr (fatchar-attrs c)))
-  (attrset 0)
-  1)
+  (let ((line-count 1)
+	(screen-col 0)
+	(screen-line (getcury *stdscr*)))
+    (loop :with last-attr
+       :for c :across *fat-buf* :do
+       (when (not (equal last-attr (fatchar-attrs c)))
+	 (when last-attr (attrset 0))
+	 (mapcan (_ (attron (real-attr _))) (fatchar-attrs c)))
+;;;       (addch (char-code (fatchar-c c)))
+       (add-char (fatchar-c c))
+       (incf screen-col)
+       (when (and (pager-wrap-lines pager) (> screen-col *cols*))
+	 (incf screen-line)
+	 (setf screen-col 0)
+	 (move screen-line screen-col)
+	 (incf line-count))
+       (setf last-attr (fatchar-attrs c)))
+    (attrset 0)
+    line-count))
 
 (defun render-span (pager line-number line)
   (with-slots (left show-line-numbers) pager
@@ -792,6 +822,7 @@ line : |----||-------||---------||---|
 ;;;      (show-span pager (line-text line)))))
       (show-span pager line))))
 
+#|
 (defun render-text-line (pager line-number line)
   (with-slots (left page-size search-string show-line-numbers ignore-case)
       pager
@@ -838,6 +869,7 @@ line : |----||-------||---------||---|
 	  (if show-line-numbers
 	      (addstr (format nil "~d: ~a" line-number text))
 	      (addstr text))))))
+|#
 
 (defun span-matches (span expr)
   "Return true if the plain text of a SPAN matches the EXPR."
@@ -982,8 +1014,10 @@ list containing strings and lists."
       ((#\w #\S) ;; S is for compatibility with less
        (setf (pager-wrap-lines pager)
 	     (not (pager-wrap-lines pager)))
+       (display-page pager)
        (message-pause "wrap-lines is ~:[Off~;On~]"
-		      (pager-wrap-lines pager)))
+		      (pager-wrap-lines pager))
+       (refresh))
       (otherwise
        (message-pause "Unknown option '~a'" (nice-char char))))))
 
