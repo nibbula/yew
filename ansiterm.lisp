@@ -429,13 +429,13 @@ i.e. the terminal is \"line buffered\""))
 (defmethod tt-cursor-on ((tty terminal-stream))
   (tt-format tty "~c8" #\escape))
 
-(defgeneric tt-standout (tty))
-(defmethod tt-standout ((tty terminal-stream))
-  (tt-format tty "~c[7m" #\escape))
+(defgeneric tt-standout (tty &optional state))
+(defmethod tt-standout ((tty terminal-stream) &optional (state t))
+  (tt-format tty "~c[~dm" #\escape (if state 7 27)))
 
 (defgeneric tt-standend (tty))
 (defmethod tt-standend ((tty terminal-stream))
-  (tt-format tty "~c[0m" #\escape))
+  (tt-format tty "~c[27m" #\escape))
 
 (defgeneric tt-normal (tty))
 (defmethod tt-normal ((tty terminal-stream))
