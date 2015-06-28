@@ -156,6 +156,7 @@ the outermost. When entering the debugger the current frame is 0.")
 #+ccl
 (defun debugger-wacktrace (n)
   "Our own backtrace for CCL."
+  (declare (ignore n))			; @@@
   (let ((frames '()) (*print-readably* nil))
     (ccl:map-call-frames
      #'(lambda (frame-ptr context)
@@ -314,6 +315,7 @@ the outermost. When entering the debugger the current frame is 0.")
   
 #+ccl
 (defun debugger-source-path (frame &optional (window-size 10))
+  (declare (ignore window-size)) ; @@@
   (let ((note (debugger-source-note frame)))
     (cond
       ((not note)
@@ -538,10 +540,19 @@ the outermost. When entering the debugger the current frame is 0.")
     (t
      (format *debug-io* "No such frame ~s~%" frame))))
 
+#+ccl
+(defun debugger-set-frame (frame)
+  (setf *current-frame* frame))
+
 #+sbcl
 (defun debugger-top-frame (count)
   (declare (ignore count))
   (setf *current-frame* *saved-frame*))
+
+#+ccl
+(defun debugger-top-frame (count)
+  (declare (ignore count))
+  (setf *current-frame* 0)) ;; XXX wrong?
 
 ;; Stepping
 
