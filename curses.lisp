@@ -2,8 +2,6 @@
 ;; curses.lisp - Interface to the curses library
 ;;
 
-;; $Revision: 1.14 $
-
 ;; TODO:
 ;;   - fix bugs?
 ;;     - line drawing chars on 64 bit?
@@ -83,17 +81,27 @@ Make sure we don't clash with the actual CL-NCURSES.
    #:move
    #:clear #:wclear #:erase #:werase #:clrtobot #:wclrtobot
    #:clrtoeol #:wclrtoeol
+   ;; input
    #:getch #:wgetch #:mvgetch #:mvwgetch #:ungetch
    #:getnstr #:wgetnstr #:mvgetnstr #:mvwgetnstr
    #:mmask-t #:mevent #:make-mevent #:mevent-id #:mevent-x #:mevent-y
    #:mevent-z #:mevent-bstate
    #:mousemask #:getmouse #:ungetmouse
+   ;; output
    #:addch #:waddch #:mvaddch #:mvwaddch #:echochar #:wechochar
    #:addstr #:addnstr #:mvaddstr #:mvaddnstr #:waddstr
    #:waddnstr #:mvaddstr #:mvwaddstr #:mvaddnstr #:mvwaddnstr
    #:addnwstr #:waddnwstr
    #:printw #:wprintw #:mvprintw #:mvwprintw
-   #:flash #:beep
+   #:flash #:beep #:scroll #:scrl #:wscrl
+   ;; inserting
+   #:insch #:winsch #:mvinsch #:mvwinsch
+   #:insstr #:insnstr #:winsstr #:winsnstr #:mvinsstr #:mvinsnstr #:mvwinsstr
+   #:mvwinsnstr
+   ;; deleting
+   #:delch #:wdelch #:mvdelch #:wmvdelch
+   #:deleteln #:wdeleteln #:insdelln #:winsdelln #:insertln #:winsertln
+   ;; tty modes
    #:resetty #:savetty #:reset-shell-mode #:reset-prog-mode #:cbreak #:nocbreak
    #:echo #:noecho #:nonl #:nl
    #:raw #:noraw #:meta #:nodelay #:notimeout #:halfdelay #:intrflush
@@ -107,6 +115,7 @@ Make sure we don't clash with the actual CL-NCURSES.
    #:curs-set
    #:getcurx
    #:getcury
+   ;; color & attributes
    #:start-color #:has-colors #:can-change-color #:init-pair
    #:attron #:wattron #:attroff #:wattroff #:attrset #:wattrset #:color-set
    #:wcolor-set #:standend #:wstandend #:standout #:wstandout #:bkgd #:wbkgd
@@ -621,8 +630,127 @@ application.")
 #+curses-use-wide (defcfun waddnwstr :int (win window-ptr) (str :pointer) (n :int))
 
 ;; misc output
-(defcfun flash :int)
-(defcfun beep :int)
+(defcfun flash :int "Try to flash the screen.")
+(defcfun beep :int "Try to make a noise or something.")
+(defcfun scroll :int
+  "Scroll the window up one line."
+  (win window-ptr))
+(defcfun scrl :int
+  "Scroll by N. Positive N is up, negative N is down."
+  (n :int))
+(defcfun wscrl :int
+  "Scroll the window by N. Positive N is up, negative N is down."
+  (win window-ptr) (n :int))
+
+;; Inserting
+(defcfun insch :int
+  "Insert the character CH before the character under the cursor. Characters to the right are moved, and possibly lost."
+  (ch chtype))
+(defcfun winsch :int
+  "Insert the character CH before the character under the cursor, in the window WIN. Characters to the right are moved, and possibly lost."
+  (win window-ptr) (ch chtype))
+(defcfun mvinsch :int
+  "Move to Y, X and insert the character CH before the character under the cursor. Characters to the right are moved, and possibly lost."
+  (y :int) (x :int) (ch chtype))
+(defcfun mvwinsch :int
+  "Move to Y, X and insert the character CH before the character under the cursor, in the window WIN. Characters to the right are moved, and possibly lost."
+  (win window-ptr) (y :int) (x :int) (ch chtype))
+(defcfun insstr :int
+  "Insert a string."
+  (str :string))
+(defcfun insnstr :int
+  "Insert a the first N characters of a string."
+  (str :string) (n :int))
+(defcfun winsstr :int
+  "Insert a string in window WIN."
+  (win window-ptr) (str :string))
+(defcfun winsnstr :int
+  "Insert the first N characters of a string, in window WIN."
+  (win window-ptr) (str :string) (n :int))
+(defcfun mvinsstr :int
+  "Move and insert a string."
+  (y :int) (x :int) (str :string))
+(defcfun mvinsnstr :int
+  "Move and insert the first N characters of a string."
+  (y :int) (x :int) (str :string) (n :int))
+(defcfun mvwinsstr :int
+  "Move and insert a string, in window WIN."
+  (win window-ptr) (y :int) (x :int) (str :string))
+(defcfun mvwinsnstr :int
+  "Move and insert a the first N characters of a string, in window WIN."
+  (win window-ptr) (y :int) (x :int) (str :string) (n :int))
+
+;; #:ins_wch #:wins_wch #:mvins_wch #:mvwins_wch
+;; #:ins_wstr #:ins_nwstr #:wins_wstr #:wins_nwstr #:mvins_wstr #:mvins_nwstr
+;; #:mvwins_wstr #:mvwins_nwstr
+
+#+curses-use-wide (defcfun ins_wch :int
+  "Insert a complex character."
+  (wch cchar-t-ptr))
+#+curses-use-wide (defcfun wins_wch :int
+  "Insert a complex character in a window."
+  (win window-ptr) (wch cchar-t-ptr))
+#+curses-use-wide (defcfun mvins_wch :int
+  "Move and insert insert a complex character."
+  (y :int) (x :int) (wch cchar-t-ptr))
+#+curses-use-wide (defcfun mvwins_wch :int
+  "Move and insert insert a complex character in a window."
+  (win window-ptr) (y :int) (x :int) (wch cchar-t-ptr))
+#+curses-use-wide (defcfun ins_wstr :int
+  "Insert a wide character string."
+  (wstr (:pointer wchar-t)))
+#+curses-use-wide (defcfun ins_nwstr :int
+  "Insert the first N characters of a wide character string."
+  (wstr (:pointer wchar-t)) (n :int))
+#+curses-use-wide (defcfun wins_wstr :int
+  "Insert a wide character string in a window."
+  (win window-ptr) (wstr (:pointer wchar-t)))
+#+curses-use-wide (defcfun wins_nwstr :int
+  "Insert the first N characters of a wide character string in a window."
+  (win window-ptr) (wstr (:pointer wchar-t)) (n :int))
+#+curses-use-wide (defcfun mvins_wstr :int
+  "Move and insert a wide character string."
+  (y :int) (x :int) (wstr (:pointer wchar-t)))
+#+curses-use-wide (defcfun mvins_nwstr :int
+  "Move and insert the first N characters of a wide character string."
+  (y :int) (x :int) (wstr (:pointer wchar-t)) (n :int))
+#+curses-use-wide (defcfun mvwins_wstr :int
+  "Move and insert a wide character string in a window."
+  (win window-ptr) (y :int) (x :int) (wstr (:pointer wchar-t)))
+#+curses-use-wide (defcfun mvwins_nwstr :int
+  "Move and insert the first N characters of a wide character string in a window."
+  (win window-ptr) (y :int) (x :int) (wstr (:pointer wchar-t)) (n :int))
+
+;; Deleting
+(defcfun delch :int
+  "Delete a character.")
+(defcfun wdelch :int
+  "Delete a character in the window."
+  (win window-ptr))
+(defcfun mvdelch :int
+  "Move and delete a character."
+  (y :int) (x :int))
+(defcfun wmvdelch :int
+  "Move and delete a character in the window."
+  (win window-ptr) (y :int) (x :int))
+(defcfun deleteln :int
+  "Delete a line.")
+(defcfun wdeleteln :int
+  "Delete a line in the window."
+  (win window-ptr))
+(defcfun insdelln :int
+  "Insert or delete N lines. Positive N inserts, and negative N deletes."
+  (n :int))
+(defcfun winsdelln :int
+  "Insert or delete N lines, in the window. Positive N inserts, and negative
+N deletes."
+  (win window-ptr) (n :int))
+(defcfun insertln :int
+  "Insert a blank line above the cursor. The bottom line is lost.")
+(defcfun winsertln :int
+  "Insert a blank line, in the window, above the cursor. The bottom line
+is lost."
+  (win window-ptr))
 
 ;;
 ;; Terminal modes
