@@ -50,7 +50,6 @@
    #:tt-cursor-off
    #:tt-cursor-on
    #:tt-standout
-   #:tt-standend
    #:tt-normal
    #:tt-underline
    #:tt-bold
@@ -429,13 +428,9 @@ i.e. the terminal is \"line buffered\""))
 (defmethod tt-cursor-on ((tty terminal-stream))
   (tt-format tty "~c8" #\escape))
 
-(defgeneric tt-standout (tty &optional state))
-(defmethod tt-standout ((tty terminal-stream) &optional (state t))
+(defgeneric tt-standout (tty state))
+(defmethod tt-standout ((tty terminal-stream) state)
   (tt-format tty "~c[~dm" #\escape (if state 7 27)))
-
-(defgeneric tt-standend (tty))
-(defmethod tt-standend ((tty terminal-stream))
-  (tt-format tty "~c[27m" #\escape))
 
 (defgeneric tt-normal (tty))
 (defmethod tt-normal ((tty terminal-stream))
@@ -464,7 +459,13 @@ i.e. the terminal is \"line buffered\""))
       (error "Forground ~a is not a known color." fg))
     (when (not bg-pos)
       (error "Background ~a is not a known color." bg))
-    (tt-format tty "~c[~d;~dm" #\escape (+ 30 fg-pos) (+ 40 bg-pos))))
+    (cond
+      ((and fg bg)
+       (tt-format tty "~c[~d;~dm" #\escape (+ 30 fg-pos) (+ 40 bg-pos)))
+      (fg
+       (tt-format tty "~c[~dm" #\escape (+ 30 fg-pos)))
+      (bg
+       (tt-format tty "~c[~dm" #\escape (+ 40 bg-pos))))))
 
 ;; 256 color? ^[[ 38;5;color <-fg 48;5;color <- bg
 ;; set color tab = ^[] Ps ; Pt BEL
