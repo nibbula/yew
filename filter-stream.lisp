@@ -41,7 +41,8 @@
 
 ;;;(defmethod close ((stream wrapped-stream) &key abort &allow-other-keys)
 ;;;(defmethod close ((stream wrapped-stream) &key (abort t) &allow-other-keys)
-(defmethod close ((stream wrapped-stream) &key (abort t))
+;;;(defmethod close ((stream wrapped-stream) &key (abort t))
+(defmethod close ((stream wrapped-stream) &key abort)
   (if abort
       (progn
 	(force-output stream)

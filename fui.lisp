@@ -13,6 +13,8 @@
    #:init-colors
    #:color-index
    #:color-attr
+   #:+color-names+
+   #:color-number
    #:get-char
    #:interactively
    #:non-interactively
@@ -147,6 +149,21 @@
 foreground FG and background BG."
   (color-pair (aref *color-table* fg bg)))
 
+(defparameter +color-names+
+  `((:black 	,+color-black+)
+    (:red 	,+color-red+)
+    (:green 	,+color-green+)
+    (:yellow 	,+color-yellow+)
+    (:blue 	,+color-blue+)
+    (:magenta 	,+color-magenta+)
+    (:cyan 	,+color-cyan+)
+    (:white 	,+color-white+))
+  "Associate symbols with color numbers.")
+
+(defun color-number (color)
+  "Return the curses color number given a symbol name."
+  (cadr (assoc color +color-names+)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Input
 
@@ -224,14 +241,12 @@ foreground FG and background BG."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; TODO:
-;; goto by typing
 ;; things from pager:
-;; - search
 ;; - best key compatability?
 ;; - keyampification?
 
 (defun pick-list (the-list &key message by-index sort-p default-value
-		  selected-item typing-searches)
+		  selected-item (typing-searches t))
   "Have the user pick a value from THE-LIST and return it. Arguments:
   MESSAGE         - A string to be displayed before the list.
   BY-INDEX        - If true, return the index number of the item picked.
@@ -281,48 +296,55 @@ foreground FG and background BG."
 ;	 (mvaddstr 20 0 (format nil "file-line = ~s top = ~s max-y = ~s ttop = ~s" file-line top max-y ttop))
 	 (move cur-line 0)
 	 (setf c (get-char))
-	 (if (and typing-searches (graphic-char-p c))
+	 (if (and typing-searches
+		  (and (characterp c)
+		       (graphic-char-p c) (not (position c "<>"))))
 	     (progn
 	       (stretchy-append search-str c)
-	       ;; @@@
-	       )
-	     (case c
-	       ((#\escape #\^G) (setf quit-flag t))
-	       ((#\return #\newline)
-		(if by-index
-		    (setf result file-line)
-		    (setf result (elt files file-line)))
-		(setf quit-flag t))
-	       ((#\^N :down)
-		(when (>= (+ cur-line 1) max-y)
-		  (incf top))
-		(if (< file-line (1- max-line))
-		    (incf file-line)
-		    (setf file-line 0 top 0)))
-	       ((#\^P :up)
-		(when (<= file-line top)
-		  (decf top))
-		(if (> file-line 0)
-		    (decf file-line)
-		    (progn
-		      (setf file-line (1- max-line))
-		      (setf top (max 0 (- (length files) (- max-y ttop)))))))
-	       ((#\> :end)
-		;; 	    (pause (format nil "~d ~d ~d ~d ~d"
-		;; 			   file-line max-line top max-y ttop))
-		(setf file-line (1- max-line))
-		(setf top (max 0 (- (length files) (- max-y ttop)))))
-	       ((#\< :home)
-		(setf file-line 0 top 0))
-	       ((#\^F :npage)
-		(setf file-line (min (1- max-line) (+ file-line page-size))
-		      cur-line  (+ top file-line)
-		      top       file-line))
-	       ((#\^B :ppage #\b #\B)
-		(setf file-line (max 0 (- file-line page-size))
-		      cur-line  (+ top file-line)
-		      top       file-line))
-	       )))
+	       (loop :for i :from file-line :below max-line
+		  :if (search search-str (elt files i) :test #'equalp)
+		  :return (setf file-line i))
+	       (when (> file-line (+ top page-size))
+		 (setf top file-line)))
+	     (progn
+	       (stretchy-truncate search-str)
+	       (case c
+		 ((#\escape #\^G) (setf quit-flag t))
+		 ((#\return #\newline)
+		  (if by-index
+		      (setf result file-line)
+		      (setf result (elt files file-line)))
+		  (setf quit-flag t))
+		 ((#\^N :down)
+		  (when (>= (+ cur-line 1) max-y)
+		    (incf top))
+		  (if (< file-line (1- max-line))
+		      (incf file-line)
+		      (setf file-line 0 top 0)))
+		 ((#\^P :up)
+		  (when (<= file-line top)
+		    (decf top))
+		  (if (> file-line 0)
+		      (decf file-line)
+		      (progn
+			(setf file-line (1- max-line))
+			(setf top (max 0 (- (length files) (- max-y ttop)))))))
+		 ((#\> :end)
+		  ;; 	    (pause (format nil "~d ~d ~d ~d ~d"
+		  ;; 			   file-line max-line top max-y ttop))
+		  (setf file-line (1- max-line))
+		  (setf top (max 0 (- (length files) (- max-y ttop)))))
+		 ((#\< :home)
+		  (setf file-line 0 top 0))
+		 ((#\^F :npage)
+		  (setf file-line (min (1- max-line) (+ file-line page-size))
+			cur-line  (+ top file-line)
+			top       file-line))
+		 ((#\^B :ppage #\b #\B)
+		  (setf file-line (max 0 (- file-line page-size))
+			cur-line  (+ top file-line)
+			top       file-line))
+		 ))))
       result
       )))
 

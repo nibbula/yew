@@ -36,7 +36,7 @@ The function takes a file name or a stream or a list of such.
 The shell command takes any number of file names.
 ")
   (:use :cl :dlib :dlib-misc :curses :opsys :fui :stretchy :keymap :char-util
-	:ppcre)
+	:fatchar :ppcre)
   (:export
    #:*pager-prompt*
    #:page
@@ -59,7 +59,7 @@ The shell command takes any number of file names.
   "For reading the numeric argument." #'equalp)
 
 ;; Since *prompt* is taken on some implementations.
-(defvar *pager-prompt* "%f line %l of %L"
+(defvar *pager-prompt* "%&%f line %l of %L%&"
   "The current default prompt.")
 
 ;; "text text text"
@@ -102,9 +102,9 @@ The shell command takes any number of file names.
    (search-string
     :initarg :search-string :accessor pager-search-string :initform nil
     :documentation "If non-nil search for and highlight")
-   (filter-expr
-    :initarg :filter-expr :accessor pager-filter-expr :initform nil
-    :documentation "Don't show lines matching this regular expression")
+   (filter-exprs
+    :initarg :filter-exprs :accessor pager-filter-exprs :initform nil
+    :documentation "Don't show lines matching these regular expressions")
    (file-list
     :initarg :file-list :accessor pager-file-list :initform nil
     :documentation "List of files to display")
@@ -166,7 +166,7 @@ The shell command takes any number of file names.
 ;	(pager-page-size o) 0
 	(pager-got-eof o) nil
 	(pager-search-string o) nil
-	(pager-filter-expr o) nil
+	(pager-filter-exprs o) nil
 ;	(pager-file-list o) nil
 ;	(pager-index o) nil
 	(pager-message o) nil
@@ -183,113 +183,7 @@ The shell command takes any number of file names.
   (declare (ignore pager))
   line)
 
-(defstruct fatchar
-  (c (code-char 0) :type character)
-  (fg nil)
-  (bg nil)
-  (line 0 :type fixnum)
-  (attrs nil :type list))
-
-(defun make-fat-string (string)
-  "Make a fat string from a string."
-  (let ((fs (make-array (list (length string))
-			:element-type 'fatchar
-			:initial-element (make-fatchar))))
-    (loop :for i :from 0 :below (length string) :do
-       (setf (aref fs i) (make-fatchar :c (char string i))))
-    fs))
-
-(defun string-from-fat (fat-string)
-  "Make a string from a fat string."
-  (let ((s (make-array (list (length fat-string))
-		       :element-type 'character)))
-    (loop :for i :from 0 :below (length fat-string) :do
-       (setf (aref s i) (fatchar-c (aref fat-string i))))
-    s))
-
-(defun span-length (span)
-  "Calculate the length in characters of the span."
-  (the fixnum (loop :for e :in span
-		 :sum (typecase e
-			(string (length e))
-			(cons (span-length e))
-			(t 0)))))
-
 #|
-(defun get-inner-span (fat-line start tag state)
-  (let ((i start)
-	(len (- (length fat-line) start))
-	(span '())
-	c)
-    (loop :do
-       (setf c (aref fat-line i))
-       (let ((added
-	      (set-difference (fatchar-attrs c) (fatchar-attrs state))
-	     (removed
-	      (set-difference (fatchar-attrs state) (fatchar-attrs c)))))
-	 (when (not (eql (fatchar-fg c) (fatchar-fg state)))
-	   (
-	   (push (fatchar-fg c) added))
-	 (when (not (eql (fatchar-bg c) (fatchar-bg state)))
-	   (push (fatchar-fg c) added))
-	     
-		  
-	 (incf i)
-       :while (< i len))
-    `(,tag ,@span)))
-
-(defun NEW-get-span (fat-line start)
-  "Convert a FATCHAR line to tagged spans."
-  (when (= (length fat-line) 0)
-    (return-from get-span fat-line))
-  (let ((str (make-stretchy-string (- (length fat-line) start)))
-	)
-    (get-inner-span
-
-(defun NEW-get-span (fat-line start)
-  "Convert a FATCHAR line to tagged spans."
-  (when (= (length fat-line) 0)
-    (return-from get-span fat-line))
-  (let ((str (make-stretchy-string (- (length fat-line) start)))
-	(attrs (fatchar-attrs (aref fat-line start)))
-	(i start) (len (length fat-line))
-	(span '())
-	last c)
-    (loop :do
-       (setf c (aref fat-line i))
-       (if last
-	 (let ((added
-		(set-difference (fatchar-attrs c) (fatchar-attrs last)))
-	       (removed
-		(set-difference (fatchar-attrs last) (fatchar-attrs c)))))
-	   (cond
-	     (removed
-	      (when (/= 0 (length str))
-		(push str span))
-	      (setf span (nreverse span))
-	      (return-from get-span `(,@attr ,@span)))
-	     (added
-	      (when (/= 0 (length str))
-		(push (copy-seq str) span))
-	      (let ((s (get-span fat-line i)))
-		(push s span)
-		(incf i (span-length s)))
-	      (stretchy-truncate str))
-	     (t
-	      (stretchy-append str (fatchar-c c))
-	      (incf i)
-	      (setf last c))))
-	 (progn
-	   (stretchy-append str (fatchar-c c))
-	   (incf i)
-	   (setf last c)))
-       :while (< i len))
-    (when (/= 0 (length str))
-      (push str span))
-    (setf span (nreverse span))
-    `(,@attr ,@span)))
-
-|#
 
 (defun get-span (fat-line start)
   "Convert a FATCHAR line to tagged spans."
@@ -333,6 +227,8 @@ The shell command takes any number of file names.
       (push str span))
     (setf span (nreverse span))
     `(,@attr ,@span)))
+
+|#
 
 (defmacro dumpy (&rest args)
   "Print the names and values of the arguments, like NAME=value."
@@ -484,10 +380,10 @@ set in this string."
 	     (incf i 2) ; the ^[ and [
 	     (multiple-value-bind (inc i-fg i-bg i-attrs)
 		 (grok-ansi-color (subseq line i))
-	       (unless (eq i-fg    :unset) (setf fg i-fg))
-	       (unless (eq i-bg    :unset) (setf bg i-bg))
-	       (unless (eq i-attrs :unset) (setf attrs i-attrs))
 	       (when inc
+		 (unless (eq i-fg    :unset) (setf fg i-fg))
+		 (unless (eq i-bg    :unset) (setf bg i-bg))
+		 (unless (eq i-attrs :unset) (setf attrs i-attrs))
 		 (incf i inc))))	; for the parameters read
 	   (copy-char ()
 	     "Copy the current character to result."
@@ -516,7 +412,7 @@ set in this string."
     (loop
        :with i = 0 :and len = (length line) :and attr
        :do
-       (when (< i (- len 2))
+       (if (< i (- len 2))
 	 (cond
 	   ((and (char= (char line (+ i 1)) #\backspace)
 		 (char= (char line (+ i 2)) (char line i)))
@@ -527,7 +423,8 @@ set in this string."
 	    (incf i 2)
 	    (setf attr :underline))
 	   (t
-	    (setf attr nil))))
+	    (setf attr nil)))
+	 (setf attr nil))
        (stretchy:stretchy-append
 	fat-line
 	(make-fatchar
@@ -539,8 +436,10 @@ set in this string."
 (defun process-line (pager line)
   "Process a line of text read from a stream."
   (declare (ignore pager))
-  (let ((output (get-span
-		 (process-ansi-colors-line (process-grotty-line line)) 0)))
+  (let ((output (fat-string-to-span
+		 (process-ansi-colors-line
+		  (process-grotty-line
+		   (untabify line))))))
     (if (and (= (length output) 1) (stringp (first output)))
 	(first output)
 	output)))
@@ -605,7 +504,10 @@ replacements. So far we support:
 		(if (and (typep (pager-stream pager) 'file-stream)
 			 (ignore-errors (truename (pager-stream pager))))
 		    (princ (namestring (truename (pager-stream pager))) str)
-		    (format str "~a" (pager-stream pager)))))))
+		    (format str "~a" (pager-stream pager))))
+	       (#\&
+		(when (pager-filter-exprs pager)
+		  (princ " && " str))))))
 	 (write-char c str)))))
 
 (defun display-prompt (pager)
@@ -681,27 +583,6 @@ line : |----||-------||---------||---|
                                 *col*
 |#
 
-;; (defvar *col*)
-;; (defvar *left*)
-;; (defun show-span (s)
-;;   (when s
-;;     (typecase s
-;;       (string
-;;        (let* ((start (min (1- (length s)) (max 0 (- *left* *col*))))
-;; 	      (end   (min (length s) *cols*))
-;; 	      (len   (- end start)))
-;; 	 (when (> len 0)
-;; 	   (addstr (subseq s start end)))
-;; 	 (incf *col* (length s))))
-;;       (list
-;;        (let* ((f (first s))
-;; 	      (tag (and (or (keywordp f) (symbolp f)) f)))
-;; 	 (when tag (attron (cdr (assoc tag *attr*))))
-;; 	 (loop :while (< *col* *cols*)
-;; 	    :for ee :in (or (and tag (cdr s)) s)
-;; 	    :do (show-span ee))
-;; 	 (when tag (attroff (cdr (assoc tag *attr*)))))))))
-
 ;; "text text text"
 ;; ((:tag "text") "text" (:tag "text") "text")
 ;; (:tag "text")
@@ -748,7 +629,7 @@ line : |----||-------||---------||---|
 (defun search-a-matize (pager)
   "Highlight search strings in *fat-buf*."
   (with-slots (search-string ignore-case) pager
-    (let* ((s (string-from-fat *fat-buf*))
+    (let* ((s (fat-string-to-string *fat-buf*))
 	   (ss (if (and search-string ignore-case)
 		   (s+ "(?i)" search-string)
 		   search-string))
@@ -789,7 +670,11 @@ line : |----||-------||---------||---|
 (defun show-span (pager s)
   (when (not s)
     (return-from show-span 0))
-  (flatten-span pager s)
+;;;  (flatten-span pager s)
+  (if (pager-wrap-lines pager)
+      (span-to-fat-string s :fat-string *fat-buf* :start *left*)
+      (span-to-fat-string s :fat-string *fat-buf* :start *left*
+			  :end (+ *left* *cols*)))
   (when (pager-search-string pager)
     (search-a-matize pager))
   (let ((line-count 1)
@@ -800,7 +685,11 @@ line : |----||-------||---------||---|
        (when (not (equal last-attr (fatchar-attrs c)))
 	 (when last-attr (attrset 0))
 	 (mapcan (_ (attron (real-attr _))) (fatchar-attrs c)))
-;;;       (addch (char-code (fatchar-c c)))
+       (color-set (fui:color-index
+		   (or (color-number (fatchar-fg c)) +color-white+)
+		   (or (color-number (fatchar-bg c)) +color-black+))
+		  (cffi:null-pointer))
+;;;       (format t "~a ~a" (fatchar-fg c) (fatchar-bg c))
        (add-char (fatchar-c c))
        (incf screen-col)
        (when (and (pager-wrap-lines pager) (> screen-col *cols*))
@@ -819,7 +708,6 @@ line : |----||-------||---------||---|
 	(let ((str (format nil "~d: " line-number)))
 	  (incf *col* (length str))
 	  (addstr str)))
-;;;      (show-span pager (line-text line)))))
       (show-span pager line))))
 
 #|
@@ -887,11 +775,16 @@ line : |----||-------||---------||---|
 
 (defun filter-this (pager line)
   "Return true if we should filter this line."
-  (when (pager-filter-expr pager)
+  (when (pager-filter-exprs pager)
     (typecase (line-text line)
-      (string (and (ppcre:all-matches
-		    (pager-filter-expr pager) (line-text line)) t))
-      (list   (span-matches (pager-filter-expr pager) (line-text line)))
+      (string
+       (loop :for e :in (pager-filter-exprs pager)
+	  :if (ppcre:all-matches e (line-text line))
+	  :return t))
+      (list
+       (loop :for e :in (pager-filter-exprs pager)
+	  :if (span-matches e (line-text line))
+	  :return t))
       (t (error "Don't know how to filter a line of ~s~%"
 		(type-of (line-text line)))))))
 
@@ -912,7 +805,6 @@ line : |----||-------||---------||---|
     (let ((y 0))
       (loop
 	 :with l = (nthcdr line (pager-lines pager)) :and i = line
-;;;	 :while (and (<= i (+ line (1- page-size))) (car l))
 	 :while (and (<= y (1- page-size)) (car l))
 	 :do
 	 (move y 0)
@@ -993,8 +885,14 @@ list containing strings and lists."
 	  nil))))
 
 (defun filter-lines (pager)
-  (let ((filter (ask "&")))
-    (setf (pager-filter-expr pager) filter)))
+  (let ((filter (ask "Hide lines matching: ")))
+    (setf (pager-filter-exprs pager)
+	  (if filter (list filter) nil))))
+
+(defun filter-more (pager)
+  (let ((filter (ask "Hide lines also mathing: ")))
+    (when filter
+      (push filter (pager-filter-exprs pager)))))
 
 (defun set-option (pager)
   "Set a pager option. Propmpts for what option to toggle."
@@ -1004,22 +902,22 @@ list containing strings and lists."
       ((#\l #\L)
        (setf (pager-show-line-numbers pager)
 	     (not (pager-show-line-numbers pager)))
-       (message-pause "show-line-numbers is ~:[Off~;On~]"
-		      (pager-show-line-numbers pager)))
+       (tmp-message pager "show-line-numbers is ~:[Off~;On~]"
+		    (pager-show-line-numbers pager)))
       ((#\i #\I)
        (setf (pager-ignore-case pager)
 	     (not (pager-ignore-case pager)))
-       (message-pause "ignore-case is ~:[Off~;On~]"
-		      (pager-ignore-case pager)))
+       (tmp-message pager "ignore-case is ~:[Off~;On~]"
+		    (pager-ignore-case pager)))
       ((#\w #\S) ;; S is for compatibility with less
        (setf (pager-wrap-lines pager)
 	     (not (pager-wrap-lines pager)))
        (display-page pager)
-       (message-pause "wrap-lines is ~:[Off~;On~]"
-		      (pager-wrap-lines pager))
+       (tmp-message pager "wrap-lines is ~:[Off~;On~]"
+		    (pager-wrap-lines pager))
        (refresh))
       (otherwise
-       (message-pause "Unknown option '~a'" (nice-char char))))))
+       (tmp-message pager "Unknown option '~a'" (nice-char char))))))
 
 (defun next-file (pager)
   "Go to the next file in the set of files."
@@ -1321,6 +1219,7 @@ list containing strings and lists."
     (#\escape		. *escape-keymap*)
     (#\:		. read-command)
     (#\&                . filter-lines)
+    (#\*                . filter-more)
     ))
 
 (defparameter *escape-keymap* (build-escape-map *normal-keymap*))
@@ -1542,23 +1441,6 @@ press Control-H then 'k' then the key. Press 'q' to exit this help.
 ;; (defmacro run (&whole whole &optional file-or-files)
 ;;   (declare (ignore file-or-files))
 ;;   `(apply #'pager ',(cdr whole)))
-
-;; @@@
-
-;; (defun cat-file (file)
-;;   (read
-
-;; (defun cat (&optional (file-or-files (pick-file)))
-;;   "Output the file to *standard-output*. Prompt for a file name if one isn't given."
-;;   (when file-or-files
-;;     (cond
-;;       ((streamp file-or-files)
-;;        (page file-or-files))
-;;       ((consp file-or-files)
-;;        (page nil nil file-or-files))
-;;       (t
-;;        (with-open-file (stream file-or-files :direction :input)
-;; 	 (page stream))))))
 
 #+lish
 (lish:defcommand pager ((files pathname :repeating t))

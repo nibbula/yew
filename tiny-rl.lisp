@@ -847,8 +847,7 @@ anything important.")
 (tt-alias tt-home)
 (tt-alias tt-cursor-off)
 (tt-alias tt-cursor-on)
-(tt-alias tt-standout)
-(tt-alias tt-standend)
+(tt-alias tt-standout state)
 (tt-alias tt-underline state)
 (tt-alias tt-beep)
 (tt-alias tt-finish-output)
@@ -861,9 +860,9 @@ anything important.")
   (declare (type line-editor e))
   (tt-cursor-off e)
   (tt-move-to e 5 5)		; The only place we should call this
-  (tt-standout e)
+  (tt-standout e t)
   (apply #'tt-format (cons (line-editor-terminal e) (cons fmt args)))
-  (tt-standend e)
+  (tt-standout e nil)
   (tt-cursor-on e))
 
 (defun log-message (e fmt &rest args)
@@ -1058,6 +1057,7 @@ the current cursor position."
 	(without-messing-up-cursor (e)
 	  (display-buf e point)
 	  (tt-del-char e delete-length)
+	  (log-message e "Smoot ~a ~a ~a" width delete-length (screen-col e))
 	  (when (< (- width delete-length) (screen-col e))
 	    (setf to-delete (- delete-length (- width (screen-col e))))
 	    (tt-down e 1)
@@ -1069,7 +1069,7 @@ the current cursor position."
 	       (tt-down e 1)
 	       (incf (screen-row e))
 	       (tt-erase-to-eol e)
-;	       (log-message e "Smoot ~a" to-delete)
+	       (log-message e "Bloot ~a" to-delete)
 	       (decf to-delete width))))))))
 
 (defun erase-display (e)
@@ -1886,8 +1886,20 @@ is none."
 	  (setf (typeahead e) ta
 		(typeahead-pos e) 0)))))
 
+(defun finish-all-output (e)
+  "Makes all output be in Finish."
+  #+ccl (ccl::auto-flush-interactive-streams) ;; Jiminy Crickets!
+  (finish-output *standard-output*)
+  (finish-output *standard-input*)
+  (finish-output *terminal-io*)
+  (finish-output t)
+  (finish-output)
+  (tt-finish-output e)
+  )
+
 (defun do-prefix (e prompt-str)
   "Output a prefix. The prefix should not span more than one line."
+  (finish-all-output e)
   (tt-write-string e prompt-str)
   (tt-finish-output e)
   (eat-typeahead e)
@@ -1998,6 +2010,8 @@ is none."
 		  (setf (screen-row e) old-row
 			(screen-col e) old-col))))))))
 ;;		(tt-move-to e (screen-row e) (screen-col e))
+
+#|
 
 ;; Slow scrollin' pardner.
 (defparameter *unipose*
@@ -2152,6 +2166,7 @@ is none."
 		    (return)))))
 	(when (not found)
 	  (beep e "unipose ~c ~c unknown" first-ccc second-ccc)))))
+|#
 
 (defun read-key-sequence (e &optional keymap)
   "Read a key sequence from the user. Descend into keymaps.
@@ -2276,9 +2291,25 @@ is none."
     (,(ctrl #\X)	. exchange-point-and-mark)))
 ;  :default-binding #| (beep e "C-x ~a is unbound." cmd |#
 
+(defkeymap *app-key-keymap*
+  `((#\A . :up)
+    (#\B . :down)
+    (#\C . :right)
+    (#\D . :left)
+    ;; Movement keys
+    (#\H . :home)
+    (#\F . :end)
+    ;; Function keys
+    (#\P . :f1)
+    (#\Q . :f2)
+    (#\R . :f3)
+    (#\S . :f4)
+    ))
+
 (defkeymap *escape-raw-keymap*
   `(
-    (#\O	. do-app-key)
+    ;;(#\O	. do-app-key)
+    (#\O	. *app-key-keymap*)
     (#\[	. do-function-key)
     (#\newline  . finish-line)
    ))
@@ -2357,6 +2388,7 @@ is none."
 		  (prompt *default-prompt*)
 		  (output-prompt-func nil)
 		  (completion-func #'complete-symbol)
+		  (string nil)
 		  (in-callback nil)
 		  (out-callback nil)
 		  (debug nil)
@@ -2412,6 +2444,7 @@ Keyword arguments:
     (when editor
       (freshen editor))
     (setf (fill-pointer (buf e)) (point e))
+    #+ccl (setf ccl::*auto-flush-streams* nil)
     (terminal-start (line-editor-terminal e))
 
     ;; Add the new line we're working on.
@@ -2421,6 +2454,11 @@ Keyword arguments:
     ;; Output the prompt
     (setf (prompt e) prompt (prompt-func e) output-prompt-func)
     (do-prompt e (prompt e) (prompt-func e))
+    (when string
+      (without-undo (e)
+	(buffer-insert e 0 string)
+	(setf (point e) (length string))
+	(display-buf e 0)))
 
     ;; Command loop
     (with-slots (quit-flag exit-flag cmd buf last-input terminal debugging) e
@@ -2469,28 +2507,30 @@ Keyword arguments:
 
 (defun read-filename (&key (prompt *default-prompt*))
   "Read a file name."
-  (loop :with filename :and editor = nil
-     :do
-     (setf (values filename editor)
-	   (tiny-rl :prompt prompt
-		    :completion-func #'complete-filename
-		    :context :read-filename
-		    :accept-does-newline nil
-		    :editor editor))
-     :until (probe-file filename)
-     :do (tmp-message editor "File not found.")))
+  (let (filename editor)
+    (loop :do
+       (setf (values filename editor)
+	     (tiny-rl :prompt prompt
+		      :completion-func #'complete-filename
+		      :context :read-filename
+		      :accept-does-newline nil
+		      :editor editor))
+       :until (probe-file filename)
+       :do (tmp-message editor "File not found."))
+    filename))
 
 (defun read-choice (list &key (prompt *default-prompt*))
   "Read a choice from a list."
-  (loop :with item :and editor = nil
-     :do
-     (setf (values item editor)
-	   (tiny-rl :prompt prompt
-		    :completion-func (list-completion-function list)
-		    :context :read-choice
-		    :accept-does-newline nil
-		    :editor editor))
-     :until (position item list :key #'princ-to-string :test #'equal)
-     :do (tmp-message editor "~a is not a valid choice." item)))
+  (let (item editor)
+    (loop :do
+       (setf (values item editor)
+	     (tiny-rl :prompt prompt
+		      :completion-func (list-completion-function list)
+		      :context :read-choice
+		      :accept-does-newline nil
+		      :editor editor))
+       :until (position item list :key #'princ-to-string :test #'equal)
+       :do (tmp-message editor "~a is not a valid choice." item))
+    item))
 
 ;; EOF

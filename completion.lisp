@@ -309,7 +309,7 @@ arguments for that function, otherwise return NIL."
 	     (progn
 	       (if (and (= i expr-number) (not (or past-key past-rest)))
 		   (progn
-		     (tt-standout tty)
+		     (tt-standout tty t)
 		     (setf did-standout t))
 		   (setf did-standout nil))
 	       (typecase s
@@ -334,7 +334,7 @@ arguments for that function, otherwise return NIL."
 		  (write s :stream str :case :downcase :escape nil :pretty nil
 			 :readably nil)))
 	       (when did-standout
-		 (tt-standend tty)))))
+		 (tt-standout tty nil)))))
       (write-char #\) str))))
 
 (defun function-keyword-completion (sym context pos word-start all)

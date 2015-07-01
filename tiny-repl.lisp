@@ -49,17 +49,6 @@
 (defvar *repl-level* -1
   "How many recursive command loops are active.")
 
-(defun shortest-package-nick ()
-  "Find the shortest nickname."
-  (if (package-nicknames *package*)
-      (let ((p nil))
-	(loop with r = most-positive-fixnum
-	      for n in (package-nicknames *package*)
-	      do (if (< (length n) r)
-		     (setf p n)))
-	p)
-      (package-name *package*)))
-
 (defun repl-output-prompt (e &optional (p nil prompt-supplied))
   "Output the prompt. The prompt will look something like:
 (lisp-implementation-type) \":\"

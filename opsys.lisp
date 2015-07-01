@@ -2237,7 +2237,7 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
   (let ((i (1- (length path))))
     (loop :while (and (>= i 0) (char/= *directory-separator* (char path i)))
        :do (decf i))
-    (dlib:dbug "i = ~s~%" i)
+;    (dlib:dbug "i = ~s~%" i)
     (if (eq side :dir)
 	(if (< i 0)
 	    (subseq path 0 0)

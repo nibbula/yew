@@ -24,6 +24,7 @@
    #:dequire
    #:randomize-array
    #:justify-text
+   #:untabify
    #+mop #:describe-class
    #:show-expansion
    #:printenv
@@ -40,10 +41,6 @@
    #:print-columns-sizer
    #:print-size
    #:dir
-   ;; #:abspath
-   ;; #:dirname
-   ;; #:basename
-   ;; #:quote-filename
    #:slurp
    #:unintern-conflicts
    #:show-features
@@ -195,6 +192,23 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 			 "~a~{~<~%" prefix "~1," cols ":;~a~> ~}")
 	  (if omit-first-prefix "" prefix)
 	  (split-sequence separator s :omit-empty t)))
+
+(defun untabify (line &optional (col 0))
+  "Return a new string with all tabs in the LINE to the appropriate number
+of spaces, preserving columns. Assumes that LINE is starting in column COL,
+which defaults to zero."
+  (with-output-to-string (str)
+    (loop
+       :for c :across line
+       :do
+       (if (eql c #\tab)
+           (loop :for i :from 0 :below (- 8 (rem col 8))
+              :do
+              (write-char #\space str)
+              (incf col))
+           (progn
+             (write-char c str)
+             (incf col))))))
 
 ;; This only works with a MOP
 #+mop

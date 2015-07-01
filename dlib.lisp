@@ -40,6 +40,7 @@
    #:resilient-read-line
    #:with-open-file-or-stream
    #:with-lines
+   #:get-lines
    #:safe-read-from-string
    #:*buffer-size*
    #:copy-stream
@@ -59,7 +60,6 @@
    #:alist-to-hash-table
    ;; objects
    #:shallow-copy-object
-   #:with-package
    #:d-add-feature
    #:d-remove-feature
    ;; ccl added it's own version
@@ -78,6 +78,8 @@
    #-lispworks #:with-unique-names
    #:symbolify
    #:keywordify
+   #:with-package
+   #:shortest-package-nick
    ;; debugging
    #:*dbug* #:dbug #:with-dbug #:without-dbug
    #:dump-values
@@ -93,6 +95,7 @@
 )
 (in-package :dlib)
 
+(declaim (optimize (debug 3)))
 ;(declaim (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
 
 ;; @@@ I should really do this with an error type
@@ -926,6 +929,17 @@ never create a new symbol, and return NIL if the symbol doesn't already exist."
                         (find-package ,package))))
     ,@body))
 
+(defun shortest-package-nick (&optional (package *package*))
+  "Find the shortest nickname of PACKAGE."
+  (if (package-nicknames package)
+      (let ((p nil))
+	(loop :with r = most-positive-fixnum
+	   :for n :in (package-nicknames package)
+	   :do (when (< (length n) r)
+		 (setf p n)))
+	p)
+      (package-name package)))
+
 ;; Debugging messages
 ;;
 ;; This is so you can say: (dbug "message ~a~%" foo) in code, and then say
@@ -1059,6 +1073,17 @@ FILE-OR-STREAM can be a stream or a pathname or namestring."
 	     (,line-loop ,stream-var)
 	     (with-open-file (,outer-stream-var ,stream-var)
 	       (,line-loop ,outer-stream-var)))))))
+
+(defun get-lines (file-or-stream)
+  "Return a list of the lines read from FILE-OR-STREAM."
+  (flet ((stream-loop (stream)
+	   (loop :with l
+	      :while (setf l (read-line stream nil nil))
+	      :collect l)))
+    (if (streamp file-or-stream)
+	(stream-loop file-or-stream)
+	(with-open-file (stream file-or-stream)
+	  (stream-loop stream)))))
 
 ;; Muffle the complaint about using &optional and &key.
 #+sbcl (declaim (sb-ext:muffle-conditions style-warning))
