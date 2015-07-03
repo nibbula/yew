@@ -448,9 +448,9 @@ The date part is considered to be the current date."
       (done))))
 
 ;; I know I'm gonna have to end up writing that time lib.
-(defun weeks   (weeks)   (* weeks   #.(* 60 60 24 7)))
-(defun days    (days)    (* days    #.(* 60 60 24)))
-(defun hours   (hours)   (* hours   #.(* 60 60)))
+(defun weeks   (weeks)   (* weeks   (* 60 60 24 7)))
+(defun days    (days)    (* days    (* 60 60 24)))
+(defun hours   (hours)   (* hours   (* 60 60)))
 (defun minutes (minutes) (* minutes 60))
 
 (defmacro do-at (time form)
