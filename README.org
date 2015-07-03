@@ -8,33 +8,38 @@ What I've mostly been up to, is:
 
 As you may know, an easy way to get the requirements is with quicklisp.
 
-Most of the things here are subtly interdependent. And many things are
-repeating stuff now available in other libraries in quicklisp (but perhaps
-not when I started). I would like to remedy that, but it means putting
-things into libraries, perhaps creating whole separate projects, or perhaps
-posting patches and resolving differences with other appropriate libraries.
+Most of the things here are subtly interdependent. And almost everything is
+something that is repeating stuff now available in other libraries in
+quicklisp (but perhaps not when I started). I would like to remedy that, but
+it means putting things into libraries, perhaps creating whole separate
+projects, or perhaps posting patches and resolving differences with other
+appropriate libraries. Typical lazy construction methods.
 
 Some things that are all mushed up in here right now are:
   |---------------+----------------------------------------------------------|
   | dlib          | Basic random pile junk which most other things depend on |
   | dlib-misc     | dlib things which are not essential                      |
-  | dlib-fancy    | dlib things which have more complex dependencies         |
   | dl-list       | The dreaded doubly-linked list                           |
   | stretchy      | Expandable strings and arrays                            |
   | table         | Generic interface tables-like data                       |
   | char-util     | Things relating to characters                            |
+  | fatchar       | Characters with all the fixings, err, I mean attributes. |
   | opsys         | Interface to operating system functions                  |
   | test          | Test running stuff which I even fail use                 |
+  | dtt           | Delimited text tables, aka CSV                           |
   | termios       | Interface to POSIX terminal driver                       |
   | ansiterm      | Functions to do things on ANSI terminals                 |
   | curses        | Interface to the curses library                          |
+  | unipose       | Shabby character composition                             |
+  | grout         | Simple fancy output, for commands                        |
   | completion    | Command line input completion                            |
   | filter-stream | Streams that filter by applying functions                |
   | glob          | Shell pattern matching                                   |
   | keymap        | Storing what keys perform what actions                   |
   | fui           | Fake user interface things, using curses                 |
-  | pager         | Rudimentary file viewer                                  |
-  | puca          | Version control interface                                |
+  | tree-browser  | Tree browser, using FUI.                                 |
+  | pager         | Simple file viewer                                       |
+  | puca          | Very simplistic version control interface                |
   | tiny-debug    | Crappy debugger for tiny-repl                            |
   | tiny-repl     | A shabby REPL that uses tiny-rl                          |
   | tiny-rl       | Buggy line editing                                       |
