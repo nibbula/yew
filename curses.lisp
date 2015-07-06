@@ -99,7 +99,7 @@ Make sure we don't clash with the actual CL-NCURSES.
    #:insstr #:insnstr #:winsstr #:winsnstr #:mvinsstr #:mvinsnstr #:mvwinsstr
    #:mvwinsnstr
    ;; deleting
-   #:delch #:wdelch #:mvdelch #:wmvdelch
+   #:delch #:wdelch #:mvdelch #:mvwdelch
    #:deleteln #:wdeleteln #:insdelln #:winsdelln #:insertln #:winsertln
    ;; tty modes
    #:resetty #:savetty #:reset-shell-mode #:reset-prog-mode #:cbreak #:nocbreak
@@ -730,7 +730,7 @@ application.")
 (defcfun mvdelch :int
   "Move and delete a character."
   (y :int) (x :int))
-(defcfun wmvdelch :int
+(defcfun mvwdelch :int
   "Move and delete a character in the window."
   (win window-ptr) (y :int) (x :int))
 (defcfun deleteln :int
