@@ -2,8 +2,6 @@
 ;; fui.lisp - Fake UI
 ;;
 
-;; $Revision: 1.7 $
-
 (defpackage :fui
   (:documentation "Fake UI")
   (:use :cl :dlib :dlib-misc :stretchy :opsys :char-util :curses :inator)
@@ -246,14 +244,15 @@ foreground FG and background BG."
 ;; - keyampification?
 
 (defun pick-list (the-list &key message by-index sort-p default-value
-		  selected-item (typing-searches t))
+		  selected-item (typing-searches t) multiple)
   "Have the user pick a value from THE-LIST and return it. Arguments:
   MESSAGE         - A string to be displayed before the list.
   BY-INDEX        - If true, return the index number of the item picked.
   SORT-P          - If true sort the list before displaying it.
   DEFAULT-VALUE   - Return if no item is selected.
   SELECTED-ITEM   - Item to have initially selected.
-  TYPING-SEARCHES - True to have alphanumeric input search for the item."
+  TYPING-SEARCHES - True to have alphanumeric input search for the item.
+  MULTIPLE        - True to allow multiple items to be selected."
   (with-curses
     (clear)
     (let* ((c           0)
@@ -271,6 +270,8 @@ foreground FG and background BG."
 	   quit-flag
 	   (top         0)
 	   ttop
+	   mark
+	   msg				; @@@ debug
 	   (search-str   (make-stretchy-string 10)))
       (loop :while (not quit-flag)
 	 :do
@@ -282,7 +283,9 @@ foreground FG and background BG."
 	 (loop :with i = top :and y = ttop :and f = nil
 	    :do
 	    (setf f (elt files i))
-	    (addstr "  ")
+	    (if (and multiple (position i result))
+		(addstr "X ")
+		(addstr "  "))
 	    (when (= i file-line)
 	      (standout)
 	      (setf cur-line (getcury *stdscr*)))
@@ -293,12 +296,13 @@ foreground FG and background BG."
 	    (incf i)
 	    (incf y)
 	    :while (and (< y max-y) (< i (length files))))
-;	 (mvaddstr 20 0 (format nil "file-line = ~s top = ~s max-y = ~s ttop = ~s" file-line top max-y ttop))
+;;;	 (mvaddstr 20 0 (format nil "file-line = ~s top = ~s max-y = ~s ttop = ~s" file-line top max-y ttop))
+;;;	 (mvaddstr 50 0 (format nil "~a ~s | ~a" file-line result msg))
 	 (move cur-line 0)
 	 (setf c (get-char))
 	 (if (and typing-searches
 		  (and (characterp c)
-		       (graphic-char-p c) (not (position c "<>"))))
+		       (graphic-char-p c) (not (position c "<> "))))
 	     (progn
 	       (stretchy-append search-str c)
 	       (loop :for i :from file-line :below max-line
@@ -308,45 +312,66 @@ foreground FG and background BG."
 		 (setf top file-line)))
 	     (progn
 	       (stretchy-truncate search-str)
-	       (case c
-		 ((#\escape #\^G) (setf quit-flag t))
-		 ((#\return #\newline)
-		  (if by-index
-		      (setf result file-line)
-		      (setf result (elt files file-line)))
-		  (setf quit-flag t))
-		 ((#\^N :down)
-		  (when (>= (+ cur-line 1) max-y)
-		    (incf top))
-		  (if (< file-line (1- max-line))
-		      (incf file-line)
-		      (setf file-line 0 top 0)))
-		 ((#\^P :up)
-		  (when (<= file-line top)
-		    (decf top))
-		  (if (> file-line 0)
-		      (decf file-line)
-		      (progn
-			(setf file-line (1- max-line))
-			(setf top (max 0 (- (length files) (- max-y ttop)))))))
-		 ((#\> :end)
-		  ;; 	    (pause (format nil "~d ~d ~d ~d ~d"
-		  ;; 			   file-line max-line top max-y ttop))
-		  (setf file-line (1- max-line))
-		  (setf top (max 0 (- (length files) (- max-y ttop)))))
-		 ((#\< :home)
-		  (setf file-line 0 top 0))
-		 ((#\^F :npage)
-		  (setf file-line (min (1- max-line) (+ file-line page-size))
-			cur-line  (+ top file-line)
-			top       file-line))
-		 ((#\^B :ppage #\b #\B)
-		  (setf file-line (max 0 (- file-line page-size))
-			cur-line  (+ top file-line)
-			top       file-line))
-		 ))))
-      result
-      )))
+	       (cond
+	       	 ((or (eql c (ctrl #\@))
+	       	      (eql c 0))
+	       	  (setf mark file-line
+			msg "Set mark"))
+	       	 (t
+		  (case c
+		    ((#\escape #\^G) (setf quit-flag t))
+		    ((#\return #\newline)
+		     (if multiple
+			 (when (not by-index)
+			   (setf result (mapcar (_ (elt files _)) result)))
+			 (if by-index
+			     (setf result file-line)
+			     (setf result (elt files file-line))))
+		     (setf quit-flag t))
+		    (#\space
+		     (when multiple
+		       (if (position file-line result)
+			   (setf result (delete file-line result))
+			   (push file-line result))))
+		    (#\^X ;; toggle region
+		     (when (and multiple mark)
+		       (loop :for i :from (min mark file-line)
+			  :to (max mark file-line)
+			  :do
+			  (if (position i result)
+			      (setf result (delete i result))
+			      (push i result)))))
+		    ((#\^N :down)
+		     (when (>= (+ cur-line 1) max-y)
+		       (incf top))
+		     (if (< file-line (1- max-line))
+			 (incf file-line)
+			 (setf file-line 0 top 0)))
+		    ((#\^P :up)
+		     (when (<= file-line top)
+		       (decf top))
+		     (if (> file-line 0)
+			 (decf file-line)
+			 (progn
+			   (setf file-line (1- max-line))
+			   (setf top (max 0 (- (length files)
+					       (- max-y ttop)))))))
+		    ((#\> :end)
+		     ;; (pause (format nil "~d ~d ~d ~d ~d"
+		     ;; 		    file-line max-line top max-y ttop))
+		     (setf file-line (1- max-line))
+		     (setf top (max 0 (- (length files) (- max-y ttop)))))
+		    ((#\< :home)
+		     (setf file-line 0 top 0))
+		    ((#\^F :npage)
+		     (setf file-line (min (1- max-line) (+ file-line page-size))
+			   cur-line  (+ top file-line)
+			   top       file-line))
+		    ((#\^B :ppage #\b #\B)
+		     (setf file-line (max 0 (- file-line page-size))
+			   cur-line  (+ top file-line)
+			   top       file-line))))))))
+      result)))
 
 ;; Test scrolling with:
 ;; (fui:pick-list (loop for i from 1 to 60 collect (format nil "~@r~8t~r" i i)))
@@ -596,574 +621,5 @@ waits for a key press and then returns."
 	(clear)
 	(refresh)
 	result)))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Trees
-
-;; These are just for testing:
-(defparameter *opsys-tree*
-  '(opsys
-    (common-lisp
-     (clos))
-    (cffi
-     (common-lisp
-      (clos))
-     (cffi-sys
-      (common-lisp
-       (clos))
-      (alexandria))
-     (babel-encodings
-      (common-lisp
-       (clos))
-      (alexandria
-       (common-lisp
-	(clos)))))))
-
-(defparameter *opsys-simple-tree*
-  '(opsys
-    (cffi
-     (cffi-sys
-      (alexandria))
-     (babel-encodings
-      (alexandria)))))
-
-(defgeneric %print-tree (tree &key max-depth indent level key)
-  (:documentation "The inner part of print-tree which recurses and does all the work. This is probably the only part which needs to be overridden for other tree types."))
-(defmethod %print-tree ((tree list) &key max-depth (indent 2) (level 0) key)
-  (when (or (not max-depth) (< level max-depth))
-    (loop :for n :in tree :do
-       (if (atom n)
-	   (format t "~v,,,va~a~%" (* level indent) #\space ""
-		   (if key (funcall key n) n))
-	   (%print-tree n :level (1+ level)
-			:indent indent :max-depth max-depth :key key)))))
-
-(defun print-tree (tree &key max-depth (indent 2) key)
-  "Print a tree up to a depth of MAX-DEPTH. Indent by INDENT spaces for every level. INDENT defaults to 2. Apply KEY function to each element before printing."
-  (%print-tree tree :max-depth max-depth :indent indent :key key))
-
-#| This is pretty much obsoleced by browse-packages stuff below.
-
-(defvar *pdt-memo* nil
-  "Memoization for the package dependency tree. An alist of (package . dep-tree) which is bound dynamically for each call.")
-
-;; I suppose I could just use make-tree, but this has special stuff to ignore
-;; the common-lisp package.
-(defun %package-dependency-tree (package &key max-depth (depth 0) flat)
-  "Generate a tree of dependencies for PACKAGE, up to a depth of MAX-DEPTH. DEPTH is the current depth in the tree, and FLAT is a flat list of packages encountered to prevent following infinite cycles."
-  (declare
-   (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0))
-   (type (or null fixnum) max-depth)
-   (type fixnum depth)
-   (type package package))
-  (when (and max-depth (> depth max-depth))
-    (return-from %package-dependency-tree nil))
-  (when (assoc package *pdt-memo*)
-    (return-from %package-dependency-tree (cdr (assoc package *pdt-memo*))))
-  (let ((tree '())
-	(deps (package-use-list package)))
-    (push (package-name package) tree)
-    (pushnew (find-package package) flat)
-    (when deps
-      (loop :for p :of-type package :in deps :do
-	 (when (and (not (position p flat)) ; don't follow circular deps
-		    (not (eq (find-package p) (find-package :common-lisp))))
-	   (let ((sub-tree (%package-dependency-tree
-	   		    p :depth (the fixnum (+ depth 1)) :flat flat
-	   		    :max-depth max-depth)))
-	     (when sub-tree
-;;;		   (if (= 1 (length sub-tree))
-;;;		   (push (first sub-tree) tree)
-	       (push sub-tree tree))))))
-    (let ((result (nreverse tree)))
-      (prog1 result
-	(when (not (assoc package *pdt-memo*))
-	  (acons package result *pdt-memo*))))))
-
-(defun package-dependency-tree (package &key max-depth)
-  "Generate a tree of dependencies for PACKAGE, up to a depth of MAX-DEPTH."
-  (let ((*pdt-memo* '()))
-    (%package-dependency-tree package :max-depth max-depth)))
-
-|#
-
-(defun %make-tree (thing func &key max-depth (test #'equal)
-				(depth 0) (flat '()))
-  "Generate a tree for THING, where FUNC is a function (FUNC THING) which
-returns a list of the branches of THING. Makes a tree of up to a depth of
-MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL. DEPTH is
-the current depth in the tree, and FLAT is a flat list of things encountered
-to prevent following infinite cycles."
-  (declare (ignore test))
-  (when (and max-depth (> depth max-depth))
-    (return-from %make-tree nil))
-  (let ((tree '())
-	(branches (funcall func thing)))
-    (push thing tree)
-    (pushnew thing flat)
-    (when branches
-      (loop :for b :in branches :do
-	 (when (not (find b flat)) ; don't follow cycles
-	   (let ((sub-tree (%make-tree
-			    b func :depth (1+ depth) :flat flat
-			    :max-depth max-depth)))
-	     (when sub-tree
-	       (push sub-tree tree))))))
-    (nreverse tree)))
-
-(defun make-tree (thing func &key max-depth (test #'equal))
-  "Generate a tree for THING, where FUNC is a function (FUNC THING) which ~
-returns a list of the brances of THING. Makes a tree of up to a depth of ~
-MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
-  (%make-tree thing func :max-depth max-depth :test test))
-
-;; This is handy for a tree generation function.
-(defun subdirs (dir)
-  "Generating function for filesystem tree starting at DIR."
-    (loop :for d :in (ignore-errors
-		       (read-directory :dir dir :full t :omit-hidden t))
-       :if (eql :dir (dir-entry-type d))
-       :collect (concatenate 'string dir "/" (dir-entry-name d))))
-
-;; Static node
-
-(defclass node ()
-  ((object   :initarg :object   :accessor node-object)
-   (branches :initarg :branches :accessor node-branches)
-   (open     :initarg :open     :accessor node-open))
-  (:default-initargs
-   :object nil
-   :branches nil
-   :open nil
-   )
-  (:documentation "A node in a browseable tree."))
-
-(defun make-node (&rest args &key &allow-other-keys)
-  (apply #'make-instance 'node args))
-
-(defgeneric node-has-branches (node)
-  (:documentation "Return true if the node supposedly has branches."))
-
-(defmethod node-has-branches ((node node))
-  "Return true if the node has branches."
-  ;; Static nodes just check the branches slot.
-  (node-branches node))
-
-;; Dynamic node
-
-(defclass dynamic-node (node)
-  ((func
-    :initarg :func :accessor node-func
-    :documentation "A function that given an OBJECT generates a list of branch~
-objects or nodes."))
-  (:default-initargs
-   :func nil
-   )
-  (:documentation "A dynamic node in a browseable tree. A dynamic node has a~
-function that generates the branches."))
-
-(defun make-dynamic-node (&rest args &key &allow-other-keys)
-  (apply #'make-instance 'dynamic-node args))
-
-(defmethod node-branches ((node dynamic-node))
-;  (dbug "node-branches(dynamic-node)")
-  (if (node-func node)
-      (mapcar #'(lambda (x)
-		  (if (typep x 'node)
-		      x
-		      (make-dynamic-node
-		       :object x :open t :func (node-func node))))
-	      (funcall (node-func node) (node-object node)))
-      nil))
-
-(defmethod node-has-branches ((node dynamic-node))
-  "Return true if the node has branches."
-  ;; Dynamic nodes are optimistic and return true if there's a
-  ;; generating function.
-  (not (null (node-func node))))
-
-(defun make-dynamic-tree (thing func)
-  "Return a dynamic tree for THING, where FUNC is a function (FUNC THING) which returns a list of the branches of THING."
-  (make-dynamic-node :object thing :func func :open t))
-
-;; Dynamic cached node
-
-(defclass cached-dynamic-node (dynamic-node)
-  ((cached
-    :initarg :cached :accessor node-cached
-    :documentation "True if the results of FUNC were already retrieved."))
-  (:default-initargs
-   :cached nil
-   )
-  (:documentation "A dynamic node in a browseable tree. A dynamic node has a
-function that generates the branches. It caches the results of the branch
-generating function, so it will be called only the first time."))
-
-(defun make-cached-dynamic-node (&rest args &key &allow-other-keys)
-  (apply #'make-instance 'cached-dynamic-node args))
-
-(defmethod node-branches ((node cached-dynamic-node))
-;  (dbug "node-branches(cached-dynamic-node)")
-  (if (node-cached node)
-      (slot-value node 'branches)
-      (if (node-func node)
-	  (setf (node-cached node) t
-		(slot-value node 'branches)
-		(mapcar #'(lambda (x) (make-cached-dynamic-node
-				       :object x :open nil
-				       :func (node-func node)
-				       :cached nil))
-			(funcall (node-func node) (node-object node))))
-	  nil)))
-
-(defmethod node-has-branches ((node cached-dynamic-node))
-  "Return true if the node has branches."
-  ;; Cached dynamic nodes are optimistic and return true if there's a
-  ;; generating function and it's not cached, but if it's cached return
-  ;; based on if we have any cached branches.
-  (if (node-cached node)
-      (not (null (node-branches node)))
-      (not (null (node-func node)))))
-
-(defun make-cached-dynamic-tree (thing func)
-  "Return a cached dynmaic tree for THING, where FUNC is a function (FUNC THING) which returns a list of the branches of THING."
-  (make-cached-dynamic-node :object thing :func func :open nil))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defun node-open-p (node)
-  "If it has no branches it's both open and closed."
-  (or (not (node-has-branches node)) (node-open node)))
-
-(defun all-subnodes-open-p (node)
-  (if (not (node-open-p node))
-      nil
-      (loop :for n :in (node-branches node) :do
-	 (when (or (not (node-open-p n))
-		   (not (all-subnodes-open-p n)))
-	   (return-from all-subnodes-open-p nil))))
-  t)
-
-(defvar *map-tree-count* nil
-  "How many nodes we've processed with map-tree.")
-
-(defvar *map-tree-max-count* nil
-  "When to stop processing with map-tree.")
-
-(defun %map-tree (func node)
-  (incf *map-tree-count*)
-  (when (or (not *map-tree-max-count*)
-	    (< *map-tree-count* *map-tree-max-count*))
-    (funcall func node)
-#|    (when dlib:*dbug*
-      (mvaddstr 5 50 (format nil "~a ~a" *map-tree-count* *map-tree-max-count*))
-      (refresh)) |#
-    (mapc #'(lambda (x) (%map-tree func x))
-	  (node-branches node))))
-
-(defun map-tree (func node &key (max-count 1000))
-  (let ((*map-tree-count* 0)
-	(*map-tree-max-count* max-count))
-    (%map-tree func node)))
-
-(defun close-all-subnodes (node)
-  (map-tree #'(lambda (x) (setf (node-open x) nil)) node))
-
-(defun open-all-subnodes (node)
-  (map-tree #'(lambda (x) (setf (node-open x) t)) node))
-
-(defun convert-tree (tree &key (level 0))
-  "Convert a list based TREE to a node based tree. "
-  (if (atom tree)
-      (make-node :object tree
-		 :open nil
-		 :branches nil)
-      (let ((node (make-node :object (car tree)
-			     :open (zerop level))))
-	(setf (node-branches node)
-	      (let ((list-of-rest-of-obj
-		     (if (listp (cdr tree)) (cdr tree) (list (cdr tree)))))
-		(loop :for n :in list-of-rest-of-obj
-		   :collect (convert-tree n :level (1+ level)))))
-	node)))
-
-(defmethod %print-tree ((tree node) &key max-depth (indent 2) (level 0) key)
-  (format t "~v,,,va~a ~:[Closed~;Open~]~%" (* level indent) #\space ""
-	  (if key (funcall key (node-object tree)) (node-object tree))
-	  (node-open tree))
-  (when (or (not max-depth) (< level max-depth))
-    (loop :for n :in (node-branches tree) :do
-       (%print-tree n :level (1+ level)
-		    :indent indent :max-depth max-depth :key key))))
-
-;; These are just dynamic. They have no meaning outside of the dynamic scope
-;; of browse-tree.
-(defparameter *line-index* nil
-  "Array of nodes at a given line.")
-(defparameter *line-count* 0
-  "Count of lines diplayed and valid lines in *line-index*")
-
-(defun normal-format-node (node &key level indent key)
-  (format nil "~v,,,va~c ~a" (* level indent) #\space ""
-	  (if (node-branches node)
-	      (if (node-open node) #\- #\+)
-	      #\space)
-	  (if key (funcall key (node-object node))
-	      (node-object node))))
-
-(defparameter *node-formatter* #'normal-format-node)
-
-(defun display-tree (tree func
-		     &key max-depth (indent 2) key (top 0) (left 0)
-		       (level 0))
-  "Display the tree. Also create the *line-index*."
-  (when (and (>= *line-count* top)
-	     (< *line-count* (+ top (- *lines* 2))))
-    (let ((str (funcall *node-formatter* tree
-			:level level :indent indent :key key)))
-      ;; horizontal scrolling
-      (when (> left 0)
-	(setf str (subseq str (min left (length str)))))
-      ;; clipping to right edge
-      (when (> (length str) (1- *cols*))
-	(setf str (subseq str 0 (- *cols* 1))))
-      (addstr str)
-      (addch (char-code #\newline))))
-  ;; Keep an index of nodes by screen line.
-  (stretchy-set *line-index* *line-count* tree)
-  (incf *line-count*)
-  ;; Recurse and display subtrees
-  (if (and (node-open tree) (node-branches tree))
-      (loop :for n :in (node-branches tree) :do
-	 (funcall func n func :level (1+ level)
-		       :indent indent :max-depth max-depth :key key
-		       :top top :left left))))
-
-(defun display-fat-tree (tree func 
-			 &key max-depth (indent 2) key (top 0) (left 0)
-			   (level 0))
-  "Display the tree. Also create the *line-index*."
-  (when (and (>= *line-count* top)
-	     (< *line-count* (+ top (- *lines* 2))))
-    (let ((str (funcall *node-formatter* tree
-			:level level :indent indent :key key)))
-      (if (> (count #\newline str) 1)
-	  (loop :for line :in (split-sequence #\newline str
-					      :omit-empty t)
-	     :do
-	     (when (> left 0)
-	       (setf line (subseq line (min left (length line)))))
-	     (when (> (length line) (1- *cols*))
-	       (setf line (subseq line 0 (- *cols* 1))))
-	     (addstr line)
-	     (addch (char-code #\newline)))
-	  (progn
-	    ;; horizontal scrolling
-	    (when (> left 0)
-	      (setf str (subseq str (min left (length str)))))
-	    ;; clipping to right edge
-	    (when (> (length str) (1- *cols*))
-	      (setf str (subseq str 0 (- *cols* 1))))
-	    (addstr str)))
-      (addch (char-code #\newline))
-      ))
-  ;; Keep an index of nodes by screen line.
-  (stretchy-set *line-index* *line-count* tree)
-  (incf *line-count*)
-  ;; Recurse and display subtrees
-  (if (and (node-open tree) (node-branches tree))
-      (loop :for n :in (node-branches tree) :do
-	 (funcall func n func :level (1+ level)
-		       :indent indent :max-depth max-depth :key key
-		       :top top :left left))))
-
-;; @@@ another candidate for keymappificationalismization
-(defun browse-tree (tree &optional (display-function #'display-tree))
-  "Look at a tree, with expandable and collapsible branches."
-  (with-curses
-    (when (listp tree)
-      (setf tree (convert-tree tree)))
-    (setf *line-index* (make-stretchy-vector 100))
-    (let ((line 0) (cur tree)
-	  (top 0) (left 0) (height (- *lines* 3))
-;	  (*line-index* (make-stretchy-vector 100))
-;	  (*line-count* 0)
-	  )
-      (declare (special *line-index* *line-count*))
-      (loop :do
-	 (move 0 0) (erase)
-	 (setf *line-count* 0)
-;	 (display-tree tree :top top :left left)
-	 (funcall display-function tree display-function :top top :left left)
-	 (mvaddstr (1- *lines*) 0
-		   (format nil "~a of ~a top=~a" line *line-count* top))
-	 (move (- line top) 0)
-	 (case (get-char)
-	   ((#\q #\Q #.(ctrl #\C)) (loop-finish))
-	   ((#\return #\newline)
-	    (return-from browse-tree (node-object (aref *line-index* line))))
-	   (#\space ; toggle
-	    (setf (node-open cur) (not (node-open cur))))
-	   (#\tab ; cycle
-	    (if (node-open cur)
-		(if (all-subnodes-open-p cur)
-		    (close-all-subnodes cur)
-		    (open-all-subnodes cur))
-	    	(setf (node-open cur) t)))
-	   (#\+		     (setf (node-open cur) t))
-	   (#\-		     (setf (node-open cur) nil))
-	   ((#\n #.(ctrl #\N) :down) (incf line))
-	   ((#\p #.(ctrl #\P) :up)   (decf line))
-	   (#.(ctrl #\F)	     (incf line 15))
-	   (#.(ctrl #\B)	     (decf line 15))
-	   ((#.(ctrl #\V) :npage) (setf line (min *line-count*
-						(+ line (- height 1)))))
-	   (:ppage           (setf line (max 0 (- line (- height 1)))))
-	   (:left	     (decf left 10))
-	   (:right	     (incf left 10))
-	   ((#\< :home)	     (setf line 0))
-	   ((#\> :end)       (setf line (1- *line-count*)))
-	   (#\escape
-	    (case (get-char)
-	      (#\v (setf line (min *line-count* (+ line (- height 1)))))
-	      (t
-	       (beep))))
-	   (t (beep)))
-	 ;; bound checking
-	 (when (< left 0)
-	   (setf left 0))
-#| I don't like this:
-	 ;; wrap around the top and bottom
-	 (when (< line 0)
-	   (setf line (1- *line-count*)))
-	 (when (>= line *line-count*)
-	   (setf line 0))
-|#
-	 ;; clamp line to the top and bottom
-	 (when (< line 0)
-	   (setf line 0))
-	 (when (>= line *line-count*)
-	   (setf line *line-count*))
-	 ;; scrolling past the top and bottom
-	 (when (< line top)
-	   (setf top line))
-	 (when (> line (+ top height))
-	   (incf top (- line (+ top height))))
-	 (setf cur (aref *line-index* line))))))
-
-(defun code-format-node (node &key level indent key)
-  (declare (ignore key))
-  (format nil "~v,,,va~c ~(~s~)" (* level indent) #\space ""
-	  (if (node-branches node)
-	      (if (node-open node) #\- #\+)
-	      #\space)
-	  (node-object node)))
-
-;; This could be the start of something!
-(defun fake-code-browse (&optional (file (pick-file)))
-  "This shows why s-exps are cool."
-  (with-open-file (stm file)
-    (let ((*node-formatter* #'code-format-node))
-      (browse-tree
-       (loop :with exp
-	  :while (setf exp (let ((*read-eval* nil)) (read stm nil nil)))
-	  :collect exp)))))
-
-(defun package-mostly-use-list (pkg)
-  "All packages except the superfluous :COMMON-LISP package."
-  (loop :with name
-     :for p :in (package-use-list pkg)
-     :do (setf name (package-name p))
-     :if (not (equal name "COMMON-LISP"))
-     :collect name))
-
-(defvar *cl-ext-sym* 
-  (let ((lst ()))
-    (do-external-symbols (s :cl lst) (push s lst)))
-  "External symbols in CL package.")
-
-(defun package-contents (package)
-  (flet ((nn (o &optional b) (make-node :object o :branches b)))
-    (let* ((doc (documentation (find-package package) t))
-	   (nicks (package-nicknames package))
-	   (all (set-difference
-		 (let ((lst ()))
-		   (do-symbols (s package lst) (push s lst)))
-		 *cl-ext-sym*))
-	   (external (sort
-		      (let ((lst ()))
-			(do-external-symbols (s package lst) (push s lst)))
-		      #'(lambda (a b) (string< (string a) (string b)))))
-	   (internal (sort (set-difference all external)
-			   #'(lambda (a b) (string< (string a) (string b)))))
-	   (shadow (package-shadowing-symbols package))
-	   contents)
-      (push (nn "Documentation" (list (nn doc))) contents)
-      (when nicks
-	(push (nn "Nicknames"
-		  (loop :for n :in nicks :collect (nn n))) contents))
-      (push (nn "Uses"
-		(loop :for p :in (package-use-list package)
-		   :collect (make-cached-dynamic-node
-			     :object (package-name p)
-			     :func #'package-mostly-use-list
-			     :open nil)))
-	    contents)
-      (push (nn "Used By"
-		(loop for p in (package-used-by-list package)
-		     collect (make-cached-dynamic-node
-			      :object p
-			      :func #'package-used-by-list
-			      :open nil)))
-	    contents)
-      (push (nn (format nil "External Symbols (~d)" (length external))
-		(loop :for e :in external :collect (nn e))) contents)
-      (push (nn (format nil "Internal Symbols (~d)" (length internal))
-		(loop :for e :in internal :collect (nn e))) contents)
-      (when shadow
-	(push (nn (format nil "Shadowing Symbols (~d)" (length shadow))
-		  (loop :for e :in shadow :collect (nn e))) contents))
-      (nreverse contents))))
-
-;; (defun package-contents-tree ()
-;;   "Return a tree browser tree of all packages."
-;;   (make-node
-;;    :object "All Packages"
-;;    :open t
-;;    :branches
-;;    (loop :for p :in (list-all-packages)
-;;       :collect (package-contents p))))
-
-(defun package-contents-tree ()
-  "Return a tree browser tree of all packages."
-  (make-node
-   :object "All Packages"
-   :open t
-   :branches
-   (loop :for p :in (list-all-packages)
-      :collect
-      (make-cached-dynamic-node
-       :object (package-name p)
-       :func #'package-contents
-       :open nil))))
-
-(defun browse-packages ()
-  (browse-tree (package-contents-tree)))
-
-(defun all-package-dependencies-tree ()
-  "Return a tree browser tree of all package dependencies."
-  (make-node
-   :object "All Packages"
-   :open t
-   :branches
-   (loop :for p :in (list-all-packages)
-      :collect (make-cached-dynamic-node
-		:object (package-name p)
-		:func #'package-mostly-use-list
-		:open nil))))
-
-(defun browse-package-dependencies ()
-  "Browse the entire package dependency hierarchy with the tree browser."
-  (browse-tree (all-package-dependencies-tree)))
 
 ;; EOF
