@@ -14,6 +14,6 @@
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :license            "None"
     :long-description   "A user interface for browsing generic trees."
-    :depends-on (:fui)
+    :depends-on (:dlib :dlib-misc :curses :char-util :keymap :fui)
     :components
     ((:file "tree-browser")))

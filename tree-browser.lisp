@@ -10,13 +10,32 @@
 (defpackage :tree-browser
   (:documentation "Browse trees.")
   (:nicknames :tb)
-  (:use :cl :dlib :curses :char-util :keymap #| :fui |#)
+  (:use :cl :dlib :curses :char-util :keymap #| :dlib-misc :fui |#)
   (:export
    #:browse-tree
+   #:node #:node-branches #:node-open #:make-node
+   #:object-node #:node-object #:make-object-node
+   #:node-has-branches
+   #:map-tree
+   #:close-all-subnodes
+   #:open-all-subnodes
+   #:node-open-p
+   #:all-subnodes-open-p
+   #:dynamic-node #:node-func #:make-dynamic-node #:make-dynamic-tree
+   #:cached-dynamic-node #:node-cached #:make-cached-dynamic-node
+   #:make-cached-dynamic-tree
+   #:convert-tree #:print-tree #:make-tree #:subdirs
+   #:fake-code-browse
+   #:fake-browse-project
+   #:browse-package-dependencies
+   #:browse-packages
+   #:browse-lisp
+   #:read-org-mode-file
+   #:!view-org
    ))
 (in-package :tree-browser)
 
-(declaim (optimize (speed 3) (safety 0) (debug 0) (space 3) (compilation-speed 0)))
+;(declaim (optimize (speed 3) (safety 0) (debug 0) (space 3) (compilation-speed 0)))
 
 (defclass node ()
   ((branches
@@ -28,11 +47,17 @@
   (:documentation
    "A generic node in a browseable tree."))
 
+(defun make-node (&rest args &key &allow-other-keys)
+  (apply #'make-instance 'node args))
+
 (defclass object-node (node)
   ((object
     :initarg :object :accessor node-object :initform nil
     :documentation "The object in the node."))
   (:documentation "A tree node with an object."))
+
+(defun make-object-node (&rest args &key &allow-other-keys)
+  (apply #'make-instance 'object-node args))
 
 (defgeneric node-has-branches (node)
   (:documentation "Return true if the node supposedly has branches."))
@@ -59,7 +84,7 @@
     (mapc #'(lambda (x) (%map-tree func x))
 	  (node-branches node))))
 
-(defun map-tree (func node &key (max-count 1000))
+(defun map-tree (func node &key (max-count 10000))
   (let ((*map-tree-count* 0)
 	(*map-tree-max-count* max-count))
     (%map-tree func node)))
@@ -69,6 +94,108 @@
 
 (defun open-all-subnodes (node)
   (map-tree #'(lambda (x) (setf (node-open x) t)) node))
+
+(defun node-open-p (node)
+  "If it has no branches it's both open and closed."
+  (or (not (node-has-branches node)) (node-open node)))
+
+(defun all-subnodes-open-p (node)
+  (if (not (node-open-p node))
+      nil
+      (loop :for n :in (node-branches node) :do
+	 (when (or (not (node-open-p n))
+		   (not (all-subnodes-open-p n)))
+	   (return-from all-subnodes-open-p nil))))
+  t)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Dynamic nodes
+
+(defclass dynamic-node (object-node)
+  ((func
+    :initarg :func :accessor node-func
+    :documentation
+    "A function that given an OBJECT generates a list of branch objects
+or nodes."))
+  (:default-initargs
+   :func nil
+   )
+  (:documentation "A dynamic node in a browseable tree. A dynamic node has a
+function that generates the branches."))
+
+(defun make-dynamic-node (&rest args &key &allow-other-keys)
+  (apply #'make-instance 'dynamic-node args))
+
+(defmethod node-branches ((node dynamic-node))
+  (if (node-func node)
+      (mapcar #'(lambda (x)
+		  (if (typep x 'node)
+		      x
+		      (make-instance (type-of node)
+		       :object x :open t :func (node-func node))))
+	      (funcall (node-func node) (node-object node)))
+      nil))
+
+(defmethod node-has-branches ((node dynamic-node))
+  "Return true if the node has branches."
+  ;; Dynamic nodes are optimistic and return true if there's a
+  ;; generating function.
+  (not (null (node-func node))))
+
+(defun make-dynamic-tree (thing func)
+  "Return a dynamic tree for THING, where FUNC is a function (FUNC THING)
+which returns a list of the branches of THING."
+  (make-dynamic-node :object thing :func func :open t))
+
+;; Dynamic cached node
+
+(defclass cached-dynamic-node (dynamic-node)
+  ((cached
+    :initarg :cached :accessor node-cached
+    :documentation "True if the results of FUNC were already retrieved."))
+  (:default-initargs
+   :cached nil
+   )
+  (:documentation "A dynamic node in a browseable tree. A dynamic node has a
+function that generates the branches. It caches the results of the branch
+generating function, so it will be called only the first time."))
+
+(defun make-cached-dynamic-node (&rest args &key &allow-other-keys)
+  (apply #'make-instance 'cached-dynamic-node args))
+
+(defmethod node-branches ((node cached-dynamic-node))
+  (with-slots (branches cached func object) node
+    (if cached
+	branches
+	(if func
+	    (setf cached t
+		  branches
+		  (mapcar #'(lambda (x)
+			      (if (typep x 'node)
+				  x
+				  (make-instance (type-of node)
+						 :object x :open nil
+						 :func func
+						 :cached nil)))
+			  (funcall func object)))
+	    nil))))
+
+(defmethod node-has-branches ((node cached-dynamic-node))
+  "Return true if the node has branches."
+  ;; Cached dynamic nodes are optimistic and return true if there's a
+  ;; generating function and it's not cached, but if it's cached return
+  ;; based on if we have any cached branches.
+  (if (node-cached node)
+      (not (null (node-branches node)))
+      (not (null (node-func node)))))
+
+(defun make-cached-dynamic-tree (thing func)
+  "Return a cached dynmaic tree for THING, where FUNC is a function
+(FUNC THING) which returns a list of the branches of THING."
+  (make-cached-dynamic-node :object thing :func func :open nil))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; List based trees
 
 (defun convert-tree (tree &key (level 0) (type 'object-node))
   "Convert a list based TREE to a node based tree. "
@@ -87,18 +214,63 @@
 		   :collect (convert-tree n :level (1+ level) :type type))))
 	node)))
 
-(defun node-open-p (node)
-  "If it has no branches it's both open and closed."
-  (or (not (node-has-branches node)) (node-open node)))
+(defgeneric %print-tree (tree &key max-depth indent level key)
+  (:documentation "The inner part of print-tree which recurses and does all
+the work. This is probably the only part which needs to be overridden for
+other tree types."))
+(defmethod %print-tree ((tree list) &key max-depth (indent 2) (level 0) key)
+  (when (or (not max-depth) (< level max-depth))
+    (loop :for n :in tree :do
+       (if (atom n)
+	   (format t "~v,,,va~a~%" (* level indent) #\space ""
+		   (if key (funcall key n) n))
+	   (%print-tree n :level (1+ level)
+			:indent indent :max-depth max-depth :key key)))))
 
-(defun all-subnodes-open-p (node)
-  (if (not (node-open-p node))
-      nil
-      (loop :for n :in (node-branches node) :do
-	 (when (or (not (node-open-p n))
-		   (not (all-subnodes-open-p n)))
-	   (return-from all-subnodes-open-p nil))))
-  t)
+(defun print-tree (tree &key max-depth (indent 2) key)
+  "Print a tree up to a depth of MAX-DEPTH. Indent by INDENT spaces for every level. INDENT defaults to 2. Apply KEY function to each element before printing."
+  (%print-tree tree :max-depth max-depth :indent indent :key key))
+
+(defun %make-tree (thing func &key max-depth (test #'equal)
+				(depth 0) (flat '()))
+  "Generate a tree for THING, where FUNC is a function (FUNC THING) which
+returns a list of the branches of THING. Makes a tree of up to a depth of
+MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL. DEPTH is
+the current depth in the tree, and FLAT is a flat list of things encountered
+to prevent following infinite cycles."
+  (declare (ignore test))
+  (when (and max-depth (> depth max-depth))
+    (return-from %make-tree nil))
+  (let ((tree '())
+	(branches (funcall func thing)))
+    (push thing tree)
+    (pushnew thing flat)
+    (when branches
+      (loop :for b :in branches :do
+	 (when (not (find b flat)) ; don't follow cycles
+	   (let ((sub-tree (%make-tree
+			    b func :depth (1+ depth) :flat flat
+			    :max-depth max-depth)))
+	     (when sub-tree
+	       (push sub-tree tree))))))
+    (nreverse tree)))
+
+(defun make-tree (thing func &key max-depth (test #'equal))
+  "Generate a tree for THING, where FUNC is a function (FUNC THING) which ~
+returns a list of the brances of THING. Makes a tree of up to a depth of ~
+MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
+  (%make-tree thing func :max-depth max-depth :test test))
+
+;; This is handy for a tree generation function.
+(defun subdirs (dir)
+  "Generating function for filesystem tree starting at DIR."
+    (loop :for d :in (ignore-errors
+		       (nos:read-directory :dir dir :full t :omit-hidden t))
+       :if (eql :dir (nos:dir-entry-type d))
+       :collect (concatenate 'string dir "/" (nos:dir-entry-name d))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Browser
 
 (defclass tree-browser ()
   ((quit-flag
@@ -120,7 +292,7 @@
     :initarg :root :accessor root
     :documentation "The root node of the tree.")
    (top
-    :initarg :top :accessor top :initform nil :type (or null integer)
+    :initarg :top :accessor top :initform nil
     :documentation "First node to display.")
    (bottom
     :initarg :bottom :accessor bottom :initform nil :type (or null integer)
@@ -350,6 +522,9 @@ been encountered."
 (defun shift-right ()
   (incf (left *browser*) 10))
 
+(defun shift-beginning ()
+  (setf (left *browser*) 0))
+
 (defun goto-first-node ()
   (with-slots (current root top) *browser*
     (setf current root
@@ -377,6 +552,14 @@ been encountered."
 	   (format nil " open     : ~a" (node-open current))
 	   (format nil " branches : ~a" (node-branches current))
 	   (format nil " parent   : ~a" (get-parent current))))))
+
+(defun next-file ()
+  (when (find-restart 'next-file)
+    (invoke-restart 'next-file)))
+
+(defun previous-file ()
+  (when (find-restart 'previous-file)
+    (invoke-restart 'previous-file)))
 
 (defkeymap *tree-keymap*
     `((#\q		. quit)
@@ -411,10 +594,16 @@ been encountered."
       (:end		. goto-bottom-node)
       (:left		. shift-left)
       (:right	     	. shift-right)
+      (,(ctrl #\A)	. shift-beginning)
       ;; Miscellaneous
       (#\m		. toggle-modeline)
       (,(ctrl #\L)	. redraw)
-      (#\i		. node-info)))
+      (#\i		. node-info)
+      (,(meta-char #\n) . next-file)
+      (,(meta-char #\p) . previous-file)
+      (#\escape		. *tree-escape-keymap*)))
+
+(defparameter *tree-escape-keymap* (build-escape-map *tree-keymap*))
 
 (defun show-message (format-string &rest format-args)
   "Display a formatted message."
@@ -459,23 +648,56 @@ been encountered."
    "Display the normal indentation for a node."))
 
 (defmethod display-indent ((node node) level)
-  "Display the normal indentation for a node."
-  (addstr (format nil "~v,,,va  " (* level (indent *browser*)) #\space "")))
+  "Return the normal indentation for a node."
+  (format nil "~v,,,va  " (* level (indent *browser*)) #\space ""))
 
 (defgeneric display-prefix (node level)
   (:documentation
    "Display the normal indentation and open / close indicator."))
 
 (defmethod display-prefix ((node node) level)
-  "Display the normal indentation and open / close indicator."
-  (addstr
-   (format nil "~v,,,va~c " (* level (indent *browser*)) #\space ""
-	   (if (node-branches node)
-	       (if (node-open node) #\- #\+)
-	       #\space))))
+  "Return the normal indentation and open / close indicator."
+  (format nil "~v,,,va~c " (* level (indent *browser*)) #\space ""
+	  (if (node-branches node)
+	      (if (node-open node) #\- #\+)
+	      #\space)))
+
+(defgeneric display-node-line (node line)
+  (:documentation
+   "Display a line of node output.
+    If you don't use display-node-line to display your content, you should
+    handle the LEFT offset yourself, if you want left/right scrolling."))
+
+(defmethod display-node-line ((node node) line)
+  "Display a line of node output."
+  (with-slots (left) *browser*
+    (let ((len (length line)))
+      (if (>= left len)
+	  (addch (char-code #\newline))
+	  (addstr (subseq line left (min len (+ left *cols*))))))))
+
+(defgeneric display-object (node object level)
+  (:documentation "Display an object in the manner of display-node."))
+
+(defmethod display-object ((node node) object level)
+  "Display an object for a node. The object is printed to a string as
+with PRINC, and indented properly for multi-line objects."
+  (let ((lines (split-sequence #\newline (princ-to-string object))))
+    (when (eq node (current *browser*))
+      (attron +a-bold+))
+    (display-node-line node (s+ (display-prefix node level)
+				(format nil "~a~%" (first lines))))
+    (when (eq node (current *browser*))
+      (attroff +a-bold+))
+    (loop :for l :in (cdr lines) :do
+       (display-node-line node (s+ (display-indent node level)
+				   (format nil "~a~%" l))))))
 
 (defgeneric display-node (node level)
-  (:documentation "Display a node."))
+  (:documentation "Display a node.
+If you make your own display-node method, you can use display-indent, and
+display-prefix to generate line strings, and then use display-node-line, to
+output them."))
 
 (defmethod display-node :before ((node node) level)
   (when (eq node (current *browser*))
@@ -485,16 +707,7 @@ been encountered."
 (defmethod display-node ((node object-node) level)
   "Display an object node. The object is printed to a string as with PRINC,
 and indented properly for multi-line objects."
-  (let ((lines (split-sequence #\newline (princ-to-string (node-object node)))))
-    (when (eq node (current *browser*))
-      (attron +a-bold+))
-    (display-prefix node level)
-    (addstr (format nil "~a~%" (first lines)))
-    (when (eq node (current *browser*))
-      (attroff +a-bold+))
-    (loop :for l :in (cdr lines) :do
-       (display-indent node level)
-       (addstr (format nil "~a~%" l)))))
+  (display-object node (node-object node) level))
 
 (defgeneric display-tree (browser tree level)
   (:documentation "Display a tree brower tree."))
@@ -504,16 +717,17 @@ and indented properly for multi-line objects."
 
 (defmethod display-tree ((browser tree-browser) tree level)
   "Display a tree."
-  (with-slots (#|current current-position left |# top bottom) *browser*
-    (when (< (getcury *stdscr*) bottom)
-      (when (eq tree top)
-	(setf *display-start* t))
-      (when *display-start*
-	(display-node tree level))
-      (if (and (node-open tree) (node-branches tree))
-	  (loop :for n :in (node-branches tree) :do
-	     (set-parent n tree)
-	     (display-tree browser n (1+ level)))))))
+  (with-slots (top bottom) *browser*
+    (let ((y (getcury *stdscr*)))
+      (when (< y bottom)
+	(when (eq tree top)
+	  (setf *display-start* t))
+	(when *display-start*
+	  (display-node tree level))
+	(if (and (node-open tree) (node-branches tree))
+	    (loop :for n :in (node-branches tree) :do
+	       (set-parent n tree)
+	       (display-tree browser n (1+ level))))))))
 
 (defun redraw ()
   (with-slots (top current root) *browser*
@@ -598,7 +812,8 @@ and indented properly for multi-line objects."
 
 (defmethod display-node ((node foo-node) level)
   "Display a foo node."
-  (addstr 
+  (display-node-line
+   node 
    (format nil "~v,,,va~c ~a~%" (* level (indent *browser*)) #\space ""
 	   (if (node-branches node)
 	       (if (node-open node) #\- #\+)
@@ -633,21 +848,12 @@ and indented properly for multi-line objects."
 			:time (nos:unix-to-universal-time
 			       (nos:timespec-seconds birth-time))))
 	       (finish-output str)))))
-      (addstr string))))
+      (display-node-line node string))))
 
 (defun browse-foo ()
   (browse-tree
-   (convert-tree (fui:make-tree "." #'fui::subdirs)
+   (convert-tree (make-tree "." #'subdirs)
 		 :type 'foo-node)))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defclass lisp-node (object-node) ())
-(defclass environment-node (object-node) ())
-(defclass systems-node (object-node) ())
-(defclass packages-node (object-node) ())
-(defclass classes-node (object-node) ())
-(defclass commands-node (object-node) ())
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -754,7 +960,6 @@ and indented properly for multi-line objects."
 ;;     :type 'code-node)))
 
 (defun fake-code-browse-files (&optional files)
-  "This shows why s-exps are cool."
   (browse-tree
    (convert-tree
     (append (list "Files")
@@ -767,5 +972,355 @@ and indented properly for multi-line objects."
 			    (setf exp (safer-read stm))
 			    :collect exp)))))
     :type 'code-node)))
+
+;; This doesn't really work, because we need a reader that can handle
+;; unknown package prefixes and other errors.
+(defun fake-browse-project (&rest files)
+  (let* ((ff (or files '("*.lisp" "*.asd")))
+	 (pp (or (loop :for f :in ff :appending (glob:glob f))
+		 (glob:glob "*"))))
+    (fake-code-browse-files (fui:pick-list pp :multiple t))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Package browsing
+
+(defun package-mostly-use-list (pkg)
+  "All packages except the superfluous :COMMON-LISP package."
+  (loop :with name
+     :for p :in (package-use-list pkg)
+     :do (setf name (package-name p))
+     :if (not (equal name "COMMON-LISP"))
+     :collect name))
+
+(defun all-package-dependencies-tree ()
+  "Return a tree browser tree of all package dependencies."
+  (make-object-node
+   :object "All Packages"
+   :open t
+   :branches
+   (loop :for p :in (list-all-packages)
+      :collect (make-cached-dynamic-node
+		:object (package-name p)
+		:func #'package-mostly-use-list
+		:open nil))))
+
+(defun browse-package-dependencies ()
+  "Browse the entire package dependency hierarchy with the tree browser."
+  (browse-tree (all-package-dependencies-tree)))
+
+(defvar *cl-ext-sym* 
+  (let ((lst ()))
+    (do-external-symbols (s :cl lst) (push s lst)))
+  "External symbols in CL package.")
+
+(defun package-used-by-name-list (package)
+  "Like PACKAGE-USED-BY-LIST but returns package names instead of objects."
+  (mapcar (_ (package-name _))
+	  (package-used-by-list package)))
+
+(defun package-contents (package-in)
+  (when (or (and (typep package-in 'object-node)
+		 (not (find-package (node-object package-in))))
+	    (and (stringp package-in)
+		 (not (find-package package-in))))
+    (return-from package-contents nil))
+  (flet ((nn (o &optional b)
+	   (make-object-node :object o :branches b :open nil)))
+    (let* ((package (or (and (stringp package-in) package-in)
+			(and (typep package-in 'object-node)
+			     (node-object package-in))))
+	   (pkg (find-package package))
+	   (doc (documentation (find-package package) t))
+	   (nicks (package-nicknames package))
+	   (all (set-difference
+		 (let ((lst ()))
+		   (do-symbols (s package lst) (push s lst)))
+		 *cl-ext-sym*))
+	   (external (sort
+		      (let ((lst ()))
+			(do-external-symbols (s package lst) (push s lst)))
+		      #'(lambda (a b) (string< (string a) (string b)))))
+	   (internal (sort
+		      (set-difference
+		       (remove-if
+			(_ (not (eq (symbol-package _) pkg))) all)
+			external)
+			   #'(lambda (a b) (string< (string a) (string b)))))
+	   (shadow (package-shadowing-symbols package))
+	   contents)
+            (push (nn "Documentation" (list (nn doc))) contents)
+      (when nicks
+	(push (nn "Nicknames"
+		  (loop :for n :in nicks :collect (nn n))) contents))
+      (push (nn "Uses"
+		(loop :for p :in (package-use-list package)
+		   :collect (make-cached-dynamic-node
+			     :object (package-name p)
+			     :func #'package-mostly-use-list
+			     :open nil)))
+	    contents)
+      (push (nn "Used By"
+		(loop :for p :in (package-used-by-list package)
+		   :collect (make-cached-dynamic-node
+			     :object (package-name p)
+			     :func #'package-used-by-name-list
+			     :open nil)))
+	    contents)
+      (push (nn (format nil "External Symbols (~d)" (length external))
+		(loop :for e :in external
+		   :collect (nn (if (fboundp e) (s+ e " (F)") e))))
+	    contents)
+      (push (nn (format nil "Internal Symbols (~d)" (length internal))
+		(loop :for e :in internal
+		   :collect (nn (if (fboundp e) (s+ e " (F)") e))))
+	    contents)
+      (when shadow
+	(push (nn (format nil "Shadowing Symbols (~d)" (length shadow))
+		  (loop :for e :in shadow :collect (nn e))) contents))
+      (nreverse contents))))
+
+(defun package-contents-tree ()
+  "Return a tree browser tree of all packages."
+  (make-object-node
+   :object "All Packages"
+   :open t
+   :branches
+   (loop :for p :in (list-all-packages)
+      :collect
+      (make-cached-dynamic-node
+       :object (package-name p)
+       :func #'package-contents
+       :open nil))))
+
+(defun browse-packages ()
+  (browse-tree (package-contents-tree)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defclass environment-node (object-node) ())
+(defmethod display-node ((node environment-node) level)
+  "Display an Lisp image environment node."
+  (let ((str (with-output-to-string (stream)
+	       (dlib-misc:describe-environment stream))))
+    (when (eql (char str (1- (length str))) #\newline)
+      (setf (char str (1- (length str))) #\space))
+    (display-object node str level)))
+
+(defclass system-node (dynamic-node) ())
+(defmethod display-node ((node system-node) level)
+  (let* ((sys (asdf:find-system (node-object node)))
+	 (str (with-output-to-string (*standard-output*)
+		(dlib-misc:describe-system sys))))
+    (when (eql (char str (1- (length str))) #\newline)
+      (setf (char str (1- (length str))) #\space))
+    (display-object node str level)))
+
+(defclass systems-node (cached-dynamic-node) ())
+(defun systems-contents (node)
+  (declare (ignore node))
+  (loop :for s :in (asdf:registered-systems)
+     :collect
+     (make-instance
+      'object-node
+      :object s :open nil
+      :branches (list
+		 (make-instance 'system-node
+				:object s :open nil)))))
+
+(defclass classes-node (cached-dynamic-node) ())
+
+(defun classes-contents (node)
+  (declare (ignore node))
+  )
+
+(defclass commands-node (cached-dynamic-node) ())
+
+(defun commands-contents (node)
+  (declare (ignore node))
+  )
+
+(defun lisp-image-contents (node)
+  (declare (ignore node))
+  (list
+   (make-instance
+    'object-node :object "Environment" :open nil
+    :branches
+    (list
+     (make-instance
+      'environment-node :object "Environment" :open nil :branches nil)))
+   (make-instance
+    'systems-node
+    :object "Systems"
+    :func #'systems-contents
+    :open nil)
+   (make-object-node
+    :object "Packages"
+    :open nil
+    :branches
+    (loop :for p :in (list-all-packages)
+       :collect
+       (make-cached-dynamic-node
+	:object (package-name p)
+	:func #'package-contents
+	:open nil)))
+   (make-instance
+    'classes-node
+    :object "Classes"
+    :func #'classes-contents
+    :open nil)
+   (make-instance
+    'commands-node
+    :object "Commands"
+    :func #'commands-contents
+    :open nil)))
+
+(defclass lisp-node (cached-dynamic-node)
+  ()
+  (:default-initargs
+   :object "Lisp Image"
+   :func #'lisp-image-contents
+   :open t))
+
+(defun browse-lisp ()
+  (browse-tree (make-instance 'lisp-node)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Org mode
+
+(defclass org-node (node)
+  ((heading
+    :initarg :heading :accessor org-node-heading :initform "" :type string
+    :documentation "Node heading.")
+   (text
+    :initarg :text :accessor org-node-text :initform nil
+    :documentation "Text of node."))
+  (:default-initargs
+   :branches nil)
+  (:documentation
+   "Org mdoe node."))
+
+(defparameter *org-colors*
+  `(,+color-white+ ,+color-red+ ,+color-green+ ,+color-yellow+ ,+color-blue+
+    ,+color-magenta+ ,+color-cyan+))
+
+(defmethod display-node ((node org-node) level)
+  "Display an org-node."
+  (let ((fake-level (max 0 (1- level))))
+;;    (declare (ignore fake-level))
+    (with-fg ((elt *org-colors*
+		   (mod level
+			(length *org-colors*))))
+      (display-node-line node (s+ (format nil "~v,,,va "
+					  (* fake-level (indent *browser*))
+					  #\space "")
+				  (if (node-has-branches node)
+				      (if (node-open node) #\- #\+)
+				      (if (org-node-text node)
+					  (if (node-open node) #\- #\+)
+					  #\·))
+				  #\space
+				  (trim (org-node-heading node))
+				  #\newline)))
+    (when (node-open node)
+      (loop :for l :in (reverse (org-node-text node)) :do
+	 (display-node-line node (s+ (format nil "~v,,,va "
+					     (* fake-level (indent *browser*))
+					     #\space "")
+				     "  "
+				     (trim l)
+				     #\newline))))))
+
+(defun get-heading (line)
+  "Return the part after the stars."
+  (let ((start (position-if (_ (char/= _ #\*)) line)))
+    (if (and start (< start (length line)))
+	(subseq line start)
+	"")))
+
+(defun count-depth (line)
+  "Count the number of stars at the beginning of the line."
+  (loop :with i = 0 :and len = (length line)
+     :while (and (< i len) (char= (char line i) #\*))
+     :do (incf i)
+     :finally (return i)))
+
+(defun read-org-mode-file (file)
+  (let* ((root (make-instance 'org-node :heading file))
+	 (cur root)
+	 (parent (list root))
+	 (parent-depth '())
+	 (depth 0)
+	 new)
+    (with-open-file (stream file)
+      (loop :with line
+	 :while (setf line (read-line stream nil nil))
+	 :do
+	 ;; (format t "line = ~w~%" line)
+	 (if (begins-with "*" line)
+	     (let ((new-depth (count-depth line)))
+	       ;; (format t "new-depth = ~a~%" new-depth)
+	       (cond
+		 ((> new-depth depth)
+		  ;; (format t ">~%")
+		  (push cur parent)
+		  (push depth parent-depth)
+		  ;; (format t "parent-depth ~a~%" parent-depth)
+		  (setf new (make-instance 'org-node
+					   :heading (get-heading line))
+			(node-branches cur)
+			(append (node-branches cur) (list new))
+			cur new
+			depth new-depth))
+		 ((= new-depth depth)
+		  ;; (format t "=~%")
+		  (setf new (make-instance 'org-node
+					   :heading (get-heading line))
+			(node-branches (first parent))
+			(append (node-branches (first parent)) (list new))
+			cur new))
+		 ((< new-depth depth)
+		  ;; (format t "<~%")
+		  (loop :do
+		     (pop parent)
+		     ;; (format t "pop ~a~%" (pop parent-depth))
+		     (pop parent-depth)
+		     ;; (format t "parent-depth ~a~%" parent-depth)
+		     :while (and (first parent-depth)
+				 (<= new-depth (first parent-depth))))
+		  (setf new (make-instance 'org-node
+					   :heading (get-heading line))
+			(node-branches (first parent))
+			(append (node-branches (first parent)) (list new))
+			cur new
+			depth new-depth))))
+	     ;; Just a text line
+	     (progn
+	       ;; (format t "text~%")
+	       (push line (org-node-text cur))))))
+    root))
+
+#+lish
+(lish:defcommand view-org
+    (("org-files" pathname :repeating t))
+  "View an Emacs Org mode file with the tree-browser."
+  (let ((i 0) (len (length org-files)) result)
+    (fui:with-curses
+      (loop :while (< i len) :do
+	 (restart-case
+	     (progn
+	       (setf result
+		     (multiple-value-list
+		      (browse-tree (read-org-mode-file
+				    (elt org-files i)))))
+	       (when (= (length result) 1)
+		 (return)))
+	   (next-file ()
+	     :report "Go to the next file."
+	     (when (< i len)
+	       (incf i)))
+	   (previous-file ()
+	     :report "Go to the previous file."
+	     (when (> i 0)
+	       (decf i))))))))
 
 ;; EOF
