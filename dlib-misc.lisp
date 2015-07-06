@@ -13,7 +13,7 @@
 ;; Maybe something like: dlib dlib-1 dlib-2 etc.
 
 (defpackage :dlib-misc
-  (:use :cl :dlib #+mop :mop :opsys)
+  (:use :cl :dlib :opsys #+(or (and clisp mop) cmu) :mop #+sbcl :sb-mop)
   (:documentation
    "More of Dan's generally useful miscellaneous functions.")
   (:export
@@ -25,7 +25,6 @@
    #:randomize-array
    #:justify-text
    #:untabify
-   #+mop #:describe-class
    #:show-expansion
    #:printenv
    #:char-apropos
@@ -37,6 +36,7 @@
    #:print-properties
    #:print-values
    #:print-values*
+   #:print-values-of
    #:print-columns
    #:print-columns-sizer
    #:print-size
@@ -50,10 +50,14 @@
    #:describe-package
    #:describe-printing
    #:describe-reader
+   #:describe-system
+   #:describe-class
    #:autoload
   )
 )
 (in-package :dlib-misc)
+
+#+(or (and clisp mop) sbcl cmu) (d-add-feature :has-mop)
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 1)
 		   (compilation-speed 2)))
@@ -209,30 +213,6 @@ which defaults to zero."
            (progn
              (write-char c str)
              (incf col))))))
-
-;; This only works with a MOP
-#+mop
-(defun describe-class (class &optional (stream *standard-output*))
-  (let ((symb nil))
-    (ctypecase class
-      ((or string keyword)
-       (setf symb (make-symbol (string-upcase class)))
-       (setf class (find-class symb)))
-      (class (setf symb (class-name class)))
-      (symbol (setf symb class
-		    class (find-class class))))
-    (format stream "~a : ~a~%" symb
-	    (documentation symb 'class))
-    (let ((max-width (loop for s in (class-slots class)
-			   maximize
-			   (length (string (slot-definition-name s))))))
-      (loop for s in (class-slots class)
-	    do (format stream "  ~(~va ~a~) ~a ~a~%"
-		       max-width (slot-definition-name s)
-		       (slot-definition-type s)
-		       (aref (string (slot-definition-allocation s)) 0)
-		       (documentation s t)))))
-  (values))
 
 (defun show-expansion (form &optional full)
   "Show a pretty printed macro expansion of the form. If full is true,
@@ -515,6 +495,32 @@ lexical variables."
 	     `(format ,stream "~va  : ~s~%" ,max-len (string-capitalize ',f)
 		      ,snork))))
     `(progn ,@spudgers)))
+
+(defun print-values-of (value-list object &key (stream t) prefix
+					    (value-format "~S"))
+  "Print a vertical list of results of applying functions to OBJECT.
+VALUE-LIST is a list of symbols who are functions of one argument, which can
+be OBJECT. PREFIX is optionally a prefix to remove from symbols in the value
+list before printing. VALUE-FORMAT is a format string with which the value
+is printed. This is useful for printing, e.g. slots of a structure or class."
+  (let* ((fixed-list (if prefix
+			 (mapcar (_ (remove-prefix (string _) (string prefix)))
+				 value-list)
+			 value-list))
+	 (max-len (loop :for f :in fixed-list
+		     :maximize (length (string f))))
+	 (format-string (if value-format
+			    (s+ "~va  : " value-format "~%")
+			    "~va  : ~s~%")))
+    (loop :for f :in value-list :do
+       (format stream format-string
+	       max-len (string-capitalize
+			(if prefix
+			    (remove-prefix (string f) (string prefix))
+			    (string f)))
+	       (if (fboundp f)
+		   (apply f (list object))
+		   (symbol-value f))))))
 
 (defun print-columns-sizer (list &key (columns 80) (stream *standard-output*)
 			     (format-char #\a) prefix suffix smush)
@@ -901,6 +907,54 @@ symbols, :all to show internal symbols too."
   ;; @@@ perhaps should describe the *readtable*, using get-macro-character
   ;; and get-dispatch-macro-character
   (values))
+
+(defun describe-system (system)
+  (let ((sys (asdf:find-system system)))
+    (print-values-of '(asdf:system-description
+		       asdf:system-long-description
+		       asdf:system-long-name
+		       asdf:system-license
+		       asdf:system-source-directory
+		       asdf:system-author
+		       asdf:system-maintainer
+		       asdf:system-mailto
+		       asdf:system-homepage
+		       asdf:system-source-control
+		       asdf:system-depends-on
+		       )
+		     sys
+		     :prefix 'system-)))
+
+;; This only works with a MOP
+(defun describe-class (class &optional (stream *standard-output*))
+  #+has-mop
+  (progn
+    (let ((symb nil))
+      (ctypecase class
+	((or string keyword)
+	 (setf symb (make-symbol (string-upcase class)))
+	 (setf class (find-class symb)))
+	(class (setf symb (class-name class)))
+	(symbol (setf symb class
+		      class (find-class class))))
+      (format stream "~a : ~a~%" symb
+	      (documentation symb 'type))
+      ;; (let ((max-width (loop :for s :in (class-slots class)
+      ;; 			  :maximize
+      ;; 			  (length (string (slot-definition-name s))))))
+	(table:nice-print-table
+	 (loop :for s :in (class-slots class)
+	    :collect (list (slot-definition-name s)
+			   (slot-definition-type s)
+			   (aref (string (slot-definition-allocation s)) 0)
+			   (documentation s t)))
+	 '("Name" "Type" "A" ("Description" :left))))
+    (values))
+    #-has-mop
+    (declare (ignore class stream))
+    #-has-mop    
+    (format stream "No MOP, so I don't know how to describe the class ~s~%"
+	    class))
 
 (defun dir (&optional (pattern "*.*"))
   "Simple portable CL only directory listing."

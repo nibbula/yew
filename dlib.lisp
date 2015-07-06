@@ -50,6 +50,7 @@
    #:replace-subseq
    #:begins-with
    #:ends-with
+   #:remove-prefix
    #:s+
    #:ltrim #:rtrim #:trim
    #:snip-string
@@ -322,6 +323,14 @@
   (let ((pos (search this that :from-end t :test test)))
     (and pos (= pos (- (length that) (length this))))))
 
+;; @@ We should probably make a remove-suffix and get rid of snip-string
+(defun remove-prefix (sequence prefix)
+  "Remove PREFIX from SEQUENCE. SEQUENCE and PREFIX are both sequences.
+If SEQUENCE is is not prefixed by PREFIX, just return SEQUENCE."
+  (if (begins-with prefix sequence)
+      (subseq sequence (length prefix))
+      sequence))
+
 (defun s+ (s &rest rest)
   "Abbreviation for (concatenate 'string ...), but converting non-string
 arguments into strings as with PRINC."
@@ -382,6 +391,7 @@ sequence of characters. CHARACTER-BAG defaults to *WHITESPACE*."
 can be any sequence of characters. CHARACTER-BAG defaults to *WHITESPACE*."
   (ltrim (rtrim string character-bag) character-bag))
 
+;; @@@ Maybe we should remove this in favor of remove-suffix?
 (defun snip-string (string ending &key (test #'eql))
   "Remove ENDING from the end of STRING. If STRING doesn't end in ENDING,
 just return STRING. Characters are compared with TEST which defaults to EQL."
