@@ -14,6 +14,7 @@
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :license            "GPLv3"
     :long-description   "Blah blah blah"
-    :depends-on (:dlib :opsys :glob :dlib-misc :syntax-lisp :ansiterm :cl-ppcre)
+    :depends-on (:dlib :opsys :glob :dlib-misc :syntax-lisp
+		 :terminal :terminal-ansi :cl-ppcre)
     :components
     ((:file "completion")))

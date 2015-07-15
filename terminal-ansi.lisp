@@ -26,15 +26,16 @@
    "Terminal as purely a Lisp output stream. This can't do input or things that
 require terminal driver support."))
 
-(defclass terminal-ansi (terminal)
-  ((file-descriptor
+(defclass terminal-ansi (terminal terminal-ansi-stream)
+  (
+#|   (file-descriptor
     :accessor terminal-file-descriptor
     :initarg :file-descriptor
     :documentation "System file descriptor.")
    (device-name
     :accessor terminal-device-name
     :initarg :device-name
-    :documentation "System device name.")
+    :documentation "System device name.") |#
    (raw-state
     :accessor terminal-raw-state
     :initarg :terminal-raw-state
@@ -47,14 +48,14 @@ require terminal driver support."))
     :documentation
     "A foreign pointer to a POSIX termios struct of the terminal in its ~
      cooked state")
-   (window-rows
+#|   (window-rows
     :accessor terminal-window-rows
     :initarg :window-rows
     :documentation "Number of rows of characters in the window.")
    (window-columns
     :accessor terminal-window-columns
     :initarg :window-columns
-    :documentation "Number of columns of characters in the window.")
+    :documentation "Number of columns of characters in the window.") |#
    )
   (:default-initargs
     :file-descriptor		nil

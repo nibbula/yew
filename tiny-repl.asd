@@ -16,6 +16,6 @@
     :long-description   "Most likely if you're using tiny-rl, this is why.
 If you want to run a lisp without slime, then this makes it usable.
 Unfortunately the debugger is very shabby."
-    :depends-on (:tiny-rl :keymap :ansiterm :dlib :termios)
+    :depends-on (:dlib :keymap :termios :terminal-ansi :tiny-rl)
     :components
     ((:file "tiny-repl")))

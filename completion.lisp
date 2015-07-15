@@ -17,7 +17,8 @@ result position. This allows completion functions to look at whatever they
 want to, and replace whatever they want to, even prior to the starting
 point. When asked for all completions, they return a sequence of strings and
 a count which is the length of the sequence.")
-  (:use :cl :dlib :opsys :glob :dlib-misc :syntax-lisp :ansiterm :cl-ppcre)
+  (:use :cl :dlib :opsys :glob :dlib-misc :syntax-lisp
+        :terminal :terminal-ansi :cl-ppcre)
   (:export
    ;; list
    #:list-completion-function 
@@ -285,8 +286,7 @@ arguments for that function, otherwise return NIL."
 (defun function-help (symbol expr-number)
   "Return a string with help for the function designated by SYMBOL."
   (with-output-to-string (str)
-    (let ((tty (make-instance 'ansiterm:terminal-stream
-			      :output-stream str))
+    (let ((tty (make-instance 'terminal-ansi-stream :output-stream str))
 	  past-key past-rest did-standout)
       (write-char #\( str)
       (tt-color tty :magenta :default)

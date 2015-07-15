@@ -144,7 +144,7 @@
 	   (format output "~&~s~%" (eval `(,value ,@args))) (finish-output output)
 	   t))
 	((matches value "Help")
-	 (let ((cols (ansiterm:terminal-window-columns
+	 (let ((cols (terminal:terminal-window-columns
 		      (tiny-rl::line-editor-terminal
 		       (repl-state-editor state)))))
 	   (dlib-misc:justify-text (format nil "~

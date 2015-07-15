@@ -7,8 +7,8 @@
 
 (defpackage :tiny-debug
   (:documentation "Multi-platform minimal debugger")
-  (:use :cl :dlib :char-util :keymap :ansiterm :tiny-rl :tiny-repl
-	#+sbcl :sb-introspect)
+  (:use :cl :dlib :char-util :keymap :terminal :terminal-ansi
+	:tiny-rl :tiny-repl #+sbcl :sb-introspect)
   (:export
    #:tiny-debug
    #:*default-interceptor*
@@ -706,7 +706,7 @@ the outermost. When entering the debugger the current frame is 0.")
 	line)))
 
 (defun visual ()
-  (with-terminal (tt)
+  (with-terminal (tt 'terminal-ansi)
     (with-saved-cursor (tt)
       (let* ((source-height (truncate (/ (terminal-window-rows tt) 3)))
 	     (stack-height (min 10 source-height))
@@ -760,12 +760,12 @@ the outermost. When entering the debugger the current frame is 0.")
 
 (defun start-visual ()
   (when *visual-mode*
-    (with-terminal (tt)
+    (with-terminal (tt 'terminal-ansi)
       (tt-move-to tt (1- (terminal-window-rows tt)) 0)
       (tt-finish-output tt))))
 
 (defun reset-visual ()
-  (with-terminal (tt)
+  (with-terminal (tt 'terminal-ansi)
     (tt-set-scrolling-region tt nil nil)
     (tt-move-to tt (1- (terminal-window-rows tt)) 0)
     (tt-finish-output tt)))
@@ -912,9 +912,10 @@ so when we get in error in curses we can type at the debugger."
     (funcall (find-symbol (symbol-name '#:endwin) (find-package :curses)))))
 
 ;; @@@ It might be nice if we could avoid this duplication and just call the
-;; one in ansiterm.
+;; one in terminal-ansi.
 (defun try-to-reset-terminal ()
-  "Try to reset the terminal to a sane state so when we get in error in some program that messes with the terminal, we can still type at the debugger."
+  "Try to reset the terminal to a sane state so when we get in error in some
+program that messes with the terminal, we can still type at the debugger."
   (flet ((out (s) (format *terminal-io* "~c~a" #\escape s)))
     ;; First reset the terminal driver to a sane state.
     (termios:sane)

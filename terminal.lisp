@@ -15,6 +15,11 @@
    #:terminal-output-stream
    #:terminal-window-rows
    #:terminal-window-columns
+   #:file-descriptor
+   #:device-name
+   #:output-stream
+   #:window-rows
+   #:window-columns
    #:terminal-get-size
    #:terminal-get-cursor-position
    #:terminal-start
@@ -132,14 +137,14 @@ require terminal driver support."))
 ;; 	    ,@body)
 ;;        (terminal-done ,var))))
 
-(defun make-terminal-stream (stream)
-  (make-instance 'terminal-stream :output-stream stream))
+(defun make-terminal-stream (stream type)
+  (make-instance type :output-stream stream))
 
-(defmacro with-terminal ((var &optional device-name) &body body)
+(defmacro with-terminal ((var type &optional device-name) &body body)
   "Evaluate the body with VAR set to a new terminal. Cleans up afterward."
   `(let ((,var (if ,device-name
-		   (make-instance 'terminal :device-name ,device-name)
-		   (make-instance 'terminal))))
+		   (make-instance ,type :device-name ,device-name)
+		   (make-instance ,type))))
      (unwind-protect
 	  (progn
 	    (terminal-start ,var)

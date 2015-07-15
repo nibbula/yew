@@ -9,12 +9,13 @@
 
 (defsystem tiny-rl
     :name               "tiny-rl"
-    :description        "A tiny readline replacement for ANSI terminals."
+    :description        "A line editor."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :licence            "None"
-    :long-description   "E PROTO 'SUP d00d"
-    :depends-on (:dl-list :stretchy :cffi :opsys :ansiterm :termios
+    :licence            "GPLv3"
+    :long-description   "A line editor which is not so tiny."
+    :depends-on (:dl-list :stretchy :cffi :opsys :termios
+		 :terminal :terminal-ansi :terminal-curses
 		 :completion :dlib :dlib-misc :keymap :char-util :syntax-lisp)
     :components
     ((:file "tiny-rl")))

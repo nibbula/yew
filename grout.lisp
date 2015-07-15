@@ -11,7 +11,7 @@
 
 (defpackage :grout
   (:documentation "Generic Rectilinear Output And Text")
-  (:use :cl :dlib :dlib-misc :opsys :ansiterm)
+  (:use :cl :dlib :dlib-misc :opsys :terminal :terminal-ansi)
   (:export
    #:grout #:grout-stream
    #:dumb #:ansi #:ansi-stream #:slime
@@ -225,13 +225,13 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
   ((term
     :initarg :term :accessor ansi-term
     :documentation "The terminal."))
-  (:documentation "Can do everything in ansiterm package."))
+  (:documentation "Can do a few standard things."))
 
 (defmethod initialize-instance
     :after ((o ansi) &rest initargs &key &allow-other-keys)
   "Initialize a ansi."
   (declare (ignore initargs))
-  (setf (slot-value o 'term) (make-instance 'terminal))
+  (setf (slot-value o 'term) (make-instance 'terminal-ansi))
   (terminal-start (slot-value o 'term)))
 
 (defmethod grout-width ((g ansi))

@@ -22,7 +22,8 @@
 
 (defpackage "TINY-RL"
   (:use :cl :dlib :dlib-misc :keymap :char-util :dl-list :stretchy :cffi
-	:opsys :ansiterm :completion :syntax-lisp)
+	:opsys :terminal :terminal-ansi :terminal-curses
+	:completion :syntax-lisp)
   (:documentation
    "A readline replacement for ANSI terminals.")
   (:export
@@ -357,6 +358,10 @@ anything important.")
     :accessor line-editor-terminal-device-name
     :initarg :terminal-device-name
     :documentation "The name of the terminal device.")
+   (terminal-class
+    :accessor line-editor-terminal-class
+    :initarg :terminal-class
+    :documentation "The class of terminal we are using.")
    (typeahead
     :accessor typeahead
     :initform nil
@@ -412,6 +417,7 @@ anything important.")
     :non-word-chars *default-non-word-chars*
     :prompt *default-prompt*
     :keymap *normal-keymap*
+    :terminal-class 'terminal-ansi
   )
   (:documentation "State for a stupid little line editor."))
 
@@ -422,9 +428,9 @@ anything important.")
   (setf (slot-value e 'terminal)
 	(if (and (slot-boundp e 'terminal-device-name)
 		 (slot-value e 'terminal-device-name))
-	    (make-instance 'terminal
+	    (make-instance (slot-value e 'terminal-class)
 			   :device-name (line-editor-terminal-device-name e))
-	    (make-instance 'terminal)))
+	    (make-instance (slot-value e 'terminal-class))))
   ;; Make a default line sized buffer if one wasn't given.
   (when (or (not (slot-boundp e 'buf)) (not (slot-value e 'buf)))
     (setf (slot-value e 'buf) (make-stretchy-string *initial-line-size*)))
@@ -519,7 +525,7 @@ anything important.")
 
 ;; This can unfortunately really vary between emulations, so we try
 ;; to code for multiple interpretations.
-;; @@@ this or something like it should probably be moved to ansiterm
+;; @@@ this or something like it should probably be moved to terminal-ansi
 (defun read-function-key (e)
   "Read the part of a function key after the ESC [ and return an
  indicative keyword or nil if we don't recognize the key."
@@ -565,7 +571,7 @@ anything important.")
 	 (t
 	  nil))))))
 
-;; @@@ this or something like it should probably be moved to ansiterm
+;; @@@ this or something like it should probably be moved to terminal-ansi
 (defun read-app-key (e)
   "Read the part of an application mode function key after the ESC O and
  return an indicative keyword or nil if we don't recognize the key."
@@ -2396,6 +2402,7 @@ is none."
 		  (editor nil)
 		  (keymap *normal-keymap*)
 		  (terminal-name *terminal-name*)
+		  (terminal-class 'terminal-ansi)
 		  (accept-does-newline t)
 		  (context :tiny))
   "Read a line from the terminal, with line editing and completion.
@@ -2441,7 +2448,8 @@ Keyword arguments:
 		       :debugging debug
 		       :keymap (or keymap *normal-keymap*)
 		       :accept-does-newline accept-does-newline
-		       :terminal-device-name terminal-name))))
+		       :terminal-device-name terminal-name
+		       :terminal-class terminal-class))))
     (when editor
       (freshen editor))
     (setf (fill-pointer (buf e)) (point e))
