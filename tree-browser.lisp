@@ -25,6 +25,13 @@
    #:cached-dynamic-node #:node-cached #:make-cached-dynamic-node
    #:make-cached-dynamic-tree
    #:convert-tree #:print-tree #:make-tree #:subdirs
+   #:tree-browser
+   #:display-indent
+   #:display-prefix
+   #:display-node-line
+   #:display-object
+   #:display-node
+   #:display-tree
    #:fake-code-browse
    #:fake-browse-project
    #:browse-package-dependencies
@@ -35,14 +42,15 @@
    ))
 (in-package :tree-browser)
 
-;(declaim (optimize (speed 3) (safety 0) (debug 0) (space 3) (compilation-speed 0)))
+;;;(declaim (optimize (speed 3) (safety 0) (debug 0) (space 3) (compilation-speed 0)))
+(declaim (optimize (speed 0) (safety 0) (debug 3) (space 1) (compilation-speed 0)))
 
 (defclass node ()
   ((branches
-    :initarg :branches :accessor node-branches
+    :initarg :branches :accessor node-branches :initform nil
     :documentation "Sequence of nodes which are the branches.")
    (open
-    :initarg :open :accessor node-open :initform  :type 
+    :initarg :open :accessor node-open :initform nil :type boolean
     :documentation "True if this node is open."))
   (:documentation
    "A generic node in a browseable tree."))
@@ -67,11 +75,13 @@
   ;; Static nodes just check the branches slot.
   (node-branches node))
 
-(defvar *map-tree-count* nil
+(defvar *map-tree-count* 0
   "How many nodes we've processed with map-tree.")
+(declaim (type integer *map-tree-count*))
 
-(defvar *map-tree-max-count* nil
+(defvar *map-tree-max-count* 0
   "When to stop processing with map-tree.")
+(declaim (type integer *map-tree-count*))
 
 (defun %map-tree (func node)
   (incf *map-tree-count*)
@@ -233,9 +243,9 @@ other tree types."))
 
 (defun %make-tree (thing func &key max-depth (test #'equal)
 				(depth 0) (flat '()))
-  "Generate a tree for THING, where FUNC is a function (FUNC THING) which
-returns a list of the branches of THING. Makes a tree of up to a depth of
-MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL. DEPTH is
+  "Generate a list based tree for THING, where FUNC is a function (FUNC THING)
+which returns a list of the branches of THING. Makes a tree of up to a depth
+of MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL. DEPTH is
 the current depth in the tree, and FLAT is a flat list of things encountered
 to prevent following infinite cycles."
   (declare (ignore test))
@@ -255,19 +265,38 @@ to prevent following infinite cycles."
 	       (push sub-tree tree))))))
     (nreverse tree)))
 
-(defun make-tree (thing func &key max-depth (test #'equal))
+(defun %make-tree-with-type (thing func type &key max-depth (test #'equal)
+					  (depth 0) (flat '()))
+  "Generate a tree for THING, where FUNC is a function (FUNC THING) which
+returns a list of the branches of THING. Makes a tree of up to a depth of
+MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL. DEPTH is
+the current depth in the tree, and FLAT is a flat list of things encountered
+to prevent following infinite cycles. TYPE must be a node or a subclass
+of node."
+  (when (and max-depth (> depth max-depth))
+    (return-from %make-tree-with-type nil))
+  (let ((tree (make-instance type))
+	(branches (funcall func thing)))
+    (pushnew thing flat :test test)
+    (when branches
+      (loop :for b :in branches :do
+	 (when (not (find b flat :test test)) ; don't follow cycles
+	   (let ((sub-tree (%make-tree-with-type
+			    b func type
+			    :depth (1+ depth) :flat flat
+			    :max-depth max-depth)))
+	     (when sub-tree
+	       (push sub-tree (node-branches tree)))))))
+    (setf (node-branches tree) (nreverse (node-branches tree)))
+    tree))
+
+(defun make-tree (thing func &key max-depth (test #'equal) type)
   "Generate a tree for THING, where FUNC is a function (FUNC THING) which ~
 returns a list of the brances of THING. Makes a tree of up to a depth of ~
 MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
-  (%make-tree thing func :max-depth max-depth :test test))
-
-;; This is handy for a tree generation function.
-(defun subdirs (dir)
-  "Generating function for filesystem tree starting at DIR."
-    (loop :for d :in (ignore-errors
-		       (nos:read-directory :dir dir :full t :omit-hidden t))
-       :if (eql :dir (nos:dir-entry-type d))
-       :collect (concatenate 'string dir "/" (nos:dir-entry-name d))))
+  (if type
+      (%make-tree-with-type thing func type :max-depth max-depth :test test)
+      (%make-tree thing func :max-depth max-depth :test test)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Browser
@@ -850,25 +879,33 @@ and indented properly for multi-line objects."
 	       (finish-output str)))))
       (display-node-line node string))))
 
+(defun subdirs (dir)
+  "Generating function for filesystem tree starting at DIR."
+    (loop :for d :in (ignore-errors
+		       (nos:read-directory :dir dir :full t :omit-hidden t))
+       :if (eql :dir (nos:dir-entry-type d))
+       :collect (concatenate 'string dir "/" (nos:dir-entry-name d))))
+
 (defun browse-foo ()
   (browse-tree
    (convert-tree (make-tree "." #'subdirs)
 		 :type 'foo-node)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;
 ;; Code browsing
 
 (defclass code-node (object-node)
   ())
 
 (defmacro with-fg ((color) &body body)
-  `(progn
-     (color-set (fui:color-index ,color +color-black+)
-		(cffi:null-pointer))
-     ,@body
-     (color-set (fui:color-index +color-white+ +color-black+)
-		(cffi:null-pointer))))
+  (with-unique-names (result)
+    `(let (,result)
+       (color-set (fui:color-index ,color +color-black+)
+		  (cffi:null-pointer))
+       (setf ,result (progn ,@body))
+       (color-set (fui:color-index +color-white+ +color-black+)
+		  (cffi:null-pointer))
+       ,result)))
 
 (defmethod display-node ((node code-node) level)
   (addstr
@@ -916,7 +953,8 @@ and indented properly for multi-line objects."
 	 (addstr (format nil "~s~%" (node-object node)))))
       (t
        (let ((*print-case* :downcase))
-	 (addstr (format nil "~s~%" (node-object node))))))))
+	 (addstr (format nil "~s~%" (node-object node)))))))
+  (values))
 
 (defun fake-reader (stream subchar arg)
   "A reader macro which should have no effect on the following form."
@@ -965,6 +1003,7 @@ and indented properly for multi-line objects."
     (append (list "Files")
 	    (loop :for file :in (or files (glob:glob "*.lisp"))
 	       :collect
+	       ;; @@@ (handler-case
 	       (with-open-file (stm file)
 		 (append (list file)
 			 (loop :with exp
@@ -1096,6 +1135,7 @@ and indented properly for multi-line objects."
   (browse-tree (package-contents-tree)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Your whole Lisp image browsing.
 
 (defclass environment-node (object-node) ())
 (defmethod display-node ((node environment-node) level)
@@ -1106,7 +1146,7 @@ and indented properly for multi-line objects."
       (setf (char str (1- (length str))) #\space))
     (display-object node str level)))
 
-(defclass system-node (dynamic-node) ())
+(defclass system-node (object-node) ())
 (defmethod display-node ((node system-node) level)
   (let* ((sys (asdf:find-system (node-object node)))
 	 (str (with-output-to-string (*standard-output*)
@@ -1127,11 +1167,81 @@ and indented properly for multi-line objects."
 		 (make-instance 'system-node
 				:object s :open nil)))))
 
-(defclass classes-node (cached-dynamic-node) ())
+;; Simple class browser:
+;; (tb:browse-tree
+;;  (tb:make-tree (find-class 'standard-object)
+;; 	       (_ (sb-mop:class-direct-subclasses _)))
 
+(defun get-class (c)
+  (typecase c
+    (class
+     c)
+    (symbol
+     (find-class c))
+    (otherwise
+     nil)))
+
+(defmacro mop-call (func &rest args)
+  `(funcall (intern (string-upcase ,func) *mop-package*) ,@args))
+
+(defun subclasses (class)
+  (mop-call "class-direct-subclasses" (get-class class)))
+
+(defun node-subclasses (obj)
+  (loop :for c :in (subclasses (node-object obj))
+     :collect
+     (make-instance 'class-node :object c)))
+
+(defun class-node-contents (class)
+  (when (not (mop-call "class-finalized-p" class))
+    (mop-call "finalize-inheritance" class))
+  (list
+   (make-instance
+    'object-node
+    :object "Slots"
+    :branches
+    (list
+     (make-instance
+      'object-node
+      :object
+      (let ((str (with-output-to-string (*standard-output*)
+		   (dlib-misc:describe-class class))))
+	(when (eql (char str (1- (length str))) #\newline)
+	  (setf (char str (1- (length str))) #\space))
+	str)
+      :open nil)))
+   (make-instance
+    'object-node
+    :object "Subclasses"
+    :branches
+    (loop :for c :in (subclasses class)
+       :collect
+       (make-instance 'class-node :object c)))))
+
+(defclass class-node (cached-dynamic-node)
+  ()
+  (:default-initargs
+   :func #'class-node-contents)
+  (:documentation "A node that shows a class."))
+
+(defmethod display-node ((node class-node) level)
+  ;; (format t "node-object = ~w of type ~a~%" (node-object node)
+  ;; 	  (type-of (node-object node)))
+  ;; (format t "find-class = ~w~%" (get-class (node-object node)))
+  (let* ((klass (get-class (node-object node)))
+	 ;; (str (with-output-to-string (*standard-output*)
+	 ;; 	(dlib-misc:describe-class klass)))
+	 )
+    ;; (when (eql (char str (1- (length str))) #\newline)
+    ;;   (setf (char str (1- (length str))) #\space))
+    (display-object node (string-downcase (class-name klass)) level)))
+    ;; (display-object node str level)))
+
+(defclass classes-node (cached-dynamic-node) ())
 (defun classes-contents (node)
   (declare (ignore node))
-  )
+  (loop :for sc :in (subclasses (find-class 'standard-object))
+     :collect (make-instance 'class-node :object sc :open nil)))
 
 (defclass commands-node (cached-dynamic-node) ())
 
@@ -1164,7 +1274,7 @@ and indented properly for multi-line objects."
 	:func #'package-contents
 	:open nil)))
    (make-instance
-    'classes-node
+    'cached-dynamic-node
     :object "Classes"
     :func #'classes-contents
     :open nil)
@@ -1206,7 +1316,6 @@ and indented properly for multi-line objects."
 (defmethod display-node ((node org-node) level)
   "Display an org-node."
   (let ((fake-level (max 0 (1- level))))
-;;    (declare (ignore fake-level))
     (with-fg ((elt *org-colors*
 		   (mod level
 			(length *org-colors*))))
