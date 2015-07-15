@@ -91,6 +91,7 @@
 ;;   - Tests! TESTS!!! (see opsys-test.lisp)
 ;;   - Fix sub-process code
 ;;   - Put earmuffs on stuff
+;;   - Make all errors be condition-types, not just (error "foo")
 
 ;; (declaim (optimize (speed 3)) (optimize (safety 0))
 ;;   	 (optimize (debug 0)) (optimize (space 0))
@@ -980,7 +981,7 @@
 )
 
 #+os-t-has-strerror-r
-(defcfun ("strerror_r" strerror-r)
+(defcfun (#+linux "__xpg_strerror_r" #-linux "strerror_r" strerror-r)
     :int (errnum :int) (strerrbuf :pointer) (buflen size-t))
 #-os-t-has-strerror-r
 (defcvar ("sys_errlist" sys-errlist) :pointer)
@@ -1006,11 +1007,13 @@
    (format
     :accessor posix-error-format
     :initarg :format
+    :initform nil
     :type string
     :documentation "Format control for error reporting.")
    (arguments
     :accessor posix-error-arguments
     :initarg :arguments
+    :initform nil
     :type list
     :documentation "Format arguments for error reporting."))
   (:report (lambda (c s)
@@ -1789,7 +1792,7 @@ C library function getcwd."
   (let ((cwd (with-foreign-pointer-as-string (s *path-max*)
 	       (foreign-string-to-lisp (real-getcwd s *path-max*)))))
     (if (not cwd)		; hopefully it's still valid
-	(error 'posix-error :error-code *errno*)
+	(error 'posix-error :error-code *errno* :format "getcwd")
 	cwd)))
 
 (defun current-directory ()
@@ -2129,7 +2132,7 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
     (unwind-protect
       (progn
 	(if (null-pointer-p (setf dirp (opendir dir)))
-	  (error (strerror *errno*))
+	  (error 'posix-error :error-code *errno* :format "opendir")
 	  (progn
 	    (with-foreign-objects ((ent '(:struct foreign-dirent))
 				   (ptr :pointer))
@@ -2161,7 +2164,7 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 				 #-os-t-has-d-type (dirent-name ent)
 				 (dirent-name ent)))))))
 	    (when (not (= result 0))
-	      (error (strerror *errno*))))))
+	      (error 'posix-error :format "readdir" :error-code *errno*)))))
       (if (not (null-pointer-p dirp))
 	  (closedir dirp)))
     dir-list))
@@ -3013,9 +3016,21 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
 	    #+darwin :generation #+darwin st_gen
 	    ))))
 
+;; #+linux
+;; (defcfun ("__xstat" completely-fucking-bogus-but-actually-real-stat)
+;;     :int (vers :int) (path :string) (buf (:pointer (:struct foreign-stat))))
+
+;; #+linux
+;; (defun real-stat (path buf)
+;;   (completely-fucking-bogus-but-actually-real-stat 0 path buf))
+
+#+linux
+(defcfun ("stat" real-stat)
+     :int (path :string) (buf (:pointer (:struct foreign-stat))))
+
+#-linux
 (defcfun
     (#+darwin "stat$INODE64"
-     #+linux "__xstat"
      #-(or darwin linux) "stat"
      real-stat)
     :int (path :string) (buf (:pointer (:struct foreign-stat))))
@@ -4204,7 +4219,8 @@ Unix time integer."
       (when (= -1 (setf ret-val (unix-select (1+ nfds)
 					     read-fds write-fds err-fds
 					     tv)))
-	(error "Select failed ~a" (strerror *errno*)))
+	(error 'posix-error :error-code *errno*
+	       :format "Select failed ~a"))
 ;      (format t "return = ~d~%" ret-val)
       (when (not (= 0 ret-val))
 	(setf results
@@ -4315,7 +4331,7 @@ Unix time integer."
 		 (format t "fd[~d] = ~a ~x ~x~%" i fd events revents)))
       (format t "poll(~a,~d,~d)~%" in-fds nfds timeout)
       (when (= -1 (setf ret-val (unix-poll in-fds nfds timeout)))
-	(error "Poll failed ~a" (strerror *errno*)))
+	(error 'posix-error :format "Poll failed ~a" :error-code *errno*))
       (format t "return = ~d~%" ret-val)
       (when (not (= 0 ret-val))
 	(setf results

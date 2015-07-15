@@ -24,13 +24,6 @@
    #:do-menu
    #:menu-load
    #:display-text
-   #:print-tree
-   #:package-dependency-tree
-   #:subdirs
-   #:make-tree
-   #:browse-tree
-   #:browse-packages
-   #:browse-package-dependencies
    ))
 (in-package :fui)
 
@@ -266,6 +259,7 @@ foreground FG and background BG."
 	   (max-y       (1- curses:*lines*))
 	   (page-size   (- max-y 2))
 	   (result      default-value)
+	   second-result
 	   cur-line
 	   quit-flag
 	   (top         0)
@@ -327,7 +321,8 @@ foreground FG and background BG."
 			 (if by-index
 			     (setf result file-line)
 			     (setf result (elt files file-line))))
-		     (setf quit-flag t))
+		     (setf quit-flag t
+			   second-result (eq c #\newline)))
 		    (#\space
 		     (when multiple
 		       (if (position file-line result)
@@ -371,7 +366,7 @@ foreground FG and background BG."
 		     (setf file-line (max 0 (- file-line page-size))
 			   cur-line  (+ top file-line)
 			   top       file-line))))))))
-      result)))
+      (values result second-result))))
 
 ;; Test scrolling with:
 ;; (fui:pick-list (loop for i from 1 to 60 collect (format nil "~@r~8t~r" i i)))
@@ -459,9 +454,8 @@ foreground FG and background BG."
 		    (pick-directories))
   "Have the user choose a file."
   ;;@@@ to allow choosing directories instead of going to them
-  (declare (ignore pick-directories))
   (let* ((dir directory)
-	 files file-list filename)
+	 files file-list filename msg did-dir)
     (flet ((generate-list ()
 	     (setf files
 		   (loop :for file :in (nos:read-directory
@@ -477,8 +471,9 @@ foreground FG and background BG."
 	  (loop :with done = nil
 	     :while (not done)
 	     :do
-	     (setf message (format nil "~a~%~%" dir))
-	     (setf filename (pick-list file-list :sort-p t :message message))
+	     (setf msg (format nil "~@[~a~%~]~a~%" message dir))
+	     (setf (values filename did-dir)
+		   (pick-list file-list :sort-p t :message msg))
 	     (cond
 	       ;; picked up level
 	       ((and filename (equal " [Up..]" filename))
@@ -486,7 +481,8 @@ foreground FG and background BG."
 		(generate-list))
 	       ;; picked a directory
 	       ((and filename
-		     (char= #\/ (char filename (1- (length filename)))))
+		     (char= #\/ (char filename (1- (length filename))))
+		     (and (not pick-directories) (not did-dir)))
 		(setf dir (concatenate 'string dir "/" filename))
 		(generate-list))
 	       ;; other files
@@ -621,5 +617,45 @@ waits for a key press and then returns."
 	(clear)
 	(refresh)
 	result)))
+
+#|
+(defstruct progress-bar
+  win
+  width
+  height)
+
+(defun progress-bar (title &key message)
+  "Display a progress bar in a pop up window."
+  (with-curses
+    (let* ((mid (truncate (/ *cols* 2)))
+	   (width (min (- *cols* 6)
+		       (+ 4 (max 50 (length message)))))
+	   (height (min (+ 4 (+ 5))
+			(- *lines* 4)))
+	   (xpos   (truncate (- mid (/ width 2))))
+	   (win    (newwin height width 3 xpos))
+	   (bar    (make-progress-bar :win win :width width :height height)))
+      (box win 0 0)
+      (wcentered win width 0 title)
+      (mvwaddstr win 1 2 message)
+      (mvwaddstr win 2 2 (format nil ""))
+      (refresh)
+      (wrefresh w)
+      result)))
+
+(defun progress-bar-update (bar percent &optional status)
+  (with-slots (win) bar
+    (mvwaddstr win 1 2 message)
+    (mvwaddstr win 2 2 (format nil ""))
+    (refresh)
+    (wrefresh win)))
+
+(defun progress-bar-done (bar)
+  (with-slots (win) bar
+    (delwin w)
+  (delwin w)
+  (clear)
+  (refresh))
+|#
 
 ;; EOF

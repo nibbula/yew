@@ -1889,11 +1889,12 @@ is none."
 (defun finish-all-output (e)
   "Makes all output be in Finish."
   #+ccl (ccl::auto-flush-interactive-streams) ;; Jiminy Crickets!
-  (finish-output *standard-output*)
-  (finish-output *standard-input*)
-  (finish-output *terminal-io*)
-  (finish-output t)
-  (finish-output)
+  (when (not (getenv "EMACS"))		      ; XXX so wrong
+    (finish-output *standard-output*)
+    (finish-output *standard-input*)
+    (finish-output *terminal-io*)
+    (finish-output t)
+    (finish-output))
   (tt-finish-output e)
   )
 

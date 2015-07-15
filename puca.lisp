@@ -773,7 +773,7 @@ for the command-function).")
 (defun make-standalone (&optional (name "puca"))
   "FUFKFUFUFUFUFF"
   #+sbcl (sb-ext:save-lisp-and-die name :executable t
-				   :toplevel #'puca:puca)
+				   :toplevel #'puca)
   #+clisp (saveinitmem name :executable t :quiet t :norc t
 		       :init-function #'puca:puca)
   #-(or sbcl clisp) (declare (ignore name))

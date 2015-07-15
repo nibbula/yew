@@ -2,8 +2,6 @@
 ;; dlib-misc.lisp - Dan's library of miscellaneous useful functions.
 ;;
 
-;; $Revision: 1.17 $
-
 ;; See dlib.lisp for the most essential stuff.
 ;; This is for things that are nice, but not essential.
 ;;
@@ -13,7 +11,8 @@
 ;; Maybe something like: dlib dlib-1 dlib-2 etc.
 
 (defpackage :dlib-misc
-  (:use :cl :dlib :opsys #+(or (and clisp mop) cmu) :mop #+sbcl :sb-mop)
+  (:use :cl :dlib :opsys
+	#+(or (and clisp mop) cmu) :mop #+sbcl :sb-mop #+gcl :pcl)
   (:documentation
    "More of Dan's generally useful miscellaneous functions.")
   (:export
@@ -57,7 +56,7 @@
 )
 (in-package :dlib-misc)
 
-#+(or (and clisp mop) sbcl cmu) (d-add-feature :has-mop)
+#+(or (and clisp mop) sbcl cmu gcl) (d-add-feature :has-mop)
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 1)
 		   (compilation-speed 2)))
@@ -913,6 +912,7 @@ symbols, :all to show internal symbols too."
     (print-values-of '(asdf:system-description
 		       asdf:system-long-description
 		       asdf:system-long-name
+		       asdf:component-version
 		       asdf:system-license
 		       asdf:system-source-directory
 		       asdf:system-author
@@ -942,13 +942,15 @@ symbols, :all to show internal symbols too."
       ;; (let ((max-width (loop :for s :in (class-slots class)
       ;; 			  :maximize
       ;; 			  (length (string (slot-definition-name s))))))
-	(table:nice-print-table
-	 (loop :for s :in (class-slots class)
-	    :collect (list (slot-definition-name s)
-			   (slot-definition-type s)
-			   (aref (string (slot-definition-allocation s)) 0)
-			   (documentation s t)))
-	 '("Name" "Type" "A" ("Description" :left))))
+      (when (not (class-finalized-p class))
+	(finalize-inheritance class))
+      (table:nice-print-table
+       (loop :for s :in (class-slots class)
+	  :collect (list (slot-definition-name s)
+			 (slot-definition-type s)
+			 (aref (string (slot-definition-allocation s)) 0)
+			 (documentation s t)))
+       '("Name" "Type" "A" ("Description" :left))))
     (values))
     #-has-mop
     (declare (ignore class stream))

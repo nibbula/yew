@@ -2,8 +2,6 @@
 ;; dlib.lisp - Dan's utils of redundant Doom.
 ;;
 
-;; $Revision: 1.37 $
-
 ;; These are mostly solving problems that have already been solved.
 ;; But it's mostly stuff that I need just to start up.
 ;; Try to keep this minimal. Don't add any dependencies.
@@ -13,7 +11,7 @@
 
 (defpackage :dlib
   (:use :common-lisp
-	;; We must have the MOP motherfuckers!!! Don't ever drop the MOP!
+	;; We must have the MOP!!! Don't ever drop the MOP!
 	#+mop :mop
 	#+sbcl :sb-mop
 	#+cmu :pcl
@@ -51,9 +49,9 @@
    #:begins-with
    #:ends-with
    #:remove-prefix
+   #:remove-suffix
    #:s+
    #:ltrim #:rtrim #:trim
-   #:snip-string
    #:join
    #-clisp #:doseq
    ;; lists
@@ -61,6 +59,7 @@
    #:alist-to-hash-table
    ;; objects
    #:shallow-copy-object
+   #:*mop-package*
    #:d-add-feature
    #:d-remove-feature
    ;; ccl added it's own version
@@ -148,7 +147,8 @@
   #+ecl (si::getenv s)
   #+excl (sys::getenv s)
   #+lispworks (hcl:getenv s)
-  #-(or clisp sbcl openmcl cmu ecl excl lispworks)
+  #+gcl (system:getenv s)
+  #-(or clisp sbcl openmcl cmu ecl excl lispworks gcl)
   (missing-implementation 'd-getenv))
 
 ;; Compare functions:
@@ -323,13 +323,20 @@
   (let ((pos (search this that :from-end t :test test)))
     (and pos (= pos (- (length that) (length this))))))
 
-;; @@ We should probably make a remove-suffix and get rid of snip-string
-(defun remove-prefix (sequence prefix)
+(defun remove-prefix (sequence prefix &key (test #'eql))
   "Remove PREFIX from SEQUENCE. SEQUENCE and PREFIX are both sequences.
 If SEQUENCE is is not prefixed by PREFIX, just return SEQUENCE."
-  (if (begins-with prefix sequence)
+  (if (begins-with prefix sequence :test test)
       (subseq sequence (length prefix))
       sequence))
+
+(defun remove-suffix (sequence suffix &key (test #'eql))
+  "Remove SUFFIX from the end of SEQUENCE. If SEQUENCE doesn't end in SUFFIX,
+just return SEQUENCE. Elements are compared with TEST which defaults to EQL."
+  (let ((pos (search suffix sequence :from-end t :test test)))
+    (if (and pos (= pos (- (length sequence) (length suffix))))
+	(subseq sequence 0 pos)
+	sequence)))
 
 (defun s+ (s &rest rest)
   "Abbreviation for (concatenate 'string ...), but converting non-string
@@ -337,7 +344,7 @@ arguments into strings as with PRINC."
   (labels ((as-string (s) (if (stringp s) s (princ-to-string s))))
     (apply #'concatenate 'string (as-string s) (mapcar #'as-string rest))))
 
-(defparameter *ascii-whitespace* #(#\space #\tab #\newline #\return #\vt)
+(defparameter *ascii-whitespace* #(#\space #\tab #\newline #\return #-gcl #\vt)
   "Characters considered whitespace in ASCII.")
 
 ;; I got this from wikipedia so it's probably not reliable. We should
@@ -391,15 +398,6 @@ sequence of characters. CHARACTER-BAG defaults to *WHITESPACE*."
 can be any sequence of characters. CHARACTER-BAG defaults to *WHITESPACE*."
   (ltrim (rtrim string character-bag) character-bag))
 
-;; @@@ Maybe we should remove this in favor of remove-suffix?
-(defun snip-string (string ending &key (test #'eql))
-  "Remove ENDING from the end of STRING. If STRING doesn't end in ENDING,
-just return STRING. Characters are compared with TEST which defaults to EQL."
-  (let ((pos (search ending string :from-end t :test test)))
-    (if (and pos (= pos (- (length string) (length ending))))
-	(subseq string 0 pos)
-	string)))
-
 ;; I think I will regret this.
 (defgeneric join (this that &key &allow-other-keys)
   (:documentation "Join this to that."))
@@ -446,6 +444,35 @@ basically the reverse of SPLIT-SEQUENCE."
   (loop :for i :in alist
 	:do (setf (gethash (car i) table) (cdr i)))
   table)
+
+;; Objects
+
+(defvar *mop-package*
+  #+mop :mop
+  #+sbcl :sb-mop
+  #+(or cmu gcl) :pcl
+  #+ccl :ccl
+  #+lispworks :hcl
+  #-(or mop sbcl cmu ccl lispworks gcl) (error "GIVE ME MOP!!")
+  "The package in which the traditional Meta Object Protocol resides.")
+
+(defun slot-documentation (slot-def)
+  "Return the documentation string for a slot as returned by something like
+MOP:CLASS-SLOTS."
+  (declare (ignorable slot-def))
+  #+sbcl (sb-pcl::%slot-definition-documentation slot-def)
+  #-sbcl (missing-implementation 'slot-documentation))
+
+(defun shallow-copy-object (original)
+  "Copy an object (a.k.a class) shallowly, i.e. just set the slots in the copy,
+to the same value as the slots in the original."
+  (let* ((class (class-of original))
+         (copy (allocate-instance class)))
+    (dolist (slot (mapcar #'slot-definition-name (class-slots class)))
+      (when (slot-boundp original slot)
+        (setf (slot-value copy slot)
+              (slot-value original slot))))
+    copy))
 
 ;; I know this is a ruse, but it makes me feel better.
 ;; Also, without good optimization, it could be code bloating.
@@ -884,24 +911,6 @@ A utility for debugging DEBUG-FUNCTION-ARGLIST."
   #+lispworks (let ((args (lw:function-lambda-list fun)))
 		(and (listp args) (strings-to-symbols args)))
   #-(or sbcl ccl cmu lispworks) (function-lambda-list fun))
-
-(defun slot-documentation (slot-def)
-  "Return the documentation string for a slot as returned by something like
-MOP:CLASS-SLOTS."
-  (declare (ignorable slot-def))
-  #+sbcl (sb-pcl::%slot-definition-documentation slot-def)
-  #-sbcl (missing-implementation 'slot-documentation))
-
-(defun shallow-copy-object (original)
-  "Copy an object (a.k.a class) shallowly, i.e. just set the slots in the copy,
-to the same value as the slots in the original."
-  (let* ((class (class-of original))
-         (copy (allocate-instance class)))
-    (dolist (slot (mapcar #'slot-definition-name (class-slots class)))
-      (when (slot-boundp original slot)
-        (setf (slot-value copy slot)
-              (slot-value original slot))))
-    copy))
 
 (defmacro with-unique-names (names &body body)
   "Bind each symbol in NAMES to a unique symbol and evaluate the BODY.

@@ -6,8 +6,6 @@
 
 ;; TODO:
 ;;  - syntax highlighting
-;;  - grotty & color processing
-;;  - remove & transform lines
 ;;  - simpile HTML rendering
 ;;  - big stream issues?
 
@@ -1404,10 +1402,10 @@ q - Abort")
       (t
        (let (stream suspended)
 	 (unwind-protect
-	   (progn
-	     (setf stream (open (quote-filename file-or-files)
-				    :direction :input)
-		   suspended (page stream)))
+	    (progn
+	      (setf stream (open (quote-filename file-or-files)
+				 :direction :input)
+		    suspended (page stream)))
 	   (when (and stream (not suspended))
 	     (close stream))))))))
 

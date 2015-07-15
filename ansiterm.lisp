@@ -252,7 +252,7 @@ require terminal driver support."))
 (defmethod tt-slurp ((tty terminal))
   (tty-slurp (terminal-file-descriptor tty)))
 
-(defmethod tty-slurp (tty)
+(defun tty-slurp (tty)
   "Read until EOF. Return a string of the results. TTY is a file descriptor."
   (let* ((size (nos:memory-page-size))
 	 (result (make-array size
