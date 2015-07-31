@@ -1240,21 +1240,21 @@ defaults to character) with the contents of FILE-OR-STREAM."
 		 (read-sequence buffer stream)
 		 (setf result buffer))
 	       (progn
-		 ;; Read in chunks an write to a string.
+		 ;; Read in chunks and write to a string.
 		 (setf len *slurp-buffer-size*
 		       buffer (make-array len
 					  :element-type
-					  (stream-element-type stream)))
-		 (with-output-to-string (str nil
-					 :element-type
-					 (stream-element-type stream))
-		   (loop :do
-		      (setf pos (read-sequence buffer stream))
-		      (when (> pos 0)
-			(write-sequence buffer str :end pos))
-		      :while (= pos len))))))
-      (if close-me
-	  (close stream)))
+					  (stream-element-type stream))
+		       result
+		       (with-output-to-string
+			   (str nil :element-type (stream-element-type stream))
+			 (loop :do
+			    (setf pos (read-sequence buffer stream))
+			    (when (> pos 0)
+			      (write-sequence buffer str :end pos))
+			    :while (= pos len)))))))
+      (when close-me
+	(close stream)))
     result))
 
 ;; End
