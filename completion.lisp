@@ -3,7 +3,6 @@
 ;;
 
 ;; TODO:
-;;   - files with spaces in filename-completion
 ;;   - finish dictionary completion
 ;;   - more languageishnessification
 
@@ -597,7 +596,10 @@ defaults to the current package. Return how many symbols there were."
 		   word :package pack :external external))
 	      (let ((sym (symbol-whose-args-we-are-in context pos)))
 		(dbug "snoopy ~a~%" pos)
-		(function-keyword-completion sym context pos word-start nil))))
+		(multiple-value-bind (completion unique)
+		    (function-keyword-completion sym context pos
+						 word-start nil)
+		  (values completion word-start unique)))))
 	(if all
 	    (if (and (= (length word) 0)
 		     (setf result (try-symbol-help context pos)))
