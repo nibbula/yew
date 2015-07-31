@@ -2,8 +2,6 @@
 ;;; opsys.lisp - Interface to operating systems
 ;;;
 
-;;; $Revision: 1.28 $
-
 ;; This is a thin layer over basic operating system functions which
 ;; are not included in Common Lisp. The goal would be to have the same
 ;; interface supported on all operating systems and implementations.
@@ -190,6 +188,16 @@
    #:getgrent
    #:endgrent
 
+   ;; user login accounting
+   #:utmpx #:utmpx-user #:utmpx-id #:utmpx-line #:utmpx-pid #:utmpx-type
+   #:utmpx-tv #:utmpx-host
+   #:endutxent
+   #:getutxent
+   #:getutxid
+   #:getutxline
+   #:pututxline
+   #:setutxent
+   
    ;; directories
    #:*directory-separator*
    #:change-directory
@@ -530,6 +538,18 @@
   "Time for timer."
   (tv_sec	time-t)
   (tv_usec	suseconds-t))
+
+(defstruct timeval
+  "Time for timer."
+  seconds
+  micro-seconds)
+
+(defun convert-timeval (timeval)
+  (if (and (pointerp timeval) (null-pointer-p timeval))
+      nil
+      (with-foreign-slots ((tv_sec tv_usec) timeval (:struct foreign-timeval))
+	(make-timeval :seconds tv_sec
+		      :micro-seconds tv_usec))))
 
 #+not ; old darwin?
 (defcstruct foreign-rusage
@@ -1720,6 +1740,138 @@ Return nil for foreign null pointer."
   (if name
       (group-entry-gid (getgrnam name))
       (getgid)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Login/accounting database
+
+(defconstant +UTX-EMPTY+           0 "No valid user accounting information.")
+(defconstant +UTX-RUN-LVL+         1 "Run level. For Compatibility, not used.")
+(defconstant +UTX-BOOT-TIME+	   2 "Time of a system boot.")
+(defconstant +UTX-OLD-TIME+        3 "Time before system clock change.")
+(defconstant +UTX-NEW-TIME+        4 "Time after system clock change.")
+(defconstant +UTX-INIT-PROCESS+    5 "A process spawned by init(8).")
+(defconstant +UTX-LOGIN-PROCESS+   6 "The session leader of a logged-in user.")
+(defconstant +UTX-USER-PROCESS+    7 "A user process.")
+(defconstant +UTX-DEAD-PROCESS+    8 "A session leader exited.")
+(defconstant +UTX-ACCOUNTING+      9)
+(defconstant +UTX-SIGNATURE+       10)
+(defconstant +UTX-SHUTDOWN-TIME+   11 "Time of system shutdown (extension)")
+(defconstant +UTMPX-AUTOFILL-MASK+ #x8000
+  "Fill in missing data.")
+(defconstant +UTMPX-DEAD-IF-CORRESPONDING-MASK+ #x4000
+  "Only if existing live one.")
+
+(defparameter +utmpx-type+
+  #(:EMPTY :RUN-LVL :BOOT-TIME :OLD-TIME :NEW-TIME :INIT-PROCESS :LOGIN-PROCESS
+    :USER-PROCESS :DEAD-PROCESS :ACCOUNTING :SIGNATURE :SHUTDOWN-TIME)
+  "utmpx type keywords.")
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconstant +UTX-USERSIZE+ 256 "Size of utmpx.ut_user.")
+  (defconstant +UTX-IDSIZE+   4   "Size of utmpx.ut_id.")
+  (defconstant +UTX-LINESIZE+ 32  "Size of utmpx.ut_line.")
+  (defconstant +UTX-HOSTSIZE+ 256 "Size of utmpx.ut_host."))
+
+(defcstruct foreign-utmpx
+  "User accounting database entry."
+  (ut_user :char :count #.+UTX-USERSIZE+)  ;; login name
+  (ut_id   :char :count #.+UTX-IDSIZE+)	   ;; id
+  (ut_line :char :count #.+UTX-LINESIZE+)  ;; tty name
+  (ut_pid  pid-t)			   ;; process id creating the entry
+  (ut_type :short)			   ;; type of this entry
+  (ut_tv   (:struct foreign-timeval))	   ;; time entry was created
+  (ut_host :char :count #.+UTX-HOSTSIZE+)  ;; host name
+  (ut_pad  :uint32 :count 16)		   ;; reserved for future use
+  )
+
+(defstruct utmpx
+  "User accounting databse entry."
+  user
+  id
+  line
+  pid
+  type
+  tv
+  host
+  )
+
+(defun convert-utmpx (u)
+  (if (and (pointerp u) (null-pointer-p u))
+      nil
+      (with-foreign-slots ((ut_user ut_id ut_line ut_pid ut_type ut_tv ut_host)
+			   u (:struct foreign-utmpx))
+	(make-utmpx
+	  :user	(foreign-string-to-lisp ut_user)
+	  :id	(foreign-string-to-lisp ut_id :max-chars +UTX-IDSIZE+)
+	  :line	(foreign-string-to-lisp ut_line)
+	  :pid	ut_pid
+	  :type	(aref +utmpx-type+ ut_type)
+	  :tv	(make-timeval :seconds (getf ut_tv 'tv_sec)
+			      :micro-seconds (getf ut_tv 'tv_usec))
+	  :host	(foreign-string-to-lisp ut_host)))))
+
+(defcfun endutxent :void
+  "Close the utmpx database.")
+
+(defcfun ("getutxent" real-getutxent) (:pointer (:struct foreign-utmpx))
+  "Read the next entry from the utmpx database. Open it if it's not open.")
+
+(defun getutxent ()
+  "Read the next entry from the utmpx database. Open it if it's not open."
+  (convert-utmpx (real-getutxent)))
+
+(defcfun ("getutxid" real-getutxid) (:pointer (:struct foreign-utmpx))
+  "Read the next entry of type specified by the ut_type field, from the utmpx
+database. Open it if it's not open."
+  (id (:pointer (:struct foreign-utmpx))))
+
+(defun getutxid (id)
+  "Read the next entry of type specified by the ut_type field, from the utmpx
+database. Open it if it's not open."
+  (with-foreign-object (u '(:struct foreign-utmpx))
+    (setf (foreign-slot-value u '(:struct foreign-utmpx) 'ut_type) id)
+    (convert-utmpx (real-getutxid u))))
+
+(defcfun ("getutxline" real-getutxline) (:pointer (:struct foreign-utmpx))
+  "Read the next entry of type LOGIN_PROCESS or USER_PROCESS where the ut_line
+field matches LINE, from the utmpx database. Open it if it's not open."
+  (line (:pointer (:struct foreign-utmpx))))
+
+(defun getutxline (line)
+  "Read the next entry of type LOGIN_PROCESS or USER_PROCESS where the ut_line
+field matches LINE, from the utmpx database. Open it if it's not open."
+  (with-foreign-object (u '(:struct foreign-utmpx))
+    (setf (foreign-slot-value u '(:struct foreign-utmpx) 'ut_line) line)
+    (convert-utmpx (real-getutxline u))))
+
+(defcfun ("pututxline" real-pututxline) (:pointer (:struct foreign-utmpx))
+  "Put the entry UTX into the utmpx database, replacing the entry for the same
+user. Probably requires root."
+  (utx (:pointer (:struct foreign-utmpx))))
+
+(defun pututxline (line)
+  "Put the entry UTX into the utmpx database, replacing the entry for the same
+user. Probably requires root."
+  (check-type line utmpx)
+  (with-foreign-object (u '(:struct foreign-utmpx))
+    (with-foreign-slots ((ut_user ut_id ut_line ut_pid ut_type ut_tv ut_host
+			  ut_pad)
+			 u (:struct foreign-utmpx))
+      (with-slots (user id line pid type tv host) line
+	(setf ut_user user
+	      ut_id   id
+	      ut_line line
+	      ut_pid  pid
+	      ut_type type
+	      (foreign-slot-value ut_tv '(:struct foreign-timeval) 'tv_sec)
+	      (timeval-seconds tv)
+	      (foreign-slot-value ut_tv '(:struct foreign-timeval) 'tv_usec)
+	      (timeval-micro-seconds tv)
+	      ut_host host)
+	(convert-utmpx (real-getutxline u))))))
+
+(defcfun setutxent :void
+  "Reset the utmpx database to the beginning.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
@@ -3265,11 +3417,6 @@ for long."
 ;; (defcstruct timeval
 ;;   (seconds time-t)
 ;;   (microseconds suseconds-t))
-
-(defstruct timeval
-  "Time for timer."
-  seconds
-  micro-seconds)
 
 (defstruct rusage
   user
