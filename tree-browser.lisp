@@ -43,7 +43,7 @@
 (in-package :tree-browser)
 
 ;;;(declaim (optimize (speed 3) (safety 0) (debug 0) (space 3) (compilation-speed 0)))
-(declaim (optimize (speed 0) (safety 0) (debug 3) (space 1) (compilation-speed 0)))
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 1) (compilation-speed 0)))
 
 (defclass node ()
   ((branches
@@ -1234,7 +1234,11 @@ and indented properly for multi-line objects."
 	 )
     ;; (when (eql (char str (1- (length str))) #\newline)
     ;;   (setf (char str (1- (length str))) #\space))
-    (display-object node (string-downcase (class-name klass)) level)))
+    (display-object node
+		    (format nil "~(~a:~a~)"
+			    (package-name (symbol-package (class-name klass)))
+			    (class-name klass))
+		    level)))
     ;; (display-object node str level)))
 
 (defclass classes-node (cached-dynamic-node) ())

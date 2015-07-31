@@ -1134,8 +1134,7 @@ cannot cause evaluation."
   "The default buffer size for efficient copying of streams and files.")
 
 ;; I suppose we could make this generic so that streams can do a special
-;; things with it, but that might be sort of edging into the stream protocol,
-;; which simple-streams and 
+;; things with it, but that might be sort of edging into the stream protocol.
 (defun copy-stream (source destination &key (buffer-size *buffer-size*))
   "Copy data from reading from SOURCE and writing to DESTINATION, until we get
 an EOF on SOURCE."

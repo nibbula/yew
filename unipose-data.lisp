@@ -4,6 +4,8 @@
 
 ;; $Revision$
 
+(in-package :unipose)
+
 (defvar *unipose*
   '((?1 ((?2 ?½) (?4 ?¼) (?^ ?¹)))
     (?2 ((?^ ?²)))

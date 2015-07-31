@@ -325,6 +325,15 @@ the outermost. When entering the debugger the current frame is 0.")
       (t
        ":Internal"))))
 
+;;; Return the number of the form corresponding to CODE-LOCATION. The
+;;; form number is derived by a walking the subforms of a top level
+;;; form in depth-first order.
+;;; (defun code-location-form-number (code-location)
+
+#+sbcl
+(defun get-loc-subform-pos (loc)
+  "Return the file position of the subform."
+  )
 
 #+sbcl
 (defun get-loc-form-offset (loc)
@@ -969,8 +978,6 @@ program that messes with the terminal, we can still type at the debugger."
 	;; But break seems to work.
 	(break))
       (format *debug-io* "Entering the TINY debugger.~%")
-      (format *debug-io* "Condition: ~a~%" c)
-      (list-restarts (compute-restarts c))
 ;      (invoke-restart-interactively nil)
       ;; @@@ how do i invoke a restart to resolve conflicts?
       ;; or set variables?
@@ -984,7 +991,10 @@ program that messes with the terminal, we can still type at the debugger."
 	      (*read-eval* t)
 	      ;; printer vars
 	      (*print-readably* nil)
+	      (*print-length* 50)	; something reasonable?
 	      (*print-circle* t))
+	  (format *debug-io* "Condition: ~a~%" c)
+	  (list-restarts (compute-restarts c))
 	  (tiny-repl :interceptor #'debugger-interceptor
 		     :prompt-func #'debug-prompt
 		     :keymap *debugger-keymap*

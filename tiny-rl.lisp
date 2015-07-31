@@ -42,6 +42,8 @@
    ;; misc
    #:rl-on-device
    #:get-lone-key
+   #:read-filename
+   #:read-choice
   )
 )
 (in-package "TINY-RL")
@@ -1799,6 +1801,9 @@ is none."
 		       (not (last-completion-unique e)))
 	      (show-completions e))
 	    (setf (last-completion-unique e) unique)
+	    ;; (format t "comp = ~s replace-pos = ~s~%" comp replace-pos)
+	    ;; If the completion succeeded we need a replace-pos!
+	    (assert (or (not comp) (numberp replace-pos)))
 	    (if comp
 		(let* ((same (- saved-point replace-pos)) ; same part
 		       (diff (- (length comp) same)))     ; different part

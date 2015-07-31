@@ -34,7 +34,7 @@ The function takes a file name or a stream or a list of such.
 The shell command takes any number of file names.
 ")
   (:use :cl :dlib :dlib-misc :curses :opsys :fui :stretchy :keymap :char-util
-	:fatchar :ppcre)
+	:fatchar :ppcre :terminal :terminal-curses)
   (:export
    #:*pager-prompt*
    #:page
@@ -851,6 +851,7 @@ line : |----||-------||---------||---|
 
 (defun ask (&optional prompt)
   (ask-for :prompt prompt))
+;;  (tiny-rl:tiny-rl :prompt prompt :terminal-class 'terminal-curses))
 
 (defun search-line (str line)
   "Return true if LINE contains the string STR. LINE can be a string, or a
