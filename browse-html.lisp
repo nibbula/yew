@@ -38,13 +38,15 @@
      (hash-value v) :do
      (format stream "~a='~a' " k v)))
 
+(defparameter *attr-tags*
+  #(:meta :link :script :a :form :input :img)
+  "Tags to print attributes for.")
+
 (defmethod display-thing ((obj plump-dom:element) stream)
-  (cond
-    ((equal (plump:tag-name obj) "meta")
-     (format stream "~(~a~) " (plump:tag-name obj))
-     (print-attrubutes obj stream))
-    (t
-     (format stream "~(~a~)" (plump:tag-name obj)))))
+  (let ((tag (keywordify (plump:tag-name obj))))
+    (format stream "~(~a~) " (plump:tag-name obj))
+    (when (position tag *attr-tags*)
+      (print-attrubutes obj stream))))
 
 (defmethod display-thing ((obj plump-dom:doctype) stream)
   (format stream "~(~a~) ~a" (type-of obj) (plump-dom:doctype obj)))
@@ -54,8 +56,6 @@
   (let* ((obj (node-object node))
 	 (str (with-output-to-string (stream)
 		(cond
-		  ((plump:element-p obj)
-		   (display-thing obj stream))
 		  ((plump:text-node-p obj)
 		   (format stream "~a" (dlib:trim (plump:text obj))))
 		  ((plump:textual-node-p obj)
