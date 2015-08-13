@@ -2,8 +2,6 @@
 ;; pager.lisp - More or less like more or less.
 ;;
 
-;; $Revision: 1.11 $
-
 ;; TODO:
 ;;  - syntax highlighting
 ;;  - simpile HTML rendering
@@ -431,13 +429,48 @@ set in this string."
        :while (< i len))
     fat-line))
 
+;; This is quite inefficient.
+(defun process-control-characters (line)
+  ;; Don't bother if the line length is zero or there are no control chars.
+  (when (or (= (length line) 0)
+	    (not (position-if
+		  (_ (let ((cc (char-code (fatchar-c _))))
+		       (or (< cc (char-code #\space))
+			   (= cc 127))))
+		  line)))
+    (return-from process-control-characters line))
+  (let ((fat-line (make-stretchy-vector (+ (length line) 10)
+					:element-type 'fatchar)))
+    (loop :with cc :and fc
+       :for c :across line :do
+       (setf cc (char-code (fatchar-c c)))
+       (cond
+	 ((< cc (char-code #\space))
+	  (setf fc (copy-fat-char c)
+		(fatchar-c fc) #\^)
+	  (stretchy-append fat-line fc)
+	  (setf fc (copy-fat-char c)
+		(fatchar-c fc) (code-char (+ cc (char-code #\@))))
+	  (stretchy-append fat-line fc))
+	 ((= cc 127)
+	  (setf fc (copy-fat-char c)
+		(fatchar-c fc) #\^)
+	  (stretchy-append fat-line fc)
+	  (setf fc (copy-fat-char c)
+		(fatchar-c fc) #\?)
+	  (stretchy-append fat-line fc))
+	 (t
+	  (stretchy-append fat-line (copy-fat-char c)))))
+    fat-line))
+
 (defun process-line (pager line)
   "Process a line of text read from a stream."
   (declare (ignore pager))
   (let ((output (fat-string-to-span
-		 (process-ansi-colors-line
-		  (process-grotty-line
-		   (untabify line))))))
+		 (process-control-characters
+		  (process-ansi-colors-line
+		   (process-grotty-line
+		    (untabify line)))))))
     (if (and (= (length output) 1) (stringp (first output)))
 	(first output)
 	output)))
