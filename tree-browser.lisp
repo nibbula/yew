@@ -335,6 +335,9 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
    (left
     :initarg :left :accessor left :initform 0 :type integer
     :documentation "Horizontal offset of the view.")
+   (current-max-right
+    :initarg :current-max-right :accessor current-max-right :initform nil
+    :documentation "Maximum potential column for the current node.")
    (show-modeline
     :initarg :show-modeline :accessor show-modeline :initform nil :type boolean
     :documentation "True to show the modeline.")
@@ -554,6 +557,11 @@ been encountered."
 (defun shift-beginning ()
   (setf (left *browser*) 0))
 
+(defun shift-end ()
+  (with-slots (left current-max-right) *browser*
+    (when current-max-right
+      (setf left (max 0 (- current-max-right *cols*))))))
+
 (defun goto-first-node ()
   (with-slots (current root top) *browser*
     (setf current root
@@ -624,6 +632,7 @@ been encountered."
       (:left		. shift-left)
       (:right	     	. shift-right)
       (,(ctrl #\A)	. shift-beginning)
+      (,(ctrl #\E)	. shift-end)
       ;; Miscellaneous
       (#\m		. toggle-modeline)
       (,(ctrl #\L)	. redraw)
@@ -699,11 +708,13 @@ been encountered."
 
 (defmethod display-node-line ((node node) line)
   "Display a line of node output."
-  (with-slots (left) *browser*
+  (with-slots (left current current-max-right) *browser*
     (let ((len (length line)))
       (if (>= left len)
 	  (addch (char-code #\newline))
-	  (addstr (subseq line left (min len (+ left *cols*))))))))
+	  (addstr (subseq line left (min len (+ left *cols*)))))
+      (when (eq node current)
+	(setf current-max-right (length line))))))
 
 (defgeneric display-object (node object level)
   (:documentation "Display an object in the manner of display-node."))
@@ -759,9 +770,10 @@ and indented properly for multi-line objects."
 	       (display-tree browser n (1+ level))))))))
 
 (defun redraw ()
-  (with-slots (top current root) *browser*
+  (with-slots (top current root current-max-right) *browser*
     (clear)
     (move 0 0)
+    (setf current-max-right nil)
     (let ((*display-start* nil))
       (display-tree *browser* root 0))
     (setf top current)))
@@ -781,14 +793,15 @@ and indented properly for multi-line objects."
 				    :root tree
 				    :bottom (- *lines* 2))))
       (with-slots (root quit-flag picked-object current left top bottom
-		   bottom-node current-position message-string scroll-hint)
+		   bottom-node current-position current-max-right
+		   message-string scroll-hint)
 	  *browser*
 	(loop :do
 	   (tagbody
 	    again
 	      (move 0 0)
 	      (erase)
-	      (setf current-position nil)
+	      (setf current-position nil current-max-right nil)
 	      (let ((*display-start* nil))
 		(display-tree *browser* root 0))
 	      ;; Reposition display if the current node is not visible.
