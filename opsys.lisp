@@ -112,8 +112,6 @@
    #:strerror
    #:posix-error
    #:posix-error-code
-   #:posix-error-format
-   #:posix-error-arguments
    #:error-check
    #:syscall
 
@@ -1018,29 +1016,17 @@
       (format nil "Unknown error: ~d" e))
 )
 
-(define-condition posix-error (error)
+(define-condition posix-error (simple-error)
   ((error-code
     :accessor posix-error-code
     :initarg :error-code
     :type (signed-byte 32)
-    :documentation "The value of errno at the time of the error.")
-   (format
-    :accessor posix-error-format
-    :initarg :format
-    :initform nil
-    :type string
-    :documentation "Format control for error reporting.")
-   (arguments
-    :accessor posix-error-arguments
-    :initarg :arguments
-    :initform nil
-    :type list
-    :documentation "Format arguments for error reporting."))
+    :documentation "The value of errno at the time of the error."))
   (:report (lambda (c s)
-	     (if (posix-error-format c)
+	     (if (simple-condition-format-control c)
 		 (format s "~? ~a"
-			 (posix-error-format c)
-			 (posix-error-arguments c)
+			 (simple-condition-format-control c)
+			 (simple-condition-format-arguments c)
 			 (strerror (posix-error-code c)))
 		 (format s "~a"
 			 (strerror (posix-error-code c))))))
@@ -1050,7 +1036,7 @@
   "Check if a system call returns an error value and signal it."
   (if (< c 0)
       (error 'posix-error :error-code *errno*
-	     :format fmt :arguments args)
+	     :format-control fmt :format-arguments args)
       c))
 
 (defmacro syscall ((func &rest args))
@@ -1944,7 +1930,7 @@ C library function getcwd."
   (let ((cwd (with-foreign-pointer-as-string (s *path-max*)
 	       (foreign-string-to-lisp (real-getcwd s *path-max*)))))
     (if (not cwd)		; hopefully it's still valid
-	(error 'posix-error :error-code *errno* :format "getcwd")
+	(error 'posix-error :error-code *errno* :format-control "getcwd")
 	cwd)))
 
 (defun current-directory ()
@@ -2284,7 +2270,7 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
     (unwind-protect
       (progn
 	(if (null-pointer-p (setf dirp (opendir dir)))
-	  (error 'posix-error :error-code *errno* :format "opendir")
+	  (error 'posix-error :error-code *errno* :format-control "opendir")
 	  (progn
 	    (with-foreign-objects ((ent '(:struct foreign-dirent))
 				   (ptr :pointer))
@@ -2316,7 +2302,8 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 				 #-os-t-has-d-type (dirent-name ent)
 				 (dirent-name ent)))))))
 	    (when (not (= result 0))
-	      (error 'posix-error :format "readdir" :error-code *errno*)))))
+	      (error 'posix-error :format-control "readdir"
+		     :error-code *errno*)))))
       (if (not (null-pointer-p dirp))
 	  (closedir dirp)))
     dir-list))
@@ -4367,7 +4354,7 @@ Unix time integer."
 					     read-fds write-fds err-fds
 					     tv)))
 	(error 'posix-error :error-code *errno*
-	       :format "Select failed ~a"))
+	       :format-control "Select failed ~a"))
 ;      (format t "return = ~d~%" ret-val)
       (when (not (= 0 ret-val))
 	(setf results
@@ -4478,7 +4465,8 @@ Unix time integer."
 		 (format t "fd[~d] = ~a ~x ~x~%" i fd events revents)))
       (format t "poll(~a,~d,~d)~%" in-fds nfds timeout)
       (when (= -1 (setf ret-val (unix-poll in-fds nfds timeout)))
-	(error 'posix-error :format "Poll failed ~a" :error-code *errno*))
+	(error 'posix-error :format-control "Poll failed ~a"
+	       :error-code *errno*))
       (format t "return = ~d~%" ret-val)
       (when (not (= 0 ret-val))
 	(setf results
