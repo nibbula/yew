@@ -150,8 +150,8 @@ not provided, it defaults to the end of the string."
        :while (< i position)
        :do (setf c (aref string i))
        (cond
-	 ((or (eql c #\() (eql c #\[)) (push i starts))
-	 ((or (eql c #\)) (eql c #\])) (pop starts))
+	 ((or (eql c #\() (eql c #\[) (eql c #\{)) (push i starts))
+	 ((or (eql c #\)) (eql c #\]) (eql c #\})) (pop starts))
 	 ((eql c #\")
 	  ;; scan past the string
 	  (incf i)
