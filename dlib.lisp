@@ -57,6 +57,9 @@
    ;; lists
    #:delete-nth
    #:alist-to-hash-table
+   #:range-list
+   #:range-array
+   #:range-lazy #:range-start #:range-end #:range-step #:make-range
    ;; objects
    #:shallow-copy-object
    #:*mop-package*
@@ -69,6 +72,7 @@
 ;   #:with-struct-slots
    ;; Implementation-ish
    #:without-warning
+   #+sbcl #:without-notes
    ;; language-ish
    #:define-constant
    #-lispworks #:λ
@@ -80,6 +84,7 @@
    #:keywordify
    #:with-package
    #:shortest-package-nick
+   #:not-so-funcall
    ;; debugging
    #:*dbug* #:dbug #:with-dbug #:without-dbug
    #:dump-values
@@ -134,6 +139,17 @@
     ((warning #'(lambda (c)
 		  (declare (ignore c))
 		  (muffle-warning))))
+     ,@body))
+
+#+sbcl
+(defmacro without-notes (&body body)
+  "Get rid of compiler notes that you don't want to see.
+ Just wrap your code with this."
+  `(handler-bind
+     ((sb-ext:compiler-note
+       #'(lambda (c)
+	   (declare (ignore c))
+	   (muffle-warning))))
      ,@body))
 
 ;; Make sure we have getenv
@@ -444,6 +460,33 @@ basically the reverse of SPLIT-SEQUENCE."
   (loop :for i :in alist
 	:do (setf (gethash (car i) table) (cdr i)))
   table)
+
+;; I have a feeling I'll regret this range crap.
+;; See also: (alexandria:iota n &key (start 0) (step 1))
+
+(defun range-list (n &key (start 0) (step 1))
+  "Make a concrete range as a list."
+  (loop :for i :from start :below (+ start (* n step)) :by step :collect i))
+
+(defun range-array (n &key (start 0) (step 1))
+  "Make a concrete range as an array."
+  (let ((a (make-array n :element-type (type-of (+ start n)))))
+    (loop :for i :from start :below (+ start (* n step)) :by step
+       :for j = 0 :then (1+ j)
+       :do (setf (aref a j) i))
+    a))
+
+(defstruct range
+  "A lazy range."
+  start
+  end
+  (step 1))
+
+(defun range-lazy (start-or-end &optional end (step 1))
+  "Make a lazy range."
+  (if end
+      (make-range :start start-or-end :end end :step step)
+      (make-range :start 1 :end start-or-end :step step)))
 
 ;; Objects
 
@@ -959,6 +1002,12 @@ never create a new symbol, and return NIL if the symbol doesn't already exist."
 	p)
       (package-name package)))
 
+(defmacro not-so-funcall (package symbol &rest args)
+  "Call SYMBOL with ARGS if it's FBOUND in PACKAGE and PACKAGE exists."
+  `(and (find-package ,package)
+	(fboundp (intern (string ,symbol) (find-package ,package)))
+	(funcall (intern (string ,symbol) (find-package ,package)) ,@args)))
+
 ;; Debugging messages
 ;;
 ;; This is so you can say: (dbug "message ~a~%" foo) in code, and then say
@@ -1045,7 +1094,7 @@ never create a new symbol, and return NIL if the symbol doesn't already exist."
   )
 
 ;; This makes me feel like I'm sadly going to have to implement my own
-;; UTF8 stuff.
+;; UTF8 stuff. (see wip/read-utf8-char.lisp)
 
 (defun resilient-read-line (&optional input-stream eof-error-p eof-value
 			    recursive-p)
@@ -1058,11 +1107,11 @@ never create a new symbol, and return NIL if the symbol doesn't already exist."
 	  (let ((r (find-restart 'sb-int:attempt-resync)))
 ;	    (format t "resync: ~w~%" r)
 	    (invoke-restart r)))))
-    (read-line  input-stream eof-error-p eof-value recursive-p))
+    (read-line input-stream eof-error-p eof-value recursive-p))
   #+ccl
-  (read-line  input-stream eof-error-p eof-value recursive-p)
+  (read-line input-stream eof-error-p eof-value recursive-p)
   #-(or sbcl ccl)
-  (read-line  input-stream eof-error-p eof-value recursive-p)
+  (read-line input-stream eof-error-p eof-value recursive-p)
 )
 
 (defmacro with-open-file-or-stream ((var file-or-stream &rest args) &body body)
