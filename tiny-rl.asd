@@ -16,6 +16,7 @@
     :long-description   "A line editor which is not so tiny."
     :depends-on (:dl-list :stretchy :cffi :opsys :termios
 		 :terminal :terminal-ansi :terminal-curses
-		 :completion :dlib :dlib-misc :keymap :char-util :syntax-lisp)
+		 :completion :dlib :dlib-misc :keymap :char-util :syntax-lisp
+		 :unipose)
     :components
     ((:file "tiny-rl")))

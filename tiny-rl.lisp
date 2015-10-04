@@ -23,7 +23,7 @@
 (defpackage "TINY-RL"
   (:use :cl :dlib :dlib-misc :keymap :char-util :dl-list :stretchy :cffi
 	:opsys :terminal :terminal-ansi :terminal-curses
-	:completion :syntax-lisp)
+	:completion :syntax-lisp :unipose)
   (:documentation
    "A readline replacement for ANSI terminals.")
   (:export
@@ -498,7 +498,8 @@ anything important.")
 	 (code-char (mem-ref c :unsigned-char)))))))
 
 (defun get-lone-key ()
-  "Get a key, but easily usable from outside the editor."
+  "Get a key, but easily usable from outside the editor. Don't use this for
+anything serious."
   (terminal-start (line-editor-terminal *line-editor*))
   (unwind-protect
     (progn
@@ -931,11 +932,435 @@ anything important.")
 (defgeneric display-length (obj)
   (:documentation "Return how long is the object should be when displayed."))
 
+(defparameter *combining-chars*
+  (vector
+   (code-char #x00000300) ; ̀ COMBINING_GRAVE_ACCENT
+   (code-char #x00000301) ; ́ COMBINING_ACUTE_ACCENT
+   (code-char #x00000302) ; ̂ COMBINING_CIRCUMFLEX_ACCENT
+   (code-char #x00000303) ; ̃ COMBINING_TILDE
+   (code-char #x00000304) ; ̄ COMBINING_MACRON
+   (code-char #x00000305) ; ̅ COMBINING_OVERLINE
+   (code-char #x00000306) ; ̆ COMBINING_BREVE
+   (code-char #x00000307) ; ̇ COMBINING_DOT_ABOVE
+   (code-char #x00000308) ; ̈ COMBINING_DIAERESIS
+   (code-char #x00000309) ; ̉ COMBINING_HOOK_ABOVE
+   (code-char #x0000030A) ; ̊ COMBINING_RING_ABOVE
+   (code-char #x0000030B) ; ̋ COMBINING_DOUBLE_ACUTE_ACCENT
+   (code-char #x0000030C) ; ̌ COMBINING_CARON
+   (code-char #x0000030D) ; ̍ COMBINING_VERTICAL_LINE_ABOVE
+   (code-char #x0000030E) ; ̎ COMBINING_DOUBLE_VERTICAL_LINE_ABOVE
+   (code-char #x0000030F) ; ̏ COMBINING_DOUBLE_GRAVE_ACCENT
+   (code-char #x00000310) ; ̐ COMBINING_CANDRABINDU
+   (code-char #x00000311) ; ̑ COMBINING_INVERTED_BREVE
+   (code-char #x00000312) ; ̒ COMBINING_TURNED_COMMA_ABOVE
+   (code-char #x00000313) ; ̓ COMBINING_COMMA_ABOVE
+   (code-char #x00000314) ; ̔ COMBINING_REVERSED_COMMA_ABOVE
+   (code-char #x00000315) ; ̕ COMBINING_COMMA_ABOVE_RIGHT
+   (code-char #x00000316) ; ̖ COMBINING_GRAVE_ACCENT_BELOW
+   (code-char #x00000317) ; ̗ COMBINING_ACUTE_ACCENT_BELOW
+   (code-char #x00000318) ; ̘ COMBINING_LEFT_TACK_BELOW
+   (code-char #x00000319) ; ̙ COMBINING_RIGHT_TACK_BELOW
+   (code-char #x0000031A) ; ̚ COMBINING_LEFT_ANGLE_ABOVE
+   (code-char #x0000031B) ; ̛ COMBINING_HORN
+   (code-char #x0000031C) ; ̜ COMBINING_LEFT_HALF_RING_BELOW
+   (code-char #x0000031D) ; ̝ COMBINING_UP_TACK_BELOW
+   (code-char #x0000031E) ; ̞ COMBINING_DOWN_TACK_BELOW
+   (code-char #x0000031F) ; ̟ COMBINING_PLUS_SIGN_BELOW
+   (code-char #x00000320) ; ̠ COMBINING_MINUS_SIGN_BELOW
+   (code-char #x00000321) ; ̡ COMBINING_PALATALIZED_HOOK_BELOW
+   (code-char #x00000322) ; ̢ COMBINING_RETROFLEX_HOOK_BELOW
+   (code-char #x00000323) ; ̣ COMBINING_DOT_BELOW
+   (code-char #x00000324) ; ̤ COMBINING_DIAERESIS_BELOW
+   (code-char #x00000325) ; ̥ COMBINING_RING_BELOW
+   (code-char #x00000326) ; ̦ COMBINING_COMMA_BELOW
+   (code-char #x00000327) ; ̧ COMBINING_CEDILLA
+   (code-char #x00000328) ; ̨ COMBINING_OGONEK
+   (code-char #x00000329) ; ̩ COMBINING_VERTICAL_LINE_BELOW
+   (code-char #x0000032A) ; ̪ COMBINING_BRIDGE_BELOW
+   (code-char #x0000032B) ; ̫ COMBINING_INVERTED_DOUBLE_ARCH_BELOW
+   (code-char #x0000032C) ; ̬ COMBINING_CARON_BELOW
+   (code-char #x0000032D) ; ̭ COMBINING_CIRCUMFLEX_ACCENT_BELOW
+   (code-char #x0000032E) ; ̮ COMBINING_BREVE_BELOW
+   (code-char #x0000032F) ; ̯ COMBINING_INVERTED_BREVE_BELOW
+   (code-char #x00000330) ; ̰ COMBINING_TILDE_BELOW
+   (code-char #x00000331) ; ̱ COMBINING_MACRON_BELOW
+   (code-char #x00000332) ; ̲ COMBINING_LOW_LINE
+   (code-char #x00000333) ; ̳ COMBINING_DOUBLE_LOW_LINE
+   (code-char #x00000334) ; ̴ COMBINING_TILDE_OVERLAY
+   (code-char #x00000335) ; ̵ COMBINING_SHORT_STROKE_OVERLAY
+   (code-char #x00000336) ; ̶ COMBINING_LONG_STROKE_OVERLAY
+   (code-char #x00000337) ; ̷ COMBINING_SHORT_SOLIDUS_OVERLAY
+   (code-char #x00000338) ; ̸ COMBINING_LONG_SOLIDUS_OVERLAY
+   (code-char #x00000339) ; ̹ COMBINING_RIGHT_HALF_RING_BELOW
+   (code-char #x0000033A) ; ̺ COMBINING_INVERTED_BRIDGE_BELOW
+   (code-char #x0000033B) ; ̻ COMBINING_SQUARE_BELOW
+   (code-char #x0000033C) ; ̼ COMBINING_SEAGULL_BELOW
+   (code-char #x0000033D) ; ̽ COMBINING_X_ABOVE
+   (code-char #x0000033E) ; ̾ COMBINING_VERTICAL_TILDE
+   (code-char #x0000033F) ; ̿ COMBINING_DOUBLE_OVERLINE
+   (code-char #x00000340) ; ̀ COMBINING_GRAVE_TONE_MARK
+   (code-char #x00000341) ; ́ COMBINING_ACUTE_TONE_MARK
+   (code-char #x00000342) ; ͂ COMBINING_GREEK_PERISPOMENI
+   (code-char #x00000343) ; ̓ COMBINING_GREEK_KORONIS
+   (code-char #x00000344) ; ̈́ COMBINING_GREEK_DIALYTIKA_TONOS
+   (code-char #x00000345) ; ͅ COMBINING_GREEK_YPOGEGRAMMENI
+   (code-char #x00000346) ; ͆ COMBINING_BRIDGE_ABOVE
+   (code-char #x00000347) ; ͇ COMBINING_EQUALS_SIGN_BELOW
+   (code-char #x00000348) ; ͈ COMBINING_DOUBLE_VERTICAL_LINE_BELOW
+   (code-char #x00000349) ; ͉ COMBINING_LEFT_ANGLE_BELOW
+   (code-char #x0000034A) ; ͊ COMBINING_NOT_TILDE_ABOVE
+   (code-char #x0000034B) ; ͋ COMBINING_HOMOTHETIC_ABOVE
+   (code-char #x0000034C) ; ͌ COMBINING_ALMOST_EQUAL_TO_ABOVE
+   (code-char #x0000034D) ; ͍ COMBINING_LEFT_RIGHT_ARROW_BELOW
+   (code-char #x0000034E) ; ͎ COMBINING_UPWARDS_ARROW_BELOW
+   (code-char #x0000034F) ;   COMBINING_GRAPHEME_JOINER
+   (code-char #x00000350) ; ͐ COMBINING_RIGHT_ARROWHEAD_ABOVE
+   (code-char #x00000351) ; ͑ COMBINING_LEFT_HALF_RING_ABOVE
+   (code-char #x00000352) ; ͒ COMBINING_FERMATA
+   (code-char #x00000353) ; ͓ COMBINING_X_BELOW
+   (code-char #x00000354) ; ͔ COMBINING_LEFT_ARROWHEAD_BELOW
+   (code-char #x00000355) ; ͕ COMBINING_RIGHT_ARROWHEAD_BELOW
+   (code-char #x00000356) ; ͖ COMBINING_RIGHT_ARROWHEAD_AND_UP_ARROWHEAD_BELOW
+   (code-char #x00000357) ; ͗ COMBINING_RIGHT_HALF_RING_ABOVE
+   (code-char #x00000358) ; ͘ COMBINING_DOT_ABOVE_RIGHT
+   (code-char #x00000359) ; ͙ COMBINING_ASTERISK_BELOW
+   (code-char #x0000035A) ; ͚ COMBINING_DOUBLE_RING_BELOW
+   (code-char #x0000035B) ; ͛ COMBINING_ZIGZAG_ABOVE
+   (code-char #x0000035C) ; ͜ COMBINING_DOUBLE_BREVE_BELOW
+   (code-char #x0000035D) ; ͝ COMBINING_DOUBLE_BREVE
+   (code-char #x0000035E) ; ͞ COMBINING_DOUBLE_MACRON
+   (code-char #x0000035F) ; ͟ COMBINING_DOUBLE_MACRON_BELOW
+   (code-char #x00000360) ; ͠ COMBINING_DOUBLE_TILDE
+   (code-char #x00000361) ; ͡ COMBINING_DOUBLE_INVERTED_BREVE
+   (code-char #x00000362) ; ͢ COMBINING_DOUBLE_RIGHTWARDS_ARROW_BELOW
+   (code-char #x00000363) ; ͣ COMBINING_LATIN_SMALL_LETTER_A
+   (code-char #x00000364) ; ͤ COMBINING_LATIN_SMALL_LETTER_E
+   (code-char #x00000365) ; ͥ COMBINING_LATIN_SMALL_LETTER_I
+   (code-char #x00000366) ; ͦ COMBINING_LATIN_SMALL_LETTER_O
+   (code-char #x00000367) ; ͧ COMBINING_LATIN_SMALL_LETTER_U
+   (code-char #x00000368) ; ͨ COMBINING_LATIN_SMALL_LETTER_C
+   (code-char #x00000369) ; ͩ COMBINING_LATIN_SMALL_LETTER_D
+   (code-char #x0000036A) ; ͪ COMBINING_LATIN_SMALL_LETTER_H
+   (code-char #x0000036B) ; ͫ COMBINING_LATIN_SMALL_LETTER_M
+   (code-char #x0000036C) ; ͬ COMBINING_LATIN_SMALL_LETTER_R
+   (code-char #x0000036D) ; ͭ COMBINING_LATIN_SMALL_LETTER_T
+   (code-char #x0000036E) ; ͮ COMBINING_LATIN_SMALL_LETTER_V
+   (code-char #x0000036F) ; ͯ COMBINING_LATIN_SMALL_LETTER_X
+   (code-char #x00000483) ; ҃ COMBINING_CYRILLIC_TITLO
+   (code-char #x00000484) ; ҄ COMBINING_CYRILLIC_PALATALIZATION
+   (code-char #x00000485) ; ҅ COMBINING_CYRILLIC_DASIA_PNEUMATA
+   (code-char #x00000486) ; ҆ COMBINING_CYRILLIC_PSILI_PNEUMATA
+   (code-char #x00000487) ;   COMBINING_CYRILLIC_POKRYTIE
+   (code-char #x00000488) ; ҈ COMBINING_CYRILLIC_HUNDRED_THOUSANDS_SIGN
+   (code-char #x00000489) ; ҉ COMBINING_CYRILLIC_MILLIONS_SIGN
+   (code-char #x000007EB) ;   NKO_COMBINING_SHORT_HIGH_TONE
+   (code-char #x000007EC) ;   NKO_COMBINING_SHORT_LOW_TONE
+   (code-char #x000007ED) ;   NKO_COMBINING_SHORT_RISING_TONE
+   (code-char #x000007EE) ;   NKO_COMBINING_LONG_DESCENDING_TONE
+   (code-char #x000007EF) ;   NKO_COMBINING_LONG_HIGH_TONE
+   (code-char #x000007F0) ;   NKO_COMBINING_LONG_LOW_TONE
+   (code-char #x000007F1) ;   NKO_COMBINING_LONG_RISING_TONE
+   (code-char #x000007F2) ;   NKO_COMBINING_NASALIZATION_MARK
+   (code-char #x000007F3) ;   NKO_COMBINING_DOUBLE_DOT_ABOVE
+   (code-char #x00000C00) ;   TELUGU_SIGN_COMBINING_CANDRABINDU_ABOVE
+   (code-char #x0000135D) ;   ETHIOPIC_COMBINING_GEMINATION_AND_VOWEL_LENGTH_MARK
+   (code-char #x0000135E) ;   ETHIOPIC_COMBINING_VOWEL_LENGTH_MARK
+   (code-char #x0000135F) ;   ETHIOPIC_COMBINING_GEMINATION_MARK
+   (code-char #x00001A7F) ;   TAI_THAM_COMBINING_CRYPTOGRAMMIC_DOT
+   (code-char #x00001AB0) ;   COMBINING_DOUBLED_CIRCUMFLEX_ACCENT
+   (code-char #x00001AB1) ;   COMBINING_DIAERESIS-RING
+   (code-char #x00001AB2) ;   COMBINING_INFINITY
+   (code-char #x00001AB3) ;   COMBINING_DOWNWARDS_ARROW
+   (code-char #x00001AB4) ;   COMBINING_TRIPLE_DOT
+   (code-char #x00001AB5) ;   COMBINING_X-X_BELOW
+   (code-char #x00001AB6) ;   COMBINING_WIGGLY_LINE_BELOW
+   (code-char #x00001AB7) ;   COMBINING_OPEN_MARK_BELOW
+   (code-char #x00001AB8) ;   COMBINING_DOUBLE_OPEN_MARK_BELOW
+   (code-char #x00001AB9) ;   COMBINING_LIGHT_CENTRALIZATION_STROKE_BELOW
+   (code-char #x00001ABA) ;   COMBINING_STRONG_CENTRALIZATION_STROKE_BELOW
+   (code-char #x00001ABB) ;   COMBINING_PARENTHESES_ABOVE
+   (code-char #x00001ABC) ;   COMBINING_DOUBLE_PARENTHESES_ABOVE
+   (code-char #x00001ABD) ;   COMBINING_PARENTHESES_BELOW
+   (code-char #x00001ABE) ;   COMBINING_PARENTHESES_OVERLAY
+   (code-char #x00001B6B) ;   BALINESE_MUSICAL_SYMBOL_COMBINING_TEGEH
+   (code-char #x00001B6C) ;   BALINESE_MUSICAL_SYMBOL_COMBINING_ENDEP
+   (code-char #x00001B6D) ;   BALINESE_MUSICAL_SYMBOL_COMBINING_KEMPUL
+   (code-char #x00001B6E) ;   BALINESE_MUSICAL_SYMBOL_COMBINING_KEMPLI
+   (code-char #x00001B6F) ;   BALINESE_MUSICAL_SYMBOL_COMBINING_JEGOGAN
+   (code-char #x00001B70) ;   BALINESE_MUSICAL_SYMBOL_COMBINING_KEMPUL_WITH_JEGOGAN
+   (code-char #x00001B71) ;   BALINESE_MUSICAL_SYMBOL_COMBINING_KEMPLI_WITH_JEGOGAN
+   (code-char #x00001B72) ;   BALINESE_MUSICAL_SYMBOL_COMBINING_BENDE
+   (code-char #x00001B73) ;   BALINESE_MUSICAL_SYMBOL_COMBINING_GONG
+   (code-char #x00001DC0) ; ᷀ COMBINING_DOTTED_GRAVE_ACCENT
+   (code-char #x00001DC1) ; ᷁ COMBINING_DOTTED_ACUTE_ACCENT
+   (code-char #x00001DC2) ; ᷂ COMBINING_SNAKE_BELOW
+   (code-char #x00001DC3) ; ᷃ COMBINING_SUSPENSION_MARK
+   (code-char #x00001DC4) ;   COMBINING_MACRON-ACUTE
+   (code-char #x00001DC5) ;   COMBINING_GRAVE-MACRON
+   (code-char #x00001DC6) ;   COMBINING_MACRON-GRAVE
+   (code-char #x00001DC7) ;   COMBINING_ACUTE-MACRON
+   (code-char #x00001DC8) ;   COMBINING_GRAVE-ACUTE-GRAVE
+   (code-char #x00001DC9) ;   COMBINING_ACUTE-GRAVE-ACUTE
+   (code-char #x00001DCA) ;   COMBINING_LATIN_SMALL_LETTER_R_BELOW
+   (code-char #x00001DCB) ;   COMBINING_BREVE-MACRON
+   (code-char #x00001DCC) ;   COMBINING_MACRON-BREVE
+   (code-char #x00001DCD) ;   COMBINING_DOUBLE_CIRCUMFLEX_ABOVE
+   (code-char #x00001DCE) ;   COMBINING_OGONEK_ABOVE
+   (code-char #x00001DCF) ;   COMBINING_ZIGZAG_BELOW
+   (code-char #x00001DD0) ;   COMBINING_IS_BELOW
+   (code-char #x00001DD1) ;   COMBINING_UR_ABOVE
+   (code-char #x00001DD2) ;   COMBINING_US_ABOVE
+   (code-char #x00001DD3) ;   COMBINING_LATIN_SMALL_LETTER_FLATTENED_OPEN_A_ABOVE
+   (code-char #x00001DD4) ;   COMBINING_LATIN_SMALL_LETTER_AE
+   (code-char #x00001DD5) ;   COMBINING_LATIN_SMALL_LETTER_AO
+   (code-char #x00001DD6) ;   COMBINING_LATIN_SMALL_LETTER_AV
+   (code-char #x00001DD7) ;   COMBINING_LATIN_SMALL_LETTER_C_CEDILLA
+   (code-char #x00001DD8) ;   COMBINING_LATIN_SMALL_LETTER_INSULAR_D
+   (code-char #x00001DD9) ;   COMBINING_LATIN_SMALL_LETTER_ETH
+   (code-char #x00001DDA) ;   COMBINING_LATIN_SMALL_LETTER_G
+   (code-char #x00001DDB) ;   COMBINING_LATIN_LETTER_SMALL_CAPITAL_G
+   (code-char #x00001DDC) ;   COMBINING_LATIN_SMALL_LETTER_K
+   (code-char #x00001DDD) ;   COMBINING_LATIN_SMALL_LETTER_L
+   (code-char #x00001DDE) ;   COMBINING_LATIN_LETTER_SMALL_CAPITAL_L
+   (code-char #x00001DDF) ;   COMBINING_LATIN_LETTER_SMALL_CAPITAL_M
+   (code-char #x00001DE0) ;   COMBINING_LATIN_SMALL_LETTER_N
+   (code-char #x00001DE1) ;   COMBINING_LATIN_LETTER_SMALL_CAPITAL_N
+   (code-char #x00001DE2) ;   COMBINING_LATIN_LETTER_SMALL_CAPITAL_R
+   (code-char #x00001DE3) ;   COMBINING_LATIN_SMALL_LETTER_R_ROTUNDA
+   (code-char #x00001DE4) ;   COMBINING_LATIN_SMALL_LETTER_S
+   (code-char #x00001DE5) ;   COMBINING_LATIN_SMALL_LETTER_LONG_S
+   (code-char #x00001DE6) ;   COMBINING_LATIN_SMALL_LETTER_Z
+   (code-char #x00001DE7) ;   COMBINING_LATIN_SMALL_LETTER_ALPHA
+   (code-char #x00001DE8) ;   COMBINING_LATIN_SMALL_LETTER_B
+   (code-char #x00001DE9) ;   COMBINING_LATIN_SMALL_LETTER_BETA
+   (code-char #x00001DEA) ;   COMBINING_LATIN_SMALL_LETTER_SCHWA
+   (code-char #x00001DEB) ;   COMBINING_LATIN_SMALL_LETTER_F
+   (code-char #x00001DEC) ;   COMBINING_LATIN_SMALL_LETTER_L_WITH_DOUBLE_MIDDLE_TILDE
+   (code-char #x00001DED) ;   COMBINING_LATIN_SMALL_LETTER_O_WITH_LIGHT_CENTRALIZATION_STROKE
+   (code-char #x00001DEE) ;   COMBINING_LATIN_SMALL_LETTER_P
+   (code-char #x00001DEF) ;   COMBINING_LATIN_SMALL_LETTER_ESH
+   (code-char #x00001DF0) ;   COMBINING_LATIN_SMALL_LETTER_U_WITH_LIGHT_CENTRALIZATION_STROKE
+   (code-char #x00001DF1) ;   COMBINING_LATIN_SMALL_LETTER_W
+   (code-char #x00001DF2) ;   COMBINING_LATIN_SMALL_LETTER_A_WITH_DIAERESIS
+   (code-char #x00001DF3) ;   COMBINING_LATIN_SMALL_LETTER_O_WITH_DIAERESIS
+   (code-char #x00001DF4) ;   COMBINING_LATIN_SMALL_LETTER_U_WITH_DIAERESIS
+   (code-char #x00001DF5) ;   COMBINING_UP_TACK_ABOVE
+   (code-char #x00001DFC) ;   COMBINING_DOUBLE_INVERTED_BREVE_BELOW
+   (code-char #x00001DFD) ;   COMBINING_ALMOST_EQUAL_TO_BELOW
+   (code-char #x00001DFE) ;   COMBINING_LEFT_ARROWHEAD_ABOVE
+   (code-char #x00001DFF) ;   COMBINING_RIGHT_ARROWHEAD_AND_DOWN_ARROWHEAD_BELOW
+   (code-char #x000020D0) ; ⃐ COMBINING_LEFT_HARPOON_ABOVE
+   (code-char #x000020D1) ; ⃑ COMBINING_RIGHT_HARPOON_ABOVE
+   (code-char #x000020D2) ; ⃒ COMBINING_LONG_VERTICAL_LINE_OVERLAY
+   (code-char #x000020D3) ; ⃓ COMBINING_SHORT_VERTICAL_LINE_OVERLAY
+   (code-char #x000020D4) ; ⃔ COMBINING_ANTICLOCKWISE_ARROW_ABOVE
+   (code-char #x000020D5) ; ⃕ COMBINING_CLOCKWISE_ARROW_ABOVE
+   (code-char #x000020D6) ; ⃖ COMBINING_LEFT_ARROW_ABOVE
+   (code-char #x000020D7) ; ⃗ COMBINING_RIGHT_ARROW_ABOVE
+   (code-char #x000020D8) ; ⃘ COMBINING_RING_OVERLAY
+   (code-char #x000020D9) ; ⃙ COMBINING_CLOCKWISE_RING_OVERLAY
+   (code-char #x000020DA) ; ⃚ COMBINING_ANTICLOCKWISE_RING_OVERLAY
+   (code-char #x000020DB) ; ⃛ COMBINING_THREE_DOTS_ABOVE
+   (code-char #x000020DC) ; ⃜ COMBINING_FOUR_DOTS_ABOVE
+   (code-char #x000020DD) ; ⃝ COMBINING_ENCLOSING_CIRCLE
+   (code-char #x000020DE) ; ⃞ COMBINING_ENCLOSING_SQUARE
+   (code-char #x000020DF) ; ⃟ COMBINING_ENCLOSING_DIAMOND
+   (code-char #x000020E0) ; ⃠ COMBINING_ENCLOSING_CIRCLE_BACKSLASH
+   (code-char #x000020E1) ; ⃡ COMBINING_LEFT_RIGHT_ARROW_ABOVE
+   (code-char #x000020E2) ; ⃢ COMBINING_ENCLOSING_SCREEN
+   (code-char #x000020E3) ; ⃣ COMBINING_ENCLOSING_KEYCAP
+   (code-char #x000020E4) ; ⃤ COMBINING_ENCLOSING_UPWARD_POINTING_TRIANGLE
+   (code-char #x000020E5) ; ⃥ COMBINING_REVERSE_SOLIDUS_OVERLAY
+   (code-char #x000020E6) ; ⃦ COMBINING_DOUBLE_VERTICAL_STROKE_OVERLAY
+   (code-char #x000020E7) ; ⃧ COMBINING_ANNUITY_SYMBOL
+   (code-char #x000020E8) ; ⃨ COMBINING_TRIPLE_UNDERDOT
+   (code-char #x000020E9) ; ⃩ COMBINING_WIDE_BRIDGE_ABOVE
+   (code-char #x000020EA) ; ⃪ COMBINING_LEFTWARDS_ARROW_OVERLAY
+   (code-char #x000020EB) ; ⃫ COMBINING_LONG_DOUBLE_SOLIDUS_OVERLAY
+   (code-char #x000020EC) ;   COMBINING_RIGHTWARDS_HARPOON_WITH_BARB_DOWNWARDS
+   (code-char #x000020ED) ;   COMBINING_LEFTWARDS_HARPOON_WITH_BARB_DOWNWARDS
+   (code-char #x000020EE) ;   COMBINING_LEFT_ARROW_BELOW
+   (code-char #x000020EF) ;   COMBINING_RIGHT_ARROW_BELOW
+   (code-char #x000020F0) ;   COMBINING_ASTERISK_ABOVE
+   (code-char #x00002CEF) ;   COPTIC_COMBINING_NI_ABOVE
+   (code-char #x00002CF0) ;   COPTIC_COMBINING_SPIRITUS_ASPER
+   (code-char #x00002CF1) ;   COPTIC_COMBINING_SPIRITUS_LENIS
+   (code-char #x00002DE0) ;   COMBINING_CYRILLIC_LETTER_BE
+   (code-char #x00002DE1) ;   COMBINING_CYRILLIC_LETTER_VE
+   (code-char #x00002DE2) ;   COMBINING_CYRILLIC_LETTER_GHE
+   (code-char #x00002DE3) ;   COMBINING_CYRILLIC_LETTER_DE
+   (code-char #x00002DE4) ;   COMBINING_CYRILLIC_LETTER_ZHE
+   (code-char #x00002DE5) ;   COMBINING_CYRILLIC_LETTER_ZE
+   (code-char #x00002DE6) ;   COMBINING_CYRILLIC_LETTER_KA
+   (code-char #x00002DE7) ;   COMBINING_CYRILLIC_LETTER_EL
+   (code-char #x00002DE8) ;   COMBINING_CYRILLIC_LETTER_EM
+   (code-char #x00002DE9) ;   COMBINING_CYRILLIC_LETTER_EN
+   (code-char #x00002DEA) ;   COMBINING_CYRILLIC_LETTER_O
+   (code-char #x00002DEB) ;   COMBINING_CYRILLIC_LETTER_PE
+   (code-char #x00002DEC) ;   COMBINING_CYRILLIC_LETTER_ER
+   (code-char #x00002DED) ;   COMBINING_CYRILLIC_LETTER_ES
+   (code-char #x00002DEE) ;   COMBINING_CYRILLIC_LETTER_TE
+   (code-char #x00002DEF) ;   COMBINING_CYRILLIC_LETTER_HA
+   (code-char #x00002DF0) ;   COMBINING_CYRILLIC_LETTER_TSE
+   (code-char #x00002DF1) ;   COMBINING_CYRILLIC_LETTER_CHE
+   (code-char #x00002DF2) ;   COMBINING_CYRILLIC_LETTER_SHA
+   (code-char #x00002DF3) ;   COMBINING_CYRILLIC_LETTER_SHCHA
+   (code-char #x00002DF4) ;   COMBINING_CYRILLIC_LETTER_FITA
+   (code-char #x00002DF5) ;   COMBINING_CYRILLIC_LETTER_ES-TE
+   (code-char #x00002DF6) ;   COMBINING_CYRILLIC_LETTER_A
+   (code-char #x00002DF7) ;   COMBINING_CYRILLIC_LETTER_IE
+   (code-char #x00002DF8) ;   COMBINING_CYRILLIC_LETTER_DJERV
+   (code-char #x00002DF9) ;   COMBINING_CYRILLIC_LETTER_MONOGRAPH_UK
+   (code-char #x00002DFA) ;   COMBINING_CYRILLIC_LETTER_YAT
+   (code-char #x00002DFB) ;   COMBINING_CYRILLIC_LETTER_YU
+   (code-char #x00002DFC) ;   COMBINING_CYRILLIC_LETTER_IOTIFIED_A
+   (code-char #x00002DFD) ;   COMBINING_CYRILLIC_LETTER_LITTLE_YUS
+   (code-char #x00002DFE) ;   COMBINING_CYRILLIC_LETTER_BIG_YUS
+   (code-char #x00002DFF) ;   COMBINING_CYRILLIC_LETTER_IOTIFIED_BIG_YUS
+   (code-char #x00003099) ; ゙ COMBINING_KATAKANA-HIRAGANA_VOICED_SOUND_MARK
+   (code-char #x0000309A) ; ゚ COMBINING_KATAKANA-HIRAGANA_SEMI-VOICED_SOUND_MARK
+   (code-char #x0000A66F) ;   COMBINING_CYRILLIC_VZMET
+   (code-char #x0000A670) ;   COMBINING_CYRILLIC_TEN_MILLIONS_SIGN
+   (code-char #x0000A671) ;   COMBINING_CYRILLIC_HUNDRED_MILLIONS_SIGN
+   (code-char #x0000A672) ;   COMBINING_CYRILLIC_THOUSAND_MILLIONS_SIGN
+   (code-char #x0000A674) ;   COMBINING_CYRILLIC_LETTER_UKRAINIAN_IE
+   (code-char #x0000A675) ;   COMBINING_CYRILLIC_LETTER_I
+   (code-char #x0000A676) ;   COMBINING_CYRILLIC_LETTER_YI
+   (code-char #x0000A677) ;   COMBINING_CYRILLIC_LETTER_U
+   (code-char #x0000A678) ;   COMBINING_CYRILLIC_LETTER_HARD_SIGN
+   (code-char #x0000A679) ;   COMBINING_CYRILLIC_LETTER_YERU
+   (code-char #x0000A67A) ;   COMBINING_CYRILLIC_LETTER_SOFT_SIGN
+   (code-char #x0000A67B) ;   COMBINING_CYRILLIC_LETTER_OMEGA
+   (code-char #x0000A67C) ;   COMBINING_CYRILLIC_KAVYKA
+   (code-char #x0000A67D) ;   COMBINING_CYRILLIC_PAYEROK
+   (code-char #x0000A69F) ;   COMBINING_CYRILLIC_LETTER_IOTIFIED_E
+   (code-char #x0000A6F0) ;   BAMUM_COMBINING_MARK_KOQNDON
+   (code-char #x0000A6F1) ;   BAMUM_COMBINING_MARK_TUKWENTIS
+   (code-char #x0000A8E0) ;   COMBINING_DEVANAGARI_DIGIT_ZERO
+   (code-char #x0000A8E1) ;   COMBINING_DEVANAGARI_DIGIT_ONE
+   (code-char #x0000A8E2) ;   COMBINING_DEVANAGARI_DIGIT_TWO
+   (code-char #x0000A8E3) ;   COMBINING_DEVANAGARI_DIGIT_THREE
+   (code-char #x0000A8E4) ;   COMBINING_DEVANAGARI_DIGIT_FOUR
+   (code-char #x0000A8E5) ;   COMBINING_DEVANAGARI_DIGIT_FIVE
+   (code-char #x0000A8E6) ;   COMBINING_DEVANAGARI_DIGIT_SIX
+   (code-char #x0000A8E7) ;   COMBINING_DEVANAGARI_DIGIT_SEVEN
+   (code-char #x0000A8E8) ;   COMBINING_DEVANAGARI_DIGIT_EIGHT
+   (code-char #x0000A8E9) ;   COMBINING_DEVANAGARI_DIGIT_NINE
+   (code-char #x0000A8EA) ;   COMBINING_DEVANAGARI_LETTER_A
+   (code-char #x0000A8EB) ;   COMBINING_DEVANAGARI_LETTER_U
+   (code-char #x0000A8EC) ;   COMBINING_DEVANAGARI_LETTER_KA
+   (code-char #x0000A8ED) ;   COMBINING_DEVANAGARI_LETTER_NA
+   (code-char #x0000A8EE) ;   COMBINING_DEVANAGARI_LETTER_PA
+   (code-char #x0000A8EF) ;   COMBINING_DEVANAGARI_LETTER_RA
+   (code-char #x0000A8F0) ;   COMBINING_DEVANAGARI_LETTER_VI
+   (code-char #x0000A8F1) ;   COMBINING_DEVANAGARI_SIGN_AVAGRAHA
+   (code-char #x0000FE20) ; ︠ COMBINING_LIGATURE_LEFT_HALF
+   (code-char #x0000FE21) ; ︡ COMBINING_LIGATURE_RIGHT_HALF
+   (code-char #x0000FE22) ; ︢ COMBINING_DOUBLE_TILDE_LEFT_HALF
+   (code-char #x0000FE23) ; ︣ COMBINING_DOUBLE_TILDE_RIGHT_HALF
+   (code-char #x0000FE24) ;   COMBINING_MACRON_LEFT_HALF
+   (code-char #x0000FE25) ;   COMBINING_MACRON_RIGHT_HALF
+   (code-char #x0000FE26) ;   COMBINING_CONJOINING_MACRON
+   (code-char #x0000FE27) ;   COMBINING_LIGATURE_LEFT_HALF_BELOW
+   (code-char #x0000FE28) ;   COMBINING_LIGATURE_RIGHT_HALF_BELOW
+   (code-char #x0000FE29) ;   COMBINING_TILDE_LEFT_HALF_BELOW
+   (code-char #x0000FE2A) ;   COMBINING_TILDE_RIGHT_HALF_BELOW
+   (code-char #x0000FE2B) ;   COMBINING_MACRON_LEFT_HALF_BELOW
+   (code-char #x0000FE2C) ;   COMBINING_MACRON_RIGHT_HALF_BELOW
+   (code-char #x0000FE2D) ;   COMBINING_CONJOINING_MACRON_BELOW
+   (code-char #x000101E4) ;   PHAISTOS_DISC_SIGN_COMB
+   (code-char #x000101FD) ;   PHAISTOS_DISC_SIGN_COMBINING_OBLIQUE_STROKE
+   (code-char #x00010376) ;   COMBINING_OLD_PERMIC_LETTER_AN
+   (code-char #x00010377) ;   COMBINING_OLD_PERMIC_LETTER_DOI
+   (code-char #x00010378) ;   COMBINING_OLD_PERMIC_LETTER_ZATA
+   (code-char #x00010379) ;   COMBINING_OLD_PERMIC_LETTER_NENOE
+   (code-char #x0001037A) ;   COMBINING_OLD_PERMIC_LETTER_SII
+   (code-char #x00011366) ;   COMBINING_GRANTHA_DIGIT_ZERO
+   (code-char #x00011367) ;   COMBINING_GRANTHA_DIGIT_ONE
+   (code-char #x00011368) ;   COMBINING_GRANTHA_DIGIT_TWO
+   (code-char #x00011369) ;   COMBINING_GRANTHA_DIGIT_THREE
+   (code-char #x0001136A) ;   COMBINING_GRANTHA_DIGIT_FOUR
+   (code-char #x0001136B) ;   COMBINING_GRANTHA_DIGIT_FIVE
+   (code-char #x0001136C) ;   COMBINING_GRANTHA_DIGIT_SIX
+   (code-char #x00011370) ;   COMBINING_GRANTHA_LETTER_A
+   (code-char #x00011371) ;   COMBINING_GRANTHA_LETTER_KA
+   (code-char #x00011372) ;   COMBINING_GRANTHA_LETTER_NA
+   (code-char #x00011373) ;   COMBINING_GRANTHA_LETTER_VI
+   (code-char #x00011374) ;   COMBINING_GRANTHA_LETTER_PA
+   (code-char #x00016AF0) ;   BASSA_VAH_COMBINING_HIGH_TONE
+   (code-char #x00016AF1) ;   BASSA_VAH_COMBINING_LOW_TONE
+   (code-char #x00016AF2) ;   BASSA_VAH_COMBINING_MID_TONE
+   (code-char #x00016AF3) ;   BASSA_VAH_COMBINING_LOW-MID_TONE
+   (code-char #x00016AF4) ;   BASSA_VAH_COMBINING_HIGH-LOW_TONE
+   (code-char #x0001D165) ; 𝅥 MUSICAL_SYMBOL_COMBINING_STEM
+   (code-char #x0001D166) ; 𝅦 MUSICAL_SYMBOL_COMBINING_SPRECHGESANG_STEM
+   (code-char #x0001D167) ; 𝅧 MUSICAL_SYMBOL_COMBINING_TREMOLO-1
+   (code-char #x0001D168) ; 𝅨 MUSICAL_SYMBOL_COMBINING_TREMOLO-2
+   (code-char #x0001D169) ; 𝅩 MUSICAL_SYMBOL_COMBINING_TREMOLO-3
+   (code-char #x0001D16D) ; 𝅭 MUSICAL_SYMBOL_COMBINING_AUGMENTATION_DOT
+   (code-char #x0001D16E) ; 𝅮 MUSICAL_SYMBOL_COMBINING_FLAG-1
+   (code-char #x0001D16F) ; 𝅯 MUSICAL_SYMBOL_COMBINING_FLAG-2
+   (code-char #x0001D170) ; 𝅰 MUSICAL_SYMBOL_COMBINING_FLAG-3
+   (code-char #x0001D171) ; 𝅱 MUSICAL_SYMBOL_COMBINING_FLAG-4
+   (code-char #x0001D172) ; 𝅲 MUSICAL_SYMBOL_COMBINING_FLAG-5
+   (code-char #x0001D17B) ; 𝅻 MUSICAL_SYMBOL_COMBINING_ACCENT
+   (code-char #x0001D17C) ; 𝅼 MUSICAL_SYMBOL_COMBINING_STACCATO
+   (code-char #x0001D17D) ; 𝅽 MUSICAL_SYMBOL_COMBINING_TENUTO
+   (code-char #x0001D17E) ; 𝅾 MUSICAL_SYMBOL_COMBINING_STACCATISSIMO
+   (code-char #x0001D17F) ; 𝅿 MUSICAL_SYMBOL_COMBINING_MARCATO
+   (code-char #x0001D180) ; 𝆀 MUSICAL_SYMBOL_COMBINING_MARCATO-STACCATO
+   (code-char #x0001D181) ; 𝆁 MUSICAL_SYMBOL_COMBINING_ACCENT-STACCATO
+   (code-char #x0001D182) ; 𝆂 MUSICAL_SYMBOL_COMBINING_LOURE
+   (code-char #x0001D185) ; 𝆅 MUSICAL_SYMBOL_COMBINING_DOIT
+   (code-char #x0001D186) ; 𝆆 MUSICAL_SYMBOL_COMBINING_RIP
+   (code-char #x0001D187) ; 𝆇 MUSICAL_SYMBOL_COMBINING_FLIP
+   (code-char #x0001D188) ; 𝆈 MUSICAL_SYMBOL_COMBINING_SMEAR
+   (code-char #x0001D189) ; 𝆉 MUSICAL_SYMBOL_COMBINING_BEND
+   (code-char #x0001D18A) ; 𝆊 MUSICAL_SYMBOL_COMBINING_DOUBLE_TONGUE
+   (code-char #x0001D18B) ; 𝆋 MUSICAL_SYMBOL_COMBINING_TRIPLE_TONGUE
+   (code-char #x0001D1AA) ; 𝆪 MUSICAL_SYMBOL_COMBINING_DOWN_BOW
+   (code-char #x0001D1AB) ; 𝆫 MUSICAL_SYMBOL_COMBINING_UP_BOW
+   (code-char #x0001D1AC) ; 𝆬 MUSICAL_SYMBOL_COMBINING_HARMONIC
+   (code-char #x0001D1AD) ; 𝆭 MUSICAL_SYMBOL_COMBINING_SNAP_PIZZICATO
+   (code-char #x0001D242) ;   COMBINING_GREEK_MUSICAL_TRISEME
+   (code-char #x0001D243) ;   COMBINING_GREEK_MUSICAL_TETRASEME
+   (code-char #x0001D244) ;   COMBINING_GREEK_MUSICAL_PENTASEME
+   (code-char #x0001E8D0) ;   MENDE_KIKAKUI_COMBINING_NUMBER_TEENS
+   (code-char #x0001E8D1) ;   MENDE_KIKAKUI_COMBINING_NUMBER_TENS
+   (code-char #x0001E8D2) ;   MENDE_KIKAKUI_COMBINING_NUMBER_HUNDREDS
+   (code-char #x0001E8D3) ;   MENDE_KIKAKUI_COMBINING_NUMBER_THOUSANDS
+   (code-char #x0001E8D4) ;   MENDE_KIKAKUI_COMBINING_NUMBER_TEN_THOUSANDS
+   (code-char #x0001E8D5) ;   MENDE_KIKAKUI_COMBINING_NUMBER_HUNDRED_THOUSANDS
+   (code-char #x0001E8D6) ;   MENDE_KIKAKUI_COMBINING_NUMBER_MILLIONS
+   )
+  "")
+
+;; @@@ Make these better on non-SBCL. And move them out of here!
+(defun combining-character-p (c)
+  ;; #+sbcl (/= (sb-unicode:combining-class c) 0)
+  ;; This is just plain better.
+  (position c *combining-chars*))
+
+#+sbcl
+;; Older versions of SBCL don't have this.
+(when (find-package :sb-unicode)
+  (d-add-feature :has-sb-unicode))
+
+(defun double-wide-p (c)
+  #+(and sbcl has-sb-unicode) (eq (sb-unicode:east-asian-width c) :w)
+  #-(and sbcl has-sb-unicode) (declare (ignore c))
+  #-(and sbcl has-sb-unicode) nil	; @@@ too hard without tables
+  )
+
+;; XXX This is still wrong for unicode! @@@
 (defmethod display-length ((c character))
   "Return the length of the character for display."
   (cond
     ((graphic-char-p c)
-     1)					;normal case XXX wrong for unicode
+     (cond
+       ((combining-character-p c) 0)
+       ((double-wide-p c) 2)
+       (t 1)))				;normal case
     ((eql c #\tab)
      8)					;XXX @@@ wrong!
     ((eql c #\newline)
@@ -956,7 +1381,8 @@ anything important.")
   "Update the screen row and column for inserting the string S.
 Assumes S is already converted to display characters."
   (let* ((width (terminal-window-columns (line-editor-terminal e)))
-	 (len (length s))
+	 ;;(len (length s))
+	 (len (display-length s))
 	 (last-remain (+ (screen-col e) len)))
      (loop :with remain = (max 0 (- len (- width (screen-col e))))
 	  :while (> remain 0)
@@ -1086,8 +1512,9 @@ the current cursor position."
     (beginning-of-line e)
     (tt-erase-to-eol e)
     (let* ((cols (terminal-window-columns (line-editor-terminal e)))
-	   (buf-len (length buf))
-;;;	   (lines-to-clear (truncate (+ (screen-col e) buf-len) 80)))
+	   ;;(buf-len (length buf))
+	   (buf-len (display-length buf))
+	   ;;(lines-to-clear (truncate (+ (screen-col e) buf-len) 80)))
 	   (lines-to-clear (truncate (+ (screen-col e) buf-len) cols)))
       (when (> (+ buf-len (screen-col e)) cols)
 	(loop :for i :from 1 :to lines-to-clear
@@ -1997,7 +2424,7 @@ is none."
 	      (progn
 		(display-char e char)
 		;; flash paren and keep going
-		(when (or (eql char #\)) (eql char #\]))
+		(when (or (eql char #\)) (eql char #\]) (eql char #\}))
 		  (flash-paren e char))
 		(insert-char e char)
 		(incf point))
@@ -2005,7 +2432,7 @@ is none."
 	      (progn
 		(tt-ins-char e (display-length char))
 		(display-char e char)
-		(when (or (eql char #\)) (eql char #\]))
+		(when (or (eql char #\)) (eql char #\]) (eql char #\}))
 		  (flash-paren e char))
 		(insert-char e char)
 		(incf point)
@@ -2022,163 +2449,6 @@ is none."
 		  (setf (screen-row e) old-row
 			(screen-col e) old-col))))))))
 ;;		(tt-move-to e (screen-row e) (screen-col e))
-
-#|
-
-;; Slow scrollin' pardner.
-(defparameter *unipose*
-  '((#\1 ((#\2 #\½) (#\4 #\¼) (#\^ #\¹)))
-    (#\2 ((#\^ #\²)))
-    (#\3 ((#\^ #\³) (#\4 #\¾)))
-    (#\8 ((#\8 #\∞)))
-    (#\A ((#\^ #\Â) (#\' #\Á) (#\` #\À) (#\" #\Ä) (#\E #\Æ) (#\o #\Å) (#\~ #\Ã)))
-    (#\a ((#\^ #\â) (#\' #\á) (#\` #\à) (#\" #\ä) (#\e #\æ) (#\o #\å) (#\~ #\ã) (#\_ #\ª) (#\p #\)))
-    (#\B ((#\B #\ß)))
-    (#\c (((#\0 #\O) #\©) ((#\/ #\|) #\¢) (#\, #\ç) (#\* #\☪) (#\C #\￠)))
-    (#\C (((#\0 #\O) #\©) ((#\/ #\|) #\￠) (#\, #\Ç) (#\* #\☪)))
-    (#\D ((#\D #\∆) (#\- #\Ð)))
-    (#\d ((#\g #\˚)))
-    (#\E ((#\^ #\Ê) (#\' #\É) (#\` #\È) (#\" #\Ë) ((#\~ #\- #\=) #\€)))
-    (#\f ((#\~ #\ƒ) (#\f #\ﬀ) (#\i #\ﬁ) (#\l #\ﬂ) (#\t #\ﬅ))) ; what about ﬃ ﬄ
-    (#\e ((#\^ #\ê) (#\' #\é) (#\` #\è) (#\" #\ë) ((#\~ #\- #\=) #\€)))
-    (#\I ((#\^ #\Î) (#\' #\Í) (#\` #\Ì) (#\" #\Ï)))
-    (#\i ((#\^ #\î) (#\' #\í) (#\` #\ì) (#\" #\ï) (#\j #\ĳ)))
-    (#\L ((#\L #\Λ) (#\- #\£)))
-    (#\l ((#\l #\λ)))
-    (#\m ((#\m #\µ)))
-    (#\N ((#\~ #\Ñ)))
-    (#\n ((#\~ #\ñ)))
-    (#\O ((#\^ #\Ô) (#\' #\Ó) (#\` #\Ò) (#\" #\Ö) (#\E #\Œ) (#\~ #\Õ) (#\O #\Ω)))
-    (#\o ((#\^ #\ô) (#\' #\ó) (#\` #\ò) (#\" #\ö) (#\e #\œ) (#\~ #\õ) (#\_ #\º)))
-    (#\P ((#\H #\Φ) (#\P #\¶)))
-    (#\p ((#\h #\φ)))
-    (#\r (((#\0 #\O #\o) #\®)))
-    (#\S ((#\S #\∑)))
-    (#\s ((#\e #\§) (#\r #\√) (#\s #\ß) (#\t #\ﬆ)))
-    (#\T (((#\M #\m) #\™) (#\T #\Þ)))
-    (#\t (((#\M #\m) #\™) (#\T #\þ)))
-    (#\U ((#\^ #\Û) (#\' #\Ú) (#\` #\Ù) (#\" #\Ü)))
-    (#\u ((#\^ #\û) (#\' #\ú) (#\` #\ù) (#\" #\ü)))
-    (#\x ((#\x #\×)))
-    (#\Y ((#\- #\¥) (#\' #\Ý)))
-    (#\y ((#\- #\¥) (#\' #\ý)))
-    (#\^ (;; captial circumflex
-	 (#\A #\Â) (#\C #\Ĉ) (#\E #\Ê) (#\G #\Ĝ) (#\H #\Ĥ) (#\I #\Î) (#\J #\Ĵ)
-	 (#\O #\Ô) (#\S #\Ŝ) (#\U #\Û) (#\W #\Ŵ) (#\Y #\Ŷ)
-	 ;; lower circumflex
-	 (#\a #\â) (#\c #\ĉ) (#\e #\ê) (#\g #\ĝ) (#\h #\ĥ) (#\i #\î) (#\j #\ĵ)
-	 (#\o #\ô) (#\s #\ŝ) (#\u #\û) (#\w #\ŵ) (#\y #\ŷ)))
-    (#\' (;; capital acute
-	 (#\A #\Á) (#\E #\É) (#\I #\Í) (#\O #\Ó) (#\U #\Ú) (#\W #\Ẃ) (#\Y #\Ý)
-	 ;; lower acute
-	 (#\a #\á) (#\e #\é) (#\i #\í) (#\o #\ó) (#\u #\ú) (#\w #\ẃ) (#\y #\ý)
-	 ;; misc acute
-	 (#\' #\´) (#\< #\‘) (#\> #\’)))
-    (#\` (;; capital grave
-	 (#\A #\À) (#\E #\È) (#\I #\Ì) (#\O #\Ò) (#\U #\Ù) (#\W #\Ẁ) (#\Y #\Ỳ)
-	 ;; lower greve
-	 (#\a #\à) (#\e #\è) (#\i #\ì) (#\o #\ò) (#\u #\ù) (#\w #\ẁ) (#\y #\ỳ)))
-    (#\" (;; capital umlat
-	  (#\A #\Ä) (#\E #\Ë) (#\I #\Ï) (#\O #\Ö) (#\U #\Ü) (#\W #\Ẅ) (#\Y #\Ÿ)
-	  ;; lower umlat
-	  (#\a #\ä) (#\e #\ë) (#\i #\ï) (#\o #\ö) (#\u #\ü) (#\w #\ẅ) (#\y #\ÿ)
-	  (#\v #\„) (#\< #\“) (#\> #\”) (#\s #\ß)))
-    (#\~ (;; upper twiddles
-	 (#\A #\Ã) (#\C #\Ç) (#\D #\Ð) (#\G #\Ğ) (#\N #\Ñ) (#\T #\Þ) (#\U #\Ŭ)
-	 ;; lower twiddles
-	 (#\a #\ã) (#\c #\ç) (#\d #\ð) (#\g #\ğ) (#\n #\ñ) (#\t #\þ) (#\u #\ŭ)
-	 ;; misc twiddles
-	 (#\e #\€) (#\p #\¶) (#\s #\§) (#\u #\µ) (#\x #\¤) (#\? #\¿) (#\! #\¡)
-	 (#\$ #\£) (#\. #\·) (#\< #\«) (#\> #\»)))
-    (#\! ((#\! #\‼) (#\v #\¡) (#\? #\⁉) (#\/ #\❢)))
-    (#\? ((#\v #\¿) (#\? #\⁇) (#\! #\⁈) ((#\| #\/) #\‽)))
-    (#\/ ((#\O #\Ø) (#\o #\ø) (#\c #\¢)))
-    (#\| ((#\| #\¦)))
-    (#\+ ((#\- #\±) (#\+ #\†)))
-    (#\- ((#\+ #\±) (#\: #\÷)))
-    (#\= ((#\/ #\≠) (#\/ #\≠) (#\~ #\≈)))
-    (#\_ ((#\^ #\¯)))
-    (#\< ((#\= #\≤) (#\< #\«)))
-    (#\> ((#\= #\≥) (#\> #\»)))
-    (#\: ((#\- #\÷)))
-    (#\. ((#\o #\•) (#\. #\·) (#\- #\⋅) (#\^ #\˚)))
-    (#\$ ((#\$ #\¤)))
-    (#\% ((#\% #\‰))))
-  "Unicode compose character lists.")
-
-;; Since this is probably just for me, does it really matter? 
-(defun save-unipose-for-emacs ()
-  (with-open-file (stream (glob:expand-tilde "~/src/el/unipose-data.el")
-			  :direction :output
-			  :if-exists :supersede)
-    (format stream ";;;~%;;; unipose-data.el~%;;;~%~@
-		    ;;; Automatically generated from TINY-RL at ~a~%~%"
-	    (dlib-misc:date-string))
-    (print-unipose-for-emacs :stream stream)
-    (format stream "~%;; EOF~%")))
-
-(defun print-unipose-for-emacs (&key (tree *unipose*) (stream *standard-output*) (depth 0) (n 0))
-  "Print the unipose list for loading into emacs."
-  (if (= depth 0)
-      (progn
-	(format stream "(setq *unipose*~%  '(")
-	(loop
-	   :for branch :in tree
-	   :for n = 0 :then (+ n 1)
-	   :do
-	   (when (> n 0)
-	     (write-string "   " stream))
-	   (incf depth)
-	   (print-unipose-for-emacs :tree branch :stream stream :depth depth :n n)
-	   (terpri stream))
-	(format stream "   ))~%"))
-      (progn
-	(incf depth)
-	(typecase tree
-	  (null
-	   (write-char #\) stream))
-	  (list
-	   (incf depth)
-	   (when (and (> n 0) (> depth 1))
-	     (write-char #\space stream))
-	   (write-char #\( stream)
-	   (loop
-	      :for l :in tree
-	      :for n = 0 :then (+ n 1)
-	      :do
-	      (print-unipose-for-emacs :tree l :stream stream :depth depth :n n))
-	   (write-char #\) stream))
-	  (character
-	   (when (> n 0)
-	     (write-char #\space stream))
-	   (write-char #\? stream)
-	   (when (char= tree #\")
-	     (write-char #\\ stream))
-	   (write-char tree stream))
-	  (t
-	   (error "Unknown object type in unipose data: ~s ~s~%"
-		  (type-of tree) tree))))))
-
-(defun unipose (e)
-  "Compose unicode characters."
-  (let ((first-ccc (get-a-char e)) second-ccc)
-      (setq second-ccc (get-a-char e))
-      (let ((level2 (cadr (assoc first-ccc *unipose*)))
-	    (found nil))
-	(dolist (level3 level2)
-	  (if (and (listp (car level3)) (position second-ccc (car level3)))
-	      (progn
-		(self-insert e t (cadr level3))
-		(setq found t)
-		(return))
-	      (if (eq (car level3) second-ccc)
-		  (progn
-		    (self-insert e t (cadr level3))
-		    (setq found t)
-		    (return)))))
-	(when (not found)
-	  (beep e "unipose ~c ~c unknown" first-ccc second-ccc)))))
-|#
 
 (defun read-key-sequence (e &optional keymap)
   "Read a key sequence from the user. Descend into keymaps.
@@ -2225,6 +2495,15 @@ is none."
   (with-slots (quit-flag exit-flag) e
     (setf quit-flag t
 	  exit-flag t)))
+
+(defun unipose-command (e)
+  "Compose unicode characters."
+  (let ((first-ccc (get-a-char e)) second-ccc result)
+    (setq second-ccc (get-a-char e))
+    (setq result (unipose first-ccc second-ccc))
+    (if result
+	(self-insert e t result)
+	(beep e "unipose ~c ~c unknown" first-ccc second-ccc))))
 
 (defkeymap *normal-keymap*
   `(
@@ -2298,7 +2577,7 @@ is none."
     ;; (#\! (shell-command))
     ;; (#\( (start-macro))
     ;; (#\) (end-macro))
-    (#\9		. unipose)
+    (#\9		. unipose-command)
     (,(ctrl #\C)	. exit-editor)
     (,(ctrl #\X)	. exchange-point-and-mark)))
 ;  :default-binding #| (beep e "C-x ~a is unbound." cmd |#
@@ -2367,6 +2646,7 @@ is none."
        (return-from perform-key))
       ;; a list to apply
       ((consp action)
+       ;;(dbug "action is a cons~%")
        (if (fboundp (car action))
 	   (apply (car action) (cdr action))
 	   (beep e "(~S) is not defined." (car action))))
@@ -2383,6 +2663,7 @@ is none."
 	  (beep e "Key binding ~S is not a function or a keymap." action))))
       ;; a function object
       ((functionp action)
+       ;;(dbug "action is a function~%")
        (funcall action e))
       (t					; anything else is an error
        (error "Weird thing in keymap: ~s." action)))))
