@@ -718,7 +718,7 @@ defaults to the current package. Return how many symbols there were."
      full-match)))
 
 (defun filename-completion-list (w &optional extra-test)
-  "Print the list of completions for w. Return how many there were."
+  "Return the list of completions for W and how many there were. "
   (let* (pos
 	 (count 0)
 	 (result-list '())
@@ -760,7 +760,13 @@ defaults to the current package. Return how many symbols there were."
 	(declare (ignore full-match))
 	(values result 0))))
 
-;; We have to assume the entire context is a filename. Shells that want to
+(defun is-actually-directory (f)
+  ;; @@@ perhaps we need to do a loop to resolve multiple links?
+  (or (eq (dir-entry-type f) :dir)
+      (and (eq (dir-entry-type f) :link)
+	   (is-directory (file-status-mode (stat (dir-entry-name f)))))))
+
+;; We have to assume the entire context is a filename. Things that want to
 ;; do completion in a command line, will have to arrange for this to be so.
 (defun complete-directory (context pos all &key parsed-exp)
   "Completion function for file names."
@@ -768,11 +774,9 @@ defaults to the current package. Return how many symbols there were."
   ;; Let's ignore anything after pos for the sake of completion.
 ;  (format t "jinko (~a) ~a~%" context pos)
   (if all
-      (filename-completion-list
-       context #'(lambda (x) (eq (dir-entry-type x) :dir)))
+      (filename-completion-list context #'is-actually-directory)
       (multiple-value-bind (result full-match)
-	  (filename-completion
-	   context #'(lambda (x) (eq (dir-entry-type x) :dir)))
+	  (filename-completion context #'is-actually-directory)
 	(declare (ignore full-match))
 	(values result 0))))
 
