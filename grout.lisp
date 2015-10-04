@@ -1,20 +1,20 @@
 ;;
-;; grout.lisp - grumble grumble
+;; grout.lisp - Generic output.
 ;;
 
-;; This is so we can make old fashioned command line utilities that can use a
-;; few output features when they're available, but fall back to plain text
-;; when not. This is not for making fancy interactive applications. It's just
-;; for relatively simple output.
-
-;; $Revision$
-
 (defpackage :grout
-  (:documentation "Generic Rectilinear Output And Text")
+  (:documentation "Backronym: [G]eneric [R]ectilinear [OU]tput And [T]ext
+This is so we can make old fashioned command line utilities that can use a
+few output features when they're available, but fall back to plain text
+ when not. This is not for making fancy interactive applications. It's just
+for relatively simple output.")
   (:use :cl :dlib :dlib-misc :opsys :terminal :terminal-ansi)
   (:export
-   #:grout #:grout-stream
+   #:grout
+   #:grout-stream
+   #:*grout*
    #:dumb #:ansi #:ansi-stream #:slime
+   #:grout-supports-attributes
    #:grout-width
    #:grout-height
    #:grout-bold
@@ -28,6 +28,9 @@
    #:grout-beep
    #:grout-object
    #:grout-write
+   #:grout-princ
+   #:grout-prin1
+   #:grout-print
    #:grout-format
    #:grout-finish
    #:grout-done
@@ -45,60 +48,114 @@
     :documentation "The stream for output."))
   (:documentation "Generic output destination."))
 
-(defgeneric grout-width (grout)
-  (:documentation "Return the width of the output, or NIL for infinite or
-unknown."))
+(defvar *grout* nil
+  "The current dynamic grout.")
 
-(defgeneric grout-height (grout)
-  (:documentation "Return the width of the output, or NIL for infinite or
-unknown."))
+(defmacro defgrout (name (&rest args) doc-string)
+  "Macro that defines a grout generic function along with a macro that calls
+that generic function with *GROUT* as it's first arg, just for API prettyness."
+  (let ((grout-name (symbolify (s+ "GROUT-" name)))
+	(grout-generic (symbolify (s+ "%GROUT-" name)))
+	(whole-arg (gensym "DEFGROUT-WHOLE-ARG")))
+    `(progn
+       (defgeneric ,grout-generic (grout ,@args) (:documentation ,doc-string))
+       (defmacro ,grout-name (&whole ,whole-arg ,@args)
+	 ;; Don't complain about unused things in ARGS. We are actually using
+	 ;; them, from the &WHOLE.
+	 (declare (sb-ext:muffle-conditions style-warning))
+	 ,doc-string
+	 (append (list ',grout-generic '*grout*) (cdr ,whole-arg))))))
 
-(defgeneric grout-bold (grout string)
-  (:documentation "Output the string boldly."))
+(defgrout supports-attributes ()
+  "Return T if the *GROUT* supports character attributes.")
 
-(defgeneric grout-set-bold (grout flag)
-  (:documentation "Turn bold on or off."))
+(defgrout width ()
+  "Return the width of the output, or NIL for infinite or
+unknown.")
 
-(defgeneric grout-underline (grout string)
-  (:documentation "Output the string underlined."))
+(defgrout height ()
+  "Return the width of the output, or NIL for infinite or
+unknown.")
 
-(defgeneric grout-set-underline (grout flag)
-  (:documentation "Turn underlining on or off."))
+(defgrout bold (string)
+  "Output the string boldly.")
 
-(defgeneric grout-set-normal (grout)
-  (:documentation "Return output to normal. No attributes. No color."))
+(defgrout set-bold (flag)
+  "Turn bold on or off.")
 
-(defgeneric grout-color (grout foreground background string)
-  (:documentation "Output the string with the colors set."))
+(defgrout underline (string)
+  "Output the string underlined.")
 
-(defgeneric grout-set-color (grout foreground background)
-  (:documentation "Set the color."))
+(defgrout set-underline (flag)
+  "Turn underlining on or off.")
 
-(defgeneric grout-clear (grout)
-  (:documentation "Clear the screen."))
+(defgrout set-normal ()
+  "Return output to normal. No attributes. No color.")
+
+(defgrout color (foreground background string)
+  "Output the string with the colors set.")
+
+(defgrout set-color (foreground background)
+  "Set the color.")
+
+(defgrout clear ()
+  "Clear the screen.")
     
-(defgeneric grout-beep (grout)
-  (:documentation "Do something annoying."))
+(defgrout beep ()
+  "Do something annoying.")
 
-(defgeneric grout-object (grout object)
-  (:documentation "Output the object in a way that it might be accesible."))
+(defgrout object (object)
+  "Output the object in a way that it might be accesible.")
 
-(defgeneric grout-write (grout object
-			 &key
-			   array base case circle escape gensym length level
-			   lines miser-width pprint-dispatch pretty radix
-			   readably right-margin
-			   &allow-other-keys)
-  (:documentation "Write an object to the grout."))
+(defgrout write (object
+		 &key
+		 array base case circle escape gensym length level
+		 lines miser-width pprint-dispatch pretty radix
+		 readably right-margin
+		 &allow-other-keys)
+  "Write an object to the grout.")
 
-(defgeneric grout-format (grout format-string &rest format-args)
-  (:documentation "Formatted output to the grout."))
+(defgrout format (format-string &rest format-args)
+  "Formatted output to the grout.")
 
-(defgeneric grout-finish (grout)
-  (:documentation "Make any pending output be sent to the grout."))
+(declaim (inline grout-princ))
+(defun grout-princ (object)
+  "Like PRINC but using GROUT-WRITE."
+  (grout-write object :escape nil :readably nil))
 
-(defgeneric grout-done (grout)
-  (:documentation "Be done with the grout."))
+(declaim (inline grout-prin1))
+(defun grout-prin1 (object)
+  "Like PRIN1 but using GROUT-WRITE."
+  (grout-write object :escape t))
+
+(declaim (inline grout-print))
+(defun grout-print (object)
+  "Like PRINT but ostensibly using GROUT-WRITE."
+  (grout-write #\newline :escape nil)
+  (grout-write object)
+  (grout-write #\space :escape nil))
+
+(defgrout finish ()
+  "Make any pending output be sent to the grout.")
+
+(defgrout done ()
+  "Be done with the grout.")
+
+;; We want this to work even if Lish is not loaded.
+(defun shell-output-accepts-grotty ()
+  "Return true if the LISH output accepts terminal decoration."
+  (let (pkg sym val)
+    ;; (format t "==--//==--//==--//==--//==~%")
+    (and (setf pkg (find-package :lish))
+	 (setf sym (intern "*ACCEPTS*" pkg))
+	 (boundp sym)
+	 (setf val (symbol-value sym))
+	 (progn
+	   ;; (format t "Grottyness = ~s~%" val)
+	   (or (and (keywordp val)
+		    (eq :grotty-stream val))
+	       (and (typep val 'sequence)
+		    (find :grotty-stream val)))))))
 
 ;; If you need a specific one, just make it yourself.
 (defun make-grout (&optional (stream *standard-output*))
@@ -107,6 +164,8 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
   (cond
     ((has-terminal-attributes stream)
      (make-instance 'ansi :stream stream))
+    ((shell-output-accepts-grotty)
+     (make-instance 'ansi-stream :stream stream))
     ((and (nos:getenv "EMACS")
 	  (find-package :slime))
      ;; @@@ should really test the stream
@@ -114,14 +173,21 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
     (t
      (make-instance 'dumb :stream stream))))
 
-(defmacro with-grout ((var &optional stream) &body body)
-  "Evaluate the body with a GROUT bound to output."
-  `(let (,var)
-     (unwind-protect
-	(progn
-	  (setf ,var (make-grout (or ,stream *standard-output*)))
-	  ,@body)
-       (when ,var (grout-done ,var)))))
+(defmacro with-grout ((&optional (var '*grout*) stream) &body body)
+  "Evaluate the body with a GROUT bound to VAR. Doesn't do anything if VAR is
+already bound, so multiple wrappings will use the same object. VAR defaults to
+*GROUT*. Note that if you supply your own VAR, you will have to use the
+generic functions (i.e. %GROUT-*) directly."
+  `(if (and (boundp ',var) ,var)
+       (progn
+	 ,@body)
+       (let (,var)
+	 (declare (special ,var))
+	 (unwind-protect
+	   (progn
+	     (setf ,var (make-grout (or ,stream *standard-output*)))
+	     ,@body)
+	   (when ,var (%grout-done ,var))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Dumb all over. A little ugly on the side.
@@ -130,62 +196,66 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
   ()
   (:documentation "Can't do nothing special."))
 
-(defmethod grout-width ((g dumb))
+(defmethod %grout-supports-attributes ((g dumb))
+  "Return T if the *GROUT* supports character attributes."
+  nil)
+
+(defmethod %grout-width ((g dumb))
   "Return the width of the output, or NIL for infinite or unknown."
   (declare (ignore g))
   (let ((col (nos:getenv "COLUMNS")))
     (or (and col (parse-integer col)) 80)))
 
-(defmethod grout-height ((g dumb))
+(defmethod %grout-height ((g dumb))
   "Return the width of the output, or NIL for infinite or unknown."
   (declare (ignore g))
   (let ((rows (nos:getenv "ROWS")))
     (or (and rows (parse-integer rows)) 24)))
 
-(defmethod grout-bold ((g dumb) string)
+(defmethod %grout-bold ((g dumb) string)
   "Output the string boldly."
   (write-string string (grout-stream g)))
 
-(defmethod grout-set-bold ((g dumb) flag)
+(defmethod %grout-set-bold ((g dumb) flag)
   "Turn bold on or off."
   (declare (ignore g flag)))
 
-(defmethod grout-underline ((g dumb) string)
+(defmethod %grout-underline ((g dumb) string)
   "Output the string underlined."
   (write-string string (grout-stream g)))
 
-(defmethod grout-set-underline ((g dumb) flag)
+(defmethod %grout-set-underline ((g dumb) flag)
   "Turn underlining on or off."
   (declare (ignore g flag)))
 
-(defmethod grout-set-normal ((g dumb))
+(defmethod %grout-set-normal ((g dumb))
   "Return output to normal. No attributes. No color."
   (declare (ignore g)))
 
-(defmethod grout-color ((g dumb) foreground background string)
+(defmethod %grout-color ((g dumb) foreground background string)
   "Set the color."
   (declare (ignore foreground background))
   (write-string string (grout-stream g)))
 
-(defmethod grout-set-color ((g dumb) foreground background)
+(defmethod %grout-set-color ((g dumb) foreground background)
   "Set the color."
   (declare (ignore g foreground background)))
 
-(defmethod grout-clear ((g dumb))
+(defmethod %grout-clear ((g dumb))
   "Clear the screen."
-  (dotimes (n (grout-height g))
+  (dotimes (n (%grout-height g))
     (write-char #\newline (grout-stream g))))
     
-(defmethod grout-beep ((g dumb))
+(defmethod %grout-beep ((g dumb))
   "Do something annoying."
   (write-char #\^G (grout-stream g))
   (finish-output (grout-stream g)))
 
-(defmethod grout-object ((g dumb) object)
+(defmethod %grout-object ((g dumb) object)
   "Output the object in a way that it might be accesible."
   (write-string (princ-to-string object) (grout-stream g)))
 
-(defmethod grout-write ((g dumb) object &rest args 
+(defmethod %grout-write ((g dumb) object &rest args 
 			 &key
 			   (array            *print-array*)
 			   (base             *print-base*)
@@ -208,18 +278,139 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
 		      readably right-margin))
   (apply #'write object :stream (grout-stream g) args))
 
-(defmethod grout-format ((g dumb) format-string &rest format-args)
+(defmethod %grout-format ((g dumb) format-string &rest format-args)
   (apply #'format (grout-stream g) format-string format-args))
 
-(defmethod grout-finish ((g dumb))
+(defmethod %grout-finish ((g dumb))
   (finish-output (grout-stream g)))
 
-(defmethod grout-done ((g dumb))
+(defmethod %grout-done ((g dumb))
   "Be done with the grout."
   (declare (ignore g)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; ANSI is a bad word.
+;; ANSI stream, mostly for decorative purposes.
+
+(defclass ansi-stream (grout)
+  ((term-stream
+    :initarg :term :accessor ansi-stream
+    :documentation "The terminal stream."))
+  (:documentation "Can do a few standard things."))
+
+(defmethod initialize-instance
+    :after ((o ansi-stream) &rest initargs &key &allow-other-keys)
+  "Initialize a ANSI stream."
+  (declare (ignore initargs))
+  (setf (slot-value o 'term-stream)
+	(make-instance 'terminal-ansi-stream
+		       :output-stream (slot-value o 'stream))))
+
+(defmethod %grout-supports-attributes ((g ansi-stream))
+  "Return T if the *GROUT* supports character attributes."
+  t)
+
+;; Unfortunately we have to do the same the as the dumb driver.
+(defmethod %grout-width ((g ansi-stream))
+  "Return the width of the output, or NIL for infinite or unknown."
+  (declare (ignore g))
+  (let ((col (nos:getenv "COLUMNS")))
+    (or (and col (parse-integer col)) 80)))
+
+;; Unfortunately we have to do the same the as the dumb driver.
+(defmethod %grout-height ((g ansi-stream))
+  "Return the width of the output, or NIL for infinite or unknown."
+  (declare (ignore g))
+  (let ((rows (nos:getenv "ROWS")))
+    (or (and rows (parse-integer rows)) 24)))
+
+(defmethod %grout-bold ((g ansi-stream) string)
+  "Output the string boldly."
+  (with-slots (term-stream) g
+    (tt-bold term-stream t)
+    (tt-write-string term-stream string)
+    (tt-bold term-stream nil)))
+
+(defmethod %grout-set-bold ((g ansi-stream) flag)
+  "Turn bold on or off."
+  (tt-bold (ansi-stream g) flag))
+
+(defmethod %grout-underline ((g ansi-stream) string)
+  "Output the string underlined."
+  (with-slots (term-stream) g
+    (tt-underline term-stream t)
+    (tt-write-string term-stream string)
+    (tt-underline term-stream nil)
+    (tt-finish-output term-stream)))
+
+(defmethod %grout-set-underline ((g ansi-stream) flag)
+  "Turn underlining on or off."
+  (tt-underline (ansi-stream g) flag))
+
+(defmethod %grout-set-normal ((g ansi-stream))
+  "Return output to normal. No attributes. No color."
+  (tt-normal (ansi-stream g)))
+
+(defmethod %grout-color ((g ansi-stream) foreground background string)
+  "Set the color."
+  (with-slots (term-stream) g
+    (tt-color term-stream foreground background)
+    (tt-write-string term-stream string)
+    (tt-color term-stream :default :default)))
+
+(defmethod %grout-set-color ((g ansi-stream) foreground background)
+  "Set the color."
+  (tt-color (ansi-stream g) foreground background))
+
+(defmethod %grout-clear ((g ansi-stream))
+  "Clear the screen."
+  (tt-clear (ansi-stream g)))
+
+(defmethod %grout-beep ((g ansi-stream))
+  "Do something annoying."
+  (tt-beep (ansi-stream g)))
+
+(defmethod %grout-object ((g ansi-stream) object)
+  "Output the object in a way that it might be accesible."
+  (tt-write-string (ansi-stream g) (princ-to-string object)))
+
+(defmethod %grout-write ((g ansi-stream) object &rest args 
+			 &key
+			   (array            *print-array*)
+			   (base             *print-base*)
+			   (case             *print-case*)
+			   (circle           *print-circle*)
+			   (escape           *print-escape*)
+			   (gensym           *print-gensym*)
+			   (length           *print-length*)
+			   (level            *print-level*)
+			   (lines            *print-lines*)
+			   (miser-width      *print-miser-width*)
+			   (pprint-dispatch  *print-pprint-dispatch*)
+			   (pretty           *print-pretty*)
+			   (radix            *print-radix*)
+			   (readably         *print-readably*)
+			   (right-margin     *print-right-margin*)
+			   &allow-other-keys)
+  (declare (ignorable array base case circle escape gensym length level
+		      lines miser-width pprint-dispatch pretty radix
+		      readably right-margin))
+  (tt-write-string (ansi-stream g)
+		   (with-output-to-string (str)
+		     (apply #'write object :stream str args))))
+
+(defmethod %grout-format ((g ansi-stream) format-string &rest format-args)
+  (apply #'tt-format (ansi-stream g) format-string format-args))
+
+(defmethod %grout-finish ((g ansi-stream))
+  (tt-finish-output (ansi-stream g)))
+
+(defmethod %grout-done ((g ansi-stream))
+  "Be done with the grout."
+  (tt-finish-output (ansi-stream g)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; ANSI is a bad word. So is ‘terminal’ in this sense.
+;; We expect a real genuine fake.
 
 (defclass ansi (grout)
   ((term
@@ -234,26 +425,30 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
   (setf (slot-value o 'term) (make-instance 'terminal-ansi))
   (terminal-start (slot-value o 'term)))
 
-(defmethod grout-width ((g ansi))
+(defmethod %grout-supports-attributes ((g ansi))
+  "Return T if the *GROUT* supports character attributes."
+  t)
+
+(defmethod %grout-width ((g ansi))
   "Return the width of the output, or NIL for infinite or unknown."
   (terminal-window-columns (ansi-term g)))
 
-(defmethod grout-height ((g ansi))
+(defmethod %grout-height ((g ansi))
   "Return the width of the output, or NIL for infinite or unknown."
   (terminal-window-rows (ansi-term g)))
 
-(defmethod grout-bold ((g ansi) string)
+(defmethod %grout-bold ((g ansi) string)
   "Output the string boldly."
   (with-slots (term) g
     (tt-bold term t)
     (tt-write-string term string)
     (tt-bold term nil)))
 
-(defmethod grout-set-bold ((g ansi) flag)
+(defmethod %grout-set-bold ((g ansi) flag)
   "Turn bold on or off."
   (tt-bold (ansi-term g) flag))
 
-(defmethod grout-underline ((g ansi) string)
+(defmethod %grout-underline ((g ansi) string)
   "Output the string underlined."
   (with-slots (term) g
     (tt-underline term t)
@@ -261,38 +456,38 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
     (tt-underline term nil)
     (tt-finish-output term)))
 
-(defmethod grout-set-underline ((g ansi) flag)
+(defmethod %grout-set-underline ((g ansi) flag)
   "Turn underlining on or off."
   (tt-underline (ansi-term g) flag))
 
-(defmethod grout-set-normal ((g ansi))
+(defmethod %grout-set-normal ((g ansi))
   "Return output to normal. No attributes. No color."
   (tt-normal (ansi-term g)))
 
-(defmethod grout-color ((g ansi) foreground background string)
+(defmethod %grout-color ((g ansi) foreground background string)
   "Set the color."
   (with-slots (term) g
     (tt-color term foreground background)
     (tt-write-string term string)
     (tt-color term :default :default)))
 
-(defmethod grout-set-color ((g ansi) foreground background)
+(defmethod %grout-set-color ((g ansi) foreground background)
   "Set the color."
   (tt-color (ansi-term g) foreground background))
 
-(defmethod grout-clear ((g ansi))
+(defmethod %grout-clear ((g ansi))
   "Clear the screen."
   (tt-clear (ansi-term g)))
 
-(defmethod grout-beep ((g ansi))
+(defmethod %grout-beep ((g ansi))
   "Do something annoying."
   (tt-beep (ansi-term g)))
 
-(defmethod grout-object ((g ansi) object)
+(defmethod %grout-object ((g ansi) object)
   "Output the object in a way that it might be accesible."
   (tt-write-string (ansi-term g) (princ-to-string object)))
 
-(defmethod grout-write ((g ansi) object &rest args 
+(defmethod %grout-write ((g ansi) object &rest args 
 			 &key
 			   (array            *print-array*)
 			   (base             *print-base*)
@@ -317,13 +512,13 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
 		   (with-output-to-string (str)
 		     (apply #'write object :stream str args))))
 
-(defmethod grout-format ((g ansi) format-string &rest format-args)
+(defmethod %grout-format ((g ansi) format-string &rest format-args)
   (apply #'tt-format (ansi-term g) format-string format-args))
 
-(defmethod grout-finish ((g ansi))
+(defmethod %grout-finish ((g ansi))
   (tt-finish-output (ansi-term g)))
 
-(defmethod grout-done ((g ansi))
+(defmethod %grout-done ((g ansi))
   "Be done with the grout."
   (tt-finish-output (ansi-term g))
   (terminal-done (ansi-term g)))
@@ -349,56 +544,61 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
   ()
   (:documentation "Can just tell emacs to do something."))
 
-(defmethod grout-width ((g slime))
+(defmethod %grout-supports-attributes ((g ansi))
+  "Return T if the *GROUT* supports character attributes."
+  ;; @@@ We want to make it so this can be T.
+  nil)
+
+(defmethod %grout-width ((g slime))
   "Return the width of the output, or NIL for infinite or unknown."
   (swank eval-in-emacs '(window-width)))
 
-(defmethod grout-height ((g slime))
+(defmethod %grout-height ((g slime))
   "Return the width of the output, or NIL for infinite or unknown."
   (swank eval-in-emacs '(window-height)))
 
-(defmethod grout-bold ((g slime) string)
+(defmethod %grout-bold ((g slime) string)
   "Output the string boldly."
   (write-string string (grout-stream g)))
 
-(defmethod grout-set-bold ((g slime) flag)
+(defmethod %grout-set-bold ((g slime) flag)
   "Turn bold on or off."
   (declare (ignore g flag)))
 
-(defmethod grout-underline ((g slime) string)
+(defmethod %grout-underline ((g slime) string)
   "Output the string underlined."
   (write-string string (grout-stream g)))
 
-(defmethod grout-set-underline ((g slime) flag)
+(defmethod %grout-set-underline ((g slime) flag)
   "Turn underlining on or off."
   (declare (ignore g flag)))
 
-(defmethod grout-set-normal ((g slime))
+(defmethod %grout-set-normal ((g slime))
   "Return output to normal. No attributes. No color."
   (declare (ignore g)))
 
-(defmethod grout-color ((g slime) foreground background string)
+(defmethod %grout-color ((g slime) foreground background string)
   "Output the string with the colors set."
   (declare (ignore foreground background))
   (write-string string (grout-stream g)))
 
-(defmethod grout-set-color ((g slime) foreground background)
+(defmethod %grout-set-color ((g slime) foreground background)
   "Set the color."
   (declare (ignore g foreground background)))
 
-(defmethod grout-clear ((g slime))
+(defmethod %grout-clear ((g slime))
   "Clear the screen."
   (declare (ignore g)))
     
-(defmethod grout-beep ((g slime))
+(defmethod %grout-beep ((g slime))
   "Do something annoying."
   (swank eval-in-emacs '(ding t)))
 
-(defmethod grout-object ((g slime) object)
+(defmethod %grout-object ((g slime) object)
   "Output the object in a way that it might be accesible."
   (swank present-repl-results (list object)))
 
-(defmethod grout-write ((g slime) object &rest args
+(defmethod %grout-write ((g slime) object &rest args
 			 &key
 			   (array            *print-array*)
 			   (base             *print-base*)
@@ -421,14 +621,19 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
 		      readably right-margin))
   (apply #'write object :stream (grout-stream g) args))
 
-(defmethod grout-format ((g slime) format-string &rest format-args)
+(defmethod %grout-format ((g slime) format-string &rest format-args)
   (apply #'format (grout-stream g) format-string format-args))
 
-(defmethod grout-finish ((g slime))
+(defmethod %grout-finish ((g slime))
   (finish-output (grout-stream g)))
 
-(defmethod grout-done ((g slime))
+(defmethod %grout-done ((g slime))
   "Be done with the grout."
   (declare (ignore g)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Future-past Lisp term, which can do representations, even better than emacs.
+
+;; ... @@@
 
 ;; EOF
