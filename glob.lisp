@@ -180,7 +180,7 @@ Second value is where the character set ended."
 		(incf i))))
 	 (#\[ ;; class or symbol
 	  (incf i)
-	  (let ((range-start i))
+	  (let ((my-range-start i))
 	    (setf c (char pattern i))
 	    (case c
 	      (#\=
@@ -193,7 +193,7 @@ Second value is where the character set ended."
 	      (#\: #| @@@ TODO |# )
 	      (#\. #| @@@ TODO |# )
 	      (#\]
-	       (if (= i range-start)
+	       (if (= i my-range-start)
 		   (error "Invalid empty character class")
 		   (pushnew #\] result)))
 	      (t
