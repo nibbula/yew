@@ -2,13 +2,13 @@
 ;; unipose.lisp - Compose unicode characters
 ;;
 
-;; $Revision$
-
 (defpackage :unipose
   (:documentation "Compose unicode characters.")
-  (:use :cl )
+  (:use :cl)
   (:export
    #:unipose
+   #:set-unipose
+   #:save-unipose-for-emacs
    ))
 (in-package :unipose)
 
@@ -68,11 +68,13 @@
 	 ;; lower acute
 	 (#\a #\á) (#\e #\é) (#\i #\í) (#\o #\ó) (#\u #\ú) (#\w #\ẃ) (#\y #\ý)
 	 ;; misc acute
-	 (#\' #\´) (#\< #\‘) (#\> #\’)))
+	 (#\' #\´) (#\< #\‘) (#\> #\’) (#\_ #\́)))
     (#\` (;; capital grave
-	 (#\A #\À) (#\E #\È) (#\I #\Ì) (#\O #\Ò) (#\U #\Ù) (#\W #\Ẁ) (#\Y #\Ỳ)
+         (#\A #\À) (#\E #\È) (#\I #\Ì) (#\O #\Ò) (#\U #\Ù) (#\W #\Ẁ) (#\Y #\Ỳ)
 	 ;; lower greve
-	 (#\a #\à) (#\e #\è) (#\i #\ì) (#\o #\ò) (#\u #\ù) (#\w #\ẁ) (#\y #\ỳ)))
+	 (#\a #\à) (#\e #\è) (#\i #\ì) (#\o #\ò) (#\u #\ù) (#\w #\ẁ) (#\y #\ỳ)
+	 ;; misc grave
+	 (#\_ #\̀)))
     (#\" (;; capital umlat
 	  (#\A #\Ä) (#\E #\Ë) (#\I #\Ï) (#\O #\Ö) (#\U #\Ü) (#\W #\Ẅ) (#\Y #\Ÿ)
 	  ;; lower umlat
@@ -92,7 +94,11 @@
     (#\+ ((#\- #\±) (#\+ #\†)))
     (#\- ((#\+ #\±) (#\: #\÷)))
     (#\= ((#\/ #\≠) (#\/ #\≠) (#\~ #\≈)))
-    (#\_ ((#\^ #\¯)))
+    (#\_ (;; combining characters
+	  (#\^ #\̂) (#\` #\̀) (#\' #\́) (#\~ #\̃) (#\- #\̄) (#\_ #\̲)
+	  (#\O #\⃝) (#\[ #\⃞) (#\< #\⃟)
+	  ;; misc underscore
+	  (#\^ #\¯)))
     (#\< ((#\= #\≤) (#\< #\«)))
     (#\> ((#\= #\≥) (#\> #\»)))
     (#\: ((#\- #\÷)))
@@ -107,7 +113,7 @@
 			  :direction :output
 			  :if-exists :supersede)
     (format stream ";;;~%;;; unipose-data.el~%;;;~%~@
-		    ;;; Automatically generated from UNIPOSE at ~a~%~%~@"
+		    ;;; Automatically generated from UNIPOSE at ~a~%~%"
 	    (dlib-misc:date-string))
     (print-unipose-for-emacs :stream stream)
     (format stream "~%;; EOF~%")))
@@ -157,33 +163,37 @@
 	   (error "Unknown object type in unipose data: ~s ~s~%"
 		  (type-of tree) tree))))))
 
-(defmacro unipose (first-char second-char)
+(defun unipose (first-char second-char)
   "Return the character composed from FIRST-CHAR and SECOND-CHAR, or NIL if
 there is none defined."
   (let ((level2 (cadr (assoc first-char *unipose*))))
-    (dolist (level3 level2)
-      (if (and (listp (car level3)) (position second-char (car level3)))
-	  (return (cadr level3))
-	  (when (eq (car level3) second-char)
-	    (return (cadr level3)))))
-    nil))
+    (or
+     (dolist (level3 level2)
+       (if (and (listp (car level3)) (position second-char (car level3)))
+	   (return (cadr level3))
+	   (when (eq (car level3) second-char)
+	     (return (cadr level3)))))
+     nil)))
 
+;; @@@ This needs testing!! Don't use it yet!
 (defun set-unipose (first-char second-char result)
   "Add a character composition to unipose."
   (let ((level2 (cadr (assoc first-char *unipose*))))
     (if (null level2)
 	;; If there' not top level first-char, add it
-	(setf *unipose* (acons first (list (list second result)) *unipose*))
+	(setf *unipose* (acons first-char
+			       (list (list second-char result)) *unipose*))
 	;; Look at sub levels
 	(dolist (level3 level2)
 	  (if (and (listp (car level3)) (position second-char (car level3)))
 	      ;; If multiple second-chars map to the same result
 	      (when (not (eq (cadr level3) result))
 		;; If the result is not the same, make a new pair
-		(setf (cons (level3 (list (list second-char result))))))
+		(setf level3
+		      (cons level3 (list (list second-char result)))))
 	      ;; If it's a one to one mapping, add
 	      (when (eq (car level3) second-char)
-		(return (setf (cadr level3) result)))))
+		(return (setf (cadr level3) result))))))
     nil))
 
 ;; EOF

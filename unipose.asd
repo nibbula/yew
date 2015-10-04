@@ -14,6 +14,6 @@
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :license            "None"
     :long-description   "Compose unicode characters."
-;    :depends-on ()
+    :depends-on (:glob)
     :components
     ((:file "unipose")))
