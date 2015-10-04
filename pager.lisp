@@ -563,6 +563,20 @@ replacements. So far we support:
   (apply #'message format-string args)
   (fui:get-char))
 
+(defun message-pause-for (timeout format-string &rest args)
+  "Print a formatted message at the last line and pause until a key is hit.
+Wait for TIMEOUT milliseconds before returning an error (-1).
+This assumes there is no timeout (i.e. timeout is -1) before this is called,
+and resets it to be so afterward."
+  (apply #'message format-string args)
+  (let (c)
+    (unwind-protect
+      (progn
+	(curses::timeout timeout)
+	(setf c (fui:get-char)))
+      (curses::timeout -1))
+    c))
+
 (defun tmp-message (pager format-string &rest args)
   "Display a message at next command loop, until next input."
   (setf (pager-message pager) (apply #'format nil format-string args)))
@@ -973,7 +987,8 @@ list containing strings and lists."
 	(progn
 	  (decf file-index)
 	  (close stream)
-	  (setf stream (open (nth file-index file-list) :direction :input))
+	  (setf stream (open (quote-filename (nth file-index file-list))
+			     :direction :input))
 	  (setf lines '() count 0 line 0 got-eof nil)
 	  (read-lines pager page-size))
 	(tmp-message pager "No previous file."))))
@@ -1045,9 +1060,40 @@ list containing strings and lists."
   "Scroll the pager window to the leftmost edge."
   (setf (pager-left pager) 0))
 
+;; We don't bother counting the max column during display, since it's possibly
+;; expensive and unnecessary. We just count it here when needed, which is
+;; somewhat redundant, but expected to be overall more efficient.
+;; The issue is mostly that we don't have to consider the whole line when
+;; clipping, but we do have to consider it when finding the maximum.
 (defun scroll-end (pager)
   "Scroll the pager window to the rightmost edge of the text."
-  (setf (pager-left pager) 100))
+  (with-slots (line lines left page-size show-line-numbers) pager
+    (let ((max-col 0))
+      (loop
+	 :with y = 0
+	 :and l = (nthcdr line lines)
+	 :and i = line
+	 :and the-line
+	 :while (and (<= y (1- page-size)) (car l))
+	 :do
+	 ;;(message-pause-for 70 "~s ~s ~s ~s" max-col y i l)
+	 (setf the-line (line-text (car l))
+	       (fill-pointer *fat-buf*) 0
+	       max-col
+	       (max max-col
+		    (+ (if show-line-numbers
+			   (length (format nil "~d: " i))
+			   0)
+		       (length
+			(if (stringp the-line)
+			    the-line
+			    (span-to-fat-string the-line
+						:fat-string *fat-buf*))))))
+	 (incf y)
+	 (incf i)
+	 (setf l (cdr l)))
+      (tmp-message pager "max-col = ~d" max-col)
+      (setf left (max 0 (- max-col *cols*))))))
 
 (defun go-to-beginning (pager)
   "Go to the beginning of the stream, or the PREFIX-ARG'th line."
@@ -1476,6 +1522,7 @@ press Control-H then 'k' then the key. Press 'q' to exit this help.
 
 #+lish
 (lish:defcommand pager ((files pathname :repeating t))
+  :accepts :grotty-stream
   "Look through text, one screen-full at a time."
   (pager (or files *standard-input*)))
 
