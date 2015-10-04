@@ -2312,8 +2312,16 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
   "Something like probe-file but for directories."
   #+clisp (ext:probe-directory (make-pathname
 				:directory (ext:absolute-pathname dir)))
+  #+(or sbcl ccl cmu)
+  ;; Let's be more specific: it must be a directory.
+  (handler-case
+    (let ((s (stat dir)))
+      (and (is-directory (file-status-mode s))))
+    (posix-error (c)
+      (when (not (find (posix-error-code c) `(,+ENOENT+ ,+EACCES+ ,+ENOTDIR+)))
+	(signal c))))
+  #+(or ecl lispworks)
   ;; On most implementations probe-file can handle directories.
-  #+(or sbcl ccl cmu ecl lispworks)
   (probe-file dir)
   #-(or clisp sbcl ccl cmu ecl lispworks)
   (declare (ignore dir))
