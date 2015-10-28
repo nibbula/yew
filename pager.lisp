@@ -100,7 +100,10 @@ The shell command takes any number of file names.
     :documentation "If non-nil search for and highlight")
    (filter-exprs
     :initarg :filter-exprs :accessor pager-filter-exprs :initform nil
-    :documentation "Don't show lines matching these regular expressions")
+    :documentation "Don't show lines matching these regular expressions.")
+   (keep-expr
+    :initarg :keep-expr :accessor pager-keep-expr :initform nil
+    :documentation "Show only lines matching these regular expressions.")
    (file-list
     :initarg :file-list :accessor pager-file-list :initform nil
     :documentation "List of files to display")
@@ -163,6 +166,7 @@ The shell command takes any number of file names.
 	(pager-got-eof o) nil
 	(pager-search-string o) nil
 	(pager-filter-exprs o) nil
+	(pager-keep-expr o) nil
 ;	(pager-file-list o) nil
 ;	(pager-index o) nil
 	(pager-message o) nil
@@ -406,25 +410,47 @@ set in this string."
   (let ((fat-line (make-stretchy-vector (+ (length line) 16)
 					:element-type 'fatchar)))
     (loop
-       :with i = 0 :and len = (length line) :and attr
+       :with i = 0 :and c :and len = (length line) :and attrs
        :do
        (if (< i (- len 2))
 	 (cond
+	   ;; Bold bullet
+	   ((and (< i (- len 7))
+		 (equal "++oo" (subseq line i (+ i 7))))
+	    (setf c (code-char #x2022)) ; #\bullet •
+	    (pushnew :bold attrs)
+	    (incf i 6))
+	   ;; Normal bullet
+	   ((and (< i (- len 3))
+		 (equal "+o" (subseq line i (+ i 3))))
+	    (setf c (code-char #x2022)) ; #\bullet •
+	    (incf i 2))
+	   ;; Bold
 	   ((and (char= (char line (+ i 1)) #\backspace)
 		 (char= (char line (+ i 2)) (char line i)))
+	    (setf c (char line i))
 	    (incf i 2)
-	    (setf attr :bold))
+	    (pushnew :bold attrs))
+	   ;; Underline
 	   ((and (char= (char line i) #\_)
 		 (char= (char line (+ i 1)) #\backspace))
 	    (incf i 2)
-	    (setf attr :underline))
+	    (setf c (char line i))
+	    ;; Underline & Bold
+	    (when (and (< i (- len 2))
+		       (char= (char line (+ i 1)) #\backspace)
+		       (char= (char line (+ i 2)) (char line i)))
+	      (incf i 2)
+	      (pushnew :bold attrs))
+	    (pushnew :underline attrs))
 	   (t
-	    (setf attr nil)))
-	 (setf attr nil))
+	    (setf c (char line i))
+	    (setf attrs nil)))
+	 (progn
+	   (setf attrs nil c (char line i))))
        (stretchy:stretchy-append
 	fat-line
-	(make-fatchar
-	 :c (char line i) :attrs (and attr (list attr))))
+	(make-fatchar :c c :attrs attrs))
        (incf i)
        :while (< i len))
     fat-line))
@@ -538,7 +564,9 @@ replacements. So far we support:
 		    (format str "~a" (pager-stream pager))))
 	       (#\&
 		(when (pager-filter-exprs pager)
-		  (princ " && " str))))))
+		  (princ " && " str))
+		(when (pager-keep-expr pager)
+		  (princ " ^^ " str))))))
 	 (write-char c str)))))
 
 (defun display-prompt (pager)
@@ -737,7 +765,7 @@ line : |----||-------||---------||---|
 ;;;       (format t "~a ~a" (fatchar-fg c) (fatchar-bg c))
        (add-char (fatchar-c c))
        (incf screen-col)
-       (when (and (pager-wrap-lines pager) (> screen-col *cols*))
+       (when (and (pager-wrap-lines pager) (>= screen-col *cols*))
 	 (incf screen-line)
 	 (setf screen-col 0)
 	 (move screen-line screen-col)
@@ -820,18 +848,25 @@ line : |----||-------||---------||---|
 
 (defun filter-this (pager line)
   "Return true if we should filter this line."
-  (when (pager-filter-exprs pager)
-    (typecase (line-text line)
-      (string
-       (loop :for e :in (pager-filter-exprs pager)
-	  :if (ppcre:all-matches e (line-text line))
-	  :return t))
-      (list
-       (loop :for e :in (pager-filter-exprs pager)
-	  :if (span-matches e (line-text line))
-	  :return t))
-      (t (error "Don't know how to filter a line of ~s~%"
-		(type-of (line-text line)))))))
+  (with-slots (filter-exprs keep-expr) pager
+    (when (or filter-exprs keep-expr)
+      (typecase (line-text line)
+	(string
+	 (when (and keep-expr
+		    (not (ppcre:all-matches keep-expr (line-text line))))
+	   (return-from filter-this t))
+	 (loop :for e :in filter-exprs
+	    :if (ppcre:all-matches e (line-text line))
+	    :return t))
+	(list
+	 (when (and keep-expr
+		    (not (span-matches keep-expr (line-text line))))
+	   (return-from filter-this t))
+	 (loop :for e :in filter-exprs
+	    :if (span-matches e (line-text line))
+	    :return t))
+	(t (error "Don't know how to filter a line of ~s~%"
+		  (type-of (line-text line))))))))
 
 (defun display-line (pager line-number line)
   (typecase (line-text line)
@@ -930,12 +965,20 @@ list containing strings and lists."
 	  (setf line (line-number l))
 	  nil))))
 
+(defun keep-lines (pager)
+  "Show only lines matching a regular expression."
+  (let ((filter (ask "Show only lines matching: ")))
+    (setf (pager-keep-expr pager)
+	  (and filter (length filter) filter))))
+
 (defun filter-lines (pager)
+  "Hide lines matching a regular expression."
   (let ((filter (ask "Hide lines matching: ")))
     (setf (pager-filter-exprs pager)
 	  (if filter (list filter) nil))))
 
 (defun filter-more (pager)
+  "Add to the list of regular expressions for hiding lines."
   (let ((filter (ask "Hide lines also mathing: ")))
     (when filter
       (push filter (pager-filter-exprs pager)))))
@@ -1022,18 +1065,22 @@ list containing strings and lists."
 
 (defun next-page (pager)
   "Display the next page."
-  (with-slots (line page-size count) pager
+  (with-slots (line page-size count got-eof) pager
     (incf line page-size)
     (when (> (+ line page-size) count)
-      (read-lines pager page-size))))
+      (read-lines pager page-size))
+    (when (and (>= line count) got-eof)
+      (setf line (1- count)))))
 
 (defun next-line (pager)
   "Display the next line."
-  (with-slots (line page-size count prefix-arg) pager
+  (with-slots (line page-size count prefix-arg got-eof) pager
     (let ((n (or prefix-arg 1)))
       (incf line n)
       (if (> (+ line page-size) count)
-	  (read-lines pager n)))))
+	  (read-lines pager n))
+      (when (and (>= line count) got-eof)
+	(setf line (1- count))))))
 
 (defun previous-page (pager)
   "Display the previous page."
@@ -1282,6 +1329,7 @@ list containing strings and lists."
     (,(meta-char #\p)	. previous-file)
     (#\?		. help)
     (#\^H		. help-key)
+    (:backspace		. help-key)
     (,(meta-char #\=)   . describe-key-briefly)
 ;    (,(meta-char #\=)   . describe-key)
     (#\0		. digit-argument)
@@ -1296,6 +1344,7 @@ list containing strings and lists."
     (#\9		. digit-argument)
     (#\escape		. *escape-keymap*)
     (#\:		. read-command)
+    (#\^                . keep-lines)
     (#\&                . filter-lines)
     (#\*                . filter-more)
     ))
@@ -1326,7 +1375,10 @@ list containing strings and lists."
 		      (documentation action 'function) :stream nil)))
 	   (addstr
 	    (format nil "Sorry, there's no documentation for ~a.~%" action)))
-       (tmp-message pager ""))
+       (refresh)
+       (fui:get-char)
+       ;;(tmp-message pager "")
+       )
       (t
        (tmp-message pager "~a is not defined" (nice-char key))))))
 
@@ -1497,7 +1549,7 @@ q - Abort")
 	 (format output 
 "You are using Dan's pager. You seem to have hit '~a' again, which gives a
 summary of commands. If you want a description of what a function does,
-press Control-H then 'k' then the key. Press 'q' to exit this help.
+press Control-H then 'k', then the key. Press 'q' to exit this help.
 " (pager-input-char pager))
 	 (keymap:dump-keymap *normal-keymap* :stream output)
 	 (princ "Press 'q' to exit this help.
