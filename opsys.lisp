@@ -195,7 +195,8 @@
    #:getutxline
    #:pututxline
    #:setutxent
-   
+   #:setlogin
+
    ;; directories
    #:*directory-separator*
    #:change-directory
@@ -210,10 +211,12 @@
    #:dir-entry-name
    #:dir-entry-type
    #:dir-entry-inode
+   #:without-access-errors
    #:probe-directory
    #:path-to-absolute #:abspath
    #:path-directory-name #:dirname
    #:path-file-name #:basename
+   #:path-append
    #:hidden-file-name-p
    #:quote-filename
 
@@ -326,6 +329,16 @@
    #:getgid #:getegid
    #:setgid #:setegid
    #:getpid
+   #:getppid
+   #:getpgid
+   #:setpgid
+   #:tcsetpgrp
+   #:tcgetpgrp
+   #:setsid
+   #:getsid
+   #:getgroups
+   #:get-groups
+
    #:process
    #:make-process
    #:process-id
@@ -350,8 +363,6 @@
    #:describe-signals
    #:kill
 
-   #:getpgid
-   #:setpgid
    #:popen
    #:with-process-output
    #:pipe
@@ -1859,6 +1870,10 @@ user. Probably requires root."
 (defcfun setutxent :void
   "Reset the utmpx database to the beginning.")
 
+;; This is usually done only when you "log in", like with the window system or
+;; like in the ssh deamon. See getlogin.
+#+darwin (defcfun setlogin :int (name :string))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
 
@@ -1866,6 +1881,10 @@ user. Probably requires root."
   #-windows #\/
   #+(and windows (not cygwin)) #\\
   "Character that separates directories in a path.")
+
+(defparameter *directory-separator-string* (string *directory-separator*)
+  "The directory separator character as a string, for convenience or
+efficiency.")
 
 ;; chroot
 
@@ -2308,6 +2327,16 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 	  (closedir dirp)))
     dir-list))
 
+(defmacro without-access-errors (&body body)
+  "Evaluate the body while ignoring typical file access error from system
+calls. Returns NIL when there is an error."
+  `(handler-case
+       (progn ,@body)
+     (posix-error (c)
+       (when (not (find (posix-error-code c)
+			`(,+ENOENT+ ,+EACCES+ ,+ENOTDIR+)))
+	 (signal c)))))
+
 (defun probe-directory (dir)
   "Something like probe-file but for directories."
   #+clisp (ext:probe-directory (make-pathname
@@ -2400,13 +2429,20 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 
 (defun path-directory-name (path)
   "Return the directory portion of a PATH."
-  (clip-path path :dir))
+  (clip-path (or (and (pathnamep path) (namestring path)) path) :dir))
 (setf (symbol-function 'dirname) #'path-directory-name)
 
 (defun path-file-name (path)
   "Return the last portion of a PATH."
- (clip-path path :file))
+ (clip-path (or (and (pathnamep path) (namestring path)) path) :file))
 (setf (symbol-function 'basename) #'path-file-name)
+
+(defun path-append (path-1 path-2)
+  "Append PATH-2 to PATH-1. Put a directory separator between them if there
+isn't one already."
+  (if (char= (char path-1 (1- (length path-1))) *directory-separator*)
+      (concatenate 'string path-1 path-2)
+      (concatenate 'string path-1 *directory-separator-string* path-2)))
 
 (defun hidden-file-name-p (name)
   "Return true if the file NAME is normally hidden."
@@ -3670,6 +3706,46 @@ environment list, which defaults to the current 'C' environ variable."
 (defcfun seteuid :int (uid uid-t))
 (defcfun setegid :int (gid uid-t))
 (defcfun getpid pid-t)
+(defcfun getppid pid-t)
+
+;; Just in case you didn't know, or forgot, here's a little background
+;; these rather obscure system calls. The man pages don't really explain it.
+;;
+;; This is what you do in a job control shell to boss around a bunch of
+;; processes, in foreground, background ^Z and all that.
+
+(defcfun setpgid :int (pid pid-t) (pgid pid-t))
+(defcfun getpgid :int (pid pid-t))
+
+;; The tty also stores the process group to know who to send job control
+;; signals to.
+(defcfun tcsetpgrp :int (fd :int) (pgid pid-t))
+(defcfun tcgetpgrp pid-t (fd :int))
+
+;; These are used when you are making a new terminal (or session), and want to
+;; be in control of it, like in a terminal window (xterm) with ptys or with
+;; real terminal devices in the old fashioned getty. Also good for detaching.
+(defcfun setsid :int)
+(defcfun getsid :int (pid pid-t))
+
+;; Perhaps we should provide something high level like "run in pty" and
+;; or "detach process".
+
+;; int getgroups(int gidsetsize, gid_t grouplist[]);
+(defcfun getgroups :int (gid-set-size :int) (group-list (:pointer gid-t)))
+
+(defun get-groups ()
+  "Return an array of group IDs for the current process."
+  (let* ((size (syscall (getgroups 0 (null-pointer))))
+	 (result (make-array `(,size) :element-type 'fixnum)))
+    (with-foreign-object (group-list 'gid-t size)
+      (syscall (getgroups size group-list))
+      (loop :for i :from 0 :below size
+	 :do (setf (aref result i) 
+		   (mem-aref group-list 'gid-t i))))
+    result))
+
+;; setgroups?
 
 ;; Kernel process filter types
 (defconstant +KERN-PROC-ALL+ 	  0)	; everything
@@ -4050,36 +4126,6 @@ Trying to simplify our lives, by just using our own FFI versions, above.
 ; (declare (ignore sig code scp))
 ;)
 
-(defcfun getppid pid-t)
-
-;; Just in case you didn't know, or forgot, here's a little background
-;; these rather obscure system calls. The man pages don't really explain it.
-;;
-;; This is what you do in a job control shell to boss around a bunch of
-;; processes, in foreground, background ^Z and all that.
-
-(defcfun setpgid :int (pid pid-t) (pgid pid-t))
-(defcfun getpgid :int (pid pid-t))
-
-;; The tty also stores the process group to know who to send job control
-;; signals to.
-(defcfun tcsetpgrp :int (fd :int) (pgid pid-t))
-(defcfun tcgetpgrp pid-t (fd :int))
-
-;; These are used when you are making a new terminal (or session), and want to
-;; be in control of it, like in a terminal window (xterm) with ptys or with
-;; real terminal devices in the old fashioned getty. Also good for detaching.
-(defcfun setsid :int)
-(defcfun getsid :int (pid pid-t))
-
-;; Perhaps we should provide something high level like "run in pty" and
-;; or "detach process".
-
-;; This is usually done only when you "log in", like with the window system or
-;; like in the ssh deamon. See getlogin.
-#+darwin (defcfun setlogin :int (name :string))
-
-;; getgroups/setgroups
 ;; setpriority
 ;; getrlimit/setrlimit
 
@@ -4818,6 +4864,12 @@ available."
 (defcfun getfsfile foreign-fstab (file :string))
 (defcfun setfsent :int)
 (defcfun endfsent :void)
+
+;; System independant interface?
+
+(defun mounted-filesystems ()
+  "Return a list of filesystem info."
+  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ttys
