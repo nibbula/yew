@@ -693,7 +693,7 @@ defaults to the current package. Return how many symbols there were."
 	 (when (and (setf pos (search file-part (dir-entry-name f)
 				      :test #'equal))
 		    (= pos 0)
-		    (or (not extra-test) (funcall extra-test f)))
+		    (or (not extra-test) (funcall extra-test f dir-part)))
 	   (if (not match)
 	       (setf match (dir-entry-name f)
 		     match-len (length (dir-entry-name f)))
@@ -718,7 +718,7 @@ defaults to the current package. Return how many symbols there were."
      full-match)))
 
 (defun filename-completion-list (w &optional extra-test)
-  "Return the list of completions for W and how many there were. "
+  "Return the list of completions for W and how many there were."
   (let* (pos
 	 (count 0)
 	 (result-list '())
@@ -741,7 +741,8 @@ defaults to the current package. Return how many symbols there were."
        (when (and (setf pos (search file-part (dir-entry-name file)
 				    :test #'equalp))
 		  (= pos 0)
-		  (or (not extra-test) (funcall extra-test file)))
+		  (or (not extra-test)
+		      (funcall extra-test file dir-part)))
 	 (push (dir-entry-name file) result-list)
 	 (incf count)))
     (setq result-list (sort result-list #'string-lessp))
@@ -752,19 +753,21 @@ defaults to the current package. Return how many symbols there were."
 (defun complete-filename (context pos all &key parsed-exp)
   "Completion function for file names."
   (declare (ignore parsed-exp pos))
+  ;; (format t "jinko (~a) ~a~%" context pos)
   ;; Let's ignore anything after pos for the sake of completion.
-;  (format t "jinko (~a) ~a~%" context pos)
   (if all
       (filename-completion-list context)
       (multiple-value-bind (result full-match) (filename-completion context)
 	(declare (ignore full-match))
 	(values result 0))))
 
-(defun is-actually-directory (f)
+(defun is-actually-directory (f &optional (dir ""))
   ;; @@@ perhaps we need to do a loop to resolve multiple links?
   (or (eq (dir-entry-type f) :dir)
       (and (eq (dir-entry-type f) :link)
-	   (is-directory (file-status-mode (stat (dir-entry-name f)))))))
+	   (is-directory
+	    (file-status-mode
+	     (stat (path-append dir (dir-entry-name f))))))))
 
 ;; We have to assume the entire context is a filename. Things that want to
 ;; do completion in a command line, will have to arrange for this to be so.
