@@ -23,6 +23,7 @@ from *features* or delete the CL-NCURSES package.")))
 "Interface to the curses terminal screen management library.
 
 This pretty much requires ncurses. I haven't tested it with non-ncurses
+recently.
 
 HOW TO USE:
 

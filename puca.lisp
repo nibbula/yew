@@ -13,8 +13,6 @@
 ;;  - Consider configuration / options editing
 ;;     like for "git config ..." or whatever the equivalent is in other systems
 
-;; $Revision: 1.20 $
-
 (defpackage :puca
   (:documentation "Putative Muca")
   (:use :cl :dlib :dlib-misc :opsys :curses :pager :tiny-rl :completion :fui

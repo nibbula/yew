@@ -7,7 +7,7 @@
 ;;; It used to include a debugger which is very very shabby, but
 ;;; now is seperate as TINY-DEBUG.
 ;;; If you like self deprecating software, this is for you.
-;;; By the way, this currely breaks DRIBBLE, as if anyone cares.
+;;; By the way, this currently breaks DRIBBLE, as if anyone cares.
 
 ;;; TODO:
 ;;;   - pasteability?

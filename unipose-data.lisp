@@ -2,8 +2,6 @@
 ;; unipose-data.lisp - Unicode character composition data
 ;;
 
-;; $Revision$
-
 (in-package :unipose)
 
 (defvar *unipose*

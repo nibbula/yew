@@ -80,7 +80,8 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 
 (defun listify-fake-span (fake-span)
   "Take a list of characters, strings, and keywords and make nested lists out
-of them indicated by the parentheses. Actual parens should be given as strings."
+of them indicated by the parentheses. Actual parens should be given as
+strings."
   (let ((str (make-string-output-stream))
 	cur save tmp)
     (flet ((push-if-any ()

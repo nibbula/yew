@@ -2,8 +2,6 @@
 ;; filter-stream.lisp - Filter a stream with a function.
 ;;
 
-;; $Revision: 1.2 $
-
 (defpackage :filter-stream
   (:documentation "Streams that filter an underlying stream with a function.")
   (:use :cl :trivial-gray-streams :stretchy)

@@ -2,6 +2,13 @@
 ;; browse-html.lisp - Browse HTML as a tree.
 ;;
 
+;; This uses the excellent PLUMP library to read HTML/XML and the tree-browser
+;; to display it. Using the TREE-BROWSER generally consists of making node
+;; type subclasses and display methods for them. Here we make one HTML-NODE
+;; subclass of the tree-browser's CACHED-DYNAMIC-NODE and use PLUMP methods to
+;; dynamically pull out content from the parsed file. We make the PLUMP node
+;; be the tree-browser's OBJECT-NODE object.
+
 (defpackage :browse-html
   (:documentation "Browse HTML as a tree.")
   (:use :cl :dlib :tiny-rl :tree-browser)
@@ -11,9 +18,11 @@
 (in-package :browse-html)
 
 (defun html-node-contents (node)
+  "Get the contents of an HTML-NODE, which is a list of PLUMP node children."
   (when (and node
 	     (typep node 'plump::node)
 	     (plump::has-child-nodes node))
+    ;; The
     (map 'list #'identity
 	 (remove-if (lambda (x)
 		      (and (or (plump:text-node-p x)
@@ -25,21 +34,23 @@
   ()
   (:default-initargs
    :func #'html-node-contents)
-  (:documentation "An tree node for plump HTML."))
+  (:documentation "A tree node for plump HTML."))
 
 (defgeneric display-thing (obj stream)
   (:documentation "Display a plump element OBJ to STREAM."))
 
 (defmethod display-thing ((obj t) stream)
+  "Display an anything."
   (format stream "~(~a~) " (type-of obj)))
 
 (defun print-attrubutes (obj stream)
+  "Display an anything."
   (loop :for k :being :the :hash-keys :of (plump:attributes obj) :using
      (hash-value v) :do
      (format stream "~a='~a' " k v)))
 
 (defparameter *attr-tags*
-  #(:meta :link :script :a :form :input :img)
+  #(:meta :link :script :a :form :input :img :div :span)
   "Tags to print attributes for.")
 
 (defmethod display-thing ((obj plump-dom:element) stream)
@@ -64,6 +75,9 @@
 		   (display-thing obj stream))))))
     (display-object node str level)))
 
+;; Here we parse the whole file with PLUMP and
+;; 
+
 (defun browse-html (&optional file)
   (let* ((ff (or file (read-filename :prompt "HTML file: ")))
 	 (hh (plump:parse (pathname ff))))
@@ -76,7 +90,7 @@
 	 :if (or (not (or (plump:text-node-p n)
 			  (plump:textual-node-p n)))
 		 (> (length (dlib:trim (plump:text n))) 0))
-	 :collect 
+	 :collect
 	 (make-instance 'html-node :object n))))))
 
 #+lish

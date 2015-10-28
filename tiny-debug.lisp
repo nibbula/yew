@@ -333,6 +333,7 @@ the outermost. When entering the debugger the current frame is 0.")
 #+sbcl
 (defun get-loc-subform-pos (loc)
   "Return the file position of the subform."
+  (declare (ignore loc))
   )
 
 #+sbcl
