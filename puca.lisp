@@ -15,12 +15,12 @@
 
 (defpackage :puca
   (:documentation "Putative Muca")
-  (:use :cl :dlib :dlib-misc :opsys :curses :pager :tiny-rl :completion :fui
-	:keymap :char-util)
+  (:use :cl :dlib :dlib-misc :opsys :keymap :char-util :curses :tiny-rl
+	:completion :fui)
   (:export
    ;; Main entry point
    #:puca
-   #+lish #:!puca
+   #:!puca
    #:make-standalone
    ))
 (in-package :puca)
@@ -33,6 +33,9 @@
 
 (defun is-svn ()
   (probe-directory ".svn"))
+
+(defun is-hg ()
+  (probe-directory ".hg"))
 
 (defstruct goo
   "A file/object under version control."
@@ -61,7 +64,6 @@
   type
   check-func
   list-command
-  list-args
   add
   reset
   diff
@@ -81,12 +83,11 @@
   (make-backend :name		"CVS"
 		:type		:cvs
 		:check-func	#'is-cvs
-		:list-command	"cvs"
-		:list-args	'("-n" "update")
+		:list-command	'("cvs" "-n" "update")
 		:add		"cvs add ~{~a ~}"
 		:reset		"echo 'No reset in CVS'"
-		:diff		"cvs diff ~{~a ~} | less"
-		:diff-repo	"cvs diff -r HEAD ~{~a ~} | less"
+		:diff		"cvs diff ~{~a ~} | pager"
+		:diff-repo	"cvs diff -r HEAD ~{~a ~} | pager"
 		:commit		"cvs commit ~{~a ~}"
 		:update		"cvs update ~{~a ~}"
 		:update-all	"cvs update"
@@ -125,9 +126,7 @@
   (make-backend :name		"git"
 		:type		:git
 		:check-func	#'is-git
-		:list-command	"git"
-;		:list-args	'("--no-pager" "diff" "--name-status")
-		:list-args	'("status" "--porcelain")
+		:list-command	'("git" "status" "--porcelain")
 		:add		"git --no-pager add ~{~a ~}"
 		:reset		"git --no-pager reset ~{~a ~}"
 		:diff		"git diff ~{~a ~}"
@@ -171,19 +170,39 @@
   (make-backend :name		"SVN"
 		:type		:svn
 		:check-func	#'is-svn
-		:list-command	"svn"
-		:list-args	'("status")
+		:list-command	'("svn" "status")
 		:add		"svn add ~{~a ~}"
 		:reset		"svn revert ~{~a ~}"
-		:diff		"svn diff ~{~a ~} | less"
-		:diff-repo	"svn diff -r HEAD ~{~a ~} | less"
+		:diff		"svn diff ~{~a ~} | pager"
+		:diff-repo	"svn diff -r HEAD ~{~a ~} | pager"
 		:commit		"svn commit ~{~a ~}"
 		:update		"svn update ~{~a ~}"
 		:update-all	"svn update"
 		:push		"echo 'No push in SVN'"))
 
 (defmethod parse-line (pu (type (eql :svn)) line i)
-  (parse-line pu :git line i)) ; just use cvs
+  (parse-line pu :git line i)) ; just use git
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Mercurial (hg)
+
+(defparameter *backend-hg*
+  (make-backend :name		"hg"
+		:type		:hg
+		:check-func	#'is-hg
+		:list-command	'("hg" "status")
+		:add		"hg add ~{~a ~}"
+		:reset		"hg revert ~{~a ~}"
+		:diff		"hg diff ~{~a ~} | pager"
+;		:diff-repo	"hg diff --cached HEAD ~{~a ~}"
+		:diff-repo	"hg diff ~{~a ~} | pager"
+		:commit		"hg commit ~{~a ~}"
+		:update		"hg pull ~{~a ~}?"
+		:update-all	"hg pull"
+		:push		"hg push"))
+
+(defmethod parse-line (pu (type (eql :hg)) line i)
+  (parse-line pu :git line i)) ; just use git
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -192,40 +211,9 @@
 
 (defparameter *backends* `((:git ,*backend-git*)
 			   (:cvs ,*backend-cvs*)
-			   (:svn ,*backend-svn*))
+			   (:svn ,*backend-svn*)
+			   (:hg ,*backend-hg*))
   "The availible backends.")
-
-#|
-(defun init-curses (pu device term-type)
-  (with-slots (window screen) pu
-    (setf window
-	  (if device
-	      (progn
-		(let (fin fout)
-		  (if (cffi:null-pointer-p (setq fin (fopen device "r")))
-		      (error "Can't open curses input device"))
-		  (if (cffi:null-pointer-p (setq fout (fopen device "w")))
-		      (error "Can't open curses output device"))
-		  (if (cffi:null-pointer-p
-		       (setf screen (newterm term-type fout fin)))
-		      (error "Can't initialize curses terminal"))
-		  (set-term screen)))
-	      (progn
-		(initscr))))
-  (initscr)
-  (start-color)
-  (clear)
-  (init-pair 0 +COLOR-WHITE+    +COLOR-BLACK+)
-  (init-pair 1 +COLOR-RED+      +COLOR-BLACK+)
-  (init-pair 2 +COLOR-GREEN+    +COLOR-BLACK+)
-  (init-pair 3 +COLOR-YELLOW+   +COLOR-BLACK+)
-  (init-pair 4 +COLOR-BLUE+     +COLOR-BLACK+)
-  (init-pair 5 +COLOR-MAGENTA+  +COLOR-BLACK+)
-  (init-pair 6 +COLOR-CYAN+     +COLOR-BLACK+)
-  (init-pair 7 +COLOR-WHITE+    +COLOR-BLACK+)
-  (noecho)
-  (cbreak)))
-|#
 
 (defun message (format-string &rest format-args)
   (move (- *lines* 2) 2)
@@ -271,12 +259,14 @@
     (setf goo    '()
 	  top    0
 	  errors '())
-
-    (let ((i 0) line)
+    (let* ((i 0)
+	   (cmd (backend-list-command *backend*))
+	   (cmd-name (car cmd))
+	   (cmd-args (cdr cmd))
+	   line)
       (setf extra '())
-      (with-process-output (s (backend-list-command *backend*)
-			      (backend-list-args *backend*))
-	(loop :while (setf line (read-line s nil nil))
+      (with-process-output (stream cmd-name cmd-args)
+	(loop :while (setf line (read-line stream nil nil))
 	   :do
 	   (parse-line pu (backend-type *backend*) line i)
 	   (incf i)
@@ -320,7 +310,7 @@
     (return-from do-command (values)))
   (let* ((format-command (apply command (list *backend*)))
 	 (command (apply #'format nil format-command (list format-args))))
-    (system-command command))
+    (lish:! command))
   (when do-pause
     (write-string "[Press Return]")
     (terpri)
@@ -377,53 +367,7 @@
   (refresh)
   (get-char))
 
-#|
-(defun wcentered (w width row str)
-  "Put a centered string STR in window W of width WIDTH at row ROW."
-  (mvwaddstr w row (round (- (/ width 2) (/ (length str) 2))) str))
-
-;; @@@ Something like this should probably move to FUI.
-(defun puca-display-text (pu title text-lines &key input-func)
-  (let* ((mid    (truncate (/ *cols* 2)))
-	 (width  (min (- *cols* 6)
-		      (+ 4 (loop :for l :in text-lines :maximize (length l)))))
-	 (height (min (+ 4 (loop :for l :in text-lines
-			      :sum
-			      (1+ (count
-				   #\newline
-				   (justify-text l :cols (- width 2)
-						 :stream nil)))))
-		      (- *lines* 4)))
-	 (xpos   (truncate (- mid (/ width 2))))
-	 w result)
-    (unwind-protect
-       (progn
-	 (setf w (newwin height width 3 xpos))
-	 (box w 0 0)
-	 (wcentered w width 0 title)
-	 (loop :with i = 2 :for l :in text-lines
-	    :do
-	    (loop :for sub-line
-	       :in (split-sequence
-		    #\newline (justify-text l :cols (- width 2)
-					    :stream nil))
-	       :do
-	       (mvwaddstr w i 2 sub-line)
-	       (incf i)))
-	 (wrefresh w)
-	 (when input-func
-	   (setf result (funcall input-func pu w))))
-      (when w
-	(delwin w)))
-    result))
-|#
-
 (defun info-window (pu title text-lines)
-#|  (puca-display-text
-   pu title text-lines
-   :input-func #'(lambda (pu w)
-		   (declare (ignore pu w))
-		   (get-char))) |#
   (fui:display-text title text-lines)
   (clear)
   (refresh)
@@ -470,6 +414,7 @@ for the command-function).")
   "Completion function for extended commands.")
 
 (defun extended-command (pu)
+  "Extended command"
   (move (- *lines* 2) 2)
   (refresh)
   (reset-shell-mode)
@@ -485,38 +430,43 @@ for the command-function).")
   (draw-screen pu)
   (values))
 
+(defparameter *handmade-help*
+  '("q - Quit"
+    "a - Add file"
+    "r - Revert file (undo an add)"
+    "d - Diff"
+    "D - Diff -r HEAD"
+    "c - Commit selected"
+    "u - Update selected"
+    "U - Update all"
+    "P - Push"
+    "^N,^P,up,down - Move around"
+    "< - Top"
+    "> - Bottom"
+    "Space,x,Return - Select"
+    "s - Select all"
+    "S - Select none"
+    "^@, ^space - Set Mark"
+    "X - Select region"
+    "g - Re-list"
+    "e - Show messages / errors"
+    ": - Extended command"
+    "^L - Re-draw"
+    "?,h - Help"))
+
 (defun help (pu)
-  (info-window pu "Help for Puca"
-		'("q - Quit"
-		  "a - Add file"
-		  "r - Revert file (undo an add)"
-		  "d - Diff"
-		  "D - Diff -r HEAD"
-		  "c - Commit selected"
-		  "u - Update selected"
-		  "U - Update all"
-		  "P - Push"
-		  "^N,^P,up,down - Move around"
-		  "< - Top"
-		  "> - Bottom"
-		  "Space,x,Return - Select"
-		  "s - Select all"
-		  "S - Select none"
-		  "^@, ^space - Set Mark"
-		  "X - Select region"
-		  "g - Re-list"
-		  "e - Show messages / errors"
-		  ": - Extended command"
-		  "^L - Re-draw"
-		  "?,h - Help")))
+  "Help"
+  (info-window pu "Help for Puca" (help-list)))
 
 (defun show-errors (pu)
+  "Show all messages / errors"
   (with-slots (errors) pu
     (info-window pu "All Errors"
 		 (or errors
 		     '("There are no errors." "So this is" "BLANK")))))
 
 (defun show-extra (pu)
+  "Show messages / errors"
   (with-slots (goo cur) pu
     (let ((ext (and goo (goo-extra-lines (elt goo cur)))))
       (info-window pu "Errors"
@@ -538,39 +488,50 @@ for the command-function).")
 	result)))
 
 (defun quit (pu)
+  "Quit"
   (setf (puca-quit-flag pu) t))
 
 (defun add-command (pu)
+  "Add file"
   (do-command pu #'backend-add (selected-files pu)))
 
 (defun reset-command (pu)
+  "Revert file (undo an add)"
   (do-command pu #'backend-reset (selected-files pu) :confirm t))
 
 (defun diff-command (pu)
+  "Diff"
   (do-command pu #'backend-diff (selected-files pu)
 	      :relist nil :do-pause nil))
 
 (defun diff-repo-command (pu)
+  "Diff against commited (-r HEAD)"
   (do-command pu #'backend-diff-repo (selected-files pu)
 	      :relist nil :do-pause nil))
 
 (defun commit-command (pu)
+  "Commit selected"
   (do-command pu #'backend-commit (selected-files pu)))
 
 (defun update-command (pu)
+  "Update selected"
   (do-command pu #'backend-update (selected-files pu)))
 
 (defun update-all-command (pu)
+  "Update all"
   (do-command pu #'backend-update-all nil))
 
 (defun push-command (pu)
+  "Push"
   (do-command pu #'backend-push nil :relist nil))
 
 (defun view-file (pu)
+  "View file"
   (pager:pager (selected-files pu))
   (draw-screen pu))
 
 (defun previous-line (pu)
+  "Previous line"
   (with-slots (cur top) pu
     (decf cur)
     (when (< cur 0)
@@ -580,6 +541,7 @@ for the command-function).")
       (draw-screen pu))))
 
 (defun next-line (pu)
+  "Next line"
   (with-slots (cur maxima top bottom) pu
     (incf cur)
     (when (>= cur maxima)
@@ -589,6 +551,7 @@ for the command-function).")
       (draw-screen pu))))
 
 (defun next-page (pu)
+  "Next page"
   (with-slots (cur maxima top bottom) pu
     (setf cur (+ cur 1 (- curses:*lines* 7)))
     (when (>= cur maxima)
@@ -598,6 +561,7 @@ for the command-function).")
       (draw-screen pu))))
 
 (defun previous-page (pu)
+  "Previous page"
   (with-slots (cur top) pu
     (setf cur (- cur 1 (- curses:*lines* 7)))
     (when (< cur 0)
@@ -607,6 +571,7 @@ for the command-function).")
       (draw-screen pu))))
 
 (defun go-to-end (pu)
+  "Bottom"
   (with-slots (cur maxima top bottom) pu
     (setf cur (1- maxima))
     (when (> maxima bottom)
@@ -614,6 +579,7 @@ for the command-function).")
       (draw-screen pu))))
 
 (defun go-to-beginning (pu)
+  "Top"
   (with-slots (cur top) pu
     (setf cur 0)
     (when (> top 0)
@@ -621,11 +587,13 @@ for the command-function).")
       (draw-screen pu))))
 
 (defun set-mark (pu)
+  "Set Mark"
   (with-slots (cur mark) pu
     (setf mark cur)
     (message "Set mark.")))
 
 (defun toggle-region (pu)
+  "Toggle region"
   (with-slots (cur mark) pu
     (if mark
       (let ((start (min mark cur))
@@ -637,6 +605,7 @@ for the command-function).")
       (message "No mark set."))))
 
 (defun toggle-line (pu)
+  "Toggle line"
   (with-slots (cur goo) pu
     (when goo
       (setf (goo-selected (elt (puca-goo pu) cur))
@@ -644,14 +613,17 @@ for the command-function).")
       (draw-line pu cur))))
 
 (defun select-all-command (pu)
+  "Select all"
   (select-all pu)
   (draw-screen pu))
 
 (defun select-none-command (pu)
+  "Select none"
   (select-none pu)
   (draw-screen pu))
 
 (defun relist (pu)
+  "Re-list"
   (clear)
   (refresh)
   (get-list pu)
@@ -659,6 +631,7 @@ for the command-function).")
   (refresh))
 
 (defun redraw (pu)
+  "Re-draw"
   (clear)
   (refresh)
   (draw-screen pu)
@@ -722,6 +695,28 @@ for the command-function).")
 	(message "~a is bound to ~a" (nice-char key) action)
 	(message "~a is not defined" (nice-char key)))))
 
+(defun help-list ()
+  "Return a list of key binding help lines, suitable for the HELP function."
+  ;; Make a reverse hash of functions to keys, so we can put all the bindings
+  ;; for a function on one line.
+  (let ((rev-hash (make-hash-table)))
+    (flet ((add-key (k v) (push k (gethash v rev-hash))))
+      (map-keymap #'add-key *puca-keymap*))
+    (loop :for func :being :the :hash-keys :of rev-hash
+       :collect
+       (with-output-to-string (str)
+	 (format str "~{~a~^, ~} - ~a"
+		 (loop :for k :in (gethash func rev-hash)
+		    :collect (nice-char k :caret t))
+		 ;; Look up the documentation for the function.
+		 (cond
+		   ((or (functionp func)
+			(and (symbolp func) (fboundp func)))
+		    (let ((doc (documentation func 'function)))
+		      (or doc (string-downcase func))))
+		   ((keymap-p (string-downcase func)))
+		   (t func)))))))
+
 (defun perform-key (pu key &optional (keymap *puca-keymap*))
   ;; Convert positive integer keys to characters
   (when (and (integerp key) (>= key 0))
@@ -778,14 +773,14 @@ for the command-function).")
   #-(or sbcl clisp) (missing-implementation 'make-standalone)
   )
 
-#+lish
 (lish:defcommand puca
-  (("cvs" boolean :short-arg #\c)
-   ("svn" boolean :short-arg #\s)
-   ("git" boolean :short-arg #\g))
+  (("cvs" boolean :short-arg #\c :help "True to use CVS.")
+   ("svn" boolean :short-arg #\s :help "True to use SVN.")
+   ("git" boolean :short-arg #\g :help "True to use GIT.")
+   ("hg"  boolean :short-arg #\m :help "True to use Mercurial."))
   "Putative Muca interface to your version control software.
-Arguments are: -c for CVS, -s for SVN, -g GIT."
-  (puca :backend-type (cond (cvs :cvs) (svn :svn) (git :git))))
+Arguments are: -c for CVS, -s for SVN, -g GIT, -m Mercurial."
+  (puca :backend-type (cond (cvs :cvs) (svn :svn) (git :git) (hg :hg))))
 
 ; Joe would probably like the name but not the software.
 
