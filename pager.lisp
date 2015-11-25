@@ -35,6 +35,7 @@ The shell command takes any number of file names.
 	:fatchar :ppcre :terminal :terminal-curses)
   (:export
    #:*pager-prompt*
+   #:*empty-indicator*
    #:page
    ;; Main entry points
    #:with-pager
@@ -56,7 +57,7 @@ The shell command takes any number of file names.
 
 ;; Since *prompt* is taken on some implementations.
 (defvar *pager-prompt* "%&%f line %l of %L%&"
-  "The current default prompt.")
+  "The current default prompt. Supports formatting as done by FORMAT-PROMPT.")
 
 ;; "text text text"
 ;; ((:tag "text") "text" (:tag "text") "text")
@@ -534,6 +535,7 @@ replacements. So far we support:
   %l / %L  Current line / Maximum line
   %p       Percentage line
   %f       File name
+  %%       A percent character '%'.
 "
   (with-output-to-string (str)
     (loop :with c :for i :from 0 :below (length prompt) :do
@@ -554,9 +556,13 @@ replacements. So far we support:
 		  (princ (or l "?") str)))
 	       (#\l (princ (pager-line pager) str))
 	       (#\L (princ (pager-count pager) str))
-	       (#\p (princ (round (/ (* (pager-lines pager) 100)
+	       (#\p (princ (round (/ (* (min (+ (pager-line pager)
+						(pager-page-size pager))
+					     (pager-count pager))
+					 100)
 				     (pager-count pager)))
 			   str))
+	       (#\% (princ #\% str))
 	       (#\f
 		(if (and (typep (pager-stream pager) 'file-stream)
 			 (ignore-errors (truename (pager-stream pager))))
@@ -876,6 +882,9 @@ line : |----||-------||---------||---|
     (t (error "Don't know how to render a line of ~s~%"
 	      (type-of (line-text line))))))
 
+(defvar *empty-indicator* "~"
+  "String that indicates emptyness, usually past the end.")
+
 (defun display-page (pager)
   "Display the lines already read, starting from the current."
   (move 0 0)
@@ -883,19 +892,20 @@ line : |----||-------||---------||---|
   (setf *pager* pager) ;; @@@ DEBUG
   (with-slots (line left page-size) pager
     (let ((y 0))
-      (loop
-	 :with l = (nthcdr line (pager-lines pager)) :and i = line
-	 :while (and (<= y (1- page-size)) (car l))
-	 :do
-	 (move y 0)
-	 (when (not (filter-this pager (car l)))
-	   (incf y (display-line pager i (car l)))
-	   (incf i))
-	 (setf l (cdr l)))
+      (when (and (>= line 0) (pager-lines pager))
+	(loop
+	   :with l = (nthcdr line (pager-lines pager)) :and i = line
+	   :while (and (<= y (1- page-size)) (car l))
+	   :do
+	   (move y 0)
+	   (when (not (filter-this pager (car l)))
+	     (incf y (display-line pager i (car l)))
+	     (incf i))
+	   (setf l (cdr l))))
       ;; Fill the rest of the screen with twiddles to indicate emptiness.
       (when (< y page-size)
 	(loop :for i :from y :below page-size
-	   :do (mvaddstr i 0 "~"))))))
+	   :do (mvaddstr i 0 *empty-indicator*))))))
 
 (defun ask-for (&key prompt space-exits)
   (let ((str (make-stretchy-string 10))

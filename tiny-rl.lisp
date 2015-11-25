@@ -2,11 +2,6 @@
 ;; tiny-rl.lisp - An input line editor for ANSI terminals.
 ;;
 
-;; OK, it's getting to be not so tiny anymore.
-;; OK, so it's kind of like a huge guy you might facetiously call tiny.
-;; OK, so it's a 300 pound gorilla called "Tiny".
-;; OK, so I haven't learned my lesson yet.
-
 ;; TODO:
 ;;   - multi line - display bugs (undo, delete word, etc)
 ;;     - fix update-for-delete
@@ -16,6 +11,7 @@
 ;;   - search by :UP (or C-P)
 ;;   - fix undo boundaries
 ;;   - unicode input gadget (from neox)
+;;   - change the the name
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 		   (compilation-speed 0)))
@@ -44,6 +40,7 @@
    #:get-lone-key
    #:read-filename
    #:read-choice
+   #:complete-filename-command
   )
 )
 (in-package "TINY-RL")
@@ -2216,15 +2213,25 @@ is none."
 	      (move-backward e (display-length
 				(subseq buf point))))))))))
 
-(defun complete (e)
+(defun last-input-was-completion (e)
+  "Return true if the last input invoked a completion function."
+  (with-slots (last-input completion-func) e
+    (let ((func (key-sequence-binding last-input *normal-keymap*)))
+      (or (eql func completion-func)
+	  (eql func #'complete-filename-command)
+	  (eql func 'complete-filename-command)))))
+
+(defun complete (e &optional comp-func)
   (with-slots (completion-func point buf last-input) e
-    (if (not completion-func)
+    (setf comp-func (or comp-func completion-func))
+    (if (not comp-func)
 	(beep e "No completion active.")
 	(progn
 	  (let* ((saved-point point) comp replace-pos unique)
 	    (multiple-value-setq (comp replace-pos unique)
-	      (funcall completion-func buf point nil))
-	    (when (and (eql last-input #\tab)
+	      (funcall comp-func buf point nil))
+	    (when (and (last-input-was-completion e)
+	     ;;(when (and (eql last-input #\tab)
 		       (not (last-completion-unique e)))
 	      (show-completions e))
 	    (setf (last-completion-unique e) unique)
@@ -2251,6 +2258,12 @@ is none."
 		(progn
 		  (setf point saved-point)	   ; go back to where we were
 		  (beep e "No completions")))))))) ; ring the bell
+
+(defun complete-filename-command (e)
+  "Filename completion. This useful for when you want to explicitly complete a
+filename instead of whatever the default completion is. Convenient for a key
+binding."
+  (complete e #'completion::complete-filename))
 
 #|
 ;;; @@@ Consider the issues of merging this with display-length.

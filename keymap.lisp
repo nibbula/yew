@@ -2,8 +2,6 @@
 ;; keymap.lisp - Associate functions with keys.
 ;;
 
-;; $Revision: 1.3 $
-
 (defpackage :keymap
   (:documentation "Associate functions with keys.")
   (:use :cl :dlib :char-util)
@@ -56,7 +54,8 @@
       (setf (slot-value k 'map) (make-hash-table))))
 
 (defun dump-keymap (map &key (stream *standard-output*) prefix raw)
-  "Show the bindings of a keymap MAP on STREAM. If PREFIX is given it is assumed to be a prefix for all bindings in the keymap."
+  "Show the bindings of a keymap MAP on STREAM. If PREFIX is given it is
+assumed to be a prefix for all bindings in the keymap."
 ;  (format stream "~:@(~a~):~%" (named-name map))
   (map-keymap
    #'(lambda (key action)
@@ -176,9 +175,6 @@ there is no binding."
 	:for m :in keymap-stack
 	:when (setf binding (key-binding key m))
 	:return binding))
-;		(multiple-value-bind (binding is-bound)
-;		    (gethash key (keymap-map m))
-;		  (when is-bound (return binding)))))
     ;; handle a single keymap
     ((typep keymap-stack 'keymap)
      (key-binding key keymap-stack))

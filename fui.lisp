@@ -4,7 +4,8 @@
 
 (defpackage :fui
   (:documentation "Fake UI")
-  (:use :cl :dlib :dlib-misc :stretchy :opsys :char-util :curses :inator)
+  (:use :cl :dlib :dlib-misc :stretchy :opsys :char-util :curses :keymap
+	:inator)
   (:export
    #:with-curses
    #:with-device
@@ -18,12 +19,13 @@
    #:non-interactively
    #:*interactive*
    #:pause
+   #:display-text
+   #:help-list
    #:pick-list
    #:pick-file
    #:do-menu*
    #:do-menu
    #:menu-load
-   #:display-text
    ))
 (in-package :fui)
 
@@ -231,12 +233,364 @@ foreground FG and background BG."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun wcentered (w width row str)
+  "Put a centered string STR in window W of width WIDTH at row ROW."
+  (mvwaddstr w row (round (- (/ width 2) (/ (length str) 2))) str))
+
+(defun display-text (title text-lines &key input-func)
+  "Display text in a pop up window. Optionally calls INPUT-FUNC with the
+window as an argument to get input. If no INPUT-FUNC is provided it just
+waits for a key press and then returns."
+  (with-curses
+    (let* ((mid    (truncate (/ *cols* 2)))
+	   (width  (min (- *cols* 6)
+			(+ 4 (loop :for l :in text-lines
+				:maximize (length l)))))
+	   (height (min (+ 4 (loop :for l :in text-lines
+				:sum
+				(1+ (count
+				     #\newline
+				     (justify-text l :cols (- width 2)
+						   :stream nil)))))
+			(- *lines* 4)))
+	   (xpos   (truncate (- mid (/ width 2))))
+	   (w      (newwin height width 3 xpos))
+	   result)
+      (box w 0 0)
+      (wcentered w width 0 title)
+      (loop :with i = 2 :for l :in text-lines
+	 :do
+	 (loop :for sub-line :in (split-sequence
+				  #\newline (justify-text l :cols (- width 2)
+							  :stream nil))
+	    :do
+	    (mvwaddstr w i 2 sub-line)
+	    (incf i)))
+      (refresh)
+      (wrefresh w)
+      (setf result (if input-func
+		       (funcall input-func w)
+		       (get-char)))
+      (delwin w)
+      (clear)
+      (refresh)
+      result)))
+
+(defun help-list (keymap)
+  "Return a list of key binding help lines, suitable for the HELP function."
+  ;; Make a reverse hash of functions to keys, so we can put all the bindings
+  ;; for a function on one line.
+  (let ((rev-hash (make-hash-table)))
+    (flet ((add-key (k v) (push k (gethash v rev-hash))))
+      (map-keymap #'add-key keymap))
+    (loop :for func :being :the :hash-keys :of rev-hash
+       :collect
+       (with-output-to-string (str)
+	 (format str "~{~a~^, ~} - ~a"
+		 (loop :for k :in (gethash func rev-hash)
+		    :collect (nice-char k :caret t))
+		 ;; Look up the documentation for the function.
+		 (cond
+		   ((or (functionp func)
+			(and (symbolp func) (fboundp func)))
+		    (let ((doc (documentation func 'function)))
+		      (or doc (string-downcase func))))
+		   ((keymap-p (string-downcase func)))
+		   (t func)))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; List picker
+;;;
+
 ;; TODO:
 ;; things from pager:
 ;; - best key compatability?
-;; - keyampification?
+
+(defkeymap *pick-list-keymap*
+  `((#\escape		. *pick-list-escape-keymap*)
+    (#\^G		. pick-list-quit)
+    (#\return		. pick-list-pick)
+    (#\newline		. pick-list-pick)
+    (#\space		. pick-list-toggle-item)
+    (#\^X		. pick-list-toggle-region)
+    (#\^N		. pick-list-next-line)
+    (:down		. pick-list-next-line)
+    (#\^P		. pick-list-previous-line)
+    (:up		. pick-list-previous-line)
+    (#\>		. pick-list-end-of-list)
+    (,(meta-char #\>)	. pick-list-end-of-list)
+    (:end		. pick-list-end-of-list)
+    (#\<		. pick-list-beginning-of-list)
+    (,(meta-char #\<)	. pick-list-beginning-of-list)
+    (:home		. pick-list-beginning-of-list)
+    (#\^F		. pick-list-next-page)
+    (#\^V		. pick-list-next-page)
+    (:npage		. pick-list-next-page)
+    (#\^B		. pick-list-previous-page)
+    (,(meta-char #\v)	. pick-list-previous-page)
+    (:ppage		. pick-list-previous-page)
+    (,(meta-char #\=)   . pick-list-binding-of-key)
+    (#\?                . pick-list-help)
+    ))
+
+(defparameter *pick-list-escape-keymap*
+  (build-escape-map *pick-list-keymap*))
+
+(defstruct pick
+  "State for a pick-list-inator."
+  quit-flag
+  multiple
+  by-index
+  typing-searches
+  message
+  files					; @@@ this should be renamed
+  file-line
+  result
+  second-result				; @@@ this should be renamed
+  mark
+  cur-line
+  max-y
+  (top 0)
+  ttop					; @@@ this should be renamed
+  max-line
+  page-size
+  (input 0)				; aka 'c'
+  error-message
+  (search-str (make-stretchy-string 10)))
+
+(defvar *pick* nil
+  "The current pick list state.")
+
+(defun pick-list-quit ()
+  "Quit the list picker."
+  (setf (pick-quit-flag *pick*) t))
+
+(defun pick-list-pick ()
+  "Pick the current item."
+  (with-slots (multiple by-index result files file-line quit-flag input
+	       second-result) *pick*
+    (if multiple
+	(when (not by-index)
+	  (setf result (mapcar (_ (elt files _)) result)))
+	(if by-index
+	    (setf result file-line)
+	    (setf result (elt files file-line))))
+    (setf quit-flag t
+	  second-result (eq input #\newline)))) ; @@@ bogus check for newline
+
+(defun pick-list-toggle-item ()
+  "Toggle the item for multiple choice."
+  (with-slots (multiple file-line result) *pick*
+    (when multiple
+      (if (position file-line result)
+	  (setf result (delete file-line result))
+	  (push file-line result)))))
+
+(defun pick-list-toggle-region ()
+  "Toggle the items in the region."
+  (with-slots (multiple mark file-line result) *pick*
+    (when (and multiple mark)
+      (loop :for i :from (min mark file-line)
+	 :to (max mark file-line)
+	 :do
+	 (if (position i result)
+	     (setf result (delete i result))
+	     (push i result))))))
+
+(defun pick-list-next-line ()
+  "Go to the next line. Scroll and wrap around if need be."
+  (with-slots (cur-line max-y top file-line max-line) *pick*
+    (when (>= (+ cur-line 1) max-y)
+      (incf top))
+    (if (< file-line (1- max-line))
+	(incf file-line)
+	(setf file-line 0 top 0))))
+
+(defun pick-list-previous-line ()
+  "Go to the previous line. Scroll and wrap around if need be."
+  (with-slots (file-line top max-line files max-y ttop) *pick*
+    (when (<= file-line top)
+      (decf top))
+    (if (> file-line 0)
+	(decf file-line)
+	(progn
+	  (setf file-line (1- max-line))
+	  (setf top (max 0 (- (length files)
+			      (- max-y ttop))))))))
+
+(defun pick-list-end-of-list ()
+  "Go to the end of the list."
+  (with-slots (file-line max-line top files max-y ttop) *pick*
+    ;; (pause (format nil "~d ~d ~d ~d ~d"
+    ;; 		    file-line max-line top max-y ttop))
+    (setf file-line (1- max-line))
+    (setf top (max 0 (- (length files) (- max-y ttop))))))
+
+(defun pick-list-beginning-of-list ()
+  "Go to the beginning of the list."
+  (with-slots (file-line top) *pick*
+    (setf file-line 0 top 0)))
+
+(defun pick-list-next-page ()
+  "Scroll to the next page."
+  (with-slots (file-line max-line page-size cur-line top) *pick*
+    (setf file-line (min (1- max-line) (+ file-line page-size))
+	  cur-line  (+ top file-line)
+	  top       file-line)))
+
+(defun pick-list-previous-page ()
+  "Scroll to the previous page."
+  (with-slots (file-line page-size cur-line top) *pick*
+    (setf file-line (max 0 (- file-line page-size))
+	  cur-line  (+ top file-line)
+	  top       file-line)))
+
+(defun pick-error (message &rest args)
+  "Set the list picker error message."
+  (setf (pick-error-message *pick*) (apply #'format nil message args)))
+
+(defun pick-list-tmp-message (message &rest args)
+  "Display a temporary message."
+  (apply #'pick-error message args)
+  (move (- *lines* 1) 0)
+  (clrtoeol)
+  (addstr (pick-error-message *pick*)))
+
+(defun pick-list-binding-of-key ()
+  (pick-list-tmp-message "Press a key: ")
+  (let* ((key (get-char))
+	 (action (key-definition key *pick-list-keymap*)))
+    (if action
+	(pick-list-tmp-message
+	 (format nil "~a is bound to ~a" (nice-char key) action))
+	(pick-list-tmp-message
+	 (format nil "~a is not defined" (nice-char key))))))
+
+(defun pick-list-help ()
+  (display-text "List picker keys" (help-list *pick-list-keymap*)))
+
+(defun pick-list-display ()
+  "Display the list picker."
+  (with-slots (message multiple files file-line result cur-line
+	       max-y top ttop error-message) *pick*
+    (erase)
+    (move 0 0)
+    (when message (addstr (format nil message)))
+    (setf ttop (getcury *stdscr*))
+    ;; display the list
+    (loop :with i = top :and y = ttop :and f = nil
+       :do
+       (setf f (elt files i))
+       (if (and multiple (position i result))
+	   (addstr "X ")
+	   (addstr "  "))
+       (when (= i file-line)
+	 (standout)
+	 (setf cur-line (getcury *stdscr*)))
+       (addstr f)
+       (when (= i file-line)
+	 (standend))
+       (addch (char-code #\newline))
+       (incf i)
+       (incf y)
+       :while (and (< y max-y) (< i (length files))))
+    (when error-message (mvaddstr (- *lines* 1) 0 error-message))
+    (move cur-line 0)))
+
+(defun pick-typing-search ()
+  "Try to search for typed input and return T if we did."
+  (with-slots (typing-searches input search-str file-line max-line
+	       files top page-size) *pick*
+    (if (and typing-searches
+	     (and (characterp input)
+		  (graphic-char-p input) (not (position input "<> "))))
+	;; Search for the seach string
+	(progn
+	  (stretchy-append search-str input)
+	  (loop :for i :from file-line :below max-line
+	     :if (search search-str (elt files i) :test #'equalp)
+	     :return (setf file-line i))
+	  (when (> file-line (+ top page-size))
+	    (setf top file-line))
+	  t)
+	;; Clear the string
+	(progn
+	  (stretchy-truncate search-str)
+	  nil))))
+
+(defun pick-perform-key (key &optional (keymap *pick-list-keymap*))
+  (with-slots () *pick*
+    (let ((command (key-definition key keymap)))
+      (cond
+	((not command)
+	 (pick-error "Key ~a is not bound."
+		     (nice-char key) keymap)
+	 (return-from pick-perform-key))
+	((consp command)
+	 (if (fboundp (car command))
+	     (apply (car command) (cdr command))
+	     (pick-error "(~S) is not defined." (car command))))
+	((symbolp command)
+	 (cond
+	   ((fboundp command)		; a function
+	    (funcall command))
+	   ((keymap-p (symbol-value command)) ; a keymap
+	    (pick-perform-key (fui:get-char) (symbol-value command)))
+	   (t				; anything else
+	    (pick-error "Key binding ~S is not a function or a keymap."
+			command))))
+	;; a function object
+	((functionp command)
+	 (funcall command))
+	(t				; anything else is an error
+	 (error "Weird thing in keymap: ~s." command))))))
 
 (defun pick-list (the-list &key message by-index sort-p default-value
+			     selected-item (typing-searches t) multiple)
+  "Have the user pick a value from THE-LIST and return it. Arguments:
+  MESSAGE         - A string to be displayed before the list.
+  BY-INDEX        - If true, return the index number of the item picked.
+  SORT-P          - If true sort the list before displaying it.
+  DEFAULT-VALUE   - Return if no item is selected.
+  SELECTED-ITEM   - Item to have initially selected.
+  TYPING-SEARCHES - True to have alphanumeric input search for the item.
+  MULTIPLE        - True to allow multiple items to be selected."
+  (with-curses
+    (clear)
+    (let* ((string-list (mapcar #'princ-to-string the-list))
+	   (max-y (1- curses:*lines*))
+	   (*pick* (make-pick
+		    :message	     message
+		    :by-index	     by-index
+		    :multiple	     multiple
+		    :typing-searches typing-searches 
+		    :file-line	     (or selected-item 0)
+		    :files	     (if (not (null sort-p))
+				         ;; Where's the unreachable code??
+				         (sort string-list #'string-lessp)
+				         string-list)
+		    :max-line        (length string-list)
+		    :max-y           max-y
+		    :page-size       (- max-y 2)
+		    :result	     default-value)))
+      (with-slots (quit-flag multiple by-index files file-line result
+		   second-result mark cur-line max-y top ttop max-line
+		   page-size input error-message search-str) *pick*
+	(loop :while (not quit-flag)
+	   :do
+	   (pick-list-display)
+	   (setf error-message nil
+		 input (get-char))
+	   (when (not (pick-typing-search))
+	     (if (or (eql input (ctrl #\@)) (eql input 0))
+		 (setf mark file-line
+		       error-message "Set mark")
+		 (pick-perform-key input))))
+	(values result second-result)))))
+
+;;; This is the version before keymapification.
+(defun old-pick-list (the-list &key message by-index sort-p default-value
 		  selected-item (typing-searches t) multiple)
   "Have the user pick a value from THE-LIST and return it. Arguments:
   MESSAGE         - A string to be displayed before the list.
@@ -526,12 +880,13 @@ foreground FG and background BG."
   "Perform an action from a menu. MENU is an alist of (ITEM . ACTION), where
 ITEM is something to print, as with princ, and ACTION is a function to call.
 Arguments:
-  MESSAGE is some text to display before the menu.
-  SELECTED-ITEM is the item that is initially selected."
+MESSAGE is some text to display before the menu.
+SELECTED-ITEM is the item that is initially selected.
+This is a macro so you can use lexically scoped things in the menu."
   ;;; @@@ improve to one loop
   (cond
     ((symbolp menu)
-     `(dork-menu ,menu :message ,message :selected-item ,selected-item))
+     `(do-menu* ,menu :message ,message :selected-item ,selected-item))
     ((listp menu)
      (let ((items (loop :for (i . nil) :in menu :collect i))
 	   (funcs (loop :for (nil . f) :in menu :collect f))
@@ -549,7 +904,7 @@ Arguments:
 		       :collect (list i (elt funcs i))))
 		:quit)))))
     (t
-     (error "do-menu: MENU must be a symbol or a list"))))
+     (error "MENU must be a symbol or a list."))))
 
 (defun show-result (expr)
   (unwind-protect
@@ -574,49 +929,6 @@ Arguments:
 				`(show-result ',line))))))
       (setf lines (append lines (list (cons "[Quit]" :quit))))
       (loop :while (not (eql :quit (do-menu* lines))))))
-
-(defun wcentered (w width row str)
-  "Put a centered string STR in window W of width WIDTH at row ROW."
-  (mvwaddstr w row (round (- (/ width 2) (/ (length str) 2))) str))
-
-(defun display-text (title text-lines &key input-func)
-  "Display text in a pop up window. Optionally calls INPUT-FUNC with the
-window as an argument to get input. If no INPUT-FUNC is provided it just
-waits for a key press and then returns."
-  (with-curses
-      (let* ((mid    (truncate (/ *cols* 2)))
-	     (width  (min (- *cols* 6)
-			  (+ 4 (loop :for l :in text-lines
-				  :maximize (length l)))))
-	     (height (min (+ 4 (loop :for l :in text-lines
-			      :sum
-			      (1+ (count
-				   #\newline
-				   (justify-text l :cols (- width 2)
-						 :stream nil)))))
-		      (- *lines* 4)))
-	     (xpos   (truncate (- mid (/ width 2))))
-	     (w      (newwin height width 3 xpos))
-	     result)
-	(box w 0 0)
-	(wcentered w width 0 title)
-	(loop :with i = 2 :for l :in text-lines
-	   :do
-	   (loop :for sub-line :in (split-sequence
-				    #\newline (justify-text l :cols (- width 2)
-							    :stream nil))
-	      :do
-	      (mvwaddstr w i 2 sub-line)
-	      (incf i)))
-	(refresh)
-	(wrefresh w)
-	(setf result (if input-func
-			 (funcall input-func w)
-			 (get-char)))
-	(delwin w)
-	(clear)
-	(refresh)
-	result)))
 
 #|
 (defstruct progress-bar

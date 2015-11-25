@@ -430,34 +430,6 @@ for the command-function).")
   (draw-screen pu)
   (values))
 
-(defparameter *handmade-help*
-  '("q - Quit"
-    "a - Add file"
-    "r - Revert file (undo an add)"
-    "d - Diff"
-    "D - Diff -r HEAD"
-    "c - Commit selected"
-    "u - Update selected"
-    "U - Update all"
-    "P - Push"
-    "^N,^P,up,down - Move around"
-    "< - Top"
-    "> - Bottom"
-    "Space,x,Return - Select"
-    "s - Select all"
-    "S - Select none"
-    "^@, ^space - Set Mark"
-    "X - Select region"
-    "g - Re-list"
-    "e - Show messages / errors"
-    ": - Extended command"
-    "^L - Re-draw"
-    "?,h - Help"))
-
-(defun help (pu)
-  "Help"
-  (info-window pu "Help for Puca" (help-list)))
-
 (defun show-errors (pu)
   "Show all messages / errors"
   (with-slots (errors) pu
@@ -695,27 +667,55 @@ for the command-function).")
 	(message "~a is bound to ~a" (nice-char key) action)
 	(message "~a is not defined" (nice-char key)))))
 
-(defun help-list ()
-  "Return a list of key binding help lines, suitable for the HELP function."
-  ;; Make a reverse hash of functions to keys, so we can put all the bindings
-  ;; for a function on one line.
-  (let ((rev-hash (make-hash-table)))
-    (flet ((add-key (k v) (push k (gethash v rev-hash))))
-      (map-keymap #'add-key *puca-keymap*))
-    (loop :for func :being :the :hash-keys :of rev-hash
-       :collect
-       (with-output-to-string (str)
-	 (format str "~{~a~^, ~} - ~a"
-		 (loop :for k :in (gethash func rev-hash)
-		    :collect (nice-char k :caret t))
-		 ;; Look up the documentation for the function.
-		 (cond
-		   ((or (functionp func)
-			(and (symbolp func) (fboundp func)))
-		    (let ((doc (documentation func 'function)))
-		      (or doc (string-downcase func))))
-		   ((keymap-p (string-downcase func)))
-		   (t func)))))))
+(defparameter *handmade-help*
+  '("q - Quit"
+    "a - Add file"
+    "r - Revert file (undo an add)"
+    "d - Diff"
+    "D - Diff -r HEAD"
+    "c - Commit selected"
+    "u - Update selected"
+    "U - Update all"
+    "P - Push"
+    "^N,^P,up,down - Move around"
+    "< - Top"
+    "> - Bottom"
+    "Space,x,Return - Select"
+    "s - Select all"
+    "S - Select none"
+    "^@, ^space - Set Mark"
+    "X - Select region"
+    "g - Re-list"
+    "e - Show messages / errors"
+    ": - Extended command"
+    "^L - Re-draw"
+    "?,h - Help"))
+
+(defun help (pu)
+  "Help"
+  (info-window pu "Help for Puca" (help-list *puca-keymap*)))
+
+;; (defun help-list ()
+;;   "Return a list of key binding help lines, suitable for the HELP function."
+;;   ;; Make a reverse hash of functions to keys, so we can put all the bindings
+;;   ;; for a function on one line.
+;;   (let ((rev-hash (make-hash-table)))
+;;     (flet ((add-key (k v) (push k (gethash v rev-hash))))
+;;       (map-keymap #'add-key *puca-keymap*))
+;;     (loop :for func :being :the :hash-keys :of rev-hash
+;;        :collect
+;;        (with-output-to-string (str)
+;; 	 (format str "~{~a~^, ~} - ~a"
+;; 		 (loop :for k :in (gethash func rev-hash)
+;; 		    :collect (nice-char k :caret t))
+;; 		 ;; Look up the documentation for the function.
+;; 		 (cond
+;; 		   ((or (functionp func)
+;; 			(and (symbolp func) (fboundp func)))
+;; 		    (let ((doc (documentation func 'function)))
+;; 		      (or doc (string-downcase func))))
+;; 		   ((keymap-p (string-downcase func)))
+;; 		   (t func)))))))
 
 (defun perform-key (pu key &optional (keymap *puca-keymap*))
   ;; Convert positive integer keys to characters

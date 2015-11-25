@@ -219,6 +219,7 @@
    #:path-append
    #:hidden-file-name-p
    #:quote-filename
+   #:safe-namestring
 
    ;; files (low level)
    #:O_RDONLY #:O_WRONLY #:O_RDWR #:O_ACCMODE #:O_NONBLOCK #:O_APPEND
@@ -1894,6 +1895,35 @@ efficiency.")
 ;#+os-t-use-chdir (defcfun chdir :int (path :string))
 #+(or openmcl sbcl) (defcfun chdir :int (path :string))
 
+(defparameter *need-quoting* "[*?;:"
+  "Characters that may need escaping in a pathname.")
+
+;; I am probably unable to express how unfortunate this is.
+(defun quote-filename (namestring)
+  "Try to quote a file name so none of it's characters are noticed specially
+by the Lisp pathname monster."
+  (with-output-to-string (str)
+    (loop :for c :across namestring :do
+       (when (position c *need-quoting*)
+	 (princ #\\ str))
+       (princ c str))))
+
+#|  (let ((result namestring))
+      (flet ((possibly-quote (c)
+	     (when (position c result)
+	       ;; It's just not possible to write code this inefficient in C.
+	       (setf result (join (split-sequence c result) (s+ #\\ c))))))
+      (loop :for c :across "[*;:" :do
+	 (possibly-quote c))
+      result)))
+|#
+
+(defun safe-namestring (pathname)
+  "Like NAMESTRING, but don't interpret any characters in strings specially."
+  (typecase pathname
+    (pathname (namestring pathname))
+    (string (quote-filename pathname))))
+
 ;; The real question is should this munge *default-pathname-defaults* ?
 ;; On implementations where "load" works from *default-pathname-defaults*
 ;; and not from the OS current, I say yes.
@@ -1904,7 +1934,7 @@ if not given."
   (when (not path)
     (setf path (enough-namestring (user-homedir-pathname))))
   (when (pathnamep path)
-    (setf path (namestring path)))
+    (setf path (safe-namestring path)))
   #+openmcl (syscall (chdir path))
   #+sbcl (progn
 	   (syscall (chdir path))
@@ -2380,7 +2410,7 @@ calls. Returns NIL when there is an error."
   (setf path (etypecase path
 	       (null (return-from path-to-absolute nil))
 	       (string path)
-	       (pathname (namestring path))))
+	       (pathname (safe-namestring path))))
     (let* ((p (if (char= *directory-separator* (char path 0))
 		 path			; already absolute
 		 (concatenate 'string (current-directory) "/" path)))
@@ -2428,13 +2458,13 @@ calls. Returns NIL when there is an error."
 	    (subseq path (1+ i))))))
 
 (defun path-directory-name (path)
-  "Return the directory portion of a PATH."
-  (clip-path (or (and (pathnamep path) (namestring path)) path) :dir))
+  "Return the directory portion of a PATH. This is similar to DIRECTORY-NAMESTRING."
+  (clip-path (or (and (pathnamep path) (safe-namestring path)) path) :dir))
 (setf (symbol-function 'dirname) #'path-directory-name)
 
 (defun path-file-name (path)
-  "Return the last portion of a PATH."
- (clip-path (or (and (pathnamep path) (namestring path)) path) :file))
+  "Return the last portion of a PATH. This is similar to FILE-NAMESTRING."
+ (clip-path (or (and (pathnamep path) (safe-namestring path)) path) :file))
 (setf (symbol-function 'basename) #'path-file-name)
 
 (defun path-append (path-1 path-2)
@@ -2448,28 +2478,6 @@ isn't one already."
   "Return true if the file NAME is normally hidden."
   (and name (> (length name) 0) (equal (char name 0) #\.)))
 
-(defparameter *need-quoting* "[*?;:"
-  "Characters that may need escaping in a pathname.")
-
-;; I am probably unable to express how unfortunate this is.
-(defun quote-filename (namestring)
-  "Try to quote a file name so none of it's characters are noticed specially
-by the Lisp pathname monster."
-  (with-output-to-string (str)
-    (loop :for c :across namestring :do
-       (when (position c *need-quoting*)
-	 (princ #\\ str))
-       (princ c str))))
-
-#|  (let ((result namestring))
-      (flet ((possibly-quote (c)
-	     (when (position c result)
-	       ;; It's just not possible to write code this inefficient in C.
-	       (setf result (join (split-sequence c result) (s+ #\\ c))))))
-      (loop :for c :across "[*;:" :do
-	 (possibly-quote c))
-      result)))
-|#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Files
@@ -3231,7 +3239,7 @@ quicker. We don't care what's in it.")
 (defun file-exists (filename)
   "Check that a file with FILENAME exists at the moment. But it might not exist
 for long."
-  (when (not (stringp (setf filename (namestring filename))))
+  (when (not (stringp (setf filename (safe-namestring filename))))
     (error "FILENAME should be a string or pathname."))
   (when (not *statbuf*)
     (setf *statbuf* (foreign-alloc '(:struct foreign-stat))))
