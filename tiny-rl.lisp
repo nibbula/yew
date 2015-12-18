@@ -371,11 +371,23 @@ anything important.")
     :initform nil
     :initarg :typeahead-pos
     :documentation "How far into the typeahead we are.")
-   (last-completion-unique
-    :accessor last-completion-unique
-    :initarg :last-completion-unique
+   (did-complete
+    :initarg :did-complete
+    :accessor did-complete
+    :initform nil :type boolean
+    :documentation "True if we called complete.")
+   (last-command-was-completion
+    :initarg :last-command-was-completion
+    :accessor last-command-was-completion
     :initform nil
-    :documentation "True if the last completion was unique.")
+    :type boolean
+    :documentation "True if the last command was a completion.")
+   (last-completion-not-unique
+    :accessor last-completion-not-unique
+    :initarg :last-completion-not-unique
+    :initform nil
+    :type boolean
+    :documentation "True if the last completion and was not unique.")
    (need-to-redraw
     :accessor need-to-redraw
     :initarg :need-to-redraw
@@ -2213,13 +2225,21 @@ is none."
 	      (move-backward e (display-length
 				(subseq buf point))))))))))
 
+#|
 (defun last-input-was-completion (e)
   "Return true if the last input invoked a completion function."
   (with-slots (last-input completion-func) e
     (let ((func (key-sequence-binding last-input *normal-keymap*)))
+      (log-message e "func = ~s" func)
+      ;; @@@ This is not really ideal. Perhaps we should specify that completion
+      ;; functions should set another flag, or that last last-completion-unique
+      ;; also specifies that last-input-was-completion?
       (or (eql func completion-func)
+	  (eql func #'complete)
+	  (eql func 'complete)
 	  (eql func #'complete-filename-command)
 	  (eql func 'complete-filename-command)))))
+|#
 
 (defun complete (e &optional comp-func)
   (with-slots (completion-func point buf last-input) e
@@ -2230,11 +2250,12 @@ is none."
 	  (let* ((saved-point point) comp replace-pos unique)
 	    (multiple-value-setq (comp replace-pos unique)
 	      (funcall comp-func buf point nil))
-	    (when (and (last-input-was-completion e)
-	     ;;(when (and (eql last-input #\tab)
-		       (not (last-completion-unique e)))
+	    (when (and (last-completion-not-unique e)
+		       (last-command-was-completion e))
+	      (log-message e "show mo")
 	      (show-completions e))
-	    (setf (last-completion-unique e) unique)
+	    (setf (did-complete e) t
+		  (last-completion-not-unique e) (not unique))
 	    ;; (format t "comp = ~s replace-pos = ~s~%" comp replace-pos)
 	    ;; If the completion succeeded we need a replace-pos!
 	    (assert (or (not comp) (numberp replace-pos)))
@@ -2596,18 +2617,18 @@ binding."
 ;  :default-binding #| (beep e "C-x ~a is unbound." cmd |#
 
 (defkeymap *app-key-keymap*
-  `((#\A . :up)
-    (#\B . :down)
-    (#\C . :right)
-    (#\D . :left)
+  `((#\A . previous-history)		; :up
+    (#\B . next-history)		; :down
+    (#\C . forward-char) 		; :right
+    (#\D . backward-char) 		; :left
     ;; Movement keys
-    (#\H . :home)
-    (#\F . :end)
+    (#\H . beginning-of-line) 		; :home
+    (#\F . end-of-line) 		; :end
     ;; Function keys
-    (#\P . :f1)
-    (#\Q . :f2)
-    (#\R . :f3)
-    (#\S . :f4)
+;    (#\P . ) 				; :f1
+;    (#\Q . ) 				; :f2
+;    (#\R . ) 				; :f3
+;    (#\S . ) 				; :f4
     ))
 
 (defkeymap *escape-raw-keymap*
@@ -2791,8 +2812,9 @@ Keyword arguments:
 					       :stream input-stream))
 			(setf result eof-value))
 		    (progn
-;;;		      (perform-key e cmd *normal-keymap*)
+		      (setf (did-complete e) nil)
 		      (perform-key e cmd (line-editor-keymap e))
+		      (setf (last-command-was-completion e) (did-complete e))
 		      (when exit-flag (setf result quit-value))))
 		(setf last-input cmd)
 		:while (not quit-flag))

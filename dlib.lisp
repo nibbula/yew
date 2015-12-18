@@ -95,6 +95,7 @@
    #:*os*
    #:*lisp-implementation-nickname*
    #:*lisp-version*
+   #:*lisp-version-number*
    #:*platform-nickname*
   )
 )
@@ -102,6 +103,38 @@
 
 (declaim (optimize (debug 3)))
 ;(declaim (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
+
+;; This should be "pure" Common Lisp, since it's compile time, e.g. we can't
+;; use split-sequence or _ yet.
+(defun extract-version-number (version-string)
+  "Make a single testable value out of a typical (lisp-implementation-version)"
+  (let (i spos (sum 0) (pos 0) (mag #(10000 100 1))
+	  (str (substitute #\space #\. version-string)))
+    (loop :with n = 0
+       :while (and (< n 3) (< pos (length str)) (digit-char-p (aref str 0)))
+       :do
+       (setf (values i spos) (parse-integer (subseq str pos) :junk-allowed t))
+       (incf sum (* i (aref mag n)))
+       (incf pos spos)
+       (incf n)
+       ;; (format t "~a ~a ~a ~a~%" n i pos sum)
+      )
+    sum))
+
+;; We need to have this early so we can make decisions based on it.
+(defparameter *lisp-version-number*
+  #+sbcl (extract-version-number (lisp-implementation-version))
+  #+ccl (extract-version-number
+	 (let ((s (lisp-implementation-version)))
+	   (setf s (subseq s (position-if (lambda (x) (digit-char-p x)) s))
+		 s (subseq s 0 (position-if
+				(lambda (x)
+				  (not (or (digit-char-p x) (eql x #\.))))
+				s)))
+	   s))
+  #-(or sbcl ccl) nil ;; You will have to put something here if it matters.
+    "A version number for doing comparisons. Greater numbers should indicate
+later versions.")
 
 ;; @@@ I should really do this with an error type
 (defun missing-implementation (sym)
@@ -164,7 +197,8 @@
   #+excl (sys::getenv s)
   #+lispworks (hcl:getenv s)
   #+gcl (system:getenv s)
-  #-(or clisp sbcl openmcl cmu ecl excl lispworks gcl)
+  #+abcl (ext:getenv s)
+  #-(or clisp sbcl openmcl cmu ecl excl lispworks gcl abcl)
   (missing-implementation 'd-getenv))
 
 ;; Compare functions:
@@ -355,10 +389,15 @@ just return SEQUENCE. Elements are compared with TEST which defaults to EQL."
 	sequence)))
 
 (defun s+ (s &rest rest)
-  "Abbreviation for (concatenate 'string ...), but converting non-string
-arguments into strings as with PRINC."
-  (labels ((as-string (s) (if (stringp s) s (princ-to-string s))))
-    (apply #'concatenate 'string (as-string s) (mapcar #'as-string rest))))
+  "Return a string which is the arguments concatenated as if output by PRINC."
+  ;; This is usually slower:
+  ;; (labels ((as-string (s) (if (stringp s) s (princ-to-string s))))
+  ;;   (apply #'concatenate 'string (as-string s) (mapcar #'as-string rest))))
+  (if rest
+    (with-output-to-string (result)
+      (princ s result)
+      (loop :for x :in rest :do (princ x result)))
+    (princ-to-string s)))
 
 (defparameter *ascii-whitespace* #(#\space #\tab #\newline #\return #-gcl #\vt)
   "Characters considered whitespace in ASCII.")
@@ -601,7 +640,8 @@ on all accessible symbols."
   ;; @@@ The LW manual says this only works on unix:
   #+lispworks (system:run-shell-command (format nil "~a~{ ~a~}" cmd args)
 					:output :stream :wait nil)
-  #-(or clisp sbcl cmu openmcl ecl excl lispworks)
+  #+abcl (system:process-output (system:run-program cmd args))
+  #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl)
   (missing-implementation 'system-command-stream))
 
 (defun shell-line (cmd &rest args)
@@ -636,30 +676,11 @@ on all accessible symbols."
   #+openmcl (ccl::command-line-arguments)
   #+excl (sys:command-line-arguments)
   #+lispworks sys:*line-arguments-list*
-  #-(or sbcl clisp cmu ecl openmcl excl lispworks)
+  #+abcl ext:*command-line-argument-list*
+  #-(or sbcl clisp cmu ecl openmcl excl lispworks abcl)
   (missing-implementation 'system-args))
 
-#+sbcl
-;(eval-when (:compile-toplevel :load-toplevel :execute)
-(defparameter *sbcl-version*
-  (let (i spos (sum 0) (pos 0) (mag #(10000 100 1))
-	  (str (substitute #\space #\. (lisp-implementation-version))))
-    (dotimes (n 3)
-      (setf (values i spos) (parse-integer (subseq str pos) :junk-allowed t))
-      (incf sum (* i (aref mag n)))
-      (incf pos spos)
-;      (format t "~a ~a ~a ~a~%" n i pos sum)
-      )
-    sum))
-
-    ;; Have to do this without split-sequence, since it's compile time:
-    ;; (destructuring-bind (major minor rev)
-    ;; 	(subseq (split-sequence #\. (lisp-implementation-version)) 0 3)
-    ;;   (+ (* 10000 (parse-integer major))
-    ;; 	 (* 100 (parse-integer minor)) 
-    ;; 	 (parse-integer rev)))))
-
-#+sbcl (when (> *sbcl-version* 10055)
+#+sbcl (when (> *lisp-version-number* 10055)
 	 (d-add-feature :use-exit))
 
 (defun exit-system ()
@@ -671,7 +692,9 @@ on all accessible symbols."
   #+excl (excl:exit)
   #+clisp (ext:quit)
   #+ecl (ext:quit)
-  #-(or openmcl cmu sbcl excl clisp ecl) (missing-implementation 'exit-system))
+  #+abcl (ext:quit)
+  #-(or openmcl cmu sbcl excl clisp ecl abcl)
+  (missing-implementation 'exit-system))
 
 (defun save-image-and-exit (image-name &optional initial-function)
   #+sbcl (sb-ext:save-lisp-and-die image-name :executable t
@@ -692,7 +715,8 @@ on all accessible symbols."
   #+cmu (= (unix:unix-getuid) 0)
   #+ecl (= (ext:getuid) 0)
   #+lispworks nil
-  #-(or ccl sbcl clisp cmu ecl lispworks)
+  #+abcl nil
+  #-(or ccl sbcl clisp cmu ecl lispworks abcl)
   (missing-implementation 'overwhelming-permission))
 
 #| THIS IS TOTALLY FUXORD
@@ -777,16 +801,20 @@ equal under TEST to result of evaluating INITIAL-VALUE."
 
 ;; Back to the olde shite:
 
-#+(or sbcl clisp ccl cmu lispworks ecl)
+#+(or sbcl clisp ccl cmu lispworks ecl abcl)
 (defmacro define-constant (name value &optional doc (test 'equal))
   "Like defconstant but works with pendanticly anal SCBL."
   (declare (ignore test))
-  #+(or sbcl clisp cmu lispworks ecl)
+  #+(or sbcl clisp cmu lispworks ecl abcl)
   `(cl:defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
      ,@(when doc (list doc)))
   #+ccl
   `(cl:defconstant ,name ,value ,@(when doc (list doc)))
   )
+
+;; On other lisps just use the real one.
+#-(or sbcl clisp ccl cmu lispworks ecl abcl)
+(setf (macro-function 'define-constant) (macro-function 'cl:defconstant))
 
 ;; This is just to pretend that we're trendy and modern.
 ;(setf (macro-function 'λ) (macro-function 'cl:lambda))
@@ -953,7 +981,12 @@ A utility for debugging DEBUG-FUNCTION-ARGLIST."
   #+cmu (function-arglist fun)
   #+lispworks (let ((args (lw:function-lambda-list fun)))
 		(and (listp args) (strings-to-symbols args)))
-  #-(or sbcl ccl cmu lispworks) (function-lambda-list fun))
+  #+abcl (sys::arglist fun)
+  #-(or sbcl ccl cmu lispworks abcl)
+  (multiple-value-bind (exp closure-p name)
+      (function-lambda-expression fun)
+    (when exp
+      (cadr exp))))
 
 (defmacro with-unique-names (names &body body)
   "Bind each symbol in NAMES to a unique symbol and evaluate the BODY.
@@ -979,10 +1012,6 @@ never create a new symbol, and return NIL if the symbol doesn't already exist."
   "Make a keyword from a string."
   (or (and (keywordp string) string)
       (intern (string-upcase string) :keyword)))
-
-;; On other lisps just use the real one.
-#-(or sbcl clisp ccl cmu lispworks ecl)
-(setf (macro-function 'define-constant) (macro-function 'cl:defconstant))
 
 (defmacro with-package (package &body body)
   "Evalute BODY with *package* set to the packaged designated by PACKAGE."
@@ -1196,6 +1225,13 @@ an EOF on SOURCE."
   ;; that's way more complicated. Even this comment is too much. Let's just
   ;; imagine that a future IDE will collapse or footnotify comments tagged
   ;; with "^^^".
+  (when (not (eql (stream-element-type source)
+		  (stream-element-type destination)))
+    ;; It would be nice if we could handle this, but I don't want to make
+    ;; dlib dependant on flexi-streams or something. I think there might be
+    ;; enough code in your average implementation to handle this, but it needs
+    ;; more research.
+    (error "Stream element types have to match."))
   (let ((buf (make-array buffer-size
 			 :element-type (stream-element-type source)))
 	pos)
@@ -1268,22 +1304,23 @@ an EOF on SOURCE."
 (d-add-feature *os*)			; Gratuitous feature adding
 
 (defparameter *lisp-implementation-nickname*
-  #+clisp	"clisp"
-  #+sbcl	"sbcl"
-  #+cmu		"cmu"
-;  #+openmcl	"openmcl"
-  #+ccl		"ccl"
-  #+excl	"allegro"
-  #+lispworks	"lw"
-  #+ecl		"ecl"
-  #-(or clisp sbcl cmu excl openmcl lispworks ecl) "unknown"
-  "A short nickname for the current implementation."
-)
+  #+clisp	"CLisp"
+  #+sbcl	"SBCL"
+  #+cmu		"CMU"
+;  #+openmcl	"OpenMCL"
+  #+ccl		"CCL"
+  #+excl	"Allegro"
+  #+lispworks	"LW"
+  #+ecl		"ECL"
+  #+abcl	"ABCL"
+  #-(or clisp sbcl cmu excl openmcl lispworks ecl abcl) "Unknown"
+  "A short nickname for the current implementation.")
 
 (defparameter *lisp-version*
   #+clisp	(format nil "~a"
 			(let ((v (lisp-implementation-version)))
-			  (substitute #\- #\. (subseq v 0 (position #\space v)))))
+			  (substitute #\- #\.
+				      (subseq v 0 (position #\space v)))))
   #+sbcl	(format nil "~a" (lisp-implementation-version))
   #+cmu		(format nil "~a"
 			(let ((v (lisp-implementation-version)))
@@ -1296,11 +1333,14 @@ an EOF on SOURCE."
   #+excl	"allegro"
   #+lispworks	"lw"
   #+ecl		"ecl"
-  #-(or clisp sbcl cmu excl openmcl lispworks ecl) "unknown"
-  "A version suitable for putting in a logical pathname."
-)
+  #+abcl	(format nil "~a"
+			(let ((v (lisp-implementation-version)))
+			  (substitute #\- #\.
+				      (subseq v 0 (position #\space v)))))
+  #-(or clisp sbcl cmu excl openmcl lispworks ecl abcl) "unknown"
+  "A version suitable for putting in a logical pathname.")
 
-(defparameter *platform-nickname* (format nil "~a~a-~a-~a"
+(defparameter *platform-nickname* (format nil "~(~a~)~a-~a-~a"
 					  *lisp-implementation-nickname*
 					  *lisp-version*
 					  *os-nickname*

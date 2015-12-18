@@ -309,14 +309,14 @@ waits for a key press and then returns."
 
 (defkeymap *pick-list-keymap*
   `((#\escape		. *pick-list-escape-keymap*)
-    (#\^G		. pick-list-quit)
+    (,(ctrl #\A)	. pick-list-quit)
     (#\return		. pick-list-pick)
     (#\newline		. pick-list-pick)
     (#\space		. pick-list-toggle-item)
-    (#\^X		. pick-list-toggle-region)
-    (#\^N		. pick-list-next-line)
+    (,(ctrl #\X)	. pick-list-toggle-region)
+    (,(ctrl #\N)	. pick-list-next-line)
     (:down		. pick-list-next-line)
-    (#\^P		. pick-list-previous-line)
+    (,(ctrl #\P)	. pick-list-previous-line)
     (:up		. pick-list-previous-line)
     (#\>		. pick-list-end-of-list)
     (,(meta-char #\>)	. pick-list-end-of-list)
@@ -324,10 +324,10 @@ waits for a key press and then returns."
     (#\<		. pick-list-beginning-of-list)
     (,(meta-char #\<)	. pick-list-beginning-of-list)
     (:home		. pick-list-beginning-of-list)
-    (#\^F		. pick-list-next-page)
-    (#\^V		. pick-list-next-page)
+    (,(ctrl #\F)	. pick-list-next-page)
+    (,(ctrl #\V)	. pick-list-next-page)
     (:npage		. pick-list-next-page)
-    (#\^B		. pick-list-previous-page)
+    (,(ctrl #\B)	. pick-list-previous-page)
     (,(meta-char #\v)	. pick-list-previous-page)
     (:ppage		. pick-list-previous-page)
     (,(meta-char #\=)   . pick-list-binding-of-key)
@@ -590,6 +590,7 @@ waits for a key press and then returns."
 	(values result second-result)))))
 
 ;;; This is the version before keymapification.
+#|
 (defun old-pick-list (the-list &key message by-index sort-p default-value
 		  selected-item (typing-searches t) multiple)
   "Have the user pick a value from THE-LIST and return it. Arguments:
@@ -721,6 +722,7 @@ waits for a key press and then returns."
 			   cur-line  (+ top file-line)
 			   top       file-line))))))))
       (values result second-result))))
+|#
 
 ;; Test scrolling with:
 ;; (fui:pick-list (loop for i from 1 to 60 collect (format nil "~@r~8t~r" i i)))

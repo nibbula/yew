@@ -11,7 +11,7 @@
 ;; Maybe something like: dlib dlib-1 dlib-2 etc.
 
 (defpackage :dlib-misc
-  (:use :cl :dlib :opsys
+  (:use :cl :dlib :opsys :glob
 	#+(or (and clisp mop) cmu) :mop #+sbcl :sb-mop #+gcl :pcl)
   (:documentation
    "More of Dan's generally useful miscellaneous functions.")
@@ -42,6 +42,9 @@
    #:dir
    #:slurp
    #:unintern-conflicts
+   #:*loadable-packages*
+   #:loadable-packages
+   #:clear-loadable-package-cache
    #:show-features
    #:describe-environment
    #:describe-implementation
@@ -51,7 +54,7 @@
    #:describe-reader
    #:describe-system
    #:describe-class
-   #:autoload
+   #:d-autoload
   )
 )
 (in-package :dlib-misc)
@@ -658,12 +661,20 @@ SUFFIX is a string to append to each row."
   (make-array '(11) :initial-contents 
 	      (loop :for i :from 0 :to 10 :collect (expt 1024 i))))
 
-(defun print-size (size &key (stream t) long unit traditional abbrevs)
-  "Print a size with standard binary units. If LONG is true, print the long
-unit name. If UNIT is supplied, it should be a string of the unit to be
-prefixed. UNIT defaults to ‘B’ or “byte” depending on LONG. ABBREVS is a
-custom list of size abbreviations. If TRADITIONAL is non-nil, use
-traditional units."
+(defun print-size (size &key (stream t) long unit traditional abbrevs
+			  (format "~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]"))
+  "Print a size with standard binary units.
+If LONG is true, print the long unit name.
+If UNIT is supplied, it should be a string of the unit to be prefixed.
+UNIT defaults to ‘B’ or “byte” depending on LONG.
+ABBREVS is a custom list of size abbreviations.
+If TRADITIONAL is non-nil, use traditional units.
+FORMAT is the format to print the number with, which gets passed 4 values:
+  1 - a boolen indicating if the number is an integer or not
+  2 - the number
+  3 - the prefix
+  3 - the unit
+FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
   (setf unit (or unit (or (and long "byte") "B")))
   (let ((prefixes (if traditional *traditional-size-prefixes*
 		      *iec-size-prefixes*)))
@@ -671,9 +682,11 @@ traditional units."
 		      (if traditional *traditional-size-abbreviations*
 			  *iec-size-abbreviations*)))
     (flet ((pr (i)
-	     (let ((n (/ size (svref *iec-sizes* i))))
-	       (format stream "~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]"
-		       (eql 1 (denominator n)) n
+	     (let* ((divisor (svref *iec-sizes* i))
+		    (n (/ size divisor))
+		    (rem (rem size divisor)))
+	       (format stream format
+		       (zerop rem) n
 		       (svref (if long
 				  prefixes
 				  abbrevs) i)
@@ -688,6 +701,57 @@ traditional units."
 	  (unintern (find-symbol "DIR" :ext) :ext)
 	  (unintern (find-symbol "DIR" :cl-user) :cl-user)
 	  ) ; mine is better :-P
+
+(defvar *loadable-packages* nil
+  "Cached list of ASDF loadable packages. Set to NIL to recompute.")
+
+;; This is an horrible hack. I wish we could ask ASDF.
+(defun loadable-packages (&key as-strings)
+  "List of potentially ASDF loadable packages."
+  (labels ((place-dir (p)
+	     "Resolve place into a directory."
+	     (with-output-to-string (s)
+		(loop :for e :in p
+		   :if (eq e :home)
+		   :do (write-string
+			     (namestring (user-homedir-pathname)) s)
+		   :else
+		   :do (write-string e s)))))
+    (or (and *loadable-packages*
+	     (or (and (and as-strings (stringp (car *loadable-packages*)))
+		      *loadable-packages*)
+		 (and (not as-strings) (keywordp (car *loadable-packages*))
+		      *loadable-packages*)))
+	(setf *loadable-packages*
+	      (let ((s-dirs (loop :for e in asdf:*source-registry-parameter*
+			       :if (and (listp e) (eq (car e) :directory))
+			       :collect (place-dir (cadr e))))
+		    (c-dirs (mapcar #'namestring asdf:*central-registry*)))
+		(append
+		 (loop :for d :in (concatenate 'list s-dirs c-dirs)
+		    :append
+		    (loop :with base :and result
+		       :for f :in (glob (path-append d "*.[Aa][Ss][Dd]"))
+		       :collect
+		       (progn
+			 (setf base (path-file-name f)
+			       result (subseq base 0 (- (length base) 4)))
+			 (if as-strings
+			     result
+			     (keywordify result)))))
+		 ;; Quicklisp
+		 (loop :for d :in (ql-dist:all-dists)
+		    :append
+		    (loop :for s :in (ql-dist:installed-systems d)
+		       :collect
+		       (if as-strings
+			   (ql-dist:name s)
+			   (keywordify (ql-dist:name s)))))))))))
+
+(defun clear-loadable-package-cache ()
+  "This should be done whenever packages are added or removed or the search
+configuration is changed."
+  (setf *loadable-packages* nil))
 
 (defun show-features ()
   "Print the features list nicely."
@@ -1009,7 +1073,7 @@ symbols, :all to show internal symbols too."
 	))))
 
 ;; Simple mindless ASDF autoloader.
-(defmacro autoload (symbol system doc-string &optional macro)
+(defmacro d-autoload (symbol system doc-string &optional macro)
   "Define a function to load an ASDF system which contains a redefinition of
 that function, and call it. In other words, define a stub function which
 automatically loads the real function from a package and then calls it. The

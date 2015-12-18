@@ -380,29 +380,37 @@ i.e. the terminal is 'line buffered'."
 ; 	((= status 1)
 ; 	 (code-char (mem-ref c :unsigned-char)))))))
 
+(defun get-char (tty c)
+  (let (status)
+    (loop
+       :do (setf status (posix-read (terminal-file-descriptor tty) c 1))
+       :if (and (< status 0) (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
+       :do
+         ;; Probably returning from ^Z or terminal resize, or something,
+         ;; so keep trying. Enjoy your trip to plusering town.
+         (terminal-start tty) #| (redraw) |# (tt-finish-output tty)
+       :else
+         :return
+       :end)
+    (cond
+      ((< status 0)
+       (error "Read error ~d ~d ~a~%" status nos:*errno*
+	      (nos:strerror nos:*errno*)))
+      ((= status 0)		     ; Another possible plusering extravaganza
+       nil)
+      ((= status 1)
+       (code-char (mem-ref c :unsigned-char))))))
+
 (defmethod tt-get-char ((tty terminal-ansi))
   "Read a character from the terminal."
   (tt-finish-output tty)
   (with-foreign-object (c :unsigned-char)
-    (let (status)
-      (loop
-	 :do (setf status (posix-read (terminal-file-descriptor tty) c 1))
-	 :if (and (< status 0) (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
-	 :do
-	   ;; Probably returning from ^Z or terminal resize, or something,
-	   ;; so keep trying. Enjoy your trip to plusering town.
-	   (terminal-start tty) #| (redraw) |# (tt-finish-output tty)
-	 :else
-	   :return
-	 :end)
-      (cond
-	((< status 0)
-	 (error "Read error ~d ~d ~a~%" status nos:*errno*
-		(nos:strerror nos:*errno*)))
-	((= status 0) ; Another possible plusering extravaganza
-	 nil)
-	((= status 1)
-	 (code-char (mem-ref c :unsigned-char)))))))
+    (get-char tty c)))
+     
+(defmethod tt-get-key ((tty terminal-ansi))
+  (tt-finish-output tty)
+  (with-foreign-object (c :unsigned-char)
+    (get-char tty c)))
 
 (defmethod tt-reset ((tty terminal-ansi-stream))
   "Try to reset the terminal to a sane state, without being too disruptive."

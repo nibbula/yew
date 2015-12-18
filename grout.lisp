@@ -8,7 +8,7 @@ This is so we can make old fashioned command line utilities that can use a
 few output features when they're available, but fall back to plain text
  when not. This is not for making fancy interactive applications. It's just
 for relatively simple output.")
-  (:use :cl :dlib :dlib-misc :opsys :terminal :terminal-ansi)
+  (:use :cl :dlib :dlib-misc :char-util :opsys :terminal :terminal-ansi)
   (:export
    #:grout
    #:grout-stream
@@ -51,18 +51,18 @@ for relatively simple output.")
 (defvar *grout* nil
   "The current dynamic grout.")
 
+;; Mostly miraculous macro-defining macros make me mirthful!
 (defmacro defgrout (name (&rest args) doc-string)
   "Macro that defines a grout generic function along with a macro that calls
 that generic function with *GROUT* as it's first arg, just for API prettyness."
   (let ((grout-name (symbolify (s+ "GROUT-" name)))
 	(grout-generic (symbolify (s+ "%GROUT-" name)))
-	(whole-arg (gensym "DEFGROUT-WHOLE-ARG")))
+	(whole-arg (gensym "DEFGROUT-WHOLE-ARG"))
+	(ignorables (remove-if (_ (char= #\& (char (string _) 0))) args)))
     `(progn
        (defgeneric ,grout-generic (grout ,@args) (:documentation ,doc-string))
        (defmacro ,grout-name (&whole ,whole-arg ,@args)
-	 ;; Don't complain about unused things in ARGS. We are actually using
-	 ;; them, from the &WHOLE.
-	 (declare (sb-ext:muffle-conditions style-warning))
+	 (declare (ignorable ,@ignorables))
 	 ,doc-string
 	 (append (list ',grout-generic '*grout*) (cdr ,whole-arg))))))
 
@@ -248,7 +248,7 @@ generic functions (i.e. %GROUT-*) directly."
     
 (defmethod %grout-beep ((g dumb))
   "Do something annoying."
-  (write-char #\^G (grout-stream g))
+  (write-char (ctrl #\G) (grout-stream g))
   (finish-output (grout-stream g)))
 
 (defmethod %grout-object ((g dumb) object)
@@ -632,7 +632,8 @@ generic functions (i.e. %GROUT-*) directly."
   (declare (ignore g)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Future-past Lisp term, which can do representations, even better than emacs.
+;; Future-past Lisp term, which can do representations, even better than emacs,
+;; which was/will be wonderful.
 
 ;; ... @@@
 

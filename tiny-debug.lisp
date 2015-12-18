@@ -492,8 +492,12 @@ the outermost. When entering the debugger the current frame is 0.")
 ;; As you may know, this is very implementation specific.
 (defun debugger-backtrace (n)
   "Output a list of execution stack contexts. Try to limit it to the innermost N contexts, if we can."
-  #+sbcl (if n (sb-debug:backtrace n) (sb-debug:backtrace))
-  #+cmu  (if n (debug:backtrace n) (debug:backtrace))
+  #+sbcl
+  (let ((bt-func (if (< *lisp-version-number* 10300)
+		     (intern "BACKTRACE" :sb-debug)
+		     (intern "PRINT-BACKTRACE" :sb-debug))))
+    (if n (funcall bt-func n) (funcall bt-func)))
+  #+cmu (if n (debug:backtrace n) (debug:backtrace))
 ;  #+sbcl (sbcl-wacktrace)
   #+ccl (loop :with i = 0
 	   :for b :in (ccl::backtrace-as-list)
@@ -504,7 +508,12 @@ the outermost. When entering the debugger the current frame is 0.")
   #+clisp (catch 'debug (system::debug-backtrace "4"))
   #+lispworks (dbg:output-backtrace :full)
   #+ecl (ecl-backtrace n)
-  #-(or sbcl ccl clisp lispworks ecl cmu)
+  #+abcl
+  (loop :with i = 0
+     :for f :in (sys:backtrace)
+     :do (format *debug-io* "~(~3d ~a~)~%" i (sys:frame-to-string f)) (incf i)
+     :while (or (null n) (and (numberp n) (< i n))))
+  #-(or sbcl ccl clisp lispworks ecl cmu abcl)
   (debugger-sorry "backtrace"))
 
 (declaim (inline debugger-internal-frame))

@@ -58,6 +58,7 @@
    #:tt-set-scrolling-region
    #:tt-finish-output
    #:tt-get-char
+   #:tt-get-key
    #:tt-reset
    #:tt-save-cursor
    #:tt-restore-cursor
@@ -195,6 +196,9 @@ i.e. the terminal is \"line buffered\""))
 
 (defgeneric tt-get-char (tty)
   (:documentation "Read a character from the terminal."))
+
+(defgeneric tt-get-key (tty)
+  (:documentation "Read a key from the terminal."))
 
 (defgeneric tt-reset (tty)
   (:documentation

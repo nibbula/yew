@@ -64,9 +64,7 @@
 	       #+(and ccl 32-bit-target) "CCL-32"
 	       #+(and ccl 64-bit-target) "CCL-64"
 	       #+(and ccl (not (or 32-bit-target 64-bit-target))) "CCL"
-	       #+cmu "CMU"
-	       #+lispworks "LW"
-	       #-(or ccl cmu lispworks) (lisp-implementation-type)
+	       #-ccl *lisp-implementation-nickname*
 	       pkg
 	       (> *repl-level* 0) *repl-level*
 	       (if prompt-supplied p *default-prompt*)))))

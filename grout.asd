@@ -14,6 +14,6 @@
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :license            "None"
     :long-description   "Generic Rectilinear Output Und Text"
-    :depends-on (:dlib :dlib-misc :opsys :terminal :terminal-ansi)
+    :depends-on (:dlib :dlib-misc :char-util :opsys :terminal :terminal-ansi)
     :components
     ((:file "grout")))

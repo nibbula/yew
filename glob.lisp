@@ -14,7 +14,7 @@ Main functions are:
 
 The documentation for FNMATCH describes the pattern syntax a little.
 ")
-  (:use :cl :dlib :opsys)
+  (:use :cl :dlib :opsys :char-util)
   (:export
    #:pattern-p
    #:fnmatch
@@ -48,7 +48,7 @@ The documentation for FNMATCH describes the pattern syntax a little.
   "Named character classes.")
 
 ;; @@@ actually constant
-(defparameter *space-chars* #(#\space #\tab #\newline #\^L #\vt)
+(defparameter *space-chars* (vector #\space #\tab #\newline (ctrl #\L) #\vt)
   "Characters in the space character class.")
 
 ;; @@@ actually constant

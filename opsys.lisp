@@ -1072,7 +1072,7 @@ string (denoting itself)."
 
 ;; ??? Does it even make sense to have these as keywords??
 
-#+(or sbcl clisp ccl ecl lispworks)
+#+(or sbcl clisp ccl ecl lispworks abcl)
 (defun convert-environ (env)
   "Convert the system environment to an keyworded alist."
   (loop :for v :in env
@@ -1083,7 +1083,7 @@ string (denoting itself)."
 	    (error "Environment entry without an equal-sign (~a)." v))
 	  (cons (intern (subseq v 0 pos) :keyword)
 		(subseq v (1+ pos))))
-	#+clisp
+	#+(or clisp abcl)
 	(cons (intern (car v) :keyword) (cdr v))
 	))
 
@@ -1165,9 +1165,9 @@ the current 'C' environment."
   #+ecl (convert-environ (posix-environ))
   #+lispworks (convert-environ (posix-environ))
   #+cmu ext:*environment-list*
-  #-(or clisp sbcl ccl cmu ecl lispworks)
-  (missing-implementation 'environ)
-)
+  #+abcl (convert-environ (ext:getenv-all))
+  #-(or clisp sbcl ccl cmu ecl lispworks abcl)
+  (missing-implementation 'environ))
 
 #+cmu (defcfun ("getenv" real-getenv) :string (name :string))
 
@@ -1185,7 +1185,8 @@ the current 'C' environment."
     #+ecl (ext:getenv var-string)
     #+excl (sys::getenv var-string)
     #+lispworks (hcl:getenv var-string)
-    #-(or clisp sbcl openmcl cmu ecl excl lispworks)
+    #+abcl (ext:getenv var-string)
+    #-(or clisp sbcl openmcl cmu ecl excl lispworks abcl)
     (missing-implementation 'getenv)))
 
 ;; If we had environ and didn't have a getenv, or if it was faster
@@ -1196,7 +1197,7 @@ the current 'C' environment."
 ;; (time (do ((i 0 (+ i 1))) ((> i 50000)) (nos:getenv "TERM")))
 ;; (time (do ((i 0 (+ i 1))) ((> i 50000)) (vv "TERM")))
 
-#+(or sbcl cmu)
+#+(or sbcl cmu abcl)
 (defcfun ("setenv" real-setenv) :int
   (name :string) (value :string) (overwrite :int))
 
@@ -1214,11 +1215,11 @@ the current 'C' environment."
 ; 	  (if v (cdr v)))
   #+ecl (ext:setenv var value)
   #+lispworks (hcl:setenv var value)
-  #-(or clisp openmcl excl sbcl ecl cmu lispworks)
+  #+abcl (syscall (real-setenv var value 1))
+  #-(or clisp openmcl excl sbcl ecl cmu lispworks abcl)
   (declare (ignore var value))
-  #-(or clisp openmcl excl sbcl ecl cmu lispworks)
-  (missing-implementation 'setenv)
-)
+  #-(or clisp openmcl excl sbcl ecl cmu lispworks abcl)
+  (missing-implementation 'setenv))
 
 (defun lisp-args ()
   "Arguments given to when starting the lisp system."
@@ -1955,8 +1956,9 @@ if not given."
 		 (concatenate 'string path "/")
 		 path))
   #+lispworks (hcl:change-directory path)
-  #-(or clisp excl openmcl sbcl cmu ecl lispworks) (missing-implementation 'change-directory)
-)
+  #+abcl (setf *default-pathname-defaults* (truename path))
+  #-(or clisp excl openmcl sbcl cmu ecl lispworks abcl)
+  (missing-implementation 'change-directory))
 
 (defcfun ("getcwd" real-getcwd) :pointer (buf :pointer) (size size-t))
 (defcfun pathconf :long (path :string) (name :int))
@@ -1992,7 +1994,8 @@ C library function getcwd."
   #+sbcl (libc-getcwd)
   #+cmu (ext:default-directory)
   #+lispworks (hcl:get-working-directory)
-  #-(or clisp excl openmcl ccl sbcl cmu ecl lispworks)
+  #+abcl (truename *default-pathname-defaults*)
+  #-(or clisp excl openmcl ccl sbcl cmu ecl lispworks abcl)
   (missing-implementation 'current-directory))
 
 (defmacro in-directory ((dir) &body body)
@@ -2470,9 +2473,16 @@ calls. Returns NIL when there is an error."
 (defun path-append (path-1 path-2)
   "Append PATH-2 to PATH-1. Put a directory separator between them if there
 isn't one already."
-  (if (char= (char path-1 (1- (length path-1))) *directory-separator*)
-      (concatenate 'string path-1 path-2)
-      (concatenate 'string path-1 *directory-separator-string* path-2)))
+  (let ((len1 (length path-1))
+	(len2 (length path-2)))
+    (cond
+      ((zerop len1) path-2)
+      ((zerop len2) path-1)
+      ((or (char= (char path-1 (1- len1)) *directory-separator*)
+	   (char= (char path-2 0) *directory-separator*))
+       (concatenate 'string path-1 path-2))
+      (t
+       (concatenate 'string path-1 *directory-separator-string* path-2)))))
 
 (defun hidden-file-name-p (name)
   "Return true if the file NAME is normally hidden."
@@ -3434,9 +3444,9 @@ for long."
   #+excl (excl:run-shell-command (format nil "~a~{ ~a~}" cmd args) :wait t)
   #+lispworks (system:call-system-showing-output
 	       (format nil "~a~{ ~a~}" cmd args) :prefix "" :show-cmd nil)
-  #-(or clisp sbcl cmu openmcl ecl excl lispworks)
-  (missing-implementation 'system-command)
-)
+  #+abcl (ext:run-shell-command (format nil "~a~{ ~a~}" cmd args))
+  #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl)
+  (missing-implementation 'system-command))
 
 ; XXX This is really all #+darwin
 (defconstant wait-no-hang   #x01)
@@ -3701,6 +3711,10 @@ environment list, which defaults to the current 'C' environ variable."
 		   :output :stream
 		   #| :wait t |#)
 		result)
+  #+abcl
+  (apply #'sys:run-program
+		`(,cmd ,args
+		  ,@(when env-p :environment environment)))
   #-(or clisp excl openmcl sbcl cmu lispworks)
   (missing-implementation 'run-program)
 )
@@ -3810,22 +3824,27 @@ environment list, which defaults to the current 'C' environ variable."
       (syscall (real-sysctl mib mib-len (null-pointer) list-size
 			    (null-pointer) 0))
       ;; (loop :for i :from 0 :below 4 do
-      ;; 	   (format t "mib[~d] = ~w~%" i (mem-aref mib :int i)))
+      ;;  	   (format t "mib[~d] = ~w~%" i (mem-aref mib :int i)))
       ;; (format t "mib-len ~d list-size ~d~%" mib-len
-      ;; 	      	      (/ (mem-ref list-size :int)
-      ;; 			 (cffi:foreign-type-size
-      ;; 			  '(:struct foreign-kinfo-proc))))
+      ;;  	      	      (/ (mem-ref list-size :int)
+      ;;  			 (cffi:foreign-type-size
+      ;;  			  '(:struct foreign-kinfo-proc))))
       (with-foreign-objects ((proc-list '(:struct foreign-kinfo-proc)
 					(mem-ref list-size :int)))
 	;; Get the real list
-	(syscall (real-sysctl mib mib-len proc-list new-list-size
-			      (null-pointer) 0))
-	;; (format t "~d~%" (/ (mem-ref list-size :int)
-	;; 		    (cffi:foreign-type-size
-	;; 		     '(:struct foreign-kinfo-proc))))
-	(setf real-list-size (/ (mem-ref new-list-size :int)
-				      (cffi:foreign-type-size
-				       '(:struct foreign-kinfo-proc))))
+	;;
+	;; OSX BUG? For some reason this sometimes fails without indication
+	;; and returns no processes, so as a workaround try a few times in
+	;; a loop until we get it.
+	(loop :with i = 0
+	   :do
+	   (syscall (real-sysctl mib mib-len proc-list new-list-size
+				 (null-pointer) 0))
+	   (setf real-list-size (/ (mem-ref new-list-size :int)
+				   (cffi:foreign-type-size
+				    '(:struct foreign-kinfo-proc))))
+	   (incf i)
+	   :while (and (> real-list-size 0) (< i 20)))
 	;; (format t "~d processes~%" real-list-size)
 	;; (read-line)
 	(loop :with p :and ep :and eep
@@ -4219,8 +4238,11 @@ current process's environment."
 		   (concatenate 'vector (list cmd) args)
 		   :output out-stream
 		   #| :wait t |#)
-		str)
-  #-(or clisp sbcl cmu openmcl ecl excl lispworks)
+		  str)
+  ;; XXX @@@ This is very bogus! (for what it ignores)
+  #+abcl (declare (ignore in-stream out-stream environment))
+  #+abcl (sys:process-output (sys:run-program cmd args))
+  #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl)
   (missing-implementation 'popen))
 
 (defmacro with-process-output ((var cmd args) &body body)
@@ -5033,9 +5055,9 @@ descriptor FD."
     #+(and darwin 64-bit-target) :int64
     #-(and darwin 64-bit-target) :int32)
 
-(defcvar ("stdin"  *stdin*)  file-ptr)
-(defcvar ("stdout" *stdout*) file-ptr)
-(defcvar ("stderr" *stderr*) file-ptr)
+(defcvar (#+darwin "__stdinp"  #-darwin "stdin"  *stdin*)  file-ptr)
+(defcvar (#+darwin "__stdoutp" #-darwin "stdout" *stdout*) file-ptr)
+(defcvar (#+darwin "__stderrp" #-darwin "stderr" *stderr*) file-ptr)
 
 (defcfun fopen file-ptr (path :string) (mode :string))
 (defcfun fclose :int (file file-ptr))
