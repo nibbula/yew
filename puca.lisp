@@ -73,7 +73,15 @@
   update-all
   push)
 
-(defgeneric parse-line (pu type line i)
+#|
+(defclass backend ()
+  ((name
+    :initarg :name :accessor backend-name  :type string
+    :documentation "The name of the back-end."))
+  (:documentation "A generic version control back end."))
+|#
+
+(defgeneric parse-line (backend line i)
   (:documentation "Take a line and add stuff to goo and/or *errors*."))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -93,8 +101,8 @@
 		:update-all	"cvs update"
 		:push		"echo 'No push in CVS'"))
 
-(defmethod parse-line (pu (type (eql :cvs)) line i)
-  (with-slots (goo errors extra) pu
+(defmethod parse-line ((type (eql :cvs)) line i)
+  (with-slots (goo errors extra) *puca*
     (let ((words (split-sequence " " line
 				 :omit-empty t
 				 :test #'(lambda (a b)
@@ -129,16 +137,16 @@
 		:list-command	'("git" "status" "--porcelain")
 		:add		"git --no-pager add ~{~a ~}"
 		:reset		"git --no-pager reset ~{~a ~}"
-		:diff		"git diff ~{~a ~}"
+		:diff		"git diff --color ~{~a ~} | pager"
 ;		:diff-repo	"git diff --cached HEAD ~{~a ~}"
-		:diff-repo	"git diff --staged"
+		:diff-repo	"git diff --color --staged | pager"
 		:commit		"git --no-pager commit ~{~a ~}"
 		:update		"git --no-pager pull ~{~a ~}"
 		:update-all	"git --no-pager pull"
 		:push		"git --no-pager push"))
 
-(defmethod parse-line (pu (type (eql :git)) line i)
-  (with-slots (goo errors extra) pu
+(defmethod parse-line ((type (eql :git)) line i)
+  (with-slots (goo errors extra) *puca*
     (let ((words (split-sequence " " line
 				 :omit-empty t
 				 :test #'(lambda (a b)
@@ -180,8 +188,8 @@
 		:update-all	"svn update"
 		:push		"echo 'No push in SVN'"))
 
-(defmethod parse-line (pu (type (eql :svn)) line i)
-  (parse-line pu :git line i)) ; just use git
+(defmethod parse-line ((type (eql :svn)) line i)
+  (parse-line :git line i)) ; just use git
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Mercurial (hg)
@@ -201,13 +209,16 @@
 		:update-all	"hg pull"
 		:push		"hg push"))
 
-(defmethod parse-line (pu (type (eql :hg)) line i)
-  (parse-line pu :git line i)) ; just use git
+(defmethod parse-line ((type (eql :hg)) line i)
+  (parse-line :git line i)) ; just use git
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar *backend* nil
   "The current backend.")
+
+(defvar *puca* nil
+  "The current puca instance.")
 
 (defparameter *backends* `((:git ,*backend-git*)
 			   (:cvs ,*backend-cvs*)
@@ -221,9 +232,9 @@
   (addstr (apply #'format nil format-string format-args))
   (refresh))
 
-(defun draw-goo (pu i)
+(defun draw-goo (i)
   "Draw the goo object, with the appropriate color."
-  (with-slots (goo top) pu
+  (with-slots (goo top) *puca*
     (let ((g (elt goo i)))
       (let* ((attr
 	      (case (aref (goo-modified g) 0)
@@ -249,13 +260,13 @@
 ;; 	     (incf j))
 	  (mvaddstr (+ (- i top) 3) 30 " ****** "))))))
 
-(defun draw-line (pu i)
+(defun draw-line (i)
   "Draw line I, with the appropriate color."
-  (draw-goo pu i))
+  (draw-goo i))
 
-(defun get-list (pu)
+(defun get-list ()
   (message "Listing...")
-  (with-slots (goo top errors maxima cur extra) pu
+  (with-slots (goo top errors maxima cur extra) *puca*
     (setf goo    '()
 	  top    0
 	  errors '())
@@ -268,7 +279,7 @@
       (with-process-output (stream cmd-name cmd-args)
 	(loop :while (setf line (read-line stream nil nil))
 	   :do
-	   (parse-line pu (backend-type *backend*) line i)
+	   (parse-line (backend-type *backend*) line i)
 	   (incf i)
 	   (message "Listing...~d" i)))
       (setf goo (nreverse goo)
@@ -278,8 +289,8 @@
 	(setf cur (1- maxima)))))
   (addstr "done"))
 
-(defun draw-screen (pu)
-  (with-slots (maxima top bottom goo window) pu
+(defun draw-screen ()
+  (with-slots (maxima top bottom goo window) *puca*
 ;  (box *stdscr* (acs-vline) (acs-hline))
 ;  (box window 0 0)
     (clear)
@@ -295,13 +306,13 @@
 	(mvaddstr 2 2 "^^^^^^^^^^^^^^^^^^^^^^^"))
       (when (> (length goo) 0)
 	(loop :for i :from top :below (+ top bottom)
-	   :do (draw-goo pu i)))
+	   :do (draw-goo i)))
       ;; bottom scroll indicator
       (when (< bottom (- maxima top))
 	(mvaddstr (+ bottom 4) 2 "vvvvvvvvvvvvvvvvvvvvvvv"))
       (refresh))))
 
-(defun do-command (pu command format-args
+(defun do-command (command format-args
 		   &key (relist t) (do-pause t) confirm)
   (clear)
   (refresh)
@@ -317,25 +328,25 @@
     (read-line))
   (initscr)
   (when relist
-    (get-list pu))
-  (draw-screen pu)
+    (get-list))
+  (draw-screen)
   (values))
 
-(defun selected-files (pu)
-  (with-slots (maxima goo cur) pu
+(defun selected-files ()
+  (with-slots (maxima goo cur) *puca*
     (let* ((files
 	    (loop :for i :from 0 :below maxima
 	       :when (goo-selected (elt goo i))
 	       :collect (goo-filename (elt goo i)))))
       (or files (and goo (list (goo-filename (elt goo cur))))))))
 
-(defun select-all (pu)
-  (with-slots (maxima goo) pu
+(defun select-all ()
+  (with-slots (maxima goo) *puca*
     (loop :for i :from 0 :below maxima
        :do (setf (goo-selected (elt goo i)) t))))
 
-(defun select-none (pu)
-  (with-slots (maxima goo) pu
+(defun select-none ()
+  (with-slots (maxima goo) *puca*
     (loop :for i :from 0 :below maxima
        :do (setf (goo-selected (elt goo i)) nil))))
 
@@ -367,14 +378,14 @@
   (refresh)
   (get-char))
 
-(defun info-window (pu title text-lines)
+(defun info-window (title text-lines)
   (fui:display-text title text-lines)
   (clear)
   (refresh)
-  (draw-screen pu)
+  (draw-screen)
   (refresh))
 
-(defun input-window (pu title text-lines)
+(defun input-window (title text-lines)
   (prog1
       (display-text
        title text-lines
@@ -385,24 +396,24 @@
 			 (curses:noecho))))
     (clear)
     (refresh)
-    (draw-screen pu)
+    (draw-screen)
     (refresh)))
 
-(defun puca-yes-or-no-p (pu &optional format &rest arguments)
+(defun puca-yes-or-no-p (&optional format &rest arguments)
   (equalp "Yes" (input-window
-		 pu "Yes or No?"
+		 "Yes or No?"
 		 (list 
 		  (if format
 		      (apply #'format nil format arguments)
 		      "Yes or No?")))))
 
-(defun delete-files (pu)
+(defun delete-files ()
   (when (puca-yes-or-no-p
-	 pu "Are you sure you want to delete these files from disk?~%~{~a ~}"
-	 (selected-files pu))
-    (loop :for file :in (selected-files pu) :do
+	 "Are you sure you want to delete these files from disk?~%~{~a ~}"
+	 (selected-files))
+    (loop :for file :in (selected-files) :do
        (delete-file file))
-    (get-list pu)))
+    (get-list)))
 
 (defparameter *extended-commands*
   '(("delete" delete-files))
@@ -413,7 +424,7 @@ for the command-function).")
   (completion:list-completion-function (mapcar #'car *extended-commands*))
   "Completion function for extended commands.")
 
-(defun extended-command (pu)
+(defun extended-command ()
   "Extended command"
   (move (- *lines* 2) 2)
   (refresh)
@@ -426,22 +437,22 @@ for the command-function).")
     (reset-prog-mode)
     (setf func (cadr (assoc command *extended-commands* :test #'equalp)))
     (when (and func (fboundp func))
-      (funcall func pu)))
-  (draw-screen pu)
+      (funcall func)))
+  (draw-screen)
   (values))
 
-(defun show-errors (pu)
+(defun show-errors ()
   "Show all messages / errors"
-  (with-slots (errors) pu
-    (info-window pu "All Errors"
+  (with-slots (errors) *puca*
+    (info-window "All Errors"
 		 (or errors
 		     '("There are no errors." "So this is" "BLANK")))))
 
-(defun show-extra (pu)
+(defun show-extra ()
   "Show messages / errors"
-  (with-slots (goo cur) pu
+  (with-slots (goo cur) *puca*
     (let ((ext (and goo (goo-extra-lines (elt goo cur)))))
-      (info-window pu "Errors"
+      (info-window "Errors"
 		   (or ext
 		       '("There are no errors." "So this is" "BLANK"))))))
 
@@ -459,154 +470,154 @@ for the command-function).")
 	*backend-cvs*
 	result)))
 
-(defun quit (pu)
+(defun quit ()
   "Quit"
-  (setf (puca-quit-flag pu) t))
+  (setf (puca-quit-flag *puca*) t))
 
-(defun add-command (pu)
+(defun add-command ()
   "Add file"
-  (do-command pu #'backend-add (selected-files pu)))
+  (do-command #'backend-add (selected-files)))
 
-(defun reset-command (pu)
+(defun reset-command ()
   "Revert file (undo an add)"
-  (do-command pu #'backend-reset (selected-files pu) :confirm t))
+  (do-command #'backend-reset (selected-files) :confirm t))
 
-(defun diff-command (pu)
+(defun diff-command ()
   "Diff"
-  (do-command pu #'backend-diff (selected-files pu)
+  (do-command #'backend-diff (selected-files)
 	      :relist nil :do-pause nil))
 
-(defun diff-repo-command (pu)
+(defun diff-repo-command ()
   "Diff against commited (-r HEAD)"
-  (do-command pu #'backend-diff-repo (selected-files pu)
+  (do-command #'backend-diff-repo (selected-files)
 	      :relist nil :do-pause nil))
 
-(defun commit-command (pu)
+(defun commit-command ()
   "Commit selected"
-  (do-command pu #'backend-commit (selected-files pu)))
+  (do-command #'backend-commit (selected-files)))
 
-(defun update-command (pu)
+(defun update-command ()
   "Update selected"
-  (do-command pu #'backend-update (selected-files pu)))
+  (do-command #'backend-update (selected-files)))
 
-(defun update-all-command (pu)
+(defun update-all-command ()
   "Update all"
-  (do-command pu #'backend-update-all nil))
+  (do-command #'backend-update-all nil))
 
-(defun push-command (pu)
+(defun push-command ()
   "Push"
-  (do-command pu #'backend-push nil :relist nil))
+  (do-command #'backend-push nil :relist nil))
 
-(defun view-file (pu)
+(defun view-file ()
   "View file"
-  (pager:pager (selected-files pu))
-  (draw-screen pu))
+  (pager:pager (selected-files))
+  (draw-screen))
 
-(defun previous-line (pu)
+(defun previous-line ()
   "Previous line"
-  (with-slots (cur top) pu
+  (with-slots (cur top) *puca*
     (decf cur)
     (when (< cur 0)
       (setf cur 0))
     (when (< cur top)
       (decf top)
-      (draw-screen pu))))
+      (draw-screen))))
 
-(defun next-line (pu)
+(defun next-line ()
   "Next line"
-  (with-slots (cur maxima top bottom) pu
+  (with-slots (cur maxima top bottom) *puca*
     (incf cur)
     (when (>= cur maxima)
       (setf cur (1- maxima)))
     (when (and (> cur (- bottom 1)) (> bottom 1))
       (incf top)
-      (draw-screen pu))))
+      (draw-screen))))
 
-(defun next-page (pu)
+(defun next-page ()
   "Next page"
-  (with-slots (cur maxima top bottom) pu
+  (with-slots (cur maxima top bottom) *puca*
     (setf cur (+ cur 1 (- curses:*lines* 7)))
     (when (>= cur maxima)
       (setf cur (1- maxima)))
     (when (> cur bottom)
       (setf top (max 0 (- cur (- curses:*lines* 7))))
-      (draw-screen pu))))
+      (draw-screen))))
 
-(defun previous-page (pu)
+(defun previous-page ()
   "Previous page"
-  (with-slots (cur top) pu
+  (with-slots (cur top) *puca*
     (setf cur (- cur 1 (- curses:*lines* 7)))
     (when (< cur 0)
       (setf cur 0))
     (when (< cur top)
       (setf top cur)
-      (draw-screen pu))))
+      (draw-screen))))
 
-(defun go-to-end (pu)
+(defun go-to-end ()
   "Bottom"
-  (with-slots (cur maxima top bottom) pu
+  (with-slots (cur maxima top bottom) *puca*
     (setf cur (1- maxima))
     (when (> maxima bottom)
       (setf top (max 0 (- maxima (- curses:*lines* 7))))
-      (draw-screen pu))))
+      (draw-screen))))
 
-(defun go-to-beginning (pu)
+(defun go-to-beginning ()
   "Top"
-  (with-slots (cur top) pu
+  (with-slots (cur top) *puca*
     (setf cur 0)
     (when (> top 0)
       (setf top 0)
-      (draw-screen pu))))
+      (draw-screen))))
 
-(defun set-mark (pu)
+(defun set-mark ()
   "Set Mark"
-  (with-slots (cur mark) pu
+  (with-slots (cur mark) *puca*
     (setf mark cur)
     (message "Set mark.")))
 
-(defun toggle-region (pu)
+(defun toggle-region ()
   "Toggle region"
-  (with-slots (cur mark) pu
+  (with-slots (cur mark) *puca*
     (if mark
       (let ((start (min mark cur))
 	    (end (max mark cur)))
 	(loop :for i :from start :to end :do
-	   (setf (goo-selected (elt (puca-goo pu) i))
-		 (not (goo-selected (elt (puca-goo pu) i))))
-	   (draw-line pu i)))
+	   (setf (goo-selected (elt (puca-goo *puca*) i))
+		 (not (goo-selected (elt (puca-goo *puca*) i))))
+	   (draw-line i)))
       (message "No mark set."))))
 
-(defun toggle-line (pu)
+(defun toggle-line ()
   "Toggle line"
-  (with-slots (cur goo) pu
+  (with-slots (cur goo) *puca*
     (when goo
-      (setf (goo-selected (elt (puca-goo pu) cur))
-	    (not (goo-selected (elt (puca-goo pu) cur))))
-      (draw-line pu cur))))
+      (setf (goo-selected (elt (puca-goo *puca*) cur))
+	    (not (goo-selected (elt (puca-goo *puca*) cur))))
+      (draw-line cur))))
 
-(defun select-all-command (pu)
+(defun select-all-command ()
   "Select all"
-  (select-all pu)
-  (draw-screen pu))
+  (select-all)
+  (draw-screen))
 
-(defun select-none-command (pu)
+(defun select-none-command ()
   "Select none"
-  (select-none pu)
-  (draw-screen pu))
+  (select-none)
+  (draw-screen))
 
-(defun relist (pu)
+(defun relist ()
   "Re-list"
   (clear)
   (refresh)
-  (get-list pu)
-  (draw-screen pu)
+  (get-list)
+  (draw-screen)
   (refresh))
 
-(defun redraw (pu)
+(defun redraw ()
   "Re-draw"
   (clear)
   (refresh)
-  (draw-screen pu)
+  (draw-screen)
   (refresh))
 
 (defkeymap *puca-keymap*
@@ -657,9 +668,8 @@ for the command-function).")
 
 (defparameter *puca-escape-keymap* (build-escape-map *puca-keymap*))
 
-(defun describe-key-briefly (pu)
+(defun describe-key-briefly ()
   "Prompt for a key and say what function it invokes."
-  (declare (ignore pu))
   (message "Press a key: ")
   (let* ((key (fui:get-char))
 	 (action (key-definition key *puca-keymap*)))
@@ -691,9 +701,9 @@ for the command-function).")
     "^L - Re-draw"
     "?,h - Help"))
 
-(defun help (pu)
+(defun help ()
   "Help"
-  (info-window pu "Help for Puca" (help-list *puca-keymap*)))
+  (info-window "Help for Puca" (help-list *puca-keymap*)))
 
 ;; (defun help-list ()
 ;;   "Return a list of key binding help lines, suitable for the HELP function."
@@ -717,7 +727,7 @@ for the command-function).")
 ;; 		   ((keymap-p (string-downcase func)))
 ;; 		   (t func)))))))
 
-(defun perform-key (pu key &optional (keymap *puca-keymap*))
+(defun perform-key (key &optional (keymap *puca-keymap*))
   ;; Convert positive integer keys to characters
   (when (and (integerp key) (>= key 0))
     (setf key (code-char key)))
@@ -728,35 +738,36 @@ for the command-function).")
       ((symbolp binding)
        (cond
 	 ((fboundp binding)
-	  (funcall binding pu))
+	  (funcall binding))
 	 ((keymap-p (symbol-value binding))
 	  (message (princ-to-string (nice-char key)))
-	  (perform-key pu (fui:get-char) (symbol-value binding)))
+	  (perform-key (fui:get-char) (symbol-value binding)))
 	 (t
 	  (error "Unbound symbol ~s in keymap" binding))))
       ((consp binding)
-       (apply (car binding) pu (cdr binding)))
+       (apply (car binding) (cdr binding)))
       (t
        (error "Weird thing ~s in keymap" binding)))))
 
 (defun puca (&key #|device term-type |# backend-type)
   (with-curses
     ;; (init-curses pu device term-type)
-    (let* ((pu (make-puca))
+    (let* ((*puca* (make-puca))
 	   (*backend* (pick-backend backend-type)) c)
       (with-slots
-	    (goo maxima cur mark top bottom window screen quit-flag errors) pu
+	    (goo maxima cur mark top bottom window screen quit-flag
+	     errors) *puca*
 	(setf window *stdscr*)
 	(setf goo nil)
-	(draw-screen pu)
-	(get-list pu)
-	(draw-screen pu)
+	(draw-screen)
+	(get-list)
+	(draw-screen)
 	(when errors (message "**MESSAGES**"))
 	(setf cur 0)
 	(do () (quit-flag)
 	  (move (+ (- cur top) 3) 2)
 	  (setf c (fui:get-char))
-	  (perform-key pu c)
+	  (perform-key c)
 ;	  (move (- *lines* 2) 2)
 ;	  (mvprintw (- *lines* 2) 2 "%-*.*s" :int 40 :int 40 :string "")
 ;	  (mvaddstr (- *lines* 2) 2 (format nil "~a (~a)" c (type-of c))))

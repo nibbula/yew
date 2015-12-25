@@ -140,6 +140,7 @@
    #:environ
    #:getenv
    #:setenv
+   #:unsetenv
    #:lisp-args
    #:sysctl
    #:getpagesize #:memory-page-size
@@ -1221,6 +1222,28 @@ the current 'C' environment."
   #-(or clisp openmcl excl sbcl ecl cmu lispworks abcl)
   (missing-implementation 'setenv))
 
+#+(or sbcl cmu abcl)
+(defcfun ("unsetenv" real-unsetenv) :int (name :string))
+
+(defun unsetenv (var)
+  "Remove the environtment variable named VAR."
+  (declare (type string-designator var))
+  #+clisp (setf (ext:getenv var) nil)	; @@@ guessing?
+  #+excl (setf (sys::getenv var) nil)	; @@@ guessing?
+  #+ccl (syscall (ccl::unsetenv var))
+  #+sbcl (syscall (real-unsetenv var))
+  #+cmu (syscall (real-unsetenv var))
+  #+abcl (syscall (real-unsetenv var))
+;   #+cmu (let ((v (assoc (intern (string-upcase var) :keyword)
+; 			ext:*environment-list*)))
+; 	  (if v (cdr v)))
+  #+ecl (ext:unsetenv var)
+  #+lispworks (hcl:unsetenv var)
+  #-(or clisp openmcl excl sbcl ecl cmu lispworks abcl)
+  (declare (ignore var))
+  #-(or clisp openmcl excl sbcl ecl cmu lispworks abcl)
+  (missing-implementation 'unsetenv))
+
 (defun lisp-args ()
   "Arguments given to when starting the lisp system."
   #+sbcl sb-ext:*posix-argv*
@@ -1894,7 +1917,7 @@ efficiency.")
 ;; on the implementation.
 ;#+openmcl (config-feature :os-t-use-chdir)
 ;#+os-t-use-chdir (defcfun chdir :int (path :string))
-#+(or openmcl sbcl) (defcfun chdir :int (path :string))
+#+(or openmcl sbcl abcl) (defcfun chdir :int (path :string))
 
 (defparameter *need-quoting* "[*?;:"
   "Characters that may need escaping in a pathname.")
@@ -1956,7 +1979,10 @@ if not given."
 		 (concatenate 'string path "/")
 		 path))
   #+lispworks (hcl:change-directory path)
-  #+abcl (setf *default-pathname-defaults* (truename path))
+  #+abcl
+  (progn
+    (syscall (chdir path))
+    (setf *default-pathname-defaults* (truename path)))
   #-(or clisp excl openmcl sbcl cmu ecl lispworks abcl)
   (missing-implementation 'change-directory))
 
@@ -1994,7 +2020,7 @@ C library function getcwd."
   #+sbcl (libc-getcwd)
   #+cmu (ext:default-directory)
   #+lispworks (hcl:get-working-directory)
-  #+abcl (truename *default-pathname-defaults*)
+  #+abcl (namestring (truename *default-pathname-defaults*))
   #-(or clisp excl openmcl ccl sbcl cmu ecl lispworks abcl)
   (missing-implementation 'current-directory))
 
@@ -2382,12 +2408,12 @@ calls. Returns NIL when there is an error."
     (posix-error (c)
       (when (not (find (posix-error-code c) `(,+ENOENT+ ,+EACCES+ ,+ENOTDIR+)))
 	(signal c))))
-  #+(or ecl lispworks)
+  #+(or ecl lispworks abcl)
   ;; On most implementations probe-file can handle directories.
   (probe-file dir)
-  #-(or clisp sbcl ccl cmu ecl lispworks)
+  #-(or clisp sbcl ccl cmu ecl lispworks abcl)
   (declare (ignore dir))
-  #-(or clisp sbcl ccl cmu ecl lispworks)
+  #-(or clisp sbcl ccl cmu ecl lispworks abcl)
   (missing-implementation 'probe-directory))
 
 ;; This is a workaround for not depending on split-sequence.
@@ -2740,7 +2766,8 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
        (if (eql direction :output)
 	   out in))))
   #+lispworks nil
-  #-(or ccl sbcl cmu clisp lispworks)
+  #+abcl nil
+  #-(or ccl sbcl cmu clisp lispworks abcl)
   (missing-implementation 'stream-system-handle))
 
 ;; stat / lstat
@@ -3712,10 +3739,14 @@ environment list, which defaults to the current 'C' environ variable."
 		   #| :wait t |#)
 		result)
   #+abcl
-  (apply #'sys:run-program
-		`(,cmd ,args
-		  ,@(when env-p :environment environment)))
-  #-(or clisp excl openmcl sbcl cmu lispworks)
+  (let* ((proc (apply #'sys:run-program
+		      `(,cmd ,args
+			     ,@(when env-p :environment environment))))
+	 (out (system:process-output proc)))
+    (dlib:copy-stream out *standard-output*)
+    (finish-output *standard-output*)
+    (system:process-exit-code proc))
+  #-(or clisp excl openmcl sbcl cmu lispworks abcl)
   (missing-implementation 'run-program)
 )
 
@@ -4240,7 +4271,7 @@ current process's environment."
 		   #| :wait t |#)
 		  str)
   ;; XXX @@@ This is very bogus! (for what it ignores)
-  #+abcl (declare (ignore in-stream out-stream environment))
+  #+abcl (declare (ignore in-stream out-stream environment env-p))
   #+abcl (sys:process-output (sys:run-program cmd args))
   #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl)
   (missing-implementation 'popen))

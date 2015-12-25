@@ -17,5 +17,7 @@
     :depends-on (:dlib :dlib-misc :curses :opsys :fui :stretchy :keymap
                  :char-util :fatchar :cl-ppcre
 		 :terminal :terminal-curses :tiny-rl)
+    :entry-point "pager:standalone"
+    :build-operation 'program-op
     :components
     ((:file "pager")))

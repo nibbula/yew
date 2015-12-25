@@ -6,6 +6,7 @@
 ;;  - syntax highlighting
 ;;  - simpile HTML rendering
 ;;  - big stream issues?
+;;  - sub-files for keep & filter ?
 
 (defpackage :pager
   (:documentation "pager - More or less like more or less.
@@ -262,7 +263,7 @@ set in this string."
 	   (progn
 	     ;; Just an #\m without arguments means no attrs and unset color
 	     (when (eql (char str i) #\m)
-	       (setf attr '() fg nil bg nil attr-was-set t))
+	       (setf attr '() fg nil bg nil attr-was-set t i 1))
 	     (return))
 	   (progn
 	     (setf i inc)
@@ -310,7 +311,7 @@ set in this string."
        :while (< i len))
     (values
      (if (and (eq fg :unset) (eq bg :unset) (not attr-was-set))
-	 nil i)
+	 1 i)
      fg bg (if (not attr-was-set) :unset attr))))
 
 ;; Just trying to figure out why I get:

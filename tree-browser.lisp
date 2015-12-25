@@ -672,7 +672,7 @@ been encountered."
 	 ((fboundp binding)
 	  (funcall binding))
 	 ((keymap-p (symbol-value binding))
-	  (show-message (princ-to-string (nice-char key)))
+	  (show-message (quote-format (princ-to-string (nice-char key))))
 	  (perform-key (fui:get-char) (symbol-value binding)))
 	 (t
 	  (error "Unbound symbol ~s in keymap" binding))))
@@ -826,7 +826,7 @@ and indented properly for multi-line objects."
 			 scroll-hint :down)
 		   (go again))))
 	      (when message-string
-		(show-message message-string)
+		(show-message (quote-format message-string))
 		(setf message-string nil))
 	      (when (show-modeline *browser*)
 		(move (- *lines* 2) 0)

@@ -2363,7 +2363,7 @@ binding."
   #+ccl (ccl::auto-flush-interactive-streams) ;; Jiminy Crickets!
   (when (not (getenv "EMACS"))		      ; XXX so wrong
     (finish-output *standard-output*)
-    (finish-output *standard-input*)
+    ;(finish-output *standard-input*)
     (finish-output *terminal-io*)
     (finish-output t)
     (finish-output))

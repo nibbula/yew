@@ -58,7 +58,8 @@ that generic function with *GROUT* as it's first arg, just for API prettyness."
   (let ((grout-name (symbolify (s+ "GROUT-" name)))
 	(grout-generic (symbolify (s+ "%GROUT-" name)))
 	(whole-arg (gensym "DEFGROUT-WHOLE-ARG"))
-	(ignorables (remove-if (_ (char= #\& (char (string _) 0))) args)))
+	;;(ignorables (remove-if (_ (char= #\& (char (string _) 0))) args)))
+	(ignorables (lambda-list-vars args :all-p t)))
     `(progn
        (defgeneric ,grout-generic (grout ,@args) (:documentation ,doc-string))
        (defmacro ,grout-name (&whole ,whole-arg ,@args)

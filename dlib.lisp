@@ -7,6 +7,17 @@
 ;; Try to keep this minimal. Don't add any dependencies.
 ;; More optional stuff can go in dlib-misc.
 
+;; Things that need to be customized / provided for an implementation:
+;; x mop
+;; x getenv
+;;   system-command-stream
+;; x system-args
+;; x exit-system
+;;   overwhelming-permission
+;;   lambda-list
+;; x *lisp-implementation-nickname*
+;; x *lisp-version*
+
 #+debug-rc (progn (format t "[ dlib ") (force-output *standard-output*))
 
 (defpackage :dlib
@@ -16,6 +27,7 @@
 	#+sbcl :sb-mop
 	#+cmu :pcl
 	#+ccl :ccl
+	#+(or ecl clasp) :clos
 	#+lispworks :hcl
 	)
   (:documentation
@@ -42,6 +54,7 @@
    #:safe-read-from-string
    #:*buffer-size*
    #:copy-stream
+   #:quote-format
    ;; sequences
    #:initial-span
    #:split-sequence
@@ -75,13 +88,14 @@
    #+sbcl #:without-notes
    ;; language-ish
    #:define-constant
-   #-lispworks #:λ
+   #-(or lispworks clasp) #:λ
    #:_
-   #:likely-callable
-   #-lispworks #:lambda-list 
-   #-lispworks #:with-unique-names
    #:symbolify
    #:keywordify
+   #:likely-callable
+   #-lispworks #:lambda-list
+   #:lambda-list-vars
+   #-lispworks #:with-unique-names
    #:with-package
    #:shortest-package-nick
    #:not-so-funcall
@@ -198,7 +212,8 @@ later versions.")
   #+lispworks (hcl:getenv s)
   #+gcl (system:getenv s)
   #+abcl (ext:getenv s)
-  #-(or clisp sbcl openmcl cmu ecl excl lispworks gcl abcl)
+  #+clasp (ext:getenv s)
+  #-(or clisp sbcl openmcl cmu ecl excl lispworks gcl abcl clasp)
   (missing-implementation 'd-getenv))
 
 ;; Compare functions:
@@ -535,7 +550,8 @@ basically the reverse of SPLIT-SEQUENCE."
   #+(or cmu gcl) :pcl
   #+ccl :ccl
   #+lispworks :hcl
-  #-(or mop sbcl cmu ccl lispworks gcl) (error "GIVE ME MOP!!")
+  #+(or ecl clasp) :clos
+  #-(or mop sbcl cmu ccl lispworks gcl ecl clasp) (error "GIVE ME MOP!!")
   "The package in which the traditional Meta Object Protocol resides.")
 
 (defun slot-documentation (slot-def)
@@ -672,11 +688,13 @@ on all accessible symbols."
   #+sbcl sb-ext:*posix-argv*
   #+clisp (ext:argv)
   #+cmu ext:*command-line-strings*
-  #+ecl (loop :for i :from 0 :below (si:argc) :collecting (si:argv i))
+  #+(or ecl clasp) (loop :for i :from 0 :below (si:argc)
+		      :collecting (si:argv i))
   #+openmcl (ccl::command-line-arguments)
   #+excl (sys:command-line-arguments)
   #+lispworks sys:*line-arguments-list*
   #+abcl ext:*command-line-argument-list*
+  
   #-(or sbcl clisp cmu ecl openmcl excl lispworks abcl)
   (missing-implementation 'system-args))
 
@@ -693,7 +711,8 @@ on all accessible symbols."
   #+clisp (ext:quit)
   #+ecl (ext:quit)
   #+abcl (ext:quit)
-  #-(or openmcl cmu sbcl excl clisp ecl abcl)
+  #+clasp (core:quit)
+  #-(or openmcl cmu sbcl excl clisp ecl abcl clasp)
   (missing-implementation 'exit-system))
 
 (defun save-image-and-exit (image-name &optional initial-function)
@@ -714,8 +733,7 @@ on all accessible symbols."
   #+clisp (= (posix:user-info-uid (posix:user-info :default)) 0)
   #+cmu (= (unix:unix-getuid) 0)
   #+ecl (= (ext:getuid) 0)
-  #+lispworks nil
-  #+abcl nil
+  #+(or lispworks abcl) nil
   #-(or ccl sbcl clisp cmu ecl lispworks abcl)
   (missing-implementation 'overwhelming-permission))
 
@@ -801,11 +819,10 @@ equal under TEST to result of evaluating INITIAL-VALUE."
 
 ;; Back to the olde shite:
 
-#+(or sbcl clisp ccl cmu lispworks ecl abcl)
 (defmacro define-constant (name value &optional doc (test 'equal))
   "Like defconstant but works with pendanticly anal SCBL."
   (declare (ignore test))
-  #+(or sbcl clisp cmu lispworks ecl abcl)
+  #-ccl
   `(cl:defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
      ,@(when doc (list doc)))
   #+ccl
@@ -813,13 +830,13 @@ equal under TEST to result of evaluating INITIAL-VALUE."
   )
 
 ;; On other lisps just use the real one.
-#-(or sbcl clisp ccl cmu lispworks ecl abcl)
-(setf (macro-function 'define-constant) (macro-function 'cl:defconstant))
+;;#-(or sbcl clisp ccl cmu lispworks ecl abcl)
+;;(setf (macro-function 'define-constant) (macro-function 'cl:defconstant))
 
 ;; This is just to pretend that we're trendy and modern.
 ;(setf (macro-function 'λ) (macro-function 'cl:lambda))
 ;;Umm actually I mean:
-#-lispworks
+#-(or lispworks clasp)
 (defmacro λ (&whole form &rest bvl-decls-and-body)
   (declare (ignore bvl-decls-and-body))
   `#'(lambda ,@(cdr form)))
@@ -829,6 +846,24 @@ equal under TEST to result of evaluating INITIAL-VALUE."
 (defmacro _ (&rest exprs)
   "Shorthand for single argument lambda. The single argument is named '_'."
   `(lambda (_) ,@exprs))
+
+(defun symbolify (string &key (package *package*) no-new)
+  "Return a symbol, interned in PACKAGE, represented by STRING, after possibly
+doing conventional case conversion. The main reason for this function is to
+wrap the case conversion on implementations that need it. If NO-NEW is true,
+never create a new symbol, and return NIL if the symbol doesn't already exist."
+  (etypecase string
+    (string
+     (if no-new
+	 (find-symbol (string-upcase string) package)
+	 (intern (string-upcase string) package)))
+    (symbol
+     string)))
+
+(defun keywordify (string)
+  "Make a keyword from a string."
+  (or (and (keywordp string) string)
+      (intern (string-upcase string) :keyword)))
 
 (defun likely-callable (f)
   "Return true if F is a function or an FBOUNDP symbol. This does not mean you
@@ -988,30 +1023,57 @@ A utility for debugging DEBUG-FUNCTION-ARGLIST."
     (when exp
       (cadr exp))))
 
+(defun lambda-list-vars (args &key all-p keywords-p)
+  "Given a lambda list ARGS, return a list of variable names.
+ALL-P       if true, includes supplied-p parameters and &AUX variables.
+            This is useful for things like generating ignore lists for macros.
+KEYWORDS-P  If true, include keywords and variable names."
+  (flet ((keyword-var (k v)
+	   "If KEYWORDS-P return a list of (:K V) otherwise just V."
+	   (if keywords-p (list (keywordify k) v) v)))
+    (loop :with state :and thing
+       :for a :in args :do
+       (setf thing nil)
+       (case a
+	 (&optional (setf state :optional))
+	 (&rest     (setf state :rest))
+	 (&key      (setf state :key))
+	 (&allow-other-keys )
+	 (&aux	  (setf state :aux))
+	 (otherwise
+	  (case state
+	    (:optional
+	     (setf thing
+		   (if (listp a)
+		       (if (and (> (length a) 2) all-p)
+			   (list (first a) (third a))
+			   (first a))
+		       a)))
+	    (:key
+	     (setf thing
+		   (if (listp a)
+		       (let ((var (if (listp (first a))
+				      (second (first a))
+				      (first a)))
+			     (key (if (listp (first a))
+				      (first (first a))
+				      (first a))))
+			 (if (and (> (length a) 2) all-p)
+			     ;;(list var (third a))
+			     `(,@(keyword-var key var)
+				 ,@(keyword-var (third a) (third a)))
+			     (keyword-var key var)))
+		       (keyword-var a a))))
+	    (:aux (when all-p (setf thing a)))
+	    (otherwise (setf thing a)))))
+       :if (listp thing) :append thing :else :collect thing)))
+
 (defmacro with-unique-names (names &body body)
   "Bind each symbol in NAMES to a unique symbol and evaluate the BODY.
 Useful for making your macro “hygenic”."
   `(let ,(loop :for n :in names
 	    :collect `(,n (gensym (symbol-name ',n))))
      ,@body))
-
-(defun symbolify (string &key (package *package*) no-new)
-  "Return a symbol, interned in PACKAGE, represented by STRING, after possibly
-doing conventional case conversion. The main reason for this function is to
-wrap the case conversion on implementations that need it. If NO-NEW is true,
-never create a new symbol, and return NIL if the symbol doesn't already exist."
-  (etypecase string
-    (string
-     (if no-new
-	 (find-symbol (string-upcase string) package)
-	 (intern (string-upcase string) package)))
-    (symbol
-     string)))
-
-(defun keywordify (string)
-  "Make a keyword from a string."
-  (or (and (keywordp string) string)
-      (intern (string-upcase string) :keyword)))
 
 (defmacro with-package (package &body body)
   "Evalute BODY with *package* set to the packaged designated by PACKAGE."
@@ -1241,6 +1303,12 @@ an EOF on SOURCE."
 	 (write-sequence buf destination :end pos))
        :while (= pos *buffer-size*))))
 
+(defun quote-format (s)
+  "Quote a string to send to format, so that any possible format directives
+are printed rather than interpreted as directives, which really just means: repleace a single tilde with double tidles."
+  (replace-subseq "~" "~~" s))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; System information features
 ;;;
@@ -1313,7 +1381,8 @@ an EOF on SOURCE."
   #+lispworks	"LW"
   #+ecl		"ECL"
   #+abcl	"ABCL"
-  #-(or clisp sbcl cmu excl openmcl lispworks ecl abcl) "Unknown"
+  #+clasp	"Clasp"
+  #-(or clisp sbcl cmu excl openmcl lispworks ecl abcl clasp) "Unknown"
   "A short nickname for the current implementation.")
 
 (defparameter *lisp-version*
@@ -1337,6 +1406,12 @@ an EOF on SOURCE."
 			(let ((v (lisp-implementation-version)))
 			  (substitute #\- #\.
 				      (subseq v 0 (position #\space v)))))
+  #+clasp	(format nil "~a"
+			(let ((v (lisp-implementation-version)))
+			  (substitute
+			   #\- #\.
+			   (subseq v (1- (position #\- v :from-end t))))))
+
   #-(or clisp sbcl cmu excl openmcl lispworks ecl abcl) "unknown"
   "A version suitable for putting in a logical pathname.")
 
