@@ -69,8 +69,7 @@ The shell command takes any number of file names.
   "Hold a line of text."
   number				; line number
   position				; file-position
-  text					; text string of the line
-)
+  text)					; text string of the line
 
 (defclass pager ()
   ((stream
@@ -145,6 +144,9 @@ The shell command takes any number of file names.
     :documentation "True to wrap lines at the edge of the window."))
   (:documentation "An instance of a pager."))
 
+(defvar *pager* nil
+  "The current pager.")
+
 (defmethod initialize-instance
     :after ((o pager) &rest initargs &key &allow-other-keys)
   "Set up the slots in a pager."
@@ -155,9 +157,11 @@ The shell command takes any number of file names.
 
 (defgeneric freshen (o)
   (:documentation
-   "Make something fresh. Make it's state like it just got initialized, but perhaps reuse some resources."))
+   "Make something fresh. Make it's state like it just got initialized,
+but perhaps reuse some resources."))
 
 (defmethod freshen ((o pager))
+  "Make the pager like new."
   (setf (pager-stream o) nil
 	(pager-lines o) nil
 	(pager-count o) 0
@@ -181,9 +185,11 @@ The shell command takes any number of file names.
   ;; Don't reset options?
   )
 
-(defun nop-process-line (pager line)
-  (declare (ignore pager))
+#|
+(defun nop-process-line (line)
+  "A line processor that doesn't do anything."
   line)
+|#
 
 #|
 
@@ -364,6 +370,7 @@ set in this string."
     nfl))
 
 (defun process-ansi-colors-line (fat-line)
+  "Convert ANSI color escapes into colored fatchars."
   (when (zerop (length fat-line))
     (return-from process-ansi-colors-line fat-line))
   (let ((new-fat-line (make-stretchy-vector (length fat-line)
@@ -491,9 +498,8 @@ set in this string."
 	  (stretchy-append fat-line (copy-fat-char c)))))
     fat-line))
 
-(defun process-line (pager line)
+(defun process-line (line)
   "Process a line of text read from a stream."
-  (declare (ignore pager))
   (let ((output (fat-string-to-span
 		 (process-control-characters
 		  (process-ansi-colors-line
@@ -503,33 +509,35 @@ set in this string."
 	(first output)
 	output)))
 
-(defun read-lines (pager count)
+(defun read-lines (line-count)
   "Read new lines from the stream. Stop after COUNT lines. If COUNT is zero,
 read until we get an EOF."
-  (when (not (pager-got-eof pager))
-    (let ((n 0)
-	  (i (pager-count pager))
-	  (line nil)
-	  (lines '())
-	  (pos (or (file-position (pager-stream pager)) 0)))
-      (loop
-	 :while (and (or (< n count) (zerop count))
-		     (setf line
-			   (resilient-read-line (pager-stream pager) nil nil)))
-	 :do (push (make-line :number i
+  (with-slots (got-eof count stream) *pager*
+    (when (not got-eof)
+      (let ((n 0)
+	    (i count)
+	    (line nil)
+	    (lines '())
+	    (pos (or (file-position stream) 0)))
+	(loop
+	   :while (and (or (< n line-count) (zerop line-count))
+		       (setf line
+			     (resilient-read-line stream nil nil)))
+	   :do (push (make-line :number i
 ;;;			      :position (incf pos (length line))
-			      :position pos
-			      :text (process-line pager line))
-		   lines)
-	 (incf pos (length line))
-	 (incf i)
-	 (incf n))
-      (when (not line)
-	(setf (pager-got-eof pager) t))
-      (setf (pager-lines pager) (nconc (pager-lines pager) (nreverse lines))
-	    (pager-count pager) i))))
+				:position pos
+				:text (process-line line))
+		     lines)
+	   (incf pos (length line))
+	   (incf i)
+	   (incf n))
+	(when (not line)
+	  (setf got-eof t))
+	(setf (pager-lines *pager*)
+	      (nconc (pager-lines *pager*) (nreverse lines))
+	      count i)))))
 
-(defun format-prompt (pager &optional (prompt *pager-prompt*))
+(defun format-prompt (&optional (prompt *pager-prompt*))
   "Return the prompt string with a few less-like formatting character
 replacements. So far we support:
   %b / %B  Bytes at current postion / Total bytes
@@ -538,50 +546,48 @@ replacements. So far we support:
   %f       File name
   %%       A percent character '%'.
 "
-  (with-output-to-string (str)
-    (loop :with c :for i :from 0 :below (length prompt) :do
-       (setf c (aref prompt i))
-       (if (equal c #\%)
-         (progn
-	   (incf i)
-	   (when (< i (length prompt))
-	     (setf c (aref prompt i))
-	     (case c
-	       ;; @@@ The next two are very inefficient and probably
-	       ;; should be cached.
-	       (#\b
-		(let ((l (nth (pager-line pager) (pager-lines pager))))
-		  (princ (if l (line-position l) "?") str)))
-	       (#\B
-		(let ((l (ignore-errors (file-length (pager-stream pager)))))
-		  (princ (or l "?") str)))
-	       (#\l (princ (pager-line pager) str))
-	       (#\L (princ (pager-count pager) str))
-	       (#\p (princ (round (/ (* (min (+ (pager-line pager)
-						(pager-page-size pager))
-					     (pager-count pager))
-					 100)
-				     (pager-count pager)))
-			   str))
-	       (#\% (princ #\% str))
-	       (#\f
-		(if (and (typep (pager-stream pager) 'file-stream)
-			 (ignore-errors (truename (pager-stream pager))))
-		    (princ (namestring (truename (pager-stream pager))) str)
-		    (format str "~a" (pager-stream pager))))
-	       (#\&
-		(when (pager-filter-exprs pager)
-		  (princ " && " str))
-		(when (pager-keep-expr pager)
-		  (princ " ^^ " str))))))
-	 (write-char c str)))))
+  (with-slots (line lines stream count page-size filter-exprs keep-expr)
+      *pager*
+    (with-output-to-string (str)
+      (loop :with c :for i :from 0 :below (length prompt) :do
+	 (setf c (aref prompt i))
+	 (if (equal c #\%)
+	     (progn
+	       (incf i)
+	       (when (< i (length prompt))
+		 (setf c (aref prompt i))
+		 (case c
+		   ;; @@@ The next two are very inefficient and probably
+		   ;; should be cached.
+		   (#\b
+		    (let ((l (nth line lines)))
+		      (princ (if l (line-position l) "?") str)))
+		   (#\B
+		    (let ((l (ignore-errors (file-length stream))))
+		      (princ (or l "?") str)))
+		   (#\l (princ line str))
+		   (#\L (princ count str))
+		   (#\p (princ (round
+				(/ (* (min (+ line page-size) count) 100)
+				   count))
+			       str))
+		   (#\% (princ #\% str))
+		   (#\f
+		    (if (and (typep stream 'file-stream)
+			     (ignore-errors (truename stream)))
+			(princ (namestring (truename stream)) str)
+			(format str "~a" stream)))
+		   (#\&
+		    (when filter-exprs (princ " && " str))
+		    (when keep-expr    (princ " ^^ " str))))))
+	     (write-char c str))))))
 
-(defun display-prompt (pager)
+(defun display-prompt ()
   "Put the prompt at the appropriate place on the screen."
   (move (1- curses:*lines*) 0)
   (clrtoeol)
   (standout)
-  (addstr (format-prompt pager))
+  (addstr (format-prompt))
   (standend))
 
 (defun message (format-string &rest args)
@@ -612,9 +618,9 @@ and resets it to be so afterward."
       (curses::timeout -1))
     c))
 
-(defun tmp-message (pager format-string &rest args)
+(defun tmp-message (format-string &rest args)
   "Display a message at next command loop, until next input."
-  (setf (pager-message pager) (apply #'format nil format-string args)))
+  (setf (pager-message *pager*) (apply #'format nil format-string args)))
 
 (defvar *nibby-color-scheme*
   '((default		:green)
@@ -639,8 +645,6 @@ and resets it to be so afterward."
     (case type
       ("lisp"		#'syntax-lisp)
       (("c" "h")	#'syntax-c))))
-
-(defvar *pager*) ;; @@@ DEBUG
 
 (defparameter *attr*
   `((:normal	. ,+a-normal+)
@@ -674,7 +678,7 @@ line : |----||-------||---------||---|
 			      :fill-pointer 0 :adjustable t))
 (defvar *left*)
 (defvar *col*)
-(defun flatten-span (pager span)
+(defun flatten-span (span)
   "Make a fat string from a span."
   (setf (fill-pointer *fat-buf*) 0)
   (let (fg bg attrs #|(col *col*)|#)
@@ -685,7 +689,7 @@ line : |----||-------||---------||---|
 	       (string
 		(loop :for c :across s :do
 		   (when (and (>= *col* *left*)
-			      (or (pager-wrap-lines pager)
+			      (or (pager-wrap-lines *pager*)
 				  (< (- *col* *left*) *cols*)))
 		     (vector-push-extend
 		      (make-fatchar :c c :fg fg :bg bg :attrs attrs)
@@ -706,9 +710,9 @@ line : |----||-------||---------||---|
 			(spanky (cdr s))))))))))
       (spanky span))))
 
-(defun search-a-matize (pager)
+(defun search-a-matize ()
   "Highlight search strings in *fat-buf*."
-  (with-slots (search-string ignore-case) pager
+  (with-slots (search-string ignore-case) *pager*
     (let* ((s (fat-string-to-string *fat-buf*))
 	   (ss (if (and search-string ignore-case)
 		   (s+ "(?i)" search-string)
@@ -747,97 +751,49 @@ line : |----||-------||---------||---|
 (defun add-char (c)
   (addch (char-code c)))
 
-(defun show-span (pager s)
+(defun show-span (s)
   (when (not s)
     (return-from show-span 0))
 ;;;  (flatten-span pager s)
-  (if (pager-wrap-lines pager)
-      (span-to-fat-string s :fat-string *fat-buf* :start *left*)
-      (span-to-fat-string s :fat-string *fat-buf* :start *left*
-			  :end (+ *left* *cols*)))
-  (when (pager-search-string pager)
-    (search-a-matize pager))
-  (let ((line-count 1)
-	(screen-col 0)
-	(screen-line (getcury *stdscr*)))
-    (loop :with last-attr
-       :for c :across *fat-buf* :do
-       (when (not (equal last-attr (fatchar-attrs c)))
-	 (when last-attr (attrset 0))
-	 (mapcan (_ (attron (real-attr _))) (fatchar-attrs c)))
-       (color-set (fui:color-index
-		   (or (color-number (fatchar-fg c)) +color-white+)
-		   (or (color-number (fatchar-bg c)) +color-black+))
-		  (cffi:null-pointer))
+  (with-slots (wrap-lines search-string) *pager*
+    (if wrap-lines
+	(span-to-fat-string s :fat-string *fat-buf* :start *left*)
+	(span-to-fat-string s :fat-string *fat-buf* :start *left*
+			    :end (+ *left* *cols*)))
+    (when search-string
+      (search-a-matize))
+    (let ((line-count 1)
+	  (screen-col 0)
+	  (screen-line (getcury *stdscr*)))
+      (loop :with last-attr
+	 :for c :across *fat-buf* :do
+	 (when (not (equal last-attr (fatchar-attrs c)))
+	   (when last-attr (attrset 0))
+	   (mapcan (_ (attron (real-attr _))) (fatchar-attrs c)))
+	 (color-set (fui:color-index
+		     (or (color-number (fatchar-fg c)) +color-white+)
+		     (or (color-number (fatchar-bg c)) +color-black+))
+		    (cffi:null-pointer))
 ;;;       (format t "~a ~a" (fatchar-fg c) (fatchar-bg c))
-       (add-char (fatchar-c c))
-       (incf screen-col)
-       (when (and (pager-wrap-lines pager) (>= screen-col *cols*))
-	 (incf screen-line)
-	 (setf screen-col 0)
-	 (move screen-line screen-col)
-	 (incf line-count))
-       (setf last-attr (fatchar-attrs c)))
-    (attrset 0)
-    line-count))
+	 (add-char (fatchar-c c))
+	 (incf screen-col)
+	 (when (and wrap-lines (>= screen-col *cols*))
+	   (incf screen-line)
+	   (setf screen-col 0)
+	   (move screen-line screen-col)
+	   (incf line-count))
+	 (setf last-attr (fatchar-attrs c)))
+      (attrset 0)
+      line-count)))
 
-(defun render-span (pager line-number line)
-  (with-slots (left show-line-numbers) pager
+(defun render-span (line-number line)
+  (with-slots (left show-line-numbers) *pager*
     (let ((*col* 0) (*left* left))
       (when show-line-numbers
 	(let ((str (format nil "~d: " line-number)))
 	  (incf *col* (length str))
 	  (addstr str)))
-      (show-span pager line))))
-
-#|
-(defun render-text-line (pager line-number line)
-  (with-slots (left page-size search-string show-line-numbers ignore-case)
-      pager
-    (let* ((text1 (line-text line))
-	   (end   (if (not (pager-wrap-lines pager))
-		      (min (length text1) (+ *cols* left))
-		      (length text1)))
-	   (text  (if (> left 0)
-		      (if (< left (length text1))
-			  (subseq text1 left end)
-			  "")
-		      (subseq text1 0 end)))
-	   (ss (if (and search-string ignore-case)
-		   (s+ "(?i)" search-string)
-		   search-string))
-;;;	   (pos (search ss text :test #'equalp))
-	   (matches (and ss (ppcre:all-matches ss text)))
-	   (pos (when matches (car matches)))
-	   (match-end (when matches (cadr matches)))
-	   old-end)
-      (if (and ss pos)
-	  (progn
-	    (when show-line-numbers
-	      (addstr (format nil "~d: " line-number)))
-	    (loop :with start = 0
-	       :do
-	       (addstr (subseq text start pos))
-	       (standout)
-;;;	       (addstr (subseq text pos (+ pos (length ss))))
-	       (addstr (subseq text pos match-end))
-	       (standend)
-	       (setf start (1+ match-end) ;; (+ pos (length ss))
-		     old-end match-end
-;;;		     pos (search ss text :test #'equalp :start2 start))
-		     matches (and ss (ppcre:all-matches
-				      ss text
-				      :start (min start (1- (length text)))))
-		     pos (when matches (car matches))
-		     match-end (when matches (cadr matches)))
-	       (when (not pos)
-;;;		 (addstr (subseq text (+ old-pos (length ss)))))
-		 (addstr (subseq text old-end)))
-	       :while pos))
-	  (if show-line-numbers
-	      (addstr (format nil "~d: ~a" line-number text))
-	      (addstr text))))))
-|#
+      (show-span line))))
 
 (defun span-matches (span expr)
   "Return true if the plain text of a SPAN matches the EXPR."
@@ -853,9 +809,9 @@ line : |----||-------||---------||---|
 	     (glom-span span)))))
     (and (ppcre:all-matches expr line) t)))
 
-(defun filter-this (pager line)
+(defun filter-this (line)
   "Return true if we should filter this line."
-  (with-slots (filter-exprs keep-expr) pager
+  (with-slots (filter-exprs keep-expr) *pager*
     (when (or filter-exprs keep-expr)
       (typecase (line-text line)
 	(string
@@ -875,32 +831,30 @@ line : |----||-------||---------||---|
 	(t (error "Don't know how to filter a line of ~s~%"
 		  (type-of (line-text line))))))))
 
-(defun display-line (pager line-number line)
+(defun display-line (line-number line)
   (typecase (line-text line)
-;;;    (string (render-text-line pager line-number line))
-    (string (render-span pager line-number (list (line-text line))))
-    (list   (render-span pager line-number (line-text line)))
+    (string (render-span line-number (list (line-text line))))
+    (list   (render-span line-number (line-text line)))
     (t (error "Don't know how to render a line of ~s~%"
 	      (type-of (line-text line))))))
 
 (defvar *empty-indicator* "~"
   "String that indicates emptyness, usually past the end.")
 
-(defun display-page (pager)
+(defun display-page ()
   "Display the lines already read, starting from the current."
   (move 0 0)
   (clear)
-  (setf *pager* pager) ;; @@@ DEBUG
-  (with-slots (line left page-size) pager
+  (with-slots (line lines left page-size) *pager*
     (let ((y 0))
-      (when (and (>= line 0) (pager-lines pager))
+      (when (and (>= line 0) lines)
 	(loop
-	   :with l = (nthcdr line (pager-lines pager)) :and i = line
+	   :with l = (nthcdr line lines) :and i = line
 	   :while (and (<= y (1- page-size)) (car l))
 	   :do
 	   (move y 0)
-	   (when (not (filter-this pager (car l)))
-	     (incf y (display-line pager i (car l)))
+	   (when (not (filter-this (car l)))
+	     (incf y (display-line i (car l)))
 	     (incf i))
 	   (setf l (cdr l))))
       ;; Fill the rest of the screen with twiddles to indicate emptiness.
@@ -959,8 +913,8 @@ list containing strings and lists."
 	:if (setf result (search-line str s))
 	:return result))))
 
-(defun search-for (pager str)
-  (with-slots (lines count line page-size ignore-case) pager
+(defun search-for (str)
+  (with-slots (lines count line page-size ignore-case) *pager*
     (let ((ll (nthcdr line lines))
 	  (ss (if ignore-case (s+ "(?i)" str) str))
 	  l)
@@ -970,59 +924,55 @@ list containing strings and lists."
 		     (not (search-line ss (line-text l))))
 	 :do
 	 (when (>= (line-number l) (max 0 (- count page-size)))
-	   (read-lines pager page-size))
+	   (read-lines page-size))
 	 (setf ll (cdr ll)))
       (if (and l (< (line-number l) count))
 	  (setf line (line-number l))
 	  nil))))
 
-(defun keep-lines (pager)
+(defun keep-lines ()
   "Show only lines matching a regular expression."
   (let ((filter (ask "Show only lines matching: ")))
-    (setf (pager-keep-expr pager)
+    (setf (pager-keep-expr *pager*)
 	  (and filter (length filter) filter))))
 
-(defun filter-lines (pager)
+(defun filter-lines ()
   "Hide lines matching a regular expression."
   (let ((filter (ask "Hide lines matching: ")))
-    (setf (pager-filter-exprs pager)
+    (setf (pager-filter-exprs *pager*)
 	  (if filter (list filter) nil))))
 
-(defun filter-more (pager)
+(defun filter-more ()
   "Add to the list of regular expressions for hiding lines."
   (let ((filter (ask "Hide lines also mathing: ")))
     (when filter
-      (push filter (pager-filter-exprs pager)))))
+      (push filter (pager-filter-exprs *pager*)))))
 
-(defun set-option (pager)
+(defun set-option ()
   "Set a pager option. Propmpts for what option to toggle."
   (message "Set option: ")
-  (let ((char (fui:get-char)))
-    (case char
-      ((#\l #\L)
-       (setf (pager-show-line-numbers pager)
-	     (not (pager-show-line-numbers pager)))
-       (tmp-message pager "show-line-numbers is ~:[Off~;On~]"
-		    (pager-show-line-numbers pager)))
-      ((#\i #\I)
-       (setf (pager-ignore-case pager)
-	     (not (pager-ignore-case pager)))
-       (tmp-message pager "ignore-case is ~:[Off~;On~]"
-		    (pager-ignore-case pager)))
-      ((#\w #\S) ;; S is for compatibility with less
-       (setf (pager-wrap-lines pager)
-	     (not (pager-wrap-lines pager)))
-       (display-page pager)
-       (tmp-message pager "wrap-lines is ~:[Off~;On~]"
-		    (pager-wrap-lines pager))
-       (refresh))
-      (otherwise
-       (tmp-message pager "Unknown option '~a'" (nice-char char))))))
+  (with-slots (show-line-numbers ignore-case wrap-lines) *pager*
+    (let ((char (fui:get-char)))
+      (case char
+	((#\l #\L)
+	 (setf show-line-numbers (not show-line-numbers))
+	 (tmp-message "show-line-numbers is ~:[Off~;On~]"
+		      show-line-numbers))
+	((#\i #\I)
+	 (setf ignore-case (not ignore-case))
+	 (tmp-message "ignore-case is ~:[Off~;On~]" ignore-case))
+	((#\w #\S) ;; S is for compatibility with less
+	 (setf wrap-lines (not wrap-lines))
+	 (display-page)
+	 (tmp-message "wrap-lines is ~:[Off~;On~]" wrap-lines)
+	 (refresh))
+	(otherwise
+	 (tmp-message "Unknown option '~a'" (nice-char char)))))))
 
-(defun next-file (pager)
+(defun next-file ()
   "Go to the next file in the set of files."
   (with-slots (count lines line got-eof file-list file-index stream
-	       page-size) pager
+	       page-size) *pager*
     (if (and file-index (< file-index (1- (length file-list))))
 	(progn
 	  (incf file-index)
@@ -1030,13 +980,13 @@ list containing strings and lists."
 	  (setf stream (open (quote-filename (nth file-index file-list))
 			     :direction :input))
 	  (setf lines '() count 0 line 0 got-eof nil)
-	  (read-lines pager page-size))
-	(tmp-message pager "No next file."))))
+	  (read-lines page-size))
+	(tmp-message "No next file."))))
 
-(defun previous-file (pager)
+(defun previous-file ()
   "Go to the previous file in the set of files."
   (with-slots (count lines line got-eof file-list file-index stream
-	       page-size) pager
+	       page-size) *pager*
     (if (and file-index (> file-index 0))
 	(progn
 	  (decf file-index)
@@ -1044,12 +994,12 @@ list containing strings and lists."
 	  (setf stream (open (quote-filename (nth file-index file-list))
 			     :direction :input))
 	  (setf lines '() count 0 line 0 got-eof nil)
-	  (read-lines pager page-size))
-	(tmp-message pager "No previous file."))))
+	  (read-lines page-size))
+	(tmp-message "No previous file."))))
 
-(defun open-file (pager filename)
+(defun open-file (filename)
   "Open the given FILENAME."
-  (with-slots (count lines line got-eof stream page-size) pager
+  (with-slots (count lines line got-eof stream page-size) *pager*
     (let ((new-stream (open (quote-filename filename) :direction :input)))
       (if new-stream
 	  (progn
@@ -1059,73 +1009,73 @@ list containing strings and lists."
 		  count 0
 		  line 0
 		  got-eof nil)
-	    (read-lines pager page-size))
-	  (tmp-message pager "Can't open file \"~s\".")))))
+	    (read-lines page-size))
+	  (tmp-message "Can't open file \"~s\".")))))
 
-(defun quit (pager)
+(defun quit ()
   "Exit the pager."
-  (setf (pager-quit-flag pager) t))
+  (setf (pager-quit-flag *pager*) t))
 
-(defun suspend (pager)
+(defun suspend ()
   "Suspend the pager."
   (if (and (find-package :lish)
 	   (find-symbol "*LISH-LEVEL*" :lish)
 	   (symbol-value (find-symbol "*LISH-LEVEL*" :lish)))
-      (setf (pager-suspend-flag pager) t)
-      (tmp-message pager "No shell to suspend to.~%")))
+      (setf (pager-suspend-flag *pager*) t)
+      (tmp-message "No shell to suspend to.~%")))
 
-(defun next-page (pager)
+(defun next-page ()
   "Display the next page."
-  (with-slots (line page-size count got-eof) pager
+  (with-slots (line page-size count got-eof) *pager*
     (incf line page-size)
     (when (> (+ line page-size) count)
-      (read-lines pager page-size))
+      (read-lines page-size))
     (when (and (>= line count) got-eof)
       (setf line (1- count)))))
 
-(defun next-line (pager)
+(defun next-line ()
   "Display the next line."
-  (with-slots (line page-size count prefix-arg got-eof) pager
+  (with-slots (line page-size count prefix-arg got-eof) *pager*
     (let ((n (or prefix-arg 1)))
       (incf line n)
       (if (> (+ line page-size) count)
-	  (read-lines pager n))
+	  (read-lines n))
       (when (and (>= line count) got-eof)
 	(setf line (1- count))))))
 
-(defun previous-page (pager)
+(defun previous-page ()
   "Display the previous page."
-  (with-slots (line page-size) pager
+  (with-slots (line page-size) *pager*
     (setf line (max 0 (- line page-size)))))
 
-(defun previous-line (pager)
+(defun previous-line ()
   "Display the previous line."
-  (with-slots (prefix-arg line) pager
+  (with-slots (prefix-arg line) *pager*
     (let ((n (or prefix-arg 1)))
       (setf line (max 0 (- line n))))))
 
-(defun scroll-right (pager)
+(defun scroll-right ()
   "Scroll the pager window to the right."
-  (with-slots (left prefix-arg) pager
+  (with-slots (left prefix-arg) *pager*
     (incf left (or prefix-arg 10))))
 
-(defun scroll-left (pager)
+(defun scroll-left ()
   "Scroll the pager window to the left."
-  (with-slots (left prefix-arg) pager
+  (with-slots (left prefix-arg) *pager*
     (setf left (max 0 (- left (or prefix-arg 10))))))
 
-(defun scroll-beginning (pager)
+(defun scroll-beginning ()
   "Scroll the pager window to the leftmost edge."
-  (setf (pager-left pager) 0))
+  (setf (pager-left *pager*) 0))
 
 ;; We don't bother counting the max column during display, since it's possibly
 ;; expensive and unnecessary. We just count it here when needed, which is
 ;; somewhat redundant, but expected to be overall more efficient.
 ;; The issue is mostly that we don't have to consider the whole line when
 ;; clipping, but we do have to consider it when finding the maximum.
-(defun scroll-end (pager)
+(defun scroll-end ()
   "Scroll the pager window to the rightmost edge of the text."
-  (with-slots (line lines left page-size show-line-numbers) pager
+  (with-slots (line lines left page-size show-line-numbers) *pager*
     (let ((max-col 0))
       (loop
 	 :with y = 0
@@ -1150,65 +1100,64 @@ list containing strings and lists."
 	 (incf y)
 	 (incf i)
 	 (setf l (cdr l)))
-      (tmp-message pager "max-col = ~d" max-col)
+      (tmp-message "max-col = ~d" max-col)
       (setf left (max 0 (- max-col *cols*))))))
 
-(defun go-to-beginning (pager)
+(defun go-to-beginning ()
   "Go to the beginning of the stream, or the PREFIX-ARG'th line."
-  (with-slots (prefix-arg count line) pager
+  (with-slots (prefix-arg count line) *pager*
     (if prefix-arg
 	(progn
-	  (read-lines pager (min 1 (- prefix-arg count)))
+	  (read-lines (min 1 (- prefix-arg count)))
 	  (setf line (1- prefix-arg)))
 	(setf line 0))))
 
-(defun go-to-end (pager)
+(defun go-to-end ()
   "Go to the end of the stream, or the PREFIX-ARG'th line."
-  (with-slots (prefix-arg count line page-size) pager
+  (with-slots (prefix-arg count line page-size) *pager*
     (if prefix-arg
 	(progn
-	  (read-lines pager (min 1 (- prefix-arg count)))
+	  (read-lines (min 1 (- prefix-arg count)))
 	  (setf line (1- prefix-arg)))
 	(progn
-	  (read-lines pager 0)
+	  (read-lines 0)
 	  (setf line (max 0 (- count page-size)))))))
 
-(defun search-command (pager)
+(defun search-command ()
   "Search for something in the stream."
-  (with-slots (search-string) pager
+  (with-slots (search-string) *pager*
     (setf search-string (ask "/"))
-    (when (not (search-for pager search-string))
-      (tmp-message pager "--Not found--"))))
+    (when (not (search-for search-string))
+      (tmp-message "--Not found--"))))
 
-(defun search-next (pager)
+(defun search-next ()
   "Search for the next occurance of the current search in the stream."
-  (with-slots (line search-string) pager
+  (with-slots (line search-string) *pager*
     (incf line)
-    (when (not (search-for pager search-string))
+    (when (not (search-for search-string))
       (decf line)
-      (tmp-message pager "--Not found--"))))
+      (tmp-message "--Not found--"))))
 
-(defun clear-search (pager)
+(defun clear-search ()
   "Clear the search string."
-  (setf (pager-search-string pager) nil))
+  (setf (pager-search-string *pager*) nil))
 
-(defun seekable (pager)
-  (let* ((pos (file-position (pager-stream pager)))
-	 (result (file-position (pager-stream pager) pos)))
+(defun seekable-p ()
+  (let* ((pos (file-position (pager-stream *pager*)))
+	 (result (file-position (pager-stream *pager*) pos)))
     result))
 
-(defun show-info (pager)
+(defun show-info ()
   "Show information about the stream."
-  (tmp-message pager "%f %l of %L %b/%B ~:[un~;~]seekable" (seekable pager)))
+  (tmp-message "%f %l of %L %b/%B ~:[un~;~]seekable" (seekable-p)))
 
-(defun redraw (pager)
+(defun redraw ()
   "Redraw the display."
-  (declare (ignore pager))
   (clear) (refresh))
 
-(defun reread (pager)
-  (if (seekable pager)
-      (with-slots (stream line lines got-eof count page-size) pager
+(defun reread ()
+  (if (seekable-p)
+      (with-slots (stream line lines got-eof count page-size) *pager*
 	(let ((l (nth line lines)))
 	  (file-position stream (or (and l (line-position l)) 0)))
 	(setf got-eof nil)
@@ -1218,12 +1167,12 @@ list containing strings and lists."
 	      (setf count line)
 	      ;; drop all following lines
 	      (rplacd (nthcdr (1- line) lines) nil)))
-	(read-lines pager page-size))
-      (tmp-message pager "Can't re-read an unseekable stream.")))
+	(read-lines page-size))
+      (tmp-message "Can't re-read an unseekable stream.")))
 
-(defun digit-argument (pager)
+(defun digit-argument ()
   "Accumulate digits for the PREFIX-ARG."
-  (with-slots (input-char prefix-arg message) pager
+  (with-slots (input-char prefix-arg message) *pager*
     (when (and (characterp input-char) (digit-char-p input-char))
       (setf prefix-arg (+ (* 10 (or prefix-arg 0))
 			  (position input-char +digits+))
@@ -1242,29 +1191,28 @@ list containing strings and lists."
 ;; @@@ This points out the need for a curses-ification of tiny-rl.
 
 (defmacro lc (&body body)
-  `(function (lambda (p c) (declare (ignorable c)) ,@body)))
+  `(function (lambda (c) (declare (ignorable c)) ,@body)))
 
 (defparameter *long-commands*
   (vector
    `("edit"	  (#\e #\x)  "Examine a different file."
-     ,(lc (open-file p (ask (s+ ":" c #\space)))))
+     ,(lc (open-file (ask (s+ ":" c #\space)))))
    `("next"	  (#\n)	    "Examine the next file in the arguments."
-     ,(lc (next-file p)))
+     ,(lc (next-file)))
    `("previous"	  (#\p)	    "Examine the previous file in the arguments."
-     ,(lc (previous-file p)))
+     ,(lc (previous-file)))
    `("help"	  (#\h)	    "Show the pager help."
-     ,(lc (help p)))
+     ,(lc (help)))
    `("?"	  (#\?)	    "Show this long command help."
-     ,(lc (command-help p)))
+     ,(lc (command-help)))
    `("file"	  (#\f)	    "Show the file information."
-     ,(lc (show-info p)))
+     ,(lc (show-info)))
    `("quit"	  (#\q)	    "Quit the pager."
-     ,(lc (quit p)))))
+     ,(lc (quit)))))
     #| (#\d (remove-file-from-list)) |#
 
-(defun command-help (pager)
+(defun command-help ()
   "Show help on long commands, aka colon commands."
-  (declare (ignore pager))
   (sub-page (s)
     (table:nice-print-table
      (loop :for c :across *long-commands*
@@ -1272,7 +1220,7 @@ list containing strings and lists."
      '("Command" "Abbrev" "Description")
      :stream s)))
 
-(defun read-command (pager)
+(defun read-command ()
   (let ((cmd (ask-for :prompt ":" :space-exits t)))
     (when (and cmd (stringp cmd))
       (let (found)
@@ -1280,7 +1228,7 @@ list containing strings and lists."
 	   :for c :across *long-commands*
 	   :do (when (position (char cmd 0) (elt c 1))
 		 (setf found t)
-		 (funcall (elt c 3) pager cmd)))
+		 (funcall (elt c 3) cmd)))
 	(when (not found)
 	  (message "~a is an unknown command." cmd))))))
 
@@ -1363,16 +1311,16 @@ list containing strings and lists."
 
 (defparameter *escape-keymap* (build-escape-map *normal-keymap*))
 
-(defun describe-key-briefly (pager)
+(defun describe-key-briefly ()
   "Prompt for a key and say what function it invokes."
   (message "Press a key: ")
   (let* ((key (fui:get-char))
 	 (action (key-definition key *normal-keymap*)))
     (if action
-	(tmp-message pager "~a is bound to ~a" (nice-char key) action)
-	(tmp-message pager "~a is not defined" (nice-char key)))))
+	(tmp-message "~a is bound to ~a" (nice-char key) action)
+	(tmp-message "~a is not defined" (nice-char key)))))
 
-(defun describe-key (pager)
+(defun describe-key ()
   "Prompt for a key and describe the function it invokes."
   (message "Press a key: ")
   (let* ((key (fui:get-char))
@@ -1392,15 +1340,15 @@ list containing strings and lists."
        ;;(tmp-message pager "")
        )
       (t
-       (tmp-message pager "~a is not defined" (nice-char key))))))
+       (tmp-message "~a is not defined" (nice-char key))))))
 
-(defun help-key (pager)
+(defun help-key ()
   "Sub-command for help commands."
   (message "Help (? for more help): ")
-  (perform-key pager (fui:get-char) *help-keymap*)
-  (setf (pager-quit-flag pager) nil))
+  (perform-key (fui:get-char) *help-keymap*)
+  (setf (pager-quit-flag *pager*) nil))
 
-(defun more-help (pager)
+(defun more-help ()
   "Show more help on help commands."
   (clear)
   (move 0 0)
@@ -1408,10 +1356,10 @@ list containing strings and lists."
 k - Describe the function that a key performs.
 q - Abort")
   (refresh)
-  (help-key pager))			; @@@ this could infinitely recurse
+  (help-key))				; @@@ this could infinitely recurse
 
-(defun perform-key (pager key &optional (keymap *normal-keymap*))
-  (with-slots (message command last-command) pager
+(defun perform-key (key &optional (keymap *normal-keymap*))
+  (with-slots (message command last-command) *pager*
     (setf last-command command
 	  command (key-definition key keymap))
     (cond
@@ -1428,16 +1376,16 @@ q - Abort")
       ((symbolp command)
        (cond
 	 ((fboundp command)		; a function
-	  (funcall command pager))
+	  (funcall command))
 	 ((keymap-p (symbol-value command)) ; a keymap
-	  (perform-key pager (fui:get-char) (symbol-value command)))
+	  (perform-key (fui:get-char) (symbol-value command)))
 	 (t				; anything else
 	  (setf message
 		(format nil "Key binding ~S is not a function or a keymap."
 			command)))))
       ;; a function object
       ((functionp command)
-       (funcall command pager))
+       (funcall command))
       (t				; anything else is an error
        (error "Weird thing in keymap: ~s." command)))))
 
@@ -1457,48 +1405,49 @@ q - Abort")
 	  (setf stream (open (quote-filename (first file-list))
 			     :direction :input)
 		close-me t))
-	(if (not pager)
-	    (setf pager (make-instance 'pager
-				       :stream stream
-				       :page-size (1- curses:*lines*)
-				       :file-list file-list))
-	    (when (not suspended)
-	      (freshen pager)
-	      (setf (pager-stream pager) stream)))
-	(with-slots (count line page-size left search-string input-char
-		     file-list file-index message prefix-arg quit-flag
-		     suspend-flag command) pager
-	  (when file-list (setf file-index 0))
-	  (read-lines pager page-size)
-	  (setf quit-flag nil
-		suspend-flag nil
-		suspended nil)
-	  (curses:raw)		; give a chance to exit during first read
-	  (loop :do
-	     (display-page pager)
-	     (if message
-		 (let ((*pager-prompt* message))
-		   (display-prompt pager)
-		   (setf message nil))
-		 (display-prompt pager))
-	     (refresh)
-	     (setf input-char (fui:get-char))
-	     (perform-key pager input-char)
-	     (when (not (equal command 'digit-argument))
-	       (setf prefix-arg nil))
-	     :while (not (or quit-flag suspend-flag)))
-	  (when suspend-flag
-	    (setf suspended t)
-	    (if (find-package :lish)
-	      (let ((suspy (make-suspended-pager
-			    :pager pager
-			    :file-list file-list
-			    :stream stream
-			    :close-me close-me)))
-		(funcall (find-symbol "SUSPEND-JOB" :lish)
-			 "pager" "" (lambda () (pager:resume suspy)))
-		(format t "Suspended.~%"))
-	      (format t "No shell loaded to suspend to.~%")))))
+	(let ((*pager*
+	       (or pager
+		   (make-instance 'pager
+				  :stream stream
+				  :page-size (1- curses:*lines*)
+				  :file-list file-list))))
+	  (when (not suspended)
+	    (freshen *pager*)
+	    (setf (pager-stream *pager*) stream))
+	  (with-slots (count line page-size left search-string input-char
+		       file-list file-index message prefix-arg quit-flag
+		       suspend-flag command) *pager*
+	    (when file-list (setf file-index 0))
+	    (read-lines page-size)
+	    (setf quit-flag nil
+		  suspend-flag nil
+		  suspended nil)
+	    (curses:raw)	     ; give a chance to exit during first read
+	    (loop :do
+	       (display-page)
+	       (if message
+		   (let ((*pager-prompt* message))
+		     (display-prompt)
+		     (setf message nil))
+		   (display-prompt))
+	       (refresh)
+	       (setf input-char (fui:get-char))
+	       (perform-key input-char)
+	       (when (not (equal command 'digit-argument))
+		 (setf prefix-arg nil))
+	       :while (not (or quit-flag suspend-flag)))
+	    (when suspend-flag
+	      (setf suspended t)
+	      (if (find-package :lish)
+		  (let ((suspy (make-suspended-pager
+				:pager *pager*
+				:file-list file-list
+				:stream stream
+				:close-me close-me)))
+		    (funcall (find-symbol "SUSPEND-JOB" :lish)
+			     "pager" "" (lambda () (pager:resume suspy)))
+		    (format t "Suspended.~%"))
+		  (format t "No shell loaded to suspend to.~%"))))))
       (when (and close-me (not suspended) stream)
 	(close stream))))
   suspended)
@@ -1518,7 +1467,8 @@ q - Abort")
 	      (get-output-stream-string *standard-output*))))))
 
 (defmacro with-pager* (&body body)
-  "Evaluate the body with the *standard-output*, *error-output* and *trace-output* going to the pager."
+  "Evaluate the body with the *standard-output*, *error-output* and
+*trace-output* going to the pager."
   (let ((str-name (gensym "wp")))
     `(let* ((,str-name (make-string-output-stream))
 	    (*standard-output* ,str-name)
@@ -1553,7 +1503,7 @@ q - Abort")
 	   (when (and stream (not suspended))
 	     (close stream))))))))
 
-(defun help (pager)
+(defun help ()
   "Show help on pager key commands."
   (with-input-from-string
       (input
@@ -1562,7 +1512,7 @@ q - Abort")
 "You are using Dan's pager. You seem to have hit '~a' again, which gives a
 summary of commands. If you want a description of what a function does,
 press Control-H then 'k', then the key. Press 'q' to exit this help.
-" (pager-input-char pager))
+" (pager-input-char *pager*))
 	 (keymap:dump-keymap *normal-keymap* :stream output)
 	 (princ "Press 'q' to exit this help.
 " output)))
@@ -1570,13 +1520,13 @@ press Control-H then 'k', then the key. Press 'q' to exit this help.
 
 (defun browse (&optional (dir "."))
   "Look at files."
-  (let ((pager (make-instance 'pager))
+  (let ((*pager* (make-instance 'pager))
 	filename
 	(directory dir))
     (loop :while (setf (values filename directory)
 		       (pick-file :directory directory))
        :do (with-open-file (stream (quote-filename filename))
-	     (page stream pager)))))
+	     (page stream)))))
 
 ;; @@@ Run in a thread:
 ;;
