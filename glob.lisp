@@ -2,8 +2,6 @@
 ;; glob.lisp - Shell style file name pattern matching
 ;;
 
-;; $Revision: 1.4 $
-
 (defpackage :glob
   (:documentation "Shell style file name pattern matching.
 Main functions are:
