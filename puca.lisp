@@ -58,6 +58,9 @@
   (errors nil)				; Error output
   (extra nil))				; extra lines
 
+(defvar *puca* nil
+  "The current puca instance.")
+
 (defstruct backend
   "A specific version control system. Mostly how to do things with it."
   name
@@ -72,6 +75,9 @@
   update
   update-all
   push)
+
+(defvar *backend* nil
+  "The current backend.")
 
 #|
 (defclass backend ()
@@ -213,12 +219,6 @@
   (parse-line :git line i)) ; just use git
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defvar *backend* nil
-  "The current backend.")
-
-(defvar *puca* nil
-  "The current puca instance.")
 
 (defparameter *backends* `((:git ,*backend-git*)
 			   (:cvs ,*backend-cvs*)
