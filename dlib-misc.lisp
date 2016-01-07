@@ -55,6 +55,9 @@
    #:describe-system
    #:describe-class
    #:d-autoload
+   #:add-hook
+   #:remove-hook
+   #:run-hooks
   )
 )
 (in-package :dlib-misc)
@@ -1249,5 +1252,19 @@ defaults to character) with the contents of FILE-OR-STREAM."
       (when close-me
 	(close stream)))
     result))
+
+;; Hooks - a simple, old-fashioned convention.
+
+(defmacro add-hook (var func)
+  "Add a hook function FUNC to the hook variable VAR."
+  `(pushnew ,func ,var))
+
+(defmacro remove-hook (var func)
+  "Remove hook function FUNC from the hook variable VAR."
+  `(setf ,var (delete ,func ,var)))
+
+(defun run-hooks (var &rest args)
+  (loop :for f :in var
+     :do (apply f args)))
 
 ;; End
