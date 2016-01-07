@@ -309,7 +309,7 @@ waits for a key press and then returns."
 
 (defkeymap *pick-list-keymap*
   `((#\escape		. *pick-list-escape-keymap*)
-    (,(ctrl #\A)	. pick-list-quit)
+    (,(ctrl #\G)	. pick-list-quit)
     (#\return		. pick-list-pick)
     (#\newline		. pick-list-pick)
     (#\space		. pick-list-toggle-item)
@@ -344,8 +344,8 @@ waits for a key press and then returns."
   by-index
   typing-searches
   message
-  files					; @@@ this should be renamed
-  file-line
+  items					; @@@ this should be renamed
+  item-line
   result
   second-result				; @@@ this should be renamed
   mark
@@ -368,31 +368,31 @@ waits for a key press and then returns."
 
 (defun pick-list-pick ()
   "Pick the current item."
-  (with-slots (multiple by-index result files file-line quit-flag input
+  (with-slots (multiple by-index result items item-line quit-flag input
 	       second-result) *pick*
     (if multiple
 	(when (not by-index)
-	  (setf result (mapcar (_ (elt files _)) result)))
+	  (setf result (mapcar (_ (cdr (elt items _))) result)))
 	(if by-index
-	    (setf result file-line)
-	    (setf result (elt files file-line))))
+	    (setf result item-line)
+	    (setf result (cdr (elt items item-line)))))
     (setf quit-flag t
 	  second-result (eq input #\newline)))) ; @@@ bogus check for newline
 
 (defun pick-list-toggle-item ()
   "Toggle the item for multiple choice."
-  (with-slots (multiple file-line result) *pick*
+  (with-slots (multiple item-line result) *pick*
     (when multiple
-      (if (position file-line result)
-	  (setf result (delete file-line result))
-	  (push file-line result)))))
+      (if (position item-line result)
+	  (setf result (delete item-line result))
+	  (push item-line result)))))
 
 (defun pick-list-toggle-region ()
   "Toggle the items in the region."
-  (with-slots (multiple mark file-line result) *pick*
+  (with-slots (multiple mark item-line result) *pick*
     (when (and multiple mark)
-      (loop :for i :from (min mark file-line)
-	 :to (max mark file-line)
+      (loop :for i :from (min mark item-line)
+	 :to (max mark item-line)
 	 :do
 	 (if (position i result)
 	     (setf result (delete i result))
@@ -400,51 +400,51 @@ waits for a key press and then returns."
 
 (defun pick-list-next-line ()
   "Go to the next line. Scroll and wrap around if need be."
-  (with-slots (cur-line max-y top file-line max-line) *pick*
+  (with-slots (cur-line max-y top item-line max-line) *pick*
     (when (>= (+ cur-line 1) max-y)
       (incf top))
-    (if (< file-line (1- max-line))
-	(incf file-line)
-	(setf file-line 0 top 0))))
+    (if (< item-line (1- max-line))
+	(incf item-line)
+	(setf item-line 0 top 0))))
 
 (defun pick-list-previous-line ()
   "Go to the previous line. Scroll and wrap around if need be."
-  (with-slots (file-line top max-line files max-y ttop) *pick*
-    (when (<= file-line top)
+  (with-slots (item-line top max-line items max-y ttop) *pick*
+    (when (<= item-line top)
       (decf top))
-    (if (> file-line 0)
-	(decf file-line)
+    (if (> item-line 0)
+	(decf item-line)
 	(progn
-	  (setf file-line (1- max-line))
-	  (setf top (max 0 (- (length files)
+	  (setf item-line (1- max-line))
+	  (setf top (max 0 (- (length items)
 			      (- max-y ttop))))))))
 
 (defun pick-list-end-of-list ()
   "Go to the end of the list."
-  (with-slots (file-line max-line top files max-y ttop) *pick*
+  (with-slots (item-line max-line top items max-y ttop) *pick*
     ;; (pause (format nil "~d ~d ~d ~d ~d"
-    ;; 		    file-line max-line top max-y ttop))
-    (setf file-line (1- max-line))
-    (setf top (max 0 (- (length files) (- max-y ttop))))))
+    ;; 		    item-line max-line top max-y ttop))
+    (setf item-line (1- max-line))
+    (setf top (max 0 (- (length items) (- max-y ttop))))))
 
 (defun pick-list-beginning-of-list ()
   "Go to the beginning of the list."
-  (with-slots (file-line top) *pick*
-    (setf file-line 0 top 0)))
+  (with-slots (item-line top) *pick*
+    (setf item-line 0 top 0)))
 
 (defun pick-list-next-page ()
   "Scroll to the next page."
-  (with-slots (file-line max-line page-size cur-line top) *pick*
-    (setf file-line (min (1- max-line) (+ file-line page-size))
-	  cur-line  (+ top file-line)
-	  top       file-line)))
+  (with-slots (item-line max-line page-size cur-line top) *pick*
+    (setf item-line (min (1- max-line) (+ item-line page-size))
+	  cur-line  (+ top item-line)
+	  top       item-line)))
 
 (defun pick-list-previous-page ()
   "Scroll to the previous page."
-  (with-slots (file-line page-size cur-line top) *pick*
-    (setf file-line (max 0 (- file-line page-size))
-	  cur-line  (+ top file-line)
-	  top       file-line)))
+  (with-slots (item-line page-size cur-line top) *pick*
+    (setf item-line (max 0 (- item-line page-size))
+	  cur-line  (+ top item-line)
+	  top       item-line)))
 
 (defun pick-error (message &rest args)
   "Set the list picker error message."
@@ -472,7 +472,7 @@ waits for a key press and then returns."
 
 (defun pick-list-display ()
   "Display the list picker."
-  (with-slots (message multiple files file-line result cur-line
+  (with-slots (message multiple items item-line result cur-line
 	       max-y top ttop error-message) *pick*
     (erase)
     (move 0 0)
@@ -481,38 +481,38 @@ waits for a key press and then returns."
     ;; display the list
     (loop :with i = top :and y = ttop :and f = nil
        :do
-       (setf f (elt files i))
+       (setf f (car (elt items i)))
        (if (and multiple (position i result))
 	   (addstr "X ")
 	   (addstr "  "))
-       (when (= i file-line)
+       (when (= i item-line)
 	 (standout)
 	 (setf cur-line (getcury *stdscr*)))
        (addstr f)
-       (when (= i file-line)
+       (when (= i item-line)
 	 (standend))
        (addch (char-code #\newline))
        (incf i)
        (incf y)
-       :while (and (< y max-y) (< i (length files))))
+       :while (and (< y max-y) (< i (length items))))
     (when error-message (mvaddstr (- *lines* 1) 0 error-message))
     (move cur-line 0)))
 
 (defun pick-typing-search ()
   "Try to search for typed input and return T if we did."
-  (with-slots (typing-searches input search-str file-line max-line
-	       files top page-size) *pick*
+  (with-slots (typing-searches input search-str item-line max-line
+	       items top page-size) *pick*
     (if (and typing-searches
 	     (and (characterp input)
 		  (graphic-char-p input) (not (position input "<> "))))
 	;; Search for the seach string
 	(progn
 	  (stretchy-append search-str input)
-	  (loop :for i :from file-line :below max-line
-	     :if (search search-str (elt files i) :test #'equalp)
-	     :return (setf file-line i))
-	  (when (> file-line (+ top page-size))
-	    (setf top file-line))
+	  (loop :for i :from item-line :below max-line
+	     :if (search search-str (car (elt items i)) :test #'equalp)
+	     :return (setf item-line i))
+	  (when (> item-line (+ top page-size))
+	    (setf top item-line))
 	  t)
 	;; Clear the string
 	(progn
@@ -558,23 +558,24 @@ waits for a key press and then returns."
   MULTIPLE        - True to allow multiple items to be selected."
   (with-curses
     (clear)
-    (let* ((string-list (mapcar #'princ-to-string the-list))
+    (let* ((string-list (mapcar (_ (cons (princ-to-string _) _)) the-list))
 	   (max-y (1- curses:*lines*))
 	   (*pick* (make-pick
 		    :message	     message
 		    :by-index	     by-index
 		    :multiple	     multiple
 		    :typing-searches typing-searches 
-		    :file-line	     (or selected-item 0)
-		    :files	     (if (not (null sort-p))
+		    :item-line	     (or selected-item 0)
+		    :items	     (if (not (null sort-p))
 				         ;; Where's the unreachable code??
-				         (sort string-list #'string-lessp)
+				         (sort string-list #'string-lessp
+					       :key #'car)
 				         string-list)
 		    :max-line        (length string-list)
 		    :max-y           max-y
 		    :page-size       (- max-y 2)
 		    :result	     default-value)))
-      (with-slots (quit-flag multiple by-index files file-line result
+      (with-slots (quit-flag multiple by-index items item-line result
 		   second-result mark cur-line max-y top ttop max-line
 		   page-size input error-message search-str) *pick*
 	(loop :while (not quit-flag)
@@ -584,7 +585,7 @@ waits for a key press and then returns."
 		 input (get-char))
 	   (when (not (pick-typing-search))
 	     (if (or (eql input (ctrl #\@)) (eql input 0))
-		 (setf mark file-line
+		 (setf mark item-line
 		       error-message "Set mark")
 		 (pick-perform-key input))))
 	(values result second-result)))))
@@ -753,6 +754,7 @@ waits for a key press and then returns."
 ;; Pure common lisp pick-file, which will work on implementations with decent
 ;; filename and directory functions. Too bad it doesn't work very well on
 ;; different implementations.
+#|
 (defun old-pick-file (&key message directory (name :wild) (type :wild)
 		  (allow-browse t) (pick-directories))
   "Have the user choose a file."
@@ -805,6 +807,30 @@ waits for a key press and then returns."
 	  (setf filename (pick-list file-list :sort-p t :message message)))
       (when filename
 	(merge-pathnames (pathname filename) dir)))))
+|#
+
+;; @@@ This PF-DIR-ENTRY stuff should probably be added as a feature to
+;; read-directory. Maybe a :printable option?
+
+(defun pf-print-dir-entry (obj stream depth)
+  "Print OBJ which should be a PF-DIR-ENTRY to stream."
+  (declare (ignore depth))
+  (princ (dir-entry-name obj) stream)
+  (let ((type (dir-entry-type obj)))
+    (cond
+      ((eq type :pipe)	 (write-char #\| stream))
+      ((eq type :dir)	 (write-char #\/ stream))
+      ((eq type :link)	 (write-char #\@ stream))
+      ((eq type :socket) (write-char #\= stream)))))
+
+(defstruct (pf-dir-entry (:include nos:dir-entry)
+			 (:print-function pf-print-dir-entry))
+  "A dir entry that prints nicely.")
+
+(defun pick-file-list-generator (dir)
+  (loop :for f :in (nos:read-directory :dir dir :full t)
+     :collect (make-pf-dir-entry
+	       :name (dir-entry-name f) :type (dir-entry-type f))))
 
 (defun pick-file (&key message (directory ".") (allow-browse t) show-hidden
 		    (pick-directories))
@@ -814,9 +840,9 @@ waits for a key press and then returns."
 	 files file-list filename msg did-dir)
     (flet ((generate-list ()
 	     (setf files
-		   (loop :for file :in (nos:read-directory
-					:dir dir :append-type t)
-		      :if (or (char/= #\. (char file 0)) show-hidden)
+		   (loop :for file :in (pick-file-list-generator dir)
+		      :if (or (char/= #\. (char (dir-entry-name file) 0))
+			      show-hidden)
 		      :collect file)
 		   file-list (if allow-browse
 				 (append '(" [Up..]") files)
@@ -837,9 +863,13 @@ waits for a key press and then returns."
 		(generate-list))
 	       ;; picked a directory
 	       ((and filename
-		     (char= #\/ (char filename (1- (length filename))))
+		     (pf-dir-entry-p filename)
+		     (or (eq (dir-entry-type filename) :dir)
+			 (eq (dir-entry-type filename) :link))
+		     (probe-directory
+		      (path-append dir (dir-entry-name filename)))
 		     (and (not pick-directories) (not did-dir)))
-		(setf dir (concatenate 'string dir "/" filename))
+		(setf dir (path-append dir (dir-entry-name filename)))
 		(generate-list))
 	       ;; other files
 	       (t
@@ -847,7 +877,7 @@ waits for a key press and then returns."
 	  ;; Just pick from the current directory
 	  (setf filename (pick-list file-list :sort-p t :message message)))
       (when filename
-	(values (abspath (concatenate 'string dir "/" filename))
+	(values (abspath (path-append dir (dir-entry-name filename)))
 		dir)))))
  
 ;; Has problems because the eval'd code can't reference local variables.
