@@ -1240,6 +1240,7 @@ list containing strings and lists."
   `(
     (#\c		. describe-key-briefly)
     (#\k		. describe-key)
+    (#\b		. describe-bindings)
     (#\?		. more-help)
     (#\q		. quit)
     ))
@@ -1354,6 +1355,7 @@ list containing strings and lists."
   (move 0 0)
   (addstr "c - Print the name of function that a key performs.
 k - Describe the function that a key performs.
+b - List all keys and the functions they perform.
 q - Abort")
   (refresh)
   (help-key))				; @@@ this could infinitely recurse
@@ -1492,27 +1494,94 @@ q - Abort")
       ((streamp file-or-files)
        (page file-or-files))
       ((consp file-or-files)
-       (page nil nil file-or-files))
+       (if (= (length file-or-files) 1)
+	   (pager (first file-or-files)) ; so we get the browser interactively
+	   (page nil nil file-or-files)))
+      ((or (stringp file-or-files) (pathnamep file-or-files))
+       (if (probe-directory file-or-files)
+	   (pager (pick-file :directory file-or-files))
+	   (let (stream suspended)
+	     (unwind-protect
+		  (progn
+		    (setf stream (open (quote-filename file-or-files)
+				       :direction :input)
+			  suspended (page stream)))
+	       (when (and stream (not suspended))
+		 (close stream))))))
       (t
-       (let (stream suspended)
-	 (unwind-protect
-	    (progn
-	      (setf stream (open (quote-filename file-or-files)
-				 :direction :input)
-		    suspended (page stream)))
-	   (when (and stream (not suspended))
-	     (close stream))))))))
+       (error "The pager doesn't know how to deal with a ~w"
+	      (type-of file-or-files))))))
 
 (defun help ()
+  (with-input-from-string
+      (input
+       (with-output-to-string (output)
+	 (format output
+"Hi! You are using Dan's pager. You seem to have hit '~a' again, which gives a
+summary of commands. Press 'q' to exit this help. The keys are superficially
+compatible with 'less', 'vi' and 'emacs'.
+" (pager-input-char *pager*))
+	 (write-string "
+[1mGeneral[0m
+  ?              		Show this help.
+  q Q ^C         		Exit the pager.
+  ^Z	         		Suspend the pager.
+
+[1mMovement[0m
+  space   :NPAGE ^F ^V		Show the next page.
+  :DELETE :PPAGE ^B M-v	b	Show the previous page.
+  j :DOWN ^M			Show the next line.
+  k :UP				Show the previous line.
+  l :RIGHT			Scroll right.
+  h :LEFT			Scroll left.
+  ^A :HOME			Scroll to the beginning of the line.
+  ^E :END			Scroll to the end of the line.
+  < g M-<			Go to the beginning of the stream.
+  > G M->			Go to the end of the stream.
+
+[1mSearching[0m
+  / ^S				Search.
+  n				Search for next occurrence.
+  M-u				Clear the search.
+
+[1mFiltering[0m
+  ^				Keep matching lines.
+  &				Remove matching lines.
+  *				Add to the list of removed lines.
+
+[1mMiscellaneous[0m
+  ^L 				Re-draw the screen.
+  R				Re-read the stream.
+  M-n				View the next file.
+  M-p				View the previous file.
+
+[1mMore information[0m
+  ^H :BACKSPACE			Extended help.
+  = ^G				Show information about the stream.
+  V				Show the pager version.
+  M-=				Show what function a key performs.
+  : M-:ESCAPE			Prompt for a long command. '?' for help.
+
+[1mOptions[0m
+  -				Toggle an option. Options are:
+    i I				  Ignore case when searching.
+    w S				  Wrap long lines.
+    l L				  Show line numbers.
+
+Press 'q' to exit this help.
+" output)))
+    (page input)))
+
+(defun describe-bindings ()
   "Show help on pager key commands."
   (with-input-from-string
       (input
        (with-output-to-string (output)
-	 (format output 
-"You are using Dan's pager. You seem to have hit '~a' again, which gives a
-summary of commands. If you want a description of what a function does,
-press Control-H then 'k', then the key. Press 'q' to exit this help.
-" (pager-input-char *pager*))
+	 (write-string
+"You are using Dan's pager. Here's a list of what the keys do.
+If you want a description of what a function does, press Control-H then 'k',
+then the key. Press 'q' to exit this help.
+" output)
 	 (keymap:dump-keymap *normal-keymap* :stream output)
 	 (princ "Press 'q' to exit this help.
 " output)))
