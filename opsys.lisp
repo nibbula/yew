@@ -2,14 +2,14 @@
 ;;; opsys.lisp - Interface to operating systems
 ;;;
 
-;; This is a thin layer over basic operating system functions which
+;; This is a hopefully thin layer over operating system functions which
 ;; are not included in Common Lisp. The goal would be to have the same
 ;; interface supported on all operating systems and implementations.
 ;; One goal is that code outside of this module, shouldn't have to do #+os.
 ;; The prospective list would be:
-;;   MacOSX, Linux, Windows, *BSD, Solaris, Android, iOS
+;;   MacOSX, Linux, Windows, *BSD, Solaris/Illumos, Android, iOS
 ;; Implementations:
-;;   CLisp, SBCL, ClozureCL, ecl, CMU Lisp, abcl, whatever
+;;   SBCL, ClozureCL, CLisp, ecl, CMU Lisp, abcl, whatever
 ;;
 ;; The tactics we will try to take will be, in order:
 ;;
@@ -36,7 +36,7 @@
 ;; (If you don't agree, just look at the what code in this module has to do,
 ;; and imagine how it might be different if the OS was written in Lisp). So
 ;; really it will probably evolve into a set of quirky lispy wrappers around a
-;; low level unix FFI. So really I recommend you don't use it. And I recommend
+;; low level unix FFI. So, really I recommend you don't use it. And I recommend
 ;; to myself not to even write it. ;-P (and delete this whole paragraph, which
 ;; just keeps growing as my disgrutlement with this module increases.)
 ;;
@@ -50,7 +50,7 @@
 ;; because you don't have to code individual wrapper functions. But
 ;; unfortunately there's numerous cases where I don't want to do that. For
 ;; example, where a C function wants a C allocated buffer passed in, which it
-;; fills in and returns a an int for status, which is highly simplified by
+;; fills in and returns an int for status, which is highly simplified by
 ;; returning the data, and signaling an error if something goes wrong (see the
 ;; history of pc-lusering). In those cases we still have to define
 ;; wrappers. Perhaps I should make a macro to define wrapper
@@ -219,6 +219,7 @@
    #:path-file-name #:basename
    #:path-append
    #:hidden-file-name-p
+   #:superfluous-file-name-p
    #:quote-filename
    #:safe-namestring
 
@@ -2514,6 +2515,15 @@ isn't one already."
   "Return true if the file NAME is normally hidden."
   (and name (> (length name) 0) (equal (char name 0) #\.)))
 
+(defun superfluous-file-name-p (name)
+  "Return true if the file NAME is considered redundant. On POSIX file
+systems, this means \".\" and \"..\"."
+  (and name (> (length name) 0)
+       (or (and (= (length name) 1)
+		(equal (char name 0) #\.))
+	   (and (= (length name) 2)
+		(equal (char name 0) #\.)
+		(equal (char name 1) #\.)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Files
@@ -2841,27 +2851,37 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
   char
   name)
 
-(defparameter *file-type-data* NIL
+(defparameter *file-type-data*
   #|
-  #(#S(OPSYS::FILE-TYPE-INFO :test is-fifo		:symbol :FIFO
+  #(#S(OPSYS::FILE-TYPE-INFO :test is-fifo :symbol :FIFO
        :char #\F :name "FIFO")
-    #S(OPSYS::FILE-TYPE-INFO :test is-character-device	:symbol :character-special
+    #S(OPSYS::FILE-TYPE-INFO :test is-character-device
+       :symbol :character-special
        :char #\c :name "character special")
-    #S(OPSYS::FILE-TYPE-INFO :test is-directory	:symbol :directory
+    #S(OPSYS::FILE-TYPE-INFO :test is-directory
+       :symbol :directory
        :char #\d :name "directory")
-    #S(OPSYS::FILE-TYPE-INFO :test is-block-device	:symbol :block-special
+    #S(OPSYS::FILE-TYPE-INFO :test is-block-device
+       :symbol :block-special
        :char #\b :name "block special")
-    #S(OPSYS::FILE-TYPE-INFO :test is-regular-file	:symbol :regular
+    #S(OPSYS::FILE-TYPE-INFO :test is-regular-file
+       :symbol :regular
        :char #\r :name "regular")
-    #S(OPSYS::FILE-TYPE-INFO :test is-symbolic-link	:symbol :symbolic-link
+    #S(OPSYS::FILE-TYPE-INFO :test is-symbolic-link
+       :symbol :symbolic-link
        :char #\s :name "symbolic link")
-    #S(OPSYS::FILE-TYPE-INFO :test is-socket		:symbol :socket
+    #S(OPSYS::FILE-TYPE-INFO :test is-socket
+       :symbol :socket
        :char #\s :name "socket")
-    #S(OPSYS::FILE-TYPE-INFO :test is-door		:symbol :door
+    #S(OPSYS::FILE-TYPE-INFO :test is-door
+       :symbol :door
        :char #\d :name "door")
-    #S(OPSYS::FILE-TYPE-INFO :test is-whiteout		:symbol :whiteout
+    #S(OPSYS::FILE-TYPE-INFO :test is-whiteout
+       :symbol :whiteout
        :char #\w :name "whiteout"))
-  |#)
+  |#
+  nil
+  )
 
 (defparameter *mode-tags*
   '((is-fifo		   	"FIFO")
@@ -2899,12 +2919,14 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
     (is-other-executable	#\x))
   "Sequence of test functions and strings for printing permission bits.")
 
+;; @@@ This is too slow
 (defun file-type-char (mode)
   "Return the character representing the file type of MODE."
   (loop :for f :in *file-type-data* :do
      (when (funcall (file-type-info-test f) mode)
        (return-from file-type-char (file-type-info-char f)))))
 
+;; @@@ This is too slow
 (defun file-type-name (mode)
   "Return the character representing the file type of MODE."
   (loop :for f :in *mode-tags* :do
@@ -3188,10 +3210,10 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
 (defstruct file-status
   device
   inode
-  mode
+  (mode 0 :type integer)
   links
-  uid
-  gid
+  (uid -1 :type integer)
+  (gid -1 :type integer)
   device-type
   access-time
   modify-time
