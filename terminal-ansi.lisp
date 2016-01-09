@@ -97,6 +97,9 @@ require terminal driver support."))
 	    row (parse-integer (subseq result 2 sep) :junk-allowed t)
 	    col (parse-integer (subseq result (1+ sep) (length result))
 			       :junk-allowed t)))
+    (when (or (not row) (not col))
+      ;; Probabbly because there was other I/O going on.
+      (error "terminal reporting failed"))
     (values (1- row) (1- col))))
 
 ;; Just for debugging
