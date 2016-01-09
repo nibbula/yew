@@ -4,7 +4,7 @@
 
 ;; TODO:
 ;;  - It would be best if the generic browser didn't rely on any output
-;;    such as curses, but I would need that thing, so I'll have to convert
+;;    such as curses, but I would need ‘that thing’, so I'll have to convert
 ;;    it later.
 
 (defpackage :tree-browser
@@ -347,19 +347,24 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
    (scroll-hint
     :initarg :scroll-hint :accessor scroll-hint
     :initform nil :type (or null symbol)
-    :documentation "Hint about what direction to scroll."))
+    :documentation "Hint about what direction to scroll.")
+   (keymap
+    :initarg :keymap :accessor keymap
+    :documentation "The current keymap."))
   (:documentation "A tree browser."))
 
 (defmethod initialize-instance
     :after ((o tree-browser) &rest initargs &key &allow-other-keys)
   "Initialize a tree-browser."
   (declare (ignore initargs))
-  (with-slots (parents current root top) o
+  (with-slots (parents current root top keymap) o
     (when (not parents)
       (setf parents (make-hash-table :test #'equal)))
     (when (slot-boundp o 'root)
       (setf current root
-	    top root))))
+	    top root))
+    (when (not (slot-boundp o 'keymap))
+      (setf keymap *tree-keymap*))))
 
 (defvar *browser* nil
   "The current tree browser.")
@@ -659,11 +664,11 @@ been encountered."
   (refresh)
   (fui:get-char))
 
-(defun perform-key (key &optional (keymap *tree-keymap*))
+(defun perform-key (key &optional (keymap (keymap *browser*)))
   ;; Convert positive integer keys to characters
   (when (and (integerp key) (>= key 0))
     (setf key (code-char key)))
-  (let ((binding (key-binding key keymap)))
+  (let ((binding (key-definition key keymap)))
     (cond
       ((not binding)
        (message "No binding for ~a" key))
@@ -784,14 +789,15 @@ and indented properly for multi-line objects."
     (let ((str (format nil "~w" (node-object node))))
       (subseq str 0 (min 15 (length str))))))
 
-(defun browse-tree (tree)
+(defun browse-tree (tree &key browser)
   "Look at a tree, with expandable and collapsible branches."
   (fui:with-curses
     (when (listp tree)
       (setf tree (convert-tree tree)))
-    (let ((*browser* (make-instance 'tree-browser
-				    :root tree
-				    :bottom (- *lines* 2))))
+    (let ((*browser* (or browser
+			 (make-instance 'tree-browser
+					:root tree
+					:bottom (- *lines* 2)))))
       (with-slots (root quit-flag picked-object current left top bottom
 		   bottom-node current-position current-max-right
 		   message-string scroll-hint)
