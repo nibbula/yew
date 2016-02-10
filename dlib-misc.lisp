@@ -16,11 +16,6 @@
   (:documentation
    "More of Dan's generally useful miscellaneous functions.")
   (:export
-   ;; load-package , dequire
-   #:load-package
-   #:load-use-package
-   #:*dequire-path*
-   #:dequire
    #:randomize-array
    #:justify-text
    #:untabify
@@ -30,7 +25,8 @@
    #:date-string
    #:format-date
    #:simple-parse-time
-   #:minutes #:hours #:days #:weeks
+   #:weeks-to-time #:days-to-time #:hours-to-time #:minutes-to-time
+   #:time-to-weeks #:time-to-days #:time-to-hours #:time-to-minutes
    #:do-at
    #:print-properties
    #:print-values
@@ -72,106 +68,6 @@
   "Load without complaining about constant redefinitions."
   (let ((custom:*suppress-check-redefinition* t))
     (apply 'load module other-args)))
-
-;;;
-;;; dequire
-;;;
-;;; Perhaps better than require, and easier than ASDF, but not as good.
-;;; @@@ Should REALLY use logical pathnames
-;;;
-;;; I made this before I knew how to use ASDF. I don't recommend anyone use it.
-;;; Even myself.
-
-(defvar *dequire-path* `(,(concatenate 'string
-				       (namestring (user-homedir-pathname))
-				       "src/lisp")
-			 ".")
-  "List of directories to look in for packages.")
-(defvar *dequire-table* (make-hash-table)
-  "Hash table of filenames and modifcation times for an autoload
-   package symbol.")
-(defvar *dequire-currently-loading* nil
-  "")
-
-
-(defstruct dequire-entry
-  pathname	; full path name of the file loaded (string)
-  date		; time loaded (fixnum)
-  deps		; entries we are dependent on (list of keywords)
-)
-
-(defun dequire-add-dep (e dep)
-  "Add a dep as a dependency of dequire-entry e."
-  (pushnew dep (dequire-entry-deps e)))
-
-(defun dequire-needs-reload (e)
-  "Return true if the entry needs to be reloaded because dependency files
-   have a newer write date."
-  (let ((entry-date (dequire-entry-date e)))
-    (if (< entry-date (file-write-date (dequire-entry-pathname e)))
-	t ; source file is newer
-	(loop for d in (dequire-entry-deps e)
-	      do (let ((dep (gethash d *dequire-table*)))
-		   (when (and dep (< (dequire-entry-date dep)
-				     (file-write-date
-				      (dequire-entry-pathname dep)))
-		     (return t))))
-	      finally (return nil)))))
-
-(defun dequire-do-load (n base &key (verbose t))
-  "Load the file with keyword name N and base file name string BASE."
-  (let* ((f (concatenate 'string base ".lisp")) ; @@@ what about .lsp ?
-	 (e (or (gethash n *dequire-table*)
-		(make-dequire-entry
-		 :pathname	(truename f)
-		 :date		(file-write-date f))))
-	 (saved-current *dequire-currently-loading*))
-;;    (format t "loading ~a~%" base)
-    ;; If we load something while we are already loading,
-    ;; add the new file to the dependency list of the already loading file.
-    (when *dequire-currently-loading*
-      (dequire-add-dep
-       (gethash *dequire-currently-loading* *dequire-table*) n))
-    (setf (dequire-entry-date e) (file-write-date f))
-    (setf (gethash n *dequire-table*) e)
-    (setf *dequire-currently-loading* n)
-    (load base :verbose verbose)	; load source or compiled
-    (setf *dequire-currently-loading* saved-current)))
-
-(defun dequire-find-file (name)
-  (let ((dir
-	 (find-if #'(lambda (f)
-		    (probe-file
-		     (concatenate 'string f "/" name ".lisp")))
-		  *dequire-path*)))
-    (if dir 
-	(concatenate 'string dir "/" name)
-	name)))
-
-(defun dequire (n &key force (verbose t))
-  "Load a file living somewhere in the *dequire-path*.
-   If the file has not changed since it was last loaded, don't bother."
-  (let ((basename (string-downcase n))
-	(h (gethash n *dequire-table*)))
-    (if h
-	;; already loaded
-	(if (or force (dequire-needs-reload h))
-	    (dequire-do-load n (dequire-find-file basename) :verbose verbose)
-	    (when verbose
-	      (format t "~&;; Load package: ~:@(~A~) unchanged~%"
-		      basename)))
-	;; not already loaded
-	(dequire-do-load n (dequire-find-file basename) :verbose verbose)))
-  (values))
-
-(defmacro load-package (n &rest r &key &allow-other-keys)
-  `(dequire ,n ,@r))
-
-(defmacro load-use-package (p)
-  "Load and then use a package."
-  `(progn (load-package ,p) (use-package ,p)))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Maybe this should be put somewhere else, since it's seldom used.
 (defun randomize-array (s &key (factor 3))
@@ -433,10 +329,15 @@ The date part is considered to be the current date."
       (done))))
 
 ;; I know I'm gonna have to end up writing that time lib.
-(defun weeks   (weeks)   (* weeks   (* 60 60 24 7)))
-(defun days    (days)    (* days    (* 60 60 24)))
-(defun hours   (hours)   (* hours   (* 60 60)))
-(defun minutes (minutes) (* minutes 60))
+(defun weeks-to-time   (weeks)   (* weeks   (* 60 60 24 7)))
+(defun days-to-time    (days)    (* days    (* 60 60 24)))
+(defun hours-to-time   (hours)   (* hours   (* 60 60)))
+(defun minutes-to-time (minutes) (* minutes 60))
+
+(defun time-to-weeks   (weeks)   (/ weeks   (* 60 60 24 7)))
+(defun time-to-days    (days)    (/ days    (* 60 60 24)))
+(defun time-to-hours   (hours)   (/ hours   (* 60 60)))
+(defun time-to-minutes (minutes) (/ minutes 60))
 
 (defmacro do-at (time form)
   "Call func with args at time. Time is a universal time or a string."
@@ -755,6 +656,28 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
   "This should be done whenever packages are added or removed or the search
 configuration is changed."
   (setf *loadable-packages* nil))
+
+(defun package-copy-name (package)
+  (loop :with i = 0
+     :while (find-package
+	     (format nil "COPY-OF-~a~a" (package-name package)
+		     (if (> i 0) i "")))
+     :do (incf i)
+     ;;:if (> i 1000000) (error "Something probably went wrong.")
+     ))
+
+;;; @@@ Not sure if this works
+(defun copy-package (package)
+  "Return a copy of PACKAGE. The new package has a copy of everything in the old
+package, and is named \"COPY-OF-<Package><n>\""
+  (let ((new-package (make-package (package-copy-name package) :use '())))
+    (loop :for s :being :each :present-symbol :of package
+       :do (import s new-package))
+    (loop :for s :in (package-shadowing-symbols package)
+       :do (shadow (symbol-name s) new-package))
+    (loop :for pkg in (package-use-list package)
+       :do (use-package pkg new-package))
+    new-package))
 
 (defun show-features ()
   "Print the features list nicely."
@@ -1104,101 +1027,6 @@ text into lisp and have it be stored as lines of words."
      :while (string/= "" (setf s (read-line)))
      :collect (split-sequence #(#\space #\tab) s :omit-empty t :by-group t)))
 |#
-
-;; Soundex:
-;;
-;; 1. Retain the first letter of the name and drop all other occurrences
-;;    of a, e, i, o, u, y, h, w.
-;;
-;; 2. Replace consonants with digits as follows (after the first letter):
-;;      b, f, p, v → 1
-;;      c, g, j, k, q, s, x, z → 2
-;;      d, t → 3
-;;      l → 4
-;;      m, n → 5
-;;      r → 6
-;;
-;; 3. If two or more letters with the same number are adjacent in the original
-;;    name (before step 1), only retain the first letter; also two letters with
-;;    the same number separated by 'h' or 'w' are coded as a single number,
-;;    whereas such letters separated by a vowel are coded twice. This rule also
-;;    applies to the first letter.
-;;
-;; 4. Iterate the previous step until you have one letter and three
-;;    numbers. If you have too few letters in your word that you can't assign
-;;    three numbers, append with zeros until there are three numbers. If you
-;;    have more than 3 letters, just retain the first 3 numbers.
-
-(defparameter *soundex* #("bfpv"	; = 1
-			  "cgjkqsxz"	; = 2
-			  "dt"		; = 3
-			  "l"		; = 4
-			  "mn"		; = 5
-			  "r")		; = 6
-  "Soundex table to translate from consonants to numbers.")
-
-(defun soundex-to-number (in)
-  (let ((result (copy-seq (subseq in 1))))
-    (loop :for tt :across *soundex* :and i = 1 :then (1+ i) :do
-       (setf result
-	     (nsubstitute-if (char (format nil "~d" i) 0)
-			     #'(lambda (c) (position c tt))
-			     result)))
-    (s+ (subseq in 0 1) result)))
-
-(defun soundex-remove-doubles (in)
-  (let ((result
-	 (loop :with last = nil
-	    :for c :across in :and i = 0 :then (1+ i)
-	    :if (not (and last (char= c last)))
-	      :collect c
-	    :if (not (or (char-equal c #\h) (char-equal c #\w)))
-	      :do (setf last c))))
-    (setf result (make-array (length result)
-			     :element-type 'character
-			     :initial-contents result))))
-
-(defun soundex-remove-vowels (in)
-  (s+ (subseq in 0 1)
-      (remove-if
-       #'(lambda (c)
-	   (position c "aeiouyhw" :test #'char-equal))
-       (subseq in 1))))
-
-(defun soundex-pad-or-truncate (in)
-  (cond
-    ((< (length in) 4)
-     (with-output-to-string (str)
-       (princ in str)
-       (dotimes (n (- 4 (length in)))
-	 (princ #\0 str))))
-    ((> (length in) 4)
-     (subseq in 0 4))
-    (t
-     in)))
-
-(defun soundex (in)
-  (if (or (not in) (= 0 (length in)))
-      in
-      (string-upcase
-       (soundex-pad-or-truncate
-	(soundex-to-number
-	 (soundex-remove-vowels
-	  (soundex-remove-doubles in)))))))
-
-(defun soundex-verify (w)
-  (let* ((cmd (s+ "perl -e \"use Text::Soundex; print soundex('" w "');\""))
-	 (w1 (funcall (intern "COMMAND-OUTPUT-WORDS" :lish) cmd))
-	 (w2 (soundex w)))
-;    (format t "cmd = ~a~%" cmd)
-    (when (not (equal w1 w2))
-      (format t "soundex fail ~w perl:'~w' lisp:'~w'~%" w w1 w2))))
-
-(defun test-soundex (&optional (file "/usr/share/dict/words"))
-  (with-open-file (stm file)
-    (loop :with w
-       :while (setf w (read-line stm nil nil))
-       :do (soundex-verify w))))
 
 (defun dprobe-file (literal-filename)
   "Like probe-filename, but treat strings as literal."
