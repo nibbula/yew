@@ -6,7 +6,7 @@
   (:documentation "Backronym: [G]eneric [R]ectilinear [OU]tput And [T]ext
 This is so we can make old fashioned command line utilities that can use a
 few output features when they're available, but fall back to plain text
- when not. This is not for making fancy interactive applications. It's just
+when not. This is not for making “fancy” interactive applications. It's just
 for relatively simple output.")
   (:use :cl :dlib :dlib-misc :char-util :opsys :terminal :terminal-ansi)
   (:export
@@ -545,7 +545,7 @@ generic functions (i.e. %GROUT-*) directly."
   ()
   (:documentation "Can just tell emacs to do something."))
 
-(defmethod %grout-supports-attributes ((g ansi))
+(defmethod %grout-supports-attributes ((g slime))
   "Return T if the *GROUT* supports character attributes."
   ;; @@@ We want to make it so this can be T.
   nil)
