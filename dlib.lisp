@@ -29,6 +29,8 @@
 	#+ccl :ccl
 	#+(or ecl clasp) :clos
 	#+lispworks :hcl
+	;; extensions
+	#+sbcl :sb-ext
 	)
   (:documentation
    "Dan's generally useful miscellaneous functions.
@@ -52,6 +54,7 @@
    #:with-lines
    #:get-lines
    #:safe-read-from-string
+   #:clean-read-from-string
    #:*buffer-size*
    #:copy-stream
    #:quote-format
@@ -116,7 +119,8 @@
 (in-package :dlib)
 
 (declaim (optimize (debug 3)))
-;(declaim (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
+;; (declaim (optimize (speed 3) (safety 0) (debug 0) (space 0)
+;; 		   (compilation-speed 0)))
 
 ;; This should be "pure" Common Lisp, since it's compile time, e.g. we can't
 ;; use split-sequence or _ yet.
@@ -240,7 +244,11 @@ later versions.")
 ;;
 ;; The public version:
 ;;
-;; (defun split-sequence (delimiter seq &key (count nil) (remove-empty-subseqs nil) (from-end nil) (start 0) (end nil) (test nil test-supplied) (test-not nil test-not-supplied) (key nil key-supplied))
+;; (defun split-sequence (delimiter seq &key (count nil)
+;;                         (remove-empty-subseqs nil) (from-end nil) (start 0)
+;;                         (end nil) (test nil test-supplied)
+;;                         (test-not nil test-not-supplied)
+;;                         (key nil key-supplied))
 ;;   "Return a list of subsequences in seq delimited by delimiter.
 ;;
 ;; If :remove-empty-subseqs is NIL, empty subsequences will be included
@@ -254,8 +262,10 @@ later versions.")
 ;;
 ;; Lispworks version:
 ;;
-;; Arguments: (SEPARATOR-BAG SEQUENCE &KEY (START 0) END (TEST (QUOTE EQL)) KEY COALESCE-SEPARATORS)
-;; Return a list of subsequences of SEQUENCE, split by the elements in the sequence SEPARATOR-BAG.
+;; Arguments: (SEPARATOR-BAG SEQUENCE &KEY (START 0) END (TEST (QUOTE EQL))
+;;             KEY COALESCE-SEPARATORS)
+;; Return a list of subsequences of SEQUENCE, split by the elements in the
+;; sequence SEPARATOR-BAG.
 ;;
 ;; Everybody seems to agree that:
 ;;   - Separator first arg, sequence second arg
@@ -279,8 +289,11 @@ later versions.")
 			   omit-empty coalesce-separators remove-empty-subseqs
 			   (start 0) end test key
 			   #+nil count)
-  "Split the sequence SEQ into subsequences separated by SEP. Return a list of the subsequences. SEP can be a sequence itself, which means the whole sequence is the separator. If :omit-empty is true, then don't return empty subsequnces.
- :coalesce-separators :remove-empty-subseqs are compatability synonyms for :omit-empty."
+  "Split the sequence SEQ into subsequences separated by SEP. Return a list of
+the subsequences. SEP can be a sequence itself, which means the whole sequence
+is the separator. If :omit-empty is true, then don't return empty subsequnces.
+ :coalesce-separators :remove-empty-subseqs are compatability synonyms for
+:omit-empty."
   (declare (type sequence seq))
   (declare (type boolean omit-empty coalesce-separators remove-empty-subseqs))
   (declare (ignore end key))
@@ -720,7 +733,8 @@ on all accessible symbols."
 				   :toplevel initial-function)
   #+clisp (ext:saveinitmem image-name :executable t :quiet t :norc t
 			   :init-function initial-function)
-  #+ccl (save-application image-name :prepend-kernel t :toplevel-function initial-function)
+  #+ccl (save-application image-name :prepend-kernel t
+			  :toplevel-function initial-function)
   #-(or sbcl clisp ccl) (declare (ignore image-name initial-function))
   #-(or sbcl clisp ccl) (missing-implementation 'save-image-and-exit))
 
@@ -737,39 +751,6 @@ on all accessible symbols."
   #-(or ccl sbcl clisp cmu ecl lispworks abcl)
   (missing-implementation 'overwhelming-permission))
 
-#| THIS IS TOTALLY FUXORD
-;; Most lisps' with-slots can handle structs too. ;
-	 #+(or sbcl clisp ccl)
-	 (setf (macro-function 'with-struct-slots) (macro-function 'with-slots))
-;; For other lisps we roll our own. Mostly stolen from slime. ;
-	 #-(or sbcl clisp ccl)
-;; @@@ NOT REALLY WORKING YET		;
-	 (defmacro with-struct-slots ((&rest names) obj &body body)
-"Like with-slots but works only for structs and only if the struct type
-name matches the accessor names, as is the default with defstruct."
-(let ((struct-name (gensym "ws-"))
-(reader-func (gensym "ws-")))
-`(flet ((,reader-func (slot struct-name)
-(intern (concatenate 'string
-(symbol-name struct-name) "-"
-(symbol-name slot))
-(symbol-package struct-name))))
-(let ((,struct-name (type-of ,obj)))
-; 	  (format t "reader for ~a is ~a~%" ;
-; 	   (quote ,(first names)) (quote ,(reader (first names)))) ;
-(symbol-macrolet
-,(loop for name in names collect
-(typecase name
-(symbol `(,name
-((,reader-func ,name ,struct-name) ,obj)))
-(cons   `(,(first name)
-((,reader-func ,(second name) ,struct-name) ,obj)))
-(t (error
-"A NAME is not symbol or a cons in WITH-STRUCT: ~A"
-name))))
-,@body)))))
-	 |#
-
 ;; Be forewarned! You will not get any more stupid defconstant warnings!
 ;; You will undoubtedly suffer the scourge of the silently workring!
 ;; Always test code that you are giving to someone else on a fresh lisp
@@ -778,31 +759,32 @@ name))))
 ;; Stolen from alexandria:
 
 #| I really hate this:
-	 (defun %reevaluate-constant (name value test)
-(if (not (boundp name))
-value
-(let ((old (symbol-value name))
-(new value))
-(if (not (constantp name))
-(prog1 new
-(cerror "Try to redefine the variable as a constant."
-"~@<~S is an already bound non-constant variable ~
+(defun %reevaluate-constant (name value test)
+  (if (not (boundp name))
+      value
+      (let ((old (symbol-value name))
+	    (new value))
+	(if (not (constantp name))
+	    (prog1 new
+	      (cerror "Try to redefine the variable as a constant."
+		      "~@<~S is an already bound non-constant variable ~
                        whose value is ~S.~:@>" name old))
-(if (funcall test old new)
-old
-(restart-case
-(error "~@<~S is an already defined constant whose value ~
+	    (if (funcall test old new)
+		old
+		(restart-case
+		    (error "~@<~S is an already defined constant whose value ~
                               ~S is not equal to the provided initial value ~S ~
                               under ~S.~:@>" name old new test)
-(ignore ()
-:report "Retain the current value."
-old)
-(continue ()
-:report "Try to redefine the constant."
-new)))))))
+		  (ignore ()
+		    :report "Retain the current value."
+		    old)
+		  (continue ()
+		    :report "Try to redefine the constant."
+		    new)))))))
 
-	 (defmacro define-constant (name initial-value &optional documentation (test ''eql))
-"Ensures that the global variable named by NAME is a constant with a value
+(defmacro define-constant (name initial-value &optional documentation
+			   (test ''eql))
+  "Ensures that the global variable named by NAME is a constant with a value
 that is equal under TEST to the result of evaluating INITIAL-VALUE. TEST is a
 /function designator/ that defaults to EQL. If DOCUMENTATION is given, it
 becomes the documentation string of the constant.
@@ -811,11 +793,11 @@ Signals an error if NAME is already a bound non-constant variable.
 
 Signals an error if NAME is already a constant variable whose value is not
 equal under TEST to result of evaluating INITIAL-VALUE."
-(declare (ignore test))
-`(defconstant ,name (%reevaluate-constant ',name ,initial-value ,test)
-,@(when documentation `(,documentation))))
+  (declare (ignore test))
+  `(defconstant ,name (%reevaluate-constant ',name ,initial-value ,test)
+     ,@(when documentation `(,documentation))))
 
-	 |#
+|#
 
 ;; Back to the olde shite:
 
@@ -843,6 +825,7 @@ equal under TEST to result of evaluating INITIAL-VALUE."
 ;; Still doesn't work everywhere? WHY?
 
 ;; Is it really worth doing this? Is this gratuitous language mutation?
+;; This is weird. Why do I love using it so much?
 (defmacro _ (&rest exprs)
   "Shorthand for single argument lambda. The single argument is named '_'."
   `(lambda (_) ,@exprs))
@@ -1123,14 +1106,20 @@ Useful for making your macro “hygenic”."
     `(progn ,@za (terpri))))
 
 (defun exe-in-path-p (name)
-  "True if file NAME exists in the current execute path, which is usually the environment variable PATH. Note that this doesn't check if it's executable or not or that you have permission to execute it."
+  "True if file NAME exists in the current execute path, which is usually the
+environment variable PATH. Note that this doesn't check if it's executable or
+not or that you have permission to execute it."
   (loop :for d :in (split-sequence ":" (d-getenv "PATH"))
      :when (probe-file (s+ d "/" name))
      :do (return t)
      :finally (return nil)))
 
 (defun try-things (things)
-  "Return the first thing that works. THINGS is a list of lists. If a sublist starts with a string, it should be a command in the path which is given the rest of the arguments. If a sublist starts with a symbol, it is a function to call with the rest of the arguments. Works means it doesn't return NIL. If nothing works, return NIL."
+  "Return the first thing that works. THINGS is a list of lists. If a sublist
+starts with a string, it should be a command in the path which is given the rest
+of the arguments. If a sublist starts with a symbol, it is a function to call
+with the rest of the arguments. Works means it doesn't return NIL. If nothing
+works, return NIL."
   (loop :with result
      :for cmd :in things :do
      (setf result (etypecase (car cmd)
@@ -1255,6 +1244,46 @@ cannot cause evaluation."
       (read-from-string string eof-error-p eof-value
 			:start start :end end
 			:preserve-whitespace preserve-whitespace))))
+
+(defun interninator (name package dirt-pile)
+  "Return the symbol NAME from package if it exists, or from the DIRT-PILE
+package if it doesn't. If DIRT-PILE is NIL, return a packageless symbol."
+  (or (find-symbol name package)
+      (if dirt-pile
+	  (intern name dirt-pile)
+	  (make-symbol name))))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (when (boundp '*read-intern*)
+    (d-add-feature :has-read-intern)))
+
+(defun clean-read-from-string (string package
+			       &optional (eof-error-p t) eof-value
+			       &key (start 0) end preserve-whitespace)
+  "Read from a string without being a dirty bird, we hope."
+  ;; This is the good way, which uses the *read-intern* extension.
+  #+has-read-intern
+  (let ((*read-intern* #'(lambda (str pkg)
+			   (interninator str pkg package))))
+    (read-from-string string eof-error-p eof-value
+		      :start start :end end
+		      :preserve-whitespace preserve-whitespace))
+  ;; This is a very inefficient way which makes a new package every time.
+  #-has-read-intern
+  (declare (ignore package))
+  #-has-read-intern
+  (let (pkg)
+    (unwind-protect
+	 (progn
+	   (setf pkg (make-package (package-name package) :use (list *package*)
+				   :internal-symbols 0 :external-symbols 0))
+	   (with-package pkg
+	     (read-from-string string eof-error-p eof-value
+			       :start start :end end
+			       :preserve-whitespace preserve-whitespace)))
+      (when pkg
+	(delete-package pkg)))))
+
 #+sbcl (declaim (sb-ext:unmuffle-conditions style-warning))
 
 ;; So it looks like we have at least a few implementations to choose from:
@@ -1305,7 +1334,8 @@ an EOF on SOURCE."
 
 (defun quote-format (s)
   "Quote a string to send to format, so that any possible format directives
-are printed rather than interpreted as directives, which really just means: repleace a single tilde with double tidles."
+are printed rather than interpreted as directives, which really just means:
+repleace a single tilde with double tidles."
   (replace-subseq "~" "~~" s))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1420,7 +1450,7 @@ are printed rather than interpreted as directives, which really just means: repl
 					  *lisp-version*
 					  *os-nickname*
 					  *arch-nickname*)
-  "Nickname for the platform. Hopefully determines compiled code compatibility.")
+ "Nickname for the platform. Hopefully determines compiled code compatibility.")
 (d-add-feature *platform-nickname*)	; Incorrigible feature adding
 
 ;; Before you add stuff here, consider whether to put it in dlib-misc instead.
