@@ -105,6 +105,9 @@ The shell command takes any number of file names.
    (keep-expr
     :initarg :keep-expr :accessor pager-keep-expr :initform nil
     :documentation "Show only lines matching these regular expressions.")
+   (mutate-function
+    :initarg :mutate-function :accessor pager-mutate-function :initform nil
+    :documentation "Function to alter lines.")
    (file-list
     :initarg :file-list :accessor pager-file-list :initform nil
     :documentation "List of files to display")
@@ -134,14 +137,26 @@ The shell command takes any number of file names.
     :documentation "the previous command")
    ;; options
    (show-line-numbers
-    :initarg :show-line-numbers :accessor pager-show-line-numbers :initform nil
+    :initarg :show-line-numbers :accessor pager-show-line-numbers
+    :initform nil :type boolean
     :documentation "True to show line numbers along the left side.")
    (ignore-case
-    :initarg :ignore-case :accessor pager-ignore-case :initform t
+    :initarg :ignore-case :accessor pager-ignore-case
+    :initform t :type boolean
     :documentation "True to ignore case in searches.")
    (wrap-lines
-    :initarg :wrap-lines :accessor pager-wrap-lines :initform nil
-    :documentation "True to wrap lines at the edge of the window."))
+    :initarg :wrap-lines :accessor pager-wrap-lines
+    :initform nil :type boolean
+    :documentation "True to wrap lines at the edge of the window.")
+   (raw-output
+    :initarg :raw-output :accessor pager-raw-output
+    :initform nil :type boolean
+    :documentation "True to send raw, unprocessed output to the terminal.")
+   (pass-special
+    :initarg :pass-special :accessor pager-pass-special
+    :initform nil :type boolean
+    :documentation "True to pass special escape sequences to the terminal.")
+   )
   (:documentation "An instance of a pager."))
 
 (defvar *pager* nil
@@ -173,6 +188,7 @@ but perhaps reuse some resources."))
 	(pager-search-string o) nil
 	(pager-filter-exprs o) nil
 	(pager-keep-expr o) nil
+	(pager-mutate-function o) nil
 ;	(pager-file-list o) nil
 ;	(pager-index o) nil
 	(pager-message o) nil
@@ -273,8 +289,9 @@ set in this string."
 	     (return))
 	   (progn
 	     (setf i inc)
-	     (when (or (eql (char str i) #\;)
-		       (eql (char str i) #\m))
+	     (when (and (< i len)
+			(or (eql (char str i) #\;)
+			    (eql (char str i) #\m)))
 	       (incf i)
 	       (case num
 		 (0  (setf attr '() fg nil bg nil attr-was-set t))
@@ -475,27 +492,39 @@ set in this string."
 		  line)))
     (return-from process-control-characters line))
   (let ((fat-line (make-stretchy-vector (+ (length line) 10)
-					:element-type 'fatchar)))
-    (loop :with cc :and fc
-       :for c :across line :do
-       (setf cc (char-code (fatchar-c c)))
-       (cond
-	 ((< cc (char-code #\space))
-	  (setf fc (copy-fat-char c)
-		(fatchar-c fc) #\^)
-	  (stretchy-append fat-line fc)
-	  (setf fc (copy-fat-char c)
-		(fatchar-c fc) (code-char (+ cc (char-code #\@))))
-	  (stretchy-append fat-line fc))
-	 ((= cc 127)
-	  (setf fc (copy-fat-char c)
-		(fatchar-c fc) #\^)
-	  (stretchy-append fat-line fc)
-	  (setf fc (copy-fat-char c)
-		(fatchar-c fc) #\?)
-	  (stretchy-append fat-line fc))
-	 (t
-	  (stretchy-append fat-line (copy-fat-char c)))))
+					:element-type 'fatchar))
+	fc)
+    (flet ((ctrl-out (c the-char)
+	     (setf fc (copy-fat-char c)
+		   (fatchar-c fc) #\^)
+	     (stretchy-append fat-line fc)
+	     (setf fc (copy-fat-char c)
+		   (fatchar-c fc) the-char)
+	     (stretchy-append fat-line fc)))
+      (loop :with cc
+	 :for c :across line :do
+	 (setf cc (char-code (fatchar-c c)))
+	 (cond
+	   ;; ((< cc (char-code #\space))
+	   ;;  (setf fc (copy-fat-char c)
+	   ;; 	(fatchar-c fc) #\^)
+	   ;;  (stretchy-append fat-line fc)
+	   ;;  (setf fc (copy-fat-char c)
+	   ;; 	(fatchar-c fc) (code-char (+ cc (char-code #\@))))
+	   ;;  (stretchy-append fat-line fc))
+	   ;; ((= cc 127)
+	   ;;  (setf fc (copy-fat-char c)
+	   ;; 	(fatchar-c fc) #\^)
+	   ;;  (stretchy-append fat-line fc)
+	   ;;  (setf fc (copy-fat-char c)
+	   ;; 	(fatchar-c fc) #\?)
+	   ;;  (stretchy-append fat-line fc))
+	   ((< cc (char-code #\space))
+	    (ctrl-out c (code-char (+ cc (char-code #\@)))))
+	   ((= cc 127)
+	    (ctrl-out c #\?))
+	   (t
+	    (stretchy-append fat-line (copy-fat-char c))))))
     fat-line))
 
 (defun process-line (line)
@@ -512,7 +541,7 @@ set in this string."
 (defun read-lines (line-count)
   "Read new lines from the stream. Stop after COUNT lines. If COUNT is zero,
 read until we get an EOF."
-  (with-slots (got-eof count stream) *pager*
+  (with-slots (got-eof count stream raw-output) *pager*
     (when (not got-eof)
       (let ((n 0)
 	    (i count)
@@ -526,7 +555,9 @@ read until we get an EOF."
 	   :do (push (make-line :number i
 ;;;			      :position (incf pos (length line))
 				:position pos
-				:text (process-line line))
+				:text (if raw-output
+					  line
+					  (process-line line)))
 		     lines)
 	   (incf pos (length line))
 	   (incf i)
@@ -723,33 +754,6 @@ line : |----||-------||---------||---|
 	 (loop :for j :from (elt matches i) :below (elt matches (1+ i))
 	    :do (pushnew :standout (fatchar-attrs (aref *fat-buf* j))))
 	 (incf i 2)))))
-
-#+clisp
-(defun show-utf8 (str)
-  "Output a UTF8 string to the screen."
-  (loop :for c :across
-     (ext:convert-string-to-bytes str custom:*terminal-encoding*)
-     :do (addch c)))
-
-;;; @@@@ We need to work out what is the right way to output UTF-8 chars
-#+clisp
-(defun add-char (c)
-  (let ((cc (char-code c)))
-    (if (> cc #xff)
-	(show-utf8 (string c))
-	(addch (char-code c)))))
-;    (addch (char-code c))))
-
-#+sbcl
-(defvar f-char (cffi:foreign-alloc :int :count 2))
-#+sbcl
-(defun add-char (c)
-  (setf (cffi:mem-aref f-char :int 0) (char-code c))
-  (addnwstr f-char 1))
-
-#-(or clisp sbcl)
-(defun add-char (c)
-  (addch (char-code c)))
 
 (defun show-span (s)
   (when (not s)
@@ -951,7 +955,8 @@ list containing strings and lists."
 (defun set-option ()
   "Set a pager option. Propmpts for what option to toggle."
   (message "Set option: ")
-  (with-slots (show-line-numbers ignore-case wrap-lines) *pager*
+  (with-slots (show-line-numbers ignore-case wrap-lines raw-output pass-special)
+      *pager*
     (let ((char (fui:get-char)))
       (case char
 	((#\l #\L)
@@ -965,6 +970,16 @@ list containing strings and lists."
 	 (setf wrap-lines (not wrap-lines))
 	 (display-page)
 	 (tmp-message "wrap-lines is ~:[Off~;On~]" wrap-lines)
+	 (refresh))
+	(#\r
+	 (setf raw-output (not raw-output))
+	 (display-page)
+	 (tmp-message "raw-output is ~:[Off~;On~]" raw-output)
+	 (refresh))
+	(#\p
+	 (setf pass-special (not pass-special))
+	 (display-page)
+	 (tmp-message "pass-special is ~:[Off~;On~]" pass-special)
 	 (refresh))
 	(otherwise
 	 (tmp-message "Unknown option '~a'" (nice-char char)))))))
@@ -1604,9 +1619,19 @@ then the key. Press 'q' to exit this help.
 ;;   `(apply #'pager ',(cdr whole)))
 
 #+lish
-(lish:defcommand pager ((files pathname :repeating t))
+(lish:defcommand pager
+  ((show-line-numbers boolean :short-arg #\l
+    :help "True to show line numbers.")
+   (ignore-case boolean :short-arg #\i
+    :help "True to ignore case in searches.")
+   (raw-output boolean :short-arg #\r
+    :help "True to output characters without processing.")
+   (pass-special boolean :short-arg #\p
+    :help "True to pass special escape sequences to the terminal.")
+   (files pathname :repeating t :help "Files to view."))
   :accepts :grotty-stream
   "Look through text, one screen-full at a time."
+  (declare (ignore show-line-numbers ignore-case raw-output pass-special)) ; @@@
   (pager (or files *standard-input*)))
 
 ;; EOF
