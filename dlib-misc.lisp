@@ -22,6 +22,7 @@
    #:show-expansion
    #:printenv
    #:char-apropos
+   #:parse-integer-with-radix
    #:date-string
    #:format-date
    #:simple-parse-time
@@ -54,6 +55,11 @@
    #:add-hook
    #:remove-hook
    #:run-hooks
+   #:*plain-spin-string*
+   #:*unicode-spin-string*
+   #:*emoji-spin-string*
+   #:spin
+   #:with-spin
   )
 )
 (in-package :dlib-misc)
@@ -163,6 +169,38 @@ expand all macros recursively."
 
 ;; alias for
 (setf (symbol-function 'character-apropos) #'char-apropos)
+
+;; @@@ This should probably support the same args as PARSE-INTEGER.
+(defun parse-integer-with-radix (str)
+  "Parse an integer from a string, allowing for a Lisp radix prefix."
+  (cond
+    ((and str (> (length str) 2)
+	  (char= (char str 0) #\#))
+     (cond
+       ((position (char str 1) #(#\b #\o #\x) :test #'char-equal)
+	(parse-integer str :junk-allowed nil :start 2
+		       :radix (cond
+				((char-equal (char str 1) #\b) 2)
+				((char-equal (char str 1) #\o) 8)
+				((char-equal (char str 1) #\x) 16)
+				(t 10))))
+       ((digit-char-p (char str 1))
+	(let (radix start)
+	  (cond
+	    ((char-equal #\r (char str 2))
+	     (setf radix (parse-integer str :start 1 :end 2 :junk-allowed nil)
+		   start 3))
+	    ((and (digit-char-p (char str 2))
+		  (char-equal #\r (char str 3)))
+	     (setf radix (parse-integer str :start 1 :end 3 :junk-allowed nil)
+		   start 4))
+	    (t
+	     (error "Malformed radix in integer ~a." str)))
+	  (parse-integer str :junk-allowed nil :start start :radix radix)))
+       (t
+	(error "Malformed integer ~a." str))))
+    (t
+     (parse-integer str :junk-allowed nil))))
 
 ;; @@@ So where would we get this from for other languages?
 ;; I suppose we could mine them from strftime.
@@ -307,7 +345,7 @@ The date part is considered to be the current date."
 		    (equalp (aref str (1+ i)) #\m))
 	       (setf am-pm (char-downcase (aref str i))))
 	      (t
-	       (format t "i=~a len=~a~%" i len)
+	       ;;(format t "i=~a len=~a~%" i len)
 	       (error "Hour must be followed by either :MM or AM/PM.")))))
       (cond
 	((and (< i len) (eql (aref str i) #\:))	; seconds
@@ -606,6 +644,52 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
 	  (unintern (find-symbol "DIR" :cl-user) :cl-user)
 	  ) ; mine is better :-P
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defvar *spin* nil
+  "Index into the spinner string.")
+
+(defvar *spin-string* nil
+  "The string of characters to animate.")
+
+(defvar *spin-length* nil
+  "The pre-calculated lenght of the spin string.")
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *plain-spin-string* "|/-\\"
+    "Simple ASCII baton.")
+
+  (defparameter *unicode-spin-string* "?????" ; @@@ find some good chars
+    "Spin string using common unicode characters.")
+
+  (defparameter *emoji-spin-string* "🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚🕛"
+    "Spin string with fancy emoji clock face characters."))
+
+(defun spin (&optional (stream *standard-output*))
+  "Do one iteration of a spin animation."
+  (write-char (char *spin-string* *spin*) stream)
+  (write-char #\backspace stream)
+  (finish-output stream)
+  (incf *spin*)
+  (when (>= *spin* *spin-length*)
+    (setf *spin* 0)))
+
+(defun unspin (&optional (stream *standard-output*))
+  "Hopefully remove the spinning character."
+  (write-char #\space stream)
+  (write-char #\backspace stream)
+  (finish-output stream))
+
+(defmacro with-spin ((&key (spin-string *plain-spin-string*))
+		     &body body)
+  `(let ((*spin-string* ,spin-string)
+	 (*spin-length* (length ,spin-string))
+	 (*spin* 0))
+     (prog1 (progn ,@body)
+       (unspin))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defvar *loadable-packages* nil
   "Cached list of ASDF loadable packages. Set to NIL to recompute.")
 
@@ -627,46 +711,50 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
 		 (and (not as-strings) (keywordp (car *loadable-packages*))
 		      *loadable-packages*)))
 	(setf *loadable-packages*
-	      (let ((s-dirs (loop :for e in asdf:*source-registry-parameter*
-			       :if (and (listp e) (eq (car e) :directory))
-			       :collect (place-dir (cadr e))))
-		    (c-dirs (mapcar #'namestring asdf:*central-registry*)))
-		(append
-		 (loop :for d :in (concatenate 'list s-dirs c-dirs)
-		    :append
-		    (loop :with base :and result
-		       :for f :in (glob (path-append d "*.[Aa][Ss][Dd]"))
-		       :collect
-		       (progn
-			 (setf base (path-file-name f)
-			       result (subseq base 0 (- (length base) 4)))
+	      (with-spin ()
+		(let ((s-dirs (loop :for e in asdf:*source-registry-parameter*
+				 :if (and (listp e) (eq (car e) :directory))
+				 :collect (place-dir (cadr e))))
+		      (c-dirs (mapcar #'namestring asdf:*central-registry*)))
+		  (append
+		   (loop :for d :in (concatenate 'list s-dirs c-dirs)
+		      :append
+		      (loop :with base :and result
+			 :for f :in (glob (path-append d "*.[Aa][Ss][Dd]"))
+			 :do (spin)
+			 :collect
+			 (progn
+			   (setf base (path-file-name f)
+				 result (subseq base 0 (- (length base) 4)))
+			   (if as-strings
+			       result
+			       (keywordify result)))))
+		   ;; Quicklisp
+		   (loop :for d :in (ql-dist:all-dists)
+		      :append
+		      (loop :for s :in (ql-dist:installed-systems d)
+			 :do (spin)
+			 :collect
 			 (if as-strings
-			     result
-			     (keywordify result)))))
-		 ;; Quicklisp
-		 (loop :for d :in (ql-dist:all-dists)
-		    :append
-		    (loop :for s :in (ql-dist:installed-systems d)
-		       :collect
-		       (if as-strings
-			   (ql-dist:name s)
-			   (keywordify (ql-dist:name s)))))))))))
+			     (ql-dist:name s)
+			     (keywordify (ql-dist:name s))))))))))))
 
 (defun clear-loadable-package-cache ()
   "This should be done whenever packages are added or removed or the search
 configuration is changed."
   (setf *loadable-packages* nil))
 
-(defun package-copy-name (package)
+(defun package-copy-name (package &optional (prefix "COPY-OF-"))
+  "Pick a stupid name for a copied package."
   (loop :with i = 0
      :while (find-package
-	     (format nil "COPY-OF-~a~a" (package-name package)
+	     (format nil "~a~a~a" prefix (package-name package)
 		     (if (> i 0) i "")))
      :do (incf i)
      ;;:if (> i 1000000) (error "Something probably went wrong.")
      ))
 
-;;; @@@ Not sure if this works
+;;; @@@ Test? or eliminate!
 (defun copy-package (package)
   "Return a copy of PACKAGE. The new package has a copy of everything in the old
 package, and is named \"COPY-OF-<Package><n>\""
