@@ -16,6 +16,6 @@
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :licence            "None"
     :long-description   "The cessation of the repetition of \"Never Again\"."
-    :depends-on (:cffi)
+    :depends-on (:cffi :dlib)
     :components
     ((:file "opsys")))

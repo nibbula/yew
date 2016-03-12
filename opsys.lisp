@@ -100,7 +100,7 @@
 (defpackage :opsys
   (:documentation "Generic interface to operating system functionality.")
   (:nicknames :nos)
-  (:use :cl :cffi)
+  (:use :cl :cffi :dlib)
   (:export
    ;; types
    #:time-t #:mode-t #:size-t #:uid-t #:gid-t #:pid-t #:wchar-t #:suseconds-t
@@ -187,6 +187,10 @@
    #:getgrent
    #:endgrent
 
+   #:get-next-group
+   #:group-list
+   #:refresh-group-list
+
    ;; user login accounting
    #:utmpx #:utmpx-user #:utmpx-id #:utmpx-line #:utmpx-pid #:utmpx-type
    #:utmpx-tv #:utmpx-host
@@ -220,6 +224,9 @@
    #:path-append
    #:hidden-file-name-p
    #:superfluous-file-name-p
+   #:*path-separator*
+   #:*path-variable*
+   #:command-pathname
    #:quote-filename
    #:safe-namestring
 
@@ -459,13 +466,15 @@
     (error "Somebody needs to provide an implementation for ~a on ~a~%"
 	   sym (lisp-implementation-type))))
 
-;; This is in dlib too, but I don't want to depend on it.
+;; Now we depend on dlib. :(
 ;; I suppose we could use the one in alexandria, since but it's a dependency
 ;; of CFFI, but I'm a little nervous about that.
+#| 
 (defmacro define-constant (name value &optional doc)
   "Like defconstant but works with pendanticly anal SCBL."
   `(cl:defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
     ,@(when doc (list doc))))
+|#
 
 ;; The comments about define-constant apply to this as well.
 ;; This has to be a macro so it can be used in read time expressions
@@ -1754,6 +1763,10 @@ Return nil for foreign null pointer."
 (defun endgrent ()
   (real-endgrent))
 
+(defcfun ("setgrent" real-setgrent) :void)
+(defun setgrent ()
+  (real-setgrent))
+
 (defun group-name (&optional id)
   "Return the name of the group with ID. Defaults to the current group."
   (group-entry-name (getgrgid (or id (getgid)))))
@@ -1763,6 +1776,21 @@ Return nil for foreign null pointer."
   (if name
       (group-entry-gid (getgrnam name))
       (getgid)))
+
+(defun get-next-group ()
+  "Return the next group structure from the group database."
+  (getgrent))
+
+(defun group-list ()
+  "How to annoy people in large organizations."
+  (setgrent)
+  (loop :with g :while (setf g (get-next-group)) :collect g))
+
+(defun refresh-group-list ()
+  "Just in case you are bored, this will make get-next-group or group-list
+return potentially updated data."
+  (endgrent)
+  (setgrent))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Login/accounting database
@@ -3454,6 +3482,7 @@ for long."
 	 :when (and end (< (+ i end) size))
 	 :collect (subseq names i end)
 	 :do (incf i end))))
+  #-darwin (declare (ignore path))
   #-darwin '())
 
 (defun extended-attribute-value (path name)
@@ -3462,7 +3491,64 @@ for long."
     (with-foreign-object (value :char size)
       (syscall (getxattr path name value size 0 +XATTR_SHOWCOMPRESSION+))
       value))
+  #-darwin (declare (ignore path name))
   #-darwin nil)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; System Commands?
+
+;; Like on windows this is #\; right? But not cygwin?
+(defparameter *path-separator*		; @@@ defconstant?
+  #-windows #\:
+  #+windows #\;
+  "Separator in the PATH environement variable.")
+
+(defparameter *path-variable*
+  #-windows "PATH"
+  #+windows "%PATH%"
+  "The environment variable which stores the command search paths.")
+
+(defun has-directory-p (path)
+  "Return true if PATH has a directory part."
+  (position *directory-separator* path))
+
+;; getgroups vs. getgrouplist & NGROUPS_MAX .etc
+;; I should not be suprised at this point at how un-good the typical unix
+;; group interfaces are.
+(defun member-of (group)
+  "Return true if the current user (whatever that means) is a member of GROUP."
+  (position group (get-groups)))
+
+(defun is-executable (path &optional user)
+  "Return true if the PATH is executable by the UID. UID defaults to the
+current effective user."
+  (let ((s (stat path)))
+    (or
+     (is-other-executable (file-status-mode s))
+     (and (is-user-executable (file-status-mode s))
+	  (= (file-status-uid s) (or user (setf user (geteuid)))))
+     (and (is-group-executable (file-status-mode s))
+	  (member-of (file-status-gid s))))))
+
+(defun command-pathname (cmd)
+  "Return the full pathname of the first executable file in the PATH or nil
+if there isn't one."
+  (when (has-directory-p cmd)
+    (return-from command-pathname cmd))
+  (loop :for dir :in (split-sequence *path-separator* (getenv *path-variable*))
+     :do
+     (handler-case
+       (when (probe-directory dir)
+	 (loop :with full = nil
+	    :for f :in (read-directory :dir dir) :do
+	    ;; (format t "~s~%" f)
+	    (when (and (equal f cmd)
+		       (is-executable
+			(setf full (format nil "~a~c~a"
+					   dir *directory-separator* cmd))))
+	      (return-from command-pathname full))))
+       (error (c) (declare (ignore c)))))
+  nil)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Processes
@@ -4947,6 +5033,27 @@ available."
 (defcfun getfsfile foreign-fstab (file :string))
 (defcfun setfsent :int)
 (defcfun endfsent :void)
+
+#|
+#include <stdio.h>
+#include <mntent.h>
+
+FILE *setmntent(const char *filename, const char *type);
+
+struct mntent *getmntent(FILE *fp);
+
+int addmntent(FILE *fp, const struct mntent *mnt);
+
+int endmntent(FILE *fp);
+
+char *hasmntopt(const struct mntent *mnt, const char *opt);
+
+/* GNU extension */
+#include <mntent.h>
+
+struct mntent *getmntent_r(FILE *fp, struct mntent *mntbuf, char *buf, int buflen);
+|#
+
 
 ;; System independant interface?
 
