@@ -12,9 +12,9 @@
     :description        "Fake UI"
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :licence            "None" ; [sic]
-    :long-description   "totally fake old style user interface"
-    :depends-on (:dlib :dlib-misc :stretchy :opsys :char-util :curses :keymap
-		 :inator)
+    :licence            "GPLv3"
+    :long-description   "Totally fake old style user interface."
+    :depends-on (:dlib :dlib-misc :stretchy :opsys :char-util :keymap :cffi
+		 :curses :inator)
     :components
     ((:file "fui")))

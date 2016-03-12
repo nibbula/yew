@@ -4,8 +4,8 @@
 
 (defpackage :fui
   (:documentation "Fake UI")
-  (:use :cl :dlib :dlib-misc :stretchy :opsys :char-util :curses :keymap
-	:inator)
+  (:use :cl :dlib :dlib-misc :stretchy :opsys :char-util :keymap :cffi
+	:curses :inator)
   (:export
    #:with-curses
    #:with-device
@@ -19,8 +19,11 @@
    #:non-interactively
    #:*interactive*
    #:pause
+   #:add-char
+   #:add-string
    #:display-text
    #:help-list
+   #:fui-inator
    #:pick-list
    #:pick-file
    #:do-menu*
@@ -182,56 +185,35 @@ foreground FG and background BG."
      ,@body))
 
 (defun pause (&optional (prompt "[Press Enter]") &rest args)
-  "Print a message and wait for Enter to be pressed. Does nothing if not *interactive*."
+  "Print a message and wait for Enter to be pressed. Does nothing if not
+*interactive*."
   (when *interactive*
     (apply #'format *standard-output* prompt args)
     (finish-output *standard-output*)
     (read-line)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; FUI-inators
+;; Output
 
-(defclass fui-inator (inator)
-  ()
-  (:documentation "A curses-inator."))
+;; @@@ This should really be per-thread, but we should then probably make a
+;; per-thread curses state object for use with `with-curses'. And it is also
+;; currently a memory leak.
+(defvar *wied-char* (cffi:foreign-alloc :int :count 2))
+(defun add-char (c)
+  (setf (cffi:mem-aref *wied-char* :int 0) (char-code c))
+  (addnwstr *wied-char* 1))
 
-(defmethod initialize-instance
-    :after ((o fui-inator) &rest initargs &key &allow-other-keys)
-  "Initialize a fui-inator."
-  (declare (ignore initargs))
-  (start-curses))
-
-(defmethod update ((i fui-inator))
-  "Update the view of I the FUI-INATOR."
-  (call-next-method)
-  (refresh))
-
-(defmethod stop-inator ((i fui-inator))
-  "Stop a FUI-INATOR."
-  (end-curses)
-  (call-next-method))
-
-(defmethod event-pending-p ((i fui-inator))
-  "Return true if there are any events pending for a FUI-INATOR."
-  (declare (ignore i))
-  nil)
-
-(defmethod has-event-p ((i fui-inator))
-  "Return true if there is an event ready for a FUI-INATOR."
-  (declare (ignore i))
-  )
-
-(defmethod get-event ((i fui-inator))
-  "Get an event from a FUI-INATOR."
-  (declare (ignore i))
-  ;; @@@ turn into an event
-  (get-char))
-
-(defclass fui-view (view)
-  ()
-  (:documentation "A curses view of a -inator."))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; @@@ The comment for add-char also applies to this. Also this is slow and
+;; tripple consy. We should probably have a static per-thread exapndable
+;; conversion buffer, and only convert if we need to.
+(defun add-string (s)
+  (let ((len (length s)))
+    (with-foreign-object (fstr :int (1+ len))
+      (loop :with i = 0 :for c :across s :do
+	 (setf (mem-aref fstr :int i) (char-code c))
+	 (incf i))
+      (setf (mem-aref fstr :int len) 0)
+      (addnwstr fstr len))))
 
 (defun wcentered (w width row str)
   "Put a centered string STR in window W of width WIDTH at row ROW."
@@ -297,6 +279,54 @@ waits for a key press and then returns."
 		      (or doc (string-downcase func))))
 		   ((keymap-p (string-downcase func)))
 		   (t func)))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; FUI-inators
+
+(defclass fui-inator (inator)
+  ()
+  (:documentation "A curses-inator."))
+
+(defmethod initialize-instance
+    :after ((o fui-inator) &rest initargs &key &allow-other-keys)
+  "Initialize a fui-inator."
+  (declare (ignore initargs)))
+
+(defmethod start-inator ((i fui-inator))
+  "Start a FUI-INATOR."
+  (start-curses)
+  (call-next-method))
+
+(defmethod finish-inator ((i fui-inator))
+  "Stop a FUI-INATOR."
+  (end-curses)
+  (call-next-method))
+
+(defmethod update-display ((i fui-inator))
+  "Update the view of a FUI-INATOR."
+  (call-next-method)
+  (refresh))
+
+(defmethod await-event ((i fui-inator))
+  "Get an event from a FUI-INATOR."
+  (declare (ignore i))
+  (get-char))
+
+(defmethod message ((i fui-inator) format-string &rest args)
+  "Display a short message."
+  (move (1- curses:*lines*) 0)
+  (clrtoeol)
+  (addstr (apply #'format nil format-string args)))
+
+(defmethod help ((i fui-inator))
+  "Show help for the inator."
+  (typecase (inator-keymap i)
+    (keymap
+     (display-text "Help" (help-list (inator-keymap i))))
+    (list
+     (display-text "Help"
+		   (loop :for k :in (inator-keymap i)
+			:append (help-list k))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
