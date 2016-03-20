@@ -375,7 +375,7 @@
 
    #:popen
    #:with-process-output
-   #:pipe
+   #:posix-pipe
 
    ;; time
    #:+unix-to-universal-time+
@@ -4302,7 +4302,7 @@ Trying to simplify our lives, by just using our own FFI versions, above.
 
 (defcfun ("pipe" real-pipe) :int (pipefd :pointer))
 
-(defun pipe ()
+(defun posix-pipe ()
   (with-foreign-object (fd :int 2)
     (syscall (real-pipe fd))
     (values (mem-aref fd :int 0) (mem-aref fd :int 1))))
@@ -4314,7 +4314,7 @@ Trying to simplify our lives, by just using our own FFI versions, above.
         out-stream-write-side out-stream-read-side)
     (if (and in-stream (streamp in-stream))
 	(progn
-	  (setf (values (in-stream-read-side in-stream-write-side) (pipe)))
+	  (setf (values (in-stream-read-side in-stream-write-side) (posix-pipe)))
 	  ;; return a stream of the write side
 	  (set-stream-fd in-stream write-side)
 	  ;; make the read side be standard input
