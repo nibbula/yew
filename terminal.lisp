@@ -8,18 +8,14 @@
   (:export
    #:*standard-output-has-terminal-attributes*
    #:has-terminal-attributes
+   #:terminal-default-device-name
    #:terminal-stream
    #:terminal
-   #:terminal-file-descriptor
-   #:terminal-device-name
-   #:terminal-output-stream
-   #:terminal-window-rows
-   #:terminal-window-columns
-   #:file-descriptor
-   #:device-name
-   #:output-stream
-   #:window-rows
-   #:window-columns
+   #:terminal-file-descriptor #:file-descriptor
+   #:terminal-device-name     #:device-name
+   #:terminal-output-stream   #:output-stream
+   #:terminal-window-rows     #:window-rows
+   #:terminal-window-columns  #:window-columns
    #:terminal-get-size
    #:terminal-get-cursor-position
    #:terminal-start
@@ -59,6 +55,7 @@
    #:tt-finish-output
    #:tt-get-char
    #:tt-get-key
+   #:tt-listen-for
    #:tt-reset
    #:tt-save-cursor
    #:tt-restore-cursor
@@ -112,6 +109,10 @@ require terminal driver support."))
 	   *standard-output-has-terminal-attributes*)
       (let ((ss (stream-system-handle stream)))
 	(and ss (file-handle-terminal-p ss)))))
+
+(defgeneric terminal-default-device-name (type)
+  (:documentation "Return the default device name that would be picked if we
+made a terminal of the given TYPE."))
 
 (defgeneric terminal-get-size (terminal)
   (:documentation "Get the window size."))
@@ -199,6 +200,11 @@ i.e. the terminal is \"line buffered\""))
 
 (defgeneric tt-get-key (tty)
   (:documentation "Read a key from the terminal."))
+
+(defgeneric tt-listen-for (tty seconds)
+  (:documentation
+  "Listen for at most N seconds or until input is available. SECONDS can be
+fractional, down to some limit."))
 
 (defgeneric tt-reset (tty)
   (:documentation

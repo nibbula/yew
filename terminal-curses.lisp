@@ -38,6 +38,11 @@ require terminal driver support."))
   )
   (:documentation "A terminal using the curses library."))
 
+(defmethod terminal-default-device-name ((type (eql 'terminal-curses)))
+  "Return the default device name for a TERMINAL-CURSES."
+  ;; This is silly.
+  "stdscr")
+
 (defmethod initialize-instance
     :after ((o terminal-curses) &rest initargs &key &allow-other-keys)
   "Initialize a terminal-curses."
@@ -261,6 +266,24 @@ require terminal driver support."))
 (defmethod tt-get-char ((tty terminal-curses))
   "Read a character from the terminal."
   (get-char))
+
+(defmethod tt-get-key ((tty terminal-curses))
+  "Read a character from the terminal."
+  (get-char))
+
+(defmethod tt-listen-for ((tty terminal-curses) seconds)
+  (let (c)
+    (unwind-protect
+	 (progn
+	   (curses::timeout (round (* seconds 1000)))
+	   (setf c (getch))
+	   (when (not (equal c +ERR+))
+	     (ungetch c)))
+      ;; This assumes timeout was already -1. Since there's no prescribed way to
+      ;; get it, the caller has to reset it after this if they want it to be
+      ;; different.
+      (curses::timeout -1))
+    c))
 
 (defmethod tt-reset ((tty terminal-curses))
   "Try to reset the terminal to a sane state, without being too disruptive."

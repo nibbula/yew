@@ -12,13 +12,16 @@
 
 (defpackage :terminal-ansi
   (:documentation "Standard terminal (ANSI).")
-  (:use :cl :terminal :cffi :opsys :termios)
+  (:use :dlib :cl :terminal :cffi :opsys :termios)
   (:export
    #:terminal-ansi-stream
    #:terminal-ansi
    #:tty-slurp
    ))
 (in-package :terminal-ansi)
+
+(defvar *default-device-name* "/dev/tty"
+  "The default device to create a terminal on.")
 
 (defclass terminal-ansi-stream (terminal-stream)
   ()
@@ -56,15 +59,29 @@ require terminal driver support."))
     :accessor terminal-window-columns
     :initarg :window-columns
     :documentation "Number of columns of characters in the window.") |#
+   (typeahead
+    :accessor typeahead
+    :initform nil
+    :initarg :typeahead
+    :documentation "Things already input, dag blast it.")
+   (typeahead-pos
+    :accessor typeahead-pos
+    :initform nil
+    :initarg :typeahead-pos
+    :documentation "How far into the typeahead we are.")
    )
   (:default-initargs
     :file-descriptor		nil
-    :device-name		"/dev/tty"
+    :device-name		*default-device-name*
     :output-stream		nil
     :terminal-raw-state		nil
     :terminal-cooked-state	nil
   )
   (:documentation "What we need to know about terminal device."))
+
+(defmethod terminal-default-device-name ((type (eql 'terminal-ansi)))
+  "Return the default device name for a TERMINAL-ANSI."
+  *default-device-name*)
 
 (defmethod terminal-get-size ((tty terminal-ansi))
   "Get the window size from the kernel and store it in tty."
@@ -88,8 +105,20 @@ require terminal driver support."))
 ;; your own, hence the necessity in most programs of a complete erase and
 ;; redraw user command.
 
+(defun eat-typeahead (tty)
+  (let ((ta (termios:call-with-raw
+	     (terminal-file-descriptor tty)
+	     (_ (tty-slurp _)) :timeout 1)))
+    (when (and ta (> (length ta) 0))
+;      (log-message e "ta[~a]=~w" (length ta) ta)
+      (if (typeahead tty)
+	  (setf (typeahead tty) (s+ (typeahead tty) ta))
+	  (setf (typeahead tty) ta
+		(typeahead-pos tty) 0)))))
+
 (defmethod terminal-get-cursor-position ((tty terminal-ansi))
   "Try to somehow get the row of the screen the cursor is on."
+  (eat-typeahead tty)
   (let ((row 1) (col 1) sep
 	(result (tt-report tty #\R "~c[6n" #\escape)))
     (when (and result (>= (length result) 6))
@@ -384,25 +413,34 @@ i.e. the terminal is 'line buffered'."
 ; 	 (code-char (mem-ref c :unsigned-char)))))))
 
 (defun get-char (tty c)
-  (let (status)
-    (loop
-       :do (setf status (posix-read (terminal-file-descriptor tty) c 1))
-       :if (and (< status 0) (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
-       :do
+  (with-slots (typeahead typeahead-pos) tty
+    (when typeahead
+      (return-from get-char
+	(prog1
+	    (aref typeahead typeahead-pos)
+	  (incf typeahead-pos)
+;	  (format t "ta->~a~%" (incf typeahead-pos))
+	  (when (>= typeahead-pos (length typeahead))
+	    (setf typeahead nil)))))
+    (let (status)
+      (loop
+	 :do (setf status (posix-read (terminal-file-descriptor tty) c 1))
+	 :if (and (< status 0) (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
+	 :do
          ;; Probably returning from ^Z or terminal resize, or something,
          ;; so keep trying. Enjoy your trip to plusering town.
          (terminal-start tty) #| (redraw) |# (tt-finish-output tty)
-       :else
+	 :else
          :return
-       :end)
-    (cond
-      ((< status 0)
-       (error "Read error ~d ~d ~a~%" status nos:*errno*
-	      (nos:strerror nos:*errno*)))
-      ((= status 0)		     ; Another possible plusering extravaganza
-       nil)
-      ((= status 1)
-       (code-char (mem-ref c :unsigned-char))))))
+	 :end)
+      (cond
+	((< status 0)
+	 (error "Read error ~d ~d ~a~%" status nos:*errno*
+		(nos:strerror nos:*errno*)))
+	((= status 0)		     ; Another possible plusering extravaganza
+	 nil)
+	((= status 1)
+	 (code-char (mem-ref c :unsigned-char)))))))
 
 (defmethod tt-get-char ((tty terminal-ansi))
   "Read a character from the terminal."
@@ -414,6 +452,9 @@ i.e. the terminal is 'line buffered'."
   (tt-finish-output tty)
   (with-foreign-object (c :unsigned-char)
     (get-char tty c)))
+
+(defmethod tt-listen-for ((tty terminal-ansi) seconds)
+  (listen-for seconds (terminal-file-descriptor tty)))
 
 (defmethod tt-reset ((tty terminal-ansi-stream))
   "Try to reset the terminal to a sane state, without being too disruptive."

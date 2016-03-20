@@ -36,7 +36,6 @@
    #:*escape-keymap*
    #:*terminal-name*
    ;; misc
-   #:rl-on-device
    #:get-lone-key
    #:read-filename
    #:read-choice
@@ -245,8 +244,9 @@ anything important.")
 (defun default-output-prompt (e &optional (p nil prompt-supplied))
   "The default prompt output function. Prints *default-prompt* unless a ~
    prompt is supplied."
-  (editor-write-string
-   e (format nil "~a" (if prompt-supplied p *default-prompt*))))
+  (let ((str (princ-to-string (if prompt-supplied p *default-prompt*))))
+    (editor-write-string e str)
+    str))
 
 (defparameter *normal-keymap* nil
   "The normal key for use in the line editor.")
@@ -361,16 +361,6 @@ anything important.")
     :accessor line-editor-terminal-class
     :initarg :terminal-class
     :documentation "The class of terminal we are using.")
-   (typeahead
-    :accessor typeahead
-    :initform nil
-    :initarg :typeahead
-    :documentation "Things already input, dag blast it.")
-   (typeahead-pos
-    :accessor typeahead-pos
-    :initform nil
-    :initarg :typeahead-pos
-    :documentation "How far into the typeahead we are.")
    (did-complete
     :initarg :did-complete
     :accessor did-complete
@@ -449,7 +439,8 @@ anything important.")
 
 (defgeneric freshen (e)
   (:documentation
-   "Make something fresh. Make it's state like it just got initialized, but perhaps reuse some resources."))
+   "Make something fresh. Make it's state like it just got initialized,
+but perhaps reuse some resources."))
 
 (defmethod freshen ((e line-editor))
   "Make the editor ready to read a fresh line."
@@ -468,6 +459,18 @@ anything important.")
 	(quit-flag e)		nil
 	(exit-flag e)		nil))
 
+(defun get-a-char (e)
+  "Read a character from the editor's tty."
+  (declare (type line-editor e))
+  (tt-finish-output e)
+  (let ((c (tt-get-key e)))
+    ;; when read returns eagain,
+    ;; (terminal-start tty) (redraw e) (tt-finish-output e)
+    (when (line-editor-in-callback e)
+      (funcall (line-editor-in-callback e) c))
+    c))
+
+#|
 (defun get-a-char (e)
   "Read a character from the editor's tty."
   (declare (type line-editor e))
@@ -505,6 +508,7 @@ anything important.")
 	     (funcall (line-editor-in-callback e) cc)
 	     cc))
 	 (code-char (mem-ref c :unsigned-char)))))))
+|#
 
 (defun get-lone-key ()
   "Get a key, but easily usable from outside the editor. Don't use this for
@@ -869,6 +873,9 @@ anything serious."
 (tt-alias tt-underline state)
 (tt-alias tt-beep)
 (tt-alias tt-finish-output)
+(tt-alias tt-get-key)
+(tt-alias tt-get-char)
+(tt-alias tt-listen-for n)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Display-ish code
@@ -1582,12 +1589,140 @@ Updates the screen coordinates."
 	  (tt-down e rows-down))
 	(tt-forward e n))))
 
+#|
+;;; @@@ Consider the issues of merging this with display-length.
+;;; @@@ Consider that this is quite wrong, especially since it would have to
+;;; do everything a terminal would do.
+(defun display-cols (str)
+  "Return the column the cursor is at after outputting STR."
+  (let ((sum 0))
+    (map nil
+	 #'(lambda (c)
+	     (cond
+	       ((graphic-char-p c)
+		(incf sum))
+	       ((eql c #\tab)
+		(incf sum (- 8 (mod sum 8))))
+	       ((eql c #\newline)
+		(setf sum 0))
+	       ((eql c #\backspace)
+		(decf sum))
+	       ((eql c #\escape)
+		#| here's where we're screwed |#)
+	       (t
+		(if (control-char-graphic c)
+		    2			; ^X
+		    4)			; \000
+		)))
+	 s)
+    sum))
+|#
+
+;; Here's the problem:
+;;
+;; People can put any old stuff in the prompt that they want. This includes
+;; things that move the cursor around, characters that might be of different
+;; widths, escape sequences that may or may not move the cursor. So unless we
+;; emulate the terminal exactly, just to figure out where the cursor is after
+;; the prompt, things can get messed up.
+;;
+;; Since emulating the terminal seems infeasible, unless we wrapped ourselves
+;; in an emulation layer like screen or tmux, if we want to be sure to get
+;; things right, we are stuck with with asking the terminal where the cursor
+;; might be.
+;;
+;; Now the problem with asking the terminal, is that we have to output
+;; something, and then read the coordinates back in. But there might be a
+;; bunch of input, like a giant paste or something, or typing ahead, already
+;; in the terminal's input queue, in front of the response to our "where is
+;; the cursor" query, which blocks us from getting an answer.
+;;
+;; So we have to read all input available, BEFORE asking where the heck the
+;; cursor is. This is the reason for all the otherwise useless 'eat-typeahead'
+;; and 'tty-slurp'ing. Of course this whole thing is quite kludgey and I think
+;; we should really be able ask the terminal where the cursor is with a nice
+;; _function call_, not going through the I/O queue. Of course that would
+;; require the terminal to be in our address space, or to have a separate
+;; command channel if it's far, far away.
+;;
+;; There is still a small opportunity for a race condition, between outputing
+;; the query, and getting an answer back, but it seems unlikely. I wonder if
+;; there's some way to 'lock' the terminal input queue for that time.
+;;
+
+#|
+(defun eat-typeahead (e)
+  (let ((ta (termios:call-with-raw
+	     (terminal-file-descriptor (line-editor-terminal e))
+	     (_ (tty-slurp _)) :timeout 1)))
+    (when (and ta (> (length ta) 0))
+;      (log-message e "ta[~a]=~w" (length ta) ta)
+      (if (typeahead e)
+	  (setf (typeahead e) (s+ (typeahead e) ta))
+	  (setf (typeahead e) ta
+		(typeahead-pos e) 0)))))
+|#
+
+(defun finish-all-output (e)
+  "Makes all output be in Finish."
+  (when (not (getenv "EMACS"))		      ; XXX so wrong
+    ;;#+ccl (ccl::auto-flush-interactive-streams) ;; Jiminy Crickets!
+    (finish-output *standard-output*)
+    (finish-output *terminal-io*)
+    (finish-output t)
+    (finish-output)
+    ;(finish-output *standard-input*)
+    )
+  (tt-finish-output e)
+  )
+
+(defun do-prefix (e prompt-str)
+  "Output a prefix. The prefix should not span more than one line."
+  (finish-all-output e)
+  (tt-write-string e prompt-str)
+  ;;(finish-all-output e)
+  (tt-finish-output e)
+  ;; (eat-typeahead e)
+  (multiple-value-bind (row col)
+      (terminal-get-cursor-position (line-editor-terminal e))
+    (setf (screen-row e) row
+	  (screen-col e) col
+	  ;; save end of the prefix as the starting column
+	  (start-col e) col
+	  (start-row e) row)))
+
+(defun do-prompt (e prompt output-prompt-func &key only-last-line)
+  "Output the prompt in a specified way."
+;  (format t "e = ~w prompt = ~w output-prompt-func = ~w~%"
+;	  e prompt output-prompt-func)
+  (let* ((s (with-output-to-string (*standard-output*)
+              (if (and output-prompt-func
+		       (or (functionp output-prompt-func)
+			   (fboundp output-prompt-func)))
+		  (progn
+		    (or (ignore-errors (funcall output-prompt-func e prompt))
+			"Your prompt Function failed> ")
+		    (log-message e "do-prompt output-prompt-func"))
+		  (progn
+		    (default-output-prompt e prompt)
+		    (log-message e "do-prompt default-output-prompt")))))
+	 last-newline)
+    (log-message e "do-prompt only-last-line = ~s" only-last-line)
+    (log-message e "do-prompt last-newline = ~s"
+		 (position #\newline s :from-end t))
+    (when (and only-last-line
+	       (setf last-newline (position #\newline s :from-end t)))
+      (setf s (subseq s (1+ last-newline)))
+      (log-message e "partial prompt ~s" s))
+    (log-message e "do-prompt s = ~s ~s" (length s) s)
+    (do-prefix e s)))
+
 (defun redraw (e)
   "Erase and redraw the whole line."
   (tt-move-to-col e 0)
   (tt-erase-to-eol e)
   (setf (screen-col e) 0)
-  (do-prompt e (prompt e) (prompt-func e))
+  (do-prompt e (prompt e) (prompt-func e) :only-last-line t)
   (finish-output (terminal-output-stream (line-editor-terminal e)))
   (display-buf e)
   (with-slots (point buf) e
@@ -1725,12 +1860,14 @@ buffer if there is no word."
   (use-hist e))
 
 (defun add-to-history-p (e buf)
-  "Returns true if we should add the current line to the history. Don't add it if it's blank or the same as the previous line."
+  "Returns true if we should add the current line to the history. Don't add it
+if it's blank or the same as the previous line."
   (with-slots (context) e
     (let* ((cur (history-current-get context))
 	   (prev (dl-next cur)))
 #|
-      (dbug "add-to-history-p = ~w~%  buf = ~w~%  (length buf) = ~w~%  cur = ~w~%  prev = ~w~%  (dl-content prev) = ~w~%"
+      (dbug "add-to-history-p = ~w~%  buf = ~w~%  (length buf) = ~w~%~
+  cur = ~w~%  prev = ~w~%  (dl-content prev) = ~w~%"
 	    (not (or (and buf (= (length buf) 0))
 		     (and prev (dl-content prev)
 			  (equal (dl-content prev) buf))))
@@ -2163,14 +2300,15 @@ is none."
 	 (point (point e))
 	 (ppos (matching-paren-position str :position point))
 	 (offset (and ppos (1+ (- point ppos))))
-	 (tty-fd (terminal-file-descriptor (line-editor-terminal e))))
+	 ;;(tty-fd (terminal-file-descriptor (line-editor-terminal e)))
+	 )
     (if ppos
 	(let ((saved-col (screen-col e)))
 	  (declare (ignore saved-col))
 ;;;	  (tt-move-to-col e (+ ppos (start-col e)))
 	  (move-backward e offset)
 	  (tt-finish-output e)
-	  (listen-for .5 tty-fd)
+	  (tt-listen-for e .5)
 ;;;	  (tt-move-to-col e saved-col)
 	  (move-forward e offset)
 	  )
@@ -2285,117 +2423,6 @@ is none."
 filename instead of whatever the default completion is. Convenient for a key
 binding."
   (complete e #'completion::complete-filename))
-
-#|
-;;; @@@ Consider the issues of merging this with display-length.
-;;; @@@ Consider that this is quite wrong, especially since it would have to
-;;; do everything a terminal would do.
-(defun display-cols (str)
-  "Return the column the cursor is at after outputting STR."
-  (let ((sum 0))
-    (map nil
-	 #'(lambda (c)
-	     (cond
-	       ((graphic-char-p c)
-		(incf sum))
-	       ((eql c #\tab)
-		(incf sum (- 8 (mod sum 8))))
-	       ((eql c #\newline)
-		(setf sum 0))
-	       ((eql c #\backspace)
-		(decf sum))
-	       ((eql c #\escape)
-		#| here's where we're screwed |#)
-	       (t
-		(if (control-char-graphic c)
-		    2			; ^X
-		    4)			; \000
-		)))
-	 s)
-    sum))
-|#
-
-;; Here's the problem:
-;;
-;; People can put any old stuff in the prompt that they want. This includes
-;; things that move the cursor around, characters that might be of different
-;; widths, escape sequences that may or may not move the cursor. So unless we
-;; emulate the terminal exactly, just to figure out where the cursor is after
-;; the prompt, things can get messed up.
-;;
-;; Since emulating the terminal seems infeasible, unless we wrapped ourselves
-;; in an emulation layer like screen or tmux, if we want to be sure to get
-;; things right, we are stuck with with asking the terminal where the cursor
-;; might be.
-;;
-;; Now the problem with asking the terminal, is that we have to output
-;; something, and then read the coordinates back in. But there might be a
-;; bunch of input, like a giant paste or something, or typing ahead, already
-;; in the terminal's input queue, in front of the response to our "where is
-;; the cursor" query, which blocks us from getting an answer.
-;;
-;; So we have to read all input available, BEFORE asking where the heck the
-;; cursor is. This is the reason for all the otherwise useless 'eat-typeahead'
-;; and 'tty-slurp'ing. Of course this whole thing is quite kludgey and I think
-;; we should really be able ask the terminal where the cursor is with a nice
-;; _function call_, not going through the I/O queue. Of course that would
-;; require the terminal to be in our address space, or to have a separate
-;; command channel if it's far, far away.
-;;
-;; There is still a small opportunity for a race condition, between outputing
-;; the query, and getting an answer back, but it seems unlikely. I wonder if
-;; there's some way to 'lock' the terminal input queue for that time.
-;;
-
-(defun eat-typeahead (e)
-  (let ((ta (termios:call-with-raw
-	     (terminal-file-descriptor (line-editor-terminal e))
-	     (_ (tty-slurp _)) :timeout 1)))
-    (when (and ta (> (length ta) 0))
-;      (log-message e "ta[~a]=~w" (length ta) ta)
-      (if (typeahead e)
-	  (setf (typeahead e) (s+ (typeahead e) ta))
-	  (setf (typeahead e) ta
-		(typeahead-pos e) 0)))))
-
-(defun finish-all-output (e)
-  "Makes all output be in Finish."
-  #+ccl (ccl::auto-flush-interactive-streams) ;; Jiminy Crickets!
-  (when (not (getenv "EMACS"))		      ; XXX so wrong
-    (finish-output *standard-output*)
-    ;(finish-output *standard-input*)
-    (finish-output *terminal-io*)
-    (finish-output t)
-    (finish-output))
-  (tt-finish-output e)
-  )
-
-(defun do-prefix (e prompt-str)
-  "Output a prefix. The prefix should not span more than one line."
-  (finish-all-output e)
-  (tt-write-string e prompt-str)
-  (tt-finish-output e)
-  (eat-typeahead e)
-  (multiple-value-bind (row col)
-      (terminal-get-cursor-position (line-editor-terminal e))
-    (setf (screen-row e) row
-	  (screen-col e) col
-	  ;; save end of the prefix as the starting column
-	  (start-col e) col
-	  (start-row e) row)))
-
-(defun do-prompt (e prompt output-prompt-func)
-  "Output the prompt in a specified way."
-;  (format t "e = ~w prompt = ~w output-prompt-func = ~w~%"
-;	  e prompt output-prompt-func)
-  (let* ((s (with-output-to-string (*standard-output*)
-              (if (and output-prompt-func
-		       (or (functionp output-prompt-func)
-			   (fboundp output-prompt-func)))
-		  (or (ignore-errors (funcall output-prompt-func e prompt))
-		      "Your prompt Function failed> ")
-		  (default-output-prompt e prompt)))))
-    (do-prefix e s)))
 
 (defun pop-to-lish (e)
   "If we're inside lish, throw to a quick exit. If we're not in lish, enter it."
