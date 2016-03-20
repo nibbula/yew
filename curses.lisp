@@ -31,7 +31,7 @@ If :curses-use-wide is in *features*, then use the wide character version
 of the library. If :curses-use-ncurses is in *features* then use ncurses
 explicitly, instead of whatever plain curses is.
 
-The user should put :curses-use-wide and/or :curses-use-ncurses in *features*
+You should put :curses-use-wide and/or :curses-use-ncurses in *features*
 before loading this library, and also load CFFI and set
 cffi:*foreign-library-directories* if needed before loading this library.
 
@@ -43,6 +43,8 @@ Make sure we don't clash with the actual CL-NCURSES.
   #+sbcl (:shadow "TIMEOUT")
   #+cl-ncurses (:nickname :cl-ncurses)
   (:export
+   ;; constants
+   #:+ERR+ #:+OK+
    ;; variables
    #:*cols* #:*lines* #:*colors* #:*color-pairs* #:*stdscr*
    ;; attrs
@@ -128,7 +130,7 @@ Make sure we don't clash with the actual CL-NCURSES.
    ;; terminfo
    #:tigetstr #:tigetflag #:tigetnum
    ;; test functions
-   #:test #:test-wchar
+   #:test #:test-wchar #:test-keys
    )
 )
 (in-package :curses)
@@ -265,6 +267,9 @@ Make sure we don't clash with the actual CL-NCURSES.
   (attr attr-t)
   (chars wchar-t :count 5))
 (defctype cchar-t-ptr (:pointer (:struct cchar-t))) ; (cchar-t *)
+
+(defconstant +ERR+ -1 "Return value usually indicating an error.")
+(defconstant +OK+   0 "Return value usually indicating success.")
 
 (defcvar ("COLS"	*cols*)		:int)
 (defcvar ("LINES"	*lines*)	:int)
@@ -645,16 +650,21 @@ application.")
 
 ;; Inserting
 (defcfun insch :int
-  "Insert the character CH before the character under the cursor. Characters to the right are moved, and possibly lost."
+  "Insert the character CH before the character under the cursor. Characters to
+the right are moved, and possibly lost."
   (ch chtype))
 (defcfun winsch :int
-  "Insert the character CH before the character under the cursor, in the window WIN. Characters to the right are moved, and possibly lost."
+  "Insert the character CH before the character under the cursor, in the window
+WIN. Characters to the right are moved, and possibly lost."
   (win window-ptr) (ch chtype))
 (defcfun mvinsch :int
-  "Move to Y, X and insert the character CH before the character under the cursor. Characters to the right are moved, and possibly lost."
+  "Move to Y, X and insert the character CH before the character under the
+cursor. Characters to the right are moved, and possibly lost."
   (y :int) (x :int) (ch chtype))
 (defcfun mvwinsch :int
-  "Move to Y, X and insert the character CH before the character under the cursor, in the window WIN. Characters to the right are moved, and possibly lost."
+  "Move to Y, X and insert the character CH before the character under the
+cursor, in the window WIN. Characters to the right are moved, and possibly
+lost."
   (win window-ptr) (y :int) (x :int) (ch chtype))
 (defcfun insstr :int
   "Insert a string."
@@ -719,7 +729,8 @@ application.")
   "Move and insert a wide character string in a window."
   (win window-ptr) (y :int) (x :int) (wstr (:pointer wchar-t)))
 #+curses-use-wide (defcfun mvwins_nwstr :int
-  "Move and insert the first N characters of a wide character string in a window."
+  "Move and insert the first N characters of a wide character string in a
+window."
   (win window-ptr) (y :int) (x :int) (wstr (:pointer wchar-t)) (n :int))
 
 ;; Deleting
@@ -814,10 +825,14 @@ probably messing up the screen."
 special keys and user input."
   (win window-ptr) (bf bool))
 (defcfun timeout :void
-  "Set read timeout. Negative DELAY waits indefinitely. Zero DELAY is non-blocking. Positive waits for DELAY milliseconds. ERR is returned if no input is available."
+  "Set read timeout. Negative DELAY waits indefinitely. Zero DELAY is
+non-blocking. Positive waits for DELAY milliseconds. ERR is returned if no input
+is available."
   (delay :int))
 (defcfun wtimeout :void
-  "Set read timeout for a window. Negative DELAY waits indefinitely. Zero DELAY is non-blocking. Positive waits for DELAY milliseconds. ERR is returned if no input is available."
+  "Set read timeout for a window. Negative DELAY waits indefinitely. Zero DELAY
+is non-blocking. Positive waits for DELAY milliseconds. ERR is returned if no
+input is available."
   (win window-ptr) (delay :int))
 (defcfun typeahead :int
   "Use the file descriptor FD to check for typeahead. If FD is -1 no typeahead
@@ -871,9 +886,11 @@ of these, in which case it returns ERR."
   `(setf ,y (getcury ,win)
 	 ,x (getcurx ,win)))
 ;; void getparyx(WINDOW *win, int y, int x);
-;; "Place the cursor position of the window WIN into the variables Y and X. If WIN is a subwindow, it gets the coordinates relative to the parent."
+;; "Place the cursor position of the window WIN into the variables Y and X.
+;; If WIN is a subwindow, it gets the coordinates relative to the parent."
 ;; void getbegyx(WINDOW *win, int y, int x);
-;; "If WIN is a subwindow, place it's starting coordinates, relative to the parent, into Y and X."
+;; "If WIN is a subwindow, place it's starting coordinates, relative to the
+;; parent, into Y and X."
 ;; void getmaxyx(WINDOW *win, int y, int x);
 ;; "If WIN is a subwindow, place it's size into Y and X."
 
@@ -1298,5 +1315,38 @@ of these, in which case it returns ERR."
   (test-wchar-1)
   (test-wchar-2)
   (endwin))
+
+(defun test-keys ()
+  "See what curses thinks a key is."
+  (unwind-protect
+     (progn
+       (initscr)
+       (cbreak)
+       (noecho)
+       (nonl)
+       (keypad *stdscr* 1)
+       (clear)
+       (move 0 0)
+       (addstr (format nil "Type keys to see what curses returns.~%"))
+       (addstr (format nil "Press escape four time in a row to exit~%"))
+       (addstr (format nil "-------~%"))
+       (let ((escape 0) c (line 3))
+	 (loop :while (< escape 4)
+	    :do
+	    (setf c (getch))
+	    (addstr (format nil "~d #x~x #o~o " c c c))
+	    (if (and (>= c 0) (<= c 255))
+		(addstr (format nil "~s ~a" (code-char c)
+				(char-name (code-char c))))
+		(addstr (format nil "~s" (function-key c))))
+	    (addch (char-code #\newline))
+	    (incf line)
+	    (when (> line (1- *lines*))
+	      (setf line 3)
+	      (move 3 0))
+	    (if (eql (code-char c) #\escape)
+		(incf escape)
+		(setf escape 0)))))
+    (endwin)))
 
 ;; EOF
