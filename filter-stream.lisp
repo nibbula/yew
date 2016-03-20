@@ -40,7 +40,10 @@
 ;;;(defmethod close ((stream wrapped-stream) &key abort &allow-other-keys)
 ;;;(defmethod close ((stream wrapped-stream) &key (abort t) &allow-other-keys)
 ;;;(defmethod close ((stream wrapped-stream) &key (abort t))
-(defmethod close ((stream wrapped-stream) &key abort)
+;; !!! How can I get this to stop complaining?
+;; What is the correct signature? SBCL says it's:
+;;   (FUNCTION (T &KEY (:ABORT T)) *)
+(defmethod close ((stream wrapped-stream) &key (abort t))
   (if abort
       (progn
 	(force-output stream)

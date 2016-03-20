@@ -353,19 +353,6 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
     :documentation "The current keymap."))
   (:documentation "A tree browser."))
 
-(defmethod initialize-instance
-    :after ((o tree-browser) &rest initargs &key &allow-other-keys)
-  "Initialize a tree-browser."
-  (declare (ignore initargs))
-  (with-slots (parents current root top keymap) o
-    (when (not parents)
-      (setf parents (make-hash-table :test #'equal)))
-    (when (slot-boundp o 'root)
-      (setf current root
-	    top root))
-    (when (not (slot-boundp o 'keymap))
-      (setf keymap *tree-keymap*))))
-
 (defvar *browser* nil
   "The current tree browser.")
 
@@ -647,6 +634,19 @@ been encountered."
       (#\escape		. *tree-escape-keymap*)))
 
 (defparameter *tree-escape-keymap* (build-escape-map *tree-keymap*))
+
+(defmethod initialize-instance
+    :after ((o tree-browser) &rest initargs &key &allow-other-keys)
+  "Initialize a tree-browser."
+  (declare (ignore initargs))
+  (with-slots (parents current root top keymap) o
+    (when (not parents)
+      (setf parents (make-hash-table :test #'equal)))
+    (when (slot-boundp o 'root)
+      (setf current root
+	    top root))
+    (when (not (slot-boundp o 'keymap))
+      (setf keymap *tree-keymap*))))
 
 (defun show-message (format-string &rest format-args)
   "Display a formatted message."

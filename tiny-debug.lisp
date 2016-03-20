@@ -491,7 +491,8 @@ the outermost. When entering the debugger the current frame is 0.")
 
 ;; As you may know, this is very implementation specific.
 (defun debugger-backtrace (n)
-  "Output a list of execution stack contexts. Try to limit it to the innermost N contexts, if we can."
+  "Output a list of execution stack contexts. Try to limit it to the
+innermost N contexts, if we can."
   #+sbcl
   (let ((bt-func (if (< *lisp-version-number* 10300)
 		     (intern "BACKTRACE" :sb-debug)

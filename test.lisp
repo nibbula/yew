@@ -2,7 +2,9 @@
 ;;; test.lisp - Test ting things
 ;;;
 
-;; $Revision: 1.2 $
+;; N.B.: This is exactly what one shouldn't do.
+;; Perhaps we can agree upon a testing protocol? Then everyone could write their
+;; own testing package and it wouldn't matter much? Right?
 
 ;; TODO:
 ;; - test setup and takedown

@@ -6,8 +6,6 @@
 ;; I think DTT is a fairly stupid abbreviation, but I didn't want to use
 ;; just CSV, and I can't think of anything else at the momemnt.
 
-;; $Revision: 1.2 $
-
 (defpackage :dtt
   (:documentation "Delimited Text Tables")
   (:use :cl :dlib :table)

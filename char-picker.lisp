@@ -265,7 +265,6 @@ starting at START. If not found, return START."
     (#\>		. move-to-bottom)
     (#\?		. help)
     ))
-  
 
 ;; Use
 
