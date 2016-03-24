@@ -7,6 +7,7 @@
   (:use :cl :opsys)
   (:export
    #:*standard-output-has-terminal-attributes*
+   #:*terminal*
    #:has-terminal-attributes
    #:terminal-default-device-name
    #:terminal-stream
@@ -68,6 +69,9 @@
 (defvar *standard-output-has-terminal-attributes* nil
   "True if we want programs to treat *standard-output* like it can display
 terminal attributes.")
+
+(defvar *terminal* nil
+  "The default terminal to use for I/O.")
 
 (defclass terminal-stream ()
   ((output-stream

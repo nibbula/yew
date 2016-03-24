@@ -431,7 +431,11 @@ anything important.")
 		 (slot-value e 'terminal-device-name))
 	    (make-instance (slot-value e 'terminal-class)
 			   :device-name (line-editor-terminal-device-name e))
-	    (make-instance (slot-value e 'terminal-class))))
+	    (or (progn
+		  (when *terminal*
+		    (dbug "Using *TERMINAL* ~a" (type-of *terminal*)))
+		  *terminal*)
+		(make-instance (slot-value e 'terminal-class)))))
   ;; Make a default line sized buffer if one wasn't given.
   (when (or (not (slot-boundp e 'buf)) (not (slot-value e 'buf)))
     (setf (slot-value e 'buf) (make-stretchy-string *initial-line-size*)))
