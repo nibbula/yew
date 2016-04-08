@@ -966,7 +966,7 @@ and indented properly for multi-line objects."
 	       (with-fg (+color-blue+)
 		 (addstr (format nil "~(~s~)~%" (node-object node)))))
 	      (t
-	       (addstr (format nil "~(~s~)~%" (node-object node)))))))))
+	       (addstr (format nil "~(~a~)~%" (node-object node)))))))))
       ((stringp (node-object node))
        (with-fg (+color-cyan+)
 	 (addstr (format nil "~s~%" (node-object node)))))
@@ -989,7 +989,7 @@ and indented properly for multi-line objects."
     ;;; reads the thing, unlike setting *read-eval* false.
     (set-dispatch-macro-character #\# #\. #'fake-reader *safer-readtable*))
   (let ((*readtable* *safer-readtable*))
-    (read stream nil nil)))
+    (package-robust-read stream nil nil)))
 
 (defun fake-code-browse (&optional (file (fui:pick-file)))
   "This shows why s-exps are cool."
