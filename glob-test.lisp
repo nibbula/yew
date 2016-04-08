@@ -2,8 +2,6 @@
 ;; glob-test.lisp - Test glob package.
 ;;
 
-;; $Revision: 1.2 $
-
 (defpackage :glob-test
   (:documentation "Test glob package")
   (:use :cl :test :glob :opsys)
@@ -120,7 +118,8 @@
   )
 
 ;; Reference the C functions
-(cffi:defcfun ("fnmatch" real-fnmatch) :int (pattern :string) (string :string) (flags :int))
+(cffi:defcfun ("fnmatch" real-fnmatch) :int (pattern :string) (string :string)
+	      (flags :int))
 (cffi:defcallback glob-error :int ((epath :string) (eerrno :int))
   (format *error-output* "Glob error ~d for path ~s.~%" eerrno epath))
 (cffi:defcfun ("glob" real-glob) :int (pattern :string) (flags :int)

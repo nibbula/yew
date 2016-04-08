@@ -29,9 +29,7 @@ The documentation for FNMATCH describes the pattern syntax a little.
 ;; I should test the speed of my code vs. re-translation to CL-PPCRE.
 ;;
 ;; These are don't really do everything that the UNIX/POSIX versions do. I
-;; only put in the features I needed to implement LISH. If you need other
-;; features, feel free to add them, but I recommend keeping it fairly
-;; compatible with POSIX.
+;; only put in the features I needed to implement LISH.
 
 ;; @@@ actually constant
 (defparameter *special-chars* #("[*?" "[*?{}" "[*?~" "[*?{}~")
@@ -54,7 +52,9 @@ The documentation for FNMATCH describes the pattern syntax a little.
   "Characters in the space character class.")
 
 (defstruct char-set
-  "A set of characters. Can have ranges, classes and individual characters. RANGES is a list of (low . high) pairs. CLASSES are a vector of CHAR-CLASS, which is tested for inclusion by a function. STRING is individual characters."
+  "A set of characters. Can have ranges, classes and individual characters.
+RANGES is a list of (low . high) pairs. CLASSES are a vector of CHAR-CLASS,
+which is tested for inclusion by a function. STRING is individual characters."
   ranges
   classes
   string
