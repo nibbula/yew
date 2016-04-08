@@ -39,6 +39,10 @@
     :initarg :search-string :accessor char-picker-search-string
     :initform (make-stretchy-string 20) :type string
     :documentation "Adjustable string we are searching for.")
+   (search-start
+    :initarg :search-start :accessor char-picker-search-start
+    :initform 0 :type integer
+    :documentation "Where the search started.")
    (direction
     :initarg :direction :accessor char-picker-direction
     :initform :forward :type (member :forward :backward)
@@ -116,6 +120,7 @@ starting at START. If not found, return START."
 	  view-size (- curses:*lines* 4)
 	  saved-start start
 	  searching nil
+	  search-start start
 	  direction :forward
 	  failed nil
 	  input nil
@@ -130,6 +135,9 @@ starting at START. If not found, return START."
     (addstr "I-Search: ")
     (addstr prompt)))
 
+(defun erase-prompt ()
+  (move 1 0) (clrtoeol))
+
 (defmethod update-display ((i char-picker))
   (with-slots (search-string failed searching direction start view-size) i
     ;;(show-prompt i search-string)
@@ -141,8 +149,9 @@ starting at START. If not found, return START."
 	    (setf start s)
 	    (setf failed t))))
     (show-chars start view-size search-string)
-    (when searching
-      (show-prompt i search-string))
+    (if searching
+	(show-prompt i search-string)
+	(erase-prompt))
     (refresh)))
 
 (defmethod await-event ((i char-picker))
@@ -156,79 +165,101 @@ starting at START. If not found, return START."
 ;; Commands
 
 (defun backspace-command (i)
+  "Delete the last character of the search string."
   (with-slots (searching search-string failed) i
     (when (and searching (> (fill-pointer search-string) 0))
       (setf (fill-pointer search-string) (1- (fill-pointer search-string))
 	    failed nil))))
 
 (defun clear-line-command (i)
+  "Clear the search string."
   (with-slots (searching search-string failed) i
     (when searching
       (setf (fill-pointer search-string) 0
 	    failed nil))))
 
 (defun enter-command (i)
-  (with-slots (result start) i
-    (setf result (code-char start)
-	  *pick-char-start* start
-	  (inator-quit-flag i) t)))
+  "Quit and return the top character as the result."
+  (with-slots (result start searching) i
+    (if searching
+	(setf searching nil failed nil)
+	(setf result (code-char start)
+	      *pick-char-start* start
+	      (inator-quit-flag i) t))))
 
 (defmethod search-command ((i char-picker))
-  (with-slots (searching start direction failed) i
-    (when searching
-      (incf start))
+  "Enter search mode or search for the next occurance."
+  (with-slots (searching search-start start direction failed) i
+    (if searching
+	(incf start)
+	(setf search-start start))
     (setf direction :forward
 	  searching t
 	  failed nil)))
 
 (defun reverse-search-command (i)
-  (with-slots (searching start direction failed) i
-    (when (and searching (> start 0))
-      (decf start))
+  "Enter search mode or search for the previous occurance."
+  (with-slots (searching search-start start direction failed) i
+    (if searching
+	(when (> start 0)
+	  (decf start))
+	(setf search-start start))
     (setf direction :backward
 	  searching t
 	  failed nil)))
 
 (defmethod quit ((i char-picker))
-  (setf (inator-quit-flag i) t
-	(char-picker-result i) (code-char (char-picker-saved-start i))))
+  "Exit the character picker or exit search mode."
+  (with-slots (start searching search-start result saved-start) i
+    (if searching
+	(setf searching nil failed t start search-start)
+	(setf (inator-quit-flag i) t
+	      result (code-char saved-start)))))
 
 (defmethod next ((i char-picker))
+  "Next character."
   (with-slots (start failed) i
     (incf start) (setf failed t)))
 
 (defmethod previous ((i char-picker))
+  "Previous character."
   (with-slots (start failed) i
     (decf start)
     (setf failed t)))
 
 (defmethod next-page ((i char-picker))
+  "Next page."
   (with-slots (start failed view-size) i
     (incf start view-size) (setf failed t)))
 
 (defmethod previous-page ((i char-picker))
+  "Previous page."
   (with-slots (start failed view-size) i
     (decf start view-size)
     (setf failed t)))
 
 (defmethod move-to-top ((i char-picker))
+  "Go to the first character."
   (with-slots (start failed) i
     (setf start 0 failed t)))
 
 (defmethod move-to-bottom ((i char-picker))
+  "Go to the last character."
   (with-slots (start view-size) i
     (setf start (- char-code-limit view-size 1))))
 
 (defmethod move-to-beginning ((i char-picker))
+  "Go to the first character."
   (move-to-top i))
 
 (defmethod move-to-end ((i char-picker))
+  "Go to the last character."
   (move-to-bottom i)
   (setf (char-picker-failed i) t))
 
-(defmethod previous-page ((i char-picker))
-  (with-slots (start view-size) i
-    (decf start view-size)))
+;; (defmethod previous-page ((i char-picker))
+;;   (with-slots (start view-size) i
+;;     (decf start view-size)))
 
 (defmethod default-action ((i char-picker))
   "Use a character based on it's on screen letter tag."
@@ -247,7 +278,8 @@ starting at START. If not found, return START."
   "Keymap for the character picker."
   `((#\backspace	. backspace-command)
     (#\rubout		. backspace-command)
-    (,(ctrl #\U)	. clear-line-commmand)
+    (:backspace		. backspace-command)
+    (,(ctrl #\U)	. clear-line-command)
     (#\return		. enter-command)
     (#\newline		. enter-command)
     (,(ctrl #\S)	. search-command)
@@ -280,6 +312,5 @@ starting at START. If not found, return START."
   "Pick a character."
   (let ((c (char-picker)))
     (format t "~c #x~x ~a~%" c (char-code c) (char-name c))))
-
 
 ;; EOF
