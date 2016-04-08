@@ -33,15 +33,18 @@
    #:print-values
    #:print-values*
    #:print-values-of
-   #:print-columns
    #:print-columns-sizer
+   #:print-columns
    #:print-size
-   #:dir
-   #:slurp
-   #:unintern-conflicts
+   #:*plain-spin-string*
+   #:*unicode-spin-string*
+   #:*emoji-spin-string*
+   #:spin
+   #:with-spin
    #:*loadable-packages*
    #:loadable-packages
    #:clear-loadable-package-cache
+   #:copy-package
    #:show-features
    #:describe-environment
    #:describe-implementation
@@ -51,15 +54,14 @@
    #:describe-reader
    #:describe-system
    #:describe-class
+   #:dir
+   #:unintern-conflicts
    #:d-autoload
+   #:slurp
+   #:confirm
    #:add-hook
    #:remove-hook
    #:run-hooks
-   #:*plain-spin-string*
-   #:*unicode-spin-string*
-   #:*emoji-spin-string*
-   #:spin
-   #:with-spin
   )
 )
 (in-package :dlib-misc)
@@ -1168,6 +1170,25 @@ defaults to character) with the contents of FILE-OR-STREAM."
       (when close-me
 	(close stream)))
     result))
+
+(defun confirm (action &key (output *standard-output*)
+			 (input *standard-input*)
+			 (confirming-input #\y)
+			 (eof-confirms t))
+  "A general confirmer using streams. ACTION is a description of the action
+you want to confirm. CONFIRMING-INPUT can be either a character or a string,
+whic defaults to #\y. If EOF-CONFIRMS is true (the default), then and end of
+file is accepted as confirmation."
+  (assert (or (stringp confirming-input) (characterp confirming-input)))
+  (format output "~%Do you really want to ~a? " action)
+  (finish-output output)
+  (let ((l (read-line input nil nil)))
+    (or (and eof-confirms (not l))	; EOF = confirm (i.e. hit ^D)
+	(and (stringp l)
+	     (etypecase confirming-input
+	       (string (equalp l confirming-input))
+	       (character (and (> (length l) 0)
+			       (equalp (aref l 0) confirming-input))))))))
 
 ;; Hooks - a simple, old-fashioned convention.
 

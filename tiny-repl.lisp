@@ -24,7 +24,7 @@
 ;#+sbcl (require 'sb-introspect)
 
 (defpackage "TINY-REPL"
-  (:use :common-lisp :tiny-rl :keymap :dlib :termios)
+  (:use :common-lisp :tiny-rl :keymap :dlib :dlib-misc :termios)
   (:documentation
    "A tiny REPL replacement that works with tiny-rl.")
   (:export
@@ -185,15 +185,10 @@ The REPL also has a few commands:
   #'snarky-interceptor
   "Help.")
 
-(defun confirm (state level)
+(defun confirm-quit (state level)
   (with-slots (output) state
     (or (>= level 1)
-	(progn
-	  (format output "~%Do you really want to quit the REPL? ")
-	  (finish-output output)
-	  (let ((l (read-line *standard-input* nil nil)))
-	    (or (not l)			; EOF = confirm (i.e. hit ^D)
-		(and (stringp l) (> (length l) 0) (equalp (aref l 0) #\y))))))))
+	(confirm "quit the REPL"))))
 
 (define-condition repl-read-continue (simple-condition)
   ()
@@ -446,7 +441,7 @@ DEBUG	      -- True to install TINY-DEBUG as the debugger. Default is T.
 		     result (type-of result)
 		     (eq result *empty-symbol*))
 		(if (equal result *quit-symbol*)
-		  (when (confirm state *repl-level*)
+		  (when (confirm-quit state *repl-level*)
 		    (return result))
 		  (repl-eval result state))			;;; EVAL
 	       :finally (return result)))
