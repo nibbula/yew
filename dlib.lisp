@@ -55,6 +55,8 @@
    #:get-lines
    #:safe-read-from-string
    #:clean-read-from-string
+   #:package-robust-read-from-string
+   #:package-robust-read
    #:*buffer-size*
    #:copy-stream
    #:quote-format
@@ -91,6 +93,7 @@
    #+sbcl #:without-notes
    ;; language-ish
    #:define-constant
+   #:define-alias #:defalias
    #-(or lispworks clasp) #:λ
    #:_
    #:symbolify
@@ -101,9 +104,10 @@
    #-lispworks #:with-unique-names
    #:with-package
    #:shortest-package-nick
-   #:not-so-funcall
+   #:not-so-funcall #:symbol-call #-clasp #:※
    ;; debugging
-   #:*dbug* #:dbug #:with-dbug #:without-dbug
+   #:*dbug* #:*dbug-package* #:dbug #:with-dbug #:with-dbug-package
+   #:without-dbug
    #:dump-values
    ;; Environment features
    #:*host*
@@ -815,14 +819,98 @@ equal under TEST to result of evaluating INITIAL-VALUE."
 ;;#-(or sbcl clisp ccl cmu lispworks ecl abcl)
 ;;(setf (macro-function 'define-constant) (macro-function 'cl:defconstant))
 
+;; Ideally we would be able to make aliases for these:
+;;   variable structure type package method-combination setf function
+;;   compiler-macro slot-definition optimize
+;; but for now, we'll stick to the easy ones. I'm still not convinced this
+;; isn't just an overblown pile of crap.
+
+(defgeneric define-alias (alias original alias-type)
+  (:documentation "Define the symbol ALIAS as another name for ORIGINAL.")
+  (:method (alias (original symbol) (alias-type t))
+    (error "We don't know how to make an alias for a ~S yet." alias-type))
+  (:method (alias (original symbol) (alias-type (eql 'compiler-macro)))
+    "Make an alias for a compiler macro."
+    (setf (compiler-macro-function alias)
+	  (compiler-macro-function original)
+	  (documentation alias 'compiler-macro)
+	  (documentation original 'compiler-macro)))
+  (:method (alias (original symbol) (alias-type (eql 'macro)))
+    "Make an alias for a macro."
+    (setf (macro-function alias)
+	  (macro-function original)
+	  (documentation alias 'function)
+	  (documentation original 'function)))
+  (:method (alias (original symbol) (alias-type (eql 'variable)))
+    "Make an alias for a variable."
+    (define-symbol-macro alias original)
+    (setf (documentation alias 'variable)
+	  (documentation original 'variable)))
+  (:method (alias (original symbol) (alias-type (eql 'function)))
+    "Make an alias for a function."
+    (setf (fdefinition alias)
+	  (fdefinition original)
+	  (documentation alias 'function)
+	  (documentation original 'function))
+    (define-alias alias original 'compiler-macro))
+  (:method (alias (original package) alias-type)
+    "Make a alias for a package by adding new nicknames for it."
+    (declare (ignore alias-type))
+    (let* ((pkg (find-package original))
+	   (new-nicks (append (list alias) (package-nicknames pkg))))
+      ;; Hopefully this trick works on most implementations.
+      (rename-package original original new-nicks)))
+  (:method (alias (original symbol) (alias-type (eql 'class)))
+    (define-alias alias (find-class original) alias-type))
+  (:method (alias (original standard-class) alias-type)
+    "Make a alias for a standard class."
+    (declare (ignore alias-type))
+    (setf (find-class alias) original
+	  (documentation alias 'type)
+	  (documentation original 'type))))
+
+;; I encouraged you make appropriate methods for your own types.
+
+(defun defalias (alias original &optional alias-type)
+  "Define ALIAS as another name for ORIGINAL. ALIAS should be a symbol.
+ORIGINAL is something that a define-alias method is defined for."
+  (when (not (symbolp alias))
+    (error "ALIAS must be a symbol." ))
+  (typecase original
+    (symbol
+     (cond
+       ((fboundp original)
+	;; Functions or macros (or methods lambda's ...)
+	(cond
+	  ((macro-function original)
+	   (define-alias alias original 'macro))
+	  ((symbol-function original)
+	   (define-alias alias original 'function))))
+       ((find-class original)
+	;; symbols that denote class types or structure types
+	(typecase (find-class original)
+	  (structure-class (define-alias alias original 'structure))
+	  (standard-class  (define-alias alias original 'class))
+	  (t               (define-alias alias original alias-type))))
+       (t
+	;; Anything else is assumed to be a variable
+	(define-alias alias original 'variable))))
+    ;; If there was a way to get the name:
+    ;;(function (define-alias alias original 'function))
+    (package         (define-alias alias original 'package))
+    (structure-class (define-alias alias original 'structure))
+    (standard-class  (define-alias alias original 'class))
+    (t               (define-alias alias original alias-type))))
+
 ;; This is just to pretend that we're trendy and modern.
 ;(setf (macro-function 'λ) (macro-function 'cl:lambda))
 ;;Umm actually I mean:
 #-(or lispworks clasp)
 (defmacro λ (&whole form &rest bvl-decls-and-body)
-  (declare (ignore bvl-decls-and-body))
-  `#'(lambda ,@(cdr form)))
+   (declare (ignore bvl-decls-and-body))
+   `#'(lambda ,@(cdr form)))
 ;; Still doesn't work everywhere? WHY?
+;; Also this doesn't work: (defalias 'λ 'lambda)
 
 ;; Is it really worth doing this? Is this gratuitous language mutation?
 ;; This is weird. Why do I love using it so much?
@@ -1000,7 +1088,8 @@ A utility for debugging DEBUG-FUNCTION-ARGLIST."
   #+lispworks (let ((args (lw:function-lambda-list fun)))
 		(and (listp args) (strings-to-symbols args)))
   #+abcl (sys::arglist fun)
-  #-(or sbcl ccl cmu lispworks abcl)
+  #+ecl (ext:function-lambda-list fun)
+  #-(or sbcl ccl cmu lispworks abcl ecl)
   (multiple-value-bind (exp closure-p name)
       (function-lambda-expression fun)
     (when exp
@@ -1076,27 +1165,61 @@ Useful for making your macro “hygenic”."
 	p)
       (package-name package)))
 
+#| How about not a macro?
+
 (defmacro not-so-funcall (package symbol &rest args)
   "Call SYMBOL with ARGS if it's FBOUND in PACKAGE and PACKAGE exists."
-  `(and (find-package ,package)
-	(fboundp (intern (string ,symbol) (find-package ,package)))
-	(funcall (intern (string ,symbol) (find-package ,package)) ,@args)))
+  (with-unique-names (pkg sym)
+    `(let* ((,pkg (find-package ,package))
+	    (,sym (intern (string ,symbol))))
+       (if (fboundp ,sym))
+	 (funcall (intern ,sym (find-package ,package)) ,@args)
+       (error "Not so funcall ~s ~s" ,package ,symbol))))
+
+(defmacro ※ (package symbol &rest args)
+  "Call SYMBOL with ARGS if it's FBOUND in PACKAGE and PACKAGE exists."
+  `(not-so-funcall ,package ,symbol ,@args))
+|#
+
+(defun not-so-funcall (package symbol &rest args)
+  "Call SYMBOL with ARGS if it's FBOUND in PACKAGE and PACKAGE exists."
+  (let ((pkg (find-package package)) sym)
+    (when (not pkg)
+      (error "Package not found ~s" package))
+    (setf sym (intern (string symbol) pkg))
+    (if (fboundp sym)
+	(apply sym args)
+	(error "Symbol ~s not found in ~s" symbol package))))
+
+(defalias '※ 'not-so-funcall)
+(defalias 'symbol-call 'not-so-funcall)
 
 ;; Debugging messages
 ;;
 ;; This is so you can say: (dbug "message ~a~%" foo) in code, and then say
-;; (with-dbug (func x)) or (without-dbug (func x)) to get debugging messages
-;; or not.
+;; (with-dbug <exprs..>) or (without-dbug <exprs..>) to get debugging messages
+;; or not. If you want to see only messages from a specific package, use
+;; (with-dbug-package <package> <exprs..>).
 ;;
 ;; If you want keep them around but not always compile them, you could prefix
-;; them with #+dbug or something.  Of course, you should avoid side effects
-;; in your messages. Also the form can have syntactic effects.
+;; them with #+dbug or something. Of course, you should avoid unwanted side
+;; effects in your messages. Be careful, because the "dbug" form might also
+;; have syntactic effects.
+;;
+;; Output goes to *DEBUG-IO*, so you can modify that if you want the output to
+;; go somewhere else, like:
+;;  (let ((*debug-io* *earth*)) (with-dbug (land-on-mars)))
 
 (defvar *dbug* nil)
+(defvar *dbug-package* nil)
 (defmacro dbug (fmt &rest args)
-  `(when dlib:*dbug* (funcall #'format *debug-io* ,fmt ,@args) (finish-output)))
+  `(when (and dlib:*dbug* (or (not *dbug-package*)
+			      (equal *dbug-package* (package-name *package*))))
+	      (funcall #'format *debug-io* ,fmt ,@args) (finish-output)))
 
-(defmacro with-dbug    (&body body) `(let ((*dbug* t))   ,@body))
+(defmacro with-dbug (&body body) `(let ((*dbug* t))   ,@body))
+(defmacro with-dbug-package (package &body body)
+  `(let ((*dbug* t) (*dbug-package* (package-name ,package))) ,@body))
 (defmacro without-dbug (&body body) `(let ((*dbug* nil)) ,@body))
 
 (defmacro dump-values (&rest args)
@@ -1250,7 +1373,8 @@ cannot cause evaluation."
 (defun interninator (name package dirt-pile)
   "Return the symbol NAME from package if it exists, or from the DIRT-PILE
 package if it doesn't. If DIRT-PILE is NIL, return a packageless symbol."
-  (or (find-symbol name package)
+  (or (let ((pkg (find-package package)))
+	(and pkg (find-symbol name pkg)))
       (if dirt-pile
 	  (intern name dirt-pile)
 	  (make-symbol name))))
@@ -1262,7 +1386,8 @@ package if it doesn't. If DIRT-PILE is NIL, return a packageless symbol."
 (defun clean-read-from-string (string package
 			       &optional (eof-error-p t) eof-value
 			       &key (start 0) end preserve-whitespace)
-  "Read from a string without being a dirty bird, we hope."
+  "Read from a string without interning unknown symbols in *package*, instead
+returning them as uninterned symbols."
   ;; This is the good way, which uses the *read-intern* extension.
   #+has-read-intern
   (let ((*read-intern* #'(lambda (str pkg)
@@ -1285,6 +1410,31 @@ package if it doesn't. If DIRT-PILE is NIL, return a packageless symbol."
 			       :preserve-whitespace preserve-whitespace)))
       (when pkg
 	(delete-package pkg)))))
+
+(defun package-robust-read-from-string (string
+					&optional (eof-error-p t) eof-value
+					&key (start 0) end preserve-whitespace)
+  "Read from a string treating unknown symbols or packages as uninterned."
+  (let ((*read-intern*
+	 #'(lambda (s p)
+	     (let ((p (find-package p)))
+	       (or (and p (find-symbol s p))
+		   (find-symbol s *package*)
+		   (make-symbol s))))))
+    (read-from-string string eof-error-p eof-value
+		      :start start :end end
+		      :preserve-whitespace preserve-whitespace)))
+
+(defun package-robust-read (&optional (stream *standard-input*)
+			      (eof-error-p t) (eof-value nil) (recursive-p nil))
+  "Read treating unknown symbols or packages as uninterned."
+  (let ((*read-intern*
+	 #'(lambda (s p)
+	     (let ((p (find-package p)))
+	       (or (and p (find-symbol s p))
+		   (find-symbol s *package*)
+		   (make-symbol s))))))
+    (read stream eof-error-p eof-value recursive-p)))
 
 #+sbcl (declaim (sb-ext:unmuffle-conditions style-warning))
 
