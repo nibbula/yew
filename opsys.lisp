@@ -2,6 +2,8 @@
 ;;; opsys.lisp - Interface to operating systems
 ;;;
 
+;; THE FOLLOWING LONG COMMENT IS FAIRLY WRONG NOW!
+
 ;; This is a hopefully thin layer over operating system functions which
 ;; are not included in Common Lisp. The goal would be to have the same
 ;; interface supported on all operating systems and implementations.
@@ -322,6 +324,9 @@
    #:file-status-flags
    #:file-status-generation
 
+   ;; Stupid cooperative locking
+   #:with-locked-file
+   
    ;; processes
    #:system
    #:system-command
@@ -1065,7 +1070,7 @@
 (defmacro syscall ((func &rest args))
   "Call a system function and signal a posix-error if it fails."
   `(error-check (,func ,@args)
-		,(concatenate 'string (string-downcase func) ": ~s:") ',args))
+		,(concatenate 'string (string-downcase func) ":")))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Environmental information
@@ -1241,13 +1246,7 @@ the current 'C' environment."
   #+clisp (setf (ext:getenv var) nil)	; @@@ guessing?
   #+excl (setf (sys::getenv var) nil)	; @@@ guessing?
   #+ccl (syscall (ccl::unsetenv var))
-  #+sbcl (syscall (real-unsetenv var))
-  #+cmu (syscall (real-unsetenv var))
-  #+abcl (syscall (real-unsetenv var))
-;   #+cmu (let ((v (assoc (intern (string-upcase var) :keyword)
-; 			ext:*environment-list*)))
-; 	  (if v (cdr v)))
-  #+ecl (ext:unsetenv var)
+  #+(or sbcl cmu abcl ecl) (syscall (real-unsetenv var))
   #+lispworks (hcl:unsetenv var)
   #-(or clisp openmcl excl sbcl ecl cmu lispworks abcl)
   (declare (ignore var))
@@ -2063,8 +2062,6 @@ C library function getcwd."
          ,@body)
        (change-directory ,%old-dir)))))
 
-#+openmcl (defcfun mkdir :int (path :string) (mode mode-t))
-
 #+clisp (eval-when (:compile-toplevel :load-toplevel :execute)
 	  (if (or ;; They keep changing this shit!!
 	       (and (function-defined '#:make-directory :posix)
@@ -2072,6 +2069,10 @@ C library function getcwd."
 	       (and (function-defined '#:make-directory :ext)
 		    (function-defined '#:delete-directory :ext)))
 	      (config-feature :os-t-has-new-dir)))
+
+#| Yes, indeedy. The problem is that the error behavior is too inconsistent.
+   If we do it our own way, we get better results. We should probably do
+   this with every similar function.
 
 (defun make-directory (path &key (mode #o755))
 ;  #+clisp (declare (ignore mode)) #+clisp (ext:make-dir path)
@@ -2086,10 +2087,17 @@ C library function getcwd."
   #-(or clisp excl openmcl ecl sbcl) (declare (ignore mode path))
   #-(or clisp excl openmcl ecl sbcl) (missing-implementation 'make-directory)
 )
+|#
 
-#+openmcl (config-feature :os-t-use-rmdir)
-#+os-t-use-rmdir (defcfun rmdir :int (path :string))
+(defcfun mkdir :int (path :string) (mode mode-t))
 
+(defun make-directory (path &key (mode #o755))
+  "Make a directory."
+  ;; The #x1ff is because mkdir can fail if any other than the low nine bits
+  ;; of the mode are set.
+  (syscall (mkdir (safe-namestring path) (logand #x1ff mode))))
+
+#|
 (defun delete-directory (path)
 ;  #+clisp (ext:delete-dir path)
 ;  #+clisp (ext:delete-directory path)
@@ -2103,6 +2111,17 @@ C library function getcwd."
   #-(or clisp excl openmcl ecl sbcl) (declare (ignore path))
   #-(or clisp excl openmcl ecl sbcl) (missing-implementation 'delete-directory)
 )
+
+#+openmcl (config-feature :os-t-use-rmdir)
+#+os-t-use-rmdir (defcfun rmdir :int (path :string))
+
+|#
+
+(defcfun rmdir :int (path :string))
+
+(defun delete-directory (path)
+  "Delete a directory."
+  (syscall (rmdir (safe-namestring path))))
 
 ;; It's hard to fathom how insanely shitty the Unix/POSIX interface to
 ;; directories is. On the other hand, I might have trouble coming up with
@@ -2525,19 +2544,34 @@ calls. Returns NIL when there is an error."
  (clip-path (or (and (pathnamep path) (safe-namestring path)) path) :file))
 (setf (symbol-function 'basename) #'path-file-name)
 
-(defun path-append (path-1 path-2)
-  "Append PATH-2 to PATH-1. Put a directory separator between them if there
-isn't one already."
-  (let ((len1 (length path-1))
-	(len2 (length path-2)))
-    (cond
-      ((zerop len1) path-2)
-      ((zerop len2) path-1)
-      ((or (char= (char path-1 (1- len1)) *directory-separator*)
-	   (char= (char path-2 0) *directory-separator*))
-       (concatenate 'string path-1 path-2))
-      (t
-       (concatenate 'string path-1 *directory-separator-string* path-2)))))
+*directory-separator*
+
+(defun path-append (first-path &rest paths)
+  "Append the elements PATHS to FIRST-PATH. Put a directory separator between
+them if there isn't one already."
+  (when (not (or (stringp first-path) (pathnamep first-path)))
+    (error "FIRST-PATH should be pathname designator."))
+  (flet ((trailing-separator-p (s)
+	   (char= (aref s (1- (length s))) *directory-separator*)))
+    (let ((any nil)
+	  (last-was-separator nil)
+	  (ns (namestring first-path)))
+      (with-output-to-string (str)
+	(when (not (zerop (length ns)))
+	  (setf any t)
+	  (setf last-was-separator (trailing-separator-p ns))
+	  (princ ns str))
+	(loop :for p :in paths :do
+	   (when (not (or (stringp p) (pathnamep p)))
+	     (error "Elements in PATHS should be pathname designators."))
+	   (setf ns (namestring p))
+	   (when (not (zerop (length ns)))
+	     (when (and any (not last-was-separator)
+			(char/= (aref ns 0) *directory-separator*))
+	       (princ *directory-separator* str))
+	     (setf last-was-separator (trailing-separator-p ns))
+	     (princ ns str)
+	     (setf any t)))))))
 
 (defun hidden-file-name-p (name)
   "Return true if the file NAME is normally hidden."
@@ -2805,7 +2839,8 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
 	   out in))))
   #+lispworks nil
   #+abcl nil
-  #-(or ccl sbcl cmu clisp lispworks abcl)
+  #+ecl (and (typep stream 'file-stream) (ext:file-stream-fd stream))
+  #-(or ccl sbcl cmu clisp lispworks abcl ecl)
   (missing-implementation 'stream-system-handle))
 
 ;; stat / lstat
@@ -3493,6 +3528,64 @@ for long."
       value))
   #-darwin (declare (ignore path name))
   #-darwin nil)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Stupid file locking
+;;
+;; Supposedly making a directory is atomic even on shitty networked filesystems.
+;; NOT thread safe, yet.
+
+(defvar *lock-suffix* ".lck"
+  "What to append to a path to make the lock name.")
+
+(defun lock-file-name (pathname)
+  "Return the name of the lock file for PATHNAME."
+  (path-append (or (path-directory-name pathname) "")
+	       (concatenate 'string (path-file-name pathname) *lock-suffix*)))
+
+(defun lock-file (pathname lock-type timeout increment)
+  "Lock PATHNAME."
+  (declare (ignore lock-type))
+  (let ((mode (file-status-mode (stat (safe-namestring pathname))))
+	(filename (lock-file-name pathname))
+	(time 0))
+    ;; Very lame and slow polling.
+    (loop :with wait :and inc = increment
+       :do
+       (if (not (ignore-errors (make-directory filename :mode mode)))
+	   (if (= *errno* +EEXIST+)
+	       (setf wait t)
+	       (error-check -1 "lock-file: ~s" filename))
+	   (setf wait nil))
+       ;; (when wait
+       ;; 	 (format t "Waiting...~d~%" time))
+       :while (and wait (< time timeout))
+       :do (sleep inc) (incf time inc))
+    (when (>= time timeout)
+      (error "Timed out trying to lock file ~s" pathname)))
+  t)
+
+(defun unlock-file (pathname)
+  "Unlock PATHNAME."
+  (let ((filename (lock-file-name (safe-namestring pathname))))
+    (when (file-exists filename)
+      (delete-directory filename)
+      ;; (format t "Unlocked~%")
+      (sync))))
+
+(defmacro with-locked-file ((pathname &key (lock-type :write) (timeout 3)
+				      (increment .1))
+			    &body body)
+  ;; @@@ Need to wrap with recursive thread locks
+  (with-unique-names (locked)
+    `(let ((,locked nil))
+       (unwind-protect
+	    (progn
+	      (setf ,locked
+		    (lock-file ,pathname ,lock-type ,timeout ,increment))
+	      ,@body)
+	 (when ,locked
+	   (unlock-file ,pathname))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; System Commands?
@@ -4395,7 +4488,7 @@ from the system command CMD with the arguments ARGS."
       (if ,var (close ,var)))))
 
 ;; There's already "standard-ish" lisp networking? Right? Please?
-;; NO THERE ISN"T.
+;; NO THERE ISN"T. (a long time ago...)
 ;;
 ;; I really can't believe I'm doing this. But...
 
