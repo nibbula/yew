@@ -219,7 +219,7 @@ foreground FG and background BG."
   "Put a centered string STR in window W of width WIDTH at row ROW."
   (mvwaddstr w row (round (- (/ width 2) (/ (length str) 2))) str))
 
-(defun display-text (title text-lines &key input-func)
+(defun display-text (title text-lines &key input-func (justify t))
   "Display text in a pop up window. Optionally calls INPUT-FUNC with the
 window as an argument to get input. If no INPUT-FUNC is provided it just
 waits for a key press and then returns."
@@ -240,14 +240,19 @@ waits for a key press and then returns."
 	   result)
       (box w 0 0)
       (wcentered w width 0 title)
-      (loop :with i = 2 :for l :in text-lines
+      (loop :with i = 2
+	 :for l :in text-lines
 	 :do
-	 (loop :for sub-line :in (split-sequence
-				  #\newline (justify-text l :cols (- width 2)
-							  :stream nil))
-	    :do
-	    (mvwaddstr w i 2 sub-line)
-	    (incf i)))
+	 (if justify
+	     (loop :for sub-line
+		:in (split-sequence #\newline (justify-text l :cols (- width 2)
+							    :stream nil))
+		:do
+		(mvwaddstr w i 2 sub-line)
+		(incf i))
+	     (progn
+	       (mvwaddstr w i 2 l)
+	       (incf i))))
       (refresh)
       (wrefresh w)
       (setf result (if input-func
@@ -258,27 +263,41 @@ waits for a key press and then returns."
       (refresh)
       result)))
 
-(defun help-list (keymap)
-  "Return a list of key binding help lines, suitable for the HELP function."
+(defun help-list (keymap &optional special-doc-finder)
+  "Return a list of key binding help lines, suitable for the HELP function.
+The optional SPECIAL-DOC-FINDER is a function which looks up documentation for
+keymap bindings."
   ;; Make a reverse hash of functions to keys, so we can put all the bindings
   ;; for a function on one line.
-  (let ((rev-hash (make-hash-table)))
+  (let ((rev-hash (make-hash-table)) key-col-len)
     (flet ((add-key (k v) (push k (gethash v rev-hash))))
       (map-keymap #'add-key keymap))
-    (loop :for func :being :the :hash-keys :of rev-hash
+    ;; Get the maxiumum size of the keys section
+    (setf key-col-len
+	  (loop :for func :being :the :hash-keys :of rev-hash
+	     :maximize
+	     (length (format nil "~{~a~^, ~}"
+			     (loop :for k :in (gethash func rev-hash)
+				:collect (nice-char k :caret t))))))
+    ;; Actually collect the strings
+    (loop :with doc
+       :for func :being :the :hash-keys :of rev-hash
+       ;; Look up the documentation for the function.
+       :if (setf doc (or (and (or (functionp func)
+				  (and (symbolp func) (fboundp func)))
+			      (documentation func 'function))
+			 (and special-doc-finder
+			      (funcall special-doc-finder func))
+			 (and (keymap-p func)
+			      (string-downcase func))
+			 nil))
        :collect
        (with-output-to-string (str)
-	 (format str "~{~a~^, ~} - ~a"
-		 (loop :for k :in (gethash func rev-hash)
-		    :collect (nice-char k :caret t))
-		 ;; Look up the documentation for the function.
-		 (cond
-		   ((or (functionp func)
-			(and (symbolp func) (fboundp func)))
-		    (let ((doc (documentation func 'function)))
-		      (or doc (string-downcase func))))
-		   ((keymap-p (string-downcase func)))
-		   (t func)))))))
+	 (format str "~va - ~a" key-col-len
+		 (format nil "~{~a~^, ~}"
+			 (loop :for k :in (gethash func rev-hash)
+			    :collect (nice-char k :caret t)))
+		 doc)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; FUI-inators
@@ -318,15 +337,25 @@ waits for a key press and then returns."
   (clrtoeol)
   (addstr (apply #'format nil format-string args)))
 
+(defun inator-doc-finder (i func)
+  "Find documentation for an inator (subclass) method."
+  (let ((method
+	 (find-method (symbol-function func) '() (list (class-of i)) nil)))
+    (when method (documentation method t))))
+
 (defmethod help ((i fui-inator))
   "Show help for the inator."
   (typecase (inator-keymap i)
     (keymap
-     (display-text "Help" (help-list (inator-keymap i))))
+     (display-text "Help"
+		   (help-list (inator-keymap i) (_ (inator-doc-finder i _)))
+		   :justify nil))
     (list
      (display-text "Help"
 		   (loop :for k :in (inator-keymap i)
-			:append (help-list k))))))
+		      :append
+		      (help-list k (_ (inator-doc-finder i _))))
+		   :justify nil))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
