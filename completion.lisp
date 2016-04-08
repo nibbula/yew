@@ -19,6 +19,9 @@ a count which is the length of the sequence.")
   (:use :cl :dlib :opsys :glob :dlib-misc :syntax-lisp
         :terminal :terminal-ansi :cl-ppcre)
   (:export
+   ;; generic
+   #:complete-print
+   #:complete-print-long
    ;; list
    #:list-completion-function 
    #:string-completion-list
@@ -39,6 +42,15 @@ a count which is the length of the sequence.")
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 		   (compilation-speed 0)))
+
+(defgeneric complete-print (object stream)
+  (:documentation "Print the object for showing in a completion list.")
+  (:method ((object t) stream) (princ object stream)))
+
+(defgeneric complete-print-long (object stream)
+  (:documentation "Print a long, perhaps more descriptive, version of the object
+for showing in a completion list.")
+  (:method ((object t) stream) (princ object stream)))
 
 ;; @@@ Duplication from tiny-rl
 (defvar *lisp-non-word-chars*
@@ -84,9 +96,9 @@ at POS. Returns the new position after moving."
     (t (princ-to-string obj))))
 
 (defun string-list (list)
-  "Return a new list strings from a list of random objects. If there are strings
-in the list already, use them. If everything in the list is a string already,
-just return the list."
+  "Return a new list of strings from a list of random objects. If there are
+strings in the list already, use them. If everything in the list is a string
+already, just return the list."
   (if (every #'stringp list)
       list
       (loop :for i :in list :collect (stringify i))))
