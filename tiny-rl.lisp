@@ -10,7 +10,7 @@
 ;;   - M-\ delete-horizontal-space
 ;;   - search by :UP (or C-P)
 ;;   - fix undo boundaries
-;;   - unicode input gadget (from neox)
+;;   - binding for char-picker
 ;;   - change the the name
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
@@ -2570,6 +2570,23 @@ binding."
 	(self-insert e t result)
 	(beep e "unipose ~c ~c unknown" first-ccc second-ccc))))
 
+(defmacro with-external ((e) &body body)
+  (with-unique-names (result)
+    `(let (,result)
+       (finish-output (terminal-output-stream (line-editor-terminal ,e)))
+       (terminal-end (line-editor-terminal ,e))
+       (setf ,result (progn ,@body))
+       (terminal-start (line-editor-terminal ,e))
+       (redraw-command ,e) 			; maybe could do better?
+       ,result)))
+
+(defun char-picker-command (e)
+  "Pick unicode (or whatever) characters."
+  (let ((result (with-external (e) (symbol-call :char-picker :char-picker))))
+    (if result
+	(self-insert e t result)
+	(beep e "char-picker failed"))))
+
 (defkeymap *normal-keymap*
   `(
     ;; Movement
@@ -2643,6 +2660,7 @@ binding."
     ;; (#\( (start-macro))
     ;; (#\) (end-macro))
     (#\9		. unipose-command)
+    (#\7		. char-picker-command)
     (,(ctrl #\C)	. exit-editor)
     (,(ctrl #\X)	. exchange-point-and-mark)))
 ;  :default-binding #| (beep e "C-x ~a is unbound." cmd |#
