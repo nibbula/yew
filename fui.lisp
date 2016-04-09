@@ -339,9 +339,10 @@ keymap bindings."
 
 (defun inator-doc-finder (i func)
   "Find documentation for an inator (subclass) method."
-  (let ((method
-	 (find-method (symbol-function func) '() (list (class-of i)) nil)))
-    (when method (documentation method t))))
+  (when (fboundp func)
+    (let ((method
+	   (find-method (symbol-function func) '() (list (class-of i)) nil)))
+      (when method (documentation method t)))))
 
 (defmethod help ((i fui-inator))
   "Show help for the inator."
