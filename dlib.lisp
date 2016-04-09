@@ -105,6 +105,7 @@
    #:with-package
    #:shortest-package-nick
    #:not-so-funcall #:symbol-call #-clasp #:※
+   #:@
    ;; debugging
    #:*dbug* #:*dbug-package* #:dbug #:with-dbug #:with-dbug-package
    #:without-dbug
@@ -1194,6 +1195,15 @@ Useful for making your macro “hygenic”."
 
 (defalias '※ 'not-so-funcall)
 (defalias 'symbol-call 'not-so-funcall)
+
+;; Should I really?
+(defmacro @ (object &rest slot-names)
+  "Slot access."
+  (let ((result object))
+    (loop
+       :for n :in slot-names
+       :do (setf result `(slot-value ,result ',n)))
+    result))
 
 ;; Debugging messages
 ;;
