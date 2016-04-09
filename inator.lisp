@@ -153,9 +153,12 @@ a TERM-INATOR.
     (,(ctrl #\S)	. search-command)
     (,(meta-char #\s)	. sort-command)	; ?
     (,(meta-char #\j)	. jump-command)	; ?
+    (#\escape		. *default-inator-escape-keymap*)
     )
   :default-binding 'default-action)
 
+(defparameter *default-inator-escape-keymap*
+  (build-escape-map *default-inator-keymap*))
 
 ;; Default methods
 
