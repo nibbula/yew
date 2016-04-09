@@ -15,6 +15,7 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Pick a character."
-    :depends-on (:stretchy :char-util :keymap :curses :inator :fui)
+    :depends-on (:dlib :stretchy :char-util :keymap :curses :inator :fui
+		 :terminal-curses)
     :components
     ((:file "char-picker")))

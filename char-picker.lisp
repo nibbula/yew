@@ -4,7 +4,8 @@
 
 (defpackage :char-picker
   (:documentation "Pick characters that may be otherwise hard to type.")
-  (:use :cl :stretchy :char-util :keymap :curses :inator :fui)
+  (:use :cl :dlib :stretchy :char-util :dlib-misc :keymap :curses :inator :fui
+	:terminal-curses)
   (:export
    #:char-picker
    #:!char-picker
@@ -75,25 +76,26 @@
        :do
        (move (+ 2 l) 0)
        (clrtoeol)
-       (addstr (format nil "~c: (~4,'0x) "
-		       (if (< l (length *letters*))
-			   (aref *letters* l)
-			   #\?)
-		       (+ start l)))
-       (add-char (code-char i))
-       (let ((name (or (char-name (code-char i)) ""))
-	     pos end)
-	 (if (and search-string
-		  (setf pos (search search-string name :test #'equalp)))
-	     (progn
-	       (setf end (+ pos (length search-string)))
-	       (addch (char-code #\space))
-	       (addstr (subseq name 0 pos))
-	       (standout)
-	       (addstr (subseq name pos end))
-	       (standend)
-	       (addstr (subseq name end)))
-	     (addstr (format nil " ~a" name)))))))
+       (when (< i (1- char-code-limit))
+	 (addstr (format nil "~c: (~4,'0x) "
+			 (if (< l (length *letters*))
+			     (aref *letters* l)
+			     #\?)
+			 (+ start l)))
+	 (add-char (code-char i))
+	 (let ((name (or (char-name (code-char i)) ""))
+	       pos end)
+	   (if (and search-string
+		    (setf pos (search search-string name :test #'equalp)))
+	       (progn
+		 (setf end (+ pos (length search-string)))
+		 (addch (char-code #\space))
+		 (addstr (subseq name 0 pos))
+		 (standout)
+		 (addstr (subseq name pos end))
+		 (standend)
+		 (addstr (subseq name end)))
+	       (addstr (format nil " ~a" name))))))))
 
 (defun search-char-names (start match-str &optional (direction :forward))
   "Return char code of first match of STR in the characater names,
@@ -114,8 +116,8 @@ starting at START. If not found, return START."
 
 (defmethod start-inator ((i char-picker))
   (call-next-method)
-  (with-slots (start view-size saved-start searching direction failed input
-	       result) i
+  (with-slots (start view-size saved-start searching search-start direction
+	       failed input result) i
     (setf start *pick-char-start*
 	  view-size (- curses:*lines* 4)
 	  saved-start start
@@ -173,22 +175,22 @@ starting at START. If not found, return START."
 
 (defun clear-line-command (i)
   "Clear the search string."
-  (with-slots (searching search-string failed) i
-    (when searching
-      (setf (fill-pointer search-string) 0
-	    failed nil))))
+  (when (@ i searching)
+    (setf (fill-pointer (@ i search-string)) 0
+	  (@ i failed) nil)))
 
 (defun enter-command (i)
   "Quit and return the top character as the result."
-  (with-slots (result start searching) i
+  (with-slots (result searching failed start) i
     (if searching
-	(setf searching nil failed nil)
+	(setf searching nil
+	      failed nil)
 	(setf result (code-char start)
 	      *pick-char-start* start
-	      (inator-quit-flag i) t))))
+	      (@ i inator::quit-flag) t))))
 
 (defmethod search-command ((i char-picker))
-  "Enter search mode or search for the next occurance."
+  "Search forward."
   (with-slots (searching search-start start direction failed) i
     (if searching
 	(incf start)
@@ -198,7 +200,7 @@ starting at START. If not found, return START."
 	  failed nil)))
 
 (defun reverse-search-command (i)
-  "Enter search mode or search for the previous occurance."
+  "Search backwards."
   (with-slots (searching search-start start direction failed) i
     (if searching
 	(when (> start 0)
@@ -210,21 +212,25 @@ starting at START. If not found, return START."
 
 (defmethod quit ((i char-picker))
   "Exit the character picker or exit search mode."
-  (with-slots (start searching search-start result saved-start) i
+  (with-slots (start searching failed search-start result saved-start) i
     (if searching
-	(setf searching nil failed t start search-start)
+	(setf searching nil
+	      failed t
+	      start search-start)
 	(setf (inator-quit-flag i) t
 	      result (code-char saved-start)))))
 
 (defmethod next ((i char-picker))
   "Next character."
   (with-slots (start failed) i
-    (incf start) (setf failed t)))
+    (when (< start (1- char-code-limit))
+      (incf start) (setf failed t))))
 
 (defmethod previous ((i char-picker))
   "Previous character."
   (with-slots (start failed) i
-    (decf start)
+    (when (> start 0)
+      (decf start))
     (setf failed t)))
 
 (defmethod next-page ((i char-picker))
@@ -274,6 +280,29 @@ starting at START. If not found, return START."
 		    *pick-char-start* start
 		    (inator-quit-flag i) t)))))))
 
+(defun enter-char-number (i)
+  "Jump to a character code."
+  (with-slots (start) i
+    (move 1 0) (clrtoeol)
+    (let ((result (tiny-rl:tiny-rl :prompt "Character number: "
+				   :terminal-class 'terminal-curses))
+	  number)
+      (if (not (ignore-errors (setf number (parse-integer-with-radix result))))
+	  (progn
+	    (move 1 0)
+	    (clrtoeol)
+	    (addstr "That didn't seem like a number."))
+	  (if (and (integerp number) (> number 0) (< number char-code-limit))
+	      (setf start number)
+	      (progn
+		(move 1 0)
+		(clrtoeol)
+		(addstr "That didn't seem like a valid character code.")))))))
+
+(defmethod jump-command ((i char-picker))
+  "Jump to a character code."
+  (enter-char-number i))
+
 (defkeymap *char-picker-keymap*
   "Keymap for the character picker."
   `((#\backspace	. backspace-command)
@@ -296,6 +325,7 @@ starting at START. If not found, return START."
     (#\<		. move-to-top)
     (#\>		. move-to-bottom)
     (#\?		. help)
+    (#\=		. enter-char-number)
     ))
 
 ;; Use
