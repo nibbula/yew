@@ -828,6 +828,7 @@ equal under TEST to result of evaluating INITIAL-VALUE."
 (defgeneric define-alias (alias original alias-type)
   (:documentation "Define the symbol ALIAS as another name for ORIGINAL.")
   (:method (alias (original symbol) (alias-type t))
+    (declare (ignore alias original))
     (error "We don't know how to make an alias for a ~S yet." alias-type))
   (:method (alias (original symbol) (alias-type (eql 'compiler-macro)))
     "Make an alias for a compiler macro."
