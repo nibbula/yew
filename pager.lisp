@@ -33,7 +33,7 @@ The function takes a file name or a stream or a list of such.
 The shell command takes any number of file names.
 ")
   (:use :cl :dlib :dlib-misc :curses :opsys :fui :stretchy :keymap :char-util
-	:fatchar :ppcre :terminal :terminal-curses)
+	:fatchar :ppcre :terminal :terminal-curses :pick-list)
   (:export
    #:*pager-prompt*
    #:*empty-indicator*

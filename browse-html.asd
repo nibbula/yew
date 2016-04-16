@@ -15,6 +15,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Browse HTML as a tree, using the tree-browser."
-    :depends-on (:dlib :tiny-rl :tree-browser :plump)
+    :depends-on (:dlib :dlib-misc :tiny-rl :tree-browser :pick-list :plump)
     :components
     ((:file "browse-html")))

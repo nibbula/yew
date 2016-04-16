@@ -991,7 +991,7 @@ and indented properly for multi-line objects."
   (let ((*readtable* *safer-readtable*))
     (package-robust-read stream nil nil)))
 
-(defun fake-code-browse (&optional (file (fui:pick-file)))
+(defun fake-code-browse (&optional (file (pick-list:pick-file)))
   "This shows why s-exps are cool."
   (with-open-file (stm file)
     (browse-tree
@@ -1037,7 +1037,7 @@ and indented properly for multi-line objects."
   (let* ((ff (or files '("*.lisp" "*.asd")))
 	 (pp (or (loop :for f :in ff :appending (glob:glob f))
 		 (glob:glob "*"))))
-    (fake-code-browse-files (fui:pick-list pp :multiple t))))
+    (fake-code-browse-files (pick-list:pick-list pp :multiple t))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Package browsing
@@ -1254,9 +1254,12 @@ and indented properly for multi-line objects."
     ;; (when (eql (char str (1- (length str))) #\newline)
     ;;   (setf (char str (1- (length str))) #\space))
     (display-object node
-		    (format nil "~(~a:~a~)"
-			    (package-name (symbol-package (class-name klass)))
-			    (class-name klass))
+		    (if (symbol-package (class-name klass))
+			(format nil "~(~a:~a~)"
+				(package-name
+				 (symbol-package (class-name klass)))
+				(class-name klass))
+			(format nil "~(#:~a~)" (class-name klass)))
 		    level)))
     ;; (display-object node str level)))
 
