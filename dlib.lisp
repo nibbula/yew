@@ -7,17 +7,6 @@
 ;; Try to keep this minimal. Don't add any dependencies.
 ;; More optional stuff can go in dlib-misc.
 
-;; Things that need to be customized / provided for an implementation:
-;; x mop
-;; x getenv
-;;   system-command-stream
-;; x system-args
-;; x exit-system
-;;   overwhelming-permission
-;;   lambda-list
-;; x *lisp-implementation-nickname*
-;; x *lisp-version*
-
 #+debug-rc (progn (format t "[ dlib ") (force-output *standard-output*))
 
 (defpackage :dlib
@@ -63,6 +52,7 @@
    ;; sequences
    #:initial-span
    #:split-sequence
+   #:split-sequence-if
    #:replace-subseq
    #:begins-with
    #:ends-with
@@ -127,37 +117,70 @@
 ;; (declaim (optimize (speed 3) (safety 0) (debug 0) (space 0)
 ;; 		   (compilation-speed 0)))
 
-;; This should be "pure" Common Lisp, since it's compile time, e.g. we can't
-;; use split-sequence or _ yet.
-(defun extract-version-number (version-string)
-  "Make a single testable value out of a typical (lisp-implementation-version)"
-  (let (i spos (sum 0) (pos 0) (mag #(10000 100 1))
-	  (str (substitute #\space #\. version-string)))
-    (loop :with n = 0
-       :while (and (< n 3) (< pos (length str)) (digit-char-p (aref str 0)))
-       :do
-       (setf (values i spos) (parse-integer (subseq str pos) :junk-allowed t))
-       (incf sum (* i (aref mag n)))
-       (incf pos spos)
-       (incf n)
-       ;; (format t "~a ~a ~a ~a~%" n i pos sum)
-      )
-    sum))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  ;; This should be "pure" Common Lisp, since it's compile time, e.g. we can't
+  ;; use split-sequence or _ yet.
+  (defun extract-version-number (version-string)
+    "Make a single testable value out of a typical result of
+(lisp-implementation-version)"
+    (let (i spos (sum 0) (pos 0) (mag #(10000 100 1))
+	    (str (substitute #\space #\. version-string)))
+      (loop :with n = 0
+	 :while (and (< n 3) (< pos (length str)) (digit-char-p (aref str 0)))
+	 :do
+	 (setf (values i spos) (parse-integer (subseq str pos) :junk-allowed t))
+	 (incf sum (* i (aref mag n)))
+	 (incf pos spos)
+	 (incf n)
+	 ;; (format t "~a ~a ~a ~a~%" n i pos sum)
+	 )
+      sum))
 
-;; We need to have this early so we can make decisions based on it.
-(defparameter *lisp-version-number*
-  #+sbcl (extract-version-number (lisp-implementation-version))
-  #+ccl (extract-version-number
-	 (let ((s (lisp-implementation-version)))
-	   (setf s (subseq s (position-if (lambda (x) (digit-char-p x)) s))
-		 s (subseq s 0 (position-if
-				(lambda (x)
-				  (not (or (digit-char-p x) (eql x #\.))))
-				s)))
-	   s))
-  #-(or sbcl ccl) nil ;; You will have to put something here if it matters.
+  ;; We need to have this early so we can make decisions based on it.
+  (defparameter *lisp-version-number*
+    #+sbcl (extract-version-number (lisp-implementation-version))
+    #+ccl (extract-version-number
+	   (let ((s (lisp-implementation-version)))
+	     (setf s (subseq s (position-if (lambda (x) (digit-char-p x)) s))
+		   s (subseq s 0 (position-if
+				  (lambda (x)
+				    (not (or (digit-char-p x) (eql x #\.))))
+				  s)))
+	     s))
+    #-(or sbcl ccl) nil ;; You will have to put something here if it matters.
     "A version number for doing comparisons. Greater numbers should indicate
 later versions.")
+
+  ;; Feature Fiddling
+
+  ;; As per CCL, it does make sense to aquire a mutex when adding features.
+  ;; But how can we even do this portably at this point?
+
+  (defun d-add-feature (f)
+    "Add a feature named by the given string to *FEATURES*"
+    (assert f)
+    (if (stringp f)
+	;;(nconc *features* (list (intern (string-upcase f) :keyword)))
+	;;(nconc *features* (list f))))
+	(pushnew (intern (string-upcase f) :keyword) *features*)
+	(pushnew f *features*)))
+  ;; or one could use:
+  ;; (pushnew :feature *features*)
+
+  #-ccl-1.6 ; which has it's own version
+  (setf (symbol-function 'add-feature) #'d-add-feature)
+
+  (defmacro has-feature (f)
+    "For when #+feature isn't what you want."
+    `(find ,f *features*))
+
+  (defun d-remove-feature (f)
+    "Remove a feature from *FEATURES*"
+    (setq *features* (delete f *features*)))
+
+  #-ccl-1.6 ; which has it's own version
+  (setf (symbol-function 'remove-feature) #'d-remove-feature)
+)
 
 ;; @@@ I should really do this with an error type
 (defun missing-implementation (sym)
@@ -238,10 +261,11 @@ later versions.")
 ;; Apparently if I use member instead of find it's slightly faster for lists
 ;; Who cares?
 
-(defun initial-span (s l)
-"Return the initial portion of sequence S consiting of objects
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun initial-span (s l)
+    "Return the initial portion of sequence S consiting of objects
  not in the list L"
-  (subseq s 0 (position-if (lambda (c) (find c l)) s)))
+    (subseq s 0 (position-if (lambda (c) (find c l)) s))))
 
 ;; Another square wheel.
 ;; @@@ I should probably either fix this to have the additional functionality
@@ -290,10 +314,85 @@ later versions.")
 ;; Of course the separator-bag  can just be achived with :test, something like:
 ;;   :test #'(lambda (a b) (declare (ignore a)) (position b "1289"))
 
-(defun split-sequence (sep seq &key
-			   omit-empty coalesce-separators remove-empty-subseqs
-			   (start 0) end test key
-			   #+nil count)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro flurp (function sep seq start end test)
+    (let ((base
+	   `(,function ,sep ,seq 
+		       ,@(if (eq function 'position)
+			     '(:start) '(:start2))
+		       ,start
+		       ,@(when end
+			       `(,(if (eq function 'position)
+				      :end :end2)
+				  ,end)))))
+      `(if ,test ,(append base (list :test test)) ,base)))
+
+  (defun split-sequence (sep seq &key
+			 omit-empty coalesce-separators remove-empty-subseqs
+			 (start 0) end test #| key count |#)
+    "Split the sequence SEQ into subsequences separated by SEP. Return a list of
+the subsequences. SEP can be a sequence itself, which means the whole sequence
+is the separator. If :omit-empty is true, then don't return empty subsequnces.
+ :coalesce-separators :remove-empty-subseqs are compatability synonyms for
+:omit-empty."
+    (declare (type sequence seq))
+    (declare (type boolean omit-empty coalesce-separators remove-empty-subseqs))
+    (setf omit-empty (or omit-empty coalesce-separators remove-empty-subseqs))
+    (let* ((sep-is-seq (typecase sep (vector t) (list t) (t nil)))
+	   (sep-len (if sep-is-seq (length sep) 1))
+	   (seq-len (if omit-empty (length seq) 0)))
+      (declare (type boolean sep-is-seq))
+      (declare (type fixnum sep-len seq-len))
+      ;;(format t "sep-is-seq = ~w sep-len = ~w seq-len = ~w ~%"
+      ;;        sep-is-seq sep-len seq-len count)
+      ;;(setf test #'(lambda (x) 
+      (macrolet
+	  ((loopy (func t-omit-empty)
+	      `(loop
+		  :with t-start fixnum = start :and t-end
+		  :do
+		  ;;(format t "FLURP: ~w~%"
+		  ;;    '(flurp ,func sep seq t-start end test))
+		  (setq t-end
+			(or (flurp ,func sep seq t-start end test)
+			    -1))
+		  :while (>= t-end 0)
+		  ;;(format t "start = ~d end = ~d ~s~%" t-start t-end
+		  ;;(subseq seq t-start t-end))
+		  ,@(if t-omit-empty '(if (not (= t-start t-end))))
+		  :collect (subseq seq t-start t-end) :into results
+		  :do (setq t-start (+ t-end sep-len))
+		  :finally (return-from nil
+			     ,@(if t-omit-empty
+				   '((if (= t-start seq-len)
+					 results
+					 (nconc results
+						(list (subseq seq t-start)))))
+				   '((nconc results
+				      (list (subseq seq t-start)))))))))
+	(when (or (> sep-len 0) test)
+	  (when (and test (< sep-len 1))
+	    (setf sep-len 1 sep '(nil))) ; fake separator!
+	  (if sep-is-seq
+	      (if omit-empty
+		  (if test
+		      (loopy search t)
+		      (loopy search t))
+		  (if test
+		      (loopy search nil)
+		      (loopy search nil)))
+	      (if omit-empty
+		  (if test
+		      (loopy position t)
+		      (loopy position t))
+		  (if test
+		      (loopy position nil)
+		      (loopy position nil))))))))
+
+(defun split-sequence-if (predicate seq &key omit-empty coalesce-separators
+					  remove-empty-subseqs
+					  (start 0) end key
+					  #| count |#)
   "Split the sequence SEQ into subsequences separated by SEP. Return a list of
 the subsequences. SEP can be a sequence itself, which means the whole sequence
 is the separator. If :omit-empty is true, then don't return empty subsequnces.
@@ -303,55 +402,30 @@ is the separator. If :omit-empty is true, then don't return empty subsequnces.
   (declare (type boolean omit-empty coalesce-separators remove-empty-subseqs))
   (declare (ignore end key))
   (setf omit-empty (or omit-empty coalesce-separators remove-empty-subseqs))
-  (let* ((sep-is-seq (typecase sep (vector t) (list t) (t nil)))
-	 (sep-len (if sep-is-seq (length sep) 1))
-	 (seq-len (if omit-empty (length seq) 0)))
-    (declare (type boolean sep-is-seq))
-    (declare (type fixnum sep-len seq-len))
-;     (format t "sep-is-seq = ~w sep-len = ~w seq-len = ~w ~%"
-;  	    sep-is-seq sep-len seq-len count)
-;    (setf test #'(lambda (x) 
+  (let* ((seq-len (if omit-empty (length seq) 0)))
+    (declare (type fixnum seq-len))
     (macrolet
-	((loopy (func t-omit-empty t-test)
-	   `(loop
-	     :with t-start fixnum = start :and t-end fixnum
-	     :do (setq t-end
-		 (or (,func sep seq
-			    ,@(if (eq func 'position) '(:start) '(:start2))
-			    t-start ,@(if t-test '(:test test)))
-		  -1))
-	     :while (>= t-end 0)
-;	     (format t "start = ~d end = ~d ~s~%" t-start t-end
-;  		 (subseq seq t-start t-end))
-	     ,@(if t-omit-empty '(if (not (= t-start t-end))))
-	     :collect (subseq seq t-start t-end) :into results
-	     :do (setq t-start (+ t-end sep-len))
-	     :finally (return-from nil
-		       ,@(if t-omit-empty
-			     '((if (= t-start seq-len)
-				   results
-				   (nconc results
-					  (list (subseq seq t-start)))))
-			     '((nconc results
-				(list (subseq seq t-start)))))))))
-      (when (or (> sep-len 0) test)
-	(when (and test (< sep-len 1))
-	  (setf sep-len 1 sep '(nil)))	; fake separator!
-	(if sep-is-seq
-	    (if omit-empty
-		(if test
-		    (loopy search t t)
-		    (loopy search t nil))
-		(if test
-		    (loopy search nil t)
-		    (loopy search nil nil)))
-	    (if omit-empty
-		(if test
-		    (loopy position t t)
-		    (loopy position t nil))
-		(if test
-		    (loopy position nil t)
-		    (loopy position nil nil))))))))
+	((loopy (t-omit-empty)
+	    `(loop
+		:with t-start fixnum = start :and t-end fixnum
+		:do (setf t-end (or (position-if predicate seq :start t-start)
+				    -1))
+		:while (>= t-end 0)
+		,@(if t-omit-empty '(if (not (= t-start t-end))))
+		:collect (subseq seq t-start t-end) :into results
+		:do (setf t-start (1+ t-end))
+		:finally (return-from nil
+			   ,@(if t-omit-empty
+				 '((if (= t-start seq-len)
+				       results
+				       (nconc results
+					      (list (subseq seq t-start)))))
+				 '((nconc results
+				    (list (subseq seq t-start)))))))))
+      (when predicate
+	(if omit-empty
+	    (loopy t)
+	    (loopy nil)))))))
 
 ;; cl-ppcre's version is better, so I recommend you just use that.
 ;;(setf (fdefinition 'split) #'split-sequence)
@@ -626,36 +700,6 @@ on all accessible symbols."
 	 |#
 	 ))))
 
-;;; Feature Fiddling
-
-;; As per CCL, it does make sense to aquire a mutex when adding features.
-;; But how can we even do this portably at this point?
-
-(defun d-add-feature (f)
-  "Add a feature named by the given string to *FEATURES*"
-  (assert f)
-  (if (stringp f)
-;      (nconc *features* (list (intern (string-upcase f) :keyword)))
-;      (nconc *features* (list f))))
-      (pushnew (intern (string-upcase f) :keyword) *features*)
-      (pushnew f *features*)))
-;; or one could use:
-;; (pushnew :feature *features*)
-
-#-ccl-1.6 ; which has it's own version
-(setf (symbol-function 'add-feature) #'d-add-feature)
-
-(defmacro has-feature (f)
-  "For when #+feature isn't what you want."
-  `(find ,f *features*))
-
-(defun d-remove-feature (f)
-  "Remove a feature from *FEATURES*"
-  (setq *features* (delete f *features*)))
-
-#-ccl-1.6 ; which has it's own version
-(setf (symbol-function 'remove-feature) #'d-remove-feature)
-
 ;; I know the args are probably getting stringified then un-stringified,
 ;; but this is mostly just for startup.
 (defun system-command-stream (cmd args)
@@ -686,7 +730,7 @@ on all accessible symbols."
 	   (close s)
 	   r)
   #+excl (first (excl.osi:command-output (format nil "~a~{ ~a~}" cmd args)))
-)
+  )
 
 (defun shell-lines (cmd &rest args)
   "Return a list of the lines of output from the given shell command.
@@ -716,8 +760,10 @@ on all accessible symbols."
   #-(or sbcl clisp cmu ecl openmcl excl lispworks abcl)
   (missing-implementation 'system-args))
 
-#+sbcl (when (> *lisp-version-number* 10055)
-	 (d-add-feature :use-exit))
+#+sbcl
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (when (> *lisp-version-number* 10055)
+    (d-add-feature :use-exit)))
 
 (defun exit-system ()
   "Halt the entire Lisp system."
@@ -1065,7 +1111,7 @@ A utility for debugging DEBUG-FUNCTION-ARGLIST."
 	  ;; this should work both for compiled-debug-function
 	  ;; and for interpreted-debug-function
 	  (t
-	   (handler-case (debug-function-arglist ;?
+	   (handler-case (debug-function-arglist ; ?
 			  (di::function-debug-function fun))
 	     (di:unhandled-condition () :not-available)))))))
 
@@ -1239,28 +1285,29 @@ Useful for making your macro “hygenic”."
 	       `(format *debug-io* "~a=~a " ',z ,z))))
     `(progn ,@za (terpri))))
 
-(defun exe-in-path-p (name)
-  "True if file NAME exists in the current execute path, which is usually the
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun exe-in-path-p (name)
+    "True if file NAME exists in the current execute path, which is usually the
 environment variable PATH. Note that this doesn't check if it's executable or
 not or that you have permission to execute it."
-  (loop :for d :in (split-sequence ":" (d-getenv "PATH"))
-     :when (probe-file (s+ d "/" name))
-     :do (return t)
-     :finally (return nil)))
+    (loop :for d :in (split-sequence ":" (d-getenv "PATH"))
+       :when (probe-file (s+ d "/" name))
+       :do (return t)
+       :finally (return nil)))
 
-(defun try-things (things)
-  "Return the first thing that works. THINGS is a list of lists. If a sublist
+  (defun try-things (things)
+    "Return the first thing that works. THINGS is a list of lists. If a sublist
 starts with a string, it should be a command in the path which is given the rest
 of the arguments. If a sublist starts with a symbol, it is a function to call
 with the rest of the arguments. Works means it doesn't return NIL. If nothing
 works, return NIL."
-  (loop :with result
-     :for cmd :in things :do
-     (setf result (etypecase (car cmd)
-		    (string (when (dlib::exe-in-path-p (car cmd))
-			      (apply #'shell-line cmd)))
-		    (symbol (apply (car cmd) (cdr cmd)))))
-     (when result (return result))))
+    (loop :with result
+       :for cmd :in things :do
+       (setf result (etypecase (car cmd)
+		      (string (when (dlib::exe-in-path-p (car cmd))
+				(apply #'shell-line cmd)))
+		      (symbol (apply (car cmd) (cdr cmd)))))
+       (when result (return result)))))
 
 ;; This is of course not "safe" in that it may not preserve the actual
 ;; bytes of the stream.

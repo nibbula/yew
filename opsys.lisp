@@ -276,6 +276,7 @@
    #:file-type-name
    #:symbolic-mode
    #:file-exists
+   #:readlink
 
    #:UF_SETTABLE #:UF_NODUMP #:UF_IMMUTABLE #:UF_APPEND #:UF_OPAQUE
    #:UF_NOUNLINK #:UF_COMPRESSED #:UF_TRACKED #:UF_HIDDEN #:SF_SETTABLE
@@ -296,7 +297,7 @@
    #:flag-root-restricted
    #:flag-root-snapshot
    #:flags-string
-   
+
    #:umask
    #:chmod #:fchmod
    #:chown #:fchown #:lchown
@@ -3367,9 +3368,26 @@ for long."
     (setf *statbuf* (foreign-alloc '(:struct foreign-stat))))
   (= 0 (real-stat filename *statbuf*)))
 
+(defcfun ("readlink" real-readlink) ssize-t (path :string)
+	 (buf (:pointer :char)) (bufsize size-t))
+
+(defun readlink (filename)
+  "Return the name which the symbolic link FILENAME points to. Return NIL if
+it is not a symbolic link."
+  (with-foreign-pointer (buf *path-max*)
+    (let ((result (real-readlink filename buf *path-max*)))
+      (if (> result 0)
+	  (subseq (foreign-string-to-lisp buf) 0 result)
+	  (let ((err *errno*))		; in case there are hidden syscalls
+	    (if (= err +EINVAL+)
+		nil
+		(error 'posix-error :error-code err
+		       :format-control "readlink:")))))))
+
 (defcfun
     (#+darwin "lstat$INODE64"
-     #+linux "__xlstat"
+     #+(and linux 32-bit-target) "lstat"
+     #+(and linux 64-bit-target) "__xlstat"
      #-(or darwin linux) "lstat"
      real-lstat)
     :int (path :string) (buf (:pointer (:struct foreign-stat))))
@@ -3381,7 +3399,8 @@ for long."
 
 (defcfun
     (#+darwin "fstat$INODE64"
-     #+linux "__xfstat"
+     #+(and linux 32-bit-target) "fstat"
+     #+(and linux 64-bit-target) "__xfstat"
      #-(or darwin linux) "fstat"
      real-fstat)
     :int (fd :int) (buf (:pointer (:struct foreign-stat))))

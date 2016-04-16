@@ -22,6 +22,8 @@
 
 ;; @@@ Perhaps we could also have a maximum size of the whole pipe buffer,
 ;; after which write-data would get an error or hang or something.
+;;
+;; @@@ We should work out a "fast path" for single elements.
 
 (defparameter *chunk-max-size* #.(* 1024 1024 4)
   "Limit on the size of chunks.")

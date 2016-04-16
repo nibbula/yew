@@ -2,8 +2,6 @@
 ;; dl-list - a doubly-linked list
 ;;
 
-;; $Revision: 1.3 $
-
 ;; People tell me you should never use doubly-linked list.
 ;; I'm not quite sure I believe them, but after this there is a zipper-ish
 ;; structure that does just about the same thing while taking less space,
@@ -11,7 +9,7 @@
 ;;
 ;; This actually demonstrates some palpable flaws in Common Lisp!
 ;; - sequences should be generic (and still be fast)
-;;   i.e. objects all the way down (like dylan or clojure).
+;;   i.e. objects all the way down (like dylan).
 ;; - Classes can't really be self referential
 
 (defpackage :dl-list

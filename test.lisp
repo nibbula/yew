@@ -165,7 +165,8 @@ A: I SAID, you're on your own! (patches welcomed :-)
   (if result t nil))
 
 (defmacro deftest (name &body body)
-  "Define an individual test, not in a group. BODY is a form returning a truth value indicating if the test failed or not."
+  "Define an individual test, not in a group. BODY is a form returning a truth
+value indicating if the test failed or not."
   (let ((func-name (intern (format nil "TEST-~:@(~a~)" name)))
 	(new-body body) doc)
     (when (stringp (car body))
