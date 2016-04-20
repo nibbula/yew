@@ -36,7 +36,7 @@ A: Say (list-tests :failed t), to show all tests that failed.
 Q: What if I need to set up pre-conditions for my tests?
 A: You can use :setup and :takedown arguments to deftests.
 
-Q: Hey, but what if I'd like to nicely add tests dynamically whilst I'm mucking
+Q: Hey, but what if I'd like to add tests dynamically whilst I'm mucking
    about in the REPL?
 A: Say:
      (test-in :your-package)
@@ -213,7 +213,9 @@ doesn't already exist."
 (defmacro deftests ((group-name &key setup takedown doc) &body body)
   "Define a group of tests with the given GROUP-NAME. The BODY is any number
 of forms which return a truth value indicating if the test failed. Each form
-can optionally be preceded by a string, which is it's documentation."
+can optionally be preceded by a string, which is it's documentation. If a form
+is a symbol, it is take as the name of a test group to run, allowing test group
+nesting."
 ;  (let* ((group (find-group group-name))
 ;         (n (length group)))
   (clear-group group-name)
@@ -225,6 +227,8 @@ can optionally be preceded by a string, which is it's documentation."
 		  (intern (format nil "TEST-~:@(~a~)-~d" group-name n)))
 	    :if (stringp b) :do
 	      (setf fdoc b)
+	    :else :if (symbolp b) :do
+	      (add-to-group-name group-name b)
 	    :else
 	      :collect
 	    `(progn
@@ -259,6 +263,10 @@ can optionally be preceded by a string, which is it's documentation."
     (t
      (error "Can't run fixture code ~a" code))))
 
+;; This is so we can skip running referenced groups.
+(defvar *running-all* nil
+  "True if we are running all tests.")
+
 (defun run-group (group)
   "Run the GROUP of tests. Return a pair of (pass-count fail-cout)."
   (let ((pass 0) (fail 0))
@@ -274,17 +282,28 @@ can optionally be preceded by a string, which is it's documentation."
 	      ((test-group-p x)
 	       (let* ((pf (run-group x)))
 		 (incf pass (first pf))
+		 (incf fail (second pf))))
+	      ((and (symbolp x) (not *running-all*) (find-group x))
+	       (let* ((pf (run-group-name x)))
+		 (incf pass (first pf))
 		 (incf fail (second pf)))))))
       (maybe-run-code (test-group-takedown group)))
     (list pass fail)))
 
-(defun run-group-name (group-name)
+(defun run-group-name (group-name &key verbose)
   "Run the named group of tests. Return a pair of (pass-count fail-cout)."
-  (run-group (find-group group-name)))
+  (let* ((pf (run-group (find-group group-name)))
+	 (pass (first pf)) (fail (second pf)))
+    (when verbose
+      (format t "~&Passed: ~d~%Failed: ~d~%" pass fail)
+      (if (zerop fail)
+	  (format t "ALL Tests PASSED~%")
+	  (format t "FAIL!")))
+    pf))
 
 (defun run-all-tests ()
   "Run all the tests. Let's you know what happend."
-  (let ((pass 0) (fail 0))
+  (let ((pass 0) (fail 0) (*running-all* t))
     (loop :for x :in *tests*
        :do
        (cond
@@ -305,22 +324,26 @@ can optionally be preceded by a string, which is it's documentation."
   "List all the tests. If BODIES show the code for each. If LONG, show the
 documentation."
   (labels ((print-test (test indent)
-	     (if (test-group-p test)
-		 (progn
-		   (format t "~v,,,va~a:~%"  (- indent 2) #\space #\space
-			   (test-group-name test))
-		   (loop :for tst :in (test-group-tests test) :do
-		      (print-test tst (+ indent 2))))
-		 (progn
-		   (when (and failed (test-result test))
-		     (return-from print-test nil))
-		   (format t "~v,,,va~a" indent #\space #\space
-			   (test-name test))
-		   (when long
-		     (format t " ~a" (test-doc test)))
-		   (when bodies
-		     (format t " ~s" (test-body test)))
-		   (terpri)))))
+	     (cond
+	       ((test-group-p test)
+		(progn
+		  (format t "~v,,,va~a:~%"  (- indent 2) #\space #\space
+			  (test-group-name test))
+		  (loop :for tst :in (test-group-tests test) :do
+		     (print-test tst (+ indent 2)))))
+	       ((symbolp test)
+		(when failed (return-from print-test nil))
+		(format t "~v,,,vaGroup ~a~%" indent #\space #\space test))
+	       (t
+		(when (and failed (test-result test))
+		  (return-from print-test nil))
+		(format t "~v,,,va~a" indent #\space #\space
+			(test-name test))
+		(when long
+		  (format t " ~a" (test-doc test)))
+		(when bodies
+		  (format t " ~s" (test-body test)))
+		(terpri)))))
     (loop :for x :in *tests* :do
        (print-test x 2))))
 
