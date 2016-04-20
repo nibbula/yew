@@ -4,7 +4,9 @@
 
 ;; These are mostly solving problems that have already been solved.
 ;; But it's mostly stuff that I need just to start up.
-;; Try to keep this minimal. Don't add any dependencies.
+;; So:
+;;  - Don't add any dependencies.
+;;  - Try to keep it minimal.
 ;; More optional stuff can go in dlib-misc.
 
 #+debug-rc (progn (format t "[ dlib ") (force-output *standard-output*))
@@ -209,7 +211,7 @@ later versions.")
 	       (if format
 		   (format s "~? ~a" format arguments symbol)
 		   (format s "~a" symbol)))))
-  (:documentation "An error from calling a POSIX function."))
+  (:documentation "A required function or symbol is missing or unimplemented."))
 
 (defmacro without-warning (&body body)
   "Get rid of stupid warnings that you don't want to see.
@@ -367,9 +369,10 @@ is the separator. If :omit-empty is true, then don't return empty subsequnces.
 				   '((if (= t-start seq-len)
 					 results
 					 (nconc results
-						(list (subseq seq t-start)))))
+						(list
+						 (subseq seq t-start end)))))
 				   '((nconc results
-				      (list (subseq seq t-start)))))))))
+				      (list (subseq seq t-start end)))))))))
 	(when (or (> sep-len 0) test)
 	  (when (and test (< sep-len 1))
 	    (setf sep-len 1 sep '(nil))) ; fake separator!
@@ -449,25 +452,31 @@ is the separator. If :omit-empty is true, then don't return empty subsequnces.
 )
 |#
 
-(defun replace-subseq (from-seq to-seq in-seq &key count)
+(defun replace-subseq (target replacement in-seq &key count)
   "Return a copy of IN-SEQ but with sequences of FROM-SEQ replaced with TO-SEQ."
-  (if (and (> (length from-seq) 0) (or (not count) (> count 0)))
+  (if (and (> (length target) 0) (or (not count) (> count 0)))
       (let ((pos 0)
 	    (i 0)
 	    (n 0)
 	    new)
-	(loop while (setf pos (search from-seq in-seq :start2 i))
-	  do
-;	(format t "i = ~a pos = ~a new = ~a~%" i pos new)
-	  (setf new (nconc new (list (subseq in-seq i pos) to-seq)))
-	  (setf i (+ pos (length from-seq)))
-;	(format t "i = ~a pos = ~a new = ~a~%" i pos new)
-	  (incf n)
-	  until (and count (>= n count))
-	  )
+	(loop :while (setf pos (search target in-seq :start2 i))
+	   :do
+	   ;;(format t "i = ~a pos = ~a new = ~a~%" i pos new)
+	   (setf new (nconc new (list (subseq in-seq i pos) replacement)))
+	   (setf i (+ pos (length target)))
+	   ;;(format t "i = ~a pos = ~a new = ~a~%" i pos new)
+	   (incf n)
+	   :until (and count (>= n count)))
 	(setf new (nconc new (list (subseq in-seq i))))
-	(apply #'concatenate (append '(string) new)))
-      in-seq))
+	;;(apply #'concatenate (append '(string) new)))
+	(apply #'concatenate
+	       (etypecase in-seq
+		 (string 'string)
+		 (list 'list)
+		 (vector 'vector)
+		 (sequence (type-of in-seq)))
+	       new))
+      (copy-seq in-seq)))
 
 ;; @@@ compare vs. the ones in alexandria?
 (defun begins-with (this that &key (test #'eql))
@@ -485,7 +494,7 @@ is the separator. If :omit-empty is true, then don't return empty subsequnces.
 If SEQUENCE is is not prefixed by PREFIX, just return SEQUENCE."
   (if (begins-with prefix sequence :test test)
       (subseq sequence (length prefix))
-      sequence))
+      (copy-seq sequence)))
 
 (defun remove-suffix (sequence suffix &key (test #'eql))
   "Remove SUFFIX from the end of SEQUENCE. If SEQUENCE doesn't end in SUFFIX,
@@ -493,7 +502,7 @@ just return SEQUENCE. Elements are compared with TEST which defaults to EQL."
   (let ((pos (search suffix sequence :from-end t :test test)))
     (if (and pos (= pos (- (length sequence) (length suffix))))
 	(subseq sequence 0 pos)
-	sequence)))
+	(copy-seq sequence))))
 
 (defun s+ (s &rest rest)
   "Return a string which is the arguments concatenated as if output by PRINC."
@@ -506,31 +515,41 @@ just return SEQUENCE. Elements are compared with TEST which defaults to EQL."
       (loop :for x :in rest :do (princ x result)))
     (princ-to-string s)))
 
-(defparameter *ascii-whitespace* #(#\space #\tab #\newline #\return #-gcl #\vt)
+(defparameter *ascii-whitespace*
+  #(#\tab #\newline #-gcl #\vt #\page #\return #\space)
   "Characters considered whitespace in ASCII.")
 
-;; I got this from wikipedia so it's probably not reliable. We should
-;; probably get it from a unicode package that has character attributes.
+#|
+
+@@@ I wish unicode class information built in everywhere.
+On SBCL we can generate the list by:
+
+(loop :for c :from 0 :below char-code-limit
+   :if (sb-unicode:whitespace-p (code-char c))
+   :do (format t "~4,'0x ~a~%" c (char-name (code-char c))))
+
+|#
+
 (defparameter *unicode-whitespace-codes*
-    #(#x0085				; Next line
-      #x00A0				; no-break space
-      #x1680				; ogham space mark
-      #x2000				; en quad
-      #x2001				; em quad
-      #x2002				; en space
-      #x2003				; em space
-      #x2004				; three-per-em space
-      #x2005				; four-per-em space
-      #x2006				; six-per-em space
-      #x2007				; figure space
-      #x2008				; punctuation space
-      #x2009				; thin space
-      #x200A				; hair space
-      #x2028				; line separator
-      #x2029				; paragraph separator
-      #x202F				; narrow no-break space
-      #x205F				; medium mathematical space
-      #x3000				; ideographic space
+    #(#x0085 ; Next line
+      #x00A0 ; no-break space
+      #x1680 ; ogham space mark
+      #x2000 ; en quad
+      #x2001 ; em quad
+      #x2002 ; en space
+      #x2003 ; em space
+      #x2004 ; three-per-em space
+      #x2005 ; four-per-em space
+      #x2006 ; six-per-em space
+      #x2007 ; figure space
+      #x2008 ; punctuation space
+      #x2009 ; thin space
+      #x200A ; hair space
+      #x2028 ; line separator
+      #x2029 ; paragraph separator
+      #x202F ; narrow no-break space
+      #x205F ; medium mathematical space
+      #x3000 ; ideographic space
       )
   "Characters considered whitespace in Unicode")
 
@@ -592,13 +611,15 @@ basically the reverse of SPLIT-SEQUENCE."
 
 ;; As you may know, improper use of this can cause troublesome bugs.
 (defun delete-nth (n list)
-  "Delete the Nth elemnt from LIST. This modifies the list."
+  "Delete the Nth elemnt from LIST. This modifies the list.
+Also, it can't really delete the first (zeroth) element."
   (if (zerop n)
-    (cdr list)
-    (let ((cons (nthcdr (1- n) list)))
-      (if cons
-        (setf (cdr cons) (cddr cons))
-        cons))))
+      (cdr list)
+      (let ((cons (nthcdr (1- n) list)))
+	(prog1 list
+	  (if cons
+	      (setf (cdr cons) (cddr cons))
+	      cons)))))
 
 (defun alist-to-hash-table (alist table)
 ;  "Convert an association list into a hash table."
@@ -1125,6 +1146,7 @@ A utility for debugging DEBUG-FUNCTION-ARGLIST."
 		(t (intern (write-to-string x)))))
 	  tree))
 
+;; @@@ This is mis-named.
 (defun lambda-list (fun)
   "Return the function's arguments."
   #+sbcl 
@@ -1283,7 +1305,7 @@ Useful for making your macro “hygenic”."
   "Print the names and values of the arguments, like NAME=value."
   (let ((za (loop :for z :in args :collect
 	       `(format *debug-io* "~a=~a " ',z ,z))))
-    `(progn ,@za (terpri))))
+    `(progn ,@za (terpri *debug-io*))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun exe-in-path-p (name)
