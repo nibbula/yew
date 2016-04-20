@@ -701,12 +701,14 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
   (labels ((place-dir (p)
 	     "Resolve place into a directory."
 	     (with-output-to-string (s)
-		(loop :for e :in p
-		   :if (eq e :home)
-		   :do (write-string
-			     (namestring (user-homedir-pathname)) s)
-		   :else
-		   :do (write-string e s)))))
+	       (if (listp p)
+		   (loop :for e :in p
+		      :if (eq e :home)
+		      :do (write-string
+			   (namestring (user-homedir-pathname)) s)
+		      :else
+		      :do (write-string e s))
+		   (write-string p s)))))
     (or (and *loadable-packages*
 	     (or (and (and as-strings (stringp (car *loadable-packages*)))
 		      *loadable-packages*)
@@ -1098,13 +1100,17 @@ with the same name. If it's a macro, pass MACRO as true, mmkay?"
   (let ((doit
 	 (if macro
 	     `(eval (list* (intern (string ',symbol) ,system) args))
-	     `(apply (intern (string ',symbol) ,system) args))))
+	     `(apply (intern (string ',symbol) ,system) args)))
+	(symbol-string (string symbol)))
     `(,(if macro 'defmacro 'defun) ,symbol (&rest args)
        ,doc-string
        (asdf:load-system ,system)
-;       (unintern ',symbol ,*package*)
-       (unintern-conflicts ,*package* ,system)
-       (use-package ,system ,*package*)
+       (unintern-conflicts *package* ,system)
+       ;;(unintern (find-symbol ,symbol-string) ,*package*)
+       ;;(unintern ,symbol ,*package*)
+       ;;(unintern (make-symbol ,symbol-string) *package*)
+       (use-package ,system)
+       ;(import (find-symbol ,symbol-string ,system))
        (when (not (fboundp ',symbol))
 	 (error "Autoload of ~a didn't define ~a." ,system ',symbol))
        ,doit)))
