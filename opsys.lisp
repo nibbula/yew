@@ -2908,44 +2908,31 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
   #-sunos (declare (ignore mode))
   )
 
-(defstruct file-type-info
-  "Store data for file types."
-  test
-  symbol
-  char
-  name)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defstruct file-type-info
+    "Store data for file types."
+    test
+    symbol
+    char
+    name)
+
+  (defmethod make-load-form ((s file-type-info) &optional environment)
+    (make-load-form-saving-slots s :environment environment)))
 
 (defparameter *file-type-data*
-  #|
-  #(#S(OPSYS::FILE-TYPE-INFO :test is-fifo :symbol :FIFO
-       :char #\F :name "FIFO")
-    #S(OPSYS::FILE-TYPE-INFO :test is-character-device
-       :symbol :character-special
-       :char #\c :name "character special")
-    #S(OPSYS::FILE-TYPE-INFO :test is-directory
-       :symbol :directory
-       :char #\d :name "directory")
-    #S(OPSYS::FILE-TYPE-INFO :test is-block-device
-       :symbol :block-special
-       :char #\b :name "block special")
-    #S(OPSYS::FILE-TYPE-INFO :test is-regular-file
-       :symbol :regular
-       :char #\r :name "regular")
-    #S(OPSYS::FILE-TYPE-INFO :test is-symbolic-link
-       :symbol :symbolic-link
-       :char #\s :name "symbolic link")
-    #S(OPSYS::FILE-TYPE-INFO :test is-socket
-       :symbol :socket
-       :char #\s :name "socket")
-    #S(OPSYS::FILE-TYPE-INFO :test is-door
-       :symbol :door
-       :char #\d :name "door")
-    #S(OPSYS::FILE-TYPE-INFO :test is-whiteout
-       :symbol :whiteout
-       :char #\w :name "whiteout"))
-  |#
-  nil
-  )
+  (macrolet ((moo (test symbol char name)
+	       (make-file-type-info
+		:test test :symbol symbol :char char :name name)))
+    (list
+     (moo is-fifo	      :FIFO		  #\F "FIFO")
+     (moo is-character-device :character-special  #\c "character special")
+     (moo is-directory	      :directory	  #\d "directory")
+     (moo is-block-device     :block-special	  #\b "block special")
+     (moo is-regular-file     :regular		  #\r "regular")
+     (moo is-symbolic-link    :symbolic-link	  #\s "symbolic link")
+     (moo is-socket	      :socket		  #\s "socket")
+     (moo is-door	      :door		  #\d "door")
+     (moo is-whiteout	      :whiteout		  #\w "whiteout"))))
 
 (defparameter *mode-tags*
   '((is-fifo		   	"FIFO")
@@ -2993,7 +2980,7 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
 ;; @@@ This is too slow
 (defun file-type-name (mode)
   "Return the character representing the file type of MODE."
-  (loop :for f :in *mode-tags* :do
+  (loop :for f :in *file-type-data* :do
      (when (funcall (file-type-info-test f) mode)
        (return-from file-type-name (file-type-info-name f)))))
 
