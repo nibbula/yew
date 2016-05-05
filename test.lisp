@@ -57,6 +57,12 @@ A: You're on your own.
 
 Q: What if I need to ...
 A: I SAID, you're on your own! (patches welcomed :-)
+
+Q: Why did you write yet another test framework?
+A: <no comment>
+
+Q: Are you at least going to write some documentation?
+A: _This_ *is* your documentation.
 ")
   (:use :cl)
   (:export
@@ -215,20 +221,30 @@ doesn't already exist."
 of forms which return a truth value indicating if the test failed. Each form
 can optionally be preceded by a string, which is it's documentation. If a form
 is a symbol, it is take as the name of a test group to run, allowing test group
-nesting."
+nesting. The form can be keyword which is a substitute for one of the keyword
+arguements."
 ;  (let* ((group (find-group group-name))
 ;         (n (length group)))
   (clear-group group-name)
   (let* ((n 0) (fdoc nil)
 	(bodies
-	 (loop :with func-name
-	    :for b :in body :do
+	 (loop :with func-name :and spot = body :and b
+	    :while spot :do
+	    (setf b (car spot))
 	    (setf func-name
 		  (intern (format nil "TEST-~:@(~a~)-~d" group-name n)))
 	    :if (stringp b) :do
 	      (setf fdoc b)
 	    :else :if (symbolp b) :do
-	      (add-to-group-name group-name b)
+	      (case b
+	        (:setup
+		 (setf setup (cadr spot)) (setf spot (cdr spot)))
+		(:takedown
+		 (setf takedown (cadr spot)) (setf spot (cdr spot)))
+		(:doc
+		 (setf doc (cadr spot)) (setf spot (cdr spot)))
+		(otherwise
+		 (add-to-group-name group-name b)))
 	    :else
 	      :collect
 	    `(progn
@@ -241,9 +257,9 @@ nesting."
 					     :func #',func-name
 					     :doc ',fdoc
 					     :body ',b)))
-	      :and :do (setf fdoc nil)
+	      :and :do (setf fdoc nil) (incf n)
 	    :end
-	    :do (incf n))))
+	    :do (setf spot (cdr spot)))))
     `(progn ,@bodies
 	    (let ((g (find-group ',group-name)))
 	      (setf (test-group-tests g) (nreverse (test-group-tests g))
@@ -259,7 +275,7 @@ nesting."
     ((or (functionp code) (and (symbolp code) (fboundp code)))
      (funcall code))
     ((listp code)
-     (eval (car code)))
+     (eval code))
     (t
      (error "Can't run fixture code ~a" code))))
 
