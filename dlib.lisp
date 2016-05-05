@@ -98,6 +98,7 @@
    #:shortest-package-nick
    #:not-so-funcall #:symbol-call #-clasp #:※
    #:@
+   #:ignore-conditions #:ignore-some-conditions
    ;; debugging
    #:*dbug* #:*dbug-package* #:dbug #:with-dbug #:with-dbug-package
    #:without-dbug
@@ -1272,6 +1273,16 @@ Useful for making your macro “hygenic”."
        :for n :in slot-names
        :do (setf result `(slot-value ,result ',n)))
     result))
+
+(defmacro ignore-conditions ((&rest conditions) &body body)
+  "If body signals a condition type in CONDITIONS, return the values NIL and
+the condition."
+  `(handler-case
+       (progn ,@body)
+     ,@(loop :for cc :in conditions
+	  :collect `(,cc (c) (values nil c)))))
+
+(defalias 'ignore-some-conditions 'ignore-conditions)
 
 ;; Debugging messages
 ;;
