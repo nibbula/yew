@@ -777,9 +777,10 @@ defaults to the current package. Return how many symbols there were."
   ;; @@@ perhaps we need to do a loop to resolve multiple links?
   (or (eq (dir-entry-type f) :dir)
       (and (eq (dir-entry-type f) :link)
-	   (is-directory
-	    (file-status-mode
-	     (stat (path-append dir (dir-entry-name f))))))))
+	   (eq :directory
+	       (file-info-type
+		(get-file-info
+		 (path-append dir (dir-entry-name f))))))))
 
 ;; We have to assume the entire context is a filename. Things that want to
 ;; do completion in a command line, will have to arrange for this to be so.

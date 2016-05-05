@@ -2,7 +2,7 @@
 ;; table.lisp - Generic table data types
 ;;
 
-;; $Revision: 1.3 $
+;; This concept needs some refining.
 
 (defpackage :table
   (:documentation "Generic table data types")

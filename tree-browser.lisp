@@ -10,7 +10,7 @@
 (defpackage :tree-browser
   (:documentation "Browse trees.")
   (:nicknames :tb)
-  (:use :cl :dlib :curses :char-util :keymap #| :dlib-misc :fui |#)
+  (:use :cl :dlib :curses :char-util :keymap :opsys #| :dlib-misc :fui |#)
   (:export
    #:browse-tree
    #:node #:node-branches #:node-open #:make-node
@@ -868,33 +868,32 @@ and indented properly for multi-line objects."
 	       #\space)
 	   (node-object node)))
   (when (node-open node)
-    (let* ((info (nos:stat (node-object node)))
+    (let* ((info (nos:get-file-info (node-object node)))
 	   (prefix (format nil "~v,,,va  "
 			   (* level (indent *browser*)) #\space ""))
 	  (string
-	   (with-slots ((size nos::size)
-			(access-time nos::access-time)
-			(modify-time nos::modify-time)
-			(change-time nos::change-time)
-			(birth-time nos::birth-time)) info
+	   (with-accessors ((size file-info-size)
+			    (access-time file-info-access-time)
+			    (modify-time file-info-modification-time)
+			    (change-time file-info-creation-time)
+			    #| (birth-time nos::birth-time) |#) info
 	     (with-output-to-string (str)
 	       (format str "~a Size:        ~d~%" prefix size)
 	       (format str "~a Access time: ~a~%" prefix
 		       (dlib-misc:date-string
-			:time (nos:unix-to-universal-time
-			       (nos:timespec-seconds access-time))))
+			:time (nos:derp-time-seconds access-time)))
 	       (format str "~a Mod time:    ~a~%" prefix
 		       (dlib-misc:date-string
-			:time (nos:unix-to-universal-time
-			       (nos:timespec-seconds modify-time))))
+			:time (nos:derp-time-seconds modify-time)))
 	       (format str "~a Change time: ~a~%" prefix
 		       (dlib-misc:date-string
-			:time (nos:unix-to-universal-time
-			       (nos:timespec-seconds change-time))))
+			:time (nos:derp-time-seconds change-time)))
+	       #|
 	       (format str "~a Birth time:  ~a~%" prefix
 		       (dlib-misc:date-string
 			:time (nos:unix-to-universal-time
 			       (nos:timespec-seconds birth-time))))
+	       |#
 	       (finish-output str)))))
       (display-node-line node string))))
 
@@ -916,16 +915,6 @@ and indented properly for multi-line objects."
 (defclass code-node (object-node)
   ())
 
-(defmacro with-fg ((color) &body body)
-  (with-unique-names (result)
-    `(let (,result)
-       (color-set (fui:color-index ,color +color-black+)
-		  (cffi:null-pointer))
-       (setf ,result (progn ,@body))
-       (color-set (fui:color-index +color-white+ +color-black+)
-		  (cffi:null-pointer))
-       ,result)))
-
 (defmethod display-node ((node code-node) level)
   (addstr
    (format nil "~v,,,va~c "
@@ -945,30 +934,30 @@ and indented properly for multi-line objects."
 	 ((defun defmacro defgeneric defmethod)
 	     (let* ((name (get-name node))
 		    (args (get-args node)))
-	       (with-fg (+color-magenta+)
+	       (fui:with-fg (+color-magenta+)
 		 (addstr (format nil "~(~s~) " (node-object node))))
-	       (with-fg (+color-green+)
+	       (fui:with-fg (+color-green+)
 		 (addstr (format nil "~(~a~)" name)))
 	       (addstr (format nil " (~{~(~w~)~^ ~})~%" args))))
 	 ((defstruct defclass deftype defvar defparameter defconstant)
-	  (with-fg (+color-magenta+)
+	  (fui:with-fg (+color-magenta+)
 	    (addstr (format nil "~(~s~)" (node-object node))))
-	  (with-fg (+color-green+)
+	  (fui:with-fg (+color-green+)
 	    (addstr (format nil " ~(~a~)~%" (get-name node)))))
       	 (otherwise
 	  (let* ((pkg (symbol-package (node-object node)))
 		 (pkg-name (and pkg (package-name pkg))))
 	    (cond
 	      ((equal pkg-name "COMMON-LISP")
-	       (with-fg (+color-magenta+)
+	       (fui:with-fg (+color-magenta+)
 		 (addstr (format nil "~(~s~)~%" (node-object node)))))
 	      ((equal pkg-name "KEYWORD")
-	       (with-fg (+color-blue+)
+	       (fui:with-fg (+color-blue+)
 		 (addstr (format nil "~(~s~)~%" (node-object node)))))
 	      (t
 	       (addstr (format nil "~(~a~)~%" (node-object node)))))))))
       ((stringp (node-object node))
-       (with-fg (+color-cyan+)
+       (fui:with-fg (+color-cyan+)
 	 (addstr (format nil "~s~%" (node-object node)))))
       (t
        (let ((*print-case* :downcase))
@@ -1342,7 +1331,7 @@ and indented properly for multi-line objects."
 (defmethod display-node ((node org-node) level)
   "Display an org-node."
   (let ((fake-level (max 0 (1- level))))
-    (with-fg ((elt *org-colors*
+    (fui:with-fg ((elt *org-colors*
 		   (mod level
 			(length *org-colors*))))
       (display-node-line node (s+ (format nil "~v,,,va "

@@ -49,7 +49,7 @@ require terminal driver support."))
   (declare (ignore initargs))
   (with-slots (device term-type in-fp out-fp screen) o
     (when (not term-type)
-      (setf term-type (nos:getenv "TERM")))
+      (setf term-type (nos:environment-variable "TERM")))
     (when (and (slot-boundp o 'device) device)
       (when (cffi:null-pointer-p (setf in-fp (nos:fopen device "r")))
 	(error "Can't open curses input device ~a" device))

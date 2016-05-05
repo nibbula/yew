@@ -167,7 +167,7 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
      (make-instance 'ansi :stream stream))
     ((shell-output-accepts-grotty)
      (make-instance 'ansi-stream :stream stream))
-    ((and (nos:getenv "EMACS")
+    ((and (nos:environment-variable "EMACS")
 	  (find-package :slime))
      ;; @@@ should really test the stream
      (make-instance 'slime :stream stream))
@@ -204,13 +204,13 @@ generic functions (i.e. %GROUT-*) directly."
 (defmethod %grout-width ((g dumb))
   "Return the width of the output, or NIL for infinite or unknown."
   (declare (ignore g))
-  (let ((col (nos:getenv "COLUMNS")))
+  (let ((col (nos:environment-variable "COLUMNS")))
     (or (and col (parse-integer col)) 80)))
 
 (defmethod %grout-height ((g dumb))
   "Return the width of the output, or NIL for infinite or unknown."
   (declare (ignore g))
-  (let ((rows (nos:getenv "ROWS")))
+  (let ((rows (nos:environment-variable "ROWS")))
     (or (and rows (parse-integer rows)) 24)))
 
 (defmethod %grout-bold ((g dumb) string)
@@ -314,14 +314,14 @@ generic functions (i.e. %GROUT-*) directly."
 (defmethod %grout-width ((g ansi-stream))
   "Return the width of the output, or NIL for infinite or unknown."
   (declare (ignore g))
-  (let ((col (nos:getenv "COLUMNS")))
+  (let ((col (nos:environment-variable "COLUMNS")))
     (or (and col (parse-integer col)) 80)))
 
 ;; Unfortunately we have to do the same the as the dumb driver.
 (defmethod %grout-height ((g ansi-stream))
   "Return the width of the output, or NIL for infinite or unknown."
   (declare (ignore g))
-  (let ((rows (nos:getenv "ROWS")))
+  (let ((rows (nos:environment-variable "ROWS")))
     (or (and rows (parse-integer rows)) 24)))
 
 (defmethod %grout-bold ((g ansi-stream) string)

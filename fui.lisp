@@ -16,6 +16,8 @@
    #:color-attr
    #:+color-names+
    #:color-number
+   #:with-fg
+   #:with-color
    #:get-char
    #:interactively
    #:non-interactively
@@ -156,6 +158,25 @@ foreground FG and background BG."
 (defun color-number (color)
   "Return the curses color number given a symbol name."
   (cadr (assoc color +color-names+)))
+
+(defmacro with-fg ((color) &body body)
+  (with-unique-names (result)
+    `(let (,result)
+       (color-set (fui:color-index ,color +color-black+)
+		  (cffi:null-pointer))
+       (setf ,result (progn ,@body))
+       (color-set (fui:color-index +color-white+ +color-black+)
+		  (cffi:null-pointer))
+       ,result)))
+
+(defmacro with-color ((fg bg) &body body)
+  (with-unique-names (result)
+    `(let (,result)
+       (color-set (fui:color-index ,fg ,bg) (cffi:null-pointer))
+       (setf ,result (progn ,@body))
+       (color-set (fui:color-index +color-white+ +color-black+)
+		  (cffi:null-pointer))
+       ,result)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Input

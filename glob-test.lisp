@@ -7,7 +7,7 @@
   (:use :cl :test :glob :opsys)
   (:export
    ;; Main entry point
-   #:run-tests
+   #:run
    ))
 (in-package :glob-test)
 
@@ -188,7 +188,10 @@
 	 '("../boo/bar/gralt.c" "../zoo/baz/bark.c" "../zoo/quux/pidge.c"))
 )
 
-(defun run-tests ()
-  (run-all-tests))
+(deftests (glob-all)
+  fnmatch-strings fnmatch-qmark fmatch-charset fnmatch-star glob)
+
+(defun run ()
+  (run-group-name 'glob-all :verbose t))
 
 ;; EOF

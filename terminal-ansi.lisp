@@ -12,7 +12,7 @@
 
 (defpackage :terminal-ansi
   (:documentation "Standard terminal (ANSI).")
-  (:use :dlib :cl :terminal :cffi :opsys :termios)
+  (:use :dlib :cl :terminal :cffi :opsys)
   (:export
    #:terminal-ansi-stream
    #:terminal-ansi
@@ -20,7 +20,10 @@
    ))
 (in-package :terminal-ansi)
 
-(defvar *default-device-name* "/dev/tty"
+;; To be portable we have to restrict ourselves to calls to the system
+;; independent part of OPSYS. So we shouldn't use anything in TERMIO or UNIX.
+
+(defvar *default-device-name* *default-console-device-name*
   "The default device to create a terminal on.")
 
 (defclass terminal-ansi-stream (terminal-stream)
@@ -30,36 +33,7 @@
 require terminal driver support."))
 
 (defclass terminal-ansi (terminal terminal-ansi-stream)
-  (
-#|   (file-descriptor
-    :accessor terminal-file-descriptor
-    :initarg :file-descriptor
-    :documentation "System file descriptor.")
-   (device-name
-    :accessor terminal-device-name
-    :initarg :device-name
-    :documentation "System device name.") |#
-   (raw-state
-    :accessor terminal-raw-state
-    :initarg :terminal-raw-state
-    :documentation
-    "A foreign pointer to a POSIX termios struct of the terminal in its ~
-     raw state.")
-   (cooked-state
-    :accessor terminal-cooked-state
-    :initarg :terminal-cooked-state
-    :documentation
-    "A foreign pointer to a POSIX termios struct of the terminal in its ~
-     cooked state")
-#|   (window-rows
-    :accessor terminal-window-rows
-    :initarg :window-rows
-    :documentation "Number of rows of characters in the window.")
-   (window-columns
-    :accessor terminal-window-columns
-    :initarg :window-columns
-    :documentation "Number of columns of characters in the window.") |#
-   (typeahead
+  ((typeahead
     :accessor typeahead
     :initform nil
     :initarg :typeahead
@@ -68,14 +42,11 @@ require terminal driver support."))
     :accessor typeahead-pos
     :initform nil
     :initarg :typeahead-pos
-    :documentation "How far into the typeahead we are.")
-   )
+    :documentation "How far into the typeahead we are."))
   (:default-initargs
     :file-descriptor		nil
     :device-name		*default-device-name*
     :output-stream		nil
-    :terminal-raw-state		nil
-    :terminal-cooked-state	nil
   )
   (:documentation "What we need to know about terminal device."))
 
@@ -87,14 +58,10 @@ require terminal driver support."))
   "Get the window size from the kernel and store it in tty."
   (with-slots (file-descriptor window-rows window-columns) tty
     (when file-descriptor
-      (with-foreign-object (ws '(:struct winsize))
-	(when (< (posix-ioctl file-descriptor TIOCGWINSZ ws) 0)
-	  (error "Can't get terminal window size."))
-	(setf
-	 window-rows    (foreign-slot-value ws '(:struct winsize) 'ws_row)
-	 window-columns (foreign-slot-value ws '(:struct winsize) 'ws_col))))))
+      (multiple-value-setq (window-columns window-rows)
+	(get-window-size file-descriptor)))))
 
-;; There are two possibilities for getting this right:
+;; There seems to be two possibilities for getting this right:
 ;;  1. We do all output thru our routines and keep track
 ;;  2. We ask the terminal (and get an accurate response)
 ;; We really can't assume 1, nor can we reliably assume we can check if
@@ -106,9 +73,10 @@ require terminal driver support."))
 ;; redraw user command.
 
 (defun eat-typeahead (tty)
-  (let ((ta (termios:call-with-raw
-	     (terminal-file-descriptor tty)
-	     (_ (tty-slurp _)) :timeout 1)))
+  (let (ta (fd (terminal-file-descriptor tty)))
+    (set-terminal-mode fd :raw t)
+    (setf ta (slurp-terminal fd :timeout 1))
+    (set-terminal-mode fd :raw nil)
     (when (and ta (> (length ta) 0))
 ;      (log-message e "ta[~a]=~w" (length ta) ta)
       (if (typeahead tty)
@@ -121,7 +89,7 @@ require terminal driver support."))
   (eat-typeahead tty)
   (let ((row 1) (col 1) sep
 	(result (tt-report tty #\R "~c[6n" #\escape)))
-    (when (and result (>= (length result) 6))
+    (when (and result (>= (length result) 5))
       (setf sep (position #\; result)
 	    row (parse-integer (subseq result 2 sep) :junk-allowed t)
 	    col (parse-integer (subseq result (1+ sep) (length result))
@@ -140,54 +108,31 @@ require terminal driver support."))
 
 (defmethod terminal-start ((tty terminal-ansi))
   "Set up the terminal for reading a character at a time without echoing."
-  (with-slots (file-descriptor device-name output-stream raw-state cooked-state
+  (with-slots (file-descriptor device-name output-stream
                window-rows window-columns) tty
     (when (not file-descriptor)
-;      (format t "[terminal-open ~s]~%" device-name)
-      (setf file-descriptor (posix-open device-name O_RDWR 0))
+      ;; (format t "[terminal-open ~s]~%" device-name)
+      (setf file-descriptor (open-terminal device-name)))
       ;; (dbug "terminal-ansi open in~%")
-      (when (< file-descriptor 0)
-	(error "Can't open ~a ~d." device-name file-descriptor)))
-    (when (not cooked-state)
-      (setf cooked-state (foreign-alloc '(:struct termios))))
-    (when (not raw-state)
-      (setf raw-state (foreign-alloc '(:struct termios))))
-    (when (< (tcgetattr file-descriptor cooked-state) 0)
-      (error "Can't get cooked state."))
-    (when (< (tcgetattr file-descriptor raw-state) 0)
-      (error "Can't get raw state."))
-    (with-foreign-slots ((c_lflag c_cc) raw-state (:struct termios))
-      ;; Read returns immediately only after one character read
-      (setf (mem-aref c_cc :char VMIN) 1)
-      (setf (mem-aref c_cc :char VTIME) 0)
-      ;; Turn off canonical input, echo, and extended chars(lnext discard...)
-      (setf c_lflag (logand c_lflag (lognot (logior ICANON ECHO IEXTEN)))))
+    (set-terminal-mode file-descriptor :line nil :echo nil)
     (when (not output-stream)
       (setf output-stream (open device-name :direction :output
 				#-clisp :if-exists #-clisp :append)))
       ;; (dbug "terminal-ansi open out~%"))
-    (when (< (tcsetattr file-descriptor TCSANOW raw-state) 0)
-;    (when (< (tcsetattr file-descriptor TCSAFLUSH raw-state) 0)
-      (error "Can't set raw state. ~d ~d" nos:*errno* file-descriptor))
-;    (format t "[terminal-start]~%")
     (terminal-get-size tty)))
 
 (defmethod terminal-end ((tty terminal-ansi))
   "Put the terminal back to the way it was before we called terminal-start."
-;  (format t "[terminal-end]~%")
-  (when (< (tcsetattr (terminal-file-descriptor tty) TCSANOW #+null TCSAFLUSH
-		      (terminal-cooked-state tty))
-	   0)
-    (error "Can't set cooked state.")))
+					;  (format t "[terminal-end]~%")
+  (set-terminal-mode (terminal-file-descriptor tty)
+		     :line t :echo t :raw nil :timeout nil))
 
 (defmethod terminal-done ((tty terminal-ansi))
   "Forget about the whole terminal thing and stuff."
   (with-slots (file-descriptor raw-state cooked-state output-stream) tty
     (terminal-end tty)
-    (posix-close file-descriptor)
+    (close-terminal file-descriptor)
     ;; (dbug "terminal-ansi close in~%")
-    (foreign-free raw-state)
-    (foreign-free cooked-state)
     (when output-stream
       (close output-stream))
     ;; (dbug "terminal-ansi close out~%")
@@ -203,53 +148,38 @@ require terminal driver support."))
     (when (position #\newline string)
       (finish-output stream))))
 
-(defun tty-slurp (tty)
-  "Read until EOF. Return a string of the results. TTY is a file descriptor."
-  (let* ((size (nos:memory-page-size))
-	 (result (make-array size
-			     :element-type 'base-char
-			     :fill-pointer 0 :adjustable t))
-	 status)
-    (with-output-to-string (str result)
-      (with-foreign-object (buf :char size)
-	(loop
-	   :do (setf status (posix-read tty buf size))
-	   :while (= status size)
-	   :do (princ (cffi:foreign-string-to-lisp buf) str))
-	(cond
-	  ((> status size)
-	   (error "Read returned too many characters? ~a" status))
-	  ((< status 0)
-	   (error "Read error ~d~%" status))
-	  ((= status 0)
-	   (or (and (length result) result) nil))
-	  (t
-	   (princ (cffi:foreign-string-to-lisp buf :count status) str)
-	   result))))))
-
-(defun read-until (tty stop-char)
+(defun read-until (tty stop-char &key timeout)
   "Read until STOP-CHAR is read. Return a string of the results.
 TTY is a file descriptor."
-  (let (status cc
-        (result (make-array '(0) :element-type 'base-char
-			    :fill-pointer 0 :adjustable t)))
+  (let ((result (make-array '(0) :element-type 'base-char
+			    :fill-pointer 0 :adjustable t))
+	cc)
+    (set-terminal-mode tty :timeout timeout)
     (with-output-to-string (str result)
-      (with-foreign-object (c :char)
-	(loop
-	   :do (setf status (posix-read tty c 1))
-	   :while (= status 1)
-	   :do (setf cc (code-char (mem-ref c :unsigned-char)))
-	   :while (char/= cc stop-char) :do (princ cc str))
-	(cond
-	  ((> status 1)
-	   (error "Read returned too many characters? ~a" status))
-	  ((< status 0)
-	   (error "Read error ~d~%" status))
-	  ((= status 0)
-	   (or (and (length result) result) nil))
-	  (t
-	   (princ cc str)
-	   result))))))
+      (loop
+	 :do (setf cc (read-terminal-char tty))
+	 :while (and cc (char/= cc stop-char)) :do (princ cc str)))
+    (set-terminal-mode tty :timeout nil)
+    (if (zerop (length result))
+	nil
+	result)))
+
+;; @@@ BROKEN! FIX!
+;; (defmacro with-raw ((tty) &body body)
+;;   (with-unique-names (mode)
+;;     `(let ((,mode (get-terminal-mode ,tty)))
+;;        (unwind-protect
+;; 	    (progn
+;; 	      (set-terminal-mode ,tty :raw t :echo nil)
+;; 	      ,@body)
+;; 	 (set-terminal-mode ,tty :mode ,mode)))))
+
+(defmacro with-raw ((tty) &body body)
+    `(unwind-protect
+	  (progn
+	    (set-terminal-mode ,tty :raw t :echo nil)
+	    ,@body)
+       (set-terminal-mode ,tty :raw nil)))
 
 (defun tt-report (tty end-char fmt &rest args)
   "Output a formatted string to the terminal and get an immediate report back.
@@ -257,15 +187,14 @@ Report parameters are returned as values. Report is assumed to be in the form:
 #\escape #\[ { p1 { ; pn } } end-char"
   (let ((fd (terminal-file-descriptor tty))
 	(q (apply #'format nil fmt args)))
-    (with-foreign-string (qq q)
-      (let ((str (call-with-raw
-		  fd #'(lambda (x)
-			 (posix-write x qq (length q))
-			 (read-until x end-char))
-		  :very-raw nil :timeout 10)))
-	(when (null str)
-	  (error "Terminal failed to report \"~a\"." fmt))
-	str))))
+    (let ((str (with-raw (fd)
+		 ;;(posix-write fd qq (length q))
+		 ;;(tt-write-string tty q) (tt-finish-output tty)
+		 (write-terminal-string fd q)
+		 (read-until fd end-char :timeout 10))))
+      (when (null str)
+	(error "Terminal failed to report \"~a\"." fmt))
+      str)))
 
 (defmethod tt-write-string ((tty terminal-ansi-stream) str)
   "Output a string to the terminal. Flush output if it contains a newline,
@@ -412,8 +341,8 @@ i.e. the terminal is 'line buffered'."
 ; 	((= status 1)
 ; 	 (code-char (mem-ref c :unsigned-char)))))))
 
-(defun get-char (tty c)
-  (with-slots (typeahead typeahead-pos) tty
+(defun get-char (tty)
+  (with-slots (typeahead typeahead-pos file-descriptor) tty
     (when typeahead
       (return-from get-char
 	(prog1
@@ -422,13 +351,22 @@ i.e. the terminal is 'line buffered'."
 ;	  (format t "ta->~a~%" (incf typeahead-pos))
 	  (when (>= typeahead-pos (length typeahead))
 	    (setf typeahead nil)))))
+      ;; I want this to optionally catch and handle continuable non-O/S-specific
+      ;; errors, like restarting from ^Z. But for now...
+      (read-terminal-char file-descriptor)
+      #|
     (let (status)
       (loop
-	 :do (setf status (posix-read (terminal-file-descriptor tty) c 1))
+	 :do
+	 (restart-case
+	     (read-terminal-char (terminal-file-descriptor tty))
+	   ;; Probably returning from ^Z or terminal resize, or something,
+	   ;; so keep trying. Enjoy your trip to plusering town.
+	   (reset-term ()
+	     :report "Reset the terminal and try again."
+	     (terminal-start tty) (tt-finish-output tty))
 	 :if (and (< status 0) (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
 	 :do
-         ;; Probably returning from ^Z or terminal resize, or something,
-         ;; so keep trying. Enjoy your trip to plusering town.
          (terminal-start tty) #| (redraw) |# (tt-finish-output tty)
 	 :else
          :return
@@ -440,18 +378,19 @@ i.e. the terminal is 'line buffered'."
 	((= status 0)		     ; Another possible plusering extravaganza
 	 nil)
 	((= status 1)
-	 (code-char (mem-ref c :unsigned-char)))))))
+	 (code-char (mem-ref c :unsigned-char)))))
+      |#
+      ))
 
 (defmethod tt-get-char ((tty terminal-ansi))
   "Read a character from the terminal."
   (tt-finish-output tty)
-  (with-foreign-object (c :unsigned-char)
-    (get-char tty c)))
-     
+  ;;(read-terminal-char tty))
+  (get-char tty))
+
 (defmethod tt-get-key ((tty terminal-ansi))
   (tt-finish-output tty)
-  (with-foreign-object (c :unsigned-char)
-    (get-char tty c)))
+  (get-char tty))
 
 (defmethod tt-listen-for ((tty terminal-ansi) seconds)
   (listen-for seconds (terminal-file-descriptor tty)))

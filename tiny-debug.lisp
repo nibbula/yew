@@ -1,12 +1,17 @@
 ;;
-;; tiny-debug.lisp - Multi platform minimal debugger
+;; tiny-debug.lisp - Debugger for use with :TINY-REPL
 ;;
 
-;;; - debugger improvements.
+;;; TODO:
+;;; - debugger improvements
 ;;; - how about using swank?
+;;; - split me up
+;;; - try getting more specific source location with *read-intern*
 
 (defpackage :tiny-debug
-  (:documentation "Multi-platform minimal debugger")
+  (:documentation
+   "A crappy half-assed debugger for your enjoyment and frustration. But at
+least you can type things using TINY-RL.")
   (:use :cl :dlib :char-util :keymap :terminal :terminal-ansi
 	:tiny-rl :tiny-repl #+sbcl :sb-introspect)
   (:export
@@ -408,7 +413,13 @@ the outermost. When entering the debugger the current frame is 0.")
 
 #+sbcl
 (defun debugger-show-source (n)
-  (format t "~s~%" (debugger-source n)))
+  (let ((frame
+	 (cond
+	   ((numberp n) (frame-number n))
+	   (t *current-frame*))))
+    ;;(format t "~s~%" (debugger-source frame))))
+    (loop :for s :in (debugger-source frame)
+       :do (format t "~a~%" s))))
 
 #-(or ccl sbcl)
 (defun debugger-show-source (n)

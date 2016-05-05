@@ -2,6 +2,10 @@
 ;; terminal.lisp - The end of the line.
 ;;
 
+;; TODO:
+;;  - I think I want to this to have an implicit argument interface, like grout.
+;;  - Why doesn't terminal-get-size set the size slots?!?
+
 (defpackage :terminal
   (:documentation "The end of the line.")
   (:use :cl :opsys)
@@ -102,7 +106,7 @@ require terminal driver support."))
    )
   (:default-initargs
     :file-descriptor		nil
-    :device-name		"/dev/tty"
+    :device-name		*default-console-device-name*
     :output-stream		nil
   )
   (:documentation "What we need to know about terminal device."))

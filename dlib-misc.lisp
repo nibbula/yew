@@ -144,11 +144,11 @@ expand all macros recursively."
 
 (defun printenv (&optional original-order)
   "Like the unix command."
-  (let ((mv (reduce #'max (nos:environ)
+  (let ((mv (reduce #'max (nos:environment)
 		    :key #'(lambda (x) (length (symbol-name (car x))))))
 	(sorted-list (if original-order
-			 (nos:environ)
-			 (sort (nos:environ) #'string-lessp
+			 (nos:environment)
+			 (sort (nos:environment) #'string-lessp
 			       :key #'(lambda (x) (symbol-name (car x)))))))
     (loop :for v :in sorted-list
        :do (format t "~v@a ~30a~%" mv (car v) (cdr v)))))
@@ -306,9 +306,12 @@ Some abbreviations of the keywords are accepted, like :hrs :min :sec."
 			    (error "Unknown format-date keyword ~s." v))))))))))
       `(multiple-value-bind (,seconds ,minutes ,hours ,date ,month ,year ,day
 				      ,daylight-p ,zone)
-	   (if ,gmt-p
-	       (decode-universal-time (or ,time (get-universal-time)) 0)
-	       (decode-universal-time (or ,time (get-universal-time))))
+	   ;; One of the branches of gmt-p will be unreachable.
+	   (locally 
+	       #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+	       (if ,gmt-p
+		   (decode-universal-time (or ,time (get-universal-time)) 0)
+		   (decode-universal-time (or ,time (get-universal-time)))))
 	 (declare (ignorable ,seconds ,minutes ,hours ,date ,month ,year ,day
 			     ,daylight-p ,zone))
 	 (format ,stream ,format ,@args)))))
@@ -1101,7 +1104,8 @@ with the same name. If it's a macro, pass MACRO as true, mmkay?"
 	 (if macro
 	     `(eval (list* (intern (string ',symbol) ,system) args))
 	     `(apply (intern (string ',symbol) ,system) args)))
-	(symbol-string (string symbol)))
+	;;(symbol-string (string symbol))
+	)
     `(,(if macro 'defmacro 'defun) ,symbol (&rest args)
        ,doc-string
        (asdf:load-system ,system)

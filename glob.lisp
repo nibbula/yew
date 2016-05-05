@@ -424,9 +424,10 @@ match & dir  - f(prefix: boo) readir boo
   (or (eq :dir (dir-entry-type entry))
       ;; If it's a link, we have to stat it to check.
       (and (eq :link (dir-entry-type entry))
-	   (let ((s (ignore-errors (stat (s+ dir *directory-separator*
-					     (dir-entry-name entry))))))
-	     (and s (is-directory (file-status-mode s)))))))
+	   (let ((s (ignore-errors
+		      (get-file-info (s+ dir *directory-separator*
+					 (dir-entry-name entry))))))
+	     (and s (eq :directory (file-info-type s)))))))
 
 (defun trailing-directory-p (path)
   "Return true if PATH has a trailing directory indicator."
@@ -449,9 +450,10 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 	       (dir-entry-name f)))
 	 (starts-with-dot (p) (char= (char p 0) #\.)))
     (when path
-      #| (format t "path = ~s dir = ~s~%" path dir) |#
+      ;; (format t "path = ~s dir = ~s~%" path dir)
       (loop :with p = (car path)
 	 :for f :in (ignore-errors
+		      ;; XXX we shouldn't ignore ALL errors, just opsys-errors?
 		      (read-directory :dir (or dir ".") :full t
 				      :omit-hidden (not (starts-with-dot p))))
 	 ;; Only match explicit current "." and parent ".." elements.

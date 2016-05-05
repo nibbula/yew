@@ -6,7 +6,7 @@
   (:documentation "Tests for DLIB.")
   (:use :cl :test :dlib)
   (:export
-   #:test-dlib
+   #:run
    ))
 (in-package :dlib-test)
 
@@ -220,7 +220,7 @@
   dlib-1 split-sequence-1 dlib-2 dlib-language-1 dlib-io-1
   dlib-environment-1 dlib-debug-1)
 
-(defun test-dlib ()
+(defun run ()
   (run-group-name 'dlib-all :verbose t))
 
 ;; EOF
