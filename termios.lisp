@@ -11,33 +11,33 @@
 (declaim (optimize (debug 3)))
 
 (defpackage "TERMIOS"
-  (:use :cl :cffi :unix :dlib)
+  (:use :cl :cffi :dlib :opsys-base :unix)
   (:documentation
-   "Interface to POSIX (and some non-POSIX BSD) terminal driver.")
+   "Interface to POSIX (and some non-POSIX) terminal driver.")
   (:export
    ;; tty chars
    #:+VEOF+ #:+VEOL+ #:+VEOL2+ #:+VERASE+ #:+VWERASE+ #:+VKILL+ #:+VREPRINT+
    #:+VINTR+ #:+VQUIT+ #:+VSUSP+ #:+VDSUSP+ #:+VSTART+ #:+VSTOP+ #:+VLNEXT+
    #:+VDISCARD+ #:+VMIN+ #:+VTIME+
-   #:+VSTATUS+ #:+NCCS+
+   #:+VSTATUS+ #:+NCCS+ #:*cchars*
 
    ;; input modes
    #:+IGNBRK+ #:+BRKINT+ #:+IGNPAR+ #:+PARMRK+ #:+INPCK+ #:+ISTRIP+ #:+INLCR+
    #:+IGNCR+ #:+ICRNL+ #:+IXON+ #:+IXOFF+ #:+IXANY+ #:+IMAXBEL+ #:+IUCLC+
-   #:+IUTF8+ #:+DOSMODE+
+   #:+IUTF8+ #:+DOSMODE+ #:*iflags*
 
    ;; output modes
-   #:+OPOST+ #:+ONLCR+ #:+OXTABS+ #:+ONOEOT+
+   #:+OPOST+ #:+ONLCR+ #:+OXTABS+ #:+ONOEOT+ #:*oflags*
 
    ;; control flags
    #:+CIGNORE+ #:+CSIZE+ #:+CS5+ #:+CS6+ #:+CS7+ #:+CS8+ #:+CSTOPB+ #:+CREAD+
    #:+PARENB+ #:+PARODD+ #:+HUPCL+ #:+CLOCAL+ #:+CCTS+ #:+CRTS+ #:+CRTSCTS+
-   #:+CDTR+ #:+CDSR+ #:+CCAR+ #:+MDMBUF+
+   #:+CDTR+ #:+CDSR+ #:+CCAR+ #:+MDMBUF+ #:*cflags*
 
    ;; other "local" flags
    #:+ECHOKE+ #:+ECHOE+ #:+ECHOK+ #:+ECHO+ #:+ECHONL+ #:+ECHOPRT+ #:+ECHOCTL+
    #:+ISIG+ #:+ICANON+ #:+ALTWERASE+ #:+IEXTEN+ #:+EXTPROC+ #:+TOSTOP+
-   #:+FLUSHO+ #:+NOKERNINFO+ #:+PENDIN+ #:+NOFLSH+
+   #:+FLUSHO+ #:+NOKERNINFO+ #:+PENDIN+ #:+NOFLSH+ #:*lflags*
 
    ;; actions
    #:+TCSANOW+ #:+TCSADRAIN+ #:+TCSAFLUSH+ #:+TCSASOFT+
@@ -78,7 +78,6 @@
    #:call-with-raw
    #:describe-tty
    #:set-tty
-   #:set-terminal-mode
    #:getch
 
    ;; old fashioned tty ioctls
@@ -90,7 +89,12 @@
    #:+TIOCSTI+
    #:+TIOCGWINSZ+
    #:+TIOCSWINSZ+
+
+   ;; Portable interafce
+   #:set-terminal-mode
+   #:get-terminal-mode
    #:get-window-size
+   #:slurp-terminal
 
    ;; tests
    #:test
@@ -839,31 +843,31 @@ characters. If we don't get anything after a while, just return what we got."
 ;; but would hopefully do the job?
 
 #+darwin (progn
-(defparameter *sane-iflag*   #x300)	; ICRNL | IXON
-(defparameter *sane-oflag*   #x7)	; OPOST | ONLCR | OXTABS
-(defparameter *sane-cflag*   #x5b00)	; PARENB | HUPCL | CS6 | CS7 | CREAD
+(defparameter *sane-iflag*   #x300)	 ; ICRNL | IXON
+(defparameter *sane-oflag*   #x7)	 ; OPOST | ONLCR | OXTABS
+(defparameter *sane-cflag*   #x5b00)	 ; PARENB | HUPCL | CS6 | CS7 | CREAD
 (defparameter *sane-lflag*   #x200005cf) ; ECHOKE | ECHOE | ECHOK | ECHO |
-					; ECHOCTL | ISIG | ICANON | IEXTEN |
-					; PENDIN
+					 ; ECHOCTL | ISIG | ICANON | IEXTEN |
+					 ; PENDIN
 (declaim (type (unsigned-byte 8) *sane-discard*))
-(defparameter *sane-discard* #xff)	; undef
-(defparameter *sane-dsusp*   #xff)	; undef
-(defparameter *sane-eof*     #x4)	; ^D
-(defparameter *sane-eol*     #xff)	; undef
-(defparameter +sane-eol2+    #x0)	; ^@
-(defparameter *sane-erase*   #x7f)	; Delete
-(defparameter *sane-intr*    #x3)	; ^C
-(defparameter *sane-kill*    #x15)	; ^U
-(defparameter *sane-lnext*   #x11)	; ^Q
-(defparameter *sane-min*     #x1)	; ^A
-(defparameter *sane-quit*    #x1c)	; ^\
-(defparameter *sane-reprint* #xff)	; undef
-(defparameter *sane-start*   #xff)	; undef
-(defparameter *sane-status*  #x14)	; ^T
-(defparameter *sane-stop*    #xff)	; undef
-(defparameter *sane-susp*    #x1a)	; ^Z
-(defparameter *sane-time*    #x0)	; ^@
-(defparameter *sane-werase*  #xff)	; undef
+(defparameter *sane-discard* #xff)	 ; undef
+(defparameter *sane-dsusp*   #xff)	 ; undef
+(defparameter *sane-eof*     #x4)	 ; ^D
+(defparameter *sane-eol*     #xff)	 ; undef
+(defparameter +sane-eol2+    #x0)	 ; ^@
+(defparameter *sane-erase*   #x7f)	 ; Delete
+(defparameter *sane-intr*    #x3)	 ; ^C
+(defparameter *sane-kill*    #x15)	 ; ^U
+(defparameter *sane-lnext*   #x11)	 ; ^Q
+(defparameter *sane-min*     #x1)	 ; ^A
+(defparameter *sane-quit*    #x1c)	 ; ^\
+(defparameter *sane-reprint* #xff)	 ; undef
+(defparameter *sane-start*   #xff)	 ; undef
+(defparameter *sane-status*  #x14)	 ; ^T
+(defparameter *sane-stop*    #xff)	 ; undef
+(defparameter *sane-susp*    #x1a)	 ; ^Z
+(defparameter *sane-time*    #x0)	 ; ^@
+(defparameter *sane-werase*  #xff)	 ; undef
 (defparameter *sane-ispeed*  38400)
 (defparameter *sane-ospeed*  38400)
 
@@ -1001,8 +1005,184 @@ characters. If we don't get anything after a while, just return what we got."
       ;; free C memory
       (when sane (foreign-free sane)))))
 
-(defun set-terminal-mode (tty &key echo line raw)
-  ""
-  (declare (ignore tty echo line raw)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; The portable interface:
+
+;; I'm not really sure if this is a good interface. ☹
+(defun set-terminal-mode (tty &key (echo    nil echo-supplied)
+				   (line    nil line-supplied)
+				   (raw     nil raw-supplied)
+				   (timeout nil timeout-supplied)
+				   (mode    nil mode-supplied))
+  "Set the terminal mode. Arguments are:
+  ECHO makes input automatically output back, so you can see what you typed.
+  LINE makes input wait for a newline until returning.
+  RAW ingores normal processing, like interrupt keys.
+  TIMEOUT is the time in milliseconds to wait before returning with no input.
+  MODE is a TERMINAL-MODE structure to take settings from.
+The individual settings override the settings in MODE."
+  (when (not (or echo-supplied line-supplied raw-supplied timeout-supplied
+		 mode-supplied))
+    (return-from set-terminal-mode))
+  (let (new-mode)
+    (unwind-protect
+      (progn
+	(setf new-mode (foreign-alloc '(:struct termios)))
+	(syscall (tcgetattr tty new-mode))
+	(with-foreign-slots ((c_lflag c_iflag c_oflag c_cc) new-mode
+			     (:struct termios))
+	  (labels
+	      ((char-mode (state)
+		 (if state
+		     (progn
+		       ;; We assume with character mode you want relatively
+		       ;; raw characters.
+		       (setf c_iflag
+			     (logand c_iflag
+				     (lognot (logior +ISTRIP+ +INLCR+
+						     +IGNCR+ +ICRNL+ +IXON+
+						     +IXOFF+))))
+		       ;; Turn off "cannonical" input.
+		       ;; Stuck in input modes of the ancients?
+		       ;; We are the new canon!
+		       (setf c_lflag
+			     (logand c_lflag
+				     (lognot (logior +ICANON+ +IEXTEN+))))
+		       ;; These are the default values, but we set them since
+		       ;; otherwise a read might not immediately return a
+		       ;; char.
+		       (setf (mem-aref c_cc :char +VMIN+) 1)
+		       (setf (mem-aref c_cc :char +VTIME+) 0))
+		     (progn
+		       (setf c_iflag (logior c_iflag +ICRNL+ +IXON+))
+		       (setf c_lflag (logior c_lflag +ICANON+ +IEXTEN+)))))
+	       (echo-mode (state)
+		 (setf c_lflag
+		       (if state
+			   (logior c_lflag +ECHO+)
+			   (logand c_lflag (lognot +ECHO+)))))
+	       (raw-mode (state)
+		 ;; Raw means the same as character mode AND don't process
+		 ;; signals or do output processing.
+		 (if state
+		     (progn
+		       (setf c_lflag (logand c_lflag (lognot +ISIG+)))
+		       (setf c_oflag (logand c_oflag (lognot +OPOST+))))
+		     (progn
+		       (setf c_lflag (logior c_lflag +ISIG+))
+		       (setf c_oflag (logior c_oflag +OPOST+)))))
+	       (set-timeout (timeout)
+		 (if timeout
+		     (progn
+		       (char-mode t) ;; char mode must be on
+		       (setf (mem-aref c_cc :char +VMIN+) 0)
+		       (setf (mem-aref c_cc :char +VTIME+) timeout))
+		     (progn
+		       (setf (mem-aref c_cc :char +VMIN+) 1)
+		       (setf (mem-aref c_cc :char +VTIME+) 0)))))
+	    (when mode-supplied
+	      ;; Order is important here.
+	      (echo-mode (terminal-mode-echo mode))
+	      (char-mode (not (terminal-mode-line mode)))
+	      (raw-mode (terminal-mode-raw mode))
+	      (set-timeout (terminal-mode-timeout mode)))
+	    ;; Order is important here, too.
+	    (when echo-supplied (echo-mode echo))
+	    (when line-supplied (char-mode (not line)))
+	    (when raw-supplied (raw-mode raw))
+	    (when timeout-supplied (set-timeout timeout))))
+	;; Now actually set it.
+	(when (< (tcsetattr tty +TCSANOW+ new-mode) 0)
+	  (error "Can't set terminal mode. ~d ~d" *errno* tty)))
+      (foreign-free new-mode))))
+
+(defun get-terminal-mode (tty)
+  "Return a TERMINAL-MODE structure with the current terminal settings."
+  (let ((new-mode (foreign-alloc '(:struct termios)))
+	(echo nil) (line nil) (raw nil) (timeout nil))
+    (syscall (tcgetattr tty new-mode))
+    (with-foreign-slots ((c_lflag c_iflag c_oflag c_cc) new-mode
+			 (:struct termios))
+      ;; Don't check in detail, just assume the full setting.
+      (setf echo (not (zerop (logand c_lflag +ECHO+)))
+	    line (not (zerop (logand c_lflag +ICANON+)))
+	    raw  (and (zerop (logand c_lflag +ISIG+))
+		      (zerop (logand c_lflag +ICANON+)))
+	    timeout (if (zerop (mem-aref c_cc :char +VMIN+))
+			(mem-aref c_cc :char +VTIME+)
+			nil)))
+    (make-terminal-mode :echo echo :line line :raw raw :timeout timeout)))
+
+(defun slurp-terminal (tty &key timeout)
+  "Read until EOF. Return a string of the results. TTY is a file descriptor."
+  (let* ((size (memory-page-size))
+	 (result (make-array size
+			     :element-type 'base-char
+			     :fill-pointer 0 :adjustable t))
+	 status)
+    (when timeout
+      (set-terminal-mode tty :timeout timeout))
+    (with-output-to-string (str result)
+      (with-foreign-object (buf :char size)
+	(loop
+	   :do (setf status (posix-read tty buf size))
+	   :while (= status size)
+	   :do (princ (cffi:foreign-string-to-lisp buf) str))
+	(cond
+	  ((> status size)
+	   (error "Read returned too many characters? ~a" status))
+	  ((< status 0)
+	   (error "Read error ~d~%" status))
+	  ((= status 0)
+	   (or (and (length result) result) nil))
+	  (t
+	   (princ (cffi:foreign-string-to-lisp buf :count status) str)
+	   result))))))
+
+(defun crap (&optional (device "/dev/tty"))
+  "An horrible test."
+  (let (tty)
+    (unwind-protect
+      (progn
+	(setf tty (posix-open device O_RDWR 0))
+	(when (< tty 0)
+	  (error "Error opening ~a ~d~%" device tty))
+
+	(format t "No echo: ") (finish-output)
+	(set-terminal-mode tty :echo nil)
+	(format t "read: ~s~%" (read-line))
+
+	(format t "Yes echo: ") (finish-output)
+	(set-terminal-mode tty :echo t)
+	(format t "read: ~s~%" (read-line))
+
+	(format t "One char: ") (finish-output)
+	(set-terminal-mode tty :line nil)
+	(format t "read: ~s~%" (read-char))
+	
+	(format t "Whole line: ") (finish-output)
+	(set-terminal-mode tty :line t)
+	(format t "read: ~s~%" (read-line))
+
+	(format t "Raw char: ") (finish-output)
+	(set-terminal-mode tty :raw t)
+	(format t "read: ~s~%" (read-char))
+
+	(format t "Non-raw line: ") (finish-output)
+	(set-terminal-mode tty :raw nil)
+	(format t "read: ~s~%" (read-line))
+
+	(format t "Time out (2 sec): ") (finish-output)
+	(set-terminal-mode tty :timeout 20)
+	(format t "read: ~s~%" (getch tty))
+
+	(format t "No time out: ") (finish-output)
+	(set-terminal-mode tty :timeout nil)
+	(format t "read: ~s~%" (code-char (getch tty)))
+	(set-terminal-mode tty :line t)
+	)
+      ;; close the terminal
+      (when (and tty (>= tty 0))
+	(posix-close tty)))))
 
 ;; EOF

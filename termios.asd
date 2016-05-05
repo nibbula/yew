@@ -16,6 +16,6 @@
     :licence            "GPLv3"
     :source-control	:git
     :long-description   "Kickin' it old school."
-    :depends-on (:cffi :opsys :dlib-misc :char-util)
+    :depends-on (:cffi :opsys #| :dlib-misc :char-util |#)
     :components
     ((:file "termios")))

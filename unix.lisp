@@ -2,6 +2,16 @@
 ;; unix.lisp - Interface to UNIX-like systems.
 ;;
 
+;; Convetions:
+;; - Unix system calls should usually be wrapped in SYSCALL which will
+;;   check return values and throw errors.
+;; - Most API types should be defined with DEFCTYPE.
+;; - Make sure the interface is nicely callable from Lisp code, e.i. don't
+;;   make the caller pass pointers or have deal with foreign memory. Things
+;;   that just return ints probably don't need wrapping.
+;; - If you make a Lispy-er wrapper, call the original C version real-<func>.
+;; - See the conventions in opsys.lisp.
+
 (defpackage :unix
   (:documentation "Interface to UNIX-like systems.")
   (:use :cl :cffi :dlib :opsys-base)
@@ -14,8 +24,9 @@
    ;; error handling
    #:*errno*
    #:strerror
+   #:error-message
    #:posix-error
-   #:posix-error-code
+   ;;#:posix-error-code
    #:error-check
    #:syscall
 
@@ -48,6 +59,7 @@
    #:unsetenv
    #:sysctl
    #:getpagesize
+   #:memory-page-size
    #:getauxval
    #:getlogin
 
@@ -77,6 +89,10 @@
    #:user-name
    #:user-id
    #:user-full-name
+   #:get-next-user
+   #:user-list
+   #:refresh-user-list
+   #:is-administrator
    
    #:group
    #:group-name
@@ -104,9 +120,12 @@
    #:getutxline
    #:pututxline
    #:setutxent
+   #:users-logged-in
    #:setlogin
 
    ;; directories
+   #:hidden-file-name-p
+   #:superfluous-file-name-p
    #:dir-entry-inode
    #:change-directory
    #:pathconf
@@ -118,6 +137,7 @@
    #:dirent-type
    #:read-directory
    #:probe-directory
+   #:without-access-errors
 
    ;; files (low level)
    #:O_RDONLY #:O_WRONLY #:O_RDWR #:O_ACCMODE #:O_NONBLOCK #:O_APPEND
@@ -134,6 +154,7 @@
    #:stat
    #:lstat
    #:fstat
+   #:get-file-info
    #:S_IFMT #:S_IFIFO #:S_IFCHR #:S_IFDIR #:S_IFBLK #:S_IFREG #:S_IFLNK
    #:S_IFSOCK #:S_IFWHT #:S_ISUID #:S_ISGID #:S_ISVTX #:S_IRUSR #:S_IWUSR
    #:S_IXUSR
@@ -214,11 +235,28 @@
    #:file-status-flags
    #:file-status-generation
 
+   ;; signals
+   #:*signal-count*
+   #:signal-name
+   #:signal-description
+   #:signal-action
+   #:set-signal-action
+   #:describe-signals
+   #:kill
+
+   #:+SIGHUP+ #:+SIGINT+ #:+SIGQUIT+ #:+SIGILL+ #:+SIGTRAP+ #:+SIGABRT+
+   #:+SIGPOLL+ #:+SIGEMT+ #:+SIGFPE+ #:+SIGKILL+ #:+SIGBUS+ #:+SIGSEGV+
+   #:+SIGSYS+ #:+SIGPIPE+ #:+SIGALRM+ #:+SIGTERM+ #:+SIGURG+ #:+SIGSTOP+
+   #:+SIGTSTP+ #:+SIGCONT+ #:+SIGCHLD+ #:+SIGTTIN+ #:+SIGTTOU+ #:+SIGIO+
+   #:+SIGXCPU+ #:+SIGXFSZ+ #:+SIGVTALRM+ #:+SIGPROF+ #:+SIGWINCH+ #:+SIGINFO+
+   #:+SIGUSR1+ #:+SIGUSR2+ #:+SIGSTKFLT+ #:+SIGPWR+
+   
    ;; processes
    #:system
    #:getrusage
    #:timeval #:timeval-seconds #:timeval-micro-seconds
    #:rusage #:rusage-user #:rusage-system
+   #:process-times
    #:_exit
    #:exec
    #:fork
@@ -253,15 +291,9 @@
    #:process-command
    #:process-args
    #:process-list
-
-   ;; signals
-   #:*signal-count*
-   #:signal-name
-   #:signal-description
-   #:signal-action
-   #:set-signal-action
-   #:describe-signals
-   #:kill
+   #:suspend-process
+   #:resume-process
+   #:terminate-process
 
    #:popen
    #:posix-pipe
@@ -300,9 +332,16 @@
    #:mounted-filesystems
 
    ;; Terminal things (which don't need to be in :termios)
-   #:isatty #:ttyname
+   #:isatty
+   #:ttyname
    #:file-handle-terminal-p
    #:file-handle-terminal-name
+   #:*default-console-device-name*
+   #:open-terminal
+   #:close-terminal
+   #:read-terminal-char
+   #:write-terminal-char
+   #:write-terminal-string
 
    ;; Character coding / localization
    #:wcwidth
@@ -823,7 +862,7 @@
   (define-constant +EALREADY+		149 "operation already in progress")
   (define-constant +EINPROGRESS+	150 "operation now in progress")
 
-  ;; SUN Network File System
+  ;; Network File System
   (define-constant +ESTALE+		151 "Stale NFS file handle")
 )
 
@@ -845,21 +884,21 @@
       (format nil "Unknown error: ~d" e))
 )
 
-(define-condition posix-error (simple-error)
-  ((error-code
-    :accessor posix-error-code
-    :initarg :error-code
-    :type (signed-byte 32)
-    :documentation "The value of errno at the time of the error."))
-  (:report (lambda (c s)
-	     (if (simple-condition-format-control c)
-		 (format s "~? ~a"
-			 (simple-condition-format-control c)
-			 (simple-condition-format-arguments c)
-			 (strerror (posix-error-code c)))
-		 (format s "~a"
-			 (strerror (posix-error-code c))))))
+(define-condition posix-error (opsys-error)
+  ()
+  ;; (:report (lambda (c s)
+  ;; 	     (if (simple-condition-format-control c)
+  ;; 		 (format s "~? ~a"
+  ;; 			 (simple-condition-format-control c)
+  ;; 			 (simple-condition-format-arguments c)
+  ;; 			 (strerror (opsys-error-code c)))
+  ;; 		 (format s "~a"
+  ;; 			 (strerror (opsys-error-code c))))))
   (:documentation "An error from calling a POSIX function."))
+
+(defun error-message (error-code)
+  "Return a string describing the ERROR-CODE."
+  (strerror error-code))
 
 (defun error-check (c &optional fmt &rest args)
   "Check if a system call returns an error value and signal it."
@@ -1069,7 +1108,7 @@ the current 'C' environment."
 ;; readable. It's really not hard to make a C interface that's nice, eg.
 ;; GObject. Of course again there's the issue of bloat. Linux's minimalism is
 ;; responsible for it being so adaptable to small devices. sbcl.core is 58MB,
-;; whereas linux can probably still work in 4MB.
+;; whereas linux can probably still work in 4MB?
 ;;
 ;; BUT, it turns out that most of the metadata is in header files as well as
 ;; probably in the kernel in a hackish way. But a method for getting at these
@@ -1107,7 +1146,7 @@ the current 'C' environment."
 
 (defcfun ("sysctlbyname" real-sysctlbyname) :int (name :string)
 	 (oldp :pointer) (oldlenp :pointer)
-	 (newp :pointer) (newline size-t))
+	 (newp :pointer) (newlen size-t))
 
 (defcfun "sysctlnametomib" :int (name :string) (mibp :pointer) (sizep :pointer))
 
@@ -1245,9 +1284,11 @@ the current 'C' environment."
 
 (defun sysctl (name type)
   (with-foreign-object (oldlenp 'size-t 1)
-    (real-sysctlbyname name (cffi:null-pointer) oldlenp (cffi:null-pointer) 0)
+    (syscall
+     (real-sysctlbyname name (cffi:null-pointer) oldlenp (cffi:null-pointer) 0))
+    (format t "length = ~d~%" (mem-ref oldlenp 'size-t))
     (with-foreign-object (oldp :unsigned-char (mem-ref oldlenp 'size-t))
-      (real-sysctlbyname name oldp oldlenp (cffi:null-pointer) 0)
+      (syscall (real-sysctlbyname name oldp oldlenp (cffi:null-pointer) 0))
       (case type
 	(:string
 	 (convert-from-foreign oldp type))
@@ -1278,6 +1319,10 @@ the current 'C' environment."
     (config-feature :os-t-64-bit-inode)))
 
 (defcfun getpagesize :int)
+
+(defun memory-page-size ()
+  "Get the system's memory page size, in bytes."
+  (getpagesize))
 
 #+linux
 (progn
@@ -1416,6 +1461,35 @@ Return nil for foreign null pointer."
 	 #+darwin :pw-expire #+darwin pw_expire
 	 ))))
 
+(defun convert-user (pw)
+  "Return a generic user structure from the foreign passwd structure. ~
+Return nil for foreign null pointer."
+  (if (and (pointerp pw) (null-pointer-p pw))
+      nil
+      (with-foreign-slots ((pw_name
+			    pw_passwd
+			    pw_uid
+			    pw_gid
+			    #+darwin pw_change
+			    #+darwin pw_class
+			    #+sunos pw_age
+			    #+sunos pw_comment
+			    pw_gecos
+			    pw_dir
+			    pw_shell
+			    #+darwin pw_expire
+			    ) pw (:struct foreign-passwd))
+	(make-user-info
+	 :name pw_name
+	 :id pw_uid
+	 :full-name pw_gecos
+	 :home-directory pw_dir
+	 :shell pw_shell
+	 :primary-group-id pw_gid
+	 ;; :guid
+	 ;; :picture
+	 ))))
+
 (defcfun ("getpwuid" real-getpwuid) :pointer (uid uid-t))
 (defun getpwuid (uid)
   (convert-passwd (real-getpwuid uid)))
@@ -1460,11 +1534,13 @@ user is not found."
   "Return the name of the user with ID, which defaults to the current user."
   (passwd-name (getpwuid (or id (getuid)))))
 
-(defun user-id (&optional name)
+(defun user-id (&key name effective)
   "Return the ID of the user with NAME, which defaults to the current user."
   (if name
       (passwd-uid (getpwnam name))
-      (getuid)))
+      (if effective
+	  (geteuid)
+	  (getuid))))
 
 (defun user-full-name (&optional id)
   "Return the full name of user with ID, which defaults to the current user."
@@ -1479,9 +1555,30 @@ user is not found."
   "Return true if C is a valid character in a user name."
   (or (alphanumericp c) (eql #\_ c) (eql #\- c)))
 
+(defun valid-user-name (username)
+  (not (position-if #'(lambda (c) (not (user-name-char-p c))) username)))
+
+(defun get-next-user ()
+  "Return the next group structure from the group database."
+  (convert-user (real-getpwent)))
+
+(defun user-list ()
+  "How to annoy people in large organizations."
+  (setpwent)
+  (loop :with g :while (setf g (get-next-user)) :collect g))
+
+(defun refresh-user-list ()
+  "Just in case you are bored, this will make get-next-group or group-list
+return potentially updated data."
+  (endpwent)
+  (setpwent))
+
+(defun is-administrator ()
+  "Return true if you are root, or effectively root."
+  (= (geteuid) 0))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Group database
-;; 
 
 (defcstruct foreign-group
   "Group database entry."
@@ -1702,7 +1799,36 @@ user. Probably requires root."
 ;; like in the ssh deamon. See getlogin.
 #+darwin (defcfun setlogin :int (name :string))
 
+(defun users-logged-in ()
+  "Return a list of names of logged in users."
+  (unwind-protect
+    (progn
+      (setutxent)
+      (let (u)
+	(loop :while (setf u (getutxent))
+	   :if (not (eq (utmpx-type u) :dead-process))
+	   :collect
+	   (utmpx-user u))))
+    (endutxent)))
+
 ;; chroot
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Directories
+
+(defun hidden-file-name-p (name)
+  "Return true if the file NAME is normally hidden."
+  (and name (> (length name) 0) (equal (char name 0) #\.)))
+
+(defun superfluous-file-name-p (name)
+  "Return true if the file NAME is considered redundant. On POSIX file
+systems, this means \".\" and \"..\"."
+  (and name (> (length name) 0)
+       (or (and (= (length name) 1)
+		(equal (char name 0) #\.))
+	   (and (= (length name) 2)
+		(equal (char name 0) #\.)
+		(equal (char name 1) #\.)))))
 
 ;; We need to use the posix version if there's no better way to do it
 ;; on the implementation.
@@ -2152,29 +2278,9 @@ calls. Returns NIL when there is an error."
   `(handler-case
        (progn ,@body)
      (posix-error (c)
-       (when (not (find (posix-error-code c)
+       (when (not (find (opsys-error-code c)
 			`(,+ENOENT+ ,+EACCES+ ,+ENOTDIR+)))
 	 (signal c)))))
-
-(defun probe-directory (dir)
-  "Something like probe-file but for directories."
-  #+clisp (ext:probe-directory (make-pathname
-				:directory (ext:absolute-pathname dir)))
-  #+(or sbcl ccl cmu)
-  ;; Let's be more specific: it must be a directory.
-  (handler-case
-    (let ((s (stat dir)))
-      (and (is-directory (file-status-mode s))))
-    (posix-error (c)
-      (when (not (find (posix-error-code c) `(,+ENOENT+ ,+EACCES+ ,+ENOTDIR+)))
-	(signal c))))
-  #+(or ecl lispworks abcl)
-  ;; On most implementations probe-file can handle directories.
-  (probe-file dir)
-  #-(or clisp sbcl ccl cmu ecl lispworks abcl)
-  (declare (ignore dir))
-  #-(or clisp sbcl ccl cmu ecl lispworks abcl)
-  (missing-implementation 'probe-directory))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Files
@@ -2393,7 +2499,7 @@ calls. Returns NIL when there is an error."
      (moo is-directory	      :directory	  #\d "directory")
      (moo is-block-device     :block-special	  #\b "block special")
      (moo is-regular-file     :regular		  #\r "regular")
-     (moo is-symbolic-link    :symbolic-link	  #\s "symbolic link")
+     (moo is-symbolic-link    :symbolic-link	  #\l "symbolic link")
      (moo is-socket	      :socket		  #\s "socket")
      (moo is-door	      :door		  #\d "door")
      (moo is-whiteout	      :whiteout		  #\w "whiteout"))))
@@ -2720,8 +2826,8 @@ calls. Returns NIL when there is an error."
   (st_ino	ino-t)			; 64 bit inode number **
 )
 
-;; This should have the union of all OS's slots, so that portable code
-;; can check for OS's specific slots with impunity.
+;; This should have the union of all Unix-like OS's slots, so that Unix
+;; portable code can check for specific slots with impunity.
 (defstruct file-status
   device
   inode
@@ -2861,6 +2967,62 @@ it is not a symbolic link."
     (error-check (real-fstat path stat-buf) "fstat: ~s" path)
     (convert-stat stat-buf)))
 
+(defun timespec-to-derptime (ts)
+  "Convert a timespec to a derptime."
+  (make-derp-time
+   :seconds (unix-to-universal-time (getf ts 'tv_sec))
+   :nanoseconds (getf ts 'tv_nsec)))
+
+(defun convert-file-info (stat-buf)
+  (if (and (pointerp stat-buf) (null-pointer-p stat-buf))
+      nil
+      (with-foreign-slots
+	  ((st_mode
+	    st_atimespec
+	    st_mtimespec
+	    st_ctimespec
+	    #+os-t-has-birthtime st_birthtimespec
+	    st_size
+	    #+darwin st_flags
+	    ) stat-buf (:struct foreign-stat))
+	(make-file-info
+	 :type (cond
+		 ((is-directory st_mode) :directory)
+		 ((is-symbolic-link st_mode) :symbolic-link)
+		 ((or (is-character-device st_mode)
+		      (is-block-device st_mode)) :device)
+		 ((is-regular-file st_mode) :regular)
+		 (t :other))
+	 :size st_size
+	 :creation-time
+	 ;; perhaps should be the earliest of st_ctimespec and st_birthtimespec?
+	 (timespec-to-derptime
+	  #+os-t-has-birthtime st_birthtimespec
+	  #-os-t-has-birthtime st_ctimespec)
+	 :access-time (timespec-to-derptime st_atimespec)
+	 :modification-time
+	 ;; perhaps should be the latest of st_ctimespec and st_mtimespec?
+	 (timespec-to-derptime st_mtimespec)
+	 :flags
+	 ;; :hidden :immutable :compressed
+	 `(
+	   #+darwin ,@(and (or (flag-user-immutable st_flags)
+			       (flag-root-immutable st_flags))
+			   (list :immutable))
+	   #+darwin ,@(and (flag-user-compressed st_flags)
+			   (list :compressed))
+	   #+darwin ,@(and (flag-user-hidden st_flags)
+			   (list :hidden))
+	   ;; linux ext flags are so lame I can't be bothered to do them now.
+	   )))))
+
+(defun get-file-info (path &key (follow-links t))
+  (with-foreign-object (stat-buf '(:struct foreign-stat))
+    (error-check (if follow-links
+		     (real-stat path stat-buf)
+		     (real-lstat path stat-buf)) "get-file-info: ~s" path)
+    (convert-file-info stat-buf)))
+
 ;; Supposedly never fails so we don't have to wrap with syscall.
 ;; @@@ consider taking symbolic string arguments
 (defcfun umask mode-t (cmask mode-t))
@@ -2898,6 +3060,28 @@ it is not a symbolic link."
 
 ;; This borders on superstition.
 (defcfun sync :void)
+
+(defun probe-directory (dir)
+  "Something like probe-file but for directories."
+  #+clisp (ext:probe-directory (make-pathname
+				:directory (ext:absolute-pathname dir)))
+  #+(or sbcl ccl cmu)
+  ;; Let's be more specific: it must be a directory.
+  (handler-case
+    (let ((s (stat dir)))
+      (and (is-directory (file-status-mode s))))
+    (posix-error (c)
+      (when (not (find (opsys-error-code c) `(,+ENOENT+ ,+EACCES+ ,+ENOTDIR+)))
+	(signal c))))
+  #+(or ecl lispworks abcl)
+  ;; On most implementations probe-file can handle directories.
+  (probe-file dir)
+  #-(or clisp sbcl ccl cmu ecl lispworks abcl)
+  (declare (ignore dir))
+  #-(or clisp sbcl ccl cmu ecl lispworks abcl)
+  (missing-implementation 'probe-directory))
+
+
 
 ;; Questionable:
 ;; mmap/munmap/mprotect/madvise ???
@@ -2954,6 +3138,7 @@ it is not a symbolic link."
 (defconstant +XATTR_SHOWCOMPRESSION+	#x0020)
 (defconstant +XATTR_MAXNAMELEN+		127)
 
+;; @@@ Maybe these *are* on linux?
 #+darwin
 (progn
   (defcfun listxattr ssize-t (path :string) (namebuff :string) (size size-t)
@@ -3000,7 +3185,212 @@ it is not a symbolic link."
   #-darwin nil)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Signals
+
+#+sunos (defcvar ("_sys_siglistn" *nsig*) :int)
+#+sunos (defcvar ("_sys_siglistp" sys-siglist) :pointer)
+
+#+darwin (defcvar ("sys_siglist" sys-siglist) :pointer)
+#+darwin (defcvar ("sys_signame" sys-signame) :pointer)
+
+(defparameter *signal-count*
+  #+darwin 32
+  #+sunos *nsig*
+  #+linux 32 ;; actually 65 if you count realtime (RT) signals
+  #-(or darwin sunos linux) (missing-implementation) ; @@@ or perhaps 0?
+  "Number of signal types, a.k.a. NSIG."
+)
+
+(defconstant +SIGHUP+	 1			  "Hangup")
+(defconstant +SIGINT+	 2			  "Interrupt")
+(defconstant +SIGQUIT+	 3			  "Quit")
+(defconstant +SIGILL+	 4			  "Illegal instruction")
+(defconstant +SIGTRAP+	 5			  "Trace/BPT trap")
+(defconstant +SIGABRT+	 6			  "Abort trap")
+(defconstant +SIGPOLL+	 #+darwin 7 #+linux 29	  "pollable event")
+(defconstant +SIGEMT+	 #+darwin 7 #+linux nil	  "EMT trap")
+(defconstant +SIGFPE+	 8			  "Floating point exception")
+(defconstant +SIGKILL+	 9			  "Killed")
+(defconstant +SIGBUS+	 #+darwin 10 #+linux 7	  "Bus error")
+(defconstant +SIGSEGV+	 11			  "Segmentation fault")
+(defconstant +SIGSYS+	 #+darwin 12 #+linux 31	  "Bad system call")
+(defconstant +SIGPIPE+	 13			  "Broken pipe")
+(defconstant +SIGALRM+	 14			  "Alarm clock")
+(defconstant +SIGTERM+	 15			  "Terminated")
+(defconstant +SIGURG+	 #+darwin 16 #+linux 23	  "Urgent I/O condition")
+(defconstant +SIGSTOP+	 #+darwin 17 #+linux 19	  "Suspended (signal)")
+(defconstant +SIGTSTP+	 #+darwin 18 #+linux 20	  "Suspended")
+(defconstant +SIGCONT+	 #+darwin 19 #+linux 18	  "Continued")
+(defconstant +SIGCHLD+	 #+darwin 20 #+linux 17	  "Child exited")
+(defconstant +SIGTTIN+	 21			  "Stopped (tty input)")
+(defconstant +SIGTTOU+	 22			  "Stopped (tty output)")
+(defconstant +SIGIO+	 #+darwin 23 #+linux 29	  "I/O possible")
+(defconstant +SIGXCPU+	 24			  "Cputime limit exceeded")
+(defconstant +SIGXFSZ+	 25			  "Filesize limit exceeded")
+(defconstant +SIGVTALRM+ 26			  "Virtual timer expired")
+(defconstant +SIGPROF+	 27			  "Profiling timer expired")
+(defconstant +SIGWINCH+	 28			  "Window size changes")
+(defconstant +SIGINFO+	 #+darwin 29 #+linux nil  "Information request")
+(defconstant +SIGUSR1+	 #+darwin 30 #+linux 10	  "User defined signal 1")
+(defconstant +SIGUSR2+	 #+darwin 31 #+linux 12	  "User defined signal 2")
+(defconstant +SIGSTKFLT+ #+darwin nil #+linux 16  "Stack fault")
+(defconstant +SIGPWR+	 #+darwin nil #+linux 30  "Power failure restart")
+
+#+linux
+(defparameter *signal-name*
+    #(nil
+      "HUP" "INT" "QUIT" "ILL" "TRAP" "ABRT" "BUS" "FPE" "KILL" "USR1"
+      "SEGV" "USR2" "PIPE" "ALRM" "TERM" "STKFLT" "CHLD" "CONT" "STOP"
+      "TSTP" "TTIN" "TTOU" "URG" "XCPU" "XFSZ" "VTALRM" "PROF" "WINCH"
+      "IO" "PWR" "SYS"))
+
+#+sunos (defparameter SIG2STR_MAX 64 "Bytes for signal name.")
+#+sunos (defcfun sig2str :int (signum :int) (str :pointer))
+
+(defun signal-name (sig)
+  #+sunos (with-foreign-pointer-as-string (s SIG2STR_MAX)
+	    (sig2str sig s)
+	    s)
+  #+darwin
+  (if (< sig *signal-count*)
+      (foreign-string-to-lisp
+       (mem-aref (get-var-pointer 'sys-signame) :pointer sig)))
+  #+linux (when (< sig *signal-count*)
+	    (aref *signal-name* sig))
+  #-(or darwin sunos linux) (declare (ignore sig))
+  #-(or darwin sunos linux) (missing-implementation 'signal-name)
+)
+
+#+(or sunos linux) (defcfun strsignal :string (sig :int))
+
+(defun signal-description (sig)
+  #+(or sunos linux) (strsignal sig)
+  #+darwin
+  (if (< sig *signal-count*)
+      (foreign-string-to-lisp
+       (mem-aref (get-var-pointer 'sys-siglist) :pointer sig)))
+  #-(or darwin sunos linux) (declare (ignore sig))
+  #-(or darwin sunos linux) (missing-implementation 'signal-description)
+)
+
+;(defparameter signal-names (make-hash-table 
+;(defun signal-number (name)
+
+; #+os-t-has-siglist
+; (eval-when (:compile-toplevel :load-toplevel :execute)
+;   (loop for i from 0 to *signal-count*
+;     do
+;     `(defparameter ,(signal-name i) ,i)))
+
+;; Should we do our own macros/functions?
+
+(defcfun sigaddset :int (set (:pointer sigset-t)) (signo :int))
+(defcfun sigdelset :int (set (:pointer sigset-t)) (signo :int))
+(defcfun sigemptyset :int (set (:pointer sigset-t)))
+(defcfun sigfillset :int (set (:pointer sigset-t)))
+(defcfun sigismember :int (set (:pointer sigset-t)) (signo :int))
+
+(defcstruct foreign-sigaction
+  "What to do with a signal, as given to sigaction(2)."
+  (sa_handler :pointer)	       ; For our purposes it's the same as sa_sigaction
+  (sa_mask sigset-t)
+  (sa_flags :int)
+  #+linux (sa_restorer :pointer)
+  )
+
+(defconstant SIG_DFL  0 "Default action.")
+(defconstant SIG_IGN  1 "Ignore the signal.")
+(defconstant SIG_HOLD #+darwin 5 #+linux 2 "Hold on to the signal for later.")
+(defconstant SIG_ERR -1 "Error?")
+
+(defconstant SA_ONSTACK   #x0001 "Deliver on a stack, given with sigaltstack.")
+(defconstant SA_RESTART   #x0002 "Restart system on signal return.")
+(defconstant SA_RESETHAND #x0004 "Reset handler to SIG_DFL on delivery.")
+(defconstant SA_NOCLDSTOP #x0008 "SIGCHLD only on process exit, not on stops.")
+(defconstant SA_NODEFER   #x0010 "Don't mask the signal being delivered.")
+(defconstant SA_NOCLDWAIT #x0020 "Don't create zombies. Wait returns ECHILD.")
+(defconstant SA_SIGINFO   #x0040 "Deliver with sa_siginfo args.")
+
+(defcfun sigaction :int (sig :int) (action :pointer) (old-action :pointer))
+
+(defparameter *handler-actions*
+  `((,SIG_DFL . :default) (,SIG_IGN . :ignore) (,SIG_HOLD . :hold)))
+
+(defun action-to-handler (action)
+  "Return the posix handler value for the ACTION keyword."
+  (let ((a (find action *handler-actions* :key #'cdr)))
+    (if a (car a) action)))
+
+(defun handler-to-action (handler)
+  "Return the action keyword for the posix HANDLER value."
+  (let ((h (assoc handler *handler-actions*)))
+    (if h (cdr h) handler)))
+
+(defun signal-action (signal)
+  "Return the action that given SIGNAL triggers."
+  (with-foreign-object (old-action '(:struct foreign-sigaction))
+    (syscall (sigaction signal (null-pointer) old-action))
+    (let* ((ptr (foreign-slot-value
+		 old-action '(:struct foreign-sigaction) 'sa_handler))
+	   (num (pointer-address ptr)))
+      (if (<= num SIG_HOLD)
+	  (handler-to-action num)
+	  ptr))))
+
+(defun set-signal-action (signal action)
+  "Set the ACTION that given SIGNAL triggers."
+  (let ((handler (action-to-handler action)))
+    (with-foreign-object (act '(:struct foreign-sigaction))
+      (with-foreign-slots ((sa_handler sa_mask sa_flags)
+			   act (:struct foreign-sigaction))
+	(setf sa_handler (if (not (pointerp handler))
+			     (make-pointer handler)
+			     handler)
+	      sa_flags 0)
+	(sigemptyset (foreign-slot-pointer act '(:struct foreign-sigaction) 'sa_mask)))
+      (syscall (sigaction signal act (null-pointer))))))
+
+(defsetf signal-action set-signal-action
+  "Set the ACTION that given SIGNAL triggers.")
+
+(defun describe-signals ()
+  "List the POSIX signals that are known to the operating system."
+  (format t "#  SIG~11tDescription~42tDisposition~%~
+             -- ---~11t-----------~42t-----------~%")
+  (loop :for i :from 1 :below *signal-count*
+        :do (format t "~2a ~:@(~7a~) ~30a ~a~%"
+		   i (signal-name i) (signal-description i)
+		   (if (not (find i '(9 17)))
+		       (let ((act (signal-action i)))
+			 (if (pointerp act)
+			     (format nil "Handler #x~x" (pointer-address act))
+			     act))
+		       "N/A"))))
+
+(defcfun ("kill" real-kill) :int (pid pid-t) (signal :int))
+
+(defun kill (pid sig)
+  #+clisp (posix:kill pid sig)
+  #| #+openmcl (#_kill pid sig) |#
+  #+ccl (real-kill pid sig)
+  #+cmu (unix:unix-kill pid sig)
+  #+sbcl (sb-unix:unix-kill pid sig)
+  #-(or clisp openmcl cmu sbcl ccl) (declare (ignore pid sig))
+  #-(or clisp openmcl cmu sbcl ccl) (missing-implementation 'kill))
+
+(defcfun killpg :int (process-group pid-t) (signal :int))
+
+;(sb-sys:enable-interrupt sb-posix:sigwinch #'update-window-size)
+;(defun update-window-size (sig code scp)
+; (declare (ignore sig code scp))
+;)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; System Commands?
+
+(defun member-of (group)
+  "Return true if the current user is a member of GROUP."
+  (position group (get-groups)))
 
 (defun is-executable (path &optional user)
   "Return true if the PATH is executable by the UID. UID defaults to the
@@ -3013,31 +3403,8 @@ current effective user."
      (and (is-group-executable (file-status-mode s))
 	  (member-of (file-status-gid s))))))
 
-;; @@@ Maybe this is portable and should be moved to opsys.lisp?
-(defun command-pathname (cmd)
-  "Return the full pathname of the first executable file in the PATH or nil
-if there isn't one."
-  (when (has-directory-p cmd)
-    (return-from command-pathname cmd))
-  (loop :for dir :in (split-sequence *path-separator* (getenv *path-variable*))
-     :do
-     (handler-case
-       (when (probe-directory dir)
-	 (loop :with full = nil
-	    :for f :in (read-directory :dir dir) :do
-	    ;; (format t "~s~%" f)
-	    (when (and (equal f cmd)
-		       (is-executable
-			(setf full (format nil "~a~c~a"
-					   dir *directory-separator* cmd))))
-	      (return-from command-pathname full))))
-       (error (c) (declare (ignore c)))))
-  nil)
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Processes
-
-(defcfun system :int (command :string))
 
 ; XXX This is really all #+darwin
 (defconstant wait-no-hang   #x01)
@@ -3066,7 +3433,8 @@ if there isn't one."
 	 (foreign-rusage-ptr (:pointer (:struct foreign-rusage))))
 
 (defun getrusage (who)
-  "Get resource usage. Return a struct TIMESPEC which has SECONDS and MICRO-SECONDS."
+  "Get resource usage. Return a struct TIMESPEC which has SECONDS and
+MICRO-SECONDS."
   (let ((val (case who
 	       (:self 0)
 	       ((:kids :children) -1))))
@@ -3079,6 +3447,15 @@ if there isn't one."
 	 :system (make-timeval :seconds (getf ru_stime 'tv_sec)
 			       :micro-seconds (getf ru_stime 'tv_usec)))))))
 
+(defun process-times (who)
+  "Get CPU time for WHO, which is either :SELF or :CHILDREN. Return a four
+integer values: seconds and microseconds of user time, seconds and microseconds
+of system time."
+  (let ((ru (getrusage who)))
+    (values (timeval-seconds (rusage-user ru))
+	    (timeval-micro-seconds (rusage-user ru))
+	    (timeval-seconds (rusage-system ru))
+	    (timeval-micro-seconds (rusage-system ru)))))
 
 ;#+os-t-has-vfork (defcfun ("vfork" fork) pid-t)
 ;#-os-t-has-vfork (defcfun ("fork" fork) pid-t)
@@ -3278,6 +3655,10 @@ environment list, which defaults to the current 'C' environ variable."
 ;; int getgroups(int gidsetsize, gid_t grouplist[]);
 (defcfun getgroups :int (gid-set-size :int) (group-list (:pointer gid-t)))
 
+;; getgroups vs. getgrouplist & NGROUPS_MAX .etc
+;; I should not be suprised at this point at how un-good the typical unix
+;; group interfaces are.
+
 (defun get-groups ()
   "Return an array of group IDs for the current process."
   (let* ((size (syscall (getgroups 0 (null-pointer))))
@@ -3314,6 +3695,13 @@ environment list, which defaults to the current 'C' environ variable."
   command
   args)
 
+#+darwin
+(defparameter *proc-retry-count* 100
+  "How many time to retry getting the process list before failing.")
+#+darwin
+(defparameter *process-list-fudge* 10
+  "How many extra items to allocate in the process list.")
+	     
 (defun process-list ()
   #+darwin
   ;; The MIB should look like:
@@ -3332,72 +3720,98 @@ environment list, which defaults to the current 'C' environ variable."
   ;; and flag points to an array of the appropriate type.
   (let* ((start-mib (sysctl-name-to-mib "kern.proc"))
 	 (mib-len (+ 2 (length start-mib)))
-	 real-list-size) #| (filter +KERN-PROC-ALL+) |#
+	 list-count
+	 real-list-size
+	 proc-list) #| (filter +KERN-PROC-ALL+) |#
     (with-foreign-objects ((mib :int mib-len)
-			   (list-size :int)
-      			   (new-list-size :int))
+			   (list-size 'size-t)
+      			   (new-list-size 'size-t))
       ;; Copy from the start-MIB to the MIB
       (loop :for i :from 0 :below (length start-mib)
 	 :do (setf (mem-aref mib :int i) (aref start-mib i)))
       ;; Add the filter parameters
       (setf (mem-aref mib :int (- mib-len 2)) +KERN-PROC-ALL+
 	    (mem-aref mib :int (- mib-len 1)) 0)
-      ;; Get the size of the process list
-      (syscall (real-sysctl mib mib-len (null-pointer) list-size
-			    (null-pointer) 0))
-      ;; (loop :for i :from 0 :below 4 do
-      ;;  	   (format t "mib[~d] = ~w~%" i (mem-aref mib :int i)))
-      ;; (format t "mib-len ~d list-size ~d~%" mib-len
-      ;;  	      	      (/ (mem-ref list-size :int)
-      ;;  			 (cffi:foreign-type-size
-      ;;  			  '(:struct foreign-kinfo-proc))))
-      (with-foreign-objects ((proc-list '(:struct foreign-kinfo-proc)
-					(mem-ref list-size :int)))
-	;; Get the real list
-	;;
-	;; OSX BUG? For some reason this sometimes fails without indication
-	;; and returns no processes, so as a workaround try a few times in
-	;; a loop until we get it.
-	(loop :with i = 0
+      ;; (format t "mib-len = ~d mib = #~a~%" mib-len
+      ;; 	 (loop :for i :from 0 :below 4 :collect (mem-aref mib :int i)))
+      (unwind-protect
+        (progn
+	  ;; This has a horrible race condition! We get the size of the
+	  ;; process list with one system call, which we have to allocate
+	  ;; space for, then we try to get the actual list in a subsequent
+	  ;; call. The problem is, the size of the list could have grown, by
+	  ;; anything forking more processes, which is seems rather
+	  ;; likely. Then we get an error because the list can't fit in the
+	  ;; space we allocated. So we have to go back and ask for the size of
+	  ;; the list again, which could still be too small by the time we,
+	  ;; ask again, ad infinitum.
+	  ;;
+	  ;; It seems like the kernel could just build the list on some pages,
+	  ;; and pop them over to user space when it's done. Then we could
+	  ;; free it. How hard is that?
+	  ;;
+	  ;; Anyway, we add *process-list-fudge* to what's returned to us, in
+	  ;; hopes that it will help. We try in a loop a *proc-retry-count*
+	  ;; times before we fail.
+	  (loop :with i = 0
 	   :do
-	   (syscall (real-sysctl mib mib-len proc-list new-list-size
-				 (null-pointer) 0))
-	   (setf real-list-size (/ (mem-ref new-list-size :int)
-				   (cffi:foreign-type-size
-				    '(:struct foreign-kinfo-proc))))
-	   (incf i)
-	   :while (and (> real-list-size 0) (< i 20)))
-	;; (format t "~d processes~%" real-list-size)
-	;; (read-line)
-	(loop :with p :and ep :and eep
-	   :for i :from 0 :below real-list-size
-	   :do
-	   (setf p (mem-aptr proc-list '(:struct foreign-kinfo-proc) i))
-	   :while (not (null-pointer-p p))
-	   :do
-	   (setf ep (foreign-slot-pointer
-		     p '(:struct foreign-kinfo-proc) 'kp_proc))
-	   (setf eep (foreign-slot-pointer
-		      p '(:struct foreign-kinfo-proc) 'kp_eproc))
-	   :collect
-	   (with-foreign-slots
-	       ((p_flag p_stat p_pid p_pctcpu p_nice p_comm p_pgrp)
-		ep (:struct foreign-extern-proc))
+	     ;; Get the size of the process list
+	     (syscall (real-sysctl mib mib-len (null-pointer) list-size
+				   (null-pointer) 0))
+	     (format t "list-size = ~d~%"
+		     (/ (mem-ref list-size 'size-t)
+			(cffi:foreign-type-size
+			 '(:struct foreign-kinfo-proc))))
+	     ;; It's returned in bytes, so 
+	     (setf list-count (+ *process-list-fudge*
+				 (/ (mem-ref list-size 'size-t)
+				    (cffi:foreign-type-size
+				     '(:struct foreign-kinfo-proc))))
+		   proc-list (foreign-alloc '(:struct foreign-kinfo-proc)
+					    :count list-count)
+		   (mem-ref new-list-size 'size-t)
+		   (* list-count (cffi:foreign-type-size
+				  '(:struct foreign-kinfo-proc))))
+	     ;; Get the real list
+	     (syscall (real-sysctl mib mib-len proc-list new-list-size
+				   (null-pointer) 0))
+	     (setf real-list-size (/ (mem-ref new-list-size 'size-t)
+				     (cffi:foreign-type-size
+				      '(:struct foreign-kinfo-proc))))
+	     :until (or (> real-list-size 0) (> i *proc-retry-count*))
+	     :do (incf i)
+	     (foreign-free proc-list)
+	     (sleep (/ (random 10) 1000))) ; horrible!
+	  (loop :with p :and ep :and eep
+	     :for i :from 0 :below real-list-size
+	     :do
+	     (setf p (mem-aptr proc-list '(:struct foreign-kinfo-proc) i))
+	     :while (not (null-pointer-p p))
+	     :do
+	     (setf ep (foreign-slot-pointer
+		       p '(:struct foreign-kinfo-proc) 'kp_proc))
+	     (setf eep (foreign-slot-pointer
+			p '(:struct foreign-kinfo-proc) 'kp_eproc))
+	     :collect
 	     (with-foreign-slots
-		 ((e_ppid e_pgid e_tdev e_xsize e_xrssize)
-		  eep (:struct foreign-eproc))
-	       (make-process
-		:id p_pid
-		:parent-id e_ppid
-		:group-id e_pgid
-		:terminal e_tdev
-		:text-size e_xsize
-		:resident-size e_xrssize
-		:percent-cpu p_pctcpu
-		:nice-level p_nice
-		:usage nil
-		:command (foreign-string-to-lisp p_comm :max-chars 16)
-		:args nil))))))))
+		 ((p_flag p_stat p_pid p_pctcpu p_nice p_comm p_pgrp)
+		  ep (:struct foreign-extern-proc))
+	       (with-foreign-slots
+		   ((e_ppid e_pgid e_tdev e_xsize e_xrssize)
+		    eep (:struct foreign-eproc))
+		 (make-process
+		  :id p_pid
+		  :parent-id e_ppid
+		  :group-id e_pgid
+		  :terminal e_tdev
+		  :text-size e_xsize
+		  :resident-size e_xrssize
+		  :percent-cpu p_pctcpu
+		  :nice-level p_nice
+		  :usage nil
+		  :command (foreign-string-to-lisp p_comm :max-chars 16)
+		  :args nil)))))
+	(foreign-free proc-list)))))
 
 #|
 Trying to simplify our lives, by just using our own FFI versions, above.
@@ -3471,207 +3885,20 @@ Trying to simplify our lives, by just using our own FFI versions, above.
 
 |#
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Signals
+(defun suspend-process (&optional id)
+  "Suspend the process with the given ID. If ID is NIL or not given, suspend
+the current process."
+  (kill (or id (getpid)) +SIGSTOP+))
 
-#+sunos (defcvar ("_sys_siglistn" *nsig*) :int)
-#+sunos (defcvar ("_sys_siglistp" sys-siglist) :pointer)
+(defun resume-process (id)
+  "Resume the suspended process with the given ID."
+  (kill id +SIGCONT+))
 
-#+darwin (defcvar ("sys_siglist" sys-siglist) :pointer)
-#+darwin (defcvar ("sys_signame" sys-signame) :pointer)
-
-(defparameter *signal-count*
-  #+darwin 32
-  #+sunos *nsig*
-  #+linux 32 ;; actually 65 if you count realtime (RT) signals
-  #-(or darwin sunos linux) (missing-implementation) ; @@@ or perhaps 0?
-  "Number of signal types, a.k.a. NSIG."
-)
-
-(defconstant SIGHUP	1)  ; Hangup
-(defconstant SIGINT	2)  ; Interrupt
-(defconstant SIGQUIT	3)  ; Quit
-(defconstant SIGILL	4)  ; Illegal instruction
-(defconstant SIGTRAP	5)  ; Trace/BPT trap
-(defconstant SIGABRT	6)  ; Abort trap
-(defconstant SIGPOLL	#+darwin 7 #+linux 29)
-(defconstant SIGEMT	#+darwin 7 #+linux nil)  ; EMT trap
-(defconstant SIGFPE	8)  ; Floating point exception
-(defconstant SIGKILL	9)  ; Killed
-(defconstant SIGBUS	#+darwin 10 #+linux 7) ; Bus error
-(defconstant SIGSEGV	11) ; Segmentation fault
-(defconstant SIGSYS	#+darwin 12 #+linux 31) ; Bad system call
-(defconstant SIGPIPE	13) ; Broken pipe
-(defconstant SIGALRM	14) ; Alarm clock
-(defconstant SIGTERM	15) ; Terminated
-(defconstant SIGURG	#+darwin 16 #+linux 23) ; Urgent I/O condition
-(defconstant SIGSTOP	#+darwin 17 #+linux 19) ; Suspended (signal)
-(defconstant SIGTSTP	#+darwin 18 #+linux 20) ; Suspended
-(defconstant SIGCONT	#+darwin 19 #+linux 18) ; Continued
-(defconstant SIGCHLD	#+darwin 20 #+linux 17) ; Child exited
-(defconstant SIGTTIN	21) ; Stopped (tty input)
-(defconstant SIGTTOU	22) ; Stopped (tty output)
-(defconstant SIGIO	#+darwin 23 #+linux 29) ; I/O possible
-(defconstant SIGXCPU	24) ; Cputime limit exceeded
-(defconstant SIGXFSZ	25) ; Filesize limit exceeded
-(defconstant SIGVTALRM	26) ; Virtual timer expired
-(defconstant SIGPROF	27) ; Profiling timer expired
-(defconstant SIGWINCH	28) ; Window size changes
-(defconstant SIGINFO	#+darwin 29 #+linux nil) ; Information request
-(defconstant SIGUSR1	#+darwin 30 #+linux 10)  ; User defined signal 1
-(defconstant SIGUSR2	#+darwin 31 #+linux 12)  ; User defined signal 2
-(defconstant SIGSTKFLT  #+darwin nil #+linux 16) ; Stack fault
-(defconstant SIGPWR     #+darwin nil #+linux 30) ; Power failure restart
-
-#+linux
-(defparameter *signal-name*
-    #(nil
-      "HUP" "INT" "QUIT" "ILL" "TRAP" "ABRT" "BUS" "FPE" "KILL" "USR1"
-      "SEGV" "USR2" "PIPE" "ALRM" "TERM" "STKFLT" "CHLD" "CONT" "STOP"
-      "TSTP" "TTIN" "TTOU" "URG" "XCPU" "XFSZ" "VTALRM" "PROF" "WINCH"
-      "IO" "PWR" "SYS"))
-
-#+sunos (defparameter SIG2STR_MAX 64 "Bytes for signal name.")
-#+sunos (defcfun sig2str :int (signum :int) (str :pointer))
-
-(defun signal-name (sig)
-  #+sunos (with-foreign-pointer-as-string (s SIG2STR_MAX)
-	    (sig2str sig s)
-	    s)
-  #+darwin
-  (if (< sig *signal-count*)
-      (foreign-string-to-lisp
-       (mem-aref (get-var-pointer 'sys-signame) :pointer sig)))
-  #+linux (when (< sig *signal-count*)
-	    (aref *signal-name* sig))
-  #-(or darwin sunos linux) (declare (ignore sig))
-  #-(or darwin sunos linux) (missing-implementation 'signal-name)
-)
-
-#+(or sunos linux) (defcfun strsignal :string (sig :int))
-
-(defun signal-description (sig)
-  #+(or sunos linux) (strsignal sig)
-  #+darwin
-  (if (< sig *signal-count*)
-      (foreign-string-to-lisp
-       (mem-aref (get-var-pointer 'sys-siglist) :pointer sig)))
-  #-(or darwin sunos linux) (declare (ignore sig))
-  #-(or darwin sunos linux) (missing-implementation 'signal-description)
-)
-
-;(defparameter signal-names (make-hash-table 
-;(defun signal-number (name)
-
-; #+os-t-has-siglist
-; (eval-when (:compile-toplevel :load-toplevel :execute)
-;   (loop for i from 0 to *signal-count*
-;     do
-;     `(defparameter ,(signal-name i) ,i)))
-
-;; Should we do our own macros/functions?
-
-(defcfun sigaddset :int (set (:pointer sigset-t)) (signo :int))
-(defcfun sigdelset :int (set (:pointer sigset-t)) (signo :int))
-(defcfun sigemptyset :int (set (:pointer sigset-t)))
-(defcfun sigfillset :int (set (:pointer sigset-t)))
-(defcfun sigismember :int (set (:pointer sigset-t)) (signo :int))
-
-(defcstruct foreign-sigaction
-  "What to do with a signal, as given to sigaction(2)."
-  (sa_handler :pointer)	       ; For our purposes it's the same as sa_sigaction
-  (sa_mask sigset-t)
-  (sa_flags :int)
-  #+linux (sa_restorer :pointer)
-  )
-
-(defconstant SIG_DFL  0 "Default action.")
-(defconstant SIG_IGN  1 "Ignore the signal.")
-(defconstant SIG_HOLD #+darwin 5 #+linux 2 "Hold on to the signal for later.")
-(defconstant SIG_ERR -1 "Error?")
-
-(defconstant SA_ONSTACK   #x0001 "Deliver on a stack, given with sigaltstack.")
-(defconstant SA_RESTART   #x0002 "Restart system on signal return.")
-(defconstant SA_RESETHAND #x0004 "Reset handler to SIG_DFL on delivery.")
-(defconstant SA_NOCLDSTOP #x0008 "SIGCHLD only on process exit, not on stops.")
-(defconstant SA_NODEFER   #x0010 "Don't mask the signal being delivered.")
-(defconstant SA_NOCLDWAIT #x0020 "Don't create zombies. Wait returns ECHILD.")
-(defconstant SA_SIGINFO   #x0040 "Deliver with sa_siginfo args.")
-
-(defcfun sigaction :int (sig :int) (action :pointer) (old-action :pointer))
-
-(defparameter *handler-actions*
-  `((,SIG_DFL . :default) (,SIG_IGN . :ignore) (,SIG_HOLD . :hold)))
-
-(defun action-to-handler (action)
-  "Return the posix handler value for the ACTION keyword."
-  (let ((a (find action *handler-actions* :key #'cdr)))
-    (if a (car a) action)))
-
-(defun handler-to-action (handler)
-  "Return the action keyword for the posix HANDLER value."
-  (let ((h (assoc handler *handler-actions*)))
-    (if h (cdr h) handler)))
-
-(defun signal-action (signal)
-  "Return the action that given SIGNAL triggers."
-  (with-foreign-object (old-action '(:struct foreign-sigaction))
-    (syscall (sigaction signal (null-pointer) old-action))
-    (let* ((ptr (foreign-slot-value
-		 old-action '(:struct foreign-sigaction) 'sa_handler))
-	   (num (pointer-address ptr)))
-      (if (<= num SIG_HOLD)
-	  (handler-to-action num)
-	  ptr))))
-
-(defun set-signal-action (signal action)
-  "Set the ACTION that given SIGNAL triggers."
-  (let ((handler (action-to-handler action)))
-    (with-foreign-object (act '(:struct foreign-sigaction))
-      (with-foreign-slots ((sa_handler sa_mask sa_flags)
-			   act (:struct foreign-sigaction))
-	(setf sa_handler (if (not (pointerp handler))
-			     (make-pointer handler)
-			     handler)
-	      sa_flags 0)
-	(sigemptyset (foreign-slot-pointer act '(:struct foreign-sigaction) 'sa_mask)))
-      (syscall (sigaction signal act (null-pointer))))))
-
-(defsetf signal-action set-signal-action
-  "Set the ACTION that given SIGNAL triggers.")
-
-;; @@@ Almost portable?
-(defun describe-signals ()
-  "List the POSIX signals that are known to the operating system."
-  (format t "#  SIG~11tDescription~42tDisposition~%~
-             -- ---~11t-----------~42t-----------~%")
-  (loop :for i :from 1 :below *signal-count*
-        :do (format t "~2a ~:@(~7a~) ~30a ~a~%"
-		   i (signal-name i) (signal-description i)
-		   (if (not (find i '(9 17)))
-		       (let ((act (signal-action i)))
-			 (if (pointerp act)
-			     (format nil "Handler #x~x" (pointer-address act))
-			     act))
-		       "N/A"))))
-
-(defcfun ("kill" real-kill) :int (pid pid-t) (signal :int))
-
-(defun kill (pid sig)
-  #+clisp (posix:kill pid sig)
-  #| #+openmcl (#_kill pid sig) |#
-  #+ccl (real-kill pid sig)
-  #+cmu (unix:unix-kill pid sig)
-  #+sbcl (sb-unix:unix-kill pid sig)
-  #-(or clisp openmcl cmu sbcl ccl) (declare (ignore pid sig))
-  #-(or clisp openmcl cmu sbcl ccl) (missing-implementation 'kill))
-
-(defcfun killpg :int (process-group pid-t) (signal :int))
-
-;(sb-sys:enable-interrupt sb-posix:sigwinch #'update-window-size)
-;(defun update-window-size (sig code scp)
-; (declare (ignore sig code scp))
-;)
+(defun terminate-process (id)
+  "Terminate the process with the given ID."
+  ;; If you're really doing a hard core unix type thing you'll probably already
+  ;; be using unix:kill, and so can use SIGKILL.
+  (kill id +SIGTERM+))
 
 ;; setpriority
 ;; getrlimit/setrlimit
@@ -3706,9 +3933,10 @@ Trying to simplify our lives, by just using our own FFI versions, above.
 		      ,@(when env-p :env environment))))
 |#
 
+;; @@@@ Resolve vs. opsys.lisp!
 ;; @@@ add environment on other than sbcl
-(defun popen (cmd args &key in-stream (out-stream :stream)
-			 (environment nil env-p))
+(defun pipe-program (cmd args &key in-stream (out-stream :stream)
+				(environment nil env-p))
   "Return an input stream with the output of the system command. Use IN-STREAM
 as an input stream, if it's supplied. If it's supplied, use OUT-STREAM as the
 output stream. OUT-STREAM can be T to use *standard-output*.
@@ -3765,6 +3993,7 @@ current process's environment."
   #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl)
   (missing-implementation 'popen))
 
+;; @@@@ Resolve vs. opsys.lisp!
 (defmacro with-process-output ((var cmd args) &body body)
   "Evaluate the body with the variable VAR bound to a stream with the output
 from the system command CMD with the arguments ARGS."
@@ -4195,7 +4424,7 @@ available."
 ;; int statfs(const char *path, struct statfs *buf);
 ;; typedef struct { int32_t val[2]; } fsid_t;
 
-#-64-bit-target
+#+(and darwin (not 64-bit-target))
 (eval-when (:compile-toplevel :load-toplevel :execute)
    (define-constant +MFSNAMELEN+ 15)	; length of fs type name, not inc. nul
    (define-constant +MNAMELEN+ 90)	; length of buffer for returned name
@@ -4204,7 +4433,7 @@ available."
 )
 
 ;; when _DARWIN_FEATURE_64_BIT_INODE is NOT defined
-#-64-bit-target
+#+(and darwin (not 64-bit-target))
 (defcstruct foreign-statfs
   (f_otype	 :short)          ; type of file system (reserved: zero)
   (f_oflags	 :short)	  ; copy of mount flags (reserved: zero)
@@ -4229,13 +4458,13 @@ available."
   (f_reserved4	 :long :count 4)  ; reserved for future use
   )
 
-#+64-bit-target
+#+(and darwin 64-bit-target)
 (eval-when (:compile-toplevel :load-toplevel :execute)
    (define-constant +MFSTYPENAMELEN+ 16); length of fs type name, including nul
    (define-constant +MAXPATHLEN+ 1024)	; length of buffer for returned name
 )
 
-#+64-bit-target
+#+(and darwin 64-bit-target)
 ;; when _DARWIN_FEATURE_64_BIT_INODE *is* defined
 (defcstruct foreign-statfs
   (f_bsize       :uint32)		; fundamental file system block size
@@ -4257,12 +4486,43 @@ available."
   (f_reserved4   :uint32 :count 8)      ; reserved for future use
   )
 
+#+(and linux 32-bit-target)
+(defcstruct foreign-statfs
+  (f_type    :int32)
+  (f_bsize   :int32)
+  (f_blocks  :uint64)
+  (f_bfree   :uint64)
+  (f_bavail  :uint64)
+  (f_files   :uint64)
+  (f_ffree   :uint64)
+  (f_fsid    :int32 :count 2)
+  (f_namelen :int32)
+  (f_frsize  :int32)
+  (f_flags   :int32)
+  (f_spare   :int32 :count 4))
+
+#+(and linux 64-bit-target)
+(defcstruct foreign-statfs
+  (f_type    :int64)
+  (f_bsize   :int64)
+  (f_blocks  :uint64)
+  (f_bfree   :uint64)
+  (f_bavail  :uint64)
+  (f_files   :uint64)
+  (f_ffree   :uint64)
+  (f_fsid    :int32 :count 2)
+  (f_namelen :int64)
+  (f_frsize  :int64)
+  (f_flags   :int64)
+  (f_spare   :int64 :count 4))
+
 ;; (define-foreign-type foreign-statfs-type ()
 ;;   ()
 ;;   (:actual-type :pointer)
 ;;   (:simple-parser foreign-statfs)
 ;; )
 
+#+darwin
 (defstruct statfs
   "File system statistics."
   bsize
@@ -4279,10 +4539,26 @@ available."
   fssubtype
   fstypename
   mntonname
-  mntfromname
-)
+  mntfromname)
+
+#+linux
+(defstruct statfs
+  "File system statistics."
+  type
+  bsize
+  blocks
+  bfree
+  bavail
+  files
+  ffree
+  fsid
+  namelen
+  frsize
+  flags
+  spare)
 
 ;; @@@ I shouldn't really have to do this?
+#+darwin
 (defun convert-statfs (statfs)
   (if (and (pointerp statfs) (null-pointer-p statfs))
       nil
@@ -4321,13 +4597,75 @@ available."
 	 :mntfromname (foreign-string-to-lisp f_mntfromname
 					     :max-chars +MAXPATHLEN+)))))
 
-;(defmethod translate-from-foreign (statfs (type foreign-statfs-type))
-;  (convert-statfs statfs))
+#+darwin
+(defun convert-filesystem-info (statfs)
+  (if (and (pointerp statfs) (null-pointer-p statfs))
+      nil
+      (with-foreign-slots ((f_bsize
+			    f_iosize
+			    f_blocks
+			    f_bfree
+			    f_bavail
+			    f_files
+			    f_ffree
+			    f_fsid
+			    f_owner
+			    f_type
+			    f_flags
+			    #+64-bit-target f_fssubtype
+			    f_fstypename
+			    f_mntonname
+			    f_mntfromname) statfs (:struct foreign-statfs))
+	(make-filesystem-info
+	 :device-name (foreign-string-to-lisp f_mntfromname
+					      :max-chars +MAXPATHLEN+)
+	 :mount-point (foreign-string-to-lisp f_mntonname
+					      :max-chars +MAXPATHLEN+)
+	 :type (foreign-string-to-lisp f_fstypename
+				       :max-chars +MFSTYPENAMELEN+)
+	 :total-bytes (* f_blocks f_bsize)
+	 :bytes-free (* f_bfree f_bsize)
+	 :bytes-available (* f_bavail f_bsize)))))
 
-#+64-bit-target
+
+;; @@@ I shouldn't really have to do this?
+#+linux
+(defun convert-statfs (statfs)
+  (if (and (pointerp statfs) (null-pointer-p statfs))
+      nil
+      (with-foreign-slots ((f_type
+			    f_bsize
+			    f_blocks
+			    f_bfree
+			    f_bavail
+			    f_files
+			    f_ffree
+			    f_fsid
+			    f_namelen
+			    f_frsize
+			    f_flags
+			    f_spare) statfs (:struct foreign-statfs))
+	(make-statfs
+         :type	  f_type
+         :bsize	  f_bsize
+         :blocks  f_blocks
+         :bfree	  f_bfree
+         :bavail  f_bavail
+         :files	  f_files
+         :ffree	  f_ffree
+         :fsid	  (vector (mem-aref f_fsid :int32 0) (mem-aref f_fsid :int32 1))
+         :namelen f_namelen
+         :frsize  f_frsize
+         :flags	  f_flags
+         :spare	  f_spare))))
+
+;;(defmethod translate-from-foreign (statfs (type foreign-statfs-type))
+;;  (convert-statfs statfs))
+
+#+(and darwin 64-bit-target)
 (defcfun ("statfs$INODE64" real-statfs) :int (path :string)
 	 (buf (:pointer (:struct foreign-statfs))))
-#+32-bit-target
+#+(and darwin 32-bit-target)
 (defcfun ("statfs" real-statfs) :int (path :string)
 	 (buf (:pointer (:struct foreign-statfs))))
 (defun statfs (path)
@@ -4336,12 +4674,13 @@ available."
     (convert-statfs buf)))
 
 ;; int getmntinfo(struct statfs **mntbufp, int flags);
-#+64-bit-target
+#+(and darwin 64-bit-target)
 (defcfun ("getmntinfo$INODE64" real-getmntinfo)
     :int (mntbufp :pointer) (flags :int))
-#+32-bit-target
+#+(and darwin 32-bit-target)
 (defcfun ("getmntinfo" real-getmntinfo)
     :int (mntbufp :pointer) (flags :int))
+#+darwin
 (defun getmntinfo (&optional (flags 0))
   (with-foreign-object (ptr :pointer)
     (let ((n (syscall (real-getmntinfo ptr flags))))
@@ -4413,6 +4752,8 @@ available."
 (defcfun setfsent :int)
 (defcfun endfsent :void)
 
+;; getmntent - Linux
+
 #|
 #include <stdio.h>
 #include <mntent.h>
@@ -4431,12 +4772,76 @@ char *hasmntopt(const struct mntent *mnt, const char *opt);
 #include <mntent.h>
 
 struct mntent *getmntent_r(FILE *fp, struct mntent *mntbuf, char *buf, int buflen);
+
+struct mntent {
+    char *mnt_fsname;   /* name of mounted file system */
+    char *mnt_dir;      /* file system path prefix */
+    char *mnt_type;     /* mount type (see mntent.h) */
+    char *mnt_opts;     /* mount options (see mntent.h) */
+    int   mnt_freq;     /* dump frequency in days */
+    int   mnt_passno;   /* pass number on parallel fsck */
+};
+
 |#
+
+(defstruct mount-entry
+  "File system description."
+  fsname   ; name of mounted file system
+  dir	   ; file system path prefix
+  type	   ; mount type
+  opts	   ; mount options
+  freq	   ; dump frequency in days
+  passno)  ; pass number on parallel fsck
+
+;; (defmacro with-mount-entry-file ((var name) &body body)
+;;   `(with-open-file (,var ,name)
+;;      ,@body))
+
+;; Because the C API is so bogus and requires stdio, just do it ourselves.
+(defun get-mount-entry (stream)
+  (let (line words)
+    ;; Skip blank and comment lines
+    (loop :do (setf line (read-line stream nil nil))
+       :while (and line
+		   (or (zerop (length line))
+		       (char= (char line 0) #\#))))
+    (when line
+      (setf words
+	    (split-sequence nil line
+			    :test (_ (or (char= _ #\space) (char= _ #\tab)))))
+      (make-mount-entry
+       :fsname (first words)
+       :dir    (second words)
+       :type   (third words)
+       :opts   (fourth words)
+       :freq   (fifth words)
+       :passno (sixth words)))))
+
+#+linux (defparameter *mtab-file* "/etc/mtab")
 
 (defun mounted-filesystems ()
   "Return a list of filesystem info."
-  )
-
+  #+darwin
+  (with-foreign-object (ptr :pointer)
+    (let ((n (syscall (real-getmntinfo ptr 0))))
+      (loop :for i :from 0 :below n
+	 :collect (convert-filesystem-info
+		   (mem-aptr (mem-ref ptr :pointer)
+			     '(:struct foreign-statfs) i)))))
+  #+linux
+  (with-open-file (*mtab-file* :direction :input)
+    (loop :with entry :and info
+       :while (setf entry (get-mount-entry stream))
+       :collect
+       (setf fs (statfs (mount-entry-dir entry)))
+       (make-filesystem-info
+	:device-name     (mount-entry-fsname entry)
+	:mount-point     (mount-entry-dir entry)
+	:type	         (mount-entry-type entry)
+	:total-bytes     (* (statfs-bsize fs) (statfs-blocks fs))
+	:bytes-free	 (* (statfs-bsize fs) (statfs-bfree fs))
+	:bytes-available (* (statfs-bsize fs) (statfs-bavail fs))))))
+  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ttys
 
@@ -4446,7 +4851,6 @@ struct mntent *getmntent_r(FILE *fp, struct mntent *mntbuf, char *buf, int bufle
 (defun file-handle-terminal-p (fd)
   "Return true if the system file descriptor FD is attached to a terminal."
   (= (isatty fd) 1))
-;; We could probably check this with something like GetConsoleMode on windows.
 
 (defun file-handle-terminal-name (fd)
   "Return the device name of the terminal attached to the system file
@@ -4454,7 +4858,70 @@ descriptor FD."
 ;;;  (let ((ttn (ttyname fd)))
 ;;;  (and (not (null-pointer-p ttn)) ttn)))
   (ttyname fd))
-;; perhaps use GetFileInformationByHandleEx on windows?
+
+(defvar *default-console-device-name* "/dev/tty"
+  "Name of the default console device.")
+
+(defun open-terminal (device-name)
+  "Open a terminal. Return the system file handle."
+  (syscall (posix-open device-name O_RDWR 0)))
+
+(defun close-terminal (terminal-handle)
+  "Close a terminal."
+  (syscall (posix-close terminal-handle)))
+
+;; (define-condition read-error (posix-error)
+;;   ()
+;;   (:report (lambda (condition stream)
+;; 	     (format stream "A read error occured."))))
+
+;; Simple, linear, non-event loop based programming was always an illusion!
+(defun read-terminal-char (terminal-handle &key timeout)
+  (declare (ignore timeout))
+  (with-foreign-object (c :char)
+    ;; I want this to throw generic continuable read errors, which give
+    ;; the caller the choice to try again or not.
+    ;; I need to make some portable O/S error types an work out
+    ;; the interaction with terminal- (get-char) ....
+    #|
+    (loop
+       :do (setf status (posix-read (terminal-file-descriptor tty) c 1))
+       :if (and (< status 0) (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
+       :do
+       ;; Probably returning from ^Z or terminal resize, or something,
+       ;; so keep trying. Enjoy your trip to plusering town.
+       (cerror "Try again?" 'posix-error :error-code *errno*)
+       (if
+         (terminal-start tty) #| (redraw) |# (tt-finish-output tty)
+	 :else
+         :return
+	 :end)
+    (let ((status (posix-read terminal-handle c 1)))
+      (cond
+	((< status 0)
+	 (if (= *errno* +EINTR+)
+	     (progn
+	       (cerror "Try again?" 'posix-error :error-code *errno*)
+	       
+	 (error "Read error ~d~%" status))
+	((= status 0)
+	 nil)
+	((= status 1)
+	 (format debug "read ~d~%" (mem-ref c :char))
+	 (mem-ref c :unsigned-char))))))
+    |#
+    (syscall (posix-read terminal-handle c 1))
+    (code-char (mem-ref c :unsigned-char))))
+
+(defun write-terminal-char (terminal-handle char)
+  "Write CHAR to the terminal designated by TERMINAL-HANDLE."
+  (with-foreign-string ((s size) (string char))
+    (syscall (posix-write terminal-handle s size))))
+
+(defun write-terminal-string (terminal-handle string)
+  "Write STRING to the terminal designated by TERMINAL-HANDLE."
+  (with-foreign-string ((s size) string)
+    (syscall (posix-write terminal-handle s size))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Profiling and debugging?

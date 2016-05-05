@@ -1,14 +1,18 @@
 ;;
-;; opsys-base.lisp - Helper functions and setup which is not system specific.
-;;
+;; opsys-base.lisp - Helper functions, setup, and types which are not system
+;;                   specific, and need to come before the system specific
+;;		     package.
 
 (defpackage :opsys-base
   (:documentation "Helper functions and setup which are not system specific.")
-  (:use :cl :cffi)
+  (:use :cl :cffi :dlib)
   (:export
    #:config-feature
    #:function-defined
    #:missing-implementation
+   #:quote-filename
+   #:safe-namestring
+
    #:dir-entry
    #:dir-entry-p
    #:make-dir-entry
@@ -17,6 +21,54 @@
    #:dir-entry-inode
    #:size-t
    #:string-designator
+   #:user-info
+   #:user-info-p
+   #:make-user-info
+   #:user-info-name
+   #:user-info-id
+   #:user-info-full-name
+   #:user-info-home-directory
+   #:user-info-shell
+   #:user-info-primary-group-id
+   #:user-info-guid
+   #:user-info-picture
+   #:terminal-mode
+   #:terminal-mode-p
+   #:make-terminal-mode
+   #:terminal-mode-echo
+   #:terminal-mode-line
+   #:terminal-mode-raw
+   #:terminal-mode-timeout
+   #:derp-time
+   #:derp-time-p
+   #:make-derp-time
+   #:derp-time-seconds
+   #:derp-time-nanoseconds
+   #:file-info
+   #:file-info-p
+   #:make-file-info
+   #:file-info-creation-time
+   #:file-info-access-time
+   #:file-info-modification-time
+   #:file-info-size
+   #:file-info-type
+   #:file-info-flags
+   #:filesystem-info
+   #:filesystem-info-p
+   #:make-filesystem-info
+   #:filesystem-info-device-name
+   #:filesystem-info-mount-point
+   #:filesystem-info-type
+   #:filesystem-info-total-bytes
+   #:filesystem-info-bytes-free
+   #:filesystem-info-bytes-available
+   #:opsys-error
+   #:opsys-error-code
+
+   #:*directory-separator*
+   #:*directory-separator-string*
+   #:*path-separator*
+   #:*path-variable*
    ))
 (in-package :opsys-base)
 
@@ -79,6 +131,35 @@
 
 #+(and 32-bit-target 64-bit-target) (error "Can't be both 32 & 64 bits!")
 
+(defparameter *need-quoting* "[*?;:"
+  "Characters that may need escaping in a pathname.")
+
+;; I am probably unable to express how unfortunate this is.
+(defun quote-filename (namestring)
+  "Try to quote a file name so none of it's characters are noticed specially
+by the Lisp pathname monster."
+  (with-output-to-string (str)
+    (loop :for c :across namestring :do
+       (when (position c *need-quoting*)
+	 (princ #\\ str))
+       (princ c str))))
+
+#|  (let ((result namestring))
+      (flet ((possibly-quote (c)
+	     (when (position c result)
+	       ;; It's just not possible to write code this inefficient in C.
+	       (setf result (join (split-sequence c result) (s+ #\\ c))))))
+      (loop :for c :across "[*;:" :do
+	 (possibly-quote c))
+      result)))
+|#
+
+(defun safe-namestring (pathname)
+  "Like NAMESTRING, but don't interpret any characters in strings specially."
+  (typecase pathname
+    (pathname (namestring pathname))
+    (string (quote-filename pathname))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Types
 
@@ -89,6 +170,7 @@
   (type  nil :type (or keyword null))
   (inode nil :type (or integer null)))
 
+;; Needed for standard C library functions.
 (defctype size-t :unsigned-long)
 
 (deftype string-designator ()
@@ -97,5 +179,90 @@ that is one of: a character (denoting a string that has the character as its
 only element), a symbol (denoting the string that is its name), or a
 string (denoting itself)."
   '(or string character symbol))
+
+(defstruct user-info
+  "Minimal semi-compatible user data."
+  name
+  id
+  full-name
+  home-directory
+  shell
+  primary-group-id
+  guid
+  picture)
+
+(defstruct terminal-mode
+  "Terminal settings."
+  (echo    nil :type boolean)
+  (line    nil :type boolean)
+  (raw     nil :type boolean)
+  (timeout nil :type (or null integer)))
+
+(defstruct derp-time
+  "I can't tell you how much I dislike these units."
+  seconds
+  nanoseconds)
+
+;; Whatever
+(defstruct file-info
+  "File information."
+  ;; Type and flags should only have things which can be reliably detected
+  ;; on all systems and have nearly the same meaning and are useful.
+  (type nil  :type (member :regular :directory :symbolic-link :device :other))
+  (size 0    :type integer)		; in bytes
+  (flags nil :type list)		; :hidden :immutable :compressed
+  creation-time
+  access-time
+  modification-time)
+
+(defstruct filesystem-info
+  "File system information."
+  device-name
+  mount-point
+  type
+  (total-bytes     0 :type integer)
+  (bytes-free      0 :type integer)
+  (bytes-available 0 :type integer))
+
+(define-condition opsys-error (simple-error)
+  ((code
+    :accessor opsys-error-code
+    :initarg :error-code
+    :type (signed-byte 32)
+    :documentation "The error code of the last error."))
+  (:report (lambda (c s)
+	     (if (simple-condition-format-control c)
+		 (format s "~? ~a"
+			 (simple-condition-format-control c)
+			 (simple-condition-format-arguments c)
+			 (symbol-call :opsys :error-message
+				      (opsys-error-code c)))
+		 (format s "~a"
+			 (symbol-call :opsys :error-message
+				      (opsys-error-code c))))))
+  (:documentation "An error from calling a POSIX function."))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Variables
+
+(defparameter *directory-separator*
+  #-windows #\/
+  #+(and windows (not cygwin)) #\\
+  "Character that separates directories in a path.")
+
+(defparameter *directory-separator-string* (string *directory-separator*)
+  "The directory separator character as a string, for convenience or
+efficiency.")
+
+;; Like on windows this is #\; right? But not cygwin?
+(defparameter *path-separator*		; @@@ defconstant?
+  #-windows #\:
+  #+windows #\;
+  "Separator in the PATH environement variable.")
+
+(defparameter *path-variable*
+  #-windows "PATH"
+  #+windows "%PATH%"
+  "The environment variable which stores the command search paths.")
 
 ;; EOF

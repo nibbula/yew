@@ -5,11 +5,31 @@
 ;; This is for system independent functions.
 ;;
 ;; System independent functions should choose one of:
+;;
 ;;  - Be fully implemented in the system specific package, and be re-exported
 ;;    by this package.
 ;;  - Be partially implemented in this package and use appropriate functions
 ;;    in the system specific package, likely conditionalized by features.
-;;  - Be fully implemented in this package.
+;;  - Be fully implemented in this package, if there's little variance
+;;    between systems, such as in C stdlib.
+;;  - Be implemented in opsys-base, if they are needed to be used by the
+;;    system specific packages, and are generic enough.
+;;
+;; Conventions:
+;;
+;;  - Call anything defined by defcstruct like: foreign-<C struct Name> This
+;;    hopefully makes it more obvious that you are dealing with a foreign
+;;    struct instead of a Lisp struct.
+;;
+;;  - In foreign-* structs, use the C names, e.g. with underscores, for slot
+;;    names, (e.g. "tv_usec").  If the C equivalent would be StudlyCapped,
+;;    like on windows, do that.This make it easier to translate from C code.
+;;
+;;  - If there's a C struct that callers need to access, provide a lisp struct
+;;    instead. This avoids having to access it carefully with CFFI macros,
+;;    memory freeing issues, and type conversion issues.
+;;
+;;  - Put +earmuffs+ on constants. Put *earmuffs* on variables.
 
 ;; (declaim (optimize (speed 3)) (optimize (safety 0))
 ;;   	 (optimize (debug 0)) (optimize (space 0))
@@ -18,12 +38,21 @@
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 		   (compilation-speed 0)))
 
+;; The without-warning is overkill, so don't screw up, or comment it out to
+;; check for real problems. Otherwise, certain complainy implementatations,
+;; don't take kindly to us re-exporting things from opsys-base.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (without-warning
 (defpackage :opsys
   (:documentation "Generic interface to operating system functionality.")
   (:nicknames :nos)
   (:use :cl :cffi :dlib :opsys-base
-	#+unix :unix #+(and windows (not unix)) :ms)
+	#+unix :unix #+unix :termios
+	#+(and windows (not unix)) :ms)
   (:export
+   ;; errors
+   #:error-message
+   
    ;; info
    #:environment
    #:environment-variable
@@ -36,6 +65,11 @@
    #:user-name
    #:user-id
    #:user-full-name
+   #:get-next-user
+   #:user-list
+   #:refresh-user-list
+   #:is-administrator
+   #:users-logged-in
 
    #:group-name
    #:group-id
@@ -44,7 +78,6 @@
    #:refresh-group-list
 
    ;; directories
-   #:*directory-separator*
    #:change-directory
    #:current-directory
    #:in-directory
@@ -65,13 +98,12 @@
    #:path-append
    #:hidden-file-name-p
    #:superfluous-file-name-p
-   #:*path-separator*
-   #:*path-variable*
    #:command-pathname
    #:quote-filename
    #:safe-namestring
 
    ;; files
+   #:get-file-info
    #:stream-system-handle
    #:file-exists
 
@@ -81,14 +113,35 @@
    ;; processes
    #:system-command
    #:run-program
+   #:pipe-program
    #:with-process-output
+   #:suspend-process
+   #:resume-process
+   #:terminate-process
+   #:is-executable
+   #:command-pathname
+   #:process-times
+   #:process-list
 
    ;; polling
    #:listen-for
 
+   ;; filesystems
+   #:mounted-filesystems
+
    ;; terminals
-   #:file-handle-terminal-p #:file-handle-terminal-name
+   #:file-handle-terminal-p
+   #:file-handle-terminal-name
+   #:open-terminal
+   #:close-terminal
+   #:slurp-terminal
+   #:read-terminal-char
+   #:write-terminal-char
+   #:write-terminal-string
    #:set-terminal-mode
+   #:get-terminal-mode
+   #:get-window-size
+   #:*default-console-device-name*
    
    ;; character coding / localization (or similar)
    #:char-width
@@ -99,7 +152,7 @@
    #:exit-lisp
    #:missing-implementation
 
-   ;; C stdio
+   ;; stdio
    #:*stdin* #:*stdout* #:*stderr*
    #:fopen #:fclose #:fileno #:fflush
    #:fgetc #:getc #:getchar #:fgets #:gets
@@ -110,7 +163,7 @@
    #:fsetpos #:fgetpos #:fseek #:ftell
    #:perror #:setbuf #:ungetc
 
-   ;; C library
+   ;; ctype
    #:iswalnum #:iswalpha #:iswascii #:iswblank #:iswcntrl #:iswdigit
    #:iswgraph #:iswhexnumber #:iswideogram #:iswlower #:iswnumber
    #:iswphonogram #:iswprint #:iswpunct #:iswrune #:iswspace #:iswspecial
@@ -119,12 +172,23 @@
    #:isalnum #:isalpha #:isascii #:isblank #:iscntrl #:isdigit #:isgraph
    #:ishexnumber #:isideogram #:islower #:isnumber #:isphonogram #:isprint
    #:ispunct #:isrune #:isspace #:isspecial #:isupper #:isxdigit
+
+   ;; stdlib
+   #:system
    ))
+)) ;; without-warning
 (in-package :opsys)
+
+;; Re-export things from opsys-base
+
+(do-external-symbols (sym :opsys-base)
+  (export sym :opsys))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Error handling
 
+#+unix (import '(unix:error-message))
+#+windows (import '(ms:error-message))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Environmental information
@@ -140,10 +204,8 @@
   #-(or sbcl clisp cmu openmcl excl ecl)
   (missing-implementation 'lisp-args))
 
-(defun memory-page-size ()
-  "Get the system's memory page size, in bytes."
-  ;; @@@
-  (getpagesize))
+#+unix (import '(unix:memory-page-size))
+#+windows (import '(ms:memory-page-size))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; sysconf
@@ -158,7 +220,26 @@
 		 unix:user-id
 		 unix:user-full-name
 		 unix:user-name-char-p
-		 unix:valid-user-name))
+		 unix:valid-user-name
+		 unix:get-next-user
+		 unix:user-list
+		 unix:refresh-user-list
+		 unix:is-administrator
+		 unix:users-logged-in
+		 ))
+
+#+ms (import '(ms:user-home
+	       ms:user-name
+	       ms:user-id
+	       ms:user-full-name
+	       ms:user-name-char-p
+	       ms:valid-user-name
+	       ms:get-next-user
+	       ms:user-list
+	       ms:refresh-user-list
+	       ms:is-administrator
+	       ms:users-logged-in
+	       ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Group database
@@ -177,25 +258,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Files
 
-;; This should have the union of all OS's slots, so that portable code
-;; can check for OS's specific slots with impunity.
-(defstruct file-status
-  device
-  inode
-  (mode 0 :type integer)
-  links
-  (uid -1 :type integer)
-  (gid -1 :type integer)
-  device-type
-  access-time
-  modify-time
-  change-time
-  birth-time
-  size
-  blocks
-  block-size
-  flags
-  generation)
+#+unix (import '(unix:get-file-info))
+#+ms (import '(ms:get-file-info))
 
 ;; (defmacro with-temp-file ((var &optional template) &body body)
 ;;   "Evaluate the body with the variable VAR bound to a POSIX file descriptor with a temporary name. The file is supposedly removed after this form is done."
@@ -327,50 +391,13 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
 
-(defparameter *directory-separator*
-  #-windows #\/
-  #+(and windows (not cygwin)) #\\
-  "Character that separates directories in a path.")
-
-(defparameter *directory-separator-string* (string *directory-separator*)
-  "The directory separator character as a string, for convenience or
-efficiency.")
-
-(defparameter *need-quoting* "[*?;:"
-  "Characters that may need escaping in a pathname.")
-
-;; I am probably unable to express how unfortunate this is.
-(defun quote-filename (namestring)
-  "Try to quote a file name so none of it's characters are noticed specially
-by the Lisp pathname monster."
-  (with-output-to-string (str)
-    (loop :for c :across namestring :do
-       (when (position c *need-quoting*)
-	 (princ #\\ str))
-       (princ c str))))
-
-#|  (let ((result namestring))
-      (flet ((possibly-quote (c)
-	     (when (position c result)
-	       ;; It's just not possible to write code this inefficient in C.
-	       (setf result (join (split-sequence c result) (s+ #\\ c))))))
-      (loop :for c :across "[*;:" :do
-	 (possibly-quote c))
-      result)))
-|#
-
-(defun safe-namestring (pathname)
-  "Like NAMESTRING, but don't interpret any characters in strings specially."
-  (typecase pathname
-    (pathname (namestring pathname))
-    (string (quote-filename pathname))))
-
 #+unix (import '(unix:read-directory
 		 unix:change-directory
 		 unix:current-directory
 		 unix:make-directory
 		 unix:delete-directory
-		 unix:probe-directory))
+		 unix:probe-directory
+		 unix:without-access-errors))
 
 (defmacro in-directory ((dir) &body body)
   "Evaluate the body with the current directory set to DIR."
@@ -389,18 +416,6 @@ by the Lisp pathname monster."
 	       (and (function-defined '#:make-directory :ext)
 		    (function-defined '#:delete-directory :ext)))
 	      (config-feature :os-t-has-new-dir)))
-
-(defmacro without-access-errors (&body body)
-  "Evaluate the body while ignoring typical file access error from system
-calls. Returns NIL when there is an error."
-  `(handler-case
-       (progn ,@body)
-     ;; (posix-error (c)
-     ;;   (when (not (find (posix-error-code c)
-     ;; 			`(,+ENOENT+ ,+EACCES+ ,+ENOTDIR+)))
-     ;; 	 (signal c)))
-     ;; @@@@
-     ))
 
 ;; This is a workaround for not depending on split-sequence.
 ;; so instead of (split-sequence *directory-separator* p :omit-empty t)
@@ -511,19 +526,11 @@ them if there isn't one already."
 	     (princ ns str)
 	     (setf any t)))))))
 
-(defun hidden-file-name-p (name)
-  "Return true if the file NAME is normally hidden."
-  (and name (> (length name) 0) (equal (char name 0) #\.)))
+#+unix (import '(unix:hidden-file-name-p
+		 unix:superfluous-file-name-p))
 
-(defun superfluous-file-name-p (name)
-  "Return true if the file NAME is considered redundant. On POSIX file
-systems, this means \".\" and \"..\"."
-  (and name (> (length name) 0)
-       (or (and (= (length name) 1)
-		(equal (char name 0) #\.))
-	   (and (= (length name) 2)
-		(equal (char name 0) #\.)
-		(equal (char name 1) #\.)))))
+#+ms (import '(ms:hidden-file-name-p
+	       ms:superfluous-file-name-p))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Stupid file locking
@@ -586,37 +593,20 @@ systems, this means \".\" and \"..\"."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; System Commands?
 
-;; Like on windows this is #\; right? But not cygwin?
-(defparameter *path-separator*		; @@@ defconstant?
-  #-windows #\:
-  #+windows #\;
-  "Separator in the PATH environement variable.")
-
-(defparameter *path-variable*
-  #-windows "PATH"
-  #+windows "%PATH%"
-  "The environment variable which stores the command search paths.")
+#+unix (import 'unix:is-executable)
 
 (defun has-directory-p (path)
   "Return true if PATH has a directory part."
   (position *directory-separator* path))
 
-;; getgroups vs. getgrouplist & NGROUPS_MAX .etc
-;; I should not be suprised at this point at how un-good the typical unix
-;; group interfaces are.
-(defun member-of (group)
-  "Return true if the current user (whatever that means) is a member of GROUP."
-  (position group (get-groups)))
-
-#+unix (import 'unix:is-executable)
-
-;; @@@@ Almost portable?
+;; @@@ Maybe this is portable and should be moved to opsys.lisp?
 (defun command-pathname (cmd)
   "Return the full pathname of the first executable file in the PATH or nil
 if there isn't one."
   (when (has-directory-p cmd)
     (return-from command-pathname cmd))
-  (loop :for dir :in (split-sequence *path-separator* (getenv *path-variable*))
+  (loop :for dir :in (split-sequence *path-separator*
+				     (environment-variable *path-variable*))
      :do
      (handler-case
        (when (probe-directory dir)
@@ -669,9 +659,9 @@ if there isn't one."
   #+clisp (ext:run-program cmd :arguments args)
   #+excl (excl:run-shell-command (concatenate 'vector (list cmd cmd) args)
 				 :wait t)
-  #+(or openmcl ccl) (apply #'nos:fork-and-exec
-			    `(,cmd ,args
-				   ,@(when env-p :env environment)))
+  #+(and (or openmcl ccl) unix) (apply #'unix:fork-and-exec
+				       `(,cmd ,args
+					      ,@(when env-p :env environment)))
 #|  #+(or openmcl ccl)
   (let* ((proc
 #|	  (ccl::run-program cmd args
@@ -753,68 +743,27 @@ if there isn't one."
   command
   args)
 
-(defun process-list ()
-  ;; @@@@
-  )
-  
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Signals
+#+unix (import '(unix:suspend-process
+		 unix:resume-process
+		 unix:terminate-process
+		 unix:process-times
+		 unix:process-list))
 
-#+unix (import '(unix:*signal-count*
-	         unix:signal-name
-	         unix:signal-description))
-
-;; @@@ Almost portable?
-(defun describe-signals ()
-  "List the POSIX signals that are known to the operating system."
-  (format t "#  SIG~11tDescription~42tDisposition~%~
-             -- ---~11t-----------~42t-----------~%")
-  (loop :for i :from 1 :below *signal-count*
-        :do (format t "~2a ~:@(~7a~) ~30a ~a~%"
-		   i (signal-name i) (signal-description i)
-		   (if (not (find i '(9 17)))
-		       (let ((act (signal-action i)))
-			 (if (pointerp act)
-			     (format nil "Handler #x~x" (pointer-address act))
-			     act))
-		       "N/A"))))
-
-#+unix (import 'unix:kill)
+#+ms (import '(ms:suspend-process
+	       ms:resume-process
+	       ms:terminate-process
+	       ms:process-list
+	       ms:process-times))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; IPC
 
 ;; pipes
 
-(defcfun ("pipe" real-pipe) :int (pipefd :pointer))
-
-(defun posix-pipe ()
-  (with-foreign-object (fd :int 2)
-    (syscall (real-pipe fd))
-    (values (mem-aref fd :int 0) (mem-aref fd :int 1))))
-
-#|
-(defun fork-with-pipes (cmd args &key in-stream (out-stream :stream)
-				   (environment nil env-p))
-  (let (in-stream-write-side in-stream-read-side
-        out-stream-write-side out-stream-read-side)
-    (if (and in-stream (streamp in-stream))
-	(progn
-	  (setf (values (in-stream-read-side in-stream-write-side) (posix-pipe)))
-	  ;; return a stream of the write side
-	  (set-stream-fd in-stream write-side)
-	  ;; make the read side be standard input
-	  (dup2 in-stream-read-side 0)
-	  )
-	  (apply #'fork-and-exec
-	       `(,cmd ,args
-		      ,@(when env-p :env environment))))
-|#
-
-;; @@@@ We should change the name and make sure it's portable.
+;; @@@@ We should make sure it's portable!
 ;; @@@ add environment on other than sbcl
-(defun popen (cmd args &key in-stream (out-stream :stream)
-			 (environment nil env-p))
+(defun pipe-program (cmd args &key in-stream (out-stream :stream)
+				(environment nil env-p))
   "Return an input stream with the output of the system command. Use IN-STREAM
 as an input stream, if it's supplied. If it's supplied, use OUT-STREAM as the
 output stream. OUT-STREAM can be T to use *standard-output*.
@@ -869,7 +818,7 @@ current process's environment."
   #+abcl (declare (ignore in-stream out-stream environment env-p))
   #+abcl (sys:process-output (sys:run-program cmd args))
   #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl)
-  (missing-implementation 'popen))
+  (missing-implementation 'pipe-program))
 
 (defmacro with-process-output ((var cmd args) &body body)
   "Evaluate the body with the variable VAR bound to a stream with the output
@@ -877,7 +826,7 @@ from the system command CMD with the arguments ARGS."
   `(let (,var)
     (unwind-protect
 	 (progn
-	   (setf ,var (popen ,cmd ,args))
+	   (setf ,var (pipe-program ,cmd ,args))
 	   ,@body)
       (if ,var (close ,var)))))
 
@@ -933,11 +882,27 @@ available."
 
 #+unix (import '(unix:file-handle-terminal-p
 		 unix:file-handle-terminal-name
-		 termios:set-terminal-mode))
+		 unix:*default-console-device-name*
+		 unix:open-terminal
+		 unix:close-terminal
+		 unix:read-terminal-char
+		 unix:write-terminal-char
+		 unix:write-terminal-string
+		 termios:slurp-terminal
+		 termios:set-terminal-mode
+		 termios:get-terminal-mode
+		 termios:get-window-size))
 
 #+windows (import '(ms:file-handle-terminal-p
 		    ms:file-handle-terminal-name
-		    ms:set-terminal-mode))
+		    ms:*default-console-device-name*
+		    ms:open-terminal
+		    ms:close-terminal
+		    ms:slurp-terminal
+		    ms:read-terminal-char
+		    ms:set-terminal-mode
+		    ms:get-terminal-mode
+		    ms:get-window-size))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Profiling and debugging?
@@ -1039,12 +1004,14 @@ available."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
-;; limited stdio support
+;; limited stdio & standard C library support
 ;;
 ;; I think this should only be used for compatibility / interoperability.
 ;; Use Lisp streams (of some sort) for normal code. For example, other
 ;; libraries sometimes operate on stdio FILE pointers, such as, curses,
 ;; bzip2, openssl, etc.
+;;
+;; Also it should probably be in a separate optional package.
 
 ; (define-foreign-library libc
 ;     ((:and cygwin unix)	(:default "cygwin1")
@@ -1101,6 +1068,8 @@ available."
 
 (defcfun setbuf :int (file file-ptr) (buf :string))
 (defcfun ungetc :int (file file-ptr))
+
+(defcfun system :int (command :string))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ctype & wctype - character classification from the standard C library
