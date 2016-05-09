@@ -47,8 +47,8 @@
   (:documentation "Generic interface to operating system functionality.")
   (:nicknames :nos)
   (:use :cl :cffi :dlib :opsys-base
-	#+unix :unix #+unix :termios
-	#+(and windows (not unix)) :ms)
+	#+unix :os-unix #+unix :termios
+	#+(and windows (not unix)) :os-ms)
   (:export
    ;; errors
    #:error-message
@@ -187,7 +187,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Error handling
 
-#+unix (import '(unix:error-message))
+#+unix (import '(os-unix:error-message))
 #+windows (import '(ms:error-message))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -204,7 +204,7 @@
   #-(or sbcl clisp cmu openmcl excl ecl)
   (missing-implementation 'lisp-args))
 
-#+unix (import '(unix:memory-page-size))
+#+unix (import '(os-unix:memory-page-size))
 #+windows (import '(ms:memory-page-size))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -215,17 +215,17 @@
 ;; User database
 ;; 
 
-#+unix (import '(unix:user-home
-		 unix:user-name
-		 unix:user-id
-		 unix:user-full-name
-		 unix:user-name-char-p
-		 unix:valid-user-name
-		 unix:get-next-user
-		 unix:user-list
-		 unix:refresh-user-list
-		 unix:is-administrator
-		 unix:users-logged-in
+#+unix (import '(os-unix:user-home
+		 os-unix:user-name
+		 os-unix:user-id
+		 os-unix:user-full-name
+		 os-unix:user-name-char-p
+		 os-unix:valid-user-name
+		 os-unix:get-next-user
+		 os-unix:user-list
+		 os-unix:refresh-user-list
+		 os-unix:is-administrator
+		 os-unix:users-logged-in
 		 ))
 
 #+ms (import '(ms:user-home
@@ -245,11 +245,11 @@
 ;; Group database
 ;; 
 
-#+unix (import '(unix:group-name
-		 unix:group-id
-		 unix:get-next-group
-		 unix:group-list
-		 unix:refresh-group-list))
+#+unix (import '(os-unix:group-name
+		 os-unix:group-id
+		 os-unix:get-next-group
+		 os-unix:group-list
+		 os-unix:refresh-group-list))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Login/accounting database
@@ -258,7 +258,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Files
 
-#+unix (import '(unix:get-file-info))
+#+unix (import '(os-unix:get-file-info))
 #+ms (import '(ms:get-file-info))
 
 ;; (defmacro with-temp-file ((var &optional template) &body body)
@@ -386,18 +386,18 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
   (missing-implementation 'stream-system-handle))
 
 ;; Sadly I find the need to do this because probe-file might be losing.
-#+unix (import 'unix:file-exists)
+#+unix (import 'os-unix:file-exists)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
 
-#+unix (import '(unix:read-directory
-		 unix:change-directory
-		 unix:current-directory
-		 unix:make-directory
-		 unix:delete-directory
-		 unix:probe-directory
-		 unix:without-access-errors))
+#+unix (import '(os-unix:read-directory
+		 os-unix:change-directory
+		 os-unix:current-directory
+		 os-unix:make-directory
+		 os-unix:delete-directory
+		 os-unix:probe-directory
+		 os-unix:without-access-errors))
 
 (defmacro in-directory ((dir) &body body)
   "Evaluate the body with the current directory set to DIR."
@@ -508,7 +508,7 @@ them if there isn't one already."
 	   (char= (aref s (1- (length s))) *directory-separator*)))
     (let ((any nil)
 	  (last-was-separator nil)
-	  (ns (namestring first-path)))
+	  (ns (safe-namestring first-path)))
       (with-output-to-string (str)
 	(when (not (zerop (length ns)))
 	  (setf any t)
@@ -517,7 +517,7 @@ them if there isn't one already."
 	(loop :for p :in paths :do
 	   (when (not (or (stringp p) (pathnamep p)))
 	     (error "Elements in PATHS should be pathname designators."))
-	   (setf ns (namestring p))
+	   (setf ns (safe-namestring p))
 	   (when (not (zerop (length ns)))
 	     (when (and any (not last-was-separator)
 			(char/= (aref ns 0) *directory-separator*))
@@ -526,8 +526,8 @@ them if there isn't one already."
 	     (princ ns str)
 	     (setf any t)))))))
 
-#+unix (import '(unix:hidden-file-name-p
-		 unix:superfluous-file-name-p))
+#+unix (import '(os-unix:hidden-file-name-p
+		 os-unix:superfluous-file-name-p))
 
 #+ms (import '(ms:hidden-file-name-p
 	       ms:superfluous-file-name-p))
@@ -535,8 +535,8 @@ them if there isn't one already."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Stupid file locking
 ;;
-;; Supposedly making a directory is atomic even on shitty networked filesystems.
-;; NOT thread safe, yet.
+;; Supposedly making a directory is atomic even on shitty networked
+;; filesystems. NOT thread safe, yet.
 
 (defvar *lock-suffix* ".lck"
   "What to append to a path to make the lock name.")
@@ -593,7 +593,7 @@ them if there isn't one already."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; System Commands?
 
-#+unix (import 'unix:is-executable)
+#+unix (import 'os-unix:is-executable)
 
 (defun has-directory-p (path)
   "Return true if PATH has a directory part."
@@ -659,7 +659,7 @@ if there isn't one."
   #+clisp (ext:run-program cmd :arguments args)
   #+excl (excl:run-shell-command (concatenate 'vector (list cmd cmd) args)
 				 :wait t)
-  #+(and (or openmcl ccl) unix) (apply #'unix:fork-and-exec
+  #+(and (or openmcl ccl) unix) (apply #'os-unix:fork-and-exec
 				       `(,cmd ,args
 					      ,@(when env-p :env environment)))
 #|  #+(or openmcl ccl)
@@ -730,24 +730,11 @@ if there isn't one."
   ;; @@@@
   )
 
-(defstruct process
-  id
-  parent-id
-  group-id
-  terminal
-  text-size
-  resident-size
-  percent-cpu
-  nice-level
-  usage
-  command
-  args)
-
-#+unix (import '(unix:suspend-process
-		 unix:resume-process
-		 unix:terminate-process
-		 unix:process-times
-		 unix:process-list))
+#+unix (import '(os-unix:suspend-process
+		 os-unix:resume-process
+		 os-unix:terminate-process
+		 os-unix:process-times
+		 os-unix:process-list))
 
 #+ms (import '(ms:suspend-process
 	       ms:resume-process
@@ -875,19 +862,19 @@ available."
 
 ;; System independant interface?
 
-#+unix (import 'unix:mounted-filesystems)
+#+unix (import 'os-unix:mounted-filesystems)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ttys
 
-#+unix (import '(unix:file-handle-terminal-p
-		 unix:file-handle-terminal-name
-		 unix:*default-console-device-name*
-		 unix:open-terminal
-		 unix:close-terminal
-		 unix:read-terminal-char
-		 unix:write-terminal-char
-		 unix:write-terminal-string
+#+unix (import '(os-unix:file-handle-terminal-p
+		 os-unix:file-handle-terminal-name
+		 os-unix:*default-console-device-name*
+		 os-unix:open-terminal
+		 os-unix:close-terminal
+		 os-unix:read-terminal-char
+		 os-unix:write-terminal-char
+		 os-unix:write-terminal-string
 		 termios:slurp-terminal
 		 termios:set-terminal-mode
 		 termios:get-terminal-mode

@@ -11,7 +11,7 @@
 (declaim (optimize (debug 3)))
 
 (defpackage "TERMIOS"
-  (:use :cl :cffi :dlib :opsys-base :unix)
+  (:use :cl :cffi :dlib :opsys-base :os-unix)
   (:documentation
    "Interface to POSIX (and some non-POSIX) terminal driver.")
   (:export
@@ -380,10 +380,6 @@
 #-sunos (defcfun cfmakeraw :void (tio :pointer))
 #-sunos (defcfun cfsetspeed :int (tio :pointer) (speed speed-t))
 
-;;; System dependent (non-POSIX) stuff:
-;;; Tested on:
-;;;    MacOS X 10.4
-
 (defconstant +IOCPARM_MASK+ #x1fff
   "parameter length, at most 13 bits")
 (defmacro IOCPARM_LEN (x) `(logand (ash ,x -16) +IOCPARM_MASK+))
@@ -420,38 +416,40 @@
 #| 
 (defconstant TIOCMODG (_IOR 't'  3 :int) "get modem control state")
 (defconstant TIOCMODS (_IOW 't'  4 :int) "set modem control state")
-#define		TIOCM_LE	0001		; line enable 
-#define		TIOCM_DTR	0002		; data terminal ready 
-#define		TIOCM_RTS	0004		; request to send 
-#define		TIOCM_ST	0010		; secondary transmit 
-#define		TIOCM_SR	0020		; secondary receive 
-#define		TIOCM_CTS	0040		; clear to send 
-#define		TIOCM_CAR	0100		; carrier detect 
-#define		TIOCM_CD	TIOCM_CAR
-#define		TIOCM_RNG	0200		; ring 
-#define		TIOCM_RI	TIOCM_RNG
-#define		TIOCM_DSR	0400		; data set ready 
-						; 8-10 compat 
-#define	TIOCEXCL	 _IO('t', 13)		; set exclusive use of tty 
-#define	TIOCNXCL	 _IO('t', 14)		; reset exclusive use of tty 
-						; 15 unused 
-#define	TIOCFLUSH	_IOW('t', 16, int)	; flush buffers 
-						; 17-18 compat 
-#define	TIOCGETA	_IOR('t', 19, struct termios) ; get termios struct 
-#define	TIOCSETA	_IOW('t', 20, struct termios) ; set termios struct 
-#define	TIOCSETAW	_IOW('t', 21, struct termios) ; drain output, set 
-#define	TIOCSETAF	_IOW('t', 22, struct termios) ; drn out, fls in, set 
-#define	TIOCGETD	_IOR('t', 26, int)	; get line discipline 
-#define	TIOCSETD	_IOW('t', 27, int)	; set line discipline 
-						; 127-124 compat 
-#define	TIOCSBRK	 _IO('t', 123)		; set break bit 
-#define	TIOCCBRK	 _IO('t', 122)		; clear break bit 
-#define	TIOCSDTR	 _IO('t', 121)		; set data terminal ready 
-#define	TIOCCDTR	 _IO('t', 120)		; clear data terminal ready 
-#define	TIOCGPGRP	_IOR('t', 119, int)	; get pgrp of tty 
-#define	TIOCSPGRP	_IOW('t', 118, int)	; set pgrp of tty 
-						; 117-116 compat 
-#define	TIOCOUTQ	_IOR('t', 115, int)	; output queue size |#
+
+(defconstant +TIOCM_LE+	   0001		"line enable")
+(defconstant +TIOCM_DTR+   0002		"data terminal ready")
+(defconstant +TIOCM_RTS+   0004		"request to send")
+(defconstant +TIOCM_ST+	   0010		"secondary transmit")
+(defconstant +TIOCM_SR+	   0020		"secondary receive")
+(defconstant +TIOCM_CTS+   0040		"clear to send")
+(defconstant +TIOCM_CAR+   0100		"carrier detect")
+(defconstant +TIOCM_CD+	   +TIOCM_CAR+)
+(defconstant +TIOCM_RNG+   0200		"ring")
+(defconstant +TIOCM_RI+	   +TIOCM_RNG+)
+(defconstant +TIOCM_DSR+   0400		"data set ready")
+					    ; 8-10 compat 
+(defconstatn +TIOCEXCL+	 (_IO #\t 13)	    "set exclusive use of tty")
+(defconstatn +TIOCNXCL+	 (_IO #\t 14)	    "reset exclusive use of tty")
+					    ;; 15 unused
+(defconstatn +TIOCFLUSH+ (_IOW #\t 16 :int) "flush buffers")
+					    ;; 17-18 compat
+(defconstatn +TIOCGETA+	 (_IOR #\t 19 (:struct termios)) "get termios struct")
+(defconstatn +TIOCSETA+	 (_IOW #\t 20 (:struct termios)) "set termios struct")
+(defconstatn +TIOCSETAW+ (_IOW #\t 21 (:struct termios)) "drain output, set")
+(defconstatn +TIOCSETAF+ (_IOW #\t 22 (:struct termios)) "drn out, fls in, set")
+(defconstatn +TIOCGETD+	 (_IOR #\t 26 int)   "get line discipline")
+(defconstatn +TIOCSETD+	 (_IOW #\t 27 int)   "set line discipline")
+					     ;; 127-124 compat
+(defconstatn +TIOCSBRK+	 (_IO #\t 123)	     "set break bit")
+(defconstatn +TIOCCBRK+	 (_IO #\t 122)	     "clear break bit")
+(defconstatn +TIOCSDTR+	 (_IO #\t 121)	     "set data terminal ready")
+(defconstatn +TIOCCDTR+	 (_IO #\t 120)	     "clear data terminal ready")
+(defconstatn +TIOCGPGRP+ (_IOR #\t 119 :int) "get pgrp of tty")
+(defconstatn +TIOCSPGRP+ (_IOW #\t 118 :int) "set pgrp of tty")
+					     ;; 117-116 compat
+(defconstatn +TIOCOUTQ+	 (_IOR #\t 115 :int) "output queue size")
+ |#
 
 ;; SunOS TIOC and tIOC constants
 
@@ -471,23 +469,23 @@
 #+linux  (defconstant TIOCSTI #x5412               "simulate terminal input")
 
 #|
-#define	TIOCNOTTY	 _IO('t', 113)		; void tty association 
-#define	TIOCPKT		_IOW('t', 112, int)	; pty: set/clear packet mode 
-#define		TIOCPKT_DATA		#x00	; data packet 
-#define		TIOCPKT_FLUSHREAD	#x01	; flush packet 
-#define		TIOCPKT_FLUSHWRITE	#x02	; flush packet 
-#define		TIOCPKT_STOP		#x04	; stop output 
-#define		TIOCPKT_START		#x08	; start output 
-#define		TIOCPKT_NOSTOP		#x10	; no more ^S, ^Q 
-#define		TIOCPKT_DOSTOP		#x20	; now do ^S ^Q 
-#define		TIOCPKT_IOCTL		#x40	; state change of pty driver 
-#define	TIOCSTOP	 _IO('t', 111)		; stop output, like ^S 
-#define	TIOCSTART	 _IO('t', 110)		; start output, like ^Q 
-#define	TIOCMSET	_IOW('t', 109, int)	; set all modem bits 
-#define	TIOCMBIS	_IOW('t', 108, int)	; bis modem bits 
-#define	TIOCMBIC	_IOW('t', 107, int)	; bic modem bits 
-#define	TIOCMGET	_IOR('t', 106, int)	; get all modem bits 
-#define	TIOCREMOTE	_IOW('t', 105, int)	; remote input editing 
+(defconstant +TIOCNOTTY+         (_IO #\t 113)	     "void tty association")
+(defconstant +TIOCPKT+	         (_IOW #\t 112 :int) "pty: set/clear packet mode")
+(defconstant +TIOCPKT_DATA+       #x00 "data packet")
+(defconstant +TIOCPKT_FLUSHREAD+  #x01 "flush packet")
+(defconstant +TIOCPKT_FLUSHWRITE+ #x02 "flush packet")
+(defconstant +TIOCPKT_STOP+       #x04 "stop output")
+(defconstant +TIOCPKT_START+      #x08 "start output")
+(defconstant +TIOCPKT_NOSTOP+     #x10 "no more ^S, ^Q")
+(defconstant +TIOCPKT_DOSTOP+     #x20 "now do ^S ^Q")
+(defconstant +TIOCPKT_IOCTL+      #x40 "state change of pty driver")
+(defconstant +TIOCSTOP+	          (_IO #\t 111)	     "stop output, like ^S")
+(defconstant +TIOCSTART+          (_IO #\t 110)	     "start output, like ^Q")
+(defconstant +TIOCMSET+	          (_IOW #\t 109 :int) "set all modem bits")
+(defconstant +TIOCMBIS+	          (_IOW #\t 108 :int) "bis modem bits")
+(defconstant +TIOCMBIC+	          (_IOW #\t 107 :int) "bic modem bits")
+(defconstant +TIOCMGET+	          (_IOR #\t 106 :int) "get all modem bits")
+(defconstant +TIOCREMOTE+         (_IOW #\t 105 :int) "remote input editing")
 |#
 
 ;; These are actually useful
@@ -516,81 +514,28 @@
      (foreign-slot-value ws '(:struct winsize) 'ws_row))))
 
 #|
-#define	TIOCUCNTL	_IOW('t', 102, int)	; pty: set/clr usr cntl mode 
-#define	TIOCSTAT	 _IO('t', 101)		; simulate ^T status message 
-#define		UIOCCMD(n)	_IO('u', n)	; usr cntl op "n" 
-#define	TIOCSCONS	_IO('t', 99)		; 4.2 compatibility 
-#define	TIOCCONS	_IOW('t', 98, int)	; become virtual console 
-#define	TIOCSCTTY	 _IO('t', 97)		; become controlling tty 
-#define	TIOCEXT		_IOW('t', 96, int)	; pty: external processing 
-#define	TIOCSIG		 _IO('t', 95)		; pty: generate signal 
-#define	TIOCDRAIN	 _IO('t', 94)		; wait till output drained 
-#define	TIOCMSDTRWAIT	_IOW('t', 91, int)	; modem: set wait on close 
-#define	TIOCMGDTRWAIT	_IOR('t', 90, int)	; modem: get wait on close 
-#define	TIOCTIMESTAMP	_IOR('t', 89, struct timeval)	/* enable/get timestamp
-						 * of last input event */
-#define	TIOCDCDTIMESTAMP _IOR('t', 88, struct timeval)	/* enable/get timestamp
-						 * of last DCd rise */
-#define	TIOCSDRAINWAIT	_IOW('t', 87, int)	; set ttywait timeout 
-#define	TIOCGDRAINWAIT	_IOR('t', 86, int)	; get ttywait timeout 
-#define	TIOCDSIMICROCODE _IO('t', 85)		/* download microcode to
-						 * DSI Softmodem */
+(defun UIOCCMD (n) "User control OP 'n'" (_IO #\u n))
+(defconstant +TIOCUCNTL+       (_IOW #\t 102 :int) "pty: set/clr usr cntl mode")
+(defconstant +TIOCSTAT+	       (_IO #\t 101) "simulate ^T status message")
+(defconstant +TIOCSCONS+       (_IO #\t 99))
+(defconstant +TIOCCONS+	       (_IOW #\t 98 :int) "become virtual console")
+(defconstant +TIOCSCTTY+       (_IO #\t 97) "become controlling tty")
+(defconstant +TIOCEXT+	       (_IOW #\t 96 :int) "pty: external processing")
+(defconstant +TIOCSIG+	       (_IO #\t 95)       "pty: generate signal")
+(defconstant +TIOCDRAIN+       (_IO #\t 94)       "wait till output drained")
+(defconstant +TIOCMSDTRWAIT+   (_IOW #\t 91 :int) "modem: set wait on close")
+(defconstant +TIOCMGDTRWAIT+   (_IOR #\t 90 :int) "modem: get wait on close")
+(defconstant +TIOCTIMESTAMP+   (_IOR #\t 89 (:struct timeval)) "enable/get timestamp of last input event")
+(defconstant +TIOCDCDTIMESTAMP+ (_IOR #\t 88, struct timeval) "enable/get timestamp of last DCd rise")
+(defconstant +TIOCSDRAINWAIT+  (_IOW #\t 87, int) "set ttywait timeout")
+(defconstant +TIOCGDRAINWAIT+  (_IOR #\t 86, int) "get ttywait timeout")
+(defconstant +TIOCDSIMICROCODE+ (_IO #\t 85) "download microcode to DSI Softmodem")
 
-#define	TTYDISC		0		; termios tty line discipline
-#define	TABLDISC	3		; tablet discipline
-#define	SLIPDISC	4		; serial IP discipline
-#define	PPPDISC		5		; PPP discipline
+(defconstant +TTYDISC+	0 "termios tty line discipline")
+(defconstant +TABLDISC+	3 "tablet discipline")
+(defconstant +SLIPDISC+	4 "serial IP discipline")
+(defconstant +PPPDISC+	5 "PPP discipline")
 
-/*
- * Defaults on "first" open.
- */
-#define	TTYDEF_IFLAG	(BRKINT	| ICRNL	| IMAXBEL | IXON | IXANY)
-#define TTYDEF_OFLAG	(OPOST | ONLCR)
-#define TTYDEF_LFLAG	(ECHO | ICANON | ISIG | IEXTEN | ECHOE|ECHOKE|ECHOCTL)
-#define	TTYDEF_CFLAG	(CREAD | CS8 | HUPCL)
-#define TTYDEF_SPEED	(B9600)
-
-/*
- * Control Character Defaults
- */
-#define CTRL(x)	(x&037)
-#define	CEOF		CTRL('d')
-#define	CEOL		#xff		; XXX avoid _POSIX_VDISABLE 
-#define	CERASE		0177
-#define	CINTR		CTRL('c')
-#define	CSTATUS		CTRL('t')
-#define	CKILL		CTRL('u')
-#define	CMIN		1
-#define	CQUIT		034		; FS, ^\ 
-#define	CSUSP		CTRL('z')
-#define	CTIME		0
-#define	CDSUSP		CTRL('y')
-#define	CSTART		CTRL('q')
-#define	CSTOP		CTRL('s')
-#define	CLNEXT		CTRL('v')
-#define	CDISCARD 	CTRL('o')
-#define	CWERASE 	CTRL('w')
-#define	CREPRINT 	CTRL('r')
-#define	CEOT		CEOF
-; compat 
-#define	CBRK		CEOL
-#define CRPRNT		CREPRINT
-#define	CFLUSH		CDISCARD
-
-; PROTECTED INCLUSION ENDS HERE 
-#endif ; !_SYS_TTYDEFAULTS_H_ 
-
-/*
- * #define TTYDEFCHARS to include an array of default control characters.
- */
-#ifdef TTYDEFCHARS
-static cc_t	ttydefchars[NCCS] = {
-	CEOF,	CEOL,	CEOL,	CERASE, CWERASE, CKILL, CREPRINT,
-	_POSIX_VDISABLE, CINTR,	CQUIT,	CSUSP,	CDSUSP,	CSTART,	CSTOP,	CLNEXT,
-	CDISCARD, CMIN,	CTIME,  CSTATUS, _POSIX_VDISABLE
-};
-#undef TTYDEFCHARS
-#endif
 |#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

@@ -12,9 +12,10 @@
 ;; - If you make a Lispy-er wrapper, call the original C version real-<func>.
 ;; - See the conventions in opsys.lisp.
 
-(defpackage :unix
+(defpackage :opsys-unix
   (:documentation "Interface to UNIX-like systems.")
   (:use :cl :cffi :dlib :opsys-base)
+  (:nicknames :os-unix)
   (:export
    ;; types
    #:time-t #:mode-t #:uid-t #:gid-t #:pid-t #:wchar-t #:suseconds-t
@@ -277,19 +278,6 @@
    #:getgroups
    #:get-groups
 
-   #:process
-   #:make-process
-   #:process-id
-   #:process-parent-id
-   #:process-group-id
-   #:process-terminal
-   #:process-text-size
-   #:process-resident-size
-   #:process-percent-cpu
-   #:process-nice-level
-   #:process-usage
-   #:process-command
-   #:process-args
    #:process-list
    #:suspend-process
    #:resume-process
@@ -347,7 +335,7 @@
    #:wcwidth
    #:char-width
    ))
-(in-package :unix)
+(in-package :opsys-unix)
 
 #+(or darwin linux) (config-feature :os-t-has-strerror-r)
 ;#+(or darwin linux) (config-feature :os-t-has-vfork)
@@ -508,7 +496,7 @@
   (define-constant +EPROTONOSUPPORT+	43 "Protocol not supported")
   (define-constant +ESOCKTNOSUPPORT+	44 "Socket type not supported")
   (define-constant +ENOTSUP+		45 "Operation not supported")
-;  (define-constant +EOPNOTSUPP+		+ENOTSUP+ "Operation not supported on socket")
+  ;(define-constant +EOPNOTSUPP+ +ENOTSUP+ "Operation not supported on socket")
   (define-constant +EPFNOSUPPORT+	46 "Protocol family not supported")
   (define-constant +EAFNOSUPPORT+	47 "Address family not supported by protocol family")
   (define-constant +EADDRINUSE+		48 "Address already in use")
@@ -654,67 +642,67 @@
   (define-constant +EPROTO+	71	"Protocol error")
 
   ;; Interprocess Robust Locks
-  (define-constant +ELOCKUNMAPPED+	72	"locked lock was unmapped")
+  (define-constant +ELOCKUNMAPPED+ 72 "locked lock was unmapped")
 
-  (define-constant +ENOTACTIVE+ 73	"Facility is not active")
-  (define-constant +EMULTIHOP+ 74	"multihop attempted")
-  (define-constant +EBADMSG+ 77	"trying to read unreadable message")
-  (define-constant +ENAMETOOLONG+ 78	"path name is too long")
-  (define-constant +EOVERFLOW+ 79	"value too large to be stored in data type")
-  (define-constant +ENOTUNIQ+ 80	"given log. name not unique")
-  (define-constant +EBADFD+	81	"f.d. invalid for this operation")
-  (define-constant +EREMCHG+	82	"Remote address changed")
+  (define-constant +ENOTACTIVE+   73 "Facility is not active")
+  (define-constant +EMULTIHOP+    74 "multihop attempted")
+  (define-constant +EBADMSG+      77 "trying to read unreadable message")
+  (define-constant +ENAMETOOLONG+ 78 "path name is too long")
+  (define-constant +EOVERFLOW+    79 "value too large to be stored in data type")
+  (define-constant +ENOTUNIQ+     80 "given log. name not unique")
+  (define-constant +EBADFD+	  81 "f.d. invalid for this operation")
+  (define-constant +EREMCHG+	  82 "Remote address changed")
 
   ;; shared library problems
-  (define-constant +ELIBACC+	83	"Can't access a needed shared lib.")
-  (define-constant +ELIBBAD+	84	"Accessing a corrupted shared lib.")
-  (define-constant +ELIBSCN+	85	".lib section in a.out corrupted.")
-  (define-constant +ELIBMAX+	86	"Attempting to link in too many libs.")
-  (define-constant +ELIBEXEC+ 87	"Attempting to exec a shared library.")
-  (define-constant +EILSEQ+	88	"Illegal byte sequence.")
-  (define-constant +ENOSYS+	89	"Unsupported file system operation")
-  (define-constant +ELOOP+	90	"Symbolic link loop")
-  (define-constant +ERESTART+ 91	"Restartable system call")
-  (define-constant +ESTRPIPE+ 92	"if pipe/FIFO, don't sleep in stream head")
-  (define-constant +ENOTEMPTY+ 93	"directory not empty")
-  (define-constant +EUSERS+	94	"Too many users (for UFS)")
+  (define-constant +ELIBACC+	  83 "Can't access a needed shared lib.")
+  (define-constant +ELIBBAD+	  84 "Accessing a corrupted shared lib.")
+  (define-constant +ELIBSCN+	  85 ".lib section in a.out corrupted.")
+  (define-constant +ELIBMAX+	  86 "Attempting to link in too many libs.")
+  (define-constant +ELIBEXEC+     87 "Attempting to exec a shared library.")
+  (define-constant +EILSEQ+	  88 "Illegal byte sequence.")
+  (define-constant +ENOSYS+	  89 "Unsupported file system operation")
+  (define-constant +ELOOP+	  90 "Symbolic link loop")
+  (define-constant +ERESTART+     91 "Restartable system call")
+  (define-constant +ESTRPIPE+     92 "if pipe/FIFO, don't sleep in stream head")
+  (define-constant +ENOTEMPTY+    93 "directory not empty")
+  (define-constant +EUSERS+	  94 "Too many users (for UFS)")
 
   ;; BSD Networking Software
   ;;    argument errors
-  (define-constant +ENOTSOCK+	95	"Socket operation on non-socket")
-  (define-constant +EDESTADDRREQ+	96	"Destination address required")
-  (define-constant +EMSGSIZE+	97	"Message too long")
-  (define-constant +EPROTOTYPE+	98	"Protocol wrong type for socket")
-  (define-constant +ENOPROTOOPT+	99	"Protocol not available")
-  (define-constant +EPROTONOSUPPORT+	120	"Protocol not supported")
-  (define-constant +ESOCKTNOSUPPORT+	121	"Socket type not supported")
-  (define-constant +EOPNOTSUPP+	122	"Operation not supported on socket")
-  (define-constant +EPFNOSUPPORT+	123	"Protocol family not supported")
-  (define-constant +EAFNOSUPPORT+	124	"Address family not supported by protocol family")
-  (define-constant +EADDRINUSE+	125	"Address already in use")
-  (define-constant +EADDRNOTAVAIL+	126	"Can't assign requested address")
+  (define-constant +ENOTSOCK+	     95	 "Socket operation on non-socket")
+  (define-constant +EDESTADDRREQ+    96	 "Destination address required")
+  (define-constant +EMSGSIZE+	     97	 "Message too long")
+  (define-constant +EPROTOTYPE+	     98	 "Protocol wrong type for socket")
+  (define-constant +ENOPROTOOPT+     99	 "Protocol not available")
+  (define-constant +EPROTONOSUPPORT+ 120 "Protocol not supported")
+  (define-constant +ESOCKTNOSUPPORT+ 121 "Socket type not supported")
+  (define-constant +EOPNOTSUPP+	     122 "Operation not supported on socket")
+  (define-constant +EPFNOSUPPORT+    123 "Protocol family not supported")
+  (define-constant +EAFNOSUPPORT+    124 "Address family not supported by protocol family")
+  (define-constant +EADDRINUSE+	     125 "Address already in use")
+  (define-constant +EADDRNOTAVAIL+   126 "Can't assign requested address")
   ;; operational errors
-  (define-constant +ENETDOWN+	127	"Network is down")
-  (define-constant +ENETUNREACH+	128	"Network is unreachable")
-  (define-constant +ENETRESET+	129	"Network dropped connection because of reset")
-  (define-constant +ECONNABORTED+	130	"Software caused connection abort")
-  (define-constant +ECONNRESET+	131	"Connection reset by peer")
-  (define-constant +ENOBUFS+		132	"No buffer space available")
-  (define-constant +EISCONN+		133	"Socket is already connected")
-  (define-constant +ENOTCONN+	134	"Socket is not connected")
+  (define-constant +ENETDOWN+	     127 "Network is down")
+  (define-constant +ENETUNREACH+     128 "Network is unreachable")
+  (define-constant +ENETRESET+	     129 "Network dropped connection because of reset")
+  (define-constant +ECONNABORTED+    130 "Software caused connection abort")
+  (define-constant +ECONNRESET+	     131 "Connection reset by peer")
+  (define-constant +ENOBUFS+	     132 "No buffer space available")
+  (define-constant +EISCONN+	     133 "Socket is already connected")
+  (define-constant +ENOTCONN+	     134 "Socket is not connected")
   ;; XENIX has 135 - 142
-  (define-constant +ESHUTDOWN+	143	"Can't send after socket shutdown")
-  (define-constant +ETOOMANYREFS+	144	"Too many references: can't splice")
-  (define-constant +ETIMEDOUT+	145	"Connection timed out")
-  (define-constant +ECONNREFUSED+	146	"Connection refused")
-  (define-constant +EHOSTDOWN+	147	"Host is down")
-  (define-constant +EHOSTUNREACH+	148	"No route to host")
-  (define-constant +EWOULDBLOCK+	+EAGAIN+)
-  (define-constant +EALREADY+	149	"operation already in progress")
-  (define-constant +EINPROGRESS+	150	"operation now in progress")
+  (define-constant +ESHUTDOWN+	     143 "Can't send after socket shutdown")
+  (define-constant +ETOOMANYREFS+    144 "Too many references: can't splice")
+  (define-constant +ETIMEDOUT+	     145 "Connection timed out")
+  (define-constant +ECONNREFUSED+    146 "Connection refused")
+  (define-constant +EWOULDBLOCK+     +EAGAIN+)
+  (define-constant +EHOSTDOWN+	     147 "Host is down")
+  (define-constant +EHOSTUNREACH+    148 "No route to host")
+  (define-constant +EALREADY+	     149 "operation already in progress")
+  (define-constant +EINPROGRESS+     150 "operation now in progress")
 
   ;; SUN Network File System 
-  (define-constant +ESTALE+		151	"Stale NFS file handle")
+  (define-constant +ESTALE+	     151 "Stale NFS file handle")
 )
 
 #+linux
@@ -886,14 +874,6 @@
 
 (define-condition posix-error (opsys-error)
   ()
-  ;; (:report (lambda (c s)
-  ;; 	     (if (simple-condition-format-control c)
-  ;; 		 (format s "~? ~a"
-  ;; 			 (simple-condition-format-control c)
-  ;; 			 (simple-condition-format-arguments c)
-  ;; 			 (strerror (opsys-error-code c)))
-  ;; 		 (format s "~a"
-  ;; 			 (strerror (opsys-error-code c))))))
   (:documentation "An error from calling a POSIX function."))
 
 (defun error-message (error-code)
@@ -1001,6 +981,7 @@ the current 'C' environment."
      :collect (progn
 		(setf p (inc-pointer p (foreign-type-size :pointer)))
 		s)))
+
 ;; @@@ The whole convert-environ and having it as keywords, might be stupid?
 ;; Is this what the SBCL docs describe as the lossy CMU way?
 (defun environment ()
@@ -1130,15 +1111,6 @@ the current 'C' environment."
 ;; NOTE: This should probably come fairly early since we may use it later on
 ;; to determine configuration, such as kernel version, etc.
 
-;; #include <sys/types.h>
-;; #include <sys/sysctl.h>
-
-;; int sysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp,
-;;           void *newp, size_t newlen);
-;; int sysctlbyname(const char *name, void *oldp, size_t *oldlenp,
-;;                  void *newp, size_t newlen);
-;; int sysctlnametomib(const char *name, int *mibp, size_t *sizep);
-
 (defcfun ("sysctl" real-sysctl)
     :int (name :pointer) (namelen :unsigned-int)
 	 (oldp :pointer) (oldlenp :pointer)
@@ -1148,7 +1120,8 @@ the current 'C' environment."
 	 (oldp :pointer) (oldlenp :pointer)
 	 (newp :pointer) (newlen size-t))
 
-(defcfun "sysctlnametomib" :int (name :string) (mibp :pointer) (sizep :pointer))
+(defcfun "sysctlnametomib" :int (name :string) (mibp :pointer)
+	 (sizep :pointer))
 
 ;(defgeneric sysctl (name type)
 ; (:documentation "Return the sysctl value named NAME. TYPE should be the C type
@@ -1167,19 +1140,19 @@ the current 'C' environment."
   (fscale :long))			; long    fscale;
 
 (defcstruct foreign-ucred
-  (cr_ref :int32)			; /* reference count */
-  (cr_uid uid-t)			; /* effective user id */
-  (cr_ngroups :short)			; /* number of groups */
-  (cr_groups gid-t :count 16))	; /* groups */
+  (cr_ref :int32)			; reference count
+  (cr_uid uid-t)			; effective user id
+  (cr_ngroups :short)			; number of groups
+  (cr_groups gid-t :count 16))		; groups 
 
 (defcstruct foreign-pcred
-  (pc_lock :char :count 72) ; char pc_lock[72]; /* opaque content */
-  (pc_ucred :pointer)	    ; struct ucred *pc_ucred /* Current credentials. */
-  (p_ruid   uid-t)	    ; /* Real user id. */
-  (p_svuid  uid-t)	    ; /* Saved effective user id. */
-  (p_rgid   gid-t)	    ; /* Real group id. */
-  (p_svgid  gid-t)	    ; /* Saved effective group id. */
-  (p_refcnt :int))	    ; /* Number of references. */
+  (pc_lock :char :count 72) ; char pc_lock[72]; opaque content
+  (pc_ucred :pointer)	    ; struct ucred *pc_ucred  Current credentials.
+  (p_ruid   uid-t)	    ; Real user id.
+  (p_svuid  uid-t)	    ; Saved effective user id.
+  (p_rgid   gid-t)	    ; Real group id.
+  (p_svgid  gid-t)	    ; Saved effective group id.
+  (p_refcnt :int))	    ; Number of references. 
 
 (defcstruct foreign-vmspace
   (dummy :int32)
@@ -1326,23 +1299,23 @@ the current 'C' environment."
 
 #+linux
 (progn
-  (defconstant +AT-NULL+	        0 "End of vector")
-  (defconstant +AT-IGNORE+        1 "Entry should be ignored")
-  (defconstant +AT-EXECFD+        2 "File descriptor of program")
-  (defconstant +AT-PHDR+	        3 "Program headers for program")
-  (defconstant +AT-PHENT+	        4 "Size of program header entry")
-  (defconstant +AT-PHNUM+	        5 "Number of program headers")
-  (defconstant +AT-PAGESZ+        6 "System page size")
-  (defconstant +AT-BASE+	        7 "Base address of interpreter")
-  (defconstant +AT-FLAGS+	        8 "Flags")
-  (defconstant +AT-ENTRY+	        9 "Entry point of program")
-  (defconstant +AT-NOTELF+       10 "Program is not ELF")
-  (defconstant +AT-UID+	       11 "Real uid")
-  (defconstant +AT-EUID+	       12 "Effective uid")
-  (defconstant +AT-GID+	       13 "Real gid")
-  (defconstant +AT-EGID+	       14 "Effective gid")
-  (defconstant +AT-PLATFORM+     15 "String identifying CPU for optimizations")
-  (defconstant +AT-HWCAP+	       16 "Arch dependent hints at CPU capabilities")
+  (defconstant +AT-NULL+	  0 "End of vector")
+  (defconstant +AT-IGNORE+	  1 "Entry should be ignored")
+  (defconstant +AT-EXECFD+	  2 "File descriptor of program")
+  (defconstant +AT-PHDR+	  3 "Program headers for program")
+  (defconstant +AT-PHENT+	  4 "Size of program header entry")
+  (defconstant +AT-PHNUM+	  5 "Number of program headers")
+  (defconstant +AT-PAGESZ+	  6 "System page size")
+  (defconstant +AT-BASE+	  7 "Base address of interpreter")
+  (defconstant +AT-FLAGS+	  8 "Flags")
+  (defconstant +AT-ENTRY+	  9 "Entry point of program")
+  (defconstant +AT-NOTELF+	 10 "Program is not ELF")
+  (defconstant +AT-UID+		 11 "Real uid")
+  (defconstant +AT-EUID+	 12 "Effective uid")
+  (defconstant +AT-GID+		 13 "Real gid")
+  (defconstant +AT-EGID+	 14 "Effective gid")
+  (defconstant +AT-PLATFORM+	 15 "String identifying CPU for optimizations")
+  (defconstant +AT-HWCAP+	 16 "Arch dependent hints at CPU capabilities")
   (defconstant +AT-CLKTCK+       17 "Frequency at which times() increments")
   (defconstant +AT-SECURE+       23 "Secure mode boolean")
   (defconstant +AT-BASE_PLATFORM 24
@@ -1520,7 +1493,11 @@ Return nil for foreign null pointer."
 (defcfun endpwent :void)
 (defcfun setpwent :void)
 
-(defun user-home (user)
+(defun user-name (&optional id)
+  "Return the name of the user with ID, which defaults to the current user."
+  (passwd-name (getpwuid (or id (getuid)))))
+
+(defun user-home (&optional (user (user-name)))
   "Return the namestring of the given USER's home directory or nil if the ~
 user is not found."
   (setpwent)
@@ -1529,10 +1506,6 @@ user is not found."
 	:do (when (string= (passwd-name p) user)
 	      (return-from user-home (passwd-dir p))))
   (endpwent))
-
-(defun user-name (&optional id)
-  "Return the name of the user with ID, which defaults to the current user."
-  (passwd-name (getpwuid (or id (getuid)))))
 
 (defun user-id (&key name effective)
   "Return the ID of the user with NAME, which defaults to the current user."
@@ -1908,7 +1881,7 @@ C library function getcwd."
   #+(or openmcl ccl) (ccl::current-directory-name)
   #+ecl (ext:getcwd)
   #+sbcl (libc-getcwd)
-  #+cmu (ext:default-directory)
+  #+cmu (libc-getcwd) ;; (ext:default-directory)
   #+lispworks (hcl:get-working-directory)
   #+abcl (namestring (truename *default-pathname-defaults*))
   #-(or clisp excl openmcl ccl sbcl cmu ecl lispworks abcl)
@@ -2144,7 +2117,7 @@ C library function getcwd."
 		 :finally (return i))))
     (foreign-string-to-lisp
      (foreign-slot-value ent '(:struct foreign-dirent) 'd_name)
-     :count len)) ;;; @@@ old cffi didn't use the :count keyword, just the value
+     :count len))
   #+os-t-has-namlen
   (foreign-string-to-lisp
    (foreign-slot-value ent '(:struct foreign-dirent) 'd_name)
@@ -2779,12 +2752,8 @@ calls. Returns NIL when there is an error."
   (st_qspare_1	:int64)			; unused
 )
 
-;; #include <sys/types.h>
-;; #include <sys/stat.h>
-;; #include <unistd.h>
-
 ;; 32bit stat -> __xstat -> fstatat64
-;; 32bit ?     -> __xstat64 -> fstatat64
+;; 32bit ?    -> __xstat64 -> fstatat64
 
 #+(and linux 32-bit-target)
 (defcstruct foreign-stat
@@ -3082,7 +3051,6 @@ it is not a symbolic link."
   (missing-implementation 'probe-directory))
 
 
-
 ;; Questionable:
 ;; mmap/munmap/mprotect/madvise ???
 ;; File locking? : fcntl F_GETLK / F_GETLK F_SETLKW
@@ -3100,19 +3068,18 @@ it is not a symbolic link."
 ;; OSX file attributes
 
 #|
-(defcstruct attrlist)
-     typedef u_int32_t attrgroup_t;
+(defctype attrgroup-t :uint32)
 
-     struct attrlist {
-         u_short     bitmapcount; /* number of attr. bit sets in list */
-         u_int16_t   reserved;    /* (to maintain 4-byte alignment) */
-         attrgroup_t commonattr;  /* common attribute group */
-         attrgroup_t volattr;     /* volume attribute group */
-         attrgroup_t dirattr;     /* directory attribute group */
-         attrgroup_t fileattr;    /* file attribute group */
-         attrgroup_t forkattr;    /* fork attribute group */
-     };
-     #define ATTR_BIT_MAP_COUNT 5
+(defcstruct attrlist
+  (bitmapcount :unsigned-short) ; number of attr. bit sets in list
+  (reserved    :uint16)         ; (to maintain 4-byte alignment)
+  (commonattr  attrgroup-t)     ; common attribute group
+  (volattr     attrgroup-t)     ; volume attribute group
+  (dirattr     attrgroup-t)     ; directory attribute group
+  (fileattr    attrgroup-t)     ; file attribute group
+  (forkattr    attrgroup-t))    ; fork attribute group
+
+(defconstant +ATTR_BIT_MAP_COUNT+ 5)
 
 (defcfun getattrlist :int (path :string)
 	 (attrlist (:pointer (:struct attrlist)))
@@ -3682,18 +3649,6 @@ environment list, which defaults to the current 'C' environ variable."
 (defconstant +KERN-PROC-RUID+ 	  6)	; by real uid		 (uid_t)
 (defconstant +KERN-PROC-LCID+ 	  7)	; by login context id	 (uid_t)
 
-(defstruct process
-  id
-  parent-id
-  group-id
-  terminal
-  text-size
-  resident-size
-  percent-cpu
-  nice-level
-  usage
-  command
-  args)
 
 #+darwin
 (defparameter *proc-retry-count* 100
@@ -3758,10 +3713,10 @@ environment list, which defaults to the current 'C' environ variable."
 	     ;; Get the size of the process list
 	     (syscall (real-sysctl mib mib-len (null-pointer) list-size
 				   (null-pointer) 0))
-	     (format t "list-size = ~d~%"
-		     (/ (mem-ref list-size 'size-t)
-			(cffi:foreign-type-size
-			 '(:struct foreign-kinfo-proc))))
+	     ;; (format t "list-size = ~d~%"
+	     ;; 	     (/ (mem-ref list-size 'size-t)
+	     ;; 		(cffi:foreign-type-size
+	     ;; 		 '(:struct foreign-kinfo-proc))))
 	     ;; It's returned in bytes, so 
 	     (setf list-count (+ *process-list-fudge*
 				 (/ (mem-ref list-size 'size-t)
@@ -3799,7 +3754,7 @@ environment list, which defaults to the current 'C' environ variable."
 	       (with-foreign-slots
 		   ((e_ppid e_pgid e_tdev e_xsize e_xrssize)
 		    eep (:struct foreign-eproc))
-		 (make-process
+		 (make-os-process
 		  :id p_pid
 		  :parent-id e_ppid
 		  :group-id e_pgid
@@ -4004,14 +3959,8 @@ from the system command CMD with the arguments ARGS."
 	   ,@body)
       (if ,var (close ,var)))))
 
-;; There's already "standard-ish" lisp networking? Right? Please?
-;; NO THERE ISN"T. (a long time ago...)
-;;
-;; I really can't believe I'm doing this. But...
-
-;;
 ;; Sockets!
-;; @@@ please don't do this now
+;; How about use usocket?
 
 #|
 
@@ -4075,24 +4024,9 @@ universal time.")
 Unix time integer."
   (+ +unix-to-universal-time+ unix-time))
 
-;; struct timezone {
-;; int     tz_minuteswest; /* of Greenwich */
-;; int     tz_dsttime;     /* type of dst correction to apply */
-;; };
-
-
-;; DESCRIPTION
-;;   The system's notion of the current Greenwich time and the current time
-;;   zone is obtained with the gettimeofday() call, and set with the
-;;   settimeofday() call.  The time is expressed in seconds and microseconds
-;;   since midnight (0 hour), January 1, 1970.  The resolution of the system
-;;   clock is hardware dependent, and the time may be updated continuously or
-;;   in ``ticks.''  If tp is NULL and tzp is non-NULL, gettimeofday() will
-;;   populate the timezone struct in tzp.  If tp is non-NULL and tzp is NULL,
-;;   then only the timeval struct in tp is populated. If both tp and tzp are
-;;   NULL, nothing is returned.
-;;
-;;   The structures pointed to by tp and tzp are defined in <sys/time.h> as:
+;; (defcstruct timezone
+;;   (tz_minuteswest :int)    ; of Greenwich
+;;   (tz_dsttime     :int))   ; type of dst correction to apply
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; select
@@ -4373,7 +4307,7 @@ Unix time integer."
   (declare (ignore kq changelist nchanges eventlist nevents timeout))
   )
 
-;; It might be nice if could do this on a Lisp stream.
+;; It might be nice if we could do this on a Lisp stream.
 (defun listen-for (seconds &optional (fd 0))
   "Listen on the OS file descriptor for at most N seconds or until input is ~
 available."
@@ -4417,12 +4351,6 @@ available."
 ;; fsstat?
 
 ;; statfs
-
-;; #include <sys/param.h>
-;; #include <sys/mount.h>
-
-;; int statfs(const char *path, struct statfs *buf);
-;; typedef struct { int32_t val[2]; } fsid_t;
 
 #+(and darwin (not 64-bit-target))
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -4665,7 +4593,7 @@ available."
 #+(and darwin 64-bit-target)
 (defcfun ("statfs$INODE64" real-statfs) :int (path :string)
 	 (buf (:pointer (:struct foreign-statfs))))
-#+(and darwin 32-bit-target)
+#+(or (and darwin 32-bit-target) linux)
 (defcfun ("statfs" real-statfs) :int (path :string)
 	 (buf (:pointer (:struct foreign-statfs))))
 (defun statfs (path)
@@ -4690,13 +4618,6 @@ available."
 			     '(:struct foreign-statfs) i))))))
 
 ;; getfsent [BSD]
-
-;; #include <fstab.h>
-;; struct fstab * getfsent(void);
-;; struct fstab * getfsspec(const char *spec);
-;; struct fstab * getfsfile(const char *file);
-;; int setfsent(void);
-;; void endfsent(void);
 
 (define-constant +fs-types+ '(:hfs :nfs :msdos :cd9660 :fdesc :union))
 
@@ -4754,36 +4675,6 @@ available."
 
 ;; getmntent - Linux
 
-#|
-#include <stdio.h>
-#include <mntent.h>
-
-FILE *setmntent(const char *filename, const char *type);
-
-struct mntent *getmntent(FILE *fp);
-
-int addmntent(FILE *fp, const struct mntent *mnt);
-
-int endmntent(FILE *fp);
-
-char *hasmntopt(const struct mntent *mnt, const char *opt);
-
-/* GNU extension */
-#include <mntent.h>
-
-struct mntent *getmntent_r(FILE *fp, struct mntent *mntbuf, char *buf, int buflen);
-
-struct mntent {
-    char *mnt_fsname;   /* name of mounted file system */
-    char *mnt_dir;      /* file system path prefix */
-    char *mnt_type;     /* mount type (see mntent.h) */
-    char *mnt_opts;     /* mount options (see mntent.h) */
-    int   mnt_freq;     /* dump frequency in days */
-    int   mnt_passno;   /* pass number on parallel fsck */
-};
-
-|#
-
 (defstruct mount-entry
   "File system description."
   fsname   ; name of mounted file system
@@ -4829,18 +4720,19 @@ struct mntent {
 		   (mem-aptr (mem-ref ptr :pointer)
 			     '(:struct foreign-statfs) i)))))
   #+linux
-  (with-open-file (*mtab-file* :direction :input)
-    (loop :with entry :and info
+  (with-open-file (stream *mtab-file* :direction :input)
+    (loop :with entry :and fs
        :while (setf entry (get-mount-entry stream))
        :collect
-       (setf fs (statfs (mount-entry-dir entry)))
-       (make-filesystem-info
-	:device-name     (mount-entry-fsname entry)
-	:mount-point     (mount-entry-dir entry)
-	:type	         (mount-entry-type entry)
-	:total-bytes     (* (statfs-bsize fs) (statfs-blocks fs))
-	:bytes-free	 (* (statfs-bsize fs) (statfs-bfree fs))
-	:bytes-available (* (statfs-bsize fs) (statfs-bavail fs))))))
+       (progn
+	 (setf fs (statfs (mount-entry-dir entry)))
+	 (make-filesystem-info
+	  :device-name     (mount-entry-fsname entry)
+	  :mount-point     (mount-entry-dir entry)
+	  :type	           (mount-entry-type entry)
+	  :total-bytes     (* (statfs-bsize fs) (statfs-blocks fs))
+	  :bytes-free	   (* (statfs-bsize fs) (statfs-bfree fs))
+	  :bytes-available (* (statfs-bsize fs) (statfs-bavail fs)))))))
   
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ttys

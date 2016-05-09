@@ -19,8 +19,10 @@
    #:dir-entry-name
    #:dir-entry-type
    #:dir-entry-inode
+
    #:size-t
    #:string-designator
+
    #:user-info
    #:user-info-p
    #:make-user-info
@@ -32,6 +34,7 @@
    #:user-info-primary-group-id
    #:user-info-guid
    #:user-info-picture
+
    #:terminal-mode
    #:terminal-mode-p
    #:make-terminal-mode
@@ -39,11 +42,13 @@
    #:terminal-mode-line
    #:terminal-mode-raw
    #:terminal-mode-timeout
+
    #:derp-time
    #:derp-time-p
    #:make-derp-time
    #:derp-time-seconds
    #:derp-time-nanoseconds
+
    #:file-info
    #:file-info-p
    #:make-file-info
@@ -53,6 +58,7 @@
    #:file-info-size
    #:file-info-type
    #:file-info-flags
+
    #:filesystem-info
    #:filesystem-info-p
    #:make-filesystem-info
@@ -62,6 +68,22 @@
    #:filesystem-info-total-bytes
    #:filesystem-info-bytes-free
    #:filesystem-info-bytes-available
+
+   #:os-process
+   #:os-process-p
+   #:make-os-process
+   #:os-process-id
+   #:os-process-parent-id
+   #:os-process-group-id
+   #:os-process-terminal
+   #:os-process-text-size
+   #:os-process-resident-size
+   #:os-process-percent-cpu
+   #:os-process-nice-level
+   #:os-process-usage
+   #:os-process-command
+   #:os-process-args
+
    #:opsys-error
    #:opsys-error-code
 
@@ -137,7 +159,8 @@
 ;; I am probably unable to express how unfortunate this is.
 (defun quote-filename (namestring)
   "Try to quote a file name so none of it's characters are noticed specially
-by the Lisp pathname monster."
+by the Lisp pathname monster. This is useful just before passing strings to
+standard functions that take a pathname designator."
   (with-output-to-string (str)
     (loop :for c :across namestring :do
        (when (position c *need-quoting*)
@@ -155,10 +178,12 @@ by the Lisp pathname monster."
 |#
 
 (defun safe-namestring (pathname)
-  "Like NAMESTRING, but don't interpret any characters in strings specially."
+  "Like NAMESTRING, but if pathname is a string, just return it. This is
+useful for accepting pathnames or strings in case namestring would interpret
+any characters in strings specially."
   (typecase pathname
     (pathname (namestring pathname))
-    (string (quote-filename pathname))))
+    (string pathname)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Types
@@ -223,6 +248,20 @@ string (denoting itself)."
   (total-bytes     0 :type integer)
   (bytes-free      0 :type integer)
   (bytes-available 0 :type integer))
+
+(defstruct os-process
+  "Information about a system process."
+  id
+  parent-id
+  group-id
+  terminal
+  text-size
+  resident-size
+  percent-cpu
+  nice-level
+  usage
+  command
+  args)
 
 (define-condition opsys-error (simple-error)
   ((code
