@@ -1,5 +1,5 @@
 ;;
-;; browse-html.lisp - Browse HTML as a tree.
+;; view-html.lisp - View HTML as a tree.
 ;;
 
 ;; This uses the excellent PLUMP library to read HTML/XML and the tree-browser
@@ -9,13 +9,13 @@
 ;; dynamically pull out content from the parsed file. We make the PLUMP node
 ;; be the tree-browser's OBJECT-NODE object.
 
-(defpackage :browse-html
-  (:documentation "Browse HTML as a tree.")
+(defpackage :view-html
+  (:documentation "View HTML as a tree.")
   (:use :cl :dlib :dlib-misc :tiny-rl :tree-browser)
   (:export
-   #:browse-html
+   #:view-html
    ))
-(in-package :browse-html)
+(in-package :view-html)
 
 (defun html-node-contents (node)
   "Get the contents of an HTML-NODE, which is a list of PLUMP node children."
@@ -88,7 +88,7 @@
 ;; Here we parse the whole file with PLUMP and
 ;; 
 
-(defun browse-html (&optional file)
+(defun view-html (&optional file)
   (let* ((ff (or file
 		 #| (read-filename :prompt "HTML file: ") |#
 		 (pick-list:pick-file)
@@ -107,13 +107,13 @@
 	 (make-instance 'html-node :object n))))))
 
 #+lish
-(lish:defcommand browse-html
+(lish:defcommand view-html
     (("file" pathname))
-  "Browse HTML as a tree."
-  (browse-html file))
+  "View HTML as a tree."
+  (view-html file))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; plist browser
+;; plist viewr
 
 #|
 (defclass plist-node (html-node)
@@ -150,7 +150,7 @@
     (display-object node str level)))
 
   
-(defun browse-plist (&optional file)
+(defun view-plist (&optional file)
   (let* ((ff (or file
 		 #| (read-filename :prompt "HTML file: ") |#
 		 (pick-list:pick-file)
@@ -169,10 +169,10 @@
 	 (make-instance 'plist-node :object n))))))
 
 #+lish
-(lish:defcommand browse-html
+(lish:defcommand view-html
     (("file" pathname))
-  "Browse HTML as a tree."
-  (browse-html file))
+  "View HTML as a tree."
+  (view-html file))
 
 |#
 
