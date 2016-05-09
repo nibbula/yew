@@ -463,8 +463,10 @@ for the command-function).")
       (when be (return-from pick-backend (cadr be)))))
   ;; try to figure it out
   (let ((result
-	 (loop :for (nil b) :in *backends* :do
+	 (loop :for (type b) :in *backends* :do
+	    (dbug "Trying backend ~s~%" type)
 	    (when (funcall (backend-check-func b))
+	      (dbug "Picked ~s~%" type)
 	      (return b)))))
     (if (not result)
 	*backend-cvs*

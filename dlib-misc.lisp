@@ -16,7 +16,7 @@
   (:documentation
    "More of Dan's generally useful miscellaneous functions.")
   (:export
-   #:randomize-array
+   #:randomize-vector
    #:justify-text
    #:untabify
    #:show-expansion
@@ -66,7 +66,7 @@
 )
 (in-package :dlib-misc)
 
-#+(or (and clisp mop) sbcl cmu gcl) (d-add-feature :has-mop)
+#+(or (and clisp mop) sbcl cmu gcl ccl) (d-add-feature :has-mop)
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 1)
 		   (compilation-speed 2)))
@@ -78,18 +78,18 @@
     (apply 'load module other-args)))
 
 ;; Maybe this should be put somewhere else, since it's seldom used.
-(defun randomize-array (s &key (factor 3))
-  "Randomize the order of elements in an array. Factor is how many random
-swaps to do times the length of the array. "
-  (let* ((len (length s))
+(defun randomize-vector (vector &key (factor 3))
+  "Randomize the order of elements in an vector. FACTOR is how many random
+swaps to do times the length of the vector."
+  (when (not (vectorp vector))
+    (error "VECTOR must be a vector, not a ~a." (type-of vector)))
+  (let* ((len (length vector))
 	 (swaps (* factor len)))
-    (loop for i from 0 to swaps
-	  do (let* ((a (random len))
-		    (b (random len))
-		    (aux (aref s a)))
-	       (setf (aref s a) (aref s b))
-	       (setf (aref s b) aux))))
-  s)
+    (loop :for i :from 0 :to swaps
+       :do (let* ((a (random len))
+		  (b (random len)))
+	     (rotatef (aref vector a) (aref vector b)))))
+  vector)
 
 ;; This is very consing, but remarkably succinct.
 ;; It might be nice if it got the COLS from the implementation's idea of it.
@@ -206,17 +206,17 @@ expand all macros recursively."
 
 ;; @@@ So where would we get this from for other languages?
 ;; I suppose we could mine them from strftime.
-(defparameter +day-abbrevs+ #("Mon" "Tue" "Wed"
+(defparameter *day-abbrevs* #("Mon" "Tue" "Wed"
 			      "Thu" "Fri" "Sat" "Sun")) ; @@@ i18n
 
-(defparameter +weekday+ #("Monday" "Tuesday" "Wednesday"
+(defparameter *weekday* #("Monday" "Tuesday" "Wednesday"
 			  "Thursday" "Friday" "Saturday" "Sunday")) ; @@@ i18n
 
-(defparameter +month-abbrevs+ #("Jan" "Feb" "Mar" "Apr"
+(defparameter *month-abbrevs* #("Jan" "Feb" "Mar" "Apr"
 				"May" "Jun" "Jul" "Aug"
 				"Sep" "Oct" "Nov" "Dec")) ; @@@ i18n
 
-(defparameter +month+ #("January" "February" "March" "April"
+(defparameter *month* #("January" "February" "March" "April"
 			"May" "June" "July" "August"
 			"September" "October" "November" "December")) ; @@@ i18n
 
@@ -249,8 +249,8 @@ current time zone."
     (case format
       ((:rfc822 :rfc :net)
        (format nil "~a, ~2,'0d ~a ~4,'0d ~2,'0d:~2,'0d:~2,'0d ~c~2,'0d~2,'0d"
-	       (aref +day-abbrevs+ day)
-	       date (aref +month-abbrevs+ (1- month)) year
+	       (aref *day-abbrevs* day)
+	       date (aref *month-abbrevs* (1- month)) year
 	       hours minutes seconds
 	       (if (< zone 0) #\+ #\-) (tz-hours zone) (tz-minutes zone)))
       (:filename
@@ -270,7 +270,7 @@ current time zone."
   "Call #'format with FORMAT and the given date fields in VALUES. 
 VALUES is a sequence of any of the following keywords:
   :seconds :minutes :hours :date :month :year :day :daylight-p :zone
-  :day-abbrev :month-abbrev :12-hours :am :pm
+  :day-abbrev :month-abbrev :12-hours :am :pm :weekday :day-name
 Some abbreviations of the keywords are accepted, like :hrs :min :sec."
   (dlib::with-unique-names
       (seconds minutes hours date month year day daylight-p zone)
@@ -279,9 +279,13 @@ Some abbreviations of the keywords are accepted, like :hrs :min :sec."
 		   (etypecase v
 		     (keyword
 		      (case v
-			(:day-abbrev `(aref +day-abbrevs+ ,day))
+			(:day-abbrev `(aref *day-abbrevs* ,day))
+			((:weekday :day-name)
+			 `(aref *weekday* ,day))
+			((:month-name)
+			 `(aref *month* ,month))
 			((:month-abbrev :mon-abbrev)
-			 `(aref +month-abbrevs+ (1- ,month)))
+			 `(aref *month-abbrevs* (1- ,month)))
 			(:std-zone
 			 `(format nil "~c~2,'0d~2,'0d"
 				  (if (< ,zone 0) #\+ #\-)
@@ -1037,8 +1041,6 @@ symbols, :all to show internal symbols too."
 			 (documentation s t)))
        '("Name" "Type" "A" ("Description" :left))))
     (values))
-    #-has-mop
-    (declare (ignore class stream))
     #-has-mop    
     (format stream "No MOP, so I don't know how to describe the class ~s~%"
 	    class))

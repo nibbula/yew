@@ -17,6 +17,7 @@
    #:+color-names+
    #:color-number
    #:with-fg
+   #:with-bg
    #:with-color
    #:get-char
    #:interactively
@@ -163,6 +164,16 @@ foreground FG and background BG."
   (with-unique-names (result)
     `(let (,result)
        (color-set (fui:color-index ,color +color-black+)
+		  (cffi:null-pointer))
+       (setf ,result (progn ,@body))
+       (color-set (fui:color-index +color-white+ +color-black+)
+		  (cffi:null-pointer))
+       ,result)))
+
+(defmacro with-bg ((color) &body body)
+  (with-unique-names (result)
+    `(let (,result)
+       (color-set (fui:color-index +color-black+ ,color)
 		  (cffi:null-pointer))
        (setf ,result (progn ,@body))
        (color-set (fui:color-index +color-white+ +color-black+)

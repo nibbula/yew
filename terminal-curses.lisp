@@ -160,7 +160,8 @@ require terminal driver support."))
   (move (+ (getcury (screen tty)) n) (getcurx (screen tty))))
 
 (defmethod tt-scroll-down ((tty terminal-curses) n)
-  (scrl 1))
+  (when (> n 0)
+    (scrl n)))
   
 (defmethod tt-erase-to-eol ((tty terminal-curses))
   (clrtoeol))
