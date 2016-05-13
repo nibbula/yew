@@ -27,6 +27,18 @@
    #:tiny-read-line
    #:tiny-rl
    #:line-editor
+   #:line-editor-p
+   #:make-line-editor
+   #:screen-row
+   #:screen-col
+   #:line-editor-terminal
+   #:line-editor-terminal-device-name
+   #:line-editor-terminal-class
+   #:line-editor-in-callback
+   #:line-editor-out-callback
+   #:line-editor-debug-log
+   #:line-editor-keymap
+   #:line-editor-local-keymap
    #:show-history
    #:history-clear
    #:*default-prompt*
@@ -406,8 +418,11 @@ anything important.")
    (keymap
     :accessor line-editor-keymap
     :initarg :keymap
-    :initform nil
     :documentation "The keymap.")
+   (local-keymap
+    :accessor line-editor-local-keymap
+    :initarg :local-keymap
+    :documentation "The local keymap.")
    (accept-does-newline
     :accessor accept-does-newline
     :initarg :accept-does-newline
@@ -417,7 +432,6 @@ anything important.")
   (:default-initargs
     :non-word-chars *default-non-word-chars*
     :prompt *default-prompt*
-    :keymap *normal-keymap*
     :terminal-class 'terminal-ansi
   )
   (:documentation "State for a stupid little line editor."))
@@ -426,6 +440,8 @@ anything important.")
 
 (defmethod initialize-instance :after ((e line-editor) &rest initargs)
   (declare (ignore initargs))
+
+  ;; Make a terminal using the device name and class, or use *TERMINAL*.
   (setf (slot-value e 'terminal)
 	(if (and (slot-boundp e 'terminal-device-name)
 		 (slot-value e 'terminal-device-name))
@@ -436,9 +452,23 @@ anything important.")
 		    (dbug "Using *TERMINAL* ~a" (type-of *terminal*)))
 		  *terminal*)
 		(make-instance (slot-value e 'terminal-class)))))
+
+  ;; If the local keymap wasn't given, make an empty one.
+  (unless (and (slot-boundp e 'local-keymap) (slot-value e 'local-keymap))
+    (setf (slot-value e 'local-keymap)
+	  (make-instance 'keymap)))
+
+  ;; Unless keymap was given, set the it to use the normal keymap and
+  ;; the local keymap.
+  (unless (and (slot-boundp e 'keymap) (slot-value e 'keymap))
+    (setf (slot-value e 'keymap)
+	  `(,(slot-value e 'local-keymap) ,*normal-keymap*)))
+
   ;; Make a default line sized buffer if one wasn't given.
   (when (or (not (slot-boundp e 'buf)) (not (slot-value e 'buf)))
     (setf (slot-value e 'buf) (make-stretchy-string *initial-line-size*)))
+
+  ;; Set the current dynamic var.
   (setf *line-editor* e))
 
 (defgeneric freshen (e)
@@ -1227,21 +1257,25 @@ Updates the screen coordinates."
 ;; emulate the terminal exactly, just to figure out where the cursor is after
 ;; the prompt, things can get messed up.
 ;;
+;; We could be like other shells and require that you delimit non-echoing
+;; characters yourself and allow you to specifiy an output width for
+;; characters, but not only is annoying, but it won't always work.
+;;
 ;; Since emulating the terminal seems infeasible, unless we wrapped ourselves
 ;; in an emulation layer like screen or tmux, if we want to be sure to get
 ;; things right, we are stuck with with asking the terminal where the cursor
 ;; might be.
 ;;
-;; Now the problem with asking the terminal, is that we have to output
-;; something, and then read the coordinates back in. But there might be a
-;; bunch of input, like a giant paste or something, or typing ahead, already
-;; in the terminal's input queue, in front of the response to our "where is
-;; the cursor" query, which blocks us from getting an answer.
+;; The problem with asking the terminal, is that we have to output something,
+;; and then read the coordinates back in. But there might be a bunch of input,
+;; like a giant paste or something, or typing ahead, already in the terminal's
+;; input queue, in front of the response to our "where is the cursor" query,
+;; which blocks us from getting an answer.
 ;;
-;; So we have to read all input available, BEFORE asking where the heck the
-;; cursor is. This is the reason for all the otherwise useless 'eat-typeahead'
-;; and 'tty-slurp'ing. Of course this whole thing is quite kludgey and I think
-;; we should really be able ask the terminal where the cursor is with a nice
+;; So we have to read all input available, BEFORE asking where the cursor
+;; is. This is the reason for all the otherwise useless 'eat-typeahead' and
+;; 'tty-slurp'ing. Of course this whole thing is quite kludgey and I think we
+;; should really be able ask the terminal where the cursor is with a nice
 ;; _function call_, not going through the I/O queue. Of course that would
 ;; require the terminal to be in our address space, or to have a separate
 ;; command channel if it's far, far away.
@@ -2139,7 +2173,7 @@ binding."
 	 (cmd (ask-function-name (format nil "Set key ~a to command: "
 					 (key-sequence-string key-seq)))))
     (if cmd
-	(set-key key-seq cmd (line-editor-keymap e))
+	(set-key key-seq cmd (line-editor-local-keymap e))
 	(tmp-message e "Not a function."))))
 
 (defun describe-key-briefly (e)
@@ -2367,7 +2401,8 @@ binding."
 		  (out-callback nil)
 		  (debug nil)
 		  (editor nil)
-		  (keymap *normal-keymap*)
+		  (local-keymap nil)
+		  (keymap nil)
 		  (terminal-name *terminal-name*)
 		  (terminal-class 'terminal-ansi)
 		  (accept-does-newline t)
@@ -2390,8 +2425,12 @@ Keyword arguments:
     Completion function to use. See the completion package for details.
   EDITOR (nil)
     LINE-EDITOR instance to use.
+  LOCAL-KEYMAP (nil)
+    A LOCAL-KEYMAP to use. For when you want to add your own customized key
+    bindings.
   KEYMAP (nil)
-    A KEYMAP to use. For when you want to use your own customized keymap.
+    A KEYMAP to use. If you want to completely replace all the key bindings
+    by your own. This defaults to a list of (LOCAL-KEYMAP *NORMAL-KEYMAP*).
   TERMINAL-NAME (*terminal-name*)
     Name of a terminal device to use. If NIL 
   ACCEPT-DOES-NEWLINE (t)
@@ -2413,7 +2452,8 @@ Keyword arguments:
 		       :in-callback in-callback
 		       :out-callback out-callback
 		       :debugging debug
-		       :keymap (or keymap *normal-keymap*)
+		       :local-keymap local-keymap
+		       :keymap keymap
 		       :accept-does-newline accept-does-newline
 		       :terminal-device-name terminal-name
 		       :terminal-class terminal-class))))
