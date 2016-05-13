@@ -239,7 +239,8 @@ Second value is where the character set ended."
 ;; We could make a wrapper to hide the keywords, but who cares? There might be
 ;; some circumstance where they help.
 
-(defun fnmatch (pattern string &key (pattern-start 0) (string-start 0))
+(defun fnmatch (pattern string &key (pattern-start 0) (string-start 0)
+				 (escape t))
   "Return true if the STRING matches the PATTERN, with shell matching. '*' is
 any number of characters, '?' is one character, [] is some complictated range
 stuff that you can look up in unix or something, but breifly: 
@@ -268,94 +269,109 @@ are mostly used internally for recursion, but you can go ahead and use them if
 you want. They are indexes that default to 0."
   (let ((p pattern-start) (s string-start)
 	(plen (length pattern))
-        (slen (length string)))
-    (if (and pattern string
-	     (not (zerop (length pattern)))
-	     (not (zerop (length pattern)))
-	     (pattern-p pattern nil nil))
-	(loop
-	   :while (and (< p plen) (< s slen))
-	   :do
-	   (dbug "~a~%~v,,,va|~%~a~%~v,,,va|~%"
-		 pattern p #\space "" string s #\space "")
-	   (case (char pattern p)
-	     (#\*
-	      (let* ((next (1+ p))
-		     (next-char (if (< next plen) (char pattern next) nil)))
+        (slen (length string))
+	(quoting nil))
+    (flet ((match-literal ()
+	     (when (char/= (char pattern p) (char string s))
+	       (dbug "literal mismatch ~a /= ~a~%"
+		     (char pattern p) (char string s))
+	       (return-from fnmatch nil))
+	     (dbug "literal ~a~%" (char string s))
+	     (incf s) (incf p)))
+      (if (and pattern string
+	       (not (zerop (length pattern)))
+	       (not (zerop (length pattern)))
+	       (pattern-p pattern nil nil))
+	  (loop
+	     :while (and (< p plen) (< s slen))
+	     :do
+	     (dbug "~a~%~v,,,va|~%~a~%~v,,,va|~%"
+		   pattern p #\space "" string s #\space "")
+	     :if quoting :do
+	       (match-literal)
+	       (setf quoting nil)
+	     :else :do
+	     (case (char pattern p)
+	       (#\*
+		(let* ((next (1+ p))
+		       (next-char (if (< next plen) (char pattern next) nil)))
 
-		;; Eat ajacent *'s
-		(when (eq #\* next-char)
-		  (loop :while (and (< p plen) (char= #\* (char pattern p)))
+		  ;; Eat ajacent *'s
+		  (when (eq #\* next-char)
+		    (loop :while (and (< p plen) (char= #\* (char pattern p)))
+		       :do
+		       (dbug "eating ~a~%" (char pattern p))
+		       ;; use one string char for each ?
+		       ;; (when (char= #\? (char pattern p))
+		       ;;   (incf s))
+		       (incf p))
+		    (setf next p))
+
+		  ;; * at the end means we matched the rest
+		  (when (or (= next plen) (= p plen))
+		    (return-from fnmatch t))
+
+		  ;; Try to find the rest of the pattern by recursing.  If we
+		  ;; don't find the rest of the pattern here, just advance the
+		  ;; string and we will (probably) search again next loop
+		  ;; iteration, otherwise advance the pattern to get past the
+		  ;; *.
+		  ;;
+		  ;; The limit of how much we can recurse is how many
+		  ;; non-adjacent *'s there are in the pattern. I suppose we
+		  ;; could arrange for this to be in the tail position if
+		  ;; there's a problem.
+		  (loop :while (< s slen)
 		     :do
-		     (dbug "eating ~a~%" (char pattern p))
-		     ;; use one string char for each ?
-		     ;; (when (char= #\? (char pattern p))
-		     ;;   (incf s))
-		     (incf p))
-		  (setf next p))
-
-		;; * at the end means we matched the rest
-		(when (or (= next plen) (= p plen))
-		  (return-from fnmatch t))
-
-		;; Try to find the rest of the pattern by recursing.
-		;; If we don't find the rest of the pattern here, just advance
-		;; the string and we will (probably) search again next loop
-		;; iteration, otherwise advance the pattern to get past the *.
-		;;
-		;; The limit of how much we can recurse is how many
-		;; non-adjacent *'s there are in the pattern. I suppose we
-		;; could arrange for this to be in the tail position if
-		;; there's a problem.
-		(loop :while (< s slen)
-		   :do 
-		   (if (fnmatch pattern string
-				:pattern-start next
-				:string-start s)
-					; (incf p)
-		       (return-from fnmatch t) ; all done
-		       (incf s)))))
-	     (#\[
-	      (multiple-value-bind (set new-pos)
-		  (get-char-set pattern (1+ p))
-		(if set
+		     (if (fnmatch pattern string
+				  :pattern-start next
+				  :string-start s
+				  :escape escape)
+			 ;; (incf p)
+			 (return-from fnmatch t) ; all done
+			 (incf s)))))
+	       (#\[
+		(multiple-value-bind (set new-pos)
+		    (get-char-set pattern (1+ p))
+		  (if set
+		      (progn
+			(when (not (match-char-set set (char string s)))
+			  (return-from fnmatch nil))
+			(setf p new-pos)
+			(incf s)
+			(incf p))
+		      ;; If there was no set, just match a literal [
+		      (if (char/= (char string s) #\[)
+			  (return-from fnmatch nil)
+			  (progn (incf s) (incf p))))))
+	       (#\]
+		;; get-char-set should always eat the close ]
+		(if (/= p 0) (error "extra ]")))
+	       (#\?
+		;; skip it
+		(dbug "skipping ? ~a~%" (char string s))
+		(incf s) (incf p))
+	       (#\\
+		(if escape
 		    (progn
-		      (when (not (match-char-set set (char string s)))
-			(return-from fnmatch nil))
-		      (setf p new-pos)
-		      (incf s)
+		      (setf quoting t)
 		      (incf p))
-		    ;; If there was no set, just match a literal [
-		    (if (char/= (char string s) #\[)
-			(return-from fnmatch nil)
-			(progn (incf s) (incf p))))))
-	     (#\]
-	      ;; get-char-set should always eat the close ]
-	      (if (/= p 0) (error "extra ]")))
-	     (#\?
-	      ;; skip it
-	      (dbug "skipping ? ~a~%" (char string s))
-	      (incf s) (incf p))
-	     (otherwise
-	      ;; compare literal characters
-	      (when (char/= (char pattern p) (char string s))
-		(dbug "literal mismatch ~a /= ~a~%"
-		      (char pattern p) (char string s))
-		(return-from fnmatch nil))
-	      (dbug "literal ~a~%" (char string s))
-	      (incf s) (incf p))))
-	;; Not a pattern, just do regular compare
-	(progn
-	  (dbug "non pattern compare~%")
-	  (return-from fnmatch (string= pattern string))))
+		    (match-literal)))
+	       (otherwise
+		;; compare literal characters
+		(match-literal))))
+	  ;; Not a pattern, just do regular compare
+	  (progn
+	    (dbug "non pattern compare~%")
+	    (return-from fnmatch (string= pattern string))))
 
-    ;; Eat trailing *'s
-    (loop :while (and (< p plen) (char= (char pattern p) #\*)) :do
-       (dbug "eating trailing *~%")
-       (incf p))
+      ;; Eat trailing *'s
+      (loop :while (and (< p plen) (char= (char pattern p) #\*)) :do
+	 (dbug "eating trailing *~%")
+	 (incf p))
 
-    ;; If we got thru both, we matched.
-    (and (= s slen) (= p plen))))
+      ;; If we got thru both, we matched.
+      (and (= s slen) (= p plen)))))
 
 #|
 If we wanted instead to translate into regexps:
@@ -435,7 +451,7 @@ match & dir  - f(prefix: boo) readir boo
 
 ;; This is called recursively for each directory, depth first, for exapnding
 ;; GLOB patterns. Of course most of the work is done by FNMATCH.
-(defun dir-matches (path &optional dir)
+(defun dir-matches (path &key dir escape)
   "Takes a PATH, which is a list of strings which are path elements, usually
 with GLOB patterns, and a directory DIR, which is a string directory path,
 without patterns, and returns a list of string paths that match the PATH in
@@ -466,17 +482,19 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 			   (subseq p 0 (position
 					*directory-separator* p
 					:from-end t))
-			   (dir-entry-name f)))
-		     (fnmatch p (dir-entry-name f))))
+			   (dir-entry-name f) :escape escape))
+		     (fnmatch p (dir-entry-name f) :escape escape)))
            :when (= (length path) 1)
 	     :append (list (squip-dir dir f))
            :else :if (is-really-a-directory dir f)
-	     :append (dir-matches (cdr path) (squip-dir dir f))))))
+	     :append (dir-matches (cdr path)
+				  :dir (squip-dir dir f)
+				  :escape escape)))))
 
 (defparameter *dir-sep-string* (string *directory-separator*))
 
-(defun glob (pattern &key mark-directories escape sort braces (tilde t) twiddle
-		       limit)
+(defun glob (pattern &key mark-directories (escape t) sort braces (tilde t)
+		       twiddle limit)
   "PATTERN is a shell pattern as matched by FNMATCH.
   MARK-DIRECTORIES true, means put a slash at the end of directories.
   ESCAPE true, means allow \\ to escape the meaning of special characters.
@@ -485,7 +503,7 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
   TILDE true, means allow tilde processing, which gets users home directories.
   TWIDDLE is a synonym for TILDE.
   LIMIT as an integer, means limit the number of pathnames to LIMIT."
-  (declare (ignore mark-directories escape sort braces limit))
+  (declare (ignore mark-directories sort braces limit))
   (setf tilde (or tilde twiddle))
   (let* ((expanded-pattern (if tilde (expand-tilde pattern) pattern))
 	 (path (split-sequence *directory-separator* expanded-pattern
@@ -494,7 +512,7 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 		*dir-sep-string*)))
     (when (trailing-directory-p expanded-pattern)
       (rplaca (last path) (s+ (car (last path)) *dir-sep-string*)))
-    (dir-matches path dir)))
+    (dir-matches path :dir dir :escape escape)))
 
 ;; Despite Tim Waugh's <twaugh@redhat.com> wordexp manifesto
 ;; <http://cyberelk.net/tim/articles/cmdline/>, "When is a command line not a
