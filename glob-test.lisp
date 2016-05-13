@@ -102,6 +102,15 @@
   (fnmatch "[/\\]*" "/foo")
   )
 
+(deftests (fnmatch-escape)
+  (fnmatch "foo*bar" "foo\\*bar")
+  (fnmatch "foo\\*bar" "foo*bar")
+  (not (fnmatch "foo\\*bar" "foo*bar" :escape nil))
+  (fnmatch "foo\\?bar" "foo?bar")
+  (not (fnmatch "foo\\?bar" "foo?bar" :escape nil))
+  (fnmatch "foo\\?bar" "foo\\?bar" :escape nil)
+  )
+
 (cffi:defcstruct foreign-glob-t
   (gl_pathc nos:size-t)
   (gl_matchc :int)
@@ -189,7 +198,8 @@
 )
 
 (deftests (glob-all)
-  fnmatch-strings fnmatch-qmark fmatch-charset fnmatch-star glob)
+  fnmatch-strings fnmatch-qmark fmatch-charset fnmatch-star fnmatch-escape
+  glob)
 
 (defun run ()
   (run-group-name 'glob-all :verbose t))
