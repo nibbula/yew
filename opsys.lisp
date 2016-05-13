@@ -128,6 +128,7 @@
 
    ;; filesystems
    #:mounted-filesystems
+   #:mount-point-of-file
 
    ;; terminals
    #:file-handle-terminal-p
@@ -862,7 +863,8 @@ available."
 
 ;; System independant interface?
 
-#+unix (import 'os-unix:mounted-filesystems)
+#+unix (import '(os-unix:mounted-filesystems
+		 os-unix:mount-point-of-file))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ttys

@@ -318,6 +318,7 @@
 
    #:getmntinfo
    #:mounted-filesystems
+   #:mount-point-of-file
 
    ;; Terminal things (which don't need to be in :termios)
    #:isatty
@@ -1029,13 +1030,33 @@ the current 'C' environment."
 ;; (time (do ((i 0 (+ i 1))) ((> i 50000)) (vv "TERM")))
 
 #+(or sbcl cmu abcl)
+(defcfun ("unsetenv" real-unsetenv) :int (name :string))
+
+(defun unsetenv (var)
+  "Remove the environtment variable named VAR."
+  (declare (type string-designator var))
+  #+clisp (setf (ext:getenv var) nil)	; @@@ guessing?
+  #+excl (setf (sys::getenv var) nil)	; @@@ guessing?
+  #+ccl (syscall (ccl::unsetenv var))
+  #+(or sbcl cmu abcl ecl) (syscall (real-unsetenv var))
+  #+lispworks (hcl:unsetenv var)
+  #-(or clisp openmcl excl sbcl ecl cmu lispworks abcl)
+  (declare (ignore var))
+  #-(or clisp openmcl excl sbcl ecl cmu lispworks abcl)
+  (missing-implementation 'unsetenv))
+
+#+(or sbcl cmu abcl)
 (defcfun ("setenv" real-setenv) :int
   (name :string) (value :string) (overwrite :int))
 
 (defun setenv (var value)
-  "Set the environtment variable named VAR to the string VALUE."
+  "Set the environtment variable named VAR to the string VALUE. If VALUE is
+NIL, unset the VAR, using unsetenv."
   (declare (type string-designator var)
-	   (type string value))
+	   (type (or string null) value))
+  (when (not value)
+    (unsetenv var)
+    (return-from setenv value))
   #+clisp (setf (ext:getenv var) value)
   #+openmcl (syscall (ccl::setenv var value))
   #+excl (setf (sys::getenv var) value)
@@ -1054,22 +1075,6 @@ the current 'C' environment."
 
 (defsetf environment-variable setenv
     "Set the environtment variable named VAR to the string VALUE.")
-
-#+(or sbcl cmu abcl)
-(defcfun ("unsetenv" real-unsetenv) :int (name :string))
-
-(defun unsetenv (var)
-  "Remove the environtment variable named VAR."
-  (declare (type string-designator var))
-  #+clisp (setf (ext:getenv var) nil)	; @@@ guessing?
-  #+excl (setf (sys::getenv var) nil)	; @@@ guessing?
-  #+ccl (syscall (ccl::unsetenv var))
-  #+(or sbcl cmu abcl ecl) (syscall (real-unsetenv var))
-  #+lispworks (hcl:unsetenv var)
-  #-(or clisp openmcl excl sbcl ecl cmu lispworks abcl)
-  (declare (ignore var))
-  #-(or clisp openmcl excl sbcl ecl cmu lispworks abcl)
-  (missing-implementation 'unsetenv))
 
 ;; sysctl
 ;;
@@ -1858,17 +1863,17 @@ if not given."
 ;; Using the root "/" is kind of bogus, because it can depend on the 
 ;; but since we're using it to get the . This is where grovelling the 
 ;; MAXPATHLEN
-(defun get-path-max () (pathconf "/" +PC-PATH-MAX+))
 (defparameter *path-max* nil
   "Maximum number of bytes in a path.")
+(defun get-path-max ()
+  (or *path-max*
+      (setf *path-max* (pathconf "/" +PC-PATH-MAX+))))
 
 (defun libc-getcwd ()
   "Return the full path of the current working directory as a string, using the
 C library function getcwd."
-  (when (not *path-max*)
-    (setf *path-max* (get-path-max)))
-  (let ((cwd (with-foreign-pointer-as-string (s *path-max*)
-	       (foreign-string-to-lisp (real-getcwd s *path-max*)))))
+  (let ((cwd (with-foreign-pointer-as-string (s (get-path-max))
+	       (foreign-string-to-lisp (real-getcwd s (get-path-max))))))
     (if (not cwd)		; hopefully it's still valid
 	(error 'posix-error :error-code *errno* :format-control "getcwd")
 	cwd)))
@@ -2900,8 +2905,8 @@ for long."
 (defun readlink (filename)
   "Return the name which the symbolic link FILENAME points to. Return NIL if
 it is not a symbolic link."
-  (with-foreign-pointer (buf *path-max*)
-    (let ((result (real-readlink filename buf *path-max*)))
+  (with-foreign-pointer (buf (get-path-max))
+    (let ((result (real-readlink filename buf (get-path-max))))
       (if (> result 0)
 	  (subseq (foreign-string-to-lisp buf) 0 result)
 	  (let ((err *errno*))		; in case there are hidden syscalls
@@ -3353,24 +3358,6 @@ it is not a symbolic link."
 ;)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; System Commands?
-
-(defun member-of (group)
-  "Return true if the current user is a member of GROUP."
-  (position group (get-groups)))
-
-(defun is-executable (path &optional user)
-  "Return true if the PATH is executable by the UID. UID defaults to the
-current effective user."
-  (let ((s (stat path)))
-    (or
-     (is-other-executable (file-status-mode s))
-     (and (is-user-executable (file-status-mode s))
-	  (= (file-status-uid s) (or user (setf user (geteuid)))))
-     (and (is-group-executable (file-status-mode s))
-	  (member-of (file-status-gid s))))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Processes
 
 ; XXX This is really all #+darwin
@@ -3639,24 +3626,39 @@ environment list, which defaults to the current 'C' environ variable."
 
 ;; setgroups?
 
-;; Kernel process filter types
-(defconstant +KERN-PROC-ALL+ 	  0)	; everything
-(defconstant +KERN-PROC-PID+ 	  1)	; by process id		 (pid_t)
-(defconstant +KERN-PROC-PGRP+ 	  2)	; by process group id	 (pid_t)
-(defconstant +KERN-PROC-SESSION+  3)	; by session of pid	 (pid_t)
-(defconstant +KERN-PROC-TTY+ 	  4)	; by controlling tty	 (dev_t)
-(defconstant +KERN-PROC-UID+ 	  5)	; by effective uid	 (uid_t)
-(defconstant +KERN-PROC-RUID+ 	  6)	; by real uid		 (uid_t)
-(defconstant +KERN-PROC-LCID+ 	  7)	; by login context id	 (uid_t)
-
+#+linux
+(defun get-process-command-line (&optional (pid (getpid)))
+  (flet ((read-an-arg (stm)
+	   "Mostly for de-indentation"
+	   (with-output-to-string (str)
+	     (loop :with c
+		:while (and (setf c (read-char stm nil nil))
+			    (not (zerop (char-code c))))
+		:do (princ c str)))))
+    (with-open-file (stm (s+ "/proc/" pid "/cmdline"))
+      (apply #'vector
+	     (loop :with s
+		:while (not (zerop (length (setf s (read-an-arg stm)))))
+		:collect s)))))
 
 #+darwin
-(defparameter *proc-retry-count* 100
+(progn
+  ;; Kernel process filter types
+  (defconstant +KERN-PROC-ALL+	   0) ; everything
+  (defconstant +KERN-PROC-PID+	   1) ; by process id		 (pid_t)
+  (defconstant +KERN-PROC-PGRP+	   2) ; by process group id	 (pid_t)
+  (defconstant +KERN-PROC-SESSION+ 3) ; by session of pid	 (pid_t)
+  (defconstant +KERN-PROC-TTY+	   4) ; by controlling tty	 (dev_t)
+  (defconstant +KERN-PROC-UID+	   5) ; by effective uid	 (uid_t)
+  (defconstant +KERN-PROC-RUID+	   6) ; by real uid		 (uid_t)
+  (defconstant +KERN-PROC-LCID+	   7) ; by login context id	 (uid_t)
+
+  (defparameter *proc-retry-count* 100
   "How many time to retry getting the process list before failing.")
-#+darwin
-(defparameter *process-list-fudge* 10
-  "How many extra items to allocate in the process list.")
-	     
+
+  (defparameter *process-list-fudge* 10
+    "How many extra items to allocate in the process list."))
+
 (defun process-list ()
   #+darwin
   ;; The MIB should look like:
@@ -3766,7 +3768,26 @@ environment list, which defaults to the current 'C' environ variable."
 		  :usage nil
 		  :command (foreign-string-to-lisp p_comm :max-chars 16)
 		  :args nil)))))
-	(foreign-free proc-list)))))
+	(foreign-free proc-list))))
+  #+linux
+  (loop :with line
+     :for p :in (read-directory :dir "/proc/")
+     :when (every #'digit-char-p p)
+       :collect
+       (with-open-file (stm (s+ "/proc/" p "/stat"))
+	 (setf line (split-sequence #\space (read-line stm)))
+	 (make-os-process
+	  :id (parse-integer p)
+	  :parent-id (parse-integer (elt line 3))
+	  :group-id (parse-integer (elt line 4))
+	  :terminal (parse-integer (elt line 6))
+	  :text-size (parse-integer (elt line 22))
+	  :resident-size (parse-integer (elt line 23))
+	  :percent-cpu nil
+	  :nice-level (parse-integer (elt line 18))
+	  :usage nil
+	  :command (elt line 1)
+	  :args (get-process-command-line)))))
 
 #|
 Trying to simplify our lives, by just using our own FFI versions, above.
@@ -3857,6 +3878,24 @@ the current process."
 
 ;; setpriority
 ;; getrlimit/setrlimit
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; System Commands?
+
+(defun member-of (group)
+  "Return true if the current user is a member of GROUP."
+  (position group (get-groups)))
+
+(defun is-executable (path &optional user)
+  "Return true if the PATH is executable by the UID. UID defaults to the
+current effective user."
+  (let ((s (stat path)))
+    (or
+     (is-other-executable (file-status-mode s))
+     (and (is-user-executable (file-status-mode s))
+	  (= (file-status-uid s) (or user (setf user (geteuid)))))
+     (and (is-group-executable (file-status-mode s))
+	  (member-of (file-status-gid s))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; IPC
@@ -4414,20 +4453,24 @@ available."
   (f_reserved4   :uint32 :count 8)      ; reserved for future use
   )
 
+;; @@@ 32 bit only?
+(defctype fsblkcnt-t :unsigned-long)
+(defctype fsword-t :int)
+
 #+(and linux 32-bit-target)
 (defcstruct foreign-statfs
-  (f_type    :int32)
-  (f_bsize   :int32)
-  (f_blocks  :uint64)
-  (f_bfree   :uint64)
-  (f_bavail  :uint64)
-  (f_files   :uint64)
-  (f_ffree   :uint64)
-  (f_fsid    :int32 :count 2)
-  (f_namelen :int32)
-  (f_frsize  :int32)
-  (f_flags   :int32)
-  (f_spare   :int32 :count 4))
+  (f_type    fsword-t)
+  (f_bsize   fsword-t)
+  (f_blocks  fsblkcnt-t)
+  (f_bfree   fsblkcnt-t)
+  (f_bavail  fsblkcnt-t)
+  (f_files   fsblkcnt-t)
+  (f_ffree   fsblkcnt-t)
+  (f_fsid    fsword-t :count 2)
+  (f_namelen fsword-t)
+  (f_frsize  fsword-t)
+  (f_flags   fsword-t)
+  (f_spare   fsword-t :count 4))
 
 #+(and linux 64-bit-target)
 (defcstruct foreign-statfs
@@ -4699,7 +4742,9 @@ available."
     (when line
       (setf words
 	    (split-sequence nil line
-			    :test (_ (or (char= _ #\space) (char= _ #\tab)))))
+			    :test (λ (a b)
+				     (declare (ignore a))
+				     (or (char= b #\space) (char= b #\tab)))))
       (make-mount-entry
        :fsname (first words)
        :dir    (second words)
@@ -4733,7 +4778,33 @@ available."
 	  :total-bytes     (* (statfs-bsize fs) (statfs-blocks fs))
 	  :bytes-free	   (* (statfs-bsize fs) (statfs-bfree fs))
 	  :bytes-available (* (statfs-bsize fs) (statfs-bavail fs)))))))
-  
+
+(defun mount-point-of-file (file)
+  "Try to find the mount of FILE. This might not always be right."
+  #+linux
+  ;; I suppose this could work on other systems too, but it's certainly
+  ;; more efficient and effective to get it from the statfs.
+  (let (longest len (max-len 0) (real-name (safe-namestring (truename file))))
+    (loop :for f :in
+       (remove-if
+	(_ (not (begins-with (car _) real-name)))
+	(mapcar (_ (cons (filesystem-info-mount-point _)
+			 (filesystem-info-device-name _)))
+		(mounted-filesystems)))
+       :do
+       (when (> (setf len (length (car f))) max-len)
+	 (setf longest f max-len len)))
+    longest)
+  #+darwin
+  (handler-case
+      (let ((s (statfs file)))
+	(cons (statfs-mntonname s) (statfs-mntfromname s)))
+    (os-unix:posix-error (c)
+      (if (find (opsys-error-code c)
+		`(,os-unix:+EPERM+ ,os-unix:+ENOENT+ ,os-unix:+EACCES+))
+	  nil
+	  (list (opsys-error-code c) c)))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ttys
 
