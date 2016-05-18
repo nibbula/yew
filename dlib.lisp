@@ -1502,16 +1502,25 @@ returning them as uninterned symbols."
       (when pkg
 	(delete-package pkg)))))
 
+(defun package-robust-intern (s p)
+  "Return S interned in package P, or S interned in *PACKAGE*, or S as an
+un-interned symbol."
+  (let ((p (find-package p)))
+    (if p
+	(multiple-value-bind (sym status) (find-symbol s p)
+	  (if status
+	      sym
+	      (multiple-value-bind (sym status)
+		  (find-symbol s *package*)
+		(if status sym (make-symbol s)))))
+	(multiple-value-bind (sym status) (find-symbol s *package*)
+	  (if status sym (make-symbol s))))))
+
 (defun package-robust-read-from-string (string
 					&optional (eof-error-p t) eof-value
 					&key (start 0) end preserve-whitespace)
   "Read from a string treating unknown symbols or packages as uninterned."
-  (let ((*read-intern*
-	 #'(lambda (s p)
-	     (let ((p (find-package p)))
-	       (or (and p (find-symbol s p))
-		   (find-symbol s *package*)
-		   (make-symbol s))))))
+  (let ((*read-intern* #'package-robust-intern))
     (read-from-string string eof-error-p eof-value
 		      :start start :end end
 		      :preserve-whitespace preserve-whitespace)))
@@ -1519,12 +1528,7 @@ returning them as uninterned symbols."
 (defun package-robust-read (&optional (stream *standard-input*)
 			      (eof-error-p t) (eof-value nil) (recursive-p nil))
   "Read treating unknown symbols or packages as uninterned."
-  (let ((*read-intern*
-	 #'(lambda (s p)
-	     (let ((p (find-package p)))
-	       (or (and p (find-symbol s p))
-		   (find-symbol s *package*)
-		   (make-symbol s))))))
+  (let ((*read-intern* #'package-robust-intern))
     (read stream eof-error-p eof-value recursive-p)))
 
 #+sbcl (declaim (sb-ext:unmuffle-conditions style-warning))
