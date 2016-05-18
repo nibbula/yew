@@ -7,6 +7,11 @@
   (:use :cl :dlib :dlib-misc :stretchy :opsys :char-util :keymap :cffi
 	:curses :inator)
   (:export
+   #:*in-curses*
+   #:*device*
+   #:*has-color*
+   #:*has-mouse*
+   #:*interactive*
    #:start-curses
    #:end-curses
    #:with-curses
@@ -19,10 +24,10 @@
    #:with-fg
    #:with-bg
    #:with-color
+   #:set-colors
    #:get-char
    #:interactively
    #:non-interactively
-   #:*interactive*
    #:pause
    #:add-char
    #:add-string
@@ -44,6 +49,12 @@
 (defvar *device* nil
   "A device to do run a curses program on.")
 
+(defvar *has-color* nil
+  "True if the device has color.")
+
+(defvar *has-mouse* nil
+  "True if the device has a mouse or pointer of some sort.")
+
 (defun start-curses ()
   (when (not *in-curses*)
     (setf *in-curses* t)
@@ -64,7 +75,11 @@
     (leaveok curses:*stdscr* 0)
     (scrollok curses:*stdscr* 0)
     (curs-set 1)
-    (init-colors)))
+    (init-colors)
+
+    ;; See if we can get mouse events
+    (setf *has-mouse*
+	  (= (mousemask curses:+ALL-MOUSE-EVENTS+ (cffi:null-pointer)) 0))))
 
 (defun end-curses ()
   (when *in-curses*
@@ -116,7 +131,7 @@
 ;; Call INIT-COLORS first, then say, for example:
 ;; (setattr (color-attr +COLOR-YELLOW+ +COLOR-BLUE+))
 ;; or
-;; (set-color (color-index +COLOR-YELLOW+ +COLOR-BLUE+))
+;; (set-colors (color-index +COLOR-YELLOW+ +COLOR-BLUE+))
 
 (defparameter *color-table* nil
   "Table of color pair numbers.")
@@ -128,12 +143,14 @@
     (setf *color-table* (make-array (list ncolors ncolors)))
     (if (= (has-colors) 1)
     	(prog ((pair 0))
+	   (setf *has-color* t)
 	   (loop :for fg :from (- ncolors 1) :downto 0 :do
 	      (loop :for bg :from 0 :below ncolors :do
 		 (when (> pair 0) ;; Pair 0 defaults to WHITE on BLACK
 		   (init-pair pair fg bg))
 		 (setf (aref *color-table* fg bg) pair)
-		 (incf pair))))))
+		 (incf pair))))
+	(setf *has-color* nil)))
   (bkgd (color-pair 0)))
 
 (defun color-index (fg bg)
@@ -188,6 +205,14 @@ foreground FG and background BG."
        (color-set (fui:color-index +color-white+ +color-black+)
 		  (cffi:null-pointer))
        ,result)))
+
+(defun set-colors (fg bg)
+  (assert (and (or (integerp fg) (keywordp fg))
+	       (or (integerp bg) (keywordp bg))))
+  (color-set
+   (color-index (if (integerp fg) fg (color-number fg))
+		(if (integerp bg) bg (color-number bg)))
+   (cffi:null-pointer)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Input
