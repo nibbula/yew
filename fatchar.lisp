@@ -11,6 +11,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
   (:use :cl :stretchy :dlib)
   (:export
    #:fatchar
+   #:fatchar-p
    #:make-fatchar
    #:fatchar-c #:fatchar-fg #:fatchar-bg #:fatchar-line #:fatchar-attrs
    #:fatchar-string
