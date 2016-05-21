@@ -223,7 +223,7 @@ foreground FG and background BG."
     (cond
       ((> cc #xff)
        (function-key cc))
-      ((and (integerp cc) (plusp cc))
+      ((and (integerp cc) (not (minusp cc)))
        (code-char cc))
       (t ;; Just return a negative
        cc))))
