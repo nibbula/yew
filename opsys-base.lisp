@@ -160,7 +160,7 @@
 (defun quote-filename (namestring)
   "Try to quote a file name so none of it's characters are noticed specially
 by the Lisp pathname monster. This is useful just before passing strings to
-standard functions that take a pathname designator."
+standard functions that take a pathname designator, such as OPEN."
   (with-output-to-string (str)
     (loop :for c :across namestring :do
        (when (position c *need-quoting*)

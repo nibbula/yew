@@ -726,10 +726,10 @@ if there isn't one."
   (missing-implementation 'run-program)
 )
 
-(defun get-groups ()
-  "Return an array of group IDs for the current process."
-  ;; @@@@
-  )
+;; (defun get-groups ()
+;;   "Return an array of group IDs for the current process."
+;;   ;; @@@@
+;;   )
 
 #+unix (import '(os-unix:suspend-process
 		 os-unix:resume-process
