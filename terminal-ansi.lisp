@@ -85,7 +85,8 @@ require terminal driver support."))
 		(typeahead-pos tty) 0)))))
 
 (defmethod terminal-get-cursor-position ((tty terminal-ansi))
-  "Try to somehow get the row of the screen the cursor is on."
+  "Try to somehow get the row of the screen the cursor is on. Returns the
+two values ROW and COLUMN."
   (eat-typeahead tty)
   (let ((row 1) (col 1) sep
 	(result (tt-report tty #\R "~c[6n" #\escape)))

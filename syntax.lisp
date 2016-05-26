@@ -2,8 +2,6 @@
 ;; syntax.lisp - Generic language syntax
 ;;
 
-;; $Revision: 1.1 $
-
 (defpackage :syntax
   (:documentation "Generic language syntax")
   (:use :cl :dlib)
@@ -51,6 +49,7 @@
 by SYNTAX."))
 
 (defun guess-language (stream)
+  "Guess the language used in a stream."
   (loop :for l :in *syntaxes*
      :if (guess-syntax l stream)
      :return :it))

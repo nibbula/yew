@@ -9,8 +9,8 @@
   (:documentation
    "This is a little scaffolding for making a certain style of applet. The style
 that's encouraged is what one might call ‘emacs-like’. I consider this as a
-‘lesser’ Frobulator, in other words a style of interaction and editing that can
-be applied to many types of data.
+‘lesser’ Frobulator, in other words a style of interaction and editing that
+can be applied to many types of data.
 
 To make an app, you subclass INATOR and provide editing, input and display
 methods. You can also provide a custom keymap. You can probably get by with

@@ -2,8 +2,6 @@
 ;; syntax-lisp.lisp - Things for dealing with the syntax of Lisp code
 ;;
 
-;; $Revision: 1.1 $
-
 (defpackage :syntax-lisp
   (:documentation "Things for dealing with the syntax of Lisp code.")
   (:use :cl :dlib :syntax)
@@ -14,9 +12,9 @@
    ))
 (in-package :syntax-lisp)
 
-;; The funny thing about Lisp is, you can't read entirely perfectly it without
-;; also evaluating it. That means that "read-only" lexical analysis will fail
-;; for programs that modify the syntax. To read it perfectly without
+;; The funny thing about Lisp is, you can't read it entirely perfectly it
+;; without also evaluating it. That means that "read-only" lexical analysis
+;; will fail for programs that modify the syntax. To read it perfectly without
 ;; potentially modifying the current environment, you might have to have a
 ;; separate evaluation environment, or an undo-able environment.
 ;;
@@ -212,7 +210,7 @@ not provided, it defaults to the end of the string."
 
 (defun fake-read (&key (stream *standard-input*)
 		    (eof-error-p t) (eof-value nil) (recursive-p nil))
-  "Pretend to do something similar to READ, but don't. This like if
+  "Pretend to do something similar to READ, but don't. This is like if
 READ with *read-suppress* returned objects, but didn't handle any really
 gritty details of a Lisp reader. The most important thing is: don't INTERN
 any new symbols, or fail on unknown packages or symbols."

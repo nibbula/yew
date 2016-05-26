@@ -13,7 +13,11 @@
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :licence            "None"
-    :long-description   "Putative Muca (A very simple interface to CVS)"
+    :long-description
+    "Putative Muca. A simple interface to revision control software.
+It doesn't do anything fancy. It just saves you from typing the commands.
+It has an extremely limited vocabulary.
+It currently knows how to talk to Git, SVN, CVS an Mercurial."
     :depends-on (:dlib :dlib-misc :opsys :keymap :char-util :curses :tiny-rl
 		 :completion :fui :lish :pager)
     :components

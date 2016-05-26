@@ -126,7 +126,9 @@ made a terminal of the given TYPE."))
   (:documentation "Get the window size."))
 
 (defgeneric terminal-get-cursor-position (terminal)
-  (:documentation "Try to somehow get the row of the screen the cursor is on."))
+  (:documentation
+   "Try to somehow get the row of the screen the cursor is on. Returns the
+two values ROW and COLUMN."))
 
 (defgeneric terminal-start (terminal)
   (:documentation
