@@ -81,6 +81,7 @@
    #:change-directory
    #:current-directory
    #:in-directory
+   #:with-working-directory
    #:make-directory
    #:delete-directory
    #:read-directory
@@ -402,13 +403,15 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
 
 (defmacro in-directory ((dir) &body body)
   "Evaluate the body with the current directory set to DIR."
-  (let ((%old-dir (gensym "old-dir")))
-  `(let ((,%old-dir (current-directory)))
-     (unwind-protect
-       (progn
-         (change-directory ,dir)
-         ,@body)
-       (change-directory ,%old-dir)))))
+  (let ((old-dir (gensym "old-dir")))
+    `(let ((,old-dir (current-directory)))
+       (unwind-protect
+	  (progn
+	    (change-directory ,dir)
+	    ,@body)
+	 (change-directory ,old-dir)))))
+
+(defalias 'with-working-directory 'in-directory)
 
 #+clisp (eval-when (:compile-toplevel :load-toplevel :execute)
 	  (if (or ;; They keep changing this shit!!
