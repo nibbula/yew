@@ -2017,7 +2017,7 @@ command line.")
 	  (tt-write-char e #\newline)
 	  (when (not (equalp #\y chr))
 	    (return-from print-completions-over))))
-      (print-columns comp-list
+      (print-columns comp-list :smush t
 		     :columns (terminal-window-columns
 			       (line-editor-terminal e))))
     (setf (screen-col e) 0)
@@ -2042,6 +2042,50 @@ command line.")
 	 back-adjust
 	 (x (screen-col e))
 	 (y (screen-row e))
+	 end-x end-y
+	 row-limit)
+    ;;(multiple-value-setq (y x) (terminal-get-cursor-position term))
+    (multiple-value-setq (content-rows content-cols column-size)
+      (print-columns-sizer comp-list :columns cols))
+    ;; account for newlines in the content
+    (write-char #\newline)
+    (tt-erase-below e) (tt-finish-output e)
+
+    (setf row-limit
+	  (if (and (< (last-completion-not-unique-count e) 2)
+		   (< short-limit rows))
+	      short-limit
+	      (- (- rows 2) (prompt-height e)))
+	  content-rows (print-columns comp-list :columns cols
+				      :smush t :row-limit row-limit)
+	  real-content-rows (+ content-rows
+			       (apply #'+ (mapcar (_ (count #\newline _))
+						  comp-list)))
+	  rows-output (min real-content-rows row-limit))
+    (when (plusp (- content-rows rows-output))
+      (format t "[~d more lines]" (- content-rows row-limit)))
+    (multiple-value-setq (end-y end-x) (terminal-get-cursor-position term))
+    (setf rows-scrolled (max 0 (- (+ y (1+ rows-output)) (1- rows)))
+	  back-adjust (+ (- end-y y) rows-scrolled))
+    (tt-up e back-adjust)
+    (tt-beginning-of-line e)
+    (tt-move-to-col e x)
+    (setf (screen-row e) (- end-y back-adjust)
+	  (screen-col e) x)))
+
+#|
+(defun OLD-print-completions-under (e comp-list)
+  (let* ((term (line-editor-terminal e))
+	 (rows (terminal-window-rows term))
+	 (cols (terminal-window-columns term))
+	 (short-limit (truncate rows *completion-short-divisor*))
+	 content-rows content-cols column-size
+	 real-content-rows
+	 rows-output
+	 rows-scrolled
+	 back-adjust
+	 (x (screen-col e))
+	 (y (screen-row e))
 	 end-x end-y)
     ;;(multiple-value-setq (y x) (terminal-get-cursor-position term))
     (multiple-value-setq (content-rows content-cols column-size)
@@ -2055,7 +2099,7 @@ command line.")
     (if (<= real-content-rows short-limit)
 	;; It's short. Just print it.
 	(progn
-	  (print-columns comp-list :columns cols)
+	  (print-columns comp-list :columns cols :smush t)
 	  (setf rows-output real-content-rows))
 	(if (and (< (last-completion-not-unique-count e) 2)
 		 (< short-limit rows))
@@ -2096,6 +2140,7 @@ command line.")
     (tt-move-to-col e x)
     (setf (screen-row e) (- end-y back-adjust)
 	  (screen-col e) x)))
+|#
 
 (defun show-completions (e)
   (with-slots (completion-func buf point) e

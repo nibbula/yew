@@ -476,11 +476,119 @@ is printed. This is useful for printing, e.g. slots of a structure or class."
 		   (apply f (list object))
 		   (symbol-value f))))))
 
+(defparameter *inter-space* 2)
+
+(defun smush-output (list cols height format-char stream row-limit)
+  (loop
+     :with len = (length list)
+     :and format-str = (format nil "~~v~c" format-char)
+     :and a = (make-array (length list) :initial-contents list)
+     :and limit = (if row-limit (min height row-limit) height)
+     :for i :from 0 :below limit :do
+     (loop
+	:with #| first-time = t :and |# n
+	:for c :in cols
+	:for j = 0 :then (1+ j)
+	:do
+	;; (if first-time
+	;;     (setf first-time nil)
+	;;     (write-char #\space))
+	;; (format t "~vs" c (aref a (+ (* i height) j))))))
+	(setf n (+ (* j height) i))
+	;; (if (< n len)
+	;;     ;;(format t "a[~d]" n)
+	;;     (format t "~va" c (aref a n))
+	;;     (format t "□")))
+	(when (< n len)
+	  (format stream format-str c (aref a n))))
+     (terpri stream)))
+
+(defun smush-columns (list cols rows)
+  (let (col-list extra)
+    (loop
+       :with l = list
+       :for i :from 0 :below cols :do
+       (push
+	(loop :with j = 0
+	   :maximize (+ (length (car l))
+			(if (= i (1- cols)) 0 *inter-space*))
+	   :do
+	   (setf l (cdr l))
+	   (incf j)
+	   (when (and (not l) (< j rows))
+	     (setf extra (- rows j)))
+	   :while (and l (< j rows)))
+	col-list))
+    (values (nreverse col-list) extra)))
+
+(defun print-columns-smush (list &key (columns 80) (stream *standard-output*)
+				   (format-char #\a) prefix suffix
+				   smush row-limit)
+  (declare (ignore prefix suffix smush)) ;; @@@
+  (let ((screen-width columns)
+	;; (terminal:with-terminal (tty 'terminal-ansi:terminal-ansi)
+	;;    (terminal:terminal-window-columns tty)))
+	(len 0)
+	(max-len 0)
+	(min-len most-positive-fixnum)
+	(area 0)
+	max-area
+	cols rows
+	new-rows new-cols
+	col-list
+	last-col-list last-new-rows
+	extra
+	)
+    ;; Compute the length, maximum item length, and minimum area.
+    (loop :with l
+       :for i :in list :do
+       (setf l (+ (length i) *inter-space*)
+	     max-len (max max-len l)
+	     min-len (min min-len l))
+       (incf area l)
+       (incf len))
+    (setf max-area (* max-len len))
+    (dbug "List length:  ~d~%" len)
+    (dbug "Minimum area: ~d ~d~%" area (ceiling area screen-width))
+    (dbug "Max item len: ~d~%" max-len)
+    (dbug "Min item len: ~d~%" min-len)
+    (dbug "Maxium area : ~d ~d~%" max-area
+    	    (floor max-area screen-width))
+
+    (setf cols (max 1 (floor screen-width max-len))
+	  rows (ceiling len cols)
+	  new-rows rows
+	  new-cols cols
+	  col-list (make-list cols :initial-element max-len)
+	  last-col-list col-list
+	  last-new-rows new-rows)
+
+    ;;(format t "col-list ~a~%" col-list)
+    (loop
+       :while (and (< (apply #'+ col-list)
+		      #| (- screen-width min-len) |#
+		      screen-width)
+		   #| (and extra (> extra 2)) |#
+		   (> new-rows 1))
+       :do
+       (setf last-col-list col-list
+	     last-new-rows new-rows)
+       (if (and extra (> extra 0))
+	   (decf new-rows #| (max (truncate extra 2) 1) |# )
+	   (incf new-cols))
+       (multiple-value-setq (col-list extra)
+	 (smush-columns list new-cols new-rows))
+       ;;(format t "Squish 1: ~d x ~d (~d)~25t~a~%" cols rows extra col-list)
+       )
+    ;; Output the last good setup
+    (smush-output list last-col-list last-new-rows format-char stream row-limit)
+    last-new-rows))
+
 (defun print-columns-sizer (list &key (columns 80) (stream *standard-output*)
-			     (format-char #\a) prefix suffix smush)
+			     (format-char #\a) prefix suffix smush row-limit)
   "Return how many rows it might take to print list. Also returns the number of
 columns and the maximum width of a column."
-  (declare (ignore stream smush))
+  (declare (ignore stream smush row-limit))
   (let* ((len (length list))
 	 (format-str (format nil "~~~c" format-char))
 	 (max-len
@@ -519,19 +627,22 @@ from LIST in column-major order."
 
 (defun print-columns (list &rest keys
 		      &key (columns 80) (stream *standard-output*)
-			(format-char #\a) prefix suffix smush)
+			(format-char #\a) prefix suffix smush row-limit)
   "Print the LIST on STREAM with as many columns as will fit in COLUMNS fixed
 width character cells. Items are sorted down the columns, then across.
 FORMAT-CHAR is used to print the items, as with FORMAT.
 PREFIX is a string to prepend to each row.
 SUFFIX is a string to append to each row."
-  (declare (ignore columns smush))
+  (declare (ignore columns))
+  (when smush
+    (return-from print-columns (apply #'print-columns-smush list keys)))
   (multiple-value-bind (rows cols max-len)
       (apply #'print-columns-sizer list keys)
     (let* ((format-str (format nil "~~v~c" format-char))
-	   (a (print-columns-array list rows cols)))
+	   (a (print-columns-array list rows cols))
+	   (limit (if row-limit (min rows row-limit) rows)))
       ;; output the array
-      (loop :for r :from 0 :below rows
+      (loop :for r :from 0 :below limit
 	 :do
 	 (when prefix
 	   (write-string prefix stream))
@@ -549,7 +660,8 @@ SUFFIX is a string to append to each row."
 		     stream))))
 	 (when suffix
 	   (write-string suffix stream))
-	 (terpri stream)))))
+	 (terpri stream)))
+    rows))
 
 (defun OLD-print-columns (list &key (columns 80) (stream *standard-output*)
 			     (format-char #\a) prefix suffix)
@@ -692,7 +804,7 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
   (defparameter *emoji-spin-string* "🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚🕛"
     "Spin string with fancy emoji clock face characters.")
 
-  (defparameter *default-spin-string* *plain-spin-string*
+  (defvar *default-spin-string* *plain-spin-string*
     "The default spin string."))
 
 (defun spin (&optional (stream *standard-output*))
