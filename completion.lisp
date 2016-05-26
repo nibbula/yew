@@ -757,7 +757,10 @@ defaults to the current package. Return how many symbols there were."
 		      (funcall extra-test file dir-part)))
 	 (push (dir-entry-name file) result-list)
 	 (incf count)))
-    (setq result-list (sort result-list #'string-lessp))
+    ;;(setq result-list (sort result-list #'string-lessp))
+    (locally
+	#+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+	(setq result-list (sort result-list #'string<)))
     (values result-list count)))
 
 ;; We have to assume the entire context is a filename. Shells that want to
