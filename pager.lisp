@@ -799,18 +799,21 @@ line : |----||-------||---------||---|
 	  (addstr str)))
       (show-span line))))
 
-(defun span-matches (span expr)
+(defun span-matches (expr span)
   "Return true if the plain text of a SPAN matches the EXPR."
   ;; This is probably wasteful and slow.
   (let ((line
 	 (with-output-to-string (str)
 	   (labels ((glom-span (s)
+		      ;;(format t "glomming ~s~%" s)
 		      (typecase s
 			(string (princ s str))
 			(list
-			 (loop :for e :in (cdr s) :do (glom-span e)))
+			 (loop :for e :in s :do (glom-span e)))
+			(symbol #| ignore |# )
 			(t (princ s str))))) ; probably a bit too DWIM-ish
 	     (glom-span span)))))
+    ;;(format t "line = ~s~%" line)
     (and (ppcre:all-matches expr line) t)))
 
 (defun filter-this (line)
@@ -901,8 +904,13 @@ line : |----||-------||---------||---|
     str))
 
 (defun ask (&optional prompt)
-  (ask-for :prompt prompt))
-;;  (tiny-rl:tiny-rl :prompt prompt :terminal-class 'terminal-curses))
+  ;;(ask-for :prompt prompt)
+  (move (1- curses:*lines*) 0)
+  (clrtoeol)
+  (tiny-rl:tiny-rl :prompt prompt
+		   :terminal-class 'terminal-curses:terminal-curses
+		   :accept-does-newline nil
+		   :context :pager))
 
 (defun search-line (str line)
   "Return true if LINE contains the string STR. LINE can be a string, or a
