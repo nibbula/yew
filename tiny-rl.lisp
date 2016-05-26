@@ -41,8 +41,11 @@
    #:line-editor-local-keymap
    #:show-history
    #:history-clear
+   #:*line-editor*
    #:*default-prompt*
-   #:*really-limit*
+   #:*completion-list-technique*
+   #:*completion-really-limit*
+   #:*completion-short-divisor*
    #:*normal-keymap*
    #:*ctlx-keymap*
    #:*escape-keymap*
@@ -256,9 +259,11 @@ anything important.")
 (defun default-output-prompt (e &optional (p nil prompt-supplied))
   "The default prompt output function. Prints *default-prompt* unless a ~
    prompt is supplied."
-  (let ((str (princ-to-string (if prompt-supplied p *default-prompt*))))
-    (editor-write-string e str)
-    str))
+  ;; (let ((str (princ-to-string (if prompt-supplied p *default-prompt*))))
+  ;;   (editor-write-string e str)
+  ;;   str))
+  (declare (ignore e))
+  (princ-to-string (if prompt-supplied p *default-prompt*)))
 
 (defparameter *normal-keymap* nil
   "The normal key for use in the line editor.")
@@ -357,6 +362,11 @@ anything important.")
     :initarg :prompt-func
     :initform nil
     :documentation "Function to call to output the prompt.")
+   (prompt-height
+    :accessor prompt-height
+    :initarg :prompt-height
+    :initform nil
+    :documentation "Height of the prompt in lines.")
    (completion-func
     :accessor completion-func
     :initarg :completion-func
@@ -384,12 +394,12 @@ anything important.")
     :initform nil
     :type boolean
     :documentation "True if the last command was a completion.")
-   (last-completion-not-unique
-    :accessor last-completion-not-unique
-    :initarg :last-completion-not-unique
-    :initform nil
-    :type boolean
-    :documentation "True if the last completion and was not unique.")
+   (last-completion-not-unique-count
+    :accessor last-completion-not-unique-count
+    :initarg :last-completion-not-unique-count
+    :initform 0
+    :type fixnum
+    :documentation "How many times the last completion and was not unique.")
    (need-to-redraw
     :accessor need-to-redraw
     :initarg :need-to-redraw
@@ -901,6 +911,7 @@ anything serious."
 (tt-alias tt-scroll-down n)
 (tt-alias tt-erase-to-eol)
 (tt-alias tt-erase-line)
+(tt-alias tt-erase-below)
 (tt-alias tt-clear)
 (tt-alias tt-home)
 (tt-alias tt-cursor-off)
@@ -1103,8 +1114,8 @@ Assumes S is already converted to display characters."
 	    (display-char e c))))))
 
 (defmacro without-messing-up-cursor ((e) &body body)
-  (let ((old-row (gensym))
-	(old-col (gensym)))
+  (let ((old-row (gensym "OLD-ROW"))
+	(old-col (gensym "OLD-COL")))
   `(let ((,old-row (screen-row ,e))
 	 (,old-col (screen-col ,e)))
      (prog1 ,@body
@@ -1299,7 +1310,7 @@ Updates the screen coordinates."
 |#
 
 (defun finish-all-output (e)
-  "Makes all output be in Finish."
+  "Makes all output be in Finnish."
   (when (not (environment-variable "EMACS")) ; XXX so wrong
     ;;#+ccl (ccl::auto-flush-interactive-streams) ;; Jiminy Crickets!
     (finish-output *standard-output*)
@@ -1312,36 +1323,41 @@ Updates the screen coordinates."
   )
 
 (defun do-prefix (e prompt-str)
-  "Output a prefix. The prefix should not span more than one line."
+  "Output a prefix."
   (finish-all-output e)
-  (tt-write-string e prompt-str)
-  ;;(finish-all-output e)
-  (tt-finish-output e)
-  ;; (eat-typeahead e)
-  (multiple-value-bind (row col)
-      (terminal-get-cursor-position (line-editor-terminal e))
+  (let (row col start-row start-col)
+    (multiple-value-setq (row col)
+      (terminal-get-cursor-position (line-editor-terminal e)))
+    (setf start-row row start-col col)
+    (tt-write-string e prompt-str)
+    ;;(finish-all-output e)
+    (tt-finish-output e)
+    ;; (eat-typeahead e)
+    (multiple-value-setq (row col)
+      (terminal-get-cursor-position (line-editor-terminal e)))
     (setf (screen-row e) row
 	  (screen-col e) col
 	  ;; save end of the prefix as the starting column
 	  (start-col e) col
-	  (start-row e) row)))
+	  (start-row e) row
+	  (prompt-height e) (- row start-row))
+    (log-message e "prompt-height = ~s" (prompt-height e))))
 
 (defun do-prompt (e prompt output-prompt-func &key only-last-line)
   "Output the prompt in a specified way."
 ;  (format t "e = ~w prompt = ~w output-prompt-func = ~w~%"
 ;	  e prompt output-prompt-func)
-  (let* ((s (with-output-to-string (*standard-output*)
-              (if (and output-prompt-func
-		       (or (functionp output-prompt-func)
-			   (fboundp output-prompt-func)))
-		  (progn
-		    (or (ignore-errors (funcall output-prompt-func e prompt))
-			"Your prompt Function failed> ")
-		    (log-message e "do-prompt output-prompt-func -> ~s"
-				 output-prompt-func))
-		  (progn
-		    (default-output-prompt e prompt)
-		    (log-message e "do-prompt default-output-prompt")))))
+  (let* ((s (if (and output-prompt-func
+		     (or (functionp output-prompt-func)
+			 (fboundp output-prompt-func)))
+		(with-output-to-string (*standard-output*)
+		  (log-message e "do-prompt output-prompt-func -> ~s"
+			       output-prompt-func)
+		  (or (ignore-errors (funcall output-prompt-func e prompt))
+		      "Your prompt Function failed> "))
+		(progn
+		  (log-message e "do-prompt default-output-prompt")
+		  (default-output-prompt e prompt))))
 	 last-newline)
     (log-message e "do-prompt only-last-line = ~s" only-last-line)
     (log-message e "do-prompt last-newline = ~s"
@@ -1376,6 +1392,17 @@ Updates the screen coordinates."
 (defun tmp-message (e fmt &rest args)
   (apply #'tmp-prompt e fmt args)
   (setf (need-to-redraw e) t))
+
+(defun clear-completions (e)
+  "Erase completions, if there are any."
+  (without-messing-up-cursor (e)
+    (when (< (screen-row e)
+	     (1- (terminal-window-rows (line-editor-terminal e))))
+      (tt-down e 1)
+      (incf (screen-row e))
+      (tt-beginning-of-line e)
+      (setf (screen-col e) 0)
+      (tt-erase-below e))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Commands
@@ -1519,7 +1546,10 @@ if it's blank or the same as the previous line."
 	(history-put context buf)
 	(history-delete-last context))
     (when accept-does-newline
-      (tt-write-char e #\newline))
+      (tt-write-char e #\newline)
+      (tt-write-char e #\return)
+      (tt-erase-below e)
+      (tt-finish-output e))
     (setf quit-flag t)))
 
 (defun copy-region (e)
@@ -1843,7 +1873,8 @@ Don't update the display."
     (when (> point 0)
       (setf clipboard (subseq buf 0 point))
       (replace-buffer e (subseq buf point))
-      (beginning-of-line e))))
+      (beginning-of-line e))
+    (clear-completions e)))
 
 (defun yank (e)
   (with-slots (clipboard point) e
@@ -1960,44 +1991,125 @@ is none."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Completion
 
+(defvar *completion-list-technique* :under
+  "Technique for dispalying completion lists.
+:UNDER - Display the the completions under the command line.
+:OVER  - Display the completion list like normal output scrolled up over the
+command line.")
+
 ; XXX This should depend on the size of the screen.
-(defvar *really-limit* 100
+(defvar *completion-really-limit* 100
   "How much is too much.")
 
 ;; Most of the work is done by print-columns, from dlib-misc.
-(defun print-completions (e comp-list)
-  (let ((len (length comp-list)))
-    (when (> len *really-limit*)
-      (tt-format e "Really list ~a things? (y or n) " len)
-      (let ((chr (get-a-char e)))
-	(tt-write-char e #\newline)
-	(when (not (equalp #\y chr))
-	  (return-from print-completions))))
-    (print-columns comp-list
-		   :columns (terminal-window-columns
-			     (line-editor-terminal e)))))
+(defun print-completions-over (e comp-list)
+  (with-slots (completion-func buf point saved-point prompt prompt-func) e
+    ;; downcased list 1 per line
+    (let ((saved-point point))
+      (end-of-line e)
+      (setf point saved-point))
+    (tt-write-char e #\newline)
+    #| (tt-format e "~{~a~%~}" comp-list) |#
+    (let ((len (length comp-list)))
+      (when (> len *completion-really-limit*)
+	(tt-format e "Really list ~a things? (y or n) " len)
+	(let ((chr (get-a-char e)))
+	  (tt-write-char e #\newline)
+	  (when (not (equalp #\y chr))
+	    (return-from print-completions-over))))
+      (print-columns comp-list
+		     :columns (terminal-window-columns
+			       (line-editor-terminal e))))
+    (setf (screen-col e) 0)
+    (do-prompt e prompt prompt-func)
+    (display-buf e)
+    (when (< point (length buf))
+      (move-backward e (display-length
+			(subseq buf point))))))
+
+(defvar *completion-short-divisor* 3
+  "Divisor of your screen height for short completion.")
+
+(defun print-completions-under (e comp-list)
+  (let* ((term (line-editor-terminal e))
+	 (rows (terminal-window-rows term))
+	 (cols (terminal-window-columns term))
+	 (short-limit (truncate rows *completion-short-divisor*))
+	 content-rows content-cols column-size
+	 real-content-rows
+	 rows-output
+	 rows-scrolled
+	 back-adjust
+	 (x (screen-col e))
+	 (y (screen-row e))
+	 end-x end-y)
+    ;;(multiple-value-setq (y x) (terminal-get-cursor-position term))
+    (multiple-value-setq (content-rows content-cols column-size)
+      (print-columns-sizer comp-list :columns cols))
+    ;; account for newlines in the content
+    (setf real-content-rows
+    	  (+ content-rows
+    	     (apply #'+ (mapcar (_ (count #\newline _)) comp-list))))
+    (write-char #\newline)
+    (tt-erase-below e) (tt-finish-output e)
+    (if (<= real-content-rows short-limit)
+	;; It's short. Just print it.
+	(progn
+	  (print-columns comp-list :columns cols)
+	  (setf rows-output real-content-rows))
+	(if (and (< (last-completion-not-unique-count e) 2)
+		 (< short-limit rows))
+	    ;; Truncate it to a short length
+	    (let ((a (print-columns-array comp-list
+					  content-rows content-cols))
+		  (rows-to-output (min content-rows short-limit)))
+	      (loop :for i :from 0 :below rows-to-output :do
+		 (loop :for j :from 0 :below content-cols :do
+		    (format t "~va" column-size (or (aref a j i) "")))
+		 (terpri))
+	      (when (plusp (- content-rows short-limit))
+		(format t "[~d more lines]" (- content-rows short-limit)))
+	      (setf rows-output (1- rows-to-output)))
+	    ;; Print an much as fits on the screen
+	    (let ((a (print-columns-array comp-list
+					  content-rows content-cols))
+		  (rows-to-output
+		   (- (min (- content-rows 1) (- rows 2))
+		      (prompt-height e))))
+	      (loop :for i :from 0 :below rows-to-output :do
+		 (loop :for j :from 0 :below content-cols :do
+		    (format t "~va" column-size (or (aref a j i) "")))
+		 (terpri))
+	      (if (< rows content-rows)
+		  (format t "[~d more lines]" (- content-rows rows))
+		  ;; print the last row
+		  (loop :for j :from 0 :below content-cols :do
+		     (format t "~va" column-size
+			     (or (aref a j rows-to-output) ""))))
+	      (setf rows-output rows-to-output))))
+    (multiple-value-setq (end-y end-x) (terminal-get-cursor-position term))
+    (setf rows-scrolled (max 0 (- (+ y (1+ rows-output)) (1- rows)))
+	  back-adjust (+ (- end-y y) rows-scrolled))
+    ;;(tt-up e (1+ rows-output))
+    (tt-up e back-adjust)
+    (tt-beginning-of-line e)
+    (tt-move-to-col e x)
+    (setf (screen-row e) (- end-y back-adjust)
+	  (screen-col e) x)))
 
 (defun show-completions (e)
-  (with-slots (completion-func buf point saved-point prompt prompt-func) e
+  (with-slots (completion-func buf point) e
     (if (not completion-func)
       (beep e "No completion installed.")
       (progn
 	(multiple-value-bind (comp-list comp-count)
 	    (funcall completion-func buf point t)
 	  (when (and comp-count (> comp-count 0))
-	    ;; downcased list 1 per line
-	    (let ((saved-point point))
-	      (end-of-line e)
-	      (setf point saved-point))
-	    (tt-write-char e #\newline)
-	    #| (tt-format e "~{~a~%~}" comp-list) |#
-	    (print-completions e comp-list)
-	    (setf (screen-col e) 0)
-	    (do-prompt e prompt prompt-func)
-	    (display-buf e)
-	    (when (< point (length buf))
-	      (move-backward e (display-length
-				(subseq buf point))))))))))
+	    (setf (did-complete e) t)
+	    (incf (last-completion-not-unique-count e))
+	    (if (eq *completion-list-technique* :under)
+		(print-completions-under e comp-list)
+		(print-completions-over e comp-list))))))))
 
 #|
 (defun last-input-was-completion (e)
@@ -2024,12 +2136,14 @@ is none."
 	  (let* ((saved-point point) comp replace-pos unique)
 	    (multiple-value-setq (comp replace-pos unique)
 	      (funcall comp-func buf point nil))
-	    (when (and (last-completion-not-unique e)
+	    (when (and (not (zerop (last-completion-not-unique-count e)))
 		       (last-command-was-completion e))
 	      (log-message e "show mo")
 	      (show-completions e))
-	    (setf (did-complete e) t
-		  (last-completion-not-unique e) (not unique))
+	    (setf (did-complete e) t)
+	    (if (not unique)
+		(incf (last-completion-not-unique-count e))
+		(setf (last-completion-not-unique-count e) 0))
 	    ;; (format t "comp = ~s replace-pos = ~s~%" comp replace-pos)
 	    ;; If the completion succeeded we need a replace-pos!
 	    (assert (or (not comp) (numberp replace-pos)))
@@ -2502,10 +2616,13 @@ Keyword arguments:
 		      (setf (did-complete e) nil)
 		      (perform-key e cmd (line-editor-keymap e))
 		      (setf (last-command-was-completion e) (did-complete e))
+		      (when (not (last-command-was-completion e))
+			(setf (last-completion-not-unique-count e) 0))
 		      (when exit-flag (setf result quit-value))))
 		(setf last-input cmd)
 		:while (not quit-flag))
 	  (block nil
+	    (tt-finish-output terminal)
 	    (terminal-end terminal)))
 	(values (if result result buf) e)))))
 
