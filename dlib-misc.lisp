@@ -34,6 +34,7 @@
    #:print-values*
    #:print-values-of
    #:print-columns-sizer
+   #:print-columns-array
    #:print-columns
    #:print-size
    #:*plain-spin-string*
@@ -481,16 +482,14 @@ is printed. This is useful for printing, e.g. slots of a structure or class."
 columns and the maximum width of a column."
   (declare (ignore stream smush))
   (let* ((len (length list))
+	 (format-str (format nil "~~~c" format-char))
 	 (max-len
 	  ;; This, although terse, may be inefficient w/big lists (@@@ test!):
 	  (loop :with m = 0
 	     :for c :in list :do
-	     (setf m (max m (length
-			     (format nil
-				     (format nil "~~~c" format-char)
-				     c))))
+	     (setf m (max m (length (format nil format-str c))))
 	     :finally (return (1+ m))))
-	 (width (- (1- columns)
+	 (width (- #| (1- columns) |# columns
 		   (if prefix (length prefix) 0)
 		   (if suffix (length suffix) 0)))
 	 (ccc   (floor width max-len))
@@ -498,6 +497,25 @@ columns and the maximum width of a column."
 	 (rows  (if (zerop cols) len (ceiling len cols))))
     (when (> max-len width) (setf max-len width))
     (values rows cols max-len)))
+
+(defun print-columns-array (list rows cols)
+  "Return an array with the size given by ROWS and COLS, filled in with items
+from LIST in column-major order."
+  (let ((a (make-array `(,cols ,rows) :initial-element nil)))
+    (loop :with col = 0 :and row = 0
+       :for c :in list
+       :do
+       (setf (aref a col row) c)
+       (incf row)
+       (when (>= row rows)
+	 (incf col)
+	 (setf row 0)))
+    a))
+
+;; @@@ consider:
+;; (defun print-columns-output (array rows cols max-len
+;; 			     &key prefix suffix)
+;;   )
 
 (defun print-columns (list &rest keys
 		      &key (columns 80) (stream *standard-output*)
@@ -510,37 +528,28 @@ SUFFIX is a string to append to each row."
   (declare (ignore columns smush))
   (multiple-value-bind (rows cols max-len)
       (apply #'print-columns-sizer list keys)
-     (let ((a (make-array `(,cols ,rows) :initial-element nil)))
-       ;; fill in the array from the list
-       (loop :with col = 0 :and row = 0
-	  :for c :in list
-	  :do
-	  (setf (aref a col row) c)
-	  (incf row)
-	  (when (>= row rows)
-	    (incf col)
-	    (setf row 0)))
-       ;; output the array
-       (loop :for r :from 0 :below rows
-	  :do
-	  (when prefix
-	    (write-string prefix stream))
-	  (loop :for c :from 0 :below cols
-	     :do
-	     (if (aref a c r)
-		 (progn
-		   (write-string
-		    (format nil (format nil "~~v~c" format-char)
-			    max-len (aref a c r))
-		    stream))
-		 ;; If we have a suffix, fill out blank space
-		 (if suffix
-		     (write-string
-		      (format nil "~va" max-len #\space)
-		      stream))))
-	  (when suffix
-	    (write-string suffix stream))
-	  (terpri stream)))))
+    (let* ((format-str (format nil "~~v~c" format-char))
+	   (a (print-columns-array list rows cols)))
+      ;; output the array
+      (loop :for r :from 0 :below rows
+	 :do
+	 (when prefix
+	   (write-string prefix stream))
+	 (loop :for c :from 0 :below cols
+	    :do
+	    (if (aref a c r)
+		(progn
+		  (write-string ;; @@@ Why the superfluous write-string?
+		   (format nil format-str max-len (aref a c r))
+		   stream))
+		;; If we have a suffix, fill out blank space
+		(if suffix
+		    (write-string ;; @@@ Why the superfluous write-string?
+		     (format nil "~va" max-len #\space)
+		     stream))))
+	 (when suffix
+	   (write-string suffix stream))
+	 (terpri stream)))))
 
 (defun OLD-print-columns (list &key (columns 80) (stream *standard-output*)
 			     (format-char #\a) prefix suffix)
@@ -668,11 +677,23 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
   (defparameter *plain-spin-string* "|/-\\"
     "Simple ASCII baton.")
 
-  (defparameter *unicode-spin-string* "?????" ; @@@ find some good chars
+  (defparameter *unicode-disk-spin-string* "◒◐◓◑"
+    "Spin string using common unicode characters.")
+
+  (defparameter *unicode-scan-spin-string* "█▉▊▋▌▍▎▏"
+    "Spin string using common unicode characters.")
+
+  (defparameter *unicode-digit-spin-string* "➊➋➌➍➎➏➐➑➒➓"
+    "Spin string using common unicode characters.")
+
+  (defparameter *unicode-sparkle-spin-string* "❋❊❈❇❇··"
     "Spin string using common unicode characters.")
 
   (defparameter *emoji-spin-string* "🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚🕛"
-    "Spin string with fancy emoji clock face characters."))
+    "Spin string with fancy emoji clock face characters.")
+
+  (defparameter *default-spin-string* *plain-spin-string*
+    "The default spin string."))
 
 (defun spin (&optional (stream *standard-output*))
   "Do one iteration of a spin animation."
@@ -689,7 +710,7 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
   (write-char #\backspace stream)
   (finish-output stream))
 
-(defmacro with-spin ((&key (spin-string *plain-spin-string*))
+(defmacro with-spin ((&key (spin-string *default-spin-string*))
 		     &body body)
   `(let ((*spin-string* ,spin-string)
 	 (*spin-length* (length ,spin-string))
