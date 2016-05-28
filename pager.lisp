@@ -907,10 +907,13 @@ line : |----||-------||---------||---|
   ;;(ask-for :prompt prompt)
   (move (1- curses:*lines*) 0)
   (clrtoeol)
-  (tiny-rl:tiny-rl :prompt prompt
-		   :terminal-class 'terminal-curses:terminal-curses
-		   :accept-does-newline nil
-		   :context :pager))
+  (prog1
+      (tiny-rl:tiny-rl :prompt prompt
+		       :terminal-class 'terminal-curses:terminal-curses
+		       :accept-does-newline nil
+		       :context :pager)
+    ;; Make sure we go back to raw mode, so we can ^Z
+    (curses:raw)))
 
 (defun search-line (str line)
   "Return true if LINE contains the string STR. LINE can be a string, or a
