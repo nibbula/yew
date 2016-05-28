@@ -2271,39 +2271,42 @@ binding."
   (with-slots (cmd buf point) e
     (when (not char)
       (setf char cmd))
-    (if (and (not (graphic-char-p char)) (not quoted))
-	(beep e "~a is unbound." char)
-	(progn 
-	  ;; a normal character
-	  (if (= (length buf) point)
-	      ;; end of the buf
-	      (progn
-		(display-char e char)
-		;; flash paren and keep going
-		(when (or (eql char #\)) (eql char #\]) (eql char #\}))
-		  (flash-paren e char))
-		(insert-char e char)
-		(incf point))
-	      ;; somewhere in the middle
-	      (progn
-		(tt-ins-char e (display-length char))
-		(display-char e char)
-		(when (or (eql char #\)) (eql char #\]) (eql char #\}))
-		  (flash-paren e char))
-		(insert-char e char)
-		(incf point)
-		;; dumb way out: just rewrite the whole thing
-		;; relying on terminal wrap around
-		(let ((old-row (screen-row e))
-		      (old-col (screen-col e)))
-		  (display-buf e point)
-		  (if (< old-row (screen-row e))
-		      (tt-up e (- (screen-row e) old-row))
-		      (tt-down e (- old-row (screen-row e))))
-		  (tt-beginning-of-line e)
-		  (tt-forward e old-col)
-		  (setf (screen-row e) old-row
-			(screen-col e) old-col))))))))
+    (cond
+      ((not (characterp char))
+       (beep e "~a is not a character." char))
+      ((and (not (graphic-char-p char)) (not quoted))
+       (beep e "~a is unbound." char))
+      (t
+       ;; a normal character
+       (if (= (length buf) point)
+	   ;; end of the buf
+	   (progn
+	     (display-char e char)
+	     ;; flash paren and keep going
+	     (when (or (eql char #\)) (eql char #\]) (eql char #\}))
+	       (flash-paren e char))
+	     (insert-char e char)
+	     (incf point))
+	   ;; somewhere in the middle
+	   (progn
+	     (tt-ins-char e (display-length char))
+	     (display-char e char)
+	     (when (or (eql char #\)) (eql char #\]) (eql char #\}))
+	       (flash-paren e char))
+	     (insert-char e char)
+	     (incf point)
+	     ;; dumb way out: just rewrite the whole thing
+	     ;; relying on terminal wrap around
+	     (let ((old-row (screen-row e))
+		   (old-col (screen-col e)))
+	       (display-buf e point)
+	       (if (< old-row (screen-row e))
+		   (tt-up e (- (screen-row e) old-row))
+		   (tt-down e (- old-row (screen-row e))))
+	       (tt-beginning-of-line e)
+	       (tt-forward e old-col)
+	       (setf (screen-row e) old-row
+		     (screen-col e) old-col))))))))
 ;;		(tt-move-to e (screen-row e) (screen-col e))
 
 (defun read-key-sequence (e &optional keymap)
@@ -2481,18 +2484,23 @@ binding."
 
 (defkeymap *special-keymap*
   `(
-    (:left  . backward-char)
-    (:right . forward-char)
-    (:up    . previous-history)
-    (:down  . next-history)
-    (:home  . beginning-of-line)
-    (:end   . end-of-line)
-    (:f9    . pop-to-lish)
+    (:left      . backward-char)
+    (:right     . forward-char)
+    (:up        . previous-history)
+    (:down      . next-history)
+    (:backspace . delete-backward-char)
+    (:home      . beginning-of-line)
+    (:end       . end-of-line)
+    ;; XXX @@@ this shouldn't be here. It should be in the repl or lish
+    (:f9        . pop-to-lish)
     ))
 
 ;; Normal mode commands prefaced by escape.
 (defparameter *escape-keymap*
     (add-keymap (build-escape-map *normal-keymap*) *escape-raw-keymap*))
+
+;; Make the stuff in the special keymap appear in the normal keymap too.
+(add-keymap *special-keymap* *normal-keymap*)
 
 ;; @@@ do we really need this?
 ;; (defun bad-special-key (e)
