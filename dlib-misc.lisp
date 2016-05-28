@@ -479,6 +479,8 @@ is printed. This is useful for printing, e.g. slots of a structure or class."
 (defparameter *inter-space* 2)
 
 (defun smush-output (list cols height format-char stream row-limit)
+  "Output LIST to STREAM in column major COLS and HEIGHT lines, limited to
+ROW-LIMIT. Items are printed with FORMAT-CHAR."
   (loop
      :with len = (length list)
      :and format-str = (format nil "~~v~c" format-char)
@@ -486,40 +488,47 @@ is printed. This is useful for printing, e.g. slots of a structure or class."
      :and limit = (if row-limit (min height row-limit) height)
      :for i :from 0 :below limit :do
      (loop
-	:with #| first-time = t :and |# n
+	:with n
 	:for c :in cols
 	:for j = 0 :then (1+ j)
 	:do
-	;; (if first-time
-	;;     (setf first-time nil)
-	;;     (write-char #\space))
-	;; (format t "~vs" c (aref a (+ (* i height) j))))))
 	(setf n (+ (* j height) i))
-	;; (if (< n len)
-	;;     ;;(format t "a[~d]" n)
-	;;     (format t "~va" c (aref a n))
-	;;     (format t "□")))
 	(when (< n len)
 	  (format stream format-str c (aref a n))))
      (terpri stream)))
 
 (defun smush-columns (list cols rows)
-  (let (col-list extra)
+  "Return a list of the smallest column sizes for the putting the LIST in COLS
+and ROWS. Return nil if the list can't fit. Second value is the extra space in
+the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
+  (let (col-list extra max-len (l list) (col 0) row)
     (loop
-       :with l = list
-       :for i :from 0 :below cols :do
-       (push
-	(loop :with j = 0
-	   :maximize (+ (length (car l))
-			(if (= i (1- cols)) 0 *inter-space*))
-	   :do
-	   (setf l (cdr l))
-	   (incf j)
-	   (when (and (not l) (< j rows))
-	     (setf extra (- rows j)))
-	   :while (and l (< j rows)))
-	col-list))
-    (values (nreverse col-list) extra)))
+       :do
+       (setf max-len 0 row 0)
+       ;; Go down the column.
+       (loop
+	  :do
+	  ;; Add space between cols except for the last row.
+	  (setf max-len (max max-len
+			     (+ (length (car l))
+				(if (= col (1- cols)) 0 *inter-space*))))
+	  (setf l (cdr l))
+	  (incf row)
+	  :while (and l (< row rows)))
+       ;; Save the amount of blank space left in the last column.
+       (when (and (not l) (< row rows))
+	 (setf extra (- rows row)))
+       (push max-len col-list)
+       (incf col)
+       :while (and l (< col cols)))
+    (cond
+      ((not (null l))			; not all items fit
+       (values nil :too-narrow))
+      ((and (< col (1- cols))		; didn't fill up all columns
+	    (> rows 1))			; but multiple rows
+       (values nil :too-wide))
+      (t
+       (values (nreverse col-list) extra)))))
 
 (defun print-columns-smush (list &key (columns 80) (stream *standard-output*)
 				   (format-char #\a) prefix suffix
@@ -537,7 +546,7 @@ is printed. This is useful for printing, e.g. slots of a structure or class."
 	new-rows new-cols
 	col-list
 	last-col-list last-new-rows
-	extra
+	extra not-fit-count
 	)
     ;; Compute the length, maximum item length, and minimum area.
     (loop :with l
@@ -549,6 +558,7 @@ is printed. This is useful for printing, e.g. slots of a structure or class."
        (incf len))
     (setf max-area (* max-len len))
     (dbug "List length:  ~d~%" len)
+    (dbug "Screen width:  ~d~%" screen-width)
     (dbug "Minimum area: ~d ~d~%" area (ceiling area screen-width))
     (dbug "Max item len: ~d~%" max-len)
     (dbug "Min item len: ~d~%" min-len)
@@ -561,27 +571,56 @@ is printed. This is useful for printing, e.g. slots of a structure or class."
 	  new-cols cols
 	  col-list (make-list cols :initial-element max-len)
 	  last-col-list col-list
-	  last-new-rows new-rows)
+	  last-new-rows new-rows
+	  not-fit-count 0)
 
-    ;;(format t "col-list ~a~%" col-list)
-    (loop
-       :while (and (< (apply #'+ col-list)
-		      #| (- screen-width min-len) |#
-		      screen-width)
-		   #| (and extra (> extra 2)) |#
-		   (> new-rows 1))
-       :do
-       (setf last-col-list col-list
-	     last-new-rows new-rows)
-       (if (and extra (> extra 0))
-	   (decf new-rows #| (max (truncate extra 2) 1) |# )
-	   (incf new-cols))
-       (multiple-value-setq (col-list extra)
-	 (smush-columns list new-cols new-rows))
-       ;;(format t "Squish 1: ~d x ~d (~d)~25t~a~%" cols rows extra col-list)
-       )
+    (if (= new-rows 1)
+	(progn
+	  (multiple-value-setq (last-col-list extra)
+	    (smush-columns list new-cols new-rows))
+	  (setf last-new-rows 1))
+	(loop
+	   :while (and (< not-fit-count 4)
+		       (<= (apply #'+ col-list)
+			   #| (- screen-width min-len) |#
+			   screen-width)
+		       #| (and extra (> extra 2)) |#
+		       (> new-rows 1))
+	   :do
+	   (if col-list
+	       ;; save the previous results
+	       (setf last-col-list col-list
+		     last-new-rows new-rows
+		     not-fit-count 0)
+	       (incf not-fit-count))
+
+	   #|
+	   (if (and extra #| (>= extra (1- new-cols)) |# (> extra 1))
+	       ;;(decf new-rows #| (max (truncate extra 2) 1) |# )
+	       (if (= not-fit-count 0)
+		   (incf new-cols)
+		   (decf new-rows)))
+	   |#
+
+	   (cond
+	     ((eq extra :too-narrow)
+	      (incf new-cols))
+	     ((eq extra :too-wide)
+	      (decf new-rows))
+	     (t
+	      (decf new-rows)))
+	   
+	   (multiple-value-setq (col-list extra)
+	     (smush-columns list new-cols new-rows))
+	   (dbug "Squish: ~d x ~d (~d)~25t~a~%"
+		 new-cols new-rows extra col-list)))
+
     ;; Output the last good setup
-    (smush-output list last-col-list last-new-rows format-char stream row-limit)
+    (dbug "Squish Final: ~d x ~d (~d ~d)~25t~a~%"
+	  (length last-col-list) last-new-rows
+	  extra not-fit-count last-col-list)
+    (smush-output list last-col-list last-new-rows format-char stream
+		  row-limit)
     last-new-rows))
 
 (defun print-columns-sizer (list &key (columns 80) (stream *standard-output*)
