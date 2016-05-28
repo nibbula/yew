@@ -306,6 +306,26 @@
 ;; Test scrolling with:
 ;; (:pick-list (loop for i from 1 to 60 collect (format nil "~@r~8t~r" i i)))
 
+#+lish
+(lish:defcommand pick-list
+    ((multiple boolean :short-arg #\m
+      :help "True to pick multiple results.")
+     (lines string :repeating t))
+  :accepts (or stream list)
+  "Pick something from the list of lines of input."
+  (when lish:*input*
+    (format t "pick-list *input* = ~s~%" lish:*input*))
+  (setf lish:*output*
+	(pick-list
+	 (or lines
+	     (and (listp lish:*input*) lish:*input*)
+	     (lish:input-line-list (and (streamp lish:*input*) lish:*input*)))
+	 :multiple multiple))
+  (when (lish:accepts :stream :grotty-stream :unspecified)
+    (if (listp lish:*output*)
+	(loop :for o :in lish:*output* :do (write-line o))
+	(write-line lish:*output*))))
+
 ;; @@@ Maybe this PF-DIR-ENTRY stuff should be added as a feature to
 ;; read-directory? Like a :printable option?
 
