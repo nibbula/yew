@@ -67,6 +67,7 @@
    ;; lists
    #:delete-nth
    #:alist-to-hash-table
+   #:flatten
    #:range-list
    #:range-array
    #:range-lazy #:range-start #:range-end #:range-step #:make-range
@@ -628,6 +629,38 @@ Also, it can't really delete the first (zeroth) element."
   (loop :for i :in alist
 	:do (setf (gethash (car i) table) (cdr i)))
   table)
+
+;; I cripped this from rosetta code. This seems to be the fastest of 8 methods
+;; I tested. I converted it from using DO* to LOOP, and added comments, so I
+;; could understand it better. I added PRESERVE-NILS in case you have a tree
+;; where NILs are meaningful and not just empty lists.
+;;
+;; @@@ It might be nice to have a version of this that works on arbitray
+;; sequences, but it would probably be slower than this pure list version, and
+;; so we would probably still want this one. Flattening other type of sequence
+;; trees seems far less common.
+(defun flatten (tree &key preserve-nils)
+  (declare (optimize (speed 3) (safety 3) (space 2) (compilation-speed 0)))
+  ;; Make an outer list. This is the list we modify.
+  (let ((result (list tree)))		      
+    (loop
+       :with node = result
+       :until (null node)
+       :do
+       (if (consp (car node))		      ; If the left side is a cons
+	   (progn
+	     (when (cdar node)		      ; If it has more sub-lists
+	       (push (cdar node) (cdr node))) ; move the sub-list up
+	     ;; Move contents of the one element list, up one
+	     (setf (car node) (caar node)))
+	   ;; Move on to the next item at the top level
+	   (setf node (cdr node)))
+       ;;(format t "~s~%" node) 
+       )
+    ;; Get rid of any fake NILs in the results
+    (if preserve-nils
+	result
+	(delete nil result))))
 
 ;; I have a feeling I'll regret this range crap.
 ;; See also: (alexandria:iota n &key (start 0) (step 1))

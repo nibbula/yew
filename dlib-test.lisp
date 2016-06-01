@@ -117,6 +117,30 @@
 	    ((1 2 3 4) (1 2 3 4)))
 	  (loop :for i :from 0 :to 4 :collect
 	     (let ((l (list 1 2 3 4 5))) (list (delete-nth i l) l))))
+  "flatten"
+  (tree-equal
+   '(1 2 3 4 5 6 7 8 9 10)
+   (flatten '((1 2 3) (4 5 6) ((7 8) (9 (10))))))
+  (tree-equal
+   '(1 2 3 4 5 6 7 8 9 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1)
+   (flatten '((1 2 3) (4 5 6) (7 8 9) (1 1 1)
+	      ((((1 1) (1 1 (1 1 1)) 1 1 1)
+		1 1 1 1 1 1 (((1 1 1))) 1)))))
+  (tree-equal
+   '(1 2 3 4 5 6 7 8 9 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1)
+   (flatten '((1 2 3) (4 5 6) (7 8 9) (1 nil 1)
+	      ((((1 1) (1 1 (1 1 1)) 1 1 1) 1 1 1 1 1 1 (((1 1 1))) 1)))))
+  (tree-equal
+   '(1 2 3 4 5 6 7 8 9 1 NIL 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1)
+   (dlib:flatten '((1 2 3) (4 5 6) (7 8 9) (1 nil 1)
+		   ((((1 1) (1 1 (1 1 1)) 1 1 1) 1 1 1 1 1 1
+		     (((1 1 1))) 1))) :preserve-nils t))
+  (tree-equal (flatten '(() () ())) nil)
+  (tree-equal (flatten '(() () ()) :preserve-nils t)
+	      '(nil nil nil))
+  (tree-equal (flatten 1) '(1))
+  (tree-equal (flatten '(1 . 2)) '(1 2))
+  (tree-equal (flatten '(nil . 3)) '(3))
   ;; ranges?
   ;; (shallow-copy-object)
   ;; (doseq)
