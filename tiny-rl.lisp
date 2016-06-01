@@ -2376,7 +2376,11 @@ binding."
 
 (defun char-picker-command (e)
   "Pick unicode (or whatever) characters."
-  (let ((result (with-external (e) (symbol-call :char-picker :char-picker))))
+  (let ((result
+	 (with-external (e)
+	   (when (not (find-package :char-picker))
+	     (asdf:load-system :char-picker))
+	   (symbol-call :char-picker :char-picker))))
     (if result
 	(self-insert e t result)
 	(beep e "char-picker failed"))))
