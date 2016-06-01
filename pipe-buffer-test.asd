@@ -2,11 +2,6 @@
 ;;; pipe-buffer-test.asd -- System definition for pipe-buffer-test
 ;;;
 
-(defpackage :pipe-buffer-test-system
-    (:use :common-lisp :asdf))
-
-(in-package :pipe-buffer-test-system)
-
 (defsystem pipe-buffer-test
     :name               "pipe-buffer-test"
     :description        "Test pipe-buffers"

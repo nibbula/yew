@@ -2,11 +2,6 @@
 ;;; table.asd -- System definition for table
 ;;;
 
-(defpackage :table-system
-    (:use :common-lisp :asdf))
-
-(in-package :table-system)
-
 (defsystem table
     :name               "table"
     :description        "Generic table data types"

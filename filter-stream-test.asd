@@ -2,11 +2,6 @@
 ;;; filter-stream-test.asd -- System definition for filter-stream-test
 ;;;
 
-(defpackage :filter-stream-test-system
-    (:use :common-lisp :asdf))
-
-(in-package :filter-stream-test-system)
-
 (defsystem filter-stream-test
     :name               "filter-stream-test"
     :description        "Test filter streams."

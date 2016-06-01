@@ -2,11 +2,6 @@
 ;;; puca.asd -- System definition for PUCA
 ;;;
 
-(defpackage :puca-system
-    (:use :common-lisp :asdf))
-
-(in-package :puca-system)
-
 (defsystem puca
     :name               "puca"
     :description        "Putative Muca"

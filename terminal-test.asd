@@ -2,11 +2,6 @@
 ;;; terminal-test.asd -- System definition for terminal-test
 ;;;
 
-(defpackage :terminal-test-system
-    (:use :common-lisp :asdf))
-
-(in-package :terminal-test-system)
-
 (defsystem terminal-test
     :name               "terminal-test"
     :description        "Test the generic terminal library."

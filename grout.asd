@@ -2,11 +2,6 @@
 ;;; grout.asd -- System definition for grout
 ;;;
 
-(defpackage :grout-system
-    (:use :common-lisp :asdf))
-
-(in-package :grout-system)
-
 (defsystem grout
     :name               "grout"
     :description        "Generic Rectilinear Output Und Text"

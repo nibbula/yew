@@ -2,11 +2,6 @@
 ;;; fui.asd -- System definition for fui
 ;;;
 
-(defpackage :fui-system
-    (:use :common-lisp :asdf))
-
-(in-package :fui-system)
-
 (defsystem fui
     :name               "fui"
     :description        "Fake UI"

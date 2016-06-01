@@ -2,11 +2,6 @@
 ;;; terminal-ansi.asd -- System definition for terminal-ansi
 ;;;
 
-(defpackage :terminal-ansi-system
-    (:use :common-lisp :asdf))
-
-(in-package :terminal-ansi-system)
-
 (defsystem terminal-ansi
     :name               "terminal-ansi"
     :description        "Standard terminal frobbing."

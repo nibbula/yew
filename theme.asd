@@ -2,11 +2,6 @@
 ;;; theme.asd -- System definition for theme
 ;;;
 
-(defpackage :theme-system
-    (:use :common-lisp :asdf))
-
-(in-package :theme-system)
-
 (defsystem theme
     :name               "theme"
     :description        "Theme-like data pods of shabby demeanor."

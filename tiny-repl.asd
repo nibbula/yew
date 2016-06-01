@@ -2,11 +2,6 @@
 ;;; tiny-repl.asd -- System definition for TINY-REPL
 ;;;
 
-(defpackage :tiny-repl-system
-    (:use :common-lisp :asdf))
-
-(in-package :tiny-repl-system)
-
 (defsystem tiny-repl
     :name               "tiny-repl"
     :description        "Replacement REPL with editing and history."

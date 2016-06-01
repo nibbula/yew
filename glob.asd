@@ -2,11 +2,6 @@
 ;;; glob.asd -- System definition for glob
 ;;;
 
-(defpackage :glob-system
-    (:use :common-lisp :asdf))
-
-(in-package :glob-system)
-
 (defsystem glob
     :name               "glob"
     :description        "Glops of globby blobby blob glob."

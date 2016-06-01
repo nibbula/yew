@@ -2,11 +2,6 @@
 ;;; dlib-test.asd -- System definition for dlib-test
 ;;;
 
-(defpackage :dlib-test-system
-    (:use :common-lisp :asdf))
-
-(in-package :dlib-test-system)
-
 (defsystem dlib-test
     :name               "dlib-test"
     :description        "Tests for DLIB"

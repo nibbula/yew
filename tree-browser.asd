@@ -1,20 +1,15 @@
 ;;;								-*- Lisp -*-
-;;; tree-browser.asd -- System definition for tree-browser
+;;; tree-viewer.asd -- System definition for tree-browser
 ;;;
 
-(defpackage :tree-browser-system
-    (:use :common-lisp :asdf))
-
-(in-package :tree-browser-system)
-
-(defsystem tree-browser
-    :name               "tree-browser"
+(defsystem tree-viewer
+    :name               "tree-viewer"
     :description        "Browse trees."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :license            "None"
-    :long-description   "A user interface for browsing generic trees."
+    :long-description   "A user interface for viewing generic trees."
     :depends-on (:dlib :dlib-misc :curses :char-util :keymap :fui :pick-list
 		 :glob)
     :components
-    ((:file "tree-browser")))
+    ((:file "tree-viewer")))

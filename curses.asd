@@ -2,11 +2,6 @@
 ;;; curses.asd -- System definition for CURSES package
 ;;;
 
-(defpackage :curses-system
-    (:use :common-lisp :asdf))
-
-(in-package :curses-system)
-
 (defsystem curses
     :name               "curses"
     :description        "Interface to curses library."

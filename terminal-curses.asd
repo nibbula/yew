@@ -2,11 +2,6 @@
 ;;; terminal-curses.asd -- System definition for terminal-curses
 ;;;
 
-(defpackage :terminal-curses-system
-    (:use :common-lisp :asdf))
-
-(in-package :terminal-curses-system)
-
 (defsystem terminal-curses
     :name               "terminal-curses"
     :description        "Faking a terminal with curses."

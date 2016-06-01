@@ -2,18 +2,15 @@
 ;;; test.asd -- System definition for test
 ;;;
 
-(defpackage :test-system
-    (:use :common-lisp :asdf))
-
-(in-package :test-system)
-
 (defsystem test
     :name               "test"
-    :description        "Stuff to do simple unit testing"
+    :description        "Stuff to do simple unit testing."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :license            "GPLv3"
-    :long-description   "Test ting things"
+    :long-description
+    "Test ting things. Your typical thing to run a bunch of tests.
+This is exactly what you shouldn't do."
 ;;    :depends-on ()
     :components
     ((:file "test")))

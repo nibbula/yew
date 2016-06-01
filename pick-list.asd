@@ -2,11 +2,6 @@
 ;;; pick-list.asd -- System definition for pick-list
 ;;;
 
-(defpackage :pick-list-system
-    (:use :common-lisp :asdf))
-
-(in-package :pick-list-system)
-
 (defsystem pick-list
     :name               "pick-list"
     :description        "Choose things from a list."

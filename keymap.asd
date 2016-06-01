@@ -2,11 +2,6 @@
 ;;; keymap.asd -- System definition for keymap
 ;;;
 
-(defpackage :keymap-system
-    (:use :common-lisp :asdf))
-
-(in-package :keymap-system)
-
 (defsystem keymap
     :name               "keymap"
     :description        "keymap package"

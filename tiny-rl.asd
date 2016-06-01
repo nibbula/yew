@@ -2,11 +2,6 @@
 ;;; tiny-rl.asd -- System definition for TINY-RL package
 ;;;
 
-(defpackage :tiny-rl-system
-    (:use :common-lisp :asdf))
-
-(in-package :tiny-rl-system)
-
 (defsystem tiny-rl
     :name               "tiny-rl"
     :description        "A line editor."

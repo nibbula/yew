@@ -2,11 +2,6 @@
 ;;; pipe-buffer.asd -- System definition for pipe-buffer
 ;;;
 
-(defpackage :pipe-buffer-system
-    (:use :common-lisp :asdf))
-
-(in-package :pipe-buffer-system)
-
 (defsystem pipe-buffer
     :name               "pipe-buffer"
     :description        "A pipe buffer of some sort."

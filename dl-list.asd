@@ -2,11 +2,6 @@
 ;;; dl-list.asd -- System definition for DL-LIST
 ;;;
 
-(defpackage :dl-list-system
-    (:use :common-lisp :asdf))
-
-(in-package :dl-list-system)
-
 (defsystem dl-list
     :name               "dl-list"
     :description        "The ill begotten doubly-linked list"

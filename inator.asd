@@ -2,11 +2,6 @@
 ;;; inator.asd -- System definition for inator
 ;;;
 
-(defpackage :inator-system
-    (:use :common-lisp :asdf))
-
-(in-package :inator-system)
-
 (defsystem inator
     :name               "inator"
     :description        "Generic UI app."

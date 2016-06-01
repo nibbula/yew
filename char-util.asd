@@ -2,11 +2,6 @@
 ;;; char-util.asd -- System definition for char-util
 ;;;
 
-(defpackage :char-util-system
-    (:use :common-lisp :asdf))
-
-(in-package :char-util-system)
-
 (defsystem char-util
     :name               "char-util"
     :description        "General utilites for characters."

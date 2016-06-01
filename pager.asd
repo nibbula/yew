@@ -2,11 +2,6 @@
 ;;; pager.asd -- System definition for pager
 ;;;
 
-(defpackage :pager-system
-    (:use :common-lisp :asdf))
-
-(in-package :pager-system)
-
 (defsystem pager
     :name               "pager"
     :description        "something like more or less"

@@ -2,11 +2,6 @@
 ;;; completion.asd -- System definition for completion
 ;;;
 
-(defpackage :completion-system
-    (:use :common-lisp :asdf))
-
-(in-package :completion-system)
-
 (defsystem completion
     :name               "completion"
     :description        "Complete your words. Fill the gap. Type less."

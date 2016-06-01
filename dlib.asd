@@ -2,11 +2,6 @@
 ;;; dlib.asd -- System definition for DLIB
 ;;;
 
-(defpackage :dlib-system
-    (:use :common-lisp :asdf))
-
-(in-package :dlib-system)
-
 (defsystem dlib
     :name               "dlib"
     :description        "Dan's lisp library."

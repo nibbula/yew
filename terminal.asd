@@ -2,11 +2,6 @@
 ;;; terminal.asd -- System definition for terminal
 ;;;
 
-(defpackage :terminal-system
-    (:use :common-lisp :asdf))
-
-(in-package :terminal-system)
-
 (defsystem terminal
     :name               "terminal"
     :description        "Generic terminality."

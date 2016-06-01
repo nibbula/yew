@@ -2,11 +2,6 @@
 ;;; glob-test.asd -- System definition for glob-test
 ;;;
 
-(defpackage :glob-test-system
-    (:use :common-lisp :asdf))
-
-(in-package :glob-test-system)
-
 (defsystem glob-test
     :name               "glob-test"
     :description        "Test glob package."
