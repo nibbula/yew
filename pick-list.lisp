@@ -16,6 +16,9 @@
    ))
 (in-package :pick-list)
 
+(declaim (optimize (debug 3)))
+;;(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+
 ;; TODO:
 ;; things from pager:
 ;; - best key compatability?
@@ -311,10 +314,10 @@
     ((multiple boolean :short-arg #\m
       :help "True to pick multiple results.")
      (lines string :repeating t))
-  :accepts (or stream list)
+  :accepts (:stream :list)
   "Pick something from the list of lines of input."
-  (when lish:*input*
-    (format t "pick-list *input* = ~s~%" lish:*input*))
+  ;; (when lish:*input*
+  ;;   (format t "pick-list *input* = ~s~%" lish:*input*))
   (setf lish:*output*
 	(pick-list
 	 (or lines
@@ -323,8 +326,8 @@
 	 :multiple multiple))
   (when (lish:accepts :stream :grotty-stream :unspecified)
     (if (listp lish:*output*)
-	(loop :for o :in lish:*output* :do (write-line o))
-	(write-line lish:*output*))))
+	(loop :for o :in lish:*output* :do (princ o) (terpri))
+	(progn (princ lish:*output*) (terpri)))))
 
 ;; @@@ Maybe this PF-DIR-ENTRY stuff should be added as a feature to
 ;; read-directory? Like a :printable option?
