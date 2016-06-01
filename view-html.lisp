@@ -2,16 +2,16 @@
 ;; view-html.lisp - View HTML as a tree.
 ;;
 
-;; This uses the excellent PLUMP library to read HTML/XML and the tree-browser
-;; to display it. Using the TREE-BROWSER generally consists of making node
+;; This uses the excellent PLUMP library to read HTML/XML and the tree-viewer
+;; to display it. Using the TREE-VIEWER generally consists of making node
 ;; type subclasses and display methods for them. Here we make one HTML-NODE
-;; subclass of the tree-browser's CACHED-DYNAMIC-NODE and use PLUMP methods to
+;; subclass of the tree-viewer's CACHED-DYNAMIC-NODE and use PLUMP methods to
 ;; dynamically pull out content from the parsed file. We make the PLUMP node
-;; be the tree-browser's OBJECT-NODE object.
+;; be the tree-viewer's OBJECT-NODE object.
 
 (defpackage :view-html
   (:documentation "View HTML as a tree.")
-  (:use :cl :dlib :dlib-misc :tiny-rl :tree-browser)
+  (:use :cl :dlib :dlib-misc :tiny-rl :tree-viewer)
   (:export
    #:view-html
    ))
@@ -93,7 +93,7 @@
 		 #| (read-filename :prompt "HTML file: ") |#
 		 (pick-list:pick-file)
 		 ))
-	 (hh (plump:parse (pathname ff))))
+	 (hh (plump:parse (pathname (nos:quote-filename ff)))))
     (browse-tree
      (make-instance
       'object-node
@@ -126,7 +126,7 @@
   "Display a plist node."
   (addstr
    (format nil "~v,,,va~c "
-	   (* level (indent *browser*)) #\space ""
+	   (* level (indent *viewer*)) #\space ""
 	   (if (node-branches node)
 	       (if (node-open node) #\- #\+)
 	       #\space)))
