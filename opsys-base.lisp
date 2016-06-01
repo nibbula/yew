@@ -86,6 +86,8 @@
 
    #:opsys-error
    #:opsys-error-code
+   #:opsys-resumed
+   #:opsys-resized
 
    #:*directory-separator*
    #:*directory-separator-string*
@@ -280,6 +282,14 @@ string (denoting itself)."
 			 (symbol-call :opsys :error-message
 				      (opsys-error-code c))))))
   (:documentation "An error from calling a POSIX function."))
+
+(define-condition opsys-resumed (simple-error)
+  ()
+  (:documentation "The process was resumed from being suspended."))
+
+(define-condition opsys-resized (simple-error)
+  ()
+  (:documentation "The window changed size."))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Variables

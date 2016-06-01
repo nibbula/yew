@@ -2,10 +2,16 @@
 ;;; opsys.asd -- System definition for OPSYS package
 ;;;
 
-(defpackage :opsys-system
-    (:use :common-lisp :asdf))
-
-(in-package :opsys-system)
+;; I don't like the way :if-feature works. How can I use it to make the same
+;; file depend on different files? Also it makes me repeat the long ugly
+;; feature conditionals. Why can't I just say something like:
+;;
+;; (defvar *system-specific-module*
+;;   #+(or unix linux darwin sunos bsd) "unix"
+;;   #+(and windows (not unix)) "ms")
+;;
+;; and then use that in the appropriate places? I know evaluation, but..
+;; As it is, I'm forced to use reader conditionals anyway.
 
 (defsystem opsys
     :name               "opsys"
@@ -18,12 +24,14 @@
     :depends-on (:cffi :dlib)
     :components
     ((:file "opsys-base")
-     #+(or unix linux darwin sunos bsd)
-     (:file "unix" :depends-on ("opsys-base"))
-     #+(or unix linux darwin sunos bsd)
-     (:file "termios" :depends-on ("unix"))
-     #+(and windows (not unix))
-     (:file "ms" :depends-on ("opsys-base"))
-     (:file "opsys"
-	    :depends-on (#+unix "unix"
-			 #+(and windows (not unix)) "ms"))))
+     (:file "unix" :if-feature (:or :unix :linux :darwin :sunos :bsd)
+	    :depends-on ("opsys-base"))
+     (:file "ms" :if-feature (:and :windows (:not :unix))
+	    :depends-on ("opsys-base"))
+     (:file "termios" :if-feature (:or :unix :linux :darwin :sunos :bsd)
+	    :depends-on ("unix"))
+     (:file "package" :depends-on ("opsys-base"))
+     (:file "libc" :depends-on ("package"))
+     (:file "opsys" :depends-on
+	    #+(or unix linux darwin sunos bsd) ("unix")
+	    #+(and windows (not unix)) "ms")))

@@ -15,7 +15,7 @@
 (defpackage :opsys-unix
   (:documentation "Interface to UNIX-like systems.")
   (:use :cl :cffi :dlib :opsys-base)
-  (:nicknames :os-unix)
+  (:nicknames :os-unix :uos)
   (:export
    ;; types
    #:time-t #:mode-t #:uid-t #:gid-t #:pid-t #:wchar-t #:suseconds-t
@@ -3319,7 +3319,9 @@ it is not a symbolic link."
 			     (make-pointer handler)
 			     handler)
 	      sa_flags 0)
-	(sigemptyset (foreign-slot-pointer act '(:struct foreign-sigaction) 'sa_mask)))
+	(sigemptyset (foreign-slot-pointer
+		      act
+		      '(:struct foreign-sigaction) 'sa_mask)))
       (syscall (sigaction signal act (null-pointer))))))
 
 (defsetf signal-action set-signal-action

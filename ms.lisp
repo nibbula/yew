@@ -19,7 +19,8 @@
 
 (defpackage :ms
   (:documentation "Interface to Microsoft systems.")
-  (:use :cl)
+  (:use :cl :cffi :opsys-base)
+  (:nicknames :os-ms :mos)
   (:export
    #:file-handle-terminal-p
    #:file-handle-terminal-name
