@@ -242,6 +242,7 @@
    #:signal-description
    #:signal-action
    #:set-signal-action
+   #:with-signal-handlers
    #:describe-signals
    #:kill
 
@@ -1264,7 +1265,7 @@ NIL, unset the VAR, using unsetenv."
   (with-foreign-object (oldlenp 'size-t 1)
     (syscall
      (real-sysctlbyname name (cffi:null-pointer) oldlenp (cffi:null-pointer) 0))
-    (format t "length = ~d~%" (mem-ref oldlenp 'size-t))
+    ;;(format t "length = ~d~%" (mem-ref oldlenp 'size-t))
     (with-foreign-object (oldp :unsigned-char (mem-ref oldlenp 'size-t))
       (syscall (real-sysctlbyname name oldp oldlenp (cffi:null-pointer) 0))
       (case type
@@ -3270,6 +3271,67 @@ it is not a symbolic link."
   #+linux (sa_restorer :pointer)
   )
 
+#+darwin
+(defcunion sigval
+ (sival_int :int)
+ (sival_ptr (:pointer :void)))
+
+#+darwin
+(defcstruct foreign-siginfo
+  (si_signo :int)			; Signal number
+  (si_errno :int)			; Errno association
+  (si_code :int)			; Signal code
+  (si_pid pid-t)			; Sending process ID
+  (si_uid uid-t)			; Sender's ruid
+  (si_status :int)			; Exit value
+  (si_addr (:pointer :void))		; Faulting instruction
+  (si_value (:union sigval))		; Signal value
+  (si_band :long)			; Band event for SIGPOLL
+  (__pad :unsigned-long :count 7))	; Reserved for future use
+
+#|
+As you may know, ucontext is so hairy and has versions for every minor
+variation of architecture and is rarely needed outside of the kernel, that I
+nearly want to put in in separate file.
+
+#+darwin
+(defcstruct x86-thread-state
+  (eax	  :unsigned-int)
+  (ebx	  :unsigned-int)
+  (ecx	  :unsigned-int)
+  (edx	  :unsigned-int)
+  (edi	  :unsigned-int)
+  (esi	  :unsigned-int)
+  (ebp	  :unsigned-int)
+  (esp	  :unsigned-int)
+  (ss	  :unsigned-int)
+  (eflags :unsigned-int)
+  (eip	  :unsigned-int)
+  (cs	  :unsigned-int)
+  (ds	  :unsigned-int)
+  (es	  :unsigned-int)
+  (fs	  :unsigned-int)
+  (gs	  :unsigned-int))
+
+#+darwin
+(defcstruct mcontext
+  (es (:struct x86-exception-state))
+  (ss (:struct x86-thread-state))
+  (fs (:struct x86-float-state)))
+
+(defcstruct sigaltstack
+    )
+
+#+darwin
+(defcstruct ucontext
+  (uc_onstack  :int)
+  (uc_sigmask  sigset-t)		       ; signal mask
+  (uc_stack    (:struct sigaltstack))	       ; stack
+  (uc_link     (:pointer (:struct ucontext)))  ; pointer to resuming context
+  (uc_mcsize   size-t)			       ; size of the machine context
+  (uc_mcontext (:pointer (:struct mcontext)))) ; machine specific context
+|#
+
 (defconstant SIG_DFL  0 "Default action.")
 (defconstant SIG_IGN  1 "Ignore the signal.")
 (defconstant SIG_HOLD #+darwin 5 #+linux 2 "Hold on to the signal for later.")
@@ -3290,9 +3352,20 @@ it is not a symbolic link."
 
 (defun action-to-handler (action)
   "Return the posix handler value for the ACTION keyword."
-  (let ((a (find action *handler-actions* :key #'cdr)))
-    (if a (car a) action)))
-
+  (cond
+    ((keywordp action)
+     (let ((a (find action *handler-actions* :key #'cdr)))
+       (or (and a (car a)) action)))
+    ((symbolp action)
+     (get-callback action))
+    ((pointerp action)
+     ;; assume it's a callback pointer already
+     action)
+    ;; (t
+    ;;  ;; Perhaps we should error?
+    ;;  action)
+    ))
+  
 (defun handler-to-action (handler)
   "Return the action keyword for the posix HANDLER value."
   (let ((h (assoc handler *handler-actions*)))
@@ -3309,8 +3382,27 @@ it is not a symbolic link."
 	  (handler-to-action num)
 	  ptr))))
 
+;; Three different handler "types":
+;;
+;; (defcallback sigwinch-handler :void ((signal-number :int))
+;; 	     )
+;;
+;; (defcallback sigwinch-handler :void ((signal-number :int)
+;; 				     (:pointer (:struct foreign-siginfo))
+;; 				     (:pointer :void))
+;; 	     )
+;;
+;; ucontext_t is so hairy I haven't included it yet
+;;
+;; (defcallback sigwinch-handler :void ((signal-number :int)
+;; 				     (:pointer (:struct foreign-siginfo))
+;; 				     (:pointer (:struct ucontext_t))
+;; 	     )
+
 (defun set-signal-action (signal action)
-  "Set the ACTION that given SIGNAL triggers."
+  "Set the ACTION that given SIGNAL triggers. SIGNAL is a unix signal number
+and ACTION is C callback, as would be defined by cffi:defcallback, or one of
+the keywords: :DEFAULT :IGNORE :HOLD."
   (let ((handler (action-to-handler action)))
     (with-foreign-object (act '(:struct foreign-sigaction))
       (with-foreign-slots ((sa_handler sa_mask sa_flags)
@@ -3326,6 +3418,33 @@ it is not a symbolic link."
 
 (defsetf signal-action set-signal-action
   "Set the ACTION that given SIGNAL triggers.")
+
+(defun set-handlers (handler-list)
+  (loop :for (signal . action) :in handler-list :do
+     ;;(format t "set-handler ~s ~s~%" signal action)
+     (set-signal-action signal action)))
+     
+(defmacro with-signal-handlers (handler-list &body body)
+  "Evaluate the BODY with the signal handlers set as in HANDLER-LIST, with the
+handers restored to their orignal values on return. HANDLER-LIST is a list
+of (signal . action), as would be passed to SET-SIGNAL-ACTION."
+  (with-unique-names (saved-list evaled-list)
+    `(let* ((,evaled-list (mapcar (_ (cons (eval (car _))
+					   (cdr _)))
+				  ',handler-list))
+	    (,saved-list
+	     (loop
+		:for (sig . act) :in ,evaled-list
+		;;:do
+		;;(format t "sig = ~s~%" sig)
+		;;(format t "act = ~a~%" (signal-action sig))
+		:collect (cons sig (signal-action sig)))))
+       (unwind-protect
+         (progn
+	   (set-handlers ,evaled-list)
+	   ,@body)
+	 (when ,saved-list
+	   (set-handlers ,saved-list))))))
 
 (defun describe-signals ()
   "List the POSIX signals that are known to the operating system."
@@ -4662,6 +4781,42 @@ available."
 		   (mem-aptr (mem-ref ptr :pointer)
 			     '(:struct foreign-statfs) i))))))
 
+;; Other things on OSX: ?
+;;   getattrlist
+;;   exchangedata
+
+(defctype attrgroup-t :uint32)
+
+(defcstruct attrlist
+  (bitmapcount :ushort)			; number of attr. bit sets in list
+  (reserved    :uint16)			; (to maintain 4-byte alignment)
+  (commonattr  attrgroup-t)		; common attribute group
+  (volattr     attrgroup-t)		; volume attribute group
+  (dirattr     attrgroup-t)		; directory attribute group
+  (fileattr    attrgroup-t)		; file attribute group
+  (forkattr    attrgroup-t))		; fork attribute group
+
+(defconstant +ATTR_BIT_MAP_COUNT+ 5)
+
+#+darwin
+(defcfun getattrlist :int
+  (path :string) (attrlist (:pointer (:struct attrlist)))
+  (attr-buf (:pointer :void)) (attr-buf-size size-t) (options :unsigned-long))
+
+#+darwin
+(defcfun fgetattrlist :int
+  (fd :int) (attrList (:pointer (:struct attrlist)))
+  (attr-buf (:pointer :void)) (attr-buf-size size-t) (options :unsigned-long))
+
+#+darwin
+(defcfun getattrlistat :int
+  (fd :int) (path :string) (attrList (:pointer (:struct attrlist)))
+  (attr-buf (:pointer :void)) (attr-buf-size size-t) (options :unsigned-long))
+
+#+darwin
+(defcfun exchangedata :int
+  (path1 :string) (path2 :string) (options :unsigned-int))
+
 ;; getfsent [BSD]
 
 (define-constant +fs-types+ '(:hfs :nfs :msdos :cd9660 :fdesc :union))
@@ -4674,8 +4829,7 @@ available."
   (fs_mntops	:string)		; Mount options ala -o
   (fs_type	:string)		; FSTAB_* from fs_mntops
   (fs_freq	:int)			; dump frequency, in days
-  (fs_passno	:int)			; pass number on parallel fsck
-)
+  (fs_passno	:int))			; pass number on parallel fsck
 
 (defstruct fstab
   "File system table."
@@ -4690,8 +4844,7 @@ available."
 (define-foreign-type foreign-fstab-type ()
   ()
   (:actual-type :pointer)
-  (:simple-parser foreign-fstab)
-)
+  (:simple-parser foreign-fstab))
 
 (defmethod translate-from-foreign (fstab (type foreign-fstab-type))
   (if (and (pointerp fstab) (null-pointer-p fstab))
@@ -4835,48 +4988,58 @@ descriptor FD."
   "Close a terminal."
   (syscall (posix-close terminal-handle)))
 
-;; (define-condition read-error (posix-error)
-;;   ()
-;;   (:report (lambda (condition stream)
-;; 	     (format stream "A read error occured."))))
+(define-condition read-char-error (posix-error)
+  ()
+  (:report (lambda (c s)
+	     (format s "Error reading a character: ~a"
+			 (symbol-call :opsys :error-message
+				      (opsys-error-code c)))))
+  (:documentation "An error reading a character."))
+
+(defvar *got-sigwinch* nil
+  "True after we received a SIGWINCH.")
+
+(defvar *got-tstp* nil
+  "True after we received a SIGTSTP.")
+
+(defcallback sigwinch-handler :void ((signal-number :int))
+  (declare (ignore signal-number))
+  (setf *got-sigwinch* t))
+
+(defcallback tstp-handler :void ((signal-number :int))
+  (declare (ignore signal-number))
+  (setf *got-tstp* t))
 
 ;; Simple, linear, non-event loop based programming was always an illusion!
 (defun read-terminal-char (terminal-handle &key timeout)
   (declare (ignore timeout))
   (with-foreign-object (c :char)
-    ;; I want this to throw generic continuable read errors, which give
-    ;; the caller the choice to try again or not.
-    ;; I need to make some portable O/S error types an work out
-    ;; the interaction with terminal- (get-char) ....
-    #|
-    (loop
-       :do (setf status (posix-read (terminal-file-descriptor tty) c 1))
-       :if (and (< status 0) (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
-       :do
-       ;; Probably returning from ^Z or terminal resize, or something,
-       ;; so keep trying. Enjoy your trip to plusering town.
-       (cerror "Try again?" 'posix-error :error-code *errno*)
-       (if
-         (terminal-start tty) #| (redraw) |# (tt-finish-output tty)
-	 :else
-         :return
-	 :end)
-    (let ((status (posix-read terminal-handle c 1)))
-      (cond
-	((< status 0)
-	 (if (= *errno* +EINTR+)
-	     (progn
-	       (cerror "Try again?" 'posix-error :error-code *errno*)
-	       
-	 (error "Read error ~d~%" status))
-	((= status 0)
-	 nil)
-	((= status 1)
-	 (format debug "read ~d~%" (mem-ref c :char))
-	 (mem-ref c :unsigned-char))))))
-    |#
-    (syscall (posix-read terminal-handle c 1))
-    (code-char (mem-ref c :unsigned-char))))
+    (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
+			   (+SIGTSTP+  . tstp-handler))
+      (loop
+	 :with resumed :and resized :and status
+	 :do
+	 (setf resumed nil
+	       resized nil
+	       status (posix-read terminal-handle c 1))
+	 :while (and (< status 0)
+		     (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
+	 :do
+	 ;; Probably returning from ^Z or terminal resize, or something,
+	 ;; so keep trying. Enjoy your trip to plusering town.
+	 (cond
+	   (*got-sigwinch*
+	    (setf *got-sigwinch* nil resized t)
+	    (cerror "Try again?" 'opsys-resized))
+	   (*got-tstp*
+	    (setf *got-tstp* nil resumed t)
+	    ;; re-signal with the default, so we actually stop
+	    (with-signal-handlers ((+SIGTSTP+ . :default))
+	      (kill (getpid) +SIGTSTP+))
+	    (cerror "Try again?" 'opsys-resumed))
+	   (t
+	    (cerror "Try again?" 'read-char-error :error-code *errno*))))
+      (code-char (mem-ref c :unsigned-char)))))
 
 (defun write-terminal-char (terminal-handle char)
   "Write CHAR to the terminal designated by TERMINAL-HANDLE."
