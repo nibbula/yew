@@ -388,6 +388,11 @@ anything important.")
     :accessor did-complete
     :initform nil :type boolean
     :documentation "True if we called complete.")
+   (did-under-complete
+    :initarg :did-under-complete
+    :accessor did-under-complete
+    :initform nil :type boolean
+    :documentation "True if we did any under style completion.")
    (last-command-was-completion
     :initarg :last-command-was-completion
     :accessor last-command-was-completion
@@ -501,7 +506,8 @@ but perhaps reuse some resources."))
 	(undo-current e)	nil
 	(need-to-redraw e)	nil
 	(quit-flag e)		nil
-	(exit-flag e)		nil))
+	(exit-flag e)		nil
+	(did-under-complete e)	nil))
 
 (defun get-a-char (e)
   "Read a character from the editor's tty."
@@ -1395,14 +1401,15 @@ Updates the screen coordinates."
 
 (defun clear-completions (e)
   "Erase completions, if there are any."
-  (without-messing-up-cursor (e)
-    (when (< (screen-row e)
-	     (1- (terminal-window-rows (line-editor-terminal e))))
-      (tt-down e 1)
-      (incf (screen-row e))
-      (tt-beginning-of-line e)
-      (setf (screen-col e) 0)
-      (tt-erase-below e))))
+  (when (did-under-complete e)
+    (without-messing-up-cursor (e)
+      (when (< (screen-row e)
+	       (1- (terminal-window-rows (line-editor-terminal e))))
+	(tt-down e 1)
+	(incf (screen-row e))
+	(tt-beginning-of-line e)
+	(setf (screen-col e) 0)
+	(tt-erase-below e)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Commands
@@ -1548,7 +1555,8 @@ if it's blank or the same as the previous line."
     (when accept-does-newline
       (tt-write-char e #\newline)
       (tt-write-char e #\return)
-      (tt-erase-below e)
+      (when (did-under-complete e)
+	(tt-erase-below e))
       (tt-finish-output e))
     (setf quit-flag t)))
 
@@ -2050,6 +2058,7 @@ command line.")
     ;; account for newlines in the content
     (write-char #\newline)
     (tt-erase-below e) (tt-finish-output e)
+    (setf (did-under-complete e) t)
 
     (setf row-limit
 	  (if (and (< (last-completion-not-unique-count e) 2)

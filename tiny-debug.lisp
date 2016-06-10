@@ -3,9 +3,8 @@
 ;;
 
 ;;; TODO:
-;;; - debugger improvements
 ;;; - how about using swank?
-;;; - split me up
+;;; - split me up!
 ;;; - try getting more specific source location with *read-intern*
 
 (defpackage :tiny-debug

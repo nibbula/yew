@@ -142,21 +142,28 @@ unknown.")
 (defgrout done ()
   "Be done with the grout.")
 
+#|
 ;; We want this to work even if Lish is not loaded.
 (defun shell-output-accepts-grotty ()
   "Return true if the LISH output accepts terminal decoration."
   (let (pkg sym val)
-    ;; (format t "==--//==--//==--//==--//==~%")
+    ;;(format t "==--//==--//==--//==--//==~%")
     (and (setf pkg (find-package :lish))
 	 (setf sym (intern "*ACCEPTS*" pkg))
 	 (boundp sym)
 	 (setf val (symbol-value sym))
 	 (progn
-	   ;; (format t "Grottyness = ~s~%" val)
+	   (format t "Grottyness = ~s~%" val)
 	   (or (and (keywordp val)
 		    (eq :grotty-stream val))
 	       (and (typep val 'sequence)
 		    (find :grotty-stream val)))))))
+|#
+
+(defun shell-output-accepts-grotty ()
+  (format t "*accepts* = ~s~%" lish:*accepts*)
+  (format t "Grotty yo = ~s~%" (symbol-call :lish :accepts :grotty-stream))
+  (symbol-call :lish :accepts :grotty-stream))
 
 ;; If you need a specific one, just make it yourself.
 (defun make-grout (&optional (stream *standard-output*))

@@ -273,10 +273,10 @@ you want. They are indexes that default to 0."
 	(quoting nil))
     (flet ((match-literal ()
 	     (when (char/= (char pattern p) (char string s))
-	       (dbug "literal mismatch ~a /= ~a~%"
-		     (char pattern p) (char string s))
+	       ;;(dbug "literal mismatch ~a /= ~a~%"
+	       ;;     (char pattern p) (char string s))
 	       (return-from fnmatch nil))
-	     (dbug "literal ~a~%" (char string s))
+	     ;;(dbug "literal ~a~%" (char string s))
 	     (incf s) (incf p)))
       (if (and pattern string
 	       (not (zerop (length pattern)))
@@ -284,9 +284,9 @@ you want. They are indexes that default to 0."
 	       (pattern-p pattern nil nil))
 	  (loop
 	     :while (and (< p plen) (< s slen))
-	     :do
-	     (dbug "~a~%~v,,,va|~%~a~%~v,,,va|~%"
-		   pattern p #\space "" string s #\space "")
+	     ;;:do
+	     ;;(dbug "~a~%~v,,,va|~%~a~%~v,,,va|~%"
+	     ;;   pattern p #\space "" string s #\space "")
 	     :if quoting :do
 	       (match-literal)
 	       (setf quoting nil)
@@ -300,7 +300,7 @@ you want. They are indexes that default to 0."
 		  (when (eq #\* next-char)
 		    (loop :while (and (< p plen) (char= #\* (char pattern p)))
 		       :do
-		       (dbug "eating ~a~%" (char pattern p))
+		       ;;(dbug "eating ~a~%" (char pattern p))
 		       ;; use one string char for each ?
 		       ;; (when (char= #\? (char pattern p))
 		       ;;   (incf s))
@@ -349,7 +349,7 @@ you want. They are indexes that default to 0."
 		(if (/= p 0) (error "extra ]")))
 	       (#\?
 		;; skip it
-		(dbug "skipping ? ~a~%" (char string s))
+		;;(dbug "skipping ? ~a~%" (char string s))
 		(incf s) (incf p))
 	       (#\\
 		(if escape
@@ -362,12 +362,12 @@ you want. They are indexes that default to 0."
 		(match-literal))))
 	  ;; Not a pattern, just do regular compare
 	  (progn
-	    (dbug "non pattern compare~%")
+	    ;;(dbug "non pattern compare~%")
 	    (return-from fnmatch (string= pattern string))))
 
       ;; Eat trailing *'s
       (loop :while (and (< p plen) (char= (char pattern p) #\*)) :do
-	 (dbug "eating trailing *~%")
+	 ;;(dbug "eating trailing *~%")
 	 (incf p))
 
       ;; If we got thru both, we matched.

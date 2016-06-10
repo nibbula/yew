@@ -50,7 +50,7 @@
      (format stream "~a='~a' " k v)))
 
 (defparameter *attr-tags*
-  #(:meta :link :script :a :form :input :img :div :span)
+  #(:meta :link :script :a :form :input :img :div :span :frame)
   "Tags to print attributes for.")
 
 (defmethod display-thing ((obj plump-dom:element) stream)
@@ -94,7 +94,7 @@
 		 (pick-list:pick-file)
 		 ))
 	 (hh (plump:parse (pathname (nos:quote-filename ff)))))
-    (browse-tree
+    (view-tree
      (make-instance
       'object-node
       :object ff
@@ -156,7 +156,7 @@
 		 (pick-list:pick-file)
 		 ))
 	 (hh (plump:parse (pathname ff))))
-    (browse-tree
+    (view-tree
      (make-instance
       'object-node
       :object ff

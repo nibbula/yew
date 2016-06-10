@@ -165,6 +165,9 @@ TTY is a file descriptor."
 	nil
 	result)))
 
+;; resumed -> (terminal-start tty) #| (redraw) |# (tt-finish-output tty)
+;; resized -> (terminal-get-size tt)
+
 ;; @@@ BROKEN! FIX!
 ;; (defmacro with-raw ((tty) &body body)
 ;;   (with-unique-names (mode)
@@ -192,7 +195,7 @@ Report parameters are returned as values. Report is assumed to be in the form:
 		 ;;(posix-write fd qq (length q))
 		 ;;(tt-write-string tty q) (tt-finish-output tty)
 		 (write-terminal-string fd q)
-		 (read-until fd end-char :timeout 10))))
+		 (read-until fd end-char :timeout 1)))) ; 10
       (when (null str)
 	(error "Terminal failed to report \"~a\"." fmt))
       str)))
@@ -310,7 +313,15 @@ i.e. the terminal is 'line buffered'."
       (error "Forground ~a is not a known color." fg))
     (when (not bg-pos)
       (error "Background ~a is not a known color." bg))
-    (tt-format tty "~c[~d;~dm" #\escape (+ 30 fg-pos) (+ 40 bg-pos))))
+    (cond
+      ((and fg bg)
+       (tt-format tty "~c[~d;~dm" #\escape (+ 30 fg-pos) (+ 40 bg-pos)))
+      (fg
+       (tt-format tty "~c[~dm" #\escape (+ 30 fg-pos)))
+      (bg
+       (tt-format tty "~c[~dm" #\escape (+ 40 bg-pos)))
+      (t
+       (tt-format tty "~c[m" #\escape)))))
 
 ;; 256 color? ^[[ 38;5;color <-fg 48;5;color <- bg
 ;; set color tab = ^[] Ps ; Pt BEL
@@ -349,39 +360,22 @@ i.e. the terminal is 'line buffered'."
 	(prog1
 	    (aref typeahead typeahead-pos)
 	  (incf typeahead-pos)
-;	  (format t "ta->~a~%" (incf typeahead-pos))
+	  ;;(format t "ta->~a~%" (incf typeahead-pos))
 	  (when (>= typeahead-pos (length typeahead))
 	    (setf typeahead nil)))))
-      ;; I want this to optionally catch and handle continuable non-O/S-specific
-      ;; errors, like restarting from ^Z. But for now...
-      (read-terminal-char file-descriptor)
-      #|
-    (let (status)
-      (loop
-	 :do
-	 (restart-case
-	     (read-terminal-char (terminal-file-descriptor tty))
-	   ;; Probably returning from ^Z or terminal resize, or something,
-	   ;; so keep trying. Enjoy your trip to plusering town.
-	   (reset-term ()
-	     :report "Reset the terminal and try again."
-	     (terminal-start tty) (tt-finish-output tty))
-	 :if (and (< status 0) (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
-	 :do
-         (terminal-start tty) #| (redraw) |# (tt-finish-output tty)
-	 :else
-         :return
-	 :end)
-      (cond
-	((< status 0)
-	 (error "Read error ~d ~d ~a~%" status nos:*errno*
-		(nos:strerror nos:*errno*)))
-	((= status 0)		     ; Another possible plusering extravaganza
-	 nil)
-	((= status 1)
-	 (code-char (mem-ref c :unsigned-char)))))
-      |#
-      ))
+    (let (result borked)
+      (loop :do
+	 (setf borked nil)
+	 (handler-case
+	     (setf result (read-terminal-char file-descriptor))
+	   (opsys-resumed ()
+	     (terminal-start tty) (tt-finish-output tty)
+	     (setf borked t))
+	   (opsys-resized ()
+	     (terminal-get-size tty)
+	     (setf borked t)))
+	 :while borked)
+      result)))
 
 (defmethod tt-get-char ((tty terminal-ansi))
   "Read a character from the terminal."

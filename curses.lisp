@@ -126,7 +126,7 @@ Make sure we don't clash with the actual CL-NCURSES.
    #:color-pair
    #:border #:wborder #:box
    #:napms
-   #:is_term_resized #:resize_term #:resizeterm
+   #:is-term-resized #:resize_term #:resizeterm
    ;; terminfo
    #:tigetstr #:tigetflag #:tigetnum
    ;; test functions
@@ -948,7 +948,7 @@ of these, in which case it returns ERR."
 (defcfun napms :int "Sleep for MS milliseconds." (ms :int))
 
 ;; ncurses extension
-(defcfun is_term_resized bool (lines :int) (columns :int))
+(defcfun is-term-resized bool (lines :int) (columns :int))
 (defcfun resize_term :int (lines :int) (columns :int))
 (defcfun resizeterm :int (lines :int) (columns :int))
 

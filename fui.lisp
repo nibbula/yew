@@ -77,6 +77,14 @@
     (curs-set 1)
     (init-colors)
 
+    ;; When curses SIGWINCH handler is overridden, we may have to set the
+    ;; terminal size manually here.
+    (with-os-file (tt (or *device* *default-console-device-name*))
+      (multiple-value-bind (cols lines)
+	  (get-window-size tt)
+	(when (is-term-resized lines cols)
+	  (resizeterm lines cols))))
+
     ;; See if we can get mouse events
     (setf *has-mouse*
 	  (= (mousemask curses:+ALL-MOUSE-EVENTS+ (cffi:null-pointer)) 0))))

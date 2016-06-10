@@ -413,8 +413,8 @@ set in this string."
 		 (incf i inc))))	; for the parameters read
 	   (copy-char ()
 	     "Copy the current character to result."
-	     (dbug "attrs = ~a~%" attrs)
-	     (dbug "(aref fat-line i) = ~a~%" (aref fat-line i))
+	     ;;(dbug "attrs = ~a~%" attrs)
+	     ;;(dbug "(aref fat-line i) = ~a~%" (aref fat-line i))
 	     (let ((new-attrs (union attrs (fatchar-attrs (aref fat-line i)))))
 	       (stretchy:stretchy-append
 		new-fat-line (make-fatchar

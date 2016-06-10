@@ -283,9 +283,13 @@
 		    :typing-searches typing-searches 
 		    :item-line	     (or selected-item 0)
 		    :items	     (if (not (null sort-p))
-				         ;; Where's the unreachable code??
-				         (sort string-list #'string-lessp
-					       :key #'car)
+					 (locally
+					   #+sbcl (declare
+						   (sb-ext:muffle-conditions
+						    sb-ext:compiler-note))
+					   ;; Where's the unreachable code??
+					   (sort string-list #'string-lessp
+						 :key #'car))
 				         string-list)
 		    :max-line        (length string-list)
 		    :max-y           max-y

@@ -263,4 +263,25 @@ strings."
       (spanky span)))
   fat-string)
 
+#|
+(defun map-span-strings (span &key (start 0) end fat-string)
+  "Make a fat string from a span."
+  (labels ((spanky (s)
+	     (when s
+	       (typecase s
+		 (string
+		  )
+		 (list
+		  (let* ((f (first s))
+			 (tag (and (or (keywordp f) (symbolp f)) f)))
+		    (if tag
+			(progn
+			  (spanky (cdr s)))
+			(progn
+			  (spanky f)
+			  (spanky (cdr s)))))))))))
+      (spanky span)))
+  fat-string)
+|#
+
 ;; EOF

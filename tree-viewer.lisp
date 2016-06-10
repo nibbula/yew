@@ -1,5 +1,5 @@
 ;;
-;; tree-viewer.lisp - Browse trees.
+;; tree-viewer.lisp - View trees.
 ;;
 
 ;; TODO:
@@ -8,11 +8,11 @@
 ;;    it later.
 
 (defpackage :tree-viewer
-  (:documentation "Browse trees.")
+  (:documentation "View trees.")
   (:nicknames :tb)
-  (:use :cl :dlib :curses :char-util :keymap :opsys #| :dlib-misc :fui |#)
+  (:use :cl :dlib :curses :char-util :keymap :opsys)
   (:export
-   #:browse-tree
+   #:view-tree
    #:node #:node-branches #:node-open #:make-node
    #:object-node #:node-object #:make-object-node
    #:node-has-branches
@@ -32,11 +32,11 @@
    #:display-object
    #:display-node
    #:display-tree
-   #:fake-code-browse
-   #:fake-browse-project
-   #:browse-package-dependencies
-   #:browse-packages
-   #:browse-lisp
+   #:fake-code-view
+   #:fake-view-project
+   #:view-package-dependencies
+   #:view-packages
+   #:view-lisp
    #:read-org-mode-file
    #:!view-org
    ))
@@ -53,7 +53,7 @@
     :initarg :open :accessor node-open :initform nil :type boolean
     :documentation "True if this node is open."))
   (:documentation
-   "A generic node in a browseable tree."))
+   "A generic node in a viewable tree."))
 
 (defun make-node (&rest args &key &allow-other-keys)
   (apply #'make-instance 'node args))
@@ -130,7 +130,7 @@ or nodes."))
   (:default-initargs
    :func nil
    )
-  (:documentation "A dynamic node in a browseable tree. A dynamic node has a
+  (:documentation "A dynamic node in viewable tree. A dynamic node has a
 function that generates the branches."))
 
 (defun make-dynamic-node (&rest args &key &allow-other-keys)
@@ -166,7 +166,7 @@ which returns a list of the branches of THING."
   (:default-initargs
    :cached nil
    )
-  (:documentation "A dynamic node in a browseable tree. A dynamic node has a
+  (:documentation "A dynamic node in a viewable tree. A dynamic node has a
 function that generates the branches. It caches the results of the branch
 generating function, so it will be called only the first time."))
 
@@ -789,7 +789,7 @@ and indented properly for multi-line objects."
     (let ((str (format nil "~w" (node-object node))))
       (subseq str 0 (min 15 (length str))))))
 
-(defun browse-tree (tree &key viewer)
+(defun view-tree (tree &key viewer)
   "Look at a tree, with expandable and collapsible branches."
   (fui:with-curses
     (when (listp tree)
@@ -904,8 +904,8 @@ and indented properly for multi-line objects."
        :if (eql :dir (nos:dir-entry-type d))
        :collect (concatenate 'string dir "/" (nos:dir-entry-name d))))
 
-(defun browse-foo ()
-  (browse-tree
+(defun view-foo ()
+  (view-tree
    (convert-tree (make-tree "." #'subdirs)
 		 :type 'foo-node)))
 
@@ -980,10 +980,10 @@ and indented properly for multi-line objects."
   (let ((*readtable* *safer-readtable*))
     (package-robust-read stream nil nil)))
 
-(defun fake-code-browse (&optional (file (pick-list:pick-file)))
+(defun fake-code-view (&optional (file (pick-list:pick-file)))
   "This shows why s-exps are cool."
   (with-open-file (stm file)
-    (browse-tree
+    (view-tree
      (convert-tree
       (append (list file)
 	      (loop :with exp
@@ -991,9 +991,9 @@ and indented properly for multi-line objects."
 		 :collect exp))
       :type 'code-node))))
 
-;; (defun fake-code-browse-dir (&optional (directory "."))
+;; (defun fake-code-view-dir (&optional (directory "."))
 ;;   "This shows why s-exps are cool."
-;;   (browse-tree
+;;   (view-tree
 ;;    (convert-tree
 ;;     (loop :for file :in (glob:glob (s+ directory "/*.lisp"))
 ;;        :collect
@@ -1005,8 +1005,8 @@ and indented properly for multi-line objects."
 ;; 		    :collect exp))))
 ;;     :type 'code-node)))
 
-(defun fake-code-browse-files (&optional files)
-  (browse-tree
+(defun fake-code-view-files (&optional files)
+  (view-tree
    (convert-tree
     (append (list "Files")
 	    (loop :for file :in (or files (glob:glob "*.lisp"))
@@ -1022,11 +1022,11 @@ and indented properly for multi-line objects."
 
 ;; This doesn't really work, because we need a reader that can handle
 ;; unknown package prefixes and other errors.
-(defun fake-browse-project (&rest files)
+(defun fake-view-project (&rest files)
   (let* ((ff (or files '("*.lisp" "*.asd")))
 	 (pp (or (loop :for f :in ff :appending (glob:glob f))
 		 (glob:glob "*"))))
-    (fake-code-browse-files (pick-list:pick-list pp :multiple t))))
+    (fake-code-view-files (pick-list:pick-list pp :multiple t))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Package browsing
@@ -1051,9 +1051,9 @@ and indented properly for multi-line objects."
 		:func #'package-mostly-use-list
 		:open nil))))
 
-(defun browse-package-dependencies ()
-  "Browse the entire package dependency hierarchy with the tree viewer."
-  (browse-tree (all-package-dependencies-tree)))
+(defun view-package-dependencies ()
+  "View the entire package dependency hierarchy with the tree viewer."
+  (view-tree (all-package-dependencies-tree)))
 
 (defvar *cl-ext-sym* 
   (let ((lst ()))
@@ -1139,8 +1139,8 @@ and indented properly for multi-line objects."
        :func #'package-contents
        :open nil))))
 
-(defun browse-packages ()
-  (browse-tree (package-contents-tree)))
+(defun view-packages ()
+  (view-tree (package-contents-tree)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Your whole Lisp image browsing.
@@ -1176,7 +1176,7 @@ and indented properly for multi-line objects."
 				:object s :open nil)))))
 
 ;; Simple class viewer:
-;; (tb:browse-tree
+;; (tb:view-tree
 ;;  (tb:make-tree (find-class 'standard-object)
 ;; 	       (_ (sb-mop:class-direct-subclasses _)))
 
@@ -1306,8 +1306,8 @@ and indented properly for multi-line objects."
    :func #'lisp-image-contents
    :open t))
 
-(defun browse-lisp ()
-  (browse-tree (make-instance 'lisp-node)))
+(defun view-lisp ()
+  (view-tree (make-instance 'lisp-node)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Org mode
@@ -1434,7 +1434,7 @@ and indented properly for multi-line objects."
 	     (progn
 	       (setf result
 		     (multiple-value-list
-		      (browse-tree (read-org-mode-file
+		      (view-tree (read-org-mode-file
 				    (elt org-files i)))))
 	       (when (= (length result) 1)
 		 (return)))
