@@ -71,6 +71,7 @@
    #:get-file-info
    #:stream-system-handle
    #:file-exists
+   #:with-os-file
 
    ;; Stupid cooperative locking
    #:with-locked-file

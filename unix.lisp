@@ -149,6 +149,7 @@
    #:posix-write
    #:posix-ioctl
    #:with-posix-file
+   #:with-os-file
    #:mkstemp
 
    ;; stat
@@ -879,7 +880,7 @@
   (:documentation "An error from calling a POSIX function."))
 
 (defun error-message (error-code)
-  "Return a string describing the ERROR-CODE."
+  ;; "Return a string describing the ERROR-CODE."
   (strerror error-code))
 
 (defun error-check (c &optional fmt &rest args)
@@ -2294,8 +2295,9 @@ calls. Returns NIL when there is an error."
 (defcfun ("write" posix-write) :int (fd :int) (buf :pointer) (nbytes size-t))
 (defcfun ("ioctl" posix-ioctl) :int (fd :int) (request :int) (arg :pointer))
 
-(defmacro with-posix-file ((var filename flags mode) &body body)
-  "Evaluate the body with the variable VAR bound to a posix file descriptor opened on FILENAME with FLAGS and MODE."
+(defmacro with-posix-file ((var filename flags &optional (mode 0)) &body body)
+  "Evaluate the body with the variable VAR bound to a posix file descriptor
+opened on FILENAME with FLAGS and MODE."
   `(let (,var)
      (unwind-protect
        (progn
@@ -2304,6 +2306,34 @@ calls. Returns NIL when there is an error."
        (if (>= ,var 0)
 	   (posix-close ,var)
 	   (error-check ,var)))))
+
+(defmacro with-os-file ((var filename &key
+			     (direction :input)
+			     (if-exists :error)
+			     (if-does-not-exist :error)) &body body)
+  "Evaluate the body with the variable VAR bound to a posix file descriptor
+opened on FILENAME. DIRECTION, IF-EXISTS, and IF-DOES-NOT-EXIST are simpler
+versions of the keywords used in Lisp open.
+  DIRECTION         - supports :INPUT, :OUTPUT, and :IO.
+  IF-EXISTS         - supports :ERROR and :APPEND.
+  IF-DOES-NOT-EXIST - supports :ERROR, and :CREATE.
+"
+  (let ((flags 0))
+    (cond
+      ((eq direction :input)    (setf flags O_RDONLY))
+      ((eq direction :output)   (setf flags O_WRONLY))
+      ((eq direction :io)       (setf flags O_RDWR))
+      (t (error ":DIRECTION should be one of :INPUT, :OUTPUT, or :IO.")))
+    (cond
+      ((eq if-exists :append) (setf flags (logior flags O_APPEND)))
+      ((eq if-exists :error) #| we cool |# )
+      (t (error ":IF-EXISTS should be one of :ERROR, or :APPEND.")))
+    (cond
+      ((eq if-does-not-exist :create) (setf flags (logior flags O_CREAT)))
+      ((eq if-does-not-exist :error) #| we cool |# )
+      (t (error ":IF-DOES-NOT-EXIST should be one of :ERROR, or :CREATE.")))
+    `(with-posix-file (,var ,filename ,flags)
+       ,@body)))
 
 (defcfun mkstemp :int (template :string))
 
@@ -3033,7 +3063,7 @@ it is not a symbolic link."
   ;; @@@ take string owner and group and convert to numeric
   (syscall (real-lchown path owner group)))
 
-;; This borders on superstition.
+;; This is sadly still actually useful.
 (defcfun sync :void)
 
 (defun probe-directory (dir)

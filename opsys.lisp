@@ -40,11 +40,17 @@
 
 (in-package :opsys)
 
+(defmacro defosfun (name &optional doc)
+  (let ((sym (intern (symbol-name name) #+unix :os-unix #+windows :os-ms)))
+    `(progn
+       (import '(,sym))
+       (when ,doc
+	 (setf (documentation ',name 'function) ,doc)))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Error handling
 
-#+unix (import '(os-unix:error-message))
-#+windows (import '(ms:error-message))
+(defosfun error-message "Return a string describing the ERROR-CODE.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Environmental information
@@ -60,8 +66,7 @@
   #-(or sbcl clisp cmu openmcl excl ecl)
   (missing-implementation 'lisp-args))
 
-#+unix (import '(os-unix:memory-page-size))
-#+windows (import '(ms:memory-page-size))
+(defosfun memory-page-size "Get the system's memory page size, in bytes.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; sysconf
@@ -243,6 +248,9 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
 
 ;; Sadly I find the need to do this because probe-file might be losing.
 #+unix (import 'os-unix:file-exists)
+
+#+unix (import 'os-unix:with-os-file)
+#+ms (import 'os-ms:with-os-file)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
