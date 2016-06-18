@@ -91,10 +91,10 @@
    #:+TIOCSWINSZ+
 
    ;; Portable interafce
-   #:set-terminal-mode
-   #:get-terminal-mode
-   #:get-window-size
-   #:slurp-terminal
+   ;; #:set-terminal-mode
+   ;; #:get-terminal-mode
+   ;; #:get-window-size
+   ;; #:slurp-terminal
 
    ;; tests
    #:test
@@ -503,15 +503,6 @@
 
 #+linux (defconstant +TIOCGWINSZ+ #x5413 "get window size")
 #+linux (defconstant +TIOCSWINSZ+ #x5414 "set window size")
-
-(defun get-window-size (tty-fd)
-  "Get the window size. First value is columns, second value is rows."
-  (with-foreign-object (ws '(:struct winsize))
-    (when (< (posix-ioctl tty-fd +TIOCGWINSZ+ ws) 0)
-      (error "Can't get the tty window size."))
-    (values
-     (foreign-slot-value ws '(:struct winsize) 'ws_col)
-     (foreign-slot-value ws '(:struct winsize) 'ws_row))))
 
 #|
 (defun UIOCCMD (n) "User control OP 'n'" (_IO #\u n))
@@ -954,11 +945,11 @@ characters. If we don't get anything after a while, just return what we got."
 ;; The portable interface:
 
 ;; I'm not really sure if this is a good interface. ☹
-(defun set-terminal-mode (tty &key (echo    nil echo-supplied)
-				   (line    nil line-supplied)
-				   (raw     nil raw-supplied)
-				   (timeout nil timeout-supplied)
-				   (mode    nil mode-supplied))
+(defun os-unix:set-terminal-mode (tty &key (echo    nil echo-supplied)
+					(line    nil line-supplied)
+					(raw     nil raw-supplied)
+					(timeout nil timeout-supplied)
+					(mode    nil mode-supplied))
   "Set the terminal mode. Arguments are:
   ECHO makes input automatically output back, so you can see what you typed.
   LINE makes input wait for a newline until returning.
@@ -1041,7 +1032,7 @@ The individual settings override the settings in MODE."
 	  (error "Can't set terminal mode. ~d ~d" *errno* tty)))
       (foreign-free new-mode))))
 
-(defun get-terminal-mode (tty)
+(defun os-unix:get-terminal-mode (tty)
   "Return a TERMINAL-MODE structure with the current terminal settings."
   (let ((new-mode (foreign-alloc '(:struct termios)))
 	(echo nil) (line nil) (raw nil) (timeout nil))
@@ -1058,7 +1049,16 @@ The individual settings override the settings in MODE."
 			nil)))
     (make-terminal-mode :echo echo :line line :raw raw :timeout timeout)))
 
-(defun slurp-terminal (tty &key timeout)
+(defun os-unix:get-window-size (tty-fd)
+  "Get the window size. First value is columns, second value is rows."
+  (with-foreign-object (ws '(:struct winsize))
+    (when (< (posix-ioctl tty-fd +TIOCGWINSZ+ ws) 0)
+      (error "Can't get the tty window size."))
+    (values
+     (foreign-slot-value ws '(:struct winsize) 'ws_col)
+     (foreign-slot-value ws '(:struct winsize) 'ws_row))))
+
+(defun os-unix:slurp-terminal (tty &key timeout)
   "Read until EOF. Return a string of the results. TTY is a file descriptor."
   (let* ((size (memory-page-size))
 	 (result (make-array size

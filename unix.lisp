@@ -333,6 +333,11 @@
    #:read-terminal-char
    #:write-terminal-char
    #:write-terminal-string
+   ;; from termios
+   #:set-terminal-mode
+   #:get-terminal-mode
+   #:get-window-size
+   #:slurp-terminal
 
    ;; Character coding / localization
    #:wcwidth
@@ -1539,7 +1544,7 @@ user is not found."
   (not (position-if #'(lambda (c) (not (user-name-char-p c))) username)))
 
 (defun get-next-user ()
-  "Return the next group structure from the group database."
+  "Return the next user structure from the user database."
   (convert-user (real-getpwent)))
 
 (defun user-list ()
@@ -1790,8 +1795,6 @@ user. Probably requires root."
 	   :collect
 	   (utmpx-user u))))
     (endutxent)))
-
-;; chroot
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
@@ -2261,6 +2264,9 @@ calls. Returns NIL when there is an error."
        (when (not (find (opsys-error-code c)
 			`(,+ENOENT+ ,+EACCES+ ,+ENOTDIR+)))
 	 (signal c)))))
+
+(defcfun ("chroot" real-chroot) :int (dirname :string))
+(defun chroot (dirname) (syscall (real-chroot dirname)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Files
@@ -3511,20 +3517,24 @@ of (signal . action), as would be passed to SET-SIGNAL-ACTION."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Processes
 
-; XXX This is really all #+darwin
-(defconstant wait-no-hang   #x01)
-(defconstant wait-untraced  #x02)
-(defconstant wait-stopped   #o0177)
-(defconstant wait-core-flag #o0200)
-(defun wait-status (s)		(logand #o0177 s))
-(defun wait-if-exited (s)	(= (wait-status s) 0))
-(defun wait-if-signaled (s)	(and (not (= (wait-status s) wait-stopped))
-				     (not (= (wait-status s) 0))))
-(defun wait-if-stopped (s)	(= (wait-status s) wait-stopped))
-(defun wait-exit-status (s)	(ash s -8))
-(defun wait-termination-signal (s) (wait-status s))
-(defun wait-core-dump (s)	(not (= 0 (logand s wait-core-flag))))
-(defun wait-stop-signal (s)	(ash s -8))
+#+(or darwin linux)
+;; It's untested if this actually works on Linux.
+(progn
+  (defconstant +WAIT-NO-HANG+    #x0001)
+  (defconstant +WAIT-UNTRACED+   #x0002)
+  (defconstant +WAIT-STOPPED+    #o0177) ;; #x7f
+  (defconstant +WAIT-CORE-FLAG+  #o0200) ;; #x80
+
+  (defun wait-status (s)	 (logand +WAIT-STOPPED+ s))
+  (defun wait-if-exited (s)	 (= (wait-status s) 0))
+;  (defun wait-exit-status (s)	 (ash s -8))
+  (defun wait-exit-status (s)	 (ash (logand s #xff00) -8))
+  (defun wait-if-signaled (s)	 (and (not (= (wait-status s) +WAIT-STOPPED+))
+				      (not (= (wait-status s) 0))))
+  (defun wait-if-stopped (s)	 (= (wait-status s) +WAIT-STOPPED+))
+  (defun wait-termination-signal (s) (wait-status s))
+  (defun wait-core-dump (s)	 (not (= 0 (logand s +WAIT-CORE-FLAG+))))
+  (defun wait-stop-signal (s)	 (ash s -8)))
 
 ;; (defcstruct timeval
 ;;   (seconds time-t)
@@ -3597,10 +3607,36 @@ environment list, which defaults to the current 'C' environ variable."
       (when (and c-env (pointerp c-env) (not (pointerp env)))
 	(free-c-env c-env)))))
 
-(defcfun wait pid-t (status :pointer))
-(defcfun waitpid pid-t (wpid pid-t) (status :pointer) (options :int))
-(defcfun wait4 pid-t (status :pointer) (options :int)
+(defcfun ("wait" real-wait) pid-t (status :pointer))
+(defcfun ("waitpid" real-waitpid) pid-t
+  (wpid pid-t) (status :pointer) (options :int))
+(defcfun ("wait4" real-wait4) pid-t (status :pointer) (options :int)
 	 (rusage (:pointer (:struct foreign-rusage))))
+
+(defun wait ()
+  "Wait for child processes to finish and return the status and a datum.
+Possible values of STATUS and DATUM are:
+  :exited    exit code
+  :signaled  signal number
+  :stopped   signal number
+  :coredump  signal number
+  :error     error code
+"
+  (with-foreign-object (status-ptr :int)
+    (syscall (real-wait status-ptr))
+    (let ((status (mem-ref status-ptr :int)))
+      (cond
+	((wait-if-exited status)
+	 (values :exited (wait-exit-status status)))
+	((wait-if-signaled status)
+	 (values (if (wait-core-dump status)
+		     :coredump
+		     :signaled)
+		 (wait-termination-signal status)))
+	((wait-if-stopped status)
+	 (values :stopped (wait-stop-signal status)))
+	(t
+	 (values :error *errno*))))))
 
 (defcfun ("fork" posix-fork) pid-t)
 
@@ -3624,7 +3660,7 @@ environment list, which defaults to the current 'C' environ variable."
 ;; (without-gcing (spawn ....))
 
 ;; Hmmm, see:
-;;stumpwm-0.9.7/contrib/sbclfix.lisp
+;; stumpwm-0.9.7/contrib/sbclfix.lisp
 
 (defun wait-and-report (child-pid)
   #-clisp
@@ -3634,7 +3670,7 @@ environment list, which defaults to the current 'C' environ variable."
     (let ((status 0) (wait-pid nil))
       (declare (ignorable status))
       (loop
-	 :do (setf wait-pid (waitpid child-pid status-ptr 0))
+	 :do (setf wait-pid (real-waitpid child-pid status-ptr 0))
 	 :while (/= wait-pid child-pid)
 	 :do
 	 (format t "Back from wait wait-pid = ~d~%" wait-pid)
@@ -3663,10 +3699,11 @@ environment list, which defaults to the current 'C' environ variable."
 
   #+clisp ;; the old version I have now
   (declare (ignore child-pid))
+  #+clisp
   (with-foreign-object (status-ptr :int 1)
     (setf (mem-ref status-ptr :int) 0)
 ;    (let ((wait-pid (waitpid child-pid status-ptr 0))
-    (let ((wait-pid (wait status-ptr))
+    (let ((wait-pid (real-wait status-ptr))
 	  status)
       (when (and (= wait-pid -1) (/= *errno* +ECHILD+))
 	(error-check wait-pid "wait-pid"))

@@ -40,17 +40,27 @@
 
 (in-package :opsys)
 
-(defmacro defosfun (name &optional doc)
+(defmacro defosthing (name type &optional doc)
+  "Import a thing from the proper OS specific package and set it's
+documenatation."
   (let ((sym (intern (symbol-name name) #+unix :os-unix #+windows :os-ms)))
     `(progn
        (import '(,sym))
        (when ,doc
-	 (setf (documentation ',name 'function) ,doc)))))
+	 (setf (documentation ',name ,type) ,doc)))))
+
+(defmacro defosfun (name lambda-list &optional doc)
+  (declare (ignore lambda-list))
+  `(defosthing ,name 'function ,doc))
+
+(defmacro defosvar (name &optional doc)
+  `(defosthing ,name 'variable ,doc))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Error handling
 
-(defosfun error-message "Return a string describing the ERROR-CODE.")
+(defosfun error-message (error-code)
+  "Return a string describing the ERROR-CODE.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Environmental information
@@ -66,7 +76,8 @@
   #-(or sbcl clisp cmu openmcl excl ecl)
   (missing-implementation 'lisp-args))
 
-(defosfun memory-page-size "Get the system's memory page size, in bytes.")
+(defosfun memory-page-size ()
+  "Get the system's memory page size, in bytes.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; sysconf
@@ -76,51 +87,71 @@
 ;; User database
 ;; 
 
-#+unix (import '(os-unix:user-home
-		 os-unix:user-name
-		 os-unix:user-id
-		 os-unix:user-full-name
-		 os-unix:user-name-char-p
-		 os-unix:valid-user-name
-		 os-unix:get-next-user
-		 os-unix:user-list
-		 os-unix:refresh-user-list
-		 os-unix:is-administrator
-		 os-unix:users-logged-in
-		 ))
+(defosfun user-name (&optional id)
+  "Return the name of the user with ID, which defaults to the current user.")
 
-#+ms (import '(ms:user-home
-	       ms:user-name
-	       ms:user-id
-	       ms:user-full-name
-	       ms:user-name-char-p
-	       ms:valid-user-name
-	       ms:get-next-user
-	       ms:user-list
-	       ms:refresh-user-list
-	       ms:is-administrator
-	       ms:users-logged-in
-	       ))
+(defosfun user-home (&optional (user (user-name)))
+  "Return the namestring of the given USER's home directory or nil if the ~
+user is not found.")
+
+(defosfun user-id (&key name effective)
+  "Return the ID of the user with NAME, which defaults to the current user.")
+
+(defosfun user-full-name (&optional id)
+  "Return the full name of user with ID, which defaults to the current user.")
+
+(defosfun user-name-char-p (c)
+  "Return true if C is a valid character in a user name.")
+
+(defosfun valid-user-name (username)
+  "Return true if USERNAME could be a valid user name, but not that the user
+actually exists.")
+
+(defosfun get-next-user ()
+  "Return the next user structure from the user database.")
+
+(defosfun user-list ()
+  "Return the list of all users.")
+
+(defosfun refresh-user-list ()
+  "Make GET-NEXT-GROUP or GROUP-LIST return potentially updated data.")
+
+(defosfun is-administrator ()
+  "Return true if you are root, or effectively root.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Group database
 ;; 
 
-#+unix (import '(os-unix:group-name
-		 os-unix:group-id
-		 os-unix:get-next-group
-		 os-unix:group-list
-		 os-unix:refresh-group-list))
+(defosfun group-name (&optional id)
+  "Return the name of the group with ID. Defaults to the current group.")
+
+(defosfun group-id (&optional name)
+  "Return the ID of the group NAME. Defaults to the current group.")
+
+(defosfun get-next-group ()
+  "Return the next group structure from the group database.")
+
+(defosfun group-list ()
+  "Return the list of all groups.")
+
+(defosfun refresh-group-list ()
+  "Make GET-NEXT-GROUP or GROUP-LIST return potentially updated data.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Login/accounting database
 
+(defosfun users-logged-in ()
+  "Return a list of names of logged in users.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Files
 
-#+unix (import '(os-unix:get-file-info))
-#+ms (import '(ms:get-file-info))
+(defosfun get-file-info (path &key (follow-links t))
+  "Return information about the file described by PATH in a FILE-INFO
+structure. If FOLLOW-LINKS is true (the default), then if PATH is a symbolic
+link, return information about the file it's linked to, otherwise return
+information about the link itself.")
 
 ;; (defmacro with-temp-file ((var &optional template) &body body)
 ;;   "Evaluate the body with the variable VAR bound to a POSIX file descriptor with a temporary name. The file is supposedly removed after this form is done."
@@ -247,21 +278,60 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
   (missing-implementation 'stream-system-handle))
 
 ;; Sadly I find the need to do this because probe-file might be losing.
-#+unix (import 'os-unix:file-exists)
+(defosfun file-exists (filename)
+  "Check that a file with FILENAME exists at the moment. But it might not exist
+for long.")
 
-#+unix (import 'os-unix:with-os-file)
-#+ms (import 'os-ms:with-os-file)
+(defosfun with-os-file ((var filename &key
+			     (direction :input)
+			     (if-exists :error)
+			     (if-does-not-exist :error)) &body body)
+  "Evaluate the body with the variable VAR bound to a posix file descriptor
+opened on FILENAME. DIRECTION, IF-EXISTS, and IF-DOES-NOT-EXIST are simpler
+versions of the keywords used in Lisp open.
+  DIRECTION         - supports :INPUT, :OUTPUT, and :IO.
+  IF-EXISTS         - supports :ERROR and :APPEND.
+  IF-DOES-NOT-EXIST - supports :ERROR, and :CREATE.
+")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
 
-#+unix (import '(os-unix:read-directory
-		 os-unix:change-directory
-		 os-unix:current-directory
-		 os-unix:make-directory
-		 os-unix:delete-directory
-		 os-unix:probe-directory
-		 os-unix:without-access-errors))
+(defosfun read-directory (&key dir append-type full omit-hidden)
+  "Return a list of the file names in DIR as strings. DIR defaults to the ~
+current directory. If APPEND-TYPE is true, append a character to the end of ~
+the name indicating what type of file it is. Indicators are:
+  / : directory
+  @ : symbolic link
+  | : FIFO (named pipe)
+  = : Socket
+  > : Doors
+If FULL is true, return a list of dir-entry structures instead of file name ~
+strings. Some dir-entry-type keywords are:
+  :unknown :pipe :character-device :dir :block-device :regular :link :socket
+  :whiteout :undefined
+If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
+")
+
+(defosfun change-directory (&optional path)
+  "Change the current directory to DIR. Defaults to (user-homedir-pathname) ~
+if not given.")
+
+(defosfun current-directory ()
+  "Return the full path of the current working directory as a string.")
+
+(defosfun make-directory (path &key (mode #o755))
+  "Make a directory.")
+
+(defosfun delete-directory (path)
+  "Delete a directory.")
+
+(defosfun probe-directory (dir)
+  "Something like probe-file but for directories.")
+
+(defosfun without-access-errors (&body body)
+  "Evaluate the body while ignoring typical file access error from system
+calls. Returns NIL when there is an error.")
 
 (defmacro in-directory ((dir) &body body)
   "Evaluate the body with the current directory set to DIR."
@@ -276,7 +346,7 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
 (defalias 'with-working-directory 'in-directory)
 
 #+clisp (eval-when (:compile-toplevel :load-toplevel :execute)
-	  (if (or ;; They keep changing this shit!!
+	  (if (or ;; They keep changing this!!
 	       (and (function-defined '#:make-directory :posix)
 		    (function-defined '#:delete-directory :posix))
 	       (and (function-defined '#:make-directory :ext)
@@ -392,11 +462,12 @@ them if there isn't one already."
 	     (princ ns str)
 	     (setf any t)))))))
 
-#+unix (import '(os-unix:hidden-file-name-p
-		 os-unix:superfluous-file-name-p))
+(defosfun hidden-file-name-p (name)
+  "Return true if the file NAME is normally hidden.")
 
-#+ms (import '(ms:hidden-file-name-p
-	       ms:superfluous-file-name-p))
+(defosfun superfluous-file-name-p (name)
+  "Return true if the file NAME is considered redundant. On POSIX file
+systems, this means \".\" and \"..\".")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Stupid file locking
@@ -459,7 +530,9 @@ them if there isn't one already."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; System Commands?
 
-#+unix (import 'os-unix:is-executable)
+(defosfun is-executable (path &optional user)
+  "Return true if the PATH is executable by the UID. UID defaults to the
+current effective user.")
 
 (defun has-directory-p (path)
   "Return true if PATH has a directory part."
@@ -520,7 +593,7 @@ if there isn't one."
 
 ;; @@@ Consistently return exit status?
 ;; @@@ Evironment on other than sbcl and cmu?
-(defun run-program (cmd &optional args (environment nil env-p))
+(defun run-program (cmd args &key (environment nil env-p))
 ;  #+(or clisp sbcl ccl) (fork-and-exec cmd args)
   #+clisp (ext:run-program cmd :arguments args)
   #+excl (excl:run-shell-command (concatenate 'vector (list cmd cmd) args)
@@ -566,7 +639,7 @@ if there isn't one."
   #+sbcl (sb-ext:process-exit-code
 	  (apply #'sb-ext:run-program
 		 `(,cmd ,args
-		   ,@(when env-p :environment environment)
+		   ,@(when env-p `(:environment ,environment))
 		   :search t :output t :input t :error t :pty nil)))
   #+cmu (ext:process-exit-code
 	 (apply #'ext:run-program
@@ -596,17 +669,24 @@ if there isn't one."
 ;;   ;; @@@@
 ;;   )
 
-#+unix (import '(os-unix:suspend-process
-		 os-unix:resume-process
-		 os-unix:terminate-process
-		 os-unix:process-times
-		 os-unix:process-list))
+(defosfun suspend-process (&optional id)
+  "Suspend the process with the given ID. If ID is NIL or not given, suspend
+the current process.")
 
-#+ms (import '(ms:suspend-process
-	       ms:resume-process
-	       ms:terminate-process
-	       ms:process-list
-	       ms:process-times))
+(defosfun resume-process (id)
+  "Resume the suspended process with the given ID.")
+
+(defosfun terminate-process (id)
+  "Terminate the process with the given ID.")
+
+(defosfun process-times (who)
+  "Get CPU time for WHO, which is either :SELF or :CHILDREN. Return a four
+integer values: seconds and microseconds of user time, seconds and microseconds
+of system time.")
+
+(defosfun process-list ()
+  "Return a list of OS-PROCESS structures that represent the processes active
+around the time of the call.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; IPC
@@ -728,35 +808,64 @@ available."
 
 ;; System independant interface?
 
-#+unix (import '(os-unix:mounted-filesystems
-		 os-unix:mount-point-of-file))
+(defosfun mounted-filesystems ()
+  "Return a list of filesystem info.")
+
+(defosfun mount-point-of-file (file)
+  "Try to find the mount of FILE. This might not always be right.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ttys
 
-#+unix (import '(os-unix:file-handle-terminal-p
-		 os-unix:file-handle-terminal-name
-		 os-unix:*default-console-device-name*
-		 os-unix:open-terminal
-		 os-unix:close-terminal
-		 os-unix:read-terminal-char
-		 os-unix:write-terminal-char
-		 os-unix:write-terminal-string
-		 termios:slurp-terminal
-		 termios:set-terminal-mode
-		 termios:get-terminal-mode
-		 termios:get-window-size))
+(defosfun file-handle-terminal-p (fd)
+  "Return true if the system file descriptor FD is attached to a terminal.")
 
-#+windows (import '(ms:file-handle-terminal-p
-		    ms:file-handle-terminal-name
-		    ms:*default-console-device-name*
-		    ms:open-terminal
-		    ms:close-terminal
-		    ms:slurp-terminal
-		    ms:read-terminal-char
-		    ms:set-terminal-mode
-		    ms:get-terminal-mode
-		    ms:get-window-size))
+(defosfun file-handle-terminal-name (fd)
+  "Return the device name of the terminal attached to the system file
+descriptor FD.")
+
+(defosvar *default-console-device-name* "Name of the default console device.")
+
+(defosfun open-terminal (device-name)
+  "Open a terminal. Return the system file handle.")
+
+(defosfun close-terminal (terminal-handle)
+  "Close a terminal.")
+
+(defosfun read-terminal-char (terminal-handle &key timeout)
+  "Return a character read from the terminal TERMINAL-HANDLE.
+If there's a problem, it will signal a READ-CHAR-ERROR. If the terminal is
+resized it will signal an OPSYS-RESIZED. If the program is continued from
+being suspended, it will signal an OPSYS-RESUMED. Usually this means the
+caller should handle these possibilites.")
+
+(defosfun write-terminal-char (terminal-handle char)
+  "Write CHAR to the terminal designated by TERMINAL-HANDLE.")
+
+(defosfun write-terminal-string (terminal-handle string)
+  "Write STRING to the terminal designated by TERMINAL-HANDLE.")
+
+(defosfun slurp-terminal (tty &key timeout)
+  "Read until EOF. Return a string of the results. TTY is a file descriptor.")
+
+(defosfun set-terminal-mode (tty &key (echo    nil echo-supplied)
+					(line    nil line-supplied)
+					(raw     nil raw-supplied)
+					(timeout nil timeout-supplied)
+					(mode    nil mode-supplied))
+  "Set the terminal mode. Arguments are:
+  ECHO makes input automatically output back, so you can see what you typed.
+  LINE makes input wait for a newline until returning.
+  RAW ingores normal processing, like interrupt keys.
+  TIMEOUT is the time in milliseconds to wait before returning with no input.
+  MODE is a TERMINAL-MODE structure to take settings from.
+The individual settings override the settings in MODE.")
+
+(defosfun get-terminal-mode (tty)
+  "Return a TERMINAL-MODE structure with the current terminal settings.")
+
+(defosfun get-window-size (tty-fd)
+  "Get the window size. The first value is columns, second value is rows.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Profiling and debugging?
@@ -766,7 +875,7 @@ available."
 ;; profil
 ;; ptrace
 
-;; Weird/simulation/emulation
+;; Weird/simulation/emulation/API munging:
 ;; syscall
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
