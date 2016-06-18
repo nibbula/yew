@@ -19,148 +19,199 @@
 (declaim (optimize (debug 3)))
 ;;(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
-;; TODO:
-;; things from pager:
-;; - best key compatability?
-
 (defkeymap *pick-list-keymap*
-  `((#\escape		. *pick-list-escape-keymap*)
-    (,(ctrl #\G)	. pick-list-quit)
-    (#\return		. pick-list-pick)
-    (#\newline		. pick-list-pick)
-    (#\space		. pick-list-toggle-item)
-    (,(ctrl #\X)	. pick-list-toggle-region)
-    (,(ctrl #\N)	. pick-list-next-line)
-    (:down		. pick-list-next-line)
-    (,(ctrl #\P)	. pick-list-previous-line)
-    (:up		. pick-list-previous-line)
-    (#\>		. pick-list-end-of-list)
-    (,(meta-char #\>)	. pick-list-end-of-list)
-    (:end		. pick-list-end-of-list)
-    (#\<		. pick-list-beginning-of-list)
-    (,(meta-char #\<)	. pick-list-beginning-of-list)
-    (:home		. pick-list-beginning-of-list)
-    (,(ctrl #\F)	. pick-list-next-page)
-    (,(ctrl #\V)	. pick-list-next-page)
-    (:npage		. pick-list-next-page)
-    (,(ctrl #\B)	. pick-list-previous-page)
-    (,(meta-char #\v)	. pick-list-previous-page)
-    (:ppage		. pick-list-previous-page)
-    (,(meta-char #\=)   . pick-list-binding-of-key)
-    (#\?                . pick-list-help)
+  `((#\escape		  . *pick-list-escape-keymap*)
+    (,(ctrl #\G)	  . quit)
+    (#\return		  . accept)
+    (#\newline		  . accept)
+    (#\space		  . pick-list-toggle-item)
+    (,(ctrl #\X)	  . pick-list-toggle-region)
+    ;; (,(ctrl #\N)	  . pick-list-next-line)
+    (:down		  . next)
+    ;; (,(ctrl #\P)	  . pick-list-previous-line)
+    (:up		  . previous)
+    (#\>		  . move-to-bottom)
+    ;; (,(meta-char #\>) . pick-list-end-of-list)
+    (:end		  . move-to-bottom)
+    (#\<		  . move-to-top)
+    ;; (,(meta-char #\<) . move-to-top)
+    (:home		  . move-to-top)
+    (,(ctrl #\F)	  . next-page)
+    (,(ctrl #\V)	  . next-page)
+    (:npage		  . next-page)
+    (,(ctrl #\B)	  . previous-page)
+    (,(meta-char #\v)	  . previous-page)
+    (:ppage		  . previous-page)
+    (,(meta-char #\=)	  . pick-list-binding-of-key)
+    ;;(#\?		  . pick-list-help)
+    (#\?		  . help)
     ))
 
 (defparameter *pick-list-escape-keymap*
   (build-escape-map *pick-list-keymap*))
 
-(defstruct pick
-  "State for a pick-list-inator."
-  quit-flag
-  multiple
-  by-index
-  typing-searches
-  message
-  items					; @@@ this should be renamed
-  item-line
-  result
-  second-result				; @@@ this should be renamed
-  mark
-  cur-line
-  max-y
-  (top 0)
-  ttop					; @@@ this should be renamed
-  max-line
-  page-size
-  (input 0)				; aka 'c'
-  error-message
-  (search-str (make-stretchy-string 10)))
-
 (defvar *pick* nil
   "The current pick list state.")
 
-(defun pick-list-quit ()
-  "Quit the list picker."
-  (setf (pick-quit-flag *pick*) t))
+(defclass pick (fui-inator)
+  ((multiple
+    :initarg :multiple :accessor pick-multiple
+    :initform nil :type boolean
+    :documentation "True to select multiple items.")
+   (by-index
+    :initarg :by-index :accessor pick-by-index
+    :initform nil :type boolean
+    :documentation "True to return the index of picked items.")
+   (typing-searches
+    :initarg :typing-searches :accessor pick-typing-searches
+    :initform t :type boolean
+    :documentation "True if typing graphic characters searches for items.")
+   (message
+    :initarg :message :accessor pick-message
+    ;; :initform nil :type (or null string)
+    :documentation "Message to display before the list.")
+   (items
+    :initarg :items :accessor pick-items
+    :initform nil :type sequence
+    :documentation "Sequence of items to choose from.")
+#| Probably can be replaced by POINT.
+   (item-line
+    :initarg :item-line :accessor pick-item-line
+    :initform @@@ :type @@@
+    :documentation ".") |#
+   (result
+    :initarg :result :accessor pick-result
+    :initform nil
+    :documentation "What the user picked.")
+   (second-result
+    :initarg :second-result :accessor pick-second-result
+    :initform nil :type boolean
+    :documentation "True if we exited normally. False, if we canceled.")
+   (mark
+    :initarg :mark :accessor pick-mark
+    :initform nil
+    :documentation "One end of the region.")
+   (cur-line
+    :initarg :cur-line :accessor pick-cur-line
+    :initform 0 :type fixnum
+    :documentation "The current line we are on in the screen.")
+   (max-y ;; @@@ perhaps I should get rid of this and just check (1- *lines*)
+    :initarg :max-y :accessor pick-max-y
+    :initform 0 :type fixnum
+    :documentation "The maximum valid screen line.")
+   (top
+    :initarg :top :accessor pick-top
+    :initform 0 :type fixnum
+    :documentation "Top line of the view.")
+   (ttop								; @@@ this should probably be renamed
+    :initarg :ttop :accessor pick-ttop
+    :initform 0 :type fixnum
+    :documentation "First line number of the list area.")
+   (max-line
+    :initarg :max-line :accessor pick-max-line
+    :initform 0 :type fixnum
+    :documentation "The maximum index number of the list.")
+   (page-size
+    :initarg :page-size :accessor pick-page-size
+    :initform 0 :type fixnum
+    :documentation "Number of lines displayed.")
+   (input				; aka 'c'
+    :initarg :input :accessor pick-input
+    :initform 0
+    :documentation "The last input.")
+   (error-message
+    :initarg :error-message :accessor pick-error-message
+    :initform nil
+    :documentation "A message to display to the user.")
+   (search-str
+    :initarg :search-str :accessor pick-search-str
+    :initform (make-stretchy-string 10) :type string
+    :documentation "The string to search for."))
+  (:documentation "State for a pick-list-inator."))
 
-(defun pick-list-pick ()
+;; (defmethod quit ((i pick))
+;;   "Quit the list picker."
+;;   (setf (inator-quit-flag i) t))
+
+(defmethod accept ((pick pick)) ; pick-list-pick
   "Pick the current item."
-  (with-slots (multiple by-index result items item-line quit-flag input
-	       second-result) *pick*
+  (with-slots (multiple by-index result items (point inator::point)
+			   (quit-flag inator::quit-flag) input second-result) pick
     (if multiple
-	(when (not by-index)
-	  (setf result (mapcar (_ (cdr (elt items _))) result)))
-	(if by-index
-	    (setf result item-line)
-	    (setf result (cdr (elt items item-line)))))
+		(when (not by-index)
+		  (setf result (mapcar (_ (cdr (elt items _))) result)))
+		(if by-index
+			(setf result point)
+			(setf result (cdr (elt items point)))))
     (setf quit-flag t
-	  second-result (eq input #\newline)))) ; @@@ bogus check for newline
+		  second-result (eq input #\newline)))) ; @@@ bogus check for newline
 
-(defun pick-list-toggle-item ()
+(defun pick-list-toggle-item (pick)
   "Toggle the item for multiple choice."
-  (with-slots (multiple item-line result) *pick*
+  (with-slots (multiple (point inator::point) result) pick
     (when multiple
-      (if (position item-line result)
-	  (setf result (delete item-line result))
-	  (push item-line result)))))
+      (if (position point result)
+	  (setf result (delete point result))
+	  (push point result)))))
 
-(defun pick-list-toggle-region ()
+(defun pick-list-toggle-region (pick)
   "Toggle the items in the region."
-  (with-slots (multiple mark item-line result) *pick*
+  (with-slots (multiple mark (point inator::point) result) pick
     (when (and multiple mark)
-      (loop :for i :from (min mark item-line)
-	 :to (max mark item-line)
+      (loop :for i :from (min mark point)
+	 :to (max mark point)
 	 :do
 	 (if (position i result)
 	     (setf result (delete i result))
 	     (push i result))))))
 
-(defun pick-list-next-line ()
+(defmethod next ((i pick))				; pick-list-next-line
   "Go to the next line. Scroll and wrap around if need be."
-  (with-slots (cur-line max-y top item-line max-line) *pick*
+  (with-slots (cur-line max-y top (point inator::point) max-line) i
     (when (>= (+ cur-line 1) max-y)
       (incf top))
-    (if (< item-line (1- max-line))
-	(incf item-line)
-	(setf item-line 0 top 0))))
+    (if (< point (1- max-line))
+		(incf point)
+		(setf point 0 top 0))))
 
-(defun pick-list-previous-line ()
+(defmethod previous ((i pick))			; pick-list-previous-line
   "Go to the previous line. Scroll and wrap around if need be."
-  (with-slots (item-line top max-line items max-y ttop) *pick*
-    (when (<= item-line top)
+  (with-slots ((point inator::point) top max-line items max-y ttop) i
+    (when (<= point top)
       (decf top))
-    (if (> item-line 0)
-	(decf item-line)
-	(progn
-	  (setf item-line (1- max-line))
-	  (setf top (max 0 (- (length items)
-			      (- max-y ttop))))))))
+    (if (> point 0)
+		(decf point)
+		(progn
+		  (setf point (1- max-line))
+		  (setf top (max 0 (- (length items)
+							  (- max-y ttop))))))))
 
-(defun pick-list-end-of-list ()
+(defmethod move-to-bottom ((i pick))	; pick-list-end-of-list
   "Go to the end of the list."
-  (with-slots (item-line max-line top items max-y ttop) *pick*
+  (with-slots ((point inator::point) max-line top items max-y ttop) i
     ;; (pause (format nil "~d ~d ~d ~d ~d"
-    ;; 		    item-line max-line top max-y ttop))
-    (setf item-line (1- max-line))
+    ;; 		    point max-line top max-y ttop))
+    (setf point (1- max-line))
     (setf top (max 0 (- (length items) (- max-y ttop))))))
 
-(defun pick-list-beginning-of-list ()
+(defmethod move-to-top ((i pick))		; pick-list-beginning-of-list
   "Go to the beginning of the list."
-  (with-slots (item-line top) *pick*
-    (setf item-line 0 top 0)))
+  (with-slots ((point inator::point) top) i
+    (setf point 0 top 0)))
 
-(defun pick-list-next-page ()
+(defmethod next-page ((i pick))			; pick-list-next-page
   "Scroll to the next page."
-  (with-slots (item-line max-line page-size cur-line top) *pick*
-    (setf item-line (min (1- max-line) (+ item-line page-size))
-	  cur-line  (+ top item-line)
-	  top       item-line)))
+  (with-slots ((point inator::point) max-line page-size cur-line top) i
+    (setf point (min (1- max-line) (+ point page-size))
+		  cur-line  (+ top point)
+		  top       point)))
 
-(defun pick-list-previous-page ()
+(defmethod previous-page ((i pick))		; pick-list-previous-page
   "Scroll to the previous page."
-  (with-slots (item-line page-size cur-line top) *pick*
-    (setf item-line (max 0 (- item-line page-size))
-	  cur-line  (+ top item-line)
-	  top       item-line)))
+  (with-slots ((point inator::point) page-size cur-line top) *pick*
+    (setf point (max 0 (- point page-size))
+		  cur-line  (+ top point)
+		  top       point)))
 
 (defun pick-error (message &rest args)
   "Set the list picker error message."
@@ -173,7 +224,8 @@
   (clrtoeol)
   (addstr (pick-error-message *pick*)))
 
-(defun pick-list-binding-of-key ()
+(defun pick-list-binding-of-key (inator)
+  (declare (ignore inator))
   (pick-list-tmp-message "Press a key: ")
   (let* ((key (get-char))
 	 (action (key-definition key *pick-list-keymap*)))
@@ -183,13 +235,13 @@
 	(pick-list-tmp-message
 	 (format nil "~a is not defined" (nice-char key))))))
 
-(defun pick-list-help ()
-  (display-text "List picker keys" (help-list *pick-list-keymap*)))
+;; (defun pick-list-help ()
+;;   (display-text "List picker keys" (help-list *pick-list-keymap*)))
 
-(defun pick-list-display ()
+(defmethod update-display ((i pick)) ; pick-list-display
   "Display the list picker."
-  (with-slots (message multiple items item-line result cur-line
-	       max-y top ttop error-message) *pick*
+  (with-slots (message multiple items (point inator::point) result cur-line
+		       max-y top ttop error-message) *pick*
     (erase)
     (move 0 0)
     (when message (addstr (format nil message)))
@@ -201,11 +253,11 @@
        (if (and multiple (position i result))
 	   (addstr "X ")
 	   (addstr "  "))
-       (when (= i item-line)
+       (when (= i point)
 	 (standout)
 	 (setf cur-line (getcury *stdscr*)))
        (addstr f)
-       (when (= i item-line)
+       (when (= i point)
 	 (standend))
        (addch (char-code #\newline))
        (incf i)
@@ -214,26 +266,35 @@
     (when error-message (mvaddstr (- *lines* 1) 0 error-message))
     (move cur-line 0)))
 
-(defun pick-typing-search ()
+(defmethod default-action ((pick pick)) ; pick-typing-search
   "Try to search for typed input and return T if we did."
-  (with-slots (typing-searches input search-str item-line max-line
-	       items top page-size) *pick*
+  (with-slots (typing-searches input search-str (point inator::point) max-line
+			   items top page-size) pick
     (if (and typing-searches
-	     (and (characterp input)
-		  (graphic-char-p input) (not (position input "<> "))))
-	;; Search for the seach string
-	(progn
-	  (stretchy-append search-str input)
-	  (loop :for i :from item-line :below max-line
-	     :if (search search-str (car (elt items i)) :test #'equalp)
-	     :return (setf item-line i))
-	  (when (> item-line (+ top page-size))
-	    (setf top item-line))
-	  t)
-	;; Clear the string
-	(progn
-	  (stretchy-truncate search-str)
-	  nil))))
+			 (and (characterp input)
+				  (graphic-char-p input) (not (position input "<> "))))
+		;; Search for the seach string
+		(progn
+		  (stretchy-append search-str input)
+		  (loop :for i :from point :below max-line
+			 :if (search search-str (car (elt items i)) :test #'equalp)
+			 :return (setf point i))
+		  (when (> point (+ top page-size))
+			(setf top point))
+		  t)
+		;; Clear the string
+		(progn
+		  (stretchy-truncate search-str)
+		  nil))))
+
+(defmethod await-event ((i pick))
+  "Pick list input."
+  (with-slots (error-message input) i
+	(setf error-message nil
+		  input (get-char))
+	input))
+
+#|
 
 (defun pick-perform-key (key &optional (keymap *pick-list-keymap*))
   (with-slots () *pick*
@@ -261,6 +322,7 @@
 	 (funcall command))
 	(t				; anything else is an error
 	 (error "Weird thing in keymap: ~s." command))))))
+|#
 
 (defun pick-list (the-list &key message by-index sort-p default-value
 			     selected-item (typing-searches t) multiple)
@@ -272,46 +334,44 @@
   SELECTED-ITEM   - Item to have initially selected.
   TYPING-SEARCHES - True to have alphanumeric input search for the item.
   MULTIPLE        - True to allow multiple items to be selected."
-  (with-curses
-    (clear)
-    (let* ((string-list (mapcar (_ (cons (princ-to-string _) _)) the-list))
-	   (max-y (1- curses:*lines*))
-	   (*pick* (make-pick
-		    :message	     message
-		    :by-index	     by-index
-		    :multiple	     multiple
-		    :typing-searches typing-searches 
-		    :item-line	     (or selected-item 0)
-		    :items	     (if (not (null sort-p))
+  (let* ((string-list (mapcar (_ (cons (princ-to-string _) _)) the-list))
+	 (max-y (1- curses:*lines*))
+	 (*pick* (make-instance
+		  'pick
+		  :message	     message
+		  :by-index	     by-index
+		  :multiple	     multiple
+		  :typing-searches typing-searches
+		  :point	     (or selected-item 0)
+		  :items	     (if (not (null sort-p))
 					 (locally
-					   #+sbcl (declare
-						   (sb-ext:muffle-conditions
-						    sb-ext:compiler-note))
-					   ;; Where's the unreachable code??
-					   (sort string-list #'string-lessp
-						 :key #'car))
-				         string-list)
-		    :max-line        (length string-list)
-		    :max-y           max-y
-		    :page-size       (- max-y 2)
-		    :result	     default-value)))
-      (with-slots (quit-flag multiple by-index items item-line result
-		   second-result mark cur-line max-y top ttop max-line
-		   page-size input error-message search-str) *pick*
-	(loop :while (not quit-flag)
-	   :do
-	   (pick-list-display)
-	   (setf error-message nil
-		 input (get-char))
-	   (when (not (pick-typing-search))
-	     (if (or (eql input (ctrl #\@)) (eql input 0))
-		 (setf mark item-line
-		       error-message "Set mark")
-		 (pick-perform-key input))))
-	(values result second-result)))))
+					     #+sbcl (declare
+						     (sb-ext:muffle-conditions
+						      sb-ext:compiler-note))
+					     ;; Where's the unreachable code??
+					     (sort string-list #'string-lessp
+						   :key #'car))
+					 string-list)
+		  :max-line      (length string-list)
+		  :max-y         max-y
+		  :page-size     (- max-y 2)
+		  :result		 default-value
+		  :keymap		 (list *pick-list-keymap*
+					       *default-inator-keymap*))))
+    (event-loop *pick*)
+    #| Put in the event loop: 
+    (when (not (pick-typing-search))
+    (if (or (eql input (ctrl #\@)) (eql input 0))
+    (setf mark point
+    error-message "Set mark")
+    (pick-perform-key input))))
+  |#
+    (values (pick-result *pick*) (pick-second-result *pick*))))
 
 ;; Test scrolling with:
 ;; (:pick-list (loop for i from 1 to 60 collect (format nil "~@r~8t~r" i i)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 #+lish
 (lish:defcommand pick-list
@@ -332,6 +392,9 @@
     (if (listp lish:*output*)
 	(loop :for o :in lish:*output* :do (princ o) (terpri))
 	(progn (princ lish:*output*) (terpri)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; pick-file
 
 ;; @@@ Maybe this PF-DIR-ENTRY stuff should be added as a feature to
 ;; read-directory? Like a :printable option?
@@ -403,7 +466,10 @@
       (when filename
 	(values (abspath (path-append dir (dir-entry-name filename)))
 		dir)))))
- 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Menus
+
 ;; Has problems because the eval'd code can't reference local variables.
 ;; More evidence that use of eval is usually a problem.
 (defmacro old-do-menu (menu &key message selected-item)
@@ -461,6 +527,9 @@ This is a macro so you can use lexically scoped things in the menu."
 		:quit)))))
     (t
      (error "MENU must be a symbol or a list."))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; This is actually a weird experiment which I should probably get out of here.
 
 (defun show-result (expr)
   (unwind-protect

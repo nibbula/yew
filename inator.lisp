@@ -7,7 +7,7 @@
 
 (defpackage :inator
   (:documentation
-   "This is a little scaffolding for making a certain style of applet. The style
+"This is a little scaffolding for making a certain style of applet. The style
 that's encouraged is what one might call ‘emacs-like’. I consider this as a
 ‘lesser’ Frobulator, in other words a style of interaction and editing that
 can be applied to many types of data.
@@ -23,6 +23,7 @@ a TERM-INATOR.
 ")
   (:use :cl :keymap :char-util)
   (:export
+   ;; Inator class
    #:inator
    #:inator-keymap
    #:inator-point
@@ -47,6 +48,7 @@ a TERM-INATOR.
    #:jump-command
    #:quit
    #:accept
+   #:redraw
    #:cut
    #:copy
    #:paste
@@ -103,8 +105,13 @@ a TERM-INATOR.
 (defgeneric jump-command (inator)) ; or maybe leap?
 
 ;; Action
-(defgeneric quit (inator))
-(defgeneric accept (inator))
+(defgeneric quit (inator)
+  (:documentation "Quit the Inator.")
+  (:method ((i inator)) (setf (inator-quit-flag i) t)))
+(defgeneric accept (inator)
+  (:documentation "Accept the data and usually exit."))
+(defgeneric redraw (inator)
+  (:documentation "Redraw the screen."))
 
 ;; Edit?
 (defgeneric cut (inator))		; kill
@@ -153,6 +160,8 @@ a TERM-INATOR.
     (,(ctrl #\S)	. search-command)
     (,(meta-char #\s)	. sort-command)	; ?
     (,(meta-char #\j)	. jump-command)	; ?
+    (,(ctrl #\L)	. redraw)
+    (,(ctrl #\G)	. quit)
     (#\escape		. *default-inator-escape-keymap*)
     )
   :default-binding 'default-action)

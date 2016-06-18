@@ -403,7 +403,9 @@ keymap bindings."
   "Find documentation for an inator (subclass) method."
   (when (fboundp func)
     (let ((method
-	   (find-method (symbol-function func) '() (list (class-of i)) nil)))
+	   (and (typep (symbol-function func) 'generic-function)
+		(find-method (symbol-function func) '()
+			     (list (class-of i)) nil))))
       (when method (documentation method t)))))
 
 (defmethod help ((i fui-inator))
@@ -419,6 +421,12 @@ keymap bindings."
 		      :append
 		      (help-list k (_ (inator-doc-finder i _))))
 		   :justify nil))))
+
+(defmethod redraw ((i fui-inator))
+  "Redraw the screen."
+  (clear)
+  (refresh)
+  (update-display i))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
