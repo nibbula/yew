@@ -781,9 +781,10 @@ defaults to the current package. Return how many symbols there were."
   (or (eq (dir-entry-type f) :dir)
       (and (eq (dir-entry-type f) :link)
 	   (eq :directory
-	       (file-info-type
-		(get-file-info
-		 (path-append dir (dir-entry-name f))))))))
+	       (let ((path (path-append dir (dir-entry-name f))))
+		 (and (file-exists path)
+		      (file-info-type
+		       (get-file-info path))))))))
 
 ;; We have to assume the entire context is a filename. Things that want to
 ;; do completion in a command line, will have to arrange for this to be so.
