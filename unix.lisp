@@ -246,6 +246,7 @@
    #:with-signal-handlers
    #:describe-signals
    #:kill
+   #:killpg
 
    #:+SIGHUP+ #:+SIGINT+ #:+SIGQUIT+ #:+SIGILL+ #:+SIGTRAP+ #:+SIGABRT+
    #:+SIGPOLL+ #:+SIGEMT+ #:+SIGFPE+ #:+SIGKILL+ #:+SIGBUS+ #:+SIGSEGV+
@@ -344,6 +345,8 @@
    #:char-width
    ))
 (in-package :opsys-unix)
+
+(declaim (optimize (debug 3)))
 
 #+(or darwin linux) (config-feature :os-t-has-strerror-r)
 ;#+(or darwin linux) (config-feature :os-t-has-vfork)
@@ -3470,11 +3473,13 @@ of (signal . action), as would be passed to SET-SIGNAL-ACTION."
 				  ',handler-list))
 	    (,saved-list
 	     (loop
-		:for (sig . act) :in ,evaled-list
+		;;:for (sig . act) :in ,evaled-list
+		:for item :in ,evaled-list
 		;;:do
 		;;(format t "sig = ~s~%" sig)
 		;;(format t "act = ~a~%" (signal-action sig))
-		:collect (cons sig (signal-action sig)))))
+		;;:collect (cons sig (signal-action sig)))))
+		:collect (cons (car item) (signal-action (car item))))))
        (unwind-protect
          (progn
 	   (set-handlers ,evaled-list)
@@ -3507,7 +3512,10 @@ of (signal . action), as would be passed to SET-SIGNAL-ACTION."
   #-(or clisp openmcl cmu sbcl ccl) (declare (ignore pid sig))
   #-(or clisp openmcl cmu sbcl ccl) (missing-implementation 'kill))
 
-(defcfun killpg :int (process-group pid-t) (signal :int))
+(defcfun ("killpg" real-killpg) :int (process-group pid-t) (signal :int))
+(defun killpg (process-group signal)
+  "Send SIGNAL to PROCESS-GROUP."
+  (syscall (real-killpg process-group signal)))
 
 ;(sb-sys:enable-interrupt sb-posix:sigwinch #'update-window-size)
 ;(defun update-window-size (sig code scp)
@@ -3613,35 +3621,52 @@ environment list, which defaults to the current 'C' environ variable."
 (defcfun ("wait4" real-wait4) pid-t (status :pointer) (options :int)
 	 (rusage (:pointer (:struct foreign-rusage))))
 
+(defun wait-return-status (status)
+  "Given a status from wait, return two values: a status value and status code.
+See the documentation for WAIT."
+  (cond
+    ((wait-if-exited status)
+     ;;(format t ";; Exited ~a" (wait-exit-status status))
+     (values (wait-exit-status status) :exited))
+    ((wait-if-signaled status)
+     ;; (format t ";; [~d Terminated ~d~a]~%"
+     ;; 	 child-pid (wait-termination-signal status)
+     ;; 	 (when (wait-core-dump status) " core dumped" ""))
+     (values (wait-termination-signal status)
+	     (if (wait-core-dump status)
+		 :coredump
+		 :signaled)))
+    ((wait-if-stopped status)
+     ;; (format t ";; [~d Stopped ~d]~%"
+     ;; 	 child-pid (wait-stop-signal status))
+     (values (wait-stop-signal status) :stopped))
+    ;; We assume an error occured if it's not one of the above.
+    (t
+     (values *errno* :error))))
+
 (defun wait ()
-  "Wait for child processes to finish and return the status and a datum.
-Possible values of STATUS and DATUM are:
+  "Wait for child processes to finish and return a value and the status.
+Possible values of STATUS and VALUE are:
   :exited    exit code
   :signaled  signal number
   :stopped   signal number
   :coredump  signal number
   :error     error code
 "
-  (with-foreign-object (status-ptr :int)
-    (syscall (real-wait status-ptr))
-    (let ((status (mem-ref status-ptr :int)))
-      (cond
-	((wait-if-exited status)
-	 (values :exited (wait-exit-status status)))
-	((wait-if-signaled status)
-	 (values (if (wait-core-dump status)
-		     :coredump
-		     :signaled)
-		 (wait-termination-signal status)))
-	((wait-if-stopped status)
-	 (values :stopped (wait-stop-signal status)))
-	(t
-	 (values :error *errno*))))))
+  (check-jobs t))
+  ;; (let (pid)
+  ;;   (with-foreign-object (status-ptr :int)
+  ;;     (setf pid (syscall (real-wait status-ptr)))
+  ;;     (let ((status (mem-ref status-ptr :int)))
+  ;; 	(wait-return-status status))))
 
 (defcfun ("fork" posix-fork) pid-t)
 
 (defun fork ()
-  #+sbcl (sb-sys:without-gcing (posix-fork))
+  #+sbcl (sb-sys:without-gcing
+	     (posix-fork)
+	     ;;(sb-posix:fork)
+	   )
 ;  #+sbcl (sb-sys:without-gcing (sb-posix:fork))
   #-sbcl (posix-fork))
 
@@ -3677,7 +3702,7 @@ Possible values of STATUS and DATUM are:
 	 (if (= wait-pid -1)
 	     (if (= *errno* +ECHILD+)
 		 (progn
-		   (format t "Nothing to wait for~%")
+		   ;;(format t "Nothing to wait for~%")
 		   (return-from nil nil))
 		 (error-check wait-pid "wait-pid"))
 	     (setf status (mem-ref status-ptr :int)))
@@ -5084,11 +5109,9 @@ descriptor FD."
     (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
 			   (+SIGTSTP+  . tstp-handler))
       (loop
-	 :with resumed :and resized :and status
+	 :with status
 	 :do
-	 (setf resumed nil
-	       resized nil
-	       status (posix-read terminal-handle c 1))
+	 (setf status (posix-read terminal-handle c 1))
 	 :while (and (< status 0)
 		     (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
 	 :do
@@ -5096,10 +5119,10 @@ descriptor FD."
 	 ;; so keep trying. Enjoy your trip to plusering town.
 	 (cond
 	   (*got-sigwinch*
-	    (setf *got-sigwinch* nil resized t)
+	    (setf *got-sigwinch* nil)
 	    (cerror "Try again?" 'opsys-resized))
 	   (*got-tstp*
-	    (setf *got-tstp* nil resumed t)
+	    (setf *got-tstp* nil)
 	    ;; re-signal with the default, so we actually stop
 	    (with-signal-handlers ((+SIGTSTP+ . :default))
 	      (kill (getpid) +SIGTSTP+))
@@ -5117,6 +5140,160 @@ descriptor FD."
   "Write STRING to the terminal designated by TERMINAL-HANDLE."
   (with-foreign-string ((s size) string)
     (syscall (posix-write terminal-handle s size))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; job control thingys
+
+#+sbcl
+(defun turkey (program)
+  (let (pp #| job |#)
+    (setf (signal-action +SIGTSTP+) 'tstp-handler)
+    (setf pp (sb-ext:run-program program '() :input t :output t))
+    ;; Take the terminal back.
+    (syscall (tcsetpgrp 0 (getpid)))
+    ;; Suspend us again if we get a ^Z.
+    (setf (signal-action +SIGTSTP+) :default)
+    ;;(setf job (add-job program "" (process-pid pp)))
+    ;;(setf (job-pid job) pp)
+    pp))
+
+#+sbcl
+(defun re-turkey (pp)
+  (let ((pid (sb-ext:process-pid pp)))
+    (syscall (tcsetpgrp 0 pid))
+    ;; Ignore terminal suspend signals.
+    (setf (signal-action +SIGTSTP+) 'tstp-handler)
+    (syscall (kill pid +SIGCONT+))
+    (sb-ext:process-wait pp t)
+    ;; Take the terminal back.
+    (syscall (tcsetpgrp 0 (getpid)))
+    ;; Suspend us again if we get a ^Z.
+    (setf (signal-action +SIGTSTP+) :default)))
+
+(defun wait-and-chill (child-pid)
+  ;; Make the child be in it's own process group.
+  ;;(syscall (setpgid child-pid child-pid))
+  ;; Make the terminal signals go to the child's group.
+  ;;(syscall (tcsetpgrp 0 child-pid))
+  ;; Ignore terminal suspend signals.
+  (setf (signal-action +SIGTSTP+) 'tstp-handler)
+
+  (with-foreign-object (status-ptr :int 1)
+    (setf (mem-ref status-ptr :int) 0)
+    ;;(format t "About to wait for ~d~%" child-pid)
+    (let ((status 0) (wait-pid 0))
+      (declare (ignorable status))
+      (loop
+	 ;; +WAIT-UNTRACED+ is so it will return when ^Z is pressed
+	 :while (/= wait-pid child-pid)
+	 :do
+	 (setf wait-pid (real-waitpid child-pid status-ptr +WAIT-UNTRACED+))
+	 ;;(format t "Back from wait wait-pid = ~d~%" wait-pid)
+	 (if (= wait-pid -1)
+	     (if (= *errno* +ECHILD+)
+		 (progn
+		   ;;(format t "Nothing to wait for~%")
+		   (return-from nil nil))
+		 (error-check wait-pid "wait-pid"))
+	     (setf status (mem-ref status-ptr :int)))
+	 ;;(format t "status = ~d~%" status)
+	 ;; (when (/= wait-pid child-pid)
+	 ;;   (format t "Wait pid ~a doesn't match child pid ~a.~%"
+	 ;; 	   wait-pid child-pid))
+	 (finish-output))
+      ;; Take the terminal back.
+      (syscall (tcsetpgrp 0 (getpid)))
+      ;; Suspend us again if we get a ^Z.
+      (setf (signal-action +SIGTSTP+) :default)
+      (wait-return-status status))))
+
+(defun forky (cmd args &key (environment nil env-p) background)
+  (let* ((cmd-and-args (cons cmd args))
+	 (argc (length cmd-and-args))
+	 child-pid)
+    (with-foreign-object (argv :pointer (1+ argc))
+      (with-foreign-string (path cmd)
+	(loop :with i = 0
+	      :for arg :in cmd-and-args :do
+	      (setf (mem-aref argv :pointer i) (foreign-string-alloc arg))
+	      (incf i))
+	(setf (mem-aref argv :pointer argc) (null-pointer))
+	(setf child-pid (fork))
+	(when (= child-pid 0)
+	  ;; in the child
+	  (progn
+	    ;; Make the child be in it's own process group.
+	    ;; We have to do this here in the child because on Linux
+	    ;; the parent won't be allowed to do it after the exec.
+	    (when (= -1 (setpgid (getpid) (getpid)))
+	      (format t "child setpgid fail~%"))
+	    (when (not background)
+	      (when (= -1 (tcsetpgrp 0 (getpid)))
+		(format t "child tcsetpgrp fail~%")))
+;   	    (format t "About to exec ~s ~s~%"
+;   		    (foreign-string-to-lisp path)
+;   		    (loop :for i :from 0 :below argc
+;   			  :collect (mem-aref argv :string i)))
+;	    (when (= (execvp path argv) -1)
+	    ;; @@@ or we could call the lisp exec?
+	    (when (= (execve path argv (if env-p
+					   (make-c-env environment)
+					   (real-environ)))
+		     -1)
+	      (write-string "Exec of ")
+	      (write-string cmd)
+	      (write-string " failed")
+	      (write-char #\newline)
+;	      (format t "Exec of ~s failed: ~a ~a~%" cmd
+;		      *errno* (strerror *errno*))
+;	      (force-output)
+	      (_exit 1))))
+	;; in the parent
+	(error-check child-pid "child-pid")
+	child-pid))))
+
+(defun resume-pid (pid)
+  "Put the process PID back in the foreground."
+  ;; Make the terminal signals go to the child's group.
+  (syscall (tcsetpgrp 0 pid))
+  ;; Ignore terminal suspend signals.
+  (setf (signal-action +SIGTSTP+) 'tstp-handler)
+  (syscall (kill pid +SIGCONT+))
+  (wait-and-chill pid))
+
+(defun background-pid (pid)
+  "Put the process PID back in the background."
+  (killpg (getpgid pid) os-unix:+SIGCONT+)
+  (kill pid os-unix:+SIGCONT+))
+
+(defun check-jobs (&optional hang)
+  "Check if any sub-processes have changed status. Returns three values.
+The PID of the process that changed, and the RESULT and STATUS as returned by
+wait. Returns NILs if nothing changed."
+  (let (pid int-status)
+    (with-foreign-object (status-ptr :int 1)
+      (setf (mem-ref status-ptr :int) 0
+	    pid
+	    (if hang
+		(real-wait status-ptr)
+		(real-waitpid 0 status-ptr (logior +WAIT-UNTRACED+
+						   +WAIT-NO-HANG+))))
+      (cond
+	((< pid 0)
+	 (if (= *errno* +ECHILD+)
+	     (progn
+	       ;;(format t "Nothing to wait for~%")
+	       (return-from check-jobs (values nil nil nil)))
+	     (error-check pid "check-jobs")))
+	((= pid 0)
+	 ;;(format t "Nothing to report ~a~%" pid)
+	 (values nil nil nil))
+	((> pid 0)
+	 ;;(format t "Something to report!~%")
+	 (setf int-status (mem-ref status-ptr :int))
+	 (multiple-value-bind (result status)
+	     (wait-return-status int-status)
+	   (values pid result status)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Profiling and debugging?

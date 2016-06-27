@@ -636,11 +636,16 @@ if there isn't one."
 	(t
 	 (error "Process has unknown status ~a" status)))))
 |#
-  #+sbcl (sb-ext:process-exit-code
-	  (apply #'sb-ext:run-program
-		 `(,cmd ,args
-		   ,@(when env-p `(:environment ,environment))
-		   :search t :output t :input t :error t :pty nil)))
+  #+(and sbcl (not unix))
+  (sb-ext:process-exit-code
+   (apply #'sb-ext:run-program
+	  `(,cmd ,args
+		 ,@(when env-p `(:environment ,environment))
+		 :search t :output t :input t :error t :pty nil)))
+  #+(and sbcl unix)
+  (apply #'os-unix::forky
+	 `(,cmd ,args
+		,@(when env-p `(:environment ,environment))))
   #+cmu (ext:process-exit-code
 	 (apply #'ext:run-program
 		 `(,cmd ,args
