@@ -24,7 +24,7 @@
 ;#+sbcl (require 'sb-introspect)
 
 (defpackage "TINY-REPL"
-  (:use :common-lisp :tiny-rl :keymap :dlib :dlib-misc :termios)
+  (:use :common-lisp :tiny-rl :keymap :dlib :dlib-misc)
   (:documentation
    "A tiny REPL replacement that works with tiny-rl.")
   (:export
