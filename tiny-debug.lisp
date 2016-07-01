@@ -108,7 +108,7 @@ the outermost. When entering the debugger the current frame is 0.")
      (terpri *debug-io*)
      (setf f (sb-di:frame-down f))
      (incf i)
-     :until (and (not f) (>= i n))))
+     :until (or (not f) (and n (>= i n)))))
 
 #+sbcl
 (defun debugger-backtrace-lines (n)
