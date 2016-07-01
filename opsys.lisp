@@ -273,6 +273,7 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
 	   out in))))
   #+lispworks nil
   #+abcl nil
+  #+ecl (declare (ignore direction))
   #+ecl (and (typep stream 'file-stream) (ext:file-stream-fd stream))
   #-(or ccl sbcl cmu clisp lispworks abcl ecl)
   (missing-implementation 'stream-system-handle))
@@ -657,6 +658,15 @@ if there isn't one."
 		   :output :stream
 		   #| :wait t |#)
 		result)
+  #+ecl
+  (multiple-value-bind (result ret-code proc)
+      (apply #'ext:run-program
+	     `(,cmd ,args
+		    ,@(when env-p `(:environ ,environment))
+		    :output t :input t))
+    (declare (ignore result proc))
+    ret-code)
+
   #+abcl
   (let* ((proc (apply #'sys:run-program
 		      `(,cmd ,args
@@ -665,7 +675,7 @@ if there isn't one."
     (dlib:copy-stream out *standard-output*)
     (finish-output *standard-output*)
     (system:process-exit-code proc))
-  #-(or clisp excl openmcl sbcl cmu lispworks abcl)
+  #-(or clisp excl openmcl sbcl cmu lispworks ecl abcl)
   (missing-implementation 'run-program)
 )
 
@@ -742,7 +752,20 @@ current process's environment."
 			    ,@(when env-p `(:env ,environment))))))
     (ccl::external-process-output-stream proc))
   
-  #+ecl (ext:run-program cmd args)
+  #+ecl (multiple-value-bind (result ret-code proc)
+	    (apply #'ext::run-program
+		   `(,cmd ,args :wait nil :input t
+			  ,@(if out-stream
+				`(:output ,out-stream)
+				'(:output t))
+			  ,@(if in-stream
+				`(:input ,in-stream)
+				'(:input t))
+			  ,@(when env-p `(:env ,environment))))
+	  (declare (ignore result ret-code))
+	  (ext:external-process-output proc))
+  ;;#+ecl (ext:run-program cmd args)
+
   #+excl (excl:run-shell-command (format nil "~a~{ ~a~}" cmd args)
 				 :output out-stream :wait t)
   #+lispworks (multiple-value-bind (result str err-str pid)

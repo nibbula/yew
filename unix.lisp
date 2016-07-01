@@ -935,9 +935,7 @@
 
 #-(and ecl darwin)
 (progn
-;  #-clisp (defcvar ("environ" *real-environ*) :pointer "extern char **envrion;")
-  #-clisp (defcvar ("environ" *real-environ*) :pointer)
-  #+clisp (defcvar ("environ" *real-environ*) :pointer)
+  (defcvar ("environ" *real-environ*) :pointer)
   (defun real-environ () *real-environ*))
 
 (defun make-c-env (lisp-env)
@@ -999,17 +997,13 @@ the current 'C' environment."
   "Return an a-list of the system environment. The elements are conses
 (VARIABLE-NAME . VALUE), where VARIABLE-NAME is a keyword and VALUE is a string."
   #+clisp (convert-environ (ext:getenv))
-;  #+sbcl (convert-environ (sb-ext:posix-environ))
-  #+sbcl (convert-environ (posix-environ))
-  #+ccl (convert-environ (posix-environ))
-  #+ecl (convert-environ (posix-environ))
-  #+lispworks (convert-environ (posix-environ))
+  #+(or sbcl ccl ecl lispworks) (convert-environ (posix-environ))
   #+cmu ext:*environment-list*
   #+abcl (convert-environ (ext:getenv-all))
   #-(or clisp sbcl ccl cmu ecl lispworks abcl)
   (missing-implementation 'environ))
 
-#+cmu (defcfun ("getenv" real-getenv) :string (name :string))
+(defcfun ("getenv" real-getenv) :string (name :string))
 
 (defun getenv (var)
   "Return a string with the value of the system environment variable name VAR."
@@ -1039,7 +1033,6 @@ the current 'C' environment."
 ;; (time (do ((i 0 (+ i 1))) ((> i 50000)) (nos:getenv "TERM")))
 ;; (time (do ((i 0 (+ i 1))) ((> i 50000)) (vv "TERM")))
 
-#+(or sbcl cmu abcl)
 (defcfun ("unsetenv" real-unsetenv) :int (name :string))
 
 (defun unsetenv (var)
@@ -1055,7 +1048,6 @@ the current 'C' environment."
   #-(or clisp openmcl excl sbcl ecl cmu lispworks abcl)
   (missing-implementation 'unsetenv))
 
-#+(or sbcl cmu abcl)
 (defcfun ("setenv" real-setenv) :int
   (name :string) (value :string) (overwrite :int))
 
@@ -1070,14 +1062,12 @@ NIL, unset the VAR, using unsetenv."
   #+clisp (setf (ext:getenv var) value)
   #+openmcl (syscall (ccl::setenv var value))
   #+excl (setf (sys::getenv var) value)
-  #+sbcl (syscall (real-setenv var value 1))
-  #+cmu (syscall (real-setenv var value 1))
+  #+(or sbcl cmu abcl) (syscall (real-setenv var value 1))
 ;   #+cmu (let ((v (assoc (intern (string-upcase var) :keyword)
 ; 			ext:*environment-list*)))
 ; 	  (if v (cdr v)))
   #+ecl (ext:setenv var value)
   #+lispworks (hcl:setenv var value)
-  #+abcl (syscall (real-setenv var value 1))
   #-(or clisp openmcl excl sbcl ecl cmu lispworks abcl)
   (declare (ignore var value))
   #-(or clisp openmcl excl sbcl ecl cmu lispworks abcl)
@@ -1398,7 +1388,7 @@ constants. The return value varies base on the keyword."
   (pw_dir	:string)
   (pw_shell	:string)
   #+darwin (pw_expire time-t)
-)
+  )
 
 (defstruct passwd
   "User database entry."
@@ -1413,8 +1403,7 @@ constants. The return value varies base on the keyword."
   gecos
   dir
   shell
-  pw-expire
-  )
+  pw-expire)
 
 (defun convert-passwd (pw)
   "Return a lisp passwd structure from the foreign passwd structure. ~
@@ -1501,10 +1490,6 @@ Return nil for foreign null pointer."
 (defun getpwent ()
   (convert-passwd (real-getpwent)))
 
-;; (defcfun ("endpwent" real-endpwent) :void)
-;; (defun endpwent ()
-;;   (real-endpwent))
-
 (defcfun endpwent :void)
 (defcfun setpwent :void)
 
@@ -1573,16 +1558,14 @@ return potentially updated data."
   (gr_name	:string)
   (gr_passwd	:string)
   (gr_gid	gid-t)
-  (gr_mem	:pointer)
-)
+  (gr_mem	:pointer))
 
 (defstruct group-entry
   "Group database entry."
   name
   passwd
   gid
-  members
-  )
+  members)
 
 (defun convert-group (gr)
   "Return a lisp group structure from the foreign group structure. ~
@@ -1702,8 +1685,7 @@ return potentially updated data."
   pid
   type
   tv
-  host
-  )
+  host)
 
 (defun convert-utmpx (u)
   (if (and (pointerp u) (null-pointer-p u))
@@ -1889,35 +1871,15 @@ C library function getcwd."
 (defun current-directory ()
   "Return the full path of the current working directory as a string."
   ;; I would like to use EXT:CD, but it puts an extra slash at the end.
-  #+clisp (libc-getcwd)
+  #+(or clisp sbcl cmu) (libc-getcwd)
   #+excl (excl:current-directory)
   #+(or openmcl ccl) (ccl::current-directory-name)
   #+ecl (ext:getcwd)
-  #+sbcl (libc-getcwd)
-  #+cmu (libc-getcwd) ;; (ext:default-directory)
+  ;; #+cmu (ext:default-directory)
   #+lispworks (hcl:get-working-directory)
   #+abcl (namestring (truename *default-pathname-defaults*))
   #-(or clisp excl openmcl ccl sbcl cmu ecl lispworks abcl)
   (missing-implementation 'current-directory))
-
-#| Yes, indeedy. The problem is that the error behavior is too inconsistent.
-   If we do it our own way, we get better results. We should probably do
-   this with every similar function.
-
-(defun make-directory (path &key (mode #o755))
-;  #+clisp (declare (ignore mode)) #+clisp (ext:make-dir path)
-  #+clisp (declare (ignore mode))
-  #+(and clisp os-t-has-new-dir) (ext:make-directory path)
-  #+(and clisp (not os-t-has-new-dir)) (ext:make-dir path)
-  #+excl (excl:make-directory path mode)
-  #+openmcl (syscall (mkdir path mode))
-; #+ecl (ext:mkdir path mode) OLD
-  #+ecl (si::mkdir path mode)
-  #+sbcl (sb-unix:unix-mkdir path mode)
-  #-(or clisp excl openmcl ecl sbcl) (declare (ignore mode path))
-  #-(or clisp excl openmcl ecl sbcl) (missing-implementation 'make-directory)
-)
-|#
 
 (defcfun mkdir :int (path :string) (mode mode-t))
 
@@ -1926,26 +1888,6 @@ C library function getcwd."
   ;; The #x1ff is because mkdir can fail if any other than the low nine bits
   ;; of the mode are set.
   (syscall (mkdir (safe-namestring path) (logand #x1ff mode))))
-
-#|
-(defun delete-directory (path)
-;  #+clisp (ext:delete-dir path)
-;  #+clisp (ext:delete-directory path)
-  #+(and clisp os-t-has-new-dir) (ext:delete-directory path)
-  #+(and clisp (not os-t-has-new-dir)) (ext:delete-dir path)
-  #+excl (excl:delete-directory path)
-  #+os-t-use-rmdir (syscall (rmdir path))
-;  #+ecl (ext:rmdir path)
-  #+ecl (si:rmdir path)
-  #+sbcl (sb-ext:delete-directory path)
-  #-(or clisp excl openmcl ecl sbcl) (declare (ignore path))
-  #-(or clisp excl openmcl ecl sbcl) (missing-implementation 'delete-directory)
-)
-
-#+openmcl (config-feature :os-t-use-rmdir)
-#+os-t-use-rmdir (defcfun rmdir :int (path :string))
-
-|#
 
 (defcfun rmdir :int (path :string))
 
@@ -3110,35 +3052,6 @@ it is not a symbolic link."
 ;;
 ;; Look into file metadata libraries? which will work on windows, etc..
 
-;; OSX file attributes
-
-#|
-(defctype attrgroup-t :uint32)
-
-(defcstruct attrlist
-  (bitmapcount :unsigned-short) ; number of attr. bit sets in list
-  (reserved    :uint16)         ; (to maintain 4-byte alignment)
-  (commonattr  attrgroup-t)     ; common attribute group
-  (volattr     attrgroup-t)     ; volume attribute group
-  (dirattr     attrgroup-t)     ; directory attribute group
-  (fileattr    attrgroup-t)     ; file attribute group
-  (forkattr    attrgroup-t))    ; fork attribute group
-
-(defconstant +ATTR_BIT_MAP_COUNT+ 5)
-
-(defcfun getattrlist :int (path :string)
-	 (attrlist (:pointer (:struct attrlist)))
-	 (attr-buf :pointer)
-	 (attr-buf-size :size-t)
-	 (options :ulong))
-(defcfun fgetattrlist :int (fd :int)
-	 (attrlist (:pointer (:struct attrlist)))
-	 (attr-buf :pointer)
-	 (attr-buf-size :size-t)
-	 (options :ulong))
-	 
-(defcfun setattrlist)
-|#
 
 ;; OSX extended attributes
 
@@ -4002,78 +3915,6 @@ Possible values of STATUS and VALUE are:
 	  :command (elt line 1)
 	  :args (get-process-command-line)))))
 
-#|
-Trying to simplify our lives, by just using our own FFI versions, above.
-
-;; clisp decided to change names at some point
-#+clisp (eval-when (:compile-toplevel :load-toplevel :execute)
-	  (if (and (function-defined '#:uid :posix)
-		   (function-defined '#:gid :posix))
-	      (config-feature :os-t-has-new-uid-gid)))
-
-#+ecl (config-feature :os-t-use-getuid)
-#+ecl (config-feature :os-t-use-setuid)
-#+ecl (config-feature :os-t-use-getgid)
-#+ecl (config-feature :os-t-use-setgid)
-
-(defun getuid ()
-  #+ccl (ccl::getuid)
-  #+excl (excl.osi:getuid)
-;  #+clisp (posix:getuid)
-;  #+clisp (posix:uid)
-  #+(and clisp (not os-t-has-new-uid-gid)) (posix:getuid)
-  #+(and clisp os-t-has-new-uid-gid) (posix:uid)
-  #+cmu (unix:unix-getuid)
-  #+sbcl (sb-unix:unix-getuid)
-  #+ecl (real-getuid)
-  #+lispworks (real-getuid)
-  #-(or openmcl excl clisp cmu sbcl ecl lispworks)
-  (missing-implementation 'getuid)
-)
-
-(defun setuid (uid)
-  #+ccl (syscall (ccl::setuid uid))
-  #+excl (excl.osi:setuid uid)
-;  #+clisp (setf (posix:setuid) uid)
-;  #+clisp (setf (posix:uid) uid)
-  #+(and clisp (not os-t-has-new-uid-gid)) (setf (posix:getuid) uid)
-  #+(and clisp os-t-has-new-uid-gid) (setf (posix:uid) uid)
-  #-(or ccl excl clisp) (declare (ignore uid))
-  #-(or ccl excl clisp) (missing-implementation 'setuid)
-)
-
-(defun getgid ()
-  #+ccl (#_getgid)
-  #+excl (excl.osi:getgid)
-  #+sbcl (real-getgid)
-  #+(and clisp (not os-t-has-new-uid-gid)) (posix:getgid)
-  #+(and clisp os-t-has-new-uid-gid) (posix:gid)
-  #-(or ccl excl sbcl clisp) (missing-implementation 'getgid)
-)
-
-(defun setgid (gid)
-  #+openmcl (syscall (ccl::setgid gid))
-  #+excl (excl.osi:setgid gid)
-;  #+clisp (setf (posix:getgid) gid)
-;  #+clisp (setf (posix:gid) gid)
-  #+(and clisp (not os-t-has-new-uid-gid)) (setf (posix:getgid) gid)
-  #+(and clisp os-t-has-new-uid-gid) (setf (posix:gid) gid)
-  #-(or openmcl excl clisp) (declare (ignore gid))
-  #-(or openmcl excl clisp) (missing-implementation 'setgid)
-)
-
-(defun getpid ()
-  #+openmcl (#_getpid)
-  #+excl (excl.osi:getpid)
-  #+clisp (sys::process-id)
-  #+cmu (unix:unix-getpid)
-  #+sbcl (sb-unix:unix-getpid)
-  #+ecl (ext:getpid)
-  #-(or openmcl excl clisp cmu sbcl ecl) (missing-implementation 'getpid)
-)
-
-|#
-
 (defun suspend-process (&optional id)
   "Suspend the process with the given ID. If ID is NIL or not given, suspend
 the current process."
@@ -4142,6 +3983,7 @@ current effective user."
 
 ;; @@@@ Resolve vs. opsys.lisp!
 ;; @@@ add environment on other than sbcl
+#|
 (defun pipe-program (cmd args &key in-stream (out-stream :stream)
 				(environment nil env-p))
   "Return an input stream with the output of the system command. Use IN-STREAM
@@ -4184,7 +4026,19 @@ current process's environment."
 			    ,@(when env-p `(:env ,environment))))))
     (ccl::external-process-output-stream proc))
   
-  #+ecl (ext:run-program cmd args)
+  #+ecl (multiple-value-bind (result ret-code proc)
+	    (apply #'ext::run-program
+		   `(,cmd ,args :wait nil :input t
+			  ,@(if out-stream
+				`(:output ,out-stream)
+				'(:output t))
+			  ,@(if in-stream
+				`(:input ,in-stream)
+				'(:input t))
+			  ,@(when env-p `(:env ,environment))))
+	  (declare (ignore result ret-code))
+	  (ext:external-process-output proc))
+
   #+excl (excl:run-shell-command (format nil "~a~{ ~a~}" cmd args)
 				 :output out-stream :wait t)
   #+lispworks (multiple-value-bind (result str err-str pid)
@@ -4210,6 +4064,7 @@ from the system command CMD with the arguments ARGS."
 	   (setf ,var (popen ,cmd ,args))
 	   ,@body)
       (if ,var (close ,var)))))
+|#
 
 ;; Sockets!
 ;; How about use usocket?
@@ -4255,6 +4110,7 @@ from the system command CMD with the arguments ARGS."
 ;; shared mem: shmsys/shmat/shmctl/shmdt/shmget
 ;;
 ;; POSIX Realtime Extension?
+;;
 ;; shm_open.. named semaphores
 ;; sem_open...
 
@@ -4874,8 +4730,9 @@ available."
 			     '(:struct foreign-statfs) i))))))
 
 ;; Other things on OSX: ?
-;;   getattrlist
 ;;   exchangedata
+
+;; OSX file attributes
 
 (defctype attrgroup-t :uint32)
 
