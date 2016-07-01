@@ -37,8 +37,12 @@
    #:print-columns-array
    #:print-columns
    #:print-size
+   #:*default-spin-string*
    #:*plain-spin-string*
-   #:*unicode-spin-string*
+   #:*unicode-disk-spin-string*
+   #:*unicode-scan-spin-string*
+   #:*unicode-digit-spin-string*
+   #:*unicode-sparkle-spin-string*
    #:*emoji-spin-string*
    #:spin
    #:with-spin
