@@ -101,7 +101,8 @@
    #:@
    #:ignore-conditions #:ignore-some-conditions
    ;; debugging
-   #:*dbug* #:*dbug-package* #:dbug #:with-dbug #:with-dbug-package
+   #:*dbug* #:*dbug-package* #:*dbug-facility*
+   #:dbug #:dbugf #:with-dbug #:with-dbug-package #:with-dbugf
    #:without-dbug
    #:dump-values
    ;; Environment features
@@ -1019,7 +1020,9 @@ ORIGINAL is something that a define-alias method is defined for."
 ;; This is weird. Why do I love using it so much?
 (defmacro _ (&rest exprs)
   "Shorthand for single argument lambda. The single argument is named '_'."
-  `(lambda (_) ,@exprs))
+  `(lambda (_)
+     (declare (ignorable _))
+     ,@exprs))
 
 (defun symbolify (string &key (package *package*) no-new)
   "Return a symbol, interned in PACKAGE, represented by STRING, after possibly
@@ -1333,17 +1336,54 @@ the condition."
 ;; go somewhere else, like:
 ;;  (let ((*debug-io* *earth*)) (with-dbug (land-on-mars)))
 
-(defvar *dbug* nil)
-(defvar *dbug-package* nil)
-(defmacro dbug (fmt &rest args)
-  `(when (and dlib:*dbug* (or (not *dbug-package*)
-			      (equal *dbug-package* (package-name *package*))))
-	      (funcall #'format *debug-io* ,fmt ,@args) (finish-output)))
+(defvar *dbug* nil
+  "Dude, do you even debug?")
 
-(defmacro with-dbug (&body body) `(let ((*dbug* t))   ,@body))
+(defvar *dbug-package* nil
+  "A package to debug. Output debugging message when we're in this package.")
+
+(defvar *dbug-facility* nil
+  "Facilities to debug. A sequence of keywords or something.")
+
+(defmacro dbug (fmt &rest args)
+  "Print a debugging message when debugging is turned on and maybe we're in
+the right package."
+  `(when (and dlib:*dbug*
+	      (or (not *dbug-package*)
+		  (equal *dbug-package* (package-name *package*))))
+     (funcall #'format *debug-io* ,fmt ,@args) (finish-output)))
+
+(defmacro dbugf (facility fmt &rest args)
+  "Print a debugging message when debugging is turned on and maybe we're in
+the right package, and the FACILITY is activated."
+  `(when (and dlib:*dbug* dlib:*dbug-facility*
+	      (or
+	       (position ,facility *dbug-facility*)
+	       (position :all *dbug-facility*)))
+     (funcall #'format *debug-io* ,fmt ,@args) (finish-output)))
+
+(defmacro with-dbug (&body body)
+  "Evaluate the BODY with debugging message printing turned on."
+  `(let ((*dbug* t)) ,@body))
+
 (defmacro with-dbug-package (package &body body)
+  "Evaluate the BODY with debugging message printing in PACKAGE turned on."
   `(let ((*dbug* t) (*dbug-package* (package-name ,package))) ,@body))
-(defmacro without-dbug (&body body) `(let ((*dbug* nil)) ,@body))
+
+(defmacro with-dbugf (facility &body body)
+  "Evaluate the BODY with debugging message printing tagged with FACILITY
+turned on. FACILITY can be an atom or a list of facilities to turn on."
+  (with-unique-names (fac)
+    `(let* ((*dbug* t)
+	    (,fac ,facility)		; so we only eval once
+	    (*dbug-facility*
+	     (append *dbug-facility*
+		     (if (listp ,fac) ,fac (list ,fac)))))
+     ,@body)))
+
+(defmacro without-dbug (&body body)
+  "Evaluate the BODY without printing any debugging messages."
+  `(let ((*dbug* nil)) ,@body))
 
 (defmacro dump-values (&rest args)
   "Print the names and values of the arguments, like NAME=value."
@@ -1351,13 +1391,18 @@ the condition."
 	       `(format *debug-io* "~a=~a " ',z ,z))))
     `(progn ,@za (terpri *debug-io*))))
 
+(defun fake-probe-file (f)
+  "Fake probe-file because CLisp gets pointless errors."
+  #+clisp (ignore-errors (probe-file f))
+  #-clisp (probe-file f))
+
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun exe-in-path-p (name)
     "True if file NAME exists in the current execute path, which is usually the
 environment variable PATH. Note that this doesn't check if it's executable or
 not or that you have permission to execute it."
     (loop :for d :in (split-sequence ":" (d-getenv "PATH"))
-       :when (probe-file (s+ d "/" name))
+       :when (fake-probe-file (s+ d "/" name))
        :do (return t)
        :finally (return nil)))
 
