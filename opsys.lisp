@@ -867,6 +867,10 @@ resized it will signal an OPSYS-RESIZED. If the program is continued from
 being suspended, it will signal an OPSYS-RESUMED. Usually this means the
 caller should handle these possibilites.")
 
+(defosfun read-until (tty stop-char &key timeout)
+  "Read until STOP-CHAR is read. Return a string of the results.
+TTY is a file descriptor.")
+
 (defosfun write-terminal-char (terminal-handle char)
   "Write CHAR to the terminal designated by TERMINAL-HANDLE.")
 

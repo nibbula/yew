@@ -103,6 +103,7 @@
    #:close-terminal
    #:slurp-terminal
    #:read-terminal-char
+   #:read-until
    #:write-terminal-char
    #:write-terminal-string
    #:set-terminal-mode

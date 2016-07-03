@@ -332,6 +332,7 @@
    #:open-terminal
    #:close-terminal
    #:read-terminal-char
+   #:read-until
    #:write-terminal-char
    #:write-terminal-string
    ;; from termios
@@ -4959,34 +4960,60 @@ descriptor FD."
   (declare (ignore signal-number))
   (setf *got-tstp* t))
 
+(defun read-raw-char (terminal-handle c &optional test)
+  (loop
+     :with status
+     :do
+     (setf status (posix-read terminal-handle c 1))
+     :while (or (and (< status 0)
+		     (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
+		(and test
+		     (funcall test (mem-ref c :unsigned-char))))
+     :do
+     ;; Probably returning from ^Z or terminal resize, or something,
+     ;; so keep trying. Enjoy your trip to plusering town.
+     (cond
+       (*got-sigwinch*
+	(setf *got-sigwinch* nil)
+	(cerror "Try again?" 'opsys-resized))
+       (*got-tstp*
+	(setf *got-tstp* nil)
+	;; re-signal with the default, so we actually stop
+	(with-signal-handlers ((+SIGTSTP+ . :default))
+	  (kill (getpid) +SIGTSTP+))
+	(cerror "Try again?" 'opsys-resumed))
+       (t
+	(when (< status 0)
+	  (cerror "Try again?" 'read-char-error :error-code *errno*))))))
+
 ;; Simple, linear, non-event loop based programming was always an illusion!
 (defun read-terminal-char (terminal-handle &key timeout)
   (declare (ignore timeout))
   (with-foreign-object (c :char)
     (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
 			   (+SIGTSTP+  . tstp-handler))
-      (loop
-	 :with status
-	 :do
-	 (setf status (posix-read terminal-handle c 1))
-	 :while (and (< status 0)
-		     (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
-	 :do
-	 ;; Probably returning from ^Z or terminal resize, or something,
-	 ;; so keep trying. Enjoy your trip to plusering town.
-	 (cond
-	   (*got-sigwinch*
-	    (setf *got-sigwinch* nil)
-	    (cerror "Try again?" 'opsys-resized))
-	   (*got-tstp*
-	    (setf *got-tstp* nil)
-	    ;; re-signal with the default, so we actually stop
-	    (with-signal-handlers ((+SIGTSTP+ . :default))
-	      (kill (getpid) +SIGTSTP+))
-	    (cerror "Try again?" 'opsys-resumed))
-	   (t
-	    (cerror "Try again?" 'read-char-error :error-code *errno*))))
+      (read-raw-char terminal-handle c)
       (code-char (mem-ref c :unsigned-char)))))
+
+(defun read-until (tty stop-char &key timeout)
+  "Read until STOP-CHAR is read. Return a string of the results.
+TTY is a file descriptor."
+  (let ((result (make-array '(0) :element-type 'base-char
+			    :fill-pointer 0 :adjustable t)))
+    (set-terminal-mode tty :timeout timeout)
+    (with-output-to-string (str result)
+      (with-foreign-object (c :char)
+	(with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
+			       (+SIGTSTP+  . tstp-handler))
+	  (read-raw-char tty c
+			 #'(lambda (x)
+			     (let ((cc (code-char x)))
+			       (and cc (char/= cc stop-char)
+				    (princ cc str))))))))
+    (set-terminal-mode tty :timeout nil)
+    (if (zerop (length result))
+	nil
+	result)))
 
 (defun write-terminal-char (terminal-handle char)
   "Write CHAR to the terminal designated by TERMINAL-HANDLE."
