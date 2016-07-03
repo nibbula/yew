@@ -1302,19 +1302,6 @@ Updates the screen coordinates."
 ;; there's some way to 'lock' the terminal input queue for that time.
 ;;
 
-#|
-(defun eat-typeahead (e)
-  (let ((ta (termios:call-with-raw
-	     (terminal-file-descriptor (line-editor-terminal e))
-	     (_ (tty-slurp _)) :timeout 1)))
-    (when (and ta (> (length ta) 0))
-;      (log-message e "ta[~a]=~w" (length ta) ta)
-      (if (typeahead e)
-	  (setf (typeahead e) (s+ (typeahead e) ta))
-	  (setf (typeahead e) ta
-		(typeahead-pos e) 0)))))
-|#
-
 (defun finish-all-output (e)
   "Makes all output be in Finnish."
   (when (not (environment-variable "EMACS")) ; XXX so wrong
@@ -1331,10 +1318,10 @@ Updates the screen coordinates."
 (defun do-prefix (e prompt-str)
   "Output a prefix."
   (finish-all-output e)
-  (let (row col start-row start-col)
+  (let (row col start-row)
     (multiple-value-setq (row col)
       (terminal-get-cursor-position (line-editor-terminal e)))
-    (setf start-row row start-col col)
+    (setf start-row row)
     (tt-write-string e prompt-str)
     ;;(finish-all-output e)
     (tt-finish-output e)
@@ -2052,6 +2039,7 @@ command line.")
 	 (y (screen-row e))
 	 end-x end-y
 	 row-limit)
+    (declare (ignorable end-x column-size content-cols))
     ;;(multiple-value-setq (y x) (terminal-get-cursor-position term))
     (multiple-value-setq (content-rows content-cols column-size)
       (print-columns-sizer comp-list :columns cols))
