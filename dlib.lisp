@@ -1356,7 +1356,7 @@ the right package."
 (defmacro dbugf (facility fmt &rest args)
   "Print a debugging message when debugging is turned on and maybe we're in
 the right package, and the FACILITY is activated."
-  `(when (and dlib:*dbug* dlib:*dbug-facility*
+  `(when (and #| dlib:*dbug* |# dlib:*dbug-facility*
 	      (or
 	       (position ,facility *dbug-facility*)
 	       (position :all *dbug-facility*)))
@@ -1374,7 +1374,7 @@ the right package, and the FACILITY is activated."
   "Evaluate the BODY with debugging message printing tagged with FACILITY
 turned on. FACILITY can be an atom or a list of facilities to turn on."
   (with-unique-names (fac)
-    `(let* ((*dbug* t)
+    `(let* (;(*dbug* t)
 	    (,fac ,facility)		; so we only eval once
 	    (*dbug-facility*
 	     (append *dbug-facility*
