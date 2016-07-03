@@ -161,8 +161,9 @@ unknown.")
 |#
 
 (defun shell-output-accepts-grotty ()
-  (format t "*accepts* = ~s~%" lish:*accepts*)
-  (format t "Grotty yo = ~s~%" (symbol-call :lish :accepts :grotty-stream))
+  ;;(dbugf :accepts "*accepts* = ~s~%" lish:*accepts*)
+  (dbugf :accepts "Grotty yo = ~s~%"
+	 (symbol-call :lish :accepts :grotty-stream))
   (symbol-call :lish :accepts :grotty-stream))
 
 ;; If you need a specific one, just make it yourself.
