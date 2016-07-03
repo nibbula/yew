@@ -149,6 +149,8 @@ two values ROW and COLUMN."
     (when (position #\newline string)
       (finish-output stream))))
 
+#| Moved to opsys for syscall frugality
+
 (defun read-until (tty stop-char &key timeout)
   "Read until STOP-CHAR is read. Return a string of the results.
 TTY is a file descriptor."
@@ -164,6 +166,7 @@ TTY is a file descriptor."
     (if (zerop (length result))
 	nil
 	result)))
+|#
 
 ;; resumed -> (terminal-start tty) #| (redraw) |# (tt-finish-output tty)
 ;; resized -> (terminal-get-size tt)
