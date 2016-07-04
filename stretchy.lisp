@@ -28,7 +28,7 @@ it seems much faster on most implementations.
 
 ;; (declaim (optimize (speed 0) (safety 3) (debug 3)
 ;; 		   (space 0) (compilation-speed 0)))
-(declaim (optimize (speed 3) (safety 0) (debug 0)
+(declaim (optimize (speed 3) (safety 0) (debug 3)
 		   (space 0) (compilation-speed 0)))
 
 (defvar *default-stretch-factor* 2/3
