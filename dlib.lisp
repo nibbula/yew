@@ -97,7 +97,8 @@
    #-lispworks #:with-unique-names
    #:with-package
    #:shortest-package-nick
-   #:not-so-funcall #:symbol-call #-clasp #:※
+   #:not-so-funcall #:symbol-call
+   #:refer-to #-clasp #:※
    #:@
    #:ignore-conditions #:ignore-some-conditions
    ;; debugging
@@ -1298,8 +1299,25 @@ Useful for making your macro “hygenic”."
 	(apply sym args)
 	(error "Symbol ~s not found in ~s" symbol package))))
 
-(defalias '※ 'not-so-funcall)
 (defalias 'symbol-call 'not-so-funcall)
+
+(defun refer-to (package symbol &rest args)
+  "Call or get the value of SYMBOL in PACKAGE."
+  (let ((pkg (find-package package)) sym)
+    (when (not pkg)
+      (error "Package not found ~s" package))
+    (setf sym (intern (string symbol) pkg))
+    (cond
+      ((fboundp sym)
+       (apply sym args))
+      ((boundp sym)
+       (when args
+	 (warn "Useless refer-to args were provided."))
+       (symbol-value sym))
+      (t
+       (error "Symbol ~s not bound in ~s" symbol package)))))
+
+(defalias '※ 'refer-to)
 
 ;; Should I really?
 (defmacro @ (object &rest slot-names)
