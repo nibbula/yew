@@ -30,6 +30,9 @@ least you can type things using TINY-RL.")
 (defvar *visual-mode* nil
   "True to use visual mode.")
 
+(defvar *visual-term* nil
+  "Terminal for visual mode.")
+
 (defvar *current-frame* nil
   "Current frame number. Frames are numbered from the top or innermost 0 to
 the outermost. When entering the debugger the current frame is 0.")
@@ -736,7 +739,8 @@ innermost N contexts, if we can."
 	line)))
 
 (defun visual ()
-  (with-terminal (tt 'terminal-ansi)
+  (let ((tt *visual-term*))
+    (terminal-get-size tt)
     (with-saved-cursor (tt)
       (let* ((source-height (truncate (/ (terminal-window-rows tt) 3)))
 	     (stack-height (min 10 source-height))
@@ -790,15 +794,20 @@ innermost N contexts, if we can."
 
 (defun start-visual ()
   (when *visual-mode*
-    (with-terminal (tt 'terminal-ansi)
+    (when (not *visual-term*)
+      (setf *visual-term* (make-instance 'terminal-ansi))
+      (terminal-start *visual-term*))
+    (let ((tt *visual-term*))
+      (terminal-get-size tt)
       (tt-move-to tt (1- (terminal-window-rows tt)) 0)
       (tt-finish-output tt))))
 
 (defun reset-visual ()
-  (with-terminal (tt 'terminal-ansi)
+  (let ((tt *visual-term*))
     (tt-set-scrolling-region tt nil nil)
     (tt-move-to tt (1- (terminal-window-rows tt)) 0)
-    (tt-finish-output tt)))
+    (tt-finish-output tt)
+    #| (terminal-end tt) |#))
 
 (defun debugger-up-frame-command (&optional foo)
   (declare (ignore foo))
@@ -868,7 +877,10 @@ number  Invoke that number restart (from the :r list).
 
 (defun toggle-visual-mode (state)
   (declare (ignore state))
-  (setf *visual-mode* (not *visual-mode*)))
+  (setf *visual-mode* (not *visual-mode*))
+  (if *visual-mode*
+      (start-visual)
+      (reset-visual)))
 
 ;;; @@@ I actually want to take defcommand out of lish and make it be generic.
 ;;; And then also the command completion from lish to generic completion.
