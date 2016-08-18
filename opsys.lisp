@@ -706,6 +706,16 @@ around the time of the call.")
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; IPC
 
+(defun environ-to-string-list (env)
+  "Convert a keyworded alist environment to a list of strings with #\=.
+Just return ENV if it doesn't seem like an alist."
+  (or (and env
+	   (listp (car env))
+	   (keywordp (caadr env))
+	   (loop :for (a . b) :in env
+	      :collect (format nil "~a=~a" a b)))
+      env))
+
 ;; pipes
 
 ;; @@@@ We should make sure it's portable!
@@ -733,7 +743,9 @@ current process's environment."
 	  (apply #'sb-ext:run-program
 		 `(,cmd ,args :output ,out-stream :search t :wait nil
 			,@(when in-stream `(:input ,in-stream))
-			,@(when env-p `(:environment ,environment)))))
+			,@(when env-p
+				`(:environment
+				  ,(environ-to-string-list environment))))))
   #+cmu (ext:process-output
 	 (if in-stream
 	     (ext:run-program cmd args :output out-stream :input in-stream)
@@ -749,7 +761,9 @@ current process's environment."
 		     `(,cmd ,args :wait nil :input t
 			    ,@(when out-stream `(:output ,out-stream))
 			    ,@(when in-stream `(:input ,in-stream))
-			    ,@(when env-p `(:env ,environment))))))
+			    ,@(when env-p
+				    `(:env
+				      ,(environ-to-string-list environment)))))))
     (ccl::external-process-output-stream proc))
   
   #+ecl (multiple-value-bind (result ret-code proc)
@@ -761,7 +775,9 @@ current process's environment."
 			  ,@(if in-stream
 				`(:input ,in-stream)
 				'(:input t))
-			  ,@(when env-p `(:env ,environment))))
+			  ,@(when env-p
+				  `(:env
+				    ,(environ-to-string-list environment)))))
 	  (declare (ignore result ret-code))
 	  (ext:external-process-output proc))
   ;;#+ecl (ext:run-program cmd args)
