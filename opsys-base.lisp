@@ -146,7 +146,7 @@
 ;; Generic things
 
 ;; Define :32-bit-target or :64-bit-target
-#+(and (or darwin linux) x86-64) (config-feature :64-bit-target)
+#+(and (or darwin linux freebsd) x86_64) (config-feature :64-bit-target)
 #+ecl (eval-when (:compile-toplevel :load-toplevel :execute)
 	(when (= (cffi:foreign-type-size :long) 8)
 	  (config-feature :64-bit-target)))
@@ -235,7 +235,7 @@ string (denoting itself)."
   "File information."
   ;; Type and flags should only have things which can be reliably detected
   ;; on all systems and have nearly the same meaning and are useful.
-  (type nil  :type (member :regular :directory :symbolic-link :device :other))
+  (type nil  :type (member :regular :directory :link :device :other))
   (size 0    :type integer)		; in bytes
   (flags nil :type list)		; :hidden :immutable :compressed
   creation-time

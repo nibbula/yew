@@ -57,6 +57,7 @@
    #:dir-entry-inode
    #:without-access-errors
    #:probe-directory
+   #:split-path
    #:path-to-absolute #:abspath
    #:path-directory-name #:dirname
    #:path-file-name #:basename

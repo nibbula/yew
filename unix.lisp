@@ -17,6 +17,10 @@
   (:use :cl :cffi :dlib :opsys-base)
   (:nicknames :os-unix :uos)
   (:export
+   ;; defining macros
+   #:*platform-index* #:define-simple-types #:define-constants
+   #:define-constants-from #:define-name-list-from
+
    ;; types
    #:time-t #:mode-t #:uid-t #:gid-t #:pid-t #:wchar-t #:suseconds-t
    #:dev-t #:nlink-t #:ino-t #:off-t #:quad-t #:blkcnt-t #:blksize-t #:fixpt-t
@@ -127,7 +131,7 @@
    ;; directories
    #:hidden-file-name-p
    #:superfluous-file-name-p
-   #:dir-entry-inode
+   ;;#:dir-entry-inode
    #:change-directory
    #:pathconf
    #:get-path-max
@@ -141,8 +145,9 @@
    #:without-access-errors
 
    ;; files (low level)
-   #:O_RDONLY #:O_WRONLY #:O_RDWR #:O_ACCMODE #:O_NONBLOCK #:O_APPEND
-   #:O_SYNC #:O_SHLOCK #:O_EXLOCK #:O_CREAT #:O_TRUNC #:O_EXCL
+   #:+O_RDONLY+ #:+O_WRONLY+ #:+O_RDWR+ #:+O_ACCMODE+ #:+O_NONBLOCK+
+   #:+O_APPEND+ #:+O_SYNC+ #:+O_SHLOCK+ #:+O_EXLOCK+ #:+O_CREAT+ #:+O_TRUNC+
+   #:+O_EXCL+
    #:posix-open
    #:posix-close
    #:posix-read
@@ -157,9 +162,9 @@
    #:lstat
    #:fstat
    #:get-file-info
-   #:S_IFMT #:S_IFIFO #:S_IFCHR #:S_IFDIR #:S_IFBLK #:S_IFREG #:S_IFLNK
-   #:S_IFSOCK #:S_IFWHT #:S_ISUID #:S_ISGID #:S_ISVTX #:S_IRUSR #:S_IWUSR
-   #:S_IXUSR
+   #:+S_IFMT+ #:+S_IFIFO+ #:+S_IFCHR+ #:+S_IFDIR+ #:+S_IFBLK+ #:+S_IFREG+
+   #:+S_IFLNK+ #:+S_IFSOCK+ #:+S_IFWHT+ #:+S_ISUID+ #:+S_ISGID+ #:+S_ISVTX+
+   #:+S_IRUSR+ #:+S_IWUSR+ #:+S_IXUSR+
    #:is-user-readable
    #:is-user-writable
    #:is-user-executable
@@ -296,6 +301,7 @@
    ;; multiplexed io
    #:lame-poll
    #:lame-select
+   #:listen-for
 
    ;; filesystems
    #:fstab #:fstab-spec #:fstab-file #:fstab-vfstype #:fstab-mntops
@@ -349,15 +355,99 @@
 
 (declaim (optimize (debug 3)))
 
-#+(or darwin linux) (config-feature :os-t-has-strerror-r)
-;#+(or darwin linux) (config-feature :os-t-has-vfork)
+;; Macros for convenient defining of platform specific things.
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *platform-index*
+    (or
+     #+darwin		1
+     #+linux		2
+     #+sunos		3
+     #+freebsd		4
+     nil))
+
+  (defparameter *platform-bitsize-index*
+    (or
+     #+darwin				1
+     #+(and linux 32-bit-target)	2
+     #+(and linux 64-bit-target)	3
+     #+sunos				4
+     #+(and freebsd 64-bit-target)	5
+     nil))
+
+  (when (not (and *platform-index* *platform-bitsize-index*))
+    (error "We don't know about your platform."))
+
+  (defmacro define-simple-types (types-array)
+    "Define the appropriate types for the platform from the given TYPES-ARRAY."
+    `(progn
+       ,@(loop :for type :across types-array
+	    :collect
+	    `(defctype ,(aref type 0) ,(aref type *platform-bitsize-index*)))))
+
+  (defmacro define-constants (constant-array)
+    "Define the appropriate constant for the platform from the given
+CONSTANT-ARRAY."
+    `(progn
+       ,@(loop :for type :across constant-array
+	    :collect
+	    `(defconstant ,(aref type 0) ,(aref type *platform-index*)))))
+
+  (defmacro define-constants-from (constant-array)
+    "Define the appropriate constants for the platform from the array in the
+given CONSTANT-ARRAY variable."
+    `(progn
+       ,@(loop :for type :across (symbol-value constant-array)
+	    :collect
+	    `(defconstant ,(aref type 0) ,(aref type *platform-index*)))))
+
+  (defmacro define-name-list-from (name constant-array &optional docstring)
+    "Define a variable named NAME as a list of the appropriate platform entries
+from the CONSTANT-ARRAY variable, that are non-NIL."
+    `(defparameter ,name
+       '(,@(loop :for v :across (symbol-value constant-array)
+	      :when (aref v *platform-index*)
+	      :collect (aref v 0)))
+       ,@(or (list docstring))))
 
 ;; C API types
 
+  (define-simple-types
+  #(
+#| This is just gonna go over 80 cols, so deal.
+Type name     Darwin           Linux-32         Linux-64         SunOS		  FreeBSD 64 |#
+#(time-t      :long            :long            :long            :long		  :int64)
+#(mode-t      :uint16          :unsigned-int    :unsigned-int    :uint16	  :uint16)
+#(uid-t       :uint32          :unsigned-int    :unsigned-int    :uint32	  :uint32)
+#(gid-t       :uint32          :unsigned-int    :unsigned-int    :uint32	  :uint32)
+#(pid-t       :int             :int             :int             :int		  :int32)
+#(wchar-t     :int             :int             :int             :int		  :int)
+#(suseconds-t :int32           :int32           :int32           :int32		  :long)
+#(ssize-t     :long            :long            :long            :long		  :int64)
+#(dev-t       :int32           :unsigned-long   :unsigned-long   :ulong		  :uint32)
+#(nlink-t     :uint16          :unsigned-int    :unsigned-long   :uint		  :uint16)
+#(ino-t       :uint64          :unsigned-long   :unsigned-long   :unsigned-long	  :uint32)
+#(off-t       :int64           :int32           :long            :int32		  :int64)
+#(quad-t      :int64           :int64           :int64           :int64		  :int64)
+#(u-quad-t    :uint64          :uint64          :uint64          :uint64	  :uint64)
+#(blkcnt-t    :int64           :unsigned-long   :long            :int64		  :int64)
+#(blksize-t   :int64           :long            :unsigned-long   :int32		  :uint32)
+#(fixpt-t     :uint32          :uint32          :uint32          :uint32	  :uint32)
+#(boolean-t   :unsigned-int    :unsigned-int    :unsigned-int    :unsigned-int	  :unsigned-int)
+#(segsz-t     :int32           :int32           :int32           :int32		  :int64)
+#(caddr-t     (:pointer :char) (:pointer :char) (:pointer :char) (:pointer :char) (:pointer :char))
+#(fsblkcnt-t  :unsigned-long   :unsigned-long   :unsigned-long   :unsigned-long	  :uint64)
+#(fsword-t    :int             :int             :int             :int		  :int)
+#(attrgroup-t :uint32          :uint32          :uint32          :uint32	  :uint32)
+)))
+
+#|
+;; This was the old mess, which was replaced by the above table of types.
+
 (defctype time-t :long)
 (defctype mode-t #+(or darwin sunos) :uint16 #+linux :unsigned-int)
-(defctype uid-t :uint32)
-(defctype gid-t :uint32)
+(defctype uid-t #+darwin :uint32 #+linux :unsigned-int)
+(defctype gid-t #+darwin :uint32 #+linux :unsigned-int)
 (defctype pid-t :int)
 (defctype wchar-t :int)
 (defctype suseconds-t :int32)
@@ -365,9 +455,14 @@
 
 #+darwin (defctype dev-t :int32)
 #+sunos  (defctype dev-t :ulong)
-#+linux  (defctype dev-t #+cffi-features:no-long-long :ulong
-		         #-cffi-features:no-long-long :ullong)
-(defctype nlink-t #+darwin :uint16 #+sunos :uint #+linux :uint)
+;;#+linux  (defctype dev-t #+cffi-features:no-long-long :ulong
+;;		         #-cffi-features:no-long-long :ullong)
+#+(and linux (not 64-bit-target)) (defctype dev-t :unsigned-long)
+#+(and linux 64-bit-target) (defctype dev-t :unsigned-long)
+#+darwin (defctype nlink-t :uint16)
+#+sunos (defctype nlink-t :uint)
+#+(and linux (not 64-bit-target)) (defctype nlink-t :unsigned-int)
+#+(and linux 64-bit-target) (defctype nlink-t :unsigned-long)
 #+darwin (defctype ino-t :uint64)    ; for 32 & 64 ??
 ;; (defctype ino-t
 ;;     #+(and darwin 64-bit-target) :uint64
@@ -378,27 +473,40 @@
 ;;    #+(and darwin 64-bit-target) :int64
 ;;    #+(and darwin (not 64-bit-target)) :int32
 #+sunos (defctype off-t :int32)
-#+(and linux 64-bit-target) (defctype off-t :int64)
+;#+(and linux 64-bit-target) (defctype off-t :int64)
+#+(and linux 64-bit-target) (defctype off-t :long)
 #+(and linux (not 64-bit-target)) (defctype off-t :int32)
 ;#+(or sunos linux) (defctype off-t :long)
 #-cffi-features:no-long-long (defctype quad-t :int64)
 #+cffi-features:no-long-long (defctype quad-t :int32) ; @@@ XXX wrong!
-(defctype blkcnt-t #+64-bit-target :int64 #+32-bit-target :int32)
-(defctype blksize-t :int32)
+#-linux (defctype blkcnt-t #+64-bit-target :int64 #+32-bit-target :int32)
+#-linux (defctype blksize-t #+64-bit-target :long #+32-bit-target :int32)
+#+linux (defctype blkcnt-t #+64-bit-target :long #+32-bit-target :unsigned-long)
+#+linux (defctype blksize-t :unsigned-long)
 (defctype fixpt-t :uint32)
-#+(or darwin sunos) (defctype sigset-t :uint32)
-#+linux
-(defcstruct foreign-sigset-t
-  (value :unsigned-long :count
-	 #.(/ 1024 (* 8 (cffi:foreign-type-size :unsigned-long)))))
-;; unsigned long int __val[(1024 / (8 * sizeof (unsigned long int)))];
-#+linux
-(defctype sigset-t (:struct foreign-sigset-t))
 (defctype boolean-t :unsigned-int)
 (defctype fixpt-t :uint32)
 (defctype u-quad-t :uint64)
 (defctype segsz-t :int32)
 (defctype caddr-t (:pointer :char))
+
+|#
+
+#+freebsd (defctype fflags-t :uint32)
+
+;; sigset
+#+(or darwin sunos) (defctype sigset-t :uint32)
+
+#+linux
+(defcstruct foreign-sigset-t
+  (value :unsigned-long :count
+	 #.(/ 1024 (* 8 (cffi:foreign-type-size :unsigned-long)))))
+;; unsigned long int __val[(1024 / (8 * sizeof (unsigned long int)))];
+
+#+freebsd (defcstruct foreign-sigset-t (__bits :uint32 :count 4))
+
+#+(or linux freebsd)
+(defctype sigset-t (:struct foreign-sigset-t))
 
 (defcstruct foreign-timeval
   "Time for timer."
@@ -422,41 +530,43 @@
   "Resource usage."
   (utime (:struct foreign-timeval))	; user time used
   (stime (:struct foreign-timeval))	; system time used
-  (ixrss :long)				; integral shared memory size
-  (idrss :long)				; integral unshared data
-  (isrss :long)				; integral unshared stack
-  (minflt :long)			; page reclaims
-  (majflt :long)			; page faults
-  (nswap :long)				; swaps
-  (inblock :long)			; block input operations
-  (oublock :long)			; block output operations
-  (msgsnd :long)			; messages sent
-  (msgrcv :long)			; messages recieved
+  (ixrss    :long)			; integral shared memory size
+  (idrss    :long)			; integral unshared data
+  (isrss    :long)			; integral unshared stack
+  (minflt   :long)			; page reclaims
+  (majflt   :long)			; page faults
+  (nswap    :long)			; swaps
+  (inblock  :long)			; block input operations
+  (oublock  :long)			; block output operations
+  (msgsnd   :long)			; messages sent
+  (msgrcv   :long)			; messages recieved
   (nsignals :long)			; signals received
-  (nvcsw :long)				; voluntary context switches
-  (nivcsw :long))			; involuntary context switches
+  (nvcsw    :long)			; voluntary context switches
+  (nivcsw   :long))			; involuntary context switches
 
-#+(or darwin linux)
+#+(or darwin linux freebsd)
 (defcstruct foreign-rusage
-  (ru_utime (:struct foreign-timeval))
-  (ru_stime (:struct foreign-timeval))
-  (ru_maxrss :long)
-  (ru_ixrss :long)
-  (ru_idrss :long)
-  (ru_isrss :long)
-  (ru_minflt :long)
-  (ru_majflt :long)
-  (ru_nswap :long)
-  (ru_inblock :long)
-  (ru_oublock :long)
-  (ru_msgsnd :long)
-  (ru_msgrcv :long)
+  (ru_utime    (:struct foreign-timeval))
+  (ru_stime    (:struct foreign-timeval))
+  (ru_maxrss   :long)
+  (ru_ixrss    :long)
+  (ru_idrss    :long)
+  (ru_isrss    :long)
+  (ru_minflt   :long)
+  (ru_majflt   :long)
+  (ru_nswap    :long)
+  (ru_inblock  :long)
+  (ru_oublock  :long)
+  (ru_msgsnd   :long)
+  (ru_msgrcv   :long)
   (ru_nsignals :long)
-  (ru_nvcsw :long)
-  (ru_nivcsw :long))
+  (ru_nvcsw    :long)
+  (ru_nivcsw   :long))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Error handling
+
+#+(or darwin linux freebsd) (config-feature :os-t-has-strerror-r)
 
 (defcvar ("errno" *errno*) :int) ; aka *errno*
 
@@ -866,6 +976,109 @@
   (define-constant +ESTALE+		151 "Stale NFS file handle")
 )
 
+#+freebsd
+(progn
+  (define-constant +EPERM+	        1  "Operation not permitted")
+  (define-constant +ENOENT+	        2  "No such file or directory")
+  (define-constant +ESRCH+	        3  "No such process")
+  (define-constant +EINTR+	        4  "Interrupted system call")
+  (define-constant +EIO+	        5  "Input/output error")
+  (define-constant +ENXIO+	        6  "Device not configured")
+  (define-constant +E2BIG+	        7  "Argument list too long")
+  (define-constant +ENOEXEC+	        8  "Exec format error")
+  (define-constant +EBADF+	        9  "Bad file descriptor")
+  (define-constant +ECHILD+	        10 "No child processes")
+  (define-constant +EDEADLK+	        11 "Resource deadlock avoided")
+  (define-constant +ENOMEM+	        12 "Cannot allocate memory")
+  (define-constant +EACCES+	        13 "Permission denied")
+  (define-constant +EFAULT+	        14 "Bad address")
+  (define-constant +ENOTBLK+	        15 "Block device required")
+  (define-constant +EBUSY+	        16 "Device busy")
+  (define-constant +EEXIST+	        17 "File exists")
+  (define-constant +EXDEV+	        18 "Cross-device link")
+  (define-constant +ENODEV+	        19 "Operation not supported by device")
+  (define-constant +ENOTDIR+	        20 "Not a directory")
+  (define-constant +EISDIR+	        21 "Is a directory")
+  (define-constant +EINVAL+	        22 "Invalid argument")
+  (define-constant +ENFILE+	        23 "Too many open files in system")
+  (define-constant +EMFILE+	        24 "Too many open files")
+  (define-constant +ENOTTY+	        25 "Inappropriate ioctl for device")
+  (define-constant +ETXTBSY+	        26 "Text file busy")
+  (define-constant +EFBIG+	        27 "File too large")
+  (define-constant +ENOSPC+	        28 "No space left on device")
+  (define-constant +ESPIPE+	        29 "Illegal seek")
+  (define-constant +EROFS+	        30 "Read-only filesystem")
+  (define-constant +EMLINK+	        31 "Too many links")
+  (define-constant +EPIPE+	        32 "Broken pipe")
+  (define-constant +EDOM+	        33 "Numerical argument out of domain")
+  (define-constant +ERANGE+	        34 "Result too large")
+  (define-constant +EAGAIN+	        35 "Resource temporarily unavailable")
+  (define-constant +EWOULDBLOCK+        +EAGAIN+ "Operation would block")
+  (define-constant +EINPROGRESS+        36 "Operation now in progress")
+  (define-constant +EALREADY+	        37 "Operation already in progress")
+  (define-constant +ENOTSOCK+	        38 "Socket operation on non-socket")
+  (define-constant +EDESTADDRREQ+       39 "Destination address required")
+  (define-constant +EMSGSIZE+		40 "Message too long")
+  (define-constant +EPROTOTYPE+		41 "Protocol wrong type for socket")
+  (define-constant +ENOPROTOOPT+	42 "Protocol not available")
+  (define-constant +EPROTONOSUPPORT+	43 "Protocol not supported")
+  (define-constant +ESOCKTNOSUPPORT+	44 "Socket type not supported")
+  (define-constant +ENOTSUP+		45 "Operation not supported")
+  (define-constant +EOPNOTSUPP+		+ENOTSUP+ "Operation not supported")
+  (define-constant +EPFNOSUPPORT+	46 "Protocol family not supported")
+  (define-constant +EAFNOSUPPORT+	47 "Address family not supported by protocol family")
+  (define-constant +EADDRINUSE+		48 "Address already in use")
+  (define-constant +EADDRNOTAVAIL+	49 "Can't assign requested address")
+  (define-constant +ENETDOWN+		50 "Network is down")
+  (define-constant +ENETUNREACH+	51 "Network is unreachable")
+  (define-constant +ENETRESET+		52 "Network dropped connection on reset")
+  (define-constant +ECONNABORTED+	53 "Software caused connection abort")
+  (define-constant +ECONNRESET+		54 "Connection reset by peer")
+  (define-constant +ENOBUFS+		55 "No buffer space available")
+  (define-constant +EISCONN+		56 "Socket is already connected")
+  (define-constant +ENOTCONN+		57 "Socket is not connected")
+  (define-constant +ESHUTDOWN+		58 "Can't send after socket shutdown")
+  (define-constant +ETOOMANYREFS+	59 "Too many references: can't splice")
+  (define-constant +ETIMEDOUT+		60 "Operation timed out")
+  (define-constant +ECONNREFUSED+	61 "Connection refused")
+  (define-constant +ELOOP+		62 "Too many levels of symbolic links")
+  (define-constant +ENAMETOOLONG+	63 "File name too long")
+  (define-constant +EHOSTDOWN+		64 "Host is down")
+  (define-constant +EHOSTUNREACH+	65 "No route to host")
+  (define-constant +ENOTEMPTY+		66 "Directory not empty")
+  (define-constant +EPROCLIM+		67 "Too many processes")
+  (define-constant +EUSERS+		68 "Too many users")
+  (define-constant +EDQUOT+		69 "Disc quota exceeded")
+  (define-constant +ESTALE+		70 "Stale NFS file handle")
+  (define-constant +EREMOTE+		71 "Too many levels of remote in path")
+  (define-constant +EBADRPC+		72 "RPC struct is bad")
+  (define-constant +ERPCMISMATCH+	73 "RPC version wrong")
+  (define-constant +EPROGUNAVAIL+	74 "RPC prog. not avail")
+  (define-constant +EPROGMISMATCH+	75 "Program version wrong")
+  (define-constant +EPROCUNAVAIL+	76 "Bad procedure for program")
+  (define-constant +ENOLCK+		77 "No locks available")
+  (define-constant +ENOSYS+		78 "Function not implemented")
+  (define-constant +EFTYPE+		79 "Inappropriate file type or format")
+  (define-constant +EAUTH+		80 "Authentication error")
+  (define-constant +ENEEDAUTH+		81 "Need authenticator")
+  (define-constant +EIDRM+		82 "Identifier removed")
+  (define-constant +ENOMSG+		83 "No message of desired type")
+  (define-constant +EOVERFLOW+		84 "Value too large to be stored in data type")
+  (define-constant +ECANCELED+		85 "Operation canceled")
+  (define-constant +EILSEQ+		86 "Illegal byte sequence")
+  (define-constant +ENOATTR+		87 "Attribute not found")
+  (define-constant +EDOOFUS+		88 "Programming error")
+  (define-constant +EBADMSG+		89 "Bad message")
+  (define-constant +EMULTIHOP+		90 "Multihop attempted")
+  (define-constant +ENOLINK+		91 "Link has been severed")
+  (define-constant +EPROTO+		92 "Protocol error")
+  (define-constant +ENOTCAPABLE+	93 "Capabilities insufficient")
+  (define-constant +ECAPMODE+		94 "Not permitted in capability mode")
+  (define-constant +ENOTRECOVERABLE+	95 "State not recoverable")
+  (define-constant +EOWNERDEAD+		96 "Previous owner died")
+  (define-constant +ELAST+		96 "Must be equal largest errno")
+  )
+
 #+os-t-has-strerror-r
 (defcfun (#+linux "__xpg_strerror_r" #-linux "strerror_r" strerror-r)
     :int (errnum :int) (strerrbuf :pointer) (buflen size-t))
@@ -928,7 +1141,6 @@
 	(cons (intern (car v) :keyword) (cdr v))
 	))
 
-;; _NSGetEnviron()
 #+(and ecl darwin)
 (progn
   (defcfun ("_NSGetEnviron" ns-get-environ) :pointer)
@@ -1122,10 +1334,12 @@ NIL, unset the VAR, using unsetenv."
 	 (oldp :pointer) (oldlenp :pointer)
 	 (newp :pointer) (newlen size-t))
 
+#-linux
 (defcfun ("sysctlbyname" real-sysctlbyname) :int (name :string)
 	 (oldp :pointer) (oldlenp :pointer)
 	 (newp :pointer) (newlen size-t))
 
+#-linux
 (defcfun "sysctlnametomib" :int (name :string) (mibp :pointer)
 	 (sizep :pointer))
 
@@ -1249,6 +1463,7 @@ NIL, unset the VAR, using unsetenv."
   (kp_proc (:struct foreign-extern-proc))
   (kp_eproc (:struct foreign-eproc)))
 
+#-linux
 (defun sysctl-name-to-mib (name)
   "Return a vector of integers which is the numeric MIB for sysctl NAME."
   (let (result (initial-size 10) result-size)
@@ -1261,6 +1476,7 @@ NIL, unset the VAR, using unsetenv."
 	 :do (setf (aref result i) (cffi:mem-aref mib :int i))))
     result))
 
+#-linux
 (defun sysctl (name type)
   (with-foreign-object (oldlenp 'size-t 1)
     (syscall
@@ -1305,34 +1521,33 @@ NIL, unset the VAR, using unsetenv."
 
 #+linux
 (progn
-  (defconstant +AT-NULL+	  0 "End of vector")
-  (defconstant +AT-IGNORE+	  1 "Entry should be ignored")
-  (defconstant +AT-EXECFD+	  2 "File descriptor of program")
-  (defconstant +AT-PHDR+	  3 "Program headers for program")
-  (defconstant +AT-PHENT+	  4 "Size of program header entry")
-  (defconstant +AT-PHNUM+	  5 "Number of program headers")
-  (defconstant +AT-PAGESZ+	  6 "System page size")
-  (defconstant +AT-BASE+	  7 "Base address of interpreter")
-  (defconstant +AT-FLAGS+	  8 "Flags")
-  (defconstant +AT-ENTRY+	  9 "Entry point of program")
-  (defconstant +AT-NOTELF+	 10 "Program is not ELF")
-  (defconstant +AT-UID+		 11 "Real uid")
-  (defconstant +AT-EUID+	 12 "Effective uid")
-  (defconstant +AT-GID+		 13 "Real gid")
-  (defconstant +AT-EGID+	 14 "Effective gid")
-  (defconstant +AT-PLATFORM+	 15 "String identifying CPU for optimizations")
-  (defconstant +AT-HWCAP+	 16 "Arch dependent hints at CPU capabilities")
-  (defconstant +AT-CLKTCK+       17 "Frequency at which times() increments")
-  (defconstant +AT-SECURE+       23 "Secure mode boolean")
-  (defconstant +AT-BASE_PLATFORM 24
+  (defconstant +AT-NULL+	   0 "End of vector")
+  (defconstant +AT-IGNORE+	   1 "Entry should be ignored")
+  (defconstant +AT-EXECFD+	   2 "File descriptor of program")
+  (defconstant +AT-PHDR+	   3 "Program headers for program")
+  (defconstant +AT-PHENT+	   4 "Size of program header entry")
+  (defconstant +AT-PHNUM+	   5 "Number of program headers")
+  (defconstant +AT-PAGESZ+	   6 "System page size")
+  (defconstant +AT-BASE+	   7 "Base address of interpreter")
+  (defconstant +AT-FLAGS+	   8 "Flags")
+  (defconstant +AT-ENTRY+	   9 "Entry point of program")
+  (defconstant +AT-NOTELF+	  10 "Program is not ELF")
+  (defconstant +AT-UID+		  11 "Real uid")
+  (defconstant +AT-EUID+	  12 "Effective uid")
+  (defconstant +AT-GID+		  13 "Real gid")
+  (defconstant +AT-EGID+	  14 "Effective gid")
+  (defconstant +AT-PLATFORM+	  15 "String identifying CPU for optimizations")
+  (defconstant +AT-HWCAP+	  16 "Arch dependent hints at CPU capabilities")
+  (defconstant +AT-CLKTCK+        17 "Frequency at which times() increments")
+  (defconstant +AT-SECURE+        23 "Secure mode boolean")
+  (defconstant +AT-BASE-PLATFORM+ 24
     "String identifying real platform, may differ from AT_PLATFORM.")
-  (defconstant +AT-RANDOM+       25 "Address of 16 random bytes")
-  (defconstant +AT-EXECFN+       31 "Filename of program")
-  (defconstant +AT-SYSINFO       32 "")
-  (defconstant +AT-SYSINFO-EHDR+ 33 ""))
+  (defconstant +AT-RANDOM+        25 "Address of 16 random bytes")
+  (defconstant +AT-EXECFN+        31 "Filename of program")
+  (defconstant +AT-SYSINFO+       32 "")
+  (defconstant +AT-SYSINFO-EHDR+  33 ""))
 ;; AT_* values 18 through 22 are reserved
 
-;; unsigned long getauxval(unsigned long type);
 #+linux
 (defcfun ("getauxval" real-getauxval) :unsigned-long (type :unsigned-long))
 #+linux
@@ -1340,31 +1555,31 @@ NIL, unset the VAR, using unsetenv."
   "Get a value from the kernel auxiliary vector. TYPE is one of the +AT-*+
 constants. The return value varies base on the keyword."
   (let ((value (real-getauxval type)))
-    (ecase type
-      (+AT-NULL+	  nil)
-      (+AT-IGNORE+	  nil)
-      (+AT-EXECFD+	  value)
-      (+AT-PHDR+	  (make-pointer value))
-      (+AT-PHENT+	  value)
-      (+AT-PHNUM+	  value)
-      (+AT-PAGESZ+	  value)
-      (+AT-BASE+	  (make-pointer value))
-      (+AT-FLAGS+	  nil)
-      (+AT-ENTRY+	  (make-pointer value))
-      (+AT-NOTELF+	  value)
-      (+AT-UID+		  value)
-      (+AT-EUID+	  value)
-      (+AT-GID+		  value)
-      (+AT-EGID		  value)
-      (+AT-PLATFORM+	  (foreign-string-to-lisp (make-pointer value)))
-      (+AT-HWCAP+	  value) ;; Convert to keywords?
-      (+AT-CLKTCK+	  value)
-      (+AT-SECURE+	  value)
-      (+AT-RANDOM+	  value) ;; 16 bytes of random ff ff ff ff  ff ff ff ff
-      (+AT-EXECFN+	  (foreign-string-to-lisp (make-pointer value)))
-      (+AT-BASE-PLATFORM+ (foreign-string-to-lisp (make-pointer value)))
-      (+AT-SYSINFO+	  (make-pointer value))
-      (+AT-SYSINFO_EHDR+  (make-pointer value)))))
+    (cond
+      ((= type +AT-NULL+)	   nil)
+      ((= type +AT-IGNORE+)	   nil)
+      ((= type +AT-EXECFD+)	   value)
+      ((= type +AT-PHDR+)	   (make-pointer value))
+      ((= type +AT-PHENT+)	   value)
+      ((= type +AT-PHNUM+)	   value)
+      ((= type +AT-PAGESZ+)	   value)
+      ((= type +AT-BASE+)	   (make-pointer value))
+      ((= type +AT-FLAGS+)	   nil)
+      ((= type +AT-ENTRY+)	   (make-pointer value))
+      ((= type +AT-NOTELF+)	   value)
+      ((= type +AT-UID+)	   value)
+      ((= type +AT-EUID+)	   value)
+      ((= type +AT-GID+)	   value)
+      ((= type +AT-EGID+)	   value)
+      ((= type +AT-PLATFORM+)	   (foreign-string-to-lisp (make-pointer value)))
+      ((= type +AT-HWCAP+)	   value) ;; Convert to keywords?
+      ((= type +AT-CLKTCK+)	   value)
+      ((= type +AT-SECURE+)	   value)
+      ((= type +AT-RANDOM+)	   value) ;; 16 bytes of random ff ff ff ff  ff ff ff ff
+      ((= type +AT-EXECFN+)	   (foreign-string-to-lisp (make-pointer value)))
+      ((= type +AT-BASE-PLATFORM+) (foreign-string-to-lisp (make-pointer value)))
+      ((= type +AT-SYSINFO+)	   (make-pointer value))
+      ((= type +AT-SYSINFO-EHDR+)  (make-pointer value)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; User database
@@ -1848,12 +2063,12 @@ if not given."
 (defcfun ("getcwd" real-getcwd) :pointer (buf :pointer) (size size-t))
 (defcfun pathconf :long (path :string) (name :int))
 (defconstant +PC-PATH-MAX+
-	 #+(or darwin sunos) 5
+	 #+(or darwin sunos freebsd) 5
 	 #+linux 4)
-#-(or darwin sunos linux) (missing-implementation 'PC-PATH-MAX)
-;; Using the root "/" is kind of bogus, because it can depend on the 
-;; but since we're using it to get the . This is where grovelling the 
-;; MAXPATHLEN
+#-(or darwin sunos linux freebsd) (missing-implementation 'PC-PATH-MAX)
+;; Using the root "/" is kind of bogus, because it can depend on the
+;; filesystem type, but since we're using it to get the working directory.
+;; This is where grovelling the MAXPATHLEN might be good.
 (defparameter *path-max* nil
   "Maximum number of bytes in a path.")
 (defun get-path-max ()
@@ -1875,7 +2090,7 @@ C library function getcwd."
   #+(or clisp sbcl cmu) (libc-getcwd)
   #+excl (excl:current-directory)
   #+(or openmcl ccl) (ccl::current-directory-name)
-  #+ecl (ext:getcwd)
+  #+ecl (libc-getcwd) ;; (ext:getcwd)
   ;; #+cmu (ext:default-directory)
   #+lispworks (hcl:get-working-directory)
   #+abcl (namestring (truename *default-pathname-defaults*))
@@ -1989,10 +2204,23 @@ C library function getcwd."
   (d_type	:uint8)
   (d_name	:char :count 1024))
 
-#+(or linux darwin) (config-feature :os-t-has-d-type)
+#+freebsd
+(defcstruct foreign-dirent
+  ;; I know they really want to call it "fileno", but please let's just call
+  ;; it "ino" for compatibility.
+  ;; (d_fileno	:uint32)
+  (d_ino	:uint32)
+  (d_reclen	:uint16)
+  (d_type	:uint8)
+  (d_namlen	:uint8)
+  (d_name	:char :count #.(+ 255 1)))
+
+#+(or linux darwin freebsd)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (config-feature :os-t-has-d-type))
 
 ;; If one of these is not defined, we just use strlen(d_name).
-#+darwin (config-feature :os-t-has-namlen)
+#+(or darwin freebsd) (config-feature :os-t-has-namlen)
 #+linux (config-feature :os-t-has-reclen)
 
 #|
@@ -2086,7 +2314,7 @@ C library function getcwd."
       ((= d_type DT_UNKNOWN) :unknown)
       ((= d_type DT_FIFO)    :pipe)
       ((= d_type DT_CHR)     :character-device)
-      ((= d_type DT_DIR)     :dir)
+      ((= d_type DT_DIR)     :directory)
       ((= d_type DT_BLK)     :block-device)
       ((= d_type DT_REG)     :regular)
       ((= d_type DT_LNK)     :link)
@@ -2095,7 +2323,24 @@ C library function getcwd."
       (t :undefined)))
   #-os-t-has-d-type (declare (ignore ent))
   #-os-t-has-d-type :unknown)
-			     
+
+;; This is really only for debugging.
+(defun convert-dirent (ent)
+  (with-foreign-slots ((d_ino) ent (:struct foreign-dirent))
+    (make-dir-entry
+     :name (dirent-name ent)
+     :type (dirent-type ent)
+     :inode d_ino)))
+
+(defun dump-dirent (ent)
+  (with-foreign-slots ((d_ino d_reclen d_type d_namlen d_name)
+		       ent (:struct foreign-dirent))
+    (format t "ino~20t~a~%"    d_ino)
+    #+os-t-has-reclen (format t "reclen~20t~a~%" d_reclen)
+    #+os-t-has-d-type (format t "type~20t~a~%"   d_type)
+    #+os-t-has-namlen (format t "namlen~20t~a~%" d_namlen)
+    (format t "name~20t~a~%"   d_name)))
+
 ;; If wanted, we could consider also doing "*" for executable. Of course
 ;; we would have the overhead of doing a stat(2).
 
@@ -2152,6 +2397,9 @@ If FULL is true, return a list of dir-entry structures instead of file name ~
 strings. Some dir-entry-type keywords are:
   :unknown :pipe :character-device :dir :block-device :regular :link :socket
   :whiteout :undefined
+Be aware that DIR-ENTRY-TYPE type can't really be relied on, since many
+systems return :UNKNOWN or something, when the actual type can be determined
+by FILE-INFO-TYPE.
 If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 "
   (declare (type (or string null) dir) (type boolean append-type full))
@@ -2217,29 +2465,53 @@ calls. Returns NIL when there is an error."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Files
 
-(defconstant O_RDONLY	#x0000 "Open for reading only")
-(defconstant O_WRONLY	#x0001 "Open for writing only")
-(defconstant O_RDWR	#x0002 "Open for reading and writing")
-(defconstant O_ACCMODE	#x0003 "Mask for above modes")
-(defconstant O_NONBLOCK	#+darwin #x0004 #+linux #o04000
-	     "No delay")
-(defconstant O_APPEND	#+darwin #x0008 #+linux #o02000
-	     "Set append mode")
-(defconstant O_ASYNC    #+darwin #x0040 #+linux #x020000
-	     "Signal pgrp when data ready")
-(defconstant O_SYNC	#+darwin #x0080 #+linux #o04010000
-	     "Synchronous writes")
-(defconstant O_SHLOCK	#x0010 "Atomically obtain a shared lock")
-(defconstant O_EXLOCK	#x0020 "Atomically obtain an exclusive lock")
-(defconstant O_CREAT	#+darwin #x0200 #+linux #o100
-	     "Create if nonexistant")
-(defconstant O_TRUNC	#+darwin #x0400 #+linux #o01000
-	     "Truncate to zero length")
-(defconstant O_EXCL	#+darwin #x0800 #+linux #o0200
-	     "Error if create and already exists")
-(defconstant O_EVTONLY  #x8000 "Requested for event notifications only")
-(defconstant O_NOCTTY   #+darwin #x20000 #+linux #o0400
-	     "Don't assign controlling terminal")
+#+(or darwin freebsd linux)
+(progn
+  (defconstant +O_RDONLY+   #x0000 "Open for reading only")
+  (defconstant +O_WRONLY+   #x0001 "Open for writing only")
+  (defconstant +O_RDWR+	    #x0002 "Open for reading and writing")
+  (defconstant +O_ACCMODE+  #x0003 "Mask for above modes")
+  (defconstant +O_NONBLOCK+ #+(or darwin freebsd) #x0004 #+linux #o04000
+	       "No delay")
+  (defconstant +O_APPEND+   #+(or darwin freebsd) #x0008 #+linux #o02000
+	       "Set append mode")
+  (defconstant +O_ASYNC+    #+(or darwin freebsd) #x0040 #+linux #x020000
+	       "Signal pgrp when data ready")
+  (defconstant +O_SYNC+	    #+(or darwin freebsd) #x0080 #+linux #o04010000
+	       "Synchronous writes")
+  (defconstant +O_SHLOCK+   #x0010 "Atomically obtain a shared lock")
+  (defconstant +O_EXLOCK+   #x0020 "Atomically obtain an exclusive lock")
+  (defconstant +O_CREAT+    #+(or darwin freebsd) #x0200 #+linux #o100
+	       "Create if nonexistant")
+  (defconstant +O_TRUNC+    #+(or darwin freebsd) #x0400 #+linux #o01000
+	       "Truncate to zero length")
+  (defconstant +O_EXCL+	    #+(or darwin freebsd) #x0800 #+linux #o0200
+	       "Error if create and already exists")
+  (defconstant +O_NOCTTY+   #+darwin #x20000 #+linux #o0400 #+freebsd #x8000
+	       "Don't assign controlling terminal"))
+#+darwin
+(defconstant +O_EVTONLY+  #x8000 "Requested for event notifications only")
+
+#+linux
+(progn
+  (defconstant +O_LARGEFILE+ #o0100000)
+  (defconstant +O_DIRECTORY+ #o0200000)
+  (defconstant +O_NOFOLLOW+  #o0400000)
+  (defconstant +O_DIRECT+    #o040000)
+  (defconstant +O_NOATIME+   #o01000000)
+  (defconstant +O_PATH+	     #o010000000)
+  (defconstant +O_DSYNC+     #o010000)
+  (defconstant +O_TMPFILE+   #o020200000))
+
+#+freebsd
+(progn
+  (defconstant +O_NOFOLLOW+  #x00000100 "Don't follow symlinks")
+  (defconstant +O_DIRECT+    #x00010000 "Attempt to bypass buffer cache")
+  (defconstant +O_DIRECTORY+ #x00020000 "Fail if not directory")
+  (defconstant +O_EXEC+	     #x00040000 "Open for execute only")
+  (defconstant +O_FSYNC+     #x00000080 "Synchronous writes")
+  (defconstant +O_TTY_INIT+  #x00080000 "Restore default termios attributes")
+  (defconstant +O_CLOEXEC+   #x00100000))
 
 (defcfun ("open"  posix-open)  :int (path :string) (flags :int) (mode mode-t))
 (defcfun ("close" posix-close) :int (fd :int))
@@ -2272,16 +2544,16 @@ versions of the keywords used in Lisp open.
 "
   (let ((flags 0))
     (cond
-      ((eq direction :input)    (setf flags O_RDONLY))
-      ((eq direction :output)   (setf flags O_WRONLY))
-      ((eq direction :io)       (setf flags O_RDWR))
+      ((eq direction :input)    (setf flags +O_RDONLY+))
+      ((eq direction :output)   (setf flags +O_WRONLY+))
+      ((eq direction :io)       (setf flags +O_RDWR+))
       (t (error ":DIRECTION should be one of :INPUT, :OUTPUT, or :IO.")))
     (cond
-      ((eq if-exists :append) (setf flags (logior flags O_APPEND)))
+      ((eq if-exists :append) (setf flags (logior flags +O_APPEND+)))
       ((eq if-exists :error) #| we cool |# )
       (t (error ":IF-EXISTS should be one of :ERROR, or :APPEND.")))
     (cond
-      ((eq if-does-not-exist :create) (setf flags (logior flags O_CREAT)))
+      ((eq if-does-not-exist :create) (setf flags (logior flags +O_CREAT+)))
       ((eq if-does-not-exist :error) #| we cool |# )
       (t (error ":IF-DOES-NOT-EXIST should be one of :ERROR, or :CREATE.")))
     `(with-posix-file (,var ,filename ,flags)
@@ -2291,48 +2563,92 @@ versions of the keywords used in Lisp open.
 
 ;; what about ioctl defines?
 
-;; @@@ fcntl only for darwin so far
-(defconstant F_DUPFD		0)
-(defconstant F_DUPFD_CLOEXEC	#+darwin 67 #+linux 1030)
-(defconstant F_GETFD		1)
-(defconstant F_SETFD		2)
-(defconstant F_GETFL		3)
-(defconstant F_SETFL		4)
-(defconstant F_GETOWN		#+darwin 5 #+linux 9)
-(defconstant F_SETOWN		#+darwin 6 #+linux 8)
-(defconstant F_GETPATH		50)
-(defconstant F_PREALLOCATE	42)
-(defconstant F_SETSIZE		43)
-(defconstant F_RDADVISE		44)
-(defconstant F_RDAHEAD		45)
-(defconstant F_READBOOTSTRAP	46)
-(defconstant F_WRITEBOOTSTRAP	47)
-(defconstant F_NOCACHE		48)
-(defconstant F_LOG2PHYS		49)
-(defconstant F_LOG2PHYS_EXT	65)
-(defconstant F_FULLFSYNC	51)
-(defconstant F_FREEZE_FS	53)
-(defconstant F_THAW_FS		54)
-(defconstant F_GLOBAL_NOCACHE	55)
-(defconstant F_ADDSIGS		59)
-(defconstant F_MARKDEPENDENCY	60)
-(defconstant F_ADDFILESIGS	61)
-(defconstant F_NODIRECT		62)
-(defconstant F_SETNOSIGPIPE	73)
-(defconstant F_GETNOSIGPIPE	74)
-(defconstant F_GETPROTECTIONCLASS	63)
-(defconstant F_SETPROTECTIONCLASS	64)
-(defconstant F_GETLKPID		66)
-(defconstant F_SETBACKINGSTORE	70)
-(defconstant F_GETPATH_MTMINFO	71)
-(defconstant FD_CLOEXEC		1)
-(defconstant F_GETLK		#+darwin 7 #+linux 5)
-(defconstant F_SETLK		#+darwin 8 #+linux 6)
-(defconstant F_SETLKW		#+darwin 9 #+linux 7)
-(defconstant F_ALLOCATECONTIG	#x00000002)
-(defconstant F_ALLOCATEALL	#x00000004)
-(defconstant F_PEOFPOSMODE	3)
-(defconstant F_VOLPOSMODE	4)
+#+(or darwin linux freebsd)
+(progn
+  (defconstant +F_DUPFD+	  0)
+  (defconstant +F_DUPFD_CLOEXEC+  #+darwin 67 #+linux 1030 #+freebsd 17)
+  (defconstant +F_GETFD+	  1)
+  (defconstant +F_SETFD+	  2)
+  (defconstant +F_GETFL+	  3)
+  (defconstant +F_SETFL+	  4)
+  (defconstant +F_GETOWN+	  #+(or darwin freebsd) 5 #+linux 9)
+  (defconstant +F_SETOWN+	  #+(or darwin freebsd) 6 #+linux 8)
+  (defconstant +F_GETLK+	  #+darwin 7 #+linux 5 #+freebsd 11)
+  (defconstant +F_SETLK+	  #+darwin 8 #+linux 6 #+freebsd 12)
+  (defconstant +F_SETLKW+	  #+darwin 9 #+linux 7 #+freebsd 13)
+  (defconstant +FD_CLOEXEC+       1))
+
+#+linux
+(progn
+  (defconstant +F_SETSIG+	   10 "Set number of signal to be sent.")
+  (defconstant +F_GETSIG+	   11 "Get number of signal to be sent.")
+  (defconstant +F_SETOWN_EX+	   15 "Get owner (thread receiving SIGIO).")
+  (defconstant +F_GETOWN_EX+	   16 "Set owner (thread receiving SIGIO).")
+  (defconstant +LOCK_MAND+	   32 "This is a mandatory flock:")
+  (defconstant +LOCK_READ+	   64 ".. with concurrent read")
+  (defconstant +LOCK_WRITE+	  128 ".. with concurrent write")
+  (defconstant +LOCK_RW+	  192 ".. with concurrent read & write")
+  (defconstant +F_SETLEASE+	 1024 "Set a lease.")
+  (defconstant +F_GETLEASE+	 1025 "Enquire what lease is active.")
+  (defconstant +F_NOTIFY+	 1026 "Request notifications on a directory.")
+  (defconstant +F_SETPIPE_SZ+	 1031 "Set pipe page size array.")
+  (defconstant +F_GETPIPE_SZ+	 1032 "Set pipe page size array.")
+  ;; Types for F_NOTIFY
+  (defconstant +DN_ACCESS+      #x00000001 "File accessed.")
+  (defconstant +DN_MODIFY+      #x00000002 "File modified.")
+  (defconstant +DN_CREATE+      #x00000004 "File created.")
+  (defconstant +DN_DELETE+      #x00000008 "File removed.")
+  (defconstant +DN_RENAME+      #x00000010 "File renamed.")
+  (defconstant +DN_ATTRIB+      #x00000020 "File changed attributes.")
+  (defconstant +DN_MULTISHOT+   #x80000000 "Don't remove notifier.")
+  )
+
+#+freebsd
+(progn
+  (defconstant +F_RDLCK+	   1  "Shared or read lock")
+  (defconstant +F_UNLCK+	   2  "Unlock")
+  (defconstant +F_WRLCK+	   3  "Exclusive or write lock")
+  (defconstant +F_UNLCKSYS+	   4  "Purge locks for a given system ID")
+  (defconstant +F_CANCEL+	   5  "Cancel an async lock request")
+  (defconstant +F_DUP2FD+	   10 "Duplicate file descriptor to arg")
+  (defconstant +F_SETLK_REMOTE+	   14 "Debugging support for remote locks")
+  (defconstant +F_READAHEAD+	   15 "Read ahead")
+  (defconstant +F_RDAHEAD+	   16 "Read ahead")
+  (defconstant +F_DUPFD_CLOEXEC+   17 "Like F_DUPFD, but FD_CLOEXEC is set")
+  (defconstant +F_DUP2FD_CLOEXEC+  18 "Like F_DUP2FD, but FD_CLOEXEC is set")
+)
+
+#+darwin
+(progn
+  (defconstant +F_RDAHEAD+		45)
+  (defconstant +F_GETPATH+		50)
+  (defconstant +F_PREALLOCATE+		42)
+  (defconstant +F_SETSIZE+		43)
+  (defconstant +F_RDADVISE+		44)
+  (defconstant +F_READBOOTSTRAP+	46)
+  (defconstant +F_WRITEBOOTSTRAP+	47)
+  (defconstant +F_NOCACHE+		48)
+  (defconstant +F_LOG2PHYS+		49)
+  (defconstant +F_LOG2PHYS_EXT+		65)
+  (defconstant +F_FULLFSYNC+		51)
+  (defconstant +F_FREEZE_FS+		53)
+  (defconstant +F_THAW_FS+		54)
+  (defconstant +F_GLOBAL_NOCACHE+	55)
+  (defconstant +F_ADDSIGS+		59)
+  (defconstant +F_MARKDEPENDENCY+	60)
+  (defconstant +F_ADDFILESIGS+		61)
+  (defconstant +F_NODIRECT+		62)
+  (defconstant +F_SETNOSIGPIPE+		73)
+  (defconstant +F_GETNOSIGPIPE+		74)
+  (defconstant +F_GETPROTECTIONCLASS+	63)
+  (defconstant +F_SETPROTECTIONCLASS+	64)
+  (defconstant +F_GETLKPID+		66)
+  (defconstant +F_SETBACKINGSTORE+	70)
+  (defconstant +F_GETPATH_MTMINFO+	71)
+  (defconstant +F_ALLOCATECONTIG+	#x00000002)
+  (defconstant +F_ALLOCATEALL+		#x00000004)
+  (defconstant +F_PEOFPOSMODE+		3)
+  (defconstant +F_VOLPOSMODE+		4))
 
 (defcstruct flock
   "Advisory file segment locking data type."
@@ -2373,7 +2689,7 @@ versions of the keywords used in Lisp open.
   (l2p_contigbytes off-t)
   (l2p_devoffset off-t))
 
-(defcfun fcntl :int (cmd :int) &rest)
+(defcfun fcntl :int (fd :int) (cmd :int) &rest)
 
 ;; stat / lstat
 
@@ -2460,7 +2776,7 @@ versions of the keywords used in Lisp open.
      (moo is-directory	      :directory	  #\d "directory")
      (moo is-block-device     :block-special	  #\b "block special")
      (moo is-regular-file     :regular		  #\r "regular")
-     (moo is-symbolic-link    :symbolic-link	  #\l "symbolic link")
+     (moo is-symbolic-link    :link		  #\l "symbolic link")
      (moo is-socket	      :socket		  #\s "socket")
      (moo is-door	      :door		  #\d "door")
      (moo is-whiteout	      :whiteout		  #\w "whiteout"))))
@@ -2763,7 +3079,7 @@ versions of the keywords used in Lisp open.
   (__unused4	:unsigned-long)
   (__unused5	:unsigned-long))
 
-#+(and linux 64-bit-target)
+#+(and linux 64-bit-target some-version?)
 (defcstruct foreign-stat
   (st_dev	dev-t)			; ID of device containing file
   (__pad1	:unsigned-short)	;
@@ -2782,6 +3098,49 @@ versions of the keywords used in Lisp open.
   (st_ctimespec	(:struct foreign-timespec)) ; time of last file status change
   (st_ino	ino-t)			; 64 bit inode number **
 )
+
+#+(and linux 64-bit-target)
+(defcstruct foreign-stat
+  (st_dev	dev-t)			; ID of device containing file
+  (st_ino	ino-t)			; NOT inode number **
+  (st_nlink	nlink-t)		; number of hard links
+  (st_mode	mode-t)			; protection
+  (st_uid	uid-t)			; user ID of owner
+  (st_gid	gid-t)			; group ID of owner
+  (__pad0	:int)			;
+  (st_rdev	dev-t)			; device ID (if special file)
+  (st_size	off-t)			; total size, in bytes **
+  (st_blksize	blksize-t)		; blocksize for file system I/O
+  (st_blocks	blkcnt-t)		; number of 512B blocks allocated **
+  (st_atimespec	(:struct foreign-timespec)) ; time of last access
+  (st_mtimespec	(:struct foreign-timespec)) ; time of last data modification
+  (st_ctimespec	(:struct foreign-timespec)) ; time of last file status change
+  (__glibc_reserved :long :count 3)
+)
+
+#+(and freebsd 64-bit-target)
+(defcstruct foreign-stat
+  (st_dev 	dev-t)
+  (st_ino 	ino-t)
+  (st_mode 	mode-t)
+  (st_nlink 	nlink-t)
+  (st_uid 	uid-t)
+  (st_gid 	gid-t)
+  (st_rdev 	dev-t)
+  (st_atimespec	(:struct foreign-timespec)) ;; st_atim
+  (st_mtimespec	(:struct foreign-timespec)) ;; st_mtim
+  (st_ctimespec	(:struct foreign-timespec)) ;; st_ctim
+  (st_size	off-t)
+  (st_blocks	blkcnt-t)
+  (st_blksize	blksize-t)
+  (st_flags	fflags-t)
+  (st_gen	:uint32)
+  (st_lspare	:int32)
+  (st_birthtim  (:struct foreign-timespec))
+  (junk		:uint8 :count 8))
+
+;;  (unsigned int :(8 / 2) * (16 - (int)sizeof(struct timespec))
+;;  (unsigned int :(8 / 2) * (16 - (int)sizeof(struct timespec))
 
 ;; This should have the union of all Unix-like OS's slots, so that Unix
 ;; portable code can check for specific slots with impunity.
@@ -2901,7 +3260,8 @@ it is not a symbolic link."
 (defcfun
     (#+darwin "lstat$INODE64"
      #+(and linux 32-bit-target) "lstat"
-     #+(and linux 64-bit-target) "__xlstat"
+     #+(and linux 64-bit-target some-version?) "__xlstat"
+     #+(and linux 64-bit-target) "lstat"
      #-(or darwin linux) "lstat"
      real-lstat)
     :int (path :string) (buf (:pointer (:struct foreign-stat))))
@@ -2914,7 +3274,8 @@ it is not a symbolic link."
 (defcfun
     (#+darwin "fstat$INODE64"
      #+(and linux 32-bit-target) "fstat"
-     #+(and linux 64-bit-target) "__xfstat"
+     #+(and linux 64-bit-target some-version?) "__xfstat"
+     #+(and linux 64-bit-target) "fstat"
      #-(or darwin linux) "fstat"
      real-fstat)
     :int (fd :int) (buf (:pointer (:struct foreign-stat))))
@@ -2944,12 +3305,13 @@ it is not a symbolic link."
 	    ) stat-buf (:struct foreign-stat))
 	(make-file-info
 	 :type (cond
-		 ((is-directory st_mode) :directory)
-		 ((is-symbolic-link st_mode) :symbolic-link)
+		 ;; We should have this be the same as DIRENT-TYPE
+		 ((is-directory st_mode)		:directory)
+		 ((is-symbolic-link st_mode)		:link)
 		 ((or (is-character-device st_mode)
-		      (is-block-device st_mode)) :device)
-		 ((is-regular-file st_mode) :regular)
-		 (t :other))
+		      (is-block-device st_mode)) 	:device)
+		 ((is-regular-file st_mode) 		:regular)
+		 (t					:other))
 	 :size st_size
 	 :creation-time
 	 ;; perhaps should be the earliest of st_ctimespec and st_birthtimespec?
@@ -3116,14 +3478,14 @@ it is not a symbolic link."
 #+sunos (defcvar ("_sys_siglistn" *nsig*) :int)
 #+sunos (defcvar ("_sys_siglistp" sys-siglist) :pointer)
 
-#+darwin (defcvar ("sys_siglist" sys-siglist) :pointer)
-#+darwin (defcvar ("sys_signame" sys-signame) :pointer)
+#+(or darwin freebsd) (defcvar ("sys_siglist" sys-siglist) :pointer)
+#+(or darwin freebsd) (defcvar ("sys_signame" sys-signame) :pointer)
 
 (defparameter *signal-count*
-  #+darwin 32
+  #+(or darwin freebsd linux) 32
+  ;; actually 65 if you count realtime (RT) signals
   #+sunos *nsig*
-  #+linux 32 ;; actually 65 if you count realtime (RT) signals
-  #-(or darwin sunos linux) (missing-implementation) ; @@@ or perhaps 0?
+  #-(or darwin sunos linux freebsd) (missing-implementation) ; @@@ or perhaps 0?
   "Number of signal types, a.k.a. NSIG."
 )
 
@@ -3133,34 +3495,39 @@ it is not a symbolic link."
 (defconstant +SIGILL+	 4			  "Illegal instruction")
 (defconstant +SIGTRAP+	 5			  "Trace/BPT trap")
 (defconstant +SIGABRT+	 6			  "Abort trap")
-(defconstant +SIGPOLL+	 #+darwin 7 #+linux 29	  "pollable event")
-(defconstant +SIGEMT+	 #+darwin 7 #+linux nil	  "EMT trap")
+(defconstant +SIGPOLL+	 #+darwin 7 #+linux 29 #+freebsd nil "pollable event")
+(defconstant +SIGEMT+	 #+(or darwin freebsd) 7 #+linux nil "EMT trap")
 (defconstant +SIGFPE+	 8			  "Floating point exception")
 (defconstant +SIGKILL+	 9			  "Killed")
-(defconstant +SIGBUS+	 #+darwin 10 #+linux 7	  "Bus error")
+(defconstant +SIGBUS+	 #+(or darwin freebsd) 10 #+linux 7 "Bus error")
 (defconstant +SIGSEGV+	 11			  "Segmentation fault")
-(defconstant +SIGSYS+	 #+darwin 12 #+linux 31	  "Bad system call")
+(defconstant +SIGSYS+	 #+darwin 12 #+linux 31	#+freebsd nil "Bad system call")
 (defconstant +SIGPIPE+	 13			  "Broken pipe")
 (defconstant +SIGALRM+	 14			  "Alarm clock")
 (defconstant +SIGTERM+	 15			  "Terminated")
-(defconstant +SIGURG+	 #+darwin 16 #+linux 23	  "Urgent I/O condition")
-(defconstant +SIGSTOP+	 #+darwin 17 #+linux 19	  "Suspended (signal)")
-(defconstant +SIGTSTP+	 #+darwin 18 #+linux 20	  "Suspended")
-(defconstant +SIGCONT+	 #+darwin 19 #+linux 18	  "Continued")
-(defconstant +SIGCHLD+	 #+darwin 20 #+linux 17	  "Child exited")
+(defconstant +SIGURG+	 #+(or darwin freebsd) 16 #+linux 23 "Urgent I/O condition")
+(defconstant +SIGSTOP+	 #+(or darwin freebsd) 17 #+linux 19 "Suspended (signal)")
+(defconstant +SIGTSTP+	 #+(or darwin freebsd) 18 #+linux 20 "Suspended")
+(defconstant +SIGCONT+	 #+(or darwin freebsd) 19 #+linux 18 "Continued")
+(defconstant +SIGCHLD+	 #+(or darwin freebsd) 20 #+linux 17 "Child exited")
 (defconstant +SIGTTIN+	 21			  "Stopped (tty input)")
 (defconstant +SIGTTOU+	 22			  "Stopped (tty output)")
-(defconstant +SIGIO+	 #+darwin 23 #+linux 29	  "I/O possible")
+(defconstant +SIGIO+	 #+(or darwin freebsd) 23 #+linux 29 "I/O possible")
 (defconstant +SIGXCPU+	 24			  "Cputime limit exceeded")
 (defconstant +SIGXFSZ+	 25			  "Filesize limit exceeded")
 (defconstant +SIGVTALRM+ 26			  "Virtual timer expired")
 (defconstant +SIGPROF+	 27			  "Profiling timer expired")
 (defconstant +SIGWINCH+	 28			  "Window size changes")
-(defconstant +SIGINFO+	 #+darwin 29 #+linux nil  "Information request")
-(defconstant +SIGUSR1+	 #+darwin 30 #+linux 10	  "User defined signal 1")
-(defconstant +SIGUSR2+	 #+darwin 31 #+linux 12	  "User defined signal 2")
-(defconstant +SIGSTKFLT+ #+darwin nil #+linux 16  "Stack fault")
-(defconstant +SIGPWR+	 #+darwin nil #+linux 30  "Power failure restart")
+(defconstant +SIGINFO+	 #+(or darwin freebsd) 29 #+linux nil "Information request")
+(defconstant +SIGUSR1+	 #+(or darwin freebsd) 30 #+linux 10	  "User defined signal 1")
+(defconstant +SIGUSR2+	 #+(or darwin freebsd) 31 #+linux 12	  "User defined signal 2")
+(defconstant +SIGSTKFLT+ #+(or darwin freebsd) nil #+linux 16  "Stack fault")
+(defconstant +SIGPWR+	 #+(or darwin freebsd) nil #+linux 30  "Power failure restart")
+#+freebsd
+(progn
+  (defconstant +SIGTHR+	  32 "thread library")
+  (defconstant +SIGLWP+	  32 "thread library")
+  (defconstant +SIGLIBRT+ 33 "real-time library"))
 
 #+linux
 (defparameter *signal-name*
@@ -3177,14 +3544,14 @@ it is not a symbolic link."
   #+sunos (with-foreign-pointer-as-string (s SIG2STR_MAX)
 	    (sig2str sig s)
 	    s)
-  #+darwin
+  #+(or darwin freebsd)
   (if (< sig *signal-count*)
       (foreign-string-to-lisp
        (mem-aref (get-var-pointer 'sys-signame) :pointer sig)))
   #+linux (when (< sig *signal-count*)
 	    (aref *signal-name* sig))
-  #-(or darwin sunos linux) (declare (ignore sig))
-  #-(or darwin sunos linux) (missing-implementation 'signal-name)
+  #-(or darwin sunos linux freebsd) (declare (ignore sig))
+  #-(or darwin sunos linux freebsd) (missing-implementation 'signal-name)
 )
 
 #+(or sunos linux) (defcfun strsignal :string (sig :int))
@@ -3216,6 +3583,7 @@ it is not a symbolic link."
 (defcfun sigfillset :int (set (:pointer sigset-t)))
 (defcfun sigismember :int (set (:pointer sigset-t)) (signo :int))
 
+#+(or darwin linux)
 (defcstruct foreign-sigaction
   "What to do with a signal, as given to sigaction(2)."
   (sa_handler :pointer)	       ; For our purposes it's the same as sa_sigaction
@@ -3224,7 +3592,14 @@ it is not a symbolic link."
   #+linux (sa_restorer :pointer)
   )
 
-#+darwin
+#+freebsd
+(defcstruct foreign-sigaction
+  "What to do with a signal, as given to sigaction(2)."
+  (sa_handler :pointer)	       ; For our purposes it's the same as sa_sigaction
+  (sa_flags :int)
+  (sa_mask sigset-t))
+
+#+(or darwin freebsd)		    ; freebsd also defines sigval_X slot names
 (defcunion sigval
  (sival_int :int)
  (sival_ptr (:pointer :void)))
@@ -3287,7 +3662,8 @@ nearly want to put in in separate file.
 
 (defconstant SIG_DFL  0 "Default action.")
 (defconstant SIG_IGN  1 "Ignore the signal.")
-(defconstant SIG_HOLD #+darwin 5 #+linux 2 "Hold on to the signal for later.")
+(defconstant SIG_HOLD #+darwin 5 #+linux 2 #+freebsd 2
+	     "Hold on to the signal for later.")
 (defconstant SIG_ERR -1 "Error?")
 
 (defconstant SA_ONSTACK   #x0001 "Deliver on a stack, given with sigaltstack.")
@@ -3439,8 +3815,10 @@ of (signal . action), as would be passed to SET-SIGNAL-ACTION."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Processes
 
-#+(or darwin linux)
-;; It's untested if this actually works on Linux.
+;#+(or darwin linux) (config-feature :os-t-has-vfork)
+
+#+(or darwin linux freebsd)
+;; It's partially untested if this actually works on Linux.
 (progn
   (defconstant +WAIT-NO-HANG+    #x0001)
   (defconstant +WAIT-UNTRACED+   #x0002)
@@ -4371,56 +4749,105 @@ Unix time integer."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; epoll
 
+#+linux
+(progn
+  (defconstant +EPOLL-CLOXEC+  #o02000000 "Close descriptor on exec.")
+  (defconstant +EPOLL-CTL-ADD+ 1 "Add a descriptor.")
+  (defconstant +EPOLL-CTL-MOD+ 2 "Modify a descriptor.")
+  (defconstant +EPOLL-CTL-DEL+ 3 "Delete a descriptor.")
+
+  (defconstant +EPOLLIN+      #x001)
+  (defconstant +EPOLLPRI+     #x002)
+  (defconstant +EPOLLOUT+     #x004)
+  (defconstant +EPOLLRDNORM+  #x040)
+  (defconstant +EPOLLRDBAND+  #x080)
+  (defconstant +EPOLLWRNORM+  #x100)
+  (defconstant +EPOLLWRBAND+  #x200)
+  (defconstant +EPOLLMSG+     #x400)
+  (defconstant +EPOLLERR+     #x008)
+  (defconstant +EPOLLHUP+     #x010)
+  (defconstant +EPOLLRDHUP+   #x2000)
+  (defconstant +EPOLLWAKEUP+  (ash 1 29))
+  (defconstant +EPOLLONESHOT+ (ash 1 30))
+  (defconstant +EPOLLET+      (ash 1 31))
+
+  (defcunion foreign-epoll-data
+    (ptr    (:pointer :void))
+    (fd	    :int)
+    (u32    :uint32)
+    (u64    :uint64))
+
+  (defcstruct foreign-epoll-event
+    (events :uint32)
+    (data   (:union foreign-epoll-data)))
+
+  (defcfun epoll-create :int (size :int))
+  (defcfun epoll-create1 :int (flags :int))
+
+  (defcfun epoll-ctl :int (epfd :int) (op :int) (fd :int)
+	   (event (:pointer (:struct foreign-epoll-event))))
+  (defcfun epoll-wait :int (epfd :int)
+	   (events (:pointer (:struct foreign-epoll-event)))
+	   (maxevents :int)
+	   (timeout :int))
+  (defcfun epoll-pwait :int (epfd :int)
+	   (events (:pointer (:struct foreign-epoll-event)))
+	   (maxevents :int)
+	   (timeout :int)
+	   (sigmask (:pointer sigset-t))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; kqueue
 
 ;; @@@ need to check these structs with the source
 
-(defcstruct foreign-kevent
-  (ident	(:pointer :uint32))	; XXX uintptr-t
-  (filter	:int16)
-  (flags	:uint16)
-  (fflags	:uint32)
-  (data		(:pointer :int))	; XXX intptr
-  (udata	(:pointer :void)))
+#+darwin
+(progn
+  (defcstruct foreign-kevent
+    (ident	(:pointer :uint32))	; XXX uintptr-t
+    (filter	:int16)
+    (flags	:uint16)
+    (fflags	:uint32)
+    (data	(:pointer :int))	; XXX intptr
+    (udata	(:pointer :void)))
 
-(defcstruct foreign-kevent64
-  (ident	:uint64)
-  (filter	:int16)
-  (flags	:uint16)
-  (fflags	:uint32)
-  (data		:int64)
-  (udata	:uint64)
-  (ext		:uint64 :count 2))
+  (defcstruct foreign-kevent64
+    (ident	:uint64)
+    (filter	:int16)
+    (flags	:uint16)
+    (fflags	:uint32)
+    (data	:int64)
+    (udata	:uint64)
+    (ext	:uint64 :count 2))
 
-(defcfun kqueue :void)
-(defcfun ("kevent" real-kevent) :int
-  (kq :int) (changelist (:pointer (:struct foreign-kevent))) (nchanges :int)
-  (eventlist (:pointer (:struct foreign-kevent))) (nevents :int)
-  (timeout (:pointer (:struct foreign-timespec))))
+  (defcfun kqueue :void)
+  (defcfun ("kevent" real-kevent) :int
+    (kq :int) (changelist (:pointer (:struct foreign-kevent))) (nchanges :int)
+    (eventlist (:pointer (:struct foreign-kevent))) (nevents :int)
+    (timeout (:pointer (:struct foreign-timespec))))
 
-(defcfun ("kevent64" real-kevent64) :int
-  (kq :int) (changelist (:pointer (:struct foreign-kevent64))) (nchanges :int)
-  (eventlist (:pointer (:struct foreign-kevent64))) (nevents :int)
-  (timeout (:pointer (:struct foreign-timespec))))
+  (defcfun ("kevent64" real-kevent64) :int
+    (kq :int) (changelist (:pointer (:struct foreign-kevent64))) (nchanges :int)
+    (eventlist (:pointer (:struct foreign-kevent64))) (nevents :int)
+    (timeout (:pointer (:struct foreign-timespec))))
 
-(defun ev-set32 (key ident filter flags fflags data udata)
-  (declare (ignore key ident filter flags fflags data udata))
-  )
+  (defun ev-set32 (key ident filter flags fflags data udata)
+    (declare (ignore key ident filter flags fflags data udata))
+    )
 
-(defun ev-set64 (key ident filter flags fflags data udata)
-  (declare (ignore key ident filter flags fflags data udata))
-  )
+  (defun ev-set64 (key ident filter flags fflags data udata)
+    (declare (ignore key ident filter flags fflags data udata))
+    )
 
-(defun ev-set (key ident filter flags fflags data udata)
-  "Do the appropriate version of EV_SET."
-  (declare (ignore key ident filter flags fflags data udata))
-  )
+  (defun ev-set (key ident filter flags fflags data udata)
+    "Do the appropriate version of EV_SET."
+    (declare (ignore key ident filter flags fflags data udata))
+    )
 
-(defun kevent (kq changelist nchanges eventlist nevents timeout)
-  "Do the appropriate version of kevent."
-  (declare (ignore kq changelist nchanges eventlist nevents timeout))
-  )
+  (defun kevent (kq changelist nchanges eventlist nevents timeout)
+    "Do the appropriate version of kevent."
+    (declare (ignore kq changelist nchanges eventlist nevents timeout))
+    ))
 
 ;; It might be nice if we could do this on a Lisp stream.
 (defun listen-for (seconds &optional (fd 0))
@@ -4434,12 +4861,41 @@ available."
   (let (fd)
     (unwind-protect
       (progn
-	(setf fd (posix-open "/dev/tty" O_RDWR #o600))
+	(setf fd (posix-open "/dev/tty" +O_RDWR+ #o600))
 	(format t "Foo ->")
 	(finish-output)
 	(listen-for 5 fd))
       (when fd
 	(posix-close fd)))))
+
+(defun set-sigio (fd)
+  "Set a file descriptor so that SIGIO is sent when IO happens."
+  (let ((flags (fcntl fd +F_GETFL+)))
+      ;; #+linux
+      ;; (fcntl fd +F_SETSIG+ :int 0) ;; If we wanted a different signal
+      ;; (fcntl fd +F_SETOWN+ :int (getpid)) ;; or maybe (gettid)
+      (fcntl fd +F_SETFL+ :int (logior +O_ASYNC+ flags))))
+
+(defcallback sigio-handler :void ((signal-number :int))
+  (declare (ignore signal-number))
+  (format t "Yo!~%") (finish-output)
+  (throw 'got-some-io-bro t))
+
+(defmacro with-interrupting-io ((&rest file-descriptors) io-form &body body)
+  "Evaluate the BODY. If I/O occurs on file-descriptors, exit the BODY and
+evaluate the IO-FORM."
+  (let ((result (gensym "WIIO-RESULT")))
+    `(let (,result)
+       (if (eq 'got-some-io-bro
+	       (setf ,result
+		     (catch 'got-some-io-bro
+		       (with-signal-handlers ((+SIGIO+ . sigio-handler))
+			 (loop :for fd :in (list ,@file-descriptors) :do
+			    (set-sigio fd))
+			 (describe-signals)
+			 ,@body))))
+	   ,io-form
+	   ,result))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; thread-like
@@ -4529,46 +4985,6 @@ available."
   (f_reserved4   :uint32 :count 8)      ; reserved for future use
   )
 
-;; @@@ 32 bit only?
-(defctype fsblkcnt-t :unsigned-long)
-(defctype fsword-t :int)
-
-#+(and linux 32-bit-target)
-(defcstruct foreign-statfs
-  (f_type    fsword-t)
-  (f_bsize   fsword-t)
-  (f_blocks  fsblkcnt-t)
-  (f_bfree   fsblkcnt-t)
-  (f_bavail  fsblkcnt-t)
-  (f_files   fsblkcnt-t)
-  (f_ffree   fsblkcnt-t)
-  (f_fsid    fsword-t :count 2)
-  (f_namelen fsword-t)
-  (f_frsize  fsword-t)
-  (f_flags   fsword-t)
-  (f_spare   fsword-t :count 4))
-
-#+(and linux 64-bit-target)
-(defcstruct foreign-statfs
-  (f_type    :int64)
-  (f_bsize   :int64)
-  (f_blocks  :uint64)
-  (f_bfree   :uint64)
-  (f_bavail  :uint64)
-  (f_files   :uint64)
-  (f_ffree   :uint64)
-  (f_fsid    :int32 :count 2)
-  (f_namelen :int64)
-  (f_frsize  :int64)
-  (f_flags   :int64)
-  (f_spare   :int64 :count 4))
-
-;; (define-foreign-type foreign-statfs-type ()
-;;   ()
-;;   (:actual-type :pointer)
-;;   (:simple-parser foreign-statfs)
-;; )
-
 #+darwin
 (defstruct statfs
   "File system statistics."
@@ -4587,22 +5003,6 @@ available."
   fstypename
   mntonname
   mntfromname)
-
-#+linux
-(defstruct statfs
-  "File system statistics."
-  type
-  bsize
-  blocks
-  bfree
-  bavail
-  files
-  ffree
-  fsid
-  namelen
-  frsize
-  flags
-  spare)
 
 ;; @@@ I shouldn't really have to do this?
 #+darwin
@@ -4674,8 +5074,57 @@ available."
 	 :bytes-free (* f_bfree f_bsize)
 	 :bytes-available (* f_bavail f_bsize)))))
 
+;; @@@ 32 bit only?
+;(defctype fsblkcnt-t :unsigned-long)
+;(defctype fsword-t :int)
 
-;; @@@ I shouldn't really have to do this?
+#+(and linux 32-bit-target)
+(defcstruct foreign-statfs
+  (f_type    fsword-t)
+  (f_bsize   fsword-t)
+  (f_blocks  fsblkcnt-t)
+  (f_bfree   fsblkcnt-t)
+  (f_bavail  fsblkcnt-t)
+  (f_files   fsblkcnt-t)
+  (f_ffree   fsblkcnt-t)
+  (f_fsid    fsword-t :count 2)
+  (f_namelen fsword-t)
+  (f_frsize  fsword-t)
+  (f_flags   fsword-t)
+  (f_spare   fsword-t :count 4))
+
+#+(and linux 64-bit-target)
+(defcstruct foreign-statfs
+  (f_type    :int64)
+  (f_bsize   :int64)
+  (f_blocks  :uint64)
+  (f_bfree   :uint64)
+  (f_bavail  :uint64)
+  (f_files   :uint64)
+  (f_ffree   :uint64)
+  (f_fsid    :int32 :count 2)
+  (f_namelen :int64)
+  (f_frsize  :int64)
+  (f_flags   :int64)
+  (f_spare   :int64 :count 4))
+
+#+linux
+(defstruct statfs
+  "File system statistics."
+  type
+  bsize
+  blocks
+  bfree
+  bavail
+  files
+  ffree
+  fsid
+  namelen
+  frsize
+  flags
+  spare)
+
+;; @@@ Should I really have to do this?
 #+linux
 (defun convert-statfs (statfs)
   (if (and (pointerp statfs) (null-pointer-p statfs))
@@ -4706,28 +5155,173 @@ available."
          :flags	  f_flags
          :spare	  f_spare))))
 
+;; (define-foreign-type foreign-statfs-type ()
+;;   ()
+;;   (:actual-type :pointer)
+;;   (:simple-parser foreign-statfs)
+;; )
+
+#+freebsd
+(eval-when (:compile-toplevel :load-toplevel :execute)
+   (define-constant +MFSNAMELEN+ 16)   ; length of fs type name including null
+   (define-constant +MNAMELEN+ 88)     ; size of on/from name bufs
+   (define-constant +STATFS_VERSION+ #x20030518) ; version of this struct?
+   )
+
+#+freebsd
+(defcstruct foreign-statfs
+  (f_version 	 :uint32)
+  (f_type 	 :uint32)
+  (f_flags 	 :uint64)
+  (f_bsize 	 :uint64)
+  (f_iosize 	 :uint64)
+  (f_blocks 	 :uint64)
+  (f_bfree 	 :uint64)
+  (f_bavail 	 :int64)
+  (f_files 	 :uint64)
+  (f_ffree 	 :int64)
+  (f_syncwrites  :uint64)
+  (f_asyncwrites :uint64)
+  (f_syncreads   :uint64)
+  (f_asyncreads  :uint64)
+  (f_spare       :uint64 :count 10)
+  (f_namemax 	 :uint32)
+  (f_owner 	 uid-t)
+  (f_fsid 	 :int32 :count 2)
+  (f_charspare   :char :count 80)
+  (f_fstypename	 :char :count #.+MFSNAMELEN+)
+  (f_mntfromname :char :count #.+MNAMELEN+)
+  (f_mntonname   :char :count #.+MNAMELEN+))
+
+#+freebsd
+(defstruct statfs
+  "File system statistics."
+  version
+  type
+  flags
+  bsize
+  iosize
+  blocks
+  bfree
+  bavail
+  files
+  ffree
+  syncwrites
+  asyncwrites
+  syncreads
+  asyncreads
+  namemax
+  owner
+  fsid
+  fstypename
+  mntfromname
+  mntonname)
+
+;; @@@ It seems I still have to do this.
+#+freebsd
+(defun convert-statfs (statfs)
+  (if (and (pointerp statfs) (null-pointer-p statfs))
+      nil
+      (with-foreign-slots ((f_version
+			    f_type
+			    f_flags
+			    f_bsize
+			    f_iosize
+			    f_blocks
+			    f_bfree
+			    f_bavail
+			    f_files
+			    f_ffree
+			    f_syncwrites
+			    f_asyncwrites
+			    f_syncreads
+			    f_asyncreads
+			    f_namemax
+			    f_owner
+			    f_fsid
+			    f_fstypename
+			    f_mntfromname
+			    f_mntonname
+			    ) statfs (:struct foreign-statfs))
+	(make-statfs :version     f_version
+		     :type        f_type
+		     :flags       f_flags
+		     :bsize       f_bsize
+		     :iosize      f_iosize
+		     :blocks      f_blocks
+		     :bfree       f_bfree
+		     :bavail      f_bavail
+		     :files       f_files
+		     :ffree       f_ffree
+		     :syncwrites  f_syncwrites
+		     :asyncwrites f_asyncwrites
+		     :syncreads   f_syncreads
+		     :asyncreads  f_asyncreads
+		     :namemax     f_namemax
+		     :owner       f_owner
+		     :fsid	  (vector (mem-aref f_fsid :int32 0)
+					  (mem-aref f_fsid :int32 1))
+		     :fstypename (foreign-string-to-lisp
+				  f_fstypename :max-chars +MFSNAMELEN+)
+		     :mntfromname (foreign-string-to-lisp
+				   f_mntfromname :max-chars +MNAMELEN+)
+		     :mntonname (foreign-string-to-lisp
+				 f_mntonname :max-chars +MNAMELEN+)
+		     ))))
+
+#+freebsd
+(defun convert-filesystem-info (statfs)
+  (if (and (pointerp statfs) (null-pointer-p statfs))
+      nil
+      (with-foreign-slots ((f_bsize
+			    f_blocks
+			    f_bfree
+			    f_bavail
+			    f_fstypename
+			    f_mntonname
+			    f_mntfromname) statfs (:struct foreign-statfs))
+	(make-filesystem-info
+	 :device-name (foreign-string-to-lisp f_mntfromname
+					      :max-chars +MNAMELEN+)
+	 :mount-point (foreign-string-to-lisp f_mntonname
+					      :max-chars +MNAMELEN+)
+	 :type (foreign-string-to-lisp f_fstypename
+				       :max-chars +MFSNAMELEN+)
+	 :total-bytes (* f_blocks f_bsize)
+	 :bytes-free (* f_bfree f_bsize)
+	 :bytes-available (* f_bavail f_bsize)))))
+
 ;;(defmethod translate-from-foreign (statfs (type foreign-statfs-type))
 ;;  (convert-statfs statfs))
 
 #+(and darwin 64-bit-target)
 (defcfun ("statfs$INODE64" real-statfs) :int (path :string)
 	 (buf (:pointer (:struct foreign-statfs))))
-#+(or (and darwin 32-bit-target) linux)
+#+(or (and darwin 32-bit-target) linux freebsd)
 (defcfun ("statfs" real-statfs) :int (path :string)
 	 (buf (:pointer (:struct foreign-statfs))))
+#+(or freebsd linux)
+(defcfun ("fstatfs" real-fstatfs) :int (fd :int)
+	 (buf (:pointer (:struct foreign-statfs))))
+
 (defun statfs (path)
   (with-foreign-object (buf '(:struct foreign-statfs))
     (syscall (real-statfs path buf))
+    (convert-statfs buf)))
+
+(defun fstatfs (file-descriptor)
+  (with-foreign-object (buf '(:struct foreign-statfs))
+    (syscall (real-fstatfs file-descriptor buf))
     (convert-statfs buf)))
 
 ;; int getmntinfo(struct statfs **mntbufp, int flags);
 #+(and darwin 64-bit-target)
 (defcfun ("getmntinfo$INODE64" real-getmntinfo)
     :int (mntbufp :pointer) (flags :int))
-#+(and darwin 32-bit-target)
+#+(or (and darwin 32-bit-target) freebsd)
 (defcfun ("getmntinfo" real-getmntinfo)
     :int (mntbufp :pointer) (flags :int))
-#+darwin
+#+(or darwin freebsd)
 (defun getmntinfo (&optional (flags 0))
   (with-foreign-object (ptr :pointer)
     (let ((n (syscall (real-getmntinfo ptr flags))))
@@ -4868,7 +5462,7 @@ available."
 
 (defun mounted-filesystems ()
   "Return a list of filesystem info."
-  #+darwin
+  #+(or darwin freebsd)
   (with-foreign-object (ptr :pointer)
     (let ((n (syscall (real-getmntinfo ptr 0))))
       (loop :for i :from 0 :below n
@@ -4906,7 +5500,7 @@ available."
        (when (> (setf len (length (car f))) max-len)
 	 (setf longest f max-len len)))
     longest)
-  #+darwin
+  #+(or darwin freebsd)
   (handler-case
       (let ((s (statfs file)))
 	(cons (statfs-mntonname s) (statfs-mntfromname s)))
@@ -4938,7 +5532,7 @@ descriptor FD."
 
 (defun open-terminal (device-name)
   "Open a terminal. Return the system file handle."
-  (syscall (posix-open device-name O_RDWR 0)))
+  (syscall (posix-open device-name +O_RDWR+ 0)))
 
 (defun close-terminal (terminal-handle)
   "Close a terminal."

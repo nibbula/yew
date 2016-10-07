@@ -11,7 +11,10 @@
 ;;  - Be partially implemented in this package and use appropriate functions
 ;;    in the system specific package, likely conditionalized by features.
 ;;  - Be fully implemented in this package, if there's little variance
-;;    between systems, such as in C stdlib.
+;;    between systems
+;;  - Be in implementd in a language specific module (e.g. libc.lisp)
+;;    if it's something that would be found in a standard library for that
+;;    language. We would like these to be optional.
 ;;  - Be implemented in opsys-base, if they are needed to be used by the
 ;;    system specific packages, and are generic enough.
 ;;
@@ -60,13 +63,19 @@ documenatation."
 ;; Error handling
 
 (defosfun error-message (error-code)
-  "Return a string describing the ERROR-CODE.")
+  "Return a string or something describing the ERROR-CODE. We really make very
+little claims about this function, but it should do what it's reasonable to
+expect. Like for example on a Unix system it should be like strerror.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Environmental information
 
-(defun lisp-args ()
-  "Arguments given to when starting the lisp system."
+;; Are these all the arguements? Maybe not. Maybe it's just the args which
+;; wheren't processed. If you give it ALL-P true then hopefully it is.
+;; @@@ Actually I think it might be good to have LISP-ARGS be able to return
+;; all the arguments.
+(defun lisp-args (#| &key all-p |#)
+  "Arguments given when starting the Lisp system."
   #+sbcl sb-ext:*posix-argv*
   #+clisp (ext:argv)
   #+cmu ext:*command-line-strings*
@@ -76,6 +85,7 @@ documenatation."
   #-(or sbcl clisp cmu openmcl excl ecl)
   (missing-implementation 'lisp-args))
 
+;; This is really an obsolescent thing.
 (defosfun memory-page-size ()
   "Get the system's memory page size, in bytes.")
 
@@ -356,7 +366,8 @@ calls. Returns NIL when there is an error.")
 
 ;; This is a workaround for not depending on split-sequence.
 ;; so instead of (split-sequence *directory-separator* p :omit-empty t)
-(defun split-path (p)
+(defun split-path (path)
+  "Return a list of components of PATH."
   (loop :with i = 0 :and piece
      :while (< i (length p))
      :do (setf piece nil)
@@ -487,6 +498,9 @@ systems, this means \".\" and \"..\".")
 (defun lock-file (pathname lock-type timeout increment)
   "Lock PATHNAME."
   (declare (ignore lock-type))
+  ;; @@@ perhaps we should add u+x, even though it's mostly pointless,
+  ;; but just so things that traverse the filesystem won't get stupid
+  ;; permission errors.
   (let ((mode (file-status-mode (stat (safe-namestring pathname))))
 	(filename (lock-file-name pathname))
 	(time 0))
@@ -818,13 +832,9 @@ from the system command CMD with the arguments ARGS."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; poll
 
-;; It might be nice if could do this on a Lisp stream.
-(defun listen-for (seconds &optional (fd 0))
+(defosfun listen-for (seconds &optional (fd 0))
   "Listen on the OS file descriptor for at most N seconds or until input is ~
-available."
-;  (lame-poll `((,fd :read)) (truncate (* 1000 seconds)))
-  (lame-select `((,fd :read)) seconds)
-  )
+available.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; thread-like
