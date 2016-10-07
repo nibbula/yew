@@ -803,11 +803,12 @@ innermost N contexts, if we can."
       (tt-finish-output tt))))
 
 (defun reset-visual ()
-  (let ((tt *visual-term*))
-    (tt-set-scrolling-region tt nil nil)
-    (tt-move-to tt (1- (terminal-window-rows tt)) 0)
-    (tt-finish-output tt)
-    #| (terminal-end tt) |#))
+  (when *visual-term*
+    (let ((tt *visual-term*))
+      (tt-set-scrolling-region tt nil nil)
+      (tt-move-to tt (1- (terminal-window-rows tt)) 0)
+      (tt-finish-output tt)
+      #| (terminal-end tt) |#)))
 
 (defun debugger-up-frame-command (&optional foo)
   (declare (ignore foo))
