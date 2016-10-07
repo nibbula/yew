@@ -778,7 +778,7 @@ defaults to the current package. Return how many symbols there were."
 
 (defun is-actually-directory (f &optional (dir ""))
   ;; @@@ perhaps we need to do a loop to resolve multiple links?
-  (or (eq (dir-entry-type f) :dir)
+  (or (eq (dir-entry-type f) :directory)
       (and (eq (dir-entry-type f) :link)
 	   (eq :directory
 	       (let ((path (path-append dir (dir-entry-name f))))

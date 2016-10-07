@@ -901,7 +901,7 @@ and indented properly for multi-line objects."
   "Generating function for filesystem tree starting at DIR."
     (loop :for d :in (ignore-errors
 		       (nos:read-directory :dir dir :full t :omit-hidden t))
-       :if (eql :dir (nos:dir-entry-type d))
+       :if (eql :directory (nos:dir-entry-type d))
        :collect (concatenate 'string dir "/" (nos:dir-entry-name d))))
 
 (defun view-foo ()

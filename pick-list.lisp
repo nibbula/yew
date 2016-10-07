@@ -405,10 +405,10 @@
   (princ (dir-entry-name obj) stream)
   (let ((type (dir-entry-type obj)))
     (cond
-      ((eq type :pipe)	 (write-char #\| stream))
-      ((eq type :dir)	 (write-char #\/ stream))
-      ((eq type :link)	 (write-char #\@ stream))
-      ((eq type :socket) (write-char #\= stream)))))
+      ((eq type :pipe)	 	(write-char #\| stream))
+      ((eq type :directory)	(write-char #\/ stream))
+      ((eq type :link)	 	(write-char #\@ stream))
+      ((eq type :socket) 	(write-char #\= stream)))))
 
 (defstruct (pf-dir-entry (:include nos:dir-entry)
 			 (:print-function pf-print-dir-entry))
@@ -451,7 +451,7 @@
 	       ;; picked a directory
 	       ((and filename
 		     (pf-dir-entry-p filename)
-		     (or (eq (dir-entry-type filename) :dir)
+		     (or (eq (dir-entry-type filename) :directory)
 			 (eq (dir-entry-type filename) :link))
 		     (probe-directory
 		      (path-append dir (dir-entry-name filename)))

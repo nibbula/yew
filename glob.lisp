@@ -437,7 +437,7 @@ match & dir  - f(prefix: boo) readir boo
 
 (defun is-really-a-directory (dir entry)
   "Return true if the ENTRY in is a directory. ENTRY is a DIR-ENTRY structure."
-  (or (eq :dir (dir-entry-type entry))
+  (or (eq :directory (dir-entry-type entry))
       ;; If it's a link, we have to stat it to check.
       (and (eq :link (dir-entry-type entry))
 	   (let ((s (ignore-errors
