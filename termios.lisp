@@ -3,8 +3,7 @@
 ;;;
 
 ;;; TODO:
-;;;   * Consider putting some kind of earmuffs around constants and variables.
-;;;   * More platforms: cygwin, *BSD, ...
+;;;   * More platforms: cygwin?, ...
 ;;;   * Esoteric stuff like STI, modem control, console, packet data, etc,
 ;;;     stuff in "man 4 tty" (not strictly termios)
 
@@ -104,7 +103,17 @@
 )
 (in-package "TERMIOS")
 
-#-(or darwin sunos linux) (error "Your platform is not really supported yet.")
+#-(or darwin sunos linux freebsd)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (error "Your platform is not really supported yet."))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro deftermio (name doc array)
+    (with-unique-names (tt-var)
+      `(progn
+	 (defparameter ,tt-var ,array)
+	 (define-constants-from ,tt-var)
+	 (define-name-list-from ,name ,tt-var ,doc)))))
 
 ; @@@ do we need this?
 ;(define-foreign-library libc
@@ -118,33 +127,34 @@
 (defctype cc-t :unsigned-char)
 
 ;; control chars (c_cc)
-(defconstant +VEOF+	#+darwin 0   #+sunos 4   #+linux 4)
-(defconstant +VEOL+	#+darwin 1   #+sunos 5   #+linux 11)
-(defconstant +VEOL2+	#+darwin 2   #+sunos 6   #+linux 16)
-(defconstant +VERASE+	#+darwin 3   #+sunos 2   #+linux 2)
-(defconstant +VWERASE+	#+darwin 4   #+sunos 14  #+linux 14)
-(defconstant +VKILL+	#+darwin 5   #+sunos 3   #+linux 3)
-(defconstant +VREPRINT+	#+darwin 6   #+sunos 12  #+linux 12)
-(defconstant +VINTR+	#+darwin 8   #+sunos 0   #+linux 0)
-(defconstant +VQUIT+	#+darwin 9   #+sunos 1   #+linux 1)
-(defconstant +VSUSP+	#+darwin 10  #+sunos 10  #+linux 10)
-(defconstant +VDSUSP+	#+darwin 11  #+sunos 11  #+linux nil)
-(defconstant +VSWTCH+	#+darwin nil #+sunos 7   #+linux nil)
-(defconstant +VSTART+	#+darwin 12  #+sunos 8   #+linux 8)
-(defconstant +VSTOP+	#+darwin 13  #+sunos 9   #+linux 9)
-(defconstant +VLNEXT+	#+darwin 14  #+sunos 15  #+linux 15)
-(defconstant +VDISCARD+	#+darwin 15  #+sunos 13  #+linux 13)
-(defconstant +VMIN+	#+darwin 16  #+sunos 4   #+linux 6)
-(defconstant +VTIME+	#+darwin 17  #+sunos 5   #+linux 5)
-(defconstant +VSTATUS+	#+darwin 18  #+sunos nil #+linux nil)
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defconstant +NCCS+	#+darwin 20  #+sunos 19  #+linux 32))
 
-(defparameter *cchars*
-  '(+VDISCARD+ #-linux +VDSUSP+ +VEOF+ +VEOL+ +VEOL2+ +VERASE+ +VINTR+ +VKILL+
-    +VLNEXT+ +VMIN+ +VQUIT+ +VREPRINT+ +VSTART+ #+darwin +VSTATUS+ +VSTOP+
-    +VSUSP+ +VTIME+ +VWERASE+)
-  "A list of all the control character symbols.")
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (deftermio *cchars* "A list of all the control character symbols." #(
+;; Name         Darwin Linux SunOS FreeBSD
+#(+VEOF+	0      4     4     0)
+#(+VEOL+	1      11    5     1)
+#(+VEOL2+	2      16    6     2)
+#(+VERASE+	3      2     2     3)
+#(+VWERASE+	4      14    14    4)
+#(+VKILL+	5      3     3     5)
+#(+VREPRINT+	6      12    12    6)
+#(+VERASE2+	nil    nil   nil   7)
+#(+VINTR+	8      0     0     8)
+#(+VQUIT+	9      1     1     9)
+#(+VSUSP+	10     10    10    10)
+#(+VDSUSP+	11     nil   11    11)
+#(+VSWTCH+	nil    nil   7     nil)
+#(+VSTART+	12     8     8     12)
+#(+VSTOP+	13     9     9     13)
+#(+VLNEXT+	14     15    15    14)
+#(+VDISCARD+	15     13    13    15)
+#(+VMIN+	16     6     4     16)
+#(+VTIME+	17     5     5     17)
+#(+VSTATUS+	18     nil   nil   18)
+)))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconstant +NCCS+	#+darwin 20  #+sunos 19  #+linux 32 #+freebsd 20))
 
 (defcstruct termios
     "POSIX terminal driver interface structure"
@@ -154,225 +164,172 @@
   (c_lflag  tcflag-t)			; local flags
   #+linux (c_line cc-t)			; line discipline
   (c_cc     cc-t :count #.+NCCS+)	; control chars
-  ;;XXX count Should be NCCS!
   (c_ispeed speed-t)			; input speed
   (c_ospeed speed-t))			; output speed
 
 ;; input flags (c_iflag)
-(defconstant +IGNBRK+	#+darwin #x00000001 #+sunos #o0000001 #+linux #o0000001) ; ignore BREAK condition
-(defconstant +BRKINT+	#+darwin #x00000002 #+sunos #o0000002 #+linux #o0000002) ; map BREAK to SIGINTR
-(defconstant +IGNPAR+	#+darwin #x00000004 #+sunos #o0000004 #+linux #o0000004) ; ignore (discard) parity errors
-(defconstant +PARMRK+	#+darwin #x00000008 #+sunos #o0000010 #+linux #o0000010) ; mark parity and framing errors
-(defconstant +INPCK+	#+darwin #x00000010 #+sunos #o0000020 #+linux #o0000020) ; enable checking of parity errors
-(defconstant +ISTRIP+	#+darwin #x00000020 #+sunos #o0000040 #+linux #o0000040) ; strip 8th bit off chars
-(defconstant +INLCR+	#+darwin #x00000040 #+sunos #o0000100 #+linux #o0000100) ; map NL into CR
-(defconstant +IGNCR+	#+darwin #x00000080 #+sunos #o0000200 #+linux #o0000200) ; ignore CR
-(defconstant +ICRNL+	#+darwin #x00000100 #+sunos #o0000400 #+linux #o0000400) ; map CR to NL (ala CRMOD)
-(defconstant +IXON+	#+darwin #x00000200 #+sunos #o0002000 #+linux #o0002000) ; enable output flow control
-(defconstant +IXOFF+	#+darwin #x00000400 #+sunos #o0010000 #+linux #o0010000) ; enable input flow control
-(defconstant +IXANY+	#+darwin #x00000800 #+sunos #o0004000 #+linux #o0004000) ; any char will restart after stop
-(defconstant +IMAXBEL+	#+darwin #x00002000 #+sunos #o0020000 #+linux #o0020000) ; ring bell on input queue full
-(defconstant +IUCLC+	#+darwin nil        #+sunos #o0001000 #+linux #o0001000) ; @@@ add
-(defconstant +IUTF8+	#+darwin nil        #+sunos nil       #+linux #o0040000) ; @@@ add
-(defconstant +DOSMODE+	#+darwin nil        #+sunos #o0100000 #+linux nil)	 ; @@@ add
-
-(defparameter *iflags*
-  '(+IGNBRK+ +BRKINT+ +IGNPAR+ +PARMRK+ +INPCK+ +ISTRIP+ +INLCR+ +IGNCR+ +ICRNL+
-    +IXON+ +IXOFF+ +IXANY+ +IMAXBEL+
-    #+(or linux sunos) +IUCLC+
-    #+linux +IUTF8+
-    #+sunos +DOSMODE+)
-  "List of the input flag symbols.")
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (deftermio *iflags* "List of the input flag symbols." #(
+;; Name         Darwin     Linux     SunOS     FreeBSD
+#(+IGNBRK+	#x00000001 #o0000001 #o0000001 #x00000001 "Ignore BREAK condition")
+#(+BRKINT+	#x00000002 #o0000002 #o0000002 #x00000002 "Map BREAK to SIGINTR")
+#(+IGNPAR+	#x00000004 #o0000004 #o0000004 #x00000004 "Ignore (discard) parity errors")
+#(+PARMRK+	#x00000008 #o0000010 #o0000010 #x00000008 "Mark parity and framing errors")
+#(+INPCK+	#x00000010 #o0000020 #o0000020 #x00000010 "Enable checking of parity errors")
+#(+ISTRIP+	#x00000020 #o0000040 #o0000040 #x00000020 "Strip 8th bit off chars")
+#(+INLCR+	#x00000040 #o0000100 #o0000100 #x00000040 "Map NL into CR")
+#(+IGNCR+	#x00000080 #o0000200 #o0000200 #x00000080 "Ignore CR")
+#(+ICRNL+	#x00000100 #o0000400 #o0000400 #x00000100 "Map CR to NL (ala CRMOD)")
+#(+IXON+	#x00000200 #o0002000 #o0002000 #x00000200 "Enable output flow control")
+#(+IXOFF+	#x00000400 #o0010000 #o0010000 #x00000400 "Enable input flow control")
+#(+IXANY+	#x00000800 #o0004000 #o0004000 #x00000800 "Any char will restart after stop")
+#(+IMAXBEL+	#x00002000 #o0020000 #o0020000 #x00002000 "Ring bell on input queue full")
+#(+IUCLC+	nil        #o0001000 #o0001000 nil        "Map uppercase to lowercase")
+#(+IUTF8+	nil        #o0040000 nil       nil        "Input is UTF-8")
+#(+DOSMODE+	nil        nil       #o0100000 nil        "DOS mode")
+)))
 
 ;; output flags (c_oflag)
-(defconstant +OPOST+	#+darwin #x00000001 #+sunos #o0000001 #+linux #o0000001) ; enable following output processing
-(defconstant +ONLCR+	#+darwin #x00000002 #+sunos #o0000004 #+linux #o0000004) ; map NL to CR-NL (ala CRMOD)
-(defconstant +OXTABS+	#+darwin #x00000004 #+sunos #o0014000 #+linux #o0014000) ; expand tabs to spaces
-(defconstant +ONOEOT+	#+darwin #x00000008 #+sunos nil       #+linux nil)	 ; discard EOT's (^D) on output)
-(defconstant +OLCUC+	#+darwin nil        #+sunos #o0000002 #+linux #o0000002) ; @@@ add
-(defconstant +OCRNL+	#+darwin nil        #+sunos #o0000010 #+linux #o0000010) ; @@@ add
-(defconstant +ONOCR+	#+darwin #x00000020 #+sunos #o0000020 #+linux #o0000020) ; @@@ add
-(defconstant +ONLRET+	#+darwin #x00000040 #+sunos #o0000040 #+linux #o0000040) ; @@@ add
-(defconstant +OFILL+	#+darwin nil        #+sunos #o0000100 #+linux #o0000100) ; @@@ add
-(defconstant +OFDEL+	#+darwin nil        #+sunos #o0000200 #+linux #o0000200) ; @@@ add
-
-(defconstant  +NLDLY+   #+darwin nil        #+sunos #o0000400 #+linux #o0000400)
-(defconstant    +NL0+   #+darwin nil        #+sunos #o0000000 #+linux #o0000000)
-(defconstant    +NL1+   #+darwin nil        #+sunos #o0000400 #+linux #o0000400)
-(defconstant  +CRDLY+   #+darwin nil        #+sunos #o0003000 #+linux #o0003000)
-(defconstant    +CR0+   #+darwin nil        #+sunos #o0000000 #+linux #o0000000)
-(defconstant    +CR1+   #+darwin nil        #+sunos #o0001000 #+linux #o0001000)
-(defconstant    +CR2+   #+darwin nil        #+sunos #o0002000 #+linux #o0002000)
-(defconstant    +CR3+   #+darwin nil        #+sunos #o0003000 #+linux #o0003000)
-(defconstant +TABDLY+   #+darwin nil        #+sunos #o0014000 #+linux #o0014000)
-(defconstant   +TAB0+   #+darwin nil        #+sunos #o0000000 #+linux #o0000000)
-(defconstant   +TAB1+   #+darwin nil        #+sunos #o0004000 #+linux #o0004000)
-(defconstant   +TAB2+   #+darwin nil        #+sunos #o0010000 #+linux #o0010000)
-(defconstant   +TAB3+   #+darwin nil        #+sunos #o0014000 #+linux #o0014000)
-(defconstant  +BSDLY+   #+darwin nil        #+sunos #o0020000 #+linux #o0020000)
-(defconstant    +BS0+   #+darwin nil        #+sunos #o0000000 #+linux #o0000000)
-(defconstant    +BS1+   #+darwin nil        #+sunos #o0020000 #+linux #o0020000)
-(defconstant  +FFDLY+   #+darwin nil        #+sunos #o0100000 #+linux #o0100000)
-(defconstant    +FF0+   #+darwin nil        #+sunos #o0000000 #+linux #o0000000)
-(defconstant    +FF1+   #+darwin nil        #+sunos #o0100000 #+linux #o0100000)
-(defconstant  +VTDLY+   #+darwin nil        #+sunos #o0040000 #+linux #o0040000)
-(defconstant    +VT0+   #+darwin nil        #+sunos #o0000000 #+linux #o0000000)
-(defconstant    +VT1+   #+darwin nil        #+sunos #o0040000 #+linux #o0040000)
-(defconstant  +XTABS+   #+darwin nil        #+sunos nil       #+linux #o0014000)
-(defconstant +PAGEOUT+  #+darwin nil        #+sunos #o0200000 #+linux nil)
-(defconstant +WRAP+     #+darwin nil        #+sunos #o0400000 #+linux nil)
-
-(defparameter *oflags*
-  '(
-    +OPOST+
-    +ONLCR+
-    +OXTABS+
-    #+darwin +ONOEOT+
-    #+(or sunos linux) +OLCUC+
-    #+(or sunos linux) +OCRNL+
-    +ONOCR+
-    +ONLRET+
-    #+(or sunos linux) +OFILL+
-    #+(or sunos linux) +OFDEL+
-    #+(or sunos linux) +NLDLY+
-    #+(or sunos linux)   +NL0+
-    #+(or sunos linux)   +NL1+
-    #+(or sunos linux) +CRDLY+
-    #+(or sunos linux)   +CR0+
-    #+(or sunos linux)   +CR1+
-    #+(or sunos linux)   +CR2+
-    #+(or sunos linux)   +CR3+
-    #+(or sunos linux) +TABDLY+
-    #+(or sunos linux)   +TAB0+
-    #+(or sunos linux)   +TAB1+
-    #+(or sunos linux)   +TAB2+
-    #+(or sunos linux)   +TAB3+
-    #+(or sunos linux) +BSDLY+
-    #+(or sunos linux)   +BS0+
-    #+(or sunos linux)   +BS1+
-    #+(or sunos linux) +FFDLY+
-    #+(or sunos linux)   +FF0+
-    #+(or sunos linux)   +FF1+
-    #+(or sunos linux) +VTDLY+
-    #+(or sunos linux)   +VT0+
-    #+(or sunos linux)   +VT1+
-    #+sunos +PAGEOUT+
-    #+sunos +WRAP+
-    )
-  "List of oflags symbols.")
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (deftermio *oflags* "List of oflags symbols." #(
+;; Name       Darwin     Linux     SunOS     FreeBSD
+#(+OPOST+     #x00000001 #o0000001 #o0000001 #x00000001 "Enable following output processing")
+#(+ONLCR+     #x00000002 #o0000004 #o0000004 #x00000002 "Map NL to CR-NL (ala CRMOD)")
+#(+OXTABS+    #x00000004 #o0014000 #o0014000 #x00000004 "Expand tabs to spaces")
+#(+ONOEOT+    #x00000008 nil       nil       #x00000008 "Discard EOT's (^D) on output)")
+#(+OLCUC+     nil        #o0000002 #o0000002 nil        "Output lowercase to uppercase")
+#(+OCRNL+     nil        #o0000010 #o0000010 #x00000010 "Map CR to NL on output")
+#(+ONOCR+     #x00000020 #o0000020 #o0000020 #x00000020 "No CR output at column 0")
+#(+ONLRET+    #x00000040 #o0000040 #o0000040 #x00000040 "NL performs CR function")
+#(+OFILL+     nil        #o0000100 #o0000100 nil        "Send fill chars for delay")
+#(+OFDEL+     nil        #o0000200 #o0000200 nil        "Fill char is DEL (ASCII 127)")
+#(  +NLDLY+   nil        #o0000400 #o0000400 nil)
+#(    +NL0+   nil        #o0000000 #o0000000 nil)
+#(    +NL1+   nil        #o0000400 #o0000400 nil)
+#(  +CRDLY+   nil        #o0003000 #o0003000 nil)
+#(    +CR0+   nil        #o0000000 #o0000000 nil)
+#(    +CR1+   nil        #o0001000 #o0001000 nil)
+#(    +CR2+   nil        #o0002000 #o0002000 nil)
+#(    +CR3+   nil        #o0003000 #o0003000 nil)
+#( +TABDLY+   nil        #o0014000 #o0014000 #x00000004)
+#(   +TAB0+   nil        #o0000000 #o0000000 #x00000000)
+#(   +TAB1+   nil        #o0004000 #o0004000 nil)
+#(   +TAB2+   nil        #o0010000 #o0010000 nil)
+#(   +TAB3+   nil        #o0014000 #o0014000 #x00000004)
+#(  +BSDLY+   nil        #o0020000 #o0020000 nil)
+#(    +BS0+   nil        #o0000000 #o0000000 nil)
+#(    +BS1+   nil        #o0020000 #o0020000 nil)
+#(  +FFDLY+   nil        #o0100000 #o0100000 nil)
+#(    +FF0+   nil        #o0000000 #o0000000 nil)
+#(    +FF1+   nil        #o0100000 #o0100000 nil)
+#(  +VTDLY+   nil        #o0040000 #o0040000 nil)
+#(    +VT0+   nil        #o0000000 #o0000000 nil)
+#(    +VT1+   nil        #o0040000 #o0040000 nil)
+#(  +XTABS+   nil        #o0014000 nil       nil)
+#(+PAGEOUT+   nil        nil       #o0200000 nil)
+#(   +WRAP+   nil        nil       #o0400000 nil))))
 
 ;; Control flags - hardware control of terminal (c_cflag)
-(defconstant +CIGNORE+	  #+darwin #x00000001 #+sunos nil       #+linux nil)		; ignore control flags
-(defconstant +CSIZE+	  #+darwin #x00000300 #+sunos #o0000060 #+linux #o0000060)	; character size mask
-(defconstant +CS5+	  #+darwin #x00000000 #+sunos #o0000000 #+linux #o0000000)	; 5 bits (pseudo)
-(defconstant +CS6+	  #+darwin #x00000100 #+sunos #o0000020 #+linux #o0000020)	; 6 bits
-(defconstant +CS7+	  #+darwin #x00000200 #+sunos #o0000040 #+linux #o0000040)	; 7 bits
-(defconstant +CS8+	  #+darwin #x00000300 #+sunos #o0000060 #+linux #o0000060)	; 8 bits
-(defconstant +CSTOPB+	  #+darwin #x00000400 #+sunos #o0000100 #+linux #o0000100)	; send 2 stop bits
-(defconstant +CREAD+	  #+darwin #x00000800 #+sunos #o0000200 #+linux #o0000200)	; enable receiver
-(defconstant +PARENB+	  #+darwin #x00001000 #+sunos #o0000400 #+linux #o0000400)	; parity enable
-(defconstant +PARODD+	  #+darwin #x00002000 #+sunos #o0001000 #+linux #o0001000)	; odd parity, else even
-(defconstant +HUPCL+	  #+darwin #x00004000 #+sunos #o0002000 #+linux #o0002000)	; hang up on last close
-(defconstant +CLOCAL+	  #+darwin #x00008000 #+sunos #o0004000 #+linux #o0004000)	; ignore modem status lines
-(defconstant +CCTS_OFLOW+ #+darwin #x00010000 #+sunos #o010000000000 #+linux nil)	; CTS flow control of output
-(defconstant +CRTS_IFLOW+ #+darwin #x00020000 #+sunos #o020000000000 #+linux nil)	; RTS flow control of input
-(defconstant +CRTSCTS+	  #+darwin (logior +CCTS_OFLOW+ +CRTS_IFLOW+) #+sunos #o020000000000 #+linux #o020000000000)
-(defconstant +CDTR_IFLOW+ #+darwin #x00040000 #+sunos nil       #+linux nil)		; DTR flow control of input
-(defconstant +CDSR_OFLOW+ #+darwin #x00080000 #+sunos nil       #+linux nil)		; DSR flow control of output
-(defconstant +CCAR_OFLOW+ #+darwin #x00100000 #+sunos nil       #+linux nil)		; DCD flow control of output
-(defconstant +MDMBUF+	  #+darwin #x00100000 #+sunos nil       #+linux nil)		; old name for CCAR_OFLOW
-(defconstant +CBAUDEX+	  #+darwin nil        #+sunos nil       #+linux #o0010000)
-(defconstant +CMSPAR+	  #+darwin nil        #+sunos nil       #+linux #o010000000000)	; mark or space (stick) parity
-
-(defparameter *cflags*
-  '(#+darwin +CIGNORE+
-    #| +CSIZE+ |#
-    +CS5+ +CS6+ +CS7+ +CS8+
-    +CSTOPB+ +CREAD+ +PARENB+ +PARODD+
-    +HUPCL+ +CLOCAL+
-    #+(or darwin sunos) +CCTS_OFLOW+
-    #+(or darwin sunos) +CRTS_IFLOW+
-    +CRTSCTS+
-    #+darwin +CDTR_IFLOW+
-    #+darwin +CDSR_OFLOW+
-    #+darwin +CCAR_OFLOW+
-    #+darwin +MDMBUF+
-    #+linux +CBAUDEX+
-    #+linux +CMSPAR+
-    )
-  "List of the control flag symbols.")
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (deftermio *cflags* "List of the control flag symbols." #(
+;; Name        Darwin     Linux          SunOS          FreeBSD
+#(+CIGNORE+    #x00000001 nil            nil            #x00000001 "Ignore control flags")
+#(+CSIZE+      #x00000300 #o0000060      #o0000060      #x00000300 "Character size mask")
+#(+CS5+        #x00000000 #o0000000      #o0000000      #x00000000 "5 bits (pseudo)")
+#(+CS6+        #x00000100 #o0000020      #o0000020      #x00000100 "6 bits")
+#(+CS7+        #x00000200 #o0000040      #o0000040      #x00000200 "7 bits")
+#(+CS8+        #x00000300 #o0000060      #o0000060      #x00000300 "8 bits")
+#(+CSTOPB+     #x00000400 #o0000100      #o0000100      #x00000400 "Send 2 stop bits")
+#(+CREAD+      #x00000800 #o0000200      #o0000200      #x00000800 "Enable receiver")
+#(+PARENB+     #x00001000 #o0000400      #o0000400      #x00001000 "Parity enable")
+#(+PARODD+     #x00002000 #o0001000      #o0001000      #x00002000 "Odd parity, else even")
+#(+HUPCL+      #x00004000 #o0002000      #o0002000      #x00004000 "Hang up on last close")
+#(+CLOCAL+     #x00008000 #o0004000      #o0004000      #x00008000 "Ignore modem status lines")
+#(+CCTS_OFLOW+ #x00010000 nil            #o010000000000 #x00010000 "CTS flow control of output")
+#(+CRTS_IFLOW+ #x00020000 nil            #o020000000000 #x00020000 "RTS flow control of input")
+#(+CRTSCTS+    (logior +CCTS_OFLOW+ +CRTS_IFLOW+)
+                          #o020000000000 #o020000000000 (logior +CCTS_OFLOW+ +CRTS_IFLOW+) "")
+#(+CDTR_IFLOW+ #x00040000 nil            nil            #x00040000 "DTR flow control of input")
+#(+CDSR_OFLOW+ #x00080000 nil            nil            #x00080000 "DSR flow control of output")
+#(+CCAR_OFLOW+ #x00100000 nil            nil            #x00100000 "DCD flow control of output")
+#(+MDMBUF+     #x00100000 nil            nil            #x00100000 "old name for CCAR_OFLOW")
+#(+CBAUDEX+    nil        #o0010000      nil            nil        "")
+#(+CMSPAR+     nil        #o010000000000 nil            nil        "mark or space (stick) parity"))))
 
 ;; local flags (c_lflag)
-(defconstant +ECHOKE+	  #+darwin #x00000001 #+sunos #o0004000 #+linux #o0004000) ; visual erase for line kill
-(defconstant +ECHOE+	  #+darwin #x00000002 #+sunos #o0000010 #+linux #o0000020) ; visually erase chars 
-(defconstant +ECHOK+	  #+darwin #x00000004 #+sunos #o0000040 #+linux #o0000040) ; echo NL after line kill 
-(defconstant +ECHO+	  #+darwin #x00000008 #+sunos #o0000010 #+linux #o0000010) ; enable echoing 
-(defconstant +ECHONL+	  #+darwin #x00000010 #+sunos #o0000100 #+linux #o0000100) ; echo NL even if ECHO is off 
-(defconstant +ECHOPRT+	  #+darwin #x00000020 #+sunos #o0002000 #+linux #o0002000) ; visual erase mode for hardcopy 
-(defconstant +ECHOCTL+    #+darwin #x00000040 #+sunos #o0001000 #+linux #o0001000) ; echo control chars as ^(Char) 
-(defconstant +ISIG+	  #+darwin #x00000080 #+sunos #o0000001 #+linux #o0000001) ; enable signals INTR, QUIT, [D]SUSP 
-(defconstant +ICANON+	  #+darwin #x00000100 #+sunos #o0000002 #+linux #o0000002) ; canonicalize input lines 
-(defconstant +ALTWERASE+  #+darwin #x00000200 #+sunos nil       #+linux nil)	   ; use alternate WERASE algorithm 
-(defconstant +IEXTEN+	  #+darwin #x00000400 #+sunos #o0100000 #+linux #o0100000) ; enable DISCARD and LNEXT 
-(defconstant +EXTPROC+	  #+darwin #x00000800 #+sunos nil       #+linux nil)	   ; external processing
-(defconstant +TOSTOP+	  #+darwin #x00400000 #+sunos #o0000400 #+linux #o0000400) ; stop background jobs from output 
-(defconstant +FLUSHO+	  #+darwin #x00800000 #+sunos #o0020000 #+linux #o0010000) ; output being flushed (state) 
-(defconstant +NOKERNINFO+ #+darwin #x02000000 #+sunos nil       #+linux nil)	   ; no kernel output from VSTATUS 
-(defconstant +PENDIN+	  #+darwin #x20000000 #+sunos #o0040000 #+linux #o0040000) ; XXX retype pending input (state) 
-(defconstant +NOFLSH+	  #+darwin #x80000000 #+sunos #o0000200 #+linux #o0000200) ; don't flush after interrupt
-
-(defparameter *lflags*
-  '(+ECHOKE+ +ECHOE+ +ECHOK+ +ECHO+ +ECHONL+ +ECHOPRT+ +ECHOCTL+ +ISIG+
-    +ICANON+ #+darwin
-    +ALTWERASE+ +IEXTEN+
-    #+darwin
-    +EXTPROC+ +TOSTOP+ +FLUSHO+
-    #+darwin +NOKERNINFO+
-    +PENDIN+ +NOFLSH+)
-  "List of lflag symbols.")
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (deftermio *lflags* "List of lflag symbols." #(
+;; Name        Darwin     Linux     SunOS     FreeBSD
+#(+ECHOKE+     #x00000001 #o0004000 #o0004000 #x00000001 "visual erase for line kill")
+#(+ECHOE+      #x00000002 #o0000020 #o0000010 #x00000002 "visually erase chars")
+#(+ECHOK+      #x00000004 #o0000040 #o0000040 #x00000004 "echo NL after line kill")
+#(+ECHO+       #x00000008 #o0000010 #o0000010 #x00000008 "enable echoing")
+#(+ECHONL+     #x00000010 #o0000100 #o0000100 #x00000010 "echo NL even if ECHO is off")
+#(+ECHOPRT+    #x00000020 #o0002000 #o0002000 #x00000020 "visual erase mode for hardcopy")
+#(+ECHOCTL+    #x00000040 #o0001000 #o0001000 #x00000040 "echo control chars as ^(Char)")
+#(+ISIG+       #x00000080 #o0000001 #o0000001 #x00000080 "enable signals INTR, QUIT, [D]SUSP")
+#(+ICANON+     #x00000100 #o0000002 #o0000002 #x00000100 "canonicalize input lines")
+#(+ALTWERASE+  #x00000200 nil       nil       #x00000200 "use alternate WERASE algorithm")
+#(+IEXTEN+     #x00000400 #o0100000 #o0100000 #x00000400 "enable DISCARD and LNEXT")
+#(+EXTPROC+    #x00000800 nil       nil       #x00000800 "external processing")
+#(+TOSTOP+     #x00400000 #o0000400 #o0000400 #x00400000 "stop background jobs from output")
+#(+FLUSHO+     #x00800000 #o0010000 #o0020000 #x00800000 "output being flushed (state)")
+#(+NOKERNINFO+ #x02000000 nil       nil       #x02000000 "no kernel output from VSTATUS")
+#(+PENDIN+     #x20000000 #o0040000 #o0040000 #x20000000 "XXX retype pending input (state)")
+#(+NOFLSH+     #x80000000 #o0000200 #o0000200 #x80000000 "don't flush after interrupt"))))
 
 #+sunos (defconstant +TIOC+ (ash 84 8))
 
-; Commands passed to tcsetattr() for setting the termios structure.
-(defconstant +TCSANOW+	 #+darwin 0 #+sunos (logior +TIOC+ 14) #+linux 0) ; make change immediate 
-(defconstant +TCSADRAIN+ #+darwin 1 #+sunos (logior +TIOC+ 15) #+linux 1) ; drain output, then change 
-(defconstant +TCSAFLUSH+ #+darwin 2 #+sunos (logior +TIOC+ 16) #+linux 2) ; drain output, flush input 
-#+darwin (defconstant +TCSASOFT+	#x10)		; flag - don't alter h.w. state 
+;; Commands passed to tcsetattr() for setting the termios structure.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (define-constants #(
+;; Name       Darwin Linux SunOS              FreeBSD
+#(+TCSANOW+   0      0     (logior +TIOC+ 14) 0       "make change immediate")
+#(+TCSADRAIN+ 1      1     (logior +TIOC+ 15) 1       "drain output, then change")
+#(+TCSAFLUSH+ 2      2     (logior +TIOC+ 16) 2       "drain output, flush input")
+#(+TCSASOFT+  #x10   nil   nil                #x10    "flag - don't alter h.w. state"))))
 
-; Standard speeds
-(defconstant +B0+	#+darwin 0      #+sunos 0   #+linux #o0000000)
-(defconstant +B50+	#+darwin 50     #+sunos 1   #+linux #o0000001)
-(defconstant +B75+	#+darwin 75     #+sunos 2   #+linux #o0000002)
-(defconstant +B110+	#+darwin 110    #+sunos 3   #+linux #o0000003)
-(defconstant +B134+	#+darwin 134    #+sunos 4   #+linux #o0000004)
-(defconstant +B150+	#+darwin 150    #+sunos 5   #+linux #o0000005)
-(defconstant +B200+	#+darwin 200    #+sunos 6   #+linux #o0000006)
-(defconstant +B300+	#+darwin 300    #+sunos 7   #+linux #o0000007)
-(defconstant +B600+	#+darwin 600    #+sunos 8   #+linux #o0000010)
-(defconstant +B1200+	#+darwin 1200   #+sunos 9   #+linux #o0000011)
-(defconstant +B1800+	#+darwin 1800   #+sunos 10  #+linux #o0000012)
-(defconstant +B2400+	#+darwin 2400   #+sunos 11  #+linux #o0000013)
-(defconstant +B4800+	#+darwin 4800   #+sunos 12  #+linux #o0000014)
-(defconstant +B9600+	#+darwin 9600   #+sunos 13  #+linux #o0000015)
-(defconstant +B19200+	#+darwin 19200  #+sunos 14  #+linux #o0000016)
-(defconstant +B38400+	#+darwin 38400  #+sunos 15  #+linux #o0000017)
-(defconstant +B7200+	#+darwin 7200   #+sunos nil #+linux nil)
-(defconstant +B14400+	#+darwin 14400  #+sunos nil #+linux nil)
-(defconstant +B28800+	#+darwin 28800  #+sunos nil #+linux nil)
-(defconstant +B57600+	#+darwin 57600  #+sunos 16  #+linux nil)
-(defconstant +B76800+	#+darwin 76800  #+sunos 17  #+linux nil)
-(defconstant +B115200+	#+darwin 115200 #+sunos 18  #+linux nil)
-(defconstant +B230400+	#+darwin 230400 #+sunos 20  #+linux nil)
-(defconstant +EXTA+	#+darwin 19200  #+sunos nil #+linux #o0000016)
-(defconstant +EXTB+	#+darwin 38400  #+sunos nil #+linux #o0000017)
+;; Standard speeds
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (define-constants #(
+;; Name     Darwin Linux      SunOS FreeBSD
+#(+B0+      0       #o0000000  0    0     )
+#(+B50+     50      #o0000001  1    50    )
+#(+B75+     75      #o0000002  2    75    )
+#(+B110+    110     #o0000003  3    110   )
+#(+B134+    134     #o0000004  4    134   )
+#(+B150+    150     #o0000005  5    150   )
+#(+B200+    200     #o0000006  6    200   )
+#(+B300+    300     #o0000007  7    300   )
+#(+B600+    600     #o0000010  8    600   )
+#(+B1200+   1200    #o0000011  9    1200  )
+#(+B1800+   1800    #o0000012  10   1800  )
+#(+B2400+   2400    #o0000013  11   2400  )
+#(+B4800+   4800    #o0000014  12   4800  )
+#(+B9600+   9600    #o0000015  13   9600  )
+#(+B19200+  19200   #o0000016  14   19200 )
+#(+B38400+  38400   #o0000017  15   38400 )
+#(+B7200+   7200    nil        nil  7200  )
+#(+B14400+  14400   nil        nil  14400 )
+#(+B28800+  28800   nil        nil  28800 )
+#(+B57600+  57600   nil        16   57600 )
+#(+B76800+  76800   nil        17   76800 )
+#(+B115200+ 115200  nil        18   115200)
+#(+B230400+ 230400  nil        20   230400)
+#(+B460800+ nil     nil        nil  460800)
+#(+B921600+ nil     nil        nil  921600)
+#(+EXTA+    19200   #o0000016  nil  19200 )
+#(+EXTB+    38400   #o0000017  nil  38400 )))
 
-(defconstant +TCIFLUSH+	 #+darwin 1 #+sunos 0 #+linux 0)
-(defconstant +TCOFLUSH+	 #+darwin 2 #+sunos 1 #+linux 1)
-(defconstant +TCIOFLUSH+ #+darwin 3 #+sunos 2 #+linux 2)
-(defconstant +TCOOFF+	 #+darwin 1 #+sunos 0 #+linux 0)
-(defconstant +TCOON+	 #+darwin 2 #+sunos 1 #+linux 1)
-(defconstant +TCIOFF+	 #+darwin 3 #+sunos 2 #+linux 2)
-(defconstant +TCION+	 #+darwin 4 #+sunos 3 #+linux 3)
+  (define-constants #(
+;; Name       Darwin Linux SunOS FreeBSD
+#(+TCIFLUSH+  1      0     0     1)
+#(+TCOFLUSH+  2      1     1     2)
+#(+TCIOFLUSH+ 3      2     2     3)
+#(+TCOOFF+    1      0     0     1)
+#(+TCOON+     2      1     1     2)
+#(+TCIOFF+    3      2     2     3)
+#(+TCION+     4      3     3     4))))
 
 (defcfun cfgetispeed speed-t (tio :pointer))
 (defcfun cfgetospeed speed-t (tio :pointer))
@@ -388,35 +345,37 @@
 #-sunos (defcfun cfmakeraw :void (tio :pointer))
 #-sunos (defcfun cfsetspeed :int (tio :pointer) (speed speed-t))
 
-(defconstant +IOCPARM_MASK+ #x1fff
-  "parameter length, at most 13 bits")
-(defmacro IOCPARM_LEN (x) `(logand (ash ,x -16) +IOCPARM_MASK+))
-(defmacro IOCBASECMD (x) `(logand ,x (lognot (ash +IOCPARM_MASK+ -16))))
-(defmacro IOGROUP (x) `(logand (ash ,x -8) #xff))
-(defconstant +IOCPARM_MAX+ (1+ +IOCPARM_MASK+)
-  "max size of ioctl args")
-(defconstant +IOC_VOID+	   #x20000000 "no parameters")
-(defconstant +IOC_OUT+	   #x40000000 "copy parameters out")
-(defconstant +IOC_IN+	   #x80000000 "copy parameters in")
-(defconstant +IOC_INOUT+   (logior +IOC_IN+ +IOC_OUT+) "copy paramters in and out")
-(defconstant +IOC_DIRMASK+ #xe0000000 "mask for IN/OUT/VOID")
+;; Now for even more non-standard freakshow!
 
-(defmacro _IOC (inout group num len)
-  (let ((grp (etypecase group
-	       (integer group)
-	       (character (char-int group)))))
-    `(logior ,inout (ash (logand ,len +IOCPARM_MASK+) 16)
-      (ash ,grp 8) ,num)))
+#+(or darwin freebsd) ;; & maybe others?
+(progn
+  (defconstant +IOCPARM_MASK+ #x1fff "Parameter length, at most 13 bits")
+  (defmacro IOCPARM_LEN (x) `(logand (ash ,x -16) +IOCPARM_MASK+))
+  (defmacro IOCBASECMD (x) `(logand ,x (lognot (ash +IOCPARM_MASK+ -16))))
+  (defmacro IOGROUP (x) `(logand (ash ,x -8) #xff))
+  (defconstant +IOCPARM_MAX+ (1+ +IOCPARM_MASK+) "Max size of ioctl args")
+  (defconstant +IOC_VOID+	   #x20000000 "No parameters")
+  (defconstant +IOC_OUT+	   #x40000000 "Copy parameters out")
+  (defconstant +IOC_IN+	   #x80000000 "Copy parameters in")
+  (defconstant +IOC_INOUT+   (logior +IOC_IN+ +IOC_OUT+) "Copy paramters in and out")
+  (defconstant +IOC_DIRMASK+ #xe0000000 "mask for IN/OUT/VOID")
 
-(defmacro _IO (g n)	 `(_IOC +IOC_VOID+  ,g ,n 0))
-(defmacro _IOR (g n ty)	 `(_IOC +IOC_OUT+   ,g ,n ,(foreign-type-size ty)))
-(defmacro _IOW (g n ty)	 `(_IOC +IOC_IN+    ,g ,n ,(foreign-type-size ty)))
-(defmacro _IOWR (g n ty) `(_IOC +IOC_INOUT+ ,g ,n ,(foreign-type-size ty)))
+  (defmacro _IOC (inout group num len)
+    (let ((grp (etypecase group
+		 (integer group)
+		 (character (char-int group)))))
+      `(logior ,inout (ash (logand ,len +IOCPARM_MASK+) 16)
+	       (ash ,grp 8) ,num)))
+
+  (defmacro _IO (g n)      `(_IOC +IOC_VOID+  ,g ,n 0))
+  (defmacro _IOR (g n ty)  `(_IOC +IOC_OUT+   ,g ,n ,(foreign-type-size ty)))
+  (defmacro _IOW (g n ty)  `(_IOC +IOC_IN+    ,g ,n ,(foreign-type-size ty)))
+  (defmacro _IOWR (g n ty) `(_IOC +IOC_INOUT+ ,g ,n ,(foreign-type-size ty))))
 
 ;; "Window sizes. Not used by the kernel. Just for applications."
 (defcstruct winsize
-  (ws_row :unsigned-short)		; rows, in characters
-  (ws_col :unsigned-short)		; columns, in characters
+  (ws_row    :unsigned-short)		; rows, in characters
+  (ws_col    :unsigned-short)		; columns, in characters
   (ws_xpixel :unsigned-short)		; horizontal size, pixels
   (ws_ypixel :unsigned-short))		; vertical size, pixels
 
@@ -437,26 +396,26 @@
 (defconstant +TIOCM_RI+	   +TIOCM_RNG+)
 (defconstant +TIOCM_DSR+   0400		"data set ready")
 					    ; 8-10 compat 
-(defconstatn +TIOCEXCL+	 (_IO #\t 13)	    "set exclusive use of tty")
-(defconstatn +TIOCNXCL+	 (_IO #\t 14)	    "reset exclusive use of tty")
+(defconstant +TIOCEXCL+	 (_IO #\t 13)	    "set exclusive use of tty")
+(defconstant +TIOCNXCL+	 (_IO #\t 14)	    "reset exclusive use of tty")
 					    ;; 15 unused
-(defconstatn +TIOCFLUSH+ (_IOW #\t 16 :int) "flush buffers")
+(defconstant +TIOCFLUSH+ (_IOW #\t 16 :int) "flush buffers")
 					    ;; 17-18 compat
-(defconstatn +TIOCGETA+	 (_IOR #\t 19 (:struct termios)) "get termios struct")
-(defconstatn +TIOCSETA+	 (_IOW #\t 20 (:struct termios)) "set termios struct")
-(defconstatn +TIOCSETAW+ (_IOW #\t 21 (:struct termios)) "drain output, set")
-(defconstatn +TIOCSETAF+ (_IOW #\t 22 (:struct termios)) "drn out, fls in, set")
-(defconstatn +TIOCGETD+	 (_IOR #\t 26 int)   "get line discipline")
-(defconstatn +TIOCSETD+	 (_IOW #\t 27 int)   "set line discipline")
+(defconstant +TIOCGETA+	 (_IOR #\t 19 (:struct termios)) "get termios struct")
+(defconstant +TIOCSETA+	 (_IOW #\t 20 (:struct termios)) "set termios struct")
+(defconstant +TIOCSETAW+ (_IOW #\t 21 (:struct termios)) "drain output, set")
+(defconstant +TIOCSETAF+ (_IOW #\t 22 (:struct termios)) "drn out, fls in, set")
+(defconstant +TIOCGETD+	 (_IOR #\t 26 int)   "get line discipline")
+(defconstant +TIOCSETD+	 (_IOW #\t 27 int)   "set line discipline")
 					     ;; 127-124 compat
-(defconstatn +TIOCSBRK+	 (_IO #\t 123)	     "set break bit")
-(defconstatn +TIOCCBRK+	 (_IO #\t 122)	     "clear break bit")
-(defconstatn +TIOCSDTR+	 (_IO #\t 121)	     "set data terminal ready")
-(defconstatn +TIOCCDTR+	 (_IO #\t 120)	     "clear data terminal ready")
-(defconstatn +TIOCGPGRP+ (_IOR #\t 119 :int) "get pgrp of tty")
-(defconstatn +TIOCSPGRP+ (_IOW #\t 118 :int) "set pgrp of tty")
+(defconstant +TIOCSBRK+	 (_IO #\t 123)	     "set break bit")
+(defconstant +TIOCCBRK+	 (_IO #\t 122)	     "clear break bit")
+(defconstant +TIOCSDTR+	 (_IO #\t 121)	     "set data terminal ready")
+(defconstant +TIOCCDTR+	 (_IO #\t 120)	     "clear data terminal ready")
+(defconstant +TIOCGPGRP+ (_IOR #\t 119 :int) "get pgrp of tty")
+(defconstant +TIOCSPGRP+ (_IOW #\t 118 :int) "set pgrp of tty")
 					     ;; 117-116 compat
-(defconstatn +TIOCOUTQ+	 (_IOR #\t 115 :int) "output queue size")
+(defconstant +TIOCOUTQ+	 (_IOR #\t 115 :int) "output queue size")
  |#
 
 ;; SunOS TIOC and tIOC constants
@@ -472,9 +431,10 @@
 
 ;; I personally love this one.
 ;; @@@ I don't understand why it doesn't work on Lispworks.
-#+darwin (defconstant TIOCSTI #-lispworks (_IOW #\t 114 :char) "simulate terminal input")
-#+sunos  (defconstant TIOCSTI (l-tioc 23)          "simulate terminal input")
-#+linux  (defconstant TIOCSTI #x5412               "simulate terminal input")
+#+darwin  (defconstant TIOCSTI #-lispworks (_IOW #\t 114 :char) "simulate terminal input")
+#+freebsd (defconstant TIOCSTI #-lispworks (_IOW #\t 114 :char) "simulate terminal input")
+#+sunos   (defconstant TIOCSTI (l-tioc 23)          "simulate terminal input")
+#+linux   (defconstant TIOCSTI #x5412               "simulate terminal input")
 
 #|
 (defconstant +TIOCNOTTY+         (_IO #\t 113)	      "void tty association")
@@ -496,12 +456,15 @@
 (defconstant +TIOCREMOTE+         (_IOW #\t 105 :int) "remote input editing")
 |#
 
-;; These are actually useful
-#+darwin (defconstant +TIOCGWINSZ+
+;; These are actually useful!
+#+(or darwin freebsd)
+(defconstant +TIOCGWINSZ+
 	   #-lispworks (_IOR #\t 104  (:struct winsize))
 	   #+lispworks #x40087468
 	   "get window size")
-#+darwin (defconstant +TIOCSWINSZ+
+
+#+(or darwin freebsd)
+(defconstant +TIOCSWINSZ+
 	   #-lispworks (_IOW #\t 103  (:struct winsize))
 	   #+lispworks #x80087467
 	   "set window size")
@@ -571,7 +534,7 @@
 	  (end-of-file ())))
     (file-error (c)
 	(format t "~a" c))))
-;; Check out the graceful swoop!
+;; Check out the graceful shwoop!
 
 (defun raw-echo (tty)
   "Output each character input immediately without processing. This is like of
@@ -671,7 +634,7 @@ even process interrupts. If TIMEOUT is true, it's a number of deciseconds,
     (unwind-protect
 	 (progn
 	   ;; perhaps we should just use 0, aka /dev/stdin aka /dev/fd/0
-	   (setf tty (posix-open "/dev/tty" O_RDWR 0)
+	   (setf tty (posix-open "/dev/tty" +O_RDWR+ 0)
 		 cooked    (foreign-alloc '(:struct termios))
 		 raw       (foreign-alloc '(:struct termios))
 		 raw-check (foreign-alloc '(:struct termios)))
@@ -901,6 +864,44 @@ characters. If we don't get anything after a while, just return what we got."
       ,*sane-susp* ,*sane-time* ,*sane-werase*)))
 )
 
+#+freebsd (progn
+(defparameter *sane-iflag*   #x300)	 ; ICRNL | IXON
+(defparameter *sane-oflag*   #x7)	 ; OPOST | ONLCR | OXTABS
+(defparameter *sane-cflag*   #x5b00)	 ; PARENB | HUPCL | CS6 | CS7 | CREAD
+(defparameter *sane-lflag*   #x200005cf) ; ECHOKE | ECHOE | ECHOK | ECHO |
+					 ; ECHOCTL | ISIG | ICANON | IEXTEN |
+					 ; PENDIN
+(declaim (type (unsigned-byte 8) *sane-discard*))
+(defparameter *sane-discard* #xff)	 ; undef
+(defparameter *sane-dsusp*   #xff)	 ; undef
+(defparameter *sane-eof*     #x4)	 ; ^D
+(defparameter *sane-eol*     #xff)	 ; undef
+(defparameter +sane-eol2+    #x0)	 ; ^@
+(defparameter *sane-erase*   #x7f)	 ; Delete
+(defparameter *sane-intr*    #x3)	 ; ^C
+(defparameter *sane-kill*    #x15)	 ; ^U
+(defparameter *sane-lnext*   #x11)	 ; ^Q
+(defparameter *sane-min*     #x1)	 ; ^A
+(defparameter *sane-quit*    #x1c)	 ; ^\
+(defparameter *sane-reprint* #xff)	 ; undef
+(defparameter *sane-start*   #xff)	 ; undef
+(defparameter *sane-status*  #x14)	 ; ^T
+(defparameter *sane-stop*    #xff)	 ; undef
+(defparameter *sane-susp*    #x1a)	 ; ^Z
+(defparameter *sane-time*    #x0)	 ; ^@
+(defparameter *sane-werase*  #xff)	 ; undef
+(defparameter *sane-ispeed*  38400)
+(defparameter *sane-ospeed*  38400)
+
+(defparameter *sanity*
+  `((,*sane-iflag* ,*sane-oflag* ,*sane-cflag* ,*sane-lflag*
+     ,*sane-ispeed* ,*sane-ospeed*)
+    #(,*sane-discard* ,*sane-dsusp* ,*sane-eof* ,*sane-eol* ,+sane-eol2+
+      ,*sane-erase* ,*sane-intr* ,*sane-kill* ,*sane-lnext* ,*sane-min*
+      ,*sane-quit* ,*sane-reprint* ,*sane-start* ,*sane-status* ,*sane-stop*
+      ,*sane-susp* ,*sane-time* ,*sane-werase*)))
+)
+
 (defun sane (&optional (device "/dev/tty"))
   "Reset standard input to sane modes."
   (when (not (boundp '*sanity*))
@@ -908,7 +909,7 @@ characters. If we don't get anything after a while, just return what we got."
   (let (tty sane)
     (unwind-protect
       (progn
-	(setf tty (posix-open device O_RDWR 0)
+	(setf tty (posix-open device +O_RDWR+ 0)
 	      sane (foreign-alloc '(:struct termios)))
 	(when (< tty 0)
 	  (error "Error opening ~a ~d~%" device tty))
@@ -953,7 +954,8 @@ characters. If we don't get anything after a while, just return what we got."
 ;; The portable interface:
 
 ;; I'm not really sure if this is a good interface. ☹
-(defun os-unix:set-terminal-mode (tty &key (echo    nil echo-supplied)
+(defun os-unix:set-terminal-mode (tty &key
+					(echo    nil echo-supplied)
 					(line    nil line-supplied)
 					(raw     nil raw-supplied)
 					(timeout nil timeout-supplied)
@@ -1097,7 +1099,7 @@ The individual settings override the settings in MODE."
   (let (tty)
     (unwind-protect
       (progn
-	(setf tty (posix-open device O_RDWR 0))
+	(setf tty (posix-open device +O_RDWR+ 0))
 	(when (< tty 0)
 	  (error "Error opening ~a ~d~%" device tty))
 
