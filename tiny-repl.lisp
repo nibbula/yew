@@ -78,6 +78,7 @@
   prompt-func   
   more		  If non-nil, a string of more input.
   terminal-name   Name of a terminal device or nil.
+  terminal-class  A terminal class symbol.
   keymap          Custom keymap for TINY-RL or nil.
   output          Stream to print output on or nil for the default.
   got-error	  A boolean which is true if we got an error.
@@ -90,6 +91,7 @@
   prompt-string
   more
   terminal-name
+  terminal-class
   keymap
   output
   (got-error	nil	:type boolean)
@@ -196,7 +198,7 @@ The REPL also has a few commands:
 
 (defun repl-read (state)
   (with-slots (editor debug prompt-func prompt-string got-error more
-	       terminal-name keymap) state
+	       terminal-name terminal-class keymap) state
     (let ((result nil)
 	  (pre-str nil)
 	  (str nil))
@@ -228,6 +230,7 @@ The REPL also has a few commands:
 				   :editor editor
 				   :keymap keymap
 				   :terminal-name terminal-name
+				   :terminal-class terminal-class
 				   :context :repl
 				   :prompt ""))
 		    (progn
@@ -239,12 +242,14 @@ The REPL also has a few commands:
 					 :editor editor
 					 :keymap keymap
 					 :terminal-name terminal-name
+					 :terminal-class terminal-class
 					 :context :repl
 					 :prompt prompt-string)
 				(tiny-rl :eof-value *real-eof-symbol*
 					 :quit-value *quit-symbol*
 					 :editor editor
 					 :terminal-name terminal-name
+					 :terminal-class terminal-class
 					 :keymap keymap
 					 :context :repl
 					 :output-prompt-func
@@ -379,24 +384,26 @@ The REPL also has a few commands:
 	(incf error-count)
 	(setf error-count 0))))
 
-(defun tiny-repl (&key prompt-func prompt-string no-announce terminal-name
-		    keymap
+(defun tiny-repl (&key prompt-func prompt-string no-announce keymap
+		    terminal-name
+		    (terminal-class 'terminal-ansi:terminal-ansi)
 		    (output *standard-output*)
 		    (interceptor *default-interceptor*) (debug t))
   "Keep reading and evaluating lisp, with line editing.
-PROMPT-FUNC   -- A TINY-RL prompt function, which is called with a with
-                 an instance of TINY-RL:LINE-EDITOR and a prompt string.
-PROMPT-STRING -- 
-NO-ANNOUNCE   -- True to supress the announcement on starting.
-TERMINAL-NAME -- Name of a system terminal device to read from.
-KEYMAP        -- A custom keymap to use for TINY-RL.
-OUTPUT        -- Stream to print output on.
-INTERCEPTOR   -- Function that's called with an object to be evaluated and a
-		 TINY-REPL:REPL-STATE. Allows interception of sepcial objects
-                 before they're evaluated, usually used for commands. The
-		 interceptor should return true if does not want evaluation
-		 to happen. Defaults to *DEFAULT-INTERCEPTOR*.
-DEBUG	      -- True to install TINY-DEBUG as the debugger. Default is T.
+PROMPT-FUNC    -- A TINY-RL prompt function, which is called with a with
+		  an instance of TINY-RL:LINE-EDITOR and a prompt string.
+PROMPT-STRING  -- 
+NO-ANNOUNCE    -- True to supress the announcement on starting.
+TERMINAL-NAME  -- Name of a system terminal device to read from.
+TERMINAL-CLASS -- Class of terminal to read from. Defaults to TERMINAL-ANSI.
+KEYMAP	       -- A custom keymap to use for TINY-RL.
+OUTPUT	       -- Stream to print output on.
+INTERCEPTOR    -- Function that's called with an object to be evaluated and a
+		  TINY-REPL:REPL-STATE. Allows interception of sepcial objects
+		  before they're evaluated, usually used for commands. The
+		  interceptor should return true if does not want evaluation
+		  to happen. Defaults to *DEFAULT-INTERCEPTOR*.
+DEBUG	       -- True to install TINY-DEBUG as the debugger. Default is T.
 "
   ;; Annouce the implemtation and version on systems that don't always do it.
   #-sbcl (when (not no-announce)
@@ -411,6 +418,7 @@ DEBUG	      -- True to install TINY-DEBUG as the debugger. Default is T.
 		:prompt-string prompt-string
 		:keymap keymap
 		:terminal-name terminal-name
+		:terminal-class terminal-class
 		:output output))
 	(result nil)
 ;	(restart-result t)
