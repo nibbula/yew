@@ -306,6 +306,30 @@ i.e. the terminal is 'line buffered'."
 (defmethod tt-inverse ((tty terminal-ansi-stream) state)
   (tt-format tty "~c[~dm" #\escape (if state 7 27)))
 
+(defparameter *attributes*
+  '((:normal	       22)		; not bold or faint
+    (:bold	       1)
+    (:faint	       2)
+    (:italic	       3)
+    (:underline	       4)
+    (:blink	       5)
+    (:inverse	       7)
+    (:invisible	       8)
+    (:crossed-out      9)
+    (:double-underline 21)))
+
+(defparameter *attributes-off*
+  '((:all	       0)		; No attributes
+    (:bold	       22)
+    (:faint	       22)
+    (:italic	       23)
+    (:underline	       24)
+    (:blink	       25)
+    (:inverse	       27)
+    (:invisible	       28)
+    (:crossed-out      29)
+    (:double-underline 24)))		; same as not underline
+
 (defparameter *colors*
   #(:black :red :green :yellow :blue :magenta :cyan :white nil :default))
 
