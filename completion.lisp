@@ -684,23 +684,21 @@ defaults to the current package. Return how many symbols there were."
  or nil if none was found. The second value is true if the first value ~
  matches a full filename."
   (let* (pos
+	 match-len
 	 (full-match t)
 	 (match nil)
-	 match-len
-	 (w (expand-tilde word))
-;	 (dir-part (directory-namestring (pathname w)))
-;	 (dir-part-path (pathname-directory (pathname word)))
-;	 (file-part (file-namestring (pathname w))))
-	 (dir-part (dirname w))
+	 (w             (expand-tilde word))
+	 (dir-part      (dirname w))
 	 (dir-part-path (dirname word))
-	 (file-part (basename w))
-	 (hidden (hidden-file-name-p file-part)))
+	 (file-part     (basename w))
+	 (hidden        (hidden-file-name-p file-part))
+	 (dir-list	(if (> (length dir-part) 0)
+			    (safe-read-directory :full t :dir dir-part
+						 :omit-hidden (not hidden))
+			    (safe-read-directory :full t
+						 :omit-hidden (not hidden)))))
     (when (> (length file-part) 0)
-      (loop :for f :in (if (> (length dir-part) 0)
-			   (safe-read-directory :full t :dir dir-part
-						:omit-hidden (not hidden))
-			   (safe-read-directory :full t
-						:omit-hidden (not hidden)))
+      (loop :for f :in dir-list
 	 :do
 	 (when (and (setf pos (search file-part (dir-entry-name f)
 				      :test #'equal))
@@ -709,23 +707,23 @@ defaults to the current package. Return how many symbols there were."
 	   (if (not match)
 	       (setf match (dir-entry-name f)
 		     match-len (length (dir-entry-name f)))
-	       (setf match-len (mismatch match (dir-entry-name f)
-					 :end1 match-len)
-		     full-match nil)))))
-    (dbug "~&match = ~a~%" match)
+	       (setf match-len (or (mismatch match (dir-entry-name f)
+					     :end1 match-len)
+				   match-len)
+		     full-match nil))
+	   ;;(dbug "~%match-len = ~a entry = ~s" match-len (dir-entry-name f))
+	   )))
+    ;;(dbug "~&match = ~a match-sub = ~a~%" match (subseq match 0 match-len))
     (values
      (and match
-	  (let* ((match-sub (subseq match 0 match-len))
-;		 (p (pathname match-sub))
-		 )
+	  (let* ((match-sub (subseq match 0 match-len)))
+	    ;; If it had a directory part, put it back on.
 	    (if (> (length dir-part) 0)
-		;; (namestring (make-pathname :directory dir-part-path
-		;; 			   :name (pathname-name p)
-		;; 			   :type (pathname-type p)))
 		(if (and (= (length dir-part) 1)
 			 (char= (char dir-part 0) nos:*directory-separator*))
-		    (s+ "/" match-sub)
-		    (s+ dir-part-path "/" match-sub))
+		    ;; If it's the root directory, just put a separator.
+		    (s+ nos:*directory-separator* match-sub)
+		    (path-append dir-part-path match-sub))
 		match-sub)))
      full-match)))
 
