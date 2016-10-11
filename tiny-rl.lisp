@@ -1,16 +1,17 @@
 ;;
-;; tiny-rl.lisp - An input line editor for ANSI terminals.
+;; tiny-rl.lisp - An input line editor.
 ;;
 
 ;; TODO:
 ;;   - multi line - display bugs (undo, delete word, etc)
 ;;     - fix update-for-delete
-;;   - tab display bugs
+;;   - character display bugs
+;;    - tab
+;;    - newline
+;;    - wide characters
 ;;   - history saving
-;;   - M-\ delete-horizontal-space
 ;;   - search by :UP (or C-P)
 ;;   - fix undo boundaries
-;;   - binding for char-picker
 ;;   - change the the name
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
@@ -1073,7 +1074,7 @@ Assumes S is already converted to display characters."
 (defun editor-write-char (e c)
   "Write a display character to the screen. Update screen coordinates."
   (tt-write-char (line-editor-terminal e) c)
-  (incf (screen-col e))
+  (incf (screen-col e) (display-length c))
   (when (>= (screen-col e) (terminal-window-columns (line-editor-terminal e)))
     (setf (screen-col e) 0)
     (incf (screen-row e))
@@ -1953,6 +1954,28 @@ is none."
       (record-undo e 'boundary)
       (display-buf e overall-start point))))
 
+(defun delete-horizontal-space (e)
+  "Delete space before and after the cursor."
+  (with-slots (buf point) e
+    (let ((origin point)
+	  start end del-len disp-len deleted-string first-half-disp-len)
+      (setf origin point)
+      (scan-over e :forward
+		 :func #'(lambda (c) (position c dlib::*whitespace*)))
+      (setf end point
+	    point origin)
+      (scan-over e :backward
+		 :func #'(lambda (c) (position c dlib::*whitespace*)))
+      (setf start point
+	    del-len (- end start)
+	    deleted-string (subseq buf start end)
+	    first-half-disp-len (display-length (subseq buf start origin))
+	    disp-len (display-length deleted-string))
+      (delete-region e start end)
+      (move-backward e first-half-disp-len)
+      (tt-del-char e disp-len)
+      (update-for-delete e disp-len del-len))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; hacks for typing lisp
 
@@ -2415,6 +2438,7 @@ binding."
     (,(meta-char #\l)		. downcase-word)
     (,(meta-char #\c)		. capitalize-word)
     (,(meta-char #\w)		. copy-region)
+    (,(meta-char #\\)		. delete-horizontal-space)
 
     ;; Completion
     (#\tab			. complete)
@@ -2646,17 +2670,18 @@ Keyword arguments:
 	(display-buf e 0)))
 
     ;; Command loop
-    (with-slots (quit-flag exit-flag cmd buf last-input terminal debugging) e
+    (with-slots (quit-flag exit-flag cmd buf point last-input terminal
+		 debugging) e
       (let ((result nil))
 	(unwind-protect
 	     (loop :do
 		(finish-output)
 		(when debugging
-		  (message e "~d ~d [~d x ~d] ~w"
+		  (message e "~d ~d [~d x ~d] ~a ~w"
 			   (screen-col e) (screen-row e)
 			   (terminal-window-columns terminal)
 			   (terminal-window-rows terminal)
-			   cmd)
+			   point cmd)
 		  (show-message-log e))
 		(setf cmd (get-a-char e))
 		(log-message e "cmd ~s" cmd)
