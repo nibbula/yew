@@ -446,13 +446,20 @@ the outermost. When entering the debugger the current frame is 0.")
     (assert (= (sb-di:frame-number result) n))
     result))
 
-;; @@@ This really doesn't work right yet
+#+sbcl
+(defun frame-number-or-current (&optional (n *current-frame*))
+  "Return the frame numbered N, or the *current-frame*, or the top frame."
+  (cond
+    ((numberp n) (frame-number n))
+    ((sb-di:frame-p n) n)
+    (t (frame-number 0))))
+
 #+sbcl
 (defun debugger-show-locals (n)
-  (when (not n)
-    (setf n 0))
-  (format *debug-io* "Locals for frame ~s:~%" n)
-  (let* ((cur (frame-number *current-frame*))
+  (if n
+      (format *debug-io* "Locals for frame ~s:~%" n)
+      (format *debug-io* "Locals for current frame:~%"))
+  (let* ((cur (frame-number-or-current n))
 	 (fun (sb-di:frame-debug-fun cur)))
     (if (sb-di:debug-var-info-available fun)
 	(let* ((*print-readably* nil)
