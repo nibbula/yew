@@ -2,11 +2,6 @@
 ;;; unipose.asd -- System definition for unipose
 ;;;
 
-(defpackage :unipose-system
-    (:use :common-lisp :asdf))
-
-(in-package :unipose-system)
-
 (defsystem unipose
     :name               "unipose"
     :description        "Compose unicode characters"
