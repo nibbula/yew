@@ -2,11 +2,6 @@
 ;;; termios.asd -- System definition for TERMIOS package
 ;;;
 
-(defpackage :termios-system
-    (:use :common-lisp :asdf))
-
-(in-package :termios-system)
-
 (defsystem termios
     :name               "termios"
     :description
