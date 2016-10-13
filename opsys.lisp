@@ -369,14 +369,14 @@ calls. Returns NIL when there is an error.")
 (defun split-path (path)
   "Return a list of components of PATH."
   (loop :with i = 0 :and piece
-     :while (< i (length p))
+     :while (< i (length path))
      :do (setf piece nil)
      (setf piece
 	   (with-output-to-string (str)
-	      (loop :while (and (< i (length p))
-				(char/= (char p i) *directory-separator*))
+	      (loop :while (and (< i (length path))
+				(char/= (char path i) *directory-separator*))
 		 :do
-		 (princ (char p i) str)
+		 (princ (char path i) str)
 		 (incf i))))
      :if (and piece (/= (length piece) 0))
      :collect piece
