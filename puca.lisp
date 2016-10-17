@@ -6,8 +6,10 @@
 ;; why it's poorly organized.
 ;;
 ;; TODO:
+;;  - way to provide command options?
+;;  - way to invoke unbound subcommand?
 ;;  - improve git mode
-;;    - show things to pull? (ie changes on remote)
+;;    - show things to pull? (e.g. changes on remote)
 ;;  - Consider making a branch editing mode
 ;;  - Consider making a version editing mode
 ;;  - Consider configuration / options editing
@@ -24,18 +26,6 @@
    #:make-standalone
    ))
 (in-package :puca)
-
-(defun is-cvs ()
-  (probe-directory "CVS"))
-
-(defun is-git ()
-  (equal "true" (shell-line "git" "rev-parse" "--is-inside-work-tree")))
-
-(defun is-svn ()
-  (probe-directory ".svn"))
-
-(defun is-hg ()
-  (probe-directory ".hg"))
 
 (defstruct goo
   "A file/object under version control."
@@ -61,7 +51,8 @@
 (defvar *puca* nil
   "The current puca instance.")
 
-(defstruct backend
+#|
+(defclass backend ()
   "A specific version control system. Mostly how to do things with it."
   name
   type
@@ -74,40 +65,112 @@
   commit
   update
   update-all
-  push)
+  push
+  ignore-file
+  ignore-func)
+|#
 
 (defvar *backend* nil
   "The current backend.")
 
-#|
 (defclass backend ()
   ((name
-    :initarg :name :accessor backend-name  :type string
-    :documentation "The name of the back-end."))
+    :initarg :name :accessor backend-name :type string
+    :documentation "The name of the back-end.")
+   (list-command
+    :initarg :list-command :accessor backend-list-command  
+    :documentation "Command to list the things.")
+   (add
+    :initarg :add :accessor backend-add :type string
+    :documentation "Command to add a file to the repository.")
+   (reset
+    :initarg :reset :accessor backend-reset :type string
+    :documentation "Command to do something like whatever git reset does.")
+   (diff
+    :initarg :diff :accessor backend-diff :type string
+    :documentation "Command to show the difference vs the last change.")
+   (diff-repo
+    :initarg :diff-repo :accessor backend-diff-repo :type string
+    :documentation "Command to show the some kind of more differences.")
+   (commit
+    :initarg :commit :accessor backend-commit :type string
+    :documentation "Commit the changes.")
+   (update
+    :initarg :update :accessor backend-update :type string
+    :documentation "Update the file from the remote or repository.")
+   (update-all
+    :initarg :update-all :accessor backend-update-all :type string
+    :documentation "Update the whole directory from the remote or repository.")
+   (push
+    :initarg :push :accessor backend-push :type string
+    :documentation "Push the changes to the remote in a distributed RCS.")
+   (ignore-file
+    :initarg :ignore-file :accessor backend-ignore-file  :type string
+    :documentation "File which contains a list of files to ignore."))
   (:documentation "A generic version control back end."))
-|#
 
 (defgeneric parse-line (backend line i)
   (:documentation "Take a line and add stuff to goo and/or *errors*."))
 
+(defgeneric check-existence (type)
+  (:documentation
+   "Return true if we guess we are in a directory under this type."))
+
+(defgeneric add-ignore (backend file)
+  (:documentation "Add FILE to the list of ignored files."))
+
+(defmethod parse-line ((backend backend) line i)
+  "Parse a status line LINE for a typical RCS. I is the line number."
+  (with-slots (goo errors extra) *puca*
+    (let ((words (split-sequence " " line
+				 :omit-empty t
+				 :test #'(lambda (a b)
+					   (declare (ignore a))
+					   (or (equal b #\space)
+					       (equal b #\tab))))))
+      ;;(debug-msg "~s" words)
+      (cond
+	;; If the first word is more than 1 char long, save it as extra
+	((> (length (car words)) 2)
+	 (push line extra)
+	 (push (format nil "~d: ~a" i line) errors))
+	;; skip blank lines
+	((or (not words)
+	     (and (= (length words) 1)
+		  (= (length (car words)) 0))))
+	(t
+	 (push (make-goo :modified (subseq (elt words 0) 0 1)
+			 :filename (elt words 1)) goo)
+	 ;; If we've accumulated extra lines add them to this line.
+	 (when extra
+	   (setf (goo-extra-lines (car goo)) (nreverse extra))
+	   (setf extra nil)))))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; CVS
 
-(defparameter *backend-cvs*
-  (make-backend :name		"CVS"
-		:type		:cvs
-		:check-func	#'is-cvs
-		:list-command	'("cvs" "-n" "update")
-		:add		"cvs add ~{~a ~}"
-		:reset		"echo 'No reset in CVS'"
-		:diff		"cvs diff ~{~a ~} | pager"
-		:diff-repo	"cvs diff -r HEAD ~{~a ~} | pager"
-		:commit		"cvs commit ~{~a ~}"
-		:update		"cvs update ~{~a ~}"
-		:update-all	"cvs update"
-		:push		"echo 'No push in CVS'"))
+(defclass cvs (backend)
+  ()
+  (:default-initargs
+   :name	 "CVS"
+   :list-command '("cvs" "-n" "update")
+   :add		 "cvs add ~{~a ~}"
+   :reset	 "echo 'No reset in CVS'"
+   :diff	 "cvs diff ~{~a ~} | pager"
+   :diff-repo	 "cvs diff -r HEAD ~{~a ~} | pager"
+   :commit	 "cvs commit ~{~a ~}"
+   :update	 "cvs update ~{~a ~}"
+   :update-all	 "cvs update"
+   :push	 "echo 'No push in CVS'"
+   :ignore-file	 ".cvsignore")
+  (:documentation "CVS."))
 
-(defmethod parse-line ((type (eql :cvs)) line i)
+(defparameter *backend-cvs* (make-instance 'cvs))
+
+(defmethod check-existence ((type (eql :cvs)))
+  (probe-directory "CVS"))
+
+(defmethod parse-line ((backend cvs) line i)
   (with-slots (goo errors extra) *puca*
     (let ((words (split-sequence " " line
 				 :omit-empty t
@@ -136,97 +199,74 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; GIT
 
-(defparameter *backend-git*
-  (make-backend :name		"git"
-		:type		:git
-		:check-func	#'is-git
-		:list-command	'("git" "status" "--porcelain")
-		:add		"git --no-pager add ~{~a ~}"
-		:reset		"git --no-pager reset ~{~a ~}"
-		:diff		"git diff --color ~{~a ~} | pager"
-;		:diff-repo	"git diff --cached HEAD ~{~a ~}"
-		:diff-repo	"git diff --color --staged | pager"
-		:commit		"git --no-pager commit ~{~a ~}"
-		:update		"git --no-pager pull ~{~a ~}"
-		:update-all	"git --no-pager pull"
-		:push		"git --no-pager push"))
+(defclass git (backend)
+  ()
+  (:default-initargs
+   :name	 "git"
+   :list-command '("git" "status" "--porcelain")
+   :add		 "git --no-pager add ~{~a ~}"
+   :reset	 "git --no-pager reset ~{~a ~}"
+   :diff	 "git diff --color ~{~a ~} | pager"
+   :diff-repo	 "git diff --color --staged | pager"
+   :commit	 "git --no-pager commit ~{~a ~}"
+   :update	 "git --no-pager pull ~{~a ~}"
+   :update-all	 "git --no-pager pull"
+   :push	 "git --no-pager push"
+   :ignore-file	 ".gitignore")
+  (:documentation "Backend for git."))
 
-(defmethod parse-line ((type (eql :git)) line i)
-  (with-slots (goo errors extra) *puca*
-    (let ((words (split-sequence " " line
-				 :omit-empty t
-				 :test #'(lambda (a b)
-					   (declare (ignore a))
-					   (or (equal b #\space)
-					       (equal b #\tab))))))
-      ;;(debug-msg "~s" words)
-      (cond
-	;; If the first word is more than 1 char long, save it as extra
-	((> (length (car words)) 2)
-	 (push line extra)
-	 (push (format nil "~d: ~a" i line) errors))
-	;; skip blank lines
-	((or (not words)
-	     (and (= (length words) 1)
-		  (= (length (car words)) 0))))
-	(t
-	 (push (make-goo :modified (subseq (elt words 0) 0 1)
-			 :filename (elt words 1)) goo)
-	 ;; If we've accumulated extra lines add them to this line.
-	 (when extra
-	   (setf (goo-extra-lines (car goo)) (nreverse extra))
-	   (setf extra nil)))))))
+(defmethod check-existence ((type (eql :git)))
+  (equal "true" (shell-line "git" "rev-parse" "--is-inside-work-tree")))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; SVN
 
-(defparameter *backend-svn*
-  (make-backend :name		"SVN"
-		:type		:svn
-		:check-func	#'is-svn
-		:list-command	'("svn" "status")
-		:add		"svn add ~{~a ~}"
-		:reset		"svn revert ~{~a ~}"
-		:diff		"svn diff ~{~a ~} | pager"
-		:diff-repo	"svn diff -r HEAD ~{~a ~} | pager"
-		:commit		"svn commit ~{~a ~}"
-		:update		"svn update ~{~a ~}"
-		:update-all	"svn update"
-		:push		"echo 'No push in SVN'"))
+(defclass svn (backend)
+  ()
+  (:default-initargs
+   :name		"SVN"
+   :list-command	'("svn" "status")
+   :add			"svn add ~{~a ~}"
+   :reset		"svn revert ~{~a ~}"
+   :diff		"svn diff ~{~a ~} | pager"
+   :diff-repo		"svn diff -r HEAD ~{~a ~} | pager"
+   :commit		"svn commit ~{~a ~}"
+   :update		"svn update ~{~a ~}"
+   :update-all		"svn update"
+   :push		"echo 'No push in SVN'")
+  (:documentation "Backend for SVN."))
 
-(defmethod parse-line ((type (eql :svn)) line i)
-  (parse-line :git line i)) ; just use git
+(defmethod check-existence ((type (eql :svn)))
+  (probe-directory ".svn"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Mercurial (hg)
 
-(defparameter *backend-hg*
-  (make-backend :name		"hg"
-		:type		:hg
-		:check-func	#'is-hg
-		:list-command	'("hg" "status")
-		:add		"hg add ~{~a ~}"
-		:reset		"hg revert ~{~a ~}"
-		:diff		"hg diff ~{~a ~} | pager"
-;		:diff-repo	"hg diff --cached HEAD ~{~a ~}"
-		:diff-repo	"hg diff ~{~a ~} | pager"
-		:commit		"hg commit ~{~a ~}"
-		:update		"hg pull ~{~a ~}?"
-		:update-all	"hg pull"
-		:push		"hg push"))
+(defclass hg (backend)
+  ()
+  (:default-initargs
+   :name		"hg"
+   :list-command	'("hg" "status")
+   :add			"hg add ~{~a ~}"
+   :reset		"hg revert ~{~a ~}"
+   :diff		"hg diff ~{~a ~} | pager"
+   :diff-repo		"hg diff ~{~a ~} | pager"
+   :commit		"hg commit ~{~a ~}"
+   :update		"hg pull ~{~a ~}?"
+   :update-all		"hg pull"
+   :push		"hg push")
+  (:documentation "Backend for Mercurial."))
 
-(defmethod parse-line ((type (eql :hg)) line i)
-  (parse-line :git line i)) ; just use git
+(defmethod check-existence ((type (eql :hg)))
+  (probe-directory ".hg"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defparameter *backends* `((:git ,*backend-git*)
-			   (:cvs ,*backend-cvs*)
-			   (:svn ,*backend-svn*)
-			   (:hg ,*backend-hg*))
+(defparameter *backends* '(:git :cvs :svn :hg)
   "The availible backends.")
 
 (defun message (format-string &rest format-args)
+  "Display a message in the message area."
   (move (- *lines* 2) 2)
   (clrtoeol)
   (addstr (apply #'format nil format-string format-args))
@@ -265,6 +305,7 @@
   (draw-goo i))
 
 (defun get-list ()
+  "Get the list of files/objects from the backend and parse them."
   (message "Listing...")
   (with-slots (goo top errors maxima cur extra) *puca*
     (setf goo    '()
@@ -279,7 +320,7 @@
       (with-process-output (stream cmd-name cmd-args)
 	(loop :while (setf line (read-line stream nil nil))
 	   :do
-	   (parse-line (backend-type *backend*) line i)
+	   (parse-line *backend* line i)
 	   (incf i)
 	   (message "Listing...~d" i)))
       (setf goo (nreverse goo)
@@ -349,17 +390,6 @@
   (with-slots (maxima goo) *puca*
     (loop :for i :from 0 :below maxima
        :do (setf (goo-selected (elt goo i)) nil))))
-
-#|
-(defun get-char ()
-  (let ((c (getch)))
-    (cond
-      ((= c -1) ; Error, probably from signal or resize, simulate a ^L
-       #\^L)
-      ((> c #xff) (function-key c))
-;      ((characterp c) (code-char c))
-      (t (code-char c)))))
-|#
 
 #|
 (defun fake-draw-screen ()
@@ -457,19 +487,21 @@ for the command-function).")
 		       '("There are no errors." "So this is" "BLANK"))))))
 
 (defun pick-backend (&optional type)
-  ;; try find what was asked for
+  ;; Try find what was asked for.
   (when type
-    (let ((be (find type *backends* :key #'car)))
-      (when be (return-from pick-backend (cadr be)))))
-  ;; try to figure it out
+    (let ((be (find type *backends*)))
+      (when be
+	(return-from pick-backend
+	  (make-instance (intern (symbol-name be)))))))
+  ;; Try to figure it out.
   (let ((result
-	 (loop :for (type b) :in *backends* :do
-	    (dbug "Trying backend ~s~%" type)
-	    (when (funcall (backend-check-func b))
-	      (dbug "Picked ~s~%" type)
-	      (return b)))))
+	 (loop :for backend :in *backends* :do
+	    (dbug "Trying backend ~s~%" backend)
+	    (when (check-existence backend)
+	      (dbug "Picked ~s~%" backend)
+	      (return (make-instance (intern (symbol-name backend) :puca)))))))
     (if (not result)
-	*backend-cvs*
+	(make-instance 'cvs)
 	result)))
 
 (defun quit ()
