@@ -1,4 +1,4 @@
-;;
+;
 ;; puca.lisp - Putative Muca (A very simple(istic) interface to CVS/git/svn)
 ;;
 ;; (a.k.a Muca-ing for fun)
@@ -66,8 +66,7 @@
   update
   update-all
   push
-  ignore-file
-  ignore-func)
+  ignore-file)
 |#
 
 (defvar *backend* nil
@@ -109,12 +108,12 @@
     :documentation "File which contains a list of files to ignore."))
   (:documentation "A generic version control back end."))
 
-(defgeneric parse-line (backend line i)
-  (:documentation "Take a line and add stuff to goo and/or *errors*."))
-
 (defgeneric check-existence (type)
   (:documentation
    "Return true if we guess we are in a directory under this type."))
+
+(defgeneric parse-line (backend line i)
+  (:documentation "Take a line and add stuff to goo and/or *errors*."))
 
 (defgeneric add-ignore (backend file)
   (:documentation "Add FILE to the list of ignored files."))
@@ -145,6 +144,22 @@
 	 (when extra
 	   (setf (goo-extra-lines (car goo)) (nreverse extra))
 	   (setf extra nil)))))))
+
+(defmethod add-ignore ((backend backend) file)
+  "Add FILE to the list of ignored files."
+  (when (not (backend-ignore-file backend))
+    (info-window
+     "Problem"
+     (list (format nil "I don't know how to ignore with ~a."
+		   (backend-name backend))))
+    (return-from add-ignore nil))
+  (with-open-file (stream (backend-ignore-file backend)
+			  :direction :output
+			  :if-exists :append
+			  :if-does-not-exist :create)
+    (write-line file stream))
+  (get-list)
+  (draw-screen))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; CVS
@@ -238,6 +253,11 @@
 
 (defmethod check-existence ((type (eql :svn)))
   (probe-directory ".svn"))
+
+;; @@@ I haven't tested this.
+(defmethod add-ignore ((backend svn) file)
+  "Add FILE to the list of ignored files."
+  (do-literal-command "svn propset svn:ignore \"~a\" ." (list file)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Mercurial (hg)
@@ -353,15 +373,18 @@
 	(mvaddstr (+ bottom 4) 2 "vvvvvvvvvvvvvvvvvvvvvvv"))
       (refresh))))
 
-(defun do-command (command format-args
-		   &key (relist t) (do-pause t) confirm)
+(defun do-literal-command (format-str format-args
+			   &key (relist t) (do-pause t) confirm)
+  "Do the command resulting from applying FORMAT-ARGS to FORMAT-STRING.
+If RELIST is true (the default), regenerate the file list. If DO-PAUSE is true,
+pause after the command's output. If CONFIRM is true, ask the user for
+confirmation first."
   (clear)
   (refresh)
   (endwin)
   (when (and confirm (not (yes-or-no-p "Are you sure? ")))
-    (return-from do-command (values)))
-  (let* ((format-command (apply command (list *backend*)))
-	 (command (apply #'format nil format-command (list format-args))))
+    (return-from do-literal-command (values)))
+  (let* ((command (apply #'format nil format-str format-args)))
     (lish:! command))
   (when do-pause
     (write-string "[Press Return]")
@@ -370,10 +393,20 @@
   (initscr)
   (when relist
     (get-list))
-  (draw-screen)
+  (draw-screen))
+
+(defun do-command (command format-args
+		   &rest keys &key (relist t) (do-pause t) confirm)
+  "Do a command resulting from the backend function COMMAND, applying
+FORMAT-ARGS. If RELIST is true (the default), regenerate the file list.
+If CONFIRM is true, ask the user for confirmation first."
+  (declare (ignorable relist do-pause confirm))
+  (apply #'do-literal-command (apply command (list *backend*))
+	 (list format-args) keys)
   (values))
 
 (defun selected-files ()
+  "Return the selected files or the current line, if there's no selections."
   (with-slots (maxima goo cur) *puca*
     (let* ((files
 	    (loop :for i :from 0 :below maxima
@@ -542,6 +575,11 @@ for the command-function).")
   "Push"
   (do-command #'backend-push nil :relist nil))
 
+(defun add-ignore-command ()
+  "Ignore"
+  (loop :for f :in (selected-files)
+     :do (add-ignore *backend* f)))
+
 (defun view-file ()
   "View file"
   (pager:pager (selected-files))
@@ -667,6 +705,7 @@ for the command-function).")
     (#\u        	. update-command)
     (#\U        	. update-all-command)
     (#\P        	. push-command)
+    (#\i        	. add-ignore-command)
     (#\v        	. view-file)
     (:UP        	. previous-line)
     (,(code-char 16)	. previous-line)
