@@ -1,4 +1,4 @@
-;
+;;
 ;; puca.lisp - Putative Muca (A very simple(istic) interface to CVS/git/svn)
 ;;
 ;; (a.k.a Muca-ing for fun)
@@ -18,7 +18,7 @@
 (defpackage :puca
   (:documentation "Putative Muca")
   (:use :cl :dlib :dlib-misc :opsys :keymap :char-util :curses :tiny-rl
-	:completion :fui)
+	:completion :inator :fui)
   (:export
    ;; Main entry point
    #:puca
@@ -34,40 +34,34 @@
   filename
   extra-lines)
 
-(defstruct puca
-  "An instance of a version control frontend app."
-  (goo nil)				; A list of goo entries.
-  (maxima 0)				; Number of items.
-  (cur 0)				; Current item.
-  (mark nil)				; One end of the region
-  (top 0)				; Top item
-  (bottom nil)				; Bottom item.
-  (window nil)				; Curses WINDOW
-  (screen nil)				; Curses SCREEN
-  (quit-flag nil)			; set to true to quit
-  (errors nil)				; Error output
-  (extra nil))				; extra lines
-
 (defvar *puca* nil
   "The current puca instance.")
 
-#|
-(defclass backend ()
-  "A specific version control system. Mostly how to do things with it."
-  name
-  type
-  check-func
-  list-command
-  add
-  reset
-  diff
-  diff-repo
-  commit
-  update
-  update-all
-  push
-  ignore-file)
-|#
+(defclass puca (fui-inator)
+  ((goo
+    :initarg :goo :accessor puca-goo :initform nil
+    :documentation "A list of goo entries.")
+   (maxima
+    :initarg :maxima :accessor puca-maxima :initform 0
+    :documentation "Number of items.")
+   (mark
+    :initarg :mark :accessor puca-mark :initform nil
+    :documentation "One end of the region")
+   (top
+    :initarg :top :accessor puca-top :initform 0
+    :documentation "Top item")
+   (bottom
+    :initarg :bottom :accessor puca-bottom :initform nil
+    :documentation "Bottom item.")
+   (errors
+    :initarg :errors :accessor puca-errors :initform nil
+    :documentation "Error output")
+   (extra
+    :initarg :extra :accessor puca-extra :initform nil
+    :documentation "extra lines"))
+  (:default-initargs
+   :point 0)
+  (:documentation "An instance of a version control frontend app."))
 
 (defvar *backend* nil
   "The current backend.")
@@ -285,7 +279,7 @@
 (defparameter *backends* '(:git :cvs :svn :hg)
   "The availible backends.")
 
-(defun message (format-string &rest format-args)
+(defmethod message ((p puca) format-string &rest format-args)
   "Display a message in the message area."
   (move (- *lines* 2) 2)
   (clrtoeol)
@@ -311,7 +305,7 @@
 			(goo-filename g)))
 	(attroff attr)
 	(when (goo-extra-lines g)
-;; Ugly inline display:
+;; Ugly inline error display:
 ;;      (if (= i cur)
 ;; 	  (loop :with j = 0
 ;; 	     :for line :in (goo-extra-lines g)
@@ -326,10 +320,10 @@
 
 (defun get-list ()
   "Get the list of files/objects from the backend and parse them."
-  (message "Listing...")
-  (with-slots (goo top errors maxima cur extra) *puca*
-    (setf goo    '()
-	  top    0
+  (message *puca* "Listing...")
+  (with-slots (goo top errors maxima (point inator::point) cur extra) *puca*
+    (setf goo '()
+	  top 0
 	  errors '())
     (let* ((i 0)
 	   (cmd (backend-list-command *backend*))
@@ -342,12 +336,12 @@
 	   :do
 	   (parse-line *backend* line i)
 	   (incf i)
-	   (message "Listing...~d" i)))
+	   (message *puca* "Listing...~d" i)))
       (setf goo (nreverse goo)
 	    errors (nreverse errors))
       (setf maxima (length goo))
-      (when (>= cur maxima)
-	(setf cur (1- maxima)))))
+      (when (>= (inator-point *puca*) maxima)
+	(setf (inator-point *puca*) (1- maxima)))))
   (addstr "done"))
 
 (defun draw-screen ()
@@ -360,7 +354,7 @@
     (let* ((title (format nil "~a Muca (~a)" 
 			  (backend-name *backend*) (machine-instance))))
       (move 1 (truncate (- (/ *cols* 2) (/ (length title) 2))))
-      (keypad window 1)
+      ;;(keypad window 1)
       (addstr title)
       ;; top scroll indicator
       (when (> top 0)
@@ -370,8 +364,7 @@
 	   :do (draw-goo i)))
       ;; bottom scroll indicator
       (when (< bottom (- maxima top))
-	(mvaddstr (+ bottom 4) 2 "vvvvvvvvvvvvvvvvvvvvvvv"))
-      (refresh))))
+	(mvaddstr (+ bottom 4) 2 "vvvvvvvvvvvvvvvvvvvvvvv")))))
 
 (defun do-literal-command (format-str format-args
 			   &key (relist t) (do-pause t) confirm)
@@ -407,12 +400,12 @@ If CONFIRM is true, ask the user for confirmation first."
 
 (defun selected-files ()
   "Return the selected files or the current line, if there's no selections."
-  (with-slots (maxima goo cur) *puca*
+  (with-slots (maxima goo (point inator::point)) *puca*
     (let* ((files
 	    (loop :for i :from 0 :below maxima
 	       :when (goo-selected (elt goo i))
 	       :collect (goo-filename (elt goo i)))))
-      (or files (and goo (list (goo-filename (elt goo cur))))))))
+      (or files (and goo (list (goo-filename (elt goo point))))))))
 
 (defun select-all ()
   (with-slots (maxima goo) *puca*
@@ -487,8 +480,9 @@ for the command-function).")
   (completion:list-completion-function (mapcar #'car *extended-commands*))
   "Completion function for extended commands.")
 
-(defun extended-command ()
+(defun extended-command (p)
   "Extended command"
+  (declare (ignore p))
   (move (- *lines* 2) 2)
   (refresh)
   (reset-shell-mode)
@@ -504,17 +498,17 @@ for the command-function).")
   (draw-screen)
   (values))
 
-(defun show-errors ()
+(defun show-errors (p)
   "Show all messages / errors"
-  (with-slots (errors) *puca*
+  (with-slots (errors) p
     (info-window "All Errors"
 		 (or errors
 		     '("There are no errors." "So this is" "BLANK")))))
 
-(defun show-extra ()
+(defun show-extra (p)
   "Show messages / errors"
-  (with-slots (goo cur) *puca*
-    (let ((ext (and goo (goo-extra-lines (elt goo cur)))))
+  (with-slots (goo) p
+    (let ((ext (and goo (goo-extra-lines (elt goo (inator-point *puca*))))))
       (info-window "Errors"
 		   (or ext
 		       '("There are no errors." "So this is" "BLANK"))))))
@@ -525,7 +519,7 @@ for the command-function).")
     (let ((be (find type *backends*)))
       (when be
 	(return-from pick-backend
-	  (make-instance (intern (symbol-name be)))))))
+	  (make-instance (intern (symbol-name be) :puca))))))
   ;; Try to figure it out.
   (let ((result
 	 (loop :for backend :in *backends* :do
@@ -537,155 +531,164 @@ for the command-function).")
 	(make-instance 'cvs)
 	result)))
 
-(defun quit ()
-  "Quit"
-  (setf (puca-quit-flag *puca*) t))
-
-(defun add-command ()
+(defun add-command (p)
   "Add file"
+  (declare (ignore p))
   (do-command #'backend-add (selected-files)))
 
-(defun reset-command ()
+(defun reset-command (p)
   "Revert file (undo an add)"
+  (declare (ignore p))
   (do-command #'backend-reset (selected-files) :confirm t))
 
-(defun diff-command ()
+(defun diff-command (p)
   "Diff"
+  (declare (ignore p))
   (do-command #'backend-diff (selected-files)
 	      :relist nil :do-pause nil))
 
-(defun diff-repo-command ()
+(defun diff-repo-command (p)
   "Diff against commited (-r HEAD)"
+  (declare (ignore p))
   (do-command #'backend-diff-repo (selected-files)
 	      :relist nil :do-pause nil))
 
-(defun commit-command ()
+(defun commit-command (p)
   "Commit selected"
+  (declare (ignore p))
   (do-command #'backend-commit (selected-files)))
 
-(defun update-command ()
+(defun update-command (p)
   "Update selected"
+  (declare (ignore p))
   (do-command #'backend-update (selected-files)))
 
-(defun update-all-command ()
+(defun update-all-command (p)
   "Update all"
+  (declare (ignore p))
   (do-command #'backend-update-all nil))
 
-(defun push-command ()
+(defun push-command (p)
   "Push"
+  (declare (ignore p))
   (do-command #'backend-push nil :relist nil))
 
-(defun add-ignore-command ()
+(defun add-ignore-command (p)
   "Ignore"
+  (declare (ignore p))
   (loop :for f :in (selected-files)
      :do (add-ignore *backend* f)))
 
-(defun view-file ()
+(defun view-file (p)
   "View file"
+  (declare (ignore p))
   (pager:pager (selected-files))
   (draw-screen))
 
-(defun previous-line ()
+(defmethod previous ((p puca))
   "Previous line"
-  (with-slots (cur top) *puca*
-    (decf cur)
-    (when (< cur 0)
-      (setf cur 0))
-    (when (< cur top)
-      (decf top)
+  (with-slots ((point inator::point) top) p
+    (decf point)
+    (when (< point 0)
+      (setf point 0))
+    (when (< point top)
+      (decf point)
       (draw-screen))))
 
-(defun next-line ()
+(defmethod next ((p puca))
   "Next line"
-  (with-slots (cur maxima top bottom) *puca*
-    (incf cur)
-    (when (>= cur maxima)
-      (setf cur (1- maxima)))
-    (when (and (> cur (- bottom 1)) (> bottom 1))
+  (with-slots ((point inator::point) maxima top bottom) p
+    (incf point)
+    (when (>= point maxima)
+      (setf point (1- maxima)))
+    (when (and (> point (- bottom 1)) (> bottom 1))
       (incf top)
       (draw-screen))))
 
-(defun next-page ()
+(defmethod next-page ((p puca))
   "Next page"
-  (with-slots (cur maxima top bottom) *puca*
-    (setf cur (+ cur 1 (- curses:*lines* 7)))
-    (when (>= cur maxima)
-      (setf cur (1- maxima)))
-    (when (> cur bottom)
-      (setf top (max 0 (- cur (- curses:*lines* 7))))
+  (with-slots ((point inator::point) maxima top bottom) p
+    (setf point (+ point 1 (- curses:*lines* 7)))
+    (when (>= point maxima)
+      (setf point (1- maxima)))
+    (when (> point bottom)
+      (setf top (max 0 (- point (- curses:*lines* 7))))
       (draw-screen))))
 
-(defun previous-page ()
+(defmethod previous-page ((p puca))
   "Previous page"
-  (with-slots (cur top) *puca*
-    (setf cur (- cur 1 (- curses:*lines* 7)))
-    (when (< cur 0)
-      (setf cur 0))
-    (when (< cur top)
-      (setf top cur)
+  (with-slots ((point inator::point) top) p
+    (setf point (- point 1 (- curses:*lines* 7)))
+    (when (< point 0)
+      (setf point 0))
+    (when (< point top)
+      (setf top point)
       (draw-screen))))
 
-(defun go-to-end ()
+(defmethod move-to-bottom ((p puca))
   "Bottom"
-  (with-slots (cur maxima top bottom) *puca*
-    (setf cur (1- maxima))
+  (with-slots ((point inator::point) maxima top bottom) *puca*
+    (setf point (1- maxima))
     (when (> maxima bottom)
       (setf top (max 0 (- maxima (- curses:*lines* 7))))
       (draw-screen))))
 
-(defun go-to-beginning ()
+(defmethod move-to-top ((p puca))
   "Top"
-  (with-slots (cur top) *puca*
-    (setf cur 0)
+  (with-slots ((point inator::point) top) p
+    (setf point 0)
     (when (> top 0)
       (setf top 0)
       (draw-screen))))
 
-(defun set-mark ()
+(defun set-mark (p)
   "Set Mark"
-  (with-slots (cur mark) *puca*
-    (setf mark cur)
-    (message "Set mark.")))
+  (with-slots ((point inator::point) mark) p
+    (setf mark point)
+    (message p "Set mark.")))
 
-(defun toggle-region ()
+(defun toggle-region (p)
   "Toggle region"
-  (with-slots (cur mark) *puca*
+  (with-slots ((point inator::point) mark) p
     (if mark
-      (let ((start (min mark cur))
-	    (end (max mark cur)))
+      (let ((start (min mark point))
+	    (end (max mark point)))
 	(loop :for i :from start :to end :do
-	   (setf (goo-selected (elt (puca-goo *puca*) i))
-		 (not (goo-selected (elt (puca-goo *puca*) i))))
+	   (setf (goo-selected (elt (puca-goo p) i))
+		 (not (goo-selected (elt (puca-goo p) i))))
 	   (draw-line i)))
-      (message "No mark set."))))
+      (message p "No mark set."))))
 
-(defun toggle-line ()
+(defun toggle-line (p)
   "Toggle line"
-  (with-slots (cur goo) *puca*
+  (with-slots ((point inator::point) goo) p
     (when goo
-      (setf (goo-selected (elt (puca-goo *puca*) cur))
-	    (not (goo-selected (elt (puca-goo *puca*) cur))))
-      (draw-line cur))))
+      (setf (goo-selected (elt goo point))
+	    (not (goo-selected (elt goo point))))
+      (draw-line point))))
 
-(defun select-all-command ()
+(defun select-all-command (p)
   "Select all"
+  (declare (ignore p))
   (select-all)
   (draw-screen))
 
-(defun select-none-command ()
+(defun select-none-command (p)
   "Select none"
+  (declare (ignore p))
   (select-none)
   (draw-screen))
 
-(defun relist ()
+(defun relist (p)
   "Re-list"
+  (declare (ignore p))
   (clear)
   (refresh)
   (get-list)
   (draw-screen)
   (refresh))
 
-(defun redraw ()
+(defmethod redraw ((p puca))
   "Re-draw"
   (clear)
   (refresh)
@@ -707,21 +710,21 @@ for the command-function).")
     (#\P        	. push-command)
     (#\i        	. add-ignore-command)
     (#\v        	. view-file)
-    (:UP        	. previous-line)
-    (,(code-char 16)	. previous-line)
-    (,(ctrl #\p)       	. previous-line)
-    (:DOWN      	. next-line)
-    (,(code-char 14)    . next-line)
-    (,(ctrl #\n)	. next-line)
+    (:UP        	. previous)
+    (,(code-char 16)	. previous)
+    (,(ctrl #\p)       	. previous)
+    (:DOWN      	. next)
+    (,(code-char 14)    . next)
+    (,(ctrl #\n)	. next)
     (:NPAGE		. next-page)
     (,(ctrl #\V)	. next-page)
     (,(ctrl #\F)	. next-page)
     (:PPAGE		. previous-page)
     (,(ctrl #\B)	. previous-page)
-    (#\>		. go-to-end)
-    (#\<		. go-to-beginning)
-    (,(meta-char #\>)	. go-to-end)
-    (,(meta-char #\<)	. go-to-beginning)
+    (#\>		. move-to-bottom)
+    (#\<		. move-to-top)
+    (,(meta-char #\>)	. move-to-bottom)
+    (,(meta-char #\<)	. move-to-top)
     (,(ctrl #\@)	. set-mark)
     (,(code-char 0)	. set-mark)
     (#\X		. toggle-region)
@@ -734,118 +737,40 @@ for the command-function).")
     (#\e		. show-extra)
     (#\E		. show-errors)
     (#\:		. extended-command)
-    (,(ctrl #\L)	. redraw)
+    ;;(,(ctrl #\L)	. redraw)
     (,(code-char 12)	. redraw)
     (,(meta-char #\=)	. describe-key-briefly)
     (#\escape		. *puca-escape-keymap*)))
 
 (defparameter *puca-escape-keymap* (build-escape-map *puca-keymap*))
 
-(defun describe-key-briefly ()
+(defun describe-key-briefly (p)
   "Prompt for a key and say what function it invokes."
-  (message "Press a key: ")
+  (message p "Press a key: ")
   (let* ((key (fui:get-char))
 	 (action (key-definition key *puca-keymap*)))
     (if action
-	(message "~a is bound to ~a" (nice-char key) action)
-	(message "~a is not defined" (nice-char key)))))
+	(message p "~a is bound to ~a" (nice-char key) action)
+	(message p "~a is not defined" (nice-char key)))))
 
-(defparameter *handmade-help*
-  '("q - Quit"
-    "a - Add file"
-    "r - Revert file (undo an add)"
-    "d - Diff"
-    "D - Diff -r HEAD"
-    "c - Commit selected"
-    "u - Update selected"
-    "U - Update all"
-    "P - Push"
-    "^N,^P,up,down - Move around"
-    "< - Top"
-    "> - Bottom"
-    "Space,x,Return - Select"
-    "s - Select all"
-    "S - Select none"
-    "^@, ^space - Set Mark"
-    "X - Select region"
-    "g - Re-list"
-    "e - Show messages / errors"
-    ": - Extended command"
-    "^L - Re-draw"
-    "?,h - Help"))
+(defmethod update-display ((p puca))
+  (with-slots ((point inator::point) top) p
+    (draw-screen)
+    (move (+ (- point top) 3) 2)))
 
-(defun help ()
-  "Help"
-  (info-window "Help for Puca" (help-list *puca-keymap*)))
+(defmethod start-inator ((p puca))
+  (call-next-method)
+  (draw-screen)
+  (get-list)
+  (draw-screen)
+  (when (puca-errors p)
+    (message p "**MESSAGES**")))
 
-;; (defun help-list ()
-;;   "Return a list of key binding help lines, suitable for the HELP function."
-;;   ;; Make a reverse hash of functions to keys, so we can put all the bindings
-;;   ;; for a function on one line.
-;;   (let ((rev-hash (make-hash-table)))
-;;     (flet ((add-key (k v) (push k (gethash v rev-hash))))
-;;       (map-keymap #'add-key *puca-keymap*))
-;;     (loop :for func :being :the :hash-keys :of rev-hash
-;;        :collect
-;;        (with-output-to-string (str)
-;; 	 (format str "~{~a~^, ~} - ~a"
-;; 		 (loop :for k :in (gethash func rev-hash)
-;; 		    :collect (nice-char k :caret t))
-;; 		 ;; Look up the documentation for the function.
-;; 		 (cond
-;; 		   ((or (functionp func)
-;; 			(and (symbolp func) (fboundp func)))
-;; 		    (let ((doc (documentation func 'function)))
-;; 		      (or doc (string-downcase func))))
-;; 		   ((keymap-p (string-downcase func)))
-;; 		   (t func)))))))
-
-(defun perform-key (key &optional (keymap *puca-keymap*))
-  ;; Convert positive integer keys to characters
-  (when (and (integerp key) (>= key 0))
-    (setf key (code-char key)))
-  (let ((binding (key-binding key keymap)))
-    (cond
-      ((not binding)
-       (message "No binding for ~a" key))
-      ((symbolp binding)
-       (cond
-	 ((fboundp binding)
-	  (funcall binding))
-	 ((keymap-p (symbol-value binding))
-	  (message (princ-to-string (nice-char key)))
-	  (perform-key (fui:get-char) (symbol-value binding)))
-	 (t
-	  (error "Unbound symbol ~s in keymap" binding))))
-      ((consp binding)
-       (apply (car binding) (cdr binding)))
-      (t
-       (error "Weird thing ~s in keymap" binding)))))
-
-(defun puca (&key #|device term-type |# backend-type)
-  (with-curses
-    ;; (init-curses pu device term-type)
-    (let* ((*puca* (make-puca))
-	   (*backend* (pick-backend backend-type)) c)
-      (with-slots
-	    (goo maxima cur mark top bottom window screen quit-flag
-	     errors) *puca*
-	(setf window *stdscr*)
-	(setf goo nil)
-	(draw-screen)
-	(get-list)
-	(draw-screen)
-	(when errors (message "**MESSAGES**"))
-	(setf cur 0)
-	(do () (quit-flag)
-	  (move (+ (- cur top) 3) 2)
-	  (setf c (fui:get-char))
-	  (perform-key c)
-;	  (move (- *lines* 2) 2)
-;	  (mvprintw (- *lines* 2) 2 "%-*.*s" :int 40 :int 40 :string "")
-;	  (mvaddstr (- *lines* 2) 2 (format nil "~a (~a)" c (type-of c))))
-	  (refresh)))
-      (endwin))))
+(defun puca (&key backend-type)
+  (let ((*puca* (make-instance
+		 'puca :keymap (list *puca-keymap* *default-inator-keymap*)))
+	(*backend* (pick-backend backend-type)))
+    (event-loop *puca*)))
 
 (defun make-standalone (&optional (name "puca"))
   "FUFKFUFUFUFUFF"
