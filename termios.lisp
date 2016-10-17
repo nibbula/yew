@@ -963,7 +963,7 @@ characters. If we don't get anything after a while, just return what we got."
   "Set the terminal mode. Arguments are:
   ECHO makes input automatically output back, so you can see what you typed.
   LINE makes input wait for a newline until returning.
-  RAW ingores normal processing, like interrupt keys.
+  RAW ignores normal processing, like interrupt keys.
   TIMEOUT is the time in milliseconds to wait before returning with no input.
   MODE is a TERMINAL-MODE structure to take settings from.
 The individual settings override the settings in MODE."
@@ -994,6 +994,9 @@ The individual settings override the settings in MODE."
 		       (setf c_lflag
 			     (logand c_lflag
 				     (lognot (logior +ICANON+ +IEXTEN+))))
+		       ;; Do we really need these?
+		       (setf c_oflag
+			     (logior c_oflag +ONLCR+ +OPOST+))
 		       ;; These are the default values, but we set them since
 		       ;; otherwise a read might not immediately return a
 		       ;; char.
