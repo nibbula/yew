@@ -58,7 +58,10 @@
     :documentation "Error output")
    (extra
     :initarg :extra :accessor puca-extra :initform nil
-    :documentation "extra lines"))
+    :documentation "extra lines")
+   (message
+    :initarg :has-message :accessor puca-message :initform nil
+    :documentation "A message to show."))
   (:default-initargs
    :point 0)
   (:documentation "An instance of a version control frontend app."))
@@ -279,11 +282,15 @@
 (defparameter *backends* '(:git :cvs :svn :hg)
   "The availible backends.")
 
-(defmethod message ((p puca) format-string &rest format-args)
-  "Display a message in the message area."
+(defun draw-message (p)
   (move (- *lines* 2) 2)
   (clrtoeol)
-  (addstr (apply #'format nil format-string format-args))
+  (addstr (puca-message p)))
+
+(defmethod message ((p puca) format-string &rest format-args)
+  "Display a message in the message area."
+  (setf (puca-message p) (apply #'format nil format-string format-args))
+  (draw-message p)
   (refresh))
 
 (defun draw-goo (i)
@@ -345,16 +352,13 @@
   (addstr "done"))
 
 (defun draw-screen ()
-  (with-slots (maxima top bottom goo window) *puca*
-;  (box *stdscr* (acs-vline) (acs-hline))
-;  (box window 0 0)
+  (with-slots (maxima top bottom goo message) *puca*
     (clear)
     (border 0 0 0 0 0 0 0 0)
     (setf bottom (min (- maxima top) (- curses:*lines* 7)))
     (let* ((title (format nil "~a Muca (~a)" 
 			  (backend-name *backend*) (machine-instance))))
       (move 1 (truncate (- (/ *cols* 2) (/ (length title) 2))))
-      ;;(keypad window 1)
       (addstr title)
       ;; top scroll indicator
       (when (> top 0)
@@ -364,7 +368,10 @@
 	   :do (draw-goo i)))
       ;; bottom scroll indicator
       (when (< bottom (- maxima top))
-	(mvaddstr (+ bottom 4) 2 "vvvvvvvvvvvvvvvvvvvvvvv")))))
+	(mvaddstr (+ bottom 4) 2 "vvvvvvvvvvvvvvvvvvvvvvv")))
+    (when message
+      (draw-message *puca*)
+      (setf message nil))))
 
 (defun do-literal-command (format-str format-args
 			   &key (relist t) (do-pause t) confirm)
