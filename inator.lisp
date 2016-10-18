@@ -171,6 +171,10 @@ a TERM-INATOR.
 
 ;; Default methods
 
+(defmethod default-action ((inator inator))
+  "Default method which does nothing."
+  (declare (ignore inator)))
+
 (defmethod initialize-instance
     :after ((o inator) &rest initargs &key &allow-other-keys)
   "Initialize a inator."
