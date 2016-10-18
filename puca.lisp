@@ -291,7 +291,8 @@
   "Display a message in the message area."
   (setf (puca-message p) (apply #'format nil format-string format-args))
   (draw-message p)
-  (refresh))
+  ;; (refresh)
+  )
 
 (defun draw-goo (i)
   "Draw the goo object, with the appropriate color."
@@ -343,17 +344,18 @@
 	   :do
 	   (parse-line *backend* line i)
 	   (incf i)
-	   (message *puca* "Listing...~d" i)))
+	   (message *puca* "Listing...~d" i)
+	   (refresh)))
       (setf goo (nreverse goo)
 	    errors (nreverse errors))
       (setf maxima (length goo))
       (when (>= (inator-point *puca*) maxima)
 	(setf (inator-point *puca*) (1- maxima)))))
-  (addstr "done"))
+  (message *puca* "Listing...done"))
 
 (defun draw-screen ()
   (with-slots (maxima top bottom goo message) *puca*
-    (clear)
+    (erase)
     (border 0 0 0 0 0 0 0 0)
     (setf bottom (min (- maxima top) (- curses:*lines* 7)))
     (let* ((title (format nil "~a Muca (~a)" 
@@ -393,6 +395,7 @@ confirmation first."
   (initscr)
   (when relist
     (get-list))
+  (clear)
   (draw-screen))
 
 (defun do-command (command format-args
@@ -444,7 +447,7 @@ If CONFIRM is true, ask the user for confirmation first."
 (defun info-window (title text-lines)
   (fui:display-text title text-lines)
   (clear)
-  (refresh)
+  ;;(refresh)
   (draw-screen)
   (refresh))
 
@@ -458,7 +461,6 @@ If CONFIRM is true, ask the user for confirmation first."
 			 (wgetnstr w str 40)
 			 (curses:noecho))))
     (clear)
-    (refresh)
     (draw-screen)
     (refresh)))
 
@@ -690,17 +692,19 @@ for the command-function).")
   "Re-list"
   (declare (ignore p))
   (clear)
-  (refresh)
+  ;;(refresh)
   (get-list)
   (draw-screen)
-  (refresh))
+  ;(refresh)
+  )
 
 (defmethod redraw ((p puca))
   "Re-draw"
   (clear)
   (refresh)
   (draw-screen)
-  (refresh))
+  ;(refresh)
+  )
 
 (defkeymap *puca-keymap*
   `((#\q		. quit)
@@ -760,6 +764,9 @@ for the command-function).")
 	(message p "~a is bound to ~a" (nice-char key) action)
 	(message p "~a is not defined" (nice-char key)))))
 
+;; (defmethod default-action ((p puca))
+;;   (message p "Event not bound ~s" (inator-command p)))
+
 (defmethod update-display ((p puca))
   (with-slots ((point inator::point) top) p
     (draw-screen)
@@ -767,6 +774,7 @@ for the command-function).")
 
 (defmethod start-inator ((p puca))
   (call-next-method)
+  (clear)
   (draw-screen)
   (get-list)
   (draw-screen)
