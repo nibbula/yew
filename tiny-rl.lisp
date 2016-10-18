@@ -3,8 +3,6 @@
 ;;
 
 ;; TODO:
-;;   - multi line - display bugs (undo, delete word, etc)
-;;     - fix update-for-delete
 ;;   - character display bugs
 ;;    - tab
 ;;    - newline
@@ -668,17 +666,32 @@ anything serious."
 (defclass insertion (undo-item) ())
 (defclass boundary (undo-item) ())
 
+(defun undo-item-length (item)
+  "Return the length of an undo item in buffer characters."
+  (with-slots (data) item
+    (etypecase data
+      (character 1)
+      (string (length data)))))
+
 (defgeneric undo-one-item (e item)
   (:documentation "Undo an undo item.")
   (:method (e (item boundary)) (declare (ignore e)) #| do nothing |# )
   (:method (e (item deletion))
-    (buffer-insert e (undo-item-position item) (undo-item-data item))
-    (setf (point e) (undo-item-point item)))
+    (with-slots (point) e
+      (move-over e (- (undo-item-position item) point))
+      (buffer-insert e (undo-item-position item) (undo-item-data item))
+      (setf point (undo-item-position item))
+      (update-for-insert e)))
   (:method (e (item insertion))
-     (buffer-delete
-      e (undo-item-position item) (+ (undo-item-position item)
-				     (length (undo-item-data item))))
-     (setf (point e) (undo-item-position item))))
+    (with-slots (point buf) e
+      (let* ((item-len (undo-item-length item))
+	     (disp-len (display-length (undo-item-data item))))
+	(move-over e (- (undo-item-position item) point))
+	(tt-del-char e disp-len)
+	(buffer-delete
+	 e (undo-item-position item) (+ (undo-item-position item) item-len))
+	(setf (point e) (undo-item-position item))
+	(update-for-delete e disp-len item-len)))))
 
 (defun record-undo (e type &optional position data point)
   (let ((hist (car (undo-history e))))
@@ -750,7 +763,8 @@ anything serious."
   ;;(format t "~s~%" (undo-history e))
   ;;(undo e) ;; @@@ Please make undo boundries work @@@
   (undo-one e)
-  (redraw e)) ;; @@@ This is overkill! (and screws up multiline prompts)
+  ;; (redraw e) ;; @@@ This is overkill! (and screws up multiline prompts)
+  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -1113,7 +1127,8 @@ the current cursor position."
 	  (right-len (display-length (subseq buf point)))
 	  to-delete)
       ;; If the rest of the buffer extends past the edge of the window.
-      (when (>= (+ col right-len) width)
+      ;;(when (>= (+ col right-len) width)
+      (when (>= (+ col (+ right-len delete-length)) width)
 	;; Cheaty way out: redraw whole thing after point
 	(without-messing-up-cursor (e)
 	  (display-buf e point)
@@ -1205,8 +1220,10 @@ buffer."
     (let (endings
 	  (col start-col)		; Start after the prompt
 	  (cols (terminal-window-columns (line-editor-terminal e)))
-	  char-width last-col)
-      (loop :for i :from 0 :below (length buffer) :do
+	  (char-width 0)
+	  (last-col start-col)
+	  (i 0))
+      (loop :while (< i (length buffer)) :do
 	 (setf char-width (display-length (aref buffer i)))
 	 (if (> (+ col char-width) cols)
 	     (progn
@@ -1215,7 +1232,11 @@ buffer."
 	       (setf col char-width))
 	     (progn
 	       (setf last-col col)
-	       (incf col char-width))))
+	       (incf col char-width)))
+	 (incf i))
+      ;; Make sure we get the last one
+      (when (> (+ col char-width) cols)
+	(push (cons (1- i) last-col) endings))
       endings)))
 
 (defun move-over (e n &key (start (point e)) (buffer (buf e)))
