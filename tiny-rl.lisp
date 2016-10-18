@@ -11,6 +11,7 @@
 ;;    - wide characters
 ;;   - history saving
 ;;   - search by :UP (or C-P)
+;;   - right prompt?
 ;;   - fix undo boundaries
 ;;   - change the the name
 
@@ -521,46 +522,6 @@ but perhaps reuse some resources."))
       (funcall (line-editor-in-callback e) c))
     c))
 
-#|
-(defun get-a-char (e)
-  "Read a character from the editor's tty."
-  (declare (type line-editor e))
-  (tt-finish-output e)
-  (with-slots (typeahead typeahead-pos) e
-    (when typeahead
-      (return-from get-a-char
-	(prog1
-	    (aref typeahead typeahead-pos)
-	  (incf typeahead-pos)
-;	  (format t "ta->~a~%" (incf typeahead-pos))
-	  (when (>= typeahead-pos (length typeahead))
-	    (setf typeahead nil))))))
-  (with-foreign-object (c :unsigned-char)
-    (let (status (tty (line-editor-terminal e)))
-      (loop
-	 :do (setf status (posix-read (terminal-file-descriptor tty) c 1))
-	 :if (and (< status 0) (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
-	 :do
-	   ;; Probably returning from ^Z or terminal resize, or something,
-	   ;; so redraw and keep trying. Enjoy your trip to plusering town.
-	   (terminal-start tty) (redraw e) (tt-finish-output e)
-	 :else
-	   :return
-	 :end)
-      (cond
-	((< status 0)
-	 (error "Read error ~d ~d ~a~%" status nos:*errno*
-		(nos:strerror nos:*errno*)))
-	((= status 0) ; Another possible plusering extravaganza
-	 nil)
-	((= status 1)
-	 (when (line-editor-in-callback e)
-	   (let ((cc (code-char (mem-ref c :unsigned-char))))
-	     (funcall (line-editor-in-callback e) cc)
-	     cc))
-	 (code-char (mem-ref c :unsigned-char)))))))
-|#
-
 (defun get-lone-key ()
   "Get a key, but easily usable from outside the editor. Don't use this for
 anything serious."
@@ -569,26 +530,6 @@ anything serious."
     (progn
       (get-a-char *line-editor*))
     (terminal-end (line-editor-terminal *line-editor*))))
-
-; (defun read-until (tty c &key timeout)
-;   "Read characters from the tty until the character C is read, or TIMEOUT
-; seconds have elapsed. Return the result as a string. If the timeout is hit
-; before C is read, return nil. If timeout is not specified, just hang until C
-; is read."
-;   (finish-output (terminal-output-stream tty))
-;   (let ((fd (terminal-file-descriptor tty)))
-;     @@@ set the timeout with tcsetattr
-;     (with-foreign-object (c :unsigned-char)
-;       (loop @@@@@ until something
-; 	  (let ((status (posix-read fd c 1)))
-; 	    (cond
-; 	      ((< status 0)
-; 	       (error "Read error ~d~%" status))
-; 	      ((= status 0)
-; 	       (return nil))
-; 	      ((= status 1)
-; 	       (string
-; 		(code-char (mem-ref c :unsigned-char)))))))
 
 ;; This can unfortunately really vary between emulations, so we try
 ;; to code for multiple interpretations.
@@ -1047,6 +988,7 @@ anything serious."
     (map nil #'(lambda (c) (incf sum (display-length c))) s)
     sum))
 
+;; @@@ XXX wrong, because it doesn't account for double-width last col issues
 (defun editor-update-pos-for-string (e s)
   "Update the screen row and column for inserting the string S.
 Assumes S is already converted to display characters."
@@ -1102,7 +1044,7 @@ Assumes S is already converted to display characters."
 
 (defun editor-write-string (e s)
   "Write a display string to the screen. Update screen coordinates."
-  (finish-all-output e) ;; @@@@ XXX for testing
+  ;; (finish-all-output e) ;; @@@@ XXX for testing
   (tt-write-string (line-editor-terminal e) s)
   ;; (finish-all-output e) ;; @@@@ XXX for testing
   (editor-update-pos-for-string e s))
@@ -1129,15 +1071,16 @@ Assumes S is already converted to display characters."
 (defun display-buf (e &optional (start 0) end)
   "Display the buffer."
   (with-slots (buf) e
-    ;; Just in case write-char does system calls, we output to a string stream.
-    (tt-write-string
-     e (with-output-to-string (s)
-	 (loop :with sub = (if end
-			       (subseq buf start end)
-			       (subseq buf start))
-	    :for c :across sub
-	    :do
-	    (display-char e c))))))
+    ;; XXX Wrong!
+    ;; ;; Just in case write-char does system calls, we output to a string stream.
+    ;; (tt-write-string
+    ;;  e (with-output-to-string (s)
+    ;; (if end
+    ;; 	(subseq buf start end)
+    ;; 	(subseq buf start))
+    (loop :with sub = (subseq buf start end)
+       :for c :across sub :do
+       (display-char e c))))
 
 (defmacro without-messing-up-cursor ((e) &body body)
   (let ((old-row (gensym "OLD-ROW"))
@@ -1190,29 +1133,25 @@ the current cursor position."
 	       (log-message e "Bloot ~a" to-delete)
 	       (decf to-delete width))))))))
 
-#|
-(defun update-for-insert (thing)
-  ;; At the end of the buffer
-  (if (= (length buf) point)
-      (progn
-	(display-char e char)
-      (progn
-	(tt-ins-char e (display-length char))
-	(display-char e char)
-
-	;; Dumb way out: just rewrite the whole thing
-	;; relying on terminal wrap around.
-	(let ((old-row (screen-row e))
-	      (old-col (screen-col e)))
-	  (display-buf e point)
-	  (if (< old-row (screen-row e))
-	      (tt-up e (- (screen-row e) old-row))
-	      (tt-down e (- old-row (screen-row e))))
-	  (tt-beginning-of-line e)
-	  (tt-forward e old-col)
-	  (setf (screen-row e) old-row
-		(screen-col e) old-col))))))))
-|#
+(defun update-for-insert (e)
+  "Assuming we just inserted something, redisplay the rest of the buffer."
+  (with-slots (buf point) e
+    (when (not (= point (length buf)))	; At the end of the buffer.
+      ;; Do this an horribly inefficient and cheating way:
+      ;; just rewrite the whole thing relying on terminal wrap around.
+      ;;
+      ;; @@@ We should really fix this someday to do it the right way, and
+      ;; just fiddle the beginnings and ends of the lines. Or even better.
+      (let ((old-row (screen-row e))
+	    (old-col (screen-col e)))
+	(display-buf e point)
+	(if (< old-row (screen-row e))
+	    (tt-up e (- (screen-row e) old-row))
+	    (tt-down e (- old-row (screen-row e))))
+	(tt-beginning-of-line e)
+	(tt-forward e old-col)
+	(setf (screen-row e) old-row
+	      (screen-col e) old-col)))))
 
 (defun erase-display (e)
   "Erase the display of the buffer, but not the buffer itself."
@@ -1264,7 +1203,7 @@ of character position, which should be the end of the displayed lines in the
 buffer."
   (with-slots (start-col) e
     (let (endings
-	  (col start-col)
+	  (col start-col)		; Start after the prompt
 	  (cols (terminal-window-columns (line-editor-terminal e)))
 	  char-width last-col)
       (loop :for i :from 0 :below (length buffer) :do
@@ -1353,40 +1292,10 @@ the SCREEN-COL and SCREEN-ROW."
 	    (setf screen-col col
 		  screen-row row))))))
 
-;; (defun move-backward (e n)
-;;   "Move backward N columns on the screen. Properly wraps to previous lines.
-;; Updates the screen coordinates."
-;;   (let ((orig-col (screen-col e)))
-;;     (decf (screen-col e) n)
-;;     (if (< (screen-col e) 0)
-;; 	(let* ((cols (terminal-window-columns (line-editor-terminal e)))
-;; 	       (rows-up (abs (- 1 (truncate (- orig-col (- n 1)) cols)))))
-;; 	  (decf (screen-row e) rows-up)
-;; 	  (setf (screen-col e) (mod (screen-col e) cols))
-;; 	  (tt-up e rows-up)
-;; 	  (tt-beginning-of-line e)
-;; 	  (tt-forward e (screen-col e)))
-;; 	(tt-backward e n))))
-
 (defun move-backward (e n)
   "Move backward N columns on the screen. Properly wraps to previous lines.
 Updates the screen coordinates."
   (move-over e (- n)))
-
-;; (defun move-forward (e n)
-;;   "Move forward N columns on the screen. Properly wraps to subsequent lines.
-;; Updates the screen coordinates."
-;;   (let ((orig-col (screen-col e)))
-;;     (incf (screen-col e) n)
-;;     (if (> (screen-col e) (terminal-window-columns (line-editor-terminal e)))
-;; 	(let* ((cols (terminal-window-columns (line-editor-terminal e)))
-;; 	       (rows-down (truncate (+ orig-col n) cols)))
-;; 	  (incf (screen-row e) rows-down)
-;; 	  (setf (screen-col e) (mod (screen-col e) cols))
-;; 	  (tt-beginning-of-line e)
-;; 	  (tt-forward e (screen-col e))
-;; 	  (tt-down e rows-down))
-;; 	(tt-forward e n))))
 
 (defun move-forward (e n)
   "Move forward N columns on the screen. Properly wraps to subsequent lines.
@@ -1611,19 +1520,6 @@ buffer if there is no word."
 
 (defun backward-char (e)
   "Move the insertion point backward one character in the buffer."
-  #|
-  (with-slots (point buf screen-col screen-row) e
-    (when (> point 0)
-      (decf point)
-      ;;(if (and (< point (1- (length buf)))
-      (dotimes (i (display-length (aref buf point)))
-	(tt-write-char e #\backspace)
-	(decf screen-col)
-	(when (< screen-col 0)
-	  (setf screen-col (1- (terminal-window-columns
-				(line-editor-terminal e))))
-	  (if (> screen-row 0) (decf screen-row)))))))
-  |#
   (with-slots (point) e
     (when (> point 0)
       (move-over e -1)
@@ -1631,20 +1527,6 @@ buffer if there is no word."
 
 (defun forward-char (e)
   "Move the insertion point forward one character in the buffer."
-  #|
-  (with-slots (point buf screen-col screen-row) e
-    (when (< point (fill-pointer buf))
-      (dotimes (i (display-length (aref buf point)))
-	(tt-forward e 1)
-	(incf screen-col)
-	(when (>= screen-col
-		  (terminal-window-columns (line-editor-terminal e)))
-	  (incf screen-row)
-	  (setf screen-col 0)
-	  (tt-down e 1)
-	  (tt-beginning-of-line e)))
-      (incf point))))
-  |#
   (with-slots (point buf) e
     (when (< point (fill-pointer buf))
       (move-over e 1)
@@ -1653,14 +1535,12 @@ buffer if there is no word."
 (defun beginning-of-line (e)
  "Move the insertion point to the beginning of the line (actually the buffer)."
   (with-slots (point buf) e
-    ;;(move-backward e (display-length (subseq buf 0 point)))
     (move-over e (- point))
     (setf point 0)))
 
 (defun end-of-line (e)
   "Move the insertion point to the end of the line (actually the buffer)."
   (with-slots (point buf) e
-    ;;(move-forward e (display-length (subseq buf point)))
     (move-over e (- (length buf) point))
     (setf point (fill-pointer buf))))
 
@@ -1712,6 +1592,7 @@ if it's blank or the same as the previous line."
 	(history-put context buf)
 	(history-delete-last context))
     (when accept-does-newline
+      (move-over e (- (length (buf e)) (point e)))
       (tt-write-char e #\newline)
       (tt-write-char e #\return)
       (when (did-under-complete e)
@@ -1934,10 +1815,6 @@ Control-R searches again backward and Control-S searches again forward."
 		    (line-editor-terminal e)))
     (display-buf e)
     (when (< point (length buf))
-      ;;(let ((disp-len (display-length (subseq buf point))))
-      ;;  (message-pause e "~a ~a ~a" (screen-row e) (screen-col e)
-      ;;	         disp-len)
-      ;;(move-backward e disp-len)))
       (move-over e (- (- (length buf) point)) :start (length buf)))
     (setf need-to-redraw nil)))
 
@@ -2006,7 +1883,6 @@ Don't update the display."
       (scan-over e :backward :not-in non-word-chars)
       (let* ((region-str (subseq buf point start))
 	     (del-len (display-length region-str)))
-	;;(move-backward e del-len)
 	(move-over e (- (- start point)) :start start)
 	(tt-del-char e del-len)
 	(setf clipboard region-str)
@@ -2026,23 +1902,6 @@ Don't update the display."
 	(buffer-delete e point start)
 	(setf point start)
 	(update-for-delete e del-len (- start point))))))
-
-#| OLD
-(defun kill-line (e)
-  (with-slots (clipboard buf point) e
-    (setf clipboard (subseq buf point))
-    (buffer-delete e point (fill-pointer buf))
-    (tt-erase-to-eol e)
-    (let* ((cols (terminal-window-columns (line-editor-terminal e)))
-	   (cut-len (length clipboard))
-	   ;; @@@@ this is totally wrong!
-	   (lines-to-clear (truncate (+ (screen-col e) cut-len) 80)))
-      (when (> (+ cut-len (screen-col e)) cols)
-	(loop :for i :from 1 :to lines-to-clear
-	   :do (tt-down e 1)
-	   (tt-erase-line e))
-	(tt-up e lines-to-clear)))))
-|#
 
 (defun kill-line (e)
   (with-slots (clipboard buf point screen-row screen-col) e
@@ -2075,11 +1934,13 @@ Don't update the display."
   (with-slots (clipboard point) e
     (when clipboard
       (let ((len (length clipboard))
-	    (disp-len (display-length clipboard)))
+	    #| (disp-len (display-length clipboard)) |#)
 	(insert-string e clipboard)
-	(tt-ins-char e disp-len)
+	;; (tt-ins-char e disp-len)
 	(display-buf e point (+ point len))
-	(incf point len)))))
+	(incf point len)
+	(update-for-insert e)
+	))))
 
 (defun forward-word-action (e action)
   (with-slots (point buf non-word-chars) e
@@ -2239,9 +2100,7 @@ command line.")
     (do-prompt e prompt prompt-func)
     (display-buf e)
     (when (< point (length buf))
-      ;;(move-backward e (display-length (subseq buf point)))
-      (move-over e (- (- (length buf) point)))
-      )))
+      (move-over e (- (- (length buf) point))))))
 
 (defvar *completion-short-divisor* 3
   "Divisor of your screen height for short completion.")
@@ -2264,8 +2123,9 @@ command line.")
     ;;(multiple-value-setq (y x) (terminal-get-cursor-position term))
     (multiple-value-setq (content-rows content-cols column-size)
       (print-columns-sizer comp-list :columns cols))
-    ;; account for newlines in the content
-    ;;(write-char #\newline)
+
+    ;; Move over the rest of the input line.
+    (move-over e (- (length (buf e)) (point e)))
     (tt-write-char e #\newline)
     (tt-erase-below e) (tt-finish-output e)
     (setf (did-under-complete e) t)
@@ -2274,10 +2134,14 @@ command line.")
 	  (if (and (< (last-completion-not-unique-count e) 2)
 		   (< short-limit rows))
 	      short-limit
-	      (- (- rows 2) (prompt-height e)))
+	      (- (- rows 2)			  ;; minus the "more" line
+		 (prompt-height e)
+		 (- (screen-row e) (start-row e)) ;; height of the input line
+		 ))
 	  content-rows (print-columns comp-list :columns cols
 				      :smush t :row-limit row-limit)
 	  real-content-rows (+ content-rows
+			       ;; account for newlines in the content
 			       (apply #'+ (mapcar (_ (count #\newline _))
 						  comp-list)))
 	  rows-output (min real-content-rows row-limit))
@@ -2291,75 +2155,6 @@ command line.")
     (tt-move-to-col e x)
     (setf (screen-row e) (- end-y back-adjust)
 	  (screen-col e) x)))
-
-#|
-(defun OLD-print-completions-under (e comp-list)
-  (let* ((term (line-editor-terminal e))
-	 (rows (terminal-window-rows term))
-	 (cols (terminal-window-columns term))
-	 (short-limit (truncate rows *completion-short-divisor*))
-	 content-rows content-cols column-size
-	 real-content-rows
-	 rows-output
-	 rows-scrolled
-	 back-adjust
-	 (x (screen-col e))
-	 (y (screen-row e))
-	 end-x end-y)
-    ;;(multiple-value-setq (y x) (terminal-get-cursor-position term))
-    (multiple-value-setq (content-rows content-cols column-size)
-      (print-columns-sizer comp-list :columns cols))
-    ;; account for newlines in the content
-    (setf real-content-rows
-    	  (+ content-rows
-    	     (apply #'+ (mapcar (_ (count #\newline _)) comp-list))))
-    (write-char #\newline)
-    (tt-erase-below e) (tt-finish-output e)
-    (if (<= real-content-rows short-limit)
-	;; It's short. Just print it.
-	(progn
-	  (print-columns comp-list :columns cols :smush t)
-	  (setf rows-output real-content-rows))
-	(if (and (< (last-completion-not-unique-count e) 2)
-		 (< short-limit rows))
-	    ;; Truncate it to a short length
-	    (let ((a (print-columns-array comp-list
-					  content-rows content-cols))
-		  (rows-to-output (min content-rows short-limit)))
-	      (loop :for i :from 0 :below rows-to-output :do
-		 (loop :for j :from 0 :below content-cols :do
-		    (format t "~va" column-size (or (aref a j i) "")))
-		 (terpri))
-	      (when (plusp (- content-rows short-limit))
-		(format t "[~d more lines]" (- content-rows short-limit)))
-	      (setf rows-output (1- rows-to-output)))
-	    ;; Print an much as fits on the screen
-	    (let ((a (print-columns-array comp-list
-					  content-rows content-cols))
-		  (rows-to-output
-		   (- (min (- content-rows 1) (- rows 2))
-		      (prompt-height e))))
-	      (loop :for i :from 0 :below rows-to-output :do
-		 (loop :for j :from 0 :below content-cols :do
-		    (format t "~va" column-size (or (aref a j i) "")))
-		 (terpri))
-	      (if (< rows content-rows)
-		  (format t "[~d more lines]" (- content-rows rows))
-		  ;; print the last row
-		  (loop :for j :from 0 :below content-cols :do
-		     (format t "~va" column-size
-			     (or (aref a j rows-to-output) ""))))
-	      (setf rows-output rows-to-output))))
-    (multiple-value-setq (end-y end-x) (terminal-get-cursor-position term))
-    (setf rows-scrolled (max 0 (- (+ y (1+ rows-output)) (1- rows)))
-	  back-adjust (+ (- end-y y) rows-scrolled))
-    ;;(tt-up e (1+ rows-output))
-    (tt-up e back-adjust)
-    (tt-beginning-of-line e)
-    (tt-move-to-col e x)
-    (setf (screen-row e) (- end-y back-adjust)
-	  (screen-col e) x)))
-|#
 
 (defun show-completions (e)
   (with-slots (completion-func buf point) e
@@ -2413,21 +2208,27 @@ command line.")
       ;; If the completion succeeded we need a replace-pos!
       (assert (or (not comp) (numberp replace-pos)))
       (if comp
-	  (let* ((same (- saved-point replace-pos)) ; same part
-		 (diff (- (length comp) same)))     ; different part
-	    ;;(format t "not supposed!~%")
+	  (let* ((same (- saved-point replace-pos))) ; same part
+	    ;; f o o b a r
+	    ;;       ^    ^
+	    ;;       |    |___ saved-point
+	    ;;       |
+	    ;;       +-- replace-pos
+	    ;;
+	    ;; f o o b a r n a c l e
+
+	    ;; back up
+	    (move-over e (- same))
+
+	    ;; delete the different part
 	    (delete-region e replace-pos saved-point)
 	    (setf point replace-pos)
 	    (insert-string e comp)
-	    ;; Backup over the same part.
-	    ;; Insert enuff blanks to cover the difference.
-	    ;; Then overwrite the whole new completion.
-	    (when (> same 0)
-	      (move-over e (- same) :start (+ point (length comp))))
-	    (when (> diff 0)
-	      (tt-ins-char e (display-length (subseq comp same))))
+
+	    ;; write out the new part
 	    (editor-write-string e comp)
-	    (incf point (length comp)))
+	    (incf point (length comp))
+	    (update-for-insert e))
 	  (progn
 	    (setf point saved-point)		   ; go back to where we were
 	    (beep e "No completions"))))))	   ; ring the bell
@@ -2440,7 +2241,6 @@ binding."
 
 (defun pop-to-lish (e)
   "If we're inside lish, throw to a quick exit. If we're not in lish, enter it."
-;  (break)
   (let* ((lish-package (find-package :lish))
 	 (level-symbol (intern "*LISH-LEVEL*" lish-package)))
     (when lish-package
@@ -2514,19 +2314,8 @@ binding."
 	       (flash-paren e char))
 	     (insert-char e char)
 	     (incf point)
-	     ;; dumb way out: just rewrite the whole thing
-	     ;; relying on terminal wrap around
-	     (let ((old-row (screen-row e))
-		   (old-col (screen-col e)))
-	       (display-buf e point)
-	       (if (< old-row (screen-row e))
-		   (tt-up e (- (screen-row e) old-row))
-		   (tt-down e (- old-row (screen-row e))))
-	       (tt-beginning-of-line e)
-	       (tt-forward e old-col)
-	       (setf (screen-row e) old-row
-		     (screen-col e) old-col))))))))
-;;		(tt-move-to e (screen-row e) (screen-col e))
+	     ;; do the dumb way out
+	     (update-for-insert e)))))))
 
 (defun read-key-sequence (e &optional keymap)
   "Read a key sequence from the user. Descend into keymaps.
