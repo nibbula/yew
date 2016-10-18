@@ -149,25 +149,6 @@ two values ROW and COLUMN."
     (when (position #\newline string)
       (finish-output stream))))
 
-#| Moved to opsys for syscall frugality
-
-(defun read-until (tty stop-char &key timeout)
-  "Read until STOP-CHAR is read. Return a string of the results.
-TTY is a file descriptor."
-  (let ((result (make-array '(0) :element-type 'base-char
-			    :fill-pointer 0 :adjustable t))
-	cc)
-    (set-terminal-mode tty :timeout timeout)
-    (with-output-to-string (str result)
-      (loop
-	 :do (setf cc (read-terminal-char tty))
-	 :while (and cc (char/= cc stop-char)) :do (princ cc str)))
-    (set-terminal-mode tty :timeout nil)
-    (if (zerop (length result))
-	nil
-	result)))
-|#
-
 ;; resumed -> (terminal-start tty) #| (redraw) |# (tt-finish-output tty)
 ;; resized -> (terminal-get-size tt)
 
