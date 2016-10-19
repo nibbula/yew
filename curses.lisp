@@ -118,6 +118,7 @@ Make sure we don't clash with the actual CL-NCURSES.
    #:curs-set
    #:getcurx
    #:getcury
+   #:getyx
    ;; color & attributes
    #:start-color #:has-colors #:can-change-color #:init-pair
    #:attron #:wattron #:attroff #:wattroff #:attrset #:wattrset #:color-set
