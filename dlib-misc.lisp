@@ -49,7 +49,6 @@
    #:*loadable-packages*
    #:loadable-packages
    #:clear-loadable-package-cache
-   #:copy-package
    #:show-features
    #:describe-environment
    #:describe-implementation
@@ -931,29 +930,6 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
 configuration is changed."
   (setf *loadable-packages* nil))
 
-(defun package-copy-name (package &optional (prefix "COPY-OF-"))
-  "Pick a stupid name for a copied package."
-  (loop :with i = 0
-     :while (find-package
-	     (format nil "~a~a~a" prefix (package-name package)
-		     (if (> i 0) i "")))
-     :do (incf i)
-     ;;:if (> i 1000000) (error "Something probably went wrong.")
-     ))
-
-;;; @@@ Test? or eliminate!
-(defun copy-package (package)
-  "Return a copy of PACKAGE. The new package has a copy of everything in the old
-package, and is named \"COPY-OF-<Package><n>\""
-  (let ((new-package (make-package (package-copy-name package) :use '())))
-    (loop :for s :being :each :present-symbol :of package
-       :do (import s new-package))
-    (loop :for s :in (package-shadowing-symbols package)
-       :do (shadow (symbol-name s) new-package))
-    (loop :for pkg in (package-use-list package)
-       :do (use-package pkg new-package))
-    new-package))
-
 (defun show-features ()
   "Print the features list nicely."
   #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
@@ -1173,22 +1149,25 @@ symbols, :all to show internal symbols too."
   (values))
 
 (defun describe-system (system)
-  (let ((sys (asdf:find-system system)))
-    (print-values-of '(asdf:system-description
-		       asdf:system-long-description
-		       asdf:system-long-name
-		       asdf:component-version
-		       asdf:system-license
-		       asdf:system-source-directory
-		       asdf:system-author
-		       asdf:system-maintainer
-		       asdf:system-mailto
-		       asdf:system-homepage
-		       asdf:system-source-control
-		       asdf:system-depends-on
-		       )
-		     sys
-		     :prefix 'system-)))
+  (let ((sys (asdf:find-system system))
+	(symbol-list
+	 ;; There there; they're there.
+	 (loop :with s
+	    :for name :in '("SYSTEM-DESCRIPTION"
+			    "SYSTEM-LONG-DESCRIPTION"
+			    "SYSTEM-LONG-NAME"
+			    "COMPONENT-VERSION"
+			    "SYSTEM-LICENSE"
+			    "SYSTEM-SOURCE-DIRECTORY"
+			    "SYSTEM-AUTHOR"
+			    "SYSTEM-MAINTAINER"
+			    "SYSTEM-MAILTO"
+			    "SYSTEM-HOMEPAGE"
+			    "SYSTEM-SOURCE-CONTROL"
+			    "SYSTEM-DEPENDS-ON")
+	    :if (setf s (find-symbol name :asdf))
+	    :collect s)))
+    (print-values-of symbol-list sys :prefix 'system-)))
 
 ;; This only works with a MOP
 (defun describe-class (class &optional (stream *standard-output*))

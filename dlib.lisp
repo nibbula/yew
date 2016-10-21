@@ -1,4 +1,4 @@
-;;
+;;							-*- encoding: utf-8 -*-
 ;; dlib.lisp - Dan's utils of redundant Doom.
 ;;
 
@@ -44,6 +44,7 @@
    #:with-open-file-or-stream
    #:with-lines
    #:get-lines
+   #:copy-package
    #:safe-read-from-string
    #:clean-read-from-string
    #:package-robust-read-from-string
@@ -98,7 +99,7 @@
    #:with-package
    #:shortest-package-nick
    #:not-so-funcall #:symbol-call
-   #:refer-to #-clasp #:※
+   #:refer-to #-(or lispworks clasp) #:※
    #:@
    #:ignore-conditions #:ignore-some-conditions
    ;; debugging
@@ -525,7 +526,7 @@ just return SEQUENCE. Elements are compared with TEST which defaults to EQL."
 
 #|
 
-@@@ I wish unicode class information built in everywhere.
+@@@ I wish unicode class information was built-in everywhere.
 On SBCL we can generate the list by:
 
 (loop :for c :from 0 :below char-code-limit
@@ -1564,6 +1565,32 @@ cannot cause evaluation."
 			:start start :end end
 			:preserve-whitespace preserve-whitespace))))
 
+(defun package-copy-name (package &optional (prefix "COPY-OF-"))
+  "Pick a stupid name for a copied package."
+  (let (name)
+    (loop :with i = 0
+       :while (find-package
+	       (setf name (format nil "~a~a~a" prefix (package-name package)
+				  (if (> i 0) i ""))))
+       :do (incf i)
+       ;;:if (> i 1000000) (error "Something probably went wrong.")
+       )
+    name))
+
+;;; @@@ Test? or eliminate!
+(defun copy-package (package)
+  "Return a copy of PACKAGE. The new package has all the symbols imported,
+shadowed symbols shadowed, and used packages used, from the old package, and
+is named \"COPY-OF-<Package><n>\"."
+  (let ((new-package (make-package (package-copy-name package) :use '())))
+    (loop :for s :being :each :present-symbol :of package
+       :do (import s new-package))
+    (loop :for s :in (package-shadowing-symbols package)
+       :do (shadow (symbol-name s) new-package))
+    (loop :for pkg in (package-use-list package)
+       :do (use-package pkg new-package))
+    new-package))
+
 (defun interninator (name package dirt-pile)
   "Return the symbol NAME from package if it exists, or from the DIRT-PILE
 package if it doesn't. If DIRT-PILE is NIL, return a packageless symbol."
@@ -1591,19 +1618,20 @@ returning them as uninterned symbols."
 		      :preserve-whitespace preserve-whitespace))
   ;; This is a very inefficient way which makes a new package every time.
   #-has-read-intern
-  (declare (ignore package))
-  #-has-read-intern
-  (let (pkg)
+  (let (pkg obj pos)
     (unwind-protect
 	 (progn
-	   (setf pkg (make-package (package-name package) :use (list *package*)
-				   :internal-symbols 0 :external-symbols 0))
+	   (setf pkg (copy-package package))
 	   (with-package pkg
-	     (read-from-string string eof-error-p eof-value
-			       :start start :end end
-			       :preserve-whitespace preserve-whitespace)))
+	     (setf (values obj pos)
+		   (read-from-string
+		    string eof-error-p eof-value
+		    :start start :end end
+		    :preserve-whitespace preserve-whitespace))))
       (when pkg
-	(delete-package pkg)))))
+	(delete-package pkg)))
+    (values obj pos))
+  )
 
 (defun package-robust-intern (s p)
   "Return S interned in package P, or S interned in *PACKAGE*, or S as an
