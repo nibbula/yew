@@ -38,7 +38,10 @@
   "The current puca instance.")
 
 (defclass puca (fui-inator)
-  ((goo
+  ((backend
+    :initarg :backend :accessor puca-backend :initform nil
+    :documentation "The revision control system backend that we are using.")
+   (goo
     :initarg :goo :accessor puca-goo :initform nil
     :documentation "A list of goo entries.")
    (maxima
@@ -61,13 +64,13 @@
     :documentation "extra lines")
    (message
     :initarg :has-message :accessor puca-message :initform nil
-    :documentation "A message to show."))
+    :documentation "A message to show.")
+   (first-line
+    :initarg :first-line :accessor puca-first-line :initform nil 
+    :documentation "The first line of the objects."))
   (:default-initargs
    :point 0)
   (:documentation "An instance of a version control frontend app."))
-
-(defvar *backend* nil
-  "The current backend.")
 
 (defclass backend ()
   ((name
@@ -105,6 +108,8 @@
     :documentation "File which contains a list of files to ignore."))
   (:documentation "A generic version control back end."))
 
+;; Things a backend may want / need to implement.
+
 (defgeneric check-existence (type)
   (:documentation
    "Return true if we guess we are in a directory under this type."))
@@ -114,6 +119,11 @@
 
 (defgeneric add-ignore (backend file)
   (:documentation "Add FILE to the list of ignored files."))
+
+(defgeneric banner (backend)
+  (:documentation "Print something at the top of the screen."))
+
+;; Generic implementations of some possibly backend specific methods.
 
 (defmethod parse-line ((backend backend) line i)
   "Parse a status line LINE for a typical RCS. I is the line number."
@@ -157,6 +167,10 @@
     (write-line file stream))
   (get-list)
   (draw-screen))
+
+(defmethod banner ((backend backend))
+  "Print something useful at the top of the screen."
+  (addstr (format nil "~a~%" (nos:current-directory))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; CVS
@@ -230,6 +244,17 @@
 (defmethod check-existence ((type (eql :git)))
   (equal "true" (shell-line "git" "rev-parse" "--is-inside-work-tree")))
 
+(defmethod banner ((backend git))
+  "Print something useful at the top of the screen."
+  (let ((line (getcury *stdscr*))
+	(col 5)
+	(branch (subseq (first (lish:!_ "git status -s -b --porcelain")) 3)))
+    (labels ((do-line (fmt &rest args)
+	       (mvaddstr (incf line) col (apply #'format nil fmt args))))
+      (do-line "Repo:    ~a" (nos:current-directory))
+      (do-line "Branch:  ~a" branch)
+      (move (incf line) col))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; SVN
 
@@ -294,17 +319,20 @@
   ;; (refresh)
   )
 
+(defun goo-color (status-char)
+  "Set the color based on the status character."
+  (case status-char
+    (#\M (color-attr +color-red+     +color-black+))    ; modified
+    (#\? (color-attr +color-white+   +color-black+))    ; unknown
+    (#\C (color-attr +color-magenta+ +color-black+))	; conflicts
+    (t   (color-attr +color-green+   +color-black+))))	; updated or other
+
 (defun draw-goo (i)
   "Draw the goo object, with the appropriate color."
-  (with-slots (goo top) *puca*
+  (with-slots (goo top first-line) *puca*
     (let ((g (elt goo i)))
-      (let* ((attr
-	      (case (aref (goo-modified g) 0)
-		(#\M (color-attr +color-red+	 +color-black+)) ; modified
-		(#\? (color-attr +color-white+	 +color-black+)) ; unknown
-		(#\C (color-attr +color-magenta+ +color-black+)) ; conflicts
-		(t   (color-attr +color-green+	 +color-black+))))) ; updated or other
-	(move (+ (- i top) 3) 4)
+      (let* ((attr (goo-color (aref (goo-modified g) 0))))
+	(move (+ (- i top) first-line) 4)
 	;; (clrtoeol)
 	(attron attr)
 	(addstr (format nil "~a ~a ~30a"
@@ -334,7 +362,7 @@
 	  top 0
 	  errors '())
     (let* ((i 0)
-	   (cmd (backend-list-command *backend*))
+	   (cmd (backend-list-command (puca-backend *puca*)))
 	   (cmd-name (car cmd))
 	   (cmd-args (cdr cmd))
 	   line)
@@ -342,7 +370,7 @@
       (with-process-output (stream cmd-name cmd-args)
 	(loop :while (setf line (read-line stream nil nil))
 	   :do
-	   (parse-line *backend* line i)
+	   (parse-line (puca-backend *puca*) line i)
 	   (incf i)
 	   (message *puca* "Listing...~d" i)
 	   (refresh)))
@@ -354,17 +382,24 @@
   (message *puca* "Listing...done"))
 
 (defun draw-screen ()
-  (with-slots (maxima top bottom goo message) *puca*
+  (with-slots (maxima top bottom goo message backend first-line) *puca*
     (erase)
     (border 0 0 0 0 0 0 0 0)
     (setf bottom (min (- maxima top) (- curses:*lines* 7)))
     (let* ((title (format nil "~a Muca (~a)" 
-			  (backend-name *backend*) (machine-instance))))
+			  (backend-name backend)
+			  (machine-instance)))
+	   y x)
       (move 1 (truncate (- (/ *cols* 2) (/ (length title) 2))))
       (addstr title)
+      (move 2 2) ;; Start of the banner area
+      (banner backend)
+      (getyx *stdscr* y x)
+      ;; End of the banner and start of the first line of objects
+      (setf first-line (1+ y))
       ;; top scroll indicator
       (when (> top 0)
-	(mvaddstr 2 2 "^^^^^^^^^^^^^^^^^^^^^^^"))
+	(mvaddstr (1- first-line) 2 "^^^^^^^^^^^^^^^^^^^^^^^"))
       (when (> (length goo) 0)
 	(loop :for i :from top :below (+ top bottom)
 	   :do (draw-goo i)))
@@ -404,7 +439,7 @@ confirmation first."
 FORMAT-ARGS. If RELIST is true (the default), regenerate the file list.
 If CONFIRM is true, ask the user for confirmation first."
   (declare (ignorable relist do-pause confirm))
-  (apply #'do-literal-command (apply command (list *backend*))
+  (apply #'do-literal-command (apply command (list (puca-backend *puca*)))
 	 (list format-args) keys)
   (values))
 
@@ -584,9 +619,8 @@ for the command-function).")
 
 (defun add-ignore-command (p)
   "Ignore"
-  (declare (ignore p))
   (loop :for f :in (selected-files)
-     :do (add-ignore *backend* f)))
+     :do (add-ignore (puca-backend p) f)))
 
 (defun view-file (p)
   "View file"
@@ -768,9 +802,9 @@ for the command-function).")
 ;;   (message p "Event not bound ~s" (inator-command p)))
 
 (defmethod update-display ((p puca))
-  (with-slots ((point inator::point) top) p
+  (with-slots ((point inator::point) top first-line) p
     (draw-screen)
-    (move (+ (- point top) 3) 2)))
+    (move (+ (- point top) first-line) 2)))
 
 (defmethod start-inator ((p puca))
   (call-next-method)
@@ -782,9 +816,9 @@ for the command-function).")
     (message p "**MESSAGES**")))
 
 (defun puca (&key backend-type)
-  (let ((*puca* (make-instance
-		 'puca :keymap (list *puca-keymap* *default-inator-keymap*)))
-	(*backend* (pick-backend backend-type)))
+  (let* ((*puca* (make-instance 'puca
+		  :keymap (list *puca-keymap* *default-inator-keymap*)
+		  :backend (pick-backend backend-type))))
     (event-loop *puca*)))
 
 (defun make-standalone (&optional (name "puca"))
