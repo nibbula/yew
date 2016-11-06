@@ -240,9 +240,45 @@
    (equalp (split-sequence-if (lambda (x) (member x '(#\a #\b))) "abracadabra")
 	   '("" "" "r" "c" "d" "" "r" "")))
 
+(deftests (split-sequence-by-range-1 :doc "Test split-sequence-by-range.")
+  "normal usage with lists"
+  (equal '("foo" "the" "bar")
+	 (split-sequence-by-range '((0 2) (4 6) (8 10)) "foo the bar"))
+  (equal '("foo" "the" "bar")
+	 (split-sequence-by-range '((nil 2) (4 6) (8 10)) "foo the bar"))
+  (equal '("foo" "the" "bar")
+	 (split-sequence-by-range '((0 2) (4 6) (8 nil)) "foo the bar"))
+  (equal '("foo" "the" "bar")
+	 (split-sequence-by-range '((nil 2) (4 6) (8 nil)) "foo the bar"))
+  "normal usage with pairs"
+  (equal '("foo" "the" "bar")
+	 (split-sequence-by-range '((0 . 2) (4 . 6) (8 . 10)) "foo the bar"))
+  (equal '("foo" "the" "bar")
+	 (split-sequence-by-range '((nil . 2) (4 . 6) (8 . nil))
+				  "foo the bar"))
+  "overlapping"
+  (equal '("foo" "foo the" "bar")
+	 (split-sequence-by-range '((nil . 2) (nil . 6) (8 . nil))
+				  "foo the bar"))
+  (equal '("foo" "foo the bar" "bar")
+	 (split-sequence-by-range '((nil . 2) (nil . nil) (8 . nil))
+				  "foo the bar"))
+  "unusual usage"
+  (equal nil (split-sequence-by-range nil nil))
+  (equal nil (split-sequence-by-range nil "foo the bar"))
+  (equal '("foo the bar") (split-sequence-by-range '(()) "foo the bar"))
+  (equalp '("") (split-sequence-by-range '(()) ""))
+  "non-string sequences"
+  (equalp '((f o o) (t h e) (b a r))
+	 (split-sequence-by-range '((0 2) (4 6) (8 10))
+				  '(f o o nil t h e nil b a r)))
+  (equalp '(#(#\f #\o #\o) #(#\t #\h #\e) #(#\b #\a #\r))
+	  (split-sequence-by-range '((0 2) (4 6) (8 10))
+				   #(#\f #\o #\o 0 #\t #\h #\e 0 #\b #\a #\r))))
+
 (deftests (dlib-all :doc "Test :dlib and :dlib-misc.")
-  dlib-1 split-sequence-1 dlib-2 dlib-language-1 dlib-io-1
-  dlib-environment-1 dlib-debug-1)
+  dlib-1 split-sequence-1 split-sequence-by-range-1 dlib-2 dlib-language-1
+  dlib-io-1 dlib-environment-1 dlib-debug-1)
 
 (defun run ()
   (run-group-name 'dlib-all :verbose t))

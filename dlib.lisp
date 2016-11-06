@@ -56,6 +56,7 @@
    #:initial-span
    #:split-sequence
    #:split-sequence-if
+   #:split-sequence-by-range
    #:replace-subseq
    #:begins-with
    #:ends-with
@@ -276,7 +277,8 @@ later versions.")
 
 ;; Another square wheel.
 ;; @@@ I should probably either fix this to have the additional functionality
-;; of the public version, or just copy the public version here.
+;; of the public version, or just copy the public version here. Just actually
+;; use the public version?
 ;;
 ;; The public version:
 ;;
@@ -322,7 +324,9 @@ later versions.")
 ;;   :test #'(lambda (a b) (declare (ignore a)) (position b "1289"))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defmacro flurp (function sep seq start end test)
+  (defmacro call-looker (function sep seq start end test)
+    "Call FUNCTION, which is likely to be POSITION or SEARCH. Make START, END,
+and TEST be the appropriate keywords."
     (let ((base
 	   `(,function ,sep ,seq 
 		       ,@(if (eq function 'position)
@@ -359,9 +363,9 @@ is the separator. If :omit-empty is true, then don't return empty subsequnces.
 		  :with t-start fixnum = start :and t-end
 		  :do
 		  ;;(format t "FLURP: ~w~%"
-		  ;;    '(flurp ,func sep seq t-start end test))
+		  ;;    '(call-looker ,func sep seq t-start end test))
 		  (setq t-end
-			(or (flurp ,func sep seq t-start end test)
+			(or (call-looker ,func sep seq t-start end test)
 			    -1))
 		  :while (>= t-end 0)
 		  ;;(format t "start = ~d end = ~d ~s~%" t-start t-end
@@ -434,6 +438,15 @@ is the separator. If :omit-empty is true, then don't return empty subsequnces.
 	(if omit-empty
 	    (loopy t)
 	    (loopy nil)))))))
+
+(defun split-sequence-by-range (ranges sequence)
+  (loop :with range-start :and range-end :and seq-end = (1- (length sequence))
+     :for range :in ranges :do
+     (setf range-start (or (car range) 0)
+	   range-end (or (if (consp (cdr range)) (cadr range) (cdr range))
+			 seq-end))
+     :collect
+     (subseq sequence range-start (1+ range-end))))
 
 ;; cl-ppcre's version is better, so I recommend you just use that.
 ;;(setf (fdefinition 'split) #'split-sequence)
