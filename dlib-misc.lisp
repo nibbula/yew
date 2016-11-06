@@ -14,7 +14,7 @@
   (:use :cl :dlib :opsys :glob
 	#+(or (and clisp mop) cmu) :mop #+sbcl :sb-mop #+gcl :pcl)
   (:documentation
-   "More of Dan's generally useful miscellaneous functions.")
+   "More of Dan's generally dubious miscellaneous functions.")
   (:export
    #:randomize-vector
    #:justify-text
@@ -26,7 +26,9 @@
    #:date-string
    #:format-date
    #:simple-parse-time
+   #:millennia-to-time #:centuries-to-time #:decades-to-time #:years-to-time
    #:weeks-to-time #:days-to-time #:hours-to-time #:minutes-to-time
+   #:time-to-millennia #:time-to-centuries #:time-to-decades #:time-to-years
    #:time-to-weeks #:time-to-days #:time-to-hours #:time-to-minutes
    #:do-at
    #:print-properties
@@ -379,16 +381,28 @@ The date part is considered to be the current date."
 	(incf hour 12))
       (done))))
 
-;; I know I'm gonna have to end up writing that time lib.
-(defun weeks-to-time   (weeks)   (* weeks   (* 60 60 24 7)))
-(defun days-to-time    (days)    (* days    (* 60 60 24)))
-(defun hours-to-time   (hours)   (* hours   (* 60 60)))
-(defun minutes-to-time (minutes) (* minutes 60))
+;; The stupid base unit of time is seconds.
+;; Anything after weeks is bogus because years are variable and poorly defined!
+;; But for this bullcrap, we use the Jullian year which is exactly 365.25.
+;; I know I'm gonna have to end up writing that time lib (which should of
+;; course be properly integrated with a units system).
+(defun millennia-to-time (millennia) (* millennia (* 60 60 24 (+ 365 1/4) 1000)))
+(defun centuries-to-time (centuries) (* centuries (* 60 60 24 (+ 365 1/4) 100)))
+(defun decades-to-time   (decades)   (* decades   (* 60 60 24 (+ 365 1/4) 10)))
+(defun years-to-time     (year)      (* year      (* 60 60 24 (+ 365 1/4))))
+(defun weeks-to-time     (weeks)     (* weeks     (* 60 60 24 7)))
+(defun days-to-time      (days)      (* days      (* 60 60 24)))
+(defun hours-to-time     (hours)     (* hours     (* 60 60)))
+(defun minutes-to-time   (minutes)   (* minutes   60))
 
-(defun time-to-weeks   (weeks)   (/ weeks   (* 60 60 24 7)))
-(defun time-to-days    (days)    (/ days    (* 60 60 24)))
-(defun time-to-hours   (hours)   (/ hours   (* 60 60)))
-(defun time-to-minutes (minutes) (/ minutes 60))
+(defun time-to-millennia (millennia) (/ millennia (* 60 60 24 (+ 365 1/4) 1000)))
+(defun time-to-centuries (centuries) (/ centuries (* 60 60 24 (+ 365 1/4) 100)))
+(defun time-to-decades   (decades)   (/ decades   (* 60 60 24 (+ 365 1/4) 10)))
+(defun time-to-years     (years)     (/ years     (* 60 60 24 (+ 365 1/4))))
+(defun time-to-weeks     (weeks)     (/ weeks     (* 60 60 24 7)))
+(defun time-to-days      (days)      (/ days      (* 60 60 24)))
+(defun time-to-hours     (hours)     (/ hours     (* 60 60)))
+(defun time-to-minutes   (minutes)   (/ minutes   60))
 
 (defmacro do-at (time form)
   "Call func with args at time. Time is a universal time or a string."
