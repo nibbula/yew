@@ -12,6 +12,7 @@
   (:export
    #:*standard-output-has-terminal-attributes*
    #:*terminal*
+   #:*default-terminal-type*
    #:has-terminal-attributes
    #:terminal-default-device-name
    #:terminal-stream
@@ -76,6 +77,9 @@ terminal attributes.")
 
 (defvar *terminal* nil
   "The default terminal to use for I/O.")
+
+(defvar *default-terminal-type* nil
+  "The type of terminal to create when unspecified.")
 
 (defclass terminal-stream ()
   ((output-stream
@@ -152,11 +156,17 @@ two values ROW and COLUMN."))
 (defun make-terminal-stream (stream type)
   (make-instance type :output-stream stream))
 
-(defmacro with-terminal ((var type &optional device-name) &body body)
+(defmacro with-terminal ((&optional (var '*terminal*)
+				    (type *default-terminal-type*)
+				    device-name)
+			 &body body)
   "Evaluate the body with VAR set to a new terminal. Cleans up afterward."
   `(let ((,var (if ,device-name
-		   (make-instance ,type :device-name ,device-name)
-		   (make-instance ,type))))
+		   (make-instance (or ',type
+				      (error
+     "No type provided. Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
+				      :device-name ,device-name)
+		   (make-instance ',type))))
      (unwind-protect
 	  (progn
 	    (terminal-start ,var)
