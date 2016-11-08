@@ -869,7 +869,7 @@ available.")
   "Try to find the mount of FILE. This might not always be right.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; ttys
+;; Terminals
 
 (defosfun file-handle-terminal-p (fd)
   "Return true if the system file descriptor FD is attached to a terminal.")

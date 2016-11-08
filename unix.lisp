@@ -1301,13 +1301,15 @@ NIL, unset the VAR, using unsetenv."
 ;; could have easily been solved by adding some meta information. I suppose a
 ;; rationale for not having metadata is kernel bloat.
 ;;
-;; The linuxy method of reading from /proc is even stupider. It doesn't solve
-;; the problem of metadata, unless you count the text formated things, which
-;; serves to demonstrate the conflict between machine readable and human
-;; readable. It's really not hard to make a C interface that's nice, eg.
-;; GObject. Of course again there's the issue of bloat. Linux's minimalism is
-;; responsible for it being so adaptable to small devices. sbcl.core is 58MB,
-;; whereas linux can probably still work in 4MB?
+;; The linuxy method of reading from /proc is even stupider in theory,
+;; although in practice seems easier to write interfaces for, since it
+;; compensates for hazzards in C. Unfortunately, it doesn't solve the problem
+;; of metadata, unless you count the text formated things, which serves to
+;; demonstrate the conflict between machine readable and human readable. It's
+;; really not hard to make a C interface that's semi-reasonable,
+;; eg. GObject. Of course again there's the issue of bloat. Linux's minimalism
+;; is responsible for it being so adaptable to small devices. sbcl.core is
+;; 58MB, whereas linux can probably still work in 4MB?
 ;;
 ;; BUT, it turns out that most of the metadata is in header files as well as
 ;; probably in the kernel in a hackish way. But a method for getting at these
@@ -1399,9 +1401,9 @@ NIL, unset the VAR, using unsetenv."
   (e_tpgid pid-t)		     ; tty process group id
   (e_tsess :pointer)		     ; tty session pointer (struct session *)
   (e_wmesg :char :count #.(+ +WMESGLEN+ 1))
-  (e_xsize segsz-t)		      ; text size
-  (e_xrssize :short)		      ; text rss 
-  (e_xccount :short)		      ; text references 
+  (e_xsize segsz-t)		     ; text size
+  (e_xrssize :short)		     ; text rss
+  (e_xccount :short)		     ; text references
   (e_xswrss :short)
   (e_flag :int32)
   (e_login :char :count #.+COMPAT_MAXLOGNAME+) ; short setlogin() name
@@ -1853,34 +1855,51 @@ return potentially updated data."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Login/accounting database
 
-(defconstant +UTX-EMPTY+           0 "No valid user accounting information.")
-(defconstant +UTX-RUN-LVL+         1 "Run level. For Compatibility, not used.")
-(defconstant +UTX-BOOT-TIME+	   2 "Time of a system boot.")
-(defconstant +UTX-OLD-TIME+        3 "Time before system clock change.")
-(defconstant +UTX-NEW-TIME+        4 "Time after system clock change.")
-(defconstant +UTX-INIT-PROCESS+    5 "A process spawned by init(8).")
-(defconstant +UTX-LOGIN-PROCESS+   6 "The session leader of a logged-in user.")
-(defconstant +UTX-USER-PROCESS+    7 "A user process.")
-(defconstant +UTX-DEAD-PROCESS+    8 "A session leader exited.")
-(defconstant +UTX-ACCOUNTING+      9)
-(defconstant +UTX-SIGNATURE+       10)
-(defconstant +UTX-SHUTDOWN-TIME+   11 "Time of system shutdown (extension)")
-(defconstant +UTMPX-AUTOFILL-MASK+ #x8000
-  "Fill in missing data.")
-(defconstant +UTMPX-DEAD-IF-CORRESPONDING-MASK+ #x4000
-  "Only if existing live one.")
+;; @@@ Solaris & FreeBSD aren't really done yet
+
+(define-constants #(
+;; Name               D   L   S   F
+#(+UTX-EMPTY+	      0   0   0   0   "No valid user accounting information.")
+#(+UTX-RUN-LVL+	      1   1   1   1   "Run level. For Compatibility, not used.")
+#(+UTX-BOOT-TIME+     2   2   2   2   "Time of a system boot.")
+#(+UTX-OLD-TIME+      3   4   3   3   "Time before system clock change.")
+#(+UTX-NEW-TIME+      4   3   4   4   "Time after system clock change.")
+#(+UTX-INIT-PROCESS+  5   5   5   5   "A process spawned by init(8).")
+#(+UTX-LOGIN-PROCESS+ 6   6   6   6   "The session leader of a logged-in user.")
+#(+UTX-USER-PROCESS+  7   7   7   7   "A user process.")
+#(+UTX-DEAD-PROCESS+  8   8   8   8   "A session leader exited.")
+#(+UTX-ACCOUNTING+    9   9   9   9   "")
+#(+UTX-SIGNATURE+     10  nil 10  10  "")
+#(+UTX-SHUTDOWN-TIME+ 11  nil 11  11  "Time of system shutdown (extension)")))
+
+#+darwin
+(progn
+  (defconst +UTMPX-AUTOFILL-MASK+              #x8000
+    "Fill in missing data.")
+  (defconst +UTMPX-DEAD-IF-CORRESPONDING-MASK+ #x4000
+    "Only if existing live one."))
 
 (defparameter +utmpx-type+
+  #+darwin
   #(:EMPTY :RUN-LVL :BOOT-TIME :OLD-TIME :NEW-TIME :INIT-PROCESS :LOGIN-PROCESS
+    :USER-PROCESS :DEAD-PROCESS :ACCOUNTING :SIGNATURE :SHUTDOWN-TIME)
+  #+linux
+  #(:EMPTY :RUN-LVL :BOOT-TIME :NEW-TIME :OLD-TIME :INIT-PROCESS :LOGIN-PROCESS
+    :USER-PROCESS :DEAD-PROCESS :ACCOUNTING :SIGNATURE :SHUTDOWN-TIME)
+  #-(or darwin linux) ;; @@@ not really right
+  #(:EMPTY :RUN-LVL :BOOT-TIME :NEW-TIME :OLD-TIME :INIT-PROCESS :LOGIN-PROCESS
     :USER-PROCESS :DEAD-PROCESS :ACCOUNTING :SIGNATURE :SHUTDOWN-TIME)
   "utmpx type keywords.")
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defconstant +UTX-USERSIZE+ 256 "Size of utmpx.ut_user.")
-  (defconstant +UTX-IDSIZE+   4   "Size of utmpx.ut_id.")
-  (defconstant +UTX-LINESIZE+ 32  "Size of utmpx.ut_line.")
-  (defconstant +UTX-HOSTSIZE+ 256 "Size of utmpx.ut_host."))
+(define-constants #(
+;; Name          D    L   S   F
+#(+UTX-USERSIZE+ 256  32  32  32  "Size of utmpx.ut_user.")
+#(+UTX-IDSIZE+	 4    4   4   4   "Size of utmpx.ut_id.")
+#(+UTX-LINESIZE+ 32   32  32  32  "Size of utmpx.ut_line.")
+#(+UTX-HOSTSIZE+ 256  256 256 256 "Size of utmpx.ut_host."))))
 
+#+darwin
 (defcstruct foreign-utmpx
   "User accounting database entry."
   (ut_user :char :count #.+UTX-USERSIZE+)  ;; login name
@@ -1891,6 +1910,33 @@ return potentially updated data."
   (ut_tv   (:struct foreign-timeval))	   ;; time entry was created
   (ut_host :char :count #.+UTX-HOSTSIZE+)  ;; host name
   (ut_pad  :uint32 :count 16)		   ;; reserved for future use
+  )
+
+#+linux
+(defcstruct foreign-exit-status
+  "utmpx exit status"
+  (e-termination :short)
+  (e-exit :short))
+
+#+linux 
+(defcstruct foreign-utmp-timeval
+  (tv_sec  :int32)
+  (tv_usec :int32))
+
+#+linux
+(defcstruct foreign-utmpx
+  "User accounting database entry."
+  (ut_type :short)			   ;; type of this entry
+  (ut_pid  pid-t)			   ;; process id creating the entry
+  (ut_line :char :count #.+UTX-LINESIZE+)  ;; tty name
+  (ut_id   :char :count #.+UTX-IDSIZE+)	   ;; id
+  (ut_user :char :count #.+UTX-USERSIZE+)  ;; login name
+  (ut_host :char :count #.+UTX-HOSTSIZE+)  ;; host name
+  (ut_exit (:struct foreign-exit-status))
+  (ut_session :int32)
+  (ut_tv   (:struct foreign-utmp-timeval)) ;; time entry was created
+  (ut_addr_v6 :int32 :count 4)		   ;; ipv6 address?
+  (ut_pad  :char :count 20)		   ;; reserved for future use
   )
 
 (defstruct utmpx
@@ -1992,7 +2038,8 @@ user. Probably requires root."
       (setutxent)
       (let (u)
 	(loop :while (setf u (getutxent))
-	   :if (not (eq (utmpx-type u) :dead-process))
+	   ;; :if (not (eq (utmpx-type u) :dead-process))
+	   :if (eq (utmpx-type u) :user-process)
 	   :collect
 	   (utmpx-user u))))
     (endutxent)))
@@ -4275,24 +4322,27 @@ Possible values of STATUS and VALUE are:
 		  :args nil)))))
 	(foreign-free proc-list))))
   #+linux
-  (loop :with line
+  (loop :with line :and pid
      :for p :in (read-directory :dir "/proc/")
      :when (every #'digit-char-p p)
-       :collect
-       (with-open-file (stm (s+ "/proc/" p "/stat"))
-	 (setf line (split-sequence #\space (read-line stm)))
-	 (make-os-process
-	  :id (parse-integer p)
-	  :parent-id (parse-integer (elt line 3))
-	  :group-id (parse-integer (elt line 4))
-	  :terminal (parse-integer (elt line 6))
-	  :text-size (parse-integer (elt line 22))
-	  :resident-size (parse-integer (elt line 23))
-	  :percent-cpu nil
-	  :nice-level (parse-integer (elt line 18))
-	  :usage nil
-	  :command (elt line 1)
-	  :args (get-process-command-line)))))
+     :collect
+     (with-open-file (stm (s+ "/proc/" p "/stat"))
+       (setf line (split-sequence #\space (read-line stm))
+	     pid (parse-integer p))
+       (make-os-process
+	:id pid
+	:parent-id (parse-integer (elt line 3))
+	:group-id (parse-integer (elt line 4))
+	:terminal (parse-integer (elt line 6))
+	:text-size (parse-integer (elt line 22))
+	:resident-size (parse-integer (elt line 23))
+	:percent-cpu nil
+	:nice-level (parse-integer (elt line 18))
+	:usage nil
+	;; :command (elt line 1)
+	;; :args (get-process-command-line )))))
+	:command (subseq (elt line 1) 1 (1- (length (elt line 1))))
+	:args (get-process-command-line pid)))))
 
 (defun suspend-process (&optional id)
   "Suspend the process with the given ID. If ID is NIL or not given, suspend
@@ -5525,6 +5575,7 @@ evaluate the IO-FORM."
 descriptor FD."
 ;;;  (let ((ttn (ttyname fd)))
 ;;;  (and (not (null-pointer-p ttn)) ttn)))
+  ;; @@@ XXX We should probably use ttyname_r
   (ttyname fd))
 
 (defvar *default-console-device-name* "/dev/tty"
