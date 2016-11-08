@@ -34,6 +34,7 @@ a count which is the length of the sequence.")
    #:complete-iterator
    ;; symbol
    #:complete-symbol
+   #:function-help
    ;; filenames
    #:complete-filename
    #:complete-directory
