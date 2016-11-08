@@ -276,7 +276,7 @@ current time zone."
   "Call #'format with FORMAT and the given date fields in VALUES. 
 VALUES is a sequence of any of the following keywords:
   :seconds :minutes :hours :date :month :year :day :daylight-p :zone
-  :day-abbrev :month-abbrev :12-hours :am :pm :weekday :day-name
+  :day-abbrev :month-abbrev :year-abbrev :12-hours :am :pm :weekday :day-name
 Some abbreviations of the keywords are accepted, like :hrs :min :sec."
   (dlib::with-unique-names
       (seconds minutes hours date month year day daylight-p zone)
@@ -292,6 +292,8 @@ Some abbreviations of the keywords are accepted, like :hrs :min :sec."
 			 `(aref *month* ,month))
 			((:month-abbrev :mon-abbrev)
 			 `(aref *month-abbrevs* (1- ,month)))
+			((:year-abbrev :yr-abbrev)
+			 `(format nil "~2,'0d" (mod ,year 100)))
 			(:std-zone
 			 `(format nil "~c~2,'0d~2,'0d"
 				  (if (< ,zone 0) #\+ #\-)
