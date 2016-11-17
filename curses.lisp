@@ -27,17 +27,28 @@ recently.
 
 HOW TO USE:
 
-If :curses-use-wide is in *features*, then use the wide character version
-of the library. If :curses-use-ncurses is in *features* then use ncurses
-explicitly, instead of whatever plain curses is.
+Set the features that you want before loading:
 
-You should put :curses-use-wide and/or :curses-use-ncurses in *features*
-before loading this library, and also load CFFI and set
-cffi:*foreign-library-directories* if needed before loading this library.
+:CURSES-USE-WIDE          Use the wide character version of the library
 
-CL-NCURSES compatibility, turned on by setting :cl-ncurses in features:
-Make sure we don't clash with the actual CL-NCURSES.
-")
+:CURSES-USE-NCURSES       Use ncurses explicitly, instead of whatever plain
+			  curses is. **This is not currently used, since we
+			  pretty much require ncurses**.
+
+:CURSES-MOUSE-VERSION-1   Explicity pick which version of the mouse protocol to
+:CURSES-MOUSE-VERSION-2   use. This should correspond to NCURSES_MOUSE_VERSION
+                          in the curses library you're using. It picks version 2
+			  by default, so we can get the expected scrolling
+			  behavior.
+
+:CL-NCURSES             Turn on CL-NCURSES compatibility. This shouldn't be on
+			if CL-NCURSES is being used also. If fact this makes
+			sure we don't clash with the actual CL-NCURSES.
+
+This requires CFFI, which must be able to find a curses library. Generally
+CFFI will find whatever is available on your system, but you can configure it
+if need be, for example by setting cffi:*foreign-library-directories* before
+loading this library.")
   (:use :cl :cffi)
 ;  #+sbcl (:shadowing-import-from :sb-ext "TIMEOUT")
   #+sbcl (:shadow "TIMEOUT")
@@ -63,19 +74,40 @@ Make sure we don't clash with the actual CL-NCURSES.
    #:acs-uarrow #:acs-board #:acs-lantern #:acs-block #:acs-s3 #:acs-s7
    #:acs-lequal #:acs-gequal #:acs-pi #:acs-nequal #:acs-sterling
    ;; mouse masks
-   #:+button1-released+ #:+button1-pressed+ #:+button1-clicked+
-   #:+button1-double-clicked+ #:+button1-triple-clicked+
-   #:+button1-reserved-event+ #:+button2-released+ #:+button2-pressed+
-   #:+button2-clicked+ #:+button2-double-clicked+ #:+button2-triple-clicked+
-   #:+button2-reserved-event+ #:+button3-released+ #:+button3-pressed+
-   #:+button3-clicked+ #:+button3-double-clicked+ #:+button3-triple-clicked+
-   #:+button3-reserved-event+ #:+button4-released+ #:+button4-pressed+
-   #:+button4-clicked+ #:+button4-double-clicked+ #:+button4-triple-clicked+
-   #:+button4-reserved-event+ #:+button-ctrl+ #:+button-shift+ #:+button-alt+
-   #:+all-mouse-events+ #:+report-mouse-position+
+   #:+button1-released+
+   #:+button1-pressed+
+   #:+button1-clicked+
+   #:+button1-double-clicked+
+   #:+button1-triple-clicked+
+   #:+button1-reserved-event+
+   #:+button2-released+
+   #:+button2-pressed+
+   #:+button2-clicked+
+   #:+button2-double-clicked+
+   #:+button2-triple-clicked+
+   #:+button2-reserved-event+
+   #:+button3-released+
+   #:+button3-pressed+
+   #:+button3-clicked+
+   #:+button3-double-clicked+
+   #:+button3-triple-clicked+
+   #:+button3-reserved-event+
+   #:+button4-released+
+   #:+button4-pressed+
+   #:+button4-clicked+
+   #:+button4-double-clicked+
+   #:+button4-triple-clicked+
+   #:+button4-reserved-event+
+   #:+button-ctrl+
+   #:+button-shift+
+   #:+button-alt+
+   #:+button-any+
+   #:+all-mouse-events+
+   #:+report-mouse-position+
    ;; mouse event tests
    #:button-release #:button-press #:button-click #:button-double-click
    #:button-triple-click #:button-reserved-event
+   #:mouse-mask #:mouse-event-mask
 
    ;; functions
    #:initscr #:endwin #:newterm #:delscreen #:set-term
@@ -89,7 +121,7 @@ Make sure we don't clash with the actual CL-NCURSES.
    #:getnstr #:wgetnstr #:mvgetnstr #:mvwgetnstr
    #:mmask-t #:mevent #:make-mevent #:mevent-id #:mevent-x #:mevent-y
    #:mevent-z #:mevent-bstate
-   #:mousemask #:getmouse #:ungetmouse
+   #:mousemask #:getmouse #:ungetmouse #:mouseinterval
    ;; output
    #:addch #:waddch #:mvaddch #:mvwaddch #:echochar #:wechochar
    #:addstr #:addnstr #:mvaddstr #:mvaddnstr #:waddstr
@@ -351,45 +383,104 @@ Make sure we don't clash with the actual CL-NCURSES.
 (defconstant +COLOR-CYAN+    6)
 (defconstant +COLOR-WHITE+   7)
 
-;; mouse event masks
-(defconstant +BUTTON1-RELEASED+        #o000000000001)
-(defconstant +BUTTON1-PRESSED+         #o000000000002)
-(defconstant +BUTTON1-CLICKED+         #o000000000004)
-(defconstant +BUTTON1-DOUBLE-CLICKED+  #o000000000010)
-(defconstant +BUTTON1-TRIPLE-CLICKED+  #o000000000020)
-(defconstant +BUTTON1-RESERVED-EVENT+  #o000000000040)
-(defconstant +BUTTON2-RELEASED+        #o000000000100)
-(defconstant +BUTTON2-PRESSED+         #o000000000200)
-(defconstant +BUTTON2-CLICKED+         #o000000000400)
-(defconstant +BUTTON2-DOUBLE-CLICKED+  #o000000001000)
-(defconstant +BUTTON2-TRIPLE-CLICKED+  #o000000002000)
-(defconstant +BUTTON2-RESERVED-EVENT+  #o000000004000)
-(defconstant +BUTTON3-RELEASED+        #o000000010000)
-(defconstant +BUTTON3-PRESSED+         #o000000020000)
-(defconstant +BUTTON3-CLICKED+         #o000000040000)
-(defconstant +BUTTON3-DOUBLE-CLICKED+  #o000000100000)
-(defconstant +BUTTON3-TRIPLE-CLICKED+  #o000000200000)
-(defconstant +BUTTON3-RESERVED-EVENT+  #o000000400000)
-(defconstant +BUTTON4-RELEASED+        #o000001000000)
-(defconstant +BUTTON4-PRESSED+         #o000002000000)
-(defconstant +BUTTON4-CLICKED+         #o000004000000)
-(defconstant +BUTTON4-DOUBLE-CLICKED+  #o000010000000)
-(defconstant +BUTTON4-TRIPLE-CLICKED+  #o000020000000)
-(defconstant +BUTTON4-RESERVED-EVENT+  #o000040000000)
-(defconstant +BUTTON-CTRL+             #o000100000000)
-(defconstant +BUTTON-SHIFT+            #o000200000000)
-(defconstant +BUTTON-ALT+              #o000400000000)
-(defconstant +ALL-MOUSE-EVENTS+        #o000777777777)
-(defconstant +REPORT-MOUSE-POSITION+   #o001000000000)
+;; mouse events
 
-(defmacro mouse-event-mask (e x c)
-  `(not (= 0 (logand ,e (ash ,c (* 6 (- ,x 1)))))))
-(defun BUTTON-RELEASE	     (e x) (mouse-event-mask e x #o001))
-(defun BUTTON-PRESS	     (e x) (mouse-event-mask e x #o002))
-(defun BUTTON-CLICK	     (e x) (mouse-event-mask e x #o004))
-(defun BUTTON-DOUBLE-CLICK   (e x) (mouse-event-mask e x #o010))
-(defun BUTTON-TRIPLE-CLICK   (e x) (mouse-event-mask e x #o020))
-(defun BUTTON-RESERVED-EVENT (e x) (mouse-event-mask e x #o040))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defvar *mouse-version*
+    #+curses-mouse-version-1 1
+    #+curses-mouse-version-2 2
+    #-(or curses-mouse-version-1 curses-mouse-version-2) 1
+    "What version of mouse events to use.")
+
+  (defconstant +BUTTON-RELEASED+       #o001)
+  (defconstant +BUTTON-PRESSED+        #o002)
+  (defconstant +BUTTON-CLICKED+        #o004)
+  (defconstant +BUTTON-DOUBLE-CLICKED+ #o010)
+  (defconstant +BUTTON-TRIPLE-CLICKED+ #o020)
+  (defconstant +BUTTON-RESERVED-EVENT+ #o040)
+  (defconstant +BUTTON-ANY+            #o077)
+
+  (cond
+    ((= *mouse-version* 1)
+     (defmacro mouse-mask (button type) `(ash ,type (* 6 (- ,button 1)))))
+    ((> *mouse-version* 1)
+     (defmacro mouse-mask (button type) `(ash ,type (* 5 (- ,button 1)))))
+    (t (error "Unknown *mouse-version* ~d" *mouse-version*))))
+
+(defconstant +BUTTON1-RELEASED+        (mouse-mask 1 +BUTTON-RELEASED+))
+(defconstant +BUTTON1-PRESSED+         (mouse-mask 1 +BUTTON-PRESSED+))
+(defconstant +BUTTON1-CLICKED+         (mouse-mask 1 +BUTTON-CLICKED+))
+(defconstant +BUTTON1-DOUBLE-CLICKED+  (mouse-mask 1 +BUTTON-DOUBLE-CLICKED+))
+(defconstant +BUTTON1-TRIPLE-CLICKED+  (mouse-mask 1 +BUTTON-TRIPLE-CLICKED+))
+
+(defconstant +BUTTON2-RELEASED+        (mouse-mask 2 +BUTTON-RELEASED+))
+(defconstant +BUTTON2-PRESSED+         (mouse-mask 2 +BUTTON-PRESSED+))
+(defconstant +BUTTON2-CLICKED+         (mouse-mask 2 +BUTTON-CLICKED+))
+(defconstant +BUTTON2-DOUBLE-CLICKED+  (mouse-mask 2 +BUTTON-DOUBLE-CLICKED+))
+(defconstant +BUTTON2-TRIPLE-CLICKED+  (mouse-mask 2 +BUTTON-TRIPLE-CLICKED+))
+
+(defconstant +BUTTON3-RELEASED+        (mouse-mask 3 +BUTTON-RELEASED+))
+(defconstant +BUTTON3-PRESSED+         (mouse-mask 3 +BUTTON-PRESSED+))
+(defconstant +BUTTON3-CLICKED+         (mouse-mask 3 +BUTTON-CLICKED+))
+(defconstant +BUTTON3-DOUBLE-CLICKED+  (mouse-mask 3 +BUTTON-DOUBLE-CLICKED+))
+(defconstant +BUTTON3-TRIPLE-CLICKED+  (mouse-mask 3 +BUTTON-TRIPLE-CLICKED+))
+
+(defconstant +BUTTON4-RELEASED+        (mouse-mask 4 +BUTTON-RELEASED+))
+(defconstant +BUTTON4-PRESSED+         (mouse-mask 4 +BUTTON-PRESSED+))
+(defconstant +BUTTON4-CLICKED+         (mouse-mask 4 +BUTTON-CLICKED+))
+(defconstant +BUTTON4-DOUBLE-CLICKED+  (mouse-mask 4 +BUTTON-DOUBLE-CLICKED+))
+(defconstant +BUTTON4-TRIPLE-CLICKED+  (mouse-mask 4 +BUTTON-TRIPLE-CLICKED+))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (cond
+    ((= *mouse-version* 1)
+     ;; Version 1 has reserved events.
+     (defconstant +BUTTON1-RESERVED-EVENT+
+       (mouse-mask 1 +BUTTON-RESERVED-EVENT+))
+     (defconstant +BUTTON2-RESERVED-EVENT+
+       (mouse-mask 2 +BUTTON-RESERVED-EVENT+))
+     (defconstant +BUTTON3-RESERVED-EVENT+
+       (mouse-mask 3 +BUTTON-RESERVED-EVENT+))
+     (defconstant +BUTTON4-RESERVED-EVENT+
+       (mouse-mask 4 +BUTTON-RESERVED-EVENT+))
+
+     (defconstant +BUTTON-CTRL+            (mouse-mask 5 #o001))
+     (defconstant +BUTTON-SHIFT+           (mouse-mask 5 #o002))
+     (defconstant +BUTTON-ALT+             (mouse-mask 5 #o004))
+     (defconstant +REPORT-MOUSE-POSITION+  (mouse-mask 5 #o010)))
+    ((> *mouse-version* 1)
+     ;; Version >1 has button 5 and no reserved events.
+     (defconstant +BUTTON5-RELEASED+
+       (mouse-mask 5 +BUTTON-RELEASED+))
+     (defconstant +BUTTON5-PRESSED+
+       (mouse-mask 5 +BUTTON-PRESSED+))
+     (defconstant +BUTTON5-CLICKED+
+       (mouse-mask 5 +BUTTON-CLICKED+))
+     (defconstant +BUTTON5-DOUBLE-CLICKED+
+       (mouse-mask 5 +BUTTON-DOUBLE-CLICKED+))
+     (defconstant +BUTTON5-TRIPLE-CLICKED+
+       (mouse-mask 5 +BUTTON-TRIPLE-CLICKED+))
+
+     (defconstant +BUTTON-CTRL+            (mouse-mask 6 #o001))
+     (defconstant +BUTTON-SHIFT+           (mouse-mask 6 #o002))
+     (defconstant +BUTTON-ALT+             (mouse-mask 6 #o004))
+     (defconstant +REPORT-MOUSE-POSITION+  (mouse-mask 6 #o010)))
+    (t (error "Unknown *mouse-version* ~d" *mouse-version*))))
+
+(defconstant +ALL-MOUSE-EVENTS+ (1- +REPORT-MOUSE-POSITION+))
+
+(defmacro mouse-event-mask (event button event-type)
+  `(not (= 0 (logand ,event (mouse-mask ,button ,event-type)))))
+
+(defun BUTTON-RELEASE	     (e x) (mouse-event-mask e x +BUTTON-RELEASED+))
+(defun BUTTON-PRESS	     (e x) (mouse-event-mask e x +BUTTON-PRESSED+))
+(defun BUTTON-CLICK	     (e x) (mouse-event-mask e x +BUTTON-CLICKED+))
+(defun BUTTON-DOUBLE-CLICK   (e x)
+  (mouse-event-mask e x +BUTTON-DOUBLE-CLICKED+))
+(defun BUTTON-TRIPLE-CLICK   (e x)
+  (mouse-event-mask e x +BUTTON-TRIPLE-CLICKED+))
+(defun BUTTON-RESERVED-EVENT (e x)
+  (mouse-event-mask e x +BUTTON-RESERVED-EVENT+))
 
 (defvar *funkeys* nil
   "Hash table mapping curses function key codes to our keywords.")
@@ -571,8 +662,7 @@ application.")
 
 ;; Mouse input
 (defctype mmask-t :unsigned-long)
-#-cffi (defcfun mousemask mmask-t (newmask mmask-t) (oldmask :pointer))
-#+cffi (defcfun mousemask mmask-t (newmask mmask-t) (oldmask :pointer))
+(defcfun mousemask mmask-t (newmask mmask-t) (oldmask :pointer))
 ;(defcfun mousemask mmask-t (newmask mmask-t) (oldmask (* mmask-t)))
 ;(defcfun mousemask mmask-t (newmask mmask-t) (oldmask :pointer))
 ; (defcfun mousemask mmask-t
@@ -585,23 +675,46 @@ application.")
 ;     (:name "getmouse")
 ;     (:arguments (m (ffi:c-ptr mevent) :in-out))
 ;     (:return-type ffi:int))
-(defcstruct %mevent
+(defcstruct foreign-mevent
   (id :short)
-  (x :int) (y :int) (z :int)
+  (x :int)
+  (y :int)
+  (z :int)
   (bstate mmask-t))
-(defstruct mevent id x y z bstate)
-(defcfun ("getmouse" %getmouse) :int (event :pointer))
-(defun getmouse (mev)
-  (with-foreign-object (fmev '(:struct %mevent))
-    (%getmouse fmev)
-    (with-foreign-slots ((id x y z bstate) fmev (:struct %mevent))
-      (setf (mevent-id mev) id)
-      (setf (mevent-x mev) x)
-      (setf (mevent-y mev) y)
-      (setf (mevent-z mev) z)
-      (setf (mevent-bstate mev) bstate))))
 
-(defcfun ungetmouse :int (event :pointer))
+(defstruct mevent
+  "A mouse event. The Lisp equivalent of the C mevent struct."
+  id x y z bstate)
+
+(defcfun ("getmouse" real-getmouse) :int (event :pointer))
+(defun getmouse (&optional mouse-event foreign-mevent)
+  "Get a mouse event. If MOUSE-EVENT is provided, fill it in. Otherwise return
+a new one. If FOREIGN-MOUSE-EVENT is also provided, use that to stor the C
+structure, otherwise use a temporary one. It is probably the most efficent case
+if both are provided, but it's sometimes convenient not to."
+  (let ((result (or mouse-event (make-mevent))))
+    (labels ((get-it (fmev)
+	       (real-getmouse fmev)
+	       (with-foreign-slots ((id x y z bstate) fmev
+				    (:struct foreign-mevent))
+		 (setf (mevent-id result) id)
+		 (setf (mevent-x result) x)
+		 (setf (mevent-y result) y)
+		 (setf (mevent-z result) z)
+		 (setf (mevent-bstate result) bstate))))
+      (if foreign-mevent
+	  (get-it foreign-mevent)
+	  (with-foreign-object (fmev '(:struct foreign-mevent))
+	    (get-it fmev)))
+      result)))
+
+(defcfun ungetmouse :int
+  "Pushes a mouse event back on the queue."
+  (event :pointer))
+(defcfun mouseinterval :int
+  "Set the maximum time in milliseconds for a press and release to be recognized
+as a click. Return the previous setting. -1 makes no change. 0 disables it."
+  (milliseconds :int))
 
 ;;
 ;; Output
