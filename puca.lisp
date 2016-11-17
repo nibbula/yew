@@ -571,9 +571,10 @@ for the command-function).")
 	    (when (check-existence backend)
 	      (dbug "Picked ~s~%" backend)
 	      (return (make-instance (intern (symbol-name backend) :puca)))))))
-    (if (not result)
-	(make-instance 'cvs)
-	result)))
+    ;; (if (not result)
+    ;; 	(make-instance 'cvs)
+    ;; 	result)))
+    result))
 
 (defun add-command (p)
   "Add file"
@@ -816,10 +817,17 @@ for the command-function).")
     (message p "**MESSAGES**")))
 
 (defun puca (&key backend-type)
-  (let* ((*puca* (make-instance 'puca
-		  :keymap (list *puca-keymap* *default-inator-keymap*)
-		  :backend (pick-backend backend-type))))
-    (event-loop *puca*)))
+  (let* ((backend (pick-backend backend-type))
+	 *puca*)
+    (if backend
+	(progn
+	  (setf *puca* (make-instance
+			'puca
+			:keymap (list *puca-keymap* *default-inator-keymap*)
+			:backend (pick-backend backend-type)))
+	  (event-loop *puca*))
+	(error
+  "The current directory is not under a source control system I know about."))))
 
 (defun make-standalone (&optional (name "puca"))
   "FUFKFUFUFUFUFF"
