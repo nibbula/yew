@@ -859,6 +859,12 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
   (defparameter *unicode-sparkle-spin-string* "❋❊❈❇❇··"
     "Spin string using common unicode characters.")
 
+  (defparameter *unicode-braille-spin* "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    "Spin string using common unicode characters.")
+
+  (defparameter *unicode-square-spin* "◰◳◲◱"
+    "Spin string using common unicode characters.")
+
   (defparameter *emoji-spin-string* "🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚🕛"
     "Spin string with fancy emoji clock face characters.")
 
@@ -893,7 +899,7 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
 (defvar *loadable-packages* nil
   "Cached list of ASDF loadable packages. Set to NIL to recompute.")
 
-;; This is an horrible hack. I wish we could ask ASDF.
+;; This is an horrible hack. I wish we could ask ASDF and Quicklisp.
 (defun loadable-packages (&key as-strings)
   "List of potentially ASDF loadable packages."
   (labels ((place-dir (p)
@@ -1138,7 +1144,6 @@ symbols, :all to show internal symbols too."
 			    ((fboundp s) (fdefinition s))
 			    ((boundp s) (type-of (symbol-value s)))
 			    (t "<unbound>"))))))))))
-
 
 (defun describe-printing ()
   "Describe the current Lisp printing parameters."
