@@ -75,6 +75,7 @@
    #:os-process-id
    #:os-process-parent-id
    #:os-process-group-id
+   #:os-process-user-id
    #:os-process-terminal
    #:os-process-text-size
    #:os-process-resident-size
@@ -146,7 +147,8 @@
 ;; Generic things
 
 ;; Define :32-bit-target or :64-bit-target
-#+(and (or darwin linux freebsd) x86_64) (config-feature :64-bit-target)
+#+(and (or darwin linux freebsd) (or x86_64 x86-64))
+  (config-feature :64-bit-target)
 #+ecl (eval-when (:compile-toplevel :load-toplevel :execute)
 	(when (= (cffi:foreign-type-size :long) 8)
 	  (config-feature :64-bit-target)))
@@ -253,17 +255,18 @@ string (denoting itself)."
 
 (defstruct os-process
   "Information about a system process."
-  id
-  parent-id
-  group-id
+  (id		   0 :type integer)
+  (parent-id	   0 :type integer)
+  (group-id	   0 :type integer)
+  (user-id	   0 :type integer)
   terminal
-  text-size
-  resident-size
+  (text-size	   0 :type integer)
+  (resident-size   0 :type integer)
   percent-cpu
-  nice-level
+  (nice-level	   0 :type integer)
   usage
   command
-  args)
+  (args #() :type vector))
 
 (define-condition opsys-error (simple-error)
   ((code
