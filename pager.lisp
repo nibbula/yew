@@ -27,8 +27,8 @@ traditional Unix paginator, except that it lives in a Lisp world, which means
 it should be smartly compiled to a tight executable or used from a Lisp shell.
 
 SYNOPSIS
-  pager files...					[shell command]
-  pager &optional (file-or-files (pick-file))		[function]
+  pager files...                                        [shell command]
+  pager &optional (file-or-files (pick-file))           [function]
 
 The function takes a file name or a stream or a list of such.
 The shell command takes any number of file names.
@@ -261,6 +261,8 @@ but perhaps reuse some resources."))
 	       `(format t "~a=~a " ',z ,z))))
     `(progn ,@za (terpri))))
 
+#| Moved to fatchar.
+
 ;;; ^[[00m	normal
 ;;; ^[[01;34m	bold, blue fg
 ;;; ^[[m	normal
@@ -458,6 +460,7 @@ set in this string."
 	     (get-attrs)
 	     (copy-char))))
     new-fat-line))
+|#
 
 (defun process-grotty-line (line)
   "Convert from grotty typewriter sequences to fatchar strings."
@@ -561,7 +564,7 @@ set in this string."
   "Process a line of text read from a stream."
   (let ((output (fat-string-to-span
 		 (process-control-characters
-		  (process-ansi-colors-line
+		  (process-ansi-colors
 		   (process-grotty-line
 		    (untabify line)))))))
     (if (and (= (length output) 1) (stringp (first output)))

@@ -8,7 +8,7 @@ Defines a FATCHAR which is a character with color and font attributes.
 Define a FAT-STRING as a vector of FATCHARS.
 Define a TEXT-SPAN as a list representation of a FAT-STRING.
 ")
-  (:use :cl :stretchy :dlib)
+  (:use :cl :dlib :stretchy :terminal)
   (:export
    #:fatchar
    #:fatchar-p
@@ -22,6 +22,8 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:span-length
    #:fat-string-to-span
    #:span-to-fat-string
+   #:process-ansi-colors
+   #:render-fat-string
    ))
 (in-package :fatchar)
 
@@ -34,6 +36,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
   (attrs nil :type list))
 
 (deftype fatchar-string (&optional size)
+  "A string of FATCHARs."
   `(vector fatchar ,size))
 
 (defun fatchar-init (c)
@@ -283,5 +286,177 @@ strings."
       (spanky span)))
   fat-string)
 |#
+
+;;; ^[[00m	normal
+;;; ^[[01;34m	bold, blue fg
+;;; ^[[m	normal
+;;; ^[[32m	green fg
+;;; ^[[1m	bold
+
+;; We drink of the color and become the color.
+(defun grok-ansi-color (str)
+  "Take an string with an ANSI terminal color escape sequence, starting after
+the ^[[ and return NIL if there was no valid sequence, or an integer offset
+to after the sequence, the foreground, background and a list of attributes.
+NIL stands for whatever the default is, and :UNSET means that they were not
+set in this string."
+  (let (num inc attr-was-set
+	(i 0) (len (length str))
+	(hi-color nil) hi-color-type r g b
+	(fg :unset) (bg :unset) (attr '()))
+    (loop
+       :do
+       #| (princ "> ") (dumpy num i inc (subseq str i)) |#
+       (setf (values num inc) (parse-integer str :start i :junk-allowed t))
+       #| (princ "< ") (dumpy num i inc (subseq str i)) |#
+       (if (or (not num) (not inc))
+	   (progn
+	     ;; Just an #\m without arguments means no attrs and unset color
+	     (when (eql (char str i) #\m)
+	       (setf attr '() fg nil bg nil attr-was-set t i 1))
+	     (return))
+	   (progn
+	     (setf i inc)
+	     (when (and (< i len)
+			(or (eql (char str i) #\;)
+			    (eql (char str i) #\m)))
+	       (incf i)
+	       (cond
+		 ((and hi-color (not hi-color-type))
+		  (case num
+		    (2 (setf hi-color-type :3-color))
+		    (5 (setf hi-color-type :1-color))))
+		 ((eq hi-color-type :1-color)
+		  (if (eq hi-color :fg)
+		      (setf fg num))
+		      (setf bg num))
+		 ((eq hi-color-type :3-color)
+		  (cond
+		    ((not r) (setf r num))
+		    ((not g) (setf g num))
+		    ((not b) (setf b num)
+		     (if (eq hi-color :fg)
+			 (setf fg (list r g b))
+			 (setf bg (list r g b))))))
+		 (t
+		  (case num
+		    (0  (setf attr '() fg nil bg nil attr-was-set t))
+		    (1  (pushnew :bold attr)      (setf attr-was-set t))
+		    (2  (pushnew :dim attr)       (setf attr-was-set t))
+		    (3  (pushnew :italic attr)    (setf attr-was-set t))
+		    (4  (pushnew :underline attr) (setf attr-was-set t))
+		    (5  (pushnew :blink attr)     (setf attr-was-set t))
+		    (7  (pushnew :inverse attr)   (setf attr-was-set t))
+		    (8  (pushnew :invisible attr) (setf attr-was-set t))
+		    (9  (pushnew :crossed-out attr) (setf attr-was-set t))
+		    (21 (pushnew :double-underline attr) (setf attr-was-set t))
+		    (22 (setf attr (delete :bold attr))
+			(setf attr-was-set t))
+		    (23 (setf attr (delete :italic attr))
+			(setf attr-was-set t))
+		    (24 (setf attr (delete :underline attr))
+			(setf attr-was-set t))
+		    (25 (setf attr (delete :blink attr))
+			(setf attr-was-set t))
+		    (27 (setf attr (delete :inverse attr))
+			(setf attr-was-set t))
+		    (28 (setf attr (delete :invisible attr))
+			(setf attr-was-set t))
+		    (29 (setf attr (delete :crossed-out attr))
+			(setf attr-was-set t))
+		    (30 (setf fg :black))
+		    (31 (setf fg :red))
+		    (32 (setf fg :green))
+		    (33 (setf fg :yellow))
+		    (34 (setf fg :blue))
+		    (35 (setf fg :magenta))
+		    (36 (setf fg :cyan))
+		    (37 (setf fg :white))
+		    (38 (setf hi-color :fg))
+		    (39 (setf fg nil))
+		    (40 (setf bg :black))
+		    (41 (setf bg :red))
+		    (42 (setf bg :green))
+		    (43 (setf bg :yellow))
+		    (44 (setf bg :blue))
+		    (45 (setf bg :magenta))
+		    (46 (setf bg :cyan))
+		    (47 (setf bg :white))
+		    (48 (setf hi-color :bg))
+		    (49 (setf bg nil))
+		    (otherwise #| just ignore unknown colors or attrs |#))))
+	       (when (eql (char str (1- i)) #\m)
+		 (return)))))
+       :while (< i len))
+    (values
+     (if (and (eq fg :unset) (eq bg :unset) (not attr-was-set))
+	 1 i)
+     fg bg (if (not attr-was-set) :unset attr))))
+
+(defun process-ansi-colors (fat-line)
+  "Convert ANSI color escapes into colored fatchars."
+  (when (zerop (length fat-line))
+    (return-from process-ansi-colors fat-line))
+  (let ((new-fat-line (make-stretchy-vector (length fat-line)
+					    :element-type 'fatchar))
+	(i 0)
+	(len (length fat-line))
+	(line (map 'string #'(lambda (x) (fatchar-c x)) fat-line))
+	fg bg attrs)
+    (flet ((looking-at-attrs ()
+	     "Return true if might be looking at some attrs."
+	     (and (< i (1- len))
+		  (char= (aref line i) #\escape)
+		  (char= (aref line (1+ i)) #\[)))
+	   (get-attrs ()
+	     "Get the attrs we might be looking at."
+	     (incf i 2) ; the ^[ and [
+	     (multiple-value-bind (inc i-fg i-bg i-attrs)
+		 (grok-ansi-color (subseq line i))
+	       (when inc
+		 (unless (eq i-fg    :unset) (setf fg i-fg))
+		 (unless (eq i-bg    :unset) (setf bg i-bg))
+		 (unless (eq i-attrs :unset) (setf attrs i-attrs))
+		 (incf i inc))))	; for the parameters read
+	   (copy-char ()
+	     "Copy the current character to result."
+	     ;;(dbug "attrs = ~a~%" attrs)
+	     ;;(dbug "(aref fat-line i) = ~a~%" (aref fat-line i))
+	     (let ((new-attrs (union attrs (fatchar-attrs (aref fat-line i)))))
+	       (stretchy:stretchy-append
+		new-fat-line (make-fatchar
+			      :c (fatchar-c (aref fat-line i))
+			      :fg fg :bg bg
+			      :attrs new-attrs
+			      )))
+	     (incf i)))
+      (loop :while (< i len) :do
+	 (if (looking-at-attrs)
+	     (get-attrs)
+	     (copy-char))))
+    new-fat-line))
+
+(defun render-fat-string (fat-string &optional (terminal *terminal*))
+  (when (not *terminal*)
+    (error "Please supply a terminal or set *terminal*."))
+  (loop :with last-attr :and fg :and bg
+     :for c :across fat-string
+     :do
+     (when (not (eq last-attr (fatchar-attrs c)))
+       (tt-normal terminal)
+       (loop :for a :in (fatchar-attrs c)
+	  :do
+	  (case a
+	    (:normal    (tt-normal terminal))
+	    (:standout  (tt-standout terminal t))
+	    (:underline (tt-underline terminal t))
+	    (:bold      (tt-bold terminal t))
+	    (:inverse   (tt-inverse terminal t)))))
+     (when (or (not (eq fg (fatchar-fg c)))
+	       (not (eq bg (fatchar-bg c))))
+       (setf fg (fatchar-fg c) bg (fatchar-bg c))
+       (tt-color terminal fg bg))
+     (tt-write-char terminal (fatchar-c c)))
+  (tt-normal terminal))
 
 ;; EOF
