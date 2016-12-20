@@ -161,17 +161,17 @@ two values ROW and COLUMN."))
 				    device-name)
 			 &body body)
   "Evaluate the body with VAR set to a new terminal. Cleans up afterward."
-  `(let ((,var (if ,device-name
-		   (make-instance (or ',type
-				      (error
-     "No type provided. Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
-				      :device-name ,device-name)
-		   (make-instance ',type))))
-     (unwind-protect
-	  (progn
-	    (terminal-start ,var)
-	    ,@body)
-       (terminal-done ,var))))
+  `(progn
+     (when (not (find-class ,type))
+       (error "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
+     (let ((,var (if ,device-name
+		   (make-instance ,type :device-name ,device-name)
+		   (make-instance ,type))))
+       (unwind-protect
+	    (progn
+	      (terminal-start ,var)
+	      ,@body)
+	 (terminal-done ,var)))))
 
 (defgeneric tt-format (tty fmt &rest args)
   (:documentation "Output a formatted string to the terminal."))
