@@ -7,7 +7,7 @@
   (:use :cl :curses :cffi)
   (:export
    #:test
-   #:test-menu
+   #:menu
    ))
 (in-package :curses-test)
 
@@ -258,11 +258,13 @@
 	 `(#\black_left-pointing_triangle
 	   #\black_smiling_face
 	   #\black_right-pointing_triangle
+	   #\maple_leaf
 	   ,(code-char 0))
 	 #+(or ecl ccl)
 	 `(#\u25C0
 	   #\u263B
 	   #\u25B6
+	   #\u1f341
 	   ,(code-char 0))
 	 ))
     (with-foreign-object (str :int (length chars))
@@ -348,6 +350,11 @@
 	   (case cc
 	     (#\q (return))
 	     (#\n (new-blook))
+	     (#\p
+	      (setf t-o (- t-o))
+	      (if (minusp t-o)
+		  (curses::timeout -1)
+		  (curses::timeout t-o)))
 	     (#\- (curses::timeout (decf t-o 1)))
 	     (#\+ (curses::timeout (incf t-o 1))))))))
   (curses::timeout -1))
@@ -631,7 +638,7 @@
   (test-random)
   #+curses-use-wide (test-wchar))
 
-(defun test-menu ()
+(defun menu ()
   (call-test #'menu-loop)
   (values))
 
