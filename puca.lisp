@@ -67,7 +67,10 @@
     :documentation "A message to show.")
    (first-line
     :initarg :first-line :accessor puca-first-line :initform nil 
-    :documentation "The first line of the objects."))
+    :documentation "The first line of the objects.")
+   (debug
+    :initarg :debug :accessor puca-debug :initform nil :type boolean
+    :documentation "True to turn on debugging."))
   (:default-initargs
    :point 0)
   (:documentation "An instance of a version control frontend app."))
@@ -359,7 +362,6 @@
   (message *puca* "Listing...")
   (with-slots (goo top errors maxima (point inator::point) cur extra) *puca*
     (setf goo '()
-	  top 0
 	  errors '())
     (let* ((i 0)
 	   (cmd (backend-list-command (puca-backend *puca*)))
@@ -377,15 +379,16 @@
       (setf goo (nreverse goo)
 	    errors (nreverse errors))
       (setf maxima (length goo))
-      (when (>= (inator-point *puca*) maxima)
-	(setf (inator-point *puca*) (1- maxima)))))
+      (when (>= point maxima)
+	(setf point (1- maxima)))
+      (when (>= top point)
+	(setf top (max 0 (- point 10))))))
   (message *puca* "Listing...done"))
 
 (defun draw-screen ()
   (with-slots (maxima top bottom goo message backend first-line) *puca*
     (erase)
     (border 0 0 0 0 0 0 0 0)
-    (setf bottom (min (- maxima top) (- curses:*lines* 7)))
     (let* ((title (format nil "~a Muca (~a)" 
 			  (backend-name backend)
 			  (machine-instance)))
@@ -396,7 +399,8 @@
       (banner backend)
       (getyx *stdscr* y x)
       ;; End of the banner and start of the first line of objects
-      (setf first-line (1+ y))
+      (setf first-line (1+ y)
+	    bottom (min (- maxima top) (- curses:*lines* first-line 3)))
       ;; top scroll indicator
       (when (> top 0)
 	(mvaddstr (1- first-line) 2 "^^^^^^^^^^^^^^^^^^^^^^^"))
@@ -405,7 +409,7 @@
 	   :do (draw-goo i)))
       ;; bottom scroll indicator
       (when (< bottom (- maxima top))
-	(mvaddstr (+ bottom 4) 2 "vvvvvvvvvvvvvvvvvvvvvvv")))
+	(mvaddstr (+ first-line bottom) 2 "vvvvvvvvvvvvvvvvvvvvvvv")))
     (when message
       (draw-message *puca*)
       (setf message nil))))
@@ -636,7 +640,7 @@ for the command-function).")
     (when (< point 0)
       (setf point 0))
     (when (< point top)
-      (decf point)
+      (decf top)
       (draw-screen))))
 
 (defmethod next ((p puca))
@@ -645,18 +649,18 @@ for the command-function).")
     (incf point)
     (when (>= point maxima)
       (setf point (1- maxima)))
-    (when (and (> point (- bottom 1)) (> bottom 1))
+    (when (and (> (- point top) (- bottom 1)) (> bottom 1))
       (incf top)
       (draw-screen))))
 
 (defmethod next-page ((p puca))
   "Next page"
   (with-slots ((point inator::point) maxima top bottom) p
-    (setf point (+ point 1 (- curses:*lines* 7)))
+    (setf point (+ point 1 bottom))
     (when (>= point maxima)
       (setf point (1- maxima)))
-    (when (> point bottom)
-      (setf top (max 0 (- point (- curses:*lines* 7))))
+    (when (>= point (+ top bottom))
+      (setf top (max 0 (- point (1- bottom))))
       (draw-screen))))
 
 (defmethod previous-page ((p puca))
@@ -673,8 +677,8 @@ for the command-function).")
   "Bottom"
   (with-slots ((point inator::point) maxima top bottom) *puca*
     (setf point (1- maxima))
-    (when (> maxima bottom)
-      (setf top (max 0 (- maxima (- curses:*lines* 7))))
+    (when (> point (+ top bottom))
+      (setf top (max 0 (- maxima bottom)))
       (draw-screen))))
 
 (defmethod move-to-top ((p puca))
@@ -741,6 +745,9 @@ for the command-function).")
   ;(refresh)
   )
 
+(defun toggle-debug (p)
+  (setf (puca-debug p) (not (puca-debug p))))
+
 (defkeymap *puca-keymap*
   `((#\q		. quit)
     (#\Q		. quit)
@@ -786,6 +793,7 @@ for the command-function).")
     ;;(,(ctrl #\L)	. redraw)
     (,(code-char 12)	. redraw)
     (,(meta-char #\=)	. describe-key-briefly)
+    (,(ctrl #\t)	. toggle-debug)
     (#\escape		. *puca-escape-keymap*)))
 
 (defparameter *puca-escape-keymap* (build-escape-map *puca-keymap*))
@@ -803,8 +811,11 @@ for the command-function).")
 ;;   (message p "Event not bound ~s" (inator-command p)))
 
 (defmethod update-display ((p puca))
-  (with-slots ((point inator::point) top first-line) p
+  (with-slots ((point inator::point) top first-line bottom debug) p
     (draw-screen)
+    (when debug
+      (message p "point = ~s top = ~s first-line ~s bottom = ~s"
+	       point top first-line bottom))
     (move (+ (- point top) first-line) 2)))
 
 (defmethod start-inator ((p puca))
