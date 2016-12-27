@@ -1714,6 +1714,7 @@ if it's blank or the same as the previous line."
 
 (defparameter *isearch-prompt* "isearch: ")
 
+#|
 (defun display-search (e str pos)
   "Display the current line with the search string highlighted."
   (with-slots (buf point) e
@@ -1751,6 +1752,28 @@ if it's blank or the same as the previous line."
     ;;(tt-underline nil)
     ;;(display-buf e (+ pos (length str))
     ))
+|#
+
+(defun display-search (e str pos)
+  "Display the current line with the search string highlighted."
+  (with-slots (buf point) e
+    ;;(setf point (min (or pos (length buf)) (length buf)))
+    (erase-display e)
+    (tt-move-to-col 0)
+    (tt-erase-to-eol)
+    (setf (screen-col e) 0)
+    (do-prefix e *isearch-prompt*)
+    ;;(log-message e "buf = ~s" buf)
+    (loop :with end = (if pos (+ pos (length str)) nil)
+       :for c :across buf :and i = 0 :then (1+ i) :do
+       (cond
+	 ((and pos (= i pos))
+	  (tt-underline t))
+	 ((and end (= i end))
+	  (tt-underline nil)))
+       (display-char e c))
+    (tt-underline nil)
+    (tt-finish-output)))
 
 (defun search-start-forward (context)
   ;; (or (and (history-current-get context)
