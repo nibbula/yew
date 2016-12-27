@@ -136,6 +136,7 @@
 ;; This done in a temporary hackish way, until we make the whole reader.
 ;; I'm curious to compare the performance of this vs a rule 184 based
 ;; implementation.
+;; @@@ This should be a method of a generic that is in syntax.lisp.
 
 (defun matching-paren-position (string &key (position (length string)))
   "Return the position in STRING of an open paren matching a, perhaps

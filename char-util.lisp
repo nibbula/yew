@@ -516,4 +516,9 @@
   ;; This is just plain better.
   (position c *combining-chars*))
 
+(defmacro with-graphemes ((string) &body body)
+  (declare (ignore string body))
+  ;; @@@
+  )
+
 ;; EOF

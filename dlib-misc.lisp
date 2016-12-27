@@ -687,7 +687,8 @@ from LIST in column-major order."
 		      &key (columns 80) (stream *standard-output*)
 			(format-char #\a) prefix suffix smush row-limit)
   "Print the LIST on STREAM with as many columns as will fit in COLUMNS fixed
-width character cells. Items are sorted down the columns, then across.
+width character cells. Items are sorted down the columns, then across. Return
+the number of rows.
 FORMAT-CHAR is used to print the items, as with FORMAT.
 PREFIX is a string to prepend to each row.
 SUFFIX is a string to append to each row."

@@ -364,6 +364,11 @@ keymap bindings."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; FUI-inators
 
+;; ToDo:
+;; - maybe should have it's own augmented keymap
+;; - describe-key
+;; - bind-to-key
+
 (defclass fui-inator (inator)
   ()
   (:documentation "A curses-inator."))
