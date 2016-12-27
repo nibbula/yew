@@ -12,11 +12,10 @@
 
 (defpackage :terminal-ansi
   (:documentation "Standard terminal (ANSI).")
-  (:use :dlib :cl :terminal :cffi :opsys)
+  (:use :dlib :dlib-misc :cl :terminal :cffi :opsys)
   (:export
    #:terminal-ansi-stream
    #:terminal-ansi
-   #:tty-slurp
    ))
 (in-package :terminal-ansi)
 
@@ -89,7 +88,7 @@ require terminal driver support."))
 two values ROW and COLUMN."
   (eat-typeahead tty)
   (let ((row 1) (col 1) sep
-	(result (tt-report tty #\R "~c[6n" #\escape)))
+	(result (terminal-report tty #\R "~c[6n" #\escape)))
     (when (and result (>= (length result) 5))
       (setf sep (position #\; result)
 	    row (parse-integer (subseq result 2 sep) :junk-allowed t)
@@ -141,7 +140,7 @@ two values ROW and COLUMN."
     ;; (setf *tty* nil)
     (values)))
 
-(defmethod tt-format ((tty terminal-ansi-stream) fmt &rest args)
+(defmethod terminal-format ((tty terminal-ansi-stream) fmt &rest args)
   "Output a formatted string to the terminal."
   (let ((string (apply #'format nil fmt args))
 	(stream (terminal-output-stream tty)))
@@ -149,7 +148,7 @@ two values ROW and COLUMN."
     (when (position #\newline string)
       (finish-output stream))))
 
-;; resumed -> (terminal-start tty) #| (redraw) |# (tt-finish-output tty)
+;; resumed -> (terminal-start tty) #| (redraw) |# (terminal-finish-output tty)
 ;; resized -> (terminal-get-size tt)
 
 ;; @@@ BROKEN! FIX!
@@ -169,7 +168,7 @@ two values ROW and COLUMN."
 	    ,@body)
        (set-terminal-mode ,tty :raw nil)))
 
-(defun tt-report (tty end-char fmt &rest args)
+(defun terminal-report (tty end-char fmt &rest args)
   "Output a formatted string to the terminal and get an immediate report back.
 Report parameters are returned as values. Report is assumed to be in the form:
 #\escape #\[ { p1 { ; pn } } end-char"
@@ -177,14 +176,14 @@ Report parameters are returned as values. Report is assumed to be in the form:
 	(q (apply #'format nil fmt args)))
     (let ((str (with-raw (fd)
 		 ;;(posix-write fd qq (length q))
-		 ;;(tt-write-string tty q) (tt-finish-output tty)
+		 ;;(terminal-write-string tty q) (terminal-finish-output tty)
 		 (write-terminal-string fd q)
 		 (read-until fd end-char :timeout 1)))) ; 10
       (when (null str)
 	(error "Terminal failed to report \"~a\"." fmt))
       str)))
 
-(defmethod tt-write-string ((tty terminal-ansi-stream) str)
+(defmethod terminal-write-string ((tty terminal-ansi-stream) str)
   "Output a string to the terminal. Flush output if it contains a newline,
 i.e. the terminal is 'line buffered'."
   (let ((stream (terminal-output-stream tty)))
@@ -192,7 +191,7 @@ i.e. the terminal is 'line buffered'."
     (when (position #\newline str)
       (finish-output stream))))
 
-(defmethod tt-write-char ((tty terminal-ansi-stream) char)
+(defmethod terminal-write-char ((tty terminal-ansi-stream) char)
   "Output a character to the terminal. Flush output if it is a newline,
 i.e. the terminal is 'line buffered'."
   (let ((stream (terminal-output-stream tty)))
@@ -200,92 +199,92 @@ i.e. the terminal is 'line buffered'."
     (when (eql char #\newline)
       (finish-output stream))))
 
-(defmethod tt-move-to ((tty terminal-ansi-stream) row col)
-  (tt-format tty "~c[~d;~dH" #\escape (1+ row) (1+ col)))
+(defmethod terminal-move-to ((tty terminal-ansi-stream) row col)
+  (terminal-format tty "~c[~d;~dH" #\escape (1+ row) (1+ col)))
 
-(defmethod tt-move-to-col ((tty terminal-ansi-stream) col)
-  (tt-format tty "~c[~dG" #\escape (1+ col)))
+(defmethod terminal-move-to-col ((tty terminal-ansi-stream) col)
+  (terminal-format tty "~c[~dG" #\escape (1+ col)))
 
-(defmethod tt-beginning-of-line ((tty terminal-ansi-stream))
-  ;; (tt-format tty "~c[G" #\escape))
+(defmethod terminal-beginning-of-line ((tty terminal-ansi-stream))
+  ;; (terminal-format tty "~c[G" #\escape))
   ;; How about just:
-  (tt-write-char tty #\return))
+  (terminal-write-char tty #\return))
 
-(defmethod tt-del-char ((tty terminal-ansi-stream) n)
-  (tt-format tty "~c[~aP" #\escape (if (> n 1) n "")))
+(defmethod terminal-del-char ((tty terminal-ansi-stream) n)
+  (terminal-format tty "~c[~aP" #\escape (if (> n 1) n "")))
 
-(defmethod tt-ins-char ((tty terminal-ansi-stream) n)
-  (tt-format tty "~c[~a@" #\escape (if (> n 1) n "")))
+(defmethod terminal-ins-char ((tty terminal-ansi-stream) n)
+  (terminal-format tty "~c[~a@" #\escape (if (> n 1) n "")))
 
-(defmethod tt-backward ((tty terminal-ansi-stream) n)
+(defmethod terminal-backward ((tty terminal-ansi-stream) n)
   (if (> n 0)
       (if (> n 1)
-	  (tt-format tty "~c[~dD" #\escape n)
-	  (tt-format tty "~c[D" #\escape))))
+	  (terminal-format tty "~c[~dD" #\escape n)
+	  (terminal-format tty "~c[D" #\escape))))
 
-(defmethod tt-forward ((tty terminal-ansi-stream) n)
+(defmethod terminal-forward ((tty terminal-ansi-stream) n)
   (if (> n 0)
       (if (> n 1)
-	  (tt-format tty "~c[~dC" #\escape n)
-	  (tt-format tty "~c[C" #\escape))))
+	  (terminal-format tty "~c[~dC" #\escape n)
+	  (terminal-format tty "~c[C" #\escape))))
 
-(defmethod tt-up ((tty terminal-ansi-stream) n)
+(defmethod terminal-up ((tty terminal-ansi-stream) n)
   (if (> n 0)
       (if (> n 1)
-	  (tt-format tty "~c[~dA" #\escape n)
-	  (tt-format tty "~c[A" #\escape))))
+	  (terminal-format tty "~c[~dA" #\escape n)
+	  (terminal-format tty "~c[A" #\escape))))
 
-(defmethod tt-down ((tty terminal-ansi-stream) n)
+(defmethod terminal-down ((tty terminal-ansi-stream) n)
   (if (> n 0)
       (if (> n 1)
-	  (tt-format tty "~c[~dB" #\escape n)
-	  (tt-format tty "~c[B" #\escape))))
+	  (terminal-format tty "~c[~dB" #\escape n)
+	  (terminal-format tty "~c[B" #\escape))))
 
-(defmethod tt-scroll-down ((tty terminal-ansi-stream) n)
+(defmethod terminal-scroll-down ((tty terminal-ansi-stream) n)
   (if (> n 0)
       (loop :with stream = (terminal-output-stream tty) and i = 0
 	 :while (< i n)
 	 :do (write-char #\newline stream) (incf i)
 	 :finally (finish-output stream))))
 
-(defmethod tt-erase-to-eol ((tty terminal-ansi-stream))
-  (tt-format tty "~c[K" #\escape))
+(defmethod terminal-erase-to-eol ((tty terminal-ansi-stream))
+  (terminal-format tty "~c[K" #\escape))
 
-(defmethod tt-erase-line ((tty terminal-ansi-stream))
-  (tt-format tty "~c[2K" #\escape))
+(defmethod terminal-erase-line ((tty terminal-ansi-stream))
+  (terminal-format tty "~c[2K" #\escape))
 
-(defmethod tt-erase-above ((tty terminal-ansi-stream))
-  (tt-format tty "~c[1J" #\escape))
+(defmethod terminal-erase-above ((tty terminal-ansi-stream))
+  (terminal-format tty "~c[1J" #\escape))
 
-(defmethod tt-erase-below ((tty terminal-ansi-stream))
-  (tt-format tty "~c[0J" #\escape))
+(defmethod terminal-erase-below ((tty terminal-ansi-stream))
+  (terminal-format tty "~c[0J" #\escape))
 
-(defmethod tt-clear ((tty terminal-ansi-stream))
-  (tt-format tty "~c[2J" #\escape))
+(defmethod terminal-clear ((tty terminal-ansi-stream))
+  (terminal-format tty "~c[2J" #\escape))
 
-(defmethod tt-home ((tty terminal-ansi-stream))
-  (tt-format tty "~c[H" #\escape))
+(defmethod terminal-home ((tty terminal-ansi-stream))
+  (terminal-format tty "~c[H" #\escape))
 
-(defmethod tt-cursor-off ((tty terminal-ansi-stream))
-  (tt-format tty "~c7" #\escape))
+(defmethod terminal-cursor-off ((tty terminal-ansi-stream))
+  (terminal-format tty "~c7" #\escape))
 
-(defmethod tt-cursor-on ((tty terminal-ansi-stream))
-  (tt-format tty "~c8" #\escape))
+(defmethod terminal-cursor-on ((tty terminal-ansi-stream))
+  (terminal-format tty "~c8" #\escape))
 
-(defmethod tt-standout ((tty terminal-ansi-stream) state)
-  (tt-format tty "~c[~dm" #\escape (if state 7 27)))
+(defmethod terminal-standout ((tty terminal-ansi-stream) state)
+  (terminal-format tty "~c[~dm" #\escape (if state 7 27)))
 
-(defmethod tt-normal ((tty terminal-ansi-stream))
-  (tt-format tty "~c[0m" #\escape))
+(defmethod terminal-normal ((tty terminal-ansi-stream))
+  (terminal-format tty "~c[0m" #\escape))
 
-(defmethod tt-underline ((tty terminal-ansi-stream) state)
-  (tt-format tty "~c[~dm" #\escape (if state 4 24)))
+(defmethod terminal-underline ((tty terminal-ansi-stream) state)
+  (terminal-format tty "~c[~dm" #\escape (if state 4 24)))
 
-(defmethod tt-bold ((tty terminal-ansi-stream) state)
-  (tt-format tty "~c[~dm" #\escape (if state 1 22)))
+(defmethod terminal-bold ((tty terminal-ansi-stream) state)
+  (terminal-format tty "~c[~dm" #\escape (if state 1 22)))
 
-(defmethod tt-inverse ((tty terminal-ansi-stream) state)
-  (tt-format tty "~c[~dm" #\escape (if state 7 27)))
+(defmethod terminal-inverse ((tty terminal-ansi-stream) state)
+  (terminal-format tty "~c[~dm" #\escape (if state 7 27)))
 
 (defparameter *attributes*
   '((:normal	       22)		; not bold or faint
@@ -314,7 +313,7 @@ i.e. the terminal is 'line buffered'."
 (defparameter *colors*
   #(:black :red :green :yellow :blue :magenta :cyan :white nil :default))
 
-(defmethod tt-color ((tty terminal-ansi-stream) fg bg)
+(defmethod terminal-color ((tty terminal-ansi-stream) fg bg)
   (let ((fg-pos (position fg *colors*))
 	(bg-pos (position bg *colors*)))
     (when (not fg-pos)
@@ -323,30 +322,30 @@ i.e. the terminal is 'line buffered'."
       (error "Background ~a is not a known color." bg))
     (cond
       ((and fg bg)
-       (tt-format tty "~c[~d;~dm" #\escape (+ 30 fg-pos) (+ 40 bg-pos)))
+       (terminal-format tty "~c[~d;~dm" #\escape (+ 30 fg-pos) (+ 40 bg-pos)))
       (fg
-       (tt-format tty "~c[~dm" #\escape (+ 30 fg-pos)))
+       (terminal-format tty "~c[~dm" #\escape (+ 30 fg-pos)))
       (bg
-       (tt-format tty "~c[~dm" #\escape (+ 40 bg-pos)))
+       (terminal-format tty "~c[~dm" #\escape (+ 40 bg-pos)))
       (t
-       (tt-format tty "~c[m" #\escape)))))
+       (terminal-format tty "~c[m" #\escape)))))
 
 ;; 256 color? ^[[ 38;5;color <-fg 48;5;color <- bg
 ;; set color tab = ^[] Ps ; Pt BEL
 ;;;  4; color-number ; #rrggbb ala XParseColor
 
-(defmethod tt-beep ((tty terminal-ansi-stream))
-  (tt-write-char tty #\bel))		; Not #\bell!!
+(defmethod terminal-beep ((tty terminal-ansi-stream))
+  (terminal-write-char tty #\bel))		; Not #\bell!!
 
-(defmethod tt-set-scrolling-region ((tty terminal-ansi-stream) start end)
+(defmethod terminal-set-scrolling-region ((tty terminal-ansi-stream) start end)
   (if (and (not start) (not end))
-      (tt-format tty "~c[r" #\escape)
-      (tt-format tty "~c[~d;~dr" #\escape start end)))
+      (terminal-format tty "~c[r" #\escape)
+      (terminal-format tty "~c[~d;~dr" #\escape start end)))
 
-(defmethod tt-finish-output ((tty terminal-ansi-stream))
+(defmethod terminal-finish-output ((tty terminal-ansi-stream))
   (finish-output (terminal-output-stream tty)))
 
-; (defmethod tt-get-row ((tty terminal-ansi))
+; (defmethod terminal-get-row ((tty terminal-ansi))
 ;   (let ((string (format nil "~a[R" #\escape))
 ; 	(stream (terminal-output-stream tty)))
 ;     (write-string string stream)
@@ -377,7 +376,7 @@ i.e. the terminal is 'line buffered'."
 	 (handler-case
 	     (setf result (read-terminal-char file-descriptor))
 	   (opsys-resumed ()
-	     (terminal-start tty) (tt-finish-output tty)
+	     (terminal-start tty) (terminal-finish-output tty)
 	     (setf borked t))
 	   (opsys-resized ()
 	     (terminal-get-size tty)
@@ -385,22 +384,22 @@ i.e. the terminal is 'line buffered'."
 	 :while borked)
       result)))
 
-(defmethod tt-get-char ((tty terminal-ansi))
+(defmethod terminal-get-char ((tty terminal-ansi))
   "Read a character from the terminal."
-  (tt-finish-output tty)
+  (terminal-finish-output tty)
   ;;(read-terminal-char tty))
   (get-char tty))
 
-(defmethod tt-get-key ((tty terminal-ansi))
-  (tt-finish-output tty)
+(defmethod terminal-get-key ((tty terminal-ansi))
+  (terminal-finish-output tty)
   (get-char tty))
 
-(defmethod tt-listen-for ((tty terminal-ansi) seconds)
+(defmethod terminal-listen-for ((tty terminal-ansi) seconds)
   (listen-for seconds (terminal-file-descriptor tty)))
 
-(defmethod tt-reset ((tty terminal-ansi-stream))
+(defmethod terminal-reset ((tty terminal-ansi-stream))
   "Try to reset the terminal to a sane state, without being too disruptive."
-  (flet ((out (s) (tt-write-string tty (format nil "~c~a" #\escape s))))
+  (flet ((out (s) (terminal-write-string tty (format nil "~c~a" #\escape s))))
     ;; Then try to reset the terminal itself to a sane state. We could just do
     ;; ^[c, which is quite effective, but it's pretty drastic, and usually
     ;; clears the screen and can even resize the window, which is so amazingly
@@ -419,21 +418,162 @@ i.e. the terminal is 'line buffered'."
 	     "[?9l"  ;; Don't send position on mouse press
 	     "[?47l" ;; Use normal screen buffer
 	     ))
-    (tt-finish-output tty)))
+    (terminal-finish-output tty)))
 
-(defmethod tt-reset ((tty terminal-ansi))
+(defmethod terminal-reset ((tty terminal-ansi))
   ;; First reset the terminal driver to a sane state.
   (termios:sane)
   (call-next-method)) ;; Do the terminal-stream version
 
-(defmethod tt-save-cursor ((tty terminal-ansi))
+(defmethod terminal-save-cursor ((tty terminal-ansi))
   "Save the cursor position."
-  (tt-format tty "~c7" #\escape)
-  (tt-finish-output tty))
+  (terminal-format tty "~c7" #\escape)
+  (terminal-finish-output tty))
 
-(defmethod tt-restore-cursor ((tty terminal-ansi))
+(defmethod terminal-restore-cursor ((tty terminal-ansi))
   "Restore the cursor position, from the last saved postion."
-  (tt-format tty "~c8" #\escape)
-  (tt-finish-output tty))
+  (terminal-format tty "~c8" #\escape)
+  (terminal-finish-output tty))
+
+(defun response-terminal-type (n)
+  (case n
+    (0 "VT100")
+    (1 "VT220")
+    (2 "VT240")
+    (18 "VT330")
+    (19 "VT340")
+    (24 "VT320")
+    (41 "VT420") ;; 🍁
+    (61 "VT510")
+    (64 "VT520")
+    (65 "VT525")))
+
+(defun describe-terminal ()
+  "Interrogate the terminal properties and report the results."
+  (let ((csi (format nil "~c[" #\escape))
+	response a props)
+    (labels ((qq (s &key (offset 3))
+	       (setf response (termios:terminal-query (s+ csi s)))
+	       (if (zerop (length response))
+		   '()
+		   (mapcar (_ (ignore-errors (parse-integer _)))
+			   (split-sequence
+			    #\;
+			    (coerce (subseq response offset
+					    (1- (length response)))
+				    'string)))))
+	     (qqq (s &key (offset 3) (ending 2))
+	       (setf response (termios:terminal-query (s+ csi s)))
+	       (if (zerop (length response))
+		   '()
+		   (coerce (subseq response offset
+				   (- (length response) ending))
+			   'string))))
+      ;; Terminal type
+      (setf a (qq ">c"))
+      (push `("Terminal type" ,(response-terminal-type (first a))) props)
+      (when (second a)
+	(push `("Firmware version" ,(second a)) props))
+      ;; Features
+      (setf a (qq "c"))
+      (loop :for prop :in (cdr a) :do
+	 (push `(,(case prop
+		   (1 "132-columns")
+		   (2 "Printer")
+		   (6 "Selective erase")
+		   (8 "User-defined keys")
+		   (9 "National Replacement Character sets")
+		   (15 "Technical characters")
+		   (18 "User windows")
+		   (21 "Horizontal scrolling")
+		   (22 "ANSI color")
+		   (29 "ANSI text locator")
+		   (t "Unknown property"))
+		  "Yes") props))
+      ;; Cursor position
+      (setf a (qq "?6n"))
+      (push `("Cursor position" ,(format nil "~a ~a" (first a) (second a)))
+	    props)
+      ;; Printer
+      (setf a (qq "?15n"))
+      (push `("Printer status"
+	      ,(case (first a)
+		     (10 "Ready")
+		     (11 "Not Ready")
+		     (13 "No Printer")
+		     (t "Unknown")))
+	    props)
+      ;; Locator status
+      (setf a (qq "?55n"))
+      (push `("Locator status"
+	      ,(case (first a)
+		     (53 "Available")
+		     (50 "No locator")
+		     (t "Unknown")))
+	    props)
+      ;; Locator type
+      (setf a (qq "?56n"))
+      (push `("Locator type"
+	      ,(case (second a)
+		     (1 "Mouse")
+		     (t "Unknown")))
+	    props)
+      ;; Window state
+      (setf a (qq "11t" :offset 2))
+      (push `("Window state"
+	      ,(if (zerop (length a))
+		   "Unavailable"
+		   (case (first a)
+		     (1 "Open")
+		     (2 "Iconified")
+		     (t "Unknown"))))
+	      props)
+      ;; Window position
+      (setf a (qq "13t" :offset 2))
+      (push `("Window position"
+	      ,(if (zerop (length a))
+		   "Unavailable"
+		   (format nil "~a ~a" (second a) (third a))))
+	      props)
+      ;; Window size
+      (setf a (qq "14t" :offset 2))
+      (push `("Window size"
+	      ,(if (zerop (length a))
+		   "Unavailable"
+		   (format nil "~a ~a" (second a) (third a))))
+	      props)
+      ;; Text size
+      (setf a (qq "18t" :offset 2))
+      (push `("Text size"
+	      ,(if (zerop (length a))
+		   "Unavailable"
+		   (format nil "~a ~a" (second a) (third a))))
+	      props)
+      ;; Text screen size
+      (setf a (qq "19t" :offset 2))
+      (push `("Text screen size"
+	      ,(if (zerop (length a))
+		   "Unavailable"
+		   (format nil "~a ~a" (second a) (third a))))
+	      props)
+      ;; Icon label
+      (setf a (qqq "20t"))
+      (push `("Icon label"
+	      ,(if (zerop (length a))
+		   "Unavailable"
+		   a))
+	      props)
+      ;; Title
+      (setf a (qqq "20t"))
+      (push `("Title"
+	      ,(if (zerop (length a))
+		   "Unavailable"
+		   a))
+	      props)
+      ;;;
+      (setf props (nreverse props))
+      (print-properties props))))
+
+(register-terminal-type :ansi 'terminal-ansi)
 
 ;; EOF

@@ -335,52 +335,52 @@ generic functions (i.e. %GROUT-*) directly."
 (defmethod %grout-bold ((g ansi-stream) string)
   "Output the string boldly."
   (with-slots (term-stream) g
-    (tt-bold term-stream t)
-    (tt-write-string term-stream string)
-    (tt-bold term-stream nil)))
+    (terminal-bold term-stream t)
+    (terminal-write-string term-stream string)
+    (terminal-bold term-stream nil)))
 
 (defmethod %grout-set-bold ((g ansi-stream) flag)
   "Turn bold on or off."
-  (tt-bold (ansi-stream g) flag))
+  (terminal-bold (ansi-stream g) flag))
 
 (defmethod %grout-underline ((g ansi-stream) string)
   "Output the string underlined."
   (with-slots (term-stream) g
-    (tt-underline term-stream t)
-    (tt-write-string term-stream string)
-    (tt-underline term-stream nil)
-    (tt-finish-output term-stream)))
+    (terminal-underline term-stream t)
+    (terminal-write-string term-stream string)
+    (terminal-underline term-stream nil)
+    (terminal-finish-output term-stream)))
 
 (defmethod %grout-set-underline ((g ansi-stream) flag)
   "Turn underlining on or off."
-  (tt-underline (ansi-stream g) flag))
+  (terminal-underline (ansi-stream g) flag))
 
 (defmethod %grout-set-normal ((g ansi-stream))
   "Return output to normal. No attributes. No color."
-  (tt-normal (ansi-stream g)))
+  (terminal-normal (ansi-stream g)))
 
 (defmethod %grout-color ((g ansi-stream) foreground background string)
   "Set the color."
   (with-slots (term-stream) g
-    (tt-color term-stream foreground background)
-    (tt-write-string term-stream string)
-    (tt-color term-stream :default :default)))
+    (terminal-color term-stream foreground background)
+    (terminal-write-string term-stream string)
+    (terminal-color term-stream :default :default)))
 
 (defmethod %grout-set-color ((g ansi-stream) foreground background)
   "Set the color."
-  (tt-color (ansi-stream g) foreground background))
+  (terminal-color (ansi-stream g) foreground background))
 
 (defmethod %grout-clear ((g ansi-stream))
   "Clear the screen."
-  (tt-clear (ansi-stream g)))
+  (terminal-clear (ansi-stream g)))
 
 (defmethod %grout-beep ((g ansi-stream))
   "Do something annoying."
-  (tt-beep (ansi-stream g)))
+  (terminal-beep (ansi-stream g)))
 
 (defmethod %grout-object ((g ansi-stream) object)
   "Output the object in a way that it might be accesible."
-  (tt-write-string (ansi-stream g) (princ-to-string object)))
+  (terminal-write-string (ansi-stream g) (princ-to-string object)))
 
 (defmethod %grout-write ((g ansi-stream) object &rest args 
 			 &key
@@ -403,19 +403,19 @@ generic functions (i.e. %GROUT-*) directly."
   (declare (ignorable array base case circle escape gensym length level
 		      lines miser-width pprint-dispatch pretty radix
 		      readably right-margin))
-  (tt-write-string (ansi-stream g)
+  (terminal-write-string (ansi-stream g)
 		   (with-output-to-string (str)
 		     (apply #'write object :stream str args))))
 
 (defmethod %grout-format ((g ansi-stream) format-string &rest format-args)
-  (apply #'tt-format (ansi-stream g) format-string format-args))
+  (apply #'terminal-format (ansi-stream g) format-string format-args))
 
 (defmethod %grout-finish ((g ansi-stream))
-  (tt-finish-output (ansi-stream g)))
+  (terminal-finish-output (ansi-stream g)))
 
 (defmethod %grout-done ((g ansi-stream))
   "Be done with the grout."
-  (tt-finish-output (ansi-stream g)))
+  (terminal-finish-output (ansi-stream g)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ANSI is a bad word. So is ‘terminal’ in this sense.
@@ -449,52 +449,52 @@ generic functions (i.e. %GROUT-*) directly."
 (defmethod %grout-bold ((g ansi) string)
   "Output the string boldly."
   (with-slots (term) g
-    (tt-bold term t)
-    (tt-write-string term string)
-    (tt-bold term nil)))
+    (terminal-bold term t)
+    (terminal-write-string term string)
+    (terminal-bold term nil)))
 
 (defmethod %grout-set-bold ((g ansi) flag)
   "Turn bold on or off."
-  (tt-bold (ansi-term g) flag))
+  (terminal-bold (ansi-term g) flag))
 
 (defmethod %grout-underline ((g ansi) string)
   "Output the string underlined."
   (with-slots (term) g
-    (tt-underline term t)
-    (tt-write-string term string)
-    (tt-underline term nil)
-    (tt-finish-output term)))
+    (terminal-underline term t)
+    (terminal-write-string term string)
+    (terminal-underline term nil)
+    (terminal-finish-output term)))
 
 (defmethod %grout-set-underline ((g ansi) flag)
   "Turn underlining on or off."
-  (tt-underline (ansi-term g) flag))
+  (terminal-underline (ansi-term g) flag))
 
 (defmethod %grout-set-normal ((g ansi))
   "Return output to normal. No attributes. No color."
-  (tt-normal (ansi-term g)))
+  (terminal-normal (ansi-term g)))
 
 (defmethod %grout-color ((g ansi) foreground background string)
   "Set the color."
   (with-slots (term) g
-    (tt-color term foreground background)
-    (tt-write-string term string)
-    (tt-color term :default :default)))
+    (terminal-color term foreground background)
+    (terminal-write-string term string)
+    (terminal-color term :default :default)))
 
 (defmethod %grout-set-color ((g ansi) foreground background)
   "Set the color."
-  (tt-color (ansi-term g) foreground background))
+  (terminal-color (ansi-term g) foreground background))
 
 (defmethod %grout-clear ((g ansi))
   "Clear the screen."
-  (tt-clear (ansi-term g)))
+  (terminal-clear (ansi-term g)))
 
 (defmethod %grout-beep ((g ansi))
   "Do something annoying."
-  (tt-beep (ansi-term g)))
+  (terminal-beep (ansi-term g)))
 
 (defmethod %grout-object ((g ansi) object)
   "Output the object in a way that it might be accesible."
-  (tt-write-string (ansi-term g) (princ-to-string object)))
+  (terminal-write-string (ansi-term g) (princ-to-string object)))
 
 (defmethod %grout-write ((g ansi) object &rest args 
 			 &key
@@ -517,19 +517,19 @@ generic functions (i.e. %GROUT-*) directly."
   (declare (ignorable array base case circle escape gensym length level
 		      lines miser-width pprint-dispatch pretty radix
 		      readably right-margin))
-  (tt-write-string (ansi-term g)
+  (terminal-write-string (ansi-term g)
 		   (with-output-to-string (str)
 		     (apply #'write object :stream str args))))
 
 (defmethod %grout-format ((g ansi) format-string &rest format-args)
-  (apply #'tt-format (ansi-term g) format-string format-args))
+  (apply #'terminal-format (ansi-term g) format-string format-args))
 
 (defmethod %grout-finish ((g ansi))
-  (tt-finish-output (ansi-term g)))
+  (terminal-finish-output (ansi-term g)))
 
 (defmethod %grout-done ((g ansi))
   "Be done with the grout."
-  (tt-finish-output (ansi-term g))
+  (terminal-finish-output (ansi-term g))
   (terminal-done (ansi-term g)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

@@ -10,7 +10,7 @@
     :licence            "GPLv3"
     :long-description   "A line editor which is not so tiny."
     :depends-on (:dl-list :stretchy :cffi :opsys :termios
-		 :terminal :terminal-ansi :terminal-curses
+		 :terminal :terminal-ansi :terminal-curses :fatchar
 		 :completion :dlib :dlib-misc :keymap :char-util :syntax-lisp
 		 :unipose)
     :components

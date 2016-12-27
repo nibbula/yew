@@ -23,6 +23,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:fat-string-to-span
    #:span-to-fat-string
    #:process-ansi-colors
+   #:remove-effects
    #:render-fat-string
    ))
 (in-package :fatchar)
@@ -436,27 +437,32 @@ set in this string."
 	     (copy-char))))
     new-fat-line))
 
+(defun remove-effects (string)
+  "Remove any terminal colors or attributes from STRING."
+  (fat-string-to-string (process-ansi-colors (make-fat-string string))))
+
 (defun render-fat-string (fat-string &optional (terminal *terminal*))
-  (when (not *terminal*)
+  (when (not terminal)
     (error "Please supply a terminal or set *terminal*."))
-  (loop :with last-attr :and fg :and bg
-     :for c :across fat-string
-     :do
-     (when (not (eq last-attr (fatchar-attrs c)))
-       (tt-normal terminal)
-       (loop :for a :in (fatchar-attrs c)
-	  :do
-	  (case a
-	    (:normal    (tt-normal terminal))
-	    (:standout  (tt-standout terminal t))
-	    (:underline (tt-underline terminal t))
-	    (:bold      (tt-bold terminal t))
-	    (:inverse   (tt-inverse terminal t)))))
-     (when (or (not (eq fg (fatchar-fg c)))
-	       (not (eq bg (fatchar-bg c))))
-       (setf fg (fatchar-fg c) bg (fatchar-bg c))
-       (tt-color terminal fg bg))
-     (tt-write-char terminal (fatchar-c c)))
-  (tt-normal terminal))
+  (let ((*terminal* terminal))
+    (loop :with last-attr :and fg :and bg
+       :for c :across fat-string
+       :do
+       (when (not (eq last-attr (fatchar-attrs c)))
+	 (tt-normal)
+	 (loop :for a :in (fatchar-attrs c)
+	    :do
+	    (case a
+	      (:normal    (tt-normal))
+	      (:standout  (tt-standout t))
+	      (:underline (tt-underline t))
+	      (:bold      (tt-bold t))
+	      (:inverse   (tt-inverse t)))))
+       (when (or (not (eq fg (fatchar-fg c)))
+		 (not (eq bg (fatchar-bg c))))
+	 (setf fg (fatchar-fg c) bg (fatchar-bg c))
+	 (tt-color fg bg))
+       (tt-write-char (fatchar-c c)))
+    (tt-normal)))
 
 ;; EOF

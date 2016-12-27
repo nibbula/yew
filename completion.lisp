@@ -8,6 +8,9 @@
 
 (defpackage :completion
   (:documentation
+;; @@@: This description needs work. It confuses me and I wrote it. Also it's
+;; not a good overall description of the package, rather it's an incomplete
+;; description of the specifics of calling completion functions.
 "Completion functions are called with line of context and a position where
 completion was requested. The are asked to return one completion, or all
 completions. When asked for one completion, they return a completion and a
@@ -298,21 +301,21 @@ arguments for that function, otherwise return NIL."
 (defun function-help (symbol expr-number)
   "Return a string with help for the function designated by SYMBOL."
   (with-output-to-string (str)
-    (let ((tty (make-instance 'terminal-ansi-stream :output-stream str))
+    (let ((*terminal* (make-instance 'terminal-ansi-stream :output-stream str))
 	  past-key past-rest did-standout)
       (write-char #\( str)
-      (tt-color tty :magenta :default)
+      (tt-color :magenta :default)
       (write symbol :stream str :case :downcase :escape nil)
-      (tt-color tty :default :default)
+      (tt-color :default :default)
       (loop
 	 :for s :in (dlib:lambda-list symbol) :and i = 1 :then (1+ i)
 	 :do
 	 (write-char #\space str)
 	 (if (position s *lambda-list-keywords*)
 	     (progn
-	       (tt-color tty :yellow :default)
+	       (tt-color :yellow :default)
 	       (write s :stream str :case :downcase :escape nil :pretty nil)
-	       (tt-color tty :default :default)
+	       (tt-color :default :default)
 	       (when (equal s '&key)
 		 (setf past-key t))
 	       (when (equal s '&rest)
@@ -321,7 +324,7 @@ arguments for that function, otherwise return NIL."
 	     (progn
 	       (if (and (= i expr-number) (not (or past-key past-rest)))
 		   (progn
-		     (tt-standout tty t)
+		     (tt-standout t)
 		     (setf did-standout t))
 		   (setf did-standout nil))
 	       (typecase s
@@ -334,10 +337,10 @@ arguments for that function, otherwise return NIL."
 			 (write-char #\space str))
 		     (typecase ss
 		       ((or null keyword number string boolean array)
-			(tt-color tty :white :default)
+			(tt-color :white :default)
 			(write ss :stream str :case :downcase :escape nil
 			       :pretty nil :readably t)
-			(tt-color tty :default :default))
+			(tt-color :default :default))
 		       (t
 			(write ss :stream str :case :downcase :escape nil
 			       :pretty nil :readably nil))))
@@ -346,7 +349,7 @@ arguments for that function, otherwise return NIL."
 		  (write s :stream str :case :downcase :escape nil :pretty nil
 			 :readably nil)))
 	       (when did-standout
-		 (tt-standout tty nil)))))
+		 (tt-standout nil)))))
       (write-char #\) str))))
 
 (defun function-keyword-completion (sym context pos word-start all)

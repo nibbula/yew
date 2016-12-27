@@ -244,4 +244,33 @@ UPDATE-DISPLAY and and AWAIT-EVENT methods."
 	    (update-display inator)))
     (finish-inator inator)))
 
+;; Yet another thin defclass wrapper.
+#|
+(defmacro definator (name superclasses slots &rest options)
+  "Define an INATOR with class"
+  (let* ((var-name (intern (s+ #\* name #\*)))
+	 (with (intern (s+ "WITH-" (string-upcase name))))
+	 keymap
+	 real-options
+	 initargs)
+    (setf real-options
+	  ;; round 1 - pick out a :keymap option
+	  (loop :for o :in options
+	     :if (and (consp o) (eq (car o) :keymap))
+	     :do (setf keymap (second o))
+	     :else
+	     :collect o)
+	  ;; round 2 - put it back in a :default-initargs for the class
+	  real-options
+	  (if (setf initargs (find :default-initargs real-options #'car))
+	      ;;
+	      ))
+    `(progn
+       (defvar ,var-name nil ,(s+ "The current " name "."))
+       (defclass ,name ,@superclasses ,@slots ,@real-options)
+       (defmacro ,with (var)
+	 `(let ((,var (make-ins
+       )))
+|#
+
 ;; EOF

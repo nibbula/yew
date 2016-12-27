@@ -8,13 +8,15 @@
 
 (defpackage :terminal
   (:documentation "The end of the line.")
-  (:use :cl :opsys)
+  (:use :cl :dlib :opsys)
   (:export
    #:*standard-output-has-terminal-attributes*
    #:*terminal*
    #:*default-terminal-type*
+   #:*terminal-types*
    #:has-terminal-attributes
    #:terminal-default-device-name
+   #:register-terminal-type
    #:terminal-stream
    #:terminal
    #:terminal-file-descriptor #:file-descriptor
@@ -29,42 +31,42 @@
    #:terminal-done
    #:make-terminal-stream
    #:with-terminal
-   #:tt-format
-   #:tt-write-string
-   #:tt-write-char
-   #:tt-move-to
-   #:tt-move-to-col
-   #:tt-beginning-of-line
-   #:tt-del-char
-   #:tt-ins-char
-   #:tt-backward
-   #:tt-forward
-   #:tt-up
-   #:tt-down
-   #:tt-scroll-down
-   #:tt-erase-to-eol
-   #:tt-erase-line
-   #:tt-erase-above
-   #:tt-erase-below
-   #:tt-clear
-   #:tt-home
-   #:tt-cursor-off
-   #:tt-cursor-on
-   #:tt-standout
-   #:tt-normal
-   #:tt-underline
-   #:tt-bold
-   #:tt-inverse
-   #:tt-color
-   #:tt-beep
-   #:tt-set-scrolling-region
-   #:tt-finish-output
-   #:tt-get-char
-   #:tt-get-key
-   #:tt-listen-for
-   #:tt-reset
-   #:tt-save-cursor
-   #:tt-restore-cursor
+   #:tt-format			  #:terminal-format
+   #:tt-write-string		  #:terminal-write-string
+   #:tt-write-char		  #:terminal-write-char
+   #:tt-move-to			  #:terminal-move-to
+   #:tt-move-to-col		  #:terminal-move-to-col
+   #:tt-beginning-of-line	  #:terminal-beginning-of-line
+   #:tt-del-char		  #:terminal-del-char
+   #:tt-ins-char		  #:terminal-ins-char
+   #:tt-backward		  #:terminal-backward
+   #:tt-forward			  #:terminal-forward
+   #:tt-up			  #:terminal-up
+   #:tt-down			  #:terminal-down
+   #:tt-scroll-down		  #:terminal-scroll-down
+   #:tt-erase-to-eol		  #:terminal-erase-to-eol
+   #:tt-erase-line		  #:terminal-erase-line
+   #:tt-erase-above		  #:terminal-erase-above
+   #:tt-erase-below		  #:terminal-erase-below
+   #:tt-clear			  #:terminal-clear
+   #:tt-home			  #:terminal-home
+   #:tt-cursor-off		  #:terminal-cursor-off
+   #:tt-cursor-on		  #:terminal-cursor-on
+   #:tt-standout		  #:terminal-standout
+   #:tt-normal			  #:terminal-normal
+   #:tt-underline		  #:terminal-underline
+   #:tt-bold			  #:terminal-bold
+   #:tt-inverse			  #:terminal-inverse
+   #:tt-color			  #:terminal-color
+   #:tt-beep			  #:terminal-beep
+   #:tt-set-scrolling-region	  #:terminal-set-scrolling-region
+   #:tt-finish-output		  #:terminal-finish-output
+   #:tt-get-char		  #:terminal-get-char
+   #:tt-get-key			  #:terminal-get-key
+   #:tt-listen-for		  #:terminal-listen-for
+   #:tt-reset			  #:terminal-reset
+   #:tt-save-cursor		  #:terminal-save-cursor
+   #:tt-restore-cursor		  #:terminal-restore-cursor
    #:with-saved-cursor
    ))
 (in-package :terminal)
@@ -80,6 +82,18 @@ terminal attributes.")
 
 (defvar *default-terminal-type* nil
   "The type of terminal to create when unspecified.")
+
+(defvar *terminal-types* nil
+  "Alist of (keyword terminal-type) to provide easy names for terminal 
+subclasses.")
+
+(defun register-terminal-type (name type)
+  "Subclasses should call this to register their type keyword."
+  (pushnew (list name type) *terminal-types*))
+
+(defun find-type (type)
+  "Return the class for a registered terminal type."
+  (cadr (assoc type *terminal-types*)))
 
 (defclass terminal-stream ()
   ((output-stream
@@ -156,96 +170,109 @@ two values ROW and COLUMN."))
 (defun make-terminal-stream (stream type)
   (make-instance type :output-stream stream))
 
-(defmacro with-terminal ((&optional (var '*terminal*)
-				    (type *default-terminal-type*)
+(defmacro with-terminal ((&optional (type *default-terminal-type*)
+				    (var '*terminal*)
 				    device-name)
 			 &body body)
   "Evaluate the body with VAR set to a new terminal. Cleans up afterward."
   `(progn
-     (when (not (find-class ,type))
+     (when (not (find-type ,type))
        (error "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
      (let ((,var (if ,device-name
-		   (make-instance ,type :device-name ,device-name)
-		   (make-instance ,type))))
+		   (make-instance (find-type ,type) :device-name ,device-name)
+		   (make-instance (find-type ,type)))))
        (unwind-protect
 	    (progn
 	      (terminal-start ,var)
 	      ,@body)
 	 (terminal-done ,var)))))
 
-(defgeneric tt-format (tty fmt &rest args)
-  (:documentation "Output a formatted string to the terminal."))
+(defmacro deftt (name (&rest args) doc-string)
+  "Defines a terminal generic function along with a macro that calls that
+generic function with *TERMINAL* as it's first arg, for API prettyness."
+  (let ((tt-name (symbolify (s+ "TT-" name)))
+	(tt-generic (symbolify (s+ "TERMINAL-" name)))
+	(whole-arg (gensym "DEFTT-WHOLE-ARG"))
+	;;(ignorables (remove-if (_ (char= #\& (char (string _) 0))) args)))
+	(ignorables (lambda-list-vars args :all-p t)))
+    `(progn
+       (defgeneric ,tt-generic (tt ,@args) (:documentation ,doc-string))
+       (defmacro ,tt-name (&whole ,whole-arg ,@args)
+	 (declare (ignorable ,@ignorables))
+	 ,doc-string
+	 (append (list ',tt-generic '*terminal*) (cdr ,whole-arg))))))
 
-(defgeneric tt-write-string (tty str)
-  (:documentation "
-Output a string to the terminal. Flush output if it contains a newline,
-i.e. the terminal is \"line buffered\""))
+(deftt format (fmt &rest args)
+  "Output a formatted string to the terminal.")
 
-(defgeneric tt-write-char (tty char)
-  (:documentation "
-Output a character to the terminal. Flush output if it is a newline,
-i.e. the terminal is \"line buffered\""))
+(deftt write-string (str)
+  "Output a string to the terminal. Flush output if it contains a newline,
+i.e. the terminal is \"line buffered\"")
 
-(defgeneric tt-move-to (tty row col))
-(defgeneric tt-move-to-col (tty col))
-(defgeneric tt-beginning-of-line (tty))
-(defgeneric tt-del-char (tty n))
-(defgeneric tt-ins-char (tty n))
-(defgeneric tt-backward (tty n))
-(defgeneric tt-forward (tty n))
-(defgeneric tt-up (tty n))
-(defgeneric tt-down (tty n))
-(defgeneric tt-scroll-down (tty n))
-(defgeneric tt-erase-to-eol (tty))
-(defgeneric tt-erase-line (tty))
-(defgeneric tt-erase-above (tty))
-(defgeneric tt-erase-below (tty))
-(defgeneric tt-clear (tty))
-(defgeneric tt-home (tty))
-(defgeneric tt-cursor-off (tty))
-(defgeneric tt-cursor-on (tty))
-(defgeneric tt-standout (tty state))
-(defgeneric tt-normal (tty))
-(defgeneric tt-underline (tty state))
-(defgeneric tt-bold (tty state))
-(defgeneric tt-inverse (tty state))
-(defgeneric tt-color (tty fg bg))
-(defgeneric tt-beep (tty))
-(defgeneric tt-set-scrolling-region (tty start end))
-(defgeneric tt-finish-output (tty))
-; (defgeneric tt-get-row (tty))
+(deftt write-char (char)
+  "Output a character to the terminal. Flush output if it is a newline,
+i.e. the terminal is \"line buffered\"")
 
-(defgeneric tt-get-char (tty)
-  (:documentation "Read a character from the terminal."))
+(deftt move-to (row column) "Move the cursor to ROW and COLUMN.")
+(deftt move-to-col (column) "Move the cursor to COLUMN.")
+(deftt beginning-of-line () "Move the cursor to the beginning of the line.")
+(deftt del-char (n) "Delete N characters in front of the cursor.")
+(deftt ins-char (n) "Insert N blank characters in front of the cursor.")
+(deftt backward (n) "Move the cursor backward N characters.")
+(deftt forward (n) "Move the cursor forward N character.")
+(deftt up (n) "Move the cursor up N rows.")
+(deftt down (n) "Move the cursor down N rows.")
+(deftt scroll-down (n)
+  "Move the cursor down N rows. If at the bottom of the screen, scroll the
+screen down.")
+(deftt erase-to-eol () "Erase from the cursor to the end of the current row.")
+(deftt erase-line () "Erase the whole row the cursor is on.")
+(deftt erase-above () "Erase everything above the row the cursor is on.")
+(deftt erase-below () "Erase everything below the row the cursor is on.")
+(deftt clear () "Erase the entire screen.")
+(deftt home () "Move the cursor to the first row and column.")
+(deftt cursor-off () "Try to make the cursor invisible.")
+(deftt cursor-on () "Try to make the cursor visible.")
+(deftt standout (state) "")
+(deftt normal () "")
+(deftt underline (state) "")
+(deftt bold (state) "")
+(deftt inverse (state) "")
+(deftt color (fg bg) "")
+(deftt beep () "")
+(deftt set-scrolling-region (start end) "")
+(deftt finish-output () "")
+; (deftt get-row () "")
 
-(defgeneric tt-get-key (tty)
-  (:documentation "Read a key from the terminal."))
+(deftt get-char ()
+  "Read a character from the terminal.")
 
-(defgeneric tt-listen-for (tty seconds)
-  (:documentation
+(deftt get-key ()
+  "Read a key from the terminal.")
+
+(deftt listen-for (seconds)
   "Listen for at most N seconds or until input is available. SECONDS can be
-fractional, down to some limit."))
+fractional, down to some limit.")
 
-(defgeneric tt-reset (tty)
-  (:documentation
-   "Try to reset the terminal to a sane state, without being too disruptive."))
+(deftt reset ()
+  "Try to reset the terminal to a sane state, without being too disruptive.")
 
-(defgeneric tt-save-cursor (tty)
-  (:documentation "Save the cursor position."))
+(deftt save-cursor ()
+  "Save the cursor position.")
 
-(defgeneric tt-restore-cursor (tty)
-  (:documentation "Restore the cursor position, from the last saved postion."))
+(deftt restore-cursor ()
+  "Restore the cursor position, from the last saved postion.")
 
 (defmacro with-saved-cursor ((tty) &body body)
   "Save the cursor position, evaluate the body forms, and restore the cursor
 position. Return the primary result of evaluating the body."
   (let ((result-sym (gensym "tt-result")))
     `(progn
-       (tt-save-cursor ,tty)
+       (terminal-save-cursor ,tty)
        (let (,result-sym)
 	 (unwind-protect
 	      (setf ,result-sym (progn ,@body))
-	   (tt-restore-cursor ,tty))
+	   (terminal-restore-cursor ,tty))
 	 ,result-sym))))
 
 #| @@@@ Make an output-table method, with underlined titles
@@ -257,19 +284,19 @@ position. Return the primary result of evaluating the body."
 	 (left  (eql (third col) :left))
 	 (fmt   (if width (if left "~va" "~v@a") "~a")))
     (if width
-	(tt-format tt fmt width (subseq v 0 (min width (length v))))
-	(tt-format tt fmt v))
+	(terminal-format tt fmt width (subseq v 0 (min width (length v))))
+	(terminal-format tt fmt v))
     (if (= n (1- (length *cols*)))
-	(tt-write-char tt #\newline)
+	(terminal-write-char tt #\newline)
 	(when (not no-space)
-	  (tt-write-char tt #\space)))))
+	  (terminal-write-char tt #\space)))))
 
 (defun print-title (tt n)
-  (tt-underline tt t)
+  (terminal-underline tt t)
   (print-col tt n (first (elt *cols* n)) :no-space t)
-  (tt-underline tt nil)
+  (terminal-underline tt nil)
   (when (< n (1- (length *cols*)))
-    (tt-write-char tt #\space)))
+    (terminal-write-char tt #\space)))
   )
 
 (defmethod output-table ((table table) (destination terminal-stream)

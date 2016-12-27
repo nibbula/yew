@@ -117,63 +117,63 @@ require terminal driver support."))
       (nos:fclose in-fp)))
   (values))
 
-(defmethod tt-format ((tty terminal-curses) fmt &rest args)
+(defmethod terminal-format ((tty terminal-curses) fmt &rest args)
   "Output a formatted string to the terminal."
   (let ((string (apply #'format nil fmt args)))
     (addstr string)))
 
-(defmethod tt-write-string ((tty terminal-curses) str)
+(defmethod terminal-write-string ((tty terminal-curses) str)
   "Output a string to the terminal."
   (addstr str))
 
-(defmethod tt-write-char ((tty terminal-curses) char)
+(defmethod terminal-write-char ((tty terminal-curses) char)
   "Output a character to the terminal."
   (addch (char-code char)))
 
-(defmethod tt-move-to ((tty terminal-curses) row col)
+(defmethod terminal-move-to ((tty terminal-curses) row col)
   (move row col))
 
-(defmethod tt-move-to-col ((tty terminal-curses) col)
+(defmethod terminal-move-to-col ((tty terminal-curses) col)
   (move (getcury (screen tty)) col))
 
-(defmethod tt-beginning-of-line ((tty terminal-curses))
-  (tt-move-to-col tty 0))
+(defmethod terminal-beginning-of-line ((tty terminal-curses))
+  (terminal-move-to-col tty 0))
 
-(defmethod tt-del-char ((tty terminal-curses) n)
+(defmethod terminal-del-char ((tty terminal-curses) n)
   (dotimes (i n)
     (delch)))
 
-(defmethod tt-ins-char ((tty terminal-curses) n)
+(defmethod terminal-ins-char ((tty terminal-curses) n)
   (dotimes (i n)
     (insch (char-code #\space))))
 
-(defmethod tt-backward ((tty terminal-curses) n)
+(defmethod terminal-backward ((tty terminal-curses) n)
   (move (getcury (screen tty)) (- (getcurx (screen tty)) n)))
 
-(defmethod tt-forward ((tty terminal-curses) n)
+(defmethod terminal-forward ((tty terminal-curses) n)
   (move (getcury (screen tty)) (+ (getcurx (screen tty)) n)))
 
-(defmethod tt-up ((tty terminal-curses) n)
+(defmethod terminal-up ((tty terminal-curses) n)
   (move (- (getcury (screen tty)) n) (getcurx (screen tty))))
 
-(defmethod tt-down ((tty terminal-curses) n)
+(defmethod terminal-down ((tty terminal-curses) n)
   (move (+ (getcury (screen tty)) n) (getcurx (screen tty))))
 
-(defmethod tt-scroll-down ((tty terminal-curses) n)
+(defmethod terminal-scroll-down ((tty terminal-curses) n)
   (when (> n 0)
     (scrl n)))
   
-(defmethod tt-erase-to-eol ((tty terminal-curses))
+(defmethod terminal-erase-to-eol ((tty terminal-curses))
   (clrtoeol))
 
-(defmethod tt-erase-line ((tty terminal-curses))
+(defmethod terminal-erase-line ((tty terminal-curses))
   (let ((x (getcurx (screen tty)))
 	(y (getcury (screen tty))))
     (move y 0)
     (clrtoeol)
     (move y x)))
 
-(defmethod tt-erase-above ((tty terminal-curses))
+(defmethod terminal-erase-above ((tty terminal-curses))
   (let ((x (getcurx (screen tty)))
 	(y (getcury (screen tty))))
     (loop :for i :from 0 :below y :do
@@ -183,45 +183,45 @@ require terminal driver support."))
       (mvaddstr y 0 (format nil "~va" x #\space)))
     (move y x)))
 
-(defmethod tt-erase-below ((tty terminal-curses))
+(defmethod terminal-erase-below ((tty terminal-curses))
   (clrtobot))
 
-(defmethod tt-clear ((tty terminal-curses))
+(defmethod terminal-clear ((tty terminal-curses))
   (clear))
 
-(defmethod tt-home ((tty terminal-curses))
+(defmethod terminal-home ((tty terminal-curses))
   (move 0 0))
 
-(defmethod tt-cursor-off ((tty terminal-curses))
+(defmethod terminal-cursor-off ((tty terminal-curses))
   (curs-set 0))
 
-(defmethod tt-cursor-on ((tty terminal-curses))
+(defmethod terminal-cursor-on ((tty terminal-curses))
   (curs-set 1))
 
-(defmethod tt-standout ((tty terminal-curses) state)
+(defmethod terminal-standout ((tty terminal-curses) state)
   (if state
       (attron +a-standout+)
       (attroff +a-standout+)))
 
-(defmethod tt-normal ((tty terminal-curses))
+(defmethod terminal-normal ((tty terminal-curses))
   (attrset +a-normal+))
 
-(defmethod tt-underline ((tty terminal-curses) state)
+(defmethod terminal-underline ((tty terminal-curses) state)
   (if state
       (attron +a-underline+)
       (attroff +a-underline+)))
 
-(defmethod tt-bold ((tty terminal-curses) state)
+(defmethod terminal-bold ((tty terminal-curses) state)
   (if state
       (attron +a-bold+)
       (attroff +a-bold+)))
 
-(defmethod tt-inverse ((tty terminal-curses) state)
+(defmethod terminal-inverse ((tty terminal-curses) state)
   (if state
       (attron +a-reverse+)
       (attroff +a-reverse+)))
 
-(defmethod tt-color ((tty terminal-curses) fg bg)
+(defmethod terminal-color ((tty terminal-curses) fg bg)
   (when (not (color-number fg))
     (error "Forground ~a is not a known color." fg))
   (when (not (color-number bg))
@@ -235,10 +235,10 @@ require terminal driver support."))
 ;; set color tab = ^[] Ps ; Pt BEL
 ;;;  4; color-number ; #rrggbb ala XParseColor
 
-(defmethod tt-beep ((tty terminal-curses))
+(defmethod terminal-beep ((tty terminal-curses))
   (beep))
 
-(defmethod tt-set-scrolling-region ((tty terminal-curses) start end)
+(defmethod terminal-set-scrolling-region ((tty terminal-curses) start end)
   (if (and (not start) (not end))
       ;; Is this sensible? Or should we just unset 'scrollok'?
       (setscrreg 0 (1- *lines*))
@@ -246,10 +246,10 @@ require terminal driver support."))
 	(scrollok *stdscr* 1)
 	(setscrreg start end))))
 
-(defmethod tt-finish-output ((tty terminal-curses))
+(defmethod terminal-finish-output ((tty terminal-curses))
   (refresh))
 
-; (defmethod tt-get-row ((tty terminal-ansi))
+; (defmethod terminal-get-row ((tty terminal-ansi))
 ;   (let ((string (format nil "~a[R" #\escape))
 ; 	(stream (terminal-output-stream tty)))
 ;     (write-string string stream)
@@ -264,15 +264,15 @@ require terminal driver support."))
 ; 	((= status 1)
 ; 	 (code-char (mem-ref c :unsigned-char)))))))
 
-(defmethod tt-get-char ((tty terminal-curses))
+(defmethod terminal-get-char ((tty terminal-curses))
   "Read a character from the terminal."
   (get-char))
 
-(defmethod tt-get-key ((tty terminal-curses))
+(defmethod terminal-get-key ((tty terminal-curses))
   "Read a character from the terminal."
   (get-char))
 
-(defmethod tt-listen-for ((tty terminal-curses) seconds)
+(defmethod terminal-listen-for ((tty terminal-curses) seconds)
   (let (c)
     (unwind-protect
 	 (progn
@@ -286,22 +286,24 @@ require terminal driver support."))
       (curses::timeout -1))
     c))
 
-(defmethod tt-reset ((tty terminal-curses))
+(defmethod terminal-reset ((tty terminal-curses))
   "Try to reset the terminal to a sane state, without being too disruptive."
   (reset-shell-mode)) ; or something..
 
 (defvar *saved-positions* nil
   "List of conses of saved positions, e.g. (x . y).")
 
-(defmethod tt-save-cursor ((tty terminal-curses))
+(defmethod terminal-save-cursor ((tty terminal-curses))
   "Save the cursor position."
   ;; @@@ some thread safe incantation
   (let ((spot (cons (getcury (screen tty)) (getcurx (screen tty)))))
     (push spot *saved-positions*)))
 
-(defmethod tt-restore-cursor ((tty terminal-curses))
+(defmethod terminal-restore-cursor ((tty terminal-curses))
   "Restore the cursor position, from the last saved postion."
   (let ((bunkle (pop *saved-positions*)))
     (move (cdr bunkle) (car bunkle))))
+
+(register-terminal-type :curses 'terminal-curses)
 
 ;; EOF

@@ -713,31 +713,31 @@ innermost N contexts, if we can."
   #-(or sbcl cmu ccl lispworks) #\|)
 
 (defun horizontal-line (tt &optional note)
-  (tt-color tt :blue :default)
+  (terminal-color tt :blue :default)
   (if note
       (progn
-	(tt-write-string tt (s+
+	(terminal-write-string tt (s+
 			     *box_drawings_light_horizontal*
 			     *box_drawings_light_horizontal*
 			     *box_drawings_light_vertical_and_left*))
-	(tt-color tt :white :black)
-	(tt-write-string tt (s+ " " note " "))
-	(tt-color tt :blue :default)
-	(tt-write-char tt *box_drawings_light_vertical_and_right*)
-	(tt-format tt "~v,,,va"
+	(terminal-color tt :white :black)
+	(terminal-write-string tt (s+ " " note " "))
+	(terminal-color tt :blue :default)
+	(terminal-write-char tt *box_drawings_light_vertical_and_right*)
+	(terminal-format tt "~v,,,va"
 		   (- (terminal-window-columns tt) (length (s+ note)) 6)
 		   *box_drawings_light_horizontal*
 		   *box_drawings_light_horizontal*)
-	(tt-color tt :default :default)
-	(tt-write-char tt #\newline))
+	(terminal-color tt :default :default)
+	(terminal-write-char tt #\newline))
       ;; no note, just a line
       (progn
-      	(tt-color tt :blue :default)
-	(tt-format tt "~v,,,va~%"
+      	(terminal-color tt :blue :default)
+	(terminal-format tt "~v,,,va~%"
 		   (1- (terminal-window-columns tt))
 		   *box_drawings_light_horizontal*
 		   *box_drawings_light_horizontal*)
-	(tt-color tt :default :default))))
+	(terminal-color tt :default :default))))
 
 (defun sanitize-line (line)
   (when line
@@ -764,22 +764,22 @@ innermost N contexts, if we can."
 			  (debugger-backtrace-lines stack-height))
 			'("????"))))
 	;; Source area
-	;;(tt-clear tt)
-	(tt-move-to tt (+ source-height stack-height 2) 0)
-	(tt-erase-above tt)
-	(tt-home tt)
+	;;(terminal-clear tt)
+	(terminal-move-to tt (+ source-height stack-height 2) 0)
+	(terminal-erase-above tt)
+	(terminal-home tt)
 	(loop :with line :and sp = src
 	   :for i :from 0 :below source-height :do
 	   (setf line (car sp))
 	   (if line
 	       (progn
 		 (setf line (sanitize-line line))
-		 (tt-format tt "~a~%"
+		 (terminal-format tt "~a~%"
 			    (subseq line
 				    0 (min (- (terminal-window-columns tt) 2)
 					   (length line))))
 		 (setf sp (cdr sp)))
-	       (tt-format tt "~~~%")))
+	       (terminal-format tt "~~~%")))
 	(horizontal-line tt path)
 	;; Stack area
 	(loop :with line :and sp = stack
@@ -787,17 +787,17 @@ innermost N contexts, if we can."
 	   (setf line (car sp))
 	   (if line
 	       (progn
-		 (tt-format tt "~a~%"
+		 (terminal-format tt "~a~%"
 			    (subseq line
 				    0 (min (1- (terminal-window-columns tt))
 					   (length line))))
 		 (setf sp (cdr sp)))
-	       (tt-format tt "~~~%")))
+	       (terminal-format tt "~~~%")))
 	(horizontal-line tt)
 	;; Command area
-	(tt-set-scrolling-region tt command-top (terminal-window-rows tt))
-	(tt-move-to tt (1- (terminal-window-rows tt)) 0)
-	(tt-finish-output tt)))))
+	(terminal-set-scrolling-region tt command-top (terminal-window-rows tt))
+	(terminal-move-to tt (1- (terminal-window-rows tt)) 0)
+	(terminal-finish-output tt)))))
 
 (defun start-visual ()
   (when *visual-mode*
@@ -806,15 +806,15 @@ innermost N contexts, if we can."
       (terminal-start *visual-term*))
     (let ((tt *visual-term*))
       (terminal-get-size tt)
-      (tt-move-to tt (1- (terminal-window-rows tt)) 0)
-      (tt-finish-output tt))))
+      (terminal-move-to tt (1- (terminal-window-rows tt)) 0)
+      (terminal-finish-output tt))))
 
 (defun reset-visual ()
   (when *visual-term*
     (let ((tt *visual-term*))
-      (tt-set-scrolling-region tt nil nil)
-      (tt-move-to tt (1- (terminal-window-rows tt)) 0)
-      (tt-finish-output tt)
+      (terminal-set-scrolling-region tt nil nil)
+      (terminal-move-to tt (1- (terminal-window-rows tt)) 0)
+      (terminal-finish-output tt)
       #| (terminal-end tt) |#)))
 
 (defun debugger-up-frame-command (&optional foo)
