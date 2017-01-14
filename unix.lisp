@@ -5528,18 +5528,27 @@ evaluate the IO-FORM."
 			     '(:struct foreign-statfs) i)))))
   #+linux
   (with-open-file (stream *mtab-file* :direction :input)
-    (loop :with entry :and fs
+    (loop :with entry
        :while (setf entry (get-mount-entry stream))
        :collect
        (progn
-	 (setf fs (statfs (mount-entry-dir entry)))
-	 (make-filesystem-info
-	  :device-name     (mount-entry-fsname entry)
-	  :mount-point     (mount-entry-dir entry)
-	  :type	           (mount-entry-type entry)
-	  :total-bytes     (* (statfs-bsize fs) (statfs-blocks fs))
-	  :bytes-free	   (* (statfs-bsize fs) (statfs-bfree fs))
-	  :bytes-available (* (statfs-bsize fs) (statfs-bavail fs)))))))
+	 (multiple-value-bind (fs err)
+	     (ignore-errors (statfs (mount-entry-dir entry)))
+	   (if err
+	       (if (eql (opsys-error-code err) +EACCES+)
+		   ;; If we can't access the mount point, just ignore it.
+		   (make-filesystem-info
+		    :device-name     (mount-entry-fsname entry)
+		    :mount-point     (mount-entry-dir entry)
+		    :type	     (mount-entry-type entry))
+		   (signal err))
+	       (make-filesystem-info
+		:device-name     (mount-entry-fsname entry)
+		:mount-point     (mount-entry-dir entry)
+		:type	         (mount-entry-type entry)
+		:total-bytes     (* (statfs-bsize fs) (statfs-blocks fs))
+		:bytes-free	 (* (statfs-bsize fs) (statfs-bfree fs))
+		:bytes-available (* (statfs-bsize fs) (statfs-bavail fs)))))))))
 
 (defun mount-point-of-file (file)
   "Try to find the mount of FILE. This might not always be right."
