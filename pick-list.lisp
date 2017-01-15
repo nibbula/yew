@@ -135,16 +135,17 @@
 
 (defmethod accept ((pick pick)) ; pick-list-pick
   "Pick the current item."
-  (with-slots (multiple by-index result items (point inator::point)
-			   (quit-flag inator::quit-flag) input second-result) pick
+  (with-slots (multiple by-index result items input second-result
+	       (point inator::point)
+	       (quit-flag inator::quit-flag)) pick
     (if multiple
-		(when (not by-index)
-		  (setf result (mapcar (_ (cdr (elt items _))) result)))
-		(if by-index
-			(setf result point)
-			(setf result (cdr (elt items point)))))
+	(when (not by-index)
+	  (setf result (mapcar (_ (cdr (elt items _))) result)))
+        (if by-index
+	    (setf result point)
+	    (setf result (cdr (elt items point)))))
     (setf quit-flag t
-		  second-result (eq input #\newline)))) ; @@@ bogus check for newline
+	  second-result (eq input #\newline)))) ; @@@ bogus check for newline
 
 (defun pick-list-toggle-item (pick)
   "Toggle the item for multiple choice."
@@ -159,32 +160,32 @@
   (with-slots (multiple mark (point inator::point) result) pick
     (when (and multiple mark)
       (loop :for i :from (min mark point)
-	 :to (max mark point)
-	 :do
-	 (if (position i result)
-	     (setf result (delete i result))
-	     (push i result))))))
+	    :to (max mark point)
+	    :do
+	    (if (position i result)
+		(setf result (delete i result))
+	        (push i result))))))
 
-(defmethod next ((i pick))				; pick-list-next-line
+(defmethod next ((i pick))		; pick-list-next-line
   "Go to the next line. Scroll and wrap around if need be."
   (with-slots (cur-line max-y top (point inator::point) max-line) i
     (when (>= (+ cur-line 1) max-y)
       (incf top))
     (if (< point (1- max-line))
-		(incf point)
-		(setf point 0 top 0))))
+	(incf point)
+        (setf point 0 top 0))))
 
-(defmethod previous ((i pick))			; pick-list-previous-line
+(defmethod previous ((i pick))		; pick-list-previous-line
   "Go to the previous line. Scroll and wrap around if need be."
   (with-slots ((point inator::point) top max-line items max-y ttop) i
     (when (<= point top)
       (decf top))
     (if (> point 0)
-		(decf point)
-		(progn
-		  (setf point (1- max-line))
-		  (setf top (max 0 (- (length items)
-							  (- max-y ttop))))))))
+	(decf point)
+        (progn
+	  (setf point (1- max-line))
+	  (setf top (max 0 (- (length items)
+			      (- max-y ttop))))))))
 
 (defmethod move-to-bottom ((i pick))	; pick-list-end-of-list
   "Go to the end of the list."
@@ -194,24 +195,24 @@
     (setf point (1- max-line))
     (setf top (max 0 (- (length items) (- max-y ttop))))))
 
-(defmethod move-to-top ((i pick))		; pick-list-beginning-of-list
+(defmethod move-to-top ((i pick))	; pick-list-beginning-of-list
   "Go to the beginning of the list."
   (with-slots ((point inator::point) top) i
     (setf point 0 top 0)))
 
-(defmethod next-page ((i pick))			; pick-list-next-page
+(defmethod next-page ((i pick))		; pick-list-next-page
   "Scroll to the next page."
   (with-slots ((point inator::point) max-line page-size cur-line top) i
-    (setf point (min (1- max-line) (+ point page-size))
-		  cur-line  (+ top point)
-		  top       point)))
+    (setf point     (min (1- max-line) (+ point page-size))
+	  cur-line  (+ top point)
+	  top       point)))
 
-(defmethod previous-page ((i pick))		; pick-list-previous-page
+(defmethod previous-page ((i pick))	; pick-list-previous-page
   "Scroll to the previous page."
   (with-slots ((point inator::point) page-size cur-line top) *pick*
-    (setf point (max 0 (- point page-size))
-		  cur-line  (+ top point)
-		  top       point)))
+    (setf point	    (max 0 (- point page-size))
+	  cur-line  (+ top point)
+	  top       point)))
 
 (defun pick-error (message &rest args)
   "Set the list picker error message."
@@ -238,10 +239,12 @@
 ;; (defun pick-list-help ()
 ;;   (display-text "List picker keys" (help-list *pick-list-keymap*)))
 
+;; (pick-list (loop :for i from 1 to 40 collect (format nil "~@r" i)) :message (format nil "foo~%the~%bar~%~%"))
+
 (defmethod update-display ((i pick)) ; pick-list-display
   "Display the list picker."
   (with-slots (message multiple items (point inator::point) result cur-line
-		       max-y top ttop error-message) *pick*
+	       max-y top ttop error-message) *pick*
     (erase)
     (move 0 0)
     (when message (addstr (format nil message)))
@@ -255,7 +258,7 @@
 	   (addstr "  "))
        (when (= i point)
 	 (standout)
-	 (setf cur-line (getcury *stdscr*)))
+	 (setf cur-line y #| (getcury *stdscr*) |#))
        (addstr f)
        (when (= i point)
 	 (standend))
@@ -269,30 +272,30 @@
 (defmethod default-action ((pick pick)) ; pick-typing-search
   "Try to search for typed input and return T if we did."
   (with-slots (typing-searches input search-str (point inator::point) max-line
-			   items top page-size) pick
+	       items top page-size) pick
     (if (and typing-searches
-			 (and (characterp input)
-				  (graphic-char-p input) (not (position input "<> "))))
-		;; Search for the seach string
-		(progn
-		  (stretchy-append search-str input)
-		  (loop :for i :from point :below max-line
-			 :if (search search-str (car (elt items i)) :test #'equalp)
-			 :return (setf point i))
-		  (when (> point (+ top page-size))
-			(setf top point))
-		  t)
-		;; Clear the string
-		(progn
-		  (stretchy-truncate search-str)
-		  nil))))
+	     (and (characterp input)
+		  (graphic-char-p input) (not (position input "<> "))))
+	;; Search for the seach string
+	(progn
+	  (stretchy-append search-str input)
+	  (loop :for i :from point :below max-line
+		:if (search search-str (car (elt items i)) :test #'equalp)
+		:return (setf point i))
+	  (when (> point (+ top page-size))
+	    (setf top point))
+	  t)
+      ;; Clear the string
+      (progn
+	(stretchy-truncate search-str)
+	nil))))
 
 (defmethod await-event ((i pick))
   "Pick list input."
   (with-slots (error-message input) i
-	(setf error-message nil
-		  input (get-char))
-	input))
+    (setf error-message nil
+	  input (get-char))
+    input))
 
 #|
 
@@ -334,39 +337,40 @@
   SELECTED-ITEM   - Item to have initially selected.
   TYPING-SEARCHES - True to have alphanumeric input search for the item.
   MULTIPLE        - True to allow multiple items to be selected."
-  (let* ((string-list (mapcar (_ (cons (princ-to-string _) _)) the-list))
-	 (max-y (1- curses:*lines*))
-	 (*pick* (make-instance
-		  'pick
-		  :message	     message
-		  :by-index	     by-index
-		  :multiple	     multiple
-		  :typing-searches typing-searches
-		  :point	     (or selected-item 0)
-		  :items	     (if (not (null sort-p))
+  (with-curses
+   (let* ((string-list (mapcar (_ (cons (princ-to-string _) _)) the-list))
+	  (max-y (1- curses:*lines*))
+	  (*pick* (make-instance
+		   'pick
+		   :message	     message
+		   :by-index	     by-index
+		   :multiple	     multiple
+		   :typing-searches   typing-searches
+		   :point	     (or selected-item 0)
+		   :items	     (if (not (null sort-p))
 					 (locally
-					     #+sbcl (declare
-						     (sb-ext:muffle-conditions
-						      sb-ext:compiler-note))
-					     ;; Where's the unreachable code??
-					     (sort string-list #'string-lessp
-						   :key #'car))
-					 string-list)
-		  :max-line      (length string-list)
-		  :max-y         max-y
-		  :page-size     (- max-y 2)
-		  :result		 default-value
-		  :keymap		 (list *pick-list-keymap*
-					       *default-inator-keymap*))))
-    (event-loop *pick*)
-    #| Put in the event loop: 
-    (when (not (pick-typing-search))
-    (if (or (eql input (ctrl #\@)) (eql input 0))
-    (setf mark point
-    error-message "Set mark")
-    (pick-perform-key input))))
+					  #+sbcl (declare
+						  (sb-ext:muffle-conditions
+						   sb-ext:compiler-note))
+					  ;; Where's the unreachable code??
+					  (sort string-list #'string-lessp
+						:key #'car))
+				         string-list)
+		   :max-line          (length string-list)
+		   :max-y             max-y
+		   :page-size         (- max-y 2)
+		   :result		default-value
+		   :keymap		(list *pick-list-keymap*
+					      *default-inator-keymap*))))
+     (event-loop *pick*)
+     #| Put in the event loop: 
+     (when (not (pick-typing-search))
+     (if (or (eql input (ctrl #\@)) (eql input 0))
+     (setf mark point
+     error-message "Set mark")
+     (pick-perform-key input))))
   |#
-    (values (pick-result *pick*) (pick-second-result *pick*))))
+    (values (pick-result *pick*) (pick-second-result *pick*)))))
 
 ;; Test scrolling with:
 ;; (:pick-list (loop for i from 1 to 60 collect (format nil "~@r~8t~r" i i)))
