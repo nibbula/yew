@@ -293,6 +293,9 @@
 
    #:popen
    #:posix-pipe
+   #+linux #:linux-splice
+   #+linux #:linux-vmsplice
+   #+linux #:linux-tee
 
    ;; time
    #:+unix-to-universal-time+
@@ -4398,6 +4401,41 @@ current effective user."
   (with-foreign-object (fd :int 2)
     (syscall (real-pipe fd))
     (values (mem-aref fd :int 0) (mem-aref fd :int 1))))
+
+;; splice, vmsplice, tee
+
+(defconstant +SPLICE_F_MOVE+		1
+  "Attempt to move pages instead of copying.")
+(defconstant +SPLICE_F_NONBLOCK+	2
+  "Do not block on I/O.")
+(defconstant +SPLICE_F_MORE+		4
+  "More data will be coming in a subsequent splace.")
+(defconstant +SPLICE_F_GIFT+		8
+  "User pages are a gift to the kernel.")
+
+(defcstruct iovec
+  "Because C don't know, bro."
+  (iov_base :pointer)
+  (iov_len size-t))
+
+#+linux
+(progn
+  (defctype loff-t :unsigned-long-long)
+
+  (defcfun ("splice" linux-splice) ssize-t
+    "Move data from FD-IN to FD-OUT, hopefully without excess copying, where one
+of the descriptors is a pipe."
+    (fd-in :int)  (offset-in loff-t)
+    (fd-out :int) (offset-out loff-t) (length size-t) (flags :unsigned-int))
+
+  (defcfun ("vmsplice" linux-vmsplice) ssize-t
+    "Map memory from IOV to a pipe."
+    (fd :int) (iov (:pointer (:struct iovec)))
+    (number-of-segments :unsigned-long) (flags :unsigned-int))
+
+  (defcfun ("tee" linux-tee) ssize-t
+    "Duplicate LENGTH bytes from FD-IN to FD-OUT. Don't consume the data."
+    (fd-in :int) (fd-out :int) (length size-t) (flags :unsigned-int)))
 
 #|
 (defun fork-with-pipes (cmd args &key in-stream (out-stream :stream)
