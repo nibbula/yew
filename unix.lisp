@@ -2153,7 +2153,7 @@ C library function getcwd."
   "Make a directory."
   ;; The #x1ff is because mkdir can fail if any other than the low nine bits
   ;; of the mode are set.
-  (syscall (mkdir (safe-namestring path) (logand #x1ff mode))))
+  (syscall (mkdir (safe-namestring path) (logand #x1ff (or mode #o777)))))
 
 (defcfun rmdir :int (path :string))
 
