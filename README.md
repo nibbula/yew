@@ -16,4 +16,6 @@ the dependencies are:
   For packages:
     :opsys :termios
 
+which you could check out into your `~/quicklisp/local-projects` if so inclined.
+
 Other dependencies are probably in Quicklisp.
