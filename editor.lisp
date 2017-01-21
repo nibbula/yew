@@ -32,6 +32,11 @@
 (defparameter *normal-keymap* nil
   "The normal key for use in the line editor.")
 
+(defvar *line-editor* nil
+  "The last line editor that was instantiated. This is for debugging, since
+it can be somewhat unpredictable, especially with threads. Don't use it for
+anything important.")
+
 ;; The history is not in here because it is shared by all editors.
 (defclass line-editor ()
   ((cmd
