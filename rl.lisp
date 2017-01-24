@@ -194,8 +194,8 @@
 	     (output-prompt-func nil)
 	     (completion-func #'complete-symbol)
 	     (string nil)
-	     (in-callback nil)
-	     (out-callback nil)
+	     (input-callback nil)
+	     (output-callback nil)
 	     (debug nil)
 	     (editor nil)
 	     (local-keymap nil)
@@ -246,8 +246,8 @@ Keyword arguments:
 			:prompt-func output-prompt-func
 			:completion-func completion-func
 			:context context
-			:in-callback in-callback
-			:out-callback out-callback
+			:input-callback input-callback
+			:output-callback output-callback
 			:debugging debug
 			:local-keymap local-keymap
 			:keymap keymap
@@ -303,7 +303,15 @@ Keyword arguments:
 		      (setf (last-command-was-completion e) (did-complete e))
 		      (when (not (last-command-was-completion e))
 			(setf (last-completion-not-unique-count e) 0))
-		      (when exit-flag (setf result quit-value))))
+		      (when exit-flag (setf result quit-value))
+		      ;; @@@ perhaps this should be done by a hook?
+		      (if (eq *paren-match-style* :highlight)
+			  (cond
+			    ((is-open-char (aref buf point))
+			     (highlight-paren e point))
+			    ((and (plusp point)
+				  (is-close-char (aref buf (1- point))))
+			     (highlight-paren e (1- point)))))))
 		(setf last-input cmd)
 		:while (not quit-flag))
 	  (block nil

@@ -23,8 +23,8 @@
    #:line-editor-terminal
    #:line-editor-terminal-device-name
    #:line-editor-terminal-class
-   #:line-editor-in-callback
-   #:line-editor-out-callback
+   #:line-editor-input-callback
+   #:line-editor-output-callback
    #:line-editor-debug-log
    #:line-editor-keymap
    #:line-editor-local-keymap

@@ -141,7 +141,7 @@
     (dl-list-do-backward
      (history-tail hist)
      #'(lambda (x)
-	 (format t "~4d  ~a~%" i x)
+	 (format t "~4d  ~a~%" i x)	;; @@@ zorp
 	 (incf i))))
   (values))
 
@@ -165,7 +165,7 @@
       (princ #\()
       (dl-list-do hist
 		  #'(lambda (x)
-		      (format str "~s~%" x)))
+		      (format str "~s~%" x))) ;; @@@ zorp
       (princ #\) (terpri)))))
 
 (defun history-load (context)

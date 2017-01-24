@@ -42,7 +42,9 @@
   (with-slots (data) item
     (etypecase data
       (character 1)
-      (string (length data)))))
+      (fatchar 1)
+      (string (length data))
+      (sequence (length data)))))
 
 (defgeneric undo-one-item (e item)
   (:documentation "Undo an undo item.")

@@ -11,7 +11,7 @@
 ;;
 ;; buffer interface
 ;;
-;; The buf slot of line-editor should only be modified thru these.
+;; The buf slot of line-editor should only be modified through these.
 
 (defgeneric buffer-delete (e start end)
   (:documentation
@@ -75,7 +75,8 @@
   (:method ((e line-editor) pos (c character))
 ;    (format t "replace (~s ~s)~%" pos c)
     (with-slots (buf point) e
-      (record-undo e 'deletion pos (string (aref buf pos)) point)
+      ;; @@@ zorp maybe change to (make-fat-string (string ...
+      (record-undo e 'deletion pos (string (aref buf pos)) point) 
       (record-undo e 'insertion pos (string c))
       (setf (aref buf pos) c)))
   (:method ((e line-editor) pos (s string))

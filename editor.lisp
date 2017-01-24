@@ -179,14 +179,14 @@ anything important.")
     :initarg :need-to-redraw
     :initform nil
     :documentation "True if we need to redraw the whole line.")
-   (in-callback
-    :accessor line-editor-in-callback
-    :initarg :in-callback
+   (input-callback
+    :accessor line-editor-input-callback
+    :initarg :input-callback
     :initform nil
     :documentation "Function to call on character input.")
-   (out-callback
-    :accessor line-editor-out-callback
-    :initarg :out-callback
+   (output-callback
+    :accessor line-editor-output-callback
+    :initarg :output-callback
     :initform nil
     :documentation "Function to call on output.")
    (debugging
@@ -250,7 +250,9 @@ anything important.")
 
   ;; Make a default line sized buffer if one wasn't given.
   (when (or (not (slot-boundp e 'buf)) (not (slot-value e 'buf)))
-    (setf (slot-value e 'buf) (make-stretchy-string *initial-line-size*)))
+    (setf (slot-value e 'buf)
+	  ;;(make-stretchy-string *initial-line-size*)
+	  (make-stretchy-vector *initial-line-size* :element-type 'fatchar)))
 
   ;; Set the current dynamic var.
   (setf *line-editor* e))
@@ -288,8 +290,8 @@ but perhaps reuse some resources."))
   (let ((c (tt-get-key)))
     ;; when read returns eagain,
     ;; (terminal-start tty) (redraw e) (tt-finish-output)
-    (when (line-editor-in-callback e)
-      (funcall (line-editor-in-callback e) c))
+    (when (line-editor-input-callback e)
+      (funcall (line-editor-input-callback e) c))
     c))
 
 (defun get-lone-key ()
@@ -394,9 +396,9 @@ anything serious."
 	((= status 0)
 	 nil)
 	((= status 1)
-	 (when (line-editor-in-callback e)
+	 (when (line-editor-input-callback e)
 	   (let ((cc (code-char (mem-ref c :unsigned-char))))
-	     (funcall (line-editor-in-callback e) cc)
+	     (funcall (line-editor-input-callback e) cc)
 	     cc))
 	 (code-char (mem-ref c :unsigned-char)))))))
 |#

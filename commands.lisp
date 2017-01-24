@@ -8,6 +8,8 @@
 (in-package :rl)
 
 (defmacro with-external ((e) &body body)
+  "Do BODY outside the editor E, making sure that the terminal and display are
+in proper condition."
   (with-unique-names (result)
     `(let (,result)
        (finish-output (terminal-output-stream (line-editor-terminal ,e)))
@@ -51,7 +53,7 @@ it with ACTION's return value."
 	    (when did-one (decf point)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Commands
+;; Movement commands
 
 (defun backward-word (e)
   "Move the insertion point to the beginning of the previous word or the
@@ -96,6 +98,9 @@ buffer if there is no word."
   (with-slots (point buf) e
     (move-over e (- (length buf) point))
     (setf point (fill-pointer buf))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Movement commands
 
 (defun previous-history (e)
   "Go to the previous history entry."
@@ -632,8 +637,30 @@ is none."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; hacks for typing lisp
 
-(defun flash-paren (e c)
-  (declare (ignore c))
+(defparameter *paren-match-style* :flash
+  "Style of parentheses matching. :FLASH, :HIGHLIGHT or :NONE.")
+
+(defparameter *matched-pairs* "()[]{}"
+  "Matching character pairs. Must be an even length string of paired characters
+in order, \"{open}{close}...\".")
+
+(defun is-matched-char (char)
+  (position char *matched-pairs*))
+
+(defun is-open-char (char)
+  (let ((pos (position char *matched-pairs*)))
+    (and pos (evenp pos))))
+
+(defun is-close-char (char)
+  (let ((pos (position char *matched-pairs*)))
+    (and pos (oddp pos))))
+
+(defun match-char (char)
+  (let ((pos (position char *matched-pairs*)))
+    (and pos (char *matched-pairs*
+		   (if (evenp pos) (1+ pos) (1- pos))))))
+
+(defun flash-paren (e)
   (let* ((str (buf e))
 	 (point (point e))
 	 (ppos (matching-paren-position str :position point))
@@ -648,6 +675,28 @@ is none."
 	  (tt-listen-for .5)
 	  (move-over e offset :start (- (1+ point) offset)))
 	(beep e "No match."))))
+
+(defun highlight-paren (e pos)
+  (let* ((str (buf e))
+	 (ppos (matching-paren-position str :position pos :char (aref str pos)))
+	 offset offset-back)
+    (log-message e "pos = ~s ppos = ~s" pos ppos)
+    (if ppos
+	(let ((saved-col (screen-col e)))
+	  (declare (ignore saved-col))
+	  (cond
+	    ((> ppos pos)
+	     (setf offset (- ppos pos)
+		   offset-back (- (+ offset 1))))
+	    (t
+	     (setf offset (- (1+ (- pos ppos)))
+		   offset-back (- pos ppos))))
+	  (move-over e offset :start (point e))
+	  (tt-bold t)
+	  ;;(tt-write-char (match-char (aref str pos)))
+	  (display-char e (match-char (aref str pos)))
+	  (tt-bold nil)
+	  (move-over e offset-back :start (1+ ppos))))))
 
 (defun finish-line (e)
   "Add any missing close parentheses and accept the line."
@@ -720,8 +769,8 @@ is none."
 	     (display-char e char)
 	     (insert-char e char)
 	     ;; flash paren and keep going
-	     (when (or (eql char #\)) (eql char #\]) (eql char #\}))
-	       (flash-paren e char))
+	     (when (and (eq *paren-match-style* :flash) (is-close-char char))
+	       (flash-paren e))
 	     (incf point))
 	   ;; somewhere in the middle
 	   (progn
@@ -748,8 +797,8 @@ is none."
 		  ;; normal
 		  (tt-ins-char len)))
 	       (display-char e char)
-	       (when (or (eql char #\)) (eql char #\]) (eql char #\}))
-		 (flash-paren e char))
+	       (when (and (eq *paren-match-style* :flash) (is-close-char char))
+		 (flash-paren e))
 	       (insert-char e char)
 	       (incf point)
 	       ;; do the dumb way out
