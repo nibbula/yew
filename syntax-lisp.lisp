@@ -133,62 +133,115 @@
   (declare (ignore s))
 )
 
+(defun opens-and-closes (pairs)
+  "Return the split out opens and closes given a string of PAIRS, which must
+be of even length and matched in order."
+  (let ((out (make-array `(,(/ (length pairs) 2))
+			 :element-type 'character
+			 :adjustable t :fill-pointer t)))
+    (list (progn
+	    (with-output-to-string (str out)
+	      (loop :for i :from 0 :below (length pairs)
+		 :if (evenp i)
+		 :do (princ (char pairs i) str)))
+	    (copy-seq out))
+	  (progn
+	    (setf (fill-pointer out) 0)
+	    (with-output-to-string (str out)
+	      (loop :for i :from 0 :below (length pairs)
+		 :if (oddp i)
+		 :do (princ (char pairs i) str)))
+	    out))))
+
 ;; This done in a temporary hackish way, until we make the whole reader.
 ;; I'm curious to compare the performance of this vs a rule 184 based
 ;; implementation.
 ;; @@@ This should be a method of a generic that is in syntax.lisp.
 
-(defun matching-paren-position (string &key (position (length string)))
-  "Return the position in STRING of an open paren matching a, perhaps
-hypothetical, one at POSITION. If there is none, return nil. If POSITION is
-not provided, it defaults to the end of the string."
+(defun matching-paren-position (string &key position
+					 (char #\))
+					 (pairs "()[]{}" pairs-p))
+  "Return the position in STRING of CHAR matching a, perhaps hypothetical,
+paired char at POSITION. If there is none, return nil. If POSITION is
+not provided, it defaults to the end or beginning of the string, depending if
+CHAR is an open or a close. PAIRS is an even length string of paired characters
+in order, \"{open}{close}...\". PAIRS defaults to something reasonable."
   (declare (type string string))
-  (let ((starts nil))
-    (loop
-       :with i = 0 :and c = nil
-       :while (< i position)
-       :do (setf c (aref string i))
-       (cond
-	 ((or (eql c #\() (eql c #\[) (eql c #\{)) (push i starts))
-	 ((or (eql c #\)) (eql c #\]) (eql c #\})) (pop starts))
-	 ((eql c #\")
-	  ;; scan past the string
-	  (incf i)
-	  (loop :while (and (< i position)
-			    (not (eql #\" (setf c (aref string i)))))
-	     :do (when (eql c #\\)
-		   (incf i))
-	     (incf i)))
-	 ;; # reader macro char
-	 ((and (eql c #\#) (< i (- position 2)))
-	  (incf i)
-	  (case (setf c (aref string i))
-	    (#\\ (incf i))		; ignore the quoted char
-	    ;; scan past matched #| comments |#
-	    (#\|
+  (let* ((starts nil) (c nil)
+	 (oc (when pairs-p (opens-and-closes pairs)))
+	 (opens (if pairs-p (first oc) "([{"))
+	 (closes (if pairs-p (second oc) ")]}"))
+	 (forward (and (position char opens) t))
+	 (end (if forward (length string) position))
+	 (start (if forward position 0))
+	 (i start))
+    ;; (format t "opens = ~s closes = ~s~%" opens closes)
+    ;; (format t "forward = ~s end = ~s start = ~s~%" forward end start)
+    (flet ((eat-string ()
+	     "Scan past the string."
+	     (incf i)
+	     (loop :while (and (< i end)
+			       (not (eql #\" (setf c (aref string i)))))
+		:do (when (eql c #\\)
+		      (incf i))
+		(incf i)))
+	   (eat-comment ()
 	     (incf i)
 	     (loop :with level = 1
-		:while (and (< i position) (> level 0))
+		:while (and (< i end) (> level 0))
 		:do
 		  (setf c (aref string i))
 		  (cond
-		    ((and (eql c #\|) (and (< i (1- position))
+		    ((and (eql c #\|) (and (< i (1- end))
 					   (eql #\# (aref string (1+ i)))))
 		     (decf level))
-		    ((and (eql c #\#) (and (< i (1- position))
+		    ((and (eql c #\#) (and (< i (1- end))
 					   (eql #\| (aref string (1+ i)))))
 		     (incf level)))
 		(incf i)))
-	    ;; vectors, treated just like a list
-	    (#\( (push i starts))))
-	 ;; single line comment
-	 ((eql c #\;)
-	  (loop :while (and (< i position)
-			    (not (eql #\newline (setf c (aref string i)))))
-	     :do (incf i))))
-       (incf i))
-    (first starts)))
-
+	   (eat-line-comment ()
+	     (loop :while (and (< i end)
+			       (not (eql #\newline (setf c (aref string i)))))
+		:do (incf i))))
+      (cond
+	(forward
+	 (loop
+	    :while (< i end)
+	    :do (setf c (aref string i))
+	    (cond
+	      ((position c opens) (push i starts))
+	      ((position c closes) (pop starts)
+	       (when (not starts)
+		 (return-from matching-paren-position i)))
+	      ((eql c #\") (eat-string))
+	      ((and (eql c #\#) (< i (- position 2))) ; # reader macro char
+	       (incf i)
+	       (case (setf c (aref string i))
+		 (#\\ (incf i))		; ignore the quoted char
+		 (#\| (eat-comment))	; scan past matched #| comments |#
+		 (#\( (push i starts)))) ; vectors, treated just like a list
+	      ;; single line comment
+	      ((eql c #\;) (eat-line-comment)))
+	    (incf i)))
+	(t
+	 (loop
+	    :while (< i end)
+	    :do (setf c (aref string i))
+	    (cond
+	      ((position c opens) (push i starts))
+	      ((position c closes) (pop starts))
+	      ((eql c #\") (eat-string))
+	      ((and (eql c #\#) (< i (- end 2))) ; # reader macro char
+	       (incf i)
+	       (case (setf c (aref string i))
+		 (#\\ (incf i))		; ignore the quoted char
+		 (#\| (eat-comment))	; scan past matched #| comments |#
+		 (#\( (push i starts)))) ; vectors, treated just like a list
+	      ;; single line comment
+	      ((eql c #\;) (eat-line-comment)))
+	    (incf i))
+	 (first starts))))))
+	
 (defun eat-whitespace (stream)
   (let (c)
     (loop :do (setf c (read-char stream))
