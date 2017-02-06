@@ -16,6 +16,8 @@
   (:export
    #:terminal-ansi-stream
    #:terminal-ansi
+   ;; non standard:
+   #:describe-terminal
    ))
 (in-package :terminal-ansi)
 
@@ -448,131 +450,135 @@ i.e. the terminal is 'line buffered'."
     (64 "VT520")
     (65 "VT525")))
 
+(define-constant +csi+ #.(format nil "~c[" #\escape)
+  "Control Sequence Introducer. Hooking up control sequences since 1970.")
+
+(defun query-parameters (s &key (offset 3))
+  (let ((response (termios:terminal-query (s+ +csi+ s))))
+    (if (zerop (length response))
+	'()
+	(mapcar (_ (ignore-errors (parse-integer _)))
+		(split-sequence
+		 #\;
+		 (coerce (subseq response offset
+				 (1- (length response)))
+			 'string))))))
+
+(defun query-string (s &key (offset 3) (ending 2))
+  (let ((response (termios:terminal-query (s+ +csi+ s))))
+    (if (zerop (length response))
+	'()
+	(coerce (subseq response offset
+			(- (length response) ending))
+		'string))))
+
 (defun describe-terminal ()
   "Interrogate the terminal properties and report the results."
-  (let ((csi (format nil "~c[" #\escape))
-	response a props)
-    (labels ((qq (s &key (offset 3))
-	       (setf response (termios:terminal-query (s+ csi s)))
-	       (if (zerop (length response))
-		   '()
-		   (mapcar (_ (ignore-errors (parse-integer _)))
-			   (split-sequence
-			    #\;
-			    (coerce (subseq response offset
-					    (1- (length response)))
-				    'string)))))
-	     (qqq (s &key (offset 3) (ending 2))
-	       (setf response (termios:terminal-query (s+ csi s)))
-	       (if (zerop (length response))
-		   '()
-		   (coerce (subseq response offset
-				   (- (length response) ending))
-			   'string))))
-      ;; Terminal type
-      (setf a (qq ">c"))
-      (push `("Terminal type" ,(response-terminal-type (first a))) props)
-      (when (second a)
-	(push `("Firmware version" ,(second a)) props))
-      ;; Features
-      (setf a (qq "c"))
-      (loop :for prop :in (cdr a) :do
-	 (push `(,(case prop
-		   (1 "132-columns")
-		   (2 "Printer")
-		   (6 "Selective erase")
-		   (8 "User-defined keys")
-		   (9 "National Replacement Character sets")
-		   (15 "Technical characters")
-		   (18 "User windows")
-		   (21 "Horizontal scrolling")
-		   (22 "ANSI color")
-		   (29 "ANSI text locator")
-		   (t "Unknown property"))
-		  "Yes") props))
-      ;; Cursor position
-      (setf a (qq "?6n"))
-      (push `("Cursor position" ,(format nil "~a ~a" (first a) (second a)))
-	    props)
-      ;; Printer
-      (setf a (qq "?15n"))
-      (push `("Printer status"
-	      ,(case (first a)
-		     (10 "Ready")
-		     (11 "Not Ready")
-		     (13 "No Printer")
-		     (t "Unknown")))
-	    props)
-      ;; Locator status
-      (setf a (qq "?55n"))
-      (push `("Locator status"
-	      ,(case (first a)
-		     (53 "Available")
-		     (50 "No locator")
-		     (t "Unknown")))
-	    props)
-      ;; Locator type
-      (setf a (qq "?56n"))
-      (push `("Locator type"
-	      ,(case (second a)
-		     (1 "Mouse")
-		     (t "Unknown")))
-	    props)
-      ;; Window state
-      (setf a (qq "11t" :offset 2))
-      (push `("Window state"
-	      ,(if (zerop (length a))
-		   "Unavailable"
-		   (case (first a)
-		     (1 "Open")
-		     (2 "Iconified")
-		     (t "Unknown"))))
-	      props)
-      ;; Window position
-      (setf a (qq "13t" :offset 2))
-      (push `("Window position"
-	      ,(if (zerop (length a))
-		   "Unavailable"
-		   (format nil "~a ~a" (second a) (third a))))
-	      props)
-      ;; Window size
-      (setf a (qq "14t" :offset 2))
-      (push `("Window size"
-	      ,(if (zerop (length a))
-		   "Unavailable"
-		   (format nil "~a ~a" (second a) (third a))))
-	      props)
-      ;; Text size
-      (setf a (qq "18t" :offset 2))
-      (push `("Text size"
-	      ,(if (zerop (length a))
-		   "Unavailable"
-		   (format nil "~a ~a" (second a) (third a))))
-	      props)
-      ;; Text screen size
-      (setf a (qq "19t" :offset 2))
-      (push `("Text screen size"
-	      ,(if (zerop (length a))
-		   "Unavailable"
-		   (format nil "~a ~a" (second a) (third a))))
-	      props)
-      ;; Icon label
-      (setf a (qqq "20t"))
-      (push `("Icon label"
-	      ,(if (zerop (length a))
-		   "Unavailable"
-		   a))
-	      props)
-      ;; Title
-      (setf a (qqq "20t"))
-      (push `("Title"
-	      ,(if (zerop (length a))
-		   "Unavailable"
-		   a))
-	      props)
-      ;;;
-      (setf props (nreverse props))
-      (print-properties props))))
+  (let (a props)
+    ;; Terminal type
+    (setf a (query-parameters ">c"))
+    (push `("Terminal type" ,(response-terminal-type (first a))) props)
+    (when (second a)
+      (push `("Firmware version" ,(second a)) props))
+    ;; Features
+    (setf a (query-parameters "c"))
+    (loop :for prop :in (cdr a) :do
+       (push `(,(case prop
+		      (1 "132-columns")
+		      (2 "Printer")
+		      (6 "Selective erase")
+		      (8 "User-defined keys")
+		      (9 "National Replacement Character sets")
+		      (15 "Technical characters")
+		      (18 "User windows")
+		      (21 "Horizontal scrolling")
+		      (22 "ANSI color")
+		      (29 "ANSI text locator")
+		      (t "Unknown property"))
+		"Yes") props))
+    ;; Cursor position
+    (setf a (query-parameters "?6n"))
+    (push `("Cursor position" ,(format nil "~a ~a" (first a) (second a)))
+	  props)
+    ;; Printer
+    (setf a (query-parameters "?15n"))
+    (push `("Printer status"
+	    ,(case (first a)
+		   (10 "Ready")
+		   (11 "Not Ready")
+		   (13 "No Printer")
+		   (t "Unknown")))
+	  props)
+    ;; Locator status
+    (setf a (query-parameters "?55n"))
+    (push `("Locator status"
+	    ,(case (first a)
+		   (53 "Available")
+		   (50 "No locator")
+		   (t "Unknown")))
+	  props)
+    ;; Locator type
+    (setf a (query-parameters "?56n"))
+    (push `("Locator type"
+	    ,(case (second a)
+		   (1 "Mouse")
+		   (t "Unknown")))
+	  props)
+    ;; Window state
+    (setf a (query-parameters "11t" :offset 2))
+    (push `("Window state"
+	    ,(if (zerop (length a))
+		 "Unavailable"
+		 (case (first a)
+		   (1 "Open")
+		   (2 "Iconified")
+		   (t "Unknown"))))
+	  props)
+    ;; Window position
+    (setf a (query-parameters "13t" :offset 2))
+    (push `("Window position"
+	    ,(if (zerop (length a))
+		 "Unavailable"
+		 (format nil "~a ~a" (second a) (third a))))
+	  props)
+    ;; Window size
+    (setf a (query-parameters "14t" :offset 2))
+    (push `("Window size"
+	    ,(if (zerop (length a))
+		 "Unavailable"
+		 (format nil "~a ~a" (second a) (third a))))
+	  props)
+    ;; Text size
+    (setf a (query-parameters "18t" :offset 2))
+    (push `("Text size"
+	    ,(if (zerop (length a))
+		 "Unavailable"
+		 (format nil "~a ~a" (second a) (third a))))
+	  props)
+    ;; Text screen size
+    (setf a (query-parameters "19t" :offset 2))
+    (push `("Text screen size"
+	    ,(if (zerop (length a))
+		 "Unavailable"
+		 (format nil "~a ~a" (second a) (third a))))
+	  props)
+    ;; Icon label
+    (setf a (query-string "20t"))
+    (push `("Icon label"
+	    ,(if (zerop (length a))
+		 "Unavailable"
+		 a))
+	  props)
+    ;; Title
+    (setf a (query-string "21t"))
+    (push `("Title"
+	    ,(if (zerop (length a))
+		 "Unavailable"
+		 a))
+	  props)
+    ;;
+    (setf props (nreverse props))
+    (print-properties props)))
 
 (register-terminal-type :ansi 'terminal-ansi)
 
