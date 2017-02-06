@@ -420,7 +420,8 @@ The date part is considered to be the current date."
 	:do (sleep .2))
       ,form))))
 
-(defun print-properties (prop-list &key (right-justify nil) (de-lispify t))
+(defun print-properties (prop-list &key (right-justify nil) (de-lispify t)
+				     (stream t))
   "Print a set of names and values nicely in two vertical columns."
   (let ((label-length (loop :for (name nil) :in prop-list
 			 :maximize (length (princ-to-string name)))))
@@ -429,7 +430,7 @@ The date part is considered to be the current date."
 		    (substitute #\space #\_
 				(substitute #\space #\- s)))))
       (loop :for (name value) :in prop-list
-       :do (format t (if right-justify "~v@a: ~a~%" "~va: ~a~%")
+       :do (format stream (if right-justify "~v@a: ~a~%" "~va: ~a~%")
 		   label-length
 		   (if de-lispify
 		       (niceify (princ-to-string name))
