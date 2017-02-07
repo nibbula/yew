@@ -368,19 +368,26 @@ calls. Returns NIL when there is an error.")
 ;; so instead of (split-sequence *directory-separator* p :omit-empty t)
 (defun split-path (path)
   "Return a list of components of PATH."
-  (loop :with i = 0 :and piece
-     :while (< i (length path))
-     :do (setf piece nil)
-     (setf piece
-	   (with-output-to-string (str)
-	      (loop :while (and (< i (length path))
-				(char/= (char path i) *directory-separator*))
-		 :do
-		 (princ (char path i) str)
-		 (incf i))))
-     :if (and piece (/= (length piece) 0))
-     :collect piece
-     :do (incf i)))
+  (let (result (len (length path)))
+    (when (and (plusp len)
+	       (char= (char path 0) *directory-separator*))
+      (setf result '("/")))
+    (if (zerop len)
+	(list path)
+	(append result
+		(loop :with i = 0 :and piece
+		   :while (< i len) :do
+		   (setf piece
+			 (with-output-to-string (str)
+			   (loop :while (and (< i len)
+					     (char/= (char path i)
+						     *directory-separator*))
+			      :do
+			      (princ (char path i) str)
+			      (incf i))))
+		   :if (and piece (/= (length piece) 0))
+		   :collect piece
+		   :do (incf i))))))
 
 (defun path-to-absolute (path)
   "Return the PATH converted into an absolute path."
@@ -389,32 +396,30 @@ calls. Returns NIL when there is an error.")
 	       (null (return-from path-to-absolute nil))
 	       (string path)
 	       (pathname (safe-namestring path))))
-    (let* ((p (if (char= *directory-separator* (char path 0))
-		 path			; already absolute
-		 (concatenate 'string (current-directory) "/" path)))
-	   ;; (pp (split-sequence *directory-separator* p :omit-empty t)))
-	   (pp (split-path p)))
-      (macrolet
-	  ((get-rid-of (str snip)
-	     "Get rid of occurances of STR by snipping back to SNIP, which
+  (let* ((p (if (and (plusp (length path))
+		     (char= *directory-separator* (char path 0)))
+		path			; already absolute
+		(concatenate 'string (current-directory) "/" path)))
+	 (pp (split-path p)))
+    (macrolet
+	((get-rid-of (str snip)
+	   "Get rid of occurances of STR by snipping back to SNIP, which
               is a numerical expression in terms of the current position POS."
-	     `(loop :with start = 0 :and pos
-		 :while (setq pos (position ,str pp
-					    :start start :test #'equal))
-		 :do (setq pp (concatenate 'list
-					   (subseq pp 0 (max 0 ,snip))
-					   (subseq pp (1+ pos)))))))
-	;; Get rid of ".."
-;	(dbug "starting with ~s~%" pp)
-	(get-rid-of "." pos)
-;	(dbug "after . ~s~%" pp)
-	(get-rid-of ".." (1- pos))
-;	(dbug "after .. ~s~%" pp)
-	)
-      (if (zerop (length pp))
-	  "/"
-	  (apply #'concatenate 'string
-		 (loop :for e :in pp :collect "/" :collect e)))))
+	   `(loop :with start = 0 :and pos
+	       :while (setq pos (position ,str pp
+					  :start start :test #'equal))
+	       :do (setq pp (concatenate 'list
+					 (subseq pp 0 (max 0 ,snip))
+					 (subseq pp (1+ pos)))))))
+      ;; Get rid of relative elemets, "." and ".."
+      (get-rid-of "." pos)
+      (get-rid-of ".." (1- pos)))
+    (if (<= (length pp) 1)
+	"/"
+	(with-output-to-string (str)
+	  (loop :for e :in (cdr pp) :do
+	     (write-char *directory-separator* str)
+	     (write-string e str))))))
 
 (setf (symbol-function 'abspath) #'path-to-absolute)
 
