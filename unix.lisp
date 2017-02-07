@@ -1721,12 +1721,14 @@ Return nil for foreign null pointer."
 (defun user-home (&optional (user (user-name)))
   "Return the namestring of the given USER's home directory or nil if the ~
 user is not found."
-  (setpwent)
-  (loop :with p = nil
-	:while (setf p (getpwent))
-	:do (when (string= (passwd-name p) user)
-	      (return-from user-home (passwd-dir p))))
-  (endpwent))
+  (unwind-protect
+    (progn
+      (setpwent)
+      (loop :with p = nil
+	 :while (setf p (getpwent))
+	 :do (when (string= (passwd-name p) user)
+	       (return-from user-home (passwd-dir p)))))
+    (endpwent)))
 
 (defun user-id (&key name effective)
   "Return the ID of the user with NAME, which defaults to the current user."
@@ -1758,8 +1760,11 @@ user is not found."
 
 (defun user-list ()
   "How to annoy people in large organizations."
-  (setpwent)
-  (loop :with g :while (setf g (get-next-user)) :collect g))
+  (unwind-protect
+    (progn
+      (setpwent)
+      (loop :with g :while (setf g (get-next-user)) :collect g))
+    (endpwent)))
 
 (defun refresh-user-list ()
   "Just in case you are bored, this will make get-next-group or group-list
@@ -2496,7 +2501,7 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 	      (error 'posix-error :format-control "readdir"
 		     :error-code *errno*)))))
       (if (not (null-pointer-p dirp))
-	  (closedir dirp)))
+	  (syscall (closedir dirp))))
     dir-list))
 
 (defmacro without-access-errors (&body body)
