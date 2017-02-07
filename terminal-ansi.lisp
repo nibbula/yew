@@ -18,6 +18,8 @@
    #:terminal-ansi
    ;; non standard:
    #:describe-terminal
+   #:+csi+ #:+st+ #:+osc+
+   #:query-parameters #:query-string
    ))
 (in-package :terminal-ansi)
 
@@ -450,8 +452,12 @@ i.e. the terminal is 'line buffered'."
     (64 "VT520")
     (65 "VT525")))
 
-(define-constant +csi+ #.(format nil "~c[" #\escape)
+(define-constant +csi+ (s+ #\escape #\[)
   "Control Sequence Introducer. Hooking up control sequences since 1970.")
+(define-constant +st+  (s+ #\escape #\\)
+  "String terminator. Death to strings.")
+(define-constant +osc+ (s+ #\escape #\])
+  "Operating System Command. C'est vrai? o_O")
 
 (defun query-parameters (s &key (offset 3))
   (let ((response (termios:terminal-query (s+ +csi+ s))))
@@ -464,8 +470,8 @@ i.e. the terminal is 'line buffered'."
 				 (1- (length response)))
 			 'string))))))
 
-(defun query-string (s &key (offset 3) (ending 2))
-  (let ((response (termios:terminal-query (s+ +csi+ s))))
+(defun query-string (s &key (offset 3) (ending 2) (lead-in +csi+))
+  (let ((response (termios:terminal-query (s+ lead-in s))))
     (if (zerop (length response))
 	'()
 	(coerce (subseq response offset
