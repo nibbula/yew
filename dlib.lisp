@@ -1595,6 +1595,7 @@ cannot cause evaluation."
   "Return a copy of PACKAGE. The new package has all the symbols imported,
 shadowed symbols shadowed, and used packages used, from the old package, and
 is named \"COPY-OF-<Package><n>\"."
+  (assert package)
   (let ((new-package (make-package (package-copy-name package) :use '())))
     (loop :for s :being :each :present-symbol :of package
        :do (import s new-package))
@@ -1603,7 +1604,7 @@ is named \"COPY-OF-<Package><n>\"."
     (loop :for pkg in (package-use-list package)
        :do (use-package pkg new-package))
     new-package))
-
+  
 (defun interninator (name package dirt-pile)
   "Return the symbol NAME from package if it exists, or from the DIRT-PILE
 package if it doesn't. If DIRT-PILE is NIL, return a packageless symbol."
@@ -1634,7 +1635,8 @@ returning them as uninterned symbols."
   (let (pkg obj pos)
     (unwind-protect
 	 (progn
-	   (setf pkg (copy-package package))
+	   (setf pkg (or (and package (copy-package package))
+			 (make-package (gensym "junkpak") :use '())))
 	   (with-package pkg
 	     (setf (values obj pos)
 		   (read-from-string
