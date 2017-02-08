@@ -45,7 +45,7 @@
   "Fresh terminal mode sanity"
   (terminal-mode-sane-p (make-terminal-mode))
   "Window size"
-  (multiple-value-bind (rows cols) (get-window-size *tty*)
+  (multiple-value-bind (cols rows) (get-window-size *tty*)
     (and (and (integerp rows) (not (minusp rows)))
 	 (and (integerp cols) (not (minusp cols))))))
 
