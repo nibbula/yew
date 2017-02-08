@@ -254,7 +254,8 @@ Keyword arguments:
 			:accept-does-newline accept-does-newline
 			:terminal-device-name terminal-name
 			:terminal-class terminal-class)))
-	 (*terminal* (line-editor-terminal e)))
+	 (*terminal* (line-editor-terminal e))
+	 (*completion-count* 0))
     (when editor
       (freshen editor))
     (setf (fill-pointer (buf e)) (point e))
@@ -302,7 +303,7 @@ Keyword arguments:
 		      (perform-key e cmd (line-editor-keymap e))
 		      (setf (last-command-was-completion e) (did-complete e))
 		      (when (not (last-command-was-completion e))
-			(setf (last-completion-not-unique-count e) 0))
+			(set-completion-count e 0))
 		      (when exit-flag (setf result quit-value))
 		      ;; @@@ perhaps this should be done by a hook?
 		      (if (eq *paren-match-style* :highlight)

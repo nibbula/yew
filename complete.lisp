@@ -20,6 +20,11 @@ command line.")
 (defvar *completion-really-limit* 100
   "How much is too much.")
 
+(defun set-completion-count (e n)
+  "Set the completion count to N."
+  (setf *completion-count* n
+	(last-completion-not-unique-count e) n))
+
 ;; Most of the work is done by print-columns, from dlib-misc.
 (defun print-completions-over (e comp-list)
   (with-slots (completion-func buf point saved-point prompt prompt-func) e
@@ -136,7 +141,7 @@ to the terminal."
 	    (funcall completion-func buf point t)
 	  (when (and comp-count (> comp-count 0))
 	    (setf (did-complete e) t)
-	    (incf (last-completion-not-unique-count e))
+	    (set-completion-count e (1+ (last-completion-not-unique-count e)))
 	    (if (eq *completion-list-technique* :under)
 		(print-completions-under e comp-list)
 		(print-completions-over e comp-list))))))))
@@ -173,8 +178,8 @@ to the terminal."
 	(show-completions e))
       (setf (did-complete e) t)
       (if (not unique)
-	  (incf (last-completion-not-unique-count e))
-	  (setf (last-completion-not-unique-count e) 0))
+	  (set-completion-count e (1+ (last-completion-not-unique-count e)))
+	  (set-completion-count e 0))
       ;; (format t "comp = ~s replace-pos = ~s~%" comp replace-pos)
       ;; If the completion succeeded we need a replace-pos!
       (assert (or (not comp) (numberp replace-pos)))
