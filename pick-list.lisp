@@ -45,6 +45,7 @@
     (,(meta-char #\=)	  . pick-list-binding-of-key)
     ;;(#\?		  . pick-list-help)
     (#\?		  . help)
+    (,(ctrl #\@)	  . pick-list-set-mark)
     ))
 
 (defparameter *pick-list-escape-keymap*
@@ -154,6 +155,10 @@
       (if (position point result)
 	  (setf result (delete point result))
 	  (push point result)))))
+
+(defun pick-list-set-mark (pick)
+  "Set the mark to where the point is."
+  (setf (pick-mark pick) (inator-point pick)))
 
 (defun pick-list-toggle-region (pick)
   "Toggle the items in the region."
