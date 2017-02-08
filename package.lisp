@@ -72,6 +72,7 @@
    #:get-file-info
    #:stream-system-handle
    #:file-exists
+   #:simple-delete-file
    #:with-os-file
 
    ;; Stupid cooperative locking

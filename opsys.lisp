@@ -293,6 +293,10 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
   "Check that a file with FILENAME exists at the moment. But it might not exist
 for long.")
 
+(defosfun simple-delete-file (pathname)
+  "Delete a file. Doesn't monkey with the name, which should be a string.
+Doesn't operate on streams.")
+
 (defosfun with-os-file ((var filename &key
 			     (direction :input)
 			     (if-exists :error)

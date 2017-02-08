@@ -190,6 +190,7 @@
    #:file-type-name
    #:symbolic-mode
    #:file-exists
+   #:simple-delete-file
    #:readlink
 
    #:UF_SETTABLE #:UF_NODUMP #:UF_IMMUTABLE #:UF_APPEND #:UF_OPAQUE
@@ -2568,11 +2569,16 @@ calls. Returns NIL when there is an error."
   (defconstant +O_TTY_INIT+  #x00080000 "Restore default termios attributes")
   (defconstant +O_CLOEXEC+   #x00100000))
 
-(defcfun ("open"  posix-open)  :int (path :string) (flags :int) (mode mode-t))
-(defcfun ("close" posix-close) :int (fd :int))
-(defcfun ("read"  posix-read)  :int (fd :int) (buf :pointer) (nbytes size-t))
-(defcfun ("write" posix-write) :int (fd :int) (buf :pointer) (nbytes size-t))
-(defcfun ("ioctl" posix-ioctl) :int (fd :int) (request :int) (arg :pointer))
+(defcfun ("open"   posix-open)   :int (path :string) (flags :int) (mode mode-t))
+(defcfun ("close"  posix-close)  :int (fd :int))
+(defcfun ("read"   posix-read)   :int (fd :int) (buf :pointer) (nbytes size-t))
+(defcfun ("write"  posix-write)  :int (fd :int) (buf :pointer) (nbytes size-t))
+(defcfun ("ioctl"  posix-ioctl)  :int (fd :int) (request :int) (arg :pointer))
+(defcfun ("unlink" posix-unlink) :int (path :string))
+
+(defun simple-delete-file (path)
+  "Delete a file."
+  (syscall (posix-unlink (safe-namestring path))))
 
 (defmacro with-posix-file ((var filename flags &optional (mode 0)) &body body)
   "Evaluate the body with the variable VAR bound to a posix file descriptor
