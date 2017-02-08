@@ -1109,8 +1109,10 @@ Assumes S is already converted to display characters."
     ((graphic-char-p c)
      (editor-write-char e c))
     ((eql c #\tab)
-     (editor-write-string e (make-string (- 8 (mod (screen-col e) 8))
-					 :initial-element #\space)))
+     ;; (editor-write-string e (make-string (- 8 (mod (screen-col e) 8))
+     ;; 					 :initial-element #\space)))
+     (dotimes (_ (- (1+ (logior 7 (screen-col e))) (screen-col e)))
+       (tt-write-char #\space)))
     ((eql c #\newline)
      (setf (screen-col e) 0)
      (incf (screen-row e))
@@ -1756,22 +1758,26 @@ if it's blank or the same as the previous line."
 
 (defun display-search (e str pos)
   "Display the current line with the search string highlighted."
-  (with-slots (buf point) e
+  (with-slots (point context) e
     ;;(setf point (min (or pos (length buf)) (length buf)))
-    (erase-display e)
     (tt-move-to-col 0)
-    (tt-erase-to-eol)
+    (erase-display e)
+    ;; (tt-erase-to-eol)
     (setf (screen-col e) 0)
     (do-prefix e *isearch-prompt*)
     ;;(log-message e "buf = ~s" buf)
-    (loop :with end = (if pos (+ pos (length str)) nil)
-       :for c :across buf :and i = 0 :then (1+ i) :do
-       (cond
-	 ((and pos (= i pos))
-	  (tt-underline t))
-	 ((and end (= i end))
-	  (tt-underline nil)))
-       (display-char e c))
+    (when (history-current context)
+      (loop :with end = (if pos (+ pos (length str)) nil)
+	 :for c :across (history-current context)
+	 :and i = 0 :then (1+ i) :do
+	 (cond
+	   ((and pos (= i pos))
+	    (tt-underline t))
+	   ((and end (= i end))
+	    (tt-underline nil)))
+	 ;;(display-char e c)
+	 (tt-write-char c)
+	 ))
     (tt-underline nil)
     (tt-finish-output)))
 
@@ -2187,6 +2193,11 @@ command line.")
 (defvar *completion-really-limit* 100
   "How much is too much.")
 
+(defun set-completion-count (e n)
+  "Set the completion count to N."
+  (setf *completion-count* n
+	(last-completion-not-unique-count e) n))
+
 ;; Most of the work is done by print-columns, from dlib-misc.
 (defun print-completions-over (e comp-list)
   (with-slots (completion-func buf point saved-point prompt prompt-func) e
@@ -2303,7 +2314,7 @@ to the terminal."
 	    (funcall completion-func buf point t)
 	  (when (and comp-count (> comp-count 0))
 	    (setf (did-complete e) t)
-	    (incf (last-completion-not-unique-count e))
+	    (set-completion-count e (1+ (last-completion-not-unique-count e)))
 	    (if (eq *completion-list-technique* :under)
 		(print-completions-under e comp-list)
 		(print-completions-over e comp-list))))))))
@@ -2340,8 +2351,8 @@ to the terminal."
 	(show-completions e))
       (setf (did-complete e) t)
       (if (not unique)
-	  (incf (last-completion-not-unique-count e))
-	  (setf (last-completion-not-unique-count e) 0))
+	  (set-completion-count e (1+ (last-completion-not-unique-count e)))
+	  (set-completion-count e 0))
       ;; (format t "comp = ~s replace-pos = ~s~%" comp replace-pos)
       ;; If the completion succeeded we need a replace-pos!
       (assert (or (not comp) (numberp replace-pos)))
@@ -2796,7 +2807,8 @@ Keyword arguments:
 			:accept-does-newline accept-does-newline
 			:terminal-device-name terminal-name
 			:terminal-class terminal-class)))
-	 (*terminal* (line-editor-terminal e)))
+	 (*terminal* (line-editor-terminal e))
+	 (*completion-count* 0))
     (when editor
       (freshen editor))
     (setf (fill-pointer (buf e)) (point e))
@@ -2844,7 +2856,7 @@ Keyword arguments:
 		      (perform-key e cmd (line-editor-keymap e))
 		      (setf (last-command-was-completion e) (did-complete e))
 		      (when (not (last-command-was-completion e))
-			(setf (last-completion-not-unique-count e) 0))
+			(set-completion-count e 0))
 		      (when exit-flag (setf result quit-value))))
 		(setf last-input cmd)
 		:while (not quit-flag))
