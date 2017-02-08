@@ -4,46 +4,170 @@
 
 (defpackage :xterm-control
   (:documentation "Control an XTerm compatible terminal.")
-  (:use :cl :dlib-misc :char-util :terminal :terminal-ansi :terminal-curses
-	:keymap :inator :curses :fui :tiny-rl)
+  (:use :cl :dlib :dlib-misc :char-util :terminal :terminal-ansi
+	:keymap :inator :tiny-rl :ppcre)
   (:export
    #:control-xterm
+   #:!xterm-control
    ))
 (in-package :xterm-control)
 
 (defun iconify (state)
-  (tt-format "~c[~at" #\escape (if state 2 1))
+  (tt-format "~a~at" +csi+ (if state 2 1))
   (tt-finish-output))
 
 (defun move-to (x y)
-  (tt-format "~c[~a;~a;~at" #\escape 3 x y)
+  (tt-format "~a;~a;~at" +csi+ 3 x y)
   (tt-finish-output))
 
 (defun resize-pixels (width height)
-  (tt-format "~c[~a;~a;~at" #\escape 4 width height)
+  (tt-format "~a~a;~a;~at" +csi+ 4 width height)
   (tt-finish-output))
 
 (defun resize-characters (width height)
-  (tt-format "~c[~a;~a;~at" #\escape 8 height width)
+  (tt-format "~a~a;~a;~at" +csi+ 8 height width)
   (tt-finish-output))
 
 (defun raise ()
-  (tt-format "~c[~at" #\escape 5)
+  (tt-format "~a~at" +csi+ 5)
   (tt-finish-output))
 
 (defun lower ()
-  (tt-format "~c[~at" #\escape 6)
+  (tt-format "~a~at" +csi+ 6)
   (tt-finish-output))
 
 (defun refresh-term ()
-  (tt-format "~c[~at" #\escape 7)
+  (tt-format "~a~at" +csi+ 7)
   (tt-finish-output))
 
 ;; I would like to use this to toggle, but it doesn't seem to work quite right.
 ;; (tt-format "~c[10;2t" #\escape)
 (defun set-fullscreen (state)
-  (tt-format "~c[10;~dt" #\escape (if state 1 0))
+  (tt-format "~a10;~dt" +csi+ (if state 1 0))
   (tt-finish-output))
+
+#|
+  rgb:<red>/<green>/<blue>
+  <red>, <green>, <blue> := h | hh | hhh | hhhh
+  h := single hexadecimal digits (case insignificant)
+  The component value is scaled.
+
+  #RGB            (4 bits each)
+  #RRGGBB         (8 bits each)
+  #RRRGGGBBB      (12 bits each)
+  #RRRRGGGGBBBB   (16 bits each)
+  The compoent values specify the high bits of a 16 bit value.
+
+  rgbi:<red>/<green>/<blue>
+  Floating-point values between 0.0 and 1.0, inclusive.
+  of the format something like: [-+]*[0-9]*[.]*[0-9]+[[eE][-+]*[0-9]+]
+
+  Or device-independent specifications:
+
+  CIEXYZ:<X>/<Y>/<Z>
+  CIEuvY:<u>/<v>/<Y>
+  CIExyY:<x>/<y>/<Y>
+  CIELab:<L>/<a>/<b>
+  CIELuv:<L>/<u>/<v>
+  TekHVC:<H>/<V>/<C>
+|#
+
+(defun parse-color (string)
+  "Return an Red Green Blue triplet from a XParseColor format string. Doesn't
+handle device independant color spaces yet, e.g. CIELab."
+  (cond
+    ((begins-with "rgb:" string)
+     (multiple-value-bind (begin end starts ends)
+	 (ppcre:scan "rgb:([0-9A-Fa-f]+)/([0-9A-Fa-f]+)/([0-9A-Fa-f]+)" string)
+       (when (and (not (zerop begin)) (/= (length string) end))
+	 (error "Junk in an rgb color string: ~s." string))
+       (when (or (/= (length starts) 3) (/= (length ends) 3))
+	 (error "Not enough colors in rgb color string: ~s." string))
+       (values-list
+	(loop :for i :from 0 :to 2
+	   :collect (parse-integer string
+				   :start (elt starts i)
+				   :end (elt ends i)
+				   :radix 16)))))
+    ((begins-with "rgbi:" string)
+     (multiple-value-bind (begin end starts ends)
+	 (ppcre:scan (let ((num "([-+]*[0-9]*[.]?[0-9]+([eE][-+]*[0-9]+)?)"))
+		       (s+ "rgbi:" num "/" num "/" num))
+		     string)
+       (when (and (not (zerop begin)) (/= (length string) end))
+	 (error "Junk in an rgbi color string: ~s." string))
+       (when (or (/= (length starts) 6) (/= (length ends) 6))
+	 (error "Not enough colors in rgbi color string: ~s." string))
+       (values-list
+	(loop :for i :from 0 :to 2
+	   :collect (safe-read-from-string string nil nil
+				   :start (elt starts (* i 2))
+				   :end (elt ends (* i 2)))))))
+    ((begins-with "#" string)
+     (when (not (position (1- (length string)) #(3 6 9 12)))
+       (error "Inappropriate length of # color string: ~s." string))
+     (let (begin end starts ends)
+       (loop :for exp :in '("#([0-9A-Fa-f]{4})([0-9A-Fa-f]{4})([0-9A-Fa-f]{4})"
+			    "#([0-9A-Fa-f]{3})([0-9A-Fa-f]{3})([0-9A-Fa-f]{3})"
+			    "#([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})"
+			    "#([0-9A-Fa-f])([0-9A-Fa-f])([0-9A-Fa-f])")
+	  :until (multiple-value-setq (begin end starts ends)
+		   (ppcre:scan exp string)))
+       (when (and (not (zerop begin)) (/= (length string) end))
+	 (error "Junk in an # color string: ~s." string))
+       (when (or (/= (length starts) 3) (/= (length ends) 3))
+	 (error "Not enough colors in # color string: ~s." string))
+       (values-list
+	(loop :for i :from 0 :to 2
+	   :collect (parse-integer string
+				   :start (elt starts i)
+				   :end (elt ends i)
+				   :radix 16)))))
+    (t
+     (error "Can't parse the color string ~s." string))))
+
+(defun format-color (red green blue)
+  "Return a string in XParseColor format for a color with the given RED, BLUE,
+and GREEN, components."
+  (let ((r red) (g green) (b blue) (l (list red green blue)))
+    (cond
+      ((every #'floatp l)
+       (format nil "rgbi:~f/~f/~f" r g b))
+      ((every #'integerp l)
+       (let ((fmt (cond
+		    ((every (_ (<= _ #xf)) l) "~x")
+		    ((every (_ (<= _ #xff)) l) "~2,'0x")
+		    ((every (_ (<= _ #xfff)) l) "~3,'0x")
+		    ((every (_ (<= _ #xffff)) l) "~4,'0x")
+		    (t (error "Bad color magnitudes: ~s" l)))))
+	 (format nil (s+ "rgb:" fmt "/" fmt "/" fmt) r g b)))
+      (t
+       (error "Bad color formats: ~s" l)))))
+
+(defun   color-red   (c) (elt c 0))
+(defsetf color-red   (c) (val) `(setf (elt ,c 0) ,val))
+(defun   color-green (c) (elt c 1))
+(defsetf color-green (c) (val) `(setf (elt ,c 1) ,val))
+(defun   color-blue  (c) (elt c 2))
+(defsetf color-blue  (c) (val) `(setf (elt ,c 2) ,val))
+
+(defun scale-color (c)
+  (setf (color-red   c) (truncate (* (color-red   c) #xff) #xffff)
+	(color-green c) (truncate (* (color-green c) #xff) #xffff)
+	(color-blue  c) (truncate (* (color-blue  c) #xff) #xffff))
+  c)
+
+(defun set-foreground-color (color)
+  (tt-format "~a10;~a~a" +osc+
+	     (format-color (color-red   color)
+			   (color-green color)
+			   (color-blue  color)) +st+))
+
+(defun set-background-color (color)
+  (tt-format "~a11;~a~a" +osc+
+	     (format-color (color-red   color)
+			   (color-green color)
+			   (color-blue  color)) +st+))
 
 (defun set-utf8-title-mode (state)
   (tt-format "~c[>2;3~c" #\escape (if state #\t #\T))
@@ -55,30 +179,34 @@
 
 (defun get-title ()
   (set-utf8-title-mode t)
-  (terminal-ansi::query-string "21t"))
+  (query-string "21t"))
 
 (defun edit-title (i)
   (declare (ignore i))
   (let ((title (get-title)) result)
-    (move 10 0)
-    (refresh)
-    (reset-shell-mode)
+    (tt-home)
+    (tt-finish-output)
     (setf result
-	  (tiny-rl:tiny-rl :prompt "Title: " :string (or title "")
-			   :terminal-class 'terminal-curses:terminal-curses
-			   :accept-does-newline nil))
+    	  (tiny-rl:tiny-rl :prompt "Title: " :string (or title "")
+    			   :terminal-class 'terminal-ansi:terminal-ansi
+    			   :accept-does-newline nil))
     (when result
       (set-title result))
-    (reset-prog-mode)
-    (erase)
-    (refresh)))
+    (terminal-start *terminal*)
+    (tt-beginning-of-line)
+    (tt-erase-to-eol)
+    ))
 
 (defkeymap *xterminator-keymap*
   `((#\escape		  . *xterminator-escape-keymap*)
     (,(ctrl #\G)	  . quit)
     (#\q	  	  . quit)
+    (#\i		  . increment-increment)
+    (#\I		  . decrement-increment)
+
     (#\return		  . edit-title)
     (#\newline		  . edit-title)
+
     (#\f		  . toggle-fullscreen)
     (#\F		  . fullscreen-on)
     (,(ctrl #\F)	  . fullscreen-off)
@@ -117,6 +245,27 @@
     (#\,		  . shrink-height-chars)
     (#\.	  	  . expand-height-chars)
 
+    (#\r		  . decrement-background-red)
+    (#\R		  . increment-background-red)
+    (#\g		  . decrement-background-green)
+    (#\G		  . increment-background-green)
+    (#\b		  . decrement-background-blue)
+    (#\B		  . increment-background-blue)
+
+    (#\1		  . decrement-foreground-red)
+    (#\!		  . increment-foreground-red)
+    (#\2		  . decrement-foreground-green)
+    (#\@		  . increment-foreground-green)
+    (#\3		  . decrement-foreground-blue)
+    (#\#		  . increment-foreground-blue)
+    
+    (#\8		  . decrement-background-red)
+    (#\*		  . increment-background-red)
+    (#\9		  . decrement-background-green)
+    (#\(		  . increment-background-green)
+    (#\0		  . decrement-background-blue)
+    (#\)		  . increment-background-blue)
+
     ;;(,(meta-char #\=)	  . pick-list-binding-of-key)
     (#\?		  . help)
     ))
@@ -124,7 +273,79 @@
 (defparameter *xterminator-escape-keymap*
   (build-escape-map *xterminator-keymap*))
 
-(defclass xterminator (fui-inator)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; ANSI-inator
+
+(defclass ansi-inator (inator)
+  ()
+  (:documentation "A ansi-terminal-inator."))
+
+(defmethod initialize-instance
+    :after ((o ansi-inator) &rest initargs &key &allow-other-keys)
+  "Initialize a ansi-inator."
+  (declare (ignore initargs)))
+
+;; (defmethod start-inator ((i ansi-inator))
+;;   "Start a ANSI-INATOR."
+;;   (terminal-start i)
+;;   (call-next-method))
+
+;; (defmethod finish-inator ((i ansi-inator))
+;;   "Stop a ANSI-INATOR."
+;;   (terminal-end i)
+;;   (call-next-method))
+
+(defmethod update-display ((i ansi-inator))
+  "Update the view of a ANSI-INATOR."
+  (call-next-method)
+  (tt-finish-output))
+
+(defmethod await-event ((i ansi-inator))
+  "Get an event from a ANSI-INATOR."
+  (declare (ignore i))
+  (tt-get-key))
+
+(defmethod message ((i ansi-inator) format-string &rest args)
+  "Display a short message."
+  (tt-move-to (1- (terminal-window-rows *terminal*)) 0)
+  (tt-erase-to-eol)
+  ;; We use terminal-format here because tt-format is a macro.
+  (apply #'terminal-format *terminal* format-string args))
+
+#|
+(defun inator-doc-finder (i func)
+  "Find documentation for an inator (subclass) method."
+  (when (fboundp func)
+    (let ((method
+	   (and (typep (symbol-function func) 'generic-function)
+		(find-method (symbol-function func) '()
+			     (list (class-of i)) nil))))
+      (when method (documentation method t)))))
+
+(defmethod help ((i ansi-inator))
+  "Show help for the inator."
+  (typecase (inator-keymap i)
+    (keymap
+     (display-text "Help"
+		   (help-list (inator-keymap i) (_ (inator-doc-finder i _)))
+		   :justify nil))
+    (list
+     (display-text "Help"
+		   (loop :for k :in (inator-keymap i)
+		      :append
+		      (help-list k (_ (inator-doc-finder i _))))
+		   :justify nil))))
+|#
+
+(defmethod redraw ((i ansi-inator))
+  "Redraw the screen."
+  (tt-clear)
+  (tt-finish-output)
+  (update-display i))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defclass xterminator (ansi-inator)
   ((x
     :initarg :x :accessor xterminator-x  :type integer
     :documentation "X coordinate in pixels.")
@@ -155,6 +376,12 @@
     :initarg :fullscreen :accessor xterminator-fullscreen :initform nil
     :type boolean
     :documentation "True if the window is in fullscreen mode.")
+   (background
+    :initarg :background :accessor xterminator-background  
+    :documentation "Background color.")
+   (foreground
+    :initarg :foreground :accessor xterminator-foreground  
+    :documentation "Foreground color.")
    (increment
     :initarg :increment :accessor xterminator-increment :initform 20
     :type integer
@@ -162,38 +389,48 @@
   (:documentation "XTerm compatible terminal manipulator."))
 
 (defun get-xterm-paramaters (o)
-  (let (result)
-    ;; location
-    (if (setf result (terminal-ansi::query-parameters "13t"))
-	(setf (slot-value o 'x) (elt result 1)
-	      (slot-value o 'y) (elt result 2))
-	(setf (slot-value o 'x) 0
-	      (slot-value o 'y) 0))
-    ;; pixel size
-    (if (setf result (terminal-ansi::query-parameters "14t"))
-	(setf (slot-value o 'pixel-width) (elt result 2)
-	      (slot-value o 'pixel-height) (elt result 1))
-	(setf (slot-value o 'pixel-width) 0
-	      (slot-value o 'pixel-height) 0))
-    ;; character size
-    (if (setf result (terminal-ansi::query-parameters "18t"))
-	(setf (slot-value o 'char-width) (elt result 2)
-	      (slot-value o 'char-height) (elt result 1))
-	(setf (slot-value o 'char-width) 0
-	      (slot-value o 'char-height) 0))
-    ;; screen size
-    (if (setf result (terminal-ansi::query-parameters "19t"))
-	(setf (slot-value o 'screen-char-width) (elt result 2)
-	      (slot-value o 'screen-char-height) (elt result 1))
-	(setf (slot-value o 'screen-char-width) 0
-	      (slot-value o 'screen-char-height) 0))
-    ;; Try to figure out fullscreen
-    (setf (slot-value o 'fullscreen)
-	  (and (not (zerop (slot-value o 'screen-char-width)))
-	       (= (slot-value o 'screen-char-width)
-		  (slot-value o 'char-width))
-	       (= (slot-value o 'screen-char-height)
-		  (slot-value o 'char-height))))))
+  (with-slots (x y pixel-width pixel-height char-width char-height
+	       screen-char-width screen-char-height fullscreen
+	       background foreground) o
+    (let (result)
+      ;; location
+      (if (setf result (query-parameters "13t"))
+	  (setf x (elt result 1) y (elt result 2))
+	  (setf x 0 y 0))
+      ;; pixel size
+      (if (setf result (query-parameters "14t"))
+	  (setf pixel-width (elt result 2)
+		pixel-height (elt result 1))
+	  (setf pixel-width 0
+		pixel-height 0))
+      ;; character size
+      (if (setf result (query-parameters "18t"))
+	  (setf char-width (elt result 2)
+		char-height (elt result 1))
+	  (setf char-width 0
+		char-height 0))
+      ;; screen size
+      (if (setf result (query-parameters "19t"))
+	  (setf screen-char-width (elt result 2)
+		screen-char-height (elt result 1))
+	  (setf screen-char-width 0
+		screen-char-height 0))
+      ;; Try to figure out fullscreen
+      (setf (slot-value o 'fullscreen)
+	    (and (not (zerop screen-char-width))
+		 (= screen-char-width char-width)
+		 (= screen-char-height char-height)))
+      ;; Foreground & background colors
+      (setf foreground (scale-color
+			(multiple-value-list
+			(parse-color
+			 (query-string (s+ "10;?" +st+)
+				       :lead-in +osc+ :offset 5))))
+	    background (scale-color
+			(multiple-value-list
+			(parse-color
+			 (query-string (s+ "11;?" +st+)
+				       :lead-in +osc+  :offset 5))))))))
 
 (defmethod initialize-instance
     :after ((o xterminator) &rest initargs &key &allow-other-keys)
@@ -323,24 +560,68 @@
   (with-slots (fullscreen) i
     (set-fullscreen (setf fullscreen nil))))
 
+;; color changer
+(defmacro def-cc (dir slot element) 
+  "Wiggida wiggida wack mac ro yo!"
+  (declare (type (member inc dec) dir)
+	   (type (member background foreground) slot)
+	   (type (member red green blue) element))
+  (let ((fun    (symbolify (s+ dir "rement-" slot "-" element)))
+	(cc     (symbolify (s+ "color-" element)))
+	(setter (symbolify (s+ "set-" slot "-color")))
+	;;(changer (if (eq dir 'inc) 'incf 'decf))
+	(minimax (if (eq dir 'inc) 'min 'max))
+	(op      (if (eq dir 'inc) '+ '-))
+	(val     (if (eq dir 'inc) 255 0)))
+    `(defun ,fun (i)
+       (with-slots (,slot increment) i
+	 (setf (,cc ,slot) (,minimax ,val (,op (,cc ,slot) increment)))
+	 (,setter ,slot)))))
+
+(def-cc dec background red)
+(def-cc dec background green)
+(def-cc dec background blue)
+(def-cc inc background red)
+(def-cc inc background green)
+(def-cc inc background blue)
+
+(def-cc dec foreground red)
+(def-cc dec foreground green)
+(def-cc dec foreground blue)
+(def-cc inc foreground red)
+(def-cc inc foreground green)
+(def-cc inc foreground blue)
+
+(defun increment-increment (i)
+  "Add one to the increment."
+  (incf (xterminator-increment i)))
+
+(defun decrement-increment (i)
+  "Subtract one from the increment."
+  (decf (xterminator-increment i)))
+
 (defmethod update-display ((i xterminator))
-  (with-slots (x y char-width char-height pixel-width pixel-height fullscreen)
+  (with-slots (x y char-width char-height pixel-width pixel-height fullscreen
+	       foreground background increment)
       *xterminator*
-    (erase)
-    (move 0 0)
-    ;; (addstr (format nil "X: ~d~%Y: ~d~%Width: ~d ~d~%Height: ~d ~d~%"
-    ;; 		    x y char-width pixel-width char-height pixel-height))))
-    (addstr (with-output-to-string (str)
-	      (print-values*
-	       (x y char-width char-height pixel-width pixel-height fullscreen)
-	       str)))
-    (addch (char-code #\newline))
-    (addstr (format nil "hjkl    - Move window (HJKL by pixel)~%~
-                         <>,.    - Resize window~%~
-                         f       - Toggle fullscreen~%~
-                         [ ]     - Raise / Lower~%~
-                         [Enter] - Edit title~%~
-                         q       - Quit~%"))))
+    (tt-clear)
+    (tt-move-to 1 0)
+    (tt-write-string
+     (with-output-to-string (str)
+       (print-values*
+	(x y char-width char-height pixel-width pixel-height fullscreen
+	   foreground background increment)
+	str)))
+    (tt-scroll-down 1)
+    (tt-format "hjkl     - Move window (HJKL by pixel)~%~
+                <>,.     - Resize window~%~
+                f        - Toggle fullscreen~%~
+                [ ]      - Raise / Lower~%~
+                [Enter]  - Edit title~%~
+                123 !@#  - Adjust foreground color down/up (red blue green)~%~
+                890 *()  - Adjust background color down/up (red blue green)~%~
+		iI       - Adjust increment down/up.~%~
+                q        - Quit~%")))
 
 (defun control-xterm ()
   (with-terminal (:ansi)
