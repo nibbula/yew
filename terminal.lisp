@@ -19,11 +19,11 @@
    #:register-terminal-type
    #:terminal-stream
    #:terminal
-   #:terminal-file-descriptor #:file-descriptor
-   #:terminal-device-name     #:device-name
-   #:terminal-output-stream   #:output-stream
-   #:terminal-window-rows     #:window-rows
-   #:terminal-window-columns  #:window-columns
+   #:terminal-file-descriptor ;; #:file-descriptor
+   #:terminal-device-name     ;; #:device-name
+   #:terminal-output-stream   ;; #:output-stream
+   #:terminal-window-rows     ;; #:window-rows
+   #:terminal-window-columns  ;; #:window-columns
    #:terminal-get-size
    #:terminal-get-cursor-position
    #:terminal-start

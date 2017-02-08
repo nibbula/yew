@@ -59,10 +59,11 @@ require terminal driver support."))
 
 (defmethod terminal-get-size ((tty terminal-ansi))
   "Get the window size from the kernel and store it in tty."
-  (with-slots (file-descriptor window-rows window-columns) tty
-    (when file-descriptor
-      (multiple-value-setq (window-columns window-rows)
-	(get-window-size file-descriptor)))))
+  (when (terminal-file-descriptor tty)
+    (multiple-value-bind (cols rows)
+	(get-window-size (terminal-file-descriptor tty))
+      (setf (terminal-window-rows tty) rows
+	    (terminal-window-columns tty) cols))))
 
 ;; There seems to be two possibilities for getting this right:
 ;;  1. We do all output thru our routines and keep track
@@ -112,8 +113,9 @@ two values ROW and COLUMN."
 
 (defmethod terminal-start ((tty terminal-ansi))
   "Set up the terminal for reading a character at a time without echoing."
-  (with-slots (file-descriptor device-name output-stream
-               window-rows window-columns) tty
+  (with-slots ((file-descriptor	   terminal::file-descriptor)
+	       (device-name   	   terminal::device-name)
+	       (output-stream 	   terminal::output-stream)) tty
     (when (not file-descriptor)
       ;; (format t "[terminal-open ~s]~%" device-name)
       (setf file-descriptor (open-terminal device-name)))
@@ -133,16 +135,15 @@ two values ROW and COLUMN."
 
 (defmethod terminal-done ((tty terminal-ansi))
   "Forget about the whole terminal thing and stuff."
-  (with-slots (file-descriptor raw-state cooked-state output-stream) tty
-    (terminal-end tty)
-    (close-terminal file-descriptor)
-    ;; (dbug "terminal-ansi close in~%")
-    (when output-stream
-      (close output-stream))
-    ;; (dbug "terminal-ansi close out~%")
-    ;; (format t "[terminal-done]~%")
-    ;; (setf *tty* nil)
-    (values)))
+  (terminal-end tty)
+  (close-terminal (terminal-file-descriptor tty))
+  ;; (dbug "terminal-ansi close in~%")
+  (when (terminal-output-stream tty)
+    (close (terminal-output-stream tty)))
+  ;; (dbug "terminal-ansi close out~%")
+  ;; (format t "[terminal-done]~%")
+  ;; (setf *tty* nil)
+  (values))
 
 (defmethod terminal-format ((tty terminal-ansi-stream) fmt &rest args)
   "Output a formatted string to the terminal."
@@ -365,7 +366,8 @@ i.e. the terminal is 'line buffered'."
 ; 	 (code-char (mem-ref c :unsigned-char)))))))
 
 (defun get-char (tty)
-  (with-slots (typeahead typeahead-pos file-descriptor) tty
+  (with-slots (typeahead typeahead-pos
+	       (file-descriptor terminal::file-descriptor)) tty
     (when typeahead
       (return-from get-char
 	(prog1
