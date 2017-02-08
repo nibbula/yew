@@ -17,7 +17,7 @@
   (tt-finish-output))
 
 (defun move-to (x y)
-  (tt-format "~a;~a;~at" +csi+ 3 x y)
+  (tt-format "~a~a;~a;~at" +csi+ 3 x y)
   (tt-finish-output))
 
 (defun resize-pixels (width height)
