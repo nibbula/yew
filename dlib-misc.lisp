@@ -13,6 +13,7 @@
 (defpackage :dlib-misc
   (:use :cl :dlib :opsys :glob
 	#+(or (and clisp mop) cmu) :mop #+sbcl :sb-mop #+gcl :pcl)
+  ;; Also has an inplicit dependency on ASDF.
   (:documentation
    "More of Dan's generally dubious miscellaneous functions.")
   (:export
@@ -51,6 +52,7 @@
    #:*loadable-packages*
    #:loadable-packages
    #:clear-loadable-package-cache
+   #:ensure-package
    #:show-features
    #:describe-environment
    #:describe-implementation
@@ -423,14 +425,17 @@ The date part is considered to be the current date."
 (defun print-properties (prop-list &key (right-justify nil) (de-lispify t)
 				     (stream t))
   "Print a set of names and values nicely in two vertical columns."
-  (let ((label-length (loop :for (name nil) :in prop-list
-			 :maximize (length (princ-to-string name)))))
+  (let ((label-length (loop :for p :in prop-list
+			 :maximize (length (princ-to-string (car p))))))
     (flet ((niceify (s)
 	     (string-capitalize
 		    (substitute #\space #\_
 				(substitute #\space #\- s)))))
-      (loop :for (name value) :in prop-list
-       :do (format stream (if right-justify "~v@a: ~a~%" "~va: ~a~%")
+      (loop :with name :and value
+	 :for p :in prop-list :do
+	 (setf name (car p)
+	       value (if (and (cdr p) (listp (cdr p))) (cadr p) (cdr p)))
+	 (format stream (if right-justify "~v@a: ~a~%" "~va: ~a~%")
 		   label-length
 		   (if de-lispify
 		       (niceify (princ-to-string name))
@@ -953,6 +958,11 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
   "This should be done whenever packages are added or removed or the search
 configuration is changed."
   (setf *loadable-packages* nil))
+
+(defun ensure-package (package)
+  "Try to load PACKAGE as an ASDF system if we can't find it as a package."
+  (when (not (find-package package))
+    (asdf:load-system package)))
 
 (defun show-features ()
   "Print the features list nicely."
