@@ -594,7 +594,7 @@ if there isn't one."
   "Run a system command. The command is generally given to whatever the
  system shell would be and the output and input are to the standard
  places."
-  #+clisp (ext:run-shell-command (format nil "~a~{ ~a~}" cmd args))
+  #+clisp (ext:run-shell-command (format nil "~a~{ ~a~}" cmd args)) ; XXX
 ;  #+sbcl (sb-ext:process-output (sb-ext:run-program cmd args :search t))
 ;  #+sbcl (sb-ext:process-exit-code
 ;	  (sb-ext:run-program cmd args :wait t :pty nil
@@ -619,6 +619,7 @@ if there isn't one."
 ;; @@@ Evironment on other than sbcl and cmu?
 (defun run-program (cmd args &key (environment nil env-p))
 ;  #+(or clisp sbcl ccl) (fork-and-exec cmd args)
+  #+clisp (declare (ignore environment env-p))
   #+clisp (ext:run-program cmd :arguments args)
   #+excl (excl:run-shell-command (concatenate 'vector (list cmd cmd) args)
 				 :wait t)
@@ -751,6 +752,7 @@ output stream. OUT-STREAM can be T to use *standard-output*.
 ENVIRONMENT is a list of strings of the form NAME=VALUE to be used as the
 process's environment. If ENVIRONMENT is not provided, it defaults to the
 current process's environment."
+  #+clisp (declare (ignore environment env-p)) ; XXX
   #+clisp (if in-stream
 	      (multiple-value-bind (io i o)
 		  (ext:run-shell-command

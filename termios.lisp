@@ -109,11 +109,14 @@
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defmacro deftermio (name doc array)
-    (with-unique-names (tt-var)
-      `(progn
-	 (defparameter ,tt-var ,array)
-	 (define-constants-from ,tt-var)
-	 (define-name-list-from ,name ,tt-var ,doc)))))
+    `(progn
+       (define-constants-from ,array)
+       (define-name-list-from ,name ,array ,doc))))
+      ;; (with-unique-names (tt-var)
+      ;; `(progn
+      ;; 	 (defparameter ,tt-var ,array)
+      ;; 	 (define-constants-from ,tt-var)
+      ;; 	 (define-name-list-from ,name ,tt-var ,doc)))
 
 ; @@@ do we need this?
 ;(define-foreign-library libc

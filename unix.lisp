@@ -18,7 +18,8 @@
   (:nicknames :os-unix :uos)
   (:export
    ;; defining macros
-   #:*platform-index* #:define-simple-types #:define-constants
+   #:*platform-index* #:*platform-bitsize-index*
+   #:define-simple-types #:define-constants
    #:define-constants-from #:define-name-list-from
 
    ;; types
@@ -401,7 +402,7 @@ CONSTANT-ARRAY."
     "Define the appropriate constants for the platform from the array in the
 given CONSTANT-ARRAY variable."
     `(progn
-       ,@(loop :for type :across (symbol-value constant-array)
+       ,@(loop :for type :across constant-array
 	    :collect
 	    `(defconstant ,(aref type 0) ,(aref type *platform-index*)))))
 
@@ -409,7 +410,7 @@ given CONSTANT-ARRAY variable."
     "Define a variable named NAME as a list of the appropriate platform entries
 from the CONSTANT-ARRAY variable, that are non-NIL."
     `(defparameter ,name
-       '(,@(loop :for v :across (symbol-value constant-array)
+       '(,@(loop :for v :across constant-array
 	      :when (aref v *platform-index*)
 	      :collect (aref v 0)))
        ,@(or (list docstring))))
@@ -2467,7 +2468,9 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
     (unwind-protect
       (progn
 	(if (null-pointer-p (setf dirp (opendir dir)))
-	  (error 'posix-error :error-code *errno* :format-control "opendir")
+	  (error 'posix-error :error-code *errno*
+		 :format-control "opendir: ~a: ~a"
+		 :format-arguments `(,dir ,(error-message *errno*)))
 	  (progn
 	    (with-foreign-objects ((ent '(:struct foreign-dirent))
 				   (ptr :pointer))
@@ -3264,28 +3267,75 @@ versions of the keywords used in Lisp open.
 	    #+darwin :generation #+darwin st_gen
 	    ))))
 
-;; #+linux
-;; (defcfun ("__xstat" completely-fucking-bogus-but-actually-real-stat)
-;;     :int (vers :int) (path :string) (buf (:pointer (:struct foreign-stat))))
+;; Here's the real stat functions in glibc on linux:
+;; GLIBC_2.2.5 __xstat
+;; GLIBC_2.2.5 __xstat64
+;; GLIBC_2.2.5 __fxstat
+;; GLIBC_2.2.5 __fxstat64
+;; GLIBC_2.2.5 __lxstat
+;; GLIBC_2.2.5 __lxstat64
+;; GLIBC_2.4   __fxstatat
+;; GLIBC_2.4   __fxstatat64
 
-;; #+linux
-;; (defun real-stat (path buf)
-;;   (completely-fucking-bogus-but-actually-real-stat 0 path buf))
+#+(and linux sbcl) ;; I'm not really sure how this works.
+(progn
+  (defcfun ("stat" real-stat)
+      :int (path :string) (buf (:pointer (:struct foreign-stat))))
 
-#+linux
-(defcfun ("stat" real-stat)
-     :int (path :string) (buf (:pointer (:struct foreign-stat))))
+  (defcfun ("lstat" real-lstat)
+      :int (path :string) (buf (:pointer (:struct foreign-stat))))
 
-#-linux
-(defcfun
+  (defcfun ("fstat" real-fstat)
+      :int (fd :int) (buf (:pointer (:struct foreign-stat)))))
+
+#+(and linux (not sbcl)) ;; We have to do the wack crap.
+(progn
+  (defcfun ("__xstat" completely-fucking-bogus-but-actually-real-stat)
+      :int (vers :int) (path :string) (buf (:pointer (:struct foreign-stat))))
+  (defcfun ("__lxstat" completely-fucking-bogus-but-actually-real-lstat)
+      :int (vers :int) (path :string) (buf (:pointer (:struct foreign-stat))))
+  (defcfun ("__fxstat" completely-fucking-bogus-but-actually-real-fstat)
+      :int (vers :int) (fd :int) (buf (:pointer (:struct foreign-stat))))
+  (defun real-stat (path buf)
+    (completely-fucking-bogus-but-actually-real-stat 0 path buf))
+  (defun real-lstat (path buf)
+    (completely-fucking-bogus-but-actually-real-lstat 0 path buf))
+  (defun real-fstat (path buf)
+    (completely-fucking-bogus-but-actually-real-fstat 0 path buf)))
+
+#-linux ;; so mostly BSDs
+(progn
+  (defcfun
     (#+darwin "stat$INODE64"
-     #-(or darwin linux) "stat"
+     #-darwin "stat"
      real-stat)
     :int (path :string) (buf (:pointer (:struct foreign-stat))))
+
+  (defcfun
+    (#+darwin "lstat$INODE64"
+     #-darwin "lstat"
+     real-lstat)
+    :int (path :string) (buf (:pointer (:struct foreign-stat))))
+
+  (defcfun
+    (#+darwin "fstat$INODE64"
+     #-darwin "fstat"
+     real-fstat)
+    :int (fd :int) (buf (:pointer (:struct foreign-stat)))))
 
 (defun stat (path)
   (with-foreign-object (stat-buf '(:struct foreign-stat))
     (error-check (real-stat path stat-buf) "stat: ~s" path)
+    (convert-stat stat-buf)))
+
+(defun lstat (path)
+  (with-foreign-object (stat-buf '(:struct foreign-stat))
+    (error-check (real-lstat path stat-buf) "lstat: ~s" path)
+    (convert-stat stat-buf)))
+
+(defun fstat (path)
+  (with-foreign-object (stat-buf '(:struct foreign-stat))
+    (error-check (real-fstat path stat-buf) "fstat: ~s" path)
     (convert-stat stat-buf)))
 
 (defvar *statbuf* nil
@@ -3317,34 +3367,6 @@ it is not a symbolic link."
 		nil
 		(error 'posix-error :error-code err
 		       :format-control "readlink:")))))))
-
-(defcfun
-    (#+darwin "lstat$INODE64"
-     #+(and linux 32-bit-target) "lstat"
-     #+(and linux 64-bit-target some-version?) "__xlstat"
-     #+(and linux 64-bit-target) "lstat"
-     #-(or darwin linux) "lstat"
-     real-lstat)
-    :int (path :string) (buf (:pointer (:struct foreign-stat))))
-
-(defun lstat (path)
-  (with-foreign-object (stat-buf '(:struct foreign-stat))
-    (error-check (real-lstat path stat-buf) "lstat: ~s" path)
-    (convert-stat stat-buf)))
-
-(defcfun
-    (#+darwin "fstat$INODE64"
-     #+(and linux 32-bit-target) "fstat"
-     #+(and linux 64-bit-target some-version?) "__xfstat"
-     #+(and linux 64-bit-target) "fstat"
-     #-(or darwin linux) "fstat"
-     real-fstat)
-    :int (fd :int) (buf (:pointer (:struct foreign-stat))))
-
-(defun fstat (path)
-  (with-foreign-object (stat-buf '(:struct foreign-stat))
-    (error-check (real-fstat path stat-buf) "fstat: ~s" path)
-    (convert-stat stat-buf)))
 
 (defun timespec-to-derptime (ts)
   "Convert a timespec to a derptime."
@@ -3443,9 +3465,9 @@ it is not a symbolic link."
 
 (defun probe-directory (dir)
   "Something like probe-file but for directories."
-  #+clisp (ext:probe-directory (make-pathname
-				:directory (ext:absolute-pathname dir)))
-  #+(or sbcl ccl cmu)
+  ;; #+clisp (ext:probe-directory (make-pathname
+  ;; 				:directory (ext:absolute-pathname dir)))
+  #+(or sbcl ccl cmu clisp)
   ;; Let's be more specific: it must be a directory.
   (handler-case
     (let ((s (stat dir)))
