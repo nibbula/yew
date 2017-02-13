@@ -29,7 +29,8 @@
       (close str)))
   (equal (shell-line "echo" "goodbye" "walrus") "goodbye walrus")
   ;;(shell-lines)
-  (listp (system-args))
+  (or (listp (system-args))
+      (vectorp (system-args)))
   ;; How can we test these? It seems like we would have to run a sub-image.
   ;;(exit-system)
   ;;(save-image-and-exit)
@@ -84,7 +85,8 @@
   (equal "foobarbaz" (s+ "foo" "bar" "baz"))
   (equal "foobarbaz" (s+ "foo" '|bar| "baz"))
   (equal "foo:1bar:2baz:3" (s+ "foo:" 1 "bar:" 2 "baz:" 3))
-  (equal "-#C(0.0 3.0)=" (s+ #\- (sqrt -9) #\=))
+  (or (equal "-#C(0.0 3.0)=" (s+ #\- (sqrt -9) #\=))
+      (equal "-#C(0 3)=" (s+ #\- (sqrt -9) #\=)))
   (equal "NIL" (s+ nil))
   "trim"
   (equalp #(#\a #\b #\c #\space #\space)
