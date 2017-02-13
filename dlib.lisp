@@ -98,6 +98,7 @@
    #:lambda-list-vars
    #-lispworks #:with-unique-names
    #:with-package
+   #:ensure-package
    #:shortest-package-nick
    #:not-so-funcall #:symbol-call
    #:refer-to #-(or lispworks clasp) #:※
@@ -128,7 +129,7 @@
 (eval-when (:compile-toplevel :load-toplevel :execute)
   ;; This should be "pure" Common Lisp, since it's compile time, e.g. we can't
   ;; use split-sequence or _ yet.
-  (defun extract-version-number (version-string)
+  (defun compute-version-integer (version-string)
     "Make a single testable value out of a typical result of
 (lisp-implementation-version)"
     (let (i spos (sum 0) (pos 0) (mag #(10000 100 1))
@@ -144,18 +145,24 @@
 	 )
       sum))
 
+  (defun extract-version-number (version-string)
+    "Pull a semi-numerical version number out of the version string."
+     (let ((s version-string))
+       (setf s (subseq s (position-if (lambda (x) (digit-char-p x)) s))
+             s (subseq s 0 (position-if
+                             (lambda (x)
+			       (not (or (digit-char-p x) (eql x #\.))))
+			    s)))
+	s))
+
   ;; We need to have this early so we can make decisions based on it.
   (defparameter *lisp-version-number*
-    #+sbcl (extract-version-number (lisp-implementation-version))
-    #+ccl (extract-version-number
-	   (let ((s (lisp-implementation-version)))
-	     (setf s (subseq s (position-if (lambda (x) (digit-char-p x)) s))
-		   s (subseq s 0 (position-if
-				  (lambda (x)
-				    (not (or (digit-char-p x) (eql x #\.))))
-				  s)))
-	     s))
-    #-(or sbcl ccl) nil ;; You will have to put something here if it matters.
+    #+sbcl (compute-version-integer (lisp-implementation-version))
+    #+(or ccl clisp)
+    (compute-version-integer
+      (extract-version-number (lisp-implementation-version)))
+    ;; You will have to put something here if it matters.
+    #-(or sbcl ccl clisp) nil
     "A version number for doing comparisons. Greater numbers should indicate
 later versions.")
 
@@ -817,7 +824,8 @@ on all accessible symbols."
 
 ;; Don't clash with nos:lisp-args.
 (defun system-args ()
-  "Arguments given to when starting the lisp system."
+  "Return a sequence of arguments given when starting the Lisp system.
+May be list or vector of strings."
   #+sbcl sb-ext:*posix-argv*
   #+clisp (ext:argv)
   #+cmu ext:*command-line-strings*
@@ -1206,14 +1214,16 @@ A utility for debugging DEBUG-FUNCTION-ARGLIST."
 				  (macro-function fun)
 				  (symbol-function fun)))
   #+ccl (ccl:arglist fun)
+  #+clisp (ext:arglist fun)
   #+cmu (function-arglist fun)
   #+lispworks (let ((args (lw:function-lambda-list fun)))
 		(and (listp args) (strings-to-symbols args)))
   #+abcl (sys::arglist fun)
   #+ecl (ext:function-lambda-list fun)
-  #-(or sbcl ccl cmu lispworks abcl ecl)
+  #-(or sbcl ccl clisp cmu lispworks abcl ecl)
   (multiple-value-bind (exp closure-p name)
       (function-lambda-expression fun)
+    (declare (ignore closure-p name))
     (when exp
       (cadr exp))))
 
@@ -1666,16 +1676,24 @@ un-interned symbol."
 					&optional (eof-error-p t) eof-value
 					&key (start 0) end preserve-whitespace)
   "Read from a string treating unknown symbols or packages as uninterned."
+  #+has-read-intern  
   (let ((*read-intern* #'package-robust-intern))
     (read-from-string string eof-error-p eof-value
 		      :start start :end end
-		      :preserve-whitespace preserve-whitespace)))
+		      :preserve-whitespace preserve-whitespace))
+  #-has-read-intern
+  (declare (ignore string eof-error-p eof-value start end preserve-whitespace))
+  (missing-implementation 'package-robust-read-from-string))
 
 (defun package-robust-read (&optional (stream *standard-input*)
 			      (eof-error-p t) (eof-value nil) (recursive-p nil))
   "Read treating unknown symbols or packages as uninterned."
+  #+has-read-intern  
   (let ((*read-intern* #'package-robust-intern))
-    (read stream eof-error-p eof-value recursive-p)))
+    (read stream eof-error-p eof-value recursive-p))
+  #-has-read-intern
+  (declare (ignore stream eof-error-p eof-value recursive-p))
+  (missing-implementation 'package-robust-read-from-string))
 
 #+sbcl (declaim (sb-ext:unmuffle-conditions style-warning))
 
