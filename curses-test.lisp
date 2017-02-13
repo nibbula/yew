@@ -254,7 +254,7 @@
 (defun test-wchar-1 ()
   (clear)
   (let ((chars
-	 #+(or sbcl clisp cmu)
+	 #+(or sbcl cmu)
 	 `(#\black_left-pointing_triangle
 	   #\black_smiling_face
 	   #\black_right-pointing_triangle
@@ -265,6 +265,12 @@
 	   #\u263B
 	   #\u25B6
 	   #\u1f341
+	   ,(code-char 0))
+	 #+clisp
+	 `(#\black_left-pointing_triangle
+	   #\black_smiling_face
+	   #\black_right-pointing_triangle
+	   ,(code-char #x1f341)
 	   ,(code-char 0))
 	 ))
     (with-foreign-object (str :int (length chars))
