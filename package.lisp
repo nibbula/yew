@@ -6,7 +6,7 @@
 ;; check for real problems. Otherwise, certain complainy implementatations,
 ;; don't take kindly to us re-exporting things from opsys-base.
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (without-warning
+  (dlib:without-warning
 (defpackage :opsys
   (:documentation "Generic interface to operating system functionality.")
   (:nicknames :nos)
