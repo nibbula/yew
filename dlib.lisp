@@ -157,12 +157,12 @@
 
   ;; We need to have this early so we can make decisions based on it.
   (defparameter *lisp-version-number*
-    #+sbcl (compute-version-integer (lisp-implementation-version))
+    #+(or sbcl ecl) (compute-version-integer (lisp-implementation-version))
     #+(or ccl clisp)
     (compute-version-integer
       (extract-version-number (lisp-implementation-version)))
     ;; You will have to put something here if it matters.
-    #-(or sbcl ccl clisp) nil
+    #-(or sbcl ecl ccl clisp) nil
     "A version number for doing comparisons. Greater numbers should indicate
 later versions.")
 
