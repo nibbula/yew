@@ -293,6 +293,7 @@ loading this library.")
 (defctype screen-ptr :pointer)		; (SCREEN *)
 ;; This really should agree with whatever the calling code does for FILE *
 (defctype file-ptr   :pointer)		; (FILE *)
+;; This is also defined in opsys, but we can't depend on that.
 #+curses-use-wide (defctype wint-t :unsigned-int)
 
 (defcstruct cchar-t

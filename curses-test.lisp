@@ -264,12 +264,18 @@
 	 `(#\u25C0
 	   #\u263B
 	   #\u25B6
-	   #\u1f341
+	   ,(code-char #x1f341)
 	   ,(code-char 0))
 	 #+clisp
 	 `(#\black_left-pointing_triangle
 	   #\black_smiling_face
 	   #\black_right-pointing_triangle
+	   ,(code-char #x1f341)
+	   ,(code-char 0))
+	 #-(or sbcl cmu ecl ccl clisp)
+	 `(,(code-char #x25C0)
+	   ,(code-char #x263B)
+	   ,(code-char #x25B6)
 	   ,(code-char #x1f341)
 	   ,(code-char 0))
 	 ))
