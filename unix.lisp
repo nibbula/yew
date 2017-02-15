@@ -5699,39 +5699,47 @@ descriptor FD."
   (setf *got-tstp* t))
 
 (defun read-raw-char (terminal-handle c &optional test)
-  (loop
-     :with status
-     :do
-     (setf status (posix-read terminal-handle c 1))
-     :while (or (and (< status 0)
-		     (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
-		(and test
-		     (funcall test (mem-ref c :unsigned-char))))
-     :do
-     ;; Probably returning from ^Z or terminal resize, or something,
-     ;; so keep trying. Enjoy your trip to plusering town.
-     (cond
-       (*got-sigwinch*
-	(setf *got-sigwinch* nil)
-	(cerror "Try again?" 'opsys-resized))
-       (*got-tstp*
-	(setf *got-tstp* nil)
-	;; re-signal with the default, so we actually stop
-	(with-signal-handlers ((+SIGTSTP+ . :default))
-	  (kill (getpid) +SIGTSTP+))
-	(cerror "Try again?" 'opsys-resumed))
-       (t
-	(when (< status 0)
-	  (cerror "Try again?" 'read-char-error :error-code *errno*))))))
+  (let (status)
+    (loop
+       :do
+       (setf status (posix-read terminal-handle c 1))
+       :while (or (and (< status 0)
+		       (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
+		  (and test
+		       (funcall test (mem-ref c :unsigned-char))))
+       :do
+       ;; Probably returning from ^Z or terminal resize, or something,
+       ;; so keep trying. Enjoy your trip to plusering town.
+       (cond
+	 (*got-sigwinch*
+	  (setf *got-sigwinch* nil)
+	  (cerror "Try again?" 'opsys-resized))
+	 (*got-tstp*
+	  (setf *got-tstp* nil)
+	  ;; re-signal with the default, so we actually stop
+	  (with-signal-handlers ((+SIGTSTP+ . :default))
+	    (kill (getpid) +SIGTSTP+))
+	  (cerror "Try again?" 'opsys-resumed))
+	 (t
+	  (when (< status 0)
+	    (cerror "Try again?" 'read-char-error :error-code *errno*)))))
+    status))
 
 ;; Simple, linear, non-event loop based programming was always an illusion!
 (defun read-terminal-char (terminal-handle &key timeout)
-  (declare (ignore timeout))
-  (with-foreign-object (c :char)
-    (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
-			   (+SIGTSTP+  . tstp-handler))
-      (read-raw-char terminal-handle c)
-      (code-char (mem-ref c :unsigned-char)))))
+  (let (result)
+    (unwind-protect
+      (progn
+	(when timeout
+	  (set-terminal-mode terminal-handle :timeout timeout))
+	(with-foreign-object (c :char)
+	  (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
+				 (+SIGTSTP+  . tstp-handler))
+	    (when (not (zerop (read-raw-char terminal-handle c)))
+	      (setf result (code-char (mem-ref c :unsigned-char)))))))
+      (when timeout
+	(set-terminal-mode terminal-handle :timeout nil)))
+    result))
 
 (defun read-until (tty stop-char &key timeout)
   "Read until STOP-CHAR is read. Return a string of the results.
