@@ -65,6 +65,14 @@ require terminal driver support."))
       (setf (terminal-window-rows tty) rows
 	    (terminal-window-columns tty) cols))))
 
+(defun add-typeahead (tty thing)
+  "Add THING to the typeahead buffer of TTY."
+  (setf (typeahead tty) (if (typeahead tty)
+			    (s+ (typeahead tty) thing)
+			    (s+ thing)))
+  (when (not (typeahead-pos tty))
+    (setf (typeahead-pos tty) 0)))
+
 ;; There seems to be two possibilities for getting this right:
 ;;  1. We do all output thru our routines and keep track
 ;;  2. We ask the terminal (and get an accurate response)
@@ -83,10 +91,11 @@ require terminal driver support."))
     (set-terminal-mode fd :raw nil)
     (when (and ta (> (length ta) 0))
 ;      (log-message e "ta[~a]=~w" (length ta) ta)
-      (if (typeahead tty)
-	  (setf (typeahead tty) (s+ (typeahead tty) ta))
-	  (setf (typeahead tty) ta
-		(typeahead-pos tty) 0)))))
+      ;; (if (typeahead tty)
+      ;; 	  (setf (typeahead tty) (s+ (typeahead tty) ta))
+      ;; 	  (setf (typeahead tty) ta
+      ;; 		(typeahead-pos tty) 0)))))
+      (add-typeahead tty ta))))
 
 (defmethod terminal-get-cursor-position ((tty terminal-ansi))
   "Try to somehow get the row of the screen the cursor is on. Returns the
@@ -365,7 +374,7 @@ i.e. the terminal is 'line buffered'."
 ; 	((= status 1)
 ; 	 (code-char (mem-ref c :unsigned-char)))))))
 
-(defun get-char (tty)
+(defun get-char (tty &key timeout)
   (with-slots (typeahead typeahead-pos
 	       (file-descriptor terminal::file-descriptor)) tty
     (when typeahead
@@ -375,12 +384,13 @@ i.e. the terminal is 'line buffered'."
 	  (incf typeahead-pos)
 	  ;;(format t "ta->~a~%" (incf typeahead-pos))
 	  (when (>= typeahead-pos (length typeahead))
-	    (setf typeahead nil)))))
+	    (setf typeahead nil
+		  typeahead-pos nil)))))
     (let (result borked)
       (loop :do
 	 (setf borked nil)
 	 (handler-case
-	     (setf result (read-terminal-char file-descriptor))
+	     (setf result (read-terminal-char file-descriptor :timeout timeout))
 	   (opsys-resumed ()
 	     (terminal-start tty) (terminal-finish-output tty)
 	     (setf borked t))
@@ -396,9 +406,106 @@ i.e. the terminal is 'line buffered'."
   ;;(read-terminal-char tty))
   (get-char tty))
 
+;; This can unfortunately really vary between emulations, so we try to code
+;; for multiple interpretations.
+(defun read-function-key (tty)
+  "Read the part of a function key after the ESC [ and return an indicative
+keyword. If we don't recognize the key, return #\escape and add the characters
+to the typeahead."
+  (let ((c (get-char tty :timeout 1)))
+    ;;(format t "got ~s~%" c)
+    (case c
+      ;; Arrow keys
+      (#\A :up)
+      (#\B :down)
+      (#\C :right)
+      (#\D :left)
+      ;; Movement keys
+      (#\H :home)
+      (#\F :end)
+      (#\Z :back-tab)			; non-standard
+      (t
+       (cond
+	 ((null c) ; timeout
+	  (add-typeahead tty "[")
+	  #\escape)
+	 ;; read a number followed by a tilde
+	 ((digit-char-p c)
+	  (let ((num (parse-integer (string c))))
+	    (setf c (get-char tty :timeout 1))
+	    (loop :while (digit-char-p c)
+	       :do
+	       (setf num (+ (* num 10) (parse-integer (string c))))
+	       ;;(format t "(~a ~c)" num c)
+	       (setf c (get-char tty :timeout 1)))
+	    ;;(message tty (format nil "~a ~c" n c))
+	    ;;(format t "[~d ~c]" num c)
+	    (if (eql c #\~)
+		(case num
+		  (5 :page-up)
+		  (6 :page-down)
+		  (15 :f5)
+		  (17 :f6)
+		  (18 :f7)
+		  (19 :f8)
+		  (20 :f9)
+		  (21 :f10)
+		  (23 :f11)
+		  (24 :f12)
+		  (t
+		   (add-typeahead tty (s+ "["))
+		   (when num
+		     (add-typeahead tty (s+ num)))
+		   (when c
+		     (add-typeahead tty c))
+		   #\escape))
+		(progn
+		  (add-typeahead tty (s+ "[" num))
+		  (when c
+		    (add-typeahead tty c))))))
+	 (t
+	  (add-typeahead tty "[")
+	  (when c
+	    (add-typeahead tty c))
+	  #\escape))))))
+
+(defun read-app-key (tty)
+  "Read the part of an application mode function key after the ESC O and
+ return an indicative keyword. If we don't recognize the key, return #\escape
+and add the characters the typeahead."
+  (let ((c (get-char tty :timeout 1)))
+    (case c
+      ;; Arrow keys
+      (#\A :up)
+      (#\B :down)
+      (#\C :right)
+      (#\D :left)
+      ;; Movement keys
+      (#\H :home)
+      (#\F :end)
+      ;; Function keys
+      (#\P :f1)
+      (#\Q :f2)
+      (#\R :f3)
+      (#\S :f4)
+      (t
+       (add-typeahead tty "O")
+       (when c
+	 (add-typeahead tty c))
+       #\escape))))
+
 (defmethod terminal-get-key ((tty terminal-ansi))
   (terminal-finish-output tty)
-  (get-char tty))
+  (let ((c (get-char tty)))
+    (if (char= c #\escape)
+	(case (setf c (get-char tty :timeout 1))
+	  (#\[ (read-function-key tty))
+	  (#\O (read-app-key tty))
+	  (t
+	   (when c ;; if it didn't time out
+	     (add-typeahead tty c))
+	   #\escape))
+	c)))
 
 (defmethod terminal-listen-for ((tty terminal-ansi) seconds)
   (listen-for seconds (terminal-file-descriptor tty)))

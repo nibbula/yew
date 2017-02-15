@@ -3,7 +3,6 @@
 ;;
 
 ;; TODO:
-;;  - I think I want to this to have an implicit argument interface, like grout.
 ;;  - Why doesn't terminal-get-size set the size slots?!?
 
 (defpackage :terminal

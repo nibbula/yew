@@ -24,7 +24,7 @@
 ;#+sbcl (require 'sb-introspect)
 
 (defpackage "TINY-REPL"
-  (:use :common-lisp :tiny-rl :keymap :dlib :dlib-misc)
+  (:use :common-lisp :terminal :tiny-rl :keymap :dlib :dlib-misc)
   (:documentation
    "A tiny REPL replacement that works with tiny-rl.")
   (:export
@@ -144,7 +144,7 @@
 	   (format output "~&~s~%" (eval `(,value ,@args))) (finish-output output)
 	   t))
 	((matches value "Help")
-	 (let ((cols (terminal:terminal-window-columns
+	 (let ((cols (terminal-window-columns
 		      (tiny-rl::line-editor-terminal
 		       (repl-state-editor state)))))
 	   (dlib-misc:justify-text (format nil "~
@@ -355,7 +355,7 @@ The REPL also has a few commands:
 			(loop :with len = (length vals) :and i = 0
 			   :for v :in vals
 			   :do
-			   ;; This is the "P" in the REPL
+			   ;; This is the "P" in REPL
 			   (format output "~&~s" v)
 			   (when (and (> len 1) (< i (- len 1)))
 			     ;; It's kind of a convention for multi-vals
@@ -423,7 +423,11 @@ DEBUG	       -- True to install TINY-DEBUG as the debugger. Default is T.
 	(result nil)
 ;	(restart-result t)
 	(pass-back t)
-	(old-debugger-hook *debugger-hook*))
+	(old-debugger-hook *debugger-hook*)
+	(*terminal*
+	 (if terminal-name
+	     (make-instance terminal-class :device-name terminal-name)
+	     (make-instance terminal-class))))
     (when (and debug (find-package :tiny-debug))
       ;; @@@ On SBCL we could also set sb-ext:*invoke-debugger-hook*, to catch
       ;; break and such, but let's not for now.

@@ -998,8 +998,9 @@ program that messes with the terminal, we can still type at the debugger."
   (define-key *debugger-keymap* (meta-char #\i) 'debugger-up-frame-command)
   (define-key *debugger-keymap* (meta-char #\o) 'debugger-down-frame-command)
   (setf *debugger-escape-keymap*
-	(add-keymap tiny-rl::*escape-raw-keymap*
-		    (build-escape-map *debugger-keymap*)))
+;;	(add-keymap tiny-rl::*escape-raw-keymap*
+;;		    (build-escape-map *debugger-keymap*)))
+	(build-escape-map *debugger-keymap*))
   (define-key *debugger-keymap* #\escape '*debugger-escape-keymap*))
 
 (defun tiny-debug (c hook &optional frame)

@@ -447,7 +447,9 @@ anything important.")
   (:default-initargs
     :non-word-chars *default-non-word-chars*
     :prompt *default-prompt*
-    :terminal-class 'terminal-ansi
+    ;;:terminal-class 'terminal-ansi
+    :terminal-class (or (and *terminal* (class-of *terminal*))
+			'terminal-ansi)
   )
   (:documentation "State for a stupid little line editor."))
 
@@ -572,6 +574,7 @@ anything serious."
       (get-a-char *line-editor*))
     (terminal-end (line-editor-terminal *line-editor*))))
 
+#|
 ;; This can unfortunately really vary between emulations, so we try
 ;; to code for multiple interpretations.
 ;; @@@ this or something like it should probably be moved to terminal-ansi
@@ -641,6 +644,7 @@ anything serious."
       (#\R :f3)
       (#\S :f4)
       (t nil))))
+|#
 
 #|
 ;; Perhaps we should consider refactoring some part of get-a-char?
@@ -2642,6 +2646,7 @@ binding."
     (,(ctrl #\X)	. exchange-point-and-mark)))
 ;  :default-binding #| (beep e "C-x ~a is unbound." cmd |#
 
+#|
 (defkeymap *app-key-keymap*
   `((#\A . previous-history)		; :up
     (#\B . next-history)		; :down
@@ -2664,6 +2669,7 @@ binding."
     (#\[	. do-function-key)
     (#\newline  . finish-line)
    ))
+|#
 
 (defkeymap *special-keymap*
   `(
@@ -2680,7 +2686,8 @@ binding."
 
 ;; Normal mode commands prefaced by escape.
 (defparameter *escape-keymap*
-    (add-keymap (build-escape-map *normal-keymap*) *escape-raw-keymap*))
+  ;;(add-keymap (build-escape-map *normal-keymap*) *escape-raw-keymap*))
+  (build-escape-map *normal-keymap*))
 
 ;; Make the stuff in the special keymap appear in the normal keymap too.
 (add-keymap *special-keymap* *normal-keymap*)
@@ -2689,6 +2696,7 @@ binding."
 ;; (defun bad-special-key (e)
 ;;   (beep e "Bad special key ~s." key))
 
+#|
 (defun do-app-key (e)
   (with-slots (cmd) e
     (do-special-key e (setf cmd (read-app-key e)))))
@@ -2699,6 +2707,7 @@ binding."
 
 (defun do-special-key (e key)
   (perform-key e key *special-keymap*))
+|#
 
 ;; Key bindings can be a list to apply, or a symbol bound to function to call,
 ;; or a keymap in which to look up further key presses.
