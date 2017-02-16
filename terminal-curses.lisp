@@ -61,10 +61,8 @@ require terminal driver support."))
 
 (defmethod terminal-get-size ((tty terminal-curses))
   "Get the window size from the kernel and store it in tty."
-  (with-slots (window-rows window-columns) tty
-    (setf
-     window-rows    curses:*lines*
-     window-columns curses:*cols*)))
+    (setf (terminal-window-rows tty) curses:*lines*
+	  (terminal-window-columns tty) curses:*cols*))
 
 ;; This isn't really accurate if any output has been done not through curses,
 ;; so it's not as useful as the one in terminal-ansi.
@@ -222,6 +220,12 @@ require terminal driver support."))
       (attroff +a-reverse+)))
 
 (defmethod terminal-color ((tty terminal-curses) fg bg)
+  ;; This defaulting is bullcrap. But so is curses defaulting.
+  ;; See man default_colors.
+  (when (eq fg :default)
+    (setf fg :white))
+  (when (eq bg :default)
+    (setf bg :black))
   (when (not (color-number fg))
     (error "Forground ~a is not a known color." fg))
   (when (not (color-number bg))
