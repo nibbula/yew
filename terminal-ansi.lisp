@@ -230,29 +230,25 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-ins-char ((tty terminal-ansi-stream) n)
   (terminal-format tty "~c[~a@" #\escape (if (> n 1) n "")))
 
+(defun moverize (tty n pos neg)
+  (cond
+    ((= n 1)  (terminal-format tty "~c[~c" #\escape pos))
+    ((> n 1)  (terminal-format tty "~c[~d~c" #\escape n pos))
+    ((= n 0)  #| do nothing |#)
+    ((= n -1) (terminal-format tty "~c[~c" #\escape neg))
+    ((< n -1) (terminal-format tty "~c[~d~c" #\escape n neg))))
+
 (defmethod terminal-backward ((tty terminal-ansi-stream) n)
-  (if (> n 0)
-      (if (> n 1)
-	  (terminal-format tty "~c[~dD" #\escape n)
-	  (terminal-format tty "~c[D" #\escape))))
+  (moverize tty n #\D #\C))
 
 (defmethod terminal-forward ((tty terminal-ansi-stream) n)
-  (if (> n 0)
-      (if (> n 1)
-	  (terminal-format tty "~c[~dC" #\escape n)
-	  (terminal-format tty "~c[C" #\escape))))
+  (moverize tty n #\C #\D))
 
 (defmethod terminal-up ((tty terminal-ansi-stream) n)
-  (if (> n 0)
-      (if (> n 1)
-	  (terminal-format tty "~c[~dA" #\escape n)
-	  (terminal-format tty "~c[A" #\escape))))
+  (moverize tty n #\A #\B))
 
 (defmethod terminal-down ((tty terminal-ansi-stream) n)
-  (if (> n 0)
-      (if (> n 1)
-	  (terminal-format tty "~c[~dB" #\escape n)
-	  (terminal-format tty "~c[B" #\escape))))
+  (moverize tty n #\B #\A))
 
 (defmethod terminal-scroll-down ((tty terminal-ansi-stream) n)
   (if (> n 0)
