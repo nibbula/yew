@@ -306,7 +306,7 @@ require terminal driver support."))
 (defmethod terminal-restore-cursor ((tty terminal-curses))
   "Restore the cursor position, from the last saved postion."
   (let ((bunkle (pop *saved-positions*)))
-    (move (cdr bunkle) (car bunkle))))
+    (move (car bunkle) (cdr bunkle))))
 
 (register-terminal-type :curses 'terminal-curses)
 
