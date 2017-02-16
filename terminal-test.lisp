@@ -12,6 +12,9 @@
    ))
 (in-package :terminal-test)
 
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+		   (compilation-speed 0)))
+
 (defun ask-class ()
   (format t "Which sub-class ?~%  1. ANSI~%  2. Curses~% ? ")
   (finish-output)
@@ -185,6 +188,77 @@
      (tt-get-key)
      )))
 
+(defun test-save-and-restore-cursor ()
+  (blurp
+   (let ((half-width (truncate (/ (terminal-window-columns *terminal*) 2)))
+	 (half-height (truncate (/ (terminal-window-rows *terminal*) 2)))
+	 (opposite #(2 3 0 1))
+	 (offs #((0 . -1) (1 . 0) (0 . 1) (-1 . 0)))
+	 ;;end-row end-col
+	 )
+     (tt-move-to 0 0)
+     (tt-write-string "At the starting point. Press a key.")
+     (tt-move-to half-height half-width)
+     (tt-save-cursor)
+     (tt-get-key)
+     (loop :with last-dir = 2 :and new-dir :and len
+	:for i :from 1 :to 100 :do
+	(loop :do (setf new-dir (random 4))
+	   :while (= new-dir (aref opposite last-dir)))
+	(setf last-dir new-dir
+	      len 1 #|(random 5) |#)
+	(tt-forward (* len (car (aref offs new-dir))))
+	(tt-down    (* len (cdr (aref offs new-dir))))
+	(tt-finish-output)
+	(sleep .01))
+     (tt-get-key)
+     (tt-move-to 0 0)
+     (tt-write-string "The cursor should be back to the starting point.")
+     (tt-restore-cursor)
+     (tt-get-key)
+   )))
+
+(defun test-scrolling-region ()
+  (blurp
+   (let ((width  (terminal-window-columns *terminal*))
+	 (height (terminal-window-rows *terminal*))
+	 (junk "%@#-."))
+     (tt-format "We will now test setting the scrolling region.~%")
+     (tt-format "This should be visible and unaffected by scrolling below.~%")
+     (tt-format "There should be some similar text at the bottom.~%")
+     (tt-move-to 8 0)
+     (tt-format "~v,,,'-a" width "-")
+     (tt-move-to (- height 3) 0)
+     (tt-format "~v,,,'-a~%" width "-")
+     (tt-format "This should be visible and unaffected.~%")
+     (tt-format "There should be some similar text at the top.~%")
+     (tt-set-scrolling-region 9 (- height 4))
+     (tt-move-to 10 0)
+     (loop :for i :from 1 :to 400 :do
+       (loop :for j :from 0 :below (1- width) :do
+	  (tt-write-char (elt junk (random (length junk)))))
+	(tt-write-char #\newline)
+	(tt-finish-output)
+	(sleep .03))
+     (tt-set-scrolling-region nil nil)
+     (tt-move-to 0 0)
+     (tt-format "We will now un-set the scrolling region.~%")
+     (tt-format "This should disappear by scrolling off the top.~%")
+     (tt-move-to 8 0)
+     (tt-format "~v,,,'-a" width "-")
+     (tt-move-to (- height 3) 0)
+     (tt-format "~v,,,'-a~%" width "-")
+     (tt-format "This should disappear by scrolling off the top.~%")
+     (tt-format "You should not see this when scrolling is done!.~%")
+     (tt-move-to 10 0)
+     (loop :with str
+	:for i :from 1 :to 400 :do
+	(setf str (format nil "~d" (expt 2 i)))
+	(tt-write-string (subseq str 0 (min (1- width) (length str))))
+	(tt-write-char #\newline)
+	(tt-finish-output))
+     (tt-format "The screen should now be filled with only numbers above.~%"))))
+
 (defun junk-block (height)
   (let ((junk "#%_.")
 	#| (half (/ (terminal-window-columns *terminal*) 2)) |#
@@ -251,6 +325,11 @@
      (tt-write-string "Below and right of here should be blank.")
      (tt-erase-below)))
 
+  (blurp
+   (tt-format "I am very sorry, but we will now try to BEEP.~%")
+   (tt-format "You should hear a sound or see some visual indication.~%")
+   (tt-beep))
+  
   )
 
 (defun run ()
@@ -259,11 +338,13 @@
       (with-terminal (class)
 	(terminal-get-size *terminal*)
 	(test-basics)
+	(test-cursor-visibility)
+	(test-save-and-restore-cursor)
+	(test-scrolling-region)
 	(test-move-to-col)
 	(test-ins-del)
 	(test-attrs)
 	(test-colors)
-	(test-cursor-visibility)
 	)
       (format t "~%All done.~%"))))
 
@@ -276,7 +357,7 @@
 	(loop
 	   :do
 	   (asdf:load-system :terminal-test)
-	   :while (test-cursor-visibility))
+	   :while (test-scrolling-region))
 	)
       (format t "~%All done.~%"))))
 
