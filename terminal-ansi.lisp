@@ -280,10 +280,12 @@ i.e. the terminal is 'line buffered'."
   (terminal-format tty "~c[H" #\escape))
 
 (defmethod terminal-cursor-off ((tty terminal-ansi-stream))
-  (terminal-format tty "~c7" #\escape))
+  ;;(terminal-format tty "~c7" #\escape))
+  (terminal-format tty "~c[?25l" #\escape))
 
 (defmethod terminal-cursor-on ((tty terminal-ansi-stream))
-  (terminal-format tty "~c8" #\escape))
+  ;;(terminal-format tty "~c8" #\escape))
+  (terminal-format tty "~c[?25h" #\escape))
 
 (defmethod terminal-standout ((tty terminal-ansi-stream) state)
   (terminal-format tty "~c[~dm" #\escape (if state 7 27)))
