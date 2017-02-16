@@ -7,10 +7,10 @@
 ;; own testing package and it wouldn't matter much? Right?
 
 ;; TODO:
-;; - test setup and takedown
 ;; - composability?
 ;; - sub-groups OR package specific groups?
 ;; - random testing (given argument types and ranges)
+;; - heuristical fuzzing?
 
 (defpackage :test
   (:documentation "Another crappy test framework.
@@ -56,7 +56,7 @@ Q: What if I need to trap exceptions from my tests?
 A: You're on your own.
 
 Q: What if I need to ...
-A: I SAID, you're on your own! (patches welcomed :-)
+A: I SAID, you're on your own!
 
 Q: Why did you write yet another test framework?
 A: <no comment>
@@ -85,7 +85,15 @@ A: _This_ *is* your documentation.
    ))
 (in-package :test)
 
-(defparameter *tests* '()
+(declaim (optimize (speed 1) (safety 3) (debug 3) (space 0)
+		   (compilation-speed 0)))
+
+;; If we do DEFPARAMETER this can clobber your test results. On the other
+;; hand, tests from previous versions, may not be compatible. Since the normal
+;; case is the tests are compatible, losing the tests is quite annoying. So
+;; lets just say, if you make incompatible changes to this code, you had
+;; better remember to to CLEAR-TESTS. Clobbers are bad, mmmmkay?
+(defvar *tests* '()
   "List of test and/or test groups.")
 
 (defparameter *verbose* t
@@ -272,9 +280,12 @@ arguements."
 
 (defun maybe-run-code (code)
   (cond
+    ((null code) #| do nothing |#)
     ((or (functionp code) (and (symbolp code) (fboundp code)))
+     (format t "Calling fixture ~a~%" code)
      (funcall code))
     ((listp code)
+     (format t "Evaluating fixture ~a~%" code)
      (eval code))
     (t
      (error "Can't run fixture code ~a" code))))
@@ -385,7 +396,7 @@ documentation."
        (loop :for tt :in (test-group-tests name) :do
 	  (describe-test tt))))
     ((test-p name)
-     (format t "~a:~@[~%~a~]~@[~%~s~]"
+     (format t "~a:~@[~%~a~]~@[~%~s~]~%~%"
 	     (test-name name) (test-doc name) (test-body name)))
     (t
      (error "Don't know how to describe a test of type ~a."
