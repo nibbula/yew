@@ -126,20 +126,25 @@ handle device independant color spaces yet, e.g. CIELab."
     (t
      (error "Can't parse the color string ~s." string))))
 
-(defun format-color (red green blue)
+(defun format-color (red green blue &key bits)
   "Return a string in XParseColor format for a color with the given RED, BLUE,
-and GREEN, components."
+and GREEN, components. Default to 8 bit color. If values are over 8 bits,
+default to 16 bit color."
   (let ((r red) (g green) (b blue) (l (list red green blue)))
     (cond
       ((every #'floatp l)
        (format nil "rgbi:~f/~f/~f" r g b))
       ((every #'integerp l)
-       (let ((fmt (cond
-		    ((every (_ (<= _ #xf)) l) "~x")
-		    ((every (_ (<= _ #xff)) l) "~2,'0x")
-		    ((every (_ (<= _ #xfff)) l) "~3,'0x")
-		    ((every (_ (<= _ #xffff)) l) "~4,'0x")
-		    (t (error "Bad color magnitudes: ~s" l)))))
+       (let (fmt)
+	 (when (not bits)
+	   (setf bits (if (some (_ (> _ #xff)) l) 16 8)))
+	 (setf fmt
+	       (case bits
+		 (4  "~x")
+		 (8  "~2,'0x")
+		 (12 "~3,'0x")
+		 (16 "~4,'0x")
+		 (t (error "Bad color bit magnitudes: ~s" l))))
 	 (format nil (s+ "rgb:" fmt "/" fmt "/" fmt) r g b)))
       (t
        (error "Bad color formats: ~s" l)))))
@@ -151,7 +156,8 @@ and GREEN, components."
 (defun   color-blue  (c) (elt c 2))
 (defsetf color-blue  (c) (val) `(setf (elt ,c 2) ,val))
 
-(defun scale-color (c)
+(defun scale-color-16-to-8 (c)
+  "Scale a 16 bit color to an 8 bit color"
   (setf (color-red   c) (truncate (* (color-red   c) #xff) #xffff)
 	(color-green c) (truncate (* (color-green c) #xff) #xffff)
 	(color-blue  c) (truncate (* (color-blue  c) #xff) #xffff))
@@ -421,12 +427,12 @@ and GREEN, components."
 		 (= screen-char-width char-width)
 		 (= screen-char-height char-height)))
       ;; Foreground & background colors
-      (setf foreground (scale-color
+      (setf foreground (scale-color-16-to-8
 			(multiple-value-list
 			(parse-color
 			 (query-string (s+ "10;?" +st+)
 				       :lead-in +osc+ :offset 5))))
-	    background (scale-color
+	    background (scale-color-16-to-8
 			(multiple-value-list
 			(parse-color
 			 (query-string (s+ "11;?" +st+)
