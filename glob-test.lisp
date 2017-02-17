@@ -162,7 +162,10 @@
       (mapcar #'touch '("bar" "foo"))
       (mapcar #'make-directory '("baz" "quux"))
       (in-directory ("baz")
-	(mapcar #'touch '("lemon" "foo" "bark.c")))
+	(mapcar #'touch '("lemon" "foo" "bark.c"))
+	(make-directory "pippy.c")
+	(in-directory ("pippy.c")
+	  (touch "fuzz")))
       (in-directory ("quux")
 	(mapcar #'touch '("pidge.c" "snoo")))))
   (change-directory *test-dir*))
@@ -172,9 +175,11 @@
   (in-directory (*test-dir*)
     (mapcar #'delete-file '("boo/bar/corge" "boo/bar/gralt.c" "boo/baz"
 			    "boo/foo" "zoo/bar" "zoo/foo" "zoo/baz/lemon"
-			    "zoo/baz/foo" "zoo/baz/bark.c" "zoo/quux/pidge.c"
+			    "zoo/baz/foo" "zoo/baz/bark.c"
+			    "zoo/baz/pippy.c/fuzz" "zoo/quux/pidge.c"
 			    "zoo/quux/snoo" "foo" "one" "two"))
-    (mapcar #'delete-directory '("boo/bar" "boo" "zoo/baz" "zoo/quux" "zoo")))
+    (mapcar #'delete-directory '("boo/bar" "boo" "zoo/baz/pippy.c" "zoo/baz"
+				 "zoo/quux" "zoo")))
   (delete-directory *test-dir*))
 
 ;; @@@ !!! Need tests for:
@@ -182,24 +187,53 @@
 ;; unreadable and/or unsearchable dir and subdirs
 ;; trailing slash: e.g. (glob "*/")
 
+(defun muffle-sort (x)
+  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+  (sort x #'string<))
+
 (deftests (glob :setup glob-setup
 		:takedown glob-takedown
 		:doc "Tests of globbing.")
-  (equal (glob "*oo/b*/*.c") '("boo/bar/gralt.c" "zoo/baz/bark.c"))
-  (equal (glob "*/*/*.c") '("boo/bar/gralt.c" "zoo/baz/bark.c"
-			    "zoo/quux/pidge.c"))
-  (equal (glob "*/*/*") '("boo/bar/corge" "boo/bar/gralt.c" "zoo/baz/bark.c"
-			  "zoo/baz/foo" "zoo/baz/lemon" "zoo/quux/pidge.c"
-			  "zoo/quux/snoo"))
-  (equal (glob "*/*/*[^c]")
+  (equal (muffle-sort (glob "*oo/b*/*.c"))
+	 '("boo/bar/gralt.c" "zoo/baz/bark.c" "zoo/baz/pippy.c"))
+  (equal (muffle-sort (glob "*/*/*.c"))
+	 '("boo/bar/gralt.c" "zoo/baz/bark.c" "zoo/baz/pippy.c"
+	   "zoo/quux/pidge.c"))
+  (equal (muffle-sort (glob "*/*/*"))
+	 '("boo/bar/corge" "boo/bar/gralt.c" "zoo/baz/bark.c"
+	   "zoo/baz/foo" "zoo/baz/lemon" "zoo/baz/pippy.c" "zoo/quux/pidge.c"
+	   "zoo/quux/snoo"))
+  (equal (muffle-sort (glob "*/*/*[^c]"))
 	 '("boo/bar/corge" "zoo/baz/foo" "zoo/baz/lemon" "zoo/quux/snoo"))
-  (equal (in-directory ("boo") (glob "../*/*/*.c"))
-	 '("../boo/bar/gralt.c" "../zoo/baz/bark.c" "../zoo/quux/pidge.c"))
+  (equal (in-directory ("boo") (muffle-sort (glob "../*/*/*.c")))
+	 '("../boo/bar/gralt.c" "../zoo/baz/bark.c" "../zoo/baz/pippy.c"
+	   "../zoo/quux/pidge.c"))
+)
+
+(deftests (globstar :setup glob-setup
+		   :takedown glob-takedown
+		   :doc "Tests of recursive globbing.")
+  (equal (muffle-sort (glob "z*/**/*.c"))
+	 '("zoo/baz/bark.c" "zoo/baz/pippy.c" "zoo/quux/pidge.c"))
+  (equal (muffle-sort (glob "**/*.c"))
+	 '("boo/bar/gralt.c" "zoo/baz/bark.c" "zoo/baz/pippy.c"
+	   "zoo/quux/pidge.c"))
+  ;; (equal (muffle-sort (glob "**"))
+  ;; 	 '("boo/bar/corge" "boo/bar/gralt.c" "zoo/baz/bark.c"
+  ;; 	   "zoo/baz/foo" "zoo/baz/lemon" "zoo/baz/pippy.c" "zoo/quux/pidge.c"
+  ;; 	   "zoo/quux/snoo"))
+  (equal (muffle-sort (glob "**/*[^c]"))
+	 '("boo" "boo/bar" "boo/bar/corge" "boo/baz" "boo/foo" "foo" "one" "two"
+	   "zoo" "zoo/bar" "zoo/baz" "zoo/baz/foo" "zoo/baz/lemon"
+	   "zoo/baz/pippy.c/fuzz" "zoo/foo" "zoo/quux" "zoo/quux/snoo"))
+  (equal (in-directory ("boo") (muffle-sort (glob "../**/*.c")))
+	 '("../boo/bar/gralt.c" "../zoo/baz/bark.c" "../zoo/baz/pippy.c"
+	   "../zoo/quux/pidge.c"))
 )
 
 (deftests (glob-all)
   fnmatch-strings fnmatch-qmark fmatch-charset fnmatch-star fnmatch-escape
-  glob)
+  glob globstar)
 
 (defun run ()
   (run-group-name 'glob-all :verbose t))

@@ -2,6 +2,10 @@
 ;; glob.lisp - Shell style file name pattern matching
 ;;
 
+;; ToDo:
+;;  - ALL or OMIT-HIDDEN option to not omit files starting with '.'
+;;  - make BRACES work
+
 (defpackage :glob
   (:documentation "Shell style file name pattern matching.
 Main functions are:
@@ -29,10 +33,9 @@ The documentation for FNMATCH describes the pattern syntax a little.
 ;; I should test the speed of my code vs. re-translation to CL-PPCRE.
 ;;
 ;; These are don't really do everything that the UNIX/POSIX versions do. I
-;; only put in the features I needed to implement LISH.
+;; only put in the features I needed for LISH.
 
-;; @@@ actually constant
-(defparameter *special-chars* #("[*?" "[*?{}" "[*?~" "[*?{}~")
+(define-constant +special-chars+ #("[*?" "[*?{}" "[*?~" "[*?{}~")
   "Array of strings that have special meaning for glob patterns. Indexed bitwise for braces and tildes.")
 
 (defstruct char-class
@@ -43,12 +46,10 @@ The documentation for FNMATCH describes the pattern syntax a little.
 (defparameter *character-classes* '()
   "Named character classes.")
 
-;; @@@ actually constant
-(defparameter *space-chars* (vector #\space #\tab #\newline (ctrl #\L) #\vt)
+(define-constant +space-chars+ (vector #\space #\tab #\newline (ctrl #\L) #\vt)
   "Characters in the space character class.")
 
-;; @@@ actually constant
-(defparameter *punct-chars* "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+(define-constant +punct-chars+ "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
   "Characters in the space character class.")
 
 (defstruct char-set
@@ -87,15 +88,15 @@ which is tested for inclusion by a function. STRING is individual characters."
 (defcc "upper" #'upper-case-p)
 (defcc "digit" #'digit-char-p)
 (defcc "cntrl" (or (< (char-code c) 31) (= (char-code c) 127)))
-(defcc "punct" (not (not (find c *punct-chars*))))
-(defcc "space" (not (not (find c *space-chars*))))
+(defcc "punct" (not (not (find c +punct-chars+))))
+(defcc "space" (not (not (find c +space-chars+))))
 (defcc "blank" (or (char= c #\space) (char= c #\tab)))
 
 (defun pattern-p (pattern braces tilde)
   "Return true if PATTERN has any special characters in it."
   (when (and pattern (length pattern))
     (let* ((ind (logior (ash (if tilde 1 0) 1) (if braces 1 0)))
-	   (specials (svref *special-chars* ind)))
+	   (specials (svref +special-chars+ ind)))
 ;      (format t "~a ~x~%" specials ind)
       (not (null (find-if #'(lambda (c) (find c specials)) pattern))))))
 
@@ -449,9 +450,10 @@ match & dir  - f(prefix: boo) readir boo
   "Return true if PATH has a trailing directory indicator."
   (char= (char path (1- (length path))) *directory-separator*))
 
+#|
 ;; This is called recursively for each directory, depth first, for exapnding
 ;; GLOB patterns. Of course most of the work is done by FNMATCH.
-(defun dir-matches (path &key dir escape)
+(defun old-dir-matches (path &key dir escape recursive)
   "Takes a PATH, which is a list of strings which are path elements, usually
 with GLOB patterns, and a directory DIR, which is a string directory path,
 without patterns, and returns a list of string paths that match the PATH in
@@ -467,7 +469,7 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 	 (starts-with-dot (p) (char= (char p 0) #\.)))
     (when path
       ;; (format t "path = ~s dir = ~s~%" path dir)
-      (loop :with p = (car path)
+      (loop :with p = (car path) :and is-dir
 	 :for f :in (ignore-errors
 		      ;; XXX we shouldn't ignore ALL errors, just opsys-errors?
 		      (read-directory :dir (or dir ".") :full t
@@ -476,6 +478,11 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 	 ;; Only match anything like ".*" when the pattern starts with ".".
 	 :if (or (and (equal "." p) (equal "." (dir-entry-name f)))
 		 (and (equal ".." p) (equal ".." (dir-entry-name f)))
+		 ;; Recursive match, any directory or matching non-dir
+		 (and recursive (search "**" p)
+		      (or (setf is-dir (is-really-a-directory dir f))
+			  (fnmatch p (dir-entry-name f) :escape escape)))
+		 ;; It has a slash on the end and it's a directory which matches
 		 (or (and (trailing-directory-p p)
 			  (is-really-a-directory dir f)
 			  (fnmatch
@@ -483,18 +490,107 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 					*directory-separator* p
 					:from-end t))
 			   (dir-entry-name f) :escape escape))
+		     ;; Or just a normal match.
 		     (fnmatch p (dir-entry-name f) :escape escape)))
-           :when (= (length path) 1)
+	   :when recursive
+	      :if is-dir
+	        :append (old-dir-matches (cdr path)
+				     :dir (squip-dir dir f)
+				     :escape escape :recursive recursive)
+	      :else ;; It just matches
+		:append (list (squip-dir dir f))
+           :else :if (= (length path) 1)
+	     ;; There's no further path elements, so just append the match.
 	     :append (list (squip-dir dir f))
            :else :if (is-really-a-directory dir f)
-	     :append (dir-matches (cdr path)
+	     ;; If it's a directory, get all the sub directory matches.
+	     :append (old-dir-matches (cdr path)
 				  :dir (squip-dir dir f)
-				  :escape escape)))))
+				  :escape escape :recursive recursive)))))
+|#
+
+(defun dir-append (dir file)
+  "This is like a slightly simpler PATH-APPEND from OPSYS."
+  (if dir
+      ;; If it's the root dir "/", so we don't end up with doubled slashes.
+      (if (and (char= (char dir 0) *directory-separator*)
+	       (= (length dir) 1))
+	  (s+ *directory-separator* file)
+	  (s+ dir *directory-separator* file))
+      file))
+
+;; This is called recursively for each directory, depth first, for exapnding
+;; GLOB patterns. Of course most of the work is done by FNMATCH.
+(defun dir-matches (path &key dir escape recursive)
+  "Takes a PATH, which is a list of strings which are path elements, usually
+with GLOB patterns, and a directory DIR, which is a string directory path,
+without patterns, and returns a list of string paths that match the PATH in
+the directory DIR and it's subdirectories. Returns NIL if nothing matches."
+  (when (not path)
+    (return-from dir-matches nil))
+  (dbugf :glob "path = ~s dir = ~s~%" path dir)
+  (let ((path-element (car path))
+	result name recursive-match is-dir more-path either)
+    (flet ((starts-with-dot (string)
+	     (char= (char string 0) #\.))
+	   (append-result (thing)
+	     (setf result (append result thing)))
+	   (path-match (entry path)
+	     "True if directory entry ENTRY should match path element PATH."
+	     (or
+	      ;; Only match explicit current "." and parent ".." elements.
+	      ;; Only match anything like ".*" when the pattern starts with ".".
+	      (and (equal "." path) (equal "." name))
+	      (and (equal ".." path) (equal ".." name))
+
+	      ;; It's a directory which matches without the trailing slash
+	      (and (trailing-directory-p path)
+		   (is-really-a-directory dir entry)
+		   (fnmatch
+		    (subseq path 0 (position *directory-separator* path
+					     :from-end t))
+		    name :escape escape))
+
+	      ;; Or just a normal match.
+	      (fnmatch path (dir-entry-name entry) :escape escape))))
+      (when recursive
+	(setf recursive-match (search "**" path-element)))
+      (loop
+	 :for entry :in (ignore-conditions (opsys-error)
+			  (read-directory
+			   :dir (or dir ".") :full t
+			   :omit-hidden (not (starts-with-dot path-element))))
+	 :do (setf name      (dir-entry-name entry)
+		   is-dir    (is-really-a-directory dir entry)
+		   more-path (> (length path) 1)
+		   either    nil) ; for debugging
+	 :when (or recursive-match (path-match entry path-element))
+	 :do
+	 (dbugf :glob "path-element = ~s name = ~s " path-element name)
+	 (when (or (not more-path) (and recursive-match
+					(path-match entry (cadr path))))
+	   ;; There's no further path elements, so just append the match.
+	   (dbugf :glob "spoot ~s~%" name)
+	   (append-result (list (dir-append dir name)))
+	   (setf either t))
+	 (when (and is-dir (or more-path recursive-match))
+	   ;; If it's a directory, get all the sub directory matches.
+	   (dbugf :glob "~s is dir~%" name)
+	   (append-result (dir-matches
+			   (or (and recursive-match path)
+			       (cdr path))
+			   :dir (dir-append dir name)
+			   :escape escape
+			   :recursive recursive))
+	   (setf either t))
+	 (when (not either)
+	   (dbugf :glob "not cool~%")))
+      result)))
 
 (defparameter *dir-sep-string* (string *directory-separator*))
 
 (defun glob (pattern &key mark-directories (escape t) sort braces (tilde t)
-		       twiddle limit)
+		       twiddle limit (recursive t))
   "PATTERN is a shell pattern as matched by FNMATCH.
   MARK-DIRECTORIES true, means put a slash at the end of directories.
   ESCAPE true, means allow \\ to escape the meaning of special characters.
@@ -502,7 +598,8 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
   BRACES true, means allow braces processing.
   TILDE true, means allow tilde processing, which gets users home directories.
   TWIDDLE is a synonym for TILDE.
-  LIMIT as an integer, means limit the number of pathnames to LIMIT."
+  LIMIT as an integer, means limit the number of pathnames to LIMIT.
+  RECURSIVE true, means double stars ** match down through directories."
   (declare (ignore mark-directories sort braces limit))
   (setf tilde (or tilde twiddle))
   (let* ((expanded-pattern (if tilde (expand-tilde pattern) pattern))
@@ -512,7 +609,7 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 		*dir-sep-string*)))
     (when (trailing-directory-p expanded-pattern)
       (rplaca (last path) (s+ (car (last path)) *dir-sep-string*)))
-    (dir-matches path :dir dir :escape escape)))
+    (dir-matches path :dir dir :escape escape :recursive recursive)))
 
 ;; Despite Tim Waugh's <twaugh@redhat.com> wordexp manifesto
 ;; <http://cyberelk.net/tim/articles/cmdline/>, "When is a command line not a
