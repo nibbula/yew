@@ -3123,7 +3123,7 @@ versions of the keywords used in Lisp open.
 ;; 32bit stat -> __xstat -> fstatat64
 ;; 32bit ?    -> __xstat64 -> fstatat64
 
-#+(and linux 32-bit-target)
+#+(and linux 32-bit-target (not cmu))
 (defcstruct foreign-stat
   (st_dev	dev-t)			; ID of device containing file
   (__pad1	:unsigned-short)	;
@@ -3142,6 +3142,26 @@ versions of the keywords used in Lisp open.
   (st_ctimespec	(:struct foreign-timespec)) ; time of last file status change
   (__unused4	:unsigned-long)
   (__unused5	:unsigned-long))
+
+#+(and linux 32-bit-target cmu) ;; @@@ fixme
+(defcstruct foreign-stat
+  (st_dev	dev-t)			; ID of device containing file
+  (__pad1	:unsigned-short)	;
+  (__st_ino	:uint64 #|ino-t|#)      ; not inode number **
+  (st_mode	mode-t)			; protection
+  (st_nlink	:uint32 #|nlink-t|#)		; number of hard links
+  (st_uid	uid-t)			; user ID of owner
+  (st_gid	gid-t)			; group ID of owner
+  (st_rdev	:uint64 #|dev-t|#)	; device ID (if special file)
+  (__pad2	:unsigned-short)	;
+  (st_size	:uint32 #| off-t |#)    ; total size, in bytes **
+  (st_blksize	blksize-t)		; blocksize for file system I/O
+  (st_blocks	blkcnt-t)		; number of 512B blocks allocated **
+  (st_atimespec	(:struct foreign-timespec)) ; time of last access
+  (st_mtimespec	(:struct foreign-timespec)) ; time of last data modification
+  (st_ctimespec	(:struct foreign-timespec)) ; time of last file status change
+  (st_ino	:uint64 #|ino-t|#)	; 64 bit inode number **
+)
 
 #+(and linux 64-bit-target some-version?)
 (defcstruct foreign-stat
@@ -3277,7 +3297,7 @@ versions of the keywords used in Lisp open.
 ;; GLIBC_2.4   __fxstatat
 ;; GLIBC_2.4   __fxstatat64
 
-#+(and linux sbcl) ;; I'm not really sure how this works.
+#+(and linux (or sbcl #|cmu|#)) ;; I'm not really sure how this works.
 (progn
   (defcfun ("stat" real-stat)
       :int (path :string) (buf (:pointer (:struct foreign-stat))))
@@ -3288,20 +3308,26 @@ versions of the keywords used in Lisp open.
   (defcfun ("fstat" real-fstat)
       :int (fd :int) (buf (:pointer (:struct foreign-stat)))))
 
-#+(and linux (not sbcl)) ;; We have to do the wack crap.
+(defparameter *stat-version*
+  #+64-bit-target 0
+  #+32-bit-target 3
+  )
+
+;; We have to do the wack crap.
+#+(and linux (and (not sbcl) #|(not cmu)|#))
 (progn
-  (defcfun ("__xstat" completely-fucking-bogus-but-actually-real-stat)
+  (defcfun ("__xstat"  completely-fucking-bogus-but-actually-real-stat)
       :int (vers :int) (path :string) (buf (:pointer (:struct foreign-stat))))
   (defcfun ("__lxstat" completely-fucking-bogus-but-actually-real-lstat)
       :int (vers :int) (path :string) (buf (:pointer (:struct foreign-stat))))
   (defcfun ("__fxstat" completely-fucking-bogus-but-actually-real-fstat)
       :int (vers :int) (fd :int) (buf (:pointer (:struct foreign-stat))))
   (defun real-stat (path buf)
-    (completely-fucking-bogus-but-actually-real-stat 0 path buf))
+    (completely-fucking-bogus-but-actually-real-stat  *stat-version* path buf))
   (defun real-lstat (path buf)
-    (completely-fucking-bogus-but-actually-real-lstat 0 path buf))
+    (completely-fucking-bogus-but-actually-real-lstat *stat-version* path buf))
   (defun real-fstat (path buf)
-    (completely-fucking-bogus-but-actually-real-fstat 0 path buf)))
+    (completely-fucking-bogus-but-actually-real-fstat *stat-version* path buf)))
 
 #-linux ;; so mostly BSDs
 (progn

@@ -76,12 +76,12 @@ expect. Like for example on a Unix system it should be like strerror.")
 ;; all the arguments.
 (defun lisp-args (#| &key all-p |#)
   "Arguments given when starting the Lisp system."
-  #+sbcl sb-ext:*posix-argv*
-  #+clisp (ext:argv)
-  #+cmu ext:*command-line-strings*
-  #+openmcl (ccl::command-line-arguments)
-  #+excl (sys:command-line-arguments) 
-  #+ecl (ext:command-args)
+  #+sbcl     sb-ext:*posix-argv*
+  #+clisp    (ext:argv)
+  #+cmu	     ext:*command-line-strings*
+  #+openmcl  (ccl::command-line-arguments)
+  #+excl     (sys:command-line-arguments) 
+  #+ecl	     (ext:command-args)
   #-(or sbcl clisp cmu openmcl excl ecl)
   (missing-implementation 'lisp-args))
 
