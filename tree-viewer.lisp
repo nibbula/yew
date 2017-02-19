@@ -26,6 +26,7 @@
    #:make-cached-dynamic-tree
    #:convert-tree #:print-tree #:make-tree #:subdirs
    #:tree-viewer
+   #:*viewer*
    #:display-indent
    #:display-prefix
    #:display-node-line
@@ -37,8 +38,6 @@
    #:view-package-dependencies
    #:view-packages
    #:view-lisp
-   #:read-org-mode-file
-   #:!view-org
    ))
 (in-package :tree-viewer)
 
@@ -1308,143 +1307,5 @@ and indented properly for multi-line objects."
 
 (defun view-lisp ()
   (view-tree (make-instance 'lisp-node)))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Org mode
-
-(defclass org-node (node)
-  ((heading
-    :initarg :heading :accessor org-node-heading :initform "" :type string
-    :documentation "Node heading.")
-   (text
-    :initarg :text :accessor org-node-text :initform nil
-    :documentation "Text of node."))
-  (:default-initargs
-   :branches nil)
-  (:documentation
-   "Org mdoe node."))
-
-(defparameter *org-colors*
-  `(,+color-white+ ,+color-red+ ,+color-green+ ,+color-yellow+ ,+color-blue+
-    ,+color-magenta+ ,+color-cyan+))
-
-(defmethod display-node ((node org-node) level)
-  "Display an org-node."
-  (let ((fake-level (max 0 (1- level))))
-    (fui:with-fg ((elt *org-colors*
-		   (mod level
-			(length *org-colors*))))
-      (display-node-line node (s+ (format nil "~v,,,va "
-					  (* fake-level (indent *viewer*))
-					  #\space "")
-				  (if (node-has-branches node)
-				      (if (node-open node) #\- #\+)
-				      (if (org-node-text node)
-					  (if (node-open node) #\- #\+)
-					  #\·))
-				  #\space
-				  (trim (org-node-heading node))
-				  #\newline)))
-    (when (node-open node)
-      (loop :for l :in (reverse (org-node-text node)) :do
-	 (display-node-line node (s+ (format nil "~v,,,va "
-					     (* fake-level (indent *viewer*))
-					     #\space "")
-				     "  "
-				     (trim l)
-				     #\newline))))))
-
-(defun get-heading (line)
-  "Return the part after the stars."
-  (let ((start (position-if (_ (char/= _ #\*)) line)))
-    (if (and start (< start (length line)))
-	(subseq line start)
-	"")))
-
-(defun count-depth (line)
-  "Count the number of stars at the beginning of the line."
-  (loop :with i = 0 :and len = (length line)
-     :while (and (< i len) (char= (char line i) #\*))
-     :do (incf i)
-     :finally (return i)))
-
-(defun read-org-mode-file (file)
-  (let* ((root (make-instance 'org-node :heading file))
-	 (cur root)
-	 (parent (list root))
-	 (parent-depth '())
-	 (depth 0)
-	 new)
-    (with-open-file (stream file)
-      (loop :with line
-	 :while (setf line (read-line stream nil nil))
-	 :do
-	 ;; (format t "line = ~w~%" line)
-	 (if (begins-with "*" line)
-	     (let ((new-depth (count-depth line)))
-	       ;; (format t "new-depth = ~a~%" new-depth)
-	       (cond
-		 ((> new-depth depth)
-		  ;; (format t ">~%")
-		  (push cur parent)
-		  (push depth parent-depth)
-		  ;; (format t "parent-depth ~a~%" parent-depth)
-		  (setf new (make-instance 'org-node
-					   :heading (get-heading line))
-			(node-branches cur)
-			(append (node-branches cur) (list new))
-			cur new
-			depth new-depth))
-		 ((= new-depth depth)
-		  ;; (format t "=~%")
-		  (setf new (make-instance 'org-node
-					   :heading (get-heading line))
-			(node-branches (first parent))
-			(append (node-branches (first parent)) (list new))
-			cur new))
-		 ((< new-depth depth)
-		  ;; (format t "<~%")
-		  (loop :do
-		     (pop parent)
-		     ;; (format t "pop ~a~%" (pop parent-depth))
-		     (pop parent-depth)
-		     ;; (format t "parent-depth ~a~%" parent-depth)
-		     :while (and (first parent-depth)
-				 (<= new-depth (first parent-depth))))
-		  (setf new (make-instance 'org-node
-					   :heading (get-heading line))
-			(node-branches (first parent))
-			(append (node-branches (first parent)) (list new))
-			cur new
-			depth new-depth))))
-	     ;; Just a text line
-	     (progn
-	       ;; (format t "text~%")
-	       (push line (org-node-text cur))))))
-    root))
-
-#+lish
-(lish:defcommand view-org
-    (("org-files" pathname :repeating t))
-  "View an Emacs Org mode file with the tree-viewer."
-  (let ((i 0) (len (length org-files)) result)
-    (fui:with-curses
-      (loop :while (< i len) :do
-	 (restart-case
-	     (progn
-	       (setf result
-		     (multiple-value-list
-		      (view-tree (read-org-mode-file
-				    (elt org-files i)))))
-	       (when (= (length result) 1)
-		 (return)))
-	   (next-file ()
-	     :report "Go to the next file."
-	     (when (< i len)
-	       (incf i)))
-	   (previous-file ()
-	     :report "Go to the previous file."
-	     (when (> i 0)
-	       (decf i))))))))
 
 ;; EOF
