@@ -11,8 +11,8 @@
   (:documentation
    "A crappy half-assed debugger for your enjoyment and frustration. But at
 least you can type things using TINY-RL.")
-  (:use :cl :dlib :char-util :keymap :terminal :terminal-ansi
-	:tiny-rl :tiny-repl #+sbcl :sb-introspect)
+  (:use :cl :dlib :char-util :table-print :keymap :terminal :terminal-ansi
+   :tiny-rl :tiny-repl #+sbcl :sb-introspect)
   (:export
    #:tiny-debug
    #:*default-interceptor*
@@ -690,8 +690,8 @@ innermost N contexts, if we can."
 			     (sb-di:breakpoint-kind b)
 			     (sb-di:breakpoint-what b)
 			     (sb-di:breakpoint-info b)))))
-      (table:nice-print-table rows '("#" "Act" "Kind" "What" "Info")
-			      :stream *debug-io*)))
+      (nice-print-table rows '("#" "Act" "Kind" "What" "Info")
+			:stream *debug-io*)))
   )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

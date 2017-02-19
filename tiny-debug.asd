@@ -14,7 +14,7 @@ REPL. It does afford one that modicum of efficacy, but scant else. Another
 smidgeon is a uniform interface between platforms.
 Unfortunately it's barely usable."
     :depends-on
-    (:dlib :char-util :keymap :terminal :terminal-ansi :tiny-rl :tiny-repl
-	   #+sbcl :sb-introspect)
+    (:dlib :char-util :keymap :table-print :terminal :terminal-ansi
+     :tiny-rl :tiny-repl #+sbcl :sb-introspect)
     :components
     ((:file "tiny-debug")))

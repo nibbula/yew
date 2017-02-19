@@ -281,6 +281,7 @@ foreground FG and background BG."
   "Put a centered string STR in window W of width WIDTH at row ROW."
   (mvwaddstr w row (round (- (/ width 2) (/ (length str) 2))) str))
 
+;; This is kind of like a old-timey typeout window.
 (defun display-text (title text-lines &key input-func (justify t))
   "Display text in a pop up window. Optionally calls INPUT-FUNC with the
 window as an argument to get input. If no INPUT-FUNC is provided it just

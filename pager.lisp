@@ -3,11 +3,12 @@
 ;;
 
 ;; TODO:
+;;  - sub-files for keep & filter ?
 ;;  - syntax highlighting
 ;;  - simpile HTML rendering
 ;;  - big stream issues?
-;;  - sub-files for keep & filter ?
 ;;  - maybe convert to using terminal instead of curses?
+;;  - handle when terminal wraps properly
 
 (defpackage :pager
   (:documentation "pager - More or less like more or less.
@@ -33,8 +34,9 @@ SYNOPSIS
 The function takes a file name or a stream or a list of such.
 The shell command takes any number of file names.
 ")
-  (:use :cl :dlib :dlib-misc :curses :opsys :fui :stretchy :keymap :char-util
-	:fatchar :ppcre :terminal :terminal-curses :pick-list)
+  (:use :cl :dlib :opsys :dlib-misc :table-print :curses :fui :stretchy
+	:keymap :char-util :fatchar :ppcre :terminal :terminal-curses
+	:pick-list)
   (:export
    #:*pager-prompt*
    #:*empty-indicator*
@@ -893,9 +895,10 @@ line : |----||-------||---------||---|
 	   :while (and (<= y (1- page-size)) (car l))
 	   :do
 	   (move y 0)
-	   (when (not (filter-this (car l)))
-	     (incf y (display-line i (car l)))
-	     (incf i))
+	   ;; (when (not (filter-this (car l)))
+	   ;;   (incf y (display-line i (car l)))
+	   ;;   (incf i))
+	   (incf y (display-line i (car l)))
 	   (setf l (cdr l))))
       ;; Fill the rest of the screen with twiddles to indicate emptiness.
       (when (< y page-size)
@@ -940,6 +943,7 @@ line : |----||-------||---------||---|
   ;;(ask-for :prompt prompt)
   (move (1- curses:*lines*) 0)
   (clrtoeol)
+  (refresh)
   (prog1
       (tiny-rl:tiny-rl :prompt prompt
 		       :terminal-class 'terminal-curses:terminal-curses
@@ -977,6 +981,10 @@ list containing strings and lists."
       (if (and l (< (line-number l) count))
 	  (setf line (line-number l))
 	  nil))))
+
+;; (defun sub-pager ()
+;;   (let ((*pager*))
+;;     (pager-loop)))
 
 (defun keep-lines ()
   "Show only lines matching a regular expression."
@@ -1273,7 +1281,7 @@ list containing strings and lists."
 (defun command-help ()
   "Show help on long commands, aka colon commands."
   (sub-page (s)
-    (table:nice-print-table
+    (nice-print-table
      (loop :for c :across *long-commands*
 	:collect (list (elt c 0) (elt c 1) (elt c 2)))
      '("Command" "Abbrev" "Description")
@@ -1316,6 +1324,7 @@ list containing strings and lists."
     (#\return		. next-line)
     (:down		. next-line)
     (#\j		. next-line)
+    (,(ctrl #\N)	. next-line)
     (#\b		. previous-page)
     (:ppage		. previous-page)
     (#\rubout		. previous-page)
@@ -1323,6 +1332,7 @@ list containing strings and lists."
     (,(meta-char #\v)   . previous-page)
     (#\k		. previous-line)
     (:up		. previous-line)
+    (,(ctrl #\P)	. previous-line)
     (#\l		. scroll-right)
     (:right		. scroll-right)
     (#\h		. scroll-left)
@@ -1457,6 +1467,24 @@ q - Abort")
   stream
   close-me)
 
+(defun pager-loop ()
+  (with-slots (message input-char command prefix-arg quit-flag suspend-flag)
+      *pager*
+    (loop
+     :do
+     (display-page)
+     (if message
+	 (let ((*pager-prompt* message))
+	   (display-prompt)
+	   (setf message nil))
+       (display-prompt))
+     (refresh)
+     (setf input-char (fui:get-char))
+     (perform-key input-char)
+     (when (not (equal command 'digit-argument))
+       (setf prefix-arg nil))
+     :while (not (or quit-flag suspend-flag)))))
+
 (defun page (stream &optional pager file-list close-me suspended)
   "View a stream with the pager. Return whether we were suspended or not."
   (with-curses
@@ -1484,7 +1512,7 @@ q - Abort")
 		  suspend-flag nil
 		  suspended nil)
 	    (curses:raw)	     ; give a chance to exit during first read
-	    (loop :do
+#|	    (loop :do
 	       (display-page)
 	       (if message
 		   (let ((*pager-prompt* message))
@@ -1496,7 +1524,8 @@ q - Abort")
 	       (perform-key input-char)
 	       (when (not (equal command 'digit-argument))
 		 (setf prefix-arg nil))
-	       :while (not (or quit-flag suspend-flag)))
+	       :while (not (or quit-flag suspend-flag))) |#
+	    (pager-loop)
 	    (when suspend-flag
 	      (setf suspended t)
 	      (if (find-package :lish)
@@ -1573,14 +1602,14 @@ q - Abort")
 
 (defun help ()
   (with-input-from-string
-      (input
-       (with-output-to-string (output)
-	 (format output
+   (input
+    (with-output-to-string (output)
+      (format output
 "Hi! You are using Dan's pager. You seem to have hit '~a' again, which gives a
 summary of commands. Press 'q' to exit this help. The keys are superficially
 compatible with 'less', 'vi' and 'emacs'.
 " (pager-input-char *pager*))
-	 (write-string "
+      (write-string "
 [1mGeneral[0m
   ?              		Show this help.
   q Q ^C         		Exit the pager.
@@ -1629,7 +1658,7 @@ compatible with 'less', 'vi' and 'emacs'.
 
 Press 'q' to exit this help.
 " output)))
-    (page input)))
+   (page input)))
 
 (defun describe-bindings ()
   "Show help on pager key commands."

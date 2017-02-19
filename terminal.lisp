@@ -30,42 +30,42 @@
    #:terminal-done
    #:make-terminal-stream
    #:with-terminal
-   #:tt-format			  #:terminal-format
-   #:tt-write-string		  #:terminal-write-string
-   #:tt-write-char		  #:terminal-write-char
-   #:tt-move-to			  #:terminal-move-to
-   #:tt-move-to-col		  #:terminal-move-to-col
-   #:tt-beginning-of-line	  #:terminal-beginning-of-line
-   #:tt-del-char		  #:terminal-del-char
-   #:tt-ins-char		  #:terminal-ins-char
+   #:tt-format			  #:terminal-format			;
+   #:tt-write-string		  #:terminal-write-string		;
+   #:tt-write-char		  #:terminal-write-char			;
+   #:tt-move-to			  #:terminal-move-to			;
+   #:tt-move-to-col		  #:terminal-move-to-col		;
+   #:tt-beginning-of-line	  #:terminal-beginning-of-line		;
+   #:tt-del-char		  #:terminal-del-char			;
+   #:tt-ins-char		  #:terminal-ins-char			;
    #:tt-backward		  #:terminal-backward
    #:tt-forward			  #:terminal-forward
    #:tt-up			  #:terminal-up
    #:tt-down			  #:terminal-down
    #:tt-scroll-down		  #:terminal-scroll-down
-   #:tt-erase-to-eol		  #:terminal-erase-to-eol
-   #:tt-erase-line		  #:terminal-erase-line
-   #:tt-erase-above		  #:terminal-erase-above
-   #:tt-erase-below		  #:terminal-erase-below
-   #:tt-clear			  #:terminal-clear
-   #:tt-home			  #:terminal-home
-   #:tt-cursor-off		  #:terminal-cursor-off
-   #:tt-cursor-on		  #:terminal-cursor-on
-   #:tt-standout		  #:terminal-standout
-   #:tt-normal			  #:terminal-normal
-   #:tt-underline		  #:terminal-underline
-   #:tt-bold			  #:terminal-bold
-   #:tt-inverse			  #:terminal-inverse
-   #:tt-color			  #:terminal-color
-   #:tt-beep			  #:terminal-beep
-   #:tt-set-scrolling-region	  #:terminal-set-scrolling-region
-   #:tt-finish-output		  #:terminal-finish-output
+   #:tt-erase-to-eol		  #:terminal-erase-to-eol		;
+   #:tt-erase-line		  #:terminal-erase-line			;
+   #:tt-erase-above		  #:terminal-erase-above		;
+   #:tt-erase-below		  #:terminal-erase-below		;
+   #:tt-clear			  #:terminal-clear			;
+   #:tt-home			  #:terminal-home			;
+   #:tt-cursor-off		  #:terminal-cursor-off			;
+   #:tt-cursor-on		  #:terminal-cursor-on			;
+   #:tt-standout		  #:terminal-standout			;
+   #:tt-normal			  #:terminal-normal			;
+   #:tt-underline		  #:terminal-underline			;
+   #:tt-bold			  #:terminal-bold			;
+   #:tt-inverse			  #:terminal-inverse			;
+   #:tt-color			  #:terminal-color			;
+   #:tt-beep			  #:terminal-beep			;
+   #:tt-set-scrolling-region	  #:terminal-set-scrolling-region	;
+   #:tt-finish-output		  #:terminal-finish-output		;
    #:tt-get-char		  #:terminal-get-char
    #:tt-get-key			  #:terminal-get-key
    #:tt-listen-for		  #:terminal-listen-for
    #:tt-reset			  #:terminal-reset
-   #:tt-save-cursor		  #:terminal-save-cursor
-   #:tt-restore-cursor		  #:terminal-restore-cursor
+   #:tt-save-cursor		  #:terminal-save-cursor		;
+   #:tt-restore-cursor		  #:terminal-restore-cursor		;
    #:with-saved-cursor
    ))
 (in-package :terminal)

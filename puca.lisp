@@ -6,6 +6,8 @@
 ;; why it's poorly organized.
 ;;
 ;; TODO:
+;;  - puca options, e.g. show all tracked files
+;;  - file change history mode
 ;;  - way to provide command options?
 ;;  - way to invoke unbound subcommand?
 ;;  - improve git mode
@@ -16,9 +18,10 @@
 ;;     like for "git config ..." or whatever the equivalent is in other systems
 
 (defpackage :puca
-  (:documentation "Putative Muca")
+  (:documentation
+   "Putative Muca (A very simple(istic) interface to CVS/git/svn).")
   (:use :cl :dlib :dlib-misc :opsys :keymap :char-util :curses :tiny-rl
-	:completion :inator :fui)
+	:completion :inator :fui :options :ppcre)
   (:export
    ;; Main entry point
    #:puca
@@ -37,7 +40,7 @@
 (defvar *puca* nil
   "The current puca instance.")
 
-(defclass puca (fui-inator)
+(defclass puca (fui-inator options-mixin)
   ((backend
     :initarg :backend :accessor puca-backend :initform nil
     :documentation "The revision control system backend that we are using.")
@@ -75,6 +78,11 @@
    :point 0)
   (:documentation "An instance of a version control frontend app."))
 
+(defvar *puca-prototype* (make-instance 'puca)
+  "Prototype PUCA object.")
+
+(defoption *puca-prototype* show-all-tracked option :value nil)
+
 (defclass backend ()
   ((name
     :initarg :name :accessor backend-name :type string
@@ -82,6 +90,9 @@
    (list-command
     :initarg :list-command :accessor backend-list-command  
     :documentation "Command to list the things.")
+   (list-all-command
+    :initarg :list-all-command :accessor backend-list-all-command  
+    :documentation "Command to list all the things.")
    (add
     :initarg :add :accessor backend-add :type string
     :documentation "Command to add a file to the repository.")
@@ -131,25 +142,22 @@
 (defmethod parse-line ((backend backend) line i)
   "Parse a status line LINE for a typical RCS. I is the line number."
   (with-slots (goo errors extra) *puca*
-    (let ((words (split-sequence " " line
-				 :omit-empty t
-				 :test #'(lambda (a b)
-					   (declare (ignore a))
-					   (or (equal b #\space)
-					       (equal b #\tab))))))
-      ;;(debug-msg "~s" words)
+    (let (match words tag file)
+      (multiple-value-setq (match words)
+	(scan-to-strings "\\s*(\\S+)\\s+(.*)$" line))
+      (when (and match words)
+	(setf tag (elt words 0)
+	      file (elt words 1)))
+      ;; (debug-msg "~s ~s (~s) (~s)" line words tag file)
       (cond
 	;; If the first word is more than 1 char long, save it as extra
-	((> (length (car words)) 2)
+	((> (length tag) 2)
 	 (push line extra)
 	 (push (format nil "~d: ~a" i line) errors))
 	;; skip blank lines
-	((or (not words)
-	     (and (= (length words) 1)
-		  (= (length (car words)) 0))))
+	((or (not match) (not words)))
 	(t
-	 (push (make-goo :modified (subseq (elt words 0) 0 1)
-			 :filename (elt words 1)) goo)
+	 (push (make-goo :modified (subseq tag 0 1) :filename file) goo)
 	 ;; If we've accumulated extra lines add them to this line.
 	 (when extra
 	   (setf (goo-extra-lines (car goo)) (nreverse extra))
@@ -175,6 +183,14 @@
   "Print something useful at the top of the screen."
   (addstr (format nil "~a~%" (nos:current-directory))))
 
+(defun check-dir-and-command (dir command)
+  (let ((result (probe-directory dir)))
+    (when (and result (not (lish:command-pathname command)))
+      (cerror "Proceed anyway."
+	      "Looks like a ~a directory, but ~a isn't installed?"
+	      dir command))
+    result))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; CVS
 
@@ -197,7 +213,7 @@
 (defparameter *backend-cvs* (make-instance 'cvs))
 
 (defmethod check-existence ((type (eql :cvs)))
-  (probe-directory "CVS"))
+  (check-dir-and-command "CVS" "cvs"))
 
 (defmethod parse-line ((backend cvs) line i)
   (with-slots (goo errors extra) *puca*
@@ -245,7 +261,8 @@
   (:documentation "Backend for git."))
 
 (defmethod check-existence ((type (eql :git)))
-  (equal "true" (shell-line "git" "rev-parse" "--is-inside-work-tree")))
+  (and (check-dir-and-command ".git" "git")
+       (equal "true" (shell-line "git" "rev-parse" "--is-inside-work-tree"))))
 
 (defmethod banner ((backend git))
   "Print something useful at the top of the screen."
@@ -253,9 +270,18 @@
 	(col 5)
 	(branch (subseq (first (lish:!_ "git status -s -b --porcelain")) 3)))
     (labels ((do-line (fmt &rest args)
-	       (mvaddstr (incf line) col (apply #'format nil fmt args))))
+	       (let ((str (apply #'format nil fmt args)))
+		 (mvaddstr (incf line) col
+			   (subseq str 0 (min (length str)
+					      (- *cols* col 1)))))))
       (do-line "Repo:    ~a" (nos:current-directory))
       (do-line "Branch:  ~a" branch)
+      (do-line "Remotes: ")
+      (loop :with s
+	 :for r :in (lish:!_ "git remote -v")
+	 :do
+	 (setf s (split "\\s" r))
+	 (do-line "~a ~a ~a" (elt s 0) (elt s 2) (elt s 1)))
       (move (incf line) col))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -277,7 +303,7 @@
   (:documentation "Backend for SVN."))
 
 (defmethod check-existence ((type (eql :svn)))
-  (probe-directory ".svn"))
+  (check-dir-and-command ".svn" "svn"))
 
 ;; @@@ I haven't tested this.
 (defmethod add-ignore ((backend svn) file)
@@ -303,7 +329,7 @@
   (:documentation "Backend for Mercurial."))
 
 (defmethod check-existence ((type (eql :hg)))
-  (probe-directory ".hg"))
+  (check-dir-and-command ".hg" "hg"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -539,7 +565,7 @@ for the command-function).")
 		  :completion-func *complete-extended-command*
 		  :context :puca))
 	func)
-    (reset-prog-mode)
+    ;;(reset-prog-mode)
     (setf func (cadr (assoc command *extended-commands* :test #'equalp)))
     (when (and func (fboundp func))
       (funcall func)))
@@ -748,6 +774,10 @@ for the command-function).")
 (defun toggle-debug (p)
   (setf (puca-debug p) (not (puca-debug p))))
 
+(defun set-option-command (p)
+  (message "Set option: ")
+  )
+
 (defkeymap *puca-keymap*
   `((#\q		. quit)
     (#\Q		. quit)
@@ -790,6 +820,7 @@ for the command-function).")
     (#\e		. show-extra)
     (#\E		. show-errors)
     (#\:		. extended-command)
+    (#\-		. set-option-command)
     ;;(,(ctrl #\L)	. redraw)
     (,(code-char 12)	. redraw)
     (,(meta-char #\=)	. describe-key-briefly)
