@@ -20,7 +20,10 @@
     :documentation "Name of the option.")
    (value
     :initarg :value :accessor option-value  
-    :documentation "Value of the option."))
+    :documentation "Value of the option.")
+   (documentation
+    :initarg :documentation :accessor option-documentation
+    :documentation "Documentation for the option."))
   (:documentation "Something like a slot, but more malleable."))
 
 (defclass options-mixin ()
@@ -78,15 +81,6 @@
        (push (make-instance ',type :name ,name-string ,@args)
 	     (options-prototypes ,thing)))))
 
-#|
-
-(defclass carg (options:options-mixin) ((body) (wheels) (doors)))
-(defvar cc)
-(setf cc (make-instance 'carg :body 'suby :wheels 4 :doors 4))
-(options:defoption cc "tint" options:option :value "dark")
-(defvar zz)
-(setf zz (make-instance 'carg :body 'suby :wheels 4 :doors 4))
-
-|#
+;; “I have run out of options patterns.”
 
 ;; EOF
