@@ -19,88 +19,158 @@ make the table in the first place. For that you want the TABLE package.")
 (declaim (optimize (speed 0) (safety 3) (debug 3)
 		   (space 0) (compilation-speed 0)))
 
+;; @@@ There should only be ONE version of the main logic!!!
+
 (defgeneric output-table (table destination &key long-titles column-names)
   (:documentation "Output a table."))
 
 ;; This is quite inefficient since it gets the whole data set in
 ;; one shot and then goes thru every datum twice. But it's nice for
 ;; small queries since it displays in a somewhat compact form.
+;;
+;; @@@ Of course, *as usual*, This logic fails for unicode, since it uses
+;; things like LENGTH to determine how many columns a character occupies.
+;;
 (defun nice-print-table (rows column-names
-			 &key (long-titles t) (stream *standard-output*)
-			   (trailing-spaces t))
-  "Print results nicely in horizontal table. ROWS is a list of row, which are
-lists of values. COLUMN-NAMES is a list of column names to printed on top.
-Each column-name can be a string or a list of (\"name\" :<justification>),
-where <justification> is one of the keywords :LEFT or :RIGHT. If LONG-TITLES
-is true, make the columns at least as wide as the column names. COLUMN-NAMES
-can be NIL to print without column names."
-  (let ((sizes				; Initial column sizes from labels
+			 &key (long-titles t) (print-titles t)
+			   (stream *standard-output*)
+			   (trailing-spaces t) max-width
+			   (separator " "))
+  "Print results nicely in horizontal table.
+ROWS is a list of row, which are lists of values.
+
+COLUMN-NAMES is a list of column names to printed on top, which can be
+NIL to print without column names. Each column-name can be a string or a list
+of the form:
+  (\"name\" [:<justification>] [width])
+where <justification> is one of the keywords :LEFT, :RIGHT or :WRAP, and
+width is the desired width of the column. If the width isn't given, the width of
+the columns is determined by the maximum width required to print the data.
+
+LONG-TITLES can be true, to make the columns at least as wide as the names.
+PRINT-TITLES can be nil, to make the columns headings not print, even thought
+you have provided COLUMN-NAMES.
+
+MAX-WIDTH is the maximum width of the table. If necessary, the last column is
+resized to fit in this, and the whole row is trimmed to this."
+  (let ((sizes
 	 (if column-names
-	     (loop :for f :in column-names
-		:collect (if long-titles (length f) 0))
-	     (make-list (length (first rows)) :initial-element 0))))
+	     ;; Initial column sizes from labels
+	     (loop :for field :in column-names
+		:collect (typecase field
+			   (string
+			    (if long-titles (length field) nil))
+			   (list
+			    (let ((width (find-if #'numberp field)))
+			      (if long-titles
+				  (if width
+				      (- (max (length (car field)) width 0))
+				      (length (car field)))
+				  (and width (- width)))))
+			   (t nil)))
+	     (make-list (length (first rows)) :initial-element nil)))
+	(sep-len (length separator)))
+    ;;(format t "sizes = ~s~%" sizes)
+
     ;; Adjust column sizes by field data
-    (loop :for r :in rows
+    (loop :for row :in rows
        :do
        (setf sizes
-	     (loop :for f :in r :and s :in sizes
-		:collect (max s (typecase f
-				  (string (length f))
-				  (otherwise
-				   (length (format nil "~a" f))))))))
+	     (loop :with col = 0 :and len = (length row) :and new-size
+		:for field :in row
+		:and size :in sizes
+		:and i = 0 :then (1+ i)
+		:do
+		(setf new-size
+		      (if (and size (minusp size))
+			  size	; Don't mess with preset size
+			  (max (or size 0)
+			       (typecase field
+				 (string (length field))
+				 (otherwise
+				  (length (princ-to-string field)))))))
+		;;(incf col (abs new-size))
+		(when (and max-width (> (+ col (abs new-size)) max-width))
+		  ;;(format t "Chow ~s ~s~%" new-size col)
+		  (setf new-size (max 0
+				      (- new-size
+					 (- (+ col (abs new-size))
+					    max-width)))))
+		(incf col (abs new-size))
+		(when (< i (1- len))
+		  (incf col sep-len))
+		:collect new-size
+		)))
+    ;; Flip pre-set sizes.
+    ;;(format t "sizes = ~s~%" sizes)
+    (setf sizes (mapcar #'abs sizes))
+
     ;; Get justification
     (setf sizes
-	  (loop :for s :in sizes
+	  (loop :for size :in sizes
 	     :for col = column-names :then (cdr col)
 	     :collect
-	     (list s (if (and (listp (car col)) (eql (second (car col)) :right))
-			 :right :left))))
+	     (list size (if (and (listp (car col))
+				 (member (second (car col)) '(:right :wrap)))
+			    (second (car col)) :left))))
     ;; Print titles
-    (when column-names
-      (loop :with str :and fmt = "~va "
+    (when (and column-names print-titles)
+      (loop :with str :and fmt = "~va" :and len = (length column-names)
 	 :for col :in column-names
 	 :and (size just) :in sizes
+	 :and i = 0 :then (1+ i)
 	 :do
 	 (if (listp col)
 	     (setf str (first col)
-		   fmt (if (eql just :right) "~v@a " "~va "))
+		   fmt (if (eql just :right) "~v@a" "~va"))
 	     (setf str col
-		   fmt "~va "))
+		   fmt "~va"))
 	 (format stream fmt size
 		 (subseq (string-capitalize (substitute #\space #\_ str))
-			 0 (min (length str) size))))
+			 0 (min (length str) size)))
+	 (when (< i (1- len))
+	   (write-string separator stream)))
       (terpri stream)
       ;; Lines
-      (loop :for				;f in field-names and
-	 (size) :in sizes
+      (loop :with len = (length sizes)
+	 :for (size) :in sizes
+	 :and i = 0 :then (1+ i)
 	 :do
-	 (format stream "~v,,,va " size #\- #\-))
+	 (format stream "~v,,,va" size #\- #\-)
+	 (when (< i (1- len))
+	   (write-string separator stream)))
       (terpri stream))
     ;; Values
     (loop :with fmt :and cell-lines :and cell-col :and cell-width
-       :for r :in rows :do
-       (loop :with row-len = (length r) :and col = 0 :and cell
-	  :for f :in r :and (size just) :in sizes :and i = 0 :then (1+ i)
+       :for row :in rows :do
+       (loop :with row-len = (length row) :and col = 0 :and cell
+	  :for field :in row
+	  :and (size just) :in sizes
+	  :and i = 0 :then (1+ i)
 	  :do
 	  (when (eq just :wrap)
 	    (setf cell-lines (split-sequence
-			      #\newline (justify-text f :cols size
+			      #\newline (justify-text field :cols (1+ size)
 						      :stream nil))
 		  cell-col col
 		  cell-width size
-		  f (car cell-lines)))
+		  field (car cell-lines)))
 	  (setf fmt
 		(cond
-		  ((and (= i (1- row-len)) (not trailing-spaces)) "~*~a ")
-		  ((eql just :right) "~v@a ")
-		  ((typep f 'number) "~v@a ")
-		  (t "~va ")))
-	  (setf cell (format nil fmt size f))
+		  ((and (= i (1- row-len)) (not trailing-spaces)) "~*~a")
+		  ((eql just :right) "~v@a")
+		  ((typep field 'number) "~v@a")
+		  (t "~va")))
+	  (setf cell (format nil fmt size field))
 	  (incf col (length cell))	; of course this isn't right
-	  (write-string cell stream))
+	  (write-string (subseq cell 0 (min size (length cell))) stream)
+	  (when (< i (1- row-len))
+	    (write-string separator stream)
+	    (incf col (length separator))))
        (when cell-lines
 	 (loop :for l :in (cdr cell-lines) :do
-	    (format t "~%~v,,,va~va" cell-col #\space #\space cell-width l))
+	    (format stream "~%~v,,,va~va"
+		    cell-col #\space #\space cell-width l))
 	 (setf cell-lines nil))
        (terpri stream)))
     (length rows))
