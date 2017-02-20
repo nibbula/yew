@@ -81,18 +81,16 @@
 (defvar *puca-prototype* (make-instance 'puca)
   "Prototype PUCA object.")
 
-(defoption *puca-prototype* show-all-tracked option :value nil)
+(defoption *puca-prototype* show-all-tracked option :value nil
+	   :documentation "Show all tracked files.")
 
 (defclass backend ()
   ((name
     :initarg :name :accessor backend-name :type string
     :documentation "The name of the back-end.")
    (list-command
-    :initarg :list-command :accessor backend-list-command  
+    :initarg :list-command :accessor backend-list-command
     :documentation "Command to list the things.")
-   (list-all-command
-    :initarg :list-all-command :accessor backend-list-all-command  
-    :documentation "Command to list all the things.")
    (add
     :initarg :add :accessor backend-add :type string
     :documentation "Command to add a file to the repository.")
@@ -137,6 +135,9 @@
 (defgeneric banner (backend)
   (:documentation "Print something at the top of the screen."))
 
+(defgeneric get-status-list (backend)
+  (:documentation "Return a list of files and their status."))
+
 ;; Generic implementations of some possibly backend specific methods.
 
 (defmethod parse-line ((backend backend) line i)
@@ -162,6 +163,21 @@
 	 (when extra
 	   (setf (goo-extra-lines (car goo)) (nreverse extra))
 	   (setf extra nil)))))))
+
+(defmethod get-status-list ((backend backend))
+  "This is for backends which just have a fixed list command."
+  (let* ((i 0)
+	 (cmd (backend-list-command (puca-backend *puca*)))
+	 (cmd-name (car cmd))
+	 (cmd-args (cdr cmd))
+	 line)
+    (with-process-output (stream cmd-name cmd-args)
+      (loop :while (setf line (read-line stream nil nil))
+	 :do
+	 (incf i)
+	 (message *puca* "Listing...~d" i)
+	 (refresh)
+	 :collect line))))
 
 (defmethod add-ignore ((backend backend) file)
   "Add FILE to the list of ignored files."
@@ -247,17 +263,17 @@
 (defclass git (backend)
   ()
   (:default-initargs
-   :name	 "git"
-   :list-command '("git" "status" "--porcelain")
-   :add		 "git --no-pager add ~{~a ~}"
-   :reset	 "git --no-pager reset ~{~a ~}"
-   :diff	 "git diff --color ~{~a ~} | pager"
-   :diff-repo	 "git diff --color --staged | pager"
-   :commit	 "git --no-pager commit ~{~a ~}"
-   :update	 "git --no-pager pull ~{~a ~}"
-   :update-all	 "git --no-pager pull"
-   :push	 "git --no-pager push"
-   :ignore-file	 ".gitignore")
+   :name	      "git"
+   :list-command      '("git" "status" "--porcelain")
+   :add		      "git --no-pager add ~{~a ~}"
+   :reset	      "git --no-pager reset ~{~a ~}"
+   :diff	      "git diff --color ~{~a ~} | pager"
+   :diff-repo	      "git diff --color --staged | pager"
+   :commit	      "git --no-pager commit ~{~a ~}"
+   :update	      "git --no-pager pull ~{~a ~}"
+   :update-all	      "git --no-pager pull"
+   :push	      "git --no-pager push"
+   :ignore-file	      ".gitignore")
   (:documentation "Backend for git."))
 
 (defmethod check-existence ((type (eql :git)))
@@ -283,6 +299,36 @@
 	 (setf s (split "\\s" r))
 	 (do-line "~a ~a ~a" (elt s 0) (elt s 2) (elt s 1)))
       (move (incf line) col))))
+
+(defmethod get-status-list ((backend git))
+  (let* ((cmd (backend-list-command (puca-backend *puca*)))
+	 (cmd-name (car cmd))
+	 (cmd-args (cdr cmd))
+	 (i 0)
+	 line result)
+    (setf result
+	  (with-process-output (stream cmd-name cmd-args)
+	    (loop :while (setf line (read-line stream nil nil))
+	       :do
+	       (incf i)
+	       (message *puca* "Listing...~d" i)
+	       (refresh)
+	       :collect line)))
+    ;;(debug-msg "~a from git status" i)
+    (when (puca-show-all-tracked *puca*)
+      (setf result
+	    (append result
+		    (with-process-output (stream "git" '("ls-files"))
+		      (loop :while (setf line (read-line stream nil nil))
+			 :do
+			 (incf i)
+			 (message *puca* "Listing...~d" i)
+			 (refresh)
+			 :collect (s+ " _ " line)))))
+      ;;(move 0 0) (erase) (addstr (format nil "~w" result))
+      ;;(debug-msg "~a from git ls-files" i)
+      )
+    result))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; SVN
@@ -336,10 +382,13 @@
 (defparameter *backends* '(:git :cvs :svn :hg)
   "The availible backends.")
 
-(defun draw-message (p)
+(defun format-message (fmt &rest args)
   (move (- *lines* 2) 2)
   (clrtoeol)
-  (addstr (puca-message p)))
+  (addstr (apply #'format nil fmt args)))
+
+(defun draw-message (p)
+  (format-message (puca-message p)))
 
 (defmethod message ((p puca) format-string &rest format-args)
   "Display a message in the message area."
@@ -388,27 +437,20 @@
   (message *puca* "Listing...")
   (with-slots (goo top errors maxima (point inator::point) cur extra) *puca*
     (setf goo '()
-	  errors '())
-    (let* ((i 0)
-	   (cmd (backend-list-command (puca-backend *puca*)))
-	   (cmd-name (car cmd))
-	   (cmd-args (cdr cmd))
-	   line)
-      (setf extra '())
-      (with-process-output (stream cmd-name cmd-args)
-	(loop :while (setf line (read-line stream nil nil))
-	   :do
-	   (parse-line (puca-backend *puca*) line i)
-	   (incf i)
-	   (message *puca* "Listing...~d" i)
-	   (refresh)))
-      (setf goo (nreverse goo)
-	    errors (nreverse errors))
-      (setf maxima (length goo))
-      (when (>= point maxima)
-	(setf point (1- maxima)))
-      (when (>= top point)
-	(setf top (max 0 (- point 10))))))
+	  errors '()
+	  extra '())
+    (loop
+       :for line :in (get-status-list (puca-backend *puca*))
+       :and i = 0 :then (1+ i)
+       :do
+       (parse-line (puca-backend *puca*) line i))
+    (setf goo (nreverse goo)
+	  errors (nreverse errors))
+    (setf maxima (length goo))
+    (when (>= point maxima)
+      (setf point (1- maxima)))
+    (when (>= top point)
+      (setf top (max 0 (- point 10)))))
   (message *puca* "Listing...done"))
 
 (defun draw-screen ()
@@ -774,9 +816,22 @@ for the command-function).")
 (defun toggle-debug (p)
   (setf (puca-debug p) (not (puca-debug p))))
 
+(defparameter *option-setting*
+  #((#\a show-all-tracked)))
+
 (defun set-option-command (p)
-  (message "Set option: ")
-  )
+  (format-message "Set option: ")
+  (let* ((c (get-char))
+	 (tog (find c *option-setting* :key #'car))
+	 (name (string (second tog)))
+	 #| (options (options p)) |#)
+    (if tog
+	(progn
+	  (set-option p name (not (get-option p name)))
+	  (message p "~a is ~a" name (get-option p name)))
+	(progn
+	  (message p "Option not found: ~a" c))))
+  (get-list))
 
 (defkeymap *puca-keymap*
   `((#\q		. quit)
