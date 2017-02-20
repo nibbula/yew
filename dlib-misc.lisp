@@ -97,49 +97,6 @@ swaps to do times the length of the vector."
 	     (rotatef (aref vector a) (aref vector b)))))
   vector)
 
-;; This is very consing, but remarkably succinct.
-;; It might be nice if it got the COLS from the implementation's idea of it.
-(defun justify-text (s &key (cols 80) (stream *standard-output*)
-			 (prefix "") (separator #\space)
-			 omit-first-prefix)
-  "Print the string S right justified by words, into COLS characters wide,
-on the stream STREAM.
-SEPARATOR is a character or string which separates the input words.
-PREFIX is printed in front of each line.
-If OMIT-FIRST-PREFIX is true, don't print the first prefix."
-  (format stream (format nil "~a~a~a~d~a"
-			 "~a~{~<~%" prefix "~1," cols ":;~a~> ~}")
-	  (if omit-first-prefix "" prefix)
-	  (split-sequence separator s :omit-empty t)))
-
-(defun untabify (line &optional (col 0))
-  "Return a new string with all tabs in the LINE to the appropriate number
-of spaces, preserving columns. Assumes that LINE is starting in column COL,
-which defaults to zero."
-  (with-output-to-string (str)
-    (loop
-       :for c :across line
-       :do
-       (if (eql c #\tab)
-           (loop :for i :from 0 :below (- 8 (rem col 8))
-              :do
-              (write-char #\space str)
-              (incf col))
-           (progn
-             (write-char c str)
-             (incf col))))))
-
-; calculating independant digits of pi
-; (defun pipi (d)
-;   (let ((x 0) (n 1) p)
-;     (loop while (< n d)
-;       do
-;       (setf p (/ (* (- (* 120 n) 89) (+ n 16))
-; 		 (* (* (* (- (* 512 n) 1024) (+ n 712)) (- n 206)) (+ n 21)))
-; 	    x (+ (* 16 x) p))
-;       (incf n)
-;       (* 16 x)))
-
 ;; @@@ This should probably support the same args as PARSE-INTEGER.
 (defun parse-integer-with-radix (str)
   "Parse an integer from a string, allowing for a Lisp radix prefix."
@@ -171,6 +128,9 @@ which defaults to zero."
 	(error "Malformed integer ~a." str))))
     (t
      (parse-integer str :junk-allowed nil))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; time
 
 ;; @@@ So where would we get this from for other languages?
 ;; I suppose we could mine them from strftime.
@@ -367,6 +327,69 @@ The date part is considered to be the current date."
 (defun time-to-days      (days)      (/ days      (* 60 60 24)))
 (defun time-to-hours     (hours)     (/ hours     (* 60 60)))
 (defun time-to-minutes   (minutes)   (/ minutes   60))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; hooks
+
+;; Hooks - a simple, old-fashioned convention.
+
+(defmacro add-hook (var func)
+  "Add a hook function FUNC to the hook variable VAR."
+  `(pushnew ,func ,var))
+
+(defmacro remove-hook (var func)
+  "Remove hook function FUNC from the hook variable VAR."
+  `(setf ,var (delete ,func ,var)))
+
+(defun run-hooks (var &rest args)
+  (loop :for f :in var
+     :do (apply f args)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; printing
+
+(defun untabify (line &optional (col 0))
+  "Return a new string with all tabs in the LINE to the appropriate number
+of spaces, preserving columns. Assumes that LINE is starting in column COL,
+which defaults to zero."
+  (with-output-to-string (str)
+    (loop
+       :for c :across line
+       :do
+       (if (eql c #\tab)
+           (loop :for i :from 0 :below (- 8 (rem col 8))
+              :do
+              (write-char #\space str)
+              (incf col))
+           (progn
+             (write-char c str)
+             (incf col))))))
+
+;; This is very consing, but remarkably succinct.
+;; It might be nice if it got the COLS from the implementation's idea of it.
+(defun justify-text (s &key (cols 80) (stream *standard-output*)
+			 (prefix "") (separator #\space)
+			 omit-first-prefix)
+  "Print the string S right justified by words, into COLS characters wide,
+on the stream STREAM.
+SEPARATOR is a character or string which separates the input words.
+PREFIX is printed in front of each line.
+If OMIT-FIRST-PREFIX is true, don't print the first prefix."
+  (format stream (format nil "~a~a~a~d~a"
+			 "~a~{~<~%" prefix "~1," cols ":;~a~> ~}")
+	  (if omit-first-prefix "" prefix)
+	  (split-sequence separator s :omit-empty t)))
+
+;; calculating independant digits of pi
+;; (defun pipi (d)
+;;   (let ((x 0) (n 1) p)
+;;     (loop while (< n d)
+;;       do
+;;       (setf p (/ (* (- (* 120 n) 89) (+ n 16))
+;; 		 (* (* (* (- (* 512 n) 1024) (+ n 712)) (- n 206)) (+ n 21)))
+;; 	    x (+ (* 16 x) p))
+;;       (incf n)
+;;       (* 16 x)))
 
 (defun print-properties (prop-list &key (right-justify nil) (de-lispify t)
 				     (stream t))
@@ -780,69 +803,9 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
 	   (return-from print-size (pr i))))
       (pr 9))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defvar *spin* nil
-  "Index into the spinner string.")
-
-(defvar *spin-string* nil
-  "The string of characters to animate.")
-
-(defvar *spin-length* nil
-  "The pre-calculated lenght of the spin string.")
-
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defparameter *plain-spin-string* "|/-\\"
-    "Simple ASCII baton.")
-
-  (defparameter *unicode-disk-spin-string* "◒◐◓◑"
-    "Spin string using common unicode characters.")
-
-  (defparameter *unicode-scan-spin-string* "█▉▊▋▌▍▎▏"
-    "Spin string using common unicode characters.")
-
-  (defparameter *unicode-digit-spin-string* "➊➋➌➍➎➏➐➑➒➓"
-    "Spin string using common unicode characters.")
-
-  (defparameter *unicode-sparkle-spin-string* "❋❊❈❇❇··"
-    "Spin string using common unicode characters.")
-
-  (defparameter *unicode-braille-spin* "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-    "Spin string using common unicode characters.")
-
-  (defparameter *unicode-square-spin* "◰◳◲◱"
-    "Spin string using common unicode characters.")
-
-  (defparameter *emoji-spin-string* "🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚🕛"
-    "Spin string with fancy emoji clock face characters.")
-
-  (defvar *default-spin-string* *plain-spin-string*
-    "The default spin string."))
-
-(defun spin (&optional (stream *standard-output*))
-  "Do one iteration of a spin animation."
-  (write-char (char *spin-string* *spin*) stream)
-  (write-char #\backspace stream)
-  (finish-output stream)
-  (incf *spin*)
-  (when (>= *spin* *spin-length*)
-    (setf *spin* 0)))
-
-(defun unspin (&optional (stream *standard-output*))
-  "Hopefully remove the spinning character."
-  (write-char #\space stream)
-  (write-char #\backspace stream)
-  (finish-output stream))
-
-(defmacro with-spin ((&key (spin-string *default-spin-string*))
-		     &body body)
-  `(let ((*spin-string* ,spin-string)
-	 (*spin-length* (length ,spin-string))
-	 (*spin* 0))
-     (prog1 (progn ,@body)
-       (unspin))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; packages
 
 (defvar *loadable-packages* nil
   "Cached list of ASDF loadable packages. Set to NIL to recompute.")
@@ -944,6 +907,9 @@ with the same name. If it's a macro, pass MACRO as true, mmkay?"
 	 (error "Autoload of ~a didn't define ~a." ,system ',symbol))
        ,doit)))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; I/O
+
 #|
 (defun read-text ()
   "A very simplistic text reader. Mostly useful if you just want to paste some
@@ -1025,18 +991,68 @@ file is accepted as confirmation."
 	       (character (and (> (length l) 0)
 			       (equalp (aref l 0) confirming-input))))))))
 
-;; Hooks - a simple, old-fashioned convention.
 
-(defmacro add-hook (var func)
-  "Add a hook function FUNC to the hook variable VAR."
-  `(pushnew ,func ,var))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; spin
 
-(defmacro remove-hook (var func)
-  "Remove hook function FUNC from the hook variable VAR."
-  `(setf ,var (delete ,func ,var)))
+(defvar *spin* nil
+  "Index into the spinner string.")
 
-(defun run-hooks (var &rest args)
-  (loop :for f :in var
-     :do (apply f args)))
+(defvar *spin-string* nil
+  "The string of characters to animate.")
+
+(defvar *spin-length* nil
+  "The pre-calculated lenght of the spin string.")
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *plain-spin-string* "|/-\\"
+    "Simple ASCII baton.")
+
+  (defparameter *unicode-disk-spin-string* "◒◐◓◑"
+    "Spin string using common unicode characters.")
+
+  (defparameter *unicode-scan-spin-string* "█▉▊▋▌▍▎▏"
+    "Spin string using common unicode characters.")
+
+  (defparameter *unicode-digit-spin-string* "➊➋➌➍➎➏➐➑➒➓"
+    "Spin string using common unicode characters.")
+
+  (defparameter *unicode-sparkle-spin-string* "❋❊❈❇❇··"
+    "Spin string using common unicode characters.")
+
+  (defparameter *unicode-braille-spin* "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    "Spin string using common unicode characters.")
+
+  (defparameter *unicode-square-spin* "◰◳◲◱"
+    "Spin string using common unicode characters.")
+
+  (defparameter *emoji-spin-string* "🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚🕛"
+    "Spin string with fancy emoji clock face characters.")
+
+  (defvar *default-spin-string* *plain-spin-string*
+    "The default spin string."))
+
+(defun spin (&optional (stream *standard-output*))
+  "Do one iteration of a spin animation."
+  (write-char (char *spin-string* *spin*) stream)
+  (write-char #\backspace stream)
+  (finish-output stream)
+  (incf *spin*)
+  (when (>= *spin* *spin-length*)
+    (setf *spin* 0)))
+
+(defun unspin (&optional (stream *standard-output*))
+  "Hopefully remove the spinning character."
+  (write-char #\space stream)
+  (write-char #\backspace stream)
+  (finish-output stream))
+
+(defmacro with-spin ((&key (spin-string *default-spin-string*))
+		     &body body)
+  `(let ((*spin-string* ,spin-string)
+	 (*spin-length* (length ,spin-string))
+	 (*spin* 0))
+     (prog1 (progn ,@body)
+       (unspin))))
 
 ;; End
