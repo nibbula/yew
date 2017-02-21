@@ -30,6 +30,9 @@
    ))
 (in-package :puca)
 
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+		   (compilation-speed 0)))
+
 (defstruct goo
   "A file/object under version control."
   selected
@@ -78,10 +81,10 @@
    :point 0)
   (:documentation "An instance of a version control frontend app."))
 
-(defvar *puca-prototype* (make-instance 'puca)
-  "Prototype PUCA object.")
+(defparameter *puca-prototype* nil
+  "Prototype PUCA options.")
 
-(defoption *puca-prototype* show-all-tracked option :value nil
+(defoption puca show-all-tracked option :value nil
 	   :documentation "Show all tracked files.")
 
 (defclass backend ()
@@ -329,6 +332,9 @@
       ;;(debug-msg "~a from git ls-files" i)
       )
     result))
+
+;; history mode
+;; git log "--format=%h %cr %ae%n%s" -- dlib.lisp
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; SVN
