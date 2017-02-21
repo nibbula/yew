@@ -480,7 +480,8 @@ is in, and the start and end position of the expression in STRING."
                ;; (with-package :lish-junk
                ;;   (ignore-errors
 	       ;; 	   (read-from-string string nil nil :start pos)))))
-	       (clean-read-from-string string nil nil nil :start pos)))
+	       (ignore-errors
+		 (clean-read-from-string string nil nil nil :start pos))))
        (when sym
 	 (setf end (if (= pos len) pos (1- pos)))
 	 (incf i))
