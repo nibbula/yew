@@ -6,6 +6,15 @@
   (:documentation "Content sniffer.")
   (:use :cl :dlib :opsys :stretchy)
   (:export
+   #:content-type
+   #:content-name
+   #:content-category
+   #:content-description
+   #:content-file-name-match
+   #:content-encoding
+   #:content-properties
+   #:make-content-type
+
    #:*default-database-type*
    #:use-database
    #:guess-content-type
