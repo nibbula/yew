@@ -7,12 +7,12 @@
   (:use :cl :dlib :opsys :stretchy)
   (:export
    #:content-type
-   #:content-name
-   #:content-category
-   #:content-description
-   #:content-file-name-match
-   #:content-encoding
-   #:content-properties
+   #:content-type-name
+   #:content-type-category
+   #:content-type-description
+   #:content-type-file-name-match
+   #:content-type-encoding
+   #:content-type-properties
    #:make-content-type
 
    #:*default-database-type*
@@ -34,8 +34,7 @@
     :video :chemical)
   "Reasonable media categories.")
 
-(defvar *content-types*
-  (make-hash-table :test #'equal :size 128)
+(defvar *content-types* nil
   "Table of content type name to content-type.")
 
 (defstruct content-type
@@ -80,6 +79,7 @@
 (defun content-types ()
   (or *content-types*
       (progn
+	(setf *content-types* (make-hash-table :test #'equalp :size 128))
 	(loop :for (name category desc) :in *fake-types* :do
 	   (setf (gethash name *content-types*)
 		 (make-content-type
