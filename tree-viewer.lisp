@@ -10,7 +10,7 @@
 (defpackage :tree-viewer
   (:documentation "View trees.")
   (:nicknames :tb)
-  (:use :cl :dlib :curses :char-util :keymap :opsys)
+  (:use :cl :dlib :curses :char-util :keymap :opsys :dlib-interactive)
   (:export
    #:view-tree
    #:node #:node-branches #:node-open #:make-node
@@ -1148,7 +1148,7 @@ and indented properly for multi-line objects."
 (defmethod display-node ((node environment-node) level)
   "Display an Lisp image environment node."
   (let ((str (with-output-to-string (stream)
-	       (dlib-misc:describe-environment stream))))
+	       (describe-environment stream))))
     (when (eql (char str (1- (length str))) #\newline)
       (setf (char str (1- (length str))) #\space))
     (display-object node str level)))
@@ -1157,7 +1157,7 @@ and indented properly for multi-line objects."
 (defmethod display-node ((node system-node) level)
   (let* ((sys (asdf:find-system (node-object node)))
 	 (str (with-output-to-string (*standard-output*)
-		(dlib-misc:describe-system sys))))
+		(describe-system sys))))
     (when (eql (char str (1- (length str))) #\newline)
       (setf (char str (1- (length str))) #\space))
     (display-object node str level)))
@@ -1212,7 +1212,7 @@ and indented properly for multi-line objects."
       'object-node
       :object
       (let ((str (with-output-to-string (*standard-output*)
-		   (dlib-misc:describe-class class))))
+		   (describe-class class))))
 	(when (eql (char str (1- (length str))) #\newline)
 	  (setf (char str (1- (length str))) #\space))
 	str)
@@ -1237,7 +1237,7 @@ and indented properly for multi-line objects."
   ;; (format t "find-class = ~w~%" (get-class (node-object node)))
   (let* ((klass (get-class (node-object node)))
 	 ;; (str (with-output-to-string (*standard-output*)
-	 ;; 	(dlib-misc:describe-class klass)))
+	 ;; 	(describe-class klass)))
 	 )
     ;; (when (eql (char str (1- (length str))) #\newline)
     ;;   (setf (char str (1- (length str))) #\space))

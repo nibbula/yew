@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :long-description   "A user interface for viewing generic trees."
     :depends-on (:dlib :dlib-misc :curses :char-util :keymap :fui :pick-list
-		 :glob)
+		 :glob :dlib-interactive)
     :components
     ((:file "tree-viewer")))
