@@ -97,6 +97,7 @@
   "Return a Unicode normalized string based on STRING. FORM can be one of
 :NFD, :NFC, :NFKD, or :NFKC."
   #+sbcl (normalize-string string form)
+  #-(or sbcl) (declare (ignore string form))
   #-(or sbcl) (error "Missing implementation: normalize-string"))
 
 (defparameter *high-combining-chars*
