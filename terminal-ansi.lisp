@@ -132,7 +132,12 @@ two values ROW and COLUMN."
     (set-terminal-mode file-descriptor :line nil :echo nil)
     (when (not output-stream)
       (setf output-stream (open device-name :direction :output
-				#-clisp :if-exists #-clisp :append)))
+				#-clisp :if-exists #-clisp :append))
+      ;; @@@ Why do we have to do this?
+      #+ccl (setf (stream-external-format output-stream)
+		  (ccl:make-external-format :character-encoding :utf-8
+					    :domain :file))
+      )
       ;; (dbug "terminal-ansi open out~%"))
     (terminal-get-size tty)))
 
