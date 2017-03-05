@@ -12,7 +12,7 @@
 ;;    in the system specific package, likely conditionalized by features.
 ;;  - Be fully implemented in this package, if there's little variance
 ;;    between systems
-;;  - Be in implementd in a language specific module (e.g. libc.lisp)
+;;  - Be in implemented in a language specific module (e.g. libc.lisp)
 ;;    if it's something that would be found in a standard library for that
 ;;    language. We would like these to be optional.
 ;;  - Be implemented in opsys-base, if they are needed to be used by the
@@ -25,8 +25,8 @@
 ;;    struct instead of a Lisp struct.
 ;;
 ;;  - In foreign-* structs, use the C names, e.g. with underscores, for slot
-;;    names, (e.g. "tv_usec").  If the C equivalent would be StudlyCapped,
-;;    like on windows, do that.This make it easier to translate from C code.
+;;    names, (e.g. "tv_usec"). If the C equivalent would be StudlyCapped,
+;;    like on windows, do that. This makes it easier to translate from C code.
 ;;
 ;;  - If there's a C struct that callers need to access, provide a lisp struct
 ;;    instead. This avoids having to access it carefully with CFFI macros,
@@ -540,6 +540,8 @@ systems, this means \".\" and \"..\".")
 (defmacro with-locked-file ((pathname &key (lock-type :write) (timeout 3)
 				      (increment .1))
 			    &body body)
+  "Evaluate BODY with PATHNAME locked. Only wait for TIMEOUT seconds to get a
+lock, checking at least every INCREMNT seconds."
   ;; @@@ Need to wrap with recursive thread locks
   (with-unique-names (locked)
     `(let ((,locked nil))
@@ -587,13 +589,13 @@ if there isn't one."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Processes
 
-;; @@@ This is very misleading because you would think that the args
-;; would end up as separate arguments, but may not.
+;; @@@ 
 
 (defun system-command (cmd &optional args)
-  "Run a system command. The command is generally given to whatever the
- system shell would be and the output and input are to the standard
- places."
+  "Run a system command. The command is generally given to whatever the system
+shell would be and the output and input are to the standard places. You would
+think that the ARGS would end up as separate arguments to the eventual command, 
+because they're passed to the system shell, they may not."
   #+clisp (ext:run-shell-command (format nil "~a~{ ~a~}" cmd args)) ; XXX
 ;  #+sbcl (sb-ext:process-output (sb-ext:run-program cmd args :search t))
 ;  #+sbcl (sb-ext:process-exit-code
@@ -618,6 +620,9 @@ if there isn't one."
 ;; @@@ Consistently return exit status?
 ;; @@@ Evironment on other than sbcl and cmu?
 (defun run-program (cmd args &key (environment nil env-p))
+  "Run CMD with arguments ARGS which should be a list. ENVIRONMENT is the list
+of environment variables defined. If ENVIRONMENT isn't provided, inherit it from
+the current process."
 ;  #+(or clisp sbcl ccl) (fork-and-exec cmd args)
   #+clisp (declare (ignore environment env-p))
   #+clisp (ext:run-program cmd :arguments args)
@@ -728,7 +733,7 @@ of system time.")
 around the time of the call.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; IPC
+;; Inter-process communication
 
 (defun environ-to-string-list (env)
   "Convert a keyworded alist environment to a list of strings with #\=.
@@ -740,7 +745,7 @@ Just return ENV if it doesn't seem like an alist."
 	      :collect (format nil "~a=~a" a b)))
       env))
 
-;; pipes
+;; Pipes
 
 ;; @@@@ We should make sure it's portable!
 ;; @@@ add environment on other than sbcl
@@ -951,66 +956,9 @@ The individual settings override the settings in MODE.")
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Character coding / localization
 
-(defconstant +LC-ALL+      0 "Entire locale generally.")
-(defconstant +LC-COLLATE+  1 "String collation routines.")
-(defconstant +LC-CTYPE+    2 "Character types. Upper and lower case, ~
-			      alphabetic or non-alphabetic characters, etc.")
-(defconstant +LC-MONETARY+ 3 "For formatting monetary values.")
-(defconstant +LC-NUMERIC+  4 "For formatting numbers.  This controls the ~
-			      formatting of decimal points in input and ~
-			      output of floating point numbers.")
-(defconstant +LC-TIME+     5 "For formatting dates and times.")
-(defconstant +LC-MESSAGES+ 6 "For message catalogs, see catopen(3) function.")
-(defconstant +LC-LAST+     7 "Highest locale category + 1.")
-
-(defcfun ("setlocale" real-setlocale) :string (category :int) (locale :string))
-
-(define-constant +lc-category-alist+ `((:all      . ,+LC-ALL+)
-				       (:collate  . ,+LC-COLLATE+)
-				       (:ctype    . ,+LC-CTYPE+)
-				       (:monetary . ,+LC-MONETARY+)
-				       (:numeric  . ,+LC-NUMERIC+)
-				       (:time     . ,+LC-TIME+)
-				       (:messages . ,+LC-MESSAGES+)))
-
-(defun lc-category (c)
-  "Return an valid integer locale category given a keyword. If the argument ~
-   is already a valid integer locale category, it is returned, otherwise an ~
-   error is signaled."
-  (ctypecase c
-   (number
-    (if (and (>= c 0) (< c +LC-LAST+))
-	c
-	(error "Locale category ~s out of range" c)))
-   (keyword
-    (or (cdr (assoc c +lc-category-alist+))
-	(error "Invalid locale category ~s" c)))))
-
-(defun setlocale (category &optional locale)
-  "See manpage for setlocale(3). CATEGORY can be a keyword or integer."
-  (let ((result (real-setlocale (lc-category category)
-				(or locale (cffi:null-pointer)))))
-    (or result
-	(error "setlocale of locale ~s for category ~a failed."
-	       locale category))))
-
-(define-constant +lc-env-type+ `((:all      . "LANG")
-				 (:collate  . "LC_COLLATE")
-				 (:ctype    . "LC_CTYPE")
-				 (:monetary . "LC_MONETARY")
-				 (:numeric  . "LC_NUMERIC")
-				 (:time     . "LC_TIME")
-				 (:messages . "LC_MESSAGES")))
-
-(defun setup-locale-from-environment ()
-  (loop :with e = nil
-	:for f :in +lc-env-type+
-	:do
-	(when (setf e (getenv (cdr f)))
-	  (setlocale (car f) e))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Misc
+;; Miscellaneous
 
 ;; Not exactly an operating system function, but implementation specific
 (defun exit-lisp ()
