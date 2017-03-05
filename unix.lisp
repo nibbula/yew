@@ -3509,11 +3509,24 @@ it is not a symbolic link."
   #-(or clisp sbcl ccl cmu ecl lispworks abcl)
   (missing-implementation 'probe-directory))
 
-
 ;; Questionable:
 ;; mmap/munmap/mprotect/madvise ???
 ;; File locking? : fcntl F_GETLK / F_GETLK F_SETLKW
-;; utimes
+
+(defcfun ("utimensat" real-utimensat) :int
+  (dirfd :int) (pathname :string)
+  (times (:pointer (:struct foreign-timespec))) ; struct timespec times[2]
+  (flags :int))
+
+#|
+(defun set-file-time (path &key seconds nanoseconds)
+  (let (dir-fd
+	
+    (unwind-protect
+      (setf dir-fd (posix-open 
+  (syscall (real-utimensat
+  )
+|#
 
 ;; What about splice:
 ;; splice, vmsplice, tee
