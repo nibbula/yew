@@ -121,4 +121,67 @@
 ;;(defcfun isspecial :int (c :int))
 ;;(defcfun isrune :int (c :int))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Character coding / localization
+
+(defconstant +LC-ALL+      0 "Entire locale generally.")
+(defconstant +LC-COLLATE+  1 "String collation routines.")
+(defconstant +LC-CTYPE+    2 "Character types. Upper and lower case, ~
+			      alphabetic or non-alphabetic characters, etc.")
+(defconstant +LC-MONETARY+ 3 "For formatting monetary values.")
+(defconstant +LC-NUMERIC+  4 "For formatting numbers.  This controls the ~
+			      formatting of decimal points in input and ~
+			      output of floating point numbers.")
+(defconstant +LC-TIME+     5 "For formatting dates and times.")
+(defconstant +LC-MESSAGES+ 6 "For message catalogs, see catopen(3) function.")
+(defconstant +LC-LAST+     7 "Highest locale category + 1.")
+
+(defcfun ("setlocale" real-setlocale) :string (category :int) (locale :string))
+
+(define-constant +lc-category-alist+ `((:all      . ,+LC-ALL+)
+				       (:collate  . ,+LC-COLLATE+)
+				       (:ctype    . ,+LC-CTYPE+)
+				       (:monetary . ,+LC-MONETARY+)
+				       (:numeric  . ,+LC-NUMERIC+)
+				       (:time     . ,+LC-TIME+)
+				       (:messages . ,+LC-MESSAGES+)))
+
+(defun lc-category (c)
+  "Return an valid integer locale category given a keyword. If the argument ~
+   is already a valid integer locale category, it is returned, otherwise an ~
+   error is signaled."
+  (ctypecase c
+   (number
+    (if (and (>= c 0) (< c +LC-LAST+))
+	c
+	(error "Locale category ~s out of range" c)))
+   (keyword
+    (or (cdr (assoc c +lc-category-alist+))
+	(error "Invalid locale category ~s" c)))))
+
+(defun setlocale (category &optional locale)
+  "See manpage for setlocale(3). CATEGORY can be a keyword or integer."
+  (let ((result (real-setlocale (lc-category category)
+				(or locale (cffi:null-pointer)))))
+    (or result
+	(error "setlocale of locale ~s for category ~a failed."
+	       locale category))))
+
+(define-constant +lc-env-type+ `((:all      . "LANG")
+				 (:collate  . "LC_COLLATE")
+				 (:ctype    . "LC_CTYPE")
+				 (:monetary . "LC_MONETARY")
+				 (:numeric  . "LC_NUMERIC")
+				 (:time     . "LC_TIME")
+				 (:messages . "LC_MESSAGES")))
+
+(defun setup-locale-from-environment ()
+  "Do appropriate setlocale calls based on the current settings of LC_*
+environment variables."
+  (loop :with e = nil
+	:for f :in +lc-env-type+
+	:do
+	(when (setf e (getenv (cdr f)))
+	  (setlocale (car f) e))))
+
 ;; EOF
