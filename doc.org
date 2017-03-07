@@ -294,6 +294,9 @@ the current processe.
 *** function get-window-size (tty-fd)
     "Get the window size. The first value is columns, second value is rows."
 ** language / localization
+** miscellaneous
+*** function exit-lisp ()
+   "Halt the entire Lisp system."
 ** errors
 *** opsys-error
     "An error from calling a POSIX function."
@@ -307,7 +310,13 @@ the current processe.
 ** unix
 *** posix
 *** linux
+**** function linux-splice
+**** function linux-vmsplice
+**** function linux-tee
 *** bsd
+**** darwin
+***** function extended-attribute-list (path)
+***** function extended-attribute-value (path name)
 ** windows
 * COMMENT MeTaDaTa
 creation date: [2017-03-04 05:02:44]
