@@ -3528,8 +3528,6 @@ it is not a symbolic link."
   )
 |#
 
-;; What about splice:
-;; splice, vmsplice, tee
 
 ;; Apple metadata crap:
 ;; searchfs
@@ -4451,16 +4449,19 @@ the current process."
   "Return true if the current user is a member of GROUP."
   (position group (get-groups)))
 
-(defun is-executable (path &optional user)
+(defun is-executable (path &key user regular)
   "Return true if the PATH is executable by the UID. UID defaults to the
 current effective user."
   (let ((s (stat path)))
-    (or
-     (is-other-executable (file-status-mode s))
-     (and (is-user-executable (file-status-mode s))
-	  (= (file-status-uid s) (or user (setf user (geteuid)))))
-     (and (is-group-executable (file-status-mode s))
-	  (member-of (file-status-gid s))))))
+    (and
+     (or
+      (is-other-executable (file-status-mode s))
+      (and (is-user-executable (file-status-mode s))
+	   (= (file-status-uid s) (or user (setf user (geteuid)))))
+      (and (is-group-executable (file-status-mode s))
+	   (member-of (file-status-gid s))))
+     (or (not regular)
+	 (is-regular-file (file-status-mode s))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; IPC

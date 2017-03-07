@@ -556,20 +556,19 @@ lock, checking at least every INCREMNT seconds."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; System Commands?
 
-(defosfun is-executable (path &optional user)
-  "Return true if the PATH is executable by the UID. UID defaults to the
-current effective user.")
+(defosfun is-executable (path &key user regular)
+  "Return true if the PATH is executable by the USER. USER defaults to the
+current effective user. If REGULAR is true also check if it's a regular file.")
 
 (defun has-directory-p (path)
   "Return true if PATH has a directory part."
   (position *directory-separator* path))
 
-;; @@@ Maybe this is portable and should be moved to opsys.lisp?
 (defun command-pathname (cmd)
   "Return the full pathname of the first executable file in the PATH or nil
 if there isn't one."
   (when (has-directory-p cmd)
-    (return-from command-pathname cmd))
+    (return-from command-pathname (and (is-executable cmd :regular t) cmd)))
   (loop :for dir :in (split-sequence *path-separator*
 				     (environment-variable *path-variable*))
      :do
@@ -581,7 +580,8 @@ if there isn't one."
 	    (when (and (equal f cmd)
 		       (is-executable
 			(setf full (format nil "~a~c~a"
-					   dir *directory-separator* cmd))))
+					   dir *directory-separator* cmd))
+			:regular t))
 	      (return-from command-pathname full))))
        (error (c) (declare (ignore c)))))
   nil)
