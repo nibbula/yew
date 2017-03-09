@@ -8,6 +8,7 @@
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :licence            "GPLv3"
+    :source-control	:git
     :long-description   "A line editor which is not so tiny."
     :depends-on (:dl-list :stretchy :cffi :opsys :termios
 		 :terminal :terminal-ansi :terminal-curses :fatchar

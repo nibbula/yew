@@ -8,6 +8,7 @@
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :license            "GPLv3"
+    :source-control	:git
     :long-description
     "Characters with attributes, such as color, font effects, etc.."
     :depends-on (:dlib :stretchy :terminal)

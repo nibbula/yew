@@ -7,7 +7,8 @@
     :description        "Dan's lisp library."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :licence            "None"
+    :licence            "GPLv3"
+    :source-control	:git
     :long-description   "A new pile of old tires."
     :components
     ((:file "dlib"))

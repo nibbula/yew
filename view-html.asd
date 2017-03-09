@@ -2,11 +2,6 @@
 ;;; view-html.asd -- System definition for view-html
 ;;;
 
-(defpackage :view-html-system
-    (:use :common-lisp :asdf))
-
-(in-package :view-html-system)
-
 (defsystem view-html
     :name               "view-html"
     :description        "View HTML as a tree."

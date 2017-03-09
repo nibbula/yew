@@ -7,7 +7,8 @@
     :description        "Replacement REPL with editing and history."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :licence            "None"
+    :licence            "GPLv3"
+    :source-control	:git
     :long-description   "Most likely if you're using tiny-rl, this is why.
 If you want to run a lisp without slime, then this makes it usable.
 Unfortunately the debugger is very shabby."

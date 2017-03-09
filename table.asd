@@ -7,7 +7,8 @@
     :description        "Generic table data types"
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :licence            "None" ; [sic]
+    :licence            "GPLv3"
+    :source-control	:git
     :long-description   "This is relatively bogus."
 ;    :depends-on ()
     :components

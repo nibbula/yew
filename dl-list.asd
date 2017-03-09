@@ -7,7 +7,8 @@
     :description        "The ill begotten doubly-linked list"
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :licence            "None"
+    :licence            "GPLv3"
+    :source-control	:git
     :long-description   "An ill advised list of dubious usefulness."
 ;    :depends-on (@depends@)
     :components

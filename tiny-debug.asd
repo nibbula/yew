@@ -8,6 +8,7 @@
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :license            "GPLv3"
+    :source-control	:git
     :long-description
     "This exists because I wanted command line editing in the debugger from my
 REPL. It does afford one that modicum of efficacy, but scant else. Another

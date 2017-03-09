@@ -8,6 +8,7 @@
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :license            "GPLv3"
+    :source-control	:git
     :long-description   "We can only see so much at one time."
     :depends-on (:dlib :opsys :dlib-misc :table-print :curses :fui :stretchy
 		 :keymap :char-util :fatchar :cl-ppcre :terminal
