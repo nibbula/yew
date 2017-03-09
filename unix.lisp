@@ -4422,7 +4422,8 @@ Possible values of STATUS and VALUE are:
 	    :nice-level (parse-integer (pos 18))
 	    :usage nil
 	    :command (subseq raw-line (1+ open-pos) close-pos)
-	    :args (get-process-command-line pid)))))))
+	    :args (or (ignore-errors (get-process-command-line pid))
+		      cmd)))))))
 
 (defun suspend-process (&optional id)
   "Suspend the process with the given ID. If ID is NIL or not given, suspend
