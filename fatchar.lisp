@@ -154,7 +154,7 @@ strings."
        ;; Attributes
        (setf added (set-difference (fatchar-attrs c) (fatchar-attrs last))
 	     removed (set-difference (fatchar-attrs last) (fatchar-attrs c)))
-       (loop :for a :in removed :do
+       (loop :for nil :in removed :do
 	  (push #\) result)
 	  (decf open-count))
        (loop :for a :in added :do
