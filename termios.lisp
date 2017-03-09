@@ -582,8 +582,7 @@ deciseconds, (by setting VTIME) to wait before a read returns nothing."
     (unwind-protect
 	 (progn
 	   (setf cooked    (foreign-alloc '(:struct termios))
-		 raw       (foreign-alloc '(:struct termios))
-		 raw-check (foreign-alloc '(:struct termios)))
+		 raw       (foreign-alloc '(:struct termios)))
 	   
 	   (syscall (tcgetattr tty cooked))
 	   (syscall (tcgetattr tty raw))
@@ -600,17 +599,20 @@ deciseconds, (by setting VTIME) to wait before a read returns nothing."
 		   (setf (mem-aref c_cc :unsigned-char +VMIN+) 1)
 		   (setf (mem-aref c_cc :unsigned-char +VTIME+) 0)))
 	     ;; Turn off any input processing
-	     (setf c_iflag (logand c_iflag (lognot (logior +ISTRIP+ +INLCR+
-							   +IGNCR+ +ICRNL+ +IXON+
-							   +IXOFF+))))
+	     (setf c_iflag (logand c_iflag
+				   (lognot (logior +ISTRIP+ +INLCR+
+						   +IGNCR+ +ICRNL+ +IXON+
+						   +IXOFF+))))
 	     ;; Turn off output processing
 	     (when very-raw
 	       (setf c_oflag (logand c_oflag (lognot (logior +OPOST+)))))
 	     ;; Turn off canonical input and echo and signals
 	     (if very-raw
-		 (setf c_lflag (logand c_lflag (lognot (logior +ICANON+ +ECHO+
-							       +ISIG+))))
-		 (setf c_lflag (logand c_lflag (lognot (logior +ICANON+ +ECHO+)))))
+		 (setf c_lflag (logand c_lflag
+				       (lognot
+					(logior +ICANON+ +ECHO+ +ISIG+))))
+		 (setf c_lflag (logand c_lflag
+				       (lognot (logior +ICANON+ +ECHO+)))))
 	     ;; Actually set it
 	     (syscall (tcsetattr tty +TCSANOW+ raw)))
 
