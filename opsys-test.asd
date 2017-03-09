@@ -2,11 +2,6 @@
 ;;; opsys-test.asd -- System definition for opsys-test
 ;;;
 
-(defpackage :opsys-test-system
-    (:use :common-lisp :asdf))
-
-(in-package :opsys-test-system)
-
 (defsystem opsys-test
     :name               "opsys-test"
     :description        "Tests for OPSYS."
