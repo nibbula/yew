@@ -467,6 +467,7 @@
 			  (backend-name backend)
 			  (machine-instance)))
 	   y x)
+      (declare (ignorable x))
       (move 1 (truncate (- (/ *cols* 2) (/ (length title) 2))))
       (addstr title)
       (move 2 2) ;; Start of the banner area

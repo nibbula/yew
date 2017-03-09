@@ -130,7 +130,7 @@
 ;;   *read-base*  *read-suppress*
 
 (defmethod read-token ((s lisp-syntax) stream)
-  (declare (ignore s))
+  (declare (ignore s stream))
 )
 
 (defun opens-and-closes (pairs)
@@ -247,6 +247,7 @@ in order, \"{open}{close}...\". PAIRS defaults to something reasonable."
     (loop :do (setf c (read-char stream))
        :while (eq (char-type c) :whitespace))
     (unread-char c stream)))
+
 #|
 (defun fake-read-token (stream)
   (eat-whitespace)
