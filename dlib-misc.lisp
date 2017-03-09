@@ -48,6 +48,17 @@
    #:print-columns
    #:print-size
 
+   ;; spin
+   #:*default-spin-string*
+   #:*plain-spin-string*
+   #:*unicode-disk-spin-string*
+   #:*unicode-scan-spin-string*
+   #:*unicode-digit-spin-string*
+   #:*unicode-sparkle-spin-string*
+   #:*emoji-spin-string*
+   #:spin
+   #:with-spin
+
    ;; packages
    #:*loadable-packages*
    #:loadable-packages
@@ -59,17 +70,6 @@
    ;; I/O
    #:slurp
    #:confirm
-
-   ;; spin
-   #:*default-spin-string*
-   #:*plain-spin-string*
-   #:*unicode-disk-spin-string*
-   #:*unicode-scan-spin-string*
-   #:*unicode-digit-spin-string*
-   #:*unicode-sparkle-spin-string*
-   #:*emoji-spin-string*
-   #:spin
-   #:with-spin
   )
 )
 (in-package :dlib-misc)
@@ -805,6 +805,69 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; spin
+
+(defvar *spin* nil
+  "Index into the spinner string.")
+
+(defvar *spin-string* nil
+  "The string of characters to animate.")
+
+(defvar *spin-length* nil
+  "The pre-calculated length of the spin string.")
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *plain-spin-string* "|/-\\"
+    "Simple ASCII baton.")
+
+  (defparameter *unicode-disk-spin-string* "◒◐◓◑"
+    "Spin string using common unicode characters.")
+
+  (defparameter *unicode-scan-spin-string* "█▉▊▋▌▍▎▏"
+    "Spin string using common unicode characters.")
+
+  (defparameter *unicode-digit-spin-string* "➊➋➌➍➎➏➐➑➒➓"
+    "Spin string using common unicode characters.")
+
+  (defparameter *unicode-sparkle-spin-string* "❋❊❈❇❇··"
+    "Spin string using common unicode characters.")
+
+  (defparameter *unicode-braille-spin* "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    "Spin string using common unicode characters.")
+
+  (defparameter *unicode-square-spin* "◰◳◲◱"
+    "Spin string using common unicode characters.")
+
+  (defparameter *emoji-spin-string* "🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚🕛"
+    "Spin string with fancy emoji clock face characters.")
+
+  (defvar *default-spin-string* *plain-spin-string*
+    "The default spin string."))
+
+(defun spin (&optional (stream *standard-output*))
+  "Do one iteration of a spin animation."
+  (write-char (char *spin-string* *spin*) stream)
+  (write-char #\backspace stream)
+  (finish-output stream)
+  (incf *spin*)
+  (when (>= *spin* *spin-length*)
+    (setf *spin* 0)))
+
+(defun unspin (&optional (stream *standard-output*))
+  "Hopefully remove the spinning character."
+  (write-char #\space stream)
+  (write-char #\backspace stream)
+  (finish-output stream))
+
+(defmacro with-spin ((&key (spin-string *default-spin-string*))
+		     &body body)
+  `(let ((*spin-string* ,spin-string)
+	 (*spin-length* (length ,spin-string))
+	 (*spin* 0))
+     (prog1 (progn ,@body)
+       (unspin))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; packages
 
 (defvar *loadable-packages* nil
@@ -990,69 +1053,5 @@ file is accepted as confirmation."
 	       (string (equalp l confirming-input))
 	       (character (and (> (length l) 0)
 			       (equalp (aref l 0) confirming-input))))))))
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; spin
-
-(defvar *spin* nil
-  "Index into the spinner string.")
-
-(defvar *spin-string* nil
-  "The string of characters to animate.")
-
-(defvar *spin-length* nil
-  "The pre-calculated lenght of the spin string.")
-
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defparameter *plain-spin-string* "|/-\\"
-    "Simple ASCII baton.")
-
-  (defparameter *unicode-disk-spin-string* "◒◐◓◑"
-    "Spin string using common unicode characters.")
-
-  (defparameter *unicode-scan-spin-string* "█▉▊▋▌▍▎▏"
-    "Spin string using common unicode characters.")
-
-  (defparameter *unicode-digit-spin-string* "➊➋➌➍➎➏➐➑➒➓"
-    "Spin string using common unicode characters.")
-
-  (defparameter *unicode-sparkle-spin-string* "❋❊❈❇❇··"
-    "Spin string using common unicode characters.")
-
-  (defparameter *unicode-braille-spin* "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-    "Spin string using common unicode characters.")
-
-  (defparameter *unicode-square-spin* "◰◳◲◱"
-    "Spin string using common unicode characters.")
-
-  (defparameter *emoji-spin-string* "🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚🕛"
-    "Spin string with fancy emoji clock face characters.")
-
-  (defvar *default-spin-string* *plain-spin-string*
-    "The default spin string."))
-
-(defun spin (&optional (stream *standard-output*))
-  "Do one iteration of a spin animation."
-  (write-char (char *spin-string* *spin*) stream)
-  (write-char #\backspace stream)
-  (finish-output stream)
-  (incf *spin*)
-  (when (>= *spin* *spin-length*)
-    (setf *spin* 0)))
-
-(defun unspin (&optional (stream *standard-output*))
-  "Hopefully remove the spinning character."
-  (write-char #\space stream)
-  (write-char #\backspace stream)
-  (finish-output stream))
-
-(defmacro with-spin ((&key (spin-string *default-spin-string*))
-		     &body body)
-  `(let ((*spin-string* ,spin-string)
-	 (*spin-length* (length ,spin-string))
-	 (*spin* 0))
-     (prog1 (progn ,@body)
-       (unspin))))
 
 ;; End
