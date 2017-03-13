@@ -31,10 +31,9 @@ be used at a REPL, but not as likely to be called by other programs.")
 (defun show-expansion (form &optional full)
   "Show a pretty printed macro expansion of the form. If full is true,
 expand all macros recursively."
-  ;; @@@ This is wrong since it lowercases everything (like strings) too.
-  ;; @@@ Fix to use pretty printer customization to lowercase.
-  (format t "~%~(~?~%~)~%" "~:w"
-	  (list (if full (macroexpand form) (macroexpand-1 form)))))
+  (let ((*print-case* :downcase))
+    (format t "~%~:w~%~%"
+	    (if full (macroexpand form) (macroexpand-1 form)))))
 
 (defun printenv (&optional original-order)
   "Like the unix command."
@@ -317,17 +316,22 @@ symbols, :all to show internal symbols too."
 
 (defun describe-printing ()
   "Describe the current Lisp printing parameters."
-  (print-values '(*print-escape*
-		  *print-radix*
+  (print-values '(*print-array*
 		  *print-base*
+		  *print-radix*
+		  *print-case*
 		  *print-circle*
-		  *print-pretty*
-		  *print-level*
+		  *print-escape*
 		  *print-gensym*
+		  *print-level*
+		  *print-length*
+		  *print-lines*
+		  *print-pretty*
 		  *print-readably*
 		  *print-right-margin*
 		  *print-miser-width*
-		  *print-lines*)))
+		  ;;*print-pprint-dispatch*
+		  )))
 
 (defun describe-reader ()
   "Describe the current Lisp reader parameters."
