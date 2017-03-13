@@ -174,17 +174,21 @@ two values ROW and COLUMN."))
 				    device-name)
 			 &body body)
   "Evaluate the body with VAR set to a new terminal. Cleans up afterward."
-  `(progn
-     (when (not (find-type ,type))
-       (error "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
-     (let ((,var (if ,device-name
-		   (make-instance (find-type ,type) :device-name ,device-name)
-		   (make-instance (find-type ,type)))))
-       (unwind-protect
-	    (progn
-	      (terminal-start ,var)
-	      ,@body)
-	 (terminal-done ,var)))))
+  (with-unique-names (result)
+    `(progn
+       (when (not (find-type ,type))
+	 (error "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
+       (let ((,var (if ,device-name
+		       (make-instance (find-type ,type)
+				      :device-name ,device-name)
+		       (make-instance (find-type ,type))))
+	     ,result)
+	 (unwind-protect
+	      (progn
+		(terminal-start ,var)
+		(setf ,result ,@body))
+	   (terminal-done ,var))
+	 ,result))))
 
 (defmacro deftt (name (&rest args) doc-string)
   "Defines a terminal generic function along with a macro that calls that
