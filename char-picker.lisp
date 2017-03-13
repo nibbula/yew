@@ -5,7 +5,7 @@
 (defpackage :char-picker
   (:documentation "Pick characters that may be otherwise hard to type.")
   (:use :cl :dlib :stretchy :char-util :dlib-misc :keymap :curses :inator :fui
-	:terminal-curses)
+	:terminal :terminal-curses)
   (:export
    #:char-picker
    #:!char-picker
@@ -70,8 +70,10 @@
   (move 0 0)
   (clrtoeol)
   (addstr (format nil "~d - ~d" start (+ start inc)))
-  (let* ((end (+ start inc)))
-    (loop :for i :from start :to end
+  (let* ((end (+ start inc))
+	 cc name ss-pos ss-end)
+    (loop
+       :for i :from start :to end
        :for l fixnum = 0 :then (+ 1 l)
        :do
        (move (+ 2 l) 0)
@@ -82,20 +84,22 @@
 			     (aref *letters* l)
 			     #\?)
 			 (+ start l)))
-	 (add-char (code-char i))
-	 (let ((name (or (char-name (code-char i)) ""))
-	       pos end)
-	   (if (and search-string
-		    (setf pos (search search-string name :test #'equalp)))
-	       (progn
-		 (setf end (+ pos (length search-string)))
-		 (addch (char-code #\space))
-		 (addstr (subseq name 0 pos))
-		 (standout)
-		 (addstr (subseq name pos end))
-		 (standend)
-		 (addstr (subseq name end)))
-	       (addstr (format nil " ~a" name))))))))
+	 (setf cc (code-char i)
+	       name (or (char-name (code-char i)) ""))
+	 (add-char (if (control-char-p cc)
+		       (displayable-char cc :all-control t)
+		       cc))
+	 (if (and search-string
+		  (setf ss-pos (search search-string name :test #'equalp)))
+	     (progn
+	       (setf ss-end (+ ss-pos (length search-string)))
+	       (addch (char-code #\space))
+	       (addstr (subseq name 0 ss-pos))
+	       (standout)
+	       (addstr (subseq name ss-pos ss-end))
+	       (standend)
+	       (addstr (subseq name ss-end)))
+	     (addstr (format nil " ~a" name)))))))
 
 (defun search-char-names (start match-str &optional (direction :forward))
   "Return char code of first match of STR in the characater names,
@@ -158,7 +162,7 @@ starting at START. If not found, return START."
 
 (defmethod await-event ((i char-picker))
   "Char picker input."
-  (setf (char-picker-input i) (get-char))
+  (setf (char-picker-input i) (tt-get-char))
   (move (1- curses:*lines*) 0)
   (clrtoeol)
   (char-picker-input i))
@@ -284,9 +288,10 @@ starting at START. If not found, return START."
   "Jump to a character code."
   (with-slots (start) i
     (move 1 0) (clrtoeol)
-    (let ((result (tiny-rl:tiny-rl :prompt "Character number: "
-				   :terminal-class 'terminal-curses))
+    (let ((result (with-terminal (:curses)
+		    (tiny-rl:tiny-rl :prompt "Character number: ")))
 	  number)
+      (refresh)
       (if (not (ignore-errors (setf number (parse-integer-with-radix result))))
 	  (progn
 	    (move 1 0)
@@ -331,11 +336,12 @@ starting at START. If not found, return START."
 ;; Use
 
 (defun char-picker ()
-  (let ((p (make-instance 'char-picker
-			  :keymap (list *char-picker-keymap*
-					*default-inator-keymap*))))
-    (event-loop p)
-    (char-picker-result p)))
+  (with-terminal (:curses)
+    (let ((p (make-instance 'char-picker
+			    :keymap (list *char-picker-keymap*
+					  *default-inator-keymap*))))
+      (event-loop p)
+      (char-picker-result p))))
 
 #+lish
 (lish:defcommand char-picker ()
