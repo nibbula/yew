@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "So many layers of fake like a cake."
-    :depends-on (:terminal :curses :opsys :fui)
+    :depends-on (:terminal :curses :opsys)
     :components
     ((:file "terminal-curses")))

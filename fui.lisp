@@ -5,27 +5,27 @@
 (defpackage :fui
   (:documentation "Fake UI")
   (:use :cl :dlib :dlib-misc :stretchy :opsys :char-util :keymap :cffi
-	:curses :inator)
+	:curses :terminal :terminal-curses :inator)
   (:export
-   #:*in-curses*
+   ;;#:*in-curses*
    #:*device*
-   #:*has-color*
+   ;;#:*has-color*
    #:*has-mouse*
    #:*interactive*
    #:start-curses
    #:end-curses
    #:with-curses
    #:with-device
-   #:init-colors
-   #:color-index
+   ;;#:init-colors
+   ;;#:color-index
+   ;;#:color-number
    #:color-attr
    #:+color-names+
-   #:color-number
    #:with-fg
    #:with-bg
    #:with-color
    #:set-colors
-   #:get-char
+   ;;#:get-char
    #:interactively
    #:non-interactively
    #:pause
@@ -40,8 +40,8 @@
 ;(declaim (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 1) (compilation-speed 2)))
 
-(defvar *in-curses* nil
-  "True when curses is active.")
+;; (defvar *in-curses* nil
+;;   "True when curses is active.")
 
 (defvar *interactive* t
   "True when we can expect user interaction.")
@@ -49,15 +49,14 @@
 (defvar *device* nil
   "A device to do run a curses program on.")
 
-(defvar *has-color* nil
-  "True if the device has color.")
-
 (defvar *has-mouse* nil
   "True if the device has a mouse or pointer of some sort.")
 
+(defvar *saved-terminal* nil
+  "The saved (non-curses) terminal.")
+
 (defun start-curses ()
-  (when (not *in-curses*)
-    (setf *in-curses* t)
+    #|
     (when (not *device*)
       (initscr))
     (noecho)
@@ -76,34 +75,44 @@
     (scrollok curses:*stdscr* 0)
     (curs-set 1)
     (init-colors)
+    |#
+  (terminal-start *terminal*)
+    
+  ;; When curses SIGWINCH handler is overridden, we may have to set the
+  ;; terminal size manually here.
+  (with-os-file (tt (or *device* *default-console-device-name*))
+    (multiple-value-bind (cols lines)
+	(get-window-size tt)
+      (when (is-term-resized lines cols)
+	(resizeterm lines cols))))
 
-    ;; When curses SIGWINCH handler is overridden, we may have to set the
-    ;; terminal size manually here.
-    (with-os-file (tt (or *device* *default-console-device-name*))
-      (multiple-value-bind (cols lines)
-	  (get-window-size tt)
-	(when (is-term-resized lines cols)
-	  (resizeterm lines cols))))
-
-    ;; See if we can get mouse events
-    (setf *has-mouse*
-	  (= (mousemask curses:+ALL-MOUSE-EVENTS+ (cffi:null-pointer)) 0))))
+  ;; See if we can get mouse events
+  (setf *has-mouse*
+	(= (mousemask curses:+ALL-MOUSE-EVENTS+ (cffi:null-pointer)) 0)))
 
 (defun end-curses ()
-  (when *in-curses*
-    (endwin)
-    (setf *in-curses* nil)))
+  ;; (when (and *terminal* (typep *terminal* 'terminal-curses)
+  ;; 	     ;;(not (typep *saved-terminal* 'terminal-curses))
+  ;; 	     )
+  ;;(endwin)
+  (terminal-end *terminal*))
+;;(setf *terminal* *saved-terminal*)))
 
 (defmacro with-curses (&body body)
   "Do the stuff in the body with curses initialized. Clean up properly."
   (let ((thunk (gensym "thunk")))
     `(flet ((,thunk () ,@body))
-       (if (not *in-curses*)
-	   (progn
+       (if (or (not *terminal*)
+	       (and *terminal* (not (typep *terminal* 'terminal-curses))))
+	   (let ((*terminal*
+		  (if *device*
+		      (make-instance 'terminal-curses:terminal-curses
+				     :device *device*)
+		      (make-instance 'terminal-curses:terminal-curses))))
 	     (unwind-protect
-		  (progn
-		    (start-curses)
-		    (,thunk))
+	       (progn
+		 (start-curses)
+		 (,thunk))
 	       (end-curses)))
 	   (,thunk)))))
 
@@ -132,85 +141,37 @@
 	 (when ,fd-in
 	   (nos:fclose ,fd-in))))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Colors
-;;
-;; This sets up a simple way to use all pairs of the standard eight colors.
-;; Call INIT-COLORS first, then say, for example:
-;; (setattr (color-attr +COLOR-YELLOW+ +COLOR-BLUE+))
-;; or
-;; (set-colors (color-index +COLOR-YELLOW+ +COLOR-BLUE+))
-
-(defparameter *color-table* nil
-  "Table of color pair numbers.")
-
-(defun init-colors ()
-  ;; Initialize all the color pairs
-  (start-color)
-  (let ((ncolors 8))
-    (setf *color-table* (make-array (list ncolors ncolors)))
-    (if (= (has-colors) 1)
-    	(prog ((pair 0))
-	   (setf *has-color* t)
-	   (loop :for fg :from (- ncolors 1) :downto 0 :do
-	      (loop :for bg :from 0 :below ncolors :do
-		 (when (> pair 0) ;; Pair 0 defaults to WHITE on BLACK
-		   (init-pair pair fg bg))
-		 (setf (aref *color-table* fg bg) pair)
-		 (incf pair))))
-	(setf *has-color* nil)))
-  (bkgd (color-pair 0)))
-
-(defun color-index (fg bg)
-  "Return the color pair number for the foreground FG and background BG."
-  (aref *color-table* fg bg))
-
 (defun color-attr (fg bg)
   "Return the text attribute, e.g. for passing to setattr, for the
 foreground FG and background BG."
   (color-pair (aref *color-table* fg bg)))
 
-(defparameter +color-names+
-  `((:black 	,+color-black+)
-    (:red 	,+color-red+)
-    (:green 	,+color-green+)
-    (:yellow 	,+color-yellow+)
-    (:blue 	,+color-blue+)
-    (:magenta 	,+color-magenta+)
-    (:cyan 	,+color-cyan+)
-    (:white 	,+color-white+))
-  "Associate symbols with color numbers.")
-
-(defun color-number (color)
-  "Return the curses color number given a symbol name."
-  (cadr (assoc color +color-names+)))
-
 (defmacro with-fg ((color) &body body)
   (with-unique-names (result)
     `(let (,result)
-       (color-set (fui:color-index ,color +color-black+)
+       (color-set (terminal-curses:color-index ,color +color-black+)
 		  (cffi:null-pointer))
        (setf ,result (progn ,@body))
-       (color-set (fui:color-index +color-white+ +color-black+)
+       (color-set (terminal-curses:color-index +color-white+ +color-black+)
 		  (cffi:null-pointer))
        ,result)))
 
 (defmacro with-bg ((color) &body body)
   (with-unique-names (result)
     `(let (,result)
-       (color-set (fui:color-index +color-black+ ,color)
+       (color-set (terminal-curses:color-index +color-black+ ,color)
 		  (cffi:null-pointer))
        (setf ,result (progn ,@body))
-       (color-set (fui:color-index +color-white+ +color-black+)
+       (color-set (terminal-curses:color-index +color-white+ +color-black+)
 		  (cffi:null-pointer))
        ,result)))
 
 (defmacro with-color ((fg bg) &body body)
   (with-unique-names (result)
     `(let (,result)
-       (color-set (fui:color-index ,fg ,bg) (cffi:null-pointer))
+       (color-set (terminal-curses:color-index ,fg ,bg) (cffi:null-pointer))
        (setf ,result (progn ,@body))
-       (color-set (fui:color-index +color-white+ +color-black+)
+       (color-set (terminal-curses:color-index +color-white+ +color-black+)
 		  (cffi:null-pointer))
        ,result)))
 
@@ -225,16 +186,16 @@ foreground FG and background BG."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Input
 
-(defun get-char ()
-  "Get a lisp character or function key from curses."
-  (let ((cc (getch)))
-    (cond
-      ((> cc #xff)
-       (function-key cc))
-      ((and (integerp cc) (not (minusp cc)))
-       (code-char cc))
-      (t ;; Just return a negative
-       cc))))
+;; (defun get-char ()
+;;   "Get a lisp character or function key from curses."
+;;   (let ((cc (getch)))
+;;     (cond
+;;       ((> cc #xff)
+;;        (function-key cc))
+;;       ((and (integerp cc) (not (minusp cc)))
+;;        (code-char cc))
+;;       (t ;; Just return a negative
+;;        cc))))
 
 (defmacro non-interactively (&body body)
   "Evaluate body without pausing for PAUSE."
@@ -320,7 +281,7 @@ waits for a key press and then returns."
       (wrefresh w)
       (setf result (if input-func
 		       (funcall input-func w)
-		       (get-char)))
+		       (tt-get-char)))
       (delwin w)
       (clear)
       (refresh)
@@ -397,7 +358,7 @@ keymap bindings."
 (defmethod await-event ((i fui-inator))
   "Get an event from a FUI-INATOR."
   (declare (ignore i))
-  (get-char))
+  (tt-get-char))
 
 (defmethod message ((i fui-inator) format-string &rest args)
   "Display a short message."
@@ -435,90 +396,6 @@ keymap bindings."
   (update-display i))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-#|
-
-;; It's pretty lame when implementations differ so much on the same OS.
-;; I would say that current implementations don't really reach the goal of
-;; system independant file handling. Too many unspecified gray areas
-;; make it such that I seem to get errors all the time.
-
-(defun fake-dir (spec)
-  #+(or ccl ecl)
-  (let* ((dir (pathname-directory (pathname spec)))
-	 (str (cond
-		((stringp spec)
-		 spec)
-		(dir
-		 (namestring (make-pathname :directory dir))))))
-    (nos:read-directory :dir (or str ".") :append-type t))
-  #+clisp (nconc (directory (make-pathname
-			     :directory `(,@(or (pathname-directory spec)
-						'(:relative)) :wild)))
-		 (directory (make-pathname
-			     :directory (pathname-directory spec)
-			     :name :wild :type :wild)))
-;  #+ccl (directory spec :directories t :all t :follow-links t)
-  #-(or ecl clisp ccl) (directory spec)
-  )
-
-;; Pure common lisp pick-file, which will work on implementations with decent
-;; filename and directory functions. Too bad it doesn't work very well on
-;; different implementations.
-
-(defun old-pick-file (&key message directory (name :wild) (type :wild)
-		  (allow-browse t) (pick-directories))
-  "Have the user choose a file."
-  (declare (ignore pick-directories))	;@@@
-  (let* ((dir (make-pathname :directory directory))
-	 files file-list filename)
-    (flet ((generate-list ()
-	     (setf files
-		   (loop :for file :in (fake-dir (merge-pathnames dir
-						  (make-pathname :name name
-								 :type type)))
-		      :collect
-		      (let* ((ff (namestring
-				  (make-pathname
-				   :name (pathname-name file)
-				   :type (pathname-type file))))
-			     (last-dir (car (last (pathname-directory file))))
-			     (dd (concatenate
-				  'string (or (and (stringp last-dir) last-dir)
-					      "")
-				  "/")))
-			(format nil "~a" (or (and (> (length ff) 0) ff)
-					     (and (> (length dd) 0) dd)))))
-		   file-list (if allow-browse
-				 (append '(" [Up..]") files)
-				 files))))
-      (generate-list)
-      (if allow-browse
-	  (loop :with done = nil
-	     :while (not done)
-	     :do
-	     (setf message (format nil "~a~%~%" dir))
-	     (setf filename (pick-list file-list :sort-p t :message message))
-	     (cond
-	       ;; picked up level
-	       ((and filename (equal " [Up..]" filename))
-		(let ((d (pathname-directory (truename dir))))
-		  (when (> (length d) 1)
-		    (setf dir (make-pathname
-			       :directory (subseq d 0 (- (length d) 1))))
-		    (generate-list))))
-	       ;; picked a directory
-	       ((and filename (not (pathname-name (pathname filename))))
-;		(setf dir (make-pathname :directory filename))
-		(setf dir (merge-pathnames (pathname filename) dir))
-		(generate-list))
-	       ;; other files
-	       (t
-		(setf done t))))
-	  (setf filename (pick-list file-list :sort-p t :message message)))
-      (when filename
-	(merge-pathnames (pathname filename) dir)))))
-|#
 
 #|
 (defstruct progress-bar

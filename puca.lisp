@@ -21,7 +21,7 @@
   (:documentation
    "Putative Muca (A very simple(istic) interface to CVS/git/svn).")
   (:use :cl :dlib :dlib-misc :opsys :keymap :char-util :curses :tiny-rl
-	:completion :inator :fui :options :ppcre)
+	:completion :inator :terminal :terminal-curses :fui :options :ppcre)
   (:export
    ;; Main entry point
    #:puca
@@ -507,6 +507,7 @@ confirmation first."
     (terpri)
     (read-line))
   (initscr)
+  (message *puca* "*terminal* = ~s" *terminal*)
   (when relist
     (get-list))
   (clear)
@@ -546,7 +547,7 @@ If CONFIRM is true, ask the user for confirmation first."
   "For debugging."
 ;  (init-curses)
   (draw-screen)
-  (get-char)
+  (tt-get-char)
   (endwin))
 |#
 
@@ -556,7 +557,7 @@ If CONFIRM is true, ask the user for confirmation first."
 ;  (clrtoeol)
   (addstr (apply #'format nil fmt args))
   (refresh)
-  (get-char))
+  (tt-get-char))
 
 (defun info-window (title text-lines)
   (fui:display-text title text-lines)
@@ -828,7 +829,7 @@ for the command-function).")
 
 (defun set-option-command (p)
   (format-message "Set option: ")
-  (let* ((c (get-char))
+  (let* ((c (tt-get-char))
 	 (tog (find c *option-setting* :key #'car))
 	 (name (string (second tog)))
 	 #| (options (options p)) |#)
@@ -894,7 +895,7 @@ for the command-function).")
 (defun describe-key-briefly (p)
   "Prompt for a key and say what function it invokes."
   (message p "Press a key: ")
-  (let* ((key (fui:get-char))
+  (let* ((key (tt-get-char))
 	 (action (key-definition key *puca-keymap*)))
     (if action
 	(message p "~a is bound to ~a" (nice-char key) action)
@@ -921,15 +922,13 @@ for the command-function).")
     (message p "**MESSAGES**")))
 
 (defun puca (&key backend-type)
-  (let* ((backend (pick-backend backend-type))
-	 *puca*)
+  (let ((backend (pick-backend backend-type)))
     (if backend
-	(progn
-	  (setf *puca* (make-instance
-			'puca
-			:keymap (list *puca-keymap* *default-inator-keymap*)
-			:backend (pick-backend backend-type)))
-	  (event-loop *puca*))
+	(with-terminal (:curses)
+	  (with-inator (*puca* 'puca
+		        :keymap (list *puca-keymap* *default-inator-keymap*)
+		        :backend (pick-backend backend-type))
+	    (event-loop *puca*)))
 	(error
   "The current directory is not under a source control system I know about."))))
 

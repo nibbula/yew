@@ -4,10 +4,15 @@
 
 (defpackage :terminal-curses
   (:documentation "Curses terminal")
-  (:use :cl :terminal :curses :fui)
+  (:use :cl :terminal :curses)
   (:export
    #:terminal-curses-stream
    #:terminal-curses
+   ;; extensions:
+   #:+color-names+
+   #:*color-table*
+   #:color-index
+   #:color-number
    ))
 (in-package :terminal-curses)
 
@@ -70,6 +75,57 @@ require terminal driver support."))
 (defmethod terminal-get-cursor-position ((tty terminal-curses))
   "Try to somehow get the row of the screen the cursor is on."
   (values (getcury (screen tty)) (getcurx (screen tty))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Colors
+;;
+;; This sets up a simple way to use all pairs of the standard eight colors.
+;; Call INIT-COLORS first, then say, for example:
+;; (setattr (color-attr +COLOR-YELLOW+ +COLOR-BLUE+))
+;; or
+;; (set-colors (color-index +COLOR-YELLOW+ +COLOR-BLUE+))
+
+(defvar *has-color* nil
+  "True if the device has color.")
+
+(defparameter *color-table* nil
+  "Table of color pair numbers.")
+
+(defparameter +color-names+
+  `((:black 	,+color-black+)
+    (:red 	,+color-red+)
+    (:green 	,+color-green+)
+    (:yellow 	,+color-yellow+)
+    (:blue 	,+color-blue+)
+    (:magenta 	,+color-magenta+)
+    (:cyan 	,+color-cyan+)
+    (:white 	,+color-white+))
+  "Associate symbols with color numbers.")
+
+(defun init-colors ()
+  ;; Initialize all the color pairs
+  (start-color)
+  (let ((ncolors 8))
+    (setf *color-table* (make-array (list ncolors ncolors)))
+    (if (= (has-colors) 1)
+    	(prog ((pair 0))
+	   (setf *has-color* t)
+	   (loop :for fg :from (- ncolors 1) :downto 0 :do
+	      (loop :for bg :from 0 :below ncolors :do
+		 (when (> pair 0) ;; Pair 0 defaults to WHITE on BLACK
+		   (init-pair pair fg bg))
+		 (setf (aref *color-table* fg bg) pair)
+		 (incf pair))))
+	(setf *has-color* nil)))
+  (bkgd (color-pair 0)))
+
+(defun color-index (fg bg)
+  "Return the color pair number for the foreground FG and background BG."
+  (aref *color-table* fg bg))
+
+(defun color-number (color)
+  "Return the curses color number given a symbol name."
+  (cadr (assoc color +color-names+)))
 
 ;; Just for debugging
 ; (defun terminal-report-size ()
@@ -230,7 +286,7 @@ require terminal driver support."))
     (error "Forground ~a is not a known color." fg))
   (when (not (color-number bg))
     (error "Background ~a is not a known color." bg))
-  (color-set (fui:color-index
+  (color-set (color-index
 	      (or (color-number fg) +color-white+)
 	      (or (color-number bg) +color-black+))
 	     (cffi:null-pointer)))
@@ -267,6 +323,17 @@ require terminal driver support."))
 ; 	 nil)
 ; 	((= status 1)
 ; 	 (code-char (mem-ref c :unsigned-char)))))))
+
+(defun get-char ()
+  "Get a lisp character or function key from curses."
+  (let ((cc (getch)))
+    (cond
+      ((> cc #xff)
+       (function-key cc))
+      ((and (integerp cc) (not (minusp cc)))
+       (code-char cc))
+      (t ;; Just return a negative
+       cc))))
 
 (defmethod terminal-get-char ((tty terminal-curses))
   "Read a character from the terminal."

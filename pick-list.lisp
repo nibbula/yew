@@ -6,7 +6,8 @@
 
 (defpackage :pick-list
   (:documentation "Choose things from a list.")
-  (:use :cl :dlib :curses :char-util :stretchy :keymap :opsys :inator :fui)
+  (:use :cl :dlib :curses :char-util :stretchy :keymap :opsys :inator :fui
+	:terminal :terminal-curses)
   (:export
    #:pick-list
    #:pick-file
@@ -233,7 +234,7 @@
 (defun pick-list-binding-of-key (inator)
   (declare (ignore inator))
   (pick-list-tmp-message "Press a key: ")
-  (let* ((key (get-char))
+  (let* ((key (tt-get-char))
 	 (action (key-definition key *pick-list-keymap*)))
     (if action
 	(pick-list-tmp-message
@@ -299,7 +300,7 @@
   "Pick list input."
   (with-slots (error-message input) i
     (setf error-message nil
-	  input (get-char))
+	  input (tt-get-char))
     input))
 
 #|
@@ -321,7 +322,7 @@
 	   ((fboundp command)		; a function
 	    (funcall command))
 	   ((keymap-p (symbol-value command)) ; a keymap
-	    (pick-perform-key (fui:get-char) (symbol-value command)))
+	    (pick-perform-key (tt-get-char) (symbol-value command)))
 	   (t				; anything else
 	    (pick-error "Key binding ~S is not a function or a keymap."
 			command))))

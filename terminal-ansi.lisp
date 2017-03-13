@@ -16,7 +16,7 @@
   (:export
    #:terminal-ansi-stream
    #:terminal-ansi
-   ;; non standard:
+   ;; extensions:
    #:describe-terminal
    #:+csi+ #:+st+ #:+osc+
    #:query-parameters #:query-string

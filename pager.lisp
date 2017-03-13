@@ -668,7 +668,7 @@ replacements. So far we support:
 (defun message-pause (format-string &rest args)
   "Print a formatted message at the last line and pause until a key is hit."
   (apply #'message format-string args)
-  (fui:get-char))
+  (tt-get-char))
 
 (defun message-pause-for (timeout format-string &rest args)
   "Print a formatted message at the last line and pause until a key is hit.
@@ -680,7 +680,7 @@ and resets it to be so afterward."
     (unwind-protect
       (progn
 	(curses::timeout timeout)
-	(setf c (fui:get-char)))
+	(setf c (tt-get-char)))
       (curses::timeout -1))
     c))
 
@@ -809,7 +809,7 @@ line : |----||-------||---------||---|
 	 (when (not (equal last-attr (fatchar-attrs c)))
 	   (when last-attr (attrset 0))
 	   (mapcan (_ (attron (real-attr _))) (fatchar-attrs c)))
-	 (color-set (fui:color-index
+	 (color-set (color-index
 		     (or (color-number (fatchar-fg c)) +color-white+)
 		     (or (color-number (fatchar-bg c)) +color-black+))
 		    (cffi:null-pointer))
@@ -914,7 +914,7 @@ line : |----||-------||---------||---|
        (clrtoeol)
        (addstr prompt) (addstr str)
        (refresh)
-       (setf c (fui:get-char))
+       (setf c (tt-get-char))
        (case c
 	 (#\escape
 	  (when (> (incf esc-count) 1)
@@ -1009,7 +1009,7 @@ list containing strings and lists."
   (message "Set option: ")
   (with-slots (show-line-numbers ignore-case wrap-lines raw-output pass-special)
       *pager*
-    (let ((char (fui:get-char)))
+    (let ((char (tt-get-char)))
       (case char
 	((#\l #\L)
 	 (setf show-line-numbers (not show-line-numbers))
@@ -1384,7 +1384,7 @@ list containing strings and lists."
 (defun describe-key-briefly ()
   "Prompt for a key and say what function it invokes."
   (message "Press a key: ")
-  (let* ((key (fui:get-char))
+  (let* ((key (tt-get-char))
 	 (action (key-definition key *normal-keymap*)))
     (if action
 	(tmp-message "~a is bound to ~a" (nice-char key) action)
@@ -1393,7 +1393,7 @@ list containing strings and lists."
 (defun describe-key ()
   "Prompt for a key and describe the function it invokes."
   (message "Press a key: ")
-  (let* ((key (fui:get-char))
+  (let* ((key (tt-get-char))
 	 (action (key-definition key *normal-keymap*)))
     (cond
       (action
@@ -1406,7 +1406,7 @@ list containing strings and lists."
 	   (addstr
 	    (format nil "Sorry, there's no documentation for ~a.~%" action)))
        (refresh)
-       (fui:get-char)
+       (tt-get-char)
        ;;(tmp-message pager "")
        )
       (t
@@ -1415,7 +1415,7 @@ list containing strings and lists."
 (defun help-key ()
   "Sub-command for help commands."
   (message "Help (? for more help): ")
-  (perform-key (fui:get-char) *help-keymap*)
+  (perform-key (tt-get-char) *help-keymap*)
   (setf (pager-quit-flag *pager*) nil))
 
 (defun more-help ()
@@ -1449,7 +1449,7 @@ q - Abort")
 	 ((fboundp command)		; a function
 	  (funcall command))
 	 ((keymap-p (symbol-value command)) ; a keymap
-	  (perform-key (fui:get-char) (symbol-value command)))
+	  (perform-key (tt-get-char) (symbol-value command)))
 	 (t				; anything else
 	  (setf message
 		(format nil "Key binding ~S is not a function or a keymap."
@@ -1479,7 +1479,7 @@ q - Abort")
 	   (setf message nil))
        (display-prompt))
      (refresh)
-     (setf input-char (fui:get-char))
+     (setf input-char (tt-get-char))
      (perform-key input-char)
      (when (not (equal command 'digit-argument))
        (setf prefix-arg nil))
@@ -1520,7 +1520,7 @@ q - Abort")
 		     (setf message nil))
 		   (display-prompt))
 	       (refresh)
-	       (setf input-char (fui:get-char))
+	       (setf input-char (tt-get-char))
 	       (perform-key input-char)
 	       (when (not (equal command 'digit-argument))
 		 (setf prefix-arg nil))

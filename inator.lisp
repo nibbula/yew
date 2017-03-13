@@ -65,6 +65,7 @@ a TERM-INATOR.
    #:start-inator
    #:finish-inator
    #:*default-inator-keymap*
+   #:with-inator
    ))
 (in-package :inator)
 
@@ -272,5 +273,12 @@ UPDATE-DISPLAY and and AWAIT-EVENT methods."
 	 `(let ((,var (make-ins
        )))
 |#
+
+;; Unnecessary Syntactic Sugar™
+(defmacro with-inator ((var type &rest args) &body body)
+  "Evaluate BODY with a new inator of type TYPE, made with ARGS passed to
+MAKE-INSTANCE, with VAR bound to the new instance."
+  `(let ((,var (make-instance ,type ,@args)))
+     ,@body))
 
 ;; EOF
