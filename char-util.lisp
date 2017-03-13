@@ -7,8 +7,9 @@
   (:use :cl)
   (:export
    #:meta-char
-   #:ctrl
    #:meta-char-p
+   #:ctrl
+   #:control-char-p
    #:un-meta
    #:nice-char
    #:char-as-ascii
@@ -17,17 +18,25 @@
    ))
 (in-package :char-util)
 
-(defun meta-char (c)
-  "Turn the meta (8th) bit on in the code representation of the
-   given character."
-  (code-char (logior (ash 1 7) (char-code c))))
-
 ;(
 
 ;; Sadly #\^A is not portable. This assumes ASCII or UTF8 or something. 
 (defun ctrl (c)
   "Return the control character corresponding to the normal character."
   (code-char (1+ (- (char-code (char-upcase c)) (char-code #\A)))))
+
+(defun control-char-p (c)
+  "Return true if C is a control character. In ASCII that means anything less
+than space and delete."
+  (and (characterp c)
+       (let ((cc (char-code c)))
+	 ;; Sadly ASCII / UTF-8 specific.
+	 (or (< cc (char-code #\space)) (eql cc (char-code #\rubout))))))
+
+(defun meta-char (c)
+  "Turn the meta (8th) bit on in the code representation of the
+   given character."
+  (code-char (logior (ash 1 7) (char-code c))))
 
 (defun meta-char-p (c)
   "Is the given number a meta character as a char code?"
