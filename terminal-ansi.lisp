@@ -181,11 +181,21 @@ two values ROW and COLUMN."
 ;; 	 (set-terminal-mode ,tty :mode ,mode)))))
 
 (defmacro with-raw ((tty) &body body)
-    `(unwind-protect
-	  (progn
-	    (set-terminal-mode ,tty :raw t :echo nil)
-	    ,@body)
-       (set-terminal-mode ,tty :raw nil)))
+  `(unwind-protect
+	(progn
+	  (set-terminal-mode ,tty :raw t :echo nil)
+	  ,@body)
+     (set-terminal-mode ,tty :raw nil)))
+
+(defmacro with-immediate ((tty) &body body)
+  (with-unique-names (mode)
+    `(let ((,mode (get-terminal-mode (terminal-file-descriptor ,tty))))
+       (unwind-protect
+	    (progn
+	      (set-terminal-mode (terminal-file-descriptor ,tty)
+				 :line nil :echo nil)
+	      ,@body)
+	 (set-terminal-mode (terminal-file-descriptor ,tty) :mode ,mode)))))
 
 (defun terminal-report (tty end-char fmt &rest args)
   "Output a formatted string to the terminal and get an immediate report back.
