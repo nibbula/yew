@@ -186,7 +186,7 @@ two values ROW and COLUMN."))
 	 (unwind-protect
 	      (progn
 		(terminal-start ,var)
-		(setf ,result ,@body))
+		(setf ,result (progn ,@body)))
 	   (terminal-done ,var))
 	 ,result))))
 
