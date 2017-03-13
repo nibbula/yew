@@ -222,9 +222,17 @@ foreground FG and background BG."
 ;; per-thread curses state object for use with `with-curses'. And it is also
 ;; currently a memory leak.
 (defvar *wied-char* (cffi:foreign-alloc :int :count 2))
-(defun add-char (c)
+(defun %add-char (c)
   (setf (cffi:mem-aref *wied-char* :int 0) (char-code c))
   (addnwstr *wied-char* 1))
+
+(defun add-char (thing)
+  (ctypecase thing
+    (character (%add-char thing))
+    (string
+     ;; This is rather stupid. But I think allocating a foreign string is not
+     ;; a good idea here. Probably the calling code should just do the addnwstr.
+     (loop :for c :across thing :do (%add-char c)))))
 
 ;; @@@ The comment for add-char also applies to this. Also this is slow and
 ;; tripple consy. We should probably have a static per-thread exapndable
