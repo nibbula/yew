@@ -899,7 +899,8 @@ line : |----||-------||---------||---|
 	   ;;   (incf y (display-line i (car l)))
 	   ;;   (incf i))
 	   (incf y (display-line i (car l)))
-	   (setf l (cdr l))))
+	   (setf l (cdr l))
+	   (incf i)))
       ;; Fill the rest of the screen with twiddles to indicate emptiness.
       (when (< y page-size)
 	(loop :for i :from y :below page-size
@@ -1255,7 +1256,6 @@ list containing strings and lists."
        (page ,input))))
 
 ;; The long commands are a meager attempt at mindless "less" compatibility.
-;; @@@ This points out the need for a curses-ification of tiny-rl.
 
 (defmacro lc (&body body)
   `(function (lambda (c) (declare (ignorable c)) ,@body)))
