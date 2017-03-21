@@ -589,7 +589,7 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 
 (defparameter *dir-sep-string* (string *directory-separator*))
 
-(defun glob (pattern &key mark-directories (escape t) sort braces (tilde t)
+(defun glob (pattern &key mark-directories (escape t) (sort t) braces (tilde t)
 		       twiddle limit (recursive t))
   "PATTERN is a shell pattern as matched by FNMATCH.
   MARK-DIRECTORIES true, means put a slash at the end of directories.
@@ -600,7 +600,7 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
   TWIDDLE is a synonym for TILDE.
   LIMIT as an integer, means limit the number of pathnames to LIMIT.
   RECURSIVE true, means double stars ** match down through directories."
-  (declare (ignore mark-directories sort braces limit))
+  (declare (ignore mark-directories braces limit))
   (setf tilde (or tilde twiddle))
   (let* ((expanded-pattern (if tilde (expand-tilde pattern) pattern))
 	 (path (split-sequence *directory-separator* expanded-pattern
@@ -609,7 +609,12 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 		*dir-sep-string*)))
     (when (trailing-directory-p expanded-pattern)
       (rplaca (last path) (s+ (car (last path)) *dir-sep-string*)))
-    (dir-matches path :dir dir :escape escape :recursive recursive)))
+    (if sort
+	(locally
+	    #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+	    (sort (dir-matches path :dir dir :escape escape :recursive recursive)
+		  #'string<))
+	(dir-matches path :dir dir :escape escape :recursive recursive))))
 
 ;; Despite Tim Waugh's <twaugh@redhat.com> wordexp manifesto
 ;; <http://cyberelk.net/tim/articles/cmdline/>, "When is a command line not a
