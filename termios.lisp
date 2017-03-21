@@ -578,7 +578,7 @@ as it's argument. It sets up the file descriptor for raw input, and cleans up
 afterwards. If VERY-RAW is true, set the terminal to the most raw state, which
 doesn't even process interrupts. If TIMEOUT is true, it's a number of
 deciseconds, (by setting VTIME) to wait before a read returns nothing."
-  (let (raw cooked raw-check result)
+  (let (raw cooked result)
     (unwind-protect
 	 (progn
 	   (setf cooked    (foreign-alloc '(:struct termios))
