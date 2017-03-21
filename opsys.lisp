@@ -483,6 +483,12 @@ them if there isn't one already."
 	     (princ ns str)
 	     (setf any t)))))))
 
+(defun path-snip-ext (path)
+  "Remove the extension from a file name, which for this simple function means
+just removing everything after the last period '.'"
+  (let ((pos (position #\. path :from-end t)))
+    (if (and pos (/= pos 0)) (subseq path 0 pos) path)))
+
 (defosfun hidden-file-name-p (name)
   "Return true if the file NAME is normally hidden.")
 
