@@ -10,7 +10,7 @@
 (defpackage :tree-viewer
   (:documentation "View trees.")
   (:nicknames :tb)
-  (:use :cl :dlib :curses :char-util :keymap :opsys :dlib-interactive)
+  (:use :cl :dlib :curses :char-util :keymap :opsys :dlib-interactive :terminal)
   (:export
    #:view-tree
    #:node #:node-branches #:node-open #:make-node
@@ -661,7 +661,7 @@ been encountered."
   "Display a formatted message and wait for a key."
   (apply #'show-message format-string format-args)
   (refresh)
-  (fui:get-char))
+  (tt-get-char))
 
 (defun perform-key (key &optional (keymap (keymap *viewer*)))
   ;; Convert positive integer keys to characters
@@ -677,7 +677,7 @@ been encountered."
 	  (funcall binding))
 	 ((keymap-p (symbol-value binding))
 	  (show-message (quote-format (princ-to-string (nice-char key))))
-	  (perform-key (fui:get-char) (symbol-value binding)))
+	  (perform-key (tt-get-char) (symbol-value binding)))
 	 (t
 	  (error "Unbound symbol ~s in keymap" binding))))
       ((consp binding)
@@ -844,7 +844,7 @@ and indented properly for multi-line objects."
 				(node-abbrev bottom-node))))
 	      (when current-position
 		(move current-position 0))
-	      (perform-key (fui:get-char))
+	      (perform-key (tt-get-char))
 	      ;; bounds checking
 	      (when (< left 0)
 		(setf left 0)))
