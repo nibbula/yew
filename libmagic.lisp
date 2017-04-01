@@ -143,9 +143,12 @@
 (defvar *magic-db* nil
   "A magic_t representing the current magic database.")
 
+(defvar *magic-default-flags* +MAGIC-SYMLINK+
+  "Default flags to use.")
+
 (defun magic-db ()
   (or *magic-db*
-      (prog1 (setf *magic-db* (magic-open +MAGIC-SYMLINK+))
+      (prog1 (setf *magic-db* (magic-open *magic-default-flags*))
 	(magic-load *magic-db* (cffi:null-pointer)))))
 
 (defun guess-content (thing thing-type &optional (guess-type :content))
@@ -160,10 +163,14 @@ GUESS-TYPE can be one of:
   :ENCODING           for the character encoding
   :MIME-AND-ENCODING  for the MIME type and the encoding separated by ';'"
   (ccase guess-type
-    (:content		(magic-setflags (magic-db) +MAGIC-NONE+))
-    (:mime              (magic-setflags (magic-db) +MAGIC-MIME-TYPE+))
-    (:encoding          (magic-setflags (magic-db) +MAGIC-MIME-ENCODING+))
-    (:mime-and-encoding (magic-setflags (magic-db) +MAGIC-MIME+)))
+    (:content		(magic-setflags (magic-db)
+			  (logior *magic-default-flags* +MAGIC-NONE+)))
+    (:mime              (magic-setflags (magic-db)
+			  (logior *magic-default-flags* +MAGIC-MIME-TYPE+)))
+    (:encoding          (magic-setflags (magic-db)
+			  (logior *magic-default-flags* +MAGIC-MIME-ENCODING+)))
+    (:mime-and-encoding (magic-setflags (magic-db)
+			  (logior *magic-default-flags* +MAGIC-MIME+))))
   (ccase thing-type
     (:buffer (magic-buffer (magic-db) thing (length thing)))
     (:file   (magic-file   (magic-db) thing))))
