@@ -63,6 +63,7 @@
    #:remove-prefix
    #:remove-suffix
    #:s+
+   #:*ascii-whitespace* #:*unicode-whitespace-codes* #:*whitespace*
    #:ltrim #:rtrim #:trim
    #:join
    #-clisp #:doseq
@@ -478,7 +479,7 @@ is the separator. If :omit-empty is true, then don't return empty subsequnces.
 |#
 
 (defun replace-subseq (target replacement in-seq &key count)
-  "Return a copy of IN-SEQ but with sequences of FROM-SEQ replaced with TO-SEQ."
+  "Return a copy of IN-SEQ but with sequences of TARGET replaced with REPLACEMNT."
   (if (and (> (length target) 0) (or (not count) (> count 0)))
       (let ((pos 0)
 	    (i 0)
