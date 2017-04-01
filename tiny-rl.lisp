@@ -2605,6 +2605,7 @@ binding."
     ;; Completion
     (#\tab			. complete)
     (#\?			. show-completions)
+    (,(meta-char #\/)		. complete-filename-command)
 
     ;; Misc
     (,(ctrl #\L)		. redraw-command)
