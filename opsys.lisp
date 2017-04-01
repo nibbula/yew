@@ -574,7 +574,8 @@ current effective user. If REGULAR is true also check if it's a regular file.")
   "Return the full pathname of the first executable file in the PATH or nil
 if there isn't one."
   (when (has-directory-p cmd)
-    (return-from command-pathname (and (is-executable cmd :regular t) cmd)))
+    (return-from command-pathname (and (file-exists cmd)
+				       (is-executable cmd :regular t) cmd)))
   (loop :for dir :in (split-sequence *path-separator*
 				     (environment-variable *path-variable*))
      :do
