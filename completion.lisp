@@ -782,7 +782,10 @@ defaults to the current package. Return how many symbols there were."
 	 match-len
 	 (full-match t)
 	 (match nil)
-	 (w             (expand-tilde word))
+	 (start         (position-if (_ (position _ "\" ")) word :from-end t))
+	 ;;(w             (expand-tilde word))
+	 (w             (expand-tilde
+			 (subseq word (or (and start (1+ start)) 0))))
 	 (dir-part      (dirname w))
 	 (dir-part-path (dirname word))
 	 (file-part     (basename w))
