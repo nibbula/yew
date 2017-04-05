@@ -782,7 +782,10 @@ defaults to the current package. Return how many symbols there were."
 	 match-len
 	 (full-match t)
 	 (match nil)
-	 (start         (position-if (_ (position _ "\" ")) word :from-end t))
+	 ;;(start         (position-if (_ (position _ "\" ")) word :from-end t))
+	 ;; @@@ XXX This is quite wrong. I should fix it in lish or something.
+	 ;; It's a kludge so complete-filename-command can work.
+	 (start         (position-if (_ (position _ "\"")) word :from-end t))
 	 ;;(w             (expand-tilde word))
 	 (w             (expand-tilde
 			 (subseq word (or (and start (1+ start)) 0))))
