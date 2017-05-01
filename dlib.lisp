@@ -1385,8 +1385,9 @@ the condition."
 (defvar *dbug-package* nil
   "A package to debug. Output debugging message when we're in this package.")
 
+(declaim (type (or cons null vector) *dbug-facility*))
 (defvar *dbug-facility* nil
-  "Facilities to debug. A sequence of keywords or something.")
+  "Facilities to debug. A sequence of symbols or something.")
 
 (defmacro dbug (fmt &rest args)
   "Print a debugging message when debugging is turned on and maybe we're in
@@ -1398,11 +1399,12 @@ the right package."
 
 (defmacro dbugf (facility fmt &rest args)
   "Print a debugging message when debugging is turned on and maybe we're in
-the right package, and the FACILITY is activated."
+the right package, and the FACILITY is activated. It's recommended that
+facility be a non-keyword symbol."
   `(when (and #| dlib:*dbug* |# dlib:*dbug-facility*
 	      (or
-	       (position ,facility *dbug-facility*)
-	       (position :all *dbug-facility*)))
+	       (member ,facility *dbug-facility*)
+	       (member :all *dbug-facility*)))
      (funcall #'format *debug-io* ,fmt ,@args) (finish-output)))
 
 (defmacro with-dbug (&body body)
