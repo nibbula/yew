@@ -284,7 +284,7 @@ string (denoting itself)."
 		 (format s "~a"
 			 (symbol-call :opsys :error-message
 				      (opsys-error-code c))))))
-  (:documentation "An error from calling a POSIX function."))
+  (:documentation "An error from calling an operating system function."))
 
 (define-condition opsys-resumed (simple-error)
   ()
