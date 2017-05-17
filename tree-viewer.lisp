@@ -744,6 +744,7 @@ display-prefix to generate line strings, and then use display-node-line, to
 output them."))
 
 (defmethod display-node :before ((node node) level)
+  (declare (ignore level))
   (when (eq node (current *viewer*))
     (setf (current-position *viewer*) (getcury *stdscr*)))
   (setf (bottom-node *viewer*) node))
