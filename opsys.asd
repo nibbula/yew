@@ -23,14 +23,14 @@
     :long-description   "The cessation of the repetition of ‘Never Again’."
     :depends-on (:cffi :dlib)
     :components
-    ((:file "opsys-base")
+    ((:file "base")
      (:file "unix" :if-feature (:or :unix :linux :darwin :sunos :bsd)
-	    :depends-on ("opsys-base"))
+	    :depends-on ("base"))
      (:file "ms" :if-feature (:and :windows (:not :unix))
-	    :depends-on ("opsys-base"))
+	    :depends-on ("base"))
      (:file "termios" :if-feature (:or :unix :linux :darwin :sunos :bsd)
 	    :depends-on ("unix"))
-     (:file "package" :depends-on ("opsys-base"))
+     (:file "package" :depends-on ("base"))
      (:file "libc" :depends-on ("package"))
      (:file "opsys" :depends-on
 	    #+(or unix linux darwin sunos bsd) ("unix")
