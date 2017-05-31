@@ -275,8 +275,8 @@ string (denoting itself)."
     :type (signed-byte 32)
     :documentation "The error code of the last error."))
   (:report (lambda (c s)
-	     (if (and (slot-boundp c 'format-control)
-		      (slot-value c 'format-control))
+	     (if (and (slot-boundp c +simple-condition-format-control-slot+)
+		      (slot-value c +simple-condition-format-control-slot+))
 		 (format s "~? ~a"
 			 (simple-condition-format-control c)
 			 (simple-condition-format-arguments c)
