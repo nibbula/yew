@@ -7,6 +7,8 @@
 ;;  - syntax highlighting
 ;;  - simpile HTML rendering
 ;;  - big stream issues?
+;;    - direct read for files
+;;    - option to use tmp file for pipe (disk vs mem tradeoff)
 ;;  - maybe convert to using terminal instead of curses?
 ;;  - handle when terminal wraps properly
 
@@ -906,6 +908,16 @@ line : |----||-------||---------||---|
 	(loop :for i :from y :below page-size
 	   :do (mvaddstr i 0 *empty-indicator*))))))
 
+(defun resize ()
+  "Resize the page and read more lines if necessary."
+  (with-slots (page-size line count) *pager*
+    (when (/= page-size (1- curses:*lines*))
+      (setf page-size (1- curses:*lines*))
+      ;;(message-pause "new page size ~d" page-size)
+      (when (< count (+ line page-size))
+	;;(message-pause "read lines ~d" (- (+ line page-size) count))
+	(read-lines (- (+ line page-size) count))))))
+
 (defun ask-for (&key prompt space-exits)
   (let ((str (make-stretchy-string 10))
 	(esc-count 0))
@@ -1317,6 +1329,7 @@ list containing strings and lists."
     (#\Q		. quit)
     (,(ctrl #\C)	. quit)
     (,(ctrl #\Z)	. suspend)
+    (:resize		. resize)
     (#\space		. next-page)
     (:npage		. next-page)
     (,(ctrl #\F)	. next-page)
