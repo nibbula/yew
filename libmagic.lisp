@@ -65,6 +65,7 @@
 
 (use-foreign-library libmagic)
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
 (defconstant +MAGIC-NONE+	    #x000000 "No flags")
 (defconstant +MAGIC-DEBUG+	    #x000001 "Turn on debugging")
 (defconstant +MAGIC-SYMLINK+	    #x000002 "Follow symlinks")
@@ -77,8 +78,8 @@
 (defconstant +MAGIC-RAW+	    #x000100 "Don't translate unprintable chars")
 (defconstant +MAGIC-ERROR+	    #x000200 "Handle ENOENT etc as real errors")
 (defconstant +MAGIC-MIME-ENCODING+  #x000400 "Return the MIME encoding")
-(defconstant +MAGIC-MIME+
-  #.(logior +MAGIC-MIME-TYPE+ +MAGIC-MIME-ENCODING+))
+(defparameter +MAGIC-MIME+
+  (logior +MAGIC-MIME-TYPE+ +MAGIC-MIME-ENCODING+))
 (defconstant +MAGIC-APPLE+	#x000800 "Return the Apple creator and type")
 
 (defconstant +MAGIC-NO-CHECK-COMPRESS+ #x001000
@@ -93,7 +94,7 @@
 (defconstant +MAGIC-NO-CHECK-ENCODING+ #x200000 "Don't check text encodings")
 
 (defconstant +MAGIC-NO-CHECK-BUILTIN+ 
-  #.(logior +MAGIC-NO-CHECK-COMPRESS+
+  (logior +MAGIC-NO-CHECK-COMPRESS+
 	    +MAGIC-NO-CHECK-TAR+
 	    +MAGIC-NO-CHECK-APPTYPE+
 	    +MAGIC-NO-CHECK-ELF+
@@ -111,6 +112,7 @@
 (defconstant +MAGIC-NO-CHECK-TROFF+	#x000000 "Don't check ascii/troff")
 
 (defconstant +MAGIC-VERSION+ 514 "This implementation")
+)
 
 ;;typedef struct magic_set *magic_t;
 (defctype magic_t :pointer)
