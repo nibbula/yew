@@ -42,8 +42,8 @@ ROWS is a list of row, which are lists of values.
 COLUMN-NAMES is a list of column names to printed on top, which can be
 NIL to print without column names. Each column-name can be a string or a list
 of the form:
-  (\"name\" [:<justification>] [width])
-where <justification> is one of the keywords :LEFT, :RIGHT or :WRAP, and
+  (\"name\" [:<attribute>...] [width])
+where <attribute> is one of the keywords :LEFT, :RIGHT, :WRAP, :OVERFLOW, and
 width is the desired width of the column. If the width isn't given, the width of
 the columns is determined by the maximum width required to print the data.
 
@@ -111,8 +111,11 @@ resized to fit in this, and the whole row is trimmed to this."
 	     :for col = column-names :then (cdr col)
 	     :collect
 	     (list size (if (and (listp (car col))
-				 (member (second (car col)) '(:right :wrap)))
-			    (second (car col)) :left))))
+				 (member (second (car col))
+					 '(:right :wrap :overflow)))
+			    (second (car col))
+			    ;; default to left justification
+			    :left))))
     ;; Print titles
     (when (and column-names print-titles)
       (loop :with str :and fmt = "~va" :and len = (length column-names)
@@ -163,7 +166,12 @@ resized to fit in this, and the whole row is trimmed to this."
 		  (t "~va")))
 	  (setf cell (format nil fmt size field))
 	  (incf col (length cell))	; of course this isn't right
-	  (write-string (subseq cell 0 (min size (length cell))) stream)
+	  (if (and (eq just :overflow)
+		   (> (length cell) size))
+	      (progn
+		(write-string cell stream)
+		(format stream "~%~v,,,va" size #\space #\space))
+	      (write-string (subseq cell 0 (min size (length cell))) stream))
 	  (when (< i (1- row-len))
 	    (write-string separator stream)
 	    (incf col (length separator))))
