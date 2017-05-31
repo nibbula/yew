@@ -2,9 +2,9 @@
 ;;; package.lisp - Package definition for OPSYS
 ;;;
 
-;; The without-warning is overkill, so don't screw up, or comment it out to
-;; check for real problems. Otherwise, certain complainy implementatations,
-;; don't take kindly to us re-exporting things from opsys-base.
+;; The without-warning is overkill, so be careful. Comment it out to check for
+;; real problems. Otherwise, certain complainy implementatations, don't take
+;; kindly to us re-exporting things from opsys-base.
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (dlib:without-warning
 (defpackage :opsys
