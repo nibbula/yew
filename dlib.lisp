@@ -105,6 +105,9 @@
    #:refer-to #-(or lispworks clasp) #:※
    #:@
    #:ignore-conditions #:ignore-some-conditions
+   #:find-slot-name
+   #:+simple-condition-format-control-slot+
+   #:+simple-condition-format-arguments-slot+
    ;; debugging
    #:*dbug* #:*dbug-package* #:*dbug-facility*
    #:dbug #:dbugf #:with-dbug #:with-dbug-package #:with-dbugf
@@ -987,7 +990,7 @@ equal under TEST to result of evaluating INITIAL-VALUE."
     (let* ((pkg (find-package original))
 	   (new-nicks (append (list alias) (package-nicknames pkg))))
       ;; Hopefully this trick works on most implementations.
-      (rename-package original original new-nicks)))
+      (rename-package original (package-name original) new-nicks)))
   (:method (alias (original symbol) (alias-type (eql 'class)))
     (define-alias alias (find-class original) alias-type))
   (:method (alias (original standard-class) alias-type)
@@ -997,7 +1000,7 @@ equal under TEST to result of evaluating INITIAL-VALUE."
 	  (documentation alias 'type)
 	  (documentation original 'type))))
 
-;; I encouraged you make appropriate methods for your own types.
+;; You can make appropriate methods for your own types.
 
 (defun defalias (alias original &optional alias-type)
   "Define ALIAS as another name for ORIGINAL. ALIAS should be a symbol.
@@ -1029,6 +1032,10 @@ ORIGINAL is something that a define-alias method is defined for."
     (structure-class (define-alias alias original 'structure))
     (standard-class  (define-alias alias original 'class))
     (t               (define-alias alias original alias-type))))
+
+;; So we can just say mop: on any implementation?
+(#+sbcl without-package-locks #-sbcl progn
+  (defalias :mop (find-package *mop-package*)))
 
 ;; This is just to pretend that we're trendy and modern.
 ;(setf (macro-function 'λ) (macro-function 'cl:lambda))
@@ -1362,6 +1369,22 @@ the condition."
 	  :collect `(,cc (c) (values nil c)))))
 
 (defalias 'ignore-some-conditions 'ignore-conditions)
+
+(defun find-slot-name (class symbol)
+  "Return the symbol which is the name of the slot in CLASS whose symbol-name
+matches SYMBOL."
+  (mop:slot-definition-name
+   (find symbol (mop:class-slots (find-class class))
+	 :key (_ (mop:slot-definition-name _))
+	 :test (lambda (a b) (string-equal (symbol-name a) (symbol-name b))))))
+
+(defparameter +simple-condition-format-control-slot+
+  (find-slot-name 'simple-condition 'format-control)
+  "Name of the slot that simple-condition-format-control accesses.")
+
+(defparameter +simple-condition-format-arguments-slot+
+  (find-slot-name 'simple-condition 'format-control)
+  "Name of the slot that simple-condition-format-arguments accesses.")
 
 ;; Debugging messages
 ;;
