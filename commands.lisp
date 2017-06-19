@@ -612,7 +612,8 @@ is none."
   "Delete space before and after the cursor."
   (with-slots (buf point) e
     (let ((origin point)
-	  start end del-len disp-len deleted-string first-half-disp-len)
+	  start end del-len disp-len deleted-string
+	  #| first-half-disp-len |#)
       (setf origin point)
       (scan-over e :forward
 		 :func #'(lambda (c) (position c dlib::*whitespace*)))
@@ -623,7 +624,7 @@ is none."
       (setf start point
 	    del-len (- end start)
 	    deleted-string (subseq buf start end)
-	    first-half-disp-len (display-length (subseq buf start origin))
+	    ;;first-half-disp-len (display-length (subseq buf start origin))
 	    disp-len (display-length deleted-string))
       (delete-region e start end)
       ;;(move-backward e first-half-disp-len)
