@@ -1034,8 +1034,10 @@ ORIGINAL is something that a define-alias method is defined for."
     (t               (define-alias alias original alias-type))))
 
 ;; So we can just say mop: on any implementation?
-(#+sbcl without-package-locks #-sbcl progn
-  (defalias :mop (find-package *mop-package*)))
+(#+sbcl without-package-locks
+ #+clisp ext:without-package-lock #+clisp ()
+ #-(or sbcl clisp) progn
+ (defalias :mop (find-package *mop-package*)))
 
 ;; This is just to pretend that we're trendy and modern.
 ;(setf (macro-function 'λ) (macro-function 'cl:lambda))
@@ -1376,7 +1378,8 @@ matches SYMBOL."
   (mop:slot-definition-name
    (find symbol (mop:class-slots (find-class class))
 	 :key (_ (mop:slot-definition-name _))
-	 :test (lambda (a b) (string-equal (symbol-name a) (symbol-name b))))))
+	 :test (lambda (a b)
+		 (search (symbol-name a) (symbol-name b) :test #'equalp)))))
 
 (defparameter +simple-condition-format-control-slot+
   (find-slot-name 'simple-condition 'format-control)
