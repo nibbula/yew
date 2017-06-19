@@ -289,7 +289,7 @@ starting at START. If not found, return START."
   (with-slots (start) i
     (move 1 0) (clrtoeol)
     (let ((result (with-terminal (:curses)
-		    (tiny-rl:tiny-rl :prompt "Character number: ")))
+		    (rl:rl :prompt "Character number: ")))
 	  number)
       (refresh)
       (if (not (ignore-errors (setf number (parse-integer-with-radix result))))

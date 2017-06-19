@@ -69,11 +69,17 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 
 (defun fat-string-to-string (fat-string)
   "Make a string from a fat string. This of course loses the attributes."
-  (let ((s (make-array (list (length fat-string))
-		       :element-type 'character)))
-    (loop :for i :from 0 :below (length fat-string) :do
-       (setf (aref s i) (fatchar-c (aref fat-string i))))
-    s))
+  ;; Arrays can't really distinguish their orginal element type if it's
+  ;; upgraded, so we might not be able tell a string from a fatchar-string.
+  (typecase fat-string
+    (fatchar-string
+     ;; (let ((s (make-array (list (length fat-string))
+     ;; 			  :element-type 'character)))
+     ;;   (loop :for i :from 0 :below (length fat-string) :do
+     ;; 	  (setf (aref s i) (fatchar-c (aref fat-string i))))
+     ;;   s))
+     (map 'string (_ (if (fatchar-p _) (fatchar-c _) _)) fat-string))
+    (t fat-string)))
 
 (defun span-length (span)
   "Calculate the length in characters of the span."

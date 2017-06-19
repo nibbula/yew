@@ -1,8 +1,7 @@
 ;;;
-;;; tiny-repl.lisp - A poor little REPL that works with tiny-rl.
+;;; tiny-repl.lisp - A poor little REPL that works with RL.
 ;;;
 
-;;; This used to be part of tiny-rl, but it's split out now.
 ;;; It's actually quite broken and incomplete.
 ;;; It used to include a debugger which is very very shabby, but
 ;;; now is seperate as TINY-DEBUG.
@@ -15,7 +14,7 @@
 ;;;     - some way to turn off completion (tab & ?) for pasting
 
 ;;; OR you could just say:
-;;; (loop (print (eval (read-from-string (tiny-rl:tiny-rl) nil nil))))
+;;; (loop (print (eval (read-from-string (rl:rl) nil nil))))
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 		   (compilation-speed 0)))
@@ -24,9 +23,9 @@
 ;#+sbcl (require 'sb-introspect)
 
 (defpackage "TINY-REPL"
-  (:use :common-lisp :terminal :tiny-rl :keymap :dlib :dlib-misc)
+  (:use :common-lisp :terminal :rl :keymap :dlib :dlib-misc)
   (:documentation
-   "A tiny REPL replacement that works with tiny-rl.")
+   "A tiny REPL replacement that works with RL.")
   (:export
    #:tiny-repl
    #:*repl-level*
@@ -59,7 +58,7 @@
   (let ((pkg (if (not (eq *package* (find-package :cl-user)))
 		 (shortest-package-nick)
 		 nil)))
-    (tiny-rl::editor-write-string
+    (rl::editor-write-string
      e (format nil "~a~@[:~a~]~:[~*~;:~d~]~a"
 	       #+(and ccl 32-bit-target) "CCL-32"
 	       #+(and ccl 64-bit-target) "CCL-64"
@@ -71,15 +70,15 @@
 
 (defstruct repl-state
   "Internal state of the REPL. Slots are:
-  editor	  The current TINY-RL editor. An instance of the class
-                  TINY-RL:LINE-EDITOR.
+  editor	  The current RL editor. An instance of the class
+                  RL:LINE-EDITOR.
   interceptor	  A function of two arguments, a value to be intercepted and
                   copy of this REPL-STATE.
   prompt-func   
   more		  If non-nil, a string of more input.
   terminal-name   Name of a terminal device or nil.
   terminal-class  A terminal class symbol.
-  keymap          Custom keymap for TINY-RL or nil.
+  keymap          Custom keymap for RL or nil.
   output          Stream to print output on or nil for the default.
   got-error	  A boolean which is true if we got an error.
   error-count     A fixnum which keeps the count of errors we have gotten.
@@ -145,7 +144,7 @@
 	   t))
 	((matches value "Help")
 	 (let ((cols (terminal-window-columns
-		      (tiny-rl::line-editor-terminal
+		      (rl:line-editor-terminal
 		       (repl-state-editor state)))))
 	   (dlib-misc:justify-text (format nil "~
 Hi. ~@? If you're weren't expecting a Lisp REPL, just type \"quit\" now. Otherwise, you might be interested to know that you are using Dan's TINY-REPL. If you want to get back to the normal REPL you can probably type \".\" (a period by itself). You can use some Emacs-like commands to edit the command line.~%"
@@ -172,7 +171,7 @@ The REPL also has a few commands:
   Help         - You are looking at it.~%"))
 	 t)
 	((matches value "History")
-	 (tiny-rl:show-history (tiny-rl::context (repl-state-editor state)))
+	 (rl:show-history (rl::context (repl-state-editor state)))
 	 t)
 	((or (matches value "IP") (matches value "IN"))
 	 ;; Since this doesn't work: (in-package (read-arg state))
@@ -225,37 +224,37 @@ The REPL also has a few commands:
 		  (dbug "Using MORE!~%"))
 		(if pre-str
 		    (setf (values str editor)
-			  (tiny-rl :eof-value *real-eof-symbol*
-				   :quit-value *quit-symbol*
-				   :editor editor
-				   :keymap keymap
-				   :terminal-name terminal-name
-				   :terminal-class terminal-class
-				   :context :repl
-				   :prompt ""))
+			  (rl :eof-value *real-eof-symbol*
+			      :quit-value *quit-symbol*
+			      :editor editor
+			      :keymap keymap
+			      :terminal-name terminal-name
+			      :terminal-class terminal-class
+			      :context :repl
+			      :prompt ""))
 		    (progn
 		      ;; (try-to-reset-curses)
 		      (setf (values str editor)
 			    (if prompt-string
-				(tiny-rl :eof-value *real-eof-symbol*
-					 :quit-value *quit-symbol*
-					 :editor editor
-					 :keymap keymap
-					 :terminal-name terminal-name
-					 :terminal-class terminal-class
-					 :context :repl
-					 :prompt prompt-string)
-				(tiny-rl :eof-value *real-eof-symbol*
-					 :quit-value *quit-symbol*
-					 :editor editor
-					 :terminal-name terminal-name
-					 :terminal-class terminal-class
-					 :keymap keymap
-					 :context :repl
-					 :output-prompt-func
-					 (if prompt-func
-					     prompt-func
-					     #'repl-output-prompt)))))))
+				(rl :eof-value *real-eof-symbol*
+				    :quit-value *quit-symbol*
+				    :editor editor
+				    :keymap keymap
+				    :terminal-name terminal-name
+				    :terminal-class terminal-class
+				    :context :repl
+				    :prompt prompt-string)
+				(rl :eof-value *real-eof-symbol*
+				    :quit-value *quit-symbol*
+				    :editor editor
+				    :terminal-name terminal-name
+				    :terminal-class terminal-class
+				    :keymap keymap
+				    :context :repl
+				    :output-prompt-func
+				    (if prompt-func
+					prompt-func
+					#'repl-output-prompt)))))))
 	    (dbug "str = ~a~%editor after = ~a~%" str editor)
 	    (cond
 	      ((and (stringp str) (equal 0 (length str)))
@@ -390,13 +389,13 @@ The REPL also has a few commands:
 		    (output *standard-output*)
 		    (interceptor *default-interceptor*) (debug t))
   "Keep reading and evaluating lisp, with line editing.
-PROMPT-FUNC    -- A TINY-RL prompt function, which is called with a with
-		  an instance of TINY-RL:LINE-EDITOR and a prompt string.
+PROMPT-FUNC    -- A RL prompt function, which is called with a with
+		  an instance of RL:LINE-EDITOR and a prompt string.
 PROMPT-STRING  -- 
 NO-ANNOUNCE    -- True to supress the announcement on starting.
 TERMINAL-NAME  -- Name of a system terminal device to read from.
 TERMINAL-CLASS -- Class of terminal to read from. Defaults to TERMINAL-ANSI.
-KEYMAP	       -- A custom keymap to use for TINY-RL.
+KEYMAP	       -- A custom keymap to use for RL.
 OUTPUT	       -- Stream to print output on.
 INTERCEPTOR    -- Function that's called with an object to be evaluated and a
 		  TINY-REPL:REPL-STATE. Allows interception of sepcial objects

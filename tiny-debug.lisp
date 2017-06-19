@@ -10,9 +10,9 @@
 (defpackage :tiny-debug
   (:documentation
    "A crappy half-assed debugger for your enjoyment and frustration. But at
-least you can type things using TINY-RL.")
+least you can type things using RL.")
   (:use :cl :dlib :char-util :table-print :keymap :terminal :terminal-ansi
-   :tiny-rl :tiny-repl #+sbcl :sb-introspect)
+   :rl :tiny-repl #+sbcl :sb-introspect)
   (:export
    #:tiny-debug
    #:*default-interceptor*
@@ -843,7 +843,7 @@ innermost N contexts, if we can."
   (when *visual-mode*
     (visual))
   (fresh-line *debug-io*)
-  (tiny-rl::editor-write-string		; XXX
+  (rl::editor-write-string		; XXX
    e
    (format nil "Debug ~d~a" *repl-level* p))
 ;  (finish-output *debug-io*)
@@ -970,12 +970,12 @@ program that messes with the terminal, we can still type at the debugger."
     ;; First reset the terminal driver to a sane state.
     (termios:sane)
     ;; Then try to reset the terminal itself to a sane state, assuming an ANSI
-    ;; terminal (just like tiny-rl). We could just do ^[c, which is quite
-    ;; effective, but it's pretty drastic, and usually clears the screen and
-    ;; can even resize the window, which is so amazingly annoying. So let's
-    ;; just try do individual things that need resetting.  This is pretty much
-    ;; the idea of termcap/info reset string, usually the "rs2", since "rs"
-    ;; usually just does ^[c.
+    ;; terminal. We could just do ^[c, which is quite effective, but it's
+    ;; pretty drastic, and usually clears the screen and can even resize the
+    ;; window, which is so amazingly annoying. So let's just try do individual
+    ;; things that need resetting.  This is pretty much the idea of
+    ;; termcap/info reset string, usually the "rs2", since "rs" usually just
+    ;; does ^[c.
     (mapcar
      #'out '(" F"    ;; 7 bit controls
 	     "[0m"   ;; color and attributes
@@ -994,11 +994,11 @@ program that messes with the terminal, we can still type at the debugger."
 (defvar *debugger-escape-keymap* nil "Escape key Keymap for the debugger.")
 
 (defun setup-keymap ()
-  (setf *debugger-keymap* (copy-keymap tiny-rl:*normal-keymap*))
+  (setf *debugger-keymap* (copy-keymap rl:*normal-keymap*))
   (define-key *debugger-keymap* (meta-char #\i) 'debugger-up-frame-command)
   (define-key *debugger-keymap* (meta-char #\o) 'debugger-down-frame-command)
   (setf *debugger-escape-keymap*
-;;	(add-keymap tiny-rl::*escape-raw-keymap*
+;;	(add-keymap rl::*escape-raw-keymap*
 ;;		    (build-escape-map *debugger-keymap*)))
 	(build-escape-map *debugger-keymap*))
   (define-key *debugger-keymap* #\escape '*debugger-escape-keymap*))

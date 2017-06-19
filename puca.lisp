@@ -20,7 +20,7 @@
 (defpackage :puca
   (:documentation
    "Putative Muca (A very simple(istic) interface to CVS/git/svn).")
-  (:use :cl :dlib :dlib-misc :opsys :keymap :char-util :curses :tiny-rl
+  (:use :cl :dlib :dlib-misc :opsys :keymap :char-util :curses :rl
 	:completion :inator :terminal :terminal-curses :fui :options :ppcre)
   (:export
    ;; Main entry point
@@ -610,7 +610,7 @@ for the command-function).")
   (move (- *lines* 2) 2)
   (refresh)
   (reset-shell-mode)
-  (let ((command (tiny-rl:tiny-rl
+  (let ((command (rl:rl
 		  :prompt ": "
 		  :completion-func *complete-extended-command*
 		  :context :puca))

@@ -5,7 +5,7 @@
 (defpackage :xterm-control
   (:documentation "Control an XTerm compatible terminal.")
   (:use :cl :dlib :dlib-misc :char-util :terminal :terminal-ansi
-	:keymap :inator :tiny-rl :ppcre)
+	:keymap :inator :rl :ppcre)
   (:export
    #:control-xterm
    #:!xterm-control
@@ -193,9 +193,9 @@ default to 16 bit color."
     (tt-home)
     (tt-finish-output)
     (setf result
-    	  (tiny-rl:tiny-rl :prompt "Title: " :string (or title "")
-    			   :terminal-class 'terminal-ansi:terminal-ansi
-    			   :accept-does-newline nil))
+    	  (rl:rl :prompt "Title: " :string (or title "")
+		 :terminal-class 'terminal-ansi:terminal-ansi
+		 :accept-does-newline nil))
     (when result
       (set-title result))
     (terminal-start *terminal*)
