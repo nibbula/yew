@@ -2,9 +2,6 @@
 ;; display.lisp
 ;;
 
-;; Copyright © 2007-2017 Nibby Nebbulous
-;; Licensed under the GPL (See file LICENSE for details).
-
 (in-package :rl)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -50,6 +47,7 @@
     (apply #'message e fmt args))
   (tt-beep))
 
+#|
 ;; Note: no tab or newline
 (defparameter *control-char-graphics-vec*
   `((#\Null . #\@) (,(ctrl #\A) . #\A) (,(ctrl #\B) . #\B) (,(ctrl #\C) . #\C)
@@ -64,6 +62,47 @@
     (#\Rs . #\^) (#\Us . #\_) (#\Rubout . #\?))
   "Vector of control characters and corresponding caret notation char.")
 
+    (setf *control-char-graphics* (make-hash-table :test #'eql))
+    (alist-to-hash-table *control-char-graphics-vec*
+			 *control-char-graphics*))
+
+(2400) ␀ SYMBOL_FOR_NULL
+(2401) ␁ SYMBOL_FOR_START_OF_HEADING
+(2402) ␂ SYMBOL_FOR_START_OF_TEXT
+(2403) ␃ SYMBOL_FOR_END_OF_TEXT
+(2404) ␄ SYMBOL_FOR_END_OF_TRANSMISSION
+(2405) ␅ SYMBOL_FOR_ENQUIRY
+(2406) ␆ SYMBOL_FOR_ACKNOWLEDGE
+(2407) ␇ SYMBOL_FOR_BELL
+(2408) ␈ SYMBOL_FOR_BACKSPACE
+(2409) ␉ SYMBOL_FOR_HORIZONTAL_TABULATION
+(240A) ␊ SYMBOL_FOR_LINE_FEED
+(240B) ␋ SYMBOL_FOR_VERTICAL_TABULATION
+(240C) ␌ SYMBOL_FOR_FORM_FEED
+(240D) ␍ SYMBOL_FOR_CARRIAGE_RETURN
+(240E) ␎ SYMBOL_FOR_SHIFT_OUT
+(240F) ␏ SYMBOL_FOR_SHIFT_IN
+(2410) ␐ SYMBOL_FOR_DATA_LINK_ESCAPE
+(2411) ␑ SYMBOL_FOR_DEVICE_CONTROL_ONE
+(2412) ␒ SYMBOL_FOR_DEVICE_CONTROL_TWO
+(2413) ␓ SYMBOL_FOR_DEVICE_CONTROL_THREE
+(2414) ␔ SYMBOL_FOR_DEVICE_CONTROL_FOUR
+(2415) ␕ SYMBOL_FOR_NEGATIVE_ACKNOWLEDGE
+(2416) ␖ SYMBOL_FOR_SYNCHRONOUS_IDLE
+(2417) ␗ SYMBOL_FOR_END_OF_TRANSMISSION_BLOCK
+(2418) ␘ SYMBOL_FOR_CANCEL
+(2419) ␙ SYMBOL_FOR_END_OF_MEDIUM
+(241A) ␚ SYMBOL_FOR_SUBSTITUTE
+(241B) ␛ SYMBOL_FOR_ESCAPE
+(241C) ␜ SYMBOL_FOR_FILE_SEPARATOR
+(241D) ␝ SYMBOL_FOR_GROUP_SEPARATOR
+(241E) ␞ SYMBOL_FOR_RECORD_SEPARATOR
+(241F) ␟ SYMBOL_FOR_UNIT_SEPARATOR
+(2420) ␠ SYMBOL_FOR_SPACE
+(2421) ␡ SYMBOL_FOR_DELETE
+
+|#
+
 (defun pair-vector-to-hash-table (vec table)
   (loop :for (k . v) :across vec
      :do (setf (gethash k table) v))
@@ -71,12 +110,30 @@
 
 (defparameter *control-char-graphics* nil)
 
+;; This is, of course, ASCII (and therefore also LATIN1 and UTF-8) specific.
+(defun make-control-char-graphic-table ()
+  (setf *control-char-graphics* (make-hash-table :test #'eql))
+  (loop :for c :from 0 :to 31
+     :when (and (/= c (char-code #\tab)) (/= c (char-code #\newline)))
+     :do (setf (gethash *control-char-graphics* (code-char c))
+	       (code-char (+ 64 c))))
+  (setf (gethash *control-char-graphics* (code-char #\rubout)) #\?))
+
+;; There's no guarantee to have such characters in the font, and they might
+;; be less readable anyway. But they're possibly more compact.
+(defun make-control-char-unicode-graphic-table ()
+  (setf *control-char-graphics* (make-hash-table :test #'eql))
+  (loop :for c :from 0 :to 31
+     :when (and (/= c (char-code #\tab)) (/= c (char-code #\newline)))
+     :do (setf (gethash *control-char-graphics* (code-char c))
+	       (code-char (+ #x2400 c))))
+  (setf (gethash *control-char-graphics* (code-char #\rubout))
+	(code-char #x2421)))
+
 ;; @@@ Perhaps this should so be somewhere else.
 (defun control-char-graphic (c)
   (when (not *control-char-graphics*)
-    (setf *control-char-graphics* (make-hash-table :test #'eql))
-    (alist-to-hash-table *control-char-graphics-vec*
-			 *control-char-graphics*))
+    (make-control-char-graphic-table))
   (gethash c *control-char-graphics*))
 
 (defgeneric display-length (obj)
@@ -93,6 +150,11 @@
   #+(and sbcl has-sb-unicode) (eq (sb-unicode:east-asian-width c) :w)
   #-(and sbcl has-sb-unicode) (declare (ignore c))
   #-(and sbcl has-sb-unicode) nil	; @@@ too hard without tables
+  )
+
+(defun graphemes (str)
+  #+(and sbcl has-sb-unicode) (sb-unicode:graphemes str)
+  #-(and sbcl has-sb-unicode) (map 'list #'string str) ; @@@ fail
   )
 
 ;; XXX This is still wrong for unicode! @@@
@@ -114,10 +176,31 @@
 	 4)  ; \000
      )))
 
+(defun grapheme-length (g)
+  "Return the length of the character for display."
+  (loop :for c :across g
+     :sum
+     (cond
+       ((graphic-char-p c)
+	(cond
+	  ((combining-character-p c) 0)
+	  ((double-wide-p c) 2)
+	  (t 1)))				;normal case
+       ((eql c #\tab)
+	8)					;XXX @@@ wrong!
+       ((eql c #\newline)
+	0)					;XXX @@@ wrong!
+       (t
+	(if (control-char-graphic c)
+	    2   ; ^X
+	    4)  ; \000
+	)))
+
 (defmethod display-length ((s string))
   "Return the length of the string for display."
   (let ((sum 0))
-    (map nil #'(lambda (c) (incf sum (display-length c))) s)
+    ;;(map nil #'(lambda (c) (incf sum (display-length c))) s)
+    (map nil (_ (incf sum (grapheme-length _))) (graphemes s))
     sum))
 
 (defun moo (e s)

@@ -1,4 +1,4 @@
-This is a line edtior. It's not done yet and broken.
+This is a line edtior. It's not done yet and it's broken.
 It has egregious dependencies and it's not in Quicklisp.
 Also, it's very existence is a temporary hack.
 

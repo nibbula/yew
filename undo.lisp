@@ -2,9 +2,6 @@
 ;; undo.lisp - Undo for RL
 ;;
 
-;; Copyright © 2007-2017 Nibby Nebbulous
-;; Licensed under the GPL (See file LICENSE for details).
-
 (in-package :rl)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

@@ -2,9 +2,6 @@
 ;; history.lisp - Line editor history.
 ;;
 
-;; Copyright © 2007-2017 Nibby Nebbulous
-;; Licensed under the GPL (See file LICENSE for details).
-
 (in-package :rl)
 
 ;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)

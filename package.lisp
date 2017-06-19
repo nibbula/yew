@@ -2,9 +2,6 @@
 ;; package.lisp - RL package definition.
 ;;
 
-;; Copyright © 2007-2017 Nibby Nebbulous
-;; Licensed under the GPL (See file LICENSE for details).
-
 (defpackage :rl
   (:documentation "A line editor.")
   (:use :cl :dlib :dlib-misc :keymap :char-util :dl-list :stretchy
