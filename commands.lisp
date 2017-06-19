@@ -187,9 +187,9 @@ if it's blank or the same as the previous line."
   (isearch e :forward))
 
 ;; Sadly ASCII / UTF-8 specific. @@@ And should be moved to char-util?
-(defun control-char-p (c)
-  (let ((code (char-code c)))
-    (or (< code 32) (= code 128))))
+;; (defun control-char-p (c)
+;;   (let ((code (char-code c)))
+;;     (or (< code 32) (= code 128))))
 
 (defparameter *isearch-prompt* "isearch: ")
 
