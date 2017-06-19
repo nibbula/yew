@@ -20,6 +20,7 @@
    #:describe-terminal
    #:+csi+ #:+st+ #:+osc+
    #:query-parameters #:query-string
+   #:with-raw #:with-immediate
    ))
 (in-package :terminal-ansi)
 
@@ -132,7 +133,8 @@ two values ROW and COLUMN."
     (set-terminal-mode file-descriptor :line nil :echo nil)
     (when (not output-stream)
       (setf output-stream (open device-name :direction :output
-				#-clisp :if-exists #-clisp :append))
+				#-(or clisp abcl) :if-exists
+				#-(or clisp abcl) :append))
       ;; @@@ Why do we have to do this?
       #+ccl (setf (stream-external-format output-stream)
 		  (ccl:make-external-format :character-encoding :utf-8
@@ -455,6 +457,8 @@ to the typeahead."
 	    ;;(format t "[~d ~c]" num c)
 	    (if (eql c #\~)
 		(case num
+		  (2 :insert)
+		  (3 :delete)
 		  (5 :page-up)
 		  (6 :page-down)
 		  (15 :f5)
