@@ -244,19 +244,19 @@ Keyword arguments:
   ;; Initialize the buffer
   (let* ((e (or editor (make-instance
 			'line-editor
-			:point 0
-			:prompt prompt
-			:prompt-func output-prompt-func
-			:completion-func completion-func
-			:context context
-			:input-callback input-callback
-			:output-callback output-callback
-			:debugging debug
-			:local-keymap local-keymap
-			:keymap keymap
-			:accept-does-newline accept-does-newline
-			:terminal-device-name terminal-name
-			:terminal-class terminal-class)))
+			:point		    	0
+			:prompt		    	prompt
+			:prompt-func	    	output-prompt-func
+			:completion-func    	completion-func
+			:context	    	context
+			:input-callback	    	input-callback
+			:output-callback    	output-callback
+			:debugging	    	debug
+			:local-keymap	    	local-keymap
+			:keymap		    	keymap
+			:accept-does-newline	accept-does-newline
+			:terminal-device-name	terminal-name
+			:terminal-class	    	terminal-class)))
 	 (*terminal* (line-editor-terminal e))
 	 (*completion-count* 0))
     (when editor
@@ -321,7 +321,8 @@ Keyword arguments:
 	  (block nil
 	    (tt-finish-output)
 	    (terminal-end terminal)))
-	(values (if result result buf) e)))))
+	(values (if result result (fat-string-to-string buf))
+		e)))))
 
 ;; This is for compatability with read-line.
 (defun rl-read-line (&optional (input-stream *standard-input*)

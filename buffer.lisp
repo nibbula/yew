@@ -4,6 +4,9 @@
 
 (in-package :rl)
 
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+		   (compilation-speed 0)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;; buffer interface
@@ -32,36 +35,42 @@
   (:documentation
    "Insert something into the buffer at position POS.")
   (:method ((e line-editor) pos (c character))
-;    (format t "ins (~s ~s)~%" pos c)
-    (with-slots (buf) e
-      (record-undo e 'insertion pos (string c))
-      (if (= pos (length buf))
-	  ;; Appending to the end
-	  (progn
-	    (vector-push-extend c buf
-				(+ (array-total-size buf)
-				   (truncate (* (array-total-size buf) 2/3)))))
-	  ;; Inserting in the middle
-	  (progn
-	    (when (= (length buf) (array-total-size buf))
-	      (setf buf (adjust-array
-			 buf (+ (array-total-size buf)
-				(truncate (* (array-total-size buf) 2/3))))))
-	    (incf (fill-pointer buf))
-	    (setf (subseq buf (1+ pos)) (subseq buf pos))
-	    (setf (aref buf pos) c)))))
+    ;; (format t "ins (~s ~s)~%" pos c)
+    (let ((fc (make-fatchar :c c)))
+      (with-slots (buf) e
+	(record-undo e 'insertion pos (make-fat-string (string c)))
+	(if (= pos (length buf))
+	    ;; Appending to the end
+	    (progn
+	      (vector-push-extend fc buf
+				  (+ (array-total-size buf)
+				     (truncate
+				      (* (array-total-size buf) 2/3)))))
+	    ;; Inserting in the middle
+	    (progn
+	      (when (= (length buf) (array-total-size buf))
+		(setf buf (adjust-array
+			   buf (+ (array-total-size buf)
+				  (truncate (* (array-total-size buf) 2/3))))))
+	      (incf (fill-pointer buf))
+	      (setf (subseq buf (1+ pos)) (subseq buf pos))
+	      (setf (aref buf pos) fc))))))
   (:method ((e line-editor) pos (s string))
 ;    (format t "ins (~s ~s)~%" pos s)
     (with-slots (buf) e
-      (let ((len (length s)))
-	(record-undo e 'insertion pos s)
+      (let ((len (length s))
+	    (fat-string (make-fat-string s)))
+	(record-undo e 'insertion pos fat-string)
 	(when (>= (+ len (length buf)) (array-total-size buf))
 	  (setf buf (adjust-array
-		     buf (+ (array-total-size buf) len 
+		     buf (+ (array-total-size buf) len
 			    (truncate (* (array-total-size buf) 2/3))))))
 	(incf (fill-pointer buf) len)
 	(setf (subseq buf (+ pos len)) (subseq buf pos))
-	(setf (subseq buf pos (+ pos len)) s)))))
+	(setf (subseq buf pos (+ pos len)) fat-string))))
+  (:method ((e line-editor) pos (s array))
+    ;; @@@ This has the effect of losing the attributes.
+    (buffer-insert e pos (fat-string-to-string s))))
 
 ;; Replace could just be a delete followed by an insert, but
 ;; for efficiency sake we do something special.
@@ -72,25 +81,36 @@
   (:method ((e line-editor) pos (c character))
 ;    (format t "replace (~s ~s)~%" pos c)
     (with-slots (buf point) e
-      ;; @@@ zorp maybe change to (make-fat-string (string ...
-      (record-undo e 'deletion pos (string (aref buf pos)) point) 
-      (record-undo e 'insertion pos (string c))
-      (setf (aref buf pos) c)))
+      (record-undo e 'deletion pos (make-fat-string
+				    (string (aref buf pos))) point)
+      (record-undo e 'insertion pos (make-fat-string (string c)))
+      (setf (aref buf pos) (make-fatchar :c c))))
   (:method ((e line-editor) pos (s string))
 ;    (format t "replace (~s ~s)~%" pos s)
     (with-slots (buf point) e
-      (let ((len (length s)))
+      (let ((len (length s))
+	    (fat-string (make-fat-string s)))
 	(when (> (+ pos len) (length buf))
 	  (error "Replacement doesn't fit in the buffer."))
 	(when (> len 0)
 	  (record-undo e 'deletion pos (subseq buf pos (+ pos len)) point)
-	  (record-undo e 'insertion pos s)
-	  (setf (subseq buf pos (+ pos len)) s))))))
+	  (record-undo e 'insertion pos fat-string)
+	  (setf (subseq buf pos (+ pos len)) fat-string))))))
 
 ;; @@@ Currently unused.
 ;; (defun eobp (e)
 ;;   "Return true if point is at (or after) the end of the buffer."
 ;;   (with-slots (point buf) e
 ;;     (>= point (length buf))))
+
+;; Access methods
+
+(defun buffer-string (buf)
+  "Return a buffer or buffer subsequence as string."
+  (fat-string-to-string buf))
+
+(defun buffer-char (buf i)
+  "Return the character at position I in buffer BUF."
+  (fatchar-c (aref buf i)))
 
 ;; EOF

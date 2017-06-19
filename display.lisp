@@ -4,6 +4,9 @@
 
 (in-package :rl)
 
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+		   (compilation-speed 0)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Display-ish code
 
@@ -115,12 +118,13 @@
   (setf *control-char-graphics* (make-hash-table :test #'eql))
   (loop :for c :from 0 :to 31
      :when (and (/= c (char-code #\tab)) (/= c (char-code #\newline)))
-     :do (setf (gethash *control-char-graphics* (code-char c))
+     :do (setf (gethash (code-char c) *control-char-graphics*)
 	       (code-char (+ 64 c))))
-  (setf (gethash *control-char-graphics* (code-char #\rubout)) #\?))
+  (setf (gethash (code-char 127) *control-char-graphics*) #\?))
 
 ;; There's no guarantee to have such characters in the font, and they might
 ;; be less readable anyway. But they're possibly more compact.
+#|
 (defun make-control-char-unicode-graphic-table ()
   (setf *control-char-graphics* (make-hash-table :test #'eql))
   (loop :for c :from 0 :to 31
@@ -129,6 +133,7 @@
 	       (code-char (+ #x2400 c))))
   (setf (gethash *control-char-graphics* (code-char #\rubout))
 	(code-char #x2421)))
+|#
 
 ;; @@@ Perhaps this should so be somewhere else.
 (defun control-char-graphic (c)
@@ -176,6 +181,10 @@
 	 4)  ; \000
      )))
 
+(defmethod display-length ((c fatchar))
+  "Return the length of the fat character for display."
+  (display-length (fatchar-c c)))
+
 (defun grapheme-length (g)
   "Return the length of the character for display."
   (loop :for c :across g
@@ -194,13 +203,14 @@
 	(if (control-char-graphic c)
 	    2   ; ^X
 	    4)  ; \000
-	)))
+	))))
 
-(defmethod display-length ((s string))
+(defmethod display-length ((s array))
   "Return the length of the string for display."
   (let ((sum 0))
     ;;(map nil #'(lambda (c) (incf sum (display-length c))) s)
-    (map nil (_ (incf sum (grapheme-length _))) (graphemes s))
+    (map nil (_ (incf sum (grapheme-length _)))
+	 (graphemes (fat-string-to-string s)))
     sum))
 
 (defun moo (e s)
@@ -269,22 +279,23 @@ Assumes S is already converted to display characters."
   "Write a display character to the screen. Update screen coordinates."
   (with-slots (screen-col screen-row) e
     (let ((len (display-length c))
-	  (width (terminal-window-columns (line-editor-terminal e))))
+	  (width (terminal-window-columns (line-editor-terminal e)))
+	  (cc (if (fatchar-p c) (fatchar-c c) c)))
       (cond
 	((> (+ screen-col len) width)
 	 (setf screen-col len)
 	 (incf screen-row)
 	 (tt-scroll-down 1)
 	 (tt-beginning-of-line)
-	 (tt-write-char c))
+	 (tt-write-char cc))
 	((= (+ screen-col len) width)
-	 (tt-write-char c)
+	 (tt-write-char cc)
 	 (setf screen-col 0)
 	 (incf screen-row)
 	 (tt-scroll-down 1)
 	 (tt-beginning-of-line))
 	(t
-	 (tt-write-char c)
+	 (tt-write-char cc)
 	 (incf screen-col len))))))
 
 (defun editor-write-string (e s)
@@ -297,24 +308,25 @@ Assumes S is already converted to display characters."
 
 (defun display-char (e c)
   "Output a character with visible display of control characters."
-  (cond
-    ((graphic-char-p c)
-     (editor-write-char e c))
-    ((eql c #\tab)
-     ;; (editor-write-string e (make-string (- 8 (mod (screen-col e) 8))
-     ;; 					 :initial-element #\space)))
-     (dotimes (_ (- (1+ (logior 7 (screen-col e))) (screen-col e)))
-       (tt-write-char #\space)))
-    ((eql c #\newline)
-     (setf (screen-col e) 0)
-     (incf (screen-row e))
-     (tt-write-char c))
-    ((setf c (control-char-graphic c))
-     (editor-write-char e #\^)
-     (editor-write-char e c))
-    (t ;; output non-graphic chars as char code
-     (editor-write-char e #\\)
-     (editor-write-string e (format nil "\\~3,'0o" (char-code c))))))
+  (let ((cc (if (fatchar-p c) (fatchar-c c) c)))
+    (cond
+      ((graphic-char-p cc)
+       (editor-write-char e c))
+      ((eql cc #\tab)
+       ;; (editor-write-string e (make-string (- 8 (mod (screen-col e) 8))
+       ;; 					 :initial-element #\space)))
+       (dotimes (_ (- (1+ (logior 7 (screen-col e))) (screen-col e)))
+	 (tt-write-char #\space)))
+      ((eql cc #\newline)
+       (setf (screen-col e) 0)
+       (incf (screen-row e))
+       (tt-write-char cc))
+      ((setf cc (control-char-graphic c))
+       (editor-write-char e #\^)
+       (editor-write-char e c))
+      (t ;; output non-graphic chars as char code
+       (editor-write-char e #\\)
+       (editor-write-string e (format nil "\\~3,'0o" (char-code cc)))))))
 
 (defun display-buf (e &optional (start 0) end)
   "Display the buffer."
@@ -423,7 +435,7 @@ the current cursor position."
 
 (defun replace-buffer (e str)
   "Replace the buffer with the given string STR."
-  (declare (type string str))
+  ;;(declare (type string str))
   (with-slots (buf point) e
     (erase-display e)
     (setf point (length str))
@@ -458,9 +470,12 @@ buffer."
 	(cols (terminal-window-columns (line-editor-terminal e)))
 	(char-width 0)
 	(last-col start)
-	(i 0))
+	(i 0)
+	c cc)
     (loop :while (< i (length buffer)) :do
-       (if (char= (aref buffer i) #\newline)
+       (setf c (aref buffer i)
+	     cc (if (fatchar-p c) (fatchar-c c) c))
+       (if (char= cc #\newline)
 	   (progn
 	     (push (cons (1- i) last-col) endings)
 	     (setf last-col col)

@@ -4,6 +4,9 @@
 
 (in-package :rl)
 
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+		   (compilation-speed 0)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Completion
 
@@ -135,7 +138,7 @@ to the terminal."
       (beep e "No completion installed.")
       (progn
 	(multiple-value-bind (comp-list comp-count)
-	    (funcall completion-func buf point t)
+	    (funcall completion-func (fat-string-to-string buf) point t)
 	  (when (and comp-count (> comp-count 0))
 	    (setf (did-complete e) t)
 	    (set-completion-count e (1+ (last-completion-not-unique-count e)))
@@ -168,7 +171,7 @@ to the terminal."
       (return-from complete))
     (let* ((saved-point point) comp replace-pos unique)
       (multiple-value-setq (comp replace-pos unique)
-	(funcall comp-func buf point nil))
+	(funcall comp-func (fat-string-to-string buf) point nil))
       (when (and (not (zerop (last-completion-not-unique-count e)))
 		 (last-command-was-completion e))
 	(log-message e "show mo")

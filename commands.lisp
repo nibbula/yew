@@ -4,6 +4,9 @@
 
 (in-package :rl)
 
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+		   (compilation-speed 0)))
+
 (defmacro with-external ((e) &body body)
   "Do BODY outside the editor E, making sure that the terminal and display are
 in proper condition."
@@ -30,20 +33,20 @@ it with ACTION's return value."
       (if (eql dir :backward)
 	  ;; backward
 	  (loop :while (and (> point 0)
-			   (funcall func (aref buf (1- point))))
+			   (funcall func (buffer-char buf (1- point))))
 	    :do
 	    (when action
-	      (when (setf cc (funcall action (aref buf (1- point))))
+	      (when (setf cc (funcall action (buffer-char buf (1- point))))
 		(buffer-replace e (1- point) cc)))
 	    (decf point))
 	  (let ((len (length buf))
 		(did-one nil))
 	    (loop :while (and (< point len)
-			     (funcall func (aref buf point)))
+			     (funcall func (buffer-char buf point)))
 	      :do
 	      (progn
 		(when action
-		  (when (setf cc (funcall action (aref buf point)))
+		  (when (setf cc (funcall action (buffer-char buf point)))
 		    (buffer-replace e point cc)
 		    (setf did-one t)))
 		(incf point)))
@@ -55,7 +58,7 @@ it with ACTION's return value."
 (defun backward-word (e)
   "Move the insertion point to the beginning of the previous word or the
 beginning of the buffer if there is no word."
-  (with-slots (point buf non-word-chars) e
+  (with-slots (point non-word-chars) e
     (let ((start point))
       (scan-over e :backward :func #'(lambda (c) (position c non-word-chars)))
       (scan-over e :backward :not-in non-word-chars)
@@ -64,7 +67,7 @@ beginning of the buffer if there is no word."
 (defun forward-word (e)
   "Move the insertion point to the end of the next word or the end of the
 buffer if there is no word."
-  (with-slots (point buf non-word-chars) e
+  (with-slots (point non-word-chars) e
     (let ((start point))
       (scan-over e :forward :func #'(lambda (c) (position c non-word-chars)))
       (scan-over e :forward :not-in non-word-chars)
@@ -101,25 +104,25 @@ buffer if there is no word."
 
 (defun previous-history (e)
   "Go to the previous history entry."
-  (history-put (context e) (buf e))
+  (history-put (context e) (buffer-string (buf e)))
   (history-prev (context e))
   (use-hist e))
 
 (defun next-history (e)
   "Go to the next history entry."
-  (history-put (context e) (buf e))
+  (history-put (context e) (buffer-string (buf e)))
   (history-next (context e))
   (use-hist e))
 
 (defun beginning-of-history (e)
   "Go to the beginning of the history."
-  (history-put (context e) (buf e))
+  (history-put (context e) (buffer-string (buf e)))
   (history-first (context e))
   (use-hist e))
 
 (defun end-of-history (e)
   "Go to the end of the history."
-  (history-put (context e) (buf e))
+  (history-put (context e) (buffer-string (buf e)))
   (history-last (context e))
   (use-hist e))
 
@@ -144,7 +147,7 @@ if it's blank or the same as the previous line."
   (with-slots (buf quit-flag context accept-does-newline) e
     (history-last context)
     (if (add-to-history-p e buf)
-	(history-put context buf)
+	(history-put context (buffer-string buf))
 	(history-delete-last context))
     (when accept-does-newline
       (move-over e (- (length (buf e)) (point e)))
@@ -601,7 +604,7 @@ is none."
 	  e :forward
 	  :func #'(lambda (c) (and (alpha-char-p c) (lower-case-p c))))
 	 (downcase-region e start point)
-	 (setf c (aref buf point))
+	 (setf c (buffer-char buf point))
 	 (when (and (alpha-char-p c) (upper-case-p c))
 	   (insert-char e #\-))
 	 :while (and (alpha-char-p c) (upper-case-p c)))
@@ -659,7 +662,7 @@ in order, \"{open}{close}...\".")
 		   (if (evenp pos) (1+ pos) (1- pos))))))
 
 (defun flash-paren (e)
-  (let* ((str (buf e))
+  (let* ((str (buffer-string (buf e)))
 	 (point (point e))
 	 (ppos (matching-paren-position str :position point))
 	 (offset (and ppos (1+ (- point ppos)))))
@@ -675,7 +678,7 @@ in order, \"{open}{close}...\".")
 	(beep e "No match."))))
 
 (defun highlight-paren (e pos)
-  (let* ((str (buf e))
+  (let* ((str (buffer-string (buf e)))
 	 (ppos (matching-paren-position str :position pos :char (aref str pos)))
 	 offset offset-back)
     (log-message e "pos = ~s ppos = ~s" pos ppos)
@@ -699,7 +702,7 @@ in order, \"{open}{close}...\".")
 (defun finish-line (e)
   "Add any missing close parentheses and accept the line."
   (with-slots (buf) e
-    (loop :while (matching-paren-position buf)
+    (loop :while (matching-paren-position (buffer-string buf))
        :do (insert-char e #\)) (display-char e #\)))
     (accept-line e)))
 

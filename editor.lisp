@@ -4,6 +4,9 @@
 
 (in-package :rl)
 
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+		   (compilation-speed 0)))
+
 (defvar *lisp-non-word-chars*
   #(#\space #\tab #\newline #\linefeed #\page #\return
     #\( #\) #\[ #\] #\: #\; #\" #\' #\\ #\# #\, #\` #\| #\.)
