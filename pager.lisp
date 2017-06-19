@@ -101,6 +101,9 @@ The shell command takes any number of file names.
    (got-eof
     :initarg :got-eof :accessor pager-got-eof :initform nil
     :documentation "True if we got to the end of stream")
+   (seekable
+    :initarg :seekable :accessor pager-seekable :initform nil :type boolean
+    :documentation "True if the stream is seekable.")
    (search-string
     :initarg :search-string :accessor pager-search-string :initform nil
     :documentation "If non-nil search for and highlight")
@@ -190,6 +193,7 @@ but perhaps reuse some resources."))
 	(pager-max-width o) 0
 ;	(pager-page-size o) 0
 	(pager-got-eof o) nil
+	(pager-seekable o) nil
 	(pager-search-string o) nil
 	(pager-filter-exprs o) nil
 	(pager-keep-expr o) nil
@@ -958,10 +962,10 @@ line : |----||-------||---------||---|
   (clrtoeol)
   (refresh)
   (prog1
-      (tiny-rl:tiny-rl :prompt prompt
-		       :terminal-class 'terminal-curses:terminal-curses
-		       :accept-does-newline nil
-		       :context :pager)
+      (rl:rl :prompt prompt
+	     :terminal-class 'terminal-curses:terminal-curses
+	     :accept-does-newline nil
+	     :context :pager)
     ;; Make sure we go back to raw mode, so we can ^Z
     (curses:raw)))
 
@@ -984,12 +988,13 @@ list containing strings and lists."
 	  (ss (if ignore-case (s+ "(?i)" str) str))
 	  l)
       (loop
-	 :do (setf l (car ll))
+	 :do
+	 (setf l (car ll))
+	 (when (and l (>= (line-number l) (max 0 (- count page-size))))
+	   (read-lines page-size))
 	 :while (and l (< (line-number l) count)
 		     (not (search-line ss (line-text l))))
 	 :do
-	 (when (>= (line-number l) (max 0 (- count page-size)))
-	   (read-lines page-size))
 	 (setf ll (cdr ll)))
       (if (and l (< (line-number l) count))
 	  (setf line (line-number l))
@@ -1049,6 +1054,25 @@ list containing strings and lists."
 	(otherwise
 	 (tmp-message "Unknown option '~a'" (nice-char char)))))))
 
+(defun open-file (filename)
+  "Open the given FILENAME."
+  (with-slots (count lines line got-eof stream page-size) *pager*
+    (let ((new-stream (open (quote-filename filename) :direction :input)))
+      (when new-stream
+	(close stream)
+	(setf stream new-stream
+	      lines '()
+	      count 0
+	      line 0
+	      got-eof nil)
+	(read-lines page-size))
+      new-stream)))
+
+(defun open-file-command (filename)
+  "Open the given FILENAME."
+  (when (not (open-file filename))
+    (tmp-message "Can't open file \"~s\".")))
+
 (defun next-file ()
   "Go to the next file in the set of files."
   (with-slots (count lines line got-eof file-list file-index stream
@@ -1056,11 +1080,7 @@ list containing strings and lists."
     (if (and file-index (< file-index (1- (length file-list))))
 	(progn
 	  (incf file-index)
-	  (close stream)
-	  (setf stream (open (quote-filename (nth file-index file-list))
-			     :direction :input))
-	  (setf lines '() count 0 line 0 got-eof nil)
-	  (read-lines page-size))
+	  (open-file-command (nth file-index file-list)))
 	(tmp-message "No next file."))))
 
 (defun previous-file ()
@@ -1070,27 +1090,8 @@ list containing strings and lists."
     (if (and file-index (> file-index 0))
 	(progn
 	  (decf file-index)
-	  (close stream)
-	  (setf stream (open (quote-filename (nth file-index file-list))
-			     :direction :input))
-	  (setf lines '() count 0 line 0 got-eof nil)
-	  (read-lines page-size))
+	  (open-file-command (nth file-index file-list)))
 	(tmp-message "No previous file."))))
-
-(defun open-file (filename)
-  "Open the given FILENAME."
-  (with-slots (count lines line got-eof stream page-size) *pager*
-    (let ((new-stream (open (quote-filename filename) :direction :input)))
-      (if new-stream
-	  (progn
-	    (close stream)
-	    (setf stream new-stream
-		  lines '()
-		  count 0
-		  line 0
-		  got-eof nil)
-	    (read-lines page-size))
-	  (tmp-message "Can't open file \"~s\".")))))
 
 (defun quit ()
   "Exit the pager."
@@ -1275,7 +1276,7 @@ list containing strings and lists."
 (defparameter *long-commands*
   (vector
    `("edit"	  (#\e #\x)  "Examine a different file."
-     ,(lc (open-file (ask (s+ ":" c #\space)))))
+     ,(lc (open-file-command (ask (s+ ":" c #\space)))))
    `("next"	  (#\n)	    "Examine the next file in the arguments."
      ,(lc (next-file)))
    `("previous"	  (#\p)	    "Examine the previous file in the arguments."
@@ -1356,8 +1357,10 @@ list containing strings and lists."
     (:end		. scroll-end)
     (#\<		. go-to-beginning)
     (#\g		. go-to-beginning)
+    (,(meta-char #\<)	. go-to-beginning)
     (#\>		. go-to-end)
     (#\G		. go-to-end)
+    (,(meta-char #\>)	. go-to-end)
     (#\/		. search-command)
     (,(ctrl #\S)	. search-command)
     (#\n		. search-next)
