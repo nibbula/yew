@@ -89,28 +89,39 @@
 ;; 
 
 (defun view-html (&optional file)
-  (let* ((ff (or file
-		 #| (read-filename :prompt "HTML file: ") |#
-		 (pick-list:pick-file)
-		 ))
-	 (hh (plump:parse (pathname (nos:quote-filename ff)))))
-    (view-tree
-     (make-instance
-      'object-node
-      :object ff
-      :branches
-      (loop :for n :in (map 'list #'identity (plump::children hh))
-	 :if (or (not (or (plump:text-node-p n)
-			  (plump:textual-node-p n)))
-		 (> (length (dlib:trim (plump:text n))) 0))
-	 :collect
-	 (make-instance 'html-node :object n))))))
+  (let* ((ff (etypecase file
+	       (string
+		(pathname (nos:quote-filename file)))
+	       ((or pathname stream)
+		file)
+	       (null
+		#| (read-filename :prompt "HTML file: ") |#
+		(pathname (nos:quote-filename
+			   (or (pick-list:pick-file)
+			       (return-from view-html nil)))))))
+	 (hh (plump:parse ff))
+	 (name (princ-to-string (or ff))))
+    (unwind-protect
+      (progn
+	(view-tree
+	 (make-instance
+	  'object-node
+	  :object name
+	  :branches
+	  (loop :for n :in (map 'list #'identity (plump::children hh))
+	     :if (or (not (or (plump:text-node-p n)
+			      (plump:textual-node-p n)))
+		     (> (length (dlib:trim (plump:text n))) 0))
+	     :collect
+	     (make-instance 'html-node :object n)))))
+      (when (streamp file)
+	(close file)))))
 
 #+lish
 (lish:defcommand view-html
-    (("file" pathname))
+  ((thing pathname :help "File or URL to view as HTML."))
   "View HTML as a tree."
-  (view-html file))
+  (view-html thing))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; plist viewr
