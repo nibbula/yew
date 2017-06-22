@@ -66,7 +66,10 @@
    #:tt-reset			  #:terminal-reset
    #:tt-save-cursor		  #:terminal-save-cursor		;
    #:tt-restore-cursor		  #:terminal-restore-cursor		;
+   #:tt-width
+   #:tt-height
    #:with-saved-cursor
+   #:with-terminal-output-to-string
    ))
 (in-package :terminal)
 
@@ -236,22 +239,27 @@ screen down.")
 (deftt home () "Move the cursor to the first row and column.")
 (deftt cursor-off () "Try to make the cursor invisible.")
 (deftt cursor-on () "Try to make the cursor visible.")
-(deftt standout (state) "")
-(deftt normal () "")
-(deftt underline (state) "")
-(deftt bold (state) "")
-(deftt inverse (state) "")
-(deftt color (fg bg) "")
-(deftt beep () "")
-(deftt set-scrolling-region (start end) "")
-(deftt finish-output () "")
+(deftt standout (state)
+  "Turn the standout attribute on or off, depending on the boolean STATE.")
+(deftt normal () "Reset the text attributes to normal.")
+(deftt underline (state)
+  "Turn the underline attribute on or off, depending on the boolean STATE.")
+(deftt bold (state)
+  "Turn the underline attribute on or off, depending on the boolean STATE.")
+(deftt inverse (state)
+  "Turn the inverse attribute on or off, depending on the boolean STATE.")
+(deftt color (fg bg)
+  "Set the text foreground color to FG, and the background attribute to BG.")
+(deftt beep ()
+  "Make the terminal emit a sound, or perhaps flash the screen.")
+(deftt set-scrolling-region (start end)
+  "Set the scrolling region starting at row START and ending at END.")
+(deftt finish-output ()
+  "Attempts to ensure that any buffered output is sent to the terminal.")
 ; (deftt get-row () "")
 
-(deftt get-char ()
-  "Read a character from the terminal.")
-
-(deftt get-key ()
-  "Read a key from the terminal.")
+(deftt get-char () "Read a character from the terminal.")
+(deftt get-key () "Read a key from the terminal.")
 
 (deftt listen-for (seconds)
   "Listen for at most N seconds or until input is available. SECONDS can be
@@ -260,11 +268,18 @@ fractional, down to some limit.")
 (deftt reset ()
   "Try to reset the terminal to a sane state, without being too disruptive.")
 
-(deftt save-cursor ()
-  "Save the cursor position.")
-
+(deftt save-cursor ()  "Save the cursor position.")
 (deftt restore-cursor ()
   "Restore the cursor position, from the last saved postion.")
+
+;; We don't use DEFTT for these since they don't exactly mirror the generics.
+(defmacro tt-width  ()
+  "Return the width of the terminal window in characters."
+  '(terminal-window-columns *terminal*))
+
+(defmacro tt-height ()
+  "Return the height of the terminal window in characters."
+  '(terminal-window-rows *terminal*))
 
 (defmacro with-saved-cursor ((tty) &body body)
   "Save the cursor position, evaluate the body forms, and restore the cursor
@@ -277,6 +292,19 @@ position. Return the primary result of evaluating the body."
 	      (setf ,result-sym (progn ,@body))
 	   (terminal-restore-cursor ,tty))
 	 ,result-sym))))
+
+(defmacro with-terminal-output-to-string
+    ((&optional (type *default-terminal-type*)) &body body)
+  "Evaluate the body with *TERMINAL* bound to a terminal-stream which outputs to
+a string and return the string."
+  (with-unique-names (stream)
+    `(with-output-to-string (,stream)
+       (when (not (find-type ,type))
+	 (error "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
+       (let ((*terminal* (make-terminal-stream ,stream (find-type ,type))))
+	 (unwind-protect
+	      ,@body
+	   (tt-finish-output))))))
 
 #| @@@@ Make an output-table method, with underlined titles
 
