@@ -27,13 +27,67 @@
 (defun prompt-next ()
   (tt-move-to (1- (terminal-window-rows *terminal*)) 0)
   (tt-format "Press Q to quit, anything else to continue.")
-  (not (eql (tt-get-key) #\q)))
+  (tt-finish-output)
+  (case (tt-get-key)
+    ((#\Q #\q)
+     (throw 'quit nil))))
 
 (defmacro blurp (&body body)
   `(progn
     (tt-clear) (tt-home)
     ,@body
     (prompt-next)))
+
+(defun test-screen-size ()
+  (tt-clear) (tt-home)
+  ;; upper left
+  (tt-format "X <---~%^~%|~%|")
+  ;;(case (tt-get-key) ((#\Q #\q) (throw 'quit nil)))
+
+  ;; lower left
+  (tt-move-to (- (terminal-window-rows *terminal*) 4) 0)
+  (tt-format "|~%|~%v~%X <---")
+  ;;(case (tt-get-key) ((#\Q #\q) (throw 'quit nil)))
+
+  ;; upper right
+  (tt-move-to 0 (- (terminal-window-columns *terminal*) 6))
+  (tt-format "---> X")
+  (tt-move-to 1 (- (terminal-window-columns *terminal*) 1)) (tt-format "^")
+  (tt-move-to 2 (- (terminal-window-columns *terminal*) 1)) (tt-format "|")
+  (tt-move-to 3 (- (terminal-window-columns *terminal*) 1)) (tt-format "|")
+  ;;(case (tt-get-key) ((#\Q #\q) (throw 'quit nil)))
+
+  ;; lower right
+  (tt-move-to (- (terminal-window-rows *terminal*) 4)
+	      (- (terminal-window-columns *terminal*) 1))
+  (tt-format "|")
+  (tt-move-to (- (terminal-window-rows *terminal*) 3)
+	      (- (terminal-window-columns *terminal*) 1))
+  (tt-format "|")
+  (tt-move-to (- (terminal-window-rows *terminal*) 2)
+	      (- (terminal-window-columns *terminal*) 1))
+  (tt-format "V")
+  (tt-move-to (- (terminal-window-rows *terminal*) 1)
+	      (- (terminal-window-columns *terminal*) 6))
+  (tt-format "---> X")
+  ;;(case (tt-get-key) ((#\Q #\q) (throw 'quit nil)))
+
+  ;; message
+  (let ((l1 "There should be an 'X' in every corner of the screen.~%")
+	(l2 "Press Q to quit, anything else to continue."))
+    (tt-move-to (truncate (terminal-window-rows *terminal*) 2)
+		(- (truncate (terminal-window-columns *terminal*) 2)
+		   (truncate (length l1) 2)))
+    (tt-format l1)
+    (tt-move-to (+ (truncate (terminal-window-rows *terminal*) 2) 1)
+		(- (truncate (terminal-window-columns *terminal*) 2)
+		   (truncate (length l2) 2)))
+    (tt-format l2))
+  (tt-finish-output)
+
+  (case (tt-get-key)
+    ((#\Q #\q)
+     (throw 'quit nil))))
 
 (defun test-move-to-col ()
   (blurp
@@ -234,7 +288,7 @@
      (tt-format "There should be some similar text at the top.~%")
      (tt-set-scrolling-region 9 (- height 4))
      (tt-move-to 10 0)
-     (loop :for i :from 1 :to 400 :do
+     (loop :for i :from 1 :to 200 :do
        (loop :for j :from 0 :below (1- width) :do
 	  (tt-write-char (elt junk (random (length junk)))))
 	(tt-write-char #\newline)
@@ -257,7 +311,7 @@
 	(tt-write-string (subseq str 0 (min (1- width) (length str))))
 	(tt-write-char #\newline)
 	(tt-finish-output))
-     (tt-format "The screen should now be filled with only numbers above.~%"))))
+     (tt-format "The screen should have only numbers above.~%"))))
 
 (defun junk-block (height)
   (let ((junk "#%_.")
@@ -271,7 +325,8 @@
 (defun test-basics ()
   (blurp
    (tt-format "The screen should have cleared.~%"))
-  
+
+
   (blurp
    (tt-write-string "You should see this sentence.")
    (tt-write-char #\newline)
@@ -292,7 +347,7 @@
 
   (blurp
    (let ((height 8)
-	 (half (/ (terminal-window-columns *terminal*) 2)))
+	 (half (truncate (terminal-window-columns *terminal*) 2)))
      (junk-block height)
      (loop :for i :from 0 :below height :do
 	(tt-move-to i half)
@@ -302,7 +357,7 @@
 
   (blurp
    (let ((height 8)
-	 (half (/ (terminal-window-columns *terminal*) 2)))
+	 (half (truncate (terminal-window-columns *terminal*) 2)))
      (junk-block height)
      (loop :for i :from 0 :below height :do
 	(tt-move-to i half)
@@ -312,16 +367,16 @@
 
   (blurp
    (let ((height 8)
-	 (half (/ (terminal-window-columns *terminal*) 2)))
+	 (half (truncate (terminal-window-columns *terminal*) 2)))
      (junk-block height)
-     (tt-move-to (/ height 2) half)
+     (tt-move-to (truncate height 2) half)
      (tt-erase-above)
      (tt-write-string "Above and left of here should be blank.")))
 
   (blurp
    (let ((height 8))
      (junk-block height)
-     (tt-move-to (/ height 2) 0)
+     (tt-move-to (truncate height 2) 0)
      (tt-write-string "Below and right of here should be blank.")
      (tt-erase-below)))
 
@@ -336,16 +391,18 @@
   (let ((class #| :ansi |# (ask-class)  ))
     (when class
       (with-terminal (class)
-	(terminal-get-size *terminal*)
-	(test-basics)
-	(test-cursor-visibility)
-	(test-save-and-restore-cursor)
-	(test-scrolling-region)
-	(test-move-to-col)
-	(test-ins-del)
-	(test-attrs)
-	(test-colors)
-	)
+	(catch 'quit
+	  (terminal-get-size *terminal*)
+	  (test-screen-size)
+	  (test-basics)
+	  (test-cursor-visibility)
+	  (test-save-and-restore-cursor)
+	  (test-scrolling-region)
+	  (test-move-to-col)
+	  (test-ins-del)
+	  (test-attrs)
+	  (test-colors)
+	  ))
       (format t "~%All done.~%"))))
 
 (defun churn ()
