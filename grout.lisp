@@ -323,7 +323,9 @@ generic functions (i.e. %GROUT-*) directly."
   "Return the width of the output, or NIL for infinite or unknown."
   (declare (ignore g))
   (let ((col (nos:environment-variable "COLUMNS")))
-    (or (and col (parse-integer col)) 80)))
+    (or (and col (parse-integer col))
+	(and *terminal* (terminal-window-columns *terminal*))
+	80)))
 
 ;; Unfortunately we have to do the same the as the dumb driver.
 (defmethod %grout-height ((g ansi-stream))
