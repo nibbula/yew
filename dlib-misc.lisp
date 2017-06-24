@@ -155,15 +155,17 @@ swaps to do times the length of the vector."
   (truncate tz))
 
 (defun date-string (&key (time (get-universal-time)) format
-			 (gmt-p nil gmt-p-set))
+			 (gmt-p nil gmt-p-set) now)
   "Return a formated date string. A universal time can be provided with the
 TIME keyword. FORMAT can be one of:
   :net          - an RFC822 formatted date.
   :filename     - a format that works well for a user readable file name.
+  :relative     - a relative time, sensible for people
   anything else - some format that Nibby likes.
 
 If GMT-P is true, the date is in Grenwich Mean Time, otherwise it's in the 
-current time zone."
+current time zone. NOW is a universal time to base relative times off of, which
+defaults to the current time."
 ; This makes a format default to GMT:
 ;  (when (and (not gmt-p-set) (find format '(:rfc822 :rfc :net)))
 ;    (setf gmt-p t))
@@ -184,6 +186,49 @@ current time zone."
       (:filename
        (format nil "~d-~2,'0d-~2,'0d_~2,'0d-~2,'0d-~2,'0d"
 	       year month date hours minutes seconds))
+      (:relative
+       ;; @@@ This of course has language issues, as well as precision issues.
+       (let* ((now-ish (or now (get-universal-time)))
+	      (Δ (- now-ish time))
+	      (change (abs Δ))
+	      (dir (cond ((> Δ 0) "ago") ((< Δ 0) "from now") (t "now")))
+	      units)
+	 (cond
+	   ((< change 90)
+	    (setf units "seconds"))
+	   ((< (time-to-minutes change)   90)
+	    (setf units "minutes"
+		  change (time-to-minutes change)))
+	   ((< (time-to-hours change)     36)
+	    (setf units "hours"
+		  change (time-to-hours change)))
+	   ((< (time-to-days change)      14)
+	    (setf units "days"
+		  change (time-to-days change)))
+	   ((< (time-to-weeks change)     10)
+	    (setf units "weeks"
+		  change (time-to-weeks change)))
+	   ((< (time-to-years change)     1)
+	    (setf units "months"
+		  ;;change (time-to-months change)))
+		  change (/ (time-to-days change) 30)))
+	   ((< (time-to-decades change)   1)
+	    (setf units "years"
+		  change (time-to-years change)))
+	   ((< (time-to-centuries change) 1)
+	    (setf units "decades"
+		  change (time-to-decades change)))
+	   ((< (time-to-millennia change) 1)
+	    (setf units "centuries"
+		  change (time-to-centuries change)))
+	   ((< (time-to-millennia change) 100)
+	    (setf units "millennia"
+		  change (time-to-millennia change)))
+	   (t
+	    (setf units "long long")))
+	 (if (zerop Δ)
+	   "now"
+	   (format nil "~d ~a ~a" (truncate change) units dir))))
       (otherwise
        (format nil "~d-~2,'0d-~2,'0d ~2,'0d:~2,'0d:~2,'0d"
 	       year month date hours minutes seconds)))))
@@ -379,17 +424,6 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 			 "~a~{~<~%" prefix "~1," cols ":;~a~> ~}")
 	  (if omit-first-prefix "" prefix)
 	  (split-sequence separator s :omit-empty t)))
-
-;; calculating independant digits of pi
-;; (defun pipi (d)
-;;   (let ((x 0) (n 1) p)
-;;     (loop while (< n d)
-;;       do
-;;       (setf p (/ (* (- (* 120 n) 89) (+ n 16))
-;; 		 (* (* (* (- (* 512 n) 1024) (+ n 712)) (- n 206)) (+ n 21)))
-;; 	    x (+ (* 16 x) p))
-;;       (incf n)
-;;       (* 16 x)))
 
 (defun print-properties (prop-list &key (right-justify nil) (de-lispify t)
 				     (stream t))
@@ -667,7 +701,7 @@ the number of rows.
 FORMAT-CHAR is used to print the items, as with FORMAT.
 PREFIX is a string to prepend to each row.
 SUFFIX is a string to append to each row."
-  (declare (ignore columns))
+  (declare (ignorable columns))
   (when smush
     (return-from print-columns (apply #'print-columns-smush list keys)))
   (multiple-value-bind (rows cols max-len)
