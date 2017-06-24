@@ -25,6 +25,7 @@
    #:dl-push
    #:dl-pop
    #:dl-length
+   #:dl-nth
    #:dl-list-do
    #:dl-list-do-element
    #:dl-list-do-backward
@@ -116,6 +117,15 @@
        :while i
        :do (incf result))
     result))
+
+(defun dl-nth (n list)
+  "Return the N element of a dl-list."
+  (let ((i 0) (e list))
+    (loop
+       :while (and e (< i n))
+       :do (incf i)
+       (setf e (%dl-next e)))
+    e))
 
 (defun make-dl-list (&optional from-sequence)
   "Construct a dl-list from a sequence."
