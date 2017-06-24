@@ -58,14 +58,26 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
      :line  (fatchar-line c)
      :attrs (fatchar-attrs c))))
 
-(defun make-fat-string (string)
-  "Make a fat string from a string."
-  (let ((fs (make-array (list (length string))
-			:element-type 'fatchar
-			:initial-element (make-fatchar))))
-    (loop :for i :from 0 :below (length string) :do
-       (setf (aref fs i) (make-fatchar :c (char string i))))
-    fs))
+(defun make-fat-string (thing)
+  "Make a fat string from something. THING can be a string or a character."
+  (let (result)
+    (flet ((from-string (string)
+	     (setf result (make-array (list (length string))
+				      :element-type 'fatchar
+				      :initial-element (make-fatchar)))
+	     (loop :for i :from 0 :below (length string) :do
+		(setf (aref result i) (make-fatchar :c (char string i))))))
+      (etypecase thing
+	(string
+	 (from-string thing))
+	(character
+	 (setf result
+	       (make-array '(1) :element-type 'fatchar
+			   :initial-element (make-fatchar :c thing))))
+	;; We could princ-to-string other stuff, but it's probably better if
+	;; the caller does it explicitly.
+	)
+      result)))
 
 (defun fat-string-to-string (fat-string)
   "Make a string from a fat string. This of course loses the attributes."
