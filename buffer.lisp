@@ -11,7 +11,30 @@
 ;;
 ;; buffer interface
 ;;
-;; The buf slot of line-editor should only be modified through these.
+;; The BUF slot of line-editor should only be accessed and modified through
+;; these.
+
+;; Access methods
+
+(declaim (inline buffer-string))
+(defun buffer-string (buf)
+  "Return a buffer or buffer subsequence as string."
+  (fat-string-to-string buf))
+
+(declaim (inline buffer-char))
+(defun buffer-char (buf i)
+  "Return the character at position I in buffer BUF."
+  (fatchar-c (aref buf i)))
+
+(declaim (inline set-buffer-char))
+(defun set-buffer-char (buf i c)
+  "Set the character at position I in buffer BUF to C."
+  (setf (fatchar-c (aref buf i)) c))
+
+(defsetf buffer-char set-buffer-char
+  "Set the character at position I in buffer BUF.")
+
+;; Modify methods
 
 (defgeneric buffer-delete (e start end)
   (:documentation
@@ -69,6 +92,8 @@
 	(setf (subseq buf (+ pos len)) (subseq buf pos))
 	(setf (subseq buf pos (+ pos len)) fat-string))))
   (:method ((e line-editor) pos (s array))
+    ;; This is basically for a fat string which happens to be indistinguishable
+    ;; from an array.
     ;; @@@ This has the effect of losing the attributes.
     (buffer-insert e pos (fat-string-to-string s))))
 
@@ -81,9 +106,8 @@
   (:method ((e line-editor) pos (c character))
 ;    (format t "replace (~s ~s)~%" pos c)
     (with-slots (buf point) e
-      (record-undo e 'deletion pos (make-fat-string
-				    (string (aref buf pos))) point)
-      (record-undo e 'insertion pos (make-fat-string (string c)))
+      (record-undo e 'deletion pos (make-fat-string (buffer-char buf point)))
+      (record-undo e 'insertion pos (make-fat-string c))
       (setf (aref buf pos) (make-fatchar :c c))))
   (:method ((e line-editor) pos (s string))
 ;    (format t "replace (~s ~s)~%" pos s)
@@ -103,14 +127,5 @@
 ;;   (with-slots (point buf) e
 ;;     (>= point (length buf))))
 
-;; Access methods
-
-(defun buffer-string (buf)
-  "Return a buffer or buffer subsequence as string."
-  (fat-string-to-string buf))
-
-(defun buffer-char (buf i)
-  "Return the character at position I in buffer BUF."
-  (fatchar-c (aref buf i)))
 
 ;; EOF

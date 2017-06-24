@@ -131,6 +131,16 @@
 (defsetf history-current history-current-set
   "SETF form for the current history node.")
 
+;; This is quite inefficient becase dl-list's suck.
+(defun history-nth (context n)
+  "Return the Nth element of the history for CONTEXT, or nil."
+  (let* ((h (get-history context))
+	 list element)
+    (and h
+	 (setf list (history-head h))
+	 (setf element (dl-nth (- (dl-length list) n) list))
+	 (dl-content element))))
+
 (defun show-history (context)
   "Print the history with numbers."
   (let ((hist (get-history context))

@@ -38,7 +38,8 @@ it with ACTION's return value."
 	    (when action
 	      (when (setf cc (funcall action (buffer-char buf (1- point))))
 		(buffer-replace e (1- point) cc)))
-	    (decf point))
+	     (decf point))
+	  ;; forward
 	  (let ((len (length buf))
 		(did-one nil))
 	    (loop :while (and (< point len)

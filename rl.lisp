@@ -83,6 +83,7 @@
     ;; (#\) (end-macro))
     (#\9		. unipose-command)
     (#\7		. char-picker-command)
+    (#\l		. pop-to-lish)
     (,(ctrl #\C)	. exit-editor)
     (,(ctrl #\X)	. exchange-point-and-mark)))
 ;  :default-binding #| (beep e "C-x ~a is unbound." cmd |#
