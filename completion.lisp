@@ -3,8 +3,10 @@
 ;;
 
 ;; TODO:
-;;   - finish dictionary completion
-;;   - more languageishnessification
+;;  - limit to window
+;;  - scrolling?
+;;  - finish dictionary completion
+;;  - more languageishnessification
 
 (defpackage :completion
   (:documentation
@@ -61,14 +63,14 @@ for showing in a completion list.")
   "Count of how many completions in a row were done. This must be maintained
 by callers of this package and should usually be dynamically bound.")
 
-;; @@@ Duplication from tiny-rl
+;; @@@ Duplication from RL
 (defvar *lisp-non-word-chars*
   #(#\space #\tab #\newline #\linefeed #\page #\return
     #\( #\) #\[ #\] #\: #\; #\" #\' #\\ #\# #\, #\` #\| #\.)
   "Characters that are not considered to be part of a word in lisp.")
 ;; removed #\/ since it's common in package names
 
-;; @@@ Perhaps this should be merged with the one in tiny-rl?
+;; @@@ Perhaps this should be merged with the one in RL?
 (defun scan-over-str (str pos direction &key func not-in)
   "If FUNC is provied move over characters for which FUNC is true.
 If NOT-IN is provied move over characters for which are not in it.
@@ -84,7 +86,9 @@ at POS. Returns the new position after moving."
       ;; forward
       (let ((len (length str)))
 	(loop :while (and (< pos len)
-			  (funcall func (aref str (1+ pos))))
+			  ;; Why was this 1+ here???
+			  ;; (funcall func (aref str (1+ pos))))
+			  (funcall func (aref str pos)))
 	   :do (incf pos))))
   pos)
 
@@ -303,71 +307,153 @@ arguments for that function, otherwise return NIL."
 ;;
 ;; Of course this whole thing should be in the syntax colorization module.
 
-(defun function-help-show-function (str symbol expr-number)
-  (let (past-key past-rest did-standout)
-    (write-char #\( str)
-    (tt-color :magenta :default)
-    (write symbol :stream str :case :downcase :escape nil)
-    (tt-color :default :default)
-    (loop
-       :for s :in (dlib:lambda-list symbol) :and i = 1 :then (1+ i)
-       :do
-       (write-char #\space str)
-       (if (position s *lambda-list-keywords*)
-	   (progn
-	     (tt-color :yellow :default)
-	     (write s :stream str :case :downcase :escape nil :pretty nil)
-	     (tt-color :default :default)
-	     (when (equal s '&key)
-	       (setf past-key t))
-	     (when (equal s '&rest)
-	       (setf past-rest t)))
-	   ;; @@@ Despite the above quote, pretty is very ugly here.
-	   (progn
-	     (if (and (= i expr-number) (not (or past-key past-rest)))
-		 (progn
-		   (tt-standout t)
-		   (setf did-standout t))
-		 (setf did-standout nil))
-	     (typecase s
-	       (cons
-		(write-char #\( str)
-		(loop :with first = t
-		   :for ss :in s :do
-		   (if first
-		       (setf first nil)
-		       (write-char #\space str))
-		   (typecase ss
-		     ((or null keyword number string boolean array)
-		      (tt-color :white :default)
-		      (write ss :stream str :case :downcase :escape nil
-			     :pretty nil :readably t)
-		      (tt-color :default :default))
-		     (t
-		      (write ss :stream str :case :downcase :escape nil
-			     :pretty nil :readably nil))))
-		(write-char #\) str))
-	       (t
-		(write s :stream str :case :downcase :escape nil :pretty nil
-		       :readably nil)))
-	     (when did-standout
-	       (tt-standout nil)))))
-    (write-char #\) str)))
+#|
+(defun function-help-print-cons (str list &key highlight-expr)
+  (if (and (numberp highlight-expr)
+	   (= i highlight-expr)
+	   (not (or past-key past-rest)))
+      (progn
+	(tt-standout t)
+	(setf did-standout t))
+      (setf did-standout nil))
 
-(defun output-text (s stream cols)
+
+(defun function-help-print-obj (str obj &key highlight-expr)
+  
+
+  (typecase obj
+    (cons
+     (function-help-print-list str obj i :highlight-expr highlight-expr))
+    ((or null keyword number string boolean array)
+     (tt-color :white :default)
+     (write ss :stream str :case :downcase :escape nil
+	    :pretty nil :readably t)
+     (tt-color :default :default))
+    (symbol
+     (if (position s *lambda-list-keywords*)
+	 (progn
+	   (tt-color :yellow :default)
+	   (write s :stream str :case :downcase :escape nil :pretty nil)
+	   (tt-color :default :default)
+	   (when (equal s '&key)
+	     (setf past-key t))
+	   (when (equal s '&rest)
+	     (setf past-rest t)))
+	 
+     )
+    (t
+     (write ss :stream str :case :downcase :escape nil
+	    :pretty nil :readably nil))
+     
+     )
+    ))
+
+(defun function-help-print-list (str list &key first-color highlight-expr)
+  (write-char #\( str)
+  (write symbol :stream str :case :downcase :escape nil)
+  (when first-color
+    (tt-color :default :default))
+
+  ;; Handle normal lists or dotted lists
+  (loop
+     :with first = nil
+     :for s :on list
+     :for i = 0 :then (1+ i)
+     :do
+     (if first
+	 (progn
+	   (setf first nil)
+	   (when first-color
+	     (tt-color first-color :default))
+	   (function-help-print str (car s) :highlight-expr i)
+	   (when first-color
+	     (tt-color :default :default)))
+
+     (when (and (consp s) (not (listp (cdr s))))
+       (print-it (cdr s) i)))
+  
+|#
+
+(defun function-help-show-function (symbol expr-number)
+  (let (past-key past-rest did-standout)
+    ;; (function-help-print-list str (dlib:lambda-list symbol)
+    ;; 			      :first-color :magenta
+    ;; 			      :highlight-expr expr-number)
+    (tt-write-char #\()
+    (tt-color :magenta :default)
+    (tt-format "~(~a~)" symbol)
+    (tt-color :default :default)
+    (labels ((print-it (s i)
+	     (tt-write-char #\space)
+	     (if (position s *lambda-list-keywords*)
+		 (progn
+		   (tt-color :yellow :default)
+		   ;;(write s :stream str :case :downcase :escape nil :pretty nil)
+		   (tt-format "~(~a~)" s)
+		   (tt-color :default :default)
+		   (when (equal s '&key)
+		     (setf past-key t))
+		   (when (equal s '&rest)
+		     (setf past-rest t)))
+		 ;; @@@ Despite the above quote, pretty is very ugly here.
+		 (progn
+		   (if (and (= i expr-number) (not (or past-key past-rest)))
+		       (progn
+			 (tt-standout t)
+			 (setf did-standout t))
+		       (setf did-standout nil))
+		   (typecase s
+		     (cons
+		      (tt-write-char #\()
+		      (loop :with first = t
+			 :for ss :in s :do
+			 (if first
+			     (setf first nil)
+			     (tt-write-char #\space))
+			 (typecase ss
+			   ((or null keyword number string boolean array)
+			    (tt-color :white :default)
+			    ;; (write ss :stream str :case :downcase :escape nil
+			    ;; 	   :pretty nil :readably t)
+			    (tt-format "~(~s~)" ss)
+			    (tt-color :default :default))
+			   (t
+			    ;;(write ss :stream str :case :downcase :escape nil
+			    ;;	   :pretty nil :readably nil)
+			    (tt-format "~(~a~)" ss)
+			    )))
+		      (tt-write-char #\)))
+		     (t
+		      ;; (write s :stream str :case :downcase :escape nil
+		      ;; 	     :pretty nil :readably nil)
+		      (tt-format "~(~a~)" s)
+		      ))
+		   (when did-standout
+		     (tt-standout nil))))))
+      ;; Handle normal lists or dotted lists
+      (loop :for s :on (dlib:lambda-list symbol)
+	 :for i = 0 :then (1+ i)
+	 :do
+	 (print-it (car s) i)
+	 (when (and (consp s) (not (listp (cdr s))))
+	   (print-it (cdr s) i)))
+      (tt-write-char #\)))))
+
+(defun output-text (s #|stream|# cols)
   (let (par new-paragraph)
     (labels ((print-it ()
 	       (when new-paragraph
-		 (princ (s+ #+nil "•" #\newline) stream))
+		 ;;(princ (s+ #+nil "•" #\newline) stream))
+		 (tt-write-string (s+ #+nil "•" #\newline)))
 	       (tt-color :white :default)
 	       ;; (dbug "cols = ~a~%" cols)
-	       (write-string
+	       (tt-write-string
 		(justify-text (join (nreverse par) #\space)
 			      :stream nil
-			      :cols cols)
-		stream)
+			      :cols cols))
 	       (tt-color :default :default)
-	       (princ (s+ #+nil "‼" #\newline) stream)
+	       ;;(princ (s+ #+nil "‼" #\newline) stream)
+	       (tt-write-string (s+ #+nil "‼" #\newline))
 	       (setf new-paragraph t)))
       (loop :for l :in (split-sequence #\newline s)
 	 :do
@@ -387,19 +473,19 @@ arguments for that function, otherwise return NIL."
 	      ;;(grout-princ (s+ "˚" #\newline))
 	      (setf par nil))
 	    (tt-color :white :default)
-	    (write-string l stream)
+	    (tt-write-string l)
 	    (tt-color :default :default)
-	    (princ (s+ #+nil "¶" #\newline) stream))))
+	    (tt-write-string (s+ #+nil "¶" #\newline)))))
       (when par
 	(print-it)))))
 
-(defun function-help-show-doc (stream symbol cols)
+(defun function-help-show-doc (symbol cols)
   (labels ((maybe-doc (obj type)
 	     (without-warning (documentation obj type)))
 	   (print-doc (sym pkg doc-type &optional fake-type)
 	     (when (maybe-doc sym doc-type)
 	       ;; (when did-one
-	       (princ #\newline stream)
+	       (tt-write-char #\newline)
 	       (if (and (eq doc-type 'function) (maybe-doc sym doc-type))
 		   (progn
 		     (when (and pkg (not (eq pkg (find-package :cl))))
@@ -422,7 +508,7 @@ arguments for that function, otherwise return NIL."
 		     (tt-format "~a" (maybe-doc sym doc-type))
 		     (tt-color :default :default))
 		   (progn
-		     (output-text (maybe-doc sym doc-type) stream cols)
+		     (output-text (maybe-doc sym doc-type) cols)
 		     ;;(grout-princ #\newline)
 		     )))))
     (print-doc symbol nil 'function)))
@@ -434,12 +520,13 @@ arguments for that function, otherwise return NIL."
 			 (terminal-get-size *terminal*)
 			 (terminal-window-columns *terminal*))) 80)))
     ;;(dbug "~s ~s ~s~%" *terminal* cols (terminal-window-columns *terminal*))
-    (with-output-to-string (str)
-      (let ((*terminal* (make-instance 'terminal-ansi-stream
-				       :output-stream str)))
-	(function-help-show-function str symbol expr-number)
-	(when (> *completion-count* 2)
-	  (function-help-show-doc str symbol cols))))))
+    ;;(with-output-to-string (str)
+    ;;  (let ((*terminal* (make-instance 'terminal-ansi-stream
+    ;;				       :output-stream str)))
+    (with-terminal-output-to-string (:ansi)
+      (function-help-show-function symbol expr-number)
+      (when (> *completion-count* 2)
+	(function-help-show-doc symbol cols)))))
 
 (defun function-keyword-completion (sym context pos word-start all)
   (dbug "function-keyword-completion ~s ~s~%" sym (subseq context pos))
