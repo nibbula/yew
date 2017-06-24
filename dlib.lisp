@@ -1219,10 +1219,14 @@ A utility for debugging DEBUG-FUNCTION-ARGLIST."
 ;; @@@ This is mis-named.
 (defun lambda-list (fun)
   "Return the function's arguments."
-  #+sbcl 
-  (sb-kernel:%fun-lambda-list (if (macro-function fun)
-				  (macro-function fun)
-				  (symbol-function fun)))
+  #+sbcl
+  (let ((f (or (macro-function fun)
+	       (symbol-function fun))))
+    (cond
+      ((typep f 'generic-function)
+       (sb-mop:generic-function-lambda-list f))
+      ((null f) nil)
+      (t (sb-kernel:%fun-lambda-list f))))
   #+ccl (ccl:arglist fun)
   #+clisp (ext:arglist fun)
   #+cmu (function-arglist fun)
