@@ -192,43 +192,47 @@ defaults to the current time."
 	      (Δ (- now-ish time))
 	      (change (abs Δ))
 	      (dir (cond ((> Δ 0) "ago") ((< Δ 0) "from now") (t "now")))
+	      integer-change
 	      units)
 	 (cond
 	   ((< change 90)
-	    (setf units "seconds"))
+	    (setf units "second~:P"))
 	   ((< (time-to-minutes change)   90)
-	    (setf units "minutes"
+	    (setf units "minute~:P"
 		  change (time-to-minutes change)))
 	   ((< (time-to-hours change)     36)
-	    (setf units "hours"
+	    (setf units "hour~:P"
 		  change (time-to-hours change)))
 	   ((< (time-to-days change)      14)
-	    (setf units "days"
+	    (setf units "day~:P"
 		  change (time-to-days change)))
 	   ((< (time-to-weeks change)     10)
-	    (setf units "weeks"
+	    (setf units "week~:P"
 		  change (time-to-weeks change)))
 	   ((< (time-to-years change)     1)
-	    (setf units "months"
+	    (setf units "month~:P"
 		  ;;change (time-to-months change)))
 		  change (/ (time-to-days change) 30)))
 	   ((< (time-to-decades change)   1)
-	    (setf units "years"
+	    (setf units "year~:P"
 		  change (time-to-years change)))
 	   ((< (time-to-centuries change) 1)
-	    (setf units "decades"
+	    (setf units "decade~:P"
 		  change (time-to-decades change)))
 	   ((< (time-to-millennia change) 1)
-	    (setf units "centuries"
+	    (setf units "centur~:@P"
 		  change (time-to-centuries change)))
 	   ((< (time-to-millennia change) 100)
-	    (setf units "millennia"
+	    (setf units "~1:*millenni~[a~;um~:;a~]"
 		  change (time-to-millennia change)))
 	   (t
 	    (setf units "long long")))
 	 (if (zerop Δ)
-	   "now"
-	   (format nil "~d ~a ~a" (truncate change) units dir))))
+	     "now"
+	     (progn
+	       (setf integer-change (round change))
+	       (format nil (s+ "~d " units " ~a")
+		       integer-change dir)))))
       (otherwise
        (format nil "~d-~2,'0d-~2,'0d ~2,'0d:~2,'0d:~2,'0d"
 	       year month date hours minutes seconds)))))
