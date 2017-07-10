@@ -16,13 +16,297 @@ make the table in the first place. For that you want the TABLE package.")
    ))
 (in-package :table-print)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3)
-		   (space 0) (compilation-speed 0)))
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+		   (compilation-speed 0)))
 
-;; @@@ There should only be ONE version of the main logic!!!
+(defclass table-renderer ()
+  ()
+  (:documentation "Something that displays tables."))
 
-(defgeneric output-table (table destination &key long-titles column-names)
+(defgeneric table-output-header (renderer table)
+  (:documentation "Output something before the column titles."))
+
+(defgeneric table-output-column-titles (renderer table titles
+					&key &allow-other-keys)
+  (:documentation "Output all the column titles."))
+
+(defgeneric table-output-column-title (renderer table title width justification)
+  (:documentation "Output a column title."))
+
+(defgeneric table-output-start-row (renderer table)
+  (:documentation "Start a row of table output."))
+
+(defgeneric table-output-cell (renderer table cell width justification)
+  (:documentation "Output a table cell."))
+
+(defgeneric table-output-column-separator (renderer table width)
+  (:documentation "Output a separator between columns."))
+
+(defgeneric table-output-end-row (renderer table n)
+  (:documentation "End a row of table output."))
+
+(defgeneric table-output-row-separator (renderer table n)
+  (:documentation "Output separator between rows."))
+
+(defgeneric table-output-footer (renderer table)
+  (:documentation "Output the bottom of the table."))
+
+(defgeneric output-table (table renderer destination
+			  &key long-titles print-titles max-width
+			  &allow-other-keys)
   (:documentation "Output a table."))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defclass text-table-renderer (table-renderer)
+  ((stream
+    :initarg :stream :accessor text-table-renderer-stream
+    :documentation "The stream to output to.")
+   (prefix
+    :initarg :prefix :accessor text-table-renderer-prefix
+    :initform "" :type string
+    :documentation "Prefix for rows.")
+   (suffix
+    :initarg :suffix :accessor text-table-renderer-suffix
+    :initform "" :type string
+    :documentation "Suffix for rows.")
+   (separator
+    :initarg :separator :accessor text-table-renderer-separator
+    :initform " " :type string
+    :documentation "Separator between columns.")
+   )
+  (:documentation "Render a text table."))
+
+(defmethod table-output-header (renderer table)
+  "Output something before the column titles."
+  (declare (ignore renderer table)))
+
+(defmethod table-output-column-titles (renderer table titles &key sizes)
+  "Output all the column titles."
+  (declare (ignore table))
+  (with-slots (stream separator) renderer
+    (loop :with str
+       :and fmt = "~va"
+       :and len = (length titles)
+       :and size :and just
+       :for col :in titles
+       :and i :from 0 :below (length sizes)
+       :do
+       (setf size (car (aref sizes i))
+	     just (cadr (aref sizes i)))
+       (if (listp col)
+	   (setf str (first col)
+		 fmt (if (eql just :right) "~v@a" "~va"))
+	   (setf str col
+		 fmt "~va"))
+       (format stream fmt size
+	       (subseq (string-capitalize (substitute #\space #\_ str))
+		       0 (min (length str) size)))
+       (when (< i (1- len))
+	 (write-string separator stream)))
+    (terpri stream)
+
+    ;; Lines
+    (loop :with len = (length sizes)
+       :for i :from 0 :below len
+       :do
+       (format stream "~v,,,va" (car (aref sizes i)) #\- #\-)
+       (when (< i (1- len))
+	 (write-string separator stream)))
+    (terpri stream)))
+
+(defmethod table-output-column-title (renderer table title width justification)
+  "Output a column title."
+  (declare (ignore renderer table title width justification)))
+
+(defmethod table-output-start-row (renderer table)
+  "Start a row of table output."
+  (declare (ignore table))
+  (with-slots (stream prefix) renderer
+    (write-string prefix stream)))
+
+(defmethod table-output-cell (renderer table cell width justification)
+  "Output a table cell."
+  (declare (ignore renderer table cell width justification)))
+
+(defmethod table-output-column-separator (renderer table width)
+  "Output a separator between columns."
+  (declare (ignore table width))
+  (with-slots (stream separator) renderer
+    (write-string separator stream)))
+
+(defmethod table-output-end-row (renderer table n)
+  "End a row of table output."
+  (declare (ignore table n))
+  (with-slots (stream suffix) renderer
+    (write-string suffix stream)))
+
+(defmethod table-output-row-separator (renderer table n)
+  "Output separator between rows."
+  (declare (ignore renderer table n)))
+
+(defmethod table-output-footer (renderer table)
+  "Output the bottom of the table."
+  (declare (ignore renderer table)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun column-name-list (table &optional (template "Column~d"))
+  "Return a list of column names for TABLE or a TEMPLATE filled in with the
+column number."
+  (let ((n 0))
+    (mapcar #'(lambda (x)
+		(prog1 (or (column-name x)
+			   (format nil template n))
+		  (incf n)))
+	    (table-columns table))))
+
+(defun column-name-sizes (column-names long-titles)
+  ;; Initial column sizes from labels
+  (loop :for field :in column-names
+     :collect (typecase field
+		(string
+		 (if long-titles (length field) nil))
+		(list
+		 (let ((width (find-if #'numberp field)))
+		   (if long-titles
+		       (if width
+			   (- (max (length (car field)) width 0))
+			   (length (car field)))
+		       (and width (- width)))))
+		(t nil))))
+
+(defun adjust-sizes-for-data (table renderer sizes max-width)
+  "Adjust the sizes in the vector SIZES, by the data in TABLE."
+  (let ((sep-len (length (text-table-renderer-separator renderer))))
+    (omap
+     #'(lambda (row)
+	 (let ((len (olength row)) (i 0) (new-size nil) col size)
+	   (omap
+	    #'(lambda (field)
+		(setf col 0
+		      size (aref sizes i)
+		      new-size
+		      (if (and size (minusp size))
+			  size		; Don't mess with preset size
+			  (max (or size 0)
+			       (typecase field
+				 (string (length field))
+				 (otherwise
+				  (length (princ-to-string field)))))))
+		;;(incf col (abs new-size))
+		(when (and max-width (> (+ col (abs new-size)) max-width))
+		  ;;(format t "Chow ~s ~s~%" new-size col)
+		  (setf new-size (max 0
+				      (- new-size
+					 (- (+ col (abs new-size))
+					    max-width)))))
+		(incf col (abs new-size))
+		(when (< i (1- len))
+		  (incf col sep-len))
+		(setf (aref sizes i) new-size)
+		(incf i))
+	    row)))
+     (collection-data table))))
+
+(defmethod output-table ((table table) (renderer text-table-renderer)
+			 destination
+			 &key
+			   (long-titles t) (print-titles t) max-width
+			   (trailing-spaces t) (separator " "))
+  "Output a table to a destination."
+  ;; @@@ Setting the stream here is somewhat wrongish.
+  (setf (text-table-renderer-stream renderer) destination)
+  (let* ((column-names (and print-titles (column-name-list table)))
+	 (sizes (if column-names
+		    (coerce (column-name-sizes column-names long-titles)
+			    'vector)
+		    (make-array `(,(olength (element table 0)))
+				:initial-element nil)))
+	 (stream destination))
+
+    ;;(format t "sizes = ~s~%" sizes)
+
+    ;; Adjust column sizes by field data
+    (adjust-sizes-for-data table renderer sizes max-width)
+
+    ;; Flip pre-set sizes.
+    ;;(format t "sizes = ~s~%" sizes)
+    (map-into sizes #'abs sizes)
+
+    ;; Get justification
+    (loop
+       :for i :from 0 :below (length sizes)
+       :for col = column-names :then (cdr col)
+       :do
+       (setf (aref sizes i)
+	     (list (aref sizes i)
+		   (if (and (listp (car col))
+			    (member (second (car col))
+				    '(:right :wrap :overflow)))
+		       (second (car col))
+		       ;; default to left justification
+		       :left))))
+
+    (table-output-header renderer table)
+
+    ;; Print titles
+    (when (and column-names print-titles)
+      (table-output-column-titles renderer table column-names :sizes sizes))
+
+    ;; Values
+    (let (fmt cell-lines cell-col cell-width)
+      (omap
+       #'(lambda (row)
+	   (let ((row-len (olength row))
+		 (col 0)
+		 (i 0)
+		 cell size just)
+	     (table-output-start-row renderer table)
+	     (omap
+	      #'(lambda (field)
+		  (setf size (car (aref sizes i))
+			just (cadr (aref sizes i)))
+		  (when (eq just :wrap)
+		    (setf cell-lines
+			  (split-sequence
+			   #\newline (justify-text field :cols (1+ size)
+						   :stream nil))
+			  cell-col col
+			  cell-width size
+			  field (car cell-lines)))
+		  (setf fmt
+			(cond
+			  ((and (= i (1- row-len)) (not trailing-spaces))
+			   "~*~a")
+			  ((eql just :right)
+			   "~v@a")
+			  ((typep field 'number)
+			   "~v@a")
+			  (t
+			   "~va")))
+		  (setf cell (format nil fmt size field))
+		  (incf col (length cell))	; of course this isn't right
+		  (if (and (eq just :overflow)
+			   (> (length cell) size))
+		      (progn
+			(write-string cell stream)
+			(format stream "~%~v,,,va" size #\space #\space))
+		      (write-string (subseq cell 0 (min size (length cell)))
+				    stream))
+		  (when (< i (1- row-len))
+		    (write-string separator stream)
+		    (incf col (length separator)))
+		  (incf i))
+	      row)
+	     (when cell-lines
+	       (loop :for l :in (cdr cell-lines) :do
+		  (format stream "~%~v,,,va~va"
+			  cell-col #\space #\space cell-width l))
+	       (setf cell-lines nil))
+	     (terpri stream)))
+       (collection-data table)))
+    (length (collection-data table)))) ;; @@@ should actually be rows output?
 
 ;; This is quite inefficient since it gets the whole data set in
 ;; one shot and then goes thru every datum twice. But it's nice for
@@ -48,7 +332,7 @@ width is the desired width of the column. If the width isn't given, the width of
 the columns is determined by the maximum width required to print the data.
 
 LONG-TITLES can be true, to make the columns at least as wide as the names.
-PRINT-TITLES can be nil, to make the columns headings not print, even thought
+PRINT-TITLES can be nil, to make the columns headings not print, even though
 you have provided COLUMN-NAMES.
 
 MAX-WIDTH is the maximum width of the table. If necessary, the last column is
@@ -183,6 +467,7 @@ resized to fit in this, and the whole row is trimmed to this."
        (terpri stream)))
     (length rows))
 
+#|
 ;; Version which doesn't assume lists.
 (defun oprint-table (table &key (long-titles t) (stream *standard-output*))
   "Print results nicely in horizontal table. ROWS is a list of row, which are
@@ -404,7 +689,6 @@ is true, make the columns at least as wide as the column names."
   "Output a plain text header separator."
   (format (table-plain-text-renderer-stream r) "~v,,,va " width #\- #\-))
 
-#|
 (defun generic-print-table (rows column-names
 			    &key (long-titles t)
 			      (stream *standard-output*)
@@ -474,18 +758,20 @@ is true, make the columns at least as wide as the column names."
 	  (format stream fmt size f))
        (terpri stream)))
     (length rows))
-|#
-
-(defun print-table (table &key (long-titles t) (stream *standard-output*))
-  "Print results nicely in horizontal table."
-  (let ((rows (collection-data table))
-	(column-names (mapcar #'column-name (table-columns table))))
-    (nice-print-table rows column-names
-		      :long-titles long-titles :stream stream)))
 
 (defmethod output-table ((table table) (destination stream)
 			 &key long-titles column-names)
   (declare (ignore column-names))
   (oprint-table table :long-titles long-titles :stream destination))
 
+|#
+
+(defun print-table (table &key (long-titles t) (stream *standard-output*))
+  "Print results nicely in horizontal table."
+  ;; (let ((rows (collection-data table))
+  ;; 	(column-names (mapcar #'column-name (table-columns table))))
+  ;;   (nice-print-table rows column-names
+  ;; 		      :long-titles long-titles :stream stream)))
+  (output-table table (make-instance 'text-table-renderer) stream
+		:long-titles long-titles))
 ;; EOF
