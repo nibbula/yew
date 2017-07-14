@@ -157,6 +157,8 @@
    #:with-posix-file
    #:with-os-file
    #:mkstemp
+   #:fcntl
+   #:get-file-descriptor-flags
 
    ;; stat
    #:stat
@@ -415,9 +417,22 @@ from the CONSTANT-ARRAY variable, that are non-NIL."
 	      :collect (aref v 0)))
        ,@(or (list docstring))))
 
+  (defmacro define-to-list (list-var constant-array)
+    "Define constants and put the names in LIST-VAR."
+    `(progn
+       ,@(loop :with name :and value :and doc
+	    :for c :across constant-array :do
+	    (setf name  (aref c 0)
+		  value (aref c 1)
+		  doc   (aref c 2))
+	    :collect
+	    `(defconstant ,name ,value ,doc)
+	    :collect
+	    `(push ',name ,list-var))))
+
 ;; C API types
 
-  (define-simple-types
+(define-simple-types
   #(
 #| This is just gonna go over 80 cols, so deal.
 Type name     Darwin           Linux-32         Linux-64         SunOS		  FreeBSD 64 |#
@@ -2524,6 +2539,7 @@ calls. Returns NIL when there is an error."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Files
 
+#|
 #+(or darwin freebsd linux)
 (progn
   (defconstant +O_RDONLY+   #x0000 "Open for reading only")
@@ -2571,6 +2587,60 @@ calls. Returns NIL when there is an error."
   (defconstant +O_FSYNC+     #x00000080 "Synchronous writes")
   (defconstant +O_TTY_INIT+  #x00080000 "Restore default termios attributes")
   (defconstant +O_CLOEXEC+   #x00100000))
+|#
+
+(defparameter *file-flags* nil "Flag for open and fcntl.")
+
+#+(or darwin freebsd linux)
+(define-to-list *file-flags*
+  #(#(+O_RDONLY+   #x0000 "Open for reading only")
+    #(+O_WRONLY+   #x0001 "Open for writing only")
+    #(+O_RDWR+	   #x0002 "Open for reading and writing")
+    #(+O_NONBLOCK+ #+(or darwin freebsd) #x0004 #+linux #o04000 "No delay")
+    #(+O_APPEND+   #+(or darwin freebsd) #x0008 #+linux #o02000
+      "Set append mode")
+    #(+O_ASYNC+	   #+(or darwin freebsd) #x0040 #+linux #x020000
+      "Signal pgrp when data ready")
+    #(+O_SYNC+	   #+(or darwin freebsd) #x0080 #+linux #o04010000
+      "Synchronous writes")
+    #(+O_SHLOCK+   #x0010 "Atomically obtain a shared lock")
+    #(+O_EXLOCK+   #x0020 "Atomically obtain an exclusive lock")
+    #(+O_CREAT+	   #+(or darwin freebsd) #x0200 #+linux #o100
+      "Create if nonexistant")
+    #(+O_TRUNC+	   #+(or darwin freebsd) #x0400 #+linux #o01000
+      "Truncate to zero length")
+    #(+O_EXCL+	   #+(or darwin freebsd) #x0800 #+linux #o0200
+      "Error if create and already exists")
+    #(+O_NOCTTY+   #+darwin #x20000 #+linux #o0400 #+freebsd #x8000
+      "Don't assign controlling terminal")))
+
+#+(or darwin freebsd linux)
+(defconstant +O_ACCMODE+ #x0003 "Mask for above modes")
+
+#+darwin
+(define-to-list *file-flags*
+  #((+O_EVTONLY+ #x8000 "Requested for event notifications only")))
+
+#+linux
+(define-to-list *file-flags*
+  #(#(+O_LARGEFILE+ #o000100000 "Crappy old fashioned work around.")
+    #(+O_DIRECTORY+ #o000200000 "Fail if not directory")
+    #(+O_NOFOLLOW+  #o000400000 "Don't follow symlinks")
+    #(+O_DIRECT+    #o000040000 "Attempt to bypass buffer cache")
+    #(+O_NOATIME+   #o001000000 "Don't update acess time")
+    #(+O_PATH+      #o010000000 "Path bookmarking")
+    #(+O_DSYNC+     #o000010000 "Data synchronization")
+    #(+O_TMPFILE+   #o020200000 "Temporary anonymous")))
+
+#+freebsd
+(define-to-list *file-flags*
+  #(#(+O_NOFOLLOW+  #x00000100 "Don't follow symlinks")
+    #(+O_DIRECT+    #x00010000 "Attempt to bypass buffer cache")
+    #(+O_DIRECTORY+ #x00020000 "Fail if not directory")
+    #(+O_EXEC+	    #x00040000 "Open for execute only")
+    #(+O_FSYNC+	    #x00000080 "Synchronous writes")
+    #(+O_TTY_INIT+  #x00080000 "Restore default termios attributes")
+    #(+O_CLOEXEC+   #x00100000 "Close on exec")))
 
 (defcfun ("open"   posix-open)   :int (path :string) (flags :int) (mode mode-t))
 (defcfun ("close"  posix-close)  :int (fd :int))
@@ -2755,6 +2825,24 @@ versions of the keywords used in Lisp open.
 
 (defcfun fcntl :int (fd :int) (cmd :int) &rest)
 
+(defun get-file-descriptor-flags (file-descriptor)
+  "Return a list of the flags set on FILE-DESCRIPTOR."
+  (let* ((flags   (fcntl file-descriptor +F_GETFL+))
+	 (d-flags (fcntl file-descriptor +F_GETFD+))
+	 result)
+    ;; The others we can check if they're positive.
+    (loop :for flag :in *file-flags*
+       :if (plusp (logand (symbol-value flag) flags))
+       :do (push flag result))
+
+    ;; Need to special case this because it's usually defined as zero.
+    (when (= (logand flags +O_ACCMODE+) +O_RDONLY+)
+      (push '+O_RDONLY+ result))
+
+    (when (plusp (logand d-flags +FD_CLOEXEC+))
+      (push '+FD_CLOEXEC+ result))
+    result))
+	  
 ;; stat / lstat
 
 ;; st_mode bits
