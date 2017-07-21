@@ -16,17 +16,14 @@
 
 ;; Access methods
 
-(declaim (inline buffer-string))
 (defun buffer-string (buf)
   "Return a buffer or buffer subsequence as string."
   (fat-string-to-string buf))
 
-(declaim (inline buffer-char))
 (defun buffer-char (buf i)
   "Return the character at position I in buffer BUF."
   (fatchar-c (aref buf i)))
 
-(declaim (inline set-buffer-char))
 (defun set-buffer-char (buf i c)
   "Set the character at position I in buffer BUF to C."
   (setf (fatchar-c (aref buf i)) c))

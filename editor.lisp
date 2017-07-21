@@ -282,6 +282,12 @@ but perhaps reuse some resources."))
 	(exit-flag e)		nil
 	(did-under-complete e)	nil))
 
+;; For use in external commands.
+
+(defun get-buffer-string (e)
+  "Return a string of the buffer."
+  (buffer-string (buf e)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; input
 
@@ -296,6 +302,8 @@ but perhaps reuse some resources."))
       (funcall (line-editor-input-callback e) c))
     c))
 
+#| ;; Delete this bullcrap.
+
 (defun get-lone-key ()
   "Get a key, but easily usable from outside the editor. Don't use this for
 anything serious."
@@ -304,77 +312,6 @@ anything serious."
     (progn
       (get-a-char *line-editor*))
     (terminal-end (line-editor-terminal *line-editor*))))
-
-#|
-;; This can unfortunately really vary between emulations, so we try
-;; to code for multiple interpretations.
-;; @@@ this or something like it should probably be moved to terminal-ansi
-(defun read-function-key (e)
-  "Read the part of a function key after the ESC [ and return an
- indicative keyword or nil if we don't recognize the key."
-  (declare (type line-editor e))
-  (let ((c (get-a-char e)))
-    (case c
-      ;; Arrow keys
-      (#\A :up)
-      (#\B :down)
-      (#\C :right)
-      (#\D :left)
-      ;; Movement keys
-      (#\H :home)
-      (#\F :end)
-      (#\Z :back-tab)			; non-standard
-      (t
-       (cond
-	 ;; read a number followed by a tilde
-	 ((digit-char-p c)
-	  (let ((num (parse-integer (string c))))
-	    (setf c (get-a-char e))
-	    (loop :while (digit-char-p c)
-	      :do
-	      (setf num (+ (* num 10)
-			   (parse-integer (string c))))
-;	      (format t "(~a ~c)" num c)
-	      (setf c (get-a-char e)))
-;	    (message tty (format nil "~a ~c" n c))
-;	    (format t "[~d ~c]" num c)
-	    (when (eql c #\~)
-	      (case num
-		(5 :page-up)
-		(6 :page-down)
-		(15 :f5)
-		(17 :f6)
-		(18 :f7)
-		(19 :f8)
-		(20 :f9)
-		(21 :f10)
-		(23 :f11)
-		(24 :f12)
-		(t nil)))))
-	 (t
-	  nil))))))
-
-;; @@@ this or something like it should probably be moved to terminal-ansi
-(defun read-app-key (e)
-  "Read the part of an application mode function key after the ESC O and
- return an indicative keyword or nil if we don't recognize the key."
-  (declare (type line-editor e))
-  (let ((c (get-a-char e)))
-    (case c
-      ;; Arrow keys
-      (#\A :up)
-      (#\B :down)
-      (#\C :right)
-      (#\D :left)
-      ;; Movement keys
-      (#\H :home)
-      (#\F :end)
-      ;; Function keys
-      (#\P :f1)
-      (#\Q :f2)
-      (#\R :f3)
-      (#\S :f4)
-      (t nil))))
 |#
 
 #|
@@ -413,5 +350,6 @@ anything serious."
 ;; (defun record-key (key)
 ;;   (
 ;;   )
+
 
 ;; EOF

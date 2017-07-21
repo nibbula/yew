@@ -9,9 +9,13 @@
 	:opsys :terminal :terminal-ansi :terminal-curses :fatchar
 	:completion :syntax-lisp :unipose)
   (:export
-   ;; main functionality
-   #:rl-read-line
+   ;; Main functionality
    #:rl
+   #:rl-read-line
+   ;; Misc dorky crap
+   #:read-filename
+   #:read-choice
+   ;; Things that one might want to use externally, like in external commands.
    #:line-editor
    #:line-editor-p
    #:make-line-editor
@@ -25,22 +29,21 @@
    #:line-editor-debug-log
    #:line-editor-keymap
    #:line-editor-local-keymap
+   #:get-buffer-string
+   #:replace-buffer
    #:show-history
    #:history-clear
+   #:complete-filename-command
+   ;; Variables?
    #:*line-editor*
+   #:*normal-keymap*
+   #:*ctlx-keymap*
+   #:*escape-keymap*
    #:*default-prompt*
    #:*completion-list-technique*
    #:*completion-really-limit*
    #:*completion-short-divisor*
-   #:*normal-keymap*
-   #:*ctlx-keymap*
-   #:*escape-keymap*
    #:*terminal-name*
-   ;; misc
-   #:get-lone-key
-   #:read-filename
-   #:read-choice
-   #:complete-filename-command
    ))
 (in-package :rl)
 

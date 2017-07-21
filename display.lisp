@@ -626,7 +626,7 @@ Updates the screen coordinates."
 ;;
 ;; We could be like other shells and require that you delimit non-echoing
 ;; characters yourself and allow you to specifiy an output width for
-;; characters, but not only is annoying, but it won't always work.
+;; characters. Not only is that annoying, but it won't always work.
 ;;
 ;; Since emulating the terminal seems infeasible, unless we wrapped ourselves
 ;; in an emulation layer like screen or tmux, if we want to be sure to get
