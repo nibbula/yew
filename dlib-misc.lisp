@@ -21,6 +21,8 @@
    ;; general
    #:randomize-vector
    #:parse-integer-with-radix
+   #:tree-ify
+   #:un-tree-ify
 
    ;; time
    #:date-string
@@ -128,6 +130,64 @@ swaps to do times the length of the vector."
 	(error "Malformed integer ~a." str))))
     (t
      (parse-integer str :junk-allowed nil))))
+
+;;
+;; foo bar quux
+;; (("foo" ()) ("bar" ()) ("quux" ()))
+;;
+;; foo foobar foobarquux
+;; (("foo" ()) ("bar" ()) ("quux" ()))
+
+(defun seqify (s) (or (and (typep s 'sequence) s) (princ-to-string s)))
+
+(defun put-in-tree (s sub-tree)
+  (let (added thing new spot (ss (seqify s)))
+    (loop :for node :in sub-tree :do
+       (setf thing (car node)
+	     spot (mismatch ss thing))
+       (when (not (zerop spot))
+	 (if (> (length thing) (length ss))
+	     (setf (car node) ss
+		   new (subseq thing spot))
+	     (setf new (subseq ss spot)))
+	 (setf (cdr node)
+	       (if (not (cdr node))
+		   (list new ())
+		   (put-in-tree new (cdr node))))
+	 (format t "zerp ~s~%" (cdr node))
+	 (setf added t)))
+    (if (not added)
+	(progn
+	  (format t "plonk ~s~%" ss)
+	  (if (equal sub-tree '(nil))
+	      (setf sub-tree (list (list ss ())))
+	      (push (list ss ()) sub-tree)))
+	sub-tree)))
+
+;; (defun put-in-tree (string sub-tree)
+;;   (loop :for c :across string
+;;      :do
+
+(defun tree-ify (list)
+  (let ((tree '()))
+    (loop :for s :in list
+       :do (setf tree (put-in-tree s tree))
+       (format t "tree: ~s~%" tree)
+       )
+    (nreverse tree)))
+
+(defun un-tree-ify (list &optional (prefix ""))
+  (if list
+      (if (and (consp list) (not (equal '(nil) list)))
+	  (loop :for i :in list :do
+	     (if (consp i)
+		 (progn
+		   (when (consp (cdr i))
+		     (format t "-> ~s~%" (s+ prefix (car i)))
+		     (un-tree-ify (cdr i) (s+ prefix (car i)))))
+		 (format t "<- ~s~%" (s+ prefix i))))
+	  ;;(format t "<. ~s~%" (s+ prefix list))
+	  )))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; time
@@ -566,6 +626,8 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
 				   (format-char #\a) prefix suffix
 				   smush row-limit)
   (declare (ignore prefix suffix smush)) ;; @@@
+  (when (not list)
+    (return-from print-columns-smush 0))
   (let ((screen-width columns)
 	;; (terminal:with-terminal (tty 'terminal-ansi:terminal-ansi)
 	;;    (terminal:terminal-window-columns tty)))
