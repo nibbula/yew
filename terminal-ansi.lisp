@@ -30,6 +30,13 @@
 (defvar *default-device-name* *default-console-device-name*
   "The default device to create a terminal on.")
 
+(define-constant +csi+ (s+ #\escape #\[)
+  "Control Sequence Introducer. Hooking up control sequences since 1970.")
+(define-constant +st+  (s+ #\escape #\\)
+  "String terminator. Death to strings.")
+(define-constant +osc+ (s+ #\escape #\])
+  "Operating System Command. C'est vrai? o_O")
+
 (defclass terminal-ansi-stream (terminal-stream)
   ()
   (:documentation
@@ -342,14 +349,75 @@ i.e. the terminal is 'line buffered'."
 (defparameter *colors*
   #(:black :red :green :yellow :blue :magenta :cyan :white nil :default))
 
+(defun format-color (red green blue &key bits)
+  "Return a string in XParseColor format for a color with the given RED, BLUE,
+and GREEN, components. Default to 8 bit color. If values are over 8 bits,
+default to 16 bit color."
+  (let ((r red) (g green) (b blue) (l (list red green blue)))
+    (cond
+      ((every #'floatp l)
+       (format nil "rgbi:~f/~f/~f" r g b))
+      ((every #'integerp l)
+       (let (fmt)
+	 (when (not bits)
+	   (setf bits (if (some (_ (> _ #xff)) l) 16 8)))
+	 (setf fmt
+	       (case bits
+		 (4  "~x")
+		 (8  "~2,'0x")
+		 (12 "~3,'0x")
+		 (16 "~4,'0x")
+		 (t (error "Bad color bit magnitudes: ~s" l))))
+	 (format nil (s+ "rgb:" fmt "/" fmt "/" fmt) r g b)))
+      (t
+       (error "Bad color formats: ~s" l)))))
+
+(defun rgb-color-p (x)
+  (and (not (null x))
+       (or (consp x) (arrayp x))
+       (= (length x) 3)
+       (every #'numberp x)))
+
+(defun   color-red   (c) (elt c 0))
+(defsetf color-red   (c) (val) `(setf (elt ,c 0) ,val))
+(defun   color-green (c) (elt c 1))
+(defsetf color-green (c) (val) `(setf (elt ,c 1) ,val))
+(defun   color-blue  (c) (elt c 2))
+(defsetf color-blue  (c) (val) `(setf (elt ,c 2) ,val))
+
+(defun set-foreground-color (color)
+  (tt-format "~a10;~a~a" +osc+
+	     (format-color (color-red   color)
+			   (color-green color)
+			   (color-blue  color)) +st+))
+
+(defun set-background-color (color)
+  (tt-format "~a11;~a~a" +osc+
+	     (format-color (color-red   color)
+			   (color-green color)
+			   (color-blue  color)) +st+))
+
 (defmethod terminal-color ((tty terminal-ansi-stream) fg bg)
   (let ((fg-pos (position fg *colors*))
 	(bg-pos (position bg *colors*)))
-    (when (not fg-pos)
+    (when (and (keywordp fg) (not fg-pos))
       (error "Forground ~a is not a known color." fg))
-    (when (not bg-pos)
+    (when (and (keywordp bg) (not bg-pos))
       (error "Background ~a is not a known color." bg))
     (cond
+      ((or (rgb-color-p fg) (rgb-color-p bg))
+       (when (rgb-color-p fg)
+	 (let ((red   (elt fg 0))
+	       (green (elt fg 1))
+	       (blue  (elt fg 2)))
+	   (terminal-format tty "~a38;2;~a;~a;~am" +csi+
+			    red green blue)))
+       (when (rgb-color-p bg)
+	 (let ((red   (elt bg 0))
+	       (green (elt bg 1))
+	       (blue  (elt bg 2)))
+	   (terminal-format tty "~a48;2;~a;~a;~am" +csi+
+			    red green blue))))
       ((and fg bg)
        (terminal-format tty "~c[~d;~dm" #\escape (+ 30 fg-pos) (+ 40 bg-pos)))
       (fg
@@ -578,12 +646,6 @@ and add the characters the typeahead."
     (64 "VT520")
     (65 "VT525")))
 
-(define-constant +csi+ (s+ #\escape #\[)
-  "Control Sequence Introducer. Hooking up control sequences since 1970.")
-(define-constant +st+  (s+ #\escape #\\)
-  "String terminator. Death to strings.")
-(define-constant +osc+ (s+ #\escape #\])
-  "Operating System Command. C'est vrai? o_O")
 
 (defun query-parameters (s &key (offset 3))
   (let ((response (termios:terminal-query (s+ +csi+ s))))
