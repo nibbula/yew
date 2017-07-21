@@ -89,6 +89,7 @@
    #+sbcl #:without-notes
    ;; language-ish
    #:define-constant
+   #:defconstant-to-list
    #:define-alias #:defalias
    #-(or lispworks clasp) #:λ
    #:_
@@ -948,6 +949,19 @@ equal under TEST to result of evaluating INITIAL-VALUE."
 ;; On other lisps just use the real one.
 ;;#-(or sbcl clisp ccl cmu lispworks ecl abcl)
 ;;(setf (macro-function 'define-constant) (macro-function 'cl:defconstant))
+
+(defmacro defconstant-to-list (list-var constant-array)
+  "Define constants and put the names in LIST-VAR."
+  `(progn
+     ,@(loop :with name :and value :and doc
+	  :for c :across constant-array :do
+	  (setf name  (aref c 0)
+		value (aref c 1)
+		doc   (aref c 2))
+	  :collect
+	  `(defconstant ,name ,value ,doc)
+	  :collect
+	  `(push ',name ,list-var))))
 
 ;; Ideally we would be able to make aliases for these:
 ;;   variable structure type package method-combination setf function
