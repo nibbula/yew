@@ -11,6 +11,7 @@
   (:export
    #:pick-list
    #:pick-file
+   #:pick-files
    #:do-menu*
    #:do-menu
    #:menu-load
@@ -430,7 +431,7 @@
 	       :name (dir-entry-name f) :type (dir-entry-type f))))
 
 (defun pick-file (&key message (directory ".") (allow-browse t) show-hidden
-		    (pick-directories))
+		    (pick-directories) multiple)
   "Have the user choose a file."
   ;;@@@ to allow choosing directories instead of going to them
   (let* ((dir directory)
@@ -444,38 +445,57 @@
 		   file-list (if allow-browse
 				 (append '(" [Up..]") files)
 				 files)))
-	   (cat (a b) (concatenate 'string a b)))
+	   (cat (a b) (concatenate 'string a b))
+	   (absolutize (f)
+	     (abspath (path-append dir (dir-entry-name f))))
+	   (single-file (f)
+	     (cond
+	       ((and (consp f) (= 1 (length f))) (first f))
+	       (t f))))
       (generate-list)
       (if allow-browse
-	  (loop :with done = nil
+	  (loop :with done = nil :and f
 	     :while (not done)
 	     :do
-	     (setf msg (format nil "~@[~a~%~]~a~%" message dir))
-	     (setf (values filename did-dir)
-		   (pick-list file-list :sort-p t :message msg))
+	     (setf msg (format nil "~@[~a~%~]~a~%" message dir)
+		   (values filename did-dir)
+		   (pick-list file-list :sort-p t :message msg
+			      :multiple multiple)
+		   f (single-file filename))
 	     (cond
 	       ;; picked up level
-	       ((and filename (equal " [Up..]" filename))
+	       ((and f (equal " [Up..]" f))
 		(setf dir (dirname (cat (abspath (cat dir "/..")) "/")))
 		(generate-list))
 	       ;; picked a directory
-	       ((and filename
-		     (pf-dir-entry-p filename)
-		     (or (eq (dir-entry-type filename) :directory)
-			 (eq (dir-entry-type filename) :link))
+	       ((and f
+		     (pf-dir-entry-p f)
+		     (or (eq (dir-entry-type f) :directory)
+			 (eq (dir-entry-type f) :link))
 		     (probe-directory
-		      (path-append dir (dir-entry-name filename)))
+		      (path-append dir (dir-entry-name f)))
 		     (and (not pick-directories) (not did-dir)))
-		(setf dir (path-append dir (dir-entry-name filename)))
+		(setf dir (path-append dir (dir-entry-name f)))
 		(generate-list))
 	       ;; other files
 	       (t
 		(setf done t))))
 	  ;; Just pick from the current directory
-	  (setf filename (pick-list file-list :sort-p t :message message)))
+	  (setf filename (pick-list file-list :sort-p t :message message
+				    :multiple multiple)))
       (when filename
-	(values (abspath (path-append dir (dir-entry-name filename)))
-		dir)))))
+	(typecase filename
+	  ((or list array)
+	   (values (mapcar #'absolutize filename) dir))
+	  (t
+	   (values (absolutize filename) dir)))))))
+
+(defun pick-files (&key message (directory ".") (allow-browse t) show-hidden
+		    (pick-directories))
+  "Choose some files. Just a shortcut for calling pick-file with MULTIPLE = T."
+  (pick-file :message message :directory directory :allow-browse allow-browse
+	     :show-hidden show-hidden :pick-directories pick-directories
+	     :multiple t))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Menus
