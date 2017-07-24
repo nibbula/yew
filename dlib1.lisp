@@ -39,7 +39,7 @@ problem, and hope I can some day contribute to the solution of it.")
    #:exit-system
    #:save-image-and-exit
    #:overwhelming-permission
-   #:exe-in-path-p
+   #:exe-in-path
    #:try-things
    ;; io-ish
    #:resilient-read-line
@@ -794,7 +794,7 @@ on all accessible symbols."
   #+sbcl (sb-ext:process-output
 	  (sb-ext:run-program cmd args :output :stream :search t))
   #+cmu (ext:process-output
-	 (ext:run-program cmd args :output :stream))
+	 (ext:run-program (exe-in-path cmd) args :output :stream))
   #+openmcl (ccl::external-process-output-stream
 	     (ccl::run-program cmd args :output :stream))
   #+ecl (ext:run-program cmd args)
@@ -1053,7 +1053,7 @@ ORIGINAL is something that a define-alias method is defined for."
 (#+sbcl without-package-locks
  #+clisp ext:without-package-lock #+clisp ()
  #-(or sbcl clisp) progn
- (defalias :mop (find-package *mop-package*)))
+ #-cmu (defalias :mop (find-package *mop-package*)))
 
 ;; This is just to pretend that we're trendy and modern.
 ;(setf (macro-function 'λ) (macro-function 'cl:lambda))
@@ -1488,13 +1488,15 @@ turned on. FACILITY can be an atom or a list of facilities to turn on."
   #-clisp (probe-file f))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defun exe-in-path-p (name)
-    "True if file NAME exists in the current execute path, which is usually the
-environment variable PATH. Note that this doesn't check if it's executable or
-not or that you have permission to execute it."
-    (loop :for d :in (split-sequence ":" (d-getenv "PATH"))
-       :when (fake-probe-file (s+ d "/" name))
-       :do (return t)
+  (defun exe-in-path (name)
+    "Return the full path of file NAME exists in the current execute path,
+which is usually the environment variable PATH. Note that this doesn't check
+if it's executable or not or that you have permission to execute it.
+Return NIL if it's not found."
+    (loop :with full-name
+       :for d :in (split-sequence ":" (d-getenv "PATH"))
+       :when (fake-probe-file (setf full-name (s+ d "/" name)))
+       :do (return full-name)
        :finally (return nil)))
 
   (defun try-things (things)
@@ -1506,7 +1508,7 @@ works, return NIL."
     (loop :with result
        :for cmd :in things :do
        (setf result (etypecase (car cmd)
-		      (string (when (dlib::exe-in-path-p (car cmd))
+		      (string (when (dlib::exe-in-path (car cmd))
 				(apply #'shell-line cmd)))
 		      (symbol (apply (car cmd) (cdr cmd)))))
        (when result (return result)))))
