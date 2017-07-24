@@ -10,7 +10,8 @@
 (defpackage :tree-viewer
   (:documentation "View trees.")
   (:nicknames :tb)
-  (:use :cl :dlib :curses :char-util :keymap :opsys :dlib-interactive :terminal)
+  (:use :cl :dlib :curses :char-util :keymap :opsys :dlib-interactive :terminal
+	:fui :inator)
   (:export
    #:view-tree
    #:node #:node-branches #:node-open #:make-node
@@ -300,11 +301,8 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Viewer
 
-(defclass tree-viewer ()
-  ((quit-flag
-    :initarg :quit-flag :accessor quit-flag :initform nil :type boolean
-    :documentation "True to quit.")
-   (picked-object
+(defclass tree-viewer (fui-inator)
+  ((picked-object
      :initarg :picked-object :accessor picked-object :initform nil
      :documentation "The object that was picked.")
    (current
@@ -346,10 +344,10 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
    (scroll-hint
     :initarg :scroll-hint :accessor scroll-hint
     :initform nil :type (or null symbol)
-    :documentation "Hint about what direction to scroll.")
-   (keymap
-    :initarg :keymap :accessor keymap
-    :documentation "The current keymap."))
+    :documentation "Hint about what direction to scroll."))
+  (:default-initargs
+   :keymap (list *tree-keymap*
+		 inator:*default-inator-keymap*))
   (:documentation "A tree viewer."))
 
 (defvar *viewer* nil
@@ -364,38 +362,43 @@ been encountered."
   "Set the PARENT of the given NODE in the current tree-viewer."
   (setf (gethash node (parents *viewer*)) parent))
 
-(defun quit ()
-  "Quit the tree viewer."
-  (setf (quit-flag *viewer*) t))
+;; (defun quit ()
+;;   "Quit the tree viewer."
+;;   (setf (inator-quit-flag *viewer*) t))
 
-(defun pick-object ()
+(defun pick-object (o)
   "Pick the current object and return it."
-  (with-slots (quit-flag picked-object current) *viewer*
-    (setf quit-flag t
+  (with-slots (picked-object current) o
+    (setf (inator-quit-flag o) t
 	  picked-object current)))
 
-(defun toggle ()
-  (with-slots (current) *viewer*
+(defun toggle (o)
+  "Toggle the node between open and closed."
+  (with-slots (current) o
     (setf (node-open current) (not (node-open current)))))
 
-(defun cycle ()
-  (with-slots (current) *viewer*
+(defun cycle (o)
+  "Cycle through open, all subnodes open, and closed."
+  (with-slots (current) o
     (if (node-open current)
 	(if (all-subnodes-open-p current)
 	    (close-all-subnodes current)
 	    (open-all-subnodes current))
 	(setf (node-open current) t))))
 
-(defun open-node ()
-  (with-slots (current) *viewer*
+(defun open-node (o)
+  "Open the current node."
+  (with-slots (current) o
     (setf (node-open current) t)))
 
-(defun close-node ()
-  (with-slots (current) *viewer*
+(defun close-node (o)
+  "Close the current node."
+  (with-slots (current) o
     (setf (node-open current) nil)))
 
-(defun close-all-subnodes-command ()
-  (close-all-subnodes (current *viewer*)))
+(defun close-all-subnodes-command (o)
+  "Close all the sub-nodes of the current node."
+  (close-all-subnodes (current o)))
 
 (defun node-after-child (parent child)
   "Retun the node after CHILD in the PARENT, or NIL is there is none."
@@ -421,9 +424,9 @@ been encountered."
 	     (setf child parent
 		   parent (get-parent parent)))))))
 
-(defun next-node ()
+(defun next-node (o)
   "Set current to the next node in the linearized tree."
-  (with-slots (current bottom-node top scroll-hint) *viewer*
+  (with-slots (current bottom-node top scroll-hint) o
     (setf scroll-hint :down)
     (let ((next (find-next-node current)))
       (when next
@@ -457,9 +460,9 @@ been encountered."
 	       (t prev))))
 	 (setf prev n)))))
 
-(defun previous-node ()
+(defun previous-node (o)
   "Set current to the previous node in the linearized tree."
-  (with-slots (current top scroll-hint) *viewer*
+  (with-slots (current top scroll-hint) o
     (setf scroll-hint :up)
     (when (eq current top)
       (setf top (or (find-previous-node top) top)))
@@ -467,22 +470,24 @@ been encountered."
       (when prev
 	(setf current prev)))))
 
-(defun forward-some (&optional (n 15))
-  (with-slots (current top bottom-node scroll-hint) *viewer*
-    (setf (scroll-hint *viewer*) :down)
+(defun forward-some (o &optional (n 15))
+  "Go forward by a few nodes. Defaults to 15."
+  (with-slots (current top bottom-node scroll-hint) o
+    (setf scroll-hint :down)
     (loop :with after-bottom
        :for i :from 1 :to n
-       :while (next-node)
+       :while (next-node o)
        :do
        (when (eq current bottom-node)
 	 (setf after-bottom t))
        (when after-bottom
 	 (setf top (find-next-node top))))))
 
-(defun backward-some (&optional (n 15))
-  (setf (scroll-hint *viewer*) :up)
+(defun backward-some (o &optional (n 15))
+  "Go backward by a few nodes. Defaults to 15."
+  (setf (scroll-hint o) :up)
   (loop :for i :from 1 :to n
-     :while (previous-node)))
+     :while (previous-node o)))
 
 (defun find-next-hierarchical-node (node)
   "Return the next node after NODE in the linearized tree."
@@ -495,8 +500,9 @@ been encountered."
 	 (setf child parent
 	       parent (get-parent parent))))))
 
-(defun next-hierarchical-node ()
-  (with-slots (current bottom-node top scroll-hint) *viewer*
+(defun next-hierarchical-node (o)
+  "Go to the next node at the same level."
+  (with-slots (current bottom-node top scroll-hint) o
     (setf scroll-hint :down)
     (let ((next (find-next-hierarchical-node current)))
       (when next
@@ -519,8 +525,9 @@ been encountered."
 	       (t prev))))
 	 (setf prev n)))))
 
-(defun previous-hierarchical-node ()
-  (with-slots (current top scroll-hint) *viewer*
+(defun previous-hierarchical-node (o)
+  "Go to the previous node at the same level."
+  (with-slots (current top scroll-hint) o
     (setf scroll-hint :up)
     (when (eq current top)
       (setf top (or (find-previous-node top) top)))
@@ -530,50 +537,134 @@ been encountered."
 
 ;; Page movement is approximate.
 
-(defun next-page ()
-  (with-slots (scroll-hint) *viewer*
-    (setf (scroll-hint *viewer*) :down)
+(defmethod next-page ((o tree-viewer))
+  "Go to the next page."
+  (with-slots (scroll-hint) o
+    (setf scroll-hint :down)
     (loop :for i :from 1 :to curses:*lines*
-       :while (next-node))))
+       :while (next-node o))))
 
-(defun previous-page ()
-  (backward-some curses:*lines*))
+(defmethod previous-page ((o tree-viewer))
+  "Go to the previous page."
+  (backward-some o curses:*lines*))
 
-(defun shift-left ()
-  (decf (left *viewer*) 10))
+(defun shift-left (o)
+  "Shift the edge left."
+  (with-slots (left) o
+    (decf (left o) 10)
+    (when (< left 0)
+      (setf left 0))))
 
-(defun shift-right ()
-  (incf (left *viewer*) 10))
+(defun shift-right (o)
+  "Shift the edge right."
+  (incf (left o) 10))
 
-(defun shift-beginning ()
-  (setf (left *viewer*) 0))
+(defun shift-beginning (o)
+  "Shift the view all the way left."
+  (setf (left o) 0))
 
-(defun shift-end ()
-  (with-slots (left current-max-right) *viewer*
+(defun shift-end (o)
+  "Shift to the end of the rightmost content."
+  (with-slots (left current-max-right) o
     (when current-max-right
       (setf left (max 0 (- current-max-right *cols*))))))
 
-(defun goto-first-node ()
-  (with-slots (current root top) *viewer*
+(defun goto-first-node (o)
+  "Go to the first node."
+  (with-slots (current root top) o
     (setf current root
 	  top root)))
 
-(defun goto-bottom-node ()
-  (with-slots (current root top scroll-hint) *viewer*
+(defun goto-bottom-node (o)
+  "Go to the last node."
+  (with-slots (current root top scroll-hint) o
     (let ((last (last-open-subnode (node-branches root)))) 
       (setf current last
 	    ;; We could jus set scroll-hint :down here, but that can be very
 	    ;; inefficient, so let's go to the end and then go backwards some.
 	    top current)
-      (backward-some *lines*)
+      (backward-some o *lines*)
       (setf current last
 	    scroll-hint :down))))
 
-(defun toggle-modeline ()
-  (setf (show-modeline *viewer*) (not (show-modeline *viewer*))))
+(defun open-path-to-node (o)
+  (declare (ignore o))
+  )
 
-(defun node-info ()
-  (with-slots (current) *viewer*
+(defun search-tree-forward (o string tree)
+  (with-slots (current bottom-node top scroll-hint) o
+    ;; (let ((obj-str (princ-to-string (node-object tree)))
+    ;; 	  (node-str (princ-to-string tree)))
+    ;;   (when (or (search string obj-str :test #'equalp)
+    ;; 		(search string node-str :test #'equalp))
+    ;; 	(setf current tree)
+    ;; 	(open-path-to-node tree)
+    ;; 	(throw 'search-done :found))
+    ;;   (loop :for n :in (node-branches tree) :do
+    ;; 	 (search-tree o string n)))))
+    (loop :with after-bottom :and obj-str :and node-str :and node = tree
+       ;;:for i :from 1 :to n
+       :while (setf node (find-next-node node))
+       :do
+       (setf obj-str (princ-to-string (node-object node))
+	     node-str (princ-to-string node))
+       (when (or (search string obj-str :test #'equalp)
+		 (search string node-str :test #'equalp))
+	 (setf current node)
+	 (open-path-to-node node)
+	 (setf scroll-hint :down)
+	 (throw 'search-done :found))
+       (when (eq current bottom-node)
+	 (setf after-bottom t))
+       (when after-bottom
+	 (setf top (find-next-node top))))))
+
+(defun search-tree-backward (o string tree)
+  (with-slots (current top scroll-hint) o
+    (loop :with obj-str :and node-str :and node = tree
+       :while (setf node (find-previous-node node))
+       :do
+       (setf obj-str (princ-to-string (node-object node))
+	     node-str (princ-to-string node))
+       (when (or (search string obj-str :test #'equalp)
+		 (search string node-str :test #'equalp))
+	 (setf current node
+	       top node)
+	 (open-path-to-node node)
+	 (setf scroll-hint :up)
+	 (throw 'search-done :found)))))
+
+(defun search-tree-command (o &optional (direction :forward))
+  "Search for a node."
+  (with-slots (current) o
+    (move (1- *lines*) 0) (clrtoeol)
+    (let ((result (with-terminal (:curses)
+		    (rl:rl :prompt "Search for: "))))
+      (refresh)
+      (when (and result (not (zerop (length result))))
+	(when (not (eq :found
+		       (catch 'search-done
+			 (ecase direction
+			   (:forward
+			    (search-tree-forward o result current))
+			   (:backward
+			    (search-tree-backward o result current))))))
+	  (message o "~s not found" result))))))
+
+(defun search-forward-command (o)
+  "Search open nodes forward."
+  (search-tree-command o :forward))
+
+(defun search-backward-command (o)
+  "Search open nodes backward."
+  (search-tree-command o :backward))
+
+(defun toggle-modeline (o)
+  (setf (show-modeline o) (not (show-modeline o))))
+
+(defun node-info (o)
+  "Display node information."
+  (with-slots (current) o
     (fui:display-text
      "Node Info"
      (list (format nil "Node: ~a" current)
@@ -581,11 +672,15 @@ been encountered."
 	   (format nil " branches : ~a" (node-branches current))
 	   (format nil " parent   : ~a" (get-parent current))))))
 
-(defun next-file ()
+(defun next-file (o)
+  "Go to the next file."
+  (declare (ignore o))
   (when (find-restart 'next-file)
     (invoke-restart 'next-file)))
 
-(defun previous-file ()
+(defun previous-file (o)
+  "Go to the previous file."
+  (declare (ignore o))
   (when (find-restart 'previous-file)
     (invoke-restart 'previous-file)))
 
@@ -617,17 +712,22 @@ been encountered."
       (:ppage           . previous-page)
       (,(meta-char #\v)	. previous-page)
       (#\<		. goto-first-node)
+      (,(meta-char #\<) . goto-first-node)
       (:home		. goto-first-node)
       (#\>		. goto-bottom-node)
+      (,(meta-char #\>) . goto-bottom-node)
       (:end		. goto-bottom-node)
       (:left		. shift-left)
       (:right	     	. shift-right)
       (,(ctrl #\A)	. shift-beginning)
       (,(ctrl #\E)	. shift-end)
+      (,(ctrl #\S)	. search-forward-command)
+      (,(ctrl #\R)	. search-backward-command)
       ;; Miscellaneous
       (#\m		. toggle-modeline)
       (,(ctrl #\L)	. redraw)
       (#\i		. node-info)
+      (#\?		. help)
       (,(meta-char #\n) . next-file)
       (,(meta-char #\p) . previous-file)
       (#\escape		. *tree-escape-keymap*)))
@@ -638,14 +738,18 @@ been encountered."
     :after ((o tree-viewer) &rest initargs &key &allow-other-keys)
   "Initialize a tree-viewer."
   (declare (ignore initargs))
-  (with-slots (parents current root top keymap) o
+  (with-slots (parents current root top keymap bottom) o
     (when (not parents)
       (setf parents (make-hash-table :test #'equal)))
     (when (slot-boundp o 'root)
       (setf current root
 	    top root))
     (when (not (slot-boundp o 'keymap))
-      (setf keymap *tree-keymap*))))
+      (setf keymap (list *tree-keymap*
+			 inator:*default-inator-keymap*)))
+    (when (or (not (slot-boundp o 'bottom))
+	      (not bottom))
+      (setf bottom (- *lines* 2)))))
 
 (defun show-message (format-string &rest format-args)
   "Display a formatted message."
@@ -653,7 +757,7 @@ been encountered."
   (clrtoeol)
   (addstr (apply #'format nil format-string format-args)))
 
-(defun message (format-string &rest format-args)
+(defmethod message ((o tree-viewer) format-string &rest format-args)
   (setf (message-string *viewer*)
 	(apply #'format nil format-string format-args)))
 
@@ -663,6 +767,7 @@ been encountered."
   (refresh)
   (tt-get-char))
 
+#|
 (defun perform-key (key &optional (keymap (keymap *viewer*)))
   ;; Convert positive integer keys to characters
   (when (and (integerp key) (>= key 0))
@@ -684,6 +789,7 @@ been encountered."
        (apply (car binding) (cdr binding)))
       (t
        (error "Weird thing ~s in keymap" binding)))))
+|#
 
 (defgeneric display-indent (node level)
   (:documentation
@@ -760,9 +866,9 @@ and indented properly for multi-line objects."
 (defvar *display-start* nil
   "True if we hit the top node.")
 
-(defmethod display-tree ((viewer tree-viewer) tree level)
+(defmethod display-tree ((o tree-viewer) tree level)
   "Display a tree."
-  (with-slots (top bottom) *viewer*
+  (with-slots (top bottom) o
     (let ((y (getcury *stdscr*)))
       (when (< y bottom)
 	(when (eq tree top)
@@ -772,15 +878,15 @@ and indented properly for multi-line objects."
 	(if (and (node-open tree) (node-branches tree))
 	    (loop :for n :in (node-branches tree) :do
 	       (set-parent n tree)
-	       (display-tree viewer n (1+ level))))))))
+	       (display-tree o n (1+ level))))))))
 
-(defun redraw ()
-  (with-slots (top current root current-max-right) *viewer*
+(defmethod redraw ((o tree-viewer))
+  (with-slots (top current root current-max-right) o
     (clear)
     (move 0 0)
     (setf current-max-right nil)
     (let ((*display-start* nil))
-      (display-tree *viewer* root 0))
+      (display-tree o root 0))
     (setf top current)))
 
 ;; @@@ just for debugging
@@ -789,6 +895,7 @@ and indented properly for multi-line objects."
     (let ((str (format nil "~w" (node-object node))))
       (subseq str 0 (min 15 (length str))))))
 
+#|
 (defun view-tree (tree &key viewer)
   "Look at a tree, with expandable and collapsible branches."
   (fui:with-curses
@@ -851,6 +958,73 @@ and indented properly for multi-line objects."
 		(setf left 0)))
 	   :while (not quit-flag))
 	picked-object))))
+|#
+
+(defmethod update-display ((o tree-viewer))
+  (with-slots (root quit-flag picked-object current left top bottom
+	       bottom-node current-position current-max-right
+	       message-string scroll-hint) o
+    (tagbody
+     again
+       (move 0 0)
+       (erase)
+       (setf current-position nil current-max-right nil)
+       (let ((*display-start* nil))
+	 (display-tree *viewer* root 0))
+       ;; Reposition display if the current node is not visible.
+       ;; This can be highly inefficient if it has to reposition far,
+       ;; since it redraws the whole thing to curses, so movement code
+       ;; should try to get close and then set the scroll-hint.
+       (when (not current-position)
+	 (case scroll-hint
+	   (:down
+	    (let ((next-top (find-next-node top)))
+	      (when next-top
+		(setf top next-top)
+		(go again))))
+	   (:up
+	    (let ((prev-top (find-previous-node top)))
+	      (when prev-top
+		(setf top prev-top)
+		(go again))))
+	   (otherwise
+	    ;; Punt and start from the top.
+	    (setf top root
+		  scroll-hint :down)
+	    (go again)))))
+    
+    (when message-string
+      (show-message (quote-format message-string))
+      (setf message-string nil))
+
+    (when (show-modeline *viewer*)
+      (move (- *lines* 2) 0)
+      (clrtoeol)
+      (addstr (format nil "~a ~a (left=~a top=~a bot=~a)"
+		      current-position
+		      (node-abbrev current)
+		      left
+		      (node-abbrev top)
+		      (node-abbrev bottom-node))))
+
+    (when current-position
+      (move current-position 0))))
+
+(defun view-tree (tree &key viewer)
+  "Look at a tree, with expandable and collapsible branches."
+  (with-terminal (:curses)
+    (let ((*viewer* viewer))
+      (if viewer
+	  (progn
+	    (event-loop *viewer*)
+	    (picked-object *viewer*))
+	  (with-inator (*viewer* 'tree-viewer
+				 ;; :keymap (list *tree-keymap*
+				 ;; 	       inator:*default-inator-keymap*)
+				 :root (if (listp tree)
+					   (convert-tree tree) tree))
+	    (event-loop *viewer*)
+	    (picked-object *viewer*))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; some examples
@@ -1155,10 +1329,20 @@ and indented properly for multi-line objects."
     (display-object node str level)))
 
 (defclass system-node (object-node) ())
+
+(defmethod print-object ((object system-node) stream)
+  "Print a system-node to STREAM."
+  (if (or *print-readably* *print-escape*)
+      (print-unreadable-object (object stream)
+	(format stream "system-node ~w" (node-object object)))
+      (let ((*standard-output* stream))
+	(describe-system (asdf:find-system (node-object object))))))
+
 (defmethod display-node ((node system-node) level)
-  (let* ((sys (asdf:find-system (node-object node)))
-	 (str (with-output-to-string (*standard-output*)
-		(describe-system sys))))
+  (let* (;;(sys (asdf:find-system (node-object node)))
+	 ;; (str (with-output-to-string (*standard-output*)
+	 ;; 	(describe-system sys))))
+	 (str (princ-to-string node)))
     (when (eql (char str (1- (length str))) #\newline)
       (setf (char str (1- (length str))) #\space))
     (display-object node str level)))
