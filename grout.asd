@@ -10,6 +10,7 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Generic Rectilinear Output Und Text"
-    :depends-on (:dlib :dlib-misc :char-util :opsys :terminal :terminal-ansi)
+    :depends-on (:dlib :dlib-misc :char-util :opsys :terminal :terminal-ansi
+		 :table-print)
     :components
     ((:file "grout")))

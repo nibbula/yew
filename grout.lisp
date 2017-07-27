@@ -8,7 +8,8 @@ This is so we can make old fashioned command line utilities that can use a
 few output features when they're available, but fall back to plain text
 when not. This is not for making “fancy” interactive applications. It's just
 for relatively simple output.")
-  (:use :cl :dlib :dlib-misc :char-util :opsys :terminal :terminal-ansi)
+  (:use :cl :dlib :dlib-misc :char-util :opsys :terminal :terminal-ansi
+	:table-print)
   (:export
    #:grout
    #:grout-stream
@@ -32,6 +33,7 @@ for relatively simple output.")
    #:grout-prin1
    #:grout-print
    #:grout-format
+   #:grout-print-table
    #:grout-finish
    #:grout-done
    #:make-grout
@@ -119,6 +121,8 @@ unknown.")
 (defgrout format (format-string &rest format-args)
   "Formatted output to the grout.")
 
+;; These are implemented in terms of grout-write.
+
 (declaim (inline grout-princ))
 (defun grout-princ (object)
   "Like PRINC but using GROUT-WRITE."
@@ -135,6 +139,11 @@ unknown.")
   (grout-write #\newline :escape nil)
   (grout-write object)
   (grout-write #\space :escape nil))
+
+(defgrout print-table (table &key print-titles long-titles max-width
+			     &allow-other-keys)
+  "Print the table in some kind of nice way, probably using
+TABLE-PRINT:OUTPUT-TABLE.")
 
 (defgrout finish ()
   "Make any pending output be sent to the grout.")
@@ -290,6 +299,14 @@ generic functions (i.e. %GROUT-*) directly."
 (defmethod %grout-format ((g dumb) format-string &rest format-args)
   (apply #'format (grout-stream g) format-string format-args))
 
+(defmethod %grout-print-table ((g dumb) table
+			       &key (print-titles t) long-titles
+				 (max-width (grout-width))
+				 &allow-other-keys)
+  (output-table table (make-instance 'text-table-renderer) (grout-stream g)
+		:print-titles print-titles :long-titles long-titles
+		:max-width max-width))
+
 (defmethod %grout-finish ((g dumb))
   (finish-output (grout-stream g)))
 
@@ -412,6 +429,14 @@ generic functions (i.e. %GROUT-*) directly."
 (defmethod %grout-format ((g ansi-stream) format-string &rest format-args)
   (apply #'terminal-format (ansi-stream g) format-string format-args))
 
+(defmethod %grout-print-table ((g ansi-stream) table
+			       &key (print-titles t) long-titles
+				 (max-width (grout-width))
+				 &allow-other-keys)
+  (output-table table (make-instance 'terminal-table-renderer) (grout-stream g)
+		:print-titles print-titles :long-titles long-titles
+		:max-width max-width))
+
 (defmethod %grout-finish ((g ansi-stream))
   (terminal-finish-output (ansi-stream g)))
 
@@ -526,6 +551,14 @@ generic functions (i.e. %GROUT-*) directly."
 (defmethod %grout-format ((g ansi) format-string &rest format-args)
   (apply #'terminal-format (ansi-term g) format-string format-args))
 
+(defmethod %grout-print-table ((g ansi) table
+			       &key (print-titles t) long-titles
+				 (max-width (grout-width))
+				 &allow-other-keys)
+  (output-table table (make-instance 'terminal-table-renderer) (grout-stream g)
+		:print-titles print-titles :long-titles long-titles
+		:max-width max-width))
+
 (defmethod %grout-finish ((g ansi))
   (terminal-finish-output (ansi-term g)))
 
@@ -634,6 +667,16 @@ generic functions (i.e. %GROUT-*) directly."
 
 (defmethod %grout-format ((g slime) format-string &rest format-args)
   (apply #'format (grout-stream g) format-string format-args))
+
+;; Just use the plain text renderer for now, but perhaps 'twould be interesting
+;; to use table-insert or org-table-*?
+(defmethod %grout-print-table ((g slime) table
+			       &key (print-titles t) long-titles
+				 (max-width (grout-width))
+				 &allow-other-keys)
+  (output-table table (make-instance 'text-table-renderer) (grout-stream g)
+		:print-titles print-titles :long-titles long-titles
+		:max-width max-width))
 
 (defmethod %grout-finish ((g slime))
   (finish-output (grout-stream g)))
