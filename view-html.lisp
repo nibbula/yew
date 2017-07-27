@@ -9,9 +9,14 @@
 ;; dynamically pull out content from the parsed file. We make the PLUMP node
 ;; be the tree-viewer's OBJECT-NODE object.
 
+;; TODO:
+;;  - hook into pager to:
+;;    - view as text
+;;    - view as source text
+
 (defpackage :view-html
   (:documentation "View HTML as a tree.")
-  (:use :cl :dlib :dlib-misc :rl :tree-viewer)
+  (:use :cl :dlib :dlib-misc :rl :inator :tree-viewer)
   (:export
    #:view-html
    ))
@@ -61,6 +66,16 @@
 
 (defmethod display-thing ((obj plump-dom:doctype) stream)
   (format stream "~(~a~) ~a" (type-of obj) (plump-dom:doctype obj)))
+
+(defmethod print-object ((object html-node) stream)
+  "Print a system-node to STREAM."
+  (let ((obj (node-object object)))
+    (if (or *print-readably* *print-escape*)
+	(print-unreadable-object (object stream)
+	  (format stream "html-node ~w" obj))
+	(let ((*standard-output* stream))
+	  (when (or (plump:text-node-p obj) (plump:textual-node-p obj))
+	    (justify-text (dlib:trim (plump:text obj)) :stream stream))))))
 
 (defmethod display-node ((node html-node) level)
   "Display an HTML node."
@@ -119,9 +134,11 @@
 
 #+lish
 (lish:defcommand view-html
-  ((thing pathname :help "File or URL to view as HTML."))
+  ((things pathname :repeating t :help "File or URL to view as HTML."))
   "View HTML as a tree."
-  (view-html thing))
+  (with-file-list (file things)
+    (when (= 1 (length (multiple-value-list (view-html file))))
+      (return))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; plist viewr
