@@ -301,6 +301,56 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Viewer
 
+(defkeymap *tree-keymap*
+    `((#\q		. quit)
+      (#\Q		. quit)
+      (#.(ctrl #\C)	. quit)
+      (#\return		. pick-object)
+      (#\newline	. pick-object)
+      ;; Node state control
+      (#\space		. toggle)
+      (#\tab		. cycle)
+      (:btab		. close-all-subnodes-command)
+      (#\+		. open-node)
+      (#\-		. close-node)
+      ;; Movement
+      (#\n		. next-node)
+      (,(ctrl #\N)	. next-node)
+      (:down		. next-node)
+      (#\N		. next-hierarchical-node)
+      (#\p		. previous-node)
+      (,(ctrl #\P)	. previous-node)
+      (:up		. previous-node)
+      (#\P		. previous-hierarchical-node)
+      (,(ctrl #\F)	. forward-some)
+      (,(ctrl #\B)	. backward-some)
+      (,(ctrl #\V)	. next-page)
+      (:npage		. next-page)
+      (:ppage           . previous-page)
+      (,(meta-char #\v)	. previous-page)
+      (#\<		. goto-first-node)
+      (,(meta-char #\<) . goto-first-node)
+      (:home		. goto-first-node)
+      (#\>		. goto-bottom-node)
+      (,(meta-char #\>) . goto-bottom-node)
+      (:end		. goto-bottom-node)
+      (:left		. shift-left)
+      (:right	     	. shift-right)
+      (,(ctrl #\A)	. shift-beginning)
+      (,(ctrl #\E)	. shift-end)
+      (,(ctrl #\S)	. search-forward-command)
+      (,(ctrl #\R)	. search-backward-command)
+      ;; Miscellaneous
+      (#\m		. toggle-modeline)
+      (,(ctrl #\L)	. redraw)
+      (#\i		. node-info)
+      (#\?		. help)
+      (,(meta-char #\n) . next-file)
+      (,(meta-char #\p) . previous-file)
+      (#\escape		. *tree-escape-keymap*)))
+
+(defparameter *tree-escape-keymap* (build-escape-map *tree-keymap*))
+
 (defclass tree-viewer (fui-inator)
   ((picked-object
      :initarg :picked-object :accessor picked-object :initform nil
@@ -672,67 +722,18 @@ been encountered."
 	   (format nil " branches : ~a" (node-branches current))
 	   (format nil " parent   : ~a" (get-parent current))))))
 
-(defun next-file (o)
+(defmethod next-file (o)
   "Go to the next file."
   (declare (ignore o))
   (when (find-restart 'next-file)
     (invoke-restart 'next-file)))
 
-(defun previous-file (o)
+(defmethod previous-file (o)
   "Go to the previous file."
   (declare (ignore o))
   (when (find-restart 'previous-file)
     (invoke-restart 'previous-file)))
 
-(defkeymap *tree-keymap*
-    `((#\q		. quit)
-      (#\Q		. quit)
-      (#.(ctrl #\C)	. quit)
-      (#\return		. pick-object)
-      (#\newline	. pick-object)
-      ;; Node state control
-      (#\space		. toggle)
-      (#\tab		. cycle)
-      (:btab		. close-all-subnodes-command)
-      (#\+		. open-node)
-      (#\-		. close-node)
-      ;; Movement
-      (#\n		. next-node)
-      (,(ctrl #\N)	. next-node)
-      (:down		. next-node)
-      (#\N		. next-hierarchical-node)
-      (#\p		. previous-node)
-      (,(ctrl #\P)	. previous-node)
-      (:up		. previous-node)
-      (#\P		. previous-hierarchical-node)
-      (,(ctrl #\F)	. forward-some)
-      (,(ctrl #\B)	. backward-some)
-      (,(ctrl #\V)	. next-page)
-      (:npage		. next-page)
-      (:ppage           . previous-page)
-      (,(meta-char #\v)	. previous-page)
-      (#\<		. goto-first-node)
-      (,(meta-char #\<) . goto-first-node)
-      (:home		. goto-first-node)
-      (#\>		. goto-bottom-node)
-      (,(meta-char #\>) . goto-bottom-node)
-      (:end		. goto-bottom-node)
-      (:left		. shift-left)
-      (:right	     	. shift-right)
-      (,(ctrl #\A)	. shift-beginning)
-      (,(ctrl #\E)	. shift-end)
-      (,(ctrl #\S)	. search-forward-command)
-      (,(ctrl #\R)	. search-backward-command)
-      ;; Miscellaneous
-      (#\m		. toggle-modeline)
-      (,(ctrl #\L)	. redraw)
-      (#\i		. node-info)
-      (#\?		. help)
-      (,(meta-char #\n) . next-file)
-      (,(meta-char #\p) . previous-file)
-      (#\escape		. *tree-escape-keymap*)))
-
-(defparameter *tree-escape-keymap* (build-escape-map *tree-keymap*))
 
 (defmethod initialize-instance
     :after ((o tree-viewer) &rest initargs &key &allow-other-keys)
@@ -1023,6 +1024,7 @@ and indented properly for multi-line objects."
 				 ;; 	       inator:*default-inator-keymap*)
 				 :root (if (listp tree)
 					   (convert-tree tree) tree))
+	    (setf (node-open (root *viewer*)) t)
 	    (event-loop *viewer*)
 	    (picked-object *viewer*))))))
 
