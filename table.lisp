@@ -46,7 +46,7 @@
 (defstruct column
   "Description of a table column."
   (name nil)
-  (type :string)
+  (type 'string)
   (width 0))
 
 (defclass collection ()
