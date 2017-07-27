@@ -21,7 +21,7 @@ See FUI-INATOR for a curses based Inator. Despite it being well suited to
 terminal interfaces, it seems like it might be rather ill advised to make
 a TERM-INATOR.
 ")
-  (:use :cl :keymap :char-util)
+  (:use :cl :dlib :keymap :char-util)
   (:export
    ;; Inator class
    #:inator
@@ -49,6 +49,8 @@ a TERM-INATOR.
    #:quit
    #:accept
    #:redraw
+   #:next-file
+   #:previous-file
    #:cut
    #:copy
    #:paste
@@ -66,6 +68,7 @@ a TERM-INATOR.
    #:finish-inator
    #:*default-inator-keymap*
    #:with-inator
+   #:with-file-list
    ))
 (in-package :inator)
 
@@ -113,6 +116,10 @@ a TERM-INATOR.
   (:documentation "Accept the data and usually exit."))
 (defgeneric redraw (inator)
   (:documentation "Redraw the screen."))
+(defgeneric next-file (inator)
+  (:documentation "Go to the next file."))
+(defgeneric previous-file (inator)
+  (:documentation "Go to the previous file."))
 
 ;; Edit?
 (defgeneric cut (inator))		; kill
@@ -280,5 +287,31 @@ UPDATE-DISPLAY and and AWAIT-EVENT methods."
 MAKE-INSTANCE, with VAR bound to the new instance."
   `(let ((,var (make-instance ,type ,@args)))
      ,@body))
+
+;; This doesn't really have to be an inator specific thing, but it is useful
+;; for them. The names of the restarts _do_ have to come from somewhere.
+
+(defmacro with-file-list ((var list) &body body)
+  "Evaluate the BODY in a return-able loop with next-file and previous-file
+restarts set up to move through the LIST, and FILE bind to the current file."
+  (with-unique-names (i files len)
+    `(let* ((,i 0)
+	    (,files (coerce ,list 'vector))
+	    (,len (length ,files))
+	    ,var)
+       (block nil
+	 (loop :while (< ,i ,len) :do
+	    (restart-case
+		(progn
+		  (setf ,var (aref ,files ,i))
+		  ,@body)
+	      (inator:next-file ()
+		:report "Go to the next file."
+		(when (< ,i ,len)
+		  (incf ,i)))
+	      (inator:previous-file ()
+		:report "Go to the previous file."
+		(when (> ,i 0)
+		  (decf ,i)))))))))
 
 ;; EOF
