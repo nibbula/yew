@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description
     "A simple appliction of the tree viewer to view Org Mode files."
-    :depends-on (:tree-viewer)
+    :depends-on (:tree-viewer :inator)
     :components
     ((:file "view-org")))

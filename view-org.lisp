@@ -4,7 +4,7 @@
 
 (defpackage :view-org
   (:documentation "View Org Mode trees.")
-  (:use :cl :dlib :curses :fui :tree-viewer)
+  (:use :cl :dlib :curses :fui :tree-viewer :terminal :inator)
   (:export
    #:read-org-mode-file
    #:!view-org
@@ -30,6 +30,29 @@
 (defparameter *org-colors*
   `(,+color-white+ ,+color-red+ ,+color-green+ ,+color-yellow+ ,+color-blue+
     ,+color-magenta+ ,+color-cyan+))
+
+(defmethod node-object ((node org-node))
+  (org-node-heading node))
+
+(defun org-node-indicator (node)
+  (if (node-has-branches node)
+      (if (node-open node) #\- #\+)
+      (if (org-node-text node)
+	  (if (node-open node) #\- #\+)
+	  #\·)))
+
+(defmethod print-object ((object org-node) stream)
+  "Print a system-node to STREAM."
+  (if (or *print-readably* *print-escape*)
+      (print-unreadable-object (object stream)
+	(format stream "org-node ~w" (node-object object)))
+      (let ((*standard-output* stream))
+	(format stream "~a ~a" (org-node-indicator object)
+		(trim (org-node-heading object)))
+	(when (node-open object)
+	  (loop :for l :in (reverse (org-node-text object)) :do
+	     (format stream "~%  ~a" (trim l)))
+	  (terpri stream)))))
 
 (defmethod display-node ((node org-node) level)
   "Display an org-node."
@@ -129,26 +152,12 @@
 
 #+lish
 (lish:defcommand view-org
-    (("org-files" pathname :repeating t))
+  ((org-files pathname :repeating t :help "Org-mode files to view."))
   "View an Emacs Org mode file with the tree-viewer."
-  (let ((i 0) (len (length org-files)) result)
-    (fui:with-curses
-      (loop :while (< i len) :do
-	 (restart-case
-	     (progn
-	       (setf result
-		     (multiple-value-list
-		      (view-tree (read-org-mode-file
-				    (elt org-files i)))))
-	       (when (= (length result) 1)
-		 (return)))
-	   (next-file ()
-	     :report "Go to the next file."
-	     (when (< i len)
-	       (incf i)))
-	   (previous-file ()
-	     :report "Go to the previous file."
-	     (when (> i 0)
-	       (decf i))))))))
+  (with-file-list (file org-files)
+    (when (= 1 (length (multiple-value-list
+			(view-tree (read-org-mode-file file)))))
+      (return))))
+    
 
 ;; EOF
