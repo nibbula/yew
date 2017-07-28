@@ -731,6 +731,8 @@ Also, it can't really delete the first (zeroth) element."
   #-(or mop sbcl cmu ccl lispworks gcl ecl clasp) (error "GIVE ME MOP!!")
   "The package in which the traditional Meta Object Protocol resides.")
 
+#+(or (and clisp mop) sbcl cmu gcl ccl) (d-add-feature :has-mop)
+
 (defun slot-documentation (slot-def)
   "Return the documentation string for a slot as returned by something like
 MOP:CLASS-SLOTS."

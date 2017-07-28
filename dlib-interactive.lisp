@@ -6,8 +6,7 @@
   (:documentation
    "Dan's functions for interactive use. These are things that would typically
 be used at a REPL, but not as likely to be called by other programs.")
-  (:use :cl :dlib :dlib-misc :table-print
-	#+(or (and clisp mop) cmu) :mop #+sbcl :sb-mop #+gcl :pcl)
+  (:use :cl :dlib :dlib-misc :table-print :mop)
   (:export
    #:show-expansion
    #:printenv
@@ -25,8 +24,6 @@ be used at a REPL, but not as likely to be called by other programs.")
    #:describe-class
    ))
 (in-package :dlib-interactive)
-
-#+(or (and clisp mop) sbcl cmu gcl ccl) (d-add-feature :has-mop)
 
 (defun show-expansion (form &optional full)
   "Show a pretty printed macro expansion of the form. If full is true,
