@@ -21,6 +21,7 @@
    #:key-definition
    #:key-sequence-binding
    #:key-sequence-string
+   #:get-key-sequence
    #:add-keymap
    #:build-escape-map
    #:copy-keymap
@@ -208,6 +209,19 @@ there is no binding."
 	     (loop :for i :in keyseq :collect (nice-char i))))
     (t
      (nice-char keyseq))))
+
+(defun get-key-sequence (get-key-function keymap)
+  "Read a sequence of keys returned by GET-KEY-FUNCTION, starting with keymap.
+Descend into keymaps. Return a key or sequence of keys."
+  (let* ((c (funcall get-key-function))
+	 (action (key-definition c keymap)))
+    (if (and (symbolp action) (boundp action) (keymap-p (symbol-value action)))
+	(let ((result-seq (get-key-sequence get-key-function
+					    (symbol-value action))))
+	  (if (listp result-seq)
+	      (append (list c) result-seq)
+	      (list c result-seq)))
+	c)))
 
 (defun add-keymap (source dest)
   "Add all the key definitions from the SOURCE keymap to the DEST keymap.
