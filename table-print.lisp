@@ -234,7 +234,8 @@ make the table in the first place. For that you want the TABLE package.")
   (let ((*print-pretty* nil))
     (format t (if (eq justification :right) "~v@a" "~va") width cell)))
 
-(defmethod table-cell-display-width ((renderer derp-table-renderer) table cell)
+(defmethod table-output-cell-display-width ((renderer derp-table-renderer)
+					    table cell)
   "Return the display width for a table cell."
   (length cell))
 
