@@ -809,14 +809,7 @@ in order, \"{open}{close}...\".")
 (defun read-key-sequence (e &optional keymap)
   "Read a key sequence from the user. Descend into keymaps.
  Return a key or sequence of keys."
-  (let* ((c (get-a-char e))
-	 (action (key-definition c (or keymap (line-editor-keymap e)))))
-    (if (and (symbolp action) (boundp action) (keymap-p (symbol-value action)))
-	(let ((result-seq (read-key-sequence e (symbol-value action))))
-	  (if (listp result-seq)
-	      (append (list c) result-seq)
-	      (list c result-seq)))
-	c)))
+  (get-key-sequence (λ () (get-a-char e)) (or keymap (line-editor-keymap e))))
 
 (defun ask-function-name (&optional (prompt "Function: "))
   "Prompt for a function name and return symbol of a function."
