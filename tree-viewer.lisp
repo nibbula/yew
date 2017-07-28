@@ -734,7 +734,6 @@ been encountered."
   (when (find-restart 'previous-file)
     (invoke-restart 'previous-file)))
 
-
 (defmethod initialize-instance
     :after ((o tree-viewer) &rest initargs &key &allow-other-keys)
   "Initialize a tree-viewer."
@@ -768,30 +767,6 @@ been encountered."
   (refresh)
   (tt-get-char))
 
-#|
-(defun perform-key (key &optional (keymap (keymap *viewer*)))
-  ;; Convert positive integer keys to characters
-  (when (and (integerp key) (>= key 0))
-    (setf key (code-char key)))
-  (let ((binding (key-definition key keymap)))
-    (cond
-      ((not binding)
-       (message "No binding for ~a" key))
-      ((symbolp binding)
-       (cond
-	 ((fboundp binding)
-	  (funcall binding))
-	 ((keymap-p (symbol-value binding))
-	  (show-message (quote-format (princ-to-string (nice-char key))))
-	  (perform-key (tt-get-char) (symbol-value binding)))
-	 (t
-	  (error "Unbound symbol ~s in keymap" binding))))
-      ((consp binding)
-       (apply (car binding) (cdr binding)))
-      (t
-       (error "Weird thing ~s in keymap" binding)))))
-|#
-
 (defgeneric display-indent (node level)
   (:documentation
    "Display the normal indentation for a node."))
@@ -821,9 +796,10 @@ been encountered."
   "Display a line of node output."
   (with-slots (left current current-max-right) *viewer*
     (let ((len (length line)))
-      (if (>= left len)
-	  (addch (char-code #\newline))
-	  (addstr (subseq line left (min len (+ left *cols*)))))
+      (when (< (getcury curses:*stdscr*) (1- curses:*lines*))
+	(if (>= left len)
+	    (addch (char-code #\newline))
+	    (addstr (subseq line left (min len (+ left *cols*))))))
       (when (eq node current)
 	(setf current-max-right (length line))))))
 
@@ -1022,6 +998,7 @@ and indented properly for multi-line objects."
 	  (with-inator (*viewer* 'tree-viewer
 				 ;; :keymap (list *tree-keymap*
 				 ;; 	       inator:*default-inator-keymap*)
+				 :bottom (- *lines* 2)
 				 :root (if (listp tree)
 					   (convert-tree tree) tree))
 	    (setf (node-open (root *viewer*)) t)
