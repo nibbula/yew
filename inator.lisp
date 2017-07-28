@@ -67,6 +67,7 @@ a TERM-INATOR.
    #:start-inator
    #:finish-inator
    #:*default-inator-keymap*
+   #:get-key-sequence
    #:with-inator
    #:with-file-list
    ))
@@ -176,6 +177,9 @@ a TERM-INATOR.
 
 (defparameter *default-inator-escape-keymap*
   (build-escape-map *default-inator-keymap*))
+
+(defgeneric read-key-sequence (inator)
+  (:documentation "Read a key sequence from the inator input."))
 
 ;; Default methods
 

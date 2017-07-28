@@ -403,6 +403,11 @@ keymap bindings."
   (refresh)
   (update-display i))
 
+(defmethod read-key-sequence ((i fui-inator))
+  "Read a key sequence."
+  (get-key-sequence (λ () (terminal-get-char *terminal*))
+		    (inator-keymap i)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 #|
