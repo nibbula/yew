@@ -118,7 +118,7 @@ The shell command takes any number of file names.
     :documentation "Function to alter lines.")
    (file-list
     :initarg :file-list :accessor pager-file-list :initform nil
-    :documentation "List of files to display")
+    :documentation "List of files or file locations to display")
    (file-index
     :initarg :file-index :accessor pager-file-index :initform nil
     :documentation "Where we are in the file list")
@@ -853,7 +853,7 @@ list containing strings and lists."
 	(otherwise
 	 (tmp-message "Unknown option '~a'" (nice-char char)))))))
 
-(defun open-file (filename)
+(defun open-file (filename &key (offset 0))
   "Open the given FILENAME."
   (with-slots (count lines line got-eof stream page-size) *pager*
     (let ((new-stream (open (quote-filename filename) :direction :input)))
@@ -862,34 +862,108 @@ list containing strings and lists."
 	(setf stream new-stream
 	      lines '()
 	      count 0
-	      line 0
+	      line offset
 	      got-eof nil)
-	(read-lines page-size))
+	(read-lines (+ page-size offset)))
       new-stream)))
 
-(defun open-file-command (filename)
+(defun open-file-command (filename &key (offset 0))
   "Open the given FILENAME."
-  (when (not (open-file filename))
+  (when (not (open-file filename :offset offset))
     (tmp-message "Can't open file \"~s\".")))
+
+;; File locations can be either a file name, or a list or vector with the first
+;; element being a file name and the second being an offset in the file. If the
+;; offset part doesn't exist, it is considered to be zero.
+;; (@@@ maybe these should move to dlib?)
+
+(defun file-location-file (location)
+  "Return the file part of a file location."
+  (typecase location
+    ((or list vector) (elt location 0))
+    (t location)))
+
+(defun file-location-offset (location)
+  "Return the offset part of a file location, which defaults to 0 if the
+location doesn't have an offset part."
+  (typecase location
+    ((or list vector) (elt location 1))
+    (t 0)))
 
 (defun next-file ()
   "Go to the next file in the set of files."
   (with-slots (count lines line got-eof file-list file-index stream
-	       page-size) *pager*
-    (if (and file-index (< file-index (1- (length file-list))))
-	(progn
-	  (incf file-index)
-	  (open-file-command (nth file-index file-list)))
-	(tmp-message "No next file."))))
+		     page-size) *pager*
+    (let (got-it (len (length file-list)))
+      (loop :while (and file-index (< file-index (1- len)))
+	 :do
+	 (when (not (equal (file-location-file
+			    (elt file-list file-index))
+			   (file-location-file
+			    (elt file-list (1+ file-index)))))
+	   (setf got-it t)
+	   (return))
+	 (incf file-index))
+    (if (and file-index got-it)
+	(open-file-command
+	 (file-location-file (elt file-list file-index))
+	 :offset (file-location-offset (elt file-list file-index)))
+	(tmp-message "No next file.")))))
 
 (defun previous-file ()
   "Go to the previous file in the set of files."
   (with-slots (count lines line got-eof file-list file-index stream
-	       page-size) *pager*
+		     page-size) *pager*
+    (let (got-it)
+      (loop :while (and file-index (> file-index 0))
+	 :do
+	 (when (not (equal (file-location-file
+			    (elt file-list file-index))
+			   (file-location-file
+			    (elt file-list (1- file-index)))))
+	   (setf got-it t)
+	   (return))
+	 (decf file-index))
+      (if (and file-index got-it)
+	  (open-file-command
+	   (file-location-file (elt file-list file-index))
+	   :offset (file-location-offset (elt file-list file-index)))
+	  (tmp-message "No previous file.")))))
+
+(defun next-file-location ()
+  "Go to the next file in the set of files."
+  (with-slots (file-list file-index) *pager*
+    (if (and file-index (< file-index (1- (length file-list))))
+	(progn
+	  (if (not (equal (file-location-file (elt file-list file-index))
+			  (file-location-file (elt file-list (1+ file-index)))))
+	      (progn
+		(incf file-index)
+		(open-file-command
+		 (file-location-file (elt file-list file-index))
+		 :offset (file-location-offset (elt file-list file-index))))
+	      (progn
+		(incf file-index)
+		(go-to-line
+		 (1+ (file-location-offset (elt file-list file-index)))))))
+	(tmp-message "No next file."))))
+
+(defun previous-file-location ()
+  "Go to the previous file in the set of files."
+  (with-slots (file-list file-index) *pager*
     (if (and file-index (> file-index 0))
 	(progn
-	  (decf file-index)
-	  (open-file-command (nth file-index file-list)))
+	  (if (not (equal (file-location-file (elt file-list file-index))
+			  (file-location-file (elt file-list (1- file-index)))))
+	      (progn
+		(decf file-index)
+		(open-file-command
+		 (file-location-file (elt file-list file-index))
+		 :offset (file-location-offset (elt file-list file-index))))
+	      (progn
+		(decf file-index)
+		(go-to-line
+		 (1+ (file-location-offset (elt file-list file-index)))))))
 	(tmp-message "No previous file."))))
 
 (defun quit ()
@@ -983,25 +1057,27 @@ list containing strings and lists."
       (tmp-message "max-col = ~d" max-col)
       (setf left (max 0 (- max-col *cols*))))))
 
+(defun go-to-line (n)
+  (with-slots (count line page-size) *pager*
+    ;; (read-lines (min 1 (- n count)))
+    (read-lines (max 1 (- (+ n page-size) count)))
+    (setf line (1- n))))
+
 (defun go-to-beginning ()
   "Go to the beginning of the stream, or the PREFIX-ARG'th line."
   (with-slots (prefix-arg count line) *pager*
     (if prefix-arg
-	(progn
-	  (read-lines (min 1 (- prefix-arg count)))
-	  (setf line (1- prefix-arg)))
+	(go-to-line prefix-arg)
 	(setf line 0))))
 
 (defun go-to-end ()
   "Go to the end of the stream, or the PREFIX-ARG'th line."
   (with-slots (prefix-arg count line page-size) *pager*
     (if prefix-arg
-	(progn
-	  (read-lines (min 1 (- prefix-arg count)))
-	  (setf line (1- prefix-arg)))
+	(go-to-line prefix-arg))
 	(progn
 	  (read-lines 0)
-	  (setf line (max 0 (- count page-size)))))))
+	  (setf line (max 0 (- count page-size))))))
 
 (defun search-command ()
   "Search for something in the stream."
@@ -1170,8 +1246,10 @@ list containing strings and lists."
     (,(ctrl #\L)	. redraw)
     (#\R		. reread)
     (,(meta-char #\u)	. clear-search)
-    (,(meta-char #\n)	. next-file)
-    (,(meta-char #\p)	. previous-file)
+    (,(meta-char #\n)	. next-file-location)
+    (,(meta-char #\p)	. previous-file-location)
+    (,(meta-char #\N)	. next-file)
+    (,(meta-char #\P)	. previous-file)
     (#\?		. help)
     (,(ctrl #\H)	. help-key)
     (:backspace		. help-key)
@@ -1199,23 +1277,27 @@ list containing strings and lists."
 (defun describe-key-briefly ()
   "Prompt for a key and say what function it invokes."
   (message "Press a key: ")
-  (let* ((key (tt-get-char))
-	 (action (key-definition key *normal-keymap*)))
+  (let* ((key-seq (get-key-sequence (λ () (tt-get-key)) *normal-keymap*))
+	 (action
+	  ;;(key-definition key *normal-keymap*)
+	  (key-sequence-binding key-seq *normal-keymap*)
+	  ))
     (if action
-	(tmp-message "~a is bound to ~a" (nice-char key) action)
-	(tmp-message "~a is not defined" (nice-char key)))))
+	(tmp-message "~a is bound to ~a" (key-sequence-string key-seq) action)
+	(tmp-message "~a is not defined" (key-sequence-string key-seq)))))
 
 (defun describe-key ()
   "Prompt for a key and describe the function it invokes."
   (message "Press a key: ")
-  (let* ((key (tt-get-char))
-	 (action (key-definition key *normal-keymap*)))
+  (let* ((key-seq (get-key-sequence (λ () (tt-get-key)) *normal-keymap*))
+    	 (action (key-sequence-binding key-seq *normal-keymap*)))
     (cond
       (action
        (clear) (move 0 0)
        (if (documentation action 'function)
 	   (progn
-	     (addstr (format nil "~(~a~): ~a~%" action (nice-char key)))
+	     (addstr (format nil "~(~a~): ~a~%" action
+			     (key-sequence-string key-seq)))
 	     (addstr (justify-text
 		      (documentation action 'function) :stream nil)))
 	   (addstr
@@ -1225,7 +1307,7 @@ list containing strings and lists."
        ;;(tmp-message pager "")
        )
       (t
-       (tmp-message "~a is not defined" (nice-char key))))))
+       (tmp-message "~a is not defined" (key-sequence-string key-seq))))))
 
 (defun help-key ()
   "Sub-command for help commands."
@@ -1306,7 +1388,8 @@ q - Abort")
     (unwind-protect
       (progn
 	(when (and (not stream) file-list)
-	  (setf stream (open (quote-filename (first file-list))
+	  (setf stream (open (quote-filename
+			      (file-location-file (elt file-list 0)))
 			     :direction :input)
 		close-me t))
 	(let ((*pager*
@@ -1321,7 +1404,10 @@ q - Abort")
 	  (with-slots (count line page-size left search-string input-char
 		       file-list file-index message prefix-arg quit-flag
 		       suspend-flag command) *pager*
-	    (when file-list (setf file-index 0))
+	    (when file-list
+	      (setf file-index 0)
+	      (when (not (zerop (file-location-offset (elt file-list 0))))
+		(go-to-line (1+ (file-location-offset (elt file-list 0))))))
 	    (read-lines page-size)
 	    (setf quit-flag nil
 		  suspend-flag nil
@@ -1517,7 +1603,7 @@ then the key. Press 'q' to exit this help.
    (pass-special boolean :short-arg #\p
     :help "True to pass special escape sequences to the terminal.")
    (files pathname :repeating t :help "Files to view."))
-  :accepts :grotty-stream
+  :accepts (:grotty-stream :file-list :file-locaations)
   "Look through text, one screen-full at a time."
   (declare (ignore show-line-numbers ignore-case raw-output pass-special)) ; @@@
   (pager (or files *standard-input*)))
