@@ -10,7 +10,7 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Control XTerm compatible terminals."
-    :depends-on (:dlib :dlib-misc :char-util :terminal :terminal-ansi
-		 :keymap :inator :rl :cl-ppcre)
+    :depends-on (:dlib :dlib-misc :char-util :keymap :terminal :terminal-ansi
+		 :inator :terminal-inator :rl :cl-ppcre)
     :components
     ((:file "xterm-control")))

@@ -4,8 +4,8 @@
 
 (defpackage :xterm-control
   (:documentation "Control an XTerm compatible terminal.")
-  (:use :cl :dlib :dlib-misc :char-util :terminal :terminal-ansi
-	:keymap :inator :rl :ppcre)
+  (:use :cl :dlib :dlib-misc :char-util :keymap :terminal :terminal-ansi
+	:inator :terminal-inator :rl :ppcre)
   (:export
    #:control-xterm
    #:!xterm-control
@@ -282,6 +282,7 @@ default to 16 bit color."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ANSI-inator
 
+#|
 (defclass ansi-inator (inator)
   ()
   (:documentation "A ansi-terminal-inator."))
@@ -349,9 +350,11 @@ default to 16 bit color."
   (tt-finish-output)
   (update-display i))
 
+|#
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defclass xterminator (ansi-inator)
+(defclass xterminator (terminal-inator)
   ((x
     :initarg :x :accessor xterminator-x  :type integer
     :documentation "X coordinate in pixels.")
