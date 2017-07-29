@@ -53,9 +53,16 @@ command line.")
     (when (< point (length buf))
       (move-over e (- (- (length buf) point))))))
 
+(defun figure-line-endings (e content)
+  "Call calculate-line-endings with proper processing of the string CONTENT."
+  (calculate-line-endings e :buffer (fat-string-to-string
+				     (process-ansi-colors
+				      (make-fat-string content)))
+			  :start 0))
+
 (defun figure-content-rows (e content)
   "Take a sequence of strings and return how many rows it takes up when output
-to the terminal."
+to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
   ;; (apply #'+ (map 'list
   ;; 		  (_ (length
   ;; 		      (calculate-line-endings e
@@ -64,17 +71,14 @@ to the terminal."
   ;; 				 (make-fat-string _)))
   ;; 		       :start 0)))
   ;; 		  content)))
-  (length (calculate-line-endings e
-				  :buffer (fat-string-to-string
-					   (process-ansi-colors
-					    (make-fat-string content)))
-				  :start 0)))
+  (length (figure-line-endings e content)))
 
 (defvar *completion-short-divisor* 3
   "Divisor of your screen height for short completion.")
 
-(defun print-completions-under (e comp-list)
-  (let* ((term (line-editor-terminal e))
+(defun print-completions-under (e comp-result)
+  (let* ((comp-list (completion-result-completion comp-result))
+	 (term (line-editor-terminal e))
 	 (rows (terminal-window-rows term))
 	 (cols (terminal-window-columns term))
 	 (short-limit (truncate rows *completion-short-divisor*))
@@ -87,7 +91,11 @@ to the terminal."
 	 (x (screen-col e))
 	 (y (screen-row e))
 	 end-x end-y
-	 row-limit)
+	 row-limit
+	 snip-lines
+	 line-endings
+	 (prefix (or (completion-result-prefix comp-result) ""))
+	 (prefix-height (or (and prefix (figure-content-rows e prefix)) 0)))
     (declare (ignorable end-x column-size content-cols))
     ;;(multiple-value-setq (y x) (terminal-get-cursor-position term))
     (multiple-value-setq (content-rows content-cols column-size)
@@ -106,21 +114,33 @@ to the terminal."
 	      (- (- rows 2)			  ;; minus the "more" line
 		 (prompt-height e)
 		 (- (screen-row e) (start-row e)) ;; height of the input line
+		 prefix-height
 		 ))
 	  output-string
 	  (with-output-to-string (str)
 	    (setf content-rows
 		  (print-columns comp-list :columns cols
 				 :smush t :row-limit row-limit :stream str)))
-	  real-content-rows (figure-content-rows e output-string)
-	  rows-output (min real-content-rows row-limit))
+	  line-endings (figure-line-endings e output-string)
+	  real-content-rows (length line-endings)
+	  rows-output (min real-content-rows row-limit)
+	  snip-lines (max 0 (- real-content-rows row-limit)))
+    (tt-write-string prefix)
+    ;; Trim output-string to row-limit really for real lines.
+    (when (plusp snip-lines)
+      (setf output-string
+	    (subseq output-string 0 (car (nth snip-lines line-endings)))))
     (tt-write-string output-string)
     ;; (tt-format "content-rows ~a rows-output ~s " content-rows rows-output)
-    (when (plusp (- content-rows rows-output))
-      (tt-format "[~d more lines]" (- content-rows row-limit)))
+    (if (plusp (- content-rows rows-output))
+	(tt-format "[~d more lines]" (- content-rows row-limit))
+	(when (plusp snip-lines)
+	  (tt-format "~%[~d more lines]" snip-lines)))
     (multiple-value-setq (end-y end-x) (terminal-get-cursor-position term))
     ;;(setf rows-scrolled (max 0 (- (+ y (1+ rows-output)) (1- rows)))
-    (setf rows-scrolled (max 0 (- (+ y (1+ real-content-rows)) (1- rows)))
+    ;;(setf rows-scrolled (max 0 (- (+ y (1+ real-content-rows)) (1- rows)))
+    (setf rows-scrolled (max 0 (- (+ y (- (1+ real-content-rows) snip-lines))
+				  (1- rows)))
      	  back-adjust (+ (- end-y y) rows-scrolled))
     (log-message e "row-limit = ~s real-content-rows = ~s"
 		 row-limit real-content-rows)
@@ -137,14 +157,19 @@ to the terminal."
     (if (not completion-func)
       (beep e "No completion installed.")
       (progn
-	(multiple-value-bind (comp-list comp-count)
-	    (funcall completion-func (fat-string-to-string buf) point t)
+	(let* ((result
+		(funcall completion-func (fat-string-to-string buf) point t))
+	       ;;(comp-list (completion-result-completion result))
+	       (comp-count (completion-result-count result)))
+	  (dbugf 'completion "result2 = ~a ~s~%" (type-of result) result)
 	  (when (and comp-count (> comp-count 0))
 	    (setf (did-complete e) t)
 	    (set-completion-count e (1+ (last-completion-not-unique-count e)))
 	    (if (eq *completion-list-technique* :under)
-		(print-completions-under e comp-list)
-		(print-completions-over e comp-list))))))))
+		;; (print-completions-under e comp-list)
+		;; (print-completions-over e comp-list))))))))
+		(print-completions-under e result)
+		(print-completions-over e result))))))))
 
 #|
 (defun last-input-was-completion (e)
@@ -169,9 +194,13 @@ to the terminal."
     (when (not comp-func)
       (beep e "No completion active.")
       (return-from complete))
-    (let* ((saved-point point) comp replace-pos unique)
-      (multiple-value-setq (comp replace-pos unique)
-	(funcall comp-func (fat-string-to-string buf) point nil))
+    (let* ((saved-point point)
+	   (result
+	    (funcall comp-func (fat-string-to-string buf) point nil))
+	   (comp (completion-result-completion result))
+	   (replace-pos (completion-result-insert-position result))
+	   (unique (completion-result-unique result)))
+      (dbugf 'completion "result = ~a ~s~%" (type-of result) result)
       (when (and (not (zerop (last-completion-not-unique-count e)))
 		 (last-command-was-completion e))
 	(log-message e "show mo")
