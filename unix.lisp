@@ -89,6 +89,7 @@
    #:endpwent
    #:setpwent
 
+   #:get-user-info
    #:user-home
    #:user-name-char-p
    #:valid-user-name
@@ -1730,6 +1731,16 @@ Return nil for foreign null pointer."
 
 (defcfun endpwent :void)
 (defcfun setpwent :void)
+
+(defun get-user-info (&key name id)
+  "Return a user structure from the user database. You can look up by either
+NAME or ID. If you specifiy both, it just uses the ID. If you specify neither,
+it signals an error."
+  (when (not (or name id))
+    (error "You have to specify at least one of NAME or ID."))
+  (if id
+      (convert-user (real-getpwuid id))
+      (convert-user (real-getpwnam name))))
 
 (defun user-name (&optional id)
   "Return the name of the user with ID, which defaults to the current user."

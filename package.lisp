@@ -23,6 +23,7 @@
    #:lisp-args
    #:memory-page-size
 
+   #:get-user-info
    #:user-home
    #:user-name-char-p
    #:valid-user-name

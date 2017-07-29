@@ -7,11 +7,11 @@
 ;; System independent functions should choose one of:
 ;;
 ;;  - Be fully implemented in the system specific package, and be re-exported
-;;    by this package.
+;;    by this package. Use the defos* macros.
 ;;  - Be partially implemented in this package and use appropriate functions
 ;;    in the system specific package, likely conditionalized by features.
-;;  - Be fully implemented in this package, if there's little variance
-;;    between systems
+;;  - Be fully implemented in this package, if there's little or no variance
+;;    between systems.
 ;;  - Be in implemented in a language specific module (e.g. libc.lisp)
 ;;    if it's something that would be found in a standard library for that
 ;;    language. We would like these to be optional.
@@ -32,7 +32,7 @@
 ;;    instead. This avoids having to access it carefully with CFFI macros,
 ;;    memory freeing issues, and type conversion issues.
 ;;
-;;  - Put +earmuffs+ on constants. Put *earmuffs* on variables.
+;;  - Put +plus-earmuffs+ on constants. Put *star-earmuffs* on variables.
 
 ;; (declaim (optimize (speed 3)) (optimize (safety 0))
 ;;   	 (optimize (debug 0)) (optimize (space 0))
@@ -96,6 +96,11 @@ expect. Like for example on a Unix system it should be like strerror.")
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; User database
 ;; 
+
+(defosfun get-user-info (&key name id)
+  "Return a user structure from the user database. You can look up by either
+NAME or ID. If you specifiy both, it just uses the ID. If you specify neither,
+it signals an error.")
 
 (defosfun user-name (&optional id)
   "Return the name of the user with ID, which defaults to the current user.")
