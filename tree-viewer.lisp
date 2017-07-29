@@ -301,6 +301,18 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Viewer
 
+(defmethod next-file (o)
+  "Go to the next file."
+  (declare (ignore o))
+  (when (find-restart 'next-file)
+    (invoke-restart 'next-file)))
+
+(defmethod previous-file (o)
+  "Go to the previous file."
+  (declare (ignore o))
+  (when (find-restart 'previous-file)
+    (invoke-restart 'previous-file)))
+
 (defkeymap *tree-keymap*
     `((#\q		. quit)
       (#\Q		. quit)
@@ -721,18 +733,6 @@ been encountered."
 	   (format nil " open     : ~a" (node-open current))
 	   (format nil " branches : ~a" (node-branches current))
 	   (format nil " parent   : ~a" (get-parent current))))))
-
-(defmethod next-file (o)
-  "Go to the next file."
-  (declare (ignore o))
-  (when (find-restart 'next-file)
-    (invoke-restart 'next-file)))
-
-(defmethod previous-file (o)
-  "Go to the previous file."
-  (declare (ignore o))
-  (when (find-restart 'previous-file)
-    (invoke-restart 'previous-file)))
 
 (defmethod initialize-instance
     :after ((o tree-viewer) &rest initargs &key &allow-other-keys)
