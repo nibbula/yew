@@ -270,7 +270,7 @@
        (simple-error (c)
 	 (pause "Error: ~a ~a" ,file-name c)))))
 
-(defun next-file (o)
+(defmethod next-file (o)
   (with-slots (file-list file-index image) o
     (flet ((next ()
 	     (if (< file-index (1- (length file-list)))
@@ -286,7 +286,7 @@
 	(setf image img)
 	(reset-image o)))))
 
-(defun previous-file (o)
+(defmethod previous-file (o)
   (with-slots (file-list file-index image) o
     (flet ((prev ()
 	     (if (> file-index 0)
@@ -726,7 +726,8 @@
 #+lish
 (lish:defcommand view-image
   ((images pathname :repeating t :help "Image to view."))
+  :accepts (:sequence :stream)
   "View an image."
-  (view-images (or images *standard-input*)))
+  (view-images (or images lish:*input* *standard-input*)))
 
 ;; EOF
