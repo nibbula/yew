@@ -67,7 +67,7 @@ a TERM-INATOR.
    #:start-inator
    #:finish-inator
    #:*default-inator-keymap*
-   #:get-key-sequence
+   #:read-key-sequence
    #:with-inator
    #:with-file-list
    ))
