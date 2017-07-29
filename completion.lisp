@@ -28,6 +28,14 @@ a count which is the length of the sequence.")
    #:complete-print
    #:complete-print-long
    #:*completion-count*
+   #:make-completion-result
+   #:completion-result-p
+   #:completion-result
+   #:completion-result-completion
+   #:completion-result-insert-position
+   #:completion-result-unique
+   #:completion-result-count
+   #:completion-result-prefix
    ;; list
    #:list-completion-function 
    #:string-completion-list
@@ -49,6 +57,14 @@ a count which is the length of the sequence.")
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 		   (compilation-speed 0)))
+
+(defstruct completion-result
+  "The result of completion functions."
+  completion
+  (insert-position 0)
+  unique
+  (count 0)		; just so we don't have to recount long lists
+  prefix)		; Part to output before a list.
 
 (defgeneric complete-print (object stream)
   (:documentation "Print the object for showing in a completion list.")
@@ -127,13 +143,14 @@ already, just return the list."
   "Return all the words from LIST that have the prefix WORD. Second value is
 the count of matches."
   (let ((i 0) pos)
-    (values
+    (make-completion-result
+     :completion
      (loop :for w :in list
 	:if (or (not (setq pos (mismatch w word)))
 		(>= pos (length word)))
 	  :collect (prog1 w (incf i))
 	:end)
-     i)))
+     :count i)))
 
 (defun string-completion (word list)
   "Return the longest possible unambiguous completion of WORD from LIST. Second
@@ -157,7 +174,9 @@ value is true if it's unique."
 	       (setf unique nil))
 	     (setf match w
 		   match-len (length w)))))
-    (values (subseq match 0 match-len) unique)))
+    (make-completion-result
+     :completion (subseq match 0 match-len)
+     :unique unique)))
 
 (defvar *completion-list* nil
   "List to use for completion.")
@@ -170,8 +189,9 @@ value is true if it's unique."
 	 (word (subseq context word-start pos)))
     (if all
 	(string-completion-list word list)
-	(multiple-value-bind (completion unique) (string-completion word list)
-	  (values completion word-start unique)))))
+	(let ((result (string-completion word list)))
+	  (setf (completion-result-insert-position result) word-start)
+	  result))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Iterator completion
@@ -205,14 +225,15 @@ value is true if it's unique."
   "Return all the words from ITERATOR that have the prefix WORD. Second value is
 the count of matches."
   (let ((i 0) pos)
-    (values
+    (make-completion-result
+     :completion
      (loop :with w = (stringish (funcall iterator t))
 	:if (or (not (setq pos (mismatch w word)))
 		(>= pos (length word)))
 	  :collect (prog1 w (incf i))
 	:end
 	:while (setq w (stringish (funcall iterator))))
-     i)))
+     :count i)))
 
 (defun iterator-completion (word iterator)
   "Return the longest possible unambiguous completion of WORD from the
@@ -238,7 +259,9 @@ ITERATOR. Second value is true if it's unique."
 	     (setf match w
 		   match-len (length w))))
        :while (stringish (setq w (funcall iterator))))
-    (values (subseq match 0 match-len) unique)))
+    (make-completion-result
+     :completion (subseq match 0 match-len)
+     :unique unique)))
 
 (defun complete-iterator (context pos all iterator)
   "Completion function for iterators. The entire context is matched."
@@ -248,9 +271,9 @@ ITERATOR. Second value is true if it's unique."
 	 (word (subseq context word-start pos)))
     (if all
 	(iterator-completion-list word iterator)
-	(multiple-value-bind (completion unique)
-	    (iterator-completion word iterator)
-	  (values completion word-start unique)))))
+	(let ((result (iterator-completion word iterator)))
+	  (setf (completion-result-insert-position result) word-start)
+	  result))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Symbol completion
@@ -550,9 +573,10 @@ arguments for that function, otherwise return NIL."
 		  :else
 		    :collect (funcall stringser (car s))))
     (if (not all)
-	(multiple-value-bind (comp pos uniq)
-	    (complete-list word (length word) all keywords)
-	  (values comp (+ word-start pos) uniq))
+	(let ((result (complete-list word (length word) all keywords)))
+	  (setf (completion-result-insert-position result)
+		(+ word-start pos))
+	  result)
 	(complete-list word (length word) all keywords))))
 
 (defun in-expr (string position)
@@ -634,10 +658,11 @@ arguments for that function, otherwise return NIL."
       (if (and sym (fboundp sym))
 	  (if (could-be-a-keyword nil word-start context)
 	      (function-keyword-completion sym context pos word-start t)
-	      (values
-;;	       (list (function-help sym (in-expr (subseq context start) pos)))
-	       (function-help sym (in-expr (subseq context start) pos))
-	       1))
+	      (make-completion-result
+	       :completion
+	       (list (function-help sym (in-expr (subseq context start) pos)))
+	       :count 1
+	       :insert-position 1))
 	  nil))))
 
 (defmacro do-the-symbols ((sym pak ext) &body forms)
@@ -717,12 +742,14 @@ Return nil if none was found."
 		 (when l
 		   (setf unique nil)
 		   (setf match-len l)))))))
-    (values (and match
-		 (let ((s (subseq match 0 match-len)))
-		   (if (eql case-in :lower)
-		       (string-downcase s)
-		       s)))
-	    unique)))
+    (make-completion-result
+     :completion 
+     (and match
+	  (let ((s (subseq match 0 match-len)))
+	    (if (eql case-in :lower)
+		(string-downcase s)
+		s)))
+     :unique unique)))
 
 (defun symbol-completion-list (w &key package
 				   (external nil) (include-packages t))
@@ -758,7 +785,9 @@ defaults to the current package. Return how many symbols there were."
     (setq l (sort l #'string-lessp))
     (when (eql case-in :lower)
       (setf l (mapcar #'string-downcase l)))
-    (values l count)))
+    (make-completion-result
+     :completion l
+     :count count)))
 
 (defun could-be-a-keyword (pack word-start context)
   "True if the thing right before the cursor could be a keyword."
@@ -783,25 +812,29 @@ defaults to the current package. Return how many symbols there were."
 	(progn
 	  (dbug "Could be a keyword ~s~%" (subseq context word-start))
 	  (if all
-	      (if (setf result (multiple-value-list
-				(try-symbol-help context pos)))
-		  (values-list result)
+	      (or (try-symbol-help context pos)
 		  (symbol-completion-list
 		   word :package pack :external external))
-	      (let ((sym (symbol-whose-args-we-are-in context pos)))
+	      (let* ((sym (symbol-whose-args-we-are-in context pos))
+		     (result (function-keyword-completion sym context pos
+							 word-start nil)))
 		(dbug "snoopy ~a~%" pos)
-		(multiple-value-bind (completion unique)
-		    (function-keyword-completion sym context pos
-						 word-start nil)
-		  (values completion word-start unique)))))
+		(setf (completion-result-insert-position result)
+		      word-start)
+		result)))
 	(if all
 	    (if (and (= (length word) 0)
 		     (setf result (try-symbol-help context pos)))
-		(values (list result) 1)
+		;; (make-completion-result
+		;;  :completion (list result)
+		;;  :insert-position 1)
+		result
 		(symbol-completion-list word :package pack :external external))
-	    (multiple-value-bind (completion unique)
-		(symbol-completion word :package pack :external external)
-	      (values completion word-start unique))))))
+	    (progn
+	      (setf result (symbol-completion word :package pack
+					      :external external)
+		    (completion-result-insert-position result) word-start)
+	      result)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Filename completion
@@ -819,9 +852,13 @@ defaults to the current package. Return how many symbols there were."
 ; (defun filename-quotify-like (name like)
 ;   (if 
 
-(defmacro safe-read-directory (&rest args)
+;; (defmacro safe-read-directory (&rest args)
+;;   "Call read-directory without errors."
+;;   `(ignore-errors (read-directory ,@args)))
+
+(defun safe-read-directory (&rest args)
   "Call read-directory without errors."
-  `(ignore-errors (read-directory ,@args)))
+  (ignore-errors (apply #'read-directory args)))
 
 #|
 (defun filename-completion-OLD (word)
@@ -902,7 +939,8 @@ defaults to the current package. Return how many symbols there were."
 	   ;;(dbug "~%match-len = ~a entry = ~s" match-len (dir-entry-name f))
 	   )))
     ;;(dbug "~&match = ~a match-sub = ~a~%" match (subseq match 0 match-len))
-    (values
+    (make-completion-result
+     :completion
      (and match
 	  (let* ((match-sub (subseq match 0 match-len)))
 	    ;; If it had a directory part, put it back on.
@@ -913,7 +951,7 @@ defaults to the current package. Return how many symbols there were."
 		    (s+ nos:*directory-separator* match-sub)
 		    (path-append dir-part-path match-sub))
 		match-sub)))
-     full-match)))
+     :unique full-match)))
 
 (defun filename-completion-list (w &optional extra-test)
   "Return the list of completions for W and how many there were."
@@ -947,7 +985,8 @@ defaults to the current package. Return how many symbols there were."
     (locally
 	#+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
 	(setq result-list (sort result-list #'string<)))
-    (values result-list count)))
+    (make-completion-result
+     :completion result-list :count count)))
 
 ;; We have to assume the entire context is a filename. Shells that want to
 ;; do completion in a command line, will have to arrange for this to be so.
@@ -958,9 +997,9 @@ defaults to the current package. Return how many symbols there were."
   ;; Let's ignore anything after pos for the sake of completion.
   (if all
       (filename-completion-list context)
-      (multiple-value-bind (result full-match) (filename-completion context)
-	(declare (ignore full-match))
-	(values result 0))))
+      (let ((result (filename-completion context)))
+	(setf (completion-result-insert-position result) 0)
+	result)))
 
 (defun is-actually-directory (f &optional (dir ""))
   ;; @@@ perhaps we need to do a loop to resolve multiple links?
@@ -981,10 +1020,9 @@ defaults to the current package. Return how many symbols there were."
 ;  (format t "jinko (~a) ~a~%" context pos)
   (if all
       (filename-completion-list context #'is-actually-directory)
-      (multiple-value-bind (result full-match)
-	  (filename-completion context #'is-actually-directory)
-	(declare (ignore full-match))
-	(values result 0))))
+      (let ((result (filename-completion context #'is-actually-directory)))
+	(setf (completion-result-insert-position result) 0)
+	result)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Dictionary completion
@@ -1063,11 +1101,11 @@ defaults to the current package. Return how many symbols there were."
 
 (defun dictionary-completion-list (w dict)
   (declare (ignore w dict))
-  )
+  (make-completion-result)) ;; @@@
 
 (defun dictionary-completion (w dict)
   (declare (ignore w dict))
-  )
+  (make-completion-result)) ;; @@@
 
 (defun complete-dictionary-word (context pos all &optional dict)
   "Completion function for dictionary words."
@@ -1075,10 +1113,9 @@ defaults to the current package. Return how many symbols there were."
   ;; Let's ignore anything after pos for the sake of completion.
   (if all
       (dictionary-completion-list context dict)
-      (multiple-value-bind (result full-match)
-	  (dictionary-completion context dict)
-	(declare (ignore full-match))
-	(values result 0))))
+      (let ((result (dictionary-completion context dict)))
+	(setf (completion-result-insert-position result) 0)
+	result)))
 
 (defun dictionary-completion-function (file)
   "Return a completion function for a dictionary."
