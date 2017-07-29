@@ -97,6 +97,7 @@ make the table in the first place. For that you want the TABLE package.")
 
 ;; Numbers right justified and everything else, left.
 (defmethod table-output-column-type-justification (renderer table type)
+  (declare (ignore renderer table))
   (cond
     ((subtypep type 'number) :right)
     (t :left)))
@@ -129,6 +130,7 @@ make the table in the first place. For that you want the TABLE package.")
 ;; This is just a simple character count.
 (defmethod table-output-cell-display-width (renderer table cell)
   "Return the display width for a table cell."
+  (declare (ignore renderer table))
   (typecase cell
     (string (length cell))
     (otherwise
@@ -171,7 +173,7 @@ make the table in the first place. For that you want the TABLE package.")
 			 &key long-titles print-titles max-width
 			   &allow-other-keys)
   "Output a table."
-  (declare (ignore long-titles print-titles max-width)) ; @@@
+  (declare (ignore destination long-titles print-titles max-width)) ; @@@
   (let ((row-num 0) (col-num 0)
 	(sizes (table-output-sizes renderer table)))
     (table-output-header renderer table :sizes sizes)
@@ -226,33 +228,36 @@ make the table in the first place. For that you want the TABLE package.")
 
 (defmethod table-output-start-row ((renderer derp-table-renderer) table)
   "Start a row of table output."
+  (declare (ignore renderer table))
   (princ "| "))
 
 (defmethod table-output-cell ((renderer derp-table-renderer)
 			      table cell width justification)
   "Output a table cell."
+  (declare (ignore renderer table))
   (let ((*print-pretty* nil))
     (format t (if (eq justification :right) "~v@a" "~va") width cell)))
 
-(defmethod table-output-cell-display-width ((renderer derp-table-renderer)
-					    table cell)
-  "Return the display width for a table cell."
-  (length cell))
+;; (defmethod table-output-cell-display-width ((renderer derp-table-renderer)
+;; 					    table cell)
+;;   "Return the display width for a table cell."
+;;   (length cell))
 
 (defmethod table-output-column-separator ((renderer derp-table-renderer) table
 					  &key width)
   "Output a separator between columns."
-  (declare (ignore width))
+  (declare (ignore renderer table width))
   (princ " | "))
 
 (defmethod table-output-end-row ((renderer derp-table-renderer) table n)
   "End a row of table output."
+  (declare (ignore renderer table n))
   (format t " |~%"))
 
 (defmethod table-output-row-separator ((renderer derp-table-renderer) table n
 				       &key width sizes)
   "Output separator between rows."
-  (declare (ignore width))
+  (declare (ignore renderer table width))
   (when (not n)
     (princ "+")
     (loop
