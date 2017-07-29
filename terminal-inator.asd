@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Inator for terminals."
-    :depends-on (:inator :terminal)
+    :depends-on (:dlib :keymap :inator :terminal)
     :components
     ((:file "terminal-inator")))

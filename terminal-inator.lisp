@@ -4,7 +4,7 @@
 
 (defpackage :terminal-inator
   (:documentation "I'll be back.")
-  (:use :cl :dlib :inator :terminal)
+  (:use :cl :dlib :keymap :inator :terminal)
   (:export
    #:terminal-inator
    ))
