@@ -598,6 +598,25 @@ if there isn't one."
        (error (c) (declare (ignore c)))))
   nil)
 
+(defun command-path-list ()
+  "Return the system command path as a list."
+  (split-sequence *path-separator* (environment-variable *path-variable*)))
+
+(defun list-to-command-path (path-list)
+  "Given a list of pathnames return a suitable system command path value."
+  (with-output-to-string (str)
+    (write-string (car path-list) str)
+    (mapcan (_ (write-char *path-separator* str)
+	       (write-string _ str)) (cdr path-list))))
+
+(defun set-command-path-list (path-list)
+  "Set the system command path to the elements of PATH-LIST."
+  (setf (environment-variable *path-variable*)
+	(list-to-command-path path-list)))
+
+(defsetf command-path-list set-command-path-list
+  "Set the system command path.")
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Processes
 

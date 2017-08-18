@@ -67,6 +67,9 @@
    #:hidden-file-name-p
    #:superfluous-file-name-p
    #:command-pathname
+   #:command-path-list
+   #:list-to-command-path
+   #:set-command-path-list
    #:quote-filename
    #:safe-namestring
 
