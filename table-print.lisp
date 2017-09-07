@@ -639,10 +639,14 @@ resized to fit in this, and the whole row is trimmed to this."
 	 :for (size) :in sizes
 	 :and i = 0 :then (1+ i)
 	 :do
-	 (format stream "~v,,,va" size #\- #\-)
-	 (when (< i (1- len))
-	   (write-string separator stream)))
+	 (when (not (zerop size))
+	   (format stream "~v,,,va" size #\- #\-)
+	   (when (< i (1- len))
+	     (write-string separator stream))))
       (terpri stream))
+
+    ;; (dbug "sizes = ~a~%" sizes)
+    
     ;; Values
     (loop :with fmt :and cell-lines :and cell-col :and cell-width
        :for row :in rows :do
