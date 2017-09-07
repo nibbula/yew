@@ -399,10 +399,13 @@
 	     (and (listp lish:*input*) lish:*input*)
 	     (lish:input-line-list (and (streamp lish:*input*) lish:*input*)))
 	 :multiple multiple))
-  (when (lish:accepts :stream :grotty-stream :unspecified)
-    (if (listp lish:*output*)
-	(loop :for o :in lish:*output* :do (princ o) (terpri))
-	(progn (princ lish:*output*) (terpri)))))
+  (cond
+    ((lish:accepts :sequence 'list)
+     lish:*output*)
+    ((lish:accepts :stream :grotty-stream :unspecified)
+     (if (listp lish:*output*)
+	 (loop :for o :in lish:*output* :do (princ o) (terpri))
+	 (progn (princ lish:*output*) (terpri))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; pick-file
