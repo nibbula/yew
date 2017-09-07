@@ -6,7 +6,7 @@
   (:documentation
    "Dan's functions for interactive use. These are things that would typically
 be used at a REPL, but not as likely to be called by other programs.")
-  (:use :cl :dlib :dlib-misc :table-print :mop)
+  (:use :cl :dlib :dlib-misc :table-print :mop :terminal)
   (:export
    #:show-expansion
    #:printenv
@@ -19,6 +19,7 @@ be used at a REPL, but not as likely to be called by other programs.")
    #:describe-packages
    #:describe-package
    #:describe-printing
+   #:describe-readtable
    #:describe-reader
    #:describe-system
    #:describe-class
@@ -330,14 +331,52 @@ symbols, :all to show internal symbols too."
 		  ;;*print-pprint-dispatch*
 		  )))
 
-(defun describe-reader ()
+(defun describe-readtable (&optional (readtable *readtable*))
+  (format t "Readtable case: ~a~%" (readtable-case readtable))
+  (table-print:nice-print-table
+   (loop :with func :and non-term :and cc :and sub-chars
+      :for c :from 0 :below 128
+      :do
+      (setf cc (code-char c))
+      (multiple-value-setq (func non-term)
+	(get-macro-character cc readtable))
+      (setf sub-chars
+	    (when func
+	      (loop :with sub-func
+		 :for sub-c :from 0 :below 128
+		 :do (setf sub-func
+			   (ignore-errors
+			     (get-dispatch-macro-character cc (code-char sub-c)
+							   readtable)))
+		 :when sub-func
+		 :collect (list "" ""
+				(format nil "~11s ~a"
+					(code-char sub-c) sub-func)
+				""))))
+      :if func
+      :collect (list c (format nil "~s" cc)
+		     ;; (string-downcase (char-name cc))
+		     ;; (let ((s (format nil "~a" func))) 
+		     ;;   (subseq s 0 (1- (min 60 (length s)))))
+		     func
+		     non-term)
+      :if sub-chars
+      :append sub-chars)
+   (mapcar #'string '(code char function non-t))
+   :max-width (1- (tt-width)))
+  (values))
+
+(defun describe-reader (&key full)
   "Describe the current Lisp reader parameters."
-  (print-values '(*read-base*
-		  *read-default-float-format*
-		  *read-eval*
-		  *read-suppress*))
-  ;; @@@ perhaps should describe the *readtable*, using get-macro-character
-  ;; and get-dispatch-macro-character
+  (let ((vals '(*read-base*
+		*read-default-float-format*
+		*read-eval*
+		*read-suppress*)))
+    (when full
+      (setf vals (append vals (list '*readtable*))))
+    (print-values vals)
+    (when full
+      (describe-readtable)))
   (values))
 
 (defun describe-system (system)
