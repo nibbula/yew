@@ -10,6 +10,7 @@
    #:keymap-map
    #:keymap-default-binding
    #:keymap-p
+   #:set-keymap
    #:dump-keymap
    #:defkeymap
    #:map-keymap
@@ -42,16 +43,19 @@
 
 (defun keymap-p (object)
   "Return true if OBJECT is a keymap."
-;  (eq (type-of object) 'keymap))
   (typep object 'keymap))
+
+(defun set-keymap (keymap map)
+  "Initialize the map of KEYMAP from the alist MAP."
+  (when (and map (consp map))
+    (setf (keymap-map keymap)
+	  (alist-to-hash-table map (make-hash-table)))))
 
 (defmethod initialize-instance :after ((k keymap) &rest initargs)
   "Initialize a keymap. If the map is an alist convert it into a hash table."
   (declare (ignore initargs))
-  (if (slot-boundp k 'map)
-      (when (consp (slot-value k 'map))
-	(setf (keymap-map k)
-	      (alist-to-hash-table (keymap-map k) (make-hash-table))))
+  (if (and (slot-boundp k 'map) (consp (slot-value k 'map)))
+      (set-keymap k (keymap-map k))
       (setf (slot-value k 'map) (make-hash-table))))
 
 (defun dump-keymap (map &key (stream *standard-output*) prefix raw)
@@ -90,19 +94,19 @@ assumed to be a prefix for all bindings in the keymap."
     (format stream " [~d]"
 	    (hash-table-count (keymap-map obj)))))
 
-;(defmacro defkeymap (name map &key default-binding)
 (defmacro defkeymap (name &body body)
   "Define a keymap. DEFAULT-BINDING is what keys that aren't defined are
 bound to."
-  (let* (docstring map default-binding)
-    ;; See if there's a docstring
-    (if (stringp (first body))
+  (let (docstring map default-binding)
+    (when body
+      ;; See if there's a docstring
+      (when (stringp (first body))
 	(setf docstring (pop body)))
-    (setf map (pop body))
-    ;; See if there's a default-binding keyword
-    (when (eql (first body) :default-binding)
-      (pop body)
-      (setf default-binding (pop body)))
+      (setf map (pop body))
+      ;; See if there's a default-binding keyword
+      (when (eql (first body) :default-binding)
+	(pop body)
+	(setf default-binding (pop body))))
     `(defparameter ,name
        (make-instance 'keymap:keymap
 		      #| :name ,(string-downcase name) |#
@@ -239,9 +243,6 @@ one in source."
   "Return a new keymap containing only the meta character bindings in KEYMAP
  converted to non-meta character bindings. This is useful for making a keymap
 to bind to the escape key, so you have escape key equivalents to meta keys."
-;   (loop :for (c . f) :in (keymap-map keymap)
-; 	:when (and (characterp c) (meta-char-p (char-code c)))
-; 	:collect (cons (un-meta (char-code c)) f)))
   (check-type keymap keymap)
   (let ((new-keymap (make-instance (type-of keymap))))
     (map-keymap
