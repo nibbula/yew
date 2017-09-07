@@ -38,7 +38,7 @@ The shell command takes any number of file names.
 ")
   (:use :cl :dlib :opsys :dlib-misc :table-print :curses :fui :stretchy
 	:keymap :char-util :fatchar :ppcre :terminal :terminal-curses
-	:pick-list)
+	:pick-list :table-print)
   (:export
    #:*pager-prompt*
    #:*empty-indicator*
@@ -880,6 +880,7 @@ list containing strings and lists."
 (defun file-location-file (location)
   "Return the file part of a file location."
   (typecase location
+    (string location)
     ((or list vector) (elt location 0))
     (t location)))
 
@@ -887,7 +888,12 @@ list containing strings and lists."
   "Return the offset part of a file location, which defaults to 0 if the
 location doesn't have an offset part."
   (typecase location
-    ((or list vector) (elt location 1))
+    (string 0)
+    ((or list vector)
+     (if (and (> (length location) 1)
+	      (numberp (elt location 1)))
+	 (elt location 1)
+	 0))
     (t 0)))
 
 (defun next-file ()
@@ -965,6 +971,19 @@ location doesn't have an offset part."
 		(go-to-line
 		 (1+ (file-location-offset (elt file-list file-index)))))))
 	(tmp-message "No previous file."))))
+
+(defun show-file-list ()
+  (with-slots (file-list file-index) *pager*
+    (if (not file-list)
+	(tmp-message "The file list is empty.")
+	(let ((i 0))
+	  (clear)
+	  (map nil (_ (addstr
+		       (format nil "~c ~s~%"
+			       (if (= i file-index) #\* #\space) _))
+		      (incf i))
+	       file-list)
+	  (tt-get-key)))))
 
 (defun quit ()
   "Exit the pager."
@@ -1074,10 +1093,10 @@ location doesn't have an offset part."
   "Go to the end of the stream, or the PREFIX-ARG'th line."
   (with-slots (prefix-arg count line page-size) *pager*
     (if prefix-arg
-	(go-to-line prefix-arg))
+	(go-to-line prefix-arg)
 	(progn
 	  (read-lines 0)
-	  (setf line (max 0 (- count page-size))))))
+	  (setf line (max 0 (- count page-size)))))))
 
 (defun search-command ()
   "Search for something in the stream."
@@ -1241,6 +1260,7 @@ location doesn't have an offset part."
     (#\n		. search-next)
     (#\=		. show-info)
     (,(ctrl #\G)	. show-info)
+    (,(meta-char #\l)	. show-file-list)
     (#\V                . show-version)
     (#\-		. set-option)
     (,(ctrl #\L)	. redraw)
@@ -1606,6 +1626,6 @@ then the key. Press 'q' to exit this help.
   :accepts (:grotty-stream :file-list :file-locaations)
   "Look through text, one screen-full at a time."
   (declare (ignore show-line-numbers ignore-case raw-output pass-special)) ; @@@
-  (pager (or files *standard-input*)))
+  (pager (or files lish:*input* *standard-input*)))
 
 ;; EOF
