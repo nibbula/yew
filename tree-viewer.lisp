@@ -265,6 +265,7 @@ to prevent following infinite cycles."
 	       (push sub-tree tree))))))
     (nreverse tree)))
 
+;; I'm not sure this works or is useful?
 (defun %make-tree-with-type (thing func type &key max-depth (test #'equal)
 					  (depth 0) (flat '()))
   "Generate a tree for THING, where FUNC is a function (FUNC THING) which
@@ -351,6 +352,7 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
       (,(ctrl #\A)	. shift-beginning)
       (,(ctrl #\E)	. shift-end)
       (,(ctrl #\S)	. search-forward-command)
+      (#\/		. search-forward-command)
       (,(ctrl #\R)	. search-backward-command)
       ;; Miscellaneous
       (#\m		. toggle-modeline)
