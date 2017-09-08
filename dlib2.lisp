@@ -20,6 +20,47 @@ cannot cause evaluation."
 			:start start :end end
 			:preserve-whitespace preserve-whitespace))))
 
+(defparameter *readtabe-cases* '(:upcase :downcase :preserve :invert)
+  "List of valid values for READTABLE-CASE.")
+
+(defun fancy-read-from-string (string
+			       &key
+				 (eof-error-p t) eof-value
+				 (start 0) end
+				 preserve-whitespace
+				 safe
+				 base
+				 default-float-format
+				 case)
+  "Read from string with most of the bells and whistles. This doesn't include
+things that need the *READ-INTERN* extension. This probably isn't efficient for
+setting CASE. If you need do a lot with CASE, you should probably make your
+readtable.
+
+EOF-ERROR-P, EOF-VALUE, START, END, and PRESERVE-WHITESPACE, are all as in
+standard read, except for being keywords arguments.
+
+SAFE sets *read-eval* to NIL.
+BASE sets *read-base*.
+DEFAULT-FLOAT-FORMAT sets *DEFAULT-FLOAT-FORMAT*.
+CASE sets the temporarily sets the READTABLE-CASE, which should be one of:
+  :UPCASE :DOWNCASE :PRESERVE :INVERT
+"
+  (let ((*read-eval* (if safe nil *read-eval*))
+	(*read-base* (or base *read-base*))
+	(*default-float-format* (or default-float-format *default-float-format*))
+	(*readtable* (if case
+			 (progn
+			   (when (not (member case *readtabe-cases*))
+			     (error "Case must be one of ~s" *readtable-cases*))
+			   (let ((rt (copy-readtable *readtable*)))
+			     (setf (readtable-case rt) case)
+			     rt))
+			 *readtable*)))
+    (read-from-string string eof-error-p eof-value
+		      :start start :end end
+		      :preserve-whitespace preserve-whitespace)))
+
 (defun clean-read-from-string (string package
 			       &optional (eof-error-p t) eof-value
 			       &key (start 0) end preserve-whitespace)

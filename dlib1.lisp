@@ -1,4 +1,4 @@
-;;
+;;							-*- encoding: utf-8 -*-
 ;; dlib1.lisp - Dan's utilities of redundant doom, first file.
 ;;
 
@@ -47,6 +47,7 @@ problem, and hope I can some day contribute to the solution of it.")
    #:with-lines
    #:get-lines
    #:copy-package
+   #:fancy-read-from-string
    #:safe-read-from-string
    #:clean-read-from-string
    #:package-robust-read-from-string
