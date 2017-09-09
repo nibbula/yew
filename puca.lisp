@@ -204,7 +204,7 @@
 
 (defun check-dir-and-command (dir command)
   (let ((result (probe-directory dir)))
-    (when (and result (not (lish:command-pathname command)))
+    (when (and result (not (command-pathname command)))
       (cerror "Proceed anyway."
 	      "Looks like a ~a directory, but ~a isn't installed?"
 	      dir command))
@@ -334,7 +334,23 @@
     result))
 
 ;; history mode
-;; git log "--format=%h %cr %ae%n%s" -- dlib.lisp
+
+#|
+(defun glorp (f)
+  (!_= "git" "--no-pager" "log" "--format=(\"%h\" \"%ae\" %ct \"%s\")" "--" f))
+
+(defun zermel ()
+  (let ((hh (loop :for r :in (glorp "completion.lisp")
+	       :collect (safe-read-from-string r))))
+    (table-print:nice-print-table
+     (mapcar (_ (list
+		 (s+ (subseq (first (cdr _)) 0 3) "..")
+		 (dlib-misc:date-string
+		  :format :relative
+		  :time (uos:unix-to-universal-time (second (cdr _))))
+		 (third (cdr _)))) hh)
+     '("email" "date" "message"))))
+|#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; SVN
@@ -706,8 +722,11 @@ for the command-function).")
 (defun view-file (p)
   "View file"
   (declare (ignore p))
-  (pager:pager (selected-files))
-  (draw-screen))
+  ;; (pager:pager (selected-files))
+  ;;(view:view-things (selected-files))
+  ;;(draw-screen)
+  (do-literal-command "view ~{\"~a\" ~}" (list (selected-files))
+		      :do-pause nil))
 
 (defmethod previous ((p puca))
   "Previous line"
