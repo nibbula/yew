@@ -20,12 +20,13 @@ cannot cause evaluation."
 			:start start :end end
 			:preserve-whitespace preserve-whitespace))))
 
-(defparameter *readtabe-cases* '(:upcase :downcase :preserve :invert)
+(defparameter *readtable-cases* '(:upcase :downcase :preserve :invert)
   "List of valid values for READTABLE-CASE.")
 
 (defun fancy-read-from-string (string
 			       &key
-				 (eof-error-p t) eof-value
+				 (eof-error-p t eof-error-p-supplied-p)
+				 eof-value
 				 (start 0) end
 				 preserve-whitespace
 				 safe
@@ -38,25 +39,30 @@ setting CASE. If you need do a lot with CASE, you should probably make your
 readtable.
 
 EOF-ERROR-P, EOF-VALUE, START, END, and PRESERVE-WHITESPACE, are all as in
-standard read, except for being keywords arguments.
+standard read, except for being keywords arguments, and supplying EOF-VALUE,
+sets EOF-ERROR-P to NIL if it's not supplied.
 
 SAFE sets *read-eval* to NIL.
 BASE sets *read-base*.
-DEFAULT-FLOAT-FORMAT sets *DEFAULT-FLOAT-FORMAT*.
+DEFAULT-FLOAT-FORMAT sets *READ-DEFAULT-FLOAT-FORMAT*.
 CASE sets the temporarily sets the READTABLE-CASE, which should be one of:
   :UPCASE :DOWNCASE :PRESERVE :INVERT
 "
   (let ((*read-eval* (if safe nil *read-eval*))
 	(*read-base* (or base *read-base*))
-	(*default-float-format* (or default-float-format *default-float-format*))
+	(*read-default-float-format*
+	 (or default-float-format *read-default-float-format*))
 	(*readtable* (if case
 			 (progn
-			   (when (not (member case *readtabe-cases*))
+			   (when (not (member case *readtable-cases*))
 			     (error "Case must be one of ~s" *readtable-cases*))
 			   (let ((rt (copy-readtable *readtable*)))
 			     (setf (readtable-case rt) case)
 			     rt))
 			 *readtable*)))
+    (when (and (not eof-error-p-supplied-p)
+	       eof-value)
+      (setf eof-error-p nil))
     (read-from-string string eof-error-p eof-value
 		      :start start :end end
 		      :preserve-whitespace preserve-whitespace)))
