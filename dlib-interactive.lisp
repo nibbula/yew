@@ -366,7 +366,7 @@ symbols, :all to show internal symbols too."
    :max-width (1- (tt-width)))
   (values))
 
-(defun describe-reader (&key full)
+(defun describe-reader (&key (full t))
   "Describe the current Lisp reader parameters."
   (let ((vals '(*read-base*
 		*read-default-float-format*
