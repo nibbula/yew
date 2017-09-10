@@ -914,8 +914,8 @@ for the command-function).")
 (defun describe-key-briefly (p)
   "Prompt for a key and say what function it invokes."
   (message p "Press a key: ")
-  (let* ((key (tt-get-char))
-	 (action (key-definition key *puca-keymap*)))
+  (let* ((key (read-key-sequence p))
+   	 (action (key-sequence-binding key *puca-keymap*)))
     (if action
 	(message p "~a is bound to ~a" (nice-char key) action)
 	(message p "~a is not defined" (nice-char key)))))
