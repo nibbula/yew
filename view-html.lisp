@@ -106,7 +106,10 @@
 (defun view-html (&optional file)
   (let* ((ff (etypecase file
 	       (string
-		(pathname (nos:quote-filename file)))
+		(or (let ((uri (puri:parse-uri file)))
+		      (and uri (member (puri:uri-scheme uri) '(:http :https))
+			   (drakma:http-request uri)))
+		    (pathname (nos:quote-filename file))))
 	       ((or pathname stream)
 		file)
 	       (null
@@ -114,14 +117,14 @@
 		(pathname (nos:quote-filename
 			   (or (pick-list:pick-file)
 			       (return-from view-html nil)))))))
-	 (hh (plump:parse ff))
-	 (name (princ-to-string (or ff))))
+	 (hh (plump:parse ff)))
     (unwind-protect
       (progn
 	(view-tree
 	 (make-instance
 	  'object-node
-	  :object name
+	  :object (or (and file (princ-to-string file))
+		      (princ-to-string ff))
 	  :branches
 	  (loop :for n :in (map 'list #'identity (plump::children hh))
 	     :if (or (not (or (plump:text-node-p n)
