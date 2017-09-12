@@ -14,7 +14,8 @@
    #:nice-char
    #:char-as-ascii
    #:displayable-char
-   #:combining-character-p
+   #:combining-char-p
+   #:double-wide-char-p
    ))
 (in-package :char-util)
 
@@ -521,10 +522,16 @@ than space and delete."
   "Vector of combining characters.")
 
 ;; @@@ Make these better on non-SBCL. And move them out of here!
-(defun combining-character-p (c)
+(defun combining-char-p (c)
   ;; #+sbcl (/= (sb-unicode:combining-class c) 0)
   ;; This is just plain better.
   (position c *combining-chars*))
+
+(defun double-wide-char-p (c)
+  #+(and sbcl has-sb-unicode) (eq (sb-unicode:east-asian-width c) :w)
+  #-(and sbcl has-sb-unicode) (declare (ignore c))
+  #-(and sbcl has-sb-unicode) nil	; @@@ need proper tables
+  )
 
 (defmacro with-graphemes ((string) &body body)
   (declare (ignore string body))
