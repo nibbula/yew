@@ -151,11 +151,11 @@
     (d-add-feature :has-sb-unicode)))
 
 ;; @@@ Perhaps this should so be somewhere else.
-(defun double-wide-p (c)
-  #+(and sbcl has-sb-unicode) (eq (sb-unicode:east-asian-width c) :w)
-  #-(and sbcl has-sb-unicode) (declare (ignore c))
-  #-(and sbcl has-sb-unicode) nil	; @@@ too hard without tables
-  )
+;; (defun double-wide-p (c)
+;;   #+(and sbcl has-sb-unicode) (eq (sb-unicode:east-asian-width c) :w)
+;;   #-(and sbcl has-sb-unicode) (declare (ignore c))
+;;   #-(and sbcl has-sb-unicode) nil	; @@@ too hard without tables
+;;   )
 
 (defun graphemes (str)
   #+(and sbcl has-sb-unicode) (sb-unicode:graphemes str)
@@ -168,8 +168,8 @@
   (cond
     ((graphic-char-p c)
      (cond
-       ((combining-character-p c) 0)
-       ((double-wide-p c) 2)
+       ((combining-char-p c) 0)
+       ((double-wide-char-p c) 2)
        (t 1)))				;normal case
     ((eql c #\tab)
      8)					;XXX @@@ wrong!
@@ -192,8 +192,8 @@
      (cond
        ((graphic-char-p c)
 	(cond
-	  ((combining-character-p c) 0)
-	  ((double-wide-p c) 2)
+	  ((combining-char-p c) 0)
+	  ((double-wide-char-p c) 2)
 	  (t 1)))				;normal case
        ((eql c #\tab)
 	8)					;XXX @@@ wrong!
@@ -225,8 +225,8 @@
        (cond
 	 ((graphic-char-p c)
 	  (cond
-	    ((combining-character-p c) #|nothing|#)
-	    ((double-wide-p c) (incf col 2))
+	    ((combining-char-p c) #|nothing|#)
+	    ((double-wide-char-p c) (incf col 2))
 	    (t (incf col))))		; normal case
 	 ((eql c #\tab)
 	  (setf col (1+ (logior 7 col)))
