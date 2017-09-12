@@ -19,8 +19,12 @@
   (:use :cl :dlib :dlib-misc :rl :inator :tree-viewer)
   (:export
    #:view-html
+   #:*user-agent*
    ))
 (in-package :view-html)
+
+(defun *user-agent* "Drakma"
+  "User-agent for requests, defaulting not to spilling too much information.")
 
 (defun html-node-contents (node)
   "Get the contents of an HTML-NODE, which is a list of PLUMP node children."
@@ -108,7 +112,7 @@
 	       (string
 		(or (let ((uri (puri:parse-uri file)))
 		      (and uri (member (puri:uri-scheme uri) '(:http :https))
-			   (drakma:http-request uri)))
+			   (drakma:http-request uri :user-agent *user-agent*)))
 		    (pathname (nos:quote-filename file))))
 	       ((or pathname stream)
 		file)
