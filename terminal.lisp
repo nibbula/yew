@@ -7,7 +7,7 @@
 
 (defpackage :terminal
   (:documentation "The end of the line.")
-  (:use :cl :dlib :opsys)
+  (:use :cl :dlib :opsys :trivial-gray-streams)
   (:export
    #:*standard-output-has-terminal-attributes*
    #:*terminal*
@@ -97,7 +97,7 @@ subclasses.")
   "Return the class for a registered terminal type."
   (cadr (assoc type *terminal-types*)))
 
-(defclass terminal-stream ()
+(defclass terminal-stream (fundamental-character-output-stream)
   ((output-stream
     :accessor terminal-output-stream
     :initarg :output-stream
@@ -106,7 +106,7 @@ subclasses.")
    "Terminal as purely a Lisp output stream. This can't do input or things that
 require terminal driver support."))
 
-(defclass terminal (terminal-stream)
+(defclass terminal (terminal-stream fundamental-character-input-stream)
   ((file-descriptor
     :accessor terminal-file-descriptor
     :initarg :file-descriptor
@@ -211,7 +211,7 @@ generic function with *TERMINAL* as it's first arg, for API prettyness."
 (deftt format (fmt &rest args)
   "Output a formatted string to the terminal.")
 
-(deftt write-string (str)
+(deftt write-string (str &key start end)
   "Output a string to the terminal. Flush output if it contains a newline,
 i.e. the terminal is \"line buffered\"")
 

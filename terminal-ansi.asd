@@ -13,6 +13,7 @@
     "Once there was a clunkly thing called a terminal.
 It was last stop on the bit train. Now there is an imaginary protocol to
 display your fixed width text in a box with colors. This may help."
-    :depends-on (:dlib :dlib-misc :terminal :cffi :opsys)
+    :depends-on (:cffi :dlib :dlib-misc :terminal :char-util :opsys
+		 :trivial-gray-streams)
     :components
     ((:file "terminal-ansi")))

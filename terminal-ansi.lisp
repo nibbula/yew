@@ -12,7 +12,8 @@
 
 (defpackage :terminal-ansi
   (:documentation "Standard terminal (ANSI).")
-  (:use :dlib :dlib-misc :cl :terminal :cffi :opsys)
+  (:use :cl :cffi :dlib :dlib-misc :terminal :char-util :opsys
+	:trivial-gray-streams)
   (:export
    #:terminal-ansi-stream
    #:terminal-ansi
@@ -38,7 +39,10 @@
   "Operating System Command. C'est vrai? o_O")
 
 (defclass terminal-ansi-stream (terminal-stream)
-  ()
+  ((fake-column
+   :initarg :fake-column :accessor terminal-ansi-stream-fake-column
+   :initform 0 :type fixnum
+   :documentation "Guess for the current column."))
   (:documentation
    "Terminal as purely a Lisp output stream. This can't do input or things that
 require terminal driver support."))
@@ -168,13 +172,44 @@ two values ROW and COLUMN."
   ;; (setf *tty* nil)
   (values))
 
-(defmethod terminal-format ((tty terminal-ansi-stream) fmt &rest args)
-  "Output a formatted string to the terminal."
+(defun update-column-for-char (tty char)
+  (with-slots (fake-column) tty
+    (cond
+      ((graphic-char-p char)
+       (cond
+	 ((combining-char-p char) 0)
+	 ((double-wide-char-p char) 2)
+	 (t 1)))			;normal case
+      (t
+       (case char
+	 (#\return
+	  (setf fake-column 0))
+	 (#\tab
+	  (incf fake-column (- (1+ (logior 7 fake-column)) fake-column)))
+	 (otherwise
+	  0 ;; some non-graphic control char?
+	  ))))))
+
+(defun update-column (tty thing)
+  (etypecase thing
+    (character (update-column-for-char tty thing))
+    (string
+     (map nil (_ (update-column-for-char tty _)) thing))))
+
+(defgeneric terminal-raw-format (tty fmt &rest args))
+(defmethod terminal-raw-format ((tty terminal-ansi-stream) fmt &rest args)
+  "Output a formatted string to the terminal, without doing any content
+processing."
   (let ((string (apply #'format nil fmt args))
 	(stream (terminal-output-stream tty)))
-    (write-string string stream)
+    (write-string string stream)))
+
+(defmethod terminal-format ((tty terminal-ansi-stream) fmt &rest args)
+  "Output a formatted string to the terminal."
+  (let ((string (apply #'terminal-raw-format tty fmt args)))
+    (update-column tty string)
     (when (position #\newline string)
-      (finish-output stream))))
+      (finish-output tty))))
 
 ;; resumed -> (terminal-start tty) #| (redraw) |# (terminal-finish-output tty)
 ;; resized -> (terminal-get-size tt)
@@ -221,12 +256,19 @@ Report parameters are returned as values. Report is assumed to be in the form:
 	(error "Terminal failed to report \"~a\"." fmt))
       str)))
 
-(defmethod terminal-write-string ((tty terminal-ansi-stream) str)
+(defmethod terminal-write-string ((tty terminal-ansi-stream) str
+				  &key start end)
   "Output a string to the terminal. Flush output if it contains a newline,
 i.e. the terminal is 'line buffered'."
   (let ((stream (terminal-output-stream tty)))
-    (write-string str stream)
-    (when (position #\newline str)
+    (apply #'write-string `(,str ,stream
+				 ,@(and start `(:start ,start))
+				 ,@(and end `(:start ,end))))
+    ;;(write-string str stream :start start :end end)
+    (update-column tty str)
+    (when (apply #'position `(#\newline ,str
+					,@(and start `(:start ,start))
+					,@(and end `(:start ,end))))
       (finish-output stream))))
 
 (defmethod terminal-write-char ((tty terminal-ansi-stream) char)
@@ -234,14 +276,17 @@ i.e. the terminal is 'line buffered'."
 i.e. the terminal is 'line buffered'."
   (let ((stream (terminal-output-stream tty)))
     (write-char char stream)
+    (update-column tty char)
     (when (eql char #\newline)
       (finish-output stream))))
 
 (defmethod terminal-move-to ((tty terminal-ansi-stream) row col)
-  (terminal-format tty "~c[~d;~dH" #\escape (1+ row) (1+ col)))
+  (terminal-raw-format tty "~c[~d;~dH" #\escape (1+ row) (1+ col))
+  (setf (terminal-ansi-stream-fake-column tty) col))
 
 (defmethod terminal-move-to-col ((tty terminal-ansi-stream) col)
-  (terminal-format tty "~c[~dG" #\escape (1+ col)))
+  (terminal-raw-format tty "~c[~dG" #\escape (1+ col))
+  (setf (terminal-ansi-stream-fake-column tty) col))
 
 (defmethod terminal-beginning-of-line ((tty terminal-ansi-stream))
   ;; (terminal-format tty "~c[G" #\escape))
@@ -249,24 +294,26 @@ i.e. the terminal is 'line buffered'."
   (terminal-write-char tty #\return))
 
 (defmethod terminal-del-char ((tty terminal-ansi-stream) n)
-  (terminal-format tty "~c[~aP" #\escape (if (> n 1) n "")))
+  (terminal-raw-format tty "~c[~aP" #\escape (if (> n 1) n "")))
 
 (defmethod terminal-ins-char ((tty terminal-ansi-stream) n)
-  (terminal-format tty "~c[~a@" #\escape (if (> n 1) n "")))
+  (terminal-raw-format tty "~c[~a@" #\escape (if (> n 1) n "")))
 
 (defun moverize (tty n pos neg)
   (cond
-    ((= n 1)  (terminal-format tty "~c[~c" #\escape pos))
-    ((> n 1)  (terminal-format tty "~c[~d~c" #\escape n pos))
+    ((= n 1)  (terminal-raw-format tty "~c[~c" #\escape pos))
+    ((> n 1)  (terminal-raw-format tty "~c[~d~c" #\escape n pos))
     ((= n 0)  #| do nothing |#)
-    ((= n -1) (terminal-format tty "~c[~c" #\escape neg))
-    ((< n -1) (terminal-format tty "~c[~d~c" #\escape n neg))))
+    ((= n -1) (terminal-raw-format tty "~c[~c" #\escape neg))
+    ((< n -1) (terminal-raw-format tty "~c[~d~c" #\escape n neg))))
 
 (defmethod terminal-backward ((tty terminal-ansi-stream) n)
-  (moverize tty n #\D #\C))
+  (moverize tty n #\D #\C)
+  (decf (terminal-ansi-stream-fake-column tty) n))
 
 (defmethod terminal-forward ((tty terminal-ansi-stream) n)
-  (moverize tty n #\C #\D))
+  (moverize tty n #\C #\D)
+  (incf (terminal-ansi-stream-fake-column tty) n))
 
 (defmethod terminal-up ((tty terminal-ansi-stream) n)
   (moverize tty n #\A #\B))
@@ -282,22 +329,23 @@ i.e. the terminal is 'line buffered'."
 	 :finally (finish-output stream))))
 
 (defmethod terminal-erase-to-eol ((tty terminal-ansi-stream))
-  (terminal-format tty "~c[K" #\escape))
+  (terminal-raw-format tty "~c[K" #\escape))
 
 (defmethod terminal-erase-line ((tty terminal-ansi-stream))
-  (terminal-format tty "~c[2K" #\escape))
+  (terminal-raw-format tty "~c[2K" #\escape))
 
 (defmethod terminal-erase-above ((tty terminal-ansi-stream))
-  (terminal-format tty "~c[1J" #\escape))
+  (terminal-raw-format tty "~c[1J" #\escape))
 
 (defmethod terminal-erase-below ((tty terminal-ansi-stream))
-  (terminal-format tty "~c[0J" #\escape))
+  (terminal-raw-format tty "~c[0J" #\escape))
 
 (defmethod terminal-clear ((tty terminal-ansi-stream))
-  (terminal-format tty "~c[2J" #\escape))
+  (terminal-raw-format tty "~c[2J" #\escape))
 
 (defmethod terminal-home ((tty terminal-ansi-stream))
-  (terminal-format tty "~c[H" #\escape))
+  (terminal-raw-format tty "~c[H" #\escape)
+  (setf (terminal-ansi-stream-fake-column tty) 0))
 
 (defmethod terminal-cursor-off ((tty terminal-ansi-stream))
   ;;(terminal-format tty "~c7" #\escape))
@@ -410,22 +458,23 @@ default to 16 bit color."
 	 (let ((red   (elt fg 0))
 	       (green (elt fg 1))
 	       (blue  (elt fg 2)))
-	   (terminal-format tty "~a38;2;~a;~a;~am" +csi+
-			    red green blue)))
+	   (terminal-raw-format tty "~a38;2;~a;~a;~am" +csi+
+				red green blue)))
        (when (rgb-color-p bg)
 	 (let ((red   (elt bg 0))
 	       (green (elt bg 1))
 	       (blue  (elt bg 2)))
-	   (terminal-format tty "~a48;2;~a;~a;~am" +csi+
-			    red green blue))))
+	   (terminal-raw-format tty "~a48;2;~a;~a;~am" +csi+
+				red green blue))))
       ((and fg bg)
-       (terminal-format tty "~c[~d;~dm" #\escape (+ 30 fg-pos) (+ 40 bg-pos)))
+       (terminal-raw-format tty "~c[~d;~dm" #\escape
+			    (+ 30 fg-pos) (+ 40 bg-pos)))
       (fg
-       (terminal-format tty "~c[~dm" #\escape (+ 30 fg-pos)))
+       (terminal-raw-format tty "~c[~dm" #\escape (+ 30 fg-pos)))
       (bg
-       (terminal-format tty "~c[~dm" #\escape (+ 40 bg-pos)))
+       (terminal-raw-format tty "~c[~dm" #\escape (+ 40 bg-pos)))
       (t
-       (terminal-format tty "~c[m" #\escape)))))
+       (terminal-raw-format tty "~c[m" #\escape)))))
 
 ;; 256 color? ^[[ 38;5;color <-fg 48;5;color <- bg
 ;; set color tab = ^[] Ps ; Pt BEL
@@ -436,8 +485,8 @@ default to 16 bit color."
 
 (defmethod terminal-set-scrolling-region ((tty terminal-ansi-stream) start end)
   (if (and (not start) (not end))
-      (terminal-format tty "~c[r" #\escape)
-      (terminal-format tty "~c[~d;~dr" #\escape start end)))
+      (terminal-raw-format tty "~c[r" #\escape)
+      (terminal-raw-format tty "~c[~d;~dr" #\escape start end)))
 
 (defmethod terminal-finish-output ((tty terminal-ansi-stream))
   (finish-output (terminal-output-stream tty)))
@@ -773,6 +822,159 @@ and add the characters the typeahead."
     ;;
     (setf props (nreverse props))
     (print-properties props)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; stream methods
+
+;; common methods
+
+(defmethod close ((stream terminal-ansi-stream) &key abort)
+  (declare (ignore abort))
+  (terminal-done stream))
+
+;; output stream methods
+
+(defmethod stream-clear-output ((stream terminal-ansi-stream))
+  (clear-output (terminal-output-stream stream)))
+
+(defmethod stream-finish-output ((stream terminal-ansi-stream))
+  (terminal-finish-output stream))
+
+(defmethod stream-force-output ((stream terminal-ansi-stream))
+  (terminal-finish-output stream)
+  (force-output (terminal-output-stream stream)))
+
+(defmethod stream-write-sequence ((stream terminal-ansi-stream) seq start end
+				  &key &allow-other-keys)
+  (etypecase seq
+    (string
+     (terminal-write-string stream seq :start start :end end))
+    (list
+     (with-slots (output-stream) stream
+       (loop :with i = 0 :and l = seq
+	  :while (and l (< i end))
+	  :do
+	    (when (>= i start)
+	      (write-char (car l) output-stream)
+	      (update-column stream (car l)))
+	    (setf l (cdr l))
+	    (incf i))))))
+
+;; character output stream methods
+
+;; Blarg! The hideous cursor position problem again.
+;; We could just do:
+;;   (terminal-move-to-col stream column)
+;; but it's WRONG, because it doesn't erase. So to be fast, it would seem we
+;; could either make a tt-erase-area, or have full screen contents knowledge.
+;; Even modern terminal emulators (such as libvte) don't do erase area
+;; currently, and full screen contents knowledge is a curses implementation.
+;; So, until that time, to be correct, we would have to be slow and just output
+;; spaces. Unfortunately, even outputting spaces requires knowing what column
+;; we're at, which we can't currently. Even doing the old counting newlines,
+;; backspaces, and tabs is unlikely to work, for the usual reasons.
+;; So fuck it. Let's not implement any of the column dependent methods.
+;; The sad thing is that we *should* be able to implement better column
+;; tracking than most streams. Although even with full screen contents we
+;; *still* won't know if something not under our control does output. Even with
+;; everything under our control, we *still* won't know exactly what the terminal
+;; does with the output, unless we ask it.
+;;
+;; (defmethod stream-advance-to-column ((stream terminal-ansi) column)
+;;   ;; @@@
+;;   t)
+
+;; This is a weird trick to presumably make it so we don't have to do our own
+;; buffering and we can also be relatively quick?
+(defvar *endless-spaces* '#1=(#\space . #1#)
+  "The vast emptyness of space.")
+
+(defmethod stream-line-column ((stream terminal-ansi-stream))
+  (terminal-ansi-stream-fake-column stream))
+
+(defmethod stream-start-line-p ((stream terminal-ansi-stream))
+  (zerop (stream-line-column stream)))
+
+(defmethod stream-advance-to-column ((stream terminal-ansi-stream) column)
+  (write-sequence *endless-spaces*
+		  (terminal-output-stream stream) :start 0
+		  :end (- column (stream-line-column stream)))
+  t)
+
+;;(defmethod stream-fresh-line ((stream terminal-ansi-stream))
+
+;; (defmethod stream-line-length ((stream terminal-ansi-stream))
+;;   )
+
+(defmethod stream-write-char ((stream terminal-ansi-stream) char
+			     #| &optional start end |#)
+  (terminal-write-char stream char))
+
+(defmethod stream-write-string ((stream terminal-ansi-stream) string
+			       &optional start end)
+  (terminal-write-string stream string :start start :end end))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; stream methods for terminal-ansi, which is also an input stream.
+
+(defmethod stream-clear-input ((stream terminal-ansi))
+  (with-slots (typeahead typeahead-pos output-stream) stream
+    (setf typeahead nil
+	  typeahead-pos nil)
+    (clear-input output-stream)))
+
+(defmethod stream-read-sequence ((stream terminal-ansi) seq start end
+				 &key &allow-other-keys
+				 #| &optional (start 0) end |#)
+  nil)
+
+;;(defgeneric stream-peek-char ((stream terminal-ansi))
+  ;; This is used to implement ‘peek-char’; this corresponds to
+  ;; ‘peek-type’ of ‘nil’.  It returns either a character or ‘:eof’.
+  ;; The default method calls ‘stream-read-char’ and
+  ;; ‘stream-unread-char’.
+;; )
+
+(defmethod stream-read-char-no-hang ((stream terminal-ansi))
+  ;; This is used to implement ‘read-char-no-hang’.  It returns either a
+  ;; character, or ‘nil’ if no input is currently available, or ‘:eof’
+  ;; if end-of-file is reached.  The default method provided by
+  ;; ‘fundamental-character-input-stream’ simply calls
+  ;; ‘stream-read-char’; this is sufficient for file streams, but
+  ;; interactive streams should define their own method.
+  (get-char stream :timeout 0))
+
+(defmethod stream-read-char ((stream terminal-ansi))
+  (terminal-get-char stream))
+
+(defmethod stream-read-line ((stream terminal-ansi))
+  ;; This is used by ‘read-line’.  A string is returned as the first
+  ;; value.  The second value is true if the string was terminated by
+  ;; end-of-file instead of the end of a line.  The default method uses
+  ;; repeated calls to ‘stream-read-char’.
+  (multiple-value-bind (result got-eof)
+      (read-until (terminal-file-descriptor stream) #\newline)
+    (values (or result "")
+	    got-eof)))
+
+(defmethod stream-listen ((stream terminal-ansi))
+  ;; This is used by ‘listen’.  It returns true or false.  The default
+  ;; method uses ‘stream-read-char-no-hang’ and ‘stream-unread-char’.
+  ;; Most streams should define their own method since it will usually
+  ;; be trivial and will always be more efficient than the default
+  ;; method.
+  (with-slots (typeahead output-stream) stream
+    (or typeahead
+	(terminal-listen-for stream 0))))
+
+(defmethod stream-unread-char ((stream terminal-ansi) character)
+  ;; Undo the last call to ‘stream-read-char’, as in ‘unread-char’.
+  ;; Return ‘nil’.  Every subclass of
+  ;; ‘fundamental-character-input-stream’ must define a method for this
+  ;; function.
+  (add-typeahead stream character))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (register-terminal-type :ansi 'terminal-ansi)
 
