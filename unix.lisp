@@ -5885,21 +5885,27 @@ descriptor FD."
   "Read until STOP-CHAR is read. Return a string of the results.
 TTY is a file descriptor."
   (let ((result (make-array '(0) :element-type 'base-char
-			    :fill-pointer 0 :adjustable t)))
+			    :fill-pointer 0 :adjustable t))
+	(status nil) (got-eof nil))
     (set-terminal-mode tty :timeout timeout)
     (with-output-to-string (str result)
       (with-foreign-object (c :char)
 	(with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
 			       (+SIGTSTP+  . tstp-handler))
-	  (read-raw-char tty c
-			 #'(lambda (x)
-			     (let ((cc (code-char x)))
-			       (and cc (char/= cc stop-char)
-				    (princ cc str))))))))
+	  (setf status
+		(read-raw-char tty c
+			       #'(lambda (x)
+				   (let ((cc (code-char x)))
+				     (and cc (char/= cc stop-char)
+					  (princ cc str))))))
+	  (when (zerop status)
+	    (setf got-eof t)))))
     (set-terminal-mode tty :timeout nil)
-    (if (zerop (length result))
-	nil
-	result)))
+    (values
+     (if (zerop (length result))
+	 nil
+	 result)
+     got-eof)))
 
 (defun write-terminal-char (terminal-handle char)
   "Write CHAR to the terminal designated by TERMINAL-HANDLE."
