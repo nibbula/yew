@@ -245,7 +245,7 @@ of THING. The sequence returned is usually a list unless THING is a sequence.")
 		       (typep first-obj 'standard-object))
 		   (uniform-classes object))
 	      (set-columns-names-from-class tt first-obj)
-	      (loop :for i :from 0 :to (length object)
+	      (loop :for i :from 0 :to (length first-obj)
 		 :do (table-add-column tt (format nil "Column~d" i))))))
     tt))
 
