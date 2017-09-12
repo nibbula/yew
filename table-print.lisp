@@ -219,10 +219,21 @@ make the table in the first place. For that you want the TABLE package.")
 					&key sizes &allow-other-keys)
   "Output all the column titles."
   (princ "| ")
-  (loop
+  (loop :with str :and fmt :and size :and just
      :for title :in titles :and i = 0 :then (1+ i) :do
-     (format t "~va | " (aref sizes i)
-	     (subseq title 0 (min (length title) (aref sizes i)))))
+     (if (listp (aref sizes i))
+	 (setf size (car (aref sizes i))
+	       just (cadr (aref sizes i)))
+	 (setf size (aref sizes i)
+	       just :left))
+     (if (listp title)
+	 (setf str (first title)
+	       fmt (if (eql just :right) "~v@a" "~va"))
+	 (setf str title
+	       fmt "~va"))
+     (format t (s+ fmt " | ")
+      	     size
+      	     (subseq str 0 (min (length str) size))))
   (terpri)
   (table-output-row-separator renderer table nil :sizes sizes))
 
