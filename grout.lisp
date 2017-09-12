@@ -9,7 +9,7 @@ few output features when they're available, but fall back to plain text
 when not. This is not for making “fancy” interactive applications. It's just
 for relatively simple output.")
   (:use :cl :dlib :dlib-misc :char-util :opsys :terminal :terminal-ansi
-	:table-print)
+	:table-print :terminal-table)
   (:export
    #:grout
    #:grout-stream
@@ -433,7 +433,8 @@ generic functions (i.e. %GROUT-*) directly."
 			       &key (print-titles t) long-titles
 				 (max-width (grout-width))
 				 &allow-other-keys)
-  (output-table table (make-instance 'terminal-table-renderer) (grout-stream g)
+  (output-table table (make-instance 'terminal-table-renderer)
+		(ansi-stream g)
 		:print-titles print-titles :long-titles long-titles
 		:max-width max-width))
 
@@ -555,7 +556,8 @@ generic functions (i.e. %GROUT-*) directly."
 			       &key (print-titles t) long-titles
 				 (max-width (grout-width))
 				 &allow-other-keys)
-  (output-table table (make-instance 'terminal-table-renderer) (grout-stream g)
+  (output-table table (make-instance 'terminal-table-renderer)
+		(ansi-term g)
 		:print-titles print-titles :long-titles long-titles
 		:max-width max-width))
 

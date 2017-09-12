@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description   "Generic Rectilinear Output Und Text"
     :depends-on (:dlib :dlib-misc :char-util :opsys :terminal :terminal-ansi
-		 :table-print)
+		 :table-print :terminal-table)
     :components
     ((:file "grout")))
