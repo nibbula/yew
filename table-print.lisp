@@ -377,11 +377,10 @@ column number."
   (let ((sep-len (length (text-table-renderer-separator renderer))))
     (omap
      #'(lambda (row)
-	 (let ((len (olength row)) (i 0) (new-size nil) col size)
+	 (let ((len (olength row)) (i 0) (new-size nil) (col 0) size)
 	   (omap
 	    #'(lambda (field)
-		(setf col 0
-		      size (aref sizes i)
+		(setf size (aref sizes i)
 		      new-size
 		      (if (and size (minusp size))
 			  size		; Don't mess with preset size
@@ -392,7 +391,6 @@ column number."
 				  (length (princ-to-string field)))))))
 		;;(incf col (abs new-size))
 		(when (and max-width (> (+ col (abs new-size)) max-width))
-		  ;;(format t "Chow ~s ~s~%" new-size col)
 		  (setf new-size (max 0
 				      (- new-size
 					 (- (+ col (abs new-size))
@@ -700,12 +698,15 @@ resized to fit in this, and the whole row is trimmed to this."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun print-table (table &key (long-titles t) (stream *standard-output*))
+(defun print-table (table &key (stream *standard-output*)
+			    (long-titles t) (print-titles t) max-width)
   "Print results nicely in horizontal table."
   ;; (let ((rows (collection-data table))
   ;; 	(column-names (mapcar #'column-name (table-columns table))))
   ;;   (nice-print-table rows column-names
   ;; 		      :long-titles long-titles :stream stream)))
   (output-table table (make-instance 'text-table-renderer) stream
-		:long-titles long-titles))
+		:long-titles long-titles
+		:print-titles print-titles
+		:max-width max-width))
 ;; EOF
