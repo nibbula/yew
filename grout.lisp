@@ -433,7 +433,7 @@ generic functions (i.e. %GROUT-*) directly."
 
 (defmethod %grout-print-table ((g ansi-stream) table
 			       &key (print-titles t) long-titles
-				 (max-width (grout-width))
+				 max-width
 				 (trailing-spaces t)
 				 &allow-other-keys)
   (output-table table (make-instance 'terminal-table-renderer)
