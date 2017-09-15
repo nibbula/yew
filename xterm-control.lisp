@@ -179,29 +179,37 @@ default to 16 bit color."
   (tt-format "~c[>2;3~c" #\escape (if state #\t #\T))
   (tt-finish-output))
 
-(defun set-title (title)
-  (tt-format "~c]0;~a~c" #\escape title (char-util:ctrl #\G))
-  (tt-finish-output))
+(defun set-title (title &optional (which :window))
+  (let ((param (case which
+		 (:window 2)
+		 (:icon 1)
+		 (:both 0))))
+    (tt-format "~a~a;~a~c" +osc+ param title (char-util:ctrl #\G))
+    (tt-finish-output)))
 
-(defun get-title ()
+(defun get-title (&optional (which :window))
   (set-utf8-title-mode t)
-  (query-string "21t"))
+  (let ((param (case which
+		 (:icon "20")
+		 (:window "21")
+		 (otherwise "21"))))
+    (query-string (s+ param "t"))))
 
-(defun edit-title (i)
-  (declare (ignore i))
-  (let ((title (get-title)) result)
+(defun edit-title (&optional (which :window))
+  (let ((title (get-title which)) result)
     (tt-home)
     (tt-finish-output)
     (setf result
-    	  (rl:rl :prompt "Title: " :string (or title "")
+    	  (rl:rl :prompt (format nil "~:(~a~) Title: " which)
+		 :string (or title "")
 		 :terminal-class 'terminal-ansi:terminal-ansi
 		 :accept-does-newline nil))
     (when result
-      (set-title result))
+      (set-title result which))
     (terminal-start *terminal*)
     (tt-beginning-of-line)
     (tt-erase-to-eol)
-    ))
+    (or result title)))
 
 (defkeymap *xterminator-keymap*
   `((#\escape		  . *xterminator-escape-keymap*)
@@ -210,8 +218,8 @@ default to 16 bit color."
     (#\i		  . increment-increment)
     (#\I		  . decrement-increment)
 
-    (#\return		  . edit-title)
-    (#\newline		  . edit-title)
+    (#\return		  . edit-window-title)
+    (#\newline		  . edit-icon-title)
 
     (#\f		  . toggle-fullscreen)
     (#\F		  . fullscreen-on)
@@ -391,6 +399,12 @@ default to 16 bit color."
    (foreground
     :initarg :foreground :accessor xterminator-foreground  
     :documentation "Foreground color.")
+   (title
+    :initarg :title :accessor xterminator-title
+    :documentation "Window title.")
+   (icon-title
+    :initarg :icon-title :accessor xterminator-icon-title  
+    :documentation "Icon title.")
    (increment
     :initarg :increment :accessor xterminator-increment :initform 20
     :type integer
@@ -400,7 +414,7 @@ default to 16 bit color."
 (defun get-xterm-paramaters (o)
   (with-slots (x y pixel-width pixel-height char-width char-height
 	       screen-char-width screen-char-height fullscreen
-	       background foreground) o
+	       background foreground title icon-title) o
     (let (result)
       ;; location
       (if (setf result (query-parameters "13t"))
@@ -439,7 +453,11 @@ default to 16 bit color."
 			(multiple-value-list
 			(parse-color
 			 (query-string (s+ "11;?" +st+)
-				       :lead-in +osc+  :offset 5))))))))
+				       :lead-in +osc+  :offset 5)))))
+      ;; title
+      (setf title (get-title))
+      ;; icon
+      (setf icon-title (get-title :icon)))))
 
 (defmethod initialize-instance
     :after ((o xterminator) &rest initargs &key &allow-other-keys)
@@ -609,24 +627,31 @@ default to 16 bit color."
   "Subtract one from the increment."
   (decf (xterminator-increment i)))
 
+(defun edit-window-title (i)
+  (setf (xterminator-title i) (edit-title :window)))
+
+(defun edit-icon-title (i)
+  (setf (xterminator-icon-title i) (edit-title :icon)))
+
 (defmethod update-display ((i xterminator))
   (with-slots (x y char-width char-height pixel-width pixel-height fullscreen
-	       foreground background increment)
+	       foreground background title icon-title increment)
       *xterminator*
     (tt-clear)
     (tt-move-to 1 0)
     (tt-write-string
      (with-output-to-string (str)
        (print-values*
-	(x y char-width char-height pixel-width pixel-height fullscreen
-	   foreground background increment)
+	(title icon-title x y char-width char-height pixel-width pixel-height
+	 fullscreen foreground background increment)
 	str)))
     (tt-scroll-down 1)
     (tt-format "hjkl     - Move window (HJKL by pixel)~%~
                 <>,.     - Resize window~%~
                 f        - Toggle fullscreen~%~
                 [ ]      - Raise / Lower~%~
-                [Enter]  - Edit title~%~
+                [Ctrl-M] - Edit window title~%~
+                [Ctrl-J] - Edit icon title~%~
                 123 !@#  - Adjust foreground color down/up (red blue green)~%~
                 890 *()  - Adjust background color down/up (red blue green)~%~
 		iI       - Adjust increment down/up.~%~
@@ -661,11 +686,13 @@ default to 16 bit color."
     :help "Set the window's fullscreen state.")
    (title string :short-arg #\t :help "Set the window's title.")
    (get-title boolean :short-arg #\g :help "Get the window's title.")
+   (icon-title string :short-arg #\T :help "Set the icon's title.")
+   (get-icon-title boolean :short-arg #\G :help "Get the icon's title.")
    )
   "Control an XTerm comaptible terminal. If no arguments are given, go into an
 interactive control mode."
   (if (or iconify x y width height raise lower toggle-fullscreen fullscreen
-	  title get-title)
+	  title get-title icon-title get-icon-title)
       (let (xt)
 	(when (and raise lower)
 	  (error "I can't both raise and lower the window."))
@@ -678,6 +705,7 @@ interactive control mode."
 	  (resize-characters (or width (xterminator-char-width xt))
 			     (or height (xterminator-char-height xt))))
 	(when title (set-title title))
+	(when icon-title (set-title title :icon))
 	(when toggle-fullscreen
 	  (setf xt (or xt (make-instance 'xterminator)))
 	  (set-fullscreen (not (xterminator-fullscreen xt))))
@@ -685,7 +713,8 @@ interactive control mode."
 	(when raise (raise))
 	(when lower (lower))
 	(when iconify (iconify t))
-	(when get-title (format t "~a~%" (get-title))))
+	(when get-title (format t "~a~%" (get-title)))
+	(when get-icon-title (format t "~a~%" (get-title :icon))))
       (control-xterm)))
 
 ;; EOF
