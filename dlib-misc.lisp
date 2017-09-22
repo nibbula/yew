@@ -1095,7 +1095,7 @@ text into lisp and have it be stored as lines of words."
 ;; I don't think this should ever a slurp a URL, because security?.
 ;; Anyway drakma does it better.
 
-(defun slurp (file-or-stream)
+(defun slurp (file-or-stream &key (external-format :default))
   "Return a string (well actually an array of stream-element-type, which
 defaults to character) with the contents of FILE-OR-STREAM."
   (let (stream (close-me nil) buffer pos len result)
@@ -1107,7 +1107,7 @@ defaults to character) with the contents of FILE-OR-STREAM."
 		    file-or-stream)
 		   (string
 		    (setf close-me t)
-		    (open file-or-stream))))
+		    (open file-or-stream :external-format external-format))))
 	   (if (and (typep stream 'file-stream)
 		    (setf len (file-length stream)))
 	       (progn
