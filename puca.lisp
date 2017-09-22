@@ -264,7 +264,12 @@
 ;; GIT
 
 (defclass git (backend)
-  ()
+  ((saved-branch
+    :initarg :saved-branch :accessor git-saved-branch :initform nil
+    :documentation "Saved branch description.")
+   (saved-remotes
+    :initarg :saved-remotes :accessor git-saved-remotes :initform nil
+    :documentation "Saved list of remotes."))
   (:default-initargs
    :name	      "git"
    :list-command      '("git" "status" "--porcelain")
@@ -283,11 +288,19 @@
   (and (check-dir-and-command ".git" "git")
        (equal "true" (shell-line "git" "rev-parse" "--is-inside-work-tree"))))
 
+(defun get-branch (git)
+  (or (git-saved-branch git)
+      (subseq (first (lish:!_ "git status -s -b --porcelain")) 3)))
+
+(defun get-remotes (git)
+  (or (git-saved-remotes git)
+      (lish:!_ "git remote -v")))
+
 (defmethod banner ((backend git))
   "Print something useful at the top of the screen."
   (let ((line (getcury *stdscr*))
 	(col 5)
-	(branch (subseq (first (lish:!_ "git status -s -b --porcelain")) 3)))
+	(branch (get-branch backend)))
     (labels ((do-line (fmt &rest args)
 	       (let ((str (apply #'format nil fmt args)))
 		 (mvaddstr (incf line) col
@@ -297,41 +310,45 @@
       (do-line "Branch:  ~a" branch)
       (do-line "Remotes: ")
       (loop :with s
-	 :for r :in (lish:!_ "git remote -v")
+	 :for r :in (get-remotes backend)
 	 :do
 	 (setf s (split "\\s" r))
 	 (do-line "~a ~a ~a" (elt s 0) (elt s 2) (elt s 1)))
       (move (incf line) col))))
 
 (defmethod get-status-list ((backend git))
-  (let* ((cmd (backend-list-command (puca-backend *puca*)))
-	 (cmd-name (car cmd))
-	 (cmd-args (cdr cmd))
-	 (i 0)
-	 line result)
-    (setf result
-	  (with-process-output (stream cmd-name cmd-args)
-	    (loop :while (setf line (read-line stream nil nil))
-	       :do
-	       (incf i)
-	       (message *puca* "Listing...~d" i)
-	       (refresh)
-	       :collect line)))
-    ;;(debug-msg "~a from git status" i)
-    (when (puca-show-all-tracked *puca*)
-      (setf result
-	    (append result
-		    (with-process-output (stream "git" '("ls-files"))
-		      (loop :while (setf line (read-line stream nil nil))
-			 :do
-			 (incf i)
-			 (message *puca* "Listing...~d" i)
-			 (refresh)
-			 :collect (s+ " _ " line)))))
-      ;;(move 0 0) (erase) (addstr (format nil "~w" result))
-      ;;(debug-msg "~a from git ls-files" i)
-      )
-    result))
+  (with-slots (backend) *puca*
+    (let* ((cmd (backend-list-command backend))
+	   (cmd-name (car cmd))
+	   (cmd-args (cdr cmd))
+	   (i 0)
+	   line result)
+      ;; Invalidate the cache of banner info.
+      (setf (git-saved-branch backend) nil
+	    (git-saved-remotes backend) nil
+	    result
+	    (with-process-output (stream cmd-name cmd-args)
+	      (loop :while (setf line (read-line stream nil nil))
+		 :do
+		 (incf i)
+		 (message *puca* "Listing...~d" i)
+		 (refresh)
+		 :collect line)))
+      ;;(debug-msg "~a from git status" i)
+      (when (puca-show-all-tracked *puca*)
+	(setf result
+	      (append result
+		      (with-process-output (stream "git" '("ls-files"))
+			(loop :while (setf line (read-line stream nil nil))
+			   :do
+			   (incf i)
+			   (message *puca* "Listing...~d" i)
+			   (refresh)
+			   :collect (s+ " _ " line)))))
+	;;(move 0 0) (erase) (addstr (format nil "~w" result))
+	;;(debug-msg "~a from git ls-files" i)
+	)
+      result)))
 
 ;; history mode
 
