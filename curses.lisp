@@ -158,8 +158,17 @@ loading this library.")
    #:bkgdset #:wbkgdset
    #:color-pair
    #:border #:wborder #:box
+   #:hline #:whline #:vline #:wvline #:mvhline #:mvwhline #:mvvline #:mvwvline
    #:napms
    #:is-term-resized #:resize_term #:resizeterm
+   ;; utilities?
+   #:unctrl #:wunctrl
+   #:keyname #:key_name
+   #:filter #:nofilter
+   #:use-env #:use-tioctl
+   #:putwin #:getwin
+   #:delay-output
+   #:flushinp
    ;; terminfo
    #:tigetstr #:tigetflag #:tigetnum
    )
@@ -1060,22 +1069,119 @@ of these, in which case it returns ERR."
 
 ;; Boxes and lines
 (defcfun border :int
-  (ls chtype) (rs chtype) (ts chtype) (bs chtype)
-  (tl chtype) (tr chtype) (lt chtype) (br chtype))
+  "Draws a box around the current window, using the given characters for parts
+of the box. If any of the characters are zero, use the appropriate ACS
+character."
+  (left-side chtype) (right-size chtype) (top-side chtype) (bottom-side chtype)
+  (top-left chtype) (top-right chtype) (bottom-left chtype)
+  (bottom-right chtype))
 (defcfun wborder :int
+  "Draws a box around the window WIN, using the given characters for parts of
+the box. If any of the characters are zero, use the appropriate ACS character."
   (w window-ptr)
-  (ls chtype) (rs chtype) (ts chtype) (bs chtype)
-  (tl chtype) (tr chtype) (lt chtype) (br chtype))
+  (left-side chtype) (right-size chtype) (top-side chtype) (bottom-side chtype)
+  (top-left chtype) (top-right chtype) (bottom-left chtype)
+  (bottom-right chtype))
 (defcfun box :int
+  "Draws a box around the window WIN, with VERCH as the vertical line character,
+and HORCH as the horizontal line character, and the other normal ACS characters
+for the other parts of the box. If VERCH or HORCH are zero, use the appropriate
+ACS character."
   (win window-ptr :in) (verch chtype) (horch chtype))
+(defcfun hline :int
+  "Draw a horizontal line with character CH of length N. Doesn't move the
+cursor."
+  (ch chtype) (n :int))
+(defcfun whline :int
+  "Draw a horizontal line with character CH of length N, in window WIN.
+Doesn't move the cursor."
+  (win window-ptr) (ch chtype) (n :int))
+(defcfun vline :int 
+  "Draw a vertical line with character CH of length N. Doesn't move the cursor."
+  (ch chtype) (n :int))
+(defcfun wvline :int
+  "Draw a vertical line with character CH of length N, in window WIN. Doesn't
+move the cursor."
+  (win window-ptr) (ch chtype) (n :int))
+(defcfun mvhline :int
+  "Draw a horizontal line with character CH of length N at position [Y X]."
+  (y :int) (x :int) (ch chtype) (n :int))
+(defcfun mvwhline :int
+  "Draw a horizontal line with character CH of length N at position [Y X] in
+window WIN."
+  (win window-ptr) (y :int) (x :int) (ch chtype) (n :int))
+(defcfun mvvline :int
+  "Draw a vertical line with character CH of length N at position [Y X]."
+  (y :int) (x :int) (ch chtype) (n :int))
+(defcfun mvwvline :int
+  "Draw a vertical line with character CH of length N at position [Y X] in
+window WIN."
+  (win window-ptr) (y :int) (x :int) (ch chtype) (n :int))
 
 ;; misc
 (defcfun napms :int "Sleep for MS milliseconds." (ms :int))
 
 ;; ncurses extension
-(defcfun is-term-resized bool (lines :int) (columns :int))
-(defcfun resize_term :int (lines :int) (columns :int))
-(defcfun resizeterm :int (lines :int) (columns :int))
+(defcfun is-term-resized bool
+  "Return true if resize_term would modify the window structures."
+  (lines :int) (columns :int))
+(defcfun resize_term :int
+  "Resize the current and standard windows to LINES and COLUMNS. This version
+differs from resizeterm in that it doesn't change *lines* and *cols* or do
+things for the resize signal SIGWINCH handler."
+  (lines :int) (columns :int))
+(defcfun resizeterm :int
+  "Resize the current and standard windows to LINES and COLUMNS."
+  (lines :int) (columns :int))
+
+;; utilities
+(defcfun unctrl :string
+  "Return a printable representation of C, ignoring attributes."
+  (c chtype))
+(defcfun wunctrl :string
+  "Return a printable representation of the wide char C, ignoring attributes."
+  (c cchar-t-ptr))
+(defcfun keyname :string
+  "Returns a string corresponding to the key C. Control characters are shown
+as ^X. Characters above 128 are shown as M-X if (meta t) has been called. If
+there is no key name, it returns NIL."
+  (c :int))
+(defcfun key_name :string
+  "Like keyname but doesn't print meta chars or something."
+  (c wchar-t))
+(defcfun filter :void
+  "I think this turns off all cursor motion and pretends the screen is one line
+high. This is probably mostly useful if you want curses output to be
+interspersed with normal program output, like if used as a filter in a command
+line. Needs to be called before initscr or newterm.")
+(defcfun nofilter :void
+  "Reverse the effect of filter. One probably needs to call newterm and/or
+initscr again after this.")
+(defcfun use-env :void
+  "If F is false, don't look at the LINES and COLUMNS environment variables.
+Needs to be called before initscr or newterm. Interacts with use-tioctl."
+  (f bool))
+(defcfun use-tioctl :void
+  "If F is true, use operating system calls to determine the terminal size.
+Needs to be called before initscr or newterm. Interacts with use-env."
+  (f bool))
+(defcfun putwin :int
+  "Writes out window data from WIN to the FILE, which must be a C stdio FILE *
+open for writing."
+  (win window-ptr) (file file-ptr))
+(defcfun getwin window-ptr
+  "Returns a new window initialized with the data from FILE, which was written
+by a previous putwin. FILE should be a C stdio FILE * open for reading. If the
+terminal or color setup is different, it might look different."
+  (file file-ptr))
+(defcfun delay-output :int
+  "Pause output by MS milliseconds. You probably shouldn't use this since it
+might use padding characters, which can eat CPU and I/O bandwidth. If there is
+no padding character, it uses napms which is probably better."
+  (ms :int))
+(defcfun flushinp :int
+  "Thow away any typeahead that has been typed by the user but has not yet been
+read by the program.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; terminfo
