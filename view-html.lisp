@@ -23,7 +23,7 @@
    ))
 (in-package :view-html)
 
-(defun *user-agent* "Drakma"
+(defvar *user-agent* "Drakma"
   "User-agent for requests, defaulting not to spilling too much information.")
 
 (defun html-node-contents (node)
