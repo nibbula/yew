@@ -4,7 +4,7 @@
 
 (defpackage :terminal-curses
   (:documentation "Curses terminal")
-  (:use :cl :terminal :curses)
+  (:use :cl :terminal :curses :trivial-gray-streams)
   (:export
    #:terminal-curses-stream
    #:terminal-curses
@@ -176,9 +176,18 @@ require terminal driver support."))
   (let ((string (apply #'format nil fmt args)))
     (addstr string)))
 
-(defmethod terminal-write-string ((tty terminal-curses) str)
+(defmethod terminal-write-string ((tty terminal-curses) str &key start end)
   "Output a string to the terminal."
-  (addstr str))
+  (let ((out-str (if (or start end)
+		     ;; So we don't end up making a copy.
+		     (let ((real-start (or start 0))
+			   (real-end (or end (length str))))
+		       (make-array (- real-end real-start)
+				   :element-type (array-element-type str)
+				   :displaced-to str
+				   :displaced-index-offset real-start))
+		     str)))
+    (addstr out-str)))
 
 (defmethod terminal-write-char ((tty terminal-curses) char)
   "Output a character to the terminal."
@@ -374,6 +383,151 @@ require terminal driver support."))
   "Restore the cursor position, from the last saved postion."
   (let ((bunkle (pop *saved-positions*)))
     (move (car bunkle) (cdr bunkle))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; stream methods
+
+(defmethod close ((stream terminal-curses) &key abort)
+  (declare (ignore abort))
+  (terminal-done stream))
+
+;; output stream methods
+
+(defmethod stream-clear-output ((stream terminal-curses))
+  ;;(clear-output (terminal-output-stream stream))
+  )
+
+(defmethod stream-finish-output ((stream terminal-curses))
+  (terminal-finish-output stream))
+
+(defmethod stream-force-output ((stream terminal-curses))
+  (terminal-finish-output stream)
+  ;;(force-output (terminal-output-stream stream))
+  )
+
+(defmethod stream-write-sequence ((stream terminal-curses) seq start end
+				  &key &allow-other-keys)
+  (etypecase seq
+    (string
+     (terminal-write-string stream seq :start start :end end))
+    (list
+     (with-slots (output-stream) stream
+       (loop :with i = 0 :and l = seq
+	  :while (and l (< i end))
+	  :do
+	    (when (>= i start)
+	      (addch (car l)))
+	    (setf l (cdr l))
+	    (incf i))))))
+
+;; character output stream methods
+
+;; This is a weird trick to presumably make it so we don't have to do our own
+;; buffering and we can also be relatively quick?
+(defvar *endless-spaces* '#1=(#\space . #1#)
+  "The vast emptyness of space.")
+
+(defmethod stream-line-column ((stream terminal-curses))
+  (getcurx (screen stream)))
+
+(defmethod stream-start-line-p ((stream terminal-curses))
+  (zerop (stream-line-column stream)))
+
+(defmethod stream-advance-to-column ((stream terminal-curses) column)
+  (write-sequence *endless-spaces*
+		  (terminal-output-stream stream) :start 0
+		  :end (- column (stream-line-column stream)))
+  t)
+
+;;(defmethod stream-fresh-line ((stream terminal-curses-stream))
+
+(defmethod stream-line-length ((stream terminal-curses-stream))
+  *cols*)
+
+(defmethod stream-write-char ((stream terminal-curses) char
+			     #| &optional start end |#)
+  (terminal-write-char stream char))
+
+(defmethod stream-write-string ((stream terminal-curses) string
+			       &optional start end)
+  (terminal-write-string stream string :start start :end end))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; stream methods for terminal-curses, which is also an input stream.
+
+(defmethod stream-clear-input ((stream terminal-curses))
+  (flushinp))
+
+(defmethod stream-read-sequence ((stream terminal-curses) seq start end
+				 &key &allow-other-keys
+				 #| &optional (start 0) end |#)
+  nil)
+
+;;(defgeneric stream-peek-char ((stream terminal-curses))
+  ;; This is used to implement ‘peek-char’; this corresponds to
+  ;; ‘peek-type’ of ‘nil’.  It returns either a character or ‘:eof’.
+  ;; The default method calls ‘stream-read-char’ and
+  ;; ‘stream-unread-char’.
+;; )
+
+(defmethod stream-read-char-no-hang ((stream terminal-curses))
+  ;; This is used to implement ‘read-char-no-hang’.  It returns either a
+  ;; character, or ‘nil’ if no input is currently available, or ‘:eof’
+  ;; if end-of-file is reached.  The default method provided by
+  ;; ‘fundamental-character-input-stream’ simply calls
+  ;; ‘stream-read-char’; this is sufficient for file streams, but
+  ;; interactive streams should define their own method.
+  (let (result c)
+    (unwind-protect
+	 (progn
+	   (curses::timeout 0)
+	   (setf c (getch))
+	   ;; This pretty bogusly changes curses function keys into characters.
+	   (setf result (and (not (equal c +ERR+)) (code-char c))))
+      ;; This assumes timeout was already -1. Since there's no prescribed way to
+      ;; get it, the caller has to reset it after this if they want it to be
+      ;; different.
+      (curses::timeout -1))
+    result))
+
+(defmethod stream-read-char ((stream terminal-curses))
+  (terminal-get-char stream))
+
+(defmethod stream-read-line ((stream terminal-curses))
+  ;; This is used by ‘read-line’.  A string is returned as the first
+  ;; value.  The second value is true if the string was terminated by
+  ;; end-of-file instead of the end of a line.  The default method uses
+  ;; repeated calls to ‘stream-read-char’.
+  (let (result got-eof c cc)
+    (setf result
+	  (with-output-to-string (str)
+	    (loop :while (and (/= +ERR+ (setf c (getch)))
+			      (char/= (setf cc (code-char c)) #\newline))
+	       :do
+	       (princ cc str))
+	    (when (= c +ERR+)
+	      (setf got-eof t))))
+    (values result got-eof)))
+
+(defmethod stream-listen ((stream terminal-curses))
+  ;; This is used by ‘listen’.  It returns true or false.  The default
+  ;; method uses ‘stream-read-char-no-hang’ and ‘stream-unread-char’.
+  ;; Most streams should define their own method since it will usually
+  ;; be trivial and will always be more efficient than the default
+  ;; method.
+  (with-slots (typeahead output-stream) stream
+    (or typeahead
+	(terminal-listen-for stream 0))))
+
+(defmethod stream-unread-char ((stream terminal-curses) character)
+  ;; Undo the last call to ‘stream-read-char’, as in ‘unread-char’.
+  ;; Return ‘nil’.  Every subclass of
+  ;; ‘fundamental-character-input-stream’ must define a method for this
+  ;; function.
+  (ungetch (char-code character))
+  nil)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (register-terminal-type :curses 'terminal-curses)
 
