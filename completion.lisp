@@ -553,13 +553,13 @@ arguments for that function, otherwise return NIL."
 
 (defun function-keyword-completion (sym context pos word-start all)
   (dbug "function-keyword-completion ~s ~s~%" sym (subseq context pos))
-  (let* ((args (dlib:lambda-list sym))
+  (let* ((args (and (fboundp sym) (dlib:lambda-list sym)))
 	 (key-pos (position '&key args))
 	 (word (subseq context word-start))
 	 (case-in (character-case word))
 	 (stringser (if (eql case-in :lower) #'string-downcase #'string))
 	 keywords)
-    (when (not key-pos)
+    (when (not (and key-pos args))
       (return-from function-keyword-completion
 	(if all (symbol-completion-list word) (symbol-completion word))))
     (setf keywords
@@ -626,6 +626,7 @@ is in, and the start and end position of the expression in STRING."
 		 :no-new t)
       (symbolify str1 :package *package* :no-new t)))
 
+;; This is, of course, wrong. We need a real reader and walker.
 (defun symbol-whose-args-we-are-in (context pos)
   "Return the symbol in CONTEXT whose argument list POS is in. Second value is
 the index in CONTEXT of the start of the symbol."
