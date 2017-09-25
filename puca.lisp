@@ -622,7 +622,7 @@ If CONFIRM is true, ask the user for confirmation first."
 
 (defun delete-files ()
   (when (puca-yes-or-no-p
-	 "Are you sure you want to delete these files from disk?~%~{~a ~}"
+	 "Are you sure you want to delete these files from storage?~%~{~a ~}"
 	 (selected-files))
     (loop :for file :in (selected-files) :do
        (delete-file file))
