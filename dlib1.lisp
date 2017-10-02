@@ -1586,8 +1586,9 @@ works, return NIL."
   "Evaluate BODY with VAR bound to FILE-OR-STREAM if it's already a stream, or
 an open a stream named by FILE-OR-STREAM. ARGS are standard arguments to OPEN."
   (let ((thunk (gensym "thunk"))
-	(abort-flag (gensym "abort-flag")))
-    `(let ((,var nil) (,abort-flag t))
+	(abort-flag (gensym "abort-flag"))
+	(result (gensym "result")))
+    `(let ((,var nil) (,abort-flag t) ,result)
        (flet ((,thunk () ,@body))
 	 (if (streamp ,file-or-stream)
 	     (progn
@@ -1595,12 +1596,14 @@ an open a stream named by FILE-OR-STREAM. ARGS are standard arguments to OPEN."
 	       (,thunk))
 	     ;; We can't use with-open-file here because it creates it's own
 	     ;; lexical stream variable, and we want to use ours.
-	     (unwind-protect
-		(progn
-		  (setf ,var (open ,file-or-stream ,@args))
-		  (,thunk)
-		  (setf ,abort-flag nil))
-	       (when ,var (close ,var :abort ,abort-flag))))))))
+	     (progn
+	       (unwind-protect
+		  (progn
+		    (setf ,var (open ,file-or-stream ,@args))
+		    (setf ,result (,thunk)
+			  ,abort-flag nil))
+		 (when ,var (close ,var :abort ,abort-flag)))
+	       ,result))))))
 
 (defmacro with-lines ((line-var file-or-stream) &body body)
   "Evaluate BODY with LINE-VAR set to successive lines of FILE-OR-STREAM.
