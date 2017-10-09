@@ -445,30 +445,45 @@ resized to fit in this, and the whole row is trimmed to this."
 			    'vector)
 		    (make-array `(,(olength (element table 0)))
 				:initial-element nil)))
+	 all-zero
 	 (stream destination))
 
-    ;;(format t "sizes = ~s~%" sizes)
+    ;;(format t "sizes = ~s~%" sizes) (finish-output)
 
     ;; Adjust column sizes by field data
     (adjust-sizes-for-data table renderer sizes max-width)
 
-    ;; Flip pre-set sizes.
-    ;;(format t "sizes = ~s~%" sizes)
-    (map-into sizes #'abs sizes)
+    ;; Flip pre-set sizes, and force unset sizes to zero.
+    ;; (format t "sizes = ~s~%" sizes) (finish-output)
+    (map-into sizes (_ (if (and _ (numberp _)) (abs _) 0)) sizes)
 
-    ;; Get justification
-    (loop
+    ;; As a special case, if all sizes are zero, set them all to the column name
+    ;; sizes, as if we forced long-titles on.
+    (when (every #'zerop sizes)
+      (setf all-zero t))
+
+    ;; Set up the column justification.
+    ;; This makes the sizes elements be: (width :justification).
+    (loop :with name :and justification
        :for i :from 0 :below (length sizes)
        :for col = column-names :then (cdr col)
        :do
-       (setf (aref sizes i)
-	     (list (aref sizes i)
-		   (if (and (listp (car col))
-			    (member (second (car col))
-				    '(:right :wrap :overflow)))
+       (if (listp (car col))
+	   (progn
+	     (setf justification 
+		   (if (member (second (car col))
+			       '(:right :wrap :overflow))
 		       (second (car col))
 		       ;; default to left justification
-		       :left))))
+		       :left)
+		   name (first (car col))))
+	   (setf justification :left
+		 name (car col)))
+       (setf (aref sizes i)
+	     (list (if all-zero
+		       (length name)
+		       (aref sizes i))
+		   justification)))
 
     (table-output-header renderer table)
 
@@ -701,10 +716,6 @@ resized to fit in this, and the whole row is trimmed to this."
 (defun print-table (table &key (stream *standard-output*)
 			    (long-titles t) (print-titles t) max-width)
   "Print results nicely in horizontal table."
-  ;; (let ((rows (collection-data table))
-  ;; 	(column-names (mapcar #'column-name (table-columns table))))
-  ;;   (nice-print-table rows column-names
-  ;; 		      :long-titles long-titles :stream stream)))
   (output-table table (make-instance 'text-table-renderer) stream
 		:long-titles long-titles
 		:print-titles print-titles
