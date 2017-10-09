@@ -72,7 +72,8 @@
    ;; I/O
    #:slurp
    #:confirm
-  )
+   #:get-file-local-variables
+   )
 )
 (in-package :dlib-misc)
 
@@ -474,9 +475,11 @@ which defaults to zero."
              (write-char c str)
              (incf col))))))
 
-;; This is very consing, but remarkably succinct.
-;; It might be nice if it got the COLS from the implementation's idea of it.
-(defun justify-text (s &key (cols 80) (stream *standard-output*)
+;; This slow and very consing, but remarkably succinct. It has the benefit of
+;; knowing the stream's current column by way of the implementation's stream
+;; machinery. It might be nice if it got the COLS from the place.
+
+(defun old-justify-text (s &key (cols 80) (stream *standard-output*)
 			 (prefix "") (separator #\space)
 			 omit-first-prefix)
   "Print the string S right justified by words, into COLS characters wide,
@@ -488,6 +491,98 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 			 "~a~{~<~%" prefix "~1," cols ":;~a~> ~}")
 	  (if omit-first-prefix "" prefix)
 	  (split-sequence separator s :omit-empty t)))
+
+;; This is much faster.
+
+;; @@@ Problems:
+;; It doesn't know what column it's starting at (unlike the old version),
+;; and therefore wrongly assumes zero.
+;; Assumes fixed width characters, without all the unicode nonsense.
+
+(defun %justify-text (text &key (cols 80) (stream *standard-output*)
+			     (prefix "") (separator #\space) omit-first-prefix)
+  (declare (optimize (speed 3) (safety 0) (debug 3) (space 0)
+		     (compilation-speed 0))
+	   (type simple-string text prefix)
+	   (type fixnum cols))
+  ;;(check-type text simple-string)
+  (let ((len             (length text))
+	(i               0)
+	(last-word-start 0)
+	(line-start	 0)
+	(column          0))
+    (declare (type fixnum len i last-word-start column))
+    (flet ((write-word (final)
+	     ;;(dbugf :justify-text "col ~d " column)
+	     (if (>= column (1- cols))
+		 (progn
+		   ;;(dbugf :justify-text "newline")
+		   (write-char #\newline stream)
+		   (if prefix
+		       (progn
+			 (write-string prefix stream)
+			 (setf column (length prefix)))
+		       (setf column 0))
+		   (write-string text stream :start last-word-start :end i)
+		   (write-char separator stream)
+		   (incf column (- i last-word-start)))
+		 (progn
+		   ;;(dbugf :justify-text "space")
+		   (write-string text stream :start last-word-start :end i)
+		   (when (not final)
+		     (write-char separator stream))
+		   (incf column)))
+	     ;;(dbugf :justify-text "~%")
+	     ))
+      (when (and prefix (not omit-first-prefix))
+	(write-string prefix stream)
+	(setf column (length prefix)))
+      (loop
+	 :while (< i len)
+	 :do
+	 (cond
+	   ((char= (aref text i) #\Newline)
+	    ;; (when (not (zerop last-word-start))
+	    ;;   (write-char #\space stream))
+	    (write-string text stream :start last-word-start :end i)
+	    (write-char #\newline stream)
+	    (if prefix
+		(progn
+		  (write-string prefix stream)
+		  (setf column (length prefix)))
+		(setf column 0))
+	    (incf i)
+	    (setf last-word-start i
+		  line-start i))
+	   ((char= (aref text i) separator)
+	    (write-word nil)
+	    (incf i)
+	    ;; eat multiple spaces
+	    (loop :while (and (< i len) (char= (aref text i) separator))
+	       :do (incf i))
+	    (setf last-word-start i)
+	    (when (zerop column)
+	      (setf line-start i)))
+	   (t
+	    (incf i)
+	    (incf column))))
+      (when (< last-word-start i)
+	(write-word t)))))
+
+(defun justify-text (text &key (cols 80) (stream *standard-output*)
+			    (prefix "") (separator #\space) omit-first-prefix)
+  "Try to output substrings of TEXT to STREAM, separated by SEPARATOR, so that
+they fit in COLS columns of fixed sized characters. Output PREFIX before each
+line. If OMIT-FIRST-PREFIX is true, don't output the prefix on the first line.
+If STREAM is nil, return a string of the output."
+  (if stream
+      (%justify-text text :cols cols :stream stream
+		     :prefix prefix :separator separator
+		     :omit-first-prefix omit-first-prefix)
+      (with-output-to-string (output)
+	(%justify-text text :cols cols :stream output
+		       :prefix prefix :separator separator
+		       :omit-first-prefix omit-first-prefix))))
 
 (defun print-properties (prop-list &key (right-justify nil) (de-lispify t)
 				     (stream t))
@@ -1153,5 +1248,41 @@ file is accepted as confirmation."
 	       (string (equalp l confirming-input))
 	       (character (and (> (length l) 0)
 			       (equalp (aref l 0) confirming-input))))))))
+
+(defun get-file-local-variables (file-or-stream)
+  "Return an alist of file local variables, like Emacs, e.g. variables that
+are in the first couple of lines that are like:
+  -*- MODE-NAME -*-
+or
+  '-*-' [ <variable> ':' <value> ';' ]* '-*-'
+with the last ';' being optional.
+Return NIL if we can't find local variables or if the format is messed up.
+"
+  (with-open-file-or-stream (in file-or-stream)
+    (let ((line (read-line in nil))
+	  start end var-list-string result)
+      ;; If it has an interpreter spec, check the next line.
+      (when (begins-with "#!" line)
+	(setf line (read-line in nil)))
+      (setf start (search "-*-" line))
+      (when start
+	(incf start 3)
+	(setf end (search "-*-" line :start2 start)))
+      (when end
+	(setf var-list-string (subseq line start end)))
+      (and var-list-string
+	   (multiple-value-bind (a b)
+	       (ppcre:scan-to-strings "^[ \\t]*([^ \\t:;]+)[ \\t]*$"
+				      var-list-string)
+	     (if a
+		 `(("mode" ,b))
+		 (progn
+		   (loop :for v :in (ppcre:split ";[ \\t]*" var-list-string)
+		      :do
+		      (ppcre:register-groups-bind
+		       (name value)
+		       ("[ \\t]*([^ :]+)[ \\t]*:[ \\t]*([^ ;]+)" v)
+		       (push (list name value) result)))
+		   result)))))))
 
 ;; End
