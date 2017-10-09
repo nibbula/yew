@@ -6052,8 +6052,10 @@ wait. Returns NILs if nothing changed."
 	    pid
 	    (if hang
 		(real-wait status-ptr)
-		(real-waitpid 0 status-ptr (logior +WAIT-UNTRACED+
+		(real-waitpid -1 status-ptr (logior +WAIT-UNTRACED+
 						   +WAIT-NO-HANG+))))
+		;; (real-waitpid 0 status-ptr (logior +WAIT-UNTRACED+
+		;; 				   +WAIT-NO-HANG+))))
       (cond
 	((< pid 0)
 	 (if (= *errno* +ECHILD+)
