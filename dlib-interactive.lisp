@@ -6,7 +6,7 @@
   (:documentation
    "Dan's functions for interactive use. These are things that would typically
 be used at a REPL, but not as likely to be called by other programs.")
-  (:use :cl :dlib :dlib-misc :table-print :mop :terminal)
+  (:use :cl :dlib :dlib-misc :table-print :mop :terminal :table :grout)
   (:export
    #:show-expansion
    #:printenv
@@ -332,6 +332,7 @@ symbols, :all to show internal symbols too."
 		  )))
 
 (defun describe-readtable (&optional (readtable *readtable*))
+  "Describe a readtable. If not given an argument, describe the current one."
   (format t "Readtable case: ~a~%" (readtable-case readtable))
   (table-print:nice-print-table
    (loop :with func :and non-term :and cc :and sub-chars
@@ -380,6 +381,7 @@ symbols, :all to show internal symbols too."
   (values))
 
 (defun describe-system (system)
+  "Print various properties of an ASDF system."
   (let ((sys (asdf:find-system system))
 	(symbol-list
 	 ;; There there; they're there.
@@ -400,11 +402,12 @@ symbols, :all to show internal symbols too."
 	    :collect s)))
     (print-values-of symbol-list sys :prefix 'system-)))
 
-;; This only works with a MOP
 (defun describe-class (class &optional (stream *standard-output*))
+  "Describe a class or structure. Send output to STREAM which defaults, to
+*STANDARD-OUTPUT*. Requires a working MOP."
   #+has-mop
-  (progn
-    (let ((symb nil))
+  (with-grout (*grout* stream)
+    (let ((symb nil) class-doc is-struct)
       (ctypecase class
 	((or string keyword)
 	 (setf symb (make-symbol (string-upcase class)))
@@ -412,20 +415,34 @@ symbols, :all to show internal symbols too."
 	(class (setf symb (class-name class)))
 	(symbol (setf symb class
 		      class (find-class class))))
-      (format stream "~a : ~a~%" symb
-	      (documentation symb 'type))
-      ;; (let ((max-width (loop :for s :in (class-slots class)
-      ;; 			  :maximize
-      ;; 			  (length (string (slot-definition-name s))))))
+      (cond
+	((eq (class-of class) (find-class 'structure-class))
+	 (setf class-doc (documentation symb 'structure)
+	       is-struct t))
+	((typep (class-of class) 'class)
+	 (setf class-doc
+	       (documentation symb 'type))))
+      (grout-format "~a : ~a~%" symb class-doc)
       (when (not (class-finalized-p class))
+	;; For the most part this shouldn't be a problem, but it could be weird
+	;; if we call describe-class from inside a compilation which is building
+	;; that class. I wonder how we could detect if that could be so.
 	(finalize-inheritance class))
-      (nice-print-table
-       (loop :for s :in (class-slots class)
-	  :collect (list (slot-definition-name s)
-			 (slot-definition-type s)
-			 (aref (string (slot-definition-allocation s)) 0)
-			 (documentation s t)))
-       '("Name" "Type" "A" ("Description" :left))))
+      (grout-print-table
+       (if is-struct
+	   (make-table-from
+	    (loop :for s :in (class-slots class)
+	       :collect (list (slot-definition-name s)
+			      (slot-definition-type s)
+			      (slot-definition-initform s)))
+	    :column-names '("Name" "Type" ("Default" :left)))
+	   (make-table-from
+	    (loop :for s :in (class-slots class)
+	       :collect (list (slot-definition-name s)
+			      (slot-definition-type s)
+			      (aref (string (slot-definition-allocation s)) 0)
+			      (documentation s t)))
+	    :column-names '("Name" "Type" "A" ("Description" :left))))))
     (values))
     #-has-mop    
     (format stream "No MOP, so I don't know how to describe the class ~s~%"
