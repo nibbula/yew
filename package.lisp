@@ -31,8 +31,18 @@
    #:line-editor-local-keymap
    #:get-buffer-string
    #:replace-buffer
-   #:show-history
+   #:*history-context*
+   #:history-entry-time
+   #:history-entry-line
+   #:history-entry-modified
    #:history-clear
+   #:history-nth
+   #:history-add
+   #:history-current
+   #:history-file-name
+   #:show-history
+   #:history-save
+   #:history-load
    #:complete-filename-command
    ;; Variables?
    #:*line-editor*

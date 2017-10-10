@@ -105,25 +105,25 @@ buffer if there is no word."
 
 (defun previous-history (e)
   "Go to the previous history entry."
-  (history-put (context e) (buffer-string (buf e)))
+  (history-put (buffer-string (buf e)) (context e))
   (history-prev (context e))
   (use-hist e))
 
 (defun next-history (e)
   "Go to the next history entry."
-  (history-put (context e) (buffer-string (buf e)))
+  (history-put (buffer-string (buf e)) (context e))
   (history-next (context e))
   (use-hist e))
 
 (defun beginning-of-history (e)
   "Go to the beginning of the history."
-  (history-put (context e) (buffer-string (buf e)))
+  (history-put (buffer-string (buf e)) (context e))
   (history-first (context e))
   (use-hist e))
 
 (defun end-of-history (e)
   "Go to the end of the history."
-  (history-put (context e) (buffer-string (buf e)))
+  (history-put (buffer-string (buf e)) (context e))
   (history-last (context e))
   (use-hist e))
 
@@ -148,7 +148,7 @@ if it's blank or the same as the previous line."
   (with-slots (buf quit-flag context accept-does-newline) e
     (history-last context)
     (if (add-to-history-p e buf)
-	(history-put context (buffer-string buf))
+	(history-put (buffer-string buf) context)
 	(history-delete-last context))
     (when accept-does-newline
       (move-over e (- (length (buf e)) (point e)))

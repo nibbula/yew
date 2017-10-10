@@ -47,12 +47,13 @@
   (modified nil :type boolean))		; true if the entry has be edited
 
 (defvar *history* '() "Line history of some sort.")
+(defvar *history-context* nil "The current dynamic context.")
 
-(defun get-history (context)
+(defun get-history (&optional (context *history-context*))
   "Get the history records for CONTEXT, which should probably be a keyword."
   (cdr (assoc context *history*)))
 
-(defun history-init (context)
+(defun history-init (&optional (context *history-context*))
   "Initialize history for CONTEXT."
   (let ((context-hist (assoc context *history*)))
     (when (not context-hist)
@@ -60,7 +61,7 @@
 	(setf *history* (acons context (make-history :head l :tail l :cur l)
 			       *history*))))))
 
-(defun history-clear (context)
+(defun history-clear (&optional (context *history-context*))
   "Clear all of the history for the context."
   (let ((hist (get-history context))
 	(lst (make-dl-list)))
@@ -68,7 +69,7 @@
 	  (history-tail hist) lst
 	  (history-cur hist) lst)))
 
-(defun history-add (context buf)
+(defun history-add (buf &optional (context *history-context*))
   "Adds the content BUF as the most recent history item."
   (let* ((hist (get-history context)))
     (dl-push (history-head hist) (copy-seq buf))
@@ -77,18 +78,18 @@
     (when (not (history-tail hist))
       (setf (history-tail hist) (history-head hist)))))
 
-(defun history-delete-last (context)
+(defun history-delete-last (&optional (context *history-context*))
   "Delete the last history entry."
   (dl-pop (history-head (get-history context))))
 
-(defun history-put (context buf)
+(defun history-put (buf &optional (context *history-context*))
   "Save the BUF in the current history item."
   (let* ((hist (get-history context))
 	 (cur (history-cur hist)))
     (when cur
       (setf (dl-content cur) (copy-seq buf)))))
 
-(defun history-prev (context)
+(defun history-prev (&optional (context *history-context*))
   "Move the current history to the next oldest."
   (let* ((hist (get-history context))
 	 (cur (history-cur hist))
@@ -97,42 +98,44 @@
     (when next
       (setf (history-cur hist) next))))
 
-(defun history-next (context)
+(defun history-next (&optional (context *history-context*))
   "Move the current history to the next most recent."
   (let* ((hist (get-history context))
 	 (cur (history-cur hist)))
     (when (and cur (dl-prev cur))
       (setf (history-cur hist) (dl-prev cur)))))
 
-(defun history-first (context)
+(defun history-first (&optional (context *history-context*))
   "Move the current history to the oldest history item."
   (let ((hist (get-history context)))
     (setf (history-cur hist) (history-tail hist))))
 
-(defun history-last (context)
+(defun history-last (&optional (context *history-context*))
   "Move the current history to the most recent history item."
   (let ((hist (get-history context)))
     (setf (history-cur hist) (history-head hist))))
 
-(defun history-current (context)
+(defun history-current (&optional (context *history-context*))
   "Return the content of the current item."
   (let* ((hist (get-history context))
 	 (cur (history-cur hist)))
     (if cur (dl-content cur) nil)))
 
-(defun history-current-get (context)
+(defun history-current-get (&optional (context *history-context*))
   "Return the current history node."
   (history-cur (get-history context)))
 
-(defun history-current-set (context newval)
+;;(defun history-current-set (newval &optional (context *history-context*))
+(defun history-current-set (newval &optional (context *history-context*))
   "Set the current history node to NEWVAL."
   (setf (history-cur (get-history context)) newval))
 
-(defsetf history-current history-current-set
-  "SETF form for the current history node.")
+(defsetf history-current (&optional (context *history-context*)) (store)
+  "SETF form for the current history node."
+  `(history-current-set ,store ,context))
 
-;; This is quite inefficient becase dl-list's suck.
-(defun history-nth (context n)
+;; This is quite inefficient because dl-list's suck.
+(defun history-nth (n &optional (context *history-context*))
   "Return the Nth element of the history for CONTEXT, or nil."
   (let* ((h (get-history context))
 	 list element)
@@ -141,7 +144,7 @@
 	 (setf element (dl-nth (- (dl-length list) n) list))
 	 (dl-content element))))
 
-(defun show-history (context)
+(defun show-history (&optional (context *history-context*))
   "Print the history with numbers."
   (let ((hist (get-history context))
 	(i 1))
@@ -152,7 +155,7 @@
 	 (incf i))))
   (values))
 
-(defun history-file-name (context)
+(defun history-file-name (&optional (context *history-context*))
   (merge-pathnames
    (make-pathname :name (format nil ".~(~a~)_history" (string context)))
    (user-homedir-pathname)))
@@ -161,7 +164,7 @@
 (defparameter *history-version* 1
   "Version number of history format file.")
 
-(defun history-save (context)
+(defun history-save (&optional (context *history-context*))
   (let ((hist (get-history context)))
     (with-open-file (str (history-file-name context)
 			 :direction :output
@@ -175,7 +178,7 @@
 		      (format str "~s~%" x))) ;; @@@ zorp
       (princ #\) (terpri)))))
 
-(defun history-load (context)
+(defun history-load (&optional (context *history-context*))
   (declare (ignore context)))
   ;; (let ((hist (get-history context))
   ;; 	(s (make-string 4)) i)

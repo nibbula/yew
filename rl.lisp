@@ -259,7 +259,8 @@ Keyword arguments:
 			:terminal-device-name	terminal-name
 			:terminal-class	    	terminal-class)))
 	 (*terminal* (line-editor-terminal e))
-	 (*completion-count* 0))
+	 (*completion-count* 0)
+	 (*history-context* context))
     (when editor
       (freshen editor))
     (setf (fill-pointer (buf e)) (point e))
@@ -267,8 +268,8 @@ Keyword arguments:
     (terminal-start (line-editor-terminal e))
 
     ;; Add the new line we're working on.
-    (history-add context nil)
-    (history-next context)
+    (history-add nil)
+    (history-next)
 
     ;; Output the prompt
     (setf (prompt e) prompt (prompt-func e) output-prompt-func)
