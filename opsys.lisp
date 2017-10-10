@@ -617,6 +617,29 @@ if there isn't one."
 (defsetf command-path-list set-command-path-list
   "Set the system command path.")
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Application paths
+
+(defosfun data-dir (&optional app-name)
+  "Where user specific data files should be stored.")
+
+(defosfun config-dir (&optional app-name)
+  "Where user specific configuration files should be stored.")
+
+(defosfun data-path (&optional app-name)
+  "Search path for user specific data files.")
+
+(defosfun config-path (&optional app-name)
+  "Search path for user specific configuration files.")
+
+(defosfun cache-dir (&optional app-name)
+  "Directory where user specific non-essential data files should be stored.")
+
+(defosfun runtime-dir (&optional app-name)
+  "Directory where user-specific non-essential runtime files and other file
+objects should be stored.")
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Processes
 

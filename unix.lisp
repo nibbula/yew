@@ -226,6 +226,13 @@
 
    #:is-executable
    #:command-pathname
+
+   #:data-dir
+   #:config-dir
+   #:data-path
+   #:config-path
+   #:cache-dir
+   #:runtime-dir
    
    #:timespec
    #:timespec-seconds
@@ -4562,6 +4569,122 @@ current effective user."
 	   (member-of (file-status-gid s))))
      (or (not regular)
 	 (is-regular-file (file-status-mode s))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Application paths
+
+(defun expand-leading-tilde (filename)
+  "Return FILENAME with a leading tilde converted into the users home directory."
+  (if (and filename (stringp filename) (not (zerop (length filename)))
+	   (char= (char filename 0) #\~))
+      (s+ (or (environment-variable "HOME") (user-home))
+	  "/" (subseq filename 2))	; XXX wrongish
+      filename))
+
+;; This is mostly from:
+;;   https://specifications.freedesktop.org/basedir-spec/latest/
+
+#+(or linux sunos freebsd) ;; I'm not sure about sunos and freebsd.
+(progn
+  (defun xdg-thing (env-var default)
+    "Return the the ENV-VAR or if it's not set or empty then the DEFAULT."
+    (let ((result (or (let ((e (environment-variable env-var)))
+			(and e (not (zerop (length e))) e))
+		      default)))
+      ;; It might be nice if we could use glob:expand-tilde, but we can't.
+      ;; I supposed we could move it here though.
+      (expand-leading-tilde result)))
+
+  (defun xdg-app-dir (env-var default &optional app-name)
+    "Return the the ENV-VAR or if it's not set or empty then the DEFAULT.
+If APP-NAME is given, append that."
+    (let ((result (xdg-thing env-var default)))
+      (or (and app-name (s+ result "/" app-name))
+	  result)))
+
+  (defun xdg-path (env-var default &optional app-name)
+    "Return the ENV-VAR or DEFAULT path as a list, possibily with app-name
+appended to each element."
+    (let ((result (split-sequence #\: (xdg-thing env-var default))))
+      (or (and app-name (mapcar (_ (s+ _ "/" app-name)) result))
+	  result)))
+
+  (defparameter *default-data-dir* "~/.local/share")
+  (defparameter *data-dir-env-var* "XDG_DATA_HOME")
+  (defun data-dir (&optional app-name)
+    "Where user specific data files should be stored."
+    (xdg-app-dir *data-dir-env-var* *default-data-dir* app-name))
+
+  (defparameter *default-config-dir* "~/.config")
+  (defparameter *config-dir-env-var* "XDG_CONFIG_HOME")
+  (defun config-dir (&optional app-name)
+    "Where user specific configuration files should be stored."
+    (xdg-app-dir *config-dir-env-var* *default-config-dir* app-name))
+
+  (defparameter *default-data-path* "/usr/local/share/:/usr/share/")
+  (defparameter *data-path-env-var* "XDG_DATA_DIRS")
+  (defun data-path (&optional app-name)
+    "Search path for user specific data files."
+    (cons (data-dir app-name)
+	  (xdg-path *data-path-env-var* *default-data-path* app-name)))
+
+  (defparameter *default-config-path* "/etc/xdg")
+  (defparameter *config-path-env-var* "XDG_CONFIG_DIRS")
+  (defun config-path (&optional app-name)
+    "Search path for user specific configuration files."
+    (cons (config-dir app-name)
+	  (xdg-path *config-path-env-var* *default-config-path* app-name)))
+
+  (defparameter *default-cache-dir* "~/.cache")
+  (defparameter *cache-dir-env-var* "XDG_CACHE_HOME")
+  (defun cache-dir (&optional app-name)
+    "Directory where user specific non-essential data files should be stored."
+    (xdg-app-dir *cache-dir-env-var* *default-cache-dir* app-name))
+
+  ;; Runtime dir has a lot of special restrictions. See the XDG spec.
+  (defparameter *default-runtime-dir* "/run/user")
+  (defparameter *runtime-dir-env-var* "XDG_RUNTIME_DIR")
+  (defun runtime-dir (&optional app-name)
+    "Directory where user-specific non-essential runtime files and other file
+objects should be stored."
+    (xdg-app-dir *runtime-dir-env-var*
+		 (s+ *default-runtime-dir* #\/ (getuid)) app-name)))
+
+#+darwin
+(progn
+  ;; @@@ I know this is all wrong.
+  
+  (defparameter *default-app* "Lisp")
+  (defun data-dir (&optional app-name)
+    "Where user specific data files should be stored."
+    (declare (ignore app-name))
+    (expand-leading-tilde "~/Documents")) ;; @@@ or translation
+  
+  (defun config-dir (&optional app-name)
+    "Where user specific configuration files should be stored."
+    (s+ (expand-leading-tilde "~/Library/Application Support")
+	"/" (or app-name *default-app*)))
+
+  (defun data-path (&optional app-name)
+    "Search path for user specific data files."
+    (list (data-dir app-name)))
+
+  (defun config-path (&optional app-name)
+    "Search path for user specific configuration files."
+    (list (config-dir app-name)))
+
+  (defun cache-dir (&optional app-name)
+    "Directory where user specific non-essential data files should be stored."
+    (s+ (expand-leading-tilde "~/Library/Caches") "/"
+	(or app-name *default-app*)))
+
+  (defun runtime-dir (&optional app-name)
+    "Directory where user-specific non-essential runtime files and other file
+objects should be stored."
+    ;; @@@ This is totally wrong. I know there's some long number in here.
+    (s+ "/var/run" "/" (getuid) "/" app-name)))
+
+;; I feel like I'm already in the past.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; IPC

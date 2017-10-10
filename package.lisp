@@ -82,6 +82,14 @@
 
    ;; Stupid cooperative locking
    #:with-locked-file
+
+   ;; Application paths
+   #:data-dir
+   #:config-dir
+   #:data-path
+   #:config-path
+   #:cache-dir
+   #:runtime-dir
    
    ;; processes
    #:system-command
