@@ -160,7 +160,9 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
 	(let* ((result
 		(funcall completion-func (fat-string-to-string buf) point t))
 	       ;;(comp-list (completion-result-completion result))
-	       (comp-count (completion-result-count result)))
+	       comp-count)
+	  (check-type result completion-result)
+	  (setf comp-count (completion-result-count result))
 	  (dbugf 'completion "result2 = ~a ~s~%" (type-of result) result)
 	  (when (and comp-count (> comp-count 0))
 	    (setf (did-complete e) t)
