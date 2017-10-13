@@ -4501,35 +4501,41 @@ Possible values of STATUS and VALUE are:
 		  :args nil)))))
 	(foreign-free proc-list))))
   #+linux
-  (let (line pid raw-line open-pos close-pos cmd uid)
+  (let (proc line pid raw-line open-pos close-pos cmd uid)
     (labels ((pos (p)
 	       "Adusted element in stat line so we can use documented indices."
-	       (elt line (- p 2))))
+	       (elt line (- p 2)))
+	     (read-proc (p)
+	       (with-open-file (stm (s+ "/proc/" p "/stat"))
+		 (setf raw-line (read-line stm)
+		       open-pos (position #\( raw-line)
+		       close-pos (position #\) raw-line :from-end t)
+		       line (split-sequence
+			     #\space (subseq raw-line (+ 2 close-pos)))
+		       cmd (subseq raw-line (position #\( raw-line) close-pos)
+		       pid (parse-integer p)
+		       uid (file-status-uid (stat (s+ "/proc/" p))))
+		 (make-os-process
+		  :id pid
+		  :parent-id (parse-integer (pos 3))
+		  :group-id (parse-integer (pos 4))
+		  :user-id uid
+		  :terminal (parse-integer (pos 6))
+		  :text-size (parse-integer (pos 22))
+		  :resident-size (parse-integer (pos 23))
+		  :percent-cpu 0
+		  :nice-level (parse-integer (pos 18))
+		  :usage nil
+		  :command (subseq raw-line (1+ open-pos) close-pos)
+		  :args (or (ignore-errors (get-process-command-line pid))
+			    cmd)))))
       (loop :for p :in (read-directory :dir "/proc/")
 	 :when (every #'digit-char-p p)
-	 :collect
-	 (with-open-file (stm (s+ "/proc/" p "/stat"))
-	   (setf raw-line (read-line stm)
-		 open-pos (position #\( raw-line)
-		 close-pos (position #\) raw-line :from-end t)
-		 line (split-sequence #\space (subseq raw-line (+ 2 close-pos)))
-		 cmd (subseq raw-line (position #\( raw-line) close-pos)
-		 pid (parse-integer p)
-		 uid (file-status-uid (stat (s+ "/proc/" p))))
-	   (make-os-process
-	    :id pid
-	    :parent-id (parse-integer (pos 3))
-	    :group-id (parse-integer (pos 4))
-	    :user-id uid
-	    :terminal (parse-integer (pos 6))
-	    :text-size (parse-integer (pos 22))
-	    :resident-size (parse-integer (pos 23))
-	    :percent-cpu 0
-	    :nice-level (parse-integer (pos 18))
-	    :usage nil
-	    :command (subseq raw-line (1+ open-pos) close-pos)
-	    :args (or (ignore-errors (get-process-command-line pid))
-		      cmd)))))))
+	 :if (setf proc
+		   (handler-case
+		       (read-proc p)
+		     (file-error () nil)))
+	 :collect proc))))
 
 (defun suspend-process (&optional id)
   "Suspend the process with the given ID. If ID is NIL or not given, suspend
