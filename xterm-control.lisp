@@ -185,6 +185,7 @@ default to 16 bit color."
 		 (:icon 1)
 		 (:both 0))))
     (tt-format "~a~a;~a~c" +osc+ param title (char-util:ctrl #\G))
+    ;;(tt-format "~a~a;~a~a" +osc+ param title +st+)
     (tt-finish-output)))
 
 (defun get-title (&optional (which :window))
@@ -211,6 +212,30 @@ default to 16 bit color."
     (tt-erase-to-eol)
     (or result title)))
 
+(defun get-font ()
+  (query-string (format nil "50;?~c" (char-util:ctrl #\G))
+		:lead-in +osc+ :offset 3 :ending 1))
+
+(defun set-font (font)
+  (tt-format "~a50;~a~c" +osc+ font (char-util:ctrl #\G))
+  (tt-finish-output))
+
+(defun edit-font ()
+  (let ((font (get-font)) result)
+    (tt-home)
+    (tt-finish-output)
+    (setf result
+	  (rl:rl :prompt "Font: "
+		 :string (or font "")
+		 :terminal-class 'terminal-ansi:terminal-ansi
+		 :accept-does-newline nil))
+    (when result
+      (set-font result))
+    (terminal-start *terminal*)
+    (tt-beginning-of-line)
+    (tt-erase-to-eol)
+    (or result font)))
+
 (defkeymap *xterminator-keymap*
   `((#\escape		  . *xterminator-escape-keymap*)
     (,(ctrl #\G)	  . quit)
@@ -219,7 +244,11 @@ default to 16 bit color."
     (#\I		  . decrement-increment)
 
     (#\return		  . edit-window-title)
-    (#\newline		  . edit-icon-title)
+    (,(meta-char #\I)	  . edit-icon-title)
+    (,(meta-char #\F)	  . edit-font-name)
+    (#\w		  . edit-window-title)
+    (#\i	  	  . edit-icon-title)
+    (#\x	  	  . edit-font-name)
 
     (#\f		  . toggle-fullscreen)
     (#\F		  . fullscreen-on)
@@ -405,6 +434,9 @@ default to 16 bit color."
    (icon-title
     :initarg :icon-title :accessor xterminator-icon-title  
     :documentation "Icon title.")
+   (font
+    :initarg :font :accessor xterminator-font
+    :documentation "Font name as XLFD or TrueType if enabled.")
    (increment
     :initarg :increment :accessor xterminator-increment :initform 20
     :type integer
@@ -414,7 +446,7 @@ default to 16 bit color."
 (defun get-xterm-paramaters (o)
   (with-slots (x y pixel-width pixel-height char-width char-height
 	       screen-char-width screen-char-height fullscreen
-	       background foreground title icon-title) o
+	       background foreground title icon-title font) o
     (let (result)
       ;; location
       (if (setf result (query-parameters "13t"))
@@ -457,7 +489,8 @@ default to 16 bit color."
       ;; title
       (setf title (get-title))
       ;; icon
-      (setf icon-title (get-title :icon)))))
+      (setf icon-title (get-title :icon))
+      (setf font (get-font)))))
 
 (defmethod initialize-instance
     :after ((o xterminator) &rest initargs &key &allow-other-keys)
@@ -633,16 +666,20 @@ default to 16 bit color."
 (defun edit-icon-title (i)
   (setf (xterminator-icon-title i) (edit-title :icon)))
 
+(defun edit-font-name (i)
+  (setf (xterminator-font i) (edit-font)))
+
 (defmethod update-display ((i xterminator))
   (with-slots (x y char-width char-height pixel-width pixel-height fullscreen
-	       foreground background title icon-title increment)
+	       foreground background title icon-title font increment)
       *xterminator*
     (tt-clear)
     (tt-move-to 1 0)
     (tt-write-string
      (with-output-to-string (str)
        (print-values*
-	(title icon-title x y char-width char-height pixel-width pixel-height
+	(title icon-title font
+	 x y char-width char-height pixel-width pixel-height
 	 fullscreen foreground background increment)
 	str)))
     (tt-scroll-down 1)
@@ -650,8 +687,9 @@ default to 16 bit color."
                 <>,.     - Resize window~%~
                 f        - Toggle fullscreen~%~
                 [ ]      - Raise / Lower~%~
-                [Ctrl-M] - Edit window title~%~
-                [Ctrl-J] - Edit icon title~%~
+                w        - Edit window title~%~
+                i        - Edit icon title~%~
+                x        - Edit font~%~
                 123 !@#  - Adjust foreground color down/up (red blue green)~%~
                 890 *()  - Adjust background color down/up (red blue green)~%~
 		iI       - Adjust increment down/up.~%~
@@ -688,11 +726,13 @@ default to 16 bit color."
    (get-title boolean :short-arg #\g :help "Get the window's title.")
    (icon-title string :short-arg #\T :help "Set the icon's title.")
    (get-icon-title boolean :short-arg #\G :help "Get the icon's title.")
+   (font string :long-arg "font" :help "Set the font.")
+   (get-font boolean :long-arg "get-font" :help "Get the font.")
    )
   "Control an XTerm comaptible terminal. If no arguments are given, go into an
 interactive control mode."
   (if (or iconify x y width height raise lower toggle-fullscreen fullscreen
-	  title get-title icon-title get-icon-title)
+	  title get-title icon-title get-icon-title font get-font)
       (let (xt)
 	(when (and raise lower)
 	  (error "I can't both raise and lower the window."))
@@ -706,6 +746,7 @@ interactive control mode."
 			     (or height (xterminator-char-height xt))))
 	(when title (set-title title))
 	(when icon-title (set-title title :icon))
+	(when font (set-font font))
 	(when toggle-fullscreen
 	  (setf xt (or xt (make-instance 'xterminator)))
 	  (set-fullscreen (not (xterminator-fullscreen xt))))
@@ -714,7 +755,8 @@ interactive control mode."
 	(when lower (lower))
 	(when iconify (iconify t))
 	(when get-title (format t "~a~%" (get-title)))
-	(when get-icon-title (format t "~a~%" (get-title :icon))))
+	(when get-icon-title (format t "~a~%" (get-title :icon)))
+	(when get-font (format t "~a~%" (get-font))))
       (control-xterm)))
 
 ;; EOF
