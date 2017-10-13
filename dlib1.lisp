@@ -110,6 +110,7 @@ problem, and hope I can some day contribute to the solution of it.")
    #:@
    #:ignore-conditions #:ignore-some-conditions
    #:find-slot-name
+   #:defmethod-quiet
    #:+simple-condition-format-control-slot+
    #:+simple-condition-format-arguments-slot+
    ;; debugging
@@ -1411,6 +1412,16 @@ matches SYMBOL."
 (defparameter +simple-condition-format-arguments-slot+
   (find-slot-name 'simple-condition 'format-control)
   "Name of the slot that simple-condition-format-arguments accesses.")
+
+(defmacro defmethod-quiet (name &rest args)
+  "Same as defmethod, but don't complain."
+  ;; Why doesn't this work????
+  ;; #+sbcl 
+  ;; `(locally (declare (sb-ext:muffle-conditions warning))
+  ;;    (defmethod ,name ,@args))
+  ;; #-sbcl
+  `(without-warning
+       (defmethod ,name ,@args)))
 
 ;; Debugging messages
 ;;
