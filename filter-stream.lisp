@@ -4,7 +4,7 @@
 
 (defpackage :filter-stream
   (:documentation "Streams that filter an underlying stream with a function.")
-  (:use :cl :trivial-gray-streams :stretchy)
+  (:use :cl :dlib :trivial-gray-streams :stretchy)
   (:export
    #:wrapped-stream
    #:source-stream
@@ -37,13 +37,7 @@
 (defmethod stream-element-type ((stream wrapped-stream))
   (stream-element-type (source-stream stream)))
 
-;;;(defmethod close ((stream wrapped-stream) &key abort &allow-other-keys)
-;;;(defmethod close ((stream wrapped-stream) &key (abort t) &allow-other-keys)
-;;;(defmethod close ((stream wrapped-stream) &key (abort t))
-;; !!! How can I get this to stop complaining?
-;; What is the correct signature? SBCL says it's:
-;;   (FUNCTION (T &KEY (:ABORT T)) *)
-(defmethod close ((stream wrapped-stream) &key (abort t))
+(defmethod-quiet close ((stream wrapped-stream) &key (abort t))
   (if abort
       (progn
 	(force-output stream)

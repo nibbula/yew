@@ -828,7 +828,7 @@ and add the characters the typeahead."
 
 ;; common methods
 
-(defmethod close ((stream terminal-ansi-stream) &key abort)
+(defmethod-quiet close ((stream terminal-ansi-stream) &key abort)
   (declare (ignore abort))
   (terminal-done stream))
 

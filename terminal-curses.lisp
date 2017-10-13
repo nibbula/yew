@@ -4,7 +4,7 @@
 
 (defpackage :terminal-curses
   (:documentation "Curses terminal")
-  (:use :cl :terminal :curses :trivial-gray-streams)
+  (:use :cl :dlib :terminal :curses :trivial-gray-streams)
   (:export
    #:terminal-curses-stream
    #:terminal-curses
@@ -387,7 +387,7 @@ require terminal driver support."))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; stream methods
 
-(defmethod close ((stream terminal-curses) &key abort)
+(defmethod-quiet close ((stream terminal-curses) &key abort)
   (declare (ignore abort))
   (terminal-done stream))
 
