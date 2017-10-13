@@ -141,7 +141,9 @@
 	 list element)
     (and h
 	 (setf list (history-head h))
-	 (setf element (dl-nth (- (dl-length list) n) list))
+	 (if (minusp n)
+	     (setf element (dl-nth (abs n) list))
+	     (setf element (dl-nth (- (dl-length list) n) list)))
 	 (dl-content element))))
 
 (defun show-history (&optional (context *history-context*))
