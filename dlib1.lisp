@@ -286,10 +286,10 @@ later versions.")
 ;; Who cares?
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defun initial-span (s l)
-    "Return the initial portion of sequence S consiting of objects
- not in the list L"
-    (subseq s 0 (position-if (lambda (c) (find c l)) s))))
+  (defun initial-span (sequence not-in)
+    "Return the initial portion of SEQUENCE consiting of objects not in
+the sequence NOT-IN."
+    (subseq sequence 0 (position-if (lambda (c) (find c not-in)) sequence))))
 
 ;; Another square wheel.
 ;; @@@ I should probably either fix this to have the additional functionality
