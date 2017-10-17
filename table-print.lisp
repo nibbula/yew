@@ -32,6 +32,12 @@ make the table in the first place. For that you want the TABLE package.")
    
    #:output-table
    #:print-table
+   #:with-column-title
+   #:set-column-titles
+   #:with-row
+   #:with-cell
+   #:with-table-output
+
    #:nice-print-table
    ))
 (in-package :table-print)
@@ -546,6 +552,83 @@ resized to fit in this, and the whole row is trimmed to this."
        (collection-data table)))
     (length (collection-data table)))) ;; @@@ should actually be rows output?
 
+;;;
+
+(defvar *table-output* nil
+  "The dynamic table being constructed.")
+
+(defmacro with-column-title ((&optional title) &body body)
+  "Add TITLE as a title, or if TITLE isn't given, the output of the body."
+  `(table-add-column *table-output*
+		     (or ,title
+			 (with-output-to-string (*standard-output*)
+			   ,@body))))
+
+(defun set-column-titles (titles)
+  "Add TITLE as a title, or if TITLE isn't given, the output of the body."
+  (loop :for title :in titles :do
+     (table-add-column *table-output* title)))
+
+(defmacro with-row (() &body body)
+  "Add a row to the current table. Cells added in the body should go in
+this row."
+  `(progn
+     (when (not *table-output*)
+       (error "WITH-TABLE-ROW is probably not inside a WITH-TABLE-OUTPUT."))
+     ;; Make a new empty row. 
+     (push '() (collection-data *table-output*))
+     ,@body
+     (setf (car (collection-data *table-output*))
+	   (nreverse (car (collection-data *table-output*))))))
+
+(defmacro with-cell (() &body body)
+  "Collect the output of the BODY into a table cell."
+  `(progn
+     (when (not *table-output*)
+       (error "WITH-TABLE-CELL is probably not inside a WITH-TABLE-OUTPUT."))
+     ;; Make an new row if there isn't one.
+     (when (not (collection-data *table-output*))
+       (push '() (collection-data *table-output*)))
+     (push (with-output-to-string (*standard-output*)
+	     ,@body)
+	   (car (collection-data *table-output*)))))
+
+(defvar *default-table-renderer-type* 'text-table-renderer
+  "Type of the default table renderer. Passed to make-instance.")
+
+(defvar *table-renderer* nil
+  "Dynamic current table renderer when not otherwise provided.")
+
+(defun table-renderer ()
+  (or *table-renderer*
+      (setf *table-renderer*
+	    (make-instance *default-table-renderer-type*))))
+
+(defmacro with-table-output ((&key (renderer (table-renderer))
+				   (destination *standard-output*)
+				   (long-titles t) (print-titles t) max-width)
+			     &body body)
+  "Output a table collected with WITH-ROW and WITH-CELL in the BODY."
+  `(let ((*table-output* (make-instance 'mem-table :data '())))
+     ,@body
+     (setf (collection-data *table-output*)
+	   (nreverse (collection-data *table-output*)))
+     (output-table *table-output* ,renderer ,destination
+		   :long-titles ,long-titles
+		   :print-titles ,print-titles
+		   :max-width ,max-width)))
+
+#| Test:
+(with-table-output ()
+  (set-column-titles '("Number" "Name" "Numeral" "Ordinal"))
+  (loop :for i :from 1 :to 10 :do
+     (with-row ()
+       (with-cell () (format t "~d" i))
+       (with-cell () (format t "~r" i))
+       (with-cell () (format t "~@r" i))
+       (with-cell () (format t "~:r" i)))))
+|#
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; This is quite inefficient since it gets the whole data set in
@@ -714,9 +797,10 @@ resized to fit in this, and the whole row is trimmed to this."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun print-table (table &key (stream *standard-output*)
+			    (renderer (table-renderer))
 			    (long-titles t) (print-titles t) max-width)
   "Print results nicely in horizontal table."
-  (output-table table (make-instance 'text-table-renderer) stream
+  (output-table table renderer stream
 		:long-titles long-titles
 		:print-titles print-titles
 		:max-width max-width))
