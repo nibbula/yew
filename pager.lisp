@@ -382,31 +382,38 @@ but perhaps reuse some resources."))
   "Read new lines from the stream. Stop after COUNT lines. If COUNT is zero,
 read until we get an EOF."
   (with-slots (got-eof count stream raw-output) *pager*
-    (when (not got-eof)
-      (let ((n 0)
-	    (i count)
-	    (line nil)
-	    (lines '())
-	    (pos (or (file-position stream) 0)))
-	(loop
-	   :while (and (or (< n line-count) (zerop line-count))
-		       (setf line
-			     (resilient-read-line stream nil nil)))
-	   :do (push (make-line :number i
+    (handler-case
+	(progn
+	  (when (not got-eof)
+	    (let ((n 0)
+		  (i count)
+		  (line nil)
+		  (lines '())
+		  (pos (or (file-position stream) 0)))
+	      (unwind-protect
+		   (loop
+		      :while (and (or (< n line-count) (zerop line-count))
+				  (setf line
+					(resilient-read-line stream nil nil)))
+		      :do (push (make-line :number i
 ;;;			      :position (incf pos (length line))
-				:position pos
-				:text (if raw-output
-					  line
-					  (process-line line)))
-		     lines)
-	   (incf pos (length line))
-	   (incf i)
-	   (incf n))
-	(when (not line)
-	  (setf got-eof t))
-	(setf (pager-lines *pager*)
-	      (nconc (pager-lines *pager*) (nreverse lines))
-	      count i)))))
+					   :position pos
+					   :text (if raw-output
+						     line
+						     (process-line line)))
+				lines)
+		      (incf pos (length line))
+		      (incf i)
+		      (incf n))
+		(when (not line)
+		  (setf got-eof t))
+		(when lines
+		  (setf (pager-lines *pager*)
+			(nconc (pager-lines *pager*) (nreverse lines))
+			count i))))))
+      (stream-error (c)
+	(setf got-eof t)
+	(tmp-message "Got an eror ~a on the stream." c)))))
 
 (defun format-prompt (&optional (prompt *pager-prompt*))
   "Return the prompt string with a few less-like formatting character
@@ -1118,9 +1125,11 @@ location doesn't have an offset part."
   (setf (pager-search-string *pager*) nil))
 
 (defun seekable-p ()
-  (let* ((pos (file-position (pager-stream *pager*)))
-	 (result (file-position (pager-stream *pager*) pos)))
-    result))
+  (handler-case
+      (let* ((pos (file-position (pager-stream *pager*)))
+	     (result (file-position (pager-stream *pager*) pos)))
+	result)
+    (stream-error ())))
 
 (defun show-info ()
   "Show information about the stream."
