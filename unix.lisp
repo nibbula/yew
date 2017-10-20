@@ -3984,9 +3984,12 @@ the keywords: :DEFAULT :IGNORE :HOLD."
 handers restored to their orignal values on return. HANDLER-LIST is a list
 of (signal . action), as would be passed to SET-SIGNAL-ACTION."
   (with-unique-names (saved-list evaled-list)
-    `(let* ((,evaled-list (mapcar (_ (cons (eval (car _))
-					   (cdr _)))
-				  ',handler-list))
+    `(let* ((,evaled-list
+	     (mapcar (_ (cons (typecase (car _)
+				(symbol (symbol-value (car _)))
+				(t (car _))) ; it had better be a signal number
+			      (cdr _)))
+		     ',handler-list))
 	    (,saved-list
 	     (loop
 		;;:for (sig . act) :in ,evaled-list
