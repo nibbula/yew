@@ -146,7 +146,7 @@ the count of matches."
     (make-completion-result
      :completion
      (loop :for w :in list
-	:if (or (not (setq pos (mismatch w word)))
+	:if (or (not (setq pos (mismatch (stringify w) word)))
 		(>= pos (length word)))
 	  :collect (prog1 w (incf i))
 	:end)
