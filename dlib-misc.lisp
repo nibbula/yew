@@ -514,7 +514,14 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
     (declare (type fixnum len i last-word-start column))
     (flet ((write-word (final)
 	     ;;(dbugf :justify-text "col ~d " column)
-	     (if (>= column (1- cols))
+	     (if (< column cols)
+		 (progn
+		   ;;(dbugf :justify-text "space")
+		   (write-string text stream :start last-word-start :end i)
+		   (when (< column (- cols 2))
+		     (when (not final)
+		       (write-char separator stream))
+		     (incf column)))
 		 (progn
 		   ;;(dbugf :justify-text "newline")
 		   (write-char #\newline stream)
@@ -525,13 +532,7 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 		       (setf column 0))
 		   (write-string text stream :start last-word-start :end i)
 		   (write-char separator stream)
-		   (incf column (- i last-word-start)))
-		 (progn
-		   ;;(dbugf :justify-text "space")
-		   (write-string text stream :start last-word-start :end i)
-		   (when (not final)
-		     (write-char separator stream))
-		   (incf column)))
+		   (incf column (+ (- i last-word-start) 2))))
 	     ;;(dbugf :justify-text "~%")
 	     ))
       (when (and prefix (not omit-first-prefix))
@@ -544,7 +545,8 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 	   ((char= (aref text i) #\Newline)
 	    ;; (when (not (zerop last-word-start))
 	    ;;   (write-char #\space stream))
-	    (write-string text stream :start last-word-start :end i)
+	    ;; (write-string text stream :start last-word-start :end i)
+	    (write-word nil)
 	    (write-char #\newline stream)
 	    (if prefix
 		(progn
@@ -663,6 +665,7 @@ is printed. This is useful for printing, e.g. slots of a structure or class."
 		   (apply f (list object))
 		   (symbol-value f))))))
 
+;; @@@ Is this really necessary or maybe should it be a constant?
 (defparameter *inter-space* 2)
 
 (defun smush-output (list cols height format-char stream row-limit)
@@ -684,7 +687,17 @@ ROW-LIMIT. Items are printed with FORMAT-CHAR."
 	  (format stream format-str c (aref a n))))
      (terpri stream)))
 
-(defun smush-columns (list cols rows)
+;; @@@ I really wish I could use rl:display-length, which probably means it
+;; should be a more generic facility.
+(defun display-length (object format-char)
+  "Return the length in characters to print OBJECT."
+  (cond
+    ((and (stringp object) (eql format-char #\a))
+     (length object))
+    (t
+     (length (format nil (s+ "~" format-char) object)))))
+
+(defun smush-columns (list cols rows format-char)
   "Return a list of the smallest column sizes for the putting the LIST in COLS
 and ROWS. Return nil if the list can't fit. Second value is the extra space in
 the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
@@ -697,7 +710,7 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
 	  :do
 	  ;; Add space between cols except for the last row.
 	  (setf max-len (max max-len
-			     (+ (length (car l))
+			     (+ (display-length (car l) format-char)
 				(if (= col (1- cols)) 0 *inter-space*))))
 	  (setf l (cdr l))
 	  (incf row)
@@ -740,7 +753,7 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
     ;; Compute the length, maximum item length, and minimum area.
     (loop :with l
        :for i :in list :do
-       (setf l (+ (length i) *inter-space*)
+       (setf l (+ (display-length i format-char) *inter-space*)
 	     max-len (max max-len l)
 	     min-len (min min-len l))
        (incf area l)
@@ -766,7 +779,7 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
     (if (= new-rows 1)
 	(progn
 	  (multiple-value-setq (last-col-list extra)
-	    (smush-columns list new-cols new-rows))
+	    (smush-columns list new-cols new-rows format-char))
 	  (setf last-new-rows 1))
 	(loop
 	   :while (and (< not-fit-count 4)
@@ -800,7 +813,7 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
 	      (decf new-rows)))
 	   
 	   (multiple-value-setq (col-list extra)
-	     (smush-columns list new-cols new-rows))
+	     (smush-columns list new-cols new-rows format-char))
 	   (dbug "Squish: ~d x ~d (~d)~25t~a~%"
 		 new-cols new-rows extra col-list)))
 
@@ -1198,8 +1211,8 @@ defaults to character) with the contents of FILE-OR-STREAM."
 	 (progn
 	   (setf stream
 		 (etypecase file-or-stream
-		   (stream
-		    file-or-stream)
+		   (null *standard-input*)
+		   (stream file-or-stream)
 		   (string
 		    (setf close-me t)
 		    (open file-or-stream :external-format external-format))))
