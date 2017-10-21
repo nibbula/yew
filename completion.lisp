@@ -156,7 +156,9 @@ the count of matches."
   "Return the longest possible unambiguous completion of WORD from LIST. Second
 value is true if it's unique."
   (let ((match nil) (unique t) (match-len 0) pos)
-    (loop :for w :in list :do
+    (loop :with w
+       :for obj :in list :do
+       (setf w (stringify obj))
        (if (setq pos (mismatch w (or match word)))
 	   (when (and (/= 0 pos) (>= pos (length word)))
 	     (if (not match)
