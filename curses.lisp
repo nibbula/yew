@@ -113,7 +113,9 @@ loading this library.")
    #:initscr #:endwin #:newterm #:delscreen #:set-term
    #:newwin #:delwin #:mvwin
    #:refresh #:wrefresh
-   #:move
+   #:wnoutrefresh #:doupdate
+   #:redrawwin #:wredrawln
+   #:move #:wmove
    #:clear #:wclear #:erase #:werase #:clrtobot #:wclrtobot
    #:clrtoeol #:wclrtoeol
    ;; input
@@ -613,24 +615,60 @@ application.")
 
 ;; Windows
 (defcfun newwin window-ptr
-  (nlines :int) (nclose :int) (begin-y :int) (begin-x :int))
+  "Create a new window at row BEGIN-Y and column BEGIN-X of size NLINES x NCOLS,
+and return a WINDOW pointer to it. NLINES defaults to *LINES* and NCOLS defaults
+to *COLS*."
+  (nlines :int) (ncols :int) (begin-y :int) (begin-x :int))
 (defcfun delwin :int
+  "Delete the the window WIN. Subwindows should be deleted before the main
+window."
   (win window-ptr :in))
 (defcfun mvwin :int
+  "Move the window to X and Y. Windows can't be moved off screen. Moving
+subwindows is allowed, but supposedly should be avoided."
   (win window-ptr :in) (y :int) (x :int))
 
 ;; Update
-(defcfun refresh :int)
-(defcfun wrefresh :int (w window-ptr))
+(defcfun refresh :int
+  "Actually write the output to the terminal.")
+(defcfun wrefresh :int
+  "Actually output the window to the physical screen."
+  (w window-ptr))
+(defcfun wnoutrefresh :int
+  "Copy the window to the virtual screen."
+  (w window-ptr))
+(defcfun doupdate :int
+  "Output the virtual screen.")
+(defcfun redrawin :int
+  "Indicate that the entire screen has been corrupted and needs to be redrawn."
+  (w window-ptr))
+(defcfun wredrawln :int
+  "Indicate that the lines starting at BEG-LINE for NUM-LINES are corrupted, and
+must be redrawn."
+  (w window-ptr) (beg-line :int) (num-lines :int))
 
 ;; Movement
-(defcfun move :int (y :int) (x :int))
+(defcfun move :int
+  "Move the cursor to row Y and column X, relative to the upper left corner
+at (0, 0)."
+  (y :int) (x :int))
+(defcfun wmove :int
+  "Move the cursor to row Y and column X, in window W."
+  (w window-ptr) (y :int) (x :int))
 
 ;; Clearing and eraseing
-(defcfun clear :int)
-(defcfun wclear :int (w window-ptr :in))
-(defcfun erase :int)
-(defcfun werase :int (w window-ptr :in))
+(defcfun clear :int
+  "Completely clear and redraw the phyical screen. Useful if may be unknown
+contents.")
+(defcfun wclear :int
+  "Completely clear and redraw the phyical window. Useful if may be unknown
+contents."
+  (w window-ptr :in))
+(defcfun erase :int
+  "Copy blanks to every position, clearing the screen.")
+(defcfun werase :int
+  "Copy blanks to every position in the window, clearing the screen."
+  (w window-ptr :in))
 (defcfun clrtobot :int)
 (defcfun wclrtobot :int (w window-ptr :in))
 (defcfun clrtoeol :int)
@@ -1048,24 +1086,63 @@ of these, in which case it returns ERR."
 (defcfun ("COLOR_PAIR" color-pair) :int
   "Return a video attribute given an initialized color pair N."
   (n :int))
-(defcfun attron :int (attrs :int))
-(defcfun wattron :int (win window-ptr :in) (attrs :int))
-(defcfun attroff :int (attrs :int))
-(defcfun wattroff :int (win window-ptr :in) (attrs :int))
-(defcfun attrset :int (attrs :int))
-(defcfun wattrset :int (win window-ptr :in) (attrs :int))
-(defcfun color-set :int (color-pair-number :int) (opt :pointer))
+(defcfun attron :int
+  "Turns on the given attributes without affecting any others."
+  (attrs :int))
+(defcfun wattron :int
+  "Turns on the given attributes in the window without affecting any others."
+  (win window-ptr :in) (attrs :int))
+(defcfun attroff :int
+  "Turns off the given attributes without affecting any others."
+  (attrs :int))
+(defcfun wattroff :int
+  "Turns off the given attributes in the window without affecting any others."
+  (win window-ptr :in) (attrs :int))
+(defcfun attrset :int
+  "Sets the current attributes of the window to ATTRS."
+  (attrs :int))
+(defcfun wattrset :int
+  "Sets the current attributes of the given window to ATTRS."
+  (win window-ptr :in) (attrs :int))
+(defcfun color-set :int
+  "Sets the current color of the given window to the foreground/background
+combination given in COLOR-PAIR-NUMBER. OPT is reserved and should be null."
+  (color-pair-number :int) (opt :pointer))
 (defcfun wcolor-set :int
+  "Sets the current color of the given window to the foreground/background
+combination given in COLOR-PAIR-NUMBER. OPT is reserved and should be null."
   (win :pointer :in) (color-pair-number :int) (opt :pointer))
 
-(defcfun standend :int)
-(defcfun wstandend :int (win window-ptr :in))
-(defcfun standout :int)
-(defcfun wstandout :int (win window-ptr :in))
-(defcfun bkgd :int (ch chtype))
-(defcfun wbkgd :int (win window-ptr :in) (ch chtype))
-(defcfun bkgdset :void (ch chtype))
-(defcfun wbkgdset :void (win window-ptr :in) (ch chtype))
+(defcfun standend :int
+  "Same as (attron +a-normal+), or it turns off all attributes.")
+(defcfun wstandend :int 
+  "Same as (wattron +a-normal+), or it turns off all attributes for the window."
+  (win window-ptr :in))
+(defcfun standout :int
+  "Same as (attron +a-standout+), or turns on the best highlighting mode of
+the terminal.")
+(defcfun wstandout :int
+  "Same as (attron +a-standout+), or turn on the best highlighting mode of
+the terminal in the window."
+  (win window-ptr :in))
+(defcfun bkgd :int
+  "Set the background to CHTYPE, like bkgdset, and change every character of
+the window."
+  (ch chtype))
+(defcfun wbkgd :int
+  "Set the background to CHTYPE, like wbkgdset, and change every character of
+the given window."
+  (win window-ptr :in) (ch chtype))
+(defcfun bkgdset :void
+  "Set the window background to the attributes and character given in CHTYPE.
+The attributes are or'd with all non-blank characters. The attributes and the
+character are combined with blank characters."
+  (ch chtype))
+(defcfun wbkgdset :void
+  "Set the given window background to the attributes and character given in
+CHTYPE. The attributes are or'd with all non-blank characters. The attributes
+and the character are combined with blank characters."
+  (win window-ptr :in) (ch chtype))
 
 ;; Boxes and lines
 (defcfun border :int
