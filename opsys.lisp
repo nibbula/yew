@@ -317,6 +317,7 @@ versions of the keywords used in Lisp open.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
 
+;; @@@ maybe we should rename this to directory? or directory-contents?
 (defosfun read-directory (&key dir append-type full omit-hidden)
   "Return a list of the file names in DIR as strings. DIR defaults to the ~
 current directory. If APPEND-TYPE is true, append a character to the end of ~
