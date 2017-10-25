@@ -169,6 +169,7 @@ a TERM-INATOR.
     (,(ctrl #\S)	. search-command)
     (,(meta-char #\s)	. sort-command)	; ?
     (,(meta-char #\j)	. jump-command)	; ?
+    (#\return		. accept)
     (,(ctrl #\L)	. redraw)
     (,(ctrl #\G)	. quit)
     (#\escape		. *default-inator-escape-keymap*)
