@@ -318,7 +318,7 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
     `((#\q		. quit)
       (#\Q		. quit)
       (#.(ctrl #\C)	. quit)
-      (#\return		. pick-object)
+      ;;(#\return		. pick-object)
       (#\newline	. pick-object)
       ;; Node state control
       (#\space		. toggle)
@@ -408,7 +408,10 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
    (scroll-hint
     :initarg :scroll-hint :accessor scroll-hint
     :initform nil :type (or null symbol)
-    :documentation "Hint about what direction to scroll."))
+    :documentation "Hint about what direction to scroll.")
+   (default-action
+    :initarg :default-action :accessor tree-viewer-default-action :initform nil
+    :documentation "The default action to perform when the user accepts."))
   (:default-initargs
    :keymap (list *tree-keymap*
 		 inator:*default-inator-keymap*))
@@ -435,6 +438,12 @@ been encountered."
   (with-slots (picked-object current) o
     (setf (inator-quit-flag o) t
 	  picked-object current)))
+
+(defmethod accept ((o tree-viewer))
+  (with-slots (default-action) o
+    (if default-action
+	(funcall default-action o)
+	(pick-object o))))
 
 (defun toggle (o)
   "Toggle the node between open and closed."
@@ -989,7 +998,7 @@ and indented properly for multi-line objects."
     (when current-position
       (move current-position 0))))
 
-(defun view-tree (tree &key viewer)
+(defun view-tree (tree &key viewer default-action)
   "Look at a tree, with expandable and collapsible branches."
   (with-terminal (:curses)
     (let ((*viewer* viewer))
@@ -1002,7 +1011,8 @@ and indented properly for multi-line objects."
 				 ;; 	       inator:*default-inator-keymap*)
 				 :bottom (- *lines* 2)
 				 :root (if (listp tree)
-					   (convert-tree tree) tree))
+					   (convert-tree tree) tree)
+				 :default-action default-action)
 	    (setf (node-open (root *viewer*)) t)
 	    (event-loop *viewer*)
 	    (picked-object *viewer*))))))
