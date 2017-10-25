@@ -106,7 +106,7 @@
     :initarg :top :accessor pick-top
     :initform 0 :type fixnum
     :documentation "Top line of the view.")
-   (ttop								; @@@ this should probably be renamed
+   (ttop				; @@@ this should probably be renamed
     :initarg :ttop :accessor pick-ttop
     :initform 0 :type fixnum
     :documentation "First line number of the list area.")
@@ -304,6 +304,14 @@
 	  input (tt-get-char))
     input))
 
+(defgeneric delete-pick (pick)
+  (:documentation "Delete the picker."))
+
+(defmethod delete-pick ((pick pick))
+  (declare (ignore pick))
+  ;; Don't do anything.
+  )
+
 #|
 
 (defun pick-perform-key (key &optional (keymap *pick-list-keymap*))
@@ -334,8 +342,85 @@
 	 (error "Weird thing in keymap: ~s." command))))))
 |#
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defclass popup-pick (pick)
+  ((x
+    :initarg :x :accessor popup-pick-x :initform 0 :type fixnum
+    :documentation "Left column of popup window.")
+   (y
+    :initarg :y :accessor popup-pick-y :initform 0 :type fixnum
+    :documentation "Top row of popup window.")
+   (window
+    :initarg :window :accessor popup-pick-window
+    :documentation "The curses window."))
+  (:documentation "A pop up list."))
+
+(defmethod initialize-instance
+    :after ((o popup-pick) &rest initargs &key &allow-other-keys)
+  "Initialize a popup-pick."
+  (declare (ignore initargs))
+  (with-slots (top max-line max-y message items x y) o
+    (let ((lines (+ (count #\newline message) max-line))
+	  (cols (loop :for i :in items :maximize (length (car i)))))
+      (setf max-y (if (> (+ y lines 2) (1- *lines*))
+		      (- (- *lines* 2) y)
+		      (1+ lines))
+	    (slot-value o 'window) (newwin (+ max-y 1) (+ cols 2 2) y x)
+	    ;; top (1+ top)
+	    ))))
+
+(defmethod update-display ((i popup-pick))
+  "Display the pop-up list picker."
+  (with-slots (message multiple items (point inator::point) result cur-line
+	       max-y top ttop error-message window x y) *pick*
+    (werase window)
+    (box window 0 0)
+    (wmove window 1 1)
+    (when message
+      (waddstr window (format nil message)))
+    (setf ttop (getcury window))
+    ;; display the list
+    (loop :with i = top :and y = ttop :and f = nil
+       :do
+       (setf f (car (elt items i)))
+       (if (and multiple (position i result))
+	   (waddstr window "X ")
+	   (waddstr window "  "))
+       (when (= i point)
+	 (wattron window +a-standout+)
+	 (setf cur-line y #| (getcury *stdscr*) |#))
+       (waddstr window f)
+       (when (= i point)
+	 (wattroff window +a-standout+))
+       ;;(waddch window (char-code #\newline))
+       (wmove window (1+ y) 1)
+       (incf i)
+       (incf y)
+       :while (and (< y max-y) (< i (length items))))
+    (when error-message (mvaddstr (- *lines* 1) 0 error-message))
+    (wmove window cur-line 1)
+    (wrefresh window)))
+
+(defmethod delete-pick ((pick popup-pick))
+  (with-slots (window) pick
+    (delwin window)))
+
+(defun do-pick (type &rest args)
+  (let ((*pick*))
+    (unwind-protect
+	 (progn
+	   (setf *pick* (apply #'make-instance type args))
+	   (event-loop *pick*))
+      (when *pick*
+	(delete-pick *pick*)))
+    (values (pick-result *pick*) (pick-second-result *pick*))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defun pick-list (the-list &key message by-index sort-p default-value
-			     selected-item (typing-searches t) multiple)
+			     selected-item (typing-searches t) multiple
+			     popup (x 0) (y 0) height)
   "Have the user pick a value from THE-LIST and return it. Arguments:
   MESSAGE         - A string to be displayed before the list.
   BY-INDEX        - If true, return the index number of the item picked.
@@ -343,44 +428,45 @@
   DEFAULT-VALUE   - Return if no item is selected.
   SELECTED-ITEM   - Item to have initially selected.
   TYPING-SEARCHES - True to have alphanumeric input search for the item.
-  MULTIPLE        - True to allow multiple items to be selected."
+  MULTIPLE        - True to allow multiple items to be selected.
+  POPUP		  - True to use a pop-up window, in which case provide X and Y."
   (with-curses
-   (let* ((string-list (mapcar (_ (cons (princ-to-string _) _)) the-list))
-	  (max-y (1- curses:*lines*))
-	  (*pick* (make-instance
-		   'pick
-		   :message	     message
-		   :by-index	     by-index
-		   :multiple	     multiple
-		   :typing-searches   typing-searches
-		   :point	     (or selected-item 0)
-		   :items	     (if (not (null sort-p))
-					 (locally
-					  #+sbcl (declare
-						  (sb-ext:muffle-conditions
-						   sb-ext:compiler-note))
-					  ;; Where's the unreachable code??
-					  (sort string-list #'string-lessp
-						:key #'car))
-				         string-list)
-		   :max-line          (length string-list)
-		   :max-y             max-y
-		   :page-size         (- max-y 2)
-		   :result		default-value
-		   :keymap		(list *pick-list-keymap*
-					      *default-inator-keymap*))))
-     (event-loop *pick*)
-     #| Put in the event loop: 
-     (when (not (pick-typing-search))
-     (if (or (eql input (ctrl #\@)) (eql input 0))
-     (setf mark point
-     error-message "Set mark")
-     (pick-perform-key input))))
-  |#
-    (values (pick-result *pick*) (pick-second-result *pick*)))))
+   (let ((string-list (mapcar (_ (cons (princ-to-string _) _)) the-list))
+	 (max-y (1- curses:*lines*)))
+     (do-pick (if popup 'popup-pick 'pick)
+       :message	        message
+       :by-index	by-index
+       :multiple	multiple
+       :typing-searches typing-searches
+       :point	        (or selected-item 0)
+       :items	        (if (not (null sort-p))
+			    (locally
+				#+sbcl (declare
+					(sb-ext:muffle-conditions
+					 sb-ext:compiler-note))
+				;; Where's the unreachable code??
+				(sort string-list #'string-lessp
+				      :key #'car))
+			    string-list)
+       :max-line        (length string-list)
+       :max-y           (or height max-y)
+       :page-size       (- max-y 2)
+       :x		x
+       :y		y
+       :result	        default-value
+       :keymap	        (list *pick-list-keymap*
+			      *default-inator-keymap*)))))
+
+#| Put in the event loop: 
+(when (not (pick-typing-search))
+  (if (or (eql input (ctrl #\@)) (eql input 0))
+      (setf mark point
+	    error-message "Set mark")
+      (pick-perform-key input))))
+|#
 
 ;; Test scrolling with:
-;; (:pick-list (loop for i from 1 to 60 collect (format nil "~@r~8t~r" i i)))
+;; (pick-list (loop for i from 1 to 60 collect (format nil "~@r~8t~r" i i)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -519,19 +605,21 @@
 	    (eval code)
 	    :quit)))))
 
-(defun do-menu* (menu &key message selected-item)
+(defun do-menu* (menu &key message selected-item popup (x 0) (y 0))
   "Perform an action from a menu. Menu is an alist of (item . action)."
   (let ((items (loop :for m :in menu :collect (car m)))
 	(funcs (loop :for m :in menu :collect (cdr m))))
     (let* ((n (pick-list items :by-index t
 			       :message message
-			       :selected-item selected-item))
+			       :selected-item selected-item
+			       :popup popup
+			       :x x :y y))
 	   (code (if n (elt funcs n))))
       (if code
 	  (eval code)
 	  :quit))))
 
-(defmacro do-menu (menu &key message selected-item)
+(defmacro do-menu (menu &key message selected-item popup (x 0) (y 0))
   "Perform an action from a menu. MENU is an alist of (ITEM . ACTION), where
 ITEM is something to print, as with princ, and ACTION is a function to call.
 Arguments:
@@ -541,7 +629,8 @@ This is a macro so you can use lexically scoped things in the menu."
   ;;; @@@ improve to one loop
   (cond
     ((symbolp menu)
-     `(do-menu* ,menu :message ,message :selected-item ,selected-item))
+     `(do-menu* ,menu :message ,message :selected-item ,selected-item
+		:popup ,popup :x ,x :y ,y))
     ((listp menu)
      (let ((items (loop :for (i . nil) :in menu :collect i))
 	   (funcs (loop :for (nil . f) :in menu :collect f))
@@ -549,7 +638,8 @@ This is a macro so you can use lexically scoped things in the menu."
        `(block menu			; ! anaphoric or un-hygenic ?
 	  (let* ((,n-sym (pick-list ',items :by-index t
 				    :message ,message
-				    :selected-item ,selected-item)))
+				    :selected-item ,selected-item
+				    :popup ,popup :x ,x :y ,y)))
 	    (if ,n-sym
 		(case ,n-sym
 		  ,@(loop :for i :from 0 :below (length funcs)
