@@ -32,7 +32,6 @@
    #:strerror
    #:error-message
    #:posix-error
-   ;;#:posix-error-code
    #:error-check
    #:syscall
 
@@ -6115,12 +6114,26 @@ TTY is a file descriptor."
       (setf (signal-action +SIGTSTP+) :default)
       (wait-return-status status))))
 
+(defvar *setpgid-err-len*)
+(defvar *setpgid-err* "child setpgid fail~%")
+(defvar *tcsetpgrp-err-len*)
+(defvar *tcsetpgrp-err* "child tcsetpgrp fail~%")
+
+(defun %make-error-messages ()
+  (when (not *setpgid-err-len*)
+    (setf *setpgid-err-len* (length *setpgid-err*)
+	  *setpgid-err* (foreign-string-alloc *setpgid-err*)
+	  *tcsetpgrp-err-len* (length *tcsetpgrp-err*)
+	  *tcsetpgrp-err* (foreign-string-alloc *tcsetpgrp-err*))))
+  
 (defun forky (cmd args &key (environment nil env-p) background)
   (let* ((cmd-and-args (cons cmd args))
 	 (argc (length cmd-and-args))
-	 child-pid)
+	 child-pid err-msg-str err-msg-len)
+    (setf err-msg-str (s+ "Exec of " cmd " failed." #\newline)
+	  err-msg-len (length err-msg-str))
     (with-foreign-object (argv :pointer (1+ argc))
-      (with-foreign-string (path cmd)
+      (with-foreign-strings ((path cmd) (err-msg err-msg-str))
 	(loop :with i = 0
 	      :for arg :in cmd-and-args :do
 	      (setf (mem-aref argv :pointer i) (foreign-string-alloc arg))
@@ -6134,10 +6147,10 @@ TTY is a file descriptor."
 	    ;; We have to do this here in the child because on Linux
 	    ;; the parent won't be allowed to do it after the exec.
 	    (when (= -1 (setpgid (getpid) (getpid)))
-	      (format t "child setpgid fail~%"))
+	      (posix-write 1 *setpgid-err* *setpgid-err-len*))
 	    (when (not background)
 	      (when (= -1 (tcsetpgrp 0 (getpid)))
-		(format t "child tcsetpgrp fail~%")))
+	    	(posix-write 1 *tcsetpgrp-err* *tcsetpgrp-err-len*)))
 ;   	    (format t "About to exec ~s ~s~%"
 ;   		    (foreign-string-to-lisp path)
 ;   		    (loop :for i :from 0 :below argc
@@ -6148,10 +6161,11 @@ TTY is a file descriptor."
 					   (make-c-env environment)
 					   (real-environ)))
 		     -1)
-	      (write-string "Exec of ")
-	      (write-string cmd)
-	      (write-string " failed")
-	      (write-char #\newline)
+	      ;; (write-string "Exec of ")
+	      ;; (write-string cmd)
+	      ;; (write-string " failed")
+	      ;; (write-char #\newline)
+	      (posix-write 1 err-msg err-msg-len)
 ;	      (format t "Exec of ~s failed: ~a ~a~%" cmd
 ;		      *errno* (strerror *errno*))
 ;	      (force-output)

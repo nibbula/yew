@@ -175,7 +175,8 @@ standard functions that take a pathname designator, such as OPEN."
       (flet ((possibly-quote (c)
 	     (when (position c result)
 	       ;; It's just not possible to write code this inefficient in C.
-	       (setf result (join (split-sequence c result) (s+ #\\ c))))))
+	       (setf result (join-by-string (split-sequence c result)
+					    (s+ #\\ c))))))
       (loop :for c :across "[*;:" :do
 	 (possibly-quote c))
       result)))
