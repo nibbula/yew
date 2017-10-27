@@ -122,6 +122,7 @@ un-interned symbol."
 		      :preserve-whitespace preserve-whitespace))
   #-has-read-intern
   (declare (ignore string eof-error-p eof-value start end preserve-whitespace))
+  #-has-read-intern
   (missing-implementation 'package-robust-read-from-string))
 
 (defun package-robust-read (&optional (stream *standard-input*)
@@ -132,6 +133,7 @@ un-interned symbol."
     (read stream eof-error-p eof-value recursive-p))
   #-has-read-intern
   (declare (ignore stream eof-error-p eof-value recursive-p))
+  #-has-read-intern
   (missing-implementation 'package-robust-read-from-string))
 
 #+sbcl (declaim (sb-ext:unmuffle-conditions style-warning))
