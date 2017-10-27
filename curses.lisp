@@ -639,7 +639,7 @@ subwindows is allowed, but supposedly should be avoided."
   (w window-ptr))
 (defcfun doupdate :int
   "Output the virtual screen.")
-(defcfun redrawin :int
+(defcfun redrawwin :int
   "Indicate that the entire screen has been corrupted and needs to be redrawn."
   (w window-ptr))
 (defcfun wredrawln :int
