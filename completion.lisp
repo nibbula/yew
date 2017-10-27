@@ -473,7 +473,7 @@ arguments for that function, otherwise return NIL."
 	       (tt-color :white :default)
 	       ;; (dbug "cols = ~a~%" cols)
 	       (tt-write-string
-		(justify-text (join (nreverse par) #\space)
+		(justify-text (join-by-string (nreverse par) #\space)
 			      :stream nil
 			      :cols cols))
 	       (tt-color :default :default)
