@@ -100,12 +100,12 @@
   (equal "zorp" (trim "120938zorp982321" "0123456789"))
   (equal "zo   rp" (trim "120zo   rp321" "0123456789"))
   (equal "    " (trim "31415926    53589793" "0123456789"))
-  "join"
-  (equal "foo-bar-baz" (join '("foo" "bar" "baz") "-"))
-  (equal "foo-bar-baz" (join '("foo" "bar" "baz") #\-))
-  (equal "f.u.b.a.r" (join #("f" "u" "b" #\a #\r) #\.))
-  (equal "192.168.0.63" (join '(192 168 0 63) #\.))
-  (equal "i·c·a·n·d·o·i·t" (join "icandoit" "·"))
+  "join-by-string"
+  (equal "foo-bar-baz" (join-by-string '("foo" "bar" "baz") "-"))
+  (equal "foo-bar-baz" (join-by-string '("foo" "bar" "baz") #\-))
+  (equal "f.u.b.a.r" (join-by-string #("f" "u" "b" #\a #\r) #\.))
+  (equal "192.168.0.63" (join-by-string '(192 168 0 63) #\.))
+  (equal "i·c·a·n·d·o·i·t" (join-by-string "icandoit" "·"))
   "delete-nth"
   (equalp '(2 3 4 5) (let ((l (list 1 2 3 4 5))) (delete-nth 0 l)))
   (equalp '(1 3 4 5) (let ((l (list 1 2 3 4 5))) (delete-nth 1 l)))

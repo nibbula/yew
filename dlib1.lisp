@@ -68,7 +68,8 @@ problem, and hope I can some day contribute to the solution of it.")
    #:s+
    #:*ascii-whitespace* #:*unicode-whitespace-codes* #:*whitespace*
    #:ltrim #:rtrim #:trim
-   #:join
+   #:join-by-string
+   #:join-by
    #-clisp #:doseq
    ;; lists
    #:delete-nth
@@ -613,11 +614,10 @@ sequence of characters. CHARACTER-BAG defaults to *WHITESPACE*."
 can be any sequence of characters. CHARACTER-BAG defaults to *WHITESPACE*."
   (ltrim (rtrim string character-bag) character-bag))
 
-;; I think I will regret this.
-(defgeneric join (this that &key &allow-other-keys)
-  (:documentation "Join this to that."))
+(defgeneric join-by-string (this that &key &allow-other-keys)
+  (:documentation "Return a string with THAT inbetween every element of THIS."))
 
-(defmethod join ((this list) thing &key &allow-other-keys)
+(defmethod join-by-string ((this list) thing &key &allow-other-keys)
   "Return a string with a THING between every element of SEQUENCE. This is
 basically the reverse of SPLIT-SEQUENCE."
   (with-output-to-string (str)
@@ -630,7 +630,7 @@ basically the reverse of SPLIT-SEQUENCE."
        :end
        :do (princ e str))))
 
-(defmethod join ((this vector) thing &key &allow-other-keys)
+(defmethod join-by-string ((this vector) thing &key &allow-other-keys)
   "Return a string with a THING between every element of SEQUENCE. This is
 basically the reverse of SPLIT-SEQUENCE."
   (with-output-to-string (str)
@@ -642,6 +642,25 @@ basically the reverse of SPLIT-SEQUENCE."
 	 :do (princ thing str)
        :end
        :do (princ e str))))
+
+;; I already regret this.
+(defgeneric join-by (type this that &key &allow-other-keys)
+  (:documentation "Join elements of THIS by THAT, resulting in a TYPE."))
+
+(defmethod join-by ((type (eql 'string)) (this list) thing
+		    &key &allow-other-keys)
+  "Return a string with a THING between every element of SEQUENCE. This is
+basically the reverse of SPLIT-SEQUENCE."
+  (join-by-string this thing))
+
+(defmethod join-by ((type (eql 'string)) (this vector) thing
+		    &key &allow-other-keys)
+  "Return a string with a THING between every element of SEQUENCE. This is
+basically the reverse of SPLIT-SEQUENCE."
+  (join-by-string this thing))
+
+;; (defmethod join ((type (eql 'list)) (this list) thing &key &allow-other-keys)
+;;   (cons this (if (atom thing) (list thing) thing)))
 
 ;; As you may know, improper use of this can cause troublesome bugs.
 (defun delete-nth (n list)
