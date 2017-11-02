@@ -49,6 +49,7 @@ problem, and hope I can some day contribute to the solution of it.")
    #:copy-package
    #:fancy-read-from-string
    #:safe-read-from-string
+   #:safe-read
    #:clean-read-from-string
    #:package-robust-read-from-string
    #:package-robust-read

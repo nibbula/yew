@@ -20,6 +20,14 @@ cannot cause evaluation."
 			:start start :end end
 			:preserve-whitespace preserve-whitespace))))
 
+(defun safe-read (&optional (stream *standard-input*) (eof-error-p t)
+		    eof-value recursive-p)
+  "Read in a hopefully safe manner, such that the content cannot cause
+evaluation."
+  (with-standard-io-syntax
+    (let ((*read-eval* nil))
+      (read stream eof-error-p eof-value recursive-p))))
+
 (defparameter *readtable-cases* '(:upcase :downcase :preserve :invert)
   "List of valid values for READTABLE-CASE.")
 
