@@ -105,7 +105,6 @@ problem, and hope I can some day contribute to the solution of it.")
    #:lambda-list-vars
    #-lispworks #:with-unique-names
    #:with-package
-   #:ensure-package
    #:shortest-package-nick
    #:not-so-funcall #:symbol-call
    #:refer-to #-(or lispworks clasp) #:※
