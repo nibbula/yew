@@ -246,9 +246,9 @@ default to 16 bit color."
     (#\return		  . edit-window-title)
     (,(meta-char #\I)	  . edit-icon-title)
     (,(meta-char #\F)	  . edit-font-name)
-    (#\w		  . edit-window-title)
-    (#\i	  	  . edit-icon-title)
-    (#\x	  	  . edit-font-name)
+    ;;(#\w		  . edit-window-title)
+    ;;(#\i	  	  . edit-icon-title)
+    ;;(#\x	  	  . edit-font-name)
 
     (#\f		  . toggle-fullscreen)
     (#\F		  . fullscreen-on)
@@ -687,9 +687,9 @@ default to 16 bit color."
                 <>,.     - Resize window~%~
                 f        - Toggle fullscreen~%~
                 [ ]      - Raise / Lower~%~
-                w        - Edit window title~%~
-                i        - Edit icon title~%~
-                x        - Edit font~%~
+                ^M       - Edit window title~%~
+                M-i      - Edit icon title~%~
+                M-f      - Edit font~%~
                 123 !@#  - Adjust foreground color down/up (red blue green)~%~
                 890 *()  - Adjust background color down/up (red blue green)~%~
 		iI       - Adjust increment down/up.~%~
