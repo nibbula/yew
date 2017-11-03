@@ -140,14 +140,19 @@
 			:while (not eof)
 			:collect a)))
 ;;;	   (format t "(eval ~s)~%" `(,value ,@args))
-	   (format output "~&~s~%" (eval `(,value ,@args))) (finish-output output)
+	   (format output "~&~s~%" (eval `(,value ,@args)))
+	   (finish-output output)
 	   t))
 	((matches value "Help")
 	 (let ((cols (terminal-window-columns
 		      (rl:line-editor-terminal
 		       (repl-state-editor state)))))
 	   (dlib-misc:justify-text (format nil "~
-Hi. ~@? If you're weren't expecting a Lisp REPL, just type \"quit\" now. Otherwise, you might be interested to know that you are using Dan's TINY-REPL. If you want to get back to the normal REPL you can probably type \".\" (a period by itself). You can use some Emacs-like commands to edit the command line.~%"
+Hi. ~@? If you're weren't expecting a Lisp REPL, just type \"quit\" now. ~
+Otherwise, you might be interested to know that you are using Dan's TINY-REPL. ~
+If you want to get back to the normal REPL you can probably type \".\" ~
+(a period by itself). You can use some Emacs-like commands to edit the command ~
+line.~%"
 #+clisp "You are probably using CLisp and typed :h expecting some help."
 #-clisp "You probably typed :h by accident, or may even be expecting some help."
 ) :cols cols :stream output)
