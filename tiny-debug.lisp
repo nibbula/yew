@@ -12,7 +12,7 @@
    "A crappy half-assed debugger for your enjoyment and frustration. But at
 least you can type things using RL.")
   (:use :cl :dlib :char-util :table-print :keymap :terminal :terminal-ansi
-   :rl :tiny-repl #+sbcl :sb-introspect)
+	:rl :fatchar :tiny-repl #+sbcl :sb-introspect)
   (:export
    #:tiny-debug
    #:*default-interceptor*
@@ -830,8 +830,10 @@ innermost N contexts, if we can."
 (defun list-restarts (rs)
   (format *debug-io* "Restarts are:~%")
   (loop :with i = 0 :for r :in rs :do
-     (format *debug-io* "~&~d: " i)
-     (when (not (ignore-errors (progn (format *debug-io* "~a~%" r) t)))
+     (format *debug-io* "~&")
+     (print-span `((:fg-cyan ,(format nil "~d" i)) ": "))
+     (when (not (ignore-errors (progn (format *debug-io* "~s ~a~%"
+					      (restart-name r) r) t)))
        (format *debug-io* "Error printing restart ")
        (print-unreadable-object (r *debug-io* :type t :identity t)
 	 (format *debug-io* "~a" (restart-name r)))
@@ -854,30 +856,30 @@ innermost N contexts, if we can."
   "The condition that happened.")
 
 (defun debugger-help ()
-  (format *debug-io* "Tiny Debugger help:
-:h      Show this help.
-:e      Show the error again.
-:a      Abort to top level.
-:q      Quit the whatever.
-:r      Show restarts.
-:b      Backtrace stack.
-:w      Wacktrace.
-:s [n]	Show source for a frame N, which defaults to the current frame.
-:l [n]	Show local variables for a frame N, which defaults to the current frame.")
-  #+tdb-has-breakpoints
-  (format *debug-io* "
-:lbp    List breakpointss.
-:sbp    Set breakpoints on function.
-:tbp    Toggle breakpoints.
-:abp    Activate breakpoints.
-:dbp    Deactivate breakpoints.
-:xbp    Delete breakpoints.
-")
-  (format *debug-io* "
-number  Invoke that number restart (from the :r list).
-...     Or just type a some lisp code.
-~%")
-  (list-restarts (cdr (compute-restarts *interceptor-condition*))))
+  (print-span
+   `("Tiny Debugger help:" #\newline
+(:fg-cyan ":h") "      " (:fg-white "Show this help.") #\newline
+(:fg-cyan ":e") "      " (:fg-white "Show the error again.") #\newline
+(:fg-cyan ":a") "      " (:fg-white "Abort to top level.") #\newline
+(:fg-cyan ":c") "      " (:fg-white "Invoke continue restart.") #\newline
+(:fg-cyan ":q") "      " (:fg-white "Quit the whatever.") #\newline
+(:fg-cyan ":r") "      " (:fg-white "Show restarts.") #\newline
+(:fg-cyan ":b") "      " (:fg-white "Backtrace stack.") #\newline
+(:fg-cyan ":w") "      " (:fg-white "Wacktrace.") #\newline
+(:fg-cyan ":s [n]") "  " (:fg-white "Show source for a frame N, which defaults to the current frame.") #\newline
+(:fg-cyan ":l [n]") "  " (:fg-white "Show local variables for a frame N, which defaults to the current frame.") #\newline))
+ #+tdb-has-breakpoints
+(print-span `(
+(:fg-cyan ":lbp") "    " (:fg-white "List breakpointss.") #\newline
+(:fg-cyan ":sbp") "    " (:fg-white "Set breakpoints on function.")  #\newline
+(:fg-cyan ":tbp") "    " (:fg-white "Toggle breakpoints.")  #\newline
+(:fg-cyan ":abp") "    " (:fg-white "Activate breakpoints.")  #\newline
+(:fg-cyan ":dbp") "    " (:fg-white "Deactivate breakpoints.")  #\newline
+(:fg-cyan ":xbp") "    " (:fg-white "Delete breakpoints.")  #\newline))
+(print-span `(
+(:fg-cayn "number") "     " (:fg-white "Invoke that number restart (from the :r list).") #\newline
+(:fg-cyan "...") "      " (:fg-white "Or just type a some lisp code.") #\newline))
+(list-restarts (cdr (compute-restarts *interceptor-condition*))))
 
 (defun debugger-snargle (arg)
   "Magic command just for me."
@@ -897,63 +899,79 @@ number  Invoke that number restart (from the :r list).
 
 (defun debugger-interceptor (value state)
   "Handle special debugger commands, which are usually keywords."
-  (cond
-    ;; We use keywords as commands, just in case you have a variable or some
-    ;; other symbol clash. I dunno. I 'spose we could use regular symbols,
-    ;; and have a "print" command.
-    ((typep value 'keyword)
-     (let ((ks (string value))
-	   (rs (cdr (compute-restarts *interceptor-condition*))))
-       (when (and (> (length ks) 1) (equal (aref ks 0) #\R))
-	 (let ((n (parse-integer (subseq ks 1))))
-;	   (invoke-restart-interactively (nth n (compute-restarts)))))
-;	   (format t "[Invoking restart ~d (~a)]~%" n (nth n rs))
-	   (invoke-restart-interactively (nth n rs))))
-       (or
-	(case value
-	  (:b (debugger-backtrace (read-arg state)) t)
-	  (:w (debugger-wacktrace (read-arg state)) t)
-	  (:r (list-restarts rs) t)
-	  (:s (debugger-show-source (read-arg state)) t)
-	  (:l (debugger-show-locals (read-arg state)) t)
-	  ((:h :help) (debugger-help) t)
-	  (:z (debugger-snargle    (read-arg state)) t)
-	  (:v (toggle-visual-mode  (read-arg state)) t)
-	  (:u (debugger-up-frame   (read-arg state)) t)
-	  (:d (debugger-down-frame (read-arg state)) t)
-	  (:f (debugger-set-frame  (read-arg state)) t)
-	  (:t (debugger-top-frame  (read-arg state)) t)
-	  (:e (format *debug-io* "~a ~a~%"
-		      (type-of *interceptor-condition*)
-		      *interceptor-condition*) t)
-	  (:a (format *debug-io* "Abort.~%")
-	      ;; This is like find-restart, but omits the most recent abort
-	      ;; which is this debugger's.
-	      (let ((borty (find 'abort rs :key #'restart-name)))
-		(if (not borty)
-		    (format *debug-io* "Can't find an abort restart!~%")
-		    (invoke-restart-interactively borty))))
-	  ((:q :quit)
-	   (when (y-or-n-p "Really quit?")
-	     (format *debug-io* "We quit.~%")
-	     (nos:exit-lisp))
-	   t))
-       #+tdb-has-breakpoints
-       (case value
-	 ((:lb :lbp :list)	    (list-breakpoints) t)
-	 ((:sb :sbp :set)	    (set-func-breakpoint
-				     (eval (read-arg state))) t)
-	 ((:tb :tbp :toggle)	    (toggle-breakpoint (read-arg state)) t)
-	 ((:ab :abp :activate)	    (activate-breakpoint (read-arg state)) t)
-	 ((:db :dbp :deactivate)    (deactivate-breakpoint (read-arg state)) t)
-	 ((:xb :xbp :delete)	    (delete-breakpoint (read-arg state)) t)
-	 ))))
-    ;; Numbers invoke that numbered restart.
-    ((typep value 'number)
-     (let ((rs (cdr (compute-restarts *interceptor-condition*))))
-       (if (and (>= value 0) (< value (length rs)))
-	   (invoke-restart-interactively (nth value rs))
-	   (format *debug-io* "~a is not a valid restart number.~%" value))))))
+  (let ((restarts (cdr (compute-restarts *interceptor-condition*))))
+    (labels
+	((do-restart (r)
+	   (format *debug-io* "~:(~a~).~%" r)
+	   ;; This is like find-restart, but omits the most recent abort
+	   ;; which is this debugger's.
+	   (let ((borty (find r restarts :key #'restart-name)))
+	     (if (not borty)
+		 (format *debug-io* "Can't find an ~a restart!~%" r)
+		 (invoke-restart-interactively borty)))))
+      (cond
+	;; We use keywords as commands, just in case you have a variable or some
+	;; other symbol clash. I dunno. I 'spose we could use regular symbols,
+	;; and have a "print" command.
+	((typep value 'keyword)
+	 (let ((ks (string value)))
+	   ;; :r<n> restart keywords - to be compatible with CLisp
+	   (when (and (> (length ks) 1) (equal (aref ks 0) #\R))
+	     (let ((n (parse-integer (subseq ks 1))))
+	       ;; (invoke-restart-interactively (nth n (compute-restarts)))))
+	       ;; (format t "[Invoking restart ~d (~a)]~%" n (nth n restarts))
+	       (invoke-restart-interactively (nth n restarts))))
+	   (or
+	    (case value
+	      (:b (debugger-backtrace (read-arg state)) t)
+	      (:w (debugger-wacktrace (read-arg state)) t)
+	      (:r (list-restarts restarts) t)
+	      (:s (debugger-show-source (read-arg state)) t)
+	      (:l (debugger-show-locals (read-arg state)) t)
+	      ((:h :help) (debugger-help) t)
+	      (:z (debugger-snargle    (read-arg state)) t)
+	      (:v (toggle-visual-mode  (read-arg state)) t)
+	      (:u (debugger-up-frame   (read-arg state)) t)
+	      (:d (debugger-down-frame (read-arg state)) t)
+	      (:f (debugger-set-frame  (read-arg state)) t)
+	      (:t (debugger-top-frame  (read-arg state)) t)
+	      (:e (print-condition *interceptor-condition*) t)
+	      (:a (do-restart 'abort) t)
+	      (:c (do-restart 'continue) t)
+	      ((:q :quit)
+	       (when (y-or-n-p "Really quit?")
+		 (format *debug-io* "We quit.~%")
+		 (nos:exit-lisp))
+	       t))
+	    #+tdb-has-breakpoints
+	    (case value
+	      ((:lb :lbp :list)	      (list-breakpoints) t)
+	      ((:sb :sbp :set)	      (set-func-breakpoint
+				       (eval (read-arg state))) t)
+	      ((:tb :tbp :toggle)     (toggle-breakpoint (read-arg state)) t)
+	      ((:ab :abp :activate)   (activate-breakpoint (read-arg state)) t)
+	      ((:db :dbp :deactivate) (deactivate-breakpoint (read-arg state)) t)
+	      ((:xb :xbp :delete)     (delete-breakpoint (read-arg state)) t)
+	      ))))
+	;; symbols that aren't keywords
+	((typep value 'symbol)
+	 (case (intern (string value) :tiny-debug)
+	   (backtrace (debugger-backtrace (read-arg state)) t)
+	   (source    (debugger-show-source (read-arg state)) t)
+	   (locals    (debugger-show-locals (read-arg state)) t)
+	   (help      (debugger-help) t)
+	   (abort     (do-restart 'abort) t)
+	   (continue  (do-restart 'continue) t)
+	   (next      t)
+	   (step      t)
+	   (out       t)
+	   ))
+	;; Numbers invoke that numbered restart.
+	((typep value 'number)
+	 (if (and (>= value 0) (< value (length restarts)))
+	     (invoke-restart-interactively (nth value restarts))
+	     (format *debug-io*
+		     "~a is not a valid restart number.~%" value)))))))
 
 (defun try-to-reset-curses ()
   "If curses is loaded and active, try to reset the terminal to a sane state
@@ -1003,6 +1021,17 @@ program that messes with the terminal, we can still type at the debugger."
 	(build-escape-map *debugger-keymap*))
   (define-key *debugger-keymap* #\escape '*debugger-escape-keymap*))
 
+(defun print-span (span)
+  (with-terminal (:ansi-stream *terminal* :output-stream *debug-io*)
+    (render-fat-string
+     (span-to-fat-string span))))
+
+(defun print-condition (c)
+  (print-span
+   `((:fg-white "Condition: ")
+     (:fg-red (:underline ,(princ-to-string (type-of c))) #\newline
+	      ,(princ-to-string c) #\newline))))
+
 (defun tiny-debug (c hook &optional frame)
   "Entry point for the tiny debugger, used as the debugger hook."
   (declare (ignore hook))		;@@@ wrong
@@ -1035,7 +1064,7 @@ program that messes with the terminal, we can still type at the debugger."
 	      (*print-readably* nil)
 	      (*print-length* 50)	; something reasonable?
 	      (*print-circle* t))
-	  (format *debug-io* "Condition: ~a~%" c)
+	  (print-condition c)
 	  (list-restarts (compute-restarts c))
 	  (tiny-repl :interceptor #'debugger-interceptor
 		     :prompt-func #'debug-prompt
