@@ -2,6 +2,9 @@
 ;; fatchar.lisp - Characters with attributes.
 ;;
 
+;; ToDo:
+;;  - handle RGB direct color
+
 (defpackage :fatchar
   (:documentation "Characters with attributes.
 Defines a FATCHAR which is a character with color and font attributes.
@@ -250,6 +253,7 @@ strings."
 				 :adjustable t)))
   (setf (fill-pointer fat-string) 0)
   (let (fg bg attrs (i 0))
+    (declare (special fg bg attrs))
     (labels
 	((spanky (s)
 	   (when s
@@ -259,26 +263,33 @@ strings."
 		   (when (and (>= i start)
 			      (or (not end) (< i end)))
 		     (vector-push-extend
-		      (make-fatchar :c c :fg fg :bg bg :attrs attrs)
+		      (make-fatchar :c c :fg (car fg) :bg (car bg) :attrs attrs)
 		      fat-string))
 		   (incf i)))
+	       (character
+		(vector-push-extend
+		 (make-fatchar :c s :fg (car fg) :bg (car bg) :attrs attrs)
+		 fat-string)
+		(incf i))
 	       (list
 		(let* ((f (first s))
 		       (tag (and (or (keywordp f) (symbolp f)) f)))
 		  (if tag
-		      (progn
+		      (let ((fg fg) (bg bg) (attrs attrs))
+			(declare (special fg bg attrs))
 			(cond
 			  ((equalp (subseq (string tag) 0 3) "FG-")
-			   (setf fg (keywordify (subseq (string tag) 3))))
+			   (push (keywordify (subseq (string tag) 3)) fg))
 			  ((equalp (subseq (string tag) 0 3) "BG-")
-			   (setf bg (keywordify (subseq (string tag) 3))))
+			   (push (keywordify (subseq (string tag) 3)) bg))
 			  (t
 			   (push tag attrs)))
 			;; (format t "tag ~s attrs ~s (cdr s) ~s~%"
 			;; 	tag attrs (cdr s))
 			(spanky (cdr s))
-			(setf fg nil bg nil)
-			(pop attrs))
+			;;(setf fg nil bg nil)
+			;;(pop attrs)
+			)
 		      (progn
 			(spanky f)
 			(spanky (cdr s))))))))))
@@ -463,10 +474,11 @@ set in this string."
   (when (not terminal)
     (error "Please supply a terminal or set *terminal*."))
   (let ((*terminal* terminal))
-    (loop :with last-attr :and fg :and bg
+    (loop :with last-attr :and fg :and bg :and set-attr
        :for c :across fat-string
        :do
-       (when (not (eq last-attr (fatchar-attrs c)))
+       (setf set-attr nil)
+       (when (not (equal last-attr (fatchar-attrs c)))
 	 (tt-normal)
 	 (loop :for a :in (fatchar-attrs c)
 	    :do
@@ -475,9 +487,12 @@ set in this string."
 	      (:standout  (tt-standout t))
 	      (:underline (tt-underline t))
 	      (:bold      (tt-bold t))
-	      (:inverse   (tt-inverse t)))))
+	      (:inverse   (tt-inverse t))))
+	 (setf last-attr (fatchar-attrs c)
+	       set-attr t))
        (when (or (not (eq fg (fatchar-fg c)))
-		 (not (eq bg (fatchar-bg c))))
+		 (not (eq bg (fatchar-bg c)))
+		 set-attr)
 	 (setf fg (fatchar-fg c) bg (fatchar-bg c))
 	 (tt-color fg bg))
        (tt-write-char (fatchar-c c)))
