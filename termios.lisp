@@ -1008,7 +1008,7 @@ The individual settings override the settings in MODE."
 		       (setf (mem-aref c_cc :char +VMIN+) 1)
 		       (setf (mem-aref c_cc :char +VTIME+) 0))
 		     (progn
-		       (setf c_iflag (logior c_iflag +ICRNL+ +IXON+))
+		       (setf c_iflag (logior c_iflag +ICRNL+ #| +IXON+ |#))
 		       (setf c_lflag (logior c_lflag +ICANON+ +IEXTEN+)))))
 	       (echo-mode (state)
 		 (setf c_lflag

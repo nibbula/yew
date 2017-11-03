@@ -1245,7 +1245,7 @@ the current 'C' environment."
 
 (defcfun ("getenv" real-getenv) :string (name :string))
 
-(defun getenv (var)
+(defun environment-variable (var)
   "Return a string with the value of the system environment variable name VAR."
   (declare (type string-designator var))
   (let ((var-string (string var)))
@@ -1263,7 +1263,7 @@ the current 'C' environment."
     #-(or clisp sbcl openmcl cmu ecl excl lispworks abcl)
     (missing-implementation 'getenv)))
 
-(defalias 'environment-variable 'getenv)
+(defalias 'getenv 'environment-variable)
 
 ;; If we had environ and didn't have a getenv, or if it was faster
 ;; (which it isn't) we could define getenv as:
