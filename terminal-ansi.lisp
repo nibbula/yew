@@ -47,6 +47,22 @@
    "Terminal as purely a Lisp output stream. This can't do input or things that
 require terminal driver support."))
 
+(defmethod terminal-start ((tty terminal-ansi-stream))
+  "This doesn't do anything for a stream."
+  (declare (ignore tty)))
+
+(defmethod terminal-end ((tty terminal-ansi-stream))
+  "Stop using a stream."
+  (terminal-finish-output tty))
+
+(defmethod terminal-done ((tty terminal-ansi-stream))
+  "Forget about the whole terminal stream."
+  (terminal-end tty)
+  ;; don't close the stream
+  (values))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defclass terminal-ansi (terminal terminal-ansi-stream)
   ((typeahead
     :accessor typeahead
@@ -977,5 +993,6 @@ and add the characters the typeahead."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (register-terminal-type :ansi 'terminal-ansi)
+(register-terminal-type :ansi-stream 'terminal-ansi-stream)
 
 ;; EOF

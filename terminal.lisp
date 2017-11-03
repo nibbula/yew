@@ -174,17 +174,18 @@ two values ROW and COLUMN."))
 
 (defmacro with-terminal ((&optional (type *default-terminal-type*)
 				    (var '*terminal*)
-				    device-name)
+				    &rest initargs)
 			 &body body)
   "Evaluate the body with VAR set to a new terminal. Cleans up afterward."
   (with-unique-names (result)
     `(progn
        (when (not (find-type ,type))
 	 (error "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
-       (let ((,var (if ,device-name
-		       (make-instance (find-type ,type)
-				      :device-name ,device-name)
-		       (make-instance (find-type ,type))))
+       ;; (let ((,var (if ,device-name
+       ;; 		       (make-instance (find-type ,type)
+       ;; 				      :device-name ,device-name)
+       ;; 		       (make-instance (find-type ,type))))
+       (let ((,var (make-instance (find-type ,type) ,@initargs))
 	     ,result)
 	 (unwind-protect
 	      (progn
