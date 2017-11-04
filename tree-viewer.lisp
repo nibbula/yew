@@ -2,11 +2,6 @@
 ;; tree-viewer.lisp - View trees.
 ;;
 
-;; TODO:
-;;  - It would be best if the generic viewer didn't rely on any output
-;;    such as curses, but I would need ‘that thing’, so I'll have to convert
-;;    it later.
-
 (defpackage :tree-viewer
   (:documentation "View trees.")
   (:nicknames :tb)
@@ -1433,6 +1428,12 @@ and indented properly for multi-line objects."
   (loop :for sc :in (subclasses (find-class 'standard-object))
      :collect (make-instance 'class-node :object sc :open nil)))
 
+(defclass conditions-node (cached-dynamic-node) ())
+(defun conditions-contents (node)
+  (declare (ignore node))
+  (loop :for sc :in (subclasses (find-class 'condition))
+     :collect (make-instance 'class-node :object sc :open nil)))
+
 (defclass commands-node (cached-dynamic-node) ())
 
 (defun commands-contents (node)
@@ -1467,6 +1468,11 @@ and indented properly for multi-line objects."
     'cached-dynamic-node
     :object "Classes"
     :func #'classes-contents
+    :open nil)
+   (make-instance
+    'cached-dynamic-node
+    :object "Conditions"
+    :func #'conditions-contents
     :open nil)
    (make-instance
     'commands-node
