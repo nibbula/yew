@@ -402,12 +402,25 @@ symbols, :all to show internal symbols too."
 	    :collect s)))
     (print-values-of symbol-list sys :prefix 'system-)))
 
+;; (defmacro stfu (&body body)
+;;   "I mean it."
+;;   (let ((nilly (gensym)))
+;;     ;; @@@ /dev/null is not portable. maybe add something like this to opsys??
+;;     `(with-open-file (,nilly "/dev/null" :direction :io :if-exists :append)
+;;        (let ((*standard-output*	,nilly)
+;; 	     (*error-output*	,nilly)
+;; 	     (*trace-output*	,nilly)
+;; 	     (*load-print*	nil)
+;; 	     (*load-verbose*	nil)
+;; 	     )
+;; 	 ,@body))))
+
 (defun describe-class (class &optional (stream *standard-output*))
   "Describe a class or structure. Send output to STREAM which defaults, to
 *STANDARD-OUTPUT*. Requires a working MOP."
   #+has-mop
   (with-grout (*grout* stream)
-    (let ((symb nil) class-doc is-struct)
+    (let ((symb nil) class-doc type)
       (ctypecase class
 	((or string keyword)
 	 (setf symb (make-symbol (string-upcase class)))
@@ -418,10 +431,15 @@ symbols, :all to show internal symbols too."
       (cond
 	((eq (class-of class) (find-class 'structure-class))
 	 (setf class-doc (documentation symb 'structure)
-	       is-struct t))
+	       type :struct))
+	((typep class (type-of (find-class 'condition)))
+	 (setf class-doc
+	       (documentation symb 'type)
+	       type :condition))
 	((typep (class-of class) 'class)
 	 (setf class-doc
-	       (documentation symb 'type))))
+	       (documentation symb 'type)
+	       type :class)))
       (grout-format "~a : ~a~%" symb class-doc)
       (when (not (class-finalized-p class))
 	;; For the most part this shouldn't be a problem, but it could be weird
@@ -429,20 +447,28 @@ symbols, :all to show internal symbols too."
 	;; that class. I wonder how we could detect if that could be so.
 	(finalize-inheritance class))
       (grout-print-table
-       (if is-struct
+       (case type
+	 (:struct
 	   (make-table-from
 	    (loop :for s :in (class-slots class)
 	       :collect (list (slot-definition-name s)
 			      (slot-definition-type s)
 			      (slot-definition-initform s)))
-	    :column-names '("Name" "Type" ("Default" :left)))
+	    :column-names '("Name" "Type" ("Default" :left))))
+	 (:condition
+	   (make-table-from
+	    (loop :for s :in (class-slots class)
+	       :collect (list (slot-definition-name s)
+			      (slot-definition-type s)))
+	    :column-names '("Name" "Type")))
+	 (:class
 	   (make-table-from
 	    (loop :for s :in (class-slots class)
 	       :collect (list (slot-definition-name s)
 			      (slot-definition-type s)
 			      (aref (string (slot-definition-allocation s)) 0)
 			      (documentation s t)))
-	    :column-names '("Name" "Type" "A" ("Description" :left))))))
+	    :column-names '("Name" "Type" "A" ("Description" :left)))))))
     (values))
     #-has-mop    
     (format stream "No MOP, so I don't know how to describe the class ~s~%"
