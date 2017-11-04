@@ -2,30 +2,17 @@
 ;;; tiny-repl.lisp - A poor little REPL that works with RL.
 ;;;
 
-;;; It's actually quite broken and incomplete.
-;;; It used to include a debugger which is very very shabby, but
-;;; now is seperate as TINY-DEBUG.
-;;; If you like self deprecating software, this is for you.
-;;; By the way, this currently breaks DRIBBLE, as if anyone cares.
-
 ;;; TODO:
 ;;;   - pasteability?
 ;;;     - make multi-line statements 1 history entry
 ;;;     - some way to turn off completion (tab & ?) for pasting
 
-;;; OR you could just say:
-;;; (loop (print (eval (read-from-string (rl:rl) nil nil))))
-
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 		   (compilation-speed 0)))
 
-;; Is this the proper way/place to do this?
-;#+sbcl (require 'sb-introspect)
-
 (defpackage "TINY-REPL"
   (:use :common-lisp :terminal :rl :keymap :dlib :dlib-misc)
-  (:documentation
-   "A tiny REPL replacement that works with RL.")
+  (:documentation "A tiny REPL replacement that works with RL.")
   (:export
    #:tiny-repl
    #:*repl-level*
@@ -35,9 +22,6 @@
 )
 (in-package "TINY-REPL")
 
-;(defvar real-eof-symbol (gensym "reof"))
-;(defvar continue-symbol (gensym "reof"))
-;(defvar empty-symbol (gensym "reof"))
 (defparameter *real-eof-symbol* :Z-REAL-EOF)
 (defparameter *continue-symbol* :Z-CONTINUE)
 (defparameter *empty-symbol* :Z-EMPTY)
@@ -96,15 +80,6 @@
   (got-error	nil	:type boolean)
   (error-count	0	:type fixnum)
   (debug	nil	:type boolean))
-
-;(defvar *repl-debug-messages* nil)
-; This should be a macro when things are working well enough.
-;(defun dbg (fmt &rest args)
-;  (when *repl-debug-messages*
-;    (apply #'format t fmt args)))
-
-;; (define-constant +newline-string+ (string #\newline) ;#.(string #\newline)
-;;   "So we don't have to keep making one." #'equal)
 
 (defvar +newline-string+ (string #\newline)
   "So we don't have to keep making one.")
