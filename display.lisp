@@ -13,13 +13,15 @@
 (defun message (e fmt &rest args)
   "Show a little message for debugging."
   (declare (type line-editor e))
+  (tt-save-cursor)
   (tt-cursor-off)
   (tt-move-to 5 5)		; The only place we should call this
   (tt-standout t)
   ;; (apply #'tt-format (cons (line-editor-terminal e) (cons fmt args)))
   (apply #'terminal-format (cons (line-editor-terminal e) (cons fmt args)))
   (tt-standout nil)
-  (tt-cursor-on))
+  (tt-cursor-on)
+  (tt-restore-cursor))
 
 (defun log-message (e fmt &rest args)
   (when (debugging e)
@@ -28,16 +30,18 @@
 (defun show-message-log (e)
   "Show the debugging message log."
   (declare (type line-editor e))
+  (tt-save-cursor)
   (tt-cursor-off)
-  (tt-standout t)
+  (tt-bold t)
   (loop :for i :from 0 :below 8
      :for dd :in (line-editor-debug-log e)
      :do
      (tt-move-to (+ 10 i) 40)		; The “only” place we should call this
      (tt-erase-to-eol)
      (tt-write-string dd))
-  (tt-standout nil)
-  (tt-cursor-on))
+  (tt-bold nil)
+  (tt-cursor-on)
+  (tt-restore-cursor))
 
 (defun message-pause (e fmt &rest args)
   "Show a little message for debugging."
@@ -722,19 +726,27 @@ Updates the screen coordinates."
   (display-buf e)
   (with-slots (point buf) e
     (when (< point (length buf))
-      ;;(let ((disp-len (display-length (subseq buf point))))
-      ;;  (move-backward e disp-len))))
-      (move-over e (- (length buf) point) :start (length buf))))
+      (move-over e (- (- (length buf) point)) :start (length buf))))
   (setf (need-to-redraw e) nil))
 
 (defun tmp-prompt (e fmt &rest args)
+  (declare (ignore e))
   (tt-move-to-col 0)
   (tt-erase-to-eol)
-  (setf (screen-col e) 0)
-  (do-prefix e (apply #'format `(nil ,fmt ,@args))))
+  ;; (setf (screen-col e) 0)
+  ;; (do-prefix e (apply #'format `(nil ,fmt ,@args)))
+  (tt-write-string (apply #'format `(nil ,fmt ,@args)))
+  (tt-finish-output))
 
 (defun tmp-message (e fmt &rest args)
-  (apply #'tmp-prompt e fmt args)
+  ;;(apply #'tmp-prompt e fmt args)
+  (tt-scroll-down 1)
+  (tt-move-to-col 0)
+  (tt-erase-to-eol)
+  (apply #'terminal-format *terminal* fmt args)
+  (tt-up 1)
+  (tt-beginning-of-line)
+  ;; (tt-forward (screen-col e))
   (setf (need-to-redraw e) t))
 
 ;; @@@ should probably be called something else, like "clear under area"?

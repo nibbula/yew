@@ -15,6 +15,7 @@
    ;; Misc dorky crap
    #:read-filename
    #:read-choice
+   #:edit-value
    ;; Things that one might want to use externally, like in external commands.
    #:line-editor
    #:line-editor-p

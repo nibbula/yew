@@ -367,4 +367,14 @@ Keyword arguments:
        :do (tmp-message editor "~a is not a valid choice." item))
     item))
 
+(defmacro edit-value (place &key prompt (value nil value-supplied-p))
+  "Edit the value of something."
+  `(setf ,place (read-from-string
+		 (rl :prompt (or ,prompt (s+ (princ-to-string ',place) " = "))
+		     :string (write-to-string
+			      (if ,value-supplied-p
+				  ,value
+				  ,place)
+			      :escape t :readably t)))))
+
 ;; EOF

@@ -26,8 +26,8 @@ If NOT-IN is provied move over characters for which are not in it.
 DIR is :forward or :backward. E is a line-editor.
 If ACTION is given, it's called with the substring scanned over and replaces
 it with ACTION's return value."
-  (if (and (not func) not-in)
-      (setf func #'(lambda (c) (not (position c not-in)))))
+  (when (and (not func) not-in)
+    (setf func #'(lambda (c) (not (position c not-in)))))
   (with-slots (point buf) e
     (let (cc)
       (if (eql dir :backward)
@@ -45,12 +45,11 @@ it with ACTION's return value."
 	    (loop :while (and (< point len)
 			     (funcall func (buffer-char buf point)))
 	      :do
-	      (progn
-		(when action
-		  (when (setf cc (funcall action (buffer-char buf point)))
-		    (buffer-replace e point cc)
-		    (setf did-one t)))
-		(incf point)))
+	       (when action
+		 (when (setf cc (funcall action (buffer-char buf point)))
+		   (buffer-replace e point cc)
+		   (setf did-one t)))
+	       (incf point))
 	    (when did-one (decf point)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -554,24 +553,39 @@ Don't update the display."
 every character in the region delimited by BEGINING and END. If BEGINING
 and END aren't given uses the the current region, or gets an error if there
 is none."
-  (with-slots (point mark) e
-    (if (or (not beginning) (not end))
-	(error "Mark must be set if beginning or end not given."))
-    (if (not beginning)
-	(setf beginning (min mark point)))
+  (with-slots (point mark buf) e
+    (when (and (not mark) (or (not beginning) (not end)))
+      (error "Mark must be set if beginning or end not given."))
+    (when (not beginning)
+      (setf beginning (min mark point)))
     (when (not end)
       (setf end (max mark point)))
-    (when (> end beginning)
+    (when (> beginning end)
       (rotatef end beginning))
-    (let ((old-mark mark))
+    (let ((old-mark mark)
+	  (old-point point))
       (unwind-protect
 	   (progn
-	     (setf mark beginning)
-	     (exchange-point-and-mark e)
-	     (scan-over e :forward :func (constantly t) :action char-action))
-	(setf mark old-mark)))))
+	     ;;(setf mark beginning)
+	     ;;(rotatef point mark)
+	     ;;(exchange-point-and-mark e)
+	     (setf point beginning)
+	     ;;(scan-over e :forward :func (constantly t) :action char-action))
+	     (log-message e "point = ~s end = ~s" point end)
+	     (scan-over e :forward :func (_ (< (point e) end))
+			:action
+			char-action
+			;; (_ (let ((r (funcall char-action _)))
+			;;      (message-pause e "~s -> ~s" _ r)
+			;;      r))
+			)
+	     (if (< point (length buf)) (incf point)))
+	(setf mark old-mark
+	      point old-point)))
+    (move-over e (- (- point beginning)))
+    (display-buf e beginning end)))
 
-(defun downcase-region (e &optional begining end)
+(defun downcase-region (e &optional (begining (mark e)) (end (point e)))
   (apply-char-action-to-region e #'char-downcase begining end))
 
 (defun upcase-region (e &optional begining end)
@@ -598,16 +612,25 @@ is none."
     (let ((overall-start point) c start)
       (loop :do
 	 (setf start point)
+	 (setf c (buffer-char buf point))
 	 (scan-over
 	  e :forward
 	  :func #'(lambda (c) (and (alpha-char-p c) (upper-case-p c))))
+	 ;;(message-pause e "first point = ~s ~s" point c)
 	 (scan-over
 	  e :forward
 	  :func #'(lambda (c) (and (alpha-char-p c) (lower-case-p c))))
-	 (downcase-region e start point)
 	 (setf c (buffer-char buf point))
+	 ;;(message-pause e "second point = ~s ~s" point c)
+	 (downcase-region e start point)
+	 ;;(message-pause e "downcase ~s ~s" start point)
+	 (setf c (buffer-char buf point))
+	 ;;(message-pause e "third point ~s ~s" point c)
 	 (when (and (alpha-char-p c) (upper-case-p c))
-	   (insert-char e #\-))
+	   (insert-char e #\-)
+	   (incf point))
+	 (setf c (buffer-char buf point))
+	 ;;(message-pause e "fourth point ~s ~s" point c)
 	 :while (and (alpha-char-p c) (upper-case-p c)))
       (record-undo e 'boundary)
       (display-buf e overall-start point))))
@@ -834,32 +857,19 @@ in order, \"{open}{close}...\".")
   (let* ((key-seq (read-key-sequence e))
 	 (def (key-sequence-binding key-seq (line-editor-keymap e))))
     (if def
-	(tmp-message e "Describe key: ~w is bound to ~a"
+	(tmp-message e "~w is bound to ~a"
 		     (key-sequence-string key-seq) def)
-	(tmp-message e "Describe key: ~w is not bound"
-		     (key-sequence-string key-seq)))))
+	(tmp-message e "~w is not bound"
+		     (key-sequence-string key-seq)))
+    (redraw e)
+    ;; (setf (need-to-redraw e) t)
+    ))
 
 (defun exit-editor (e)
   "Stop editing."
   (with-slots (quit-flag exit-flag) e
     (setf quit-flag t
 	  exit-flag t)))
-
-;; @@@ Consider calling redraw?
-#| Redundant
-(defun redraw-command (e)
-  "Clear the screen and redraw the prompt and the input line."
-  (with-slots (prompt prompt-func point buf need-to-redraw) e
-    (tt-clear) (tt-home)
-    (setf (screen-col e) 0 (screen-row e) 0)
-    (do-prompt e prompt prompt-func)
-    (finish-output (terminal-output-stream
-		    (line-editor-terminal e)))
-    (display-buf e)
-    (when (< point (length buf))
-      (move-over e (- (- (length buf) point)) :start (length buf)))
-    (setf need-to-redraw nil)))
-|#
 
 (defun char-picker-command (e)
   "Pick unicode (or whatever) characters."
