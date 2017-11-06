@@ -73,7 +73,10 @@ require terminal driver support."))
     :accessor typeahead-pos
     :initform nil
     :initarg :typeahead-pos
-    :documentation "How far into the typeahead we are."))
+    :documentation "How far into the typeahead we are.")
+   (saved-mode
+    :initarg :saved-mode :accessor saved-mode
+    :documentation "Saved terminal modes for restoring on exit."))
   (:default-initargs
     :file-descriptor		nil
     :device-name		*default-device-name*
@@ -152,12 +155,16 @@ two values ROW and COLUMN."
   "Set up the terminal for reading a character at a time without echoing."
   (with-slots ((file-descriptor	   terminal::file-descriptor)
 	       (device-name   	   terminal::device-name)
-	       (output-stream 	   terminal::output-stream)) tty
+	       (output-stream 	   terminal::output-stream)
+	       saved-mode) tty
     (when (not file-descriptor)
       ;; (format t "[terminal-open ~s]~%" device-name)
       (setf file-descriptor (open-terminal device-name)))
-      ;; (dbug "terminal-ansi open in~%")
-    (set-terminal-mode file-descriptor :line nil :echo nil)
+    ;; (dbug "terminal-ansi open in~%")
+    (setf saved-mode (get-terminal-mode file-descriptor))
+    (when (or (terminal-mode-line saved-mode)
+	      (terminal-mode-echo saved-mode))
+      (set-terminal-mode file-descriptor :line nil :echo nil))
     (when (not output-stream)
       (setf output-stream (open device-name :direction :output
 				#-(or clisp abcl) :if-exists
@@ -172,9 +179,11 @@ two values ROW and COLUMN."
 
 (defmethod terminal-end ((tty terminal-ansi))
   "Put the terminal back to the way it was before we called terminal-start."
-					;  (format t "[terminal-end]~%")
-  (set-terminal-mode (terminal-file-descriptor tty)
-		     :line t :echo t :raw nil :timeout nil))
+  ;;  (format t "[terminal-end]~%")
+  ;; (set-terminal-mode (terminal-file-descriptor tty)
+  ;; 		     :line t :echo t :raw nil :timeout nil)
+  (when (saved-mode tty)
+    (set-terminal-mode (terminal-file-descriptor tty) :mode (saved-mode tty))))
 
 (defmethod terminal-done ((tty terminal-ansi))
   "Forget about the whole terminal thing and stuff."
@@ -554,71 +563,98 @@ default to 16 bit color."
   ;;(read-terminal-char tty))
   (get-char tty))
 
+(defparameter *key-tag*
+  '((#\A . :up) 			; Arrow keys
+    (#\B . :down)
+    (#\C . :right)
+    (#\D . :left)
+    (#\H . :home)			; Movement keys
+    (#\F . :end)
+    (#\Z . :back-tab)			; non-standard
+    (#\P . :f1)				; function keys
+    (#\Q . :f2)
+    (#\R . :f3)
+    (#\S . :f4)
+    ))
+
+(defparameter *key-num*
+  '((2  . :insert)			; Editing keys
+    (3  . :delete)
+    (5  . :page-up)
+    (6  . :page-down)
+    (15 . :f5)				; Function keys
+    (17 . :f6)
+    (18 . :f7)
+    (19 . :f8)
+    (20 . :f9)
+    (21 . :f10)
+    (23 . :f11)
+    (24 . :f12)))
+
+(defun modifier-prefixed (symbol params)
+  "Return a keyword of SYMBOL prefixed by modifiers determined in PARAMS."
+  (if (second params)
+      (intern (format nil "~:[~;S-~]~:[~;A-~]~:[~;C-~]~:[~;M-~]~@:(~a~)"
+		      (logtest (1- (second params)) (ash 1 0))
+		      (logtest (1- (second params)) (ash 1 1))
+		      (logtest (1- (second params)) (ash 1 2))
+		      (logtest (1- (second params)) (ash 1 3))
+		      (symbol-name symbol)) :keyword)
+      symbol))
+
 ;; This can unfortunately really vary between emulations, so we try to code
 ;; for multiple interpretations.
-(defun read-function-key (tty)
-  "Read the part of a function key after the ESC [ and return an indicative
-keyword. If we don't recognize the key, return #\escape and add the characters
-to the typeahead."
-  (let ((c (get-char tty :timeout 1)))
-    ;;(format t "got ~s~%" c)
-    (case c
-      ;; Arrow keys
-      (#\A :up)
-      (#\B :down)
-      (#\C :right)
-      (#\D :left)
-      ;; Movement keys
-      (#\H :home)
-      (#\F :end)
-      (#\Z :back-tab)			; non-standard
-      (t
-       (cond
-	 ((null c) ; timeout
-	  (add-typeahead tty "[")
-	  #\escape)
-	 ;; read a number followed by a tilde
-	 ((digit-char-p c)
-	  (let ((num (parse-integer (string c))))
-	    (setf c (get-char tty :timeout 1))
-	    (loop :while (digit-char-p c)
-	       :do
-	       (setf num (+ (* num 10) (parse-integer (string c))))
-	       ;;(format t "(~a ~c)" num c)
-	       (setf c (get-char tty :timeout 1)))
-	    ;;(message tty (format nil "~a ~c" n c))
-	    ;;(format t "[~d ~c]" num c)
-	    (if (eql c #\~)
-		(case num
-		  (2 :insert)
-		  (3 :delete)
-		  (5 :page-up)
-		  (6 :page-down)
-		  (15 :f5)
-		  (17 :f6)
-		  (18 :f7)
-		  (19 :f8)
-		  (20 :f9)
-		  (21 :f10)
-		  (23 :f11)
-		  (24 :f12)
-		  (t
-		   (add-typeahead tty (s+ "["))
-		   (when num
-		     (add-typeahead tty (s+ num)))
-		   (when c
-		     (add-typeahead tty c))
-		   #\escape))
-		(progn
-		  (add-typeahead tty (s+ "[" num))
-		  (when c
-		    (add-typeahead tty c))))))
-	 (t
-	  (add-typeahead tty "[")
-	  (when c
-	    (add-typeahead tty c))
-	  #\escape))))))
+(defun read-function-key (tty &key app-key-p)
+  "Read the part of a function key after the lead in and return a keyword
+representing the key. The lead in is ESC O if APP-KEY-P is true, and ESC [
+otherwise. If we don't recognize the key, return #\escape and add the
+characters to the typeahead."
+  (let ((c (get-char tty :timeout 1))
+	(start-char (if app-key-p "O" "["))
+	k)
+    (labels ((read-number ()
+	       (let ((num (parse-integer (string c))))
+		 (setf c (get-char tty :timeout 1))
+		 (loop :while (digit-char-p c)
+		    :do
+		    (setf num (+ (* num 10) (parse-integer (string c))))
+		    (setf c (get-char tty :timeout 1)))
+		 num))
+	     (read-params ()
+	       (let (params)
+		 (loop :do (push (read-number) params)
+		    :while (eql c #\;)
+		    :do (setf c (get-char tty :timeout 1)))
+		 (reverse params))))
+      (cond
+	((setf k (assoc c *key-tag*))
+	 (cdr k))
+	((null c)			; timeout
+	 (add-typeahead tty start-char)
+	 #\escape)
+	((digit-char-p c)
+	 ;; read a parameters followed by a tilde or tag
+	 (let ((param (read-params)))
+	   (cond
+	     ((and (eql c #\~) (not app-key-p))
+	      (setf k (assoc (first param) *key-num*))
+	      (modifier-prefixed (cdr k) param))
+	     ;; ((setf k (assoc (first param) *key-tag*))
+	     ;;  (modifier-prefixed (cdr k) param))
+	     ((setf k (assoc c *key-tag*))
+	      (modifier-prefixed (cdr k) param))
+	     (t ;; Stuff whatever characters we read.
+	      (add-typeahead tty start-char)
+	      (when (first param)
+		(add-typeahead tty (s+ (car param))))
+	      (loop :for p :in (rest param) :do
+		 (add-typeahead tty #\;)
+		 (add-typeahead tty (s+ p)))
+	      (when c
+		(add-typeahead tty c))
+	      #\escape))))))))
 
+#|
 (defun read-app-key (tty)
   "Read the part of an application mode function key after the ESC O and
  return an indicative keyword. If we don't recognize the key, return #\escape
@@ -643,6 +679,7 @@ and add the characters the typeahead."
        (when c
 	 (add-typeahead tty c))
        #\escape))))
+|#
 
 (defmethod terminal-get-key ((tty terminal-ansi))
   (terminal-finish-output tty)
@@ -650,7 +687,7 @@ and add the characters the typeahead."
     (if (char= c #\escape)
 	(case (setf c (get-char tty :timeout 1))
 	  (#\[ (read-function-key tty))
-	  (#\O (read-app-key tty))
+	  (#\O (read-function-key tty :app-key-p t))
 	  (t
 	   (when c ;; if it didn't time out
 	     (add-typeahead tty c))
