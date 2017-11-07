@@ -52,11 +52,14 @@
 
    ;; spin
    #:*default-spin-string*
+   #:*spin-strings*
    #:*plain-spin-string*
    #:*unicode-disk-spin-string*
    #:*unicode-scan-spin-string*
    #:*unicode-digit-spin-string*
    #:*unicode-sparkle-spin-string*
+   #:*unicode-braille-spin-string*
+   #:*unicode-square-spin-string*
    #:*emoji-spin-string*
    #:spin
    #:with-spin
@@ -730,6 +733,10 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
       (t
        (values (nreverse col-list) extra)))))
 
+;; This does an iterative trail and error kind of thing. I'm not sure if it's
+;; always possible to exact math it due character variability and maybe variable
+;; columns. It's not always the best, but it seems to work well enough. It's
+;; similar to box packing problems.
 (defun print-columns-smush (list &key (columns 80) (stream *standard-output*)
 				   (format-char #\a) prefix suffix
 				   smush row-limit)
@@ -1025,32 +1032,42 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
   "The pre-calculated length of the spin string.")
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defparameter *plain-spin-string* "|/-\\"
+  (defparameter *spin-strings* nil
+    "List of spin strings.")
+
+  (defmacro defspin (name string doc)
+    `(progn
+       (defparameter ,name ,string ,doc)
+       (push (list ',name ,string) dlib-misc:*spin-strings*)))
+  
+  (defspin *plain-spin-string* "|/-\\"
     "Simple ASCII baton.")
 
-  (defparameter *unicode-disk-spin-string* "◒◐◓◑"
+  (defspin *unicode-disk-spin-string* "◒◐◓◑"
     "Spin string using common unicode characters.")
 
-  (defparameter *unicode-scan-spin-string* "█▉▊▋▌▍▎▏"
+;;  (defspin *unicode-scan-spin-string* "█▉▊▋▌▍▎▏"
+  (defspin *unicode-scan-spin-string* "▏▎▍▌▋▊▉█"
     "Spin string using common unicode characters.")
 
-  (defparameter *unicode-digit-spin-string* "➊➋➌➍➎➏➐➑➒➓"
+  (defspin *unicode-digit-spin-string* "➊➋➌➍➎➏➐➑➒➓"
     "Spin string using common unicode characters.")
 
-  (defparameter *unicode-sparkle-spin-string* "❋❊❈❇❇··"
+  (defspin *unicode-sparkle-spin-string* "❋❊❈❇❇··"
     "Spin string using common unicode characters.")
 
-  (defparameter *unicode-braille-spin* "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+  (defspin *unicode-braille-spin-string* "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
     "Spin string using common unicode characters.")
 
-  (defparameter *unicode-square-spin* "◰◳◲◱"
+  (defspin *unicode-square-spin-string* "◰◳◲◱"
     "Spin string using common unicode characters.")
 
-  (defparameter *emoji-spin-string* "🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚🕛"
+  (defspin *emoji-spin-string* "🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚🕛"
     "Spin string with fancy emoji clock face characters.")
 
   (defvar *default-spin-string* *plain-spin-string*
-    "The default spin string."))
+    "The default spin string.")
+  )
 
 (defun spin (&optional (stream *standard-output*))
   "Do one iteration of a spin animation."
@@ -1067,11 +1084,15 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
   (write-char #\backspace stream)
   (finish-output stream))
 
-(defmacro with-spin ((&key (spin-string *default-spin-string*))
+(defmacro with-spin ((&key spin-string)
 		     &body body)
-  `(let ((*spin-string* ,spin-string)
-	 (*spin-length* (length ,spin-string))
-	 (*spin* 0))
+  "Evaluate the BODY with things set up so that you can call (SPIN)
+repeatedly to get the next frame of the spinner animation displayed.
+SPIN-STRING can be given and defaults to the value of *DEFAULT-SPIN-STRING*."
+  `(let* ((*spin-string* ,(or spin-string
+			      '(symbol-value '*default-spin-string*)))
+	  (*spin-length* (length *spin-string*))
+	  (*spin* 0))
      (prog1 (progn ,@body)
        (unspin))))
 

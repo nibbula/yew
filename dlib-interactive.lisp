@@ -1,10 +1,10 @@
 ;;
-;; dlib-interactive.lisp - Dan's functions for interactive use.
+;; dlib-interactive.lisp - Functions for interactive use.
 ;;
 
 (defpackage :dlib-interactive
   (:documentation
-   "Dan's functions for interactive use. These are things that would typically
+   "Functions for interactive use. These are things that would typically
 be used at a REPL, but not as likely to be called by other programs.")
   (:use :cl :dlib :dlib-misc :table-print :mop :terminal :table :grout)
   (:export
@@ -12,6 +12,7 @@ be used at a REPL, but not as likely to be called by other programs.")
    #:printenv
    #:char-apropos #:character-apropos
    #:dir
+   #:pick-spin
    #:do-at
    #:show-features
    #:describe-environment
@@ -104,6 +105,38 @@ expand all macros recursively."
 		 (date-string :time (file-write-date p)))))))
     (setf table (sort table #'string< :key #'first))
     (nice-print-table table '("Name" "Author" ("Size" :right) "Date"))))
+
+(defun pick-spin ()
+  (let (result)
+    (with-terminal (:ansi)
+      (tt-clear)
+      (loop :with quit-flag :and k
+	 :for i = 0 :then (1+ i)
+	 :do
+	 (tt-home)
+	 (loop :for (name string) :in *spin-strings*
+	    :for n = 0 :then (1+ n)
+	    :do
+	    (tt-format "~2d - ~c  ~(~s~)~%"
+		       n (char string (mod i (length string))) name))
+	 (tt-format "Pick a number (or 'q' to quit) ->  ")
+	 (tt-finish-output)
+	 (when (tt-listen-for .1)
+	   (setf k (tt-get-key))
+	   (cond
+	     ((digit-char-p k)
+	      (setf *default-spin-string* (second
+					   (elt *spin-strings*
+						(digit-char-p k)))
+		    quit-flag t
+		    result (digit-char-p k)))
+	     ((or (eql k #\escape) (eql k #\q) (eql k #\Q))
+	      (setf quit-flag t))))
+	 (when (= i most-positive-fixnum)
+	   (setf i 0))
+	 :while (not quit-flag))
+      (when result
+	(format t "~s~%" (first (elt *spin-strings* result)))))))
 
 (defmacro do-at (time form)
   "Call func with args at time. Time is a universal time or a string."
