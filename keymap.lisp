@@ -189,7 +189,7 @@ there is no binding."
 
 (defun key-sequence-binding (keyseq map)
   "Return the binding for the given key sequence."
-  (if (or (vectorp keyseq) (listp keyseq))
+  (if (and (or (vectorp keyseq) (listp keyseq)) (not (zerop (length keyseq))))
       (let* ((key (elt keyseq 0))
 	     (action (key-definition key map)))
 	;; If the key has a keymap binding

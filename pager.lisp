@@ -216,53 +216,6 @@ but perhaps reuse some resources."))
   line)
 |#
 
-#|
-
-(defun get-span (fat-line start)
-  "Convert a FATCHAR line to tagged spans."
-  (when (= (length fat-line) 0)
-    (return-from get-span fat-line))
-  (let ((str (make-stretchy-string (- (length fat-line) start)))
-	(attr (fatchar-attrs (aref fat-line start)))
-	(i start) (span '()) last)
-    (loop
-       :with c :and len = (length fat-line)
-       :do
-       (setf c (aref fat-line i))
-       (if last
-	 (let ((added
-		(set-difference (fatchar-attrs c) (fatchar-attrs last)))
-	       (removed
-		(set-difference (fatchar-attrs last) (fatchar-attrs c))))
-	   (cond
-	     (removed
-	      (when (/= 0 (length str))
-		(push str span))
-	      (setf span (nreverse span))
-	      (return-from get-span `(,@attr ,@span)))
-	     (added
-	      (when (/= 0 (length str))
-		(push (copy-seq str) span))
-	      (let ((s (get-span fat-line i)))
-		(push s span)
-		(incf i (span-length s)))
-	      (stretchy-truncate str))
-	     (t
-	      (stretchy-append str (fatchar-c c))
-	      (incf i)
-	      (setf last c))))
-	 (progn
-	   (stretchy-append str (fatchar-c c))
-	   (incf i)
-	   (setf last c)))
-       :while (< i len))
-    (when (/= 0 (length str))
-      (push str span))
-    (setf span (nreverse span))
-    `(,@attr ,@span)))
-
-|#
-
 (defmacro dumpy (&rest args)
   "Print the names and values of the arguments, like NAME=value."
   (let ((za (loop :for z :in args :collect
@@ -369,7 +322,7 @@ but perhaps reuse some resources."))
 
 (defun process-line (line)
   "Process a line of text read from a stream."
-  (let ((output (fat-string-to-span
+  (let ((output (fatchar-string-to-span
 		 (process-control-characters
 		  (process-ansi-colors
 		   (process-grotty-line
@@ -591,7 +544,7 @@ line : |----||-------||---------||---|
 (defun search-a-matize ()
   "Highlight search strings in *fat-buf*."
   (with-slots (search-string ignore-case) *pager*
-    (let* ((s (fat-string-to-string *fat-buf*))
+    (let* ((s (fatchar-string-to-string *fat-buf*))
 	   (ss (if (and search-string ignore-case)
 		   (s+ "(?i)" search-string)
 		   search-string))
@@ -608,9 +561,9 @@ line : |----||-------||---------||---|
 ;;;  (flatten-span pager s)
   (with-slots (wrap-lines search-string) *pager*
     (if wrap-lines
-	(span-to-fat-string s :fat-string *fat-buf* :start *left*)
-	(span-to-fat-string s :fat-string *fat-buf* :start *left*
-			    :end (+ *left* *cols*)))
+	(span-to-fatchar-string s :fatchar-string *fat-buf* :start *left*)
+	(span-to-fatchar-string s :fatchar-string *fat-buf* :start *left*
+				:end (+ *left* *cols*)))
     (when search-string
       (search-a-matize))
     (let ((line-count 1)
@@ -1075,8 +1028,8 @@ location doesn't have an offset part."
 		       (length
 			(if (stringp the-line)
 			    the-line
-			    (span-to-fat-string the-line
-						:fat-string *fat-buf*))))))
+			    (span-to-fatchar-string
+			     the-line :fatchar-string *fat-buf*))))))
 	 (incf y)
 	 (incf i)
 	 (setf l (cdr l)))

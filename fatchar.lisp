@@ -11,23 +11,29 @@ Defines a FATCHAR which is a character with color and font attributes.
 Define a FAT-STRING as a vector of FATCHARS.
 Define a TEXT-SPAN as a list representation of a FAT-STRING.
 ")
-  (:use :cl :dlib :stretchy :terminal)
+  (:use :cl :dlib :stretchy :terminal :char-util)
   (:export
    #:fatchar
    #:fatchar-p
    #:make-fatchar
    #:fatchar-c #:fatchar-fg #:fatchar-bg #:fatchar-line #:fatchar-attrs
    #:fatchar-string
+   #:fat-string #:fat-string-string
    #:fatchar-init
    #:copy-fat-char
    #:make-fat-string
+   #:make-fatchar-string
+   #:fatchar-string-to-string
    #:fat-string-to-string
    #:span-length
    #:fat-string-to-span
+   #:fatchar-string-to-span
    #:span-to-fat-string
+   #:span-to-fatchar-string
    #:process-ansi-colors
    #:remove-effects
    #:render-fat-string
+   #:render-fatchar-string
    ))
 (in-package :fatchar)
 
@@ -42,6 +48,12 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 (deftype fatchar-string (&optional size)
   "A string of FATCHARs."
   `(vector fatchar ,size))
+
+;; This is potentially wastful, required to specialize methods.
+(defstruct fat-string
+  "A vector of FATCHAR."
+  ;;(string (vector) :type fatchar-string)) ; Is this better or worse?
+  string) ;; blurg
 
 (defun fatchar-init (c)
   "Initialize a fatchar with the default vaules."
@@ -61,7 +73,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
      :line  (fatchar-line c)
      :attrs (fatchar-attrs c))))
 
-(defun make-fat-string (thing)
+(defun make-fatchar-string (thing)
   "Make a fat string from something. THING can be a string or a character."
   (let (result)
     (flet ((from-string (string)
@@ -84,17 +96,21 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 
 (defun fat-string-to-string (fat-string)
   "Make a string from a fat string. This of course loses the attributes."
+  (fatchar-string-to-string (fat-string-string fat-string)))
+
+(defun fatchar-string-to-string (string)
+  "Make a string from a fat string. This of course loses the attributes."
   ;; Arrays can't really distinguish their orginal element type if it's
   ;; upgraded, so we might not be able tell a string from a fatchar-string.
-  (typecase fat-string
+  (typecase string
     (fatchar-string
      ;; (let ((s (make-array (list (length fat-string))
      ;; 			  :element-type 'character)))
      ;;   (loop :for i :from 0 :below (length fat-string) :do
      ;; 	  (setf (aref s i) (fatchar-c (aref fat-string i))))
      ;;   s))
-     (map 'string (_ (if (fatchar-p _) (fatchar-c _) _)) fat-string))
-    (t fat-string)))
+     (map 'string (_ (if (fatchar-p _) (fatchar-c _) _)) string))
+    (t string)))
 
 (defun span-length (span)
   "Calculate the length in characters of the span."
@@ -143,17 +159,20 @@ strings."
 ;; (fatchar:fat-string-to-span (pager::process-grotty-line (nth 4 (!_ "/bin/cat grotish.txt"))))
 
 (defun fat-string-to-span (fat-string &key (start 0))
+  (fatchar-string-to-span (fat-string-string fat-string) :start start))
+
+(defun fatchar-string-to-span (fatchar-string &key (start 0))
   "Convert a FATCHAR line to tagged spans."
-  (when (= (length fat-string) 0)
-    (return-from fat-string-to-span fat-string))
+  (when (= (length fatchar-string) 0)
+    (return-from fatchar-string-to-span fatchar-string))
   (let ((last (make-fatchar))
 	(result '())
 	(open-count 0)
 	added removed)
 ;;    (push #\( result)
     (loop :with c
-       :for i :from start :below (length fat-string) :do
-       (setf c (aref fat-string i))
+       :for i :from start :below (length fatchar-string) :do
+       (setf c (aref fatchar-string i))
        ;; Foreground
        (when (not (eql (fatchar-fg c) (fatchar-fg last)))
 	 (when (fatchar-fg last)
@@ -243,15 +262,21 @@ strings."
     `(,@attr ,@span)))
 |#
 
-(defun span-to-fat-string (span &key (start 0) end fat-string)
+(defun span-to-fat-string (span &key (start 0) end fatchar-string)
+  (make-fat-string
+   :string
+   (span-to-fatchar-string span :start start :end end
+			   :fatchar-string fatchar-string)))
+
+(defun span-to-fatchar-string (span &key (start 0) end fatchar-string)
   "Make a fat string from a span."
-  (when (not fat-string)
-    (setf fat-string (make-array 40
-				 :element-type 'fatchar
-				 :initial-element (make-fatchar)
-				 :fill-pointer 0
-				 :adjustable t)))
-  (setf (fill-pointer fat-string) 0)
+  (when (not fatchar-string)
+    (setf fatchar-string (make-array 40
+				     :element-type 'fatchar
+				     :initial-element (make-fatchar)
+				     :fill-pointer 0
+				     :adjustable t)))
+  (setf (fill-pointer fatchar-string) 0)
   (let (fg bg attrs (i 0))
     (declare (special fg bg attrs))
     (labels
@@ -264,12 +289,12 @@ strings."
 			      (or (not end) (< i end)))
 		     (vector-push-extend
 		      (make-fatchar :c c :fg (car fg) :bg (car bg) :attrs attrs)
-		      fat-string))
+		      fatchar-string))
 		   (incf i)))
 	       (character
 		(vector-push-extend
 		 (make-fatchar :c s :fg (car fg) :bg (car bg) :attrs attrs)
-		 fat-string)
+		 fatchar-string)
 		(incf i))
 	       (list
 		(let* ((f (first s))
@@ -294,7 +319,7 @@ strings."
 			(spanky f)
 			(spanky (cdr s))))))))))
       (spanky span)))
-  fat-string)
+  fatchar-string)
 
 #|
 (defun map-span-strings (span &key (start 0) end fat-string)
@@ -468,14 +493,17 @@ set in this string."
 
 (defun remove-effects (string)
   "Remove any terminal colors or attributes from STRING."
-  (fat-string-to-string (process-ansi-colors (make-fat-string string))))
+  (fatchar-string-to-string (process-ansi-colors (make-fatchar-string string))))
 
 (defun render-fat-string (fat-string &optional (terminal *terminal*))
+  (render-fatchar-string (fat-string-string fat-string) terminal))
+
+(defun render-fatchar-string (fatchar-string &optional (terminal *terminal*))
   (when (not terminal)
     (error "Please supply a terminal or set *terminal*."))
   (let ((*terminal* terminal))
     (loop :with last-attr :and fg :and bg :and set-attr
-       :for c :across fat-string
+       :for c :across fatchar-string
        :do
        (setf set-attr nil)
        (when (not (equal last-attr (fatchar-attrs c)))
@@ -494,8 +522,82 @@ set in this string."
 		 (not (eq bg (fatchar-bg c)))
 		 set-attr)
 	 (setf fg (fatchar-fg c) bg (fatchar-bg c))
-	 (tt-color fg bg))
+	 (tt-color (or fg :default) (or bg :default)))
        (tt-write-char (fatchar-c c)))
     (tt-normal)))
+
+(defmethod print-object ((obj fat-string) stream)
+  (cond
+    (*print-readably*
+     (if *read-eval*
+	 (format stream "#.~s"
+		 `(fatchar:span-to-fat-string ,(fat-string-to-span obj)))
+	 (call-next-method)))
+    ((typep stream 'terminal-stream)
+     (render-fat-string obj))
+    (t
+     ;;(print-object (fat-string-to-string obj) stream)
+     (print (fat-string-to-string obj) stream)
+     ;;(call-next-method)
+     )))
+
+(defun print-string (stream obj colon-p at-sign-p &rest args)
+  "For using in a format slash directive. E.g. ~/fatchar:print-string/"
+  (declare (ignore colon-p))
+  #| aus der spez:
+An arg, any object, is printed without escape characters (as by princ).
+If arg is a string, its characters will be output verbatim.  If arg is nil
+it will be printed as nil; the colon modifier (~:A) will cause an arg of
+nil to be printed as (), but if arg is a composite structure, such as a
+list or vector, any contained occurrences of nil will still be printed as
+nil.
+
+~mincolA inserts spaces on the right, if necessary, to make the width at
+least mincol columns.  The @ modifier causes the spaces to be inserted on
+the left rather than the right.
+
+~mincol,colinc,minpad,padcharA is the full form of ~A, which allows
+control of the padding.  The string is padded on the right (or on the left
+if the @ modifier is used) with at least minpad copies of padchar; padding
+characters are then inserted colinc characters at a time until the total
+width is at least mincol.  The defaults are 0 for mincol and minpad, 1 for
+colinc, and the space character for padchar.
+  |#
+  (let* ((mincol (and args (pop args)))
+	 ;;(colinc (and args (pop args)))
+	 ;;(minpad (and args (pop args)))
+	 ;;(padchar (and args (pop args)))
+	 (str obj)
+	 render
+	 len)
+    (labels ((fatty () (render-fatchar-string str stream))
+	     (skinny () (princ str stream)))
+      (setf render #'skinny)
+      (cond
+	((typep stream 'terminal-stream)
+	 (cond
+	   ((or (typep obj 'fat-string) (typep obj 'fatchar-string))
+	    (setf str (if (typep obj 'fat-string) (fat-string-string obj) obj)
+		  len (display-length (fatchar-string-to-string str))
+		  render #'fatty))
+	   (t (setf len (display-length str)))))
+	(t (setf len (display-length str))))
+      (if (and mincol (< len mincol))
+	  (if at-sign-p
+	      (progn
+		(dotimes (i (- mincol len)) (tt-write-char #\space))
+		(funcall render))
+	      (progn
+		(funcall render)
+		(dotimes (i (- mincol len)) (tt-write-char #\space))))
+	  (funcall render)))))
+
+(defmethod display-length ((c fatchar))
+  "Return the length of the fat character for display."
+  (display-length (fatchar-c c)))
+
+(defmethod display-length ((s fat-string))
+   "Return the length of the string for display."
+   (display-length (fat-string-to-string s)))
 
 ;; EOF

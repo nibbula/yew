@@ -4,7 +4,7 @@
 
 (defsystem dlib
     :name               "dlib"
-    :description        "Dan's lisp library."
+    :description        "A crusty old shed of oddly shaped Lisp tools."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :licence            "GPLv3"

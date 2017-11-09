@@ -12,7 +12,8 @@
   (:documentation
 ;; @@@: This description needs work. It confuses me and I wrote it. Also it's
 ;; not a good overall description of the package, rather it's an incomplete
-;; description of the specifics of calling completion functions.
+;; description of the specifics of calling completion functions. It's probably
+;; past due time for some real documentation.
 "Completion functions are called with line of context and a position where
 completion was requested. The are asked to return one completion, or all
 completions. When asked for one completion, they return a completion and a
@@ -22,7 +23,7 @@ want to, and replace whatever they want to, even prior to the starting
 point. When asked for all completions, they return a sequence of strings and
 a count which is the length of the sequence.")
   (:use :cl :dlib :opsys :glob :dlib-misc :syntax-lisp
-        :terminal :terminal-ansi :cl-ppcre)
+        :terminal :terminal-ansi :cl-ppcre :theme :fatchar)
   (:export
    ;; generic
    #:complete-print
@@ -956,6 +957,33 @@ defaults to the current package. Return how many symbols there were."
 		match-sub)))
      :unique full-match)))
 
+(defun spannify-style-item (style item)
+  "Convert STYLE into a span with ITEM in it."
+  (labels ((flurp (n)
+	     "A typical function that only a Lisp addled brain find sensible."
+	     (cond ((null (cdr n)) (car n))
+		   ((atom n) n)
+		   (t (list (car n) (flurp (cdr n)))))))
+    (flurp (append style (list item)))))
+
+(defun styled-file-name (file)
+  "Return a stylized string for a OPSYS:DIR-ENTRY."
+  (let (style)
+    (cond
+      ((not *theme*)
+       (dir-entry-name file))
+      ((setf style (or (theme-value *theme*
+				    (list :file :type
+					  (dir-entry-type file) :style))
+		       (theme-value *theme*
+				    (list :file :suffix 
+					  (theme:file-suffix-type
+					   (dir-entry-name file))
+					  :style))))
+       (span-to-fat-string (spannify-style-item style (dir-entry-name file))))
+      (t
+       (dir-entry-name file)))))
+
 (defun filename-completion-list (w &optional extra-test)
   "Return the list of completions for W and how many there were."
   (let* (pos
@@ -974,6 +1002,9 @@ defaults to the current package. Return how many symbols there were."
 		       (safe-read-directory
 			:full t :append-type t :omit-hidden (not hidden)))))
 ;    (format t "dir-part = ~a~%file-part = ~a~%" dir-part file-part)
+    (locally
+	#+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+	(setq dir-list (sort dir-list #'string> :key #'dir-entry-name)))
     (loop :for file :in dir-list
        :do
 ;      (format t "~f~%" f)
@@ -982,12 +1013,9 @@ defaults to the current package. Return how many symbols there were."
 		  (= pos 0)
 		  (or (not extra-test)
 		      (funcall extra-test file dir-part)))
-	 (push (dir-entry-name file) result-list)
+	 (push (styled-file-name file) result-list)
 	 (incf count)))
     ;;(setq result-list (sort result-list #'string-lessp))
-    (locally
-	#+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
-	(setq result-list (sort result-list #'string<)))
     (make-completion-result
      :completion result-list :count count)))
 

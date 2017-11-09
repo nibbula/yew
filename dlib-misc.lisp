@@ -1,5 +1,5 @@
 ;;
-;; dlib-misc.lisp - Dan's library of miscellaneous useful functions.
+;; dlib-misc.lisp - Library of miscellaneous useful functions.
 ;;
 
 ;; See dlib.lisp for the most essential stuff.
@@ -10,13 +10,11 @@
 ;; and to keep dlib minimal.
 ;;
 ;; I don't like the name “MISC”. Let’s think of something better.
-;; Maybe something like: dlib dlib-1 dlib-2 etc.
 
 (defpackage :dlib-misc
-  (:use :cl :dlib :opsys :glob)
+  (:use :cl :dlib :opsys :glob :char-util)
   ;; Also has an inplicit dependency on ASDF.
-  (:documentation
-   "More of Dan's generally dubious miscellaneous functions.")
+  (:documentation "More generally dubious miscellaneous functions.")
   (:export
    ;; general
    #:randomize-vector
@@ -676,7 +674,7 @@ is printed. This is useful for printing, e.g. slots of a structure or class."
 ROW-LIMIT. Items are printed with FORMAT-CHAR."
   (loop
      :with len = (length list)
-     :and format-str = (format nil "~~v~c" format-char)
+     :and format-str = (format nil "~~v~a" format-char)
      :and a = (make-array (length list) :initial-contents list)
      :and limit = (if row-limit (min height row-limit) height)
      :for i :from 0 :below limit :do
@@ -690,6 +688,7 @@ ROW-LIMIT. Items are printed with FORMAT-CHAR."
 	  (format stream format-str c (aref a n))))
      (terpri stream)))
 
+#|
 ;; @@@ I really wish I could use rl:display-length, which probably means it
 ;; should be a more generic facility.
 (defun display-length (object format-char)
@@ -700,12 +699,23 @@ ROW-LIMIT. Items are printed with FORMAT-CHAR."
     (t
      (length (format nil (s+ "~" format-char) object)))))
 
-(defun smush-columns (list cols rows format-char)
+-> Now using char-util:display-length
+|#
+
+(defun format-length (object format-char)
+  "Return the length in characters to print OBJECT with FORMAT-CHAR."
+  (cond
+    ((and (stringp object) (eql format-char #\a))
+     (display-length object))
+    (t
+     (display-length (format nil (s+ "~" format-char) object)))))
+
+(defun smush-columns (list cols rows lengths)
   "Return a list of the smallest column sizes for the putting the LIST in COLS
 and ROWS. Return nil if the list can't fit. Second value is the extra space in
 the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
   (let (col-list extra max-len (l list) (col 0) row)
-    (loop
+    (loop :with i = 0
        :do
        (setf max-len 0 row 0)
        ;; Go down the column.
@@ -713,9 +723,11 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
 	  :do
 	  ;; Add space between cols except for the last row.
 	  (setf max-len (max max-len
-			     (+ (display-length (car l) format-char)
-				(if (= col (1- cols)) 0 *inter-space*))))
+			     (+ ;(format-length (car l) format-char)
+			      (aref lengths i)
+			      (if (= col (1- cols)) 0 *inter-space*))))
 	  (setf l (cdr l))
+	  (incf i)
 	  (incf row)
 	  :while (and l (< row rows)))
        ;; Save the amount of blank space left in the last column.
@@ -733,10 +745,8 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
       (t
        (values (nreverse col-list) extra)))))
 
-;; This does an iterative trail and error kind of thing. I'm not sure if it's
-;; always possible to exact math it due character variability and maybe variable
-;; columns. It's not always the best, but it seems to work well enough. It's
-;; similar to box packing problems.
+;; @@@ This is linear, so we should be able to calculate the minimal
+;; @@@ intersection of the rows and cols directly without iterating.
 (defun print-columns-smush (list &key (columns 80) (stream *standard-output*)
 				   (format-char #\a) prefix suffix
 				   smush row-limit)
@@ -756,11 +766,17 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
 	col-list
 	last-col-list last-new-rows
 	extra not-fit-count
+	(cached-lengths (make-array (length list)
+				    :element-type 'fixnum
+				    :initial-element 0))
 	)
     ;; Compute the length, maximum item length, and minimum area.
     (loop :with l
-       :for i :in list :do
-       (setf l (+ (display-length i format-char) *inter-space*)
+       :for i :in list
+       :for n = 0 :then (1+ n)
+       :do
+       (setf l (+ (setf (aref cached-lengths n)
+			(format-length i format-char)) *inter-space*)
 	     max-len (max max-len l)
 	     min-len (min min-len l))
        (incf area l)
@@ -786,7 +802,7 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
     (if (= new-rows 1)
 	(progn
 	  (multiple-value-setq (last-col-list extra)
-	    (smush-columns list new-cols new-rows format-char))
+	    (smush-columns list new-cols new-rows cached-lengths))
 	  (setf last-new-rows 1))
 	(loop
 	   :while (and (< not-fit-count 4)
@@ -820,7 +836,7 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
 	      (decf new-rows)))
 	   
 	   (multiple-value-setq (col-list extra)
-	     (smush-columns list new-cols new-rows format-char))
+	     (smush-columns list new-cols new-rows cached-lengths))
 	   (dbug "Squish: ~d x ~d (~d)~25t~a~%"
 		 new-cols new-rows extra col-list)))
 
@@ -838,7 +854,7 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
 columns and the maximum width of a column."
   (declare (ignore stream smush row-limit))
   (let* ((len (length list))
-	 (format-str (format nil "~~~c" format-char))
+	 (format-str (format nil "~~~a" format-char))
 	 (max-len
 	  ;; This, although terse, may be inefficient w/big lists (@@@ test!):
 	  (loop :with m = 0
@@ -887,7 +903,7 @@ SUFFIX is a string to append to each row."
     (return-from print-columns (apply #'print-columns-smush list keys)))
   (multiple-value-bind (rows cols max-len)
       (apply #'print-columns-sizer list keys)
-    (let* ((format-str (format nil "~~v~c" format-char))
+    (let* ((format-str (format nil "~~v~a" format-char))
 	   (a (print-columns-array list rows cols))
 	   (limit (if row-limit (min rows row-limit) rows)))
       ;; output the array
@@ -911,60 +927,6 @@ SUFFIX is a string to append to each row."
 	   (write-string suffix stream))
 	 (terpri stream)))
     rows))
-
-(defun OLD-print-columns (list &key (columns 80) (stream *standard-output*)
-			     (format-char #\a) prefix suffix)
-  "Print the LIST on STREAM with as many columns as will fit in COLUMNS fixed
-width character cells. Items are sorted down the columns, then across.
-FORMAT-CHAR is used to print the items, as with FORMAT.
-PREFIX is a string to prepend to each row.
-SUFFIX is a string to append to each row."
-  (let* ((len (length list))
-	 (max-len
-	  ;; This, although terse, may be inefficient w/big lists (@@@ test!):
-	  (loop :with m = 0
-	     :for c :in list :do
-	     (setf m (max m (length
-			     (format nil
-				     (format nil "~~~c" format-char)
-				     c))))
-	     :finally (return (1+ m))))
-	 (width (- (1- columns)
-		   (if prefix (length prefix) 0)
-		   (if suffix (length suffix) 0)))
-	 (ccc   (floor width max-len))
-	 (cols  (if (zerop ccc) 1 ccc))
-	 (rows  (if (zerop cols) len (ceiling len cols)))
-	 (col   0)
-	 (row   0)
-	 (a     (make-array `(,cols ,rows) :initial-element nil)))
-    ;; for each line,  for each col , elt mod
-    (when (> max-len width) (setf max-len width))
-    (loop :for c :in list
-       :do
-       (setf (aref a col row) c)
-       (incf row)
-       (when (>= row rows)
-	 (incf col)
-	 (setf row 0)))
-    (loop :for r :from 0 :below rows
-       :do
-       (when prefix
-	 (write-string prefix stream))
-       (loop :for c :from 0 :below cols
-	  :do
-	  (if (aref a c r)
-	      (progn
-		(write-string
-		 (format nil (format nil "~~v~c" format-char)
-			 max-len (aref a c r))
-		 stream))
-	      (if suffix
-		  (write-string
-		   (format nil "~va" max-len #\space)))))
-       (when suffix
-	 (write-string suffix stream))
-       (terpri))))
 
 (defparameter *iec-size-prefixes*
   #(nil "kibi" "mebi" "gibi" "tebi" "pebi" "exbi" "zebi" "yobi" "buttload"))
@@ -1046,7 +1008,6 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
   (defspin *unicode-disk-spin-string* "◒◐◓◑"
     "Spin string using common unicode characters.")
 
-;;  (defspin *unicode-scan-spin-string* "█▉▊▋▌▍▎▏"
   (defspin *unicode-scan-spin-string* "▏▎▍▌▋▊▉█"
     "Spin string using common unicode characters.")
 
@@ -1222,7 +1183,7 @@ text into lisp and have it be stored as lines of words."
 ;; This is kind of some duplication from stuff in lish/piping.lisp.
 ;;
 ;; I don't think this should ever a slurp a URL, because security?.
-;; Anyway drakma does it better.
+;; Anyway Drakma does it better.
 
 (defun slurp (file-or-stream &key (external-format :default))
   "Return a string (well actually an array of stream-element-type, which

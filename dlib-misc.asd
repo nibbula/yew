@@ -4,14 +4,14 @@
 
 (defsystem dlib-misc
     :name               "dlib-misc"
-    :description        "Dan's library of miscellaneous useful function."
+    :description        "Library of miscellaneous useful functions."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :licence            "GPLv3"
     :source-control	:git
     :long-description
-    "Dan's library of miscellaneous useful function. This is for things that
+    "A library of miscellaneous useful functions. This is for things that
 are nice, but not essential."
-    :depends-on (:opsys :dlib :char-util :table :cl-ppcre :glob)
+    :depends-on (:opsys :dlib :char-util :glob :cl-ppcre :table)
     :components
     ((:file "dlib-misc")))

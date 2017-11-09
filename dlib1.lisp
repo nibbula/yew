@@ -1,22 +1,23 @@
 ;;							-*- encoding: utf-8 -*-
-;; dlib1.lisp - Dan's utilities of redundant doom, first file.
+;; dlib1.lisp - Utilities of redundant doom, first file.
 ;;
 
 ;; These are mostly solving problems that have already been solved.
 ;; But it's mostly stuff that I need just to start up.
 ;; So:
 ;;  - Don't add any dependencies.
-;;  - Try to keep it minimal.
+;;  - Try to keep it so-called “minimal”.
 ;; More optional stuff can go in dlib-misc.
 
 #+debug-rc (progn (format t "[dlib") (force-output *standard-output*))
 
 (defpackage :dlib
   (:documentation
-   "Dan's utilities of redundant doom.
-The existance of this is a societal problem of Lisp programmers, that will
-probably eventually have to be dealt with. I apologize for my addition to the
-problem, and hope I can some day contribute to the solution of it.")
+   "Utilities of redundant doom.
+The existance of this is probbaly a societal logistic problem of Lisp
+programmers, that will likely eventually have to be dealt with. I apologize for
+my addition to the problem, and hope I can some day contribute to the solution
+of it.")
   (:use :common-lisp
 	;; We must have the MOP!!! Don't ever drop the MOP!
 	#+mop :mop

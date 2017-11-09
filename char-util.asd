@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "General utilites for characters."
-;    :depends-on ()
+    :depends-on (:dlib)
     :components
     ((:file "char-util")))

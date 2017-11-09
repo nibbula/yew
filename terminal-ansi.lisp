@@ -159,14 +159,17 @@ two values ROW and COLUMN."
 	       saved-mode) tty
     (when (not file-descriptor)
       ;; (format t "[terminal-open ~s]~%" device-name)
-      (setf file-descriptor (open-terminal device-name)))
+      (setf file-descriptor (open-terminal (or device-name
+					       *default-device-name*))))
     ;; (dbug "terminal-ansi open in~%")
     (setf saved-mode (get-terminal-mode file-descriptor))
+    (dbugf 'terminal-ansi "saving terminal modes ~s ~s~%" tty saved-mode)
     (when (or (terminal-mode-line saved-mode)
 	      (terminal-mode-echo saved-mode))
       (set-terminal-mode file-descriptor :line nil :echo nil))
     (when (not output-stream)
-      (setf output-stream (open device-name :direction :output
+      (setf output-stream (open (or device-name *default-device-name*)
+				:direction :output
 				#-(or clisp abcl) :if-exists
 				#-(or clisp abcl) :append))
       ;; @@@ Why do we have to do this?
@@ -183,6 +186,8 @@ two values ROW and COLUMN."
   ;; (set-terminal-mode (terminal-file-descriptor tty)
   ;; 		     :line t :echo t :raw nil :timeout nil)
   (when (saved-mode tty)
+    (dbugf 'terminal-ansi "restoring terminal modes ~s ~s~%"
+	   tty (saved-mode tty))
     (set-terminal-mode (terminal-file-descriptor tty) :mode (saved-mode tty))))
 
 (defmethod terminal-done ((tty terminal-ansi))
@@ -568,13 +573,14 @@ default to 16 bit color."
     (#\B . :down)
     (#\C . :right)
     (#\D . :left)
-    (#\H . :home)			; Movement keys
+    (#\E . :center)			; center of the keypad
     (#\F . :end)
-    (#\Z . :back-tab)			; non-standard
+    (#\H . :home)			; Movement keys
     (#\P . :f1)				; function keys
     (#\Q . :f2)
     (#\R . :f3)
     (#\S . :f4)
+    (#\Z . :back-tab)			; non-standard
     ))
 
 (defparameter *key-num*
@@ -639,8 +645,6 @@ characters to the typeahead."
 	     ((and (eql c #\~) (not app-key-p))
 	      (setf k (assoc (first param) *key-num*))
 	      (modifier-prefixed (cdr k) param))
-	     ;; ((setf k (assoc (first param) *key-tag*))
-	     ;;  (modifier-prefixed (cdr k) param))
 	     ((setf k (assoc c *key-tag*))
 	      (modifier-prefixed (cdr k) param))
 	     (t ;; Stuff whatever characters we read.
@@ -697,6 +701,14 @@ and add the characters the typeahead."
 (defmethod terminal-listen-for ((tty terminal-ansi) seconds)
   (listen-for seconds (terminal-file-descriptor tty)))
 
+(defmethod terminal-set-input-mode ((tty terminal-ansi) mode)
+  (case mode
+    (:line
+     (set-terminal-mode (terminal-file-descriptor tty) :line t :echo t))
+    (:char
+     (set-terminal-mode (terminal-file-descriptor tty) :line nil :echo nil))
+    (t (error "Unknown terminal input mode ~s" mode))))
+
 (defmethod terminal-reset ((tty terminal-ansi-stream))
   "Try to reset the terminal to a sane state, without being too disruptive."
   (flet ((out (s) (terminal-write-string tty (format nil "~c~a" #\escape s))))
@@ -747,7 +759,6 @@ and add the characters the typeahead."
     (61 "VT510")
     (64 "VT520")
     (65 "VT525")))
-
 
 (defun query-parameters (s &key (offset 3))
   (let ((response (termios:terminal-query (s+ +csi+ s))))

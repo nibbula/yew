@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description
     "I had to do something, and this is what I did."
-    :depends-on (:dlib :tree-viewer)
+    :depends-on (:dlib)
     :components
     ((:file "theme")))

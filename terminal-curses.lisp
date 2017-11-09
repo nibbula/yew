@@ -366,6 +366,18 @@ require terminal driver support."))
       (curses::timeout -1))
     c))
 
+(defmethod terminal-set-input-mode ((tty terminal-curses) mode)
+  (case mode
+    (:line
+     (echo)
+     (nl)
+     (nocbreak))
+    (:char
+     (noecho)
+     (nonl)
+     (cbreak))
+    (t (error "Unknown terminal input mode ~s" mode))))
+
 (defmethod terminal-reset ((tty terminal-curses))
   "Try to reset the terminal to a sane state, without being too disruptive."
   (reset-shell-mode)) ; or something..

@@ -29,7 +29,7 @@
    #:terminal-end
    #:terminal-done
    #:make-terminal-stream
-   #:with-terminal
+   #:with-terminal #:with-new-terminal
    #:tt-format			  #:terminal-format			;
    #:tt-write-string		  #:terminal-write-string		;
    #:tt-write-char		  #:terminal-write-char			;
@@ -63,6 +63,7 @@
    #:tt-get-char		  #:terminal-get-char
    #:tt-get-key			  #:terminal-get-key
    #:tt-listen-for		  #:terminal-listen-for
+   #:tt-set-input-mode            #:terminal-set-input-mode
    #:tt-reset			  #:terminal-reset
    #:tt-save-cursor		  #:terminal-save-cursor		;
    #:tt-restore-cursor		  #:terminal-restore-cursor		;
@@ -70,6 +71,7 @@
    #:tt-height
    #:with-saved-cursor
    #:with-terminal-output-to-string
+   #:with-style
    ))
 (in-package :terminal)
 
@@ -172,12 +174,14 @@ two values ROW and COLUMN."))
 (defun make-terminal-stream (stream type)
   (make-instance type :output-stream stream))
 
-(defmacro with-terminal ((&optional (type *default-terminal-type*)
-				    (var '*terminal*)
-				    &rest initargs)
-			 &body body)
-  "Evaluate the body with VAR set to a new terminal. Cleans up afterward."
-  (with-unique-names (result)
+(defmacro %with-terminal ((&optional (type *default-terminal-type*)
+				     (var '*terminal*)
+				     (new-p nil)
+				     &rest initargs)
+			  &body body)
+  "Evaluate the body with VAR possibly set to a new terminal depending on NEW-P.
+Cleans up afterward."
+  (with-unique-names (result make-it)
     `(progn
        (when (not (find-type ,type))
 	 (error "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
@@ -185,14 +189,41 @@ two values ROW and COLUMN."))
        ;; 		       (make-instance (find-type ,type)
        ;; 				      :device-name ,device-name)
        ;; 		       (make-instance (find-type ,type))))
-       (let ((,var (make-instance (find-type ,type) ,@initargs))
-	     ,result)
+       (let* ((,make-it (not
+			 (and ,var (typep ,var (find-type ,type)) (not ,new-p))))
+	      (,var (if ,make-it
+			(make-instance (find-type ,type) ,@initargs)
+			,var))
+	      ;; (*standard-output* ,var)
+	      ;; (*standard-input* ,var)
+	      ,result)
 	 (unwind-protect
 	      (progn
 		(terminal-start ,var)
 		(setf ,result (progn ,@body)))
-	   (terminal-done ,var))
+	   (if ,make-it
+	       (terminal-done ,var)
+	       (terminal-end ,var)))
 	 ,result))))
+
+(defmacro with-terminal ((&optional (type *default-terminal-type*)
+				     (var '*terminal*)
+				     &rest initargs)
+			 &body body)
+  "Evaluate the body with VAR set to a terminal indicated by TYPE. If VAR is
+already a terminal of that type, use it. TYPE should be one of the types
+registerd in *TERMINAL-TYPES*. Initialized the terminal and cleans up
+afterward."
+  `(%with-terminal (,type ,var nil ,@initargs) ,@body))
+
+(defmacro with-new-terminal ((&optional (type *default-terminal-type*)
+					(var '*terminal*)
+					&rest initargs)
+			     &body body)
+  "Evaluate the body with VAR set to a new terminal indicated by TYPE.
+TYPE should be one of the types registerd in *TERMINAL-TYPES*. Cleans up
+afterward."
+  `(%with-terminal (,type ,var t ,@initargs) ,@body))
 
 (defmacro deftt (name (&rest args) doc-string)
   "Defines a terminal generic function along with a macro that calls that
@@ -266,6 +297,10 @@ screen down.")
   "Listen for at most N seconds or until input is available. SECONDS can be
 fractional, down to some limit.")
 
+(deftt set-input-mode (mode)
+  "Set the input mode to MODE. Modes are :LINE for line at time with echo
+or :CHAR for character at time with no echo.")
+
 (deftt reset ()
   "Try to reset the terminal to a sane state, without being too disruptive.")
 
@@ -306,6 +341,28 @@ a string and return the string."
 	 (unwind-protect
 	      ,@body
 	   (tt-finish-output))))))
+
+(defmacro with-style ((&rest style) &body body)
+  (with-unique-names (fg bg color-set s)
+    `(let (,fg ,bg ,color-set)
+       (loop :for ,s :in (flatten ,@style) :do
+	  (case ,s
+	    (:normal    (tt-normal))
+	    (:standout  (tt-standout t))
+	    (:underline (tt-underline t))
+	    (:bold      (tt-bold t))
+	    (:inverse   (tt-inverse t))
+	    (otherwise
+	     (cond
+	       ((equalp (subseq (string ,s) 0 3) "FG-")
+		(setf ,fg (keywordify (subseq (string ,s) 3))
+		      ,color-set t))
+	       ((equalp (subseq (string ,s) 0 3) "BG-")
+		(setf ,bg (keywordify (subseq (string ,s) 3))
+		      ,color-set t))))))
+       (when ,color-set
+	 (tt-color ,fg ,bg))
+       ,@body)))
 
 #| @@@@ Make an output-table method, with underlined titles
 

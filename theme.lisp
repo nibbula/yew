@@ -4,13 +4,21 @@
 
 (defpackage :theme
   (:documentation "Customize the style.")
-  (:use :cl :dlib)
+  (:use :cl :dlib :terminal)
   (:export
    #:theme
    #:theme-activate
    #:theme-deactivate
    #:theme-value
+   #:theme-as-tree
+   #:print-theme
    #:make-theme
+   #:save-theme
+   #:load-theme
+   #:*theme*
+   #:*file-type-suffixes*
+   #:file-suffix-type
+   #:default-theme
    ))
 (in-package :theme)
 
@@ -71,6 +79,9 @@
 (defgeneric (setf theme-value) (value theme item)
   (:documentation "Set the value of a theme item."))
 
+(defgeneric theme-delete (theme item)
+  (:documentation "Destructively delete ITEM from THEME."))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defmethod print-object ((object theme-node) stream)
@@ -89,20 +100,23 @@
       (format stream "~a ~d ~s" name (length children)
       	      (and (slot-boundp object 'value) value)))))
 
+#|
 (defgeneric get-item-in-node (node name)
   (:documentation "Return an item named NAME from NODE."))
 
 (defgeneric put-item-in-node (node name type)
   (:documentation "Put a item named NAME in NODE."))
 
+(defgeneric make-node (theme item)
+  (:documentation "Make ITEM exist in THEME if it doesn't, and return it."))
+|#
+
 (defgeneric get-node (theme item)
   (:documentation "Get the node for ITEM from THEME."))
 
-(defgeneric make-node (theme item)
-  (:documentation "Make ITEM exist in THEME if it doesn't, and return it."))
-
 ;---------------------------------------------------------------------------
 
+#|
 (defmethod get-item-in-node ((node theme-node) name)
   "Return an item named NAME from NODE."
   (find name (theme-children node) :key #'theme-name))
@@ -112,6 +126,7 @@
   (let ((new (make-instance type :name name)))
     (push new (theme-children node))
     new))
+|#
 
 (defmethod get-node ((theme theme) item)
   "Get a node in THEME described by the node path ITEM."
@@ -151,7 +166,7 @@ If the path doesn't exist, it is created."
 	(progn
 	  ;;(format t " = ~s~%" value)
 	  (if (typep theme 'theme-value-node)
-	      (setf (theme-value theme) value)
+	      (setf (theme-node-value theme) value)
 	      (error
 	       "Attempt to set the value of an existing non-value node."))))))
 
@@ -315,20 +330,92 @@ If the path doesn't exist, it is created."
   (with-open-file (in file :direction :input)
     (unserialize (safe-read in) +theme-version+)))
 
+;; (defun import-dircolors (file)
+;;   (with-open-file-or-stream (in file)
+;;     ))
+
+;; Fake:
 (defun test-theme ()
   (let ((tt (make-theme 'cool
 			:title "( ͡° ͜ʖ ͡°)"
-			:description "Yubba dooba foo.")))
+			:description "Spooty booty foo.")))
     (setf (theme:theme-value tt '(file dir fg)) :blue)
     (setf (theme:theme-value tt '(file dir bg)) :black)
     (setf (theme:theme-value tt '(file regular fg)) :white)
     (setf (theme:theme-value tt '(file regular bg)) :black)
     tt))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; theme-ish things that maybe should be elsewhere?
 
-(defun view-theme (theme)
-  "Look at a vague representation of THEME in the tree viewer."
-  (tree-viewer:view-tree (theme-as-tree theme)))
+(defvar *theme* nil
+  "The current theme.")
+
+;; (defun print-themed (thing-type thing)
+;;   (let ((style (theme-value *theme* thing)))
+;;     (when style
+;;       (with-style (style)
+;; 	(print thing)))))
+
+(defparameter *file-type-suffixes*
+  '((:archive (".tar" ".tgz" ".arc" ".arj" ".taz" ".lha" ".lz4" ".lzh" ".lzma"
+	       ".tlz" ".txz" ".tzo" ".t7z" ".zip"
+	       ".deb" ".rpm" ".jar" ".war" ".ear" ".sar" ".rar" ".alz" ".ace"
+	       ".zoo" ".cpio" ".7z" ".rz" ".cab"))
+    (:compressed (".z" ".Z" ".dz" ".gz" ".lrz" ".lz" ".lzo" ".xz" ".bz2" ".bz"
+		  ".tbz" ".tbz2" ".tz"))
+    (:image (".jpg" ".jpeg" ".gif" ".bmp" ".pbm" ".pgm" ".ppm" ".tga" ".xbm"
+	     ".xpm" ".tif" ".tiff" ".png" ".svg" ".svgz" ".mng" ".pcx"
+	     ".xwd" ".yuv" ".cgm"".emf"
+	     ".gl" ".dl"))
+    (:video (".mov" ".mpg" ".mpeg" ".m2v" ".mkv" ".webm" ".ogm" ".mp4" ".m4v"
+	     ".mp4v" ".vob" ".qt" ".nuv" ".wmv" ".asf" ".rm" ".rmvb" ".flc"
+	     ".avi" ".fli"".flv"
+	     ".ogv" ".ogx"))
+    (:audio (".aac" ".au" ".flac" ".m4a" ".mid" ".midi" ".mka" ".mp3" ".mpc"
+	     ".ogg" ".ra" ".wav" ".oga" ".opus" ".spx"".xspf"))))
+
+(defparameter *file-suffix-table* nil)
+
+(defun file-suffix-type (file)
+  (when (not *file-suffix-table*)
+    (setf *file-suffix-table* (make-hash-table :test #'equal))
+    (loop :for type :in theme:*file-type-suffixes* :do
+       (loop :for suffix :in (second type) :do
+	  (setf (gethash suffix *file-suffix-table*) (first type)))))
+  (let* ((dot (position #\. file :from-end t))
+	 (suffix (and dot (subseq file dot))))
+    (when suffix
+      (gethash suffix *file-suffix-table*))))
+
+(defun default-theme ()
+  (let ((tt (make-theme
+	     'default
+	     :title "Default theme."
+	     :description "~
+A default theme that isn't too unexpected and works for a dark background.
+Something like the default setting of typical GNU tools.")))
+    (setf
+     ;; File type
+     (theme-value tt '(:file :type :directory :style)) '(:bold :fg-blue)
+     (theme-value tt '(:file :type :link :style)) '(:bold :fg-cyan)
+     (theme-value tt '(:file :type :pipe :style)) '(:fg-black :fg-yellow)
+     (theme-value tt '(:file :type :socket :style)) '(:bold :fg-magenta)
+     (theme-value tt '(:file :type :block-device :style))
+     '(:bg-black :fg-yellow :bold)
+     (theme-value tt '(:file :type :character-device :style))
+     '(:bg-black :fg-yellow :bold)
+     ;; File name suffixes
+     (theme-value tt '(:file :suffix :archive :style)) '(:bold :fg-red)
+     (theme-value tt '(:file :suffix :compressed :style)) '(:bold :fg-cyan)
+     (theme-value tt '(:file :suffix :image :style)) '(:bold :fg-magenta)
+     (theme-value tt '(:file :suffix :video :style)) '(:bold :fg-magenta)
+     (theme-value tt '(:file :suffix :audio :style)) '(:fg-cyan)
+     ;; This is my own things
+     (theme-value tt '(:syntax :function :style)) '(:fg-magenta)
+     (theme-value tt '(:syntax :constant :style)) '(:fg-white)
+     (theme-value tt '(:syntax :comment :style)) '(:fg-cyan)
+     )
+    tt))
 
 ;; EOF

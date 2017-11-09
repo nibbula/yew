@@ -12,6 +12,8 @@
    ))
 (in-package :syntax-lisp)
 
+(declaim (optimize (debug 3)))
+
 ;; The funny thing about Lisp is, you can't read it entirely perfectly it
 ;; without also evaluating it. That means that "read-only" lexical analysis
 ;; will fail for programs that modify the syntax. To read it perfectly without

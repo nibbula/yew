@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description   "A user interface for viewing generic trees."
     :depends-on (:dlib :dlib-misc :curses :char-util :keymap :fui :pick-list
-		 :glob :dlib-interactive :terminal)
+		 :glob :dlib-interactive :terminal :rl)
     :components
     ((:file "tree-viewer")))

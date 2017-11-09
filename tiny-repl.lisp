@@ -186,22 +186,22 @@ The REPL also has a few commands:
          (handler-bind
 	     ((end-of-file #'(lambda (c)
 			       (declare (ignore c))
-			       (dbug "GOT read EOF - Continuing~%")
+			       (dbugf :repl "GOT read EOF - Continuing~%")
 			       (signal (make-condition 'repl-read-continue))))
-; 	      (condition #'(lambda (c)
-; 			     (dbug "GOT something else - debug or signal~%")
-; 			     ;; ??? Why can't we just use "debug" here?
-; 			     (if (repl-state-debug state)
-; 				 (invoke-debugger c)
-; 				 (signal c))))
+ 	      ;;(condition #'(lambda (c)
+ 	      ;;  (dbugf :repl "GOT something else - debug or signal~%")
+	      ;; ;; ??? Why can't we just use "debug" here?
+	      ;;  (if (repl-state-debug state)
+	      ;;    (invoke-debugger c)
+	      ;;    (signal c))))
 	      )
 	   (progn
-	    (dbug "editor before = ~a~%" editor)
+	    (dbugf :repl "editor before = ~a~%" editor)
 	    (if more
 		(progn
 		  (setf str more)
 		  (setf more nil)
-		  (dbug "Using MORE!~%"))
+		  (dbugf :repl "Using MORE!~%"))
 		(if pre-str
 		    (setf (values str editor)
 			  (rl :eof-value *real-eof-symbol*
@@ -235,20 +235,21 @@ The REPL also has a few commands:
 				    (if prompt-func
 					prompt-func
 					#'repl-output-prompt)))))))
-	    (dbug "str = ~a~%editor after = ~a~%" str editor)
+	    (dbugf :repl "str = ~s~%editor after = ~a~%" str editor)
 	    (cond
 	      ((and (stringp str) (equal 0 (length str)))
 	       *empty-symbol*)
 	      ((and (stringp str) (equal "." str))
+	       (dbugf :repl "Got a dot!~%")
 	       *exit-symbol*)
 	      ((equal str *real-eof-symbol*)
-	       (dbug "You got a *real-eof-symbol* !")
+	       (dbugf :repl "You got a *real-eof-symbol* !~%")
 	       *real-eof-symbol*)
 	      ((equal str *quit-symbol*)
 	       *quit-symbol*)
 ;	      ((eq form *continue-symbol*))
 	      (t
-	       (dbug "Before read: pre-str = ~w str = ~w~%" pre-str str)
+	       (dbugf :repl "Before read: pre-str = ~w str = ~w~%" pre-str str)
 	       (let ((cat (if pre-str
 			      (format nil "~a~%~a" pre-str str)
 			      str)))
@@ -275,8 +276,8 @@ The REPL also has a few commands:
     (if (stringp pre-str)
 	(setf pre-str (concatenate 'string pre-str str +newline-string+))
 	(setf pre-str (concatenate 'string str +newline-string+)))
-    (dbug "set pre-str = ~w~%" pre-str)
-    (dbug "DO CONTIUE!!~%"))
+    (dbugf :repl "set pre-str = ~w~%" pre-str)
+    (dbugf :repl "DO CONTIUE!!~%"))
       result)))
 
 (defun repple-stepper (c)
@@ -289,9 +290,9 @@ The REPL also has a few commands:
     (cond
       ((or (eq form *empty-symbol*) (eq form *error-symbol*))
        ;; do nothing
-       (dbug "DO NOTHING!!~%"))
+       (dbugf :repl "DO NOTHING!!~%"))
       (t
-       (dbug "Do Something!!~%")
+       (dbugf :repl "Do Something!!~%")
        ;; If there is an interceptor, let it have a crack at it.
        ;; If interceptor returns nil, it didn't intercept and we should go on.
        ;; There might be some more arguments for the interceptor which it
@@ -313,7 +314,7 @@ The REPL also has a few commands:
 		  #+sbcl (sb-ext::step-condition 'repple-stepper)
 		  (serious-condition
 		   #'(lambda (c)
-		       (dbug "Handler bind~%")
+		       (dbugf :repl "Handler bind~%")
 		       (if debug
 			   (invoke-debugger c)
 			   (format output "Condition: ~a~%" c))))
@@ -349,12 +350,12 @@ The REPL also has a few commands:
 ; 		      (continue))
 	   (serious-condition
 	    (c)
-	     (dbug "Handler case, serious condition~%")
+	     (dbugf :repl "Handler case, serious condition~%")
 	     (if debug
 		 (invoke-debugger c)
 		 (format output "~a~%" c)))
 	   (error (c)
-	     (dbug "Handler case, error~%")
+	     (dbugf :repl "Handler case, error~%")
 	     (setf got-error t)
 	     (if debug
 		 (invoke-debugger c)
@@ -365,10 +366,12 @@ The REPL also has a few commands:
 
 (defun tiny-repl (&key prompt-func prompt-string no-announce keymap
 		    terminal-name
-		    (terminal-class 'terminal-ansi:terminal-ansi)
+		    ;;(terminal-class 'terminal-ansi:terminal-ansi)
+		    (terminal-class :ansi)
 		    (output *standard-output*)
 		    (interceptor *default-interceptor*) (debug t))
-  "Keep reading and evaluating lisp, with line editing.
+  "Keep reading and evaluating lisp, with line editing. Return true if we want
+to quit everything. Arguments are:
 PROMPT-FUNC    -- A RL prompt function, which is called with a with
 		  an instance of RL:LINE-EDITOR and a prompt string.
 PROMPT-STRING  -- 
@@ -391,84 +394,75 @@ DEBUG	       -- True to install TINY-DEBUG as the debugger. Default is T.
 		   (lisp-implementation-version)))
   #+sbcl (declare (ignore no-announce))
   (let ((state (make-repl-state
-		:debug debug
-		:interceptor interceptor
-		:prompt-func prompt-func
-		:prompt-string prompt-string
-		:keymap keymap
-		:terminal-name terminal-name
+		:debug          debug
+		:interceptor    interceptor
+		:prompt-func    prompt-func
+		:prompt-string  prompt-string
+		:keymap         keymap
+		:terminal-name  terminal-name
 		:terminal-class terminal-class
-		:output output))
+		:output         output))
 	(result nil)
-;	(restart-result t)
-	(pass-back t)
+	(want-to-quit nil)
 	(old-debugger-hook *debugger-hook*)
-	(*terminal*
-	 (if terminal-name
-	     (make-instance terminal-class :device-name terminal-name)
-	     (make-instance terminal-class))))
-    (when (and debug (find-package :tiny-debug))
-      ;; @@@ On SBCL we could also set sb-ext:*invoke-debugger-hook*, to catch
-      ;; break and such, but let's not for now.
-      ;;(setf *debugger-hook* (find-symbol (symbol-name '#:tiny-debug)
-      ;;				 (find-package :tiny-debug)))
-      (funcall (intern "ACTIVATE" (find-package :tiny-debug))))
+	(start-level (incf *repl-level*)))
+    (with-terminal (terminal-class *terminal* :device-name terminal-name)
+      (tt-set-input-mode :line)
+      ;; Activate the debugger if it's loaded.
+      (when (and debug (find-package :tiny-debug))
+	(funcall (intern "ACTIVATE" (find-package :tiny-debug))))
+      (unwind-protect
+	   (tagbody
+	    TOP
+	      (restart-case
+		  (loop :do
+		     (setf (repl-state-got-error state) nil)
+		     (setf result (repl-read state)) ;;; READ
+		     :until (or (equal result *real-eof-symbol*)
+				(equal result *exit-symbol*))
+		     :do
+		     (dbugf :repl "~s (~a) ~s~%"
+			    result (type-of result)
+			    (eq result *empty-symbol*))
+		     (if (equal result *quit-symbol*)
+			 (when (confirm-quit state *repl-level*)
+			   (return result))
+			 (repl-eval result state)) ;;; EVAL
+		     :finally (return result))
+		(abort ()
+		  :report
+		  (lambda (stream)
+		    (if (= start-level 0)
+			(format stream "Return to TOP command loop.")
+			(format stream "Return to command loop ~d."
+				start-level)))
+		  (setf result nil)))
+	      (dbugf :repl "main result = ~s~%" result)
+	      (when (not result) (go TOP)))
 
-  (unwind-protect
-    (progn
-      (incf *repl-level*)
-      (loop :while (not			; Yes, the indentation is weird
-; (setq restart-result
-        (let ((lvl *repl-level*))
-	  (restart-case
-	   (progn
-	     (loop :do
-	       (setf (repl-state-got-error state) nil)
-	       (setf result (repl-read state))			;;; READ
-	       :until (or (equal result *real-eof-symbol*)
-			  (equal result *exit-symbol*))
-	       :do
-		(dbug "~s (~a) ~s~%"
-		     result (type-of result)
-		     (eq result *empty-symbol*))
-		(if (equal result *quit-symbol*)
-		  (when (confirm-quit state *repl-level*)
-		    (return result))
-		  (repl-eval result state))			;;; EVAL
-	       :finally (return result)))
-	   (abort ()
-	     :report
-	     (lambda (stream)
-	       (if (= lvl 0)
-		   (format stream "Return to TOP command loop.")
-		   (format stream "Return to command loop ~d." lvl)))
-	     nil))))
-; )
-;      do (dbug "rr = ~a result = ~a~%" restart-result result)
-      ))
+	;; Let's hope that this will clear an EOF on *standard-input*
+	(clear-input *standard-input*)
 
-    ;; Well, let's hope that this will clear the EOF on *standard-input*
-    (clear-input *standard-input*)
+	(when (> (repl-state-error-count state) 8)
+	  (format output "Quit due to too many errors.~%"))
 
-    (when (> (repl-state-error-count state) 8)
-      (format output "Quit due to too many errors.~%"))
+	(setq want-to-quit
+	      (cond
+		((eq result *real-eof-symbol*)
+		 (format output "*EOF*~%")
+		 t)
+		((eq result *quit-symbol*)
+		 (format output "*Quit*~%")
+		 t)
+		((eq result *exit-symbol*)
+		 (format output "*Exit*~%")
+		 nil)
+		(t
+		 (dbugf :repl "~s ~a~%" result (type-of result))
+		 t)))
 
-    (setq pass-back
-	  (cond
-	    ((eq result *real-eof-symbol*)
-	     (format output "*EOF*~%")
-	     t)
-	    ((eq result *quit-symbol*)
-	     (format output "*Quit*~%")
-	     t)
-	    ((eq result *exit-symbol*)
-	     (format output "*Exit*~%")
-	     nil)
-	    (t
-	     (dbug "~s ~a~%" result (type-of result))
-	     t)))
-    (setf *debugger-hook* old-debugger-hook)
-    (decf *repl-level*))
-  pass-back))
+	(setf *debugger-hook* old-debugger-hook)
+	(decf *repl-level*))
+      want-to-quit)))
 
 ;; EOF

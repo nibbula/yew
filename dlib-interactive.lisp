@@ -6,7 +6,7 @@
   (:documentation
    "Functions for interactive use. These are things that would typically
 be used at a REPL, but not as likely to be called by other programs.")
-  (:use :cl :dlib :dlib-misc :table-print :mop :terminal :table :grout)
+  (:use :cl :mop :dlib :dlib-misc :table :table-print :terminal :grout)
   (:export
    #:show-expansion
    #:printenv

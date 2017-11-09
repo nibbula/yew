@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description   "Blah blah blah"
     :depends-on (:dlib :opsys :glob :dlib-misc :syntax-lisp
-		 :terminal :terminal-ansi :cl-ppcre)
+		 :terminal :terminal-ansi :cl-ppcre :theme :fatchar)
     :components
     ((:file "completion")))

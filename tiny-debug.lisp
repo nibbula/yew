@@ -877,7 +877,7 @@ innermost N contexts, if we can."
 (:fg-cyan ":dbp") "    " (:fg-white "Deactivate breakpoints.")  #\newline
 (:fg-cyan ":xbp") "    " (:fg-white "Delete breakpoints.")  #\newline))
 (print-span `(
-(:fg-cayn "number") "     " (:fg-white "Invoke that number restart (from the :r list).") #\newline
+(:fg-cyan "number") "     " (:fg-white "Invoke that number restart (from the :r list).") #\newline
 (:fg-cyan "...") "      " (:fg-white "Or just type a some lisp code.") #\newline))
 (list-restarts (cdr (compute-restarts *interceptor-condition*))))
 
@@ -1024,7 +1024,8 @@ program that messes with the terminal, we can still type at the debugger."
 (defun print-span (span)
   (with-terminal (:ansi-stream *terminal* :output-stream *debug-io*)
     (render-fat-string
-     (span-to-fat-string span))))
+     (span-to-fat-string span))
+    (tt-finish-output)))
 
 (defun print-condition (c)
   (print-span

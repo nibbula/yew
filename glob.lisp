@@ -5,6 +5,19 @@
 ;; ToDo:
 ;;  - ALL or OMIT-HIDDEN option to not omit files starting with '.'
 ;;  - make BRACES work
+;;  - Fix exponential behavior:
+#|
+in ~/src/lisp/glob-test:
+touch !(make-string 100 :initial-element #\a)
+(glob "a*a*a*a*a*b")
+
+Convert to NFA or DFA. Traverse all branches simultaneously.
+(a )       (* )         (a )       (* )      (a )       (* )
+(a 'a') -> (* 'a') +--> (a 'a') -> (*
+                    \-> (* 'a')
+
+Or do figure out what cl-ppcre does.
+|#
 
 (defpackage :glob
   (:documentation "Shell style file name pattern matching.
@@ -36,7 +49,8 @@ The documentation for FNMATCH describes the pattern syntax a little.
 ;; only put in the features I needed for LISH.
 
 (define-constant +special-chars+ #("[*?" "[*?{}" "[*?~" "[*?{}~")
-  "Array of strings that have special meaning for glob patterns. Indexed bitwise for braces and tildes.")
+  "Array of strings that have special meaning for glob patterns. Indexed bitwise
+for braces and tildes.")
 
 (defstruct char-class
   "A class of characters, defined by a function. "
@@ -92,8 +106,10 @@ which is tested for inclusion by a function. STRING is individual characters."
 (defcc "space" (not (not (find c +space-chars+))))
 (defcc "blank" (or (char= c #\space) (char= c #\tab)))
 
-(defun pattern-p (pattern braces tilde)
-  "Return true if PATTERN has any special characters in it."
+(defun pattern-p (pattern &optional braces tilde)
+  "Return true if PATTERN has any special characters in it.
+If BRACES is true, consider curly brace '{' '}' characters as special characters.
+If TILDE is true, count tilde '~~' characters as special characters."
   (when (and pattern (length pattern))
     (let* ((ind (logior (ash (if tilde 1 0) 1) (if braces 1 0)))
 	   (specials (svref +special-chars+ ind)))
@@ -282,7 +298,7 @@ you want. They are indexes that default to 0."
       (if (and pattern string
 	       (not (zerop (length pattern)))
 	       (not (zerop (length pattern)))
-	       (pattern-p pattern nil nil))
+	       (pattern-p pattern))
 	  (loop
 	     :while (and (< p plen) (< s slen))
 	     ;;:do
@@ -378,7 +394,8 @@ you want. They are indexes that default to 0."
 If we wanted instead to translate into regexps:
   * -> .*
   ? -> .
-  [] -> should work the same?
+  [] -> should work almost the same?
+  {a,b,c} -> (a|b|c)
 
 Glob patterns:
   '*' can't match '/'
@@ -449,65 +466,6 @@ match & dir  - f(prefix: boo) readir boo
 (defun trailing-directory-p (path)
   "Return true if PATH has a trailing directory indicator."
   (char= (char path (1- (length path))) *directory-separator*))
-
-#|
-;; This is called recursively for each directory, depth first, for exapnding
-;; GLOB patterns. Of course most of the work is done by FNMATCH.
-(defun old-dir-matches (path &key dir escape recursive)
-  "Takes a PATH, which is a list of strings which are path elements, usually
-with GLOB patterns, and a directory DIR, which is a string directory path,
-without patterns, and returns a list of string paths that match the PATH in
-the directory DIR and it's subdirectories. Returns NIL if nothing matches."
-  (flet ((squip-dir (d f)
-	   "Basiclly append the file name in F to the directory D."
-	   (if d
-	       (if (and (char= (char d 0) *directory-separator*)
-			(= (length d) 1))
-		   (s+ *directory-separator* (dir-entry-name f))
-		   (s+ dir *directory-separator* (dir-entry-name f)))
-	       (dir-entry-name f)))
-	 (starts-with-dot (p) (char= (char p 0) #\.)))
-    (when path
-      ;; (format t "path = ~s dir = ~s~%" path dir)
-      (loop :with p = (car path) :and is-dir
-	 :for f :in (ignore-errors
-		      ;; XXX we shouldn't ignore ALL errors, just opsys-errors?
-		      (read-directory :dir (or dir ".") :full t
-				      :omit-hidden (not (starts-with-dot p))))
-	 ;; Only match explicit current "." and parent ".." elements.
-	 ;; Only match anything like ".*" when the pattern starts with ".".
-	 :if (or (and (equal "." p) (equal "." (dir-entry-name f)))
-		 (and (equal ".." p) (equal ".." (dir-entry-name f)))
-		 ;; Recursive match, any directory or matching non-dir
-		 (and recursive (search "**" p)
-		      (or (setf is-dir (is-really-a-directory dir f))
-			  (fnmatch p (dir-entry-name f) :escape escape)))
-		 ;; It has a slash on the end and it's a directory which matches
-		 (or (and (trailing-directory-p p)
-			  (is-really-a-directory dir f)
-			  (fnmatch
-			   (subseq p 0 (position
-					*directory-separator* p
-					:from-end t))
-			   (dir-entry-name f) :escape escape))
-		     ;; Or just a normal match.
-		     (fnmatch p (dir-entry-name f) :escape escape)))
-	   :when recursive
-	      :if is-dir
-	        :append (old-dir-matches (cdr path)
-				     :dir (squip-dir dir f)
-				     :escape escape :recursive recursive)
-	      :else ;; It just matches
-		:append (list (squip-dir dir f))
-           :else :if (= (length path) 1)
-	     ;; There's no further path elements, so just append the match.
-	     :append (list (squip-dir dir f))
-           :else :if (is-really-a-directory dir f)
-	     ;; If it's a directory, get all the sub directory matches.
-	     :append (old-dir-matches (cdr path)
-				  :dir (squip-dir dir f)
-				  :escape escape :recursive recursive)))))
-|#
 
 (defun dir-append (dir file)
   "This is like a slightly simpler PATH-APPEND from OPSYS."
@@ -623,9 +581,9 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 ;; important to get right, you should do it in a reusable library. I only do
 ;; it, even in shell programs, when I'm forced to. It's probably much easier,
 ;; clearer, more secure, more maintainable, to do the equivalent in Lisp,
-;; POSIX be damned. In the shell you can _only_ get arithmetic evaluation, and
-;; string functions, and so on, in those weird expansions, but it doesn't mean
-;; it's good. We can do it some other way.
+;; POSIX be damned. In a POSIX shell you can usually _only_ get arithmetic
+;; evaluation, and string functions, and so on, in those weird expansions, but
+;; it doesn't mean it's good. We can do it some other way.
 (defun wordexp ()
   (error "Don't."))
 

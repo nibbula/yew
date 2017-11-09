@@ -31,58 +31,10 @@
   (height 0 :type fixnum)		; height in pixels
   subimages)				; array of subimages, nil if none
 
-(defkeymap *image-viewer-keymap*
-  `((#\escape		  . *image-viewer-escape-keymap*)
-    (#\q	  	  . quit)
-    (#\h		  . backward-unit)
-    (#\j		  . next)
-    (#\k		  . previous)
-    (#\l		  . forward-unit)
-    (#\H		  . left-by-increment)
-    (#\J		  . down-by-increment)
-    (#\K		  . up-by-increment)
-    (#\L		  . right-by-increment)
-    (#\n		  . next-sub-image)
-    (#\p		  . previous-sub-image)
-    (:down		  . next)
-    (:up		  . previous)
-    (:left		  . backward-unit)
-    (:right		  . forard-unit)
-    (,(ctrl #\F)	  . next-page)
-    (#\space	  	  . next-page)
-    (,(ctrl #\V)	  . next-page)
-    (:npage		  . next-page)
-    (,(ctrl #\B)	  . previous-page)
-    (#\b	          . previous-page)
-    (,(meta-char #\v)	  . previous-page)
-    (:ppage		  . previous-page)
-    (#\>		  . move-to-bottom)
-    (,(meta-char #\>)     . move-to-bottom)
-    (:end		  . move-to-bottom)
-    (#\<		  . move-to-top)
-    (,(meta-char #\<)     . move-to-top)
-    (:home		  . move-to-top)
-    (,(ctrl #\a)	  . beginning-of-line)
-    (,(ctrl #\e)	  . end-of-line)
-    (#\+		  . zoom-in)
-    (#\-		  . zoom-out)
-    (#\=		  . zoom-reset)
-    (#\f		  . fit-width-to-window)
-    (#\F		  . fit-height-to-window)
-    (,(meta-char #\n)     . next-file)
-    (,(meta-char #\p)     . previous-file)
-    (,(meta-char #\l)     . toggle-looping)
-    (#\t     		  . toggle-looping)
-    (,(meta-char #\=)	  . binding-of-key)
-    (,(meta-char #\escape) . eval-expression)
-    (,(meta-char #\m)     . toggle-modeline)
-    (#\?		  . help)
-    (,(ctrl #\@)	  . set-mark)))
-
-(defparameter *image-viewer-escape-keymap*
-  (build-escape-map *image-viewer-keymap*))
+(defkeymap *image-viewer-keymap*)
+(defkeymap *image-viewer-escape-keymap*)
   
-(defclass image-inator (inator)
+(defclass image-inator (terminal-inator)
   ((image
     :initarg :image :accessor image-inator-image
     :documentation "The image to viewer.")
@@ -270,7 +222,7 @@
        (simple-error (c)
 	 (pause "Error: ~a ~a" ,file-name c)))))
 
-(defmethod next-file (o)
+(defmethod next-file ((o image-inator))
   (with-slots (file-list file-index image) o
     (flet ((next ()
 	     (if (< file-index (1- (length file-list)))
@@ -286,7 +238,7 @@
 	(setf image img)
 	(reset-image o)))))
 
-(defmethod previous-file (o)
+(defmethod previous-file ((o image-inator))
   (with-slots (file-list file-index image) o
     (flet ((prev ()
 	     (if (> file-index 0)
@@ -333,11 +285,11 @@
 
 (defun binding-of-key (o)
   (say "Press a key: ")
-  (let* ((key (tt-get-key))
-	 (action (key-definition key (inator-keymap o))))
+  (let* ((key-seq (read-key-sequence o)) ;;(tt-get-key))
+	 (action (key-sequence-binding key-seq (inator-keymap o))))
     (if action
-	(message o "~a is bound to ~a" (nice-char key) action)
-	(message o "~a is not defined" (nice-char key)))))
+	(message o "~a is bound to ~a" (key-sequence-string key-seq) action)
+	(message o "~a is not defined" (key-sequence-string key-seq)))))
 
 (defun eval-expression (o)
   (tt-move-to (1- (tt-height)) 0)
@@ -356,6 +308,56 @@
 (defun toggle-modeline (o)
   (with-slots (show-modeline) o
     (setf show-modeline (not show-modeline))))
+
+(set-keymap *image-viewer-keymap*
+  `((#\escape		  . *image-viewer-escape-keymap*)
+    (#\q	  	  . quit)
+    (#\h		  . backward-unit)
+    (#\j		  . next)
+    (#\k		  . previous)
+    (#\l		  . forward-unit)
+    (#\H		  . left-by-increment)
+    (#\J		  . down-by-increment)
+    (#\K		  . up-by-increment)
+    (#\L		  . right-by-increment)
+    (#\n		  . next-sub-image)
+    (#\p		  . previous-sub-image)
+    (:down		  . next)
+    (:up		  . previous)
+    (:left		  . backward-unit)
+    (:right		  . forard-unit)
+    (,(ctrl #\F)	  . next-page)
+    (#\space	  	  . next-page)
+    (,(ctrl #\V)	  . next-page)
+    (:npage		  . next-page)
+    (,(ctrl #\B)	  . previous-page)
+    (#\b	          . previous-page)
+    (,(meta-char #\v)	  . previous-page)
+    (:ppage		  . previous-page)
+    (#\>		  . move-to-bottom)
+    (,(meta-char #\>)     . move-to-bottom)
+    (:end		  . move-to-bottom)
+    (#\<		  . move-to-top)
+    (,(meta-char #\<)     . move-to-top)
+    (:home		  . move-to-top)
+    (,(ctrl #\a)	  . beginning-of-line)
+    (,(ctrl #\e)	  . end-of-line)
+    (#\+		  . zoom-in)
+    (#\-		  . zoom-out)
+    (#\=		  . zoom-reset)
+    (#\f		  . fit-width-to-window)
+    (#\F		  . fit-height-to-window)
+    (,(meta-char #\n)     . next-file)
+    (,(meta-char #\p)     . previous-file)
+    (,(meta-char #\l)     . toggle-looping)
+    (#\t     		  . toggle-looping)
+    (,(meta-char #\=)	  . binding-of-key)
+    (,(meta-char #\escape) . eval-expression)
+    (,(meta-char #\m)     . toggle-modeline)
+    (#\?		  . help)
+    (,(ctrl #\@)	  . set-mark)))
+
+(setf *image-viewer-escape-keymap* (build-escape-map *image-viewer-keymap*))
 
 (defmethod await-event ((o image-inator))
   "Image viewer event."
@@ -390,9 +392,12 @@
 				 (format nil "[frame ~d of ~d] " subimage
 					 (length subimages)) "")))
 	    (multiple-value-bind (start-x end-x start-y end-y) (clip o)
-	      (tt-format "~a ~dx~d ~a~a~a~f% <~d-~d ~d-~d>"
-			 name width height position file-count frame-count
-			 zoom start-x end-x start-y end-y)))))))
+	      (let ((line
+		     (format nil "~a ~dx~d ~a~a~a~f% <~d-~d ~d-~d>"
+			     name width height position file-count frame-count
+			     zoom start-x end-x start-y end-y)))
+		(tt-write-string (subseq line 0 (min (length line)
+						     (1- (tt-width))))))))))))
 
 #|
 
@@ -450,6 +455,150 @@
 				     (- (+ si-y height)
 					(+ y (1- (* step (1- (tt-height))))))))))
 	  (values start-x end-x start-y end-y))))))
+
+#| 
+Could double vertical resolution with #\upper_half_block
+setting forground & background
+pixels more square
+But also greatly increasing # of chars output.
+
+(defparameter *double-buf* nil)
+
+(defun show-image-double (inator)
+  (with-slots (x y zoom message file-index file-list image subimage looping
+	       show-modeline) inator
+    (declare (type fixnum x y) (type float zoom))
+    (with-slots (name subimages) image
+      (with-slots ((si-x x) (si-y y) width height data)
+	  (aref subimages subimage)
+	(declare (type fixnum si-x si-y width height))
+	(tt-home)
+	(when (not looping)
+	  (tt-clear))
+	(multiple-value-bind (start-x end-x start-y end-y) (clip inator)
+	  (let ((step (max 1 (truncate 1 zoom))))
+	    ;;(pause "zoom = ~s step = ~s" zoom step)
+	    (when (> si-y y)
+	      ;;(tt-move-to (max y (truncate (- si-y y) step)) 0))
+	      (tt-move-to (max y (truncate (- (+ si-y start-y) y) step)) 0))
+	    (loop :with r = 0 :and g = 0 :and b = 0 :and a = 0
+	       :for iy fixnum :from start-y :below end-y :by step :do
+	       (when (> si-x x)
+		 ;;(tt-move-to-col (max x (truncate (- si-x x) step))))
+		 (tt-move-to-col (max x (truncate (- (+ si-x start-x) x) step))))
+	       (loop 
+		  :for ix fixnum :from start-x :below end-x :by step :do
+		  (setf r (loop :for av-y :from 0 :below step :sum
+			     (loop :for av-x :from 0 :below step
+				:sum (aref data
+					   (min (1- width) (+ ix av-x))
+					   (min (1- height) (+ iy av-y)) 0))))
+		  (setf g (loop :for av-y :from 0 :below step :sum
+			     (loop :for av-x :from 0 :below step
+				:sum (aref data
+					   (min (1- width) (+ ix av-x))
+					   (min (1- height) (+ iy av-y)) 1))))
+		  (setf b (loop :for av-y :from 0 :below step :sum
+			     (loop :for av-x :from 0 :below step
+				:sum (aref data
+					   (min (1- width) (+ ix av-x))
+					   (min (1- height) (+ iy av-y)) 2))))
+		  (setf a (loop :for av-y :from 0 :below step :sum
+			     (loop :for av-x :from 0 :below step
+				:sum (aref data
+					   (min (1- width) (+ ix av-x))
+					   (min (1- height) (+ iy av-y)) 3))))
+		  (if (not (zerop a))
+		      (progn
+			(tt-color nil (vector
+				       (truncate r (* step step))
+				       (truncate g (* step step))
+				       (truncate b (* step step))))
+			(tt-write-char #\space)
+			(tt-color nil nil))
+		      (progn
+			(tt-forward 1)))
+		  (setf r 0 g 0 b 0 a 0))
+	       (tt-color nil nil)
+	       (tt-write-char #\newline))))
+	(tt-color nil nil)
+	(tt-move-to (1- (tt-height)) 0)
+	(when show-modeline
+	  (show-status inator))))))
+|#
+
+#|
+(defun term-mover (x &optional y)
+  (declare (type fixnum x y))
+  (if y
+      (tt-move-to y x)
+      (tt-move-to-col x)))
+
+(defun print-mover (x &optional y)
+  (declare (type fixnum x y))
+  (if y
+      (tt-move-to y x)
+      (tt-move-to-col x)))
+
+(defun print-image (x y zoom image subimage mover)
+  (declare (type fixnum x y) (type float zoom))
+  (flet ((move-to (y x) (funcall mover x y))
+	 (move-to-col (col) (funcall mover x)))
+    (with-slots (name subimages) image
+      (with-slots ((si-x x) (si-y y) width height data)
+	  (aref subimages subimage)
+	(declare (type fixnum si-x si-y width height))
+	(multiple-value-bind (start-x end-x start-y end-y) (clip inator)
+	  (let ((step (max 1 (truncate 1 zoom))))
+	    ;;(pause "zoom = ~s step = ~s" zoom step)
+	    (when (> si-y y)
+	      ;;(tt-move-to (max y (truncate (- si-y y) step)) 0))
+	      (move-to (max y (truncate (- (+ si-y start-y) y) step)) 0))
+	    (loop :with r = 0 :and g = 0 :and b = 0 :and a = 0
+	       :for iy fixnum :from start-y :below end-y :by step :do
+	       (when (> si-x x)
+		 ;;(tt-move-to-col (max x (truncate (- si-x x) step))))
+		 (tt-move-to-col (max x (truncate (- (+ si-x start-x) x) step))))
+	       (loop 
+		  :for ix fixnum :from start-x :below end-x :by step :do
+		  (setf r (loop :for av-y :from 0 :below step :sum
+			     (loop :for av-x :from 0 :below step
+				:sum (aref data
+					   (min (1- width) (+ ix av-x))
+					   (min (1- height) (+ iy av-y)) 0))))
+		  (setf g (loop :for av-y :from 0 :below step :sum
+			     (loop :for av-x :from 0 :below step
+				:sum (aref data
+					   (min (1- width) (+ ix av-x))
+					   (min (1- height) (+ iy av-y)) 1))))
+		  (setf b (loop :for av-y :from 0 :below step :sum
+			     (loop :for av-x :from 0 :below step
+				:sum (aref data
+					   (min (1- width) (+ ix av-x))
+					   (min (1- height) (+ iy av-y)) 2))))
+		  (setf a (loop :for av-y :from 0 :below step :sum
+			     (loop :for av-x :from 0 :below step
+				:sum (aref data
+					   (min (1- width) (+ ix av-x))
+					   (min (1- height) (+ iy av-y)) 3))))
+		  (if (not (zerop a))
+		      (progn
+			(tt-color nil (vector
+				       (truncate r (* step step))
+				       (truncate g (* step step))
+				       (truncate b (* step step))))
+			(tt-write-char #\space)
+			(tt-color nil nil))
+		      (progn
+			(tt-forward 1)))
+		  (setf r 0 g 0 b 0 a 0))
+	       (tt-color nil nil)
+	       (tt-write-char #\newline))))
+	(tt-color nil nil)
+	(tt-move-to (1- (tt-height)) 0)
+	(when show-modeline
+	  (show-status inator))))))
+|#
 
 (defun show-image (inator)
   (with-slots (x y zoom message file-index file-list image subimage looping
@@ -729,5 +878,19 @@
   :accepts (:sequence :stream)
   "View an image."
   (view-images (or images lish:*input* *standard-input*)))
+
+#|
+(defun cat-images (files)
+  (if (not files)
+      (print-image *standard-input*)
+      (map nil #'print-image files)))
+
+#+lish
+(lish:defcommand imgcat
+  ((images pathname :repeating t :help "Image to cat."))
+  :accepts (:sequence :stream)
+  "Print an image as terminal talk."
+  (cat-images (or images lish:*input* *standard-input*)))
+|#
 
 ;; EOF
