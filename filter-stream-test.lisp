@@ -2,8 +2,6 @@
 ;; filter-stream-test.lisp - Test filter streams.
 ;;
 
-;; $Revision: 1.1 $
-
 (defpackage :filter-stream-test
   (:documentation "Test filter streams.")
   (:use :cl :filter-stream :cl-ppcre)
@@ -66,11 +64,11 @@
 
 (defparameter *sword*
    "
-                        /\\                              
-              _         )( _____________________________ 
-             (_)///////(**)_____________________________>
-                        )(                               
-                        \\/                              ")
+                      /\\                              
+            _         )( _____________________________ 
+           (_)///////(**)_____________________________>
+                      )(                               
+                      \\/                              ")
 
 (defun fnord (stream)
   (make-filter-stream
@@ -150,8 +148,7 @@
   (let ((s (sponk *standard-output*)))		(format s *frob-text*))
   (let ((s (kaka *standard-output*)))		(format s *frob-text*))
   (let ((s (liner 10 *standard-output*)))
-    (format s *frob-text*) (finish-output s))
-)
+    (format s *frob-text*) (finish-output s)))
 
 (defun test ()
   (test-output))
