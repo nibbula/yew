@@ -26,7 +26,7 @@ command line.")
 	(last-completion-not-unique-count e) n))
 
 ;; Most of the work is done by print-columns, from dlib-misc.
-(defun print-completions-over (e comp-list)
+(defun print-completions-over (e comp-result)
   (with-slots (completion-func buf point saved-point prompt prompt-func) e
     ;; downcased list 1 per line
     (let ((saved-point point))
@@ -34,7 +34,7 @@ command line.")
       (setf point saved-point))
     (tt-write-char #\newline)
     #| (tt-format "~{~a~%~}" comp-list) |#
-    (let ((len (length comp-list)))
+    (let ((len (completion-result-count comp-result)))
       (when (> len *completion-really-limit*)
 	(tt-format "Really list ~a things? (y or n) " len)
 	(let ((chr (get-a-char e)))
@@ -43,7 +43,8 @@ command line.")
 	    (return-from print-completions-over))))
       (tt-write-string
        (with-output-to-string (str)
-	 (print-columns comp-list :smush t
+	 (print-columns (completion-result-completion comp-result)
+			:smush t
 			:columns (terminal-window-columns
 				  (line-editor-terminal e))
 			:stream str))))
@@ -55,9 +56,9 @@ command line.")
 
 (defun figure-line-endings (e content)
   "Call calculate-line-endings with proper processing of the string CONTENT."
-  (calculate-line-endings e :buffer (fat-string-to-string
+  (calculate-line-endings e :buffer (fatchar-string-to-string
 				     (process-ansi-colors
-				      (make-fat-string content)))
+				      (make-fatchar-string content)))
 			  :start 0))
 
 (defun figure-content-rows (e content)
@@ -66,9 +67,9 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
   ;; (apply #'+ (map 'list
   ;; 		  (_ (length
   ;; 		      (calculate-line-endings e
-  ;; 		       :buffer (fat-string-to-string
+  ;; 		       :buffer (fatchar-string-to-string
   ;; 				(process-ansi-colors
-  ;; 				 (make-fat-string _)))
+  ;; 				 (make-fatchar-string _)))
   ;; 		       :start 0)))
   ;; 		  content)))
   (length (figure-line-endings e content)))
@@ -117,10 +118,18 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
 		 prefix-height
 		 ))
 	  output-string
-	  (with-output-to-string (str)
+	  ;; (with-output-to-string (str)
+	  ;;   (setf content-rows
+	  ;; 	  (print-columns comp-list :columns cols
+	  ;; 			 :smush t :row-limit row-limit
+	  ;; 			 :format-char "/fatchar:print-string/"
+	  ;; 			 :stream str)))
+	  (with-terminal-output-to-string (:ansi)
 	    (setf content-rows
-		  (print-columns comp-list :columns cols
-				 :smush t :row-limit row-limit :stream str)))
+	  	  (print-columns comp-list :columns cols
+	  			 :smush t :row-limit row-limit
+	  			 :format-char "/fatchar:print-string/"
+	  			 :stream *terminal*)))
 	  line-endings (figure-line-endings e output-string)
 	  real-content-rows (length line-endings)
 	  rows-output (min real-content-rows row-limit)
@@ -158,7 +167,7 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
       (beep e "No completion installed.")
       (progn
 	(let* ((result
-		(funcall completion-func (fat-string-to-string buf) point t))
+		(funcall completion-func (fatchar-string-to-string buf) point t))
 	       ;;(comp-list (completion-result-completion result))
 	       comp-count)
 	  (check-type result completion-result)
@@ -198,7 +207,7 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
       (return-from complete))
     (let* ((saved-point point)
 	   (result
-	    (funcall comp-func (fat-string-to-string buf) point nil))
+	    (funcall comp-func (fatchar-string-to-string buf) point nil))
 	   (comp (completion-result-completion result))
 	   (replace-pos (completion-result-insert-position result))
 	   (unique (completion-result-unique result)))

@@ -479,7 +479,7 @@ Don't update the display."
       (scan-over e :backward :func #'(lambda (c) (position c non-word-chars)))
       (scan-over e :backward :not-in non-word-chars)
       (let* ((region-str (subseq buf point start))
-	     (del-len (display-length region-str)))
+	     (del-len (string-display-length region-str)))
 	(move-over e (- (- start point)) :start start)
 	(tt-del-char del-len)
 	(setf clipboard region-str)
@@ -493,7 +493,7 @@ Don't update the display."
       (scan-over e :forward :not-in non-word-chars)
       (if (< point (length buf)) (incf point))
       (let* ((region-str (subseq buf start point))
-	     (del-len (display-length region-str)))
+	     (del-len (string-display-length region-str)))
 	(tt-del-char del-len)
 	(setf clipboard region-str)
 	(buffer-delete e point start)
@@ -531,7 +531,7 @@ Don't update the display."
   (with-slots (clipboard point) e
     (when clipboard
       (let ((len (length clipboard))
-	    #| (disp-len (display-length clipboard)) |#)
+	    #| (string-display-length clipboard) |#)
 	(insert-string e clipboard)
 	;; (tt-ins-char disp-len)
 	(display-buf e point (+ point len))
@@ -545,7 +545,7 @@ Don't update the display."
       (scan-over e :forward :func #'(lambda (c) (position c non-word-chars)))
       (scan-over e :forward :not-in non-word-chars :action action)
       (if (< point (length buf)) (incf point))
-;      (move-forward e (display-length (subseq buf start point))))))
+;      (move-forward e (string-display-length (subseq buf start point))))))
       (display-buf e start point))))
 
 (defun apply-char-action-to-region (e char-action &optional beginning end)
@@ -651,8 +651,8 @@ is none."
       (setf start point
 	    del-len (- end start)
 	    deleted-string (subseq buf start end)
-	    ;;first-half-disp-len (display-length (subseq buf start origin))
-	    disp-len (display-length deleted-string))
+	    ;;first-half-disp-len (string-display-length (subseq buf start origin))
+	    disp-len (string-display-length deleted-string))
       (delete-region e start end)
       ;;(move-backward e first-half-disp-len)
       (move-over e (- (- origin start)) :start origin)
@@ -741,6 +741,7 @@ in order, \"{open}{close}...\".")
 	    (tt-beginning-of-line)
 	    (tt-erase-line)
 	    (finish-output (terminal-output-stream (line-editor-terminal e)))
+	    ;;(terminal-set-input-mode (line-editor-terminal e) :line)
 	    (terminal-end (line-editor-terminal e))
 	    (if (line-editor-terminal-device-name e)
 		(funcall (find-symbol "LISH" :lish)
@@ -753,8 +754,10 @@ in order, \"{open}{close}...\".")
 	      (do-prompt e prompt prompt-func)
 	      (display-buf e)
 	      (when (< point (length buf))
-		(move-backward e (display-length (subseq buf point)))))
-	    (terminal-start (line-editor-terminal e)))))))
+		(move-backward e (string-display-length (subseq buf point)))))
+	    (terminal-set-input-mode (line-editor-terminal e) :line)
+	    (terminal-start (line-editor-terminal e))
+	    )))))
 
 (defun abort-command (e)
   "Invoke the debugger from inside."
@@ -855,15 +858,18 @@ in order, \"{open}{close}...\".")
   "Tell what function a key invokes."
   (tmp-prompt e "Describe key: ")
   (let* ((key-seq (read-key-sequence e))
-	 (def (key-sequence-binding key-seq (line-editor-keymap e))))
-    (if def
-	(tmp-message e "~w is bound to ~a"
-		     (key-sequence-string key-seq) def)
-	(tmp-message e "~w is not bound"
-		     (key-sequence-string key-seq)))
-    (redraw e)
-    ;; (setf (need-to-redraw e) t)
-    ))
+	 def)
+    (cond
+      ((not key-seq)
+       (tmp-message e "You pressed an unknown key."))
+      (t
+       (setf def (key-sequence-binding key-seq (line-editor-keymap e)))
+       (if def
+	   (tmp-message e "~w is bound to ~a"
+			(key-sequence-string key-seq) def)
+	   (tmp-message e "~w is not bound"
+			(key-sequence-string key-seq)))))
+    (redraw e)))
 
 (defun exit-editor (e)
   "Stop editing."

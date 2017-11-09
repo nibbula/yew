@@ -235,7 +235,7 @@ anything important.")
 			   :device-name (line-editor-terminal-device-name e))
 	    (or (progn
 		  (when *terminal*
-		    (dbug "Using *TERMINAL* ~a" (type-of *terminal*)))
+		    (dbug "Using *TERMINAL* ~a~%" (type-of *terminal*)))
 		  *terminal*)
 		(make-instance (slot-value e 'terminal-class)))))
 

@@ -259,6 +259,8 @@ Keyword arguments:
 			:terminal-device-name	terminal-name
 			:terminal-class	    	terminal-class)))
 	 (*terminal* (line-editor-terminal e))
+	 ;; (*standard-output* *terminal*)
+	 ;; (*standard-input* *terminal*)
 	 (*completion-count* 0)
 	 (*history-context* context))
     (when editor
@@ -323,7 +325,7 @@ Keyword arguments:
 	  (block nil
 	    (tt-finish-output)
 	    (terminal-end terminal)))
-	(values (if result result (fat-string-to-string buf))
+	(values (if result result (fatchar-string-to-string buf))
 		e)))))
 
 ;; This is for compatability with read-line.

@@ -18,7 +18,7 @@
 
 (defun buffer-string (buf)
   "Return a buffer or buffer subsequence as string."
-  (fat-string-to-string buf))
+  (fatchar-string-to-string buf))
 
 (defun buffer-char (buf i)
   "Return the character at position I in buffer BUF."
@@ -58,7 +58,7 @@
     ;; (format t "ins (~s ~s)~%" pos c)
     (let ((fc (make-fatchar :c c)))
       (with-slots (buf) e
-	(record-undo e 'insertion pos (make-fat-string (string c)))
+	(record-undo e 'insertion pos (make-fatchar-string (string c)))
 	(if (= pos (length buf))
 	    ;; Appending to the end
 	    (progn
@@ -79,7 +79,7 @@
 ;    (format t "ins (~s ~s)~%" pos s)
     (with-slots (buf) e
       (let ((len (length s))
-	    (fat-string (make-fat-string s)))
+	    (fat-string (make-fatchar-string s)))
 	(record-undo e 'insertion pos fat-string)
 	(when (>= (+ len (length buf)) (array-total-size buf))
 	  (setf buf (adjust-array
@@ -92,7 +92,7 @@
     ;; This is basically for a fat string which happens to be indistinguishable
     ;; from an array.
     ;; @@@ This has the effect of losing the attributes.
-    (buffer-insert e pos (fat-string-to-string s))))
+    (buffer-insert e pos (fatchar-string-to-string s))))
 
 ;; Replace could just be a delete followed by an insert, but
 ;; for efficiency sake we do something special.
@@ -103,14 +103,14 @@
   (:method ((e line-editor) pos (c character))
 ;    (format t "replace (~s ~s)~%" pos c)
     (with-slots (buf point) e
-      (record-undo e 'deletion pos (make-fat-string (buffer-char buf point)))
-      (record-undo e 'insertion pos (make-fat-string c))
+      (record-undo e 'deletion pos (make-fatchar-string (buffer-char buf point)))
+      (record-undo e 'insertion pos (make-fatchar-string c))
       (setf (aref buf pos) (make-fatchar :c c))))
   (:method ((e line-editor) pos (s string))
 ;    (format t "replace (~s ~s)~%" pos s)
     (with-slots (buf point) e
       (let ((len (length s))
-	    (fat-string (make-fat-string s)))
+	    (fat-string (make-fatchar-string s)))
 	(when (> (+ pos len) (length buf))
 	  (error "Replacement doesn't fit in the buffer."))
 	(when (> len 0)
