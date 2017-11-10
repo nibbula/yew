@@ -25,6 +25,10 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:make-fatchar-string
    #:fatchar-string-to-string
    #:fat-string-to-string
+   #:fat-string< #:fat-string> #:fat-string= #:fat-string/=
+   #:fat-string<= #:fat-string>= #:fat-string-lessp #:fat-string-greaterp
+   #:fat-string-equal #:fat-string-not-equal
+   #:fat-string-not-lessp #:fat-string-not-greaterp
    #:span-length
    #:fat-string-to-span
    #:fatchar-string-to-span
@@ -96,7 +100,10 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 
 (defun fat-string-to-string (fat-string)
   "Make a string from a fat string. This of course loses the attributes."
-  (fatchar-string-to-string (fat-string-string fat-string)))
+  (typecase fat-string
+    (fat-string (fatchar-string-to-string (fat-string-string fat-string)))
+    (fatchar-string (fatchar-string-to-string fat-string))
+    (t fat-string)))
 
 (defun fatchar-string-to-string (string)
   "Make a string from a fat string. This of course loses the attributes."
@@ -111,6 +118,26 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
      ;;   s))
      (map 'string (_ (if (fatchar-p _) (fatchar-c _) _)) string))
     (t string)))
+
+(defun fat-string-compare (f a b)
+  (funcall f (fat-string-to-string a) (fat-string-to-string b)))
+
+(eval-when (:compile-toplevel)
+  (defmacro make-comparators ()
+    (let ((forms
+	   (loop :with func
+	      :for f :in '(string< string> string= string/= string<= string>=
+			   string-lessp string-greaterp string-equal
+			   string-not-equal string-not-lessp
+			   string-not-greaterp)
+	      :do
+	      (setf func (symbolify (s+ "FAT-" f)))
+	      :collect `(defun ,func (a b)
+			  (funcall #',f
+				   (fat-string-to-string a)
+				   (fat-string-to-string b))))))
+      `(progn ,@forms))))
+(make-comparators)
 
 (defun span-length (span)
   "Calculate the length in characters of the span."

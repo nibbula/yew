@@ -755,17 +755,84 @@ Return nil if none was found."
 		s)))
      :unique unique)))
 
+(defparameter *cl-package* nil)
+(defparameter *keyword-package* nil)
+
+(defparameter *flow-control*
+  '(go if when unless case ccase ecase cond typecase ctypecase etypecase
+    catch throw return return-from do do* dotimes dolist loop loop-finish
+    error cerror signal break abort continue)
+  "Flow control. These are fairly aribitrary and dumb.")
+
+(defparameter *operator*
+  '(block      let*                  return-from
+    catch      load-time-value       setq
+    eval-when  locally               symbol-macrolet
+    flet       macrolet              tagbody
+    function   multiple-value-call   the
+    go         multiple-value-prog1  throw
+    if         progn                 unwind-protect
+    labels     progv
+    let        quote
+    )
+  "Speical forms, straight outta Figure 3-2.")
+
+(defparameter *constant*
+  '(t nil))
+
+(defun stylize-symbol (s case-in)
+  (let (style item)
+    (flet ((fix-case (s) (if (member case-in '(:lower :none))
+			     (string-downcase s) s)))
+      (when (not *theme*)
+	(return-from stylize-symbol (fix-case (string s))))
+      (setf item
+	    (cond
+	      ((fboundp s)
+	       ;; @@@ we could fallback to suffixes, like " (F)"
+	       (cond
+		 ((eq (symbol-package s) *cl-package*)
+		  (cond
+		    ((member s *operator*)
+		     `(:syntax :entity :keyword :operator :style))
+		    ((member s *flow-control*)
+		     `(:syntax :entity :keyword :control :style))
+		    (t
+		     `(:syntax :support :function :style))))
+		 ((macro-function s)
+		  `(:syntax :entity :name :macro :style))
+		 (t
+		  `(:syntax :entity :name :function :style))))
+	      ((boundp s)
+	       (cond
+		 ((eq (symbol-package s) *cl-package*)
+		  `(:syntax :support :variable :style))
+		 (t
+		  `(:syntax :variable :other :style))))
+	      ((or (eq (symbol-package s) *keyword-package*)
+		   (member s *constant*))
+	       `(:syntax :constant :other :style))
+	      ((find-class s nil)
+	       `(:syntax :entity :name :type :style))))
+      (when item 
+	(setf style (theme-value *theme* item)))
+      (if style
+	  (span-to-fat-string (spannify-style-item style (fix-case (string s))))
+	  (fix-case (string s))))))
+
 (defun symbol-completion-list (w &key package
 				   (external nil) (include-packages t))
   "Print the list of completions for W in the symbols of PACKAGE, which
 defaults to the current package. Return how many symbols there were."
 ;;  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (let ((count 0)
-	(l '())
+	(l '()) (pkg-list '())
 	(case-in (character-case w))
 	pos)
+    #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+    (setf *cl-package* (find-package :cl)
+	  *keyword-package* (find-package :keyword))
     (do-the-symbols (s (or package *package*) external)
-      #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
 ;;;      (princ (s+ (symbol-package s) "::" s " " #\newline))
       (when (and
 	     ;; It's actually in the package if the package is set
@@ -773,7 +840,7 @@ defaults to the current package. Return how many symbols there were."
 	     ;; It matches the beginning
 	     (and (setf pos (search w (string s) :test #'equalp))
 		  (= pos 0)))
-	(pushnew (if (fboundp s) (s+ s " (F)") (string s)) l :test #'equal)
+	(push s l)
 	(incf count)))
     (when (and include-packages (not package))
       (loop :with s :for p :in (list-all-packages) :do
@@ -784,13 +851,13 @@ defaults to the current package. Return how many symbols there were."
 		;; It matches the beginning
 		(and (setf pos (search w s :test #'equalp))
 		     (= pos 0)))
-	   (push s l)
+	   (push s pkg-list)
 	   (incf count))))
-    (setq l (sort l #'string-lessp))
-    (when (eql case-in :lower)
-      (setf l (mapcar #'string-downcase l)))
     (make-completion-result
-     :completion l
+     :completion
+     (sort (append (mapcar (_ (stylize-symbol _ case-in)) l)
+		   pkg-list)
+	   #'fat-string-lessp)
      :count count)))
 
 (defun could-be-a-keyword (pack word-start context)

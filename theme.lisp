@@ -4,7 +4,7 @@
 
 (defpackage :theme
   (:documentation "Customize the style.")
-  (:use :cl :dlib :terminal)
+  (:use :cl :dlib)
   (:export
    #:theme
    #:theme-activate
@@ -21,6 +21,8 @@
    #:default-theme
    ))
 (in-package :theme)
+
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 ;; This is really just a fairly lame word based hierarchical data store.
 
@@ -186,8 +188,7 @@ If the path doesn't exist, it is created."
   "Setter for theme node values."
   (set-node theme item value))
 
-;; This is of dubious value.
-(defun print-theme-node (theme-node &key prefix repeat-line stream)
+(defun print-theme-node-stupidly (theme-node &key prefix repeat-line stream)
   (let* ((name-string (format nil "~(~a~)" (theme-name theme-node)))
 	 (new-prefix (+ (or prefix 0) (length name-string) 1)))
     (when (and repeat-line prefix (> prefix 0))
@@ -210,6 +211,26 @@ If the path doesn't exist, it is created."
 	  (loop :for n :in (rest (theme-children theme-node)) :do
 	     (print-theme-node n :prefix new-prefix :repeat-line t
 			       :stream stream))))))
+
+(defun print-theme-node (theme-node &key prefix repeat-line stream max-size)
+  (let* ((name-string (format nil "~(~a~)" (theme-name theme-node)))
+	 (new-prefix
+	  (if prefix
+	      (s+ prefix "." name-string)
+	      name-string)))
+    (if (typep theme-node 'theme-value-node)
+	(progn
+	  (when (and repeat-line prefix)
+	    (format stream "~a" new-prefix))
+	  (if (slot-boundp theme-node 'value)
+	      (format stream ":~vt~w~%" max-size (theme-node-value theme-node))
+	      (format stream ":~vtunbound~%" max-size))
+	  (length new-prefix))
+	(when (theme-children theme-node)
+	  (loop :for n :in (theme-children theme-node)
+	     :maximize
+	     (print-theme-node n :prefix new-prefix :repeat-line t
+			       :stream stream :max-size max-size))))))
 
 (defun theme-as-tree (theme)
   (let (;(result `(,(theme-name theme) ,@(or (theme-description theme)))))
@@ -297,8 +318,11 @@ If the path doesn't exist, it is created."
      (print (theme-as-tree theme) stream))
     (t
      (format stream "Theme:  ~s ~a~%" (theme-name theme) (theme-title theme))
-     (loop :for n :in (theme-children theme) :do
-	(print-theme-node n :stream stream))))
+     ;; Fake print-table so we don't have to depend on it.
+     (let ((max-size
+	    (print-theme-node theme :stream nil)))
+       (loop :for n :in (theme-children theme) :do
+	  (print-theme-node n :stream stream :max-size max-size)))))
   (values))
 
 (defun make-theme (name &rest keys &key title description)
@@ -388,34 +412,53 @@ If the path doesn't exist, it is created."
     (when suffix
       (gethash suffix *file-suffix-table*))))
 
+(defun set-theme-items (theme item-value-list)
+  (loop
+     :for i = item-value-list :then (cdr i)
+     :while i
+     :do
+     (setf (theme-value theme (car i)) (cadr i)
+	   i (cdr i))))
+
 (defun default-theme ()
   (let ((tt (make-theme
 	     'default
 	     :title "Default theme."
-	     :description "~
+	     :description (format nil "~
 A default theme that isn't too unexpected and works for a dark background.
-Something like the default setting of typical GNU tools.")))
-    (setf
+Something like the default setting of typical GNU tools."))))
+    (set-theme-items
+     tt
      ;; File type
-     (theme-value tt '(:file :type :directory :style)) '(:bold :fg-blue)
-     (theme-value tt '(:file :type :link :style)) '(:bold :fg-cyan)
-     (theme-value tt '(:file :type :pipe :style)) '(:fg-black :fg-yellow)
-     (theme-value tt '(:file :type :socket :style)) '(:bold :fg-magenta)
-     (theme-value tt '(:file :type :block-device :style))
-     '(:bg-black :fg-yellow :bold)
-     (theme-value tt '(:file :type :character-device :style))
-     '(:bg-black :fg-yellow :bold)
-     ;; File name suffixes
-     (theme-value tt '(:file :suffix :archive :style)) '(:bold :fg-red)
-     (theme-value tt '(:file :suffix :compressed :style)) '(:bold :fg-cyan)
-     (theme-value tt '(:file :suffix :image :style)) '(:bold :fg-magenta)
-     (theme-value tt '(:file :suffix :video :style)) '(:bold :fg-magenta)
-     (theme-value tt '(:file :suffix :audio :style)) '(:fg-cyan)
-     ;; This is my own things
-     (theme-value tt '(:syntax :function :style)) '(:fg-magenta)
-     (theme-value tt '(:syntax :constant :style)) '(:fg-white)
-     (theme-value tt '(:syntax :comment :style)) '(:fg-cyan)
-     )
+     '((:file :type :directory             :style) (:bold :fg-blue)
+       (:file :type :link                  :style) (:bold :fg-cyan)
+       (:file :type :pipe                  :style) (:fg-black :fg-yellow)
+       (:file :type :socket                :style) (:bold :fg-magenta)
+       (:file :type :block-device          :style) (:bg-black :fg-yellow :bold)
+       (:file :type :character-device      :style) (:bg-black :fg-yellow :bold)
+       ;; File name suffixes
+       (:file :suffix :archive             :style) (:bold :fg-red)
+       (:file :suffix :compressed          :style) (:bold :fg-cyan)
+       (:file :suffix :image               :style) (:bold :fg-magenta)
+       (:file :suffix :video               :style) (:bold :fg-magenta)
+       (:file :suffix :audio               :style) (:fg-cyan)
+       ;; Syntax
+       (:syntax :comment :line :semicolon  :style) (:fg-cyan)
+       (:syntax :comment :block            :style) (:fg-cyan)
+       (:syntax :comment :block            :style) (:fg-cyan)
+       (:syntax :constant :character       :style) (:fg-white)
+       (:syntax :constant :language        :style) (:fg-white)
+       (:syntax :constant :other           :style) (:fg-white)
+       (:syntax :entity :name :function    :style) (:fg-red)
+       (:syntax :entity :name :macro       :style) (:fg-red)
+       (:syntax :entity :name :type        :style) (:fg-blue)
+       (:syntax :entity :keyword :operator :style) (:fg-magenta)
+       (:syntax :entity :keyword :control  :style) (:fg-magenta)
+       (:syntax :support :function         :style) (:fg-magenta)
+       (:syntax :support :variable         :style) (:fg-green)
+       (:syntax :support :function         :style) (:fg-magenta)
+       (:syntax :variable :other           :style) (:fg-green)
+       ))
     tt))
 
 ;; EOF

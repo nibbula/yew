@@ -56,7 +56,7 @@ by SYNTAX."))
 
 #|
 
-On one hand we would like to have standard types, so that we can make various
+On one hand, we would like to have standard types, so that we can make various
 switchable themes which will cover all the types and be useful for all
 languages. On the other hand, languages differ so much that it's probably
 pointless and limiting to specify a required set of token types. We might also
@@ -81,6 +81,98 @@ types so that you can cover what you want when writing a style.
     :name.label
     :name.namespace
     ))
+
+But, since it seems a widely accepted consensus, we should try to follow
+the guidlines used by TextMate (and subsequently used by Linguist, GitHub,
+Sublime Text, Atom, etc.) See:
+http://manual.macromates.com/en/language_grammars#naming_conventions
+
+comment
+  line
+    double-slash
+    double-dash
+    number-sign
+    percentage
+    character
+  block
+  documentation
+
+constant
+  numeric
+  character
+    escape
+  language
+  other
+
+entity
+  name
+    function
+    type
+    tag
+    section
+  other
+    inherited-class
+    attribute-name
+
+invalid
+  illegal
+  deprecated
+
+keyword
+  control
+  operator
+  other
+
+markup
+  underline
+    link
+  bold
+  heading
+  italic
+  list
+    numbered
+    unnumbered
+  quote
+  raw
+  other
+
+meta
+
+storage
+  type
+  modifier
+
+string
+  quoted
+    single
+    double
+    triple
+    other
+  unquoted
+  interpolated
+  regexp
+  other
+
+support
+  function
+  class
+  type
+  constant
+  variable
+  other
+
+variable
+  parameter
+  language
+  other
+
+In general we should remember that editing/highlighting grammars are almost
+always different than, or at least a superset of, parsing grammars. Editing
+grammars have to represent comments, sections of invalid syntax, and
+sometimes whitespace. Ideally editing grammars should be able to be included in
+each other, and in the most expansive case, have any section of a file be
+designated as any available grammar. 
+
 |#
 
 (defclass token ()

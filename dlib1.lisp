@@ -106,6 +106,7 @@ of it.")
    #:lambda-list-vars
    #-lispworks #:with-unique-names
    #:with-package
+   #:ensure-exported
    #:shortest-package-nick
    #:not-so-funcall #:symbol-call
    #:refer-to #-(or lispworks clasp) #:※
@@ -1350,6 +1351,14 @@ Useful for making your macro “hygenic”."
 		 (setf p n)))
 	p)
       (package-name package)))
+
+(defun ensure-exported (symbols &optional package)
+  "Export SYMBOLS from PACKAGE only if they aren't already exported.
+SYMBOLS is a designator for a symbol or list of symbols like for EXPORT."
+  (loop :for s :in (if (atom symbols) (list symbols) symbols) :do
+     (multiple-value-bind (symbol status) (find-symbol s)
+       (when (and symbol (not (eq status :external)))
+	 (export symbol package)))))
 
 #| How about not a macro?
 
