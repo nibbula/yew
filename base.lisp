@@ -182,12 +182,16 @@ standard functions that take a pathname designator, such as OPEN."
       result)))
 |#
 
+(declaim (ftype (function (t) string) safe-namestring))
 (defun safe-namestring (pathname)
   "Like NAMESTRING, but if pathname is a string, just return it. This is
 useful for accepting pathnames or strings in case namestring would interpret
 any characters in strings specially."
-  (typecase pathname
-    (pathname (namestring pathname))
+  (etypecase pathname
+    (pathname
+     (let ((ns (namestring pathname)))
+       (check-type ns string)
+       ns))
     (string pathname)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -303,6 +307,7 @@ string (denoting itself)."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Variables
 
+(declaim (type character *directory-separator*))
 (defparameter *directory-separator*
   #-windows #\/
   #+(and windows (not cygwin)) #\\
@@ -313,6 +318,7 @@ string (denoting itself)."
 efficiency.")
 
 ;; Like on windows this is #\; right? But not cygwin?
+(declaim (type character *path-separator*))
 (defparameter *path-separator*		; @@@ defconstant?
   #-windows #\:
   #+windows #\;

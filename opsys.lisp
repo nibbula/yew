@@ -35,8 +35,8 @@
 ;;  - Put +plus-earmuffs+ on constants. Put *star-earmuffs* on variables.
 
 ;; (declaim (optimize (speed 3)) (optimize (safety 0))
-;;   	 (optimize (debug 0)) (optimize (space 0))
-;;    	 (optimize (compilation-speed 0)))
+;;    	 (optimize (debug 3)) (optimize (space 0))
+;;     	 (optimize (compilation-speed 0)))
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 		   (compilation-speed 0)))
@@ -376,24 +376,28 @@ calls. Returns NIL when there is an error.")
 
 ;; This is a workaround for not depending on split-sequence.
 ;; so instead of (split-sequence *directory-separator* p :omit-empty t)
+(declaim (ftype (function (t) list)))
 (defun split-path (path)
   "Return a list of components of PATH."
-  (let (result (len (length path)))
+  (let* ((our-path (safe-namestring path))
+	 (len (length our-path))
+	 result)
+    (declare (type string our-path) (type fixnum len))
     (when (and (plusp len)
-	       (char= (char path 0) *directory-separator*))
+	       (char= (char our-path 0) *directory-separator*))
       (setf result '("/")))
     (if (zerop len)
-	(list path)
+	(list our-path)
 	(append result
-		(loop :with i = 0 :and piece
+		(loop :with i fixnum = 0 :and piece
 		   :while (< i len) :do
 		   (setf piece
 			 (with-output-to-string (str)
 			   (loop :while (and (< i len)
-					     (char/= (char path i)
+					     (char/= (char our-path i)
 						     *directory-separator*))
 			      :do
-			      (princ (char path i) str)
+			      (princ (char our-path i) str)
 			      (incf i))))
 		   :if (and piece (/= (length piece) 0))
 		   :collect piece
@@ -402,57 +406,60 @@ calls. Returns NIL when there is an error.")
 (defun path-to-absolute (path)
   "Return the PATH converted into an absolute path."
   ;; Make sure path is a string.
-  (setf path (etypecase path
-	       (null (return-from path-to-absolute nil))
-	       (string path)
-	       (pathname (safe-namestring path))))
-  (let* ((p (if (and (plusp (length path))
-		     (char= *directory-separator* (char path 0)))
-		path			; already absolute
-		(concatenate 'string (current-directory) "/" path)))
+  (let* ((our-path (etypecase path
+		    (null (return-from path-to-absolute nil))
+		    (string path)
+		    (pathname (safe-namestring path))))
+	 (p (if (and (plusp (length our-path))
+		     (char= *directory-separator* (char our-path 0)))
+		our-path		; already absolute
+		(concatenate 'string (current-directory) "/" our-path)))
 	 (pp (split-path p)))
-    (macrolet
-	((get-rid-of (str snip)
-	   "Get rid of occurances of STR by snipping back to SNIP, which
+    (declare (type string our-path) (type list pp))
+      (macrolet
+	  ((get-rid-of (str snip)
+	     "Get rid of occurances of STR by snipping back to SNIP, which
               is a numerical expression in terms of the current position POS."
-	   `(loop :with start = 0 :and pos
-	       :while (setq pos (position ,str pp
-					  :start start :test #'equal))
-	       :do (setq pp (concatenate 'list
-					 (subseq pp 0 (max 0 ,snip))
-					 (subseq pp (1+ pos)))))))
-      ;; Get rid of relative elemets, "." and ".."
-      (get-rid-of "." pos)
-      (get-rid-of ".." (1- pos)))
-    (if (<= (length pp) 1)
-	"/"
-	(with-output-to-string (str)
-	  (loop :for e :in (cdr pp) :do
-	     (write-char *directory-separator* str)
-	     (write-string e str))))))
+	     `(loop :with start = 0 :and pos
+		 :while (setq pos (position ,str pp
+					    :start start :test #'equal))
+		 :do (setq pp (concatenate 'list
+					   (subseq pp 0 (max 0 ,snip))
+					   (subseq pp (1+ pos)))))))
+	;; Get rid of relative elemets, "." and ".."
+	(get-rid-of "." pos)
+	(get-rid-of ".." (1- pos)))
+      (if (<= (length pp) 1)
+	  "/"
+	  (with-output-to-string (str)
+	    (loop :for e :in (cdr pp) :do
+	       (write-char *directory-separator* str)
+	       (write-string e str))))))
 
 (setf (symbol-function 'abspath) #'path-to-absolute)
 
 (defun clip-path (path side)
   "Return the directory portion of a path."
   ;; Go backwards from the end until we hit a separator.
-  (let ((i (1- (length path))))
-    (loop :while (and (>= i 0) (char/= *directory-separator* (char path i)))
+  (let* ((our-path (safe-namestring path))
+	 (i (1- (length our-path))))
+    (loop :while (and (>= i 0) (char/= *directory-separator* (char our-path i)))
        :do (decf i))
 ;    (dlib:dbug "i = ~s~%" i)
     (if (eq side :dir)
 	(if (< i 0)
-	    (subseq path 0 0)
-	    (if (and (zerop i) (char= (char path 0) *directory-separator*))
-		(subseq path 0 1)
-		(subseq path 0 i)))
+	    (subseq our-path 0 0)
+	    (if (and (zerop i) (char= (char our-path 0) *directory-separator*))
+		(subseq our-path 0 1)
+		(subseq our-path 0 i)))
 	(if (< i 0)
 	    path
-	    (subseq path (1+ i))))))
+	    (subseq our-path (1+ i))))))
 
 (defun path-directory-name (path)
   "Return the directory portion of a PATH. This is similar to DIRECTORY-NAMESTRING."
-  (clip-path (or (and (pathnamep path) (safe-namestring path)) path) :dir))
+  (check-type path (or string pathname))
+  (clip-path path :dir))
 (setf (symbol-function 'dirname) #'path-directory-name)
 
 (defun path-file-name (path)
@@ -468,7 +475,7 @@ them if there isn't one already."
   (when (not (or (stringp first-path) (pathnamep first-path)))
     (error "FIRST-PATH should be pathname designator."))
   (flet ((trailing-separator-p (s)
-	   (char= (aref s (1- (length s))) *directory-separator*)))
+	   (char= (char s (1- (length s))) *directory-separator*)))
     (let ((any nil)
 	  (last-was-separator nil)
 	  (ns (safe-namestring first-path)))
@@ -483,7 +490,7 @@ them if there isn't one already."
 	   (setf ns (safe-namestring p))
 	   (when (not (zerop (length ns)))
 	     (when (and any (not last-was-separator)
-			(char/= (aref ns 0) *directory-separator*))
+			(char/= (char ns 0) *directory-separator*))
 	       (princ *directory-separator* str))
 	     (setf last-was-separator (trailing-separator-p ns))
 	     (princ ns str)
@@ -492,8 +499,9 @@ them if there isn't one already."
 (defun path-snip-ext (path)
   "Remove the extension from a file name, which for this simple function means
 just removing everything after the last period '.'"
-  (let ((pos (position #\. path :from-end t)))
-    (if (and pos (/= pos 0)) (subseq path 0 pos) path)))
+  (let* ((our-path (safe-namestring path))
+	 (pos (position #\. our-path :from-end t)))
+    (if (and pos (/= pos 0)) (subseq our-path 0 pos) our-path)))
 
 (defosfun hidden-file-name-p (name)
   "Return true if the file NAME is normally hidden.")
@@ -518,18 +526,20 @@ systems, this means \".\" and \"..\".")
 
 (defun lock-file (pathname lock-type timeout increment)
   "Lock PATHNAME."
-  (declare (ignore lock-type))
+  (declare (ignore lock-type)
+	   (type single-float timeout increment))
   ;; @@@ perhaps we should add u+x, even though it's mostly pointless,
   ;; but just so things that traverse the filesystem won't get stupid
   ;; permission errors.
   (let ((mode (file-status-mode (stat (safe-namestring pathname))))
 	(filename (lock-file-name pathname))
-	(time 0))
+	(time 0.0))
+    (declare (type single-float time))
     ;; Very lame and slow polling.
-    (loop :with wait :and inc = increment
+    (loop :with wait :and inc single-float = increment
        :do
        (if (not (ignore-errors (make-directory filename :mode mode)))
-	   (if (= *errno* +EEXIST+)
+	   (if (= *errno* +EEXIST+) ;; @@@ unix specific!
 	       (setf wait t)
 	       (error-check -1 "lock-file: ~s" filename))
 	   (setf wait nil))
@@ -574,7 +584,7 @@ current effective user. If REGULAR is true also check if it's a regular file.")
 
 (defun has-directory-p (path)
   "Return true if PATH has a directory part."
-  (position *directory-separator* path))
+  (position *directory-separator* (safe-namestring path)))
 
 (defun command-pathname (cmd)
   "Return the full pathname of the first executable file in the PATH or nil

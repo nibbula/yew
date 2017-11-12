@@ -219,4 +219,21 @@ descriptor FD."
 (defvar *default-console-device-name* "con"
   "Name of the default console device.")
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Application paths
+
+;; App name isn't really optional.
+(defvar *app-name* nil)
+(defun app-name ()
+  (or *app-name* (setf *app-name* @@@)))
+
+(defun config-dir (&optional (app-name (app-name)))
+  (s+ "%USERPROFILE%\\AppData\\Local\\" app-name "\\"))
+
+(defun config-path (&optional (app-name (app-name)))
+  "Where user specific configuration files should be stored."
+  (list
+   (s+ "%USERPROFILE%\\AppData\\Local\\" app-name "\\")
+   (s+ "%PROGRAMDATA%\\" app-name "\\config\\")))
+
 ;; EOF

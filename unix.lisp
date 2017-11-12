@@ -2484,8 +2484,8 @@ the name indicating what type of file it is. Indicators are:
   > : Doors
 If FULL is true, return a list of dir-entry structures instead of file name ~
 strings. Some dir-entry-type keywords are:
-  :unknown :pipe :character-device :dir :block-device :regular :link :socket
-  :whiteout :undefined
+  :unknown :pipe :character-device :directory :block-device :regular :link
+  :socket :whiteout :undefined
 Be aware that DIR-ENTRY-TYPE type can't really be relied on, since many
 systems return :UNKNOWN or something, when the actual type can be determined
 by FILE-INFO-TYPE.
@@ -3477,11 +3477,11 @@ quicker. We don't care what's in it.")
 (defun file-exists (filename)
   "Check that a file with FILENAME exists at the moment. But it might not exist
 for long."
-  (when (not (stringp (setf filename (safe-namestring filename))))
-    (error "FILENAME should be a string or pathname."))
+  ;; (when (not (stringp (setf filename (safe-namestring filename))))
+  ;;   (error "FILENAME should be a string or pathname."))
   (when (not *statbuf*)
     (setf *statbuf* (foreign-alloc '(:struct foreign-stat))))
-  (= 0 (real-stat filename *statbuf*)))
+  (= 0 (real-stat (safe-namestring filename) *statbuf*)))
 
 (defcfun ("readlink" real-readlink) ssize-t (path :string)
 	 (buf (:pointer :char)) (bufsize size-t))
@@ -3531,11 +3531,11 @@ it is not a symbolic link."
 	 ;; perhaps should be the earliest of st_ctimespec and st_birthtimespec?
 	 (timespec-to-derptime
 	  #+os-t-has-birthtime st_birthtimespec
-	  #-os-t-has-birthtime st_ctimespec)
+	  #-os-t-has-birthtime st_mtimespec)
 	 :access-time (timespec-to-derptime st_atimespec)
 	 :modification-time
 	 ;; perhaps should be the latest of st_ctimespec and st_mtimespec?
-	 (timespec-to-derptime st_mtimespec)
+	 (timespec-to-derptime st_ctimespec)
 	 :flags
 	 ;; :hidden :immutable :compressed
 	 `(
@@ -3598,7 +3598,7 @@ it is not a symbolic link."
   "Something like probe-file but for directories."
   ;; #+clisp (ext:probe-directory (make-pathname
   ;; 				:directory (ext:absolute-pathname dir)))
-  #+(or sbcl ccl cmu clisp)
+  #+(or sbcl ccl cmu clisp ecl)
   ;; Let's be more specific: it must be a directory.
   (handler-case
     (let ((s (stat dir)))
@@ -3606,8 +3606,8 @@ it is not a symbolic link."
     (posix-error (c)
       (when (not (find (opsys-error-code c) `(,+ENOENT+ ,+EACCES+ ,+ENOTDIR+)))
 	(signal c))))
-  #+(or ecl lispworks abcl)
-  ;; On most implementations probe-file can handle directories.
+  #+(or lispworks abcl)
+  ;; On some implementations probe-file can handle directories the way I want.
   (probe-file dir)
   #-(or clisp sbcl ccl cmu ecl lispworks abcl)
   (declare (ignore dir))
@@ -4022,11 +4022,12 @@ of (signal . action), as would be passed to SET-SIGNAL-ACTION."
 (defcfun ("kill" real-kill) :int (pid pid-t) (signal :int))
 
 (defun kill (pid sig)
-  #+clisp (posix:kill pid sig)
+  ;;#+clisp (posix:kill pid sig)
   #| #+openmcl (#_kill pid sig) |#
-  #+ccl (real-kill pid sig)
-  #+cmu (unix:unix-kill pid sig)
-  #+sbcl (sb-unix:unix-kill pid sig)
+  ;;#+ccl (syscall (real-kill pid sig))
+  ;;#+cmu (unix:unix-kill pid sig)
+  ;;#+sbcl (sb-unix:unix-kill pid sig)
+  #+(or sbcl ccl clisp cmu) (syscall (real-kill pid sig))
   #-(or clisp openmcl cmu sbcl ccl) (declare (ignore pid sig))
   #-(or clisp openmcl cmu sbcl ccl) (missing-implementation 'kill))
 
