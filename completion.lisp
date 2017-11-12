@@ -1059,8 +1059,8 @@ defaults to the current package. Return how many symbols there were."
 	 (word (expand-tilde w))
 ;	 (dir-part (directory-namestring (pathname word)))
 ;	 (file-part (file-namestring (pathname word)))
-	 (dir-part (path-directory-name word))
-	 (file-part (path-file-name word))
+	 (dir-part (or (and word (path-directory-name word)) ""))
+	 (file-part (and word (path-file-name word)))
 	 (hidden (hidden-file-name-p file-part))
 	 (dir-list (if (> (length dir-part) 0)
 		       (safe-read-directory
