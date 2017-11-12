@@ -331,7 +331,7 @@ If the path doesn't exist, it is created."
   (apply #'make-instance 'theme :name name keys))
 
 (defun write-theme (theme stream)
-  (write (serialize theme) :stream stream))
+  (write (serialize theme +theme-version+) :stream stream))
 
 (defun read-theme (stream)
   (let ((s (read stream)))
@@ -342,7 +342,7 @@ If the path doesn't exist, it is created."
     (when (let ((n (second s)))
 	    (or (not (numberp n)) (> n +theme-version+)))
       (error "Theme version is not recognized."))
-    (unserialize s)))
+    (unserialize s +theme-version+)))
 
 (defun save-theme (theme file)
   "Save THEME to FILE."
