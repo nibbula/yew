@@ -989,7 +989,8 @@ and add the characters the typeahead."
 
 (defmethod stream-read-sequence ((stream terminal-ansi) seq start end
 				 &key &allow-other-keys
-				 #| &optional (start 0) end |#)
+					#| &optional (start 0) end |#)
+  (declare (ignore stream seq start end))
   nil)
 
 ;;(defgeneric stream-peek-char ((stream terminal-ansi))

@@ -510,7 +510,7 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
   (let ((len             (length text))
 	(i               0)
 	(last-word-start 0)
-	(line-start	 0)
+	;;(line-start	 0)
 	(column          0))
     (declare (type fixnum len i last-word-start column))
     (flet ((write-word (final)
@@ -556,7 +556,8 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 		(setf column 0))
 	    (incf i)
 	    (setf last-word-start i
-		  line-start i))
+		  ;; line-start i
+		  ))
 	   ((char= (aref text i) separator)
 	    (write-word nil)
 	    (incf i)
@@ -564,8 +565,9 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 	    (loop :while (and (< i len) (char= (aref text i) separator))
 	       :do (incf i))
 	    (setf last-word-start i)
-	    (when (zerop column)
-	      (setf line-start i)))
+	    ;;(when (zerop column)
+	    ;;  (setf line-start i))
+	    )
 	   (t
 	    (incf i)
 	    (incf column))))
