@@ -1022,10 +1022,11 @@ program that messes with the terminal, we can still type at the debugger."
   (define-key *debugger-keymap* #\escape '*debugger-escape-keymap*))
 
 (defun print-span (span)
-  (with-terminal (:ansi-stream *terminal* :output-stream *debug-io*)
-    (render-fat-string
-     (span-to-fat-string span))
-    (tt-finish-output)))
+  (write-string
+   (with-terminal-output-to-string (:ansi)
+     (render-fat-string
+      (span-to-fat-string span)))
+   *debug-io*))
 
 (defun print-condition (c)
   (print-span
