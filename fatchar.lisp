@@ -624,7 +624,14 @@ colinc, and the space character for padchar.
   (display-length (fatchar-c c)))
 
 (defmethod display-length ((s fat-string))
-   "Return the length of the string for display."
-   (display-length (fat-string-to-string s)))
+  "Return the length of the string for display."
+  (display-length (fat-string-to-string s)))
 
+(defmethod simplify-string ((s fat-string))
+  "Return the length of the string for display."
+  (fat-string-to-string s))
+
+(defmethod simplify-char ((c fatchar))
+  (fatchar-c c))
+  
 ;; EOF

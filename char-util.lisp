@@ -20,6 +20,8 @@
    #:display-length
    #:graphemes
    #:grapheme-length
+   #:simplify-char
+   #:simplify-string
    ))
 (in-package :char-util)
 
@@ -633,6 +635,21 @@ than space and delete."
     (make-control-char-graphic-table))
   (gethash c *control-char-graphics*))
 
+;; @@@ This simplify bullcrap is really only necessary because
+;; of CLOS incompleteness.
+
+(defgeneric simplify-char (char)
+  (:documentation "Return a simplified version of the character."))
+
+(defgeneric simplify-string (string)
+  (:documentation "Return a simplified version of the string."))
+
+(defmethod simplify-string ((s array))
+  "Return a simplified version of the string."
+  (typecase s
+    (string s)
+    (t (map 'string #'simplify-char s))))
+
 (defgeneric display-length (obj)
   (:documentation "Return how long is the object should be when displayed."))
 
@@ -705,7 +722,8 @@ than space and delete."
   "Return the length of the string for display."
   (let ((sum 0))
     ;;(map nil #'(lambda (c) (incf sum (display-length c))) s)
-    (map nil (_ (incf sum (grapheme-length _))) (graphemes s))
+    (map nil (_ (incf sum (grapheme-length _)))
+	 (graphemes (simplify-string s)))
     sum))
 
 ;; EOF
