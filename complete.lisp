@@ -139,7 +139,13 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
     (when (plusp snip-lines)
       (setf output-string
 	    (subseq output-string 0 (car (nth snip-lines line-endings)))))
-    (tt-write-string output-string)
+    ;;(tt-write-string output-string)
+    (if (equal (symbol-name (type-of *terminal*)) "TERMINAL-CURSES")
+	;; XXX an horrible hack to turn it back into colors on curses
+	(render-fatchar-string
+	 (process-ansi-colors
+	  (make-fatchar-string output-string)))
+	(tt-write-string output-string))
     ;; (tt-format "content-rows ~a rows-output ~s " content-rows rows-output)
     (if (plusp (- content-rows rows-output))
 	(tt-format "[~d more lines]" (- content-rows row-limit))
