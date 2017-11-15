@@ -67,6 +67,8 @@
    #:memory-page-size
    #:getauxval
    #:getlogin
+   #:sysconf
+   #:*sysconf-names*
 
    #:passwd				; struct
    #:passwd-name
@@ -302,6 +304,16 @@
    #:resume-process
    #:terminate-process
 
+   #:*rlimit-resources*
+   #:+RLIMIT-CPU+ #:+RLIMIT-FSIZE+ #:+RLIMIT-DATA+ #:+RLIMIT-STACK+
+   #:+RLIMIT-CORE+ #:+RLIMIT-RSS+ #:+RLIMIT-NPROC+ #:+RLIMIT-NOFILE+
+   #:+RLIMIT-MEMLOCK+ #:+RLIMIT-AS+ #:+RLIMIT-LOCKS+ #:+RLIMIT-SIGPENDING+
+   #:+RLIMIT-MSGQUEUE+ #:+RLIMIT-NICE+ #:+RLIMIT-RTPRIO+ #:+RLIMIT-RTTIME+
+   #:+RLIMIT-NLIMITS+ #:+RLIMIT-OFILE+
+   #:rlimit #:rlimit-current #:rlimit-maximum
+   #:setrlimit #:getrlimit
+   #+linux #:prlimit
+   
    #:popen
    #:posix-pipe
    #+linux #:linux-splice
@@ -424,6 +436,24 @@ from the CONSTANT-ARRAY variable, that are non-NIL."
 	      :collect (aref v 0)))
        ,@(or (list docstring))))
 
+  (defmacro define-enum-list (list-var constant-array &key (start 0))
+    "Define enumerated constants and put the names in LIST-VAR."
+    (with-unique-names (offset)
+      `(progn
+  	 (eval-when (:compile-toplevel :load-toplevel :execute)
+  	   (let ((,offset ,start))
+  	     ,@(loop :with name :and doc :and i = 0
+  		  :for c :across constant-array
+  		  :do
+  		  (setf name  (aref c 0)
+  			doc   (aref c 1))
+  		  :collect
+  		  `(defconstant ,name (+ ,offset ,i) ,doc)
+		  :do (incf i))))
+  	 ,@(loop :for c :across constant-array
+  	      :collect
+  	      `(push ',(aref c 0) ,list-var)))))
+  
   (defmacro define-to-list (list-var constant-array)
     "Define constants and put the names in LIST-VAR."
     `(progn
@@ -466,6 +496,7 @@ Type name     Darwin           Linux-32         Linux-64         SunOS		  FreeBS
 #(fsblkcnt-t  :unsigned-long   :unsigned-long   :unsigned-long   :unsigned-long	  :uint64)
 #(fsword-t    :int             :int             :int             :int		  :int)
 #(attrgroup-t :uint32          :uint32          :uint32          :uint32	  :uint32)
+#(rlim-t     :uint64          :uint32          :unsigned-long   :uint32	  :uint64)
 )))
 
 #|
@@ -1611,6 +1642,269 @@ constants. The return value varies base on the keyword."
       ((= type +AT-SYSINFO-EHDR+)  (make-pointer value)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; sysconf
+
+;; @@@ Fill in more descriptions from somewhere
+;; @@@ Test on things other than Linux. Maybe this should be #+linux?
+;; @@@ even though it's supposedly POSIX, the numeric ordering might change?
+(defparameter *sysconf-names* nil "Names for sysconf parameters.")
+
+(define-enum-list *sysconf-names*
+    #(#(+SC-ARG-MAX+ "The maximum length of the arguments to the exec(3) family of functions.")
+      #(+SC-CHILD-MAX+ "The maximum number of simultaneous processes per user ID.")
+      #(+SC-CLK-TCK+ "The number of clock ticks per second.")
+      #(+SC-NGROUPS-MAX+ "Maximum number of supplementary group IDs.")
+      #(+SC-OPEN-MAX+ "The maximum number of files that a process can have open at any time.")
+      #(+SC-STREAM-MAX+ "The maximum number of streams that a process can have open at any time.")
+      #(+SC-TZNAME-MAX+ "The maximum number of bytes in a timezone name.")
+      #(+SC-JOB-CONTROL+ "If this option is in effect (as it always is under POSIX.1-2001), then the system implements POSIX-style job control, and the following functions are present: setpgid(), tcdrain(), tcflush(), tcgetpgrp(), tcsendbreak(), tcsetattr(), tcsetpgrp().")
+      #(+SC-SAVED-IDS+ "A process has a saved set-user-ID and a saved set-group-ID.")
+      #(+SC-REALTIME-SIGNALS+ "Realtime signals are supported. The following functions are present: sigqueue(), sigtimedwait(), sigwaitinfo().")
+      #(+SC-PRIORITY-SCHEDULING+ "The include file <sched.h> is present. The following functions are present: sched_get_priority_max(), sched_get_priority_min(), sched_getparam(), sched_getscheduler(), sched_rr_get_interval(), sched_setparam(), sched_setscheduler(), sched_yield().")
+      #(+SC-TIMERS+ "")
+      #(+SC-ASYNCHRONOUS-IO+ "The header <aio.h> is present and the aio_* functions are present.")
+      #(+SC-PRIORITIZED-IO+ "Priorities can be specified for asynchronous I/O. This affects the functions aio_read(), aio_write().")
+      #(+SC-SYNCHRONIZED-IO+ "")
+      #(+SC-FSYNC+ "The function fsync() is present.")
+      #(+SC-MAPPED-FILES+ "Shared memory is supported. The include file <sys/mman.h> is present. The following functions are present: mmap(), msync(), munmap().")
+      #(+SC-MEMLOCK+ "Shared memory can be locked into core. The functions mlockall(), munlockall() are present.")
+      #(+SC-MEMLOCK-RANGE+ "More precisely, ranges can be locked into core. The functions mlock(), munlock() are present.")
+      #(+SC-MEMORY-PROTECTION+ "The function mprotect() is present.")
+      #(+SC-MESSAGE-PASSING+ "The include file <mqueue.h> is present. The following functions are present: mq_close(), mq_getattr(), mq_notify(), mq_open(), mq_receive(), mq_send(), mq_setattr(), mq_unlink().")
+      #(+SC-SEMAPHORES+ "The include file <semaphore.h> is present and the sem_* functions.")
+      #(+SC-SHARED-MEMORY-OBJECTS+ "")
+      #(+SC-AIO-LISTIO-MAX+ "")
+      #(+SC-AIO-MAX+ "")
+      #(+SC-AIO-PRIO-DELTA-MAX+ "")
+      #(+SC-DELAYTIMER-MAX+ "")
+      #(+SC-MQ-OPEN-MAX+ "")
+      #(+SC-MQ-PRIO-MAX+ "")
+      #(+SC-VERSION+ "The year and month the POSIX.1 standard was approved in the format YYYYMML; the value 199009L indicates the Sept. 1990 revision.")
+      #(+SC-PAGESIZE+ "Size of a page in bytes.")
+      #(+SC-RTSIG-MAX+ "")
+      #(+SC-SEM-NSEMS-MAX+ "")
+      #(+SC-SEM-VALUE-MAX+ "")
+      #(+SC-SIGQUEUE-MAX+ "")
+      #(+SC-TIMER-MAX+ "")
+      #(+SC-BC-BASE-MAX+ "The maximum obase value accepted by the bc(1) utility.")
+      #(+SC-BC-DIM-MAX+ "The maximum value of elements permitted in an array by bc(1).")
+      #(+SC-BC-SCALE-MAX+ "The maximum scale value allowed by bc(1).")
+      #(+SC-BC-STRING-MAX+ "The maximum length of a string accepted by bc(1).")
+      #(+SC-COLL-WEIGHTS-MAX+ "The maximum number of weights that can be assigned to an entry of the LC_COLLATE order keyword in the locale definition file.")
+      #(+SC-EQUIV-CLASS-MAX+ "")
+      #(+SC-EXPR-NEST-MAX+ "The maximum number of expressions which can be nested within parentheses by expr(1).")
+      #(+SC-LINE-MAX+ "The maximum length of a utility's input line, either from standard input or from a file.  This includes space for a trailing newline.")
+      #(+SC-RE-DUP-MAX+ "The number of repeated occurrences of a BRE permitted by regexec(3) and regcomp(3). Like when the interval notation \{m,n\} is used.")
+      #(+SC-CHARCLASS-NAME-MAX+ "")
+      #(+SC-2-VERSION+ "The version of the POSIX.2 standard in the format of YYYYMML.")
+      #(+SC-2-C-BIND+ "")
+      #(+SC-2-C-DEV+ "Whether the POSIX.2 C language development facilities are supported.")
+      #(+SC-2-FORT-DEV+ "Whether the POSIX.2 FORTRAN development utilities are supported.")
+      #(+SC-2-FORT-RUN+ "Whether the POSIX.2 FORTRAN run-time utilities are supported.")
+      #(+SC-2-SW-DEV+ "Whether the POSIX.2 software development utilities option is supported.")
+      #(+SC-2-LOCALEDEF+ "Whether the POSIX.2 creation of locates via localedef(1) is supported.")
+      #(+SC-PII+ "")
+      #(+SC-PII-XTI+ "")
+      #(+SC-PII-SOCKET+ "")
+      #(+SC-PII-INTERNET+ "")
+      #(+SC-PII-OSI+ "")
+      #(+SC-POLL+ "")
+      #(+SC-SELECT+ "")
+      #(+SC-UIO-MAXIOV+ "")
+      #(+SC-PII-INTERNET-STREAM+ "")
+      #(+SC-PII-INTERNET-DGRAM+ "")
+      #(+SC-PII-OSI-COTS+ "")
+      #(+SC-PII-OSI-CLTS+ "")
+      #(+SC-PII-OSI-M+ "")
+      #(+SC-T-IOV-MAX+ "")
+      #(+SC-THREADS+ "")
+      #(+SC-THREAD-SAFE-FUNCTIONS+ "")
+      #(+SC-GETGR-R-SIZE-MAX+ "")
+      #(+SC-GETPW-R-SIZE-MAX+ "")
+      #(+SC-LOGIN-NAME-MAX+ "Maximum length of a login name, including the terminating null byte.")
+      #(+SC-TTY-NAME-MAX+ "The maximum length of terminal device name, including the terminating null byte.")
+      #(+SC-THREAD-DESTRUCTOR-ITERATIONS+ "")
+      #(+SC-THREAD-KEYS-MAX+ "")
+      #(+SC-THREAD-STACK-MIN+ "")
+      #(+SC-THREAD-THREADS-MAX+ "")
+      #(+SC-THREAD-ATTR-STACKADDR+ "")
+      #(+SC-THREAD-ATTR-STACKSIZE+ "")
+      #(+SC-THREAD-PRIORITY-SCHEDULING+ "")
+      #(+SC-THREAD-PRIO-INHERIT+ "")
+      #(+SC-THREAD-PRIO-PROTECT+ "")
+      #(+SC-THREAD-PROCESS-SHARED+ "")
+      #(+SC-NPROCESSORS-CONF+ "The number of processors configured.")
+      #(+SC-NPROCESSORS-ONLN+ "The number of processors currently online (available).")
+      #(+SC-PHYS-PAGES+ "The number of pages of physical memory.  Note that it is possible for the product of this value and the value of _SC_PAGESIZE to overflow.")
+      #(+SC-AVPHYS-PAGES+ "The number of currently available pages of physical memory.")
+      #(+SC-ATEXIT-MAX+ "")
+      #(+SC-PASS-MAX+ "")
+      #(+SC-XOPEN-VERSION+ "")
+      #(+SC-XOPEN-XCU-VERSION+ "")
+      #(+SC-XOPEN-UNIX+ "")
+      #(+SC-XOPEN-CRYPT+ "")
+      #(+SC-XOPEN-ENH-I18N+ "")
+      #(+SC-XOPEN-SHM+ "")
+      #(+SC-2-CHAR-TERM+ "")
+      #(+SC-2-C-VERSION+ "")
+      #(+SC-2-UPE+ "")
+      #(+SC-XOPEN-XPG2+ "")
+      #(+SC-XOPEN-XPG3+ "")
+      #(+SC-XOPEN-XPG4+ "")
+      #(+SC-CHAR-BIT+ "")
+      #(+SC-CHAR-MAX+ "")
+      #(+SC-CHAR-MIN+ "")
+      #(+SC-INT-MAX+ "")
+      #(+SC-INT-MIN+ "")
+      #(+SC-LONG-BIT+ "")
+      #(+SC-WORD-BIT+ "")
+      #(+SC-MB-LEN-MAX+ "")
+      #(+SC-NZERO+ "")
+      #(+SC-SSIZE-MAX+ "")
+      #(+SC-SCHAR-MAX+ "")
+      #(+SC-SCHAR-MIN+ "")
+      #(+SC-SHRT-MAX+ "")
+      #(+SC-SHRT-MIN+ "")
+      #(+SC-UCHAR-MAX+ "")
+      #(+SC-UINT-MAX+ "")
+      #(+SC-ULONG-MAX+ "")
+      #(+SC-USHRT-MAX+ "")
+      #(+SC-NL-ARGMAX+ "")
+      #(+SC-NL-LANGMAX+ "")
+      #(+SC-NL-MSGMAX+ "")
+      #(+SC-NL-NMAX+ "")
+      #(+SC-NL-SETMAX+ "")
+      #(+SC-NL-TEXTMAX+ "")
+      #(+SC-XBS5-ILP32-OFF32+ "")
+      #(+SC-XBS5-ILP32-OFFBIG+ "")
+      #(+SC-XBS5-LP64-OFF64+ "")
+      #(+SC-XBS5-LPBIG-OFFBIG+ "")
+      #(+SC-XOPEN-LEGACY+ "")
+      #(+SC-XOPEN-REALTIME+ "")
+      #(+SC-XOPEN-REALTIME-THREADS+ "")
+      #(+SC-ADVISORY-INFO+ "The following advisory functions are present: posix_fadvise(), posix_fallocate(), posix_memalign(), posix_madvise().")
+      #(+SC-BARRIERS+ "This option implies the _POSIX_THREADS and _POSIX_THREAD_SAFE_FUNCTIONS options and that the pthread_barrier* functions are present.")
+      #(+SC-BASE+ "")
+      #(+SC-C-LANG-SUPPORT+ "")
+      #(+SC-C-LANG-SUPPORT-R+ "")
+      #(+SC-CLOCK-SELECTION+ "This option implies the _POSIX_TIMERS option and the presence of the functions: pthread_condattr_getclock(), pthread_condattr_setclock(), clock_nanosleep().")
+      #(+SC-CPUTIME+ "The clockID CLOCK_PROCESS_CPUTIME_ID is supported. The initial value of this clock is 0 for each process. This option implies the _POSIX_TIMERS option. The function clock_getcpuclockid() is present.")
+      #(+SC-THREAD-CPUTIME+ "")
+      #(+SC-DEVICE-IO+ "")
+      #(+SC-DEVICE-SPECIFIC+ "")
+      #(+SC-DEVICE-SPECIFIC-R+ "")
+      #(+SC-FD-MGMT+ "")
+      #(+SC-FIFO+ "")
+      #(+SC-PIPE+ "")
+      #(+SC-FILE-ATTRIBUTES+ "")
+      #(+SC-FILE-LOCKING+ "Supposedly this is unused.")
+      #(+SC-FILE-SYSTEM+ "")
+      #(+SC-MONOTONIC-CLOCK+ "CLOCK_MONOTONIC is supported. Implies the _POSIX_TIMERS option. Affected functions are aio_suspend(), clock_getres(), clock_gettime(), clock_settime(), timer_create().")
+      #(+SC-MULTI-PROCESS+ "Supposedly this is unused.")
+      #(+SC-SINGLE-PROCESS+ "")
+      #(+SC-NETWORKING+ "")
+      #(+SC-READER-WRITER-LOCKS+ "This option implies the _POSIX_THREADS option and the pthread_rwlock_*() functions.")
+      #(+SC-SPIN-LOCKS+ "Supports spin locks and the pthread_spin_* functions.")
+      #(+SC-REGEXP+ "POSIX regular expressions are supported.")
+      #(+SC-REGEX-VERSION+ "")
+      #(+SC-SHELL+ "The function system() is present.")
+      #(+SC-SIGNALS+ "")
+      #(+SC-SPAWN+ "Support for the posix_spawn* functions. So you can fork without an MMU?")
+      #(+SC-SPORADIC-SERVER+ "The scheduling policy SCHED_SPORADIC is supported.")
+      #(+SC-THREAD-SPORADIC-SERVER+ "")
+      #(+SC-SYSTEM-DATABASE+ "")
+      #(+SC-SYSTEM-DATABASE-R+ "")
+      #(+SC-TIMEOUTS+ "")
+      #(+SC-TYPED-MEMORY-OBJECTS+ "The functions posix_mem_offset(), posix_typed_mem_get_info(), posix_typed_mem_open().")
+      #(+SC-USER-GROUPS+ "")
+      #(+SC-USER-GROUPS-R+ "")
+      #(+SC-2-PBS+ "")
+      #(+SC-2-PBS-ACCOUNTING+ "")
+      #(+SC-2-PBS-LOCATE+ "")
+      #(+SC-2-PBS-MESSAGE+ "")
+      #(+SC-2-PBS-TRACK+ "")
+      #(+SC-SYMLOOP-MAX+ "The maximum number of symbolic links seen in a pathname before resolution returns ELOOP.")
+      #(+SC-STREAMS+ "")
+      #(+SC-2-PBS-CHECKPOINT+ "")
+      #(+SC-V6-ILP32-OFF32+ "")
+      #(+SC-V6-ILP32-OFFBIG+ "")
+      #(+SC-V6-LP64-OFF64+ "")
+      #(+SC-V6-LPBIG-OFFBIG+ "")
+      #(+SC-HOST-NAME-MAX+ "Maximum length of a hostname, not including the terminating null byte, as returned by gethostname(2).")
+      #(+SC-TRACE+ "")
+      #(+SC-TRACE-EVENT-FILTER+ "")
+      #(+SC-TRACE-INHERIT+ "")
+      #(+SC-TRACE-LOG+ "")
+      #(+SC-LEVEL1-ICACHE-SIZE+ "")
+      #(+SC-LEVEL1-ICACHE-ASSOC+ "")
+      #(+SC-LEVEL1-ICACHE-LINESIZE+ "")
+      #(+SC-LEVEL1-DCACHE-SIZE+ "")
+      #(+SC-LEVEL1-DCACHE-ASSOC+ "")
+      #(+SC-LEVEL1-DCACHE-LINESIZE+ "")
+      #(+SC-LEVEL2-CACHE-SIZE+ "")
+      #(+SC-LEVEL2-CACHE-ASSOC+ "")
+      #(+SC-LEVEL2-CACHE-LINESIZE+ "")
+      #(+SC-LEVEL3-CACHE-SIZE+ "")
+      #(+SC-LEVEL3-CACHE-ASSOC+ "")
+      #(+SC-LEVEL3-CACHE-LINESIZE+ "")
+      #(+SC-LEVEL4-CACHE-SIZE+ "")
+      #(+SC-LEVEL4-CACHE-ASSOC+ "")
+      #(+SC-LEVEL4-CACHE-LINESIZE+ "")
+      ))
+
+;; duplicate names
+(defconstant +SC-PAGE-SIZE+ +SC-PAGESIZE+ "")
+(push '+SC-PAGE-SIZE+ *sysconf-names*)
+
+(defconstant +SC-IOV-MAX+ +SC-UIO-MAXIOV+ "")
+(push '+SC-IOV-MAX+ *sysconf-names*)
+
+;; names starting at +SC-LEVEL1-ICACHE-SIZE+ + 50
+(define-enum-list *sysconf-names*
+    #(
+      #(+SC-IPV6+ "Internet Protocol Version 6 is supported.")
+      #(+SC-RAW-SOCKETS+ "Raw sockets are supported. Affected functions are getsockopt(), setsockopt().")
+      #(+SC-V7-ILP32-OFF32+ "")
+      #(+SC-V7-ILP32-OFFBIG+ "")
+      #(+SC-V7-LP64-OFF64+ "")
+      #(+SC-V7-LPBIG-OFFBIG+ "")
+      #(+SC-SS-REPL-MAX+ "")
+      #(+SC-TRACE-EVENT-NAME-MAX+ "")
+      #(+SC-TRACE-NAME-MAX+ "")
+      #(+SC-TRACE-SYS-MAX+ "")
+      #(+SC-TRACE-USER-EVENT-MAX+ "")
+      #(+SC-XOPEN-STREAMS+ "")
+      #(+SC-THREAD-ROBUST-PRIO-INHERIT+ "")
+      #(+SC-THREAD-ROBUST-PRIO-PROTECT+ "")
+      )
+  :start (+ +SC-LEVEL1-ICACHE-SIZE+ 50))
+
+(setf *sysconf-names* (nreverse *sysconf-names*))
+
+(defcfun ("sysconf" real-sysconf) :long (name :int))
+
+(defun sysconf-number (keyword)
+  "Return the value of +SC-*+ constant corresponding to KEYWORD."
+  (symbol-value (intern (s+ "+SC-" (symbol-name keyword) #\+) :opsys-unix)))
+
+(defun sysconf (name)
+  "Return the runtime system configuration variables given by NAME. NAME should
+be one of the values in *SYSCONF-NAMES* or a keyword without the SC- prefix.
+Returns an integer."
+  (let ((number (etypecase name
+		  (keyword (sysconf-number name))
+		  (integer name)))
+	result)
+    ;; We can't use the SYSCALL macro becuase sometime sysconf returns -1.
+    (setf *errno* 0
+	  result (real-sysconf number))
+    (when (and (< result 0) (= *errno* +EINVAL+))
+      (error 'posix-error
+	     :error-code *errno*
+	     :format-control "sysconf: "))
+    result))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; User database
 ;; 
 
@@ -1719,7 +2013,7 @@ Return nil for foreign null pointer."
 ;; @@@ Should use the re-entrant versions of these functions.
 
 ;; int
-;; getpwuid_r(uid_t uid, struct passwd *pwd, char *buffer, size_t bufsize, struct passwd **result);
+;; getpwuid_r(uid_t uid, struct passwd *pwd, char *buffer, size_t bufsize, struct passwd **result)
 
 (defcfun ("getpwnam" real-getpwnam) :pointer (name :string))
 (defun getpwnam (name)
@@ -4556,7 +4850,93 @@ the current process."
   (kill id +SIGTERM+))
 
 ;; setpriority
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; getrlimit/setrlimit
+
+(defparameter *rlimit-resources* nil "Names for rlimit resources.")
+
+(define-enum-list *rlimit-resources*
+    #(#(+RLIMIT-CPU+	    "Per-process CPU limit, in seconds.")
+      #(+RLIMIT-FSIZE+	    "Largest file that can be created, in bytes.")
+      #(+RLIMIT-DATA+	    "Maximum size of data segment, in bytes.")
+      #(+RLIMIT-STACK+	    "Maximum size of stack segment, in bytes.")
+      #(+RLIMIT-CORE+	    "Largest core file that can be created, in bytes.")
+      #(+RLIMIT-RSS+	    "Largest resident set size, in bytes.")
+      #(+RLIMIT-NPROC+	    "Number of processes.")
+      #(+RLIMIT-NOFILE+	    "Number of open files.")
+      #(+RLIMIT-MEMLOCK+    "Locked-in-memory address space.")
+      #(+RLIMIT-AS+	    "Address space limit.")
+      #(+RLIMIT-LOCKS+	    "Maximum number of file locks.")
+      #(+RLIMIT-SIGPENDING+ "Maximum number of pending signals.")
+      #(+RLIMIT-MSGQUEUE+   "Maximum bytes in POSIX message queues.")
+      #(+RLIMIT-NICE+	    "Maximum nice priority allowed to raise to. Nice levels 19 .. -20 correspond to 0 .. 39 values of this resource limit.")
+      #(+RLIMIT-RTPRIO+	    "Maximum realtime priority allowed for non-priviledged processes.")
+      #(+RLIMIT-RTTIME+	    "Maximum CPU time in µs that a process scheduled under a real-time scheduling policy may consume without making a blocking system call before being forcibly descheduled.")
+      ))
+
+(defconstant +RLIMIT-OFILE+ +RLIMIT-NOFILE+ "Number of open files.")
+;;(push '+RLIMIT-OFILE+ *rlimit-resources*)
+
+(setf *rlimit-resources* (nreverse *rlimit-resources*))
+
+(defcstruct foreign-rlimit
+  (rlim_cur rlim-t)			; soft limit
+  (rlim_max rlim-t))			; hard limit
+
+(defcfun ("getrlimit" real-getrlimit) :int (resource :int)
+	 (rlim (:pointer (:struct foreign-rlimit))))
+
+(defcfun ("setrlimit" real-setrlimit) :int (resource :int)
+	 (rlim (:pointer (:struct foreign-rlimit))))
+
+#+linux
+(defcfun ("prlimit" real-prlimit) :int (pid pid-t)
+	 (resource :int)
+	 (new-limit (:pointer (:struct foreign-rlimit)))
+	 (old-limit (:pointer (:struct foreign-rlimit))))
+
+(defstruct rlimit
+  "System resource limit."
+  current				; soft limit
+  maximum				; hard limit
+  )
+
+(defun rlimit-number (resource)
+  "Return the value of +SC-*+ constant corresponding to KEYWORD."
+  (etypecase resource
+    (keyword (symbol-value
+	      (intern (s+ "+RLIMIT-" (symbol-name resource) #\+) :opsys-unix)))
+    (integer resource)))
+
+(defun getrlimit (resource)
+  (with-foreign-object (limit '(:struct foreign-rlimit))
+    (with-foreign-slots ((rlim_cur rlim_max) limit (:struct foreign-rlimit))
+      (syscall (real-getrlimit (rlimit-number resource) limit))
+      (make-rlimit :current rlim_cur :maximum rlim_max))))
+
+(defun setrlimit (resource rlimit)
+  (with-foreign-object (limit '(:struct foreign-rlimit))
+    (with-foreign-slots ((rlim_cur rlim_max) limit (:struct foreign-rlimit))
+      (setf rlim_cur (rlimit-current rlimit)
+	    rlim_max (rlimit-maximum rlimit))
+      (syscall (real-setrlimit (rlimit-number resource) limit))))
+  rlimit)
+
+#+linux
+(defun prlimit (pid resource new-limit)
+  (with-foreign-objects ((new-rlim '(:struct foreign-rlimit))
+			 (old-rlim '(:struct foreign-rlimit)))
+    (setf (foreign-slot-value new-rlim '(:struct foreign-rlimit) 'rlim_cur)
+	  (rlimit-current new-limit)
+	  (foreign-slot-value new-rlim '(:struct foreign-rlimit) 'rlim_max)
+	  (rlimit-maximum new-limit))
+    (syscall (real-prlimit pid (rlimit-number resource) new-rlim old-rlim))
+    (make-rlimit
+     :current (foreign-slot-value old-rlim
+				  '(:struct foreign-rlimit) 'rlim_cur)
+     :maximum (foreign-slot-value old-rlim
+				  '(:struct foreign-rlimit) 'rlim_max))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; System Commands?
