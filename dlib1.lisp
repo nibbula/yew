@@ -1327,7 +1327,8 @@ KEYWORDS-P  If true, include keywords and variable names."
 	    (otherwise (setf thing a)))))
        :if (listp thing) :append thing :else :collect thing)))
 
-(defmacro with-unique-names (names &body body)
+;;(defmacro with-unique-names (names &body body)
+(defmacro with-unique-names ((&rest names) &body body)
   "Bind each symbol in NAMES to a unique symbol and evaluate the BODY.
 Useful for making your macro “hygenic”."
   `(let ,(loop :for n :in names
@@ -1435,11 +1436,14 @@ matches SYMBOL."
 		 (search (symbol-name a) (symbol-name b) :test #'equalp)))))
 
 (defparameter +simple-condition-format-control-slot+
-  (find-slot-name 'simple-condition 'format-control)
+  (find-slot-name 'simple-condition
+		  #-lispworks 'format-control
+		  #+lispworks 'format-string
+		  )
   "Name of the slot that simple-condition-format-control accesses.")
 
 (defparameter +simple-condition-format-arguments-slot+
-  (find-slot-name 'simple-condition 'format-control)
+  (find-slot-name 'simple-condition 'format-arguments)
   "Name of the slot that simple-condition-format-arguments accesses.")
 
 (defmacro defmethod-quiet (name &rest args)
