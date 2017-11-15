@@ -4,7 +4,7 @@
 
 (defpackage :syntax-lisp
   (:documentation "Things for dealing with the syntax of Lisp code.")
-  (:use :cl :dlib :syntax)
+  (:use :cl :dlib :syntax :esrap)
   (:export
    #:lisp-syntax
    #:read-token
@@ -279,5 +279,290 @@ any new symbols, or fail on unknown packages or symbols."
 	  (error 'reader-error)))))
 
 |#
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun make-char-table (source)
+  "Make a character trait table."
+  (let ((v (make-array
+	    (list (1+ (loop :for (c x) :in source
+			 :maximize (etypecase c
+				     (character (char-code c))
+				     (cons (char-code (cadr c)))
+				     (array (char-code (svref c 1))))))))))
+				  
+    (loop :for (c x) :in source
+       :do
+       (etypecase c
+	 (character			; single char
+	  (setf (svref v (char-code c)) x))
+	 (array				; range
+	  (loop :for i :from (char-code (aref c 0)) :upto (char-code (aref c 1))
+	     :do (setf (svref v i) x)))
+	 (cons				; individual chars
+	  (loop :for i :in c
+	     :do (setf (svref v (char-code i)) x)))))
+    v))
+
+(defparameter *char-syntax*
+  '((#\Backspace  :constituent)
+    (#\Tab        :whitespace)
+    (#\Newline    :whitespace)
+    (#\Linefeed   :whitespace)
+    (#\Page       :whitespace)
+    (#\Return     :whitespace)
+    (#\Space      :whitespace)
+    (#\!          :constituent)
+    (#\"          :terminating-macro-char)
+    (#\#          :non-terminating-macro-char)
+    (#\$          :constituent)
+    (#\%          :constituent)
+    (#\&          :constituent)
+    (#\'          :terminating-macro-char)
+    (#\(          :terminating-macro-char)
+    (#\)          :terminating-macro-char)
+    (#\*          :constituent)
+    (#\+          :constituent)
+    (#\,          :terminating-macro-char)
+    (#\-          :constituent)
+    (#\.          :constituent)
+    (#\/          :constituent)
+    (#(#\0 #\9)   :constituent)
+    (#\:          :constituent)
+    (#\;          :terminating-macro-char)
+    (#\<          :constituent)
+    (#\=          :constituent)
+    (#\>          :constituent)
+    (#\?          :constituent)
+    (#\@          :constituent)
+    (#(#\A #\Z)   :constituent)
+    (#\[          :constituent)
+    (#\\          :single-escape)
+    (#\]          :constituent)
+    (#\^          :constituent)
+    (#\_          :constituent)
+    (#\`          :terminating-macro-char)
+    (#(#\a #\z)   :constituent)
+    (#\{          :constituent)
+    (#\|          :multiple-escape)
+    (#\}          :constituent)
+    (#\~          :constituent)
+    (#\Rubout     :constituent))
+  "Lisp character syntax types.")
+
+(defparameter *char-syntax-table* (make-char-table *char-syntax*)
+  "Array of Lisp character syntax types indexed by char-code.")
+
+(defun char-syntax (c)
+  "Return the Lisp character syntax type."
+  (svref *char-syntax-table* (char-code c)))
+
+(defun is-char-syntax (text start type)
+  "To be used in a function terminal for a character of syntax type TYPE.
+TEXT and START should be passed from the caller."
+  (let ((syntax (char-syntax (aref text start))))
+    (when (typecase type
+	    (list (member syntax type))
+	    (t (eq syntax type)))
+      (values syntax (1+ start) nil))))
+
+(defun t-whitespace (text start end)
+  (declare (ignore end))
+  (is-char-syntax text start :whitespace))
+
+(defun t-macro-char (text start end)
+  (declare (ignore end))
+  (is-char-syntax text start
+		  '(:terminating-macro-char :non-terminating-macro-char)))
+
+;; * = shadowed
+(defparameter *constituent-trait*
+  '((#\Backspace   :invalid)
+    (#\Tab         :invalid)    ;; *
+    (#\Newline     :invalid)    ;; *
+    (#\Linefeed    :invalid)    ;; *
+    (#\Page        :invalid)    ;; *
+    (#\Return      :invalid)    ;; *
+    (#\Space       :invalid)    ;; *
+    (#\!           :alphabetic)
+    (#\"           :alphabetic) ;; *
+    (#\#           :alphabetic) ;; *
+    (#\$           :alphabetic)
+    (#\%           :alphabetic)
+    (#\&           :alphabetic)
+    (#\'           :alphabetic) ;; *
+    (#\(           :alphabetic) ;; *
+    (#\)           :alphabetic) ;; *
+    (#\*           :alphabetic)
+    (#\,           :alphabetic) ;; *
+    ((#\0 #\9)     :alphadigit)
+    (#\:           :package-marker)
+    (#\;           :alphabetic) ;; *
+    (#\<           :alphabetic)
+    (#\=           :alphabetic)
+    (#\>           :alphabetic)
+    (#\?           :alphabetic)
+    (#\@           :alphabetic)
+    (#\[           :alphabetic)
+    (#\\           :alphabetic) ;; *
+    (#\]           :alphabetic)
+    (#\^           :alphabetic)
+    (#\_           :alphabetic)
+    (#\`           :alphabetic) ;; *
+    (#\|           :alphabetic) ;; *
+    (#\~           :alphabetic)
+    (#\{           :alphabetic)
+    (#\}           :alphabetic)
+    (#\+           (:alphabetic :plus-sign))
+    (#\-           (:alphabetic :minus-sign))
+    (#\.           (:alphabetic :dot :decimal-point))
+    (#\/           (:alphabetic :ratio-marker))
+    ((#\A #\a)     :alphadigit)
+    ((#\B #\b)     :alphadigit)
+    ((#\C #\c)     :alphadigit)
+    ((#\D #\d)     (:alphadigit :double-float-exponent-marker))
+    ((#\E #\e)     (:alphadigit :float-exponent-marker))
+    ((#\F #\f)     (:alphadigit :single-float-exponent-marker))
+    ((#\G #\g)     :alphadigit)
+    ((#\H #\h)     :alphadigit)
+    ((#\I #\i)     :alphadigit)
+    ((#\J #\j)     :alphadigit)
+    ((#\K #\k)     :alphadigit)
+    ((#\L #\l)     (:alphadigit :long-float-exponent-marker))
+    ((#\M #\m)     :alphadigit)
+    ((#\N #\n)     :alphadigit)
+    ((#\O #\o)     :alphadigit)
+    ((#\P #\p)     :alphadigit)
+    ((#\Q #\q)     :alphadigit)
+    ((#\R #\r)     :alphadigit)
+    ((#\S #\s)     (:alphadigit :short-float-exponent-marker))
+    ((#\T #\t)     :alphadigit)
+    ((#\U #\u)     :alphadigit)
+    ((#\V #\v)     :alphadigit)
+    ((#\W #\w)     :alphadigit)
+    ((#\X #\x)     :alphadigit)
+    ((#\Y #\y)     :alphadigit)
+    ((#\Z #\z)     :alphadigit)
+    (#\Rubout      :invalid)))
+
+(defparameter *constituent-trait-table* (make-char-table *constituent-trait*)
+  "Array of Lisp character syntax types indexed by char-code.")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; numbers
+
+#|
+numeric-token <- integer | ratio | float       
+integer       <- [sign] decimal-digit+ decimal-point |
+                 [sign] digit+      
+ratio         <- [sign] {digit}+ slash {digit}+    
+float         <- [sign] {decimal-digit}* decimal-point {decimal-digit}+ [exponent] |
+                 [sign] {decimal-digit}+ [decimal-point {decimal-digit}*] exponent
+exponent      <- exponent-marker [sign] {digit}+
+|#
+
+(defun digity (text position end)
+  "Succeed if positioned at a digit character in the current *READ-BASE*."
+  ;;(declare (ignore end))
+  (if (< position end)
+      (let ((c (char text position)))
+	(if (digit-char-p c *read-base*)
+	    (values c (1+ position) t)
+	    (values nil position)))
+      (values nil position)))
+
+(defun to-integer (sign digit-list)
+  "Make an integer from a sign and a list of digits."
+  (let ((num (parse-integer (text digit-list) :radix *read-base*)))
+    (if (and sign (and (stringp sign) (char= (char sign 0) #\-)))
+	(- num)
+	num)))
+
+(defun float-format-code (code)
+  (ecase (char code 0)
+    ((#\D #\d) 'double-float)
+    ((#\E #\e) *read-default-float-format*)
+    ((#\F #\f) 'single-float)
+    ((#\L #\l) 'long-float)
+    ((#\S #\s) 'short-float)))
+
+(defun digit-value (s)
+  (ecase (char s 0)
+    (#\0 0) (#\1 1) (#\2 2) (#\3 3) (#\4 4) (#\5 5) (#\6 6) (#\7 7) (#\8 8)
+    (#\9 9)))
+
+(defrule sign (or #\+ #\-))
+(defrule decimal-digit (or #\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9))
+(defrule exponent-marker (or #\D #\d #\E #\e #\F #\f #\L #\l #\S #\s))
+(defrule digit #'digity)
+
+(defrule exponent (and exponent-marker (? sign) (+ digit))
+  (:lambda (l)
+    (list (first l) (to-integer (second l) (third l)))))
+	
+(defrule float (or (and (? sign) (* decimal-digit) #\. (+ decimal-digit)
+			(? exponent))
+		   (and (? sign) (+ decimal-digit)
+			(? (and #\. (* decimal-digit)))
+			exponent))
+  (:lambda (l)
+    ;;(format t "~s~%" l)
+    (let* ((sign (first l))
+	   (denominator 1)
+	   (numerator (if (second l)
+			  (let ((num (digit-value (first (second l)))))
+			    (loop :for c :in (cdr (second l))
+			       :do
+			       (setf num (+ (* num 10) (digit-value c))))
+			    num)
+			  0))
+	   (size (if (car (last l))
+		     (float-format-code (caar (last l)))
+		     *read-default-float-format*))
+	   (exponent (when (car (last l))
+		       (cadar (last l))))
+	   result)
+      ;;(format t "hi ~s ~s ~s~%" numerator denominator exponent)
+      (when (third l)
+	(loop :for c :in (fourth l)
+	   :do
+	   (setf numerator (+ (* numerator 10) (digit-value c))
+		 denominator (* denominator 10))))
+      (setf result (float (/ numerator denominator) (coerce 0 size)))
+      (when exponent
+	(setf result (* result (expt 10 exponent))))
+      (if (and sign (char= (char sign 0) #\-))
+	  (- result)
+	  result))))
+
+(defrule ratio (and (? sign) (+ digit) #\/ (+ digit))
+  (:lambda (l)
+    (/ (to-integer (first l) (second l)) (to-integer nil (fourth l)))))
+
+(defrule integer (or (and (? sign) (+ decimal-digit) #\.)
+		     (and (? sign) (+ digit)))
+  (:lambda (l)
+    (to-integer (first l) (second l))))
+
+(defrule numeric-token (or float ratio integer))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defrule whitespace (+ #'t-whitespace)
+  (:constant nil))
+
+(defrule line-comment (and #\; (* (not #\newline)) (* #\newline))
+  ;;(:lambda (l) (list :comment (text (second l))))
+  (:constant nil)
+  )
+
+;;(defrule balanced-comment (and #\# 
+
+(defrule space (+ (or comment whitespace))
+  ;;(:lambda (l) (if (eq :comment (caar l)) (car l) nil))
+  (:constant nil)
+  )
+
+;;(defule lisp-expr (? whitespace) (macro-char
 
 ;; EOF
