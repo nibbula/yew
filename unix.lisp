@@ -1281,8 +1281,8 @@ the current 'C' environment."
   #+clisp (setf (ext:getenv var) nil)	; @@@ guessing?
   #+excl (setf (sys::getenv var) nil)	; @@@ guessing?
   #+ccl (syscall (ccl::unsetenv var))
-  #+(or sbcl cmu abcl ecl) (syscall (real-unsetenv var))
-  #+lispworks (hcl:unsetenv var)
+  #+(or sbcl cmu abcl ecl lispworks) (syscall (real-unsetenv var))
+  ;;#+lispworks (hcl:unsetenv var)
   #-(or clisp openmcl excl sbcl ecl cmu lispworks abcl)
   (declare (ignore var))
   #-(or clisp openmcl excl sbcl ecl cmu lispworks abcl)
