@@ -30,6 +30,9 @@
    #:weeks-to-time #:days-to-time #:hours-to-time #:minutes-to-time
    #:time-to-millennia #:time-to-centuries #:time-to-decades #:time-to-years
    #:time-to-weeks #:time-to-days #:time-to-hours #:time-to-minutes
+   #:dtime #:dtime-seconds #:dtime-nanoseconds #:make-dtime #:dtime-p
+   #:get-dtime #:dtime-round
+   #:dtime= #:dtime/= #:dtime< #:dtime> #:dtime<= #:dtime>= #:dtime+ #:dtime-
 
    ;; hooks
    #:add-hook
@@ -438,6 +441,136 @@ The date part is considered to be the current date."
 (defun time-to-days      (days)      (/ days      (* 60 60 24)))
 (defun time-to-hours     (hours)     (/ hours     (* 60 60)))
 (defun time-to-minutes   (minutes)   (/ minutes   60))
+
+;; These, for lack of a better thing, these operate on the dual time from opsys.
+;; To do better we probably need arbitrary precision floats.
+;; [Could use mpfr or bfloats from maxima] (see wip/units.lisp)
+
+;; @@@ Revise the above functions to handle a time strcut too.
+
+(defstruct dtime
+  (seconds 0 :type integer)
+  (nanoseconds 0 :type integer))
+
+(defun get-dtime ()
+  "Return the current time as a new DTIME."
+  (multiple-value-bind (s n) (get-time)
+    (make-dtime :seconds s :nanoseconds n)))
+
+(defun dtime-round (time unit)
+  "Round off DTIME to UNIT units."
+  (ecase unit
+    (:millennia
+     (make-dtime :seconds (time-to-millennia (dtime-seconds time))))
+    (:centuries
+     (make-dtime :seconds (time-to-centuries (dtime-seconds time))))
+    (:decades
+     (make-dtime :seconds (time-to-decades   (dtime-seconds time))))
+    ((:yr :years)
+     (make-dtime :seconds (time-to-years     (dtime-seconds time))))
+    ((:wk :weeks)
+     (make-dtime :seconds (time-to-weeks     (dtime-seconds time))))
+    ((:d :days)
+     (make-dtime :seconds (time-to-days      (dtime-seconds time))))
+    ((:h :hr :hours)
+     (make-dtime :seconds (time-to-hours     (dtime-seconds time))))
+    ((:m :min :minutes)
+     (make-dtime :seconds (time-to-minutes   (dtime-seconds time))))
+    ((:s :seconds)
+     (make-dtime :seconds (dtime-seconds time)))
+    ((:ds :decisecond :deciseconds)
+     (make-dtime :seconds (dtime-seconds time)
+		 :nanoseconds (truncate (dtime-nanoseconds time) 100000000)))
+    ((:cs :centisecond :centiseconds)
+     (make-dtime :seconds (dtime-seconds time)
+		 :nanoseconds (truncate (dtime-nanoseconds time) 10000000)))
+    ((:ms :millisecond :milliseconds)
+     (make-dtime :seconds (dtime-seconds time)
+		 :nanoseconds (truncate (dtime-nanoseconds time) 1000000)))
+    ((:µs :microsecond :microseconds)
+     (make-dtime :seconds (dtime-seconds time)
+		 :nanoseconds (truncate (dtime-nanoseconds time) 1000)))
+    ((:ns :nanosecond :nanoseconds)
+     (make-dtime :seconds (dtime-seconds time)
+		 :nanoseconds (dtime-nanoseconds time)))
+    ((:ps :picosecond :picoseconds)
+     (make-dtime :seconds (dtime-seconds time)
+		 :nanoseconds (* (dtime-nanoseconds time) 1000)))
+    ((:fs :femtosecond :femtoseconds)
+     (make-dtime :seconds (dtime-seconds time)
+		 :nanoseconds (* (dtime-nanoseconds time) (expt 10 6))))
+    ((:as :attosecond :attoseconds)
+     (make-dtime :seconds (dtime-seconds time)
+		 :nanoseconds (* (dtime-nanoseconds time) (expt 10 9))))
+    ((:zs :zeptosecond :zeptoseconds)
+     (make-dtime :seconds (dtime-seconds time)
+		 :nanoseconds (* (dtime-nanoseconds time) (expt 10 12))))
+    ((:ys :yoctosecond :yoctoseconds)
+     (make-dtime :seconds (dtime-seconds time)
+		 :nanoseconds (* (dtime-nanoseconds time) (expt 10 15))))))
+
+;; This demonstrates the extent to which I don't like to write repetitive code.
+(eval-when (:compile-toplevel)
+  (defun define-time-comparison-operator (op)
+    (let ((name (symbolify (s+ "DTIME" op)))
+	  (doc (s+ "Return true if DTIME1 " op " DTIME2, which should both be "
+		   "a struct dtime.")))
+      `(defun ,name (time1 time2)
+	 ,doc
+	 (or (,op (dtime-seconds time1) (dtime-seconds time2))
+	     (and
+	      (= (dtime-seconds time1) (dtime-seconds time2))
+	      (,op (dtime-nanoseconds time1) (dtime-nanoseconds time2)))))))
+
+  (defparameter %time-comp-op '(< <= > >=))
+
+  (defmacro def-comp-ops ()
+    (let ((forms
+	   (loop :for o :in %time-comp-op
+	      :collect (define-time-comparison-operator o))))
+      `(progn ,@forms))))
+
+(def-comp-ops)
+
+(defun dtime= (time1 time2)
+  "Return true if TIME1 = TIME2, which should both be a struct time."
+  (and (= (dtime-seconds time1) (dtime-seconds time2))
+       (= (dtime-nanoseconds time1) (dtime-nanoseconds time2))))
+
+(defun dtime/= (time1 time2)
+  "Return true if TIME1 = TIME2, which should both be a struct time."
+  (or (/= (dtime-seconds time1) (dtime-seconds time2))
+      (/= (dtime-nanoseconds time1) (dtime-nanoseconds time2))))
+
+(defconstant +max-nano+ (expt 10 9)
+  "The maximum number of nanoseconds in a second.")
+
+(defun dtime+ (time1 time2)
+  "Return the sum of TIME1 and TIME2."
+  (let ((s (+ (dtime-seconds time1) (dtime-seconds time2)))
+	(n (+ (dtime-nanoseconds time1) (dtime-nanoseconds time2))))
+    (cond
+      ((> n +max-nano+)
+       (incf s)
+       (decf n +max-nano+))
+      ((= n +max-nano+)
+       (incf s)
+       (setf n 0)))			; perhaps just saving a subtraction
+    (make-dtime :seconds s
+		:nanoseconds n)))
+
+(defun dtime- (time1 time2)
+  "Return the difference of TIME1 and TIME2."
+  (let ((n (- (dtime-nanoseconds time1) (dtime-nanoseconds time2)))
+	s)
+    (cond
+      ((minusp n)
+       (incf n +max-nano+)
+       (setf s (- (dtime-seconds time1) 1 (dtime-seconds time2))))
+      (t
+       (setf s (- (dtime-seconds time1) (dtime-seconds time2)))))
+    (make-dtime :seconds s
+		:nanoseconds n)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; hooks
