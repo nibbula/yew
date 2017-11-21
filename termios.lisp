@@ -969,7 +969,7 @@ characters. If we don't get anything after a while, just return what we got."
   ECHO makes input automatically output back, so you can see what you typed.
   LINE makes input wait for a newline until returning.
   RAW ignores normal processing, like interrupt keys.
-  TIMEOUT is the time in milliseconds to wait before returning with no input.
+  TIMEOUT is the time in deciseconds to wait before returning with no input.
   MODE is a TERMINAL-MODE structure to take settings from.
 The individual settings override the settings in MODE."
   (when (not (or echo-supplied line-supplied raw-supplied timeout-supplied

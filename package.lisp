@@ -104,6 +104,10 @@
    #:process-times
    #:process-list
 
+   ;; time
+   #:get-time
+   #:set-time
+
    ;; polling
    #:listen-for
 

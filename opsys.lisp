@@ -905,7 +905,13 @@ from the system command CMD with the arguments ARGS."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Timers / Timing
 
-;; This is probably best provided in relation to some kind of "event loop"
+(defosfun get-time ()
+  "Return the time in seconds and nanoseconds. The first value is seconds in
+so-called “universal” time. The second value is nanoseconds.")
+
+(defosfun set-time (seconds nanoseconds)
+  "Set time in seconds and nanoseconds. Seconds are in so-called
+“universal” time.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; select
