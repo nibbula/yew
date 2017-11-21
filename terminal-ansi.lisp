@@ -281,7 +281,7 @@ Report parameters are returned as values. Report is assumed to be in the form:
 		 ;;(posix-write fd qq (length q))
 		 ;;(terminal-write-string tty q) (terminal-finish-output tty)
 		 (write-terminal-string fd q)
-		 (read-until fd end-char :timeout 1)))) ; 10
+		 (read-until fd end-char :timeout 1))))
       (when (null str)
 	(error "Terminal failed to report \"~a\"." fmt))
       str)))
