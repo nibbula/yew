@@ -4,10 +4,13 @@
 
 (defpackage :view-image
   (:documentation "Image viewer")
-  (:use :cl :dlib :keymap :char-util :terminal :terminal-ansi :inator
+  (:use :cl :dlib :dlib-misc :keymap :char-util :terminal :terminal-ansi :inator
 	:terminal-inator :magic)
   (:export
    #:view-image
+   #:image-inator
+   #:register-image-inator
+   #:image-inator-usable-p
    ))
 (in-package :view-image)
 
@@ -17,19 +20,34 @@
 (defconstant +max-alpha+ 255
   "Maximum alpha value, i.e. no transparency.")
 
+(defvar *disposal-methods*
+  ;; No disposal specified. The decoder is not required to take any action.
+  '((:unspecified . 0)
+    ;; Do not dispose. The graphic is to be left in place.
+    (:none . 1)
+    ;; Restore to background color. The area used by the graphic must be
+    ;; restored to the background color.
+    (:restore-background . 2)
+    ;; Restore to previous. The decoder is required to restore the area
+    ;; overwritten by the graphic with what was there prior to rendering the
+    ;; graphic.
+    (:restore-previous . 3)))
+
 (defstruct sub-image
-  (x      0 :type fixnum)
-  (y      0 :type fixnum)
-  (width  0 :type fixnum)		; width in pixels
-  (height 0 :type fixnum)		; height in pixels
-  (delay  0 :type fixnum)		; ms to delay
+  (x        0 :type fixnum)
+  (y        0 :type fixnum)
+  (width    0 :type fixnum)		; width in pixels
+  (height   0 :type fixnum)		; height in pixels
+  (delay    0 :type fixnum)		; ms to delay
+  (disposal :unspecified) 		; disposal method
   data)					; image data
 
 (defstruct image
   name					; image name, usually a file name
   (width  0 :type fixnum)		; width in pixels
   (height 0 :type fixnum)		; height in pixels
-  subimages)				; array of subimages, nil if none
+  ;; array of subimages, nil if none
+  (subimages nil :type (or null (simple-array sub-image *))))
 
 (defkeymap *image-viewer-keymap*)
 (defkeymap *image-viewer-escape-keymap*)
@@ -80,6 +98,21 @@
 (defvar *image-viewer* nil
   "The current image viewer.")
 
+(defgeneric image-inator-usable-p (type)
+  (:documentation "Return true if an image-inator of TYPE can be used.")
+  (:method ((type (eql 'image-inator)))
+    (typep *terminal* 'terminal-ansi)))
+
+(defgeneric width (inator)
+  (:documentation "Return the width of the image-inator in pixels.")
+  (:method ((inator image-inator))
+    (tt-width)))
+
+(defgeneric height (inator)
+  (:documentation "Return the height of the image-inator in pixels.")
+  (:method ((inator image-inator))
+    (tt-height)))
+
 (define-condition unknown-image-type (simple-error) ()
   (:default-initargs
    :format-control "~s is an image type ~a, which I don't know how to handle."))
@@ -93,32 +126,36 @@
   (with-slots (x zoom) o
     (declare (type fixnum x))
     (decf x (* n (truncate 1 zoom)))
-    (when (<= x 0)
-      (setf x 0))))
+    ;; (when (<= x 0)
+    ;;   (setf x 0))
+    ))
 
 (defun down (o &optional (n 1))
   (declare (type fixnum n))
   (with-slots (y image zoom) o
     (declare (type fixnum y))
     (incf y (* n (truncate 1 zoom)))
-    (when (>= y (image-height image))
-      (setf y (1- (image-height image))))))
+    ;; (when (>= y (image-height image))
+    ;;   (setf y (1- (image-height image))))
+    ))
   
 (defun up (o &optional (n 1))
   (declare (type fixnum n))
   (with-slots (y zoom) o
     (declare (type fixnum y))
     (decf y (* n (truncate 1 zoom)))
-    (when (<= y 0)
-      (setf y 0))))
+    ;; (when (<= y 0)
+    ;;   (setf y 0))
+    ))
 
 (defun right (o &optional (n 1))
   (declare (type fixnum n))
   (with-slots (x image zoom) o
     (declare (type fixnum x))
     (incf x (* n (truncate 1 zoom)))
-    (when (>= x (image-width image))
-      (setf x (1- (image-width image))))))
+    ;; (when (>= x (image-width image))
+    ;;   (setf x (1- (image-width image))))
+    ))
 
 (defmethod forward-unit	 ((o image-inator)) (right o))
 (defmethod backward-unit ((o image-inator)) (left o))
@@ -137,21 +174,21 @@
 (defmethod move-to-bottom ((o image-inator))
   (with-slots (x y image zoom) o
     (declare (type fixnum x y))
-    (setf x (max 0 (- (image-width image) (* (tt-width) (truncate 1 zoom))))
-	  y (max 0 (- (image-height image) (* (tt-height) (truncate 1 zoom)))))))
+    (setf x (max 0 (- (image-width image) (* (width o) (truncate 1 zoom))))
+	  y (max 0 (- (image-height image) (* (height o) (truncate 1 zoom)))))))
 
 (defmethod next-page ((o image-inator))
   (with-slots (y image zoom) o
     (declare (type fixnum y))
     (let ((step (truncate 1 zoom)))
-      (setf y (min (+ y (* (tt-height) step))
-		   (max 0 (- (image-height image) (* (tt-height) step))))))))
+      (setf y (min (+ y (* (height o) step))
+		   (max 0 (- (image-height image) (* (height o) step))))))))
 
 (defmethod previous-page ((o image-inator))
   (with-slots (y zoom) o
     (declare (type fixnum y))
     (let ((step (truncate 1 zoom)))
-      (setf y (max (- y (* (tt-height) step)) 0)))))
+      (setf y (max (- y (* (height o) step)) 0)))))
 
 (defun beginning-of-line (o)
   (setf (image-inator-x o) 0))
@@ -159,7 +196,7 @@
 (defun end-of-line (o)
   (with-slots (x image zoom) o
     (declare (type fixnum x))
-    (setf x (max 0 (- (image-width image) (* (tt-width) (truncate 1 zoom)))))))
+    (setf x (max 0 (- (image-width image) (* (width o) (truncate 1 zoom)))))))
 
 (defun zoom-in (o)
   (with-slots (zoom) o
@@ -180,7 +217,7 @@
       ;; zoom = tt-width / width
       (setf zoom
 	    (min 1.0 ;; teporarily @@@
-		 (float (/ (tt-width) width))))
+		 (float (/ (width o) width))))
       )))
 
 (defun fit-height-to-window (o)
@@ -188,14 +225,15 @@
     (with-slots (width height) image
       (setf zoom
 	    (min 1.0 ;; teporarily @@@
-		 (float (/ (tt-height) height))))
+		 (float (/ (height o) height))))
       )))
 
-(defun reset-image (o)
-  "Reset some viewer parameters when we switch images."
-  (with-slots (subimage looping) o
-    (setf subimage 0
-	  looping nil)))
+(defgeneric reset-image (inator)
+  (:documentation "Reset some viewer parameters when we switch images.")
+  (:method ((inator image-inator))
+    (with-slots (subimage looping) inator
+      (setf subimage 0
+	    looping nil))))
 
 (defun toggle-looping (o)
   (with-slots (looping) o
@@ -364,7 +402,7 @@
   (with-slots (looping subimage image) o
     (with-slots (subimages) image
       (if (and looping subimages)
-	  (let ((t-o (truncate (sub-image-delay (aref subimages subimage)) 10))
+	  (let ((t-o (sub-image-delay (aref subimages subimage)))
 		result)
 	    (setf result
 		  (terminal-ansi::get-char *terminal* :timeout t-o)) ;; XXX
@@ -381,7 +419,7 @@
     (with-slots (name width height subimages) image
       (if message
 	  (progn
-	    (tt-write-string message)
+	    (message o message)
 	    (setf message nil))
 	  (let ((position (if (and (plusp x) (plusp y))
 			      (format nil "+~d+~d " x y) ""))
@@ -390,14 +428,15 @@
 					file-index (length file-list)) ""))
 		(frame-count (if (> (length subimages) 1)
 				 (format nil "[frame ~d of ~d] " subimage
-					 (length subimages)) "")))
+					 (length subimages)) ""))
+		(disposal (sub-image-disposal (aref subimages subimage))))
 	    (multiple-value-bind (start-x end-x start-y end-y) (clip o)
 	      (let ((line
-		     (format nil "~a ~dx~d ~a~a~a~f% <~d-~d ~d-~d>"
+		     (format nil "~a ~dx~d ~a~a~a~f% <~d-~d ~d-~d> ~s"
 			     name width height position file-count frame-count
-			     zoom start-x end-x start-y end-y)))
-		(tt-write-string (subseq line 0 (min (length line)
-						     (1- (tt-width))))))))))))
+			     zoom start-x end-x start-y end-y disposal)))
+		(message o (subseq line 0 (min (length line)
+					       (1- (width o))))))))))))
 
 #|
 
@@ -450,10 +489,10 @@
 	       (start-y (if (> y si-y) (- y si-y) 0))
 	       (end-x (min width (- width
 				    (- (+ si-x width)
-				       (+ x (* step (1- (tt-width))))))))
+				       (+ x (* step (1- (width o))))))))
 	       (end-y (min height (- height
 				     (- (+ si-y height)
-					(+ y (1- (* step (1- (tt-height))))))))))
+					(+ y (1- (* step (1- (height o))))))))))
 	  (values start-x end-x start-y end-y))))))
 
 #| 
@@ -522,7 +561,7 @@ But also greatly increasing # of chars output.
 	       (tt-color nil nil)
 	       (tt-write-char #\newline))))
 	(tt-color nil nil)
-	(tt-move-to (1- (tt-height)) 0)
+	(tt-move-to (1- (height o)) 0)
 	(when show-modeline
 	  (show-status inator))))))
 |#
@@ -595,7 +634,7 @@ But also greatly increasing # of chars output.
 	       (tt-color nil nil)
 	       (tt-write-char #\newline))))
 	(tt-color nil nil)
-	(tt-move-to (1- (tt-height)) 0)
+	(tt-move-to (1- (height inator)) 0)
 	(when show-modeline
 	  (show-status inator))))))
 |#
@@ -658,7 +697,7 @@ But also greatly increasing # of chars output.
 	       (tt-color nil nil)
 	       (tt-write-char #\newline))))
 	(tt-color nil nil)
-	(tt-move-to (1- (tt-height)) 0)
+	(tt-move-to (1- (height inator)) 0)
 	(when show-modeline
 	  (show-status inator))))))
 
@@ -747,21 +786,23 @@ But also greatly increasing # of chars output.
     (let ((array (make-image-array width height))
 	  (i 0))
       ;;(pause "JPEG ~a x ~a ~d" width height (length data))
-      (loop :for y :from 0 :below height :do
-	 (loop :for x :from 0 :below width :do
-	    (case colors
-	      (3
-	       (setf (aref array x y 3) +max-alpha+
-		     (aref array x y 2) (aref data i)
-		     (aref array x y 1) (aref data (+ i 1))
-		     (aref array x y 0) (aref data (+ i 2)))
-	       (incf i 3))
-	      (1
-	       (setf (aref array x y 3) +max-alpha+
-		     (aref array x y 2) (aref data i)
-		     (aref array x y 1) (aref data i)
-		     (aref array x y 0) (aref data i))
-	       (incf i)))))
+      (with-spin ()
+	(loop :for y :from 0 :below height :do
+	   (spin)
+	   (loop :for x :from 0 :below width :do
+	      (case colors
+		(3
+		 (setf (aref array x y 3) +max-alpha+
+		       (aref array x y 2) (aref data i)
+		       (aref array x y 1) (aref data (+ i 1))
+		       (aref array x y 0) (aref data (+ i 2)))
+		 (incf i 3))
+		(1
+		 (setf (aref array x y 3) +max-alpha+
+		       (aref array x y 2) (aref data i)
+		       (aref array x y 1) (aref data i)
+		       (aref array x y 0) (aref data i))
+		 (incf i))))))
       (make-image :name file-or-stream
 		  :width width :height height
 		  :subimages
@@ -776,6 +817,7 @@ But also greatly increasing # of chars output.
 	 (array (make-image-array (skippy:width image) (skippy:height image)))
 	 (color-table (or (skippy:color-table image)
 			  (skippy:color-table gif)))
+	 (delay (* (skippy:delay-time image) 10)) ; convert 1/100s to ms
 	 (r 0) (g 0) (b 0) (a 0)
 	 (i 0) color-index)
     (declare (type fixnum i)
@@ -786,8 +828,8 @@ But also greatly increasing # of chars output.
 	  (if (or (not (skippy:transparency-index image))
 		  (/= color-index (skippy:transparency-index image)))
 	      (setf (values r g b) (skippy:color-rgb
-				  (skippy:color-table-entry
-				   color-table color-index))
+				    (skippy:color-table-entry
+				     color-table color-index))
 		    a +max-alpha+)
 	      (setf r 0 g 0 b 0 a 0))
 	  ;; (cond
@@ -807,19 +849,25 @@ But also greatly increasing # of chars output.
 		(aref array x y 2) b
 		(aref array x y 3) a)
 	  (incf i)))
-    (make-sub-image :x      (skippy:left-position image)
-		    :y      (skippy:top-position image)
-		    :width  (skippy:width image)
-		    :height (skippy:height image)
-		    :delay  (skippy:delay-time image)
-		    :data   array)))
+    (make-sub-image :x        (skippy:left-position image)
+		    :y        (skippy:top-position image)
+		    :width    (skippy:width image)
+		    :height   (skippy:height image)
+		    :delay    (cond
+				((zerop delay) 100) ; default 100 ms
+				((< delay 20) 20)   ; quickest is 20 ms
+				(t delay))
+		    :disposal (skippy:disposal-method image)
+		    :data      array)))
 
 (defun read-gif (file-or-stream)
   (let* ((gif (if (streamp file-or-stream)
 		  (skippy:read-data-stream file-or-stream)
 		  (skippy:load-data-stream file-or-stream)))
 	 (image-count (length (skippy:images gif)))
-	 (sub (make-array image-count)))
+	 (sub (make-array image-count
+			  :element-type 'sub-image
+			  :initial-element (make-sub-image))))
     (declare (type fixnum image-count))
     (loop :for i fixnum :from 0 :below image-count :do
        (setf (aref sub i) (get-gif-image gif i)))
@@ -848,18 +896,35 @@ But also greatly increasing # of chars output.
 	(cerror "Skip the file"
 		'non-image-file :format-arguments `(,file-or-stream)))))
 
-(defun view-image (file-or-stream &key file-list)
+(defvar *image-inator-types* nil
+  "A list of image inator types that are defined.")
+
+(defun register-image-inator (type priority)
+  (pushnew (cons priority type) *image-inator-types* :test #'equal))
+
+(defun pick-image-inator ()
+  (setf *image-inator-types*
+	(sort-muffled *image-inator-types* #'> :key #'car))
+  (loop :for i :in *image-inator-types*
+     :when (image-inator-usable-p (cdr i))
+     :return (cdr i)))
+
+(defun view-image (file-or-stream &key file-list type own-window)
   (with-terminal (:ansi)
-    (let* (image *image-viewer*)
+    (let* ((inator-type (or type (pick-image-inator)))
+	   image *image-viewer*)
+      (when (not inator-type)
+	(error "Can't find a usable image viewer."))
       (loop :with file = file-or-stream :and list = file-list
 	 :while (and (or file list) (not (setf image (read-image file))))
 	 :do (setf list (cdr list)
 		   file (car list)))
       (when (not image)
 	(error "No more files to try."))
-      (setf *image-viewer* (make-instance 'image-inator
+      (setf *image-viewer* (make-instance inator-type
 					  :image image
-					  :file-list file-list))
+					  :file-list file-list
+					  :own-window own-window))
       (unwind-protect
         (progn
 	  (tt-cursor-off)
@@ -867,17 +932,32 @@ But also greatly increasing # of chars output.
 	(tt-cursor-on))
       (inator-quit-flag *image-viewer*))))
 
-(defun view-images (files)
+(register-image-inator 'image-inator 1)
+
+(defun view-images (files &rest args &key type own-window)
+  (declare (ignorable type own-window))
   (if (not files)
-      (view-image *standard-input*)
-      (view-image (first files) :file-list files)))
+      (apply #'view-image *standard-input* args)
+      (apply #'view-image (first files) :file-list files args)))
+
+(defun image-inator-types ()
+  (mapcar (_ (string (cdr _))) *image-inator-types*))
 
 #+lish
 (lish:defcommand view-image
-  ((images pathname :repeating t :help "Image to view."))
+  ((type choice :short-arg #\t :optional t
+    :choice-func image-inator-types
+    :choice-test #'equalp
+    :help "Type of image viewer to use.")
+   (own-window boolean :short-arg #\o
+    :help "True to use it's own window if the backend supports it.")
+   (images pathname :repeating t :help "Image to view."))
   :accepts (:sequence :stream)
   "View an image."
-  (view-images (or images lish:*input* *standard-input*)))
+  (view-images (or images lish:*input* *standard-input*)
+	       :type (cdr (find type *image-inator-types*
+				:key (_ (symbol-name (cdr _)))))
+	       :own-window own-window))
 
 #|
 (defun cat-images (files)
