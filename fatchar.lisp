@@ -8,7 +8,8 @@
 (defpackage :fatchar
   (:documentation "Characters with attributes.
 Defines a FATCHAR which is a character with color and font attributes.
-Define a FAT-STRING as a vector of FATCHARS.
+Define a FATCHAR-STRING as a vector of FATCHARS.
+Define a FAT-STRING as a struct with a FATCHAR-STRING so we can specialize.
 Define a TEXT-SPAN as a list representation of a FAT-STRING.
 ")
   (:use :cl :dlib :stretchy :terminal :char-util)
@@ -607,8 +608,8 @@ colinc, and the space character for padchar.
 	    (setf str (if (typep obj 'fat-string) (fat-string-string obj) obj)
 		  len (display-length (fatchar-string-to-string str))
 		  render #'fatty))
-	   (t (setf len (display-length str)))))
-	(t (setf len (display-length str))))
+	   (t (setf len (display-length (princ-to-string str))))))
+	(t (setf len (display-length (princ-to-string str)))))
       (if (and mincol (< len mincol))
 	  (if at-sign-p
 	      (progn
