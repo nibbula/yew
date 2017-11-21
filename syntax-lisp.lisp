@@ -4,7 +4,7 @@
 
 (defpackage :syntax-lisp
   (:documentation "Things for dealing with the syntax of Lisp code.")
-  (:use :cl :dlib :syntax :esrap)
+  (:use :cl :dlib :syntax #| :esrap |#)
   (:export
    #:lisp-syntax
    #:read-token
@@ -461,6 +461,8 @@ float         <- [sign] {decimal-digit}* decimal-point {decimal-digit}+ [exponen
 exponent      <- exponent-marker [sign] {digit}+
 |#
 
+#|
+
 (defun digity (text position end)
   "Succeed if positioned at a digit character in the current *READ-BASE*."
   ;;(declare (ignore end))
@@ -564,5 +566,7 @@ exponent      <- exponent-marker [sign] {digit}+
   )
 
 ;;(defule lisp-expr (? whitespace) (macro-char
+
+|#
 
 ;; EOF
