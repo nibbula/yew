@@ -93,6 +93,7 @@ of it.")
    ;; Implementation-ish
    #:without-warning
    #+sbcl #:without-notes
+   #:sort-muffled
    ;; language-ish
    #:define-constant
    #:defconstant-to-list
@@ -257,6 +258,13 @@ later versions.")
 	   (declare (ignore c))
 	   (muffle-warning))))
      ,@body))
+
+;; This is just for a particularly complaintive implementation.
+(declaim (inline sort-muffled))
+(defun sort-muffled (seq pred &rest args &key key)
+  (declare #+sbcl (sb-ext:muffle-conditions sb-ext:compiler-note)
+	   (ignorable key))
+  (apply #'sort seq pred args))
 
 ;; Make sure we have getenv
 (defun d-getenv (s)
