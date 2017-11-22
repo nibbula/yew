@@ -34,12 +34,13 @@
     (:restore-previous . 3)))
 
 (defstruct sub-image
-  (x        0 :type fixnum)
-  (y        0 :type fixnum)
-  (width    0 :type fixnum)		; width in pixels
-  (height   0 :type fixnum)		; height in pixels
-  (delay    0 :type fixnum)		; ms to delay
-  (disposal :unspecified) 		; disposal method
+  (x           0 :type fixnum)
+  (y           0 :type fixnum)
+  (width       0 :type fixnum)		; width in pixels
+  (height      0 :type fixnum)		; height in pixels
+  (delay       0 :type fixnum)		; ms to delay
+  (disposal    :unspecified) 		; disposal method
+  (transparent nil :type boolean) 	; true if there's any transparancy
   data)					; image data
 
 (defstruct image
@@ -121,41 +122,45 @@
   (:default-initargs
    :format-control "~s doesn't seem to be an image"))
 
-(defun left (o &optional (n 1))
-  (declare (type fixnum n))
-  (with-slots (x zoom) o
-    (declare (type fixnum x))
-    (decf x (* n (truncate 1 zoom)))
-    ;; (when (<= x 0)
-    ;;   (setf x 0))
-    ))
+(defgeneric left (o &optional n)
+  (:method ((o image-inator) &optional (n 1))
+    (declare (type fixnum n))
+    (with-slots (x zoom) o
+      (declare (type fixnum x))
+      (decf x (* n (truncate 1 zoom)))
+      ;; (when (<= x 0)
+      ;;   (setf x 0))
+      )))
 
-(defun down (o &optional (n 1))
-  (declare (type fixnum n))
-  (with-slots (y image zoom) o
-    (declare (type fixnum y))
-    (incf y (* n (truncate 1 zoom)))
-    ;; (when (>= y (image-height image))
-    ;;   (setf y (1- (image-height image))))
-    ))
+(defgeneric down (o &optional n)
+  (:method ((o image-inator) &optional (n 1))
+    (declare (type fixnum n))
+    (with-slots (y image zoom) o
+      (declare (type fixnum y))
+      (incf y (* n (truncate 1 zoom)))
+      ;; (when (>= y (image-height image))
+      ;;   (setf y (1- (image-height image))))
+      )))
   
-(defun up (o &optional (n 1))
-  (declare (type fixnum n))
-  (with-slots (y zoom) o
-    (declare (type fixnum y))
-    (decf y (* n (truncate 1 zoom)))
-    ;; (when (<= y 0)
-    ;;   (setf y 0))
-    ))
+(defgeneric up (o &optional n)
+  (:method ((o image-inator) &optional (n 1))
+    (declare (type fixnum n))
+    (with-slots (y zoom) o
+      (declare (type fixnum y))
+      (decf y (* n (truncate 1 zoom)))
+      ;; (when (<= y 0)
+      ;;   (setf y 0))
+      )))
 
-(defun right (o &optional (n 1))
-  (declare (type fixnum n))
-  (with-slots (x image zoom) o
-    (declare (type fixnum x))
-    (incf x (* n (truncate 1 zoom)))
-    ;; (when (>= x (image-width image))
-    ;;   (setf x (1- (image-width image))))
-    ))
+(defgeneric right (o &optional n)
+  (:method ((o image-inator) &optional (n 1))
+    (declare (type fixnum n))
+    (with-slots (x image zoom) o
+      (declare (type fixnum x))
+      (incf x (* n (truncate 1 zoom)))
+      ;; (when (>= x (image-width image))
+      ;;   (setf x (1- (image-width image))))
+      )))
 
 (defmethod forward-unit	 ((o image-inator)) (right o))
 (defmethod backward-unit ((o image-inator)) (left o))
@@ -228,12 +233,18 @@
 		 (float (/ (height o) height))))
       )))
 
-(defgeneric reset-image (inator)
-  (:documentation "Reset some viewer parameters when we switch images.")
+(defgeneric clear-image (inator)
+  (:documentation
+   "Clear the current image. Called before switching files or ending.")
   (:method ((inator image-inator))
-    (with-slots (subimage looping) inator
-      (setf subimage 0
-	    looping nil))))
+    (declare (ignore inator))))
+
+(defgeneric reset-image (inator)
+  (:documentation "Reset things for a new image. Called after switching files.")
+  (:method ((inator image-inator))
+    (with-slots (subimage looping image) inator
+      (setf subimage 0)
+      (set-auto-looping image))))
 
 (defun toggle-looping (o)
   (with-slots (looping) o
@@ -273,8 +284,12 @@
 	   (setf file-name (nth file-index file-list))
 	   (with-image-error-handling (file-name)
 	     (setf img (read-image file-name))))
+	(clear-image o)
 	(setf image img)
-	(reset-image o)))))
+	(reset-image o)
+	(dbug "filename ~s subimages ~s~%" (nth file-index file-list)
+	      (length (image-subimages image)))
+	))))
 
 (defmethod previous-file ((o image-inator))
   (with-slots (file-list file-index image) o
@@ -289,6 +304,7 @@
 	   (setf file-name (nth file-index file-list))
 	   (with-image-error-handling (file-name)
 	     (setf img (read-image file-name))))
+	(clear-image o)
 	(setf image img)
 	(reset-image o)))))
 
@@ -365,11 +381,11 @@
     (:left		  . backward-unit)
     (:right		  . forard-unit)
     (,(ctrl #\F)	  . next-page)
-    (#\space	  	  . next-page)
+    (#\space	  	  . next-file)
     (,(ctrl #\V)	  . next-page)
     (:npage		  . next-page)
     (,(ctrl #\B)	  . previous-page)
-    (#\b	          . previous-page)
+    (#\b	          . previous-file)
     (,(meta-char #\v)	  . previous-page)
     (:ppage		  . previous-page)
     (#\>		  . move-to-bottom)
@@ -474,9 +490,6 @@
         |                 |
         +-----------------+
         40                100
-
-(min (- w (abs (- x sx)))
-     tt-w
 
 |#
 
@@ -666,23 +679,23 @@ But also greatly increasing # of chars output.
 		  (setf r (loop :for av-y :from 0 :below step :sum
 			     (loop :for av-x :from 0 :below step
 				:sum (aref data
-					   (min (1- width) (+ ix av-x))
-					   (min (1- height) (+ iy av-y)) 0))))
+					   (min (1- height) (+ iy av-y))
+					   (min (1- width) (+ ix av-x)) 0))))
 		  (setf g (loop :for av-y :from 0 :below step :sum
 			     (loop :for av-x :from 0 :below step
 				:sum (aref data
-					   (min (1- width) (+ ix av-x))
-					   (min (1- height) (+ iy av-y)) 1))))
+					   (min (1- height) (+ iy av-y))
+					   (min (1- width) (+ ix av-x)) 1))))
 		  (setf b (loop :for av-y :from 0 :below step :sum
 			     (loop :for av-x :from 0 :below step
 				:sum (aref data
-					   (min (1- width) (+ ix av-x))
-					   (min (1- height) (+ iy av-y)) 2))))
+					   (min (1- height) (+ iy av-y))
+					   (min (1- width) (+ ix av-x)) 2))))
 		  (setf a (loop :for av-y :from 0 :below step :sum
 			     (loop :for av-x :from 0 :below step
 				:sum (aref data
-					   (min (1- width) (+ ix av-x))
-					   (min (1- height) (+ iy av-y)) 3))))
+					   (min (1- height) (+ iy av-y))
+					   (min (1- width) (+ ix av-x)) 3))))
 		  (if (not (zerop a))
 		      (progn
 			(tt-color nil (vector
@@ -707,7 +720,7 @@ But also greatly increasing # of chars output.
   (show-image o))
 
 (defun make-image-array (width height)
-  (make-array `(,width ,height 4)	; R G B A
+  (make-array `(,height ,width 4)	; R G B A
 	      :element-type '(unsigned-byte 8)))
 
 (defun read-png (file-or-stream)
@@ -716,7 +729,7 @@ But also greatly increasing # of chars output.
 		 (png-read:read-png-file file-or-stream)))
 	 (array (make-image-array (png-read:width png) (png-read:height png)))
 	 (dims (array-dimensions (png-read:image-data png)))
-	 use-alpha)
+	 use-alpha transparent)
     ;; We only really have to use our own array because of alpha.
     (cond
       ((= 2 (length dims))
@@ -725,10 +738,10 @@ But also greatly increasing # of chars output.
 	 (8
 	  (loop :for y :from 0 :below (png-read:height png) :do
 	     (loop :for x :from 0 :below (png-read:width png) :do
-		(setf (aref array x y 0) (aref (png-read:image-data png) x y)
-		      (aref array x y 1) (aref (png-read:image-data png) x y)
-		      (aref array x y 2) (aref (png-read:image-data png) x y)
-		      (aref array x y 3) +max-alpha+))))
+		(setf (aref array y x 0) (aref (png-read:image-data png) x y)
+		      (aref array y x 1) (aref (png-read:image-data png) x y)
+		      (aref array y x 2) (aref (png-read:image-data png) x y)
+		      (aref array y x 3) +max-alpha+))))
 	 (16
 	  (loop :with pixel
 	     :for y :from 0 :below (png-read:height png) :do
@@ -736,10 +749,10 @@ But also greatly increasing # of chars output.
 		(setf pixel
 		      (ash (logand #xff00 (aref (png-read:image-data png) x y))
 			   -8)
-		      (aref array x y 0) pixel
-		      (aref array x y 1) pixel
-		      (aref array x y 2) pixel
-		      (aref array x y 3) +max-alpha+))))))
+		      (aref array y x 0) pixel
+		      (aref array y x 1) pixel
+		      (aref array y x 2) pixel
+		      (aref array y x 3) +max-alpha+))))))
       ((= 3 (length dims))
        ;; Color, probably RGB or RGBA
        (case (png-read:colour-type png)
@@ -748,22 +761,23 @@ But also greatly increasing # of chars output.
 	     :for y :from 0 :below (png-read:height png) :do
 	     (loop :for x :from 0 :below (png-read:width png) :do
 		(setf pixel (aref (png-read:image-data png) x y 0)
-		      (aref array x y 0) pixel
-		      (aref array x y 1) pixel
-		      (aref array x y 2) pixel
-		      (aref array x y 3)
+		      (aref array y x 0) pixel
+		      (aref array y x 1) pixel
+		      (aref array y x 2) pixel
+		      (aref array y x 3)
 		      (aref (png-read:image-data png) x y 1)))))
 	 ((:truecolor :truecolor-alpha :indexed-colour)
 	  (setf use-alpha (= 4 (array-dimension (png-read:image-data png) 2)))
 	  (loop :for y :from 0 :below (png-read:height png) :do
 	     (loop :for x :from 0 :below (png-read:width png) :do
-		(setf (aref array x y 0) (aref (png-read:image-data png) x y 0)
-		      (aref array x y 1) (aref (png-read:image-data png) x y 1)
-		      (aref array x y 2) (aref (png-read:image-data png) x y 2)
-		      (aref array x y 3) (if use-alpha
-					     (aref (png-read:image-data png)
-						   x y 3)
-					     +max-alpha+)))))))
+		(setf (aref array y x 0) (aref (png-read:image-data png) x y 0)
+		      (aref array y x 1) (aref (png-read:image-data png) x y 1)
+		      (aref array y x 2) (aref (png-read:image-data png) x y 2)
+		      (aref array y x 3)
+		      (if use-alpha
+			  (prog1 (aref (png-read:image-data png) x y 3)
+			    (setf transparent t))
+			  +max-alpha+)))))))
       (t
        (error "I don't know how to handle ~d dimensions in a PNG."
 	      (length dims))))
@@ -775,6 +789,7 @@ But also greatly increasing # of chars output.
 		 (make-sub-image :x 0 :y 0
 				 :width (png-read:width png)
 				 :height (png-read:height png)
+				 :transparent transparent
 				 :data array)))))
 
 (defun read-jpeg (file-or-stream)
@@ -792,16 +807,16 @@ But also greatly increasing # of chars output.
 	   (loop :for x :from 0 :below width :do
 	      (case colors
 		(3
-		 (setf (aref array x y 3) +max-alpha+
-		       (aref array x y 2) (aref data i)
-		       (aref array x y 1) (aref data (+ i 1))
-		       (aref array x y 0) (aref data (+ i 2)))
+		 (setf (aref array y x 3) +max-alpha+
+		       (aref array y x 2) (aref data i)
+		       (aref array y x 1) (aref data (+ i 1))
+		       (aref array y x 0) (aref data (+ i 2)))
 		 (incf i 3))
 		(1
-		 (setf (aref array x y 3) +max-alpha+
-		       (aref array x y 2) (aref data i)
-		       (aref array x y 1) (aref data i)
-		       (aref array x y 0) (aref data i))
+		 (setf (aref array y x 3) +max-alpha+
+		       (aref array y x 2) (aref data i)
+		       (aref array y x 1) (aref data i)
+		       (aref array y x 0) (aref data i))
 		 (incf i))))))
       (make-image :name file-or-stream
 		  :width width :height height
@@ -819,7 +834,7 @@ But also greatly increasing # of chars output.
 			  (skippy:color-table gif)))
 	 (delay (* (skippy:delay-time image) 10)) ; convert 1/100s to ms
 	 (r 0) (g 0) (b 0) (a 0)
-	 (i 0) color-index)
+	 (i 0) color-index transparent)
     (declare (type fixnum i)
 	     (type (unsigned-byte 8) r g b))
     (loop :for y fixnum :from 0 :below (skippy:height image) :do
@@ -831,7 +846,8 @@ But also greatly increasing # of chars output.
 				    (skippy:color-table-entry
 				     color-table color-index))
 		    a +max-alpha+)
-	      (setf r 0 g 0 b 0 a 0))
+	      (setf r 0 g 0 b 0 a 0
+		    transparent t))
 	  ;; (cond
 	  ;;   ((= (length colors) 1)
 	  ;;    ;; Assume it's grayscale.
@@ -844,21 +860,22 @@ But also greatly increasing # of chars output.
 	  ;; 	    (aref array x y 2) b))
 	  ;;   (t
 	  ;;    (error "Unknown color format in GIF pixel.")))
-	  (setf (aref array x y 0) r
-		(aref array x y 1) g
-		(aref array x y 2) b
-		(aref array x y 3) a)
+	  (setf (aref array y x 0) r
+		(aref array y x 1) g
+		(aref array y x 2) b
+		(aref array y x 3) a)
 	  (incf i)))
-    (make-sub-image :x        (skippy:left-position image)
-		    :y        (skippy:top-position image)
-		    :width    (skippy:width image)
-		    :height   (skippy:height image)
-		    :delay    (cond
-				((zerop delay) 100) ; default 100 ms
-				((< delay 20) 20)   ; quickest is 20 ms
-				(t delay))
-		    :disposal (skippy:disposal-method image)
-		    :data      array)))
+    (make-sub-image :x           (skippy:left-position image)
+		    :y           (skippy:top-position image)
+		    :width       (skippy:width image)
+		    :height      (skippy:height image)
+                    :delay       (cond
+                                   ((zerop delay) 100) ; default 100 ms
+                                   ((< delay 20) 20)   ; quickest is 20 ms
+                                   (t delay))
+                    :disposal    (skippy:disposal-method image)
+		    :transparent transparent
+		    :data        array)))
 
 (defun read-gif (file-or-stream)
   (let* ((gif (if (streamp file-or-stream)
@@ -909,6 +926,15 @@ But also greatly increasing # of chars output.
      :when (image-inator-usable-p (cdr i))
      :return (cdr i)))
 
+(defun set-auto-looping (image)
+  "Turn on looping for multi-frame images."
+  (setf (image-inator-looping *image-viewer*)
+	(and (image-subimages image)
+	     (> (length (image-subimages image)) 1)))
+  (dbug ";;;;;;;;;;;;;;;;AUTO;;;;;;;;;;LOOP;;;;;;;~d;;;;;;;;;~%"
+	(length (image-subimages image))))
+
+
 (defun view-image (file-or-stream &key file-list type own-window)
   (with-terminal (:ansi)
     (let* ((inator-type (or type (pick-image-inator)))
@@ -925,6 +951,7 @@ But also greatly increasing # of chars output.
 					  :image image
 					  :file-list file-list
 					  :own-window own-window))
+      (set-auto-looping image)
       (unwind-protect
         (progn
 	  (tt-cursor-off)
