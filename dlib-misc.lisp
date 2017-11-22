@@ -31,8 +31,9 @@
    #:time-to-millennia #:time-to-centuries #:time-to-decades #:time-to-years
    #:time-to-weeks #:time-to-days #:time-to-hours #:time-to-minutes
    #:dtime #:dtime-seconds #:dtime-nanoseconds #:make-dtime #:dtime-p
-   #:get-dtime #:dtime-round
+   #:get-dtime #:dtime-round #:make-dtime-as #:dtime-to
    #:dtime= #:dtime/= #:dtime< #:dtime> #:dtime<= #:dtime>= #:dtime+ #:dtime-
+   #:dtime-zerop #:dtime-plusp #:dtime-minusp #:dtime-min #:dtime-max
 
    ;; hooks
    #:add-hook
@@ -446,7 +447,7 @@ The date part is considered to be the current date."
 ;; To do better we probably need arbitrary precision floats.
 ;; [Could use mpfr or bfloats from maxima] (see wip/units.lisp)
 
-;; @@@ Revise the above functions to handle a time strcut too.
+;; @@@ Revise the above functions to handle a dtime too.
 
 (defstruct dtime
   (seconds 0 :type integer)
@@ -456,6 +457,40 @@ The date part is considered to be the current date."
   "Return the current time as a new DTIME."
   (multiple-value-bind (s n) (get-time)
     (make-dtime :seconds s :nanoseconds n)))
+
+(defparameter *time-units*
+  #(((:yoctoseconds  :ys :yoctosecond) #.(expt 10 24))
+    ((:zeptoseconds  :zs :zeptosecond) #.(expt 10 21))
+    ((:attoseconds   :as :attosecond)  #.(expt 10 18))
+    ((:femtoseconds  :fs :femtosecond) #.(expt 10 15))
+    ((:picoseconds   :ps :picosecond)  #.(expt 10 12))
+    ((:nanoseconds   :ns :nanosecond)  #.(expt 10 9))
+    ((:microseconds  :µs :microsecond) #.(expt 10 6))
+    ((:milliseconds  :ms :millisecond) #.(expt 10 3))
+    ((:centiseconds  :cs :centisecond) #.(expt 10 2))
+    ((:deciseconds   :ds :decisecond)  #.(expt 10 1))
+    ((:seconds       :s  :second)      #.(expt 10 0))))
+
+(defconstant +ns-per-sec+ (expt 10 9)
+  "The number of nanoseconds in a second.")
+
+(defun dtime-unit-divisor (unit)
+  (second (find-if (_ (member unit _)) *time-units* :key #'first)))
+
+(defun make-dtime-as (value unit)
+  (let ((divvy (dtime-unit-divisor unit)))
+    (when (not divvy)
+      (error "Unknown unit ~s~%" unit))
+    (multiple-value-bind (s leftover) (truncate value divvy)
+      (make-dtime :seconds s
+		  :nanoseconds (* leftover (/ +ns-per-sec+ divvy))))))
+
+(defun dtime-to (dtime unit)
+  (let ((multy (dtime-unit-divisor unit)))
+    (when (not multy)
+      (error "Unknown unit ~s~%" unit))
+    (+ (* multy (dtime-seconds dtime))
+       (/ (dtime-nanoseconds dtime) (/ +ns-per-sec+ multy)))))
 
 (defun dtime-round (time unit)
   "Round off DTIME to UNIT units."
@@ -542,18 +577,15 @@ The date part is considered to be the current date."
   (or (/= (dtime-seconds time1) (dtime-seconds time2))
       (/= (dtime-nanoseconds time1) (dtime-nanoseconds time2))))
 
-(defconstant +max-nano+ (expt 10 9)
-  "The maximum number of nanoseconds in a second.")
-
 (defun dtime+ (time1 time2)
   "Return the sum of TIME1 and TIME2."
   (let ((s (+ (dtime-seconds time1) (dtime-seconds time2)))
 	(n (+ (dtime-nanoseconds time1) (dtime-nanoseconds time2))))
     (cond
-      ((> n +max-nano+)
+      ((> n +ns-per-sec+)
        (incf s)
-       (decf n +max-nano+))
-      ((= n +max-nano+)
+       (decf n +ns-per-sec+))
+      ((= n +ns-per-sec+)
        (incf s)
        (setf n 0)))			; perhaps just saving a subtraction
     (make-dtime :seconds s
@@ -565,12 +597,37 @@ The date part is considered to be the current date."
 	s)
     (cond
       ((minusp n)
-       (incf n +max-nano+)
+       (incf n +ns-per-sec+)
        (setf s (- (dtime-seconds time1) 1 (dtime-seconds time2))))
       (t
        (setf s (- (dtime-seconds time1) (dtime-seconds time2)))))
     (make-dtime :seconds s
 		:nanoseconds n)))
+
+(defun dtime-zerop (dtime)
+  "Return true if time is zero."
+  (and (zerop (dtime-seconds dtime))
+       (zerop (dtime-nanoseconds dtime))))
+
+(defun dtime-minusp (dtime)
+  "Return true if the time is less than zero."
+  (or (minusp (dtime-seconds dtime))
+      (and (zerop (dtime-seconds dtime))
+	   (minusp (dtime-nanoseconds dtime)))))
+
+(defun dtime-plusp (dtime)
+  "Return true if the time is positive."
+  (or (plusp (dtime-seconds dtime))
+      (and (zerop (dtime-seconds dtime))
+	   (plusp (dtime-nanoseconds dtime)))))
+
+(defun dtime-min (t1 t2)
+  "Return the minimum of T1 and T1."
+  (if (dtime< t1 t2) t1 t2))
+
+(defun dtime-max (t1 t2)
+  "Return the maximum of T1 and T1."
+  (if (dtime> t1 t2) t1 t2))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; hooks
