@@ -6,7 +6,7 @@
 
 (defpackage :view-image-x11
   (:documentation "Image viewer X11 driver.")
-  (:use :cl :dlib :inator :view-image :xlib :terminal)
+  (:use :cl :dlib :dlib-misc :inator :view-image :xlib :terminal)
   (:shadowing-import-from :xlib #:process-event)
   (:export
    #:x11-image-inator
@@ -53,6 +53,9 @@
     :initarg :need-to-redraw :accessor image-x11-inator-need-to-redraw
     :initform nil :type boolean
     :documentation "True if we need to redraw the screen.")
+   (frame-start-time
+    :initarg :frame-start-time :accessor image-x11-inator-frame-start-time
+    :documentation "The time we start rendering a frame.")
    (ximages
     :initarg :ximage :accessor image-x11-inator-ximages
     :initform nil
@@ -186,42 +189,60 @@
 
 (defun our-get-key (inator timeout)
   (with-slots ((our-window window)
-	       display own-window window-width window-height) inator
-    (if own-window
-      (event-case (display :force-output-p t
-			   :timeout (/ timeout 1000)) ; convert to seconds
-	;; (:client-message ()
-	;;   t)
-	;; (:button-press (code)
-	;;   t)
-	;; (:exposure (x y width height window count)
-	;;   (when (eq win window)
-	;;     (draw-thingy win xgc w h))
-	;;   nil)
-	(:configure-notify (#| x y |# xlib:window xlib::width xlib::height)
-	  (when (eq xlib:window our-window)
-	    (when (or (locally (declare (optimize (speed 0)))
-			(/= xlib::width window-width)
-			(/= xlib::height window-height)))
-	      (setf window-width xlib::width window-height xlib::height)
-	      ;;(clear-area win :x x :y y :width w :height h)
-	      ;;(display-finish-output display)
-	      ))
-	  nil)
-	(:key-press (code state)
-	  (let* ((sym (keycode->keysym display code 0))
-		 (chr (keysym->character display sym state)))
-	    chr)))
-      (progn
-	(dbug "tty get key~%")
-	(event-listen display)
-	(dbug "timeout = ~s~%" timeout)
-	(if timeout
-	    (terminal-ansi::get-char *terminal*	; XXX
-				     ;; convert milliseconds to deci-seconds
-				     :timeout
-				     (max (truncate timeout 100) 1))
-	    (tt-get-char))))))
+	       display own-window window-width window-height frame-start-time)
+      inator
+    ;; If the timeout has already elapsed, don't use
+    (let ((time-left (and timeout
+			  (dtime- (dtime+ frame-start-time
+					  (make-dtime-as timeout :ms))
+				  (get-dtime)))))
+      (if own-window
+	 (event-case (display :force-output-p t
+			      :timeout (and time-left
+					    (dtime-plusp time-left)
+					    (dtime-to time-left :seconds)))
+	   ;; (:client-message ()
+	   ;;   t)
+	   ;; (:button-press (code)
+	   ;;   t)
+	   ;; (:exposure (x y width height window count)
+	   ;;   (when (eq win window)
+	   ;;     (draw-thingy win xgc w h))
+	   ;;   nil)
+	   (:configure-notify (#| x y |# xlib:window xlib::width xlib::height)
+	     (when (eq xlib:window our-window)
+	       (when (or (locally (declare (optimize (speed 0)))
+			   (/= xlib::width window-width)
+			   (/= xlib::height window-height)))
+		 (setf window-width xlib::width window-height xlib::height)
+		 ;;(clear-area win :x x :y y :width w :height h)
+		 ;;(display-finish-output display)
+		 ))
+	     nil)
+	   (:key-press (code state)
+	     (let* ((sym (keycode->keysym display code 0))
+		    (chr (keysym->character display sym state)))
+	       chr)))
+	 (progn
+	   (dbug "tty get key~%")
+	   (event-listen display)
+	   (dbug "timeout = ~s time-left ~s ~s~%" timeout time-left
+		 (when time-left (dtime-to time-left :seconds)))
+	   (if timeout
+	       ;; (let ((ds (dtime-to time-left :deciseconds)))
+	       ;; 	 (if (< ds 1)
+	       ;; 	     (progn
+	       ;; 	       (tt-listen-for (dtime-to time-left :seconds))
+	       ;; 	       (terminal-ansi::get-char ; XXX
+	       ;; 		*terminal* :timeout 0))
+	       ;; 	     (terminal-ansi::get-char
+	       ;; 	      *terminal* :timeout (truncate ds))))
+	       (progn
+		 (when (dtime-plusp time-left)
+		   (tt-listen-for (dtime-to time-left :seconds)))
+		 ;; XXX
+		 (terminal-ansi::get-char *terminal* :timeout 0))
+	       (tt-get-char)))))))
 
 (defmethod await-event ((inator image-x11-inator))
   "Wait for an event."
@@ -427,7 +448,8 @@
 (defmethod update-display ((o image-x11-inator))
   "Update the display."
   (dbug "update~%")
-  (with-slots (display window erase-gc need-to-redraw) o
+  (with-slots (display window erase-gc need-to-redraw frame-start-time) o
+    (setf frame-start-time (get-dtime))
     (when need-to-redraw
       (dbug "redraw~%")
       (draw-rectangle window erase-gc 0 0
