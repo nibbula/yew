@@ -549,18 +549,20 @@ default to 16 bit color."
 	    (setf typeahead nil
 		  typeahead-pos nil)))))
     (let (result borked)
-      (loop :do
-	 (setf borked nil)
-	 (handler-case
-	     (setf result (read-terminal-char file-descriptor :timeout timeout))
-	   (opsys-resumed ()
-	     (terminal-start tty) (terminal-finish-output tty)
-	     (setf borked t))
-	   (opsys-resized ()
-	     (terminal-get-size tty)
-	     (setf borked t)))
-	 :while borked)
-      result)))
+      (labels ((read-it () (read-terminal-byte file-descriptor :timeout timeout))
+	       (set-it (x) (setf result x)))
+	(loop :do
+	   (setf borked nil)
+	   (handler-case
+	       (char-util::%get-utf8b-char read-it set-it)
+	     (opsys-resumed ()
+	       (terminal-start tty) (terminal-finish-output tty)
+	       (setf borked t))
+	     (opsys-resized ()
+	       (terminal-get-size tty)
+	       (setf borked t)))
+	   :while borked)
+	result))))
 
 (defmethod terminal-get-char ((tty terminal-ansi))
   "Read a character from the terminal."
