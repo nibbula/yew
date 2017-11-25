@@ -1305,13 +1305,16 @@ and indented properly for multi-line objects."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Your whole Lisp image browsing.
 
+(defun trim-trailing-newline (str)
+  (when (eql (char str (1- (length str))) #\newline)
+    (setf (char str (1- (length str))) #\space)))
+
 (defclass environment-node (object-node) ())
 (defmethod display-node ((node environment-node) level)
   "Display an Lisp image environment node."
   (let ((str (with-output-to-string (stream)
 	       (describe-environment stream))))
-    (when (eql (char str (1- (length str))) #\newline)
-      (setf (char str (1- (length str))) #\space))
+    (trim-trailing-newline str)
     (display-object node str level)))
 
 (defclass system-node (object-node) ())
@@ -1434,11 +1437,56 @@ and indented properly for multi-line objects."
   (loop :for sc :in (subclasses (find-class 'condition))
      :collect (make-instance 'class-node :object sc :open nil)))
 
-(defclass commands-node (cached-dynamic-node) ())
+;; (defun command-node-contents (cmd)
+;;   (list
+;;    (make-instance
+;;     'object-node
+;;     :object "Documentation"
+;;     :
+;;    (make-instance
+;;     'object-node
+;;     :object "Arguments"
+;;     :branches
+;;     s (symbol-call :lish :command-name (node-object node))
+;; 	 (split-sequence
+;; 	  #\newline
+;; 	  (with-output-to-string (str)
+;; 	    (symbol-call :lish :print-command-help (node-object node) str))
+;; 	  :omit-empty t))
 
+(defun command-node-contents (cmd)
+  (list
+   (make-instance
+    'object-node
+    :object "Documentation"
+    :branches
+    (list
+     (make-instance
+      'object-node
+      :object
+      (let ((str (with-output-to-string (str)
+		   (symbol-call :lish :print-command-help cmd
+				str))))
+	(trim-trailing-newline str)
+	str)
+      :open nil)))))
+
+(defclass command-node (cached-dynamic-node)
+  ()
+  (:default-initargs
+   :func #'command-node-contents)
+  (:documentation "A node that show a command."))
+
+(defmethod display-node ((node command-node) level)
+  (display-object node
+     (symbol-call :lish :command-name (node-object node)) level))
+
+(defclass commands-node (cached-dynamic-node) ())
 (defun commands-contents (node)
   (declare (ignore node))
-  )
+  (when (find-package :lish)
+    (loop :for p :in (symbol-call :lish :command-list t)
+       :collect (make-instance 'command-node :object p :open nil))))
 
 (defun lisp-image-contents (node)
   (declare (ignore node))
