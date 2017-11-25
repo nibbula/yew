@@ -22,6 +22,8 @@
    #:grapheme-length
    #:simplify-char
    #:simplify-string
+   #:get-utf8-char #:%get-utf8-char
+   #:get-utf8b-char #:%get-utf8-char
    ))
 (in-package :char-util)
 
@@ -725,5 +727,181 @@ than space and delete."
     (map nil (_ (incf sum (grapheme-length _)))
 	 (graphemes (simplify-string s)))
     sum))
+
+;; The regular kind, that throws a lot of errors, in case you want to make
+;; sure your UTF-8 is valid.
+(defmacro %get-utf8-char (byte-getter char-setter)
+  (with-unique-names (u1 u2 u3 u4)
+    `(prog (,u1 ,u2 ,u3 ,u4)
+      RESYNC
+      ;; ONE
+      (setf ,u1 (,byte-getter))
+      (cond
+	((< ,u1 #x80)
+	 (,char-setter (code-char ,u1)) ; one valid octet
+	 (return))
+	((< ,u1 #xc0)
+	 (cerror "Discard bytes and start again."
+		 "Invalid UTF8 starter byte ‘~s’." ,u1)
+	 (go resync)))
+      ;; TWO
+      (setf ,u2 (,byte-getter))
+      (cond
+	((not (< #x7f ,u2 #xc0))
+	 (cerror "Discard bytes and start again."
+		 "Invalid UTF8 continuation byte ‘~s’." ,u2)
+	 (go resync))
+	((< ,u1 #xc2)
+	 (cerror "Discard bytes and start again."
+		 "Overlong UTF8 sequence ~x." ,u2)
+	 (go resync))
+	((< ,u1 #xe0)			; 2 octets
+	 (,char-setter
+	  (code-char (logior (ash (logand #x1f ,u1) 6)
+			     (logxor ,u2 #x80))))
+	 (return)))
+      ;; THREE
+      (setf ,u3 (,byte-getter))
+      (cond
+	((not (< #x7f ,u2 #xc0))
+	 (cerror "Discard bytes and start again."
+		 "Invalid UTF8 continuation byte ‘~s’." ,u3)
+	 (go resync))
+	((and (= ,u1 #xe0) (< ,u2 #xa0))
+	 (cerror "Discard bytes and start again."
+		 "Overlong UTF8 sequence ~x." ,u3)
+	 (go resync))
+	((< ,u1 #xf0)			; 3 octets
+	 (,char-setter (code-char (logior (ash (logand ,u1 #x0f) 12)
+					  (logior (ash (logand ,u2 #x3f) 6)
+						  (logand ,u3 #x3f)))))
+	 (return)))
+      ;; FOUR
+      (setf ,u4 (,byte-getter))
+      (cond
+	((not (< #x7f ,u2 #xc0))
+	 (cerror "Discard bytes and start again."
+		 "Invalid UTF8 continuation byte ‘~s’." ,u3)
+	 (go resync))
+	((and (= ,u1 #xf0) (< ,u2 #x90))
+	 (cerror "Discard bytes and start again."
+		 "Overlong UTF8 sequence.")
+	 (go resync))
+	((< ,u1 #xf8)
+	 (if (or (> ,u1 #xf4) (and (= ,u1 #xf4) (> ,u2 #x8f)))
+	     (progn
+	       (cerror "Discard bytes and start again."
+		       "Character out of range.")
+	       (go resync))
+	     (,char-setter (code-char (logior (ash (logand ,u1 7) 18)
+					      (ash (logxor ,u2 #x80) 12)
+					      (ash (logxor ,u3 #x80) 6)
+					      (logxor ,u4 #x80)))))
+	 (return)))
+      ;; FIVE or SIX even
+      (cerror "Discard bytes and start again."
+	      "Character out of range OR overlong UTF8 sequence.")
+      (go resync))))
+
+;; The good kind, that doesn't throw any errors, and allows preserving of
+;; input, thanks to Markus Kuhn.
+(defmacro %get-utf8b-char (byte-getter char-setter)
+  (with-unique-names (bonk u1 u2 u3 u4 u5)
+    `(macrolet ((,bonk (&rest args)
+		  `(,',char-setter (code-char (logior ,@args)))))
+       (prog (,u1 ,u2 ,u3 ,u4 ,u5)
+	  ;; ONE
+	  (setf ,u1 (,byte-getter))
+	  (cond
+	    ;; one valid octet
+	    ((< ,u1 #x80) (,bonk ,u1) (return))
+	    ;; Invalid UTF8 starter byte
+	    ((< ,u1 #xc0) (,bonk #xdc00 ,u1) (return)))
+	  ;; TWO
+	  (setf ,u2 (,byte-getter))
+	  (cond
+	    ;; "Invalid UTF8 continuation byte
+	    ((not (< #x7f ,u2 #xc0))
+	     (,bonk #xdc00 ,u1)
+	     (,bonk #xdc00 ,u2)
+	     (return))
+	    ;; "Overlong UTF8 sequence ~x."
+	    ((< ,u1 #xc2)
+	     (,bonk #xdc00 ,u1)
+	     (,bonk #xdc00 ,u2)
+	     (return))
+	    ;; 2 octets
+	    ((< ,u1 #xe0)
+	     (,bonk (ash (logand #x1f ,u1) 6)
+		   (logxor ,u2 #x80))
+	     (return)))
+	  ;; THREE
+	  (setf ,u3 (,byte-getter))
+	  (cond
+	    ;; "Invalid UTF8 continuation byte ‘~s’."
+	    ((not (< #x7f ,u2 #xc0))
+	     (,bonk #xdc00 ,u1)
+	     (,bonk #xdc00 ,u2)
+	     (,bonk #xdc00 ,u3)
+	     (return))
+	    ;; "Overlong UTF8 sequence ~x."
+	    ((and (= ,u1 #xe0) (< ,u2 #xa0))
+	     (,bonk #xdc00 ,u1)
+	     (,bonk #xdc00 ,u2)
+	     (,bonk #xdc00 ,u3))
+	    ;; 3 octets
+	    ((< ,u1 #xf0)
+	     (,bonk (ash (logand ,u1 #x0f) 12)
+		   (ash (logand ,u2 #x3f) 6)
+		   (logand ,u3 #x3f))
+	     (return)))
+	  ;; FOUR
+	  (setf ,u4 (,byte-getter))
+	  (cond
+	    ;; "Invalid UTF8 continuation byte ‘~s’."
+	    ((not (< #x7f ,u2 #xc0))
+	     (,bonk #xdc00 ,u1)
+	     (,bonk #xdc00 ,u2)
+	     (,bonk #xdc00 ,u3)
+	     (,bonk #xdc00 ,u4)
+	     (return))
+	    ((and (= ,u1 #xf0) (< ,u2 #x90))
+	     ;; "Overlong UTF8 sequence."
+	     (,bonk #xdc00 ,u1)
+	     (,bonk #xdc00 ,u2)
+	     (,bonk #xdc00 ,u3)
+	     (,bonk #xdc00 ,u4)
+	     (return))
+	    ((< ,u1 #xf8)
+	     (if (or (> ,u1 #xf4) (and (= ,u1 #xf4) (> ,u2 #x8f)))
+		 (progn
+		   ;; "Character out of range."
+		   (,bonk #xdc00 ,u1)
+		   (,bonk #xdc00 ,u2)
+		   (,bonk #xdc00 ,u3)
+		   (,bonk #xdc00 ,u4))
+		 (,bonk (ash (logand ,u1 #x07) 18)
+		       (ash (logxor ,u2 #x80) 12)
+		       (ash (logxor ,u3 #x80) 6)
+		       (logxor ,u4 #x80)))
+	     (return)))
+	  ;; FIVE or SIX even
+	  (setf ,u5 (,byte-getter))
+	  ;; "Character out of range OR overlong UTF8 sequence."
+	  (,bonk #xdc00 ,u1)
+	  (,bonk #xdc00 ,u2)
+	  (,bonk #xdc00 ,u3)
+	  (,bonk #xdc00 ,u4)
+	  (,bonk #xdc00 ,u5)))))
+
+(defun get-utf8-char (byte-getter char-setter)
+  (flet ((our-byte-getter () (funcall byte-getter))
+	 (our-char-setter (c) (funcall char-setter c)))
+    (%get-utf8-char our-byte-getter our-char-setter)))
+
+(defun get-utf8b-char (byte-getter char-setter)
+  (flet ((our-byte-getter () (funcall byte-getter))
+	 (our-char-setter (c) (funcall char-setter c)))
+    (%get-utf8b-char our-byte-getter our-char-setter)))
 
 ;; EOF
