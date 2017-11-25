@@ -38,7 +38,7 @@ The shell command takes any number of file names.
 ")
   (:use :cl :dlib :opsys :dlib-misc :table-print :curses :fui :stretchy
 	:keymap :char-util :fatchar :ppcre :terminal :terminal-curses
-	:pick-list :table-print)
+	:pick-list :table-print :utf8b-stream)
   (:export
    #:*pager-prompt*
    #:*empty-indicator*
@@ -53,10 +53,10 @@ The shell command takes any number of file names.
    ))
 (in-package :pager)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 1)
- 		   (compilation-speed 2)))
-;;(declaim (optimize (speed 3) (safety 0) (debug 0) (space 1)
-;;		   (compilation-speed 0)))
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+ 		   (compilation-speed 0)))
+;; (declaim (optimize (speed 3) (safety 0) (debug 0) (space 1)
+;; 		   (compilation-speed 0)))
 
 (define-constant +digits+ #(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
   "For reading the numeric argument." #'equalp)
@@ -813,10 +813,23 @@ list containing strings and lists."
 	(otherwise
 	 (tmp-message "Unknown option '~a'" (nice-char char)))))))
 
+(defun open-lossy (filename)
+  "Open FILENAME for reading in a way which is less likely to get encoding
+errors, but may lose data. Quotes the filename against special Lisp characters.
+Returns the the open stream or NIL."
+  (make-instance 'utf8b-input-stream
+		 :input-stream
+		 (open (quote-filename filename) :direction :input
+		       :element-type '(unsigned-byte 8))))
+
+;; #+sbcl :external-format
+;; ;;#+sbcl '(:utf-8 :replacement #\replacement_character)
+;; #+sbcl '(:utf-8 :replacement #\?)
+
 (defun open-file (filename &key (offset 0))
   "Open the given FILENAME."
   (with-slots (count lines line got-eof stream page-size) *pager*
-    (let ((new-stream (open (quote-filename filename) :direction :input)))
+    (let ((new-stream (open-lossy filename)))
       (when new-stream
 	(close stream)
 	(setf stream new-stream
@@ -1370,9 +1383,7 @@ q - Abort")
     (unwind-protect
       (progn
 	(when (and (not stream) file-list)
-	  (setf stream (open (quote-filename
-			      (file-location-file (elt file-list 0)))
-			     :direction :input)
+	  (setf stream (open-lossy (file-location-file (elt file-list 0)))
 		close-me t))
 	(let ((*pager*
 	       (or pager
@@ -1474,8 +1485,7 @@ q - Abort")
 	   (let (stream suspended)
 	     (unwind-protect
 		  (progn
-		    (setf stream (open (quote-filename file-or-files)
-				       :direction :input)
+		    (setf stream (open-lossy file-or-files)
 			  suspended (page stream)))
 	       (when (and stream (not suspended))
 		 (close stream))))))
@@ -1566,6 +1576,7 @@ then the key. Press 'q' to exit this help.
     (loop :while (setf (values filename directory)
 		       (pick-file :directory directory))
        :do (with-open-file (stream (quote-filename filename))
+	     ;; @@@ should do open-lossy
 	     (page stream)))))
 
 ;; @@@ Run in a thread:
