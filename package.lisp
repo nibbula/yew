@@ -122,6 +122,7 @@
    #:close-terminal
    #:slurp-terminal
    #:read-terminal-char
+   #:read-terminal-byte
    #:read-until
    #:write-terminal-char
    #:write-terminal-string

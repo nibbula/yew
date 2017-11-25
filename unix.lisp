@@ -369,6 +369,7 @@
    #:open-terminal
    #:close-terminal
    #:read-terminal-char
+   #:read-terminal-byte
    #:read-until
    #:write-terminal-char
    #:write-terminal-string
@@ -6443,6 +6444,21 @@ descriptor FD."
 				 (+SIGTSTP+  . tstp-handler))
 	    (when (not (zerop (read-raw-char terminal-handle c)))
 	      (setf result (code-char (mem-ref c :unsigned-char)))))))
+      (when timeout
+	(set-terminal-mode terminal-handle :timeout nil)))
+    result))
+
+(defun read-terminal-byte (terminal-handle &key timeout)
+  (let (result)
+    (unwind-protect
+      (progn
+	(when timeout
+	  (set-terminal-mode terminal-handle :timeout timeout))
+	(with-foreign-object (c :char)
+	  (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
+				 (+SIGTSTP+  . tstp-handler))
+	    (when (not (zerop (read-raw-char terminal-handle c)))
+	      (setf result (mem-ref c :unsigned-char))))))
       (when timeout
 	(set-terminal-mode terminal-handle :timeout nil)))
     result))

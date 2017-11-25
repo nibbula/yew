@@ -981,6 +981,14 @@ being suspended, it will signal an OPSYS-RESUMED. Usually this means the
 caller should handle these possibilites. Returns the character read or NIL if it
 the timeout is hit.")
 
+(defosfun read-terminal-byte (terminal-handle &key timeout)
+  "Return an unsigned byte read from the terminal TERMINAL-HANDLE.
+If there's a problem, it will signal a READ-CHAR-ERROR. If the terminal is
+resized it will signal an OPSYS-RESIZED. If the program is continued from
+being suspended, it will signal an OPSYS-RESUMED. Usually this means the
+caller should handle these possibilites. Returns the byte read or NIL if it
+the timeout is hit.")
+
 (defosfun read-until (tty stop-char &key timeout)
   "Read until STOP-CHAR is read. Return a string of the results.
 TTY is a file descriptor.")
