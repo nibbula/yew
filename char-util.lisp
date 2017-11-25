@@ -809,7 +809,8 @@ than space and delete."
   (with-unique-names (bonk u1 u2 u3 u4 u5)
     `(macrolet ((,bonk (&rest args)
 		  `(,',char-setter (code-char (logior ,@args)))))
-       (prog (,u1 ,u2 ,u3 ,u4 ,u5)
+       (prog ((,u1 0) (,u2 0) (,u3 0) (,u4 0) (,u5 0))
+	  (declare (type (unsigned-byte 8) ,u1 ,u2 ,u3 ,u4 ,u5))
 	  ;; ONE
 	  (setf ,u1 (,byte-getter))
 	  (cond
@@ -881,9 +882,9 @@ than space and delete."
 		   (,bonk #xdc00 ,u3)
 		   (,bonk #xdc00 ,u4))
 		 (,bonk (ash (logand ,u1 #x07) 18)
-		       (ash (logxor ,u2 #x80) 12)
-		       (ash (logxor ,u3 #x80) 6)
-		       (logxor ,u4 #x80)))
+			(ash (logxor ,u2 #x80) 12)
+			(ash (logxor ,u3 #x80) 6)
+			(logxor ,u4 #x80)))
 	     (return)))
 	  ;; FIVE or SIX even
 	  (setf ,u5 (,byte-getter))
