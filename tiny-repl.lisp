@@ -124,10 +124,10 @@
 		       (repl-state-editor state)))))
 	   (dlib-misc:justify-text (format nil "~
 Hi. ~@? If you're weren't expecting a Lisp REPL, just type \"quit\" now. ~
-Otherwise, you might be interested to know that you are using Dan's TINY-REPL. ~
-If you want to get back to the normal REPL you can probably type \".\" ~
-(a period by itself). You can use some Emacs-like commands to edit the command ~
-line.~%"
+Otherwise, you might be interested to know that you are using Nibby's ~
+TINY-REPL. If you want to get back to the normal REPL you can probably type ~
+\".\" (a period by itself). You can use some Emacs-like commands to edit the ~
+command line.~%"
 #+clisp "You are probably using CLisp and typed :h expecting some help."
 #-clisp "You probably typed :h by accident, or may even be expecting some help."
 ) :cols cols :stream output)
@@ -151,7 +151,7 @@ The REPL also has a few commands:
   Help         - You are looking at it.~%"))
 	 t)
 	((matches value "History")
-	 (rl:show-history (rl::context (repl-state-editor state)))
+	 (rl:show-history :repl)
 	 t)
 	((or (matches value "IP") (matches value "IN"))
 	 ;; Since this doesn't work: (in-package (read-arg state))
@@ -372,20 +372,20 @@ The REPL also has a few commands:
 		    (interceptor *default-interceptor*) (debug t))
   "Keep reading and evaluating lisp, with line editing. Return true if we want
 to quit everything. Arguments are:
-PROMPT-FUNC    -- A RL prompt function, which is called with a with
-		  an instance of RL:LINE-EDITOR and a prompt string.
-PROMPT-STRING  -- 
-NO-ANNOUNCE    -- True to supress the announcement on starting.
-TERMINAL-NAME  -- Name of a system terminal device to read from.
-TERMINAL-CLASS -- Class of terminal to read from. Defaults to TERMINAL-ANSI.
-KEYMAP	       -- A custom keymap to use for RL.
-OUTPUT	       -- Stream to print output on.
-INTERCEPTOR    -- Function that's called with an object to be evaluated and a
-		  TINY-REPL:REPL-STATE. Allows interception of sepcial objects
-		  before they're evaluated, usually used for commands. The
-		  interceptor should return true if does not want evaluation
-		  to happen. Defaults to *DEFAULT-INTERCEPTOR*.
-DEBUG	       -- True to install TINY-DEBUG as the debugger. Default is T.
+ PROMPT-FUNC    -- A RL prompt function, which is called with a with
+                   an instance of RL:LINE-EDITOR and a prompt string.
+ PROMPT-STRING  -- 
+ NO-ANNOUNCE    -- True to supress the announcement on starting.
+ TERMINAL-NAME  -- Name of a system terminal device to read from.
+ TERMINAL-CLASS -- Class of terminal to read from. Defaults to TERMINAL-ANSI.
+ KEYMAP         -- A custom keymap to use for RL.
+ OUTPUT         -- Stream to print output on.
+ INTERCEPTOR    -- Function that's called with an object to be evaluated and a
+                   TINY-REPL:REPL-STATE. Allows interception of sepcial objects
+                   before they're evaluated, usually used for commands. The
+                   interceptor should return true if does not want evaluation
+                   to happen. Defaults to *DEFAULT-INTERCEPTOR*.
+ DEBUG          -- True to install TINY-DEBUG as the debugger. Default is T.
 "
   ;; Annouce the implemtation and version on systems that don't always do it.
   #-sbcl (when (not no-announce)
@@ -405,7 +405,8 @@ DEBUG	       -- True to install TINY-DEBUG as the debugger. Default is T.
 	(result nil)
 	(want-to-quit nil)
 	(old-debugger-hook *debugger-hook*)
-	(start-level (incf *repl-level*)))
+	(start-level (incf *repl-level*))
+	(*history-context* :repl))
     (with-terminal (terminal-class *terminal* :device-name terminal-name)
       (tt-set-input-mode :line)
       ;; Activate the debugger if it's loaded.
