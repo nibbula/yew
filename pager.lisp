@@ -38,7 +38,7 @@ The shell command takes any number of file names.
 ")
   (:use :cl :dlib :opsys :dlib-misc :table-print :curses :fui :stretchy
 	:keymap :char-util :fatchar :ppcre :terminal :terminal-curses
-	:pick-list :table-print :utf8b-stream)
+	:pick-list :table-print)
   (:export
    #:*pager-prompt*
    #:*empty-indicator*
@@ -368,6 +368,18 @@ read until we get an EOF."
 	(setf got-eof t)
 	(tmp-message "Got an eror ~a on the stream." c)))))
 
+(defun stream-name (stream)
+  (cond
+    ((typep stream 'utf8b-stream:utf8b-input-stream)
+     (stream-name (utf8b-stream:input-stream stream)))
+    ((and (typep stream 'file-stream)
+	  (ignore-errors (truename stream)))
+     (princ-to-string (namestring (truename stream))))
+    ((eq stream *standard-input*)
+     (princ-to-string '*standard-input*))
+    (t
+     (princ-to-string stream))))
+
 (defun format-prompt (&optional (prompt *pager-prompt*))
   "Return the prompt string with a few less-like formatting character
 replacements. So far we support:
@@ -403,11 +415,7 @@ replacements. So far we support:
 				   count))
 			       str))
 		   (#\% (princ #\% str))
-		   (#\f
-		    (if (and (typep stream 'file-stream)
-			     (ignore-errors (truename stream)))
-			(princ (namestring (truename stream)) str)
-			(format str "~a" stream)))
+		   (#\f (write-string (stream-name stream) str))
 		   (#\&
 		    (when filter-exprs (princ " && " str))
 		    (when keep-expr    (princ " ^^ " str))))))
@@ -817,7 +825,7 @@ list containing strings and lists."
   "Open FILENAME for reading in a way which is less likely to get encoding
 errors, but may lose data. Quotes the filename against special Lisp characters.
 Returns the the open stream or NIL."
-  (make-instance 'utf8b-input-stream
+  (make-instance 'utf8b-stream:utf8b-input-stream
 		 :input-stream
 		 (open (quote-filename filename) :direction :input
 		       :element-type '(unsigned-byte 8))))
