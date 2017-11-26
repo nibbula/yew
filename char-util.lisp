@@ -23,7 +23,7 @@
    #:simplify-char
    #:simplify-string
    #:get-utf8-char #:%get-utf8-char
-   #:get-utf8b-char #:%get-utf8-char
+   #:get-utf8b-char #:%get-utf8b-char
    ))
 (in-package :char-util)
 

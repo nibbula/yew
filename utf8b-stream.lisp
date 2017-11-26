@@ -14,7 +14,8 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
   (:use :cl :dlib :char-util :trivial-gray-streams)
   (:export
    #:utf8b-input-stream
-   #:utf8b-input-stream-input-stream
+   #:input-stream
+   #:buffer
    ))
 (in-package :utf8b-stream)
 
@@ -86,7 +87,7 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
 	(when (not end)
 	  (setf iend (length seq)))
 	(loop :while (< i iend)
-	   :do (char-util::%get-utf8b-char read-it set-it)
+	   :do (%get-utf8b-char read-it set-it)
 	   (incf i))
 	seq))))
 
@@ -116,7 +117,7 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
 	(let (c)
 	  (labels ((read-it () (read-byte input-stream))
 		   (set-it (x) (setf c x)))
-	    (char-util::%get-utf8b-char read-it set-it)
+	    (%get-utf8b-char read-it set-it)
 	    c)))))
 
 #|
