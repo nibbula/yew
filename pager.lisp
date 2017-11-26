@@ -74,6 +74,7 @@ The shell command takes any number of file names.
   "Hold a line of text."
   number				; line number
   position				; file-position
+  prev					; previous line
   text)					; text string of the line
 
 (defclass pager ()
@@ -88,16 +89,24 @@ The shell command takes any number of file names.
     :documentation "Number of lines")
    (line
     :initarg :line :accessor pager-line :initform 0
-    :documentation "Current line at the top of the screen")
+    :documentation "Current line at the top of the screen.")
+   ;; @@@ Considering renaming line to top and line becoming a pointer to the
+   ;; current line to facilitate reverse searches.
+   ;; (top
+   ;;  :initarg :line :accessor pager-line :initform 0
+   ;;  :documentation "Current line number at the top of the screen.")
+   ;; (line
+   ;;  :initarg :line :accessor pager-line :initform nil
+   ;;  :documentation "Current line at the top of the screen.")
    (left
     :initarg :left :accessor pager-left :initform 0
     :documentation "Column which display starts at")
    (max-width
     :initarg :max-width :accessor pager-max-width :initform 0
-    :documentation "maximum line length")
+    :documentation "Maximum line length.")
    (page-size
     :initarg :page-size :accessor pager-page-size
-    :documentation "how many lines in a page")
+    :documentation "How many lines in a page.")
    (got-eof
     :initarg :got-eof :accessor pager-got-eof :initform nil
     :documentation "True if we got to the end of stream")
@@ -340,7 +349,7 @@ read until we get an EOF."
 	  (when (not got-eof)
 	    (let ((n 0)
 		  (i count)
-		  (line nil)
+		  line last-line cur-line
 		  (lines '())
 		  (pos (or (file-position stream) 0)))
 	      (unwind-protect
@@ -348,22 +357,32 @@ read until we get an EOF."
 		      :while (and (or (< n line-count) (zerop line-count))
 				  (setf line
 					(resilient-read-line stream nil nil)))
-		      :do (push (make-line :number i
+		      :do
+		      (setf cur-line
+			    (make-line :number i
 ;;;			      :position (incf pos (length line))
-					   :position pos
-					   :text (if raw-output
-						     line
-						     (process-line line)))
-				lines)
+				       :position pos
+				       :prev last-line
+				       :text (if raw-output
+						 line
+						 (process-line line))))
+		      (push cur-line lines)
+		      (setf last-line cur-line)
 		      (incf pos (length line))
 		      (incf i)
 		      (incf n))
 		(when (not line)
 		  (setf got-eof t))
 		(when lines
-		  (setf (pager-lines *pager*)
-			(nconc (pager-lines *pager*) (nreverse lines))
-			count i))))))
+		  (let ((last-line
+			 (car (last lines)))) ;; really first of the chunk
+		    (setf
+		     ;; Set the previous of the new chunk to be the end of rest
+		     (line-prev last-line) (car (last (pager-lines *pager*)))
+		     ;; and then reverse and attach them.
+		     (pager-lines *pager*) (nconc (pager-lines *pager*)
+						  (nreverse lines))
+		     count i)))))))
       (stream-error (c)
 	(setf got-eof t)
 	(tmp-message "Got an eror ~a on the stream." c)))))
@@ -749,23 +768,37 @@ list containing strings and lists."
 	:if (setf result (search-line str s))
 	:return result))))
 
-(defun search-for (str)
+(defun search-for (str &optional (direction :forward))
   (with-slots (lines count line page-size ignore-case) *pager*
-    (let ((ll (nthcdr line lines))
-	  (ss (if ignore-case (s+ "(?i)" str) str))
-	  l)
-      (loop
-	 :do
-	 (setf l (car ll))
-	 (when (and l (>= (line-number l) (max 0 (- count page-size))))
-	   (read-lines page-size))
-	 :while (and l (< (line-number l) count)
-		     (not (search-line ss (line-text l))))
-	 :do
-	 (setf ll (cdr ll)))
-      (if (and l (< (line-number l) count))
-	  (setf line (line-number l))
-	  nil))))
+    (let ((search-regexp (if ignore-case (s+ "(?i)" str) str))
+	  ll l)
+      (case direction
+	(:forward
+	 (setf ll (nthcdr line lines))
+	 (loop
+	    :do
+	    (setf l (car ll))
+	    (when (and l (>= (line-number l) (max 0 (- count page-size))))
+	      (read-lines page-size))
+	    :while (and l (< (line-number l) count)
+			(not (search-line search-regexp (line-text l))))
+	    :do
+	    (setf ll (cdr ll)))
+	 (if (and l (< (line-number l) count))
+	     (setf line (line-number l))
+	     nil))
+	(:backward
+	 (setf l (nth line lines))
+	 (loop
+	    :while (and l (>= (line-number l) 0)
+			(not (search-line search-regexp (line-text l))))
+	    :do
+	    (setf l (line-prev l)))
+	 (if l
+	     (setf line (line-number l))
+	     nil))
+	(otherwise
+	 (error "Search direction should be either :forward or :backward."))))))
 
 ;; (defun sub-pager ()
 ;;   (let ((*pager*))
@@ -1080,10 +1113,17 @@ location doesn't have an offset part."
 	  (setf line (max 0 (- count page-size)))))))
 
 (defun search-command ()
-  "Search for something in the stream."
+  "Search forwards for something in the stream."
   (with-slots (search-string) *pager*
-    (setf search-string (ask "/"))
+    (setf search-string (ask "Search for: "))
     (when (not (search-for search-string))
+      (tmp-message "--Not found--"))))
+
+(defun search-backward-command ()
+  "Search backwards for something in the stream."
+  (with-slots (search-string) *pager*
+    (setf search-string (ask "Search backward for: "))
+    (when (not (search-for search-string :backward))
       (tmp-message "--Not found--"))))
 
 (defun search-next ()
@@ -1093,6 +1133,17 @@ location doesn't have an offset part."
     (when (not (search-for search-string))
       (decf line)
       (tmp-message "--Not found--"))))
+
+(defun search-previous ()
+  "Search for the previous occurance of the current search in the stream."
+  (with-slots (line search-string) *pager*
+    (if (not (zerop line))
+	(progn
+	  (decf line)
+	  (when (not (search-for search-string :backward))
+	    (incf line)
+	    (tmp-message "--Not found--")))
+	(tmp-message "Search stopped at the first line."))))
 
 (defun clear-search ()
   "Clear the search string."
@@ -1240,7 +1291,10 @@ location doesn't have an offset part."
     (,(meta-char #\>)	. go-to-end)
     (#\/		. search-command)
     (,(ctrl #\S)	. search-command)
+    (,(ctrl #\R)	. search-backward-command)
     (#\n		. search-next)
+    (#\p		. search-previous)
+    (#\N		. search-previous)
     (#\=		. show-info)
     (,(ctrl #\G)	. show-info)
     (,(meta-char #\l)	. show-file-list)
@@ -1402,9 +1456,8 @@ q - Abort")
 	  (when (not suspended)
 	    (freshen *pager*)
 	    (setf (pager-stream *pager*) stream))
-	  (with-slots (count line page-size left search-string input-char
-		       file-list file-index message prefix-arg quit-flag
-		       suspend-flag command) *pager*
+	  (with-slots (page-size file-list file-index quit-flag suspend-flag)
+	      *pager*
 	    (when file-list
 	      (setf file-index 0)
 	      (when (not (zerop (file-location-offset (elt file-list 0))))
@@ -1414,19 +1467,6 @@ q - Abort")
 		  suspend-flag nil
 		  suspended nil)
 	    (curses:raw)	     ; give a chance to exit during first read
-#|	    (loop :do
-	       (display-page)
-	       (if message
-		   (let ((*pager-prompt* message))
-		     (display-prompt)
-		     (setf message nil))
-		   (display-prompt))
-	       (refresh)
-	       (setf input-char (tt-get-char))
-	       (perform-key input-char)
-	       (when (not (equal command 'digit-argument))
-		 (setf prefix-arg nil))
-	       :while (not (or quit-flag suspend-flag))) |#
 	    (pager-loop)
 	    (when suspend-flag
 	      (setf suspended t)
@@ -1506,7 +1546,7 @@ q - Abort")
    (input
     (with-output-to-string (output)
       (format output
-"Hi! You are using Dan's pager. You seem to have hit '~a' again, which gives a
+"Hi! You are using Nibby's pager. You seem to have hit '~a' again, which gives a
 summary of commands. Press 'q' to exit this help. The keys are superficially
 compatible with 'less', 'vi' and 'emacs'.
 " (pager-input-char *pager*))
@@ -1529,8 +1569,10 @@ compatible with 'less', 'vi' and 'emacs'.
   > G M->			Go to the end of the stream.
 
 [1mSearching[0m
-  / ^S				Search.
+  / ^S				Search forward.
+  ^R				Search forward.
   n				Search for next occurrence.
+  N p				Search for previous occurrence.
   M-u				Clear the search.
 
 [1mFiltering[0m
@@ -1567,7 +1609,7 @@ Press 'q' to exit this help.
       (input
        (with-output-to-string (output)
 	 (write-string
-"You are using Dan's pager. Here's a list of what the keys do.
+"You are using Nibby's pager. Here's a list of what the keys do.
 If you want a description of what a function does, press Control-H then 'k',
 then the key. Press 'q' to exit this help.
 " output)
