@@ -978,7 +978,8 @@ equal under TEST to result of evaluating INITIAL-VALUE."
   `(cl:defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
      ,@(when doc (list doc)))
   #+ccl
-  `(cl:defconstant ,name ,value ,@(when doc (list doc)))
+  (eval-when (:compile-toplevel :load-toplevel :execute)
+  `(cl:defconstant ,name ,value ,@(when doc (list doc))))
   )
 
 ;; On other lisps just use the real one.
