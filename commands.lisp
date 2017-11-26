@@ -240,9 +240,8 @@ if it's blank or the same as the previous line."
   "Display the current line with the search string highlighted."
   (with-slots (point context) e
     ;;(setf point (min (or pos (length buf)) (length buf)))
-    (tt-move-to-col 0)
+    ;;(tt-move-to-col 0)
     (erase-display e)
-    ;; (tt-erase-to-eol)
     (setf (screen-col e) 0)
     (do-prefix e *isearch-prompt*)
     ;;(log-message e "buf = ~s" buf)
@@ -255,8 +254,8 @@ if it's blank or the same as the previous line."
 	    (tt-underline t))
 	   ((and end (= i end))
 	    (tt-underline nil)))
-	 ;;(display-char e c)
-	 (tt-write-char c)
+	 (display-char e c)
+	 ;;(tt-write-char c)
 	 ))
     (tt-underline nil)
     (tt-finish-output)))
