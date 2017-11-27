@@ -91,6 +91,11 @@
    (message
     :initarg :message :accessor image-inator-message :initform nil
     :documentation "Message to show.")
+   (move-object-mode
+    :initarg :move-object-mode :accessor image-inator-move-object-mode
+    :initform nil :type boolean
+    :documentation
+    "True if movement commands move the object instead of the view.")
    )
   (:default-initargs
    :keymap	`(,*image-viewer-keymap* ,*default-inator-keymap*))
@@ -113,6 +118,12 @@
   (:documentation "Return the height of the image-inator in pixels.")
   (:method ((inator image-inator))
     (tt-height)))
+
+(defgeneric show-message (inator string)
+  (:documentation "Actually show the message.")
+  (:method ((inator image-inator) string)
+    (tt-move-to (1- (height inator)) 0)
+    (tt-write-string string)))
 
 (define-condition unknown-image-type (simple-error) ()
   (:default-initargs
@@ -173,14 +184,33 @@
 (defun right-by-increment (o) (right o (image-inator-increment o)))
 
 (defmethod move-to-top ((o image-inator))
+  "Move to the top left of the image."
   (setf (image-inator-x o) 0
 	(image-inator-y o) 0))
 
 (defmethod move-to-bottom ((o image-inator))
-  (with-slots (x y image zoom) o
+  "Move to the bottom right of the image, or "
+  (with-slots (x y image zoom move-object-mode) o
     (declare (type fixnum x y))
-    (setf x (max 0 (- (image-width image) (* (width o) (truncate 1 zoom))))
-	  y (max 0 (- (image-height image) (* (height o) (truncate 1 zoom)))))))
+    (let ((effective-image-width (truncate (* (image-width image) zoom)))
+	  (effective-image-height (truncate (* (image-height image) zoom))))
+      (if move-object-mode
+	  (setf x (max 0 (- (width o) effective-image-width))
+		y (max 0 (- (height o) effective-image-height)))
+	  (setf x (max 0 (- effective-image-width (width o)))
+		y (max 0 (- effective-image-height (height o)))))
+      (message o "Zing! ~d ~d ~dx~d [~dx~d]" x y (width o) (height o)
+	       effective-image-width effective-image-height))))
+
+(defmethod center ((o image-inator))
+  (with-slots (x y image zoom move-object-mode) o
+    (declare (type fixnum x y))
+    (let ((effective-image-width (truncate (* (image-width image) zoom)))
+	  (effective-image-height (truncate (* (image-height image) zoom))))
+      (setf x (truncate (max 0 (- (/ (width o) 2)
+				  (/ effective-image-width 2))))
+	    y (truncate (max 0 (- (/ (height o) 2)
+				  (/ effective-image-height 2))))))))
 
 (defmethod next-page ((o image-inator))
   (with-slots (y image zoom) o
@@ -324,6 +354,7 @@
   (tt-clear))
 
 (defmethod message ((o image-inator) format-string &rest args)
+  ;; We just save message for later.
   (setf (image-inator-message o) 
 	(apply #'format nil format-string args)))
 
@@ -394,6 +425,7 @@
     (#\<		  . move-to-top)
     (,(meta-char #\<)     . move-to-top)
     (:home		  . move-to-top)
+    (#\c		  . center)
     (,(ctrl #\a)	  . beginning-of-line)
     (,(ctrl #\e)	  . end-of-line)
     (#\+		  . zoom-in)
@@ -431,11 +463,12 @@
 
 (defun show-status (o)
   "Display the status/message line."
-  (with-slots (image message file-index file-list subimage zoom x y) o
+  (with-slots (image message file-index file-list subimage zoom x y
+	       move-object-mode) o
     (with-slots (name width height subimages) image
       (if message
 	  (progn
-	    (message o message)
+	    (show-message o message)
 	    (setf message nil))
 	  (let ((position (if (and (plusp x) (plusp y))
 			      (format nil "+~d+~d " x y) ""))
@@ -448,11 +481,12 @@
 		(disposal (sub-image-disposal (aref subimages subimage))))
 	    (multiple-value-bind (start-x end-x start-y end-y) (clip o)
 	      (let ((line
-		     (format nil "~a ~dx~d ~a~a~a~f% <~d-~d ~d-~d> ~s"
+		     (format nil "~a ~dx~d ~a~a~a~f% <~d-~d ~d-~d> o:~s ~s"
 			     name width height position file-count frame-count
-			     zoom start-x end-x start-y end-y disposal)))
-		(message o (subseq line 0 (min (length line)
-					       (1- (width o))))))))))))
+			     zoom start-x end-x start-y end-y move-object-mode
+			     disposal)))
+		(show-message o (subseq line 0 (min (length line)
+						    (1- (width o))))))))))))
 
 #|
 

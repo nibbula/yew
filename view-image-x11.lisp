@@ -84,6 +84,8 @@
     ;; 			       :element-type '(unsigned-byte 32)))
     :documentation "Mask data in X format.")
    )
+  (:default-initargs
+   :move-object-mode t)
   (:documentation "Image viwer for X11."))
 
 (defmethod initialize-instance
@@ -101,7 +103,8 @@
 
 (defmethod start-inator ((o image-x11-inator))
   "Start the inator."
-  (with-slots (display window window-width window-height own-window font
+  (with-slots ((image view-image::image)
+	       display window window-width window-height own-window font
 	       draw-gc erase-gc overlay-gc depth) o
     (when (not display)
       (multiple-value-bind (host number) (get-display-from-environment)
@@ -117,7 +120,9 @@
 		(if own-window
 		    (create-window
 		     :parent (screen-root (display-default-screen display))
-		     :x 0 :y 0 :width 400 :height 400 
+		     :x 0 :y 0
+		     :width (view-image::image-width image)
+		     :height (view-image::image-height image)
 		     :background black
 		     :event-mask 
 		     (make-event-mask
@@ -203,22 +208,22 @@
 	    ;; 		)
 	    (display-finish-output display)))
       (free-pixmaps ximages-mask))
-    (when *derp*
-      (free-pixmap *derp*)
-      (setf *derp* nil))
+    ;; (when *derp*
+    ;;   (free-pixmap *derp*)
+    ;;   (setf *derp* nil))
     (when draw-gc (free-gcontext draw-gc))
     (when erase-gc (free-gcontext erase-gc))
     (when display (close-display display))))
 
-(defmethod message ((o image-x11-inator) format-string &rest args)
-  (let ((str (apply #'format nil format-string args)))
-    (with-slots (window draw-gc font) o
-      (draw-image-glyphs window draw-gc 0 (- (drawable-height window)
-					     (font-descent font))
-			 str))))
+(defmethod view-image::show-message ((o image-x11-inator) string)
+  (with-slots (window draw-gc font) o
+    (draw-image-glyphs window draw-gc 0 (- (drawable-height window)
+					   (font-descent font))
+			 string)))
 
 (defun get-absolute-coords (win)
   (let (children parent root (xoff 0) (yoff 0))
+    (declare (ignorable root children))
     (loop :with w = win
        :do
        (multiple-value-setq (children parent root) (query-tree w))
@@ -230,46 +235,39 @@
        (setf w parent))
     (values xoff yoff)))
 
-(defun window-eraser (inator)
-  (with-slots ((image view-image::image)
-	       (subimage view-image::subimage)
-	       (x view-image::x)
-	       (y view-image::y)
-	       display window eraser-window) inator
-    (with-slots ((width view-image::width)
-		 (height view-image::height)) image
-      (with-slots ((si-x view-image::x)
-		   (si-y view-image::y)
-		   (si-width view-image::width)
-		   (si-height view-image::height))
-	  (aref (view-image::image-subimages image) subimage)
-	(multiple-value-bind (abs-x abs-y) (get-absolute-coords window)
-	  (if (not eraser-window)
-	      (setf eraser-window
-		    (create-window
-		     :parent (screen-root (display-default-screen display))
-		     :x (+ abs-x x)
-		     :y (+ abs-y y)
-		     :width width :height height
-		     :override-redirect :on))
-	      (progn
-		(setf (drawable-x eraser-window) (+ abs-x x)
-		      (drawable-y eraser-window) (+ abs-y y)
-		      (drawable-width eraser-window) width
-		      (drawable-height eraser-window) height)))
-	  (map-window eraser-window)
-	  (unmap-window eraser-window)
-	  (display-finish-output display)
-	  (sleep .01)
-	  ;; (format t "x ~s ~s y ~s ~s~%"
-	  ;; 	 x (drawable-x window)
-	  ;; 	 y (drawable-y window))
-	  )))))
+(defun window-eraser (inator x y width height)
+  (with-slots (display window eraser-window) inator
+    (multiple-value-bind (abs-x abs-y) (get-absolute-coords window)
+      (if (not eraser-window)
+	  (setf eraser-window
+		(create-window
+		 :parent (screen-root (display-default-screen display))
+		 :x (+ abs-x x)
+		 :y (+ abs-y y)
+		 :width width :height height
+		 :override-redirect :on))
+	  (progn
+	    (setf (drawable-x eraser-window) (+ abs-x x)
+		  (drawable-y eraser-window) (+ abs-y y)
+		  (drawable-width eraser-window) width
+		  (drawable-height eraser-window) height)))
+      (map-window eraser-window)
+      (unmap-window eraser-window)
+      (display-finish-output display)
+      (sleep .01)
+      ;; (format t "x ~s ~s y ~s ~s~%"
+      ;; 	 x (drawable-x window)
+      ;; 	 y (drawable-y window))
+      )))
 
-(defun erase-image (o)
-  (window-eraser o))
+(defun erase-area (o x y width height)
+  (with-slots (display window own-window) o
+    (clear-area window :x x :y y
+		:width width :height height :exposures-p t)
+    (display-finish-output display)
+    (when (not own-window)
+      (window-eraser o x y width height))))
 
-#|
 (defun erase-image (o)
   (with-slots ((image view-image::image)
 	       (subimage view-image::subimage)
@@ -291,13 +289,10 @@
 	;; 	   :x x-pos :y y-pos
 	;; 	   :src-x source-x :src-y source-y
 	;; 	   :width w :height h)
-	;; (clear-area window :x x :y y
-	;; 	    :width width :height height :exposures-p t)
-	(window-eraser o)
 	;;(display-finish-output display)
 	;;(setf (gcontext-clip-mask erase-gc) :none)
+	(erase-area o x y width height)
 	))))
-|#
 
 (defun update-pos (o)
   (with-slots ((image view-image::image)
@@ -365,6 +360,12 @@
   (update-pos o)
   )
 
+(defmethod view-image::center ((o image-x11-inator))
+  (erase-image o)
+  (call-next-method)
+  (update-pos o)
+  )
+
 (defun our-get-key (inator timeout)
   (with-slots ((our-window window)
 	       display own-window window-width window-height frame-start-time)
@@ -418,8 +419,7 @@
 	       (progn
 		 (when (dtime-plusp time-left)
 		   (tt-listen-for (dtime-to time-left :seconds)))
-		 ;; XXX
-		 (terminal-ansi::get-char *terminal* :timeout 0))
+		 (terminal-ansi::get-char *terminal* :timeout 0)) ;; XXX
 	       (tt-get-char)))))))
 
 (defmethod await-event ((inator image-x11-inator))
@@ -639,13 +639,12 @@ XIMAGES-MASK array."
 		   (when mask-p
 		     (setf (aref ximage-mask-data iy ix) 1)))))))))))
 
-(defparameter *derp* nil)
+;;(defparameter *derp* nil)
 
 (defun show-image (inator)
   (with-slots ((x view-image::x)
 	       (y view-image::y)
 	       (zoom view-image::zoom)
-	       ;;(message view-image::message)
 	       (file-index view-image::file-index)
 	       (file-list view-image::file-list)
 	       (image view-image::image)
@@ -727,9 +726,10 @@ XIMAGES-MASK array."
     (setf frame-start-time (get-dtime))
     (when need-to-redraw
       (dbug "redraw~%")
-      (draw-rectangle window erase-gc 0 0
-		      (drawable-width window) (drawable-height window)
-		      t)
+      ;; (draw-rectangle window erase-gc 0 0
+      ;; 		      (drawable-width window) (drawable-height window)
+      ;; 		      t)
+      (erase-area o 0 0 (drawable-width window) (drawable-height window))
       (setf need-to-redraw nil))
     (show-image o)
     (display-finish-output display)))
