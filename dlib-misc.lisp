@@ -691,7 +691,8 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 ;; Assumes fixed width characters, without all the unicode nonsense.
 
 (defun %justify-text (text &key (cols 80) (stream *standard-output*)
-			     (prefix "") (separator #\space) omit-first-prefix)
+			     (prefix "") (separator #\space) omit-first-prefix
+			     (start-column 0))
   (declare (optimize (speed 3) (safety 0) (debug 3) (space 0)
 		     (compilation-speed 0))
 	   (type simple-string text prefix)
@@ -701,7 +702,7 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 	(i               0)
 	(last-word-start 0)
 	;;(line-start	 0)
-	(column          0))
+	(column          start-column))
     (declare (type fixnum len i last-word-start column))
     (flet ((write-word (final)
 	     ;;(dbugf :justify-text "col ~d " column)
@@ -765,7 +766,8 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 	(write-word t)))))
 
 (defun justify-text (text &key (cols 80) (stream *standard-output*)
-			    (prefix "") (separator #\space) omit-first-prefix)
+			    (prefix "") (separator #\space) omit-first-prefix
+			    (start-column 0))
   "Try to output substrings of TEXT to STREAM, separated by SEPARATOR, so that
 they fit in COLS columns of fixed sized characters. Output PREFIX before each
 line. If OMIT-FIRST-PREFIX is true, don't output the prefix on the first line.
@@ -773,11 +775,13 @@ If STREAM is nil, return a string of the output."
   (if stream
       (%justify-text text :cols cols :stream stream
 		     :prefix prefix :separator separator
-		     :omit-first-prefix omit-first-prefix)
+		     :omit-first-prefix omit-first-prefix
+		     :start-column start-column)
       (with-output-to-string (output)
 	(%justify-text text :cols cols :stream output
 		       :prefix prefix :separator separator
-		       :omit-first-prefix omit-first-prefix))))
+		       :omit-first-prefix omit-first-prefix
+		       :start-column start-column))))
 
 (defun print-properties (prop-list &key (right-justify nil) (de-lispify t)
 				     (stream t))
