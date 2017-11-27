@@ -549,8 +549,12 @@ default to 16 bit color."
 	    (setf typeahead nil
 		  typeahead-pos nil)))))
     (let (result borked)
-      (labels ((read-it () (read-terminal-byte file-descriptor :timeout timeout))
-	       (set-it (x) (setf result x)))
+      (labels ((read-it ()
+		 (or
+		  (read-terminal-byte file-descriptor :timeout timeout)
+		  (return-from get-char nil)))
+	       (set-it (x)
+		 (setf result x)))
 	(loop :do
 	   (setf borked nil)
 	   (handler-case
