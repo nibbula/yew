@@ -330,8 +330,16 @@ generic functions (i.e. %GROUT-*) directly."
   "Initialize a ANSI stream."
   (declare (ignore initargs))
   (setf (slot-value o 'term-stream)
-	(make-instance 'terminal-ansi-stream
-		       :output-stream (slot-value o 'stream))))
+	(if (typep (slot-value o 'stream) 'terminal-stream)
+	    (progn
+	      (dbugf :grout "Grout re-using stream.~%")
+	      (finish-output *debug-io*)
+	      (slot-value o 'stream))
+	    (progn
+	      (dbugf :grout "Grout making a new stream.~%")
+	      (finish-output *debug-io*)
+	      (make-instance 'terminal-ansi-stream
+			     :output-stream (slot-value o 'stream))))))
 
 (defmethod %grout-supports-attributes ((g ansi-stream))
   "Return T if the *GROUT* supports character attributes."
@@ -455,15 +463,30 @@ generic functions (i.e. %GROUT-*) directly."
 (defclass ansi (grout)
   ((term
     :initarg :term :accessor ansi-term
-    :documentation "The terminal."))
+    :documentation "The terminal.")
+   (own-term
+    :initarg :own-term :accessor own-term :initform nil :type boolean
+    :documentation "True if we made our own terminal instance."))
   (:documentation "Can do a few standard things."))
 
 (defmethod initialize-instance
     :after ((o ansi) &rest initargs &key &allow-other-keys)
   "Initialize a ansi."
   (declare (ignore initargs))
-  (setf (slot-value o 'term) (make-instance 'terminal-ansi))
-  (terminal-start (slot-value o 'term)))
+  (setf (slot-value o 'term)
+	(if (typep (slot-value o 'stream) 'terminal-stream)
+	    (progn
+	      (dbugf :grout "Grout re-using stream.~%")
+	      (finish-output *debug-io*)
+	      (slot-value o 'stream))
+	    (progn
+	      (dbugf :grout "Grout making a new stream.~%")
+	      (finish-output *debug-io*)
+	      (setf (slot-value o 'own-term) t)
+	      (make-instance 'terminal-ansi)
+	      )))
+  (when (slot-value o 'own-term)
+    (terminal-start (slot-value o 'term))))
 
 (defmethod %grout-supports-attributes ((g ansi))
   "Return T if the *GROUT* supports character attributes."
@@ -571,7 +594,8 @@ generic functions (i.e. %GROUT-*) directly."
 (defmethod %grout-done ((g ansi))
   "Be done with the grout."
   (terminal-finish-output (ansi-term g))
-  (terminal-done (ansi-term g)))
+  (when (own-term g)
+    (terminal-done (ansi-term g))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Slime, with worms.
