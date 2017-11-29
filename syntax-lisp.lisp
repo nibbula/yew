@@ -4,15 +4,44 @@
 
 (defpackage :syntax-lisp
   (:documentation "Things for dealing with the syntax of Lisp code.")
-  (:use :cl :dlib :syntax #| :esrap |#)
+  (:use :cl :dlib :syntax :dlib-misc #| :esrap |# :theme :style :grout :fatchar)
   (:export
    #:lisp-syntax
+   #:lisp-token
+   #:lisp-symbol-token
    #:read-token
    #:matching-paren-position
    ))
 (in-package :syntax-lisp)
 
 (declaim (optimize (debug 3)))
+
+(defclass lisp-syntax (syntax)
+  ()
+  (:default-initargs
+   :name "Lisp"
+    :description "Common Lisp syntax."
+    :language-type :programming
+    :file-types '("lisp" "lsp" "asd" "cl"))
+  (:documentation "Common Lisp syntax."))
+
+(defparameter *syntax* (register-syntax (make-instance 'lisp-syntax))
+  "Save this syntax object.")
+
+(defclass lisp-token (token)
+  ()
+  (:documentation "A lisp token."))
+
+(defclass lisp-symbol-token (lisp-token)
+  ((package
+    :initarg :package :accessor lisp-symbol-token-package :initform nil 
+    :documentation "The package name of the symbol if it has one."))
+  (:documentation "A lisp symbol."))
+
+;; (eval-when (:load-toplevel :execute)
+;;   (setf *syntax* (register-syntax (make-instance 'lisp-syntax))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; The funny thing about Lisp is, you can't read it entirely perfectly it
 ;; without also evaluating it. That means that "read-only" lexical analysis
@@ -29,21 +58,6 @@
 ;; tend to use many of thier own implementation dependent functions. I would
 ;; like this to be portable to any implementation and without bootstrapping
 ;; quriks. Also we have different goals.
-
-(defclass lisp-syntax (syntax)
-  ()
-  (:default-initargs
-   :name "Lisp"
-    :description "Common Lisp syntax."
-    :language-type :programming
-    :file-types '("lisp" "lsp" "asd" "cl"))
-  (:documentation "Common Lisp syntax."))
-
-(defparameter *syntax* (register-syntax (make-instance 'lisp-syntax))
-  "Save this syntax object.")
-
-;; (eval-when (:load-toplevel :execute)
-;;   (setf *syntax* (register-syntax (make-instance 'lisp-syntax))))
 
 (deftype char-syntax ()
   '(member
@@ -134,6 +148,8 @@
 (defmethod read-token ((s lisp-syntax) stream)
   (declare (ignore s stream))
 )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun opens-and-closes (pairs)
   "Return the split out opens and closes given a string of PAIRS, which must
@@ -281,6 +297,146 @@ any new symbols, or fail on unknown packages or symbols."
 |#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; These are primarily for the presumed speed up of avoiding package lookup.
+(defparameter *cl-package* nil)
+(defparameter *keyword-package* nil)
+
+(define-symbol-macro .cl-package.
+    (or *cl-package* (setf *cl-package* (find-package :cl))))
+
+(define-symbol-macro .keyword-package.
+    (or *keyword-package* (setf *keyword-package* (find-package :keyword))))
+
+(defparameter *flow-control*
+  '(go if when unless case ccase ecase cond typecase ctypecase etypecase
+    catch throw return return-from do do* dotimes dolist loop loop-finish
+    error cerror signal break abort continue)
+  "Flow control. These are fairly aribitrary and dumb.")
+
+(defparameter *operator*
+  '(block      let*                  return-from
+    catch      load-time-value       setq
+    eval-when  locally               symbol-macrolet
+    flet       macrolet              tagbody
+    function   multiple-value-call   the
+    go         multiple-value-prog1  throw
+    if         progn                 unwind-protect
+    labels     progv
+    let        quote
+    )
+  "Speical forms, straight outta Figure 3-2.")
+
+(defparameter *constant*
+  '(t nil))
+
+(defmethod stylize-token ((token lisp-symbol-token) &key case)
+  "Stylize a token that is a Lisp symbol. If CASE is given, change the case
+accordingly. Case can be :upper :lower :mixed or :none."
+  (let ((s (token-object token))
+	item)
+    (flet ((fix-case (s) (if (member case '(:lower :none))
+			     (string-downcase s) s)))
+      (when (not *theme*)
+	(return-from stylize-token (fix-case (string s))))
+      (setf item
+	    (cond
+	      ((fboundp s)
+	       ;; @@@ we could fallback to suffixes, like " (F)"
+	       (cond
+		 ((eq (symbol-package s) .cl-package.)
+		  (cond
+		    ((member s *operator*)
+		     `(:syntax :entity :keyword :operator :style))
+		    ((member s *flow-control*)
+		     `(:syntax :entity :keyword :control :style))
+		    (t
+		     `(:syntax :support :function :style))))
+		 ((macro-function s)
+		  `(:syntax :entity :name :macro :style))
+		 (t
+		  `(:syntax :entity :name :function :style))))
+	      ((boundp s)
+	       (cond
+		 ((eq (symbol-package s) .cl-package.)
+		  `(:syntax :support :variable :style))
+		 (t
+		  `(:syntax :variable :other :style))))
+	      ((or (eq (symbol-package s) .keyword-package.)
+		   (member s *constant*))
+	       `(:syntax :constant :other :style))
+	      ((find-class s nil)
+	       `(:syntax :entity :name :type :style))))
+      (themed-string item (fix-case (string s))))))
+
+(defmethod format-comment-text ((token lisp-token) stream &key columns)
+  (check-type (token-object token) string)
+  (with-grout (*grout* stream)
+    ;; (format t "stream = ~s grout = ~s~%" stream *grout*)
+    (let ((lines (split-sequence #\newline (token-object token)))
+	  par new-paragraph s e ss ee prefix)
+      (declare (ignorable e))
+      (labels ((print-it (string-list &optional prefix)
+		 (grout-color :white :default
+			      (justify-text
+			       (join-by-string string-list #\space)
+			       :prefix (or prefix "")
+			       :stream nil
+			       :cols (or columns (grout-width))))
+		 (grout-princ (s+ #+nil "‼" #\newline)))
+	       (print-paragraph ()
+		 (when new-paragraph
+		   (grout-princ (s+ #+nil "•" #\newline)))
+		 (print-it (nreverse par))
+		 (setf new-paragraph t))
+	       (leading-space (l)
+		 (multiple-value-setq (s e ss ee)
+		   (ppcre:scan "^([ \\t]+)[^ \\t]" l))
+		 (when s
+		   (subseq l (aref ss 0) (aref ee 0)))))
+	;; Get rid of uniform leading space on every line after the first.
+	;; This usualy comes from the typical style of indenting the docstring
+	;; text to align with it's first line.
+	(when (and (> (length lines) 1)
+		   (setf prefix (leading-space (second lines)))
+		   (every (_ (equal prefix (leading-space _))) (cdr lines)))
+	  (setf lines
+		(cons (first lines)
+		      (loop :with prefix-len = (length prefix)
+			 :for l :in (cdr lines)
+			 :collect (subseq l prefix-len)))))
+	;; Go through the lines and output them as justified paragraphs.
+	(loop :for l :in lines :do
+	   (cond
+	     ((zerop (length l))
+	      (when par
+		(print-paragraph)
+		(setf par nil))
+	      ;;(grout-princ (s+ #+nil "•" #\newline))
+	      )
+	     ;; a line starting with text
+	     ((alphanumericp (char l 0))
+	      (push l par))
+	     ;; a line starting with blanks
+	     ((multiple-value-setq (s e ss ee)
+		(ppcre:scan "^([ \\t]+)[^ \\t]" l))
+	      (when par
+		(print-it (nreverse par))
+		(setf par nil))
+	      (print-it (list l) (subseq l (aref ss 0) (aref ee 0))))
+	     (t
+	      (when par
+		(print-paragraph)
+		;;(setf new-paragraph nil)
+		;;(grout-princ (s+ "˚" #\newline))
+		(setf par nil))
+	      (grout-color :white :default l)
+	      (grout-princ (s+ #+nil "¶" #\newline)))))
+	(when par
+	  (print-it (nreverse par)))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 (defun make-char-table (source)
   "Make a character trait table."

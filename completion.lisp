@@ -22,8 +22,8 @@ result position. This allows completion functions to look at whatever they
 want to, and replace whatever they want to, even prior to the starting
 point. When asked for all completions, they return a sequence of strings and
 a count which is the length of the sequence.")
-  (:use :cl :dlib :opsys :glob :dlib-misc :syntax-lisp
-        :terminal :terminal-ansi :cl-ppcre :theme :fatchar)
+  (:use :cl :dlib :opsys :glob :dlib-misc :syntax :syntax-lisp
+        :terminal :terminal-ansi :cl-ppcre :theme :fatchar :style)
   (:export
    ;; generic
    #:complete-print
@@ -465,46 +465,6 @@ arguments for that function, otherwise return NIL."
 	   (print-it (cdr s) i)))
       (tt-write-char #\)))))
 
-(defun output-text (s #|stream|# cols)
-  (let (par new-paragraph)
-    (labels ((print-it ()
-	       (when new-paragraph
-		 ;;(princ (s+ #+nil "•" #\newline) stream))
-		 (tt-write-string (s+ #+nil "•" #\newline)))
-	       (tt-color :white :default)
-	       ;; (dbug "cols = ~a~%" cols)
-	       (tt-write-string
-		(justify-text (join-by-string (nreverse par) #\space)
-			      :stream nil
-			      :cols cols))
-	       (tt-color :default :default)
-	       ;;(princ (s+ #+nil "‼" #\newline) stream)
-	       (tt-write-string (s+ #+nil "‼" #\newline))
-	       (setf new-paragraph t)))
-      (loop :for l :in (split-sequence #\newline s)
-	 :do
-	 (cond
-	   ((zerop (length l))
-	    (when par
-	      (print-it)
-	      (setf par nil))
-	    ;;(grout-princ (s+ #+nil "•" #\newline))
-	    )
-	   ((alpha-char-p (char l 0))
-	    (push l par))
-	   (t
-	    (when par
-	      (print-it)
-	      ;;(setf new-paragraph nil)
-	      ;;(grout-princ (s+ "˚" #\newline))
-	      (setf par nil))
-	    (tt-color :white :default)
-	    (tt-write-string l)
-	    (tt-color :default :default)
-	    (tt-write-string (s+ #+nil "¶" #\newline)))))
-      (when par
-	(print-it)))))
-
 (defun function-help-show-doc (symbol cols)
   (labels ((maybe-doc (obj type)
 	     (without-warning (documentation obj type)))
@@ -534,7 +494,13 @@ arguments for that function, otherwise return NIL."
 		     (tt-format "~a" (maybe-doc sym doc-type))
 		     (tt-color :default :default))
 		   (progn
-		     (output-text (maybe-doc sym doc-type) cols)
+		     (format-comment-text
+		      (make-instance 'lisp-token
+				     :object (maybe-doc sym doc-type))
+		      ;;*standard-output*
+		      *terminal*
+		      :columns cols)
+		     ;;(output-text (maybe-doc sym doc-type) cols)
 		     ;;(grout-princ #\newline)
 		     )))))
     (print-doc symbol nil 'function)))
@@ -755,71 +721,6 @@ Return nil if none was found."
 		s)))
      :unique unique)))
 
-(defparameter *cl-package* nil)
-(defparameter *keyword-package* nil)
-
-(defparameter *flow-control*
-  '(go if when unless case ccase ecase cond typecase ctypecase etypecase
-    catch throw return return-from do do* dotimes dolist loop loop-finish
-    error cerror signal break abort continue)
-  "Flow control. These are fairly aribitrary and dumb.")
-
-(defparameter *operator*
-  '(block      let*                  return-from
-    catch      load-time-value       setq
-    eval-when  locally               symbol-macrolet
-    flet       macrolet              tagbody
-    function   multiple-value-call   the
-    go         multiple-value-prog1  throw
-    if         progn                 unwind-protect
-    labels     progv
-    let        quote
-    )
-  "Speical forms, straight outta Figure 3-2.")
-
-(defparameter *constant*
-  '(t nil))
-
-(defun stylize-symbol (s case-in)
-  (let (style item)
-    (flet ((fix-case (s) (if (member case-in '(:lower :none))
-			     (string-downcase s) s)))
-      (when (not *theme*)
-	(return-from stylize-symbol (fix-case (string s))))
-      (setf item
-	    (cond
-	      ((fboundp s)
-	       ;; @@@ we could fallback to suffixes, like " (F)"
-	       (cond
-		 ((eq (symbol-package s) *cl-package*)
-		  (cond
-		    ((member s *operator*)
-		     `(:syntax :entity :keyword :operator :style))
-		    ((member s *flow-control*)
-		     `(:syntax :entity :keyword :control :style))
-		    (t
-		     `(:syntax :support :function :style))))
-		 ((macro-function s)
-		  `(:syntax :entity :name :macro :style))
-		 (t
-		  `(:syntax :entity :name :function :style))))
-	      ((boundp s)
-	       (cond
-		 ((eq (symbol-package s) *cl-package*)
-		  `(:syntax :support :variable :style))
-		 (t
-		  `(:syntax :variable :other :style))))
-	      ((or (eq (symbol-package s) *keyword-package*)
-		   (member s *constant*))
-	       `(:syntax :constant :other :style))
-	      ((find-class s nil)
-	       `(:syntax :entity :name :type :style))))
-      (when item 
-	(setf style (theme-value *theme* item)))
-      (if style
-	  (span-to-fat-string (spannify-style-item style (fix-case (string s))))
-	  (fix-case (string s))))))
-
 (defun symbol-completion-list (w &key package
 				   (external nil) (include-packages t))
   "Print the list of completions for W in the symbols of PACKAGE, which
@@ -828,10 +729,9 @@ defaults to the current package. Return how many symbols there were."
   (let ((count 0)
 	(l '()) (pkg-list '())
 	(case-in (character-case w))
+	(token (make-instance 'lisp-symbol-token))
 	pos)
     #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
-    (setf *cl-package* (find-package :cl)
-	  *keyword-package* (find-package :keyword))
     (do-the-symbols (s (or package *package*) external)
 ;;;      (princ (s+ (symbol-package s) "::" s " " #\newline))
       (when (and
@@ -855,7 +755,10 @@ defaults to the current package. Return how many symbols there were."
 	   (incf count))))
     (make-completion-result
      :completion
-     (sort (append (mapcar (_ (stylize-symbol _ case-in)) l)
+     ;;(sort (append (mapcar (_ (stylize-symbol _ case-in)) l)
+     (sort (append (mapcar (_ (setf (token-object token) _)
+			      (stylize-token token :case case-in))
+			   l)
 		   pkg-list)
 	   #'fat-string-lessp)
      :count count)))
@@ -1023,33 +926,6 @@ defaults to the current package. Return how many symbols there were."
 		    (path-append dir-part-path match-sub))
 		match-sub)))
      :unique full-match)))
-
-(defun spannify-style-item (style item)
-  "Convert STYLE into a span with ITEM in it."
-  (labels ((flurp (n)
-	     "A typical function that only a Lisp addled brain find sensible."
-	     (cond ((null (cdr n)) (car n))
-		   ((atom n) n)
-		   (t (list (car n) (flurp (cdr n)))))))
-    (flurp (append style (list item)))))
-
-(defun styled-file-name (file)
-  "Return a stylized string for a OPSYS:DIR-ENTRY."
-  (let (style)
-    (cond
-      ((not *theme*)
-       (dir-entry-name file))
-      ((setf style (or (theme-value *theme*
-				    (list :file :type
-					  (dir-entry-type file) :style))
-		       (theme-value *theme*
-				    (list :file :suffix 
-					  (theme:file-suffix-type
-					   (dir-entry-name file))
-					  :style))))
-       (span-to-fat-string (spannify-style-item style (dir-entry-name file))))
-      (t
-       (dir-entry-name file)))))
 
 (defun filename-completion-list (w &optional extra-test)
   "Return the list of completions for W and how many there were."
