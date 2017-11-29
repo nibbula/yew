@@ -620,8 +620,8 @@ innermost N contexts, if we can."
 
 (defun activate-stepper ()
   "Activate the Tiny-DEBUG setpper."
-  (format *debug-io* "Activating the TINY stepper.~%")
-  #+sbcl (setf sb-ext::*stepper-hook* 'stepper))
+  #+sbcl (setf sb-ext::*stepper-hook* 'stepper)
+  #+(or sbcl) (format *debug-io* "Activating the TINY stepper.~%"))
 
 ;; Breakpoints
 
