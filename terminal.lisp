@@ -135,10 +135,15 @@ require terminal driver support."))
 
 (defun has-terminal-attributes (stream)
   "Return true if we should treat `STREAM` as if it has terminal attributes."
-  (or (and (eq stream *standard-output*)
-	   *standard-output-has-terminal-attributes*)
-      (let ((ss (stream-system-handle stream)))
-	(and ss (file-handle-terminal-p ss)))))
+  (or
+   ;; It's a straight up terminal.
+   (typep stream 'terminal-stream)
+   ;; It's *standard-output* & we know *standard-output-has-terminal-attributes*
+   (and (eq stream *standard-output*)
+	*standard-output-has-terminal-attributes*)
+   ;; Or the file handle can be determined to be a terminal by the OS.
+   (let ((ss (stream-system-handle stream)))
+     (and ss (file-handle-terminal-p ss)))))
 
 (defgeneric terminal-default-device-name (type)
   (:documentation "Return the default device name that would be picked if we
