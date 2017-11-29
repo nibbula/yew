@@ -91,6 +91,9 @@
    (message
     :initarg :message :accessor image-inator-message :initform nil
     :documentation "Message to show.")
+   (frame-start-time
+    :initarg :frame-start-time :accessor frame-start-time
+    :documentation "The time we start rendering a frame.")
    (move-object-mode
     :initarg :move-object-mode :accessor image-inator-move-object-mode
     :initform nil :type boolean
@@ -199,18 +202,21 @@
 		y (max 0 (- (height o) effective-image-height)))
 	  (setf x (max 0 (- effective-image-width (width o)))
 		y (max 0 (- effective-image-height (height o)))))
-      (message o "Zing! ~d ~d ~dx~d [~dx~d]" x y (width o) (height o)
-	       effective-image-width effective-image-height))))
+      ;; (message o "Zing! ~d ~d ~dx~d [~dx~d]" x y (width o) (height o)
+      ;; 	       effective-image-width effective-image-height)
+      )))
 
-(defmethod center ((o image-inator))
-  (with-slots (x y image zoom move-object-mode) o
-    (declare (type fixnum x y))
-    (let ((effective-image-width (truncate (* (image-width image) zoom)))
-	  (effective-image-height (truncate (* (image-height image) zoom))))
-      (setf x (truncate (max 0 (- (/ (width o) 2)
-				  (/ effective-image-width 2))))
-	    y (truncate (max 0 (- (/ (height o) 2)
-				  (/ effective-image-height 2))))))))
+(defgeneric center (inator)
+  (:documentation "Center the image in the window.")
+  (:method ((inator image-inator))
+    (with-slots (x y image zoom move-object-mode) inator
+      (declare (type fixnum x y))
+      (let ((effective-image-width (truncate (* (image-width image) zoom)))
+	    (effective-image-height (truncate (* (image-height image) zoom))))
+	(setf x (truncate (max 0 (- (/ (width inator) 2)
+				    (/ effective-image-width 2))))
+	      y (truncate (max 0 (- (/ (height inator) 2)
+				    (/ effective-image-height 2)))))))))
 
 (defmethod next-page ((o image-inator))
   (with-slots (y image zoom) o
@@ -447,13 +453,19 @@
 
 (defmethod await-event ((o image-inator))
   "Image viewer event."
-  (with-slots (looping subimage image) o
+  (with-slots (looping subimage image frame-start-time) o
     (with-slots (subimages) image
       (if (and looping subimages)
-	  (let ((t-o (sub-image-delay (aref subimages subimage)))
-		result)
+	  (let* ((t-o (sub-image-delay (aref subimages subimage)))
+		 (time-left (and t-o
+				 (dtime- (dtime+ frame-start-time
+						 (make-dtime-as t-o :ms))
+					 (get-dtime))))
+		 result)
+	    (when (dtime-plusp time-left)
+	      (tt-listen-for (dtime-to time-left :seconds)))
 	    (setf result
-		  (terminal-ansi::get-char *terminal* :timeout t-o)) ;; XXX
+		  (terminal-ansi::get-char *terminal* :timeout 0))
 	    (when (not result)
 	      (if (= subimage (1- (length subimages)))
 		  (setf subimage 0)
@@ -751,6 +763,7 @@ But also greatly increasing # of chars output.
 (defmethod update-display ((o image-inator))
   "Update the image viewer display."
   ;;(call-next-method)
+  (setf (frame-start-time o) (get-dtime))
   (show-image o))
 
 (defun make-image-array (width height)

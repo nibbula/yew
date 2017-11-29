@@ -56,9 +56,6 @@
    (eraser-window
     :initarg :eraser-window :accessor eraser-window :initform nil 
     :documentation "Window to erase with.")
-   (frame-start-time
-    :initarg :frame-start-time :accessor frame-start-time
-    :documentation "The time we start rendering a frame.")
    (ximages
     :initarg :ximages :accessor ximages
     :initform nil
@@ -368,7 +365,8 @@
 
 (defun our-get-key (inator timeout)
   (with-slots ((our-window window)
-	       display own-window window-width window-height frame-start-time)
+	       (frame-start-time view-image::frame-start-time)
+	       display own-window window-width window-height)
       inator
     ;; If the timeout has already elapsed, don't use
     (let ((time-left (and timeout
@@ -722,7 +720,8 @@ XIMAGES-MASK array."
 (defmethod update-display ((o image-x11-inator))
   "Update the display."
   (dbug "update~%")
-  (with-slots (display window erase-gc need-to-redraw frame-start-time) o
+  (with-slots ((frame-start-time view-image::frame-start-time)
+	       display window erase-gc need-to-redraw) o
     (setf frame-start-time (get-dtime))
     (when need-to-redraw
       (dbug "redraw~%")
