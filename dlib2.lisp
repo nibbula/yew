@@ -4,7 +4,7 @@
 
 ;; This is for things which depend on features added in dlib1.lisp
 
-#+debug-rc (progn (format t " 2") (force-output *standard-output*))
+#+debug-rc (progn (format t "·") (force-output *standard-output*))
 
 (in-package :dlib)
 
@@ -146,6 +146,6 @@ un-interned symbol."
 
 #+sbcl (declaim (sb-ext:unmuffle-conditions style-warning))
 
-#+debug-rc (progn (format t "]") (force-output *standard-output*))
+#+debug-rc (progn (format t "2") (force-output *standard-output*))
 
 ;; EOF

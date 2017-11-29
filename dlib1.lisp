@@ -9,7 +9,7 @@
 ;;  - Try to keep it so-called “minimal”.
 ;; More optional stuff can go in dlib-misc.
 
-#+debug-rc (progn (format t "[dlib") (force-output *standard-output*))
+#+debug-rc (progn (format t "dlib") (force-output *standard-output*))
 
 (defpackage :dlib
   (:documentation
