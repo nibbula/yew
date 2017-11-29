@@ -12,9 +12,13 @@
    #:guess-syntax
    #:guess-language
    #:token
+   #:token-object #:token-type #:token-data-type #:token-location
+   #:token-time #:token-original
    #:read-token
    #:parse-syntax
    #:print-syntax
+   #:format-comment-text
+   #:stylize-token
    ))
 (in-package :syntax)
 
@@ -93,7 +97,7 @@ comment
     double-dash
     number-sign
     percentage
-    character
+    <whatever-comment-character>
   block
   documentation
 
@@ -198,5 +202,17 @@ designated as any available grammar.
 
 (defgeneric read-token (syntax stream)
   (:documentation "Return a token from the stream"))
+
+(defgeneric stylize-token (token &key &allow-other-keys)
+  (:documentation
+   "Return a string or fat-string of the token stylized in the current theme."))
+
+;; @@@ maybe this should just be part of stylize-token
+(defgeneric format-comment-text (token stream &key columns)
+  (:documentation
+   "Format the comment text for reading outside the context of a program.
+Usually this means as documentation. This interprets any special markup or
+conventions for the language. Output should be specialized on the stream if
+necessary."))
 
 ;; EOF
