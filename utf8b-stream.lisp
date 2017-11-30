@@ -74,6 +74,9 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
 
 (defmethod stream-read-sequence ((stream utf8b-input-stream) seq start end
 				 &key &allow-other-keys)
+  ;; @@@ One should probably un-muffle this if any changes are made.
+  ;; That includes changes to the macros %get-utf8b-char from char-util.
+  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (with-slots (input-stream) stream
     (let ((i 0) (istart 0) (iend 0))
       (declare (type fixnum i istart iend))
