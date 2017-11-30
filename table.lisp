@@ -18,20 +18,20 @@
 
 (defpackage :table
   (:documentation "Generic table data types.")
-  (:use :cl :dlib)
+  (:use :cl :collections :dlib)
   (:export
    ;; column struct
    #:column #:make-column #:column-name #:column-type #:column-width
    ;; collection
-   #:collection #:collection-data
+   ;;#:collection #:collection-data
    ;; table
    #:table #:table-columns
    #:mem-table
    #:db-table #:table-name #:table-indexes
    ;; generic functions
-   #:element
-   #:olength
-   #:omap #:omapn
+   ;;#:element
+   ;;#:olength
+   ;;#:omap #:omapn
    ;; table funcs
    #:table-add-column
    #:table-update-column-width
@@ -49,11 +49,11 @@
   (type 'string)
   (width 0))
 
-(defclass collection ()
-  ((data :initarg :data
-	 :accessor collection-data
-	 :documentation "Collection of data."))
-  (:documentation "A pile of stuff."))
+;; (defclass collection ()
+;;   ((data :initarg :data
+;; 	 :accessor collection-data
+;; 	 :documentation "Collection of data."))
+;;   (:documentation "A pile of stuff."))
 
 (defclass table ()
   ((columns :initarg :columns
@@ -64,7 +64,7 @@
    "Table with rows and columns / or a collection of objects with uniform
 attributes."))
 
-(defclass mem-table (table collection)
+(defclass mem-table (table container)
   ()
   (:documentation "Table stored in ‘volatile’ memory."))
 
@@ -77,6 +77,7 @@ attributes."))
 	    :documentation "List of column names that are indexed."))
   (:documentation "A table that is stored in a database."))
 
+#|
 (defun slot-element (object name)
   "Return the value of the slot NAME in object, or NIL if it's doesn't exist or
 isn't bound."
@@ -187,6 +188,7 @@ of THING. The sequence returned is usually a list unless THING is a sequence.")
   (:method ((thing structure-object)) t)
   (:method ((thing standard-object))  t)
   (:method ((thing collection))	(mappable (collection-data thing))))
+|#
 
 (defun table-add-column (table name &key type width)
   "Shorthand for adding a column to a table."

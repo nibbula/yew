@@ -10,6 +10,6 @@
     :licence            "GPLv3"
     :source-control	:git
     :long-description   "This is relatively bogus."
-    :depends-on (:dlib)
+    :depends-on (:collections :dlib)
     :components
     ((:file "table")))

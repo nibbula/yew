@@ -8,7 +8,7 @@
 from the computer. This package aims to make printing a sturdy table of any
 length, a relatively painless and risk free procedure. This does not, of course,
 make the table in the first place. For that you want the TABLE package.")
-  (:use :cl :dlib :table :dlib-misc)
+  (:use :cl :dlib :collections :table :dlib-misc)
   (:export
    #:table-renderer
    #:table-output-header
@@ -145,7 +145,7 @@ make the table in the first place. For that you want the TABLE package.")
 ;; This just figures the maximum of all sizes.
 (defmethod table-output-sizes (renderer table)
   (let ((sizes (make-array (max (olength
-				 (element (collection-data table) 0))
+				 (oelt (container-data table) 0))
 				(olength (table-columns table)))))
 	(col-num 0))
     ;; First set by pre-defined widths and name lengths.
@@ -167,7 +167,7 @@ make the table in the first place. For that you want the TABLE package.")
 		 (table-output-cell-display-width renderer table col)))
 	  (incf col-num))
 	row))
-     (collection-data table))
+     (container-data table))
     sizes))
 
 ;; Default method which does nothing.
@@ -407,7 +407,7 @@ column number."
 		(setf (aref sizes i) new-size)
 		(incf i))
 	    row)))
-     (collection-data table))))
+     (container-data table))))
 
 (defmethod table-output-start-row ((renderer text-table-renderer) table)
   "Start a row of table output."
@@ -449,7 +449,7 @@ resized to fit in this, and the whole row is trimmed to this."
 	 (sizes (if column-names
 		    (coerce (column-name-sizes column-names long-titles)
 			    'vector)
-		    (make-array `(,(olength (element table 0)))
+		    (make-array `(,(olength (oelt table 0)))
 				:initial-element nil)))
 	 all-zero
 	 (stream destination))
@@ -524,7 +524,7 @@ resized to fit in this, and the whole row is trimmed to this."
 			   "~*~a")
 			  ((eql just :right)
 			   "~v@a")
-			  ((typep field 'number)
+			  ((and (not just) (typep field 'number))
 			   "~v@a")
 			  (t
 			   "~va")))
@@ -535,9 +535,16 @@ resized to fit in this, and the whole row is trimmed to this."
 			   (> (length cell) size))
 		      (progn
 			(write-string cell stream)
+			;;(format stream fmt size field)
 			(format stream "~%~v,,,va" size #\space #\space))
-		      (write-string (subseq cell 0 (min size (length cell)))
-				    stream))
+		      (typecase field
+			(standard-object
+			 (princ (osubseq field 0
+					 (min size (olength field)))
+				stream))
+			(t 
+			 (write-string (subseq cell 0 (min size (length cell)))
+				       stream))))
 		  (when (< i (1- row-len))
 		    (write-string separator stream)
 		    (incf col (length separator)))
@@ -549,8 +556,8 @@ resized to fit in this, and the whole row is trimmed to this."
 			  cell-col #\space #\space cell-width l))
 	       (setf cell-lines nil))
 	     (terpri stream)))
-       (collection-data table)))
-    (length (collection-data table)))) ;; @@@ should actually be rows output?
+       (container-data table)))
+    (length (container-data table)))) ;; @@@ should actually be rows output?
 
 ;;;
 
@@ -576,10 +583,10 @@ this row."
      (when (not *table-output*)
        (error "WITH-TABLE-ROW is probably not inside a WITH-TABLE-OUTPUT."))
      ;; Make a new empty row. 
-     (push '() (collection-data *table-output*))
+     (push '() (container-data *table-output*))
      ,@body
-     (setf (car (collection-data *table-output*))
-	   (nreverse (car (collection-data *table-output*))))))
+     (setf (car (container-data *table-output*))
+	   (nreverse (car (container-data *table-output*))))))
 
 (defmacro with-cell (() &body body)
   "Collect the output of the BODY into a table cell."
@@ -587,11 +594,11 @@ this row."
      (when (not *table-output*)
        (error "WITH-TABLE-CELL is probably not inside a WITH-TABLE-OUTPUT."))
      ;; Make an new row if there isn't one.
-     (when (not (collection-data *table-output*))
-       (push '() (collection-data *table-output*)))
+     (when (not (container-data *table-output*))
+       (push '() (container-data *table-output*)))
      (push (with-output-to-string (*standard-output*)
 	     ,@body)
-	   (car (collection-data *table-output*)))))
+	   (car (container-data *table-output*)))))
 
 (defvar *default-table-renderer-type* 'text-table-renderer
   "Type of the default table renderer. Passed to make-instance.")
@@ -611,8 +618,8 @@ this row."
   "Output a table collected with WITH-ROW and WITH-CELL in the BODY."
   `(let ((*table-output* (make-instance 'mem-table :data '())))
      ,@body
-     (setf (collection-data *table-output*)
-	   (nreverse (collection-data *table-output*)))
+     (setf (container-data *table-output*)
+	   (nreverse (container-data *table-output*)))
      (output-table *table-output* ,renderer ,destination
 		   :long-titles ,long-titles
 		   :print-titles ,print-titles
