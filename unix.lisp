@@ -193,6 +193,7 @@
    #:is-whiteout
    #:file-type-char
    #:file-type-name
+   #:file-type-symbol
    #:symbolic-mode
    #:file-exists
    #:simple-delete-file
@@ -2050,7 +2051,8 @@ it signals an error."
 
 (defun user-name (&optional id)
   "Return the name of the user with ID, which defaults to the current user."
-  (passwd-name (getpwuid (or id (getuid)))))
+  (let ((u (getpwuid (or id (getuid)))))
+    (and u (passwd-name u))))
 
 (defun user-home (&optional (user (user-name)))
   "Return the namestring of the given USER's home directory or nil if the ~
@@ -2171,7 +2173,8 @@ Return nil for foreign null pointer."
 
 (defun group-name (&optional id)
   "Return the name of the group with ID. Defaults to the current group."
-  (group-entry-name (getgrgid (or id (getgid)))))
+  (let ((gr (getgrgid (or id (getgid)))))
+    (and gr (group-entry-name gr))))
 
 (defun group-id (&optional name)
   "Return the ID of the group NAME. Defaults to the current group."
@@ -3299,6 +3302,12 @@ versions of the keywords used in Lisp open.
   (loop :for f :in *file-type-data* :do
      (when (funcall (file-type-info-test f) mode)
        (return-from file-type-name (file-type-info-name f)))))
+
+(defun file-type-symbol (mode)
+  "Return the keyword representing the file type of MODE."
+  (loop :for f :in *file-type-data* :do
+     (when (funcall (file-type-info-test f) mode)
+       (return-from file-type-symbol (file-type-info-symbol f)))))
 
 (defun symbolic-mode (mode)
   "Convert a number to mode string. Like strmode."
