@@ -12,7 +12,8 @@ Define a FATCHAR-STRING as a vector of FATCHARS.
 Define a FAT-STRING as a struct with a FATCHAR-STRING so we can specialize.
 Define a TEXT-SPAN as a list representation of a FAT-STRING.
 ")
-  (:use :cl :dlib :stretchy :terminal :char-util)
+  (:use :cl :dlib :stretchy :terminal :char-util :collections
+	:trivial-gray-streams)
   (:export
    #:fatchar
    #:fatchar-p
@@ -55,10 +56,23 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
   `(vector fatchar ,size))
 
 ;; This is potentially wastful, required to specialize methods.
-(defstruct fat-string
-  "A vector of FATCHAR."
-  ;;(string (vector) :type fatchar-string)) ; Is this better or worse?
-  string) ;; blurg
+(defclass fat-string ()
+  ((string				; blurg :|
+    :initarg :string :accessor fat-string-string
+    :documentation "A lot of crust around a string."))
+  (:documentation "A vector of FATCHAR."))
+;;(string (vector) :type fatchar-string)) ; Is this better or worse?
+
+(defmethod olength ((s fat-string))
+  (length (fat-string-string s)))
+
+(defun make-fat-string (&key string)
+  (make-instance 'fat-string :string string))
+
+(defmethod osubseq ((string fat-string) start &optional end)
+  "Sub-sequence of a fat-string."
+  (make-fat-string
+   :string (subseq (fat-string-string string) start end)))
 
 (defun fatchar-init (c)
   "Initialize a fatchar with the default vaules."
@@ -561,11 +575,15 @@ set in this string."
 	 (format stream "#.~s"
 		 `(fatchar:span-to-fat-string ,(fat-string-to-span obj)))
 	 (call-next-method)))
-    ((typep stream 'terminal-stream)
+    ((typep stream 'terminal:terminal-stream)
+     ;;(format t "BLURB~s~%" (type-of obj)) (finish-output)
      (render-fat-string obj))
     (t
      ;;(print-object (fat-string-to-string obj) stream)
-     (print (fat-string-to-string obj) stream)
+     ;;(format t "ZIEIE~s~%" (type-of stream)) (finish-output)
+     ;; (write-string (with-terminal-output-to-string (:ansi)
+     ;; 		     (render-fat-string obj)) stream)
+     (write (fat-string-to-string obj) :stream stream)
      ;;(call-next-method)
      )))
 
@@ -634,5 +652,142 @@ colinc, and the space character for padchar.
 
 (defmethod simplify-char ((c fatchar))
   (fatchar-c c))
-  
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; @@@ This actually isn't so useful, since I can't write fatchars to it?
+
+(defclass fat-string-output-stream (fat-string
+				    fundamental-character-output-stream)
+  ((column
+    :initarg :column :accessor fat-string-output-stream-column
+    :initform 0 :type fixnum
+    :documentation "Derpy column for derps."))
+  (:documentation "Output to a fat-string."))
+
+(defmethod initialize-instance
+    :after ((o fat-string-output-stream) &rest initargs &key &allow-other-keys)
+  "Initialize a fat-string-output-stream."
+  (declare (ignore initargs))
+  (setf (fat-string-string o)
+	(make-stretchy-vector 40 :element-type 'fatchar)))
+
+(defmethod stream-element-type ((stream fat-string-output-stream))
+  'fatchar)
+
+;; (defmethod close ((stream fat-string-output-stream) &key abort)
+;;   )
+
+(defmethod stream-file-position ((stream fat-string-output-stream))
+  ;;&optional position-spec)
+  "Used by‘file-position’. Returns or changes the current position within
+‘stream’."
+  (fill-pointer (fat-string-string stream)))
+
+(defmethod (setf stream-file-position)
+    ((stream fat-string-output-stream) position-spec)
+  "Used by‘file-position’. Returns or changes the current position within
+‘stream’."
+  (setf (fill-pointer (fat-string-string stream)) position-spec))
+
+(defmethod stream-clear-output ((stream fat-string-output-stream))
+  "This is like ‘cl:clear-output’, but for Gray streams: clear the
+   given output ‘stream’. The default method does nothing."
+  (setf (fill-pointer (fat-string-string stream)) 0)
+  stream)
+
+;; (defmethod stream-finish-output ((stream fat-string-output-stream))
+;;   "Attempts to ensure that all output sent to the Stream has reached
+;;    its destination, and only then returns false.  Implements
+;;    ‘finish-output’.  The default method does nothing."
+;;   )
+
+(defmethod stream-force-output ((stream fat-string-output-stream))
+  "Attempts to force any buffered output to be sent. Implements
+  ‘force-output’. The default method does nothing."
+  )
+
+(defmethod stream-write-sequence ((stream fat-string-output-stream)
+				  seq start end &key &allow-other-keys)
+  "This is like ‘cl:write-sequence’, but for Gray streams."
+  (stream-write-string stream seq start end)
+  seq)
+
+;; (defmethod stream-advance-to-column ((stream fat-string-output-stream) column)
+;;   "Write enough blank space so that the next character will be written
+;;    at the specified column.  Returns true if the operation is
+;;    successful, or ‘nil’ if it is not supported for this stream.  This
+;;    is intended for use by by ‘pprint’ and ‘format’ ~T. The default
+;;    method uses ‘stream-line-column’ and repeated calls to
+;;    ‘stream-write-char’ with a ‘#space’ character; it returns ‘nil’ if
+;;    ‘stream-line-column’ returns ‘nil’."
+;;   )
+
+;; (defmethod stream-fresh-line ((stream fat-string-output-stream))
+;;   "Outputs a new line to the Stream if it is not positioned at the
+;;    beginning of a line.  Returns ‘t’ if it output a new line, nil
+;;    otherwise.  Used by ‘fresh-line’.  The default method uses
+;;    ‘stream-start-line-p’ and ‘stream-terpri’."
+;;   )
+
+(defmethod stream-line-column ((stream fat-string-output-stream))
+  "Return the column number where the next character will be written,
+  or ‘nil’ if that is not meaningful for this stream.  The first
+  column on a line is numbered 0.  This function is used in the
+  implementation of ‘pprint’ and the ‘format’ ~T directive.  For
+  every character output stream class that is defined, a method must
+  be defined for this function, although it is permissible for it to
+  always return ‘nil’."
+  (fat-string-output-stream-column stream))
+
+(defmethod stream-line-length ((stream fat-string-output-stream))
+  "Return the stream line length or ‘nil’."
+  nil)
+
+(defmethod stream-start-line-p ((stream fat-string-output-stream))
+  "Is ‘stream’ known to be positioned at the beginning of a line?  It
+  is permissible for an implementation to always return ‘nil’.  This
+  is used in the implementation of ‘fresh-line’.  Note that while a
+  value of 0 from ‘stream-line-column’ also indicates the beginning
+  of a line, there are cases where ‘stream-start-line-p’ can be
+  meaningfully implemented although ‘stream-line-column’ can’t be.
+  For example, for a window using variable-width characters, the
+  column number isn’t very meaningful, but the beginning of the line
+  does have a clear meaning.  The default method for
+  ‘stream-start-line-p’ on class
+ ‘fundamental-character-output-stream’ uses ‘stream-line-column’, so
+  if that is defined to return ‘nil’, then a method should be
+  provided for either ‘stream-start-line-p’ or ‘stream-fresh-line’."
+  (zerop (fat-string-output-stream-column stream)))
+
+(defmethod stream-terpri ((stream fat-string-output-stream))
+  "Writes an end of line, as for ‘terpri’.  Returns ‘nil’.  The
+   default method does (‘stream-write-char’ stream #NEWLINE).")
+
+(defmethod stream-write-char ((stream fat-string-output-stream) character)
+  "Write ‘character’ to ‘stream’ and return ‘character’.  Every
+   subclass of ‘fundamental-character-output-stream’ must have a
+   method defined for this function."
+  (stretchy-append (fat-string-string stream) (make-fatchar :c character))
+  (incf (fat-string-output-stream-column stream))
+  (when (char= character #\newline)
+    (setf (fat-string-output-stream-column stream) 0)))
+
+(defmethod stream-write-string ((stream fat-string-output-stream) string
+				&optional start end)
+  "This is used by ‘write-string’.  It writes the string to the
+  stream, optionally delimited by start and end, which default to 0
+  and ‘nil’.  The string argument is returned.  The default method
+  provided by ‘fundamental-character-output-stream’ uses repeated
+  calls to ‘stream-write-char’."
+  (loop
+     :for i = (fill-pointer (fat-string-string stream)) :then (1+ i)
+     :for c :across (subseq string start end)
+     :do
+     (stretchy-set (fat-string-string stream) i (make-fatchar :c c))
+     (incf (fat-string-output-stream-column stream))
+     (when (char= c #\newline)
+       (setf (fat-string-output-stream-column stream) 0)))
+  string)
+
 ;; EOF
