@@ -6,7 +6,7 @@
 
 (defpackage :view-image-x11
   (:documentation "Image viewer X11 driver.")
-  (:use :cl :dlib :dlib-misc :inator :view-image :xlib :terminal)
+  (:use :cl :dlib :dlib-misc :char-util :inator :view-image :xlib :terminal)
   (:shadowing-import-from :xlib #:process-event)
   (:export
    #:x11-image-inator
@@ -158,7 +158,8 @@
 		  (wm-icon-name window) "Image Viewer")
 	    (let ((wmh (make-wm-hints :input :on)))
 	      (setf (wm-hints window) wmh))
-	    (map-window window)))))))
+	    (map-window window))
+	  (call-next-method))))))
 
 (defun get-window-width (inator)
   (with-slots (window window-width) inator
@@ -216,7 +217,7 @@
   (with-slots (window draw-gc font) o
     (draw-image-glyphs window draw-gc 0 (- (drawable-height window)
 					   (font-descent font))
-			 string)))
+		       (string-to-utf8-bytes string))))
 
 (defun get-absolute-coords (win)
   (let (children parent root (xoff 0) (yoff 0))
@@ -467,12 +468,17 @@
 
 (defmethod view-image::reset-image ((inator image-x11-inator))
   "Reset things for a new image. Called after switching files."
-  (with-slots (ximages ximages-mask need-to-redraw) inator
+  (with-slots ((file-list view-image::file-list)
+	       (file-index view-image::file-index)
+	       ximages ximages-mask need-to-redraw own-window window) inator
     (free-pixmaps ximages-mask)
     (setf ximages nil
 	  ximages-mask nil
 	  ;;need-to-redraw t
-	  ))
+	  )
+    (when own-window
+      (setf (wm-name window) (format nil "Image Viewer: ~a"
+				     (elt file-list file-index)))))
   (call-next-method))
 
 (defun make-mask (inator)
