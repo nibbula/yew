@@ -430,6 +430,8 @@
   TYPING-SEARCHES - True to have alphanumeric input search for the item.
   MULTIPLE        - True to allow multiple items to be selected.
   POPUP		  - True to use a pop-up window, in which case provide X and Y."
+  (when (not the-list)
+    (return-from pick-list nil))
   (with-curses
    (let ((string-list (mapcar (_ (cons (princ-to-string _) _)) the-list))
 	 (max-y (1- curses:*lines*)))
@@ -472,9 +474,8 @@
 
 #+lish
 (lish:defcommand pick-list
-    ((multiple boolean :short-arg #\m
-      :help "True to pick multiple results.")
-     (lines string :repeating t))
+  ((multiple boolean :short-arg #\m :help "True to pick multiple results.")
+   (lines string :repeating t))
   :accepts (:stream :list)
   "Pick something from the list of lines of input."
   ;; (when lish:*input*
