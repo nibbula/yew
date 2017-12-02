@@ -158,7 +158,7 @@ Assumes S is already converted to display characters."
   (let ((cc (if (fatchar-p c) (fatchar-c c) c)))
     (cond
       ((graphic-char-p cc)
-       (editor-write-char e c))
+       (editor-write-char e cc))
       ((eql cc #\tab)
        ;; (editor-write-string e (make-string (- 8 (mod (screen-col e) 8))
        ;; 					 :initial-element #\space)))
@@ -168,9 +168,9 @@ Assumes S is already converted to display characters."
        (setf (screen-col e) 0)
        (incf (screen-row e))
        (tt-write-char cc))
-      ((setf cc (control-char-graphic c))
+      ((setf cc (control-char-graphic cc))
        (editor-write-char e #\^)
-       (editor-write-char e c))
+       (editor-write-char e cc))
       (t ;; output non-graphic chars as char code
        (editor-write-char e #\\)
        (editor-write-string e (format nil "\\~3,'0o" (char-code cc)))))))
