@@ -211,12 +211,22 @@
   (:method ((inator image-inator))
     (with-slots (x y image zoom move-object-mode) inator
       (declare (type fixnum x y))
-      (let ((effective-image-width (truncate (* (image-width image) zoom)))
-	    (effective-image-height (truncate (* (image-height image) zoom))))
-	(setf x (truncate (max 0 (- (/ (width inator) 2)
-				    (/ effective-image-width 2))))
-	      y (truncate (max 0 (- (/ (height inator) 2)
-				    (/ effective-image-height 2)))))))))
+	(if move-object-mode
+	    (let ((effective-image-width
+		   (truncate (* (image-width image) zoom)))
+		  (effective-image-height
+		   (truncate (* (image-height image) zoom))))
+	      (setf x (truncate (max 0 (- (/ (width inator) 2)
+					  (/ effective-image-width 2))))
+		    y (truncate (max 0 (- (/ (height inator) 2)
+					  (/ effective-image-height 2))))))
+	      (setf x (truncate (* (- (- (/ (width inator) 2)
+					 (/ (* (image-width image) zoom) 2)))
+				   (/ 1 zoom)))
+		    y (truncate (* (- (- (/ (height inator) 2)
+					 (/ (* (image-height image) zoom) 2)))
+				   (/ 1 zoom))))
+		    ))))
 
 (defmethod next-page ((o image-inator))
   (with-slots (y image zoom) o
@@ -241,15 +251,18 @@
 
 (defun zoom-in (o)
   (with-slots (zoom) o
-    (setf zoom (* zoom 1.10))))
+    (setf zoom (* zoom 1.10))
+    (center o)))
 
 (defun zoom-out (o)
   (with-slots (zoom) o
-    (setf zoom (* zoom .90))))
+    (setf zoom (* zoom .90))
+    (center o)))
 
 (defun zoom-reset (o)
   (with-slots (zoom) o
-    (setf zoom 1.0)))
+    (setf zoom 1.0)
+    (center o)))
 
 (defun fit-width-to-window (o)
   (with-slots (zoom image) o
@@ -259,6 +272,7 @@
       (setf zoom
 	    (min 1.0 ;; teporarily @@@
 		 (float (/ (width o) width))))
+      (center o)
       )))
 
 (defun fit-height-to-window (o)
@@ -267,7 +281,12 @@
       (setf zoom
 	    (min 1.0 ;; teporarily @@@
 		 (float (/ (height o) height))))
+      (center o)
       )))
+
+(defun fit-image-to-window (o)
+  (fit-width-to-window o)
+  (fit-height-to-window o))
 
 (defgeneric clear-image (inator)
   (:documentation
@@ -280,7 +299,9 @@
   (:method ((inator image-inator))
     (with-slots (subimage looping image) inator
       (setf subimage 0)
-      (set-auto-looping image))))
+      (set-auto-looping image)
+      (fit-image-to-window inator)
+      (center inator))))
 
 (defun toggle-looping (o)
   (with-slots (looping) o
@@ -482,8 +503,7 @@
 	  (progn
 	    (show-message o message)
 	    (setf message nil))
-	  (let ((position (if (and (plusp x) (plusp y))
-			      (format nil "+~d+~d " x y) ""))
+	  (let ((position (format nil "+~d+~d " x y))
 		(file-count (if (> (length file-list) 1)
 				(format nil "(file ~d of ~d) "
 					file-index (length file-list)) ""))
@@ -765,6 +785,11 @@ But also greatly increasing # of chars output.
   ;;(call-next-method)
   (setf (frame-start-time o) (get-dtime))
   (show-image o))
+
+(defmethod start-inator ((o image-inator))
+  (call-next-method)
+  (center *image-viewer*)
+  (fit-image-to-window *image-viewer*))
 
 (defun make-image-array (width height)
   (make-array `(,height ,width 4)	; R G B A
