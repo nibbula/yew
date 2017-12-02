@@ -581,8 +581,9 @@ set in this string."
     (t
      ;;(print-object (fat-string-to-string obj) stream)
      ;;(format t "ZIEIE~s~%" (type-of stream)) (finish-output)
-     ;; (write-string (with-terminal-output-to-string (:ansi)
-     ;; 		     (render-fat-string obj)) stream)
+     ;; (write-string
+     ;;  (with-terminal-output-to-string (:ansi)
+     ;; 	(render-fat-string obj)) stream)
      (write (fat-string-to-string obj) :stream stream)
      ;;(call-next-method)
      )))
