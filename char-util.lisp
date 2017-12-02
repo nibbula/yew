@@ -27,6 +27,8 @@
    #:length-in-utf8-bytes
    #:put-utf8-char #:%put-utf8-char
    ;;#:get-utf8b-char #:%get-utf8b-char
+   #:string-to-utf8-bytes
+   #:utf8-bytes-to-string
    ))
 (in-package :char-util)
 
@@ -656,7 +658,7 @@ than space and delete."
     (t (map 'string #'simplify-char s))))
 
 (defgeneric display-length (obj)
-  (:documentation "Return how long is the object should be when displayed."))
+  (:documentation "Return how long the object should be when displayed."))
 
 #+sbcl
 ;; Older versions of SBCL don't have this.
@@ -730,6 +732,14 @@ than space and delete."
     (map nil (_ (incf sum (grapheme-length _)))
 	 (graphemes (simplify-string s)))
     sum))
+
+;; @@@ This doesn't seem the most appropriate place to put this UTF-8 stuff.
+;; Most implementations have something like this built in, but of course not
+;; portably accessible. It seems stupid to have another (probably not as good)
+;; copy of something that's already in every implementation, but it's either
+;; that or dig out and wrap around whatever is the implementation. Perhaps I
+;; should try to get the missing stuff added to a portable wrapper such as
+;; cl-unicode? Also, the grapheme and normalization stuff are missing.
 
 ;; The regular kind, that throws a lot of errors, in case you want to make
 ;; sure your UTF-8 is valid.
@@ -903,6 +913,8 @@ than space and delete."
 	  (,bonk #xdc00 ,u5)))))
 
 (defun get-utf8-char (byte-getter char-setter)
+  "Convert bytes of (unsigned-byte 8) returned by BYTE-GETTER to a character
+to be given to CHAR-SETTER."
   (flet ((our-byte-getter () (funcall byte-getter))
 	 (our-char-setter (c) (funcall char-setter c)))
     (%get-utf8-char our-byte-getter our-char-setter)))
@@ -967,6 +979,8 @@ than space and delete."
 |#
 
 (defun put-utf8-char (char-getter byte-setter)
+  "Convert a character returned by CHAR-GETTER to bytes to be given to
+BYTE-SETTER, which takes an (unsigned-byte 8)."
   (flet ((our-char-getter () (funcall char-getter))
 	 (our-byte-setter (c) (funcall byte-setter c)))
     (%put-utf8-char our-char-getter our-byte-setter)))
@@ -979,6 +993,7 @@ than space and delete."
 |#
 
 (defun string-to-utf8-bytes (string)
+  "Return a vector of (unsigned-byte 8) representing the STRING."
   (declare (optimize speed (safety 0))
 	   (type simple-string string))
   (let* ((result-length 
@@ -1000,6 +1015,8 @@ than space and delete."
     result))
 
 (defun utf8-bytes-to-string (bytes)
+  "Convert the simple-array of (unsigned-byte 8) in BYTES to the string of
+characters they represent."
   (declare (optimize speed (safety 0))
 	   (type (simple-array (unsigned-byte 8) *) bytes))
   (let ((result-length 0) result (i 0) (byte-num 0) (source-len (length bytes)))
