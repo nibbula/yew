@@ -197,16 +197,27 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
 already bound, so multiple wrappings will use the same object. VAR defaults to
 *GROUT*. Note that if you supply your own VAR, you will have to use the
 generic functions (i.e. %GROUT-*) directly."
-  `(if (and (boundp ',var) ,var)
-       (progn
-	 ,@body)
-       (let (,var)
-	 (declare (special ,var))
-	 (unwind-protect
-	   (progn
-	     (setf ,var (make-grout (or ,stream *standard-output*)))
-	     ,@body)
-	   (when ,var (%grout-done ,var))))))
+  (with-unique-names (thunk)
+    `(flet ((,thunk () ,@body))
+       (if (and (boundp ',var) ,var)
+	   (,thunk)
+	   (let (,var)
+	     (declare (special ,var))
+	     (unwind-protect
+		  (progn
+		    (setf ,var (make-grout (or ,stream *standard-output*)))
+		    (typecase ,var
+		      (ansi
+		       (let ((*terminal* (ansi-term ,var))
+			     (*standard-output* (ansi-term ,var)))
+			 (,thunk)))
+		      (ansi-stream
+		       (let ((*terminal* (ansi-stream ,var))
+			     (*standard-output* (ansi-stream ,var)))
+			 (,thunk)))
+		      (t
+		       (,thunk))))
+	       (when ,var (%grout-done ,var))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Dumb all over. A little ugly on the side.
@@ -351,7 +362,9 @@ generic functions (i.e. %GROUT-*) directly."
   (declare (ignore g))
   (let ((col (nos:environment-variable "COLUMNS")))
     (or (and col (parse-integer col))
-	(and *terminal* (terminal-window-columns *terminal*))
+	(and *terminal*
+	     (typep *terminal* 'terminal-ansi)
+	     (terminal-window-columns *terminal*))
 	80)))
 
 ;; Unfortunately we have to do the same the as the dumb driver.
