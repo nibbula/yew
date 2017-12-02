@@ -64,6 +64,7 @@
    #:path-file-name #:basename
    #:path-append
    #:path-snip-ext
+   #:path-extension
    #:hidden-file-name-p
    #:superfluous-file-name-p
    #:command-pathname

@@ -503,6 +503,13 @@ just removing everything after the last period '.'"
 	 (pos (position #\. our-path :from-end t)))
     (if (and pos (/= pos 0)) (subseq our-path 0 pos) our-path)))
 
+(defun path-extension (path)
+  "Return the extension from a file name, which for this simple function means
+just everything after the last period '.'"
+  (let* ((our-path (safe-namestring path))
+	 (pos (position #\. our-path :from-end t)))
+    (when (and pos (/= pos 0)) (subseq our-path (1+ pos)))))
+
 (defosfun hidden-file-name-p (name)
   "Return true if the file NAME is normally hidden.")
 
