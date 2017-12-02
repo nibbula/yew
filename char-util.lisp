@@ -24,6 +24,9 @@
    #:simplify-string
    #:get-utf8-char #:%get-utf8-char
    #:get-utf8b-char #:%get-utf8b-char
+   #:length-in-utf8-bytes
+   #:put-utf8-char #:%put-utf8-char
+   ;;#:get-utf8b-char #:%get-utf8b-char
    ))
 (in-package :char-util)
 
@@ -732,7 +735,8 @@ than space and delete."
 ;; sure your UTF-8 is valid.
 (defmacro %get-utf8-char (byte-getter char-setter)
   (with-unique-names (u1 u2 u3 u4)
-    `(prog (,u1 ,u2 ,u3 ,u4)
+    `(prog ((,u1 0) (,u2 0) (,u3 0) (,u4 0))
+	(declare (type fixnum ,u1 ,u2 ,u3, u4))
       RESYNC
       ;; ONE
       (setf ,u1 (,byte-getter))
@@ -757,8 +761,8 @@ than space and delete."
 	 (go resync))
 	((< ,u1 #xe0)			; 2 octets
 	 (,char-setter
-	  (code-char (logior (ash (logand #x1f ,u1) 6)
-			     (logxor ,u2 #x80))))
+	  (code-char (logior (the fixnum (ash (logand #x1f ,u1) 6))
+			     (the fixnum (logxor ,u2 #x80)))))
 	 (return)))
       ;; THREE
       (setf ,u3 (,byte-getter))
@@ -772,9 +776,11 @@ than space and delete."
 		 "Overlong UTF8 sequence ~x." ,u3)
 	 (go resync))
 	((< ,u1 #xf0)			; 3 octets
-	 (,char-setter (code-char (logior (ash (logand ,u1 #x0f) 12)
-					  (logior (ash (logand ,u2 #x3f) 6)
-						  (logand ,u3 #x3f)))))
+	 (,char-setter (code-char (logior
+				   (the fixnum (ash (logand ,u1 #x0f) 12))
+				   (logior
+				    (the fixnum (ash (logand ,u2 #x3f) 6))
+				    (logand ,u3 #x3f)))))
 	 (return)))
       ;; FOUR
       (setf ,u4 (,byte-getter))
@@ -793,10 +799,11 @@ than space and delete."
 	       (cerror "Discard bytes and start again."
 		       "Character out of range.")
 	       (go resync))
-	     (,char-setter (code-char (logior (ash (logand ,u1 7) 18)
-					      (ash (logxor ,u2 #x80) 12)
-					      (ash (logxor ,u3 #x80) 6)
-					      (logxor ,u4 #x80)))))
+	     (,char-setter (code-char (logior
+				       (the fixnum (ash (logand ,u1 7) 18))
+				       (the fixnum (ash (logxor ,u2 #x80) 12))
+				       (the fixnum (ash (logxor ,u3 #x80) 6))
+				       (logxor ,u4 #x80)))))
 	 (return)))
       ;; FIVE or SIX even
       (cerror "Discard bytes and start again."
@@ -904,5 +911,114 @@ than space and delete."
   (flet ((our-byte-getter () (funcall byte-getter))
 	 (our-char-setter (c) (funcall char-setter c)))
     (%get-utf8b-char our-byte-getter our-char-setter)))
+
+(defun %length-in-utf8-bytes (code)
+  (declare (optimize speed (safety 0))
+           (type (integer 0 #.char-code-limit) code))
+  (cond ((< code #x80) 1)
+        ((< code #x800) 2)
+        ((< code #x10000) 3)
+        ((< code #x110000) 4)
+        (t (error "character code to big for UTF-8 #x~x" code))))
+
+(defun length-in-utf8-bytes (code)
+  (typecase code
+    (character
+     (%length-in-utf8-bytes (char-code code)))
+    ((integer 0 #.char-code-limit)
+     (%length-in-utf8-bytes code))
+    (t
+     (error "code #x~x isn't a character or an integer in range." code))))
+
+(defmacro %put-utf8-char (char-getter byte-setter)
+  (with-unique-names (code)
+    `(prog ((,code (char-code (,char-getter))))
+	(case (%length-in-utf8-bytes ,code)
+	  (1 (,byte-setter ,code))
+	  (2 (,byte-setter (logior #xc0 (ldb (byte 5 6) ,code)))
+	     (,byte-setter (logior #x80 (ldb (byte 6 0) ,code))))
+	  (3 (when (<= #xd800 ,code #xdfff)
+	       (error "Yalls' got an invalid unicode character?"))
+	     (,byte-setter (logior #xe0 (ldb (byte 4 12) ,code)))
+	     (,byte-setter (logior #x80 (ldb (byte 6  6) ,code)))
+	     (,byte-setter (logior #x80 (ldb (byte 6  0) ,code))))
+	  (4 (,byte-setter (logior #xf0 (ldb (byte 3 18) ,code)))
+	     (,byte-setter (logior #x80 (ldb (byte 6 12) ,code)))
+	     (,byte-setter (logior #x80 (ldb (byte 6  6) ,code)))
+	     (,byte-setter (logior #x80 (ldb (byte 6  0) ,code))))))))
+
+#| @@@ Do the 'b' specific part!
+(defmacro %put-utf8b-char (char-getter byte-setter)
+  (with-unique-names (code)
+    `(prog ((,code (char-code (,char-getter))))
+	(case (%length-in-utf8-bytes ,code)
+	  (1 (,byte-setter ,code))
+	  (2 (,byte-setter (logior #xc0 (ldb (byte 5 6) ,code)))
+	     (,byte-setter (logior #x80 (ldb (byte 6 0) ,code))))
+	  (3 (when (<= #xd800 ,code #xdfff)
+	       (error "Yalls' got an invalid unicode character?"))
+	     (,byte-setter (logior #xe0 (ldb (byte 4 12) ,code)))
+	     (,byte-setter (logior #x80 (ldb (byte 6  6) ,code)))
+	     (,byte-setter (logior #x80 (ldb (byte 6  0) ,code))))
+	  (4 (,byte-setter (logior #xf0 (ldb (byte 3 18) ,code)))
+	     (,byte-setter (logior #x80 (ldb (byte 6 12) ,code)))
+	     (,byte-setter (logior #x80 (ldb (byte 6  6) ,code)))
+	     (,byte-setter (logior #x80 (ldb (byte 6  0) ,code))))))))
+|#
+
+(defun put-utf8-char (char-getter byte-setter)
+  (flet ((our-char-getter () (funcall char-getter))
+	 (our-byte-setter (c) (funcall byte-setter c)))
+    (%put-utf8-char our-char-getter our-byte-setter)))
+
+#|
+(defun put-utf8b-char (char-getter byte-setter)
+  (flet ((our-char-getter () (funcall char-getter))
+	 (our-byte-setter (c) (funcall byte-setter c)))
+    (%put-utf8b-char our-char-getter our-byte-setter)))
+|#
+
+(defun string-to-utf8-bytes (string)
+  (declare (optimize speed (safety 0))
+	   (type simple-string string))
+  (let* ((result-length 
+	  (loop :with sum fixnum = 0
+	     :for i fixnum :from 0 :below (length string) :do
+	     (incf sum (%length-in-utf8-bytes (char-code (char string i))))
+	     :finally (return sum)))
+	 (result (make-array result-length :element-type '(unsigned-byte 8)
+			     :initial-element 0 :adjustable nil))
+	 (i 0) (byte-num 0))
+    (declare (type fixnum i byte-num result-length))
+    (labels ((getter () (char string i))
+	     (putter (c)
+	       (setf (aref result byte-num) c)
+	       (incf byte-num)))
+      (loop :for c :across string
+	 :do (%put-utf8-char getter putter)
+	 (incf i)))
+    result))
+
+(defun utf8-bytes-to-string (bytes)
+  (declare (optimize speed (safety 0))
+	   (type (simple-array (unsigned-byte 8) *) bytes))
+  (let ((result-length 0) result (i 0) (byte-num 0) (source-len (length bytes)))
+    (declare (type fixnum result-length i byte-num source-len))
+    (labels ((getter ()
+	       (prog1 (aref bytes byte-num) (incf byte-num)))
+	     (putter (c)
+	       (declare (type character c))
+	       (setf (char result i) c) (incf i))
+	     (fake-putter (c)
+	       (declare (ignore c)) (incf i)))
+      (loop :while (< byte-num source-len)
+	 :do (%get-utf8-char getter fake-putter))
+      (setf result-length i
+	    result (make-string result-length)
+	    i 0
+	    byte-num 0)
+      (loop :while (< byte-num source-len)
+	 :do (%get-utf8-char getter putter))
+      result)))
 
 ;; EOF
