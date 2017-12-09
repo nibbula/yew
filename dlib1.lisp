@@ -1758,10 +1758,9 @@ an EOF on SOURCE."
   ;; with "^^^".
   (when (not (eql (stream-element-type source)
 		  (stream-element-type destination)))
-    ;; It would be nice if we could handle this, but I don't want to make
-    ;; dlib dependant on flexi-streams or something. I think there might be
-    ;; enough code in your average implementation to handle this, but it needs
-    ;; more research.
+    ;; It would be nice if we could handle this, but there are all kinds of
+    ;; potential issues. Also, only subtypes of integer and character are in
+    ;; the standard.
     (error "Stream element types have to match."))
   (let ((buf (make-array buffer-size
 			 :element-type (stream-element-type source)))
