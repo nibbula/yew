@@ -123,6 +123,48 @@ than space and delete."
   #-(or sbcl) (declare (ignore string form))
   #-(or sbcl) (error "Missing implementation: normalize-string"))
 
+(defparameter *general-category-name*
+  #(
+(:Lu . :Uppercase_Letter)      ;an uppercase letter
+(:Ll . :Lowercase_Letter)      ;a lowercase letter
+(:Lt . :Titlecase_Letter)      ;a digraphic character, with first part uppercase
+(:LC . :Cased_Letter)          ;Lu | Ll | Lt
+(:Lm . :Modifier_Letter)       ;a modifier letter
+(:Lo . :Other_Letter)          ;other letters, including syllables and ideographs
+(:L  . :Letter)                ;Lu | Ll | Lt | Lm | Lo
+(:Mn . :Nonspacing_Mark)       ;a nonspacing combining mark (zero advance width)
+(:Mc . :Spacing_Mark)          ;a spacing combining mark (positive advance width)
+(:Me . :Enclosing_Mark)        ;an enclosing combining mark
+(:M  . :Mark)                  ;Mn | Mc | Me
+(:Nd . :Decimal_Number)        ;a decimal digit
+(:Nl . :Letter_Number)         ;a letterlike numeric character
+(:No . :Other_Number)          ;a numeric character of other type
+(:N  . :Number)                ;Nd | Nl | No
+(:Pc . :Connector_Punctuation) ;a connecting punctuation mark, like a tie
+(:Pd . :Dash_Punctuation)      ;a dash or hyphen punctuation mark
+(:Ps . :Open_Punctuation)      ;an opening punctuation mark (of a pair)
+(:Pe . :Close_Punctuation)     ;a closing punctuation mark (of a pair)
+(:Pi . :Initial_Punctuation)   ;an initial quotation mark
+(:Pf . :Final_Punctuation)     ;a final quotation mark
+(:Po . :Other_Punctuation)     ;a punctuation mark of other type
+(:P  . :Punctuation)           ;Pc | Pd | Ps | Pe | Pi | Pf | Po
+(:Sm . :Math_Symbol)           ;a symbol of mathematical use
+(:Sc . :Currency_Symbol)       ;a currency sign
+(:Sk . :Modifier_Symbol)       ;a non-letterlike modifier symbol
+(:So . :Other_Symbol)          ;a symbol of other type
+(:S  . :Symbol)                ;Sm | Sc | Sk | So
+(:Zs . :Space_Separator)       ;a space character (of various non-zero widths)
+(:Zl . :Line_Separator)        ;U+2028 LINE SEPARATOR only
+(:Zp . :Paragraph_Separator)   ;U+2029 PARAGRAPH SEPARATOR only
+(:Z  . :Separator)             ;Zs | Zl | Zp
+(:Cc . :Control)               ;a C0 or C1 control code
+(:Cf . :Format)                ;a format control character
+(:Cs . :Surrogate)             ;a surrogate code point
+(:Co . :Private_Use)           ;a private-use character
+(:Cn . :Unassigned)            ;a reserved unassigned code point or a noncharacter
+(:C  . :Other)                 ;Cc | Cf | Cs | Co | Cn
+))
+
 (defparameter *high-combining-chars*
   (when (> char-code-limit (1+ #xffff))
     (mapcar #'code-char
@@ -530,21 +572,201 @@ than space and delete."
     ))
 
 (defparameter *combining-chars*
-  (apply #'vector (mapcar #'code-char *low-combining-chars*)
-	 *high-combining-chars*)
+  (let ((contents (append (mapcar #'code-char *low-combining-chars*)
+			  *high-combining-chars*)))
+    (sort (make-array (length contents) :element-type 'character
+		      :initial-contents contents)
+	  #'char<))
   "Vector of combining characters.")
+
+;; @@@ This is a temporary hack. We should patch cl-unicode to get data from
+;; the EastAsianWidth.txt file from unicode.org and make it available perhaps
+;; with something like: (sb-unicode:east-asian-width c)
+#-sbcl
+(defparameter *wide-character-ranges*
+  #((#x1100 . #x115F)
+    (#x231A . #x231B)
+    (#x2329 . #x232A)
+    (#x23E9 . #x23EC)
+    (#x23F0 . #x23F0)
+    (#x23F3 . #x23F3)
+    (#x25FD . #x25FE)
+    (#x2614 . #x2615)
+    (#x2648 . #x2653)
+    (#x267F . #x267F)
+    (#x2693 . #x2693)
+    (#x26A1 . #x26A1)
+    (#x26AA . #x26AB)
+    (#x26BD . #x26BE)
+    (#x26C4 . #x26C5)
+    (#x26CE . #x26CE)
+    (#x26D4 . #x26D4)
+    (#x26EA . #x26EA)
+    (#x26F2 . #x26F3)
+    (#x26F5 . #x26F5)
+    (#x26FA . #x26FA)
+    (#x26FD . #x26FD)
+    (#x2705 . #x2705)
+    (#x270A . #x270B)
+    (#x2728 . #x2728)
+    (#x274C . #x274C)
+    (#x274E . #x274E)
+    (#x2753 . #x2755)
+    (#x2757 . #x2757)
+    (#x2795 . #x2797)
+    (#x27B0 . #x27B0)
+    (#x27BF . #x27BF)
+    (#x2B1B . #x2B1C)
+    (#x2B50 . #x2B50)
+    (#x2B55 . #x2B55)
+    (#x2E80 . #x2E99)
+    (#x2E9B . #x2EF3)
+    (#x2F00 . #x2FD5)
+    (#x2FF0 . #x2FFB)
+    (#x3000 . #x303E)
+    (#x3041 . #x3096)
+    (#x3099 . #x30FF)
+    (#x3105 . #x312E)
+    (#x3131 . #x318E)
+    (#x3190 . #x31BA)
+    (#x31C0 . #x31E3)
+    (#x31F0 . #x321E)
+    (#x3220 . #x3247)
+    (#x3250 . #x32FE)
+    (#x3300 . #x4DBF)
+    (#x4E00 . #xA48C)
+    (#xA490 . #xA4C6)
+    (#xA960 . #xA97C)
+    (#xAC00 . #xD7A3)
+    (#xF900 . #xFAFF)
+    (#xFE10 . #xFE19)
+    (#xFE30 . #xFE52)
+    (#xFE54 . #xFE66)
+    (#xFE68 . #xFE6B)
+    (#xFF01 . #xFF60)
+    (#xFFE0 . #xFFE6)
+    (#x16FE0 . #x16FE1)
+    (#x17000 . #x187EC)
+    (#x18800 . #x18AF2)
+    (#x1B000 . #x1B11E)
+    (#x1B170 . #x1B2FB)
+    (#x1F004 . #x1F004)
+    (#x1F0CF . #x1F0CF)
+    (#x1F18E . #x1F18E)
+    (#x1F191 . #x1F19A)
+    (#x1F200 . #x1F202)
+    (#x1F210 . #x1F23B)
+    (#x1F240 . #x1F248)
+    (#x1F250 . #x1F251)
+    (#x1F260 . #x1F265)
+    (#x1F300 . #x1F320)
+    (#x1F32D . #x1F335)
+    (#x1F337 . #x1F37C)
+    (#x1F37E . #x1F393)
+    (#x1F3A0 . #x1F3CA)
+    (#x1F3CF . #x1F3D3)
+    (#x1F3E0 . #x1F3F0)
+    (#x1F3F4 . #x1F3F4)
+    (#x1F3F8 . #x1F43E)
+    (#x1F440 . #x1F440)
+    (#x1F442 . #x1F4FC)
+    (#x1F4FF . #x1F53D)
+    (#x1F54B . #x1F54E)
+    (#x1F550 . #x1F567)
+    (#x1F57A . #x1F57A)
+    (#x1F595 . #x1F596)
+    (#x1F5A4 . #x1F5A4)
+    (#x1F5FB . #x1F64F)
+    (#x1F680 . #x1F6C5)
+    (#x1F6CC . #x1F6CC)
+    (#x1F6D0 . #x1F6D2)
+    (#x1F6EB . #x1F6EC)
+    (#x1F6F4 . #x1F6F8)
+    (#x1F910 . #x1F93E)
+    (#x1F940 . #x1F94C)
+    (#x1F950 . #x1F96B)
+    (#x1F980 . #x1F997)
+    (#x1F9C0 . #x1F9C0)
+    (#x1F9D0 . #x1F9E6)
+    (#x20000 . #x2FFFD)
+    (#x30000 . #x3FFFD)
+    )
+  "Array of pairs of character codes, which are ranges to consider wide.")
+
+(defun %ordered-char-search (char array
+			    &optional (low 0) (high (length array)))
+  "Search for CHAR in VECTOR which is a sorted vector of characters."
+  (declare (type fixnum low high)
+	   (type character char)
+	   (type (simple-array character) array)
+	   ;;(optimize speed (safety 0))
+	   )
+  (let* ((mid (+ low (truncate (- high low) 2)))
+	 (target (aref array mid)))
+    (declare (type fixnum mid)
+	     (type character target))
+    (cond
+      ((<= (1- high) low)
+       (and (char= char target) target))
+      ((char< char target)
+       (%ordered-char-search char array low mid))
+      ((char= char target)
+       target)
+      (t
+       (%ordered-char-search char array mid high)))))
+
+(defun ordered-char-search (char array)
+  "Search for CHAR in VECTOR which is a sorted vector of characters."
+  (declare (type character char)
+	   (type (simple-array character) array)
+	   ;;(optimize speed (safety 0))
+	   )
+  (cond
+    ((or (char< char (aref array 0))
+	 (char> char (aref array (1- (length array)))))
+     nil)
+    (t
+     (%ordered-char-search char array))))
 
 ;; @@@ Make these better on non-SBCL. And move them out of here!
 (defun combining-char-p (c)
   ;; #+sbcl (/= (sb-unicode:combining-class c) 0)
   ;; This is just plain better.
-  (position c *combining-chars*))
+  ;;(position c *combining-chars*)
+  (cond
+    ((or (char< c (aref *combining-chars* 0))
+	 (char> c (aref *combining-chars* (1- (length *combining-chars*)))))
+     nil)
+    (t
+     (ordered-char-search c *combining-chars*))))
+
+(defun general-category (c)
+  #+sbcl (sb-unicode:general-category c)
+  #-sbcl (cl-unicode:general-category c))
+
+(defun is-zero-width-type (c)
+  (member (general-category c) '(:mn	; non spacing mark
+				 :me	; combining spacing mark
+				 :cf)))	; format control
+
+(defun zero-width-char-p (c)
+  (or (combining-char-p c)
+      (char/= c (code-char #x00ad))	;; #\soft_hyphen
+      ;;(is-zero-width-type c)
+      (and (char> c (code-char #x1160)) ;; Hangul combining chars
+	   (char< c (code-char #x1200)))
+      (char= c (code-char #x200B))))	;; #\zero_width_space
 
 (defun double-wide-char-p (c)
-  #+(and sbcl has-sb-unicode) (eq (sb-unicode:east-asian-width c) :w)
-  #-(and sbcl has-sb-unicode) (declare (ignore c))
-  #-(and sbcl has-sb-unicode) nil	; @@@ need proper tables
-  )
+  #+(and sbcl has-sb-unicode) (let ((w (sb-unicode:east-asian-width c)))
+				(or (eq w :w) (eq w :f)))
+  #-(and sbcl has-sb-unicode)
+  ;; @@@ fix ordered search to do this
+  (position c *wide-character-ranges*
+	    :test #'(lambda (a b)
+		      (let ((cc (char-code a)))
+			(and (>= cc (car b))
+			     (<= cc (cdr b)))))))
 
 (defmacro with-graphemes ((string) &body body)
   (declare (ignore string body))
@@ -692,13 +914,19 @@ than space and delete."
   (cond
     ((graphic-char-p c)
      (cond
+       ;;((zero-width-char-p c) 0)
        ((combining-char-p c) 0)
        ((double-wide-char-p c) 2)
-       (t 1)))				;normal case
+       ;; We could have an option to check if it's a CJK char and return 2,
+       ;; which is what the "ambiguous width" settings on terminal emulators do.
+       (t 1)))				; normal case
+    ;;XXX @@@ The cases for tab and newline are wrong!
+    ;; We should probably just return 1, since these have to be handled at
+    ;; another level.
     ((eql c #\tab)
-     8)					;XXX @@@ wrong!
+     8)
     ((eql c #\newline)
-     0)					;XXX @@@ wrong!
+     0)
     (t
      (if (control-char-graphic c)
 	 2   ; ^X
@@ -1009,9 +1237,9 @@ BYTE-SETTER, which takes an (unsigned-byte 8)."
 	     (putter (c)
 	       (setf (aref result byte-num) c)
 	       (incf byte-num)))
-      (loop :for c :across string
-	 :do (%put-utf8-char getter putter)
-	 (incf i)))
+      (dotimes (x (length string))
+	(%put-utf8-char getter putter)
+	(incf i)))
     result))
 
 (defun utf8-bytes-to-string (bytes)
