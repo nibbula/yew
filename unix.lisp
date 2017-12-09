@@ -2219,9 +2219,9 @@ return potentially updated data."
 
 #+darwin
 (progn
-  (defconst +UTMPX-AUTOFILL-MASK+              #x8000
+  (defconstant +UTMPX-AUTOFILL-MASK+              #x8000
     "Fill in missing data.")
-  (defconst +UTMPX-DEAD-IF-CORRESPONDING-MASK+ #x4000
+  (defconstant +UTMPX-DEAD-IF-CORRESPONDING-MASK+ #x4000
     "Only if existing live one."))
 
 (defparameter +utmpx-type+
@@ -2659,10 +2659,11 @@ C library function getcwd."
 
 ;; closedir
 #+(and darwin 64-bit-target)
-(defcfun ("closedir" closedir) :pointer (dirname :string))
+(defcfun ("closedir" closedir) :int (dirp :pointer))
 #+(and darwin (not 64-bit-target))
-(defcfun ("closedir$UNIX2003" closedir) :pointer (dirname :string))
-#-darwin (defcfun closedir :int (dirp :pointer))
+(defcfun ("closedir$UNIX2003" closedir) :int (dirp :pointer))
+#-darwin
+(defcfun closedir :int (dirp :pointer))
 
 ;; readdir_r
 #+(and darwin 64-bit-target)
