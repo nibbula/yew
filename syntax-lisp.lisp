@@ -441,7 +441,9 @@ accordingly. Case can be :upper :lower :mixed or :none."
 (defun make-char-table (source)
   "Make a character trait table."
   (let ((v (make-array
-	    (list (1+ (loop :for (c x) :in source
+	    (list (1+ (loop :with c
+			 :for pair :in source
+			 :do (setf c (car pair))
 			 :maximize (etypecase c
 				     (character (char-code c))
 				     (cons (char-code (cadr c)))
