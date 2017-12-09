@@ -20,9 +20,9 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
 (in-package :utf8b-stream)
 
 (declaim (optimize (speed 3) (safety 0) (debug 3) (space 0)
- 		   (compilation-speed 0)))
+		   (compilation-speed 0)))
 ;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
-;;  		   (compilation-speed 0)))
+;; 		   (compilation-speed 0)))
 
 (defclass utf8b-input-stream (fundamental-character-input-stream)
   ((input-stream
@@ -72,10 +72,84 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
     (setf buffer nil)
     (clear-input input-stream)))
 
-(defmethod stream-read-sequence ((stream utf8b-input-stream) seq start end
-				 &key &allow-other-keys)
-  ;; @@@ One should probably un-muffle this if any changes are made.
+;; It's probably easier to just copy-paste these optimized versions, than
+;; to bother with a macro.
+
+(defmethod stream-read-sequence ((stream utf8b-input-stream) (seq simple-vector)
+				 start end &key &allow-other-keys)
+  (with-slots (input-stream) stream
+    (let ((i 0) (istart 0) (iend 0))
+      (declare (type fixnum i istart iend))
+      (labels ((set-it (c)
+		 (declare (type character c))
+		 (setf (svref seq i) c))
+	       (read-it ()
+		 (read-byte input-stream)))
+	(handler-case
+	    (progn
+	      (setf istart (if (not start) 0 start)
+		    iend (if (not end) (length seq) end))
+	      (loop :while (< i iend)
+		 :do (%get-utf8b-char read-it set-it)
+		 (incf i)))
+	  (end-of-file (c)
+	    (declare (ignore c))))
+	i))))
+
+(defmethod stream-read-sequence ((stream utf8b-input-stream) (seq vector)
+				 start end &key &allow-other-keys)
+  ;; One should probably un-muffle this if any changes are made.
   ;; That includes changes to the macros %get-utf8b-char from char-util.
+  ;; This is the semi-generic vector version, which has to be a little slower.
+  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+  (with-slots (input-stream) stream
+    (let ((i 0) (istart 0) (iend 0))
+      (declare (type fixnum i istart iend))
+      (labels ((set-it (c)
+		 (declare (type character c))
+		 (setf (aref seq i) c))
+	       (read-it ()
+		 (read-byte input-stream)))
+	(handler-case
+	    (progn
+	      (setf istart (if (not start) 0 start)
+		    iend (if (not end) (length seq) end))
+	      (loop :while (< i iend)
+		 :do (%get-utf8b-char read-it set-it)
+		 (incf i)))
+	  (end-of-file (c)
+	    (declare (ignore c))))
+	i))))
+
+(defmethod stream-read-sequence ((stream utf8b-input-stream) (seq list)
+				 start end &key &allow-other-keys)
+  (with-slots (input-stream) stream
+    (let ((i 0) (istart 0) (iend 0) (l seq))
+      (declare (type fixnum i istart iend)
+	       (type list l))
+      (labels ((set-it (c)
+		 (declare (type character c))
+		 (rplaca l c))
+	       (read-it ()
+		 (read-byte input-stream)))
+	(handler-case
+	    (progn
+	      (setf istart (if (not start) 0 start)
+		    iend (if (not end) (length seq) end))
+	      (loop :while (< i iend)
+		 :do (%get-utf8b-char read-it set-it)
+		 (setf l (cdr l))
+		 (incf i)))
+	  (end-of-file (c)
+	    (declare (ignore c))))
+	i))))
+
+(defmethod stream-read-sequence ((stream utf8b-input-stream) seq
+				 start end &key &allow-other-keys)
+  ;; One should probably un-muffle this if any changes are made.
+  ;; That includes changes to the macros %get-utf8b-char from char-util.
+  ;; This is the generic version, for non list or vector sequences, which
+  ;; may not even get used, and has to be slower by definition.
   #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (with-slots (input-stream) stream
     (let ((i 0) (istart 0) (iend 0))
@@ -85,14 +159,16 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
 		 (setf (elt seq i) c))
 	       (read-it ()
 		 (read-byte input-stream)))
-	(when (not start)
-	  (setf istart 0))
-	(when (not end)
-	  (setf iend (length seq)))
-	(loop :while (< i iend)
-	   :do (%get-utf8b-char read-it set-it)
-	   (incf i))
-	seq))))
+	(handler-case
+	    (progn
+	      (setf istart (if (not start) 0 start)
+		    iend (if (not end) (length seq) end))
+	      (loop :while (< i iend)
+		 :do (%get-utf8b-char read-it set-it)
+		 (incf i)))
+	  (end-of-file (c)
+	    (declare (ignore c))))
+	i))))
 
 #|
 (defgeneric stream-peek-char ((stream utf8b-input-stream))
