@@ -104,6 +104,8 @@
    #:command-pathname
    #:process-times
    #:process-list
+   #:wait-and-chill
+   #:check-jobs
 
    ;; time
    #:get-time
@@ -130,6 +132,8 @@
    #:set-terminal-mode
    #:get-terminal-mode
    #:get-window-size
+   #:reset-terminal-modes
+   #:terminal-query
    #:*default-console-device-name*
    
    ;; character coding / localization (or similar)

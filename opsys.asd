@@ -34,4 +34,4 @@
      (:file "libc" :depends-on ("package"))
      (:file "opsys" :depends-on
 	    #+(or unix linux darwin sunos bsd) ("unix")
-	    #+(and windows (not unix)) "ms")))
+	    #+(and (or windows win32) (not unix)) ("ms"))))

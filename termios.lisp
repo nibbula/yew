@@ -73,7 +73,7 @@
 
    ;; Additional functions
    #:sane
-   #:terminal-query
+   ;;#:terminal-query
    #:call-with-raw
    ;;#:describe-tty
    ;;#:set-tty
@@ -724,7 +724,7 @@ even process interrupts. If TIMEOUT is true, it's a number of deciseconds,
 (defmacro with-very-raw-input (&body body)
   `(raw-test #'(lambda (tty) ,body) :very-raw t))
 
-(defun terminal-query (query &key max)
+(defun os-unix:terminal-query (query &key max)
   "Output the string to the terminal and wait for a response. Read up to MAX
 characters. If we don't get anything after a while, just return what we got."
   (raw-test
@@ -954,6 +954,9 @@ characters. If we don't get anything after a while, just return what we got."
 	(posix-close tty))
       ;; free C memory
       (when sane (foreign-free sane)))))
+
+(defun os-unix:reset-terminal-modes (&optional (device "/dev/tty"))
+  (sane (or device "/dev/tty")))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; The portable interface:

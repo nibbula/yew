@@ -181,7 +181,7 @@ environment variables."
   (loop :with e = nil
 	:for f :in +lc-env-type+
 	:do
-	(when (setf e (getenv (cdr f)))
+	(when (setf e (environment-variable (cdr f)))
 	  (setlocale (car f) e))))
 
 ;; EOF

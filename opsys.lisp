@@ -43,21 +43,22 @@
 
 (in-package :opsys)
 
-(defmacro defosthing (name type &optional doc)
+(defmacro defosthing (name type test &optional doc)
   "Import a thing from the proper OS specific package and set it's
 documenatation."
-  (let ((sym (intern (symbol-name name) #+unix :os-unix #+windows :os-ms)))
+  (let ((sym (intern (symbol-name name) #+unix :os-unix #+windows :ms)))
     `(progn
-       (import '(,sym))
-       (when ,doc
-	 (setf (documentation ',name ,type) ,doc)))))
+       (when (,test ',sym)
+	 (import '(,sym))
+	 (when ,doc
+	   (setf (documentation ',name ,type) ,doc))))))
 
 (defmacro defosfun (name lambda-list &optional doc)
   (declare (ignore lambda-list))
-  `(defosthing ,name 'function ,doc))
+  `(defosthing ,name 'function fboundp ,doc))
 
 (defmacro defosvar (name &optional doc)
-  `(defosthing ,name 'variable ,doc))
+  `(defosthing ,name 'variable boundp ,doc))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Error handling
@@ -804,6 +805,14 @@ of system time.")
   "Return a list of OS-PROCESS structures that represent the processes active
 around the time of the call.")
 
+(defosfun wait-and-chill ()
+  "Wait for jobs to do something.")
+
+(defosfun check-jobs ()
+  "Check if any sub-processes have changed status. Returns three values.
+The PID of the process that changed, and the RESULT and STATUS as returned by
+wait. Returns NILs if nothing changed.")
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Inter-process communication
 
@@ -974,7 +983,7 @@ descriptor FD.")
 
 (defosvar *default-console-device-name* "Name of the default console device.")
 
-(defosfun open-terminal (device-name)
+(defosfun open-terminal (device-name direction)
   "Open a terminal. Return the system file handle.")
 
 (defosfun close-terminal (terminal-handle)
@@ -1028,6 +1037,13 @@ The individual settings override the settings in MODE.")
 (defosfun get-window-size (tty-fd)
   "Get the window size. The first value is columns, second value is rows.")
 
+(defosfun reset-terminal-modes (&optional tty)
+  "Set the terminal modes to a normal starting state.")
+
+(defosfun terminal-query (query &key max)
+  "Output the string to the terminal and wait for a response. Read up to MAX
+characters. If we don't get anything after a while, just return what we got.")
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Profiling and debugging?
 ;; Should use other lispy tools?
@@ -1063,14 +1079,12 @@ The individual settings override the settings in MODE.")
 ;(defun stream-file-name
 
 ;; Go thru *features* and get rid of all our temporary configuration.
-; (setf *features*
-;       (delete-if #'(lambda (x)
-; 		     (let ((s (string x)))
-; 		       (string= s "OS-T-" :end1 (min 5 (length s)))))
-; 		 *features*))
+(setf *features*
+       (delete-if #'(lambda (x)
+ 		     (let ((s (string x)))
+ 		       (string= s "OS-T-" :end1 (min 5 (length s)))))
+ 		 *features*))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; @@@ Should get rid of temporary features :os-t-*
 
 ;; EOF

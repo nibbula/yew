@@ -304,6 +304,8 @@
    #:suspend-process
    #:resume-process
    #:terminate-process
+   #:wait-and-chill
+   #:check-jobs
 
    #:*rlimit-resources*
    #:+RLIMIT-CPU+ #:+RLIMIT-FSIZE+ #:+RLIMIT-DATA+ #:+RLIMIT-STACK+
@@ -379,6 +381,8 @@
    #:get-terminal-mode
    #:get-window-size
    #:slurp-terminal
+   #:reset-terminal-modes
+   #:terminal-query
 
    ;; Character coding / localization
    #:wcwidth
@@ -2840,8 +2844,8 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 	    (when (not (= result 0))
 	      (error 'posix-error :format-control "readdir"
 		     :error-code *errno*)))))
-      (if (not (null-pointer-p dirp))
-	  (syscall (closedir dirp))))
+      (when (not (null-pointer-p dirp))
+	(syscall (closedir dirp))))
     dir-list))
 
 (defmacro without-access-errors (&body body)
@@ -2940,7 +2944,7 @@ calls. Returns NIL when there is an error."
 
 #+darwin
 (define-to-list *file-flags*
-  #((+O_EVTONLY+ #x8000 "Requested for event notifications only")))
+  #(#(+O_EVTONLY+ #x8000 "Requested for event notifications only")))
 
 #+linux
 (define-to-list *file-flags*
@@ -4811,7 +4815,7 @@ Possible values of STATUS and VALUE are:
 		  :nice-level p_nice
 		  :usage nil
 		  :command (foreign-string-to-lisp p_comm :max-chars 16)
-		  :args nil)))))
+		  :args #())))))
 	(foreign-free proc-list))))
   #+linux
   (let (proc line pid raw-line open-pos close-pos cmd uid)
@@ -6148,6 +6152,9 @@ evaluate the IO-FORM."
 #+(or freebsd linux)
 (defcfun ("fstatfs" real-fstatfs) :int (fd :int)
 	 (buf (:pointer (:struct foreign-statfs))))
+#+(and darwin 64-bit-target)
+(defcfun ("fstatfs$INODE64" real-fstatfs) :int (fd :int)
+        (buf (:pointer (:struct foreign-statfs))))
 
 (defun statfs (path)
   (with-foreign-object (buf '(:struct foreign-statfs))
@@ -6385,13 +6392,26 @@ descriptor FD."
 (defvar *default-console-device-name* "/dev/tty"
   "Name of the default console device.")
 
-(defun open-terminal (device-name)
+(defun open-terminal (device-name direction)
   "Open a terminal. Return the system file handle."
-  (syscall (posix-open device-name +O_RDWR+ 0)))
+  (ecase direction
+    (:output
+     (open device-name
+	   :direction :output
+	   #-(or clisp abcl) :if-exists
+	   #-(or clisp abcl) :append))
+    (:input
+     (syscall (posix-open device-name +O_RDWR+ 0)))))
 
 (defun close-terminal (terminal-handle)
   "Close a terminal."
-  (syscall (posix-close terminal-handle)))
+  (cond
+    ((streamp terminal-handle)
+     (close terminal-handle))
+    ((integerp terminal-handle)
+     (syscall (posix-close terminal-handle)))
+    (t
+     (error "Unrecognized type of terminal handle."))))
 
 (define-condition read-char-error (posix-error)
   ()
