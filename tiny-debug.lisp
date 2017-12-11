@@ -344,9 +344,16 @@ the outermost. When entering the debugger the current frame is 0.")
   )
 
 #+sbcl
+(defmacro compiled-debug-function-form-number (fun)
+  (let ((sym
+	 (or (find-symbol "COMPILED-DEBUG-FUN-TLF-NUMBER" :sb-c)    ; older name
+	     (find-symbol "COMPILED-DEBUG-FUN-FORM-NUMBER" :sb-c))))
+    `(,sym ,fun)))
+
+#+sbcl
 (defun get-loc-form-offset (loc)
   (if (sb-di::code-location-unknown-p loc)
-      (sb-c::compiled-debug-fun-tlf-number
+      (compiled-debug-function-form-number
        (sb-di::compiled-debug-fun-compiler-debug-fun
 	(sb-di::compiled-code-location-debug-fun loc)))
       (sb-di:code-location-toplevel-form-offset loc)))
@@ -986,7 +993,7 @@ so when we get in error in curses we can type at the debugger."
 program that messes with the terminal, we can still type at the debugger."
   (flet ((out (s) (format *terminal-io* "~c~a" #\escape s)))
     ;; First reset the terminal driver to a sane state.
-    (termios:sane)
+    (nos:reset-terminal-modes)
     ;; Then try to reset the terminal itself to a sane state, assuming an ANSI
     ;; terminal. We could just do ^[c, which is quite effective, but it's
     ;; pretty drastic, and usually clears the screen and can even resize the
