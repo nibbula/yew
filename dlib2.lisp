@@ -4,7 +4,7 @@
 
 ;; This is for things which depend on features added in dlib1.lisp
 
-#+debug-rc (progn (format t "·") (force-output *standard-output*))
+#+debug-rc (progn (format t "+") (force-output *standard-output*))
 
 (in-package :dlib)
 
