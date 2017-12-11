@@ -32,6 +32,12 @@
    ))
 (in-package :char-util)
 
+#+sbcl
+;; Older versions of SBCL don't have this.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (when (find-package :sb-unicode)
+    (d-add-feature :has-sb-unicode)))
+
 ;(
 
 ;; Sadly #\^A is not portable. This assumes ASCII or UTF8 or something. 
@@ -582,7 +588,7 @@ than space and delete."
 ;; @@@ This is a temporary hack. We should patch cl-unicode to get data from
 ;; the EastAsianWidth.txt file from unicode.org and make it available perhaps
 ;; with something like: (sb-unicode:east-asian-width c)
-#-sbcl
+#-has-sb-unicode
 (defparameter *wide-character-ranges*
   #((#x1100 . #x115F)
     (#x231A . #x231B)
@@ -881,12 +887,6 @@ than space and delete."
 
 (defgeneric display-length (obj)
   (:documentation "Return how long the object should be when displayed."))
-
-#+sbcl
-;; Older versions of SBCL don't have this.
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (when (find-package :sb-unicode)
-    (d-add-feature :has-sb-unicode)))
 
 ;; @@@ Perhaps this should so be somewhere else.
 ;; (defun double-wide-p (c)
