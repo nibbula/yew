@@ -139,10 +139,12 @@ two values ROW and COLUMN."
 	    row (parse-integer (subseq result 2 sep) :junk-allowed t)
 	    col (parse-integer (subseq result (1+ sep) (length result))
 			       :junk-allowed t)))
-    (when (or (not row) (not col))
-      ;; Probabbly because there was other I/O going on.
-      (error "terminal reporting failed"))
-    (values (1- row) (1- col))))
+    #| @@@ temporarily get rid of this error |#
+    (if (or (not row) (not col))
+	;; Probabbly because there was other I/O going on.
+	(values 0 0)
+	;;(error "terminal reporting failed"))
+	(values (1- row) (1- col)))))
 
 ;; Just for debugging
 ; (defun terminal-report-size ()
@@ -160,7 +162,8 @@ two values ROW and COLUMN."
     (when (not file-descriptor)
       ;; (format t "[terminal-open ~s]~%" device-name)
       (setf file-descriptor (open-terminal (or device-name
-					       *default-device-name*))))
+					       *default-device-name*)
+					   :input)))
     ;; (dbug "terminal-ansi open in~%")
     (setf saved-mode (get-terminal-mode file-descriptor))
     (dbugf 'terminal-ansi "saving terminal modes ~s ~s~%" tty saved-mode)
@@ -168,10 +171,9 @@ two values ROW and COLUMN."
 	      (terminal-mode-echo saved-mode))
       (set-terminal-mode file-descriptor :line nil :echo nil))
     (when (not output-stream)
-      (setf output-stream (open (or device-name *default-device-name*)
-				:direction :output
-				#-(or clisp abcl) :if-exists
-				#-(or clisp abcl) :append))
+      (setf output-stream (open-terminal
+			   (or device-name *default-device-name*)
+			   :output))
       ;; @@@ Why do we have to do this?
       #+ccl (setf (stream-external-format output-stream)
 		  (ccl:make-external-format :character-encoding :utf-8
@@ -196,7 +198,7 @@ two values ROW and COLUMN."
   (close-terminal (terminal-file-descriptor tty))
   ;; (dbug "terminal-ansi close in~%")
   (when (terminal-output-stream tty)
-    (close (terminal-output-stream tty)))
+    (close-terminal (terminal-output-stream tty)))
   ;; (dbug "terminal-ansi close out~%")
   ;; (format t "[terminal-done]~%")
   ;; (setf *tty* nil)
@@ -282,8 +284,10 @@ Report parameters are returned as values. Report is assumed to be in the form:
 		 ;;(terminal-write-string tty q) (terminal-finish-output tty)
 		 (write-terminal-string fd q)
 		 (read-until fd end-char :timeout 1))))
+      #| @@@ temporarily get rid of this error
       (when (null str)
 	(error "Terminal failed to report \"~a\"." fmt))
+      |#
       str)))
 
 (defmethod terminal-write-string ((tty terminal-ansi-stream) str
@@ -740,7 +744,8 @@ and add the characters the typeahead."
 
 (defmethod terminal-reset ((tty terminal-ansi))
   ;; First reset the terminal driver to a sane state.
-  (termios:sane)
+  ;;(termios:sane)
+  (reset-terminal-modes (terminal-file-descriptor tty))
   (call-next-method)) ;; Do the terminal-stream version
 
 (defmethod terminal-save-cursor ((tty terminal-ansi))
@@ -767,7 +772,7 @@ and add the characters the typeahead."
     (65 "VT525")))
 
 (defun query-parameters (s &key (offset 3))
-  (let ((response (termios:terminal-query (s+ +csi+ s))))
+  (let ((response (terminal-query (s+ +csi+ s))))
     (if (zerop (length response))
 	'()
 	(mapcar (_ (ignore-errors (parse-integer _)))
@@ -778,7 +783,7 @@ and add the characters the typeahead."
 			 'string))))))
 
 (defun query-string (s &key (offset 3) (ending 2) (lead-in +csi+))
-  (let ((response (termios:terminal-query (s+ lead-in s))))
+  (let ((response (terminal-query (s+ lead-in s))))
     (if (zerop (length response))
 	'()
 	(coerce (subseq response offset
