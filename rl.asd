@@ -12,8 +12,11 @@
   :long-description   "A line editor which is not so tiny."
   :depends-on (:dlib :dlib-misc :dl-list :stretchy :char-util
 	       ;; :cffi
-	       :opsys :termios
-	       :terminal :terminal-ansi :terminal-curses :fatchar
+	       :opsys #| :termios |#
+	       :terminal
+	       :terminal-ansi
+	       #| :terminal-curses |#
+	       :fatchar
 	       :completion :keymap :syntax-lisp
 	       :unipose)
   :serial t	; not entirely correct, but convenient

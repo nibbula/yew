@@ -55,6 +55,7 @@ it with ACTION's return value."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Movement commands
 
+;; @@@ Should follow a more 'unicode' algorithm for finding word breaks.
 (defun backward-word (e)
   "Move the insertion point to the beginning of the previous word or the
 beginning of the buffer if there is no word."
