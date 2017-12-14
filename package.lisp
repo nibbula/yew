@@ -147,7 +147,8 @@
 
    ;; stdio
    #:*stdin* #:*stdout* #:*stderr*
-   #:fopen #:fclose #:fileno #:fflush
+   #-(and windows (not unix)) #:fileno
+   #:fopen #:fclose #:fflush
    #:fgetc #:getc #:getchar #:fgets #:gets
    #:printf #:fprintf #:sprintf #:snprintf
    #:fputc #:putc #:putchar #:fputs #:puts
@@ -157,12 +158,15 @@
    #:perror #:setbuf #:ungetc
 
    ;; ctype
-   #:iswalnum #:iswalpha #:iswascii #:iswblank #:iswcntrl #:iswdigit
+   #-(and windows (not unix)) #:iswblank
+   #:iswalnum #:iswalpha #:iswascii #:iswcntrl #:iswdigit
    #:iswgraph #:iswhexnumber #:iswideogram #:iswlower #:iswnumber
    #:iswphonogram #:iswprint #:iswpunct #:iswrune #:iswspace #:iswspecial
    #:iswupper #:iswxdigit
 
-   #:isalnum #:isalpha #:isascii #:isblank #:iscntrl #:isdigit #:isgraph
+   #-(and windows (not unix)) #:isascii
+   #-(and windows (not unix)) #:isblank
+   #:isalnum #:isalpha #:iscntrl #:isdigit #:isgraph
    #:ishexnumber #:isideogram #:islower #:isnumber #:isphonogram #:isprint
    #:ispunct #:isrune #:isspace #:isspecial #:isupper #:isxdigit
 

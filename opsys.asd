@@ -21,7 +21,9 @@
     :licence            "GPLv3"
     :source-control	:git
     :long-description   "The cessation of the repetition of ‘Never Again’."
-    :depends-on (:cffi :dlib)
+    :depends-on (:cffi 
+		 #+(and (or windows win32) (not unix)) :cffi-libffi
+		 :dlib)
     :components
     ((:file "base")
      (:file "unix" :if-feature (:or :unix :linux :darwin :sunos :bsd)

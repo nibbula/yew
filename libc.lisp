@@ -11,6 +11,9 @@
 ;; bzip2, openssl, etc.
 ;;
 ;; Also it should probably be in a separate optional package.
+;;
+;; @@@ Do we need a better way to deal with O/S specific stuff in here?
+;; Apparantly the C standard library isn't as standard as one might think.
 
 ; (define-foreign-library libc
 ;     ((:and cygwin unix)	(:default "cygwin1")
@@ -36,7 +39,7 @@
 
 (defcfun fopen file-ptr (path :string) (mode :string))
 (defcfun fclose :int (file file-ptr))
-(defcfun fileno :int (file file-ptr))
+#-windows (defcfun fileno :int (file file-ptr))
 (defcfun fflush :int (file file-ptr))
 (defcfun fgetc :int (file file-ptr))
 (defcfun getc :int (file file-ptr))
@@ -79,7 +82,7 @@
 
 (defcfun iswalnum :int (wc wint-t))
 (defcfun iswalpha :int (wc wint-t))
-(defcfun iswblank :int (wc wint-t))
+#-windows (defcfun iswblank :int (wc wint-t))
 (defcfun iswcntrl :int (wc wint-t))
 (defcfun iswdigit :int (wc wint-t))
 (defcfun iswgraph :int (wc wint-t))
@@ -101,8 +104,8 @@
 
 (defcfun isalnum :int (c :int))
 (defcfun isalpha :int (c :int))
-(defcfun isascii :int (c :int))
-(defcfun isblank :int (c :int))
+#-windows (defcfun isascii :int (c :int))
+#-windows (defcfun isblank :int (c :int))
 (defcfun iscntrl :int (c :int))
 (defcfun isdigit :int (c :int))
 (defcfun isgraph :int (c :int))

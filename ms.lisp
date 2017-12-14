@@ -3,10 +3,6 @@
 ;;
 
 ;; Notes:
-;;  - Keep Windows names in StudlyCaps. This facilitates translation from
-;;    from other code. Things that we invent, or for the generic interface,
-;;    should be in the usual lisp hyphenated-identifier-style.
-;;
 ;;  - Don't try to apdapt Unix concepts to windows (e.g. signals), or vice
 ;;    versa. Find a generic concept that works on both systems, or if the
 ;;    faciliity really doesn't exist, only provide system specific versions.
@@ -15,7 +11,8 @@
 ;;    the features of both, but is better, and has a better lispy API.
 ;;    Especially don't be biased by Unix's (or Windows') historical
 ;;    crumminess. Accept that sometimes, Windows (or Unix, or neither) has the
-;;    better way.
+;;    better way. This really applies to the whole OPSYS system and not just
+;;    this package.
 
 ;; Conventions:
 ;;   - Names that conflict should be given the prefix "MS-".
@@ -23,6 +20,9 @@
 ;;     terse, complicated and could be very confusing otherwise.
 ;;   - Slot, function, constant, and variable names are much nicer to deal with
 ;;     when converted to Lisp hyphenated and earmuffed style.
+;;   - We generally convert Windows interface function names from StudlyCaps to
+;;     %hyphenated-identifier-style, and perhaps provide a function without
+;;     the '%' for calling from other Lisp code.
 
 (defpackage :ms
   (:documentation "Interface to Microsoft systems.")
@@ -93,11 +93,29 @@
    #:reset-terminal-modes
    #:terminal-query
    #:get-window-size
-   ;; Extra stuff:
+   ;; Extra Windows specific stuff:
    #:windows-error
    #:get-computer-name
+   ;; Console stuff:
+   #:get-console-info
+   #:get-window-size
+   #:get-cursor-position
+   #:get-attributes
+   #:get-cursor-info
+   #:set-cursor-state
+   #:set-cursor-position
+   #:scroll-console
+   #:fill-console-char
+   #:fill-console-attribute
+   #:get-attributes
+   #:set-console-attribute
+   #:+FOREGROUND-BLUE+ #:+FOREGROUND-GREEN+ #:+FOREGROUND-RED+
+   #:+FOREGROUND-INTENSITY+ #:+BACKGROUND-BLUE+ #:+BACKGROUND-GREEN+
+   #:+BACKGROUND-RED+ #:+BACKGROUND-INTENSITY+
    ))
 (in-package :ms)
+
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 #|
 (define-foreign-library (kernel32 :stdcall) (t "kernel32"))
@@ -164,10 +182,12 @@
 (defctype LPCWSTR (:pointer WCHAR))
 #+ms-unicode
 (progn
+  (defctype TCHAR WCHAR)
   (defctype LPTSTR LPWSTR)
   (defctype LPCTSTR LPCWSTR))
 #-ms-unicode
 (progn
+  (defctype TCHAR MS-CHAR)
   (defctype LPTSTR LPSTR)
   (defctype LPCTSTR LPCSTR))
 (defctype PVOID (:pointer :void))
@@ -189,9 +209,28 @@
 
 ;; Utilities
 
+;;(declaim (inline wchar-to-character))
+(defun wchar-to-character (c)
+  (if (and (> c #xd7ff) (< c #xe000))
+      (error "I didn't write UTF-16 conversion yet! c=#x~x" c)
+      (code-char c)))
+
+(defun character-to-wchar (c)
+  (let ((cc (char-code c)))
+    (if (or (> cc #xffff)
+	    (and (> cc #xd7ff) (< cc #xe000)))
+	(error "I didn't write UTF-16 conversion yet! c=#x~x" cc)
+	cc)))
+
+;;(declaim (inline set-wchar))
+(defun set-wchar (wchar-mem i character)
+  (setf (mem-aref wchar-mem 'WCHAR i)
+	(character-to-wchar character)))
+
 (defun wide-string-to-lisp (wide-string &optional n)
   "Convert a Windows wide string (LPTSTR or LPWSTR) to a Lisp string.
 If N isn't given, assume WIDE-STRING is terminated by a zero character."
+  ;; @@@ XXX This is totally wrong. We need to do UTF-16 un-conversino.
   (if n
       (with-output-to-string (str)
 	(loop :for i :from 0 :below n
@@ -204,17 +243,13 @@ If N isn't given, assume WIDE-STRING is terminated by a zero character."
 
 (defmacro with-wide-string ((var string) &body body)
   "Make a Windows wide string (LPTSTR or LPWSTR) out of a Lisp string."
-  (with-unique-names (i cc)
+  (with-unique-names (i)
     `(with-foreign-object (,var 'WCHAR (1+ (length ,string)))
        (let ((,i 0))
+	 ;; @@@ XXX This is totally wrong. We need to do UTF-16 conversino.
 	 (loop :while (< ,i (length ,string))
 	    :do
-	    (setf (cffi:mem-aref ,var 'WCHAR ,i)
-		  (let ((,cc (char-code (char ,string ,i))))
-		    (if (> ,cc #xffff)
-			(error "I didn't write UTF-16 conversion yet! c=#x~x"
-			       ,cc)
-			,cc)))
+	    (set-wchar ,var ,i (char ,string ,i))
 	    (incf ,i))
 	 (setf (cffi:mem-aref ,var 'WCHAR ,i) 0))
        ,@body)))
@@ -264,7 +299,7 @@ If N isn't given, assume WIDE-STRING is terminated by a zero character."
 (defconstant +FORMAT-MESSAGE-IGNORE-INSERTS+  #x00000200)
 (defconstant +FORMAT-MESSAGE-MAX-WIDTH-MASK+  #x000000FF)
 
-(defcfun ("FormatMessageW" format-message :convention :stdcall)
+(defcfun ("FormatMessageW" %format-message :convention :stdcall)
     DWORD
   (flags	DWORD)
   (source	LPCVOID)
@@ -278,10 +313,9 @@ If N isn't given, assume WIDE-STRING is terminated by a zero character."
 (defun error-message (&optional (error-code (get-last-error)))
   "Return a string describing the error code." 
   (with-foreign-object (message '(:pointer LPTSTR))
-  ;;(with-foreign-object (message 'LPWSTR)
     (unwind-protect
        (progn
-	 (when (zerop (format-message
+	 (when (zerop (%format-message
 		       (logior +FORMAT-MESSAGE-FROM-SYSTEM+
 			       +FORMAT-MESSAGE-ALLOCATE-BUFFER+
 			       +FORMAT-MESSAGE-IGNORE-INSERTS+)
@@ -827,7 +861,8 @@ available."
   out-handle
   mode
   width
-  height)
+  height
+  not-console)
 
 ;; (defconstant +STD-INPUT-HANDLE+  -10) ; CONIN$
 ;; (defconstant +STD-OUTPUT-HANDLE+ -11) ; CONOUT$
@@ -846,9 +881,19 @@ available."
   #+ms-win64 (1- (expt 2 64))
   #-ms-win64 (1- (expt 2 32)))
 
-(defcstruct COORD
+(defcstruct (COORD :class foreign-coord)
   (x MS-SHORT)
   (y MS-SHORT))
+
+;; Shouldn't the be the default??!?!!!
+(defmethod translate-into-foreign-memory (object (type foreign-coord) pointer)
+  (with-foreign-slots ((x y) pointer (:struct COORD))
+    (setf x (getf object 'x)
+	  y (getf object 'y))))
+
+(defun set-coord (coord o1 o2)
+  (with-foreign-slots ((x y) coord (:struct COORD))
+    (setf x o1 y o2)))
 
 (defctype PCOORD (:pointer (:struct COORD)))
 
@@ -1048,8 +1093,17 @@ descriptor FD."
        ;; Test handles to try to see if they're usable consoles.
        (when (not (file-handle-terminal-p in-h))
 	 (dbugf :ms "terminal handles aren't real~%")
-	 (setf (ms-term-in-handle tty) (open-real-console :input)
-	       (ms-term-out-handle tty) (open-real-console :output)))
+	 ;; Actually we probably shouldn't do this, because we're likely
+	 ;; running in a Cygwin terminal or something else that requires we
+	 ;; do output through it's handles. We just won't be able to do many
+	 ;; console-ish things.
+	 ;; (setf (ms-term-in-handle tty) (open-real-console :input)
+	 ;;       (ms-term-out-handle tty) (open-real-console :output))
+	 (with-slots (not-console mode width height) tty
+	   ;; Fake some stuff.
+	   (setf not-console t
+		 mode (make-terminal-mode)
+		 width 80 height 24)))
        (dbugf :ms "ms-term = ~s~%" tty)
        tty))
     (:output *terminal-io*)))
@@ -1101,6 +1155,53 @@ descriptor FD."
 	   :while (not c))))
     c))
 
+(defcstruct foreign-offset
+  (offset DWORD)
+  (offset-high DWORD))
+
+(defcunion foreign-offset-pointer
+  (offset (:struct foreign-offset))
+  (pointer PVOID))
+
+(defcstruct OVERLAPPED
+  (internal ULONG_PTR)
+  (internal-high ULONG_PTR)
+  (offset-pointer (:union foreign-offset-pointer))
+  (event HANDLE))
+(defctype LPOVERLAPPED (:pointer (:struct OVERLAPPED)))
+
+(defcfun ("ReadFile" %read-file)
+    BOOL
+   (file HANDLE)
+   (buffer LPVOID)
+   (number-of-bytes-to-read DWORD)
+   (number-of-bytes-read LPDWORD)
+   (overlapped LPOVERLAPPED))
+
+;; Supposedly there's no way to tell if a handle was created with
+;; FILE_FLAG_OVERLAPPED, but if you don't supply the OVERLAPPED to ReadFile,
+;; it can mess up, generally by terminating prematurely if there is asynchronous
+;; IO. This seems like a deep design problem.
+;; ....
+;; but...
+;; try a zero byte ReadFile with a NULL lpOverlapped. If it fails with
+;; ERROR_INVALID_PARAMETER assume it was opened with FILE_FLAG_OVERLAPPED.
+;; ... O_o O rly??
+;; [I haven't tested this out.]
+
+(defun read-handle-input (handle)
+  (with-foreign-objects ((buf :unsigned-char 1)
+			 (bytes-read 'DWORD))
+    (let ((result (%read-file handle buf 1 bytes-read (null-pointer))))
+      (format *debug-io* "%read-file result = ~s bytes-read = ~s~%" result
+	      (mem-ref bytes-read 'DWORD))
+      (format *debug-io* "wchar = #x~x~%" (mem-aref buf :unsigned-char 0))
+      (finish-output *debug-io*))
+    ;;(error-check (%read-file handle buf 1 bytes-read (null-pointer)))
+    (when (/= 1 (mem-ref bytes-read 'DWORD))
+      (error 'windows-error :format-control "Fail to read read 1 byte."))
+    (mem-aref buf :unsigned-char 0)))
+
 (defun read-terminal-char (terminal &key timeout)
   "Return a character read from the terminal TERMINAL-HANDLE.
 If there's a problem, it will signal a READ-CHAR-ERROR. If the terminal is
@@ -1109,7 +1210,11 @@ being suspended, it will signal an OPSYS-RESUMED. Usually this means the
 caller should handle these possibilites. Returns the character read or NIL if it
 the timeout is hit."
   (declare (ignore timeout))
-  (code-char (read-console-input terminal)))
+  (with-slots (in-handle not-console) terminal
+    (wchar-to-character
+     (if not-console
+	 (read-handle-input in-handle)
+	 (read-console-input terminal)))))
 
 (defun read-terminal-byte (terminal &key timeout)
   "Return an unsigned byte read from the terminal TERMINAL-HANDLE.
@@ -1119,7 +1224,10 @@ being suspended, it will signal an OPSYS-RESUMED. Usually this means the
 caller should handle these possibilites. Returns the byte read or NIL if it
 the timeout is hit."
   (declare (ignore timeout))
-  (read-console-input terminal))
+  (with-slots (in-handle not-console) terminal
+    (if not-console
+	(read-handle-input in-handle)
+	(read-console-input terminal))))
 
 (defun read-until (tty stop-char &key timeout)
   "Read until STOP-CHAR is read. Return a string of the results.
@@ -1130,7 +1238,7 @@ TTY is a file descriptor."
   ;;    :while (char/= c stop-char))
      )
 
-(defcfun ("WriteConsole" %write-console)
+(defcfun ("WriteConsoleW" %write-console)
     BOOL
   (console-output HANDLE)		; in
   (buffer (:pointer VOID))		; in
@@ -1138,24 +1246,38 @@ TTY is a file descriptor."
   (number-of-chars-written LPDWORD)	; out
   (reserved LPVOID))			; reserved
 
+(defcfun ("WriteFile" %write-file)
+    BOOL
+  (file HANDLE)				; in
+  (buffer LPCVOID)			; in
+  (number-of-bytes-to-write DWORD)	; in
+  (number-of-bytes-written LPDWORD)	; out opt
+  (overlapped LPOVERLAPPED))		; in/out opt
+
+(defun write-terminal-string (tty string)
+  "Write STRING to the terminal designated by TERMINAL-HANDLE."
+  (cond
+    ((ms-term-p tty)
+     (with-slots (out-handle not-console) tty
+       (with-wide-string (str string)
+	 (with-foreign-object (written 'DWORD)
+	   (if not-console
+	       (error-check (%write-file out-handle str (length string)
+					 written (null-pointer)))
+	       (error-check (%write-console out-handle str (length string)
+					    written (null-pointer))))
+	   ;; @@@ Should we complain if written != length ?
+	   (mem-ref written 'DWORD)))))
+    ((output-stream-p tty)
+     (write-string string tty))))
+
 (defun write-terminal-char (terminal char)
   "Write CHAR to the terminal designated by TERMINAL."
   (cond
     ((output-stream-p terminal)
      (write-char char terminal))
     ((ms-term-p terminal)
-     (write-char char *terminal-io*))))	; @@@ taking the easy way out
-
-(defun write-terminal-string (terminal string)
-  "Write STRING to the terminal designated by TERMINAL-HANDLE."
-  #| (cond
-    ((typep terminal 'output-stream)
-     (write-string string terminal))
-    ((ms-term-p terminal)
-     ;;(write-string string *terminal-io*)))) ; @@@ taking the easy way out
-     (write-string string *standard-output*)))) ; @@@ taking the easy way out
-  |#
-  nil)
+     (write-terminal-string terminal (string char)))))
 
 (defun slurp-terminal (tty &key timeout)
   "Read until EOF. Return a string of the results. TTY is a file descriptor."
@@ -1176,7 +1298,7 @@ TTY is a file descriptor."
   TIMEOUT is the time in milliseconds to wait before returning with no input.
   MODE is a TERMINAL-MODE structure to take settings from.
 The individual settings override the settings in MODE."
-  (with-slots (in-handle (our-mode mode)) tty
+  (with-slots (not-console in-handle (our-mode mode)) tty
     (when mode-supplied
       ;; Copy modes from the given mode
       (setf (terminal-mode-echo our-mode) (terminal-mode-echo mode)
@@ -1187,6 +1309,8 @@ The individual settings override the settings in MODE."
     (when line-supplied    (setf (terminal-mode-line our-mode) line))
     (when raw-supplied     (setf (terminal-mode-raw our-mode) raw))
     (when timeout-supplied (setf (terminal-mode-timeout our-mode) timeout))
+    (when not-console
+      (return-from set-terminal-mode tty))
     (with-foreign-object (ms-mode 'DWORD)
       (when (zerop (%get-console-mode in-handle ms-mode))
 	(error 'windows-error :error-code (get-last-error)
@@ -1208,7 +1332,9 @@ The individual settings override the settings in MODE."
 
 (defun get-terminal-mode (tty)
   "Return a TERMINAL-MODE structure with the current terminal settings."
-  (with-slots (in-handle mode) tty
+  (with-slots (not-console in-handle mode) tty
+    (when not-console
+      (return-from get-terminal-mode mode))
     (with-foreign-object (ms-mode 'DWORD)
       (let ((result (%get-console-mode in-handle ms-mode)))
 	(dbugf :ms "get-console-mode = ~s mode = #x~x in-handle = ~s~%"
@@ -1223,11 +1349,40 @@ The individual settings override the settings in MODE."
 		      :raw (zerop (logand m +ENABLE-PROCESSED-INPUT+))
 		      :timeout nil)))))))
 
+(defun reset-terminal-modes (&optional tty)
+  "Set the terminal modes to a normal starting state."
+  (if (not tty)
+      (let ((in-h (%get-std-handle +STD-INPUT-HANDLE+)))
+	(dbugf :ms "resetting terminal modes to ~s~%" +NORMAL-INPUT-MODES+)
+	(when (zerop (%set-console-mode in-h +NORMAL-INPUT-MODES+))
+	  (error 'windows-error :error-code (get-last-error)
+		 :format-control "Can't set console mode.")
+	  ;; @@@ but we don't reset the saved ms-term modes!!
+	  ))
+      (with-slots (not-console in-handle mode) tty
+	(setf mode (make-terminal-mode :echo t :line t :raw nil :timeout nil))
+	(when not-console
+	  (return-from reset-terminal-modes (values)))
+	(dbugf :ms "resetting terminal modes to ~s~%" +NORMAL-INPUT-MODES+)
+	(when (zerop (%set-console-mode in-handle +NORMAL-INPUT-MODES+))
+	  (error 'windows-error :error-code (get-last-error)
+		 :format-control "Can't set console mode."))))
+  (values))
+
 (defcstruct SMALL_RECT
   (left   MS-SHORT)
   (top 	  MS-SHORT)
   (right  MS-SHORT)
   (bottom MS-SHORT))
+
+;; DAMNIT THIDS IS STUPDI!!!!
+(defun set-rect (rect o1 o2 o3 o4)
+  (with-foreign-slots ((left top right bottom)
+		       rect (:struct SMALL_RECT))
+    (setf left o1
+	  top o2 
+	  right o3
+	  bottom o4)))
 
 (defcstruct CONSOLE_SCREEN_BUFFER_INFO
   (size                (:struct COORD))
@@ -1236,50 +1391,258 @@ The individual settings override the settings in MODE."
   (window              (:struct SMALL_RECT))
   (maximum-window-size (:struct COORD)))
 
-(defctype PCONSOLE_SCREEN_BUFFER_INFO (:pointer
-				       (:struct CONSOLE_SCREEN_BUFFER_INFO)))
+(defctype PCONSOLE_SCREEN_BUFFER_INFO
+    (:pointer (:struct CONSOLE_SCREEN_BUFFER_INFO)))
 
-(defcfun ("GetConsoleScreenBufferInfo" get-console-screen-buffer-info)
+(defcfun ("GetConsoleScreenBufferInfo" %get-console-screen-buffer-info)
     BOOL
   (console-output HANDLE)				    ; in 
   (console-screen-buffer-info PCONSOLE_SCREEN_BUFFER_INFO)) ; out
 
+(defun get-console-info (tty)
+  "Get the window size. The first value is columns, second value is rows."
+  (dbugf :ms "get-window-info tty = ~s~%" tty)
+  (with-slots (out-handle width height) tty
+    (let (x y attr)
+      (with-foreign-object (buf '(:struct CONSOLE_SCREEN_BUFFER_INFO))
+	(when (zerop (%get-console-screen-buffer-info out-handle buf))
+	  (error 'windows-error :error-code (get-last-error)
+		 :format-control "Can't get console screen size."))
+	(with-foreign-slots ((window cursor-position attributes) buf
+			     (:struct CONSOLE_SCREEN_BUFFER_INFO))
+	  (dbugf :ms "window = ~s~%curs-pos = ~s ~%" window
+		 cursor-position)
+	  (setf width (1+ (- (getf window 'right) (getf window 'left)))
+		height (1+ (- (getf window 'bottom) (getf window 'top)))
+		x (getf cursor-position 'x)
+		y (getf cursor-position 'y)
+		attr attributes)
+	  (values x y width height attr (getf window 'top)))))))
+
 (defun get-window-size (tty)
   "Get the window size. The first value is columns, second value is rows."
   (dbugf :ms "get-window-size tty = ~s~%" tty)
-  (with-slots (out-handle width height) tty
-    (with-foreign-object (buf '(:struct CONSOLE_SCREEN_BUFFER_INFO))
-      (when (zerop (get-console-screen-buffer-info out-handle buf))
-	(error 'windows-error :error-code (get-last-error)
-	       :format-control "Can't get console screen size."))
-      (with-foreign-slots ((window) buf (:struct CONSOLE_SCREEN_BUFFER_INFO))
-	;; (with-foreign-slots ((left top right bottom)
-	;; 		     ;; (foreign-slot-value
-	;; 		     ;;  buf '(:struct CONSOLE_SCREEN_BUFFER_INFO) 'window)
-	;; 		     window
-	;; 		     (:struct SMALL_RECT))
-	(dbugf :ms "window = ~s~%" window)
-	(setf width (- (getf window 'right) (getf window 'left))
-	      height (- (getf window 'bottom) (getf window 'top)))))
+  (with-slots (not-console width height) tty
+    (when (not not-console)
+      (multiple-value-bind (x y new-width new-height) (get-console-info tty)
+	(declare (ignore x y))
+	(setf width new-width
+	      height new-height)))
     (values width height)))
 
-(defun reset-terminal-modes (&optional tty)
-  "Set the terminal modes to a normal starting state."
-  (if (not tty)
-      (let ((in-h (%get-std-handle +STD-INPUT-HANDLE+)))
-	(dbugf :ms "resetting terminal modes to ~s~%" +NORMAL-INPUT-MODES+)
-	(when (zerop (%set-console-mode in-h +NORMAL-INPUT-MODES+))
-	  (error 'window-error :error-code (get-last-error)
-		 :format-control "Can't set console mode.")
-	  ;; @@@ but we don't reset the saved ms-term modes!!
-	  ))
-      (with-slots (in-handle mode) tty
-	(dbugf :ms "resetting terminal modes to ~s~%" +NORMAL-INPUT-MODES+)
-	(when (zerop (%set-console-mode in-handle +NORMAL-INPUT-MODES+))
-	  (error 'window-error :error-code (get-last-error)
-		 :format-control "Can't set console mode."))
-	(setf mode (make-terminal-mode :echo t :line t :raw nil :timeout nil))))
-  (values))
+(defun get-cursor-position (tty)
+  "Get the cursor position. Return as two values, Y and X position."
+  (multiple-value-bind (x y) (get-console-info tty)
+    (values x y)))
+
+(defun get-attributes (tty)
+  "Get the current attributes as an integer."
+  (multiple-value-bind (x y width height attr) (get-console-info tty)
+    (declare (ignore x y width height))
+    (values attr)))
+
+(defcstruct CONSOLE_CURSOR_INFO
+  (size DWORD)
+  (visible BOOL))
+(defctype PCONSOLE_CURSOR_INFO (:pointer (:struct CONSOLE_CURSOR_INFO)))
+
+(defcfun ("GetConsoleCursorInfo" %get-console-cursor-info)
+    BOOL
+  (console-output HANDLE)
+  (console-cursor-info PCONSOLE_CURSOR_INFO))
+
+(defun get-cursor-info (tty)
+  "Get the cursor info. Returns a size between 1 and 100 inclusive, and a
+boolean indicating visibility."
+  (with-slots (out-handle) tty
+    (with-foreign-object (info '(:struct CONSOLE_CURSOR_INFO))
+      (error-check (%get-console-cursor-info out-handle info))
+      (values
+       (foreign-slot-value info '(:struct CONSOLE_CURSOR_INFO) 'size)
+       (plusp (foreign-slot-value info
+				  '(:struct CONSOLE_CURSOR_INFO) 'visible))))))
+
+(defcfun ("SetConsoleCursorInfo" %set-console-cursor-info)
+    BOOL
+  (console-output HANDLE)
+  (console-cursor-info PCONSOLE_CURSOR_INFO))
+
+(defun set-cursor-state (tty &key size (visible nil visible-provided-p))
+  (with-slots (out-handle) tty
+    (when (or (not size) (not visible-provided-p))
+      (multiple-value-bind (old-size old-visible)
+	  (get-cursor-info tty)
+	(when (not size)
+	  (setf size old-size))
+	(when (not visible-provided-p)
+	  (setf visible old-visible))))
+    (when (not (and (integerp visible) (or (= visible 0) (= visible 1))))
+      (setf visible (if visible 1 0)))
+    ;; (when (not (and (integerp size) (>= size 0) (<= size 100)))
+    ;;   (setf size 20))
+    (with-foreign-object (info '(:struct CONSOLE_CURSOR_INFO))
+      (setf (foreign-slot-value info '(:struct CONSOLE_CURSOR_INFO) 'size)
+	    size
+	    (foreign-slot-value info '(:struct CONSOLE_CURSOR_INFO) 'visible)
+	    visible)
+      (error-check (%set-console-cursor-info out-handle info)))))
+
+(defcfun ("SetConsoleCursorPosition" %set-console-cursor-position
+				     :convention :stdcall)
+    BOOL
+  (console-output HANDLE)
+  (cursor-position (:struct COORD))
+  )
+
+(defcfun ("SetConsoleCursorPosition" %set-console-cursor-position2)
+    BOOL
+  (console-output HANDLE)
+  (cursor-position (:struct COORD))
+  ;;(xxx :int32)
+  )
+
+(defun set-cursor-position (tty row col)
+  (with-dbug :ms "set-cursor-position ~s ~s ~%" row col)
+  (with-slots (out-handle) tty
+    (error-check (%set-console-cursor-position2
+     		  out-handle
+     		  `(x ,col y ,row)))
+    ;;(with-foreign-object (pos '(:struct COORD))
+    ;; (set-coord pos col row)
+    ;; (error-check (%set-console-cursor-position
+    ;; 		    out-handle
+    ;; 		    (mem-ref pos '(:struct COORD)))))
+    ;; (error-check (%set-console-cursor-position
+    ;;  	  out-handle
+    ;;  	 (convert-to-foreign `(x ,col y ,row) '(:struct COORD))))
+    ;; (error-check (%set-console-cursor-position
+    ;; 		  out-handle
+    ;; 		  (logior (ash (logand #xffff col) 16) (logand #xffff row))))))
+    ))
+
+(defcstruct CHAR_INFO
+  (uchar (:union foreign-uchar))
+  (attributes WORD))
+(defctype PCHAR_INFO (:pointer (:struct CHAR_INFO)))
+
+(defcfun ("ScrollConsoleScreenBufferW" %scroll-console-screen-buffer)
+    BOOL
+  (console-output HANDLE)			     ; in
+  (scroll-rectangle (:pointer (:struct SMALL_RECT))) ; in
+  (clip-rectangle (:pointer (:struct SMALL_RECT)))   ; in optional
+  (destination-origin (:struct COORD))		     ; in
+  (fill (:pointer (:struct CHAR_INFO))))	     ; in
+
+(defun scroll-console (tty &key (left 0) (top 0) right bottom x y)
+  (with-slots (out-handle) tty
+    (with-foreign-objects ((scroll-rect '(:struct SMALL_RECT))
+			   ;;(clip-rect '(:struct SMALL_RECT))
+			   (fill-char '(:struct CHAR_INFO))
+			   (stupid-uchar '(:union foreign-uchar))
+			   (dest '(:struct COORD)))
+      (set-wchar stupid-uchar 0 #\space)
+      (with-foreign-slots ((uchar attributes)
+			   fill-char (:struct CHAR_INFO))
+	(setf attributes 0
+	      uchar stupid-uchar))
+      (set-rect scroll-rect left top right bottom)
+      (set-coord dest x y)
+#|
+      (setf (mem-ref fill-char '(:struct CHAR_INFO))
+	    (convert-to-foreign `(char ,uchar attributes 0)
+				'(:struct CHAR_INFO))
+	    (mem-ref scroll-rect '(:struct SMALL_RECT))
+	    (convert-to-foreign `(left ,left top ,top
+				  :right ,right :bottom, bottom)
+				'(:struct CHAR_INFO))
+	    ;; (mem-ref clip-rect '(:struct SMALL_RECT))
+	    ;; (convert-to-foreign `(left ,left top ,top
+	    ;;                       right ,right bottom ,bottom)
+	    ;; 			'(:struct CHAR_INFO)))
+	    (mem-ref scroll-rect '(:struct SMALL_RECT))
+	    (convert-to-foreign `(left ,left top ,top
+				  right ,right bottom, bottom)
+				'(:struct SMALL_RECT))
+|#
+      (error-check (%scroll-console-screen-buffer
+		    out-handle
+		    scroll-rect (null-pointer)
+		    ;;(mem-ref dest '(:struct COORD))
+		    `(x ,x y ,y)
+		    fill-char)))))
+
+(defcfun ("FillConsoleOutputCharacterW" %fill-console-output-character
+					:convention :stdcall)
+    BOOL
+  (console-output HANDLE)			  ; in
+  (character TCHAR)				  ; in
+  (length DWORD)				  ; in
+  (write-coord (:struct COORD))			  ; in
+  (number-of-chars-written LPDWORD))		  ; out
+
+(defun fill-console-char (tty &key (char #\space) (x 0) (y 0) length)
+  (when (not length)
+    (multiple-value-bind (x y width height) (get-console-info tty)
+      (declare (ignore x y))
+      (setf length (* width height))))
+  (with-slots (out-handle) tty
+    (with-foreign-objects ((chars-written 'DWORD)
+			   ;;(tchar 'TCHAR)
+			   ;;(write-at '(:struct COORD))
+			   )
+      ;(set-wchar tchar 0 char)
+      ;;(set-coord write-at x y)
+      (error-check (%fill-console-output-character
+		    out-handle
+		    (character-to-wchar char)
+		    length
+		    ;;(convert-to-foreign `(x ,x y ,y) '(:struct COORD))
+		    ;;(mem-ref write-at '(:struct COORD))
+		    ;;write-at
+		    `(x ,x y ,y)
+		    chars-written))
+      (mem-ref chars-written 'DWORD))))
+
+(defcfun ("SetConsoleTextAttribute" %set-console-text-attribute)
+    BOOL
+  (console-output HANDLE)
+  (attributes WORD))
+
+(defconstant +FOREGROUND-BLUE+      #x0001)
+(defconstant +FOREGROUND-GREEN+     #x0002)
+(defconstant +FOREGROUND-RED+       #x0004)
+(defconstant +FOREGROUND-INTENSITY+ #x0008)
+(defconstant +BACKGROUND-BLUE+      #x0010)
+(defconstant +BACKGROUND-GREEN+     #x0020)
+(defconstant +BACKGROUND-RED+       #x0040)
+(defconstant +BACKGROUND-INTENSITY+ #x0080)
+
+(defun set-console-attribute (tty attribute)
+  (with-slots (out-handle) tty
+    (%set-console-text-attribute out-handle attribute)))
+
+(defcfun ("FillConsoleOutputAttribute" %fill-console-output-attribute)
+    BOOL
+  (console-output HANDLE)  			; in
+  (attribute WORD)    			  	; in
+  (length DWORD)   				; in
+  (write-coord (:struct COORD))   		; in
+  (number-of-attrs-written LPDWORD)) 		; out
+
+(defun fill-console-attribute (tty &key (attribute 0) (x 0) (y 0) length)
+  (when (not length)
+    (multiple-value-bind (x y width height) (get-console-info tty)
+      (declare (ignore x y))
+      (setf length (* width height))))
+  (with-slots (out-handle) tty
+    (with-foreign-objects ((chars-written 'DWORD))
+      (error-check (%fill-console-output-attribute
+		    out-handle
+		    attribute
+		    length
+		    `(x ,x y ,y)
+		    chars-written))
+      (mem-ref chars-written 'DWORD))))
 
 (defun terminal-query (query &key max)
   "Output the string to the terminal and wait for a response. Read up to MAX
