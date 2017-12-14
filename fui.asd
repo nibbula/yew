@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description   "Totally fake old style user interface."
     :depends-on (:dlib :dlib-misc :stretchy :opsys :char-util :keymap :cffi
-		 :curses :inator)
+		 :curses :terminal :terminal-curses :inator)
     :components
     ((:file "fui")))
