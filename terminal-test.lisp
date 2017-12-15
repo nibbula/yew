@@ -4,7 +4,7 @@
 
 (defpackage :terminal-test
   (:documentation "Test the generic terminal library.")
-  (:use :cl :dlib :terminal :terminal-ansi :terminal-curses)
+  (:use :cl :dlib :terminal #| :terminal-ansi :terminal-curses |#)
   (:export
    #:run
    #:test
@@ -16,13 +16,21 @@
 		   (compilation-speed 0)))
 
 (defun ask-class ()
-  (format t "Which sub-class ?~%  1. ANSI~%  2. Curses~% ? ")
-  (finish-output)
-  (let ((choice (ignore-errors (parse-integer (read-line)))))
-    (case choice
-      (1 :ansi)
-      (2 :curses)
-      (otherwise (format t "Whaaa?~%") nil))))
+  (format t "Which sub-class ?~%")
+  (let (types)
+    (loop
+       :for i = *terminal-types* :then (cddr i)
+       :for n = 0 :then (1+ n)
+       :while i
+       :do (format t "~d. ~:(~a~)~%" n (car i))
+       (pushnew (car i) types))
+    (format t "? ")
+    (finish-output)
+    (setf types (nreverse types))
+    (let ((choice (ignore-errors (parse-integer (read-line)))))
+      (if choice
+	  (nth choice types)
+	  (prog1 nil (format t "Whaaa?~%"))))))
 
 (defun prompt-next ()
   (tt-move-to (1- (terminal-window-rows *terminal*)) 0)
@@ -397,11 +405,11 @@
 	  (test-basics)
 	  (test-cursor-visibility)
 	  (test-save-and-restore-cursor)
-	  (test-scrolling-region)
 	  (test-move-to-col)
 	  (test-ins-del)
 	  (test-attrs)
 	  (test-colors)
+	  (test-scrolling-region)
 	  ))
       (format t "~%All done.~%"))))
 

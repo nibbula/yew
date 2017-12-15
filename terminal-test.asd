@@ -10,6 +10,9 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Test the generic terminal library."
-    :depends-on (:dlib :terminal :terminal-ansi :terminal-curses)
+    :depends-on (:dlib :terminal
+		       ;; :terminal-ansi
+		       ;; :terminal-curses
+		       )
     :components
     ((:file "terminal-test")))
