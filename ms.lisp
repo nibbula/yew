@@ -100,7 +100,6 @@
    #:get-console-info
    #:get-window-size
    #:get-cursor-position
-   #:get-attributes
    #:get-cursor-info
    #:set-cursor-state
    #:set-cursor-position
