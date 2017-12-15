@@ -218,7 +218,9 @@ anything important.")
     :prompt *default-prompt*
     ;;:terminal-class 'terminal-ansi
     :terminal-class (or (and *terminal* (class-of *terminal*))
-			'terminal-ansi)
+			;;'terminal-ansi
+			(find-terminal-class-for-type *default-terminal-type*)
+			)
   )
   (:documentation "State for a stupid little line editor."))
 

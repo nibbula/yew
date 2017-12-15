@@ -205,7 +205,8 @@
 	     (local-keymap nil)
 	     (keymap nil)
 	     (terminal-name *terminal-name*)
-	     (terminal-class 'terminal-ansi)
+	     (terminal-class (find-terminal-class-for-type
+			      *default-terminal-type*))
 	     (accept-does-newline t)
 	     (context :tiny))		; remnant
   "Read a line from the terminal, with line editing and completion.
