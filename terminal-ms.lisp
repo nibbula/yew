@@ -167,7 +167,12 @@
   (write-terminal-string (terminal-file-descriptor tty) (string char)))
 
 (defmethod terminal-move-to ((tty terminal-ms) row col)
-  (set-cursor-position (terminal-file-descriptor tty) row col))
+  (with-slots ((fd terminal::file-descriptor)) tty
+    (multiple-value-bind (_col _row  width height attr top)
+	(get-console-info fd)
+      (declare (ignore _col _row width attr))
+      (set-cursor-position fd (min (+ top row) height) col))))
+  ;;(set-cursor-position (terminal-file-descriptor tty) row col))
 
 (defmethod terminal-move-to-col ((tty terminal-ms) col)
   (with-slots ((fd terminal::file-descriptor)) tty
@@ -254,11 +259,19 @@
       (fill-console-char fd :x x :y y))))
 
 (defmethod terminal-clear ((tty terminal-ms))
-  (fill-console-char (terminal-file-descriptor tty))
-  (fill-console-attribute (terminal-file-descriptor tty)))
+  (with-slots ((fd terminal::file-descriptor)) tty
+    (multiple-value-bind (col row width height attr top)
+	(get-console-info fd)
+      (declare (ignore col row width height attr))
+      (fill-console-char fd :x 0 :y top)
+      (fill-console-attribute fd :x 0 :y top))))
 
 (defmethod terminal-home ((tty terminal-ms))
-  (set-cursor-position (terminal-file-descriptor tty) 0 0))
+  (with-slots ((fd terminal::file-descriptor)) tty
+    (multiple-value-bind (col row width height attr top)
+	(get-console-info fd)
+      (declare (ignore col row width height attr))
+      (set-cursor-position fd top 0))))
 
 (defmethod terminal-cursor-off ((tty terminal-ms))
   (with-slots ((fd terminal::file-descriptor) saved-cursor-size) tty
