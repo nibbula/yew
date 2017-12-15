@@ -366,8 +366,7 @@ The REPL also has a few commands:
 
 (defun tiny-repl (&key prompt-func prompt-string no-announce keymap
 		    terminal-name
-		    ;;(terminal-class 'terminal-ansi:terminal-ansi)
-		    (terminal-class :ansi)
+		    (terminal-type (pick-a-terminal-type))
 		    (output *standard-output*)
 		    (interceptor *default-interceptor*) (debug t))
   "Keep reading and evaluating lisp, with line editing. Return true if we want
@@ -377,7 +376,8 @@ to quit everything. Arguments are:
  PROMPT-STRING  -- 
  NO-ANNOUNCE    -- True to supress the announcement on starting.
  TERMINAL-NAME  -- Name of a system terminal device to read from.
- TERMINAL-CLASS -- Class of terminal to read from. Defaults to TERMINAL-ANSI.
+ TERMINAL-TYPE  -- Type of terminal to read from. Defaults from
+                   pick-a-terminal-type and so *default-terminal-type*.
  KEYMAP         -- A custom keymap to use for RL.
  OUTPUT         -- Stream to print output on.
  INTERCEPTOR    -- Function that's called with an object to be evaluated and a
@@ -399,15 +399,14 @@ to quit everything. Arguments are:
 		:prompt-func    prompt-func
 		:prompt-string  prompt-string
 		:keymap         keymap
-		:terminal-name  terminal-name
-		:terminal-class terminal-class
+		:terminal-class (find-terminal-class-for-type terminal-type)
 		:output         output))
 	(result nil)
 	(want-to-quit nil)
 	(old-debugger-hook *debugger-hook*)
 	(start-level (incf *repl-level*))
 	(*history-context* :repl))
-    (with-terminal (terminal-class *terminal* :device-name terminal-name)
+    (with-terminal (terminal-type *terminal* :device-name terminal-name)
       (tt-set-input-mode :line)
       ;; Activate the debugger if it's loaded.
       (when (and debug (find-package :tiny-debug))

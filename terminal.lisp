@@ -16,6 +16,8 @@
    #:has-terminal-attributes
    #:terminal-default-device-name
    #:register-terminal-type
+   #:find-terminal-class-for-type
+   #:pick-a-terminal-type
    #:terminal-stream
    #:terminal
    #:terminal-file-descriptor ;; #:file-descriptor
@@ -96,10 +98,25 @@ subclasses.")
   ;;(pushnew (list name type) *terminal-types*)
   (setf (getf *terminal-types* name) type))
 
-(defun find-type (name)
+(defun find-terminal-class-for-type (name)
   "Return the class for a registered terminal type."
   ;;(cadr (assoc type *terminal-types*))
   (getf *terminal-types* name))
+
+(defun pick-a-terminal-type ()
+  "Pick some terminal type. Hopefully appropriate, but perhaps semi-arbitrary."
+  (let ((platform-default
+	 #+(and windows unix) :ansi
+	 #+windows :ms
+	 #+unix :ansi
+	 #-(or windows unix) :ansi))
+    (or *default-terminal-type*
+	(if (find-terminal-class-for-type platform-default)
+	    platform-default
+	    ;; This picks :ansi-stream if nothing else is loaded.
+	    ;;(or (first *terminal-types*) :ansi)
+	    :ansi
+	    ))))
 
 (defclass terminal-stream (fundamental-character-output-stream)
   ((output-stream
@@ -190,16 +207,15 @@ two values ROW and COLUMN."))
 Cleans up afterward."
   (with-unique-names (result make-it)
     `(progn
-       (when (not (find-type ,type))
+       (when (not (find-terminal-class-for-type ,type))
 	 (error "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
-       ;; (let ((,var (if ,device-name
-       ;; 		       (make-instance (find-type ,type)
-       ;; 				      :device-name ,device-name)
-       ;; 		       (make-instance (find-type ,type))))
        (let* ((,make-it (not
-			 (and ,var (typep ,var (find-type ,type)) (not ,new-p))))
+			 (and ,var (typep ,var
+					  (find-terminal-class-for-type ,type))
+			      (not ,new-p))))
 	      (,var (if ,make-it
-			(make-instance (find-type ,type) ,@initargs)
+			(make-instance
+			 (find-terminal-class-for-type ,type) ,@initargs)
 			,var))
 	      ;; (*standard-output* ,var)
 	      ;; (*standard-input* ,var)
@@ -342,9 +358,11 @@ position. Return the primary result of evaluating the body."
 a string and return the string."
   (with-unique-names (stream)
     `(with-output-to-string (,stream)
-       (when (not (find-type ,type))
+       (when (not (find-terminal-class-for-type ,type))
 	 (error "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
-       (let ((*terminal* (make-terminal-stream ,stream (find-type ,type))))
+       (let ((*terminal* (make-terminal-stream
+			  ,stream
+			  (find-terminal-class-for-type ,type))))
 	 (unwind-protect
 	      ,@body
 	   (tt-finish-output))))))

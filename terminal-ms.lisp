@@ -8,6 +8,8 @@
 	:trivial-gray-streams)
   (:export
    #:terminal-ms
+   ;; Extras:
+   #:set-cursor-size
    ))
 (in-package :terminal-ms)
 
@@ -58,9 +60,10 @@
 
 (defmethod terminal-get-cursor-position ((tty terminal-ms))
   "Get the position of the cursor. Returns the two values ROW and COLUMN."
-  (multiple-value-bind (x y)
-      (get-cursor-position (terminal-file-descriptor tty))
-    (values y x)))
+  (multiple-value-bind (x y width height attr top)
+      (get-console-info (terminal-file-descriptor tty))
+    (declare (ignore width height attr))
+    (values (+ top y) x)))
 
 (defmethod terminal-start ((tty terminal-ms))
   "Set up the terminal for reading a character at a time without echoing."
@@ -237,34 +240,38 @@
 			      :x 0 :y top)
 	      (set-cursor-position fd (+ row n) col))))))
 
+(defun erase (fd &key x y length)
+  (fill-console-char fd :x x :y y :length length)
+  (fill-console-attribute fd :x x :y y :length length))
+
 (defmethod terminal-erase-to-eol ((tty terminal-ms))
   (with-slots ((fd terminal::file-descriptor)) tty
     (multiple-value-bind (x y width) (get-console-info fd)
-      (fill-console-char fd :x x :y y :length (- width x)))))
+      (erase fd :x x :y y :length (- width x)))))
 
 (defmethod terminal-erase-line ((tty terminal-ms))
   (with-slots ((fd terminal::file-descriptor)) tty
     (multiple-value-bind (x y width) (get-console-info fd)
       (declare (ignore x))
-      (fill-console-char fd :x 0 :y y :length width))))
+      (erase fd :x 0 :y y :length width))))
 
 (defmethod terminal-erase-above ((tty terminal-ms))
   (with-slots ((fd terminal::file-descriptor)) tty
-    (multiple-value-bind (x y width) (get-console-info fd)
-      (fill-console-char fd :x 0 :y 0 :length (+ (* (1- y) width) x)))))
+    (multiple-value-bind (x y width attr top) (get-console-info fd)
+      (declare (ignore attr))
+      (erase fd :x 0 :y top :length (+ (* (1- y) width) x)))))
 
 (defmethod terminal-erase-below ((tty terminal-ms))
   (with-slots ((fd terminal::file-descriptor)) tty
     (multiple-value-bind (x y) (get-cursor-position fd)
-      (fill-console-char fd :x x :y y))))
+      (erase fd :x x :y y))))
 
 (defmethod terminal-clear ((tty terminal-ms))
   (with-slots ((fd terminal::file-descriptor)) tty
     (multiple-value-bind (col row width height attr top)
 	(get-console-info fd)
       (declare (ignore col row width height attr))
-      (fill-console-char fd :x 0 :y top)
-      (fill-console-attribute fd :x 0 :y top))))
+      (erase fd :x 0 :y top))))
 
 (defmethod terminal-home ((tty terminal-ms))
   (with-slots ((fd terminal::file-descriptor)) tty
@@ -291,7 +298,7 @@
   (declare (ignore tty state)))
 
 (defmethod terminal-normal ((tty terminal-ms))
-  (declare (ignore tty)))
+  (terminal-bold tty 0))
 
 (defmethod terminal-underline ((tty terminal-ms) state)
   (declare (ignore tty state)))
@@ -461,6 +468,18 @@
     (set-cursor-position (terminal-file-descriptor tty)
 			 (second saved-cursor-position)
 			 (first saved-cursor-position))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Extra things:
+
+(defun set-cursor-size (tty size)
+  (when (or (< size 0) (> size 100))
+    (error "Tried to set cursor size outside the range 0-100 ~d." size))
+  (with-slots ((fd terminal::file-descriptor)) tty
+    (multiple-value-bind (old-size visible) (get-cursor-info fd)
+      (declare (ignore old-size))
+      (set-cursor-state fd :size size :visible visible))))
+
 #|
 (defun describe-terminal ()
   "Interrogate the terminal properties and report the results."
