@@ -93,11 +93,13 @@ subclasses.")
 
 (defun register-terminal-type (name type)
   "Subclasses should call this to register their type keyword."
-  (pushnew (list name type) *terminal-types*))
+  ;;(pushnew (list name type) *terminal-types*)
+  (setf (getf *terminal-types* name) type))
 
-(defun find-type (type)
+(defun find-type (name)
   "Return the class for a registered terminal type."
-  (cadr (assoc type *terminal-types*)))
+  ;;(cadr (assoc type *terminal-types*))
+  (getf *terminal-types* name))
 
 (defclass terminal-stream (fundamental-character-output-stream)
   ((output-stream
