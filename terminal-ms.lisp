@@ -10,6 +10,7 @@
    #:terminal-ms
    ;; Extras:
    #:set-cursor-size
+   #:set-default-bold
    ))
 (in-package :terminal-ms)
 
@@ -34,8 +35,11 @@
     :initarg :unread-char :initform nil :type (or null character)
     :documentation "To support unread-char.")
    (bold
-    :initarg :bold :accessor bold :initform nil :type boolean
+    :initarg :bold :accessor bold :initform t :type boolean
     :documentation "True to make colors bold.")
+   (default-bold
+    :initarg :default-bold :accessor default-bold :initform t :type boolean
+    :documentation "True to use brigh colors by default.")
    (inverse
     :initarg :inverse :accessor inverse :initform nil :type boolean
     :documentation "True to make colors inverse."))
@@ -93,7 +97,11 @@
 					    :domain :file))
       )
       ;; (dbug "terminal-ms open out~%"))
-    (terminal-get-size tty)))
+    (terminal-get-size tty)
+
+    ;; @@@ Temporary until we can put in, say, lishrc
+    (set-cursor-size tty 100)
+    ))
 
 (defmethod terminal-end ((tty terminal-ms))
   "Put the terminal back to the way it was before we called terminal-start."
@@ -301,7 +309,7 @@
 
 (defmethod terminal-normal ((tty terminal-ms))
   (terminal-inverse tty nil)
-  (terminal-bold tty nil)
+  (terminal-bold tty (if (default-bold tty) t nil))
   (terminal-color tty :default :default))
 
 (defmethod terminal-underline ((tty terminal-ms) state)
@@ -522,6 +530,11 @@
     (multiple-value-bind (old-size visible) (get-cursor-info fd)
       (declare (ignore old-size))
       (set-cursor-state fd :size size :visible visible))))
+
+(defun set-default-bold (tty state)
+  "True to make the default colors be bold."
+  (setf (default-bold tty) t)
+  (terminal-bold tty t))
 
 #|
 (defun describe-terminal ()
