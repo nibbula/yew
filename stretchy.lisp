@@ -98,7 +98,8 @@ to expand by when expansion is needed."
 	   (type number factor))
   (when (>= n (array-total-size vec))
     (resize vec (- n (array-total-size vec)) factor))
-  (setf (fill-pointer vec) n) ;; should this really be done?
+  ;;(setf (fill-pointer vec) n) ;; should this really be done?
+  (setf (fill-pointer vec) (1+ n)) ;; should this really be done?
   (setf (aref vec n) value))
 
 #|
