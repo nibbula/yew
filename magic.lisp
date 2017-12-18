@@ -265,7 +265,8 @@
 		  (get-content-type "x-character-device")
 		  (get-content-type "x-block-device"))
        #-unix (get-content-type "x-device"))
-      (:regular (funcall *guess-func* (quote-filename filename) :file))
+      ;;(:regular (funcall *guess-func* (quote-filename filename) :file))
+      (:regular (funcall *guess-func* filename :file))
       (t #| :other |#
        ;; @@@ should get more specific on unix
        (get-content-type "octet-stream")))))
