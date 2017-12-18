@@ -14,7 +14,8 @@
    ))
 (in-package :syntax-lisp)
 
-(declaim (optimize (debug 3)))
+;;(declaim (optimize (debug 3)))
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 (defclass lisp-syntax (syntax)
   ()
@@ -526,10 +527,12 @@ TEXT and START should be passed from the caller."
 
 (defun t-whitespace (text start end)
   (declare (ignore end))
+  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (is-char-syntax text start :whitespace))
 
 (defun t-macro-char (text start end)
   (declare (ignore end))
+  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (is-char-syntax text start
 		  '(:terminating-macro-char :non-terminating-macro-char)))
 
