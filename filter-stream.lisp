@@ -349,7 +349,7 @@
   (stream-column stream))
 
 ;; Return the stream line length or nil.
-;; (defmethod stream-line-length ((stream filter-stream))
+;; #+sbcl (defmethod sb-gray:stream-line-length ((stream filter-stream))
 ;;   (stream-column stream))
 
 ;; (defmethod stream-start-line-p ((stream filter-stream))
