@@ -63,7 +63,7 @@
   (multiple-value-bind (x y width height attr top)
       (get-console-info (terminal-file-descriptor tty))
     (declare (ignore width height attr))
-    (values (+ top y) x)))
+    (values (- y top) x)))
 
 (defmethod terminal-start ((tty terminal-ms))
   "Set up the terminal for reading a character at a time without echoing."
@@ -173,9 +173,9 @@
   (with-slots ((fd terminal::file-descriptor)) tty
     (multiple-value-bind (_col _row  width height attr top)
 	(get-console-info fd)
-      (declare (ignore _col _row width attr))
-      (set-cursor-position fd (min (+ top row) height) col))))
-  ;;(set-cursor-position (terminal-file-descriptor tty) row col))
+      (declare (ignore _col _row attr))
+      (set-cursor-position fd (+ top (min row height))
+			   (min col width)))))
 
 (defmethod terminal-move-to-col ((tty terminal-ms) col)
   (with-slots ((fd terminal::file-descriptor)) tty
@@ -193,7 +193,7 @@
       (scroll-console fd
 		      :left (+ x n) :top y
 		      :right width :bottom y
-		      :x (1+ x) :y y))))
+		      :x x :y y))))
 
 (defmethod terminal-ins-char ((tty terminal-ms) n)
   "Insert N blanks."
@@ -202,7 +202,8 @@
       (declare (ignore height))
       (scroll-console fd
 		      :left (1+ x) :top y
-		      :right (- width n) :bottom y
+		      ;;:right (- width n) :bottom y ;; @@@ maybe need (1+ y) ??
+		      :right (- width n) :bottom (1+ y)
 		      :x (+ x n) :y y))))
 
 (defun move-offset (tty offset-x offset-y)
@@ -210,9 +211,10 @@
   (dbugf :ms "move-offset tty = ~s ~s ~s~%" tty offset-x offset-y)
   (when (not (and (zerop offset-x) (zerop offset-y)))
     (with-slots ((fd terminal::file-descriptor)) tty
-      (multiple-value-bind (x y width height) (get-console-info fd)
+      (multiple-value-bind (x y width height attr top) (get-console-info fd)
+	(declare (ignore attr))
 	(set-cursor-position fd
-			     (max 0 (min (+ y offset-y) height))
+			     (max top (min (+ y offset-y) (+ top height)))
 			     (max 0 (min (+ x offset-x) width)))))))
 
 (defmethod terminal-backward ((tty terminal-ms) n)
@@ -236,7 +238,7 @@
 	  (if (> (+ row n) (+ top height))
 	      (scroll-console fd
 			      :left 0 :top (+ top n) :right width
-			      :bottom (- height n)
+			      :bottom (- (+ top height) n)
 			      :x 0 :y top)
 	      (set-cursor-position fd (+ row n) col))))))
 
@@ -298,7 +300,9 @@
   (declare (ignore tty state)))
 
 (defmethod terminal-normal ((tty terminal-ms))
-  (terminal-bold tty 0))
+  (terminal-inverse tty nil)
+  (terminal-bold tty nil)
+  (terminal-color tty :default :default))
 
 (defmethod terminal-underline ((tty terminal-ms) state)
   (declare (ignore tty state)))
@@ -311,21 +315,47 @@
 			     (if state
 				 (logior attr
 					 +FOREGROUND-INTENSITY+
-					 +BACKGROUND-INTENSITY+)
+					 #| +BACKGROUND-INTENSITY+ |#)
 				 (logand
 				  attr
 				  (lognot
 				   (logior +FOREGROUND-INTENSITY+
-					   +BACKGROUND-INTENSITY+))))))))
+					   #| +BACKGROUND-INTENSITY+ |#))))))))
 
 (defmethod terminal-inverse ((tty terminal-ms) state)
-  (declare (ignore tty state)))
+  (with-slots (inverse (fd terminal::file-descriptor)) tty
+    (when (not (eq state inverse))
+      (setf inverse state)
+      (let ((attr (get-attributes fd))
+	    (new-attr 0))
+
+	;; We do it this stupid way to avoid making assumptions about the
+	;; color constants.
+	(when (plusp (logand attr +FOREGROUND-BLUE+))
+	  (setf new-attr (logior new-attr +BACKGROUND-BLUE+)))
+	(when (plusp (logand attr +FOREGROUND-GREEN+))
+	  (setf new-attr (logior new-attr +BACKGROUND-GREEN+)))
+	(when (plusp (logand attr +FOREGROUND-RED+))
+	  (setf new-attr (logior new-attr +BACKGROUND-RED+)))
+	(when (plusp (logand attr +FOREGROUND-INTENSITY+))
+	  (setf new-attr (logior new-attr +BACKGROUND-INTENSITY+)))
+
+	(when (plusp (logand attr +BACKGROUND-BLUE+))
+	  (setf new-attr (logior new-attr +FOREGROUND-BLUE+)))
+	(when (plusp (logand attr +BACKGROUND-GREEN+))
+	  (setf new-attr (logior new-attr +FOREGROUND-GREEN+)))
+	(when (plusp (logand attr +BACKGROUND-RED+))
+	  (setf new-attr (logior new-attr +FOREGROUND-RED+)))
+	(when (plusp (logand attr +BACKGROUND-INTENSITY+))
+	  (setf new-attr (logior new-attr +FOREGROUND-INTENSITY+)))
+
+	(set-console-attribute fd new-attr)))))
 
 (defparameter *fg-colors*
   `(:black	0
     :red	,+FOREGROUND-RED+
     :green	,+FOREGROUND-GREEN+
-    :yellow	,(logior +FOREGROUND-GREEN+ +FOREGROUND-BLUE+)
+    :yellow	,(logior +FOREGROUND-RED+ +FOREGROUND-GREEN+)
     :blue	,+FOREGROUND-BLUE+
     :magenta	,(logior +FOREGROUND-RED+ +FOREGROUND-BLUE+)
     :cyan	,(logior +FOREGROUND-GREEN+ +FOREGROUND-BLUE+)
@@ -337,7 +367,7 @@
   `(:black	0
     :red	,+BACKGROUND-RED+
     :green	,+BACKGROUND-GREEN+
-    :yellow	,(logior +BACKGROUND-GREEN+ +BACKGROUND-BLUE+)
+    :yellow	,(logior +BACKGROUND-RED+ +BACKGROUND-GREEN+)
     :blue	,+BACKGROUND-BLUE+
     :magenta	,(logior +BACKGROUND-RED+ +BACKGROUND-BLUE+)
     :cyan	,(logior +BACKGROUND-GREEN+ +BACKGROUND-BLUE+)
@@ -368,14 +398,22 @@
   (declare (ignore color)))
 
 (defmethod terminal-color ((tty terminal-ms) fg bg)
-  (with-slots ((fd terminal::file-descriptor) bold) tty
+  (with-slots ((fd terminal::file-descriptor) bold inverse) tty
+    (when inverse
+      (rotatef fg bg))
     (let ((our-fg (getf *fg-colors* fg))
 	  (our-bg (getf *bg-colors* bg))
-	  (bold-mix (if bold +FOREGROUND-INTENSITY+ 0)))
+	  (bold-mix (if bold
+			(if inverse
+			    +BACKGROUND-INTENSITY+
+			    +FOREGROUND-INTENSITY+)
+			0)))
+
       (when (and (keywordp fg) (not our-fg))
 	(error "Forground ~a is not a known color." fg))
       (when (and (keywordp bg) (not our-fg))
 	(error "Background ~a is not a known color." bg))
+
       (cond
 	((or (rgb-color-p fg) (rgb-color-p bg))
 	  #|
@@ -432,8 +470,13 @@
   (read-terminal-char (terminal-file-descriptor tty)))
 
 (defmethod terminal-get-key ((tty terminal-ms))
-  (read-terminal-char (terminal-file-descriptor tty)))
-
+  (let ((key (read-terminal-byte (terminal-file-descriptor tty))))
+    (typecase key
+      (integer
+       (ms::wchar-to-character key))
+      (symbol
+       key))))
+ 
 (defmethod terminal-listen-for ((tty terminal-ms) seconds)
   (listen-for seconds (terminal-file-descriptor tty)))
 
@@ -620,7 +663,7 @@
 
 ;;(defmethod stream-fresh-line ((stream terminal-ms))
 
-;; (defmethod stream-line-length ((stream terminal-ms))
+;; #+sbcl (defmethod sb-gray:stream-line-length ((stream terminal-ms))
 ;;   )
 
 (defmethod stream-write-char ((stream terminal-ms) char
