@@ -39,7 +39,12 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:process-ansi-colors
    #:remove-effects
    #:render-fat-string
+   #:render-fatchar
    #:render-fatchar-string
+   #:fat-string-output-stream
+   #:with-output-to-fat-string
+   #:write-fatchar
+   #:write-fat-string
    ))
 (in-package :fatchar)
 
@@ -541,6 +546,7 @@ set in this string."
   (render-fatchar-string (fat-string-string fat-string) terminal))
 
 (defun render-fatchar-string (fatchar-string &optional (terminal *terminal*))
+  "Render FATCHAR-STRING on TERMINAL."
   (when (not terminal)
     (error "Please supply a terminal or set *terminal*."))
   (let ((*terminal* terminal))
@@ -568,6 +574,24 @@ set in this string."
        (tt-write-char (fatchar-c c)))
     (tt-normal)))
 
+(defun render-fatchar (c &optional (terminal *terminal*))
+  "Render one FATCHAR on TERMINAL."
+  (when (not terminal)
+    (error "Please supply a terminal or set *terminal*."))
+  (let ((*terminal* terminal))
+    (tt-normal)
+    (loop :for a :in (fatchar-attrs c)
+       :do
+       (case a
+	 (:normal    (tt-normal))
+	 (:standout  (tt-standout t))
+	 (:underline (tt-underline t))
+	 (:bold      (tt-bold t))
+	 (:inverse   (tt-inverse t))))
+    (tt-color (or (fatchar-fg c) :default) (or (fatchar-bg c) :default))
+    (tt-write-char (fatchar-c c))))
+
+#|
 (defmethod print-object ((obj fat-string) stream)
   (cond
     (*print-readably*
@@ -587,6 +611,7 @@ set in this string."
      (write (fat-string-to-string obj) :stream stream)
      ;;(call-next-method)
      )))
+|#
 
 (defun print-string (stream obj colon-p at-sign-p &rest args)
   "For using in a format slash directive. E.g. ~/fatchar:print-string/"
@@ -632,11 +657,14 @@ colinc, and the space character for padchar.
       (if (and mincol (< len mincol))
 	  (if at-sign-p
 	      (progn
-		(dotimes (i (- mincol len)) (tt-write-char #\space))
+		;;(dotimes (i (- mincol len)) (tt-write-char #\space))
+		(dotimes (i (- mincol len)) (write-char #\space stream))
+		;;(dotimes (i (- mincol len)) (write-fatchar #\space stream))
 		(funcall render))
 	      (progn
 		(funcall render)
-		(dotimes (i (- mincol len)) (tt-write-char #\space))))
+		(dotimes (i (- mincol len)) (write-char #\space stream))))
+		;;(dotimes (i (- mincol len)) (write-fatchar #\space stream))))
 	  (funcall render)))))
 
 (defmethod display-length ((c fatchar))
@@ -648,15 +676,14 @@ colinc, and the space character for padchar.
   (display-length (fat-string-to-string s)))
 
 (defmethod simplify-string ((s fat-string))
-  "Return the length of the string for display."
+  "Return the fat-string as a string."
   (fat-string-to-string s))
 
 (defmethod simplify-char ((c fatchar))
+  "Return the FATCHAR as a character."
   (fatchar-c c))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;;; @@@ This actually isn't so useful, since I can't write fatchars to it?
 
 (defclass fat-string-output-stream (fat-string
 				    fundamental-character-output-stream)
@@ -672,6 +699,10 @@ colinc, and the space character for padchar.
   (declare (ignore initargs))
   (setf (fat-string-string o)
 	(make-stretchy-vector 40 :element-type 'fatchar)))
+
+(defmethod print-object ((obj fat-string-output-stream) stream)
+  (print-unreadable-object (obj stream :identity t :type t)
+    ))
 
 (defmethod stream-element-type ((stream fat-string-output-stream))
   'fatchar)
@@ -741,7 +772,7 @@ colinc, and the space character for padchar.
   always return ‘nil’."
   (fat-string-output-stream-column stream))
 
-(defmethod stream-line-length ((stream fat-string-output-stream))
+#+sbcl (defmethod sb-gray:stream-line-length ((stream fat-string-output-stream))
   "Return the stream line length or ‘nil’."
   nil)
 
@@ -763,16 +794,83 @@ colinc, and the space character for padchar.
 
 (defmethod stream-terpri ((stream fat-string-output-stream))
   "Writes an end of line, as for ‘terpri’.  Returns ‘nil’.  The
-   default method does (‘stream-write-char’ stream #NEWLINE).")
+   default method does (‘stream-write-char’ stream #NEWLINE)."
+  (write-fatchar #\newline stream))
+
+(defun write-fatchar (c &optional (stream *standard-output*))
+  "Write a the fatchar C to STREAM, preserving the attributes if possible."
+  (typecase stream
+    (fat-string-output-stream
+     (typecase c
+       (fatchar
+	(stretchy-append (fat-string-string stream) c)
+	(incf (fat-string-output-stream-column stream))
+	(when (char= (fatchar-c c) #\newline)
+	  (setf (fat-string-output-stream-column stream) 0)))
+       (character
+	(stretchy-append (fat-string-string stream) (make-fatchar :c c))
+	(incf (fat-string-output-stream-column stream))
+	(when (char= c #\newline)
+	  (setf (fat-string-output-stream-column stream) 0)))))
+    (terminal-stream
+     (typecase c
+       (fatchar
+	(render-fatchar c))
+       (character
+	(tt-write-char c))))
+    (t
+     (typecase c
+       (fatchar	(write-char (fatchar-c c) stream))
+       (character (write-char c stream))))))
 
 (defmethod stream-write-char ((stream fat-string-output-stream) character)
   "Write ‘character’ to ‘stream’ and return ‘character’.  Every
    subclass of ‘fundamental-character-output-stream’ must have a
    method defined for this function."
-  (stretchy-append (fat-string-string stream) (make-fatchar :c character))
-  (incf (fat-string-output-stream-column stream))
-  (when (char= character #\newline)
-    (setf (fat-string-output-stream-column stream) 0)))
+  ;; (stretchy-append (fat-string-string stream) (make-fatchar :c character))
+  ;; (incf (fat-string-output-stream-column stream))
+  ;; (when (char= character #\newline)
+  ;;   (setf (fat-string-output-stream-column stream) 0)))
+  (write-fatchar (make-fatchar :c character) stream))
+
+(defun write-fat-string (string &key (stream *standard-output*) (start 0) end)
+  "Write a the fat-string STRING to STREAM, preserving the attributes if
+possible."
+  (typecase stream
+    (fat-string-output-stream
+     (typecase string
+       ;; @@@ unify these cases
+       (fat-string
+	(loop :with seq = (if end
+			      (subseq (fat-string-string string) start end)
+			      (subseq (fat-string-string string) start))
+	   :for i = (fill-pointer (fat-string-string stream)) :then (1+ i)
+	   :for c :across seq
+	   :do
+	   ;;(stretchy-set (fat-string-string stream) i (make-fatchar :c c))
+	   (stretchy-set (fat-string-string stream) i c)
+	   (incf (fat-string-output-stream-column stream))
+	   (when (char= (fatchar-c c) #\newline)
+	     (setf (fat-string-output-stream-column stream) 0))))
+       (string
+	 (loop :with seq = (if end
+			       (subseq string start end)
+			       (subseq string start))
+	    :for i = (fill-pointer (fat-string-string stream)) :then (1+ i)
+	    :for c :across seq
+	    :do
+	    (stretchy-set (fat-string-string stream) i (make-fatchar :c c))
+	    (incf (fat-string-output-stream-column stream))
+	    (when (char= c #\newline)
+	      (setf (fat-string-output-stream-column stream) 0))))))
+    (terminal-stream
+     (typecase string
+       (fat-string
+	(render-fat-string string))
+       (string
+	(tt-write-string string))))
+    (t
+     (write-string (fat-string-to-string string) stream))))
 
 (defmethod stream-write-string ((stream fat-string-output-stream) string
 				&optional start end)
@@ -781,14 +879,70 @@ colinc, and the space character for padchar.
   and ‘nil’.  The string argument is returned.  The default method
   provided by ‘fundamental-character-output-stream’ uses repeated
   calls to ‘stream-write-char’."
-  (loop
-     :for i = (fill-pointer (fat-string-string stream)) :then (1+ i)
-     :for c :across (subseq string start end)
-     :do
-     (stretchy-set (fat-string-string stream) i (make-fatchar :c c))
-     (incf (fat-string-output-stream-column stream))
-     (when (char= c #\newline)
-       (setf (fat-string-output-stream-column stream) 0)))
+  ;; (loop
+  ;;    :for i = (fill-pointer (fat-string-string stream)) :then (1+ i)
+  ;;    :for c :across (subseq string start end)
+  ;;    :do
+  ;;    (stretchy-set (fat-string-string stream) i (make-fatchar :c c))
+  ;;    (incf (fat-string-output-stream-column stream))
+  ;;    (when (char= c #\newline)
+  ;;      (setf (fat-string-output-stream-column stream) 0)))
+  (write-fat-string string :stream stream :start start :end end)
   string)
+
+;;; Here's how we can write fatchars to it?
+
+(defmethod print-object ((obj fat-string) stream)
+  (cond
+    (*print-readably*
+     (if *read-eval*
+	 (format stream "#.~s"
+		 `(fatchar:span-to-fat-string ,(fat-string-to-span obj)))
+	 (progn
+	   (dbugf :fatchar "print-object -> call-next-method~%")
+	   (call-next-method)
+	   )))
+    ((typep stream 'terminal:terminal-stream)
+     (dbugf :fatchar "print-obeject -> render ~s~%" (type-of obj))
+     (render-fat-string obj))
+    ((typep stream 'fat-string-output-stream)
+     (dbugf :fatchar "print-obeject -> write-fat-string ~s ~s~%" (type-of obj)
+	    (type-of stream))
+     (write-fat-string obj :stream stream))
+    (t
+     ;;(print-object (fat-string-to-string obj) stream)
+     ;;(format t "ZIEIE~s~%" (type-of stream)) (finish-output)
+     ;; (write-string
+     ;;  (with-terminal-output-to-string (:ansi)
+     ;; 	(render-fat-string obj)) stream)
+     (dbugf :fatchar "print-object -> downconvert ~s~%" (type-of obj))
+     (write (fat-string-to-string obj) :stream stream)
+     ;;(call-next-method)
+     )))
+
+(defmethod print-object ((obj fatchar) stream)
+  "Print a FATCHAR to a FAT-STRING-OUTPUT-STREAM."
+  (cond
+    (*print-readably*
+     (if *read-eval*
+	 (format stream "#.~s"
+		 `(fatchar:span-to-fat-string ,(fat-string-to-span obj)))
+	 (call-next-method)))
+    ((typep stream 'terminal:terminal-stream)
+     ;;(format t "BLURB~s~%" (type-of obj)) (finish-output)
+     (render-fatchar obj stream))
+    ((typep stream 'fat-string-output-stream)
+     ;;(format t "BLURB~s~%" (type-of obj)) (finish-output)
+     (write-fat-string obj :stream stream))
+    (t
+     (write (fatchar-c obj) :stream stream))))
+
+(defmacro with-output-to-fat-string ((var &optional string) &body body)
+  `(let* ((,var (make-instance 'fat-string-output-stream
+			      ,@(when string `(:string ,string))))
+	  ;;(*standard-output* ,var)
+	  )
+     ,@body
+     (make-fat-string :string (fat-string-string ,var))))
 
 ;; EOF
