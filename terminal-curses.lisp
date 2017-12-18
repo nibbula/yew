@@ -453,7 +453,8 @@ require terminal driver support."))
 
 ;;(defmethod stream-fresh-line ((stream terminal-curses-stream))
 
-(defmethod stream-line-length ((stream terminal-curses-stream))
+#+sbcl
+(defmethod sb-gray:stream-line-length ((stream terminal-curses-stream))
   *cols*)
 
 (defmethod stream-write-char ((stream terminal-curses) char

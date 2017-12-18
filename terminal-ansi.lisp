@@ -978,7 +978,7 @@ and add the characters the typeahead."
 
 ;;(defmethod stream-fresh-line ((stream terminal-ansi-stream))
 
-;; (defmethod stream-line-length ((stream terminal-ansi-stream))
+;; #+sbcl (defmethod sb-gray:stream-line-length ((stream terminal-ansi-stream))
 ;;   )
 
 (defmethod stream-write-char ((stream terminal-ansi-stream) char
