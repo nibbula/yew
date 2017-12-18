@@ -41,13 +41,21 @@ command line.")
 	  (tt-write-char #\newline)
 	  (when (not (equalp #\y chr))
 	    (return-from print-completions-over))))
-      (tt-write-string
-       (with-output-to-string (str)
+      ;; (tt-write-string
+      ;;  (with-output-to-string (str)
+      ;; 	 (print-columns (completion-result-completion comp-result)
+      ;; 			:smush t
+      ;; 			:columns (terminal-window-columns
+      ;; 				  (line-editor-terminal e))
+      ;; 			:stream str))))
+      (princ
+       (with-output-to-fat-string (str)
 	 (print-columns (completion-result-completion comp-result)
 			:smush t
 			:columns (terminal-window-columns
 				  (line-editor-terminal e))
-			:stream str))))
+			:stream str))
+       *terminal*))
     (setf (screen-col e) 0)
     (do-prompt e prompt prompt-func)
     (display-buf e)
@@ -56,10 +64,12 @@ command line.")
 
 (defun figure-line-endings (e content)
   "Call calculate-line-endings with proper processing of the string CONTENT."
-  (calculate-line-endings e :buffer (fatchar-string-to-string
-				     (process-ansi-colors
-				      (make-fatchar-string content)))
-			  :start 0))
+  ;; (calculate-line-endings e :buffer (fatchar-string-to-string
+  ;; 				     (process-ansi-colors
+  ;; 				      (make-fatchar-string content)))
+  ;; 			  :start 0))
+  (calculate-line-endings e :buffer (fat-string-to-string content)
+ 			  :start 0))
 
 (defun figure-content-rows (e content)
   "Take a sequence of strings and return how many rows it takes up when output
@@ -124,12 +134,18 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
 	  ;; 			 :smush t :row-limit row-limit
 	  ;; 			 :format-char "/fatchar:print-string/"
 	  ;; 			 :stream str)))
-	  (with-terminal-output-to-string (:ansi)
+	  ;; (with-terminal-output-to-string (:ansi)
+	  ;;   (setf content-rows
+	  ;; 	  (print-columns comp-list :columns cols
+	  ;; 			 :smush t :row-limit row-limit
+	  ;; 			 :format-char "/fatchar:print-string/"
+	  ;; 			 :stream *terminal*)))
+	  (with-output-to-fat-string (str)
 	    (setf content-rows
 	  	  (print-columns comp-list :columns cols
 	  			 :smush t :row-limit row-limit
 	  			 :format-char "/fatchar:print-string/"
-	  			 :stream *terminal*)))
+	  			 :stream str)))
 	  line-endings (figure-line-endings e output-string)
 	  real-content-rows (length line-endings)
 	  rows-output (min real-content-rows row-limit)
@@ -140,12 +156,13 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
       (setf output-string
 	    (subseq output-string 0 (car (nth snip-lines line-endings)))))
     ;;(tt-write-string output-string)
-    (if (equal (symbol-name (type-of *terminal*)) "TERMINAL-CURSES")
-	;; XXX an horrible hack to turn it back into colors on curses
-	(render-fatchar-string
-	 (process-ansi-colors
-	  (make-fatchar-string output-string)))
-	(tt-write-string output-string))
+    ;; (if (equal (symbol-name (type-of *terminal*)) "TERMINAL-CURSES")
+    ;; 	;; XXX an horrible hack to turn it back into colors on curses
+    ;; 	(render-fatchar-string
+    ;; 	 (process-ansi-colors
+    ;; 	  (make-fatchar-string output-string)))
+    ;; 	(tt-write-string output-string))
+    (princ output-string *terminal*)
     ;; (tt-format "content-rows ~a rows-output ~s " content-rows rows-output)
     (if (plusp (- content-rows rows-output))
 	(tt-format "[~d more lines]" (- content-rows row-limit))
