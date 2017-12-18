@@ -40,8 +40,9 @@ expand all macros recursively."
 		    :key #'(lambda (x) (length (symbol-name (car x))))))
 	(sorted-list (if original-order
 			 (nos:environment)
-			 (sort (nos:environment) #'string-lessp
-			       :key #'(lambda (x) (symbol-name (car x)))))))
+			 (sort-muffled
+			  (nos:environment) #'string-lessp
+			  :key #'(lambda (x) (symbol-name (car x)))))))
     (loop :for v :in sorted-list
        :do (format t "~v@a ~30a~%" mv (car v) (cdr v)))))
 
