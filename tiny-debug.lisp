@@ -835,6 +835,7 @@ innermost N contexts, if we can."
   (visual))
 
 (defun list-restarts (rs)
+  #|
   (format *debug-io* "Restarts are:~%")
   (loop :with i = 0 :for r :in rs :do
      (format *debug-io* "~&")
@@ -845,7 +846,20 @@ innermost N contexts, if we can."
        (print-unreadable-object (r *debug-io* :type t :identity t)
 	 (format *debug-io* "~a" (restart-name r)))
        (terpri *debug-io*))
-     (incf i)))
+     (incf i))
+  |#
+  (format *terminal* "Restarts are:~%")
+  (loop :with i = 0 :for r :in rs :do
+     (format *terminal* "~&")
+     (print-span `((:fg-cyan ,(format nil "~d" i)) ": "))
+     (when (not (ignore-errors (progn (format *terminal* "~s ~a~%"
+					      (restart-name r) r) t)))
+       (format *terminal* "Error printing restart ")
+       (print-unreadable-object (r *terminal* :type t :identity t)
+	 (format *terminal* "~a" (restart-name r)))
+       (terpri *terminal*))
+     (incf i))
+  )
 
 (defun debug-prompt (e p)
 ;;;  (format *debug-io* "Debug ~d~a" *repl-level* p)
@@ -1001,18 +1015,19 @@ program that messes with the terminal, we can still type at the debugger."
     ;; things that need resetting.  This is pretty much the idea of
     ;; termcap/info reset string, usually the "rs2", since "rs" usually just
     ;; does ^[c.
-    (mapcar
-     #'out '(" F"    ;; 7 bit controls
-	     "[0m"   ;; color and attributes
-	     ">"     ;; normal keypad
-	     "#@"    ;; default char set
-	     "m"     ;; memory unlock
-	     "[4l"   ;; replace mode (vs insert mode)
-	     "[?4l"  ;; jump scroll (vs smooth scroll)
-	     "[?25h" ;; show the cursor
-	     "[?9l"  ;; Don't send position on mouse press
-	     "[?47l" ;; Use normal screen buffer
-	     ))
+    (when (typep *terminal* 'terminal-ansi:terminal-ansi)
+      (mapcar
+       #'out '(" F"  ;; 7 bit controls
+	       "[0m" ;; color and attributes
+	       ">"   ;; normal keypad
+	       "#@"  ;; default char set
+	       "m"   ;; memory unlock
+	       "[4l" ;; replace mode (vs insert mode)
+	       "[?4l" ;; jump scroll (vs smooth scroll)
+	       "[?25h" ;; show the cursor
+	       "[?9l"  ;; Don't send position on mouse press
+	       "[?47l" ;; Use normal screen buffer
+	       )))
     (finish-output)))
 
 (defvar *debugger-keymap* nil "Keymap for the debugger.")
@@ -1029,11 +1044,12 @@ program that messes with the terminal, we can still type at the debugger."
   (define-key *debugger-keymap* #\escape '*debugger-escape-keymap*))
 
 (defun print-span (span)
-  (write-string
-   (with-terminal-output-to-string (:ansi)
-     (render-fat-string
-      (span-to-fat-string span)))
-   *debug-io*))
+  ;; (write-string
+  ;;  (with-terminal-output-to-string (:ansi)
+  ;;    (render-fat-string
+  ;;     (span-to-fat-string span)))
+  ;;  *debug-io*))
+  (princ (span-to-fat-string span) *terminal*))
 
 (defun print-condition (c)
   (print-span
