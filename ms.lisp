@@ -1323,10 +1323,12 @@ descriptor FD."
 		      ((plusp (logand control-key-state
 				      (logior +RIGHT-ALT-PRESSED+
 					      +LEFT-ALT-PRESSED+)))
-		       (setf read-ahead (append read-ahead (list c)))
-		       (setf result (char-code #\escape)))
+		       (when (not (zerop c))
+			 (setf read-ahead (append read-ahead (list c)))
+			 (setf result (char-code #\escape))))
 		      ((plusp virtual-key-code)
-		       (setf result (compatible-key-symbol virtual-key-code)))
+		       (setf result (compatible-key-symbol virtual-key-code))
+		       (dbugf :ms "keycode = ~s~%" result))
 		      (t
 		       (when (not (zerop c))
 			 (setf result c)))))
