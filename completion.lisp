@@ -512,13 +512,16 @@ arguments for that function, otherwise return NIL."
 			 (terminal-get-size *terminal*)
 			 (terminal-window-columns *terminal*))) 80)))
     ;;(dbug "~s ~s ~s~%" *terminal* cols (terminal-window-columns *terminal*))
-    ;;(with-output-to-string (str)
-    ;;  (let ((*terminal* (make-instance 'terminal-ansi-stream
-    ;;				       :output-stream str)))
-    (with-terminal-output-to-string (:ansi)
-      (function-help-show-function symbol expr-number)
-      (when (> *completion-count* 2)
-	(function-help-show-doc symbol cols)))))
+    (make-fat-string
+     :string
+     ;; @@@ This seems very wasteful. We should probably make function-help-*
+     ;; generate spans, so we don't have to do as much useless work.
+     (process-ansi-colors
+      (make-fatchar-string
+       (with-terminal-output-to-string (:ansi)
+	 (function-help-show-function symbol expr-number)
+	 (when (> *completion-count* 2)
+	   (function-help-show-doc symbol cols))))))))
 
 (defun function-keyword-completion (sym context pos word-start all)
   (dbug "function-keyword-completion ~s ~s~%" sym (subseq context pos))
