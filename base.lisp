@@ -10,6 +10,8 @@
    #:config-feature
    #:function-defined
    #:missing-implementation
+   #:define-enum-list
+   #:define-to-list
    #:quote-filename
    #:safe-namestring
 
@@ -143,6 +145,40 @@
 			 (declare (ignore subchar arg))
 			 (read stream t nil t)))
 		  (setf (fdefinition '|#_-reader|) (function pr)))))
+
+;; Constant defining macros.
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro define-enum-list (list-var constant-array &key (start 0))
+    "Define enumerated constants and put the names in LIST-VAR."
+    (with-unique-names (offset)
+      `(progn
+	 (eval-when (:compile-toplevel :load-toplevel :execute)
+	   (let ((,offset ,start))
+	     ,@(loop :with name :and doc :and i = 0
+		  :for c :across constant-array
+		  :do
+		  (setf name  (aref c 0)
+			doc   (aref c 1))
+		  :collect
+		  `(defconstant ,name (+ ,offset ,i) ,doc)
+		  :do (incf i))))
+	 ,@(loop :for c :across constant-array
+	      :collect
+	      `(push ',(aref c 0) ,list-var)))))
+
+  (defmacro define-to-list (list-var constant-array)
+    "Define constants and put the names in LIST-VAR."
+    `(progn
+       ,@(loop :with name :and value :and doc
+	    :for c :across constant-array :do
+	    (setf name  (aref c 0)
+		  value (aref c 1)
+		  doc   (if (>= (length c) 3) (aref c 2) nil))
+	    :collect
+	    `(defconstant ,name ,value ,doc)
+	    :collect
+	    `(push ',name ,list-var)))))
 
 ;; Generic things
 
