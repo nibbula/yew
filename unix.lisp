@@ -256,6 +256,8 @@
    #:file-status-flags
    #:file-status-generation
 
+   #:with-locked-file
+   
    ;; signals
    #:*signal-count*
    #:signal-name
@@ -3899,7 +3901,74 @@ it is not a symbolic link."
 
 ;; Questionable:
 ;; mmap/munmap/mprotect/madvise ???
+
 ;; File locking? : fcntl F_GETLK / F_GETLK F_SETLKW
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Stupid file locking
+;;
+;; Supposedly making a directory is atomic even on shitty networked
+;; filesystems. NOT thread safe, yet.
+
+(defvar *lock-suffix* ".lck"
+  "What to append to a path to make the lock name.")
+
+(defun lock-file-name (pathname)
+  "Return the name of the lock file for PATHNAME."
+  ;; (path-append (or (path-directory-name pathname) "")
+  ;; 	       (concatenate 'string (path-file-name pathname) *lock-suffix*))
+  (s+ pathname *lock-suffix*))
+
+(defun lock-file (pathname lock-type timeout increment)
+  "Lock PATHNAME."
+  (declare (ignore lock-type)
+	   (type single-float timeout increment))
+  ;; @@@ perhaps we should add u+x, even though it's mostly pointless,
+  ;; but just so things that traverse the filesystem won't get stupid
+  ;; permission errors.
+  (let ((mode (file-status-mode (stat (safe-namestring pathname))))
+	(filename (lock-file-name pathname))
+	(time 0.0))
+    (declare (type single-float time))
+    ;; Very lame and slow polling.
+    (loop :with wait :and inc single-float = increment
+       :do
+       (if (not (ignore-errors (make-directory filename :mode mode)))
+	   (if (= *errno* +EEXIST+) ;; @@@ unix specific!
+	       (setf wait t)
+	       (error-check -1 "lock-file: ~s" filename))
+	   (setf wait nil))
+       ;; (when wait
+       ;; 	 (format t "Waiting...~d~%" time))
+       :while (and wait (< time timeout))
+       :do (sleep inc) (incf time inc))
+    (when (>= time timeout)
+      (error "Timed out trying to lock file ~s" pathname)))
+  t)
+
+(defun unlock-file (pathname)
+  "Unlock PATHNAME."
+  (let ((filename (lock-file-name (safe-namestring pathname))))
+    (when (file-exists filename)
+      (delete-directory filename)
+      ;; (format t "Unlocked~%")
+      (sync))))
+
+(defmacro with-locked-file ((pathname &key (lock-type :write) (timeout 3)
+				      (increment .1))
+			    &body body)
+  "Evaluate BODY with PATHNAME locked. Only wait for TIMEOUT seconds to get a
+lock, checking at least every INCREMNT seconds."
+  ;; @@@ Need to wrap with recursive thread locks
+  (with-unique-names (locked)
+    `(let ((,locked nil))
+       (unwind-protect
+	    (progn
+	      (setf ,locked
+		    (lock-file ,pathname ,lock-type ,timeout ,increment))
+	      ,@body)
+	 (when ,locked
+	   (unlock-file ,pathname))))))
 
 (defcfun ("utimensat" real-utimensat) :int
   (dirfd :int) (pathname :string)

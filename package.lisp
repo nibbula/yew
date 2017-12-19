@@ -81,7 +81,7 @@
    #:simple-delete-file
    #:with-os-file
 
-   ;; Stupid cooperative locking
+   ;; locking
    #:with-locked-file
 
    ;; Application paths
