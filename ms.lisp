@@ -59,6 +59,9 @@
    #:without-access-errors
    #:hidden-file-name-p
    #:superfluous-file-name-p
+   #:lock-file
+   #:unlock-file
+   #:with-locked-file
    #:is-executable
    #:config-dir
    #:data-path
@@ -95,6 +98,8 @@
    #:get-window-size
    ;; Extra Windows specific stuff:
    #:windows-error
+   #:get-binary-type #:*binary-types*
+   #:binary-type-description
    #:get-computer-name
    ;; Console stuff:
    #:get-console-info
@@ -278,12 +283,14 @@ If N isn't given, assume WIDE-STRING is terminated by a zero character."
     (when (zerop result)
       (error "dork-free failed ~s" ptr)))) ;; @@@ call (error-message)
 
+;; There's many more of these, but I suppose this suffices for the current?
 (defconstant LANG_NEUTRAL #x00)
 (defconstant SUBLANG_DEFAULT #x01)
 
+;; This is a macro in C code.
 (defun MAKELANGID (primary sublang)
-  (logior (ash (logior #xffff sublang) 10)
-	  (logior #xffff primary)))
+  (logior (ash (logand #xffff sublang) 10)
+	  (logand #xffff primary)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Error handling
@@ -310,24 +317,28 @@ If N isn't given, assume WIDE-STRING is terminated by a zero character."
   )
 
 (defun error-message (&optional (error-code (get-last-error)))
-  "Return a string describing the error code." 
-  (with-foreign-object (message '(:pointer LPTSTR))
-    (unwind-protect
-       (progn
-	 (when (zerop (%format-message
-		       (logior +FORMAT-MESSAGE-FROM-SYSTEM+
-			       +FORMAT-MESSAGE-ALLOCATE-BUFFER+
-			       +FORMAT-MESSAGE-IGNORE-INSERTS+)
-		       (null-pointer)
-		       error-code
-		       (MAKELANGID LANG_NEUTRAL SUBLANG_DEFAULT)
-		       message
-		       0
-		       (null-pointer)))
-	   (error "FormatMessage failed: ~s ~s" error-code (get-last-error)))
-	 (wide-string-to-lisp (mem-ref message 'LPTSTR)))
-      (when (not (null-pointer-p message))
-	(dork-free (mem-ref message 'LPTSTR))))))
+  "Return a string describing the error code."
+  (let (result)
+    (with-foreign-object (message '(:pointer LPTSTR))
+      (unwind-protect
+	   (let ((bytes-stored
+		  (%format-message
+		   (logior +FORMAT-MESSAGE-FROM-SYSTEM+
+			   +FORMAT-MESSAGE-ALLOCATE-BUFFER+
+			   +FORMAT-MESSAGE-IGNORE-INSERTS+)
+		   (null-pointer)
+		   error-code
+		   (MAKELANGID LANG_NEUTRAL SUBLANG_DEFAULT)
+		   message
+		   0
+		   (null-pointer))))
+	     (when (zerop bytes-stored)
+	       (error "FormatMessage failed: ~s ~s ~s"
+		      bytes-stored  error-code (get-last-error)))
+	     (setf result
+		   (wide-string-to-lisp (mem-ref message 'LPTSTR))))
+	(when (not (null-pointer-p message))
+	  (dork-free (mem-ref message 'LPTSTR)))))))
 
 (define-condition windows-error (opsys-error)
   ()
@@ -340,6 +351,12 @@ appropriate error."
       (error 'windows-error :error-code (get-last-error)
 	     :format-control fmt :format-arguments args)
       c))
+
+(defmacro syscall ((func &rest args))
+  "Call a system function that returns BOOL false on failure and signal a
+windows-error with an appropriate error message if it fails."
+  `(error-check (,func ,@args)
+		,(concatenate 'string (string-downcase func) ":")))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Environmental
@@ -355,52 +372,48 @@ appropriate error."
     BOOL
   (env LPTCH))
 
-(defcfun ("GetEnvironmentVariableW"
-	  real-get-environment-variable :convention :stdcall)
-    DWORD
-  (name LPCTSTR) (buffer LPTSTR) (size DWORD))
-
-(defcfun ("SetEnvironmentVariableW" %set-environment-variable
-				   :convention :stdcall)
-    BOOL
-  (Name LPCTSTR) (Value LPCTSTR))
-
-;; (ms:environment)
-
 (defun environment ()
   (let (env new-env)
     (unwind-protect
 	 (prog ((i 0) c cc name value)
-	    ;;(setf env (mem-ref (%get-environment-strings) '(:pointer :int16)))
 	    (setf env (%get-environment-strings))
+	    (when (null-pointer-p env)
+	      (error 'windows-error :error-code (get-last-error)
+		     :format-control (error-message)))
 	    (loop :while (not (zerop (mem-aref env 'WCHAR i)))
-	    ;;(loop :while (not (zerop (mem-aref env :char i)))
 	       :do
 	       (setf name
 		     (with-output-to-string (str)
 		       (loop :do (setf c (mem-aref env 'WCHAR i))
-		       ;;(loop :do (setf c (mem-aref env :char i))
 			  :while (and (not (zerop c))
-				      (char/= #\= (setf cc (code-char c))))
+				      (char/= #\=
+					      (setf cc (wchar-to-character c))))
 			  :do (princ cc str)
 			  (dbugf :ms "c = ~s cc = ~s i = ~s~%" c cc i)
 			  (incf i))))
 	       (dbugf :ms "name=~s~%" name)
 	       (if (not (zerop c))
 		   (progn
+		     (incf i) ;; past the #\=
 		     (setf value
 			   (with-output-to-string (str)
 			     (loop :do (setf c (mem-aref env 'WCHAR i))
 				:while (not (zerop c))
-				:do (princ (code-char c) str)
+				:do (princ (wchar-to-character c) str)
 				(incf i))))
 		     (dbugf :ms "value=~s~%" value)
-		     (push (cons name value) new-env))
-		   (push (cons name nil) new-env)))
+		     (push (cons (keywordify name) value) new-env))
+		   (push (cons (keywordify name) nil) new-env))
+	       (incf i))
 	    (setf new-env (nreverse new-env)))
       (when env
-	(%free-environment-strings env)))
+	(syscall (%free-environment-strings env))))
     new-env))
+
+(defcfun ("GetEnvironmentVariableW"
+	  real-get-environment-variable :convention :stdcall)
+    DWORD
+  (name LPCTSTR) (buffer LPTSTR) (size DWORD))
 
 (defun environment-variable (name)
   (with-wide-string (w-name name)
@@ -416,18 +429,52 @@ appropriate error."
 		       ))
 	      (wide-string-to-lisp str result)))))))
 
+(defcfun ("SetEnvironmentVariableW" %set-environment-variable
+				   :convention :stdcall)
+    BOOL
+  (Name LPCTSTR) (Value LPCTSTR))
+
 (defun set-environment-variable (var value)
   "Set the environtment variable named VAR to the string VALUE. If VALUE is
 NIL, unset the VAR, using unsetenv."
-  (declare (ignore var value))
-  ;; @@@ 
-  )
+  (with-wide-string (env-var var)
+    (with-wide-string (env-value value)
+      (syscall (%set-environment-variable env-var env-value))))
+  value)
 
 (defsetf environment-variable set-environment-variable
     "Set the environtment variable named VAR to the string VALUE.")
 
+(defcstruct foreign-processor-arch
+  (processor-architecture WORD)
+  (reserved WORD))
+
+(defcunion foreign-arch
+  (oem-id DWORD)
+  (proc-arch (:struct foreign-processor-arch)))
+
+(defcstruct SYSTEM_INFO
+  (processor-arch             (:union foreign-arch))
+  (page-size		       DWORD)
+  (minimum-application-address LPVOID)
+  (maximum-application-address LPVOID)
+  (active-processor-mask       DWORD_PTR)
+  (number-of-processors	       DWORD)
+  (processor-type	       DWORD)
+  (allocation-granularity      DWORD)
+  (processor-level	       WORD)
+  (processor-revision	       WORD))
+
+(defctype LPSYSTEM_INFO (:pointer (:struct SYSTEM_INFO)))
+
+(defcfun ("GetSystemInfo" %get-system-info)
+    :void
+  (system-info LPSYSTEM_INFO))
+
 (defun memory-page-size ()
-  4096)
+  (with-foreign-object (sys-info 'LPSYSTEM_INFO)
+    (%get-system-info sys-info)
+    (foreign-slot-value sys-info '(:struct SYSTEM_INFO) 'page-size)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Users
@@ -563,7 +610,7 @@ actually exists."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Groups
 
-;; No such thing.
+;; No such thing. Or is there?
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Login/accounting database
@@ -595,11 +642,15 @@ for long."
   (declare (ignore filename))
   t)
 
+(defcfun ("DeleteFileW" %delete-file)
+    BOOL
+  (file-name LPCTSTR))
+
 (defun simple-delete-file (pathname)
   "Delete a file. Doesn't monkey with the name, which should be a string.
 Doesn't operate on streams."
-  (declare (ignore pathname))
-  nil)
+  (with-wide-string (w-path pathname)
+    (syscall (%delete-file w-path))))
 
 (defmacro with-os-file ((var filename &key
 			     (direction :input)
@@ -621,7 +672,6 @@ versions of the keywords used in Lisp open.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
 
-;; @@@ maybe we should rename this to directory? or directory-contents?
 (defun read-directory (&key dir append-type full omit-hidden)
   "Return a list of the file names in DIR as strings. DIR defaults to the ~
 current directory. If APPEND-TYPE is true, append a character to the end of ~
@@ -641,25 +691,66 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
   nil
   )
 
-(defun change-directory (&optional path)
+(defcfun ("SetCurrentDirectoryW" %set-current-directory)
+    BOOL
+  (path-name LPCTSTR))
+
+(defun change-directory (&optional (path (user-homedir-pathname)))
   "Change the current directory to DIR. Defaults to (user-homedir-pathname) ~
 if not given."
-  (declare (ignore path))
-  nil)
+  ;; @@@ We should put a thread lock around this if we want it to be thread safe.
+  (let ((our-path
+	 (typecase path
+	   (pathname (safe-namestring path))
+	   (string path))))
+    (when (char/= #\\ (aref our-path (1- (length our-path))))
+      (setf our-path (s+ our-path "\\")))
+    (with-wide-string (w-path our-path)
+      (syscall (%set-current-directory w-path)))))
+
+(defcfun ("GetCurrentDirectoryW" %get-current-directory)
+    DWORD
+  (buffer-length DWORD)
+  (buffer LPTSTR))
 
 (defun current-directory ()
   "Return the full path of the current working directory as a string."
-  nil)
+  (let ((len (%get-current-directory 0 (null-pointer)))
+	result)
+    (with-foreign-object (dir 'TCHAR len)
+      (setf result (%get-current-directory len dir))
+      (when (/= result (1- len))
+	(error 'windows-error :error-code (get-last-error)
+	       :format-control "Failed to get the current directory."))
+      (wide-string-to-lisp dir))))
+
+(defcstruct SECURITY_ATTRIBUTES
+  (length DWORD)
+  (security-descriptor LPVOID)
+  (inherit-handle BOOL))
+
+(defctype PSECURITY_ATTRIBUTES (:pointer (:struct SECURITY_ATTRIBUTES)))
+(defctype LPSECURITY_ATTRIBUTES (:pointer (:struct SECURITY_ATTRIBUTES)))
+
+(defcfun ("CreateDirectoryW" %create-directory)
+    BOOL
+  (path-name LPCTSTR)
+  (security-attributes LPSECURITY_ATTRIBUTES))
 
 (defun make-directory (path &key (mode #o755))
   "Make a directory."
-  (declare (ignore path mode))
-  nil)
+  (declare (ignore mode))
+  (with-wide-string (w-path path)
+    (syscall (%create-directory w-path (null-pointer)))))
+
+(defcfun ("RemoveDirectoryW" %remove-directory)
+    BOOL
+  (path-name LPCTSTR))
 
 (defun delete-directory (path)
   "Delete a directory."
-  (declare (ignore path))
-  nil)
+  (with-wide-string (w-path path)
+    (syscall (%remove-directory w-path))))
 
 (defun probe-directory (dir)
   "Something like probe-file but for directories."
@@ -683,7 +774,160 @@ systems, this means \".\" and \"..\"."
   nil)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; file locking
+
+(defcstruct foreign-offset
+  (offset-low DWORD)
+  (offset-high DWORD))
+
+(defcunion foreign-offset-pointer
+  (offset (:struct foreign-offset))
+  (pointer PVOID))
+
+(defcstruct OVERLAPPED
+  (internal ULONG_PTR)
+  (internal-high ULONG_PTR)
+  (offset-pointer (:union foreign-offset-pointer))
+  (event HANDLE))
+(defctype LPOVERLAPPED (:pointer (:struct OVERLAPPED)))
+
+(defun set-overlapped (overlapped offset-low-in offset-high-in event-handle)
+  (with-foreign-slots ((offset-pointer event) overlapped (:struct OVERLAPPED))
+    (with-foreign-slots ((offset) offset-pointer
+			 (:union foreign-offset-pointer))
+      (with-foreign-slots ((offset-low offset-high) offset
+			   (:struct foreign-offset))
+	(setf offset-low offset-low-in
+	      offset-high offset-high-in)))
+    (setf event event-handle)))
+
+(defconstant +LOCKFILE-EXCLUSIVE-LOCK+ #x00000002
+  "Request an exclusive lock. Otherwise a shared lock is requested.")
+(defconstant +LOCKFILE-FAIL-IMMEDIATELY+ #x00000001
+  "The function returns immediately if it is unable to acquire the requested
+lock. Otherwise, it waits.")
+
+(defcfun ("LockFileEx" %lock-file-ex)
+    BOOL
+  (file HANDLE)
+  (flags DWORD)
+  (reserved DWORD)
+  (number-of-bytes-to-lock-low DWORD)
+  (number-of-bytes-to-lock-high DWORD)
+  (overlapped LPOVERLAPPED))
+
+(defcfun ("UnlockFileEx" %unlock-file-ex)
+    BOOL
+  (file HANDLE)
+  (reserved DWORD)
+  (number-of-bytes-to-unlock-low DWORD)
+  (number-of-bytes-to-unlock-high DWORD)
+  (overlapped LPOVERLAPPED))
+
+(defcstruct SECURITY_ATTRIBUTES
+  (length              DWORD)
+  (security-descriptor LPVOID)
+  (inherit-handle      BOOL))
+
+(defctype PSECURITY_ATTRIBUTES (:pointer (:struct SECURITY_ATTRIBUTES)))
+(defctype LPSECURITY_ATTRIBUTES (:pointer (:struct SECURITY_ATTRIBUTES)))
+
+(defcfun ("CreateFileW" %create-file)
+    HANDLE
+  (file-name 		 LPCTSTR)
+  (desired-access 	 DWORD)
+  (share-mode 		 DWORD)
+  (security-attributes   LPSECURITY_ATTRIBUTES)
+  (creation-disposition  DWORD)
+  (flags-and-attributes  DWORD)
+  (template-file 	 HANDLE))
+
+(defconstant +GENERIC-READ+  #x80000000)
+(defconstant +GENERIC-WRITE+ #x40000000)
+
+(defconstant +FILE-SHARE-READ+  #x00000001)
+(defconstant +FILE-SHARE-WRITE+ #x00000002)
+
+(defconstant +OPEN-EXISTING+ 3)
+
+(defcfun ("CloseHandle" %close-handle)
+    BOOL
+   (object HANDLE))
+
+(defmacro with-locked-file ((pathname &key (lock-type :write) (timeout 3)
+				      (increment .1))
+			    &body body)
+  "Evaluate BODY with PATHNAME locked. Only wait for TIMEOUT seconds to get a
+lock, checking at least every INCREMNT seconds."
+  (declare (ignore timeout increment))
+  (with-unique-names (locked flags handle overlapped the-lock-type w-path)
+    `(let ((,locked nil) (,handle nil) (,the-lock-type ,lock-type))
+       (unwind-protect
+         (let ((,flags (logior (ecase ,the-lock-type
+				 (:write 0)
+				 (:read +LOCKFILE-EXCLUSIVE-LOCK+))
+			       +LOCKFILE-FAIL-IMMEDIATELY+)))
+	   (with-wide-string (,w-path ,pathname)
+	     (setf ,handle (%create-file
+			    ,w-path
+			    (logior +GENERIC-READ+ +GENERIC-WRITE+)
+			    (if (eq ,the-lock-type :write)
+				+FILE-SHARE-READ+
+				0)
+			    +OPEN-EXISTING+
+			    0
+			    (null-pointer))))
+	   (with-foreign-object (,overlapped '(:struct OVERLAPPED))
+	     (set-overlapped ,overlapped 0 0 0)
+	     ;; We lock the maximum number of bytes to effectively lock the
+	     ;; whole file.
+	     (syscall (%lock-file-ex ,handle ,flags #xffffffff #xffffffff
+				     ,overlapped)))
+	   (setf ,locked t)
+	   ,@body)
+	 (when ,locked
+	   (syscall (%unlock-file-ex ,handle #xffffffff #xffffffff
+				     ,overlapped)))
+	 (when ,handle
+	   (syscall %close-handle ,handle))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; System Commands?
+
+(defcfun ("GetBinaryTypeW" %get-binary-type)
+    BOOL
+  (application-name LPCTSTR)
+  (binary-type LPDWORD))
+
+(defconstant +SCS_32BIT_BINARY+ 0 "A 32-bit Windows application")
+(defconstant +SCS-DOS-BINARY+   1 "An MS-DOS application.")
+(defconstant +SCS-WOW-BINARY+   2 "A 16-bit Windows application.")
+(defconstant +SCS-PIF-BINARY    3 "A PIF file that executes an MS-DOS application.")
+(defconstant +SCS-POSIX-BINARY+ 4 "A POSIX application.")
+(defconstant +SCS-OS216-BINARY  5 "A 16-bit OS/2 application")
+(defconstant +SCS_64BIT_BINARY+ 6 "A 64-bit Windows application.")
+
+;; This relys on the positional nature of the above constants.
+(defparameter *binary-types*
+  #(#(:32BIT "A 32-bit Windows application")
+    #(:DOS   "An MS-DOS application.")
+    #(:WOW   "A 16-bit Windows application.")
+    #(:PIF   "A PIF file that executes an MS-DOS application.")
+    #(:POSIX "A POSIX application.")
+    #(:OS216 "A 16-bit OS/2 application")
+    #(:64BIT "A 64-bit Windows application.")))
+
+(defun get-binary-type (pathname)
+  "Return the executable binary for PATHNAME. The return value is one of the
+keywords from *BINARY-TYPE*."
+  (with-wide-string (w-path pathname)
+    (with-foreign-object (binary-type 'DWORD)
+      (syscall (%get-binary-type w-path binary-type))
+      (aref (aref *binary-types* (mem-ref binary-type 'DWORD)) 0))))
+
+(defun binary-type-description (binary-type)
+  "Return the description of BINARY-TYPE, as returned by GET-BINARY-TYPE."
+  (aref (find binary-type *binary-types* :key (_ (aref _ 0))) 1))
 
 (defun is-executable (path &key user regular)
   "Return true if the PATH is executable by the USER. USER defaults to the
@@ -1202,31 +1446,6 @@ descriptor FD."
 (defvar *default-console-device-name* "CON" ;; @@@ or should it be CONIN$ ?
   "Name of the default console device.")
 
-(defcstruct SECURITY_ATTRIBUTES
-  (length              DWORD)
-  (security-descriptor LPVOID)
-  (inherit-handle      BOOL))
-
-(defctype PSECURITY_ATTRIBUTES (:pointer (:struct SECURITY_ATTRIBUTES)))
-(defctype LPSECURITY_ATTRIBUTES (:pointer (:struct SECURITY_ATTRIBUTES)))
-
-(defcfun ("CreateFileW" %create-file)
-    HANDLE
-  (file-name 		 LPCTSTR)
-  (desired-access 	 DWORD)
-  (share-mode 		 DWORD)
-  (security-attributes   LPSECURITY_ATTRIBUTES)
-  (creation-disposition  DWORD)
-  (flags-and-attributes  DWORD)
-  (template-file 	 HANDLE))
-
-(defconstant +GENERIC-READ+  #x80000000)
-(defconstant +GENERIC-WRITE+ #x40000000)
-
-(defconstant +FILE-SHARE-READ+  #x00000001)
-(defconstant +FILE-SHARE-WRITE+ #x00000002)
-
-(defconstant +OPEN-EXISTING+ 3)
 
 (defun open-real-console (direction)
   (flet ((open-it (name)
@@ -1304,7 +1523,7 @@ descriptor FD."
 			     (events-read 'DWORD))
 	(loop :do
 	   (setf result nil)
-	   (error-check (%read-console-input in-handle buf 1 events-read))
+	   (syscall (%read-console-input in-handle buf 1 events-read))
 	   (with-foreign-slots ((event-type event)
 				buf
 				(:struct foreign-input-record))
@@ -1348,21 +1567,6 @@ descriptor FD."
 	   :while (not result))))
     result))
 
-(defcstruct foreign-offset
-  (offset DWORD)
-  (offset-high DWORD))
-
-(defcunion foreign-offset-pointer
-  (offset (:struct foreign-offset))
-  (pointer PVOID))
-
-(defcstruct OVERLAPPED
-  (internal ULONG_PTR)
-  (internal-high ULONG_PTR)
-  (offset-pointer (:union foreign-offset-pointer))
-  (event HANDLE))
-(defctype LPOVERLAPPED (:pointer (:struct OVERLAPPED)))
-
 (defcfun ("ReadFile" %read-file)
     BOOL
    (file HANDLE)
@@ -1390,7 +1594,6 @@ descriptor FD."
 	      (mem-ref bytes-read 'DWORD))
       (format *debug-io* "wchar = #x~x~%" (mem-aref buf :unsigned-char 0))
       (finish-output *debug-io*))
-    ;;(error-check (%read-file handle buf 1 bytes-read (null-pointer)))
     (when (/= 1 (mem-ref bytes-read 'DWORD))
       (error 'windows-error :format-control "Fail to read read 1 byte."))
     (mem-aref buf :unsigned-char 0)))
@@ -1455,9 +1658,9 @@ TTY is a file descriptor."
        (with-wide-string (str string)
 	 (with-foreign-object (written 'DWORD)
 	   (if not-console
-	       (error-check (%write-file out-handle str (length string)
+	       (syscall (%write-file out-handle str (length string)
 					 written (null-pointer)))
-	       (error-check (%write-console out-handle str (length string)
+	       (syscall (%write-console out-handle str (length string)
 					    written (null-pointer))))
 	   ;; @@@ Should we complain if written != length ?
 	   (mem-ref written 'DWORD)))))
@@ -1649,7 +1852,7 @@ The individual settings override the settings in MODE."
 boolean indicating visibility."
   (with-slots (out-handle) tty
     (with-foreign-object (info '(:struct CONSOLE_CURSOR_INFO))
-      (error-check (%get-console-cursor-info out-handle info))
+      (syscall (%get-console-cursor-info out-handle info))
       (values
        (foreign-slot-value info '(:struct CONSOLE_CURSOR_INFO) 'size)
        (plusp (foreign-slot-value info
@@ -1678,7 +1881,7 @@ boolean indicating visibility."
 	    size
 	    (foreign-slot-value info '(:struct CONSOLE_CURSOR_INFO) 'visible)
 	    visible)
-      (error-check (%set-console-cursor-info out-handle info)))))
+      (syscall (%set-console-cursor-info out-handle info)))))
 
 (defcfun ("SetConsoleCursorPosition" %set-console-cursor-position
 				     :convention :stdcall)
@@ -1690,9 +1893,7 @@ boolean indicating visibility."
 (defun set-cursor-position (tty row col)
   (with-dbug :ms "set-cursor-position ~s ~s ~%" row col)
   (with-slots (out-handle) tty
-    (error-check (%set-console-cursor-position
-     		  out-handle
-		  `(x ,col y ,row)))))
+    (syscall (%set-console-cursor-position out-handle `(x ,col y ,row)))))
 
 (defcstruct CHAR_INFO
   (uchar (:union foreign-uchar))
@@ -1738,12 +1939,12 @@ boolean indicating visibility."
 				  right ,right bottom, bottom)
 				'(:struct SMALL_RECT))
 |#
-      (error-check (%scroll-console-screen-buffer
-		    out-handle
-		    scroll-rect (null-pointer)
-		    ;;(mem-ref dest '(:struct COORD))
-		    `(x ,x y ,y)
-		    fill-char)))))
+      (syscall (%scroll-console-screen-buffer
+		out-handle
+		scroll-rect (null-pointer)
+		;;(mem-ref dest '(:struct COORD))
+		`(x ,x y ,y)
+		fill-char)))))
 
 (defcfun ("FillConsoleOutputCharacterW" %fill-console-output-character
 					:convention :stdcall)
@@ -1766,15 +1967,15 @@ boolean indicating visibility."
 			   )
       ;(set-wchar tchar 0 char)
       ;;(set-coord write-at x y)
-      (error-check (%fill-console-output-character
-		    out-handle
-		    (character-to-wchar char)
-		    length
-		    ;;(convert-to-foreign `(x ,x y ,y) '(:struct COORD))
-		    ;;(mem-ref write-at '(:struct COORD))
-		    ;;write-at
-		    `(x ,x y ,y)
-		    chars-written))
+      (syscall (%fill-console-output-character
+		out-handle
+		(character-to-wchar char)
+		length
+		;;(convert-to-foreign `(x ,x y ,y) '(:struct COORD))
+		;;(mem-ref write-at '(:struct COORD))
+		;;write-at
+		`(x ,x y ,y)
+		chars-written))
       (mem-ref chars-written 'DWORD))))
 
 (defcfun ("SetConsoleTextAttribute" %set-console-text-attribute)
@@ -1810,12 +2011,12 @@ boolean indicating visibility."
       (setf length (* width height))))
   (with-slots (out-handle) tty
     (with-foreign-objects ((chars-written 'DWORD))
-      (error-check (%fill-console-output-attribute
-		    out-handle
-		    attribute
-		    length
-		    `(x ,x y ,y)
-		    chars-written))
+      (syscall (%fill-console-output-attribute
+		out-handle
+		attribute
+		length
+		`(x ,x y ,y)
+		chars-written))
       (mem-ref chars-written 'DWORD))))
 
 (defun terminal-query (query &key max)
