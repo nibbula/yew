@@ -479,7 +479,7 @@ match & dir  - f(prefix: boo) readir boo
 
 ;; This is called recursively for each directory, depth first, for exapnding
 ;; GLOB patterns. Of course most of the work is done by FNMATCH.
-(defun dir-matches (path &key dir escape recursive)
+(defun dir-matches (path &key dir escape recursive mark-directories)
   "Takes a PATH, which is a list of strings which are path elements, usually
 with GLOB patterns, and a directory DIR, which is a string directory path,
 without patterns, and returns a list of string paths that match the PATH in
@@ -493,6 +493,10 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 	     (char= (char string 0) #\.))
 	   (append-result (thing)
 	     (setf result (append result thing)))
+	   (decorated-name (name)
+	     (if (and mark-directories is-dir)
+		 (s+ name *directory-separator*)
+		 name))
 	   (path-match (entry path)
 	     "True if directory entry ENTRY should match path element PATH."
 	     (or
@@ -529,7 +533,7 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 					(path-match entry (cadr path))))
 	   ;; There's no further path elements, so just append the match.
 	   (dbugf :glob "spoot ~s~%" name)
-	   (append-result (list (dir-append dir name)))
+	   (append-result (list (dir-append dir (decorated-name name))))
 	   (setf either t))
 	 (when (and is-dir (or more-path recursive-match))
 	   ;; If it's a directory, get all the sub directory matches.
@@ -537,7 +541,7 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 	   (append-result (dir-matches
 			   (or (and recursive-match path)
 			       (cdr path))
-			   :dir (dir-append dir name)
+			   :dir (dir-append dir (decorated-name name))
 			   :escape escape
 			   :recursive recursive))
 	   (setf either t))
@@ -558,7 +562,7 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
   TWIDDLE is a synonym for TILDE.
   LIMIT as an integer, means limit the number of pathnames to LIMIT.
   RECURSIVE true, means double stars ** match down through directories."
-  (declare (ignore mark-directories braces limit))
+  (declare (ignore braces limit))
   (setf tilde (or tilde twiddle))
   (let* ((expanded-pattern (if tilde (expand-tilde pattern) pattern))
 	 (path (split-sequence *directory-separator* expanded-pattern
@@ -570,9 +574,11 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
     (if sort
 	(locally
 	    #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
-	    (sort (dir-matches path :dir dir :escape escape :recursive recursive)
+	    (sort (dir-matches path :dir dir :escape escape :recursive recursive
+			       :mark-directories mark-directories)
 		  #'string<))
-	(dir-matches path :dir dir :escape escape :recursive recursive))))
+	(dir-matches path :dir dir :escape escape :recursive recursive
+		     :mark-directories mark-directories))))
 
 ;; Despite Tim Waugh's <twaugh@redhat.com> wordexp manifesto
 ;; <http://cyberelk.net/tim/articles/cmdline/>, "When is a command line not a
@@ -581,7 +587,7 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 ;; important to get right, you should do it in a reusable library. I only do
 ;; it, even in shell programs, when I'm forced to. It's probably much easier,
 ;; clearer, more secure, more maintainable, to do the equivalent in Lisp,
-;; POSIX be damned. In a POSIX shell you can usually _only_ get arithmetic
+;; despite POSIX. In a POSIX shell you can usually _only_ get arithmetic
 ;; evaluation, and string functions, and so on, in those weird expansions, but
 ;; it doesn't mean it's good. We can do it some other way.
 (defun wordexp ()
