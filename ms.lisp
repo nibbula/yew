@@ -138,6 +138,22 @@
 (use-foreign-library "user32.dll")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Constants widely used
+
+(defconstant +MAX-PATH+ 260)
+
+(defconstant +ERROR-FILE-NOT-FOUND+ 2)
+(defconstant +ERROR-ENVVAR-NOT-FOUND+ 203)
+
+(defconstant +GENERIC-READ+  #x80000000)
+(defconstant +GENERIC-WRITE+ #x40000000)
+
+;; a.k.a: ((HANDLE)~(ULONG_PTR)0) or the maximum pointer value.
+(defconstant +INVALID-HANDLE-VALUE+
+  #+ms-win64 (1- (expt 2 64))
+  #-ms-win64 (1- (expt 2 32)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Types
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -156,7 +172,7 @@
 ;; Also one could specify something like:
 ;;   (defcfun ("WinFoo" win-foo :cconv :stdcall) DWORD (LPSTSTR derp))
 
-(defctype wchar-t :int16)
+(defctype wchar-t :uint16)
 (defctype VOID :void)
 (defctype BOOL :int)
 (defctype INT :int)
@@ -211,6 +227,39 @@
 (defctype HFILE :int)
 (defctype HLOCAL HANDLE)
 
+;; Widely used structs.
+
+(defcstruct FILETIME
+  "100-nanosecond intervals since January 1, 1601 (UTC)."
+  (low-date-time DWORD)
+  (high-date-time DWORD))
+(defctype PFILETIME (:pointer (:struct FILETIME)))
+(defctype LPFILETIME (:pointer (:struct FILETIME)))
+
+(defcstruct foreign-offset
+  (offset-low DWORD)
+  (offset-high DWORD))
+
+(defcunion foreign-offset-pointer
+  (offset (:struct foreign-offset))
+  (pointer PVOID))
+
+(defcstruct OVERLAPPED
+  (internal ULONG_PTR)
+  (internal-high ULONG_PTR)
+  (offset-pointer (:union foreign-offset-pointer))
+  (event HANDLE))
+(defctype LPOVERLAPPED (:pointer (:struct OVERLAPPED)))
+
+(defcstruct SECURITY_ATTRIBUTES
+  (length DWORD)
+  (security-descriptor LPVOID)
+  (inherit-handle BOOL))
+
+(defctype PSECURITY_ATTRIBUTES (:pointer (:struct SECURITY_ATTRIBUTES)))
+(defctype LPSECURITY_ATTRIBUTES (:pointer (:struct SECURITY_ATTRIBUTES)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Utilities
 
 ;;(declaim (inline wchar-to-character))
@@ -360,8 +409,6 @@ windows-error with an appropriate error message if it fails."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Environmental
-
-(defconstant +ERROR-ENVVAR-NOT-FOUND+ 203)
 
 (defcfun ("GetEnvironmentStringsW" %get-environment-strings
 				   :convention :stdcall)
@@ -622,19 +669,97 @@ actually exists."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Files
 
+(defconstant GetFileExInfoStandard 0 "Indicates a WIN32_FILE_ATTRIBUTE_DATA.")
+(defctype GET_FILEEX_INFO_LEVELS :int32) ; XXX whatever
+
+(defcstruct WIN32_FILE_ATTRIBUTE_DATA
+  (file-attributes DWORD)
+  (creation-time (:struct FILETIME))
+  (last-access-time (:struct FILETIME))
+  (last-write-time (:struct FILETIME))
+  (file-size-high DWORD)
+  (file-size-low DWORD))
+
+(defctype LPWIN32_FILE_ATTRIBUTE_DATA
+    (:pointer (:struct WIN32_FILE_ATTRIBUTE_DATA)))
+
+(defcfun ("GetFileAttributesExW" %get-file-attributes-ex)
+    BOOL
+  (file-name LPCTSTR)
+  (info-level-id GET_FILEEX_INFO_LEVELS)
+  (file-information LPVOID))
+
+
+(defconstant +windows-to-universal-time+
+  9435484800 ;; Calculated by comparing the actual times.
+  ;; 9435456000 ;; Calculated by comparing the actual times. Off by TZ!?!
+  ;; @@@ This can't be right? Leap years? etc.
+  ;; (* (- 1900 1601) (* 60 60 24 (+ 365 1/4)))
+  "Value to subtract from a 1601 based Windows time in seconds, to get a
+Common Lisp 1900 based universal time.")
+
+(defun filetime-to-universal-time (filetime)
+  "Convert from a (:struct FILETIME) to a CL universal-time."
+  ;; FILETIME is in 100-nanosecond intervals since January 1, 1601 (UTC).
+  (let* ((low-date-time (getf filetime 'low-date-time))
+	 (high-date-time (getf filetime 'high-date-time))
+	 (100-nsec (logior (ash high-date-time 32) low-date-time))
+	 (sec (truncate 100-nsec (expt 10 7))))
+    (- sec +windows-to-universal-time+)))
+
+(defun filetime-to-universal-time-and-nsec (filetime)
+  "Convert from a (:struct FILETIME) to a CL universal-time and nanosecods."
+  ;; FILETIME is in 100-nanosecond intervals since January 1, 1601 (UTC).
+  (let* ((low-date-time (getf filetime 'low-date-time))
+	 (high-date-time (getf filetime 'high-date-time))
+	 (100-nsec (logior (ash high-date-time 32) low-date-time)))
+    (multiple-value-bind (new-sec new-100nsec)
+	(truncate 100-nsec (expt 10 7))
+      (values (- new-sec +windows-to-universal-time+)
+	      (* new-100nsec 100)))))
+
+(defun filetime-to-derp-time (filetime)
+  (multiple-value-bind (sec nano)
+      (filetime-to-universal-time-and-nsec filetime)
+    (make-derp-time :seconds sec :nanoseconds nano)))
+
+ ;; :immutable :compressed :hidden
+(defun attr-to-flags (attr)
+  (let (flags)
+    (when (plusp (logand attr +FILE-ATTRIBUTE-READONLY+))
+      (push :immutable flags))
+    (when (plusp (logand attr +FILE-ATTRIBUTE-HIDDEN+))
+      (push :hidden flags))
+    (when (plusp (logand attr +FILE-ATTRIBUTE-COMPRESSED+))
+      (push :compressed flags))
+    ;; @@@ What about the others? Or are we just doing least common denominator?
+    ;; These seem like the could be important or something.
+    (when (plusp (logand attr +FILE-ATTRIBUTE-SYSTEM+))
+      (push :system flags))
+    (when (plusp (logand attr +FILE-ATTRIBUTE-ENCRYPTED+))
+      (push :encrypted flags))
+    (when (plusp (logand attr +FILE-ATTRIBUTE-ARCHIVE+))
+      (push :archive flags))))
+
 (defun get-file-info (path &key (follow-links t))
   "Return information about the file described by PATH in a FILE-INFO
 structure. If FOLLOW-LINKS is true (the default), then if PATH is a symbolic
 link, return information about the file it's linked to, otherwise return
 information about the link itself."
-  (declare (ignore path follow-links))
-  (make-file-info
-   :type :regular
-   :size 1024
-   :flags nil
-   :creation-time 0
-   :access-time 0
-   :modification-time 0))
+  (declare (ignore follow-links)) ;; @@@
+  (with-wide-string (w-path path)
+    (with-foreign-object (info '(:struct WIN32_FILE_ATTRIBUTE_DATA))
+      (syscall (%get-file-attributes-ex w-path GetFileExInfoStandard info))
+      (with-foreign-slots ((file-attributes creation-time last-access-time
+			    last-write-time file-size-low file-size-high)
+			   info (:struct WIN32_FILE_ATTRIBUTE_DATA))
+	(make-file-info
+	 :type (attr-to-dir-entry-type file-attributes)
+	 :size (+ (ash file-size-high 32) file-size-low)
+	 :flags (attr-to-flags file-attributes)
+	 :creation-time (filetime-to-derp-time creation-time)
+	 :access-time (filetime-to-derp-time last-access-time)
+	 :modification-time (filetime-to-derp-time last-write-time))))))
 
 (defun file-exists (filename)
   "Check that a file with FILENAME exists at the moment. But it might not exist
@@ -672,6 +797,79 @@ versions of the keywords used in Lisp open.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
 
+(defparameter *file-attributes* nil "FILE_ATTRIBUTE_* constants")
+(define-to-list *file-attributes*
+ #(#(+FILE-ATTRIBUTE-READONLY+              #x00000001)
+   #(+FILE-ATTRIBUTE-HIDDEN+                #x00000002)
+   #(+FILE-ATTRIBUTE-SYSTEM+                #x00000004)
+   #(+FILE-ATTRIBUTE-DIRECTORY+             #x00000010)
+   #(+FILE-ATTRIBUTE-ARCHIVE+               #x00000020)
+   #(+FILE-ATTRIBUTE-DEVICE+                #x00000040)
+   #(+FILE-ATTRIBUTE-NORMAL+                #x00000080)
+   #(+FILE-ATTRIBUTE-TEMPORARY+             #x00000100)
+   #(+FILE-ATTRIBUTE-SPARSE-FILE+           #x00000200)
+   #(+FILE-ATTRIBUTE-REPARSE-POINT+         #x00000400 "symbolic link?")
+   #(+FILE-ATTRIBUTE-COMPRESSED+            #x00000800)
+   #(+FILE-ATTRIBUTE-OFFLINE+               #x00001000)
+   #(+FILE-ATTRIBUTE-NOT-CONTENT-INDEXED+   #x00002000)
+   #(+FILE-ATTRIBUTE-ENCRYPTED+             #x00004000)
+   #(+FILE-ATTRIBUTE-INTEGRITY-STREAM+      #x00008000)
+   #(+FILE-ATTRIBUTE-VIRTUAL+               #x00010000)
+   #(+FILE-ATTRIBUTE-NO-SCRUB-DATA+         #x00020000)
+   #(+FILE-ATTRIBUTE-RECALL-ON-OPEN+        #x00040000)
+   #(+FILE-ATTRIBUTE-RECALL-ON-DATA-ACCESS+ #x00400000)))
+
+
+(defcstruct WIN32_FIND_DATA
+  (file-attributes DWORD)
+  (creation-time (:struct FILETIME))
+  (last-access-time (:struct FILETIME))
+  (last-write-time (:struct FILETIME))
+  (file-size-high DWORD)
+  (file-size-low DWORD)
+  (reserved0 DWORD)
+  (reserved1 DWORD)
+  (file-name TCHAR :count #.+MAX-PATH+)
+  (alternate-file-name TCHAR :count 14))
+
+(defctype PWIN32_FIND_DATA (:pointer (:struct WIN32_FIND_DATA)))
+(defctype LPWIN32_FIND_DATA (:pointer (:struct WIN32_FIND_DATA)))
+
+(defcfun ("FindFirstFileW" %find-first-file)
+    HANDLE
+  (file-name LPCTSTR)
+  (find-file-data LPWIN32_FIND_DATA))
+
+(defconstant +ERROR-NO-MORE-FILES+ 18)
+
+(defcfun ("FindNextFileW" %find-next-file)
+    BOOL
+  (find-file HANDLE)
+  (find-file-data LPWIN32_FIND_DATA))
+
+(defcfun ("FindClose" %find-close)
+    BOOL
+  (find-file HANDLE))
+
+;; @@@ If we wanted to be more complete we could open the file and call
+;; GetFileType, but I imagine it would slow things quite a bit.
+(defun attr-to-dir-entry-type (attr)
+  "Return a dir-entry-type value given a file-attribute value."
+  (cond
+    ((plusp (logand attr +FILE-ATTRIBUTE-DIRECTORY+))     :directory)
+    ((or (= attr +FILE-ATTRIBUTE-NORMAL+)
+	 ;; It doesn't have any other flags than these:
+	 (zerop (logand attr (lognot (logior +FILE-ATTRIBUTE-ARCHIVE+
+					     +FILE-ATTRIBUTE-HIDDEN+
+					     +FILE-ATTRIBUTE-READONLY+)))))
+     :regular)
+    ((plusp (logand attr +FILE-ATTRIBUTE-DEVICE+))        :device)
+    ((plusp (logand attr +FILE-ATTRIBUTE-REPARSE-POINT+)) :link)
+    (t :other)))
+
+;; @@@ Perhaps we should use FindFirstFileExW on Windows 7 and above since it's
+;; supposedly faster.
+
 (defun read-directory (&key dir append-type full omit-hidden)
   "Return a list of the file names in DIR as strings. DIR defaults to the ~
 current directory. If APPEND-TYPE is true, append a character to the end of ~
@@ -687,13 +885,60 @@ strings. Some dir-entry-type keywords are:
   :whiteout :undefined
 If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 "
-  (declare (ignore dir append-type full omit-hidden))
-  nil
-  )
+  (declare (ignore append-type))
+  (when (not dir)
+    (setf dir "."))			; XXX ???
+
+  (setf dir (s+ dir "\\*"))
+  (let (handle dir-list)
+    (unwind-protect
+      (with-foreign-object (find-data '(:struct WIN32_FIND_DATA))
+	(with-wide-string (w-dir dir)
+	  (setf handle (%find-first-file w-dir find-data))
+	  (when (= (pointer-address handle) +INVALID-HANDLE-VALUE+)
+	    (error 'windows-error :error-code (get-last-error)
+		   :format-control
+		   "read-directory failed to read first file.")))
+	(setf dir-list
+	      (loop
+		 :with entry :and name
+		 :do
+		 (setf entry nil)
+		 (with-foreign-slots ((file-name file-attributes) find-data
+				      (:struct WIN32_FIND_DATA))
+		   (setf name (wide-string-to-lisp file-name))
+		   (when (or (not omit-hidden)
+			     (and (zerop (logand file-attributes
+						 +FILE-ATTRIBUTE-HIDDEN+))
+				  (not (hidden-file-name-p name))))
+		     (setf entry
+			   (if full
+			       (make-dir-entry
+				:name name
+				:type (attr-to-dir-entry-type file-attributes)
+				:inode nil)
+			       name))))
+		 :when entry
+		 :collect entry
+		 :while (not (zerop (%find-next-file handle find-data)))))
+	(when (/= (get-last-error) +ERROR-NO-MORE-FILES+)
+	  (error 'windows-error :error-code (get-last-error)
+		 :format-control "read-directory failed to read next file.")))
+      (when (and handle (/= (pointer-address handle) +INVALID-HANDLE-VALUE+))
+	(syscall (%find-close handle))))
+  dir-list))
 
 (defcfun ("SetCurrentDirectoryW" %set-current-directory)
     BOOL
   (path-name LPCTSTR))
+
+;; @@@ This isn't OS specific, but implementation specific, so it should be
+;; moved to base.lisp or opsys.lisp or something.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  ;; Set on implementations where we need to *default-pathname-defaults*
+  ;; when we change the system current directory, so that load, open, etc.
+  ;; will work as expected.
+  #+(or sbcl excl abcl) (config-feature :t-os-cd-dpd))
 
 (defun change-directory (&optional (path (user-homedir-pathname)))
   "Change the current directory to DIR. Defaults to (user-homedir-pathname) ~
@@ -706,7 +951,11 @@ if not given."
     (when (char/= #\\ (aref our-path (1- (length our-path))))
       (setf our-path (s+ our-path "\\")))
     (with-wide-string (w-path our-path)
-      (syscall (%set-current-directory w-path)))))
+      (syscall (%set-current-directory w-path))
+      #+t-os-cd-dpd
+      (let ((tn (ignore-errors (truename path))))
+	(when tn
+	  (setf *default-pathname-defaults* tn))))))
 
 (defcfun ("GetCurrentDirectoryW" %get-current-directory)
     DWORD
@@ -723,14 +972,6 @@ if not given."
 	(error 'windows-error :error-code (get-last-error)
 	       :format-control "Failed to get the current directory."))
       (wide-string-to-lisp dir))))
-
-(defcstruct SECURITY_ATTRIBUTES
-  (length DWORD)
-  (security-descriptor LPVOID)
-  (inherit-handle BOOL))
-
-(defctype PSECURITY_ATTRIBUTES (:pointer (:struct SECURITY_ATTRIBUTES)))
-(defctype LPSECURITY_ATTRIBUTES (:pointer (:struct SECURITY_ATTRIBUTES)))
 
 (defcfun ("CreateDirectoryW" %create-directory)
     BOOL
@@ -764,32 +1005,20 @@ calls. Returns NIL when there is an error."
 
 (defun hidden-file-name-p (name)
   "Return true if the file NAME is normally hidden."
-  (declare (ignore name))
-  nil)
+  (and name (> (length name) 0) (equal (char name 0) #\.)))
 
 (defun superfluous-file-name-p (name)
   "Return true if the file NAME is considered redundant. On POSIX file
 systems, this means \".\" and \"..\"."
-  (declare (ignore name))
-  nil)
+  (and name (> (length name) 0)
+       (or (and (= (length name) 1)
+		(equal (char name 0) #\.))
+	   (and (= (length name) 2)
+		(equal (char name 0) #\.)
+		(equal (char name 1) #\.)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; file locking
-
-(defcstruct foreign-offset
-  (offset-low DWORD)
-  (offset-high DWORD))
-
-(defcunion foreign-offset-pointer
-  (offset (:struct foreign-offset))
-  (pointer PVOID))
-
-(defcstruct OVERLAPPED
-  (internal ULONG_PTR)
-  (internal-high ULONG_PTR)
-  (offset-pointer (:union foreign-offset-pointer))
-  (event HANDLE))
-(defctype LPOVERLAPPED (:pointer (:struct OVERLAPPED)))
 
 (defun set-overlapped (overlapped offset-low-in offset-high-in event-handle)
   (with-foreign-slots ((offset-pointer event) overlapped (:struct OVERLAPPED))
@@ -824,14 +1053,6 @@ lock. Otherwise, it waits.")
   (number-of-bytes-to-unlock-high DWORD)
   (overlapped LPOVERLAPPED))
 
-(defcstruct SECURITY_ATTRIBUTES
-  (length              DWORD)
-  (security-descriptor LPVOID)
-  (inherit-handle      BOOL))
-
-(defctype PSECURITY_ATTRIBUTES (:pointer (:struct SECURITY_ATTRIBUTES)))
-(defctype LPSECURITY_ATTRIBUTES (:pointer (:struct SECURITY_ATTRIBUTES)))
-
 (defcfun ("CreateFileW" %create-file)
     HANDLE
   (file-name 		 LPCTSTR)
@@ -841,9 +1062,6 @@ lock. Otherwise, it waits.")
   (creation-disposition  DWORD)
   (flags-and-attributes  DWORD)
   (template-file 	 HANDLE))
-
-(defconstant +GENERIC-READ+  #x80000000)
-(defconstant +GENERIC-WRITE+ #x40000000)
 
 (defconstant +FILE-SHARE-READ+  #x00000001)
 (defconstant +FILE-SHARE-WRITE+ #x00000002)
@@ -990,9 +1208,6 @@ the current process."
   (declare (ignore id))
   nil)
 
-;; A FILETIME contains a 64-bit value representing the number of 100-nanosecond
-;; intervals since January 1, 1601 (UTC).
-
 ;; To get times for children, we have to put them in a job.
 ;; If we create a job for the shell with CreateJobObject and add any
 ;; children to it with AssignProcessToJobObject, then maybe we can get
@@ -1057,10 +1272,56 @@ wait. Returns NILs if nothing changed."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Timers / Timing
 
+(defcstruct SYSTEMTIME
+  (year WORD)
+  (month WORD)
+  (day-of-week WORD)
+  (day WORD)
+  (hour WORD)
+  (minute WORD)
+  (second WORD)
+  (milliseconds WORD))
+(defctype PSYSTEMTIME (:pointer (:struct SYSTEMTIME)))
+(defctype LPSYSTEMTIME (:pointer (:struct SYSTEMTIME)))
+
+(defcfun ("GetSystemTimeAsFileTime" %get-system-time-as-file-time)
+    :void
+  (system-time-as-file-time LPFILETIME))
+
+(defcfun ("GetSystemTime" %get-system-time)
+    :void 
+  (system-time LPSYSTEMTIME))
+
+(defcfun ("SetSystemTime" %set-system-time)
+    BOOL
+  (system-time (:pointer (:struct SYSTEMTIME))))
+
+(defcfun ("SystemTimeToFileTime" %system-time-to-file-time)
+    BOOL
+  (system-time (:pointer (:struct SYSTEMTIME)))
+  (file-time LPFILETIME))
+
+(defcfun ("FileTimeToLocalFileTime" %file-time-to-local-file-time)
+    BOOL
+  (file-time (:pointer (:struct FILETIME)))
+  (local-file-time LPFILETIME))
+
+(defcfun ("GetLocalTime" %get-local-time)
+    :void
+  (system-time LPSYSTEMTIME))
+
+(defcfun ("SetLocalTime" %set-local-time)
+    BOOL
+  (system-time (:pointer (:struct SYSTEMTIME))))
+
 (defun get-time ()
   "Return the time in seconds and nanoseconds. The first value is seconds in
 so-called “universal” time. The second value is nanoseconds."
-  (values (get-universal-time) 0))
+  (with-foreign-objects ((sys-time '(:struct SYSTEMTIME))
+			 (time '(:struct FILETIME)))
+    (%get-local-time sys-time)
+    (%system-time-to-file-time sys-time time)
+    (filetime-to-universal-time-and-nsec time)))
 
 (defun set-time (seconds nanoseconds)
   "Set time in seconds and nanoseconds. Seconds are in so-called
@@ -1108,9 +1369,6 @@ available."
   not-console
   read-ahead)
 
-;; (defconstant +STD-INPUT-HANDLE+  -10) ; CONIN$
-;; (defconstant +STD-OUTPUT-HANDLE+ -11) ; CONOUT$
-;; (defconstant +STD-ERROR-HANDLE+  -12) ; CONOUT$
 (defmacro as-32bit-unsigned (n) `(logand (1- (expt 2 32)) (lognot (1- (- ,n)))))
 (defconstant +STD-INPUT-HANDLE+  (as-32bit-unsigned -10)) ; CONIN$
 (defconstant +STD-OUTPUT-HANDLE+ (as-32bit-unsigned -11)) ; CONOUT$
@@ -1119,11 +1377,6 @@ available."
 (defcfun ("GetStdHandle" %get-std-handle :convention :stdcall)
     HANDLE
    (nStdHandle DWORD)) ; in
-
-;; a.k.a: ((HANDLE)~(ULONG_PTR)0) or the maximum pointer value.
-(defconstant +INVALID-HANDLE-VALUE+
-  #+ms-win64 (1- (expt 2 64))
-  #-ms-win64 (1- (expt 2 32)))
 
 (defcstruct (COORD :class foreign-coord)
   (x MS-SHORT)
