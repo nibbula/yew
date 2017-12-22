@@ -22,16 +22,10 @@
   (:export
    ;; column struct
    #:column #:make-column #:column-name #:column-type #:column-width
-   ;; collection
-   ;;#:collection #:collection-data
    ;; table
    #:table #:table-columns
    #:mem-table
    #:db-table #:table-name #:table-indexes
-   ;; generic functions
-   ;;#:element
-   ;;#:olength
-   ;;#:omap #:omapn
    ;; table funcs
    #:table-add-column
    #:table-update-column-width
@@ -76,119 +70,6 @@ attributes."))
 	    :accessor table-indexes
 	    :documentation "List of column names that are indexed."))
   (:documentation "A table that is stored in a database."))
-
-#|
-(defun slot-element (object name)
-  "Return the value of the slot NAME in object, or NIL if it's doesn't exist or
-isn't bound."
-  (let ((slot (find (string name) (mop:class-slots (class-of object))
-		    :test #'equalp)))
-    (and slot
-	 (slot-boundp object (mop:slot-definition-name slot))
-	 (slot-value object (mop:slot-definition-name slot)))))
-
-(defgeneric element (thing index)
-  (:documentation "Return the element of THING specified by INDEX.")
-  (:method ((thing list) index) 	 (nth index thing))
-  (:method ((thing vector) index)        (aref thing index))
-  (:method ((thing sequence) index)      (elt thing index))
-  (:method ((thing hash-table) index)    (gethash index thing))
-  (:method ((thing structure-object) (index integer))
-    (let ((slot (nth index (mop:class-slots (class-of thing)))))
-      (and
-       (slot-boundp thing (mop:slot-definition-name slot))
-       (slot-value thing (mop:slot-definition-name slot)))))
-  (:method ((thing standard-object) (index integer))
-    (let ((slot (nth index (mop:class-slots (class-of thing)))))
-      (and
-       (slot-boundp thing (mop:slot-definition-name slot))
-       (slot-value thing (mop:slot-definition-name slot)))))
-  (:method ((thing structure-object) (index symbol)) (slot-element thing index))
-  (:method ((thing structure-object) (index string)) (slot-element thing index))
-  (:method ((thing standard-object)  (index symbol)) (slot-element thing index))
-  (:method ((thing standard-object)  (index string)) (slot-element thing index))
-  (:method ((thing collection) index)    (element (collection-data thing) index)))
-
-;; Palpable.
-(defgeneric olength (thing)
-  (:documentation "Return the length of a THING.")
-  (:method ((thing list)) 	 	(length thing))
-  (:method ((thing vector)) 	        (length thing))
-  (:method ((thing sequence))      	(length thing))
-  (:method ((thing hash-table))		(hash-table-count thing))
-  (:method ((thing structure-object))
-    (length (mop:class-slots (class-of thing))))
-  (:method ((thing standard-object))
-    (length (mop:class-slots (class-of thing))))
-  (:method ((thing collection))		(olength (collection-data thing))))
-
-(defgeneric omap (function thing)
-  (:documentation
-   "Return a sequence of the results of applying FUNCTION to successive elements
-of THING. The sequence returned is usually a list unless THING is a sequence.")
-  (:method (function (thing list))
-    (mapcar function thing))
-;; (:method (function (thing vector))
-;;   (progn (map nil function thing) thing))
-  (:method (function (thing sequence))
-    ;;(progn (map nil function thing) thing))
-    (map (type-of thing) function thing))
-  (:method (function (thing hash-table))
-    (progn (maphash #'(lambda (k v) (funcall function (vector k v))) thing)))
-  (:method (function (thing structure-object))
-    (loop :for slot :in (mop:class-slots (class-of thing))
-       :collect
-       (funcall function
-		(and
-		 (slot-boundp thing (mop:slot-definition-name slot))
-		 (slot-value thing (mop:slot-definition-name slot))))))
-  (:method (function (thing standard-object))
-    (loop :for slot :in (mop:class-slots (class-of thing))
-       :collect
-       (funcall function
-		(and
-		 (slot-boundp thing (mop:slot-definition-name slot))
-		 (slot-value thing (mop:slot-definition-name slot))))))
-  (:method (function (thing collection))
-    (omap function (collection-data thing))))
-
-(defgeneric omapn (function thing)
-  (:documentation "Apply FUNCTION to successive elements of THING.")
-  (:method (function (thing list))
-    (mapcan function thing))
-;; (:method (function (thing vector))
-;;   (progn (map nil function thing) thing))
-  (:method (function (thing sequence))
-    (map nil function thing))
-  (:method (function (thing hash-table))
-    (progn (maphash #'(lambda (k v) (funcall function (vector k v))) thing)))
-  (:method (function (thing structure-object))
-    (loop :for slot :in (mop:class-slots (class-of thing))
-       :do
-       (funcall function
-		(and
-		 (slot-boundp thing (mop:slot-definition-name slot))
-		 (slot-value thing (mop:slot-definition-name slot))))))
-  (:method (function (thing standard-object))
-    (loop :for slot :in (mop:class-slots (class-of thing))
-       :do
-       (funcall function
-		(and
-		 (slot-boundp thing (mop:slot-definition-name slot))
-		 (slot-value thing (mop:slot-definition-name slot))))))
-  (:method (function (thing collection))
-    (omapn function (collection-data thing))))
-
-(defgeneric mappable (thing)
-  (:documentation "Return true if the THING can be iterated with OMAP.")
-  (:method ((thing list))	      t)
-  (:method ((thing vector))	      t)
-  (:method ((thing sequence))	      t)
-  (:method ((thing hash-table))	      t)
-  (:method ((thing structure-object)) t)
-  (:method ((thing standard-object))  t)
-  (:method ((thing collection))	(mappable (collection-data thing))))
-|#
 
 (defun table-add-column (table name &key type width)
   "Shorthand for adding a column to a table."
@@ -235,6 +116,18 @@ of THING. The sequence returned is usually a list unless THING is a sequence.")
 		       (format nil "~:(~a~)" (mop:slot-definition-name slot))
 		       :type (mop:slot-definition-type slot))))
 
+(defun list-of-classes-p (obj)
+  (let ((first-obj (first obj)))
+    (and first-obj
+	 (or (typep first-obj 'structure-object)
+	     (typep first-obj 'standard-object))
+	 (uniform-classes obj))))
+
+(defmethod omap (function (table mem-table))
+  (if (keyed-collection-p (container-data table))
+      (omapk function (container-data table))
+      (omap function (container-data table))))
+
 (defmethod make-table-from ((object list) &key column-names)
   "Make a table from an alist."
   (let ((tt (make-instance 'mem-table :data object))
@@ -243,9 +136,7 @@ of THING. The sequence returned is usually a list unless THING is a sequence.")
 	(loop :for c :in column-names :do
 	   (table-add-column tt c))
 	(when first-obj
-	  (if (and (or (typep first-obj 'structure-object)
-		       (typep first-obj 'standard-object))
-		   (uniform-classes object))
+	  (if (list-of-classes-p object)
 	      (set-columns-names-from-class tt first-obj)
 	      (loop :for i :from 0 :to (length first-obj)
 		 :do (table-add-column tt (format nil "Column~d" i))))))
@@ -272,6 +163,16 @@ of THING. The sequence returned is usually a list unless THING is a sequence.")
 	   (table-add-column tt c))
 	(loop :for i :from 0 :to (array-dimension object 0)
 	   :do (table-add-column tt (format nil "Column~d" i))))
+    tt))
+
+(defmethod make-table-from ((object structure-object)
+			    &key (column-names '("Slot" "Value")))
+  "Make a table from an structure."
+  (when (> (length column-names) 2)
+    (error "Structures can only have 2 column names."))
+  (let ((tt (make-instance 'mem-table :data object)))
+    (loop :for c :in column-names :do
+       (table-add-column tt c))
     tt))
 
 ;; EOF

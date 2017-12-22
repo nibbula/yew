@@ -167,7 +167,8 @@ make the table in the first place. For that you want the TABLE package.")
 		 (table-output-cell-display-width renderer table col)))
 	  (incf col-num))
 	row))
-     (container-data table))
+     ;;(container-data table)
+     table)
     sizes))
 
 ;; Default method which does nothing.
@@ -407,7 +408,7 @@ column number."
 		(setf (aref sizes i) new-size)
 		(incf i))
 	    row)))
-     (container-data table))))
+     table)))
 
 (defmethod table-output-start-row ((renderer text-table-renderer) table)
   "Start a row of table output."
@@ -556,8 +557,8 @@ resized to fit in this, and the whole row is trimmed to this."
 			  cell-col #\space #\space cell-width l))
 	       (setf cell-lines nil))
 	     (terpri stream)))
-       (container-data table)))
-    (length (container-data table)))) ;; @@@ should actually be rows output?
+       table))
+    (olength (container-data table)))) ;; @@@ should actually be rows output?
 
 ;;;
 

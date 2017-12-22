@@ -5,7 +5,7 @@
 (defpackage :collections
   (:documentation
    "So it seems like I'm doing this again. These aren't so much for the methods
-defined in here, but it's *really* so youcan define your own methods which work
+defined in here, but it's *really* so you can define your own methods which work
 somewhat orthogonally with system classes. The ‘o’ prefix is rather ugly.
 We should entertain other naming ideas.")
   (:use :cl)
@@ -18,7 +18,9 @@ We should entertain other naming ideas.")
    #:olength
    #:omap
    #:omapn
+   #:omapk
    #:mappable
+   #:keyed-collection-p
    #:omap-into
    #:oevery
    #:oany
@@ -63,29 +65,43 @@ We should entertain other naming ideas.")
 	 :documentation "Collection of data."))
   (:documentation "More words for things."))
 
+(defclass keyed-collection (collection)
+  ()
+  (:documentation "A collection with explicit keys."))
+
+;; aka sequence
+(defclass ordered-collection (collection)
+  ()
+  (:documentation
+   "A collection with a specific order, and thus can be indexed by the natural
+numbers."))
+
 (defgeneric emptyp (collection)
   (:documentation "Return true if there are no objects in the collection.")
   (:method ((thing list)) 	(null thing))
   (:method ((thing vector))     (zerop (length thing)))
   (:method ((thing sequence))   (zerop (length thing)))
   (:method ((thing hash-table)) (zerop (hash-table-count thing)))
-  (:method ((thing container))  (emptyp (container-data thing))))
+  (:method ((thing container))  (emptyp (container-data thing)))
+  (:method ((thing structure-object))
+    (zerop (length (mop:class-slots (class-of thing)))))
+  (:method ((thing standard-object))
+    (zerop (length (mop:class-slots (class-of thing))))))
 
 (defun slot-element (object name)
   "Return the value of the slot NAME in object, or NIL if it's doesn't exist or
 isn't bound."
   (let ((slot (find (string name) (mop:class-slots (class-of object))
-		    :test #'equalp)))
+		    :key #'mop:slot-definition-name
+		    :test (lambda (a b) (equalp (string a) (string b))))))
     (and slot
 	 (slot-boundp object (mop:slot-definition-name slot))
 	 (slot-value object (mop:slot-definition-name slot)))))
 
 ;; This is probably only defined for sequences and keyed-collections
-(defgeneric oelt (collection key)
+(defgeneric oelt (keyed-collection key)
   (:documentation "Return the element of COLLECTION specified by KEY.")
-  (:method ((thing list) key) 	       (nth key thing))
-  (:method ((thing vector) key)        (aref thing key))
-  (:method ((thing sequence) key)      (elt thing key))
+  ;; Keyed collections
   (:method ((thing hash-table) key)    (gethash key thing))
   (:method ((thing structure-object) (key integer))
     (let ((slot (nth key (mop:class-slots (class-of thing)))))
@@ -101,7 +117,11 @@ isn't bound."
   (:method ((thing structure-object)   (key string)) (slot-element thing key))
   (:method ((thing standard-object)    (key symbol)) (slot-element thing key))
   (:method ((thing standard-object)    (key string)) (slot-element thing key))
-  (:method ((thing container) key)     (oelt (container-data thing) key)))
+  (:method ((thing container) key)     (oelt (container-data thing) key))
+  ;; Ordered collections
+  (:method ((thing list) key) 	       (nth key thing))
+  (:method ((thing vector) key)        (aref thing key))
+  (:method ((thing sequence) key)      (elt thing key)))
 
 ;; Palpable.
 (defgeneric olength (collection)
@@ -139,26 +159,69 @@ sequence.")
     ;;(progn (map nil function collection) collection))
     (map (type-of collection) function collection))
   (:method (function (collection hash-table))
-    (progn (maphash #'(lambda (k v) (funcall function (vector k v))) collection)))
+    (progn (maphash #'(lambda (k v)
+			(declare (ignore k))
+			(funcall function v)) collection)))
   (:method (function (collection structure-object))
     (loop :for slot :in (mop:class-slots (class-of collection))
        :collect
        (funcall function
 		(and
 		 (slot-boundp collection (mop:slot-definition-name slot))
-		 (slot-value collection (mop:slot-definition-name slot))))))
+		 (slot-value collection (mop:slot-definition-name slot))
+		 ))))
   (:method (function (collection standard-object))
     (loop :for slot :in (mop:class-slots (class-of collection))
        :collect
        (funcall function
 		(and
 		 (slot-boundp collection (mop:slot-definition-name slot))
-		 (slot-value collection (mop:slot-definition-name slot))))))
+		 (slot-value collection (mop:slot-definition-name slot))
+		 ))))
+  (:method (function (collection container))
+    (omap function (container-data collection))))
+
+(defgeneric omapk (function keyed-collection) ;; should be &rest collections
+  (:documentation
+   "Return a sequence of the results of applying FUNCTION to successive elements
+of COLLECTION. If the collection is a keyed-collection, function will be passed
+a pair consisiting of (key . value). The sequence returned is usually a list
+unless COLLECTION is a sequence.")
+  (:method (function (collection list))
+    (mapcar function collection))
+;; (:method (function (collection vector))
+;;   (progn (map nil function collection) collection))
+  (:method (function (collection sequence))
+    ;;(progn (map nil function collection) collection))
+    (map (type-of collection) function collection))
+  (:method (function (collection hash-table))
+    (progn (maphash #'(lambda (k v)
+			(funcall function (vector k v))) collection)))
+  (:method (function (collection structure-object))
+    (loop :for slot :in (mop:class-slots (class-of collection))
+       :collect
+       (funcall function
+		(and
+		 (slot-boundp collection (mop:slot-definition-name slot))
+		 (vector
+		  (mop:slot-definition-name slot)
+		  (slot-value collection (mop:slot-definition-name slot)))))))
+  (:method (function (collection standard-object))
+    (loop :for slot :in (mop:class-slots (class-of collection))
+       :collect
+       (funcall function
+		(and
+		 (slot-boundp collection (mop:slot-definition-name slot))
+		 (vector
+		  (mop:slot-definition-name slot)
+		  (slot-value collection (mop:slot-definition-name slot)))))))
   (:method (function (collection container))
     (omap function (container-data collection))))
 
 (defgeneric omapn (function collection)
-  (:documentation "Apply FUNCTION to successive elements of COLLECTION.")
+  (:documentation
+   "Apply FUNCTION to successive elements of COLLECTION. Do not collect return
+values.")
   (:method (function (collection list))
     (mapcan function collection))
 ;; (:method (function (collection vector))
@@ -166,7 +229,8 @@ sequence.")
   (:method (function (collection sequence))
     (map nil function collection))
   (:method (function (collection hash-table))
-    (progn (maphash #'(lambda (k v) (funcall function (vector k v))) collection)))
+    (progn
+      (maphash #'(lambda (k v) (funcall function (vector k v))) collection)))
   (:method (function (collection structure-object))
     (loop :for slot :in (mop:class-slots (class-of collection))
        :do
@@ -193,6 +257,16 @@ sequence.")
   (:method ((collection structure-object)) t)
   (:method ((collection standard-object))  t)
   (:method ((collection container)) (mappable (container-data collection))))
+
+(defgeneric keyed-collection-p (collection)
+  (:method ((collection list))             nil)
+  (:method ((collection vector))	   nil)
+  (:method ((collection sequence))	   nil)
+  (:method ((collection hash-table))	   t)
+  (:method ((collection structure-object)) t)
+  (:method ((collection standard-object))  t)
+  (:method ((collection container))
+    (keyed-collection-p (container-data collection))))
 
 (defgeneric omap-into (mutable-collection function &rest collections)
   (:documentation
