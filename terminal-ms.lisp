@@ -99,7 +99,7 @@
       ;; (dbug "terminal-ms open out~%"))
     (terminal-get-size tty)
 
-    ;; @@@ Temporary until we can put in, say, lishrc
+    ;; @@@ Temporary until we can put it in, say, lishrc
     (set-cursor-size tty 100)
     ))
 

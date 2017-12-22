@@ -166,6 +166,21 @@
   ;; (when (and (file-position stream)
   ;; 	     (file-position stream (file-position stream)))
 
+;; So on Windows, maybe we should "cheat" and ask the "Shell" what it thinks.
+;; That would likely make things work more as expected.
+;;
+;; DWORD_PTR SHGetFileInfo(
+;;   _In_    LPCTSTR    pszPath,
+;;           DWORD      dwFileAttributes,
+;;   _Inout_ SHFILEINFO *psfi,
+;;           UINT       cbFileInfo,
+;;           UINT       uFlags
+;; );
+;;
+;; On Linux, perhaps we consult the xdg-* mime type registry, since that
+;; would likely work more as expected.
+;;
+;; On Macos we should consult something in "Launch Services" or ??
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
