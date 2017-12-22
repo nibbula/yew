@@ -175,7 +175,7 @@
       (format str "trlh ~a~%" *history-version*)
       ;; history list
       (princ #\()
-      (dl-list-do hist
+      (dl-list-do (history-head hist)
 		  #'(lambda (x)
 		      (format str "~s~%" x))) ;; @@@ zorp
       (princ #\) (terpri)))))
