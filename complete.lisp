@@ -154,7 +154,7 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
     ;; Trim output-string to row-limit really for real lines.
     (when (plusp snip-lines)
       (setf output-string
-	    (subseq output-string 0 (car (nth snip-lines line-endings)))))
+	    (osubseq output-string 0 (car (nth snip-lines line-endings)))))
     ;;(tt-write-string output-string)
     ;; (if (equal (symbol-name (type-of *terminal*)) "TERMINAL-CURSES")
     ;; 	;; XXX an horrible hack to turn it back into colors on curses
@@ -184,13 +184,14 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
     (setf (screen-row e) (- end-y back-adjust)
 	  (screen-col e) x)))
 
-(defun show-completions (e)
+(defun show-completions (e &optional comp-func)
   (with-slots (completion-func buf point) e
-    (if (not completion-func)
+    (setf comp-func (or comp-func completion-func))
+    (if (not comp-func)
       (beep e "No completion installed.")
       (progn
 	(let* ((result
-		(funcall completion-func (fatchar-string-to-string buf) point t))
+		(funcall comp-func (fatchar-string-to-string buf) point t))
 	       ;;(comp-list (completion-result-completion result))
 	       comp-count)
 	  (check-type result completion-result)
@@ -277,5 +278,11 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
 filename instead of whatever the default completion is. Convenient for a key
 binding."
   (complete e #'completion::complete-filename))
+
+(defun show-filename-completions-command (e)
+  "Filename completion. This useful for when you want to explicitly complete a
+filename instead of whatever the default completion is. Convenient for a key
+binding."
+  (show-completions e #'completion::complete-filename))
 
 ;; EOF

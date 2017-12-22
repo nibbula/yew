@@ -45,6 +45,7 @@
     (#\tab			. complete)
     (#\?			. show-completions)
     (,(meta-char #\/)		. complete-filename-command)
+    (,(meta-char #\?)		. show-filename-completions-command)
 
     ;; Misc
     (,(ctrl #\L)		. redraw-command)
