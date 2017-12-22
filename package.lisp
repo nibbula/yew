@@ -4,10 +4,9 @@
 
 (defpackage :rl
   (:documentation "A line editor.")
-  (:use :cl :dlib :dlib-misc :keymap :char-util :dl-list :stretchy
-	;; :cffi
-	:opsys :terminal :terminal-ansi #| :terminal-curses |# :fatchar
-	:completion :syntax-lisp :unipose)
+  (:use :cl :dlib :dlib-misc :dl-list :stretchy :char-util
+	:opsys :terminal :terminal-ansi :collections :fatchar
+	:completion :keymap :syntax-lisp :unipose)
   (:export
    ;; Main functionality
    #:rl
