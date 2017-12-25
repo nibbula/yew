@@ -100,6 +100,7 @@
    #:windows-error
    #:get-binary-type #:*binary-types*
    #:binary-type-description
+   #:get-command-line
    #:get-computer-name
    ;; Console stuff:
    #:get-console-info
@@ -143,6 +144,7 @@
 (defconstant +MAX-PATH+ 260)
 
 (defconstant +ERROR-FILE-NOT-FOUND+ 2)
+(defconstant +ERROR-PATH-NOT-FOUND+ 3)
 (defconstant +ERROR-ENVVAR-NOT-FOUND+ 203)
 
 (defconstant +GENERIC-READ+  #x80000000)
@@ -458,18 +460,18 @@ windows-error with an appropriate error message if it fails."
     new-env))
 
 (defcfun ("GetEnvironmentVariableW"
-	  real-get-environment-variable :convention :stdcall)
+	  %get-environment-variable :convention :stdcall)
     DWORD
   (name LPCTSTR) (buffer LPTSTR) (size DWORD))
 
 (defun environment-variable (name)
   (with-wide-string (w-name name)
-    (let ((size (real-get-environment-variable w-name (null-pointer) 0)))
+    (let ((size (%get-environment-variable w-name (null-pointer) 0)))
       (if (and (zerop size)
 	       (= (get-last-error) +ERROR-ENVVAR-NOT-FOUND+))
 	  nil
 	  (with-foreign-object (str 'WCHAR (1+ size))
-	    (let ((result (real-get-environment-variable w-name str size)))
+	    (let ((result (%get-environment-variable w-name str size)))
 	      (when (/= (1+ result) size)
 		(error "environment-variable: ~s ~s" result size
 		       ;; (error-message 1)
@@ -689,7 +691,6 @@ actually exists."
   (info-level-id GET_FILEEX_INFO_LEVELS)
   (file-information LPVOID))
 
-
 (defconstant +windows-to-universal-time+
   9435484800 ;; Calculated by comparing the actual times.
   ;; 9435456000 ;; Calculated by comparing the actual times. Off by TZ!?!
@@ -761,11 +762,27 @@ information about the link itself."
 	 :access-time (filetime-to-derp-time last-access-time)
 	 :modification-time (filetime-to-derp-time last-write-time))))))
 
+(defcfun ("GetFileAttributesW" %get-file-attributes)
+    DWORD
+  (file-name LPCTSTR))
+
+(defconstant +INVALID-FILE-ATTRIBUTES+ #xffffffff)
+
 (defun file-exists (filename)
   "Check that a file with FILENAME exists at the moment. But it might not exist
 for long."
-  (declare (ignore filename))
-  t)
+  (with-wide-string (w-file filename)
+    ;; I'm really just guessing with whole thing. For example, are there any
+    ;; other errors which would constitute being not found?
+    (let ((result (%get-file-attributes w-file)))
+      (if (= result +INVALID-FILE-ATTRIBUTES+)
+	  (let ((err (get-last-error)))
+	    (if (or (= err +ERROR-FILE-NOT-FOUND+)
+		    (= err +ERROR-PATH-NOT-FOUND+))
+		nil
+		(error 'windows-error :error-code err
+		       :format-control "file-exists failed.")))
+	  t))))
 
 (defcfun ("DeleteFileW" %delete-file)
     BOOL
@@ -777,11 +794,38 @@ Doesn't operate on streams."
   (with-wide-string (w-path pathname)
     (syscall (%delete-file w-path))))
 
+#|
+(defmacro with-windows-file ((var filename access &optional
+				  share-mode
+				  (security)
+				  (flags))
+			     &body body)
+  "Evaluate the body with the variable VAR bound to a posix file descriptor
+opened on FILENAME with FLAGS and MODE."
+  (when (not share-mode)
+    (setf share-mode (logior +FILE-SHARE-READ+ +FILE-SHARE-WRITE+
+  `(let (,var)
+     (unwind-protect
+	  (progn
+	 (with-wide-string (,w-filename ,filename)
+	  (setf ,var (%create-file ,w-filename ,access
+				   ,share-mode ,security
+				   DISPOSITION
+				   ,flags
+				   TEMPLATE
+				   ))
+	 ,@body)
+       (if (>= ,var 0)
+	   (%close-handle ,var)
+	   (error-check ,var)))))
+|#
+
+;; @@@ not done yet
 (defmacro with-os-file ((var filename &key
 			     (direction :input)
 			     (if-exists :error)
 			     (if-does-not-exist :error)) &body body)
-  "Evaluate the body with the variable VAR bound to a posix file descriptor
+  "Evaluate the body with the variable VAR bound to a Windows file handle
 opened on FILENAME. DIRECTION, IF-EXISTS, and IF-DOES-NOT-EXIST are simpler
 versions of the keywords used in Lisp open.
   DIRECTION         - supports :INPUT, :OUTPUT, and :IO.
@@ -789,11 +833,11 @@ versions of the keywords used in Lisp open.
   IF-DOES-NOT-EXIST - supports :ERROR, and :CREATE.
 "
   `(with-open-file (,var ,filename
-			 :direction ,direction
-			 :if-exists ,if-exists
-			 :if-does-not-exist ,if-does-not-exist)
+                         :direction ,direction
+                         :if-exists ,if-exists
+                         :if-does-not-exist ,if-does-not-exist)
      ,@body))
-
+  
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
 
@@ -993,15 +1037,29 @@ if not given."
   (with-wide-string (w-path path)
     (syscall (%remove-directory w-path))))
 
+;; This has similar issues as file-exists.
 (defun probe-directory (dir)
   "Something like probe-file but for directories."
-  (declare (ignore dir))
-  nil)
+  (with-wide-string (w-file dir)
+    (let ((result (%get-file-attributes w-file)))
+      (if (= result +INVALID-FILE-ATTRIBUTES+)
+	  (let ((err (get-last-error)))
+	    (if (or (= err +ERROR-FILE-NOT-FOUND+)
+		    (= err +ERROR-PATH-NOT-FOUND+))
+		nil
+		(error 'windows-error :error-code err
+		       :format-control "file-exists failed.")))
+	  (if (plusp (logand result +FILE-ATTRIBUTE-DIRECTORY+))
+	      t
+	      nil)))))
 
 (defmacro without-access-errors (&body body)
   "Evaluate the body while ignoring typical file access error from system
 calls. Returns NIL when there is an error."
   `(ignore-errors ,@body))
+
+;; Since this and the following are SO FAR the same as on POSIX, perhaps we
+;; should move them to opsys.lisp?
 
 (defun hidden-file-name-p (name)
   "Return true if the file NAME is normally hidden."
@@ -1151,6 +1209,11 @@ keywords from *BINARY-TYPE*."
   "Return true if the PATH is executable by the USER. USER defaults to the
 current effective user. If REGULAR is true also check if it's a regular file."
   (declare (ignore path user regular))
+  ;; @@@
+  ;; I think checking the for the "Read & execute" permission is not really
+  ;; what we mean here. But neither is get-binary-type, since that won't
+  ;; capture things like *.bat files.
+  ;; We really mean something that will ‘work’ with %create-process.
   nil)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1255,15 +1318,27 @@ BOOL WINAPI GetProcessTimes(
   |#
   nil)
 
+(defcfun ("GetCommandLineW" %get-command-line) LPTSTR)
+
+(defun get-command-line ()
+  (wide-string-to-lisp (%get-command-line)))
+
 (defun process-list ()
   "Return a list of OS-PROCESS structures that represent the processes active
 around the time of the call."
   nil)
 
-(defun wait-and-chill ()
+(defcfun ("WaitForMultipleObjects" %wait-for-multiple-objects)
+    DWORD
+  (count DWORD)
+  (handles (:pointer HANDLE))
+  (wait-all BOOL)
+  (milliseconds DWORD))
+
+(defun wait-and-chill (child-pid)
   "Wait for jobs to do something.")
 
-(defun check-jobs ()
+(defun check-jobs (&optional hang)
   "Check if any sub-processes have changed status. Returns three values.
 The PID of the process that changed, and the RESULT and STATUS as returned by
 wait. Returns NILs if nothing changed."
