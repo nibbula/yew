@@ -222,23 +222,29 @@ two values ROW and COLUMN."
 	  0 ;; some non-graphic control char?
 	  ))))))
 
-(defun update-column (tty thing)
+(defun update-column (tty thing &key start end)
   (etypecase thing
     (character (update-column-for-char tty thing))
     (string
-     (map nil (_ (update-column-for-char tty _)) thing))))
+     (loop
+	:with the-end = (or end (length thing))
+	:and the-start = (or start 0)
+	:for i :from the-start :below the-end
+	:do (update-column-for-char tty (char thing i))))))
 
 (defgeneric terminal-raw-format (tty fmt &rest args))
 (defmethod terminal-raw-format ((tty terminal-ansi-stream) fmt &rest args)
   "Output a formatted string to the terminal, without doing any content
 processing."
-  (let ((string (apply #'format nil fmt args))
-	(stream (terminal-output-stream tty)))
-    (write-string string stream)))
+  ;; (let ((string (apply #'format nil fmt args))
+  ;; 	(stream (terminal-output-stream tty)))
+  ;;   (write-string string stream)))
+  (apply #'format (terminal-output-stream tty) fmt args))
 
 (defmethod terminal-format ((tty terminal-ansi-stream) fmt &rest args)
   "Output a formatted string to the terminal."
-  (let ((string (apply #'terminal-raw-format tty fmt args)))
+  (let ((string (apply #'format nil fmt args)))
+    (apply #'format (terminal-output-stream tty) fmt args)
     (update-column tty string)
     (when (position #\newline string)
       (finish-output tty))))
@@ -294,16 +300,21 @@ Report parameters are returned as values. Report is assumed to be in the form:
 				  &key start end)
   "Output a string to the terminal. Flush output if it contains a newline,
 i.e. the terminal is 'line buffered'."
-  (let ((stream (terminal-output-stream tty)))
-    (apply #'write-string `(,str ,stream
-				 ,@(and start `(:start ,start))
-				 ,@(and end `(:start ,end))))
-    ;;(write-string str stream :start start :end end)
-    (update-column tty str)
-    (when (apply #'position `(#\newline ,str
-					,@(and start `(:start ,start))
-					,@(and end `(:start ,end))))
-      (finish-output stream))))
+  (when (not (and (and start (zerop start)) (and end (zerop end))))
+    (let ((stream (terminal-output-stream tty)))
+      ;; (format *standard-output* "DORP ~s ~s ~s~%"
+      ;; 	      *standard-output* *terminal-io* *terminal*)
+      ;; (format *standard-output* "DEERRRRP ~s ~s ~s ~s->~s<-~%"
+      ;;  	      start end (length str) (type-of str) str)
+      (apply #'write-string `(,str ,stream
+				   ,@(and start `(:start ,start))
+				   ,@(and end `(:end ,end))))
+      ;;(write-string str stream :start start :end end)
+      (update-column tty str :start start :end end)
+      (when (apply #'position `(#\newline ,str
+					  ,@(and start `(:start ,start))
+					  ,@(and end `(:end ,end))))
+	(finish-output stream)))))
 
 (defmethod terminal-write-char ((tty terminal-ansi-stream) char)
   "Output a character to the terminal. Flush output if it is a newline,
@@ -972,7 +983,8 @@ and add the characters the typeahead."
 
 (defmethod stream-advance-to-column ((stream terminal-ansi-stream) column)
   (write-sequence *endless-spaces*
-		  (terminal-output-stream stream) :start 0
+		  (terminal-output-stream stream)
+		  :start 0
 		  :end (- column (stream-line-column stream)))
   t)
 
