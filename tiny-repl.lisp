@@ -42,15 +42,23 @@
   (let ((pkg (if (not (eq *package* (find-package :cl-user)))
 		 (shortest-package-nick)
 		 nil)))
-    (rl::editor-write-string
-     e (format nil "~a~@[:~a~]~:[~*~;:~d~]~a"
+    (format t "~a~@[:~a~]~:[~*~;:~d~]~a"
 	       #+(and ccl 32-bit-target) "CCL-32"
 	       #+(and ccl 64-bit-target) "CCL-64"
 	       #+(and ccl (not (or 32-bit-target 64-bit-target))) "CCL"
 	       #-ccl *lisp-implementation-nickname*
 	       pkg
 	       (> *repl-level* 0) *repl-level*
-	       (if prompt-supplied p *default-prompt*)))))
+	       (if prompt-supplied p *default-prompt*))))
+    ;; (rl::editor-write-string
+    ;;  e (format nil "~a~@[:~a~]~:[~*~;:~d~]~a"
+    ;; 	       #+(and ccl 32-bit-target) "CCL-32"
+    ;; 	       #+(and ccl 64-bit-target) "CCL-64"
+    ;; 	       #+(and ccl (not (or 32-bit-target 64-bit-target))) "CCL"
+    ;; 	       #-ccl *lisp-implementation-nickname*
+    ;; 	       pkg
+    ;; 	       (> *repl-level* 0) *repl-level*
+    ;; 	       (if prompt-supplied p *default-prompt*)))))
 
 (defstruct repl-state
   "Internal state of the REPL. Slots are:
