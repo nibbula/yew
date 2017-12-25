@@ -49,6 +49,12 @@ the outermost. When entering the debugger the current frame is 0.")
   (format *debug-io* "~%Sorry, don't know how to ~a on ~a. ~
 		       Snarf some slime!~%" x (lisp-implementation-type)))
 
+(defun print-span (span)
+  ;; This doesn't work since some implementations wrap our terminal stream
+  ;; with something else before it gets to print-object.
+  ;;(princ (span-to-fat-string span) *terminal*)
+  (render-fatchar-string (span-to-fatchar-string span) :terminal *terminal*))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Implementation specifc functions
 ;;
@@ -106,9 +112,12 @@ the outermost. When entering the debugger the current frame is 0.")
      :with f = (sbcl-start-frame)
      :and i = 0
      :do
-     (format *debug-io* "~3d " (sb-di:frame-number f))
-     (print-frame f)
-     (terpri *debug-io*)
+     ;; (format *debug-io* "~3d " (sb-di:frame-number f))
+     ;; (print-frame f)
+     ;; (terpri *debug-io*)
+     (print-span `((:fg-yellow ,(format nil "~3d" (sb-di:frame-number f))) " "))
+     (print-frame f *terminal*)
+     (terpri *terminal*)
      (setf f (sb-di:frame-down f))
      (incf i)
      :until (or (not f) (and n (>= i n)))))
@@ -175,11 +184,18 @@ the outermost. When entering the debugger the current frame is 0.")
     (loop :with i = 0
        :for (f context) :in frames
        :do
-       (format *debug-io* "~3a (~(~a~{ ~s~}~))~%" i
-	       (or (ignore-errors
-		     (ccl:function-name (ccl:frame-function f context))) "")
-	       (or (ignore-errors
-		     (ccl:frame-supplied-arguments f context)) '("")))
+       ;; (format *debug-io* "~3a (~(~a~{ ~s~}~))~%" i
+       ;; 	       (or (ignore-errors
+       ;; 		     (ccl:function-name (ccl:frame-function f context))) "")
+       ;; 	       (or (ignore-errors
+       ;; 		     (ccl:frame-supplied-arguments f context)) '("")))
+       (print-span `((:fg-yellow ,(format nil "~3a" i)) " ("
+		     ,(format nil "~(~a~{ ~s~}~)~%"
+			      (or (ignore-errors
+				    (ccl:function-name
+				     (ccl:frame-function f context))) "")
+			      (or (ignore-errors
+				    (ccl:frame-supplied-arguments f context))))))
        (incf i))))
 
 #-(or ccl sbcl)
@@ -525,11 +541,15 @@ innermost N contexts, if we can."
 		     (intern "BACKTRACE" :sb-debug)
 		     (intern "PRINT-BACKTRACE" :sb-debug))))
     (if n (funcall bt-func n) (funcall bt-func)))
-  #+cmu (if n (debug:backtrace n) (debug:backtrace))
 ;  #+sbcl (sbcl-wacktrace)
+  #+cmu (if n (debug:backtrace n) (debug:backtrace))
   #+ccl (loop :with i = 0
 	   :for b :in (ccl::backtrace-as-list)
-	   :do (format *debug-io* "~(~3d ~a~)~%" i b) (incf i)
+	   :do
+	   (print-span `((:fg-yellow ,(format nil "~3d" i))
+			 ,(format nil " ~(~a~)~%" b)))
+	   ;;(format *debug-io* "~(~3d ~a~)~%" i b)
+	   (incf i)
 	   :while (or (null n) (and (numberp n) (< i n))))
 ;  #+clisp (system::print-backtrace :mode 4)  ; @@@ pick different modes?
   ;; Or perhaps
@@ -851,7 +871,7 @@ innermost N contexts, if we can."
   (format *terminal* "Restarts are:~%")
   (loop :with i = 0 :for r :in rs :do
      (format *terminal* "~&")
-     (print-span `((:fg-cyan ,(format nil "~d" i)) ": "))
+     (print-span `((:fg-cyan ,(princ-to-string i)) ": "))
      (when (not (ignore-errors (progn (format *terminal* "~s ~a~%"
 					      (restart-name r) r) t)))
        (format *terminal* "Error printing restart ")
@@ -1042,14 +1062,6 @@ program that messes with the terminal, we can still type at the debugger."
 ;;		    (build-escape-map *debugger-keymap*)))
 	(build-escape-map *debugger-keymap*))
   (define-key *debugger-keymap* #\escape '*debugger-escape-keymap*))
-
-(defun print-span (span)
-  ;; (write-string
-  ;;  (with-terminal-output-to-string (:ansi)
-  ;;    (render-fat-string
-  ;;     (span-to-fat-string span)))
-  ;;  *debug-io*))
-  (princ (span-to-fat-string span) *terminal*))
 
 (defun print-condition (c)
   (print-span
