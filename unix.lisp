@@ -3219,10 +3219,10 @@ versions of the keywords used in Lisp open.
 	       (make-file-type-info
 		:test test :symbol symbol :char char :name name)))
     (list
-     (moo is-fifo	      :FIFO		  #\F "FIFO")
-     (moo is-character-device :character-special  #\c "character special")
+     (moo is-fifo	      :pipe		  #\F "FIFO")
+     (moo is-character-device :character-device  #\c "character special")
      (moo is-directory	      :directory	  #\d "directory")
-     (moo is-block-device     :block-special	  #\b "block special")
+     (moo is-block-device     :block-device	  #\b "block special")
      (moo is-regular-file     :regular		  #\r "regular")
      (moo is-symbolic-link    :link		  #\l "symbolic link")
      (moo is-socket	      :socket		  #\s "socket")
