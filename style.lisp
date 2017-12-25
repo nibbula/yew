@@ -31,22 +31,25 @@
   "Return a string or a fat-string with the style from THEME-ITEM applied to it."
   (styled-string (and theme-item (theme-value *theme* theme-item)) string))
 
-(defun styled-file-name (dir-entry)
-  "Return a stylized string for a OPSYS:DIR-ENTRY."
+(defun styled-file-name (name &optional type)
+  "Return a stylized string for a file NAME and TYPE. The TYPE values are from
+OPSYS:DIR-ENTRY-TYPE. NAME can be a DIR-ENTRY in which the NAME and TYPE are
+extracted from."
+  (when (dir-entry-p name)
+    (setf type (dir-entry-type name)
+	  name (dir-entry-name name))) ; losing the original
   (let (style)
     (cond
       ((not *theme*)
-       (dir-entry-name dir-entry))
+       name)
       ((setf style (or (theme-value *theme*
-				    (list :file :type
-					  (dir-entry-type dir-entry) :style))
+				    (list :file :type type :style))
 		       (theme-value *theme*
 				    (list :file :suffix
-					  (theme:file-suffix-type
-					   (dir-entry-name dir-entry))
+					  (theme:file-suffix-type name)
 					  :style))))
-       (styled-string style (dir-entry-name dir-entry)))
+       (styled-string style name))
       (t
-       (dir-entry-name dir-entry)))))
+       name))))
 
 ;; EOF
