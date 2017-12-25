@@ -407,6 +407,7 @@ require terminal driver support."))
 
 (defmethod stream-clear-output ((stream terminal-curses))
   ;;(clear-output (terminal-output-stream stream))
+  (declare (ignore stream))
   )
 
 (defmethod stream-finish-output ((stream terminal-curses))
@@ -455,6 +456,7 @@ require terminal driver support."))
 
 #+sbcl
 (defmethod sb-gray:stream-line-length ((stream terminal-curses-stream))
+  (declare (ignore stream))
   *cols*)
 
 (defmethod stream-write-char ((stream terminal-curses) char
@@ -469,11 +471,13 @@ require terminal driver support."))
 ;; stream methods for terminal-curses, which is also an input stream.
 
 (defmethod stream-clear-input ((stream terminal-curses))
+  (declare (ignore stream))
   (flushinp))
 
 (defmethod stream-read-sequence ((stream terminal-curses) seq start end
 				 &key &allow-other-keys
-				 #| &optional (start 0) end |#)
+					#| &optional (start 0) end |#)
+  (declare (ignore seq start end))
   nil)
 
 ;;(defgeneric stream-peek-char ((stream terminal-curses))
