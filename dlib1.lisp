@@ -144,7 +144,7 @@ of it.")
   ;; use split-sequence or _ yet.
   (defun compute-version-integer (version-string)
     "Make a single testable value out of a typical result of
-(lisp-implementation-version)"
+LISP-IMPLEMENTATION-VERSION."
     (let (i spos (sum 0) (pos 0) (mag #(10000 100 1))
 	    (str (substitute #\space #\. version-string)))
       (loop :with n = 0
@@ -208,6 +208,13 @@ later versions.")
 
   #-ccl-1.6 ; which has it's own version
   (setf (symbol-function 'remove-feature) #'d-remove-feature)
+
+  (defmacro with-unique-names ((&rest names) &body body)
+    "Bind each symbol in NAMES to a unique symbol and evaluate the BODY.
+Useful for making your macro “hygenic”."
+    `(let ,(loop :for n :in names
+	      :collect `(,n (gensym (symbol-name ',n))))
+       ,@body))
 )
 
 ;; @@@ I should really do this with an error type
@@ -280,7 +287,28 @@ later versions.")
   #+gcl (system:getenv s)
   #+abcl (ext:getenv s)
   #+clasp (ext:getenv s)
-  #-(or clisp sbcl openmcl cmu ecl excl lispworks gcl abcl clasp)
+  #+cormanlisp
+  ;; @@@ maybe we could get this added to cormanlisp?
+  (let (name null-pointer value size result blurp)
+    (unwind-protect
+	 (progn
+	   (setf name (ct:lisp-string-to-c-string s)
+		 null-pointer (ct:malloc 1)
+		 size (win:getenvironmentvariable name null-pointer 0))
+	   (if (and (zerop size) (= (win:getlasterror) 203))
+	       (setf result nil)
+	       (progn
+		 (setf value (ct:malloc (1+ size))
+		       blurp (win:getenvironmentvariable name value size))
+		 (when (/= (1+ blurp) size)
+		   (error "corman bootstrap getenv failed?."))
+		 (setf result (ct:c-string-to-lisp-string value)))))
+      (when null-pointer
+	(ct:free null-pointer))
+      (when value
+	(ct:free value)))
+    result)
+  #-(or clisp sbcl openmcl cmu ecl excl lispworks gcl abcl clasp cormanlisp)
   (missing-implementation 'd-getenv))
 
 ;; Compare functions:
@@ -397,18 +425,18 @@ is the separator. If :omit-empty is true, then don't return empty subsequnces.
 		  :while (>= t-end 0)
 		  ;;(format t "start = ~d end = ~d ~s~%" t-start t-end
 		  ;;(subseq seq t-start t-end))
-		  ,@(if t-omit-empty '(if (not (= t-start t-end))))
+		  ,@(if t-omit-empty `(if (not (= t-start t-end))))
 		  :collect (subseq seq t-start t-end) :into results
 		  :do (setq t-start (+ t-end sep-len))
 		  :finally (return-from nil
 			     ,@(if t-omit-empty
-				   '((if (= t-start seq-len)
+				   `((if (= t-start seq-len)
 					 results
 					 (nconc results
 						(list
 						 (subseq seq t-start end)))))
-				   '((nconc results
-				      (list (subseq seq t-start end)))))))))
+				   `((nconc results
+					    (list (subseq seq t-start end)))))))))
 	(when (or (> sep-len 0) test)
 	  (when (and test (< sep-len 1))
 	    (setf sep-len 1 sep '(nil))) ; fake separator!
@@ -561,7 +589,8 @@ just return SEQUENCE. Elements are compared with TEST which defaults to EQL."
     (princ-to-string s)))
 
 (defparameter *ascii-whitespace*
-  #(#\tab #\newline #-gcl #\vt #\page #\return #\space)
+  ;;#(#\tab #\newline #-gcl #\vt #\page #\return #\space)
+  #(#\tab #\newline #.(code-char 11) #\page #\return #\space)
   "Characters considered whitespace in ASCII.")
 
 #|
@@ -759,7 +788,9 @@ Also, it can't really delete the first (zeroth) element."
   #+ccl :ccl
   #+lispworks :hcl
   #+(or ecl clasp) :clos
-  #-(or mop sbcl cmu ccl lispworks gcl ecl clasp) (error "GIVE ME MOP!!")
+  #+cormanlisp :cl
+  #-(or mop sbcl cmu ccl lispworks gcl ecl clasp cormanlisp)
+  (error "GIVE ME MOP!!")
   "The package in which the traditional Meta Object Protocol resides.")
 
 #+(or (and clisp mop) sbcl cmu gcl ccl) (d-add-feature :has-mop)
@@ -837,6 +868,8 @@ on all accessible symbols."
   #+lispworks (system:run-shell-command (format nil "~a~{ ~a~}" cmd args)
 					:output :stream :wait nil)
   #+abcl (system:process-output (system:run-program cmd args))
+  #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl)
+  (declare (ignore cmd args))
   #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl)
   (missing-implementation 'system-command-stream))
 
@@ -1336,14 +1369,6 @@ KEYWORDS-P  If true, include keywords and variable names."
 	    (otherwise (setf thing a)))))
        :if (listp thing) :append thing :else :collect thing)))
 
-;;(defmacro with-unique-names (names &body body)
-(defmacro with-unique-names ((&rest names) &body body)
-  "Bind each symbol in NAMES to a unique symbol and evaluate the BODY.
-Useful for making your macro “hygenic”."
-  `(let ,(loop :for n :in names
-	    :collect `(,n (gensym (symbol-name ',n))))
-     ,@body))
-
 (defmacro with-package (package &body body)
   "Evalute BODY with *package* set to the packaged designated by PACKAGE."
   `(let ((*package* (if (packagep ,package)
@@ -1788,11 +1813,28 @@ repleace a single tilde with double tidles."
 ;; vary depending on what network you're connected to, but what we want is a
 ;; pseudo-unique name of the machine independent of the network.
 
+#+cormanlisp
+(defun get-computer-name ()
+  (let (name len result)
+    (unwind-protect
+	 (progn
+	   (setf name (ct:malloc (* 2 15))
+		 len (ct:malloc 4))
+	   (setf (ct:cref (:unsigned-long *) len) 15)
+	   (when (zerop (win:getcomputername name len))
+	     (error "get-computer-name: "))
+	   (setf result (ct:c-string-to-lisp-string name)))
+      (when name (ct:free name))
+      (when len (ct:free len)))
+    result))
+
 (defvar *host* (initial-span
 		(try-things
 		 '(("scutil" "--get" "ComputerName")
 		   ("hostname") ("uname" "-n")
-		   (machine-instance)))
+		   (machine-instance)
+		   #+cormanlisp (get-computer-name)
+		   ))
 		'(#\. #\space)))
 (d-add-feature *host*)
 
