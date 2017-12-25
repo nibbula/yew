@@ -77,9 +77,10 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
 
 (defmethod stream-read-sequence ((stream utf8b-input-stream) (seq simple-vector)
 				 start end &key &allow-other-keys)
+  (declare (ignore start))
   (with-slots (input-stream) stream
-    (let ((i 0) (istart 0) (iend 0))
-      (declare (type fixnum i istart iend))
+    (let ((i 0) #| (istart 0) |# (iend 0))
+      (declare (type fixnum i #|istart|# iend))
       (labels ((set-it (c)
 		 (declare (type character c))
 		 (setf (svref seq i) c))
@@ -87,7 +88,7 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
 		 (read-byte input-stream)))
 	(handler-case
 	    (progn
-	      (setf istart (if (not start) 0 start)
+	      (setf #| istart (if (not start) 0 start) |#
 		    iend (if (not end) (length seq) end))
 	      (loop :while (< i iend)
 		 :do (%get-utf8b-char read-it set-it)
@@ -102,9 +103,10 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
   ;; That includes changes to the macros %get-utf8b-char from char-util.
   ;; This is the semi-generic vector version, which has to be a little slower.
   #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+  (declare (ignore start))
   (with-slots (input-stream) stream
-    (let ((i 0) (istart 0) (iend 0))
-      (declare (type fixnum i istart iend))
+    (let ((i 0) #|(istart 0)|# (iend 0))
+      (declare (type fixnum i #|istart|# iend))
       (labels ((set-it (c)
 		 (declare (type character c))
 		 (setf (aref seq i) c))
@@ -112,7 +114,7 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
 		 (read-byte input-stream)))
 	(handler-case
 	    (progn
-	      (setf istart (if (not start) 0 start)
+	      (setf #|istart (if (not start) 0 start)|#
 		    iend (if (not end) (length seq) end))
 	      (loop :while (< i iend)
 		 :do (%get-utf8b-char read-it set-it)
@@ -123,9 +125,10 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
 
 (defmethod stream-read-sequence ((stream utf8b-input-stream) (seq list)
 				 start end &key &allow-other-keys)
+  (declare (ignore start))
   (with-slots (input-stream) stream
-    (let ((i 0) (istart 0) (iend 0) (l seq))
-      (declare (type fixnum i istart iend)
+    (let ((i 0) #|(istart 0)|# (iend 0) (l seq))
+      (declare (type fixnum i #|istart|# iend)
 	       (type list l))
       (labels ((set-it (c)
 		 (declare (type character c))
@@ -134,7 +137,7 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
 		 (read-byte input-stream)))
 	(handler-case
 	    (progn
-	      (setf istart (if (not start) 0 start)
+	      (setf #| istart (if (not start) 0 start) |#
 		    iend (if (not end) (length seq) end))
 	      (loop :while (< i iend)
 		 :do (%get-utf8b-char read-it set-it)
@@ -151,9 +154,10 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
   ;; This is the generic version, for non list or vector sequences, which
   ;; may not even get used, and has to be slower by definition.
   #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+  (declare (ignore start))
   (with-slots (input-stream) stream
-    (let ((i 0) (istart 0) (iend 0))
-      (declare (type fixnum i istart iend))
+    (let ((i 0) #|(istart 0)|# (iend 0))
+      (declare (type fixnum i #|istart|# iend))
       (labels ((set-it (c)
 		 (declare (type character c))
 		 (setf (elt seq i) c))
@@ -161,7 +165,7 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
 		 (read-byte input-stream)))
 	(handler-case
 	    (progn
-	      (setf istart (if (not start) 0 start)
+	      (setf #|istart (if (not start) 0 start)|#
 		    iend (if (not end) (length seq) end))
 	      (loop :while (< i iend)
 		 :do (%get-utf8b-char read-it set-it)
