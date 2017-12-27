@@ -907,14 +907,14 @@ characters. If we don't get anything after a while, just return what we got."
       ,*sane-susp* ,*sane-time* ,*sane-werase*)))
 )
 
-(defun sane (&optional (device "/dev/tty"))
+(defun sane (&key (device "/dev/tty") file-descriptor)
   "Reset standard input to sane modes."
   (when (not (boundp '*sanity*))
     (error "Sanity undefined."))
   (let (tty sane)
     (unwind-protect
       (progn
-	(setf tty (posix-open device +O_RDWR+ 0)
+	(setf tty (or file-descriptor (posix-open device +O_RDWR+ 0))
 	      sane (foreign-alloc '(:struct termios)))
 	(when (< tty 0)
 	  (error "Error opening ~a ~d~%" device tty))
@@ -950,13 +950,14 @@ characters. If we don't get anything after a while, just return what we got."
 	  (when (= -1 (tcsetattr tty +TCSANOW+ sane))
 	    (error "Can't set sane mode. errno = ~d" *errno*))))
       ;; close the terminal
-      (when (and tty (>= tty 0))
+      (when (and tty (>= tty 0) (not file-descriptor))
 	(posix-close tty))
       ;; free C memory
       (when sane (foreign-free sane)))))
 
-(defun os-unix:reset-terminal-modes (&optional (device "/dev/tty"))
-  (sane (or device "/dev/tty")))
+(defun os-unix:reset-terminal-modes (&key file-descriptor (device "/dev/tty"))
+  (sane :file-descriptor file-descriptor
+	:device (or device "/dev/tty")))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; The portable interface:

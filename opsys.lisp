@@ -982,7 +982,7 @@ The individual settings override the settings in MODE.")
 (defosfun get-window-size (tty-fd)
   "Get the window size. The first value is columns, second value is rows.")
 
-(defosfun reset-terminal-modes (&optional tty)
+(defosfun reset-terminal-modes (&key file-descriptor device)
   "Set the terminal modes to a normal starting state.")
 
 (defosfun terminal-query (query &key max)

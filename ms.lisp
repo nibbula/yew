@@ -2073,9 +2073,10 @@ The individual settings override the settings in MODE."
 		      :raw (zerop (logand m +ENABLE-PROCESSED-INPUT+))
 		      :timeout nil)))))))
 
-(defun reset-terminal-modes (&optional tty)
+(defun reset-terminal-modes (&key file-descriptor device)
   "Set the terminal modes to a normal starting state."
-  (if (not tty)
+  (declare (ignore device)) ;; @@@
+  (if (not file-descriptor)
       (let ((in-h (%get-std-handle +STD-INPUT-HANDLE+)))
 	(dbugf :ms "resetting terminal modes to ~s~%" +NORMAL-INPUT-MODES+)
 	(when (zerop (%set-console-mode in-h +NORMAL-INPUT-MODES+))
