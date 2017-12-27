@@ -45,6 +45,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:with-output-to-fat-string
    #:write-fatchar
    #:write-fat-string
+   #:fs+
    ))
 (in-package :fatchar)
 
@@ -829,7 +830,7 @@ colinc, and the space character for padchar.
        (fatchar
 	(render-fatchar c stream))
        (character
-	(termain-write-char stream c))))
+	(terminal-write-char stream c))))
     (t
      (typecase c
        (fatchar	(write-char (fatchar-c c) stream))
@@ -955,7 +956,7 @@ possible."
 
 (defmethod print-object ((obj fatchar) stream)
   "Print a FATCHAR to a FAT-STRING-OUTPUT-STREAM."
-  (format t "stream is a ~a ~a~%" (type-of stream) stream)
+  ;;(format t "stream is a ~a ~a~%" (type-of stream) stream)
   (cond
     (*print-readably*
      ;; Print as a structure:
@@ -976,5 +977,13 @@ possible."
 	  )
      ,@body
      (make-fat-string :string (fat-string-string ,var))))
+
+(defun fs+ (s &rest rest)
+  "Return a fat-string which is the arguments concatenated as if output by
+PRINC. If an argument is a fat-string it's attribtues will be preserved in the
+result."
+  (with-output-to-fat-string (result)
+    (princ s result)
+    (loop :for x :in rest :do (princ x result))))
 
 ;; EOF
