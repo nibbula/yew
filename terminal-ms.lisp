@@ -503,7 +503,7 @@
 
 (defmethod terminal-reset ((tty terminal-ms))
   ;; First reset the terminal driver to a sane state.
-  (reset-terminal-modes (terminal-file-descriptor tty))
+  (reset-terminal-modes :file-descriptor (terminal-file-descriptor tty))
   (call-next-method)) ;; Do the terminal-stream version
 
 (defmethod terminal-save-cursor ((tty terminal-ms))
