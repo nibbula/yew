@@ -39,6 +39,7 @@
 *repl-*level* \">\""
    ;; ^^ docstring really fucks over emacs (still...) ^^
    ;; Emacs can finally handle it now (as of 24.4.1)
+  (declare (ignore e))
   (let ((pkg (if (not (eq *package* (find-package :cl-user)))
 		 (shortest-package-nick)
 		 nil)))
