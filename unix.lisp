@@ -66,6 +66,7 @@
    #:sysctl
    #:getpagesize
    #:memory-page-size
+   #:processor-count
    #:getauxval
    #:getlogin
    #:sysconf
@@ -307,6 +308,7 @@
    #:suspend-process
    #:resume-process
    #:terminate-process
+   #:unix-process-handle
    #:wait-and-chill
    #:check-jobs
 
@@ -1888,6 +1890,10 @@ Returns an integer."
 	     :error-code *errno*
 	     :format-control "sysconf: "))
     result))
+
+(defun processor-count ()
+  "Return the number of processors in the system."
+  (sysconf +sc-nprocessors-onln+))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; User database
@@ -3924,17 +3930,17 @@ it is not a symbolic link."
 
 (defun lock-file (pathname lock-type timeout increment)
   "Lock PATHNAME."
-  (declare (ignore lock-type)
-	   (type single-float timeout increment))
+  (declare (ignore lock-type))
   ;; @@@ perhaps we should add u+x, even though it's mostly pointless,
   ;; but just so things that traverse the filesystem won't get stupid
   ;; permission errors.
   (let ((mode (file-status-mode (stat (safe-namestring pathname))))
 	(filename (lock-file-name pathname))
-	(time 0.0))
-    (declare (type single-float time))
+	(time 0.0)
+	(f-timeout (float timeout)))
+    (declare (type single-float time f-timeout))
     ;; Very lame and slow polling.
-    (loop :with wait :and inc single-float = increment
+    (loop :with wait :and inc single-float = (float increment)
        :do
        (if (not (ignore-errors (make-directory filename :mode mode)))
 	   (if (= *errno* +EEXIST+) ;; @@@ unix specific!
@@ -3943,9 +3949,9 @@ it is not a symbolic link."
 	   (setf wait nil))
        ;; (when wait
        ;; 	 (format t "Waiting...~d~%" time))
-       :while (and wait (< time timeout))
+       :while (and wait (< time f-timeout))
        :do (sleep inc) (incf time inc))
-    (when (>= time timeout)
+    (when (>= time f-timeout)
       (error "Timed out trying to lock file ~s" pathname)))
   t)
 
@@ -6573,6 +6579,10 @@ TTY is a file descriptor."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; job control thingys
 
+(defclass unix-process-handle (process-handle)
+  ()
+  (:documentation "A unix process handle, i.e. a PID."))
+
 #+sbcl
 (defun turkey (program)
   (let (pp #| job |#)
@@ -6599,25 +6609,28 @@ TTY is a file descriptor."
     ;; Suspend us again if we get a ^Z.
     (setf (signal-action +SIGTSTP+) :default)))
 
-(defun wait-and-chill (child-pid)
-  ;; Make the child be in it's own process group.
-  ;;(syscall (setpgid child-pid child-pid))
-  ;; Make the terminal signals go to the child's group.
-  ;;(syscall (tcsetpgrp 0 child-pid))
-  ;; Ignore terminal suspend signals.
-  (setf (signal-action +SIGTSTP+) 'tstp-handler)
+(defun wait-and-chill (handle)
+  (let ((child-pid (process-handle-value handle))
+	(status 0) (wait-pid 0))
+    (declare (ignorable status))
+    (dbugf :sheep "wait-and-chill ~s ~s~%" handle child-pid)
+    
+    ;; Make the child be in it's own process group.
+    ;;(syscall (setpgid child-pid child-pid))
+    ;; Make the terminal signals go to the child's group.
+    ;;(syscall (tcsetpgrp 0 child-pid))
+    ;; Ignore terminal suspend signals.
+    (setf (signal-action +SIGTSTP+) 'tstp-handler)
 
-  (with-foreign-object (status-ptr :int 1)
-    (setf (mem-ref status-ptr :int) 0)
-    ;;(format t "About to wait for ~d~%" child-pid)
-    (let ((status 0) (wait-pid 0))
-      (declare (ignorable status))
+    (with-foreign-object (status-ptr :int 1)
+      (setf (mem-ref status-ptr :int) 0)
+      ;;(format t "About to wait for ~d~%" child-pid)
       (loop
 	 ;; +WAIT-UNTRACED+ is so it will return when ^Z is pressed
 	 :while (/= wait-pid child-pid)
 	 :do
 	 (setf wait-pid (real-waitpid child-pid status-ptr +WAIT-UNTRACED+))
-	 ;;(format t "Back from wait wait-pid = ~d~%" wait-pid)
+	 (dbugf :sheep "Back from wait wait-pid = ~s ~s~%" wait-pid *errno*)
 	 (if (= wait-pid -1)
 	     (if (= *errno* +ECHILD+)
 		 (progn
@@ -6630,7 +6643,7 @@ TTY is a file descriptor."
 	 ;;   (format t "Wait pid ~a doesn't match child pid ~a.~%"
 	 ;; 	   wait-pid child-pid))
 	 (finish-output))
-      ;; Take the terminal back.
+	;; Take the terminal back.
       (syscall (tcsetpgrp 0 (getpid)))
       ;; Suspend us again if we get a ^Z.
       (setf (signal-action +SIGTSTP+) :default)
@@ -6647,7 +6660,7 @@ TTY is a file descriptor."
 	  *setpgid-err* (foreign-string-alloc *setpgid-err*)
 	  *tcsetpgrp-err-len* (length *tcsetpgrp-err*)
 	  *tcsetpgrp-err* (foreign-string-alloc *tcsetpgrp-err*))))
-  
+
 (defun forky (cmd args &key (environment nil env-p) background)
   (let* ((cmd-and-args (cons cmd args))
 	 (argc (length cmd-and-args))
@@ -6694,7 +6707,7 @@ TTY is a file descriptor."
 	      (_exit 1))))
 	;; in the parent
 	(error-check child-pid "child-pid")
-	child-pid))))
+	(make-instance 'unix-process-handle :value child-pid)))))
 
 (defun resume-pid (pid)
   "Put the process PID back in the foreground."

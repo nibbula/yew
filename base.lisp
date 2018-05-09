@@ -87,6 +87,9 @@
    #:os-process-command
    #:os-process-args
 
+   #:process-handle
+   #:process-handle-value
+   
    #:opsys-error
    #:opsys-error-code
    #:opsys-resumed
@@ -294,6 +297,7 @@ string (denoting itself)."
   (bytes-free      0 :type integer)
   (bytes-available 0 :type integer))
 
+;; @@@ Perhaps we should rename this to process-info or something.
 (defstruct os-process
   "Information about a system process."
   (id		   0 :type integer)
@@ -308,6 +312,13 @@ string (denoting itself)."
   usage
   command
   (args #() :type vector))
+
+(defclass process-handle ()
+  ((value
+    :initarg :value :accessor process-handle-value  
+    :documentation "The system specific value of the handle."))
+  (:documentation
+   "System identifier for a running process, usually one that we made."))
 
 (define-condition opsys-error (simple-error)
   ((code

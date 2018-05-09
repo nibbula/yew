@@ -90,6 +90,9 @@ expect. Like for example on a Unix system it should be like strerror.")
 (defosfun memory-page-size ()
   "Get the system's memory page size, in bytes.")
 
+(defosfun processor-count ()
+  "Return the number of processors in the system.")
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; sysconf
 
@@ -613,7 +616,7 @@ objects should be stored.")
   "Run a system command. The command is generally given to whatever the system
 shell would be and the output and input are to the standard places. You would
 think that the ARGS would end up as separate arguments to the eventual command, 
-because they're passed to the system shell, they may not."
+but because they're passed to the system shell, they may not."
   #+clisp (ext:run-shell-command (format nil "~a~{ ~a~}" cmd args)) ; XXX
 ;  #+sbcl (sb-ext:process-output (sb-ext:run-program cmd args :search t))
 ;  #+sbcl (sb-ext:process-exit-code
@@ -637,28 +640,29 @@ because they're passed to the system shell, they may not."
 
 ;; @@@ Consistently return exit status?
 ;; @@@ Evironment on other than sbcl and cmu?
-(defun run-program (cmd args &key (environment nil env-p))
-  "Run CMD with arguments ARGS which should be a list. ENVIRONMENT is the list
-of environment variables defined. If ENVIRONMENT isn't provided, inherit it from
-the current process."
-;  #+(or clisp sbcl ccl) (fork-and-exec cmd args)
+(defun run-program (command args &key (environment nil env-p))
+  "Run COMMAND with arguments ARGS which should be a list. ENVIRONMENT is the
+list of environment variables defined. If ENVIRONMENT isn't provided, inherit
+it from the current process."
+;  #+(or clisp sbcl ccl) (fork-and-exec command args)
   #+clisp (declare (ignore environment env-p))
-  #+clisp (ext:run-program cmd :arguments args)
-  #+excl (excl:run-shell-command (concatenate 'vector (list cmd cmd) args)
+  #+clisp (ext:run-program command :arguments args)
+  #+excl (excl:run-shell-command (concatenate 'vector (list command command)
+					      args)
 				 :wait t)
   #+(and (or openmcl ccl) unix) (apply #'os-unix:fork-and-exec
-				       `(,cmd ,args
+				       `(,command ,args
 					      ,@(when env-p :env environment)))
 #|  #+(or openmcl ccl)
   (let* ((proc
-#|	  (ccl::run-program cmd args
+#|	  (ccl::run-program command args
 			    :sharing :external
 			    :input t
 			    :output t
 			    :error t
 			    :wait t) |#
 	   (apply #'ccl::run-program
-		  `(,cmd ,args
+		  `(,command ,args
 			 ,@(when env-p :env environment)
 			 #| :sharing :external |#
 			 :input t
@@ -687,28 +691,28 @@ the current process."
   #+(and sbcl (not unix))
   (sb-ext:process-exit-code
    (apply #'sb-ext:run-program
-	  `(,cmd ,args
+	  `(,command ,args
 		 ,@(when env-p `(:environment ,environment))
 		 :search t :output t :input t :error t :pty nil)))
   #+(and sbcl unix)
   (apply #'os-unix::forky
-	 `(,cmd ,args
+	 `(,command ,args
 		,@(when env-p `(:environment ,environment))))
   #+cmu (ext:process-exit-code
 	 (apply #'ext:run-program
-		 `(,cmd ,args
+		 `(,command ,args
 		   ,@(when env-p :environment environment)
 		   :wait t :output t :input t :error t :pty nil)))
   #+lispworks (multiple-value-bind (result str err-str pid)
 		  (system:run-shell-command
-		   (concatenate 'vector (list cmd) args)
+		   (concatenate 'vector (list command) args)
 		   :output :stream
 		   #| :wait t |#)
 		result)
   #+ecl
   (multiple-value-bind (result ret-code proc)
       (apply #'ext:run-program
-	     `(,cmd ,args
+	     `(,command ,args
 		    ,@(when env-p `(:environ ,environment))
 		    :output t :input t))
     (declare (ignore result proc))
@@ -716,7 +720,7 @@ the current process."
 
   #+abcl
   (let* ((proc (apply #'sys:run-program
-		      `(,cmd ,args
+		      `(,command ,args
 			     ,@(when env-p :environment environment))))
 	 (out (system:process-output proc)))
     (dlib:copy-stream out *standard-output*)

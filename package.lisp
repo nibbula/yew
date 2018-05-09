@@ -22,6 +22,7 @@
    #:environment-variable
    #:lisp-args
    #:memory-page-size
+   #:processor-count
 
    #:get-user-info
    #:user-home

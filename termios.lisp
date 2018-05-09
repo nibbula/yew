@@ -719,10 +719,10 @@ even process interrupts. If TIMEOUT is true, it's a number of deciseconds,
   (raw-test #'(lambda (tty) (input-test tty)) :very-raw t))
 
 (defmacro with-raw-input (&body body)
-  `(raw-test #'(lambda (tty) ,@body)))
+  `(raw-test #'(lambda (tty) (declare (ignorable tty)) ,@body)))
 
 (defmacro with-very-raw-input (&body body)
-  `(raw-test #'(lambda (tty) ,body) :very-raw t))
+  `(raw-test #'(lambda (tty) (declare (ignorable tty)) ,body) :very-raw t))
 
 (defun os-unix:terminal-query (query &key max)
   "Output the string to the terminal and wait for a response. Read up to MAX

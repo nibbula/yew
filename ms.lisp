@@ -100,6 +100,7 @@
    #:windows-error
    #:get-binary-type #:*binary-types*
    #:binary-type-description
+   #:ms-process-handle
    #:get-command-line
    #:get-computer-name
    ;; Console stuff:
@@ -154,6 +155,8 @@
 (defconstant +INVALID-HANDLE-VALUE+
   #+ms-win64 (1- (expt 2 64))
   #-ms-win64 (1- (expt 2 32)))
+
+(defconstant +INFINITE+ #xffffffff)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Types
@@ -524,6 +527,11 @@ NIL, unset the VAR, using unsetenv."
   (with-foreign-object (sys-info 'LPSYSTEM_INFO)
     (%get-system-info sys-info)
     (foreign-slot-value sys-info '(:struct SYSTEM_INFO) 'page-size)))
+
+(defun processor-count ()
+  (with-foreign-object (sys-info 'LPSYSTEM_INFO)
+    (%get-system-info sys-info)
+    (foreign-slot-value sys-info '(:struct SYSTEM_INFO) 'number-of-processors)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Users
@@ -1253,6 +1261,10 @@ objects should be stored."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Processes
 
+(defclass ms-process-handle (process-handle)
+  ()
+  (:documentation "A Windows process handle."))
+
 (defun suspend-process (&optional id)
   "Suspend the process with the given ID. If ID is NIL or not given, suspend
 the current process."
@@ -1328,6 +1340,12 @@ BOOL WINAPI GetProcessTimes(
 around the time of the call."
   nil)
 
+(defconstant +WAIT-OBJECT-0+     @@@@@@)
+(defconstant +WAIT-ABANDONED-0+  @@@@@@)
+
+(defconstant +WAIT-TIMEOUT+      #x00000102)
+(defconstant +WAIT-FAILED+       #xFFFFFFFF)
+
 (defcfun ("WaitForMultipleObjects" %wait-for-multiple-objects)
     DWORD
   (count DWORD)
@@ -1335,13 +1353,37 @@ around the time of the call."
   (wait-all BOOL)
   (milliseconds DWORD))
 
-(defun wait-and-chill (child-pid)
-  "Wait for jobs to do something.")
+(defvar *all-process-handles* nil
+  "List of all active process handles we created.")
+
+(defun wait-and-chill (handle)
+  "Wait for jobs to do something."
+  (let ((handle-count (length *all-process-handles*))
+	result handle-index)
+    (with-foreign-object (handles (:pointer HANDLE) handle-count)
+      (setf result (%wait-for-multiple-objects
+		    handle-count handles 0 +INFINITE+))
+      (cond
+	((= result +WAIT-FAILED+)
+	 (values (get-last-error) :error))
+	((= result +WAIT-TIMEOUT+)
+	 (error 'windows-error :error-code 0
+		:format-control "Unexpected wait timeout."
+		#| :format-arguments args |#))
+	((and (>= result +WAIT-OBJECT-0+)
+	      (<= result (+ +WAIT-OBJECT-0+ handle-count)))
+	 (setf handle-index (- result +WAIT-OBJECT-0+))
+	 (values 0 :exited)) ;; @@@ This isn't really right.
+	((and (>= result +WAIT-ABANDONED-0+)
+	      (<= result (+ +WAIT-ABANDONED-0+ handle-count)))
+	 (setf handle-index (- result +WAIT-ABANDONED-0+))
+	 (values 0 :exited)))))) ;; @@@ This isn't really right either.
 
 (defun check-jobs (&optional hang)
   "Check if any sub-processes have changed status. Returns three values.
 The PID of the process that changed, and the RESULT and STATUS as returned by
 wait. Returns NILs if nothing changed."
+  
   )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
