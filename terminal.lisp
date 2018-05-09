@@ -370,7 +370,7 @@ a string and return the string."
 (defmacro with-style ((&rest style) &body body)
   (with-unique-names (fg bg color-set s)
     `(let (,fg ,bg ,color-set)
-       (loop :for ,s :in (flatten ,@style) :do
+       (loop :for ,s :in (flatten ',style) :do
 	  (case ,s
 	    (:normal    (tt-normal))
 	    (:standout  (tt-standout t))
