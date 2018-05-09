@@ -86,9 +86,9 @@ types so that you can cover what you want when writing a style.
     :name.namespace
     ))
 
-But, since it seems a widely accepted consensus, we should try to follow
-the guidlines used by TextMate (and subsequently used by Linguist, GitHub,
-Sublime Text, Atom, etc.) See:
+But, since it seems a widely accepted consensus (at the time), we should try
+to follow the guidlines used by TextMate (and subsequently used by Linguist,
+GitHub, Sublime Text, Atom, etc.) See:
 http://manual.macromates.com/en/language_grammars#naming_conventions
 
 comment
