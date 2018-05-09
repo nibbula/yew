@@ -75,6 +75,9 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
 ;; It's probably easier to just copy-paste these optimized versions, than
 ;; to bother with a macro.
 
+#-ecl
+;; @@@ It seems like ECL doesn't have a class for simple-vector. We should
+;; probably make a typecase or something on ECL if it makes a difference.
 (defmethod stream-read-sequence ((stream utf8b-input-stream) (seq simple-vector)
 				 start end &key &allow-other-keys)
   (declare (ignore start))
