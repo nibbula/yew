@@ -2696,11 +2696,27 @@ C library function getcwd."
    (foreign-slot-value ent '(:struct foreign-dirent) 'd_name)
    :count (foreign-slot-value ent '(:struct foreign-dirent) 'd_namlen)))
 
+(defun actual-file-type (dir)
+  "Try to get the file type reported by 'stat' given a struct dirent."
+  (handler-case
+    (let ((s (stat (dirent-name dir))))
+      (or (file-type-symbol (file-status-mode s)) :unknown))
+    ;; Ignore access problems, but not other problems.
+    (posix-error (c)
+      (when (not (find (opsys-error-code c) `(,+ENOENT+ ,+EACCES+ ,+ENOTDIR+)))
+	(signal c)))))
+
 (defun dirent-type (ent)
   #+os-t-has-d-type
   (with-foreign-slots ((d_type) ent (:struct foreign-dirent))
     (cond
-      ((= d_type DT_UNKNOWN) :unknown)
+      ((= d_type DT_UNKNOWN)
+       ;; Fix brokenness of some filesystems (e.g. NFS)
+       ;; @@@ I supposed this might happen on other systems besides freebsd
+       ;; but we should test and see, since it can make things much slower.
+       #+freebsd (actual-file-type ent)
+       #-freebsd :unknown
+       )
       ((= d_type DT_FIFO)    :pipe)
       ((= d_type DT_CHR)     :character-device)
       ((= d_type DT_DIR)     :directory)
@@ -2814,6 +2830,7 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 		      (loop :while
 			  (and (eql 0 (setf result (readdir_r dirp ent ptr)))
 			       (not (null-pointer-p (mem-ref ptr :pointer))))
+			 ;; :do (dump-dirent ent) ; @@@@@@ testing
 			 :if (not (and omit-hidden
 				       (hidden-file-name-p (dirent-name ent))))
 			 :collect
