@@ -2224,9 +2224,9 @@ return potentially updated data."
 (define-constants #(
 ;; Name          D    L   S   F
 #(+UTX-USERSIZE+ 256  32  32  32  "Size of utmpx.ut_user.")
-#(+UTX-IDSIZE+	 4    4   4   4   "Size of utmpx.ut_id.")
-#(+UTX-LINESIZE+ 32   32  32  32  "Size of utmpx.ut_line.")
-#(+UTX-HOSTSIZE+ 256  256 256 256 "Size of utmpx.ut_host."))))
+#(+UTX-IDSIZE+	 4    4   4   8   "Size of utmpx.ut_id.")
+#(+UTX-LINESIZE+ 32   32  32  16  "Size of utmpx.ut_line.")
+#(+UTX-HOSTSIZE+ 256  256 256 128 "Size of utmpx.ut_host."))))
 
 #+darwin
 (defcstruct foreign-utmpx
@@ -2266,6 +2266,18 @@ return potentially updated data."
   (ut_tv   (:struct foreign-utmp-timeval)) ;; time entry was created
   (ut_addr_v6 :int32 :count 4)		   ;; ipv6 address?
   (ut_pad  :char :count 20)		   ;; reserved for future use
+  )
+
+#+freebsd
+(defcstruct foreign-utmpx
+  "User accounting database entry."
+  (ut_type :short)			  ;; Type of entry.
+  (ut_tv (:struct foreign-timeval))	  ;; Time entry was made.
+  (ut_id :char :count #.+UTX-IDSIZE+)	  ;; Record identifier.
+  (ut_pid pid-t)			  ;; Process ID.
+  (ut_user :char :count #.+UTX-USERSIZE+) ;; User login name.
+  (ut_line :char :count #.+UTX-LINESIZE+) ;; Device name.
+  (ut_host :char :count #.+UTX-HOSTSIZE+) ;; Remote hostname.
   )
 
 (defstruct utmpx
