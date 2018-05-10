@@ -16,7 +16,8 @@
   "Make sure there's a default device name."
   (not (null *default-console-device-name*))
   "Test opening and closing the default device."
-  (and (not (null (setf *tty* (open-terminal *default-console-device-name*))))
+  (and (not (null (setf *tty* (open-terminal *default-console-device-name*
+					     :output))))
        (equal 23 (progn (ignore-errors (close-terminal *tty*)) 23))))
 
 (defun terminal-mode-sane-p (mode)
@@ -30,7 +31,8 @@
 
 (deftests (opsys-terminal-2
 	   :doc "Test the terminal interface."
-	   :setup (setf *tty* (open-terminal *default-console-device-name*))
+	   :setup (setf *tty* (open-terminal *default-console-device-name*
+					     :input))
 	   :takedown (close-terminal *tty*))
   "Make sure the default device is a terminal."
   (file-handle-terminal-p *tty*)
@@ -53,7 +55,7 @@
 (defvar *new-mode* nil)
 
 (defun tty-setup ()
-  (setf *tty* (open-terminal *default-console-device-name*)
+  (setf *tty* (open-terminal *default-console-device-name* :input)
 	*saved-mode* (get-terminal-mode *tty*))
   (setf *new-mode* (get-terminal-mode *tty*)))
 
