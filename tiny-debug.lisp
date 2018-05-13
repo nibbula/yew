@@ -369,6 +369,8 @@ the outermost. When entering the debugger the current frame is 0.")
 #+sbcl
 (defun get-loc-form-offset (loc)
   (if (sb-di::code-location-unknown-p loc)
+      ;; on some version before 1.4.2 it was:
+      ;;(sb-c::compiled-debug-fun-tlf-number
       (compiled-debug-function-form-number
        (sb-di::compiled-debug-fun-compiler-debug-fun
 	(sb-di::compiled-code-location-debug-fun loc)))
