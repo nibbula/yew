@@ -73,6 +73,7 @@ loading this library.")
    #:acs-plminus #:acs-bullet #:acs-larrow #:acs-rarrow #:acs-darrow
    #:acs-uarrow #:acs-board #:acs-lantern #:acs-block #:acs-s3 #:acs-s7
    #:acs-lequal #:acs-gequal #:acs-pi #:acs-nequal #:acs-sterling
+   #:init-acs
    ;; mouse masks
    #:+button1-released+
    #:+button1-pressed+
@@ -321,8 +322,16 @@ loading this library.")
 (defcvar ("COLOR_PAIRS"	*color-pairs*)	:int)
 (defcvar ("stdscr"	*stdscr*)	window-ptr)
 
-#-(or cygwin win32) (defcvar ("acs_map"	private-acs-map) :pointer)
-#+(or cygwin win32) (defcfun ("_nc_acs_map" acs-map-func) :pointer)
+#-(or cygwin win32)
+(defcvar ("acs_map"	private-acs-map) :pointer)
+#+(or cygwin win32 darwin)
+(defcfun ("_nc_acs_map" acs-map-func) :pointer)
+
+#+darwin
+(defcfun ("_nc_init_acs" init-acs) :void)
+
+#+darwin
+(defcfun ("_nc_acs_char" acs-char) chtype (c :int))
 
 (defun acs-map (c)
   (declare (type character c))
