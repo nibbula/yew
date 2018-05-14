@@ -720,7 +720,21 @@ and add the characters the typeahead."
 	c)))
 
 (defmethod terminal-listen-for ((tty terminal-ansi) seconds)
-  (listen-for seconds (terminal-file-descriptor tty)))
+  (let (borked result)
+    (loop :do
+       (setf borked nil)
+       (handler-case
+	   (setf result (listen-for seconds (terminal-file-descriptor tty)))
+	 (opsys-resumed ()
+	   (terminal-start tty) (terminal-finish-output tty)
+	   (setf borked t))
+	 (opsys-resized ()
+	   (terminal-get-size tty)
+	   (setf borked t)))
+       ;; @@@ Should be:
+       ;; :while (and borked (not @@time expired@@))
+       :while borked)
+    result))
 
 (defmethod terminal-set-input-mode ((tty terminal-ansi) mode)
   (case mode
