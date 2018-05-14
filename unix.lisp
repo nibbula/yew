@@ -5537,7 +5537,7 @@ time."
 					     read-fds write-fds err-fds
 					     tv)))
 	(error 'posix-error :error-code *errno*
-	       :format-control "Select failed ~a"))
+	       :format-control "Select failed:"))
 ;      (format t "return = ~d~%" ret-val)
       (when (not (= 0 ret-val))
 	(setf results
