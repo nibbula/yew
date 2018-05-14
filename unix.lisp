@@ -864,7 +864,7 @@ Type name     Darwin           Linux-32         Linux-64         SunOS		  FreeBS
   #(+ETOOMANYREFS+    144 "Too many references: can't splice")
   #(+ETIMEDOUT+	      145 "Connection timed out")
   #(+ECONNREFUSED+    146 "Connection refused")
-  #(+EWOULDBLOCK+     +EAGAIN+)
+  #(+EWOULDBLOCK+     +EAGAIN+ "Operation would block")
   #(+EHOSTDOWN+	      147 "Host is down")
   #(+EHOSTUNREACH+    148 "No route to host")
   #(+EALREADY+	      149 "operation already in progress")
@@ -1014,7 +1014,7 @@ Type name     Darwin           Linux-32         Linux-64         SunOS		  FreeBS
       #(+ECONNREFUSED+      146 "Connection refused")
       #(+EHOSTDOWN+         147 "Host is down")
       #(+EHOSTUNREACH+      148 "No route to host")
-      #(+EWOULDBLOCK+       +EAGAIN+)
+      #(+EWOULDBLOCK+       +EAGAIN+ "Operation would block")
       #(+EALREADY+          149 "operation already in progress")
       #(+EINPROGRESS+       150 "operation now in progress")
 
