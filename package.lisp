@@ -135,6 +135,7 @@
    #:get-window-size
    #:reset-terminal-modes
    #:terminal-query
+   #:with-terminal-mode
    #:*default-console-device-name*
    
    ;; character coding / localization (or similar)

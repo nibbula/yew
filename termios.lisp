@@ -511,7 +511,7 @@
     (let ((status (posix-read tty c 1)))
       (cond
 	((< status 0)
-	 (error "Read error ~d~%" status))
+	 (error "getch Read error ~d~%" status))
 	((= status 0)
 	 nil)
 	((= status 1)
@@ -1071,6 +1071,18 @@ The individual settings override the settings in MODE."
 			nil)))
     (make-terminal-mode :echo echo :line line :raw raw :timeout timeout)))
 
+;; @@@ !!! Figure out how we can use this here and also in OPSYS
+(defmacro BOGO-with-terminal-mode ((tty) &body body)
+  "Evaluate the body, retoring terminal mode changes on exit."
+  (with-unique-names (result mode)
+    `(let (,result ,mode)
+       (unwind-protect
+	    (progn
+	      (setf ,mode (get-terminal-mode ,tty))
+	      (setf ,result (multiple-value-list (progn ,@body))))
+	 (set-terminal-mode ,tty :mode ,mode))
+       (values-list ,result))))
+
 (defun os-unix:get-window-size (tty-fd)
   "Get the window size. First value is columns, second value is rows."
   (with-foreign-object (ws '(:struct winsize))
@@ -1087,24 +1099,156 @@ The individual settings override the settings in MODE."
 			     :element-type 'base-char
 			     :fill-pointer 0 :adjustable t))
 	 status)
+    (BOGO-with-terminal-mode (tty)
+      (when timeout
+	(set-terminal-mode tty :timeout timeout))
+      (with-output-to-string (str result)
+	(with-foreign-object (buf :char size)
+	  (loop
+	     :do (setf status (posix-read tty buf size))
+	     :while (= status size)
+	     :do (princ (cffi:foreign-string-to-lisp buf) str))
+	  (cond
+	    ((> status size)
+	     (error "Read returned too many characters? ~a" status))
+	    ((< status 0)
+	     (error "slurp-terminal Read error ~d errno ~d~%" status *errno*))
+	    ((= status 0)
+	     (or (and (length result) result) nil))
+	    (t
+	     (princ (cffi:foreign-string-to-lisp buf :count status) str)
+	     result)))))))
+
+(define-condition read-char-error (posix-error)
+  ()
+  (:report (lambda (c s)
+	     (format s "Error reading a character: ~a"
+			 (symbol-call :opsys :error-message
+				      (opsys-error-code c)))))
+  (:documentation "An error reading a character."))
+
+(define-condition read-string-error (posix-error)
+  ()
+  (:report (lambda (c s)
+	     (format s "Error reading a string: ~a"
+			 (symbol-call :opsys :error-message
+				      (opsys-error-code c)))))
+  (:documentation "An error reading a string."))
+
+(defun read-raw-char (terminal-handle c &optional test)
+  (let (status)
+    (loop
+       :do
+       (setf status (posix-read terminal-handle c 1))
+       :while (or (and (< status 0)
+		       (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
+		  (and test
+		       (funcall test (mem-ref c :unsigned-char))))
+       :do
+       ;; Probably returning from ^Z or terminal resize, or something,
+       ;; so keep trying. Enjoy your trip to plusering town.
+       (cond
+	 (*got-sigwinch*
+	  (setf *got-sigwinch* nil)
+	  (cerror "Try again?" 'opsys-resized))
+	 (*got-tstp*
+	  (setf *got-tstp* nil)
+	  ;; re-signal with the default, so we actually stop
+	  (with-signal-handlers ((+SIGTSTP+ . :default))
+	    (kill (getpid) +SIGTSTP+))
+	  (cerror "Try again?" 'opsys-resumed))
+	 (t
+	  (when (< status 0)
+	    (cerror "Try again?" 'read-char-error :error-code *errno*)))))
+    status))
+
+#|
+(defun read-raw-string (terminal-handle string length)
+  (let (status)
+    (loop
+       :do
+       (setf status (posix-read terminal-handle string length))
+       :while (and (< status 0)
+		   (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
+       :do
+       ;; Probably returning from ^Z or terminal resize, or something,
+       ;; so keep trying. Enjoy your trip to plusering town.
+       (cond
+	 (*got-sigwinch*
+	  (setf *got-sigwinch* nil)
+	  (cerror "Try again?" 'opsys-resized))
+	 (*got-tstp*
+	  (setf *got-tstp* nil)
+	  ;; re-signal with the default, so we actually stop
+	  (with-signal-handlers ((+SIGTSTP+ . :default))
+	    (kill (getpid) +SIGTSTP+))
+	  (cerror "Try again?" 'opsys-resumed))
+	 (t
+	  (when (< status 0)
+	    (cerror "Try again?" 'read-string-error :error-code *errno*)))))
+    status))
+|#
+
+;; Simple, linear, non-event loop based programming was always an illusion!
+(defun os-unix:read-terminal-char (terminal-handle &key timeout)
+  (BOGO-with-terminal-mode (terminal-handle)
     (when timeout
-      (set-terminal-mode tty :timeout timeout))
-    (with-output-to-string (str result)
-      (with-foreign-object (buf :char size)
-	(loop
-	   :do (setf status (posix-read tty buf size))
-	   :while (= status size)
-	   :do (princ (cffi:foreign-string-to-lisp buf) str))
-	(cond
-	  ((> status size)
-	   (error "Read returned too many characters? ~a" status))
-	  ((< status 0)
-	   (error "Read error ~d~%" status))
-	  ((= status 0)
-	   (or (and (length result) result) nil))
-	  (t
-	   (princ (cffi:foreign-string-to-lisp buf :count status) str)
-	   result))))))
+      (set-terminal-mode terminal-handle :timeout timeout))
+    (with-foreign-object (c :char)
+      (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
+			     (+SIGTSTP+  . tstp-handler))
+	(when (not (zerop (read-raw-char terminal-handle c)))
+	  (code-char (mem-ref c :unsigned-char)))))))
+
+(defun os-unix:read-terminal-byte (terminal-handle &key timeout)
+  (BOGO-with-terminal-mode (terminal-handle)
+    (when timeout
+      (set-terminal-mode terminal-handle :timeout timeout))
+    (with-foreign-object (c :char)
+      (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
+			     (+SIGTSTP+  . tstp-handler))
+	(when (not (zerop (read-raw-char terminal-handle c)))
+	  (mem-ref c :unsigned-char))))))
+
+(defun os-unix:read-until (tty stop-token &key timeout)
+  "Read until STOP-TOKEN is read. Return a string of the results.
+TTY is a file descriptor. TIMEOUT is in deci-seconds."
+  (let ((result (make-array 0 :element-type 'base-char
+			    :fill-pointer 0 :adjustable t))
+	(status nil) (got-eof nil))
+    (BOGO-with-terminal-mode (tty)
+      (when (and timeout
+		 (not (eql timeout
+			   (terminal-mode-timeout (get-terminal-mode tty)))))
+	;; (format t "set timeout = ~s~%" timeout)
+	(set-terminal-mode tty :timeout timeout))
+      (with-output-to-string (str result)
+	(with-foreign-object (c :char)
+	  (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
+				 (+SIGTSTP+  . tstp-handler))
+	    (setf status
+		  (read-raw-char tty c
+				 #'(lambda (x)
+				     (let ((cc (code-char x)))
+				       (and cc (char/= cc stop-token)
+					    (princ cc str))))))
+	    (when (zerop status)
+	      (setf got-eof t))))))
+    (values
+     (if (zerop (length result))
+	 nil
+	 result)
+     got-eof)))
+
+(defun os-unix:write-terminal-char (terminal-handle char)
+  "Write CHAR to the terminal designated by TERMINAL-HANDLE."
+  (with-foreign-string ((s size) (string char))
+    (syscall (posix-write terminal-handle s size))))
+
+(defun os-unix:write-terminal-string (terminal-handle string)
+  "Write STRING to the terminal designated by TERMINAL-HANDLE."
+  (with-foreign-string ((s size) string)
+    (syscall (posix-write terminal-handle s size))))
 
 (defun crap (&optional (device "/dev/tty"))
   "An horrible test."

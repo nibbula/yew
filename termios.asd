@@ -10,7 +10,8 @@
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :licence            "GPLv3"
     :source-control	:git
-    :long-description   "Kickin' it old school."
+    :long-description
+    "Interface to POSIX termios terminal driver manipulation functions."
     :depends-on (:cffi :opsys #| :dlib-misc :char-util |#)
     :components
     ((:file "termios")))

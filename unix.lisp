@@ -309,6 +309,10 @@
    #:resume-process
    #:terminate-process
    #:unix-process-handle
+   #:*got-sigwinch*
+   #:*got-tstp*
+   #:sigwinch-handler
+   #:tstp-handler
    #:wait-and-chill
    #:check-jobs
 
@@ -6489,13 +6493,12 @@ descriptor FD."
     (t
      (error "Unrecognized type of terminal handle."))))
 
-(define-condition read-char-error (posix-error)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; job control thingys
+
+(defclass unix-process-handle (process-handle)
   ()
-  (:report (lambda (c s)
-	     (format s "Error reading a character: ~a"
-			 (symbol-call :opsys :error-message
-				      (opsys-error-code c)))))
-  (:documentation "An error reading a character."))
+  (:documentation "A unix process handle, i.e. a PID."))
 
 (defvar *got-sigwinch* nil
   "True after we received a SIGWINCH.")
@@ -6510,107 +6513,6 @@ descriptor FD."
 (defcallback tstp-handler :void ((signal-number :int))
   (declare (ignore signal-number))
   (setf *got-tstp* t))
-
-(defun read-raw-char (terminal-handle c &optional test)
-  (let (status)
-    (loop
-       :do
-       (setf status (posix-read terminal-handle c 1))
-       :while (or (and (< status 0)
-		       (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
-		  (and test
-		       (funcall test (mem-ref c :unsigned-char))))
-       :do
-       ;; Probably returning from ^Z or terminal resize, or something,
-       ;; so keep trying. Enjoy your trip to plusering town.
-       (cond
-	 (*got-sigwinch*
-	  (setf *got-sigwinch* nil)
-	  (cerror "Try again?" 'opsys-resized))
-	 (*got-tstp*
-	  (setf *got-tstp* nil)
-	  ;; re-signal with the default, so we actually stop
-	  (with-signal-handlers ((+SIGTSTP+ . :default))
-	    (kill (getpid) +SIGTSTP+))
-	  (cerror "Try again?" 'opsys-resumed))
-	 (t
-	  (when (< status 0)
-	    (cerror "Try again?" 'read-char-error :error-code *errno*)))))
-    status))
-
-;; Simple, linear, non-event loop based programming was always an illusion!
-(defun read-terminal-char (terminal-handle &key timeout)
-  (let (result)
-    (unwind-protect
-      (progn
-	(when timeout
-	  (set-terminal-mode terminal-handle :timeout timeout))
-	(with-foreign-object (c :char)
-	  (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
-				 (+SIGTSTP+  . tstp-handler))
-	    (when (not (zerop (read-raw-char terminal-handle c)))
-	      (setf result (code-char (mem-ref c :unsigned-char)))))))
-      (when timeout
-	(set-terminal-mode terminal-handle :timeout nil)))
-    result))
-
-(defun read-terminal-byte (terminal-handle &key timeout)
-  (let (result)
-    (unwind-protect
-      (progn
-	(when timeout
-	  (set-terminal-mode terminal-handle :timeout timeout))
-	(with-foreign-object (c :char)
-	  (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
-				 (+SIGTSTP+  . tstp-handler))
-	    (when (not (zerop (read-raw-char terminal-handle c)))
-	      (setf result (mem-ref c :unsigned-char))))))
-      (when timeout
-	(set-terminal-mode terminal-handle :timeout nil)))
-    result))
-
-(defun read-until (tty stop-char &key timeout)
-  "Read until STOP-CHAR is read. Return a string of the results.
-TTY is a file descriptor."
-  (let ((result (make-array '(0) :element-type 'base-char
-			    :fill-pointer 0 :adjustable t))
-	(status nil) (got-eof nil))
-    (set-terminal-mode tty :timeout timeout)
-    (with-output-to-string (str result)
-      (with-foreign-object (c :char)
-	(with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
-			       (+SIGTSTP+  . tstp-handler))
-	  (setf status
-		(read-raw-char tty c
-			       #'(lambda (x)
-				   (let ((cc (code-char x)))
-				     (and cc (char/= cc stop-char)
-					  (princ cc str))))))
-	  (when (zerop status)
-	    (setf got-eof t)))))
-    (set-terminal-mode tty :timeout nil)
-    (values
-     (if (zerop (length result))
-	 nil
-	 result)
-     got-eof)))
-
-(defun write-terminal-char (terminal-handle char)
-  "Write CHAR to the terminal designated by TERMINAL-HANDLE."
-  (with-foreign-string ((s size) (string char))
-    (syscall (posix-write terminal-handle s size))))
-
-(defun write-terminal-string (terminal-handle string)
-  "Write STRING to the terminal designated by TERMINAL-HANDLE."
-  (with-foreign-string ((s size) string)
-    (syscall (posix-write terminal-handle s size))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; job control thingys
-
-(defclass unix-process-handle (process-handle)
-  ()
-  (:documentation "A unix process handle, i.e. a PID."))
 
 #+sbcl
 (defun turkey (program)

@@ -993,6 +993,18 @@ The individual settings override the settings in MODE.")
   "Output the string to the terminal and wait for a response. Read up to MAX
 characters. If we don't get anything after a while, just return what we got.")
 
+;; @@@ Fix the duplication in termios.lisp
+(defmacro with-terminal-mode ((tty) &body body)
+  "Evaluate the body, retoring terminal mode changes on exit."
+  (with-unique-names (result mode)
+    `(let (,result ,mode)
+       (unwind-protect
+	    (progn
+	      (setf ,mode (get-terminal-mode ,tty))
+	      (setf ,result (multiple-value-list (progn ,@body))))
+	 (set-terminal-mode ,tty :mode ,mode))
+       (values-list ,result))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Profiling and debugging?
 ;; Should use other lispy tools?
