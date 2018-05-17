@@ -49,6 +49,8 @@
    #:*normal-keymap*
    #:*ctlx-keymap*
    #:*escape-keymap*
+   #:*vi-insert-mode-keymap*
+   #:*vi-command-mode-keymap*
    #:*default-prompt*
    #:*completion-list-technique*
    #:*completion-really-limit*

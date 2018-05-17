@@ -85,6 +85,7 @@
     (#\9		. unipose-command)
     (#\7		. char-picker-command)
     (#\l		. pop-to-lish)
+    (#\=		. what-cursor-position)
     (,(ctrl #\C)	. exit-editor)
     (,(ctrl #\X)	. exchange-point-and-mark)))
 ;  :default-binding #| (beep e "C-x ~a is unbound." cmd |#
@@ -116,15 +117,16 @@
 
 (defkeymap *special-keymap*
   `(
-    (:left      . backward-char)
-    (:right     . forward-char)
-    (:up        . previous-history)
-    (:down      . next-history)
-    (:backspace . delete-backward-char)
-    (:home      . beginning-of-line)
-    (:end       . end-of-line)
+    (:left            . backward-char)
+    (:right           . forward-char)
+    (:up              . previous-history)
+    (:down            . next-history)
+    (:backspace       . delete-backward-char)
+    (:home            . beginning-of-line)
+    (:end             . end-of-line)
+    (:bracketed-paste . bracketed-paste)
     ;; XXX @@@ this shouldn't be here. It should be in the repl or lish
-    (:f9        . pop-to-lish)
+    (:f9              . pop-to-lish)
     ))
 
 ;; Normal mode commands prefaced by escape.
@@ -134,6 +136,131 @@
 
 ;; Make the stuff in the special keymap appear in the normal keymap too.
 (add-keymap *special-keymap* *normal-keymap*)
+
+(defkeymap *vi-insert-mode-keymap*
+  `(
+    ;; Editing
+    (#\return			. accept-line)
+    (#\newline			. accept-line)
+    (#\backspace		. delete-backward-char)
+    (#\rubout			. delete-backward-char)
+    (,(ctrl #\W)		. backward-kill-word)
+    (,(ctrl #\U)		. backward-kill-line)
+
+    ;; Completion
+    (#\tab			. complete)
+    (,(ctrl #\D)		. show-completions)
+
+    ;; Misc
+    (,(ctrl #\L)		. redraw-command)
+    ;; (,(ctrl #\R)		. @@@ redisplay? @@@)
+    (,(ctrl #\Q)		. quoted-insert)
+
+    ;; Other keymaps
+    (#\escape			. set-vi-command-mode)
+    (,(ctrl #\C)		. set-vi-command-mode)
+    (,(ctrl #\O)		. vi-do-command)
+    (,(ctrl #\X)		. *ctlx-keymap*)
+    )
+  :default-binding 'self-insert
+)
+
+;; Make the stuff in the special keymap appear in the vi insert keymap too.
+(add-keymap *special-keymap* *vi-insert-mode-keymap*)
+
+(defkeymap *vi-command-mode-keymap*
+  `(
+    ;; Movement
+    (,(ctrl #\N)		. next-history)		;
+    (,(ctrl #\P)		. previous-history)	;
+    (#\j			. next-history)		;
+    (#\k			. previous-history)	;
+    (#\h			. backward-char)	;
+    (#\backspace		. backward-char)	;
+    (#\rubout			. backward-char)	;
+    (#\l			. forward-char)		;
+    (#\space			. forward-char)		;
+    (#\0			. beginning-of-line)	;
+    (#\^			. first-nonblank)	; *
+    (#\$			. end-of-line)		;
+    (#\g			. vi-goto)		; *
+    (#\b			. backward-word)	;
+    (#\W			. backward-word)	;
+    (#\w			. forward-word)		;
+    (#\|			. vi-goto-column)	; *
+    (#\f			. vi-find-right)	; *
+    (#\F			. vi-find-left)		; *
+    (#\:			. vi-repeat-find)	; *
+    (#\,			. vi-repeat-find-reverse) ; *
+    (#\(			. forward-sexp)		; *
+    (#\)			. backward-sexp)	; *
+    (#\[			. vi-forward-thing)	; *
+    (#\]			. vi-backward-thing)	; *
+    (#\'			. vi-goto-mark)		; *
+    (#\`			. vi-goto-mark-any)	; *
+    (#\H			. vi-goto-line)		; *
+
+    ;; Editing
+    (#\return			. accept-line)		;
+    (#\newline			. accept-line)		;
+    (,(ctrl #\R)		. undo)			; @@@ should be redo??
+    (,(ctrl #\A)		. vi-incrment)		;
+    (,(ctrl #\X)		. vi-decrement)		;
+    (#\a			. vi-append)		; *
+    (#\A			. vi-append-eol)	; *
+    (#\c			. vi-change)		; *
+    (#\d			. vi-delete-move)	; *
+    (#\D			. vi-delete-eol)	; *
+    (#\m			. vi-mark)		; *
+    (#\quotation_mark		. vi-set-buffer)	; *
+    (#\i			. vi-insert)		; *
+    (#\I			. vi-insert-bot)	; *
+    (#\J			. vi-join-lines)	; *
+    (#\o			. vi-open-above)	; *
+    (#\O			. vi-open-below)	; *
+    (#\P			. vi-put-before)	; *
+    (#\p			. vi-put-after)		; *
+    (#\s			. vi-substitute)	; *
+    (#\u			. undo)			;
+    (#\x			. vi-delete-char)	; *
+    (#\rubout			. delete-backward-char)	; *
+    (#\X			. delete-backward-char)	; *
+    (#\y			. vi-yank)		; *
+    (#\Y			. vi-yank-lines)	; *
+    (#\~			. vi-toggle-case)	; *
+
+    ;; Completion
+    (#\tab			. complete)		;
+    (,(ctrl #\D)		. show-completions)	;
+
+    ;; Misc
+    (#\0			. vi-digit)		; *
+    (#\1			. vi-digit)		; *
+    (#\2			. vi-digit)		; *
+    (#\3			. vi-digit)		; *
+    (#\4			. vi-digit)		; *
+    (#\5			. vi-digit)		; *
+    (#\6			. vi-digit)		; *
+    (#\7			. vi-digit)		; *
+    (#\8			. vi-digit)		; *
+    (#\9			. vi-digit)		; *
+    (,(ctrl #\L)		. redraw-command)	;
+    ;; (,(ctrl #\R)		. @@@ redisplay? @@@)
+    (,(ctrl #\G)		. what-cursor-position)	; *
+    (#\n			. vi-next-match)	; *
+    (#\N			. vi-previous-match)	; *
+    (#\/			. vi-re-search-forward)	; *
+    (#\?			. vi-re-search-backward) ; *
+    (#\.			. vi-repeat-change)
+
+    ;; Other keymaps
+    (#\escape			. beep-command)
+    (,(ctrl #\X)		. *ctlx-keymap*)
+    )
+  :default-binding 'self-insert
+)
+
+(add-keymap *special-keymap* *vi-command-mode-keymap*)
 
 ;; @@@ do we really need this?
 ;; (defun bad-special-key (e)
@@ -207,7 +334,8 @@
 	     (keymap nil)
 	     (terminal-name *terminal-name*)
 	     (terminal-class (find-terminal-class-for-type
-			      *default-terminal-type*))
+			      (pick-a-terminal-type)))
+			      ;; *default-terminal-type*))
 	     (accept-does-newline t)
 	     (context :tiny))		; remnant
   "Read a line from the terminal, with line editing and completion.
@@ -261,8 +389,8 @@ Keyword arguments:
 			:terminal-device-name	terminal-name
 			:terminal-class	    	terminal-class)))
 	 (*terminal* (line-editor-terminal e))
-	 ;; (*standard-output* *terminal*)
-	 ;; (*standard-input* *terminal*)
+	 ;;(*standard-output* *terminal*)
+	 ;;(*standard-input* *terminal*)
 	 (*completion-count* 0)
 	 (*history-context* context))
     (when editor

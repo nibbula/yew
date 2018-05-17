@@ -877,6 +877,20 @@ in order, \"{open}{close}...\".")
     (setf quit-flag t
 	  exit-flag t)))
 
+;; This is mostly for binding to purposely meaningless commands.
+(defun beep-command (e)
+  "Just ring the bell or something."
+  (beep e "Woof! Woof!"))
+
+(defun bracketed-paste (e)
+  (with-slots (point) e
+    (let* ((paste (read-bracketed-paste (line-editor-terminal e)))
+	   (len (length paste)))
+      (insert-string e paste)
+      (display-buf e point (+ point len))
+      (incf point len)
+      (update-for-insert e))))
+
 (defun char-picker-command (e)
   "Pick unicode (or whatever) characters."
   (let ((result
