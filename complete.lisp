@@ -84,7 +84,7 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
   ;; 		  content)))
   (length (figure-line-endings e content)))
 
-(defvar *completion-short-divisor* 3
+(defvar *completion-short-divisor* 1
   "Divisor of your screen height for short completion.")
 
 (defun print-completions-under (e comp-result)
