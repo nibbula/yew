@@ -601,7 +601,8 @@ loading this library.")
   (setf (gethash #o630 *funkeys*) :UNDO)      ; undo key
   (setf (gethash #o631 *funkeys*) :MOUSE)     ; Mouse event has occurred
 )
-(defmacro function-key (k) `(gethash ,k *funkeys*))
+;;(defmacro function-key (k) `(gethash ,k *funkeys*))
+(defun function-key (k) (gethash k *funkeys*))
 
 ;; Initialization
 (defcfun newterm screen-ptr

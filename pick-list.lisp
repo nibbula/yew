@@ -583,6 +583,7 @@
 (defun pick-files (&key message (directory ".") (allow-browse t) show-hidden
 		    (pick-directories))
   "Choose some files. Just a shortcut for calling pick-file with MULTIPLE = T."
+  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (pick-file :message message :directory directory :allow-browse allow-browse
 	     :show-hidden show-hidden :pick-directories pick-directories
 	     :multiple t))
