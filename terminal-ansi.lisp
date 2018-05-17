@@ -22,6 +22,8 @@
    #:+csi+ #:+st+ #:+osc+
    #:query-parameters #:query-string
    #:with-raw #:with-immediate
+   #:set-bracketed-paste-mode
+   #:read-bracketed-paste
    ))
 (in-package :terminal-ansi)
 
@@ -117,16 +119,16 @@ require terminal driver support."))
 
 (defun eat-typeahead (tty)
   (let (ta (fd (terminal-file-descriptor tty)))
-    (set-terminal-mode fd :raw t)
-    (setf ta (slurp-terminal fd :timeout 1))
-    (set-terminal-mode fd :raw nil)
-    (when (and ta (> (length ta) 0))
-;      (log-message e "ta[~a]=~w" (length ta) ta)
-      ;; (if (typeahead tty)
-      ;; 	  (setf (typeahead tty) (s+ (typeahead tty) ta))
-      ;; 	  (setf (typeahead tty) ta
-      ;; 		(typeahead-pos tty) 0)))))
-      (add-typeahead tty ta))))
+    (with-terminal-mode (fd)
+      (set-terminal-mode fd :raw t)
+      (setf ta (slurp-terminal fd :timeout 1))
+      (when (and ta (> (length ta) 0))
+	;; (log-message e "ta[~a]=~w" (length ta) ta)
+	;; (if (typeahead tty)
+	;; 	  (setf (typeahead tty) (s+ (typeahead tty) ta))
+	;; 	  (setf (typeahead tty) ta
+	;; 		(typeahead-pos tty) 0)))))
+	(add-typeahead tty ta)))))
 
 (defmethod terminal-get-cursor-position ((tty terminal-ansi))
   "Try to somehow get the row of the screen the cursor is on. Returns the
@@ -134,6 +136,7 @@ two values ROW and COLUMN."
   (eat-typeahead tty)
   (let ((row 1) (col 1) sep
 	(result (terminal-report tty #\R "~c[6n" #\escape)))
+    ;; (format t "result = ~s~%" (coerce result 'list))
     (when (and result (>= (length result) 5))
       (setf sep (position #\; result)
 	    row (parse-integer (subseq result 2 sep) :junk-allowed t)
@@ -616,7 +619,8 @@ default to 16 bit color."
     (20 . :f9)
     (21 . :f10)
     (23 . :f11)
-    (24 . :f12)))
+    (24 . :f12)
+    (200 . :bracketed-paste)))
 
 (defun modifier-prefixed (symbol params)
   "Return a keyword of SYMBOL prefixed by modifiers determined in PARAMS."
@@ -709,7 +713,7 @@ and add the characters the typeahead."
 (defmethod terminal-get-key ((tty terminal-ansi))
   (terminal-finish-output tty)
   (let ((c (get-char tty)))
-    (if (char= c #\escape)
+    (if (and c (char= c #\escape))
 	(case (setf c (get-char tty :timeout 1))
 	  (#\[ (read-function-key tty))
 	  (#\O (read-function-key tty :app-key-p t))
@@ -921,6 +925,37 @@ and add the characters the typeahead."
     ;;
     (setf props (nreverse props))
     (print-properties props)))
+
+(defun set-bracketed-paste-mode (&optional (state t))
+  (tt-format "~a?2004~c" +csi+ (if state #\h #\l)))
+
+(defvar *bracketed-read-timeout* 4
+  "Maximum time in seconds before bailing out of reading one buffer full of a
+bracketed read.")
+
+(defun read-bracketed-paste (tty)
+  (let ((end-string (s+ +csi+ "201~"))
+	;; (buf (make-string *buffer-size*))
+	(fd (terminal-file-descriptor tty)))
+    (with-output-to-string (str)
+      (with-raw (fd)
+	(loop :with done :and i = 0 :and len = (length end-string) :and s
+	   :while (not done)
+	   :if (listen-for *bracketed-read-timeout* fd) :do
+	   (setf s (read-until fd (char end-string i)
+			       :timeout (* *bracketed-read-timeout* 10)))
+	   (if s
+	       (progn
+		 (princ s str)
+		 (setf i 1))
+	       (progn
+		 (incf i)))
+	   (when (= i len)
+	     (setf done t))
+	   :else :do
+	   (cerror "Return what we got so far."
+		   "Bracketed paste timed out.")
+	   (setf done t))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; stream methods
