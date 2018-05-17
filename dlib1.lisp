@@ -20,7 +20,7 @@ my addition to the problem, and hope I can some day contribute to the solution
 of it.")
   (:use :common-lisp
 	;; We must have the MOP!!! Don't ever drop the MOP!
-	#+mop :mop
+	#+(and clisp mop) :mop
 	#+sbcl :sb-mop
 	#+cmu :pcl
 	#+ccl :ccl
@@ -782,7 +782,7 @@ Also, it can't really delete the first (zeroth) element."
 ;; Objects
 
 (defvar *mop-package*
-  #+mop :mop
+  #+(and clisp mop) :mop
   #+sbcl :sb-mop
   #+(or cmu gcl) :pcl
   #+ccl :ccl
@@ -1459,26 +1459,6 @@ the condition."
 	  :collect `(,cc (c) (values nil c)))))
 
 (defalias 'ignore-some-conditions 'ignore-conditions)
-
-(defun find-slot-name (class symbol)
-  "Return the symbol which is the name of the slot in CLASS whose symbol-name
-matches SYMBOL."
-  (mop:slot-definition-name
-   (find symbol (mop:class-slots (find-class class))
-	 :key (_ (mop:slot-definition-name _))
-	 :test (lambda (a b)
-		 (search (symbol-name a) (symbol-name b) :test #'equalp)))))
-
-(defparameter +simple-condition-format-control-slot+
-  (find-slot-name 'simple-condition
-		  #-lispworks 'format-control
-		  #+lispworks 'format-string
-		  )
-  "Name of the slot that simple-condition-format-control accesses.")
-
-(defparameter +simple-condition-format-arguments-slot+
-  (find-slot-name 'simple-condition 'format-arguments)
-  "Name of the slot that simple-condition-format-arguments accesses.")
 
 (defmacro defmethod-quiet (name &rest args)
   "Same as defmethod, but don't complain."

@@ -144,6 +144,30 @@ un-interned symbol."
   #-has-read-intern
   (missing-implementation 'package-robust-read-from-string))
 
+;; Since defalias for the :mop package won't work until after dlib1,
+;; I put these in here rather than be potentially slow with symbol-call.
+;; In general, anything that uses the MOP might have to be in here.
+
+(defun find-slot-name (class symbol)
+  "Return the symbol which is the name of the slot in CLASS whose symbol-name
+matches SYMBOL."
+  (mop:slot-definition-name
+   (find symbol (mop:class-slots (find-class class))
+	 :key (_ (mop:slot-definition-name _))
+	 :test (lambda (a b)
+		 (search (symbol-name a) (symbol-name b) :test #'equalp)))))
+
+(defparameter +simple-condition-format-control-slot+
+  (find-slot-name 'simple-condition
+		  #-lispworks 'format-control
+		  #+lispworks 'format-string
+		  )
+  "Name of the slot that simple-condition-format-control accesses.")
+
+(defparameter +simple-condition-format-arguments-slot+
+  (find-slot-name 'simple-condition 'format-arguments)
+  "Name of the slot that simple-condition-format-arguments accesses.")
+
 #+sbcl (declaim (sb-ext:unmuffle-conditions style-warning))
 
 #+debug-rc (progn (format t "2") (force-output *standard-output*))
