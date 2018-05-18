@@ -6540,6 +6540,11 @@ descriptor FD."
     ;; Suspend us again if we get a ^Z.
     (setf (signal-action +SIGTSTP+) :default)))
 
+(defun take-the-terminal-back ()
+  (syscall (tcsetpgrp 0 (getpgid (getpid))))
+  (syscall (tcsetpgrp 1 (getpgid (getpid))))
+  (setf (signal-action +SIGTSTP+) :default))
+
 (defun wait-and-chill (handle)
   (let ((child-pid (process-handle-value handle))
 	(status 0) (wait-pid 0))
@@ -6553,32 +6558,39 @@ descriptor FD."
     ;; Ignore terminal suspend signals.
     (setf (signal-action +SIGTSTP+) 'tstp-handler)
 
-    (with-foreign-object (status-ptr :int 1)
-      (setf (mem-ref status-ptr :int) 0)
-      ;;(format t "About to wait for ~d~%" child-pid)
-      (loop
-	 ;; +WAIT-UNTRACED+ is so it will return when ^Z is pressed
-	 :while (/= wait-pid child-pid)
-	 :do
-	 (setf wait-pid (real-waitpid child-pid status-ptr +WAIT-UNTRACED+))
-	 (dbugf :sheep "Back from wait wait-pid = ~s ~s~%" wait-pid *errno*)
-	 (if (= wait-pid -1)
-	     (if (= *errno* +ECHILD+)
-		 (progn
-		   ;;(format t "Nothing to wait for~%")
-		   (return-from nil nil))
-		 (error-check wait-pid "wait-pid"))
-	     (setf status (mem-ref status-ptr :int)))
-	 ;;(format t "status = ~d~%" status)
-	 ;; (when (/= wait-pid child-pid)
-	 ;;   (format t "Wait pid ~a doesn't match child pid ~a.~%"
-	 ;; 	   wait-pid child-pid))
-	 (finish-output))
-	;; Take the terminal back.
-      (syscall (tcsetpgrp 0 (getpid)))
+    (unwind-protect
+	 (with-foreign-object (status-ptr :int 1)
+	   (setf (mem-ref status-ptr :int) 0)
+	   ;;(format t "About to wait for ~d~%" child-pid)
+	   (loop
+	      ;; +WAIT-UNTRACED+ is so it will return when ^Z is pressed
+	      :while (/= wait-pid child-pid)
+	      :do
+	      (setf wait-pid
+		    (real-waitpid child-pid status-ptr +WAIT-UNTRACED+))
+	      (dbugf :sheep "Back from wait wait-pid = ~s ~s~%"
+		     wait-pid *errno*)
+	      (if (= wait-pid -1)
+		  (if (= *errno* +ECHILD+)
+		      (progn
+			;;(format t "Nothing to wait for~%")
+			(return-from nil nil))
+		      (error-check wait-pid "wait-pid"))
+		  (setf status (mem-ref status-ptr :int)))
+	      ;;(format t "status = ~d~%" status)
+	      (dbugf :sheep "~a~%"
+		     (if (/= wait-pid child-pid)
+			 (format nil "Wait pid ~a doesn't match child pid ~a."
+				 wait-pid child-pid)
+			 ""))
+	      #| (finish-output) |#
+	      ))
+      ;; Take the terminal back.
+      (syscall (tcsetpgrp 0 (getpgid (getpid))))
       ;; Suspend us again if we get a ^Z.
       (setf (signal-action +SIGTSTP+) :default)
-      (wait-return-status status))))
+      (dbugf :sheep "Took the terminal back in wait-and-chill?~%"))
+    (wait-return-status status)))
 
 (defvar *setpgid-err-len*)
 (defvar *setpgid-err* "child setpgid fail~%")
@@ -6612,10 +6624,15 @@ descriptor FD."
 	    ;; Make the child be in it's own process group.
 	    ;; We have to do this here in the child because on Linux
 	    ;; the parent won't be allowed to do it after the exec.
-	    (when (= -1 (setpgid (getpid) (getpid)))
+	    ;;(when (= -1 (setpgid (getpid) (getpid)))
+	    (when (= -1 (setpgid 0 0))
 	      (posix-write 1 *setpgid-err* *setpgid-err-len*))
 	    (when (not background)
-	      (when (= -1 (tcsetpgrp 0 (getpid)))
+	      ;; @@@ This is not exactly right. It should be the whatever
+	      ;; file descriptor is the controling terminal, not necessarily
+	      ;; stdin a.k.a. 0, (although it usually is.)
+	      ;;(when (= -1 (tcsetpgrp 0 (getpid)))
+	      (when (= -1 (tcsetpgrp 2 (getpid)))
 	    	(posix-write 1 *tcsetpgrp-err* *tcsetpgrp-err-len*)))
 ;   	    (format t "About to exec ~s ~s~%"
 ;   		    (foreign-string-to-lisp path)
