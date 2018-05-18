@@ -12,7 +12,7 @@
     :long-description   "Most likely if you're using RL, this is why.
 If you want to run a lisp without slime, then this makes it usable.
 Unfortunately the debugger is very shabby."
-    :depends-on (:dlib :keymap :terminal :rl
+    :depends-on (:dlib :keymap :terminal :rl :theme
 		       :terminal-ansi
 		       #+windows :terminal-ms
 		       )
