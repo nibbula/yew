@@ -29,7 +29,7 @@ HOW TO USE:
 
 Set the features that you want before loading:
 
-:CURSES-USE-WIDE          Use the wide character version of the library
+:CURSES-DONT-USE-WIDE     Don't use the wide character version of the library
 
 :CURSES-USE-NCURSES       Use ncurses explicitly, instead of whatever plain
 			  curses is. **This is not currently used, since we
@@ -180,45 +180,31 @@ loading this library.")
 
 (defvar *this-is-it* t "The only one.")
 
-;; If :curses-use-wide is in *features*, then use the wide character version
-;; of the library. If :curses-use-ncurses is in *features* then use ncurses
-;; explicitly, instead of whatever plain curses says.
+;; If :curses-dont-use-wide is NOT in *features*, then use the wide character
+;; version of the library. If :curses-use-ncurses is in *features* then use
+;; ncurses explicitly, instead of whatever plain curses says.
 ;;
-;; The user should put :curses-use-wide and/or :curses-use-ncurses in *features*
-;; before loading this library, and also load CFFI and set
+;; The user should put :curses-dont-use-wide and/or :curses-use-ncurses in
+;; *features* before loading this library, and also load CFFI and set
 ;; cffi:*foreign-library-directories* if needed before loading this library.
 
 ;; Let's better hope this does it.
-
-;; XXX WRONG: This depends on *features* at compile time XXX
-;; (define-foreign-library libcurses
-;;   (t #+(and curses-use-wide curses-use-ncurses)
-;;      (:default "libncursesw")
-;;      #+(and curses-use-wide (not curses-use-ncurses))
-;;      (:or (:default "libcursesw")
-;; 	  (:default "libncursesw"))
-;;      #+(and curses-use-ncurses (not curses-use-wide))
-;;      (:or (:default "libncurses")
-;; 	  (:default "libcurses"))
-;;      #+(and (not curses-use-ncurses) (not curses-use-wide))
-;;      (:or (:default "libcurses")
-;; 	  (:default "libncurses"))))
 
 (define-foreign-library libcurses
   (:linux (:or "libncursesw.so" "libncursesw.so.5"
 	       "libncurses.so" "libncurses.so.5"))
 
   ;; Why does this fail?:
-  ;; ((:and :curses-use-wide :curses-use-ncurses)
+  ;; ((:and (;not :curses-dont-use-wide) :curses-use-ncurses)
   ;;  (:default "libncursesw"))
-  ;; ((:and :curses-use-wide (:not :curses-use-ncurses))
+  ;; ((:and (:not :curses-dont-use-wide) (:not :curses-use-ncurses))
   ;;  (:or (:default "libcursesw")
   ;; 	(:default "libncursesw")))
-  ;; ((:and :curses-use-ncurses (:not :curses-use-wide))
+  ;; ((:and :curses-use-ncurses :curses-dont-use-wide)
   ;;  (:or (:default "libncurses")
   ;; 	(:default "libcurses")))
 
-  ;; ((:and (:not :curses-use-ncurses) (:not :curses-use-wide))
+  ;; ((:and (:not :curses-use-ncurses) :curses-dont-use-wide)
   ;;  (:or (:default "libcurses")
   ;; 	(:default "libncurses")
   ;; 	(:default "libcursesw")
@@ -239,10 +225,11 @@ loading this library.")
 (use-foreign-library libcurses)
 
 ;; See if we got the wide version, and set the feature accordingly.
-(when (search "cursesw"
-	      (namestring (cffi:foreign-library-pathname
-			   (cffi::get-foreign-library 'curses::libcurses))))
-  (pushnew :curses-use-wide *features*))
+(when (not (search "cursesw"
+		   (namestring
+		    (cffi:foreign-library-pathname
+		     (cffi::get-foreign-library 'curses::libcurses)))))
+  (pushnew :curses-dont-use-wide *features*))
 
 #|
 (define-foreign-library libcurses
@@ -306,7 +293,7 @@ loading this library.")
 ;; This really should agree with whatever the calling code does for FILE *
 (defctype file-ptr   :pointer)		; (FILE *)
 ;; This is also defined in opsys, but we can't depend on that.
-#+curses-use-wide (defctype wint-t :unsigned-int)
+#-curses-dont-use-wide (defctype wint-t :unsigned-int)
 
 (defcstruct cchar-t
   (attr attr-t)
@@ -692,7 +679,7 @@ contents."
 (defcfun ungetch :int (ch :int))
 ;(def-curses ("has_key" has-key) (:int) (ch :int)) ; ncurses only
 
-#+curses-use-wide
+#-curses-dont-use-wide
 (progn
   (defcfun ("get_wch" get-wch) :int (wch (:pointer wint-t)))
   (defcfun ("wget_wch" wget-wch) :int (win window-ptr) (wch (:pointer wint-t)))
@@ -785,13 +772,13 @@ as a click. Return the previous setting. -1 makes no change. 0 disables it."
 (defcfun wechochar :int (w window-ptr :in) (ch chtype))
 
 ;; wide chars
-#+curses-use-wide (defcfun add-wch :int (wch cchar-t-ptr))
-#+curses-use-wide (defcfun wadd-wch :int (win window-ptr) (wch cchar-t-ptr))
-#+curses-use-wide (defcfun mvadd-wch :int (y :int) (x :int) (wch cchar-t-ptr))
-#+curses-use-wide (defcfun mvwadd-wch
+#-curses-dont-use-wide (defcfun add-wch :int (wch cchar-t-ptr))
+#-curses-dont-use-wide (defcfun wadd-wch :int (win window-ptr) (wch cchar-t-ptr))
+#-curses-dont-use-wide (defcfun mvadd-wch :int (y :int) (x :int) (wch cchar-t-ptr))
+#-curses-dont-use-wide (defcfun mvwadd-wch
 		      :int (win window-ptr) (y :int) (x :int) (wch cchar-t-ptr))
-#+curses-use-wide (defcfun echo-wchar :int (wch cchar-t-ptr))
-#+curses-use-wide (defcfun wecho-wchar :int (win window-ptr) (wch cchar-t-ptr))
+#-curses-dont-use-wide (defcfun echo-wchar :int (wch cchar-t-ptr))
+#-curses-dont-use-wide (defcfun wecho-wchar :int (win window-ptr) (wch cchar-t-ptr))
 
 ;; strings
 (defcfun addstr :int (str :string :in))
@@ -814,8 +801,8 @@ as a click. Return the previous setting. -1 makes no change. 0 disables it."
 (defcfun mvwprintw :int (win window-ptr) (y :int) (x :int) (fmt :string) &rest)
 
 ;; wide strings
-#+curses-use-wide (defcfun addnwstr :int (str :pointer) (n :int))
-#+curses-use-wide (defcfun waddnwstr :int (win window-ptr) (str :pointer) (n :int))
+#-curses-dont-use-wide (defcfun addnwstr :int (str :pointer) (n :int))
+#-curses-dont-use-wide (defcfun waddnwstr :int (win window-ptr) (str :pointer) (n :int))
 
 ;; misc output
 (defcfun flash :int "Try to flash the screen.")
@@ -877,40 +864,40 @@ lost."
 ;; #:ins_wstr #:ins_nwstr #:wins_wstr #:wins_nwstr #:mvins_wstr #:mvins_nwstr
 ;; #:mvwins_wstr #:mvwins_nwstr
 
-#+curses-use-wide (defcfun ins_wch :int
+#-curses-dont-use-wide (defcfun ins_wch :int
   "Insert a complex character."
   (wch cchar-t-ptr))
-#+curses-use-wide (defcfun wins_wch :int
+#-curses-dont-use-wide (defcfun wins_wch :int
   "Insert a complex character in a window."
   (win window-ptr) (wch cchar-t-ptr))
-#+curses-use-wide (defcfun mvins_wch :int
+#-curses-dont-use-wide (defcfun mvins_wch :int
   "Move and insert insert a complex character."
   (y :int) (x :int) (wch cchar-t-ptr))
-#+curses-use-wide (defcfun mvwins_wch :int
+#-curses-dont-use-wide (defcfun mvwins_wch :int
   "Move and insert insert a complex character in a window."
   (win window-ptr) (y :int) (x :int) (wch cchar-t-ptr))
-#+curses-use-wide (defcfun ins_wstr :int
+#-curses-dont-use-wide (defcfun ins_wstr :int
   "Insert a wide character string."
   (wstr (:pointer wchar-t)))
-#+curses-use-wide (defcfun ins_nwstr :int
+#-curses-dont-use-wide (defcfun ins_nwstr :int
   "Insert the first N characters of a wide character string."
   (wstr (:pointer wchar-t)) (n :int))
-#+curses-use-wide (defcfun wins_wstr :int
+#-curses-dont-use-wide (defcfun wins_wstr :int
   "Insert a wide character string in a window."
   (win window-ptr) (wstr (:pointer wchar-t)))
-#+curses-use-wide (defcfun wins_nwstr :int
+#-curses-dont-use-wide (defcfun wins_nwstr :int
   "Insert the first N characters of a wide character string in a window."
   (win window-ptr) (wstr (:pointer wchar-t)) (n :int))
-#+curses-use-wide (defcfun mvins_wstr :int
+#-curses-dont-use-wide (defcfun mvins_wstr :int
   "Move and insert a wide character string."
   (y :int) (x :int) (wstr (:pointer wchar-t)))
-#+curses-use-wide (defcfun mvins_nwstr :int
+#-curses-dont-use-wide (defcfun mvins_nwstr :int
   "Move and insert the first N characters of a wide character string."
   (y :int) (x :int) (wstr (:pointer wchar-t)) (n :int))
-#+curses-use-wide (defcfun mvwins_wstr :int
+#-curses-dont-use-wide (defcfun mvwins_wstr :int
   "Move and insert a wide character string in a window."
   (win window-ptr) (y :int) (x :int) (wstr (:pointer wchar-t)))
-#+curses-use-wide (defcfun mvwins_nwstr :int
+#-curses-dont-use-wide (defcfun mvwins_nwstr :int
   "Move and insert the first N characters of a wide character string in a
 window."
   (win window-ptr) (y :int) (x :int) (wstr (:pointer wchar-t)) (n :int))
