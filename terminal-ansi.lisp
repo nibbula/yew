@@ -119,6 +119,7 @@ require terminal driver support."))
 
 (defun eat-typeahead (tty)
   (let (ta (fd (terminal-file-descriptor tty)))
+    ;; (dbugf 'terminal-ansi "eat typeahead ~a ~a~%" fd (uos:tcgetpgrp fd))
     (with-terminal-mode (fd)
       (set-terminal-mode fd :raw t)
       (setf ta (slurp-terminal fd :timeout 1))
@@ -266,11 +267,13 @@ processing."
 ;; 	 (set-terminal-mode ,tty :mode ,mode)))))
 
 (defmacro with-raw ((tty) &body body)
-  `(unwind-protect
-	(progn
-	  (set-terminal-mode ,tty :raw t :echo nil)
-	  ,@body)
-     (set-terminal-mode ,tty :raw nil)))
+  (with-unique-names (mode)
+    `(let ((,mode (get-terminal-mode ,tty)))
+       (unwind-protect
+	    (progn
+	      (set-terminal-mode ,tty :raw t :echo nil)
+	      ,@body)
+	 (set-terminal-mode ,tty :mode ,mode)))))
 
 (defmacro with-immediate ((tty) &body body)
   (with-unique-names (mode)
