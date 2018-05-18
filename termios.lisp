@@ -1074,14 +1074,11 @@ The individual settings override the settings in MODE."
 ;; @@@ !!! Figure out how we can use this here and also in OPSYS
 (defmacro BOGO-with-terminal-mode ((tty) &body body)
   "Evaluate the body, retoring terminal mode changes on exit."
-  (with-unique-names (result mode)
-    `(let (,result ,mode)
+  (with-unique-names (mode)
+    `(let ((,mode (get-terminal-mode ,tty)))
        (unwind-protect
-	    (progn
-	      (setf ,mode (get-terminal-mode ,tty))
-	      (setf ,result (multiple-value-list (progn ,@body))))
-	 (set-terminal-mode ,tty :mode ,mode))
-       (values-list ,result))))
+	    (progn ,@body)
+	 (set-terminal-mode ,tty :mode ,mode)))))
 
 (defun os-unix:get-window-size (tty-fd)
   "Get the window size. First value is columns, second value is rows."
