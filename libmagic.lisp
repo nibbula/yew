@@ -61,6 +61,7 @@
 		   (compilation-speed 0)))
 
 (define-foreign-library libmagic
+  (:linux (:or "libmagic.so" "libmagic.so.1"))
   (t (:default "libmagic")))
 
 (use-foreign-library libmagic)
