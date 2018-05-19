@@ -35,7 +35,7 @@ We are trying to cover mostly the space which is system calls, and some
 slightly higher level things that would be in a C library. There are many
 many other things in an operating system which this should probably never cover.
 
-# How to use it.
+##### How to use it.
 
 - ASDF load it with opsys.asd.
 
