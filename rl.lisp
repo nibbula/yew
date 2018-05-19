@@ -124,6 +124,7 @@
     (:backspace       . delete-backward-char)
     (:home            . beginning-of-line)
     (:end             . end-of-line)
+    (:delete	      . delete-char)
     (:bracketed-paste . bracketed-paste)
     ;; XXX @@@ this shouldn't be here. It should be in the repl or lish
     (:f9              . pop-to-lish)
