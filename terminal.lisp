@@ -103,12 +103,18 @@ subclasses.")
   ;;(cadr (assoc type *terminal-types*))
   (getf *terminal-types* name))
 
+(defun terminal-type-based-on-environemt ()
+  (cond
+    ((equal (environment-variable "TERM") "dumb")
+     :dumb)
+    (t :ansi)))
+
 (defun pick-a-terminal-type ()
   "Pick some terminal type. Hopefully appropriate, but perhaps semi-arbitrary."
   (let ((platform-default
-	 #+(and windows unix) :ansi
+	 #+(and windows unix) (terminal-type-based-on-environemt)
 	 #+windows :ms
-	 #+unix :ansi
+	 #+unix (terminal-type-based-on-environemt)
 	 #-(or windows unix) :ansi))
     (or *default-terminal-type*
 	(if (find-terminal-class-for-type platform-default)
@@ -332,7 +338,7 @@ or :CHAR for character at time with no echo.")
   "Restore the cursor position, from the last saved postion.")
 
 ;; We don't use DEFTT for these since they don't exactly mirror the generics.
-(defmacro tt-width  ()
+(defmacro tt-width ()
   "Return the width of the terminal window in characters."
   '(terminal-window-columns *terminal*))
 
