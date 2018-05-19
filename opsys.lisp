@@ -2,9 +2,9 @@
 ;;; opsys.lisp - Interface to operating systems
 ;;;
 
-;; This is for system independent functions.
+;; This file is for system independent functions.
 ;;
-;; System independent functions should choose one of:
+;; For a given function we should choose one of:
 ;;
 ;;  - Be fully implemented in the system specific package, and be re-exported
 ;;    by this package. Use the defos* macros.
@@ -17,6 +17,7 @@
 ;;    language. We would like these to be optional.
 ;;  - Be implemented in opsys-base, if they are needed to be used by the
 ;;    system specific packages, and are generic enough.
+;;
 ;;
 ;; Conventions:
 ;;

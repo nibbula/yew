@@ -1,7 +1,8 @@
 opsys                                        -*- org -*-
 
-This is just some temporary documentation until I decide how to do it better.
-Documentation should be at least partially generated from docstrings.
+This is just some temporary documentation pulled from docstrings until I
+decide how to do it better. I would like the eventual documentation to be at
+least partially generated from docstrings.
 
 * system independent
 ** environmental
