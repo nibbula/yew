@@ -229,7 +229,7 @@
    #:extended-attribute-value
 
    #:is-executable
-   #:command-pathname
+   ;; #:command-pathname
 
    #:data-dir
    #:config-dir
@@ -406,19 +406,19 @@
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *platform-index*
     (or
-     #+darwin		1
-     #+linux		2
-     #+sunos		3
-     #+freebsd		4
+     #+darwin           1
+     #+linux            2
+     #+sunos            3
+     #+freebsd          4
      nil))
 
   (defparameter *platform-bitsize-index*
     (or
-     #+darwin				1
-     #+(and linux 32-bit-target)	2
-     #+(and linux 64-bit-target)	3
-     #+sunos				4
-     #+(and freebsd 64-bit-target)	5
+     #+darwin                           1
+     #+(and linux 32-bit-target)        2
+     #+(and linux 64-bit-target)        3
+     #+sunos                            4
+     #+(and freebsd 64-bit-target)      5
      nil))
 
   (when (not (and *platform-index* *platform-bitsize-index*))
@@ -461,32 +461,37 @@ from the CONSTANT-ARRAY variable, that are non-NIL."
 (define-simple-types
   #(
 #| This is just gonna go over 80 cols, so deal.
-Type name     Darwin           Linux-32         Linux-64         SunOS		  FreeBSD 64 |#
-#(time-t      :long            :long            :long            :long		  :int64)
-#(mode-t      :uint16          :unsigned-int    :unsigned-int    :uint16	  :uint16)
-#(uid-t       :uint32          :unsigned-int    :unsigned-int    :uint32	  :uint32)
-#(gid-t       :uint32          :unsigned-int    :unsigned-int    :uint32	  :uint32)
-#(pid-t       :int             :int             :int             :int		  :int32)
-#(wchar-t     :int             :int             :int             :int		  :int)
-#(suseconds-t :int32           :int32           :int32           :int32		  :long)
-#(ssize-t     :long            :long            :long            :long		  :int64)
-#(dev-t       :int32           :unsigned-long   :unsigned-long   :ulong		  :uint32)
-#(nlink-t     :uint16          :unsigned-int    :unsigned-long   :uint		  :uint16)
-#(ino-t       :uint64          :unsigned-long   :unsigned-long   :unsigned-long	  :uint32)
-#(off-t       :int64           :int32           :long            :int32		  :int64)
-#(quad-t      :int64           :int64           :int64           :int64		  :int64)
-#(u-quad-t    :uint64          :uint64          :uint64          :uint64	  :uint64)
-#(blkcnt-t    :int64           :unsigned-long   :long            :int64		  :int64)
-#(blksize-t   :int64           :long            :unsigned-long   :int32		  :uint32)
-#(fixpt-t     :uint32          :uint32          :uint32          :uint32	  :uint32)
-#(boolean-t   :unsigned-int    :unsigned-int    :unsigned-int    :unsigned-int	  :unsigned-int)
-#(segsz-t     :int32           :int32           :int32           :int32		  :int64)
+Type name     Darwin           Linux-32         Linux-64         SunOS            FreeBSD 64 |#
+#(time-t      :long            :long            :long            :long            :int64)
+#(mode-t      :uint16          :unsigned-int    :unsigned-int    :uint16          :uint16)
+#(uid-t       :uint32          :unsigned-int    :unsigned-int    :uint32          :uint32)
+#(gid-t       :uint32          :unsigned-int    :unsigned-int    :uint32          :uint32)
+#(pid-t       :int             :int             :int             :int             :int32)
+#(wchar-t     :int             :int             :int             :int             :int)
+#(suseconds-t :int32           :int32           :int32           :int32           :long)
+#(ssize-t     :long            :long            :long            :long            :int64)
+#(dev-t       :int32           :uint64          :unsigned-long   :ulong           :uint32)
+#(nlink-t     :uint16          :unsigned-int    :unsigned-long   :uint            :uint16)
+#(ino-t       :uint64          :unsigned-long   :unsigned-long   :unsigned-long   :uint32)
+#(off-t       :int64           :int32           :long            :int32           :int64)
+#(quad-t      :int64           :int64           :int64           :int64           :int64)
+#(u-quad-t    :uint64          :uint64          :uint64          :uint64          :uint64)
+#(blkcnt-t    :int64           :unsigned-long   :long            :int64           :int64)
+#(blksize-t   :int64           :long            :unsigned-long   :int32           :uint32)
+#(fixpt-t     :uint32          :uint32          :uint32          :uint32          :uint32)
+#(boolean-t   :unsigned-int    :unsigned-int    :unsigned-int    :unsigned-int    :unsigned-int)
+#(segsz-t     :int32           :int32           :int32           :int32           :int64)
 #(caddr-t     (:pointer :char) (:pointer :char) (:pointer :char) (:pointer :char) (:pointer :char))
-#(fsblkcnt-t  :unsigned-long   :unsigned-long   :unsigned-long   :unsigned-long	  :uint64)
-#(fsword-t    :int             :int             :int             :int		  :int)
-#(attrgroup-t :uint32          :uint32          :uint32          :uint32	  :uint32)
-#(rlim-t     :uint64          :uint32          :unsigned-long   :uint32	  :uint64)
+#(fsblkcnt-t  :unsigned-long   :unsigned-long   :unsigned-long   :unsigned-long   :uint64)
+#(fsword-t    :int             :int             :int             :int             :int)
+#(attrgroup-t :uint32          :uint32          :uint32          :uint32          :uint32)
+#(rlim-t      :uint64          :uint32          :unsigned-long   :uint32          :uint64)
 )))
+
+;; At some time dev-t changed from 32 bits to 64 bits on Linux-32. Something
+;; similar probably happened on other systems. The above does not reflect
+;; that, so if we want to run on various older versions, we may have to make
+;; *platform-*-index* have OS version detail.
 
 #|
 ;; This was the old mess, which was replaced by the above table of types.
@@ -3921,6 +3926,8 @@ it is not a symbolic link."
 ;; This is sadly still actually useful.
 (defcfun sync :void)
 
+;; @@@ I should probably make all implementations use my code, so things behave
+;; uniformly, especially with regards to errors, but first it should tested.
 (defun probe-directory (dir)
   "Something like probe-file but for directories."
   ;; #+clisp (ext:probe-directory (make-pathname

@@ -555,14 +555,13 @@ if there isn't one."
        (when (probe-directory dir)
 	 (loop :with full = nil
 	    :for f :in (read-directory :dir dir) :do
-	    ;; (format t "~s~%" f)
 	    (when (and (equal f cmd)
 		       (is-executable
 			(setf full (format nil "~a~c~a"
 					   dir *directory-separator* cmd))
 			:regular t))
 	      (return-from command-pathname full))))
-       (error (c) (declare (ignore c)))))
+       (opsys-error (c) (declare (ignore c)))))
   nil)
 
 (defun command-path-list ()
