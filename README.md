@@ -37,7 +37,7 @@ many other things in an operating system which this should probably never cover.
 
 ##### How to use it.
 
-- ASDF load it with opsys.asd.
+- ASDF load it with opsys.asd or toss it in ~/quicklisp/local-projects.
 
 - I would probably recommended to use it with a prefix. To use the O/S
   independent part only, use the the OPSYS package, perhaps with the short
