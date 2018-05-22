@@ -427,6 +427,14 @@ Keyword arguments:
 			   (terminal-window-rows terminal)
 			   point cmd)
 		  (show-message-log e))
+		;; @@ Is this really where I want it?
+		(when (line-editor-output-callback e)
+		  (tt-save-cursor)
+		  (tt-cursor-off)
+		  (unwind-protect
+		       (funcall (line-editor-output-callback e) e)
+		    (tt-cursor-on)
+		    (tt-restore-cursor)))
 		(setf cmd (get-a-char e))
 		(log-message e "cmd ~s" cmd)
 		(when (need-to-redraw e)
