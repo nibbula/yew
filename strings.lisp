@@ -1,0 +1,74 @@
+;;;
+;;; strings.lisp - Try to extract human readable strings from data.
+;;;
+
+(defpackage :strings
+  (:documentation "Try to extract human readable strings from data.")
+  (:use :cl :dlib :stretchy)
+  (:export
+   #:strings-file
+   #:!strings
+   ))
+(in-package :strings)
+
+(defun strings-file (file &key (minimum-string-length 4))
+  (with-open-file-or-stream (stream file :direction :input
+				    :element-type '(unsigned-byte 8))
+    (let ((s (make-stretchy-vector 100 :element-type '(unsigned-byte 8)))
+	  c cc)
+      (loop
+	 ;;:and last-was-good
+	 :while (setf c (read-byte stream nil))
+	 :do
+	 (setf cc (code-char c))
+	 (cond
+	   ((or (graphic-char-p cc)
+		(char= cc #\newline))
+	    (stretchy-append s c)
+	    ;;(format t "c = ~a~%" cc)
+	    ;;(setf last-was-good t)
+	    )
+	   (t
+	    (when (>= (length s) minimum-string-length)
+	      (map nil (_ (princ (code-char _))) s)
+	      (terpri))
+	    ;;(format t "prounc ~a ~a~%" c (length s))
+	    ;;(setf last-was-good nil)
+	    (stretchy-truncate s))))
+      (when (>= (length s) minimum-string-length)
+	(map nil (_ (princ (code-char _))) s)
+	;;(format t "prazoo ~a ~a~%" c (length s))
+	)
+      (fresh-line))))
+
+#+lish
+(lish:defcommand strings
+  ((show-all boolean
+    :short-arg	#\a
+    :prompt	"Show All? "
+    :help	"This option causes strings to look for strings in all sections
+ of the object file (including the text section).")
+   (show-offset	boolean
+    :short-arg	#\o
+    :prompt	"Show Offset"
+    :help	"Preceded each string by its offset in the file (in decimal).")
+   (offset-format choice
+    :short-arg	#\t
+    :default	:decimal
+    :prompt	"Offset format"
+    :help	"Base for byte offset."
+    :choices	("octal" "decimal" "hex"))
+   (minimum-string-length integer
+    :short-arg	#\n
+    :default	4
+    :help	"The minimum string length.")
+   (files	pathname
+    :default	"-"
+    :repeating	t
+    :help	"An input file name."))
+  "Try to extract human readable strings from data."
+  (declare (ignore show-all show-offset offset-format))
+  (loop :for f :in (or files (list *standard-input*))
+     :do (strings-file f :minimum-string-length minimum-string-length)))
+
+;; EOF
