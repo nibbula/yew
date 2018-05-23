@@ -241,7 +241,7 @@ If FROM-DAYS-P is true, days are the biggest units to break SECONDS into."
 	   (time-diff (- cur-time login-time)))
       (if (> (time-to-hours time-diff) 12)
 	  (if (> (time-to-days time-diff) 6)
-	      (format-date "~2,'0d~a~a" (:day :month-abbrev :year-abbrev)
+	      (format-date "~2,'0d~a~a" (:date :month-abbrev :year-abbrev)
 			   :time login-time)
 	      (format-date "~a~2,'0d" (:day-abbrev :hour) :time login-time))
 	  (format-date "~2,'0d:~2,'0d" (:hour :minute) :time login-time))))
