@@ -314,7 +314,8 @@ defaults to the current time."
 VALUES is a sequence of any of the following keywords:
   :seconds :minutes :hours :date :month :year :day :daylight-p :zone
   :day-abbrev :month-abbrev :year-abbrev :12-hours :am :pm :weekday :day-name
-Some abbreviations of the keywords are accepted, like :hrs :min :sec."
+Some abbreviations of the keywords are accepted, like :hrs :min :sec.
+Note that :day is the day of the week number and :date is the day of the month."
   (dlib::with-unique-names
       (seconds minutes hours date month year day daylight-p zone)
     (let ((args (loop :for v :in values
@@ -348,7 +349,7 @@ Some abbreviations of the keywords are accepted, like :hrs :min :sec."
 			   (:date date)
 			   ((:month :mon) month)
 			   ((:year :yr) year)
-			   (:day day)
+			   (:day day)	; @@@ really easy to mistake for :date
 			   (:zone zone)
 			   (:daylight-p daylight-p)
 			   (otherwise
