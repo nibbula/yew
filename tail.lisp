@@ -11,7 +11,27 @@
    ))
 (in-package :tail)
 
-(defun tail-lines (file-or-stream count)
+(defun tail-forever (stream)
+  (if (interactive-stream-p stream)
+      (loop :with line
+	 :do
+	 (if (listen stream)
+	     (progn
+	       (setf line (read-line stream nil nil))
+	       (when line
+		 (write-line line *standard-output*)))
+	     (progn
+	       (sleep 1)
+	       (setf line t)))
+	 :while line))
+      (loop :with line
+	 :do
+	 (if (setf line (read-line stream nil nil))
+	     (write-line line *standard-output*)
+	     (progn
+	       (sleep 1)))))
+
+(defun tail-lines (file-or-stream count forever)
   "Output the last COUNT lines of FILE-OR-STREAM."
   (with-open-file-or-stream (stream file-or-stream)
     (let* ((seekable (file-position stream 0))
@@ -50,10 +70,13 @@
 		 (setf read-pos 0)))
 	    (mapcar #'write-line lines))
 	  ;; Non-seekable streams
-	  (progn
-	    (error "I didn't do non-seekable streams yet.")
-	    ))
-      #| (finish-output *standard-output*) |#)))
+	  (when (not (interactive-stream-p stream))
+	    (progn
+	      (error "I didn't do non-seekable streams yet."))))
+      (when forever
+	(tail-forever stream))
+      #| (finish-output *standard-output*) |#
+      )))
 
 #+lish
 (lish:defcommand tail
@@ -69,13 +92,23 @@
     :help "Files to use as input."))
   "Output the last portion of input."
   (if byte-count
+      (progn
+	(if files
+	    (loop :for f :in files :do
+	       (snip-bytes f byte-count :before))
+	    (snip-bytes *standard-input* byte-count :before))
+	(when forever
+	  (with-open-file-or-stream (stream (car (last files)))
+	    (let ((seekable (file-position stream 0)))
+	      (when (not seekable)
+		(error "I didn't do non-seekable streams yet."))
+	      (file-position stream (file-length stream))
+	      (tail-forever stream)))))
       (if files
-	  (loop :for f :in files :do
-	     (snip-bytes f byte-count :before))
-	  (snip-bytes *standard-input* byte-count :before))
-      (if files
-	  (loop :for f :in files :do
-	     (tail-lines f line-count))
-	  (tail-lines *standard-input* line-count))))
+	  (loop :with i = 0 :and len = (length files)
+	     :for f :in files :do
+	     (tail-lines f line-count (and forever (= i (1- len))))
+	     (incf i))
+	  (tail-lines *standard-input* line-count forever))))
 
 ;; EOF

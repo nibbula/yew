@@ -7,6 +7,7 @@
   (:use :cl :dlib :cl-ppcre :opsys :stretchy :lish)
   (:export
    #:snip #:!snip
+   #:snip-bytes
    #:head #:!head
    ))
 (in-package :snip)
