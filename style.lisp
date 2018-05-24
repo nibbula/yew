@@ -7,6 +7,7 @@
   (:use :cl :theme :fatchar :opsys)
   (:export
    #:spannify-style-item
+   #:styled-string
    #:themed-string
    #:styled-file-name
    ))
