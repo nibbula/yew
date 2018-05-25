@@ -12,6 +12,7 @@
 ;;
 ;; and then use that in the appropriate places? I know evaluation, but..
 ;; As it is, I'm forced to use reader conditionals anyway.
+;; Or am I missing something?
 
 (defsystem opsys
     :name               "opsys"
@@ -26,8 +27,27 @@
 		 :dlib)
     :components
     ((:file "base")
-     (:file "unix" :if-feature (:or :unix :linux :darwin :sunos :bsd)
-	    :depends-on ("base"))
+     ;; (:file "unix" :if-feature (:or :unix :linux :darwin :sunos :bsd)
+     ;; 	    :depends-on ("base"))
+     (:module "unix" :if-feature (:or :unix :linux :darwin :sunos :bsd)
+      :depends-on ("base")
+      :serial t
+      :components ((:file "package")
+		   (:file "macros")
+		   (:file "types")
+		   (:file "errors")
+		   (:file "environmental")
+		   (:file "users")
+		   (:file "filesystem")
+		   (:file "memory")
+		   (:file "signals")
+		   (:file "time")
+		   (:file "processes")
+		   (:file "events")
+		   (:file "terminals")
+		   (:file "communication")
+		   (:file "inspection")
+		   (:file "unix")))
      (:file "ms" :if-feature (:and :windows (:not :unix))
 	    :depends-on ("base"))
      (:file "termios" :if-feature (:or :unix :linux :darwin :sunos :bsd)
