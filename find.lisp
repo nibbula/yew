@@ -571,8 +571,8 @@ by --dir, which defaults to the current directory."
     (setf collect t))
   (let ((ff (apply #'find-files-interactive all-keys)))
     (when collect (setf lish:*output* ff))
-    (format *debug-io* "end of find, *output* = ~s~%" lish:*output*)
-    (finish-output *debug-io*)
+    ;; (format *debug-io* "end of find, *output* = ~s~%" lish:*output*)
+    ;; (finish-output *debug-io*)
     ff))
 
 ;; @@@ How about try a pseudo-sql syntax?
