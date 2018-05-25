@@ -13,6 +13,7 @@
    #:*terminal*
    #:*default-terminal-type*
    #:*terminal-types*
+   #:*standard-colors*
    #:has-terminal-attributes
    #:terminal-default-device-name
    #:register-terminal-type
@@ -92,6 +93,10 @@ terminal attributes.")
 (defvar *terminal-types* nil
   "Alist of (keyword terminal-type) to provide easy names for terminal 
 subclasses.")
+
+(defparameter *standard-colors*
+  '(:black :red :green :yellow :blue :magenta :cyan :white :default)
+  "Standard color names.")
 
 (defun register-terminal-type (name type)
   "Subclasses should call this to register their type keyword."
@@ -373,7 +378,13 @@ a string and return the string."
 	      ,@body
 	   (tt-finish-output))))))
 
+;; @@@ There is overlap here between this and fatchar:span-to-fatchar-string.
+;; fatchar depends on us, so maybe consider moving part of that code here?
+
 (defmacro with-style ((&rest style) &body body)
+  "Evaluate the BODY with the style set to SYTLE. Unfortunately we can't set
+the color back to what it was, since terminals necessarily support querying
+the current color, so the caller will have to do that itself."
   (with-unique-names (fg bg color-set s)
     `(let (,fg ,bg ,color-set)
        (loop :for ,s :in (flatten ',style) :do
@@ -390,6 +401,10 @@ a string and return the string."
 		      ,color-set t))
 	       ((equalp (subseq (string ,s) 0 3) "BG-")
 		(setf ,bg (keywordify (subseq (string ,s) 3))
+		      ,color-set t))
+	       ((member ,s *standard-colors*)
+		;; An un-prefixed color is a foreground color.
+		(setf ,fg ,s
 		      ,color-set t))))))
        (when ,color-set
 	 (tt-color ,fg ,bg))

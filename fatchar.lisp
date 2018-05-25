@@ -319,6 +319,9 @@ strings."
    (span-to-fatchar-string span :start start :end end
 			   :fatchar-string fatchar-string)))
 
+;; @@@ Consider dealing with the overlap between this and
+;; lish:symbolic-prompt-to-string and terminal:with-style.
+
 (defun span-to-fatchar-string (span &key (start 0) end fatchar-string)
   "Make a fat string from a span."
   (when (not fatchar-string)
@@ -358,6 +361,9 @@ strings."
 			   (push (keywordify (subseq (string tag) 3)) fg))
 			  ((equalp (subseq (string tag) 0 3) "BG-")
 			   (push (keywordify (subseq (string tag) 3)) bg))
+			  ((member tag *standard-colors*)
+			   ;; An un-prefixed color is a foreground color.
+			   (push tag fg))
 			  (t
 			   (push tag attrs)))
 			;; (format t "tag ~s attrs ~s (cdr s) ~s~%"
