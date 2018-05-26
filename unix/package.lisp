@@ -135,6 +135,9 @@
    #:getutxline
    #:pututxline
    #:setutxent
+   #:*utxdb-types* #:+UTXDB-ACTIVE+ #:+UTXDB-LASTLOGIN+ #:+UTXDB-LOG+
+   #:default-utmpx-file #:set-utmp-file #:*default-utmpx-files*
+   #:guess-utmpx-file-type
    #:users-logged-in
    #:setlogin
 

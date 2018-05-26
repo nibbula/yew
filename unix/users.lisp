@@ -293,22 +293,22 @@ return potentially updated data."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Login/accounting database
 
-;; @@@ Solaris & FreeBSD aren't really done yet
+;; @@@ Solaris isn't really done yet.
 
 (define-constants #(
 ;; Name               D   L   S   F
 #(+UTX-EMPTY+	      0   0   0   0   "No valid user accounting information.")
-#(+UTX-RUN-LVL+	      1   1   1   1   "Run level. For Compatibility, not used.")
-#(+UTX-BOOT-TIME+     2   2   2   2   "Time of a system boot.")
-#(+UTX-OLD-TIME+      3   4   3   3   "Time before system clock change.")
-#(+UTX-NEW-TIME+      4   3   4   4   "Time after system clock change.")
+#(+UTX-RUN-LVL+	      1   1   1   nil "Run level. For Compatibility, not used.")
+#(+UTX-BOOT-TIME+     2   2   2   1   "Time of a system boot.")
+#(+UTX-OLD-TIME+      3   4   3   2   "Time before system clock change.")
+#(+UTX-NEW-TIME+      4   3   4   3   "Time after system clock change.")
 #(+UTX-INIT-PROCESS+  5   5   5   5   "A process spawned by init(8).")
 #(+UTX-LOGIN-PROCESS+ 6   6   6   6   "The session leader of a logged-in user.")
-#(+UTX-USER-PROCESS+  7   7   7   7   "A user process.")
-#(+UTX-DEAD-PROCESS+  8   8   8   8   "A session leader exited.")
-#(+UTX-ACCOUNTING+    9   9   9   9   "")
-#(+UTX-SIGNATURE+     10  nil 10  10  "")
-#(+UTX-SHUTDOWN-TIME+ 11  nil 11  11  "Time of system shutdown (extension)")))
+#(+UTX-USER-PROCESS+  7   7   7   4   "A user process.")
+#(+UTX-DEAD-PROCESS+  8   8   8   7   "A session leader exited.")
+#(+UTX-ACCOUNTING+    9   9   9   nil "")
+#(+UTX-SIGNATURE+     10  nil 10  nil  "")
+#(+UTX-SHUTDOWN-TIME+ 11  nil 11  8  "Time of system shutdown (extension)")))
 
 #+darwin
 (progn
@@ -324,7 +324,10 @@ return potentially updated data."
   #+linux
   #(:EMPTY :RUN-LVL :BOOT-TIME :NEW-TIME :OLD-TIME :INIT-PROCESS :LOGIN-PROCESS
     :USER-PROCESS :DEAD-PROCESS :ACCOUNTING :SIGNATURE :SHUTDOWN-TIME)
-  #-(or darwin linux) ;; @@@ not really right
+  #+freebsd
+  #(:EMPTY :BOOT-TIME :OLD-TIME :NEW-TIME :USER-PROCESS :INIT-PROCESS
+    :LOGIN-PROCESS :DEAD-PROCESS :SHUTDOWN-TIME)
+  #-(or darwin linux freebsd) ;; @@@ not really right
   #(:EMPTY :RUN-LVL :BOOT-TIME :NEW-TIME :OLD-TIME :INIT-PROCESS :LOGIN-PROCESS
     :USER-PROCESS :DEAD-PROCESS :ACCOUNTING :SIGNATURE :SHUTDOWN-TIME)
   "utmpx type keywords.")
@@ -404,15 +407,22 @@ return potentially updated data."
       nil
       (with-foreign-slots ((ut_user ut_id ut_line ut_pid ut_type ut_tv ut_host)
 			   u (:struct foreign-utmpx))
-	(make-utmpx
-	  :user	(foreign-string-to-lisp ut_user)
-	  :id	(foreign-string-to-lisp ut_id :max-chars +UTX-IDSIZE+)
-	  :line	(foreign-string-to-lisp ut_line)
-	  :pid	ut_pid
-	  :type	(aref +utmpx-type+ ut_type)
-	  :tv	(make-timeval :seconds (getf ut_tv 'tv_sec)
-			      :micro-seconds (getf ut_tv 'tv_usec))
-	  :host	(foreign-string-to-lisp ut_host)))))
+	(let ((id (make-array +UTX-IDSIZE+
+			      :element-type 'fixnum :initial-element 0)))
+	  ;; ut_id isn't really guaranteed to be a string or anything.
+	  (loop :with c :for i :from 0 :below +UTX-IDSIZE+
+	     :do (setf c (mem-aref ut_id :char i))
+	     :while (not (zerop c))
+	     :do (setf (aref id i) c))
+	  (make-utmpx
+	   :user  (foreign-string-to-lisp ut_user :max-chars +UTX-USERSIZE+)
+	   :id	  id
+	   :line  (foreign-string-to-lisp ut_line :max-chars +UTX-LINESIZE+)
+	   :pid	  ut_pid
+	   :type  (aref +utmpx-type+ ut_type)
+	   :tv	  (make-timeval :seconds (getf ut_tv 'tv_sec)
+				 :micro-seconds (getf ut_tv 'tv_usec))
+	   :host  (foreign-string-to-lisp ut_host :max-chars +UTX-HOSTSIZE+))))))
 
 (defcfun endutxent :void
   "Close the utmpx database.")
@@ -453,6 +463,7 @@ field matches LINE, from the utmpx database. Open it if it's not open."
 user. Probably requires root."
   (utx (:pointer (:struct foreign-utmpx))))
 
+;; @@@ This probably hasn't been tested or checked for portability.
 (defun pututxline (line)
   "Put the entry UTX into the utmpx database, replacing the entry for the same
 user. Probably requires root."
@@ -463,7 +474,7 @@ user. Probably requires root."
 			 u (:struct foreign-utmpx))
       (with-slots (user id line pid type tv host) line
 	(setf ut_user user
-	      ut_id   id
+	      ut_id   id  ; @@@ This probably requres special treatment.
 	      ut_line line
 	      ut_pid  pid
 	      ut_type type
@@ -476,6 +487,83 @@ user. Probably requires root."
 
 (defcfun setutxent :void
   "Reset the utmpx database to the beginning.")
+
+(defvar *utxdb-types* nil "Numeric types for utmpx databases.")
+(define-enum-list *utxdb-types*
+    #(#(+UTXDB-ACTIVE+    "Active login sessions.")
+      #(+UTXDB-LASTLOGIN+ "Last login sessions.")
+      #(+UTXDB-LOG+       "Log indexed by time.")))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  #+freebsd (config-feature :os-t-has-setutxdb)
+  #+linux (config-feature :os-t-has-utmpname)
+  )
+
+#+os-t-has-setutxdb
+(progn
+  (defparameter *default-utmpx-files*
+    `((,+UTXDB-ACTIVE+    . "/var/run/utx.active")
+      (,+UTXDB-LASTLOGIN+ . "/var/log/utx.lastlogin")
+      (,+UTXDB-LOG+       . "/var/log/utx.log")))
+
+  (defcfun ("setutxdb" real-setutxdb) :int
+    "Select the utmpx database to read from."
+    (type :int) (file :string))
+  
+  (defun setutxdb (type &optional (file (default-utmpx-file type)))
+    "Select the utmpx database to read from."
+    (syscall (real-setutxdb type file)))
+
+  (defun set-utmp-file (type &optional (file (default-utmpx-file type)))
+    "Set the utmp file base on TYPE and FILE. If FILE isn't given, it picks
+the default name for the TYPE."
+    (setutxdb type file))
+
+  (export 'setutxdb))
+
+#+os-t-has-utmpname
+(progn
+  ;; @@@ This is what it is on linux. We might have to change for others.
+  (defparameter *default-utmpx-files*
+    `((,+UTXDB-ACTIVE+    . "/var/run/utmp")
+      (,+UTXDB-LASTLOGIN+ . "/var/log/lastlog")
+      (,+UTXDB-LOG+       . "/var/log/wtmp")))
+
+  (defcfun utmpname :int (file :string))
+
+  (defun set-utmp-file (type &optional (file (default-utmpx-file type)))
+    "Set the utmp file base on TYPE and FILE. If FILE isn't given, it picks
+the default name for the TYPE."
+    (declare (ignorable type))
+    (utmpname file))
+
+  (export 'utmpname))
+
+;; @@@ Every system has something, so maybe this won't get used except in
+;; initial porting?
+#-(or os-t-has-setutxdb os-t-has-utmpname)
+(progn
+  ;; @@@ Just guessing.
+  (defparameter *default-utmpx-files*
+    `((,+UTXDB-ACTIVE+    . "/var/run/utmp")
+      (,+UTXDB-LASTLOGIN+ . "/var/log/lastlog")
+      (,+UTXDB-LOG+       . "/var/log/wtmp")))
+
+  (defun set-utmp-file (type &optional file)
+    "This is a stub."
+    (declare (ignore type file))))
+
+(defun default-utmpx-file (type)
+  "Return the default file name for the utmpx TYPE."
+  (or (cdr (assoc type *default-utmpx-files*))
+      (error 'opsys-error
+	     :format-control "Unknown utmpx file type: ~d."
+	     :format-arguments `(,type))))
+
+(defun guess-utmpx-file-type (file)
+  "Try to guess the type given the file name. Note that is only based on the
+name, not the contents. Return NIL if we don't have a guess."
+  (car (rassoc file *default-utmpx-files* :test #'equal)))
 
 ;; This is usually done only when you "log in", like with the window system or
 ;; like in the ssh deamon. See getlogin.
