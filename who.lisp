@@ -45,12 +45,15 @@
   #-unix device)
 
 #+unix
-(defun who (&key users show-dead all tty (print t))
+(defun who (&key users show-dead all tty (print t) file)
   (with-grout ()
     (let (tab table)
       (unwind-protect
         (progn
-	  (setutxent)
+	  (if file
+	      (set-utmp-file (or (guess-utmpx-file-type file) +UTXDB-ACTIVE+)
+			     file)
+	      (setutxent))
 	  (setf tab
 		(loop :with u
 		   :while (setf u (getutxent))
@@ -88,12 +91,33 @@
     :help "True to show all processes, not only user processes.")
    (tty string :long-arg "tty"
     :help "Terminal to exclusively report on.")
+   (file pathname :short-arg #\f
+    :help "Name of a file to use as the database.")
    (users user :repeating t :help "Users to report on."))
   "Who is on."
   (when (equalp users '("am" "i"))
     (setf users (list (user-name))
 	  tty (file-handle-terminal-name 0)))
-  (who :users users :show-dead show-dead :all all :tty tty))
+  (who :users users :show-dead show-dead :all all :tty tty :file file))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; lastlogin
+
+#+lish
+(lish:defcommand lastlogin
+  ((show-history boolean :short-arg #\h :help "True to show login history.")
+   (users user :repeating t :help "User to show the last login for."))
+  "Show users' last login."
+  ;; @@@ There should be an option where it tries to figure out durations
+  ;; for sessions and booted times, like the "last" command.
+  (who :users users :all t
+       :file (cond
+	       (show-history
+		(default-utmpx-file +UTXDB-LOG+))
+	       (t
+		;; @@@ I can't be bothered to do this correctly now.
+		#+linux (default-utmpx-file +UTXDB-LOG+)
+		#-linux (default-utmpx-file +UTXDB-LASTLOGIN+)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; uptime
@@ -216,6 +240,7 @@ If FROM-DAYS-P is true, days are the biggest units to break SECONDS into."
   (print-uptime :pretty pretty :show-since show-since))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; w (or who-what)
 
 #+unix
 (progn
