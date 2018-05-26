@@ -231,6 +231,11 @@ loading this library.")
 		     (cffi::get-foreign-library 'curses::libcurses)))))
   (pushnew :curses-dont-use-wide *features*))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  ;; @@@ Is this a version or platform difference?
+  #+freebsd (pushnew :curses-missing-use-tioctl *features*)
+  )
+
 #|
 (define-foreign-library libcurses
      (t (:or
@@ -1235,10 +1240,12 @@ initscr again after this.")
   "If F is false, don't look at the LINES and COLUMNS environment variables.
 Needs to be called before initscr or newterm. Interacts with use-tioctl."
   (f bool))
+#-curses-missing-use-tioctl
 (defcfun use-tioctl :void
   "If F is true, use operating system calls to determine the terminal size.
 Needs to be called before initscr or newterm. Interacts with use-env."
   (f bool))
+#+curses-missing-use-tioctl (defun use-tioctl (f) (declare (ignore f)))
 (defcfun putwin :int
   "Writes out window data from WIN to the FILE, which must be a C stdio FILE *
 open for writing."
