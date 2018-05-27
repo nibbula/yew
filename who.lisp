@@ -53,7 +53,8 @@
 	  (if file
 	      (set-utmp-file (or (guess-utmpx-file-type file) +UTXDB-ACTIVE+)
 			     file)
-	      (setutxent))
+	      (set-utmp-file +UTXDB-ACTIVE+))
+	  (setutxent)
 	  (setf tab
 		(loop :with u
 		   :while (setf u (getutxent))
