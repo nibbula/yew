@@ -213,7 +213,7 @@
     (#\d			. vi-delete-move)	; *
     (#\D			. vi-delete-eol)	; *
     (#\m			. vi-mark)		; *
-    (#\quotation_mark		. vi-set-buffer)	; *
+    (#\'			. vi-set-buffer)	; *
     (#\i			. vi-insert)		; *
     (#\I			. vi-insert-bot)	; *
     (#\J			. vi-join-lines)	; *
