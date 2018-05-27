@@ -1706,10 +1706,10 @@ lock, checking at least every INCREMNT seconds."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; System Commands?
 
-(defun is-executable (path &key user regular)
-  "Return true if the PATH is executable by the UID. UID defaults to the
-current effective user."
-  (let ((s (stat path)))
+(defun is-executable (thing &key user regular)
+  "Return true if the THING is executable by the UID. UID defaults to the
+current effective user. THING can be a path or a FILE-STATUS structure."
+  (let ((s (or (and (file-status-p thing) thing) (stat thing))))
     (and
      (or
       (is-other-executable (file-status-mode s))
