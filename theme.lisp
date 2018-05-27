@@ -381,13 +381,14 @@ If the path doesn't exist, it is created."
 ;;       (with-style (style)
 ;; 	(print thing)))))
 
+;; @@@ This should probably come from a system database.
 (defparameter *file-type-suffixes*
-  '((:archive (".tar" ".tgz" ".arc" ".arj" ".taz" ".lha" ".lz4" ".lzh" ".lzma"
-	       ".tlz" ".txz" ".tzo" ".t7z" ".zip"
+  '((:archive (".tar" ".tgz" ".tbz"".tbz2" ".arc" ".arj" ".taz" ".lha" ".lz4"
+	       ".lzh" ".lzma" ".tlz" ".txz" ".tzo" ".t7z" ".zip"
 	       ".deb" ".rpm" ".jar" ".war" ".ear" ".sar" ".rar" ".alz" ".ace"
 	       ".zoo" ".cpio" ".7z" ".rz" ".cab"))
     (:compressed (".z" ".Z" ".dz" ".gz" ".lrz" ".lz" ".lzo" ".xz" ".bz2" ".bz"
-		  ".tbz" ".tbz2" ".tz"))
+		  ".tz"))
     (:image (".jpg" ".jpeg" ".gif" ".bmp" ".pbm" ".pgm" ".ppm" ".tga" ".xbm"
 	     ".xpm" ".tif" ".tiff" ".png" ".svg" ".svgz" ".mng" ".pcx"
 	     ".xwd" ".yuv" ".cgm"".emf"
@@ -432,10 +433,17 @@ Something like the default setting of typical GNU tools."))))
      ;; File type
      '((:file :type :directory             :style) (:bold :fg-blue)
        (:file :type :link                  :style) (:bold :fg-cyan)
+       (:file :type :symbolic-link         :style) (:bold :fg-cyan)
        (:file :type :pipe                  :style) (:fg-black :fg-yellow)
        (:file :type :socket                :style) (:bold :fg-magenta)
        (:file :type :block-device          :style) (:bg-black :fg-yellow :bold)
        (:file :type :character-device      :style) (:bg-black :fg-yellow :bold)
+       (:file :type :setuid                :style) (:fg-white :bg-red)
+       (:file :type :setgid                :style) (:fg-black :bg-yellow)
+       (:file :type :sticky                :style) (:fg-white :bg-blue)
+       (:file :type :sticky-other-writable :style) (:fg-black :bg-green)
+       (:file :type :other-writable        :style) (:fg-blue :bg-green)
+       (:file :type :executable            :style) (:bold)
        ;; File name suffixes
        (:file :suffix :archive             :style) (:bold :fg-red)
        (:file :suffix :compressed          :style) (:bold :fg-cyan)

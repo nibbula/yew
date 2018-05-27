@@ -34,10 +34,11 @@
 
 (defun styled-file-name (name &optional type)
   "Return a stylized string for a file NAME and TYPE. The TYPE values are from
-OPSYS:DIR-ENTRY-TYPE. NAME can be a DIR-ENTRY in which the NAME and TYPE are
-extracted from."
+OPSYS:DIR-ENTRY-TYPE or whatever. NAME can be a DIR-ENTRY in which the NAME
+and TYPE are extracted from. If TYPE is passed in, it overrides a type in the
+DIR-ENTRY."
   (when (dir-entry-p name)
-    (setf type (dir-entry-type name)
+    (setf type (or type (dir-entry-type name))
 	  name (dir-entry-name name))) ; losing the original
   (let (style)
     (cond
