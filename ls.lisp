@@ -15,8 +15,8 @@
 (defpackage :ls
   (:documentation
    "This is a shitty fake implementation of the command I type the most.")
-  (:use :cl :dlib :opsys :dlib-misc :grout :style :terminal :table :table-print
-	:terminal-table :magic :fatchar)
+  (:use :cl :dlib :dlib-misc :opsys :terminal :terminal-ansi :grout :table
+	:table-print :terminal-table :fatchar :style :magic)
   (:export
    #:!ls
    #:ls
@@ -120,7 +120,7 @@ by nos:read-directory."))
 (defgeneric file-item-type (item)
   (:documentation "Return the type.")
   (:method ((item file-item-unix))
-    (uos:symbolic-mode (uos:file-status-mode (file-item-info item))))
+    (uos:file-type-symbol (uos:file-status-mode (file-item-info item))))
   (:method ((item file-item-full))
     (nos:file-info-type (file-item-info item))))
 
@@ -162,7 +162,7 @@ by nos:read-directory."))
 		    :directory dir
 		    :info
 		    #-unix (nos:get-file-info (full-path dir item))
-		    #+unix (uos:stat (full-path dir item))))
+		    #+unix (uos:lstat (full-path dir item))))
     ((or file-item-dir file-item)
      (let ((this-dir (or dir (file-item-directory item))))
        (make-instance #+unix 'file-item-unix
@@ -172,7 +172,7 @@ by nos:read-directory."))
 		      :info
 		      #-unix (nos:get-file-info
 			      (full-path this-dir (file-item-name item)))
-		      #+unix (uos:stat
+		      #+unix (uos:lstat
 			      (full-path this-dir (file-item-name item))))))
     (file-item-full
      item)))
@@ -202,8 +202,27 @@ by nos:read-directory."))
 (defun format-the-size (size)
   (remove #\space (print-size size :traditional t :stream nil :unit "")))
 
+(defun get-extended-type (file-item)
+  #+unix
+  (let ((mode (uos:file-status-mode (file-item-info file-item))))
+    (cond
+      ((uos:is-set-uid mode) :setuid)
+      ((uos:is-set-gid mode) :setgid)
+      ((and (uos:is-directory mode) (uos:is-other-writable mode)
+	    (uos:is-sticky mode))
+       :sticky-other-writable)
+      ((and (uos:is-directory mode) (uos:is-other-writable mode))
+       :other-writable)
+      ((uos:is-sticky mode) :sticky)
+      ((and (uos:is-regular-file mode)
+	    (uos:is-executable (file-item-info file-item))) :executable)
+      ;; @@@ see how to detect: orphan, missing, capability
+      (t (uos:file-type-symbol mode))))
+  #-unix
+  (file-item-type (file-item-info file-item)))
+
 (defun get-styled-file-name (file-item)
-  "File is eigher a string or a dir-entry. Return a possibly fat-string."
+  "File is either a string or a dir-entry. Return a possibly fat-string."
   (typecase file-item
     (dir-entry
      (styled-file-name file-item))
@@ -212,12 +231,13 @@ by nos:read-directory."))
     (file-item
      (if (ls-state-mixed-bag *ls-state*)
 	 ;; Make a full path name.
-	 (let ((duh (file-item-as-dir-entry file-item)))
+	 (progn
 	   (styled-file-name
 	    (path-append (file-item-directory file-item)
 			 (file-item-name file-item))
-	    (dir-entry-type duh)))
-	 (styled-file-name (file-item-as-dir-entry file-item))))
+	    (get-extended-type file-item)))
+	 (styled-file-name (file-item-as-dir-entry file-item)
+			   (get-extended-type file-item))))
     (t file-item)))
 
 (defun plain-file-name (file)
@@ -354,7 +374,6 @@ by nos:read-directory."))
       (get-styled-file-name item)))
 
 (defun gather-file-info (args)
-  ;;(format t "gather files -> ~s~%" (getf args :files))
   (let* (main-list
 	 (sort-by (getf args :sort-by))
 	 (results
@@ -362,20 +381,14 @@ by nos:read-directory."))
 	     :if (and (probe-directory file)
 		      (not (getf args :directory)))
 	     :collect
-	     (mapcar (_ (make-instance
-			 'file-item-dir
-			 :name (dir-entry-name _)
-			 :directory file
-			 :info _))
+	     (mapcar (_ (make-full-item (dir-entry-name _) file))
 		     (read-directory
 		      :full t :dir file
 		      :omit-hidden (not (getf args :hidden))))
 	     :else
 	     :do
-	     (push (make-instance 'file-item
-				  :name (path-file-name file)
-				  ;; @@@ wasteful? make pre-done dir?
-				  :directory (path-directory-name file))
+	     (push (make-full-item (path-file-name file)
+				   (path-directory-name file))
 		   main-list)
 	     (setf (ls-state-mixed-bag *ls-state*) t))))
     ;; group all the individual files into a list

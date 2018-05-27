@@ -14,6 +14,7 @@
      have by now. This command is *so* overused, I can't even believe it. Do you
      really want to rummage through all your stuff yet again?"
     :depends-on (:dlib :dlib-misc :char-util :opsys :terminal :terminal-ansi
-		 :grout :table :table-print :fatchar)
+		  :grout :table :table-print :terminal-table :fatchar :style
+		  :magic)
     :components
     ((:file "ls")))
