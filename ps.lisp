@@ -396,7 +396,8 @@ user, pid, ppid, size, command."
    (user user :short-arg #\u
     :help "User to show processes for."))
   "Process status."
-  (ps :matching matching :show-kernel-processes show-kernel-processes
-      :user user))
+  (setf *output*
+	(ps :matching matching :show-kernel-processes show-kernel-processes
+	    :user user)))
 
 ;; EOF

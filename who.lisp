@@ -99,7 +99,8 @@
   (when (equalp users '("am" "i"))
     (setf users (list (user-name))
 	  tty (file-handle-terminal-name 0)))
-  (who :users users :show-dead show-dead :all all :tty tty :file file))
+  (setf *output*
+	(who :users users :show-dead show-dead :all all :tty tty :file file)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; lastlogin
