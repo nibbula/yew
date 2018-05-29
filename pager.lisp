@@ -1515,6 +1515,10 @@ q - Abort")
 	 (page (make-string-input-stream
 		(get-output-stream-string ,str-name)))))))
 
+(defun acceptable-object (obj)
+  (some (_ (funcall _ obj))
+	'(streamp consp stringp pathnamep)))
+
 (defun pager (&optional (file-or-files (pick-file)))
   "View the file with the pager. Prompt for a file name if one isn't given."
   ;; Let's just say if you page nil, nothing happens.
@@ -1649,6 +1653,8 @@ then the key. Press 'q' to exit this help.
   :accepts (:grotty-stream :file-list :file-locaations)
   "Look through text, one screen-full at a time."
   (declare (ignore show-line-numbers ignore-case raw-output pass-special)) ; @@@
-  (pager (or files lish:*input* *standard-input*)))
+  (pager (or files
+	     (and (acceptable-object lish:*input*) lish:*input*)
+	     *standard-input*)))
 
 ;; EOF
