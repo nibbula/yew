@@ -75,7 +75,11 @@
    #:getauxval
    #:getlogin
    #:sysconf
+   #:sysinfo
    #:*sysconf-names*
+   #:system-info-names
+   #:system-info-description
+   #:get-system-info
 
    #:passwd				; struct
    #:passwd-name

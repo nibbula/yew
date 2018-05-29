@@ -23,6 +23,9 @@
    #:lisp-args
    #:memory-page-size
    #:processor-count
+   #:system-info-names
+   #:system-info-description
+   #:get-system-info
 
    #:get-user-info
    #:user-home

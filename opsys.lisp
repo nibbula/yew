@@ -94,9 +94,19 @@ expect. Like for example on a Unix system it should be like strerror.")
 (defosfun processor-count ()
   "Return the number of processors in the system.")
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; sysconf
+(defosfun system-info-names ()
+  "Return a sequence of availabile system information symbols.")
 
+(defosfun system-info-description (name)
+  "Return a description of the system information value NAME. NAME should be
+one of symbols retuned system-info-names.")
+
+(defosfun get-system-info (names)
+  "Return system information. NAMES can be a single keyword or a list of
+keywords, which should be in the value returned by SYSTEM-INFO-NAMES. When
+given one keyword, just the value is retuned. When given multiple keywords, an
+alist of (:keyword . value) is returned. On certain systems getting multiple
+names at once may be more efficent.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; User database

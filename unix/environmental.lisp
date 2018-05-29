@@ -735,6 +735,143 @@ Returns an integer."
   (sysconf +sc-nprocessors-onln+))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; sysinfo
+
+#+linux
+(progn
+  (eval-when (:compile-toplevel :load-toplevel :execute)
+    (defctype kernel-ulong-t :unsigned-long)
+    (defctype kernel-long-t :long))
+
+  ;; (eval-when (:compile-toplevel :load-toplevel :execute)
+  ;;   (defconstant +sysinfo-pad-size+
+  ;;     ))
+
+  ;; Since Linux 2.3.23 (i386), 2.3.48 (all architectures)
+  ;;
+  ;; "I say as a public statement of substantial fact, with malice and
+  ;;  forethought, that every version of Linux, past, present, and future,
+  ;;  has been emitted from a donkey's arse."
+  ;;    -- Simon Beuccephalus, c. 1998 [convicted of defamation]
+  ;;
+
+  (defcstruct foreign-sysinfo
+    (uptime       kernel-long-t)
+    (loads        kernel-ulong-t :count 3)
+    (totalram     kernel-ulong-t)
+    (freeram      kernel-ulong-t)
+    (sharedram    kernel-ulong-t)
+    (bufferram    kernel-ulong-t)
+    (totalswap    kernel-ulong-t)
+    (freeswap     kernel-ulong-t)
+    (procs        :uint16)
+    (pad          :uint16)
+    (totalhigh    kernel-ulong-t)
+    (freehigh     kernel-ulong-t)
+    (mem_unit     :uint32)
+    (_f		  :char :count #. (- 20 (* 2 (foreign-type-size :unsigned-long))
+				     (foreign-type-size :uint32))))
+
+  (defcfun ("sysinfo" real-sysinfo) :int
+    (info (:pointer (:struct foreign-sysinfo))))
+
+  (defstruct sysinfo
+    uptime
+    load-averages
+    total-memory
+    free-memory
+    shared-memory
+    buffer-memory
+    total-swap
+    free-swap
+    processes
+    total-high-memory
+    free-high-memory
+    memory-unit-bytes)
+
+  (defun convert-sysinfo (sysinfo)
+    (if (and (pointerp sysinfo) (null-pointer-p sysinfo))
+	nil
+	(with-foreign-slots ((uptime
+			      loads
+			      totalram
+			      freeram
+			      sharedram
+			      bufferram
+			      totalswap
+			      freeswap
+			      procs
+			      totalhigh
+			      freehigh
+			      mem_unit) sysinfo (:struct foreign-sysinfo))
+	  (make-sysinfo
+	   :uptime              uptime
+	   :load-averages       (let ((a (make-array
+					  3 :element-type 'float
+					  :initial-element 0.0)))
+				  (dotimes (i 3)
+				    (setf (aref a i)
+					  (/ (mem-aref loads 'kernel-ulong-t i)
+					     (ash 1 16))))
+				  a)
+	   :total-memory        totalram
+	   :free-memory         freeram
+	   :shared-memory       sharedram
+	   :buffer-memory       bufferram
+	   :total-swap          totalswap
+	   :free-swap           freeswap
+	   :processes           procs
+	   :total-high-memory   totalhigh
+	   :free-high-memory    freehigh
+	   :memory-unit-bytes   mem_unit))))
+
+  (defun sysinfo ()
+    (with-foreign-object (info '(:struct foreign-sysinfo))
+      (syscall (real-sysinfo info))
+      (convert-sysinfo info)))
+
+  (defvar *sysinfo-names* nil
+    "Alist of keywords and slot names of sysinfo values.")
+
+  (defun get-sysinfo-names ()
+    (or *sysinfo-names*
+	(setf *sysinfo-names*
+	      (mapcar (_ (cons (keywordify (mop:slot-definition-name _))
+			       (mop:slot-definition-name _)))
+		      (mop:class-direct-slots (find-class 'sysinfo))))))
+
+  (defun sysinfo-names ()
+    (mapcar #'car (get-sysinfo-names)))
+
+  (defun sysinfo-slot-name (key)
+    (cdr (assoc key (get-sysinfo-names))))
+
+  (defun get-sysinfo-item (key)
+    (when (position key (sysinfo-names))
+      (slot-value (sysinfo) (sysinfo-slot-name key))))
+
+  (defun process-sysinfo-names (names)
+    (let ((s-names (intersection (sysinfo-names) names))
+	  result)
+      (if s-names
+	  (progn
+	    (loop :with s = (sysinfo)
+	       :for n :in s-names
+	       :do (push (cons n (slot-value s (sysinfo-slot-name n)))
+			 result))
+	    (values result (nset-difference names s-names)))
+	  (values nil names))))
+
+  #|
+  Should maybe just get these from sysconf?
+  :int get_nprocs_conf (void) __attribute__ ((__nothrow__ , __leaf__));
+  :int get_nprocs (void) __attribute__ ((__nothrow__ , __leaf__));
+  :long get_phys_pages (void) __attribute__ ((__nothrow__ , __leaf__));
+  :long get_avphys_pages (void) __attribute__ ((__nothrow__ , __leaf__))
+  |#
+  )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; getrlimit/setrlimit
 
 (defparameter *rlimit-resources* nil "Names for rlimit resources.")
@@ -820,5 +957,77 @@ Returns an integer."
 				  '(:struct foreign-rlimit) 'rlim_cur)
      :maximum (foreign-slot-value old-rlim
 				  '(:struct foreign-rlimit) 'rlim_max))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+
+(defparameter *system-info-name-table* nil
+  "Hash table of system info names to internal symbols.")
+
+(defparameter *system-info-names* nil
+  "Array of system info names.")
+
+;; @@@ Doesn't this seem stupid? Should I just intern them and set their value?
+;; I'm doing this not to pollute the package, but does it matter? Maybe just use
+;; the SYMBOL-PLIST?
+(defun make-system-info-names ()
+  (setf *system-info-name-table* (make-hash-table))
+
+  ;; Gather names from sysconf +SC-*+
+  ;; @@@ Some of these are named so badly, that I really want to change them.
+  ;; e.g. +SC-SELECT+
+  (loop :with s
+     :for n :in *sysconf-names*
+     :do
+     (setf s (string n)
+	   s (subseq s 4 (1- (length s)))
+	   (gethash (keywordify s) *system-info-name-table*) n))
+
+  ;; Names from sysinfo
+  #+linux
+  (loop :for key :in (sysinfo-names)
+     :do (setf (gethash key *system-info-name-table*) (sysinfo-slot-name key)))
+
+  ;; Make the arry from the hash table.
+  (setf *system-info-names*
+	(make-array (hash-table-count *system-info-name-table*)))
+  (loop :with i = 0
+     :for k :being :the :hash-keys :of *system-info-name-table*
+     :do (setf (aref *system-info-names* i) k)
+     (incf i))
+  *system-info-names*)
+
+(defun system-info-name-table ()
+  (or *system-info-name-table*
+      (progn (make-system-info-names) *system-info-name-table*)))
+
+(defun system-info-names ()
+  (or *system-info-names* (make-system-info-names)))
+
+(defun system-info-description (name)
+  (documentation (gethash name (system-info-name-table)) 'variable))
+
+(defun get-system-info-item (name)
+  (let ((n (gethash name (system-info-name-table))))
+    (cond
+      ((not n)
+       (error "Unknown system info item ~s." name))
+      ((equal (subseq (string n) 0 4) "+SC-")
+       (sysconf (symbol-value n))))))
+
+(defun get-system-info (names)
+  (let (result)
+    (etypecase names
+      (list
+       (when names
+	 #+linux (setf (values result names)
+		       (process-sysinfo-names names))
+	 (setf result
+	       (append result
+		       (loop :for n :in names
+			  :collect (cons n (get-system-info-item n)))))))
+      (symbol
+       (or (get-sysinfo-item names)
+	   (get-system-info-item names))))))
 
 ;; End
