@@ -124,6 +124,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; uptime
 
+#|
 #+linux
 (progn
   (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -154,6 +155,8 @@ probably printed as floats to 2 places."
 (progn
   (defun uptime () 0)
   (defun load-averages () (values 0 0 0)))
+|#
+
 
 ;; This is an highly un-hygenic macro.
 (defmacro with-time-units ((seconds &key from-days-p) &body body)
@@ -192,7 +195,11 @@ If FROM-DAYS-P is true, days are the biggest units to break SECONDS into."
 
 #+unix
 (defun print-uptime (&key pretty show-since (stream *standard-output*))
-  (let ((uptime (uptime)))
+  (let* ((info (get-system-info '(:uptime :load-averages)))
+	 (uptime (cdr (assoc :uptime info)))
+	 (one (elt (cdr (assoc :load-averages info)) 0))
+	 (five (elt (cdr (assoc :load-averages info)) 1))
+	 (fifteen (elt (cdr (assoc :load-averages info)) 2)))
     (cond
       (pretty
        (write-string "up " stream)
@@ -228,9 +235,9 @@ If FROM-DAYS-P is true, days are the biggest units to break SECONDS into."
 	     (format stream "~2,,,'0a:~2,,,'0a,  " hours minutes)
 	     (format stream "~a min~:p,  " minutes))
 
-	 (format stream "~d users,  " (length (users-logged-in)))
-	 (multiple-value-bind (one five fifteen) (load-averages)
-	   (format stream "load average: ~a, ~a, ~a~%" one five fifteen)))))))
+	 (format stream "~d user~:*~p,  " (length (users-logged-in)))
+	 (format stream
+		 "load average: ~4,2f, ~4,2f, ~4,2f~%" one five fifteen))))))
 
 #+lish
 (lish:defcommand uptime
