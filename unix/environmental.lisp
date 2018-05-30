@@ -959,7 +959,9 @@ Returns an integer."
 				  '(:struct foreign-rlimit) 'rlim_max))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; get-system-info
 ;;
+;; @@@ integrate sysctl stuff on freebsd
 
 (defparameter *system-info-name-table* nil
   "Hash table of system info names to internal symbols.")
@@ -1027,7 +1029,7 @@ Returns an integer."
 		       (loop :for n :in names
 			  :collect (cons n (get-system-info-item n)))))))
       (symbol
-       (or (get-sysinfo-item names)
+       (or #+linux (get-sysinfo-item names)
 	   (get-system-info-item names))))))
 
 ;; End
