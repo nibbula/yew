@@ -517,9 +517,7 @@ user. Probably requires root."
   (defun set-utmp-file (type &optional (file (default-utmpx-file type)))
     "Set the utmp file base on TYPE and FILE. If FILE isn't given, it picks
 the default name for the TYPE."
-    (setutxdb type file))
-
-  (export 'setutxdb))
+    (setutxdb type file)))
 
 #+os-t-has-utmpname
 (progn
@@ -535,9 +533,7 @@ the default name for the TYPE."
     "Set the utmp file base on TYPE and FILE. If FILE isn't given, it picks
 the default name for the TYPE."
     (declare (ignorable type))
-    (utmpname file))
-
-  (export 'utmpname))
+    (utmpname file)))
 
 ;; @@@ Every system has something, so maybe this won't get used except in
 ;; initial porting?
