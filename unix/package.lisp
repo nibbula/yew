@@ -69,6 +69,7 @@
    #:setenv
    #:unsetenv
    #:sysctl
+   #:sysctl-by-number
    #:getpagesize
    #:memory-page-size
    #:processor-count
@@ -139,6 +140,8 @@
    #:getutxline
    #:pututxline
    #:setutxent
+   #:setutxdb
+   #:utmpname
    #:*utxdb-types* #:+UTXDB-ACTIVE+ #:+UTXDB-LASTLOGIN+ #:+UTXDB-LOG+
    #:default-utmpx-file #:set-utmp-file #:*default-utmpx-files*
    #:guess-utmpx-file-type
@@ -165,11 +168,21 @@
    #:+O_RDONLY+ #:+O_WRONLY+ #:+O_RDWR+ #:+O_ACCMODE+ #:+O_NONBLOCK+
    #:+O_APPEND+ #:+O_SYNC+ #:+O_SHLOCK+ #:+O_EXLOCK+ #:+O_CREAT+ #:+O_TRUNC+
    #:+O_EXCL+
+   #:SEEK-SET+ #:SEEK-CUR+ #:SEEK-END+
+   #+linux #:SEEK-DATA+ #:SEEK-HOLE+
    #:posix-open
    #:posix-close
    #:posix-read
    #:posix-write
    #:posix-ioctl
+   #:posix-unlink
+   #:posix-lseek
+   #:posix-pread
+   #:posix-pwrite
+   #:posix-readv
+   #:posix-writev
+   #:posix-preadv
+   #:posix-pwritev
    #:with-posix-file
    #:with-os-file
    #:mkstemp

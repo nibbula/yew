@@ -595,12 +595,49 @@ calls. Returns NIL when there is an error."
     #(+O_TTY_INIT+  #x00080000 "Restore default termios attributes")
     #(+O_CLOEXEC+   #x00100000 "Close on exec")))
 
+(defvar *seek-whence* nil
+  "Values for lseek 'whence' argument.")
+
+(define-to-list *seek-whence*
+  #(#(+SEEK-SET+   0 "From the beginning.")
+    #(+SEEK-CUR+   1 "From the current offset.")
+    #(+SEEK-END+   2 "From the end.")
+    #+linux #(+SEEK-DATA+  3 "To the next data.")
+    #+linux #(+SEEK-HOLE+  4 "To the next hole.")
+    ))
+
 (defcfun ("open"   posix-open)   :int (path :string) (flags :int) (mode mode-t))
 (defcfun ("close"  posix-close)  :int (fd :int))
 (defcfun ("read"   posix-read)   :int (fd :int) (buf :pointer) (nbytes size-t))
 (defcfun ("write"  posix-write)  :int (fd :int) (buf :pointer) (nbytes size-t))
 (defcfun ("ioctl"  posix-ioctl)  :int (fd :int) (request :int) (arg :pointer))
 (defcfun ("unlink" posix-unlink) :int (path :string))
+(defcfun ("lseek"  posix-lseek)  off-t (fd :int) (offset off-t) (whence :int))
+(defcfun ("pread"  posix-pread)  ssize-t
+  (fd :int) (buf :pointer) (nbytes size-t) (offset off-t))
+(defcfun ("pwrite" posix-pwrite) ssize-t
+  (fd :int) (buf :pointer) (nbytes size-t) (offset off-t))
+
+;; We could provide a Lispy wrapper around vectorized I/O, but since it's
+;; likely it would only be used in performance critical code, you probably
+;; want to know the exact details. One could make a read-sequences and
+;; write-sequences.
+
+(defcstruct foreign-iovec
+  "Vector pointers for scatter/gather I/O."
+  (iov_base (:pointer :void))
+  (iov_len  size-t))
+
+(defcfun ("readv" posix-readv) ssize-t
+  (fd :int) (iov (:pointer (:struct foreign-iovec))) (iov-count :int))
+(defcfun ("writev" posix-writev) ssize-t
+  (fd :int) (iov (:pointer (:struct foreign-iovec))) (iov-count :int))
+(defcfun ("preadv" posix-preadv) ssize-t
+  (fd :int) (iov (:pointer (:struct foreign-iovec))) (iov-count :int)
+  (offset off-t))
+(defcfun ("pwritev" posix-pwritev) ssize-t
+  (fd :int) (iov (:pointer (:struct foreign-iovec))) (iov-count :int)
+  (offset off-t))
 
 (defun simple-delete-file (path)
   "Delete a file."
