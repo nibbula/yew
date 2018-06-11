@@ -730,14 +730,15 @@ and add the characters the typeahead."
   (let (borked result)
     (loop :do
        (setf borked nil)
-       (handler-case
-	   (setf result (listen-for seconds (terminal-file-descriptor tty)))
-	 (opsys-resumed ()
-	   (terminal-start tty) (terminal-finish-output tty)
-	   (setf borked t))
-	 (opsys-resized ()
-	   (terminal-get-size tty)
-	   (setf borked t)))
+       (with-terminal-signals ()
+	 (handler-case
+	     (setf result (listen-for seconds (terminal-file-descriptor tty)))
+	   (opsys-resumed ()
+	     (terminal-start tty) (terminal-finish-output tty)
+	     (setf borked t))
+	   (opsys-resized ()
+	     (terminal-get-size tty)
+	     (setf borked t))))
        ;; @@@ Should be:
        ;; :while (and borked (not @@time expired@@))
        :while borked)
