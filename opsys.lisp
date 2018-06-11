@@ -663,7 +663,7 @@ it from the current process."
   #+(and (or openmcl ccl) unix) (apply #'os-unix:fork-and-exec
 				       `(,command ,args
 					      ,@(when env-p :env environment)))
-#|  #+(or openmcl ccl)
+  #+(and (or openmcl ccl) (not unix))
   (let* ((proc
 #|	  (ccl::run-program command args
 			    :sharing :external
@@ -697,7 +697,7 @@ it from the current process."
 	     code-or-sig))
 	(t
 	 (error "Process has unknown status ~a" status)))))
-|#
+
   #+(and sbcl (not unix))
   (sb-ext:process-exit-code
    (apply #'sb-ext:run-program
@@ -1049,8 +1049,8 @@ characters. If we don't get anything after a while, just return what we got.")
 ;; Go thru *features* and get rid of all our temporary configuration.
 (setf *features*
        (delete-if #'(lambda (x)
- 		     (let ((s (string x)))
- 		       (string= s "OS-T-" :end1 (min 5 (length s)))))
+ 		      (let ((s (princ-to-string x)))
+ 			(string= s "OS-T-" :end1 (min 5 (length s)))))
  		 *features*))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

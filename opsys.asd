@@ -23,7 +23,7 @@
     :source-control	:git
     :long-description   "The cessation of the repetition of ‘Never Again’."
     :depends-on (:cffi 
-		 #+(and (or windows win32) (not unix)) :cffi-libffi
+		 #+(and (or windows win32) (not unix) (not ccl)) :cffi-libffi
 		 :dlib)
     :components
     ((:file "base")

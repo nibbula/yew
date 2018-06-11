@@ -34,6 +34,7 @@
    #:environment
    #:environment-variable
    #:memory-page-size
+   #:processor-count
    #:get-user-info
    #:user-name
    #:user-home
@@ -142,21 +143,24 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Constants widely used
 
-(defconstant +MAX-PATH+ 260)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconstant +MAX-PATH+ 260)
 
-(defconstant +ERROR-FILE-NOT-FOUND+ 2)
-(defconstant +ERROR-PATH-NOT-FOUND+ 3)
-(defconstant +ERROR-ENVVAR-NOT-FOUND+ 203)
+  (defconstant +ERROR-FILE-NOT-FOUND+ 2)
+  (defconstant +ERROR-PATH-NOT-FOUND+ 3)
+  (defconstant +ERROR-ENVVAR-NOT-FOUND+ 203)
 
-(defconstant +GENERIC-READ+  #x80000000)
-(defconstant +GENERIC-WRITE+ #x40000000)
+  (defconstant +GENERIC-READ+  #x80000000)
+  (defconstant +GENERIC-WRITE+ #x40000000)
 
-;; a.k.a: ((HANDLE)~(ULONG_PTR)0) or the maximum pointer value.
-(defconstant +INVALID-HANDLE-VALUE+
-  #+ms-win64 (1- (expt 2 64))
-  #-ms-win64 (1- (expt 2 32)))
+  ;; a.k.a: ((HANDLE)~(ULONG_PTR)0) or the maximum pointer value.
+  (defconstant +INVALID-HANDLE-VALUE+
+    ;;#+ms-win64 #.(1- (expt 2 64))
+    ;;#-ms-win64 #.(1- (expt 2 32)))
+    #+64-bit-target #.(1- (expt 2 64))
+    #-64-bit-target #.(1- (expt 2 32)))
 
-(defconstant +INFINITE+ #xffffffff)
+  (defconstant +INFINITE+ #xffffffff))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Types
@@ -180,6 +184,7 @@
 (defctype wchar-t :uint16)
 (defctype VOID :void)
 (defctype BOOL :int)
+(defctype WINBOOL :int)
 (defctype INT :int)
 (defctype UINT :unsigned-int)
 (defctype INT8  :char)
@@ -392,7 +397,8 @@ If N isn't given, assume WIDE-STRING is terminated by a zero character."
 	     (setf result
 		   (wide-string-to-lisp (mem-ref message 'LPTSTR))))
 	(when (not (null-pointer-p message))
-	  (dork-free (mem-ref message 'LPTSTR)))))))
+	  (dork-free (mem-ref message 'LPTSTR)))))
+    result))
 
 (define-condition windows-error (opsys-error)
   ()
@@ -679,6 +685,30 @@ actually exists."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Files
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *file-attributes* nil "FILE_ATTRIBUTE_* constants")
+
+  (define-to-list *file-attributes*
+      #(#(+FILE-ATTRIBUTE-READONLY+              #x00000001 "")
+	#(+FILE-ATTRIBUTE-HIDDEN+                #x00000002 "")
+	#(+FILE-ATTRIBUTE-SYSTEM+                #x00000004 "")
+	#(+FILE-ATTRIBUTE-DIRECTORY+             #x00000010 "")
+	#(+FILE-ATTRIBUTE-ARCHIVE+               #x00000020 "")
+	#(+FILE-ATTRIBUTE-DEVICE+                #x00000040 "")
+	#(+FILE-ATTRIBUTE-NORMAL+                #x00000080 "")
+	#(+FILE-ATTRIBUTE-TEMPORARY+             #x00000100 "")
+	#(+FILE-ATTRIBUTE-SPARSE-FILE+           #x00000200 "")
+	#(+FILE-ATTRIBUTE-REPARSE-POINT+         #x00000400 "symbolic link?")
+	#(+FILE-ATTRIBUTE-COMPRESSED+            #x00000800 "")
+	#(+FILE-ATTRIBUTE-OFFLINE+               #x00001000 "")
+	#(+FILE-ATTRIBUTE-NOT-CONTENT-INDEXED+   #x00002000 "")
+	#(+FILE-ATTRIBUTE-ENCRYPTED+             #x00004000 "")
+	#(+FILE-ATTRIBUTE-INTEGRITY-STREAM+      #x00008000 "")
+	#(+FILE-ATTRIBUTE-VIRTUAL+               #x00010000 "")
+	#(+FILE-ATTRIBUTE-NO-SCRUB-DATA+         #x00020000 "")
+	#(+FILE-ATTRIBUTE-RECALL-ON-OPEN+        #x00040000 "")
+	#(+FILE-ATTRIBUTE-RECALL-ON-DATA-ACCESS+ #x00400000 ""))))
+
 (defconstant GetFileExInfoStandard 0 "Indicates a WIN32_FILE_ATTRIBUTE_DATA.")
 (defctype GET_FILEEX_INFO_LEVELS :int32) ; XXX whatever
 
@@ -848,29 +878,6 @@ versions of the keywords used in Lisp open.
   
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
-
-(defparameter *file-attributes* nil "FILE_ATTRIBUTE_* constants")
-(define-to-list *file-attributes*
- #(#(+FILE-ATTRIBUTE-READONLY+              #x00000001)
-   #(+FILE-ATTRIBUTE-HIDDEN+                #x00000002)
-   #(+FILE-ATTRIBUTE-SYSTEM+                #x00000004)
-   #(+FILE-ATTRIBUTE-DIRECTORY+             #x00000010)
-   #(+FILE-ATTRIBUTE-ARCHIVE+               #x00000020)
-   #(+FILE-ATTRIBUTE-DEVICE+                #x00000040)
-   #(+FILE-ATTRIBUTE-NORMAL+                #x00000080)
-   #(+FILE-ATTRIBUTE-TEMPORARY+             #x00000100)
-   #(+FILE-ATTRIBUTE-SPARSE-FILE+           #x00000200)
-   #(+FILE-ATTRIBUTE-REPARSE-POINT+         #x00000400 "symbolic link?")
-   #(+FILE-ATTRIBUTE-COMPRESSED+            #x00000800)
-   #(+FILE-ATTRIBUTE-OFFLINE+               #x00001000)
-   #(+FILE-ATTRIBUTE-NOT-CONTENT-INDEXED+   #x00002000)
-   #(+FILE-ATTRIBUTE-ENCRYPTED+             #x00004000)
-   #(+FILE-ATTRIBUTE-INTEGRITY-STREAM+      #x00008000)
-   #(+FILE-ATTRIBUTE-VIRTUAL+               #x00010000)
-   #(+FILE-ATTRIBUTE-NO-SCRUB-DATA+         #x00020000)
-   #(+FILE-ATTRIBUTE-RECALL-ON-OPEN+        #x00040000)
-   #(+FILE-ATTRIBUTE-RECALL-ON-DATA-ACCESS+ #x00400000)))
-
 
 (defcstruct WIN32_FIND_DATA
   (file-attributes DWORD)
@@ -1340,8 +1347,8 @@ BOOL WINAPI GetProcessTimes(
 around the time of the call."
   nil)
 
-(defconstant +WAIT-OBJECT-0+     @@@@@@)
-(defconstant +WAIT-ABANDONED-0+  @@@@@@)
+(defconstant +WAIT-OBJECT-0+     0)
+(defconstant +WAIT-ABANDONED-0+  #x00000080)
 
 (defconstant +WAIT-TIMEOUT+      #x00000102)
 (defconstant +WAIT-FAILED+       #xFFFFFFFF)
@@ -1353,37 +1360,71 @@ around the time of the call."
   (wait-all BOOL)
   (milliseconds DWORD))
 
+(defcfun ("MsgWaitForMultipleObjects" %msg-wait-for-multiple-objects)
+    DWORD 
+  (count DWORD)
+  (handles (:pointer HANDLE))
+  (wait-all BOOL)
+  (milliseconds DWORD)
+  (wake-mask DWORD))
+
+(defconstant +STILL-ACTIVE+ 259)
+
+(defcfun ("GetExitCodeProcess" %get-exit-code-process)
+    BOOL
+  (process HANDLE)
+  (exit-code LPDWORD))
+
 (defvar *all-process-handles* nil
   "List of all active process handles we created.")
 
 (defun wait-and-chill (handle)
   "Wait for jobs to do something."
   (let ((handle-count (length *all-process-handles*))
-	result handle-index)
-    (with-foreign-object (handles (:pointer HANDLE) handle-count)
-      (setf result (%wait-for-multiple-objects
-		    handle-count handles 0 +INFINITE+))
-      (cond
-	((= result +WAIT-FAILED+)
-	 (values (get-last-error) :error))
-	((= result +WAIT-TIMEOUT+)
-	 (error 'windows-error :error-code 0
-		:format-control "Unexpected wait timeout."
-		#| :format-arguments args |#))
-	((and (>= result +WAIT-OBJECT-0+)
-	      (<= result (+ +WAIT-OBJECT-0+ handle-count)))
-	 (setf handle-index (- result +WAIT-OBJECT-0+))
-	 (values 0 :exited)) ;; @@@ This isn't really right.
-	((and (>= result +WAIT-ABANDONED-0+)
-	      (<= result (+ +WAIT-ABANDONED-0+ handle-count)))
-	 (setf handle-index (- result +WAIT-ABANDONED-0+))
-	 (values 0 :exited)))))) ;; @@@ This isn't really right either.
+	result result-handle done)
+    (with-foreign-objects ((handles '(:pointer HANDLE) handle-count)
+			   (exit-code 'DWORD))
+      (loop :while (not done) :do
+        (setf result (%wait-for-multiple-objects
+		      handle-count handles 0 +INFINITE+))
+	(cond
+	  ((= result +WAIT-FAILED+)
+	   (values (get-last-error) :error))
+	  ((= result +WAIT-TIMEOUT+)
+	   (error 'windows-error :error-code 0
+		  :format-control "Unexpected wait timeout."
+		  #| :format-arguments args |#))
+	  ((and (>= result +WAIT-OBJECT-0+)
+		(<= result (+ +WAIT-OBJECT-0+ handle-count)))
+	   (setf result-handle (nth *all-process-handles*
+				    (- result +WAIT-OBJECT-0+)))
+	   (syscall (%get-exit-code-process result-handle exit-code))
+	   (when (and (eql result-handle handle)
+		      (/= (mem-ref exit-code 'DWORD) +STILL-ACTIVE+))
+	     (setf done t)))
+	  ((and (>= result +WAIT-ABANDONED-0+)
+		(<= result (+ +WAIT-ABANDONED-0+ handle-count)))
+	   (setf result-handle (nth *all-process-handles*
+				    (- result +WAIT-ABANDONED-0+)))
+	   (syscall (%get-exit-code-process result-handle exit-code))
+	   (when (and (eql result-handle handle)
+		      (/= (mem-ref exit-code 'DWORD) +STILL-ACTIVE+)))
+	     (setf done t))))
+      ;; @@@ This might not be exactly right.
+      ;; exit-code could be one of:
+      ;; - The exit value specified in the ExitProcess or TerminateProcess
+      ;;   function.
+      ;; - The return value from the main or WinMain function of the process.
+      ;; - The exception value for an unhandled exception that caused the
+      ;;   process to terminate.
+      ;; How do we tell between these?
+      (values (mem-ref exit-code 'DWORD) :exited))))
 
 (defun check-jobs (&optional hang)
   "Check if any sub-processes have changed status. Returns three values.
 The PID of the process that changed, and the RESULT and STATUS as returned by
 wait. Returns NILs if nothing changed."
-  
+  (declare (ignore hang))
   )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1508,6 +1549,127 @@ available."
 (defun set-coord (coord o1 o2)
   (with-foreign-slots ((x y) coord (:struct COORD))
     (setf x o1 y o2)))
+
+;; Things to support the dreadful snarble-func hack on CCL.
+#+ccl 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  ;; I know this is relatively pointless and only serves to demonstate how much
+  ;; I dislike StudlyCaps.
+  (defun snarbled-name (string)
+    "'FooBar' -> %foo-bar"
+    (let ((i 0) (len (length string)) c start result)
+      (flet ((scan-over (func)
+	       (loop :while (< i len)
+		  :do (setf c (char string i))
+		  :while (funcall func c)
+		  :do (incf i))))
+	(setf result
+	      (with-output-to-string (str)
+		(write-char #\% str)
+		(loop :do
+		     ;; (format t "~s~%" i)
+		     (setf start i
+			   c (char string i))
+		     (scan-over #'(lambda (c)
+				    (and (alpha-char-p c) (upper-case-p c))))
+		     (scan-over #'(lambda (c)
+				    (and (alpha-char-p c) (lower-case-p c))))
+		     (write-string
+		      (string-downcase (subseq string start i)) str)
+		     (when (< i len)
+		       (setf c (char string i))
+		       (when (and (alpha-char-p c) (upper-case-p c))
+			 (write-char #\- str))
+		       ;;(incf i)
+		       )
+		   :while (and (< i len) (alpha-char-p c) (upper-case-p c)))
+		(when (< i len)
+		  (write-string
+		   (string-downcase (subseq string (1- i))) str))))
+	(symbolify result))))
+
+  (defun ccl-typeify (name)
+    (intern (s+ "<" name ">") :keyword))
+
+  (defun structify-name (symbol)
+    (symbolify (s+ "s-" symbol)))
+
+  (defmacro ccl-get-func (name)
+    "Dredge something like the function address out of CCLs weirdling machinery."
+    `(%reference-external-entry-point (external ,name))))
+
+;; This is a hack so that on CCL, which supports calling C with struct args by
+;; value without using libffi, we make that semi-transparent, until we can
+;; patch CFFI. This is mostly because setting up libffi, and by proxy
+;; cffi-libffi on Windows is troublesome at best. Also I feel it's something
+;; that really should in the implementation's FFI. If this works, we should
+;; put something like it into CFFI, and then go about making it work with SBCL
+;; and other implementations. I'm guessing the proprietary implemetations can
+;; already support struct call by value?
+
+(defmacro snarble-func ((func-name &rest garbage) &body body)
+  ;; Turn the cffi defcfun call into
+  ;; (EXTERNAL-CALL "SetConsoleCursorPosition" :<HANDLE> A1 :<COORD> A2 :<WINBOOL>)
+  ;; but converting struct args properly.
+  (declare (ignore garbage)) ;; because we know it's gonna be stdcall
+  #+ccl
+  (let* (arglist struct-list func-arglist struct-type struct-arg)
+    ;; arglist      <- args to foreign function
+    ;; struct-list  <- structure args and types to allocate
+    ;; func-arglist <- args to lisp function
+    (loop :for (arg type) :in (rest body) :do
+      (cond
+	((and (consp type) (equal (car type) :struct))
+	 (setf struct-arg (structify-name arg)
+	       struct-type (cadr type))
+	 (push `(,arg ,struct-type) struct-list)
+	 (push (ccl-typeify struct-type) arglist)
+	 (push struct-arg arglist)
+	 (push arg func-arglist))
+	((and (consp type) (equal (car type) :pointer))
+	 (push :address arglist)
+	 (push arg arglist)
+	 (push arg func-arglist))
+	(t
+	 (push (ccl-typeify type) arglist)
+	 (push arg arglist)
+	 (push arg func-arglist))))
+    (setf arglist (nreverse arglist)
+	  struct-list (nreverse struct-list)
+	  func-arglist (nreverse func-arglist))
+    ;; (format t "~a ~s~%~s~%" func-name arglist struct-list)
+    (with-unique-names (val type param struct-vals result)
+      `(defun ,(snarbled-name func-name) ,func-arglist
+	 ;; This is horribly inefficent and if it wasn't just a temporary hack,
+	 ;; we should use %stack-block and do the arduous conversion ourselves.
+	 (let (,val ,param ,struct-vals ,result)
+	   (unwind-protect
+		;; allocate and convert structs
+		(let (,@(mapcar (_ (structify-name (first _))) struct-list))
+		  ,@(loop :for (s typ) in struct-list
+		       :collect
+			 `(multiple-value-setq (,val ,param)
+			    (convert-to-foreign ,s (list :struct ',typ)))
+		       :collect `(setf ,(structify-name s) ,val)
+		       :collect `(push (list ,val (list :struct ',typ) ,param)
+				       ,struct-vals))
+		  (setf ,result
+			(ccl::ff-call (ccl-get-func ,func-name)
+	 			      ,@arglist
+	 			      ,(ccl-typeify (first body))
+	 			      )))
+	     ;; make sure to get rid of the junk
+	     (loop :for (,val ,type ,param) :in ,struct-vals
+		:do (free-converted-object ,val ,type ,param)))
+	   ,result))))
+	 ;; (ccl:external-call
+	 ;;  ,(cffi-sys::convert-external-name func-name)
+	 ;;  ;;,@(cffi-sys::convert-foreign-funcall-types arglist)
+	 ;;  ,@arglist
+	 ;;  ))))
+  #-ccl
+  `(defcfun (,func-name ,(snarbled-name func-name))
+       ,@body))
 
 (defctype PCOORD (:pointer (:struct COORD)))
 
@@ -1684,15 +1846,21 @@ available."
 (defparameter *key-symbols* (make-hash-table))
 (loop :for name :in *keys* :do
    (setf (gethash (symbol-value name) *key-symbols*) name))
+
 (defun key-symbol (code)
   "Return the symbol name of a key given it's CODE."
   (gethash code *key-symbols*))
+
 (defun key-name (key-symbol)
   "Return a string name of the key given by KEY-SYMBOL."
-  (let ((n (symbol-name key-symbol))) (subseq n 4 (1- (length n)))))
+  (when key-symbol
+    (let ((n (symbol-name key-symbol))) (subseq n 4 (1- (length n))))))
+
 (defun compatible-key-symbol (code)
   "Return a more compatible seeming key symbol."
-  (keywordify (key-name (key-symbol code))))
+  (let ((sym (key-symbol code)))
+    (when sym
+      (keywordify (key-name sym)))))
 
 (defcstruct foreign-key-event
   (key-down 	       BOOL)
@@ -1884,6 +2052,31 @@ descriptor FD."
   ;; we might need to close that.
   nil)
 
+;; @@@ The following with-X structure access macros are a workaround because I
+;; don't understand when or why the event which we get from %read-console-input
+;; is supposed to be a pointer or not. If I ever figure it out, these can
+;; go away.
+(defmacro with-key-event ((&rest slots) event &body body)
+  (with-unique-names (key-event)
+    `(etypecase event
+       (foreign-pointer
+	(with-foreign-slots ((,@slots) ,event
+			     (:struct foreign-key-event))
+	  ,@body))
+       (cons
+	(let ((,key-event (getf ,event 'key-event)))
+	  (let ,(loop :for s :in slots
+		   :collect `(,s (getf ,key-event ',s)))
+	    ,@body))))))
+
+;; @@@ see above with-key-event comment
+(defmacro uchar-unicode (uchar)
+  `(etypecase uchar
+     (foreign-pointer
+      (foreign-slot-value ,uchar '(:union foreign-uchar) 'unicode-char))
+     (cons
+      (getf ,uchar 'unicode-char))))
+
 (defun read-console-input (terminal)
   (let (result c)
     (with-slots (in-handle width height read-ahead) terminal
@@ -1894,19 +2087,22 @@ descriptor FD."
 	(loop :do
 	   (setf result nil)
 	   (syscall (%read-console-input in-handle buf 1 events-read))
+	   (dbugf :ms "read-console-input buf = ~s~%" buf)
 	   (with-foreign-slots ((event-type event)
 				buf
 				(:struct foreign-input-record))
 	     (dbugf :ms "event-type ~s~%" event-type)
+	     (dbugf :ms "event ~s~%" event)
 	     (cond
 	       ((equal event-type +KEY-EVENT+)
-		(with-foreign-slots ((key-down uchar virtual-key-code
-					       control-key-state) event
-				     (:struct foreign-key-event))
+		;; (with-foreign-slots ((key-down uchar virtual-key-code
+		;; 		      control-key-state) event
+		;; 		     (:struct foreign-key-event))
+		(with-key-event (key-down uchar virtual-key-code
+				 control-key-state) event
 		  (dbugf :ms "key-down ~a uchar = ~a~%" key-down uchar)
 		  (when (= 1 key-down)
-		    (setf c (foreign-slot-value uchar '(:union foreign-uchar)
-						'unicode-char))
+		    (setf c (uchar-unicode uchar))
 		    (cond
 		      ;; Convert Alt-<char> into #\Escape <Char>
 		      ((plusp (logand control-key-state
@@ -1916,7 +2112,8 @@ descriptor FD."
 			 (setf read-ahead (append read-ahead (list c)))
 			 (setf result (char-code #\escape))))
 		      ((plusp virtual-key-code)
-		       (setf result (compatible-key-symbol virtual-key-code))
+		       (setf result (or (compatible-key-symbol virtual-key-code)
+					c))
 		       (dbugf :ms "keycode = ~s~%" result))
 		      (t
 		       (when (not (zerop c))
@@ -2121,12 +2318,13 @@ The individual settings override the settings in MODE."
   (if (not file-descriptor)
       (let ((in-h (%get-std-handle +STD-INPUT-HANDLE+)))
 	(dbugf :ms "resetting terminal modes to ~s~%" +NORMAL-INPUT-MODES+)
-	(when (zerop (%set-console-mode in-h +NORMAL-INPUT-MODES+))
-	  (error 'windows-error :error-code (get-last-error)
-		 :format-control "Can't set console mode.")
-	  ;; @@@ but we don't reset the saved ms-term modes!!
-	  ))
-      (with-slots (not-console in-handle mode) tty
+	(when (file-handle-terminal-p in-h)
+	  (when (zerop (%set-console-mode in-h +NORMAL-INPUT-MODES+))
+	    (error 'windows-error :error-code (get-last-error)
+		   :format-control "Can't set console mode.")
+	    ;; @@@ but we don't reset the saved ms-term modes!!
+	    )))
+      (with-slots (not-console in-handle mode) file-descriptor
 	(setf mode (make-terminal-mode :echo t :line t :raw nil :timeout nil))
 	(when not-console
 	  (return-from reset-terminal-modes (values)))
@@ -2254,6 +2452,29 @@ boolean indicating visibility."
 	    visible)
       (syscall (%set-console-cursor-info out-handle info)))))
 
+#|
+#-ccl
+(defcfun ("SetConsoleCursorPosition" %set-console-cursor-position
+				     :convention :stdcall)
+    BOOL
+  (console-output HANDLE)
+  (cursor-position (:struct COORD))
+  )
+#+ccl
+(defun %set-console-cursor-position (handle coord)
+  ;; (%stack-block ((p 4))
+  ;; (getf coord 'x)
+  ;; (getf coord 'y)
+  (with-foreign-objects ((cc '(:struct coord)))
+    (with-foreign-slots ((x y) cc (:struct coord))
+      (setf x (getf coord 'x)
+	    y (getf coord 'y))
+      (#_SetConsoleCursorPosition handle cc))))
+(snarble-func ("SetConsoleCursorPosition")
+  WINBOOL
+  (console-output HANDLE)
+  (cursor-position (:struct COORD)))
+|#
 (defcfun ("SetConsoleCursorPosition" %set-console-cursor-position
 				     :convention :stdcall)
     BOOL
@@ -2261,18 +2482,75 @@ boolean indicating visibility."
   (cursor-position (:struct COORD))
   )
 
+;; (macroexpand-1 '(cffi:defcfun ("SetConsoleCursorPosition" %set-console-cursor-position :convention :stdcall) ms::BOOL (console-output ms::HANDLE) (cursor-position (:struct ms::COORD))))
+
+
 (defun set-cursor-position (tty row col)
   (with-dbug :ms "set-cursor-position ~s ~s ~%" row col)
   (with-slots (out-handle) tty
-    (syscall (%set-console-cursor-position out-handle `(x ,col y ,row)))))
+    (let ((rere (%set-console-cursor-position out-handle `(x ,col y ,row))))
+      (format t "result = ~s~%" rere)
+      (error-check rere "set-cursor-position :"))))
+
+;; (l :terminal-ms)
+;; (use-package :terminal)
+;; (setf *terminal* (make-instance 'terminal-ms:terminal-ms))
+;; (terminal-start *terminal*)
+;; (defvar hh)
+;; (setf hh (ms::ms-term-out-handle (terminal-file-descriptor *terminal*)))
+;; (ms::%zccp hh '(x 0 y 0))
+;; (cffi:convert-to-foreign '(x 0 y 0) '(:struct ms::coord))
+;; (rletz ((cc :<coord>)) (#_SetConsoleCursorPosition hh cc))
+;; (rletz ((cc :<COORD>))
+;;   (setf (pref cc :<COORD>.<X>) 0
+;;         (pref cc :<COORD>.<X>) 0) (#_SetConsoleCursorPosition hh cc))
+;; CRASHES:
+;; (ff-call (external "SetConsoleCursorPosition")
+;;          :signed-fullword 7
+;;          :address 0
+;;          :signed-fullword)
+
+(defun fuk ()
+  (ccl:%stack-block ((handle 8) (coord 8))
+    (setf (ccl::%get-signed-doubleword handle) 7
+	  (ccl::%get-signed-long coord) 0
+	  (ccl::%get-signed-long coord 2) 0)
+    (ccl::ff-call (ccl::external "SetConsoleCursorPosition")
+	     :address handle
+	     4 coord
+	     :signed-fullword)))
+
+(defun %zccp (console-output cursor-position)
+  (let (val param struct-vals result)
+    (unwind-protect
+        (let (s-cursor-position)
+          (multiple-value-setq (val param)
+            (cffi:convert-to-foreign cursor-position
+              (list :struct 'coord)))
+          (setf s-cursor-position val)
+          (push (list val '(:struct coord) param) struct-vals)
+          (setf result (ccl:external-call "SetConsoleCursorPosition"
+            :<HANDLE> console-output
+            :<COORD> s-cursor-position
+            :<WINBOOL>)))
+      (loop :for (val type param) :in struct-vals
+         :do (cffi:free-converted-object val type param)))
+    result))
 
 (defcstruct CHAR_INFO
   (uchar (:union foreign-uchar))
   (attributes WORD))
 (defctype PCHAR_INFO (:pointer (:struct CHAR_INFO)))
 
-(defcfun ("ScrollConsoleScreenBufferW" %scroll-console-screen-buffer)
-    BOOL
+;; (defcfun ("ScrollConsoleScreenBufferW" %scroll-console-screen-buffer)
+;;     BOOL
+;;   (console-output HANDLE)			     ; in
+;;   (scroll-rectangle (:pointer (:struct SMALL_RECT))) ; in
+;;   (clip-rectangle (:pointer (:struct SMALL_RECT)))   ; in optional
+;;   (destination-origin (:struct COORD))		     ; in
+;;   (fill (:pointer (:struct CHAR_INFO))))	     ; in
+(snarble-func ("ScrollConsoleScreenBufferW")
+    WINBOOL
   (console-output HANDLE)			     ; in
   (scroll-rectangle (:pointer (:struct SMALL_RECT))) ; in
   (clip-rectangle (:pointer (:struct SMALL_RECT)))   ; in optional
@@ -2310,16 +2588,23 @@ boolean indicating visibility."
 				  right ,right bottom, bottom)
 				'(:struct SMALL_RECT))
 |#
-      (syscall (%scroll-console-screen-buffer
+      (syscall (%scroll-console-screen-buffer-w
 		out-handle
 		scroll-rect (null-pointer)
 		;;(mem-ref dest '(:struct COORD))
 		`(x ,x y ,y)
 		fill-char)))))
 
-(defcfun ("FillConsoleOutputCharacterW" %fill-console-output-character
-					:convention :stdcall)
-    BOOL
+;; (defcfun ("FillConsoleOutputCharacterW" %fill-console-output-character
+;; 					:convention :stdcall)
+;;     BOOL
+;;   (console-output HANDLE)			  ; in
+;;   (character TCHAR)				  ; in
+;;   (length DWORD)				  ; in
+;;   (write-coord (:struct COORD))			  ; in
+;;   (number-of-chars-written LPDWORD))		  ; out
+(snarble-func ("FillConsoleOutputCharacterW")
+    WINBOOL
   (console-output HANDLE)			  ; in
   (character TCHAR)				  ; in
   (length DWORD)				  ; in
@@ -2338,7 +2623,7 @@ boolean indicating visibility."
 			   )
       ;(set-wchar tchar 0 char)
       ;;(set-coord write-at x y)
-      (syscall (%fill-console-output-character
+      (syscall (%fill-console-output-character-w
 		out-handle
 		(character-to-wchar char)
 		length
@@ -2367,8 +2652,15 @@ boolean indicating visibility."
   (with-slots (out-handle) tty
     (%set-console-text-attribute out-handle attribute)))
 
-(defcfun ("FillConsoleOutputAttribute" %fill-console-output-attribute)
-    BOOL
+;; (defcfun ("FillConsoleOutputAttribute" %fill-console-output-attribute)
+;;     BOOL
+;;   (console-output HANDLE)  			; in
+;;   (attribute WORD)    			  	; in
+;;   (length DWORD)   				; in
+;;   (write-coord (:struct COORD))   		; in
+;;   (number-of-attrs-written LPDWORD)) 		; out
+(snarble-func ("FillConsoleOutputAttribute")
+    WINBOOL
   (console-output HANDLE)  			; in
   (attribute WORD)    			  	; in
   (length DWORD)   				; in

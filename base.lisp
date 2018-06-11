@@ -179,7 +179,9 @@
 		  value (aref c 1)
 		  doc   (if (>= (length c) 3) (aref c 2) nil))
 	    :collect
-	    `(defconstant ,name ,value ,doc)
+	      (if doc
+		  `(defconstant ,name ,value ,doc)
+		  `(defconstant ,name ,value))
 	    :collect
 	    `(push ',name ,list-var)))))
 
