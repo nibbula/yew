@@ -252,7 +252,8 @@ Useful for making your macro “hygenic”."
   `(handler-bind
     ((warning #'(lambda (c)
 		  (declare (ignore c))
-		  (muffle-warning))))
+		  #-ccl (muffle-warning)
+		  )))
      ,@body))
 
 #+sbcl
@@ -1555,10 +1556,11 @@ which is usually the environment variable PATH. Note that this doesn't check
 if it's executable or not or that you have permission to execute it.
 Return NIL if it's not found."
     (loop :with full-name
-       :for d :in (split-sequence ":" (d-getenv "PATH"))
-       :when (fake-probe-file (setf full-name (s+ d "/" name)))
-       :do (return full-name)
-       :finally (return nil)))
+	  ;; @@@ This is probably wrong for Windows, but maybe not in cygwin.
+	  :for d :in (split-sequence ":" (d-getenv "PATH"))
+	  :when (fake-probe-file (setf full-name (s+ d "/" name)))
+	  :do (return full-name)
+	  :finally (return nil)))
 
   (defun try-things (things)
     "Return the first thing that works. THINGS is a list of lists. If a sublist
@@ -1808,14 +1810,16 @@ repleace a single tilde with double tidles."
       (when len (ct:free len)))
     result))
 
-(defvar *host* (initial-span
-		(try-things
-		 '(("scutil" "--get" "ComputerName")
-		   ("hostname") ("uname" "-n")
-		   (machine-instance)
-		   #+cormanlisp (get-computer-name)
-		   ))
-		'(#\. #\space)))
+(defvar *host* (or (and (machine-instance)
+			(length (machine-instance)))
+		   (initial-span
+		    (try-things
+		     '(("scutil" "--get" "ComputerName")
+		       ("hostname") ("uname" "-n")
+		       (machine-instance)
+		       #+cormanlisp (get-computer-name)
+		       ))
+		    '(#\. #\space))))
 (d-add-feature *host*)
 
 #+(and darwin ecl) (d-add-feature :unix)
