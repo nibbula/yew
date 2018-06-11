@@ -126,6 +126,7 @@
     (:end             . end-of-line)
     (:delete	      . delete-char)
     (:bracketed-paste . bracketed-paste)
+    (:return	      . accept-line)
     ;; XXX @@@ this shouldn't be here. It should be in the repl or lish
     (:f9              . pop-to-lish)
     ))
@@ -412,6 +413,13 @@ Keyword arguments:
 	(buffer-insert e 0 string)
 	(setf (point e) (length string))
 	(display-buf e 0)))
+
+    ;; If the terminal is in line mode, our whole thing is kind of moot, so just
+    ;; fall back to reading from the terminal driver, so we work on dumb
+    ;; terminals.
+    (when (eq (tt-input-mode) :line)
+      (finish-output)
+      (return-from rl (values (read-line *terminal*) e)))
 
     ;; Command loop
     (with-slots (quit-flag exit-flag cmd buf point last-input terminal
