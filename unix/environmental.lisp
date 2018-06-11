@@ -199,33 +199,34 @@ NIL, unset the VAR, using unsetenv."
 ;; probably in the kernel in a hackish way. But a method for getting at these
 ;; isn't officially defined in the API. Why couldn't they have designed it in?
 ;;
-;; BTW, all this sysctl stuff is probably #+darwin, since it hasn't been
-;; tested on any other platforms. I suppose on linux we'll have to implement it
-;; by reading from /proc/sys. Specificly, in linux, man sysctl says:
+;; Now, many years after first writing this, it seems as if someone has
+;; implemented my wish, at least in FreeBSD. There is now mechanism to get the
+;; names of sysctl items from sysctl itself. However, it seems to be
+;; undocumented. Had it been there all along? If everything works out, this
+;; rant can be tossed in the bins of history.
 ;;
-;;     don't call it: use of this system call has long been discouraged,
-;;     and it is so unloved that it is likely to disappear in a future kernel
-;;     version.  Since Linux 2.6.24, uses of this system call result in
-;;     warnings in the kernel log.  Remove it from your programs now; use
-;;     the /proc/sys interface instead.
-;;
-;; If performance need to be improved, we could consider caching the
+;; So far, sysctl seems work best on BSDs, partially on macOS and, not on
+;; Linux. If performance need to be improved, we could consider caching the
 ;; integer values by using sysctlnametomib.
 ;;
 ;; NOTE: This should probably come fairly early since we may use it later on
 ;; to determine configuration, such as kernel version, etc.
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  #-linux (config-feature :os-t-has-sysctl))
+
+#+os-t-has-sysctl
 (defcfun ("sysctl" real-sysctl)
     :int (name :pointer) (namelen :unsigned-int)
 	 (oldp :pointer) (oldlenp :pointer)
 	 (newp :pointer) (newlen size-t))
 
-#-linux
+#+os-t-has-sysctl
 (defcfun ("sysctlbyname" real-sysctlbyname) :int (name :string)
 	 (oldp :pointer) (oldlenp :pointer)
 	 (newp :pointer) (newlen size-t))
 
-#-linux
+#+os-t-has-sysctl
 (defcfun "sysctlnametomib" :int (name :string) (mibp :pointer)
 	 (sizep :pointer))
 
@@ -349,7 +350,24 @@ NIL, unset the VAR, using unsetenv."
   (kp_proc (:struct foreign-extern-proc))
   (kp_eproc (:struct foreign-eproc)))
 
-#-linux
+#+freebsd
+(defcstruct foreign-vmtotal
+  (t_rq     :int16)   ;; length of the run queue
+  (t_dw     :int16)   ;; jobs in ``disk wait'' (neg priority)
+  (t_pw     :int16)   ;; jobs in page wait
+  (t_sl     :int16)   ;; jobs sleeping in core
+  (t_sw     :int16)   ;; swapped out runnable/short block jobs
+  (t_vm     :int32)   ;; total virtual memory
+  (t_avm    :int32)   ;; active virtual memory
+  (t_rm     :int32)   ;; total real memory in use
+  (t_arm    :int32)   ;; active real memory
+  (t_vmshr  :int32)   ;; shared virtual memory
+  (t_avmshr :int32)   ;; active shared virtual memory
+  (t_rmshr  :int32)   ;; shared real memory
+  (t_armshr :int32)   ;; active shared real memory
+  (t_free   :int32))  ;; free memory pages
+
+#+os-t-has-sysctl
 (defun sysctl-name-to-mib (name)
   "Return a vector of integers which is the numeric MIB for sysctl NAME."
   (let (result (initial-size 10) result-size)
@@ -362,7 +380,31 @@ NIL, unset the VAR, using unsetenv."
 	 :do (setf (aref result i) (cffi:mem-aref mib :int i))))
     result))
 
-#-linux
+#+os-t-has-sysctl
+(defun sysctl-by-number (name type)
+  (with-foreign-objects ((mib :int (length name))
+			 (oldlenp 'size-t 1))
+    (dotimes (i (length name))
+      (setf (mem-aref mib :int i) (aref name i)))
+    (syscall
+     (real-sysctl mib (length name) (cffi:null-pointer) oldlenp
+		  (cffi:null-pointer) 0))
+    ;;(format t "length = ~d~%" (mem-ref oldlenp 'size-t))
+    (with-foreign-object (oldp :unsigned-char (mem-ref oldlenp 'size-t))
+      (syscall (real-sysctl mib (length name) oldp oldlenp
+			    (cffi:null-pointer) 0))
+      (case type
+	(:string
+	 (convert-from-foreign oldp type))
+	((:short :unsigned-short :int :unsigned :unsigned-int
+	  :long :unsigned-long :int8 :uint8 :int16 :uint16 :int32 :uint32
+	  :int64 :uint64)
+;	 (cffi:mem-ref (convert-from-foreign oldp type) type))))))
+	 (cffi:mem-ref oldp type))
+	(t
+	 (convert-from-foreign oldp type))))))
+
+#+os-t-has-sysctl
 (defun sysctl (name type)
   (with-foreign-object (oldlenp 'size-t 1)
     (syscall
@@ -382,6 +424,115 @@ NIL, unset the VAR, using unsetenv."
 	 (convert-from-foreign oldp type))))))
 
 ;; @@@ should do a (defsetf sysctl ...) so we can nicely setf it.
+
+;; sysctl things for get-system-info
+#+os-t-has-sysctl
+(progn
+  (defstruct sysctl-context
+    vmtotal)
+  
+  (defun get-sysctl-timeval (name string &optional context)
+    (declare (ignore name context))
+    (convert-timeval (sysctl string '(:struct foreign-loadavg))))
+
+  (defun get-sysctl-vm-total (name string &optional context)
+    (flet ((get-it () (sysctl string '(:struct foreign-vmtotal))))
+      (let ((c (or (and context
+			(or (sysctl-context-vmtotal context)
+			    (get-it)))
+		   (get-it))))
+	(getf c
+	      (case name
+		(:total-memory                 't_vm) ;; @@@ wrong
+		(:free-memory                  't_free)
+		;;(:shared-memory                't_rmshr)
+		;; From linux sysinfo, but missing:
+		;; (:buffer-memory              )
+		;; (:total-swap                 )
+		;; (:free-swap                  )
+		;; (:processes                  )
+		;; (:total-high-memory          )
+		;; (:free-high-memory           )
+		;; (:memory-unit-bytes          )
+		;; BSD-like:
+                (:run-queue-length             't_rq)
+                (:jobs-disk-wait               't_dw)
+                (:jobs-page-wait               't_pw)
+                (:jobs-sleeping                't_sl)
+                (:jobs-swap-wait               't_sw)
+                (:total-virtual-memory         't_vm)
+                (:active-virtual-memory        't_avm)
+                (:shared-virtual-memory        't_vmshr)
+                (:active-shared-virtual-memory 't_avmshr)
+                (:total-in-use-memory          't_rm)
+                (:active-memory                't_arm)
+                (:shared-memory                't_rmshr)
+                (:active-shared-memory         't_armshr)
+		)))))
+  
+  (defun get-load-averages (string &optional context)
+    (declare (ignore context))
+    (let ((a (make-array
+	      3 :element-type 'float
+	      :initial-element 0.0)))
+      (dotimes (i 3)
+	(setf (aref a i)
+	      (mem-aref
+	       (getf (sysctl string '(:struct foreign-loadavg)) 'ldavg
+		     (null-pointer)) ;; Only to supress an sbcl warning.
+	       'fixpt-t i)))
+      a))
+
+  (defun get-free-mem (name string &optional context)
+    (declare (ignore name string context))
+    ;; @@@ I have no idea if this is right.
+    ;; Or is it hw.availpages ?
+    (- (sysctl "hw.physmem" :integer)
+       (sysctl "hw.usermem" :integer)))
+  
+  (defvar *sysctl-data*
+    #(
+      #(:uptime		      "kern.boottime"    get-sysctl-timeval)
+      #(:load-averages	      "vm.loadavg"	 get-load-averages)
+      #(:total-memory	      "hw.physmem"       :integer)
+      #(:free-memory	      "FAKE"             get-free-mem)
+      #(:shared-memory	      "kern."            get-sysctl-vm-total)
+      ;; #(:buffer-memory	      "kern."            :integer)
+      #(:total-swap	      "vm.swap_total"    :integer)
+      #(:free-swap	      "vm.swap_reserved" :integer) ; is this right?
+      #(:processes	      "kern."            :integer)
+      ;;#(:total-high-memory    "kern."            :integer)
+      ;;#(:free-high-memory     "kern."            :integer)
+      ;;#(:memory-unit-bytes    "kern."            :integer)
+      ))
+
+  (defun sysctl-names ()
+    "Return a list of keywords that we support getting from sysctl."
+    (loop :for d :in *sysctl-data*
+       :collect (aref d 0)))
+
+  (defun get-sysctl-item (name &optional context)
+    (let ((data (find name *sysctl-data* :key (_ (aref _ 0)))))
+      (if data
+	  (let ((string (aref data 1))
+		(type (aref data 2)))
+	  (etypecase type
+	    (keyword
+	     (sysctl string type))
+	    (symbol
+	     (funcall type name string context)))
+	  (error "Unknown system info item ~s." name)))))
+
+  (defun process-sysctl-names (names)
+    (let ((s-names (intersection (sysctl-names) names))
+	  (context (make-sysctl-context))
+	  result)
+      (if s-names
+	  (progn
+	    (loop :for n :in s-names
+	       :do (push (cons n (get-sysctl-item n context)) result))
+	    (values result (nset-difference names s-names)))
+	  (values nil names)))))
 
 ;; not the same as: (= 8 (cffi:foreign-type-size :pointer))
 ;;#+darwin
@@ -737,7 +888,10 @@ Returns an integer."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; sysinfo
 
-#+linux
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  #+linux (config-feature :os-t-has-sysinfo))
+
+#+os-t-has-sysinfo
 (progn
   (eval-when (:compile-toplevel :load-toplevel :execute)
     (defctype kernel-ulong-t :unsigned-long)
@@ -961,7 +1115,6 @@ Returns an integer."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; get-system-info
 ;;
-;; @@@ integrate sysctl stuff on freebsd
 
 (defparameter *system-info-name-table* nil
   "Hash table of system info names to internal symbols.")
@@ -986,10 +1139,14 @@ Returns an integer."
 	   (gethash (keywordify s) *system-info-name-table*) n))
 
   ;; Names from sysinfo
-  #+linux
+  #+os-t-has-sysinfo
   (loop :for key :in (sysinfo-names)
      :do (setf (gethash key *system-info-name-table*) (sysinfo-slot-name key)))
 
+  #+os-t-has-sysctl
+  (loop :for key :in (sysctl-names)
+     :do (setf (gethash key *system-info-name-table*) key))
+  
   ;; Make the arry from the hash table.
   (setf *system-info-names*
 	(make-array (hash-table-count *system-info-name-table*)))
@@ -1022,14 +1179,17 @@ Returns an integer."
     (etypecase names
       (list
        (when names
-	 #+linux (setf (values result names)
-		       (process-sysinfo-names names))
+	 #+os-t-has-sysinfo
+	 (setf (values result names) (process-sysinfo-names names))
+	 #+os-t-has-sysctl
+	 (setf (values result names) (process-sysctl-names names))
 	 (setf result
 	       (append result
 		       (loop :for n :in names
 			  :collect (cons n (get-system-info-item n)))))))
       (symbol
-       (or #+linux (get-sysinfo-item names)
+       (or #+os-t-has-sysinfo (get-sysinfo-item names)
+	   #+os-t-has-sysctl (get-sysctl-item names)
 	   (get-system-info-item names))))))
 
 ;; End

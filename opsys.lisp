@@ -1012,6 +1012,10 @@ characters. If we don't get anything after a while, just return what we got.")
 	    (progn ,@body)
 	 (set-terminal-mode ,tty :mode ,mode)))))
 
+(defosfun with-terminal-signals (() &body body)
+  "Evaluate the BODY with signal handlers set appropriately for reading from
+a terminal.")
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Profiling and debugging?
 ;; Should use other lispy tools?

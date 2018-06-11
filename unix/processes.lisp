@@ -615,6 +615,10 @@ the current process."
 	(when (= child-pid 0)
 	  ;; in the child
 	  (progn
+	    ;; (setf (signal-action +SIGTSTP+) :default)
+	    ;; (setf (signal-action +SIGTTIN+) :default)
+	    ;; (setf (signal-action +SIGTTOU+) :default)
+	    ;; (setf (signal-action +SIGCHLD+) :default)
 	    ;; Make the child be in it's own process group.
 	    ;; We have to do this here in the child because on Linux
 	    ;; the parent won't be allowed to do it after the exec.

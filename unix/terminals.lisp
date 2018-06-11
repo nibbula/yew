@@ -53,5 +53,11 @@ descriptor FD."
     (t
      (error "Unrecognized type of terminal handle."))))
 
+(defmacro with-terminal-signals (() &body body)
+  "Evaluate the BODY with signal handlers set appropriately for reading from
+a terminal."
+  `(with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
+			  (+SIGTSTP+  . tstp-handler))
+     ,@body))
 
 ;; End
