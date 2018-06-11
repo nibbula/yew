@@ -366,7 +366,13 @@ require terminal driver support."))
       (curses::timeout -1))
     c))
 
-(defmethod terminal-set-input-mode ((tty terminal-curses) mode)
+(defmethod terminal-input-mode ((tty terminal-curses))
+  (declare (ignore tty))
+  ;; @@@ fake it for the moment!!
+  :char
+  )
+
+(defmethod (setf terminal-input-mode) (mode (tty terminal-curses))
   (case mode
     (:line
      (echo)

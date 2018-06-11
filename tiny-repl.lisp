@@ -419,7 +419,7 @@ to quit everything. Arguments are:
       (setf theme:*theme* (theme:default-theme)))
 
     (with-terminal (terminal-type *terminal* :device-name terminal-name)
-      (tt-set-input-mode :line)
+      (setf (tt-input-mode) :line)
       ;; Activate the debugger if it's loaded.
       (when (and debug (find-package :tiny-debug))
 	(funcall (intern "ACTIVATE" (find-package :tiny-debug))))

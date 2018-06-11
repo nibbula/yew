@@ -179,9 +179,9 @@ two values ROW and COLUMN."
 			   (or device-name *default-device-name*)
 			   :output))
       ;; @@@ Why do we have to do this?
-      #+ccl (setf (stream-external-format output-stream)
-		  (ccl:make-external-format :character-encoding :utf-8
-					    :domain :file))
+      ;; #+ccl (setf (stream-external-format output-stream)
+      ;; 		  (ccl:make-external-format :character-encoding :utf-8
+      ;; 					    :domain :file))
       )
       ;; (dbug "terminal-ansi open out~%"))
     (terminal-get-size tty)))
@@ -743,7 +743,12 @@ and add the characters the typeahead."
        :while borked)
     result))
 
-(defmethod terminal-set-input-mode ((tty terminal-ansi) mode)
+(defmethod terminal-input-mode ((tty terminal-ansi))
+  (let ((mode (get-terminal-mode (terminal-file-descriptor tty))))
+    (and mode
+	 (if (terminal-mode-line mode) :line :char))))
+
+(defmethod (setf terminal-input-mode) (mode (tty terminal-ansi))
   (case mode
     (:line
      (set-terminal-mode (terminal-file-descriptor tty) :line t :echo t))

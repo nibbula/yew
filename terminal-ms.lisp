@@ -92,9 +92,9 @@
 			   (or device-name *default-device-name*)
 			   :output))
       ;; @@@ Why do we have to do this?
-      #+ccl (setf (stream-external-format output-stream)
-		  (ccl:make-external-format :character-encoding :utf-8
-					    :domain :file))
+      ;; #+ccl (setf (stream-external-format output-stream)
+      ;; 		  (ccl:make-external-format :character-encoding :utf-8
+      ;; 					    :domain :file))
       )
       ;; (dbug "terminal-ms open out~%"))
     (terminal-get-size tty)
@@ -450,7 +450,7 @@
   (terminal-write-char tty #\bel)) ; Not #\bell!!
 
 (defmethod terminal-set-scrolling-region ((tty terminal-ms) start end)
-  ;; @@@@
+  (declare (ignore start end))
   )
 
 (defmethod terminal-finish-output ((tty terminal-ms))
@@ -477,18 +477,35 @@
   "Read a character from the terminal."
   (read-terminal-char (terminal-file-descriptor tty)))
 
+;; This is so small it can just be an alist for now.
+(defvar *ms-keys*
+  `((:back	#\backspace)
+    (:return	#\return)
+    (:tab	#\tab)
+    (:escape	#\escape)
+    (:space	#\space)
+    (:delete	#\rubout))
+  "Key normalization alist.")
+
+(defun normalize-key (symbol)
+  (second (assoc symbol *ms-keys*)))
+				       
 (defmethod terminal-get-key ((tty terminal-ms))
   (let ((key (read-terminal-byte (terminal-file-descriptor tty))))
     (typecase key
       (integer
        (ms::wchar-to-character key))
       (symbol
-       key))))
+       (normalize-key key)))))
  
 (defmethod terminal-listen-for ((tty terminal-ms) seconds)
   (listen-for seconds (terminal-file-descriptor tty)))
 
-(defmethod terminal-set-input-mode ((tty terminal-ms) mode)
+(defmethod terminal-input-mode ((tty terminal-ms))
+  (let ((mode (get-terminal-mode (terminal-file-descriptor tty))))
+    (terminal-mode-line mode)))
+
+(defmethod (setf terminal-input-mode) ((tty terminal-ms) mode)
   (case mode
     (:line
      (set-terminal-mode (terminal-file-descriptor tty) :line t :echo t))
@@ -496,10 +513,10 @@
      (set-terminal-mode (terminal-file-descriptor tty) :line nil :echo nil))
     (t (error "Unknown terminal input mode ~s" mode))))
 
-(defmethod terminal-reset ((tty terminal-ms))
-  "Try to reset the terminal to a sane state, without being too disruptive."
-  ;; @@@
-  )
+;; (defmethod terminal-reset ((tty terminal-ms))
+;;   "Try to reset the terminal to a sane state, without being too disruptive."
+;;   ;; @@@
+;;   )
 
 (defmethod terminal-reset ((tty terminal-ms))
   ;; First reset the terminal driver to a sane state.
@@ -533,8 +550,8 @@
 
 (defun set-default-bold (tty state)
   "True to make the default colors be bold."
-  (setf (default-bold tty) t)
-  (terminal-bold tty t))
+  (setf (default-bold tty) state)
+  (terminal-bold tty state))
 
 #|
 (defun describe-terminal ()
@@ -668,11 +685,12 @@
 (defmethod stream-start-line-p ((stream terminal-ms))
   (zerop (stream-line-column stream)))
 
-(defmethod stream-advance-to-column ((stream terminal-ms) column)
-  (write-sequence *endless-spaces*
-		  (terminal-output-stream stream) :start 0
-		  :end (- column (stream-line-column stream)))
-  t)
+;; @@@@ Which stream-advance-to-column is right???
+;; (defmethod stream-advance-to-column ((stream terminal-ms) column)
+;;   (write-sequence *endless-spaces*
+;; 		  (terminal-output-stream stream) :start 0
+;; 		  :end (- column (stream-line-column stream)))
+;;   t)
 
 ;;(defmethod stream-fresh-line ((stream terminal-ms))
 

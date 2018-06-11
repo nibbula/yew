@@ -11,17 +11,23 @@
    ))
 (in-package :terminal-dumb)
 
-;; @@@ Does this even make sense?
-(defclass terminal-dumb-stream (terminal-stream)
+(defclass terminal-dumb-stream-mixin ()
   ((fake-column
    :initarg :fake-column :accessor terminal-dumb-stream-fake-column
    :initform 0 :type fixnum
    :documentation "Guess for the current column."))
   (:documentation
+   "This is just so the inheritance for terminal-dumb doesn't get multiple
+terminal-streams."))
+
+;; @@@ Does this even make sense?
+(defclass terminal-dumb-stream (terminal-stream terminal-dumb-stream-mixin)
+  ()
+  (:documentation
    "Terminal as purely a Lisp output stream. This can't do input or things that
 require terminal driver support."))
 
-(defclass terminal-dumb (terminal)
+(defclass terminal-dumb (terminal terminal-dumb-stream-mixin)
   ((input-stream
     :accessor terminal-input-stream
     :initarg :input-stream
@@ -151,7 +157,11 @@ require terminal driver support."))
   (declare (ignore seconds))
   (listen (terminal-input-stream tty)))
 
-(defmethod terminal-set-input-mode ((tty terminal-dumb) mode)
+(defmethod terminal-input-mode ((tty terminal-dumb))
+  (declare (ignore tty))
+  :line)
+
+(defmethod (setf terminal-input-mode) (mode (tty terminal-dumb))
   (declare (ignore tty mode)))
 
 (defmethod terminal-reset ((tty terminal-dumb))
@@ -215,7 +225,8 @@ require terminal driver support."))
 				  &key &allow-other-keys)
   (etypecase seq
     (string
-     (terminal-write-string stream seq :start start :end end))
+     (terminal-write-string
+      (terminal-output-stream stream) seq :start start :end end))
     (list
      (with-slots (output-stream) stream
        (loop :with i = 0 :and l = seq
@@ -259,7 +270,13 @@ require terminal driver support."))
 
 (defmethod stream-write-string ((stream terminal-dumb) string
 			       &optional start end)
-  (write-string string stream :start start :end end))
+  (apply #'write-string `(,string ,(terminal-output-stream stream)
+				  ,@(and start `(:start ,start))
+				  ,@(and end `(:end ,end))))
+  ;; (write-string string
+  ;; 		(terminal-output-stream stream)
+  ;; 		:start start :end end)
+  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; stream methods for terminal-dumb, which is also an input stream.

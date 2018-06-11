@@ -66,7 +66,7 @@
    #:tt-get-char		  #:terminal-get-char
    #:tt-get-key			  #:terminal-get-key
    #:tt-listen-for		  #:terminal-listen-for
-   #:tt-set-input-mode            #:terminal-set-input-mode
+   #:tt-input-mode                #:terminal-input-mode
    #:tt-reset			  #:terminal-reset
    #:tt-save-cursor		  #:terminal-save-cursor		;
    #:tt-restore-cursor		  #:terminal-restore-cursor		;
@@ -118,7 +118,9 @@ subclasses.")
   "Pick some terminal type. Hopefully appropriate, but perhaps semi-arbitrary."
   (let ((platform-default
 	 #+(and windows unix) (terminal-type-based-on-environemt)
-	 #+windows :ms
+	 #+windows (if (environment-variable "TERM")
+		       (terminal-type-based-on-environemt)
+		       :ms)
 	 #+unix (terminal-type-based-on-environemt)
 	 #-(or windows unix) :ansi))
     (or *default-terminal-type*
@@ -331,9 +333,15 @@ screen down.")
   "Listen for at most N seconds or until input is available. SECONDS can be
 fractional, down to some limit.")
 
-(deftt set-input-mode (mode)
-  "Set the input mode to MODE. Modes are :LINE for line at time with echo
+(deftt input-mode ()
+  "Accessor for the input mode. Modes are :LINE for line at time with echo
 or :CHAR for character at time with no echo.")
+
+(defgeneric (setf terminal-input-mode) (mode tt)
+  (:documentation
+   "Set the input mode to MODE. Modes are :LINE for line at time with echo
+or :CHAR for character at time with no echo."))
+;; I think the macro for tt-input-mode will work for setf?
 
 (deftt reset ()
   "Try to reset the terminal to a sane state, without being too disruptive.")
