@@ -89,15 +89,27 @@
 	(multiple-value-bind (sec frac) (truncate timeout)
 	  (setf tv_sec sec
 		tv_usec (truncate (* frac 1000000))))
-;	(format t "timeval ~d ~d~%" tv_sec tv_usec)
+ ;	(format t "timeval ~d ~d~%" tv_sec tv_usec)
 	)
-      (when (= -1 (setf ret-val (unix-select (1+ nfds)
-					     read-fds write-fds err-fds
-					     tv)))
-	(error 'posix-error :error-code *errno*
-	       :format-control "Select failed:"))
+      (setf ret-val (unix-select (1+ nfds)
+				 read-fds write-fds err-fds
+				 tv))
+      (when (= -1 ret-val)
+	(cond
+	  (*got-sigwinch*
+	   (setf *got-sigwinch* nil)
+	   (cerror "Try again?" 'opsys-resized))
+	  (*got-tstp*
+	   (setf *got-tstp* nil)
+	   ;; re-signal with the default, so we actually stop
+	   (with-signal-handlers ((+SIGTSTP+ . :default))
+	     (kill (getpid) +SIGTSTP+))
+	   (cerror "Try again?" 'opsys-resumed))
+	  (t
+	   (error 'posix-error :error-code *errno*
+		  :format-control "Select failed:"))))
 ;      (format t "return = ~d~%" ret-val)
-      (when (not (= 0 ret-val))
+      (when (not (zerop ret-val))
 	(setf results
 	      (loop :for f :in fds
 		    :collect

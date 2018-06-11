@@ -139,6 +139,7 @@
    #:reset-terminal-modes
    #:terminal-query
    #:with-terminal-mode
+   #:with-terminal-signals
    #:*default-console-device-name*
    
    ;; character coding / localization (or similar)

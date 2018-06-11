@@ -2397,6 +2397,13 @@ characters. If we don't get anything after a while, just return what we got."
   ;; @@@ XXX
   "")
 
+(defmacro with-terminal-signals (() &body body)
+  "Evaluate the BODY with signal handlers set appropriately for reading from
+a terminal."
+  `(progn
+     ;; What, if anything, should we do here?
+     ,@body))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; This is probably the same as (machine-instance), and therefore unnecessary. 

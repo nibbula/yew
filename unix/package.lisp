@@ -417,6 +417,7 @@
    #:slurp-terminal
    #:reset-terminal-modes
    #:terminal-query
+   #:with-terminal-signals
 
    ;; Character coding / localization
    #:wcwidth
