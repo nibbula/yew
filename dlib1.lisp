@@ -1810,8 +1810,9 @@ repleace a single tilde with double tidles."
       (when len (ct:free len)))
     result))
 
-(defvar *host* (or (and (machine-instance)
-			(length (machine-instance)))
+(defvar *host* (or (and (not (null (machine-instance)))
+			(length (machine-instance))
+			(machine-instance))
 		   (initial-span
 		    (try-things
 		     '(("scutil" "--get" "ComputerName")
