@@ -375,7 +375,8 @@ efficiency.")
 
 (defparameter *path-variable*
   #-windows "PATH"
-  #+windows "%PATH%"
+  ;;#+windows "%PATH%"
+  #+windows "PATH"
   "The environment variable which stores the command search paths.")
 
 ;; EOF

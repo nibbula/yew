@@ -2520,7 +2520,11 @@ boolean indicating visibility."
 
 (defun set-cursor-position (tty row col)
   (with-dbug :ms "set-cursor-position ~s ~s ~%" row col)
-  (with-slots (out-handle) tty
+  (with-slots (out-handle width height) tty
+    (when (>= row height)
+      (setf row (1- height)))
+    (when (>= col width)
+      (setf row (1- width)))
     (let ((rere (%set-console-cursor-position out-handle `(x ,col y ,row))))
       ;; (format t "result = ~s~%" rere)
       (error-check rere "set-cursor-position :"))))
