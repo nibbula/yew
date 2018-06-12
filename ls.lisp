@@ -77,6 +77,7 @@ by nos:read-directory."))
 
 (defgeneric file-item-creation-date (item)
   (:documentation "Return creation time as a dtime.")
+  #+unix
   (:method ((item file-item-unix))
     ;; This is wrong-ish. See unix:convert-file-info
     (make-dtime :seconds (uos:unix-to-universal-time
@@ -89,6 +90,7 @@ by nos:read-directory."))
 
 (defgeneric file-item-access-date (item)
   (:documentation "Return access time as a dtime.")
+  #+unix
   (:method ((item file-item-unix))
     (make-dtime :seconds (uos:unix-to-universal-time
 			  (uos:timespec-seconds
@@ -100,6 +102,7 @@ by nos:read-directory."))
 
 (defgeneric file-item-modification-date (item)
   (:documentation "Return modification time as a dtime.")
+  #+unix
   (:method ((item file-item-unix))
     ;; This is wrong-ish. See unix:convert-file-info
     (make-dtime :seconds (uos:unix-to-universal-time
@@ -112,6 +115,7 @@ by nos:read-directory."))
 
 (defgeneric file-item-size (item)
   (:documentation "Return the size in bytes.")
+  #+unix
   (:method ((item file-item-unix))
     (uos:file-status-size (file-item-info item)))
   (:method ((item file-item-full))
@@ -119,6 +123,7 @@ by nos:read-directory."))
 
 (defgeneric file-item-type (item)
   (:documentation "Return the type.")
+  #+unix
   (:method ((item file-item-unix))
     (uos:file-type-symbol (uos:file-status-mode (file-item-info item))))
   (:method ((item file-item-full))
@@ -129,6 +134,7 @@ by nos:read-directory."))
   (:documentation "Return the size in bytes.")
   (:method ((item file-item-dir))
     (file-item-info item))
+  #+unix
   (:method ((item file-item-unix))
     (make-dir-entry
      :name (file-item-name item)
@@ -219,7 +225,8 @@ by nos:read-directory."))
       ;; @@@ see how to detect: orphan, missing, capability
       (t (uos:file-type-symbol mode))))
   #-unix
-  (file-item-type (file-item-info file-item)))
+  ;;(file-item-type (file-item-info file-item)))
+  (file-item-type file-item))
 
 (defun get-styled-file-name (file-item)
   "File is either a string or a dir-entry. Return a possibly fat-string."
@@ -355,8 +362,10 @@ by nos:read-directory."))
 		(file-info-flags s)
 		(format-the-size (file-info-size s))
 		(format-the-date
-		 (file-info-modification-time s))
+		 (file-info-modification-time s)
+		 (keywordify date-format))
 		file))
+   :column-names
    '("Type" "Flags" ("Size" :right) "Date" "Name")))
 
 (defun format-short (file dir show-size)
