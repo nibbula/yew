@@ -488,7 +488,10 @@
   "Key normalization alist.")
 
 (defun normalize-key (symbol)
-  (second (assoc symbol *ms-keys*)))
+  (let ((key (assoc symbol *ms-keys*)))
+    (if key
+	(second key)
+	symbol)))
 				       
 (defmethod terminal-get-key ((tty terminal-ms))
   (let ((key (read-terminal-byte (terminal-file-descriptor tty))))
@@ -505,7 +508,7 @@
   (let ((mode (get-terminal-mode (terminal-file-descriptor tty))))
     (terminal-mode-line mode)))
 
-(defmethod (setf terminal-input-mode) ((tty terminal-ms) mode)
+(defmethod (setf terminal-input-mode) (mode (tty terminal-ms))
   (case mode
     (:line
      (set-terminal-mode (terminal-file-descriptor tty) :line t :echo t))
