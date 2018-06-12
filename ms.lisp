@@ -96,6 +96,7 @@
    #:get-terminal-mode
    #:reset-terminal-modes
    #:terminal-query
+   #:with-terminal-signals
    #:get-window-size
    ;; Extra Windows specific stuff:
    #:windows-error
@@ -1396,16 +1397,16 @@ around the time of the call."
 		  #| :format-arguments args |#))
 	  ((and (>= result +WAIT-OBJECT-0+)
 		(<= result (+ +WAIT-OBJECT-0+ handle-count)))
-	   (setf result-handle (nth *all-process-handles*
-				    (- result +WAIT-OBJECT-0+)))
+	   (setf result-handle (nth (- result +WAIT-OBJECT-0+)
+				    *all-process-handles*))
 	   (syscall (%get-exit-code-process result-handle exit-code))
 	   (when (and (eql result-handle handle)
 		      (/= (mem-ref exit-code 'DWORD) +STILL-ACTIVE+))
 	     (setf done t)))
 	  ((and (>= result +WAIT-ABANDONED-0+)
 		(<= result (+ +WAIT-ABANDONED-0+ handle-count)))
-	   (setf result-handle (nth *all-process-handles*
-				    (- result +WAIT-ABANDONED-0+)))
+	   (setf result-handle (nth (- result +WAIT-ABANDONED-0+)
+				    *all-process-handles*))
 	   (syscall (%get-exit-code-process result-handle exit-code))
 	   (when (and (eql result-handle handle)
 		      (/= (mem-ref exit-code 'DWORD) +STILL-ACTIVE+)))
@@ -1479,7 +1480,8 @@ so-called “universal” time. The second value is nanoseconds."
 			 (time '(:struct FILETIME)))
     (%get-local-time sys-time)
     (%system-time-to-file-time sys-time time)
-    (filetime-to-universal-time-and-nsec time)))
+    (filetime-to-universal-time-and-nsec
+     (convert-from-foreign time '(:struct FILETIME)))))
 
 (defun set-time (seconds nanoseconds)
   "Set time in seconds and nanoseconds. Seconds are in so-called
@@ -1551,7 +1553,6 @@ available."
     (setf x o1 y o2)))
 
 ;; Things to support the dreadful snarble-func hack on CCL.
-#+ccl 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   ;; I know this is relatively pointless and only serves to demonstate how much
   ;; I dislike StudlyCaps.
@@ -1594,6 +1595,7 @@ available."
   (defun structify-name (symbol)
     (symbolify (s+ "s-" symbol)))
 
+  #+ccl 
   (defmacro ccl-get-func (name)
     "Dredge something like the function address out of CCLs weirdling machinery."
     `(%reference-external-entry-point (external ,name))))
@@ -1972,7 +1974,9 @@ available."
 (defun file-handle-terminal-p (fd)
   "Return true if the system file descriptor FD is attached to a terminal."
   (with-foreign-object (ms-mode 'DWORD)
-    (not (zerop (%get-console-mode fd ms-mode)))))
+    (not (zerop (%get-console-mode
+		 (if (numberp fd) (make-pointer fd) fd)
+		 ms-mode)))))
 
 (defun file-handle-terminal-name (fd)
   "Return the device name of the terminal attached to the system file
@@ -2077,6 +2081,13 @@ descriptor FD."
      (cons
       (getf ,uchar 'unicode-char))))
 
+(defmacro uchar-ascii (uchar)
+  `(etypecase uchar
+     (foreign-pointer
+      (foreign-slot-value ,uchar '(:union foreign-uchar) 'ascii-char))
+     (cons
+      (getf ,uchar 'ascii-char))))
+
 (defun read-console-input (terminal)
   (let (result c)
     (with-slots (in-handle width height read-ahead) terminal
@@ -2095,30 +2106,53 @@ descriptor FD."
 	     (dbugf :ms "event ~s~%" event)
 	     (cond
 	       ((equal event-type +KEY-EVENT+)
-		;; (with-foreign-slots ((key-down uchar virtual-key-code
-		;; 		      control-key-state) event
-		;; 		     (:struct foreign-key-event))
 		(with-key-event (key-down uchar virtual-key-code
-				 control-key-state) event
+				 virtual-scan-code control-key-state) event
 		  (dbugf :ms "key-down ~a uchar = ~a~%" key-down uchar)
+		  (dbugf :ms "unicode-char ~a ascii-char = ~a~%"
+			 (uchar-unicode uchar) (uchar-ascii uchar))
+		  (dbugf :ms "control-key-state ~a virtual-key-code = ~a~%"
+			 control-key-state virtual-key-code)
+		  (dbugf :ms "virtual-scan-code ~a~%" virtual-scan-code)
 		  (when (= 1 key-down)
 		    (setf c (uchar-unicode uchar))
+		    (dbugf :ms "c = ~s~%" c)
 		    (cond
 		      ;; Convert Alt-<char> into #\Escape <Char>
 		      ((plusp (logand control-key-state
 				      (logior +RIGHT-ALT-PRESSED+
 					      +LEFT-ALT-PRESSED+)))
+		       (dbugf :ms "--ALT--~%")
 		       (when (not (zerop c))
-			 (setf read-ahead (append read-ahead (list c)))
-			 (setf result (char-code #\escape))))
+			 (setf read-ahead (append read-ahead (list c))
+			       result (char-code #\escape))))
+		      ;; Control key
+		      ((plusp (logand control-key-state
+				      (logior +RIGHT-CTRL-PRESSED+
+					      +LEFT-CTRL-PRESSED+)))
+		       (dbugf :ms "--CTRL--~%")
+		       (when (not (zerop c))
+			 (setf result
+			       ;; (1+ (- c (char-code #\A)))
+			       c)))
+		      ;; Virtual key?
 		      ((plusp virtual-key-code)
-		       (setf result (or (compatible-key-symbol virtual-key-code)
+		       (dbugf :ms "--VIRT--~%")
+		       (setf result (or (compatible-key-symbol
+					 virtual-key-code)
 					c))
-		       (dbugf :ms "keycode = ~s~%" result))
-		      (t
+		       (dbugf :ms "key code = ~s~%" virtual-key-code))
+		      ((not (zerop c))
+		       (dbugf :ms "--CHAR--~%")
 		       (when (not (zerop c))
-			 (setf result c)))))
-		  (dbugf :ms "c = ~s~%" c)))
+			 (setf result c)))
+		      ((plusp virtual-scan-code)
+		       (dbugf :ms "--SCAN--~%")
+		       (setf result (or (compatible-key-symbol
+					 virtual-key-code)
+					c))
+		       (dbugf :ms "scan code = ~s~%" virtual-scan-code))))
+		  (dbugf :ms "result = ~s~%" c)))
 	       ((equal event-type +WINDOW-BUFFER-SIZE-EVENT+)
 		(with-foreign-slots ((size) event
 				     (:struct foreign-buffer-size-event))
@@ -2484,12 +2518,11 @@ boolean indicating visibility."
 
 ;; (macroexpand-1 '(cffi:defcfun ("SetConsoleCursorPosition" %set-console-cursor-position :convention :stdcall) ms::BOOL (console-output ms::HANDLE) (cursor-position (:struct ms::COORD))))
 
-
 (defun set-cursor-position (tty row col)
   (with-dbug :ms "set-cursor-position ~s ~s ~%" row col)
   (with-slots (out-handle) tty
     (let ((rere (%set-console-cursor-position out-handle `(x ,col y ,row))))
-      (format t "result = ~s~%" rere)
+      ;; (format t "result = ~s~%" rere)
       (error-check rere "set-cursor-position :"))))
 
 ;; (l :terminal-ms)
@@ -2510,6 +2543,7 @@ boolean indicating visibility."
 ;;          :address 0
 ;;          :signed-fullword)
 
+#|
 (defun fuk ()
   (ccl:%stack-block ((handle 8) (coord 8))
     (setf (ccl::%get-signed-doubleword handle) 7
@@ -2536,6 +2570,7 @@ boolean indicating visibility."
       (loop :for (val type param) :in struct-vals
          :do (cffi:free-converted-object val type param)))
     result))
+|#
 
 (defcstruct CHAR_INFO
   (uchar (:union foreign-uchar))
