@@ -14,7 +14,7 @@ for relatively simple output.")
    #:grout
    #:grout-stream
    #:*grout*
-   #:dumb #:ansi #:ansi-stream #:slime
+   #:dumb #:ansi #:generic-term #:ansi-stream #:slime
    #:grout-supports-attributes
    #:grout-width
    #:grout-height
@@ -182,7 +182,8 @@ TABLE-PRINT:OUTPUT-TABLE.")
 from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
   (cond
     ((has-terminal-attributes stream)
-     (make-instance 'ansi :stream stream))
+     ;;(make-instance 'ansi :stream stream))
+     (make-instance 'generic-term :stream stream))
     ((shell-output-accepts-grotty)
      (make-instance 'ansi-stream :stream stream))
     ((and (nos:environment-variable "EMACS")
@@ -207,6 +208,10 @@ generic functions (i.e. %GROUT-*) directly."
 		  (progn
 		    (setf ,var (make-grout (or ,stream *standard-output*)))
 		    (typecase ,var
+		      (generic-term
+		       (let ((*terminal* (generic-term ,var))
+			     (*standard-output* (generic-term ,var)))
+			 (,thunk)))
 		      (ansi
 		       (let ((*terminal* (ansi-term ,var))
 			     (*standard-output* (ansi-term ,var)))
@@ -609,6 +614,147 @@ generic functions (i.e. %GROUT-*) directly."
   (terminal-finish-output (ansi-term g))
   (when (own-term g)
     (terminal-done (ansi-term g))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Generic terminal
+
+(defclass generic-term (grout)
+  ((term
+    :initarg :term :accessor generic-term
+    :documentation "The terminal.")
+   (own-term
+    :initarg :own-term :accessor own-term :initform nil :type boolean
+    :documentation "True if we made our own terminal instance."))
+  (:documentation "Can do a few standard things."))
+
+(defmethod initialize-instance
+    :after ((o generic-term) &rest initargs &key &allow-other-keys)
+  "Initialize a ansi."
+  (declare (ignore initargs))
+  (setf (slot-value o 'term)
+	(if (typep (slot-value o 'stream) 'terminal-stream)
+	    (progn
+	      (dbugf :grout "Grout re-using stream.~%")
+	      (finish-output *debug-io*)
+	      (slot-value o 'stream))
+	    (progn
+	      (dbugf :grout "Grout making a new stream.~%")
+	      (finish-output *debug-io*)
+	      (setf (slot-value o 'own-term) t)
+	      (make-instance
+	       (find-terminal-class-for-type (pick-a-terminal-type)))
+	      )))
+  (when (slot-value o 'own-term)
+    (terminal-start (slot-value o 'term))))
+
+(defmethod %grout-supports-attributes ((g generic-term))
+  "Return T if the *GROUT* supports character attributes."
+  t)
+
+(defmethod %grout-width ((g generic-term))
+  "Return the width of the output, or NIL for infinite or unknown."
+  (terminal-window-columns (generic-term g)))
+
+(defmethod %grout-height ((g generic-term))
+  "Return the width of the output, or NIL for infinite or unknown."
+  (terminal-window-rows (generic-term g)))
+
+(defmethod %grout-bold ((g generic-term) string)
+  "Output the string boldly."
+  (with-slots (term) g
+    (terminal-bold term t)
+    (terminal-write-string term string)
+    (terminal-bold term nil)))
+
+(defmethod %grout-set-bold ((g generic-term) flag)
+  "Turn bold on or off."
+  (terminal-bold (generic-term g) flag))
+
+(defmethod %grout-underline ((g generic-term) string)
+  "Output the string underlined."
+  (with-slots (term) g
+    (terminal-underline term t)
+    (terminal-write-string term string)
+    (terminal-underline term nil)
+    (terminal-finish-output term)))
+
+(defmethod %grout-set-underline ((g generic-term) flag)
+  "Turn underlining on or off."
+  (terminal-underline (generic-term g) flag))
+
+(defmethod %grout-set-normal ((g generic-term))
+  "Return output to normal. No attributes. No color."
+  (terminal-normal (generic-term g)))
+
+(defmethod %grout-color ((g generic-term) foreground background string)
+  "Set the color."
+  (with-slots (term) g
+    (terminal-color term foreground background)
+    (terminal-write-string term string)
+    (terminal-color term :default :default)))
+
+(defmethod %grout-set-color ((g generic-term) foreground background)
+  "Set the color."
+  (terminal-color (generic-term g) foreground background))
+
+(defmethod %grout-clear ((g generic-term))
+  "Clear the screen."
+  (terminal-clear (generic-term g)))
+
+(defmethod %grout-beep ((g generic-term))
+  "Do something annoying."
+  (terminal-beep (generic-term g)))
+
+(defmethod %grout-object ((g generic-term) object)
+  "Output the object in a way that it might be accesible."
+  (terminal-write-string (generic-term g) (princ-to-string object)))
+
+(defmethod %grout-write ((g generic-term) object &rest args 
+			 &key
+			   (array            *print-array*)
+			   (base             *print-base*)
+			   (case             *print-case*)
+			   (circle           *print-circle*)
+			   (escape           *print-escape*)
+			   (gensym           *print-gensym*)
+			   (length           *print-length*)
+			   (level            *print-level*)
+			   (lines            *print-lines*)
+			   (miser-width      *print-miser-width*)
+			   (pprint-dispatch  *print-pprint-dispatch*)
+			   (pretty           *print-pretty*)
+			   (radix            *print-radix*)
+			   (readably         *print-readably*)
+			   (right-margin     *print-right-margin*)
+			   &allow-other-keys)
+  (declare (ignorable array base case circle escape gensym length level
+		      lines miser-width pprint-dispatch pretty radix
+		      readably right-margin))
+  (terminal-write-string (generic-term g)
+		   (with-output-to-string (str)
+		     (apply #'write object :stream str args))))
+
+(defmethod %grout-format ((g generic-term) format-string &rest format-args)
+  (apply #'terminal-format (generic-term g) format-string format-args))
+
+(defmethod %grout-print-table ((g generic-term) table
+			       &key (print-titles t) long-titles
+				 (max-width (grout-width))
+				 (trailing-spaces t)
+				 &allow-other-keys)
+  (output-table table (make-instance 'terminal-table-renderer)
+		(generic-term g)
+		:print-titles print-titles :long-titles long-titles
+		:max-width max-width :trailing-spaces trailing-spaces))
+
+(defmethod %grout-finish ((g generic-term))
+  (terminal-finish-output (generic-term g)))
+
+(defmethod %grout-done ((g generic-term))
+  "Be done with the grout."
+  (terminal-finish-output (generic-term g))
+  (when (own-term g)
+    (terminal-done (generic-term g))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Slime, with worms.
