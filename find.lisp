@@ -566,8 +566,8 @@ by --dir, which defaults to the current directory."
   (dbugf :accepts "find *accepts* = ~s~%" lish:*accepts*)
   (when (lish:accepts :sequence 'sequence :list)
     ;;(dbugf :accepts "find sending output to *output*~%")
-    (format *debug-io* "something accepts ~s~%"
-	    (lish:accepts :sequence 'sequence :list))
+    ;; (format *debug-io* "something accepts ~s~%"
+    ;; 	    (lish:accepts :sequence 'sequence :list))
     (setf collect t))
   (let ((ff (apply #'find-files-interactive all-keys)))
     (when collect (setf lish:*output* ff))
