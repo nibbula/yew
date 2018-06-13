@@ -61,7 +61,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
   "A string of FATCHARs."
   `(vector fatchar ,size))
 
-;; This is potentially wastful, required to specialize methods.
+;; This is potentially wasteful, but required to specialize methods.
 (defclass fat-string ()
   ((string				; blurg :|
     :initarg :string :accessor fat-string-string
@@ -82,6 +82,36 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    (if end
        (subseq (fat-string-string string) start end)
        (subseq (fat-string-string string) start))))
+
+(defmethod oposition ((item fatchar) (string fat-string)
+		      &key from-end test test-not key
+			(start nil start-p)
+			(end nil end-p))
+  "Position of a fatchar in a fat-string."
+  (apply 'position
+	 `(,item ,(fat-string-string string)
+	   :from-end ,from-end
+	    ;; Default to reasonable tests.
+	   :test (or ,test #'equalp)
+	   :key ,key
+	   :test-not (or ,test-not (lambda (x y) (not (equalp x y))))
+	   ,@(when start-p `(:start ,start))
+	   ,@(when end-p `(:end ,end)))))
+
+(defmethod oposition ((item character) (string fat-string)
+		      &key from-end test test-not key
+			(start nil start-p)
+			(end nil end-p))
+  "Position of a fatchar in a fat-string."
+  (apply 'position
+	 `(,item ,(fat-string-string string)
+	   :from-end ,from-end
+	   :test ,test :test-not ,test-not
+	   ;; Make the key reach into the fatchar for the character.
+	   :key ,(or (and key (_ (funcall key (fatchar-c _))))
+		     #'fatchar-c)
+	   ,@(when start-p `(:start ,start))
+	   ,@(when end-p `(:end ,end)))))
 
 (defun fatchar-init (c)
   "Initialize a fatchar with the default vaules."
@@ -313,16 +343,24 @@ strings."
     `(,@attr ,@span)))
 |#
 
-(defun span-to-fat-string (span &key (start 0) end fatchar-string)
+(defun span-to-fat-string (span &key (start 0) end fatchar-string
+				  unknown-func filter)
   (make-fat-string
    :string
    (span-to-fatchar-string span :start start :end end
-			   :fatchar-string fatchar-string)))
+			   :fatchar-string fatchar-string
+			   :unknown-func unknown-func
+			   :filter filter)))
+
+(defparameter *known-attrs*
+  `(:normal :standout :underline :bold :inverse)
+  "List of known attributes.")
 
 ;; @@@ Consider dealing with the overlap between this and
 ;; lish:symbolic-prompt-to-string and terminal:with-style.
 
-(defun span-to-fatchar-string (span &key (start 0) end fatchar-string)
+(defun span-to-fatchar-string (span &key (start 0) end fatchar-string
+				      unknown-func filter)
   "Make a fat string from a span."
   (when (not fatchar-string)
     (setf fatchar-string (make-array 40
@@ -338,7 +376,8 @@ strings."
 	   (when s
 	     (typecase s
 	       (string
-		(loop :for c :across s :do
+		(loop :for c :across (if filter (funcall filter s) s)
+		   :do
 		   (when (and (>= i start)
 			      (or (not end) (< i end)))
 		     (vector-push-extend
@@ -364,8 +403,12 @@ strings."
 			  ((member tag *standard-colors*)
 			   ;; An un-prefixed color is a foreground color.
 			   (push tag fg))
+			  ((member tag *known-attrs*)
+			   (push tag attrs))
 			  (t
-			   (push tag attrs)))
+			   (if unknown-func
+			       (spanky (funcall unknown-func s))
+			       (push tag attrs))))
 			;; (format t "tag ~s attrs ~s (cdr s) ~s~%"
 			;; 	tag attrs (cdr s))
 			(spanky (cdr s))
@@ -374,7 +417,10 @@ strings."
 			)
 		      (progn
 			(spanky f)
-			(spanky (cdr s))))))))))
+			(spanky (cdr s))))))
+	       (t
+		(when unknown-func
+		  (spanky (funcall unknown-func s))))))))
       (spanky span)))
   fatchar-string)
 
