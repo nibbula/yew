@@ -27,7 +27,11 @@
   ;;   (editor-write-string e str)
   ;;   str))
   (declare (ignore e))
-  (princ-to-string (if prompt-supplied p *default-prompt*)))
+  (let ((s (if prompt-supplied p *default-prompt*)))
+    (typecase p
+      ((or string fatchar-string fat-string)
+       s)
+      (t (princ-to-string s)))))
 
 (defparameter *normal-keymap* nil
   "The normal key for use in the line editor.")
