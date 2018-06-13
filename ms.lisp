@@ -60,6 +60,7 @@
    #:without-access-errors
    #:hidden-file-name-p
    #:superfluous-file-name-p
+   #:%path-absolute-p
    #:lock-file
    #:unlock-file
    #:with-locked-file
@@ -1090,6 +1091,40 @@ systems, this means \".\" and \"..\"."
 	   (and (= (length name) 2)
 		(equal (char name 0) #\.)
 		(equal (char name 1) #\.)))))
+
+(defparameter *legacy-dos-bullshit*
+  `("NUL" "AUX" "CON" "PRN"
+    ,(loop :for i :from 1 :to 9 :collect (s+ "COM" i))
+    ,(loop :for i :from 1 :to 9 :collect (s+ "LPT" i))))
+
+(defparameter *forbidden-chars*
+  "<>:\"/\|?*"
+  ;; @@@ also characters < ascii 32 (aka control characters and nul)
+  "Characters that shouldn't appear in file name components. Of course some
+of these can appear in path names.")
+
+;; This assumes the Latin letters A-Z are code contiguous.
+(defun device-letter-p (char)
+  "Return true if the character could be a device letter."
+  (let ((c (char-upcase char)))
+    (and (>= (char-code c) (char-code #\A))
+	 (<= (char-code c) (char-code #\Z)))))
+
+#|
+- A UNC name of any format, which always starts with two backslashs ("\\").
+- A disk designator with a backslash, for example "C:\" or "d:\".
+- A single backslash, for example, "\directory" or "\file.txt".
+|#
+
+(defun %path-absolute-p (path)
+  "Return true if the PATH is absolute."
+  (let ((len (length path)))
+    (and path (stringp path) (not (zerop len))
+	 (or (char= *directory-separator* (char path 0))
+	     (and (>= (length path) 3)
+		  (device-letter-p (char path 0))
+		  (char= (char path 1) #\:)
+		  (char= (char path 1) *directory-separator*))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; file locking
@@ -2524,7 +2559,7 @@ boolean indicating visibility."
     (when (>= row height)
       (setf row (1- height)))
     (when (>= col width)
-      (setf row (1- width)))
+      (setf col (1- width)))
     (let ((rere (%set-console-cursor-position out-handle `(x ,col y ,row))))
       ;; (format t "result = ~s~%" rere)
       (error-check rere "set-cursor-position :"))))

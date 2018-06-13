@@ -64,6 +64,7 @@
    #:probe-directory
    #:split-path
    #:path-to-absolute #:abspath
+   #:path-absolute-p #:absolute-path-p
    #:path-directory-name #:dirname
    #:path-file-name #:basename
    #:path-append

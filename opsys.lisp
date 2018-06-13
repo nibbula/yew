@@ -453,6 +453,22 @@ calls. Returns NIL when there is an error.")
 
 (setf (symbol-function 'abspath) #'path-to-absolute)
 
+(defosfun %path-absolute-p (path)
+  "Return true if PATH is an absolute path.")
+
+(defun path-absolute-p (path)
+  "Return true if the PATH is an absolute path."
+  (etypecase path
+    (pathname
+     (let ((dir (pathname-directory path)))
+       (and dir (eq :absolute (car dir)))))
+    (string
+     (%path-absolute-p path))
+    (null nil)))
+
+;;(setf (symbol-function 'absolute-path-p) #'path-absolute-p)
+(defalias 'absolute-path-p 'path-absolute-p)
+
 (defun clip-path (path side)
   "Return the directory portion of a path."
   ;; Go backwards from the end until we hit a separator.
@@ -593,7 +609,6 @@ if there isn't one."
 
 (defsetf command-path-list set-command-path-list
   "Set the system command path.")
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Application paths

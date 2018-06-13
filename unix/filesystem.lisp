@@ -21,6 +21,12 @@ systems, this means \".\" and \"..\"."
 		(equal (char name 0) #\.)
 		(equal (char name 1) #\.)))))
 
+(defun %path-absolute-p (path)
+  "Return true if the PATH is absolute."
+  (and path (stringp path) (not (zerop (length path)))
+       ;; This just checks if it starts with a slash.
+       (char= *directory-separator* (char path 0))))
+
 ;; We need to use the posix version if there's no better way to do it
 ;; on the implementation.
 ;#+openmcl (config-feature :os-t-use-chdir)
