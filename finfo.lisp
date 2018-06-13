@@ -45,7 +45,7 @@
     (is-other-executable	#\x))
   "Sequence of test functions and strings for printing permission bits.")
 
-(defvar *output* nil "Dynamic output.")
+(defparameter *output* nil "Dynamic output.")
 
 (defun output (label format &rest args)
   "Save a line of the output."
@@ -162,11 +162,28 @@
   (declare (ignore file follow-links)))
 
 (defun generic-file-info (file &key follow-links)
-  (declare (ignore file follow-links)))
+  (with-grout ()
+    (let ((info (get-file-info file :follow-links follow-links))
+	  (*output* nil))
+      (with-accessors ((type file-info-type)
+		       (size file-info-size)
+		       (flags file-info-flags)
+		       (creation-time file-info-creation-time)
+		       (access-time file-info-access-time)
+		       (modification-time file-info-modification-time)) info
+	(grout-color :cyan :default (format nil "~a:~%" file))
+	(output "Type"              "~a" type)
+	(output "Size"              "~s" size)
+	(output "Flags"             "~s" flags)
+	(output "Creation time"     "~a" (format-time creation-time))
+	(output "Access time"       "~a" (format-time access-time))
+	(output "Modification time" "~a" (format-time modification-time))
+	(output-finish)))))
 
-(defvar *default-style*
+(defparameter *default-style*
   #+unix :unix
-  #+windows :ms
+  ;; #+windows :ms @@@
+  #+windows :generic
   #-(or unix windows) :generic)
 
 (defun file-info (file &key follow-links (style *default-style*))
@@ -179,7 +196,7 @@
     (otherwise
      (generic-file-info file :follow-links follow-links))))
 
-  (defun finfo (file-or-files &key follow-links style)
+(defun finfo (file-or-files &key follow-links style)
   "Print some information about a file. Argument can be a string or path or a
 list of strings or paths. If FOLLOW-LINKS is true, print information about the
 linked file."
@@ -198,11 +215,14 @@ linked file."
 
 #+lish
 (lish:defcommand finfo
-  (("follow-links" boolean :short-arg #\l
+  ((follow-links boolean :short-arg #\l
     :help "True to give information about the linked thing, not the link." )
-   ("files"        pathname :repeating t
+   (style choice :short-arg #\s :default *default-style*
+    :choices ("generic" "unix" "ms")
+    :help "Operating system specific output style.")
+   (files pathname :repeating t
     :help "The path names to give information about."))
   "Print information about a file."
-  (finfo files :follow-links follow-links))
+  (finfo files :follow-links follow-links :style (keywordify style)))
 
 ;; EOF
