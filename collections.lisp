@@ -2,6 +2,9 @@
 ;; collections.lisp - Piles of junk.
 ;;
 
+;; This isn't necessarily efficient or well designed, it's just practical and
+;; straightforward, because I really just need it to work.
+
 (defpackage :collections
   (:documentation
    "So it seems like I'm doing this again. These aren't so much for the methods
@@ -361,12 +364,51 @@ bounded by START and END.")
   (:documentation "")
   (:method ((collection XX))
 	    ))
+|#
 
-(defgeneric oposition (collection ...)
-  (:documentation "")
-  (:method ((collection XX))
-	    ))
+(defgeneric oposition (item collection &key from-end test test-not start end key)
+  (:documentation
+   "Return the index of the element that satisfies the TEST in COLLECTION.
+Return the leftmost if FROM-END is true, or of the rightmost if FROM-END is
+false. If no element satifies the test, NIL is returned.")
+  (:method (item (collection list)
+	    &key from-end test test-not key
+	      (start nil start-p)
+	      (end nil end-p))
+    (apply 'position
+	   `(,item ,collection
+	     :from-end ,from-end :test ,test :test-not ,test-not :key ,key
+	     ,@(when start-p `(:start ,start))
+	     ,@(when end-p `(:end ,end)))))
+  (:method (item (collection vector)
+	    &key from-end test test-not key
+	      (start nil start-p)
+	      (end nil end-p))
+    (apply 'position
+	   `(,item ,collection
+	     :from-end ,from-end :test ,test :test-not ,test-not :key ,key
+	     ,@(when start-p `(:start ,start))
+	     ,@(when end-p `(:end ,end)))))
+  (:method (item (collection sequence)
+	    &key from-end test test-not key
+	      (start nil start-p)
+	      (end nil end-p))
+    (apply 'position
+	   `(,item ,collection
+	     :from-end ,from-end :test ,test :test-not ,test-not :key ,key
+	     ,@(when start-p `(:start ,start))
+	     ,@(when end-p `(:end ,end)))))
+  (:method (item (collection container)
+	    &key from-end test test-not key
+	      (start nil start-p)
+	      (end nil end-p))
+    (apply 'position
+	   `(,item (container-data ,collection)
+	     :from-end ,from-end :test ,test :test-not ,test-not :key ,key
+	     ,@(when start-p `(:start ,start))
+	     ,@(when end-p `(:end ,end))))))
 
+#|
 (defgeneric osearch (collection ...)
   (:documentation "")
   (:method ((collection XX))
