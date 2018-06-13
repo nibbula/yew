@@ -3,7 +3,8 @@
 ;;
 
 ;; This isn't necessarily efficient or well designed, it's just practical and
-;; straightforward, because I really just need it to work.
+;; straightforward, because I really just need it to work. It could at least
+;; probably use more macrology to make the methods and things.
 
 (defpackage :collections
   (:documentation
