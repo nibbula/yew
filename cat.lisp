@@ -170,7 +170,7 @@ This allows interspersing standard input between other things."
 ;; I *NEVER* want to add -vet!
 
 #+lish
-(lish:defcommand cat (("files" pathname :repeating t))
+(lish:defcommand cat ((files pathname :repeating t))
   "Concatenate files. Copy streams."
   (apply #'cat files))
 
