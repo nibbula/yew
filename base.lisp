@@ -198,7 +198,9 @@
 
 #+(and 32-bit-target 64-bit-target) (error "Can't be both 32 & 64 bits!")
 
-(defparameter *need-quoting* "[*?;:"
+(defparameter *need-quoting*
+  #-windows "[*?;:"
+  #+windows "[*?;"
   "Characters that may need escaping in a pathname.")
 
 ;; I am probably unable to express how unfortunate this is.
@@ -206,11 +208,14 @@
   "Try to quote a file name so none of it's characters are noticed specially
 by the Lisp pathname monster. This is useful just before passing strings to
 standard functions that take a pathname designator, such as OPEN."
-  (with-output-to-string (str)
-    (loop :for c :across namestring :do
-       (when (position c *need-quoting*)
-	 (princ #\\ str))
-       (princ c str))))
+  (typecase namestring
+    (pathname namestring)
+    (string
+     (with-output-to-string (str)
+       (loop :for c :across namestring :do
+	  (when (position c *need-quoting*)
+	    (princ #\\ str))
+	  (princ c str))))))
 
 #|  (let ((result namestring))
       (flet ((possibly-quote (c)
