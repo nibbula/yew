@@ -11,6 +11,48 @@
    ))
 (in-package :strings)
 
+;; I'm not really sure how good this is yet.
+(defun strings-file-16 (file &key (minimum-string-length 4))
+  (with-open-file-or-stream (stream file :direction :input
+				    :element-type '(unsigned-byte 8))
+    (let (#| (s (make-stretchy-vector 100 :element-type '(unsigned-byte 8))) |#
+	  (us (make-stretchy-vector 100 :element-type '(unsigned-byte 16)))
+	  c cc c1 c2 (last-was-good t) (count 0))
+      (flet ((read-16-char ()
+	       (setf c nil cc nil
+		     c1 (if last-was-good
+			    (read-byte stream nil)
+			    c2)
+		     last-was-good nil)
+	       (when c1
+		 (setf c2 (read-byte stream nil))
+		 (when c2
+		   ;; (setf c (logior c2 (ash c1 8)))
+		   (setf c (logior (ash c1 8) c2))
+		   (when (< c char-code-limit)
+		     (setf cc (code-char c))
+		     (when (or (graphic-char-p cc)
+			       (char= cc #\newline))
+		       (setf last-was-good t)
+		       (stretchy-append us c)))))
+	       ;; (format t "c1 = ~s c2 = ~s~%" c1 c2)
+	       (and c1 c2)))
+	(loop
+	   :while (read-16-char)
+	   :do
+	   (when (not last-was-good)
+	     (when (>= (length us) minimum-string-length)
+	       (map nil (_ (princ (code-char _))) us)
+	       (terpri))
+	     (stretchy-truncate us))
+	   (incf count))
+	;; print out anything remaining
+	(when (>= (length us) minimum-string-length)
+	  (map nil (_ (princ (code-char _))) us))
+	(fresh-line))
+      ;; (format t "count = ~s~%" count)
+      )))
+
 (defun strings-file (file &key (minimum-string-length 4))
   (with-open-file-or-stream (stream file :direction :input
 				    :element-type '(unsigned-byte 8))
@@ -62,6 +104,9 @@
     :short-arg	#\n
     :default	4
     :help	"The minimum string length.")
+   (utf-16 boolean
+    :short-arg  #\u
+    :help       "True to pretend strings might be in UTF-16.")
    (files	pathname
     :default	"-"
     :repeating	t
@@ -69,6 +114,9 @@
   "Try to extract human readable strings from data."
   (declare (ignore show-all show-offset offset-format))
   (loop :for f :in (or files (list *standard-input*))
-     :do (strings-file f :minimum-string-length minimum-string-length)))
+     :do
+     (if utf-16
+       (strings-file-16 f :minimum-string-length minimum-string-length)
+       (strings-file f :minimum-string-length minimum-string-length))))
 
 ;; EOF
