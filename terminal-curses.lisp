@@ -402,6 +402,14 @@ require terminal driver support."))
   (let ((bunkle (pop *saved-positions*)))
     (move (car bunkle) (cdr bunkle))))
 
+(defmethod terminal-title ((tty terminal-curses))
+  "Get the title of the terminal window."
+  (declare (ignore tty)))
+
+(defmethod (setf terminal-title) (title (tty terminal-curses))
+  "Set the title of a terminal window."
+  (declare (ignore title tty)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; stream methods
 

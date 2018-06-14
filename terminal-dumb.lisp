@@ -175,6 +175,13 @@ require terminal driver support."))
   "Restore the cursor position, from the last saved postion."
   (declare (ignore tty)))
 
+(defmethod terminal-title ((tty terminal-dumb))
+  (declare (ignore tty)))
+
+(defmethod (setf terminal-title) (title (tty terminal-dumb))
+  "Set the title of a terminal window."
+  (declare (ignore title tty)))
+
 (defun update-column-for-char (tty char)
   (with-slots (fake-column) tty
     (cond

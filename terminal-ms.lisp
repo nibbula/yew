@@ -540,6 +540,14 @@
 			 (second saved-cursor-position)
 			 (first saved-cursor-position))))
 
+(defmethod terminal-title ((tty terminal-ms))
+  "Get the title of the console window."
+  (get-console-title))
+
+(defmethod (setf terminal-title) (title (tty terminal-ms))
+  "Set the title of a console window."
+  (set-console-title title))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Extra things:
 

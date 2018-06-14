@@ -72,6 +72,7 @@
    #:tt-restore-cursor		  #:terminal-restore-cursor		;
    #:tt-width
    #:tt-height
+   #:tt-title                     #:terminal-title
    #:with-saved-cursor
    #:with-terminal-output-to-string
    #:with-style
@@ -358,6 +359,12 @@ or :CHAR for character at time with no echo."))
 (defmacro tt-height ()
   "Return the height of the terminal window in characters."
   '(terminal-window-rows *terminal*))
+
+(deftt title ()
+  "Accessor for the terminal title, if it has one.")
+(defgeneric (setf terminal-title) (title tt)
+  (:documentation
+   "Set the terminal title to TITLE, if it has a title."))
 
 (defmacro with-saved-cursor ((tty) &body body)
   "Save the cursor position, evaluate the body forms, and restore the cursor

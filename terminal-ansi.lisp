@@ -819,8 +819,8 @@ and add the characters the typeahead."
 				 (1- (length response)))
 			 'string))))))
 
-(defun query-string (s &key (offset 3) (ending 2) (lead-in +csi+))
-  (let ((response (terminal-query (s+ lead-in s))))
+(defun query-string (s &key (offset 3) (ending 2) (lead-in +csi+) tty)
+  (let ((response (terminal-query (s+ lead-in s) :tty tty)))
     (if (zerop (length response))
 	'()
 	(coerce (subseq response offset
@@ -965,6 +965,37 @@ bracketed read.")
 	   (cerror "Return what we got so far."
 		   "Bracketed paste timed out.")
 	   (setf done t))))))
+
+(defun set-utf8-title-mode (tty state)
+  (terminal-raw-format tty "~c[>2;3~c" #\escape (if state #\t #\T))
+  (terminal-finish-output tty))
+
+(defun set-title (tty title &optional (which :window))
+  (let ((param (case which
+		 (:window 2)
+		 (:icon 1)
+		 (:both 0))))
+    (terminal-raw-format tty "~a~a;~a~c"
+			 +osc+ param title (char-util:ctrl #\G))
+    (terminal-finish-output tty)))
+
+(defun get-title (tty &optional (which :window))
+  (set-utf8-title-mode tty t)
+  (let ((param (case which
+		 (:icon "20")
+		 (:window "21")
+		 (otherwise "21"))))
+    (query-string (s+ param "t") :tty (terminal-file-descriptor tty))))
+
+;; If this is mysteriously not working, you might have to make sure to enable
+;; it in your emulator. Like in xterm: "Allow Window Ops".
+(defmethod terminal-title ((tty terminal-ansi))
+  (get-title tty))
+
+(defmethod (setf terminal-title) (title (tty terminal-ansi))
+  "Set the title of a terminal window. The terminal is assumed to work like
+XTerm or something."
+  (set-title tty title))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; stream methods
