@@ -627,30 +627,30 @@ deciseconds, (by setting VTIME) to wait before a read returns nothing."
 ;;    (format t "result = ~w~%" (map 'list #'identity result))
     result))
 
-(defun raw-test (func &key debug very-raw timeout)
+(defun raw-test (func &key debug very-raw timeout tty)
   "Test the termio package, by doing something with raw input.
 FUNC is the thing to do with raw input. It's called with the POSIX file
 descriptor as it's only argument. It sets up the file descriptor for raw
 input, and cleans up afterwards. If DEBUG is true, print debugging details.
 If VERY-RAW is true, set the terminal to the most raw state, which doesn't
 even process interrupts. If TIMEOUT is true, it's a number of deciseconds,
-(by setting VTIME) to wait before returning nothing."
-  (let (tty raw cooked raw-check result)
+ (by setting VTIME) to wait before returning nothing."
+  (let (our-tty raw cooked raw-check result)
     (unwind-protect
 	 (progn
 	   ;; perhaps we should just use 0, aka /dev/stdin aka /dev/fd/0
-	   (setf tty (posix-open "/dev/tty" +O_RDWR+ 0)
-		 cooked    (foreign-alloc '(:struct termios))
+	   (setf our-tty   (or tty (posix-open "/dev/tty" +O_RDWR+ 0))
+                 cooked    (foreign-alloc '(:struct termios))
 		 raw       (foreign-alloc '(:struct termios))
 		 raw-check (foreign-alloc '(:struct termios)))
-	   (format debug "tty = ~a~%" tty)
-	   (when (< tty 0)
-	     (error "Error opening /dev/tty ~d~%" tty))
+	   (format debug "our-tty = ~a~%" our-tty)
+	   (when (< our-tty 0)
+	     (error "Error opening /dev/tty ~d~%" our-tty))
 	   
-	   (when (= -1 (tcgetattr tty cooked))
+	   (when (= -1 (tcgetattr our-tty cooked))
 	     (error "Can't get cooked mode. errno = ~d" *errno*))
 	   (format debug "cooked = ~x~%" cooked)
-	   (when (= -1 (tcgetattr tty raw))
+	   (when (= -1 (tcgetattr our-tty raw))
 	     (error "Can't get raw mode. errno = ~d" *errno*))
 	   (format debug "raw    = ~x~%" raw)
 	   (with-foreign-slots ((c_lflag c_iflag c_oflag c_cc) raw
@@ -667,8 +667,9 @@ even process interrupts. If TIMEOUT is true, it's a number of deciseconds,
 		   (setf (mem-aref c_cc :unsigned-char +VMIN+) 1)
 		   (setf (mem-aref c_cc :unsigned-char +VTIME+) 0)))
 	     ;; Turn off any input processing
-	     (setf c_iflag (logand c_iflag (lognot (logior +ISTRIP+ +INLCR+ +IGNCR+
-							   +ICRNL+ +IXON+ +IXOFF+))))
+	     (setf c_iflag (logand c_iflag (lognot (logior
+						    +ISTRIP+ +INLCR+ +IGNCR+
+						    +ICRNL+ +IXON+ +IXOFF+))))
 	     ;; Turn off output processing
 	     (when very-raw
 	       (setf c_oflag (logand c_oflag (lognot (logior +OPOST+)))))
@@ -678,11 +679,11 @@ even process interrupts. If TIMEOUT is true, it's a number of deciseconds,
 							       +ISIG+))))
 		 (setf c_lflag (logand c_lflag (lognot (logior +ICANON+ +ECHO+)))))
 	     ;; Actually set it
-	     (when (= -1 (tcsetattr tty +TCSANOW+ raw))
+	     (when (= -1 (tcsetattr our-tty +TCSANOW+ raw))
 	       (error "Can't set raw mode. errno = ~d" *errno*)))
 
 	   ;; Check that things were set right 
-	   (when (= -1 (tcgetattr tty raw-check))
+	   (when (= -1 (tcgetattr our-tty raw-check))
 	     (error "Can't get raw-check mode. errno = ~d" *errno*))
 
 	   (with-foreign-slots ((c_lflag c_cc) raw-check (:struct termios))
@@ -697,13 +698,13 @@ even process interrupts. If TIMEOUT is true, it's a number of deciseconds,
 		     (if (= 0 (logand c_lflag +ECHO+))   "NOT" "")))
 
 	   ;; Do something
-	   (setf result (funcall func tty)))
+	   (setf result (funcall func our-tty)))
       (progn
 	;; Clean upp
-	(when (and tty (>= tty 0) cooked)
-	  (tcsetattr tty +TCSANOW+ cooked))	; reset terminal modes
-	(when (and tty (>= tty 0))
-	  (posix-close tty))			; close the terminal
+	(when (and our-tty (>= our-tty 0) cooked)
+	  (tcsetattr our-tty +TCSANOW+ cooked))	; reset terminal modes
+	(when (and our-tty (>= our-tty 0) (not tty))
+	  (posix-close our-tty))	; close the terminal if we opened it
 	(when cooked (foreign-free cooked))
 	(when raw (foreign-free raw))))
     result))
@@ -724,7 +725,7 @@ even process interrupts. If TIMEOUT is true, it's a number of deciseconds,
 (defmacro with-very-raw-input (&body body)
   `(raw-test #'(lambda (tty) (declare (ignorable tty)) ,body) :very-raw t))
 
-(defun os-unix:terminal-query (query &key max)
+(defun os-unix:terminal-query (query &key max tty)
   "Output the string to the terminal and wait for a response. Read up to MAX
 characters. If we don't get anything after a while, just return what we got."
   (raw-test
@@ -742,6 +743,7 @@ characters. If we don't get anything after a while, just return what we got."
 			   :do (princ (code-char c) stream))))))
 	 (make-array (length str) :initial-contents str)))
    :very-raw t
+   :tty tty
    :timeout 1))
 
 ;; This is just what I consider sane. You might not. You can change them if
