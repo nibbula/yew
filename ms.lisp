@@ -1255,16 +1255,22 @@ keywords from *BINARY-TYPE*."
   "Return the description of BINARY-TYPE, as returned by GET-BINARY-TYPE."
   (aref (find binary-type *binary-types* :key (_ (aref _ 0))) 1))
 
+(defparameter *executable-types* '(".EXE" ".COM" ".BAT")
+  "Horrible. We leave the dot in for ease of comparison.")
+
 (defun is-executable (path &key user regular)
   "Return true if the PATH is executable by the USER. USER defaults to the
 current effective user. If REGULAR is true also check if it's a regular file."
-  (declare (ignore path user regular))
+  (declare (ignore user regular))
   ;; @@@
   ;; I think checking the for the "Read & execute" permission is not really
   ;; what we mean here. But neither is get-binary-type, since that won't
   ;; capture things like *.bat files.
   ;; We really mean something that will ‘work’ with %create-process.
-  nil)
+
+  ;; This is just a terrible solution.
+  (let ((tail (subseq path (max 0 (- (length path) 4)))))
+    (and (member tail *executable-types* :test #'equalp) t)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Application paths
@@ -1420,11 +1426,12 @@ around the time of the call."
     (with-foreign-objects ((handles '(:pointer HANDLE) handle-count)
 			   (exit-code 'DWORD))
       (loop :while (not done) :do
-        (setf result (%wait-for-multiple-objects
+	(setf result (%wait-for-multiple-objects
 		      handle-count handles 0 +INFINITE+))
+	(format t "wait result ~x~%" result)
 	(cond
 	  ((= result +WAIT-FAILED+)
-	   (values (get-last-error) :error))
+	   (return-from wait-and-chill (values (get-last-error) :error)))
 	  ((= result +WAIT-TIMEOUT+)
 	   (error 'windows-error :error-code 0
 		  :format-control "Unexpected wait timeout."

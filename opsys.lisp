@@ -665,11 +665,11 @@ but because they're passed to the system shell, they may not."
 
 ;; @@@ Consistently return exit status?
 ;; @@@ Evironment on other than sbcl and cmu?
-(defun run-program (command args &key (environment nil env-p))
+(defun run-program (command args &key (environment nil env-p) background)
   "Run COMMAND with arguments ARGS which should be a list. ENVIRONMENT is the
 list of environment variables defined. If ENVIRONMENT isn't provided, inherit
 it from the current process."
-;  #+(or clisp sbcl ccl) (fork-and-exec command args)
+  ;; #+(or clisp sbcl ccl) (fork-and-exec command args)
   #+clisp (declare (ignore environment env-p))
   #+clisp (ext:run-program command :arguments args)
   #+excl (excl:run-shell-command (concatenate 'vector (list command command)
@@ -714,11 +714,15 @@ it from the current process."
 	 (error "Process has unknown status ~a" status)))))
 
   #+(and sbcl (not unix))
-  (sb-ext:process-exit-code
-   (apply #'sb-ext:run-program
-	  `(,command ,args
-		 ,@(when env-p `(:environment ,environment))
-		 :search t :output t :input t :error t :pty nil)))
+  (progn
+    (sb-ext:process-exit-code
+     (apply #'sb-ext:run-program
+	    `(,command ,args
+		       ,@(when env-p `(:environment ,environment))
+		       :search t :output t :input t :error t
+		       ;; :pty nil
+		       :wait ,(not background)
+		       ))))
   #+(and sbcl unix)
   (apply #'os-unix::forky
 	 `(,command ,args
