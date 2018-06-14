@@ -98,7 +98,6 @@
    #:reset-terminal-modes
    #:terminal-query
    #:with-terminal-signals
-   #:get-window-size
    ;; Extra Windows specific stuff:
    #:windows-error
    #:get-binary-type #:*binary-types*
@@ -1561,6 +1560,8 @@ available."
   mode
   width
   height
+  buffer-width
+  buffer-height
   not-console
   read-ahead)
 
@@ -2434,15 +2435,17 @@ The individual settings override the settings in MODE."
   (console-screen-buffer-info PCONSOLE_SCREEN_BUFFER_INFO)) ; out
 
 (defun get-console-info (tty)
-  "Get the window size. The first value is columns, second value is rows."
+  "Return the values: X Y width height attributes top. TOP is the Y offset of
+the first line on visible in the window. Attributes is a integer with bits set
+for different text attributes."
   (dbugf :ms "get-window-info tty = ~s~%" tty)
-  (with-slots (out-handle width height) tty
+  (with-slots (out-handle width height buffer-width buffer-height) tty
     (let (x y attr)
       (with-foreign-object (buf '(:struct CONSOLE_SCREEN_BUFFER_INFO))
 	(when (zerop (%get-console-screen-buffer-info out-handle buf))
 	  (error 'windows-error :error-code (get-last-error)
 		 :format-control "Can't get console screen size."))
-	(with-foreign-slots ((window cursor-position attributes) buf
+	(with-foreign-slots ((size window cursor-position attributes) buf
 			     (:struct CONSOLE_SCREEN_BUFFER_INFO))
 	  (dbugf :ms "window = ~s~%curs-pos = ~s ~%" window
 		 cursor-position)
@@ -2450,18 +2453,25 @@ The individual settings override the settings in MODE."
 		height (1+ (- (getf window 'bottom) (getf window 'top)))
 		x (getf cursor-position 'x)
 		y (getf cursor-position 'y)
-		attr attributes)
+		attr attributes
+		buffer-width (getf size 'x)
+		buffer-height (getf size 'y))
 	  (values x y width height attr (getf window 'top)))))))
 
 (defun get-window-size (tty)
   "Get the window size. The first value is columns, second value is rows."
   (dbugf :ms "get-window-size tty = ~s~%" tty)
-  (with-slots (not-console width height) tty
+  (with-slots (not-console width height buffer-width buffer-height) tty
     (when (not not-console)
-      (multiple-value-bind (x y new-width new-height) (get-console-info tty)
-	(declare (ignore x y))
+      (multiple-value-bind (x y new-width new-height attrs
+			      new-buf-width new-buf-height)
+	  (get-console-info tty)
+	(declare (ignore x y attrs))
 	(setf width new-width
-	      height new-height)))
+	      height new-height
+	      buffer-width new-buf-width
+	      buffer-height new-buf-height
+	      )))
     (values width height)))
 
 (defun get-cursor-position (tty)
@@ -2555,11 +2565,11 @@ boolean indicating visibility."
 
 (defun set-cursor-position (tty row col)
   (with-dbug :ms "set-cursor-position ~s ~s ~%" row col)
-  (with-slots (out-handle width height) tty
-    (when (>= row height)
-      (setf row (1- height)))
-    (when (>= col width)
-      (setf col (1- width)))
+  (with-slots (out-handle buffer-width buffer-height) tty
+    (when (>= row buffer-height)
+      (setf row (1- buffer-height)))
+    (when (>= col buffer-width)
+      (setf col (1- buffer-width)))
     (let ((rere (%set-console-cursor-position out-handle `(x ,col y ,row))))
       ;; (format t "result = ~s~%" rere)
       (error-check rere "set-cursor-position :"))))
