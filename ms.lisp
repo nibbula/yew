@@ -120,6 +120,7 @@
    #:+FOREGROUND-BLUE+ #:+FOREGROUND-GREEN+ #:+FOREGROUND-RED+
    #:+FOREGROUND-INTENSITY+ #:+BACKGROUND-BLUE+ #:+BACKGROUND-GREEN+
    #:+BACKGROUND-RED+ #:+BACKGROUND-INTENSITY+
+   #:get-console-title #:set-console-title
    ))
 (in-package :ms)
 
@@ -2773,10 +2774,10 @@ boolean indicating visibility."
 		chars-written))
       (mem-ref chars-written 'DWORD))))
 
-(defun terminal-query (query &key max)
+(defun terminal-query (query &key max tty)
   "Output the string to the terminal and wait for a response. Read up to MAX
 characters. If we don't get anything after a while, just return what we got."
-  (declare (ignore query max))
+  (declare (ignore query max tty))
   ;; @@@ XXX
   "")
 
@@ -2786,6 +2787,29 @@ a terminal."
   `(progn
      ;; What, if anything, should we do here?
      ,@body))
+
+(defcfun ("GetConsoleTitleW" %get-console-title-w)
+    DWORD
+  (console-title LPTSTR) ; out
+  (size DWORD))		 ; in
+
+(defun get-console-title ()
+  ;; Actually the maximum is supposedly 64k, but example code uses MAX-PATH.
+  (let ((title-size (min (* +MAX-PATH+ 4) (ash 1 14))))
+    (with-foreign-object (title 'WCHAR title-size)
+      (%get-console-title-w title title-size)
+      (wide-string-to-lisp title))))
+
+(defcfun ("SetConsoleTitleW" %set-console-title-w)
+    BOOL
+  (console-title LPCTSTR)) ; In
+
+(defun set-console-title (title)
+  (let ((real-title (if (>= (length title) (ash 1 14))
+			(subseq title 0 (1- (ash 1 14)))
+			title)))
+    (with-wide-string (str real-title)
+      (%set-console-title-w str))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
