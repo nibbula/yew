@@ -356,15 +356,18 @@ by nos:read-directory."))
   (make-table-from
    (loop
       :for file :in file-list
-      :for s = (nos:get-file-info (dir-entry-name file))
+      ;;:for s = (nos:get-file-info (dir-entry-name file))
+      :for s = (nos:get-file-info (item-full-path file))
       :collect (list
 		(file-info-type s)
 		(file-info-flags s)
 		(format-the-size (file-info-size s))
 		(format-the-date
-		 (file-info-modification-time s)
+		 (derp-time-seconds
+		  (file-info-modification-time s))
 		 (keywordify date-format))
-		file))
+		(get-styled-file-name file)
+		))
    :column-names
    '("Type" "Flags" ("Size" :right) "Date" "Name")))
 
