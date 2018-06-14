@@ -32,6 +32,7 @@
 	    ((not source)
 	     (setf stream *standard-input*))
 	    ((or (stringp source) (pathnamep source))
+	     ;; (format t "Hi> ~s ~s~%" source (quote-filename source))
 	     (setf stream (open (quote-filename source)
 				:direction :input
 				:element-type '(unsigned-byte 8))))
@@ -94,11 +95,11 @@
 
 #+lish
 (lish:defcommand dump
-  (("files" 	    pathname :repeating t)
-   ("line-length"   integer :short-arg #\l)
-   ("show-offset"   boolean :short-arg #\o)
-   ("start" 	    integer :short-arg #\s)
-   ("end" 	    integer :short-arg #\e))
+  ((files	pathname :repeating t   :help "Files to dump.")
+   (line-length	integer  :short-arg #\l :help "Length of lines.")
+   (show-offset	boolean  :short-arg #\o :help "True to show byte offset.")
+   (start	integer  :short-arg #\s :help "Byte offset to start at.")
+   (end		integer  :short-arg #\e :help "Byte offset to stop at."))
   "Dump data bytes."
   (when (and (not line-length) *terminal*)
     (setf line-length (terminal-window-columns *terminal*)))
