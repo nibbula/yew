@@ -669,6 +669,7 @@ but because they're passed to the system shell, they may not."
   "Run COMMAND with arguments ARGS which should be a list. ENVIRONMENT is the
 list of environment variables defined. If ENVIRONMENT isn't provided, inherit
 it from the current process."
+  (declare (ignorable background))
   ;; #+(or clisp sbcl ccl) (fork-and-exec command args)
   #+clisp (declare (ignore environment env-p))
   #+clisp (ext:run-program command :arguments args)
