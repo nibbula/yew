@@ -10,6 +10,7 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Choose things from a list."
-    :depends-on (:dlib :curses :char-util :stretchy :keymap :opsys :inator :fui)
+    :depends-on (:dlib :char-util :stretchy :keymap :opsys :inator :terminal
+		 :terminal-inator)
     :components
     ((:file "pick-list")))

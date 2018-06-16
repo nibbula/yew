@@ -6,8 +6,8 @@
 
 (defpackage :pick-list
   (:documentation "Choose things from a list.")
-  (:use :cl :dlib :curses :char-util :stretchy :keymap :opsys :inator :fui
-	:terminal :terminal-curses)
+  (:use :cl :dlib :char-util :stretchy :keymap :opsys :inator :terminal
+	:terminal-inator)
   (:export
    #:pick-list
    #:pick-file
@@ -56,7 +56,7 @@
 (defvar *pick* nil
   "The current pick list state.")
 
-(defclass pick (fui-inator)
+(defclass pick (terminal-inator)
   ((multiple
     :initarg :multiple :accessor pick-multiple
     :initform nil :type boolean
@@ -228,9 +228,9 @@
 (defun pick-list-tmp-message (message &rest args)
   "Display a temporary message."
   (apply #'pick-error message args)
-  (move (- *lines* 1) 0)
-  (clrtoeol)
-  (addstr (pick-error-message *pick*)))
+  (tt-move-to (- (tt-height) 1) 0)
+  (tt-erase-to-eol)
+  (tt-write-string (pick-error-message *pick*)))
 
 (defun pick-list-binding-of-key (inator)
   (declare (ignore inator))
@@ -251,30 +251,33 @@
 (defmethod update-display ((i pick)) ; pick-list-display
   "Display the list picker."
   (with-slots (message multiple items (point inator::point) result cur-line
-	       max-y top ttop error-message) *pick*
-    (erase)
-    (move 0 0)
-    (when message (addstr (format nil message)))
-    (setf ttop (getcury *stdscr*))
+		       max-y top ttop error-message) *pick*
+    (tt-home)
+    (when message (tt-format message))
+    (setf ttop (terminal-get-cursor-position *terminal*))
     ;; display the list
     (loop :with i = top :and y = ttop :and f = nil
        :do
        (setf f (car (elt items i)))
+       (tt-erase-to-eol)
        (if (and multiple (position i result))
-	   (addstr "X ")
-	   (addstr "  "))
+	   (tt-write-string "X ")
+	   (tt-write-string "  "))
        (when (= i point)
-	 (standout)
+	 (tt-inverse t)
 	 (setf cur-line y #| (getcury *stdscr*) |#))
-       (addstr f)
+       (tt-write-string f)
        (when (= i point)
-	 (standend))
-       (addch (char-code #\newline))
+	 (tt-inverse nil))
+       (tt-write-char #\newline)
        (incf i)
        (incf y)
        :while (and (< y max-y) (< i (length items))))
-    (when error-message (mvaddstr (- *lines* 1) 0 error-message))
-    (move cur-line 0)))
+    (tt-erase-below)
+    (when error-message
+      (tt-move-to (- (tt-height) 1) 0)
+      (tt-write-string error-message))
+    (tt-move-to cur-line 0)))
 
 (defmethod default-action ((pick pick)) ; pick-typing-search
   "Try to search for typed input and return T if we did."
@@ -310,7 +313,7 @@
 (defmethod delete-pick ((pick pick))
   (declare (ignore pick))
   ;; Don't do anything.
-  )
+  (tt-move-to (- (tt-height) 2) 0))
 
 #|
 
@@ -343,6 +346,8 @@
 |#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+#| @@@ do this sub-window stuff later, maybe need to make a terminal fui?
 
 (defclass popup-pick (pick)
   ((x
@@ -405,6 +410,7 @@
 (defmethod delete-pick ((pick popup-pick))
   (with-slots (window) pick
     (delwin window)))
+|#
 
 (defun do-pick (type &rest args)
   (let ((*pick*))
@@ -432,9 +438,10 @@
   POPUP		  - True to use a pop-up window, in which case provide X and Y."
   (when (not the-list)
     (return-from pick-list nil))
-  (with-curses
+  (with-terminal ()
    (let ((string-list (mapcar (_ (cons (princ-to-string _) _)) the-list))
-	 (max-y (1- curses:*lines*)))
+	 (max-y (1- (tt-height))))
+     (tt-clear)
      (do-pick (if popup 'popup-pick 'pick)
        :message	        message
        :by-index	by-index
@@ -656,15 +663,27 @@ This is a macro so you can use lexically scoped things in the menu."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; This is actually a weird experiment which I should probably get out of here.
 
+(defvar *interactive* t
+  "True when we can expect user interaction.")
+
+;; @@@ cribbed from fui. we should put it somewhere else.
+(defun pause (&optional (prompt "[Press Enter]") &rest args)
+  "Print a message and wait for Enter to be pressed. Does nothing if not
+*interactive*."
+  (when *interactive*
+    (apply #'format *standard-output* prompt args)
+    (finish-output *standard-output*)
+    (read-line)))
+
 (defun show-result (expr)
   (unwind-protect
      (progn
-       (end-curses)
+       (terminal-end *terminal*)
 ;       (format t "showing ~s~%" expr)
        (let ((vals (multiple-value-list (eval expr))))
 	 (loop :for v :in vals :do (print v))
 	 (pause)))
-    (start-curses))
+    (terminal-start *terminal*))
   (values))
 
 (defun menu-load (&optional filename)
