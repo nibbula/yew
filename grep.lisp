@@ -113,30 +113,36 @@
 	     &key
 	       (output-stream *standard-output*)
 	       count extended fixed file ignore-case quiet invert
-	       line-number filename-only filename use-color collect
+	       line-number files-with-match files-without-match
+	       filename use-color collect
 	       scanner
 	       &allow-other-keys)
   "Print occurances of the regular expression PATTERN in STREAM.
 Aruguments are:
-  OUTPUT-STREAM - Where to print the output, Defaults to *STANDARD-OUTPUT*.
-  COUNT         - True to show a count of matches.
-  EXTENDED      - True to use extended regular expressions.
-  FIXED         - True to search for fixed strings only. PATTERN is not an RE.
-  IGNORE-CASE   - True to ignore character case when matching.
-  QUIET         - True to not print matches.
-  INVERT        - True to only print lines that don't match.
-  LINE-NUMER    - True to preced matching lines by a line number.
-  FILENAME-ONLY - True to print only the file name for matches.
-  FILENAME      - Name of the file to print before the matching line.
-  USE-COLOR     - True to highlight substrings in color.
-  COLLECT       - True to return the results.
-  SCANNER	- A PPCRE scanner as returned by CREATE-SCANNER.
+  OUTPUT-STREAM       - Where to print the output, Defaults to *STANDARD-OUTPUT*.
+  COUNT               - True to show a count of matches.
+  EXTENDED            - True to use extended regular expressions.
+  FIXED               - True to search for fixed strings only, not regexps.
+  IGNORE-CASE         - True to ignore character case when matching.
+  QUIET               - True to not print matches.
+  INVERT              - True to only print lines that don't match.
+  LINE-NUMER          - True to preced matching lines by a line number.
+  FILES-WITH-MATCH    - True to print only the file name for matches.
+  FILES-WITHOUT-MATCH - True to print only the file name for matches.
+  FILENAME            - Name of the file to print before the matching line.
+  USE-COLOR           - True to highlight substrings in color.
+  COLLECT             - True to return the results.
+  SCANNER	      - A PPCRE scanner as returned by CREATE-SCANNER.
 Second value is the scanner that was used.
 "  
   (declare (ignore file) ;; @@@
 	   #| (type stream output-stream) |#)
-  (when filename-only
+  (when (or files-with-match files-without-match)
+    ;; @@@ For efficiency we should probably arrange for an early exit if
+    ;; either of these is true, providied we aren't otherwise collecting the
+    ;; results.
     (setf quiet t))
+  
   (let* ((*fat-line* nil)
 	 line (match-count 0) (line-count 0) result match matches
 	 (check-it (if fixed
@@ -197,8 +203,8 @@ Second value is the scanner that was used.
 		   &key files recursive
 		     (output-stream *standard-output*)
 		     count extended fixed ignore-case quiet invert
-		     line-number filename-only use-color collect
-		     no-filename)
+		     line-number files-with-match files-without-match
+		     use-color collect no-filename)
   "Call GREP with PATTERN on FILES. Arguments are:
   FILES     - A list of files to search.
   RECURSIVE - If FILES contain directory names, recursively search them.
@@ -236,13 +242,16 @@ Second value is the scanner that was used.
 				     (append keywords
 					     `(:filename ,f))
 				     keywords)))
-		    (when (and result filename-only (not quiet))
-		      (grout-format "~a~%" f))))
+		    (cond
+		      ((and result files-with-match (not quiet))
+		       (grout-format "~a~%" f))
+		      ((and (not result) files-without-match (not quiet))
+		       (grout-format "~a~%" f)))))
 	      ;;:when collect :nconc result))))
 	      (when collect
 		(mapc (_ (push _ results)) result)))))
 	;;:when collect :collect result))
-	(when (and collect filename-only)
+	(when (and collect files-with-match)
 	  (setf results
 		(remove-duplicates (mapcar #'first results) :test #'equal)))
 	results))))
@@ -255,9 +264,12 @@ Second value is the scanner that was used.
    (files pathname
     :repeating t
     :help "Files to search in.")
-   (filename-only boolean
+   (files-with-match boolean
     :short-arg #\l
     :help "True to print only the file name (list) once for matches.")
+   (files-without-match boolean
+    :short-arg #\L
+    :help "True to print only the file name (list) of files with no matches.")
    (ignore-case boolean
     :short-arg #\i
     :help "True to ignore character case when matching.")
@@ -311,7 +323,8 @@ it's only quiet if the receiving command accepts sequences."))
 		      :files (or files (and lish:*input*
 					    (typep lish:*input* 'sequence)
 					    lish:*input*))
-		      :filename-only filename-only
+		      :files-with-match files-with-match
+		      :files-without-match files-without-match
 		      :no-filename no-filename
 		      :fixed fixed
 		      :ignore-case ignore-case
