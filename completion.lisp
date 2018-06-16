@@ -876,7 +876,7 @@ defaults to the current package. Return how many symbols there were."
 |#
 
 (defun filename-completion (word &optional extra-test)
-  "Return the first completion for w in the current directory's files ~
+  "Return the first completion for WORD in the current directory's files ~
  or nil if none was found. The second value is true if the first value ~
  matches a full filename."
   (let* (pos
