@@ -219,17 +219,19 @@ two values ROW and COLUMN."))
 			  &body body)
   "Evaluate the body with VAR possibly set to a new terminal depending on NEW-P.
 Cleans up afterward."
-  (with-unique-names (result make-it)
+  (with-unique-names (result make-it term-class)
     `(progn
-       (when (not (find-terminal-class-for-type ,type))
+       (when (and ,type (not (find-terminal-class-for-type ,type)))
 	 (error "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
-       (let* ((,make-it (not
-			 (and ,var (typep ,var
-					  (find-terminal-class-for-type ,type))
+       (let* ((,term-class
+	       (or (and ,type (find-terminal-class-for-type ,type))
+		   (and ,var (typep ,var 'terminal:terminal)
+			(class-of ,var))))
+	      (,make-it (not
+			 (and ,var (typep ,var ,term-class)
 			      (not ,new-p))))
 	      (,var (if ,make-it
-			(make-instance
-			 (find-terminal-class-for-type ,type) ,@initargs)
+			(make-instance ,term-class ,@initargs)
 			,var))
 	      ;; (*standard-output* ,var)
 	      ;; (*standard-input* ,var)
@@ -243,9 +245,9 @@ Cleans up afterward."
 	       (terminal-end ,var)))
 	 ,result))))
 
-(defmacro with-terminal ((&optional (type *default-terminal-type*)
-				     (var '*terminal*)
-				     &rest initargs)
+(defmacro with-terminal ((&optional type
+				    (var '*terminal*)
+				    &rest initargs)
 			 &body body)
   "Evaluate the body with VAR set to a terminal indicated by TYPE. If VAR is
 already a terminal of that type, use it. TYPE should be one of the types
@@ -253,7 +255,7 @@ registerd in *TERMINAL-TYPES*. Initialized the terminal and cleans up
 afterward."
   `(%with-terminal (,type ,var nil ,@initargs) ,@body))
 
-(defmacro with-new-terminal ((&optional (type *default-terminal-type*)
+(defmacro with-new-terminal ((&optional type
 					(var '*terminal*)
 					&rest initargs)
 			     &body body)
