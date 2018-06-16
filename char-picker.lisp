@@ -4,8 +4,8 @@
 
 (defpackage :char-picker
   (:documentation "Pick characters that may be otherwise hard to type.")
-  (:use :cl :dlib :stretchy :char-util :dlib-misc :keymap :curses :inator :fui
-	:terminal :terminal-curses)
+  (:use :cl :dlib :stretchy :char-util :dlib-misc :keymap :inator
+	:terminal :terminal-inator)
   (:export
    #:char-picker
    #:!char-picker
@@ -19,7 +19,7 @@
 (defvar *pick-char-start* 0
   "Saved character to start with for character picking subsystem.")
 
-(defclass char-picker (fui-inator)
+(defclass char-picker (terminal-inator)
   ((start
     :initarg :start :accessor char-picker-start
     :initform 0 :type integer
@@ -62,44 +62,50 @@
    )
   (:documentation "Select a character."))
 
+(defun write-special-char (c)
+  (ctypecase c
+    (integer (tt-write-char (code-char c)))
+    (character (tt-write-char c))
+    (string (tt-write-string c))))
+
 ;; @@@ What should I do when the screen is so tall I run out of letters?
 (defun show-chars (start inc &optional search-string)
   "Display code for character picking. Show the INC characters starting from
 *pick-char-start*."
   ;;(clear)
-  (move 0 0)
-  (clrtoeol)
-  (addstr (format nil "~d - ~d" start (+ start inc)))
+  (tt-move-to 0 0)
+  (tt-erase-to-eol)
+  (tt-format "~d - ~d" start (+ start inc))
   (let* ((end (+ start inc))
 	 cc name ss-pos ss-end)
     (loop
        :for i :from start :to end
        :for l fixnum = 0 :then (+ 1 l)
        :do
-       (move (+ 2 l) 0)
-       (clrtoeol)
+       (tt-move-to (+ 2 l) 0)
+       (tt-erase-to-eol)
        (when (< i (1- char-code-limit))
-	 (addstr (format nil "~c: (~4,'0x) "
+	 (tt-format "~c: (~4,'0x) "
 			 (if (< l (length *letters*))
 			     (aref *letters* l)
 			     #\?)
-			 (+ start l)))
+			 (+ start l))
 	 (setf cc (code-char i)
 	       name (or (char-name (code-char i)) ""))
-	 (add-char (if (control-char-p cc)
-		       (displayable-char cc :all-control t)
-		       cc))
+	 (write-special-char (if (control-char-p cc)
+				 (displayable-char cc :all-control t)
+				 cc))
 	 (if (and search-string
 		  (setf ss-pos (search search-string name :test #'equalp)))
 	     (progn
 	       (setf ss-end (+ ss-pos (length search-string)))
-	       (addch (char-code #\space))
-	       (addstr (subseq name 0 ss-pos))
-	       (standout)
-	       (addstr (subseq name ss-pos ss-end))
-	       (standend)
-	       (addstr (subseq name ss-end)))
-	     (addstr (format nil " ~a" name)))))))
+	       (tt-write-char #\space)
+	       (tt-write-string (subseq name 0 ss-pos))
+	       (tt-inverse t)
+	       (tt-write-string (subseq name ss-pos ss-end))
+	       (tt-inverse nil) 
+	       (tt-write-string (subseq name ss-end)))
+	     (tt-format " ~a" name))))))
 
 (defun search-char-names (start match-str &optional (direction :forward))
   "Return char code of first match of STR in the characater names,
@@ -123,7 +129,7 @@ starting at START. If not found, return START."
   (with-slots (start view-size saved-start searching search-start direction
 	       failed input result) i
     (setf start *pick-char-start*
-	  view-size (- curses:*lines* 4)
+	  view-size (- (tt-height) 4)
 	  saved-start start
 	  searching nil
 	  search-start start
@@ -131,18 +137,18 @@ starting at START. If not found, return START."
 	  failed nil
 	  input nil
 	  result nil)
-    (clear)))
+    (tt-clear)))
 
 (defun show-prompt (i prompt)
   (with-slots (direction) i
-    (move 1 0) (clrtoeol)
+    (tt-move-to 1 0) (tt-erase-to-eol)
     (when (eql direction :backward)
-      (addstr "Reverse "))
-    (addstr "I-Search: ")
-    (addstr prompt)))
+      (tt-write-string "Reverse "))
+    (tt-write-string "I-Search: ")
+    (tt-write-string prompt)))
 
 (defun erase-prompt ()
-  (move 1 0) (clrtoeol))
+  (tt-move-to 1 0) (tt-erase-to-eol))
 
 (defmethod update-display ((i char-picker))
   (with-slots (search-string failed searching direction start view-size) i
@@ -158,13 +164,13 @@ starting at START. If not found, return START."
     (if searching
 	(show-prompt i search-string)
 	(erase-prompt))
-    (refresh)))
+    (tt-finish-output)))
 
 (defmethod await-event ((i char-picker))
   "Char picker input."
   (setf (char-picker-input i) (tt-get-char))
-  (move (1- curses:*lines*) 0)
-  (clrtoeol)
+  (tt-move-to (1- (tt-height)) 0)
+  (tt-erase-to-eol)
   (char-picker-input i))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -287,22 +293,24 @@ starting at START. If not found, return START."
 (defun enter-char-number (i)
   "Jump to a character code."
   (with-slots (start) i
-    (move 1 0) (clrtoeol)
-    (let ((result (with-terminal (:curses)
-		    (rl:rl :prompt "Character number: ")))
+    (tt-move-to 1 0) (tt-erase-to-eol)
+    (let ((result
+	   ;;(with-terminal (:curses)
+	   (rl:rl :prompt "Character number: "))
 	  number)
-      (refresh)
+      (tt-finish-output)
       (if (not (ignore-errors (setf number (parse-integer-with-radix result))))
 	  (progn
-	    (move 1 0)
-	    (clrtoeol)
-	    (addstr "That didn't seem like a number."))
+	    (tt-move-to 1 0)
+	    (tt-erase-to-eol)
+	    (tt-write-string "That didn't seem like a number."))
 	  (if (and (integerp number) (> number 0) (< number char-code-limit))
 	      (setf start number)
 	      (progn
-		(move 1 0)
-		(clrtoeol)
-		(addstr "That didn't seem like a valid character code.")))))))
+		(tt-move-to 1 0)
+		(tt-erase-to-eol)
+		(tt-write-string
+		 "That didn't seem like a valid character code.")))))))
 
 (defmethod jump-command ((i char-picker))
   "Jump to a character code."
@@ -336,7 +344,7 @@ starting at START. If not found, return START."
 ;; Use
 
 (defun char-picker ()
-  (with-terminal (:curses)
+  (with-terminal ()
     (let ((p (make-instance 'char-picker
 			    :keymap (list *char-picker-keymap*
 					  *default-inator-keymap*))))
