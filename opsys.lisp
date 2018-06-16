@@ -400,7 +400,7 @@ calls. Returns NIL when there is an error.")
     (declare (type string our-path) (type fixnum len))
     (when (and (plusp len)
 	       (char= (char our-path 0) *directory-separator*))
-      (setf result '("/")))
+      (setf result (list (string *directory-separator*))))
     (if (zerop len)
 	(list our-path)
 	(append result
@@ -428,7 +428,8 @@ calls. Returns NIL when there is an error.")
 	 (p (if (and (plusp (length our-path))
 		     (char= *directory-separator* (char our-path 0)))
 		our-path		; already absolute
-		(concatenate 'string (current-directory) "/" our-path)))
+		(concatenate 'string (current-directory)
+			     (string *directory-separator*) our-path)))
 	 (pp (split-path p)))
     (declare (type string our-path) (type list pp))
       (macrolet
@@ -445,7 +446,7 @@ calls. Returns NIL when there is an error.")
 	(get-rid-of "." pos)
 	(get-rid-of ".." (1- pos)))
       (if (<= (length pp) 1)
-	  "/"
+	  (string *directory-separator*)
 	  (with-output-to-string (str)
 	    (loop :for e :in (cdr pp) :do
 	       (write-char *directory-separator* str)
@@ -471,21 +472,28 @@ calls. Returns NIL when there is an error.")
 
 (defun clip-path (path side)
   "Return the directory portion of a path."
-  ;; Go backwards from the end until we hit a separator.
   (let* ((our-path (safe-namestring path))
-	 (i (1- (length our-path))))
+	 (i (1- (length our-path)))
+	 (file-start i)
+	 (dir-end i))
+    ;; Go backwards from the end until we hit a separator.
     (loop :while (and (>= i 0) (char/= *directory-separator* (char our-path i)))
        :do (decf i))
+    (setf file-start i)
 ;    (dlib:dbug "i = ~s~%" i)
+    ;; Go backwards over any more separators.
+    (loop :while (and (>= i 0) (char= *directory-separator* (char our-path i)))
+       :do (decf i))
+    (setf dir-end (1+ i))
     (if (eq side :dir)
 	(if (< i 0)
-	    (subseq our-path 0 0)
+	    (make-string 0) ;;(subseq our-path 0 0)
 	    (if (and (zerop i) (char= (char our-path 0) *directory-separator*))
-		(subseq our-path 0 1)
-		(subseq our-path 0 i)))
+		(subseq our-path 0 1)	; just the separator
+		(subseq our-path 0 dir-end)))
 	(if (< i 0)
-	    path
-	    (subseq our-path (1+ i))))))
+	    path			 ; there was no separator
+	    (subseq our-path (1+ file-start))))))
 
 (defun path-directory-name (path)
   "Return the directory portion of a PATH. This is similar to DIRECTORY-NAMESTRING."
