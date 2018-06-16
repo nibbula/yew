@@ -1916,6 +1916,21 @@ available."
   (uchar               (:union foreign-uchar))
   (control-key-state   DWORD))
 
+(defconstant +MAPVK-VK-TO-VSC+    0 "Virtual key to scan code.")
+(defconstant +MAPVK-VSC-TO-VK+    1 "Scan code to virtual key. Return left.")
+(defconstant +MAPVK-VK-TO-CHAR+   2 "Virtual key to unshifted character.")
+(defconstant +MAPVK-VSC-TO-VK-EX+ 3
+  "Scan code to virtual key. Distinguish between left and right.")
+
+(defcfun ("MapVirtualKeyW" %map-virtual-key)
+  UINT
+  (code UINT)				; In
+  (map-type UINT))			; In
+
+(defun scan-code-to-virtual-key (scan-code)
+  "Return the virtual key code for a scan code."
+  (%map-virtual-key scan-code +MAPVK-VSC-TO-VK+))
+
 (defconstant +FROM-LEFT-1ST-BUTTON-PRESSED+ #x0001)
 (defconstant +RIGHTMOST-BUTTON-PRESSED+     #x0002)
 (defconstant +FROM-LEFT-2ND-BUTTON-PRESSED+ #x0004)
@@ -2132,6 +2147,19 @@ descriptor FD."
      (cons
       (getf ,uchar 'ascii-char))))
 
+(defparameter *modifier-keys*
+    (vector +VK-SHIFT+ +VK-LSHIFT+ +VK-RSHIFT+
+	    +VK-CONTROL+ +VK-LCONTROL+ +VK-RCONTROL+
+	    +VK-LWIN+ +VK-RWIN+
+	    +VK-NUMLOCK+
+	    +VK-SCROLL+
+	    +VK-LMENU+ +VK-RMENU+)
+  "Keys that are considered modifiers.")
+
+(defun modifier-key-p (vkey)
+  "Return true if the virtual key VKEY is considered a modifier key."
+  (and (position vkey *modifier-keys*) t))
+
 (defun read-console-input (terminal)
   (let (result c)
     (with-slots (in-handle width height read-ahead) terminal
@@ -2179,6 +2207,13 @@ descriptor FD."
 			 (setf result
 			       ;; (1+ (- c (char-code #\A)))
 			       c)))
+		      ;; Control key
+		      ((plusp (logand control-key-state +SHIFT-PRESSED+))
+		       (dbugf :ms "--SHIFT--~%")
+		       (when (not (zerop c))
+			 (setf result
+			       ;; (1+ (- c (char-code #\A)))
+			       c)))
 		      ;; Virtual key?
 		      ((plusp virtual-key-code)
 		       (dbugf :ms "--VIRT--~%")
@@ -2192,9 +2227,21 @@ descriptor FD."
 			 (setf result c)))
 		      ((plusp virtual-scan-code)
 		       (dbugf :ms "--SCAN--~%")
-		       (setf result (or (compatible-key-symbol
-					 virtual-key-code)
-					c))
+		       (let ((vkey (scan-code-to-virtual-key virtual-scan-code)))
+			 (cond
+			   ((zerop vkey)
+			    ;; Failed to convert scan code to virtual key.
+			    ;; I guess we can just ignore it.
+			    (dbugf :ms "scan ~s to vkey FAILED!~%"
+				   virtual-scan-code))
+			   ((modifier-key-p vkey)
+			    #| ignore |#
+			    (dbugf :ms "ignore modifier ~s~%" vkey))
+			   (t
+			    (dbugf :ms "using vkey ~s key ~s~%" vkey
+				   (compatible-key-symbol vkey))
+			    (setf result (or (compatible-key-symbol vkey)
+					     c)))))
 		       (dbugf :ms "scan code = ~s~%" virtual-scan-code))))
 		  (dbugf :ms "result = ~s~%" c)))
 	       ((equal event-type +WINDOW-BUFFER-SIZE-EVENT+)
