@@ -36,9 +36,8 @@ SYNOPSIS
 The function takes a file name or a stream or a list of such.
 The shell command takes any number of file names.
 ")
-  (:use :cl :dlib :opsys :dlib-misc :table-print :curses :fui :stretchy
-	:keymap :char-util :fatchar :ppcre :terminal :terminal-curses
-	:pick-list :table-print)
+  (:use :cl :dlib :opsys :dlib-misc :table-print :stretchy
+	:keymap :char-util :fatchar :ppcre :terminal :pick-list :table-print)
   (:export
    #:*pager-prompt*
    #:*empty-indicator*
@@ -185,7 +184,7 @@ The shell command takes any number of file names.
   (declare (ignore initargs))
   ;; slot initialization, such as:
   (when (not (slot-boundp o 'page-size))
-    (setf (pager-page-size o) (1- curses:*lines*))))
+    (setf (pager-page-size o) (1- (tt-height)))))
 
 (defgeneric freshen (o)
   (:documentation
@@ -442,20 +441,20 @@ replacements. So far we support:
 
 (defun display-prompt ()
   "Put the prompt at the appropriate place on the screen."
-  (move (1- curses:*lines*) 0)
-  (clrtoeol)
-  (standout)
-  (addstr (format-prompt))
-  (standend))
+  (tt-move-to (1- (tt-height)) 0)
+  (tt-erase-to-eol)
+  (tt-inverse t)
+  (tt-write-string (format-prompt))
+  (tt-inverse nil))
 
 (defun message (format-string &rest args)
   "Display a formatted message at the last line immediately."
-  (standout)
-  (move (1- *lines*) 0)
-  (clrtoeol)
-  (addstr (apply #'format nil format-string args))
-  (standend)
-  (refresh))
+  (tt-inverse t)
+  (tt-move-to (1- (tt-height)) 0)
+  (tt-erase-to-eol)
+  (apply #'terminal-format *terminal* format-string args)
+  (tt-inverse nil)
+  (tt-finish-output))
 
 (defun message-pause (format-string &rest args)
   "Print a formatted message at the last line and pause until a key is hit."
@@ -469,11 +468,8 @@ This assumes there is no timeout (i.e. timeout is -1) before this is called,
 and resets it to be so afterward."
   (apply #'message format-string args)
   (let (c)
-    (unwind-protect
-      (progn
-	(curses::timeout timeout)
-	(setf c (tt-get-char)))
-      (curses::timeout -1))
+    (when (tt-listen-for (/ timeout 100))
+      (setf c (tt-get-char)))
     c))
 
 (defun tmp-message (format-string &rest args)
@@ -504,6 +500,7 @@ and resets it to be so afterward."
       ("lisp"		#'syntax-lisp)
       (("c" "h")	#'syntax-c))))
 
+#|
 (defparameter *attr*
   `((:normal	. ,+a-normal+)
     (:standout	. ,+a-standout+)
@@ -512,10 +509,12 @@ and resets it to be so afterward."
     (:blink	. ,+a-blink+)
     (:dim	. ,+a-dim+)
     (:bold	. ,+a-bold+)))
+|#
 
 (defun real-attr (a)
   "Return a curses attribute given a keyword attribute."
-  (or (and a (cdr (assoc a *attr*))) +a-normal+))
+  ;;(or (and a (cdr (assoc a *attr*))) +a-normal+)
+  a)
 
 #|
              left         *cols*
@@ -548,7 +547,7 @@ line : |----||-------||---------||---|
 		(loop :for c :across s :do
 		   (when (and (>= *col* *left*)
 			      (or (pager-wrap-lines *pager*)
-				  (< (- *col* *left*) *cols*)))
+				  (< (- *col* *left*) (tt-width))))
 		     (vector-push-extend
 		      (make-fatchar :c c :fg fg :bg bg :attrs attrs)
 		      *fat-buf*))
@@ -590,12 +589,14 @@ line : |----||-------||---------||---|
     (if wrap-lines
 	(span-to-fatchar-string s :fatchar-string *fat-buf* :start *left*)
 	(span-to-fatchar-string s :fatchar-string *fat-buf* :start *left*
-				:end (+ *left* *cols*)))
+				:end (+ *left* (tt-width))))
     (when search-string
       (search-a-matize))
+    (render-fatchar-string *fat-buf*) (tt-write-char #\newline)
+    #|
     (let ((line-count 1)
 	  (screen-col 0)
-	  (screen-line (getcury *stdscr*)))
+	  (screen-line (terminal-get-cursor-position *terminal*)))
       (loop :with last-attr
 	 :for c :across *fat-buf* :do
 	 (when (not (equal last-attr (fatchar-attrs c)))
@@ -615,7 +616,11 @@ line : |----||-------||---------||---|
 	   (incf line-count))
 	 (setf last-attr (fatchar-attrs c)))
       (attrset 0)
-      line-count)))
+    line-count) |#
+
+    ;; @@@ or something? minus the line numbers
+    (max 1 (ceiling (length *fat-buf*) (tt-width)))
+    ))
 
 (defun render-span (line-number line)
   (with-slots (left show-line-numbers) *pager*
@@ -623,7 +628,7 @@ line : |----||-------||---------||---|
       (when show-line-numbers
 	(let ((str (format nil "~d: " line-number)))
 	  (incf *col* (length str))
-	  (addstr str)))
+	  (tt-write-string str)))
       (show-span line))))
 
 (defun span-matches (expr span)
@@ -677,8 +682,8 @@ line : |----||-------||---------||---|
 
 (defun display-page ()
   "Display the lines already read, starting from the current."
-  (move 0 0)
-  (clear)
+  (tt-move-to 0 0)
+  (tt-clear)
   (with-slots (line lines left page-size) *pager*
     (let ((y 0))
       (when (and (>= line 0) lines)
@@ -686,7 +691,7 @@ line : |----||-------||---------||---|
 	   :with l = (nthcdr line lines) :and i = line
 	   :while (and (<= y (1- page-size)) (car l))
 	   :do
-	   (move y 0)
+	   (tt-move-to y 0)
 	   ;; (when (not (filter-this (car l)))
 	   ;;   (incf y (display-line i (car l)))
 	   ;;   (incf i))
@@ -696,13 +701,15 @@ line : |----||-------||---------||---|
       ;; Fill the rest of the screen with twiddles to indicate emptiness.
       (when (< y page-size)
 	(loop :for i :from y :below page-size
-	   :do (mvaddstr i 0 *empty-indicator*))))))
+	   :do
+	   (tt-move-to i 0)
+	   (tt-write-string *empty-indicator*))))))
 
 (defun resize ()
   "Resize the page and read more lines if necessary."
   (with-slots (page-size line count) *pager*
-    (when (/= page-size (1- curses:*lines*))
-      (setf page-size (1- curses:*lines*))
+    (when (/= page-size (1- (tt-height)))
+      (setf page-size (1- (tt-height)))
       ;;(message-pause "new page size ~d" page-size)
       (when (< count (+ line page-size))
 	;;(message-pause "read lines ~d" (- (+ line page-size) count))
@@ -713,10 +720,10 @@ line : |----||-------||---------||---|
 	(esc-count 0))
     (loop :with c :and done
        :do
-       (move (1- curses:*lines*) 0)
-       (clrtoeol)
-       (addstr prompt) (addstr str)
-       (refresh)
+       (tt-move-to (1- (tt-height)) 0)
+       (tt-erase-to-eol)
+       (tt-write-string prompt) (tt-write-string str)
+       (tt-finish-output)
        (setf c (tt-get-char))
        (case c
 	 (#\escape
@@ -744,16 +751,17 @@ line : |----||-------||---------||---|
 
 (defun ask (&optional prompt)
   ;;(ask-for :prompt prompt)
-  (move (1- curses:*lines*) 0)
-  (clrtoeol)
-  (refresh)
+  (tt-move-to (1- (tt-height)) 0)
+  (tt-erase-to-eol)
+  (tt-finish-output)
   (prog1
       (rl:rl :prompt prompt
-	     :terminal-class 'terminal-curses:terminal-curses
+	     ;; :terminal-class 'terminal-curses:terminal-curses
 	     :accept-does-newline nil
 	     :context :pager)
     ;; Make sure we go back to raw mode, so we can ^Z
-    (curses:raw)))
+    ;; (curses:raw)
+    ))
 
 (defun search-line (str line)
   "Return true if LINE contains the string STR. LINE can be a string, or a
@@ -840,17 +848,17 @@ list containing strings and lists."
 	 (setf wrap-lines (not wrap-lines))
 	 (display-page)
 	 (tmp-message "wrap-lines is ~:[Off~;On~]" wrap-lines)
-	 (refresh))
+	 (tt-finish-output))
 	(#\r
 	 (setf raw-output (not raw-output))
 	 (display-page)
 	 (tmp-message "raw-output is ~:[Off~;On~]" raw-output)
-	 (refresh))
+	 (tt-finish-output))
 	(#\p
 	 (setf pass-special (not pass-special))
 	 (display-page)
 	 (tmp-message "pass-special is ~:[Off~;On~]" pass-special)
-	 (refresh))
+	 (tt-finish-output))
 	(otherwise
 	 (tmp-message "Unknown option '~a'" (nice-char char)))))))
 
@@ -991,10 +999,9 @@ location doesn't have an offset part."
     (if (not file-list)
 	(tmp-message "The file list is empty.")
 	(let ((i 0))
-	  (clear)
-	  (map nil (_ (addstr
-		       (format nil "~c ~s~%"
-			       (if (= i file-index) #\* #\space) _))
+	  (tt-clear)
+	  (map nil (_ (tt-format "~c ~s~%"
+				 (if (= i file-index) #\* #\space) _)
 		      (incf i))
 	       file-list)
 	  (tt-get-key)))))
@@ -1088,7 +1095,7 @@ location doesn't have an offset part."
 	 (incf i)
 	 (setf l (cdr l)))
       (tmp-message "max-col = ~d" max-col)
-      (setf left (max 0 (- max-col *cols*))))))
+      (setf left (max 0 (- max-col (tt-width)))))))
 
 (defun go-to-line (n)
   (with-slots (count line page-size) *pager*
@@ -1162,7 +1169,7 @@ location doesn't have an offset part."
 
 (defun redraw ()
   "Redraw the display."
-  (clear) (refresh))
+  (tt-clear) (tt-finish-output))
 
 (defun reread ()
   (if (seekable-p)
@@ -1350,16 +1357,16 @@ location doesn't have an offset part."
     	 (action (key-sequence-binding key-seq *normal-keymap*)))
     (cond
       (action
-       (clear) (move 0 0)
+       (tt-clear) (tt-move-to 0 0)
        (if (documentation action 'function)
 	   (progn
-	     (addstr (format nil "~(~a~): ~a~%" action
-			     (key-sequence-string key-seq)))
-	     (addstr (justify-text
-		      (documentation action 'function) :stream nil)))
-	   (addstr
-	    (format nil "Sorry, there's no documentation for ~a.~%" action)))
-       (refresh)
+	     (tt-format "~(~a~): ~a~%" action
+			(key-sequence-string key-seq))
+	     (tt-write-string (justify-text
+			       (documentation action 'function) :stream nil)))
+	   (tt-format
+	    "Sorry, there's no documentation for ~a.~%" action))
+       (tt-finish-output)
        (tt-get-char)
        ;;(tmp-message pager "")
        )
@@ -1374,13 +1381,13 @@ location doesn't have an offset part."
 
 (defun more-help ()
   "Show more help on help commands."
-  (clear)
-  (move 0 0)
-  (addstr "c - Print the name of function that a key performs.
+  (tt-clear)
+  (tt-move-to 0 0)
+  (tt-write-string "c - Print the name of function that a key performs.
 k - Describe the function that a key performs.
 b - List all keys and the functions they perform.
 q - Abort")
-  (refresh)
+  (tt-finish-output)
   (help-key))				; @@@ this could infinitely recurse
 
 (defun perform-key (key &optional (keymap *normal-keymap*))
@@ -1432,7 +1439,7 @@ q - Abort")
 	   (display-prompt)
 	   (setf message nil))
        (display-prompt))
-     (refresh)
+     (tt-finish-output)
      (setf input-char (tt-get-char))
      (perform-key input-char)
      (when (not (equal command 'digit-argument))
@@ -1441,7 +1448,7 @@ q - Abort")
 
 (defun page (stream &optional pager file-list close-me suspended)
   "View a stream with the pager. Return whether we were suspended or not."
-  (with-curses
+  (with-terminal ()
     (unwind-protect
       (progn
 	(when (and (not stream) file-list)
@@ -1451,7 +1458,7 @@ q - Abort")
 	       (or pager
 		   (make-instance 'pager
 				  :stream stream
-				  :page-size (1- curses:*lines*)
+				  :page-size (1- (tt-height))
 				  :file-list file-list))))
 	  (when (not suspended)
 	    (freshen *pager*)
@@ -1466,7 +1473,7 @@ q - Abort")
 	    (setf quit-flag nil
 		  suspend-flag nil
 		  suspended nil)
-	    (curses:raw)	     ; give a chance to exit during first read
+	    ;;(curses:raw)	     ; give a chance to exit during first read
 	    (pager-loop)
 	    (when suspend-flag
 	      (setf suspended t)
@@ -1481,7 +1488,11 @@ q - Abort")
 		    (format t "Suspended.~%"))
 		  (format t "No shell loaded to suspend to.~%"))))))
       (when (and close-me (not suspended) stream)
-	(close stream))))
+	(close stream)))
+    (tt-move-to (- (tt-height) 1) 0)
+    (tt-erase-to-eol)
+    ;;(tt-write-char #\newline)
+    (tt-finish-output))
   suspended)
 
 (defun resume (suspended)

@@ -10,9 +10,9 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "We can only see so much at one time."
-    :depends-on (:dlib :opsys :dlib-misc :table-print :curses :fui :stretchy
+    :depends-on (:dlib :opsys :dlib-misc :table-print :stretchy
 		 :keymap :char-util :fatchar :cl-ppcre :terminal
-		 :terminal-curses :rl :pick-list :utf8b-stream)
+		 :rl :pick-list :utf8b-stream)
     :entry-point "pager:standalone"
     :build-operation 'program-op
     :components
