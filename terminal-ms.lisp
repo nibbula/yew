@@ -11,6 +11,7 @@
    ;; Extras:
    #:set-cursor-size
    #:set-default-bold
+   #:set-standout-use-color
    ))
 (in-package :terminal-ms)
 
@@ -42,7 +43,18 @@
     :documentation "True to use brigh colors by default.")
    (inverse
     :initarg :inverse :accessor inverse :initform nil :type boolean
-    :documentation "True to make colors inverse."))
+    :documentation "True to make colors inverse.")
+   (standout
+    :initarg :standout :accessor standout :initform nil :type boolean
+    :documentation "True to make text be very noticeable.")
+   (saved-attrs
+    :initarg :saved-attrs :accessor saved-attrs :initform nil
+    :documentation "Saved attributes for color standout.")
+   (standout-use-color
+    :initarg :standout-use-color :accessor standout-use-color
+    :initform t :type boolean
+    :documentation
+    "True to use colors for standout mode, otherwise it's just inverse."))
   (:default-initargs
     :file-descriptor		nil
     :device-name		*default-device-name*
@@ -60,7 +72,9 @@
     (multiple-value-bind (cols rows)
 	(get-window-size (terminal-file-descriptor tty))
       (setf (terminal-window-rows tty) rows
-	    (terminal-window-columns tty) cols))))
+	    ;; @@@ FIXME!: this -1 is totally terrible hack until I can figure
+	    ;; out how to work around the auto-newline at the last col thing!!
+	    (terminal-window-columns tty) (1- cols)))))
 
 (defmethod terminal-get-cursor-position ((tty terminal-ms))
   "Get the position of the cursor. Returns the two values ROW and COLUMN."
@@ -269,7 +283,7 @@
   (with-slots ((fd terminal::file-descriptor)) tty
     (multiple-value-bind (x y width attr top) (get-console-info fd)
       (declare (ignore attr))
-      (erase fd :x 0 :y top :length (+ (* (1- y) width) x)))))
+      (erase fd :x 0 :y top :length (+ (* (- y top) width) x)))))
 
 (defmethod terminal-erase-below ((tty terminal-ms))
   (with-slots ((fd terminal::file-descriptor)) tty
@@ -305,9 +319,28 @@
 	(set-cursor-state fd :size saved-cursor-size :visible t)))))
 
 (defmethod terminal-standout ((tty terminal-ms) state)
-  (declare (ignore tty state)))
+  (with-slots ((fd terminal::file-descriptor) standout standout-use-color
+	       saved-attrs) tty
+    (when (not (eq state standout))
+      (if state
+	  (progn
+	    (if standout-use-color
+		(progn
+		  (setf saved-attrs (get-attributes fd))
+		  (set-console-attribute
+		   fd (logior +BACKGROUND-INTENSITY+
+			      (color-attr :black :yellow))))
+		(%terminal-inverse tty t)))
+	  (progn
+	    (if standout-use-color
+		(progn
+		  (set-console-attribute fd saved-attrs)
+		  (setf saved-attrs nil))
+		(%terminal-inverse tty nil))))
+      (setf standout state))))
 
 (defmethod terminal-normal ((tty terminal-ms))
+  (terminal-standout tty nil)
   (terminal-inverse tty nil)
   (terminal-bold tty (if (default-bold tty) t nil))
   (terminal-color tty :default :default))
@@ -330,10 +363,9 @@
 				   (logior +FOREGROUND-INTENSITY+
 					   #| +BACKGROUND-INTENSITY+ |#))))))))
 
-(defmethod terminal-inverse ((tty terminal-ms) state)
+(defun %terminal-inverse (tty state)
   (with-slots (inverse (fd terminal::file-descriptor)) tty
     (when (not (eq state inverse))
-      (setf inverse state)
       (let ((attr (get-attributes fd))
 	    (new-attr 0))
 
@@ -358,6 +390,11 @@
 	  (setf new-attr (logior new-attr +FOREGROUND-INTENSITY+)))
 
 	(set-console-attribute fd new-attr)))))
+
+(defmethod terminal-inverse ((tty terminal-ms) state)
+  (when (not (standout tty))		; standout overrides inverse
+    (%terminal-inverse tty state))
+  (setf (inverse tty) state))
 
 (defparameter *fg-colors*
   `(:black	0
@@ -406,7 +443,11 @@
   (declare (ignore color)))
 
 (defmethod terminal-color ((tty terminal-ms) fg bg)
-  (with-slots ((fd terminal::file-descriptor) bold inverse) tty
+  (with-slots ((fd terminal::file-descriptor) bold inverse standout
+	       standout-use-color) tty
+    (when (and standout standout-use-color)
+      ;; standout using color overrides any color setting!
+      (return-from terminal-color nil))
     (when inverse
       (rotatef fg bg))
     (let ((our-fg (getf *fg-colors* fg))
@@ -563,6 +604,10 @@
   "True to make the default colors be bold."
   (setf (default-bold tty) state)
   (terminal-bold tty state))
+
+(defun set-standout-use-color (tty state)
+  "True to make the default colors be bold."
+  (setf (standout-use-color tty) state))
 
 #|
 (defun describe-terminal ()
