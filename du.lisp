@@ -11,8 +11,8 @@
 
 (defpackage :du
   (:documentation "Disk usage")
-  (:use :cl :dlib :dlib-misc :opsys :curses :fui :tree-viewer :inator
-	:terminal :terminal-ansi :char-util :keymap)
+  (:use :cl :dlib :dlib-misc :opsys :tree-viewer :inator :terminal :char-util
+	:keymap)
   (:export
    ;; Main entry point
    #:du
@@ -296,12 +296,12 @@ useful information."
 
 (defun view-file (o)
   "View the file with the pager."
-  (endwin)
+  (terminal-end *terminal*)
   (handler-case
       (view:view (get-path (tree-viewer::current o)))
     (simple-error (c)
       (message o "Error: ~a" c)))
-  (initscr)
+  (terminal-start *terminal*)
   ;;(refresh)
   )
 
@@ -340,7 +340,7 @@ EXCLUDE       - Sub-tree(s) to exclude.
       (if file
 	  (setf tree (load-tree file))
 	  (if show-progress
-	      (with-terminal (:ansi)
+	      (with-terminal ()
 	        (terminal-get-size *terminal*)
 		(setf tree
 		      (or tree (make-instance
@@ -358,7 +358,7 @@ EXCLUDE       - Sub-tree(s) to exclude.
 	       (node-open tree) t)
 	 (setf viewer (make-instance 'tree-viewer
 				     :root tree
-				     :bottom (- *lines* 2)))
+				     :bottom (- (tt-height) 2)))
 	 (push *du-keymap* (inator-keymap viewer))
 	 (view-tree tree :viewer viewer)
 	 :while reload))))
