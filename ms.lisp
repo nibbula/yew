@@ -1014,7 +1014,7 @@ if not given."
     (with-wide-string (w-path our-path)
       (syscall (%set-current-directory w-path))
       #+t-os-cd-dpd
-      (let ((tn (ignore-errors (truename path))))
+      (let ((tn (ignore-errors (truename our-path))))
 	(when tn
 	  (setf *default-pathname-defaults* tn))))))
 
