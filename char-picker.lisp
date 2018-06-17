@@ -101,9 +101,9 @@
 	       (setf ss-end (+ ss-pos (length search-string)))
 	       (tt-write-char #\space)
 	       (tt-write-string (subseq name 0 ss-pos))
-	       (tt-inverse t)
+	       (tt-standout t)
 	       (tt-write-string (subseq name ss-pos ss-end))
-	       (tt-inverse nil) 
+	       (tt-standout nil)
 	       (tt-write-string (subseq name ss-end)))
 	     (tt-format " ~a" name))))))
 
