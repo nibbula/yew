@@ -5,8 +5,8 @@
 (defpackage :tree-viewer
   (:documentation "View trees.")
   (:nicknames :tb)
-  (:use :cl :dlib :curses :char-util :keymap :opsys :dlib-interactive :terminal
-	:fui :inator)
+  (:use :cl :dlib :opsys :dlib-misc :char-util :keymap :pick-list
+	:glob :dlib-interactive :inator :terminal :terminal-inator)
   (:export
    #:view-tree
    #:node #:node-branches #:node-open #:make-node
@@ -360,7 +360,7 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
 
 (defparameter *tree-escape-keymap* (build-escape-map *tree-keymap*))
 
-(defclass tree-viewer (fui-inator)
+(defclass tree-viewer (terminal-inator)
   ((picked-object
      :initarg :picked-object :accessor picked-object :initform nil
      :documentation "The object that was picked.")
@@ -609,12 +609,12 @@ been encountered."
   "Go to the next page."
   (with-slots (scroll-hint) o
     (setf scroll-hint :down)
-    (loop :for i :from 1 :to curses:*lines*
+    (loop :for i :from 1 :to (tt-height)
        :while (next-node o))))
 
 (defmethod previous-page ((o tree-viewer))
   "Go to the previous page."
-  (backward-some o curses:*lines*))
+  (backward-some o (tt-height)))
 
 (defun shift-left (o)
   "Shift the edge left."
@@ -635,7 +635,7 @@ been encountered."
   "Shift to the end of the rightmost content."
   (with-slots (left current-max-right) o
     (when current-max-right
-      (setf left (max 0 (- current-max-right *cols*))))))
+      (setf left (max 0 (- current-max-right (tt-width)))))))
 
 (defun goto-first-node (o)
   "Go to the first node."
@@ -651,7 +651,7 @@ been encountered."
 	    ;; We could jus set scroll-hint :down here, but that can be very
 	    ;; inefficient, so let's go to the end and then go backwards some.
 	    top current)
-      (backward-some o *lines*)
+      (backward-some o (tt-height))
       (setf current last
 	    scroll-hint :down))))
 
@@ -705,10 +705,11 @@ been encountered."
 (defun search-tree-command (o &optional (direction :forward))
   "Search for a node."
   (with-slots (current) o
-    (move (1- *lines*) 0) (clrtoeol)
-    (let ((result (with-terminal (:curses)
-		    (rl:rl :prompt "Search for: "))))
-      (refresh)
+    (tt-move-to (1- (tt-height)) 0) (tt-erase-to-eol)
+    ;; (let ((result (with-terminal (:curses)
+    ;; 		    (rl:rl :prompt "Search for: "))))
+    (let ((result (rl:rl :prompt "Search for: ")))
+      (tt-finish-output)
       (when (and result (not (zerop (length result))))
 	(when (not (eq :found
 		       (catch 'search-done
@@ -732,13 +733,17 @@ been encountered."
 
 (defun node-info (o)
   "Display node information."
+  (declare (ignore o))
+  #| @@@ Hold off until we implement display-text for terminals
   (with-slots (current) o
     (fui:display-text
      "Node Info"
      (list (format nil "Node: ~a" current)
 	   (format nil " open     : ~a" (node-open current))
 	   (format nil " branches : ~a" (node-branches current))
-	   (format nil " parent   : ~a" (get-parent current))))))
+	   (format nil " parent   : ~a" (get-parent current)))))
+  |#
+  )
 
 (defmethod initialize-instance
     :after ((o tree-viewer) &rest initargs &key &allow-other-keys)
@@ -755,13 +760,14 @@ been encountered."
 			 inator:*default-inator-keymap*)))
     (when (or (not (slot-boundp o 'bottom))
 	      (not bottom))
-      (setf bottom (- *lines* 2)))))
+      (setf bottom (- (tt-height) 2)))))
 
 (defun show-message (format-string &rest format-args)
   "Display a formatted message."
-  (move (- *lines* 1) 2)
-  (clrtoeol)
-  (addstr (apply #'format nil format-string format-args)))
+  (tt-move-to (- (tt-height) 1) 2)
+  (tt-erase-to-eol)
+  ;;(tt-write-string (apply #'format nil format-string format-args))
+  (apply #'terminal-format *terminal* format-string format-args))
 
 (defmethod message ((o tree-viewer) format-string &rest format-args)
   (setf (message-string *viewer*)
@@ -770,7 +776,7 @@ been encountered."
 (defun message-pause (format-string &rest format-args)
   "Display a formatted message and wait for a key."
   (apply #'show-message format-string format-args)
-  (refresh)
+  (tt-finish-output)
   (tt-get-char))
 
 (defgeneric display-indent (node level)
@@ -802,10 +808,12 @@ been encountered."
   "Display a line of node output."
   (with-slots (left current current-max-right) *viewer*
     (let ((len (length line)))
-      (when (< (getcury curses:*stdscr*) (1- curses:*lines*))
+;;      (when (< (getcury curses:*stdscr*) (1- curses:*lines*))
+      (when (< (terminal-get-cursor-position *terminal*)
+	       (1- (tt-height)))
 	(if (>= left len)
-	    (addch (char-code #\newline))
-	    (addstr (subseq line left (min len (+ left *cols*))))))
+	    (tt-write-char #\newline)
+	    (tt-write-string (subseq line left (min len (+ left (tt-width)))))))
       (when (eq node current)
 	(setf current-max-right (length line))))))
 
@@ -817,11 +825,13 @@ been encountered."
 with PRINC, and indented properly for multi-line objects."
   (let ((lines (split-sequence #\newline (princ-to-string object))))
     (when (eq node (current *viewer*))
-      (attron +a-bold+))
+      ;; (attron +a-bold+)
+      (tt-bold t))
     (display-node-line node (s+ (display-prefix node level)
 				(format nil "~a~%" (first lines))))
     (when (eq node (current *viewer*))
-      (attroff +a-bold+))
+      ;; (attroff +a-bold+)
+      (tt-bold nil))
     (loop :for l :in (cdr lines) :do
        (display-node-line node (s+ (display-indent node level)
 				   (format nil "~a~%" l))))))
@@ -835,7 +845,9 @@ output them."))
 (defmethod display-node :before ((node node) level)
   (declare (ignore level))
   (when (eq node (current *viewer*))
-    (setf (current-position *viewer*) (getcury *stdscr*)))
+    ;; (setf (current-position *viewer*) (getcury *stdscr*)))
+    (setf (current-position *viewer*)
+	  (terminal-get-cursor-position *terminal*)))
   (setf (bottom-node *viewer*) node))
 
 (defmethod display-node ((node object-node) level)
@@ -852,7 +864,8 @@ and indented properly for multi-line objects."
 (defmethod display-tree ((o tree-viewer) tree level)
   "Display a tree."
   (with-slots (top bottom) o
-    (let ((y (getcury *stdscr*)))
+    ;; (let ((y (getcury *stdscr*)))
+    (let ((y (terminal-get-cursor-position *terminal*)))
       (when (< y bottom)
 	(when (eq tree top)
 	  (setf *display-start* t))
@@ -865,8 +878,8 @@ and indented properly for multi-line objects."
 
 (defmethod redraw ((o tree-viewer))
   (with-slots (top current root current-max-right) o
-    (clear)
-    (move 0 0)
+    (tt-clear)
+    (tt-move-to 0 0)
     (setf current-max-right nil)
     (let ((*display-start* nil))
       (display-tree o root 0))
@@ -949,8 +962,8 @@ and indented properly for multi-line objects."
 	       message-string scroll-hint) o
     (tagbody
      again
-       (move 0 0)
-       (erase)
+       (tt-home)
+       (tt-clear)
        (setf current-position nil current-max-right nil)
        (let ((*display-start* nil))
 	 (display-tree *viewer* root 0))
@@ -981,21 +994,21 @@ and indented properly for multi-line objects."
       (setf message-string nil))
 
     (when (show-modeline *viewer*)
-      (move (- *lines* 2) 0)
-      (clrtoeol)
-      (addstr (format nil "~a ~a (left=~a top=~a bot=~a)"
-		      current-position
-		      (node-abbrev current)
-		      left
-		      (node-abbrev top)
-		      (node-abbrev bottom-node))))
+      (tt-move-to (- (tt-height) 2) 0)
+      (tt-erase-to-eol)
+      (tt-format nil "~a ~a (left=~a top=~a bot=~a)"
+		 current-position
+		 (node-abbrev current)
+		 left
+		 (node-abbrev top)
+		 (node-abbrev bottom-node)))
 
     (when current-position
-      (move current-position 0))))
+      (tt-move-to current-position 0))))
 
 (defun view-tree (tree &key viewer default-action)
   "Look at a tree, with expandable and collapsible branches."
-  (with-terminal (:curses)
+  (with-terminal (#+unix :curses)
     (let ((*viewer* viewer))
       (if viewer
 	  (progn
@@ -1004,13 +1017,14 @@ and indented properly for multi-line objects."
 	  (with-inator (*viewer* 'tree-viewer
 				 ;; :keymap (list *tree-keymap*
 				 ;; 	       inator:*default-inator-keymap*)
-				 :bottom (- *lines* 2)
+				 :bottom (- (tt-height) 2)
 				 :root (if (listp tree)
 					   (convert-tree tree) tree)
 				 :default-action default-action)
 	    (setf (node-open (root *viewer*)) t)
 	    (event-loop *viewer*)
-	    (picked-object *viewer*))))))
+	    (picked-object *viewer*))))
+    (tt-move-to (tt-height) 0)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; some examples
@@ -1076,12 +1090,11 @@ and indented properly for multi-line objects."
   ())
 
 (defmethod display-node ((node code-node) level)
-  (addstr
-   (format nil "~v,,,va~c "
-	   (* level (indent *viewer*)) #\space ""
-	   (if (node-branches node)
-	       (if (node-open node) #\- #\+)
-	       #\space)))
+  (tt-format "~v,,,va~c "
+	     (* level (indent *viewer*)) #\space ""
+	     (if (node-branches node)
+		 (if (node-open node) #\- #\+)
+		 #\space))
   (flet ((get-name (n) (node-object (first (node-branches n))))
 	 (get-args (n)
 	   (let ((arg-node (second (node-branches n))))
@@ -1094,34 +1107,34 @@ and indented properly for multi-line objects."
 	 ((defun defmacro defgeneric defmethod)
 	     (let* ((name (get-name node))
 		    (args (get-args node)))
-	       (fui:with-fg (+color-magenta+)
-		 (addstr (format nil "~(~s~) " (node-object node))))
-	       (fui:with-fg (+color-green+)
-		 (addstr (format nil "~(~a~)" name)))
-	       (addstr (format nil " (~{~(~w~)~^ ~})~%" args))))
+	       (tt-color :magenta :default)
+	       (tt-format "~(~s~) " (node-object node))
+	       (tt-color :green :default)
+	       (tt-format "~(~a~)" name)
+	       (tt-format " (~{~(~w~)~^ ~})~%" args)))
 	 ((defstruct defclass deftype defvar defparameter defconstant)
-	  (fui:with-fg (+color-magenta+)
-	    (addstr (format nil "~(~s~)" (node-object node))))
-	  (fui:with-fg (+color-green+)
-	    (addstr (format nil " ~(~a~)~%" (get-name node)))))
+	  (tt-color :magenta :default)
+	  (tt-format "~(~s~)" (node-object node))
+	  (tt-color :green :default)
+	  (tt-format " ~(~a~)~%" (get-name node)))
       	 (otherwise
 	  (let* ((pkg (symbol-package (node-object node)))
 		 (pkg-name (and pkg (package-name pkg))))
 	    (cond
 	      ((equal pkg-name "COMMON-LISP")
-	       (fui:with-fg (+color-magenta+)
-		 (addstr (format nil "~(~s~)~%" (node-object node)))))
+	       (tt-color :magenta :default)
+	       (tt-format "~(~s~)~%" (node-object node)))
 	      ((equal pkg-name "KEYWORD")
-	       (fui:with-fg (+color-blue+)
-		 (addstr (format nil "~(~s~)~%" (node-object node)))))
+	       (tt-color :blue :default)
+	       (tt-format "~(~s~)~%" (node-object node)))
 	      (t
-	       (addstr (format nil "~(~a~)~%" (node-object node)))))))))
+	       (tt-format "~(~a~)~%" (node-object node))))))))
       ((stringp (node-object node))
-       (fui:with-fg (+color-cyan+)
-	 (addstr (format nil "~s~%" (node-object node)))))
+       (tt-color :cyan :default)
+       (tt-format "~s~%" (node-object node)))
       (t
        (let ((*print-case* :downcase))
-	 (addstr (format nil "~s~%" (node-object node)))))))
+	 (tt-format nil "~s~%" (node-object node))))))
   (values))
 
 (defun fake-reader (stream subchar arg)

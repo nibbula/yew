@@ -4,7 +4,7 @@
 
 (defpackage :view-org
   (:documentation "View Org Mode trees.")
-  (:use :cl :dlib :curses :fui :tree-viewer :terminal :inator)
+  (:use :cl :dlib :tree-viewer :terminal :inator)
   (:export
    #:read-org-mode-file
    #:!view-org
@@ -28,8 +28,9 @@
    "Org mdoe node."))
 
 (defparameter *org-colors*
-  `(,+color-white+ ,+color-red+ ,+color-green+ ,+color-yellow+ ,+color-blue+
-    ,+color-magenta+ ,+color-cyan+))
+  ;; `(,+color-white+ ,+color-red+ ,+color-green+ ,+color-yellow+ ,+color-blue+
+  ;;   ,+color-magenta+ ,+color-cyan+))
+  '(:white :red :green :yellow :blue :magenta :cyan))
 
 (defmethod node-object ((node org-node))
   (org-node-heading node))
@@ -58,20 +59,19 @@
   "Display an org-node."
   (with-accessors ((indent tb::indent)) *viewer*
     (let ((fake-level (max 0 (1- level))))
-      (fui:with-fg ((elt *org-colors*
-			 (mod level
-			      (length *org-colors*))))
-	(display-node-line node (s+ (format nil "~v,,,va "
-					    (* fake-level indent)
-					    #\space "")
-				    (if (node-has-branches node)
-					(if (node-open node) #\- #\+)
-					(if (org-node-text node)
-					    (if (node-open node) #\- #\+)
-					    #\·))
-				    #\space
-				    (trim (org-node-heading node))
-				    #\newline)))
+      (tt-color (elt *org-colors* (mod level (length *org-colors*))) :black)
+      (display-node-line node (s+ (format nil "~v,,,va "
+					  (* fake-level indent)
+					  #\space "")
+				  (if (node-has-branches node)
+				      (if (node-open node) #\- #\+)
+				      (if (org-node-text node)
+					  (if (node-open node) #\- #\+)
+					  #\·))
+				  #\space
+				  (trim (org-node-heading node))
+				  #\newline))
+      (tt-color :white :black)
       (when (node-open node)
 	(loop :for l :in (reverse (org-node-text node)) :do
 	   (display-node-line node (s+ (format nil "~v,,,va "
