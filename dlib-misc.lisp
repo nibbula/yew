@@ -1112,14 +1112,16 @@ SUFFIX is a string to append to each row."
 	    :do
 	    (if (aref a c r)
 		(progn
-		  (write-string ;; @@@ Why the superfluous write-string?
-		   (format nil format-str max-len (aref a c r))
-		   stream))
+		  ;; (write-string ;; @@@ Why the superfluous write-string?
+		  ;;  (format nil format-str max-len (aref a c r))
+		  ;;  stream))
+		  (format stream format-str max-len (aref a c r)))
 		;; If we have a suffix, fill out blank space
 		(if suffix
-		    (write-string ;; @@@ Why the superfluous write-string?
-		     (format nil "~va" max-len #\space)
-		     stream))))
+		    ;; (write-string ;; @@@ Why the superfluous write-string?
+		    ;;  (format nil "~va" max-len #\space)
+		    ;;  stream))))
+		    (format stream "~va" max-len #\space))))
 	 (when suffix
 	   (write-string suffix stream))
 	 (terpri stream)))
