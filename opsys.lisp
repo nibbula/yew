@@ -349,6 +349,28 @@ strings. Some dir-entry-type keywords are:
 If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 ")
 
+(defosfun map-directory (function
+			 &key dir append-type full omit-hidden collect recursive)
+  "Call FUNCTION with the file name of each file in directory DIR. DIR defaults ~
+to the current directory. If APPEND-TYPE is true, append a character to the end ~
+of the name indicating what type of file it is. Indicators are:
+  / : directory
+  @ : symbolic link
+  | : FIFO (named pipe)
+  = : Socket
+  > : Doors
+If FULL is true, call FUNCTION with a list of dir-entry structures instead of ~
+file name strings. Some dir-entry-type keywords are:
+  :unknown :pipe :character-device :directory :block-device :regular :link
+  :socket :whiteout :undefined
+Be aware that DIR-ENTRY-TYPE type can't really be relied on, since many
+systems return :UNKNOWN or something, when the actual type can be determined
+by FILE-INFO-TYPE.
+If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
+If COLLECT is true, return the results of calling FUNCTION as a list.
+If RECURSIVE is true, descend breadth-first into sub-directories.
+")
+
 (defosfun change-directory (&optional path)
   "Change the current directory to DIR. Defaults to (user-homedir-pathname) ~
 if not given.")

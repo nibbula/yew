@@ -162,6 +162,7 @@
    #:dirent-name
    #:dirent-type
    #:read-directory
+   #:map-directory
    #:probe-directory
    #:without-access-errors
 

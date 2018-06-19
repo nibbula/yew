@@ -54,6 +54,7 @@
    #:make-directory
    #:delete-directory
    #:read-directory
+   #:map-directory
    #:dir-entry
    #:dir-entry-p
    #:make-dir-entry

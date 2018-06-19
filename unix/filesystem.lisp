@@ -414,7 +414,87 @@ C library function getcwd."
     (closedir dirp)))
 |#
 
-(defun read-directory (&key dir append-type full omit-hidden)
+;; This is a highly anaphoric macro, since we just intend to use it internally.
+;; The body has to be a valid LOOP clause.
+;; ITEM is the directory item. DIR-LIST is the results of the loop.
+;; IS-DIR is true if the item is a directory.
+;; It gets DIR APPEND-TYPE FULL OMIT-HIDDEN from the lexical environment.
+;;
+;; @@@ This probably should be the system specific part and then read-directory
+;; and map-directory could be in the generic code, but I'd have to work out
+;; at least all the symbols mentioned above.
+(defmacro %with-directory-entries ((&key result
+				   ;; dir append-type full omit-hidden
+				   )
+				  &body body)
+  "Implement directory iteration. See the documentation for read-directory or
+map-directory for more information."
+  `(block nil
+     ;; (when (not dir)
+     ;;   (setf dir "."))
+     (let ((dirp nil)
+	   (readdir-result 0)
+	   (dir-list nil)
+	   item)
+       (unwind-protect
+         (progn
+	   (if (null-pointer-p (setf dirp (opendir (or dir "."))))
+	       (progn
+		 (cerror "Just go on."
+			 'posix-error :error-code *errno*
+			 :format-control "opendir: ~a: ~a"
+			 :format-arguments `(,(or dir ".")
+					      ,(error-message *errno*)))
+		 (return nil))
+	       (progn
+		 (with-foreign-objects ((ent '(:struct foreign-dirent))
+					(ptr :pointer))
+		   (with-foreign-slots ((d_name
+					 #+os-t-has-d-type d_type
+					 d_ino)
+					ent (:struct foreign-dirent))
+		     (setf dir-list
+			   (loop :with real-name :and is-dir
+			      :while
+			      (and (eql 0 (setf readdir-result
+						(readdir_r dirp ent ptr)))
+				   (not (null-pointer-p (mem-ref ptr :pointer))))
+			      :do (setf real-name (dirent-name ent))
+			      :if (not (and omit-hidden
+					    (hidden-file-name-p real-name)))
+			      :do
+			      (setf is-dir (= d_type DT_DIR)
+				    item
+				    (if full
+					(make-dir-entry
+					 :name real-name
+					 :type (dirent-type ent)
+					 :inode d_ino)
+					;; not full
+					(if append-type
+					    #+os-t-has-d-type
+					    (concatenate
+					     'string
+					     real-name
+					     (cond
+					       ((= d_type DT_FIFO) "|")
+					       ((= d_type DT_DIR)  "/")
+					       ((= d_type DT_LNK)  "@")
+					       ((= d_type DT_SOCK) "=")))
+					    #-os-t-has-d-type real-name
+					    real-name)))
+			      :and
+			      ,@body))))
+		 (when (not (= readdir-result 0))
+		   (error 'posix-error :format-control "readdir"
+			  :error-code *errno*)))))
+	 (when (not (null-pointer-p dirp))
+	   (syscall (closedir dirp))))
+       (progn
+	 ,@result))))
+
+#|
+(defun OLD-read-directory (&key dir append-type full omit-hidden)
   "Return a list of the file names in DIR as strings. DIR defaults to the ~
 current directory. If APPEND-TYPE is true, append a character to the end of ~
 the name indicating what type of file it is. Indicators are:
@@ -481,6 +561,102 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
       (when (not (null-pointer-p dirp))
 	(syscall (closedir dirp))))
     dir-list))
+|#
+
+(defun read-directory (&key dir append-type full omit-hidden)
+  "Return a list of the file names in DIR as strings. DIR defaults to the ~
+current directory. If APPEND-TYPE is true, append a character to the end of ~
+the name indicating what type of file it is. Indicators are:
+  / : directory
+  @ : symbolic link
+  | : FIFO (named pipe)
+  = : Socket
+  > : Doors
+If FULL is true, return a list of dir-entry structures instead of file name ~
+strings. Some dir-entry-type keywords are:
+  :unknown :pipe :character-device :directory :block-device :regular :link
+  :socket :whiteout :undefined
+Be aware that DIR-ENTRY-TYPE type can't really be relied on, since many
+systems return :UNKNOWN or something, when the actual type can be determined
+by FILE-INFO-TYPE.
+If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
+"
+  (declare (type (or string null) dir) (type boolean append-type full))
+  (%with-directory-entries (:result (dir-list))
+    :collect item))
+
+;; @@@ I'm sure this could use some speeding up.
+(defun map-directory (function
+		      &key dir append-type full omit-hidden collect recursive)
+  "Call FUNCTION with the file name of each file in directory DIR. DIR defaults ~
+to the current directory. If APPEND-TYPE is true, append a character to the end ~
+of the name indicating what type of file it is. Indicators are:
+  / : directory
+  @ : symbolic link
+  | : FIFO (named pipe)
+  = : Socket
+  > : Doors
+If FULL is true, call FUNCTION with a list of dir-entry structures instead of ~
+file name strings. Some dir-entry-type keywords are:
+  :unknown :pipe :character-device :directory :block-device :regular :link
+  :socket :whiteout :undefined
+Be aware that DIR-ENTRY-TYPE type can't really be relied on, since many
+systems return :UNKNOWN or something, when the actual type can be determined
+by FILE-INFO-TYPE.
+If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
+If COLLECT is true, return the results of calling FUNCTION as a list.
+If RECURSIVE is true, descend breadth-first into sub-directories.
+"
+  (declare (type (or string null) dir) (type boolean append-type full collect))
+  (labels ((join-dir (dir name)
+	     "Tack the directory on the front."
+	     (concatenate 'string dir *directory-separator-string* name))
+	   (thingy (item real-name)
+	     "Return an appropriately fixed dir-entry or joined name."
+	     (or (and dir
+		      (if full
+			  (and (setf (dir-entry-name item)
+				     (join-dir dir real-name))
+			       item)
+			  (join-dir dir real-name)))
+		 item))
+	   (recursive-call (dir)
+	     (map-directory function :dir dir
+			    :append-type append-type
+			    :full full
+			    :omit-hidden omit-hidden
+			    :collect collect
+			    :recursive t)))
+    (if collect
+	;; Collect results breadth first.
+	(let (sub-dirs files)
+	  (setf files
+		(%with-directory-entries (:result (dir-list))
+		  :collect (funcall function (thingy item real-name))
+		  :when (and recursive is-dir
+			     (not (superfluous-file-name-p real-name))
+			     (not (and omit-hidden
+				       (hidden-file-name-p real-name))))
+		  :do
+		  (push (or (and dir (join-dir dir real-name))
+			    real-name) sub-dirs)))
+	  (if sub-dirs
+	      ;; @@@ Use of flatten here is probably inappropriate.
+	      (flatten (nconc files (mapcar #'recursive-call sub-dirs)))
+	      files))
+	;; Don't collect, just funcall and count.
+	(let ((count 0) sub-dirs)
+	  (%with-directory-entries (:result (count))
+	    :do
+	    (funcall function (thingy item real-name))
+	    (incf count)
+	    :when (and recursive is-dir
+		       (not (superfluous-file-name-p real-name))
+		       (not (and omit-hidden (hidden-file-name-p real-name))))
+	    :do
+	    (push (or (and dir (join-dir dir real-name))
+		      real-name) sub-dirs))
+	  (+ count (reduce #'+  (mapcar #'recursive-call sub-dirs)))))))
 
 (defmacro without-access-errors (&body body)
   "Evaluate the body while ignoring typical file access error from system
