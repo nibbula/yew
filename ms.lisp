@@ -52,6 +52,7 @@
    #:simple-delete-file
    #:with-os-file
    #:read-directory
+   #:map-directory
    #:change-directory
    #:current-directory
    #:make-directory
@@ -199,6 +200,11 @@
 (defctype DWORD32 :unsigned-int)
 (defctype DWORD64 :uint64)
 (defctype DWORDLONG :uint64)
+(defctype ULONGLONG :uint64)
+(defctype LARGE_INTEGER :int64)
+(defctype PLARGE_INTEGER (:pointer LARGE_INTEGER))
+(defctype ULARGE_INTEGER :uint64)
+(defctype PULARGE_INTEGER (:pointer ULARGE_INTEGER))
 (defctype MS-BYTE :unsigned-char)
 (defctype MS-BOOLEAN MS-BYTE)
 (defctype MS-FLOAT :float)
@@ -931,7 +937,72 @@ versions of the keywords used in Lisp open.
 ;; @@@ Perhaps we should use FindFirstFileExW on Windows 7 and above since it's
 ;; supposedly faster.
 
-(defun read-directory (&key dir append-type full omit-hidden)
+;; This is a highly anaphoric macro, since we just intend to use it internally.
+;; The body has to be a valid LOOP clause.
+;; ITEM is the directory item. DIR-LIST is the results of the loop.
+;; IS-DIR is true if the item is a directory.
+;; It gets DIR APPEND-TYPE FULL OMIT-HIDDEN from the lexical environment.
+;;
+;; @@@ This probably should be the system specific part and then read-directory
+;; and map-directory could be in the generic code, but I'd have to work out
+;; at least all the symbols mentioned above. see unix/filesystem.lisp
+
+(defmacro %with-directory-entries ((&key result) &body body)
+				     ;; dir append-type full omit-hidden
+  "Implement directory iteration. See the documentation for read-directory or
+map-directory for more information."
+  `(block nil
+     (let (handle dir-list item is-dir
+	   (real-dir (or (and dir (s+ dir "\\*"))
+			 ".\\*")))
+       ;; (format t "dir = ~s real-dir ~s~%" dir real-dir)
+       (unwind-protect
+	  (with-foreign-object (find-data '(:struct WIN32_FIND_DATA))
+	    (with-wide-string (w-dir real-dir)
+	      (setf handle (%find-first-file w-dir find-data))
+	      (when (= (pointer-address handle) +INVALID-HANDLE-VALUE+)
+		(cerror "Just go on."
+			'windows-error :error-code (get-last-error)
+			:format-control
+			"read-directory failed to read first file.")
+		(return nil)))
+	    (setf dir-list
+		  (loop
+		     :with real-name
+		     :do
+		     (setf item nil)
+		     (with-foreign-slots ((file-name file-attributes) find-data
+					  (:struct WIN32_FIND_DATA))
+		       (setf real-name (wide-string-to-lisp file-name))
+		       (when (or (not omit-hidden)
+				 (and (zerop (logand file-attributes
+						     +FILE-ATTRIBUTE-HIDDEN+))
+				      (not (hidden-file-name-p real-name))))
+			 (setf is-dir
+			       (plusp (logand file-attributes
+					      +FILE-ATTRIBUTE-DIRECTORY+))
+			       item
+			       (if full
+				   (make-dir-entry
+				    :name real-name
+				    :type (attr-to-dir-entry-type
+					   file-attributes)
+				    :inode nil)
+				   real-name))))
+		     :when item
+		     ;;:collect item
+		     ,@body
+		     :while (not (zerop (%find-next-file handle find-data)))))
+	    (when (/= (get-last-error) +ERROR-NO-MORE-FILES+)
+	      (error 'windows-error :error-code (get-last-error)
+		     :format-control
+		     "read-directory failed to read next file.")))
+	 (when (and handle (/= (pointer-address handle) +INVALID-HANDLE-VALUE+))
+	   (syscall (%find-close handle))))
+       (progn ,@result)))) ;; @@@ was dir-list
+
+#|
+(defun OLD-read-directory (&key dir append-type full omit-hidden)
   "Return a list of the file names in DIR as strings. DIR defaults to the ~
 current directory. If APPEND-TYPE is true, append a character to the end of ~
 the name indicating what type of file it is. Indicators are:
@@ -988,6 +1059,106 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
       (when (and handle (/= (pointer-address handle) +INVALID-HANDLE-VALUE+))
 	(syscall (%find-close handle))))
   dir-list))
+|#
+
+(defun read-directory (&key dir append-type full omit-hidden)
+  "Return a list of the file names in DIR as strings. DIR defaults to the ~
+current directory. If APPEND-TYPE is true, append a character to the end of ~
+the name indicating what type of file it is. Indicators are:
+  / : directory
+  @ : symbolic link
+  | : FIFO (named pipe)
+  = : Socket
+  > : Doors
+If FULL is true, return a list of dir-entry structures instead of file name ~
+strings. Some dir-entry-type keywords are:
+  :unknown :pipe :character-device :directory :block-device :regular :link
+  :socket :whiteout :undefined
+Be aware that DIR-ENTRY-TYPE type can't really be relied on, since many
+systems return :UNKNOWN or something, when the actual type can be determined
+by FILE-INFO-TYPE.
+If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
+"
+  (declare (ignore append-type))
+  (declare (type (or string null) dir) (type boolean full))
+  (%with-directory-entries (:result (dir-list))
+    :collect item))
+
+;; @@@ I'm sure this could use some speeding up.
+;; @@@ Try to keep this and read-directory exactly like the ones in
+;; unix/filesytem.lisp so that we can get rid of this duplication.
+(defun map-directory (function
+		      &key dir append-type full omit-hidden collect recursive)
+  "Call FUNCTION with the file name of each file in directory DIR. DIR defaults ~
+to the current directory. If APPEND-TYPE is true, append a character to the end ~
+of the name indicating what type of file it is. Indicators are:
+  / : directory
+  @ : symbolic link
+  | : FIFO (named pipe)
+  = : Socket
+  > : Doors
+If FULL is true, call FUNCTION with a list of dir-entry structures instead of ~
+file name strings. Some dir-entry-type keywords are:
+  :unknown :pipe :character-device :directory :block-device :regular :link
+  :socket :whiteout :undefined
+Be aware that DIR-ENTRY-TYPE type can't really be relied on, since many
+systems return :UNKNOWN or something, when the actual type can be determined
+by FILE-INFO-TYPE.
+If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
+If COLLECT is true, return the results of calling FUNCTION as a list.
+If RECURSIVE is true, descend breadth-first into sub-directories.
+"
+  ;; (declare (ignore append-type))
+  (declare (type (or string null) dir) (type boolean full collect))
+  (labels ((join-dir (dir name)
+	     "Tack the directory on the front."
+	     (concatenate 'string dir *directory-separator-string* name))
+	   (thingy (item real-name)
+	     "Return an appropriately fixed dir-entry or joined name."
+	     (or (and dir
+		      (if full
+			  (and (setf (dir-entry-name item)
+				     (join-dir dir real-name))
+			       item)
+			  (join-dir dir real-name)))
+		 item))
+	   (recursive-call (dir)
+	     (map-directory function :dir dir
+			    :append-type append-type
+			    :full full
+			    :omit-hidden omit-hidden
+			    :collect collect
+			    :recursive t)))
+    (if collect
+	;; Collect results breadth first.
+	(let (sub-dirs files)
+	  (setf files
+		(%with-directory-entries (:result (dir-list))
+		  :collect (funcall function (thingy item real-name))
+		  :when (and recursive is-dir
+			     (not (superfluous-file-name-p real-name))
+			     (not (and omit-hidden
+				       (hidden-file-name-p real-name))))
+		  :do
+		  (push (or (and dir (join-dir dir real-name))
+			    real-name) sub-dirs)))
+	  (if sub-dirs
+	      ;; @@@ Use of flatten here is probably inappropriate.
+	      (flatten (nconc files (mapcar #'recursive-call sub-dirs)))
+	      files))
+	;; Don't collect, just funcall and count.
+	(let ((count 0) sub-dirs)
+	  (%with-directory-entries (:result (count))
+	    :do
+	    (funcall function (thingy item real-name))
+	    (incf count)
+	    :when (and recursive is-dir
+		       (not (superfluous-file-name-p real-name))
+		       (not (and omit-hidden (hidden-file-name-p real-name))))
+	    :do
+	    (push (or (and dir (join-dir dir real-name))
+		      real-name) sub-dirs))
+	  (+ count (reduce #'+ (mapcar #'recursive-call sub-dirs)))))))
 
 (defcfun ("SetCurrentDirectoryW" %set-current-directory)
     BOOL
@@ -1543,9 +1714,192 @@ available."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; System administration
 
+(defcfun ("FindFirstVolumeW" %find-first-volume)
+    HANDLE
+  (volume-name LPTSTR)			; out
+  (buffer-length DWORD))		; in
+
+(defcfun ("FindNextVolumeW" %find-next-volume)
+    BOOL
+  (find-volume HANDLE)			; in
+  (volume-name LPTSTR)			; out
+  (buffer-length DWORD))		; int
+
+(defcfun ("FindVolumeClose" %find-volume-close)
+    BOOL
+  (find-volume HANDLE)) ; in
+
+(defcfun ("FindFirstVolumeMountPointW" %find-first-volume-mount-point)
+    HANDLE
+  (root-path-name LPTSTR)		; in
+  (volume-mount-point LPTSTR)		; out
+  (buffer-length DWORD))		; in
+
+(defcfun ("FindNextVolumeMountPointW" %find-next-volume-mount-point)
+    BOOL
+  (handle HANDLE)			; in
+  (volume-mount-point LPTSTR)		; out
+  (buffer-length DWORD))		; in
+
+(defcfun ("FindVolumeMountPointClose" %find-volume-mount-point-close)
+    BOOL
+  (handle HANDLE)) ; in
+
+(defcfun ("GetVolumeNameForVolumeMountPointW"
+	  %get-volume-name-for-volume-mount-point)
+    BOOL
+  (volume-mount-point LPCTSTR) 		; in
+  (volume-name LPTSTR)  		; out
+  (buffer-length DWORD))   		; in
+
+(defcfun ("GetLogicalDrives" %get-logical-drives)
+    DWORD)
+
+(defcfun ("GetVolumeInformationW" %get-volume-information)
+    BOOL
+  (root-path-name           LPCTSTR)	; in opt
+  (volume-name-buffer       LPTSTR)	; out opt
+  (volume-name-size         DWORD)	; in
+  (volume-serial-number     LPDWORD)	; out opt
+  (maximum-component-length LPDWORD)	; out opt
+  (file-system-flags        LPDWORD)	; out opt
+  (file-system-name-buffer  LPTSTR)	; out opt
+  (file-system-name-size    DWORD)	; in
+  )
+
+(defcfun ("GetDiskFreeSpaceExW" %get-disk-free-space-ex)
+    BOOL
+  (directory-name LPCTSTR)		        ; in opt
+  (free-bytes-available PULARGE_INTEGER)        ; out opt
+  (total-number-of-bytes PULARGE_INTEGER)       ; out opt
+  (total-number-of-free-bytes PULARGE_INTEGER)) ; out opt
+
+(defcfun ("QueryDosDeviceW" %query-dos-device)
+    DWORD
+  (device-name LPCTSTR)			; in opt
+  (target-path LPTSTR)			; out
+  (ch-max DWORD))			; in
+
+(defstruct volume-info
+  device-name
+  name
+  mount-point
+  serial-number
+  component-len
+  flags
+  type
+  total-bytes
+  bytes-free
+  bytes-available)
+
+(defun get-mount-points ()
+  (with-wide-string (drive "X:\\")
+    (with-foreign-object (volume-name 'WCHAR +MAX-PATH+)
+      (let ((drives (%get-logical-drives)))
+	(loop
+	   :for i :from 0
+	   :for c :from (char-code #\A) :to (char-code #\Z)
+	   :if (plusp (logand drives (ash 1 i)))
+	   :do
+	   (set-wchar drive 0 (code-char c))
+	   (%get-volume-name-for-volume-mount-point drive volume-name +MAX-PATH+)
+	   :and
+	   :collect (list (code-char c) (wide-string-to-lisp volume-name)))))))
+
+(defun get-volume-mount-points (root-path)
+  (let (handle result err)
+    (with-foreign-object (mount-point 'WCHAR +MAX-PATH+)
+      (setf handle (%find-first-volume-mount-point
+		    root-path mount-point +MAX-PATH+))
+      (when (= (pointer-address handle) +INVALID-HANDLE-VALUE+)
+	(error 'windows-error :error-code (get-last-error)
+	       :format-control "get-volume-mount-points" :format-arguments nil))
+      (push (wide-string-to-lisp mount-point) result)
+      (loop
+	 :while (not (zerop (%find-next-volume-mount-point
+			     handle mount-point +MAX-PATH+)))
+	 :do
+	 (push (wide-string-to-lisp mount-point) result))
+      (setf err (get-last-error))
+      (syscall (%find-volume-mount-point-close handle))
+      (when (/= +ERROR-NO-MORE-FILES+ err)
+	(error 'windows-error :error-code (get-last-error)
+	       :format-control "get-volume-mount-points" :format-arguments nil)))
+    (setf result (nreverse result))
+    result))
+
+(defun get-volume-info (root-path)
+  (with-foreign-objects ((volume-name 'WCHAR +MAX-PATH+)
+			 (serial-number 'DWORD)
+			 (component-len 'DWORD)
+			 (flags 'DWORD)
+			 (system-name 'WCHAR +MAX-PATH+)
+			 (total 'ULARGE_INTEGER)
+			 (free 'ULARGE_INTEGER)
+			 (avail 'ULARGE_INTEGER)
+			 ;; (dos-dev 'WCHAR +MAX-PATH+)
+			 )
+    (syscall (%get-volume-information root-path
+				      volume-name +MAX-PATH+
+				      serial-number
+				      component-len
+				      flags
+				      system-name +MAX-PATH+))
+    (syscall (%get-disk-free-space-ex root-path avail total free))
+    ;; (syscall (%query-dos-device root-path dos-dev +MAX-PATH+))
+    (make-volume-info
+     :device-name (wide-string-to-lisp root-path)
+     :name (wide-string-to-lisp volume-name)
+     ;; :mount-point (wide-string-to-lisp dos-dev)
+     ;; :mount-point (get-volume-mount-points root-path)
+     :serial-number (mem-ref serial-number 'DWORD)
+     :component-len (mem-ref component-len 'DWORD)
+     :flags (mem-ref flags 'DWORD)
+     :type (wide-string-to-lisp system-name)
+     :total-bytes (mem-ref total 'ULARGE_INTEGER)
+     :bytes-free (mem-ref free 'ULARGE_INTEGER)
+     :bytes-available (mem-ref avail 'ULARGE_INTEGER))))
+
+(defun %mounted-filesystems ()
+  "Return a list of filesystem info."
+  (let (handle result err vol-info mount-points)
+    (with-foreign-object (volume-name 'WCHAR +MAX-PATH+)
+      (setf handle (%find-first-volume volume-name +MAX-PATH+))
+      (when (= (pointer-address handle) +INVALID-HANDLE-VALUE+)
+	(error 'windows-error :error-code (get-last-error)
+	       :format-control "mounted-filesystems" :format-arguments nil))
+      (push (get-volume-info volume-name) result)
+      (setf mount-points (get-mount-points))
+      (loop :with letter
+	 :while (not (zerop (%find-next-volume handle volume-name +MAX-PATH+)))
+	 :do
+	 ;; (push (wide-string-to-lisp volume-name) result))
+	 (setf vol-info (get-volume-info volume-name)
+	       letter (find (volume-info-device-name vol-info) mount-points
+			    :key #'cadr :test #'equal)
+	       (volume-info-mount-point vol-info)
+	       (and letter (s+ (car letter) ":\\")))
+	 (push vol-info result))
+      (setf err (get-last-error))
+      (syscall (%find-volume-close handle))
+      (when (/= +ERROR-NO-MORE-FILES+ err)
+	(error 'windows-error :error-code (get-last-error)
+	       :format-control "mounted-filesystems" :format-arguments nil)))
+    (setf result (nreverse result))
+    result))
+
 (defun mounted-filesystems ()
   "Return a list of filesystem info."
-  nil)
+  (loop :for f :in (%mounted-filesystems)
+     :collect
+     (make-filesystem-info
+      ;;:device-name     (volume-info-device-name	    f)
+      :device-name     (volume-info-name	    f)
+      :mount-point     (volume-info-mount-point	    f)
+      :type	       (volume-info-type	    f)
+      :total-bytes     (volume-info-total-bytes	    f)
+      :bytes-free      (volume-info-bytes-free	    f)
+      :bytes-available (volume-info-bytes-available f))))
 
 (defun mount-point-of-file (file)
   "Try to find the mount of FILE. This might not always be right."
