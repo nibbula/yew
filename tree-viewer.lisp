@@ -813,7 +813,8 @@ been encountered."
 	       (1- (tt-height)))
 	(if (>= left len)
 	    (tt-write-char #\newline)
-	    (tt-write-string (subseq line left (min len (+ left (tt-width)))))))
+	    (tt-write-string
+	     (subseq line left (min len (+ left (tt-width)))))))
       (when (eq node current)
 	(setf current-max-right (length line))))))
 
