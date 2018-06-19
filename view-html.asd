@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description   "View HTML as a tree, using the tree-browser."
     :depends-on (:dlib :dlib-misc :rl :tree-viewer :pick-list
-		 :plump :drakma :puri)
+		 :plump :puri #-windows :drakma)
     :components
     ((:file "view-html")))

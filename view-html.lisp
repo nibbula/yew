@@ -23,6 +23,10 @@
    ))
 (in-package :view-html)
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  #-windows (add-feature :use-drakma))
+
+#+use-drakma
 (defvar *user-agent* "Drakma"
   "User-agent for requests, defaulting not to spilling too much information.")
 
@@ -112,7 +116,9 @@
 	       (string
 		(or (let ((uri (puri:parse-uri file)))
 		      (and uri (member (puri:uri-scheme uri) '(:http :https))
-			   (drakma:http-request uri :user-agent *user-agent*)))
+			   #+use-drakma
+			   (drakma:http-request uri :user-agent *user-agent*)
+			   ))
 		    (pathname (nos:quote-filename file))))
 	       ((or pathname stream)
 		file)
