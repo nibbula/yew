@@ -997,6 +997,11 @@ bracketed read.")
 XTerm or something."
   (set-title tty title))
 
+(defmethod terminal-has-attribute ((tty terminal-ansi) attribute)
+  "Return true if the terminal can display the character attribute."
+  (case attribute
+    ((:standout :underline :bold :inverse :color) t)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; stream methods
 

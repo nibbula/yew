@@ -589,6 +589,12 @@
   "Set the title of a console window."
   (set-console-title title))
 
+(defmethod terminal-has-attribute ((tty terminal-ms) attribute)
+  "Return true if the terminal can display the character attribute."
+  (case attribute
+    ((:standout :bold :inverse :color) t)
+    (:underline nil)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Extra things:
 

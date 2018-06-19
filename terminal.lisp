@@ -73,6 +73,7 @@
    #:tt-width
    #:tt-height
    #:tt-title                     #:terminal-title
+   #:tt-has-attribute             #:terminal-has-attribute
    #:with-saved-cursor
    #:with-terminal-output-to-string
    #:with-style
@@ -367,6 +368,9 @@ or :CHAR for character at time with no echo."))
 (defgeneric (setf terminal-title) (title tt)
   (:documentation
    "Set the terminal title to TITLE, if it has a title."))
+
+(deftt has-attribute (attribute)
+  "True if the terminal can display the character attribute.")
 
 (defmacro with-saved-cursor ((tty) &body body)
   "Save the cursor position, evaluate the body forms, and restore the cursor

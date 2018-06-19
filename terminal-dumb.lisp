@@ -182,6 +182,10 @@ require terminal driver support."))
   "Set the title of a terminal window."
   (declare (ignore title tty)))
 
+(defmethod terminal-has-attribute ((tty terminal-dumb) attribute)
+  "Return true if the terminal can display the character attribute."
+  nil)
+
 (defun update-column-for-char (tty char)
   (with-slots (fake-column) tty
     (cond

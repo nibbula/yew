@@ -410,6 +410,15 @@ require terminal driver support."))
   "Set the title of a terminal window."
   (declare (ignore title tty)))
 
+(defmethod terminal-has-attribute ((tty terminal-curses) attribute)
+  "Return true if the terminal can display the character attribute."
+  (case attribute
+    (:standout   (tigetstr "rev"))	; not exactly right
+    (:underline  (tigetstr "smul"))
+    (:bold       (tigetstr "bold"))
+    (:inverse    (tigetstr "rev"))
+    (:color 	 (has-colors))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; stream methods
 
