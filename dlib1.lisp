@@ -1621,9 +1621,7 @@ works, return NIL."
   (read-line input-stream eof-error-p eof-value recursive-p)
   )
 
-;; This makes me feel like I'm sadly going to have to implement my own
-;; UTF8 stuff. (see wip/read-utf8-char.lisp)
-
+;; @@@ This is totally wrong.
 (defun resilient-read-line (&optional input-stream eof-error-p eof-value
 			    recursive-p)
   #+sbcl

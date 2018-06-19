@@ -350,12 +350,13 @@ read until we get an EOF."
 		  (i count)
 		  line last-line cur-line
 		  (lines '())
-		  (pos (or (file-position stream) 0)))
+		  (pos (or (and (not got-eof) (file-position stream)) 0)))
 	      (unwind-protect
 		   (loop
 		      :while (and (or (< n line-count) (zerop line-count))
 				  (setf line
-					(resilient-read-line stream nil nil)))
+					;;(resilient-read-line stream nil nil)))
+					(read-line stream nil nil)))
 		      :do
 		      (setf cur-line
 			    (make-line :number i
@@ -382,9 +383,13 @@ read until we get an EOF."
 		     (pager-lines *pager*) (nconc (pager-lines *pager*)
 						  (nreverse lines))
 		     count i)))))))
+      (end-of-file (c)
+	;; Be quiet about EOFs. Some systems seem to get them more than others.
+	(declare (ignore c))
+	(setf got-eof t))
       (stream-error (c)
 	(setf got-eof t)
-	(tmp-message "Got an eror ~a on the stream." c)))))
+	(tmp-message "Got an error: ~a on the stream." c)))))
 
 (defun stream-name (stream)
   (cond
