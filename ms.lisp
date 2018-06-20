@@ -91,6 +91,7 @@
    #:read-terminal-char
    #:read-terminal-byte
    #:read-until
+   #:listen-for-terminal
    #:write-terminal-char
    #:write-terminal-string
    #:slurp-terminal
@@ -147,6 +148,8 @@
 ;; Constants widely used
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconstant +TRUE+ 1)
+  (defconstant +FALSE+ 0)
   (defconstant +MAX-PATH+ 260)
 
   (defconstant +ERROR-FILE-NOT-FOUND+ 2)
@@ -884,6 +887,15 @@ versions of the keywords used in Lisp open.
                          :if-does-not-exist ,if-does-not-exist)
      ,@body))
   
+(defmacro as-32bit-unsigned (n) `(logand (1- (expt 2 32)) (lognot (1- (- ,n)))))
+(defconstant +STD-INPUT-HANDLE+  (as-32bit-unsigned -10)) ; CONIN$
+(defconstant +STD-OUTPUT-HANDLE+ (as-32bit-unsigned -11)) ; CONOUT$
+(defconstant +STD-ERROR-HANDLE+  (as-32bit-unsigned -12)) ; CONOUT$
+
+(defcfun ("GetStdHandle" %get-std-handle :convention :stdcall)
+    HANDLE
+   (nStdHandle DWORD)) ; in
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
 
@@ -1560,11 +1572,11 @@ BOOL WINAPI GetProcessTimes(
 around the time of the call."
   nil)
 
-(defconstant +WAIT-OBJECT-0+     0)
-(defconstant +WAIT-ABANDONED-0+  #x00000080)
-
-(defconstant +WAIT-TIMEOUT+      #x00000102)
-(defconstant +WAIT-FAILED+       #xFFFFFFFF)
+(defconstant +WAIT-OBJECT-0+       0)
+(defconstant +WAIT-ABANDONED-0+    #x00000080)
+(defconstant +WAIT-IO-COMPLETION+  #x000000C0)
+(defconstant +WAIT-TIMEOUT+        #x00000102)
+(defconstant +WAIT-FAILED+         #xFFFFFFFF)
 
 (defcfun ("WaitForMultipleObjects" %wait-for-multiple-objects)
     DWORD
@@ -1574,7 +1586,7 @@ around the time of the call."
   (milliseconds DWORD))
 
 (defcfun ("MsgWaitForMultipleObjects" %msg-wait-for-multiple-objects)
-    DWORD 
+    DWORD
   (count DWORD)
   (handles (:pointer HANDLE))
   (wait-all BOOL)
@@ -1582,6 +1594,39 @@ around the time of the call."
   (wake-mask DWORD))
 
 (defconstant +STILL-ACTIVE+ 259)
+
+(defcfun ("MsgWaitForMultipleObjectsEx" %msg-wait-for-multiple-objects-ex)
+    DWORD
+  (count	  DWORD)		; in
+  (handles	  (:pointer HANDLE))	; in
+  (milliseconds   DWORD)		; in
+  (wake-mask	  DWORD)		; in
+  (flags	  DWORD))		; in
+
+(defconstant +QS-ALLEVENTS+	 #x04BF
+  "An input, WM_TIMER, WM_PAINT, WM_HOTKEY, or posted message is in the queue.")
+(defconstant +QS-ALLINPUT+       #x04FF "Any message is in the queue.")
+(defconstant +QS-ALLPOSTMESSAGE+ #x0100 "A posted message is in the queue.")
+(defconstant +QS-HOTKEY+         #x0080 "A WM_HOTKEY message is in the queue.")
+(defconstant +QS-INPUT+          #x0407 "An input message is in the queue.")
+(defconstant +QS-KEY+		 #x0001 "A key message is queued.")
+(defconstant +QS-MOUSE+          #x0006
+  "A mouse move or button message is queued.")
+(defconstant +QS-MOUSEBUTTON+    #x0004 "A mouse button message is queued.")
+(defconstant +QS-MOUSEMOVE+      #x0002 "A mouse move message is queued.")
+(defconstant +QS-PAINT+          #x0020 "A WM_PAINT message is in the queue.")
+(defconstant +QS-POSTMESSAGE+    #x0008 "A posted message is in the queue.")
+(defconstant +QS-RAWINPUT+       #x0400 "A raw input message is in the queue.")
+(defconstant +QS-SENDMESSAGE+    #x0040
+  "A message sent by another thread or application is in the queue.")
+(defconstant +QS-TIMER+          #x0010 "A WM_TIMER message is in the queue.")
+
+(defconstant +MWMO-INPUTAVAILABLE+ #x0004
+  "Return if input exists for the queue.")
+(defconstant +MWMO-ALERTABLE+ #x0002
+  "Return if an APC has been queued to the thread.")
+(defconstant +MWMO-WAITALL+ #x0001
+  "Return when all handles are signaled and an input event has been received.")
 
 (defcfun ("GetExitCodeProcess" %get-exit-code-process)
     BOOL
@@ -1700,16 +1745,118 @@ so-called “universal” time. The second value is nanoseconds."
   "Set time in seconds and nanoseconds. Seconds are in so-called
 “universal” time."
   (declare (ignore seconds nanoseconds))
+  ;; @@@
   nil)
+
+(defun seconds-to-100ns (seconds)
+  "Return an integer number of 100ns time units corresponding to SECONDS."
+  (truncate (* seconds (expt 10 7))))
+
+(defcfun ("CreateWaitableTimerW" %create-waitable-timer)
+    HANDLE
+  (timer-attributes LPSECURITY_ATTRIBUTES) ; in opt
+  (manual-reset BOOL)			   ; in
+  (timer-name LPCTSTR))			   ; in opt
+
+(defcfun ("CancelWaitableTimer" %cancel-waitable-timer)
+    BOOL
+ (timer HANDLE))
+
+;; completion-routine is really a PTIMERAPCROUTINE
+(defcfun ("SetWaitableTimer" %set-waitable-timer)
+    BOOL
+  (timer                     HANDLE)		  	; in
+  (due-time		     (:pointer LARGE_INTEGER))	; in
+  (period		     LONG)		  	; in
+  (completion-routine	     :pointer)			; in opt
+  (arg-to-completion-routine LPVOID)		  	; in opt
+  (resume		     BOOL))		  	; in
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; poll
 
-(defun listen-for (seconds &optional (fd 0))
+(defcfun ("WaitForMultipleObjectsEx" %wait-for-multiple-objects-ex)
+    DWORD
+  (count	      DWORD) 		  ; in
+  (handles	      (:pointer HANDLE))  ; in
+  (wait-all	      BOOL)		  ; in
+  (milliseconds	      DWORD) 		  ; in
+  (alertable	      BOOL))  		  ; in
+
+(defcfun ("WaitForSingleObject" %wait-for-single-object)
+    DWORD
+  (handle HANDLE)
+  (milliseconds DWORD))
+
+(defvar *timers* nil
+  "List of timers to use for waiting around.")
+
+(defun get-timer ()
+  "Get a reusable timer from a pool."
+  ;; @@@ this needs to be synchronized with other threads
+  (when (not *timers*)
+    (with-wide-string (name (string (gensym "timer")))
+      (push (%create-waitable-timer (null-pointer) +FALSE+ name) *timers*)))
+  (pop *timers*))
+
+(defun replace-timer (timer)
+  "Put the reusable timer back in the pool."
+  ;; @@@ this needs to be synchronized with other threads
+  (push timer *timers*))
+
+(defmacro with-timer ((var) &body body)
+  "Evaluate the body with VAR set to a reusable timer."
+  `(let (,var)
+     (unwind-protect
+	  (progn
+	    (setf ,var (get-timer))
+	    ,@body)
+       (when ,var (replace-timer ,var)))))
+
+(defun listen-for (seconds handle)
   "Listen on the OS file descriptor for at most N seconds or until input is ~
-available."
-  (declare (ignore seconds fd))
-  nil)
+available. If handle isn't provided it tries to use STD-INPUT-HANDLE."
+  (let ((milliseconds
+	 (if (zerop seconds) 0 +INFINITE+)
+	 ;; (ceiling (* seconds 1000))
+	  )
+	(result 0)
+	(count 2))
+    (with-timer (timer)
+      (with-foreign-objects ((handles 'HANDLE count)
+			     (due-time 'LARGE_INTEGER))
+	(setf
+	 (mem-aref due-time 'LARGE_INTEGER) (- (seconds-to-100ns seconds))
+	 (mem-aref handles 'HANDLE 0) handle
+	 (mem-aref handles 'HANDLE 1) timer)
+	(%set-waitable-timer timer
+			     due-time
+			     0 (null-pointer) (null-pointer)
+			     +FALSE+)
+	(setf result (%wait-for-multiple-objects
+		      count handles +FALSE+ milliseconds))
+	;; (%msg-wait-for-multiple-objects
+	;;  count handles
+	;;  +FALSE+
+	;;  milliseconds
+	;;  (logior +QS-KEY+ +QS-TIMER+))
+	(cond
+	  ;; None of this really matters.
+	  ;; ((and (>= result +WAIT-OBJECT-0+)
+	  ;; 	(<= result (+ +WAIT-OBJECT-0+ (1- count))))
+	  ;;  (dbugf :ms "listen-for wait-object = ~s~%"
+	  ;; 	   (- result +WAIT-OBJECT-0+)))
+	  ;; ((and (>= result +WAIT-ABANDONED-0+)
+	  ;; 	(<= result (+ +WAIT-ABANDONED-0+ (1- count))))
+	  ;;  (dbugf :ms "listen-for abandoned = ~s~%"
+	  ;; 	   (- result +WAIT-ABANDONED-0+)))
+	  ;; ((= result +WAIT-IO-COMPLETION+)
+	  ;;  (dbugf :ms "listen-for IO completion = #x~x~%" result))
+	  ;; ((= result +WAIT-TIMEOUT+)
+	  ;;  (dbugf :ms "listen-for IO timeout = #x~x~%" result))
+	  ((= result +WAIT-FAILED+)
+	   (error 'windows-error :error-code (get-last-error)
+		  :format-control "listen-for:")))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; System administration
@@ -1926,15 +2073,6 @@ available."
   buffer-height
   not-console
   read-ahead)
-
-(defmacro as-32bit-unsigned (n) `(logand (1- (expt 2 32)) (lognot (1- (- ,n)))))
-(defconstant +STD-INPUT-HANDLE+  (as-32bit-unsigned -10)) ; CONIN$
-(defconstant +STD-OUTPUT-HANDLE+ (as-32bit-unsigned -11)) ; CONOUT$
-(defconstant +STD-ERROR-HANDLE+  (as-32bit-unsigned -12)) ; CONOUT$
-
-(defcfun ("GetStdHandle" %get-std-handle :convention :stdcall)
-    HANDLE
-   (nStdHandle DWORD)) ; in
 
 (defcstruct (COORD :class foreign-coord)
   (x MS-SHORT)
@@ -2347,6 +2485,17 @@ available."
    (length DWORD)	      		; in
    (number-of-events-read LPDWORD))	; out
 
+(defcfun ("PeekConsoleInputW" %peek-console-input)
+    BOOL
+  (console-input HANDLE)		; in
+  (buffer PINPUT_RECORD)		; out
+  (length DWORD)			; in
+  (number-of-events-read LPDWORD))	; out
+
+(defcfun ("FlushConsoleInputBuffer" %flush-console-input-buffer)
+    BOOL
+  (console-input HANDLE))
+
 (defconstant +ENABLE-PROCESSED-INPUT+        #x0001)
 (defconstant +ENABLE-LINE-INPUT+             #x0002)
 (defconstant +ENABLE-ECHO-INPUT+             #x0004)
@@ -2400,7 +2549,6 @@ descriptor FD."
 
 (defvar *default-console-device-name* "CON" ;; @@@ or should it be CONIN$ ?
   "Name of the default console device.")
-
 
 (defun open-real-console (direction)
   (flet ((open-it (name)
@@ -2473,6 +2621,8 @@ descriptor FD."
 ;; don't understand when or why the event which we get from %read-console-input
 ;; is supposed to be a pointer or not. If I ever figure it out, these can
 ;; go away.
+
+#|
 (defmacro with-key-event ((&rest slots) event &body body)
   (with-unique-names (key-event)
     `(etypecase event
@@ -2484,7 +2634,13 @@ descriptor FD."
 	(let ((,key-event (getf ,event 'key-event)))
 	  (let ,(loop :for s :in slots
 		   :collect `(,s (getf ,key-event ',s)))
-	    ,@body))))))
+	    ,@body)))
+       )))
+|#
+(defmacro with-key-event ((&rest slots) event &body body)
+  `(with-foreign-slots ((,@slots) ,event
+			(:struct foreign-key-event))
+     ,@body))
 
 ;; @@@ see above with-key-event comment
 (defmacro uchar-unicode (uchar)
@@ -2519,7 +2675,7 @@ descriptor FD."
     (with-slots (in-handle width height read-ahead) terminal
       (when read-ahead
 	(return-from read-console-input (pop read-ahead)))
-      (with-foreign-objects ((buf '(:pointer (:struct foreign-input-record)))
+      (with-foreign-objects ((buf '(:struct foreign-input-record))
 			     (events-read 'DWORD))
 	(loop :do
 	   (setf result nil)
@@ -2531,7 +2687,7 @@ descriptor FD."
 	     (dbugf :ms "event-type ~s~%" event-type)
 	     (dbugf :ms "event ~s~%" event)
 	     (cond
-	       ((equal event-type +KEY-EVENT+)
+	       ((= event-type +KEY-EVENT+)
 		(with-key-event (key-down uchar virtual-key-code
 				 virtual-scan-code control-key-state) event
 		  (dbugf :ms "key-down ~a uchar = ~a~%" key-down uchar)
@@ -2569,7 +2725,7 @@ descriptor FD."
 			       ;; (1+ (- c (char-code #\A)))
 			       c)))
 		      ;; Virtual key?
-		      ((plusp virtual-key-code)
+		      ((and (plusp virtual-key-code) (zerop c))
 		       (dbugf :ms "--VIRT--~%")
 		       (setf result (or (compatible-key-symbol
 					 virtual-key-code)
@@ -2597,7 +2753,7 @@ descriptor FD."
 			    (setf result (or (compatible-key-symbol vkey)
 					     c)))))
 		       (dbugf :ms "scan code = ~s~%" virtual-scan-code))))
-		  (dbugf :ms "result = ~s~%" c)))
+		  (dbugf :ms "result = ~s~%" result)))
 	       ((equal event-type +WINDOW-BUFFER-SIZE-EVENT+)
 		(with-foreign-slots ((size) event
 				     (:struct foreign-buffer-size-event))
@@ -2613,6 +2769,122 @@ descriptor FD."
 	   :while (not result))))
     result))
 
+(defun console-event-type-matches-p (event-buf types)
+  "More specific event matching. EVENT is a foreign-input-record. Types is a
+list of keywords.
+  :all           - matches any event
+  :key           - any key
+  :key-char-up   - any key that generates a character and is up
+  :key-char-down - any key that generates a character and is down
+  :key-char      - any key that generates a character
+  :key-up        - any key up
+  :key-down      - any key down
+  :mouse
+  :size
+  :menu
+  :focus
+"
+  (let ((type (foreign-slot-value
+	       event-buf '(:struct foreign-input-record) 'event-type)))
+    (cond
+      ((member :all types) t)
+      (t (cond
+	   ((= type +KEY-EVENT+)
+	    (or (member :key types)
+		(with-key-event (key-down uchar
+				 ;; virtual-key-code
+				 ;; virtual-scan-code
+				 control-key-state)
+		     (foreign-slot-value event-buf
+					 '(:struct foreign-input-record)
+					 'event)
+		  (let ((c (uchar-unicode uchar)))
+		    (or
+		     (and (and (not (zerop c)) (= key-down +TRUE+))
+			  (member :key-char-down types))
+		     (and (and (not (zerop c)) (= key-down +FALSE+))
+			  (member :key-char-up types))
+		     (and (not (zerop c))
+			  (member :key-char types))
+		     ;; (and (not (zerop control-key-state))
+		     ;; 	(member :key-modifier types))
+		     (and (= key-down +TRUE+)
+			  (member :key-down types))
+		     (and (= key-down +FALSE+)
+			  (member :key-up types)))))))
+	   (t (member
+	       (case type
+		 (+MOUSE-EVENT+              :mouse)
+		 (+WINDOW-BUFFER-SIZE-EVENT+ :size)
+		 (+MENU-EVENT+               :menu)
+		 (+FOCUS-EVENT+              :focus))
+		types)))))))
+
+(defun flush-console-events (terminal &key types not-types)
+  "Get rid of some events from the terminal input queue."
+  (if not-types
+      (typecase not-types
+	(keyword (setf not-types (list not-types)))
+	(t (check-type not-types cons)))
+      (typecase types
+	(null (setf types '(:all)))
+	(keyword (setf types (list types)))
+	(t (check-type types cons))))
+  ;;(dbugf :zzz "~s ~s~%" types not-types)
+  (with-slots (in-handle width height read-ahead) terminal
+    (with-foreign-objects ((buf '(:struct foreign-input-record))
+			   (events-read 'DWORD))
+      (loop :with event-count
+	 :do
+	 (syscall (%peek-console-input in-handle buf 1 events-read))
+	 (setf event-count (mem-aref events-read 'DWORD))
+	 :while (and (not (zerop event-count))
+		     (if not-types
+			 (not (console-event-type-matches-p buf not-types))
+			 (console-event-type-matches-p buf types)))
+	 :do
+	 (syscall (%read-console-input in-handle buf 1 events-read))
+	 (with-foreign-slots ((event-type event) buf
+			      (:struct foreign-input-record))
+	   (when (equal event-type +WINDOW-BUFFER-SIZE-EVENT+)
+	     (with-foreign-slots ((size) event
+				  (:struct foreign-buffer-size-event))
+	       (setf width (foreign-slot-value size '(:struct COORD) 'x)
+		     height (foreign-slot-value size '(:struct COORD) 'y)))))))))
+
+(defconstant +oversize-peek-buf+ 200 "This is horrible.")
+(defvar *peek-buf* nil "Buffer for peeking.")
+
+(defun event-pending (terminal &key types not-types)
+  "Return true if the events are pending in the terminal input queue."
+  (if not-types
+      (typecase not-types
+	(keyword (setf not-types (list not-types)))
+	(t (check-type not-types cons)))
+      (typecase types
+	(null (setf types '(:all)))
+	(keyword (setf types (list types)))
+	(t (check-type types cons))))
+
+  (when (not *peek-buf*)
+    (setf *peek-buf*
+	  (foreign-alloc '(:struct foreign-input-record)
+			 :count +oversize-peek-buf+)))
+  (with-slots (in-handle width height read-ahead) terminal
+    (with-foreign-objects ((events-read 'DWORD))
+      (syscall (%peek-console-input in-handle *peek-buf* +oversize-peek-buf+
+				    events-read))
+      (dbugf :zzz "pending ~s~%" (mem-aref events-read 'DWORD))
+      (loop :with e
+	 :for i :from 0 :below (mem-aref events-read 'DWORD)
+	 :do
+	 (setf e (mem-aptr *peek-buf*
+			   '(:struct foreign-input-record) i))
+	 :when (if not-types
+		   (not (console-event-type-matches-p e not-types))
+		   (console-event-type-matches-p e types))
+	 :return t))))
+
 (defcfun ("ReadFile" %read-file)
     BOOL
    (file HANDLE)
@@ -2624,7 +2896,8 @@ descriptor FD."
 ;; Supposedly there's no way to tell if a handle was created with
 ;; FILE_FLAG_OVERLAPPED, but if you don't supply the OVERLAPPED to ReadFile,
 ;; it can mess up, generally by terminating prematurely if there is asynchronous
-;; IO. This seems like a deep design problem.
+;; IO. This seems like a deep design problem. OVERLAPPED is like non-blocking
+;; on Unix, which also suffers from design problems.
 ;; ....
 ;; but...
 ;; try a zero byte ReadFile with a NULL lpOverlapped. If it fails with
@@ -2679,6 +2952,24 @@ TTY is a file descriptor."
   ;; (loop :with c = (read-terminal-char tty)
   ;;    :while (char/= c stop-char))
      )
+
+(defun listen-for-terminal (seconds terminal)
+  "Wait for SECONDS or any input available on TERMINAL."
+  (with-foreign-objects ((f-start-time 'ULARGE_INTEGER)
+			 (time 'ULARGE_INTEGER))
+    (%get-system-time-as-file-time f-start-time)
+    (with-slots (in-handle) terminal
+      (flush-console-events terminal)
+      (let ((duration (seconds-to-100ns seconds))
+	    (start-time (mem-ref f-start-time 'ULARGE_INTEGER)))
+	(loop :do
+	   (listen-for seconds (ms-term-in-handle terminal))
+	   (%get-system-time-as-file-time time)
+	   :while (and
+		   (< (- (mem-ref time 'ULARGE_INTEGER) start-time) duration)
+		   (not (event-pending terminal :types '(:key-char-down))))
+	   :do
+	   (flush-console-events terminal :not-types '(:key-char-down)))))))
 
 (defcfun ("WriteConsoleW" %write-console)
     BOOL
