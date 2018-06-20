@@ -543,7 +543,7 @@
        (normalize-key key)))))
  
 (defmethod terminal-listen-for ((tty terminal-ms) seconds)
-  (listen-for seconds (terminal-file-descriptor tty)))
+  (listen-for-terminal seconds (terminal-file-descriptor tty)))
 
 (defmethod terminal-input-mode ((tty terminal-ms))
   (let ((mode (get-terminal-mode (terminal-file-descriptor tty))))
