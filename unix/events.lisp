@@ -345,7 +345,8 @@
     ))
 
 ;; It might be nice if we could do this on a Lisp stream.
-(defun listen-for (seconds &optional (fd 0))
+;;(defun listen-for (seconds &optional (fd 0))
+(defun listen-for (seconds fd)
   "Listen on the OS file descriptor for at most N seconds or until input is ~
 available."
 ;  (lame-poll `((,fd :read)) (truncate (* 1000 seconds)))
