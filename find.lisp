@@ -112,7 +112,7 @@
       (and (stringp user) (equal (os-unix:file-status-uid stat)
 				 (os-unix:user-id :name user))))
   #-unix
-  (declare (ignore stat perm))
+  (declare (ignore stat user))
   nil)
 
 (defun compare-group (stat group)
@@ -121,7 +121,7 @@
   (or (and (integerp group) (= (os-unix:file-status-gid stat) group))
       (and (stringp group) (equal (os-unix:file-status-gid stat) (group-id group))))
   #-unix
-  (declare (ignore stat perm))
+  (declare (ignore stat group))
   nil)
 
 (defun file-size (info)
@@ -522,44 +522,44 @@ arguments are the same."
 ;  "find [-lvrcp] [-d dir] [-n name] [-t type] [-p path] [-e expr] [-a action]"
 ;  (&key (dir ".") follow-links verbose regexp collect
 ;	name file-type path expr action print)
-  (("dir"           pathname :short-arg #\d :default "."
-    :help "Directory to start from.")
-   ("follow-links"  boolean  :short-arg #\l :default t
-    :help "True to follow symbolic links.")
-   ("verbose"       boolean  :short-arg #\v
-    :help "True to print directories as they are traversed.")
-   ("max-depth"	    integer  :long-arg "max-depth"
-    :help "Maximum depth of files to consider.")
-   ("min-depth"	    integer  :long-arg "min-depth"
-    :help "Minimum depth of files to consider.")
-   ("regexp"        boolean  :short-arg #\r :default t
-    :help "True if matching is done with regular expressions.")
-   ("collect"       boolean  :short-arg #\c :default (lish:accepts :sequence)
-    :help "Return the file name as a list.")
-   ("name"          string   :short-arg #\n
-    :help "Matches file name.")
-   ("file-type"     string   :short-arg #\t
-    :help "Matches file type as returned by “file”.")
-   ("path"          pathname :short-arg #\P
-    :help "Matches full path.")
-   ("size"          string   :long-arg "size"
-    :help "Matches size.")
-   ("type"          string   :long-arg "type"
-    :help "Matches type.")
-   ("time"          string   :long-arg "time"
-    :help "Matches time.")
-   ("perm"          string   :long-arg "perm"
-    :help "Matches permissions.")
-   ("group"         string   :long-arg "group"
-    :help "Matches group.")
-   ("user"          string   :long-arg "user"
-    :help "Matches user.")
-   ("expr"          string   :short-arg #\e
-    :help "Matches expression (NOT IMPLEMENTED YET)")
-   ("action"        string   :short-arg #\a :long-arg "do"
-    :help "Calls the function with the full path for every match.")
-   ("print"         boolean  :short-arg #\p :default t
-    :help "True to print the file name."))
+  ((dir		 pathname :short-arg #\d :default "."
+    :help        "Directory to start from.")
+   (follow-links boolean  :short-arg #\l :default t
+    :help        "True to follow symbolic links.")
+   (verbose	 boolean  :short-arg #\v
+    :help        "True to print directories as they are traversed.")
+   (max-depth	 integer  :long-arg "max-depth"
+    :help        "Maximum depth of files to consider.")
+   (min-depth	 integer  :long-arg "min-depth"
+    :help        "Minimum depth of files to consider.")
+   (regexp	 boolean  :short-arg #\r :default t
+    :help        "True if matching is done with regular expressions.")
+   (collect	 boolean  :short-arg #\c :default (lish:accepts :sequence)
+    :help        "Return the file name as a list.")
+   (name	 string   :short-arg #\n
+    :help        "Matches file name.")
+   (file-type	 string   :short-arg #\t
+    :help        "Matches file type as returned by “file”.")
+   (path	 pathname :short-arg #\P
+    :help        "Matches full path.")
+   (size	 string   :long-arg "size"
+    :help        "Matches size.")
+   (type	 string   :long-arg "type"
+    :help        "Matches type.")
+   (time	 string   :long-arg "time"
+    :help        "Matches time.")
+   (perm	 string   :long-arg "perm"
+    :help        "Matches permissions.")
+   (group	 string   :long-arg "group"
+    :help        "Matches group.")
+   (user	 string   :long-arg "user"
+    :help        "Matches user.")
+   (expr	 string   :short-arg #\e
+    :help        "Matches expression (NOT IMPLEMENTED YET)")
+   (action	 object   :short-arg #\a :long-arg "do"
+    :help        "Calls the function with the full path for every match.")
+   (print	 boolean  :short-arg #\p :default t
+    :help        "True to print the file name."))
   :keys-as all-keys
   "Find files recursively in subdirectories. Start in the directory given
 by --dir, which defaults to the current directory."
