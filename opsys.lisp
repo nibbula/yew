@@ -944,7 +944,7 @@ so-called “universal” time. The second value is nanoseconds.")
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; poll
 
-(defosfun listen-for (seconds &optional (fd 0))
+(defosfun listen-for (seconds fd)
   "Listen on the OS file descriptor for at most N seconds or until input is ~
 available.")
 
