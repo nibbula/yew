@@ -370,7 +370,7 @@ or :CHAR for character at time with no echo."))
    "Set the terminal title to TITLE, if it has a title."))
 
 (deftt has-attribute (attribute)
-  "True if the terminal can display the character attribute.")
+  "Return true if the terminal can display the character attribute.")
 
 (defmacro with-saved-cursor ((tty) &body body)
   "Save the cursor position, evaluate the body forms, and restore the cursor
