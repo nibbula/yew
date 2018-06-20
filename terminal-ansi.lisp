@@ -63,6 +63,11 @@ require terminal driver support."))
   ;; don't close the stream
   (values))
 
+(defmethod terminal-has-attribute ((tty terminal-ansi-stream) attribute)
+  "Return true if the terminal can display the character attribute."
+  (case attribute
+    ((:standout :underline :bold :inverse :color) t)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defclass terminal-ansi (terminal terminal-ansi-stream)
