@@ -403,6 +403,7 @@ by nos:read-directory."))
 				   (path-directory-name file))
 		   main-list)
 	     (setf (ls-state-mixed-bag *ls-state*) t))))
+
     ;; group all the individual files into a list
     (setf results
 	  (if main-list
@@ -413,7 +414,11 @@ by nos:read-directory."))
       (setf results
 	    (loop :for list :in results
 	       :collect
-	       (sort-files-by list sort-by (getf args :reverse)))))
+	       (progn
+		 (when (getf args :ignore-backups)
+		   (setf list (delete-if (_ (ends-with "~" _)) list
+					 :key #'file-item-name)))
+		 (sort-files-by list sort-by (getf args :reverse))))))
     results))
 
 (defun present-files (files args)
@@ -436,9 +441,9 @@ by nos:read-directory."))
 	 (print-it list)))))
 
 (defun list-files (&rest args &key files long hidden directory sort-by reverse
-				date-format collect show-size)
+				date-format collect show-size ignore-backups)
   (declare (ignorable files long hidden directory sort-by reverse date-format
-		      collect show-size))
+		      collect show-size ignore-backups))
   ;; It seems like we have to do our own defaulting.
   (when (not files)
     (setf (getf args :files) (list (current-directory))))
@@ -479,6 +484,7 @@ by nos:read-directory."))
    (by-extension boolean :short-arg #\X :help "Sort by file name extension.")
    (by-size boolean :short-arg #\S :help "Sort by size, largest first.")
    (by-time boolean :short-arg #\t :help "Sort by time, newest first.")
+   (ignore-backups boolean :short-arg #\B :help "Ignore files ending in ~")
    (help boolean :long-arg "help" :help "Show the help."))
   :keys-as args
   :accepts (sequence list)
