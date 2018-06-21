@@ -18,16 +18,14 @@
 (declaim
  (optimize (speed 0) (safety 3) (debug 3) (space 2) (compilation-speed 0)))
 
-#|
-(defun print-size (s)
-  (cond
-    ((> s (* 1024 1024))
-     (format nil "~3,2fGB" (coerce (/ s (* 1024 1024)) 'float)))
-    ((> s 1024)
-     (format nil "~3,2fMB" (coerce (/ s 1024) 'float)))
-    (t
-     (format nil "~dKB" s))))
-|#
+;; @@@ I really need to re-think this whole rigmarole.
+
+(defstruct short-process
+   pid
+   parent-pid
+   user
+   size
+   name)
 
 ;; (defun process-list ()
 ;;   "Returns a list of lists of process data, consisting of:
@@ -105,19 +103,13 @@
 
 |#
 
-(defstruct process
-  pid
-  user
-  parent-pid
-  virtual-size
-  args)
-
 (defvar *ps-args*
   #+solaris
   '("ps" ("-Ay" "-o" "user=" "-o" "pid=" "-o" "ppid=" "-o" "vsz=" "-o" "args="))
   #+(or darwin linux freebsd)
   '("ps" ("-A" "-o" "user=" "-o" "pid=" "-o" "ppid=" "-o" "vsz=" "-o" "args="))
-  )
+  #-(or solaris darwin linux freebsd)
+  nil)
 
 (defun process-list-from-ps ()
   "Returns a list of lists of process data, consisting of:
@@ -127,33 +119,63 @@ user, pid, ppid, size, command."
        :with l = nil :and z = nil
        :while (setf l (read-line s nil nil))
        :collect (progn (setf z (split-sequence " " l :omit-empty t))
-		       (make-process
-			:user (first z)
+		       (make-short-process
 			:pid (parse-integer (second z))
 			:parent-pid (parse-integer (third z))
+			:user (first z)
 			;; because ps is in KiB
-			:virtual-size (* (parse-integer (fourth z)) 1024)
-			:args (cddddr z))))))
+			:size (* (parse-integer (fourth z)) 1024)
+			:name (cddddr z))))))
 
 (defun list-processes (&key (show-kernel-processes t))
-  #+darwin
-  (declare (ignore show-kernel-processes))
-  (process-list-from-ps)
+  #+darwin (declare (ignore show-kernel-processes))
+  #+darwin (process-list-from-ps)
+#|  #+linux
+  ;; We don't have to use ps.
+  (loop :for p :in (if show-kernel-processes
+		       (system-process-list)
+		       (remove 0 (process-list)
+			       :key #'unix-process-text-size))
+     :collect
+     (make-short-process
+      :user (user-name (unix-process-user-id p))
+      :pid (unix-process-id p)
+      :parent-pid (unix-process-parent-id p)
+      ;; :virtual-size (/ (unix-process-text-size p) 1024) ;; because ps is in KiB
+      :size (unix-process-text-size p)
+      :name (if (zerop (length (unix-process-args p)))
+		(list (unix-process-command p))
+		(map 'list #'identity (unix-process-args p))))) |#
   #+linux
   ;; We don't have to use ps.
   (loop :for p :in (if show-kernel-processes
-		       (process-list)
-		       (remove 0 (process-list) :key #'nos:os-process-text-size))
+		       (system-process-list)
+		       (remove 0 (system-process-list)
+			       :key #'unix-process-text-size))
      :collect
-     (make-process
-      :user (user-name (os-process-user-id p))
-      :pid (os-process-id p)
+     (make-short-process
+      :user (user-name (unix-process-user-id p))
+      :pid (unix-process-id p)
+      :parent-pid (unix-process-parent-id p)
+      ;; :virtual-size (/ (unix-process-text-size p) 1024) ;; because ps is in KiB
+      :size (unix-process-text-size p)
+      :name (if (zerop (length (unix-process-args p)))
+		(list (unix-process-command p))
+		(map 'list #'identity (unix-process-args p)))))
+  #+windows (declare (ignore show-kernel-processes))
+  #+windows
+  ;; (loop :for p :in (if show-kernel-processes
+  ;; 		       (process-list)
+  ;; 		       (remove 0 (process-list)
+  ;; 			       :key #'nos:os-process-text-size))
+  (loop :for p :in (process-list)
+     :collect
+     (make-short-process
+      :user       (os-process-user p)
+      :pid        (os-process-id p)
       :parent-pid (os-process-parent-id p)
-      ;; :virtual-size (/ (os-process-text-size p) 1024) ;; because ps is in KiB
-      :virtual-size (os-process-text-size p)
-      :args (if (zerop (length (os-process-args p)))
-		(list (os-process-command p))
-		(map 'list #'identity (os-process-args p))))))
+      :size       (os-process-size p)
+      :name       (os-process-name p))))
 
 (defun ps-print-size (n)
   "Print the size in our prefered style."
@@ -202,7 +224,8 @@ user, pid, ppid, size, command."
   (let (tree)
     (loop :for p :in proc-list :do
        ;; (setf tree (add-node (third p) (second p) tree)))
-       (setf tree (add-node (process-parent-pid p) (process-pid p) tree)))
+       (setf tree (add-node (short-process-parent-pid p)
+			    (short-process-pid p) tree)))
     tree))
 
 (defun tree-print-proc (p level prefix)
@@ -213,9 +236,9 @@ user, pid, ppid, size, command."
     (format t "~d~15t~6d ~8a ~8@a ~va~{~a ~}~%"
 	    ;; (second p) (third p) (first p) (ps-print-size (fourth p))
 	    ;; level "" (fifth p))))
-	    (process-pid p) (process-parent-pid p) (process-user p)
-	    (ps-print-size (process-virtual-size p))
-	    level "" (process-args p))))
+	    (short-process-pid p) (short-process-parent-pid p)
+	    (short-process-user p) (ps-print-size (short-process-size p))
+	    level "" (short-process-name p))))
 
 (defun print-tree (tree plist &key (level 0) prefix)
   (when tree
@@ -267,7 +290,7 @@ user, pid, ppid, size, command."
 (defun ps-tree ()
   (format t "~6d ~8a ~8@a ~{~a ~}~%" "PID" "User" "Size" '("Command"))
   (let* ((plist (sort-muffled (copy-list (list-processes)) #'<
-			      :key #'process-pid))
+			      :key #'short-process-pid))
 	 (tree (make-tree plist)))
     (print-tree tree plist)))
 
@@ -285,7 +308,7 @@ user, pid, ppid, size, command."
        		(nos:os-process-id (tree-viewer:node-object object))))
       (let ((p (tree-viewer:node-object object)))
 	(format stream "~d ~a" (nos:os-process-id p)
-		(nos:os-process-command p))))
+		(nos:os-process-name p))))
   object)
 
 ;; (defmethod tb:display-node ((node ps-node) level)
@@ -331,51 +354,109 @@ user, pid, ppid, size, command."
 	   :collect (list
 		     (os-process-id p)
 		     (os-process-parent-id p)
-		     (os-process-percent-cpu p)
-		     (os-process-resident-size p)
-		     (os-process-text-size p)
-		     (os-process-command p)))
-	:column-names '("PID" "PPID" "CPU" "Size" "T Size" "Command"))
+		     ;;(os-process-percent-cpu p)
+		     ;;(os-process-resident-size p)
+		     ;;(os-process-text-size p)
+		     (os-process-size p)
+		     ;;(os-process-command p)
+		     (os-process-name p)
+		     ))
+	;;:column-names '("PID" "PPID" "CPU" "Size" "T Size" "Command"))
+	:column-names '("PID" "PPID" "Size" "Command"))
        :trailing-spaces nil)))
   (values))
 
-(defun ps (&key matching show-kernel-processes (print t) user)
+(defun ps-short (&key matching show-kernel-processes (print t) user)
   "Process status: Reformat the output of the \"ps\" command."
   (with-grout ()
     (let* ((proc-list (sort-muffled
 		       (copy-list
 			(list-processes
 			 :show-kernel-processes show-kernel-processes))
-		       ;; #'> :key #'fourth))
-		        #'> :key #'process-virtual-size))
+		       #'> :key #'short-process-size))
 	   (matching-num (or (and (integerp matching) matching)
 			     (ignore-errors (parse-integer matching))))
 	   (out-list
 	    (if matching
 		(loop :for p :in proc-list
 		   :if (or (and matching-num
-				(= matching-num (process-pid p)))
+				(= matching-num (short-process-pid p)))
 			   (and (stringp matching)
 				(some
 				 (_ (search matching _ :test #'equalp))
-				 (append (list (process-user p))
-					 (process-args p)))))
-		   :collect (list (process-user p) (process-pid p)
-				  (ps-print-size (process-virtual-size p))
-				  (format nil "~{~a ~}" (process-args p))))
+				 (append (list (short-process-user p))
+					 (short-process-name p)))))
+		   :collect (list (short-process-user p) (short-process-pid p)
+				  (ps-print-size (short-process-size p))
+				  (short-process-name p)))
 		(loop :for p :in proc-list
-		   :collect (list (process-user p) (process-pid p)
-				  (ps-print-size (process-virtual-size p))
-				  (format nil "~{~a ~}" (process-args p))))))
+		   :collect (list (short-process-user p) (short-process-pid p)
+				  (ps-print-size (short-process-size p))
+				  (short-process-name p)))))
 	   table)
       (when user
-	(setf out-list (delete-if (_ (not (equalp (process-user _) user)))
+	(setf out-list (delete-if (_ (not (equalp (short-process-user _) user)))
 				  out-list)))
       (setf table (make-table-from
 		   out-list
 		   :column-names '("User" "PID" ("Size" :right) "Command")))
       (when print
 	(grout-print-table table :trailing-spaces nil))
+      table)))
+
+(defun ps-long (&key matching show-kernel-processes (print t) user)
+  "Process status: Reformat the output of the \"ps\" command."
+  (declare (ignore matching show-kernel-processes user))
+  (with-grout ()
+    (let* ((proc-list (system-process-list))
+	   table)
+      (setf table (make-table-from proc-list))
+      (when print
+	;; @@@ make a workaround for printing the derp-time on windows
+	;; The print-object methood should do something different based
+	;; on a dynamic variable. Or it would be nice if there was a way
+	;; to do it with the table renderer?
+	;;(make-method)
+	;;(add-method #'print-object (derp-time))
+	;;(remove-method (find-method ))
+	#+windows ;; or how about this bullcrap?
+	(progn
+	  (macrolet ((fix-time (x)
+		       `(cond
+			  ((not (,x p)) (setf (,x p) ""))
+			  ((integerp (,x p))
+			   (setf (,x p)
+				 (format-date
+				  "~2,'0d:~2,'0d:~2,'0d"
+				  (:hrs :min :sec)
+				  :time (truncate (,x p) (expt 10 7))))))))
+	    (loop :for p :in proc-list :do
+	       (fix-time wos::ms-process-creation-time)
+	       (fix-time wos::ms-process-exit-time)
+	       (fix-time wos::ms-process-kernel-time)
+	       (fix-time wos::ms-process-user-time)))
+	  (loop
+	     :for col :in (table:table-columns table)
+	     :for name :in '(("PID" :right)
+			     ("PPID" :right)
+			     ("Thread" :right)
+			     ("Priority" :right)
+			     "Create"
+			     "Exit"
+			     "Kernel"
+			     "User"
+			     ("GUI" :right)
+			     ("Handles" :right)
+			     ("Max WS" :right)
+			     ("Min WS" :right)
+			     "Name"
+			     "File")
+	     ;; :for type :in '(number number number number string string
+	     ;; 		     string string number number number number
+	     ;; 		     string string)
+	     :do (setf (table:column-name col) name)))
+	(grout-print-table
+	 table :trailing-spaces nil :long-titles t))
       table)))
 
 (defun user-name-list ()
@@ -393,11 +474,18 @@ user, pid, ppid, size, command."
   ((matching string :help "Only show processes matching this.")
    (show-kernel-processes boolean :short-arg #\k :default nil
     :help "True to show kernel processes.")
-   (user user :short-arg #\u
-    :help "User to show processes for."))
+   (user user :short-arg #\u :help "User to show processes for.")
+   ;; (sort-by choice :short-arg #\s :default "size" :help "Field to sort by."
+   ;; 	    #| :choice-func #'process-columns |# )
+   (long boolean :short-arg #\l :help "True to show the long output."))
   "Process status."
   (setf *output*
-	(ps :matching matching :show-kernel-processes show-kernel-processes
-	    :user user)))
+	(if long
+	    (ps-long :matching matching
+		     :show-kernel-processes show-kernel-processes
+		     :user user)
+	    (ps-short :matching matching
+		      :show-kernel-processes show-kernel-processes
+		      :user user))))
 
 ;; EOF
