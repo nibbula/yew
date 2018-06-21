@@ -76,16 +76,9 @@
    #:make-os-process
    #:os-process-id
    #:os-process-parent-id
-   #:os-process-group-id
-   #:os-process-user-id
-   #:os-process-terminal
-   #:os-process-text-size
-   #:os-process-resident-size
-   #:os-process-percent-cpu
-   #:os-process-nice-level
-   #:os-process-usage
-   #:os-process-command
-   #:os-process-args
+   #:os-process-user
+   #:os-process-size
+   #:os-process-name
 
    #:process-handle
    #:process-handle-value
@@ -309,16 +302,9 @@ string (denoting itself)."
   "Information about a system process."
   (id		   0 :type integer)
   (parent-id	   0 :type integer)
-  (group-id	   0 :type integer)
-  (user-id	   0 :type integer)
-  terminal
-  (text-size	   0 :type integer)
-  (resident-size   0 :type integer)
-  percent-cpu
-  (nice-level	   0 :type integer)
-  usage
-  command
-  (args #() :type vector))
+  user
+  (size            0 :type integer)
+  name)
 
 (defclass process-handle ()
   ((value

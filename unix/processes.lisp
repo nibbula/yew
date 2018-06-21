@@ -323,7 +323,25 @@ Possible values of STATUS and VALUE are:
   (defparameter *process-list-fudge* 10
     "How many extra items to allocate in the process list."))
 
-(defun process-list ()
+(defstruct unix-process
+  "Information about a unix process."
+  (id		   0 :type integer)
+  (parent-id	   0 :type integer)
+  (group-id	   0 :type integer)
+  (user-id	   0 :type integer)
+  terminal
+  (text-size	   0 :type integer)
+  (resident-size   0 :type integer)
+  percent-cpu
+  (nice-level	   0 :type integer)
+  usage
+  command
+  (args #() :type vector))
+
+(defun system-process-type ()
+  'unix-process)
+
+(defun system-process-list ()
   #+darwin
   ;; The MIB should look like:
   ;;   mib[0] = CTL_KERN;
@@ -420,7 +438,7 @@ Possible values of STATUS and VALUE are:
 	       (with-foreign-slots
 		   ((e_ppid e_pgid e_tdev e_xsize e_xrssize)
 		    eep (:struct foreign-eproc))
-		 (make-os-process
+		 (make-unix-process
 		  :id p_pid
 		  :parent-id e_ppid
 		  :group-id e_pgid
@@ -448,7 +466,7 @@ Possible values of STATUS and VALUE are:
 		       cmd (subseq raw-line (position #\( raw-line) close-pos)
 		       pid (parse-integer p)
 		       uid (file-status-uid (stat (s+ "/proc/" p))))
-		 (make-os-process
+		 (make-unix-process
 		  :id pid
 		  :parent-id (parse-integer (pos 3))
 		  :group-id (parse-integer (pos 4))
@@ -469,6 +487,17 @@ Possible values of STATUS and VALUE are:
 		       (read-proc p)
 		     (file-error () nil)))
 	 :collect proc))))
+
+(defun process-list ()
+  "Make an OS-PROCESS list from a UNIX-PROCESS list."
+  ;; @@@ We could make it faster by just getting the data neeeded.
+  (mapcar (_ (make-os-process
+	      :id        (unix-process-id _)
+	      :parent-id (unix-process-parent-id _)
+	      :user      (user-name (unix-process-user-id _))
+	      :size      (unix-process-resident-size _)
+	      :name	 (unix-process-command _)))
+	  (system-process-list)))
 
 (defun suspend-process (&optional id)
   "Suspend the process with the given ID. If ID is NIL or not given, suspend

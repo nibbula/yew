@@ -76,6 +76,8 @@
    #:terminate-process
    #:process-times
    #:process-list
+   #:system-process-list
+   #:system-process-type
    #:wait-and-chill
    #:check-jobs
    #:get-time
@@ -200,10 +202,15 @@
 (defctype LONG :long)
 (defctype WORD :unsigned-short)
 (defctype DWORD :unsigned-long)
+(defctype PDWORD (:pointer :unsigned-long))
+(defctype ULONG :unsigned-long)
+(defctype PULONG (:pointer ULONG))
 (defctype DWORD32 :unsigned-int)
 (defctype DWORD64 :uint64)
 (defctype DWORDLONG :uint64)
 (defctype ULONGLONG :uint64)
+(defctype ULONG64 :uint64)
+(defctype PULONG64 (:pointer :uint64))
 (defctype LARGE_INTEGER :int64)
 (defctype PLARGE_INTEGER (:pointer LARGE_INTEGER))
 (defctype ULARGE_INTEGER :uint64)
@@ -238,15 +245,21 @@
 #+ms-win64
 (progn
   (defctype INT_PTR :int64)
+  (defctype LONG_PTR :int64)
   (defctype ULONG_PTR :uint64))
 #-ms-win64
 (progn
   (defctype INT_PTR :int)
+  (defctype LONG_PTR :long)
   (defctype ULONG_PTR :unsigned-long))
 (defctype DWORD_PTR ULONG_PTR)
 (defctype HANDLE PVOID)
 (defctype HFILE :int)
 (defctype HLOCAL HANDLE)
+(defctype SSIZE_T LONG_PTR)
+(defctype PSSIZE_T (:pointer LONG_PTR))
+(defctype SIZE_T ULONG_PTR)
+(defctype PSIZE_T (:pointer ULONG_PTR))
 
 ;; Widely used structs.
 
@@ -1518,8 +1531,7 @@ the current process."
 ;; To get times for children, we have to put them in a job.
 ;; If we create a job for the shell with CreateJobObject and add any
 ;; children to it with AssignProcessToJobObject, then maybe we can get
-;; cumulative execution times QueryInformationJobObject
-;;
+;; cumulative execution times QueryInformationJobObject ??
 
 #|
 BOOL WINAPI QueryInformationJobObject(
@@ -1546,31 +1558,294 @@ typedef struct _JOBOBJECT_BASIC_ACCOUNTING_INFORMATION {
 
 |#
 
-(defun process-times (id)
-  (declare (ignore id))
-#|
-BOOL WINAPI GetProcessTimes(
-  _In_  HANDLE     hProcess,
-  _Out_ LPFILETIME lpCreationTime,
-  _Out_ LPFILETIME lpExitTime,
-  _Out_ LPFILETIME lpKernelTime,
-  _Out_ LPFILETIME lpUserTime
-);
-  (with-objects (creation-time exit-time kernel-time user-time)
-    (GetProcessTimes (GetCurrentProcess)
-		     creation-time exit-time kernel-time user-time)
-  |#
-  nil)
+(defcfun ("GetProcessTimes" %get-process-times)
+    BOOL
+  (process       HANDLE)		; in
+  (creation-time LPFILETIME)		; out
+  (exit-time     LPFILETIME)		; out
+  (kernel-time   LPFILETIME)		; out
+  (user-time     LPFILETIME))		; out
+
+(defun process-times (handle)
+  (with-foreign-objects ((creation-time '(:struct FILETIME))
+			 (exit-time '(:struct FILETIME))
+			 (kernel-time '(:struct FILETIME))
+			 (user-time '(:struct FILETIME)))
+    (syscall (%get-process-times
+	      handle
+	      creation-time exit-time kernel-time user-time))
+    (values-list
+     ;;(mapcar
+      ;;#'filetime-to-derp-time
+      ;; (list (mem-ref creation-time '(:struct FILETIME))
+      ;; 	    (mem-ref exit-time '(:struct FILETIME))
+      ;; 	    (mem-ref kernel-time '(:struct FILETIME))
+      ;; 	    (mem-ref user-time '(:struct FILETIME)))))))
+      (list (mem-ref creation-time :uint64)
+	    (mem-ref exit-time     :uint64)
+	    (mem-ref kernel-time   :uint64)
+	    (mem-ref user-time     :uint64)))))
 
 (defcfun ("GetCommandLineW" %get-command-line) LPTSTR)
 
 (defun get-command-line ()
   (wide-string-to-lisp (%get-command-line)))
 
-(defun process-list ()
+(defconstant +GR-GDIOBJECTS+       0 "Count of GDI objects.")
+(defconstant +GR-USEROBJECTS+      1 "Count of USER objects.")
+(defconstant +GR-GDIOBJECTS-PEAK+  2 "Peak count of GDI objects.")
+(defconstant +GR-USEROBJECTS-PEAK+ 4 "Peak count of USER objects.")
+
+(defcfun ("GetGuiResources" %get-gui-resources)
+    DWORD
+  (process HANDLE)
+  (flags DWORD))
+
+(defconstant +NORMAL-PRIORITY-CLASS+       #x00000020)
+(defconstant +IDLE-PRIORITY-CLASS+         #x00000040)
+(defconstant +HIGH-PRIORITY-CLASS+         #x00000080)
+(defconstant +REALTIME-PRIORITY-CLASS+     #x00000100)
+(defconstant +BELOW-NORMAL-PRIORITY-CLASS+ #x00004000)
+(defconstant +ABOVE-NORMAL-PRIORITY-CLASS+ #x00008000)
+
+(defcfun ("GetPriorityClass" %get-priority-class)
+    DWORD
+  (process HANDLE))
+
+(defcfun ("GetProcessHandleCount" %get-process-handle-count)
+    BOOL
+  (process HANDLE)			; in
+  (handle-count PDWORD))		; in out
+
+(defcfun ("GetProcessWorkingSetSize" %get-process-working-set-size)
+    BOOL
+  (process HANDLE)			; in
+  (minimum-working-set-size PSIZE_T)	; out
+  (maximum-working-set-size PSIZE_T))	; out
+
+;; These might be in PSAPI.DLL or nowhere. So don't use them?
+#|
+(defcfun ("GetProcessImageFileNameW" %get-process-image-file-name)
+    DWORD
+ (process HANDLE)			; in
+ (image-file-name LPTSTR)		; out
+ (size DWORD))				; in
+
+(defcfun ("EnumProcesses" %enum-processes)
+    BOOL
+  (process-ids (:pointer DWORD))	; out
+  (cb DWORD)				; in
+  (bytes-returned (:pointer DWORD)))	; out
+|#
+
+(defconstant +TH32CS-SNAPHEAPLIST+ #x00000001)
+(defconstant +TH32CS-SNAPPROCESS+  #x00000002)
+(defconstant +TH32CS-SNAPTHREAD+   #x00000004)
+(defconstant +TH32CS-SNAPMODULE+   #x00000008)
+(defconstant +TH32CS-SNAPMODULE32+ #x00000010)
+(defconstant +TH32CS-INHERIT+      #x80000000)
+(defconstant +TH32CS-SNAPALL+ 	   (logior +TH32CS-SNAPHEAPLIST+
+					   +TH32CS-SNAPMODULE+
+					   +TH32CS-SNAPPROCESS+
+					   +TH32CS-SNAPTHREAD+))
+
+(defcfun ("CreateToolhelp32Snapshot" %create-toolhelp32-snapshot)
+    HANDLE
+  (flags DWORD)				; in
+  (process-id DWORD))			; in
+
+(defcstruct PROCESSENTRY32
+  (size		     DWORD)
+  (usage	     DWORD)
+  (process-id	     DWORD)
+  (default-heap-id   ULONG_PTR)
+  (module-id	     DWORD)
+  (threads	     DWORD)
+  (parent-process-id DWORD)
+  (pri-class-base    LONG)
+  (flags	     DWORD)
+  (exe-file	     TCHAR :count #.+MAX-PATH+))
+
+(defcfun ("Process32FirstW" %process32-first)
+    BOOL
+  (snapshot HANDLE)			      ; in
+  (lppe (:pointer (:struct PROCESSENTRY32)))) ; in out
+
+(defcfun ("Process32NextW" %process32-next)
+    BOOL
+  (snapshot HANDLE)				; in
+  (lppe (:pointer (:struct PROCESSENTRY32))))	; in out
+
+(defcfun ("QueryFullProcessImageNameW" %query-full-process-image-name)
+    BOOL
+ (process HANDLE)			; in
+ (flags DWORD)				; in
+ (exe-name LPTSTR)			; out
+ (size PDWORD))				; in out
+
+(defcfun ("QueryProcessCycleTime" %query-process-cycle-time)
+    BOOL
+  (process-handle HANDLE)		; in
+  (cycle-time PULONG64))		; out
+
+(defcfun ("QueryIdleProcessorCycleTime" %query-idle-processor-cycle-time)
+    BOOL
+  (buffer-length PULONG)		; in out
+  (processor-idle-cycle-time PULONG64))	; out
+
+;; Process access rights
+(defconstant +PROCESS-TERMINATE+                 #x0001)
+(defconstant +PROCESS-VM-READ+                   #x0010)
+(defconstant +PROCESS-VM-WRITE+                  #x0020)
+(defconstant +PROCESS-QUERY-INFORMATION+         #x0400)
+(defconstant +PROCESS-SUSPEND-RESUME+            #x0800)
+(defconstant +PROCESS-QUERY-LIMITED-INFORMATION+ #x1000)
+
+(defcfun ("OpenProcess" %open-process)
+    HANDLE
+  (desired-access DWORD)		; in
+  (inherit-handle BOOL)			; in
+  (process-id DWORD))			; in
+
+(defstruct ms-process
+  pid
+  parent-pid
+  thread-count
+  priority-class
+  creation-time
+  exit-time
+  kernel-time
+  user-time
+  gui-resources
+  handle-count
+  max-working-set
+  min-working-set
+  name
+  command
+  )
+
+(defun system-process-type ()
+  'ms-process)
+
+;; GlobalMemoryStatusEx
+;; GetSystemTimes
+
+(defun get-process-info (pid proc)
+  (let (handle creation-time exit-time kernel-time user-time)
+    (unwind-protect
+	 (progn
+	   (with-foreign-objects ((handle-count 'DWORD)
+				  (min-ws 'SIZE_T)
+				  (max-ws 'SIZE_T)
+				  (path-size 'DWORD)
+				  (path 'WCHAR +MAX-PATH+))
+	     (setf handle (%open-process
+			   +PROCESS-QUERY-INFORMATION+ +FALSE+ pid))
+	     (when (null-pointer-p handle)
+	       (setf handle
+		     (%open-process
+		      +PROCESS-QUERY-LIMITED-INFORMATION+ +FALSE+ pid))
+	       (when (null-pointer-p handle)
+		 ;; don't error
+		 (return-from get-process-info proc)))
+	     (dbugf :ms-proc "Yo~%")
+	     (multiple-value-setq
+		 (creation-time exit-time kernel-time user-time)
+	       (process-times handle))
+	     (%get-process-handle-count handle handle-count)
+	     (%get-process-working-set-size handle min-ws max-ws)
+	     (setf (mem-ref path-size 'DWORD) +MAX-PATH+)
+	     (%query-full-process-image-name handle 0 path path-size)
+	     (setf (ms-process-creation-time proc) creation-time
+		   (ms-process-exit-time proc) exit-time
+		   (ms-process-kernel-time proc) kernel-time
+		   (ms-process-user-time proc) user-time
+		   (ms-process-gui-resources proc)
+		   (%get-gui-resources handle +GR-GDIOBJECTS+)
+		   ;; (ms-process-priority-class proc)
+		   ;; (%get-priority-class handle)
+		   (ms-process-handle-count proc) (mem-ref handle-count 'DWORD)
+		   (ms-process-max-working-set proc) (mem-ref max-ws 'SIZE_T)
+		   (ms-process-min-working-set proc) (mem-ref min-ws 'SIZE_T)
+		   (ms-process-command proc) (wide-string-to-lisp path))))
+      (when (and handle (not (null-pointer-p handle)))
+	(syscall (%close-handle handle))))
+    proc))
+
+;; A way using EnumProcesses, which probably isn't a good idea anyway.
+#|
+(defparameter *pid-array-size* 1000)
+(defun get-process-list ()
   "Return a list of OS-PROCESS structures that represent the processes active
 around the time of the call."
-  nil)
+  (with-foreign-objects ((pids-size 'DWORD))
+    (let (pids pids-bytes npids result)
+      (unwind-protect
+	   (progn
+	     (setf pids (foreign-alloc 'DWORD :count *pid-array-size*))
+	     (loop :for i :from 0 :below 4
+		:do
+		(setf pids-bytes (* *pid-array-size* (foreign-type-size 'DWORD)))
+		(syscall (%enum-processes pids pids-bytes pids-size))
+		:while (= (mem-ref pids-size 'DWORD) pids-bytes)
+		:do (incf *pid-array-size* 1000)
+		(foreign-free pids)
+		(setf pids (foreign-alloc 'DWORD :count *pid-array-size*)))
+	     ;; If there's more the 4k processes, you're just getting the
+	     ;; first 4k, mmmkay?
+	     (setf npids (/ (mem-ref pids-size 'DWORD)
+			    (foreign-type-size 'DWORD))
+		   result
+		   (loop :for i :from 0 :below npids
+		      :collect
+		      (process-info (mem-aref pids 'DWORD i)))))
+	(when pids
+	  (foreign-free pids)))
+      result)))
+|#
+
+;; Using "ToolHelp32"™ - "I pity the tool with no help! Now in 64™ bits®."
+(defun system-process-list ()
+  (let (snapshot result)
+    (unwind-protect
+	 (progn
+	   (setf snapshot (%create-toolhelp32-snapshot +TH32CS-SNAPALL+ 0))
+	   (when (= (pointer-address snapshot) +INVALID-HANDLE-VALUE+)
+	     (error 'windows-error :error-code (get-last-error)
+		    :format-control "create-toolhelp32-snapshot"))
+	   (with-foreign-object (proc '(:struct PROCESSENTRY32))
+	     (with-foreign-slots ((size usage process-id default-heap-id
+				   module-id threads parent-process-id
+				   pri-class-base flags exe-file) proc
+				  (:struct PROCESSENTRY32))
+	       (setf size (foreign-type-size '(:struct PROCESSENTRY32)))
+	       (syscall (%process32-first snapshot proc))
+	       (loop :with p
+		  :do
+		  (setf p (make-ms-process
+			   :pid process-id
+			   :parent-pid parent-process-id
+			   :thread-count threads
+			   :priority-class pri-class-base
+			   :name (wide-string-to-lisp exe-file)))
+		  (push (get-process-info process-id p) result)
+		  :until (zerop (%process32-next snapshot proc)))
+	       (when (not (equal (get-last-error) +ERROR-NO-MORE-FILES+))
+		 (error 'windows-error :error-code (get-last-error)
+			:format-control "get-process-list")))))
+      (when snapshot
+	(%close-handle snapshot)))
+    (nreverse result)))
+
+(defun process-list ()
+  (mapcar
+   (_ (make-os-process
+       :id        (ms-process-pid _)
+       :parent-id (ms-process-parent-pid _)
+       :user      ""
+       :size      (or (ms-process-max-working-set _) 0)
+       :name      (or (ms-process-command _) (ms-process-name _) "")))
+   (system-process-list)))
 
 (defconstant +WAIT-OBJECT-0+       0)
 (defconstant +WAIT-ABANDONED-0+    #x00000080)
@@ -3250,10 +3525,11 @@ boolean indicating visibility."
 	    y (getf coord 'y))
       (#_SetConsoleCursorPosition handle cc))))
 (snarble-func ("SetConsoleCursorPosition")
-  WINBOOL
-  (console-output HANDLE)
-  (cursor-position (:struct COORD)))
+	      WINBOOL
+	      (console-output HANDLE)
+	      (cursor-position (:struct COORD)))
 |#
+
 (defcfun ("SetConsoleCursorPosition" %set-console-cursor-position
 				     :convention :stdcall)
     BOOL
@@ -3295,29 +3571,29 @@ boolean indicating visibility."
 #|
 (defun fuk ()
   (ccl:%stack-block ((handle 8) (coord 8))
-    (setf (ccl::%get-signed-doubleword handle) 7
-	  (ccl::%get-signed-long coord) 0
-	  (ccl::%get-signed-long coord 2) 0)
-    (ccl::ff-call (ccl::external "SetConsoleCursorPosition")
-	     :address handle
-	     4 coord
-	     :signed-fullword)))
+		    (setf (ccl::%get-signed-doubleword handle) 7
+			  (ccl::%get-signed-long coord) 0
+			  (ccl::%get-signed-long coord 2) 0)
+		    (ccl::ff-call (ccl::external "SetConsoleCursorPosition")
+				  :address handle
+				  4 coord
+				  :signed-fullword)))
 
 (defun %zccp (console-output cursor-position)
   (let (val param struct-vals result)
     (unwind-protect
-        (let (s-cursor-position)
-          (multiple-value-setq (val param)
-            (cffi:convert-to-foreign cursor-position
-              (list :struct 'coord)))
-          (setf s-cursor-position val)
-          (push (list val '(:struct coord) param) struct-vals)
-          (setf result (ccl:external-call "SetConsoleCursorPosition"
-            :<HANDLE> console-output
-            :<COORD> s-cursor-position
-            :<WINBOOL>)))
+	 (let (s-cursor-position)
+	   (multiple-value-setq (val param)
+	     (cffi:convert-to-foreign cursor-position
+				      (list :struct 'coord)))
+	   (setf s-cursor-position val)
+	   (push (list val '(:struct coord) param) struct-vals)
+	   (setf result (ccl:external-call "SetConsoleCursorPosition"
+					   :<HANDLE> console-output
+					   :<COORD> s-cursor-position
+					   :<WINBOOL>)))
       (loop :for (val type param) :in struct-vals
-         :do (cffi:free-converted-object val type param)))
+	 :do (cffi:free-converted-object val type param)))
     result))
 |#
 
@@ -3355,23 +3631,25 @@ boolean indicating visibility."
 	      uchar stupid-uchar))
       (set-rect scroll-rect left top right bottom)
       (set-coord dest x y)
+
 #|
       (setf (mem-ref fill-char '(:struct CHAR_INFO))
 	    (convert-to-foreign `(char ,uchar attributes 0)
 				'(:struct CHAR_INFO))
 	    (mem-ref scroll-rect '(:struct SMALL_RECT))
 	    (convert-to-foreign `(left ,left top ,top
-				  :right ,right :bottom, bottom)
+				       :right ,right :bottom, bottom)
 				'(:struct CHAR_INFO))
-	    ;; (mem-ref clip-rect '(:struct SMALL_RECT))
-	    ;; (convert-to-foreign `(left ,left top ,top
-	    ;;                       right ,right bottom ,bottom)
-	    ;; 			'(:struct CHAR_INFO)))
+	    ;; (mem-ref clip-rect '(:struct SMALL_RECT)) ;
+	    ;; (convert-to-foreign `(left ,left top ,top ;
+	    ;;                       right ,right bottom ,bottom) ;
+	    ;; 			'(:struct CHAR_INFO))) ;
 	    (mem-ref scroll-rect '(:struct SMALL_RECT))
 	    (convert-to-foreign `(left ,left top ,top
-				  right ,right bottom, bottom)
+				       right ,right bottom, bottom)
 				'(:struct SMALL_RECT))
 |#
+
       (syscall (%scroll-console-screen-buffer-w
 		out-handle
 		scroll-rect (null-pointer)

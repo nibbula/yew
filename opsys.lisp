@@ -814,6 +814,12 @@ of system time.")
   "Return a list of OS-PROCESS structures that represent the processes active
 around the time of the call.")
 
+(defosfun system-process-type ()
+  "Return the type of a system specific process.")
+
+(defosfun system-process-list ()
+  "Return a list of system specific processes.")
+
 (defosfun wait-and-chill ()
   "Wait for jobs to do something.")
 

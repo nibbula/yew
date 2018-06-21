@@ -332,6 +332,8 @@
    #:get-groups
 
    #:process-list
+   #:system-process-type
+   #:system-process-list
    #:suspend-process
    #:resume-process
    #:terminate-process
@@ -342,6 +344,22 @@
    #:tstp-handler
    #:wait-and-chill
    #:check-jobs
+
+   #:unix-process
+   #:unix-process-p
+   #:make-unix-process
+   #:unix-process-id
+   #:unix-process-parent-id
+   #:unix-process-group-id
+   #:unix-process-user-id
+   #:unix-process-terminal
+   #:unix-process-text-size
+   #:unix-process-resident-size
+   #:unix-process-percent-cpu
+   #:unix-process-nice-level
+   #:unix-process-usage
+   #:unix-process-command
+   #:unix-process-args
 
    #:*rlimit-resources*
    #:+RLIMIT-CPU+ #:+RLIMIT-FSIZE+ #:+RLIMIT-DATA+ #:+RLIMIT-STACK+

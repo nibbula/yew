@@ -112,6 +112,8 @@
    #:process-list
    #:wait-and-chill
    #:check-jobs
+   #:system-process-type
+   #:system-process-list
 
    ;; time
    #:get-time
