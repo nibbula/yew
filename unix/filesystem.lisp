@@ -435,7 +435,9 @@ map-directory for more information."
      (let ((dirp nil)
 	   (readdir-result 0)
 	   (dir-list nil)
+	   is-dir
 	   item)
+       (declare (ignorable dir-list is-dir))
        (unwind-protect
          (progn
 	   (if (null-pointer-p (setf dirp (opendir (or dir "."))))
@@ -454,7 +456,7 @@ map-directory for more information."
 					 d_ino)
 					ent (:struct foreign-dirent))
 		     (setf dir-list
-			   (loop :with real-name :and is-dir
+			   (loop :with real-name
 			      :while
 			      (and (eql 0 (setf readdir-result
 						(readdir_r dirp ent ptr)))
