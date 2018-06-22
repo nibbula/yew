@@ -91,7 +91,8 @@
     :initform nil
     :documentation "Place for filter functions to put some state information.")
    )
-  (:documentation "A stream that filters an underlying stream by applying a function."))
+  (:documentation
+   "A stream that filters an underlying stream by applying a function."))
 
 (defparameter *default-line-size* 128)
 (defparameter *default-buffer-size* 512)
@@ -409,6 +410,16 @@
 			   &key
 			     (direction :output)
 			     (unit :line) buffer-size state)
+  "Return a FILTER-STREAM filtering STREAM with FILTER-FUNC. Arguments are:
+  FILTER-FUNC   A function that performs the filtering. It should accept a unit,
+                and return a filtered unit.
+  DIRECTION     One of: :INPUT :OUTPUT :IO as in OPEN.
+  UNIT          Unit given to the filter function, which should be one of:
+                :CHARACTER, :LINE, :BUFFER, or :ANY. If UNIT is :buffer, then
+                buffer-size is used.
+  BUFFER-SIZE   The size, in characters, of the buffer.
+  STATE         A place for you to store something for filter functions to use.
+"
   (let ((class (ecase direction
 		 (:input 'filter-input-stream)
 		 (:output 'filter-output-stream)
