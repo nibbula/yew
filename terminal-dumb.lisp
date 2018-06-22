@@ -184,6 +184,7 @@ require terminal driver support."))
 
 (defmethod terminal-has-attribute ((tty terminal-dumb) attribute)
   "Return true if the terminal can display the character attribute."
+  (declare (ignore attribute))
   nil)
 
 (defun update-column-for-char (tty char)
