@@ -868,7 +868,8 @@ current process's environment."
 ;;	      :external-format '(:utf-8 :replacement #\?)
 	  (apply #'sb-ext:run-program
 		 `(,cmd ,args :output ,out-stream :search t :wait nil
-			,@(when in-stream `(:input ,in-stream))
+			;;,@(when in-stream `(:input ,in-stream))
+			:input ,(or in-stream t)
 			,@(when env-p
 				`(:environment
 				  ,(environ-to-string-list environment))))))
