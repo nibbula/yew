@@ -6,7 +6,7 @@ Since it doesn't grovel, it has at least the advantage that it doesn't require
 a C compiler and operating system headers. It has the disadvantage of only
 working on fairly specific OS versions, and making it work on something
 different or new, requires some work. This has been partially done for Linux,
-MacOS, FreeBSD, and Solaris. The biggest disadvantage is that it breaks
+MacOS, FreeBSD, Solaris, and Windows. The biggest disadvantage is that it breaks
 horribly with the slightest hidden change to system calls, kernels, and C
 libraries. Such changes seem to be happening continuously.
 
@@ -22,7 +22,7 @@ unix:
 
 ms:
   Interfaces to Microsoft Windows specific things.
-  This part is very incomplete!
+  This part is incomplete!
 
 libc:
   Interfaces to standard C library things, which is really only for
