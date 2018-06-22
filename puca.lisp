@@ -963,7 +963,7 @@ for the command-function).")
 	(with-terminal (:curses)
 	  (with-inator (*puca* 'puca
 		        :keymap (list *puca-keymap* *default-inator-keymap*)
-		        :backend (pick-backend backend-type))
+		        :backend backend)
 	    (event-loop *puca*)))
 	(error
   "The current directory is not under a source control system I know about."))))
