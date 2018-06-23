@@ -12,7 +12,7 @@
 ;; I don't like the name “MISC”. Let’s think of something better.
 
 (defpackage :dlib-misc
-  (:use :cl :dlib :opsys :glob :char-util)
+  (:use :cl :dlib :opsys :char-util :glob)
   ;; Also has an inplicit dependency on ASDF.
   (:documentation "More generally dubious miscellaneous functions.")
   (:export
