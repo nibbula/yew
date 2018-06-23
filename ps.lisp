@@ -130,22 +130,6 @@ user, pid, ppid, size, command."
 (defun list-processes (&key (show-kernel-processes t))
   #+darwin (declare (ignore show-kernel-processes))
   #+darwin (process-list-from-ps)
-#|  #+linux
-  ;; We don't have to use ps.
-  (loop :for p :in (if show-kernel-processes
-		       (system-process-list)
-		       (remove 0 (process-list)
-			       :key #'unix-process-text-size))
-     :collect
-     (make-short-process
-      :user (user-name (unix-process-user-id p))
-      :pid (unix-process-id p)
-      :parent-pid (unix-process-parent-id p)
-      ;; :virtual-size (/ (unix-process-text-size p) 1024) ;; because ps is in KiB
-      :size (unix-process-text-size p)
-      :name (if (zerop (length (unix-process-args p)))
-		(list (unix-process-command p))
-		(map 'list #'identity (unix-process-args p))))) |#
   #+linux
   ;; We don't have to use ps.
   (loop :for p :in (if show-kernel-processes
@@ -157,11 +141,12 @@ user, pid, ppid, size, command."
       :user (user-name (unix-process-user-id p))
       :pid (unix-process-id p)
       :parent-pid (unix-process-parent-id p)
-      ;; :virtual-size (/ (unix-process-text-size p) 1024) ;; because ps is in KiB
       :size (unix-process-text-size p)
       :name (if (zerop (length (unix-process-args p)))
 		(list (unix-process-command p))
-		(map 'list #'identity (unix-process-args p)))))
+		;;(map 'list #'identity (unix-process-args p))
+		(join-by 'string (unix-process-args p) #\space)
+		)))
   #+windows (declare (ignore show-kernel-processes))
   #+windows
   ;; (loop :for p :in (if show-kernel-processes

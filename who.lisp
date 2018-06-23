@@ -291,7 +291,9 @@ PARENT pid, and PROC-LIST as returned by opsys:process-list."
 				proc-list))
 	   (tty-dev (file-status-device-type (stat (dev-name tty)))))
       (loop :for p :in children :do
-	 (when (equal (os-process-terminal p) tty-dev)
+	 #+unix
+	 (let ((sys-proc (system-process-info (os-process-id p))))
+	   (when (equal (uos:unix-process-terminal sys-proc) tty-dev)
 	   ;; @@@ This is wrong. We just pick the process on the same terminal
 	   ;; with the highest PID.
 	   ;; On Linux we can check that it's a member of the foreground
@@ -299,19 +301,23 @@ PARENT pid, and PROC-LIST as returned by opsys:process-list."
 	   ;; (both from /proc/#/stat).
 	   ;; On MacOS & BSD we can do what? I'm guessing we probably won't be
 	   ;; able to do shit without root.
-	   (when (> (os-process-id p) pick)
-	     (setf pick (os-process-id p)))
-	   (setf pick
-		 (find-foreground-process proc-list (os-process-id p) tty pick
-					  (incf level)))))
+	     (when (> (os-process-id p) pick)
+	       (setf pick (os-process-id p)))
+	     (setf pick
+		   (find-foreground-process proc-list (os-process-id p) tty pick
+					    (incf level))))))
       pick))
 
   (defun guess-command (long proc-list pid tty)
+    ;; (let ((proc (find (find-foreground-process proc-list pid tty pid)
+    ;; 		      proc-list :key #'os-process-id)))
+    ;;   (if long
+    ;; 	  (join-by-string (os-process-args proc) #\space)
+    ;; 	  (os-process-command proc))))
+    (declare (ignore long))
     (let ((proc (find (find-foreground-process proc-list pid tty pid)
 		      proc-list :key #'os-process-id)))
-      (if long
-	  (join-by-string (os-process-args proc) #\space)
-	  (os-process-command proc))))
+      (os-process-name proc)))
 
   (defun who-what (&key users no-header long)
     (declare (ignore users))
