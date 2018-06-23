@@ -110,10 +110,13 @@
    #:command-pathname
    #:process-times
    #:process-list
+   #:process-info
+   #:current-process-id
    #:wait-and-chill
    #:check-jobs
-   #:system-process-type
+   #:*system-process-type*
    #:system-process-list
+   #:system-process-info
 
    ;; time
    #:get-time

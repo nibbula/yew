@@ -332,8 +332,11 @@
    #:get-groups
 
    #:process-list
-   #:system-process-type
+   #:process-info
+   #:current-process-id
+   #:*system-process-type*
    #:system-process-list
+   #:system-process-info
    #:suspend-process
    #:resume-process
    #:terminate-process

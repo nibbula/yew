@@ -814,11 +814,17 @@ of system time.")
   "Return a list of OS-PROCESS structures that represent the processes active
 around the time of the call.")
 
-(defosfun system-process-type ()
-  "Return the type of a system specific process.")
+(defosfun current-process-id ()
+  "Return the process identifier of the currrent process.")
+
+(defosvar *system-process-type*
+  "The type of a system specific process.")
 
 (defosfun system-process-list ()
   "Return a list of system specific processes.")
+
+(defosfun system-process-info (id)
+  "Return system specific process information for ID.")
 
 (defosfun wait-and-chill ()
   "Wait for jobs to do something.")

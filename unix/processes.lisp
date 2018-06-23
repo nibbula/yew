@@ -338,8 +338,46 @@ Possible values of STATUS and VALUE are:
   command
   (args #() :type vector))
 
-(defun system-process-type ()
-  'unix-process)
+(defvar *system-process-type* 'unix-process
+  "Type of system specific process information.")
+
+(defun system-process-info (id)
+  "Return the system-process-type for the given PID, or NIL if we can't get it
+for some reason, most likely becuase the process doesn't exist anymore."
+  #+linux
+  (let (proc line pid raw-line open-pos close-pos cmd uid)
+    (handler-case
+	(labels
+	    ((pos (p)
+	       "Adusted element in stat line so we can use documented indices."
+	       (elt line (- p 2))))
+	  (with-open-file (stm (s+ "/proc/" id "/stat"))
+	    (setf raw-line (read-line stm)
+		  open-pos (position #\( raw-line)
+		  close-pos (position #\) raw-line :from-end t)
+		  line (split-sequence
+			#\space (subseq raw-line (+ 2 close-pos)))
+		  cmd (subseq raw-line (position #\( raw-line) close-pos)
+		  pid (etypecase id
+			(integer id)
+			(string (parse-integer id)))
+		  uid (file-status-uid (stat (s+ "/proc/" id)))
+		  proc (make-unix-process
+			:id pid
+			:parent-id (parse-integer (pos 3))
+			:group-id (parse-integer (pos 4))
+			:user-id uid
+			:terminal (parse-integer (pos 6))
+			:text-size (parse-integer (pos 22))
+			:resident-size (parse-integer (pos 23))
+			:percent-cpu 0
+			:nice-level (parse-integer (pos 18))
+			:usage nil
+			:command (subseq raw-line (1+ open-pos) close-pos)
+			:args (or (ignore-errors (get-process-command-line pid))
+				  cmd)))))
+      (file-error () nil))
+    proc))
 
 (defun system-process-list ()
   #+darwin
@@ -452,52 +490,32 @@ Possible values of STATUS and VALUE are:
 		  :args #())))))
 	(foreign-free proc-list))))
   #+linux
-  (let (proc line pid raw-line open-pos close-pos cmd uid)
-    (labels ((pos (p)
-	       "Adusted element in stat line so we can use documented indices."
-	       (elt line (- p 2)))
-	     (read-proc (p)
-	       (with-open-file (stm (s+ "/proc/" p "/stat"))
-		 (setf raw-line (read-line stm)
-		       open-pos (position #\( raw-line)
-		       close-pos (position #\) raw-line :from-end t)
-		       line (split-sequence
-			     #\space (subseq raw-line (+ 2 close-pos)))
-		       cmd (subseq raw-line (position #\( raw-line) close-pos)
-		       pid (parse-integer p)
-		       uid (file-status-uid (stat (s+ "/proc/" p))))
-		 (make-unix-process
-		  :id pid
-		  :parent-id (parse-integer (pos 3))
-		  :group-id (parse-integer (pos 4))
-		  :user-id uid
-		  :terminal (parse-integer (pos 6))
-		  :text-size (parse-integer (pos 22))
-		  :resident-size (parse-integer (pos 23))
-		  :percent-cpu 0
-		  :nice-level (parse-integer (pos 18))
-		  :usage nil
-		  :command (subseq raw-line (1+ open-pos) close-pos)
-		  :args (or (ignore-errors (get-process-command-line pid))
-			    cmd)))))
-      (loop :for p :in (read-directory :dir "/proc/")
-	 :when (every #'digit-char-p p)
-	 :if (setf proc
-		   (handler-case
-		       (read-proc p)
-		     (file-error () nil)))
-	 :collect proc))))
+  (loop :with proc
+     :for p :in (read-directory :dir "/proc/")
+     :when (every #'digit-char-p p)
+     :if (setf proc (system-process-info p)) ; We can just pass the string.
+     :collect proc))
+
+;; @@@ Anytime we do this it's probably wasteful.
+(defun unix-to-os-process (proc)
+  "Convert a unix-process into an os-process."
+  (make-os-process
+   :id        (unix-process-id proc)
+   :parent-id (unix-process-parent-id proc)
+   :user      (user-name (unix-process-user-id proc))
+   :size      (unix-process-resident-size proc)
+   :name      (unix-process-command proc)))
+
+(defun process-info (pid)
+  (unix-to-os-process (system-process-info pid)))
 
 (defun process-list ()
   "Make an OS-PROCESS list from a UNIX-PROCESS list."
   ;; @@@ We could make it faster by just getting the data neeeded.
-  (mapcar (_ (make-os-process
-	      :id        (unix-process-id _)
-	      :parent-id (unix-process-parent-id _)
-	      :user      (user-name (unix-process-user-id _))
-	      :size      (unix-process-resident-size _)
-	      :name	 (unix-process-command _)))
-	  (system-process-list)))
+  (mapcar #'unix-to-os-process (system-process-list)))
+
+(defun current-process-id ()
+  (getpid))
 
 (defun suspend-process (&optional id)
   "Suspend the process with the given ID. If ID is NIL or not given, suspend
