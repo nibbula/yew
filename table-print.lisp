@@ -8,7 +8,8 @@
 from the computer. This package aims to make printing a sturdy table of any
 length, a relatively painless and risk free procedure. This does not, of course,
 make the table in the first place. For that you want the TABLE package.")
-  (:use :cl :dlib :collections :table :dlib-misc)
+  (:use :cl :dlib :collections :table)
+  (:import-from :dlib-misc #:justify-text)
   (:export
    #:table-renderer
    #:table-output-header

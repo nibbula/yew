@@ -10,7 +10,7 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description
-    "Do you really want to enter the stylistic oddness that this particular
+    "Do you really want to engage in the stylistic oddness that this particular
 module encourages?"
     ;;:depends-on ()
     :components

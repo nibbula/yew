@@ -1074,7 +1074,16 @@ XTerm or something."
   "The vast emptyness of space.")
 
 (defmethod stream-line-column ((stream terminal-ansi-stream))
-  (terminal-ansi-stream-fake-column stream))
+  (terminal-ansi-stream-fake-column stream)
+  ;;; On clisp or something this was getting a negative number?
+  #|
+  (let ((col (terminal-ansi-stream-fake-column stream)))
+    (or (and (integerp col) (not (minusp col)) col)
+	;; @@@ Mindlessly patch over problems???
+	;; @@@ Make this an error and fix it.
+	0))
+  |#
+  )
 
 (defmethod stream-start-line-p ((stream terminal-ansi-stream))
   (zerop (stream-line-column stream)))

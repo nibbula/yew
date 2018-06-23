@@ -10,6 +10,7 @@
     :licence            "GPLv3"
     :source-control	:git
     :long-description   "A new pile of old tires."
+    ;; Don't ever add :depends-on
     :components
     ((:file "dlib1")
      (:file "dlib2"))
