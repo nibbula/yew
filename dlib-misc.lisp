@@ -1300,6 +1300,7 @@ SPIN-STRING can be given and defaults to the value of *DEFAULT-SPIN-STRING*."
 			   (if as-strings
 			       result
 			       (keywordify result)))))
+		   #+quicklisp
 		   ;; Quicklisp
 		   (loop :for d :in (ql-dist:all-dists)
 		      :append
