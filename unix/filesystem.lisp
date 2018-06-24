@@ -111,6 +111,8 @@ C library function getcwd."
   (missing-implementation 'current-directory))
 
 (defcfun mkdir :int (path :string) (mode mode-t))
+#+(or linux freebsd)
+(defcfun mkdirat :int (fd :int) (path :string) (mode mode-t))
 
 (defun make-directory (path &key (mode #o755))
   "Make a directory."
@@ -125,9 +127,10 @@ C library function getcwd."
   (syscall (rmdir (safe-namestring path))))
 
 ;; It's hard to fathom how insanely shitty the Unix/POSIX interface to
-;; directories is. On the other hand, I might have trouble coming up with
-;; a too much better interface in plain old ‘C’. Just rebuild the kernel.
-;; Works fine in a two person dev team.
+;; directories is. On the other hand, I might have trouble coming up with a
+;; too much better interface in plain old ‘C’. Just rebuild the kernel. Works
+;; fine in a two person dev team. I guess for 1970 we're lucky that it's
+;; hierarchical. At least we have more than 14 character file names, now.
 
 ;; We just choose something big here and hope it works.
 (defconstant MAXNAMLEN 1024 "Maximum length of a file name.")
@@ -795,12 +798,19 @@ calls. Returns NIL when there is an error."
 (defcfun ("read"   posix-read)   :int (fd :int) (buf :pointer) (nbytes size-t))
 (defcfun ("write"  posix-write)  :int (fd :int) (buf :pointer) (nbytes size-t))
 (defcfun ("ioctl"  posix-ioctl)  :int (fd :int) (request :int) (arg :pointer))
-(defcfun ("unlink" posix-unlink) :int (path :string))
 (defcfun ("lseek"  posix-lseek)  off-t (fd :int) (offset off-t) (whence :int))
 (defcfun ("pread"  posix-pread)  ssize-t
   (fd :int) (buf :pointer) (nbytes size-t) (offset off-t))
 (defcfun ("pwrite" posix-pwrite) ssize-t
   (fd :int) (buf :pointer) (nbytes size-t) (offset off-t))
+(defcfun ("unlink" posix-unlink) :int (path :string))
+
+#+(or linux freebsd)
+(progn
+  (defcfun ("openat" posix-openat) :int
+    (dirfd :int) (path :string) (flags :int) (mode mode-t))
+  (defcfun ("unlinkat" posix-unlinkat) :int
+    (fd :int) (path :string) (flags :int)))
 
 ;; We could provide a Lispy wrapper around vectorized I/O, but since it's
 ;; likely it would only be used in performance critical code, you probably
@@ -1098,7 +1108,7 @@ versions of the keywords used in Lisp open.
 		:test test :symbol symbol :char char :name name)))
     (list
      (moo is-fifo	      :pipe		  #\F "FIFO")
-     (moo is-character-device :character-device  #\c "character special")
+     (moo is-character-device :character-device   #\c "character special")
      (moo is-directory	      :directory	  #\d "directory")
      (moo is-block-device     :block-device	  #\b "block special")
      (moo is-regular-file     :regular		  #\r "regular")
@@ -1289,7 +1299,7 @@ versions of the keywords used in Lisp open.
 	   (#\space (incf i))
 	   (#\, (incf i) (change-one)))
 	 :while (and (not done) (< i (lentgh new-mode))))))
-  )
+ )
 
 (defun numeric-mode-offset (orig-mode new-mode)
   "Convert a symbolic mode offset string to a mode offset number."
@@ -1574,7 +1584,13 @@ versions of the keywords used in Lisp open.
       :int (path :string) (buf (:pointer (:struct foreign-stat))))
 
   (defcfun ("fstat" real-fstat)
-      :int (fd :int) (buf (:pointer (:struct foreign-stat)))))
+      :int (fd :int) (buf (:pointer (:struct foreign-stat))))
+
+;;  (defcfun ("fstatat" real-fstatat)
+  (defcfun ("__fxstatat" real-fstatat)
+      :int
+    (fd :int) (path :string) (buf (:pointer (:struct foreign-stat)))
+    (flags :int)))
 
 (defparameter *stat-version*
   #+64-bit-target 0
@@ -1590,12 +1606,18 @@ versions of the keywords used in Lisp open.
       :int (vers :int) (path :string) (buf (:pointer (:struct foreign-stat))))
   (defcfun ("__fxstat" completely-fucking-bogus-but-actually-real-fstat)
       :int (vers :int) (fd :int) (buf (:pointer (:struct foreign-stat))))
+  (defcfun ("__fxstatat" completely-fucking-bogus-but-actually-real-fstat)
+      :int (vers :int) (fd :int) (path :string)
+      (buf (:pointer (:struct foreign-stat))) (flags :int))
   (defun real-stat (path buf)
     (completely-fucking-bogus-but-actually-real-stat  *stat-version* path buf))
   (defun real-lstat (path buf)
     (completely-fucking-bogus-but-actually-real-lstat *stat-version* path buf))
   (defun real-fstat (path buf)
-    (completely-fucking-bogus-but-actually-real-fstat *stat-version* path buf)))
+    (completely-fucking-bogus-but-actually-real-fstat *stat-version* path buf))
+  (defun real-fstatat (fd path buf flags)
+    (completely-fucking-bogus-but-actually-real-fstat
+     *stat-version* fd path buf flags)))
 
 #-linux ;; so mostly BSDs
 (progn
@@ -1615,7 +1637,14 @@ versions of the keywords used in Lisp open.
     (#+darwin "fstat$INODE64"
      #-darwin "fstat"
      real-fstat)
-    :int (fd :int) (buf (:pointer (:struct foreign-stat)))))
+    :int (fd :int) (buf (:pointer (:struct foreign-stat))))
+
+  (defcfun
+      (#+darwin "fstatat$INODE64"
+       #-darwin "fstatat"
+       real-fstatat)
+      :int (fd :int) (path :string) (buf (:pointer (:struct foreign-stat)))
+      (flags :int)))
 
 (defun stat (path)
   (with-foreign-object (stat-buf '(:struct foreign-stat))
@@ -1627,9 +1656,14 @@ versions of the keywords used in Lisp open.
     (error-check (real-lstat path stat-buf) "lstat: ~s" path)
     (convert-stat stat-buf)))
 
-(defun fstat (path)
+(defun fstat (fd)
   (with-foreign-object (stat-buf '(:struct foreign-stat))
-    (error-check (real-fstat path stat-buf) "fstat: ~s" path)
+    (error-check (real-fstat fd stat-buf) "fstat: ~s" fd)
+    (convert-stat stat-buf)))
+
+(defun fstatat (fd path flags)
+  (with-foreign-object (stat-buf '(:struct foreign-stat))
+    (error-check (real-fstatat fd path stat-buf flags) "fstatat: ~s" path)
     (convert-stat stat-buf)))
 
 (defvar *statbuf* nil
@@ -1735,6 +1769,10 @@ it is not a symbolic link."
   ;; @@@ take the symbolic mode forms when we're done with the above
   (syscall (real-fchmod fd mode)))
 
+#+(or linux freebsd)
+(defcfun ("fchmodat" real-fchmodat) :int (fd :int) (path :string)
+	 (mode mode-t) (flags :int))
+
 (defcfun ("chown" real-chown) :int (path :string) (owner uid-t) (group gid-t))
 (defun chown (path owner group)
   "Change the owner and group of a file."
@@ -1746,6 +1784,10 @@ it is not a symbolic link."
   "Change the owner and group of a file given a file descriptor."
   ;; @@@ take string owner and group and convert to numeric
   (syscall (real-fchown fd owner group)))
+
+#+(or linux freebsd)
+(defcfun ("fchownat" real-fchownat) :int (fd :int) (path :string)
+	 (owner uid-t) (group gid-t) (flags :int))
 
 (defcfun ("lchown" real-lchown)
     :int (path :string) (owner uid-t) (group gid-t))

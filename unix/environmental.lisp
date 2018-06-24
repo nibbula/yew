@@ -404,6 +404,14 @@ NIL, unset the VAR, using unsetenv."
 	(t
 	 (convert-from-foreign oldp type))))))
 
+#|
+#+os-t-has-sysctl
+(defun sysctl-names (&optional prefix)
+  (sysctl-name-to-mib "sysctl")
+  (if prefix
+      (sysctl-by-number (vector 0 1 "
+|#
+
 #+os-t-has-sysctl
 (defun sysctl (name type)
   (with-foreign-object (oldlenp 'size-t 1)

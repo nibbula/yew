@@ -377,7 +377,9 @@ for some reason, most likely becuase the process doesn't exist anymore."
 			:args (or (ignore-errors (get-process-command-line pid))
 				  cmd)))))
       (file-error () nil))
-    proc))
+    proc)
+  #-linux
+  (declare (ignore id)))
 
 (defun system-process-list ()
   #+darwin

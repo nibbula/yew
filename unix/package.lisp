@@ -172,12 +172,12 @@
    #:+O_EXCL+
    #:SEEK-SET+ #:SEEK-CUR+ #:SEEK-END+
    #+linux #:SEEK-DATA+ #:SEEK-HOLE+
-   #:posix-open
+   #:posix-open #+(or linux freebsd) #:posix-openat
    #:posix-close
    #:posix-read
    #:posix-write
    #:posix-ioctl
-   #:posix-unlink
+   #:posix-unlink #+(or linux freebsd) #:posix-unlinkat
    #:posix-lseek
    #:posix-pread
    #:posix-pwrite
@@ -195,6 +195,7 @@
    #:stat
    #:lstat
    #:fstat
+   #+(or linux freebsd) #:fstatat
    #:get-file-info
    #:+S_IFMT+ #:+S_IFIFO+ #:+S_IFCHR+ #:+S_IFDIR+ #:+S_IFBLK+ #:+S_IFREG+
    #:+S_IFLNK+ #:+S_IFSOCK+ #:+S_IFWHT+ #:+S_ISUID+ #:+S_ISGID+ #:+S_ISVTX+
