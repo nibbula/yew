@@ -235,7 +235,7 @@
 (defun pick-list-binding-of-key (inator)
   (declare (ignore inator))
   (pick-list-tmp-message "Press a key: ")
-  (let* ((key (tt-get-char))
+  (let* ((key (tt-get-key))
 	 (action (key-definition key *pick-list-keymap*)))
     (if action
 	(pick-list-tmp-message
@@ -269,7 +269,7 @@
        (tt-write-string f)
        (when (= i point)
 	 (tt-inverse nil))
-       (tt-write-char #\newline)
+       (tt-write-char #\linefeed)
        (incf i)
        (incf y)
        :while (and (< y max-y) (< i (length items))))
@@ -304,7 +304,7 @@
   "Pick list input."
   (with-slots (error-message input) i
     (setf error-message nil
-	  input (tt-get-char))
+	  input (tt-get-key))
     input))
 
 (defgeneric delete-pick (pick)
@@ -334,7 +334,7 @@
 	   ((fboundp command)		; a function
 	    (funcall command))
 	   ((keymap-p (symbol-value command)) ; a keymap
-	    (pick-perform-key (tt-get-char) (symbol-value command)))
+	    (pick-perform-key (tt-get-key) (symbol-value command)))
 	   (t				; anything else
 	    (pick-error "Key binding ~S is not a function or a keymap."
 			command))))
@@ -438,7 +438,7 @@
   POPUP		  - True to use a pop-up window, in which case provide X and Y."
   (when (not the-list)
     (return-from pick-list nil))
-  (with-terminal ()
+  (with-terminal (#+unix :curses)
    (let ((string-list (mapcar (_ (cons (princ-to-string _) _)) the-list))
 	 (max-y (1- (tt-height))))
      (tt-clear)
