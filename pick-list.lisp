@@ -143,7 +143,7 @@
 	       (quit-flag inator::quit-flag)) pick
     (if multiple
 	(when (not by-index)
-	  (setf result (mapcar (_ (cdr (elt items _))) result)))
+	  (setf result (nreverse (mapcar (_ (cdr (elt items _))) result))))
         (if by-index
 	    (setf result point)
 	    (setf result (cdr (elt items point)))))
