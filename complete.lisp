@@ -184,14 +184,15 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
     (setf (screen-row e) (- end-y back-adjust)
 	  (screen-col e) x)))
 
-(defun show-completions (e &optional comp-func)
+(defun show-completions (e &key func string)
   (with-slots (completion-func buf point) e
-    (setf comp-func (or comp-func completion-func))
-    (if (not comp-func)
+    (setf func (or func completion-func))
+    (if (not func)
       (beep e "No completion installed.")
       (progn
 	(let* ((result
-		(funcall comp-func (fatchar-string-to-string buf) point t))
+		(funcall func (or string
+				  (fatchar-string-to-string buf)) point t))
 	       ;;(comp-list (completion-result-completion result))
 	       comp-count)
 	  (check-type result completion-result)
@@ -283,6 +284,22 @@ binding."
   "Filename completion. This useful for when you want to explicitly complete a
 filename instead of whatever the default completion is. Convenient for a key
 binding."
-  (show-completions e #'completion::complete-filename))
+  (with-slots (buf point) e
+    (let* ((str (fatchar-string-to-string buf))
+	   (i (1- (length str))))
+      (loop ;; back up until a double quote or a / or a ~ preceded by a space
+	 :while (and (not (zerop i))
+		     (char/= (char str i) #\")
+		     (not (and (> i 0)
+			       (or (char= (char str i) #\/)
+				   (char= (char str i) #\~))
+			       (char= (char str (1- i)) #\space))))
+	 :do (decf i))
+      (log-message e "str = ~s" (subseq str i))
+      (show-completions e
+			:func #'completion::complete-filename
+			:string (if (zerop i)
+				    str
+				    (subseq str (1+ i)))))))
 
 ;; EOF
