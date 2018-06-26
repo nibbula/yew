@@ -170,8 +170,24 @@
    #:+O_RDONLY+ #:+O_WRONLY+ #:+O_RDWR+ #:+O_ACCMODE+ #:+O_NONBLOCK+
    #:+O_APPEND+ #:+O_SYNC+ #:+O_SHLOCK+ #:+O_EXLOCK+ #:+O_CREAT+ #:+O_TRUNC+
    #:+O_EXCL+
+   #+linux #:+O_LARGEFILE+
+   #+linux #:+O_DIRECTORY+
+   #+linux #:+O_NOFOLLOW+
+   #+linux #:+O_DIRECT+
+   #+linux #:+O_NOATIME+
+   #+linux #:+O_PATH+
+   #+linux #:+O_DSYNC+
+   #+linux #:+O_TMPFILE+
+   #+freebsd #:+O_NOFOLLOW+
+   #+freebsd #:+O_DIRECT+
+   #+freebsd #:+O_DIRECTORY+
+   #+freebsd #:+O_EXEC+
+   #+freebsd #:+O_FSYNC+
+   #+freebsd #:+O_TTY_INIT+
+   #+freebsd #:+O_CLOEXEC+
    #:SEEK-SET+ #:SEEK-CUR+ #:SEEK-END+
-   #+linux #:SEEK-DATA+ #:SEEK-HOLE+
+   #+linux #:SEEK-DATA+
+   #+linux #:SEEK-HOLE+
    #:posix-open #+(or linux freebsd) #:posix-openat
    #:posix-close
    #:posix-read
