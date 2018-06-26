@@ -171,10 +171,15 @@ require terminal driver support."))
       (nos:fclose in-fp)))
   (values))
 
-(defmethod terminal-format ((tty terminal-curses) fmt &rest args)
-  "Output a formatted string to the terminal."
-  (let ((string (apply #'format nil fmt args)))
-    (addstr string)))
+#+curses-use-wide
+(defun add-wide-string (wide-string)
+  (declare (type string wide-string))
+  (cffi:with-foreign-object (fstr :int (1+ (length wide-string)))
+      (loop :with i = 0 :for c :across wide-string :do
+	 (setf (cffi:mem-aref fstr :int i) (char-code c))
+	 (incf i))
+      (setf (cffi:mem-aref fstr :int (length wide-string)) 0)
+      (addnwstr fstr (length wide-string))))
 
 (defmethod terminal-write-string ((tty terminal-curses) str &key start end)
   "Output a string to the terminal."
@@ -187,10 +192,33 @@ require terminal driver support."))
 				   :displaced-to str
 				   :displaced-index-offset real-start))
 		     str)))
+    #+curses-use-wide
+    (if (position-if (_ (> (char-code _) 255)) out-str)
+	(add-wide-string out-str)
+	(addstr out-str))
+    #-curses-use-wide
     (addstr out-str)))
+
+(defmethod terminal-format ((tty terminal-curses) fmt &rest args)
+  "Output a formatted string to the terminal."
+  (let ((string (apply #'format nil fmt args)))
+    (terminal-write-string tty string)))
+
+#+curses-use-wide
+(defvar *wide-char* (cffi:foreign-alloc :int :count 2))
+(defun add-wide-char (wide-char)
+  (setf (cffi:mem-aref *wide-char* :int 0) wide-char
+	(cffi:mem-aref *wide-char* :int 1) 0)
+  (addnwstr *wide-char* 2))
 
 (defmethod terminal-write-char ((tty terminal-curses) char)
   "Output a character to the terminal."
+  ;; @@@ unicode!
+  #+curses-use-wide
+  (if (> (char-code char) 255)
+      (add-wide-char (char-code char))
+      (addch (char-code char)))
+  #-curses-use-wide
   (addch (char-code char)))
 
 (defmethod terminal-move-to ((tty terminal-curses) row col)
@@ -364,7 +392,7 @@ require terminal driver support."))
       ;; get it, the caller has to reset it after this if they want it to be
       ;; different.
       (curses::timeout -1))
-    c))
+    (and (not (equal c +ERR+)) c)))
 
 (defmethod terminal-input-mode ((tty terminal-curses))
   (declare (ignore tty))
