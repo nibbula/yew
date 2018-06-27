@@ -194,13 +194,6 @@ useful information."
        :while n)
     (apply #'nos:path-append path)))
 
-;; This is just for a particularly complaintive implementation.
-(declaim (inline sort-muffled))
-(defun sort-muffled (seq pred &rest args &key key)
-  (declare #+sbcl (sb-ext:muffle-conditions sb-ext:compiler-note)
-	   (ignorable key))
-  (apply #'sort seq pred args))
-
 (defmethod initialize-instance
     :after ((o du-dir-node) &rest initargs &key &allow-other-keys)
   "Initialize a du-dir-node."
