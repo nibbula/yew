@@ -11,7 +11,7 @@
   (:documentation "Generic interface to operating system functionality.")
   (:nicknames :nos)
   (:use :cl :cffi :dlib :opsys-base
-	#+unix :os-unix #+unix :termios
+	#+unix :os-unix
 	#+(and windows (not unix)) :os-ms)
   (:export
    ;; errors

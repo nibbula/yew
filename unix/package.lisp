@@ -437,9 +437,86 @@
    #:mounted-filesystems
    #:mount-point-of-file
 
-   ;; Terminal things (which don't need to be in :termios)
+   ;; Terminal things
    #:isatty
    #:ttyname
+
+   ;; tty chars
+   #:+VEOF+ #:+VEOL+ #:+VEOL2+ #:+VERASE+ #:+VWERASE+ #:+VKILL+ #:+VREPRINT+
+   #:+VINTR+ #:+VQUIT+ #:+VSUSP+ #:+VDSUSP+ #:+VSTART+ #:+VSTOP+ #:+VLNEXT+
+   #:+VDISCARD+ #:+VMIN+ #:+VTIME+
+   #:+VSTATUS+ #:+NCCS+ #:*cchars*
+
+   ;; input modes
+   #:+IGNBRK+ #:+BRKINT+ #:+IGNPAR+ #:+PARMRK+ #:+INPCK+ #:+ISTRIP+ #:+INLCR+
+   #:+IGNCR+ #:+ICRNL+ #:+IXON+ #:+IXOFF+ #:+IXANY+ #:+IMAXBEL+ #:+IUCLC+
+   #:+IUTF8+ #:+DOSMODE+ #:*iflags*
+
+   ;; output modes
+   #:+OPOST+ #:+ONLCR+ #:+OXTABS+ #:+ONOEOT+ #:*oflags*
+
+   ;; control flags
+   #:+CIGNORE+ #:+CSIZE+ #:+CS5+ #:+CS6+ #:+CS7+ #:+CS8+ #:+CSTOPB+ #:+CREAD+
+   #:+PARENB+ #:+PARODD+ #:+HUPCL+ #:+CLOCAL+ #:+CCTS+ #:+CRTS+ #:+CRTSCTS+
+   #:+CDTR+ #:+CDSR+ #:+CCAR+ #:+MDMBUF+ #:*cflags*
+
+   ;; other "local" flags
+   #:+ECHOKE+ #:+ECHOE+ #:+ECHOK+ #:+ECHO+ #:+ECHONL+ #:+ECHOPRT+ #:+ECHOCTL+
+   #:+ISIG+ #:+ICANON+ #:+ALTWERASE+ #:+IEXTEN+ #:+EXTPROC+ #:+TOSTOP+
+   #:+FLUSHO+ #:+NOKERNINFO+ #:+PENDIN+ #:+NOFLSH+ #:*lflags*
+
+   ;; actions
+   #:+TCSANOW+ #:+TCSADRAIN+ #:+TCSAFLUSH+ #:+TCSASOFT+
+   #:+TCIFLUSH+ #:+TCOFLUSH+ #:+TCIOFLUSH+ #:+TCOOFF+ #:+TCOON+ #:+TCIOFF+
+   #:+TCION+
+
+   ;; speeds
+   #:+B0+ #:+B50+ #:+B75+ #:+B110+ #:+B134+ #:+B150+ #:+B200+ #:+B300+ #:+B600+
+   #:+B1200+ #:+B1800+ #:+B2400+ #:+B4800+ #:+B9600+ #:+B19200+ #:+B38400+
+   #:+B7200+ #:+B14400+ #:+B28800+ #:+B57600+ #:+B76800+ #:+B115200+
+   #:+B230400+ #:+EXTA+ #:+EXTB+
+
+   ;; types
+   #:tcflag-t
+   #:cc-t
+   #:speed-t
+   #:termios
+   ;; slot names
+   #:c_iflag #:c_oflag #:c_cflag #:c_lflag #:c_cc #:c_ispeed #:c_ospeed
+
+   ;; Posix-y Functions
+   #:cfgetispeed
+   #:cfgetospeed
+   #:cfsetispeed
+   #:cfsetospeed
+   #:tcgetattr
+   #:tcsetattr
+   #:tcdrain
+   #:tcflow
+   #:tcflush
+   #:tcsendbreak
+   #:cfmakeraw
+   #:cfsetspeed
+
+   ;; Additional functions
+   #:sane
+   ;;#:terminal-query
+   #:call-with-raw
+   ;;#:describe-tty
+   ;;#:set-tty
+   #:getch
+
+   ;; old fashioned tty ioctls
+   #:winsize
+   #:ws_row
+   #:ws_col
+   #:ws_xpixel
+   #:ws_ypixel
+   #:+TIOCSTI+
+   #:+TIOCGWINSZ+
+   #:+TIOCSWINSZ+
+
+   ;; Portable interafce
    #:file-handle-terminal-p
    #:file-handle-terminal-name
    #:*default-console-device-name*
@@ -450,7 +527,6 @@
    #:read-until
    #:write-terminal-char
    #:write-terminal-string
-   ;; from termios
    #:set-terminal-mode
    #:get-terminal-mode
    #:get-window-size
@@ -458,6 +534,11 @@
    #:reset-terminal-modes
    #:terminal-query
    #:with-terminal-signals
+
+   ;; testing
+   #:test
+   #:test-echo
+   #:test-input
 
    ;; Character coding / localization
    #:wcwidth

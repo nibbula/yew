@@ -27,8 +27,6 @@
 		 :dlib)
     :components
     ((:file "base")
-     ;; (:file "unix" :if-feature (:or :unix :linux :darwin :sunos :bsd)
-     ;; 	    :depends-on ("base"))
      (:module "unix" :if-feature (:or :unix :linux :darwin :sunos :bsd)
       :depends-on ("base")
       :serial t
@@ -50,8 +48,6 @@
 		   (:file "unix")))
      (:file "ms" :if-feature (:and :windows (:not :unix))
 	    :depends-on ("base"))
-     (:file "termios" :if-feature (:or :unix :linux :darwin :sunos :bsd)
-	    :depends-on ("unix"))
      (:file "package" :depends-on ("base"))
      (:file "libc" :depends-on ("package"))
      (:file "opsys" :depends-on
