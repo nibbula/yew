@@ -182,8 +182,7 @@ LENGTH bytes to PROT. Returns 0 if successful, -1 for errors (and sets errno)."
 			       fd
 			       offset))
 	   (when (pointer-eq pointer (make-pointer +MAP_FAILED+))
-	     (error 'posix-error :error-code *errno*
-		    :format-control "mmap:"))
+	     (error 'posix-error :error-code *errno*))
            (values pointer file-length))
       (posix-close fd))))
 |#

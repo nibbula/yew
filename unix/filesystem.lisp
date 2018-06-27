@@ -94,7 +94,7 @@ C library function getcwd."
   (let ((cwd (with-foreign-pointer-as-string (s (get-path-max))
 	       (foreign-string-to-lisp (real-getcwd s (get-path-max))))))
     (if (not cwd)		; hopefully it's still valid
-	(error 'posix-error :error-code *errno* :format-control "getcwd")
+	(error 'posix-error :error-code *errno*)
 	cwd)))
 
 (defun current-directory ()
@@ -427,7 +427,7 @@ C library function getcwd."
 ;; and map-directory could be in the generic code, but I'd have to work out
 ;; at least all the symbols mentioned above.
 (defmacro %with-directory-entries ((&key result
-				   ;; dir append-type full omit-hidden
+				   ;; dir append-type full omit-hidden errorp
 				   )
 				  &body body)
   "Implement directory iteration. See the documentation for read-directory or
@@ -445,11 +445,11 @@ map-directory for more information."
          (progn
 	   (if (null-pointer-p (setf dirp (opendir (or dir "."))))
 	       (progn
-		 (cerror "Just go on."
-			 'posix-error :error-code *errno*
-			 :format-control "opendir: ~a: ~a"
-			 :format-arguments `(,(or dir ".")
-					      ,(error-message *errno*)))
+		 (when errorp
+		   (cerror "Just go on."
+			   'posix-error :error-code *errno*
+			   :format-control "~a:"
+			   :format-arguments `(,(or dir "."))))
 		 (return nil))
 	       (progn
 		 (with-foreign-objects ((ent '(:struct foreign-dirent))
@@ -490,9 +490,8 @@ map-directory for more information."
 					    real-name)))
 			      :and
 			      ,@body))))
-		 (when (not (= readdir-result 0))
-		   (error 'posix-error :format-control "readdir"
-			  :error-code *errno*)))))
+		 (when (and errorp (not (= readdir-result 0)))
+		   (error 'posix-error :error-code *errno*)))))
 	 (when (not (null-pointer-p dirp))
 	   (syscall (closedir dirp))))
        (progn
@@ -527,7 +526,6 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
       (progn
 	(if (null-pointer-p (setf dirp (opendir dir)))
 	  (error 'posix-error :error-code *errno*
-		 :format-control "opendir: ~a: ~a"
 		 :format-arguments `(,dir ,(error-message *errno*)))
 	  (progn
 	    (with-foreign-objects ((ent '(:struct foreign-dirent))
@@ -561,14 +559,14 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 				 #-os-t-has-d-type (dirent-name ent)
 				 (dirent-name ent)))))))
 	    (when (not (= result 0))
-	      (error 'posix-error :format-control "readdir"
+	      (error 'posix-error
 		     :error-code *errno*)))))
       (when (not (null-pointer-p dirp))
 	(syscall (closedir dirp))))
     dir-list))
 |#
 
-(defun read-directory (&key dir append-type full omit-hidden)
+(defun read-directory (&key dir append-type full omit-hidden (errorp t))
   "Return a list of the file names in DIR as strings. DIR defaults to the ~
 current directory. If APPEND-TYPE is true, append a character to the end of ~
 the name indicating what type of file it is. Indicators are:
@@ -585,6 +583,7 @@ Be aware that DIR-ENTRY-TYPE type can't really be relied on, since many
 systems return :UNKNOWN or something, when the actual type can be determined
 by FILE-INFO-TYPE.
 If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
+If ERRORP is true, signal correctable errors. The default is T.
 "
   (declare (type (or string null) dir) (type boolean append-type full))
   (%with-directory-entries (:result (dir-list))
@@ -592,7 +591,8 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 
 ;; @@@ I'm sure this could use some speeding up.
 (defun map-directory (function
-		      &key dir append-type full omit-hidden collect recursive)
+		      &key dir append-type full omit-hidden collect recursive
+			(errorp t))
   "Call FUNCTION with the file name of each file in directory DIR. DIR defaults ~
 to the current directory. If APPEND-TYPE is true, append a character to the end ~
 of the name indicating what type of file it is. Indicators are:
@@ -611,6 +611,7 @@ by FILE-INFO-TYPE.
 If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 If COLLECT is true, return the results of calling FUNCTION as a list.
 If RECURSIVE is true, descend breadth-first into sub-directories.
+If ERRORP is true, signal correctable errors. The default is T.
 "
   (declare (type (or string null) dir) (type boolean append-type full collect))
   (labels ((join-dir (dir name)
@@ -631,7 +632,8 @@ If RECURSIVE is true, descend breadth-first into sub-directories.
 			    :full full
 			    :omit-hidden omit-hidden
 			    :collect collect
-			    :recursive t)))
+			    :recursive t
+			    :errorp errorp)))
     (if collect
 	;; Collect results breadth first.
 	(let (sub-dirs files)
@@ -1693,8 +1695,7 @@ it is not a symbolic link."
 	  (let ((err *errno*))		; in case there are hidden syscalls
 	    (if (= err +EINVAL+)
 		nil
-		(error 'posix-error :error-code err
-		       :format-control "readlink:")))))))
+		(error 'posix-error :error-code err)))))))
 
 (defun timespec-to-derptime (ts)
   "Convert a timespec to a derptime."

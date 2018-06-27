@@ -558,6 +558,16 @@
 (defmacro syscall ((func &rest args))
   "Call a system function and signal a posix-error if it fails."
   `(error-check (,func ,@args)
-		,(concatenate 'string (string-downcase func) ":")))
+		;; Actually I think is is a bad idea. Putting the name of the
+		;; system call in the error message is misleading. The name of
+		;; the system call has nothing to do with the program you are
+		;; running, and is just noise. If you want to know where it's
+		;; really from, just do a stack trace in the debugger.
+		;; Otherwise it's just confusing for the user. Even when the
+		;; user is me, who knows damn well what the stupid system call
+		;; should have done.
+		;;
+		;; ,(concatenate 'string (string-downcase func) ":")
+		))
 
 ;; End

@@ -885,8 +885,7 @@ Returns an integer."
 	  result (real-sysconf number))
     (when (and (< result 0) (= *errno* +EINVAL+))
       (error 'posix-error
-	     :error-code *errno*
-	     :format-control "sysconf: "))
+	     :error-code *errno*))
     result))
 
 (defun processor-count ()
