@@ -14,8 +14,8 @@
 ;; Emacs style undo is weird in that it records the undoing as undoable, but
 ;; only puts it there when you type a non-undo command after a series of undos.
 ;;
-;; Standard undo/redo in is kind of stupid, but easier to understand,
-;; since when you do a modifying action after redoing, it loses your redo info.
+;; Standard undo/redo in is easier to understand, but kind of stupid, since
+;; when you do a modifying action after redoing, it loses your redo info.
 ;;
 ;; We're gonna do emacs style here, but see neox for the new tree style.
 

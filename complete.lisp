@@ -195,17 +195,22 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
 				  (fatchar-string-to-string buf)) point t))
 	       ;;(comp-list (completion-result-completion result))
 	       comp-count)
-	  (check-type result completion-result)
-	  (setf comp-count (completion-result-count result))
-	  (dbugf 'completion "result2 = ~a ~s~%" (type-of result) result)
-	  (when (and comp-count (> comp-count 0))
-	    (setf (did-complete e) t)
-	    (set-completion-count e (1+ (last-completion-not-unique-count e)))
-	    (if (eq *completion-list-technique* :under)
-		;; (print-completions-under e comp-list)
-		;; (print-completions-over e comp-list))))))))
-		(print-completions-under e result)
-		(print-completions-over e result))))))))
+	  (if (not (typep result 'completion-result))
+	      (progn
+		;; It's really annoying to get error here.
+		(beep e "Completion function returned NIL!"))
+	      (progn
+		(setf comp-count (completion-result-count result))
+		(dbugf 'completion "result2 = ~a ~s~%" (type-of result) result)
+		(when (and comp-count (> comp-count 0))
+		  (setf (did-complete e) t)
+		  (set-completion-count
+		   e (1+ (last-completion-not-unique-count e)))
+		  (if (eq *completion-list-technique* :under)
+		      ;; (print-completions-under e comp-list)
+		      ;; (print-completions-over e comp-list))))))))
+		      (print-completions-under e result)
+		      (print-completions-over e result))))))))))
 
 #|
 (defun last-input-was-completion (e)
