@@ -4,7 +4,7 @@
 
 (defpackage :stty
   (:documentation "Terminal driver modes manipulator.")
-  (:use :cl :dlib :opsys #+unix :os-unix #+unix :termios :cffi :dlib-misc
+  (:use :cl :dlib :opsys #+unix :os-unix :cffi :dlib-misc
 	:char-util)
   (:export
    #:describe-tty
@@ -75,7 +75,7 @@ FORMAT defaults to :NICE but can also be :STTY."
 		 (format t "~&cchars: ")
 		 (justify-text
 		  (join-by-string
-		   (loop :for c :in termios:*cchars*
+		   (loop :for c :in *cchars*
 		      :collect
 		      (format nil "~(~a~) = ~a; " (demuff c)
 			      (dump-char
