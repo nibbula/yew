@@ -269,6 +269,20 @@ If FROM-DAYS-P is true, days are the biggest units to break SECONDS into."
       (t
        (format nil "~2ds" time))))
 
+  (defun device-idle-string (device-name)
+    "Return the idle string for DEVICE-NAME, or ??? if we can't figure it out."
+    (catch 'fail
+      (handler-case
+	  (idle-string
+	   (- (get-universal-time)
+	      (unix-to-universal-time
+	       (timespec-seconds
+		(file-status-modify-time
+		 (stat device-name))))))
+	(posix-error (c)
+	  (declare (ignore c))
+	  (throw 'fail "???")))))
+
   (defun login-at-string (login-time)
     "Return a string describing the LOGIN-TIME."
     (let* ((cur-time (get-universal-time))
@@ -340,12 +354,7 @@ PARENT pid, and PROC-LIST as returned by opsys:process-list."
 			      (login-at-string
 			       (unix-to-universal-time
 				(timeval-seconds (utmpx-tv u))))
-			      (idle-string
-			       (- (get-universal-time)
-				  (unix-to-universal-time
-				   (timespec-seconds
-				    (file-status-modify-time
-				     (stat (dev-name (utmpx-line u))))))))
+			      (device-idle-string (dev-name (utmpx-line u)))
 			      (guess-command long proc-list
 					     (utmpx-pid u) (utmpx-line u))))))
 	  (endutxent))
