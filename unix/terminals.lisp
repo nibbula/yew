@@ -894,7 +894,12 @@ descriptor FD."
      (open device-name
 	   :direction :output
 	   #-(or clisp abcl) :if-exists
-	   #-(or clisp abcl) :append))
+	   #-(or clisp abcl) :append
+	   #+sbcl :external-format
+	   #+sbcl '(:utf-8 :replacement #\replacement_character)
+	   #+ccl :external-format
+	   #+ccl '(:character-encoding :utf-8 :line-termination :default)
+	   ))
     (:input
      (syscall (posix-open device-name +O_RDWR+ 0)))))
 
