@@ -1650,22 +1650,22 @@ versions of the keywords used in Lisp open.
 
 (defun stat (path)
   (with-foreign-object (stat-buf '(:struct foreign-stat))
-    (error-check (real-stat path stat-buf) "stat: ~s" path)
+    (error-check (real-stat path stat-buf) "~s" path)
     (convert-stat stat-buf)))
 
 (defun lstat (path)
   (with-foreign-object (stat-buf '(:struct foreign-stat))
-    (error-check (real-lstat path stat-buf) "lstat: ~s" path)
+    (error-check (real-lstat path stat-buf) "~s" path)
     (convert-stat stat-buf)))
 
 (defun fstat (fd)
   (with-foreign-object (stat-buf '(:struct foreign-stat))
-    (error-check (real-fstat fd stat-buf) "fstat: ~s" fd)
+    (error-check (real-fstat fd stat-buf) "~s" fd)
     (convert-stat stat-buf)))
 
 (defun fstatat (fd path flags)
   (with-foreign-object (stat-buf '(:struct foreign-stat))
-    (error-check (real-fstatat fd path stat-buf flags) "fstatat: ~s" path)
+    (error-check (real-fstatat fd path stat-buf flags) "~s" path)
     (convert-stat stat-buf)))
 
 (defvar *statbuf* nil
