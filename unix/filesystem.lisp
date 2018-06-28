@@ -1608,7 +1608,7 @@ versions of the keywords used in Lisp open.
       :int (vers :int) (path :string) (buf (:pointer (:struct foreign-stat))))
   (defcfun ("__fxstat" completely-fucking-bogus-but-actually-real-fstat)
       :int (vers :int) (fd :int) (buf (:pointer (:struct foreign-stat))))
-  (defcfun ("__fxstatat" completely-fucking-bogus-but-actually-real-fstat)
+  (defcfun ("__fxstatat" completely-fucking-bogus-but-actually-real-fstatat)
       :int (vers :int) (fd :int) (path :string)
       (buf (:pointer (:struct foreign-stat))) (flags :int))
   (defun real-stat (path buf)
@@ -1618,7 +1618,7 @@ versions of the keywords used in Lisp open.
   (defun real-fstat (path buf)
     (completely-fucking-bogus-but-actually-real-fstat *stat-version* path buf))
   (defun real-fstatat (fd path buf flags)
-    (completely-fucking-bogus-but-actually-real-fstat
+    (completely-fucking-bogus-but-actually-real-fstatat
      *stat-version* fd path buf flags)))
 
 #-linux ;; so mostly BSDs
