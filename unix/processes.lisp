@@ -589,7 +589,9 @@ the current process."
   (setf (signal-action +SIGTSTP+) :default))
 
 (defun wait-and-chill (handle)
-  (let ((child-pid (process-handle-value handle))
+  (let ((child-pid (etypecase handle ;; Can be called with a handle or a pid.
+		     (process-handle (process-handle-value handle))
+		     (integer handle)))
 	(status 0) (wait-pid 0))
     (declare (ignorable status))
     (dbugf :sheep "wait-and-chill ~s ~s~%" handle child-pid)
@@ -704,7 +706,7 @@ the current process."
 	(error-check child-pid "child-pid")
 	(make-instance 'unix-process-handle :value child-pid)))))
 
-(defun resume-pid (pid)
+(defun resume-background-pid (pid)
   "Put the process PID back in the foreground."
   ;; Make the terminal signals go to the child's group.
   (syscall (tcsetpgrp 0 pid))

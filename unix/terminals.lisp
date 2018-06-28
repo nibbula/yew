@@ -1102,11 +1102,13 @@ The individual settings override the settings in MODE."
 	  (setf *got-sigwinch* nil)
 	  (cerror "Try again?" 'opsys-resized))
 	 (*got-tstp*
-	  (setf *got-tstp* nil)
-	  ;; re-signal with the default, so we actually stop
-	  (with-signal-handlers ((+SIGTSTP+ . :default))
-	    (kill (getpid) +SIGTSTP+))
-	  (cerror "Try again?" 'opsys-resumed))
+	  (when (not (eq *got-tstp* :dont-suspend))
+	    (setf *got-tstp* nil)
+	    ;; re-signal with the default, so we actually stop
+	    (with-signal-handlers ((+SIGTSTP+ . :default))
+	      (kill (getpid) +SIGTSTP+))
+	    (cerror "Try again?" 'opsys-resumed))
+	  (setf *got-tstp* nil))
 	 (t
 	  (when (< status 0)
 	    (cerror "Try again?" 'read-char-error :error-code *errno*)))))
@@ -1140,25 +1142,23 @@ The individual settings override the settings in MODE."
 |#
 
 ;; Simple, linear, non-event loop based programming was always an illusion!
-(defun read-terminal-char (terminal-handle &key timeout)
-  (BOGO-with-terminal-mode (terminal-handle)
-    (when timeout
-      (set-terminal-mode terminal-handle :timeout timeout))
-    (with-foreign-object (c :char)
-      (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
-			     (+SIGTSTP+  . tstp-handler))
-	(when (not (zerop (read-raw-char terminal-handle c)))
-	  (code-char (mem-ref c :unsigned-char)))))))
-
 (defun read-terminal-byte (terminal-handle &key timeout)
   (BOGO-with-terminal-mode (terminal-handle)
     (when timeout
       (set-terminal-mode terminal-handle :timeout timeout))
     (with-foreign-object (c :char)
-      (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
-			     (+SIGTSTP+  . tstp-handler))
-	(when (not (zerop (read-raw-char terminal-handle c)))
-	  (mem-ref c :unsigned-char))))))
+      (flet ((read-it ()
+	       (when (not (zerop (read-raw-char terminal-handle c)))
+		 (mem-ref c :unsigned-char))))
+	(if (not (member (signal-action +SIGTSTP+) '(:default :ignore)))
+	    (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler))
+	      (read-it))
+	    (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
+				   (+SIGTSTP+  . tstp-handler))
+	      (read-it)))))))
+
+(defun read-terminal-char (terminal-handle &key timeout)
+  (code-char (read-terminal-byte terminal-handle :timeout timeout)))
 
 (defun read-until (tty stop-token &key timeout)
   "Read until STOP-TOKEN is read. Return a string of the results.
