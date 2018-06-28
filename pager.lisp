@@ -765,8 +765,7 @@ line : |----||-------||---------||---|
 	     :accept-does-newline nil
 	     :context :pager)
     ;; Make sure we go back to raw mode, so we can ^Z
-    ;; (curses:raw)
-    ))
+    (set-terminal-mode (terminal-file-descriptor *terminal*) :raw t)))
 
 (defun search-line (str line)
   "Return true if LINE contains the string STR. LINE can be a string, or a
@@ -1447,7 +1446,6 @@ q - Abort")
 	   (setf message nil))
        (display-prompt))
      (tt-finish-output)
-     ;;(setf input-char (tt-get-char))
      (setf input-char (tt-get-key))
      (perform-key input-char)
      (when (not (equal command 'digit-argument))
@@ -1459,6 +1457,8 @@ q - Abort")
   (with-terminal ()
     (unwind-protect
       (progn
+	(when (terminal-file-descriptor *terminal*)
+	  (set-terminal-mode (terminal-file-descriptor *terminal*) :raw t))
 	(when (and (not stream) file-list)
 	  (setf stream (open-lossy (file-location-file (elt file-list 0)))
 		close-me t))
@@ -1493,10 +1493,14 @@ q - Abort")
 				:close-me close-me)))
 		    (funcall (find-symbol "SUSPEND-JOB" :lish)
 			     "pager" "" (lambda () (pager:resume suspy)))
-		    (format t "Suspended.~%"))
+		    ;; It should be Lish's job to say something like this:
+		    ;;(format t "~&Suspended.~%")
+		    )
 		  (format t "No shell loaded to suspend to.~%"))))))
       (when (and close-me (not suspended) stream)
-	(close stream)))
+	(close stream))
+      (when (terminal-file-descriptor *terminal*)
+	(set-terminal-mode (terminal-file-descriptor *terminal*) :raw nil)))
     (tt-move-to (- (tt-height) 1) 0)
     (tt-erase-to-eol)
     ;;(tt-write-char #\newline)
@@ -1672,8 +1676,12 @@ then the key. Press 'q' to exit this help.
   :accepts (:grotty-stream :file-list :file-locaations)
   "Look through text, one screen-full at a time."
   (declare (ignore show-line-numbers ignore-case raw-output pass-special)) ; @@@
-  (pager (or files
-	     (and (acceptable-object lish:*input*) lish:*input*)
-	     *standard-input*)))
+  (let ((thing (or files
+		   (and (acceptable-object lish:*input*) lish:*input*)
+		   (and (not (interactive-stream-p *standard-input*))
+			*standard-input*))))
+    (if thing
+	(pager thing)
+	(pager))))
 
 ;; EOF
