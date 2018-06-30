@@ -21,38 +21,6 @@
 (declaim (optimize (debug 3)))
 ;;(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
-(defkeymap *pick-list-keymap*
-  `((#\escape		  . *pick-list-escape-keymap*)
-    (,(ctrl #\G)	  . quit)
-    (#\return		  . accept)
-    (#\newline		  . accept)
-    (#\space		  . pick-list-toggle-item)
-    (,(ctrl #\X)	  . pick-list-toggle-region)
-    ;; (,(ctrl #\N)	  . pick-list-next-line)
-    (:down		  . next)
-    ;; (,(ctrl #\P)	  . pick-list-previous-line)
-    (:up		  . previous)
-    (#\>		  . move-to-bottom)
-    ;; (,(meta-char #\>) . pick-list-end-of-list)
-    (:end		  . move-to-bottom)
-    (#\<		  . move-to-top)
-    ;; (,(meta-char #\<) . move-to-top)
-    (:home		  . move-to-top)
-    (,(ctrl #\F)	  . next-page)
-    (,(ctrl #\V)	  . next-page)
-    (:npage		  . next-page)
-    (,(ctrl #\B)	  . previous-page)
-    (,(meta-char #\v)	  . previous-page)
-    (:ppage		  . previous-page)
-    (,(meta-char #\=)	  . pick-list-binding-of-key)
-    ;;(#\?		  . pick-list-help)
-    (#\?		  . help)
-    (,(ctrl #\@)	  . pick-list-set-mark)
-    ))
-
-(defparameter *pick-list-escape-keymap*
-  (build-escape-map *pick-list-keymap*))
-
 (defvar *pick* nil
   "The current pick list state.")
 
@@ -106,6 +74,10 @@
     :initarg :top :accessor pick-top
     :initform 0 :type fixnum
     :documentation "Top line of the view.")
+   (left
+    :initarg :left :accessor pick-left
+    :initform 0 :type fixnum
+    :documentation "Position of the left edge of the view.")
    (ttop				; @@@ this should probably be renamed
     :initarg :ttop :accessor pick-ttop
     :initform 0 :type fixnum
@@ -221,6 +193,29 @@
 	  cur-line  (+ top point)
 	  top       point)))
 
+(defun shift-left (o)
+  "Shift the edge left."
+  (with-slots (left) o
+    (decf left 10)
+    (when (< left 0)
+      (setf left 0))))
+
+(defun shift-right (o)
+  "Shift the edge right."
+  (incf (pick-left o) 10))
+
+(defun shift-beginning (o)
+  "Shift the view all the way left."
+  (setf (pick-left o) 0))
+
+(defun shift-end (o)
+  "Shift to the end of the rightmost content."
+  (with-slots (left items (point inator::point)) o
+    (setf left
+	  (max 0
+	       (- (length (car (elt items point)))
+		  (- (tt-width) 3))))))
+
 (defun pick-error (message &rest args)
   "Set the list picker error message."
   (setf (pick-error-message *pick*) (apply #'format nil message args)))
@@ -251,7 +246,7 @@
 (defmethod update-display ((i pick)) ; pick-list-display
   "Display the list picker."
   (with-slots (message multiple items (point inator::point) result cur-line
-		       max-y top ttop error-message) *pick*
+		       max-y top left ttop error-message) *pick*
     (tt-home)
     (when message (tt-format message))
     (setf ttop (terminal-get-cursor-position *terminal*))
@@ -266,7 +261,11 @@
        (when (= i point)
 	 (tt-inverse t)
 	 (setf cur-line y #| (getcury *stdscr*) |#))
-       (tt-write-string f)
+       (when (< left (1- (length f)))
+	 (tt-write-string
+	  (subseq f (max 0 left)
+		  (min (length f)
+		       (+ left (- (tt-width) 3)))))) ; 3 = (length "X ") + 1
        (when (= i point)
 	 (tt-inverse nil))
        (tt-write-char #\linefeed)
@@ -422,6 +421,42 @@
 	(delete-pick *pick*)))
     (values (pick-result *pick*) (pick-second-result *pick*))))
 
+(defkeymap *pick-list-keymap*
+  `((#\escape		  . *pick-list-escape-keymap*)
+    (,(ctrl #\G)	  . quit)
+    (#\return		  . accept)
+    (#\newline		  . accept)
+    (#\space		  . pick-list-toggle-item)
+    (,(ctrl #\X)	  . pick-list-toggle-region)
+    ;; (,(ctrl #\N)	  . pick-list-next-line)
+    (:down		  . next)
+    ;; (,(ctrl #\P)	  . pick-list-previous-line)
+    (:up		  . previous)
+    (#\>		  . move-to-bottom)
+    ;; (,(meta-char #\>) . pick-list-end-of-list)
+    (:end		  . move-to-bottom)
+    (#\<		  . move-to-top)
+    ;; (,(meta-char #\<) . move-to-top)
+    (:home		  . move-to-top)
+    (,(ctrl #\F)	  . next-page)
+    (,(ctrl #\V)	  . next-page)
+    (:npage		  . next-page)
+    (,(ctrl #\B)	  . previous-page)
+    (,(meta-char #\v)	  . previous-page)
+    (:ppage		  . previous-page)
+    (:left		  . shift-left)
+    (:right	     	  . shift-right)
+    (,(ctrl #\A)	  . shift-beginning)
+    (,(ctrl #\E)	  . shift-end)
+    (,(meta-char #\=)	  . pick-list-binding-of-key)
+    ;;(#\?		  . pick-list-help)
+    (#\?		  . help)
+    (,(ctrl #\@)	  . pick-list-set-mark)
+    ))
+
+(defparameter *pick-list-escape-keymap*
+  (build-escape-map *pick-list-keymap*))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun pick-list (the-list &key message by-index sort-p default-value
@@ -439,8 +474,24 @@
   (when (not the-list)
     (return-from pick-list nil))
   (with-terminal (#+unix :curses)
-   (let ((string-list (mapcar (_ (cons (princ-to-string _) _)) the-list))
-	 (max-y (1- (tt-height))))
+    (let* ((max-y (1- (tt-height)))
+	   (count (length the-list))
+	   (string-list (make-array count :element-type 'cons
+				    :initial-element (cons nil nil))))
+      (loop
+	 :for i :from 0
+	 :for item :in the-list
+	 :do (setf (aref string-list i) (cons (princ-to-string item) item)))
+     (setf string-list
+	   (if (not (null sort-p))
+	       (locally
+		   #+sbcl (declare
+			   (sb-ext:muffle-conditions
+			    sb-ext:compiler-note))
+		   ;; Where's the unreachable code??
+		   (sort string-list #'string-lessp
+			 :key #'car))
+	       string-list))
      (tt-clear)
      (do-pick (if popup 'popup-pick 'pick)
        :message	        message
@@ -448,15 +499,7 @@
        :multiple	multiple
        :typing-searches typing-searches
        :point	        (or selected-item 0)
-       :items	        (if (not (null sort-p))
-			    (locally
-				#+sbcl (declare
-					(sb-ext:muffle-conditions
-					 sb-ext:compiler-note))
-				;; Where's the unreachable code??
-				(sort string-list #'string-lessp
-				      :key #'car))
-			    string-list)
+       :items	        string-list
        :max-line        (length string-list)
        :max-y           (or height max-y)
        :page-size       (- max-y 2)
