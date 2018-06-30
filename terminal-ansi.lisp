@@ -261,15 +261,23 @@ processing."
 ;; resumed -> (terminal-start tty) #| (redraw) |# (terminal-finish-output tty)
 ;; resized -> (terminal-get-size tt)
 
-;; @@@ BROKEN! FIX!
-;; (defmacro with-raw ((tty) &body body)
-;;   (with-unique-names (mode)
-;;     `(let ((,mode (get-terminal-mode ,tty)))
-;;        (unwind-protect
-;; 	    (progn
-;; 	      (set-terminal-mode ,tty :raw t :echo nil)
-;; 	      ,@body)
-;; 	 (set-terminal-mode ,tty :mode ,mode)))))
+(defmacro with-interrupts-handled ((tty) &body body)
+  "Evaluate the BODY while handling terminal interrupts on TTY appropritately.
+TTY is a terminal, in case you didn't know."
+  (with-unique-names (borked result)
+    `(let (,result ,borked)
+       (loop :do
+	  (setf ,borked nil)
+	  (handler-case
+	      (setf ,result (progn ,@body))
+	    (opsys-resumed ()
+	      (terminal-start ,tty) (terminal-finish-output ,tty)
+	      (setf ,borked t))
+	    (opsys-resized ()
+	      (terminal-get-size ,tty)
+	      (setf ,borked t)))
+	  :while ,borked)
+       ,result)))
 
 (defmacro with-raw ((tty) &body body)
   (with-unique-names (mode)
@@ -300,7 +308,8 @@ Report parameters are returned as values. Report is assumed to be in the form:
 		 ;;(posix-write fd qq (length q))
 		 ;;(terminal-write-string tty q) (terminal-finish-output tty)
 		 (write-terminal-string fd q)
-		 (read-until fd end-char :timeout 1))))
+		 (with-interrupts-handled (tty)
+		   (read-until fd end-char :timeout 1)))))
       #| @@@ temporarily get rid of this error
       (when (null str)
 	(error "Terminal failed to report \"~a\"." fmt))
@@ -574,24 +583,15 @@ default to 16 bit color."
 	  (when (>= typeahead-pos (length typeahead))
 	    (setf typeahead nil
 		  typeahead-pos nil)))))
-    (let (result borked)
+    (let (result)
       (labels ((read-it ()
 		 (or
 		  (read-terminal-byte file-descriptor :timeout timeout)
 		  (return-from get-char nil)))
 	       (set-it (x)
 		 (setf result x)))
-	(loop :do
-	   (setf borked nil)
-	   (handler-case
-	       (char-util::%get-utf8b-char read-it set-it)
-	     (opsys-resumed ()
-	       (terminal-start tty) (terminal-finish-output tty)
-	       (setf borked t))
-	     (opsys-resized ()
-	       (terminal-get-size tty)
-	       (setf borked t)))
-	   :while borked)
+	(with-interrupts-handled (tty)
+	  (char-util::%get-utf8b-char read-it set-it))
 	result))))
 
 (defmethod terminal-get-char ((tty terminal-ansi))
@@ -732,21 +732,13 @@ and add the characters the typeahead."
 	c)))
 
 (defmethod terminal-listen-for ((tty terminal-ansi) seconds)
-  (let (borked result)
-    (loop :do
-       (setf borked nil)
-       (with-terminal-signals ()
-	 (handler-case
-	     (setf result (listen-for seconds (terminal-file-descriptor tty)))
-	   (opsys-resumed ()
-	     (terminal-start tty) (terminal-finish-output tty)
-	     (setf borked t))
-	   (opsys-resized ()
-	     (terminal-get-size tty)
-	     (setf borked t))))
-       ;; @@@ Should be:
-       ;; :while (and borked (not @@time expired@@))
-       :while borked)
+  (let (result) ;; @@@ I think this "result" is superfluous.
+    (with-interrupts-handled (tty)
+      (with-terminal-signals ()
+	(setf result (listen-for seconds (terminal-file-descriptor tty)))
+	;; @@@ Should be:
+	;; :while (and borked (not @@time expired@@))
+	))
     result))
 
 (defmethod terminal-input-mode ((tty terminal-ansi))
@@ -956,8 +948,9 @@ bracketed read.")
 	(loop :with done :and i = 0 :and len = (length end-string) :and s
 	   :while (not done)
 	   :if (listen-for *bracketed-read-timeout* fd) :do
-	   (setf s (read-until fd (char end-string i)
-			       :timeout (* *bracketed-read-timeout* 10)))
+	   (with-interrupts-handled (tty)
+	     (setf s (read-until fd (char end-string i)
+				 :timeout (* *bracketed-read-timeout* 10))))
 	   (if s
 	       (progn
 		 (princ s str)
@@ -1148,7 +1141,8 @@ XTerm or something."
   ;; end-of-file instead of the end of a line.  The default method uses
   ;; repeated calls to ‘stream-read-char’.
   (multiple-value-bind (result got-eof)
-      (read-until (terminal-file-descriptor stream) #\newline)
+      (with-interrupts-handled (stream)
+	(read-until (terminal-file-descriptor stream) #\newline))
     (values (or result "")
 	    got-eof)))
 
