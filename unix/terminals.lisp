@@ -1155,6 +1155,7 @@ The individual settings override the settings in MODE."
       (flet ((read-it ()
 	       (when (not (zerop (read-raw-char terminal-handle c)))
 		 (mem-ref c :unsigned-char))))
+	;; If a ^Z handler is active, don't overrride it.
 	(if (not (member (signal-action +SIGTSTP+) '(:default :ignore)))
 	    (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler))
 	      (read-it))
