@@ -963,7 +963,7 @@ and indented properly for multi-line objects."
     (tagbody
      again
        (tt-home)
-       (tt-clear)
+       (tt-erase-below)
        (setf current-position nil current-max-right nil)
        (let ((*display-start* nil))
 	 (display-tree *viewer* root 0))
