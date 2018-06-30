@@ -26,7 +26,12 @@
 		 #+(and (or windows win32) (not unix) (not ccl)) :cffi-libffi
 		 :dlib)
     :components
-    ((:file "base")
+    (;; (:file "base")
+     (:module "base"
+      :pathname ""
+      :serial t
+      :components ((:file "base")
+		   (:file "types")))
      (:module "unix" :if-feature (:or :unix :linux :darwin :sunos :bsd)
       :depends-on ("base")
       :serial t
