@@ -228,10 +228,10 @@
   (tt-write-string (pick-error-message *pick*)))
 
 (defun pick-list-binding-of-key (inator)
-  (declare (ignore inator))
   (pick-list-tmp-message "Press a key: ")
   (let* ((key (tt-get-key))
-	 (action (key-definition key *pick-list-keymap*)))
+	 ;; (action (key-definition key *pick-list-keymap*)))
+	 (action (key-definition key (inator-keymap inator))))
     (if action
 	(pick-list-tmp-message
 	 (format nil "~a is bound to ~a" (nice-char key) action))
