@@ -159,6 +159,7 @@
 
   (defconstant +ERROR-FILE-NOT-FOUND+ 2)
   (defconstant +ERROR-PATH-NOT-FOUND+ 3)
+  (defconstant +ERROR-NOT-READY+ 21)
   (defconstant +ERROR-ENVVAR-NOT-FOUND+ 203)
 
   (defconstant +GENERIC-READ+  #x80000000)
@@ -2285,26 +2286,38 @@ available. If handle isn't provided it tries to use STD-INPUT-HANDLE."
      :bytes-free (mem-ref free 'ULARGE_INTEGER)
      :bytes-available (mem-ref avail 'ULARGE_INTEGER))))
 
+(defun safer-get-volume-info (root-path)
+  "Get the volume info or NIL if we can't."
+  (let (result)
+    (block nil
+      (handler-case
+	  (setf result (get-volume-info root-path))
+	(windows-error (e)
+	  (when (= (opsys-error-code e) +ERROR-NOT-READY+)
+	    (return nil))))
+      result)))
+
 (defun %mounted-filesystems ()
   "Return a list of filesystem info."
-  (let (handle result err vol-info mount-points)
+  (let (handle result err vol-info)
     (with-foreign-object (volume-name 'WCHAR +MAX-PATH+)
-      (setf handle (%find-first-volume volume-name +MAX-PATH+))
-      (when (= (pointer-address handle) +INVALID-HANDLE-VALUE+)
-	(error 'windows-error :error-code (get-last-error)
-	       :format-control "mounted-filesystems" :format-arguments nil))
-      (push (get-volume-info volume-name) result)
-      (setf mount-points (get-mount-points))
-      (loop :with letter
-	 :while (not (zerop (%find-next-volume handle volume-name +MAX-PATH+)))
+      (loop
+	 :with mount-points = (get-mount-points)
+	 :and letter
+	 :initially
+	 (setf handle (%find-first-volume volume-name +MAX-PATH+))
+	 (when (= (pointer-address handle) +INVALID-HANDLE-VALUE+)
+	   (error 'windows-error :error-code (get-last-error)
+		  :format-control "mounted-filesystems" :format-arguments nil))
 	 :do
 	 ;; (push (wide-string-to-lisp volume-name) result))
-	 (setf vol-info (get-volume-info volume-name)
-	       letter (find (volume-info-device-name vol-info) mount-points
-			    :key #'cadr :test #'equal)
-	       (volume-info-mount-point vol-info)
-	       (and letter (s+ (car letter) ":\\")))
-	 (push vol-info result))
+	 (when (setf vol-info (safer-get-volume-info volume-name))
+	   (setf letter (find (volume-info-device-name vol-info) mount-points
+			      :key #'cadr :test #'equal))
+	   (setf (volume-info-mount-point vol-info)
+		 (and letter (s+ (car letter) ":\\")))
+	   (push vol-info result))
+	 :while (not (zerop (%find-next-volume handle volume-name +MAX-PATH+))))
       (setf err (get-last-error))
       (syscall (%find-volume-close handle))
       (when (/= +ERROR-NO-MORE-FILES+ err)
