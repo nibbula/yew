@@ -488,17 +488,20 @@ Keyword arguments:
       :recursive-p recursive-p
       :prompt prompt))
 
-(defun read-filename (&key (prompt *default-prompt*))
+(defun read-filename (&key (prompt *default-prompt*) allow-nonexistent string)
   "Read a file name."
   (let (filename editor)
     (loop :do
+       (tt-erase-to-eol)		; umm
        (setf (values filename editor)
 	     (rl :prompt prompt
 		 :completion-func #'complete-filename
 		 :context :read-filename
 		 :accept-does-newline nil
+		 :string string
 		 :editor editor))
-       :until (probe-file filename)
+       (tt-erase-to-eol)		; umm
+       :until (or allow-nonexistent (probe-file filename))
        :do (tmp-message editor "File not found."))
     filename))
 
