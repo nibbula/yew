@@ -76,7 +76,9 @@
   (:documentation "Make the theme inactive."))
 
 (defgeneric theme-value (theme item)
-  (:documentation "Get the value of a theme item."))
+  (:documentation "Get the value of a theme item. An ITEM is a theme node path,
+which is a list of symbols which are the names of nodes in a path in the tree.
+"))
 
 (defgeneric (setf theme-value) (value theme item)
   (:documentation "Set the value of a theme item."))

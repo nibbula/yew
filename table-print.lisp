@@ -561,7 +561,7 @@ resized to fit in this, and the whole row is trimmed to this."
        table))
     (olength (container-data table)))) ;; @@@ should actually be rows output?
 
-;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar *table-output* nil
   "The dynamic table being constructed.")
@@ -639,6 +639,9 @@ this row."
 |#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; @@@ This should eventually go away in favor of the object oriented code
+;; above.
 
 ;; This is quite inefficient since it gets the whole data set in
 ;; one shot and then goes thru every datum twice. But it's nice for

@@ -11,6 +11,8 @@
 ;;    - option to use tmp file for pipe (disk vs mem tradeoff)
 ;;  - maybe convert to using terminal instead of curses?
 ;;  - handle when terminal wraps properly
+;; BUGS:
+;;  - when we call out to RL, e.g. to read a search string, tty gets messed up
 
 (defpackage :pager
   (:documentation "pager - More or less like more or less.
