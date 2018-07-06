@@ -141,7 +141,7 @@ unknown.")
   (grout-write #\space :escape nil))
 
 (defgrout print-table (table &key print-titles long-titles max-width
-			     trailing-spaces
+			     trailing-spaces renderer
 			     &allow-other-keys)
   "Print the table in some kind of nice way, probably using
 TABLE-PRINT:OUTPUT-TABLE.")
@@ -320,8 +320,9 @@ generic functions (i.e. %GROUT-*) directly."
 			       &key (print-titles t) long-titles
 				 (max-width (grout-width))
 				 (trailing-spaces t)
+				 (renderer 'text-table-renderer)
 				 &allow-other-keys)
-  (output-table table (make-instance 'text-table-renderer) (grout-stream g)
+  (output-table table (make-instance renderer) (grout-stream g)
 		:print-titles print-titles :long-titles long-titles
 		:max-width max-width :trailing-spaces trailing-spaces))
 
@@ -461,8 +462,9 @@ generic functions (i.e. %GROUT-*) directly."
 			       &key (print-titles t) long-titles
 				 max-width
 				 (trailing-spaces t)
+				 (renderer 'terminal-table-renderer)
 				 &allow-other-keys)
-  (output-table table (make-instance 'terminal-table-renderer)
+  (output-table table (make-instance renderer)
 		(ansi-stream g)
 		:print-titles print-titles :long-titles long-titles
 		:max-width max-width :trailing-spaces trailing-spaces))
@@ -600,8 +602,9 @@ generic functions (i.e. %GROUT-*) directly."
 			       &key (print-titles t) long-titles
 				 (max-width (grout-width))
 				 (trailing-spaces t)
+				 (renderer 'terminal-table-renderer)
 				 &allow-other-keys)
-  (output-table table (make-instance 'terminal-table-renderer)
+  (output-table table (make-instance renderer)
 		(ansi-term g)
 		:print-titles print-titles :long-titles long-titles
 		:max-width max-width :trailing-spaces trailing-spaces))
@@ -741,8 +744,9 @@ generic functions (i.e. %GROUT-*) directly."
 			       &key (print-titles t) long-titles
 				 (max-width (grout-width))
 				 (trailing-spaces t)
+				 (renderer 'terminal-table-renderer)
 				 &allow-other-keys)
-  (output-table table (make-instance 'terminal-table-renderer)
+  (output-table table (make-instance renderer)
 		(generic-term g)
 		:print-titles print-titles :long-titles long-titles
 		:max-width max-width :trailing-spaces trailing-spaces))
@@ -863,8 +867,9 @@ generic functions (i.e. %GROUT-*) directly."
 			       &key (print-titles t) long-titles
 				 (max-width (grout-width))
 				 (trailing-spaces t)
+				 (renderer 'text-table-renderer)
 				 &allow-other-keys)
-  (output-table table (make-instance 'text-table-renderer) (grout-stream g)
+  (output-table table (make-instance renderer) (grout-stream g)
 		:print-titles print-titles :long-titles long-titles
 		:max-width max-width :trailing-spaces trailing-spaces))
 
