@@ -4,7 +4,7 @@
 
 (defpackage :unzip
   (:documentation "Manipulate zip files.")
-  (:use :cl :dlib :dlib-misc :zip :opsys :mkdir :table :grout)
+  (:use :cl :dlib :opsys :dlib-misc :zip :mkdir :table :grout)
   (:export
    #:unzip-command
    #:zip-command
@@ -13,11 +13,68 @@
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
-;; (defun confirm (entry)
-;;   (yes-or-no-p
-;;    "Are you sure you want to overwrite ~s?" (zipfile-entry-name entry)))
+(defvar *confirm-all* nil
+  ":all :none or NIL if it hasn't been set.")
+
+(defun confirm-overwrite (entry)
+  "Return a file name to overwrite or NIL not overwrite."
+  (case *confirm-all*
+    (:all  (return-from confirm-overwrite (zipfile-entry-name entry)))
+    (:none (return-from confirm-overwrite nil)))
+
+  (loop :with done :and answer :and result
+     :and name = (zipfile-entry-name entry)
+     :do
+     (format *query-io*
+	     "Overwrite ~s?~%[y]es, [n]o, Yes to [A]ll, [N]one, [r]ename: "
+	     name)
+     (finish-output *query-io*)
+     (setf answer (read-line *query-io* nil))
+     (when (null answer) ;; EOF is equivalent to None.
+       (setf answer "N"))
+     (setf done t)
+     (flet ((bad-input ()
+	      (if (zerop (length answer))
+		  (format *query-io* "You didn't seem to enter anything.~%")
+		  (format *query-io* "~s isn't one of the choices.~%" answer))
+	      (format *query-io* "Please choose one of: 'y' 'n' 'A' 'N' 'r'~%")
+	      (setf done nil)))
+       (cond
+	 ((zerop (length answer))
+	  (bad-input))
+	 ((or (equal answer "y") (equal (trim answer) "yes"))
+	  (setf result name))
+	 ((or (equal answer "n") (equal (trim answer) "no"))
+	  (setf result nil))
+	 ((or (equal answer "A") (equalp (trim answer) "All"))
+	  (setf *confirm-all* :all
+		result name))
+	 ((or (equal answer "N") (equalp (trim answer) "None"))
+	  (setf *confirm-all* :none
+		result nil))
+	 ((or (equal answer "r") (equalp (trim answer) "rename"))
+	  (loop :with rename-done
+	     :do
+	     (setf result (rl:read-filename :prompt "new name: "
+					    :allow-nonexistent t
+					    :string (path-directory-name name)))
+	     (terpri *query-io*)
+	     (cond
+	       ((not result) #| aborting the rl is equivalent to saying 'n' |#)
+	       ((zerop (length (trim result)))
+		(format *query-io* "You didn't seem to enter anything.~%"))
+	       ((file-exists (trim result))
+		(format *query-io*
+			"That file exists. Please use a new file name.~%"))
+	       (t (setf rename-done t)))
+	     :while (not rename-done)))
+	 (t
+	  (bad-input))))
+     :while (not done)
+     :finally (return result)))
 
 (defun set-attributes (entry file-name)
+  "Set the attributes from ENTRY on FILE-NAME."
   (with-slots ((mode zip::mode)
 	       (made-by zip::made-by)
 	       (date zip::date)) entry
@@ -39,46 +96,62 @@
 	(let ((time (make-os-time :seconds (zipfile-entry-date entry))))
 	  (nos:set-file-time dir :modification-time time))))))
 
-(defun make-file (entry file-name)
+(defun make-file (entry file-name never-overwrite)
+  "Create the FILE-NAME with the contents of ENTRY. Pass the never-overwrite
+flag for extra safety."
   (with-open-file-or-stream (str file-name
-				 :direction :output :if-exists :overwrite
+				 :direction :output
+				 :if-exists
+				 (when never-overwrite
+				   ;; This is probably superfluous, but..
+				   :error
+				   :overwrite)
 				 :if-does-not-exist :create
 				 :element-type '(unsigned-byte 8))
-    (zipfile-entry-contents entry str))
-  (set-attributes entry file-name))
+      (zipfile-entry-contents entry str))
+    (set-attributes entry file-name))
 
-;; @@@ we need to preserve the mode and time and maybe other things?
-(defun extract-entry (entry &key overwrite pipe)
-  (let (out)
+(defun extract-entry (entry &key overwrite never-overwrite pipe)
+  "Extract the ENTRY. The OVERWRITE, NEVER-OVERWRITE, and PIPE flags, are as
+in UNZIP-COMMAND."
+  (let (out answer)
     (cond
       (pipe
        (setf out *standard-output*))
-      (overwrite
+      ((and overwrite (not never-overwrite))
        (setf out (zipfile-entry-name entry)))
       ((file-exists (zipfile-entry-name entry))
-       (if (confirm (format nil "overwrite ~s" (zipfile-entry-name entry))
-		    :eof-confirms nil)
-	   (setf out (zipfile-entry-name entry))
+       (if (and (not never-overwrite)
+		(setf answer (confirm-overwrite entry)))
+	   (setf out answer)
 	   (return-from extract-entry nil)))
-      (t
+      (t ;; the file doesn't exist
        (setf out (zipfile-entry-name entry))))
-    (format t "~a~%" out)
-    (when (stringp out)
-      (let* ((dir (path-directory-name out))
-	     (dir-len (length dir))
-	     (file (path-file-name out))
-	     (file-len (length file)))
-	(when (and (not (zerop dir-len)) (not (file-exists dir)))
-	  (mkdir :directories `(,dir) :errorp nil)
-	  (set-attributes entry dir))
-	(if (zerop file-len)
-	    ;; It has no file name.
-	    (if (zerop dir-len)
-		(when (not pipe)
-		  (error "Stream input file and stream output not specified."))
-		#| It's just a directory so we already made it above |#)
-	    ;; It has a file name.
-	    (make-file entry out))))))
+    (when (not pipe)
+      (format t "~a~%" out))
+    (if (stringp out)
+	(let* ((dir (path-directory-name out))
+	       (dir-len (length dir))
+	       (file (path-file-name out))
+	       (file-len (length file)))
+	  (when (and (not (zerop dir-len)) (not (file-exists dir)))
+	    (mkdir :directories `(,dir) :errorp nil)
+	    (set-attributes entry dir))
+	  (if (zerop file-len)
+	      ;; It has no file name.
+	      (if (zerop dir-len)
+		  (when (not pipe)
+		    (error "Stream input file and stream output not specified."))
+		  #| It's just a directory so we already made it above |#)
+	      ;; It has a file name.
+	      (make-file entry out never-overwrite)))
+	;; It's a pipe.
+	(when (or (not (zipfile-entry-name entry))
+		  (and (zipfile-entry-name entry)
+		       (not (zerop (length (path-file-name
+					    (zipfile-entry-name entry)))))))
+	  ;; It's presumably not a directory.
+	  (zipfile-entry-contents entry out)))))
 
 (defun compression-percent (uncompressed compressed)
   (if (zerop uncompressed)
@@ -168,12 +241,24 @@
   )
 
 (defun unzip-command
-    (&key overwrite list-p verbose pipe force-utf-8 exclude archive
-       files extract)
+    (&key archive files exclude extract list-p verbose overwrite
+       never-overwrite pipe force-utf-8)
+  "Extract or list files from a ZIP archive.
+  ARCHIVE is the zip archive file.
+  FILES is a list of files to extract.
+  EXCLUDE is a list of files to exclude.
+  EXTRACT is true to extract files.
+  LIST-P is true to list files.
+  VERBOSE is true to list more detail about archive contents.
+  OVERWRITE is true to overwrite files without asking.
+  NEVER-OVERWRITE is true to never overwrite files, overridding OVERWRITE.
+  PIPE is true to extract files to *STANDARD-OUTPUT*.
+  FORCE-UTF-8 is true to pretend the archive contents are in UTF-8."
   ;;(declare (ignore overwrite pipe extract))
   (when verbose
     (setf list-p t))
   (let ((totals (make-total))
+	(*confirm-all* nil)
 	zippy results)
     (macrolet ((do-entries (() &body body)
 		 `(do-zipfile-entries (name entry zippy)
@@ -196,7 +281,8 @@
 		 (when list-p
 		   (push (list-entry entry :verbose verbose) results))
 		 (when extract
-		   (extract-entry entry :overwrite overwrite :pipe pipe))
+		   (extract-entry entry :overwrite overwrite :pipe pipe
+				  :never-overwrite never-overwrite))
 		 (incf (total-size totals)
 		       (zipfile-entry-size entry))
 		 (incf (total-compressed-size totals)
@@ -249,6 +335,8 @@
 (lish:defcommand unzip
   ((overwrite boolean :short-arg #\o
     :help "True to overwrite files without asking.")
+   (never-overwrite boolean :short-arg #\n
+    :help "True to never overwrite.")
    (list-p boolean :short-arg #\l
     :help "True to list archive members in short format.")
    (verbose boolean :short-arg #\v
@@ -262,7 +350,7 @@
    (files pathname :optional t :repeating t
     :help "File members to operate on."))
   :keys-as keys
-  "Extract files from a ZIP archive."
+  "Extract or list files from a ZIP archive."
   (when verbose
     (setf list-p t))
   (apply #'unzip-command `(,@keys :extract ,(if list-p nil t))))
