@@ -103,7 +103,7 @@
 	      (os-unix:timespec
 	       (os-unix:unix-to-universal-time
 		(os-unix:timespec-seconds time)))
-	      (derp-time (derp-time-seconds time)))))
+	      (os-time (os-time-seconds time)))))
     (format-date "~a-~2,'0d-~2,'0d ~a ~2,'0d:~2,'0d:~2,'0d"
 		 (:year :month :date :day-abbrev :hour :minute :second)
 		 :time ut)))

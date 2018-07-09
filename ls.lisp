@@ -363,7 +363,7 @@ by nos:read-directory."))
 		(file-info-flags s)
 		(format-the-size (file-info-size s))
 		(format-the-date
-		 (derp-time-seconds
+		 (os-time-seconds
 		  (file-info-modification-time s))
 		 (keywordify date-format))
 		(get-styled-file-name file)

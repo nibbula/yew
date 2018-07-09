@@ -397,12 +397,12 @@ user, pid, ppid, size, command."
 	   table)
       (setf table (make-table-from proc-list))
       (when print
-	;; @@@ make a workaround for printing the derp-time on windows
+	;; @@@ make a workaround for printing the os-time on windows
 	;; The print-object methood should do something different based
 	;; on a dynamic variable. Or it would be nice if there was a way
 	;; to do it with the table renderer?
 	;;(make-method)
-	;;(add-method #'print-object (derp-time))
+	;;(add-method #'print-object (os-time))
 	;;(remove-method (find-method ))
 	#+windows ;; or how about this bullcrap?
 	(progn
