@@ -1055,13 +1055,13 @@ and indented properly for multi-line objects."
 	       (format str "~a Size:        ~d~%" prefix size)
 	       (format str "~a Access time: ~a~%" prefix
 		       (dlib-misc:date-string
-			:time (nos:derp-time-seconds access-time)))
+			:time (nos:os-time-seconds access-time)))
 	       (format str "~a Mod time:    ~a~%" prefix
 		       (dlib-misc:date-string
-			:time (nos:derp-time-seconds modify-time)))
+			:time (nos:os-time-seconds modify-time)))
 	       (format str "~a Change time: ~a~%" prefix
 		       (dlib-misc:date-string
-			:time (nos:derp-time-seconds change-time)))
+			:time (nos:os-time-seconds change-time)))
 	       #|
 	       (format str "~a Birth time:  ~a~%" prefix
 		       (dlib-misc:date-string
