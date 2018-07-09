@@ -13,11 +13,12 @@
 
 ;; This is basically just so I can have -p be the default.
 
-(defun mkdir (&key directories mode (make-parents t) verbose)
+(defun mkdir (&key directories mode (make-parents t) verbose (errorp t))
   (loop :for d :in directories :do
      (if (file-exists d)
 	 (progn
-	   (error "~a already exists." d))
+	   (when errorp
+	     (error "~a already exists." d)))
 	 (progn
 	   (loop :with prefix = ""
 	      :for component :in (nos:split-path d)
