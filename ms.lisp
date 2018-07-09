@@ -785,10 +785,10 @@ Common Lisp 1900 based universal time.")
       (values (- new-sec +windows-to-universal-time+)
 	      (* new-100nsec 100)))))
 
-(defun filetime-to-derp-time (filetime)
+(defun filetime-to-os-time (filetime)
   (multiple-value-bind (sec nano)
       (filetime-to-universal-time-and-nsec filetime)
-    (make-derp-time :seconds sec :nanoseconds nano)))
+    (make-os-time :seconds sec :nanoseconds nano)))
 
  ;; :immutable :compressed :hidden
 (defun attr-to-flags (attr)
@@ -824,9 +824,9 @@ information about the link itself."
 	 :type (attr-to-dir-entry-type file-attributes)
 	 :size (+ (ash file-size-high 32) file-size-low)
 	 :flags (attr-to-flags file-attributes)
-	 :creation-time (filetime-to-derp-time creation-time)
-	 :access-time (filetime-to-derp-time last-access-time)
-	 :modification-time (filetime-to-derp-time last-write-time))))))
+	 :creation-time (filetime-to-os-time creation-time)
+	 :access-time (filetime-to-os-time last-access-time)
+	 :modification-time (filetime-to-os-time last-write-time))))))
 
 (defcfun ("GetFileAttributesW" %get-file-attributes)
     DWORD
@@ -1208,7 +1208,8 @@ if not given."
   (let ((our-path
 	 (typecase path
 	   (pathname (safe-namestring path))
-	   (string path))))
+	   (string path)
+	   (null (safe-namestring (user-homedir-pathname))))))
     (when (char/= #\\ (aref our-path (1- (length our-path))))
       (setf our-path (s+ our-path "\\")))
     (with-wide-string (w-path our-path)
@@ -1580,7 +1581,7 @@ typedef struct _JOBOBJECT_BASIC_ACCOUNTING_INFORMATION {
 	      creation-time exit-time kernel-time user-time))
     (values-list
      ;;(mapcar
-      ;;#'filetime-to-derp-time
+      ;;#'filetime-to-os-time
       ;; (list (mem-ref creation-time '(:struct FILETIME))
       ;; 	    (mem-ref exit-time '(:struct FILETIME))
       ;; 	    (mem-ref kernel-time '(:struct FILETIME))

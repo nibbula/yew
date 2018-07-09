@@ -39,7 +39,7 @@ string (denoting itself)."
   (raw     nil :type boolean)
   (timeout nil :type (or null integer)))
 
-(defstruct derp-time
+(defstruct os-time
   "I can't tell you how much I dislike these units."
   seconds
   nanoseconds)
@@ -76,10 +76,130 @@ string (denoting itself)."
 
 (defclass process-handle ()
   ((value
-    :initarg :value :accessor process-handle-value  
+    :initarg :value :accessor process-handle-value
     :documentation "The system specific value of the handle."))
   (:documentation
    "System identifier for a running process, usually one that we made."))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; events
+
+;; What we're trying to do here is provide a uniform platform independent
+;; interface to the lowest level of operating system events, which other,
+;; perhaps more complicated, things can be built on. Application event
+;; handling is a complex subject, and is tightly coupled to application
+;; design. O/S's with GUI's have many many other events, which are beyond the
+;; scope of what we're trying to do here. In particular, this should be able to
+;; be reasonably used by a network server application, a command-line
+;; application, or a GUI application.
+;;
+;; The goal with this is so you can say 'await-event' or similar, at the
+;; lowest level and be sure you will get some kind of event for anything the
+;; operating system can do. A higher level will likely have to disect or
+;; process that event into an application level event.
+
+(defstruct event-set
+  list			; The list of events
+  os-data)		; A place for the O/S specific code to put something.
+
+(defvar *event-set* nil
+  "The default event set.")
+
+(defclass os-event ()
+  ((triggered
+    :initarg :triggered :accessor os-event-triggered :initform nil :type boolean
+    :documentation
+    "True if the event was triggered by your outrageous comment."))
+  (:documentation "A generic event of any type."))
+
+(defclass signal-event (os-event)
+  ((number
+    :initarg :number :accessor signal-event-number
+    :documentation "A number indicating the 'type' of the signal."))
+  (:documentation "An event that's some kind of stupid low level OS signal."))
+
+(defclass io-event (os-event)
+  ((handle
+    :initarg :handle :accessor io-event-handle
+    :documentation "A handle to the thing."))
+  (:documentation "There's was some I/O on somthing."))
+
+(defclass input-available-event (io-event) ()
+  (:documentation "Input is available."))
+
+(defclass output-possible-event (io-event) ()
+  (:documentation "Output might be possible."))
+
+(defclass output-finished-event (io-event) ()
+  (:documentation "Output is probably done."))
+
+(defclass io-error-event (io-event) ()
+  (:documentation "The thing got some kind of error."))
+
+(defclass network-event (io-event) ()
+  (:documentation "Some kind of event on the network."))
+
+(defclass network-connection-available-event (network-event
+					      input-available-event) ()
+  (:documentation "A connection is available."))
+
+(defclass os-process-event (os-event)
+  ((handle
+    :initarg :handle :accessor os-process-event-handle
+    :documentation "The handle of the process."))
+  (:documentation "Something happend to a process."))
+
+(defclass child-died-event (os-process-event)
+  ((reason
+    :initarg :reason :accessor child-died-event-reason
+    :documentation "The reason the child died."))
+  (:documentation "A child process died."))
+
+(defclass child-stopped-event (os-process-event) ()
+  (:documentation "A child process stopped."))
+
+;; @@@ You would think this would be an io-event, but it's not :P
+(defclass terminal-event (signal-event) ()
+  (:documentation "Something happened to a terminal."))
+
+(defclass terminal-size-change-event (terminal-event)
+  ((width
+    :initarg :width :accessor terminal-size-change-event-width
+    :documentation "New width of the terminal.")
+   (height
+    :initarg :height :accessor terminal-size-change-event-height
+    :documentation "New height of the terminal."))
+  (:documentation "Something happened to a terminal."))
+
+(defclass timer-event (os-event)
+  ((timer
+    :initarg :timer :accessor timer-event-timer
+    :documentation "The timer which something happened to."))
+  (:documentation "Something happened with a timer."))
+
+(defclass timer-expired-event (timer-event) ()
+  (:documentation "Your time is up."))
+
+(defclass timer-triggered-event (timer-event) ()
+  (:documentation "It's that time again."))
+
+(defclass system-message-event (os-event)
+  ((message
+    :initarg :message :accessor system-message-event-message
+    :documentation "The message from the system."))
+  (:documentation "Some kind of message from the system."))
+
+(defclass tex-boxing-event (os-event)
+  ((badness
+    :initarg :badness :accessor tex-boxing-event-badness
+    :initform 10000 :type integer
+    :documentation "It's over 9000!"))
+  (:documentation "This will inevitably happen."))
+
+;; @@@ There should probably be some more types like thread, memory, and IPC?
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Conditions
 
 (define-condition opsys-error (simple-error)
   ((code
@@ -93,11 +213,18 @@ string (denoting itself)."
 		 (format s "~? ~a"
 			 (simple-condition-format-control c)
 			 (simple-condition-format-arguments c)
-			 (symbol-call :opsys :error-message
-				      (opsys-error-code c)))
-		 (format s "~a"
-			 (symbol-call :opsys :error-message
-				      (opsys-error-code c))))))
+			 (if (and (slot-boundp c 'code)
+				  (slot-value c 'code))
+			     (symbol-call :opsys :error-message
+					  (opsys-error-code c))
+			     ""))
+		 (if (and (slot-boundp c 'code)
+			  (slot-value c 'code))
+		     (format s "~a"
+			     (symbol-call :opsys :error-message
+					  (opsys-error-code c)))
+		     (format s "Somebody probably forgot proper arguments ~
+                                when signaling this OPSYS-ERROR.")))))
   (:documentation "An error from calling an operating system function."))
 
 (define-condition opsys-resumed (simple-error)

@@ -187,63 +187,12 @@ information about the link itself.")
 ;;   "Evaluate the body with the variable VAR bound to a POSIX file descriptor with a temporary name. The file is supposedly removed after this form is done."
 ;;   (unwind-protect (progn @@@
 
-;; I would like to have:
+;; I might like to have:
 ;;
 ;; (defun get-stream-file-name (stream)
 ;;   (with-foreign-string (path MAXPATHLEN)
 ;;     (syscall (fcntl F_GETPATH path)))
 ;;   )
-;;
-;; On sbeecil:
-;; SB-IMPL::FD-STREAM-PATHNAME
-;; SB-IMPL::FD-STREAM-FILE
-;; SB-SYS:FD-STREAM-FD (fbound)
-;; SB-SYS:FD-STREAM-P (fbound)
-;;
-;; On linux:
-;; (readlink (format nil "/proc/~a/fd/~a" (getpid) fd))
-;; ssize_t readlink(const char *path, char *buf, size_t bufsiz);
-;; Very unreliable and hackish.
-;;
-;; Windows:
-;;
-;; (defcfun GetFileInformationByHandleEx BOOL #| WINAPI |#
-;;  (hFile HANDLE) ;; In
-;;  (FileInformationClass FILE_INFO_BY_HANDLE_CLASS) ;; In
-;;  (lpFileInformation LPVOID)  ;; Out
-;;  (dwBufferSize DWORD)  ;; In
-;; )
-;;
-;; GetFileInformationByHandleEx  FileNameInfo,
-;; (defcstruct _FILE_NAME_INFO
-;;  DWORD FileNameLength;
-;;  WCHAR FileName[1];
-;; } FILE_NAME_INFO, *PFILE_NAME_INFO;
-;;
-;; typedef enum _FILE_INFO_BY_HANDLE_CLASS { 
-;;   FileBasicInfo                   = 0,
-;;   FileStandardInfo                = 1,
-;;   FileNameInfo                    = 2,
-;;   FileRenameInfo                  = 3,
-;;   FileDispositionInfo             = 4,
-;;   FileAllocationInfo              = 5,
-;;   FileEndOfFileInfo               = 6,
-;;   FileStreamInfo                  = 7,
-;;   FileCompressionInfo             = 8,
-;;   FileAttributeTagInfo            = 9,
-;;   FileIdBothDirectoryInfo         = 10, // 0xA
-;;   FileIdBothDirectoryRestartInfo  = 11, // 0xB
-;;   FileIoPriorityHintInfo          = 12, // 0xC
-;;   FileRemoteProtocolInfo          = 13, // 0xD
-;;   FileFullDirectoryInfo           = 14, // 0xE
-;;   FileFullDirectoryRestartInfo    = 15, // 0xF
-;;   FileStorageInfo                 = 16, // 0x10
-;;   FileAlignmentInfo               = 17, // 0x11
-;;   FileIdInfo                      = 18, // 0x12
-;;   FileIdExtdDirectoryInfo         = 19, // 0x13
-;;   FileIdExtdDirectoryRestartInfo  = 20, // 0x14
-;;   MaximumFileInfoByHandlesClass
-;; } FILE_INFO_BY_HANDLE_CLASS, *PFILE_INFO_BY_HANDLE_CLASS;
 
 (defun stream-system-handle (stream &optional (direction :output))
   "Return the operating system handle for a stream. If there is more than one
@@ -321,13 +270,17 @@ Doesn't operate on streams.")
 			     (direction :input)
 			     (if-exists :error)
 			     (if-does-not-exist :error)) &body body)
-  "Evaluate the body with the variable VAR bound to a posix file descriptor
+  "Evaluate the body with the variable VAR bound to an O/S file descriptor
 opened on FILENAME. DIRECTION, IF-EXISTS, and IF-DOES-NOT-EXIST are simpler
 versions of the keywords used in Lisp open.
   DIRECTION         - supports :INPUT, :OUTPUT, and :IO.
   IF-EXISTS         - supports :ERROR and :APPEND.
   IF-DOES-NOT-EXIST - supports :ERROR, and :CREATE.
 ")
+
+(defosfun set-file-time (path &key access-time modification-time)
+  "Set the given times on PATH. The times are OS-TIME structures. Either
+time can be :NOW to use the current time.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
@@ -952,14 +905,76 @@ so-called “universal” time. The second value is nanoseconds.")
 “universal” time.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; select
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; poll
+;; events
 
 (defosfun listen-for (seconds fd)
   "Listen on the OS file descriptor for at most N seconds or until input is ~
 available.")
+
+(defosfun %create-event-set ())
+(defosfun %destroy-event-set (set))
+(defosfun %add-event (event set))
+(defosfun %delete-event (event set))
+(defosfun %clear-trigggers (set))
+
+(defun create-event-set ()
+  (let ((set (make-event-set)))
+    (%create-event-set set)
+    set))
+
+(defun destroy-event-set (set)
+  (%destroy-event-set set))
+
+(defmacro with-event-set ((set) &body body)
+  "The usual. Makes sure the O/S specific part is taken care of."
+  `(let (,set)
+     (unwind-protect
+	  (progn
+	    (setf ,set (create-event-set))
+	    ,@body)
+       (when ,set (destroy-event-set ,set)))))
+
+(defun add-event (event &optional (set *event-set*))
+  "Add the event to the SET."
+  (when (not (or set *event-set*))
+    (setf *event-set* (create-event-set)
+	  set *event-set*))
+  (push event (event-set-list set))
+  (%add-event event set))
+
+(defun delete-event (event &optional (set *event-set*))
+  "Delete the event from the SET."
+  (when (not set)
+    (error "Event set has no events."))
+  (%delete-event event set)
+  (setf (event-set-list set) (delete event (event-set-list set))))
+
+(defun clear-triggers (&optional (set *event-set*))
+  "Clear the triggers for the event SET."
+  (%clear-triggers set)
+  (mapcar (_ (setf (os-event-triggered _) nil)) (event-set-list set)))
+
+(defosfun await-events (&key (event-types t) (event-set *event-set*) timeout
+			     (leave-triggers nil))
+  "Wait for events of the given EVENT-TYPES, or T for any event. Return if we
+don't get an event before TIMEOUT. TIMEOUT can be NIL wait potentially forever,
+or T to return immediately, otherwise it's a OS-TIME. The default for TIMEOUT
+is NIL. If LEAVE-TRIGGERS it T, it will not clear triggers in the EVENT-SET,
+that were set before being invoked.")
+
+(defosfun pick-events (event-types &key (event-set *event-set*) remove timeout)
+  "Return any pending events of the types given in EVENT-TYPES. If REMOVE is
+true, remove the events from the EVENT-SET. Return if there aren't any events
+before TIMEOUT. TIMEOUT can be NIL wait potentially forever, or T to return
+immediately, otherwise it's a OS-TIME. The default for TIMEOUT is NIL.")
+
+(defosfun map-events (function &key (event-set *event-set*) (event-types t))
+  "Call FUNCTION for each event in EVENT-SET, that is pending or triggered.
+EVENT-TYPES restricts the events mapped to those types.")
+
+(defosfun events-pending-p (&key (event-types t) (event-set *event-set*))
+  "Return true if there are any events pending in the EVENT-SET. Restrict the
+events considered to those in EVENT-TYPES, if it's not T.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; thread-like

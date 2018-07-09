@@ -52,11 +52,11 @@
    #:terminal-mode-raw
    #:terminal-mode-timeout
 
-   #:derp-time
-   #:derp-time-p
-   #:make-derp-time
-   #:derp-time-seconds
-   #:derp-time-nanoseconds
+   #:os-time
+   #:os-time-p
+   #:make-os-time
+   #:os-time-seconds
+   #:os-time-nanoseconds
 
    #:file-info
    #:file-info-p
@@ -89,7 +89,30 @@
 
    #:process-handle
    #:process-handle-value
-   
+
+   #:event-set #:make-event-set #:event-set-list #:event-set-os-data
+   #:*event-set*
+   #:os-event #:os-event-triggered
+   #:signal-event #:signal-event-number
+   #:io-event #:io-event-handle
+   #:input-available-event
+   #:output-possible-event
+   #:output-finished-event
+   #:io-error-event
+   #:network-event
+   #:network-connection-available-event
+   #:os-process-event #:os-process-event-handle
+   #:child-died-event #:child-died-event-reason
+   #:child-stopped-event
+   #:terminal-event
+   #:terminal-size-change-event
+   #:terminal-size-change-event-width
+   #:terminal-size-change-event-height
+   #:timer-event #:timer-event-timer
+   #:timer-expired-event
+   #:timer-triggered-event
+   #:system-message-event
+
    #:opsys-error
    #:opsys-error-code
    #:opsys-resumed

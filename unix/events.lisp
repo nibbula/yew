@@ -4,6 +4,9 @@
 
 (in-package :opsys-unix)
 
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+		   (compilation-speed 0)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; select
 
@@ -246,7 +249,7 @@
 
 #+linux
 (progn
-  (defconstant +EPOLL-CLOXEC+  #o02000000 "Close descriptor on exec.")
+  (defconstant +EPOLL-CLOEXEC+ #o02000000 "Close descriptor on exec.")
   (defconstant +EPOLL-CTL-ADD+ 1 "Add a descriptor.")
   (defconstant +EPOLL-CTL-MOD+ 2 "Modify a descriptor.")
   (defconstant +EPOLL-CTL-DEL+ 3 "Delete a descriptor.")
@@ -274,7 +277,9 @@
 
   (defcstruct foreign-epoll-event
     (events :uint32)
-    (data   (:union foreign-epoll-data)))
+    ;;(data   (:union foreign-epoll-data))
+    (data   :uint64)
+    )
 
   (defcfun epoll-create :int (size :int))
   (defcfun epoll-create1 :int (flags :int))
@@ -344,6 +349,8 @@
     (declare (ignore kq changelist nchanges eventlist nevents timeout))
     ))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 ;; It might be nice if we could do this on a Lisp stream.
 ;;(defun listen-for (seconds &optional (fd 0))
 (defun listen-for (seconds fd)
@@ -392,5 +399,424 @@ evaluate the IO-FORM."
 			 ,@body))))
 	   ,io-form
 	   ,result))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Portable interface
+
+;; So, if we were trying to optimally efficient we should make the portable
+;; io-events combined into one event. But the clarity and usability of the
+;; interface with them separated, seems much better to me. Anyway the cost of
+;; combining and uncombining them is dwarfed by the cost of any actual I/O we
+;; do. If you want the absolute fastest, you can roll your own. But if you
+;; want the absolute fastest, you should call it from C to elimitate FFI
+;; overhead, and for that matter call it from the kernel to eliminate syscall
+;; and context switch overhead. It's possible a LispOS could do it with
+;; userland security *and* less overhead. #-rant
+
+;; @@@ How should we deal with multiple threads doing epoll?
+;; With this setup you could workaround it by just binding your own thread
+;; dynamic *epoll-fd*, but we should make the nice interface just work properly.
+(defstruct unix-event-set
+  fd			; File descriptor for epoll instance
+  events		; (:pointer (:struct foreign-epoll-event))
+  count			; size of events array
+  table			; epoll event to lisp event mapping hash table
+  fd-table		; event fd to tables index hash table
+  signal-array		; signals noticed
+  signal-mask		; signal mask for epoll
+  signal-block-mask)	; signal block mask for epoll
+
+;; events     the thing passed right to epoll
+;; count      the size of events
+;; table      has an entry for every event, which is a list of os-events
+;;            This is so we find the lisp os-events for the events returned/set
+;;            from epoll.
+;;            The key is an index into EVENTS
+;;            The value is a list of os-events
+;; fd-table   a hash table so for a given fd we can find the C & lisp events
+;;            The key of fd-table is an fd.
+;;            The value of fd-table is an index into TABLE.
+
+(defvar *event-array-growth-factor* 2)
+(defvar *event-array-starting-size* 20)
+
+(defun lisp-event-to-epoll-event-mask (event)
+  (typecase event
+    (input-available-event +EPOLLIN+)
+    (output-possible-event +EPOLLOUT+)
+    (output-finished-event
+     ;; @@@ Is this really what I mean?
+     (logior +EPOLLOUT+ +EPOLLET+))
+    (io-error-event
+     ;; @@@ This is actually un-necessary.
+     +EPOLLERR+)
+    (t 0)))
+
+(defun epoll-event-mask-to-lisp-event-type (mask)
+  (let (type-list)
+    (when (logand mask +EPOLLIN+)
+      (push 'input-available-event type-list))
+    (when (logand mask +EPOLLOUT+)
+      (push 'output-possible-event type-list))
+    (when (logand mask (logior +EPOLLET+ +EPOLLOUT+))
+      (push 'output-finished-event type-list))
+    (when (logand mask +EPOLLERR+)
+      (push 'io-error-event type-list))
+    (append '(or) type-list)))
+
+(defun %create-event-set (set)
+  (setf (event-set-os-data set)
+	(make-unix-event-set
+	 ;; I think you'd normally want it closed automatically.
+	 :fd (syscall (epoll-create1 +EPOLL-CLOEXEC+))
+	 :events (foreign-alloc '(:struct foreign-epoll-event)
+				:count *event-array-starting-size*)
+	 :count 0
+	 :table (make-hash-table)
+	 :fd-table (make-hash-table)
+	 :signal-array (make-array *signal-count*
+				   :element-type 'fixnum
+				   :initial-element 0)
+	 :signal-mask (foreign-alloc 'sigset-t)
+	 :signal-block-mask (foreign-alloc 'sigset-t))))
+
+(defun resize-event-set (set size)
+  (with-slots (events count table) set
+    (when (> size count)
+      (error "FAILBOAT")
+      #|
+      (foreign-free events)
+      (setf count (* count *event-array-growth-factor*))
+      (setf events
+	    (foreign-alloc '(:struct foreign-epoll-event)
+			   :count count))
+      ;; Re-confabulate the whole table.
+      (let (coalesced)
+	(loop :with item
+	   :for e :in (event-set-list set)
+	   :do
+	   (when (typep e 'io-event)
+	     (setf item (assoc (io-event-handle e) coalesced))
+	     (if item
+		 (push e (cdr item))
+		 (setf coalesced (acons 
+
+      (loop :for i :from 0
+	 :for e :in (event-set-list set)
+	 :do
+	 (when (typep e 'io-event)
+	   (setf (aref table i) e
+		 (foreign-slot-value
+		  (mem-aref events '(:struct foreign-epoll-event) i)
+		  '(:struct foreign-epoll-event)
+		  'events)
+		 (lisp-event-to-epoll-event-mask e)))))
+      |#
+      )))
+
+(defun %destroy-event-set (set)
+  (with-slots (fd events signal-mask signal-block-mask) (event-set-os-data set)
+    (foreign-free events)
+    (foreign-free signal-mask)
+    (foreign-free signal-block-mask)
+    (syscall (posix-close fd))))
+
+(defun %add-event (event set)
+  "Add the event to the SET."
+  (typecase event
+    (io-event
+     (format t "Adding io-event~%")
+     ;; @@@ Perhaps there should be an interface for adding a bunch of events?
+     (with-slots (events count table fd-table) (event-set-os-data set)
+       (let ((index (gethash (io-event-handle event) fd-table)))
+	 (if index
+	     ;; We already have something for this FD. Add this event to it.
+	     ;; Even though we might have duplicate lisp events for an FD,
+	     ;; we won't have multiple of the exact same lisp event.
+	     (progn
+	       (format t "Already existing fd~%")
+	       (pushnew event (gethash index table) :test #'equal))
+	     ;; Otherwise, we add it.
+	     (progn
+	       (format t "new fd~%")
+	       (setf index count)
+	       ;; Make sure it's big enough
+	       (resize-event-set (event-set-os-data set) index)
+	       (setf (gethash index table) (list event)
+		     (gethash (io-event-handle event) fd-table) index)
+	       (let ((ee (mem-aptr events '(:struct foreign-epoll-event) index)))
+		 (format t "ee = ~a~%" ee)
+		 (setf (foreign-slot-value
+			ee
+			'(:struct foreign-epoll-event)
+			'events)
+		       (lisp-event-to-epoll-event-mask event))
+		 (format t "ee.events = ~x~%"
+			 (lisp-event-to-epoll-event-mask event))
+		 (setf
+		       ;; ?Is this necessary? Isn't the data slot just for
+		       ;; user reference?
+		       (foreign-slot-value
+			;;(mem-aptr events '(:struct foreign-epoll-event) index)
+			ee
+			'(:struct foreign-epoll-event)
+			'data)
+		       (io-event-handle event))
+		 (format t "ee.data = ~s~%"
+			 (io-event-handle event))
+		 )
+	       (incf count)))))
+     ;; Tell epoll about it.
+     (with-foreign-object (ev '(:struct foreign-epoll-event))
+       (with-foreign-slots ((events data) ev (:struct foreign-epoll-event))
+	 (setf events (lisp-event-to-epoll-event-mask event))
+	 (format t "epoll-ctl events ~x~%" events)
+	 (syscall (epoll-ctl
+		   (unix-event-set-fd (event-set-os-data set))
+		   +EPOLL-CTL-ADD+
+		   (io-event-handle event) ev)))))
+    ((or signal-event os-process-event terminal-size-change-event)
+     ;; @@@ set signal mask
+     )
+    (timer-event
+     ;; @@@ set the minimum timeout
+     )))
+
+(defun %delete-event (event set)
+  "Delete the event from the SET."
+  (with-slots (fd events count table) (event-set-os-data set)
+    (typecase event
+      (io-event
+       (with-slots (events count table fd-table) (event-set-os-data set)
+	 (let ((index (gethash (io-event-handle event) fd-table))
+	       lisp-events)
+	   ;; If this is the only event for this handle in the set
+	   (if index
+	       (progn
+		 (setf lisp-events (gethash index table))
+		 (if (and (= 1 (length lisp-events))
+			  (equal event (first lisp-events)))
+		     ;; It's the last one, go ahead and delete it.
+		     (progn
+		       (remhash index table)
+		       (remhash (io-event-handle event) fd-table)
+		       (syscall (epoll-ctl
+				 fd +EPOLL-CTL-DEL+ (io-event-handle event)
+				 (null-pointer))))
+		     ;; otherwise we have to change it
+		     (progn
+		       ;; @@@ in a different way than this
+		       (warn "I didn't really write this part yet.")
+		       (with-foreign-object (ev '(:struct foreign-epoll-event))
+			 (with-foreign-slots ((events data) ev
+					      (:struct foreign-epoll-event))
+			   (setf events (lisp-event-to-epoll-event-mask event))
+			   (syscall (epoll-ctl fd +EPOLL-CTL-MOD+
+					       (io-event-handle event) ev)))))))
+	       ;; This shouldn't happen right?
+	       ;; We could just ignore it?
+	       (progn
+		 (if (not (find event (event-set-list set) :test #'equal))
+		     (cerror "Whatever."
+			     "That event doesn't seem to be in the set.")
+		     (cerror "Whatever"
+			     "Sorry. Something got screwed up, because I can't ~
+                              find that file descriptor."))
+		 (return-from %delete-event nil))))))
+      ((or signal-event os-process-event terminal-size-change-event)
+       ;; @@@ set signal mask
+       )
+      (timer-event
+       ;; @@@ set the minimum timeout
+       ))))
+
+(defun %clear-triggers (set)
+  "Clear the triggers for the event SET."
+  (declare (ignore set))
+  ;; @@@ I guess we don't have to do anything?
+  )
+
+(defun timeout-to-milliseconds (timeout)
+  "Return the proper argument for epoll_wait, given TIMEOUT, or signal an error."
+  (cond
+    ((null timeout) -1)
+    ((eq timeout t) 0)
+    ((os-time-p timeout)
+     (+ (* (os-time-seconds timeout) 1000)
+	(truncate (/ (os-time-nanoseconds timeout) 1000000))))
+    ((numberp timeout)			; in seconds
+     (truncate (* timeout 1000)))
+    (t (error 'opsys-error
+	      :format-control
+	      "Timeout isn't a type we can handle.~%"))))
+
+(defun event-set-signals (event-set)
+  "Return a list of signal numbers from the event set."
+  (loop :for e :in (event-set-list event-set)
+     :when (typep e 'signal-event)
+     :collect (signal-event-number e)))
+
+(defvar *signals-noticed* nil
+  "Array of signals received.")
+
+(cffi:defcallback signal-noticer :void ((signal-number :int))
+  (incf (aref *signals-noticed* signal-number)))
+
+(defun check-signals (event-set)
+  (loop
+     :with array = (unix-event-set-signal-array
+		       (event-set-os-data event-set))
+     :and found-count = 0
+     :for i :from 0 :below *signal-count*
+     :when (not (zerop (aref array i)))
+     :do
+     (loop :for e :in (event-set-list event-set)
+	:do
+	(when (and (typep e 'signal-event)
+		   (= (signal-event-number e) i))
+	  (setf (os-event-triggered e) t)
+	  (incf found-count)))
+     :finally (return found-count)))
+
+(defun check-timers (event-set)
+  (declare (ignore event-set))
+  ;; (loop :for i :from 0 :below *signal-count*
+  ;;    :when (not (zerop (aref signal-array i)))
+  ;;    :do
+  ;;    (trigger-signals event-set)
+  ;;    (return t))
+  0)
+
+(defun await-events (&key (event-types t) (event-set *event-set*) timeout
+		       (leave-triggers nil))
+  "Wait for events of the given EVENT-TYPES, or T for any event. Return if we
+don't get an event before TIMEOUT. TIMEOUT can be NIL wait potentially forever,
+or T to return immediately, otherwise it's a OS-TIME, or a number of seconds.
+The default for TIMEOUT is NIL. If LEAVE-TRIGGERS it T, it will not clear
+triggers in the EVENT-SET, that were set before being invoked.
+Retruns NIL if the timeout was up before getting any events, otherwise return
+the count of event triggered."
+  #+linux
+  (declare (ignore event-types))
+  (when (not (event-set-os-data event-set))
+    (error 'opsys-error
+	   :format-control "os-data is missing on event-set ~s~%"
+	   :format-arguments `(,event-set)))
+  (when (not leave-triggers)
+    (mapcar (_ (setf (os-event-triggered _) nil)) (event-set-list event-set)))
+
+  (let (poll-result
+	(ms-timeout (timeout-to-milliseconds timeout))
+	(triggered-count 0)
+	*signals-noticed* signals)
+    (with-slots (fd events count table fd-table signal-array signal-mask
+		 signal-block-mask)
+	(event-set-os-data event-set)
+      ;; This how I think the signal stuff should happen:
+      ;;  - block signals in the event set
+      ;;  - set up handlers for signals in the event set
+      ;;  - set the mask to unblock them
+      ;;  - call epoll
+      ;;  - check handler flags and trigger events
+      ;;  - remove signal handlers for signals in the event set
+      ;;  - unblock signals in the event set
+
+      (fill signal-array 0)
+      (setf *signals-noticed* signal-array
+	    signals (event-set-signals event-set))
+      (sigemptyset signal-mask)
+      (syscall (sigprocmask +SIG-SETMASK+ (null-pointer) signal-mask))
+      (loop :for sig :in signals :do
+	 (sigdelset signal-mask sig)
+	 (sigaddset signal-block-mask sig))
+
+      (unwind-protect
+	   (progn
+	     (syscall (sigprocmask +SIG-BLOCK+
+				   (null-pointer) signal-block-mask))
+	     (loop :for sig :in signals :do
+		(setf (signal-action sig) 'signal-noticer))
+	     ;; There's not supposed to be a race condition right here -->
+	     ;; because we've blocked beforehand.
+
+	     ;; So, if we did everything right in add/delete-event than we
+	     ;; shouldn't have to set up anything here, which is the most
+	     ;; of the point.
+	     (loop :with again = t :and result
+		:do
+		(setf poll-result (epoll-pwait fd events count
+					       ms-timeout
+					       signal-mask))
+		(syscall (sigprocmask +SIG-UNBLOCK+
+				      (null-pointer) signal-block-mask))
+		(format t "poll result = ~d~%" poll-result)
+		(cond
+		  ((and (= poll-result -1) (= *errno* +EINTR+)
+			(not (zerop (setf result (check-signals event-set)))))
+		   (format t "signal triggered~%")
+		   (setf again nil poll-result :already-handled)
+		   (incf triggered-count result))
+		  ((and (zerop poll-result)
+			(not (zerop (setf result (check-timers event-set)))))
+		   (format t "timer triggered~%")
+		   (setf again nil poll-result :already-handled)
+		   (incf triggered-count result))
+		  (t (setf again nil)))
+		:while again))
+	(syscall (sigprocmask +SIG-UNBLOCK+
+			      (null-pointer) signal-block-mask)))
+      (case poll-result
+	(:already-handled)
+	(-1 ;; error
+	 (error 'posix-error :error-code *errno*))
+	(0 ;; timeout
+	 (warn "I don't handle timeout properly yet.")
+	 (setf triggered-count nil))
+	(otherwise
+	 ;; splode out the mofos
+	 (loop :with event-mask :and event-fd :and event-list
+	    :for i :from 0 :below count :do
+	    (setf event-mask
+		  (foreign-slot-value
+		   (mem-aptr events '(:struct foreign-epoll-event) i)
+		   '(:struct foreign-epoll-event)
+		   'events)
+		  event-fd
+		  (foreign-slot-value
+		   (mem-aptr events '(:struct foreign-epoll-event) i)
+		   '(:struct foreign-epoll-event)
+		   'data)
+		  event-list (gethash i table))
+	    (format t "event-fd = ~s event-mask = ~x~%" event-fd event-mask)
+	    (if event-list
+		(loop :for e :in event-list :do
+		   (when (and (typep e (epoll-event-mask-to-lisp-event-type
+					event-mask))
+			      (equal (io-event-handle e) event-fd))
+		     (format t "triggered ~s ~s~%" event-fd e)
+		     (setf (os-event-triggered e) t)
+		     (incf triggered-count)))
+		(error 'opsys-error
+		       ;; @@@ or some better message
+		       :format-control "Event not found in set."))))))
+    triggered-count))
+
+(defun pick-events (event-types &key (event-set *event-set*) remove timeout)
+  "Return any pending events of the types given in EVENT-TYPES. If REMOVE is
+true, remove the events from the EVENT-SET. Return NIL if there aren't any
+events before TIMEOUT. TIMEOUT can be NIL wait potentially forever, or T to
+return immediately, otherwise it's a OS-TIME. The default for TIMEOUT is NIL."
+  (declare (ignore event-types event-set remove timeout))
+  )
+
+(defun map-events (function &key (event-set *event-set*) (event-types t))
+  "Call FUNCTION for each event in EVENT-SET, that is pending or triggered.
+EVENT-TYPES restricts the events mapped to those types."
+  (declare (ignore function event-set event-types)))
+
+(defun events-pending-p (&key (event-types t) (event-set *event-set*))
+  "Return true if there are any events pending in the EVENT-SET. Restrict the
+events considered to those in EVENT-TYPES, if it's not T."
+  (declare (ignore event-types event-set)))
 
 ;; End

@@ -312,6 +312,68 @@ of (signal . action), as would be passed to SET-SIGNAL-ACTION."
 	 (when ,saved-list
 	   (set-handlers ,saved-list))))))
 
+(defconstant +SIG-BLOCK+   0)
+(defconstant +SIG-UNBLOCK+ 1)
+(defconstant +SIG-SETMASK+ 2)
+
+(defcfun ("sigprocmask" real-sigprocmask)
+    :int (how :int) (set (:pointer sigset-t)) (oldset (:pointer sigset-t)))
+
+;; (defcfun pthread-sigprocmask :int (how :int) (set (:pointer sigset-t))
+;; 	 (oldset (:pointer sigset-t)))
+
+(defun sigprocmask (how set oldset)
+  ;; @@@ How are we supposed to know whether we should call pthread-sigprocmask
+  ;; or just sigprocmask?
+  (real-sigprocmask how set oldset))
+
+(defmacro with-blocked-signals ((&rest signals) &body body)
+  "Evaluate the BODY with the siganls in SIGNALS blocked."
+  (with-unique-names (set sig)
+    `(with-foreign-object (,set sigset-t)
+       (sigemptyset ,set)
+       (loop :for ,sig :in ,signals :do
+	  (sigaddset ,set ,sig))
+       (unwind-protect
+	    (progn
+	      (syscall (sigprocmask +SIG-BLOCK+ ,set))
+	      ,@body)
+	 (syscall (sigprocmask +SIG-UNBLOCK+ ,set))))))
+
+(defmacro with-all-signals-blocked ((&rest signals) &body body)
+  "Evaluate BODY with all signgals blocked except those in SIGNALS, which can be
+NIL or left unspecified to block all blockable signals."
+  (with-unique-names (set sig)
+    `(with-foreign-object (,set sigset-t)
+       (sigfillset ,set)
+       (loop :for ,sig :in ,signals :do
+	  (sigdelset ,set ,sig))
+       (unwind-protect
+	    (progn
+	      (syscall (sigprocmask +SIG-BLOCK+ ,set))
+	      ,@body)
+	 (syscall (sigprocmask +SIG-UNBLOCK+ ,set))))))
+
+(defun signal-mask ()
+  "Return a list of signals blocked."
+  (with-foreign-object (set sigset-t)
+    (sigemptyset set)
+    (syscall (sigprocmask +SIG-SETMASK+ (null-pointer) set))
+    (loop :for i :from 0 :below *signal-count*
+       :when (not (zerop (sigismember set i)))
+       :collect i)))
+
+(defun set-signal-mask (signals)
+  "Set the list of signals blocked."
+  (with-foreign-object (set sigset-t)
+    (sigemptyset set)
+    (loop :for sig :in signals
+       :do (setaddset set sig))
+    (syscall (sigprocmask +SIG-SETMASK+ set (null-pointer)))))
+
+(defsetf signal-mask set-signal-mask
+  "Set the signal mask, which should be a list of signal numbers.")
+
 (defun describe-signals ()
   "List the POSIX signals that are known to the operating system."
   (format t "#  SIG~11tDescription~42tDisposition~%~

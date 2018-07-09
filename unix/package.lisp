@@ -303,6 +303,11 @@
    #:file-status-generation
 
    #:with-locked-file
+
+   #:+AT-FDCWD+ #:+AT-SYMLINK-NOFOLLOW+
+   #:utimes
+   #:utimensat
+   #:set-file-time
    
    ;; signals
    #:*signal-count*
@@ -311,6 +316,10 @@
    #:signal-action
    #:set-signal-action
    #:with-signal-handlers
+   #:with-blocked-signals
+   #:with-all-signals-blocked
+   #:signal-mask
+   #:set-signal-mask
    #:describe-signals
    #:kill
    #:killpg
@@ -410,6 +419,17 @@
    #:lame-poll
    #:lame-select
    #:listen-for
+
+   ;; events
+   #:%create-event-set
+   #:%destroy-event-set
+   #:%add-event
+   #:%delete-event
+   #:%clear-triggers
+   #:await-events
+   #:pick-events
+   #:map-events
+   #:events-pending-p
 
    ;; filesystems
    #:fstab #:fstab-spec #:fstab-file #:fstab-vfstype #:fstab-mntops

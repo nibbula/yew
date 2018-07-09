@@ -86,6 +86,7 @@
    #:file-exists
    #:simple-delete-file
    #:with-os-file
+   #:set-file-time
 
    ;; locking
    #:with-locked-file
@@ -122,8 +123,16 @@
    #:get-time
    #:set-time
 
-   ;; polling
+   ;; events
    #:listen-for
+   #:*event-set*
+   #:add-event
+   #:delete-event
+   #:clear-triggers
+   #:await-events
+   #:pick-events
+   #:map-events
+   #:events-pending-p
 
    ;; filesystems
    #:mounted-filesystems
