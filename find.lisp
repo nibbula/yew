@@ -60,33 +60,40 @@
 	(magic:content-type-description (magic:guess-file-type f)))
       ""))
 
-(defun prepare (pattern verbose regexp)
+(defun prepare (pattern verbose regexp case-insensitive)
   (declare (ignore verbose))
   ;;(when verbose
   ;;    (format t "prepare ~a~%" pattern))
   (if regexp
-      (create-scanner pattern)
+      (progn
+	;; (format t "pattern = ~s ~s~%" (type-of pattern) pattern)
+	(if (functionp pattern)
+	    pattern
+	    (create-scanner pattern :case-insensitive-mode case-insensitive)))
       pattern))
 
-(defgeneric compare (pattern data verbose)
+(defgeneric compare (pattern data verbose case-insensitive)
   (:documentation "Compare pattern and data. Return nil if no match."))
 
 ;; I don't think I can do anything about the SBCL performance note about the
 ;; unsed function in the CL-PPCRE search macro. CL-PPCRE has a lot of
 ;; performance notes, but seems very fast anyway. :)
-(defmethod compare ((pattern string) (data string) verbose)
+(defmethod compare ((pattern string) (data string) verbose case-insensitive)
   "Compare strings."
   (declare (type simple-string pattern data)
 	   (ignore verbose) #| (type boolean verbose) |#)
   ;;(when verbose
   ;;  (format t "compare ~s ~s~%" pattern data))
-  (search pattern data))
+  (if case-insensitive
+      (search pattern data :test #'char-equal)
+      (search pattern data)))
 
-(defmethod compare ((pattern function) (data string) verbose)
+(defmethod compare ((pattern function) (data string) verbose case-insensitive)
   "Compare string and regexp."
-  (declare (ignore verbose))
+  (declare (ignore verbose case-insensitive))
   ;;(if verbose
   ;;    (format t "compare ~s ~s~%" pattern data))
+  ;; (format t "compare pattern = ~s ~s~%" (type-of pattern) pattern)
   (scan pattern data))
 
 (defun compare-perm (stat perm)
@@ -287,6 +294,7 @@ Options:
 		   (follow-links t)
 		   verbose
 		   (regexp t)
+		   (case-mode :smart)
 		   (collect t)
 		   max-depth
 		   min-depth
@@ -326,18 +334,15 @@ Options:
   :max-depth	  Maximum depth to consider.
   :min-depth	  Minimum depth to consider.
   :regexp	  True if matching is done with regular expressions. (default t)
+  :case-mode      The mode for matching letter characters. One of :smart,
+                  :sensitive, or :insensitive. (default :smart)
+                  :smart is insensitive if there are no upper case letters,
+                  sesitive otherwise. :sesitive matches the exact case.
+                  :insensitive matches any case.
 "
   (declare (type (or integer null) min-depth max-depth))
   (when (not (or (stringp dir) (pathnamep dir)))
     (error "DIR should be a string or a pathname."))
-  
-  ;; Convert args into regex scanners.
-  (when file-type
-    (setf file-type (prepare file-type verbose regexp)))
-  (when name
-    (setf name (prepare name verbose regexp)))
-  (when path
-    (setf path (prepare path verbose regexp)))
   (when do
     (when action
       (error "Provided both ACTION and DO."))
@@ -361,8 +366,19 @@ Options:
 	 (sub-dirs (loop :for d :in dir-list
 			 :if (eql (dir-entry-type d) :directory)
 		      :collect (dir-entry-name d)))
+	 (case-insensitivity (or (and (eq case-mode :smart)
+				      (typep name 'sequence)
+				      (notany #'upper-case-p name))
+				 (eq case-mode :insensitive)))
 	 actions)
     (declare (type list files) (type integer depth))
+    ;; Convert args into regex scanners.
+    (when name
+      (setf name (prepare name verbose regexp case-insensitivity)))
+    (when path
+      (setf path (prepare path verbose regexp case-insensitivity)))
+    (when file-type
+      (setf file-type (prepare file-type verbose regexp case-insensitivity)))
     (when print
       (push (_ (format t "~a~%" _)) actions))
     (when collect
@@ -385,8 +401,11 @@ Options:
 	   :if (not (superfluous-file-name-p (dir-entry-name f))) :do
 	   (let* ((n (dir-entry-name f))
 		  (full (format nil "~a~a~a" dir *directory-separator* n))
-		  (name-matched (or (not name) (compare name n verbose)))
-		  (path-matched (or (not path) (compare path full verbose)))
+		  (name-matched
+		   (or (not name) (compare name n verbose case-insensitivity)))
+		  (path-matched
+		   (or (not path)
+		       (compare path full verbose case-insensitivity)))
 		  (stat (when need-to-stat (resilient-stat full)))
 		  (perm-matched  (or (not perm)  (compare-perm  stat perm)))
 		  (user-matched  (or (not user)  (compare-user  stat user)))
@@ -396,7 +415,8 @@ Options:
 		  (time-matched  (or (not time)  (compare-time  stat time)))
 		  (file-type-matched (or (not file-type)
 					 (compare file-type
-						  (file-type full) verbose))))
+						  (file-type full) verbose
+						  case-insensitivity))))
 	     (cond
 	       ((and name-matched type-matched path-matched perm-matched
 		     user-matched group-matched size-matched time-matched
@@ -440,6 +460,7 @@ Options:
 			       :follow-links follow-links
 			       :verbose verbose
 			       :regexp regexp
+			       :case-mode case-mode
 			       :collect collect
 			       :parallel parallel
 			       :name name
@@ -491,6 +512,7 @@ arguments are the same."
    (follow-links t)
    verbose
    (regexp t)
+   (case-mode :smart)
    (collect nil)
    max-depth
    min-depth  
@@ -534,6 +556,13 @@ arguments are the same."
     :help        "Minimum depth of files to consider.")
    (regexp	 boolean  :short-arg #\r :default t
     :help        "True if matching is done with regular expressions.")
+   (case-mode	 choice  :short-arg #\C :default "smart"
+		 :choices (:smart :sensitive :insensitive)
+    :help        "The mode for matching letter characters. One of 'smart',
+                  'sensitive', or 'insensitive'. (default 'smart')
+                  'smart' is insensitive if there are no upper case letters,
+                  sesitive otherwise. 'sesitive' matches the exact case.
+                  'insensitive' matches any case.")
    (collect	 boolean  :short-arg #\c :default (lish:accepts :sequence)
     :help        "Return the file name as a list.")
    (name	 string   :short-arg #\n
