@@ -11,7 +11,9 @@
     :source-control	:git
     :long-description
     "A lexer for Lisp, which is nearly the same as a lisp reader."
-    :depends-on (:dlib :syntax :dlib-misc #| :esrap |# :theme :style :grout
-		 :fatchar)
+    :depends-on (:dlib :syntax
+		       #+use-regex :regex
+		       #-use-regex :ppcre
+		       :dlib-misc #| :esrap |# :theme :style :grout :fatchar)
     :components
     ((:file "syntax-lisp")))

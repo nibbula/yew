@@ -39,7 +39,8 @@ The function takes a file name or a stream or a list of such.
 The shell command takes any number of file names.
 ")
   (:use :cl :dlib :opsys :dlib-misc :table-print :stretchy
-	:keymap :char-util :fatchar :ppcre :terminal :pick-list :table-print)
+	:keymap :char-util :fatchar #+use-regex :regex #-use-regex :ppcre
+	:terminal :pick-list :table-print)
   (:export
    #:*pager-prompt*
    #:*empty-indicator*
@@ -581,7 +582,7 @@ line : |----||-------||---------||---|
 	   (ss (if (and search-string ignore-case)
 		   (s+ "(?i)" search-string)
 		   search-string))
-	   (matches (and ss (ppcre:all-matches ss s))))
+	   (matches (and ss (all-matches ss s))))
       (loop :with i = 0
 	 :while (< i (length matches)) :do
 	 (loop :for j :from (elt matches i) :below (elt matches (1+ i))
@@ -653,7 +654,7 @@ line : |----||-------||---------||---|
 			(t (princ s str))))) ; probably a bit too DWIM-ish
 	     (glom-span span)))))
     ;;(format t "line = ~s~%" line)
-    (and (ppcre:all-matches expr line) t)))
+    (and (all-matches expr line) t)))
 
 (defun filter-this (line)
   "Return true if we should filter this line."
@@ -662,10 +663,10 @@ line : |----||-------||---------||---|
       (typecase (line-text line)
 	(string
 	 (when (and keep-expr
-		    (not (ppcre:all-matches keep-expr (line-text line))))
+		    (not (all-matches keep-expr (line-text line))))
 	   (return-from filter-this t))
 	 (loop :for e :in filter-exprs
-	    :if (ppcre:all-matches e (line-text line))
+	    :if (all-matches e (line-text line))
 	    :return t))
 	(list
 	 (when (and keep-expr
@@ -775,7 +776,7 @@ list containing strings and lists."
   (typecase line
     (string
 ;;;     (search str line :test #'equalp))
-     (ppcre:all-matches str line))
+     (all-matches str line))
     (cons
      (loop :with result
 	:for s :in line

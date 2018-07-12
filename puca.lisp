@@ -21,7 +21,8 @@
   (:documentation
    "Putative Muca (A very simple(istic) interface to CVS/git/svn).")
   (:use :cl :dlib :dlib-misc :opsys :keymap :char-util :curses :rl
-	:completion :inator :terminal :terminal-curses :fui :options :ppcre)
+	:completion :inator :terminal :terminal-curses :fui :options
+	#+use-regex :regex #-use-regex :ppcre)
   (:export
    ;; Main entry point
    #:puca

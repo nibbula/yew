@@ -12,7 +12,8 @@
 ;; I don't like the name “MISC”. Let’s think of something better.
 
 (defpackage :dlib-misc
-  (:use :cl :dlib :opsys :char-util :glob)
+  (:use :cl :dlib :opsys :char-util :glob
+	#+use-regex :regex #-use-regex :ppcre)
   ;; Also has an inplicit dependency on ASDF.
   (:documentation "More generally dubious miscellaneous functions.")
   (:export
@@ -1467,14 +1468,14 @@ Return NIL if we can't find local variables or if the format is messed up.
 	(setf var-list-string (subseq line start end)))
       (and var-list-string
 	   (multiple-value-bind (a b)
-	       (ppcre:scan-to-strings "^[ \\t]*([^ \\t:;]+)[ \\t]*$"
+	       (scan-to-strings "^[ \\t]*([^ \\t:;]+)[ \\t]*$"
 				      var-list-string)
 	     (if a
 		 `(("mode" ,b))
 		 (progn
-		   (loop :for v :in (ppcre:split ";[ \\t]*" var-list-string)
+		   (loop :for v :in (split ";[ \\t]*" var-list-string)
 		      :do
-		      (ppcre:register-groups-bind
+		      (register-groups-bind
 		       (name value)
 		       ("[ \\t]*([^ :]+)[ \\t]*:[ \\t]*([^ ;]+)" v)
 		       (push (list name value) result)))

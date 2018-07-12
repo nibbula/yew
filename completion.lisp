@@ -23,7 +23,10 @@ want to, and replace whatever they want to, even prior to the starting
 point. When asked for all completions, they return a sequence of strings and
 a count which is the length of the sequence.")
   (:use :cl :dlib :opsys :glob :dlib-misc :syntax :syntax-lisp
-        :terminal :terminal-ansi :cl-ppcre :theme :fatchar :style)
+        :terminal :terminal-ansi
+	#+use-regex :regex
+	#-use-regex :cl-ppcre
+	:theme :fatchar :style)
   (:export
    ;; generic
    #:complete-print
@@ -611,11 +614,11 @@ the index in CONTEXT of the start of the symbol."
 				      (eql c #\:)))))
 		   (length context)))
 	 (word (subseq context start end))
-	 (ppcre:*property-resolver* #'custom-resolver))
+	 (*property-resolver* #'custom-resolver))
     ;; This is a total stop-gap measure.
     (multiple-value-bind (match regs)
-	(ppcre:scan-to-strings
-	 (ppcre:parse-string "([\\p{lispy}]+)(:[:]*([\\p{lispy}]+)){0,1}")
+	(scan-to-strings
+	 (parse-string "([\\p{lispy}]+)(:[:]*([\\p{lispy}]+)){0,1}")
 	 word :sharedp t)
       (values
        (when match

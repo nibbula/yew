@@ -11,7 +11,9 @@
     :source-control	:git
     :long-description   "We can only see so much at one time."
     :depends-on (:dlib :opsys :dlib-misc :table-print :stretchy
-		 :keymap :char-util :fatchar :cl-ppcre :terminal
+		 :keymap :char-util :fatchar
+		 #+use-regex :regex #-use-regex :cl-ppcre
+		 :terminal
 		 :rl :pick-list :utf8b-stream)
     :entry-point "pager:standalone"
     :build-operation 'program-op

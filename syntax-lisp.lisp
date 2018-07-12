@@ -4,7 +4,10 @@
 
 (defpackage :syntax-lisp
   (:documentation "Things for dealing with the syntax of Lisp code.")
-  (:use :cl :dlib :syntax :dlib-misc #| :esrap |# :theme :style :grout :fatchar)
+  (:use :cl :dlib :syntax
+	#+use-regex :regex
+	#-use-regex :ppcre
+	:dlib-misc #| :esrap |# :theme :style :grout :fatchar)
   (:export
    #:lisp-syntax
    #:lisp-token
@@ -392,7 +395,7 @@ accordingly. Case can be :upper :lower :mixed or :none."
 		 (setf new-paragraph t))
 	       (leading-space (l)
 		 (multiple-value-setq (s e ss ee)
-		   (ppcre:scan "^([ \\t]+)[^ \\t]" l))
+		   (scan "^([ \\t]+)[^ \\t]" l))
 		 (when s
 		   (subseq l (aref ss 0) (aref ee 0)))))
 	;; Get rid of uniform leading space on every line after the first.
@@ -420,7 +423,7 @@ accordingly. Case can be :upper :lower :mixed or :none."
 	      (push l par))
 	     ;; a line starting with blanks
 	     ((multiple-value-setq (s e ss ee)
-		(ppcre:scan "^([ \\t]+)[^ \\t]" l))
+		(scan "^([ \\t]+)[^ \\t]" l))
 	      (when par
 		(print-it (nreverse par))
 		(setf par nil))
@@ -437,7 +440,6 @@ accordingly. Case can be :upper :lower :mixed or :none."
 	  (print-it (nreverse par)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 
 (defun make-char-table (source)
   "Make a character trait table."
