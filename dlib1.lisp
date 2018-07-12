@@ -92,7 +92,7 @@ of it.")
 ;   #:with-struct-slots
    ;; Implementation-ish
    #:without-warning
-   #+sbcl #:without-notes
+   #:without-notes
    #:sort-muffled
    ;; language-ish
    #:define-constant
@@ -214,16 +214,9 @@ later versions.")
 Useful for making your macro “hygenic”."
     `(let ,(loop :for n :in names
 	      :collect `(,n (gensym (symbol-name ',n))))
-       ,@body))
-)
+       ,@body)))
 
-;; @@@ I should really do this with an error type
-(defun missing-implementation (sym)
-  "Complain that something is missing."
-  (format t "You need to provide an implementation for ~a on ~a~%"
-	  sym (lisp-implementation-type)))
-
-(define-condition missing-implementation-error (error)
+(define-condition missing-implementation-error (warning)
   ((symbol
     :accessor missing-implementation-error-symbol
     :initarg :symbol
@@ -246,6 +239,19 @@ Useful for making your macro “hygenic”."
 		   (format s "~a" symbol)))))
   (:documentation "A required function or symbol is missing or unimplemented."))
 
+;; @@@ I should really do this with an error type
+;; (defun missing-implementation (sym)
+;;   "Complain that something is missing."
+;;   (format t "You need to provide an implementation for ~a on ~a~%"
+;; 	  sym (lisp-implementation-type)))
+
+(defun missing-implementation (symbol)
+  "Complain that something is missing."
+  (warn 'missing-implementation-error
+	:format "You need to provide an implementation for ~a on ~a~%"
+	:symbol symbol
+	:arguments (list symbol (lisp-implementation-type))))
+
 (defmacro without-warning (&body body)
   "Get rid of stupid warnings that you don't want to see.
  Just wrap your code with this."
@@ -256,16 +262,18 @@ Useful for making your macro “hygenic”."
 		  )))
      ,@body))
 
-#+sbcl
 (defmacro without-notes (&body body)
   "Get rid of compiler notes that you don't want to see.
  Just wrap your code with this."
+  #+sbcl
   `(handler-bind
      ((sb-ext:compiler-note
        #'(lambda (c)
 	   (declare (ignore c))
 	   (muffle-warning))))
-     ,@body))
+     ,@body)
+  #-sbcl
+  `(progn ,@body))
 
 ;; This is just for a particularly complaintive implementation.
 (declaim (inline sort-muffled))
@@ -312,24 +320,11 @@ Useful for making your macro “hygenic”."
   #-(or clisp sbcl openmcl cmu ecl excl lispworks gcl abcl clasp cormanlisp)
   (missing-implementation 'd-getenv))
 
-;; Compare functions:
-;;(defun foo1 (s l) (position l s :key #'list :test #'intersection))
-;;(defun foo2 (s l) (position-if (lambda (c) (member c l)) s))
-;;
-;; on clisp foo2 is faster and less consing
-;;
-;; TODO: it might be nice if this could accecpt a string for the 2nd arg
-;; but would it be better to make it a generic function specializing on
-;; the 2nd arg?
-;;
-;; Apparently if I use member instead of find it's slightly faster for lists
-;; Who cares?
-
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun initial-span (sequence not-in)
     "Return the initial portion of SEQUENCE consiting of objects not in
 the sequence NOT-IN."
-    (subseq sequence 0 (position-if (lambda (c) (find c not-in)) sequence))))
+    (subseq sequence 0 (position-if #'(lambda (c) (find c not-in)) sequence))))
 
 ;; Another square wheel.
 ;; @@@ I should probably either fix this to have the additional functionality
@@ -526,31 +521,32 @@ is the separator. If :omit-empty is true, then don't return empty subsequnces.
 )
 |#
 
-(defun replace-subseq (target replacement in-seq &key count)
-  "Return a copy of IN-SEQ but with sequences of TARGET replaced with REPLACEMNT."
+(defun replace-subseq (target replacement sequence &key count)
+  "Return a copy of SEQUECE but with sub-sequences of TARGET replaced
+REPLACEMENT."
   (if (and (> (length target) 0) (or (not count) (> count 0)))
       (let ((pos 0)
 	    (i 0)
 	    (n 0)
 	    new)
-	(loop :while (setf pos (search target in-seq :start2 i))
+	(loop :while (setf pos (search target sequence :start2 i))
 	   :do
 	   ;;(format t "i = ~a pos = ~a new = ~a~%" i pos new)
-	   (setf new (nconc new (list (subseq in-seq i pos) replacement)))
+	   (setf new (nconc new (list (subseq sequence i pos) replacement)))
 	   (setf i (+ pos (length target)))
 	   ;;(format t "i = ~a pos = ~a new = ~a~%" i pos new)
 	   (incf n)
 	   :until (and count (>= n count)))
-	(setf new (nconc new (list (subseq in-seq i))))
+	(setf new (nconc new (list (subseq sequence i))))
 	;;(apply #'concatenate (append '(string) new)))
 	(apply #'concatenate
-	       (etypecase in-seq
+	       (etypecase sequence
 		 (string 'string)
 		 (list 'list)
 		 (vector 'vector)
-		 (sequence (type-of in-seq)))
+		 (sequence (type-of sequence)))
 	       new))
-      (copy-seq in-seq)))
+      (copy-seq sequence)))
 
 ;; @@@ compare vs. the ones in alexandria?
 (defun begins-with (this that &key (test #'eql))
@@ -596,7 +592,7 @@ just return SEQUENCE. Elements are compared with TEST which defaults to EQL."
 
 #|
 
-@@@ I wish unicode class information was built-in everywhere.
+I wish unicode class information was built-in everywhere.
 On SBCL we can generate the list by:
 
 (loop :for c :from 0 :below char-code-limit
@@ -715,13 +711,12 @@ Also, it can't really delete the first (zeroth) element."
 	      cons)))))
 
 (defun alist-to-hash-table (alist table)
-;  "Convert an association list into a hash table."
   "Load a hash table with data from an association list."
   (loop :for i :in alist
 	:do (setf (gethash (car i) table) (cdr i)))
   table)
 
-;; I cripped this from rosetta code. This seems to be the fastest of 8 methods
+;; I took this from rosetta code. This seems to be the fastest of 8 methods
 ;; I tested. I converted it from using DO* to LOOP, and added comments, so I
 ;; could understand it better. I added PRESERVE-NILS in case you have a tree
 ;; where NILs are meaningful and not just empty lists.

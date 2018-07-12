@@ -37,7 +37,7 @@
   (typep (overwhelming-permission) 'boolean))
 
 (deftests (dlib-2 :doc "Just minimal stuff in order from the source.")
-  "Version numbers"
+    "Version numbers"
   (not (null *lisp-version-number*))
   (numberp *lisp-version-number*)
   (integerp *lisp-version-number*)
@@ -47,12 +47,20 @@
   (progn
     (d-remove-feature :floop)
     (not (has-feature :floop)))
+  (with-unique-names (foo bar)
+    (and (not (eq foo 'foo))
+	 (not (eq bar 'bar))))
   "Warnings and notes"
   (without-warning (warn "You shouldn't see this!") t)
   ;; Does this really test anything?
   ;;(without-notes (signal 'compiler-note "You shouldn't see this!") t)
+  "initial-span"
   (equal "fooo" (initial-span "fooo the bar" " "))
   (equal "flip" (initial-span "flip23out234" "1234"))
+  (equal '(5 6 7 8 9 10 11)
+	 (initial-span '(5 6 7 8 9 10 11 1 1 1 2 2 1 1 2) '(1 2)))
+  (equal '(5 6 7 8 9 10 11 1 1 1)
+	 (initial-span '(5 6 7 8 9 10 11 1 1 1 2 2 1 1 2) '(2)))
   "replace-subseq"
   (equal "barbar" (replace-subseq "foo" "bar" "foobar"))
   (equal "__very__lame__" (replace-subseq " " "__" " very lame "))
@@ -119,6 +127,8 @@
 	    ((1 2 3 4) (1 2 3 4)))
 	  (loop :for i :from 0 :to 4 :collect
 	     (let ((l (list 1 2 3 4 5))) (list (delete-nth i l) l))))
+  ;; "alist-to-hash-table"
+  ;; (alist-to-hash-table )
   "flatten"
   (tree-equal
    '(1 2 3 4 5 6 7 8 9 10)
