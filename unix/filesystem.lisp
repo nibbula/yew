@@ -1757,7 +1757,7 @@ it is not a symbolic link."
   (with-foreign-object (stat-buf '(:struct foreign-stat))
     (error-check (if follow-links
 		     (real-stat path stat-buf)
-		     (real-lstat path stat-buf)) "get-file-info: ~s" path)
+		     (real-lstat path stat-buf)) "~s" path)
     (convert-file-info stat-buf)))
 
 ;; Supposedly never fails so we don't have to wrap with syscall.
@@ -1862,7 +1862,7 @@ it is not a symbolic link."
        (if (not (ignore-errors (make-directory filename :mode mode)))
 	   (if (= *errno* +EEXIST+) ;; @@@ unix specific!
 	       (setf wait t)
-	       (error-check -1 "lock-file: ~s" filename))
+	       (error-check -1 "~s" filename))
 	   (setf wait nil))
        ;; (when wait
        ;; 	 (format t "Waiting...~d~%" time))
