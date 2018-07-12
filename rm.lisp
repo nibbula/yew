@@ -50,9 +50,11 @@ the path."
    (files pathname :optional nil :repeating t :help "Files to delete."))
   "Delete directories."
   (declare (ignore force))
-  (loop :for file :in files
+  (loop :with info
+     :for file :in files
      :do
-     (if (probe-directory file)
+     (setf info (get-file-info file :follow-links nil))
+     (if (eq :directory (file-info-type info))
 	 (rmdir file)
 	 (rm file)))
   (values))
