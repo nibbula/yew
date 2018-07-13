@@ -126,6 +126,9 @@
    ;; events
    #:listen-for
    #:*event-set*
+   #:create-event-set
+   #:destroy-event-set
+   #:with-event-set
    #:add-event
    #:delete-event
    #:clear-triggers

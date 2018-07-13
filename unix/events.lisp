@@ -569,7 +569,8 @@ evaluate the IO-FORM."
      ;; Tell epoll about it.
      (with-foreign-object (ev '(:struct foreign-epoll-event))
        (with-foreign-slots ((events data) ev (:struct foreign-epoll-event))
-	 (setf events (lisp-event-to-epoll-event-mask event))
+	 (setf events (lisp-event-to-epoll-event-mask event)
+	       data (io-event-handle event))
 	 (format t "epoll-ctl events ~x~%" events)
 	 (syscall (epoll-ctl
 		   (unix-event-set-fd (event-set-os-data set))
@@ -708,7 +709,7 @@ the count of event triggered."
   (let (poll-result
 	(ms-timeout (timeout-to-milliseconds timeout))
 	(triggered-count 0)
-	*signals-noticed* signals)
+	*signals-noticed* signals saved-handlers)
     (with-slots (fd events count table fd-table signal-array signal-mask
 		 signal-block-mask)
 	(event-set-os-data event-set)
@@ -729,13 +730,20 @@ the count of event triggered."
       (loop :for sig :in signals :do
 	 (sigdelset signal-mask sig)
 	 (sigaddset signal-block-mask sig))
+      (sigdelset signal-mask +SIGSEGV+)
+      (sigdelset signal-mask +SIGTRAP+)
+      (sigdelset signal-block-mask +SIGSEGV+)
+      (sigdelset signal-block-mask +SIGTRAP+)
 
       (unwind-protect
 	   (progn
+	     (loop :for sig :in signals :do
+		(push (cons sig (signal-action sig)) saved-handlers))
 	     (syscall (sigprocmask +SIG-BLOCK+
 				   (null-pointer) signal-block-mask))
 	     (loop :for sig :in signals :do
 		(setf (signal-action sig) 'signal-noticer))
+
 	     ;; There's not supposed to be a race condition right here -->
 	     ;; because we've blocked beforehand.
 
@@ -748,7 +756,7 @@ the count of event triggered."
 					       ms-timeout
 					       signal-mask))
 		(syscall (sigprocmask +SIG-UNBLOCK+
-				      (null-pointer) signal-block-mask))
+				      signal-block-mask (null-pointer)))
 		(format t "poll result = ~d~%" poll-result)
 		(cond
 		  ((and (= poll-result -1) (= *errno* +EINTR+)
@@ -758,13 +766,18 @@ the count of event triggered."
 		   (incf triggered-count result))
 		  ((and (zerop poll-result)
 			(not (zerop (setf result (check-timers event-set)))))
-		   (format t "timer triggered~%")
-		   (setf again nil poll-result :already-handled)
-		   (incf triggered-count result))
+		   ;; (format t "timer triggered~%")
+		   ;; (setf again nil poll-result :already-handled)
+		   ;; (incf triggered-count result)
+		   )
 		  (t (setf again nil)))
 		:while again))
 	(syscall (sigprocmask +SIG-UNBLOCK+
-			      (null-pointer) signal-block-mask)))
+			      signal-block-mask (null-pointer)))
+	(when saved-handlers
+	  (loop :for h :in saved-handlers :do
+	     (setf (signal-action (car h)) (cdr h)))))
+
       (case poll-result
 	(:already-handled)
 	(-1 ;; error
@@ -787,7 +800,8 @@ the count of event triggered."
 		   '(:struct foreign-epoll-event)
 		   'data)
 		  event-list (gethash i table))
-	    (format t "event-fd = ~s event-mask = ~x~%" event-fd event-mask)
+	    (format t "i = ~s event-fd = ~s event-mask = ~x~%"
+		    i event-fd event-mask)
 	    (if event-list
 		(loop :for e :in event-list :do
 		   (when (and (typep e (epoll-event-mask-to-lisp-event-type

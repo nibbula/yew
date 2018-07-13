@@ -188,7 +188,7 @@ Possible values of STATUS and VALUE are:
 		 (progn
 		   ;;(format t "Nothing to wait for~%")
 		   (return-from nil nil))
-		 (error-check wait-pid "wait-pid"))
+		 (error-check wait-pid))
 	     (setf status (mem-ref status-ptr :int)))
 	 (format t "status = ~d~%" status)
 	 (when (/= wait-pid child-pid)
@@ -215,7 +215,7 @@ Possible values of STATUS and VALUE are:
     (let ((wait-pid (real-wait status-ptr))
 	  status)
       (when (and (= wait-pid -1) (/= *errno* +ECHILD+))
-	(error-check wait-pid "wait-pid"))
+	(error-check wait-pid))
       (setf status (mem-ref status-ptr :int))
 ;      (format t "status = ~d~%" status)
       ))
@@ -266,7 +266,7 @@ Possible values of STATUS and VALUE are:
 ;	      (force-output)
 	      (_exit 1))))
 	;; in the parent
-	(error-check child-pid "child-pid")
+	(error-check child-pid)
 	(wait-and-report child-pid)))))
 
 (defcfun getpid pid-t)
@@ -620,7 +620,7 @@ the current process."
 		      (progn
 			;;(format t "Nothing to wait for~%")
 			(return-from nil nil))
-		      (error-check wait-pid "wait-pid"))
+		      (error-check wait-pid))
 		  (setf status (mem-ref status-ptr :int)))
 	      ;;(format t "status = ~d~%" status)
 	      (dbugf :sheep "~a~%"
@@ -703,7 +703,7 @@ the current process."
 ;	      (force-output)
 	      (_exit 1))))
 	;; in the parent
-	(error-check child-pid "child-pid")
+	(error-check child-pid)
 	(make-instance 'unix-process-handle :value child-pid)))))
 
 (defun resume-background-pid (pid)
@@ -740,7 +740,7 @@ wait. Returns NILs if nothing changed."
 	     (progn
 	       ;;(format t "Nothing to wait for~%")
 	       (return-from check-jobs (values nil nil nil)))
-	     (error-check pid "check-jobs")))
+	     (error-check pid)))
 	((= pid 0)
 	 ;;(format t "Nothing to report ~a~%" pid)
 	 (values nil nil nil))

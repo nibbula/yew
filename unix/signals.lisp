@@ -284,33 +284,42 @@ the keywords: :DEFAULT :IGNORE :HOLD."
   (loop :for (signal . action) :in handler-list :do
      ;;(format t "set-handler ~s ~s~%" signal action)
      (set-signal-action signal action)))
-     
+
+(defmacro with-signal-handlers-from-value ((handler-list) &body body)
+  "Evaluate the BODY with the signal handlers set as in HANDLER-LIST, with the
+handers restored to their orignal values on return. HANDLER-LIST is a list
+of (signal . action), as would be passed to SET-SIGNAL-ACTION."
+  (with-unique-names (saved-list)
+    `(let ((,saved-list
+	    (loop
+	       ;;:for (sig . act) :in ,evaled-list
+	       :for item :in ,handler-list
+	       ;;:do
+	       ;;(format t "sig = ~s~%" sig)
+	       ;;(format t "act = ~a~%" (signal-action sig))
+	       ;;:collect (cons sig (signal-action sig)))))
+	       :collect (cons (car item) (signal-action (car item))))))
+       (unwind-protect
+         (progn
+	   (set-handlers ,handler-list)
+	   ,@body)
+	 (when ,saved-list
+	   (set-handlers ,saved-list))))))
+
 (defmacro with-signal-handlers (handler-list &body body)
   "Evaluate the BODY with the signal handlers set as in HANDLER-LIST, with the
 handers restored to their orignal values on return. HANDLER-LIST is a list
 of (signal . action), as would be passed to SET-SIGNAL-ACTION."
-  (with-unique-names (saved-list evaled-list)
-    `(let* ((,evaled-list
-	     (mapcar (_ (cons (typecase (car _)
+  (with-unique-names (evaled-list)
+    `(let ((,evaled-list
+	    ;; fake eval the list
+	    (mapcar (_ (cons (typecase (car _)
 				(symbol (symbol-value (car _)))
 				(t (car _))) ; it had better be a signal number
 			      (cdr _)))
-		     ',handler-list))
-	    (,saved-list
-	     (loop
-		;;:for (sig . act) :in ,evaled-list
-		:for item :in ,evaled-list
-		;;:do
-		;;(format t "sig = ~s~%" sig)
-		;;(format t "act = ~a~%" (signal-action sig))
-		;;:collect (cons sig (signal-action sig)))))
-		:collect (cons (car item) (signal-action (car item))))))
-       (unwind-protect
-         (progn
-	   (set-handlers ,evaled-list)
-	   ,@body)
-	 (when ,saved-list
-	   (set-handlers ,saved-list))))))
+		    ',handler-list)))
+       (with-signal-handlers-from-value (,evaled-list)
+	 ,@body))))
 
 (defconstant +SIG-BLOCK+   0)
 (defconstant +SIG-UNBLOCK+ 1)
@@ -330,7 +339,7 @@ of (signal . action), as would be passed to SET-SIGNAL-ACTION."
 (defmacro with-blocked-signals ((&rest signals) &body body)
   "Evaluate the BODY with the siganls in SIGNALS blocked."
   (with-unique-names (set sig)
-    `(with-foreign-object (,set sigset-t)
+    `(with-foreign-object (,set 'sigset-t)
        (sigemptyset ,set)
        (loop :for ,sig :in ,signals :do
 	  (sigaddset ,set ,sig))
@@ -344,7 +353,7 @@ of (signal . action), as would be passed to SET-SIGNAL-ACTION."
   "Evaluate BODY with all signgals blocked except those in SIGNALS, which can be
 NIL or left unspecified to block all blockable signals."
   (with-unique-names (set sig)
-    `(with-foreign-object (,set sigset-t)
+    `(with-foreign-object (,set 'sigset-t)
        (sigfillset ,set)
        (loop :for ,sig :in ,signals :do
 	  (sigdelset ,set ,sig))
@@ -356,7 +365,7 @@ NIL or left unspecified to block all blockable signals."
 
 (defun signal-mask ()
   "Return a list of signals blocked."
-  (with-foreign-object (set sigset-t)
+  (with-foreign-object (set 'sigset-t)
     (sigemptyset set)
     (syscall (sigprocmask +SIG-SETMASK+ (null-pointer) set))
     (loop :for i :from 0 :below *signal-count*
@@ -365,10 +374,10 @@ NIL or left unspecified to block all blockable signals."
 
 (defun set-signal-mask (signals)
   "Set the list of signals blocked."
-  (with-foreign-object (set sigset-t)
+  (with-foreign-object (set 'sigset-t)
     (sigemptyset set)
     (loop :for sig :in signals
-       :do (setaddset set sig))
+       :do (sigaddset set sig))
     (syscall (sigprocmask +SIG-SETMASK+ set (null-pointer)))))
 
 (defsetf signal-mask set-signal-mask
