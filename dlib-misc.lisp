@@ -1128,30 +1128,39 @@ SUFFIX is a string to append to each row."
 	 (terpri stream)))
     rows))
 
-(defparameter *iec-size-prefixes*
+(defparameter *binary-size-prefixes*
   #(nil "kibi" "mebi" "gibi" "tebi" "pebi" "exbi" "zebi" "yobi" "buttload"))
 
 (defparameter *traditional-size-prefixes*
   #(nil "kilo" "mega" "giga" "tera" "peta" "exa" "zetta" "yotta" "buttload"))
 
-(defparameter *iec-size-abbreviations*
+(defparameter *binary-size-abbreviations*
   #(nil "Ki" "Mi" "Gi" "Ti" "Pi" "Ei" "Zi" "Yi" "**"))
 
 (defparameter *traditional-size-abbreviations*
   #(nil "k" "M" "G" "T" "P" "E" "Z" "Y" "*"))
 
-(defparameter *iec-sizes*
-  (make-array '(11) :initial-contents 
+(defparameter *binary-sizes*
+  (make-array '(11) :initial-contents
 	      (loop :for i :from 0 :to 10 :collect (expt 1024 i))))
 
-(defun print-size (size &key (stream t) long unit traditional abbrevs
+(defparameter *decimal-sizes*
+  (make-array '(11) :initial-contents
+	      (loop :for i :from 0 :to 10 :collect (expt 1000 i))))
+
+(defun print-size (size &key (stream t) long unit abbrevs
+			  (traditional t)
+			  (binary t)
 			  (format "~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]"))
   "Print a size with standard binary units.
 If LONG is true, print the long unit name.
 If UNIT is supplied, it should be a string of the unit to be prefixed.
 UNIT defaults to ‘B’ or “byte” depending on LONG.
 ABBREVS is a custom list of size abbreviations.
-If TRADITIONAL is non-nil, use traditional units.
+If TRADITIONAL is true, use traditional units for binary units, e.g.
+kilobyte instead of the kibibyte.
+If BINARY is true (the default), use powers of two sizes, otherwise use powers
+of ten sizes. If BINARY is false, TRADITIONAL defaults to true.
 FORMAT is the format to print the number with, which gets passed 4 values:
   1 - a boolen indicating if the number is an integer or not
   2 - the number
@@ -1159,13 +1168,15 @@ FORMAT is the format to print the number with, which gets passed 4 values:
   3 - the unit
 FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
   (setf unit (or unit (or (and long "byte") "B")))
-  (let ((prefixes (if traditional *traditional-size-prefixes*
-		      *iec-size-prefixes*)))
+  (let ((prefixes (if traditional
+		      *traditional-size-prefixes*
+		      *binary-size-prefixes*))
+	(sizes (if binary *binary-sizes* *decimal-sizes*)))
     (setf abbrevs (or abbrevs
 		      (if traditional *traditional-size-abbreviations*
 			  *iec-size-abbreviations*)))
     (flet ((pr (i)
-	     (let* ((divisor (svref *iec-sizes* i))
+	     (let* ((divisor (svref sizes i))
 		    (n (/ size divisor))
 		    (rem (rem size divisor)))
 	       (format stream format
@@ -1176,10 +1187,9 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
 		       (when (svref abbrevs i) unit)))))
       (loop :for i :from 0 :to 9
 	 :do
-	 (when (< size (svref *iec-sizes* (1+ i)))
+	 (when (< size (svref sizes (1+ i)))
 	   (return-from print-size (pr i))))
       (pr 9))))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; spin
