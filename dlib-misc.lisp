@@ -1174,7 +1174,7 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
 	(sizes (if binary *binary-sizes* *decimal-sizes*)))
     (setf abbrevs (or abbrevs
 		      (if traditional *traditional-size-abbreviations*
-			  *iec-size-abbreviations*)))
+			  *binary-size-abbreviations*)))
     (flet ((pr (i)
 	     (let* ((divisor (svref sizes i))
 		    (n (/ size divisor))
