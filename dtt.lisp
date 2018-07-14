@@ -8,7 +8,7 @@
 
 (defpackage :dtt
   (:documentation "Delimited Text Tables")
-  (:use :cl :dlib :table)
+  (:use :cl :dlib :collections :table)
   (:export
    ;; vars
    #:*delimiter*
@@ -39,8 +39,9 @@
    #:+csv-rfc4180+
    ;; funcs
    #:read-file
-   #:read-row
-   ))
+   #:write-file
+   #:write-table-to-file))
+
 (in-package :dtt)
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
@@ -303,21 +304,23 @@ or :both.")
   "Read the whole stream returning the rows as a list. Use the given style
 which defaults to +csv-default+. If first-row-labels is true in the style
 then the second value is the labels."
-  (when (not (streamp file-or-stream))
-    (setf file-or-stream (open file-or-stream :direction :input)))
-  (let ((recs '())
-	(labels nil))
-    (when (style-first-row-labels style)
-      (setf labels (read-row file-or-stream :style style)))
-    (setf recs
-	  (loop :with rec
-	     :do (setf rec (read-row file-or-stream :style style))
-	     :while (not (eql rec :eof))
-	     :collect rec))
-    (values recs labels)))
+  (with-open-file-or-stream (stream file-or-stream :direction :input)
+    (let ((recs '())
+	  (labels nil))
+      (when (style-first-row-labels style)
+	(setf labels (read-row stream :style style)))
+      (setf recs
+	    (loop :with rec
+	       :do (setf rec (read-row stream :style style))
+	       :while (not (eql rec :eof))
+	       :collect rec))
+      (values recs labels))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Writing
+
+(defun write-datum (object stream)
+  (format stream "~@[~a~]" object))
 
 (defun needs-quoting (obj style)
   "Return true if OBJ needs quoting in the given style."
@@ -329,7 +332,7 @@ then the second value is the labels."
        ;; If the string representation has a delimiter, quote or EOL
        ;; @@@ This is ineffiecent to seach thru it 4 times. Consider merging
        ;; with quotify output.
-       (let ((str (format nil "~a" obj))
+       (let ((str (write-datum obj nil))
 	     (chars (make-array
 		     4 :element-type 'character
 		     :initial-contents (vector delimiter quote-character
@@ -344,15 +347,15 @@ then the second value is the labels."
 (defun quotify (obj style)
   "Return OBJ as a string properly quoted for the style."
   (with-slots (output-quote-style quote-character escape-character) style
-    (with-output-to-string (str)
-      (princ quote-character)
-      (let ((str (format nil "~a" obj)))
+    (with-output-to-string (stream)
+      (princ quote-character stream)
+      (let ((str (write-datum obj nil))) ; Don't print NIL
 	(declare (type simple-string str))
 	(loop :for c :across str :do
 	   (when (char= c quote-character)
-	     (princ escape-character))
-	   (princ c))
-	(princ quote-character)))))
+	     (princ escape-character stream))
+	   (princ c stream))
+	(princ quote-character stream)))))
 
 (defun write-row (stream row &key (style +csv-default+))
   "Write a row of data to the output stream STREAM. Use the style defined by
@@ -362,32 +365,45 @@ the style object STYLE, which defaults to +CSV-DEFAULT+. ROW can be "
   (let ((delimiter (style-delimiter style))
 	(eol-style (style-eol-style style))
 	(first-time t))
-    (map nil #'(lambda (x)
+    (omapn #'(lambda (x)
 		 (if first-time
 		     (setf first-time nil)
 		     (princ delimiter stream))
 		 (if (needs-quoting x style)
-		     (princ (quotify x style) stream)
-		     (princ x stream))
-		 (case eol-style
-		   (:nl (write-char #\newline stream))
-		   (:cr (write-char #\return stream))
-		   (:crnl (write-char #\return stream)
-			  (write-char #\newline stream))
-		   (t (terpri stream))))
-	 row)))
+		     (write-datum (quotify x style) stream)
+		     (write-datum x stream)))
+	   row)
+    (case eol-style
+      (:nl (write-char #\newline stream))
+      (:cr (write-char #\return stream))
+      (:crnl (write-char #\return stream)
+	     (write-char #\newline stream))
+      (t (terpri stream)))))
 
 (defun write-file (file-or-stream rows &key (style +csv-default+) labels)
   "Write the whole table to the given file or stream. ROWS is a sequence of
 sequences of objects to write. Use the given style which defaults to
 +CSV-DEFAULT+. Use the list of labels provided in LABELS."
-  (when (not (streamp file-or-stream))
-    (setf file-or-stream (open file-or-stream :direction :output)))
-  (when labels
-    (write-row file-or-stream labels :style style))
-  (map nil
-       #'(lambda (row)
-	   (write-row file-or-stream row :style style))
-       rows))
+  (with-open-file-or-stream (stream file-or-stream :direction :output)
+    (when labels
+      (write-row stream labels :style style))
+    (omapn #'(lambda (row)
+	       (write-row stream row :style style))
+	   rows))
+  (values))
+
+(defun write-table-to-file (file-or-stream table &key (style +csv-default+)
+						   (labels nil labels-p))
+  "Write the whole table to the given file or stream. ROWS is a sequence of
+sequences of objects to write. Use the given style which defaults to
++CSV-DEFAULT+. Use the list of labels provided in LABELS."
+  (write-file file-or-stream
+	      table
+	      :style style
+	      :labels (if labels-p
+			  labels
+			  (and (table-columns table)
+			       (mapcar #'column-name
+				       (table-columns table))))))
 
 ;; EOF
