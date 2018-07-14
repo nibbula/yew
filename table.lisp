@@ -129,10 +129,12 @@ attributes."))
       (omap function (container-data table))))
 
 (defmethod make-table-from ((object list) &key column-names)
-  "Make a table from an alist."
+  "Make a table from an alist or a list of things."
   (let ((tt (make-instance 'mem-table :data object))
 	(first-obj (first object)))
     (if column-names
+	;; @@@ When there's less column-names than potential columns in object,
+	;; we should make the missing column names.
 	(loop :for c :in column-names :do
 	   (table-add-column tt c))
 	(when first-obj
