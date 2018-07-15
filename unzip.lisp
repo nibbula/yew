@@ -13,17 +13,27 @@
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
+(defun localize-path (path)
+  "Convert a ZIP path into a local operating system path."
+  #+unix path
+  #+windows (join-by-string (split-sequence #\/ path :omit-empty t)
+			    nos:*directory-separator*))
+
+(defun localized-name (entry)
+  "Return the localized path name from a ZIPFILE-ENTRY."
+  (localize-path (zipfile-entry-name entry)))
+
 (defvar *confirm-all* nil
   ":all :none or NIL if it hasn't been set.")
 
 (defun confirm-overwrite (entry)
   "Return a file name to overwrite or NIL not overwrite."
   (case *confirm-all*
-    (:all  (return-from confirm-overwrite (zipfile-entry-name entry)))
+    (:all  (return-from confirm-overwrite (localized-name entry)))
     (:none (return-from confirm-overwrite nil)))
 
   (loop :with done :and answer :and result
-     :and name = (zipfile-entry-name entry)
+     :and name = (localized-name entry)
      :do
      (format *query-io*
 	     "Overwrite ~s?~%[y]es, [n]o, Yes to [A]ll, [N]one, [r]ename: "
@@ -119,14 +129,14 @@ in UNZIP-COMMAND."
       (pipe
        (setf out *standard-output*))
       ((and overwrite (not never-overwrite))
-       (setf out (zipfile-entry-name entry)))
-      ((file-exists (zipfile-entry-name entry))
+       (setf out (localized-name entry)))
+      ((file-exists (localized-name entry))
        (if (and (not never-overwrite)
 		(setf answer (confirm-overwrite entry)))
 	   (setf out answer)
 	   (return-from extract-entry nil)))
       (t ;; the file doesn't exist
-       (setf out (zipfile-entry-name entry))))
+       (setf out (localized-name entry))))
     (when (not pipe)
       (format t "~a~%" out))
     (if (stringp out)
@@ -146,10 +156,10 @@ in UNZIP-COMMAND."
 	      ;; It has a file name.
 	      (make-file entry out never-overwrite)))
 	;; It's a pipe.
-	(when (or (not (zipfile-entry-name entry))
-		  (and (zipfile-entry-name entry)
+	(when (or (not (localized-name entry))
+		  (and (localized-name entry)
 		       (not (zerop (length (path-file-name
-					    (zipfile-entry-name entry)))))))
+					    (localized-name entry)))))))
 	  ;; It's presumably not a directory.
 	  (zipfile-entry-contents entry out)))))
 
