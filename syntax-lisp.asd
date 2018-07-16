@@ -13,7 +13,7 @@
     "A lexer for Lisp, which is nearly the same as a lisp reader."
     :depends-on (:dlib :syntax
 		       #+use-regex :regex
-		       #-use-regex :ppcre
+		       #-use-regex :cl-ppcre
 		       :dlib-misc #| :esrap |# :theme :style :grout :fatchar)
     :components
     ((:file "syntax-lisp")))
