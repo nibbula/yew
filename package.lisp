@@ -121,6 +121,7 @@
 
    ;; time
    #:get-time
+   #:get-os-time
    #:set-time
 
    ;; events

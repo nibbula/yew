@@ -900,6 +900,10 @@ from the system command CMD with the arguments ARGS."
   "Return the time in seconds and nanoseconds. The first value is seconds in
 so-called “universal” time. The second value is nanoseconds.")
 
+(defun get-os-time ()
+  (multiple-value-bind (s ns) (get-time)
+    (make-os-time :seconds s :nanoseconds ns)))
+
 (defosfun set-time (seconds nanoseconds)
   "Set time in seconds and nanoseconds. Seconds are in so-called
 “universal” time.")
