@@ -47,12 +47,17 @@ the path."
    ;; @@@ I don't want to do this until everything is much better tested.
    ;; (recursive boolean :short-arg #\r
    ;;  :help "True to delete directories recursively.")
+   (no-preserve-root boolean :short-arg nil
+    :help "True to not treat '/' with special care.")
    (files pathname :optional nil :repeating t :help "Files to delete."))
   "Delete directories."
   (declare (ignore force))
   (loop :with info
      :for file :in files
      :do
+     (when (and (not no-preserve-root) (equal file "/"))
+       (error "I won't delete the root directory, unless you specify ~
+               no-preserve-root."))
      (setf info (get-file-info file :follow-links nil))
      (if (eq :directory (file-info-type info))
 	 (rmdir file)
