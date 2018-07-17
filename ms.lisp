@@ -24,8 +24,8 @@
 ;;     %hyphenated-identifier-style, and perhaps provide a function without
 ;;     the '%' for calling from other Lisp code.
 
-;(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
-(declaim (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;(declaim (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
 
 (defpackage :ms
   (:documentation "Interface to Microsoft systems.")
@@ -54,6 +54,7 @@
    #:file-exists
    #:simple-delete-file
    #:with-os-file
+   #:set-file-time
    #:read-directory
    #:map-directory
    #:change-directory
@@ -86,6 +87,15 @@
    #:get-time
    #:set-time
    #:listen-for
+   #:%create-event-set
+   #:%destroy-event-set
+   #:%add-event
+   #:%delete-event
+   #:%clear-triggers
+   #:await-events
+   #:pick-events
+   #:map-events
+   #:events-pending-p
    #:mounted-filesystems
    #:mount-point-of-file
    #:file-handle-terminal-p
@@ -161,9 +171,6 @@
   (defconstant +ERROR-PATH-NOT-FOUND+ 3)
   (defconstant +ERROR-NOT-READY+ 21)
   (defconstant +ERROR-ENVVAR-NOT-FOUND+ 203)
-
-  (defconstant +GENERIC-READ+  #x80000000)
-  (defconstant +GENERIC-WRITE+ #x40000000)
 
   ;; a.k.a: ((HANDLE)~(ULONG_PTR)0) or the maximum pointer value.
   (defconstant +INVALID-HANDLE-VALUE+
@@ -790,6 +797,18 @@ Common Lisp 1900 based universal time.")
       (filetime-to-universal-time-and-nsec filetime)
     (make-os-time :seconds sec :nanoseconds nano)))
 
+(defun os-time-to-filetime-integer (os-time)
+  "Convert an OS-TIME to an integer equivalent to the Windows FILETIME."
+  (+ (* (+ +windows-to-universal-time+ (or (os-time-seconds os-time) 0))
+	(expt 10 7))
+     (truncate (or (os-time-nanoseconds os-time) 0) 100)))
+
+(defun os-time-to-filetime (os-time)
+  "Convert an OS-TIME structure to a CFFI (:struct FILETIME)."
+  (let ((100-nsec (os-time-to-filetime-integer os-time)))
+    (list 'high-date-time (logand (ash 100-nsec -32) #xffffffff)
+	  'low-date-time  (logand 100-nsec #xffffffff))))
+
  ;; :immutable :compressed :hidden
 (defun attr-to-flags (attr)
   (let (flags)
@@ -860,37 +879,158 @@ Doesn't operate on streams."
   (with-wide-string (w-path pathname)
     (syscall (%delete-file w-path))))
 
-#|
-(defmacro with-windows-file ((var filename access &optional
-				  share-mode
-				  (security)
-				  (flags))
-			     &body body)
-  "Evaluate the body with the variable VAR bound to a posix file descriptor
-opened on FILENAME with FLAGS and MODE."
-  (when (not share-mode)
-    (setf share-mode (logior +FILE-SHARE-READ+ +FILE-SHARE-WRITE+
-  `(let (,var)
-     (unwind-protect
-	  (progn
-	 (with-wide-string (,w-filename ,filename)
-	  (setf ,var (%create-file ,w-filename ,access
-				   ,share-mode ,security
-				   DISPOSITION
-				   ,flags
-				   TEMPLATE
-				   ))
-	 ,@body)
-       (if (>= ,var 0)
-	   (%close-handle ,var)
-	   (error-check ,var)))))
-|#
+;; For sahre-mode
+(defconstant +FILE-SHARE-READ+   #x00000001)
+(defconstant +FILE-SHARE-WRITE+  #x00000002)
+(defconstant +FILE-SHARE-DELETE+ #x00000004)
 
-;; @@@ not done yet
-(defmacro with-os-file ((var filename &key
+;; For desired-access?
+(defconstant +DELETE+                   #x00010000)
+(defconstant +READ-CONTROL+             #x00020000)
+(defconstant +WRITE-DAC+                #x00040000)
+(defconstant +WRITE-OWNER+              #x00080000)
+(defconstant +SYNCHRONIZE+              #x00100000)
+(defconstant +STANDARD-RIGHTS-REQUIRED+ #x000f0000)
+
+(defconstant +STANDARD-RIGHTS-READ+     +READ-CONTROL+)
+(defconstant +STANDARD-RIGHTS-WRITE+    +READ-CONTROL+)
+(defconstant +STANDARD-RIGHTS-EXECUTE+  +READ-CONTROL+)
+(defconstant +STANDARD-RIGHTS-ALL+      #x001f0000)
+(defconstant +SPECIFIC-RIGHTS-ALL+      #x0000ffff)
+
+(defconstant +GENERIC-READ+    #x80000000)
+(defconstant +GENERIC-WRITE+   #x40000000)
+(defconstant +GENERIC-EXECUTE+ #x20000000)
+(defconstant +GENERIC-ALL+     #x10000000)
+
+(defconstant +FILE-LIST-DIRECTORY+       #x001)
+(defconstant +FILE-READ-DATA+            #x001)
+(defconstant +FILE-ADD-FILE+             #x002)
+(defconstant +FILE-WRITE-DATA+           #x002)
+(defconstant +FILE-ADD-SUBDIRECTORY+     #x004)
+(defconstant +FILE-APPEND-DATA+          #x004)
+(defconstant +FILE-CREATE-PIPE-INSTANCE+ #x004)
+(defconstant +FILE-READ-EA+              #x008)
+(defconstant +FILE-WRITE-EA+             #x010)
+(defconstant +FILE-EXECUTE+              #x020)
+(defconstant +FILE-TRAVERSE+             #x020)
+(defconstant +FILE-DELETE-CHILD+         #x040)
+(defconstant +FILE-READ-ATTRIBUTES+      #x080)
+(defconstant +FILE-WRITE-ATTRIBUTES+     #x100)
+(defconstant +FILE-ALL-ACCESS+
+  (logior +STANDARD-RIGHTS-REQUIRED+ +SYNCHRONIZE+ #x1ff))
+
+;; For creation-disposition
+(defconstant +CREATE-NEW+        1 "Creates a new file, if it does not exist.")
+(defconstant +CREATE-ALWAYS+     2 "Creates a new file, always.")
+(defconstant +OPEN-EXISTING+     3 "Opens a file or device, only if it exists.")
+(defconstant +OPEN-ALWAYS+       4 "Opens a file, always.")
+(defconstant +TRUNCATE-EXISTING+ 5 "Truncates it, if it exists.")
+
+;; For flags-and-attributes:
+;; Attributes:
+(defconstant +FILE-ATTRIBUTE-READONLY+  #x0001)
+(defconstant +FILE-ATTRIBUTE-HIDDEN+    #x0002)
+(defconstant +FILE-ATTRIBUTE-SYSTEM+    #x0004)
+(defconstant +FILE-ATTRIBUTE-ARCHIVE+   #x0020)
+(defconstant +FILE-ATTRIBUTE-NORMAL+    #x0080)
+(defconstant +FILE-ATTRIBUTE-TEMPORARY+ #x0100)
+(defconstant +FILE-ATTRIBUTE-OFFLINE+   #x1000)
+(defconstant +FILE-ATTRIBUTE-ENCRYPTED+ #x4000)
+
+;; Flags: (are these really right?)
+(defconstant +FILE-FLAG-FIRST-PIPE-INSTANCE+ #x00080000)
+(defconstant +FILE-FLAG-OPEN-NO-RECALL+      #x00100000)
+(defconstant +FILE-FLAG-OPEN-REPARSE-POINT+  #x00200000)
+(defconstant +FILE-FLAG-SESSION-AWARE+       #x00800000)
+(defconstant +FILE-FLAG-POSIX-SEMANTICS+     #x01000000)
+(defconstant +FILE-FLAG-BACKUP-SEMANTICS+    #x02000000)
+(defconstant +FILE-FLAG-DELETE-ON-CLOSE+     #x04000000)
+(defconstant +FILE-FLAG-SEQUENTIAL-SCAN+     #x08000000)
+(defconstant +FILE-FLAG-RANDOM-ACCESS+       #x10000000)
+(defconstant +FILE-FLAG-NO-BUFFERING+        #x20000000)
+(defconstant +FILE-FLAG-OVERLAPPED+          #x40000000)
+(defconstant +FILE-FLAG-WRITE-THROUGH+       #x80000000)
+
+;; Are these corrrect?
+(defconstant +SECURITY-ANONYMOUS+          #.(ash 0 16))
+(defconstant +SECURITY-IDENTIFICATION+     #.(ash 1 16))
+(defconstant +SECURITY-IMPERSONATION+      #.(ash 2 16))
+(defconstant +SECURITY-DELEGATION+         #.(ash 3 16))
+
+(defconstant +SECURITY-CONTEXT-TRACKING+   #x00040000)
+(defconstant +SECURITY-EFFECTIVE-ONLY+     #x00080000)
+
+(defconstant +SECURITY-SQOS-PRESENT+       #x00100000)
+(defconstant +SECURITY-VALID-SQOS-FLAGS+   #x001f0000)
+
+(defcfun ("CreateFileW" %create-file)
+    HANDLE
+  (file-name 		 LPCTSTR)
+  (desired-access 	 DWORD)
+  (share-mode 		 DWORD)
+  (security-attributes   LPSECURITY_ATTRIBUTES)
+  (creation-disposition  DWORD)
+  (flags-and-attributes  DWORD)
+  (template-file 	 HANDLE))
+
+(defconstant +FILE-BEGIN+   0)
+(defconstant +FILE-CURRENT+ 1)
+(defconstant +FILE-END+     2)
+
+(defcfun ("SetFilePointerEx" %set-file-pointer-ex)
+    BOOL
+  (file             HANDLE)
+  (distance-to-move LARGE_INTEGER)
+  (new-file-pointer PLARGE_INTEGER)
+  (move-method      DWORD))
+
+(defcfun ("CloseHandle" %close-handle)
+    BOOL
+   (object HANDLE))
+
+;; @@@ merge with with-os-file?
+(defmacro with-windows-file ((var pathname access &key
+				  share-mode
+				  security
+				  disposition
+				  flags)
+			     &body body)
+  "Evaluate the body with the variable VAR bound to a Windows file handle
+opened on PATHNAME with ACCESS. Arguments are as in the arguments to
+%CREATE-FILE."
+  (with-unique-names (w-path w-share-mode w-security w-disposition w-flags)
+    `(let ((,w-share-mode (or ,share-mode
+			      (logior +FILE-SHARE-READ+ +FILE-SHARE-WRITE+)))
+	   (,w-security (or ,security (null-pointer)))
+	   (,w-disposition (or ,disposition
+			       (if (not (zerop (logand ,access +GENERIC-READ+)))
+				   +OPEN-EXISTING+
+				   +CREATE-NEW+)))
+	   (,w-flags (or ,flags 0))
+	   ,var)
+       (unwind-protect
+	    (progn
+	      ;; (format t "access = ~x share-mode = ~s disposition = ~s~%"
+	      ;; 	      ,access ,w-share-mode ,w-disposition)
+	      (with-wide-string (,w-path ,pathname)
+		(setf ,var (%create-file ,w-path
+					 ,access ,w-share-mode ,w-security
+					 ,w-disposition ,w-flags
+					 (null-pointer))))
+	      (when (= (pointer-address ,var) +INVALID-HANDLE-VALUE+)
+		(error 'windows-error :error-code (get-last-error)
+		       :format-control "Failed to open the file."))
+	      ,@body)
+	 (when (and ,var (not (= (pointer-address ,var)
+				 +INVALID-HANDLE-VALUE+)))
+	   (syscall (%close-handle ,var)))))))
+
+;; @@@ the if-* handling isn't exactly right yet
+(defmacro with-os-file ((var pathname &key
 			     (direction :input)
-			     (if-exists :error)
-			     (if-does-not-exist :error)) &body body)
+			     if-exists
+			     if-does-not-exist) &body body)
   "Evaluate the body with the variable VAR bound to a Windows file handle
 opened on FILENAME. DIRECTION, IF-EXISTS, and IF-DOES-NOT-EXIST are simpler
 versions of the keywords used in Lisp open.
@@ -898,12 +1038,50 @@ versions of the keywords used in Lisp open.
   IF-EXISTS         - supports :ERROR and :APPEND.
   IF-DOES-NOT-EXIST - supports :ERROR, and :CREATE.
 "
-  `(with-open-file (,var ,filename
-                         :direction ,direction
-                         :if-exists ,if-exists
-                         :if-does-not-exist ,if-does-not-exist)
-     ,@body))
-  
+  (with-unique-names (w-path access disposition)
+    `(let ((,access (ecase ,direction
+		      (:input +GENERIC-READ+)
+		      (:output +GENERIC-WRITE+)
+		      (:io (logior +GENERIC-READ+ +GENERIC-WRITE+))))
+	   (,disposition (cond
+			   ((eq ,if-exists :error) +CREATE-NEW+)
+			   ((eq ,if-exists :append) +OPEN-EXISTING+)
+			   ((eq ,if-does-not-exist :error) +OPEN-EXISTING+)
+			   ((eq ,if-does-not-exist :create) +CREATE-ALWAYS+)
+			   ((and (not (and ,if-exists ,if-does-not-exist))
+				 (or (eq ,direction :input)
+				     (eq ,direction :io)))
+			    +OPEN-EXISTING+)
+			   ((and (not (and ,if-exists ,if-does-not-exist))
+				 (or (eq ,direction :output)))
+			    +CREATE-NEW+)
+			   (t
+			    (error 'opsys-error
+				   :format-control
+				   "Unsupported values for if-exists and/or ~
+                                    if-does-not-exist and direction."))))
+	   ,var)
+       (unwind-protect
+	    (progn
+	      (with-wide-string (,w-path ,pathname)
+		(setf ,var (%create-file
+			    ,w-path
+			    ,access
+			    0	 ; (logior +FILE-SHARE-READ+ +FILE-SHARE-WRITE+)
+			    (null-pointer) ; SECURITY_ATTRIBUTES
+			    ,disposition
+			    0
+			    (null-pointer))))
+	      (when (= (pointer-address ,var) +INVALID-HANDLE-VALUE+)
+		(error 'windows-error :error-code (get-last-error)
+		       :format-control "Failed to open the file."))
+	      (when (eq ,if-exists :append)
+		(syscall (%set-file-pointer-ex ,var 0 (null-pointer)
+					       +FILE-END+)))
+	      ,@body)
+	 (when (and ,var (not (= (pointer-address ,var) +INVALID-HANDLE-VALUE+)))
+	   (syscall (%close-handle ,var)))))))
+
 (defmacro as-32bit-unsigned (n) `(logand (1- (expt 2 32)) (lognot (1- (- ,n)))))
 (defconstant +STD-INPUT-HANDLE+  (as-32bit-unsigned -10)) ; CONIN$
 (defconstant +STD-OUTPUT-HANDLE+ (as-32bit-unsigned -11)) ; CONOUT$
@@ -912,6 +1090,85 @@ versions of the keywords used in Lisp open.
 (defcfun ("GetStdHandle" %get-std-handle :convention :stdcall)
     HANDLE
    (nStdHandle DWORD)) ; in
+
+(defcstruct BY_HANDLE_FILE_INFORMATION
+  (file-attributes       DWORD)
+  (creation-time         (:struct FILETIME))
+  (last-access-time      (:struct FILETIME))
+  (last-write-time       (:struct FILETIME))
+  (volume-serial-number  DWORD)
+  (file-size-high        DWORD)
+  (file-size-low         DWORD)
+  (number-of-links       DWORD)
+  (file-index-high       DWORD)
+  (file-index-low        DWORD))
+
+(defctype PBY_HANDLE_FILE_INFORMATION
+    (:pointer (:struct BY_HANDLE_FILE_INFORMATION)))
+(defctype LPBY_HANDLE_FILE_INFORMATION
+    (:pointer (:struct BY_HANDLE_FILE_INFORMATION)))
+
+(defcfun ("GetFileInformationByHandle" %get-file-information-by-handle)
+    BOOL
+ (file             HANDLE)
+ (file-information LPBY_HANDLE_FILE_INFORMATION))
+
+;; Values of a FILE_INFO_BY_HANDLE_CLASS
+(defconstant +file-basic-info+            0)
+(defconstant +file-rename-info+           3)
+(defconstant +file-disposition-info+      4)
+(defconstant +file-allocation-info+       5)
+(defconstant +file-end-of-file-info+      6)
+(defconstant +file-io-priority-hint-info+ 12)
+
+(defcstruct FILE_BASIC_INFO
+  (creation-time    LARGE_INTEGER)
+  (last-access-time LARGE_INTEGER)
+  (last-write-time  LARGE_INTEGER)
+  (change-time      LARGE_INTEGER)
+  (file-attributes  DWORD))
+(defctype PFILE_BASIC_INFO (:pointer (:struct FILE_BASIC_INFO)))
+
+(defcfun ("SetFileInformationByHandle" %set-file-information-by-handle)
+    BOOL
+ (file                   HANDLE)
+ ;;(file-information-class FILE_INFO_BY_HANDLE_CLASS)
+ (file-information-class :unsigned-int)	; :(
+ (file-information       LPVOID)
+ (buffer-size            DWORD))
+
+(defun set-file-time (path &key access-time modification-time)
+  "Set the given times on PATH. The times are OS-TIME structures. Either
+time can be :NOW to use the current time."
+  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+  (let ((now-ish (get-current-filetime-as-integer)))
+    (flet ((flank (time)
+	     (if time
+		 (if (eq time :now)
+		     now-ish
+		     (os-time-to-filetime-integer time))
+		 0)))
+      (with-windows-file (handle path (logior +FILE-READ-ATTRIBUTES+
+					      +FILE-WRITE-ATTRIBUTES+)
+				 :share-mode +FILE-SHARE-READ+
+				 :disposition +OPEN-EXISTING+
+				 :flags +FILE-FLAG-BACKUP-SEMANTICS+)
+	(with-foreign-objects ((file-info '(:struct FILE_BASIC_INFO)))
+	  (with-foreign-slots ((creation-time last-access-time last-write-time
+				change-time file-attributes) file-info
+			       (:struct FILE_BASIC_INFO))
+	    ;; Apparently, even though it doesn't seem to mention it in the
+	    ;; Microsoft documentation, you can set a time to zero to leave
+	    ;; it unchanged.
+	    (setf creation-time 0
+		  last-access-time (flank access-time)
+		  change-time 0
+		  last-write-time (flank modification-time)
+		  file-attributes 0)
+	    (syscall (%set-file-information-by-handle
+		      handle +file-basic-info+
+		      file-info
+		      (foreign-type-size '(:struct FILE_BASIC_INFO))))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
@@ -1362,25 +1619,6 @@ lock. Otherwise, it waits.")
   (number-of-bytes-to-unlock-low DWORD)
   (number-of-bytes-to-unlock-high DWORD)
   (overlapped LPOVERLAPPED))
-
-(defcfun ("CreateFileW" %create-file)
-    HANDLE
-  (file-name 		 LPCTSTR)
-  (desired-access 	 DWORD)
-  (share-mode 		 DWORD)
-  (security-attributes   LPSECURITY_ATTRIBUTES)
-  (creation-disposition  DWORD)
-  (flags-and-attributes  DWORD)
-  (template-file 	 HANDLE))
-
-(defconstant +FILE-SHARE-READ+  #x00000001)
-(defconstant +FILE-SHARE-WRITE+ #x00000002)
-
-(defconstant +OPEN-EXISTING+ 3)
-
-(defcfun ("CloseHandle" %close-handle)
-    BOOL
-   (object HANDLE))
 
 (defmacro with-locked-file ((pathname &key (lock-type :write) (timeout 3)
 				      (increment .1))
@@ -2011,6 +2249,26 @@ wait. Returns NILs if nothing changed."
     BOOL
   (system-time (:pointer (:struct SYSTEMTIME))))
 
+(defun get-current-filetime-into (foreign-filetime)
+  "Get the current time into a foreign pointer to FILETIME struct."
+  ;; (with-foreign-object (sys-time '(:struct SYSTEMTIME))
+  ;;   (%get-local-time sys-time)
+  ;;   (%system-time-to-file-time sys-time foreign-filetime))
+  (%get-system-time-as-file-time foreign-filetime))
+
+(defun get-current-filetime-as-cffi-struct ()
+  "Return the current time as CFFI struct (aka plist) representing a FILETIME."
+  (with-foreign-object (time '(:struct FILETIME))
+    (get-current-filetime-into time)
+    (convert-from-foreign time '(:struct FILETIME))))
+
+(defun get-current-filetime-as-integer ()
+  "Return the current time as an integer representing a FILETIME."
+  (with-foreign-object (time '(:struct FILETIME))
+    (get-current-filetime-into time)
+    (with-foreign-slots ((high-date-time low-date-time) time (:struct FILETIME))
+      (logior (ash high-date-time 32) (logand low-date-time #xffffffff)))))
+
 (defun get-time ()
   "Return the time in seconds and nanoseconds. The first value is seconds in
 so-called “universal” time. The second value is nanoseconds."
@@ -2053,7 +2311,7 @@ so-called “universal” time. The second value is nanoseconds."
   (resume		     BOOL))		  	; in
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; poll
+;; events / poll
 
 (defcfun ("WaitForMultipleObjectsEx" %wait-for-multiple-objects-ex)
     DWORD
@@ -2137,6 +2395,53 @@ available. If handle isn't provided it tries to use STD-INPUT-HANDLE."
 	  ((= result +WAIT-FAILED+)
 	   (error 'windows-error :error-code (get-last-error)
 		  :format-control "listen-for:")))))))
+
+(defun %create-event-set (set)
+  (declare (ignore set)))
+
+(defun %destroy-event-set (set)
+  (declare (ignore set)))
+
+(defun %add-event (event set)
+  "Add the event to the SET."
+  (declare (ignore event set)))
+
+(defun %delete-event (event set)
+  "Delete the event from the SET."
+  (declare (ignore event set)))
+
+(defun %clear-triggers (set)
+  "Clear the triggers for the event SET."
+  (declare (ignore set)))
+
+(defun await-events (&key (event-types t) (event-set *event-set*) timeout
+		       (leave-triggers nil))
+  "Wait for events of the given EVENT-TYPES, or T for any event. Return if we
+don't get an event before TIMEOUT. TIMEOUT can be NIL wait potentially forever,
+or T to return immediately, otherwise it's a OS-TIME, or a number of seconds.
+The default for TIMEOUT is NIL. If LEAVE-TRIGGERS it T, it will not clear
+triggers in the EVENT-SET, that were set before being invoked.
+Retruns NIL if the timeout was up before getting any events, otherwise return
+the count of event triggered."
+  (declare (ignore event-types event-set timeout leave-triggers)))
+
+(defun pick-events (event-types &key (event-set *event-set*) remove timeout)
+  "Return any pending events of the types given in EVENT-TYPES. If REMOVE is
+true, remove the events from the EVENT-SET. Return NIL if there aren't any
+events before TIMEOUT. TIMEOUT can be NIL wait potentially forever, or T to
+return immediately, otherwise it's a OS-TIME. The default for TIMEOUT is NIL."
+  (declare (ignore event-types event-set remove timeout))
+  )
+
+(defun map-events (function &key (event-set *event-set*) (event-types t))
+  "Call FUNCTION for each event in EVENT-SET, that is pending or triggered.
+EVENT-TYPES restricts the events mapped to those types."
+  (declare (ignore function event-set event-types)))
+
+(defun events-pending-p (&key (event-types t) (event-set *event-set*))
+  "Return true if there are any events pending in the EVENT-SET. Restrict the
+events considered to those in EVENT-TYPES, if it's not T."
+  (declare (ignore event-types event-set)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; System administration
