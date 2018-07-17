@@ -16,7 +16,7 @@
 (defun localize-path (path)
   "Convert a ZIP path into a local operating system path."
   #+unix path
-  #+windows (join-by-string (split-sequence #\/ path :omit-empty t)
+  #+windows (join-by-string (split-sequence #\/ path)
 			    nos:*directory-separator*))
 
 (defun localized-name (entry)
@@ -317,7 +317,7 @@ in UNZIP-COMMAND."
 				'("Size" "Compressed" "%" "Method" "CRC"
 				  "Made by" "Mode" "   Date    Time" "Name")
 				'("Size" "   Date    Time" "Name"))
-			    ))
+			    ) :max-width nil)
 	#| @@@ Add the ability to do nice footers to text-table-renderer
 	(with-slots (size compressed-size count) totals
 	  (grout-print-table
