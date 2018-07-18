@@ -12,8 +12,8 @@
     :long-description   "Blah blah blah"
     :depends-on (:dlib :opsys :glob :dlib-misc :syntax-lisp
 		 :terminal :terminal-ansi
-		 #+use-regex :regex
-		 #-use-regex :cl-ppcre
+		 #+use-re :re
+		 #-use-re :cl-ppcre
 		 :theme :fatchar :style)
     :components
     ((:file "completion")))

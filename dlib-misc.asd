@@ -13,6 +13,8 @@
     "A library of miscellaneous useful functions. This is for things that
 are nice, but not essential."
     :depends-on (:dlib :opsys :char-util :glob :table
-		       #+use-regex :regex #-use-regex :cl-ppcre)
+		       #+use-re :re
+		       #-use-re :cl-ppcre
+		       :asdf)
     :components
     ((:file "dlib-misc")))

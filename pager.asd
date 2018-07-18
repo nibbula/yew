@@ -12,7 +12,7 @@
     :long-description   "We can only see so much at one time."
     :depends-on (:dlib :opsys :dlib-misc :table-print :stretchy
 		 :keymap :char-util :fatchar
-		 #+use-regex :regex #-use-regex :cl-ppcre
+		 #+use-re :re #-use-re :cl-ppcre
 		 :terminal
 		 :rl :pick-list :utf8b-stream)
     :entry-point "pager:standalone"

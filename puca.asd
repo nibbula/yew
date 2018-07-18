@@ -17,8 +17,8 @@ It currently knows how to talk to Git, SVN, CVS an Mercurial."
     :depends-on (:dlib :dlib-misc :opsys :keymap :char-util :curses :rl
 		 :completion :inator :terminal :terminal-curses :fui :lish
 		 :pager :view :options
-		 #+use-regex :regex
-		 #-use-regex :cl-ppcre
+		 #+use-re :re
+		 #-use-re :cl-ppcre
 		 )
     :components
     ((:file "puca")))

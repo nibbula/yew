@@ -13,7 +13,7 @@
 
 (defpackage :dlib-misc
   (:use :cl :dlib :opsys :char-util :glob
-	#+use-regex :regex #-use-regex :ppcre)
+	#+use-re :re #-use-re :ppcre)
   ;; Also has an inplicit dependency on ASDF.
   (:documentation "More generally dubious miscellaneous functions.")
   (:export
