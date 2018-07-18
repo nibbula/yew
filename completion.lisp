@@ -404,7 +404,8 @@ arguments for that function, otherwise return NIL."
 |#
 
 (defun function-help-show-function (symbol expr-number)
-  (let (past-key past-rest did-standout)
+  (let (past-key past-rest did-standout (i 0))
+    (declare (special i))
     ;; (function-help-print-list str (dlib:lambda-list symbol)
     ;; 			      :first-color :magenta
     ;; 			      :highlight-expr expr-number)
@@ -412,60 +413,57 @@ arguments for that function, otherwise return NIL."
     (tt-color :magenta :default)
     (tt-format "~(~a~)" symbol)
     (tt-color :default :default)
-    (labels ((print-it (s i)
-	     (tt-write-char #\space)
-	     (if (position s *lambda-list-keywords*)
-		 (progn
-		   (tt-color :yellow :default)
-		   ;;(write s :stream str :case :downcase :escape nil :pretty nil)
-		   (tt-format "~(~a~)" s)
-		   (tt-color :default :default)
-		   (when (equal s '&key)
-		     (setf past-key t))
-		   (when (equal s '&rest)
-		     (setf past-rest t)))
+    (labels ((output-atom (a)
+	       (typecase a
+		 ((or null keyword number string boolean array)
+		  (tt-color :white :default)
+		  (tt-format "~(~s~)" a)
+		  (tt-color :default :default))
+		 (t
+		  (tt-format "~(~a~)" a))))
+	     (print-it (s)
+	       (when (not (zerop i))
+		 (tt-write-char #\space))
+	       (cond
+		 ((atom s)
+		  (cond
+		    ((position s *lambda-list-keywords*)
+		     (tt-color :yellow :default)
+		     (tt-format "~(~a~)" s)
+		     (tt-color :default :default)
+		     (when (equal s '&key)
+		       (setf past-key t))
+		     (when (equal s '&rest)
+		       (setf past-rest t)))
+		    (t
+		     (if (and (= i expr-number) (not (or past-key past-rest)))
+			 (progn
+			   (tt-standout t)
+			   (setf did-standout t))
+			 (setf did-standout nil))
+		     (tt-format "~(~a~)" s))))
 		 ;; @@@ Despite the above quote, pretty is very ugly here.
-		 (progn
-		   (if (and (= i expr-number) (not (or past-key past-rest)))
-		       (progn
-			 (tt-standout t)
-			 (setf did-standout t))
-		       (setf did-standout nil))
-		   (typecase s
-		     (cons
-		      (tt-write-char #\()
-		      (loop :with first = t
-			 :for ss :in s :do
-			 (if first
-			     (setf first nil)
-			     (tt-write-char #\space))
-			 (typecase ss
-			   ((or null keyword number string boolean array)
-			    (tt-color :white :default)
-			    ;; (write ss :stream str :case :downcase :escape nil
-			    ;; 	   :pretty nil :readably t)
-			    (tt-format "~(~s~)" ss)
-			    (tt-color :default :default))
-			   (t
-			    ;;(write ss :stream str :case :downcase :escape nil
-			    ;;	   :pretty nil :readably nil)
-			    (tt-format "~(~a~)" ss)
-			    )))
-		      (tt-write-char #\)))
-		     (t
-		      ;; (write s :stream str :case :downcase :escape nil
-		      ;; 	     :pretty nil :readably nil)
-		      (tt-format "~(~a~)" s)
-		      ))
-		   (when did-standout
-		     (tt-standout nil))))))
-      ;; Handle normal lists or dotted lists
-      (loop :for s :on (dlib:lambda-list symbol)
-	 :for i = 0 :then (1+ i)
-	 :do
-	 (print-it (car s) i)
-	 (when (and (consp s) (not (listp (cdr s))))
-	   (print-it (cdr s) i)))
+		 ((and s (listp s) (cdr s) (not (atom (cdr s))))
+		  (tt-write-char #\()
+		  (let ((i 0))
+		    (declare (special i))
+		    (loop :for ss :on s :do
+		       (print-it (car ss))
+		       (when (and (consp ss) (cdr ss) (atom (cdr ss)))
+			 (tt-write-string " . ")
+			 (output-atom (cdr ss)))))
+		  (tt-write-char #\)))
+		 ((consp s) ;; a cons but not a list
+		  (tt-write-char #\()
+		  (output-atom (car s))
+		  (tt-write-string " ")
+		  (output-atom (cdr s))
+		  (tt-write-char #\))))
+	       (incf i)
+	       (when did-standout
+		 (tt-standout nil))))
+      (tt-write-char #\space)
+      (print-it (dlib:lambda-list symbol))
       (tt-write-char #\)))))
 
 (defun function-help-show-doc (symbol cols)
@@ -510,10 +508,11 @@ arguments for that function, otherwise return NIL."
 
 (defun function-help (symbol expr-number)
   "Return a string with help for the function designated by SYMBOL."
-  (let ((cols (or (and *terminal*
-		       (progn
-			 (terminal-get-size *terminal*)
-			 (terminal-window-columns *terminal*))) 80)))
+  (let* ((cols (or (and *terminal*
+			(progn
+			  (terminal-get-size *terminal*)
+			  (terminal-window-columns *terminal*))) 80))
+	 (*print-right-margin* cols))
     ;;(dbug "~s ~s ~s~%" *terminal* cols (terminal-window-columns *terminal*))
     (make-fat-string
      :string
