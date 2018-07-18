@@ -174,7 +174,7 @@
 (defun shrink-pathname (path &optional (to 70) (ellipsis "..."))
   "Make a path name fit in the given width, shrinking in a way to preserve
 useful information."
-  (let* ((str (namestring (quote-filename path)))
+  (let* ((str (safe-namestring (quote-filename path)))
 	 (len (length str)))
     (declare (string str ellipsis) (fixnum to))
     (if (> len to)
