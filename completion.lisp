@@ -336,79 +336,9 @@ arguments for that function, otherwise return NIL."
 ;;
 ;; Of course this whole thing should be in the syntax colorization module.
 
-#|
-(defun function-help-print-cons (str list &key highlight-expr)
-  (if (and (numberp highlight-expr)
-	   (= i highlight-expr)
-	   (not (or past-key past-rest)))
-      (progn
-	(tt-standout t)
-	(setf did-standout t))
-      (setf did-standout nil))
-
-
-(defun function-help-print-obj (str obj &key highlight-expr)
-  
-
-  (typecase obj
-    (cons
-     (function-help-print-list str obj i :highlight-expr highlight-expr))
-    ((or null keyword number string boolean array)
-     (tt-color :white :default)
-     (write ss :stream str :case :downcase :escape nil
-	    :pretty nil :readably t)
-     (tt-color :default :default))
-    (symbol
-     (if (position s *lambda-list-keywords*)
-	 (progn
-	   (tt-color :yellow :default)
-	   (write s :stream str :case :downcase :escape nil :pretty nil)
-	   (tt-color :default :default)
-	   (when (equal s '&key)
-	     (setf past-key t))
-	   (when (equal s '&rest)
-	     (setf past-rest t)))
-	 
-     )
-    (t
-     (write ss :stream str :case :downcase :escape nil
-	    :pretty nil :readably nil))
-     
-     )
-    ))
-
-(defun function-help-print-list (str list &key first-color highlight-expr)
-  (write-char #\( str)
-  (write symbol :stream str :case :downcase :escape nil)
-  (when first-color
-    (tt-color :default :default))
-
-  ;; Handle normal lists or dotted lists
-  (loop
-     :with first = nil
-     :for s :on list
-     :for i = 0 :then (1+ i)
-     :do
-     (if first
-	 (progn
-	   (setf first nil)
-	   (when first-color
-	     (tt-color first-color :default))
-	   (function-help-print str (car s) :highlight-expr i)
-	   (when first-color
-	     (tt-color :default :default)))
-
-     (when (and (consp s) (not (listp (cdr s))))
-       (print-it (cdr s) i)))
-  
-|#
-
 (defun function-help-show-function (symbol expr-number)
   (let (past-key past-rest did-standout (i 0))
     (declare (special i))
-    ;; (function-help-print-list str (dlib:lambda-list symbol)
-    ;; 			      :first-color :magenta
-    ;; 			      :highlight-expr expr-number)
     (tt-write-char #\()
     (tt-color :magenta :default)
     (tt-format "~(~a~)" symbol)
@@ -421,6 +351,14 @@ arguments for that function, otherwise return NIL."
 		  (tt-color :default :default))
 		 (t
 		  (tt-format "~(~a~)" a))))
+	     (print-list-interior (list)
+	       (let ((i 0))
+		 (declare (special i))
+		 (loop :for item :on list :do
+		    (print-it (car item))
+		    (when (and (consp item) (cdr item) (atom (cdr item)))
+		      (tt-write-string " . ")
+		      (output-atom (cdr item))))))
 	     (print-it (s)
 	       (when (not (zerop i))
 		 (tt-write-char #\space))
@@ -445,13 +383,7 @@ arguments for that function, otherwise return NIL."
 		 ;; @@@ Despite the above quote, pretty is very ugly here.
 		 ((and s (listp s) (cdr s) (not (atom (cdr s))))
 		  (tt-write-char #\()
-		  (let ((i 0))
-		    (declare (special i))
-		    (loop :for ss :on s :do
-		       (print-it (car ss))
-		       (when (and (consp ss) (cdr ss) (atom (cdr ss)))
-			 (tt-write-string " . ")
-			 (output-atom (cdr ss)))))
+		  (print-list-interior s)
 		  (tt-write-char #\)))
 		 ((consp s) ;; a cons but not a list
 		  (tt-write-char #\()
@@ -463,7 +395,8 @@ arguments for that function, otherwise return NIL."
 	       (when did-standout
 		 (tt-standout nil))))
       (tt-write-char #\space)
-      (print-it (dlib:lambda-list symbol))
+      ;;(print-it (dlib:lambda-list symbol))
+      (print-list-interior (dlib:lambda-list symbol))
       (tt-write-char #\)))))
 
 (defun function-help-show-doc (symbol cols)
