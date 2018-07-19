@@ -223,6 +223,47 @@
        (squares 30 1 "Bold & inverse colors" #'terminal-inverse)
        (tt-normal)))))
 
+(defun test-alternate-characters ()
+  (blurp
+   (flet ((test-char (number name)
+	    (tt-format "~30a: " name)
+	    (tt-alternate-characters t)
+	    (tt-write-char (code-char number))
+	    (tt-alternate-characters nil)
+	    (tt-write-char #\newline)))
+    (test-char #x250c "upper left corner")        ; ┌
+    (test-char #x2514 "lower left corner")        ; └
+    (test-char #x2510 "upper right corner")       ; ┐
+    (test-char #x2518 "lower right corner")       ; ┘
+    (test-char #x251c "tee pointing right")       ; ├
+    (test-char #x2524 "tee pointing left")        ; ┤
+    (test-char #x2534 "tee pointing up")          ; ┴
+    (test-char #x252c "tee pointing down")        ; ┬
+    (test-char #x2500 "horizontal line")          ; ─
+    (test-char #x2502 "vertical line")            ; │
+    (test-char #x253c "large plus or crossover")  ; ┼
+    (test-char #x23ba "scan line 1")              ; ⎺
+    (test-char #x23bd "scan line 9")              ; ⎽
+    (test-char #x25c6 "diamond")                  ; ◆
+    (test-char #x2592 "checker board (stipple)")  ; ▒
+    (test-char #x00b0 "degree symbol")            ; °
+    (test-char #x00b1 "plus/minus")               ; ±
+    (test-char #x00b7 "bullet")                   ; ·
+    (test-char #x2190 "arrow pointing left")      ; ←
+    (test-char #x2192 "arrow pointing right")     ; →
+    (test-char #x2193 "arrow pointing down")      ; ↓
+    (test-char #x2191 "arrow pointing up")        ; ↑
+    (test-char #x2591 "board of squares")         ; ▒
+    (test-char #x240b "lantern symbol")           ; ␋
+    (test-char #x2588 "solid square block")       ; █
+    (test-char #x23bb "scan line 3")              ; ⎻
+    (test-char #x23bc "scan line 7")              ; ⎼
+    (test-char #x2264 "less/equal")               ; ≤
+    (test-char #x2265 "greater/equal")            ; ≥
+    (test-char #x03c0 "Pi")                       ; π
+    (test-char #x2260 "not equal")                ; ≠
+    (test-char #x00a3 "UK pound sign"))))	  ; £
+
 (defun test-cursor-visibility ()
   (blurp
    (let ((half-width (truncate (/ (terminal-window-columns *terminal*) 2)))
@@ -409,6 +450,7 @@
 	  (test-ins-del)
 	  (test-attrs)
 	  (test-colors)
+	  (test-alternate-characters)
 	  (test-scrolling-region)
 	  ))
       (format t "~%All done.~%"))))
