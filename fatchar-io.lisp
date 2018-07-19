@@ -426,7 +426,9 @@ possible."
      ;;(format t "BLURB~s~%" (type-of obj)) (finish-output)
      (write-fat-string obj :stream stream))
     (t
-     (write (fatchar-c obj) :stream stream))))
+     ;;(write (fatchar-c obj) :stream stream)
+     (write-char (fatchar-c obj) stream)
+     )))
 
 (defmacro with-output-to-fat-string ((var &optional string) &body body)
   `(let* ((,var (make-instance 'fat-string-output-stream

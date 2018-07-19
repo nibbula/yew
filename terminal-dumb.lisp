@@ -4,7 +4,7 @@
 
 (defpackage :terminal-dumb
   (:documentation "Dumb terminal")
-  (:use :cl :dlib :terminal :char-util :trivial-gray-streams)
+  (:use :cl :dlib :terminal :char-util :trivial-gray-streams :fatchar)
   (:export
    #:terminal-dumb-stream
    #:terminal-dumb
@@ -86,9 +86,21 @@ require terminal driver support."))
 			       ,@(and start `(:start ,start))
 			       ,@(and end `(:end ,end)))))
 
+(defmethod terminal-write-string ((tty terminal-dumb) (str fat-string)
+				  &key start end)
+  "Output a string to the terminal."
+  (apply #'write-string `(,(fat-string-to-string str)
+			   ,(terminal-output-stream tty)
+			   ,@(and start `(:start ,start))
+			   ,@(and end `(:end ,end)))))
+
 (defmethod terminal-write-char ((tty terminal-dumb) char)
   "Output a character to the terminal."
   (write-char char (terminal-output-stream tty)))
+
+(defmethod terminal-write-char ((tty terminal-dumb) (char fatchar))
+  "Output a character to the terminal."
+  (write-char (fatchar-c char) (terminal-output-stream tty)))
 
 (defmethod terminal-move-to ((tty terminal-dumb) row col)
   (declare (ignore tty row col)))
@@ -278,7 +290,7 @@ require terminal driver support."))
 
 (defmethod stream-write-char ((stream terminal-dumb) char
 			     #| &optional start end |#)
-  (write-char char stream))
+  (write-char char (terminal-output-stream stream)))
 
 (defmethod stream-write-string ((stream terminal-dumb) string
 			       &optional start end)
