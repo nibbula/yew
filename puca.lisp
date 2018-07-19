@@ -881,36 +881,6 @@ for the command-function).")
 	  (message p "Option not found: ~a" c))))
   (get-list))
 
-(defun describe-key-briefly (p)
-  "Prompt for a key and say what function it invokes."
-  (message p "Press a key: ")
-  (let* ((key (read-key-sequence p))
-	 (action (key-sequence-binding key *puca-keymap*)))
-    (if action
-	(message p "~a is bound to ~a" (nice-char key) action)
-	(message p "~a is not defined" (nice-char key)))))
-
-(defun what-command (p)
-  "Try to see what backend command a key invokes."
-  (message p "Press a key: ")
-  (let* ((key (read-key-sequence p))
-	 (action (key-sequence-binding key *puca-keymap*))
-	 (command (when (and (symbolp action)
-			     (ends-with "-COMMAND" (string action)))
-		    (let ((func (symbolify
-				 (s+ "BACKEND-"
-				     (remove-suffix (string action) "-COMMAND"))
-				 :package :puca)))
-		      (when (fboundp func)
-			(funcall func (puca-backend p)))))))
-    (if action
-	(if command
-	    (message p "~a is bound to ~a which does ~s" (nice-char key) action
-		     command)
-	    (message p "~a is bound to ~a which doesn't seem to have a ~
-                        backend command." (nice-char key) action))
-	(message p "~a is not defined" (nice-char key)))))
-
 (defkeymap *puca-keymap*
   `((#\q		. quit)
     (#\Q		. quit)
@@ -962,6 +932,36 @@ for the command-function).")
     (#\escape		. *puca-escape-keymap*)))
 
 (defparameter *puca-escape-keymap* (build-escape-map *puca-keymap*))
+
+(defun describe-key-briefly (p)
+  "Prompt for a key and say what function it invokes."
+  (message p "Press a key: ")
+  (let* ((key (read-key-sequence p))
+	 (action (key-sequence-binding key *puca-keymap*)))
+    (if action
+	(message p "~a is bound to ~a" (nice-char key) action)
+	(message p "~a is not defined" (nice-char key)))))
+
+(defun what-command (p)
+  "Try to see what backend command a key invokes."
+  (message p "Press a key: ")
+  (let* ((key (read-key-sequence p))
+	 (action (key-sequence-binding key *puca-keymap*))
+	 (command (when (and (symbolp action)
+			     (ends-with "-COMMAND" (string action)))
+		    (let ((func (symbolify
+				 (s+ "BACKEND-"
+				     (remove-suffix (string action) "-COMMAND"))
+				 :package :puca)))
+		      (when (fboundp func)
+			(funcall func (puca-backend p)))))))
+    (if action
+	(if command
+	    (message p "~a is bound to ~a which does ~s" (nice-char key) action
+		     command)
+	    (message p "~a is bound to ~a which doesn't seem to have a ~
+                        backend command." (nice-char key) action))
+	(message p "~a is not defined" (nice-char key)))))
 
 ;; (defmethod default-action ((p puca))
 ;;   (message p "Event not bound ~s" (inator-command p)))
