@@ -8,6 +8,7 @@
 ;; I mostly just wanted to implement this square wheel because:
 ;;   - Unix ls loses at making columns out of multibyte characters.
 ;;   - I wish it had slightly better column smushing behavior.
+;;     (not that this does much better yet)
 ;;   - Object collecting.
 ;;   - It's the command I type the most. So I want it to be in Lisp.
 ;;   - I dream of someday finally "rm /usr/bin /bin".
@@ -16,7 +17,7 @@
   (:documentation
    "This is a shitty fake implementation of the command I type the most.")
   (:use :cl :dlib :dlib-misc :opsys :terminal :terminal-ansi :grout :table
-	:table-print :terminal-table :fatchar :style :magic)
+	:table-print :terminal-table :fatchar :fatchar-io :style :magic)
   (:export
    #:!ls
    #:ls
@@ -430,7 +431,7 @@ by nos:read-directory."))
 				    :long-titles nil :trailing-spaces nil)
 		 (print-columns
 		  (mapcar (_ (format-short-item _ (getf args :show-size))) x)
-		  :smush t :format-char "/fatchar:print-string/"
+		  :smush t :format-char "/fatchar-io:print-string/"
 		  :stream (or *terminal* *standard-output*)
 		  :columns (terminal-window-columns
 			    (or (ls-state-outer-terminal *ls-state*)
