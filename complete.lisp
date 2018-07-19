@@ -132,19 +132,19 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
 	  ;;   (setf content-rows
 	  ;; 	  (print-columns comp-list :columns cols
 	  ;; 			 :smush t :row-limit row-limit
-	  ;; 			 :format-char "/fatchar:print-string/"
+	  ;; 			 :format-char "/fatchar-io:print-string/"
 	  ;; 			 :stream str)))
 	  ;; (with-terminal-output-to-string (:ansi)
 	  ;;   (setf content-rows
 	  ;; 	  (print-columns comp-list :columns cols
 	  ;; 			 :smush t :row-limit row-limit
-	  ;; 			 :format-char "/fatchar:print-string/"
+	  ;; 			 :format-char "/fatchar-io:print-string/"
 	  ;; 			 :stream *terminal*)))
 	  (with-output-to-fat-string (str)
 	    (setf content-rows
 	  	  (print-columns comp-list :columns cols
 	  			 :smush t :row-limit row-limit
-	  			 :format-char "/fatchar:print-string/"
+				 :format-char "/fatchar-io:print-string/"
 	  			 :stream str)))
 	  line-endings (figure-line-endings e output-string)
 	  real-content-rows (length line-endings)

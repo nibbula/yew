@@ -8,11 +8,12 @@
   :version            "0.1.0"
   :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
   :licence            "GPLv3"
-  :source-control	:git
+  :source-control     :git
   :long-description   "A line editor which is not so tiny."
   :depends-on (:dlib :dlib-misc :dl-list :stretchy :char-util
 	       :opsys :terminal :terminal-ansi :terminal-dumb
-	       :collections :fatchar :completion :keymap :syntax-lisp :unipose)
+	       :collections :fatchar :fatchar-io :completion :keymap
+	       :syntax-lisp :unipose)
   :serial t	; not entirely correct, but convenient
   :components
   ((:file "package")

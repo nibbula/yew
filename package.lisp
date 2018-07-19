@@ -5,7 +5,7 @@
 (defpackage :rl
   (:documentation "A line editor.")
   (:use :cl :dlib :dlib-misc :dl-list :stretchy :char-util
-	:opsys :terminal :terminal-ansi :collections :fatchar
+	:opsys :terminal :terminal-ansi :collections :fatchar :fatchar-io
 	:completion :keymap :syntax-lisp :unipose)
   (:export
    ;; Main functionality
