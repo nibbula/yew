@@ -13,7 +13,7 @@
 (defpackage :terminal-ansi
   (:documentation "Standard terminal (ANSI).")
   (:use :cl :cffi :dlib :dlib-misc :terminal :char-util :opsys
-	:trivial-gray-streams)
+	:trivial-gray-streams :fatchar)
   (:export
    #:terminal-ansi-stream
    #:terminal-ansi
@@ -222,6 +222,9 @@ two values ROW and COLUMN."
 (defparameter *acs-table* nil
   "Hash table of unicode character to ACS character.")
 
+;; Modern curses “cheats” and uses some unicode characters. This junk is
+;; for antique terminals or emulators that can't do that. If you want the
+;; unicode characters, you can just print them normally.
 (defparameter *acs-table-data*
   `((#.(code-char #x250c) . #\l) ;; upper left corner         ulcorner   ┌
     (#.(code-char #x2514) . #\m) ;; lower left corner         llcorner   └
@@ -245,9 +248,9 @@ two values ROW and COLUMN."
     (#.(code-char #x2192) . #\+) ;; arrow pointing right      rarrow     →
     (#.(code-char #x2193) . #\.) ;; arrow pointing down       darrow     ↓
     (#.(code-char #x2191) . #\-) ;; arrow pointing up         uarrow     ↑
-    (#.(code-char #x2592) . #\h) ;; board of squares          board      ▒
+    (#.(code-char #x2591) . #\h) ;; board of squares          board      ▒
     (#.(code-char #x240b) . #\i) ;; lantern symbol            lantern    ␋
-    (#.(code-char #x25ae) . #\0) ;; solid square block        block      ▮
+    (#.(code-char #x2588) . #\a) ;; solid square block        block      █
     (#.(code-char #x23bb) . #\p) ;; scan line 3               s3         ⎻
     (#.(code-char #x23bc) . #\r) ;; scan line 7               s7         ⎼
     (#.(code-char #x2264) . #\y) ;; less/equal                lequal     ≤
@@ -291,11 +294,6 @@ two values ROW and COLUMN."
   (loop :for (uc . ac) :in *acs-table-data* :do
      (setf (gethash uc *acs-table*) ac)))
 
-(defmethod terminal-alternate-characters ((tty terminal-ansi-stream) state)
-  (setf (translate-alternate-characters tty) state)
-  (when (and state (not *acs-table*))
-    (make-acs-table)))
-
 (defun translate-acs-chars (string &key start end)
   "Translate unicode characters to alternate character set characters.
 Only replace in START and END range."
@@ -321,10 +319,20 @@ processing."
 (defmethod terminal-format ((tty terminal-ansi-stream) fmt &rest args)
   "Output a formatted string to the terminal."
   (let ((string (apply #'format nil fmt args)))
+    ;; @@@ Let's try to think of some way we could do the ACS translation.
+    ;; For now, ACS characters printed with format might not work right.
     (apply #'format (terminal-output-stream tty) fmt args)
     (update-column tty string)
     (when (position #\newline string)
       (finish-output tty))))
+
+(defmethod terminal-alternate-characters ((tty terminal-ansi-stream) state)
+  (setf (translate-alternate-characters tty) state)
+  (when (and state (not *acs-table*))
+    (make-acs-table))
+  (if state
+      (terminal-raw-format tty "~c(0" #\escape)
+      (terminal-raw-format tty "~c(B" #\escape)))
 
 ;; resumed -> (terminal-start tty) #| (redraw) |# (terminal-finish-output tty)
 ;; resized -> (terminal-get-size tt)
@@ -394,6 +402,9 @@ i.e. the terminal is 'line buffered'."
       ;; 	      *standard-output* *terminal-io* *terminal*)
       ;; (format *standard-output* "DEERRRRP ~s ~s ~s ~s->~s<-~%"
       ;;  	      start end (length str) (type-of str) str)
+      (when (and (translate-alternate-characters tty)
+		 (stringp str))
+	(translate-acs-chars str :start start :end end))
       (apply #'write-string `(,str ,stream
 				   ,@(and start `(:start ,start))
 				   ,@(and end `(:end ,end))))
@@ -408,10 +419,140 @@ i.e. the terminal is 'line buffered'."
   "Output a character to the terminal. Flush output if it is a newline,
 i.e. the terminal is 'line buffered'."
   (let ((stream (terminal-output-stream tty)))
+    (when (and (translate-alternate-characters tty)
+	       (characterp char))
+      (let ((replacement (gethash char *acs-table*)))
+	(when replacement
+	  (setf char replacement))))
     (write-char char stream)
     (update-column tty char)
     (when (eql char #\newline)
       (finish-output stream))))
+
+(defparameter *line-table-unicode*
+  `#(,#\space
+     ,(code-char #x2577) ;; #\box_drawings_light_down)                     ╷
+     ,(code-char #x2576) ;; #\box_drawings_light_right)                    ╶
+     ,(code-char #x250c) ;; #\box_drawings_light_down_and_right)           ┌
+     ,(code-char #x2575) ;; #\box_drawings_light_up)                       ╵
+     ,(code-char #x2502) ;; #\box_drawings_light_vertical)                 │
+     ,(code-char #x2514) ;; #\box_drawings_light_up_and_right)             └
+     ,(code-char #x251c) ;; #\box_drawings_light_vertical_and_right)       ├
+     ,(code-char #x2574) ;; #\box_drawings_light_left)                     ╴
+     ,(code-char #x2510) ;; #\box_drawings_light_down_and_left)            ┐
+     ,(code-char #x2500) ;; #\box_drawings_light_horizontal)               ─
+     ,(code-char #x252c) ;; #\box_drawings_light_down_and_horizontal)      ┬
+     ,(code-char #x2518) ;; #\box_drawings_light_up_and_left)              ┘
+     ,(code-char #x2524) ;; #\box_drawings_light_vertical_and_left)        ┤
+     ,(code-char #x2534) ;; #\box_drawings_light_up_and_horizontal)        ┴
+     ,(code-char #x253c) ;; #\box_drawings_light_vertical_and_horizontal)  ┼
+     )
+  "Line drawing characters from Unicode.")
+
+(defparameter *line-table-vt100*
+  `#(#\space ;;            0 - 0000 - blank
+     #\x     ;; VLINE      1 - 0001 - bottom
+     #\q     ;; HLINE      2 - 0010 - right
+     #\l     ;; ULCORNER   3 - 0011 - bottom + right
+     #\x     ;; VLINE      4 - 0100 - top
+     #\x     ;; VLINE      5 - 0101 - top + bottom
+     #\m     ;; LLCORNER   6 - 0110 - top + right
+     #\t     ;; LTEE       7 - 0111 - bottom + right + top
+     #\q     ;; HLINE      8 - 1000 - left
+     #\k     ;; URCORNER   9 - 1001 - left + bottom
+     #\q     ;; HLINE     10 - 1010 - left + right
+     #\w     ;; TTEE      11 - 1011 - left + right + bottom
+     #\j     ;; LRCORNER  12 - 1100 - left + top
+     #\t     ;; RTEE      13 - 1101 - left + top + bottom
+     #\v     ;; BTEE      14 - 1110 - left + top + right
+     #\n     ;; PLUS      15 - 1111 - left + top + right + bottom
+     ))
+
+(defparameter *line-table* *line-table-unicode* ;; *line-table-vt100*
+  "The table to use for looking up line drawing characters.")
+
+(defun line-char (line)
+  "Convert line bits into line drawing characters."
+  (aref *line-table* line))
+
+;; This is a slightly more direct way to write a fatchar than with
+;; fatchar:render-fatchar.
+(defmethod terminal-write-char ((tty terminal-ansi-stream) (char fatchar))
+  "Output a fatchar to the terminal. Flush output if it is a newline,
+i.e. the terminal is 'line buffered'."
+  (let ((stream (terminal-output-stream tty)))
+    (with-slots ((cc fatchar::c)
+		 (fg fatchar::fg)
+		 (bg fatchar::bg)
+		 (line fatchar::line)
+		 (attrs fatchar::attrs)) char
+      ;; We still do this dumb replacing, just in case.
+      (when (and (translate-alternate-characters tty)
+		 (characterp cc))
+	(let ((replacement (gethash cc *acs-table*)))
+	  (when replacement
+	    (setf cc replacement))))
+      (when (or fg bg attrs)
+	(write-string +csi+ stream)
+	(when (or fg bg)
+	  (%terminal-color tty fg bg :unwrapped t))
+	(when attrs
+	  (loop :with n
+	     :for a :in attrs :do
+	     (setf n (assoc a *attributes*))
+	     (when n
+	       (terminal-raw-format tty ";~d" (cadr n)))))
+	(write-char #\m stream))
+      (if (zerop line)
+	  (write-char cc stream)
+	  (write-char (line-char line) stream))
+      (update-column tty cc)
+      (when (eql cc #\newline)
+	(finish-output stream)))))
+
+(defun same-effects (a b)
+  "Return true if the two fatchars have the same colors and attributes."
+  (and (eql (fatchar-fg a) (fatchar-fg b))
+       (eql (fatchar-bg a) (fatchar-bg b))
+       (not (set-exclusive-or (fatchar-attrs a) (fatchar-attrs b)))))
+
+(defmethod terminal-write-string ((tty terminal-ansi-stream) (str fat-string)
+				  &key start end)
+  "Output a string to the terminal. Flush output if it contains a newline,
+i.e. the terminal is 'line buffered'."
+  (when (and (not (and (and start (zerop start)) (and end (zerop end))))
+	     (fat-string-string str))
+    (let ((stream (terminal-output-stream tty))
+	  (fs (fat-string-string str))
+	  (translate (translate-alternate-characters tty))
+	  had-newline replacement)
+      (loop
+	 :with i = (or start 0)
+	 :and our-end = (or end (length fs))
+	 :and c :and last-c
+	 :while (< i our-end)
+	 :do
+	 (setf c (aref fs i))
+	 (with-slots ((cc fatchar::c)
+		      (line fatchar::line)) c
+	   (if (and last-c (same-effects c last-c))
+	       (if (zerop line)
+		   (if (and translate
+			    (setf replacement (gethash cc *acs-table*)))
+		       (write-char replacement stream)
+		       (write-char cc stream))
+		   (write-char (line-char line) stream))
+	       (progn
+		 (terminal-raw-format tty "~c[0m" #\escape)
+		 (terminal-write-char tty c)))
+	   (setf last-c c)
+	   (when (char= cc #\newline)
+	     (setf had-newline t))
+	   (update-column tty cc))
+	 (incf i))
+      (terminal-raw-format tty "~c[0m" #\escape)
+      (when had-newline
+	(finish-output stream)))))
 
 (defmethod terminal-move-to ((tty terminal-ansi-stream) row col)
   (terminal-raw-format tty "~c[~d;~dH" #\escape (1+ row) (1+ col))
@@ -578,36 +719,39 @@ default to 16 bit color."
 			   (color-green color)
 			   (color-blue  color)) +st+))
 
-(defmethod terminal-color ((tty terminal-ansi-stream) fg bg)
+(defun %terminal-color (tty fg bg &key unwrapped)
   (let ((fg-pos (position fg *colors*))
 	(bg-pos (position bg *colors*)))
     (when (and (keywordp fg) (not fg-pos))
       (error "Forground ~a is not a known color." fg))
     (when (and (keywordp bg) (not bg-pos))
       (error "Background ~a is not a known color." bg))
+    (when (not unwrapped)
+      (terminal-raw-format tty +csi+))
     (cond
       ((or (rgb-color-p fg) (rgb-color-p bg))
        (when (rgb-color-p fg)
 	 (let ((red   (elt fg 0))
 	       (green (elt fg 1))
 	       (blue  (elt fg 2)))
-	   (terminal-raw-format tty "~a38;2;~a;~a;~am" +csi+
-				red green blue)))
+	   (terminal-raw-format tty "~38;2;~a;~a;~a" red green blue)))
        (when (rgb-color-p bg)
 	 (let ((red   (elt bg 0))
 	       (green (elt bg 1))
 	       (blue  (elt bg 2)))
-	   (terminal-raw-format tty "~a48;2;~a;~a;~am" +csi+
-				red green blue))))
+	   (terminal-raw-format tty "48;2;~a;~a;~a" red green blue))))
       ((and fg bg)
-       (terminal-raw-format tty "~c[~d;~dm" #\escape
-			    (+ 30 fg-pos) (+ 40 bg-pos)))
+       (terminal-raw-format tty "~d;~d" (+ 30 fg-pos) (+ 40 bg-pos)))
       (fg
-       (terminal-raw-format tty "~c[~dm" #\escape (+ 30 fg-pos)))
+       (terminal-raw-format tty "~d" (+ 30 fg-pos)))
       (bg
-       (terminal-raw-format tty "~c[~dm" #\escape (+ 40 bg-pos)))
-      (t
-       (terminal-raw-format tty "~c[m" #\escape)))))
+       (terminal-raw-format tty "~d" (+ 40 bg-pos)))
+      (t #| nothing |#))
+    (when (not unwrapped)
+      (terminal-raw-format tty "m"))))
+
+(defmethod terminal-color ((tty terminal-ansi-stream) fg bg)
+  (%terminal-color tty fg bg))
 
 ;; 256 color? ^[[ 38;5;color <-fg 48;5;color <- bg
 ;; set color tab = ^[] Ps ; Pt BEL
