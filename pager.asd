@@ -13,7 +13,7 @@
     :depends-on (:dlib :opsys :dlib-misc :table-print :stretchy
 		 :keymap :char-util :fatchar
 		 #+use-re :re #-use-re :cl-ppcre
-		 :terminal
+		 :terminal :fatchar-io
 		 :rl :pick-list :utf8b-stream)
     :entry-point "pager:standalone"
     :build-operation 'program-op

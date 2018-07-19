@@ -11,7 +11,6 @@
     :source-control	:git
     :long-description
     "Characters with attributes, such as color, font effects, etc.."
-    :depends-on (:dlib :stretchy :terminal :char-util :collections
-		 :trivial-gray-streams)
+    :depends-on (:dlib :stretchy :char-util :collections :trivial-gray-streams)
     :components
     ((:file "fatchar")))

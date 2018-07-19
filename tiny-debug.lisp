@@ -12,7 +12,7 @@
    "A crappy half-assed debugger for your enjoyment and frustration. But at
 least you can type things using RL.")
   (:use :cl :dlib :char-util :table-print :keymap :terminal :terminal-ansi
-	:rl :fatchar :tiny-repl #+sbcl :sb-introspect)
+	:rl :fatchar :fatchar-io :tiny-repl #+sbcl :sb-introspect)
   (:export
    #:tiny-debug
    #:*default-interceptor*

@@ -83,7 +83,13 @@ require terminal driver support."))
     :documentation "How far into the typeahead we are.")
    (saved-mode
     :initarg :saved-mode :accessor saved-mode
-    :documentation "Saved terminal modes for restoring on exit."))
+    :documentation "Saved terminal modes for restoring on exit.")
+   (translate-alternate-characters
+    :initarg :translate-alternate-characters
+    :accessor translate-alternate-characters
+    :initform nil :type boolean
+    :documentation
+    "True to translate some unicode characters into the alternate character set."))
   (:default-initargs
     :file-descriptor		nil
     :device-name		*default-device-name*
@@ -213,6 +219,44 @@ two values ROW and COLUMN."
   ;; (setf *tty* nil)
   (values))
 
+(defparameter *acs-table* nil
+  "Hash table of unicode character to ACS character.")
+
+(defparameter *acs-table-data*
+  `((#.(code-char #x250c) . #\l) ;; upper left corner         ulcorner   ┌
+    (#.(code-char #x2514) . #\m) ;; lower left corner         llcorner   └
+    (#.(code-char #x2510) . #\k) ;; upper right corner        urcorner   ┐
+    (#.(code-char #x2518) . #\j) ;; lower right corner        lrcorner   ┘
+    (#.(code-char #x251c) . #\t) ;; tee pointing right        ltee       ├
+    (#.(code-char #x2524) . #\u) ;; tee pointing left         rtee       ┤
+    (#.(code-char #x2534) . #\v) ;; tee pointing up           btee       ┴
+    (#.(code-char #x252c) . #\w) ;; tee pointing down         ttee       ┬
+    (#.(code-char #x2500) . #\q) ;; horizontal line           hline      ─
+    (#.(code-char #x2502) . #\x) ;; vertical line             vline      │
+    (#.(code-char #x253c) . #\n) ;; large plus or crossover   plus       ┼
+    (#.(code-char #x23ba) . #\o) ;; scan line 1               s1         ⎺
+    (#.(code-char #x23bd) . #\s) ;; scan line 9               s9         ⎽
+    (#.(code-char #x25c6) . #\`) ;; diamond                   diamond    ◆
+    (#.(code-char #x2592) . #\a) ;; checker board (stipple)   ckboard    ▒
+    (#.(code-char #x00b0) . #\f) ;; degree symbol             degree     °
+    (#.(code-char #x00b1) . #\g) ;; plus/minus                plminus    ±
+    (#.(code-char #x00b7) . #\~) ;; bullet                    bullet     ·
+    (#.(code-char #x2190) . #\,) ;; arrow pointing left       larrow     ←
+    (#.(code-char #x2192) . #\+) ;; arrow pointing right      rarrow     →
+    (#.(code-char #x2193) . #\.) ;; arrow pointing down       darrow     ↓
+    (#.(code-char #x2191) . #\-) ;; arrow pointing up         uarrow     ↑
+    (#.(code-char #x2592) . #\h) ;; board of squares          board      ▒
+    (#.(code-char #x240b) . #\i) ;; lantern symbol            lantern    ␋
+    (#.(code-char #x25ae) . #\0) ;; solid square block        block      ▮
+    (#.(code-char #x23bb) . #\p) ;; scan line 3               s3         ⎻
+    (#.(code-char #x23bc) . #\r) ;; scan line 7               s7         ⎼
+    (#.(code-char #x2264) . #\y) ;; less/equal                lequal     ≤
+    (#.(code-char #x2265) . #\z) ;; greater/equal             gequal     ≥
+    (#.(code-char #x03c0) . #\{) ;; Pi                        pi         π
+    (#.(code-char #x2260) . #\|) ;; not equal                 nequal     ≠
+    (#.(code-char #x00a3) . #\}) ;; UK pound sign             sterling   £
+    ))
+
 (defun update-column-for-char (tty char)
   (with-slots (fake-column) tty
     (cond
@@ -240,6 +284,30 @@ two values ROW and COLUMN."
 	:and the-start = (or start 0)
 	:for i :from the-start :below the-end
 	:do (update-column-for-char tty (char thing i))))))
+
+(defun make-acs-table ()
+  "Make the alternate character set table."
+  (setf *acs-table* (make-hash-table))
+  (loop :for (uc . ac) :in *acs-table-data* :do
+     (setf (gethash uc *acs-table*) ac)))
+
+(defmethod terminal-alternate-characters ((tty terminal-ansi-stream) state)
+  (setf (translate-alternate-characters tty) state)
+  (when (and state (not *acs-table*))
+    (make-acs-table)))
+
+(defun translate-acs-chars (string &key start end)
+  "Translate unicode characters to alternate character set characters.
+Only replace in START and END range."
+  (if (or start end)
+      (loop :with replacement
+	 :for i :from (or start 0) :below (or end (length string))
+	 :do
+	 (setf replacement (gethash (char string i) *acs-table*))
+	 (when replacement
+	   (setf (char string i) replacement)))
+      ;; Assuming this could be faster:
+      (map 'string (_ (or (gethash _ *acs-table*) _)) string)))
 
 (defgeneric terminal-raw-format (tty fmt &rest args))
 (defmethod terminal-raw-format ((tty terminal-ansi-stream) fmt &rest args)

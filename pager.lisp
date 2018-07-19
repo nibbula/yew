@@ -40,7 +40,7 @@ The shell command takes any number of file names.
 ")
   (:use :cl :dlib :opsys :dlib-misc :table-print :stretchy
 	:keymap :char-util :fatchar #+use-regex :regex #-use-regex :ppcre
-	:terminal :pick-list :table-print)
+	:terminal :fatchar-io :pick-list :table-print)
   (:export
    #:*pager-prompt*
    #:*empty-indicator*

@@ -7,13 +7,12 @@
 
 (defpackage :terminal
   (:documentation "The end of the line.")
-  (:use :cl :dlib :opsys :trivial-gray-streams)
+  (:use :cl :dlib :opsys :trivial-gray-streams :fatchar)
   (:export
    #:*standard-output-has-terminal-attributes*
    #:*terminal*
    #:*default-terminal-type*
    #:*terminal-types*
-   #:*standard-colors*
    #:has-terminal-attributes
    #:terminal-default-device-name
    #:register-terminal-type
@@ -74,6 +73,7 @@
    #:tt-height
    #:tt-title                     #:terminal-title
    #:tt-has-attribute             #:terminal-has-attribute
+   #:tt-alternate-characters	  #:terminal-alternate-characters
    #:with-saved-cursor
    #:with-terminal-output-to-string
    #:with-style
@@ -95,10 +95,6 @@ terminal attributes.")
 (defvar *terminal-types* nil
   "Alist of (keyword terminal-type) to provide easy names for terminal 
 subclasses.")
-
-(defparameter *standard-colors*
-  '(:black :red :green :yellow :blue :magenta :cyan :white :default)
-  "Standard color names.")
 
 (defun register-terminal-type (name type)
   "Subclasses should call this to register their type keyword."
@@ -373,6 +369,9 @@ or :CHAR for character at time with no echo."))
 (deftt restore-cursor ()
   "Restore the cursor position, from the last saved postion.")
 
+(deftt alternate-characters (state)
+  "Turn the alternate character translation on or off, depending on the boolean STATE.")
+
 ;; We don't use DEFTT for these since they don't exactly mirror the generics.
 (defmacro tt-width ()
   "Return the width of the terminal window in characters."
@@ -450,33 +449,15 @@ the current color, so the caller will have to do that itself."
 	 (tt-color ,fg ,bg))
        ,@body)))
 
-#| @@@@ Make an output-table method, with underlined titles
-
-(defun print-col (tt n v &key no-space)
-  "Print column number N with value V."
-  (let* ((col   (elt *cols* n))
-	 (width (second col))
-	 (left  (eql (third col) :left))
-	 (fmt   (if width (if left "~va" "~v@a") "~a")))
-    (if width
-	(terminal-format tt fmt width (subseq v 0 (min width (length v))))
-	(terminal-format tt fmt v))
-    (if (= n (1- (length *cols*)))
-	(terminal-write-char tt #\newline)
-	(when (not no-space)
-	  (terminal-write-char tt #\space)))))
-
-(defun print-title (tt n)
-  (terminal-underline tt t)
-  (print-col tt n (first (elt *cols* n)) :no-space t)
-  (terminal-underline tt nil)
-  (when (< n (1- (length *cols*)))
-    (terminal-write-char tt #\space)))
-  )
-
-(defmethod output-table ((table table) (destination terminal-stream)
-			 &key long-titles column-names)
-  )
-|# 
+(defmacro with-alternate-characters (() &body body)
+  "Hint to the terminal that we want to output 'alternate' characters. If the
+terminal has this ability, or rather perhaps the disability of not being
+otherwise able to display such characters, it will translate certain unicode
+characters, such as line drawing characters, into some antique representation."
+  `(unwind-protect
+	(progn
+	  (tt-alternate-characters t)
+	  ,@body)
+     (tt-alternate-characters nil)))
 
 ;; EOF
