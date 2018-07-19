@@ -29,6 +29,9 @@
   (not (fnmatch "z???" "hey"))
   (fnmatch "?hey" "They"))
 
+(defun test-class (class string)
+  (every (lambda (c) (fnmatch class (string c))) string))
+
 (deftests (fmatch-charset)
   ;; Character sets
   (not (fnmatch "??[abc]" "hey"))
@@ -60,6 +63,43 @@
   (fnmatch "Hey[[==]]Now" "HeyNow")
   (fnmatch "[[=1=]] more" "2 more")
   (fnmatch "O[[=v=]]O" "OwO")
+  ;; Named character classes
+  (test-class "[[:xdigit:]]" "deadbeef")
+  (not (test-class "[[:xdigit:]]" "dorkblaster"))
+  (not (test-class "[[:xdigit:]]" "#x48fe9a29FF"))
+  (test-class "[[:xdigit:]]" "CAFEBABE")
+  (test-class "[[:xdigit:]]"
+	      "0950002009380924094d091a093f0924093e0928093e0928094d0926093e")
+  (test-class "[[:ascii:]]" "asd;lfkjzxc.v,mnkeiqr;lkjfa")
+  (test-class "[[:word:]]" "woordington")
+  (test-class "[[:word:]]" "shrubbleby_florpington_shnoog")
+  (not (test-class "[[:word:]]" " grob/gob/glob/grod "))
+  (test-class "[[:print:]]" "This is totally not printable.")
+  (not (test-class "[[:print:]]" " <Print-Me> "))
+  (test-class "[[:graph:]]" "I-don't-even-know-what-you-mean?")
+  (not (test-class "[[:graph:]]" "Oh. No I see."))
+  (test-class "[[:alnum:]]"
+	      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
+  (test-class "[[:alpha:]]"
+	      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+  (not (test-class "[[:alpha:]]" "Sod off!"))
+  (test-class "[[:lower:]]" "iamnotanasciianymore")
+  (not (test-class "[[:lower:]]" "‘Literally’"))
+  (test-class "[[:upper:]]" "DISOBEYMYEVERYCOMMAND")
+  (not (test-class "[[:upper:]]" "Actually: Obey"))
+  (test-class "[[:digit:]]" "0123456789")
+  (not (test-class "[[:digit:]]" "2D293D92EF0"))
+  (test-class "[[:cntrl:]]" (with-output-to-string (str)
+			      (loop :for i :from 0 :below 31
+				 :do (princ (code-char i) str))))
+  (not (test-class "[[:cntrl:]]" "Why even test forwhat you don't want?"))
+  (test-class "[[:punct:]]" "~`!@#$%^&*()_-+={}|[]\;':\"<>?,./")
+  (not (test-class "[[:punct:]]" "scissors tape telephone bowling-ball"))
+  (test-class "[[:space:]]" " 	
+")
+  (not (test-class "[[:space:]]" "Let him have time of Time's help to despair"))
+  (test-class "[[:blank:]]" " 	    		    ")
+  (not (test-class "[[:blank:]]" "[[:blank:]]"))
   )
 
 (deftests (fnmatch-star)
@@ -74,7 +114,6 @@
   (fnmatch
    "*p*l*e*a*s*e*d*o*n*t*l*e*t*s*o*m*e*o*n*e*b*l*o*w*o*u*t*y*o*u*r*s*t*a*c*k*"
    "pleasedontletsomeoneblowoutyourstack")
-  "This one was suggested by a user."
   (fnmatch "a**?**cd**?**??k" "abcdecdhjk")
   (fnmatch "w*****p" "whoop")
   (fnmatch "w*****?p" "whoop")

@@ -60,6 +60,9 @@ for braces and tildes.")
 (defparameter *character-classes* '()
   "Named character classes.")
 
+(defparameter *character-class-table* (make-hash-table :test #'equal)
+  "Named character classes.")
+
 (define-constant +space-chars+ (vector #\space #\tab #\newline (ctrl #\L) #\vt)
   "Characters in the space character class.")
 
@@ -77,13 +80,17 @@ which is tested for inclusion by a function. STRING is individual characters."
 
 (defmacro defcc (name &body body)
   "Define a character class an. C is the character parameter in the body."
-  (let ((funky (if (and (consp body) (consp (car body))
-			(eql (caar body) 'function))
-		   body
-		   `((function (lambda (c) ,@body))))))
-    `(push (make-char-class
-	    :name ,name
-	    :function ,@funky) *character-classes*)))
+  (with-unique-names (cc)
+    (let ((funky (if (and (consp body) (consp (car body))
+			  (eql (caar body) 'function))
+		     body
+		     `((function (lambda (c) ,@body))))))
+      `(progn
+	 (let ((,cc (make-char-class
+		     :name ,name
+		     :function ,@funky)))
+	   (push ,cc *character-classes*)
+	   (setf (gethash ,name *character-class-table*) ,cc))))))
 
 ;; @@@ Yes, I know these are stupid and incompatible. This is just an
 ;; emulation of Unicode. It's better than no Unicode, but it falls back to
@@ -123,6 +130,10 @@ If TILDE is true, count tilde '~~' characters as special characters."
      (when (funcall (char-class-function k) c)
        (return-from find-char-class k)))
   nil)
+
+(defun find-named-char-class (name)
+  "Find the most restrictive character class for a character C."
+  (gethash name *character-class-table*))
 
 ;; This is stupid for a one shot comparison.
 (defun compile-char-set (s)
@@ -205,7 +216,18 @@ Second value is where the character set ended."
 	       (if (not (string= (subseq pattern i (+ i 2)) "=]"))
 		   (error "missing =]"))
 	       (incf i))
-	      (#\: #| @@@ TODO |# )
+	      (#\:
+	       (incf i)
+	       (let* ((end (or (position #\: (subseq pattern i))
+			       (error "Missing ending : in character ~
+                                       class name.")))
+		      (name (subseq pattern i (+ i end)))
+		      (class (find-named-char-class name)))
+		 (when (not class)
+		   (error "Unknown character class ~s" name))
+		 (pushnew `(:class ,class) result)
+		 (incf i end))
+	       (incf i)) ; the ending : ?
 	      (#\. #| @@@ TODO |# )
 	      (#\]
 	       (if (= i my-range-start)
