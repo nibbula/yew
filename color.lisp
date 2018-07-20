@@ -42,6 +42,9 @@
 ;; specific device, e.g. and ICC color profile or something. Although, the color
 ;; model can affect the color space we can represent.
 
+;; @@@ perhaps I should use a defstruct rigamarole for this?
+;; like defstruct with :type vector?
+
 (defvar *default-color-model* :rgb)
 
 (defun color-model-name (color)
