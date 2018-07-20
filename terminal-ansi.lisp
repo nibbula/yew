@@ -765,6 +765,20 @@ default to 16 bit color."
       (terminal-raw-format tty "~c[r" #\escape)
       (terminal-raw-format tty "~c[~d;~dr" #\escape start end)))
 
+(defmethod terminal-set-attributes ((tty terminal-ansi-stream) attributes)
+  "Set the attributes given in the list. If NIL turn off all attributes.
+Attributes are usually keywords."
+  (with-slots ((stream terminal::output-stream)) tty
+    (write-string +csi+ stream)
+    (loop :with n :and first = t
+       :for a :in attrs :do
+       (when (setf n (assoc a *attributes*))
+	 (if first
+	     (setf first nil)
+	     (write-char #\; stream))
+	 (terminal-raw-format tty "~d" (cadr n))))
+    (write-char #\m stream)))
+
 (defmethod terminal-finish-output ((tty terminal-ansi-stream))
   (finish-output (terminal-output-stream tty)))
 

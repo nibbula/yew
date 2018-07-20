@@ -60,6 +60,7 @@
    #:tt-inverse			  #:terminal-inverse			;
    #:tt-color			  #:terminal-color			;
    #:tt-beep			  #:terminal-beep			;
+   #:tt-set-attributes            #:terminal-set-attributes
    #:tt-set-scrolling-region	  #:terminal-set-scrolling-region	;
    #:tt-finish-output		  #:terminal-finish-output		;
    #:tt-get-char		  #:terminal-get-char
@@ -339,6 +340,9 @@ screen down.")
   "Set the text foreground color to FG, and the background attribute to BG.")
 (deftt beep ()
   "Make the terminal emit a sound, or perhaps flash the screen.")
+(deftt set-attributes (attributes)
+  "Set the attributes given in the list. If NIL turn off all attributes.
+Attributes are usually keywords.")
 (deftt set-scrolling-region (start end)
   "Set the scrolling region starting at row START and ending at END.")
 (deftt finish-output ()
