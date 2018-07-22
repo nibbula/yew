@@ -127,7 +127,8 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
   "Return true if the two fatchars have the same colors and attributes."
   (and (equal (fatchar-fg a) (fatchar-fg b))
        (equal (fatchar-bg a) (fatchar-bg b))
-       (not (set-exclusive-or (fatchar-attrs a) (fatchar-attrs b)))))
+       (not (set-exclusive-or (fatchar-attrs a) (fatchar-attrs b)
+			      :test #'eq))))
 
 (defun make-fatchar-string (thing)
   "Make a fat string from something. THING can be a string or a character."

@@ -142,7 +142,7 @@ un-interned symbol."
   #-has-read-intern
   (declare (ignore stream eof-error-p eof-value recursive-p))
   #-has-read-intern
-  (missing-implementation 'package-robust-read-from-string))
+  (missing-implementation 'package-robust-read))
 
 ;; Since defalias for the :mop package won't work until after dlib1,
 ;; I put these in here rather than be potentially slow with symbol-call.

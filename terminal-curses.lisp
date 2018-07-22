@@ -238,14 +238,14 @@ require terminal driver support."))
   (addch (char-code char)))
 
 (defparameter *attributes*
-  `((:STANDOUT  ,+A-STANDOUT+)
-    (:UNDERLINE ,+A-UNDERLINE+)
-    (:REVERSE   ,+A-REVERSE+)
-    (:BLINK     ,+A-BLINK+)
-    (:DIM       ,+A-DIM+)
-    (:BOLD      ,+A-BOLD+)))
+  `((:STANDOUT  . ,+A-STANDOUT+)
+    (:UNDERLINE . ,+A-UNDERLINE+)
+    (:REVERSE   . ,+A-REVERSE+)
+    (:BLINK     . ,+A-BLINK+)
+    (:DIM       . ,+A-DIM+)
+    (:BOLD      . ,+A-BOLD+)))
 
-(defmethod terminal-write-char ((tty terminal-curses) (char fatchar))
+(defun %terminal-write-char (tty char &key reset)
   "Output a character to the terminal."
   ;; @@@ unicode!
   (with-slots ((cc fatchar::c)
@@ -268,16 +268,24 @@ require terminal driver support."))
 	      (loop :with n
 		 :for a :in attrs :do
 		 (when (setf n (assoc a *attributes*))
-		   (attron (cadr n))))))
-	  (attrset +a-normal+))
+		   (attron (cdr n))))))
+	  (when reset
+	    (attrset +a-normal+)))
       (when (not (zerop line))
+	(attron +A-ALTCHARSET+)
 	(setf c (line-char line)))
       #+curses-use-wide
       (if (> (char-code c) 255)
 	  (add-wide-char (char-code c))
 	  (addch (char-code c)))
       #-curses-use-wide
-      (addch (char-code c)))))
+      (addch (char-code c))
+      (when reset
+	(attrset +a-normal+)))))
+
+(defmethod terminal-write-char ((tty terminal-curses) (char fatchar))
+  "Output a character to the terminal."
+  (%terminal-write-char tty char :reset t))
 
 (defmethod terminal-write-string ((tty terminal-curses) (str fat-string)
 				  &key start end)
@@ -306,7 +314,7 @@ i.e. the terminal is 'line buffered'."
 	       	   (terminal-write-char tty (line-char line)))
 	       (progn
 		 ;;(terminal-raw-format tty "~c[0m" #\escape)
-		 (terminal-write-char tty c)))
+		 (%terminal-write-char tty c :reset nil)))
 	   (setf last-c c))
 	 (incf i))
       (attrset +a-normal+))))
@@ -537,6 +545,13 @@ i.e. the terminal is 'line buffered'."
     (:inverse    (tigetstr "rev"))
     (:color 	 (has-colors))))
 
+(defmethod terminal-set-attributes ((tty terminal-curses) attributes)
+  "Set the attributes given in the list. If NIL turn off all attributes.
+Attributes are usually keywords."
+  (loop :with n :for a :in attributes :do
+     (when (setf n (assoc a *attributes*))
+       (attron (cdr n)))))
+     
 (defparameter *acs-table* nil
   "Hash table of unicode character to ACS character.")
 
@@ -616,7 +631,7 @@ Only replace in START and END range."
      #\q     ;; HLINE     10 - 1010 - left + right
      #\w     ;; TTEE      11 - 1011 - left + right + bottom
      #\j     ;; LRCORNER  12 - 1100 - left + top
-     #\t     ;; RTEE      13 - 1101 - left + top + bottom
+     #\u     ;; RTEE      13 - 1101 - left + top + bottom
      #\v     ;; BTEE      14 - 1110 - left + top + right
      #\n     ;; PLUS      15 - 1111 - left + top + right + bottom
      ))
