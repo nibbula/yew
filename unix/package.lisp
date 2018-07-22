@@ -554,6 +554,8 @@
    #:reset-terminal-modes
    #:terminal-query
    #:with-terminal-signals
+   #:control-char
+   #:set-control-char
 
    ;; testing
    #:test

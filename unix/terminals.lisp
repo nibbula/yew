@@ -869,6 +869,71 @@ characters. If we don't get anything after a while, just return what we got."
   (sane :file-descriptor file-descriptor
 	:device (or device "/dev/tty")))
 
+(defparameter *control-chars*
+  `((:end-of-file      . ,+VEOF+)
+    (:end-of-line      . ,+VEOL+)
+    (:end-of-line-2    . ,+VEOL2+)
+    (:erase            . ,+VERASE+)
+    (:word-erase       . ,+VWERASE+)
+    (:kill-line        . ,+VKILL+)
+    (:reprint          . ,+VREPRINT+)
+    (:erase2           . ,+VERASE2+)
+    (:interrupt        . ,+VINTR+)
+    (:quit             . ,+VQUIT+)
+    (:suspend          . ,+VSUSP+)
+    (:delayed-suspend  . ,+VDSUSP+)
+    (:switch           . ,+VSWTCH+)
+    (:start            . ,+VSTART+)
+    (:stop             . ,+VSTOP+)
+    (:literal-next     . ,+VLNEXT+)
+    (:discard          . ,+VDISCARD+)
+    (:minimum          . ,+VMIN+)
+    (:time             . ,+VTIME+)
+    (:status           . ,+VSTATUS+)))
+
+(defun control-char (tty name)
+  "Return the control character named NAME, or NIL if it's undefined."
+  (let ((char (assoc name *control-chars*)))
+    (if char
+	(setf char (cdr char))
+	(error 'opsys-error
+	       :format-control "Unknown control character ~s"
+	       :format-arguments name))
+    (when (not char)
+      (error 'opsys-error
+	     :format-control "Control character ~s is undefined on this system."
+	     :format-arguments name))
+    (with-foreign-object (mode '(:struct termios))
+      (with-foreign-slots ((c_cc) mode (:struct termios))
+	(syscall (tcgetattr tty mode))
+	(code-char (mem-aref c_cc :char char))))))
+
+(defun set-control-char (tty name character)
+  "Set the control character NAME to CHARACTER."
+  (let ((char (assoc name *control-chars*))
+	(code (if character (char-code character) 0)))
+    (if char
+	(setf char (cdr char))
+	(error 'opsys-error
+	       :format-control "Unknown control character ~s."
+	       :format-arguments name))
+    (when (not char)
+      (error 'opsys-error
+	     :format-control "Control character ~s is undefined on this system."
+	     :format-arguments name))
+    (when (> code #xff)
+      (error 'opsys-error
+	     :format-control "The character must be 8 bits, not ~s."
+	     :format-arguments code))
+    (with-foreign-object (mode '(:struct termios))
+      (syscall (tcgetattr tty mode))
+      (with-foreign-slots ((c_cc) mode (:struct termios))
+	(setf (mem-aref c_cc :char char) code)
+	(syscall (tcsetattr tty +TCSANOW+ mode))))
+    character))
+
+(defsetf control-char set-control-char)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; The portable interface:
 
