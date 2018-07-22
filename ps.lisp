@@ -441,7 +441,7 @@ user, pid, ppid, size, command."
 	     ;; 		     string string)
 	     :do (setf (table:column-name col) name)))
 	(grout-print-table
-	 table :trailing-spaces nil :long-titles t))
+	 table :trailing-spaces nil :long-titles t :max-width nil))
       table)))
 
 (defun user-name-list ()
