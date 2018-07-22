@@ -112,14 +112,15 @@
   "Show users' last login."
   ;; @@@ There should be an option where it tries to figure out durations
   ;; for sessions and booted times, like the "last" command.
-  (who :users users :all t
-       :file (cond
-	       (show-history
-		(default-utmpx-file +UTXDB-LOG+))
-	       (t
-		;; @@@ I can't be bothered to do this correctly now.
-		#+linux (default-utmpx-file +UTXDB-LOG+)
-		#-linux (default-utmpx-file +UTXDB-LASTLOGIN+)))))
+  (setf *output*
+	(who :users users :all t
+	     :file (cond
+		     (show-history
+		      (default-utmpx-file +UTXDB-LOG+))
+		     (t
+		      ;; @@@ I can't be bothered to do this correctly now.
+		      #+linux (default-utmpx-file +UTXDB-LOG+)
+		      #-linux (default-utmpx-file +UTXDB-LASTLOGIN+))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; uptime
