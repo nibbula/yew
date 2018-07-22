@@ -76,6 +76,7 @@
    #:d-autoload
 
    ;; I/O
+   #:safe-file-length
    #:slurp
    #:confirm
    #:get-file-local-variables
@@ -1389,6 +1390,13 @@ text into lisp and have it be stored as lines of words."
 		  (quote-filename literal-filename)
 		  literal-filename)))
 
+(defun safe-file-length (stream)
+  "Like FILE-LENGTH, but don't error, just return NIL if we can't figure it out."
+  (handler-case
+      (file-length stream)
+    (type-error (c)
+      (declare (ignore c)))))
+
 (defparameter *slurp-buffer-size* 4096)
 
 ;; This is kind of some duplication from stuff in lish/piping.lisp.
@@ -1410,7 +1418,8 @@ defaults to character) with the contents of FILE-OR-STREAM."
 		    (setf close-me t)
 		    (open file-or-stream :external-format external-format))))
 	   (if (and (typep stream 'file-stream)
-		    (setf len (file-length stream)))
+		    (setf len (safe-file-length stream))
+		    len)
 	       (progn
 		 ;; Read the whole thing at once.
 		 (setf buffer (make-array len
