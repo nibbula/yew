@@ -19,6 +19,7 @@ We should entertain other naming ideas.")
    #:container #:container-data
    #:emptyp
    #:oelt
+   #:oitem
    #:olength
    #:omap
    #:omapn
@@ -29,11 +30,16 @@ We should entertain other naming ideas.")
    #:oevery
    #:oany
    #:ofill
+   #:ofill-with
+   #:ofill-range-with
    #:osubseq
+   #:oslice
+   #:oslice-from
    #:oreduce
    #:ocount
    #:oreverse
    #:osort
+   #:osort-by
    #:ofind
    #:oposition
    #:osearch
@@ -126,6 +132,11 @@ isn't bound."
   (:method ((thing list) key) 	       (nth key thing))
   (:method ((thing vector) key)        (aref thing key))
   (:method ((thing sequence) key)      (elt thing key)))
+
+(defun oitem (key collection)
+  "Return the element of COLLECTION specified by KEY. This is the same as OELT, 
+but with the arguments reversed for convenient use in pipelines."
+  (oelt collection key))
 
 ;; Palpable.
 (defgeneric olength (collection)
@@ -320,6 +331,18 @@ If COLLECTIONS are SEQUENCEs, the elements are applied in the sequence order.")
     (fill (container-data collection) item :start start :end end))
   )
 
+(defun ofill-with (item collection)
+  "Replaces the elements of SEQUENCE with ITEM. This is the same as OFILL but
+with the arguments reversed for convenient use in pipelines, and without the
+START and END arguments. See also OFILL-RANGE-WITH."
+  (ofill collection item))
+
+(defun ofill-range-with (start end item collection)
+  "Replaces the elements of SEQUENCE with ITEM. This is the same as OFILL but
+with the arguments reversed for convenient use in pipelines. See also
+OFILL-WITH."
+  (ofill collection item :start start :end end))
+
 ;; (defgeneric make-container (collection ...)
 ;;   (:documentation "")
 ;;   (:method ((collection XX))
@@ -338,6 +361,19 @@ bounded by START and END.")
   (:method ((collection container) start &optional end)
     (subseq (container-data collection) start end)))
 
+;; I wonder if the useful word "slice" is really appropriate to be even slightly
+;; used up here.
+
+(defun oslice (start end collection)
+  "This is the same as OSUBSEQ, but with the arguments reversed for convenient
+use in pipelines. See also OSLICE-FROM."
+  (osubseq collection start end))
+
+(defun oslice-from (start collection)
+  "This is the same as OSUBSEQ, but with the arguments reversed for convenient
+use in pipelines, and without the END argument. See also OSLICE."
+  (osubseq collection start))
+
 #|
 @@@ You know the business...
 
@@ -355,12 +391,31 @@ bounded by START and END.")
   (:documentation "")
   (:method ((collection XX))
 	    ))
+|#
 
-(defgeneric osort (collection ...)
-  (:documentation "")
-  (:method ((collection XX))
-	    ))
+(defgeneric osort (collection predicate &key key)
+  (:documentation
+   "Destructively sort a collection according to the order determined by the
+predicate function. PREDICATE should return non-NIL if ARG1 is to precede ARG2.
+As in other collection functions, KEY is a function that is given the collection
+element, and should return a value to be given to PREDICATE.")
+  (:method ((collection list) predicate &key key)
+    (sort collection predicate :key key))
+  (:method ((collection vector) predicate &key key)
+    (sort collection predicate :key key))
+  (:method ((collection sequence) predicate &key key)
+    (sort collection predicate :key key))
+  (:method ((collection container) predicate &key key)
+    (sort (container-data collection) predicate :key key)))
 
+;; @@@ Should we make sort-by-key also?
+(defun osort-by (predicate collection)
+  "Destructively sort a collection according to the order determined by the
+predicate function. This is just like OSORT but with the arguments reversed for
+convenience in pipelines."
+  (osort collection predicate))
+
+#|
 (defgeneric ofind (collection ...)
   (:documentation "")
   (:method ((collection XX))
@@ -455,7 +510,24 @@ false. If no element satifies the test, NIL is returned.")
 ;; Array-like
 
 (defgeneric oaref (array &rest subscripts)
-  (:documentation "Return an element of an array."))
+  (:documentation "Return an element of an array.")
+  (:method ((array vector) &rest subscripts)
+    (apply #'aref array subscripts))
+  (:method ((array array) &rest subscripts)
+    (apply #'aref array subscripts))
+  (:method ((array container) &rest subscripts)
+    ;; @@@ I suppose this will only work if the container data is an array, but
+    ;; should we do a check here so perhaps we could get a better error?
+    (apply #'aref (container-data array) subscripts))
+  ;; We could do elt on lists, sequences, and even struct & classes, but
+  ;; is there a point? Why not just use oelt or something? The performance will
+  ;; likely be worse with this.
+  )
+
+(defun oarray-ref (&rest args)
+  "Like OAREF, but with the arguments reversed for convenience in pipelines."
+  ;; @@@ Is it really permissible to do this? How crappy is the performace?
+  (oaref (last args) (nbutlast args)))
 
 (defgeneric opush (collection item)
   (:documentation ""))
@@ -472,7 +544,7 @@ false. If no element satifies the test, NIL is returned.")
 ;; intersection, nintersection
 ;; set-difference, nset-difference
 ;; set-exclusive-or, nset-exclusive-or
-;; subsetp::
+;; subsetp
 ;; union, nunion
 
 ;; EOF
