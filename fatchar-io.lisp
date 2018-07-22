@@ -24,6 +24,7 @@
   (render-fatchar-string (fat-string-string fat-string)
 			 :terminal terminal :start start :end end))
 
+;; @@@ why doesn't this work right???
 (defun render-fatchar-string (fatchar-string
 			      &key (terminal *terminal*) (start 0) end)
   "Render FATCHAR-STRING on TERMINAL."
@@ -52,8 +53,8 @@
 	      (:inverse   (tt-inverse t))))
 	 (setf last-attr (fatchar-attrs c)
 	       set-attr t))
-       (when (or (not (eq fg (fatchar-fg c)))
-		 (not (eq bg (fatchar-bg c)))
+       (when (or (not (equal fg (fatchar-fg c)))
+		 (not (equal bg (fatchar-bg c)))
 		 set-attr)
 	 (setf fg (fatchar-fg c) bg (fatchar-bg c))
 	 (tt-color (or fg :default) (or bg :default)))

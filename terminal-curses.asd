@@ -10,6 +10,7 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "So many layers of fake like a cake."
-    :depends-on (:dlib :terminal :curses :opsys :trivial-gray-streams)
+    :depends-on (:dlib :terminal :curses :opsys :trivial-gray-streams :fatchar
+		 :color)
     :components
     ((:file "terminal-curses")))

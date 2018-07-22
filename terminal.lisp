@@ -192,11 +192,11 @@ two values ROW and COLUMN."))
   (:documentation
    "Set up the terminal for reading a character at a time without echoing."))
 
-(defgeneric terminal-end (terminal)
+(defgeneric terminal-end (terminal &optional state)
   (:documentation
    "Put the terminal back to the way it was before we called terminal-start."))
 
-(defgeneric terminal-done (terminal)
+(defgeneric terminal-done (terminal &optional state)
   (:documentation "Forget about the whole terminal thing and stuff."))
 
 ;; (defmacro with-terminal-stream ((var stream) &body body)
@@ -209,6 +209,9 @@ two values ROW and COLUMN."))
 
 (defun make-terminal-stream (stream type)
   (make-instance type :output-stream stream))
+
+(defvar *terminal-state* nil
+  "Somewhere for terminals to save states.")
 
 (defmacro %with-terminal ((&optional type
 				     (var '*terminal*)
@@ -240,7 +243,8 @@ Cleans up afterward."
 	      ,var
 	      ;; (*standard-output* ,var)
 	      ;; (*standard-input* ,var)
-	      ,result)
+	      ,result
+	      *terminal-state*)
 	 (dbugf :terminal "term-class = ~s~%" ,term-class)
 	 (when (not ,term-class)
 	   (error "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
@@ -255,11 +259,11 @@ Cleans up afterward."
 	 (dbugf :terminal "make-it = ~s~%" ,make-it)
 	 (unwind-protect
 	      (progn
-		(terminal-start ,var)
+		(setf *terminal-state* (terminal-start ,var))
 		(setf ,result (progn ,@body)))
 	   (if ,make-it
-	       (terminal-done ,var)
-	       (terminal-end ,var)))
+	       (terminal-done ,var *terminal-state*)
+	       (terminal-end ,var *terminal-state*)))
 	 ,result))))
 
 (defmacro with-terminal ((&optional type

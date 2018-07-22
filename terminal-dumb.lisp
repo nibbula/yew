@@ -67,12 +67,14 @@ require terminal driver support."))
   "Set up the terminal for reading a character at a time without echoing."
   )
 
-(defmethod terminal-end ((tty terminal-dumb))
+(defmethod terminal-end ((tty terminal-dumb) &optional state)
   "Put the terminal back to the way it was before we called terminal-start."
+  (declare (ignore state))
   )
 
-(defmethod terminal-done ((tty terminal-dumb))
+(defmethod terminal-done ((tty terminal-dumb) &optional state)
   "Forget about the whole terminal thing and stuff."
+  (declare (ignore state))
   (values))
 
 (defmethod terminal-format ((tty terminal-dumb) fmt &rest args)
@@ -198,6 +200,9 @@ require terminal driver support."))
   "Return true if the terminal can display the character attribute."
   (declare (ignore attribute))
   nil)
+
+(defmethod terminal-alternate-characters ((tty terminal-dumb) state)
+  (declare (ignore state)))
 
 (defun update-column-for-char (tty char)
   (with-slots (fake-column) tty

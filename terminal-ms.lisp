@@ -118,21 +118,22 @@
 
     ;; @@@ Temporary until we can put it in, say, lishrc
     (set-cursor-size tty 100)
-    ))
+    saved-mode))
 
-(defmethod terminal-end ((tty terminal-ms))
+(defmethod terminal-end ((tty terminal-ms) &optional state)
   "Put the terminal back to the way it was before we called terminal-start."
   ;;  (format t "[terminal-end]~%")
   ;; (set-terminal-mode (terminal-file-descriptor tty)
   ;; 		     :line t :echo t :raw nil :timeout nil)
-  (when (saved-mode tty)
+  (when (or state (saved-mode tty))
     (dbugf 'terminal-ms "restoring terminal modes ~s ~s~%"
-	   tty (saved-mode tty))
-    (set-terminal-mode (terminal-file-descriptor tty) :mode (saved-mode tty))))
+	   tty (or state (saved-mode tty)))
+    (set-terminal-mode (terminal-file-descriptor tty)
+		       :mode (or state (saved-mode tty)))))
 
-(defmethod terminal-done ((tty terminal-ms))
+(defmethod terminal-done ((tty terminal-ms) &optional state)
   "Forget about the whole terminal thing and stuff."
-  (terminal-end tty)
+  (terminal-end tty state)
   (close-terminal (terminal-file-descriptor tty))
   ;; (dbug "terminal-ms close in~%")
   (when (terminal-output-stream tty)

@@ -591,7 +591,11 @@ line : |----||-------||---------||---|
 
 (defun show-span (s)
   (when (not s)
-    (return-from show-span 0))
+    ;; (return-from show-span 0)
+    ;; But now empty lines come over as NIL, so:
+    (tt-write-char #\newline)
+    (return-from show-span 1)
+    )
 ;;;  (flatten-span pager s)
   (with-slots (wrap-lines search-string) *pager*
     (if wrap-lines
@@ -600,7 +604,8 @@ line : |----||-------||---------||---|
 				:end (+ *left* (tt-width))))
     (when search-string
       (search-a-matize))
-    (render-fatchar-string *fat-buf*) (tt-write-char #\newline)
+    ;;(render-fatchar-string *fat-buf*) (tt-write-char #\newline)
+    (tt-write-string (make-fat-string :string *fat-buf*)) (tt-write-char #\newline)
     #|
     (let ((line-count 1)
 	  (screen-col 0)
@@ -768,7 +773,8 @@ line : |----||-------||---------||---|
 	     :accept-does-newline nil
 	     :context :pager)
     ;; Make sure we go back to raw mode, so we can ^Z
-    (set-terminal-mode (terminal-file-descriptor *terminal*) :raw t)))
+    (set-terminal-mode (terminal-file-descriptor *terminal*) :raw t)
+    ))
 
 (defun search-line (str line)
   "Return true if LINE contains the string STR. LINE can be a string, or a
@@ -778,10 +784,13 @@ list containing strings and lists."
 ;;;     (search str line :test #'equalp))
      (all-matches str line))
     (cons
-     (loop :with result
-	:for s :in line
-	:if (setf result (search-line str s))
-	:return result))))
+     ;; This is wrong.
+     ;; (loop :with result
+     ;; 	:for s :in line
+     ;; 	:if (setf result (search-line str s))
+     ;; 	:return result)
+     (all-matches str (fatchar-string-to-string (span-to-fatchar-string line)))
+     )))
 
 (defun search-for (str &optional (direction :forward))
   (with-slots (lines count line page-size ignore-case) *pager*
@@ -1502,12 +1511,17 @@ q - Abort")
 		  (format t "No shell loaded to suspend to.~%"))))))
       (when (and close-me (not suspended) stream)
 	(close stream))
-      (when (terminal-file-descriptor *terminal*)
-	(set-terminal-mode (terminal-file-descriptor *terminal*) :raw nil)))
+      ;; Why doesn't this work here??
+      ;; (when (terminal-file-descriptor *terminal*)
+      ;; 	(set-terminal-mode (terminal-file-descriptor *terminal*) :raw nil))
+      )
     (tt-move-to (- (tt-height) 1) 0)
     (tt-erase-to-eol)
     ;;(tt-write-char #\newline)
     (tt-finish-output))
+  ;; @@@ This is wrong. 
+  ;; (when (terminal-file-descriptor *terminal*)
+  ;;   (set-terminal-mode (terminal-file-descriptor *terminal*) :raw nil))
   suspended)
 
 (defun resume (suspended)

@@ -4,7 +4,7 @@
 
 (defpackage :terminal-curses
   (:documentation "Curses terminal")
-  (:use :cl :dlib :terminal :curses :trivial-gray-streams)
+  (:use :cl :dlib :terminal :curses :trivial-gray-streams :fatchar :color)
   (:export
    #:terminal-curses-stream
    #:terminal-curses
@@ -38,7 +38,13 @@ require terminal driver support."))
     :documentation "The input FILE pointer for the terminal.")
    (out-fp
     :initarg :out-fp :accessor out-fp :initform nil
-    :documentation "The output FILE pointer for the terminal."))
+    :documentation "The output FILE pointer for the terminal.")
+   (translate-alternate-characters
+    :initarg :translate-alternate-characters
+    :accessor translate-alternate-characters
+    :initform nil :type boolean
+    :documentation
+    "True to translate some unicode characters into the alternate character set."))
   (:default-initargs
   )
   (:documentation "A terminal using the curses library."))
@@ -156,13 +162,15 @@ require terminal driver support."))
   (init-colors)
   (terminal-get-size tty))
 
-(defmethod terminal-end ((tty terminal-curses))
+(defmethod terminal-end ((tty terminal-curses) &optional state)
   "Put the terminal back to the way it was before we called terminal-start."
+  (declare (ignore state))
 ;;;  (format t "[terminal-end]~%")
   (endwin))
 
-(defmethod terminal-done ((tty terminal-curses))
+(defmethod terminal-done ((tty terminal-curses) &optional state)
   "Forget about the whole terminal thing and stuff."
+  (declare (ignore state))
   (terminal-end tty)
   (with-slots (device screen in-fp out-fp) tty
     (when device
@@ -192,6 +200,9 @@ require terminal driver support."))
 				   :displaced-to str
 				   :displaced-index-offset real-start))
 		     str)))
+    (when (and (translate-alternate-characters tty)
+	       (stringp out-str))
+      (translate-acs-chars out-str :start start :end end))
     #+curses-use-wide
     (if (position-if (_ (> (char-code _) 255)) out-str)
 	(add-wide-string out-str)
@@ -214,12 +225,91 @@ require terminal driver support."))
 (defmethod terminal-write-char ((tty terminal-curses) char)
   "Output a character to the terminal."
   ;; @@@ unicode!
+  (when (and (translate-alternate-characters tty)
+	     (characterp char))
+    (let ((replacement (gethash char *acs-table*)))
+      (when replacement
+	(setf char replacement))))
   #+curses-use-wide
   (if (> (char-code char) 255)
       (add-wide-char (char-code char))
       (addch (char-code char)))
   #-curses-use-wide
   (addch (char-code char)))
+
+(defparameter *attributes*
+  `((:STANDOUT  ,+A-STANDOUT+)
+    (:UNDERLINE ,+A-UNDERLINE+)
+    (:REVERSE   ,+A-REVERSE+)
+    (:BLINK     ,+A-BLINK+)
+    (:DIM       ,+A-DIM+)
+    (:BOLD      ,+A-BOLD+)))
+
+(defmethod terminal-write-char ((tty terminal-curses) (char fatchar))
+  "Output a character to the terminal."
+  ;; @@@ unicode!
+  (with-slots ((cc fatchar::c)
+	       (fg fatchar::fg)
+	       (bg fatchar::bg)
+	       (line fatchar::line)
+	       (attrs fatchar::attrs)) char
+    (let ((c cc))
+      ;; We still do this dumb replacing, just in case.
+      (when (and (translate-alternate-characters tty)
+      		 (characterp cc))
+      	(let ((replacement (gethash cc *acs-table*)))
+      	  (when replacement
+      	    (setf c replacement))))
+      (if (or fg bg attrs)
+	  (progn
+	    (when (or fg bg)
+	      (terminal-color tty (or fg :default) (or bg :default)))
+	    (when attrs
+	      (loop :with n
+		 :for a :in attrs :do
+		 (when (setf n (assoc a *attributes*))
+		   (attron (cadr n))))))
+	  (attrset +a-normal+))
+      (when (not (zerop line))
+	(setf c (line-char line)))
+      #+curses-use-wide
+      (if (> (char-code c) 255)
+	  (add-wide-char (char-code c))
+	  (addch (char-code c)))
+      #-curses-use-wide
+      (addch (char-code c)))))
+
+(defmethod terminal-write-string ((tty terminal-curses) (str fat-string)
+				  &key start end)
+  "Output a string to the terminal. Flush output if it contains a newline,
+i.e. the terminal is 'line buffered'."
+  (when (and (not (and (and start (zerop start)) (and end (zerop end))))
+	     (fat-string-string str))
+    (let ((fs (fat-string-string str))
+	  (translate (translate-alternate-characters tty))
+	  replacement)
+      (loop
+	 :with i = (or start 0)
+	 :and our-end = (or end (length fs))
+	 :and c :and last-c
+	 :while (< i our-end)
+	 :do
+	 (setf c (aref fs i))
+	 (with-slots ((cc fatchar::c)
+		      (line fatchar::line)) c
+	   (if (and last-c (same-effects c last-c))
+	       (if (zerop line)
+	       	   (if (and translate
+	       		    (setf replacement (gethash cc *acs-table*)))
+	       	       (terminal-write-char tty replacement)
+	       	       (terminal-write-char tty cc))
+	       	   (terminal-write-char tty (line-char line)))
+	       (progn
+		 ;;(terminal-raw-format tty "~c[0m" #\escape)
+		 (terminal-write-char tty c)))
+	   (setf last-c c))
+	 (incf i))
+      (attrset +a-normal+))))
 
 (defmethod terminal-move-to ((tty terminal-curses) row col)
   (move row col))
@@ -446,6 +536,97 @@ require terminal driver support."))
     (:bold       (tigetstr "bold"))
     (:inverse    (tigetstr "rev"))
     (:color 	 (has-colors))))
+
+(defparameter *acs-table* nil
+  "Hash table of unicode character to ACS character.")
+
+(defparameter *acs-table-data*
+  `((#.(code-char #x250c) . #\l) ;; upper left corner         ulcorner   ┌
+    (#.(code-char #x2514) . #\m) ;; lower left corner         llcorner   └
+    (#.(code-char #x2510) . #\k) ;; upper right corner        urcorner   ┐
+    (#.(code-char #x2518) . #\j) ;; lower right corner        lrcorner   ┘
+    (#.(code-char #x251c) . #\t) ;; tee pointing right        ltee       ├
+    (#.(code-char #x2524) . #\u) ;; tee pointing left         rtee       ┤
+    (#.(code-char #x2534) . #\v) ;; tee pointing up           btee       ┴
+    (#.(code-char #x252c) . #\w) ;; tee pointing down         ttee       ┬
+    (#.(code-char #x2500) . #\q) ;; horizontal line           hline      ─
+    (#.(code-char #x2502) . #\x) ;; vertical line             vline      │
+    (#.(code-char #x253c) . #\n) ;; large plus or crossover   plus       ┼
+    (#.(code-char #x23ba) . #\o) ;; scan line 1               s1         ⎺
+    (#.(code-char #x23bd) . #\s) ;; scan line 9               s9         ⎽
+    (#.(code-char #x25c6) . #\`) ;; diamond                   diamond    ◆
+    (#.(code-char #x2592) . #\a) ;; checker board (stipple)   ckboard    ▒
+    (#.(code-char #x00b0) . #\f) ;; degree symbol             degree     °
+    (#.(code-char #x00b1) . #\g) ;; plus/minus                plminus    ±
+    (#.(code-char #x00b7) . #\~) ;; bullet                    bullet     ·
+    (#.(code-char #x2190) . #\,) ;; arrow pointing left       larrow     ←
+    (#.(code-char #x2192) . #\+) ;; arrow pointing right      rarrow     →
+    (#.(code-char #x2193) . #\.) ;; arrow pointing down       darrow     ↓
+    (#.(code-char #x2191) . #\-) ;; arrow pointing up         uarrow     ↑
+    (#.(code-char #x2591) . #\h) ;; board of squares          board      ▒
+    (#.(code-char #x240b) . #\i) ;; lantern symbol            lantern    ␋
+    (#.(code-char #x2588) . #\a) ;; solid square block        block      █
+    (#.(code-char #x23bb) . #\p) ;; scan line 3               s3         ⎻
+    (#.(code-char #x23bc) . #\r) ;; scan line 7               s7         ⎼
+    (#.(code-char #x2264) . #\y) ;; less/equal                lequal     ≤
+    (#.(code-char #x2265) . #\z) ;; greater/equal             gequal     ≥
+    (#.(code-char #x03c0) . #\{) ;; Pi                        pi         π
+    (#.(code-char #x2260) . #\|) ;; not equal                 nequal     ≠
+    (#.(code-char #x00a3) . #\}) ;; UK pound sign             sterling   £
+    ))
+
+(defun make-acs-table ()
+  "Make the alternate character set table."
+  (setf *acs-table* (make-hash-table))
+  (loop :for (uc . ac) :in *acs-table-data* :do
+     (setf (gethash uc *acs-table*) ac)))
+
+(defmethod terminal-alternate-characters ((tty terminal-curses) state)
+  (setf (translate-alternate-characters tty) state)
+  (when (and state (not *acs-table*))
+    (make-acs-table))
+  (if state
+      (attron +A-ALTCHARSET+)
+      (attroff +A-ALTCHARSET+)))
+
+(defun translate-acs-chars (string &key start end)
+  "Translate unicode characters to alternate character set characters.
+Only replace in START and END range."
+  (if (or start end)
+      (loop :with replacement
+	 :for i :from (or start 0) :below (or end (length string))
+	 :do
+	 (setf replacement (gethash (char string i) *acs-table*))
+	 (when replacement
+	   (setf (char string i) replacement)))
+      ;; Assuming this could be faster:
+      (map 'string (_ (or (gethash _ *acs-table*) _)) string)))
+
+(defparameter *line-table-vt100*
+  `#(#\space ;;            0 - 0000 - blank
+     #\x     ;; VLINE      1 - 0001 - bottom
+     #\q     ;; HLINE      2 - 0010 - right
+     #\l     ;; ULCORNER   3 - 0011 - bottom + right
+     #\x     ;; VLINE      4 - 0100 - top
+     #\x     ;; VLINE      5 - 0101 - top + bottom
+     #\m     ;; LLCORNER   6 - 0110 - top + right
+     #\t     ;; LTEE       7 - 0111 - bottom + right + top
+     #\q     ;; HLINE      8 - 1000 - left
+     #\k     ;; URCORNER   9 - 1001 - left + bottom
+     #\q     ;; HLINE     10 - 1010 - left + right
+     #\w     ;; TTEE      11 - 1011 - left + right + bottom
+     #\j     ;; LRCORNER  12 - 1100 - left + top
+     #\t     ;; RTEE      13 - 1101 - left + top + bottom
+     #\v     ;; BTEE      14 - 1110 - left + top + right
+     #\n     ;; PLUS      15 - 1111 - left + top + right + bottom
+     ))
+
+(defparameter *line-table* *line-table-vt100*
+  "The table to use for looking up line drawing characters.")
+
+(defun line-char (line)
+  "Convert line bits into line drawing characters."
+  (aref *line-table* line))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; stream methods

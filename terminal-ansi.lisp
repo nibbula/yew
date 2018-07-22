@@ -13,7 +13,7 @@
 (defpackage :terminal-ansi
   (:documentation "Standard terminal (ANSI).")
   (:use :cl :cffi :dlib :dlib-misc :terminal :char-util :opsys
-	:trivial-gray-streams :fatchar)
+	:trivial-gray-streams :fatchar :color)
   (:export
    #:terminal-ansi-stream
    #:terminal-ansi
@@ -24,6 +24,8 @@
    #:with-raw #:with-immediate
    #:set-bracketed-paste-mode
    #:read-bracketed-paste
+   #:set-foreground-color
+   #:set-background-color
    ))
 (in-package :terminal-ansi)
 
@@ -40,11 +42,43 @@
 (define-constant +osc+ (s+ #\escape #\])
   "Operating System Command. C'est vrai? o_O")
 
+(defparameter *attributes*
+  '((:normal	       22)		; not bold or faint
+    (:bold	       1)
+    (:faint	       2)
+    (:italic	       3)
+    (:underline	       4)
+    (:blink	       5)
+    (:inverse	       7)
+    (:standout	       7)
+    (:invisible	       8)
+    (:crossed-out      9)
+    (:double-underline 21)))
+
+(defparameter *attributes-off*
+  '((:all	       0)		; No attributes
+    (:bold	       22)
+    (:faint	       22)
+    (:italic	       23)
+    (:underline	       24)
+    (:blink	       25)
+    (:inverse	       27)
+    (:standout	       27)
+    (:invisible	       28)
+    (:crossed-out      29)
+    (:double-underline 24)))		; same as not underline
+
 (defclass terminal-ansi-stream (terminal-stream)
   ((fake-column
    :initarg :fake-column :accessor terminal-ansi-stream-fake-column
    :initform 0 :type fixnum
-   :documentation "Guess for the current column."))
+   :documentation "Guess for the current column.")
+   (translate-alternate-characters
+    :initarg :translate-alternate-characters
+    :accessor translate-alternate-characters
+    :initform nil :type boolean
+    :documentation
+    "True to translate some unicode characters into the alternate character set."))
   (:documentation
    "Terminal as purely a Lisp output stream. This can't do input or things that
 require terminal driver support."))
@@ -53,12 +87,14 @@ require terminal driver support."))
   "This doesn't do anything for a stream."
   (declare (ignore tty)))
 
-(defmethod terminal-end ((tty terminal-ansi-stream))
+(defmethod terminal-end ((tty terminal-ansi-stream) &optional state)
   "Stop using a stream."
+  (declare (ignore state))
   (terminal-finish-output tty))
 
-(defmethod terminal-done ((tty terminal-ansi-stream))
+(defmethod terminal-done ((tty terminal-ansi-stream) &optional state)
   "Forget about the whole terminal stream."
+  (declare (ignore state))
   (terminal-end tty)
   ;; don't close the stream
   (values))
@@ -83,13 +119,7 @@ require terminal driver support."))
     :documentation "How far into the typeahead we are.")
    (saved-mode
     :initarg :saved-mode :accessor saved-mode
-    :documentation "Saved terminal modes for restoring on exit.")
-   (translate-alternate-characters
-    :initarg :translate-alternate-characters
-    :accessor translate-alternate-characters
-    :initform nil :type boolean
-    :documentation
-    "True to translate some unicode characters into the alternate character set."))
+    :documentation "Saved terminal modes for restoring on exit."))
   (:default-initargs
     :file-descriptor		nil
     :device-name		*default-device-name*
@@ -195,21 +225,23 @@ two values ROW and COLUMN."
       ;; 					    :domain :file))
       )
       ;; (dbug "terminal-ansi open out~%"))
-    (terminal-get-size tty)))
+    (terminal-get-size tty)
+    saved-mode))
 
-(defmethod terminal-end ((tty terminal-ansi))
+(defmethod terminal-end ((tty terminal-ansi) &optional state)
   "Put the terminal back to the way it was before we called terminal-start."
   ;;  (format t "[terminal-end]~%")
   ;; (set-terminal-mode (terminal-file-descriptor tty)
   ;; 		     :line t :echo t :raw nil :timeout nil)
-  (when (saved-mode tty)
+  (when (or state (saved-mode tty))
     (dbugf 'terminal-ansi "restoring terminal modes ~s ~s~%"
-	   tty (saved-mode tty))
-    (set-terminal-mode (terminal-file-descriptor tty) :mode (saved-mode tty))))
+	   tty (or state (saved-mode tty)))
+    (set-terminal-mode (terminal-file-descriptor tty)
+		       :mode (or state (saved-mode tty)))))
 
-(defmethod terminal-done ((tty terminal-ansi))
+(defmethod terminal-done ((tty terminal-ansi) &optional state)
   "Forget about the whole terminal thing and stuff."
-  (terminal-end tty)
+  (terminal-end tty state)
   (close-terminal (terminal-file-descriptor tty))
   ;; (dbug "terminal-ansi close in~%")
   (when (terminal-output-stream tty)
@@ -475,6 +507,9 @@ i.e. the terminal is 'line buffered'."
   "Convert line bits into line drawing characters."
   (aref *line-table* line))
 
+(define-constant +intro+ (s+ +csi+ "0;") "Introduce a new fatchar.")
+(define-constant +zero-effect+ (s+ +csi+ "m") "No effects.")
+
 ;; This is a slightly more direct way to write a fatchar than with
 ;; fatchar:render-fatchar.
 (defmethod terminal-write-char ((tty terminal-ansi-stream) (char fatchar))
@@ -492,29 +527,24 @@ i.e. the terminal is 'line buffered'."
 	(let ((replacement (gethash cc *acs-table*)))
 	  (when replacement
 	    (setf cc replacement))))
-      (when (or fg bg attrs)
-	(write-string +csi+ stream)
-	(when (or fg bg)
-	  (%terminal-color tty fg bg :unwrapped t))
-	(when attrs
-	  (loop :with n
-	     :for a :in attrs :do
-	     (setf n (assoc a *attributes*))
-	     (when n
-	       (terminal-raw-format tty ";~d" (cadr n)))))
-	(write-char #\m stream))
+      (if (or fg bg attrs)
+	  (progn
+	    (write-string +intro+ stream)
+	    (when (or fg bg)
+	      (%terminal-color tty fg bg :unwrapped t))
+	    (when attrs
+	      (loop :with n
+		 :for a :in attrs :do
+		 (when (setf n (assoc a *attributes*))
+		   (terminal-raw-format tty ";~d" (cadr n)))))
+	    (write-char #\m stream))
+	  (write-string +zero-effect+ stream))
       (if (zerop line)
 	  (write-char cc stream)
 	  (write-char (line-char line) stream))
       (update-column tty cc)
       (when (eql cc #\newline)
 	(finish-output stream)))))
-
-(defun same-effects (a b)
-  "Return true if the two fatchars have the same colors and attributes."
-  (and (eql (fatchar-fg a) (fatchar-fg b))
-       (eql (fatchar-bg a) (fatchar-bg b))
-       (not (set-exclusive-or (fatchar-attrs a) (fatchar-attrs b)))))
 
 (defmethod terminal-write-string ((tty terminal-ansi-stream) (str fat-string)
 				  &key start end)
@@ -543,14 +573,15 @@ i.e. the terminal is 'line buffered'."
 		       (write-char cc stream))
 		   (write-char (line-char line) stream))
 	       (progn
-		 (terminal-raw-format tty "~c[0m" #\escape)
+		 ;;(terminal-raw-format tty "~c[0m" #\escape)
 		 (terminal-write-char tty c)))
 	   (setf last-c c)
 	   (when (char= cc #\newline)
 	     (setf had-newline t))
 	   (update-column tty cc))
 	 (incf i))
-      (terminal-raw-format tty "~c[0m" #\escape)
+      (write-string +zero-effect+ stream)
+      ;;(terminal-raw-format tty "~c[0m" #\escape)
       (when had-newline
 	(finish-output stream)))))
 
@@ -644,80 +675,58 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-inverse ((tty terminal-ansi-stream) state)
   (terminal-format tty "~c[~dm" #\escape (if state 7 27)))
 
-(defparameter *attributes*
-  '((:normal	       22)		; not bold or faint
-    (:bold	       1)
-    (:faint	       2)
-    (:italic	       3)
-    (:underline	       4)
-    (:blink	       5)
-    (:inverse	       7)
-    (:invisible	       8)
-    (:crossed-out      9)
-    (:double-underline 21)))
-
-(defparameter *attributes-off*
-  '((:all	       0)		; No attributes
-    (:bold	       22)
-    (:faint	       22)
-    (:italic	       23)
-    (:underline	       24)
-    (:blink	       25)
-    (:inverse	       27)
-    (:invisible	       28)
-    (:crossed-out      29)
-    (:double-underline 24)))		; same as not underline
-
 (defparameter *colors*
   #(:black :red :green :yellow :blue :magenta :cyan :white nil :default))
 
-(defun format-color (red green blue &key bits)
-  "Return a string in XParseColor format for a color with the given RED, BLUE,
-and GREEN, components. Default to 8 bit color. If values are over 8 bits,
-default to 16 bit color."
-  (let ((r red) (g green) (b blue) (l (list red green blue)))
-    (cond
-      ((every #'floatp l)
-       (format nil "rgbi:~f/~f/~f" r g b))
-      ((every #'integerp l)
-       (let (fmt)
-	 (when (not bits)
-	   (setf bits (if (some (_ (> _ #xff)) l) 16 8)))
-	 (setf fmt
-	       (case bits
-		 (4  "~x")
-		 (8  "~2,'0x")
-		 (12 "~3,'0x")
-		 (16 "~4,'0x")
-		 (t (error "Bad color bit magnitudes: ~s" l))))
-	 (format nil (s+ "rgb:" fmt "/" fmt "/" fmt) r g b)))
-      (t
-       (error "Bad color formats: ~s" l)))))
+;; (defun format-color (red green blue &key bits)
+;;   "Return a string in XParseColor format for a color with the given RED, BLUE,
+;; and GREEN, components. Default to 8 bit color. If values are over 8 bits,
+;; default to 16 bit color."
+;;   (let ((r red) (g green) (b blue) (l (list red green blue)))
+;;     (cond
+;;       ((every #'floatp l)
+;;        (format nil "rgbi:~f/~f/~f" r g b))
+;;       ((every #'integerp l)
+;;        (let (fmt)
+;; 	 (when (not bits)
+;; 	   (setf bits (if (some (_ (> _ #xff)) l) 16 8)))
+;; 	 (setf fmt
+;; 	       (case bits
+;; 		 (4  "~x")
+;; 		 (8  "~2,'0x")
+;; 		 (12 "~3,'0x")
+;; 		 (16 "~4,'0x")
+;; 		 (t (error "Bad color bit magnitudes: ~s" l))))
+;; 	 (format nil (s+ "rgb:" fmt "/" fmt "/" fmt) r g b)))
+;;       (t
+;;        (error "Bad color formats: ~s" l)))))
 
-(defun rgb-color-p (x)
-  (and (not (null x))
-       (or (consp x) (arrayp x))
-       (= (length x) 3)
-       (every #'numberp x)))
+;; @@@ obsoleced by color.lisp
+;; (defun rgb-color-p (x)
+;;   (and (not (null x))
+;;        (or (consp x) (arrayp x))
+;;        (= (length x) 3)
+;;        (every #'numberp x)))
 
-(defun   color-red   (c) (elt c 0))
-(defsetf color-red   (c) (val) `(setf (elt ,c 0) ,val))
-(defun   color-green (c) (elt c 1))
-(defsetf color-green (c) (val) `(setf (elt ,c 1) ,val))
-(defun   color-blue  (c) (elt c 2))
-(defsetf color-blue  (c) (val) `(setf (elt ,c 2) ,val))
+;; @@@ obsoleced by color.lisp
+;; (defun   color-red   (c) (elt c 0))
+;; (defsetf color-red   (c) (val) `(setf (elt ,c 0) ,val))
+;; (defun   color-green (c) (elt c 1))
+;; (defsetf color-green (c) (val) `(setf (elt ,c 1) ,val))
+;; (defun   color-blue  (c) (elt c 2))
+;; (defsetf color-blue  (c) (val) `(setf (elt ,c 2) ,val))
 
 (defun set-foreground-color (color)
-  (tt-format "~a10;~a~a" +osc+
-	     (format-color (color-red   color)
-			   (color-green color)
-			   (color-blue  color)) +st+))
+  "Set the default forground color for text."
+  (when (not (known-color-p color))
+    (error "Unknown color ~s." color))
+  (tt-format "~a10;~a~a" +osc+ (color-to-xcolor (lookup-color color)) +st+))
 
 (defun set-background-color (color)
-  (tt-format "~a11;~a~a" +osc+
-	     (format-color (color-red   color)
-			   (color-green color)
-			   (color-blue  color)) +st+))
+  "Set the default background color for the terminal."
+  (when (not (known-color-p color))
+    (error "Unknown color ~s." color))
+  (tt-format "~a11;~a~a" +osc+ (color-to-xcolor (lookup-color color)) +st+))
 
 (defun %terminal-color (tty fg bg &key unwrapped)
   (let ((fg-pos (position fg *colors*))
@@ -728,25 +737,25 @@ default to 16 bit color."
       (error "Background ~a is not a known color." bg))
     (when (not unwrapped)
       (terminal-raw-format tty +csi+))
+    (when (structured-color-p fg)
+      (let ((c (convert-color-to fg :rgb8)))
+	(terminal-raw-format tty "38;2;~d;~d;~d" 
+			     (color-component c :red)
+			     (color-component c :green)
+			     (color-component c :blue))))
+    (when (structured-color-p bg)
+      (let ((c (convert-color-to bg :rgb8)))
+	(terminal-raw-format tty "48;2;~d;~d;~d"
+			     (color-component c :red)
+			     (color-component c :green)
+			     (color-component c :blue))))
     (cond
-      ((or (rgb-color-p fg) (rgb-color-p bg))
-       (when (rgb-color-p fg)
-	 (let ((red   (elt fg 0))
-	       (green (elt fg 1))
-	       (blue  (elt fg 2)))
-	   (terminal-raw-format tty "~38;2;~a;~a;~a" red green blue)))
-       (when (rgb-color-p bg)
-	 (let ((red   (elt bg 0))
-	       (green (elt bg 1))
-	       (blue  (elt bg 2)))
-	   (terminal-raw-format tty "48;2;~a;~a;~a" red green blue))))
-      ((and fg bg)
+      ((and fg bg fg-pos bg-pos)
        (terminal-raw-format tty "~d;~d" (+ 30 fg-pos) (+ 40 bg-pos)))
-      (fg
+      ((and fg fg-pos)
        (terminal-raw-format tty "~d" (+ 30 fg-pos)))
-      (bg
-       (terminal-raw-format tty "~d" (+ 40 bg-pos)))
-      (t #| nothing |#))
+      ((and bg bg-pos)
+       (terminal-raw-format tty "~d" (+ 40 bg-pos))))
     (when (not unwrapped)
       (terminal-raw-format tty "m"))))
 
@@ -771,7 +780,7 @@ Attributes are usually keywords."
   (with-slots ((stream terminal::output-stream)) tty
     (write-string +csi+ stream)
     (loop :with n :and first = t
-       :for a :in attrs :do
+       :for a :in attributes :do
        (when (setf n (assoc a *attributes*))
 	 (if first
 	     (setf first nil)

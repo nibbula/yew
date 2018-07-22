@@ -628,7 +628,7 @@ But also greatly increasing # of chars output.
 					   (min (1- height) (+ iy av-y)) 3))))
 		  (if (not (zerop a))
 		      (progn
-			(tt-color nil (vector
+			(tt-color nil (vector :rgb8
 				       (truncate r (* step step))
 				       (truncate g (* step step))
 				       (truncate b (* step step))))
@@ -701,7 +701,7 @@ But also greatly increasing # of chars output.
 					   (min (1- height) (+ iy av-y)) 3))))
 		  (if (not (zerop a))
 		      (progn
-			(tt-color nil (vector
+			(tt-color nil (vector :rgb8
 				       (truncate r (* step step))
 				       (truncate g (* step step))
 				       (truncate b (* step step))))
@@ -764,7 +764,7 @@ But also greatly increasing # of chars output.
 					   (min (1- width) (+ ix av-x)) 3))))
 		  (if (not (zerop a))
 		      (progn
-			(tt-color nil (vector
+			(tt-color nil (vector :rgb8
 				       (truncate r (* step step))
 				       (truncate g (* step step))
 				       (truncate b (* step step))))

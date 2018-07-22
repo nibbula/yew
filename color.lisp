@@ -6,15 +6,21 @@
   (:documentation "What you see is not even real.")
   (:use :cl :dlib :cl-ppcre)
   (:export
+   #:*simple-colors*
    #:*default-color-model*
+   #:*color-models*
+   #:register-color-model
    #:color-model-name
+   #:structured-color-p
+   #:known-color-p
+   #:lookup-color
    #:color-model-component
    #:color-component
    #:set-color-component
    #:convert-color
+   #:convert-color-to
    #:make-color
-   #:*color-models*
-   #:register-color-model
+   #:component-to-8bit
    #:color-to-xcolor
    #:xcolor-to-color
    ))
@@ -41,11 +47,24 @@
 ;; or what exactly that means in terms of light and/or pigments and/or a
 ;; specific device, e.g. and ICC color profile or something. Although, the color
 ;; model can affect the color space we can represent.
+;;
+;; Note also that a color model isn't a color format, since it only specifies
+;; what information we store, not exactly how, for example, a pixel should
+;; be layed out in bits.
 
 ;; @@@ perhaps I should use a defstruct rigamarole for this?
 ;; like defstruct with :type vector?
 
+;; We should probably support:
+;; gray, rgb, rgba, hsv, hsl, cmyk, and perhaps yuv
+
 (defvar *default-color-model* :rgb)
+
+(defvar *color-models* nil
+  "A list of known color models.")
+
+(defun register-color-model (model-name)
+  (pushnew model-name *color-models*))
 
 (defun color-model-name (color)
   "Return the color model name of a color."
@@ -53,6 +72,27 @@
   (if (symbolp (aref color 0))
       (aref color 0)
       *default-color-model*))
+
+(defun structured-color-p (x)
+  "True if x maybe could be a structured color."
+  (and (not (null x))
+       (or (consp x) (arrayp x))
+       (or (find (elt x 0) *color-models*)
+	   (every #'numberp x))))
+
+(defun known-color-p (x)
+  "True if x is a color or kind of color that we know about."
+  (or (structured-color-p x)
+      (find x *simple-colors*)
+      (and (find-package :color-names)
+	   (find-symbol (symbol-name x) :color-names))))
+
+(defun lookup-color (color)
+  "Find the color values for a color name, or just return it."
+  (if (keywordp color)
+      (let ((sym (find-symbol (symbol-name color) :color-names)))
+	(if sym (symbol-value sym) color))
+      color))
 
 (defgeneric color-model-component (color-model color component-name)
   (:documentation
@@ -72,50 +112,54 @@ the VALUE."))
   (set-color-model-component
    (color-model-name color) color component-name value))
 
-(defsetf color-component set-color-compoent)
+(defsetf color-component set-color-component)
+
+;; Of course color conversion can be quite lossy.
 
 ;; The from-color-model is separated out so we can specialize on it.
 (defgeneric convert-color (color from-color-model to-color-model)
   (:documentation "Return the COLOR converted to the TO-COLOR-MODEL."))
 
 (defun convert-color-to (color to-color-model)
-  (convert-color color (color-model-name color) to-color-model))
+  (let ((from-model (color-model-name color)))
+    (if (eq from-model to-color-model)
+	color
+	(convert-color color from-model to-color-model))))
 
 (defgeneric make-color (color-model &key &allow-other-keys)
   (:documentation
    "Make a color of the COLOR-MODEL with the given components."))
 
-;; We should probably support:
-;; gray, rgb, rgba, hsv, hsl, cmyk, and perhaps yuv
+(defun component-to-8bit (component)
+  "Convert a [0-1] value to a [0-255] value."
+  ;;(round (* component #xff)))
+  (logand #xff (truncate (* component #xff))))
 
-(defvar *color-models* nil
-  "A list of known color models.")
-
-(defun register-color-model (model-name)
-  (pushnew model-name *color-models*))
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
-;; The RGB color model:
+;; RGB model - Red, green, and blue, components stored as Lisp numbers.
 ;;
 
 (defmethod color-model-component ((color-model (eql :rgb)) color component-name)
-  (case component-name
-    (:red   (svref color 1))
-    (:green (svref color 2))
-    (:blue  (svref color 3))
-    (t
-     (error "There's no color component ~a in the ~a color-model."
-	    component-name color-model))))
+  (let ((i (if (symbolp (svref color 0)) 1 0)))
+    (case component-name
+      (:red   (svref color (+ 0 i)))
+      (:green (svref color (+ 1 i)))
+      (:blue  (svref color (+ 2 i)))
+      (t
+       (error "There's no color component ~a in the ~a color-model."
+	      component-name color-model)))))
 
 (defmethod set-color-model-component ((color-model (eql :rgb))
 				      color component-name value)
-  (case component-name
-    (:red   (setf (svref color 1) value))
-    (:green (setf (svref color 2) value))
-    (:blue  (setf (svref color 3) value))
-    (t
-     (error "There's No color component ~a in the ~a color-model."
-	    component-name color-model))))
+  (let ((i (if (symbolp (svref color 0)) 1 0)))
+    (case component-name
+      (:red   (setf (svref color (+ 0 i)) value))
+      (:green (setf (svref color (+ 1 i)) value))
+      (:blue  (setf (svref color (+ 2 i)) value))
+      (t
+       (error "There's No color component ~a in the ~a color-model."
+	      component-name color-model)))))
 
 (defmethod make-color ((color-model (eql :rgb)) &key red green blue)
   (vector color-model red green blue))
@@ -137,6 +181,57 @@ the VALUE."))
 
 (register-color-model :rgb)
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; The RGB-8 color model: 8-bit integers
+;; Mostly the same as RGB.
+;; We don't do any range checking.
+
+(defmethod color-model-component ((color-model (eql :rgb8)) color component-name)
+  (color-model-component :rgb color component-name))
+
+(defmethod set-color-model-component ((color-model (eql :rgb8))
+				      color component-name value)
+  (set-color-model-component :rgb color component-name value))
+
+(defmethod make-color ((color-model (eql :rgb8)) &key red green blue)
+  (vector color-model red green blue))
+
+(defmethod convert-color (color
+			  (from-color-model (eql :rgb))
+			  (to-color-model (eql :rgb8)))
+  (make-color :rgb8
+	      :red   (component-to-8bit (color-component color :red))
+	      :green (component-to-8bit (color-component color :green))
+	      :blue  (component-to-8bit (color-component color :blue))))
+
+(defmethod convert-color (color
+			  (from-color-model (eql :rgb8))
+			  (to-color-model (eql :rgb)))
+  (make-color :rgb8
+	      :red   (/ (color-component color :red)   #xff)
+	      :green (/ (color-component color :green) #xff)
+	      :blue  (/ (color-component color :blue)  #xff)))
+
+(defmethod convert-color (color
+			  (from-color-model (eql :rgb8))
+			  (to-color-model (eql :gray8)))
+  (make-color :gray8 :value
+	      (/ (+ (color-component color :red)
+		    (color-component color :green)
+		    (color-component color :blue))
+		 3)))
+
+(defmethod convert-color (color (from-color-model (eql :gray8))
+			          (to-color-model (eql :rgb8)))
+  (make-color :rgb
+	      :red   (color-component color :value)
+	      :green (color-component color :value)
+	      :blue  (color-component color :value)))
+
+(register-color-model :rgb8)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;; The RGBA color model:
 ;;
@@ -190,9 +285,9 @@ the VALUE."))
 and GREEN, components. Default to 8 bit color. If values are over 8 bits,
 default to 16 bit color."
   (let* ((c (convert-color-to color :rgb))
-	 (r (color-component c :red))
-	 (g (color-component c :green))
-	 (b (color-component c :blue))
+	 (r (component-to-8bit (color-component c :red)))
+	 (g (component-to-8bit (color-component c :green)))
+	 (b (component-to-8bit (color-component c :blue)))
 	 (l (list r g b)))
     (cond
       ((every #'floatp l)
@@ -222,7 +317,7 @@ default to 16 bit color."
   #RRGGBB         (8 bits each)
   #RRRGGGBBB      (12 bits each)
   #RRRRGGGGBBBB   (16 bits each)
-  The compoent values specify the high bits of a 16 bit value.
+  The component values specify the high bits of a 16 bit value.
 
   rgbi:<red>/<green>/<blue>
   Floating-point values between 0.0 and 1.0, inclusive.
@@ -238,7 +333,7 @@ default to 16 bit color."
   TekHVC:<H>/<V>/<C>
 |#
 
-(defun parse-color (string)
+(defun xcolor-to-color (string)
   "Return an :RGB color from a XParseColor format string. Doesn't
 handle device independant color spaces yet, e.g. CIELab."
   (cond

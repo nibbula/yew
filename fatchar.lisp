@@ -12,9 +12,8 @@ Define a FATCHAR-STRING as a vector of FATCHARS.
 Define a FAT-STRING as a struct with a FATCHAR-STRING so we can specialize.
 Define a TEXT-SPAN as a list representation of a FAT-STRING.
 ")
-  (:use :cl :dlib :stretchy :char-util :collections)
+  (:use :cl :dlib :stretchy :char-util :collections :color)
   (:export
-   #:*standard-colors*
    #:fatchar
    #:fatchar-p
    #:make-fatchar
@@ -23,6 +22,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:fat-string #:fat-string-string
    #:fatchar-init
    #:copy-fat-char
+   #:same-effects
    #:make-fat-string
    #:make-fatchar-string
    #:fatchar-string-to-string
@@ -40,10 +40,6 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:remove-effects
    ))
 (in-package :fatchar)
-
-(defparameter *standard-colors*
-  '(:black :red :green :yellow :blue :magenta :cyan :white :default)
-  "Standard color names.")
 
 (defstruct fatchar
   "A character with attributes."
@@ -127,6 +123,12 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
      :line  (fatchar-line c)
      :attrs (fatchar-attrs c))))
 
+(defun same-effects (a b)
+  "Return true if the two fatchars have the same colors and attributes."
+  (and (equal (fatchar-fg a) (fatchar-fg b))
+       (equal (fatchar-bg a) (fatchar-bg b))
+       (not (set-exclusive-or (fatchar-attrs a) (fatchar-attrs b)))))
+
 (defun make-fatchar-string (thing)
   "Make a fat string from something. THING can be a string or a character."
   (let (result)
@@ -189,12 +191,29 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
       `(progn ,@forms))))
 (make-comparators)
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Spans
+;;
+;; ([objects ...])
+;; (:keyword [objects ...])
+;; (:keyword [attribute ...] [objects ...])
+;;
+;; attribute => :keyword object
+;;
+;; (:fg :color #(:rgb 0 0 1) "hello")
+;; (:fg-blue "hello")
+;;
+;; Some things may want to allow evaluation by letting an "object" be
+;; a function call or a symbol that gets evaluated, instead of just literal
+;; objects.
+
 (defun span-length (span)
   "Calculate the length in characters of the span."
   (the fixnum (loop :for e :in span
 		 :sum (typecase e
 			(string (length e))
 			(cons (span-length e))
+			;; @@@ shouldn't we princ-to-string other some things?
 			(t 0)))))
 
 (defun listify-fake-span (fake-span)
@@ -241,7 +260,8 @@ strings."
 (defun fatchar-string-to-span (fatchar-string &key (start 0))
   "Convert a FATCHAR line to tagged spans."
   (when (= (length fatchar-string) 0)
-    (return-from fatchar-string-to-span fatchar-string))
+    ;; (return-from fatchar-string-to-span fatchar-string))
+    (return-from fatchar-string-to-span nil))
   (let ((last (make-fatchar))
 	(result '())
 	(open-count 0)
@@ -258,7 +278,12 @@ strings."
 	 (when (fatchar-fg c)
 	   (push #\( result)
 	   (incf open-count)
-	   (push (keywordify (s+ "FG-" (fatchar-fg c))) result)))
+	   (if (keywordp (fatchar-fg c))
+	       (push (keywordify (s+ "FG-" (fatchar-fg c))) result)
+	       (progn
+		 (push :fg result)
+		 (push :color result)
+		 (push (fatchar-fg c) result)))))
        ;; Background
        (when (not (eql (fatchar-bg c) (fatchar-bg last)))
 	 (when (fatchar-bg last)
@@ -267,7 +292,12 @@ strings."
 	 (when (fatchar-bg c)
 	   (push #\( result)
 	   (incf open-count)
-	   (push (keywordify (s+ "BG-" (fatchar-bg c))) result)))
+	   (if (keywordp (fatchar-fg c))
+	       (push (keywordify (s+ "BG-" (fatchar-bg c))) result)
+       	       (progn
+		 (push :bg result)
+		 (push :color result)
+		 (push (fatchar-bg c) result)))))
        ;; Attributes
        (setf added (set-difference (fatchar-attrs c) (fatchar-attrs last))
 	     removed (set-difference (fatchar-attrs last) (fatchar-attrs c)))
@@ -387,27 +417,37 @@ strings."
 		(incf i))
 	       (list
 		(let* ((f (first s))
-		       (tag (and (or (keywordp f) (symbolp f)) f)))
+		       (tag (and (or (keywordp f) (symbolp f)) f))
+		       (rest (cdr s)))
 		  (if tag
-		      (let ((fg fg) (bg bg) (attrs attrs))
+		      (let ((fg fg) (bg bg) (attrs attrs)
+			    (tag-str (string tag)))
 			(declare (special fg bg attrs))
 			(cond
-			  ((equalp (subseq (string tag) 0 3) "FG-")
+			  ((and (> (length tag-str) 3)
+				(string= (subseq tag-str 0 3) "FG-"))
 			   (push (keywordify (subseq (string tag) 3)) fg))
-			  ((equalp (subseq (string tag) 0 3) "BG-")
+			  ((and (> (length tag-str) 3)
+				(string= (subseq tag-str 0 3) "BG-"))
 			   (push (keywordify (subseq (string tag) 3)) bg))
-			  ((member tag *standard-colors*)
+			  ((member tag *simple-colors*)
 			   ;; An un-prefixed color is a foreground color.
 			   (push tag fg))
 			  ((member tag *known-attrs*)
 			   (push tag attrs))
+			  ((and (eq tag :fg) (eq (second s) :color))
+			   (push (third s) fg)
+			   (setf rest (cdddr s)))
+			  ((and (eq tag :bg) (eq (second s) :color))
+			   (push (third s) bg)
+			   (setf rest (cdddr s)))
 			  (t
 			   (if unknown-func
 			       (spanky (funcall unknown-func s))
 			       (push tag attrs))))
 			;; (format t "tag ~s attrs ~s (cdr s) ~s~%"
 			;; 	tag attrs (cdr s))
-			(spanky (cdr s))
+			(spanky rest)
 			;;(setf fg nil bg nil)
 			;;(pop attrs)
 			)
@@ -441,6 +481,29 @@ strings."
   fat-string)
 |#
 
+(defparameter *xterm-256-color-table* nil
+  "Table for old-timey xterm colors.")
+
+;; see xterm/256colres.pl
+(defun make-xterm-color-table ()
+  (setf *xterm-256-color-table* (make-array 256))
+  ;; colors 16-231 are a 6x6x6 color cube
+  (loop :for red :from 0 :below 6 :do
+     (loop :for green :from 0 :below 6 :do
+	(loop :for blue :from 0 :below 6 :do
+	   (setf (aref *xterm-256-color-table*
+		       (+ 16 (* red 36) (* green 6) blue))
+		 (make-color :rgb8
+			     :red   (if (= red   0) 0 (+ (* red   40) 55))
+			     :green (if (= green 0) 0 (+ (* green 40) 55))
+			     :blue  (if (= blue  0) 0 (+ (* blue  40) 55)))))))
+  ;; colors 232-255 are a grayscale ramp, without black & white
+  (loop :with level
+     :for gray :from 0 :below 24 :do
+     (setf level (+ (* gray 10) 8)
+	   (aref *xterm-256-color-table* (+ 232 gray))
+	   (make-color :rgb8 :red level :green level :blue level))))
+
 ;;; ^[[00m	normal
 ;;; ^[[01;34m	bold, blue fg
 ;;; ^[[m	normal
@@ -454,10 +517,13 @@ the ^[[ and return NIL if there was no valid sequence, or an integer offset
 to after the sequence, the foreground, background and a list of attributes.
 NIL stands for whatever the default is, and :UNSET means that they were not
 set in this string."
-  (let (num inc attr-was-set
-	(i 0) (len (length str))
-	(hi-color nil) hi-color-type r g b
-	(fg :unset) (bg :unset) (attr '()))
+  (let* ((i 0)
+	 (len (length str))
+	 (hi-color nil)
+	 (fg :unset)
+	 (bg :unset)
+	 (attr '())
+	 num inc attr-was-set hi-color-type r g b)
     (loop
        :do
        #| (princ "> ") (dumpy num i inc (subseq str i)) |#
@@ -481,17 +547,19 @@ set in this string."
 		    (2 (setf hi-color-type :3-color))
 		    (5 (setf hi-color-type :1-color))))
 		 ((eq hi-color-type :1-color)
+		  (when (not *xterm-256-color-table*)
+		    (make-xterm-color-table))
 		  (if (eq hi-color :fg)
-		      (setf fg num))
-		      (setf bg num))
+		      (setf fg (aref *xterm-256-color-table* num))
+		      (setf bg (aref *xterm-256-color-table* num))))
 		 ((eq hi-color-type :3-color)
 		  (cond
 		    ((not r) (setf r num))
 		    ((not g) (setf g num))
 		    ((not b) (setf b num)
 		     (if (eq hi-color :fg)
-			 (setf fg (list r g b))
-			 (setf bg (list r g b))))))
+			 (setf fg (make-color :rgb8 :red r :green g :blue b))
+			 (setf bg (make-color :rgb8 :red r :green g :blue b))))))
 		 (t
 		  (case num
 		    (0  (setf attr '() fg nil bg nil attr-was-set t))
