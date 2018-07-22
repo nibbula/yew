@@ -1152,6 +1152,8 @@ time can be :NOW to use the current time."
 					      +FILE-WRITE-ATTRIBUTES+)
 				 :share-mode +FILE-SHARE-READ+
 				 :disposition +OPEN-EXISTING+
+				 ;; BACKUP-SEMANTICS is necessary to open
+				 ;; a directory!
 				 :flags +FILE-FLAG-BACKUP-SEMANTICS+)
 	(with-foreign-objects ((file-info '(:struct FILE_BASIC_INFO)))
 	  (with-foreign-slots ((creation-time last-access-time last-write-time
