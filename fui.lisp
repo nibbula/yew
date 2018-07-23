@@ -336,7 +336,6 @@ keymap bindings."
 
 ;; ToDo:
 ;; - maybe should have it's own augmented keymap
-;; - describe-key
 ;; - bind-to-key
 
 (defclass fui-inator (inator)
@@ -374,6 +373,10 @@ keymap bindings."
   (clrtoeol)
   (addstr (apply #'format nil format-string args)))
 
+(defmethod prompt ((i fui-inator) format-string &rest args)
+  (apply #'message i format-string args)
+  (refresh))
+
 (defun inator-doc-finder (i func)
   "Find documentation for an inator (subclass) method."
   (when (fboundp func)
@@ -407,6 +410,14 @@ keymap bindings."
   "Read a key sequence."
   (get-key-sequence (λ () (terminal-get-char *terminal*))
 		    (inator-keymap i)))
+
+(defmethod describe-key-briefly ((i fui-inator))
+  (prompt i "Press a key to describe: ")
+  (let* ((key-seq (read-key-sequence i))
+	 (action (key-sequence-binding key-seq (inator-keymap i))))
+    (if action
+	(message i "~a is bound to ~a" (key-sequence-string key-seq) action)
+	(message i "~a is not defined" (key-sequence-string key-seq)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

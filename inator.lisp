@@ -56,8 +56,10 @@ a TERM-INATOR.
    #:paste
    #:select
    #:default-action
+   #:describe-key-briefly
    ;; Output
    #:message
+   #:prompt
    #:help
    ;; Events
    #:event-loop
@@ -134,8 +136,14 @@ a TERM-INATOR.
 (defgeneric message (inator format-string &rest args)
   (:documentation "Display a short message. Usually one line."))
 
+(defgeneric prompt (inator format-string &rest args)
+  (:documentation "Display a short message, asking the user for input."))
+
 (defgeneric help (inator)
   (:documentation "Display help, usually describing what keys do."))
+
+(defgeneric describe-key-briefly (inator)
+  (:documentation "Describe what a key does very briefly."))
 
 ;; Whole Inator functions
 (defgeneric event-loop (inator))
@@ -169,6 +177,7 @@ a TERM-INATOR.
     (,(ctrl #\S)	. search-command)
     (,(meta-char #\s)	. sort-command)	; ?
     (,(meta-char #\j)	. jump-command)	; ?
+    (,(meta-char #\=)   . describe-key-briefly)
     (#\return		. accept)
     (,(ctrl #\L)	. redraw)
     (,(ctrl #\G)	. quit)

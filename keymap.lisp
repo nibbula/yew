@@ -11,7 +11,7 @@
    #:keymap-default-binding
    #:keymap-p
    #:set-keymap
-   #:dump-keymap
+   #:describe-keymap
    #:defkeymap
    #:map-keymap
    #:define-key
@@ -58,7 +58,7 @@
       (set-keymap k (keymap-map k))
       (setf (slot-value k 'map) (make-hash-table))))
 
-(defun dump-keymap (map &key (stream *standard-output*) prefix raw)
+(defun describe-keymap (map &key (stream *standard-output*) prefix raw)
   "Show the bindings of a keymap MAP on STREAM. If PREFIX is given it is
 assumed to be a prefix for all bindings in the keymap."
 ;  (format stream "~:@(~a~):~%" (named-name map))
@@ -74,8 +74,8 @@ assumed to be a prefix for all bindings in the keymap."
 		   prefix (nice-char key) action))
        (if (and (symbolp action) (boundp action)
 		(typep (symbol-value action) 'keymap))
-	   (dump-keymap (symbol-value action)
-			:stream stream :prefix (nice-char key))))
+	   (describe-keymap (symbol-value action)
+			    :stream stream :prefix (nice-char key))))
    map)
   (when (and (slot-boundp map 'default-binding)
 	     (keymap-default-binding map))
@@ -86,7 +86,7 @@ assumed to be a prefix for all bindings in the keymap."
   "Output a description of a keymap."
   (format stream "~a is a keymap with ~a bindings:~%" o
 	  (hash-table-count (keymap-map o)))
-  (dump-keymap o :stream stream))
+  (describe-keymap o :stream stream))
 
 (defmethod print-object ((obj keymap) stream)
   "Print a KEYMAP on a STREAM."

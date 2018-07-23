@@ -933,14 +933,14 @@ for the command-function).")
 
 (defparameter *puca-escape-keymap* (build-escape-map *puca-keymap*))
 
-(defun describe-key-briefly (p)
-  "Prompt for a key and say what function it invokes."
-  (message p "Press a key: ")
-  (let* ((key (read-key-sequence p))
-	 (action (key-sequence-binding key *puca-keymap*)))
-    (if action
-	(message p "~a is bound to ~a" (nice-char key) action)
-	(message p "~a is not defined" (nice-char key)))))
+;; (defun describe-key-briefly (p)
+;;   "Prompt for a key and say what function it invokes."
+;;   (message p "Press a key: ")
+;;   (let* ((key (read-key-sequence p))
+;; 	 (action (key-sequence-binding key *puca-keymap*)))
+;;     (if action
+;; 	(message p "~a is bound to ~a" (nice-char key) action)
+;; 	(message p "~a is not defined" (nice-char key)))))
 
 (defun what-command (p)
   "Try to see what backend command a key invokes."

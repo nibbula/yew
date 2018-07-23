@@ -351,6 +351,7 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
       (#\?		. help)
       (,(meta-char #\n) . next-file)
       (,(meta-char #\p) . previous-file)
+      (,(meta-char #\=) . describe-key-briefly)
       (#\escape		. *tree-escape-keymap*)))
 
 (defparameter *tree-escape-keymap* (build-escape-map *tree-keymap*))
@@ -768,6 +769,10 @@ been encountered."
   (setf (message-string *viewer*)
 	(apply #'format nil format-string format-args)))
 
+(defmethod prompt ((o tree-viewer) format-string &rest format-args)
+  (apply #'show-message format-string format-args)
+  (tt-finish-output))
+
 (defun message-pause (format-string &rest format-args)
   "Display a formatted message and wait for a key."
   (apply #'show-message format-string format-args)
@@ -886,71 +891,6 @@ and indented properly for multi-line objects."
   (when node
     (let ((str (format nil "~w" (node-object node))))
       (subseq str 0 (min 15 (length str))))))
-
-#|
-(defun view-tree (tree &key viewer)
-  "Look at a tree, with expandable and collapsible branches."
-  (fui:with-curses
-    (when (listp tree)
-      (setf tree (convert-tree tree)))
-    (let ((*viewer* (or viewer
-			 (make-instance 'tree-viewer
-					:root tree
-					:bottom (- *lines* 2)))))
-      (with-slots (root quit-flag picked-object current left top bottom
-		   bottom-node current-position current-max-right
-		   message-string scroll-hint)
-	  *viewer*
-	(loop :do
-	   (tagbody
-	    again
-	      (move 0 0)
-	      (erase)
-	      (setf current-position nil current-max-right nil)
-	      (let ((*display-start* nil))
-		(display-tree *viewer* root 0))
-	      ;; Reposition display if the current node is not visible.
-	      ;; This can be highly inefficient if it has to reposition far,
-	      ;; since it redraws the whole thing to curses, so movement code
-	      ;; should try to get close and then set the scroll-hint.
-	      (when (not current-position)
-		(case scroll-hint
-		  (:down
-		   (let ((next-top (find-next-node top)))
-		     (when next-top
-		       (setf top next-top)
-		       (go again))))
-		  (:up
-		   (let ((prev-top (find-previous-node top)))
-		     (when prev-top
-		       (setf top prev-top)
-		       (go again))))
-		  (otherwise
-		   ;; Punt and start from the top.
-		   (setf top root
-			 scroll-hint :down)
-		   (go again))))
-	      (when message-string
-		(show-message (quote-format message-string))
-		(setf message-string nil))
-	      (when (show-modeline *viewer*)
-		(move (- *lines* 2) 0)
-		(clrtoeol)
-		(addstr (format nil "~a ~a (left=~a top=~a bot=~a)"
-				current-position
-				(node-abbrev current)
-				left
-				(node-abbrev top)
-				(node-abbrev bottom-node))))
-	      (when current-position
-		(move current-position 0))
-	      (perform-key (tt-get-char))
-	      ;; bounds checking
-	      (when (< left 0)
-		(setf left 0)))
-	   :while (not quit-flag))
-	picked-object))))
-|#
 
 (defmethod update-display ((o tree-viewer))
   (with-slots (root quit-flag picked-object current left top bottom

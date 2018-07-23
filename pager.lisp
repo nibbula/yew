@@ -1657,7 +1657,7 @@ Press 'q' to exit this help.
 If you want a description of what a function does, press Control-H then 'k',
 then the key. Press 'q' to exit this help.
 " output)
-	 (keymap:dump-keymap *normal-keymap* :stream output)
+	 (keymap:describe-keymap *normal-keymap* :stream output)
 	 (princ "Press 'q' to exit this help.
 " output)))
     (page input)))

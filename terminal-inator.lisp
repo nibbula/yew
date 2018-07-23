@@ -46,6 +46,11 @@
   ;; We use terminal-format here because tt-format is a macro.
   (apply #'terminal-format *terminal* format-string args))
 
+(defmethod prompt ((i terminal-inator) format-string &rest args)
+  "Display a short message, asking the user for input."
+  (apply #'message i format-string args)
+  (tt-finish-output))
+
 #|
 (defun inator-doc-finder (i func)
   "Find documentation for an inator (subclass) method."
@@ -81,5 +86,13 @@
   "Read a key sequence."
   (get-key-sequence (λ () (terminal-get-char *terminal*))
 		    (inator-keymap i)))
+
+(defmethod describe-key-briefly ((i terminal-inator))
+  (prompt i "Press a key to describe: ")
+  (let* ((key-seq (read-key-sequence i))
+	 (action (key-sequence-binding key-seq (inator-keymap i))))
+    (if action
+	(message i "~a is bound to ~a" (key-sequence-string key-seq) action)
+	(message i "~a is not defined" (key-sequence-string key-seq)))))
 
 ;; EOF
