@@ -43,34 +43,34 @@
   "Operating System Command. C'est vrai? o_O")
 
 (defparameter *attributes*
-  '((:normal	       22)		; not bold or faint
-    (:bold	       1)
-    (:faint	       2)
-    (:dim	       2)
-    (:italic	       3)
-    (:underline	       4)
-    (:blink	       5)
-    (:inverse	       7)
-    (:reverse	       7)
-    (:standout	       7)
-    (:invisible	       8)
-    (:crossed-out      9)
-    (:double-underline 21)))
+  '((:normal	       . 22)		; not bold or faint
+    (:bold	       . 1)
+    (:faint	       . 2)
+    (:dim	       . 2)
+    (:italic	       . 3)
+    (:underline	       . 4)
+    (:blink	       . 5)
+    (:inverse	       . 7)
+    (:reverse	       . 7)
+    (:standout	       . 7)
+    (:invisible	       . 8)
+    (:crossed-out      . 9)
+    (:double-underline . 21)))
 
 (defparameter *attributes-off*
-  '((:all	       0)		; No attributes
-    (:bold	       22)
-    (:faint	       22)
-    (:dim	       22)
-    (:italic	       23)
-    (:underline	       24)
-    (:blink	       25)
-    (:inverse	       27)
-    (:reverse	       27)
-    (:standout	       27)
-    (:invisible	       28)
-    (:crossed-out      29)
-    (:double-underline 24)))		; same as not underline
+  '((:all	       . 0)		; No attributes
+    (:bold	       . 22)
+    (:faint	       . 22)
+    (:dim	       . 22)
+    (:italic	       . 23)
+    (:underline	       . 24)
+    (:blink	       . 25)
+    (:inverse	       . 27)
+    (:reverse	       . 27)
+    (:standout	       . 27)
+    (:invisible	       . 28)
+    (:crossed-out      . 29)
+    (:double-underline . 24)))		; same as not underline
 
 (defclass terminal-ansi-stream (terminal-stream)
   ((fake-column
@@ -511,12 +511,12 @@ i.e. the terminal is 'line buffered'."
   "Convert line bits into line drawing characters."
   (aref *line-table* line))
 
-(define-constant +intro+ (s+ +csi+ "0;") "Introduce a new fatchar.")
+(define-constant +intro+ (s+ +csi+ "0") "Introduce a new fatchar.")
 (define-constant +zero-effect+ (s+ +csi+ "m") "No effects.")
 
 ;; This is a slightly more direct way to write a fatchar than with
 ;; fatchar:render-fatchar.
-(defmethod terminal-write-char ((tty terminal-ansi-stream) (char fatchar))
+(defun %terminal-write-char (tty char &key reset)
   "Output a fatchar to the terminal. Flush output if it is a newline,
 i.e. the terminal is 'line buffered'."
   (let ((stream (terminal-output-stream tty)))
@@ -533,14 +533,17 @@ i.e. the terminal is 'line buffered'."
 	    (setf cc replacement))))
       (if (or fg bg attrs)
 	  (progn
-	    (write-string +intro+ stream)
 	    (when (or fg bg)
+	      (write-string +intro+ stream)
+	      (write-char #\; stream)
 	      (%terminal-color tty fg bg :unwrapped t))
 	    (when attrs
+	      (when (not (or fg bg))
+		(write-string +intro+ stream))
 	      (loop :with n
 		 :for a :in attrs :do
 		 (when (setf n (assoc a *attributes*))
-		   (terminal-raw-format tty ";~d" (cadr n)))))
+		   (terminal-raw-format tty ";~d" (cdr n)))))
 	    (write-char #\m stream))
 	  (write-string +zero-effect+ stream))
       (if (zerop line)
@@ -549,7 +552,11 @@ i.e. the terminal is 'line buffered'."
       (update-column tty cc)
       (when (eql cc #\newline)
 	(finish-output stream))
-      (write-string +zero-effect+ stream))))
+      (when reset
+	(write-string +zero-effect+ stream)))))
+
+(defmethod terminal-write-char ((tty terminal-ansi-stream) (char fatchar))
+  (%terminal-write-char tty char :reset t))
 
 (defmethod terminal-write-string ((tty terminal-ansi-stream) (str fat-string)
 				  &key start end)
@@ -579,7 +586,7 @@ i.e. the terminal is 'line buffered'."
 		   (write-char (line-char line) stream))
 	       (progn
 		 ;;(terminal-raw-format tty "~c[0m" #\escape)
-		 (terminal-write-char tty c)))
+		 (%terminal-write-char tty c :reset nil)))
 	   (setf last-c c)
 	   (when (char= cc #\newline)
 	     (setf had-newline t))
@@ -790,7 +797,7 @@ Attributes are usually keywords."
 	 (if first
 	     (setf first nil)
 	     (write-char #\; stream))
-	 (terminal-raw-format tty "~d" (cadr n))))
+	 (terminal-raw-format tty "~d" (cdr n))))
     (write-char #\m stream)))
 
 (defmethod terminal-finish-output ((tty terminal-ansi-stream))
