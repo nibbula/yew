@@ -1713,15 +1713,6 @@ is named \"COPY-OF-<Package><n>\"."
        :do (use-package pkg new-package))
     new-package))
   
-(defun interninator (name package dirt-pile)
-  "Return the symbol NAME from package if it exists, or from the DIRT-PILE
-package if it doesn't. If DIRT-PILE is NIL, return a packageless symbol."
-  (or (let ((pkg (find-package package)))
-	(and pkg (find-symbol name pkg)))
-      (if dirt-pile
-	  (intern name dirt-pile)
-	  (make-symbol name))))
-
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (when (boundp '*read-intern*)
     (d-add-feature :has-read-intern)))

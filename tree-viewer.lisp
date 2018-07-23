@@ -29,10 +29,6 @@
    #:display-object
    #:display-node
    #:display-tree
-   #:fake-code-view
-   #:fake-view-project
-   #:view-package-dependencies
-   #:view-packages
    ))
 (in-package :tree-viewer)
 
@@ -1029,6 +1025,9 @@ and indented properly for multi-line objects."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; some examples
 
+;; @@@ I should probably get this out of here since there's plenty of examples
+;; elsewhere, and it's not really a very good introductory example.
+
 (defclass foo-node (object-node)
   ())
 
@@ -1082,124 +1081,5 @@ and indented properly for multi-line objects."
   (view-tree
    (convert-tree (make-tree "." #'subdirs)
 		 :type 'foo-node)))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Code browsing
-
-(defclass code-node (object-node)
-  ())
-
-(defmethod display-node ((node code-node) level)
-  (tt-format "~v,,,va~c "
-	     (* level (indent *viewer*)) #\space ""
-	     (if (node-branches node)
-		 (if (node-open node) #\- #\+)
-		 #\space))
-  (flet ((get-name (n) (node-object (first (node-branches n))))
-	 (get-args (n)
-	   (let ((arg-node (second (node-branches n))))
-	     (append (list (node-object arg-node))
-		     (loop :for s :in (node-branches arg-node)
-			:collect (node-object s))))))
-    (cond
-      ((symbolp (node-object node))
-       (case (node-object node)
-	 ((defun defmacro defgeneric defmethod)
-	     (let* ((name (get-name node))
-		    (args (get-args node)))
-	       (tt-color :magenta :default)
-	       (tt-format "~(~s~) " (node-object node))
-	       (tt-color :green :default)
-	       (tt-format "~(~a~)" name)
-	       (tt-format " (~{~(~w~)~^ ~})~%" args)))
-	 ((defstruct defclass deftype defvar defparameter defconstant)
-	  (tt-color :magenta :default)
-	  (tt-format "~(~s~)" (node-object node))
-	  (tt-color :green :default)
-	  (tt-format " ~(~a~)~%" (get-name node)))
-      	 (otherwise
-	  (let* ((pkg (symbol-package (node-object node)))
-		 (pkg-name (and pkg (package-name pkg))))
-	    (cond
-	      ((equal pkg-name "COMMON-LISP")
-	       (tt-color :magenta :default)
-	       (tt-format "~(~s~)~%" (node-object node)))
-	      ((equal pkg-name "KEYWORD")
-	       (tt-color :blue :default)
-	       (tt-format "~(~s~)~%" (node-object node)))
-	      (t
-	       (tt-format "~(~a~)~%" (node-object node))))))))
-      ((stringp (node-object node))
-       (tt-color :cyan :default)
-       (tt-format "~s~%" (node-object node)))
-      (t
-       (let ((*print-case* :downcase))
-	 (tt-format nil "~s~%" (node-object node))))))
-  (values))
-
-(defun fake-reader (stream subchar arg)
-  "A reader macro which should have no effect on the following form."
-  (declare (ignore subchar arg))
-  (read stream t nil t))
-
-(defvar *safer-readtable* nil)
-
-(defun safer-read (stream)
-  (when (not *safer-readtable*)
-    (setf *safer-readtable* (copy-readtable))
-    ;; This should make it so that #. neither evals or errors but just
-    ;;; reads the thing, unlike setting *read-eval* false.
-    (set-dispatch-macro-character #\# #\. #'fake-reader *safer-readtable*))
-  (let ((*readtable* *safer-readtable*))
-    (package-robust-read stream nil nil)))
-
-(defun fake-code-view (&optional (file (pick-list:pick-file)))
-  "This shows why s-exps are cool."
-  (with-open-file (stm file)
-    (view-tree
-     (convert-tree
-      (append (list file)
-	      (loop :with exp
-		 :while (setf exp (safer-read stm))
-		 :collect exp))
-      :type 'code-node))))
-
-;; (defun fake-code-view-dir (&optional (directory "."))
-;;   "This shows why s-exps are cool."
-;;   (view-tree
-;;    (convert-tree
-;;     (loop :for file :in (glob:glob (s+ directory "/*.lisp"))
-;;        :collect
-;;        (with-open-file (stm file)
-;; 	 (append (list file)
-;; 		 (loop :with exp
-;; 		    :while
-;; 		    (setf exp (safer-read stm))
-;; 		    :collect exp))))
-;;     :type 'code-node)))
-
-(defun fake-code-view-files (&optional files)
-  (view-tree
-   (convert-tree
-    (append (list "Files")
-	    (loop :for file :in (or files (glob:glob "*.lisp"))
-	       :collect
-	       ;; @@@ (handler-case
-	       (with-open-file (stm file)
-		 (append (list file)
-			 (loop :with exp
-			    :while
-			    (setf exp (safer-read stm))
-			    :collect exp)))))
-    :type 'code-node)))
-
-;; This doesn't really work, because we need a reader that can handle
-;; unknown package prefixes and other errors.
-(defun fake-view-project (&rest files)
-  (let* ((ff (or files '("*.lisp" "*.asd")))
-	 (pp (or (loop :for f :in ff :appending (glob:glob f))
-		 (glob:glob "*"))))
-    (fake-code-view-files (pick-list:pick-list pp :multiple t))))
-
 
 ;; EOF

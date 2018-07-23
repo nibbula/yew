@@ -22,7 +22,7 @@ result position. This allows completion functions to look at whatever they
 want to, and replace whatever they want to, even prior to the starting
 point. When asked for all completions, they return a sequence of strings and
 a count which is the length of the sequence.")
-  (:use :cl :dlib :opsys :glob :dlib-misc :syntax :syntax-lisp
+  (:use :cl :dlib :opsys :glob :dlib-misc :reader-ext :syntax :syntax-lisp
         :terminal :terminal-ansi
 	#+use-regex :regex
 	#-use-regex :cl-ppcre
