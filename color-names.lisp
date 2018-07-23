@@ -2,15 +2,16 @@
 ;; color-names.lisp - Names for your sensations.
 ;;
 
-(let ((sb-ext:*on-package-variance* '(:warn t :error nil)))
-  (dlib:without-warning ; STFU
+;; (let (#+sbcl (sb-ext:*on-package-variance* '(:warn t :error nil)))
+;;   (dlib:without-warning ; STFU
       (defpackage :color-names
 	(:documentation "Names for your sensations.")
 	(:use :cl :dlib)
 	(:shadow cl:tan)
 	(:export
 	 #:mulge-names
-	 ))))
+	 ))
+;; ))
 
 (in-package :color-names)
 
@@ -24,7 +25,7 @@
        ,@defs)))
 
 ;; Keep this around in case we ever want to regenerate this file.
-;; #+nil-sometimes-get-pushed-on-features
+#+nil-sometimes-get-pushed-on-features
 (defun mulge-names (&optional (file "/usr/share/X11/rgb.txt"))
   (let ((n 0) start comp r g b name)
     (flet ((get-component (l)
