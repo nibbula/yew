@@ -2,13 +2,13 @@
 ;; terminal-ms.lisp - Microsoft console as a terminal.
 ;;
 
-;(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
-(declaim (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;;(declaim (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
 
 (defpackage :terminal-ms
   (:documentation "Microsoft console as a terminal.")
   (:use :cl :cffi :dlib :dlib-misc :terminal :char-util :opsys :ms
-	:trivial-gray-streams)
+	:trivial-gray-streams :fatchar)
   (:export
    #:terminal-ms
    ;; Extras:
@@ -194,6 +194,80 @@
 (defmethod terminal-write-char ((tty terminal-ms) char)
   "Output a character to the terminal."
   (write-terminal-string (terminal-file-descriptor tty) (string char)))
+
+(defparameter *line-table*
+  `#(,#\space
+     ,(code-char #x2577) ;; #\box_drawings_light_down)                     ╷
+     ,(code-char #x2576) ;; #\box_drawings_light_right)                    ╶
+     ,(code-char #x250c) ;; #\box_drawings_light_down_and_right)           ┌
+     ,(code-char #x2575) ;; #\box_drawings_light_up)                       ╵
+     ,(code-char #x2502) ;; #\box_drawings_light_vertical)                 │
+     ,(code-char #x2514) ;; #\box_drawings_light_up_and_right)             └
+     ,(code-char #x251c) ;; #\box_drawings_light_vertical_and_right)       ├
+     ,(code-char #x2574) ;; #\box_drawings_light_left)                     ╴
+     ,(code-char #x2510) ;; #\box_drawings_light_down_and_left)            ┐
+     ,(code-char #x2500) ;; #\box_drawings_light_horizontal)               ─
+     ,(code-char #x252c) ;; #\box_drawings_light_down_and_horizontal)      ┬
+     ,(code-char #x2518) ;; #\box_drawings_light_up_and_left)              ┘
+     ,(code-char #x2524) ;; #\box_drawings_light_vertical_and_left)        ┤
+     ,(code-char #x2534) ;; #\box_drawings_light_up_and_horizontal)        ┴
+     ,(code-char #x253c) ;; #\box_drawings_light_vertical_and_horizontal)  ┼
+     )
+  "Line drawing characters from Unicode.")
+
+(defun line-char (line)
+  "Convert line bits into line drawing characters."
+  (aref *line-table* line))
+
+(defun %terminal-write-char (tty char &key reset)
+  "Output a fat character to the terminal."
+  (with-slots ((cc fatchar::c)
+	       (fg fatchar::fg)
+	       (bg fatchar::bg)
+	       (line fatchar::line)
+	       (attrs fatchar::attrs)) char
+    (let ((c cc))
+      (if (or fg bg attrs)
+	  (progn
+	    (when (or fg bg)
+	      (terminal-color tty (or fg :default) (or bg :default)))
+	    (when attrs
+	      (terminal-set-attributes tty attrs)))
+	  (when reset
+	    (terminal-normal tty)))
+      (when (not (zerop line))
+	(setf c (line-char line)))
+      (write-terminal-string (terminal-file-descriptor tty) (string c))
+      (when reset
+	(terminal-normal tty)))))
+
+(defmethod terminal-write-char ((tty terminal-ms) (char fatchar))
+  (%terminal-write-char tty char :reset t))
+
+(defmethod terminal-write-string ((tty terminal-ms) (str fat-string)
+				  &key start end)
+  "Output a fat string to the terminal."
+  (when (and (not (and (and start (zerop start)) (and end (zerop end))))
+	     (fat-string-string str))
+    (let ((fs (fat-string-string str)))
+      (loop
+	 :with i = (or start 0)
+	 :and our-end = (or end (length fs))
+	 :and c :and last-c
+	 :while (< i our-end)
+	 :do
+	 (setf c (aref fs i))
+	 (with-slots ((cc fatchar::c)
+		      (line fatchar::line)) c
+	   (if (and last-c (same-effects c last-c))
+	       (if (zerop line)
+		   (terminal-write-char tty cc)
+	       	   (terminal-write-char tty (line-char line)))
+	       (progn
+		 (%terminal-write-char tty c :reset nil)))
+	   (setf last-c c))
+	 (incf i))
+      (terminal-normal tty))))
 
 (defmethod terminal-move-to ((tty terminal-ms) row col)
   (with-slots ((fd terminal::file-descriptor)) tty
@@ -598,6 +672,24 @@
   (case attribute
     ((:standout :bold :inverse :color) t)
     (:underline nil)))
+
+(defmethod terminal-set-attributes ((tty terminal-ms) attributes)
+  "Set the attributes given in the list. If NIL turn off all attributes.
+Attributes are usually keywords."
+  (loop :for a :in attributes :do
+     (case a
+       (:standout  (terminal-standout tty t))
+       (:normal    (terminal-normal tty t))
+       (:underline (terminal-underline tty t)) ; If we ever get it
+       (:bold      (terminal-bold tty t))
+       (:inverse   (terminal-inverse tty t))
+       ;; Just ignore anything we don't support.
+       )))
+
+(defmethod terminal-alternate-characters ((tty terminal-ms) state)
+  (declare (ignore state))
+  ;; Fine. Just write them. That was simple.
+  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Extra things:
