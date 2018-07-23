@@ -866,7 +866,7 @@ But also greatly increasing # of chars output.
 
 (defun read-jpeg (file-or-stream)
   (multiple-value-bind (data height width colors)
-      (cl-jpeg:decode-image file-or-stream)
+      (cl-jpeg:decode-image (nos:quote-filename file-or-stream))
     (when (not (member colors '(1 3)))
       (error "I don't know how to handle a ~d color JPEG." colors))
     ;; convert to multi-dimensional array
