@@ -29,7 +29,10 @@ Another way to do it is to have whole separate read implementation...
 If you have *READ-INTERN*, :has-read-intern should be in features, before
 loading this.
 ")
-  (:use :cl :dlib)
+  (:use :cl :dlib
+	;; extensions
+	#+ccl :ccl
+	#+sbcl :sb-ext)
   (:export
    #:clean-read-from-string
    #:package-robust-read-from-string
