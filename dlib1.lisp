@@ -1735,7 +1735,9 @@ is named \"COPY-OF-<Package><n>\"."
 
 ;; I suppose we could make this generic so that streams can do a special
 ;; things with it, but that might be sort of edging into the stream protocol.
-(defun copy-stream (source destination &key (buffer-size *buffer-size*))
+(defun copy-stream (source destination &key (buffer-size *buffer-size*)
+					 (errorp t)
+					 element-type)
   "Copy data from reading from SOURCE and writing to DESTINATION, until we get
 an EOF on SOURCE."
   ;; ^^^ We could try to make *buffer-size* be the minimum of the file size
@@ -1747,14 +1749,16 @@ an EOF on SOURCE."
   ;; that's way more complicated. Even this comment is too much. Let's just
   ;; imagine that a future IDE will collapse or footnotify comments tagged
   ;; with "^^^".
-  (when (not (eql (stream-element-type source)
-		  (stream-element-type destination)))
+  (when (and errorp
+	     (not (eql (stream-element-type source)
+		       (stream-element-type destination))))
     ;; It would be nice if we could handle this, but there are all kinds of
     ;; potential issues. Also, only subtypes of integer and character are in
     ;; the standard.
     (error "Stream element types have to match."))
   (let ((buf (make-array buffer-size
-			 :element-type (stream-element-type source)))
+			 :element-type (or element-type
+					   (stream-element-type source))))
 	pos)
     (loop :do
        (setf pos (read-sequence buf source))
