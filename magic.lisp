@@ -4,7 +4,7 @@
 
 (defpackage :magic
   (:documentation "Content sniffer.")
-  (:use :cl :dlib :opsys :stretchy)
+  (:use :cl :dlib :opsys :stretchy :dlib-misc)
   (:export
    #:content-type
    #:content-type-name
@@ -260,11 +260,12 @@
   (ensure-database)
   (funcall *guess-func* thing :buffer))
 
-;; (defmethod guess-content-type ((thing stream))
-;;   "Guess the content type of a string."
-;;   (funcall *guess-func*
-;; 	   (quote-filename (safe-namestring pathname)) :buffer))
-;;   )
+(defmethod guess-content-type ((thing stream))
+  "Guess the content type of a stream. The stream will be used up, so if you
+want to read the contents afterwards, it should be seekable or you should
+probably take a copy beforehand."
+  (ensure-database)
+  (funcall *guess-func* (slurp thing) :buffer))
 
 (defun guess-file-type (file-name)
   "Guess the content of the file FILENAME."
