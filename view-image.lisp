@@ -5,17 +5,20 @@
 (defpackage :view-image
   (:documentation "Image viewer")
   (:use :cl :dlib :dlib-misc :keymap :char-util :terminal :terminal-ansi :inator
-	:terminal-inator :magic)
+	:terminal-inator :magic :grout)
   (:export
    #:view-image
+   #:!view-image
+   #:cat-images
+   #:!imgcat
    #:image-inator
    #:register-image-inator
    #:image-inator-usable-p
    ))
 (in-package :view-image)
 
-;; (declaim (optimize (speed 3) (safety 0) (debug 0) (space 0)
-;; 		   (compilation-speed 0)))
+(declaim (optimize (speed 3) (safety 0) (debug 0) (space 0)
+		   (compilation-speed 0)))
 
 (defconstant +max-alpha+ 255
   "Maximum alpha value, i.e. no transparency.")
@@ -220,13 +223,13 @@
 					  (/ effective-image-width 2))))
 		    y (truncate (max 0 (- (/ (height inator) 2)
 					  (/ effective-image-height 2))))))
-	      (setf x (truncate (* (- (- (/ (width inator) 2)
-					 (/ (* (image-width image) zoom) 2)))
-				   (/ 1 zoom)))
-		    y (truncate (* (- (- (/ (height inator) 2)
-					 (/ (* (image-height image) zoom) 2)))
-				   (/ 1 zoom))))
-		    ))))
+	    (setf x (truncate (* (- (- (/ (width inator) 2)
+				       (/ (* (image-width image) zoom) 2)))
+				 (/ 1 zoom)))
+		  y (truncate (* (- (- (/ (height inator) 2)
+				       (/ (* (image-height image) zoom) 2)))
+				 (/ 1 zoom))))
+	    ))))
 
 (defmethod next-page ((o image-inator))
   (with-slots (y image zoom) o
@@ -511,7 +514,7 @@
 				 (format nil "[frame ~d of ~d] " subimage
 					 (length subimages)) ""))
 		(disposal (sub-image-disposal (aref subimages subimage))))
-	    (multiple-value-bind (start-x end-x start-y end-y) (clip o)
+	    (multiple-value-bind (start-x end-x start-y end-y) (old-clip o)
 	      (let ((line
 		     (format nil "~a ~dx~d ~a~a~a~f% <~d-~d ~d-~d> o:~s ~s"
 			     name width height position file-count frame-count
@@ -559,20 +562,23 @@
 
 |#
 
-(defun clip (o)
+(defun old-clip (o)
   (with-slots (x y image subimage zoom) o
     (with-slots (subimages) image
       (with-slots ((si-x x) (si-y y) width height) (aref subimages subimage)
-	(let* ((step (truncate 1 zoom))
-	       (start-x (if (> x si-x) (- x si-x) 0))
-	       (start-y (if (> y si-y) (- y si-y) 0))
-	       (end-x (min width (- width
-				    (- (+ si-x width)
-				       (+ x (* step (1- (width o))))))))
-	       (end-y (min height (- height
-				     (- (+ si-y height)
-					(+ y (1- (* step (1- (height o))))))))))
-	  (values start-x end-x start-y end-y))))))
+	(clip x y width height (width o) (height o) si-x si-y zoom)))))
+
+(defun clip (x y width height view-width view-height si-x si-y zoom)
+  (let* ((step (round 1 zoom))
+	 (start-x (if (> x si-x) (- x si-x) 0))
+	 (start-y (if (> y si-y) (- y si-y) 0))
+	 (end-x (min width (- width
+			      (- (+ si-x width)
+				 (+ x (* step (1- view-width)))))))
+	 (end-y (min height (- height
+			       (- (+ si-y height)
+				  (+ y (1- (* step (1- view-height)))))))))
+    (values start-x end-x start-y end-y)))
 
 #| 
 Could double vertical resolution with #\upper_half_block
@@ -645,140 +651,122 @@ But also greatly increasing # of chars output.
 	  (show-status inator))))))
 |#
 
-#|
-(defun term-mover (x &optional y)
-  (declare (type fixnum x y))
-  (if y
-      (tt-move-to y x)
-      (tt-move-to-col x)))
+(defun term-mover (dir n)
+  (declare (type fixnum n) (type (member :down :right :forward) dir))
+  (case dir
+    (:down    (tt-move-to n 0))
+    (:right   (tt-move-to-col n))
+    (:forward (tt-forward n))))
 
-(defun print-mover (x &optional y)
-  (declare (type fixnum x y))
-  (if y
-      (tt-move-to y x)
-      (tt-move-to-col x)))
+(defun print-mover (dir n)
+  (declare (type fixnum n) (type (member :down :right :forward) dir))
+  (case dir
+    (:down  (dotimes (i n) (tt-write-char #\newline)))
+    ((:right :forward) (dotimes (i n) (tt-write-char #\space)))))
 
-(defun print-image (x y zoom image subimage mover)
+(defun output-image (x y zoom image subimage view-width view-height mover)
   (declare (type fixnum x y) (type float zoom))
-  (flet ((move-to (y x) (funcall mover x y))
-	 (move-to-col (col) (funcall mover x)))
-    (with-slots (name subimages) image
-      (with-slots ((si-x x) (si-y y) width height data)
-	  (aref subimages subimage)
-	(declare (type fixnum si-x si-y width height))
-	(multiple-value-bind (start-x end-x start-y end-y) (clip inator)
-	  (let ((step (max 1 (truncate 1 zoom))))
-	    ;;(pause "zoom = ~s step = ~s" zoom step)
-	    (when (> si-y y)
-	      ;;(tt-move-to (max y (truncate (- si-y y) step)) 0))
-	      (move-to (max y (truncate (- (+ si-y start-y) y) step)) 0))
-	    (loop :with r = 0 :and g = 0 :and b = 0 :and a = 0
-	       :for iy fixnum :from start-y :below end-y :by step :do
-	       (when (> si-x x)
-		 ;;(tt-move-to-col (max x (truncate (- si-x x) step))))
-		 (tt-move-to-col (max x (truncate (- (+ si-x start-x) x) step))))
-	       (loop 
-		  :for ix fixnum :from start-x :below end-x :by step :do
-		  (setf r (loop :for av-y :from 0 :below step :sum
-			     (loop :for av-x :from 0 :below step
-				:sum (aref data
-					   (min (1- width) (+ ix av-x))
-					   (min (1- height) (+ iy av-y)) 0))))
-		  (setf g (loop :for av-y :from 0 :below step :sum
-			     (loop :for av-x :from 0 :below step
-				:sum (aref data
-					   (min (1- width) (+ ix av-x))
-					   (min (1- height) (+ iy av-y)) 1))))
-		  (setf b (loop :for av-y :from 0 :below step :sum
-			     (loop :for av-x :from 0 :below step
-				:sum (aref data
-					   (min (1- width) (+ ix av-x))
-					   (min (1- height) (+ iy av-y)) 2))))
-		  (setf a (loop :for av-y :from 0 :below step :sum
-			     (loop :for av-x :from 0 :below step
-				:sum (aref data
-					   (min (1- width) (+ ix av-x))
-					   (min (1- height) (+ iy av-y)) 3))))
-		  (if (not (zerop a))
-		      (progn
-			(tt-color nil (vector :rgb8
-				       (truncate r (* step step))
-				       (truncate g (* step step))
-				       (truncate b (* step step))))
-			(tt-write-char #\space)
-			(tt-color nil nil))
-		      (progn
-			(tt-forward 1)))
-		  (setf r 0 g 0 b 0 a 0))
-	       (tt-color nil nil)
-	       (tt-write-char #\newline))))
+  (flet ((mover-down (n) (funcall mover :down n))
+	 (mover-right (n) (funcall mover :right n))
+	 (mover-forward (n) (funcall mover :forward n)))
+  (with-slots (name subimages) image
+    (with-slots ((si-x x) (si-y y) width height data)
+	(aref subimages subimage)
+      (declare (type fixnum si-x si-y width height))
+      (multiple-value-bind (start-x end-x start-y end-y)
+	  (clip x y width height view-width view-height si-x si-y zoom)
+	(let ((step (max 1 (round 1 zoom))))
+	  ;;(pause "zoom = ~s step = ~s" zoom step)
+	  (when (> si-y y)
+	    ;;(tt-move-to (max y (truncate (- si-y y) step)) 0))
+	    (mover-down (max y (truncate (- (+ si-y start-y) y) step))))
+	  (loop :with r = 0 :and g = 0 :and b = 0 :and a = 0
+	     :for iy fixnum :from start-y :below end-y :by step :do
+	     (when (> si-x x)
+	       ;;(tt-move-to-col (max x (truncate (- si-x x) step))))
+	       (mover-right (max x (truncate (- (+ si-x start-x) x) step))))
+	     (loop 
+		:for ix fixnum :from start-x :below end-x :by step :do
+		(setf r (loop :for av-y :from 0 :below step :sum
+			   (loop :for av-x :from 0 :below step
+			      :sum (aref data
+					 (min (1- height) (+ iy av-y))
+					 (min (1- width) (+ ix av-x)) 0))))
+		(setf g (loop :for av-y :from 0 :below step :sum
+			   (loop :for av-x :from 0 :below step
+			      :sum (aref data
+					 (min (1- height) (+ iy av-y))
+					 (min (1- width) (+ ix av-x)) 1))))
+		(setf b (loop :for av-y :from 0 :below step :sum
+			   (loop :for av-x :from 0 :below step
+			      :sum (aref data
+					 (min (1- height) (+ iy av-y))
+					 (min (1- width) (+ ix av-x)) 2))))
+		(setf a (loop :for av-y :from 0 :below step :sum
+			   (loop :for av-x :from 0 :below step
+			      :sum (aref data
+					 (min (1- height) (+ iy av-y))
+					 (min (1- width) (+ ix av-x)) 3))))
+		(if (not (zerop a))
+		    (progn
+		      (tt-color nil (vector :rgb8
+					    (truncate r (* step step))
+					    (truncate g (* step step))
+					    (truncate b (* step step))))
+		      (tt-write-char #\space)
+		      (tt-color nil nil))
+		    (progn
+		      ;; (tt-forward 1)
+		      ;;(mover-right 1)
+		      (mover-forward 1)
+		      ))
+		(setf r 0 g 0 b 0 a 0))
+	     (tt-color nil nil)
+	     (tt-write-char #\newline))))
 	(tt-color nil nil)
-	(tt-move-to (1- (height inator)) 0)
-	(when show-modeline
-	  (show-status inator))))))
-|#
+	))))
+
+(defun print-image (file &key zoom width height)
+  (let ((t-width (tt-width))
+	;;(t-height (tt-height))
+	)
+    (with-terminal (:ansi-stream *terminal* :output-stream *standard-output*)
+      ;; (format t "file = ~s~%" file)
+      (handler-case
+	  (let* ((*show-progress* nil)
+		 (image (read-image file))
+		 (view-width (or width t-width))
+		 (view-height (or height (image-height image)))
+		 (our-zoom (or (and zoom (coerce zoom 'float))
+			       (min 1.0 ;; teporarily @@@
+				    (if height
+					(float (/ height
+						  (image-height image)))
+					(float (/ view-width
+						  (image-width image)))
+					)))))
+	    (declare (ignorable *show-progress*))
+	    (output-image 0 0 our-zoom image 0
+			  view-width
+			  view-height
+			  #'print-mover))
+	(cl-jpeg:jpeg-error (c)
+	  (format *error-output* "Error: ~a ~a~%" file c))
+	(simple-error (c)
+	  (format *error-output* "Error: ~a ~a~%" file c))))))
 
 (defun show-image (inator)
   (with-slots (x y zoom message file-index file-list image subimage looping
 	       show-modeline) inator
     (declare (type fixnum x y) (type float zoom))
-    (with-slots (name subimages) image
-      (with-slots ((si-x x) (si-y y) width height data)
-	  (aref subimages subimage)
-	(declare (type fixnum si-x si-y width height))
-	(tt-home)
-	(when (not looping)
-	  (tt-clear))
-	(multiple-value-bind (start-x end-x start-y end-y) (clip inator)
-	  (let ((step (max 1 (truncate 1 zoom))))
-	    ;;(pause "zoom = ~s step = ~s" zoom step)
-	    (when (> si-y y)
-	      ;;(tt-move-to (max y (truncate (- si-y y) step)) 0))
-	      (tt-move-to (max y (truncate (- (+ si-y start-y) y) step)) 0))
-	    (loop :with r = 0 :and g = 0 :and b = 0 :and a = 0
-	       :for iy fixnum :from start-y :below end-y :by step :do
-	       (when (> si-x x)
-		 ;;(tt-move-to-col (max x (truncate (- si-x x) step))))
-		 (tt-move-to-col (max x (truncate (- (+ si-x start-x) x) step))))
-	       (loop 
-		  :for ix fixnum :from start-x :below end-x :by step :do
-		  (setf r (loop :for av-y :from 0 :below step :sum
-			     (loop :for av-x :from 0 :below step
-				:sum (aref data
-					   (min (1- height) (+ iy av-y))
-					   (min (1- width) (+ ix av-x)) 0))))
-		  (setf g (loop :for av-y :from 0 :below step :sum
-			     (loop :for av-x :from 0 :below step
-				:sum (aref data
-					   (min (1- height) (+ iy av-y))
-					   (min (1- width) (+ ix av-x)) 1))))
-		  (setf b (loop :for av-y :from 0 :below step :sum
-			     (loop :for av-x :from 0 :below step
-				:sum (aref data
-					   (min (1- height) (+ iy av-y))
-					   (min (1- width) (+ ix av-x)) 2))))
-		  (setf a (loop :for av-y :from 0 :below step :sum
-			     (loop :for av-x :from 0 :below step
-				:sum (aref data
-					   (min (1- height) (+ iy av-y))
-					   (min (1- width) (+ ix av-x)) 3))))
-		  (if (not (zerop a))
-		      (progn
-			(tt-color nil (vector :rgb8
-				       (truncate r (* step step))
-				       (truncate g (* step step))
-				       (truncate b (* step step))))
-			(tt-write-char #\space)
-			(tt-color nil nil))
-		      (progn
-			(tt-forward 1)))
-		  (setf r 0 g 0 b 0 a 0))
-	       (tt-color nil nil)
-	       (tt-write-char #\newline))))
-	(tt-color nil nil)
-	(tt-move-to (1- (height inator)) 0)
-	(when show-modeline
-	  (show-status inator))))))
+    (tt-home)
+    (when (not looping)
+      (tt-clear))
+    (output-image x y zoom image subimage (width inator) (height inator)
+		  #'term-mover)
+    (tt-move-to (1- (height inator)) 0)
+    (when show-modeline
+      (show-status inator))))
 
 (defmethod update-display ((o image-inator))
   "Update the image viewer display."
@@ -864,9 +852,14 @@ But also greatly increasing # of chars output.
 				 :transparent transparent
 				 :data array)))))
 
+(defparameter *show-progress* t
+  "True to show progress indicators.")
+
 (defun read-jpeg (file-or-stream)
   (multiple-value-bind (data height width colors)
-      (cl-jpeg:decode-image (nos:quote-filename file-or-stream))
+      (if (streamp file-or-stream)
+	  (cl-jpeg:decode-stream file-or-stream)
+	  (cl-jpeg:decode-image (nos:quote-filename file-or-stream)))
     (when (not (member colors '(1 3)))
       (error "I don't know how to handle a ~d color JPEG." colors))
     ;; convert to multi-dimensional array
@@ -875,7 +868,7 @@ But also greatly increasing # of chars output.
       ;;(pause "JPEG ~a x ~a ~d" width height (length data))
       (with-spin ()
 	(loop :for y :from 0 :below height :do
-	   (spin)
+	   (when *show-progress* (spin))
 	   (loop :for x :from 0 :below width :do
 	      (case colors
 		(3
@@ -970,14 +963,33 @@ But also greatly increasing # of chars output.
     ("gif"  . read-gif)))
 
 (defun read-image (file-or-stream)
-  (let* ((thing (if (stringp file-or-stream)
-		    (pathname file-or-stream) file-or-stream))
-	 (type (guess-content-type thing)))
+  (let* (slurped-stream
+	 (thing (typecase file-or-stream
+		  (string (pathname file-or-stream))
+		  (pathname file-or-stream)
+		  (stream
+		   (pushnew "gomer" *modules* :test #'equal)
+		   (setf slurped-stream t)
+		   (flexi-streams:with-output-to-sequence
+		       (str :element-type '(unsigned-byte 8))
+		     ;; (slow-byte-copy-stream file-or-stream str)
+		     (copy-stream file-or-stream str :errorp nil
+				  :element-type '(unsigned-byte 8))
+		     ))
+		  (t file-or-stream))) 	; hope it's okay?
+	 (type
+	  (progn
+	    (pushnew (s+ "blalp" (type-of thing)) *modules* :test #'equal)
+	    (guess-content-type thing))))
     (if (equal (content-type-category type) "image")
 	(let ((func (cdr (assoc (content-type-name type) *image-reader-alist*
 				:test #'equal))))
+	  (pushnew "bumble" *modules* :test #'equal)
 	  (if (and func (fboundp func))
-	      (funcall (symbol-function func) file-or-stream)
+	      (if slurped-stream
+		  (flexi-streams:with-input-from-sequence (str thing)
+		    (funcall (symbol-function func) str))
+		  (funcall (symbol-function func) thing))
 	      (cerror "Skip the image."
 		      'unknown-image-type
 		      :format-arguments `(,file-or-stream
@@ -1058,18 +1070,30 @@ But also greatly increasing # of chars output.
 				:key (_ (symbol-name (cdr _)))))
 	       :own-window own-window))
 
-#|
-(defun cat-images (files)
-  (if (not files)
-      (print-image *standard-input*)
-      (map nil #'print-image files)))
+(defun cat-images (files &rest args &key zoom width height)
+  (declare (ignorable zoom width height))
+  (flet ((print-it (f)
+	   (apply #'print-image f args)))
+    (typecase files
+      (null (print-it *standard-input*))
+      ((or stream string) (print-it files))
+      (list (map nil #'print-it files)))))
 
 #+lish
 (lish:defcommand imgcat
-  ((images pathname :repeating t :help "Image to cat."))
+  ((images pathname :repeating t :help "Images to cat.")
+   (zoom number :short-arg #\z :help "Percent to zoom images.")
+   (width number :short-arg #\w
+    :help "Width to scale image to. Defaults to the terminal width.")
+   (height number :short-arg #\h
+    :help "Height to scale image to. Defaults to the appropriate height for ~
+           the width."))
   :accepts (:sequence :stream)
   "Print an image as terminal talk."
-  (cat-images (or images lish:*input* *standard-input*)))
-|#
+  (cat-images
+   (or images lish:*input* *standard-input*)
+   :width width
+   :height height
+   :zoom (when zoom (/ zoom 100))))
 
 ;; EOF
