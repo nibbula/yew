@@ -260,6 +260,11 @@
   (ensure-database)
   (funcall *guess-func* thing :buffer))
 
+(defmethod guess-content-type ((thing array))
+  "Guess the content type of a array, which should probably be octets."
+  (ensure-database)
+  (funcall *guess-func* thing :buffer))
+
 (defmethod guess-content-type ((thing stream))
   "Guess the content type of a stream. The stream will be used up, so if you
 want to read the contents afterwards, it should be seekable or you should
