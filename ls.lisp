@@ -429,22 +429,29 @@ by nos:read-directory."))
 	     (if (getf args :long)
 		 (grout-print-table (list-long x (getf args :date-format))
 				    :long-titles nil :trailing-spaces nil)
-		 (print-columns
-		  (mapcar (_ (format-short-item _ (getf args :show-size))) x)
-		  :smush t :format-char "/fatchar-io:print-string/"
-		  :stream (or *terminal* *standard-output*)
-		  :columns (terminal-window-columns
-			    (or (ls-state-outer-terminal *ls-state*)
-				*terminal*))))))
+		 (if (getf args :1-column)
+		     ;; @@@ how to get this to do color??
+		     (mapcar (_ (grout-format "~a~%"
+					      (format-short-item
+					       _ (getf args :show-size)))) x)
+		     (print-columns
+		      (mapcar (_ (format-short-item
+				  _ (getf args :show-size))) x)
+		      :smush t :format-char "/fatchar-io:print-string/"
+		      :stream (or *terminal* *standard-output*)
+		      :columns (terminal-window-columns
+				(or (ls-state-outer-terminal *ls-state*)
+				    *terminal*)))))))
       (print-it (car files))
       (loop :for list :in (cdr files) ::do
 	 (grout-princ #\newline)
 	 (print-it list)))))
 
-(defun list-files (&rest args &key files long hidden directory sort-by reverse
-				date-format collect show-size ignore-backups)
-  (declare (ignorable files long hidden directory sort-by reverse date-format
-		      collect show-size ignore-backups))
+(defun list-files (&rest args &key files long 1-column hidden directory sort-by
+				reverse date-format collect show-size
+				ignore-backups)
+  (declare (ignorable files long 1-column hidden directory sort-by reverse
+		      date-format collect show-size ignore-backups))
   ;; It seems like we have to do our own defaulting.
   (when (not files)
     (setf (getf args :files) (list (current-directory))))
@@ -468,6 +475,7 @@ by nos:read-directory."))
 (lish:defcommand ls
   ((files pathname :repeating t :help "The file(s) to list.")
    (long boolean :short-arg #\l :help "True to list in long format.")
+   (1-column boolean :short-arg #\1 :help "True to list one file per line.")
    (hidden boolean :short-arg #\a :help "True to list hidden files.")
    (directory boolean :short-arg #\d
     :help "True to list the directory itself, not its contents.")
