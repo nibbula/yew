@@ -16,6 +16,50 @@
    ))
 (in-package :terminal-curses)
 
+(defparameter *acs-table* nil
+  "Hash table of unicode character to ACS character.")
+
+(defparameter *acs-table-data*
+  `((#.(code-char #x250c) . #\l) ;; upper left corner         ulcorner   ┌
+    (#.(code-char #x2514) . #\m) ;; lower left corner         llcorner   └
+    (#.(code-char #x2510) . #\k) ;; upper right corner        urcorner   ┐
+    (#.(code-char #x2518) . #\j) ;; lower right corner        lrcorner   ┘
+    (#.(code-char #x251c) . #\t) ;; tee pointing right        ltee       ├
+    (#.(code-char #x2524) . #\u) ;; tee pointing left         rtee       ┤
+    (#.(code-char #x2534) . #\v) ;; tee pointing up           btee       ┴
+    (#.(code-char #x252c) . #\w) ;; tee pointing down         ttee       ┬
+    (#.(code-char #x2500) . #\q) ;; horizontal line           hline      ─
+    (#.(code-char #x2502) . #\x) ;; vertical line             vline      │
+    (#.(code-char #x253c) . #\n) ;; large plus or crossover   plus       ┼
+    (#.(code-char #x23ba) . #\o) ;; scan line 1               s1         ⎺
+    (#.(code-char #x23bd) . #\s) ;; scan line 9               s9         ⎽
+    (#.(code-char #x25c6) . #\`) ;; diamond                   diamond    ◆
+    (#.(code-char #x2592) . #\a) ;; checker board (stipple)   ckboard    ▒
+    (#.(code-char #x00b0) . #\f) ;; degree symbol             degree     °
+    (#.(code-char #x00b1) . #\g) ;; plus/minus                plminus    ±
+    (#.(code-char #x00b7) . #\~) ;; bullet                    bullet     ·
+    (#.(code-char #x2190) . #\,) ;; arrow pointing left       larrow     ←
+    (#.(code-char #x2192) . #\+) ;; arrow pointing right      rarrow     →
+    (#.(code-char #x2193) . #\.) ;; arrow pointing down       darrow     ↓
+    (#.(code-char #x2191) . #\-) ;; arrow pointing up         uarrow     ↑
+    (#.(code-char #x2591) . #\h) ;; board of squares          board      ▒
+    (#.(code-char #x240b) . #\i) ;; lantern symbol            lantern    ␋
+    (#.(code-char #x2588) . #\a) ;; solid square block        block      █
+    (#.(code-char #x23bb) . #\p) ;; scan line 3               s3         ⎻
+    (#.(code-char #x23bc) . #\r) ;; scan line 7               s7         ⎼
+    (#.(code-char #x2264) . #\y) ;; less/equal                lequal     ≤
+    (#.(code-char #x2265) . #\z) ;; greater/equal             gequal     ≥
+    (#.(code-char #x03c0) . #\{) ;; Pi                        pi         π
+    (#.(code-char #x2260) . #\|) ;; not equal                 nequal     ≠
+    (#.(code-char #x00a3) . #\}) ;; UK pound sign             sterling   £
+    ))
+
+(defun make-acs-table ()
+  "Make the alternate character set table."
+  (setf *acs-table* (make-hash-table))
+  (loop :for (uc . ac) :in *acs-table-data* :do
+     (setf (gethash uc *acs-table*) ac)))
+
 ;; @@@ Does this even make sense?
 (defclass terminal-curses-stream (terminal-stream)
   ()
@@ -552,49 +596,6 @@ Attributes are usually keywords."
      (when (setf n (assoc a *attributes*))
        (attron (cdr n)))))
      
-(defparameter *acs-table* nil
-  "Hash table of unicode character to ACS character.")
-
-(defparameter *acs-table-data*
-  `((#.(code-char #x250c) . #\l) ;; upper left corner         ulcorner   ┌
-    (#.(code-char #x2514) . #\m) ;; lower left corner         llcorner   └
-    (#.(code-char #x2510) . #\k) ;; upper right corner        urcorner   ┐
-    (#.(code-char #x2518) . #\j) ;; lower right corner        lrcorner   ┘
-    (#.(code-char #x251c) . #\t) ;; tee pointing right        ltee       ├
-    (#.(code-char #x2524) . #\u) ;; tee pointing left         rtee       ┤
-    (#.(code-char #x2534) . #\v) ;; tee pointing up           btee       ┴
-    (#.(code-char #x252c) . #\w) ;; tee pointing down         ttee       ┬
-    (#.(code-char #x2500) . #\q) ;; horizontal line           hline      ─
-    (#.(code-char #x2502) . #\x) ;; vertical line             vline      │
-    (#.(code-char #x253c) . #\n) ;; large plus or crossover   plus       ┼
-    (#.(code-char #x23ba) . #\o) ;; scan line 1               s1         ⎺
-    (#.(code-char #x23bd) . #\s) ;; scan line 9               s9         ⎽
-    (#.(code-char #x25c6) . #\`) ;; diamond                   diamond    ◆
-    (#.(code-char #x2592) . #\a) ;; checker board (stipple)   ckboard    ▒
-    (#.(code-char #x00b0) . #\f) ;; degree symbol             degree     °
-    (#.(code-char #x00b1) . #\g) ;; plus/minus                plminus    ±
-    (#.(code-char #x00b7) . #\~) ;; bullet                    bullet     ·
-    (#.(code-char #x2190) . #\,) ;; arrow pointing left       larrow     ←
-    (#.(code-char #x2192) . #\+) ;; arrow pointing right      rarrow     →
-    (#.(code-char #x2193) . #\.) ;; arrow pointing down       darrow     ↓
-    (#.(code-char #x2191) . #\-) ;; arrow pointing up         uarrow     ↑
-    (#.(code-char #x2591) . #\h) ;; board of squares          board      ▒
-    (#.(code-char #x240b) . #\i) ;; lantern symbol            lantern    ␋
-    (#.(code-char #x2588) . #\a) ;; solid square block        block      █
-    (#.(code-char #x23bb) . #\p) ;; scan line 3               s3         ⎻
-    (#.(code-char #x23bc) . #\r) ;; scan line 7               s7         ⎼
-    (#.(code-char #x2264) . #\y) ;; less/equal                lequal     ≤
-    (#.(code-char #x2265) . #\z) ;; greater/equal             gequal     ≥
-    (#.(code-char #x03c0) . #\{) ;; Pi                        pi         π
-    (#.(code-char #x2260) . #\|) ;; not equal                 nequal     ≠
-    (#.(code-char #x00a3) . #\}) ;; UK pound sign             sterling   £
-    ))
-
-(defun make-acs-table ()
-  "Make the alternate character set table."
-  (setf *acs-table* (make-hash-table))
-  (loop :for (uc . ac) :in *acs-table-data* :do
-     (setf (gethash uc *acs-table*) ac)))
 
 (defmethod terminal-alternate-characters ((tty terminal-curses) state)
   (setf (translate-alternate-characters tty) state)
