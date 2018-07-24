@@ -175,7 +175,18 @@ GUESS-TYPE can be one of:
     (:mime-and-encoding (magic-setflags (magic-db)
 			  (logior *magic-default-flags* +MAGIC-MIME+))))
   (ccase thing-type
-    (:buffer (magic-buffer (magic-db) thing (length thing)))
-    (:file   (magic-file   (magic-db) thing))))
+    (:file (magic-file (magic-db) thing))
+    (:buffer
+     (cond
+       ((subtypep (array-element-type thing) 'character)
+	(magic-buffer (magic-db) thing (length thing)))
+       ((subtypep (array-element-type thing) '(unsigned-byte 8))
+	;; This is very inefficient
+	;; @@@ perhaps we should check for compatible element-types?
+	(let ((len (length thing)))
+	  (with-foreign-object (buf :uint8 len)
+	    (loop :for i :from 0 :below len
+	       :do (setf (mem-aref buf :uint8 i) (aref thing i)))
+	    (magic-buffer (magic-db) buf len))))))))
 
 ;; EOF
