@@ -378,7 +378,11 @@ generic functions (i.e. %GROUT-*) directly."
   "Return the width of the output, or NIL for infinite or unknown."
   (declare (ignore g))
   (let ((rows (nos:environment-variable "ROWS")))
-    (or (and rows (parse-integer rows)) 24)))
+    (or (and rows (parse-integer rows))
+	(and *terminal*
+	     (typep *terminal* 'terminal-ansi)
+	     (terminal-window-rows *terminal*))
+	24)))
 
 (defmethod %grout-bold ((g ansi-stream) string)
   "Output the string boldly."
@@ -452,8 +456,8 @@ generic functions (i.e. %GROUT-*) directly."
 		      lines miser-width pprint-dispatch pretty radix
 		      readably right-margin))
   (terminal-write-string (ansi-stream g)
-		   (with-output-to-string (str)
-		     (apply #'write object :stream str args))))
+			 (with-output-to-string (str)
+			   (apply #'write object :stream str args))))
 
 (defmethod %grout-format ((g ansi-stream) format-string &rest format-args)
   (apply #'terminal-format (ansi-stream g) format-string format-args))
