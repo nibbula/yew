@@ -1204,6 +1204,9 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
 (defvar *spin-length* nil
   "The pre-calculated length of the spin string.")
 
+(defvar *spin-spun* nil
+  "True if the spinner was spun at least once.")
+
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *spin-strings* nil
     "List of spin strings.")
@@ -1247,6 +1250,7 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
   (write-char #\backspace stream)
   (finish-output stream)
   (incf *spin*)
+  (setf *spin-spun* t)
   (when (>= *spin* *spin-length*)
     (setf *spin* 0)))
 
@@ -1264,9 +1268,11 @@ SPIN-STRING can be given and defaults to the value of *DEFAULT-SPIN-STRING*."
   `(let* ((*spin-string* ,(or spin-string
 			      '(symbol-value '*default-spin-string*)))
 	  (*spin-length* (length *spin-string*))
-	  (*spin* 0))
+	  (*spin* 0)
+	  (*spin-spun* nil))
      (prog1 (progn ,@body)
-       (unspin))))
+       (when *spin-spun*
+	 (unspin)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; packages
@@ -1404,7 +1410,9 @@ text into lisp and have it be stored as lines of words."
 ;; I don't think this should ever a slurp a URL, because security?.
 ;; Anyway Drakma does it better.
 
-(defun slurp (file-or-stream &key (external-format :default))
+(defun slurp (file-or-stream &key
+			       (external-format :default)
+			       (element-type 'character))
   "Return a string (well actually an array of stream-element-type, which
 defaults to character) with the contents of FILE-OR-STREAM."
   (let (stream (close-me nil) buffer pos len result)
@@ -1413,10 +1421,11 @@ defaults to character) with the contents of FILE-OR-STREAM."
 	   (setf stream
 		 (etypecase file-or-stream
 		   (null *standard-input*)
-		   (stream file-or-stream)
-		   (string
+		   (stream file-or-stream) ; already a stream
+		   (string ; a file name
 		    (setf close-me t)
-		    (open file-or-stream :external-format external-format))))
+		    (open file-or-stream :external-format external-format
+			  :element-type element-type))))
 	   (if (and (typep stream 'file-stream)
 		    (setf len (safe-file-length stream))
 		    len)
@@ -1435,7 +1444,8 @@ defaults to character) with the contents of FILE-OR-STREAM."
 					  (stream-element-type stream))
 		       result
 		       (with-output-to-string
-			   (str nil :element-type (stream-element-type stream))
+			   (str nil
+				:element-type (stream-element-type stream))
 			 (loop :do
 			    (setf pos (read-sequence buffer stream))
 			    (when (> pos 0)
