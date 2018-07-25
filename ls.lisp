@@ -425,20 +425,23 @@ by nos:read-directory."))
 (defun present-files (files args)
   ;;(format t "present files -> ~s~%" files)
   (with-grout ()
+    ;; (format t "grout ~s~%grout-stream ~s~%term ~s~%stdout ~s~%"
+    ;; 	    *grout* (grout-stream *grout*) *terminal* *standard-output*)
     (flet ((print-it (x)
 	     (if (getf args :long)
 		 (grout-print-table (list-long x (getf args :date-format))
 				    :long-titles nil :trailing-spaces nil)
 		 (if (getf args :1-column)
-		     ;; @@@ how to get this to do color??
 		     (mapcar (_ (grout-format "~a~%"
 					      (format-short-item
 					       _ (getf args :show-size)))) x)
 		     (print-columns
 		      (mapcar (_ (format-short-item
 				  _ (getf args :show-size))) x)
-		      :smush t :format-char "/fatchar-io:print-string/"
-		      :stream (or *terminal* *standard-output*)
+		      :smush t
+		      :format-char "/fatchar-io:print-string/"
+		      ;; :stream (or *terminal* *standard-output*)
+		      ;; :stream (grout-stream *grout*)
 		      :columns (terminal-window-columns
 				(or (ls-state-outer-terminal *ls-state*)
 				    *terminal*)))))))
