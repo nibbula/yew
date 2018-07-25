@@ -357,7 +357,8 @@ processing."
   (let ((string (apply #'format nil fmt args)))
     ;; @@@ Let's try to think of some way we could do the ACS translation.
     ;; For now, ACS characters printed with format might not work right.
-    (apply #'format (terminal-output-stream tty) fmt args)
+    ;; (apply #'format (terminal-output-stream tty) fmt args)
+    (apply #'format tty fmt args)
     (update-column tty string)
     (when (position #\newline string)
       (finish-output tty))))
@@ -741,8 +742,9 @@ i.e. the terminal is 'line buffered'."
   (tt-format "~a11;~a~a" +osc+ (color-to-xcolor (lookup-color color)) +st+))
 
 (defun %terminal-color (tty fg bg &key unwrapped)
-  (let ((fg-pos (position fg *colors*))
-	(bg-pos (position bg *colors*)))
+  (let ((fg-pos (and (keywordp fg) (position fg *colors*)))
+	(bg-pos (and (keywordp bg) (position bg *colors*)))
+	did-one)
     (when (and (keywordp fg) (not fg-pos))
       (error "Forground ~a is not a known color." fg))
     (when (and (keywordp bg) (not bg-pos))
@@ -754,19 +756,23 @@ i.e. the terminal is 'line buffered'."
 	(terminal-raw-format tty "38;2;~d;~d;~d" 
 			     (color-component c :red)
 			     (color-component c :green)
-			     (color-component c :blue))))
+			     (color-component c :blue))
+	(setf did-one t)))
     (when (structured-color-p bg)
       (let ((c (convert-color-to bg :rgb8)))
 	(terminal-raw-format tty "48;2;~d;~d;~d"
 			     (color-component c :red)
 			     (color-component c :green)
-			     (color-component c :blue))))
+			     (color-component c :blue))
+	(setf did-one t)))
     (cond
       ((and fg bg fg-pos bg-pos)
        (terminal-raw-format tty "~d;~d" (+ 30 fg-pos) (+ 40 bg-pos)))
       ((and fg fg-pos)
+       (if did-one (write-char #\; (terminal-output-stream tty)))
        (terminal-raw-format tty "~d" (+ 30 fg-pos)))
       ((and bg bg-pos)
+       (if did-one (write-char #\; (terminal-output-stream tty)))
        (terminal-raw-format tty "~d" (+ 40 bg-pos))))
     (when (not unwrapped)
       (terminal-raw-format tty "m"))))

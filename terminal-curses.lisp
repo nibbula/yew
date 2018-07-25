@@ -256,8 +256,9 @@ require terminal driver support."))
 
 (defmethod terminal-format ((tty terminal-curses) fmt &rest args)
   "Output a formatted string to the terminal."
-  (let ((string (apply #'format nil fmt args)))
-    (terminal-write-string tty string)))
+  ;; (let ((string (apply #'format nil fmt args)))
+  ;;   (terminal-write-string tty string))
+  (apply #'format tty fmt args))
 
 #+curses-use-wide
 (defvar *wide-char* (cffi:foreign-alloc :int :count 2))
