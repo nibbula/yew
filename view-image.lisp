@@ -55,6 +55,9 @@
 
 (defkeymap *image-viewer-keymap*)
 (defkeymap *image-viewer-escape-keymap*)
+
+(defparameter *show-progress* t
+  "True to show progress indicators.")
   
 (defclass image-inator (terminal-inator)
   ((image
@@ -852,8 +855,6 @@ But also greatly increasing # of chars output.
 				 :transparent transparent
 				 :data array)))))
 
-(defparameter *show-progress* t
-  "True to show progress indicators.")
 
 (defun read-jpeg (file-or-stream)
   (multiple-value-bind (data height width colors)
