@@ -462,14 +462,10 @@ i.e. the terminal is 'line buffered'."
     (setf fg :white))
   (when (eq bg :default)
     (setf bg :black))
-  (when (not (color-number fg))
-    (error "Forground ~a is not a known color." fg))
-  (when (not (color-number bg))
-    (error "Background ~a is not a known color." bg))
-  (color-set (color-index
-	      (or (color-number fg) +color-white+)
-	      (or (color-number bg) +color-black+))
-	     (cffi:null-pointer)))
+  (let ((fg-num (color-number fg))
+	(bg-num (color-number bg)))
+    (when (and fg-num bg-num)
+      (color-set (color-index fg-num bg-num) (cffi:null-pointer)))))
 
 ;; 256 color? ^[[ 38;5;color <-fg 48;5;color <- bg
 ;; set color tab = ^[] Ps ; Pt BEL
