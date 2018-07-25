@@ -10,7 +10,7 @@
     :licence            "GPLv3"
     :source-control	:git
     :long-description   "Totally fake old style user interface."
-    :depends-on (:dlib :dlib-misc :stretchy :opsys :char-util :keymap :cffi
-		 :curses :terminal :terminal-curses :inator)
+    :depends-on (:dlib :dlib-misc :stretchy :char-util :keymap :terminal
+		 :inator)
     :components
     ((:file "fui")))

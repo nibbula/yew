@@ -4,7 +4,7 @@
 
 (defpackage :terminal-inator
   (:documentation "I'll be back.")
-  (:use :cl :dlib :keymap :inator :terminal)
+  (:use :cl :dlib :keymap :inator :terminal :fui)
   (:export
    #:terminal-inator
    ))
@@ -51,7 +51,6 @@
   (apply #'message i format-string args)
   (tt-finish-output))
 
-#|
 (defun inator-doc-finder (i func)
   "Find documentation for an inator (subclass) method."
   (when (fboundp func)
@@ -74,7 +73,6 @@
 		      :append
 		      (help-list k (_ (inator-doc-finder i _))))
 		   :justify nil))))
-|#
 
 (defmethod redraw ((i terminal-inator))
   "Redraw the screen."

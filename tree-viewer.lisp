@@ -6,7 +6,7 @@
   (:documentation "View trees.")
   (:nicknames :tb)
   (:use :cl :dlib :opsys :dlib-misc :char-util :keymap :pick-list
-	:glob #| :dlib-interactive |# :inator :terminal :terminal-inator)
+	:glob #| :dlib-interactive |# :inator :terminal :terminal-inator :fui)
   (:export
    #:view-tree
    #:node #:node-branches #:node-open #:make-node
@@ -729,17 +729,13 @@ been encountered."
 
 (defun node-info (o)
   "Display node information."
-  (declare (ignore o))
-  #| @@@ Hold off until we implement display-text for terminals
   (with-slots (current) o
     (fui:display-text
      "Node Info"
      (list (format nil "Node: ~a" current)
 	   (format nil " open     : ~a" (node-open current))
 	   (format nil " branches : ~a" (node-branches current))
-	   (format nil " parent   : ~a" (get-parent current)))))
-  |#
-  )
+	   (format nil " parent   : ~a" (get-parent current))))))
 
 (defmethod initialize-instance
     :after ((o tree-viewer) &rest initargs &key &allow-other-keys)
