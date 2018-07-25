@@ -796,15 +796,21 @@ i.e. the terminal is 'line buffered'."
   "Set the attributes given in the list. If NIL turn off all attributes.
 Attributes are usually keywords."
   (with-slots ((stream terminal::output-stream)) tty
-    (write-string +csi+ stream)
-    (loop :with n :and first = t
-       :for a :in attributes :do
-       (when (setf n (assoc a *attributes*))
-	 (if first
-	     (setf first nil)
-	     (write-char #\; stream))
-	 (terminal-raw-format tty "~d" (cdr n))))
-    (write-char #\m stream)))
+    (etypecase attributes
+      (list
+       (write-string +csi+ stream)
+       (loop :with n :and first = t
+	  :for a :in attributes :do
+	  (when (setf n (assoc a *attributes*))
+	    (if first
+		(setf first nil)
+		(write-char #\; stream))
+	    (terminal-raw-format tty "~d" (cdr n))))
+       (write-char #\m stream))
+      (keyword
+       (let ((n (assoc attributes *attributes*)))
+	 (when n
+	   (terminal-raw-format tty "~a~dm" +csi+ (cdr n))))))))
 
 (defmethod terminal-finish-output ((tty terminal-ansi-stream))
   (finish-output (terminal-output-stream tty)))
