@@ -15,8 +15,8 @@ It doesn't do anything fancy. It just saves you from typing the commands.
 It has an extremely limited vocabulary.
 It currently knows how to talk to Git, SVN, CVS an Mercurial."
     :depends-on (:dlib :dlib-misc :opsys :keymap :char-util :curses :rl
-		 :completion :inator :terminal :terminal-curses :fui :lish
-		 :pager :view :options
+		 :completion :inator :terminal :terminal-curses :curses-inator
+		 :fui :lish :pager :view :options
 		 #+use-re :re
 		 #-use-re :cl-ppcre
 		 )

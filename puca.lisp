@@ -21,7 +21,8 @@
   (:documentation
    "Putative Muca (A very simple(istic) interface to CVS/git/svn).")
   (:use :cl :dlib :dlib-misc :opsys :keymap :char-util :curses :rl
-	:completion :inator :terminal :terminal-curses :fui :options
+	:completion :inator :terminal :terminal-curses :curses-inator :fui
+	:options
 	#+use-regex :regex #-use-regex :ppcre)
   (:export
    ;; Main entry point
@@ -44,7 +45,7 @@
 (defvar *puca* nil
   "The current puca instance.")
 
-(defclass puca (fui-inator options-mixin)
+(defclass puca (curses-inator options-mixin)
   ((backend
     :initarg :backend :accessor puca-backend :initform nil
     :documentation "The revision control system backend that we are using.")
