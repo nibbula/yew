@@ -13,7 +13,7 @@
 (defpackage :terminal-ansi
   (:documentation "Standard terminal (ANSI).")
   (:use :cl :cffi :dlib :dlib-misc :terminal :char-util :opsys
-	:trivial-gray-streams :fatchar :color)
+	:trivial-gray-streams :fatchar :color :terminal-crunch)
   (:export
    #:terminal-ansi-stream
    #:terminal-ansi
@@ -77,6 +77,11 @@
    :initarg :fake-column :accessor terminal-ansi-stream-fake-column
    :initform 0 :type fixnum
    :documentation "Guess for the current column.")
+   (cost-stream
+    :initarg :cost-stream :accessor terminal-ansi-stream-cost-stream
+    :initform nil
+    :documentation
+    "Another terminal-ansi-stream to keep around for calculating costs.")
    (translate-alternate-characters
     :initarg :translate-alternate-characters
     :accessor translate-alternate-characters
@@ -223,12 +228,12 @@ two values ROW and COLUMN."
       (setf output-stream (open-terminal
 			   (or device-name *default-device-name*)
 			   :output))
+      (dbugf 'terminal-ansi "terminal-ansi open out ~s~%" output-stream)
       ;; @@@ Why do we have to do this?
       ;; #+ccl (setf (stream-external-format output-stream)
       ;; 		  (ccl:make-external-format :character-encoding :utf-8
       ;; 					    :domain :file))
       )
-      ;; (dbug "terminal-ansi open out~%"))
     (terminal-get-size tty)
     saved-mode))
 
@@ -429,28 +434,34 @@ Report parameters are returned as values. Report is assumed to be in the form:
       |#
       str)))
 
+(defun %write-string/line (tty str func start end)
+  (when (not (and (and start (zerop start)) (and end (zerop end))))
+    (let ((stream (terminal-output-stream tty)))
+      (when (and (translate-alternate-characters tty)
+		 (stringp str))
+	(translate-acs-chars str :start start :end end))
+      (apply func `(,str ,stream
+			 ,@(and start `(:start ,start))
+			 ,@(and end `(:end ,end))))
+      ;;(write-string str stream :start start :end end)
+      (update-column tty str :start start :end end))))
+
 (defmethod terminal-write-string ((tty terminal-ansi-stream) str
 				  &key start end)
   "Output a string to the terminal. Flush output if it contains a newline,
 i.e. the terminal is 'line buffered'."
-  (when (not (and (and start (zerop start)) (and end (zerop end))))
-    (let ((stream (terminal-output-stream tty)))
-      ;; (format *standard-output* "DORP ~s ~s ~s~%"
-      ;; 	      *standard-output* *terminal-io* *terminal*)
-      ;; (format *standard-output* "DEERRRRP ~s ~s ~s ~s->~s<-~%"
-      ;;  	      start end (length str) (type-of str) str)
-      (when (and (translate-alternate-characters tty)
-		 (stringp str))
-	(translate-acs-chars str :start start :end end))
-      (apply #'write-string `(,str ,stream
-				   ,@(and start `(:start ,start))
-				   ,@(and end `(:end ,end))))
-      ;;(write-string str stream :start start :end end)
-      (update-column tty str :start start :end end)
-      (when (apply #'position `(#\newline ,str
-					  ,@(and start `(:start ,start))
-					  ,@(and end `(:end ,end))))
-	(finish-output stream)))))
+  (%write-string/line tty str #'write-string start end)
+  (when (apply #'position `(#\newline ,str
+				      ,@(and start `(:start ,start))
+				      ,@(and end `(:end ,end))))
+    (finish-output (terminal-output-stream tty))))
+
+(defmethod terminal-write-line ((tty terminal-ansi-stream) str
+				&key start end)
+  "Output a string to the terminal, followed by a newline."
+  (%write-string/line tty str #'write-line start end)
+  (update-column tty #\newline)
+  (finish-output (terminal-output-stream tty)))
 
 (defmethod terminal-write-char ((tty terminal-ansi-stream) char)
   "Output a character to the terminal. Flush output if it is a newline,
@@ -559,10 +570,9 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-write-char ((tty terminal-ansi-stream) (char fatchar))
   (%terminal-write-char tty char :reset t))
 
-(defmethod terminal-write-string ((tty terminal-ansi-stream) (str fat-string)
-				  &key start end)
-  "Output a string to the terminal. Flush output if it contains a newline,
-i.e. the terminal is 'line buffered'."
+(defun %write-fat-string (tty str start end)
+  "Write a fat string STR to TTY from START to END. Return true if there was a
+newline in it."
   (when (and (not (and (and start (zerop start)) (and end (zerop end))))
 	     (fat-string-string str))
     (let ((stream (terminal-output-stream tty))
@@ -594,9 +604,21 @@ i.e. the terminal is 'line buffered'."
 	   (update-column tty cc))
 	 (incf i))
       (write-string +zero-effect+ stream)
-      ;;(terminal-raw-format tty "~c[0m" #\escape)
-      (when had-newline
-	(finish-output stream)))))
+      had-newline)))
+
+(defmethod terminal-write-string ((tty terminal-ansi-stream) (str fat-string)
+				  &key start end)
+  "Output a string to the terminal. Flush output if it contains a newline,
+i.e. the terminal is 'line buffered'."
+  (when (%write-fat-string tty str start end)
+    (finish-output (terminal-output-stream tty))))
+
+(defmethod terminal-write-line ((tty terminal-ansi-stream) (str fat-string)
+				&key start end)
+  "Output a string to the terminal, followed by a newline."
+  (%write-fat-string tty str start end)
+  (write-char #\newline (terminal-output-stream tty))
+  (finish-output (terminal-output-stream tty)))
 
 (defmethod terminal-move-to ((tty terminal-ansi-stream) row col)
   (terminal-raw-format tty "~c[~d;~dH" #\escape (1+ row) (1+ col))
@@ -640,11 +662,11 @@ i.e. the terminal is 'line buffered'."
   (moverize tty n #\B #\A))
 
 (defmethod terminal-scroll-down ((tty terminal-ansi-stream) n)
-  (if (> n 0)
-      (loop :with stream = (terminal-output-stream tty) and i = 0
-	 :while (< i n)
-	 :do (write-char #\newline stream) (incf i)
-	 :finally (finish-output stream))))
+  (when (> n 0)
+    (loop :with stream = (terminal-output-stream tty) and i = 0
+       :while (< i n)
+       :do (write-char #\newline stream) (incf i)
+       :finally (finish-output stream))))
 
 (defmethod terminal-erase-to-eol ((tty terminal-ansi-stream))
   (terminal-raw-format tty "~c[K" #\escape))
@@ -1421,6 +1443,53 @@ XTerm or something."
   ;; ‘fundamental-character-input-stream’ must define a method for this
   ;; function.
   (add-typeahead stream character))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Costs
+
+;; To figure out costs, we just output to string and count the characters.
+;; We keep around a special terminal-stream just for the purpose.
+
+;; @@@ Could some of these benefit from memo-ization?
+
+(defun ensure-cost-stream (tty)
+  (when (not (terminal-ansi-stream-cost-stream tty))
+    (setf (terminal-ansi-stream-cost-stream tty)
+	  (make-instance 'terminal-ansi-stream))))
+
+(defmacro calculate-cost ((tty) &body body)
+  "Cacluate the cost, in chacaters output, of evaluating terminal operations
+in BODY. Output should be done to COST-STREAM."
+  (with-unique-names (str)
+    `(progn
+       (ensure-cost-stream ,tty)
+       (length
+	(with-output-to-string (,str)
+	  (setf (terminal-output-stream
+		 (terminal-ansi-stream-cost-stream ,tty)) ,str)
+	  (let ((cost-stream (terminal-ansi-stream-cost-stream ,tty)))
+	    ,@body))))))
+
+(defmethod output-cost ((tty terminal-ansi) (op (eql :move-to)) &rest params)
+  (calculate-cost (tty)
+   (terminal-move-to cost-stream (first params) (second params))))
+
+(defmethod output-cost ((tty terminal) (op (eql :move-to-col)) &rest params)
+  (calculate-cost (tty)
+   (terminal-move-to-col cost-stream (first params))))
+
+(defmethod output-cost ((tty terminal) (op (eql :color)) &rest params)
+  (calculate-cost (tty)
+   (terminal-color cost-stream (first params) (second params))))
+
+(defmethod output-cost ((tty terminal) (op (eql :write-fatchar)) &rest params)
+  (calculate-cost (tty)
+   (terminal-write-char cost-stream (first params))))
+
+(defmethod output-cost ((tty terminal) (op (eql :write-fatchar-string))
+			&rest params)
+  (calculate-cost (tty)
+   (terminal-write-string cost-stream (make-fat-string :string (first params)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
