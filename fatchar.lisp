@@ -49,6 +49,32 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
   (line 0 :type fixnum)
   (attrs nil :type list))
 
+(defun fatchar-init (c)
+  "Initialize a fatchar with the default vaules."
+  (setf (fatchar-c     c)	(code-char 0)
+	(fatchar-fg    c)	:white
+	(fatchar-bg    c)	:black
+	(fatchar-line  c)	0
+	(fatchar-attrs c)	nil))
+
+;; @@@ This should be renamed to copy-fatchar, dontcha think?
+(defun copy-fat-char (c)
+  (declare (type fatchar c))
+  (when c
+    (make-fatchar
+     :c	    (fatchar-c c)
+     :fg    (fatchar-fg c)
+     :bg    (fatchar-bg c)
+     :line  (fatchar-line c)
+     :attrs (fatchar-attrs c))))
+
+(defun same-effects (a b)
+  "Return true if the two fatchars have the same colors and attributes."
+  (and (equal (fatchar-fg a) (fatchar-fg b))
+       (equal (fatchar-bg a) (fatchar-bg b))
+       (not (set-exclusive-or (fatchar-attrs a) (fatchar-attrs b)
+			      :test #'eq))))
+
 (deftype fatchar-string (&optional size)
   "A string of FATCHARs."
   `(vector fatchar ,size))
@@ -104,31 +130,6 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 		     #'fatchar-c)
 	   ,@(when start-p `(:start ,start))
 	   ,@(when end-p `(:end ,end)))))
-
-(defun fatchar-init (c)
-  "Initialize a fatchar with the default vaules."
-  (setf (fatchar-c     c)	(code-char 0)
-	(fatchar-fg    c)	:white
-	(fatchar-bg    c)	:black
-	(fatchar-line  c)	0
-	(fatchar-attrs c)	nil))
-
-(defun copy-fat-char (c)
-  (declare (type fatchar c))
-  (when c
-    (make-fatchar
-     :c	    (fatchar-c c)
-     :fg    (fatchar-fg c)
-     :bg    (fatchar-bg c)
-     :line  (fatchar-line c)
-     :attrs (fatchar-attrs c))))
-
-(defun same-effects (a b)
-  "Return true if the two fatchars have the same colors and attributes."
-  (and (equal (fatchar-fg a) (fatchar-fg b))
-       (equal (fatchar-bg a) (fatchar-bg b))
-       (not (set-exclusive-or (fatchar-attrs a) (fatchar-attrs b)
-			      :test #'eq))))
 
 (defun make-fatchar-string (thing)
   "Make a fat string from something. THING can be a string or a character."
