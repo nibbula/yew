@@ -8,6 +8,14 @@
 	:curses :terminal :terminal-curses :inator)
   (:export
    #:curses-inator
+   #:color-attr
+   #:with-curses
+   #:with-fg
+   #:with-bg
+   #:with-color
+   #:set-colors
+   #:add-char
+   #:add-string
    ))
 (in-package :curses-inator)
 
@@ -222,6 +230,8 @@ foreground FG and background BG."
       (setf (mem-aref fstr :int len) 0)
       (addnwstr fstr len))))
 
+#| Now in fui using terminal-*
+
 (defun wcentered (w width row str)
   "Put a centered string STR in window W of width WIDTH at row ROW."
   (mvwaddstr w row (round (- (/ width 2) (/ (length str) 2))) str))
@@ -306,6 +316,7 @@ keymap bindings."
 			 (loop :for k :in (gethash func rev-hash)
 			    :collect (nice-char k :caret t)))
 		 doc)))))
+|#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; curses-inator
