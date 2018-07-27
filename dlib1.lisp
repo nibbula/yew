@@ -63,6 +63,7 @@ of it.")
    #:split-sequence-if
    #:split-sequence-by-range
    #:replace-subseq
+   #:displaced-subseq
    #:begins-with
    #:ends-with
    #:remove-prefix
@@ -547,6 +548,13 @@ REPLACEMENT."
 		 (sequence (type-of sequence)))
 	       new))
       (copy-seq sequence)))
+
+(defun displaced-subseq (array start &optional end)
+  "Like subseq, but returns a displaced array. Try not to use this."
+  (make-array (if end (- end start) (length array))
+	      :element-type (array-element-type array)
+	      :displaced-to array
+	      :displaced-index-offset start))
 
 ;; @@@ compare vs. the ones in alexandria?
 (defun begins-with (this that &key (test #'eql))
