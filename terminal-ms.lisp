@@ -195,6 +195,11 @@
   "Output a character to the terminal."
   (write-terminal-string (terminal-file-descriptor tty) (string char)))
 
+(defmethod terminal-write-line ((tty terminal-ms) str &key start end)
+  "Output a string to the terminal, followed by a newline."
+  (terminal-write-string tty str :start start :end end)
+  (terminal-write-char tty #\newline))
+
 (defparameter *line-table*
   `#(,#\space
      ,(code-char #x2577) ;; #\box_drawings_light_down)                     ╷

@@ -88,6 +88,12 @@ require terminal driver support."))
 			       ,@(and start `(:start ,start))
 			       ,@(and end `(:end ,end)))))
 
+(defmethod terminal-write-line ((tty terminal-dumb) str &key start end)
+  "Output a string to the terminal, followed by a newline."
+  (apply #'write-line `(,str ,(terminal-output-stream tty)
+			     ,@(and start `(:start ,start))
+			     ,@(and end `(:end ,end)))))
+
 (defmethod terminal-write-string ((tty terminal-dumb) (str fat-string)
 				  &key start end)
   "Output a string to the terminal."
@@ -95,6 +101,14 @@ require terminal driver support."))
 			   ,(terminal-output-stream tty)
 			   ,@(and start `(:start ,start))
 			   ,@(and end `(:end ,end)))))
+
+(defmethod terminal-write-line ((tty terminal-dumb) (str fat-string)
+				&key start end)
+  "Output a string to the terminal, followed by a newline."
+  (apply #'write-line `(,(fat-string-to-string str)
+			 ,(terminal-output-stream tty)
+			 ,@(and start `(:start ,start))
+			 ,@(and end `(:end ,end)))))
 
 (defmethod terminal-write-char ((tty terminal-dumb) char)
   "Output a character to the terminal."

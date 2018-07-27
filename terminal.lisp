@@ -34,6 +34,7 @@
    #:with-terminal #:with-new-terminal
    #:tt-format			  #:terminal-format			;
    #:tt-write-string		  #:terminal-write-string		;
+   #:tt-write-line		  #:terminal-write-line			;
    #:tt-write-char		  #:terminal-write-char			;
    #:tt-move-to			  #:terminal-move-to			;
    #:tt-move-to-col		  #:terminal-move-to-col		;
@@ -190,14 +191,17 @@ two values ROW and COLUMN."))
 
 (defgeneric terminal-start (terminal)
   (:documentation
-   "Set up the terminal for reading a character at a time without echoing."))
+   "Set up the terminal for reading a character at a time without echoing.
+Return state object that should be passed to terminal-end or terminal-done."))
 
 (defgeneric terminal-end (terminal &optional state)
   (:documentation
-   "Put the terminal back to the way it was before we called terminal-start."))
+   "Put the terminal back to the way it was before we called terminal-start.
+STATE should be an object returned by TERMINAL-START."))
 
 (defgeneric terminal-done (terminal &optional state)
-  (:documentation "Forget about the whole terminal thing and stuff."))
+  (:documentation "Forget about the whole terminal thing and stuff.
+STATE should be an object returned by TERMINAL-START."))
 
 ;; (defmacro with-terminal-stream ((var stream) &body body)
 ;;   "Evaluate the body with VAR set to a new terminal-stream."
@@ -306,6 +310,9 @@ generic function with *TERMINAL* as it's first arg, for API prettyness."
 (deftt write-string (str &key start end)
   "Output a string to the terminal. Flush output if it contains a newline,
 i.e. the terminal is \"line buffered\"")
+
+(deftt write-line (str &key start end)
+  "Output a string to the terminal, followed by a newline.")
 
 (deftt write-char (char)
   "Output a character to the terminal. Flush output if it is a newline,

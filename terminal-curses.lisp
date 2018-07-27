@@ -254,6 +254,10 @@ require terminal driver support."))
     #-curses-use-wide
     (addstr out-str)))
 
+(defmethod terminal-write-line ((tty terminal-curses) str &key start end)
+  (terminal-write-string tty str :start start :end end)
+  (addch #\newline))
+
 (defmethod terminal-format ((tty terminal-curses) fmt &rest args)
   "Output a formatted string to the terminal."
   ;; (let ((string (apply #'format nil fmt args)))
@@ -363,6 +367,11 @@ i.e. the terminal is 'line buffered'."
 	   (setf last-c c))
 	 (incf i))
       (attrset +a-normal+))))
+
+(defmethod terminal-write-line ((tty terminal-curses) (str fat-string)
+				&key start end)
+  (terminal-write-string tty str :start start :end end)
+  (addch #\newline))
 
 (defmethod terminal-move-to ((tty terminal-curses) row col)
   (move row col))
