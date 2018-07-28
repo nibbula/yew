@@ -73,6 +73,7 @@ of it.")
    #:ltrim #:rtrim #:trim
    #:join-by-string
    #:join-by
+   #:fill-by
    #-clisp #:doseq
    ;; lists
    #:delete-nth
@@ -551,7 +552,7 @@ REPLACEMENT."
 
 (defun displaced-subseq (array start &optional end)
   "Like subseq, but returns a displaced array. Try not to use this."
-  (make-array (if end (- end start) (length array))
+  (make-array (- (or end (length array)) start)
 	      :element-type (array-element-type array)
 	      :displaced-to array
 	      :displaced-index-offset start))
@@ -705,6 +706,22 @@ basically the reverse of SPLIT-SEQUENCE."
 
 ;; (defmethod join ((type (eql 'list)) (this list) thing &key &allow-other-keys)
 ;;   (cons this (if (atom thing) (list thing) thing)))
+
+;; Not exactly fill or map-into
+(defun fill-by (sequence function &key (start 0) end)
+  "Replace elements of SEQUENCE from START to END with the results of calling
+FUNCTION. START defaults to 0. END defaults to the end of the sequence."
+  (etypecase sequence
+    (list
+     ;; This seems bad somehow.
+     (let ((our-end (or end (length sequence))))
+       (loop :for e :on (nth start sequence)
+	  :for i :from start :below our-end
+	  :do (rplaca e (funcall function)))))
+    (vector
+     ;; I think it's more useful for vectors.
+     (loop :for i :from start :below (or end (length sequence))
+	:do (setf (aref sequence i) (funcall function))))))
 
 ;; As you may know, improper use of this can cause troublesome bugs.
 (defun delete-nth (n list)
