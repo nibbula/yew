@@ -6,10 +6,7 @@
   (:documentation "Tests for terminal-crunch.")
   (:use :cl :dlib :terminal :terminal-crunch :terminal-ansi :fatchar)
   (:export
-   #:test-1
-   #:test-2
-   #:test-3
-   #:test-4
+   #:test-1 #:test-2 #:test-3 #:test-4 #:test-5
    ))
 (in-package :terminal-crunch-test)
 
@@ -212,5 +209,24 @@
 	 (dump-hashes *terminal*)
 	 (case (tt-get-key) ((#\Q #\q) (throw 'quit nil)))
 	 ))))
+
+(defun test-5 (device-name)
+  (with-crunch (device-name)
+    (tt-clear)
+    (tt-home)
+    (let ((width  (terminal-window-columns *terminal*))
+	  ;;(height (terminal-window-rows *terminal*))
+	  ;;(junk "%@#-.")
+	  )
+      (loop :with str
+	 :for i :from 1 :to 200 :do
+	 (setf str (format nil "~d" (expt 2 i)))
+	 (tt-write-string (subseq str 0 (min (1- width) (length str))))
+	 (tt-write-char #\newline)
+	 (tt-finish-output)
+	 (dump-screen *terminal*)
+	 (case (tt-get-key) ((#\Q #\q) (throw 'quit nil)))
+	 ))))
+
 
 ;; EOF
