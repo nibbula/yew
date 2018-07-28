@@ -21,7 +21,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:fatchar-string
    #:fat-string #:fat-string-string
    #:fatchar-init
-   #:copy-fat-char
+   #:copy-fatchar
    #:same-effects
    #:make-fat-string
    #:make-fatchar-string
@@ -57,16 +57,15 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 	(fatchar-line  c)	0
 	(fatchar-attrs c)	nil))
 
-;; @@@ This should be renamed to copy-fatchar, dontcha think?
-(defun copy-fat-char (c)
-  (declare (type fatchar c))
-  (when c
-    (make-fatchar
-     :c	    (fatchar-c c)
-     :fg    (fatchar-fg c)
-     :bg    (fatchar-bg c)
-     :line  (fatchar-line c)
-     :attrs (fatchar-attrs c))))
+;; (defun copy-fatchar (c)
+;;   (declare (type fatchar c))
+;;   (when c
+;;     (make-fatchar
+;;      :c	    (fatchar-c c)
+;;      :fg    (fatchar-fg c)
+;;      :bg    (fatchar-bg c)
+;;      :line  (fatchar-line c)
+;;      :attrs (fatchar-attrs c))))
 
 (defun same-effects (a b)
   "Return true if the two fatchars have the same colors and attributes."
