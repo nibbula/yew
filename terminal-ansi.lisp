@@ -668,6 +668,14 @@ i.e. the terminal is 'line buffered'."
        :do (write-char #\newline stream) (incf i)
        :finally (finish-output stream))))
 
+(defmethod terminal-scroll-up ((tty terminal-ansi-stream) n)
+  (when (> n 0)
+    (loop :with stream = (terminal-output-stream tty) and i = 0
+       :while (< i n)
+       :do (terminal-raw-format tty "~cM" #\escape)
+       (incf i)
+       :finally (finish-output stream))))
+
 (defmethod terminal-erase-to-eol ((tty terminal-ansi-stream))
   (terminal-raw-format tty "~c[K" #\escape))
 
