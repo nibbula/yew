@@ -44,6 +44,9 @@ for various operations through the OUTPUT-COST methods.
 (defparameter *blank-char*
   (make-fatchar :c #\space))
 
+(defun blank-char ()
+  (copy-fatchar *blank-char*))
+
 (defmacro clamp (n start end)
   `(cond
      ((< ,n ,start) (setf ,n ,start))
@@ -73,7 +76,7 @@ for various operations through the OUTPUT-COST methods.
     :documentation "Saved cursor position. A cons cell of X and Y.")
    (allow-scrolling
     :initarg :allow-scrolling :accessor allow-scrolling
-    :initform nil :type boolean
+    :initform t :type boolean
     :documentation
     "True to allow scrolling when outputing past the bottom of the screen.")
    (update-x
@@ -198,14 +201,14 @@ two values ROW and COLUMN."
        (otherwise
 	(error "I don't know how to hash a ~s." (type-of ,thing))))))
 
-; (defun hash-thing (thing &optional (value (fnv-like-hash-seed)))
-;;   (hash-thing-with value thing fnv-like-hash fnv-like-hash-seed))
+(defun hash-thing (thing &optional (value (fnv-like-hash-seed)))
+  (hash-thing-with thing value fnv-like-hash fnv-like-hash-seed))
 ;; (defun hash-thing (thing &optional (value (fnv-like-hash-seed)))
-;;    (hash-thing-with value thing curses-hash curses-hash-seed))
+;;    (hash-thing-with thing value curses-hash curses-hash-seed))
 ;; (defun hash-thing (thing &optional (value (bix-hash-seed)))
-;;     (hash-thing-with value thing bix-hash bix-hash-seed))
-(defun hash-thing (thing &optional (value (sxhash-hash-seed)))
-  (hash-thing-with thing value sxhash-hash sxhash-hash-seed))
+;;     (hash-thing-with thing value bix-hash bix-hash-seed))
+;; (defun hash-thing (thing &optional (value (sxhash-hash-seed)))
+;;   (hash-thing-with thing value sxhash-hash sxhash-hash-seed))
 
 (defun compute-hashes (screen)
   (with-slots (lines hashes) screen
@@ -227,7 +230,8 @@ two values ROW and COLUMN."
 			:initial-element (make-fatchar)))
       (dotimes (j cols)
 	(setf (aref (aref lines i) j)
-	      (copy-fat-char *blank-char*))))
+	      (copy-fatchar *blank-char*))))
+    (compute-hashes result)
     result))
 
 (defmethod terminal-start ((tty terminal-crunch))
@@ -244,6 +248,8 @@ two values ROW and COLUMN."
 	      (make-new-screen (terminal-window-rows wtty)
 			       (terminal-window-columns wtty)))
 	(compute-hashes (old-screen tty)))
+      (setf (terminal-window-rows tty) (terminal-window-rows wtty)
+	    (terminal-window-columns tty) (terminal-window-columns wtty))
       ;; Start with a clean slate. 
       (terminal-clear wtty)
       (terminal-home wtty)
@@ -297,11 +303,11 @@ two values ROW and COLUMN."
 	    (setf (subseq lines (- height n)) new-blanks)
 	    ;; Blank out the newly blank lines
 	    (loop :for line :across new-blanks :do
-	       (fill line *blank-char*))))
+	       (fill-by line #'blank-char))))
 	(progn
 	  ;; Just erase everything
 	  (loop :for line :across lines :do
-	     (fill line *blank-char*))))))
+	     (fill-by line #'blank-char))))))
 
 (defun copy-char (tty char)
   "Put the CHAR at the current screen postion."
@@ -315,8 +321,11 @@ two values ROW and COLUMN."
 		     (fatchar-line fc) 0)) ;; maybe unless it's a line char??
 	     (next-line ()
 	       (if (< y (1- height))
-		   (incf y)
-		   (when (allow-scrolling tty)
+		   (progn
+		     (incf y)
+		     (setf x 0))
+		   (when (and (allow-scrolling tty)
+			      (not (= x (1- width))))
 		     (scroll tty 1)))))
 	(case char
 	  (#\newline
@@ -334,7 +343,7 @@ two values ROW and COLUMN."
 	  (t
 	   (set-char (aref (aref lines y) x) char)
 	   (let ((new-x (+ x (display-length char))))
-	     (if (< new-x (1- width))
+	     (if (< new-x width)
 		 (setf x new-x)
 		 (next-line)))))))))
 
@@ -410,8 +419,14 @@ then no."
   (let ((string (apply #'format nil fmt args)))
     ;; This can have print-object do some other stuff...
     ;; @@@ maybe?
-    (apply #'format tty fmt args)
+    ;; (apply #'format tty fmt args)
+    (copy-to-screen tty string)
     (note-change tty string)))
+
+(defmethod terminal-alternate-characters ((tty terminal-crunch) state)
+  (declare (ignore tty state))
+  ;; Let's just assume it will work.
+  )
 
 (defmethod terminal-write-string ((tty terminal-crunch-stream) str
 				  &key start end)
@@ -440,20 +455,18 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-del-char ((tty terminal-crunch-stream) n)
   (with-slots (x y width lines) (new-screen tty)
-    ;; @@@ quick case for n=1
     (clamp n 0 (- width x))
     (setf (subseq (aref lines y) x (max 0 (- width n)))
-	  (displaced-subseq (aref lines y)
-			    (min (+ x n) (1- width))))
-    (fill (aref lines y) *blank-char* :start (max 0 (- width n)))
+	  (subseq (aref lines y) (min (+ x n) (1- width))))
+    (fill-by (aref lines y) #'blank-char :start (max 0 (- width n)))
     (note-length-based tty n)))
 
 (defmethod terminal-ins-char ((tty terminal-crunch-stream) n)
   (with-slots (x y width lines) (new-screen tty)
     (clamp n 0 (- width x))
-    (setf (subseq (aref lines y) (max (+ x n) (- width n)))
-	  (subseq (aref lines y)
-		  (min (+ x n) (1- width))))
+    (setf (subseq (aref lines y) (min (+ x n) (1- width)))
+	  (subseq (aref lines y) x))
+    (fill-by (aref lines y) #'blank-char :start x :end (+ x n))
     (note-length-based tty n)))
 
 ;; Note that we don't have to replicate the somewhat bizarre line wrapping
@@ -498,37 +511,37 @@ i.e. the terminal is 'line buffered'."
 	(scroll tty (- n (- height y)))))))
 
 (defmethod terminal-erase-to-eol ((tty terminal-crunch-stream))
-  (fill (aref (screen-lines (new-screen tty)) (screen-y (new-screen tty)))
-	*blank-char*
-	:start (screen-x (new-screen tty)))
+  (fill-by (aref (screen-lines (new-screen tty)) (screen-y (new-screen tty)))
+	   #'blank-char
+	   :start (screen-x (new-screen tty)))
   (note-single-line tty))
 
 (defmethod terminal-erase-line ((tty terminal-crunch-stream))
-  (fill (aref (screen-lines (new-screen tty)) (screen-y (new-screen tty)))
-	*blank-char*)
+  (fill-by (aref (screen-lines (new-screen tty)) (screen-y (new-screen tty)))
+	   #'blank-char)
   (note-single-line tty))
 
 (defmethod terminal-erase-above ((tty terminal-crunch-stream))
   (with-slots (x y height lines) (new-screen tty)
     (loop :for i :from 0 :below y :do
-       (fill (aref lines i) *blank-char*))
-    (fill (aref lines y) *blank-char* :start 0 :end x)
+       (fill-by (aref lines i) #'blank-char))
+    (fill-by (aref lines y) #'blank-char :start 0 :end x)
     (if (zerop y)
 	(note-single-line tty)
 	(no-hints tty))))
 
 (defmethod terminal-erase-below ((tty terminal-crunch-stream))
   (with-slots (x y height lines) (new-screen tty)
-    (fill (aref lines y) *blank-char* :start x)
+    (fill-by (aref lines y) #'blank-char :start x)
     (loop :for i :from (1+ y) :below height
-       :do (fill (aref lines i) *blank-char*))
+       :do (fill-by (aref lines i) #'blank-char))
     (if (= y (1- height))
 	(note-single-line tty)
 	(no-hints tty))))
 
 (defmethod terminal-clear ((tty terminal-crunch-stream))
   (loop :for line :across (screen-lines (new-screen tty)) :do
-     (fill line *blank-char*))
+     (fill-by line #'blank-char))
   (no-hints tty))
 
 (defmethod terminal-home ((tty terminal-crunch-stream))
@@ -664,7 +677,7 @@ i.e. the terminal is 'line buffered'."
 	   ;; When the cost of potential single character movement
 	   ;; is greater than a full move-to, just do the move-to
 	   ((> (+ (abs (- new-x old-x))
-		  (abs (- new-x old-x)))
+		  (abs (- new-y old-y)))
 	       (output-cost wtty :move-to new-x new-y))
 	    (terminal-move-to wtty new-y new-x))
 	   ;; - see if combo of backspace and newline will be cheaper than
@@ -676,12 +689,38 @@ i.e. the terminal is 'line buffered'."
 	    ;; @@ fuck it for now
 	    (terminal-move-to wtty new-y new-x))))
 	((not (eql new-x old-x))
-	 (terminal-move-to wtty new-y new-x))
+	 ;; Horizontal movement
+	 (let ((n (abs (- new-x old-x))))
+	   (if (< new-x old-x)
+	       (progn
+		 (let ((move-to-col-cost (output-cost wtty :move-to-col new-x)))
+		   ;; @@@ if a return + spaces will work
+		   ;; (if (and (< new-x move-to-col-cost)
+		   ;;          (is-blank line 0 new-x))
+		   ;;     (progn
+		   ;; 	    (terminal-write-char wtty #\return)
+		   ;;       (dotimes (i n) (terminal-write-char wtty #\space))))
+		   (if (< move-to-col-cost n)
+		       (terminal-move-to-col wtty new-x)
+		       (dotimes (i n) (terminal-write-char wtty #\backspace)))))
+	       (progn
+		 (if (< (output-cost wtty :forward n) n)
+		     (terminal-forward wtty n)
+		     ;;; @@@ check of we can space over
+		     ;; (if (position *blank-char* (subseq line old-x new-x))
+		     (terminal-forward wtty n))))))
 	((not (eql new-y old-y))
-	 (terminal-move-to wtty new-y new-x)))
+	 ;; Vertical movement
+	 (let ((n (abs (- new-y old-y))))
+	   (if (> new-y old-y)
+	       ;; @@@ This only works if newline isn't translated CR-NL!
+	       ;; (if (< (output-cost wtty :down n) n)
+	       ;; 	   (terminal-down wtty n)
+	       ;; 	   (dotimes (i n) (terminal-write-char wtty #\newline)))
+	       (terminal-down wtty n)
+	       (terminal-up wtty n)))))
       (setf (update-x tty) new-x
 	    (update-y tty) new-y))))
-
 
 (defun update-position (tty new old)
   (crunched-move-to tty
@@ -695,23 +734,32 @@ i.e. the terminal is 'line buffered'."
 	(terminal-cursor-on wtty)
 	(terminal-cursor-off wtty))))
 
-(defun update-beeps (wtty new)
+(defun update-beeps (tty new)
   (when (not (zerop (screen-beep-count new)))
     ;; This is ridiculous. We could just compress multiple beeps to one.
     (dotimes (i (screen-beep-count new))
-      (terminal-beep wtty))))
+      (terminal-beep (wrapped-terminal tty)))
+    ;; We've drained the beeps, so they're not still there next time.
+    (setf (screen-beep-count new) 0)))
 
-(defun move-cost (wtty from-x from-y to-x to-y)
-  (declare (ignore wtty from-x from-y to-x to-y))
+(defun move-cost (tty from-x from-y to-x to-y)
+  (declare (ignore tty))
   ;; @@@ FIX ME
-  8
-  )
+  ;; @@@ we should probably just "cost" a crunched-move-to
+  (cond
+    ((or (eql to-y from-y)
+	 (eql to-x from-x))
+     ;; horizontal or vertical
+     5)
+    (t
+     ;; both
+     8)))
 
 (defun update-line (tty line)
   (let* ((old-line (aref (screen-lines (old-screen tty)) line))
 	 (new-line (aref (screen-lines (new-screen tty)) line))
 	 (wtty (wrapped-terminal tty))
-	 (new-line-cost (output-cost wtty :write-fatchar-string new-line))
+	 new-line-cost
 	 (change-cost 0)
 	 first-change
 	 (last-change 0)
@@ -721,51 +769,76 @@ i.e. the terminal is 'line buffered'."
     (dbugf :crunch "update-line ~s~%" line)
     
     ;; Go through chars and calculate approximate cost to output differences.
-    (loop
-       :for i :from 0 :below (length new-line) :do
-       (if (not (equalp (aref new-line i) (aref old-line i)))
-	   (progn
-	     (when (not first-change)
-	       (setf first-change i))
-	     ;; Note change start
-	     (when (not change-range)
-	       (setf change-range (cons i nil)))
-
-	     ;; Cost of writing this char (@@@ as if it was new)
-	     (incf change-cost
-		   (output-cost wtty :write-fatchar (aref new-line i)))
-
-	     ;; If we have to move since the last change, add that.
-	     (if (> (- i last-change) 1)
-		 (incf change-cost
-		       (move-cost wtty last-change line i line)))
-
-	     (setf last-change i))
-	   (progn ;; chars are equal
-	     ;; Note change end
+    (flet ((note-change-end (i)
 	     (when change-range
 	       (setf (cdr change-range) i)
-	       (push change-range changes)))))
+	       (push change-range changes)
+	       (setf change-range nil))))
+      (loop
+	 :for i :from 0 :below (length new-line) :do
+	 (if (not (equalp (aref new-line i) (aref old-line i)))
+	     (progn
+	       (when (not first-change)
+		 (setf first-change i))
+	       ;; Note change start
+	       (when (not change-range)
+		 (setf change-range (cons i nil)))
+
+	       ;; Cost of writing this char (@@@ as if it was new)
+	       (incf change-cost
+		     (output-cost wtty :write-fatchar (aref new-line i)))
+
+	       ;; If we have to move since the last change, add that.
+	       (if (> (- i last-change) 1)
+		   (incf change-cost
+			 (move-cost tty last-change line i line)))
+
+	       (setf last-change i))
+	     (progn ;; chars are equal
+	       ;; Note change end
+	       (note-change-end i)))
+	 :finally (note-change-end (1- i))))
+
+    (when changes
+      (setf changes (nreverse changes))
+
+      ;; We don't really need to calculate the whole line cost every time,
+      ;; but what is a good heuristic for when we do?
+      (when (> (length changes) (/ (length new-line) 2))
+	(setf new-line-cost
+	      (output-cost wtty :write-fatchar-string new-line))))
+
+    (dbugf :crunch "new-line-cost ~a change-cost ~s~%~
+                    first-change ~s last-change ~a~%~
+                    change-range ~s~%"
+	   new-line-cost change-cost first-change last-change changes)
 
     (when (not first-change)
       (error "We thought we had to update line ~s, but we didn't?" line))
-	
+
+    ;; @@@ Try to see if we can use insert / delete.
     (crunched-move-to tty first-change line (update-x tty) (update-y tty))
-    (if (> new-line-cost change-cost)
+    (if (or (not new-line-cost) (> new-line-cost change-cost))
 	(progn
 	  ;; Output changes
 	  (loop :for c :in changes :do
 	     (crunched-move-to tty (car c) line (update-x tty) (update-y tty))
-	     ;; (format *debug-io* "FLOOB! ~s~%" wtty)
+	     (dbugf :crunch "update-line FLOOB ~s ~s~%" line c)
 	     (terminal-write-string wtty (make-fat-string :string new-line)
 				    :start (car c)
-				    :end (1+ (cdr c)))))
+				    :end (1+ (cdr c)))
+	     ;; @@@ This is wrong since it should be display-length
+	     (setf (update-x tty) (1+ (cdr c)))
+	     ))
 	(progn
 	  ;; Write a whole new line
-	  ;; (format *debug-io* "WINKY! ~s~%" wtty)
+	  (dbugf :crunch "update-line WINKY ~s ~s-~s~%" line first-change
+		 (1+ last-change))
 	  (terminal-write-string wtty (make-fat-string :string new-line)
 				 :start first-change
-				 :end (1+ last-change))))))
+				 :end (1+ last-change))
+	  (setf (update-x tty) (1+ last-change))
+	  ))))
 
 (defun copy-new-to-old (tty)
   (let ((new (new-screen tty))
@@ -782,10 +855,10 @@ i.e. the terminal is 'line buffered'."
     (loop :for i :from 0 :below (length (screen-lines new))
        :do
        (map-into (aref (screen-lines old) i)
-		 #'copy-fat-char (aref (screen-lines new) i)))
+		 #'copy-fatchar (aref (screen-lines new) i)))
     (setf (screen-hashes old) (copy-seq (screen-hashes new)))))
 
-(defmethod terminal-finish-output ((tty terminal-crunch-stream))
+(defun update-display (tty)
   "This is the big crunch."
   (with-slots ((wrapped wrapped-terminal)
 	       (old old-screen)
@@ -813,7 +886,8 @@ i.e. the terminal is 'line buffered'."
        ;; (crunched-move-to tty 0 (single-line-change tty)
        ;; 			 (screen-x old) (screen-y old))
        ;; ;; @@@ it could be something else? like insert or delete?
-       ;; (terminal-write-string wrapped (aref (screen-lines new) (screen-y new)))
+       ;; (terminal-write-string wrapped (aref (screen-lines new)
+       ;;                                      (screen-y new)))
        (update-line tty (single-line-change tty))
        )
       ;; No hints.
@@ -826,11 +900,20 @@ i.e. the terminal is 'line buffered'."
        ;; update changed lines
        (loop :for i :from 0 :below (length (screen-hashes new)) :do
 	  (when (/= (aref (screen-hashes new) i) (aref (screen-hashes old) i))
-	    (update-line tty i)))))
+	    (update-line tty i)))
+       (when (or (not (eql (update-x tty) (screen-x new)))
+		 (not (eql (update-y tty) (screen-y new))))
+	 (crunched-move-to tty
+			   (screen-x new) (screen-y new)
+			   (update-x tty) (update-y tty)))))
     (update-cursor-state wrapped new old)
-    (update-beeps wrapped new)
+    (update-beeps tty new)
     (copy-new-to-old tty)
     (finish-output wrapped)))
+
+(defmethod terminal-finish-output ((tty terminal-crunch-stream))
+  "Make sure everything is output to the terminal."
+  (update-display tty))
 
 (defmethod terminal-get-char ((tty terminal-crunch))
   (terminal-finish-output tty)
