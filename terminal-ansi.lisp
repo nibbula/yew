@@ -1478,6 +1478,22 @@ in BODY. Output should be done to COST-STREAM."
   (calculate-cost (tty)
    (terminal-move-to-col cost-stream (first params))))
 
+(defmethod output-cost ((tty terminal) (op (eql :up)) &rest params)
+  (calculate-cost (tty)
+   (terminal-up cost-stream (first params))))
+
+(defmethod output-cost ((tty terminal) (op (eql :down)) &rest params)
+  (calculate-cost (tty)
+   (terminal-down cost-stream (first params))))
+
+(defmethod output-cost ((tty terminal) (op (eql :backward)) &rest params)
+  (calculate-cost (tty)
+   (terminal-backward cost-stream (first params))))
+
+(defmethod output-cost ((tty terminal) (op (eql :forward)) &rest params)
+  (calculate-cost (tty)
+   (terminal-forward cost-stream (first params))))
+
 (defmethod output-cost ((tty terminal) (op (eql :color)) &rest params)
   (calculate-cost (tty)
    (terminal-color cost-stream (first params) (second params))))
