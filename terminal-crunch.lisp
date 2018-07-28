@@ -39,6 +39,7 @@ for various operations through the OUTPUT-COST methods.
   cursor-state
   (beep-count 0)
   lines
+  index
   hashes)
 
 (defparameter *blank-char*
@@ -216,18 +217,21 @@ two values ROW and COLUMN."
        :do (setf (aref hashes i) (hash-thing (aref lines i))))))
 
 (defun make-new-screen (rows cols)
-  (let* ((lines (make-array rows :element-type 'fatchar-string))
+  (let* ((lines  (make-array rows :element-type 'fatchar-string))
 	 (hashes (make-array rows :element-type 'integer))
+	 (index  (make-array rows :element-type 'fixnum))
 	 (result (make-screen
 		  :x 0 :y 0 :width cols :height rows
 		  :cursor-state t ;; don't really know?
 		  :lines lines
-		  :hashes hashes)))
+		  :hashes hashes
+		  :index index)))
     (dotimes (i rows)
       (setf (aref lines i)
 	    (make-array cols
 			:element-type 'fatchar
-			:initial-element (make-fatchar)))
+			:initial-element (make-fatchar))
+	    (aref index i) i)
       (dotimes (j cols)
 	(setf (aref (aref lines i) j)
 	      (copy-fatchar *blank-char*))))
@@ -290,35 +294,65 @@ two values ROW and COLUMN."
 ||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||#
 
 (defun scroll (tty n)
-  (with-slots (x y width height fg bg attrs scrolling-region lines)
+  (with-slots (x y width height fg bg attrs scrolling-region lines index)
       (new-screen tty)
+    (labels ((index-blanker (x)
+	       (fill x -1))
+	     (line-blanker (x)
+	       (loop :for line :across x :do
+		  (fill-by line #'blank-char)))
+	     (scroll-copy (array blanker)
+	       (let ((new-blanks (subseq array 0 n))) ; save overwritten lines
+		 ;; Copy the retained lines up
+		 (setf (subseq array 0 (- height n))
+		       ;; (subseq lines n (1- height)))
+		       (subseq array n height))
+		 ;; Move the new blank lines in place.
+		 (setf (subseq array (- height n)) new-blanks)
+		 ;; Blank out the newly blank lines
+		 (funcall blanker new-blanks))))
     (if (< n height)
 	(progn
-	  ;; Copy exsting lines up
-	  (let ((new-blanks (subseq lines 0 n))) ; save the overwritten lines
-	    ;; Copy the retained lines up
-	    (setf (subseq lines 0 (- height n))
-		  (subseq lines n (1- height)))
-	    ;; Move the new blank lines in place.
-	    (setf (subseq lines (- height n)) new-blanks)
-	    ;; Blank out the newly blank lines
-	    (loop :for line :across new-blanks :do
-	       (fill-by line #'blank-char))))
+	  ;; ;; Copy exsting lines up
+	  ;; (let ((new-blanks (subseq lines 0 n))) ; save the overwritten lines
+	  ;;   ;; Copy the retained lines up
+	  ;;   (setf (subseq lines 0 (- height n))
+	  ;; 	  ;; (subseq lines n (1- height)))
+	  ;; 	  (subseq lines n height))
+	  ;;   ;; Move the new blank lines in place.
+	  ;;   (setf (subseq lines (- height n)) new-blanks)
+	  ;;   ;; Blank out the newly blank lines
+	  ;;   (loop :for line :across new-blanks :do
+	  ;;      (fill-by line #'blank-char))))
+	  (scroll-copy lines #'line-blanker)
+	  (scroll-copy index #'index-blanker))
 	(progn
 	  ;; Just erase everything
-	  (loop :for line :across lines :do
-	     (fill-by line #'blank-char))))))
+	  (line-blanker lines)
+	  (index-blanker index))))))
 
 (defun copy-char (tty char)
   "Put the CHAR at the current screen postion."
   (with-slots (fg bg attrs) tty
     (with-slots (x y width height scrolling-region lines) (new-screen tty)
-      (flet ((set-char (fc char)
-	       (setf (fatchar-c fc) char
-		     (fatchar-fg fc) fg
-		     (fatchar-bg fc) bg
-		     (fatchar-attrs fc) attrs
-		     (fatchar-line fc) 0)) ;; maybe unless it's a line char??
+      (flet ((char-char (c)
+	       (etypecase c
+		 (fatchar (fatchar-c c))
+		 (character c)))
+	     (set-char (fc char)
+	       (etypecase char
+		 (character
+		  (setf (fatchar-c fc) char
+			(fatchar-fg fc) fg
+			(fatchar-bg fc) bg
+			(fatchar-attrs fc) attrs
+			(fatchar-line fc) 0)) ;; maybe unless it's a line char??
+		 (fatchar
+		  (setf (fatchar-c fc) (fatchar-c char)
+			(fatchar-fg fc) (fatchar-fg char)
+			(fatchar-bg fc) (fatchar-bg char)
+			(fatchar-attrs fc) (fatchar-attrs char)
+			(fatchar-line fc) (fatchar-line char)))))
 	     (next-line ()
 	       (if (< y (1- height))
 		   (progn
@@ -327,7 +361,7 @@ two values ROW and COLUMN."
 		   (when (and (allow-scrolling tty)
 			      (not (= x (1- width))))
 		     (scroll tty 1)))))
-	(case char
+	(case (char-char char) ; char-char char-char char-char char-char-char
 	  (#\newline
 	   (terminal-erase-to-eol tty)
 	   (setf x 0)
@@ -351,9 +385,6 @@ two values ROW and COLUMN."
   (with-slots (x y width height fg bg attrs scrolling-region) (new-screen tty)
     (loop
        :with i = (or start 0)
-       ;; :and ix = x
-       ;; :and iy = y
-       ;; :and line = (aref lines y)
        :and str = (if (or start end)
 		      (displaced-subseq string start end)
 		      string)
@@ -434,7 +465,19 @@ then no."
   (copy-to-screen tty str :start start :end end)
   (note-change tty str))
 
+(defmethod terminal-write-string ((tty terminal-crunch-stream) (str fat-string)
+				  &key start end)
+  "Output a string to the terminal."
+  (copy-to-screen tty (fat-string-string str) :start start :end end)
+  (note-change tty str))
+
 (defmethod terminal-write-char ((tty terminal-crunch-stream) char)
+  "Output a character to the terminal. Flush output if it is a newline,
+i.e. the terminal is 'line buffered'."
+  (copy-char tty char)
+  (note-change tty char))
+
+(defmethod terminal-write-char ((tty terminal-crunch-stream) (char fatchar))
   "Output a character to the terminal. Flush output if it is a newline,
 i.e. the terminal is 'line buffered'."
   (copy-char tty char)
@@ -599,6 +642,14 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-set-scrolling-region ((tty terminal-crunch-stream) start end)
   (setf (screen-scrolling-region (new-screen tty) ) (cons start end)))
+
+(defmethod terminal-set-attributes ((tty terminal-crunch) attributes)
+  "Set the attributes given in the list. If NIL turn off all attributes.
+Attributes are usually keywords."
+  (setf (attrs tty)
+	(etypecase attributes
+	  (list attributes)
+	  (keyword (list attributes)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -855,7 +906,10 @@ i.e. the terminal is 'line buffered'."
     (loop :for i :from 0 :below (length (screen-lines new))
        :do
        (map-into (aref (screen-lines old) i)
-		 #'copy-fatchar (aref (screen-lines new) i)))
+		 #'copy-fatchar (aref (screen-lines new) i))
+       ;; Sync both the new and old indexes.
+       (setf (aref (screen-index old) i) i
+	     (aref (screen-index new) i) i))
     (setf (screen-hashes old) (copy-seq (screen-hashes new)))))
 
 (defun update-display (tty)
@@ -901,6 +955,7 @@ i.e. the terminal is 'line buffered'."
        (loop :for i :from 0 :below (length (screen-hashes new)) :do
 	  (when (/= (aref (screen-hashes new) i) (aref (screen-hashes old) i))
 	    (update-line tty i)))
+       ;; Make sure we're at the right cursor position.
        (when (or (not (eql (update-x tty) (screen-x new)))
 		 (not (eql (update-y tty) (screen-y new))))
 	 (crunched-move-to tty
