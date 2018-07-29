@@ -226,10 +226,11 @@
 (defun test-alternate-characters ()
   (blurp
    (flet ((test-char (number name)
-	    (tt-format "~30a: " name)
+	    (tt-format "~30a: \"" name)
 	    (tt-alternate-characters t)
 	    (tt-write-char (code-char number))
 	    (tt-alternate-characters nil)
+	    (tt-write-char #\")
 	    (tt-write-char #\newline)))
     (test-char #x250c "upper left corner")        ; ┌
     (test-char #x2514 "lower left corner")        ; └
