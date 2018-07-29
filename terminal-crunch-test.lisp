@@ -4,9 +4,11 @@
 
 (defpackage :terminal-crunch-test
   (:documentation "Tests for terminal-crunch.")
-  (:use :cl :dlib :terminal :terminal-crunch :terminal-ansi :fatchar)
+  (:use :cl :dlib :terminal :terminal-crunch :terminal-ansi :fatchar
+	:table :table-print)
   (:export
    #:test-1 #:test-2 #:test-3 #:test-4 #:test-5
+   #:test-hashing
    ))
 (in-package :terminal-crunch-test)
 
@@ -228,5 +230,57 @@
 	 (case (tt-get-key) ((#\Q #\q) (throw 'quit nil)))
 	 ))))
 
+(defun test-hashing ()
+  (flet ((hash (x) (terminal-crunch::hash-thing x)))
+    (let ((things
+	   `(("char"         #\x #\z)
+	     ("unicode char" #\λ #\🆑)
+	     ("integers 1"   0 1)
+	     ;; I suppose this one is excusable, because we cut it off and the
+	     ;; bit pattern of negative integers is indistinguishable.
+	     ("integers 2"   -1 #xffffffffffffffffffff)
+	     ("integers 3"   #xdeadbeefcafebabe #x1010101010101010)
+	     ("numbers 1"    0.0 0.0000001)
+	     ;; Did I ever mention I hate floating point?
+	     ("numbers 2"    123213123.0 123213123.00001)
+	     ("numbers 3"    123213123.0d0 123213123.00001d0)
+	     ("numbers 4"    ,pi ,(sqrt 2))
+	     ("numbers 5"    ,(+ 22 (sqrt -1203211.123)) ,(sqrt -1))
+	     ("keywords 1"   :23 :eleven)
+	     ("keywords 2"   :blue :red)
+	     ("strings 1"    "" " ")
+	     ("strings 2"    "x" "y")
+	     ("strings 3"    "as;dlfkjas;dlfkj" "100000000")
+	     ("array 1"      #(1 2 3) #(3 2 1))
+	     ("array 1"      #(:rgb .4 1.0 3.0) #(3 2 1))
+	     ("array 2"      #() #(0))
+	     ("fatchar 1"    ,(make-fatchar) ,(make-fatchar :line 1))
+	     ("fatchar 2"    ,(make-fatchar :c #\x) ,(make-fatchar :c #\X))
+	     ("fatchar 3"    ,(make-fatchar :c #\x :bg :blue)
+			     ,(make-fatchar :c #\x :bg :blue-ish)))))
+      (table-print:print-table
+       (table:make-table-from
+	(loop :with r1 :and r2
+	   :for thing :in things
+	   :collect (vector (first thing)
+			    (write-to-string (second thing)
+					     :readably t :pretty nil)
+			    (setf r1 (hash (second thing)))
+			    (write-to-string (third thing)
+					     :readably t :pretty nil)
+			    (setf r2 (hash (third thing)))
+			    (if (= r1 r2) "BAD!" ""))
+	   ;; We repeat it to appease our paranoia that it could be
+	   ;; non-deterministic.
+	   :collect (vector (first thing)
+			    (write-to-string (second thing)
+					     :readably t :pretty nil)
+			    (setf r1 (hash (second thing)))
+			    (write-to-string (third thing)
+					     :readably t :pretty nil)
+			    (setf r2 (hash (third thing)))
+			    (if (= r1 r2) "BAD!" "")))
+	:column-names '("Type" "Value 1" "Hash 1" 
+			"Value 2" "Hash 2" "Bad?"))))))
 
 ;; EOF
