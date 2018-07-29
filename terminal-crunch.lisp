@@ -7,12 +7,12 @@
 
 This outputs the difference of the end result of what you did to the
 terminal, acting like some kind of terminal compression. It allows software
-that uses terminal to be much simpler, since it doesn't have to worry about
+that uses terminal to be simpler, since it doesn't have to worry about
 how to effiecntly update the screen. This is similar to techniques used by text
-editors, such as Emacs and Vim, the curses library.
+editors, such as Emacs and Vim, and the curses library.
 
 Terminal-crunch acts like just another terminal type, so that software designed
-to use terminals, can use it, or just write directly to the terminal.
+to use terminals, can use it, or write directly to the terminal.
 Terminal-crunch wraps around another terminal and does input and output through
 it. It is only when input is done or finish-output is called that it figures
 out how to update the wrapped terminal.
@@ -153,23 +153,31 @@ two values ROW and COLUMN."
 ;;
 ;; @@@ or maybe we could use sxhash?
 
+(defparameter *keyword-differentiator*
+  #.(loop :with i = 0 :for c :across "keyword" :do
+       (setf i (logior (ash i 8) (char-code c))) :finally (return i)))
+
+;; I'm just deciding it's 64bits. We could use most-positive-fixnum, but that
+;; might be too small on some platforms.
+(defconstant +cut-off+ #xffffffffffffffff)
+
 (defun curses-hash-seed () 0)
 (defun curses-hash (integer value)
-  (logand (+ value (ash value 5) integer) #xffffffffffffffff))
+  (logand (+ value (ash value 5) integer) +cut-off+))
 
 (defun bix-hash-seed () 0)
 (defun bix-hash (integer value)
-  (logand (logxor (ash value 3) integer) #xffffffffffffffff))
+  (logand (logxor (ash value 3) integer) +cut-off+))
 
 (defparameter *fnv64-offset* #xCBF29CE484222325)
 (defparameter *fnv64-prime* #x100000001b3)
 (defun fnv-like-hash-seed () *fnv64-offset*)
 (defun fnv-like-hash (integer value)
-  (logand (* (logxor value integer) *fnv64-prime*) #xffffffffffffffff))
+  (logand (* (logxor value integer) *fnv64-prime*) +cut-off+))
 
 (defun sxhash-hash-seed () #xCBF29CE484222325)
 (defun sxhash-hash (integer value)
-  (logand (+ (sxhash integer) value) #xffffffffffffffff))
+  (logand (+ (sxhash integer) value) +cut-off+))
 
 ;; @@@ Am I being too paranoid doing this with a macro?
 (defmacro hash-thing-with (thing value hash-func hash-seed-func)
@@ -177,27 +185,31 @@ two values ROW and COLUMN."
     `(typecase ,thing
        (character (,hash-func (char-code ,thing) ,value))
        (integer   (,hash-func ,thing ,value))
-       (keyword   (hash-thing (symbol-name ,thing) ,value))
+       ;; If it is a more complicated number than an integer, defer to sxhash
+       ;; since how to do it properly can be architecture dependent, such as
+       ;; getting the bits out of a float.
+       (number    (logand (+ value (sxhash thing)) +cut-off+))
+       ;; Add in *keyword-differentiator* so keywods hash to different values
+       ;; than the hash of their symbol names.
+       (keyword   (hash-thing (symbol-name ,thing)
+			      (,hash-func *keyword-differentiator* ,value)))
        (array ;; also string of course
-	(loop :with ,hv = (,hash-seed-func)
+	(loop :with ,hv = (or ,value (,hash-seed-func))
 	   :for ,c :across ,thing
 	   :do (setf ,hv (hash-thing ,c ,hv))
 	   :finally (return ,hv)))
        (list
-	(loop :with ,hv = (,hash-seed-func)
+	(loop :with ,hv = (or ,value (,hash-seed-func))
 	   :for ,c :in ,thing
 	   :do (setf ,hv (hash-thing ,c ,hv))
 	   :finally (return ,hv)))
        (fatchar
 	(let ((,hv ,value))
-	  ;; BUG: FIX ME why doesn't this work?
-	  (setf ,hv (hash-thing (fatchar-c ,thing) ,hv)
-		;; ,hv (hash-thing (fatchar-fg ,thing) ,hv)
-		;; ,hv (hash-thing (fatchar-bg ,thing) ,hv)
-		;; ,hv (hash-thing (fatchar-line ,thing) ,hv)
-		;; ,hv (hash-thing (fatchar-attrs ,thing) ,hv)
-		)
-	  ;; (format *debug-io* "~s~%" ,hv)
+	  (setf ,hv (hash-thing (fatchar-c ,thing) ,hv))
+	  (setf ,hv (hash-thing (fatchar-fg ,thing) ,hv))
+	  (setf ,hv (hash-thing (fatchar-bg ,thing) ,hv))
+	  (setf ,hv (hash-thing (fatchar-line ,thing) ,hv))
+	  (setf ,hv (hash-thing (fatchar-attrs ,thing) ,hv))
 	  ,hv))
        (otherwise
 	(error "I don't know how to hash a ~s." (type-of ,thing))))))
