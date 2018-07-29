@@ -430,12 +430,14 @@ sizes. It only copies the smaller of the two regions."
 		 (setf x new-x)
 		 (next-line)))))))))
 
-(defun copy-to-screen (tty string &key start end)
+(defun copy-to-screen (tty string &key (start 0) end)
   (with-slots (x y width height fg bg attrs scrolling-region) (new-screen tty)
     (loop
        :with i = (or start 0)
-       :and str = (if (or start end)
-		      (displaced-subseq string start end)
+       :and str = (if (or (and start (not (zerop start))) end)
+		      (if end
+			  (displaced-subseq string (or start 0) end)
+			  (displaced-subseq string start))
 		      string)
        :with len = (length str)
        :while (< i len)
