@@ -28,6 +28,11 @@ for various operations through the OUTPUT-COST methods.
    ))
 (in-package :terminal-crunch)
 
+(declaim
+ (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;; (declaim
+;;  (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
+
 (defstruct screen
   "Representation of the screen."
   (x 0)
@@ -86,6 +91,10 @@ for various operations through the OUTPUT-COST methods.
    (update-y
     :initarg :update-y :accessor update-y :initform 0 :type fixnum
     :documentation "Row while we're updating.")
+   (cleared
+    :initarg :cleared :accessor cleared :initform nil :type boolean
+    :documentation
+    "True if clear was called and we have to really clear the screen.")
    ;; Hints
    (text-change
     :initarg :text-change :accessor text-change :initform nil :type boolean
@@ -129,14 +138,6 @@ for various operations through the OUTPUT-COST methods.
 		       (find-terminal-class-for-type
 			(pick-a-terminal-type))))
   (:documentation "Fake."))
-
-(defmethod terminal-get-size ((tty terminal-crunch))
-  "Get the window size from the kernel and store it in tty."
-  (with-slots ((wtty wrapped-terminal)) tty
-    (terminal-get-size wtty)
-    ;; @@@ If the size is different we should probably resize the screens.
-    (setf (terminal-window-rows tty) (terminal-window-rows wtty)
-	  (terminal-window-columns tty) (terminal-window-columns wtty))))
 
 (defmethod terminal-get-cursor-position ((tty terminal-crunch-stream))
   "Try to somehow get the row of the screen the cursor is on. Returns the
@@ -228,6 +229,24 @@ two values ROW and COLUMN."
     (loop :for i :from 0 :below (length lines)
        :do (setf (aref hashes i) (hash-thing (aref lines i))))))
 
+(defun copy-screen-contents (from-screen to-screen)
+  "Copy the contents of FROM-SCREEN to TO-SCREEN. It's fine if they're diffrent
+sizes. It only copies the smaller of the two regions."
+  (setf (screen-x to-screen)                (screen-x from-screen)
+	(screen-y to-screen)                (screen-y from-screen)
+	(screen-background to-screen)       (screen-background from-screen)
+	(screen-scrolling-region to-screen) (screen-scrolling-region from-screen)
+	(screen-cursor-state to-screen)     (screen-cursor-state from-screen)
+	(screen-beep-count to-screen)       (screen-beep-count to-screen))
+  (loop :for i :from 0 :below (min (length (screen-lines from-screen))
+				   (length (screen-lines to-screen)))
+     :do
+     (map-into (aref (screen-lines to-screen) i)
+	       #'copy-fatchar (aref (screen-lines from-screen) i))
+     (setf (aref (screen-index to-screen) i)
+	   (aref (screen-index from-screen) i)))
+  (compute-hashes to-screen))
+
 (defun make-new-screen (rows cols)
   (let* ((lines  (make-array rows :element-type 'fatchar-string))
 	 (hashes (make-array rows :element-type 'integer))
@@ -249,6 +268,24 @@ two values ROW and COLUMN."
 	      (copy-fatchar *blank-char*))))
     (compute-hashes result)
     result))
+
+(defmethod terminal-get-size ((tty terminal-crunch))
+  "Get the window size from the kernel and store it in tty."
+  (with-slots ((wtty wrapped-terminal)) tty
+    (terminal-get-size wtty)
+    ;; Resize the screens
+    (when (or (/= (terminal-window-rows tty) (terminal-window-rows wtty))
+	      (/= (terminal-window-columns tty) (terminal-window-columns wtty)))
+      (let ((screen (make-new-screen (terminal-window-rows wtty)
+				     (terminal-window-columns wtty))))
+	(copy-screen-contents (old-screen tty) screen)
+	(setf (old-screen tty) screen)
+	(setf screen (make-new-screen (terminal-window-rows wtty)
+				      (terminal-window-columns wtty)))
+	(copy-screen-contents (new-screen tty) screen)
+	(setf (new-screen tty) screen)))
+    (setf (terminal-window-rows tty) (terminal-window-rows wtty)
+	  (terminal-window-columns tty) (terminal-window-columns wtty))))
 
 (defmethod terminal-start ((tty terminal-crunch))
   "Set up the terminal for reading a character at a time without echoing."
@@ -597,6 +634,7 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-clear ((tty terminal-crunch-stream))
   (loop :for line :across (screen-lines (new-screen tty)) :do
      (fill-by line #'blank-char))
+  (setf (cleared tty) t)
   (no-hints tty))
 
 (defmethod terminal-home ((tty terminal-crunch-stream))
@@ -884,14 +922,19 @@ Attributes are usually keywords."
     (if (or (not new-line-cost) (> new-line-cost change-cost))
 	(progn
 	  ;; Output changes
-	  (loop :for c :in changes :do
-	     (crunched-move-to tty (car c) line (update-x tty) (update-y tty))
+	  (loop :with start :and end
+	     :for c :in changes :do
+	     (setf start (car c)
+		   end (cdr c))
+	     (crunched-move-to tty start line (update-x tty) (update-y tty))
 	     (dbugf :crunch "update-line FLOOB ~s ~s~%" line c)
-	     (terminal-write-string wtty (make-fat-string :string new-line)
-				    :start (car c)
-				    :end (1+ (cdr c)))
-	     ;; @@@ This is wrong since it should be display-length
-	     (setf (update-x tty) (1+ (cdr c)))
+	     (if (= start end)
+		 (terminal-write-char wtty (aref new-line start))
+		 (terminal-write-string wtty (make-fat-string :string new-line)
+					:start start
+					:end (1+ end)))
+	     ;; @@@ This is wrong since it should be display-length or *better*
+	     (setf (update-x tty) (1+ end))
 	     ))
 	(progn
 	  ;; Write a whole new line
@@ -933,6 +976,15 @@ Attributes are usually keywords."
     ;; Set starting point.
     (setf (update-x tty) (screen-x old)
 	  (update-y tty) (screen-y old))
+
+    (when (cleared tty)
+      (terminal-clear wrapped)
+      (terminal-finish-output wrapped)
+      (setf (cleared tty) nil)
+      (no-hints tty)
+      (setf (old-screen tty)
+	    (make-new-screen (screen-height old)
+			     (screen-width old))))
 
     ;; Try to speed things up with hints.
     (cond
