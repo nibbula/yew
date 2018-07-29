@@ -667,7 +667,12 @@ set in this string."
 
 (defmethod display-length ((c fatchar))
   "Return the length of the fat character for display."
-  (display-length (fatchar-c c)))
+  (cond
+    ((not (zerop (fatchar-line c)))
+     1)				    ; assume line drawing can happen in 1 cell
+    ;; ((char= #\nul (fatchar-c c))
+    ;;  0)		; since an unset fatchar is #\nul
+    (t (display-length (fatchar-c c)))))
 
 (defmethod display-length ((s fat-string))
   "Return the length of the string for display."
