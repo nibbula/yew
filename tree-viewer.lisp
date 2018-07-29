@@ -940,7 +940,7 @@ and indented properly for multi-line objects."
 
 (defun view-tree (tree &key viewer default-action)
   "Look at a tree, with expandable and collapsible branches."
-  (with-terminal (#+unix :curses)
+  (with-terminal (#|#+unix :curses |#)
     (let ((*viewer* viewer))
       (if viewer
 	  (progn
