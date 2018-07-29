@@ -34,8 +34,11 @@
    #:with-terminal #:with-new-terminal
    #:tt-format			  #:terminal-format			;
    #:tt-write-string		  #:terminal-write-string		;
+   #:tt-write-string-at
    #:tt-write-line		  #:terminal-write-line			;
+   #:tt-write-line-at
    #:tt-write-char		  #:terminal-write-char			;
+   #:tt-write-char-at
    #:tt-move-to			  #:terminal-move-to			;
    #:tt-move-to-col		  #:terminal-move-to-col		;
    #:tt-beginning-of-line	  #:terminal-beginning-of-line		;
@@ -46,6 +49,7 @@
    #:tt-up			  #:terminal-up
    #:tt-down			  #:terminal-down
    #:tt-scroll-down		  #:terminal-scroll-down
+   #:tt-scroll-up		  #:terminal-scroll-up
    #:tt-erase-to-eol		  #:terminal-erase-to-eol		;
    #:tt-erase-line		  #:terminal-erase-line			;
    #:tt-erase-above		  #:terminal-erase-above		;
@@ -319,6 +323,24 @@ i.e. the terminal is \"line buffered\"")
 i.e. the terminal is \"line buffered\"")
 
 (deftt move-to (row column) "Move the cursor to ROW and COLUMN.")
+
+;; I've finally given in, 1000 years later, and made the *-at functions.
+(defun tt-format-at (row column fmt &rest args)
+  (tt-move-to row column)
+  (apply #'terminal-format *terminal* fmt args))
+
+(defun tt-write-string-at (row column str &key start end)
+  (tt-move-to row column)
+  (tt-write-string str :start start :end end))
+
+(defun tt-write-line-at (row column str &key start end)
+  (tt-move-to row column)
+  (tt-write-line str :start start :end end))
+
+(defun tt-write-char-at (row column char)
+  (tt-move-to row column)
+  (tt-write-char char))
+
 (deftt move-to-col (column) "Move the cursor to COLUMN.")
 (deftt beginning-of-line () "Move the cursor to the beginning of the line.")
 (deftt del-char (n) "Delete N characters in front of the cursor.")
@@ -328,8 +350,11 @@ i.e. the terminal is \"line buffered\"")
 (deftt up (n) "Move the cursor up N rows.")
 (deftt down (n) "Move the cursor down N rows.")
 (deftt scroll-down (n)
-  "Move the cursor down N rows. If at the bottom of the screen, scroll the
-screen down.")
+  "Move the cursor down N rows. If at the bottom of the screen or scrolling
+region, scroll the screen down.")
+(deftt scroll-up (n)
+  "Move the cursor up N rows. If at the top of the screen or scrolling region,
+scroll the screen up.")
 (deftt erase-to-eol () "Erase from the cursor to the end of the current row.")
 (deftt erase-line () "Erase the whole row the cursor is on.")
 (deftt erase-above () "Erase everything above the row the cursor is on.")
