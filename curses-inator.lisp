@@ -5,7 +5,7 @@
 (defpackage :curses-inator
   (:documentation "Inator stuff for curses")
   (:use :cl :dlib :dlib-misc :stretchy :opsys :char-util :keymap :cffi
-	:curses :terminal :terminal-curses :inator)
+	:curses :terminal :terminal-curses :inator :fui)
   (:export
    #:curses-inator
    #:color-attr
@@ -27,8 +27,10 @@
 ;(declaim (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 1) (compilation-speed 2)))
 
+#|
 (defvar *interactive* t
   "True when we can expect user interaction.")
+|#
 
 (defvar *curses-device* nil
    "A device to do run a curses program on.")
@@ -181,6 +183,7 @@ foreground FG and background BG."
 ;;       (t ;; Just return a negative
 ;;        cc))))
 
+#| now in fui
 (defmacro non-interactively (&body body)
   "Evaluate body without pausing for PAUSE."
   `(let ((*interactive* nil))
@@ -198,6 +201,7 @@ foreground FG and background BG."
     (apply #'format *standard-output* prompt args)
     (finish-output *standard-output*)
     (read-line)))
+|#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Output
