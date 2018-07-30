@@ -8,7 +8,7 @@
 (defpackage :terminal-ms
   (:documentation "Microsoft console as a terminal.")
   (:use :cl :cffi :dlib :dlib-misc :terminal :char-util :opsys :ms
-	:trivial-gray-streams :fatchar)
+	:trivial-gray-streams :fatchar :color :terminal-crunch)
   (:export
    #:terminal-ms
    ;; Extras:
@@ -932,6 +932,47 @@ Attributes are usually keywords."
   ;; ‘fundamental-character-input-stream’ must define a method for this
   ;; function.
   (setf (saved-char stream) character))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; @@@ I should do some timing tests. These are fake for now.
+
+(defmethod output-cost ((tty terminal-ms) (op (eql :move-to)) &rest params)
+  (declare (ignore params))
+  2)
+
+(defmethod output-cost ((tty terminal-ms) (op (eql :move-to-col)) &rest params)
+  (declare (ignore params))
+  1)
+
+(defmethod output-cost ((tty terminal-ms) (op (eql :up)) &rest params)
+  (declare (ignore params))
+  10)
+
+(defmethod output-cost ((tty terminal-ms) (op (eql :down)) &rest params)
+  (declare (ignore params))
+  10)
+
+(defmethod output-cost ((tty terminal-ms) (op (eql :backward)) &rest params)
+  (declare (ignore params))
+  2)
+
+(defmethod output-cost ((tty terminal-ms) (op (eql :forward)) &rest params)
+  (declare (ignore params))
+  2)
+
+(defmethod output-cost ((tty terminal-ms) (op (eql :color)) &rest params)
+  (declare (ignore params))
+  10)
+
+(defmethod output-cost ((tty terminal-ms) (op (eql :write-fatchar))
+			&rest params)
+  (declare (ignore params))
+  10)
+
+(defmethod output-cost ((tty terminal-ms) (op (eql :write-fatchar-string))
+			&rest params)
+  (* 5 (length (first params))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

@@ -14,6 +14,7 @@
 This one works in a Windows console window, and probably not anywhere else.
 It has the chaming feature of not having any character attributes except
 for 16 colors."
-    :depends-on (:opsys)
+    :depends-on (:cffi :dlib :dlib-misc :terminal :char-util :opsys
+		 :trivial-gray-streams :fatchar :color :terminal-crunch)
     :components
     ((:file "terminal-ms")))
