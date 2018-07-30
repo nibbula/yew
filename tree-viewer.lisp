@@ -702,8 +702,6 @@ been encountered."
   "Search for a node."
   (with-slots (current) o
     (tt-move-to (1- (tt-height)) 0) (tt-erase-to-eol)
-    ;; (let ((result (with-terminal (:curses)
-    ;; 		    (rl:rl :prompt "Search for: "))))
     (let ((result (rl:rl :prompt "Search for: ")))
       (tt-finish-output)
       (when (and result (not (zerop (length result))))
@@ -804,7 +802,6 @@ been encountered."
   "Display a line of node output."
   (with-slots (left current current-max-right) *viewer*
     (let ((len (length line)))
-;;      (when (< (getcury curses:*stdscr*) (1- curses:*lines*))
       (when (< (terminal-get-cursor-position *terminal*)
 	       (1- (tt-height)))
 	(if (>= left len)
@@ -938,9 +935,14 @@ and indented properly for multi-line objects."
     (when current-position
       (tt-move-to current-position 0))))
 
+(defmethod finish-inator ((o tree-viewer))
+  (tt-move-to (1- (tt-height)) 0)
+  (tt-scroll-down 2)
+  (tt-finish-output))
+
 (defun view-tree (tree &key viewer default-action)
   "Look at a tree, with expandable and collapsible branches."
-  (with-terminal (#|#+unix :curses |#)
+  (with-terminal (:crunch)
     (let ((*viewer* viewer))
       (if viewer
 	  (progn
