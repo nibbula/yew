@@ -100,6 +100,12 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 (defun make-fat-string (&key string)
   (make-instance 'fat-string :string string))
 
+(defmethod oelt ((s fat-string) key)
+  (aref (fat-string-string s) key))
+
+(defmethod (setf oelt) (value (s fat-string) key) ;; @@@ ??? test
+  (setf (aref (fat-string-string s) key) value))
+
 (defmethod osubseq ((string fat-string) start &optional end)
   "Sub-sequence of a fat-string."
   (make-fat-string
@@ -419,6 +425,20 @@ strings."
 			      (or (not end) (< i end)))
 		     (vector-push-extend
 		      (make-fatchar :c c :fg (car fg) :bg (car bg) :attrs attrs)
+		      fatchar-string))
+		   (incf i)))
+	       (fat-string
+		(loop :for c :across (fat-string-string
+				      (if filter (funcall filter s) s))
+		   :do
+		   (when (and (>= i start)
+			      (or (not end) (< i end)))
+		     (vector-push-extend
+		      (make-fatchar :c (fatchar-c c)
+				    :fg (fatchar-fg c)
+				    :bg (fatchar-bg c)
+				    :line (fatchar-line c)
+				    :attrs (union attrs (fatchar-attrs c))); <--
 		      fatchar-string))
 		   (incf i)))
 	       (character
