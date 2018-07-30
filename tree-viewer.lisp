@@ -3,10 +3,94 @@
 ;;
 
 (defpackage :tree-viewer
-  (:documentation "View trees.")
+  (:documentation "View trees.
+
+This module provides a few things.
+  - A set of classes to construct and describe viewable trees.
+  - An ‘inator’ user interface piece, to view the trees.
+
+The basic unit of the trees is the class NODE, which has NODE-BRANCHES and an
+NODE-OPEN indicator. A plain node can be made with MAKE-NODE. There are a
+number of sub-classes of NODE which provide for different ways of describing
+the tree. The class hierarchy of nodes is like:
+
+  node
+    object-node
+      dynamic-ndoe
+        cached-dynamic-node
+
+The OBJECT-NODE is a simple static node which provide a NODE-OBJECT. A static
+tree can be just made out of OBJECT-NODEs. You can make one with
+MAKE-OBJECT-NODE.
+
+A DYNAMIC-NDOE is node that creates it's sub-nodes by calling a function, in the
+slot NODE-FUNC. There is a MAKE-DYNAMIC-NODE.
+
+A CACHED-DYNAMIC-NDOE is a DYNAMIC-NDOE that will save the results of generating
+the branches and subsequently behave like a static OBJECT-NODE.
+
+There are methods which one can specialize to change the behavior of nodes:
+
+   node-branches ndoe => list of brances
+     Specializing this, you can make a tree out of anything. This is how the
+     dynamic and cached-dynamic trees work, so for those you would have to
+     preserve their semantics, if you want them to live up to their name.
+
+   node-has-branches node => boolean
+     This is mostly provided to show the indicator on a closed node in a way
+     which hints that it has branches. For dynamic trees that don't know if
+     it does, this can be optimistic and return true when it's not really
+     known.
+
+There are functions for dealing with nodes and trees:
+
+   close-all-subnodes node
+   open-all-subnodes node
+   node-open-p node => boolean
+   all-subnodes-open-p node => boolean
+
+   map-tree func tree &key (max-count 10000)
+     Applies FUNC to each node in TREE, up to max-count nodes. You can set
+     max-count to nil to try to blow out your stack.
+
+   print-tree node &key max-depth (indent 2) key
+     is mostly useful for debugging. If you don't provide a max-depth for a
+     dynamic tree, you can guess the results.
+
+There are convenience functions for making trees:
+
+  make-tree object func &key type max-depth (test #'equal)
+    Makes a tree given an object and a function that returns a list of the
+    branches of the node given an object. The objects in the branches are then
+    used build sub-trees as the tree is viewed. You can provide a TYPE so one
+    can build a static or dynamic tree, or some combination thereof determined
+    by the results of calling FUNC. You can limit the tree size by providing
+    MAX-DEPTH. The TEST function can be used to detect cycles.
+
+The module also provides methods to customize the display of the tree, in
+general, or for different node types. These are the display methods.
+
+   display-indent
+   display-prefix
+   display-node-line
+   display-object
+   display-node
+   display-tree
+
+Not all of them will be useful to a customizing given node type.
+These methods may need to access the current viewer INATOR in *VIEWER*.
+
+Once you have a tree all set up, you can call VIEW-TREE:
+
+  view-tree (tree &key viewer default-action)
+
+which fires up an INATOR, of which you can roll your own with the VIEWER, and
+which can be customized by the usual set of INATOR-isms, keymaps, display
+methods, and the like.
+")
   (:nicknames :tb)
   (:use :cl :dlib :opsys :dlib-misc :char-util :keymap :pick-list
-	:glob #| :dlib-interactive |# :inator :terminal :terminal-inator :fui)
+	:glob :collections :inator :terminal :terminal-inator :fui)
   (:export
    #:view-tree
    #:node #:node-branches #:node-open #:make-node
@@ -34,6 +118,13 @@
 
 ;;;(declaim (optimize (speed 3) (safety 0) (debug 0) (space 3) (compilation-speed 0)))
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 1) (compilation-speed 0)))
+
+;; @@@ The tree-viewr is quite flexible and fairly featureful, but its seems
+;; somewhat difficult to use. I'd like to try to imagine easier to use
+;; interface, while keeping the flexibility and features.
+;;
+;; Some real documentation and simple examples might go a long way towards making
+;; it easier to use.
 
 (defclass node ()
   ((branches
@@ -801,15 +892,15 @@ been encountered."
 (defmethod display-node-line ((node node) line)
   "Display a line of node output."
   (with-slots (left current current-max-right) *viewer*
-    (let ((len (length line)))
+    (let ((len (olength line)))
       (when (< (terminal-get-cursor-position *terminal*)
 	       (1- (tt-height)))
 	(if (>= left len)
 	    (tt-write-char #\newline)
 	    (tt-write-string
-	     (subseq line left (min len (+ left (tt-width)))))))
+	     (osubseq line left (min len (+ left (tt-width)))))))
       (when (eq node current)
-	(setf current-max-right (length line))))))
+	(setf current-max-right (olength line))))))
 
 (defgeneric display-object (node object level)
   (:documentation "Display an object in the manner of display-node."))
@@ -819,12 +910,10 @@ been encountered."
 with PRINC, and indented properly for multi-line objects."
   (let ((lines (split-sequence #\newline (princ-to-string object))))
     (when (eq node (current *viewer*))
-      ;; (attron +a-bold+)
       (tt-bold t))
     (display-node-line node (s+ (display-prefix node level)
 				(format nil "~a~%" (first lines))))
     (when (eq node (current *viewer*))
-      ;; (attroff +a-bold+)
       (tt-bold nil))
     (loop :for l :in (cdr lines) :do
        (display-node-line node (s+ (display-indent node level)
