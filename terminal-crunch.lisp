@@ -95,6 +95,9 @@ for various operations through the OUTPUT-COST methods.
     :initarg :cleared :accessor cleared :initform nil :type boolean
     :documentation
     "True if clear was called and we have to really clear the screen.")
+   (started
+    :initarg :started :accessor started :initform nil
+    :documentation "True if we started and not ended.")
    ;; Hints
    (text-change
     :initarg :text-change :accessor text-change :initform nil :type boolean
@@ -134,10 +137,23 @@ for various operations through the OUTPUT-COST methods.
   (:default-initargs
     :file-descriptor		nil
     :output-stream		nil
-    :wrapped-terminal (make-instance
-		       (find-terminal-class-for-type
-			(pick-a-terminal-type))))
+    ;;:wrapped-terminal
+    )
   (:documentation "Fake."))
+
+(defmethod initialize-instance
+    :after ((o terminal-crunch) &rest initargs &key &allow-other-keys)
+  "Initialize a terminal-crunch."
+  (declare (ignore initargs))
+  (when (or (not (slot-boundp o 'wrapped-terminal))
+	    (not (slot-value o 'wrapped-terminal)))
+    (let ((type (platform-default-terminal-type)))
+      (when (eq type :crunch)
+	(cerror "Yeah, I do."
+		"You probably don't want to wrap a terminal-crunch in a ~
+                 terminal-crunch."))
+      (setf (slot-value o 'wrapped-terminal)
+	    (make-instance (find-terminal-class-for-type type))))))
 
 (defmethod terminal-get-cursor-position ((tty terminal-crunch-stream))
   "Try to somehow get the row of the screen the cursor is on. Returns the
@@ -290,29 +306,35 @@ sizes. It only copies the smaller of the two regions."
 (defmethod terminal-start ((tty terminal-crunch))
   "Set up the terminal for reading a character at a time without echoing."
   (with-slots ((wtty wrapped-terminal)) tty
-    (let ((state (terminal-start wtty)))
-      (terminal-get-size wtty)
-      (when (not (new-screen tty))
-	(setf (new-screen tty)
-	      (make-new-screen (terminal-window-rows wtty)
-			       (terminal-window-columns wtty))))
-      (when (not (old-screen tty))
-	(setf (old-screen tty)
-	      (make-new-screen (terminal-window-rows wtty)
-			       (terminal-window-columns wtty)))
-	(compute-hashes (old-screen tty)))
-      (setf (terminal-window-rows tty) (terminal-window-rows wtty)
-	    (terminal-window-columns tty) (terminal-window-columns wtty))
-      ;; Start with a clean slate. 
-      (terminal-clear wtty)
-      (terminal-home wtty)
-      (terminal-finish-output wtty)
-      state)))
+    (if (started tty)
+	(incf (started tty))
+	(let ((state (terminal-start wtty)))
+	  (terminal-get-size wtty)
+	  (when (not (new-screen tty))
+	    (setf (new-screen tty)
+		  (make-new-screen (terminal-window-rows wtty)
+				   (terminal-window-columns wtty))))
+	  (when (not (old-screen tty))
+	    (setf (old-screen tty)
+		  (make-new-screen (terminal-window-rows wtty)
+				   (terminal-window-columns wtty)))
+	    (compute-hashes (old-screen tty)))
+	  (setf (terminal-window-rows tty) (terminal-window-rows wtty)
+		(terminal-window-columns tty) (terminal-window-columns wtty))
+	  ;; Start with a clean slate.
+	  (terminal-clear wtty)
+	  (terminal-home wtty)
+	  (terminal-finish-output wtty)
+	  (setf (started tty) 1)
+	  state))))
 
 (defmethod terminal-end ((tty terminal-crunch) &optional state)
   "Put the terminal back to the way it was before we called terminal-start."
-  ;; @@@ should we do sync output or just forget it?
-  (terminal-end (wrapped-terminal tty) state))
+  (when (zerop (decf (started tty)))
+    (progn
+      (terminal-finish-output tty)
+      (terminal-end (wrapped-terminal tty) state)
+      (setf (started tty) nil))))
 
 (defmethod terminal-done ((tty terminal-crunch) &optional state)
   "Forget about the whole terminal thing and stuff."
@@ -879,7 +901,7 @@ Attributes are usually keywords."
 	       (setf change-range nil))))
       (loop
 	 :for i :from 0 :below (length new-line) :do
-	 (if (not (equalp (aref new-line i) (aref old-line i)))
+	 (if (not (fatchar= (aref new-line i) (aref old-line i)))
 	     (progn
 	       (when (not first-change)
 		 (setf first-change i))
@@ -1001,15 +1023,14 @@ Attributes are usually keywords."
 			      (aref (aref (screen-lines new) (screen-y new))
 				    (screen-x new)))))
       ((single-line-change tty)
-       ;; ;; diff the line
-       ;; ;; move, overwite, insert / delete as appropriate
-       ;; (crunched-move-to tty 0 (single-line-change tty)
-       ;; 			 (screen-x old) (screen-y old))
-       ;; ;; @@@ it could be something else? like insert or delete?
-       ;; (terminal-write-string wrapped (aref (screen-lines new)
-       ;;                                      (screen-y new)))
-       (update-line tty (single-line-change tty))
-       )
+       ;; diff the line
+       ;; move, overwite, insert / delete as appropriate
+       ;; @@@ it could be something else? like insert or delete?
+       (let ((line (single-line-change tty)))
+	 (dbugf :crunch "single-line-change ~s~%" line)
+	 (when (/= (aref (screen-hashes new) line)
+		   (aref (screen-hashes old) line))
+	   (update-line tty line))))
       ;; No hints.
       (t
        ;; make line hashes
@@ -1020,7 +1041,11 @@ Attributes are usually keywords."
        ;; update changed lines
        (loop :for i :from 0 :below (length (screen-hashes new)) :do
 	  (when (/= (aref (screen-hashes new) i) (aref (screen-hashes old) i))
+	    (dbugf :crunch "hash diff ~s old ~s new ~s~%" i
+		   (aref (screen-hashes new) i)
+		   (aref (screen-hashes old) i))
 	    (update-line tty i)))
+
        ;; Make sure we're at the right cursor position.
        (when (or (not (eql (update-x tty) (screen-x new)))
 		 (not (eql (update-y tty) (screen-y new))))
@@ -1199,6 +1224,6 @@ Attributes are usually keywords."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (register-terminal-type :crunch 'terminal-crunch)
-(register-terminal-type :crunch-stream 'terminal-crunch-stream)
+;;(register-terminal-type :crunch-stream 'terminal-crunch-stream)
 
 ;; EOF
