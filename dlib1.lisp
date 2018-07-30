@@ -377,11 +377,12 @@ the sequence NOT-IN."
 ;;   :test #'(lambda (a b) (declare (ignore a)) (position b "1289"))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defmacro call-looker (function sep seq start end test)
+  (defmacro call-looker (function sep seq start end test key)
     "Call FUNCTION, which is likely to be POSITION or SEARCH. Make START, END,
 and TEST be the appropriate keywords."
     (let ((base
-	   `(,function ,sep ,seq 
+	   `(,function ,sep ,seq
+		       ,@(when key `(:key ,key))
 		       ,@(if (eq function 'position)
 			     '(:start) '(:start2))
 		       ,start
@@ -393,7 +394,7 @@ and TEST be the appropriate keywords."
 
   (defun split-sequence (sep seq &key
 			 omit-empty coalesce-separators remove-empty-subseqs
-			 (start 0) end test #| key count |#)
+			 (start 0) end test key #| count |#)
     "Split the sequence SEQ into subsequences separated by SEP. Return a list of
 the subsequences. SEP can be a sequence itself, which means the whole sequence
 is the separator. If :omit-empty is true, then don't return empty subsequnces.
@@ -418,7 +419,7 @@ is the separator. If :omit-empty is true, then don't return empty subsequnces.
 		  ;;(format t "FLURP: ~w~%"
 		  ;;    '(call-looker ,func sep seq t-start end test))
 		  (setq t-end
-			(or (call-looker ,func sep seq t-start end test)
+			(or (call-looker ,func sep seq t-start end test key)
 			    -1))
 		  :while (>= t-end 0)
 		  ;;(format t "start = ~d end = ~d ~s~%" t-start t-end
