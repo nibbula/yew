@@ -17,6 +17,7 @@
    #:terminal-default-device-name
    #:register-terminal-type
    #:find-terminal-class-for-type
+   #:platform-default-terminal-type
    #:pick-a-terminal-type
    #:terminal-stream
    #:terminal
@@ -118,22 +119,24 @@ subclasses.")
      :dumb)
     (t :ansi)))
 
+(defun platform-default-terminal-type ()
+  "Return the platform default terminal type for the current circumstance."
+  #+(and windows unix) (terminal-type-based-on-environemt)
+  #+windows (if (environment-variable "TERM")
+		(terminal-type-based-on-environemt)
+		:ms)
+  #+unix (terminal-type-based-on-environemt)
+  #-(or windows unix) :ansi)
+
 (defun pick-a-terminal-type ()
   "Pick some terminal type. Hopefully appropriate, but perhaps semi-arbitrary."
-  (let ((platform-default
-	 #+(and windows unix) (terminal-type-based-on-environemt)
-	 #+windows (if (environment-variable "TERM")
-		       (terminal-type-based-on-environemt)
-		       :ms)
-	 #+unix (terminal-type-based-on-environemt)
-	 #-(or windows unix) :ansi))
+  (let ((platform-default (platform-default-terminal-type)))
     (or *default-terminal-type*
 	(if (find-terminal-class-for-type platform-default)
 	    platform-default
 	    ;; This picks :ansi-stream if nothing else is loaded.
 	    ;;(or (first *terminal-types*) :ansi)
-	    :ansi
-	    ))))
+	    :ansi))))
 
 (defclass terminal-stream (fundamental-character-output-stream)
   ((output-stream
