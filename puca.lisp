@@ -20,10 +20,9 @@
 (defpackage :puca
   (:documentation
    "Putative Muca (A very simple(istic) interface to CVS/git/svn).")
-  (:use :cl :dlib :dlib-misc :opsys :keymap :char-util :curses :rl
-	:completion :inator :terminal :terminal-curses :curses-inator :fui
-	:options
-	#+use-regex :regex #-use-regex :ppcre)
+  (:use :cl :dlib :dlib-misc :opsys :keymap :char-util :rl :completion :inator
+	:terminal :terminal-inator :fui :options
+	#+use-re :re #-use-re :ppcre)
   (:export
    ;; Main entry point
    #:puca
@@ -45,7 +44,7 @@
 (defvar *puca* nil
   "The current puca instance.")
 
-(defclass puca (curses-inator options-mixin)
+(defclass puca (terminal-inator options-mixin)
   ((backend
     :initarg :backend :accessor puca-backend :initform nil
     :documentation "The revision control system backend that we are using.")
@@ -181,7 +180,7 @@
 	 :do
 	 (incf i)
 	 (message *puca* "Listing...~d" i)
-	 (refresh)
+	 (tt-finish-output)
 	 :collect line))))
 
 (defmethod add-ignore ((backend backend) file)
@@ -202,7 +201,7 @@
 
 (defmethod banner ((backend backend))
   "Print something useful at the top of the screen."
-  (addstr (format nil "~a~%" (nos:current-directory))))
+  (tt-format "~a~%" (nos:current-directory)))
 
 (defun check-dir-and-command (dir command)
   (let ((result (probe-directory dir)))
@@ -300,14 +299,14 @@
 
 (defmethod banner ((backend git))
   "Print something useful at the top of the screen."
-  (let ((line (getcury *stdscr*))
+  (let ((line (terminal-get-cursor-position *terminal*))
 	(col 5)
 	(branch (get-branch backend)))
     (labels ((do-line (fmt &rest args)
 	       (let ((str (apply #'format nil fmt args)))
-		 (mvaddstr (incf line) col
-			   (subseq str 0 (min (length str)
-					      (- *cols* col 1)))))))
+		 (tt-move-to (incf line) col)
+		 (tt-write-string (subseq str 0 (min (length str)
+						     (- (tt-width) col 1)))))))
       (do-line "Repo:    ~a" (nos:current-directory))
       (do-line "Branch:  ~a" branch)
       (do-line "Remotes: ")
@@ -316,7 +315,7 @@
 	 :do
 	 (setf s (split "\\s" r))
 	 (do-line "~a ~a ~a" (elt s 0) (elt s 2) (elt s 1)))
-      (move (incf line) col))))
+      (tt-move-to (incf line) col))))
 
 (defmethod get-status-list ((backend git))
   (with-slots (backend) *puca*
@@ -334,7 +333,7 @@
 		 :do
 		 (incf i)
 		 (message *puca* "Listing...~d" i)
-		 (refresh)
+		 (tt-finish-output)
 		 :collect line)))
       ;;(debug-msg "~a from git status" i)
       (when (puca-show-all-tracked *puca*)
@@ -345,9 +344,10 @@
 			   :do
 			   (incf i)
 			   (message *puca* "Listing...~d" i)
-			   (refresh)
+			   (tt-finish-output)
 			   :collect (s+ " _ " line)))))
-	;;(move 0 0) (erase) (addstr (format nil "~w" result))
+	;;(tt-move-to 0 0) (tt-home) (tt-erase-below)
+	;;(tt-format nil "~w" result)
 	;;(debug-msg "~a from git ls-files" i)
 	)
       result)))
@@ -424,9 +424,9 @@
   "The availible backends.")
 
 (defun output-message (message)
-  (move (- *lines* 2) 2)
-  (clrtoeol)
-  (addstr message))
+  (tt-move-to (- (tt-height) 2) 2)
+  (tt-erase-to-eol)
+  (tt-write-string message))
 
 (defun format-message (fmt &rest args)
   (output-message (apply #'format nil fmt args)))
@@ -444,24 +444,24 @@
 (defun goo-color (status-char)
   "Set the color based on the status character."
   (case status-char
-    (#\M (color-attr +color-red+     +color-black+))    ; modified
-    (#\? (color-attr +color-white+   +color-black+))    ; unknown
-    (#\C (color-attr +color-magenta+ +color-black+))	; conflicts
-    (t   (color-attr +color-green+   +color-black+))))	; updated or other
+    (#\M :red)	    ; modified
+    (#\? :white)    ; unknown
+    (#\C :magenta)  ; conflicts
+    (t   :green)))  ; updated or other
 
 (defun draw-goo (i)
   "Draw the goo object, with the appropriate color."
   (with-slots (goo top first-line) *puca*
     (let ((g (elt goo i)))
-      (let* ((attr (goo-color (aref (goo-modified g) 0))))
-	(move (+ (- i top) first-line) 4)
+      (let* ((color (goo-color (aref (goo-modified g) 0))))
+	(tt-move-to (+ (- i top) first-line) 4)
 	;; (clrtoeol)
-	(attron attr)
-	(addstr (format nil "~a ~a ~30a"
-			(if (goo-selected g) "x" " ")
-			(goo-modified g)
-			(goo-filename g)))
-	(attroff attr)
+	(tt-color color :default)
+	(tt-format "~a ~a ~30a"
+		   (if (goo-selected g) "x" " ")
+		   (goo-modified g)
+		   (goo-filename g)))
+	(tt-color :default :default)
 	(when (goo-extra-lines g)
 ;; Ugly inline error display:
 ;;      (if (= i cur)
@@ -470,7 +470,8 @@
 ;; 	     :do
 ;; 	     (mvaddstr (+ (- i top) 3 j) 20 line)
 ;; 	     (incf j))
-	  (mvaddstr (+ (- i top) 3) 30 " ****** "))))))
+	  (tt-move-to (+ (- i top) 3) 30)
+	  (tt-write-string " ****** ")))))
 
 (defun draw-line (i)
   "Draw line I, with the appropriate color."
@@ -499,33 +500,33 @@
 
 (defun draw-screen ()
   (with-slots (maxima top bottom goo message backend first-line) *puca*
-    (erase)
-    (border 0 0 0 0 0 0 0 0)
+    (tt-erase-below)
+    (draw-box 0 0 (tt-width) (tt-height))
     (let* ((title (format nil "~a Muca (~a)" 
 			  (backend-name backend)
 			  (machine-instance)))
 	   y x)
       (declare (ignorable x))
-      (move 1 (truncate (- (/ *cols* 2) (/ (length title) 2))))
-      (addstr title)
-      (move 2 2) ;; Start of the banner area
+      (tt-move-to 1 (truncate (- (/ (tt-width) 2) (/ (length title) 2))))
+      (tt-write-string title)
+      (tt-move-to 2 2) ;; Start of the banner area
       (banner backend)
-      (getyx *stdscr* y x)
+      (multiple-value-setq (y x) (terminal-get-cursor-position *terminal*))
       ;; End of the banner and start of the first line of objects
       (setf first-line (1+ y)
-	    bottom (min (- maxima top) (- curses:*lines* first-line 3)))
+	    bottom (min (- maxima top) (- (tt-height) first-line 3)))
       ;; top scroll indicator
       (when (> top 0)
-	(mvaddstr (1- first-line) 2 "^^^^^^^^^^^^^^^^^^^^^^^"))
+	(tt-write-string-at (1- first-line) 2 "^^^^^^^^^^^^^^^^^^^^^^^"))
       (when (> (length goo) 0)
 	(loop :for i :from top :below (+ top bottom)
 	   :do (draw-goo i)))
       ;; bottom scroll indicator
       (when (< bottom (- maxima top))
-	(mvaddstr (+ first-line bottom) 2 "vvvvvvvvvvvvvvvvvvvvvvv")))
+	(tt-write-string-at (+ first-line bottom) 2 "vvvvvvvvvvvvvvvvvvvvvvv"))
     (when message
       (draw-message *puca*)
-      (setf message nil))))
+      (setf message nil)))))
 
 (defun do-literal-command (format-str format-args
 			   &key (relist t) (do-pause t) confirm)
@@ -533,9 +534,9 @@
 If RELIST is true (the default), regenerate the file list. If DO-PAUSE is true,
 pause after the command's output. If CONFIRM is true, ask the user for
 confirmation first."
-  (clear)
-  (refresh)
-  (endwin)
+  (tt-clear)
+  (tt-finish-output)
+  (terminal-end *terminal*)
   (when (and confirm (not (yes-or-no-p "Are you sure? ")))
     (return-from do-literal-command (values)))
   (let* ((command (apply #'format nil format-str format-args)))
@@ -544,11 +545,11 @@ confirmation first."
     (write-string "[Press Return]")
     (terpri)
     (read-line))
-  (initscr)
+  (terminal-start *terminal*)
   (message *puca* "*terminal* = ~s" *terminal*)
   (when relist
     (get-list))
-  (clear)
+  (tt-clear)
   (draw-screen))
 
 (defun do-command (command format-args
@@ -591,31 +592,28 @@ If CONFIRM is true, ask the user for confirmation first."
 
 (defun debug-msg (fmt &rest args)
   "For debugging."
-  (move (- *lines* 2) 2)
+  (tt-move-to (- (tt-height) 2) 2)
 ;  (clrtoeol)
-  (addstr (apply #'format nil fmt args))
-  (refresh)
+  (apply #'terminal-format *terminal* fmt args)
   (tt-get-char))
 
 (defun info-window (title text-lines)
+  ;; @@@ Is all this clearing and refreshing necessary?
   (fui:display-text title text-lines)
-  (clear)
+  (tt-clear)
   ;;(refresh)
   (draw-screen)
-  (refresh))
+  (tt-finish-output))
 
 (defun input-window (title text-lines)
   (prog1
-      (display-text
-       title text-lines
-       :input-func #'(lambda (w)
-		       (cffi:with-foreign-pointer-as-string (str 40)
-			 (curses:echo)
-			 (wgetnstr w str 40)
-			 (curses:noecho))))
-    (clear)
+      (display-text title text-lines
+		    :input-func #'(lambda (w)
+				    (declare (ignore w))
+				    (rl:rl)))
+    (tt-clear)
     (draw-screen)
-    (refresh)))
+    (tt-finish-output)))
 
 (defun puca-yes-or-no-p (&optional format &rest arguments)
   (equalp "Yes" (input-window
@@ -645,15 +643,13 @@ for the command-function).")
 (defun extended-command (p)
   "Extended command"
   (declare (ignore p))
-  (move (- *lines* 2) 2)
-  (refresh)
-  (reset-shell-mode)
+  (tt-move-to (- (tt-height) 2) 2)
+  (tt-finish-output)
   (let ((command (rl:rl
 		  :prompt ": "
 		  :completion-func *complete-extended-command*
 		  :context :puca))
 	func)
-    ;;(reset-prog-mode)
     (setf func (cadr (assoc command *extended-commands* :test #'equalp)))
     (when (and func (fboundp func))
       (funcall func)))
@@ -783,7 +779,7 @@ for the command-function).")
 (defmethod previous-page ((p puca))
   "Previous page"
   (with-slots ((point inator::point) top) p
-    (setf point (- point 1 (- curses:*lines* 7)))
+    (setf point (- point 1 (- (tt-height) 7)))
     (when (< point 0)
       (setf point 0))
     (when (< point top)
@@ -847,7 +843,7 @@ for the command-function).")
 (defun relist (p)
   "Re-list"
   (declare (ignore p))
-  (clear)
+  (tt-clear)
   ;;(refresh)
   (get-list)
   (draw-screen)
@@ -856,8 +852,8 @@ for the command-function).")
 
 (defmethod redraw ((p puca))
   "Re-draw"
-  (clear)
-  (refresh)
+  (tt-clear)
+  (tt-finish-output)
   (draw-screen)
   ;(refresh)
   )
@@ -973,21 +969,26 @@ for the command-function).")
     (when debug
       (message p "point = ~s top = ~s first-line ~s bottom = ~s"
 	       point top first-line bottom))
-    (move (+ (- point top) first-line) 2)))
+    (tt-move-to (+ (- point top) first-line) 2)))
 
 (defmethod start-inator ((p puca))
   (call-next-method)
-  (clear)
+  (tt-clear)
   (draw-screen)
   (get-list)
   (draw-screen)
   (when (puca-errors p)
     (message p "**MESSAGES**")))
 
+(defmethod finish-inator ((p puca))
+  (tt-move-to (1- (tt-height)) 0)
+  (tt-scroll-down 2)
+  (tt-finish-output))
+
 (defun puca (&key backend-type)
   (let ((backend (pick-backend backend-type)))
     (if backend
-	(with-terminal (:curses)
+	(with-terminal (#| :curses |# :crunch)
 	  (with-inator (*puca* 'puca
 		        :keymap (list *puca-keymap* *default-inator-keymap*)
 		        :backend backend)

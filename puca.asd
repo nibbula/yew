@@ -13,12 +13,10 @@
     "Putative Muca. A simple interface to revision control software.
 It doesn't do anything fancy. It just saves you from typing the commands.
 It has an extremely limited vocabulary.
-It currently knows how to talk to Git, SVN, CVS an Mercurial."
-    :depends-on (:dlib :dlib-misc :opsys :keymap :char-util :curses :rl
-		 :completion :inator :terminal :terminal-curses :curses-inator
-		 :fui :lish :pager :view :options
-		 #+use-re :re
-		 #-use-re :cl-ppcre
-		 )
+It currently knows how to talk to Git, SVN, CVS and Mercurial.
+Except everything besides the Git backend has not been tested in many years."
+    :depends-on (:dlib :dlib-misc :opsys :keymap :char-util :rl :completion
+		 :inator :terminal :terminal-inator :fui :lish :pager :view
+		 :options #+use-re :re #-use-re :cl-ppcre)
     :components
     ((:file "puca")))
