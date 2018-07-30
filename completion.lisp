@@ -374,7 +374,8 @@ arguments for that function, otherwise return NIL."
 		     (when (equal s '&rest)
 		       (setf past-rest t)))
 		    (t
-		     (if (and (= i expr-number) (not (or past-key past-rest)))
+		     (if (and expr-number
+			      (= i expr-number) (not (or past-key past-rest)))
 			 (progn
 			   (tt-standout t)
 			   (setf did-standout t))
