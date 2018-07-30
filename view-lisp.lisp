@@ -4,11 +4,15 @@
 
 (defpackage :view-lisp
   (:documentation "View things in the Lisp system.")
-  (:use :cl :dlib :tree-viewer :dlib-interactive)
+  (:use :cl :dlib :tree-viewer :dlib-interactive :syntax :syntax-lisp
+	:terminal :collections :fatchar :fatchar-io :completion)
   (:export
    #:view-lisp
    ))
 (in-package :view-lisp)
+
+;; This is like the mother-of-all demos for the tree-viewer. But it actually
+;; turns out be useful too.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Package browsing
@@ -46,6 +50,109 @@
   "Like PACKAGE-USED-BY-LIST but returns package names instead of objects."
   (mapcar (_ (package-name _))
 	  (package-used-by-list package)))
+
+;; @@@ This very foolishly duplicates code from doc.lisp
+(defparameter *doc-types* '(compiler-macro function method-combination setf
+			    structure type variable)
+  "Types of documentation to try for the DOC function.")
+
+(defun print-doc (symbol stream)
+  (let ((did-one nil) (did-structure nil)
+	(pkg (symbol-package symbol)))
+    (labels ((maybe-doc (obj type)
+	       (without-warning (documentation obj type)))
+	     (output-text (s)
+	       (format-comment-text
+		(make-instance 'syntax-lisp:lisp-token :object s) stream))
+	     (print-it (sym pkg doc-type &optional fake-type)
+	       (when (maybe-doc sym doc-type)
+		 (when did-one
+		   (princ #\newline stream))
+		 (if (and (eq doc-type 'function) (maybe-doc sym doc-type))
+		     (progn
+		       (when (and pkg (not (eq pkg (find-package :cl))))
+			 (format stream "~a " (package-name pkg))
+			 (format stream "~:(~a~):~%"
+				 (or fake-type doc-type)))
+		       (format stream "~a~%" (function-help sym nil)))
+		     (progn
+		       (format stream "~:(~a~): " (or fake-type doc-type))
+		       (when pkg
+			 (format stream "~a:" (package-name pkg)))
+		       (format stream "~a~%" sym)))
+		 (if (eq doc-type :command)
+		     (format stream "~a" (maybe-doc sym doc-type))
+		     (progn
+		       (output-text (maybe-doc sym doc-type))))
+		 (setf did-one t))))
+      (loop :for d :in *doc-types*
+	 :do
+	 ;; Don't print duplicate type documentation for structures,
+	 (when (and (eq d 'structure) (maybe-doc symbol d))
+	   (setf did-structure t))
+	 (when (not (and (eq d 'type) did-structure))
+	   (print-it symbol pkg d))))
+    ;;(princ #\newline stream)
+    ))
+
+(defun symbol-node-contents (symbol)
+  (list
+   (make-text-func-node "Description"
+			(lambda () (describe
+				    (decorated-symbol-symbol symbol))))
+   (make-text-func-node "Documentation"
+			(lambda ()
+			  (print-doc (decorated-symbol-symbol symbol)
+				     *standard-output*)))
+   ;; @@@ other things?
+   ))
+
+(defstruct decorated-symbol
+  symbol)
+
+(defmethod print-object ((object decorated-symbol) stream)
+  "Print a class to STREAM."
+  (cond
+    ((or *print-readably* *print-escape*)
+     (call-next-method))
+    (t
+     (format stream
+	     "~a" (stylize-token (make-instance
+				  'lisp-symbol-token
+				  :object (decorated-symbol-symbol object))))
+     ;;(princ (decorated-symbol-symbol object) stream)
+     (when (fboundp (decorated-symbol-symbol object))
+       (princ " (F)" stream)))))
+
+(defclass symbol-node (cached-dynamic-node)
+  ()
+  (:default-initargs
+   :func #'symbol-node-contents)
+  (:documentation "A node that describes a symbol."))
+
+(defun display-fat-object (node object level)
+  (let ((lines (split-sequence #\newline (fat-string-string (fs+ object))
+			       :key #'fatchar-c)))
+    (when (eq node (tb::current *viewer*))
+      (tt-bold t))
+    (display-node-line node (span-to-fat-string
+			     (if (eq node (tb::current *viewer*))
+				 `(,(display-prefix node level)
+				    (:bold
+				     ,(make-fat-string :string (first lines)))
+				    #\newline)
+				 `(,(display-prefix node level)
+				    ,(make-fat-string :string (first lines))
+				    #\newline))))
+    (when (eq node (tb::current *viewer*))
+      (tt-bold nil))
+    (loop :for l :in (cdr lines) :do
+       (display-node-line node (fs+ (display-indent node level)
+				    (make-fat-string :string l)
+				    #\newline)))))
+
+(defmethod display-object ((node symbol-node) object level)
+  (display-fat-object node object level))
 
 (defun package-contents (package-in)
   (when (or (and (typep package-in 'object-node)
@@ -97,11 +204,16 @@
 	    contents)
       (push (nn (format nil "External Symbols (~d)" (length external))
 		(loop :for e :in external
-		   :collect (nn (if (fboundp e) (s+ e " (F)") e))))
+		   :collect (make-instance
+			     'symbol-node :object
+			     (make-decorated-symbol :symbol e))))
 	    contents)
       (push (nn (format nil "Internal Symbols (~d)" (length internal))
 		(loop :for e :in internal
-		   :collect (nn (if (fboundp e) (s+ e " (F)") e))))
+		   :collect (make-instance
+			     'symbol-node
+			     :object
+			     (make-decorated-symbol :symbol e))))
 	    contents)
       (when shadow
 	(push (nn (format nil "Shadowing Symbols (~d)" (length shadow))
@@ -128,8 +240,9 @@
 ;; Generic text nodes
 
 (defun trim-trailing-newline (str)
-  (when (eql (char str (1- (length str))) #\newline)
-    (setf (char str (1- (length str))) #\space)))
+  (when (and str (not (zerop (length str)))
+	     (eql (fatchar-c (aref str (1- (length str)))) #\newline))
+    (setf (fatchar-c (aref str (1- (length str)))) #\space)))
 
 (defclass text-func-node (object-node)
   ((text-func
@@ -138,17 +251,18 @@
 
 (defmethod display-node ((node text-func-node) level)
   "Display an Lisp image environment node."
-  (let ((str (with-output-to-string (*standard-output*)
+  (let ((str (with-output-to-fat-string (*standard-output*)
 	       (funcall (text-func node)))))
-    (trim-trailing-newline str)
-    (display-object node str level)))
+    (when (not (zerop (olength str)))
+      (trim-trailing-newline (fat-string-string str))
+      (display-fat-object node str level))))
 
-(defun make-text-func-node (name func)
+(defun make-text-func-node (name func &optional object)
   "Make an openable node named NAME that has a text func node inside."
   (make-object-node
    :object name :open nil
    :branches (list (make-instance 'text-func-node
-				  :object name
+				  :object (or object name)
 				  :text-func func
 				  :open nil :branches nil))))
 
