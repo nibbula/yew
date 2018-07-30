@@ -23,6 +23,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:fatchar-init
    #:copy-fatchar
    #:same-effects
+   #:fatchar=
    #:make-fat-string
    #:make-fatchar-string
    #:fatchar-string-to-string
@@ -57,6 +58,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 	(fatchar-line  c)	0
 	(fatchar-attrs c)	nil))
 
+;; I think we can just use the one made by defstruct?
 ;; (defun copy-fatchar (c)
 ;;   (declare (type fatchar c))
 ;;   (when c
@@ -73,6 +75,12 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
        (equal (fatchar-bg a) (fatchar-bg b))
        (not (set-exclusive-or (fatchar-attrs a) (fatchar-attrs b)
 			      :test #'eq))))
+
+(defun fatchar= (a b)
+  "True if everything about a fatchar is the equivalent."
+  (and (char= (fatchar-c a) (fatchar-c b))
+       (same-effects a b)
+       (= (fatchar-line a) (fatchar-line b))))
 
 (deftype fatchar-string (&optional size)
   "A string of FATCHARs."
@@ -171,6 +179,8 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
      ;;   s))
      (map 'string (_ (if (fatchar-p _) (fatchar-c _) _)) string))
     (t string)))
+
+;; @@@ What about equality considering the effects?
 
 (defun fat-string-compare (f a b)
   (funcall f (fat-string-to-string a) (fat-string-to-string b)))
