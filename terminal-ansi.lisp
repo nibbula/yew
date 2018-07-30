@@ -1482,35 +1482,36 @@ in BODY. Output should be done to COST-STREAM."
   (calculate-cost (tty)
    (terminal-move-to cost-stream (first params) (second params))))
 
-(defmethod output-cost ((tty terminal) (op (eql :move-to-col)) &rest params)
+(defmethod output-cost ((tty terminal-ansi) (op (eql :move-to-col)) &rest params)
   (calculate-cost (tty)
    (terminal-move-to-col cost-stream (first params))))
 
-(defmethod output-cost ((tty terminal) (op (eql :up)) &rest params)
+(defmethod output-cost ((tty terminal-ansi) (op (eql :up)) &rest params)
   (calculate-cost (tty)
    (terminal-up cost-stream (first params))))
 
-(defmethod output-cost ((tty terminal) (op (eql :down)) &rest params)
+(defmethod output-cost ((tty terminal-ansi) (op (eql :down)) &rest params)
   (calculate-cost (tty)
    (terminal-down cost-stream (first params))))
 
-(defmethod output-cost ((tty terminal) (op (eql :backward)) &rest params)
+(defmethod output-cost ((tty terminal-ansi) (op (eql :backward)) &rest params)
   (calculate-cost (tty)
    (terminal-backward cost-stream (first params))))
 
-(defmethod output-cost ((tty terminal) (op (eql :forward)) &rest params)
+(defmethod output-cost ((tty terminal-ansi) (op (eql :forward)) &rest params)
   (calculate-cost (tty)
    (terminal-forward cost-stream (first params))))
 
-(defmethod output-cost ((tty terminal) (op (eql :color)) &rest params)
+(defmethod output-cost ((tty terminal-ansi) (op (eql :color)) &rest params)
   (calculate-cost (tty)
    (terminal-color cost-stream (first params) (second params))))
 
-(defmethod output-cost ((tty terminal) (op (eql :write-fatchar)) &rest params)
+(defmethod output-cost ((tty terminal-ansi) (op (eql :write-fatchar))
+			&rest params)
   (calculate-cost (tty)
    (terminal-write-char cost-stream (first params))))
 
-(defmethod output-cost ((tty terminal) (op (eql :write-fatchar-string))
+(defmethod output-cost ((tty terminal-ansi) (op (eql :write-fatchar-string))
 			&rest params)
   (calculate-cost (tty)
    (terminal-write-string cost-stream (make-fat-string :string (first params)))))
