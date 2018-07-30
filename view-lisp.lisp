@@ -184,6 +184,9 @@
      :else
      :collect (make-instance 'child-component-node :object c :open nil)))
 
+(defun system-use-list (name)
+  (asdf:system-depends-on (asdf:find-system name)))
+
 (defun system-contents (system)
   (list
    (make-object-node :object "Description"
@@ -192,7 +195,15 @@
 		      (make-instance 'system-description-node :object system))
 		     :open nil)
    (make-instance 'parent-component-node :name "Components"
-		  :object system :open nil)))
+		  :object system :open nil)
+   (make-object-node :object "Depends on"
+		     :branches
+		     (loop :for dep :in (asdf:system-depends-on system)
+			:collect (make-cached-dynamic-node
+				  :object dep
+				  :func #'system-use-list
+				  :open nil))
+		     :open nil)))
 
 (defclass system-node (cached-dynamic-node)
   ()
