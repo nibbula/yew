@@ -230,9 +230,9 @@ two values ROW and COLUMN."
 			   :output))
       (dbugf 'terminal-ansi "terminal-ansi open out ~s~%" output-stream)
       ;; @@@ Why do we have to do this?
-      ;; #+ccl (setf (stream-external-format output-stream)
-      ;; 		  (ccl:make-external-format :character-encoding :utf-8
-      ;; 					    :domain :file))
+      #+ccl (setf (stream-external-format output-stream)
+		  (ccl:make-external-format :character-encoding :utf-8
+					    :domain :file))
       )
     (terminal-get-size tty)
     saved-mode))
