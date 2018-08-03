@@ -30,6 +30,7 @@
    #:table-add-column
    #:table-update-column-width
    #:table-set-column-type
+   #:table-column-number
    #:make-table-from
    ))
 (in-package :table)
@@ -101,6 +102,12 @@ attributes."))
 	   type))
   (:method (table (col integer) type)
     (setf (column-type (nth col (table-columns table))) type)))
+
+(defun table-column-number (name table &key (test #'equal))
+  "Return the ordinal number of column named NAME from from TABLE, comparing
+by the TEST function, which defaults to EQUAL. Return NIL if the column is not
+found."
+  (position name (table-columns table) :test test :key #'column-name))
 
 (defgeneric make-table-from (object &key column-names)
   (:documentation "Make a table from another object type."))
