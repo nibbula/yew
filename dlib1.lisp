@@ -559,15 +559,18 @@ REPLACEMENT."
 	      :displaced-index-offset start))
 
 ;; @@@ compare vs. the ones in alexandria?
-(defun begins-with (this that &key (test #'eql))
+;; The difference between using using search or mismatch seems quite negligible.
+(defun begins-with (prefix thing &key (test #'eql))
   "True if THAT begins with THIS."
-  (let ((pos (search this that :test test)))
-    (and pos (= 0 pos))))
+  (let ((pos (search prefix thing :test test)))
+    (and pos (zerop pos))))
 
-(defun ends-with (this that &key (test #'eql))
+(defun ends-with (suffix thing &key (test #'eql))
   "True if THAT ends with THIS."
-  (let ((pos (search this that :from-end t :test test)))
-    (and pos (= pos (- (length that) (length this))))))
+  ;; (let ((pos (search this that :from-end t :test test)))
+  ;;   (and pos (= pos (- (length that) (length this))))))
+  (let ((pos (mismatch suffix thing :test test :from-end t)))
+    (and pos (zerop pos))))
 
 (defun remove-prefix (sequence prefix &key (test #'eql))
   "Remove PREFIX from SEQUENCE. SEQUENCE and PREFIX are both sequences.
