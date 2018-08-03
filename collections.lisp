@@ -12,8 +12,8 @@
 defined in here, but it's *really* so you can define your own methods which work
 somewhat orthogonally with system classes. The ‘o’ prefix is rather ugly.
 We should entertain other naming ideas.")
-  (:use :cl)
-  (:nicknames :o)
+  (:use :cl)				; Please don't add any dependencies.
+  (:nicknames :o)			; probably too presumptuous
   (:export
    #:collection
    #:container #:container-data
@@ -41,6 +41,7 @@ We should entertain other naming ideas.")
    #:osort
    #:osort-by
    #:ofind
+   #:ofind-with-key
    #:oposition
    #:osearch
    #:omismatch
@@ -415,12 +416,30 @@ predicate function. This is just like OSORT but with the arguments reversed for
 convenience in pipelines."
   (osort collection predicate))
 
-#|
-(defgeneric ofind (collection ...)
-  (:documentation "")
-  (:method ((collection XX))
-	    ))
-|#
+(defgeneric ofind (item collection &key from-end start end key test test-not)
+  (:documentation
+   "Search for an element of the COLLECTION bounded by START and END that
+satisfies the test TEST or TEST-NOT, as appropriate.")
+  (:method (item (collection list) &key from-end (start 0) end key test test-not)
+    (find item collection :from-end from-end :start start :end end :key key
+	  :test test :test-not test-not))
+  (:method (item (collection vector) &key from-end (start 0) end key test
+				       test-not)
+    (find item collection :from-end from-end :start start :end end :key key
+	  :test test :test-not test-not))
+  (:method (item (collection sequence) &key from-end (start 0) end key test
+					 test-not)
+    (find item collection :from-end from-end :start start :end end :key key
+	  :test test :test-not test-not))
+  (:method (item (collection container) &key from-end (start 0) end key test
+					  test-not)
+    (find item (container-data collection) :from-end from-end :start start
+	  :end end :key key :test test :test-not test-not)))
+
+(defun ofind-with-key (item key collection)
+  "Like ofind with supplying a KEY argument, but convenient for use in
+pipelines."
+  (ofind item collection :key key))
 
 (defgeneric oposition (item collection &key from-end test test-not start end key)
   (:documentation

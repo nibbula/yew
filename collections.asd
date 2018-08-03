@@ -12,6 +12,8 @@
     :long-description
     "Do you really want to engage in the stylistic oddness that this particular
 module encourages?"
-    ;;:depends-on ()
+    ;; I don't want this to depend on anything, but we have to get access to
+    ;; the MOP pacakge somehow, so this relies on dlib just for that.
+    :depends-on (:dlib)
     :components
     ((:file "collections")))
