@@ -95,6 +95,9 @@
     ;;(princ #\newline stream)
     ))
 
+(defstruct decorated-symbol
+  symbol)
+
 (defun symbol-node-contents (symbol)
   (list
    (make-text-func-node "Description"
@@ -106,9 +109,6 @@
 				     *standard-output*)))
    ;; @@@ other things?
    ))
-
-(defstruct decorated-symbol
-  symbol)
 
 (defmethod print-object ((object decorated-symbol) stream)
   "Print a class to STREAM."
