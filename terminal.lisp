@@ -233,7 +233,8 @@ STATE should be an object returned by TERMINAL-START."))
 Cleans up afterward."
   (with-unique-names (result make-it term-class new-type)
     `(progn
-       (let* ((,new-type (or ,type *default-terminal-type*))
+       (let* ((,new-type (or ,type *default-terminal-type*
+			     (pick-a-terminal-type)))
 	      (,term-class
 	       (if ,new-p
 		   ;; If we're making a new one, use a given type or
