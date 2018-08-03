@@ -109,7 +109,7 @@ expand all macros recursively."
 
 (defun pick-spin ()
   (let (result)
-    (with-terminal (:ansi)
+    (with-terminal ()
       (tt-clear)
       (loop :with quit-flag :and k
 	 :for i = 0 :then (1+ i)
