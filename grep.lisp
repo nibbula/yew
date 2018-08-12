@@ -228,7 +228,10 @@ Second value is the scanner that was used.
 	   (loop :with result :and info
 	      :for f :in files
 	      :if (not (file-exists f)) :do
-	      ;; XXX this isn't unix, make this a real error
+	      ;; XXX this isn't unix, make this a real error.
+	      ;; But unfortunately errors are quite disruptive here, so we
+	      ;; also need an option to suppress or gather errors, which should
+	      ;; probably be the default.
 	      (format *error-output*
 		      "~a: No such file or directory~%" f)
 	      :else :do
@@ -249,7 +252,8 @@ Second value is the scanner that was used.
 		       (grout-format "~a~%" f)))))
 	      ;;:when collect :nconc result))))
 	      (when collect
-		(mapc (_ (push _ results)) result)))))
+		(mapc (_ (push _ results)) result)))
+	   (setf results (nreverse results))))
 	;;:when collect :collect result))
 	(when (and collect files-with-match)
 	  (setf results
