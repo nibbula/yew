@@ -856,9 +856,9 @@ information about the link itself."
 (defun file-exists (filename)
   "Check that a file with FILENAME exists at the moment. But it might not exist
 for long."
-  (with-wide-string (w-file filename)
-    ;; I'm really just guessing with whole thing. For example, are there any
-    ;; other errors which would constitute being not found?
+  (with-wide-string (w-file (safe-namestring filename))
+    ;; I'm really just guessing with this whole thing. For example, are there
+    ;; any other errors which would constitute being not found?
     (let ((result (%get-file-attributes w-file)))
       (if (= result +INVALID-FILE-ATTRIBUTES+)
 	  (let ((err (get-last-error)))
