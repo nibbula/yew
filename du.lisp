@@ -295,6 +295,8 @@ useful information."
     (simple-error (c)
       (message o "Error: ~a" c)))
   (terminal-start *terminal*)
+  (tt-clear)
+  (tt-finish-output)
   ;;(refresh)
   )
 
