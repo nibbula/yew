@@ -4,9 +4,12 @@
 
 ;; The without-warning is overkill, so be careful. Comment it out to check for
 ;; real problems. Otherwise, certain complainy implementatations, don't take
-;; kindly to us re-exporting things from opsys-base.
+;; kindly to us programatically re-exporting things from opsys-base.
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (dlib:without-warning
+  ;; Of course we first have to make it be only a warning, before we can
+  ;; suppress it.
+  (let (#+sbcl (*on-package-variance* '(:warn (:opsys) :error t)))
+    (dlib:without-warning
 (defpackage :opsys
   (:documentation "Generic interface to operating system functionality.")
   (:nicknames :nos)
@@ -199,7 +202,7 @@
    ;; stdlib
    #:system
    ))
-)) ;; without-warning
+))) ;; without-warning
 
 ;; Re-export things from opsys-base
 
