@@ -128,11 +128,14 @@ isn't bound."
   (:method ((thing structure-object)   (key string)) (slot-element thing key))
   (:method ((thing standard-object)    (key symbol)) (slot-element thing key))
   (:method ((thing standard-object)    (key string)) (slot-element thing key))
-  (:method ((thing container) key)     (oelt (container-data thing) key))
   ;; Ordered collections
   (:method ((thing list) key) 	       (nth key thing))
   (:method ((thing vector) key)        (aref thing key))
   (:method ((thing sequence) key)      (elt thing key)))
+
+;; This is separate since it wants the generic to already be defined.
+(defmethod oelt ((thing container) key)
+  (oelt (container-data thing) key))
 
 (defun set-slot-element (object name value)
   "Set the VALUE of the slot NAME in OBJECT. Call SLOT-MISSING like SETF would,
