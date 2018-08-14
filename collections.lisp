@@ -134,6 +134,47 @@ isn't bound."
   (:method ((thing vector) key)        (aref thing key))
   (:method ((thing sequence) key)      (elt thing key)))
 
+(defun set-slot-element (object name value)
+  "Set the VALUE of the slot NAME in OBJECT. Call SLOT-MISSING like SETF would,
+if the slot is not found in the object."
+  (let ((slot (find (string name) (mop:class-slots (class-of object))
+		    :key #'mop:slot-definition-name
+		    :test (lambda (a b) (equalp (string a) (string b))))))
+    (when (not slot)
+      (slot-missing (class-of object) object name 'setf value))
+    (setf (slot-value object (mop:slot-definition-name slot)) value)))
+
+(defgeneric (setf oelt) (value keyed-collection key)
+  (:documentation
+   "Set the element of KEYED-COLLECTION specified by KEY to VALUE.")
+  (:method (value (thing hash-table) key)    (setf (gethash key thing) value))
+  (:method (value (thing structure-object) (key integer))
+    (let ((slot (nth key (mop:class-slots (class-of thing)))))
+      (when (not slot)
+	(slot-missing (class-of thing) thing (mop:slot-definition-name slot)
+		      'setf value))
+      (setf (slot-value thing (mop:slot-definition-name slot)) value)))
+  (:method (value (thing standard-object) (key integer))
+    (let ((slot (nth key (mop:class-slots (class-of thing)))))
+      (when (not slot)
+	(slot-missing (class-of thing) thing (mop:slot-definition-name slot)
+		      'setf value))
+      (setf (slot-value thing (mop:slot-definition-name slot)) value)))
+  (:method (value (thing structure-object) (key symbol))
+    (set-slot-element thing key value))
+  (:method (value (thing structure-object) (key string))
+    (set-slot-element thing key value))
+  (:method (value (thing standard-object) (key symbol))
+    (set-slot-element thing key value))
+  (:method (value (thing standard-object) (key string))
+    (set-slot-element thing key value))
+  (:method (value (thing container) key)
+    (setf (oelt (container-data thing) key) value))
+  ;; Ordered collections
+  (:method (value (thing list)     key) (setf (nth key thing)  value))
+  (:method (value (thing vector)   key) (setf (aref thing key) value))
+  (:method (value (thing sequence) key) (setf (elt thing key)  value)))
+
 (defun oitem (key collection)
   "Return the element of COLLECTION specified by KEY. This is the same as OELT, 
 but with the arguments reversed for convenient use in pipelines."
