@@ -82,7 +82,7 @@
 
 (defmethod read-key-sequence ((i terminal-inator))
   "Read a key sequence."
-  (get-key-sequence (λ () (terminal-get-char *terminal*))
+  (get-key-sequence (λ () (terminal-get-key *terminal*))
 		    (inator-keymap i)))
 
 (defmethod describe-key-briefly ((i terminal-inator))
