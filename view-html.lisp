@@ -108,25 +108,35 @@
                    (display-thing obj stream))))))
     (display-object node str level)))
 
+(defun coerce-to-parseable (file)
+  "Make FILE into something parseable by PLUMP:PARSE."
+  (block nil
+    (etypecase file
+      (string
+       (let* ((path (pathname (nos:quote-filename file)))
+	      uri)
+	 (or (and path (nos:file-exists path) path)
+	     (and (setf uri (handler-case
+				(puri:parse-uri file)
+			      (puri:uri-parse-error (c)
+				(declare (ignore c))
+				nil)))
+		  (member (puri:uri-scheme uri) '(:http :https))
+		  #+use-drakma
+		  (drakma:http-request uri :user-agent *user-agent*)))))
+      ((or pathname stream)
+       file)
+      (null
+       #| (read-filename :prompt "HTML file: ") |#
+       (pathname (nos:quote-filename
+		  (or (pick-list:pick-file)
+		      (return nil))))))))
+
 ;; Here we parse the whole file with PLUMP and
 ;; 
 
 (defun view-html (&optional file)
-  (let* ((ff (etypecase file
-	       (string
-		(or (let ((uri (puri:parse-uri file)))
-		      (and uri (member (puri:uri-scheme uri) '(:http :https))
-			   #+use-drakma
-			   (drakma:http-request uri :user-agent *user-agent*)
-			   ))
-		    (pathname (nos:quote-filename file))))
-	       ((or pathname stream)
-		file)
-	       (null
-		#| (read-filename :prompt "HTML file: ") |#
-		(pathname (nos:quote-filename
-			   (or (pick-list:pick-file)
-			       (return-from view-html nil)))))))
+  (let* ((ff (or (coerce-to-parseable file) (return-from view-html nil)))
 	 (hh (plump:parse ff)))
     (unwind-protect
       (progn
