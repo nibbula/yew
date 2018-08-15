@@ -168,7 +168,7 @@ starting at START. If not found, return START."
 
 (defmethod await-event ((i char-picker))
   "Char picker input."
-  (setf (char-picker-input i) (tt-get-char))
+  (setf (char-picker-input i) (tt-get-key))
   (tt-move-to (1- (tt-height)) 0)
   (tt-erase-to-eol)
   (char-picker-input i))
@@ -336,7 +336,9 @@ starting at START. If not found, return START."
     (:ppage		. previous-page)
     (,(ctrl #\B)	. previous-page)
     (#\<		. move-to-top)
+    (:home		. move-to-top)
     (#\>		. move-to-bottom)
+    (:end		. move-to-bottom)
     (#\?		. help)
     (#\=		. enter-char-number)
     ))
