@@ -1463,7 +1463,7 @@ q - Abort")
        (setf prefix-arg nil))
      :while (not (or quit-flag suspend-flag)))))
 
-(defun page (stream &optional pager file-list close-me suspended)
+(defun page (stream &key pager file-list close-me suspended options)
   "View a stream with the pager. Return whether we were suspended or not."
   (with-terminal ()
     (unwind-protect
@@ -1475,10 +1475,12 @@ q - Abort")
 		close-me t))
 	(let ((*pager*
 	       (or pager
-		   (make-instance 'pager
-				  :stream stream
-				  :page-size (1- (tt-height))
-				  :file-list file-list))))
+		   (apply #'make-instance
+			  'pager
+			  :stream stream
+			  :page-size (1- (tt-height))
+			  :file-list file-list
+			  options))))
 	  (when (not suspended)
 	    (freshen *pager*)
 	    (setf (pager-stream *pager*) stream))
@@ -1525,7 +1527,8 @@ q - Abort")
 
 (defun resume (suspended)
   (with-slots (pager file-list stream close-me) suspended
-    (page stream pager file-list close-me t)))
+    (page stream :pager pager :file-list file-list
+	  :close-me close-me :suspended t)))
 
 ;; This is quite inefficient. But it's easy and it works.
 (defmacro with-pager (&body body)
@@ -1558,26 +1561,30 @@ q - Abort")
   (some (_ (funcall _ obj))
 	'(streamp consp stringp pathnamep)))
 
-(defun pager (&optional (file-or-files (pick-file)))
+(defun pager (&optional (file-or-files (pick-file) files-supplied-p)
+	      &rest options)
   "View the file with the pager. Prompt for a file name if one isn't given."
   ;; Let's just say if you page nil, nothing happens.
   ;; This makes it nicer to quit from pick-file without getting an error.
+  (when (and files-supplied-p (not file-or-files))
+    (setf file-or-files (pick-file)))
   (when file-or-files
     (cond
       ((streamp file-or-files)
-       (page file-or-files))
+       (page file-or-files :options options))
       ((consp file-or-files)
        (if (= (length file-or-files) 1)
-	   (pager (first file-or-files)) ; so we get the browser interactively
-	   (page nil nil file-or-files)))
+	   ;; so we get the browser interactively
+	   (apply #'pager (first file-or-files) options)
+	   (page nil :file-list file-or-files :options options)))
       ((or (stringp file-or-files) (pathnamep file-or-files))
        (if (probe-directory file-or-files)
-	   (pager (pick-file :directory file-or-files))
+	   (apply #'pager (pick-file :directory file-or-files) options)
 	   (let (stream suspended)
 	     (unwind-protect
 		  (progn
 		    (setf stream (open-lossy file-or-files)
-			  suspended (page stream)))
+			  suspended (page stream :options options)))
 	       (when (and stream (not suspended))
 		 (close stream))))))
       (t
@@ -1688,16 +1695,19 @@ then the key. Press 'q' to exit this help.
     :help "True to output characters without processing.")
    (pass-special boolean :short-arg #\p
     :help "True to pass special escape sequences to the terminal.")
+   (follow-mode boolean :short-arg #\f :help "True to start in follow mode.")
    (files pathname :repeating t :help "Files to view."))
   :accepts (:grotty-stream :file-list :file-locaations)
   "Look through text, one screen-full at a time."
-  (declare (ignore show-line-numbers ignore-case raw-output pass-special)) ; @@@
   (let ((thing (or files
 		   (and (acceptable-object lish:*input*) lish:*input*)
 		   (and (not (interactive-stream-p *standard-input*))
 			*standard-input*))))
-    (if thing
-	(pager thing)
-	(pager))))
+    (pager thing
+	   :show-line-numbers show-line-numbers 
+	   :ignore-case ignore-case
+	   :raw-output raw-output
+	   :pass-special pass-special
+	   :follow-mode follow-mode)))
 
 ;; EOF
