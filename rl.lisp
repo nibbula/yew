@@ -399,6 +399,11 @@ Keyword arguments:
       (freshen editor))
     (setf (fill-pointer (buf e)) (point e))
     #+ccl (setf ccl::*auto-flush-streams* nil)
+    (when (typep (line-editor-terminal e)
+		 (find-terminal-class-for-type :crunch))
+      (setf (oelt (line-editor-terminal e) :start-line)
+	    (terminal-get-cursor-position
+	     (oelt (line-editor-terminal e) :wrapped-terminal))))
     (terminal-start (line-editor-terminal e))
 
     ;; Add the new line we're working on.

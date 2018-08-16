@@ -259,7 +259,6 @@ anything important.")
   ;; Make a default line sized buffer if one wasn't given.
   (when (or (not (slot-boundp e 'buf)) (not (slot-value e 'buf)))
     (setf (slot-value e 'buf)
-	  ;;(make-stretchy-string *initial-line-size*)
 	  (make-stretchy-vector *initial-line-size* :element-type 'fatchar)))
 
   ;; Set the current dynamic var.
