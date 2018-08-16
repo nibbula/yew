@@ -23,13 +23,13 @@
 	     (progn
 	       (sleep interval)
 	       (setf line t)))
-	 :while line))
+	 :while line)
       (loop :with line
 	 :do
 	 (if (setf line (read-line stream nil nil))
 	     (write-line line *standard-output*)
 	     (progn
-	       (sleep interval)))))
+	       (sleep interval))))))
 
 (defun really-seekable (stream)
   "Return true if STREAM is really seekable."
