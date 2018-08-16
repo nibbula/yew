@@ -584,14 +584,19 @@ Updates the screen coordinates."
 
 (defun tmp-message (e fmt &rest args)
   ;;(apply #'tmp-prompt e fmt args)
-  (tt-scroll-down 1)
-  (tt-move-to-col 0)
-  (tt-erase-to-eol)
-  (apply #'terminal-format *terminal* fmt args)
-  (tt-up 1)
-  (tt-beginning-of-line)
-  ;; (tt-forward (screen-col e))
-  (setf (need-to-redraw e) t))
+  (with-slots (screen-col screen-row buf point) e
+    (let ((saved-col screen-col)
+	  (saved-row screen-row))
+      (move-over e (- (length buf) point))
+      (tt-scroll-down 1)
+      (tt-move-to-col 0)
+      (tt-erase-to-eol)
+      (apply #'terminal-format *terminal* fmt args)
+      (tt-move-to saved-row saved-col)
+      (setf screen-col saved-col
+	    screen-row saved-row)))
+  ;; (setf (need-to-redraw e) nil)
+  )
 
 ;; @@@ should probably be called something else, like "clear under area"?
 (defun clear-completions (e)
