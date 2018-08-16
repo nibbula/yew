@@ -98,6 +98,11 @@ for various operations through the OUTPUT-COST methods.
    (started
     :initarg :started :accessor started :initform nil
     :documentation "True if we started and not ended.")
+   (start-line
+    :initarg :start-line :accessor start-line :initform 0 :type fixnum
+    :documentation
+    "Line of the screen that we start our manangment on. This can change if we
+are directed to move above it, or if we scroll.")
    ;; Hints
    (text-change
     :initarg :text-change :accessor text-change :initform nil :type boolean
@@ -153,13 +158,18 @@ for various operations through the OUTPUT-COST methods.
 		"You probably don't want to wrap a terminal-crunch in a ~
                  terminal-crunch."))
       (setf (slot-value o 'wrapped-terminal)
-	    (make-instance (find-terminal-class-for-type type))))))
+	    (make-instance (find-terminal-class-for-type type)))))
+  (when (slot-boundp o 'start-line)
+    (setf (slot-value o 'update-y) (slot-value o 'start-line))))
 
 (defmethod terminal-get-cursor-position ((tty terminal-crunch-stream))
   "Try to somehow get the row of the screen the cursor is on. Returns the
 two values ROW and COLUMN."
   (values (screen-y (new-screen tty))
 	  (screen-x (new-screen tty))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Hashing
 
 ;; Here's some typical hash functions. I think we mostly care about it being
 ;; collision resistant. Perhaps we should make the code robust with collisions.
@@ -240,10 +250,12 @@ two values ROW and COLUMN."
 ;; (defun hash-thing (thing &optional (value (sxhash-hash-seed)))
 ;;   (hash-thing-with thing value sxhash-hash sxhash-hash-seed))
 
-(defun compute-hashes (screen)
+(defun compute-hashes (screen &optional (start 0))
   (with-slots (lines hashes) screen
-    (loop :for i :from 0 :below (length lines)
+    (loop :for i :from start :below (length lines)
        :do (setf (aref hashes i) (hash-thing (aref lines i))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun copy-screen-contents (from-screen to-screen)
   "Copy the contents of FROM-SCREEN to TO-SCREEN. It's fine if they're diffrent
@@ -286,7 +298,7 @@ sizes. It only copies the smaller of the two regions."
     result))
 
 (defmethod terminal-get-size ((tty terminal-crunch))
-  "Get the window size from the kernel and store it in tty."
+  "Get the window size from the wrapped terminal and store it in tty."
   (with-slots ((wtty wrapped-terminal)) tty
     (terminal-get-size wtty)
     ;; Resize the screens
@@ -305,7 +317,7 @@ sizes. It only copies the smaller of the two regions."
 
 (defmethod terminal-start ((tty terminal-crunch))
   "Set up the terminal for reading a character at a time without echoing."
-  (with-slots ((wtty wrapped-terminal)) tty
+  (with-slots ((wtty wrapped-terminal) start-line) tty
     (if (started tty)
 	(incf (started tty))
 	(let ((state (terminal-start wtty)))
@@ -313,17 +325,26 @@ sizes. It only copies the smaller of the two regions."
 	  (when (not (new-screen tty))
 	    (setf (new-screen tty)
 		  (make-new-screen (terminal-window-rows wtty)
-				   (terminal-window-columns wtty))))
+				   (terminal-window-columns wtty)))
+	    (when (not (zerop start-line))
+	      (setf (screen-y (new-screen tty)) start-line)))
 	  (when (not (old-screen tty))
 	    (setf (old-screen tty)
 		  (make-new-screen (terminal-window-rows wtty)
 				   (terminal-window-columns wtty)))
+	    (when (not (zerop start-line))
+	      (setf (screen-y (old-screen tty)) start-line))
 	    (compute-hashes (old-screen tty)))
 	  (setf (terminal-window-rows tty) (terminal-window-rows wtty)
 		(terminal-window-columns tty) (terminal-window-columns wtty))
 	  ;; Start with a clean slate.
-	  (terminal-clear wtty)
-	  (terminal-home wtty)
+	  (if (zerop start-line)
+	      (progn
+		(terminal-clear wtty)
+		(terminal-home wtty))
+	      (progn
+		(terminal-move-to wtty start-line 0)
+		(terminal-erase-below wtty)))
 	  (terminal-finish-output wtty)
 	  (setf (started tty) 1)
 	  state))))
@@ -384,23 +405,14 @@ sizes. It only copies the smaller of the two regions."
 		 (funcall blanker new-blanks))))
     (if (< n height)
 	(progn
-	  ;; ;; Copy exsting lines up
-	  ;; (let ((new-blanks (subseq lines 0 n))) ; save the overwritten lines
-	  ;;   ;; Copy the retained lines up
-	  ;;   (setf (subseq lines 0 (- height n))
-	  ;; 	  ;; (subseq lines n (1- height)))
-	  ;; 	  (subseq lines n height))
-	  ;;   ;; Move the new blank lines in place.
-	  ;;   (setf (subseq lines (- height n)) new-blanks)
-	  ;;   ;; Blank out the newly blank lines
-	  ;;   (loop :for line :across new-blanks :do
-	  ;;      (fill-by line #'blank-char))))
 	  (scroll-copy lines #'line-blanker)
 	  (scroll-copy index #'index-blanker))
 	(progn
 	  ;; Just erase everything
 	  (line-blanker lines)
-	  (index-blanker index))))))
+	  (index-blanker index)))
+    (when (not (zerop (start-line tty)))
+      (setf (start-line tty) (min 0 (- (start-line tty) n)))))))
 
 (defun copy-char (tty char)
   "Put the CHAR at the current screen postion."
@@ -560,7 +572,9 @@ i.e. the terminal is 'line buffered'."
   (setf (screen-y (new-screen tty))
 	(max 0 (min row (1- (screen-height (new-screen tty)))))
 	(screen-x (new-screen tty))
-	(max 0 (min col (1- (screen-width (new-screen tty)))))))
+	(max 0 (min col (1- (screen-width (new-screen tty))))))
+  (when (not (zerop (start-line tty)))
+    (setf (start-line tty) (max 0 (min (start-line tty) row)))))
 
 (defmethod terminal-move-to-col ((tty terminal-crunch-stream) col)
   (setf (screen-x (new-screen tty))
@@ -611,7 +625,10 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-up ((tty terminal-crunch-stream) n)
   (setf (screen-y (new-screen tty))
-	(max 0 (- (screen-y (new-screen tty)) n))))
+	(max 0 (- (screen-y (new-screen tty)) n)))
+  (when (not (zerop (start-line tty)))
+    (setf (start-line tty)
+	  (max 0 (min (start-line tty) (screen-y (new-screen tty)))))))
 
 (defmethod terminal-down ((tty terminal-crunch-stream) n)
   (setf (screen-y (new-screen tty))
@@ -658,12 +675,15 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-clear ((tty terminal-crunch-stream))
   (loop :for line :across (screen-lines (new-screen tty)) :do
      (fill-by line #'blank-char))
-  (setf (cleared tty) t)
+  (setf (cleared tty) t
+	(start-line tty) 0)
   (no-hints tty))
 
 (defmethod terminal-home ((tty terminal-crunch-stream))
   (setf (screen-x (new-screen tty)) 0
-	(screen-y (new-screen tty)) 0))
+	(screen-y (new-screen tty)) 0)
+  (when (not (zerop (start-line tty)))
+    (setf (start-line tty) 0)))
 
 (defmethod terminal-cursor-off ((tty terminal-crunch-stream))
   (setf (screen-cursor-state (new-screen tty)) nil))
@@ -993,17 +1013,18 @@ Attributes are usually keywords."
 
 (defun update-display (tty)
   "This is the big crunch."
-  (with-slots ((wrapped wrapped-terminal)
+  (with-slots ((wtty wrapped-terminal)
 	       (old old-screen)
-	       (new new-screen)) tty
+	       (new new-screen)
+	       start-line) tty
 
     ;; Set starting point.
     (setf (update-x tty) (screen-x old)
 	  (update-y tty) (screen-y old))
 
     (when (cleared tty)
-      (terminal-clear wrapped)
-      (terminal-finish-output wrapped)
+      (terminal-clear wtty)
+      (terminal-finish-output wtty)
       (setf (cleared tty) nil)
       (no-hints tty)
       (setf (old-screen tty)
@@ -1019,7 +1040,7 @@ Attributes are usually keywords."
 	     (cy (cdr (single-char-change tty))))
 	 (crunched-move-to tty cx cy (screen-x old) (screen-y old))
 	 ;; @@@ it could be something else? like insert or delete?
-	 (terminal-write-char wrapped
+	 (terminal-write-char wtty
 			      (aref (aref (screen-lines new) (screen-y new))
 				    (screen-x new)))))
       ((single-line-change tty)
@@ -1034,12 +1055,12 @@ Attributes are usually keywords."
       ;; No hints.
       (t
        ;; make line hashes
-       (compute-hashes new)
+       (compute-hashes new start-line)
        ;; handle scrolling
        ;;   detect scrolling
        ;;   move same lines
        ;; update changed lines
-       (loop :for i :from 0 :below (length (screen-hashes new)) :do
+       (loop :for i :from start-line :below (length (screen-hashes new)) :do
 	  (when (/= (aref (screen-hashes new) i) (aref (screen-hashes old) i))
 	    (dbugf :crunch "hash diff ~s old ~s new ~s~%" i
 		   (aref (screen-hashes new) i)
@@ -1052,10 +1073,10 @@ Attributes are usually keywords."
 	 (crunched-move-to tty
 			   (screen-x new) (screen-y new)
 			   (update-x tty) (update-y tty)))))
-    (update-cursor-state wrapped new old)
+    (update-cursor-state wtty new old)
     (update-beeps tty new)
     (copy-new-to-old tty)
-    (finish-output wrapped)))
+    (finish-output wtty)))
 
 (defmethod terminal-finish-output ((tty terminal-crunch-stream))
   "Make sure everything is output to the terminal."
