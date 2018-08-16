@@ -867,6 +867,24 @@ in order, \"{open}{close}...\".")
 			(key-sequence-string key-seq)))))
     (redraw e)))
 
+(defun what-cursor-position (e)
+  "Describe the cursor position."
+  (with-slots (point buf screen-row screen-col) e
+    (let* ((fc (and (< point (length buf))
+		    (aref buf point)))
+	   (char (and fc (fatchar-c fc)))
+	   (code (and char (char-code char))))
+      (if fc
+	  (tmp-message e "~s of ~s Row: ~s Column: ~s Char: '~a' ~a ~s #x~x"
+		       point (length buf) screen-row screen-col
+		       fc
+		       (and char (char-name char))
+		       code code)
+	  (tmp-message e "~s of ~s Row: ~s Column: ~s"
+		       point (length buf) screen-row screen-col))
+      ;;(redraw e)
+      )))
+
 (defun exit-editor (e)
   "Stop editing."
   (with-slots (quit-flag exit-flag) e
