@@ -69,7 +69,7 @@ drawing, which will get overwritten."
        (tt-move-to iy (+ x (1- width)))
        (tt-write-char (code-char #x2502))) ; │
     (tt-move-to (+ y (1- height)) x)
-    (tt-write-char (code-char #x2515))	; └
+    (tt-write-char (code-char #x2514))	; └
     (tt-write-string str :end str-len)
     (tt-write-char (code-char #x2518)))) ; ┘
 
