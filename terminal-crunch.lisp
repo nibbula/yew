@@ -250,9 +250,9 @@ two values ROW and COLUMN."
 ;; (defun hash-thing (thing &optional (value (sxhash-hash-seed)))
 ;;   (hash-thing-with thing value sxhash-hash sxhash-hash-seed))
 
-(defun compute-hashes (screen &optional (start 0))
+(defun compute-hashes (screen &optional (start 0) end)
   (with-slots (lines hashes) screen
-    (loop :for i :from start :below (length lines)
+    (loop :for i :from start :below (or end (length lines))
        :do (setf (aref hashes i) (hash-thing (aref lines i))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -485,10 +485,16 @@ sizes. It only copies the smaller of the two regions."
 	(single-char-change tty) nil
 	(single-line-change tty) nil))
 
+(defun reset-hints (tty)
+  "Reset hints to the starting state before any operations."
+  (setf (text-change tty) nil
+	(single-char-change tty) t
+	(single-line-change tty) t))
+
 (defun note-single-line (tty)
   "Note a possible single line change. But if this is called on different lines,
 then no."
-  (when (single-line-change tty) ;; not already determined not to be
+  (when (single-line-change tty) ;; not already determined NOT to be
     (setf (single-line-change tty)
 	  (if (eq t (single-line-change tty)) ; undtermined
 	      (screen-y (new-screen tty))     ; set it to this line
@@ -497,7 +503,35 @@ then no."
 		  (screen-y (new-screen tty))	    ; keep it
 		  nil)))))			    ; or nope
 
-(defun note-length-based (tty len)
+(defun rest-of-the-line-blank-p (line start)
+  "Return true if the rest of the fatchar LINE is blank, starting from START."
+  ;; This seems faster than the equivalent position-if.
+  (and (not (position *blank-char* line
+		      :start start
+		      :test (lambda (a b) (not (equalp a b)))))
+       t))
+
+(defun note-single-char (tty operation)
+  "Return a cons of the screen position or NIL if we shouldn't do the
+optimization."
+  (case operation
+    ((:insert :delete)
+     ;; We can only do single character optimization if the line is blank
+     ;; after the position.
+     (let ((new (new-screen tty)))
+       (if (rest-of-the-line-blank-p (aref (screen-lines new) (screen-y new))
+				     (screen-x new))
+	   (list (screen-x (new-screen tty))
+		 (screen-y (new-screen tty))
+		 operation)
+	   nil)))
+    (otherwise
+     ;; Set it to this position.
+     (list (screen-x (new-screen tty))
+	   (screen-y (new-screen tty))
+	   operation))))
+
+(defun note-length-based (tty len operation)
   (when (> len 0)
     (setf (text-change tty) t
 	  (single-char-change tty)
@@ -505,17 +539,18 @@ then no."
 		  (not (single-char-change tty))) ;; already determined not
 	      nil
 	      (if (eq t (single-char-change tty)) ; undetermined
-		  (cons (screen-x (new-screen tty))
-			(screen-y (new-screen tty))) ; set it to this pos
+		  (note-single-char tty operation) ; maybe set it to this pos
 		  (if (equal (single-char-change tty)
-			     (cons (screen-x (new-screen tty))
-				   (screen-y (new-screen tty)))) ; same
-		      (cons (screen-x (new-screen tty))
-			    (screen-y (new-screen tty))) ; keep it
-		      nil))))				 ; or nope
+			     (list (screen-x (new-screen tty))
+				   (screen-y (new-screen tty))
+				   operation)) ; same
+		      (list (screen-x (new-screen tty))
+			    (screen-y (new-screen tty))
+			    operation)	; keep it
+		      nil))))		; or nope
     (note-single-line tty)))
 
-(defun note-change (tty thing)
+(defun note-change (tty thing &optional operation)
   "Set hints for TTY based on THING as a change."
   (typecase thing
     (character
@@ -523,12 +558,14 @@ then no."
        ((#\tab #\return)
 	#| nothing |#)
        (#\newline
+	;; XXX I don't think this is right, since it could be not a text change
+	;; if it doesn't scroll.
 	(no-hints tty))
        (otherwise
-	(note-length-based tty (display-length thing)))))
+	(note-length-based tty (display-length thing) operation))))
     (string
      ;; or maybe just length??
-     (note-length-based tty (display-length thing)))))
+     (note-length-based tty (display-length thing) operation))))
 
 (defmethod terminal-format ((tty terminal-crunch-stream) fmt &rest args)
   "Output a formatted string to the terminal."
@@ -589,7 +626,7 @@ i.e. the terminal is 'line buffered'."
     (setf (subseq (aref lines y) x (max 0 (- width n)))
 	  (subseq (aref lines y) (min (+ x n) (1- width))))
     (fill-by (aref lines y) #'blank-char :start (max 0 (- width n)))
-    (note-length-based tty n)))
+    (note-length-based tty n :delete)))
 
 (defmethod terminal-ins-char ((tty terminal-crunch-stream) n)
   (with-slots (x y width lines) (new-screen tty)
@@ -597,7 +634,7 @@ i.e. the terminal is 'line buffered'."
     (setf (subseq (aref lines y) (min (+ x n) (1- width)))
 	  (subseq (aref lines y) x))
     (fill-by (aref lines y) #'blank-char :start x :end (+ x n))
-    (note-length-based tty n)))
+    (note-length-based tty n :insert)))
 
 ;; Note that we don't have to replicate the somewhat bizarre line wrapping
 ;; behavior of real terminals or emulators. If you relied on such things in
@@ -1011,6 +1048,14 @@ Attributes are usually keywords."
 	     (aref (screen-index new) i) i))
     (setf (screen-hashes old) (copy-seq (screen-hashes new)))))
 
+(defun update-ending-position (tty new)
+  "Make sure we're at the right cursor position at the end of the update."
+  (when (or (not (eql (update-x tty) (screen-x new)))
+	    (not (eql (update-y tty) (screen-y new))))
+    (crunched-move-to tty
+		      (screen-x new) (screen-y new)
+		      (update-x tty) (update-y tty))))
+
 (defun update-display (tty)
   "This is the big crunch."
   (with-slots ((wtty wrapped-terminal)
@@ -1034,24 +1079,57 @@ Attributes are usually keywords."
     ;; Try to speed things up with hints.
     (cond
       ((not (text-change tty))
+       (dbugf :crunch "position only ~s ~s -> ~s ~s~%"
+	      (screen-x old) (screen-y old)
+	      (screen-x new) (screen-y new))
        (update-position tty new old))
       ((single-char-change tty)
-       (let ((cx (car (single-char-change tty)))
-	     (cy (cdr (single-char-change tty))))
-	 (crunched-move-to tty cx cy (screen-x old) (screen-y old))
-	 ;; @@@ it could be something else? like insert or delete?
-	 (terminal-write-char wtty
-			      (aref (aref (screen-lines new) (screen-y new))
-				    (screen-x new)))))
+       (let* ((cx (first (single-char-change tty)))
+	      (cy (second (single-char-change tty)))
+	      (op (third (single-char-change tty)))
+	      move-x
+	      char-x
+	      c)
+	 (flet ((put-it ()
+		  (crunched-move-to tty (max 0 move-x) cy
+				    (screen-x old) (screen-y old))
+		  (setf c (aref (aref (screen-lines new) cy) char-x))
+		  (terminal-write-char wtty c)))
+	   (compute-hashes new cy (1+ cy))
+	   (case op
+	     (:delete
+	      ;; Move to the position AT the spot and write the character
+	      ;; AT the point.
+	      (setf move-x cx
+		    char-x cx)
+	      (put-it)
+	      ;; Then back up
+	      (crunched-move-to tty (max 0 move-x) cy
+				(screen-x old) (screen-y old)))
+	     (:insert
+	      ;; Move to the position AT the spot and write the character
+	      ;; BEFORE the point.
+	      (setf move-x (1- cx)
+		    char-x cx)
+	      (put-it))
+	     (otherwise			; an append
+	      ;; Move to the position BEFORE the spot and write the character
+	      ;; BEFORE the point.
+	      (setf move-x (1- cx)
+		    char-x (1- cx))
+	      (put-it)))
+	   (dbugf :crunch "single char ~s ~s ~s '~s'~%" cx cy op c))))
       ((single-line-change tty)
        ;; diff the line
        ;; move, overwite, insert / delete as appropriate
        ;; @@@ it could be something else? like insert or delete?
        (let ((line (single-line-change tty)))
 	 (dbugf :crunch "single-line-change ~s~%" line)
+	 (compute-hashes new line (1+ line))
 	 (when (/= (aref (screen-hashes new) line)
 		   (aref (screen-hashes old) line))
-	   (update-line tty line))))
+	   (update-line tty line)))
+       (update-ending-position tty new))
       ;; No hints.
       (t
        ;; make line hashes
@@ -1068,15 +1146,12 @@ Attributes are usually keywords."
 	    (update-line tty i)))
 
        ;; Make sure we're at the right cursor position.
-       (when (or (not (eql (update-x tty) (screen-x new)))
-		 (not (eql (update-y tty) (screen-y new))))
-	 (crunched-move-to tty
-			   (screen-x new) (screen-y new)
-			   (update-x tty) (update-y tty)))))
+       (update-ending-position tty new)))
     (update-cursor-state wtty new old)
     (update-beeps tty new)
     (copy-new-to-old tty)
-    (finish-output wtty)))
+    (finish-output wtty)
+    (reset-hints tty)))
 
 (defmethod terminal-finish-output ((tty terminal-crunch-stream))
   "Make sure everything is output to the terminal."
