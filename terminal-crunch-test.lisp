@@ -7,7 +7,7 @@
   (:use :cl :dlib :terminal :terminal-crunch :terminal-ansi :fatchar
 	:table :table-print)
   (:export
-   #:test-1 #:test-2 #:test-3 #:test-4 #:test-5
+   #:test-1 #:test-2 #:test-3 #:test-4 #:test-5 #:test-6 #:test-7
    #:test-hashing
    ))
 (in-package :terminal-crunch-test)
@@ -90,12 +90,15 @@
 	(tt-get-key))
       (terminal-end tty state))))
 
-(defmacro with-crunch ((device-name) &body body)
+(defmacro with-crunch ((device-name &rest args) &body body)
   (with-unique-names (tty state)
-    `(let ((,tty (make-instance 'terminal-crunch
-				:wrapped-terminal
-				(make-instance 'terminal-ansi
-					       :device-name ,device-name))))
+    `(let ((,tty (setf tt (make-instance
+			   'terminal-crunch
+			   :wrapped-terminal
+			   (setf tta
+				 (make-instance 'terminal-ansi
+						:device-name ,device-name))
+			   ,@args))))
        (let ((,state (terminal-start ,tty))
 	     (*terminal* ,tty))
 	 (catch 'quit
@@ -229,6 +232,30 @@
 	 (dump-screen *terminal*)
 	 (case (tt-get-key) ((#\Q #\q) (throw 'quit nil)))
 	 ))))
+
+(defun test-6 (device-name)
+  "Test RL with a start-line."
+  (let ((line
+	 (with-new-terminal (:ansi *terminal* :device-name device-name)
+	   (terminal:terminal-get-cursor-position *terminal*))))
+    (labels ((show-state (e)
+	       (declare (ignore e))
+	       (dump-screen *terminal*)
+	       (dump-hashes *terminal*)))
+      (with-crunch (device-name :start-line line)
+	(rl:rl :output-callback #'show-state)))))
+
+(defun test-7 (device-name)
+  "Test RL with a start-line."
+  (let ((line
+	 (with-new-terminal (:ansi *terminal* :device-name device-name)
+	   (terminal:terminal-get-cursor-position *terminal*))))
+    ;; (labels ((show-state (e)
+    ;; 	       (declare (ignore e))
+    ;; 	       (dump-screen *terminal*)
+    ;; 	       (dump-hashes *terminal*)))
+    (with-crunch (device-name :start-line line)
+      (tiny-repl:tiny-repl))))
 
 (defun test-hashing ()
   (flet ((hash (x) (terminal-crunch::hash-thing x)))
