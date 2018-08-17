@@ -297,27 +297,13 @@ but perhaps reuse some resources."))
 ;; input
 
 (defun get-a-char (e)
-  "Read a character from the editor's tty."
+  "Read a character from the editor's terminal."
   (declare (type line-editor e))
   (tt-finish-output)
   (let ((c (tt-get-key)))
-    ;; when read returns eagain,
-    ;; (terminal-start tty) (redraw e) (tt-finish-output)
     (when (line-editor-input-callback e)
       (funcall (line-editor-input-callback e) c))
     c))
-
-#| ;; Delete this bullcrap.
-
-(defun get-lone-key ()
-  "Get a key, but easily usable from outside the editor. Don't use this for
-anything serious."
-  (terminal-start (line-editor-terminal *line-editor*))
-  (unwind-protect
-    (progn
-      (get-a-char *line-editor*))
-    (terminal-end (line-editor-terminal *line-editor*))))
-|#
 
 #|
 ;; Perhaps we should consider refactoring some part of get-a-char?
