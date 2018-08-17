@@ -224,6 +224,7 @@ STATE should be an object returned by TERMINAL-START."))
 (defvar *terminal-state* nil
   "Somewhere for terminals to save states.")
 
+;; @@@ Could this be simplified?
 (defmacro %with-terminal ((&optional type
 				     (var '*terminal*)
 				     (new-p nil)
@@ -239,10 +240,13 @@ Cleans up afterward."
 	       (if ,new-p
 		   ;; If we're making a new one, use a given type or
 		   ;; get the type from the existing *terminal*.
-		   (if ,new-type
-		       (find-terminal-class-for-type ,new-type)
-		       (and ,var (typep ,var 'terminal:terminal)
-			    (class-of ,var)))
+		   (or
+		    (if ,new-type
+			(find-terminal-class-for-type ,new-type)
+			(and ,var (typep ,var 'terminal:terminal)
+			     (class-of ,var)))
+		    (error
+		     "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
 		   ;; If we're not making a new one, use the given type
 		   ;; or and existing variable, or lastly, the default.
 		   (or (and ,type
@@ -250,25 +254,33 @@ Cleans up afterward."
 		       (and ,var (typep ,var 'terminal:terminal)
 			    (class-of ,var))
 		       (and *default-terminal-type*
-			    (find-terminal-class-for-type ,type)))))
-	      ,make-it
-	      ,var
+			    (find-terminal-class-for-type ,type))
+		       (error
+			"Provide a type or set *DEFAULT-TERMINAL-TYPE*."))))
+	      (,make-it (or ,new-p
+			    (or (not ,var)
+				(and ,var (not (typep ,var ,term-class))))))
+
+	      (,var (if ,make-it
+			(make-instance ,term-class ,@initargs)
+			,var))
 	      ;; (*standard-output* ,var)
 	      ;; (*standard-input* ,var)
 	      ,result
 	      *terminal-state*)
 	 (dbugf :terminal "term-class = ~s~%" ,term-class)
-	 (when (not ,term-class)
-	   (error "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
+	 ;; (when (not ,term-class)
+	 ;;   (error "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
 	 ;; Make a new terminal if the we were told to or the var isn't
 	 ;; set or isn't of the correct type.
-	 (setf ,make-it (or ,new-p
-			    (or (not ,var)
-				(and ,var (not (typep ,var ,term-class)))))
-	       ,var (if ,make-it
-			(make-instance ,term-class ,@initargs)
-			,var))
+	 ;; (setf ,make-it (or ,new-p
+	 ;; 		    (or (not ,var)
+	 ;; 			(and ,var (not (typep ,var ,term-class)))))
+	 ;;       ,var (if ,make-it
+	 ;; 		(make-instance ,term-class ,@initargs)
+	 ;; 		,var))
 	 (dbugf :terminal "make-it = ~s~%" ,make-it)
+	 (dbugf :terminal "~s = ~s~%" ',var ,var)
 	 (unwind-protect
 	      (progn
 		(setf *terminal-state* (terminal-start ,var))
