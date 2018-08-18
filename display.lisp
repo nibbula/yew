@@ -132,15 +132,18 @@ Assumes S is already converted to display characters."
 	((> (+ screen-col len) width)
 	 (setf screen-col len)
 	 (incf screen-row)
-	 (tt-scroll-down 1)
-	 (tt-beginning-of-line)
+	 ;; @@@ Erroneously compensating for EOL hyperspace
+	 ;;(tt-scroll-down 1)
+	 ;;(tt-beginning-of-line)
 	 (tt-write-char cc))
 	((= (+ screen-col len) width)
 	 (tt-write-char cc)
 	 (setf screen-col 0)
 	 (incf screen-row)
-	 (tt-scroll-down 1)
-	 (tt-beginning-of-line))
+	 ;; @@@ Erroneously compensating for EOL hyperspace
+	 ;;(tt-scroll-down 1)
+	 ;;(tt-beginning-of-line)
+	 )
 	(t
 	 (tt-write-char cc)
 	 (incf screen-col len))))))
