@@ -47,6 +47,11 @@ for various operations through the OUTPUT-COST methods.
   index
   hashes)
 
+(defstruct change
+  start-x start-y
+  end-x end-y
+  op)
+
 (defparameter *blank-char*
   (make-fatchar :c #\space))
 
@@ -109,7 +114,8 @@ are directed to move above it, or if we scroll.")
     :documentation "True if there was text changed.")
    (single-char-change
     :initarg :single-char-change :accessor single-char-change :initform t
-    :documentation "Coordinates of a single character change, or NIL if not.")
+    :documentation
+    "CHANGE object of a single character change, or NIL if not, T if unknown.")
    (single-line-change
     :initarg :single-line-change :accessor single-line-change :initform t
     :documentation
@@ -491,7 +497,7 @@ sizes. It only copies the smaller of the two regions."
 	(single-char-change tty) t
 	(single-line-change tty) t))
 
-(defun note-single-line (tty)
+(defun note-single-line-only (tty)
   "Note a possible single line change. But if this is called on different lines,
 then no."
   (when (single-line-change tty) ;; not already determined NOT to be
@@ -503,6 +509,15 @@ then no."
 		  (screen-y (new-screen tty))	    ; keep it
 		  nil)))))			    ; or nope
 
+(defun note-single-line (tty)
+  "Note a possible single line change, and also set the other hints, assuming
+that the change is more than one character."
+  (note-single-line-only tty)
+  (when (not (text-change tty))
+    (setf (text-change tty) t))
+  (when (single-char-change tty)
+    (setf (single-char-change tty) nil)))
+
 (defun rest-of-the-line-blank-p (line start)
   "Return true if the rest of the fatchar LINE is blank, starting from START."
   ;; This seems faster than the equivalent position-if.
@@ -511,25 +526,31 @@ then no."
 		      :test (lambda (a b) (not (equalp a b)))))
        t))
 
+(defun new-change (tty operation)
+  "Return a new CHANGE object for OPERATION."
+  (make-change
+   :start-x (screen-x (old-screen tty))
+   :start-y (screen-y (old-screen tty))
+   :end-x   (screen-x (new-screen tty))
+   :end-y   (screen-y (new-screen tty))
+   :op operation))
+
 (defun note-single-char (tty operation)
   "Return a cons of the screen position or NIL if we shouldn't do the
 optimization."
-  (case operation
-    ((:insert :delete)
-     ;; We can only do single character optimization if the line is blank
-     ;; after the position.
-     (let ((new (new-screen tty)))
-       (if (rest-of-the-line-blank-p (aref (screen-lines new) (screen-y new))
-				     (screen-x new))
-	   (list (screen-x (new-screen tty))
-		 (screen-y (new-screen tty))
-		 operation)
-	   nil)))
-    (otherwise
-     ;; Set it to this position.
-     (list (screen-x (new-screen tty))
-	   (screen-y (new-screen tty))
-	   operation))))
+  (flet ()
+    (case operation
+      ((:insert :delete)
+       ;; We can only do single character optimization if the line is blank
+       ;; after the position.
+       (let ((new (new-screen tty)))
+	 (if (rest-of-the-line-blank-p (aref (screen-lines new) (screen-y new))
+				       (screen-x new))
+	     (new-change tty operation)
+	     nil)))
+      (otherwise
+       ;; Set it to this position.
+       (new-change tty operation)))))
 
 (defun note-length-based (tty len operation)
   (when (> len 0)
@@ -540,15 +561,11 @@ optimization."
 	      nil
 	      (if (eq t (single-char-change tty)) ; undetermined
 		  (note-single-char tty operation) ; maybe set it to this pos
-		  (if (equal (single-char-change tty)
-			     (list (screen-x (new-screen tty))
-				   (screen-y (new-screen tty))
-				   operation)) ; same
-		      (list (screen-x (new-screen tty))
-			    (screen-y (new-screen tty))
-			    operation)	; keep it
-		      nil))))		; or nope
-    (note-single-line tty)))
+		  (let ((change (new-change tty operation)))
+		    (if (equal (single-char-change tty) change) ; same
+			(single-char-change tty)		; keep it
+			nil)))))				; or nope
+    (note-single-line-only tty)))
 
 (defun note-change (tty thing &optional operation)
   "Set hints for TTY based on THING as a change."
@@ -850,6 +867,8 @@ Attributes are usually keywords."
 |#
 
 (defun crunched-move-to (tty new-x new-y old-x old-y)
+  "Move to NEW-X NEW-Y from OLD-X OLD-Y in a hopefully efficient way.
+Set the current update position UPDATE-X UPDATE-Y in the TTY."
   (let ((wtty (wrapped-terminal tty)))
     (when (or (not (eql new-x old-x)) (not (eql new-y old-y)))
       (cond
@@ -1008,7 +1027,7 @@ Attributes are usually keywords."
 	     (setf start (car c)
 		   end (cdr c))
 	     (crunched-move-to tty start line (update-x tty) (update-y tty))
-	     (dbugf :crunch "update-line FLOOB ~s ~s~%" line c)
+	     (dbugf :crunch "update-line FLOOB ~s ~s ~s~%" line start c)
 	     (if (= start end)
 		 (terminal-write-char wtty (aref new-line start))
 		 (terminal-write-string wtty (make-fat-string :string new-line)
@@ -1084,41 +1103,45 @@ Attributes are usually keywords."
 	      (screen-x new) (screen-y new))
        (update-position tty new old))
       ((single-char-change tty)
-       (let* ((cx (first (single-char-change tty)))
-	      (cy (second (single-char-change tty)))
-	      (op (third (single-char-change tty)))
+       (let* ((cx (change-start-x (single-char-change tty)))
+	      (cy (change-start-y (single-char-change tty)))
+	      (op (change-op (single-char-change tty)))
 	      move-x
 	      char-x
 	      c)
+	 (dbugf :crunch "single char ~s~%" (single-char-change tty))
 	 (flet ((put-it ()
 		  (crunched-move-to tty (max 0 move-x) cy
-				    (screen-x old) (screen-y old))
-		  (setf c (aref (aref (screen-lines new) cy) char-x))
-		  (terminal-write-char wtty c)))
+				    (update-x tty) (update-y tty))
+		  (setf c (aref (aref (screen-lines new) cy) (max 0 char-x)))
+		  (terminal-write-char wtty c)
+		  (incf (update-x tty) (display-length c))))
 	   (compute-hashes new cy (1+ cy))
 	   (case op
 	     (:delete
 	      ;; Move to the position AT the spot and write the character
 	      ;; AT the point.
-	      (setf move-x cx
+	      (setf move-x (change-end-x (single-char-change tty))
 		    char-x cx)
 	      (put-it)
 	      ;; Then back up
-	      (crunched-move-to tty (max 0 move-x) cy
-				(screen-x old) (screen-y old)))
+	      ;; (crunched-move-to tty (max 0 move-x) cy
+	      ;; 			(update-x tty) (update-y tty))
+	      )
 	     (:insert
 	      ;; Move to the position AT the spot and write the character
 	      ;; BEFORE the point.
-	      (setf move-x (1- cx)
-		    char-x cx)
+	      (setf move-x cx
+		    char-x (change-end-x (single-char-change tty)))
 	      (put-it))
 	     (otherwise			; an append
 	      ;; Move to the position BEFORE the spot and write the character
 	      ;; BEFORE the point.
-	      (setf move-x (1- cx)
-		    char-x (1- cx))
+	      (setf move-x cx
+		    char-x cx)
 	      (put-it)))
-	   (dbugf :crunch "single char ~s ~s ~s '~s'~%" cx cy op c))))
+	   (update-ending-position tty new))
+	 (dbugf :crunch "char = '~s'~%" c)))
       ((single-line-change tty)
        ;; diff the line
        ;; move, overwite, insert / delete as appropriate
