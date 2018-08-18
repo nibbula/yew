@@ -35,7 +35,11 @@
 		     (terminal-crunch::old-screen tty)))
 	(new-lines (terminal-crunch::screen-lines
 		     (terminal-crunch::new-screen tty))))
-    (format *debug-io* "Old -> New~%")
+    (format *debug-io* "Old ~s ~s -> New ~s ~s~%"
+	    (terminal-crunch::screen-x (terminal-crunch::old-screen tty))
+	    (terminal-crunch::screen-y (terminal-crunch::old-screen tty))
+	    (terminal-crunch::screen-x (terminal-crunch::new-screen tty))
+	    (terminal-crunch::screen-y (terminal-crunch::new-screen tty)))
     (loop :for i :from 0 :below (length old-lines) :do
        (format *debug-io* "[~a] [~a]~%"
 	       (make-fat-string :string (aref old-lines i))
