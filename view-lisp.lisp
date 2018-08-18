@@ -355,7 +355,7 @@
      :collect
      (make-instance
       'system-node
-      :object (asdf:find-system s)
+      :object (asdf:registered-system s)
       :open nil)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
