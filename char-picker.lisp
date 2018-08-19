@@ -92,9 +92,11 @@
 			 (+ start l))
 	 (setf cc (code-char i)
 	       name (or (char-name (code-char i)) ""))
-	 (write-special-char (if (control-char-p cc)
-				 (displayable-char cc :all-control t)
-				 cc))
+	 ;; (write-special-char (if (control-char-p cc)
+	 ;; 			 (displayable-char cc :all-control t)
+	 ;; 			 cc))
+	 (write-special-char (displayable-char cc :all-control t
+					       :show-meta nil))
 	 (if (and search-string
 		  (setf ss-pos (search search-string name :test #'equalp)))
 	     (progn
