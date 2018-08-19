@@ -854,6 +854,18 @@ Attributes are usually keywords."
 	  (list attributes)
 	  (keyword (list attributes)))))
 
+(defmethod terminal-title ((tty terminal-crunch))
+  (terminal-title (wrapped-terminal tty)))
+
+(defmethod (setf terminal-title) (title (tty terminal-crunch))
+  "Set the title of a terminal window. The terminal is assumed to work like
+XTerm or something."
+  (setf (terminal-title (wrapped-terminal tty)) title))
+
+(defmethod terminal-has-attribute ((tty terminal-crunch) attribute)
+  "Return true if the terminal can display the character attribute."
+  (terminal-has-attribute (wrapped-terminal tty) attribute))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Somewhat unlike the old world, our costs could be unrelated to the number
