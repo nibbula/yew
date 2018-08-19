@@ -238,12 +238,14 @@ anything important.")
 	(if (and (slot-boundp e 'terminal-device-name)
 		 (slot-value e 'terminal-device-name))
 	    (make-instance (slot-value e 'terminal-class)
-			   :device-name (line-editor-terminal-device-name e))
+			   :device-name (line-editor-terminal-device-name e)
+			   :start-at-current-line t)
 	    (or (progn
 		  (when *terminal*
 		    (dbug "Using *TERMINAL* ~a~%" (type-of *terminal*)))
 		  *terminal*)
-		(make-instance (slot-value e 'terminal-class)))))
+		(make-instance (slot-value e 'terminal-class)
+			       :start-at-current-line t))))
 
   ;; If the local keymap wasn't given, make an empty one.
   (unless (and (slot-boundp e 'local-keymap) (slot-value e 'local-keymap))
