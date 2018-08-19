@@ -119,6 +119,9 @@ than space and delete."
 	       (code-char (+ cc (char-code #\@)))))
       ((and cc (= cc 127))
        (format nil (if caret "^?" "C-?")))
+      ;; These can mess with some terminals, so don't display them directly.
+      ((and cc (> cc 127) (< cc 160))
+       (format nil "\\~o" cc))
       (cc (princ-to-string c))
       (t (format nil "~s" c)))))
 
