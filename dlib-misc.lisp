@@ -868,7 +868,7 @@ is printed. This is useful for printing, e.g. slots of a structure or class."
 ;; @@@ Is this really necessary or maybe should it be a constant?
 (defparameter *inter-space* 2)
 
-(defun smush-output (list cols height format-char stream row-limit)
+(defun smush-output (list cols height format-char stream row-limit screen-width)
   "Output LIST to STREAM in column major COLS and HEIGHT lines, limited to
 ROW-LIMIT. Items are printed with FORMAT-CHAR."
   (loop
@@ -876,7 +876,9 @@ ROW-LIMIT. Items are printed with FORMAT-CHAR."
      :and format-str = (format nil "~~v~a" format-char)
      :and a = (make-array (length list) :initial-contents list)
      :and limit = (if row-limit (min height row-limit) height)
+     :and x
      :for i :from 0 :below limit :do
+     (setf x 0)
      (loop
 	:with n
 	:for c :in cols
@@ -884,8 +886,10 @@ ROW-LIMIT. Items are printed with FORMAT-CHAR."
 	:do
 	(setf n (+ (* j height) i))
 	(when (< n len)
-	  (format stream format-str c (aref a n))))
-     (terpri stream)))
+	  (format stream format-str c (aref a n))
+	  (incf x c)))
+     (when (< x screen-width)
+       (terpri stream))))
 
 #|
 ;; @@@ I really wish I could use rl:display-length, which probably means it
@@ -1044,7 +1048,7 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
 	  (length last-col-list) last-new-rows
 	  extra not-fit-count last-col-list)
     (smush-output list last-col-list last-new-rows format-char stream
-		  row-limit)
+		  row-limit screen-width)
     last-new-rows))
 
 (defun print-columns-sizer (list &key (columns 80) (stream *standard-output*)
