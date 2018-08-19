@@ -11,7 +11,7 @@
   :source-control     :git
   :long-description   "A line editor which is not so tiny."
   :depends-on (:dlib :dlib-misc :dl-list :stretchy :char-util
-	       :opsys :terminal :terminal-ansi :terminal-dumb
+	       :opsys :terminal :terminal-ansi :terminal-dumb :terminal-crunch
 	       :collections :fatchar :fatchar-io :completion :keymap
 	       :syntax-lisp :unipose)
   :serial t	; not entirely correct, but convenient
