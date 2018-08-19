@@ -416,7 +416,6 @@ or :CHAR for character at time with no echo.")
   (:documentation
    "Set the input mode to MODE. Modes are :LINE for line at time with echo
 or :CHAR for character at time with no echo."))
-;; I think the macro for tt-input-mode will work for setf?
 
 (deftt reset ()
   "Try to reset the terminal to a sane state, without being too disruptive.")

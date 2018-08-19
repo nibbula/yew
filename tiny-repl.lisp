@@ -6,6 +6,7 @@
 ;;;   - pasteability?
 ;;;     - make multi-line statements 1 history entry
 ;;;     - some way to turn off completion (tab & ?) for pasting
+;;;       - but maybe bracketed paste mode is sufficient?
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 		   (compilation-speed 0)))
@@ -18,8 +19,7 @@
    #:*repl-level*
    #:snarky-interceptor
    #:read-arg
-  )
-)
+  ))
 (in-package "TINY-REPL")
 
 (defparameter *real-eof-symbol* :Z-REAL-EOF)
@@ -63,11 +63,10 @@
 
 (defstruct repl-state
   "Internal state of the REPL. Slots are:
-  editor	  The current RL editor. An instance of the class
-                  RL:LINE-EDITOR.
+  editor	  The current RL editor. An instance of RL:LINE-EDITOR.
   interceptor	  A function of two arguments, a value to be intercepted and
                   copy of this REPL-STATE.
-  prompt-func   
+  prompt-func     A propmpt function for RL.
   more		  If non-nil, a string of more input.
   terminal-name   Name of a terminal device or nil.
   terminal-class  A terminal class symbol.
@@ -386,7 +385,7 @@ to quit everything. Arguments are:
  NO-ANNOUNCE    -- True to supress the announcement on starting.
  TERMINAL-NAME  -- Name of a system terminal device to read from.
  TERMINAL-TYPE  -- Type of terminal to read from. Defaults from
-                   pick-a-terminal-type and so *default-terminal-type*.
+                   pick-a-terminal-type and so from *default-terminal-type*.
  KEYMAP         -- A custom keymap to use for RL.
  OUTPUT         -- Stream to print output on.
  INTERCEPTOR    -- Function that's called with an object to be evaluated and a
