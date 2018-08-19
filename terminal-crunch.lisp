@@ -337,6 +337,25 @@ sizes. It only copies the smaller of the two regions."
     (setf (terminal-window-rows tty) (terminal-window-rows wtty)
 	  (terminal-window-columns tty) (terminal-window-columns wtty))))
 
+(defun unset-fatchar (c)
+  "Make a fatchar unset."
+  (setf (fatchar-c     c)	(code-char 0)
+	(fatchar-fg    c)	nil
+	(fatchar-bg    c)	nil
+	(fatchar-line  c)	0
+	(fatchar-attrs c)	nil))
+
+(defun invalidate-before-start-row (tty screen)
+  (with-slots (start-line) tty
+    (loop :for i :from 0 :below (start-line tty)
+       :do
+       (loop :for c :across (aref (screen-lines screen) i)
+	  :do (unset-fatchar c))
+       (setf (aref (screen-hashes screen) i)
+	     (hash-thing (aref (screen-lines screen) i)))
+       ;; @@@ do we really need to set the index?
+       (setf (aref (screen-index screen) i) i))))
+
 (defmethod terminal-start ((tty terminal-crunch))
   "Set up the terminal for reading a character at a time without echoing."
   (with-slots ((wtty wrapped-terminal) start-line start-at-current-line) tty
@@ -349,6 +368,8 @@ sizes. It only copies the smaller of the two regions."
 	    (setf start-line (terminal-get-cursor-position wtty)
 		  (screen-y (new-screen tty)) start-line
 		  (screen-y (old-screen tty)) start-line)
+	    (invalidate-before-start-row tty (new-screen tty))
+	    (invalidate-before-start-row tty (old-screen tty))
 	    (dbugf :crunch "Crunch auto re-starting at ~s.~%" start-line))
 	  (incf (started tty)))
 	(let ((state (terminal-start wtty)))
@@ -384,6 +405,8 @@ sizes. It only copies the smaller of the two regions."
 		(terminal-home wtty)
 		(dbugf :crunch "Crunch ~s started.~%" tty))
 	      (progn
+		(invalidate-before-start-row tty (new-screen tty))
+		(invalidate-before-start-row tty (old-screen tty))
 		(terminal-move-to wtty start-line 0)
 		(terminal-erase-below wtty)
 		(dbugf :crunch "Crunch ~s started at ~d.~%" tty start-line)))
