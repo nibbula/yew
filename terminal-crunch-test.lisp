@@ -259,7 +259,7 @@
     ;; 	       (dump-screen *terminal*)
     ;; 	       (dump-hashes *terminal*)))
     (with-crunch (device-name :start-line line)
-      (tiny-repl:tiny-repl))))
+      (tiny-repl:tiny-repl :terminal-type :crunch))))
 
 (defun test-hashing ()
   (flet ((hash (x) (terminal-crunch::hash-thing x)))
