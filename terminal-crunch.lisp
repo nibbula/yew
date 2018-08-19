@@ -108,6 +108,12 @@ for various operations through the OUTPUT-COST methods.
     :documentation
     "Line of the screen that we start our manangment on. This can change if we
 are directed to move above it, or if we scroll.")
+   (start-at-current-line
+    :initarg :start-at-current-line :accessor start-at-current-line
+    #|:initform nil|# :type boolean
+    :documentation
+    "True to set START-LINE to the cursor position when starting the wrapped
+terminal.")
    ;; Hints
    (text-change
     :initarg :text-change :accessor text-change :initform nil :type boolean
@@ -121,6 +127,8 @@ are directed to move above it, or if we scroll.")
     :documentation
     "Line number of a single line only change. Or NIL if there was more than one line changed.")
    )
+  (:default-initargs
+   :start-at-current-line nil)
   (:documentation
    "Terminal output crunching."))
 
@@ -156,6 +164,8 @@ are directed to move above it, or if we scroll.")
     :after ((o terminal-crunch) &rest initargs &key &allow-other-keys)
   "Initialize a terminal-crunch."
   (declare (ignore initargs))
+
+  ;; Create the wrapped terminal if it's not already set.
   (when (or (not (slot-boundp o 'wrapped-terminal))
 	    (not (slot-value o 'wrapped-terminal)))
     (let ((type (platform-default-terminal-type)))
@@ -164,7 +174,13 @@ are directed to move above it, or if we scroll.")
 		"You probably don't want to wrap a terminal-crunch in a ~
                  terminal-crunch."))
       (setf (slot-value o 'wrapped-terminal)
-	    (make-instance (find-terminal-class-for-type type)))))
+	    ;; Make sure the use the right device.
+	    (if (terminal-device-name o)
+		(make-instance (find-terminal-class-for-type type)
+			       :device-name (terminal-device-name o))
+		(make-instance (find-terminal-class-for-type type))))))
+
+  ;; Set the initial update position based on the start-line
   (when (slot-boundp o 'start-line)
     (setf (slot-value o 'update-y) (slot-value o 'start-line))))
 
@@ -323,17 +339,33 @@ sizes. It only copies the smaller of the two regions."
 
 (defmethod terminal-start ((tty terminal-crunch))
   "Set up the terminal for reading a character at a time without echoing."
-  (with-slots ((wtty wrapped-terminal) start-line) tty
+  (with-slots ((wtty wrapped-terminal) start-line start-at-current-line) tty
     (if (started tty)
-	(incf (started tty))
+	(progn
+	  (dbugf :crunch "Crunch ~s not recursivley re-started.~%" tty)
+	  ;; Non-dumb terminals are supposed to start in :char mode.
+	  (setf (terminal-input-mode wtty) :char)
+	  (when start-at-current-line
+	    (setf start-line (terminal-get-cursor-position wtty)
+		  (screen-y (new-screen tty)) start-line
+		  (screen-y (old-screen tty)) start-line)
+	    (dbugf :crunch "Crunch auto re-starting at ~s.~%" start-line))
+	  (incf (started tty)))
 	(let ((state (terminal-start wtty)))
 	  (terminal-get-size wtty)
+	  (when start-at-current-line
+	    (dbugf :crunch "Crunch auto starting at ~s.~%" start-line)
+	    (setf start-line (terminal-get-cursor-position wtty)))
+
+	  ;; new screen
 	  (when (not (new-screen tty))
 	    (setf (new-screen tty)
 		  (make-new-screen (terminal-window-rows wtty)
 				   (terminal-window-columns wtty)))
 	    (when (not (zerop start-line))
 	      (setf (screen-y (new-screen tty)) start-line)))
+
+	  ;; old screen
 	  (when (not (old-screen tty))
 	    (setf (old-screen tty)
 		  (make-new-screen (terminal-window-rows wtty)
@@ -341,27 +373,34 @@ sizes. It only copies the smaller of the two regions."
 	    (when (not (zerop start-line))
 	      (setf (screen-y (old-screen tty)) start-line))
 	    (compute-hashes (old-screen tty)))
+
 	  (setf (terminal-window-rows tty) (terminal-window-rows wtty)
 		(terminal-window-columns tty) (terminal-window-columns wtty))
+
 	  ;; Start with a clean slate.
 	  (if (zerop start-line)
 	      (progn
 		(terminal-clear wtty)
-		(terminal-home wtty))
+		(terminal-home wtty)
+		(dbugf :crunch "Crunch ~s started.~%" tty))
 	      (progn
 		(terminal-move-to wtty start-line 0)
-		(terminal-erase-below wtty)))
+		(terminal-erase-below wtty)
+		(dbugf :crunch "Crunch ~s started at ~d.~%" tty start-line)))
 	  (terminal-finish-output wtty)
 	  (setf (started tty) 1)
 	  state))))
 
 (defmethod terminal-end ((tty terminal-crunch) &optional state)
   "Put the terminal back to the way it was before we called terminal-start."
-  (when (zerop (decf (started tty)))
+  (if (zerop (decf (started tty)))
     (progn
       (terminal-finish-output tty)
       (terminal-end (wrapped-terminal tty) state)
-      (setf (started tty) nil))))
+      (dbugf :crunch "Crunch ~s ended.~%" tty)
+      (setf (started tty) nil))
+    (progn
+      (dbugf :crunch "Crunch ~s pop, but not ended.~%" tty))))
 
 (defmethod terminal-done ((tty terminal-crunch) &optional state)
   "Forget about the whole terminal thing and stuff."
@@ -604,11 +643,27 @@ optimization."
   (copy-to-screen tty str :start start :end end)
   (note-change tty str))
 
+(defmethod terminal-write-line ((tty terminal-crunch-stream) str
+				  &key start end)
+  "Output a string to the terminal."
+  (copy-to-screen tty str :start start :end end)
+  (note-change tty str)
+  (copy-char tty #\newline)
+  (note-change tty #\newline))
+
 (defmethod terminal-write-string ((tty terminal-crunch-stream) (str fat-string)
 				  &key start end)
   "Output a string to the terminal."
   (copy-to-screen tty (fat-string-string str) :start start :end end)
   (note-change tty str))
+
+(defmethod terminal-write-line ((tty terminal-crunch-stream) (str fat-string)
+				  &key start end)
+  "Output a string to the terminal."
+  (copy-to-screen tty (fat-string-string str) :start start :end end)
+  (note-change tty str)
+  (copy-char tty #\newline)
+  (note-change tty #\newline))
 
 (defmethod terminal-write-char ((tty terminal-crunch-stream) char)
   "Output a character to the terminal. Flush output if it is a newline,
