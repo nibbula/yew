@@ -790,6 +790,7 @@ i.e. the terminal is 'line buffered'."
 	(setf did-one t)))
     (when (structured-color-p bg)
       (let ((c (convert-color-to bg :rgb8)))
+	(if did-one (write-char #\; (terminal-output-stream tty)))
 	(terminal-raw-format tty "48;2;~d;~d;~d"
 			     (color-component c :red)
 			     (color-component c :green)
