@@ -394,17 +394,18 @@ Keyword arguments:
 	 ;;(*standard-output* *terminal*)
 	 ;;(*standard-input* *terminal*)
 	 (*completion-count* 0)
-	 (*history-context* context))
+	 (*history-context* context)
+	 terminal-state)
     (when editor
       (freshen editor))
     (setf (fill-pointer (buf e)) (point e))
     #+ccl (setf ccl::*auto-flush-streams* nil)
-    (when (typep (line-editor-terminal e)
-		 (find-terminal-class-for-type :crunch))
-      (setf (oelt (line-editor-terminal e) :start-line)
-	    (terminal-get-cursor-position
-	     (oelt (line-editor-terminal e) :wrapped-terminal))))
-    (terminal-start (line-editor-terminal e))
+    ;; (when (typep (line-editor-terminal e)
+    ;; 		 (find-terminal-class-for-type :crunch))
+    ;;   (setf (oelt (line-editor-terminal e) :start-line)
+    ;; 	    (terminal-get-cursor-position
+    ;; 	     (oelt (line-editor-terminal e) :wrapped-terminal))))
+    (setf terminal-state (terminal-start (line-editor-terminal e)))
 
     ;; Add the new line we're working on.
     (history-add nil)
@@ -438,6 +439,9 @@ Keyword arguments:
 			   (screen-col e) (screen-row e)
 			   (terminal-window-columns terminal)
 			   (terminal-window-rows terminal)
+			   ;; (when (typep *terminal*
+			   ;; 		'terminal-crunch:terminal-crunch)
+			   ;;   (terminal-crunch::start-line *terminal*))
 			   point cmd)
 		  (show-message-log e))
 		;; @@ Is this really where I want it?
@@ -476,7 +480,7 @@ Keyword arguments:
 		:while (not quit-flag))
 	  (block nil
 	    (tt-finish-output)
-	    (terminal-end terminal)))
+	    (terminal-end terminal terminal-state)))
 	(values (if result result (fatchar-string-to-string buf))
 		e)))))
 
