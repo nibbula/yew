@@ -171,11 +171,10 @@ Assumes S is already converted to display characters."
        (setf (screen-col e) 0)
        (incf (screen-row e))
        (tt-write-char cc))
-      ((setf cc (control-char-graphic cc))
+      ((control-char-graphic cc)
        (editor-write-char e #\^)
-       (editor-write-char e cc))
+       (editor-write-char e (control-char-graphic cc)))
       (t ;; output non-graphic chars as char code
-       (editor-write-char e #\\)
        (editor-write-string e (format nil "\\~3,'0o" (char-code cc)))))))
 
 (defun display-buf (e &optional (start 0) end)
