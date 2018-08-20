@@ -1105,6 +1105,7 @@ program that messes with the terminal, we can still type at the debugger."
 	      (*print-circle* t))
 	  (print-condition c)
 	  (list-restarts (compute-restarts c))
+	  (tt-finish-output)
 	  (tiny-repl :interceptor #'debugger-interceptor
 		     :prompt-func #'debug-prompt
 		     :keymap *debugger-keymap*
