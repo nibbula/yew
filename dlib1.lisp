@@ -1527,7 +1527,7 @@ the right package."
   `(when (and dlib:*dbug*
 	      (or (not *dbug-package*)
 		  (equal *dbug-package* (package-name *package*))))
-     (funcall #'format *debug-io* ,fmt ,@args) (finish-output)))
+     (funcall #'format *debug-io* ,fmt ,@args) (finish-output *debug-io*)))
 
 (defmacro dbugf (facility fmt &rest args)
   "Print a debugging message when debugging is turned on and maybe we're in
@@ -1537,7 +1537,7 @@ facility be a non-keyword symbol."
 	      (or
 	       (member ,facility *dbug-facility*)
 	       (member :all *dbug-facility*)))
-     (funcall #'format *debug-io* ,fmt ,@args) (finish-output)))
+     (funcall #'format *debug-io* ,fmt ,@args) (finish-output *debug-io*)))
 
 (defmacro with-dbug (&body body)
   "Evaluate the BODY with debugging message printing turned on."
