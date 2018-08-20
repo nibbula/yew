@@ -221,6 +221,8 @@ The REPL also has a few commands:
 			      :context :repl
 			      :prompt ""))
 		    (progn
+		      (tt-finish-output)
+		      (finish-output)
 		      ;; (try-to-reset-curses)
 		      (setf (values str editor)
 			    (if prompt-string
@@ -417,7 +419,9 @@ to quit everything. Arguments are:
     (when (not theme:*theme*)
       (setf theme:*theme* (theme:default-theme)))
 
-    (with-terminal (terminal-type *terminal* :device-name terminal-name)
+    (with-terminal (terminal-type *terminal*
+				  :device-name terminal-name
+				  :start-at-current-line t)
       (setf (tt-input-mode) :line)
       ;; Activate the debugger if it's loaded.
       (when (and debug (find-package :tiny-debug))
