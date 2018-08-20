@@ -772,8 +772,9 @@ line : |----||-------||---------||---|
 	     :accept-does-newline nil
 	     :context :pager)
     ;; Make sure we go back to raw mode, so we can ^Z
-    (set-terminal-mode (terminal-file-descriptor *terminal*) :raw t)
-    ))
+    ;; @@@ I think raw mode should be avoided.
+    (when (terminal-file-descriptor *terminal*)
+      (set-terminal-mode (terminal-file-descriptor *terminal*) :raw t))))
 
 (defun search-line (str line)
   "Return true if LINE contains the string STR. LINE can be a string, or a
@@ -1469,6 +1470,7 @@ q - Abort")
     (unwind-protect
       (progn
 	(when (terminal-file-descriptor *terminal*)
+	  ;; @@@ We should figure out how to avoid raw mode.
 	  (set-terminal-mode (terminal-file-descriptor *terminal*) :raw t))
 	(when (and (not stream) file-list)
 	  (setf stream (open-lossy (file-location-file (elt file-list 0)))
