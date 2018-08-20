@@ -21,11 +21,12 @@
    #:pick-a-terminal-type
    #:terminal-stream
    #:terminal
-   #:terminal-file-descriptor ;; #:file-descriptor
-   #:terminal-device-name     ;; #:device-name
-   #:terminal-output-stream   ;; #:output-stream
-   #:terminal-window-rows     ;; #:window-rows
-   #:terminal-window-columns  ;; #:window-columns
+   #:terminal-file-descriptor       ;; #:file-descriptor
+   #:terminal-device-name           ;; #:device-name
+   #:terminal-output-stream         ;; #:output-stream
+   #:terminal-window-rows           ;; #:window-rows
+   #:terminal-window-columns        ;; #:window-columns
+   #:terminal-start-at-current-line ;; #:start-at-current-line
    #:terminal-get-size
    #:terminal-get-cursor-position
    #:terminal-start
@@ -164,11 +165,18 @@ require terminal driver support."))
     :accessor terminal-window-columns
     :initarg :window-columns
     :documentation "Number of columns of characters in the window.")
-   )
+   (start-at-current-line
+    :initarg :start-at-current-line
+    :accessor terminal-start-at-current-line
+    :initform nil :type boolean
+    :documentation
+    "Tell terminals that care about it, to start managing the screen at the
+current line."))
   (:default-initargs
     :file-descriptor		nil
     :device-name		*default-console-device-name*
     :output-stream		nil
+    ;;:start-at-current-line	nil
   )
   (:documentation "What we need to know about terminal device."))
 

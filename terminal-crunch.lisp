@@ -108,12 +108,12 @@ for various operations through the OUTPUT-COST methods.
     :documentation
     "Line of the screen that we start our manangment on. This can change if we
 are directed to move above it, or if we scroll.")
-   (start-at-current-line
-    :initarg :start-at-current-line :accessor start-at-current-line
-    #|:initform nil|# :type boolean
-    :documentation
-    "True to set START-LINE to the cursor position when starting the wrapped
-terminal.")
+;;    (start-at-current-line
+;;     :initarg :start-at-current-line :accessor start-at-current-line
+;;     #|:initform nil|# :type boolean
+;;     :documentation
+;;     "True to set START-LINE to the cursor position when starting the wrapped
+;; terminal.")
    ;; Hints
    (text-change
     :initarg :text-change :accessor text-change :initform nil :type boolean
@@ -128,7 +128,8 @@ terminal.")
     "Line number of a single line only change. Or NIL if there was more than one line changed.")
    )
   (:default-initargs
-   :start-at-current-line nil)
+   #| :start-at-current-line nil |#
+   )
   (:documentation
    "Terminal output crunching."))
 
@@ -358,7 +359,8 @@ sizes. It only copies the smaller of the two regions."
 
 (defmethod terminal-start ((tty terminal-crunch))
   "Set up the terminal for reading a character at a time without echoing."
-  (with-slots ((wtty wrapped-terminal) start-line start-at-current-line) tty
+  (with-slots ((wtty wrapped-terminal) start-line
+	       (start-at-current-line terminal::start-at-current-line)) tty
     (if (started tty)
 	(progn
 	  (dbugf :crunch "Crunch ~s not recursivley re-started.~%" tty)
