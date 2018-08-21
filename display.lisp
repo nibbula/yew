@@ -533,7 +533,7 @@ Updates the screen coordinates."
 	  ;; save end of the prefix as the starting column
 	  (start-col e) col
 	  (start-row e) row
-	  (prompt-height e) (- row start-row))
+	  (prompt-height e) (1+ (- row start-row)))
     (log-message e "prompt-height = ~s" (prompt-height e))))
 
 (defun do-prompt (e prompt output-prompt-func &key only-last-line)
