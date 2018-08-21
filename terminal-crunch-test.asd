@@ -10,6 +10,7 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Tests for terminal-crunch."
-    :depends-on (:dlib :terminal :terminal-crunch :terminal-ansi)
+    :depends-on (:dlib :dlib-misc :terminal :terminal-crunch :terminal-ansi
+		 :fatchar :table :table-print :rl :lish)
     :components
     ((:file "terminal-crunch-test")))

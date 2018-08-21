@@ -4,10 +4,10 @@
 
 (defpackage :terminal-crunch-test
   (:documentation "Tests for terminal-crunch.")
-  (:use :cl :dlib :terminal :terminal-crunch :terminal-ansi :fatchar
-	:table :table-print)
+  (:use :cl :dlib :dlib-misc :terminal :terminal-crunch :terminal-ansi :fatchar
+	:table :table-print :rl :lish)
   (:export
-   #:test-1 #:test-2 #:test-3 #:test-4 #:test-5 #:test-6 #:test-7
+   #:test-1 #:test-2 #:test-3 #:test-4 #:test-5 #:test-6 #:test-7 #:test-8
    #:test-hashing
    ))
 (in-package :terminal-crunch-test)
@@ -35,11 +35,12 @@
 		     (terminal-crunch::old-screen tty)))
 	(new-lines (terminal-crunch::screen-lines
 		     (terminal-crunch::new-screen tty))))
-    (format *debug-io* "Old ~s ~s -> New ~s ~s~%"
+    (format *debug-io* "Old ~s ~s -> New ~s ~s +~s~%"
 	    (terminal-crunch::screen-x (terminal-crunch::old-screen tty))
 	    (terminal-crunch::screen-y (terminal-crunch::old-screen tty))
 	    (terminal-crunch::screen-x (terminal-crunch::new-screen tty))
-	    (terminal-crunch::screen-y (terminal-crunch::new-screen tty)))
+	    (terminal-crunch::screen-y (terminal-crunch::new-screen tty))
+	    (terminal-crunch::start-line tty))
     (loop :for i :from 0 :below (length old-lines) :do
        (format *debug-io* "[~a] [~a]~%"
 	       (make-fat-string :string (aref old-lines i))
@@ -313,5 +314,22 @@
 			    (if (= r1 r2) "BAD!" "")))
 	:column-names '("Type" "Value 1" "Hash 1" 
 			"Value 2" "Hash 2" "Bad?"))))))
+
+(defun test-8 (device-name)
+  "Test RL in Lish."
+  (with-open-file (oo device-name :direction :io :if-exists :append)
+    (labels ((show-state (e)
+	       (declare (ignore e))
+	       (dump-screen *terminal*)
+	       (dump-hashes *terminal*)
+	       )
+	     (set-output-callback ()
+	       (setf (rl:line-editor-output-callback rl:*line-editor*)
+		     #'show-state)))
+      (let ((*debug-io* oo)
+	    lish:*enter-shell-hook*)
+	(add-hook lish:*enter-shell-hook* #'set-output-callback)
+	(with-dbugf '(:crunch :terminal)
+	  (lish:lish :terminal-type :crunch))))))
 
 ;; EOF
