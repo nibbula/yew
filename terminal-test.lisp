@@ -27,10 +27,12 @@
     (format t "? ")
     (finish-output)
     (setf types (nreverse types))
-    (let ((choice (ignore-errors (parse-integer (read-line)))))
-      (if choice
-	  (nth choice types)
-	  (prog1 nil (format t "Whaaa?~%"))))))
+    (prog1 (let ((choice (ignore-errors (parse-integer (read-line)))))
+	     (if choice
+		 (nth choice types)
+		 (prog1 nil (format t "Whaaa?~%"))))
+      (finish-output)
+      (clear-input))))
 
 (defun prompt-next ()
   (tt-move-to (1- (terminal-window-rows *terminal*)) 0)
@@ -434,13 +436,12 @@
    (tt-format "I am very sorry, but we will now try to BEEP.~%")
    (tt-format "You should hear a sound or see some visual indication.~%")
    (tt-beep))
-  
   )
 
 (defun run ()
   (let ((class #| :ansi |# (ask-class)  ))
     (when class
-      (with-terminal (class)
+      (with-new-terminal (class)
 	(catch 'quit
 	  (terminal-get-size *terminal*)
 	  (test-screen-size)
@@ -459,7 +460,7 @@
 (defun churn ()
   (let ((class :ansi #| (ask-class) |# ))
     (when class
-      (with-terminal (class)
+      (with-new-terminal (class)
 	(terminal-get-size *terminal*)
 	;;(test-basics)
 	(loop
