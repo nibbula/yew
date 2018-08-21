@@ -120,6 +120,9 @@ are directed to move above it, or if we scroll.")
     :documentation
     "Amount we should actually scroll on refresh, for scrolling unmanaged
 content, when there's a start-line.")
+   (delay-scroll
+    :initarg :delay-scroll :accessor delay-scroll :initform nil :type boolean
+    :documentation "True to delay scrolling until the next character is output.")
    ;; Hints
    (text-change
     :initarg :text-change :accessor text-change :initform nil :type boolean
@@ -493,39 +496,51 @@ sizes. It only copies the smaller of the two regions."
 
 (defun copy-char (tty char)
   "Put the CHAR at the current screen postion."
-  (with-slots (fg bg attrs) tty
+  (with-slots (fg bg attrs delay-scroll) tty
     (with-slots (x y width height scrolling-region lines) (new-screen tty)
-      (flet ((char-char (c)
+      (labels ((char-char (c)
 	       (etypecase c
 		 (fatchar (fatchar-c c))
 		 (character c)))
-	     (set-char (fc char)
-	       (etypecase char
-		 (character
-		  (setf (fatchar-c fc) char
-			(fatchar-fg fc) fg
-			(fatchar-bg fc) bg
-			(fatchar-attrs fc) attrs
-			(fatchar-line fc) 0)) ;; maybe unless it's a line char??
-		 (fatchar
-		  (setf (fatchar-c fc) (fatchar-c char)
-			(fatchar-fg fc) (fatchar-fg char)
-			(fatchar-bg fc) (fatchar-bg char)
-			(fatchar-attrs fc) (fatchar-attrs char)
-			(fatchar-line fc) (fatchar-line char)))))
-	     (next-line ()
-	       (if (< y (1- height))
-		   (progn
-		     (incf y)
-		     (setf x 0))
-		   ;; (when (and (allow-scrolling tty)
-		   ;; 	      (not (= x (1- width))))
-		   (when (allow-scrolling tty)
-		     (no-hints tty)
-		     (scroll tty 1)
-		     (setf x 0)))))
+	       (set-char (fc char)
+		 (etypecase char
+		   (character
+		    (setf (fatchar-c fc) char
+			  (fatchar-fg fc) fg
+			  (fatchar-bg fc) bg
+			  (fatchar-attrs fc) attrs
+			  (fatchar-line fc) 0)) ;; unless it's a line char??
+		   (fatchar
+		    (setf (fatchar-c fc) (fatchar-c char)
+			  (fatchar-fg fc) (fatchar-fg char)
+			  (fatchar-bg fc) (fatchar-bg char)
+			  (fatchar-attrs fc) (fatchar-attrs char)
+			  (fatchar-line fc) (fatchar-line char)))))
+	       (scroll-one-line ()
+		 (no-hints tty)
+		 (scroll tty 1)
+		 (setf x 0))
+	       (delayed-scroll ()
+		 (when (delay-scroll tty)
+		   (setf (delay-scroll tty) nil)
+		   (when (and (= y (1- height))
+			      (= x (1- width)))
+		     (scroll-one-line))))
+	       (next-line ()
+		 (if (< y (1- height))
+		     (progn
+		       (incf y)
+		       (setf x 0))
+		     (when (allow-scrolling tty)
+		       (if (= x (1- width))
+			   (progn
+			     ;; @@@ horrible
+			     (setf (delay-scroll tty) t))
+			   (progn
+			     (scroll-one-line)))))))
 	(case (char-char char)
 	  (#\newline
+	   (delayed-scroll)
 	   (terminal-erase-to-eol tty)
 	   (setf x 0)
 	   (next-line))
@@ -538,7 +553,9 @@ sizes. It only copies the smaller of the two regions."
 	     ;; @@@ should tabs actually wrap?
 	     (setf x (min new-x (1- width)))))
 	  (t
+	   (delayed-scroll)
 	   (set-char (aref (aref lines y) x) char)
+	   (note-single-line tty)
 	   (let ((new-x (+ x (display-length char))))
 	     (if (< new-x width)
 		 (setf x new-x)
@@ -1289,7 +1306,8 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
     (update-beeps tty new)
     (copy-new-to-old tty)
     (finish-output wtty)
-    (setf really-scroll-amount 0)
+    (setf really-scroll-amount 0
+	  (delay-scroll tty) nil)
     (reset-hints tty)))
 
 (defmethod terminal-finish-output ((tty terminal-crunch-stream))
