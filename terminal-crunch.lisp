@@ -114,6 +114,12 @@ are directed to move above it, or if we scroll.")
 ;;     :documentation
 ;;     "True to set START-LINE to the cursor position when starting the wrapped
 ;; terminal.")
+   (really-scroll-amount
+    :initarg :really-scroll-amount :accessor really-scroll-amount
+    :initform 0 :type fixnum
+    :documentation
+    "Amount we should actually scroll on refresh, for scrolling unmanaged
+content, when there's a start-line.")
    ;; Hints
    (text-change
     :initarg :text-change :accessor text-change :initform nil :type boolean
@@ -473,16 +479,17 @@ sizes. It only copies the smaller of the two regions."
 		 (setf (subseq array (- height n)) new-blanks)
 		 ;; Blank out the newly blank lines
 		 (funcall blanker new-blanks))))
-    (if (< n height)
-	(progn
-	  (scroll-copy lines #'line-blanker)
-	  (scroll-copy index #'index-blanker))
-	(progn
-	  ;; Just erase everything
-	  (line-blanker lines)
-	  (index-blanker index)))
-    (when (not (zerop (start-line tty)))
-      (setf (start-line tty) (min 0 (- (start-line tty) n)))))))
+      (if (< n height)
+	  (progn
+	    (scroll-copy lines #'line-blanker)
+	    (scroll-copy index #'index-blanker))
+	  (progn
+	    ;; Just erase everything
+	    (line-blanker lines)
+	    (index-blanker index)))
+      (when (not (zerop (start-line tty)))
+	(setf (start-line tty) (max 0 (- (start-line tty) n)))
+	(incf (really-scroll-amount tty) n)))))
 
 (defun copy-char (tty char)
   "Put the CHAR at the current screen postion."
@@ -511,10 +518,13 @@ sizes. It only copies the smaller of the two regions."
 		   (progn
 		     (incf y)
 		     (setf x 0))
-		   (when (and (allow-scrolling tty)
-			      (not (= x (1- width))))
-		     (scroll tty 1)))))
-	(case (char-char char) ; char-char char-char char-char char-char-char
+		   ;; (when (and (allow-scrolling tty)
+		   ;; 	      (not (= x (1- width))))
+		   (when (allow-scrolling tty)
+		     (no-hints tty)
+		     (scroll tty 1)
+		     (setf x 0)))))
+	(case (char-char char)
 	  (#\newline
 	   (terminal-erase-to-eol tty)
 	   (setf x 0)
@@ -633,7 +643,7 @@ optimization."
 
 (defun note-change (tty thing &optional operation)
   "Set hints for TTY based on THING as a change."
-  (typecase thing
+  (etypecase thing
     (character
      (case thing
        ((#\tab #\return)
@@ -644,7 +654,7 @@ optimization."
 	(no-hints tty))
        (otherwise
 	(note-length-based tty (display-length thing) operation))))
-    (string
+    ((or string fat-string)
      ;; or maybe just length??
      (note-length-based tty (display-length thing) operation))))
 
@@ -1101,10 +1111,10 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	(setf new-line-cost
 	      (output-cost wtty :write-fatchar-string new-line))))
 
-    (dbugf :crunch "new-line-cost ~a change-cost ~s~%~
-                    first-change ~s last-change ~a~%~
-                    change-range ~s~%"
-	   new-line-cost change-cost first-change last-change changes)
+    ;; (dbugf :crunch "new-line-cost ~a change-cost ~s~%~
+    ;;                 first-change ~s last-change ~a~%~
+    ;;                 change-range ~s~%"
+    ;; 	   new-line-cost change-cost first-change last-change changes)
 
     (when (not first-change)
       (error "We thought we had to update line ~s, but we didn't?" line))
@@ -1119,7 +1129,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	     (setf start (car c)
 		   end (cdr c))
 	     (crunched-move-to tty start line (update-x tty) (update-y tty))
-	     (dbugf :crunch "update-line FLOOB ~s ~s ~s~%" line start c)
+	     ;;(dbugf :crunch "update-line FLOOB ~s ~s ~s~%" line start c)
 	     (if (= start end)
 		 (terminal-write-char wtty (aref new-line start))
 		 (terminal-write-string wtty (make-fat-string :string new-line)
@@ -1130,8 +1140,8 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	     ))
 	(progn
 	  ;; Write a whole new line
-	  (dbugf :crunch "update-line WINKY ~s ~s-~s~%" line first-change
-		 (1+ last-change))
+	  ;; (dbugf :crunch "update-line WINKY ~s ~s-~s~%" line first-change
+	  ;; 	 (1+ last-change))
 	  (terminal-write-string wtty (make-fat-string :string new-line)
 				 :start first-change
 				 :end (1+ last-change))
@@ -1172,7 +1182,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
   (with-slots ((wtty wrapped-terminal)
 	       (old old-screen)
 	       (new new-screen)
-	       start-line) tty
+	       start-line really-scroll-amount) tty
 
     ;; Set starting point.
     (setf (update-x tty) (screen-x old)
@@ -1186,6 +1196,16 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
       (setf (old-screen tty)
 	    (make-new-screen (screen-height old)
 			     (screen-width old))))
+
+    (dbugf :crunch "****** start update @ ~s~%" start-line)
+
+    ;; First, actually scroll unmanaged content if we have to.
+    (when (and (not (zerop start-line))
+	       (not (zerop really-scroll-amount)))
+      (dbugf :crunch "-------- Really scroll ~s <-----~%" really-scroll-amount)
+      (crunched-move-to tty 0 (1- (screen-height old))
+			(update-x tty) (update-y tty))
+      (terminal-scroll-down wtty really-scroll-amount))
 
     ;; Try to speed things up with hints.
     (cond
@@ -1247,12 +1267,15 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
        (update-ending-position tty new))
       ;; No hints.
       (t
-       ;; make line hashes
+       ;; Make the line hashes.
        (compute-hashes new start-line)
+
+       ;; @@@
        ;; handle scrolling
        ;;   detect scrolling
        ;;   move same lines
-       ;; update changed lines
+
+       ;; Update changed lines.
        (loop :for i :from start-line :below (length (screen-hashes new)) :do
 	  (when (/= (aref (screen-hashes new) i) (aref (screen-hashes old) i))
 	    (dbugf :crunch "hash diff ~s old ~s new ~s~%" i
@@ -1266,6 +1289,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
     (update-beeps tty new)
     (copy-new-to-old tty)
     (finish-output wtty)
+    (setf really-scroll-amount 0)
     (reset-hints tty)))
 
 (defmethod terminal-finish-output ((tty terminal-crunch-stream))
