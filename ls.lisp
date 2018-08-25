@@ -445,10 +445,11 @@ by nos:read-directory."))
 		      :columns (terminal-window-columns
 				(or (ls-state-outer-terminal *ls-state*)
 				    *terminal*)))))))
-      (print-it (car files))
-      (loop :for list :in (cdr files) ::do
-	 (grout-princ #\newline)
-	 (print-it list)))))
+      (let ((*print-pretty* nil))
+	(print-it (car files))
+	(loop :for list :in (cdr files) ::do
+	   (grout-princ #\newline)
+	   (print-it list))))))
 
 (defun list-files (&rest args &key files long 1-column hidden directory sort-by
 				reverse date-format collect show-size
