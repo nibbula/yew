@@ -522,7 +522,7 @@ Updates the screen coordinates."
       (terminal-get-cursor-position (line-editor-terminal e)))
     (setf start-row row)
     ;;(tt-write-string prompt-str)
-    (write prompt-str :stream *terminal* :escape nil)
+    (write prompt-str :stream *terminal* :escape nil :pretty nil)
     ;;(finish-all-output)
     (tt-finish-output)
     ;; (eat-typeahead e)
@@ -552,14 +552,14 @@ Updates the screen coordinates."
 		  (log-message e "do-prompt default-output-prompt")
 		  (default-output-prompt e prompt))))
 	 last-newline)
-    (log-message e "do-prompt only-last-line = ~s" only-last-line)
-    (log-message e "do-prompt last-newline = ~s"
-		 (oposition #\newline s :from-end t))
+    ;; (log-message e "do-prompt only-last-line = ~s" only-last-line)
+    ;; (log-message e "do-prompt last-newline = ~s"
+    ;; 		 (oposition #\newline s :from-end t))
     (when (and only-last-line
 	       (setf last-newline (oposition #\newline s :from-end t)))
       (setf s (osubseq s (1+ last-newline)))
       (log-message e "partial prompt ~s" s))
-    (log-message e "do-prompt s = ~s ~s" (olength s) s)
+    ;; (log-message e "do-prompt s = ~s ~s" (olength s) s)
     (do-prefix e s)))
 
 (defun redraw (e)
