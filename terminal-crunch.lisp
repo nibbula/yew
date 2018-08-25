@@ -28,10 +28,10 @@ for various operations through the OUTPUT-COST methods.
    ))
 (in-package :terminal-crunch)
 
-(declaim
- (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 ;; (declaim
-;;  (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
+;;  (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+(declaim
+ (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
 
 (defstruct screen
   "Representation of the screen."
@@ -671,6 +671,8 @@ optimization."
 	(no-hints tty))
        (otherwise
 	(note-length-based tty (display-length thing) operation))))
+    (fatchar
+     (note-change tty (fatchar-c thing) operation))
     ((or string fat-string)
      ;; or maybe just length??
      (note-length-based tty (display-length thing) operation))))
