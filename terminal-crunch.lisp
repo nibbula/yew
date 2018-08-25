@@ -384,6 +384,10 @@ sizes. It only copies the smaller of the two regions."
 	    (dbugf :crunch "Crunch auto re-starting at ~s.~%" start-line))
 	  (incf (started tty)))
 	(let ((state (terminal-start wtty)))
+	  ;; Set our file descriptor to the wrapped terminals.
+	  (when (terminal-file-descriptor wtty)
+	    (setf (terminal-file-descriptor tty)
+		  (terminal-file-descriptor wtty)))
 	  (terminal-get-size wtty)
 	  (when start-at-current-line
 	    (dbugf :crunch "Crunch auto starting at ~s.~%" start-line)
