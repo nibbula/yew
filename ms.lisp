@@ -522,6 +522,8 @@ windows-error with an appropriate error message if it fails."
 		       ))
 	      (wide-string-to-lisp str result)))))))
 
+(defalias 'env 'environment-variable)
+
 (defcfun ("SetEnvironmentVariableW" %set-environment-variable
 				   :convention :stdcall)
     BOOL
@@ -536,6 +538,9 @@ NIL, unset the VAR, using unsetenv."
   value)
 
 (defsetf environment-variable set-environment-variable
+    "Set the environtment variable named VAR to the string VALUE.")
+
+(defsetf env set-environment-variable
     "Set the environtment variable named VAR to the string VALUE.")
 
 (defcstruct foreign-processor-arch

@@ -1820,7 +1820,7 @@ it is not a symbolic link."
     (posix-error (c)
       (when (not (find (opsys-error-code c) `(,+ENOENT+ ,+EACCES+ ,+ENOTDIR+)))
 	(signal c))))
-  #+(or lispworks abcl)
+  #+(or lispworks abcl) ;; @@@ Really?
   ;; On some implementations probe-file can handle directories the way I want.
   (probe-file dir)
   #-(or clisp sbcl ccl cmu ecl lispworks abcl)

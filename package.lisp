@@ -23,6 +23,7 @@
    ;; info
    #:environment
    #:environment-variable
+   #:env
    #:lisp-args
    #:memory-page-size
    #:processor-count

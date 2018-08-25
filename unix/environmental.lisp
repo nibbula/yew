@@ -121,6 +121,7 @@ the current 'C' environment."
     (missing-implementation 'getenv)))
 
 (defalias 'getenv 'environment-variable)
+(defalias 'env 'environment-variable)
 
 ;; If we had environ and didn't have a getenv, or if it was faster
 ;; (which it isn't) we could define getenv as:
@@ -171,6 +172,9 @@ NIL, unset the VAR, using unsetenv."
   (missing-implementation 'setenv))
 
 (defsetf environment-variable setenv
+    "Set the environtment variable named VAR to the string VALUE.")
+
+(defsetf env setenv
     "Set the environtment variable named VAR to the string VALUE.")
 
 ;; sysctl
