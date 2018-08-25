@@ -2,11 +2,154 @@
 ;; terminal.lisp - The end of the line.
 ;;
 
-;; TODO:
-;;  - Why doesn't terminal-get-size set the size slots?!?
-
 (defpackage :terminal
-  (:documentation "The end of the line.")
+  (:documentation
+   "The TERMINAL package provides a generic interface to terminals.
+
+# Terminal classes
+
+Two generic classes are defined: TERMINAL and TERMINAL-STREAM. The TERMINAL
+class is the normal class that should be used, which handles input and output.
+TERMINAL-STREAM is supported by some terminal types, to potentially capture the
+output that would go to a terminal. Note that terminals are output streams, so
+they can also be used by the standard output functions.
+
+Terminal have a width, height and cursor position. Terminals have a set of
+text attributes that they support, which could be empty. Terminals have an
+input mode, which can be :line for a line at a time, or :char for a character
+at a time. Terminals can optionally have a device name. Terminals may have a
+title. Depending on the terminal type, some terminals can have a saved cursor
+position, a scrolling region, and a state where they output alternate
+characters.
+
+The TERMINAL package must be used in conjunction with another TERMINAL-*
+package which implements the actual functionality for a specific type of
+terminal. For example, the TERMINAL-ANSI package implements terminal
+functionality that should work on most ANSI compatible terminals, which
+probably includes most modern terminal emulators.
+
+Unlike traditional terminal packages, we don't assume a large terminal
+database, since use of hardware terminals, and their diversity of
+incompatibility, is nearly abated. If one wants to use breadth of historical
+terminals, the :curses terminal type can be used. The use of the sub-classing
+instead of a database of character codes, not only reflects current reality
+better, but allows for terminals that don't use ‘in-stream’ control codes,
+a.k.a. escape sequences, but instead use an API. Examples are as the Windows
+console, and the :crunch and :curses terminal types. It is also easy to imagine
+other useful cases.
+
+# Terminal use
+
+The expected way to use this package is with the TT-* macros, which operate
+on *TERMINAL*, which is considered the current terminal. The TERMINAL-*
+methods can also be used with an explicit terminal instance.
+
+The convenient way to create a terminal, is with the WITH-TERMINAL or
+WITH-NEW-TERMINAL macros. These handle creating, starting and stopping, and
+picking a default terminal type.
+
+Terminals can also be created with MAKE-INSTANCE. In this case TERMINAL-START
+should be called before calling any other functions, and TERMINAL-END should be
+called to reset the terminal to the state before TERMINAL-START. TERMINAL-DONE
+should be called if the program is completely done using the terminal, to free
+up resources.
+
+# Terminal types
+
+Terminal types are specified by a keyword. When a terminal implementation is
+loaded, it registers its type in *TERMINAL-TYPES*, which is used to find the
+class. WITH-TERMINAL calls PICK-A-TERMINAL-TYPE to get its terminal type,
+which further consults PLATFORM-DEFAULT-TERMINAL-TYPE, to try to come up with
+a reasonable terminal. The terminal type keyword can be given to WITH-TERMINAL,
+or *DEFAULT-TERMINAL-TYPE* can be set, to pick a specific terminal. This idea
+is that this can be set by the user.
+
+# Terminal functionality
+
+## Terminal output
+
+It is important to remember that terminals may not do any output until 
+TT-FINISH-OUTPUT is called. The input functions, such as TT-GET-KEY, and the
+TERMINAL-END usually call TT-FINISH-OUTPUT, so it can be easy to forget that
+it may need to be called sometimes.
+
+Output functions that accept characters also accept fatchars.
+Output functions that accept strings also accept fat-strings.
+Movement functions are usual row first then column.
+
+### Output functions:
+
+  tt-format
+  tt-write-string
+  tt-write-string-at
+  tt-write-line
+  tt-write-line-at
+  tt-write-char
+  tt-beep
+  tt-finish-output
+
+### Movement functions:
+
+  tt-move-to
+  tt-move-to-col
+  tt-beginning-of-line
+  tt-backward
+  tt-forward
+  tt-up
+  tt-down
+  tt-home
+  tt-scroll-down
+  tt-scroll-up
+
+### Erasing and editing functions:
+
+  tt-erase-to-eol
+  tt-erase-line
+  tt-erase-above
+  tt-erase-below
+  tt-clear
+  tt-delete-char
+  tt-insert-char
+
+### Attribute functions
+
+  tt-standout
+  tt-normal
+  tt-underline
+  tt-bold
+  tt-inverse
+  tt-color
+  tt-set-attributes
+  tt-has-attribute
+
+### Terminal state functions
+
+  tt-cursor-off
+  tt-cursor-on
+  tt-set-scrolling-region
+  tt-alternate-characters
+  tt-reset
+  tt-width
+  tt-height
+
+## Terminal input
+
+  tt-get-char
+  tt-get-key
+  tt-listen-for
+  tt-input-mode
+
+## Extending
+
+The functions provided by this library are much more limited than the
+functionality provided by most terminal emulators and historical terminals,
+but they seem adequate to implement a broad range of terminal applications.
+Most of the functionality can be boiled down to, move to a location, change
+text attributes or color, and output or erase characters. It is probably best
+to keep the generic functionality to a minimum. Terminal specific
+functionality can be easily added and called for specific types, and it's
+fairly easy to sub-class a type.
+")
   (:use :cl :dlib :opsys :trivial-gray-streams :fatchar)
   (:export
    #:*standard-output-has-terminal-attributes*
@@ -17,6 +160,7 @@
    #:terminal-default-device-name
    #:register-terminal-type
    #:find-terminal-class-for-type
+   #:find-terminal-type-for-class
    #:platform-default-terminal-type
    #:pick-a-terminal-type
    #:terminal-stream
@@ -113,6 +257,14 @@ subclasses.")
   "Return the class for a registered terminal type."
   ;;(cadr (assoc type *terminal-types*))
   (getf *terminal-types* name))
+
+(defun find-terminal-type-for-class (class)
+  "Return the terminal type keyword for a registered terminal class name."
+  (loop :with last
+     :for i :in terminal:*terminal-types* :do
+     (when (eq i class)
+       (return last))
+     (setf last i)))
 
 (defun terminal-type-based-on-environemt ()
   (cond
@@ -276,6 +428,8 @@ Cleans up afterward."
 	      ;; (*standard-input* ,var)
 	      ,result
 	      *terminal-state*)
+	 ;; This ignorable is just to stop CCL from complaining.
+	 (declare (ignorable ,new-type))
 	 (dbugf :terminal "term-class = ~s~%" ,term-class)
 	 ;; (when (not ,term-class)
 	 ;;   (error "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
