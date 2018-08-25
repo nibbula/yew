@@ -382,11 +382,11 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-beginning-of-line ((tty terminal-curses))
   (terminal-move-to-col tty 0))
 
-(defmethod terminal-del-char ((tty terminal-curses) n)
+(defmethod terminal-delete-char ((tty terminal-curses) n)
   (dotimes (i n)
     (delch)))
 
-(defmethod terminal-ins-char ((tty terminal-curses) n)
+(defmethod terminal-insert-char ((tty terminal-curses) n)
   (dotimes (i n)
     (insch (char-code #\space))))
 

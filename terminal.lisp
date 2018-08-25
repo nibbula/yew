@@ -178,49 +178,49 @@ fairly easy to sub-class a type.
    #:terminal-done
    #:make-terminal-stream
    #:with-terminal #:with-new-terminal
-   #:tt-format			  #:terminal-format			;
-   #:tt-write-string		  #:terminal-write-string		;
+   #:tt-format			  #:terminal-format
+   #:tt-write-string		  #:terminal-write-string
    #:tt-write-string-at
-   #:tt-write-line		  #:terminal-write-line			;
+   #:tt-write-line		  #:terminal-write-line
    #:tt-write-line-at
-   #:tt-write-char		  #:terminal-write-char			;
+   #:tt-write-char		  #:terminal-write-char
    #:tt-write-char-at
-   #:tt-move-to			  #:terminal-move-to			;
-   #:tt-move-to-col		  #:terminal-move-to-col		;
-   #:tt-beginning-of-line	  #:terminal-beginning-of-line		;
-   #:tt-del-char		  #:terminal-del-char			;
-   #:tt-ins-char		  #:terminal-ins-char			;
+   #:tt-move-to			  #:terminal-move-to
+   #:tt-move-to-col		  #:terminal-move-to-col
+   #:tt-beginning-of-line	  #:terminal-beginning-of-line
+   #:tt-delete-char		  #:terminal-delete-char
+   #:tt-insser-char		  #:terminal-inssert-char
    #:tt-backward		  #:terminal-backward
    #:tt-forward			  #:terminal-forward
    #:tt-up			  #:terminal-up
    #:tt-down			  #:terminal-down
    #:tt-scroll-down		  #:terminal-scroll-down
    #:tt-scroll-up		  #:terminal-scroll-up
-   #:tt-erase-to-eol		  #:terminal-erase-to-eol		;
-   #:tt-erase-line		  #:terminal-erase-line			;
-   #:tt-erase-above		  #:terminal-erase-above		;
-   #:tt-erase-below		  #:terminal-erase-below		;
-   #:tt-clear			  #:terminal-clear			;
-   #:tt-home			  #:terminal-home			;
-   #:tt-cursor-off		  #:terminal-cursor-off			;
-   #:tt-cursor-on		  #:terminal-cursor-on			;
-   #:tt-standout		  #:terminal-standout			;
-   #:tt-normal			  #:terminal-normal			;
-   #:tt-underline		  #:terminal-underline			;
-   #:tt-bold			  #:terminal-bold			;
-   #:tt-inverse			  #:terminal-inverse			;
-   #:tt-color			  #:terminal-color			;
-   #:tt-beep			  #:terminal-beep			;
+   #:tt-erase-to-eol		  #:terminal-erase-to-eol
+   #:tt-erase-line		  #:terminal-erase-line
+   #:tt-erase-above		  #:terminal-erase-above
+   #:tt-erase-below		  #:terminal-erase-below
+   #:tt-clear			  #:terminal-clear
+   #:tt-home			  #:terminal-home
+   #:tt-cursor-off		  #:terminal-cursor-off
+   #:tt-cursor-on		  #:terminal-cursor-on
+   #:tt-standout		  #:terminal-standout
+   #:tt-normal			  #:terminal-normal
+   #:tt-underline		  #:terminal-underline
+   #:tt-bold			  #:terminal-bold
+   #:tt-inverse			  #:terminal-inverse
+   #:tt-color			  #:terminal-color
+   #:tt-beep			  #:terminal-beep
    #:tt-set-attributes            #:terminal-set-attributes
-   #:tt-set-scrolling-region	  #:terminal-set-scrolling-region	;
-   #:tt-finish-output		  #:terminal-finish-output		;
+   #:tt-set-scrolling-region	  #:terminal-set-scrolling-region
+   #:tt-finish-output		  #:terminal-finish-output
    #:tt-get-char		  #:terminal-get-char
    #:tt-get-key			  #:terminal-get-key
    #:tt-listen-for		  #:terminal-listen-for
    #:tt-input-mode                #:terminal-input-mode
    #:tt-reset			  #:terminal-reset
-   #:tt-save-cursor		  #:terminal-save-cursor		;
-   #:tt-restore-cursor		  #:terminal-restore-cursor		;
+   #:tt-save-cursor		  #:terminal-save-cursor
+   #:tt-restore-cursor		  #:terminal-restore-cursor
    #:tt-width
    #:tt-height
    #:tt-title                     #:terminal-title
@@ -521,8 +521,8 @@ i.e. the terminal is \"line buffered\"")
 
 (deftt move-to-col (column) "Move the cursor to COLUMN.")
 (deftt beginning-of-line () "Move the cursor to the beginning of the line.")
-(deftt del-char (n) "Delete N characters in front of the cursor.")
-(deftt ins-char (n) "Insert N blank characters in front of the cursor.")
+(deftt delete-char (n) "Delete N characters in front of the cursor.")
+(deftt insert-char (n) "Insert N blank characters in front of the cursor.")
 (deftt backward (n) "Move the cursor backward N characters.")
 (deftt forward (n) "Move the cursor forward N character.")
 (deftt up (n) "Move the cursor up N rows.")

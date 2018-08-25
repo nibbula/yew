@@ -147,14 +147,14 @@
      (loop :for col :from 0 :below (- full thing-width) :do
 	(loop :for i :from 0 :below height :do
 	   (tt-move-to i 0)
-	   (tt-ins-char 1))
+	   (tt-insert-char 1))
 	(tt-finish-output)
 	(sleep sleep))
 
      (loop :for col :from 0 :below (- full thing-width) :do
 	(loop :for i :from 0 :below height :do
 	   (tt-move-to i 0)
-	   (tt-del-char 1))
+	   (tt-delete-char 1))
 	(tt-finish-output)
 	(sleep sleep))
      )))

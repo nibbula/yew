@@ -746,7 +746,7 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-beginning-of-line ((tty terminal-crunch-stream))
   (setf (screen-x (new-screen tty)) 0))
 
-(defmethod terminal-del-char ((tty terminal-crunch-stream) n)
+(defmethod terminal-delete-char ((tty terminal-crunch-stream) n)
   (with-slots (x y width lines) (new-screen tty)
     (clamp n 0 (- width x))
     (setf (subseq (aref lines y) x (max 0 (- width n)))
@@ -754,7 +754,7 @@ i.e. the terminal is 'line buffered'."
     (fill-by (aref lines y) #'blank-char :start (max 0 (- width n)))
     (note-length-based tty n :delete)))
 
-(defmethod terminal-ins-char ((tty terminal-crunch-stream) n)
+(defmethod terminal-insert-char ((tty terminal-crunch-stream) n)
   (with-slots (x y width lines) (new-screen tty)
     (clamp n 0 (- width x))
     (setf (subseq (aref lines y) (min (+ x n) (1- width)))
