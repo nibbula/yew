@@ -64,16 +64,12 @@ command line.")
 
 (defun figure-line-endings (e content)
   "Call calculate-line-endings with proper processing of the string CONTENT."
-  ;; (calculate-line-endings e :buffer (fatchar-string-to-string
-  ;; 				     (process-ansi-colors
-  ;; 				      (make-fatchar-string content)))
-  ;; 			  :start 0))
   (calculate-line-endings e :buffer (fat-string-to-string content)
  			  :start 0))
 
 (defun figure-content-rows (e content)
-  "Take a sequence of strings and return how many rows it takes up when output
-to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
+  "Take a string and return how many rows it takes up when output to the
+terminal."
   ;; (apply #'+ (map 'list
   ;; 		  (_ (length
   ;; 		      (calculate-line-endings e
@@ -115,37 +111,26 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
     ;; Move over the rest of the input line.
     (move-over e (- (length (buf e)) (point e)))
     (tt-write-char #\newline)
-    (tt-erase-below) (tt-finish-output)
+    (tt-erase-below)
+    ;; (tt-finish-output)
     (setf (did-under-complete e) t)
 
     (setf row-limit
 	  (if (and (< (last-completion-not-unique-count e) 2)
 		   (< short-limit rows))
 	      short-limit
-	      (- (- rows 2)			  ;; minus the "more" line
+	      (- (- rows 1) ;; minus the "more" line
 		 (prompt-height e)
 		 (- (screen-row e) (start-row e)) ;; height of the input line
 		 prefix-height
 		 ))
 	  output-string
-	  ;; (with-output-to-string (str)
-	  ;;   (setf content-rows
-	  ;; 	  (print-columns comp-list :columns cols
-	  ;; 			 :smush t :row-limit row-limit
-	  ;; 			 :format-char "/fatchar-io:print-string/"
-	  ;; 			 :stream str)))
-	  ;; (with-terminal-output-to-string (:ansi)
-	  ;;   (setf content-rows
-	  ;; 	  (print-columns comp-list :columns cols
-	  ;; 			 :smush t :row-limit row-limit
-	  ;; 			 :format-char "/fatchar-io:print-string/"
-	  ;; 			 :stream *terminal*)))
 	  (with-output-to-fat-string (str)
 	    (setf content-rows
-	  	  (print-columns comp-list :columns cols
-	  			 :smush t :row-limit row-limit
+		  (print-columns comp-list :columns cols
+				 :smush t :row-limit row-limit
 				 :format-char "/fatchar-io:print-string/"
-	  			 :stream str)))
+				 :stream str)))
 	  line-endings (figure-line-endings e output-string)
 	  real-content-rows (length line-endings)
 	  rows-output (min real-content-rows row-limit)
@@ -155,15 +140,14 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
     (when (plusp snip-lines)
       (setf output-string
 	    (osubseq output-string 0 (car (nth snip-lines line-endings)))))
-    ;;(tt-write-string output-string)
-    ;; (if (equal (symbol-name (type-of *terminal*)) "TERMINAL-CURSES")
-    ;; 	;; XXX an horrible hack to turn it back into colors on curses
-    ;; 	(render-fatchar-string
-    ;; 	 (process-ansi-colors
-    ;; 	  (make-fatchar-string output-string)))
-    ;; 	(tt-write-string output-string))
-    (princ output-string *terminal*)
-    ;; (tt-format "content-rows ~a rows-output ~s " content-rows rows-output)
+    ;;(princ output-string *terminal*)
+    (dbugf :crunch " BARK BARK ~%")
+    (tt-write-string output-string)
+      ;; (dbugf :foo
+      ;; 	   "~s ~s~%~s~%" (olength output-string) (type-of output-string)
+      ;; 	  (osubseq output-string 0 1000))
+      ;; (tt-write-string output-string)
+      ;; (tt-format "content-rows ~a rows-output ~s " content-rows rows-output)
     (if (plusp (- content-rows rows-output))
 	(tt-format "[~d more lines]" (- content-rows row-limit))
 	(when (plusp snip-lines)
@@ -173,7 +157,7 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
     ;;(setf rows-scrolled (max 0 (- (+ y (1+ real-content-rows)) (1- rows)))
     (setf rows-scrolled (max 0 (- (+ y (- (1+ real-content-rows) snip-lines))
 				  (1- rows)))
-     	  back-adjust (+ (- end-y y) rows-scrolled))
+	  back-adjust (+ (- end-y y) rows-scrolled))
     (log-message e "row-limit = ~s real-content-rows = ~s"
 		 row-limit real-content-rows)
     (log-message e "rows-scrolled = ~s prompt-height = ~s" rows-scrolled
@@ -193,7 +177,6 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
 	(let* ((result
 		(funcall func (or string
 				  (fatchar-string-to-string buf)) point t))
-	       ;;(comp-list (completion-result-completion result))
 	       comp-count)
 	  (if (not (typep result 'completion-result))
 	      (progn
@@ -207,8 +190,6 @@ to the terminal." ;; @@ maybe I mean a string, not a sequence of strings???
 		  (set-completion-count
 		   e (1+ (last-completion-not-unique-count e)))
 		  (if (eq *completion-list-technique* :under)
-		      ;; (print-completions-under e comp-list)
-		      ;; (print-completions-over e comp-list))))))))
 		      (print-completions-under e result)
 		      (print-completions-over e result))))))))))
 
