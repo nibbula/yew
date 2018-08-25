@@ -382,7 +382,8 @@ sizes. It only copies the smaller of the two regions."
 	    (invalidate-before-start-row tty (new-screen tty))
 	    (invalidate-before-start-row tty (old-screen tty))
 	    (dbugf :crunch "Crunch auto re-starting at ~s.~%" start-line))
-	  (incf (started tty)))
+	  (incf (started tty))
+	  nil) ;; no state
 	(let ((state (terminal-start wtty)))
 	  ;; Set our file descriptor to the wrapped terminals.
 	  (when (terminal-file-descriptor wtty)
@@ -431,10 +432,10 @@ sizes. It only copies the smaller of the two regions."
 
 (defmethod terminal-end ((tty terminal-crunch) &optional state)
   "Put the terminal back to the way it was before we called terminal-start."
+  (terminal-finish-output tty)
+  (terminal-end (wrapped-terminal tty) state)
   (if (zerop (decf (started tty)))
     (progn
-      (terminal-finish-output tty)
-      (terminal-end (wrapped-terminal tty) state)
       (dbugf :crunch "Crunch ~s ended.~%" tty)
       (setf (started tty) nil))
     (progn
