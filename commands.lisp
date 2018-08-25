@@ -441,7 +441,7 @@ Don't update the display."
 	(move-over e -1)
 	(buffer-delete e (1- point) point)
 	(decf point)
-	(tt-del-char del-len)
+	(tt-delete-char del-len)
 	(update-for-delete e del-len 1)))))
 
 (defun delete-char (e)
@@ -452,7 +452,7 @@ Don't update the display."
 	(progn
 	  (let ((del-len (display-length (aref buf point))))
 	    (buffer-delete e point (1+ point))
-	    (tt-del-char del-len)
+	    (tt-delete-char del-len)
 	    (update-for-delete e del-len 1))))))
 
 (defun delete-char-or-exit (e)
@@ -476,7 +476,7 @@ Don't update the display."
       (let* ((region-str (subseq buf point start))
 	     (del-len (string-display-length region-str)))
 	(move-over e (- (- start point)) :start start)
-	(tt-del-char del-len)
+	(tt-delete-char del-len)
 	(setf clipboard region-str)
 	(buffer-delete e point start)
 	(update-for-delete e del-len (- start point))))))
@@ -489,7 +489,7 @@ Don't update the display."
       (if (< point (length buf)) (incf point))
       (let* ((region-str (subseq buf start point))
 	     (del-len (string-display-length region-str)))
-	(tt-del-char del-len)
+	(tt-delete-char del-len)
 	(setf clipboard region-str)
 	(buffer-delete e point start)
 	(setf point start)
@@ -528,7 +528,7 @@ Don't update the display."
       (let ((len (length clipboard))
 	    #| (string-display-length clipboard) |#)
 	(insert-string e clipboard)
-	;; (tt-ins-char disp-len)
+	;; (tt-insert-char disp-len)
 	(display-buf e point (+ point len))
 	(incf point len)
 	(update-for-insert e)
@@ -651,7 +651,7 @@ is none."
       (delete-region e start end)
       ;;(move-backward e first-half-disp-len)
       (move-over e (- (- origin start)) :start origin)
-      (tt-del-char disp-len)
+      (tt-delete-char disp-len)
       (update-for-delete e disp-len del-len))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -752,8 +752,7 @@ in order, \"{open}{close}...\".")
 		(move-backward e (string-display-length (subseq buf point)))))
 	    ;;(terminal-set-input-mode (line-editor-terminal e) :line)
 	    (setf (terminal-input-mode (line-editor-terminal e)) :line)
-	    (terminal-start (line-editor-terminal e))
-	    )))))
+	    (terminal-start (line-editor-terminal e)))))))
 
 (defun abort-command (e)
   "Invoke the debugger from inside."
@@ -811,7 +810,7 @@ in order, \"{open}{close}...\".")
 		  (tt-erase-to-eol)
 		  (tt-down 1)
 		  (tt-beginning-of-line)
-		  (tt-ins-char len))
+		  (tt-insert-char len))
 		 ;; We're at the beginning with an empty col on the previous
 		 ((and (= screen-col 0)
 		       (setf prev-end (line-ending (1- point) endings))
@@ -819,7 +818,7 @@ in order, \"{open}{close}...\".")
 		  (tt-backward 1))
 		 (t
 		  ;; normal
-		  (tt-ins-char len)))
+		  (tt-insert-char len)))
 	       (display-char e char)
 	       (when (and (eq *paren-match-style* :flash) (is-close-char char))
 		 (flash-paren e))
