@@ -554,9 +554,7 @@ line : |----||-------||---------||---|
     ;; (return-from show-span 0)
     ;; But now empty lines come over as NIL, so:
     (tt-write-char #\newline)
-    (return-from show-span 1)
-    )
-;;;  (flatten-span pager s)
+    (return-from show-span 1))
   (with-slots (wrap-lines search-string) *pager*
     (if wrap-lines
 	(span-to-fatchar-string s :fatchar-string *fat-buf* :start *left*)
@@ -564,36 +562,9 @@ line : |----||-------||---------||---|
 				:end (+ *left* (tt-width))))
     (when search-string
       (search-a-matize))
-    ;;(render-fatchar-string *fat-buf*) (tt-write-char #\newline)
-    (tt-write-string (make-fat-string :string *fat-buf*)) (tt-write-char #\newline)
-    #|
-    (let ((line-count 1)
-	  (screen-col 0)
-	  (screen-line (terminal-get-cursor-position *terminal*)))
-      (loop :with last-attr
-	 :for c :across *fat-buf* :do
-	 (when (not (equal last-attr (fatchar-attrs c)))
-	   (when last-attr (attrset 0))
-	   (mapcan (_ (attron (real-attr _))) (fatchar-attrs c)))
-	 (color-set (color-index
-		     (or (color-number (fatchar-fg c)) +color-white+)
-		     (or (color-number (fatchar-bg c)) +color-black+))
-		    (cffi:null-pointer))
-;;;       (format t "~a ~a" (fatchar-fg c) (fatchar-bg c))
-	 (add-char (fatchar-c c))
-	 (incf screen-col)
-	 (when (and wrap-lines (>= screen-col *cols*))
-	   (incf screen-line)
-	   (setf screen-col 0)
-	   (move screen-line screen-col)
-	   (incf line-count))
-	 (setf last-attr (fatchar-attrs c)))
-      (attrset 0)
-    line-count) |#
-
+    (tt-write-line (make-fat-string :string *fat-buf*))
     ;; @@@ or something? minus the line numbers
-    (max 1 (ceiling (length *fat-buf*) (tt-width)))
-    ))
+    (max 1 (ceiling (length *fat-buf*) (tt-width)))))
 
 (defun render-span (line-number line)
   (with-slots (left show-line-numbers) *pager*
@@ -729,13 +700,10 @@ line : |----||-------||---------||---|
   (tt-finish-output)
   (prog1
       (rl:rl :prompt prompt
-	     ;; :terminal-class 'terminal-curses:terminal-curses
 	     :accept-does-newline nil
 	     :context :pager)
-    ;; Make sure we go back to raw mode, so we can ^Z
-    ;; @@@ I think raw mode should be avoided.
-    (when (terminal-file-descriptor *terminal*)
-      (set-terminal-mode (terminal-file-descriptor *terminal*) :raw t))))
+    (setf (tt-input-mode) :char)
+    ))
 
 (defun search-line (str line)
   "Return true if LINE contains the string STR. LINE can be a string, or a
@@ -1425,60 +1393,87 @@ q - Abort")
        (setf prefix-arg nil))
      :while (not (or quit-flag suspend-flag)))))
 
+;; @@@ Consider moving a generalized version of this to opsys
+(defmacro with-disabled-cchars (() &body body)
+  #+unix
+  (with-unique-names (c-susp c-intr)
+    `(let (,c-susp ,c-intr)
+       (unwind-protect
+	    (progn
+	      (when (terminal-file-descriptor *terminal*)
+		(setf ,c-susp (uos:control-char
+			      (terminal-file-descriptor *terminal*) :suspend)
+		      ,c-intr (uos:control-char
+			      (terminal-file-descriptor *terminal*) :interrupt)
+		      (uos:control-char
+		       (terminal-file-descriptor *terminal*) :suspend) nil
+		      (uos:control-char
+		       (terminal-file-descriptor *terminal*) :interrupt) nil))
+	      ,@body)
+	 (when (terminal-file-descriptor *terminal*)
+	   (when ,c-susp
+	     (setf (uos:control-char
+		    (terminal-file-descriptor *terminal*) :suspend)
+		   ,c-susp))
+	   (when ,c-intr
+	     (setf (uos:control-char
+		    (terminal-file-descriptor *terminal*) :interrupt)
+		   ,c-intr))))))
+  #-unix
+  `(progn ,@body))
+
 (defun page (stream &key pager file-list close-me suspended options)
   "View a stream with the pager. Return whether we were suspended or not."
   (with-terminal ()
-    (unwind-protect
-      (progn
-	(when (terminal-file-descriptor *terminal*)
-	  ;; @@@ We should figure out how to avoid raw mode.
-	  (set-terminal-mode (terminal-file-descriptor *terminal*) :raw t))
-	(when (and (not stream) file-list)
-	  (setf stream (open-lossy (file-location-file (elt file-list 0)))
-		close-me t))
-	(let ((*pager*
-	       (or pager
-		   (apply #'make-instance
-			  'pager
-			  :stream stream
-			  :page-size (1- (tt-height))
-			  :file-list file-list
-			  options))))
-	  (when (not suspended)
-	    (freshen *pager*)
-	    (setf (pager-stream *pager*) stream))
-	  (with-slots (page-size file-list file-index quit-flag suspend-flag)
-	      *pager*
-	    (when file-list
-	      (setf file-index 0)
-	      (when (not (zerop (file-location-offset (elt file-list 0))))
-		(go-to-line (1+ (file-location-offset (elt file-list 0))))))
-	    (read-lines page-size)
-	    (setf quit-flag nil
-		  suspend-flag nil
-		  suspended nil)
-	    ;;(curses:raw)	     ; give a chance to exit during first read
-	    (pager-loop)
-	    (when suspend-flag
-	      (setf suspended t)
-	      (if (find-package :lish)
-		  (let ((suspy (make-suspended-pager
-				:pager *pager*
-				:file-list file-list
-				:stream stream
-				:close-me close-me)))
-		    (funcall (find-symbol "SUSPEND-JOB" :lish)
-			     "pager" "" (lambda () (pager:resume suspy)))
-		    ;; It should be Lish's job to say something like this:
-		    ;;(format t "~&Suspended.~%")
-		    )
-		  (format t "No shell loaded to suspend to.~%"))))))
-      (when (and close-me (not suspended) stream)
-	(close stream))
-      ;; Why doesn't this work here??
-      ;; (when (terminal-file-descriptor *terminal*)
-      ;; 	(set-terminal-mode (terminal-file-descriptor *terminal*) :raw nil))
-      )
+    (with-disabled-cchars ()
+      (unwind-protect
+        (progn
+	  (when (and (not stream) file-list)
+	    (setf stream (open-lossy (file-location-file (elt file-list 0)))
+		  close-me t))
+	  (let ((*pager*
+		 (or pager
+		     (apply #'make-instance
+			    'pager
+			    :stream stream
+			    :page-size (1- (tt-height))
+			    :file-list file-list
+			    options))))
+	    (when (not suspended)
+	      (freshen *pager*)
+	      (setf (pager-stream *pager*) stream))
+	    (with-slots (page-size file-list file-index quit-flag suspend-flag)
+		*pager*
+	      (when file-list
+		(setf file-index 0)
+		(when (not (zerop (file-location-offset (elt file-list 0))))
+		  (go-to-line (1+ (file-location-offset (elt file-list 0))))))
+	      (read-lines page-size)
+	      (setf quit-flag nil
+		    suspend-flag nil
+		    suspended nil)
+	      ;;(curses:raw)	     ; give a chance to exit during first read
+	      (pager-loop)
+	      (when suspend-flag
+		(setf suspended t)
+		(if (find-package :lish)
+		    (let ((suspy (make-suspended-pager
+				  :pager *pager*
+				  :file-list file-list
+				  :stream stream
+				  :close-me close-me)))
+		      (funcall (find-symbol "SUSPEND-JOB" :lish)
+			       "pager" "" (lambda () (pager:resume suspy)))
+		      ;; It should be Lish's job to say something like this:
+		      ;;(format t "~&Suspended.~%")
+		      )
+		    (format t "No shell loaded to suspend to.~%"))))))
+	  (when (and close-me (not suspended) stream)
+	    (close stream))
+	  ;; Why doesn't this work here??
+	  ;; (when (terminal-file-descriptor *terminal*)
+	  ;; 	(set-terminal-mode (terminal-file-descriptor *terminal*) :raw nil))
+	  ))
     (tt-move-to (- (tt-height) 1) 0)
     (tt-erase-to-eol)
     ;;(tt-write-char #\newline)
@@ -1652,7 +1647,7 @@ then the key. Press 'q' to exit this help.
 (lish:defcommand pager
   ((show-line-numbers boolean :short-arg #\l
     :help "True to show line numbers.")
-   (ignore-case boolean :short-arg #\i
+   (ignore-case boolean :short-arg #\i :default t
     :help "True to ignore case in searches.")
    (raw-output boolean :short-arg #\r
     :help "True to output characters without processing.")
