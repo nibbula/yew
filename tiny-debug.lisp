@@ -189,8 +189,8 @@ the outermost. When entering the debugger the current frame is 0.")
        ;; 		     (ccl:function-name (ccl:frame-function f context))) "")
        ;; 	       (or (ignore-errors
        ;; 		     (ccl:frame-supplied-arguments f context)) '("")))
-       (print-span `((:fg-yellow ,(format nil "~3a" i)) " ("
-		     ,(format nil "~(~a~{ ~s~}~)~%"
+       (print-span `((:fg-yellow ,(format nil "~3a" i))
+		     ,(format nil " (~(~a~{ ~s~}~))~%"
 			      (or (ignore-errors
 				    (ccl:function-name
 				     (ccl:frame-function f context))) "")
@@ -456,9 +456,9 @@ the outermost. When entering the debugger the current frame is 0.")
 (defun debugger-show-locals (n)
   (let ((*print-readably* nil))
     (multiple-value-bind (pointer context) (get-frame n)
-    (loop :for (name . value) :in (ccl:frame-named-variables pointer context)
-       :do
-       (format *debug-io* "~a = ~a~%" name value)))))
+      (loop :for (name . value) :in (ccl:frame-named-variables pointer context)
+	 :do
+	 (format *debug-io* "~a = ~a~%" name value)))))
 
 #+sbcl
 (defun frame-number (n)
