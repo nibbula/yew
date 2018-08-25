@@ -189,7 +189,7 @@ fairly easy to sub-class a type.
    #:tt-move-to-col		  #:terminal-move-to-col
    #:tt-beginning-of-line	  #:terminal-beginning-of-line
    #:tt-delete-char		  #:terminal-delete-char
-   #:tt-insser-char		  #:terminal-inssert-char
+   #:tt-insert-char		  #:terminal-insert-char
    #:tt-backward		  #:terminal-backward
    #:tt-forward			  #:terminal-forward
    #:tt-up			  #:terminal-up
