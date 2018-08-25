@@ -1455,7 +1455,7 @@ defaults to character) with the contents of FILE-OR-STREAM."
 			    (when (> pos 0)
 			      (write-sequence buffer str :end pos))
 			    :while (= pos len)))))))
-      (when close-me
+      (when (and close-me stream)
 	(close stream)))
     result))
 
