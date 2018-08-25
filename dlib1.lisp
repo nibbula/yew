@@ -93,6 +93,11 @@ of it.")
    #:has-feature
 ;   #:with-struct-slots
    ;; Implementation-ish
+   #:missing-implementation-error
+   #:missing-implementation-error-symbol
+   #:missing-implementation-error-foramt
+   #:missing-implementation-error-arguments
+   #:missing-implementation
    #:without-warning
    #:without-notes
    #:sort-muffled
@@ -241,16 +246,10 @@ Useful for making your macro “hygenic”."
 		   (format s "~a" symbol)))))
   (:documentation "A required function or symbol is missing or unimplemented."))
 
-;; @@@ I should really do this with an error type
-;; (defun missing-implementation (sym)
-;;   "Complain that something is missing."
-;;   (format t "You need to provide an implementation for ~a on ~a~%"
-;; 	  sym (lisp-implementation-type)))
-
 (defun missing-implementation (symbol)
   "Complain that something is missing."
   (warn 'missing-implementation-error
-	:format "You need to provide an implementation for ~a on ~a~%"
+	:format "The implementation for ~a on ~a is missing.~%"
 	:symbol symbol
 	:arguments (list symbol (lisp-implementation-type))))
 
