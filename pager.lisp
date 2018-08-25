@@ -5,13 +5,9 @@
 ;; TODO:
 ;;  - sub-files for keep & filter ?
 ;;  - syntax highlighting
-;;  - simpile HTML rendering
 ;;  - big stream issues?
 ;;    - direct read for files
 ;;    - option to use tmp file for pipe (disk vs mem tradeoff)
-;;  - handle when terminal wraps properly
-;; BUGS:
-;;  - when we call out to RL, e.g. to read a search string, tty gets messed up
 
 (defpackage :pager
   (:documentation "pager - More or less like more or less.
@@ -482,41 +478,6 @@ and resets it to be so afterward."
 (defun tmp-message (format-string &rest args)
   "Display a message at next command loop, until next input."
   (setf (pager-message *pager*) (apply #'format nil format-string args)))
-
-(defvar *nibby-color-scheme*
-  '((default		:green)
-    (comment		:cyan)
-    (string		:white)
-    (keyword		:magenta)
-    (function-name	:red)
-    (variable-name	'(:bold :yellow))
-    (documentation	'(:bold :green))
-    (constant		'(:bold :white))
-    (type-name		:yellow))
-  "A dark background color scheme that Nibby likes.")
-
-(defun syntax-lisp ()
-  )
-
-(defun syntax-c ()
-  )
-
-(defun pick-sytax (filename)
-  (let ((type (string-downcase (pathname-type filename))))
-    (case type
-      ("lisp"		#'syntax-lisp)
-      (("c" "h")	#'syntax-c))))
-
-#|
-(defparameter *attr*
-  `((:normal	. ,+a-normal+)
-    (:standout	. ,+a-standout+)
-    (:underline	. ,+a-underline+)
-    (:reverse	. ,+a-reverse+)
-    (:blink	. ,+a-blink+)
-    (:dim	. ,+a-dim+)
-    (:bold	. ,+a-bold+)))
-|#
 
 (defun real-attr (a)
   "Return a curses attribute given a keyword attribute."
