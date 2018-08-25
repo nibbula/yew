@@ -633,10 +633,10 @@ i.e. the terminal is 'line buffered'."
   ;; How about just:
   (terminal-write-char tty #\return))
 
-(defmethod terminal-del-char ((tty terminal-ansi-stream) n)
+(defmethod terminal-delete-char ((tty terminal-ansi-stream) n)
   (terminal-raw-format tty "~c[~aP" #\escape (if (> n 1) n "")))
 
-(defmethod terminal-ins-char ((tty terminal-ansi-stream) n)
+(defmethod terminal-insert-char ((tty terminal-ansi-stream) n)
   (terminal-raw-format tty "~c[~a@" #\escape (if (> n 1) n "")))
 
 (defun moverize (tty n pos neg)
