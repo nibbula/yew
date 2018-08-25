@@ -169,7 +169,7 @@ require terminal driver support."))
 
 (defun eat-typeahead (tty)
   (let (ta (fd (terminal-file-descriptor tty)))
-    ;; (dbugf 'terminal-ansi "eat typeahead ~a ~a~%" fd (uos:tcgetpgrp fd))
+    ;; (dbugf :terminal-ansi "eat typeahead ~a ~a~%" fd (uos:tcgetpgrp fd))
     (with-terminal-mode (fd)
       (set-terminal-mode fd :raw t)
       (setf ta (slurp-terminal fd :timeout 1))
@@ -220,7 +220,7 @@ two values ROW and COLUMN."
 					   :input)))
     ;; (dbug "terminal-ansi open in~%")
     (setf saved-mode (get-terminal-mode file-descriptor))
-    (dbugf 'terminal-ansi "saving terminal modes ~s ~s~%" tty saved-mode)
+    (dbugf :terminal-ansi "saving terminal modes ~s ~s~%" tty saved-mode)
     (when (or (terminal-mode-line saved-mode)
 	      (terminal-mode-echo saved-mode))
       (set-terminal-mode file-descriptor :line nil :echo nil))
@@ -228,7 +228,7 @@ two values ROW and COLUMN."
       (setf output-stream (open-terminal
 			   (or device-name *default-device-name*)
 			   :output))
-      (dbugf 'terminal-ansi "terminal-ansi open out ~s~%" output-stream)
+      (dbugf :terminal-ansi "terminal-ansi open out ~s~%" output-stream)
       ;; @@@ Why do we have to do this?
       #+ccl (setf (stream-external-format output-stream)
 		  (ccl:make-external-format :character-encoding :utf-8
@@ -243,7 +243,7 @@ two values ROW and COLUMN."
   ;; (set-terminal-mode (terminal-file-descriptor tty)
   ;; 		     :line t :echo t :raw nil :timeout nil)
   (when (or state (saved-mode tty))
-    (dbugf 'terminal-ansi "restoring terminal modes ~s ~s~%"
+    (dbugf :terminal-ansi "restoring terminal modes ~s ~s~%"
 	   tty (or state (saved-mode tty)))
     (set-terminal-mode (terminal-file-descriptor tty)
 		       :mode (or state (saved-mode tty)))))
