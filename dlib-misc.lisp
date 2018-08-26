@@ -70,6 +70,8 @@
    ;; packages
    #:*loadable-packages*
    #:loadable-packages
+   #:*quickloadable-systems*
+   #:quickloadable-systems
    #:clear-loadable-package-cache
    #:ensure-package
    #:unintern-conflicts
@@ -1333,10 +1335,29 @@ SPIN-STRING can be given and defaults to the value of *DEFAULT-SPIN-STRING*."
 			     (ql-dist:name s)
 			     (keywordify (ql-dist:name s))))))))))))
 
+(defvar *quickloadable-systems* nil
+  "Cached list of Quickload loadable systems. Set to NIL to recompute.")
+
+(defun quickloadable-systems (&key as-strings)
+  "List of packages the quickload can maybe load, if it can download them."
+  (or *quickloadable-systems*
+      #+quicklisp
+      (setf *quickloadable-systems*
+	    (with-spin ()
+	      (loop :for d :in (ql-dist:all-dists)
+		 :append
+		 (loop :for s :in (ql-dist:provided-systems d)
+		    :do (spin)
+		    :collect
+		    (if as-strings
+			(string-downcase (ql-dist:name s))
+			(keywordify (ql-dist:name s)))))))))
+
 (defun clear-loadable-package-cache ()
   "This should be done whenever packages are added or removed or the search
 configuration is changed."
-  (setf *loadable-packages* nil))
+  (setf *loadable-packages* nil
+	*quickloadable-systems* nil))
 
 (defun ensure-package (package)
   "Try to load PACKAGE as an ASDF system if we can't find it as a package."
