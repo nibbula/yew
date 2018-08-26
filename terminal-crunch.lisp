@@ -215,28 +215,45 @@ two values ROW and COLUMN."
 (defparameter *keyword-differentiator*
   #.(loop :with i = 0 :for c :across "keyword" :do
        (setf i (logior (ash i 8) (char-code c))) :finally (return i)))
+(declaim (type fixnum *keyword-differentiator*))
 
 ;; I'm just deciding it's 64bits. We could use most-positive-fixnum, but that
 ;; might be too small on some platforms.
-(defconstant +cut-off+ #xffffffffffffffff)
+;; (defconstant +cut-off+ #xffffffffffffffff)
+(defconstant +cut-off+ most-positive-fixnum)
 
 (defun curses-hash-seed () 0)
+(declaim (ftype (function () fixnum) curses-hash-seed))
+
 (defun curses-hash (integer value)
+  (declare (type fixnum integer value))
   (logand (+ value (ash value 5) integer) +cut-off+))
+(declaim (ftype (function (fixnum fixnum) fixnum) curses-hash))
 
 (defun bix-hash-seed () 0)
+(declaim (ftype (function () fixnum) bix-hash-seed))
 (defun bix-hash (integer value)
   (logand (logxor (ash value 3) integer) +cut-off+))
+(declaim (ftype (function (fixnum fixnum) fixnum) bix-hash))
 
-(defparameter *fnv64-offset* #xCBF29CE484222325)
+(defparameter *fnv64-offset* #.(logand most-positive-fixnum #xCBF29CE484222325))
+(declaim (type fixnum *fnv64-offset*))
 (defparameter *fnv64-prime* #x100000001b3)
-(defun fnv-like-hash-seed () *fnv64-offset*)
-(defun fnv-like-hash (integer value)
-  (logand (* (logxor value integer) *fnv64-prime*) +cut-off+))
+(declaim (type fixnum *fnv64-prime*))
 
-(defun sxhash-hash-seed () #xCBF29CE484222325)
+(defun fnv-like-hash-seed () *fnv64-offset*)
+(declaim (ftype (function () fixnum) bix-hash-seed))
+(defun fnv-like-hash (integer value)
+  (declare (type fixnum integer value))
+  (logand (* (logxor value integer) *fnv64-prime*) +cut-off+))
+(declaim (ftype (function (fixnum fixnum) fixnum) fnv-like-hash))
+
+;;(defun sxhash-hash-seed () #xCBF29CE484222325)
+(defun sxhash-hash-seed () #.(logand most-positive-fixnum #xCBF29CE484222325))
+(declaim (ftype (function () fixnum) sxhash-hash-seed))
 (defun sxhash-hash (integer value)
   (logand (+ (sxhash integer) value) +cut-off+))
+(declaim (ftype (function (fixnum fixnum) fixnum) sxhash-hash))
 
 ;; @@@ Am I being too paranoid doing this with a macro?
 (defmacro hash-thing-with (thing value hash-func hash-seed-func)
@@ -253,17 +270,18 @@ two values ROW and COLUMN."
        (keyword   (hash-thing (symbol-name ,thing)
 			      (,hash-func *keyword-differentiator* ,value)))
        (array ;; also string of course
-	(loop :with ,hv = (or ,value (,hash-seed-func))
+	(loop :with ,hv fixnum = (or ,value (,hash-seed-func))
 	   :for ,c :across ,thing
 	   :do (setf ,hv (hash-thing ,c ,hv))
 	   :finally (return ,hv)))
        (list
-	(loop :with ,hv = (or ,value (,hash-seed-func))
+	(loop :with ,hv fixnum = (or ,value (,hash-seed-func))
 	   :for ,c :in ,thing
 	   :do (setf ,hv (hash-thing ,c ,hv))
 	   :finally (return ,hv)))
        (fatchar
 	(let ((,hv ,value))
+	  (declare (type fixnum ,hv))
 	  (setf ,hv (hash-thing (fatchar-c ,thing) ,hv))
 	  (setf ,hv (hash-thing (fatchar-fg ,thing) ,hv))
 	  (setf ,hv (hash-thing (fatchar-bg ,thing) ,hv))
@@ -281,6 +299,7 @@ two values ROW and COLUMN."
 ;;     (hash-thing-with thing value bix-hash bix-hash-seed))
 ;; (defun hash-thing (thing &optional (value (sxhash-hash-seed)))
 ;;   (hash-thing-with thing value sxhash-hash sxhash-hash-seed))
+(declaim (ftype (function (t &optional fixnum) fixnum) hash-thing))
 
 (defun compute-hashes (screen &optional (start 0) end)
   (with-slots (lines hashes) screen
@@ -309,7 +328,7 @@ sizes. It only copies the smaller of the two regions."
 
 (defun make-new-screen (rows cols)
   (let* ((lines  (make-array rows :element-type 'fatchar-string))
-	 (hashes (make-array rows :element-type 'integer))
+	 (hashes (make-array rows :element-type 'fixnum))
 	 (index  (make-array rows :element-type 'fixnum))
 	 (result (make-screen
 		  :x 0 :y 0 :width cols :height rows
@@ -329,13 +348,20 @@ sizes. It only copies the smaller of the two regions."
     (compute-hashes result)
     result))
 
-(defmethod terminal-get-size ((tty terminal-crunch))
-  "Get the window size from the wrapped terminal and store it in tty."
+(defun size-changed-p (tty)
   (with-slots ((wtty wrapped-terminal)) tty
-    (terminal-get-size wtty)
-    ;; Resize the screens
-    (when (or (/= (terminal-window-rows tty) (terminal-window-rows wtty))
-	      (/= (terminal-window-columns tty) (terminal-window-columns wtty)))
+    (or (/= (terminal-window-rows tty) (terminal-window-rows wtty))
+	(/= (terminal-window-columns tty) (terminal-window-columns wtty)))))
+
+(defun update-size (tty)
+  (with-slots ((wtty wrapped-terminal)) tty
+    (when (size-changed-p tty)
+      (dbugf :crunch "resize ~s ~s -> ~s ~s~%"
+	   (terminal-window-rows tty)
+	   (terminal-window-columns tty)
+	   (terminal-window-rows wtty)
+	   (terminal-window-columns wtty))
+      ;; Resize the screens
       (let ((screen (make-new-screen (terminal-window-rows wtty)
 				     (terminal-window-columns wtty))))
 	(copy-screen-contents (old-screen tty) screen)
@@ -343,9 +369,19 @@ sizes. It only copies the smaller of the two regions."
 	(setf screen (make-new-screen (terminal-window-rows wtty)
 				      (terminal-window-columns wtty)))
 	(copy-screen-contents (new-screen tty) screen)
-	(setf (new-screen tty) screen)))
-    (setf (terminal-window-rows tty) (terminal-window-rows wtty)
-	  (terminal-window-columns tty) (terminal-window-columns wtty))))
+	(setf (new-screen tty) screen))
+      (setf (terminal-window-rows tty) (terminal-window-rows wtty)
+	    (terminal-window-columns tty) (terminal-window-columns wtty)))))
+
+(defmethod terminal-get-size ((tty terminal-crunch))
+  "Get the window size from the wrapped terminal and store it in tty."
+  (with-slots ((wtty wrapped-terminal)) tty
+    (terminal-get-size wtty)
+    (dbugf :crunch "get-size ~s ~s~%"
+	   (terminal-window-rows wtty)
+	   (terminal-window-columns wtty))
+    ;; Potentially resize the screens
+    (update-size tty)))
 
 (defun unset-fatchar (c)
   "Make a fatchar unset."
@@ -1323,15 +1359,21 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 
 (defmethod terminal-get-char ((tty terminal-crunch))
   (terminal-finish-output tty)
-  (terminal-get-char (wrapped-terminal tty)))
+  (prog1 (terminal-get-char (wrapped-terminal tty))
+    (when (size-changed-p tty)
+      (update-size tty))))
 
 (defmethod terminal-get-key ((tty terminal-crunch))
   (terminal-finish-output tty)
-  (terminal-get-key (wrapped-terminal tty)))
+  (prog1 (terminal-get-key (wrapped-terminal tty))
+    (when (size-changed-p tty)
+      (update-size tty))))
 
 (defmethod terminal-listen-for ((tty terminal-crunch) seconds)
   (terminal-finish-output tty)
-  (terminal-listen-for (wrapped-terminal tty) seconds))
+  (prog1 (terminal-listen-for (wrapped-terminal tty) seconds)
+    (when (size-changed-p tty)
+      (update-size tty))))
 
 (defmethod terminal-input-mode ((tty terminal-crunch))
   (terminal-input-mode (wrapped-terminal tty)))
