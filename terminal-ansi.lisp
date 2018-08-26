@@ -392,6 +392,7 @@ TTY is a terminal, in case you didn't know."
 	      (terminal-start ,tty) (terminal-finish-output ,tty)
 	      (setf ,borked t))
 	    (opsys-resized ()
+	      (dbugf :terminal "ansi resized ~s~%" ,tty)
 	      (terminal-get-size ,tty)
 	      (setf ,borked t)))
 	  :while ,borked)
