@@ -60,7 +60,7 @@
       (let* ((item-len (undo-item-length item))
 	     (disp-len (display-length (undo-item-data item))))
 	(move-over e (- (undo-item-position item) point))
-	(tt-del-char disp-len)
+	(tt-delete-char disp-len)
 	(buffer-delete
 	 e (undo-item-position item) (+ (undo-item-position item) item-len))
 	(setf (point e) (undo-item-position item))
