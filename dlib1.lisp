@@ -662,53 +662,69 @@ sequence of characters. CHARACTER-BAG defaults to *WHITESPACE*."
 can be any sequence of characters. CHARACTER-BAG defaults to *WHITESPACE*."
   (ltrim (rtrim string character-bag) character-bag))
 
-(defgeneric join-by-string (this that &key &allow-other-keys)
-  (:documentation "Return a string with THAT inbetween every element of THIS."))
+(defgeneric join-by-string (sequence connector &key &allow-other-keys)
+  (:documentation
+   "Return a string with CONNECTOR inbetween every element of SEQUENCE."))
 
-(defmethod join-by-string ((this list) thing &key &allow-other-keys)
-  "Return a string with a THING between every element of SEQUENCE. This is
+(defmethod join-by-string ((sequence list) connector &key &allow-other-keys)
+  "Return a string with a CONNECTOR between every element of SEQUENCE. This is
 basically the reverse of SPLIT-SEQUENCE."
   (with-output-to-string (str)
     (loop :with first = t
-       :for e :in this
+       :for e :in sequence
        :if first
 	 :do (setf first nil)
        :else
-	 :do (princ thing str)
+	 :do (princ connector str)
        :end
        :do (princ e str))))
 
-(defmethod join-by-string ((this vector) thing &key &allow-other-keys)
-  "Return a string with a THING between every element of SEQUENCE. This is
+(defmethod join-by-string ((sequence vector) connector &key &allow-other-keys)
+  "Return a string with a CONNECTOR between every element of SEQUENCE. This is
 basically the reverse of SPLIT-SEQUENCE."
   (with-output-to-string (str)
     (loop :with first = t
-       :for e :across this
+       :for e :across sequence
        :if first
 	 :do (setf first nil)
        :else
-	 :do (princ thing str)
+	 :do (princ connector str)
        :end
        :do (princ e str))))
 
 ;; I already regret this.
-(defgeneric join-by (type this that &key &allow-other-keys)
-  (:documentation "Join elements of THIS by THAT, resulting in a TYPE."))
+(defgeneric join-by (type sequence connector &key &allow-other-keys)
+  (:documentation
+   "Join elements of SEQUENCE by CONNECTOR, resulting in a TYPE."))
 
-(defmethod join-by ((type (eql 'string)) (this list) thing
+(defmethod join-by ((type (eql 'string)) (sequence list) connector
 		    &key &allow-other-keys)
-  "Return a string with a THING between every element of SEQUENCE. This is
+  "Return a string with a CONNECTOR between every element of SEQUENCE. This is
 basically the reverse of SPLIT-SEQUENCE."
-  (join-by-string this thing))
+  (join-by-string sequence connector))
 
-(defmethod join-by ((type (eql 'string)) (this vector) thing
+(defmethod join-by ((type (eql 'string)) (sequence vector) connector
 		    &key &allow-other-keys)
-  "Return a string with a THING between every element of SEQUENCE. This is
+  "Return a string with a CONNECTOR between every element of SEQUENCE. This is
 basically the reverse of SPLIT-SEQUENCE."
-  (join-by-string this thing))
+  (join-by-string sequence connector))
 
-;; (defmethod join ((type (eql 'list)) (this list) thing &key &allow-other-keys)
-;;   (cons this (if (atom thing) (list thing) thing)))
+(defmethod join-by ((type (eql 'list)) (sequence list) connector
+		    &key &allow-other-keys)
+  "Return a string with a CONNECTOR between every element of SEQUENCE. This is
+basically the reverse of SPLIT-SEQUENCE."
+  (loop :with first = t
+     :for e :in sequence
+       :if first
+	 :do (setf first nil)
+       :else
+	 :collect connector
+       :end
+       :collect e))
+
+;; (defmethod join ((type (eql 'list)) (sequence list) connector
+;;  		 &key &allow-other-keys)
+;;   (cons sequence (if (atom connector) (list connector) connector)))
 
 ;; Not exactly fill or map-into
 (defun fill-by (sequence function &key (start 0) end)
