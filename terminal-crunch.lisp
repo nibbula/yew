@@ -28,28 +28,30 @@ for various operations through the OUTPUT-COST methods.
    ))
 (in-package :terminal-crunch)
 
-;; (declaim
-;;  (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 (declaim
- (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
+ (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;; (declaim
+;;  (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
 
 (defstruct screen
   "Representation of the screen."
-  (x 0)
-  (y 0)
-  width
-  height
+  (x      0 :type fixnum)
+  (y      0 :type fixnum)
+  (width  0 :type fixnum)
+  (height 0 :type fixnum)
   background
   scrolling-region
-  cursor-state
-  (beep-count 0)
-  lines
-  index
-  hashes)
+  (cursor-state t :type boolean)
+  (beep-count 0 :type fixnum)
+  (lines  nil :type (or null (vector fatchar-string)))
+  (index  nil :type (or null (vector fixnum)))
+  (hashes nil :type (or null (vector fixnum))))
 
 (defstruct change
-  start-x start-y
-  end-x end-y
+  (start-x 0 :type fixnum)
+  (start-y 0 :type fixnum)
+  (end-x   0 :type fixnum)
+  (end-y   0 :type fixnum)
   op)
 
 (defparameter *blank-char*

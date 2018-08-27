@@ -4,9 +4,10 @@
 
 (defpackage :terminal-test
   (:documentation "Test the generic terminal library.")
-  (:use :cl :dlib :terminal #| :terminal-ansi :terminal-curses |#)
+  (:use :cl :dlib :terminal :color #| :terminal-ansi :terminal-curses |#)
   (:export
    #:run
+   #:menu
    #:test
    #:churn
    ))
@@ -267,6 +268,39 @@
     (test-char #x2260 "not equal")                ; ≠
     (test-char #x00a3 "UK pound sign"))))	  ; £
 
+(defun draw-box (x y width height &key string)
+  "Draw a box at X Y of WIDTH and HEIGHT. STRING a string of WIDTH to use for
+drawing, which will get overwritten."
+  (let* ((str-len (- width 2))
+	 (str (if string
+		  (fill string (code-char #x2500) :end str-len)
+		  (make-string str-len
+			      :initial-element (code-char #x2500))))) ; ─
+    (tt-move-to y x)
+    (tt-write-char (code-char #x250c))	; ┌
+    (tt-write-string str :end str-len)
+    (tt-write-char (code-char #x2510))	; ┐
+    (loop :for iy :from (1+ y) :below (+ y (1- height)) :do
+       (tt-move-to iy x)
+       (tt-write-char (code-char #x2502)) ; │
+       (tt-move-to iy (+ x (1- width)))
+       (tt-write-char (code-char #x2502))) ; │
+    (tt-move-to (+ y (1- height)) x)
+    (tt-write-char (code-char #x2514))	; └
+    (tt-write-string str :end str-len)
+    (tt-write-char (code-char #x2518)))) ; ┘
+
+(defun test-boxes ()
+  "Test drawing boxes."
+  (blurp
+   (let ((limit (truncate (tt-height) 2)))
+     (loop :for i :from 1 :below limit :by 1 :do
+	(draw-box i i (- (tt-width) (* 2 i)) (- (tt-height) (* 2 i)))
+	(tt-finish-output)
+	(sleep .1))
+     (tt-write-string-at limit limit
+			 "This should be surrounded by concentric boxes."))))
+
 (defun test-cursor-visibility ()
   (blurp
    (let ((half-width (truncate (/ (terminal-window-columns *terminal*) 2)))
@@ -438,24 +472,134 @@
    (tt-beep))
   )
 
+(defparameter *block*
+  '("░░░░░░░░"
+    "░▒▒▒▒▒▒░"
+    "░▒▓▓▓▓▒░"
+    "░▒▓██▓▒░"
+    "░▒▓▓▓▓▒░"
+    "░▒▒▒▒▒▒░"
+    "░░░░░░░░"))
+
+(defun draw-block (y x)
+  (tt-move-to y x)
+  (loop :with i = y
+     :for line :in *block* :do
+     (tt-write-string line)
+     (tt-move-to (incf i) x)))
+
+(defstruct blook
+  color
+  x y
+  xinc yinc)
+
+(defun show-blook (b)
+  (tt-color (blook-color b) :default)
+  (draw-block (blook-y b) (blook-x b))
+  (tt-color :default :default))
+
+;; I know this isn't really a very good test, but at least it's a little fun.
+(defun test-wide-characters ()
+  (tt-clear)
+  (let ((blocks
+	 (list
+	  (make-blook :color :red    :y 10 :x 20 :xinc  1 :yinc 1)
+	  (make-blook :color :blue   :y 10 :x 30 :xinc  1 :yinc 0)
+	  (make-blook :color :green  :y 20 :x 20 :xinc -1 :yinc 0)
+	  (make-blook :color :yellow :y 20 :x 40 :xinc -1 :yinc -1)))
+	(t-o .05)
+	xi yi c)
+    (labels
+	((random-color ()
+	   (elt *simple-colors*
+		(random (length *simple-colors*))))
+	 (new-blook ()
+	   (loop :do (setf xi (- (random 3) 1) yi (- (random 3) 1))
+	      :while (and (= xi 0) (= yi 0)))
+	   (push (make-blook :color (random-color)
+			     :y (random (tt-height)) :xinc xi
+			     :x (random (tt-width))  :yinc yi) blocks)))
+      (loop ;; :for i :from 1 :to 2000 :do
+	 (tt-move-to 0 0)
+	 (tt-erase-below)
+	 (tt-write-string "Ｙｅｓ， ｙｏｕ ｈａｖｅ ＷＩＤＥ ｃｈａｒｓ！")
+	 (tt-write-string-at 1 0 "You should see rectangles bouncing around.")
+	 (loop :for b :in blocks :do
+	    (show-blook b)
+	    (incf (blook-x b) (blook-xinc b))
+	    (incf (blook-y b) (blook-yinc b))
+	    (when (<= (blook-x b) 0)		     (setf (blook-xinc b) 1))
+	    (when (>= (blook-x b) (- (tt-width) 8))  (setf (blook-xinc b) -1))
+	    (when (<= (blook-y b) 0)	    	     (setf (blook-yinc b) 1))
+	    (when (>= (blook-y b) (- (tt-height) 7)) (setf (blook-yinc b) -1)))
+	 (tt-finish-output)
+
+	 (when (setf c (if (plusp t-o)
+			   (when (tt-listen-for t-o)
+			     (tt-get-key))
+			   (tt-get-key)))
+	   (case c
+	     (#\q (return))
+	     (#\n (new-blook))
+	     (#\p (setf t-o (- t-o)))
+	     (#\- (decf t-o .01))
+	     (#\+ (incf t-o .01))))))))
+
+(defparameter *menu*
+  `(("Screen size"                 . test-screen-size)
+    ("Basic functionality"         . test-basics)
+    ("Box drawing"                 . test-boxes)
+    ("Cursor visibility"           . test-cursor-visibility)
+    ("Cursor save and restore"     . test-save-and-restore-cursor)
+    ("Column movement"             . test-move-to-col)
+    ("Insert & delete characters"  . test-ins-del)
+    ("Text attributes"             . test-attrs)
+    ("Text colors"                 . test-colors)
+    ("Alternate characters"        . test-alternate-characters)
+    ("Wide characters"             . test-wide-characters)
+    ("Scrolling region"            . test-scrolling-region)
+    ))
+
 (defun run ()
   (let ((class #| :ansi |# (ask-class)  ))
     (when class
       (with-new-terminal (class)
 	(catch 'quit
 	  (terminal-get-size *terminal*)
-	  (test-screen-size)
-	  (test-basics)
-	  (test-cursor-visibility)
-	  (test-save-and-restore-cursor)
-	  (test-move-to-col)
-	  (test-ins-del)
-	  (test-attrs)
-	  (test-colors)
-	  (test-alternate-characters)
-	  (test-scrolling-region)
-	  ))
+	  (loop :for item :in *menu*
+	     :do
+	     (funcall (cdr item)))))
       (format t "~%All done.~%"))))
+
+(defun show-menu ()
+  (tt-home)
+  (tt-erase-below)
+  (tt-format " Terminal Tests ~%~%")
+  (loop
+     :for i :from 1
+     :for (name . nil) :in *menu* :do
+     (tt-format "  [~c]  ~a~%" (char-downcase
+				(digit-char i (1+ (length *menu*)))) name))
+  (tt-format "~%  [q]  Quit~%"))
+
+(defun menu ()
+  (let ((class #| :ansi |# (ask-class)))
+    (when class
+      (with-new-terminal (class)
+	(catch 'quit
+	  (terminal-get-size *terminal*)
+	  (loop :with c :and quit-flag
+	     :while (not quit-flag)
+	     :do
+	     (show-menu)
+	     (tt-finish-output)
+	     (setf c (tt-get-key))
+	     (cond
+	       ((digit-char-p c (1+ (length *menu*)))
+		(funcall (cdr (nth (1- (digit-char-p c (1+ (length *menu*))))
+				   *menu*))))
+	       ((eql #\q c)
+		(setf quit-flag t)))))))))
 
 (defun churn ()
   (let ((class :ansi #| (ask-class) |# ))
@@ -466,8 +610,7 @@
 	(loop
 	   :do
 	   (asdf:load-system :terminal-test)
-	   :while (test-scrolling-region))
-	)
+	   :while (test-scrolling-region)))
       (format t "~%All done.~%"))))
 
 ;; EOF
