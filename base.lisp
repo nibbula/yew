@@ -10,7 +10,6 @@
    ;; Stuff in this file:
    #:config-feature
    #:function-defined
-   #:missing-implementation
    #:define-enum-list
    #:define-to-list
    #:quote-filename
@@ -132,13 +131,6 @@
     (multiple-value-bind (found-symbol status)
 	(find-symbol (symbol-name sym) (find-package pack))
       (and found-symbol (eql status :external) (fboundp found-symbol)))))
-
-;; @@@ I should probably really do this with an error type
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defun missing-implementation (sym)
-    "Complain that something is missing."
-    (error "Somebody needs to provide an implementation for ~a on ~a~%"
-	   sym (lisp-implementation-type))))
 
 ;; Now we depend on dlib. :(
 ;; I suppose we could use the one in alexandria, since but it's a dependency
