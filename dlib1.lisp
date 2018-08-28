@@ -126,7 +126,7 @@ of it.")
    #:+simple-condition-format-arguments-slot+
    ;; debugging
    #:*dbug* #:*dbug-package* #:*dbug-facility*
-   #:dbug #:dbugf #:with-dbug #:with-dbug-package #:with-dbugf
+   #:dbug #:dbugf #:if-dbugf #:with-dbug #:with-dbug-package #:with-dbugf
    #:without-dbug
    #:dump-values
    ;; Environment features
@@ -1553,6 +1553,16 @@ facility be a non-keyword symbol."
 	       (member ,facility *dbug-facility*)
 	       (member :all *dbug-facility*)))
      (funcall #'format *debug-io* ,fmt ,@args) (finish-output *debug-io*)))
+
+(defmacro if-dbugf ((facility) &body body)
+  "Evaluate BODY when debugging is turned on and maybe we're in
+the right package, and the FACILITY is activated."
+  `(when (and #| dlib:*dbug* |# dlib:*dbug-facility*
+	      (or
+	       (member ,facility *dbug-facility*)
+	       (member :all *dbug-facility*)))
+     (multiple-value-prog1 (progn ,@body)
+       (finish-output *debug-io*))))
 
 (defmacro with-dbug (&body body)
   "Evaluate the BODY with debugging message printing turned on."
