@@ -562,7 +562,10 @@ line : |----||-------||---------||---|
 				:end (+ *left* (tt-width))))
     (when search-string
       (search-a-matize))
-    (tt-write-line (make-fat-string :string *fat-buf*))
+    ;;(dbugf :crunch ">~s<~%" (make-fat-string :string *fat-buf*))
+    (if (< (display-length *fat-buf*) (tt-width))
+	(tt-write-line (make-fat-string :string *fat-buf*))
+	(tt-write-string (make-fat-string :string *fat-buf*)))
     ;; @@@ or something? minus the line numbers
     (max 1 (ceiling (length *fat-buf*) (tt-width)))))
 
