@@ -538,76 +538,90 @@ sizes. It only copies the smaller of the two regions."
 	(incf (really-scroll-amount tty) n)))))
 
 (defun copy-char (tty char)
-  "Put the CHAR at the current screen postion."
+  "Put the CHAR at the current screen postion. Return true if we actually
+changed the screen content."
   (with-slots (fg bg attrs delay-scroll) tty
     (with-slots (x y width height scrolling-region lines) (new-screen tty)
-      (labels ((char-char (c)
-	       (etypecase c
-		 (fatchar (fatchar-c c))
-		 (character c)))
-	       (set-char (fc char)
-		 (etypecase char
-		   (character
-		    (setf (fatchar-c fc) char
-			  (fatchar-fg fc) fg
-			  (fatchar-bg fc) bg
-			  (fatchar-attrs fc) attrs
-			  (fatchar-line fc) 0)) ;; unless it's a line char??
-		   (fatchar
-		    (setf (fatchar-c fc) (fatchar-c char)
-			  (fatchar-fg fc) (fatchar-fg char)
-			  (fatchar-bg fc) (fatchar-bg char)
-			  (fatchar-attrs fc) (fatchar-attrs char)
-			  (fatchar-line fc) (fatchar-line char)))))
-	       (scroll-one-line ()
-		 (no-hints tty)
-		 (scroll tty 1)
-		 (setf x 0))
-	       (delayed-scroll ()
-		 (when (delay-scroll tty)
-		   (setf (delay-scroll tty) nil)
-		   (when (and (= y (1- height))
-			      (= x (1- width)))
-		     (scroll-one-line))))
-	       (next-line ()
-		 (if (< y (1- height))
-		     (progn
-		       (incf y)
-		       (setf x 0))
-		     (when (allow-scrolling tty)
-		       (if (= x (1- width))
-			   (progn
-			     ;; @@@ horrible
-			     (setf (delay-scroll tty) t))
-			   (progn
-			     (scroll-one-line)))))))
-	(case (char-char char)
-	  (#\newline
-	   (delayed-scroll)
-	   (terminal-erase-to-eol tty)
-	   (setf x 0)
-	   (next-line))
-	  (#\return
-	   (setf x 0))
-	  (#\backspace
-	   (setf x (max 0 (1- x))))
-	  (#\tab
-	   (let ((new-x (+ x (- (1+ (logior 7 x)) x))))
-	     ;; @@@ should tabs actually wrap?
-	     (setf x (min new-x (1- width)))))
-	  (t
-	   (delayed-scroll)
-	   (set-char (aref (aref lines y) x) char)
-	   (note-single-line tty)
-	   (let ((new-x (+ x (display-length char))))
-	     (if (< new-x width)
-		 (setf x new-x)
-		 (next-line)))))))))
+      (let (changed new-fc)
+	(labels ((char-char (c)
+		   (etypecase c
+		     (fatchar (fatchar-c c))
+		     (character c)))
+		 (set-char (fc char)
+		   (etypecase char
+		     (character
+		      (setf new-fc
+			    (make-fatchar
+			     :c char :fg fg :bg bg :attrs attrs
+			     :line 0)) ;; unless it's a line char??
+		      (when (not (fatchar= fc new-fc))
+			(setf (fatchar-c fc) char
+			      (fatchar-fg fc) fg
+			      (fatchar-bg fc) bg
+			      (fatchar-attrs fc) attrs
+			      (fatchar-line fc) 0
+			      changed t)))
+		     (fatchar
+		      (when (not (fatchar= fc char))
+			(setf (fatchar-c fc) (fatchar-c char)
+			      (fatchar-fg fc) (fatchar-fg char)
+			      (fatchar-bg fc) (fatchar-bg char)
+			      (fatchar-attrs fc) (fatchar-attrs char)
+			      (fatchar-line fc) (fatchar-line char)
+			      changed t)))))
+		 (scroll-one-line ()
+		   (no-hints tty)
+		   (scroll tty 1)
+		   (setf x 0 changed t))
+		 (delayed-scroll ()
+		   (when (delay-scroll tty)
+		     (setf (delay-scroll tty) nil)
+		     (when (and (= y (1- height))
+				(= x (1- width)))
+		       (scroll-one-line))))
+		 (next-line ()
+		   (if (< y (1- height))
+		       (progn
+			 (incf y)
+			 (setf x 0))
+		       (when (allow-scrolling tty)
+			 (if (= x (1- width))
+			     (progn
+			       ;; @@@ horrible
+			       (setf (delay-scroll tty) t))
+			     (progn
+			       (scroll-one-line)))))))
+	  (case (char-char char)
+	    (#\newline
+	     (delayed-scroll)
+	     (terminal-erase-to-eol tty)
+	     (setf x 0 changed t)
+	     (next-line))
+	    (#\return
+	     (setf x 0))
+	    (#\backspace
+	     (setf x (max 0 (1- x))))
+	    (#\tab
+	     (let ((new-x (+ x (- (1+ (logior 7 x)) x))))
+	       ;; @@@ should tabs actually wrap?
+	       (setf x (min new-x (1- width)))))
+	    (t
+	     (delayed-scroll)
+	     (set-char (aref (aref lines y) x) char)
+	     (when changed
+	       (note-single-line tty))
+	     (let ((new-x (+ x (display-length char))))
+	       (if (< new-x width)
+		   (setf x new-x)
+		   (next-line))))))
+	changed))))
 
 (defun copy-to-screen (tty string &key (start 0) end)
+  "Copy the STRING from START to END to the screen. Return true if we actually
+changed the screen contents."
   (with-slots (x y width height fg bg attrs scrolling-region) (new-screen tty)
     (loop
-       :with i = (or start 0)
+       :with i = (or start 0) :and changed
        :and str = (if (or (and start (not (zerop start))) end)
 		      (if end
 			  (displaced-subseq string (or start 0) end)
@@ -616,8 +630,10 @@ sizes. It only copies the smaller of the two regions."
        :with len = (length str)
        :while (< i len)
        :do
-       (copy-char tty (aref str i))
-       (incf i))))
+       (when (copy-char tty (aref str i))
+	 (setf changed t))
+       (incf i)
+       :finally (return changed))))
 
 (defun no-hints (tty)
   "Can't do any easy optimizations."
@@ -657,7 +673,7 @@ that the change is more than one character."
   ;; This seems faster than the equivalent position-if.
   (and (not (position *blank-char* line
 		      :start start
-		      :test (lambda (a b) (not (equalp a b)))))
+		      :test (lambda (a b) (not (fatchar= a b)))))
        t))
 
 (defun new-change (tty operation)
@@ -726,8 +742,8 @@ optimization."
     ;; This can have print-object do some other stuff...
     ;; @@@ maybe?
     ;; (apply #'format tty fmt args)
-    (copy-to-screen tty string)
-    (note-change tty string)))
+    (when (copy-to-screen tty string)
+      (note-change tty string))))
 
 (defmethod terminal-alternate-characters ((tty terminal-crunch) state)
   (declare (ignore tty state))
@@ -737,42 +753,42 @@ optimization."
 (defmethod terminal-write-string ((tty terminal-crunch-stream) str
 				  &key start end)
   "Output a string to the terminal."
-  (copy-to-screen tty str :start start :end end)
-  (note-change tty str))
+  (when (copy-to-screen tty str :start start :end end)
+    (note-change tty str)))
 
 (defmethod terminal-write-line ((tty terminal-crunch-stream) str
 				  &key start end)
   "Output a string to the terminal."
-  (copy-to-screen tty str :start start :end end)
-  (note-change tty str)
-  (copy-char tty #\newline)
-  (note-change tty #\newline))
+  (when (copy-to-screen tty str :start start :end end)
+    (note-change tty str))
+  (when (copy-char tty #\newline)
+    (note-change tty #\newline)))
 
 (defmethod terminal-write-string ((tty terminal-crunch-stream) (str fat-string)
 				  &key start end)
   "Output a string to the terminal."
-  (copy-to-screen tty (fat-string-string str) :start start :end end)
-  (note-change tty str))
+  (when (copy-to-screen tty (fat-string-string str) :start start :end end)
+    (note-change tty str)))
 
 (defmethod terminal-write-line ((tty terminal-crunch-stream) (str fat-string)
 				  &key start end)
   "Output a string to the terminal."
-  (copy-to-screen tty (fat-string-string str) :start start :end end)
-  (note-change tty str)
-  (copy-char tty #\newline)
-  (note-change tty #\newline))
+  (when (copy-to-screen tty (fat-string-string str) :start start :end end)
+    (note-change tty str))
+  (when (copy-char tty #\newline)
+    (note-change tty #\newline)))
 
 (defmethod terminal-write-char ((tty terminal-crunch-stream) char)
   "Output a character to the terminal. Flush output if it is a newline,
 i.e. the terminal is 'line buffered'."
-  (copy-char tty char)
-  (note-change tty char))
+  (when (copy-char tty char)
+    (note-change tty char)))
 
 (defmethod terminal-write-char ((tty terminal-crunch-stream) (char fatchar))
   "Output a character to the terminal. Flush output if it is a newline,
 i.e. the terminal is 'line buffered'."
-  (copy-char tty char)
-  (note-change tty char))
+  (when (copy-char tty char)
+    (note-change tty char)))
 
 (defmethod terminal-move-to ((tty terminal-crunch-stream) row col)
   (setf (screen-y (new-screen tty))
@@ -1246,6 +1262,9 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	       (new new-screen)
 	       start-line really-scroll-amount) tty
 
+    (if-dbugf (:crunch) (dump-screen tty))
+    (if-dbugf (:crunch) (dump-hashes tty))
+    
     ;; Set starting point.
     (setf (update-x tty) (screen-x old)
 	  (update-y tty) (screen-y old))
@@ -1524,6 +1543,30 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
   ;; ‘fundamental-character-input-stream’ must define a method for this
   ;; function.
   (stream-unread-char (wrapped-terminal stream) character))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Debugging
+
+(defun dump-hashes (tty)
+  (let ((old-hashes (screen-hashes (old-screen tty)))
+	(new-hashes (screen-hashes (new-screen tty))))
+    (format *debug-io* "Old -> New~%")
+    (loop :for i :from 0 :below (length old-hashes) :do
+       (format *debug-io* "~s ~s~%" (aref old-hashes i) (aref new-hashes i)))))
+
+(defun dump-screen (tty)
+  (let ((old-lines (screen-lines (old-screen tty)))
+	(new-lines (screen-lines (new-screen tty))))
+    (format *debug-io* "Old ~s ~s -> New ~s ~s +~s~%"
+	    (screen-x (old-screen tty))
+	    (screen-y (old-screen tty))
+	    (screen-x (new-screen tty))
+	    (screen-y (new-screen tty))
+	    (start-line tty))
+    (loop :for i :from 0 :below (length old-lines) :do
+       (format *debug-io* "[~a] [~a]~%"
+	       (make-fat-string :string (aref old-lines i))
+	       (make-fat-string :string (aref new-lines i))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
