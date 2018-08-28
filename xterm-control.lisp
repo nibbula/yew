@@ -163,18 +163,6 @@ default to 16 bit color."
 	(color-blue  c) (truncate (* (color-blue  c) #xff) #xffff))
   c)
 
-(defun set-foreground-color (color)
-  (tt-format "~a10;~a~a" +osc+
-	     (format-color (color-red   color)
-			   (color-green color)
-			   (color-blue  color)) +st+))
-
-(defun set-background-color (color)
-  (tt-format "~a11;~a~a" +osc+
-	     (format-color (color-red   color)
-			   (color-green color)
-			   (color-blue  color)) +st+))
-
 (defun set-utf8-title-mode (state)
   (tt-format "~c[>2;3~c" #\escape (if state #\t #\T))
   (tt-finish-output))
@@ -477,15 +465,17 @@ default to 16 bit color."
 		 (= screen-char-height char-height)))
       ;; Foreground & background colors
       (setf foreground (scale-color-16-to-8
-			(multiple-value-list
-			(parse-color
-			 (query-string (s+ "10;?" +st+)
-				       :lead-in +osc+ :offset 5))))
+			(apply #'vector
+			       (multiple-value-list
+				(parse-color
+				 (query-string (s+ "10;?" +st+)
+					       :lead-in +osc+ :offset 5)))))
 	    background (scale-color-16-to-8
-			(multiple-value-list
-			(parse-color
-			 (query-string (s+ "11;?" +st+)
-				       :lead-in +osc+  :offset 5)))))
+			(apply #'vector
+			       (multiple-value-list
+				(parse-color
+				 (query-string (s+ "11;?" +st+)
+					       :lead-in +osc+  :offset 5))))))
       ;; title
       (setf title (get-title))
       ;; icon
