@@ -24,6 +24,8 @@
    #:with-raw #:with-immediate
    #:set-bracketed-paste-mode
    #:read-bracketed-paste
+   #:foreground-color
+   #:background-color
    #:set-foreground-color
    #:set-background-color
    ))
@@ -722,43 +724,15 @@ i.e. the terminal is 'line buffered'."
 (defparameter *colors*
   #(:black :red :green :yellow :blue :magenta :cyan :white nil :default))
 
-;; (defun format-color (red green blue &key bits)
-;;   "Return a string in XParseColor format for a color with the given RED, BLUE,
-;; and GREEN, components. Default to 8 bit color. If values are over 8 bits,
-;; default to 16 bit color."
-;;   (let ((r red) (g green) (b blue) (l (list red green blue)))
-;;     (cond
-;;       ((every #'floatp l)
-;;        (format nil "rgbi:~f/~f/~f" r g b))
-;;       ((every #'integerp l)
-;;        (let (fmt)
-;; 	 (when (not bits)
-;; 	   (setf bits (if (some (_ (> _ #xff)) l) 16 8)))
-;; 	 (setf fmt
-;; 	       (case bits
-;; 		 (4  "~x")
-;; 		 (8  "~2,'0x")
-;; 		 (12 "~3,'0x")
-;; 		 (16 "~4,'0x")
-;; 		 (t (error "Bad color bit magnitudes: ~s" l))))
-;; 	 (format nil (s+ "rgb:" fmt "/" fmt "/" fmt) r g b)))
-;;       (t
-;;        (error "Bad color formats: ~s" l)))))
+(defun foreground-color ()
+  "Get the default foreground color for text."
+  (xcolor-to-color (query-string (s+ "10;?" +st+) :lead-in +osc+ :offset 5
+				 :tty (terminal-file-descriptor *terminal*))))
 
-;; @@@ obsoleced by color.lisp
-;; (defun rgb-color-p (x)
-;;   (and (not (null x))
-;;        (or (consp x) (arrayp x))
-;;        (= (length x) 3)
-;;        (every #'numberp x)))
-
-;; @@@ obsoleced by color.lisp
-;; (defun   color-red   (c) (elt c 0))
-;; (defsetf color-red   (c) (val) `(setf (elt ,c 0) ,val))
-;; (defun   color-green (c) (elt c 1))
-;; (defsetf color-green (c) (val) `(setf (elt ,c 1) ,val))
-;; (defun   color-blue  (c) (elt c 2))
-;; (defsetf color-blue  (c) (val) `(setf (elt ,c 2) ,val))
+(defun background-color ()
+  "Get the default background color for text."
+  (xcolor-to-color (query-string (s+ "11;?" +st+) :lead-in +osc+ :offset 5
+				 :tty (terminal-file-descriptor *terminal*))))
 
 (defun set-foreground-color (color)
   "Set the default forground color for text."
