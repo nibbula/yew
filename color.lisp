@@ -121,6 +121,7 @@ the VALUE."))
   (:documentation "Return the COLOR converted to the TO-COLOR-MODEL."))
 
 (defun convert-color-to (color to-color-model)
+  "Return COLOR converted to color model TO-COLOR-MODEL."
   (let ((from-model (color-model-name color)))
     (if (eq from-model to-color-model)
 	color
@@ -336,56 +337,65 @@ default to 16 bit color."
 (defun xcolor-to-color (string)
   "Return an :RGB color from a XParseColor format string. Doesn't
 handle device independant color spaces yet, e.g. CIELab."
-  (cond
-    ((begins-with "rgb:" string)
-     (multiple-value-bind (begin end starts ends)
-	 (ppcre:scan "rgb:([0-9A-Fa-f]+)/([0-9A-Fa-f]+)/([0-9A-Fa-f]+)" string)
-       (when (and (not (zerop begin)) (/= (length string) end))
-	 (error "Junk in an rgb color string: ~s." string))
-       (when (or (/= (length starts) 3) (/= (length ends) 3))
-	 (error "Not enough colors in rgb color string: ~s." string))
-       (apply
-	#'vector :rgb
-	(loop :for i :from 0 :to 2
-	   :collect (parse-integer string
+  (flet ((device-to-intensity (c n)
+	   "Convert a scaled device color of N hex digits to a 0 - 1 intensity."
+	   (/ c (1- (expt 16 n)))))
+    (cond
+      ((begins-with "rgb:" string)
+       (multiple-value-bind (begin end starts ends)
+	   (ppcre:scan "rgb:([0-9A-Fa-f]+)/([0-9A-Fa-f]+)/([0-9A-Fa-f]+)"
+		       string)
+	 (when (and (not (zerop begin)) (/= (length string) end))
+	   (error "Junk in an rgb color string: ~s." string))
+	 (when (or (/= (length starts) 3) (/= (length ends) 3))
+	   (error "Not enough colors in rgb color string: ~s." string))
+	 (apply
+	  #'vector :rgb
+	  (loop :for i :from 0 :to 2
+	     :collect (device-to-intensity
+		       (parse-integer string
+				     :start (elt starts i)
+				     :end (elt ends i)
+				     :radix 16)
+		       (- (elt ends i) (elt starts i)))))))
+      ((begins-with "rgbi:" string)
+       (multiple-value-bind (begin end starts ends)
+	   (ppcre:scan (let ((num "([-+]*[0-9]*[.]?[0-9]+([eE][-+]*[0-9]+)?)"))
+			 (s+ "rgbi:" num "/" num "/" num))
+		       string)
+	 (when (and (not (zerop begin)) (/= (length string) end))
+	   (error "Junk in an rgbi color string: ~s." string))
+	 (when (or (/= (length starts) 6) (/= (length ends) 6))
+	   (error "Not enough colors in rgbi color string: ~s." string))
+	 (apply #'vector :rgb
+		(loop :for i :from 0 :to 2
+		   :collect (safe-read-from-string string nil nil
+						   :start (elt starts (* i 2))
+						   :end (elt ends (* i 2)))))))
+      ((begins-with "#" string)
+       (when (not (position (1- (length string)) #(3 6 9 12)))
+	 (error "Inappropriate length of # color string: ~s." string))
+       (let (begin end starts ends)
+	 (loop :for exp :in '("#([0-9A-Fa-f]{4})([0-9A-Fa-f]{4})([0-9A-Fa-f]{4})"
+			      "#([0-9A-Fa-f]{3})([0-9A-Fa-f]{3})([0-9A-Fa-f]{3})"
+			      "#([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})"
+			      "#([0-9A-Fa-f])([0-9A-Fa-f])([0-9A-Fa-f])")
+	    :until (multiple-value-setq (begin end starts ends)
+		     (ppcre:scan exp string)))
+	 (when (and (not (zerop begin)) (/= (length string) end))
+	   (error "Junk in an # color string: ~s." string))
+	 (when (or (/= (length starts) 3) (/= (length ends) 3))
+	   (error "Not enough colors in # color string: ~s." string))
+	 (apply #'vector :rgb
+		(loop :for i :from 0 :to 2
+		   :collect
+		   (device-to-intensity
+		    (parse-integer string
 				   :start (elt starts i)
 				   :end (elt ends i)
-				   :radix 16)))))
-    ((begins-with "rgbi:" string)
-     (multiple-value-bind (begin end starts ends)
-	 (ppcre:scan (let ((num "([-+]*[0-9]*[.]?[0-9]+([eE][-+]*[0-9]+)?)"))
-		       (s+ "rgbi:" num "/" num "/" num))
-		     string)
-       (when (and (not (zerop begin)) (/= (length string) end))
-	 (error "Junk in an rgbi color string: ~s." string))
-       (when (or (/= (length starts) 6) (/= (length ends) 6))
-	 (error "Not enough colors in rgbi color string: ~s." string))
-       (apply #'vector :rgb
-	      (loop :for i :from 0 :to 2
-		 :collect (safe-read-from-string string nil nil
-						 :start (elt starts (* i 2))
-						 :end (elt ends (* i 2)))))))
-    ((begins-with "#" string)
-     (when (not (position (1- (length string)) #(3 6 9 12)))
-       (error "Inappropriate length of # color string: ~s." string))
-     (let (begin end starts ends)
-       (loop :for exp :in '("#([0-9A-Fa-f]{4})([0-9A-Fa-f]{4})([0-9A-Fa-f]{4})"
-			    "#([0-9A-Fa-f]{3})([0-9A-Fa-f]{3})([0-9A-Fa-f]{3})"
-			    "#([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})"
-			    "#([0-9A-Fa-f])([0-9A-Fa-f])([0-9A-Fa-f])")
-	  :until (multiple-value-setq (begin end starts ends)
-		   (ppcre:scan exp string)))
-       (when (and (not (zerop begin)) (/= (length string) end))
-	 (error "Junk in an # color string: ~s." string))
-       (when (or (/= (length starts) 3) (/= (length ends) 3))
-	 (error "Not enough colors in # color string: ~s." string))
-       (apply #'vector :rgb
-	      (loop :for i :from 0 :to 2
-		 :collect (parse-integer string
-					 :start (elt starts i)
-					 :end (elt ends i)
-					 :radix 16)))))
-    (t
-     (error "Can't parse the color string ~s." string))))
+				   :radix 16)
+		    (- (elt ends i) (elt starts i)))))))
+      (t
+       (error "Can't parse the color string ~s." string)))))
 
 ;; EOF
