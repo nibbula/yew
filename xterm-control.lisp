@@ -5,7 +5,7 @@
 (defpackage :xterm-control
   (:documentation "Control an XTerm compatible terminal.")
   (:use :cl :dlib :dlib-misc :char-util :keymap :terminal :terminal-ansi
-	:inator :terminal-inator :rl :ppcre)
+	:inator :terminal-inator :rl :ppcre :color)
   (:export
    #:control-xterm
    #:!xterm-control
@@ -45,123 +45,6 @@
 (defun set-fullscreen (state)
   (tt-format "~a10;~dt" +csi+ (if state 1 0))
   (tt-finish-output))
-
-#|
-  rgb:<red>/<green>/<blue>
-  <red>, <green>, <blue> := h | hh | hhh | hhhh
-  h := single hexadecimal digits (case insignificant)
-  The component value is scaled.
-
-  #RGB            (4 bits each)
-  #RRGGBB         (8 bits each)
-  #RRRGGGBBB      (12 bits each)
-  #RRRRGGGGBBBB   (16 bits each)
-  The compoent values specify the high bits of a 16 bit value.
-
-  rgbi:<red>/<green>/<blue>
-  Floating-point values between 0.0 and 1.0, inclusive.
-  of the format something like: [-+]*[0-9]*[.]*[0-9]+[[eE][-+]*[0-9]+]
-
-  Or device-independent specifications:
-
-  CIEXYZ:<X>/<Y>/<Z>
-  CIEuvY:<u>/<v>/<Y>
-  CIExyY:<x>/<y>/<Y>
-  CIELab:<L>/<a>/<b>
-  CIELuv:<L>/<u>/<v>
-  TekHVC:<H>/<V>/<C>
-|#
-
-(defun parse-color (string)
-  "Return an Red Green Blue triplet from a XParseColor format string. Doesn't
-handle device independant color spaces yet, e.g. CIELab."
-  (cond
-    ((begins-with "rgb:" string)
-     (multiple-value-bind (begin end starts ends)
-	 (ppcre:scan "rgb:([0-9A-Fa-f]+)/([0-9A-Fa-f]+)/([0-9A-Fa-f]+)" string)
-       (when (and (not (zerop begin)) (/= (length string) end))
-	 (error "Junk in an rgb color string: ~s." string))
-       (when (or (/= (length starts) 3) (/= (length ends) 3))
-	 (error "Not enough colors in rgb color string: ~s." string))
-       (values-list
-	(loop :for i :from 0 :to 2
-	   :collect (parse-integer string
-				   :start (elt starts i)
-				   :end (elt ends i)
-				   :radix 16)))))
-    ((begins-with "rgbi:" string)
-     (multiple-value-bind (begin end starts ends)
-	 (ppcre:scan (let ((num "([-+]*[0-9]*[.]?[0-9]+([eE][-+]*[0-9]+)?)"))
-		       (s+ "rgbi:" num "/" num "/" num))
-		     string)
-       (when (and (not (zerop begin)) (/= (length string) end))
-	 (error "Junk in an rgbi color string: ~s." string))
-       (when (or (/= (length starts) 6) (/= (length ends) 6))
-	 (error "Not enough colors in rgbi color string: ~s." string))
-       (values-list
-	(loop :for i :from 0 :to 2
-	   :collect (safe-read-from-string string nil nil
-				   :start (elt starts (* i 2))
-				   :end (elt ends (* i 2)))))))
-    ((begins-with "#" string)
-     (when (not (position (1- (length string)) #(3 6 9 12)))
-       (error "Inappropriate length of # color string: ~s." string))
-     (let (begin end starts ends)
-       (loop :for exp :in '("#([0-9A-Fa-f]{4})([0-9A-Fa-f]{4})([0-9A-Fa-f]{4})"
-			    "#([0-9A-Fa-f]{3})([0-9A-Fa-f]{3})([0-9A-Fa-f]{3})"
-			    "#([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})"
-			    "#([0-9A-Fa-f])([0-9A-Fa-f])([0-9A-Fa-f])")
-	  :until (multiple-value-setq (begin end starts ends)
-		   (ppcre:scan exp string)))
-       (when (and (not (zerop begin)) (/= (length string) end))
-	 (error "Junk in an # color string: ~s." string))
-       (when (or (/= (length starts) 3) (/= (length ends) 3))
-	 (error "Not enough colors in # color string: ~s." string))
-       (values-list
-	(loop :for i :from 0 :to 2
-	   :collect (parse-integer string
-				   :start (elt starts i)
-				   :end (elt ends i)
-				   :radix 16)))))
-    (t
-     (error "Can't parse the color string ~s." string))))
-
-(defun format-color (red green blue &key bits)
-  "Return a string in XParseColor format for a color with the given RED, BLUE,
-and GREEN, components. Default to 8 bit color. If values are over 8 bits,
-default to 16 bit color."
-  (let ((r red) (g green) (b blue) (l (list red green blue)))
-    (cond
-      ((every #'floatp l)
-       (format nil "rgbi:~f/~f/~f" r g b))
-      ((every #'integerp l)
-       (let (fmt)
-	 (when (not bits)
-	   (setf bits (if (some (_ (> _ #xff)) l) 16 8)))
-	 (setf fmt
-	       (case bits
-		 (4  "~x")
-		 (8  "~2,'0x")
-		 (12 "~3,'0x")
-		 (16 "~4,'0x")
-		 (t (error "Bad color bit magnitudes: ~s" l))))
-	 (format nil (s+ "rgb:" fmt "/" fmt "/" fmt) r g b)))
-      (t
-       (error "Bad color formats: ~s" l)))))
-
-(defun   color-red   (c) (elt c 0))
-(defsetf color-red   (c) (val) `(setf (elt ,c 0) ,val))
-(defun   color-green (c) (elt c 1))
-(defsetf color-green (c) (val) `(setf (elt ,c 1) ,val))
-(defun   color-blue  (c) (elt c 2))
-(defsetf color-blue  (c) (val) `(setf (elt ,c 2) ,val))
-
-(defun scale-color-16-to-8 (c)
-  "Scale a 16 bit color to an 8 bit color"
-  (setf (color-red   c) (truncate (* (color-red   c) #xff) #xffff)
-	(color-green c) (truncate (* (color-green c) #xff) #xffff)
-	(color-blue  c) (truncate (* (color-blue  c) #xff) #xffff))
-  c)
 
 (defun set-utf8-title-mode (state)
   (tt-format "~c[>2;3~c" #\escape (if state #\t #\T))
@@ -464,18 +347,8 @@ default to 16 bit color."
 		 (= screen-char-width char-width)
 		 (= screen-char-height char-height)))
       ;; Foreground & background colors
-      (setf foreground (scale-color-16-to-8
-			(apply #'vector
-			       (multiple-value-list
-				(parse-color
-				 (query-string (s+ "10;?" +st+)
-					       :lead-in +osc+ :offset 5)))))
-	    background (scale-color-16-to-8
-			(apply #'vector
-			       (multiple-value-list
-				(parse-color
-				 (query-string (s+ "11;?" +st+)
-					       :lead-in +osc+  :offset 5))))))
+      (setf foreground (convert-color-to (foreground-color) :rgb8)
+	    background (convert-color-to (background-color) :rgb8))
       ;; title
       (setf title (get-title))
       ;; icon
@@ -617,15 +490,15 @@ default to 16 bit color."
 	   (type (member background foreground) slot)
 	   (type (member red green blue) element))
   (let ((fun    (symbolify (s+ dir "rement-" slot "-" element)))
-	(cc     (symbolify (s+ "color-" element)))
+	(kw     (keywordify element))
 	(setter (symbolify (s+ "set-" slot "-color")))
-	;;(changer (if (eq dir 'inc) 'incf 'decf))
 	(minimax (if (eq dir 'inc) 'min 'max))
 	(op      (if (eq dir 'inc) '+ '-))
 	(val     (if (eq dir 'inc) 255 0)))
     `(defun ,fun (i)
        (with-slots (,slot increment) i
-	 (setf (,cc ,slot) (,minimax ,val (,op (,cc ,slot) increment)))
+	 (setf (color-component ,slot ,kw)
+	       (,minimax ,val (,op (color-component ,slot ,kw) increment)))
 	 (,setter ,slot)))))
 
 (def-cc dec background red)
