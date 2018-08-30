@@ -347,8 +347,10 @@
 		 (= screen-char-width char-width)
 		 (= screen-char-height char-height)))
       ;; Foreground & background colors
-      (setf foreground (convert-color-to (foreground-color) :rgb8)
-	    background (convert-color-to (background-color) :rgb8))
+      (setf foreground (and-<> (foreground-color)
+			       (convert-color-to <> :rgb8))
+	    background (and-<> (background-color)
+			       (convert-color-to <> :rgb8)))
       ;; title
       (setf title (get-title))
       ;; icon
@@ -497,9 +499,10 @@
 	(val     (if (eq dir 'inc) 255 0)))
     `(defun ,fun (i)
        (with-slots (,slot increment) i
-	 (setf (color-component ,slot ,kw)
-	       (,minimax ,val (,op (color-component ,slot ,kw) increment)))
-	 (,setter ,slot)))))
+	 (when ,slot
+	   (setf (color-component ,slot ,kw)
+		 (,minimax ,val (,op (color-component ,slot ,kw) increment)))
+	   (,setter ,slot))))))
 
 (def-cc dec background red)
 (def-cc dec background green)
@@ -542,8 +545,8 @@
      (with-output-to-string (str)
        (print-values*
 	(title icon-title font
-	 x y char-width char-height pixel-width pixel-height
-	 fullscreen foreground background increment)
+	       x y char-width char-height pixel-width pixel-height
+	       fullscreen foreground background increment)
 	str)))
     (tt-scroll-down 1)
     (tt-format "hjkl     - Move window (HJKL by pixel)~%~
