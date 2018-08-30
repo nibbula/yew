@@ -107,6 +107,7 @@ of it.")
    #:define-alias #:defalias
    #-(or lispworks clasp) #:λ
    #:_
+   #:and-<> #:<>
    #:symbolify
    #:keywordify
    #:likely-callable
@@ -1179,6 +1180,22 @@ ORIGINAL is something that a define-alias method is defined for."
   `(lambda (_)
      (declare (ignorable _))
      ,@exprs))
+
+(defmacro and-<> (&rest expressions)
+  "Evalute EXPRESSIONS until one is false, binding <> to the result of the
+previous expression. Return the last expression or NIL."
+  (cond
+    ((not expressions) nil)
+    ((= 1 (length expressions))
+     (car expressions))
+    (t
+     `(let ((<> ,(first expressions)))
+	(when <>
+	  ,(reduce (lambda (&rest x)
+		     (when x
+		       `(when (setf <> ,(cadr x))
+			  ,(car x))))
+		   (reverse (rest expressions))))))))
 
 (defun symbolify (string &key (package *package*) no-new)
   "Return a symbol, interned in PACKAGE, represented by STRING, after possibly
