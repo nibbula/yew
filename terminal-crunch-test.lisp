@@ -21,31 +21,6 @@
 (defvar tta)
 (defvar tt)
 
-(defun dump-hashes (tty)
-  (let ((old-hashes (terminal-crunch::screen-hashes
-		     (terminal-crunch::old-screen tty)))
-	(new-hashes (terminal-crunch::screen-hashes
-		     (terminal-crunch::new-screen tty))))
-    (format *debug-io* "Old -> New~%")
-    (loop :for i :from 0 :below (length old-hashes) :do
-       (format *debug-io* "~s ~s~%" (aref old-hashes i) (aref new-hashes i)))))
-
-(defun dump-screen (tty)
-  (let ((old-lines (terminal-crunch::screen-lines
-		     (terminal-crunch::old-screen tty)))
-	(new-lines (terminal-crunch::screen-lines
-		     (terminal-crunch::new-screen tty))))
-    (format *debug-io* "Old ~s ~s -> New ~s ~s +~s~%"
-	    (terminal-crunch::screen-x (terminal-crunch::old-screen tty))
-	    (terminal-crunch::screen-y (terminal-crunch::old-screen tty))
-	    (terminal-crunch::screen-x (terminal-crunch::new-screen tty))
-	    (terminal-crunch::screen-y (terminal-crunch::new-screen tty))
-	    (terminal-crunch::start-line tty))
-    (loop :for i :from 0 :below (length old-lines) :do
-       (format *debug-io* "[~a] [~a]~%"
-	       (make-fat-string :string (aref old-lines i))
-	       (make-fat-string :string (aref new-lines i))))))
-
 (defun test-1 (device-name)
   (setf tta (make-instance 'terminal-ansi :device-name device-name))
   (setf tt (make-instance 'terminal-crunch :wrapped-terminal tta))
