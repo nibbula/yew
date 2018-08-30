@@ -449,8 +449,10 @@ element, and should return a value to be given to PREDICATE.")
   (:method ((collection vector) predicate &key key)
     (sort collection predicate :key key))
   (:method ((collection sequence) predicate &key key)
+    #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
     (sort collection predicate :key key))
   (:method ((collection container) predicate &key key)
+    #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
     (sort (container-data collection) predicate :key key)))
 
 ;; @@@ Should we make sort-by-key also?
