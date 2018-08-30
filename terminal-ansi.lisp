@@ -726,13 +726,15 @@ i.e. the terminal is 'line buffered'."
 
 (defun foreground-color ()
   "Get the default foreground color for text."
-  (xcolor-to-color (query-string (s+ "10;?" +st+) :lead-in +osc+ :offset 5
-				 :tty (terminal-file-descriptor *terminal*))))
+  (let ((qq (query-string (s+ "10;?" +st+) :lead-in +osc+ :offset 5
+			  :tty (terminal-file-descriptor *terminal*))))
+    (and qq (xcolor-to-color qq))))
 
 (defun background-color ()
   "Get the default background color for text."
-  (xcolor-to-color (query-string (s+ "11;?" +st+) :lead-in +osc+ :offset 5
-				 :tty (terminal-file-descriptor *terminal*))))
+  (let ((qq (query-string (s+ "11;?" +st+) :lead-in +osc+ :offset 5
+			  :tty (terminal-file-descriptor *terminal*))))
+    (and qq (xcolor-to-color qq))))
 
 (defun set-foreground-color (color)
   "Set the default forground color for text."
