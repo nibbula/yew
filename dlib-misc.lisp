@@ -870,14 +870,27 @@ is printed. This is useful for printing, e.g. slots of a structure or class."
 ;; @@@ Is this really necessary or maybe should it be a constant?
 (defparameter *inter-space* 2)
 
+(defun format-length (object format-char)
+  "Return the length in characters to print OBJECT with FORMAT-CHAR."
+  (cond
+    ;; ((and (stringp object) (eql format-char #\a))
+    ((and (typep object 'standard-class)
+	  (find-method #'display-length nil
+		       (list (find-class (type-of object)))))
+     (display-length object))
+    (t
+     (display-length (format nil (s+ "~" format-char) object)))))
+
 (defun smush-output (list cols height format-char stream row-limit screen-width)
   "Output LIST to STREAM in column major COLS and HEIGHT lines, limited to
 ROW-LIMIT. Items are printed with FORMAT-CHAR."
   (loop
      :with len = (length list)
-     :and format-str = (format nil "~~v~a" format-char)
+     :and format-str      = (format nil "~~v~a" format-char)
+     :and format-str-last = (format nil "~~~a" format-char)
      :and a = (make-array (length list) :initial-contents list)
      :and limit = (if row-limit (min height row-limit) height)
+     :and last-col = (1- (length cols))
      :and x
      :for i :from 0 :below limit :do
      (setf x 0)
@@ -888,32 +901,15 @@ ROW-LIMIT. Items are printed with FORMAT-CHAR."
 	:do
 	(setf n (+ (* j height) i))
 	(when (< n len)
-	  (format stream format-str c (aref a n))
-	  (incf x c)))
-     (when (< x screen-width)
+	  (if (= j last-col)
+	      (progn
+		(format stream format-str-last (aref a n))
+		(incf x (format-length (aref a n) format-char)))
+	      (progn
+		(format stream format-str c (aref a n))
+		(incf x c)))))
+     (when (/= x screen-width)
        (terpri stream))))
-
-#|
-;; @@@ I really wish I could use rl:display-length, which probably means it
-;; should be a more generic facility.
-(defun display-length (object format-char)
-  "Return the length in characters to print OBJECT."
-  (cond
-    ((and (stringp object) (eql format-char #\a))
-     (length object))
-    (t
-     (length (format nil (s+ "~" format-char) object)))))
-
--> Now using char-util:display-length
-|#
-
-(defun format-length (object format-char)
-  "Return the length in characters to print OBJECT with FORMAT-CHAR."
-  (cond
-    ((and (stringp object) (eql format-char #\a))
-     (display-length object))
-    (t
-     (display-length (format nil (s+ "~" format-char) object)))))
 
 (defun smush-columns (list cols rows lengths)
   "Return a list of the smallest column sizes for the putting the LIST in COLS
