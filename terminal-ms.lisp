@@ -167,15 +167,15 @@
 	  ,@body)
      (set-terminal-mode ,tty :raw nil)))
 
-(defmacro with-immediate ((tty) &body body)
-  (with-unique-names (mode)
-    `(let ((,mode (get-terminal-mode (terminal-file-descriptor ,tty))))
-       (unwind-protect
-	    (progn
-	      (set-terminal-mode (terminal-file-descriptor ,tty)
-				 :line nil :echo nil)
-	      ,@body)
-	 (set-terminal-mode (terminal-file-descriptor ,tty) :mode ,mode)))))
+;; (defmacro with-immediate ((tty) &body body)
+;;   (with-unique-names (mode)
+;;     `(let ((,mode (get-terminal-mode (terminal-file-descriptor ,tty))))
+;;        (unwind-protect
+;; 	    (progn
+;; 	      (set-terminal-mode (terminal-file-descriptor ,tty)
+;; 				 :line nil :echo nil)
+;; 	      ,@body)
+;; 	 (set-terminal-mode (terminal-file-descriptor ,tty) :mode ,mode)))))
 
 (defmethod terminal-write-string ((tty terminal-ms) str
 				  &key start end)

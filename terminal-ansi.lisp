@@ -21,7 +21,8 @@
    #:describe-terminal
    #:+csi+ #:+st+ #:+osc+
    #:query-parameters #:query-string
-   #:with-raw #:with-immediate
+   #:with-raw
+   ;; #:with-immediate
    #:set-bracketed-paste-mode
    #:read-bracketed-paste
    #:foreground-color
@@ -409,15 +410,15 @@ TTY is a terminal, in case you didn't know."
 	      ,@body)
 	 (set-terminal-mode ,tty :mode ,mode)))))
 
-(defmacro with-immediate ((tty) &body body)
-  (with-unique-names (mode)
-    `(let ((,mode (get-terminal-mode (terminal-file-descriptor ,tty))))
-       (unwind-protect
-	    (progn
-	      (set-terminal-mode (terminal-file-descriptor ,tty)
-				 :line nil :echo nil)
-	      ,@body)
-	 (set-terminal-mode (terminal-file-descriptor ,tty) :mode ,mode)))))
+;; (defmacro with-immediate ((tty) &body body)
+;;   (with-unique-names (mode)
+;;     `(let ((,mode (get-terminal-mode (terminal-file-descriptor ,tty))))
+;;        (unwind-protect
+;; 	    (progn
+;; 	      (set-terminal-mode (terminal-file-descriptor ,tty)
+;; 				 :line nil :echo nil)
+;; 	      ,@body)
+;; 	 (set-terminal-mode (terminal-file-descriptor ,tty) :mode ,mode)))))
 
 (defun terminal-report (tty end-char fmt &rest args)
   "Output a formatted string to the terminal and get an immediate report back.
@@ -1218,6 +1219,7 @@ bracketed read.")
 	   (with-interrupts-handled (tty)
 	     (setf s (read-until fd (char end-string i)
 				 :timeout (* *bracketed-read-timeout* 10))))
+	   (dbugf :bp "got dingus ~s ~s~%" s (type-of s))
 	   (if s
 	       (progn
 		 (princ s str)

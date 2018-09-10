@@ -229,6 +229,7 @@ fairly easy to sub-class a type.
    #:with-saved-cursor
    #:with-terminal-output-to-string
    #:with-style
+   #:with-immediate
    ))
 (in-package :terminal)
 
@@ -676,5 +677,19 @@ characters, such as line drawing characters, into some antique representation."
 	  (tt-alternate-characters t)
 	  ,@body)
      (tt-alternate-characters nil)))
+
+(defmacro with-immediate ((&optional tty) &body body)
+  "Evaluate BODY with the terminal input mode set to :CHAR, and restore it
+afterwards."
+  (with-unique-names (mode ztty)
+    `(let* ((,ztty (or ,tty *terminal*))
+	    (,mode (terminal-input-mode ,ztty)))
+       (unwind-protect
+	    (progn
+	      (when (not (eq ,mode :char))
+		(setf (terminal-input-mode ,ztty) :char))
+	      ,@body)
+	 (when (not (eq ,mode :char))
+	   (setf (terminal-input-mode ,ztty) ,mode))))))
 
 ;; EOF
