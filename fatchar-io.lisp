@@ -418,7 +418,7 @@ possible."
   "Print a FATCHAR to a FAT-STRING-OUTPUT-STREAM."
   ;;(format t "stream is a ~a ~a~%" (type-of stream) stream)
   (cond
-    (*print-readably*
+    ((or *print-readably* *print-escape*)
      ;; Print as a structure:
      (call-next-method))
     ((typep stream 'terminal:terminal-stream)
