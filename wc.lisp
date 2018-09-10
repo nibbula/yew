@@ -196,11 +196,14 @@ This probably isn't the best way to do this."
 (defun count-text (things &key lines words chars)
   "Count lines, words and characters in THINGS. THINGS can be filenames or
 a streams. If one of the keywords :LINES :WORDS :CHARS is true,
-then only print the count that thing, otherwise print all of them."
+then only print the count that thing, otherwise print all of them.
+Return a list of in the order (lines words chars) containing only the total
+count if that item was specified."
   (let ((do-lines lines) (do-words words) (do-chars chars) (count 0)
 	(total-lines 0) (total-words 0) (total-chars 0)
 	what
-	(*saved-buffer* nil))
+	(*saved-buffer* nil)
+	result)
     ;;(declare (type integer count total-lines total-words total-chars))
     (declare (type fixnum count total-lines total-words total-chars))
     (when (not (or lines words chars))
@@ -225,7 +228,11 @@ then only print the count that thing, otherwise print all of them."
       (when do-lines (format t "~8d " total-lines))
       (when do-words (format t "~7d " total-words))
       (when do-chars (format t "~7d " total-chars))
-      (format t "total~%"))))
+      (format t "total~%"))
+    (when do-chars (push total-chars result))
+    (when do-words (push total-words result))
+    (when do-lines (push total-lines result))
+    result))
 
 (setf (symbol-function 'wc) #'count-text)
 
@@ -250,6 +257,7 @@ then only print the count that thing, otherwise print all of them."
 		   (typep lish:*input* 'sequence))
 	      lish:*input*
 	      (list *standard-input*))))
-  (count-text files :chars chars :words words :lines lines))
+  (setf lish:*output*
+	(count-text files :chars chars :words words :lines lines)))
 
 ;; EOF
