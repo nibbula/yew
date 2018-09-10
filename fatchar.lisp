@@ -274,24 +274,262 @@ strings."
 (defun fat-string-to-span (fat-string &key (start 0))
   (fatchar-string-to-span (fat-string-string fat-string) :start start))
 
-(defun fatchar-string-to-span (fatchar-string &key (start 0))
+(defun fatchar-diffs (c1 c2)
+  "The differences between c1 and c2, a list of :ATTR :FG :BG. NIL if the same."
+  (let (diffs)
+    (when (set-exclusive-or (and c1 (fatchar-attrs c1)) (fatchar-attrs c2)
+				 :test #'eq)
+      (push :attr diffs))
+    (when (not (equal (and c1 (fatchar-fg c1)) (fatchar-fg c2)))
+      (push :fg diffs))
+    (when (not (equal (and c1 (fatchar-bg c1)) (fatchar-bg c2)))
+      (push :bg diffs))
+    ;; (when (not diffs)
+    ;;   (error "bug-a-roony: it twernt a difference ~s ~s" c1 c2))
+    diffs))
+
+(defun span-start (type value)
+  "Return the reversed starting list for a span of TYPE and VALUE."
+  (ecase type
+    (:attr (fatchar-attrs value))
+    (:fg (if (keywordp (fatchar-fg value))
+	     (list (keywordify (s+ "FG-" (fatchar-fg value))))
+	     (list (fatchar-fg value) :color :fg)))
+    (:bg (if (keywordp (fatchar-bg value))
+	     (list (keywordify (s+ "BG-" (fatchar-bg value))))
+	     (list (fatchar-bg value) :color :bg)))
+    ((nil) nil)))
+
+#|
+
+c    | foothebar0000
+fg   |    rrrrrr
+bg   |       bbbbbbb
+attr | iiiiiiii
+
+((:i "foo" (:fg-r "the" (:bg-b "ba"))) (:fg-r (:bg-b "r")) (:bg-b "0000"))
+|#
+
+;; This is the average line length of my code.
+(defparameter *starting-string-size* 33
+  "How many characters allocate initially for a span piece.")
+
+;; @@@ remove all the debugging junk someday.
+(defun fatchar-string-to-span (fatchar-string &key (start 0) pause)
+  "Convert a FATCHAR line to tagged spans."
+  (let ((i start)
+	(len (length fatchar-string))
+	(piece (make-stretchy-string *starting-string-size*))
+	last
+	c)
+    (labels
+	((add-chars ()
+	   "Add characters to piece until a change or the end. Return true
+                if we added one."
+	   (let (did-one)
+	     (loop
+		:do (setf c (aref fatchar-string i))
+		:while (and (< i len) (not (and did-one
+						(fatchar-diffs last c))))
+		:do
+		(stretchy-append piece (fatchar-c c))
+		(dbugf :fatchar "char ~s ~s ~%" i (fatchar-c c))
+		(incf i)
+		(setf last (copy-fatchar c)
+		      did-one t))
+	     did-one))
+	 (sub-rendition-of-p (a b)
+	   "True if fatchar A is sub-rendition of B, i.e. B can be nested in A."
+	   (and (subsetp (fatchar-attrs a) (fatchar-attrs b))
+		(or (not (fatchar-fg a))
+		    (and (fatchar-fg a) (equal (fatchar-fg a) (fatchar-fg b))))
+		(or (not (fatchar-bg a))
+		    (and (fatchar-bg a) (equal (fatchar-bg a) (fatchar-bg b))))))
+	 (build-span (type value rendition in)
+	   "Build a span of TYPE and VALUE."
+	   (dbugf :fatchar "build-span ~s ~a ~s ~s~%" type value rendition in)
+	   (let (sub-span new-type added)
+	     (when pause
+	       (format *debug-io* "-> ") (finish-output *debug-io*)
+	       (read-line *debug-io*))
+	     (cond
+	       ((> (length type) 1)
+		(dbugf :fatchar "subtype ~s~%" type)
+		(setf sub-span (span-start (pop type) value))
+		(push (build-span type c rendition (cons (first type) in))
+		      sub-span))
+	       (t
+		(dbugf :fatchar "actual type ~s~%" type)
+		(setf sub-span (span-start (pop type) value))
+		(when (add-chars)
+		  (push (copy-seq piece) sub-span)
+		  (stretchy-truncate piece))
+		(when (< i len)
+		  (setf new-type (fatchar-diffs last c))
+		  (dbugf :fatchar "differnce type ~s ~a ~a~%"
+			 new-type last c)
+		  ;; (when (and (not (member (first type) new-type))
+		  ;; 	     (not (intersection new-type in)))
+		  (when (and (sub-rendition-of-p rendition c)
+			     (not (intersection new-type in)))
+		    (if (eq (first new-type) :attr)
+			(progn
+			  (setf added (set-difference
+				       (fatchar-attrs c)
+				       (and last (fatchar-attrs last)))
+				;; removed (set-difference
+				;; 		(fatchar-attrs last)
+				;; 		(fatchar-attrs c))
+				)
+			  (when added
+			    (dbugf :fatchar "add attr ~s~%" added)
+			    (setf last nil)
+			    (push (build-span new-type c c
+					      (cons (first new-type) in))
+				  sub-span)
+			    (pop new-type)))
+			(progn
+			  (dbugf :fatchar "add color ~s~%" c)
+			  (setf last nil)
+			  (push (build-span new-type c c
+					    (cons (first new-type) in))
+				sub-span)
+			  (pop new-type)))))))
+	     ;; Reverse it and return it.
+	     (setf sub-span (nreverse sub-span))
+	     sub-span)))
+      (dbugf :fatchar "~&############################~%")
+      (dbugf :fatchar "~&### string to span start ###~%")
+      (dbugf :fatchar "~&############################~%")
+      (loop
+	 :with rendition = (make-fatchar)
+	 :while (< i len)
+	 :do (dbugf :fatchar "Blurp ~s.~%" i)
+	 (setf c (aref fatchar-string i))
+	 :collect
+	 (let ((cc (build-span (fatchar-diffs rendition c) c rendition nil)))
+	   (dbugf :fatchar "collected ~s~%" cc)
+	   cc)))))
+
+#|
+(defun OLD2-fatchar-string-to-span (fatchar-string &key (start 0) pause)
+  "Convert a FATCHAR line to tagged spans."
+  (let ((i start)
+	(len (length fatchar-string))
+	(piece (make-stretchy-string *starting-string-size*))
+	;;(last (make-fatchar))
+	last
+	c)
+    (labels
+	((add-chars (X-last)
+	   "Add characters to piece until a change or the end. Return true
+                if we added one."
+	   (declare (ignore X-last))
+	   (let (did-one)
+	     (loop
+		:do (setf c (aref fatchar-string i))
+		:while (and (< i len) (not (and did-one
+						(fatchar-diffs last c))))
+		:do
+		(stretchy-append piece (fatchar-c c))
+		(dbugf :fatchar "char ~s ~s ~%" i (fatchar-c c))
+		(incf i)
+		(setf last (copy-fatchar c)
+		      did-one t))
+	     did-one))
+	 (build-span (type value X-last in)
+	   "Build a span of TYPE and VALUE."
+	   (declare (ignore X-last))
+	   (dbugf :fatchar "build-span ~s ~a ~s ~s~%" type value last in)
+	   (let (sub-span new-type added #| removed |#)
+	     (when pause
+	       (format *debug-io* "-> ") (finish-output *debug-io*)
+	       (read-line *debug-io*))
+	     (if (> (length type) 1)
+		 (progn
+		   (setf sub-span (span-start (pop type) value))
+		   (push (build-span type c last in) sub-span))
+		 (progn
+		   (setf sub-span (span-start (pop type) value))
+		   (when (add-chars last)
+		     (push (copy-seq piece) sub-span)
+		     (stretchy-truncate piece))
+		   (when (< i len)
+		     (setf new-type (fatchar-diffs last c))
+		     (dbugf :fatchar "differnce type ~s ~s ~s~%"
+			    new-type last c)
+		     (when (and (not (member (first type) new-type))
+				(not (intersection new-type in)))
+		       (if (eq (first new-type) :attr)
+			   (progn
+			     (setf added (set-difference
+					  (fatchar-attrs c)
+					  (and last (fatchar-attrs last)))
+				   ;; removed (set-difference
+				   ;; 		(fatchar-attrs last)
+				   ;; 		(fatchar-attrs c))
+				   )
+			     (when added
+			       (dbugf :fatchar "add attr ~s~%" added)
+			       (setf last nil)
+			       (push (build-span new-type c last
+						 (cons (first new-type) in))
+				     sub-span)
+			       (pop new-type)))
+			   (progn
+			     (dbugf :fatchar "add color ~s~%" c)
+			     (setf last nil)
+			     (push (build-span new-type c last
+					       (cons (first new-type) in))
+				   sub-span)
+ 			     (pop new-type)))))
+		   ;; Reverse it and return it.
+		   (setf sub-span (nreverse sub-span))
+		   sub-span)))))
+      (dbugf :fatchar "~&### string to span start ###~%")
+      (loop :while (< i len)
+	 :do (dbugf :fatchar "Blurp ~s.~%" i)
+	 (setf c (aref fatchar-string i))
+	 :collect (build-span (fatchar-diffs last c) c last nil)))))
+
+(defun OLD-fatchar-string-to-span (fatchar-string &key (start 0))
   "Convert a FATCHAR line to tagged spans."
   (when (= (length fatchar-string) 0)
     ;; (return-from fatchar-string-to-span fatchar-string))
-    (return-from fatchar-string-to-span nil))
+    (return-from OLD-fatchar-string-to-span nil))
   (let ((last (make-fatchar))
 	(result '())
 	(open-count 0)
-	added removed)
+	added removed did-one last-paren-type)
 ;;    (push #\( result)
     (loop :with c
        :for i :from start :below (length fatchar-string) :do
-       (setf c (aref fatchar-string i))
+       (setf c (aref fatchar-string i)
+	     did-one nil)
+       ;; Attributes
+       (setf added (set-difference (fatchar-attrs c) (fatchar-attrs last))
+	     removed (set-difference (fatchar-attrs last) (fatchar-attrs c)))
+       (loop :for a :in removed :do
+	  ;; Only close up here if the attr removed is the nearest enclosing one
+	  (when (and (eq (car (first last-paren-type)) :attr)
+		     (eq (cdr (first last-paren-type)) a))
+	    (push #\) result)
+	    (decf open-count)
+	    (pop last-paren-type)))
+       (loop :for a :in added :do
+	  (push #\( result)
+	  (incf open-count)
+	  (push a result)
+	  (setf did-one t)
+	  (push (cons :attr a) last-paren-type))
        ;; Foreground
        (when (not (eql (fatchar-fg c) (fatchar-fg last)))
-	 (when (fatchar-fg last)
+	 (when (and (fatchar-fg last) (not did-one)
+		    (eq (car (first last-paren-type)) :fg)
+		    (eq (cdr (first last-paren-type)) (fatchar-fg last)))
 	   (push #\) result)
-	   (decf open-count))
+	   (decf open-count)
+	   (pop last-paren-type))
 	 (when (fatchar-fg c)
 	   (push #\( result)
 	   (incf open-count)
@@ -300,12 +538,17 @@ strings."
 	       (progn
 		 (push :fg result)
 		 (push :color result)
-		 (push (fatchar-fg c) result)))))
+		 (push (fatchar-fg c) result)))
+	   (setf did-one t)
+	   (push (cons :fg (fatchar-fg c)) last-paren-type)))
        ;; Background
        (when (not (eql (fatchar-bg c) (fatchar-bg last)))
-	 (when (fatchar-bg last)
+	 (when (and (fatchar-bg last) (not did-one)
+		    (eq (car (first last-paren-type)) :bg)
+		    (eq (cdr (first last-paren-type)) (fatchar-bg last)))
 	   (push #\) result)
-	   (decf open-count))
+	   (decf open-count)
+	   (pop last-paren-type))
 	 (when (fatchar-bg c)
 	   (push #\( result)
 	   (incf open-count)
@@ -314,17 +557,9 @@ strings."
        	       (progn
 		 (push :bg result)
 		 (push :color result)
-		 (push (fatchar-bg c) result)))))
-       ;; Attributes
-       (setf added (set-difference (fatchar-attrs c) (fatchar-attrs last))
-	     removed (set-difference (fatchar-attrs last) (fatchar-attrs c)))
-       (loop :for nil :in removed :do
-	  (push #\) result)
-	  (decf open-count))
-       (loop :for a :in added :do
-	  (push #\( result)
-	  (incf open-count)
-	  (push a result))
+		 (push (fatchar-bg c) result)))
+	   (setf did-one t)
+	   (push (cons :bg (fatchar-bg c)) last-paren-type)))
        ;; Character
        (case (fatchar-c c)
 	 (#\( (push "(" result))
@@ -338,8 +573,6 @@ strings."
 ;;    (format t "result = ~w~%" result)
     (listify-fake-span result)
       ))
-
-#|
 
 (defun fat-string-to-span (fat-string &key (start 0) last (depth 0))
   "Convert a FATCHAR line to tagged spans."
@@ -542,56 +775,64 @@ strings."
 ;;; ^[[1m	bold
 
 ;; We drink of the color and become the color.
-(defun grok-ansi-color (str)
+(defun grok-ansi-color (str &key (start 0))
   "Take an string with an ANSI terminal color escape sequence, starting after
 the ^[[ and return NIL if there was no valid sequence, or an integer offset
 to after the sequence, the foreground, background and a list of attributes.
 NIL stands for whatever the default is, and :UNSET means that they were not
 set in this string."
-  (let* ((i 0)
+  (let* ((i start)
 	 (len (length str))
 	 (hi-color nil)
 	 (fg :unset)
 	 (bg :unset)
 	 (attr '())
-	 num inc attr-was-set hi-color-type r g b)
+	 num offset attr-was-set hi-color-type r g b)
     (loop
        :do
-       #| (princ "> ") (dumpy num i inc (subseq str i)) |#
-       (setf (values num inc) (parse-integer str :start i :junk-allowed t))
-       #| (princ "< ") (dumpy num i inc (subseq str i)) |#
-       (if (or (not num) (not inc))
+       (setf (values num offset) (parse-integer str :start i :junk-allowed t))
+       (dbugf :fatchar "@~s num ~s offset ~s~%" i num offset)
+       (if (or (not num) (not offset))
 	   (progn
 	     ;; Just an #\m without arguments means no attrs and unset color
+	     (dbugf :fatchar "@~s done ~a" i
+		    (if (eql (char str i) #\m) "final m" "no numbers?"))
 	     (when (eql (char str i) #\m)
-	       (setf attr '() fg nil bg nil attr-was-set t i 1))
+	       (setf attr '() fg nil bg nil attr-was-set t i (1+ i)))
 	     (return))
 	   (progn
-	     (setf i inc)
+	     (setf i offset)
 	     (when (and (< i len)
 			(or (eql (char str i) #\;)
 			    (eql (char str i) #\m)))
 	       (incf i)
 	       (cond
 		 ((and hi-color (not hi-color-type))
+		  (dbugf :fatchar "@~s hi-color ~s~%" i num)
 		  (case num
 		    (2 (setf hi-color-type :3-color))
 		    (5 (setf hi-color-type :1-color))))
 		 ((eq hi-color-type :1-color)
+		  (dbugf :fatchar "@~s 1-color ~s ~s~%" i hi-color num)
 		  (when (not *xterm-256-color-table*)
 		    (make-xterm-color-table))
 		  (if (eq hi-color :fg)
 		      (setf fg (aref *xterm-256-color-table* num))
-		      (setf bg (aref *xterm-256-color-table* num))))
+		      (setf bg (aref *xterm-256-color-table* num)))
+		  (setf hi-color nil hi-color-type nil))
 		 ((eq hi-color-type :3-color)
+		  (dbugf :fatchar "@~s 3-color ~s ~s~%" i hi-color num)
 		  (cond
 		    ((not r) (setf r num))
 		    ((not g) (setf g num))
 		    ((not b) (setf b num)
+		     (dbugf :fatchar "@~s 3-color end ~s ~s~%" i hi-color num)
 		     (if (eq hi-color :fg)
 			 (setf fg (make-color :rgb8 :red r :green g :blue b))
-			 (setf bg (make-color :rgb8 :red r :green g :blue b))))))
+			 (setf bg (make-color :rgb8 :red r :green g :blue b)))
+		     (setf hi-color nil hi-color-type nil r nil g nil b nil))))
 		 (t
+		  (dbugf :fatchar "@~s num ~s~%" i num)
 		  (case num
 		    (0  (setf attr '() fg nil bg nil attr-was-set t))
 		    (1  (pushnew :bold attr)      (setf attr-was-set t))
@@ -639,11 +880,14 @@ set in this string."
 		    (49 (setf bg nil))
 		    (otherwise #| just ignore unknown colors or attrs |#))))
 	       (when (eql (char str (1- i)) #\m)
+		 (dbugf :fatchar "@~s done ~s~%" i num)
 		 (return)))))
        :while (< i len))
     (values
-     (if (and (eq fg :unset) (eq bg :unset) (not attr-was-set))
-	 1 i)
+     ;; (if (and (eq fg :unset) (eq bg :unset) (not attr-was-set))
+     ;; 	 1
+     ;; 	 (- i start))
+     i
      fg bg (if (not attr-was-set) :unset attr))))
 
 (defun process-ansi-colors (fat-line)
@@ -654,35 +898,40 @@ set in this string."
 					    :element-type 'fatchar))
 	(i 0)
 	(len (length fat-line))
+	;; @@@ Figure out how to get rid of this extra copy.
 	(line (map 'string #'(lambda (x) (fatchar-c x)) fat-line))
 	fg bg attrs)
-    (flet ((looking-at-attrs ()
-	     "Return true if might be looking at some attrs."
-	     (and (< i (1- len))
-		  (char= (aref line i) #\escape)
-		  (char= (aref line (1+ i)) #\[)))
-	   (get-attrs ()
-	     "Get the attrs we might be looking at."
-	     (incf i 2) ; the ^[ and [
-	     (multiple-value-bind (inc i-fg i-bg i-attrs)
-		 (grok-ansi-color (subseq line i))
-	       (when inc
-		 (unless (eq i-fg    :unset) (setf fg i-fg))
-		 (unless (eq i-bg    :unset) (setf bg i-bg))
-		 (unless (eq i-attrs :unset) (setf attrs i-attrs))
-		 (incf i inc))))	; for the parameters read
-	   (copy-char ()
-	     "Copy the current character to result."
-	     ;;(dbug "attrs = ~a~%" attrs)
-	     ;;(dbug "(aref fat-line i) = ~a~%" (aref fat-line i))
-	     (let ((new-attrs (union attrs (fatchar-attrs (aref fat-line i)))))
-	       (stretchy:stretchy-append
-		new-fat-line (make-fatchar
-			      :c (fatchar-c (aref fat-line i))
-			      :fg fg :bg bg
-			      :attrs new-attrs
-			      )))
-	     (incf i)))
+    (labels ((char-at (i)
+	       (fatchar-c (aref fat-line i)))
+	     (looking-at-attrs ()
+	       "Return true if might be looking at some attrs."
+	       (and (< i (1- len))
+		    (char= (char-at i) #\escape)
+		    (char= (char-at (1+ i)) #\[)))
+	     (get-attrs ()
+	       "Get the attrs we might be looking at."
+	       (incf i 2)		; the ^[ and [
+	       (multiple-value-bind (offset i-fg i-bg i-attrs)
+		   (grok-ansi-color line :start i)
+		 (dbugf :fatchar "grok offset ~s fg ~s bg ~s attrs ~s~%" offset
+			i-fg i-bg i-attrs)
+		 (when offset
+		   (unless (eq i-fg    :unset) (setf fg i-fg))
+		   (unless (eq i-bg    :unset) (setf bg i-bg))
+		   (unless (eq i-attrs :unset) (setf attrs i-attrs))
+		   ;;(incf i inc))))	; for the parameters read
+		   (setf i offset))))	; for the parameters read
+	     (copy-char ()
+	       "Copy the current character to result."
+	       ;;(dbug "attrs = ~a~%" attrs)
+	       ;;(dbug "(aref fat-line i) = ~a~%" (aref fat-line i))
+	       (let ((new-attrs (union attrs (fatchar-attrs (aref fat-line i)))))
+		 (stretchy:stretchy-append
+		  new-fat-line (make-fatchar
+				:c (fatchar-c (aref fat-line i))
+				:fg fg :bg bg
+				:attrs new-attrs)))
+	       (incf i)))
       (loop :while (< i len) :do
 	 (if (looking-at-attrs)
 	     (get-attrs)
