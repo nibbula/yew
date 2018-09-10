@@ -127,7 +127,9 @@ of it.")
    #:+simple-condition-format-arguments-slot+
    ;; debugging
    #:*dbug* #:*dbug-package* #:*dbug-facility*
-   #:dbug #:dbugf #:if-dbugf #:with-dbug #:with-dbug-package #:with-dbugf
+   #:dbug #:dbugf #:if-dbugf #:with-dbug #:with-dbug-package
+   #:with-dbugf
+   #:with-dbugf-to
    #:without-dbug
    #:dump-values
    ;; Environment features
@@ -1599,6 +1601,14 @@ turned on. FACILITY can be an atom or a list of facilities to turn on."
 	     (append *dbug-facility*
 		     (if (listp ,fac) ,fac (list ,fac)))))
      ,@body)))
+
+(defmacro with-dbugf-to (facility file &body body)
+  "Evaluate the BODY with debugging message printing tagged with FACILITY
+turned on. FACILITY can be an atom or a list of facilities to turn on.
+FILE is a file to redirect *debug-io* to, and therefore also DBUGF messages."
+  `(with-open-file (*debug-io* ,file :direction :io :if-exists :append)
+     (with-dbugf ,facility
+       ,@body)))
 
 (defmacro without-dbug (&body body)
   "Evaluate the BODY without printing any debugging messages."
