@@ -10,10 +10,7 @@
 
 (defpackage :completion
   (:documentation
-;; @@@: This description needs work. It confuses me and I wrote it. Also it's
-;; not a good overall description of the package, rather it's an incomplete
-;; description of the specifics of calling completion functions. It's probably
-;; past due time for some real documentation.
+   ;; @@@ Improve this docstring
 "Completion functions are called with line of context and a position where
 completion was requested. The are asked to return one completion, or all
 completions. When asked for one completion, they return a completion and a
