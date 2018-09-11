@@ -7,7 +7,7 @@
 (defpackage :pick-list
   (:documentation "Choose things from a list.")
   (:use :cl :dlib :char-util :stretchy :keymap :opsys :inator :terminal
-	:terminal-inator)
+	:terminal-inator :fui)
   (:export
    #:pick-list
    #:pick-file
@@ -246,7 +246,7 @@
 (defmethod update-display ((i pick)) ; pick-list-display
   "Display the list picker."
   (with-slots (message multiple items (point inator::point) result cur-line
-		       max-y top left ttop error-message) *pick*
+	       max-y top left ttop error-message) *pick*
     (tt-home)
     (when message (tt-format message))
     (setf ttop (terminal-get-cursor-position *terminal*))
@@ -261,7 +261,7 @@
        (when (= i point)
 	 (tt-inverse t)
 	 (setf cur-line y #| (getcury *stdscr*) |#))
-       (when (< left (1- (length f)))
+       (when (<= left (1- (length f)))
 	 (tt-write-string
 	  (subseq f (max 0 left)
 		  (min (length f)
@@ -314,50 +314,19 @@
   ;; Don't do anything.
   (tt-move-to (- (tt-height) 2) 0))
 
-#|
-
-(defun pick-perform-key (key &optional (keymap *pick-list-keymap*))
-  (with-slots () *pick*
-    (let ((command (key-definition key keymap)))
-      (cond
-	((not command)
-	 (pick-error "Key ~a is not bound."
-		     (nice-char key) keymap)
-	 (return-from pick-perform-key))
-	((consp command)
-	 (if (fboundp (car command))
-	     (apply (car command) (cdr command))
-	     (pick-error "(~S) is not defined." (car command))))
-	((symbolp command)
-	 (cond
-	   ((fboundp command)		; a function
-	    (funcall command))
-	   ((keymap-p (symbol-value command)) ; a keymap
-	    (pick-perform-key (tt-get-key) (symbol-value command)))
-	   (t				; anything else
-	    (pick-error "Key binding ~S is not a function or a keymap."
-			command))))
-	;; a function object
-	((functionp command)
-	 (funcall command))
-	(t				; anything else is an error
-	 (error "Weird thing in keymap: ~s." command))))))
-|#
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-#| @@@ do this sub-window stuff later, maybe need to make a terminal fui?
+;; popup pick-list
 
 (defclass popup-pick (pick)
   ((x
-    :initarg :x :accessor popup-pick-x :initform 0 :type fixnum
+    :initarg :x :accessor popup-pick-x :initform 1 :type fixnum
     :documentation "Left column of popup window.")
    (y
-    :initarg :y :accessor popup-pick-y :initform 0 :type fixnum
+    :initarg :y :accessor popup-pick-y :initform 1 :type fixnum
     :documentation "Top row of popup window.")
    (window
     :initarg :window :accessor popup-pick-window
-    :documentation "The curses window."))
+    :documentation "The FUI window."))
   (:documentation "A pop up list."))
 
 (defmethod initialize-instance
@@ -366,50 +335,66 @@
   (declare (ignore initargs))
   (with-slots (top max-line max-y message items x y) o
     (let ((lines (+ (count #\newline message) max-line))
-	  (cols (loop :for i :in items :maximize (length (car i)))))
-      (setf max-y (if (> (+ y lines 2) (1- *lines*))
-		      (- (- *lines* 2) y)
+	  (cols (loop :for i :across items :maximize (length (car i)))))
+      ;;(dbugf :fui "popup x=~s y=~s top=~s~%" x y top)
+      (setf x (max 1 x)			; leave room for the border
+	    y (max 1 y)
+	    max-y (if (> (+ y lines 2) (1- (tt-height)))
+		      (- (- (tt-height) 2) y)
 		      (1+ lines))
-	    (slot-value o 'window) (newwin (+ max-y 1) (+ cols 2 2) y x)
+	    (slot-value o 'window) (make-window :height (+ max-y 1)
+						:width (+ cols 2 2)
+						:y y :x x
+						:border t)
 	    ;; top (1+ top)
 	    ))))
 
 (defmethod update-display ((i popup-pick))
   "Display the pop-up list picker."
   (with-slots (message multiple items (point inator::point) result cur-line
-	       max-y top ttop error-message window x y) *pick*
-    (werase window)
-    (box window 0 0)
-    (wmove window 1 1)
-    (when message
-      (waddstr window (format nil message)))
-    (setf ttop (getcury window))
-    ;; display the list
-    (loop :with i = top :and y = ttop :and f = nil
-       :do
-       (setf f (car (elt items i)))
-       (if (and multiple (position i result))
-	   (waddstr window "X ")
-	   (waddstr window "  "))
-       (when (= i point)
-	 (wattron window +a-standout+)
-	 (setf cur-line y #| (getcury *stdscr*) |#))
-       (waddstr window f)
-       (when (= i point)
-	 (wattroff window +a-standout+))
-       ;;(waddch window (char-code #\newline))
-       (wmove window (1+ y) 1)
-       (incf i)
-       (incf y)
-       :while (and (< y max-y) (< i (length items))))
-    (when error-message (mvaddstr (- *lines* 1) 0 error-message))
-    (wmove window cur-line 1)
-    (wrefresh window)))
+		       max-y top ttop error-message window #|x y|#) *pick*
+    (let ((message-string (and message (format nil message))))
+      (draw-window window)
+      (window-move-to window 0 0)
+      (when message
+	(window-text window message-string))
+      ;;(setf ttop (getcury window))
+      ;;(setf ttop (terminal-get-cursor-position *terminal*))
+      (setf ttop (fui-window-text-y window))
+      ;;(setf ttop (count #\newline message-string))
+      (dbugf :fui "max-y=~d top=~s ttop=~s~%" max-y top ttop)
+      ;; display the list
+      (loop :with i = top :and y = ttop :and f = nil
+	 :do
+	 (setf f (car (elt items i)))
+	 (if (and multiple (position i result))
+	     (window-text window "X " :row y :column 0)
+	     (window-text window "  "))
+	 (when (= i point)
+	   (tt-standout t)
+	   ;;(setf cur-line y #| (getcury *stdscr*) |#)
+	   ;;(setf cur-line (fui-window-text-y window))
+	   (setf cur-line y)
+	   )
+	 ;;(dbugf :fui "cur-line=~d y=~s i=~s~%" cur-line y i)
+	 (window-text window f :row y :column 2)
+	 ;;(window-text window (s+ f #\newline))
+	 (when (= i point)
+	   (tt-standout nil))
+	 (incf i)
+	 (incf y)
+	 :while (and (< y max-y) (< i (length items))))
+      (when error-message
+	(tt-write-string-at (- (tt-height) 1) 0 error-message))
+      (window-move-to window cur-line 1)
+      (tt-finish-output)
+      )))
 
 (defmethod delete-pick ((pick popup-pick))
   (with-slots (window) pick
-    (delwin window)))
-|#
+    (delete-window window)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun do-pick (type &rest args)
   (let ((*pick*))
@@ -473,7 +458,7 @@
   POPUP		  - True to use a pop-up window, in which case provide X and Y."
   (when (not the-list)
     (return-from pick-list nil))
-  (with-terminal (#+unix :curses)
+  (with-terminal (#+unix :crunch)
     (let* ((max-y (1- (tt-height)))
 	   (count (length the-list))
 	   (string-list (make-array count :element-type 'cons
@@ -710,6 +695,7 @@ This is a macro so you can use lexically scoped things in the menu."
   "True when we can expect user interaction.")
 
 ;; @@@ cribbed from fui. we should put it somewhere else.
+#|
 (defun pause (&optional (prompt "[Press Enter]") &rest args)
   "Print a message and wait for Enter to be pressed. Does nothing if not
 *interactive*."
@@ -717,6 +703,7 @@ This is a macro so you can use lexically scoped things in the menu."
     (apply #'format *standard-output* prompt args)
     (finish-output *standard-output*)
     (read-line)))
+|#
 
 (defun show-result (expr)
   (unwind-protect
