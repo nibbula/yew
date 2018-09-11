@@ -13,8 +13,12 @@
    #:fui-window
    #:fui-window-x #:fui-window-y #:fui-window-y #:fui-window-width
    #:fui-window-height #:fui-window-border
+   #:fui-window-text-x #:fui-window-text-y
+   #:draw-window
    #:make-window
+   #:delete-window
    #:draw-box
+   #:window-move-to
    #:window-text
    #:window-centered-text
    #:display-text
@@ -75,10 +79,10 @@ drawing, which will get overwritten."
 
 (defclass fui-window ()
   ((x
-    :initarg :x :accessor fui-window-x :initform 0 :type fixnum
+    :initarg :x :accessor fui-window-x :initform 1 :type fixnum
     :documentation "Top left horizontal coordinate.")
    (y
-    :initarg :y :accessor fui-window-y :initform 0 :type fixnum
+    :initarg :y :accessor fui-window-y :initform 1 :type fixnum
     :documentation "Top left vertical coordinate.")
    (width
     :initarg :width :accessor fui-window-width :initform 40 :type fixnum
@@ -89,6 +93,12 @@ drawing, which will get overwritten."
    (border
     :initarg :border :accessor fui-window-border :initform nil :type boolean
     :documentation "True to draw a border around the window.")
+   (text-x
+    :initarg :text-x :accessor fui-window-text-x :initform 0 :type fixnum
+    :documentation "Column to write text at.")
+   (text-y
+    :initarg :text-y :accessor fui-window-text-y :initform 0 :type fixnum
+    :documentation "Row to write text at.")
    )
   (:documentation "A stupid text window."))
 
@@ -100,38 +110,84 @@ drawing, which will get overwritten."
        (tt-move-to iy x)
        (tt-write-string str))))
 
-(defun make-window (&rest keys &key width height x y border)
-  (let ((win (apply #'make-instance 'fui-window keys))
-	(str (make-string width :initial-element #\space)))
-    ;; erase the window
-    (erase-area x y width height :string str)
-    ;; The border is outside the window.
-    (when border
-      (draw-box (1- x) (1- y) (+ width 2) (+ height 2) :string str))
-    win))
-
-(defun delete-window (window)
+(defun erase-window (window)
   (with-slots (x y width height border) window
     (if border
 	(erase-area (1- x) (1- y) (+ width 2) (+ height 2))
 	(erase-area x y width height))))
 
+(defun draw-window (window)
+  (with-slots (width height x y border) window
+    (erase-window window)
+    (let ((str (make-string width :initial-element #\space)))
+      ;; The border is outside the window.
+      (when border
+	(draw-box (1- x) (1- y) (+ width 2) (+ height 2) :string str)))))
+
+(defun make-window (&rest keys
+		    &key (width 40) (height 10) (x 1) (y 1) (border t))
+  (declare (ignorable border))
+  (let ((win (apply #'make-instance 'fui-window keys))
+	(str (make-string width :initial-element #\space)))
+    ;;(dbugf :fui "make-window ~s x ~s @ [~s ~s]~%" width height x y)
+    ;; erase the window
+    (erase-area x y width height :string str)
+    (draw-window win)
+    win))
+
+(defun delete-window (window)
+  (erase-window window))
+
+(defun window-move-to (window row column)
+  (with-slots (x y width height text-x text-y) window
+    (let ((start-x (if (< column 0) x (min (+ x column) (+ x (1- width)))))
+	  (start-y (if (< row 0)    y (min (+ y row)    (+ y (1- height))))))
+      (setf text-x column
+	    text-y row)
+      (tt-move-to start-y start-x))))
+
 (defun window-text (window text &key row column)
-  (with-slots (x y width height) window
-    (let* ((len (display-length text))
-	   (start-x (if (< column 0) x (min (+ x column) (+ x (1- width)))))
-	   (start-y (if (< row 0)    y (min (+ y row)    (+ y (1- height)))))
-	   (start-pos (if (< column 0) (min len (- column)) 0))
-	   (end-pos   (min len (max 0 (- width column)))))
-      ;; (format *debug-io* "start-x ~d start-y ~d~%start-pos ~d end-pos ~d~%"
+  (with-slots (x y width height text-x text-y) window
+    (when (not row)
+      (setf row text-y))
+    (when (not column)
+      (setf column text-x))
+    ;;(dbugf :fui "text-x=~s text-y=~s~%" text-x text-y)
+    (let* (;; (len (display-length l))
+	   ;; (start-x (if (< column 0) x (min (+ x column) (+ x (1- width)))))
+	   ;; (start-y (if (< row 0)    y (min (+ y row)    (+ y (1- height)))))
+	   (output-y 0)
+	   ;; (start-pos (if (< column 0) (min len (- column)) 0))
+	   ;; (end-pos   (min len (max 0 (- width column))))
+	   (lines (split-sequence #\newline text)))
+      ;; (dbugf :fui "start-x ~d start-y ~d~%start-pos ~d end-pos ~d~%"
       ;; 	      start-x start-y start-pos end-pos)
-      (when (and (>= row 0) (< row height)
-		 (< column width) (< start-pos len))
-	(tt-move-to start-y start-x)
-	(tt-write-string text
-			 :start (min (max 0 start-pos) len)
-			 :end   (min (max start-pos end-pos) len)
-			 )))))
+      (dbugf :fui "lines = ~s~%" lines)
+      ;;(tt-move-to start-y start-x)
+      (loop :with len :and start-pos :and end-pos
+	 :for l :in lines
+	 :do
+	 (setf len (display-length l)
+	       start-pos (if (< column 0) (min len (- column)) 0)
+	       end-pos   (min len (max 0 (- width column))))
+	 (when (and (>= row 0) (< row height)
+		    (< column width) (< start-pos len))
+	   (window-move-to window (+ row output-y) column)
+	   (tt-write-string l
+			    :start (min (max 0 start-pos) len)
+			    :end   (min (max start-pos end-pos) len))
+	   (incf output-y)))
+      (window-move-to window (+ row output-y 1) column)
+      ;; (tt-write-string text
+      ;; 		 :start (min (max 0 start-pos) len)
+      ;; 		 :end   (min (max start-pos end-pos) len))
+      ;; @@@ This will work horribly for terminal-ansi. But what's our choice?
+      (multiple-value-bind (new-y new-x)
+	  (terminal-get-cursor-position *terminal*)
+	;;(dbugf :fui "new-x=~s new-y=~s~%" new-x new-y)
+	;; @@@ This wrong since it doesn't even clip.
+	(setf text-x (- new-x x)
+	      text-y (- new-y y))))))
 
 ;; Hello this is some long text
 
