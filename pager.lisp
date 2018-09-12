@@ -814,10 +814,13 @@ list containing strings and lists."
   "Open FILENAME for reading in a way which is less likely to get encoding
 errors, but may lose data. Quotes the filename against special Lisp characters.
 Returns the the open stream or NIL."
-  (make-instance 'utf8b-stream:utf8b-input-stream
-		 :input-stream
-		 (open (quote-filename filename) :direction :input
-		       :element-type '(unsigned-byte 8))))
+  (etypecase filename
+    (stream filename)
+    ((or string pathname)
+     (make-instance 'utf8b-stream:utf8b-input-stream
+		    :input-stream
+		    (open (quote-filename filename) :direction :input
+			  :element-type '(unsigned-byte 8))))))
 
 ;; #+sbcl :external-format
 ;; ;;#+sbcl '(:utf-8 :replacement #\replacement_character)
@@ -850,7 +853,7 @@ Returns the the open stream or NIL."
 (defun file-location-file (location)
   "Return the file part of a file location."
   (typecase location
-    (string location)
+    ((or string stream) location)
     ((or list vector) (elt location 0))
     (t location)))
 
@@ -858,7 +861,7 @@ Returns the the open stream or NIL."
   "Return the offset part of a file location, which defaults to 0 if the
 location doesn't have an offset part."
   (typecase location
-    (string 0)
+    ((or string stream) 0)
     ((or list vector)
      (if (and (> (length location) 1)
 	      (numberp (elt location 1)))
@@ -1433,7 +1436,10 @@ q - Abort")
         (progn
 	  (when (and (not stream) file-list)
 	    (setf stream (open-lossy (file-location-file (elt file-list 0)))
-		  close-me t))
+		  close-me t
+		  ;; close-me (not (streamp (file-location-file
+		  ;; 			  (elt file-list 0))))
+		  ))
 	  (let ((*pager*
 		 (or pager
 		     (apply #'make-instance
