@@ -1448,14 +1448,19 @@ defaults to character) with the contents of FILE-OR-STREAM."
 		    (open file-or-stream :external-format external-format
 			  :element-type element-type))))
 	   (if (and (typep stream 'file-stream)
+		    ;; The length can be quite wrong, since it's probably in
+		    ;; octets and we read it in characters. But hopefully it
+		    ;; shouldn't be *less* than we need. 
 		    (setf len (safe-file-length stream))
 		    len)
 	       (progn
 		 ;; Read the whole thing at once.
 		 (setf buffer (make-array len
 					  :element-type
-					  (stream-element-type stream)))
-		 (read-sequence buffer stream)
+					  (stream-element-type stream)
+					  :adjustable t))
+		 (setf pos (read-sequence buffer stream))
+		 (adjust-array buffer pos)
 		 (setf result buffer))
 	       (progn
 		 ;; Read in chunks and write to a string.
