@@ -374,16 +374,16 @@ by nos:read-directory."))
 
 (defun format-short (file dir show-size)
   (if show-size
-      (format nil "~6@a ~a"
-	      (format-the-size (file-item-size (make-full-item file dir)))
-	      (get-styled-file-name file))
+      (fs+ (format nil "~6@a "
+		   (format-the-size (file-item-size (make-full-item file dir))))
+	   (get-styled-file-name file))
       (get-styled-file-name file)))
 
 (defun format-short-item (item show-size)
   (if show-size
-      (format nil "~6@a ~a"
-	      (format-the-size (file-item-size (make-full-item item)))
-	      (get-styled-file-name item))
+      (fs+ (format nil "~6@a "
+		   (format-the-size (file-item-size (make-full-item item))))
+	   (get-styled-file-name item))
       (get-styled-file-name item)))
 
 (defun gather-file-info (args)
