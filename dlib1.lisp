@@ -107,7 +107,7 @@ of it.")
    #:define-alias #:defalias
    #-(or lispworks clasp) #:λ
    #:_
-   #:and-<> #:<>
+   #:and-<> #:<> #:-> #:->>
    #:symbolify
    #:keywordify
    #:likely-callable
@@ -119,6 +119,7 @@ of it.")
    #:shortest-package-nick
    #:not-so-funcall #:symbol-call
    #:refer-to #-(or lispworks clasp) #:※
+   #:maybe-refer-to #-(or lispworks clasp) #:※?
    #:@
    #:ignore-conditions #:ignore-some-conditions
    #:find-slot-name
@@ -1199,6 +1200,34 @@ previous expression. Return the last expression or NIL."
 			  ,(car x))))
 		   (reverse (rest expressions))))))))
 
+(defmacro -> (&rest expressions)
+  "Transform the expressions so each expression is the second argument to the
+previous expression. Expressions except the first that aren't lists are made
+into lists so they look like function applications."
+  (cond
+    ((null expressions) nil)
+    ((= 1 (length expressions))
+     (car expressions))
+    (t
+     (reduce (lambda (a b)
+	       `(,(first b) ,(second b) ,a ,@(cddr b)))
+	     (mapcar (_ (if (not (listp _)) (list _) _))
+		     (rest expressions))
+	     :initial-value (first expressions)))))
+
+(defmacro ->> (&rest expressions)
+  "Transform the expressions so each expression is the last argument to the
+previous expression. Expressions except the first that aren't lists are made
+into lists so they look like function applications."
+  (cond
+    ((null expressions) nil)
+    ((= 1 (length expressions))
+     (car expressions))
+    (t
+     (reduce (lambda (a b)
+	       (append (if (not (listp b)) (list b) b) (list a)))
+	     (rest expressions) :initial-value (first expressions)))))
+
 (defun symbolify (string &key (package *package*) no-new)
   "Return a symbol, interned in PACKAGE, represented by STRING, after possibly
 doing conventional case conversion. The main reason for this function is to
@@ -1499,6 +1528,22 @@ SYMBOLS is a designator for a symbol or list of symbols like for EXPORT."
        (error "Symbol ~s not bound in ~s" symbol package)))))
 
 (defalias '※ 'refer-to)
+
+(defun maybe-refer-to (package symbol &rest args)
+  "Call or get the value of SYMBOL in PACKAGE, or return NIL if the symbol or
+package doesn't exist or isn't bound."
+  (let ((pkg (find-package package)) sym)
+    (when pkg
+      (setf sym (intern (string symbol) pkg))
+      (cond
+	((fboundp sym)
+	 (apply sym args))
+	((boundp sym)
+	 (when args
+	   (warn "Useless refer-to args were provided."))
+	 (symbol-value sym))))))
+
+(defalias '※? 'maybe-refer-to)
 
 ;; Should I really?
 (defmacro @ (object &rest slot-names)
