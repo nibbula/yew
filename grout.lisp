@@ -181,16 +181,20 @@ TABLE-PRINT:OUTPUT-TABLE.")
   "Return an appropriate grout instance. Try to figure out what kind to make
 from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
   (cond
+    ((shell-output-accepts-grotty)
+     (dbugf :grout "using ansi-stream~%")
+     (make-instance 'ansi-stream :stream stream))
     ((has-terminal-attributes stream)
      ;;(make-instance 'ansi :stream stream))
+     (dbugf :grout "using generic-term~%")
      (make-instance 'generic-term :stream stream))
-    ((shell-output-accepts-grotty)
-     (make-instance 'ansi-stream :stream stream))
     ((and (nos:environment-variable "EMACS")
 	  (find-package :slime))
      ;; @@@ should really test the stream
+     (dbugf :grout "using slime~%")
      (make-instance 'slime :stream stream))
     (t
+     (dbugf :grout "using dumb~%")
      (make-instance 'dumb :stream stream))))
 
 (defmacro with-grout ((&optional (var '*grout*) stream) &body body)
