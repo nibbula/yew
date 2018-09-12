@@ -29,6 +29,7 @@
    #:background-color
    #:set-foreground-color
    #:set-background-color
+   #:reset-color-pallet
    ))
 (in-package :terminal-ansi)
 
@@ -748,6 +749,10 @@ i.e. the terminal is 'line buffered'."
   (when (not (known-color-p color))
     (error "Unknown color ~s." color))
   (tt-format "~a11;~a~a" +osc+ (color-to-xcolor (lookup-color color)) +st+))
+
+(defun reset-color-pallet ()
+  "Reset the whole color pallet to the default."
+  (terminal-raw-format *terminal* "~a104~a" +osc+ +st+))
 
 (defun %terminal-color (tty fg bg &key unwrapped)
   (let ((fg-pos (and (keywordp fg) (position fg *colors*)))
