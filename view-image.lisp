@@ -4,8 +4,8 @@
 
 (defpackage :view-image
   (:documentation "Image viewer")
-  (:use :cl :dlib :dlib-misc :keymap :char-util :terminal :terminal-ansi :inator
-	:terminal-inator :magic :grout)
+  (:use :cl :dlib :dlib-misc :keymap :char-util :terminal :terminal-ansi
+	:terminal-crunch :inator :terminal-inator :magic :grout)
   (:export
    #:view-image
    #:!view-image
@@ -116,7 +116,8 @@
 (defgeneric image-inator-usable-p (type)
   (:documentation "Return true if an image-inator of TYPE can be used.")
   (:method ((type (eql 'image-inator)))
-    (typep *terminal* 'terminal-ansi)))
+    (or (typep *terminal* 'terminal-ansi)
+	(typep *terminal* 'terminal-crunch))))
 
 (defgeneric width (inator)
   (:documentation "Return the width of the image-inator in pixels.")
@@ -488,11 +489,15 @@
 				 (dtime- (dtime+ frame-start-time
 						 (make-dtime-as t-o :ms))
 					 (get-dtime))))
-		 result)
+		 ready result)
 	    (when (dtime-plusp time-left)
-	      (tt-listen-for (dtime-to time-left :seconds)))
-	    (setf result
-		  (terminal-ansi::get-char *terminal* :timeout 0))
+	      (setf ready (tt-listen-for (dtime-to time-left :seconds))))
+	    ;; (setf result
+	    ;; 	  (terminal-ansi::get-char *terminal* :timeout 0))
+	    (when (not ready)
+	      (setf ready (tt-listen-for 0)))
+	    (when ready
+	      (setf result (tt-get-key)))
 	    (when (not result)
 	      (if (= subimage (1- (length subimages)))
 		  (setf subimage 0)
@@ -673,7 +678,7 @@ But also greatly increasing # of chars output.
 	 (mover-right (n) (funcall mover :right n))
 	 (mover-forward (n) (funcall mover :forward n)))
   (with-slots (name subimages) image
-    (with-slots ((si-x x) (si-y y) width height data)
+    (with-slots ((si-x x) (si-y y) width height data disposal)
 	(aref subimages subimage)
       (declare (type fixnum si-x si-y width height))
       (multiple-value-bind (start-x end-x start-y end-y)
@@ -969,7 +974,7 @@ But also greatly increasing # of chars output.
 		  (string (pathname file-or-stream))
 		  (pathname file-or-stream)
 		  (stream
-		   (pushnew "gomer" *modules* :test #'equal)
+		   ;;(pushnew "gomer" *modules* :test #'equal)
 		   (setf slurped-stream t)
 		   (flexi-streams:with-output-to-sequence
 		       (str :element-type '(unsigned-byte 8))
@@ -980,12 +985,12 @@ But also greatly increasing # of chars output.
 		  (t file-or-stream))) 	; hope it's okay?
 	 (type
 	  (progn
-	    (pushnew (s+ "blalp" (type-of thing)) *modules* :test #'equal)
+	    ;;(pushnew (s+ "blalp" (type-of thing)) *modules* :test #'equal)
 	    (guess-content-type thing))))
     (if (equal (content-type-category type) "image")
 	(let ((func (cdr (assoc (content-type-name type) *image-reader-alist*
 				:test #'equal))))
-	  (pushnew "bumble" *modules* :test #'equal)
+	  ;;(pushnew "bumble" *modules* :test #'equal)
 	  (if (and func (fboundp func))
 	      (if slurped-stream
 		  (flexi-streams:with-input-from-sequence (str thing)
@@ -1021,7 +1026,8 @@ But also greatly increasing # of chars output.
 
 
 (defun view-image (file-or-stream &key file-list type own-window)
-  (with-terminal (:ansi)
+;;  (with-terminal (:ansi)
+  (with-terminal ()
     (let* ((inator-type (or type (pick-image-inator)))
 	   image *image-viewer*)
       (when (not inator-type)
