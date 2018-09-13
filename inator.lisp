@@ -146,20 +146,18 @@ a TERM-INATOR.
   (:documentation "Describe what a key does very briefly."))
 
 ;; Whole Inator functions
-(defgeneric event-loop (inator))
+(defgeneric event-loop (inator)
+  (:documentation "Start the inator, then continue updating the display,
+waiting for events, and processing events, util the quit-flag is set.
+Finish the inator when done."))
 (defgeneric update-display (inator))
-(defgeneric await-event (inator))
+(defgeneric await-event (inator)
+  (:documentation "Wait for an event. Return NIL if there was no event, for
+example if reading it timed out, in which case the event-loop normally does
+not call process-event with it."))
 (defgeneric process-event (inator event &optional keymap-in))
 (defgeneric start-inator (inator))
 (defgeneric finish-inator (inator))
-
-;; Examples to consider:
-;;  list picker
-;;  file picker
-;;  tree browser
-;;  table browser
-;;  puca (revision control frontend)
-;;  pager
 
 (defkeymap *default-inator-keymap*
   `((,(ctrl #\N)	. next)
@@ -261,8 +259,8 @@ UPDATE-DISPLAY and and AWAIT-EVENT methods."
 	 (update-display inator)
 	 (loop :with event
 	    :do
-	    (setf event (await-event inator))
-	    (process-event inator event)
+	    (when (setf event (await-event inator))
+	      (process-event inator event))
 	    :while (not (inator-quit-flag inator))
 	    :do
 	    (update-display inator)))
