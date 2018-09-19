@@ -157,6 +157,7 @@ fairly easy to sub-class a type.
    #:*default-terminal-type*
    #:*terminal-types*
    #:has-terminal-attributes
+   #:likely-a-terminal-p
    #:terminal-default-device-name
    #:register-terminal-type
    #:find-terminal-class-for-type
@@ -171,6 +172,8 @@ fairly easy to sub-class a type.
    #:terminal-window-rows           ;; #:window-rows
    #:terminal-window-columns        ;; #:window-columns
    #:terminal-start-at-current-line ;; #:start-at-current-line
+   #:terminal-wrapper
+   #:terminal-wrapped-terminal      ;; #:wrapped-terminal
    #:terminal-get-size
    #:terminal-get-cursor-position
    #:terminal-start
@@ -333,6 +336,14 @@ current line."))
   )
   (:documentation "What we need to know about terminal device."))
 
+(defclass terminal-wrapper ()
+  ((wrapped-terminal
+    :initarg :wrapped-terminal :accessor terminal-wrapped-terminal
+    :documentation
+    "The terminal we are wrapping and we usually do I/O through."))
+  (:documentation
+   "A terminal that uses another terminal inside of it, but isn't a subclass."))
+
 (defun has-terminal-attributes (stream)
   "Return true if we should treat `STREAM` as if it has terminal attributes."
   (or
@@ -341,6 +352,16 @@ current line."))
    ;; It's *standard-output* & we know *standard-output-has-terminal-attributes*
    (and (eq stream *standard-output*)
 	*standard-output-has-terminal-attributes*)
+   ;; Or the file handle can be determined to be a terminal by the OS.
+   (let ((ss (stream-system-handle stream)))
+     (and ss (file-handle-terminal-p ss)))))
+
+;; Unfortunately interactive-stream-p isn't adequate.
+(defun likely-a-terminal-p (stream)
+  "Return true if we guess that `STREAM` is a terminal."
+  (or
+   ;; It's a straight up terminal.
+   (typep stream 'terminal-stream)
    ;; Or the file handle can be determined to be a terminal by the OS.
    (let ((ss (stream-system-handle stream)))
      (and ss (file-handle-terminal-p ss)))))
