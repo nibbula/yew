@@ -83,7 +83,9 @@ by callers of this package and should usually be dynamically bound.")
 ;; @@@ Duplication from RL
 (defvar *lisp-non-word-chars*
   #(#\space #\tab #\newline #\linefeed #\page #\return
-    #\( #\) #\[ #\] #\: #\; #\" #\' #\\ #\# #\, #\` #\| #\.)
+    #\( #\) #\[ #\] #\: #\; #\" #\' #\\ #\# #\, #\` #\|
+    #| #\. |# ;; <-- This depends on the context?
+    )
   "Characters that are not considered to be part of a word in lisp.")
 ;; removed #\/ since it's common in package names
 
