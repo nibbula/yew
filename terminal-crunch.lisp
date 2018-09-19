@@ -21,6 +21,7 @@ Other terminal types should help terminal-crunch work by providing cost metrics
 for various operations through the OUTPUT-COST methods.
 ")
   (:use :cl :dlib :char-util :fatchar :terminal :trivial-gray-streams)
+  (:import-from :terminal #:wrapped-terminal)
   (:export
    #:terminal-crunch
    #:allow-scrolling
@@ -65,16 +66,16 @@ for various operations through the OUTPUT-COST methods.
      ((< ,n ,start) (setf ,n ,start))
      ((> ,n ,end) (setf ,n ,end))))
 
-(defclass terminal-crunch-stream (terminal-stream)
+(defclass terminal-crunch-stream (terminal-stream terminal-wrapper)
   ((old-screen
     :initarg :old-screen :accessor old-screen :initform nil
     :documentation "The screen that's currently displayed on the device")
    (new-screen
     :initarg :new-screen :accessor new-screen :initform nil
     :documentation "The screen that we're constructing.")
-   (wrapped-terminal
-    :initarg :wrapped-terminal :accessor wrapped-terminal
-    :documentation "The terminal we are wrapping and we output to.")
+   ;; (wrapped-terminal
+   ;;  :initarg :wrapped-terminal :accessor wrapped-terminal
+   ;;  :documentation "The terminal we are wrapping and we output to.")
    (fg
     :initarg :fg :accessor fg :initform nil
     :documentation "Foreground color.")
@@ -214,6 +215,8 @@ two values ROW and COLUMN."
 ;;
 ;; @@@ or maybe we could use sxhash?
 
+;(deftype hash-value fixnum)
+
 (defparameter *keyword-differentiator*
   #.(loop :with i = 0 :for c :across "keyword" :do
        (setf i (logior (ash i 8) (char-code c))) :finally (return i)))
@@ -238,27 +241,54 @@ two values ROW and COLUMN."
   (logand (logxor (ash value 3) integer) +cut-off+))
 (declaim (ftype (function (fixnum fixnum) fixnum) bix-hash))
 
-(defparameter *fnv64-offset* #.(logand most-positive-fixnum #xCBF29CE484222325))
-(declaim (type fixnum *fnv64-offset*))
-(defparameter *fnv64-prime* #x100000001b3)
-(declaim (type fixnum *fnv64-prime*))
+#+64-bit-target
+(progn
+  (defparameter *fnv64-offset*
+    #.(logand most-positive-fixnum #xCBF29CE484222325))
+  (declaim (type fixnum *fnv64-offset*))
+  (defparameter *fnv64-prime* #x100000001b3)
+  (declaim (type fixnum *fnv64-prime*))
 
-(defun fnv-like-hash-seed () *fnv64-offset*)
-(declaim (ftype (function () fixnum) bix-hash-seed))
-(defun fnv-like-hash (integer value)
-  (declare (type fixnum integer value))
-  (logand (* (logxor value integer) *fnv64-prime*) +cut-off+))
-(declaim (ftype (function (fixnum fixnum) fixnum) fnv-like-hash))
+  (defun fnv-like-hash-seed () *fnv64-offset*)
+  (declaim (ftype (function () fixnum) bix-hash-seed))
+  (defun fnv-like-hash (integer value)
+    (declare (type fixnum integer value))
+    (logand (* (logxor value integer) *fnv64-prime*) +cut-off+))
+  (declaim (ftype (function (fixnum fixnum) fixnum) fnv-like-hash))
 
-;;(defun sxhash-hash-seed () #xCBF29CE484222325)
-(defun sxhash-hash-seed () #.(logand most-positive-fixnum #xCBF29CE484222325))
-(declaim (ftype (function () fixnum) sxhash-hash-seed))
-(defun sxhash-hash (integer value)
-  (logand (+ (sxhash integer) value) +cut-off+))
-(declaim (ftype (function (fixnum fixnum) fixnum) sxhash-hash))
+  ;;(defun sxhash-hash-seed () #xCBF29CE484222325)
+  (defun sxhash-hash-seed () #.(logand most-positive-fixnum #xCBF29CE484222325))
+  (declaim (ftype (function () fixnum) sxhash-hash-seed))
+  (defun sxhash-hash (integer value)
+    (logand (+ (sxhash integer) value) +cut-off+))
+  (declaim (ftype (function (fixnum fixnum) fixnum) sxhash-hash)))
+
+#+32-bit-target
+(progn
+  (defparameter *fnv32-offset*
+    #.(logand most-positive-fixnum #x84222325))
+  (declaim (type fixnum *fnv32-offset*))
+  ;; (defparameter *fnv32-prime* #x1FFFFFFD)
+  (defparameter *fnv32-prime* #x1F2347E1)
+  (declaim (type fixnum *fnv32-prime*))
+
+  (defun fnv-like-hash-seed () *fnv32-offset*)
+  (declaim (ftype (function () fixnum) bix-hash-seed))
+  (defun fnv-like-hash (integer value)
+    (declare (type fixnum integer value))
+    (logand (* (logxor value integer) *fnv32-prime*) +cut-off+))
+  (declaim (ftype (function (fixnum fixnum) fixnum) fnv-like-hash))
+
+  ;;(defun sxhash-hash-seed () #xCBF29CE484222325)
+  (defun sxhash-hash-seed () #.(logand most-positive-fixnum #x1F2347E1))
+  (declaim (ftype (function () fixnum) sxhash-hash-seed))
+  (defun sxhash-hash (integer value)
+    (logand (+ (sxhash integer) value) +cut-off+))
+  (declaim (ftype (function (fixnum fixnum) fixnum) sxhash-hash)))
 
 ;; @@@ Am I being too paranoid doing this with a macro?
 (defmacro hash-thing-with (thing value hash-func hash-seed-func)
+  (declare (optimize (speed 3) (safety 0)))
   (with-unique-names (hv c)
     `(typecase ,thing
        (character (,hash-func (char-code ,thing) ,value))
@@ -471,7 +501,7 @@ sizes. It only copies the smaller of the two regions."
 (defmethod terminal-end ((tty terminal-crunch) &optional state)
   "Put the terminal back to the way it was before we called terminal-start."
   (terminal-finish-output tty)
-  (terminal-end (wrapped-terminal tty) state)
+  (terminal-end (terminal-wrapped-terminal tty) state)
   (if (zerop (decf (started tty)))
     (progn
       (dbugf :crunch "Crunch ~s ended.~%" tty)
@@ -481,7 +511,7 @@ sizes. It only copies the smaller of the two regions."
 
 (defmethod terminal-done ((tty terminal-crunch) &optional state)
   "Forget about the whole terminal thing and stuff."
-  (terminal-done (wrapped-terminal tty) state)
+  (terminal-done (terminal-wrapped-terminal tty) state)
   (values))
 
 ;; @@@ this needs to be complicated by the scrolling-region
@@ -968,16 +998,16 @@ Attributes are usually keywords."
 	  (keyword (list attributes)))))
 
 (defmethod terminal-title ((tty terminal-crunch))
-  (terminal-title (wrapped-terminal tty)))
+  (terminal-title (terminal-wrapped-terminal tty)))
 
 (defmethod (setf terminal-title) (title (tty terminal-crunch))
   "Set the title of a terminal window. The terminal is assumed to work like
 XTerm or something."
-  (setf (terminal-title (wrapped-terminal tty)) title))
+  (setf (terminal-title (terminal-wrapped-terminal tty)) title))
 
 (defmethod terminal-has-attribute ((tty terminal-crunch) attribute)
   "Return true if the terminal can display the character attribute."
-  (terminal-has-attribute (wrapped-terminal tty) attribute))
+  (terminal-has-attribute (terminal-wrapped-terminal tty) attribute))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1049,7 +1079,7 @@ XTerm or something."
 (defun crunched-move-to (tty new-x new-y old-x old-y)
   "Move to NEW-X NEW-Y from OLD-X OLD-Y in a hopefully efficient way.
 Set the current update position UPDATE-X UPDATE-Y in the TTY."
-  (let ((wtty (wrapped-terminal tty)))
+  (let ((wtty (terminal-wrapped-terminal tty)))
     (when (or (not (eql new-x old-x)) (not (eql new-y old-y)))
       (cond
 	;; both
@@ -1119,7 +1149,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
   (when (not (zerop (screen-beep-count new)))
     ;; This is ridiculous. We could just compress multiple beeps to one.
     (dotimes (i (screen-beep-count new))
-      (terminal-beep (wrapped-terminal tty)))
+      (terminal-beep (terminal-wrapped-terminal tty)))
     ;; We've drained the beeps, so they're not still there next time.
     (setf (screen-beep-count new) 0)))
 
@@ -1139,7 +1169,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 (defun update-line (tty line)
   (let* ((old-line (aref (screen-lines (old-screen tty)) line))
 	 (new-line (aref (screen-lines (new-screen tty)) line))
-	 (wtty (wrapped-terminal tty))
+	 (wtty (terminal-wrapped-terminal tty))
 	 new-line-cost
 	 (change-cost 0)
 	 first-change
@@ -1357,12 +1387,14 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
        ;;   move same lines
 
        ;; Update changed lines.
+       ;;(time
        (loop :for i :from start-line :below (length (screen-hashes new)) :do
 	  (when (/= (aref (screen-hashes new) i) (aref (screen-hashes old) i))
 	    (dbugf :crunch "hash diff ~s old ~s new ~s~%" i
 		   (aref (screen-hashes new) i)
 		   (aref (screen-hashes old) i))
 	    (update-line tty i)))
+       ;;)
 
        ;; Make sure we're at the right cursor position.
        (update-ending-position tty new)))
@@ -1380,27 +1412,27 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 
 (defmethod terminal-get-char ((tty terminal-crunch))
   (terminal-finish-output tty)
-  (prog1 (terminal-get-char (wrapped-terminal tty))
+  (prog1 (terminal-get-char (terminal-wrapped-terminal tty))
     (when (size-changed-p tty)
       (update-size tty))))
 
 (defmethod terminal-get-key ((tty terminal-crunch))
   (terminal-finish-output tty)
-  (prog1 (terminal-get-key (wrapped-terminal tty))
+  (prog1 (terminal-get-key (terminal-wrapped-terminal tty))
     (when (size-changed-p tty)
       (update-size tty))))
 
 (defmethod terminal-listen-for ((tty terminal-crunch) seconds)
   (terminal-finish-output tty)
-  (prog1 (terminal-listen-for (wrapped-terminal tty) seconds)
+  (prog1 (terminal-listen-for (terminal-wrapped-terminal tty) seconds)
     (when (size-changed-p tty)
       (update-size tty))))
 
 (defmethod terminal-input-mode ((tty terminal-crunch))
-  (terminal-input-mode (wrapped-terminal tty)))
+  (terminal-input-mode (terminal-wrapped-terminal tty)))
 
 (defmethod (setf terminal-input-mode) (mode (tty terminal-crunch))
-  (setf (terminal-input-mode (wrapped-terminal tty)) mode))
+  (setf (terminal-input-mode (terminal-wrapped-terminal tty)) mode))
 
 (defmethod terminal-reset ((tty terminal-crunch-stream))
   "Try to reset the terminal to a sane state, without being too disruptive."
@@ -1444,7 +1476,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 
 (defmethod stream-force-output ((stream terminal-crunch-stream))
   (terminal-finish-output stream)
-  (force-output (wrapped-terminal stream)))
+  (force-output (terminal-wrapped-terminal stream)))
 
 (defmethod stream-write-sequence ((stream terminal-crunch-stream) seq start end
 				  &key &allow-other-keys)
@@ -1496,12 +1528,12 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 ;; For input just call the wrapped stream's version.
 
 (defmethod stream-clear-input ((stream terminal-crunch))
-  (stream-clear-input (wrapped-terminal stream)))
+  (stream-clear-input (terminal-wrapped-terminal stream)))
 
 (defmethod stream-read-sequence ((stream terminal-crunch) seq start end
 				 &key &allow-other-keys
 				 #| &optional (start 0) end |#)
-  (stream-read-sequence (wrapped-terminal stream) seq start end))
+  (stream-read-sequence (terminal-wrapped-terminal stream) seq start end))
 
 ;;(defgeneric stream-peek-char ((stream terminal-crunch))
   ;; This is used to implement ‘peek-char’; this corresponds to
@@ -1517,17 +1549,17 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
   ;; ‘fundamental-character-input-stream’ simply calls
   ;; ‘stream-read-char’; this is sufficient for file streams, but
   ;; interactive streams should define their own method.
-  (stream-read-char-no-hang (wrapped-terminal stream)))
+  (stream-read-char-no-hang (terminal-wrapped-terminal stream)))
 
 (defmethod stream-read-char ((stream terminal-crunch))
-  (stream-read-char (wrapped-terminal stream)))
+  (stream-read-char (terminal-wrapped-terminal stream)))
 
 (defmethod stream-read-line ((stream terminal-crunch))
   ;; This is used by ‘read-line’.  A string is returned as the first
   ;; value.  The second value is true if the string was terminated by
   ;; end-of-file instead of the end of a line.  The default method uses
   ;; repeated calls to ‘stream-read-char’.
-  (stream-read-line (wrapped-terminal stream)))
+  (stream-read-line (terminal-wrapped-terminal stream)))
 
 (defmethod stream-listen ((stream terminal-crunch))
   ;; This is used by ‘listen’.  It returns true or false.  The default
@@ -1535,14 +1567,14 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
   ;; Most streams should define their own method since it will usually
   ;; be trivial and will always be more efficient than the default
   ;; method.
-  (stream-listen (wrapped-terminal stream)))
+  (stream-listen (terminal-wrapped-terminal stream)))
 
 (defmethod stream-unread-char ((stream terminal-crunch) character)
   ;; Undo the last call to ‘stream-read-char’, as in ‘unread-char’.
   ;; Return ‘nil’.  Every subclass of
   ;; ‘fundamental-character-input-stream’ must define a method for this
   ;; function.
-  (stream-unread-char (wrapped-terminal stream) character))
+  (stream-unread-char (terminal-wrapped-terminal stream) character))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Debugging
