@@ -895,9 +895,26 @@ in order, \"{open}{close}...\".")
   "Just ring the bell or something."
   (beep e "Woof! Woof!"))
 
+(defun find-ansi-terminal (term)
+  "Return a TERMINAL-ANSI that is *terminal* or wrapped by *terminal*, or NIL."
+  (loop
+     :for i :from 0
+     :while (and (not (typep term 'terminal-ansi))
+		 (typep term 'terminal-wrapper)
+		 (< i 10))
+     :if (typep term 'terminal-ansi)
+     :do (return term)
+     :else
+     :do (setf term (terminal-wrapped-terminal term)))
+  (when (typep term 'terminal-ansi)
+    term))
+
 (defun bracketed-paste (e)
   (with-slots (point) e
-    (let* ((paste (read-bracketed-paste (line-editor-terminal e)))
+    (let* ((term (or (find-ansi-terminal (line-editor-terminal e))
+		     (error "I don't know how to read a bracketed paste on ~
+                             a ~a." (type-of *terminal*))))
+	   (paste (read-bracketed-paste term))
 	   (len (length paste)))
       (insert-string e paste)
       (display-buf e point (+ point len))
