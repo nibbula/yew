@@ -24,7 +24,8 @@ implementation. I have done this for SBCL and CCL. CLEAN-READ* has a fallback
 using temporary packages, but it's slow and maybe doesn't even work. I haven't
 come up with any fallback for PACKAGE-ROBUST-READ*.
 
-Another way to do it is to have whole separate read implementation...
+Another way to do it is to have whole separate read implementation. For this
+we currently use the Eclector package.
 
 If you have *READ-INTERN*, :has-read-intern should be in features, before
 loading this.
@@ -32,7 +33,17 @@ loading this.
   (:use :cl :dlib
 	;; extensions
 	#+ccl :ccl
-	#+sbcl :sb-ext)
+	#+sbcl :sb-ext
+	#-has-read-intern :cl-unicode)
+  #-has-read-intern
+  (:shadowing-import-from :eclector.reader
+			  #:read #:read-from-string)
+  #-has-read-intern
+  (:import-from :eclector.reader
+		;;#:*read-intern*
+		#:*client*
+		#:interpret-symbol
+		#:find-character)
   (:export
    #:clean-read-from-string
    #:package-robust-read-from-string
@@ -40,7 +51,6 @@ loading this.
    ))
 (in-package :reader-ext)
 
-#+has-read-intern
 (defun interninator (name package dirt-pile)
   "Return the symbol NAME from package if it exists, or from the DIRT-PILE
 package if it doesn't. If DIRT-PILE is NIL, return a packageless symbol."
@@ -50,22 +60,106 @@ package if it doesn't. If DIRT-PILE is NIL, return a packageless symbol."
 	  (intern name dirt-pile)
 	  (make-symbol name))))
 
-;; Muffle the complaint about using &optional and &key.
-#+sbcl (declaim (sb-ext:muffle-conditions style-warning))
-(defun clean-read-from-string (string package
-			       &optional (eof-error-p t) eof-value
-			       &key (start 0) end preserve-whitespace)
-  "Read from a string without interning unknown symbols in *package*, instead
-returning them as uninterned symbols."
-  ;; This is the good way, which uses the *read-intern* extension.
-  #+has-read-intern
-  (let ((*read-intern* #'(lambda (str pkg)
-			   (interninator str pkg package))))
-    (read-from-string string eof-error-p eof-value
-		      :start start :end end
-		      :preserve-whitespace preserve-whitespace))
-  ;; This is a very inefficient way which makes a new package every time.
-  #-has-read-intern
+#-has-read-intern
+(progn
+  (defclass unicode-reader ()
+    ()
+    (:documentation "A reader that reads unicode character names."))
+
+  (defmethod find-character ((client unicode-reader) name)
+    (character-named name :try-lisp-names-p t))
+
+  ;; @@@ maybe use this when make-structure-instance is in the quicklisp version.
+#|
+  (defclass practical-reader ()
+    ()
+    (:documentation "A reader that can usually read structures."))
+
+  ;; Making a structure of which all you know is the name, seems to be rife
+  ;; with subtle problems. None of the solutions presented here are completely
+  ;; satisfactory. Implementation specific code may function best, but is
+  ;; susceptable to drift. Portable code can't be assured to do the job
+  ;; perfectly.
+
+  ;; Not the similarity of the implementation specific code. I think if Common
+  ;; Lisp would have just included a way to retrieve the constructor, this
+  ;; would be able to be portable. I know in the old days, for maximum
+  ;; efficiency, you might want to toss everything about a struct, but since
+  ;; structs are now classes too, you could only do that in very extreme cases.
+
+  (defmethod make-structure-instance ((client practical-reader)
+				      name initargs)
+    "Make a structure of type NAME with constructor arguments INITARGS."
+    (cond
+      #+sbcl
+      ((let ((classoid (sb-kernel:find-classoid name nil)))
+	 (unless (typep classoid 'sb-kernel:structure-classoid)
+	   (%reader-error stream 'sharp-s-not-structure-type :body body))
+	 (let ((default-constructor (sb-kernel:dd-default-constructor
+				     (sb-kernel:layout-info
+				      (sb-kernel:classoid-layout classoid)))))
+	   (unless default-constructor
+	     (error "The ~s structure does not have a default constructor."
+		    name))
+	   (apply (fdefinition default-constructor) initargs))))
+      #+ccl
+      ((let ((structure-definition (gethash name ccl::%defstructs%)))
+	 (unless structure-definition
+	   (%reader-error stream 'sharp-s-not-structure-type :body body))
+	 (let ((default-constructor (ccl::sd-constructor structure-definition)))
+	   (unless default-constructor
+	     (error "The ~s structure does not have a default constructor."
+		    name))
+	   (apply (fdefinition default-constructor) initargs))))
+      ;; Some implementations will fail to make-instance for structs with a NIL
+      ;; constructor. Some won't fail. I don't think it's specified. But also
+      ;; the arguments could be incorrect. We really don't have any portable
+      ;; way of knowing.
+      ((catch 'some-error
+	 (handler-case
+	     ;; Since this will mask errors, we probably need to check the
+	     ;; arguments ourselves with the MOP?
+	     (apply #'make-instance class initargs)
+	   (error (c)
+	     (declare (ignore c))
+	     (throw 'some-error nil)))))
+      ;; See if we can just guess the constructor name.
+      ;; This is probably a bad idea, since it could have been redefined to
+      ;; anything.
+      ((let ((maker (find-symbol (concatenate 'string "MAKE-"
+					      (string-upcase name))
+				 (symbol-package name))))
+	 (and maker (fboundp maker)
+	      (apply maker initargs))))
+      ;; We have no other way of getting the constructor name or even knowing if
+      ;; it has one. So we have to take the worst option: defer to the host
+      ;; implementaion. Of course this means if you use this code for writing an
+      ;; implementation, and don't change this, #S processing code will become
+      ;; hidden in your image.
+      (t
+       (cl:read-from-string (format nil "#S~s" `(,name ,@initargs))))))
+|#
+
+  (defvar *dirt-pile* nil
+    "A package to pile dirt into.")
+
+  (defclass clean-reader (unicode-reader #| practical-working-reader |#)
+    ()
+    (:documentation "A reader that doesn't pollute packages."))
+
+  (defmethod interpret-symbol ((client clean-reader) input-stream
+			       package-name symbol-name internp)
+    (declare (ignore client input-stream internp))
+    (interninator symbol-name package-name *dirt-pile*))
+
+  (defparameter *clean-client* (make-instance 'clean-reader)
+    "A ‘client’ for the clean reader."))
+
+#|
+(defun horrible-clean-read-from-string (string package
+					&optional (eof-error-p t) eof-value
+					&key (start 0) end preserve-whitespace)
+  "This is a very inefficient way which makes a new package every time."
   (let (pkg obj pos)
     (unwind-protect
 	 (progn
@@ -79,8 +173,24 @@ returning them as uninterned symbols."
 		    :preserve-whitespace preserve-whitespace))))
       (when pkg
 	(delete-package pkg)))
-    (values obj pos))
-  )
+    (values obj pos)))
+|#
+
+;; Muffle the complaint about using &optional and &key.
+#+sbcl (declaim (sb-ext:muffle-conditions style-warning))
+(defun clean-read-from-string (string package
+			       &optional (eof-error-p t) eof-value
+			       &key (start 0) end preserve-whitespace)
+  "Read from a string without interning unknown symbols in *package*, instead
+interning them in PACKAGE, or if PACKAGE is NIL, returning them as uninterned
+symbols."
+  (let (#+has-read-intern (*read-intern* #'(lambda (str pkg)
+					     (interninator str pkg package)))
+	#-has-read-intern (*client* *clean-client*)
+	#-has-read-intern (*dirt-pile* package))
+    (read-from-string string eof-error-p eof-value
+		      :start start :end end
+		      :preserve-whitespace preserve-whitespace)))
 
 (defun package-robust-intern (s p)
   "Return S interned in package P, or S interned in *PACKAGE*, or S as an
@@ -96,30 +206,36 @@ un-interned symbol."
 	(multiple-value-bind (sym status) (find-symbol s *package*)
 	  (if status sym (make-symbol s))))))
 
+#-has-read-intern
+(progn
+  (defclass robust-reader (unicode-reader)
+    ()
+    (:documentation "A reader that doesn't fail on unknown packages."))
+
+  (defmethod interpret-symbol ((client robust-reader) input-stream
+			       package-name symbol-name internp)
+    (declare (ignore client input-stream internp))
+    (package-robust-intern symbol-name package-name))
+
+  (defparameter *robust-client* (make-instance 'robust-reader)
+    "A ‘client’ for the robust reader."))
+
 (defun package-robust-read-from-string (string
 					&optional (eof-error-p t) eof-value
 					&key (start 0) end preserve-whitespace)
   "Read from a string treating unknown symbols or packages as uninterned."
-  #+has-read-intern  
-  (let ((*read-intern* #'package-robust-intern))
+  (let (#+has-read-intern (*read-intern* #'package-robust-intern)
+	#-has-read-intern (*client* *robust-client*))
     (read-from-string string eof-error-p eof-value
 		      :start start :end end
-		      :preserve-whitespace preserve-whitespace))
-  #-has-read-intern
-  (declare (ignore string eof-error-p eof-value start end preserve-whitespace))
-  #-has-read-intern
-  (missing-implementation 'package-robust-read-from-string))
+		      :preserve-whitespace preserve-whitespace)))
 
 (defun package-robust-read (&optional (stream *standard-input*)
 			      (eof-error-p t) (eof-value nil) (recursive-p nil))
   "Read treating unknown symbols or packages as uninterned."
-  #+has-read-intern  
-  (let ((*read-intern* #'package-robust-intern))
-    (read stream eof-error-p eof-value recursive-p))
-  #-has-read-intern
-  (declare (ignore stream eof-error-p eof-value recursive-p))
-  #-has-read-intern
-  (missing-implementation 'package-robust-read))
+  (let (#+has-read-intern (*read-intern* #'package-robust-intern)
+	#-has-read-intern (*client* *robust-client*))
+    (read stream eof-error-p eof-value recursive-p)))
 
 #+sbcl (declaim (sb-ext:unmuffle-conditions style-warning))
 

@@ -10,6 +10,8 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Common Lisp reader extensions."
-    :depends-on (:dlib)
+    :depends-on (:dlib
+		 #-has-read-intern :eclector
+		 #-has-read-intern :cl-unicode)
     :components
     ((:file "reader-ext")))
