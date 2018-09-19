@@ -844,7 +844,7 @@ current process's environment."
 				   :wait nil))) |#
   #+(or openmcl ccl)
   (let ((proc (apply #'ccl::run-program
-		     `(,cmd ,args :wait nil :input t
+		     `(,cmd ,args :wait nil
 			    ,@(when out-stream `(:output ,out-stream))
 			    ,@(when in-stream `(:input ,in-stream))
 			    ,@(when env-p
