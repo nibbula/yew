@@ -1668,8 +1668,9 @@ then the key. Press 'q' to exit this help.
   "Look through text, one screen-full at a time."
   (let ((thing (or files
 		   (and (acceptable-object lish:*input*) lish:*input*)
-		   (and (not (interactive-stream-p *standard-input*))
+		   (and (not (likely-a-terminal-p *standard-input*))
 			*standard-input*))))
+    (dbugf :pager "thing = ~s~%" thing)
     (pager thing
 	   :show-line-numbers show-line-numbers 
 	   :ignore-case ignore-case
