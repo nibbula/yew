@@ -1205,38 +1205,42 @@ and add the characters the typeahead."
     (setf props (nreverse props))
     (print-properties props)))
 
-(defun set-bracketed-paste-mode (&optional (state t))
-  (tt-format "~a?2004~c" +csi+ (if state #\h #\l)))
+(defgeneric set-bracketed-paste-mode (tty &optional state)
+  (:documentation "Set bracketed paste mode to STATE.")
+  (:method ((tty terminal-ansi) &optional (state t))
+    (terminal-raw-format tty "~a?2004~c" +csi+ (if state #\h #\l))))
 
 (defvar *bracketed-read-timeout* 4
   "Maximum time in seconds before bailing out of reading one buffer full of a
 bracketed read.")
 
-(defun read-bracketed-paste (tty)
-  (let ((end-string (s+ +csi+ "201~"))
-	;; (buf (make-string *buffer-size*))
-	(fd (terminal-file-descriptor tty)))
-    (with-output-to-string (str)
-      (with-raw (fd)
-	(loop :with done :and i = 0 :and len = (length end-string) :and s
-	   :while (not done)
-	   :if (listen-for *bracketed-read-timeout* fd) :do
-	   (with-interrupts-handled (tty)
-	     (setf s (read-until fd (char end-string i)
-				 :timeout (* *bracketed-read-timeout* 10))))
-	   (dbugf :bp "got dingus ~s ~s~%" s (type-of s))
-	   (if s
-	       (progn
-		 (princ s str)
-		 (setf i 1))
-	       (progn
-		 (incf i)))
-	   (when (= i len)
-	     (setf done t))
-	   :else :do
-	   (cerror "Return what we got so far."
-		   "Bracketed paste timed out.")
-	   (setf done t))))))
+(defgeneric read-bracketed-paste (tty)
+  (:documentation "Read a bracketed paste and return it as a string.")
+  (:method ((tty terminal-ansi))
+    (let ((end-string (s+ +csi+ "201~"))
+	  ;; (buf (make-string *buffer-size*))
+	  (fd (terminal-file-descriptor tty)))
+      (with-output-to-string (str)
+	(with-raw (fd)
+	  (loop :with done :and i = 0 :and len = (length end-string) :and s
+	     :while (not done)
+	     :if (listen-for *bracketed-read-timeout* fd) :do
+	     (with-interrupts-handled (tty)
+	       (setf s (read-until fd (char end-string i)
+				   :timeout (* *bracketed-read-timeout* 10))))
+	     (dbugf :bp "got dingus ~s ~s~%" s (type-of s))
+	     (if s
+		 (progn
+		   (princ s str)
+		   (setf i 1))
+		 (progn
+		   (incf i)))
+	     (when (= i len)
+	       (setf done t))
+	     :else :do
+	     (cerror "Return what we got so far."
+		     "Bracketed paste timed out.")
+	     (setf done t)))))))
 
 (defun set-utf8-title-mode (tty state)
   (terminal-raw-format tty "~c[>2;3~c" #\escape (if state #\t #\T))
