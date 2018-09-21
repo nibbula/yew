@@ -1319,25 +1319,6 @@ versions of the keywords used in Lisp open.
 (defconstant +UTIME-OMIT+ #.(- (ash 1 30) 2)
   "Value for a timespec.tv_nsec that means don't set it.")
 
-(defcstruct foreign-timespec
-  (tv_sec  time-t)
-  (tv_nsec :long))
-
-(defstruct timespec
-  seconds
-  nanoseconds)
-
-(defun convert-timespec (ts)
-  (etypecase ts
-    (foreign-pointer
-     (if (null-pointer-p ts)
-	 nil
-	 (with-foreign-slots ((tv_sec tv_nsec) ts (:struct foreign-timespec))
-	   (make-timespec :seconds tv_sec :nanoseconds tv_nsec))))
-    (cons
-     (make-timespec :seconds (getf ts 'tv_sec)
-		    :nanoseconds (getf ts 'tv_nsec)))))
-
 #+darwin (config-feature :os-t-has-birthtime)
 
 #+old_obsolete_stat
@@ -1702,12 +1683,6 @@ it is not a symbolic link."
 	    (if (= err +EINVAL+)
 		nil
 		(error 'posix-error :error-code err)))))))
-
-(defun timespec-to-os-time (ts)
-  "Convert a timespec to a os-time."
-  (make-os-time
-   :seconds (unix-to-universal-time (getf ts 'tv_sec))
-   :nanoseconds (getf ts 'tv_nsec)))
 
 (defun convert-file-info (stat-buf)
   (if (and (pointerp stat-buf) (null-pointer-p stat-buf))

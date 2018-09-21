@@ -282,9 +282,6 @@
    #:cache-dir
    #:runtime-dir
    
-   #:timespec
-   #:timespec-seconds
-   #:timespec-nanoseconds
    #:file-status
    #:file-status-device
    #:file-status-inode
@@ -407,13 +404,20 @@
    #+linux #:linux-tee
 
    ;; time
+   #:timespec
+   #:timespec-seconds
+   #:timespec-nanoseconds
+   #:gettimeofday
+   #:settimeofday
    #:+unix-to-universal-time+
    #:unix-to-universal-time
    #:universal-to-unix-time
-   #:gettimeofday
-   #:settimeofday
+   #:timespec-to-os-time
    #:get-time
    #:set-time
+   #+linux #:timerfd-create
+   #+linux #:timerfd-settime
+   #+linux #:timerfd-gettime
 
    ;; multiplexed io
    #:lame-poll
@@ -565,7 +569,20 @@
    ;; Character coding / localization
    #:wcwidth
    #:char-width
+
+   ;; C dynamic libraries
+   #:dlopen
+   #:dlmopen
+   #:dlclose
+   #:dlsym
+   #:dlinfo
+   #:dlerror
+
+   #:+RTLD-LAZY+ #:+RTLD-NOW+ #:+RTLD-NOLOAD+ #:+RTLD-DEEPBIND+ #:+RTLD-GLOBAL+
+   #:+RTLD-LOCAL+ #:+RTLD-NODELETE+ #:+RTLD-NEXT+ #:+RTLD-DEFAULT+
+   #:+LM-ID-BASE+ #:+LM-ID-NEWLM+
    ))
+
 (in-package :opsys-unix)
 
 ;; End
