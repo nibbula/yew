@@ -1009,6 +1009,11 @@ XTerm or something."
   "Return true if the terminal can display the character attribute."
   (terminal-has-attribute (terminal-wrapped-terminal tty) attribute))
 
+(defmethod terminal-allow-event ((tty terminal-crunch) event)
+  "Allow event and return true if the terminal can allow event."
+  ;; Just call the wrapped one.
+  (terminal-allow-event (terminal-wrapped-terminal tty) event))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Somewhat unlike the old world, our costs could be unrelated to the number

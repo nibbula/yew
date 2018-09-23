@@ -13,7 +13,8 @@
 (defpackage :terminal-ansi
   (:documentation "Standard terminal (ANSI).")
   (:use :cl :cffi :dlib :dlib-misc :terminal :char-util :opsys
-	:trivial-gray-streams :fatchar :color :terminal-crunch)
+	:trivial-gray-streams :fatchar :color :terminal-crunch
+	#+unix :opsys-unix #+unix :cffi)
   (:export
    #:terminal-ansi-stream
    #:terminal-ansi
@@ -125,14 +126,13 @@ require terminal driver support."))
     :initform nil
     :initarg :typeahead
     :documentation "Things already input, dag blast it.")
-   (typeahead-pos
-    :accessor typeahead-pos
-    :initform nil
-    :initarg :typeahead-pos
-    :documentation "How far into the typeahead we are.")
    (saved-mode
     :initarg :saved-mode :accessor saved-mode
-    :documentation "Saved terminal modes for restoring on exit."))
+    :documentation "Saved terminal modes for restoring on exit.")
+   (previous-siggy
+    :initarg :previous-siggy :accessor previous-siggy
+    :initform nil
+    :documentation "Previous signal handler if we set it."))
   (:default-initargs
     :file-descriptor		nil
     :device-name		*default-device-name*
@@ -154,11 +154,7 @@ require terminal driver support."))
 
 (defun add-typeahead (tty thing)
   "Add THING to the typeahead buffer of TTY."
-  (setf (typeahead tty) (if (typeahead tty)
-			    (s+ (typeahead tty) thing)
-			    (s+ thing)))
-  (when (not (typeahead-pos tty))
-    (setf (typeahead-pos tty) 0)))
+  (push thing (typeahead tty)))
 
 ;; There seems to be two possibilities for getting this right:
 ;;  1. We do all output thru our routines and keep track
@@ -211,6 +207,15 @@ two values ROW and COLUMN."
 ;     (with-slots (window-rows window-columns) tty
 ;       (format t "[~d x ~d]~%" window-columns window-rows))))
 
+;; Signal handlers are a very stupid idea.
+(defcallback extraneous-sigwinch-handler :void ((signal-number :int))
+  (declare (ignore signal-number))
+  (when (find :resize (terminal-events-allowed *terminal*))
+    ;; If defcallback doesn't prevent GC, then we're screwed.
+    ;; A without-gcing would have to be called before entering here.
+    ;; This might be too dangerous.
+    (add-typeahead *terminal* :resize)))
+
 (defmethod terminal-start ((tty terminal-ansi))
   "Set up the terminal for reading a character at a time without echoing."
   (with-slots ((file-descriptor	   terminal::file-descriptor)
@@ -239,6 +244,10 @@ two values ROW and COLUMN."
 					    :domain :file))
       )
     (terminal-get-size tty)
+    #+unix
+    (when (not (equal (signal-action +SIGWINCH+) 'extraneous-sigwinch-handler))
+      (setf (previous-siggy tty) (signal-action +SIGWINCH+))
+      (set-signal-action +SIGWINCH+ 'extraneous-sigwinch-handler))
     saved-mode))
 
 (defmethod terminal-end ((tty terminal-ansi) &optional state)
@@ -250,7 +259,10 @@ two values ROW and COLUMN."
     (dbugf :terminal-ansi "restoring terminal modes ~s ~s~%"
 	   tty (or state (saved-mode tty)))
     (set-terminal-mode (terminal-file-descriptor tty)
-		       :mode (or state (saved-mode tty)))))
+		       :mode (or state (saved-mode tty)))
+    #+unix
+    (when (previous-siggy tty)
+      (set-signal-action +SIGWINCH+ (previous-siggy tty)))))
 
 (defmethod terminal-done ((tty terminal-ansi) &optional state)
   "Forget about the whole terminal thing and stuff."
@@ -380,6 +392,14 @@ processing."
       (terminal-raw-format tty "~c(0" #\escape)
       (terminal-raw-format tty "~c(B" #\escape)))
 
+(defvar *allow-resize* nil
+  "True to allow throwing resize events.")
+
+(defmacro with-resize (&body body)
+  `(let ((*allow-resize* t))
+     (catch 'resize-event
+       ,@body)))
+
 ;; resumed -> (terminal-start tty) #| (redraw) |# (terminal-finish-output tty)
 ;; resized -> (terminal-get-size tt)
 
@@ -398,6 +418,9 @@ TTY is a terminal, in case you didn't know."
 	    (opsys-resized ()
 	      (dbugf :terminal "ansi resized ~s~%" ,tty)
 	      (terminal-get-size ,tty)
+	      (when (and (find :resize (terminal-events-allowed ,tty))
+			 *allow-resize*)
+		(throw 'resize-event :resize))
 	      (setf ,borked t)))
 	  :while ,borked)
        ,result)))
@@ -845,17 +868,11 @@ Attributes are usually keywords."
 ; 	 (code-char (mem-ref c :unsigned-char)))))))
 
 (defun get-char (tty &key timeout)
-  (with-slots (typeahead typeahead-pos
+  (with-slots (typeahead
 	       (file-descriptor terminal::file-descriptor)) tty
     (when typeahead
       (return-from get-char
-	(prog1
-	    (aref typeahead typeahead-pos)
-	  (incf typeahead-pos)
-	  ;;(format t "ta->~a~%" (incf typeahead-pos))
-	  (when (>= typeahead-pos (length typeahead))
-	    (setf typeahead nil
-		  typeahead-pos nil)))))
+	(pop typeahead)))
     (let (result)
       (labels ((read-it ()
 		 (or
@@ -956,10 +973,12 @@ characters to the typeahead."
 	     (t ;; Stuff whatever characters we read.
 	      (add-typeahead tty start-char)
 	      (when (first param)
-		(add-typeahead tty (s+ (car param))))
+		(add-typeahead tty (digit-char (car param)))
+		)
 	      (loop :for p :in (rest param) :do
 		 (add-typeahead tty #\;)
-		 (add-typeahead tty (s+ p)))
+		 (add-typeahead tty (digit-char p))
+		 )
 	      (when c
 		(add-typeahead tty c))
 	      #\escape))))))))
@@ -985,7 +1004,7 @@ and add the characters the typeahead."
       (#\R :f3)
       (#\S :f4)
       (t
-       (add-typeahead tty "O")
+       (add-typeahead tty #\O)
        (when c
 	 (add-typeahead tty c))
        #\escape))))
@@ -993,8 +1012,8 @@ and add the characters the typeahead."
 
 (defmethod terminal-get-key ((tty terminal-ansi))
   (terminal-finish-output tty)
-  (let ((c (get-char tty)))
-    (if (and c (char= c #\escape))
+  (let ((c (with-resize (get-char tty))))
+    (if (and c (eql c #\escape))
 	(case (setf c (get-char tty :timeout 1))
 	  (#\[ (read-function-key tty))
 	  (#\O (read-function-key tty :app-key-p t))
@@ -1006,12 +1025,14 @@ and add the characters the typeahead."
 
 (defmethod terminal-listen-for ((tty terminal-ansi) seconds)
   (let (result) ;; @@@ I think this "result" is superfluous.
-    (with-interrupts-handled (tty)
-      (with-terminal-signals ()
-	(setf result (listen-for seconds (terminal-file-descriptor tty)))
-	;; @@@ Should be:
-	;; :while (and borked (not @@time expired@@))
-	))
+    (when (eq (with-resize
+		  (with-interrupts-handled (tty)
+		    (with-terminal-signals ()
+		      (setf result (listen-for
+				    seconds (terminal-file-descriptor tty))))))
+	      :resize)
+      (add-typeahead tty :resize)
+      (setf result t))
     result))
 
 (defmethod terminal-input-mode ((tty terminal-ansi))
@@ -1278,6 +1299,12 @@ XTerm or something."
   (case attribute
     ((:standout :underline :bold :inverse :color) t)))
 
+(defmethod terminal-allow-event ((tty terminal-ansi) event)
+  "Allow event and return true if the terminal can allow event."
+  (case event
+    (:resize t)
+    (otherwise nil)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; stream methods
 
@@ -1384,8 +1411,7 @@ XTerm or something."
 
 (defmethod stream-clear-input ((stream terminal-ansi))
   (with-slots (typeahead typeahead-pos output-stream) stream
-    (setf typeahead nil
-	  typeahead-pos nil)
+    (setf typeahead nil)
     (clear-input output-stream)))
 
 (defmethod stream-read-sequence ((stream terminal-ansi) seq start end
