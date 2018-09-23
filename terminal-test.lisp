@@ -49,7 +49,7 @@
     ,@body
     (prompt-next)))
 
-(defun test-screen-size ()
+(defun test-screen-size-draw ()
   (tt-clear) (tt-home)
   ;; upper left
   (tt-format "X <---~%^~%|~%|")
@@ -84,21 +84,29 @@
   ;;(case (tt-get-key) ((#\Q #\q) (throw 'quit nil)))
 
   ;; message
-  (let ((l1 "There should be an 'X' in every corner of the screen.~%")
-	(l2 "Press Q to quit, anything else to continue."))
-    (tt-move-to (truncate (terminal-window-rows *terminal*) 2)
-		(- (truncate (terminal-window-columns *terminal*) 2)
-		   (truncate (length l1) 2)))
-    (tt-format l1)
-    (tt-move-to (+ (truncate (terminal-window-rows *terminal*) 2) 1)
-		(- (truncate (terminal-window-columns *terminal*) 2)
-		   (truncate (length l2) 2)))
-    (tt-format l2))
-  (tt-finish-output)
+  (flet ((center (text offset)
+	   (tt-move-to (+ (truncate (terminal-window-rows *terminal*) 2)
+			  offset)
+		       (- (truncate (terminal-window-columns *terminal*) 2)
+			  (truncate (length text) 2)))
+	   (tt-format text)))
+    (center "There should be an 'X' in every corner of the screen.~%" 0)
+    (center "Press Q to quit, anything else to continue." 1)
+    (center "Also try resizing the window." 2))
+  (tt-finish-output))
 
-  (case (tt-get-key)
-    ((#\Q #\q)
-     (throw 'quit nil))))
+(defun test-screen-size ()
+  (test-screen-size-draw)
+  (unwind-protect
+       (progn
+	 (tt-allow-events :resize)
+	 (loop :while (case (tt-get-key)
+			((#\Q #\q)
+			 (throw 'quit nil))
+			(:resize t)
+			(otherwise nil))
+	    :do (test-screen-size-draw)))
+    (tt-allow-events :none)))
 
 (defun test-move-to-col ()
   (blurp
