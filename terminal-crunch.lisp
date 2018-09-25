@@ -217,15 +217,17 @@ two values ROW and COLUMN."
 
 ;(deftype hash-value fixnum)
 
-(defparameter *keyword-differentiator*
-  #.(loop :with i = 0 :for c :across "keyword" :do
-       (setf i (logior (ash i 8) (char-code c))) :finally (return i)))
-(declaim (type fixnum *keyword-differentiator*))
-
 ;; I'm just deciding it's 64bits. We could use most-positive-fixnum, but that
 ;; might be too small on some platforms.
 ;; (defconstant +cut-off+ #xffffffffffffffff)
 (defconstant +cut-off+ most-positive-fixnum)
+
+(defparameter *keyword-differentiator*
+  #.(loop :with i = 0
+       :for c :across #+64-bit-target "keyword" #+32-bit-target "keyw"
+       :do (setf i (logand (logior (ash i 8) (char-code c)) +cut-off+))
+       :finally (return i)))
+(declaim (type fixnum *keyword-differentiator*))
 
 (defun curses-hash-seed () 0)
 (declaim (ftype (function () fixnum) curses-hash-seed))
