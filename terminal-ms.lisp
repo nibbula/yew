@@ -543,7 +543,7 @@
 
       (when (and (keywordp fg) (not our-fg))
 	(error "Forground ~a is not a known color." fg))
-      (when (and (keywordp bg) (not our-fg))
+      (when (and (keywordp bg) (not our-bg))
 	(error "Background ~a is not a known color." bg))
 
       (cond
