@@ -7,11 +7,13 @@
       (defpackage :color-names
 	(:documentation "Names for your sensations.")
 	(:use :cl :dlib)
-	(:shadow cl:tan)
+	;; (:shadow cl:tan)
 	(:export
 	 #:mulge-names
 	 ))
 ;; ))
+
+;; tan -> tan-color
 
 (in-package :color-names)
 
@@ -231,7 +233,7 @@
 (wheat                    . #(:rgb 49/51 74/85 179/255))
 (sandy-brown              . #(:rgb 244/255 164/255 32/85))
 (SandyBrown               . #(:rgb 244/255 164/255 32/85))
-(tan                      . #(:rgb 14/17 12/17 28/51))
+(tan-color                . #(:rgb 14/17 12/17 28/51))
 (chocolate                . #(:rgb 14/17 7/17 2/17))
 (firebrick                . #(:rgb 178/255 2/15 2/15))
 (brown                    . #(:rgb 11/17 14/85 14/85))
