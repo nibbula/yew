@@ -770,6 +770,7 @@ calls. Returns NIL when there is an error."
     #(+O_NOFOLLOW+  #o000400000 "Don't follow symlinks")
     #(+O_DIRECT+    #o000040000 "Attempt to bypass buffer cache")
     #(+O_NOATIME+   #o001000000 "Don't update acess time")
+    #(+O_CLOEXEC+   #o002000000 "Close descriptor on exec.")
     #(+O_PATH+      #o010000000 "Path bookmarking")
     #(+O_DSYNC+     #o000010000 "Data synchronization")
     #(+O_TMPFILE+   #o020200000 "Temporary anonymous")))
