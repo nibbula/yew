@@ -72,6 +72,7 @@
    #:is-executable
    #:config-dir
    #:data-path
+   #:data-dir
    #:config-path
    #:cache-dir
    #:runtime-dir
@@ -1725,10 +1726,14 @@ current effective user. If REGULAR is true also check if it's a regular file."
 ;; App name isn't really optional.
 (defvar *app-name* nil)
 (defun app-name ()
-  (or *app-name* (setf *app-name* "WinBogo"))) ;; XXX @@@
+  (or *app-name* (setf *app-name* "LispApps"))) ;; XXX @@@
 
 (defun config-dir (&optional (app-name (app-name)))
   "Where user specific configuration files should be stored."
+  (s+ "%USERPROFILE%\\AppData\\Local\\" app-name "\\"))
+
+(defun data-dir (&optional (app-name (app-name)))
+  "Where user specific data files should be stored."
   (s+ "%USERPROFILE%\\AppData\\Local\\" app-name "\\"))
 
 (defun data-path (&optional app-name)
