@@ -65,9 +65,7 @@
    ;; info
    #:environment
    #:environment-variable
-   #:getenv
-   #:setenv
-   #:unsetenv
+   #:env #:getenv #:setenv #:unsetenv
    #:sysctl
    #:sysctl-by-number
    #:getpagesize
@@ -178,6 +176,7 @@
    #+linux #:+O_PATH+
    #+linux #:+O_DSYNC+
    #+linux #:+O_TMPFILE+
+   #+linux #:+O_CLOEXEC+
    #+freebsd #:+O_NOFOLLOW+
    #+freebsd #:+O_DIRECT+
    #+freebsd #:+O_DIRECTORY+
@@ -460,6 +459,29 @@
    #:getmntinfo
    #:mounted-filesystems
    #:mount-point-of-file
+
+   ;; Memory
+   #:mmap
+   #:munmap
+   #:+PROT_NONE+ #:+PROT_READ+ #:+PROT_WRITE+ #:+PROT_EXEC+ #:+PROT_GROWSDOWN+
+   #:+PROT_GROWSUP+
+   #:+MAP_SHARED+ #:+MAP_PRIVATE+ #:+MAP_TYPE+ #:+MAP_FIXED+ #:+MAP_ANONYMOUS+
+   #:+MAP_32BIT+ #:+MAP_GROWSDOWN+ #:+MAP_DENYWRITE+ #:+MAP_EXECUTABLE+
+   #:+MAP_LOCKED+ #:+MAP_NORESERVE+ #:+MAP_POPULATE+ #:+MAP_NONBLOCK+
+   #:+MAP_STACK+ #:+MAP_HUGETLB+ #:+MAP_UNINITIALIZED+
+   #:+MREMAP_MAYMOVE+ #:+MREMAP_FIXED+ #:+OVERCOMMIT_GUESS+ #:+OVERCOMMIT_ALWAYS+
+   #:+OVERCOMMIT_NEVER+ #:+MAP_HUGE_SHIFT+ #:+MAP_HUGE_MASK+ #:+MAP_HUGE_2MB+
+   #:+MAP_HUGE_1GB+ #:+MLOCK_ONFAULT+
+   #:+MS_ASYNC+ #:+MS_SYNC+ #:+MS_INVALIDATE+
+   #:msync
+   #:mprotect
+   #:madvise
+   #:mlock
+   #:munlock
+   #:munlockall
+   #:mincore
+   #:mremap
+   #:remap-file-pages
 
    ;; Terminal things
    #:isatty
