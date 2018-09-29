@@ -482,6 +482,7 @@
    #:mincore
    #:mremap
    #:remap-file-pages
+   #:map-file
 
    ;; Terminal things
    #:isatty
