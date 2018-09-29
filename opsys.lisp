@@ -72,6 +72,16 @@ expect. Like for example on a Unix system it should be like strerror.")
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Environmental information
 
+(defosfun environment ()
+  "Return an a-list of the system environment. The elements are conses
+(VARIABLE-NAME . VALUE), where VARIABLE-NAME is a keyword and VALUE is a string.")
+
+(defosfun environment-variable (var)
+  "Return a string with the value of the system environment variable name VAR.")
+
+(defosfun env (var)
+  "Return a string with the value of the system environment variable name VAR.")
+
 ;; Are these all the arguements? Maybe not. Maybe it's just the args which
 ;; wheren't processed. If you give it ALL-P true then hopefully it is.
 ;; @@@ Actually I think it might be good to have LISP-ARGS be able to return
