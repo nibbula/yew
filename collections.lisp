@@ -4,7 +4,9 @@
 
 ;; This isn't necessarily efficient or well designed, it's just practical and
 ;; straightforward, because I really just need it to work. It could at least
-;; probably use more macrology to make the methods and things.
+;; probably use more macrology to make the methods and things.  Of course, by
+;; nature, treating various data structures uniformly has many potential
+;; performance pitfalls.
 
 (defpackage :collections
   (:documentation
@@ -29,6 +31,7 @@ We should entertain other naming ideas.")
    #:omap-into
    #:oevery
    #:oany
+   #:ocopy
    #:ofill
    #:ofill-with
    #:ofill-range-with
@@ -134,6 +137,7 @@ isn't bound."
   (:method ((thing sequence) key)      (elt thing key)))
 
 ;; This is separate since it wants the generic to already be defined.
+;; Many of the other container methods have to be separated this way.
 (defmethod oelt ((thing container) key)
   (oelt (container-data thing) key))
 
@@ -193,9 +197,10 @@ but with the arguments reversed for convenient use in pipelines."
   (:method ((collection structure-object))
     (length (mop:class-slots (class-of collection))))
   (:method ((collection standard-object))
-    (length (mop:class-slots (class-of collection))))
-  (:method ((collection container))
-    (olength (container-data collection))))
+    (length (mop:class-slots (class-of collection)))))
+
+(defmethod olength ((collection container))
+  (olength (container-data collection)))
 
 ;; (defgeneric omap (function &rest collections)
 ;;   (:documentation
@@ -236,10 +241,10 @@ sequence.")
        (funcall function
 		(and
 		 (slot-boundp collection (mop:slot-definition-name slot))
-		 (slot-value collection (mop:slot-definition-name slot))
-		 ))))
-  (:method (function (collection container))
-    (omap function (container-data collection))))
+		 (slot-value collection (mop:slot-definition-name slot)))))))
+
+(defmethod omap (function (collection container))
+  (omap function (container-data collection)))
 
 (defgeneric omapk (function keyed-collection) ;; should be &rest collections
   (:documentation
@@ -274,9 +279,10 @@ unless COLLECTION is a sequence.")
 		 (slot-boundp collection (mop:slot-definition-name slot))
 		 (vector
 		  (mop:slot-definition-name slot)
-		  (slot-value collection (mop:slot-definition-name slot)))))))
-  (:method (function (collection container))
-    (omap function (container-data collection))))
+		  (slot-value collection (mop:slot-definition-name slot))))))))
+
+(defmethod omapk (function (collection container))
+  (omapk function (container-data collection)))
 
 (defgeneric omapn (function collection)
   (:documentation
@@ -304,9 +310,10 @@ values.")
        (funcall function
 		(and
 		 (slot-boundp collection (mop:slot-definition-name slot))
-		 (slot-value collection (mop:slot-definition-name slot))))))
-  (:method (function (collection container))
-    (omapn function (container-data collection))))
+		 (slot-value collection (mop:slot-definition-name slot)))))))
+
+(defmethod omapn (function (collection container))
+  (omapn function (container-data collection)))
 
 (defgeneric mappable (collection)
   (:documentation "Return true if the COLLECTION can be iterated with OMAP.")
@@ -315,8 +322,10 @@ values.")
   (:method ((collection sequence))	   t)
   (:method ((collection hash-table))	   t)
   (:method ((collection structure-object)) t)
-  (:method ((collection standard-object))  t)
-  (:method ((collection container)) (mappable (container-data collection))))
+  (:method ((collection standard-object))  t))
+
+(defmethod mappable ((collection container))
+  (mappable (container-data collection)))
 
 (defgeneric keyed-collection-p (collection)
   (:method ((collection list))             nil)
@@ -324,9 +333,10 @@ values.")
   (:method ((collection sequence))	   nil)
   (:method ((collection hash-table))	   t)
   (:method ((collection structure-object)) t)
-  (:method ((collection standard-object))  t)
-  (:method ((collection container))
-    (keyed-collection-p (container-data collection))))
+  (:method ((collection standard-object))  t))
+
+(defmethod keyed-collection-p ((collection container))
+  (keyed-collection-p (container-data collection)))
 
 (defgeneric omap-into (mutable-collection function &rest collections)
   (:documentation
@@ -343,9 +353,10 @@ If COLLECTIONS are SEQUENCEs, the elements are applied in the sequence order.")
   (:method ((mutable-collection sequence) function &rest collections)
     (apply #'map-into mutable-collection function collections))
   (:method ((mutable-collection hash-table) function &rest collections)
-    (apply #'map-into mutable-collection function collections))
-  (:method ((mutable-collection container) function &rest collections)
-    (apply #'map-into (container-data mutable-collection) function collections)))
+    (apply #'map-into mutable-collection function collections)))
+
+(defmethod omap-into ((mutable-collection container) function &rest collections)
+  (apply #'omap-into (container-data mutable-collection) function collections))
 
 (defgeneric oevery (function &rest collections)
   (:documentation
@@ -356,6 +367,33 @@ If COLLECTIONS are SEQUENCEs, the elements are applied in the sequence order.")
 "Return true if FUNCTION returns true for any element of COLLECTIONS."))
 
 ;; Sequence-like functions
+
+(defgeneric ocopy (collection)
+  (:documentation
+   "Return new collection with the same elements as COLLECTION.")
+  (:method ((collection list)) (copy-seq collection))
+  (:method ((collection vector)) (copy-seq collection))
+  (:method ((collection sequence)) (copy-seq collection))
+  (:method ((collection hash-table))
+    ;; Of course this could have some discernable properties that are
+    ;; different than the original.
+    (let ((new-table
+	   (make-hash-table
+	    :test (hash-table-test collection)
+	    :size (hash-table-size collection)
+	    :rehash-size (hash-table-rehash-size collection)
+	    :rehash-threshold (hash-table-rehash-threshold collection))))
+      (maphash #'(lambda (key value)
+		   (setf (gethash key new-table) value))
+	       collection)
+      new-table)))
+
+(defmethod ocopy ((collection container))
+  ;; This is one of those things that may not work for complex objects.
+  ;; Callers should realize this, and object implementations should
+  ;; error or something, if it doesn't make sense.
+  (make-instance (type-of collection)
+		 :container-data (ocopy (container-data collection))))
 
 (defgeneric ofill (collection item &key start end)
   (:documentation
@@ -371,10 +409,10 @@ If COLLECTIONS are SEQUENCEs, the elements are applied in the sequence order.")
     (maphash #'(lambda (key value)
 		 (declare (ignore value))
 		 (setf (gethash key collection) item))
-	     collection))
-  (:method ((collection container) item &key start end)
-    (fill (container-data collection) item :start start :end end))
-  )
+	     collection)))
+
+(defmethod ofill ((collection container) item &key start end)
+  (ofill (container-data collection) item :start start :end end))
 
 (defun ofill-with (item collection)
   "Replaces the elements of SEQUENCE with ITEM. This is the same as OFILL but
@@ -402,9 +440,13 @@ bounded by START and END.")
   (:method ((collection vector) start &optional end)
     (subseq collection start end))
   (:method ((collection sequence) start &optional end)
-    (subseq collection start end))
-  (:method ((collection container) start &optional end)
-    (subseq (container-data collection) start end)))
+    (subseq collection start end)))
+
+(defmethod osubseq ((collection container) start &optional end)
+  ;; Somewhat dubious, of course.
+  (make-instance (type-of collection)
+		 :container-data
+		 (osubseq (container-data collection) start end)))
 
 ;; I wonder if the useful word "slice" is really appropriate to be even slightly
 ;; used up here.
@@ -450,10 +492,11 @@ element, and should return a value to be given to PREDICATE.")
     (sort collection predicate :key key))
   (:method ((collection sequence) predicate &key key)
     #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
-    (sort collection predicate :key key))
-  (:method ((collection container) predicate &key key)
-    #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
-    (sort (container-data collection) predicate :key key)))
+    (sort collection predicate :key key)))
+
+(defmethod osort ((collection container) predicate &key key)
+  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+  (osort (container-data collection) predicate :key key))
 
 ;; @@@ Should we make sort-by-key also?
 (defun osort-by (predicate collection)
@@ -477,10 +520,20 @@ satisfies the test TEST or TEST-NOT, as appropriate.")
 					 test-not)
     (find item collection :from-end from-end :start start :end end :key key
 	  :test test :test-not test-not))
-  (:method (item (collection container) &key from-end (start 0) end key test
-					  test-not)
-    (find item (container-data collection) :from-end from-end :start start
-	  :end end :key key :test test :test-not test-not)))
+  (:method (item (collection hash-table) &key from-end (start 0) end key test
+					   test-not)
+    ;; This is certainly not perfect, but...
+    (declare (ignore from-end start end))
+    (let ((found-item (gethash (if key (funcall key item) item) collection)))
+      (cond
+	((and test (funcall test item found-item)) found-item)
+	((and test-not (not (funcall test item found-item))) found-item))
+      found-item)))
+
+(defmethod ofind (item (collection container)
+		  &key from-end (start 0) end key test test-not)
+  (ofind item (container-data collection) :from-end from-end :start start
+	 :end end :key key :test test :test-not test-not))
 
 (defun ofind-with-key (item key collection)
   "Like ofind with supplying a KEY argument, but convenient for use in
@@ -518,16 +571,17 @@ false. If no element satifies the test, NIL is returned.")
 	   `(,item ,collection
 	     :from-end ,from-end :test ,test :test-not ,test-not :key ,key
 	     ,@(when start-p `(:start ,start))
-	     ,@(when end-p `(:end ,end)))))
-  (:method (item (collection container)
-	    &key from-end test test-not key
-	      (start nil start-p)
-	      (end nil end-p))
-    (apply 'position
-	   `(,item (container-data ,collection)
-	     :from-end ,from-end :test ,test :test-not ,test-not :key ,key
-	     ,@(when start-p `(:start ,start))
 	     ,@(when end-p `(:end ,end))))))
+
+(defmethod oposition (item (collection container)
+		      &key from-end test test-not key
+			(start nil start-p)
+			(end nil end-p))
+  (apply #'oposition
+	 `(,item (container-data ,collection)
+		 :from-end ,from-end :test ,test :test-not ,test-not :key ,key
+		 ,@(when start-p `(:start ,start))
+		 ,@(when end-p `(:end ,end)))))
 
 #|
 (defgeneric osearch (collection ...)
@@ -571,6 +625,14 @@ false. If no element satifies the test, NIL is returned.")
 	    ))
 |#
 
+#|
+(defgeneric opick (collection &rest keys)
+  (:documentation
+   "Return a collection, with only the elemnets of COLLECTION indicated by
+KEYS.")
+|#
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Array-like
 
@@ -579,15 +641,16 @@ false. If no element satifies the test, NIL is returned.")
   (:method ((array vector) &rest subscripts)
     (apply #'aref array subscripts))
   (:method ((array array) &rest subscripts)
-    (apply #'aref array subscripts))
-  (:method ((array container) &rest subscripts)
-    ;; @@@ I suppose this will only work if the container data is an array, but
-    ;; should we do a check here so perhaps we could get a better error?
-    (apply #'aref (container-data array) subscripts))
-  ;; We could do elt on lists, sequences, and even struct & classes, but
-  ;; is there a point? Why not just use oelt or something? The performance will
-  ;; likely be worse with this.
-  )
+    (apply #'aref array subscripts)))
+
+;; We could do elt on lists, sequences, and even struct & classes, but
+;; is there a point? Why not just use oelt or something? The performance will
+;; likely be worse with this.
+
+(defmethod oaref ((array container) &rest subscripts)
+  ;; @@@ I suppose this will only work if the container data is an array, but
+  ;; should we do a check here so perhaps we could get a better error?
+  (apply #'oaref (container-data array) subscripts))
 
 (defun oarray-ref (&rest args)
   "Like OAREF, but with the arguments reversed for convenience in pipelines."
