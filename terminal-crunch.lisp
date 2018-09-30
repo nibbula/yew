@@ -220,7 +220,8 @@ two values ROW and COLUMN."
 ;; I'm just deciding it's 64bits. We could use most-positive-fixnum, but that
 ;; might be too small on some platforms.
 ;; (defconstant +cut-off+ #xffffffffffffffff)
-(defconstant +cut-off+ most-positive-fixnum)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconstant +cut-off+ most-positive-fixnum))
 
 (defparameter *keyword-differentiator*
   #.(loop :with i = 0
@@ -502,14 +503,19 @@ sizes. It only copies the smaller of the two regions."
 
 (defmethod terminal-end ((tty terminal-crunch) &optional state)
   "Put the terminal back to the way it was before we called terminal-start."
+  (when (not (started tty))
+    (dbugf :crunch "Crunch ~s not started or already ended!!.~%" tty)
+    ;; @@@ This is probably a bug I should fix.
+    (warn "Crunch double ended.")
+    (return-from terminal-end nil))
   (terminal-finish-output tty)
   (terminal-end (terminal-wrapped-terminal tty) state)
   (if (zerop (decf (started tty)))
-    (progn
-      (dbugf :crunch "Crunch ~s ended.~%" tty)
-      (setf (started tty) nil))
-    (progn
-      (dbugf :crunch "Crunch ~s pop, but not ended.~%" tty))))
+      (progn
+	(dbugf :crunch "Crunch ~s ended.~%" tty)
+	(setf (started tty) nil))
+      (progn
+	(dbugf :crunch "Crunch ~s pop, but not ended.~%" tty))))
 
 (defmethod terminal-done ((tty terminal-crunch) &optional state)
   "Forget about the whole terminal thing and stuff."
