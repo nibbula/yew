@@ -158,6 +158,8 @@ not call process-event with it."))
 (defgeneric process-event (inator event &optional keymap-in))
 (defgeneric start-inator (inator))
 (defgeneric finish-inator (inator))
+(defgeneric resize (inator)
+  (:documentation "Called when we get a resize event."))
 
 (defkeymap *default-inator-keymap*
   `((,(ctrl #\N)	. next)
@@ -181,6 +183,7 @@ not call process-event with it."))
     (#\return		. accept)
     (,(ctrl #\L)	. redraw)
     (,(ctrl #\G)	. quit)
+    (:resize		. resize)
     (#\escape		. *default-inator-escape-keymap*)
     )
   :default-binding 'default-action)
@@ -211,6 +214,10 @@ not call process-event with it."))
 (defmethod finish-inator ((inator inator))
   "Default method which does nothing."
   (declare (ignore inator)))
+
+(defmethod resize ((inator inator))
+  "Default method which calls redraw."
+  (redraw inator))
 
 (defmethod process-event ((inator inator) event &optional keymap-in)
   "Default way to process an event."
