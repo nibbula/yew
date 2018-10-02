@@ -542,7 +542,9 @@ innermost N contexts, if we can."
   (let ((bt-func (if (< *lisp-version-number* 10300)
 		     (intern "BACKTRACE" :sb-debug)
 		     (intern "PRINT-BACKTRACE" :sb-debug))))
-    (if n (funcall bt-func n) (funcall bt-func)))
+    (if (< *lisp-version-number* 10300)
+	(if n (funcall bt-func n) (funcall bt-func)))
+	(if n (funcall bt-func :count n) (funcall bt-func)))
 ;  #+sbcl (sbcl-wacktrace)
   #+cmu (if n (debug:backtrace n) (debug:backtrace))
   #+ccl (loop :with i = 0
