@@ -1322,6 +1322,9 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 			     (screen-width old))))
 
     (dbugf :crunch "****** start update @ ~s~%" start-line)
+    ;; (dbugf :crunch-update "****** start update @ ~s~%" start-line)
+    ;; (if-dbugf (:crunch-update)
+    ;; 	      (tiny-debug::debugger-backtrace 10))
 
     ;; First, actually scroll unmanaged content if we have to.
     (when (and (not (zerop start-line))

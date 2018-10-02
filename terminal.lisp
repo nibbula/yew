@@ -659,8 +659,7 @@ when given that event alone. The starting state is to allow no events.")
 	   (:none   (setf result t events-allowed nil))
 	   (otherwise
 	    (when (terminal-allow-event terminal e)
-	      (setf result t)
-	      (pushnew e events-allowed)))))
+	      (setf result t)))))
       result)))
 
 (defgeneric terminal-allow-event (tty event)

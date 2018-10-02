@@ -416,10 +416,12 @@ TTY is a terminal, in case you didn't know."
 	      (terminal-start ,tty) (terminal-finish-output ,tty)
 	      (setf ,borked t))
 	    (opsys-resized ()
-	      (dbugf :terminal "ansi resized ~s~%" ,tty)
+	      (dbugf :terminal "events allowed ~s~%"
+		     (terminal-events-allowed ,tty))
 	      (terminal-get-size ,tty)
 	      (when (and (find :resize (terminal-events-allowed ,tty))
 			 *allow-resize*)
+		(dbugf :terminal "terminal-ansi resize event is allowed~%")
 		(throw 'resize-event :resize))
 	      (setf ,borked t)))
 	  :while ,borked)
@@ -881,7 +883,8 @@ Attributes are usually keywords."
 	       (set-it (x)
 		 (setf result x)))
 	(with-interrupts-handled (tty)
-	  (char-util::%get-utf8b-char read-it set-it))
+	  (with-terminal-signals ()
+	    (char-util::%get-utf8b-char read-it set-it)))
 	result))))
 
 (defmethod terminal-get-char ((tty terminal-ansi))
@@ -1031,6 +1034,7 @@ and add the characters the typeahead."
 		      (setf result (listen-for
 				    seconds (terminal-file-descriptor tty))))))
 	      :resize)
+      (dbugf :resize "terminal-ansi resized in listen~%")
       (add-typeahead tty :resize)
       (setf result t))
     result))
@@ -1302,7 +1306,9 @@ XTerm or something."
 (defmethod terminal-allow-event ((tty terminal-ansi) event)
   "Allow event and return true if the terminal can allow event."
   (case event
-    (:resize t)
+    (:resize
+     (pushnew :resize (terminal-events-allowed tty))
+     t)
     (otherwise nil)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

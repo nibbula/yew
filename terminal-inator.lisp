@@ -17,7 +17,9 @@
 (defmethod initialize-instance
     :after ((o terminal-inator) &rest initargs &key &allow-other-keys)
   "Initialize a terminal-inator."
-  (declare (ignore initargs)))
+  (declare (ignore initargs))
+  ;; Allow resize events by default.
+  (tt-allow-events :resize))
 
 ;; (defmethod start-inator ((i terminal-inator))
 ;;   "Start a TERMINAL-INATOR."
@@ -31,7 +33,8 @@
 
 (defmethod update-display ((i terminal-inator))
   "Update the view of a TERMINAL-INATOR."
-  (call-next-method)
+  (when (next-method-p)
+    (call-next-method))
   (tt-finish-output))
 
 (defmethod await-event ((i terminal-inator))
