@@ -70,7 +70,8 @@ For example:
 	 (prototype-name (symbolify
 			  (s+ "*" (class-name (class-of o)) "-prototype*")
 			  :package package))
-	 (prototype (symbol-value prototype-name)))
+	 (prototype (and (boundp prototype-name)
+			 (symbol-value prototype-name))))
     (loop :for option :in prototype :do
        (push (apply #'make-instance (second option)
 		    (cddr option))
