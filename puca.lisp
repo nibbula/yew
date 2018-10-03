@@ -21,7 +21,8 @@
   (:documentation
    "Putative Muca (A very simple(istic) interface to CVS/git/svn).")
   (:use :cl :dlib :dlib-misc :opsys :keymap :char-util :rl :completion :inator
-	:terminal :terminal-inator :fui :options
+	:terminal :terminal-inator :fui :options :fatchar :table :table-print
+	:collections
 	#+use-re :re #-use-re :ppcre)
   (:export
    ;; Main entry point
@@ -34,23 +35,38 @@
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 		   (compilation-speed 0)))
 
-(defstruct goo
-  "A file/object under version control."
-  selected
-  modified
-  filename
-  extra-lines)
+(defclass puca-item ()
+  ()
+  (:documentation "A generic item."))
+
+(defclass goo (puca-item)
+  ((selected
+    :initarg :selected :accessor goo-selected :initform nil :type boolean
+    :documentation "True if this item is selected.")
+   (modified
+    :initarg :modified :accessor goo-modified :initform nil
+    :documentation "@@@@ i dunno")
+   (filename
+    :initarg :filename :accessor goo-filename :initform nil
+    :documentation "Name of the file?")
+   (extra-lines
+    :initarg :extra-lines :accessor goo-extra-lines :initform nil
+    :documentation "Extra lines output from the backend command."))
+  (:documentation "A file/object under version control."))
+
+(defun make-goo (&rest initargs)
+  (apply #'make-instance 'goo initargs))
 
 (defvar *puca* nil
   "The current puca instance.")
 
-(defclass puca (terminal-inator options-mixin)
+(defclass puca-app (terminal-inator options-mixin)
   ((backend
     :initarg :backend :accessor puca-backend :initform nil
     :documentation "The revision control system backend that we are using.")
    (goo
     :initarg :goo :accessor puca-goo :initform nil
-    :documentation "A list of goo entries.")
+    :documentation "A sequence of puca-item entries.")
    (maxima
     :initarg :maxima :accessor puca-maxima :initform 0
     :documentation "Number of items.")
@@ -80,7 +96,12 @@
     :documentation "True to turn on debugging."))
   (:default-initargs
    :point 0)
-  (:documentation "An instance of a version control frontend app."))
+  (:documentation "A version control frontend app."))
+
+(defclass puca (puca-app)
+  ()
+  (:documentation
+   "The main view which operates on file and things in local repository."))
 
 (defparameter *puca-prototype* nil
   "Prototype PUCA options.")
@@ -107,6 +128,14 @@
    (diff-repo
     :initarg :diff-repo :accessor backend-diff-repo :type string
     :documentation "Command to show the some kind of more differences.")
+   (diff-history
+    :initarg :diff-history :accessor backend-diff-history
+    :documentation
+    "Command to compare a change and the previous in the history.")
+   (diff-history-head
+    :initarg :diff-history-head :accessor backend-diff-history-head
+    :documentation
+    "Command to compare a change in history to the current version.")
    (commit
     :initarg :commit :accessor backend-commit :type string
     :documentation "Commit the changes.")
@@ -119,6 +148,12 @@
    (push
     :initarg :push :accessor backend-push :type string
     :documentation "Push the changes to the remote in a distributed RCS.")
+   (history
+    :initarg :history :accessor backend-history
+    :documentation "Get the history for a specific file.")
+   (history-all
+    :initarg :history-all :accessor backend-history-all
+    :documentation "Get the history for all changes.")
    (ignore-file
     :initarg :ignore-file :accessor backend-ignore-file  :type string
     :documentation "File which contains a list of files to ignore."))
@@ -141,6 +176,10 @@
 
 (defgeneric get-status-list (backend)
   (:documentation "Return a list of files and their status."))
+
+(defgeneric get-history (backend &optional files)
+  (:documentation "Return a list of history entries for FILE. If FILE is nil,
+return history for the whole repository."))
 
 ;; Generic implementations of some possibly backend specific methods.
 
@@ -180,7 +219,7 @@
 	 :do
 	 (incf i)
 	 (message *puca* "Listing...~d" i)
-	 (tt-finish-output)
+	 ;; (tt-finish-output)
 	 :collect line))))
 
 (defmethod add-ignore ((backend backend) file)
@@ -196,8 +235,8 @@
 			  :if-exists :append
 			  :if-does-not-exist :create)
     (write-line file stream))
-  (get-list)
-  (draw-screen))
+  (get-list *puca*)
+  (draw-screen *puca*))
 
 (defmethod banner ((backend backend))
   "Print something useful at the top of the screen."
@@ -278,10 +317,18 @@
    :reset	      "git --no-pager reset ~{~a ~}"
    :diff	      "git diff --color ~{~a ~} | pager"
    :diff-repo	      "git diff --color --staged | pager"
+   :diff-history      "git diff --color ~a ~a -- ~{~a ~} | pager"
+   :diff-history-head "git diff --color ..~a -- ~{~a ~} | pager"
    :commit	      "git --no-pager commit ~{~a ~}"
    :update	      "git --no-pager pull ~{~a ~}"
    :update-all	      "git --no-pager pull"
    :push	      "git --no-pager push"
+   :history	      '("git" "--no-pager" "log"
+			;;"--format=(\"%h\" \"%ae\" %ct \"%s\")" "--")
+			"--format=%h%x00%ae%x00%ct%x00%s" "--")
+   :history-all	      '("git" "--no-pager" "log"
+			;;"--format=(\"%h\" \"%ae\" %ct \"%s\")")
+			"--format=%h%x00%ae%x00%ct%x00%s")
    :ignore-file	      ".gitignore")
   (:documentation "Backend for git."))
 
@@ -333,7 +380,7 @@
 		 :do
 		 (incf i)
 		 (message *puca* "Listing...~d" i)
-		 (tt-finish-output)
+		 ;; (tt-finish-output)
 		 :collect line)))
       ;;(debug-msg "~a from git status" i)
       (when (puca-show-all-tracked *puca*)
@@ -344,32 +391,13 @@
 			   :do
 			   (incf i)
 			   (message *puca* "Listing...~d" i)
-			   (tt-finish-output)
+			   ;; (tt-finish-output)
 			   :collect (s+ " _ " line)))))
 	;;(tt-move-to 0 0) (tt-home) (tt-erase-below)
 	;;(tt-format nil "~w" result)
 	;;(debug-msg "~a from git ls-files" i)
 	)
       result)))
-
-;; history mode
-
-#|
-(defun glorp (f)
-  (!_= "git" "--no-pager" "log" "--format=(\"%h\" \"%ae\" %ct \"%s\")" "--" f))
-
-(defun zermel ()
-  (let ((hh (loop :for r :in (glorp "completion.lisp")
-	       :collect (safe-read-from-string r))))
-    (table-print:nice-print-table
-     (mapcar (_ (list
-		 (s+ (subseq (first (cdr _)) 0 3) "..")
-		 (dlib-misc:date-string
-		  :format :relative
-		  :time (uos:unix-to-universal-time (second (cdr _))))
-		 (third (cdr _)))) hh)
-     '("email" "date" "message"))))
-|#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; SVN
@@ -434,7 +462,7 @@
 (defun draw-message (p)
   (output-message (puca-message p)))
 
-(defmethod message ((p puca) format-string &rest format-args)
+(defmethod message ((p puca-app) format-string &rest format-args)
   "Display a message in the message area."
   (setf (puca-message p) (apply #'format nil format-string format-args))
   (draw-message p)
@@ -449,7 +477,7 @@
     (#\C :magenta)  ; conflicts
     (t   :green)))  ; updated or other
 
-(defun draw-goo (i)
+(defmethod draw-goo ((puca puca) i)
   "Draw the goo object, with the appropriate color."
   (with-slots (goo top first-line) *puca*
     (let ((g (elt goo i)))
@@ -475,9 +503,9 @@
 
 (defun draw-line (i)
   "Draw line I, with the appropriate color."
-  (draw-goo i))
+  (draw-goo *puca* i))
 
-(defun get-list ()
+(defmethod get-list ((puca puca))
   "Get the list of files/objects from the backend and parse them."
   (message *puca* "Listing...")
   (with-slots (goo top errors maxima (point inator::point) cur extra) *puca*
@@ -498,8 +526,18 @@
       (setf top (max 0 (- point 10)))))
   (message *puca* "Listing...done"))
 
-(defun draw-screen ()
-  (with-slots (maxima top bottom goo message backend first-line) *puca*
+(defgeneric draw-inner-screen (puca)
+  (:documentation "Draw the inner part of the screen."))
+
+(defmethod draw-inner-screen ((puca puca))
+  (with-slots (top bottom goo) puca
+    (when (> (length goo) 0)
+      (loop :for i :from top :below (+ top bottom)
+	 :do (draw-goo puca i)))))
+
+(defmethod draw-screen ((puca puca-app))
+  (with-slots (maxima top bottom goo message backend first-line) puca
+    (tt-home)
     (tt-erase-below)
     (draw-box 0 0 (tt-width) (tt-height))
     (let* ((title (format nil "~a Muca (~a)" 
@@ -518,16 +556,17 @@
       ;; top scroll indicator
       (when (> top 0)
 	(tt-write-string-at (1- first-line) 2 "^^^^^^^^^^^^^^^^^^^^^^^"))
-      (when (> (length goo) 0)
-	(loop :for i :from top :below (+ top bottom)
-	   :do (draw-goo i)))
+      ;; (when (> (length goo) 0)
+      ;; 	(loop :for i :from top :below (+ top bottom)
+      ;; 	   :do (draw-goo puca i)))
+      (draw-inner-screen puca)
       ;; bottom scroll indicator
       (when (< bottom (- maxima top))
 	(tt-write-string-at (+ first-line bottom) 2 "vvvvvvvvvvvvvvvvvvvvvvv"))
     (when message
       (draw-message *puca*)
       (setf message nil)))))
-
+  
 (defun do-literal-command (format-str format-args
 			   &key (relist t) (do-pause t) confirm)
   "Do the command resulting from applying FORMAT-ARGS to FORMAT-STRING.
@@ -540,6 +579,7 @@ confirmation first."
   (when (and confirm (not (yes-or-no-p "Are you sure? ")))
     (return-from do-literal-command (values)))
   (let* ((command (apply #'format nil format-str format-args)))
+    ;; (debug-msg "command ~s" command)
     (lish:! command))
   (when do-pause
     (write-string "[Press Return]")
@@ -548,9 +588,9 @@ confirmation first."
   (terminal-start *terminal*)
   (message *puca* "*terminal* = ~s" *terminal*)
   (when relist
-    (get-list))
+    (get-list *puca*))
   (tt-clear)
-  (draw-screen))
+  (draw-screen *puca*))
 
 (defun do-command (command format-args
 		   &rest keys &key (relist t) (do-pause t) confirm)
@@ -559,7 +599,7 @@ FORMAT-ARGS. If RELIST is true (the default), regenerate the file list.
 If CONFIRM is true, ask the user for confirmation first."
   (declare (ignorable relist do-pause confirm))
   (apply #'do-literal-command (apply command (list (puca-backend *puca*)))
-	 (list format-args) keys)
+	 format-args keys)
   (values))
 
 (defun selected-files ()
@@ -602,7 +642,7 @@ If CONFIRM is true, ask the user for confirmation first."
   (fui:display-text title text-lines)
   (tt-clear)
   ;;(refresh)
-  (draw-screen)
+  (draw-screen *puca*)
   (tt-finish-output))
 
 (defun input-window (title text-lines)
@@ -612,7 +652,7 @@ If CONFIRM is true, ask the user for confirmation first."
 				    (declare (ignore w))
 				    (rl:rl)))
     (tt-clear)
-    (draw-screen)
+    (draw-screen *puca*)
     (tt-finish-output)))
 
 (defun puca-yes-or-no-p (&optional format &rest arguments)
@@ -629,7 +669,7 @@ If CONFIRM is true, ask the user for confirmation first."
 	 (selected-files))
     (loop :for file :in (selected-files) :do
        (delete-file file))
-    (get-list)))
+    (get-list *puca*)))
 
 (defparameter *extended-commands*
   '(("delete" delete-files))
@@ -642,7 +682,6 @@ for the command-function).")
 
 (defun extended-command (p)
   "Extended command"
-  (declare (ignore p))
   (tt-move-to (- (tt-height) 2) 2)
   (tt-finish-output)
   (let ((command (rl:rl
@@ -653,7 +692,7 @@ for the command-function).")
     (setf func (cadr (assoc command *extended-commands* :test #'equalp)))
     (when (and func (fboundp func))
       (funcall func)))
-  (draw-screen)
+  (draw-screen p)
   (values))
 
 (defun show-errors (p)
@@ -693,34 +732,34 @@ for the command-function).")
 (defun add-command (p)
   "Add file"
   (declare (ignore p))
-  (do-command #'backend-add (selected-files)))
+  (do-command #'backend-add (list (selected-files))))
 
 (defun reset-command (p)
   "Revert file (undo an add)"
   (declare (ignore p))
-  (do-command #'backend-reset (selected-files) :confirm t))
+  (do-command #'backend-reset (list (selected-files)) :confirm t))
 
 (defun diff-command (p)
   "Diff"
   (declare (ignore p))
-  (do-command #'backend-diff (selected-files)
+  (do-command #'backend-diff (list (selected-files))
 	      :relist nil :do-pause nil))
 
 (defun diff-repo-command (p)
   "Diff against commited (-r HEAD)"
   (declare (ignore p))
-  (do-command #'backend-diff-repo (selected-files)
+  (do-command #'backend-diff-repo (list (selected-files))
 	      :relist nil :do-pause nil))
 
 (defun commit-command (p)
   "Commit selected"
   (declare (ignore p))
-  (do-command #'backend-commit (selected-files)))
+  (do-command #'backend-commit (list (selected-files))))
 
 (defun update-command (p)
   "Update selected"
   (declare (ignore p))
-  (do-command #'backend-update (selected-files)))
+  (do-command #'backend-update (list (selected-files))))
 
 (defun update-all-command (p)
   "Update all"
@@ -742,11 +781,11 @@ for the command-function).")
   (declare (ignore p))
   ;; (pager:pager (selected-files))
   ;;(view:view-things (selected-files))
-  ;;(draw-screen)
+  ;;(draw-screen p)
   (do-literal-command "view ~{\"~a\" ~}" (list (selected-files))
 		      :do-pause nil))
 
-(defmethod previous ((p puca))
+(defmethod previous ((p puca-app))
   "Previous line"
   (with-slots ((point inator::point) top) p
     (decf point)
@@ -754,9 +793,10 @@ for the command-function).")
       (setf point 0))
     (when (< point top)
       (decf top)
-      (draw-screen))))
+      ;;(draw-screen p)
+      )))
 
-(defmethod next ((p puca))
+(defmethod next ((p puca-app))
   "Next line"
   (with-slots ((point inator::point) maxima top bottom) p
     (incf point)
@@ -764,9 +804,10 @@ for the command-function).")
       (setf point (1- maxima)))
     (when (and (> (- point top) (- bottom 1)) (> bottom 1))
       (incf top)
-      (draw-screen))))
+      ;;(draw-screen p)
+      )))
 
-(defmethod next-page ((p puca))
+(defmethod next-page ((p puca-app))
   "Next page"
   (with-slots ((point inator::point) maxima top bottom) p
     (setf point (+ point 1 bottom))
@@ -774,9 +815,10 @@ for the command-function).")
       (setf point (1- maxima)))
     (when (>= point (+ top bottom))
       (setf top (max 0 (- point (1- bottom))))
-      (draw-screen))))
+      ;;(draw-screen p)
+      )))
 
-(defmethod previous-page ((p puca))
+(defmethod previous-page ((p puca-app))
   "Previous page"
   (with-slots ((point inator::point) top) p
     (setf point (- point 1 (- (tt-height) 7)))
@@ -784,23 +826,26 @@ for the command-function).")
       (setf point 0))
     (when (< point top)
       (setf top point)
-      (draw-screen))))
+      ;;(draw-screen p)
+      )))
 
-(defmethod move-to-bottom ((p puca))
+(defmethod move-to-bottom ((p puca-app))
   "Bottom"
   (with-slots ((point inator::point) maxima top bottom) *puca*
     (setf point (1- maxima))
     (when (> point (+ top bottom))
       (setf top (max 0 (- maxima bottom)))
-      (draw-screen))))
+      ;;(draw-screen p)
+      )))
 
-(defmethod move-to-top ((p puca))
+(defmethod move-to-top ((p puca-app))
   "Top"
   (with-slots ((point inator::point) top) p
     (setf point 0)
     (when (> top 0)
       (setf top 0)
-      (draw-screen))))
+      ;;(draw-screen p)
+      )))
 
 (defun set-mark (p)
   "Set Mark"
@@ -832,34 +877,36 @@ for the command-function).")
   "Select all"
   (declare (ignore p))
   (select-all)
-  (draw-screen))
+  ;; (draw-screen p)
+  )
 
 (defun select-none-command (p)
   "Select none"
   (declare (ignore p))
   (select-none)
-  (draw-screen))
+  ;; (draw-screen p)
+  )
 
 (defun relist (p)
   "Re-list"
-  (declare (ignore p))
-  (tt-clear)
+  ;; (tt-clear)
   ;;(refresh)
-  (get-list)
-  (draw-screen)
+  (get-list p)
+  ;; (draw-screen p)
   ;(refresh)
   )
 
-(defmethod redraw ((p puca))
-  "Re-draw"
-  (tt-clear)
-  (tt-finish-output)
-  (draw-screen)
-  ;(refresh)
-  )
+;; (defmethod redraw ((p puca))
+;;   "Re-draw"
+;;   (tt-clear)
+;;   (tt-finish-output)
+;;   (draw-screen p)
+;;   ;(refresh)
+;;   )
 
 (defun toggle-debug (p)
-  (setf (puca-debug p) (not (puca-debug p))))
+  (setf (puca-debug p) (not (puca-debug p)))
+  (debug-msg "Debugging turned on."))
 
 (defparameter *option-setting*
   #((#\a show-all-tracked)))
@@ -876,13 +923,338 @@ for the command-function).")
 	  (message p "~a is ~a" name (get-option p name)))
 	(progn
 	  (message p "Option not found: ~a" c))))
-  (get-list))
+  (get-list *puca*))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; history mode
+
+(defclass history (puca-item)
+  ((hash
+    :initarg :hash :accessor history-hash :initform nil
+    :documentation "Hash for commit.")
+   (email
+    :initarg :email :accessor history-email :initform nil
+    :documentation "Email adddress that created the item.")
+   (date
+    :initarg :date :accessor history-date :initform nil :type integer
+    :documentation "Universal time the item was created.")
+   (message
+    :initarg :message :accessor history-message :initform nil
+    :type (or null string)
+    :documentation "Commit message."))
+  (:documentation "An history editor item."))
+
+(defun make-history (&rest initargs)
+  (apply #'make-instance 'history initargs))
+
+(defclass puca-history (puca-app)
+  ((files
+    :initarg :files :accessor puca-history-files :initform nil
+    :documentation "Files to show history for or NIL for all files.")
+   (table
+    :initarg :table :accessor puca-history-table :initform nil
+    :documentation "The items in a table for displaying."))
+  (:documentation "History editor."))
+
+(defclass history-table (mem-table)
+  ((output-column
+    :initarg :output-column :accessor output-column
+    :initform 0 :type fixnum
+    :documentation "The column we're at in the current row being output.")
+   (output-line
+    :initarg :output-line :accessor output-line :initform 0 :type fixnum
+    :documentation "The line we're at in the inner screen."))
+  (:documentation "A table for history."))
+
+(defmethod get-history ((backend git) &optional files)
+  (let ((hh (loop :for r
+	       :in (if files
+		       (apply #'lish:!_=
+			      `(,@(backend-history backend) ,@files))
+		       (apply #'lish:!_=
+			      `(,@(backend-history-all backend))))
+	       ;;:collect (safe-read-from-string r))))
+	       :collect (split-sequence (code-char 0) r))))
+    (coerce
+     (mapcar (_ (make-history
+		 :hash (first _)
+		 :email (first (cdr _))
+		 :date (uos:unix-to-universal-time
+			(parse-integer (second (cdr _))))
+		 :message (third (cdr _)))) hh)
+     'vector)))
+
+(defmethod get-list ((puca puca-history))
+  "Get the history list from the backend and parse them."
+  (with-slots (goo maxima (point inator::point) top table) puca
+    (setf goo (get-history (puca-backend puca) (puca-history-files puca))
+	  maxima (length goo)
+	  table (make-table-from goo :type 'history-table))
+    (when (>= point maxima)
+      (setf point (1- maxima)))
+    (when (>= top point)
+      (setf top (max 0 (- point 10))))))
+
+(defun diff-history-command (p)
+  "Compare this change against the previous version."
+  (with-slots ((point inator::point) goo files maxima) p
+    (cond
+      ((>= point (1- maxima))
+       (info-window "Hey"
+		    '("You're at the first change."
+		      "Use 'D' to compare against the HEAD version.")))
+      (t
+       (do-command #'backend-diff-history
+	 (list (history-hash (elt goo point))
+	       (history-hash (elt goo (1+ point)))
+	       (mapcar #'prin1-to-string files))
+	 :relist nil :do-pause nil)))))
+
+(defun diff-history-head-command (p)
+  "Compare this change against the current version."
+  (with-slots ((point inator::point) goo files) p
+    (do-command #'backend-diff-history-head
+      (list (history-hash (elt goo point))
+	    (mapcar #'prin1-to-string files))
+      :relist nil :do-pause nil)))
+
+(defun view-history-file (p)
+  "View file"
+  ;; (pager:pager (selected-files))
+  ;;(view:view-things (selected-files))
+  ;;(draw-screen p)
+  (do-literal-command "view ~{~a ~}"
+    (list (mapcar #'prin1-to-string (puca-history-files p))) :do-pause nil))
+
+(defun zerp (p)
+  (with-slots ((point inator::point) goo) p
+    (info-window
+     "foo"
+     (list (format nil "goo ~s" (length (puca-goo p)))
+	   (format nil "files ~s" (puca-history-files p))
+	   (format nil "hash ~s" (history-hash (elt goo point)))))))
+
+(defun inspect-history (p)
+  (with-slots ((point inator::point) goo) p
+    (let ((item (elt goo point)))
+      (info-window
+       (s+ "Revision " (history-hash (elt goo point)))
+       (list (format nil "Files: ~a" (puca-history-files p))
+	     (format nil "Hash:  ~a" (history-hash item))
+	     (format nil "Email: ~a" (history-email item))
+	     (format nil "Date:  ~a" (dlib-misc:date-string
+				      ;;:format :relative
+				      :time (history-date item)))
+	     "Message:" (quote-format (history-message item)))))))
+
+;; (defun inspect-history (p)
+;;   (with-slots ((point inator::point) goo) p
+;;     (let ((item (elt goo point)))
+;;       (fui:display-text
+;;        (s+ "Revision " (history-hash (elt goo point)))
+;;        `(,(span-to-fat-string `((:green "Hash: ") (:cyan ,(history-hash item))))
+;; 	  ,(span-to-fat-string `((:green "Email: ") (:cyan ,(history-email item))))
+;; 	  ,(span-to-fat-string
+;; 	    `((:green "Date: ") (:cyan ,(dlib-misc:date-string
+;; 				       :time (history-date item)))))
+;; 	  ,(span-to-fat-string `((:green "Message:")))
+;; 	  ,(span-to-fat-string `((:cyan ,(history-message item)))))))))
+
+(defkeymap *puca-history-keymap*
+  `((#\q		. quit)
+    (#\Q		. quit)
+    (#\?		. help)
+    (:UP        	. previous)
+    (,(code-char 16)	. previous)
+    (,(ctrl #\p)       	. previous)
+    (:DOWN      	. next)
+    (,(code-char 14)    . next)
+    (,(ctrl #\n)	. next)
+    (:NPAGE		. next-page)
+    (,(ctrl #\V)	. next-page)
+    (,(ctrl #\F)	. next-page)
+    (:PPAGE		. previous-page)
+    (,(ctrl #\B)	. previous-page)
+    (#\>		. move-to-bottom)
+    (#\<		. move-to-top)
+    (,(meta-char #\>)	. move-to-bottom)
+    (,(meta-char #\<)	. move-to-top)
+    ;;(,(ctrl #\L)	. redraw)
+    (,(code-char 12)	. redraw)
+    (,(meta-char #\=)	. describe-key-briefly)
+    (,(ctrl #\t)	. toggle-debug)
+    (#\g		. relist)
+    (#\z		. zerp)
+    (#\v	        . view-history-file)
+    (#\i	        . inspect-history)
+    (#\d	        . diff-history-command)
+    (#\return	        . diff-history-command)
+    (#\D	        . diff-history-head-command)
+    ))
+
+(defun history-all-command (p)
+  "Show all history."
+  (history-command p t))
+
+(defun history-command (p &optional all)
+  "Show history."
+  (let ((files (selected-files)))
+    ;;(debug-msg "selected-files ~s" files)
+    (with-inator (*puca* 'puca-history
+			 :files (if all nil files)
+			 :keymap (list *puca-history-keymap*
+				       *default-inator-keymap*)
+			 :backend (puca-backend p)
+			 :debug (puca-debug p))
+      (event-loop *puca*))))
+
+(defclass history-table-renderer (table-renderer)
+  ()
+  (:documentation "A table renderer to show the history."))
+
+(defmethod table-output-header (renderer table &key width sizes)
+  (declare (ignore renderer width sizes))
+  (setf (output-column table) 0
+	(output-line table) 0))
+
+(defmethod table-output-start-row (renderer table)
+  (declare (ignore renderer))
+  (setf (output-column table) 0))
+
+(defmethod table-output-column-separator (renderer table &key width)
+  (declare (ignore renderer width))
+  (incf (output-column table))
+  (tt-write-char #\space))
+
+(defmethod table-output-end-row (renderer table n)
+  (declare (ignore renderer n))
+  ;; (when (< (output-column table) *max-width*)
+  ;;   (tt-write-char #\newline))
+  (setf (output-column table) 0)
+  (incf (output-line table)))
+
+(defmethod table-output-row-separator (renderer table n &key width sizes)
+  (declare (ignore renderer table n width sizes)))
+
+(defmethod table-output-column-title ((renderer history-table-renderer)
+				      table title width justification column)
+  (declare (ignore renderer))
+  (when (< (output-column table) *max-width*)
+    (when (not (zerop column))
+      (tt-write-char #\space)
+      (incf (output-column table))))
+
+  (when (/= 0 column)
+    (let* ((clipped-width (min (- *max-width* (output-column table))
+			       width))
+	   (len (min (length title) clipped-width)))
+      (tt-underline t)
+      (tt-format (if (eq justification :right) "~v@a" "~va")
+		 ;;width
+		 clipped-width
+		 (subseq title 0 len))
+      (tt-underline nil)
+      (incf (output-column table) clipped-width)))
+
+  ;; (when (and (= column (1- (olength (table-columns table))))
+  ;; 	     (< (output-column table) *max-width*))
+  ;;   (tt-write-char #\newline))
+  )
+
+(defmethod table-output-cell-display-width ((renderer history-table-renderer)
+					    table cell column)
+  (declare (ignore renderer table))
+  (case column
+    (0 0)
+    (1 5)
+    (2 (display-length (dlib-misc:date-string :format :relative
+					      :time cell)))
+    (3 (display-length cell))))
+
+(defmethod table-output-cell ((renderer history-table-renderer)
+			      table cell width justification row column)
+  "Output a table cell."
+  (declare (ignore renderer))
+  (with-slots (top bottom) *puca*
+    (when (and (>= row top) (< row (+ top bottom)))
+      (if (= column 0)
+	  (tt-move-to (+ (puca-first-line *puca*)
+			 (- (output-line table) top))
+		      3)
+	  (let* ((*print-pretty* nil)
+		 (clipped-width (min (- *max-width* (output-column table))
+				     width))
+		 (string
+		  (case column
+		    (2 (dlib-misc:date-string :format :relative :time cell))
+		    (otherwise (princ-to-string cell))))
+		 (len (max 0
+			   (min (length string)
+				(- *max-width* (output-column table))
+				width))))
+	    (tt-color (case column
+			(1 :green)
+			(2 :white)
+			(3 :cyan))
+		      :default)
+	    (tt-format (if (eq justification :right) "~v@a" "~va")
+		       ;; width
+		       clipped-width
+		       ;;(subseq string 0 (min width (length string)))
+		       (subseq string 0 len))
+	    (incf (output-column table) len)
+	    (tt-color :default :default))))))
+
+;; (defmethod draw-goo ((puca puca-history) i)
+;;   "Draw the goo object, with the appropriate color."
+;;   (with-slots (goo top first-line) puca
+;;     (let ((g (elt goo i)))
+;;       (tt-move-to (+ (- i top) first-line) 4)
+;;       (tt-write-string
+;;        (span-to-fat-string
+;; 	`((:green ,(s+ (subseq (history-email g) 0 3) "..")) #\space
+;; 	  (:white ,(dlib-misc:date-string :format :relative
+;; 					  :time (history-date g))) #\space
+;; 	  (:cyan ,(history-message g))))))))
+
+(defmethod draw-inner-screen ((puca puca-history))
+  (with-slots (table first-line bottom top maxima files) puca
+    (when table
+      (tt-move-to first-line 3)
+      (tt-format "History for: ~{~s~}" files)
+      (tt-move-to (+ first-line 2) 3)
+      (incf first-line 3)
+      (setf bottom (min (- maxima top) (- (tt-height) first-line 3)))
+      (output-table table
+		     (make-instance 'history-table-renderer)
+		     *terminal*
+		     :max-width (- (tt-width) 5)))))
+
+#|
+(defun glorp (f)
+  (!_= "git" "--no-pager" "log" "--format=(\"%h\" \"%ae\" %ct \"%s\")" "--" f))
+
+(defun zermel ()
+  (let ((hh (loop :for r :in (glorp "completion.lisp")
+	       :collect (safe-read-from-string r))))
+    (table-print:nice-print-table
+     (mapcar (_ (list
+		 (s+ (subseq (first (cdr _)) 0 3) "..")
+		 (dlib-misc:date-string
+		  :format :relative
+		  :time (uos:unix-to-universal-time (second (cdr _))))
+		 (third (cdr _)))) hh)
+     '("email" "date" "message"))))
+|#
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defkeymap *puca-keymap*
   `((#\q		. quit)
     (#\Q		. quit)
     (#\?		. help)
-    (#\h		. help)
+    (#\h		. history-command)
+    (#\H		. history-all-command)
     (#\a		. add-command)
     (#\r		. reset-command)
     (#\d		. diff-command)
@@ -963,24 +1335,24 @@ for the command-function).")
 ;; (defmethod default-action ((p puca))
 ;;   (message p "Event not bound ~s" (inator-command p)))
 
-(defmethod update-display ((p puca))
+(defmethod update-display ((p puca-app))
   (with-slots ((point inator::point) top first-line bottom debug) p
-    (draw-screen)
+    (draw-screen p)
     (when debug
       (message p "point = ~s top = ~s first-line ~s bottom = ~s"
 	       point top first-line bottom))
     (tt-move-to (+ (- point top) first-line) 2)))
 
-(defmethod start-inator ((p puca))
+(defmethod start-inator ((p puca-app))
   (call-next-method)
   (tt-clear)
-  (draw-screen)
-  (get-list)
-  (draw-screen)
+  (draw-screen p)
+  (get-list *puca*)
+  (draw-screen p)
   (when (puca-errors p)
     (message p "**MESSAGES**")))
 
-(defmethod finish-inator ((p puca))
+(defmethod finish-inator ((p puca-app))
   (tt-move-to (1- (tt-height)) 0)
   (tt-scroll-down 2)
   (tt-finish-output))
@@ -988,7 +1360,8 @@ for the command-function).")
 (defun puca (&key backend-type)
   (let ((backend (pick-backend backend-type)))
     (if backend
-	(with-terminal (#| :curses |# :crunch)
+	(with-terminal (#| :crunch |# :curses)
+	;;(with-new-terminal (:crunch)
 	  (with-inator (*puca* 'puca
 		        :keymap (list *puca-keymap* *default-inator-keymap*)
 		        :backend backend)
