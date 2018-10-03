@@ -112,10 +112,10 @@ found."
 (defgeneric make-table-from (object &key column-names)
   (:documentation "Make a table from another object type."))
 
-(defun uniform-classes (list)
-  "Return true if every class in LIST is a subtype of the first element."
-  (let ((first-type (class-of (first list))))
-    (every (_ (subtypep (type-of _) first-type)) list)))
+(defun uniform-classes (sequence)
+  "Return true if every class in SEQUENCE is a subtype of the first element."
+  (let ((first-type (class-of (elt sequence 0))))
+    (every (_ (subtypep (type-of _) first-type)) sequence)))
 
 (defun set-columns-names-from-class (table obj)
   (loop :for slot :in (mop:class-slots (class-of obj)) :do
@@ -123,8 +123,8 @@ found."
 		       (format nil "~:(~a~)" (mop:slot-definition-name slot))
 		       :type (mop:slot-definition-type slot))))
 
-(defun list-of-classes-p (obj)
-  (let ((first-obj (first obj)))
+(defun sequence-of-classes-p (obj)
+  (let ((first-obj (elt obj 0)))
     (and first-obj
 	 (or (typep first-obj 'structure-object)
 	     (typep first-obj 'standard-object))
@@ -145,7 +145,7 @@ found."
 	(loop :for c :in column-names :do
 	   (table-add-column tt c))
 	(when first-obj
-	  (if (list-of-classes-p object)
+	  (if (sequence-of-classes-p object)
 	      (set-columns-names-from-class tt first-obj)
 	      (loop :for i :from 0 :to (length first-obj)
 		 :do (table-add-column tt (format nil "Column~d" i))))))
@@ -163,16 +163,31 @@ found."
 
 (defmethod make-table-from ((object array) &key column-names)
   "Make a table from a hash table."
-  (when (not (equal (array-dimensions object) '(2)))
-    (error "Don't know how to make a table from an array of other than ~
-2 dimensions."))
+  (when (not (< 0 (length (array-dimensions object)) 3))
+    (error "I don't know how to make a table from an array that isn't 1 or ~
+            2 dimensions."))
   (let ((tt (make-instance 'mem-table :data object)))
-    (if column-names
-	(loop :for c :in column-names :do
-	   (table-add-column tt c))
-	(loop :for i :from 0 :to (array-dimension object 0)
-	   :do (table-add-column tt (format nil "Column~d" i))))
-    tt))
+    (case (length (array-dimensions object))
+      (2
+       (if column-names
+	   (loop :for c :in column-names :do
+	      (table-add-column tt c))
+	   (loop :for i :from 0 :to (array-dimension object 0)
+	      :do (table-add-column tt (format nil "Column~d" i))))
+       tt)
+      (1
+       (let ((first-obj (aref object 0)))
+	 (if column-names
+	     ;; @@@ When there's less column-names than potential columns in
+	     ;; object, we should make the missing column names.
+	     (loop :for c :in column-names :do
+		(table-add-column tt c))
+	     (when first-obj
+	       (if (sequence-of-classes-p object)
+		   (set-columns-names-from-class tt first-obj)
+		   (loop :for i :from 0 :to (olength first-obj)
+		      :do (table-add-column tt (format nil "Column~d" i))))))
+	 tt)))))
 
 (defmethod make-table-from ((object structure-object)
 			    &key (column-names '("Slot" "Value")))
