@@ -33,6 +33,10 @@ make the table in the first place. For that you want the TABLE package.")
    
    #:output-table
    #:print-table
+   #:*long-titles*
+   #:*print-titles*
+   #:*max-width*
+   #:*destination*
    #:with-column-title
    #:set-column-titles
    #:with-row
@@ -60,16 +64,18 @@ make the table in the first place. For that you want the TABLE package.")
 					&key sizes &allow-other-keys)
   (:documentation "Output all the column titles."))
 
-(defgeneric table-output-column-title (renderer table title width justification)
+(defgeneric table-output-column-title (renderer table title width justification
+				       column)
   (:documentation "Output a column title."))
 
 (defgeneric table-output-start-row (renderer table)
   (:documentation "Start a row of table output."))
 
-(defgeneric table-output-cell (renderer table cell width justification)
+(defgeneric table-output-cell (renderer table cell width justification
+			       row column)
   (:documentation "Output a table cell."))
 
-(defgeneric table-output-cell-display-width (renderer table cell)
+(defgeneric table-output-cell-display-width (renderer table cell column)
   (:documentation "Return the display width for a table cell."))
 
 (defgeneric table-output-sizes (renderer table)
@@ -92,6 +98,11 @@ make the table in the first place. For that you want the TABLE package.")
 			  &key long-titles print-titles max-width
 			  &allow-other-keys)
   (:documentation "Output a table."))
+
+(defvar *long-titles* nil "True to print long column titles.")
+(defvar *print-titles* t "True to print titles.")
+(defvar *max-width* nil "Maximum output width of the table.")
+(defvar *destination* nil "The current table output destination.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -124,20 +135,21 @@ make the table in the first place. For that you want the TABLE package.")
 			       (cadr size)
 			       (table-output-column-type-justification
 				renderer table (column-type col))))
-       (table-output-column-title renderer table title width justification))
+       (table-output-column-title renderer table title width justification i))
     (loop
        :for title :in titles
        :and col :in (table-columns table)
+       :and i = 0 :then (1+ i)
        :do
        (table-output-column-title renderer table title
 				  (column-width col)
 				  (table-output-column-type-justification
-				   renderer table (column-type col))))))
+				   renderer table (column-type col)) i))))
 
 ;; This is just a simple character count.
-(defmethod table-output-cell-display-width (renderer table cell)
+(defmethod table-output-cell-display-width (renderer table cell column)
   "Return the display width for a table cell."
-  (declare (ignore renderer table))
+  (declare (ignore renderer table column))
   (typecase cell
     (string (length cell))
     (otherwise
@@ -165,7 +177,7 @@ make the table in the first place. For that you want the TABLE package.")
 	  (setf (aref sizes col-num)
 		(max
 		 (aref sizes col-num)
-		 (table-output-cell-display-width renderer table col)))
+		 (table-output-cell-display-width renderer table col col-num)))
 	  (incf col-num))
 	row))
      ;;(container-data table)
@@ -181,8 +193,11 @@ make the table in the first place. For that you want the TABLE package.")
 			 &key long-titles print-titles max-width
 			   &allow-other-keys)
   "Output a table."
-  (declare (ignore destination long-titles print-titles max-width)) ; @@@
-  (let ((row-num 0) (col-num 0)
+  (let ((*long-titles* long-titles)
+	(*print-titles* print-titles)
+	(*max-width* max-width)
+	(*destination* destination)
+	(row-num 0) (col-num 0)
 	(sizes (table-output-sizes renderer table)))
     (table-output-header renderer table :sizes sizes)
     (table-output-column-titles renderer table
@@ -201,7 +216,8 @@ make the table in the first place. For that you want the TABLE package.")
 		       (table-output-column-type-justification
 			renderer table
 			(column-type
-			 (elt (table-columns table) col-num))))
+			 (elt (table-columns table) col-num)))
+		       row-num col-num)
 		      (incf col-num))
 		    row)
 	     (table-output-end-row renderer table row-num)
@@ -251,9 +267,9 @@ make the table in the first place. For that you want the TABLE package.")
   (princ "| "))
 
 (defmethod table-output-cell ((renderer derp-table-renderer)
-			      table cell width justification)
+			      table cell width justification row column)
   "Output a table cell."
-  (declare (ignore renderer table))
+  (declare (ignore renderer table row column))
   (let ((*print-pretty* nil))
     (format t (if (eq justification :right) "~v@a" "~va") width cell)))
 
