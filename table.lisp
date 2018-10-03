@@ -109,8 +109,21 @@ by the TEST function, which defaults to EQUAL. Return NIL if the column is not
 found."
   (position name (table-columns table) :test test :key #'column-name))
 
-(defgeneric make-table-from (object &key column-names)
-  (:documentation "Make a table from another object type."))
+;; @@@ Actually TYPE should be able to be any sub-type of TABLE, but we have yet
+;; to implement DB-TABLES, etc. so I'm not sure how I want it to work.
+;; @@@ We should allow less column names than columns in the object, and make
+;; up the rest of the names. Maybe we should consider signaling a correctable
+;; error if there's more column names than data.
+(defgeneric make-table-from (object &key column-names type)
+  (:documentation
+   "Make a table from another object type.
+  OBJECT       - An alist or a list of mappable things, or a hash-table, or a
+                 uniform vector of other mappable types, or a 2d array.
+  TYPE         - The class of the instance to create, which should be a
+                 sub-class of MEM-TABLE.
+  COLUMN-NAME  - A list of column names, which should match the number of
+                 columns in OBJECT.
+"))
 
 (defun uniform-classes (sequence)
   "Return true if every class in SEQUENCE is a subtype of the first element."
@@ -135,9 +148,9 @@ found."
       (omapk function (container-data table))
       (omap function (container-data table))))
 
-(defmethod make-table-from ((object list) &key column-names)
+(defmethod make-table-from ((object list) &key column-names type)
   "Make a table from an alist or a list of things."
-  (let ((tt (make-instance 'mem-table :data object))
+  (let ((tt (make-instance (or type 'mem-table) :data object))
 	(first-obj (first object)))
     (if column-names
 	;; @@@ When there's less column-names than potential columns in object,
@@ -152,21 +165,21 @@ found."
     tt))
 
 (defmethod make-table-from ((object hash-table)
-			    &key (column-names '("Key" "Value")))
+			    &key (column-names '("Key" "Value")) type)
   "Make a table from a hash table."
   (when (> (length column-names) 2)
     (error "Hash tables can only have 2 column names."))
-  (let ((tt (make-instance 'mem-table :data object)))
+  (let ((tt (make-instance (or type 'mem-table) :data object)))
     (loop :for c :in column-names :do
        (table-add-column tt c))
     tt))
 
-(defmethod make-table-from ((object array) &key column-names)
+(defmethod make-table-from ((object array) &key column-names type)
   "Make a table from a hash table."
   (when (not (< 0 (length (array-dimensions object)) 3))
     (error "I don't know how to make a table from an array that isn't 1 or ~
             2 dimensions."))
-  (let ((tt (make-instance 'mem-table :data object)))
+  (let ((tt (make-instance (or type 'mem-table) :data object)))
     (case (length (array-dimensions object))
       (2
        (if column-names
@@ -190,11 +203,11 @@ found."
 	 tt)))))
 
 (defmethod make-table-from ((object structure-object)
-			    &key (column-names '("Slot" "Value")))
+			    &key (column-names '("Slot" "Value")) type)
   "Make a table from an structure."
   (when (> (length column-names) 2)
     (error "Structures can only have 2 column names."))
-  (let ((tt (make-instance 'mem-table :data object)))
+  (let ((tt (make-instance (or type 'mem-table) :data object)))
     (loop :for c :in column-names :do
        (table-add-column tt c))
     tt))
