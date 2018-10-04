@@ -453,6 +453,10 @@ sizes. It only copies the smaller of the two regions."
 	    (invalidate-before-start-row tty (new-screen tty))
 	    (invalidate-before-start-row tty (old-screen tty))
 	    (dbugf :crunch "Crunch auto re-starting at ~s.~%" start-line))
+	  ;; @@@ Is this reasonable?
+	  (terminal-erase-below tty)
+	  (terminal-erase-below wtty)
+	  (terminal-reset tty)
 	  (incf (started tty))
 	  nil) ;; no state
 	(let ((state (terminal-start wtty)))
@@ -660,15 +664,15 @@ changed the screen contents."
   (with-slots (x y width height fg bg attrs scrolling-region) (new-screen tty)
     (loop
        :with i = (or start 0) :and changed
-       :and str = (if (or (and start (not (zerop start))) end)
-		      (if end
-			  (displaced-subseq string (or start 0) end)
-			  (displaced-subseq string start))
-		      string)
-       :with len = (length str)
+       ;; :and str = (if (or (and start (not (zerop start))) end)
+       ;; 		      (if end
+       ;; 			  (displaced-subseq string (or start 0) end)
+       ;; 			  (displaced-subseq string start))
+       ;; 		      string)
+       :with len = (or end (length string))
        :while (< i len)
        :do
-       (when (copy-char tty (aref str i))
+       (when (copy-char tty (aref string i))
 	 (setf changed t))
        (incf i)
        :finally (return changed))))
@@ -1238,7 +1242,8 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
     ;; 	   new-line-cost change-cost first-change last-change changes)
 
     (when (not first-change)
-      (error "We thought we had to update line ~s, but we didn't?" line))
+      (cerror "Forget about it."
+	      "We thought we had to update line ~s, but we didn't?" line))
 
     ;; @@@ Try to see if we can use insert / delete.
     (crunched-move-to tty first-change line (update-x tty) (update-y tty))
@@ -1453,6 +1458,10 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 (defmethod terminal-reset ((tty terminal-crunch-stream))
   "Try to reset the terminal to a sane state, without being too disruptive."
   ;; @@@ wrapped terminal reset? or what?
+  (with-slots (fg bg attrs (wtty wrapped-terminal)) tty
+    (setf fg nil bg nil attrs nil)
+    (terminal-normal wtty)
+    (terminal-cursor-on tty))
   (terminal-finish-output tty))
 
 (defmethod terminal-reset ((tty terminal-crunch))
