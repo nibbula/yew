@@ -236,7 +236,7 @@ require terminal driver support."))
 (defmethod terminal-write-string ((tty terminal-curses) str &key start end)
   "Output a string to the terminal."
   (let ((out-str (if (or start end)
-		     ;; So we don't end up making a copy.
+		     ;; So we don't end up making a yet another copy.
 		     (let ((real-start (or start 0))
 			   (real-end (or end (length str))))
 		       (make-array (- real-end real-start)
@@ -248,7 +248,8 @@ require terminal driver support."))
 	       (stringp out-str))
       (translate-acs-chars out-str :start start :end end))
     #+curses-use-wide
-    (if (position-if (_ (> (char-code _) 255)) out-str)
+    ;; This seem very inefficient, but I'm not sure how to avoid it.
+    (if (position-if (_ (> (char-code _) #xff)) out-str)
 	(add-wide-string out-str)
 	(addstr out-str))
     #-curses-use-wide
