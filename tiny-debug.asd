@@ -16,6 +16,6 @@ smidgeon is a uniform interface between platforms.
 Unfortunately it's barely usable."
     :depends-on
     (:dlib :char-util :keymap :table-print :opsys :terminal :terminal-ansi
-     :rl :fatchar :tiny-repl #+sbcl :sb-introspect)
+     :terminal-crunch :rl :fatchar :tiny-repl #+sbcl :sb-introspect)
     :components
     ((:file "tiny-debug")))
