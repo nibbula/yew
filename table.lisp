@@ -186,21 +186,22 @@ found."
 	   (loop :for c :in column-names :do
 	      (table-add-column tt c))
 	   (loop :for i :from 0 :to (array-dimension object 0)
-	      :do (table-add-column tt (format nil "Column~d" i))))
-       tt)
+	      :do (table-add-column tt (format nil "Column~d" i)))))
       (1
-       (let ((first-obj (aref object 0)))
-	 (if column-names
-	     ;; @@@ When there's less column-names than potential columns in
-	     ;; object, we should make the missing column names.
-	     (loop :for c :in column-names :do
-		(table-add-column tt c))
-	     (when first-obj
-	       (if (sequence-of-classes-p object)
-		   (set-columns-names-from-class tt first-obj)
-		   (loop :for i :from 0 :to (olength first-obj)
-		      :do (table-add-column tt (format nil "Column~d" i))))))
-	 tt)))))
+       (if column-names
+	   ;; @@@ When there's less column-names than potential columns in
+	   ;; object, we should make the missing column names.
+	   (loop :for c :in column-names :do
+	      (table-add-column tt c))
+	   (when (not (zerop (length object)))
+	     (let ((first-obj (aref object 0)))
+	       (when first-obj
+		 (if (sequence-of-classes-p object)
+		     (set-columns-names-from-class tt first-obj)
+		     (loop :for i :from 0 :to (olength first-obj)
+			:do (table-add-column
+			     tt (format nil "Column~d" i))))))))))
+    tt))
 
 (defmethod make-table-from ((object structure-object)
 			    &key (column-names '("Slot" "Value")) type)
