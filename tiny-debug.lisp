@@ -830,23 +830,35 @@ innermost N contexts, if we can."
 	(terminal-move-to tt (1- (terminal-window-rows tt)) 0)
 	(terminal-finish-output tt)))))
 
+(defvar *fake-term* nil "Workaround for problems with crunch.")
+
 (defun start-visual ()
-  (when *visual-mode*
-    (when (not *visual-term*)
-      (setf *visual-term* (make-instance 'terminal-ansi))
-      (terminal-start *visual-term*))
-    (let ((tt *visual-term*))
-      (terminal-get-size tt)
-      (terminal-move-to tt (1- (terminal-window-rows tt)) 0)
-      (terminal-finish-output tt))))
+  (cond
+    (*visual-mode*
+     (when (not *visual-term*)
+       (setf *visual-term* (make-instance 'terminal-ansi))
+       (terminal-start *visual-term*))
+     (let ((tt *visual-term*))
+       (terminal-get-size tt)
+       (terminal-move-to tt (1- (terminal-window-rows tt)) 0)
+       (terminal-finish-output tt)))
+    ;; @@@ temporary workaround
+    ((typep *terminal* 'terminal-crunch:terminal-crunch)
+     (setf *fake-term* *terminal*
+	   *terminal* (make-instance 'terminal-ansi)))))
 
 (defun reset-visual ()
-  (when *visual-term*
-    (let ((tt *visual-term*))
-      (terminal-set-scrolling-region tt nil nil)
-      (terminal-move-to tt (1- (terminal-window-rows tt)) 0)
-      (terminal-finish-output tt)
-      #| (terminal-end tt) |#)))
+  (cond
+    (*visual-term*
+     (let ((tt *visual-term*))
+       (terminal-set-scrolling-region tt nil nil)
+       (terminal-move-to tt (1- (terminal-window-rows tt)) 0)
+       (terminal-finish-output tt)
+       #| (terminal-end tt) |#))
+    ;; @@@ temporary workaround
+    (*fake-term*
+     (terminal-done *terminal*)
+     (setf *terminal* *fake-term*))))
 
 (defun debugger-up-frame-command (&optional foo)
   (declare (ignore foo))
