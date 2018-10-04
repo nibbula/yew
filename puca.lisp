@@ -6,14 +6,12 @@
 ;; why it's poorly organized.
 ;;
 ;; TODO:
-;;  - puca options, e.g. show all tracked files
-;;  - file change history mode
+;;  - puca options help?
 ;;  - way to provide command options?
 ;;  - way to invoke unbound subcommand?
 ;;  - improve git mode
 ;;    - show things to pull? (e.g. changes on remote)
 ;;  - Consider making a branch editing mode
-;;  - Consider making a version editing mode
 ;;  - Consider configuration / options editing
 ;;     like for "git config ..." or whatever the equivalent is in other systems
 
@@ -1005,8 +1003,8 @@ for the command-function).")
 		      "Use 'D' to compare against the HEAD version.")))
       (t
        (do-command #'backend-diff-history
-	 (list (history-hash (elt goo point))
-	       (history-hash (elt goo (1+ point)))
+	 (list (history-hash (elt goo (1+ point)))
+	       (history-hash (elt goo point))
 	       (mapcar #'prin1-to-string files))
 	 :relist nil :do-pause nil)))))
 
@@ -1025,14 +1023,6 @@ for the command-function).")
   ;;(draw-screen p)
   (do-literal-command "view ~{~a ~}"
     (list (mapcar #'prin1-to-string (puca-history-files p))) :do-pause nil))
-
-(defun zerp (p)
-  (with-slots ((point inator::point) goo) p
-    (info-window
-     "foo"
-     (list (format nil "goo ~s" (length (puca-goo p)))
-	   (format nil "files ~s" (puca-history-files p))
-	   (format nil "hash ~s" (history-hash (elt goo point)))))))
 
 (defun inspect-history (p)
   (with-slots ((point inator::point) goo) p
@@ -1084,7 +1074,6 @@ for the command-function).")
     (,(meta-char #\=)	. describe-key-briefly)
     (,(ctrl #\t)	. toggle-debug)
     (#\g		. relist)
-    (#\z		. zerp)
     (#\v	        . view-history-file)
     (#\i	        . inspect-history)
     (#\d	        . diff-history-command)
@@ -1106,34 +1095,40 @@ for the command-function).")
 				       *default-inator-keymap*)
 			 :backend (puca-backend p)
 			 :debug (puca-debug p))
-      (event-loop *puca*))))
+      (event-loop *puca*))
+    (draw-screen p)))
+
+;;; custom table renderer
 
 (defclass history-table-renderer (table-renderer)
   ()
   (:documentation "A table renderer to show the history."))
 
-(defmethod table-output-header (renderer table &key width sizes)
+(defmethod table-output-header ((renderer history-table-renderer)
+				table &key width sizes)
   (declare (ignore renderer width sizes))
   (setf (output-column table) 0
 	(output-line table) 0))
 
-(defmethod table-output-start-row (renderer table)
+(defmethod table-output-start-row ((renderer history-table-renderer) table)
   (declare (ignore renderer))
   (setf (output-column table) 0))
 
-(defmethod table-output-column-separator (renderer table &key width)
+(defmethod table-output-column-separator ((renderer history-table-renderer)
+					  table &key width)
   (declare (ignore renderer width))
   (incf (output-column table))
   (tt-write-char #\space))
 
-(defmethod table-output-end-row (renderer table n)
+(defmethod table-output-end-row ((renderer history-table-renderer) table n)
   (declare (ignore renderer n))
   ;; (when (< (output-column table) *max-width*)
   ;;   (tt-write-char #\newline))
   (setf (output-column table) 0)
   (incf (output-line table)))
 
-(defmethod table-output-row-separator (renderer table n &key width sizes)
+(defmethod table-output-row-separator ((renderer history-table-renderer)
+				       table n &key width sizes)
   (declare (ignore renderer table n width sizes)))
 
 (defmethod table-output-column-title ((renderer history-table-renderer)
@@ -1229,23 +1224,6 @@ for the command-function).")
 		     (make-instance 'history-table-renderer)
 		     *terminal*
 		     :max-width (- (tt-width) 5)))))
-
-#|
-(defun glorp (f)
-  (!_= "git" "--no-pager" "log" "--format=(\"%h\" \"%ae\" %ct \"%s\")" "--" f))
-
-(defun zermel ()
-  (let ((hh (loop :for r :in (glorp "completion.lisp")
-	       :collect (safe-read-from-string r))))
-    (table-print:nice-print-table
-     (mapcar (_ (list
-		 (s+ (subseq (first (cdr _)) 0 3) "..")
-		 (dlib-misc:date-string
-		  :format :relative
-		  :time (uos:unix-to-universal-time (second (cdr _))))
-		 (third (cdr _)))) hh)
-     '("email" "date" "message"))))
-|#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1360,8 +1338,8 @@ for the command-function).")
 (defun puca (&key backend-type)
   (let ((backend (pick-backend backend-type)))
     (if backend
-	(with-terminal (#| :crunch |# :curses)
-	;;(with-new-terminal (:crunch)
+	;;(with-terminal (#| :crunch |# :curses)
+	(with-new-terminal (:crunch)
 	  (with-inator (*puca* 'puca
 		        :keymap (list *puca-keymap* *default-inator-keymap*)
 		        :backend backend)
