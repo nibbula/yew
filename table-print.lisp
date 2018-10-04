@@ -157,32 +157,35 @@ make the table in the first place. For that you want the TABLE package.")
 
 ;; This just figures the maximum of all sizes.
 (defmethod table-output-sizes (renderer table)
-  (let ((sizes (make-array (max (olength
-				 (oelt (container-data table) 0))
-				(olength (table-columns table)))))
-	(col-num 0))
-    ;; First set by pre-defined widths and name lengths.
-    (omapn
-     (lambda (col)
-       (setf (aref sizes col-num)
-	     (max (column-width col) (length (column-name col))))
-       (incf col-num))
-     (table-columns table))
-    ;; Then set by actual data.
-    (omapn
-     (lambda (row)
-       (setf col-num 0)
-       (omapn
-	(lambda (col)
-	  (setf (aref sizes col-num)
-		(max
-		 (aref sizes col-num)
-		 (table-output-cell-display-width renderer table col col-num)))
-	  (incf col-num))
-	row))
-     ;;(container-data table)
-     table)
-    sizes))
+  (if (zerop (olength (container-data table)))
+      #()
+      (let ((sizes (make-array (max (olength
+				     (oelt (container-data table) 0))
+				    (olength (table-columns table)))))
+	    (col-num 0))
+	;; First set by pre-defined widths and name lengths.
+	(omapn
+	 (lambda (col)
+	   (setf (aref sizes col-num)
+		 (max (column-width col) (length (column-name col))))
+	   (incf col-num))
+	 (table-columns table))
+	;; Then set by actual data.
+	(omapn
+	 (lambda (row)
+	   (setf col-num 0)
+	   (omapn
+	    (lambda (col)
+	      (setf (aref sizes col-num)
+		    (max
+		     (aref sizes col-num)
+		     (table-output-cell-display-width renderer table col
+						      col-num)))
+	      (incf col-num))
+	    row))
+	 ;;(container-data table)
+	 table)
+	sizes)))
 
 ;; Default method which does nothing.
 (defmethod table-output-footer (renderer table &key width sizes)
