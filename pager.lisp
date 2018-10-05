@@ -35,7 +35,7 @@ The shell command takes any number of file names.
 ")
   (:use :cl :dlib :opsys :dlib-misc :table-print :stretchy
 	:keymap :char-util :fatchar #+use-regex :regex #-use-regex :ppcre
-	:terminal :fatchar-io :pick-list :table-print)
+	:terminal :fatchar-io :pick-list :table-print :fui)
   (:export
    #:*pager-prompt*
    #:*empty-indicator*
@@ -1074,8 +1074,22 @@ location doesn't have an offset part."
   "Search forwards for something in the stream."
   (with-slots (search-string) *pager*
     (setf search-string (ask "Search for: "))
-    (when (not (search-for search-string))
-      (tmp-message "--Not found--"))))
+    (block nil
+      (handler-case
+	  (when (not (search-for search-string))
+	    (tmp-message "--Not found--"))
+	(ppcre-syntax-error (c)
+	  (fui:display-text
+	   "Error"
+	   `("Syntax error in search string:"
+	     ,(ppcre-syntax-error-string c)
+	     ,(format nil "~vt^" (ppcre-syntax-error-pos c))
+	     ,(apply #'format
+		     nil (simple-condition-format-control c)
+		     (simple-condition-format-arguments c)))
+	   :justify nil)
+	  (setf search-string nil)
+	  (return nil))))))
 
 (defun search-backward-command ()
   "Search backwards for something in the stream."
@@ -1431,6 +1445,7 @@ q - Abort")
 (defun page (stream &key pager file-list close-me suspended options)
   "View a stream with the pager. Return whether we were suspended or not."
   (with-terminal ()
+    ;; (tt-allow-events :resize)
     (with-disabled-cchars ()
       (unwind-protect
         (progn
