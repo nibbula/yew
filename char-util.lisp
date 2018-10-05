@@ -26,7 +26,6 @@
    #:get-utf8b-char #:%get-utf8b-char
    #:length-in-utf8-bytes
    #:put-utf8-char #:%put-utf8-char
-   ;;#:get-utf8b-char #:%get-utf8b-char
    #:string-to-utf8-bytes
    #:utf8-bytes-to-string
    ))
@@ -106,24 +105,29 @@ than space and delete."
       (cc (format nil "~a" c))
       (t (format nil "~s" c)))))
 
-(defun displayable-char (c &key (caret t) all-control (show-meta t))
+(defun displayable-char (c &key (caret t) all-control (show-meta t) stream)
   "Make non-graphic characters visible."
   (let ((cc (if (characterp c) (char-code c) nil)))
     (cond
       ((and cc (not all-control) (or (eql c #\tab) (eql c #\newline)))
-       (princ-to-string c))
+       (if stream
+	   (princ c stream)
+	   (princ-to-string c)))
       ((and cc show-meta (meta-char-p cc))
-       (format nil "M-~a" (nice-char (un-meta cc))))
+       (format stream "M-~a" (nice-char (un-meta cc))))
       ((and cc (< cc (char-code #\space)))
-       (format nil "~:[C-~(~c~)~;^~c~]" caret
+       (format stream "~:[C-~(~c~)~;^~c~]" caret
 	       (code-char (+ cc (char-code #\@)))))
       ((and cc (= cc 127))
-       (format nil (if caret "^?" "C-?")))
+       (format stream (if caret "^?" "C-?")))
       ;; These can mess with some terminals, so don't display them directly.
       ((and cc (> cc 127) (< cc 160))
-       (format nil "\\~o" cc))
-      (cc (princ-to-string c))
-      (t (format nil "~s" c)))))
+       (format stream "\\~o" cc))
+      (cc
+       (if stream
+	   (princ c stream)
+	   (princ-to-string c)))
+      (t (format stream "~s" c)))))
 
 (defun normalize-string (string &optional (form :nfd))
   "Return a Unicode normalized string based on STRING. FORM can be one of
