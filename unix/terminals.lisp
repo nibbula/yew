@@ -1096,7 +1096,7 @@ The individual settings override the settings in MODE."
     (make-terminal-mode :echo echo :line line :raw raw :timeout timeout)))
 
 ;; @@@ !!! Figure out how we can use this here and also in OPSYS
-(defmacro BOGO-with-terminal-mode ((tty) &body body)
+(defmacro with-BOGO-terminal-mode ((tty) &body body)
   "Evaluate the body, retoring terminal mode changes on exit."
   (with-unique-names (mode)
     `(let ((,mode (get-terminal-mode ,tty)))
@@ -1120,7 +1120,7 @@ The individual settings override the settings in MODE."
 			     :element-type 'base-char
 			     :fill-pointer 0 :adjustable t))
 	 status)
-    (BOGO-with-terminal-mode (tty)
+    (with-BOGO-terminal-mode (tty)
       (when timeout
 	(set-terminal-mode tty :timeout timeout))
       (with-output-to-string (str result)
@@ -1214,7 +1214,7 @@ The individual settings override the settings in MODE."
 
 ;; Simple, linear, non-event loop based programming was always an illusion!
 (defun read-terminal-byte (terminal-handle &key timeout)
-  (BOGO-with-terminal-mode (terminal-handle)
+  (with-BOGO-terminal-mode (terminal-handle)
     (when timeout
       (set-terminal-mode terminal-handle :timeout timeout))
     (with-foreign-object (c :char)
@@ -1232,35 +1232,59 @@ The individual settings override the settings in MODE."
 (defun read-terminal-char (terminal-handle &key timeout)
   (code-char (read-terminal-byte terminal-handle :timeout timeout)))
 
-(defun read-until (tty stop-token &key timeout)
+;; @@@ I would use stretchy, but I don't want to introduce dependencies.
+(defun append-thing (array thing)
+  "Append the THING to the array ARRAY."
+  (let ((len (length array)))
+    (when (>= (1+ len) (array-total-size array))
+      (setf array (adjust-array
+		   array (+ (array-total-size array) 1
+			    (truncate (* (array-total-size array) 2/3))))))
+    (incf (fill-pointer array))
+    (setf (aref array len) thing)))
+
+(defun read-until (tty stop-token &key timeout octets-p)
   "Read until STOP-TOKEN is read. Return a string of the results.
 TTY is a file descriptor. TIMEOUT is in deci-seconds."
-  (let ((result (make-array 0 :element-type 'base-char
+  (let ((result (make-array 0
+			    ;; :element-type 'base-char
+			    :element-type (if octets-p
+					      '(unsigned-byte 8)
+					      'character)
 			    :fill-pointer 0 :adjustable t))
-	(status nil) (got-eof nil))
-    (BOGO-with-terminal-mode (tty)
-      (when (and timeout
-		 (not (eql timeout
-			   (terminal-mode-timeout (get-terminal-mode tty)))))
-	;; (format t "set timeout = ~s~%" timeout)
-	(set-terminal-mode tty :timeout timeout))
-      (with-output-to-string (str result)
-	(with-foreign-object (c :char)
-	  (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
-				 (+SIGTSTP+  . tstp-handler))
-	    (setf status
-		  (read-raw-char tty c
-				 #'(lambda (x)
-				     (let ((cc (code-char x)))
-				       (and cc (char/= cc stop-token)
-					    (princ cc str))))))
-	    (when (zerop status)
-	      (setf got-eof t))))))
-    (values
-     (if (zerop (length result))
-	 nil
-	 result)
-     got-eof)))
+	(status nil) (got-eof nil)
+	test-and-put-func)
+    (flet ((test-and-put-char (c)
+	     (let ((cc (code-char c)))
+	       (and cc (char/= cc stop-token)
+		    (append-thing result cc))))
+	   (test-and-put-byte (c)
+	     (let ((cc (code-char c)))
+	       (and cc (char/= cc stop-token)
+		    (append-thing result c)))))
+      (setf test-and-put-func (if octets-p
+				  #'test-and-put-byte
+				  #'test-and-put-char))
+      (with-BOGO-terminal-mode (tty)
+        (when (and timeout
+		   (not (eql timeout
+			     (terminal-mode-timeout (get-terminal-mode tty)))))
+	  ;; (format t "set timeout = ~s~%" timeout)
+	  (set-terminal-mode tty :timeout timeout))
+	(with-output-to-string (str result)
+	  (with-foreign-object (c :char)
+	    (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
+				   (+SIGTSTP+  . tstp-handler))
+	      (setf status (read-raw-char tty c test-and-put-func))
+	      (when (zerop status)
+		(setf got-eof t))))))
+      ;; (dbugf :ruru "ruru -> ~s ~s~%" (type-of result)
+      ;; 	     (map 'list #'char-util:displayable-char result))
+      (values
+       (if (zerop (length result))
+	   nil
+	   result)
+       got-eof))))
 
 (defun write-terminal-char (terminal-handle char)
   "Write CHAR to the terminal designated by TERMINAL-HANDLE."
