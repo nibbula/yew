@@ -77,6 +77,8 @@ drawing, which will get overwritten."
     (tt-write-string str :end str-len)
     (tt-write-char (code-char #x2518)))) ; ┘
 
+;; @@@ maybe windows should be implemented as a sub-terminal?
+
 (defclass fui-window ()
   ((x
     :initarg :x :accessor fui-window-x :initform 1 :type fixnum

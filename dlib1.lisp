@@ -1177,13 +1177,15 @@ ORIGINAL is something that a define-alias method is defined for."
 ;; Also this doesn't work: (defalias 'λ 'lambda)
 
 ;; Is it really worth doing this? Is this gratuitous language mutation?
-;; This is weird. Why do I love using it so much?
+;; This is weird. Why do I love using it so much? I wonder if there is a better
+;; symbol to use?
 (defmacro _ (&rest exprs)
   "Shorthand for single argument lambda. The single argument is named '_'."
   `(lambda (_)
      (declare (ignorable _))
      ,@exprs))
 
+;; We can pronounce "<>" as lozenge.
 (defmacro and-<> (&rest expressions)
   "Evalute EXPRESSIONS until one is false, binding <> to the result of the
 previous expression. Return the last expression or NIL."
@@ -1200,6 +1202,8 @@ previous expression. Return the last expression or NIL."
 			  ,(car x))))
 		   (reverse (rest expressions))))))))
 
+;; @@@ Despite it's popularity, this seems like it might be too seldomly
+;; used to take the very iconic "->" syntax.
 (defmacro -> (&rest expressions)
   "Transform the expressions so each expression is the second argument to the
 previous expression. Expressions except the first that aren't lists are made
@@ -1215,6 +1219,7 @@ into lists so they look like function applications."
 		     (rest expressions))
 	     :initial-value (first expressions)))))
 
+;; @@@ same sentiments as ->
 (defmacro ->> (&rest expressions)
   "Transform the expressions so each expression is the last argument to the
 previous expression. Expressions except the first that aren't lists are made
