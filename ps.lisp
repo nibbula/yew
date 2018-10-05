@@ -143,7 +143,8 @@ user, pid, ppid, size, command."
       :parent-pid (unix-process-parent-id p)
       :size (unix-process-text-size p)
       :name (if (zerop (length (unix-process-args p)))
-		(list (unix-process-command p))
+		;;(list (unix-process-command p))
+		(unix-process-command p)
 		;;(map 'list #'identity (unix-process-args p))
 		(join-by 'string (unix-process-args p) #\space)
 		)))
@@ -370,7 +371,7 @@ user, pid, ppid, size, command."
 				(some
 				 (_ (search matching _ :test #'equalp))
 				 (append (list (short-process-user p))
-					 (short-process-name p)))))
+					 (list (short-process-name p))))))
 		   :collect (list (short-process-user p) (short-process-pid p)
 				  (ps-print-size (short-process-size p))
 				  (short-process-name p)))
