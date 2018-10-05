@@ -179,7 +179,8 @@ require terminal driver support."))
 	;; 	  (setf (typeahead tty) (s+ (typeahead tty) ta))
 	;; 	  (setf (typeahead tty) ta
 	;; 		(typeahead-pos tty) 0)))))
-	(add-typeahead tty ta)))))
+	(loop :for c :across ta :do
+	   (add-typeahead tty c))))))
 
 (defmethod terminal-get-cursor-position ((tty terminal-ansi))
   "Try to somehow get the row of the screen the cursor is on. Returns the
