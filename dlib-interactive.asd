@@ -12,6 +12,6 @@
     :long-description
     "Functions for mostly interactive use. These are things that would typically
 be used at a REPL, but not as likely to be called by other programs."
-    :depends-on (:dlib :dlib-misc :table-print :terminal :grout)
+    :depends-on (:dlib :dlib-misc :table-print :terminal :grout :rl)
     :components
     ((:file "dlib-interactive")))

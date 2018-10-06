@@ -6,7 +6,7 @@
   (:documentation
    "Functions for interactive use. These are things that would typically
 be used at a REPL, but not as likely to be called by other programs.")
-  (:use :cl :mop :dlib :dlib-misc :table :table-print :terminal :grout)
+  (:use :cl :mop :dlib :dlib-misc :table :table-print :terminal :grout :rl)
   (:export
    #:show-expansion
    #:printenv
@@ -24,6 +24,11 @@ be used at a REPL, but not as likely to be called by other programs.")
    #:describe-reader
    #:describe-system
    #:describe-class
+
+   #:safe-set-bracketed-paste
+   #:bracketed-paste-on
+   #:bracketed-paste-off
+   #:setup-bracketed-paste
    ))
 (in-package :dlib-interactive)
 
@@ -507,5 +512,43 @@ symbols, :all to show internal symbols too."
     #-has-mop    
     (format stream "No MOP, so I don't know how to describe the class ~s~%"
 	    class))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Bracketed paste
+
+(defun safe-set-bracketed-paste (state)
+  "Set bracketed paste to STATE, if we're using an ANSI terminal or a wrapper
+that wraps an ANSI terminal."
+  ;; (dbugf :bracketed-paste "bracketed paste ~s~%" state)
+  (when (find-package :terminal-ansi)
+    (let ((ta (symbolify "terminal-ansi" :package :terminal-ansi
+			 :no-new t)))
+      (if (typep *terminal* ta)
+	  (progn
+	    (symbol-call :terminal-ansi :set-bracketed-paste-mode
+			 *terminal* state)
+	    (terminal-finish-output *terminal*))
+	  (when (and (typep *terminal* 'terminal-wrapper)
+		     (typep (terminal-wrapped-terminal *terminal*) ta))
+	    (symbol-call :terminal-ansi :set-bracketed-paste-mode
+			 (terminal-wrapped-terminal *terminal*)
+			 state)
+	    (terminal-finish-output (terminal-wrapped-terminal *terminal*)))))))
+
+;; (defun bracketed-paste-on (c ct)
+;;   (declare (ignore c ct))
+;;   (safe-set-bracketed-paste t))
+
+;; (defun bracketed-paste-off (c ct)
+;;   (declare (ignore c ct))
+;;   (safe-set-bracketed-paste nil))
+
+(defun bracketed-paste-on  () (safe-set-bracketed-paste t))
+(defun bracketed-paste-off () (safe-set-bracketed-paste nil))
+
+(defun setup-bracketed-paste ()
+  (add-hook rl:*entry-hook* 'bracketed-paste-off)
+  (add-hook rl:*exit-hook* 'bracketed-paste-on)
+  (safe-set-bracketed-paste t))
 
 ;; EOF
