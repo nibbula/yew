@@ -1253,7 +1253,8 @@ BYTE-SETTER, which takes an (unsigned-byte 8)."
   "Convert the simple-array of (unsigned-byte 8) in BYTES to the string of
 characters they represent."
   (declare (optimize speed (safety 0))
-	   (type (simple-array (unsigned-byte 8) *) bytes))
+	   ;; (type (simple-array (unsigned-byte 8) *) bytes)
+	   )
   (let ((result-length 0) result (i 0) (byte-num 0) (source-len (length bytes)))
     (declare (type fixnum result-length i byte-num source-len))
     (labels ((getter ()
