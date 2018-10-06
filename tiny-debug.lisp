@@ -64,6 +64,15 @@ the outermost. When entering the debugger the current frame is 0.")
 ;; debugger-show-locals n   - Show local variables for frame N
 ;; debugger-internal-frame  - Return the best approximation of the error frame.
 
+(defun displayable-value (v)
+  (typecase v
+    ;; Make strings with weird characters not screw up the display.
+    (string (with-output-to-string (str)
+	      (loop :for c :across v :do
+		 (displayable-char c :stream str
+				   :all-control t :show-meta nil))))
+    (t v)))
+
 #+sbcl
 (defun print-frame (f &optional (stream *debug-io*))
   "Print a frame."
@@ -78,7 +87,7 @@ the outermost. When entering the debugger the current frame is 0.")
 			       (condition () '#:|<Unavailable>|))))
 		     (when (not (or (eql vv '#:|<Unavailable>|)
 				    (typep vv 'condition)))
-		       (format stream " ~s" vv))))
+		       (format stream " ~s" (displayable-value vv)))))
 		  ((and (listp v) (eql (car v) :rest))
 		   (format stream " &rest")
 		   (print-lambda-list f (cdr v)))))))
@@ -843,9 +852,10 @@ innermost N contexts, if we can."
        (terminal-move-to tt (1- (terminal-window-rows tt)) 0)
        (terminal-finish-output tt)))
     ;; @@@ temporary workaround
-    ((typep *terminal* 'terminal-crunch:terminal-crunch)
-     (setf *fake-term* *terminal*
-	   *terminal* (make-instance 'terminal-ansi)))))
+    ;; ((typep *terminal* 'terminal-crunch:terminal-crunch)
+    ;;  (setf *fake-term* *terminal*
+    ;; 	   *terminal* (make-instance 'terminal-ansi)))
+    ))
 
 (defun reset-visual ()
   (cond
@@ -856,9 +866,11 @@ innermost N contexts, if we can."
        (terminal-finish-output tt)
        #| (terminal-end tt) |#))
     ;; @@@ temporary workaround
-    (*fake-term*
-     (terminal-done *terminal*)
-     (setf *terminal* *fake-term*))))
+    ;; (*fake-term*
+    ;;  (terminal-done *terminal*)
+    ;;  (setf *terminal* *fake-term*
+    ;; 	   *fake-term* nil))
+    ))
 
 (defun debugger-up-frame-command (&optional foo)
   (declare (ignore foo))
