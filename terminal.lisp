@@ -663,10 +663,12 @@ when given that event alone. The starting state is to allow no events.")
       result)))
 
 (defgeneric terminal-allow-event (tty event)
-  ;; A default which doesn't handle any special events.
-  (:method (tty event) nil)
   (:documentation
-   "Allow EVENT and return true if the terminal can allow it."))
+   "Allow EVENT and return true if the terminal can allow it.")
+  ;; A default method which doesn't handle any special events.
+  (:method (tty event)
+    (declare (ignore tty event))
+    nil))
 
 (defmacro with-saved-cursor ((tty) &body body)
   "Save the cursor position, evaluate the body forms, and restore the cursor
