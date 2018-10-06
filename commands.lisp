@@ -781,6 +781,9 @@ in order, \"{open}{close}...\".")
       (setf char cmd))
     (cond
       ((not (characterp char))
+       ;; @@@ Perhaps we should get a real error, since this is probably a bug
+       ;; not just a mis-configuration?
+       ;(cerror "Go on" "~a is not a character." char)
        (beep e "~a is not a character." char))
       ((and (not (graphic-char-p char)) (not quoted))
        (beep e "~a is unbound." char))

@@ -56,6 +56,8 @@
    #:*completion-really-limit*
    #:*completion-short-divisor*
    #:*terminal-name*
+   #:*entry-hook*
+   #:*exit-hook*
    ))
 (in-package :rl)
 

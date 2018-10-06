@@ -317,6 +317,12 @@
 (defvar *terminal-name* nil
   "Device name of the terminal to use for input.")
 
+(defvar *entry-hook* nil
+  "Functions to run before reading a line.")
+
+(defvar *exit-hook* nil
+  "Functions to run after reading a line.")
+
 ;; The main entry point
 
 (defun rl (&key (input-stream *standard-input*)
@@ -411,6 +417,8 @@ Keyword arguments:
     (history-add nil)
     (history-next)
 
+    (run-hooks *entry-hook*)
+
     ;; Output the prompt
     (setf (prompt e) prompt (prompt-func e) output-prompt-func)
     (do-prompt e (prompt e) (prompt-func e))
@@ -480,6 +488,7 @@ Keyword arguments:
 		:while (not quit-flag))
 	  (block nil
 	    (tt-finish-output)
+	    (run-hooks *exit-hook*)
 	    (terminal-end terminal terminal-state)))
 	(values (if result result (fatchar-string-to-string buf))
 		e)))))
