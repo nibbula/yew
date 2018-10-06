@@ -1246,22 +1246,20 @@ The individual settings override the settings in MODE."
 (defun read-until (tty stop-token &key timeout octets-p)
   "Read until STOP-TOKEN is read. Return a string of the results.
 TTY is a file descriptor. TIMEOUT is in deci-seconds."
-  (let ((result (make-array 0
-			    ;; :element-type 'base-char
-			    :element-type (if octets-p
-					      '(unsigned-byte 8)
-					      'character)
+  (let ((result (make-array 0 :element-type (if octets-p
+						'(unsigned-byte 8)
+						'character)
 			    :fill-pointer 0 :adjustable t))
 	(status nil) (got-eof nil)
 	test-and-put-func)
-    (flet ((test-and-put-char (c)
-	     (let ((cc (code-char c)))
-	       (and cc (char/= cc stop-token)
-		    (append-thing result cc))))
-	   (test-and-put-byte (c)
-	     (let ((cc (code-char c)))
-	       (and cc (char/= cc stop-token)
-		    (append-thing result c)))))
+    (labels ((test-and-put-char (c)
+	       (let ((cc (code-char c)))
+		 (and cc (char/= cc stop-token)
+		      (append-thing result cc))))
+	     (test-and-put-byte (c)
+	       (let ((cc (code-char c)))
+		 (and cc (char/= cc stop-token)
+		      (append-thing result c)))))
       (setf test-and-put-func (if octets-p
 				  #'test-and-put-byte
 				  #'test-and-put-char))
@@ -1271,15 +1269,19 @@ TTY is a file descriptor. TIMEOUT is in deci-seconds."
 			     (terminal-mode-timeout (get-terminal-mode tty)))))
 	  ;; (format t "set timeout = ~s~%" timeout)
 	  (set-terminal-mode tty :timeout timeout))
-	(with-output-to-string (str result)
-	  (with-foreign-object (c :char)
-	    (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
-				   (+SIGTSTP+  . tstp-handler))
-	      (setf status (read-raw-char tty c test-and-put-func))
-	      (when (zerop status)
-		(setf got-eof t))))))
+	(with-foreign-object (c :char)
+	  (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
+				 (+SIGTSTP+  . tstp-handler))
+	    (setf status (read-raw-char tty c test-and-put-func))
+	    (when (zerop status)
+	      (setf got-eof t)))))
       ;; (dbugf :ruru "ruru -> ~s ~s~%" (type-of result)
-      ;; 	     (map 'list #'char-util:displayable-char result))
+      ;;  	     (map 'list
+      ;; 		  ;; (_ (symbol-call :char-util :displayable-char _))
+      ;; 		  (_ (typecase _
+      ;; 		       (character (char-code _))
+      ;; 		       (number _)))
+      ;; 		  result))
       (values
        (if (zerop (length result))
 	   nil
