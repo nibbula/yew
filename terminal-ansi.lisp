@@ -179,8 +179,8 @@ require terminal driver support."))
 	;; 	  (setf (typeahead tty) (s+ (typeahead tty) ta))
 	;; 	  (setf (typeahead tty) ta
 	;; 		(typeahead-pos tty) 0)))))
-	(loop :for c :across ta :do
-	   (add-typeahead tty c))))))
+	(loop :for i :from (1- (length ta)) :downto 0 :do
+	   (add-typeahead tty (aref ta i)))))))
 
 (defmethod terminal-get-cursor-position ((tty terminal-ansi))
   "Try to somehow get the row of the screen the cursor is on. Returns the
@@ -1253,11 +1253,18 @@ bracketed read.")
 	     :if (listen-for *bracketed-read-timeout* fd) :do
 	     (with-interrupts-handled (tty)
 	       (setf s (read-until fd (char end-string i)
-				   :timeout (* *bracketed-read-timeout* 10))))
-	     (dbugf :bp "got dingus ~s ~s~%" s (type-of s))
+				   :timeout (* *bracketed-read-timeout* 10)
+				   :octets-p t)))
+	     ;; (dbugf :bp "got dingus ~s ~s~%length ~s~%fill-pointer ~s"
+	     ;; 	    s (type-of s) (length s)
+	     ;; 	    (when s (fill-pointer s))
+	     ;; 	    )
 	     (if s
 		 (progn
-		   (princ s str)
+		   ;; (princ s str)
+		   (let ((uu (char-util:utf8-bytes-to-string s)))
+		     ;; (dbugf :bp "why? ~s ~s~%" uu (type-of uu))
+		     (princ uu str))
 		   (setf i 1))
 		 (progn
 		   (incf i)))
