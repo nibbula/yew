@@ -547,8 +547,8 @@ that wraps an ANSI terminal."
 (defun bracketed-paste-off () (safe-set-bracketed-paste nil))
 
 (defun setup-bracketed-paste ()
-  (add-hook rl:*entry-hook* 'bracketed-paste-off)
-  (add-hook rl:*exit-hook* 'bracketed-paste-on)
+  (add-hook rl:*entry-hook* 'bracketed-paste-on)
+  (add-hook rl:*exit-hook* 'bracketed-paste-off)
   (safe-set-bracketed-paste t))
 
 ;; EOF
