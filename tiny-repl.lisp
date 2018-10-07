@@ -291,8 +291,8 @@ The REPL also has a few commands:
       result)))
 
 (defun repple-stepper (c)
-  (when (find-package :tiny-debug)
-    (funcall (intern "STEPPER" (find-package :tiny-debug)) c)))
+  (when (find-package :blarg)
+    (funcall (intern "STEPPER" (find-package :blarg)) c)))
 
 ;; Eval and print
 (defun repl-eval (form state)
@@ -395,7 +395,7 @@ to quit everything. Arguments are:
                    before they're evaluated, usually used for commands. The
                    interceptor should return true if does not want evaluation
                    to happen. Defaults to *DEFAULT-INTERCEPTOR*.
- DEBUG          -- True to install TINY-DEBUG as the debugger. Default is T.
+ DEBUG          -- True to install BLARG as the debugger. Default is T.
 "
   ;; Annouce the implemtation and version on systems that don't always do it.
   #-sbcl (when (not no-announce)
@@ -424,8 +424,8 @@ to quit everything. Arguments are:
 				  :start-at-current-line t)
       (setf (tt-input-mode) :line)
       ;; Activate the debugger if it's loaded.
-      (when (and debug (find-package :tiny-debug))
-	(funcall (intern "ACTIVATE" (find-package :tiny-debug))))
+      (when (and debug (find-package :blarg))
+	(funcall (intern "ACTIVATE" (find-package :blarg))))
       (unwind-protect
 	   (tagbody
 	    TOP
