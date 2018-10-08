@@ -60,9 +60,12 @@
      ;; (format *debug-io* "~3d " (sb-di:frame-number f))
      ;; (print-frame f)
      ;; (terpri *debug-io*)
-     (print-span `((:fg-yellow ,(format nil "~3d" (sb-di:frame-number f))) " "))
-     (print-frame f *terminal*)
-     (terpri *terminal*)
+     ;; (print-span `((:fg-yellow ,(format nil "~3d" (sb-di:frame-number f))) " "))
+     ;; (print-frame f *terminal*)
+     ;; (terpri *terminal*)
+     (print-stack-line (cons (sb-di:frame-number f)
+			     (with-output-to-fat-string (str)
+			       (print-frame f str))))
      (setf f (sb-di:frame-down f))
      (incf i)
      :until (or (not f) (and n (>= i n)))))
@@ -73,9 +76,11 @@
      :with f = *current-frame*
      :for i :from 1 :to n
      :collect
-     (with-output-to-string (str)
-       (format str "~3d " (sb-di:frame-number f))
-       (print-frame f str))
+     ;; (with-output-to-string (str)
+     ;;   (format str "~3d " (sb-di:frame-number f))
+     ;;   (print-frame f str))
+     (cons (sb-di:frame-number f)
+	   (with-output-to-string (str) (print-frame f str)))
      :do
      (setf f (sb-di:frame-down f))
      :while f))

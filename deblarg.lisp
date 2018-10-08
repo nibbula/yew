@@ -6,21 +6,6 @@
 ;;; - how about using swank? conium?
 ;;; - try getting more specific source location with *read-intern*
 
-(defpackage :deblarg
-  (:documentation
-   "A crappy half-assed debugger for your enjoyment and frustration. But at
-least you can type things using RL.")
-  (:use :cl :dlib :char-util :table-print :keymap :terminal :terminal-ansi
-	:rl :fatchar :fatchar-io :tiny-repl #+sbcl :sb-introspect)
-  (:export
-   #:deblarg
-   #:*default-interceptor*
-   #:*interceptor-condition*
-   #:*visual-mode*
-   #:toggle
-   #:active-p
-   #:activate
-   ))
 (in-package :deblarg)
 
 (declaim
@@ -28,6 +13,8 @@ least you can type things using RL.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Implementation specifc functions are:
+;;
+;; For line mode:
 ;;
 ;; debugger-backtrace n          - Show N frames of normal backtrace
 ;; debugger-wacktrace n          - Alternate backtrace
@@ -37,6 +24,10 @@ least you can type things using RL.")
 ;;                                 frame.
 ;; debugger-eval-in-frame n form - Return the result of evaluating FORM in
 ;;                                 frame N.
+;; For visual mode:
+;; debugger-source frame source-height
+;; debugger-source-path frame
+;; debugger-backtrace-lines n
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Implementation independent functions
@@ -133,10 +124,11 @@ least you can type things using RL.")
 	   (setf line (car sp))
 	   (if line
 	       (progn
-		 (terminal-format tt "~a~%"
-			    (subseq line
-				    0 (min (1- (terminal-window-columns tt))
-					   (length line))))
+		 (print-stack-line line :width (tt-width))
+		 ;; (terminal-format tt "~a~%"
+		 ;; 	    (subseq line
+		 ;; 		    0 (min (1- (terminal-window-columns tt))
+		 ;; 			   (length line))))
 		 (setf sp (cdr sp)))
 	       (terminal-format tt "~~~%")))
 	(horizontal-line tt)
@@ -225,7 +217,6 @@ least you can type things using RL.")
    (format nil "Debug ~d~a" *repl-level* p))
 ;  (finish-output *debug-io*)
   nil)
-
 
 (defun debugger-help ()
   (print-span
@@ -381,11 +372,25 @@ program that messes with the terminal, we can still type at the debugger."
 	       )))
     (finish-output)))
 
+;; @@@ This hackishly knows too much about RL.
+(defun debugger-redraw (e)
+  (when *visual-term*
+    (let ((tt *visual-term*))
+      (terminal-clear tt)
+      (terminal-beginning-of-line tt)
+      (terminal-erase-to-eol tt)
+      (setf (rl:screen-col e) 0)
+      (debugger-prompt rl:*line-editor* "> ")
+      (terminal-finish-output tt)))
+  nil)
+
 (defvar *debugger-keymap* nil "Keymap for the debugger.")
 (defvar *debugger-escape-keymap* nil "Escape key Keymap for the debugger.")
 
 (defun setup-keymap ()
   (setf *debugger-keymap* (copy-keymap rl:*normal-keymap*))
+  (loop :for key :in (keys-bound-to 'rl::redraw-command rl:*normal-keymap*)
+     :do (define-key *debugger-keymap* key 'debugger-redraw))
   (define-key *debugger-keymap* (meta-char #\i) 'debugger-up-frame-command)
   (define-key *debugger-keymap* (meta-char #\o) 'debugger-down-frame-command)
   (setf *debugger-escape-keymap*

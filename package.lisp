@@ -7,7 +7,7 @@
    "A crappy half-assed debugger for your enjoyment and frustration. But at
 least you can type things using RL.")
   (:use :cl :dlib :char-util :table-print :keymap :terminal :terminal-ansi
-	:rl :fatchar :fatchar-io :tiny-repl #+sbcl :sb-introspect)
+	:rl :collections :fatchar :fatchar-io :tiny-repl #+sbcl :sb-introspect)
   (:export
    #:deblarg
    #:*default-interceptor*
@@ -18,6 +18,9 @@ least you can type things using RL.")
    #:activate
    ))
 (in-package :deblarg)
+
+(declaim
+ (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 ;; Variables
 
@@ -42,6 +45,14 @@ the outermost. When entering the debugger the current frame is 0.")
   (format *debug-io* "~%Sorry, don't know how to ~a on ~a. ~
 		       Snarf some slime!~%" x (lisp-implementation-type)))
 
+(defun debugger-print-string (string)
+  (typecase string
+    (string (princ string *terminal*))
+    (fatchar-string
+     (render-fatchar-string string :terminal *terminal*))
+    (fat-string
+     (render-fat-string string :terminal *terminal*))))
+
 (defun print-span (span)
   ;; This doesn't work since some implementations wrap our terminal stream
   ;; with something else before it gets to print-object.
@@ -63,5 +74,15 @@ are indicated instead of being signaled."
       (declare (ignore c))
       (return-from display-value
 	(format nil "<<Error printing a ~a>>" (type-of v))))))
+
+(defun print-stack-line (line &key width)
+  "Print a stack LINE, which is a cons of (line-numbner . string)."
+  (destructuring-bind (num . str) line
+    (print-span `((:fg-yellow ,(format nil "~3d" num) " ")))
+    (debugger-print-string
+     (if width
+	 (osubseq str 0 (min (length str) (- width 4)))
+	 (cdr line)))
+    (terpri *terminal*)))
 
 ;; EOF

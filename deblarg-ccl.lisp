@@ -31,7 +31,8 @@
   (loop :with i = 0
      :for b :in (ccl::backtrace-as-list)
      :if (>= i *current-frame*)
-     :collect (format nil "~(~3d ~a~)" i b)
+     ;; :collect (format nil "~(~3d ~a~)" i b)
+     :collect (cons i (string-downcase (princ-to-string b)))
      :end
      :do
      (incf i)
