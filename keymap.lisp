@@ -3,7 +3,56 @@
 ;;
 
 (defpackage :keymap
-  (:documentation "Associate functions with keys.")
+  (:documentation
+   "Associate functions with keys.
+
+This defines a KEYMAP class which contains mappings of keys to actions.
+The KEYMAP class has slots:
+  MAP             - The the actual table of bindings, accessed by KEYMAP-MAP.
+  DEFAULT-BINDING - The binding that is invoked if the key doesn't match,
+                    accessed by KEYMAP-DEFAULT-BINDING.
+
+Keys are customarily a character or a keyword. Keywords are used to indicate
+keys or events that aren't characters, like :F1 or :RESIZE.
+Key bindings are customarily a function designator (so therefore a symbol or a
+function), a list which represents function application, or another keymap,
+where the next element in a key sequence is looked up.
+
+Keymaps:
+  macro DEFKEYMAP name [docstring] alist [:default-binding key]
+  function KEYMAP-P object -> boolean
+  function SET-KEYMAP keymap alist -> keymap
+  function MAP-KEYMAP function keymap -> NIL
+  function ADD-KEYMAP source-keymap destination-keymap -> destination-keymap
+  function COPY-KEYMAP keymap -> new-keymap
+  function BUILD-ESCAPE-MAP keymap -> new-keymap
+  function DESCRIBE-KEYMAP keymap &key (stream *standard-output*) prefix raw
+    -> keymap
+
+Key bindings:
+  function DEFINE-KEY keymap key definition -> definition
+  function SET-KEY keymap definition key-sequece -> definition
+  function KEY-BINDING key keymap -> definition
+  function KEY-DEFINITION key keymap-stack -> definition
+  function KEYS-BOUND-TO definition keymap -> sequence
+  function SUBSTITUTE-KEY-DEFINITION new-definition old-definition keymap
+    -> keymap
+
+Key sequences are sequences of keys that can trace a path through multiple
+keymaps.
+
+Key sequences:
+  function KEY-SEQUENCE-BINDING key-sequence keymap -> definition
+  function KEY-SEQUENCE-STRING key-sequence -> string
+  function GET-KEY-SEQUENCE function keymap -> key-sequence OR key
+
+Keymap stacks are sequences of keymaps that are searched in order for a key
+definition.
+
+Keymap stacks:
+  macro PUSH-KEYMAP new current -> current
+  macro REMOVE-KEYMAP new current -> current
+")
   (:use :cl :dlib :char-util)
   (:export
    #:keymap
@@ -26,8 +75,12 @@
    #:add-keymap
    #:build-escape-map
    #:copy-keymap
+   #:substitute-key-definition
+   #:keys-bound-to
    ))
 (in-package :keymap)
+
+(declaim (optimize (debug 3)))
 
 (defclass keymap ()
   ((map
@@ -49,7 +102,8 @@
   "Initialize the map of KEYMAP from the alist MAP."
   (when (and map (consp map))
     (setf (keymap-map keymap)
-	  (alist-to-hash-table map (make-hash-table)))))
+	  (alist-to-hash-table map (make-hash-table))))
+  keymap)
 
 (defmethod initialize-instance :after ((k keymap) &rest initargs)
   "Initialize a keymap. If the map is an alist convert it into a hash table."
@@ -57,36 +111,6 @@
   (if (and (slot-boundp k 'map) (consp (slot-value k 'map)))
       (set-keymap k (keymap-map k))
       (setf (slot-value k 'map) (make-hash-table))))
-
-(defun describe-keymap (map &key (stream *standard-output*) prefix raw)
-  "Show the bindings of a keymap MAP on STREAM. If PREFIX is given it is
-assumed to be a prefix for all bindings in the keymap."
-;  (format stream "~:@(~a~):~%" (named-name map))
-  (map-keymap
-   #'(lambda (key action)
-       (if raw
-	   (format stream "  ~@[~a ~]~5a ~3d ~3x~20t ~(~a~)~%"
-		   prefix (nice-char key)
-		   (or (and (characterp key) (char-code key)) "")
-		   (or (and (characterp key) (char-code key)) "")
-		   action)
-	   (format stream "  ~@[~a ~]~a~20t ~(~a~)~%"
-		   prefix (nice-char key) action))
-       (if (and (symbolp action) (boundp action)
-		(typep (symbol-value action) 'keymap))
-	   (describe-keymap (symbol-value action)
-			    :stream stream :prefix (nice-char key))))
-   map)
-  (when (and (slot-boundp map 'default-binding)
-	     (keymap-default-binding map))
-    (format stream "Default: ~(~a~)~%" (keymap-default-binding map)))
-  map)
-
-(defmethod describe-object ((o keymap) stream)
-  "Output a description of a keymap."
-  (format stream "~a is a keymap with ~a bindings:~%" o
-	  (hash-table-count (keymap-map o)))
-  (describe-keymap o :stream stream))
 
 (defmethod print-object ((obj keymap) stream)
   "Print a KEYMAP on a STREAM."
@@ -238,6 +262,46 @@ one in source."
      (define-key dest k (gethash k (keymap-map source))))
   dest)
 
+(defun describe-keymap (map &key (stream *standard-output*) prefix raw)
+  "Show the bindings of a keymap MAP on STREAM. If PREFIX is given it is
+assumed to be a prefix for all bindings in the keymap."
+;  (format stream "~:@(~a~):~%" (named-name map))
+  (map-keymap
+   #'(lambda (key action)
+       (if raw
+	   (format stream "  ~@[~a ~]~5a ~3d ~3x~20t ~(~a~)~%"
+		   prefix (nice-char key)
+		   (or (and (characterp key) (char-code key)) "")
+		   (or (and (characterp key) (char-code key)) "")
+		   action)
+	   (format stream "  ~@[~a ~]~a~20t ~(~a~)~%"
+		   prefix (nice-char key) action))
+       (if (and (symbolp action) (boundp action)
+		(typep (symbol-value action) 'keymap))
+	   (describe-keymap (symbol-value action)
+			    :stream stream :prefix (nice-char key))))
+   map)
+  (when (and (slot-boundp map 'default-binding)
+	     (keymap-default-binding map))
+    (format stream "Default: ~(~a~)~%" (keymap-default-binding map)))
+  map)
+
+(defmethod describe-object ((o keymap) stream)
+  "Output a description of a keymap."
+  (format stream "~a is a keymap with ~a bindings:~%" o
+	  (hash-table-count (keymap-map o)))
+  (describe-keymap o :stream stream))
+
+(defun copy-keymap (keymap)
+  "Return a new copy of KEYMAP."
+  (check-type keymap keymap)
+  (let ((new-keymap (make-instance
+		     (type-of keymap)
+		     :default-binding (keymap-default-binding keymap))))
+    (map-keymap #'(lambda (k f) (define-key new-keymap k f))
+		keymap)
+    new-keymap))
+
 ;; This is very useful if you want Escape and Meta to be equivalent.
 (defun build-escape-map (keymap)
   "Return a new keymap containing only the meta character bindings in KEYMAP
@@ -252,14 +316,18 @@ to bind to the escape key, so you have escape key equivalents to meta keys."
      keymap)
     new-keymap))
 
-(defun copy-keymap (keymap)
-  "Return a new copy of KEYMAP."
-  (check-type keymap keymap)
-  (let ((new-keymap (make-instance
-		     (type-of keymap)
-		     :default-binding (keymap-default-binding keymap))))
-    (map-keymap #'(lambda (k f) (define-key new-keymap k f))
-		keymap)
-    new-keymap))
+(defun substitute-key-definition (new-definition old-definition keymap)
+  "Substitute NEW-DEFINITION for every binding of OLD-DEFINITION in KEYMAP."
+  (map-keymap #'(lambda (key def)
+		  (when (eq def old-definition)
+		    (define-key keymap key new-definition))) keymap)
+  keymap)
+
+(defun keys-bound-to (definition keymap)
+  (let ((results))
+    (map-keymap #'(lambda (key def)
+		    (when (eq def definition)
+		      (push key results))) keymap)
+    (remove-duplicates results)))
 
 ;; EOF
