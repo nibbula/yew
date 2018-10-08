@@ -76,9 +76,6 @@
      :with f = *current-frame*
      :for i :from 1 :to n
      :collect
-     ;; (with-output-to-string (str)
-     ;;   (format str "~3d " (sb-di:frame-number f))
-     ;;   (print-frame f str))
      (cons (sb-di:frame-number f)
 	   (with-output-to-string (str) (print-frame f str)))
      :do

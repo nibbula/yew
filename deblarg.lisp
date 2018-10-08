@@ -125,10 +125,6 @@
 	   (if line
 	       (progn
 		 (print-stack-line line :width (tt-width))
-		 ;; (terminal-format tt "~a~%"
-		 ;; 	    (subseq line
-		 ;; 		    0 (min (1- (terminal-window-columns tt))
-		 ;; 			   (length line))))
 		 (setf sp (cdr sp)))
 	       (terminal-format tt "~~~%")))
 	(horizontal-line tt)
@@ -207,8 +203,8 @@
      (incf i))
   )
 
+;; @@@ This hackishly knows too much about RL.
 (defun debugger-prompt (e p)
-;;;  (format *debug-io* "Debug ~d~a" *repl-level* p)
   (when *visual-mode*
     (visual))
   (fresh-line *debug-io*)
@@ -447,9 +443,6 @@ program that messes with the terminal, we can still type at the debugger."
 		     :no-announce t))))
 ;;;    (Format *debug-io* "Exiting the debugger level ~d~%" *repl-level*)
     (reset-visual)))
-
-; (defvar *repl-debug* nil
-;   "True to invoke the debugger when a error occurs.")
 
 (defun in-emacs-p ()
   "Return true if we're being run under Emacs, like probably in SLIME."
