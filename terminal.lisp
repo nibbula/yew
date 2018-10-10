@@ -3,6 +3,94 @@
 ;;
 
 (defpackage :terminal
+  (:use :cl :dlib :opsys :trivial-gray-streams :fatchar)
+  (:export
+   #:*standard-output-has-terminal-attributes*
+   #:*terminal*
+   #:*default-terminal-type*
+   #:*terminal-types*
+   #:has-terminal-attributes
+   #:likely-a-terminal-p
+   #:terminal-default-device-name
+   #:register-terminal-type
+   #:find-terminal-class-for-type
+   #:find-terminal-type-for-class
+   #:platform-default-terminal-type
+   #:pick-a-terminal-type
+   #:terminal-stream
+   #:terminal
+   #:terminal-file-descriptor       ;; #:file-descriptor
+   #:terminal-device-name           ;; #:device-name
+   #:terminal-output-stream         ;; #:output-stream
+   #:terminal-window-rows           ;; #:window-rows
+   #:terminal-window-columns        ;; #:window-columns
+   #:terminal-start-at-current-line ;; #:start-at-current-line
+   #:terminal-wrapper
+   #:terminal-wrapped-terminal      ;; #:wrapped-terminal
+   #:terminal-events-allowed	    ;; #:events-allowed
+   #:terminal-get-size
+   #:terminal-get-cursor-position
+   #:terminal-start
+   #:terminal-end
+   #:terminal-done
+   #:make-terminal-stream
+   #:with-terminal #:with-new-terminal
+   #:tt-format			  #:terminal-format
+   #:tt-write-string		  #:terminal-write-string
+   #:tt-write-string-at
+   #:tt-write-line		  #:terminal-write-line
+   #:tt-write-line-at
+   #:tt-write-char		  #:terminal-write-char
+   #:tt-write-char-at
+   #:tt-write-span		  #:terminal-write-span
+   #:tt-move-to			  #:terminal-move-to
+   #:tt-move-to-col		  #:terminal-move-to-col
+   #:tt-beginning-of-line	  #:terminal-beginning-of-line
+   #:tt-delete-char		  #:terminal-delete-char
+   #:tt-insert-char		  #:terminal-insert-char
+   #:tt-backward		  #:terminal-backward
+   #:tt-forward			  #:terminal-forward
+   #:tt-up			  #:terminal-up
+   #:tt-down			  #:terminal-down
+   #:tt-scroll-down		  #:terminal-scroll-down
+   #:tt-scroll-up		  #:terminal-scroll-up
+   #:tt-erase-to-eol		  #:terminal-erase-to-eol
+   #:tt-erase-line		  #:terminal-erase-line
+   #:tt-erase-above		  #:terminal-erase-above
+   #:tt-erase-below		  #:terminal-erase-below
+   #:tt-clear			  #:terminal-clear
+   #:tt-home			  #:terminal-home
+   #:tt-cursor-off		  #:terminal-cursor-off
+   #:tt-cursor-on		  #:terminal-cursor-on
+   #:tt-standout		  #:terminal-standout
+   #:tt-normal			  #:terminal-normal
+   #:tt-underline		  #:terminal-underline
+   #:tt-bold			  #:terminal-bold
+   #:tt-inverse			  #:terminal-inverse
+   #:tt-color			  #:terminal-color
+   #:tt-beep			  #:terminal-beep
+   #:tt-set-attributes            #:terminal-set-attributes
+   #:tt-set-scrolling-region	  #:terminal-set-scrolling-region
+   #:tt-finish-output		  #:terminal-finish-output
+   #:tt-get-char		  #:terminal-get-char
+   #:tt-get-key			  #:terminal-get-key
+   #:tt-listen-for		  #:terminal-listen-for
+   #:tt-input-mode                #:terminal-input-mode
+   #:tt-reset			  #:terminal-reset
+   #:tt-save-cursor		  #:terminal-save-cursor
+   #:tt-restore-cursor		  #:terminal-restore-cursor
+   #:tt-width
+   #:tt-height
+   #:tt-title                     #:terminal-title
+   #:tt-has-attribute             #:terminal-has-attribute
+   #:tt-allow-events              #:terminal-allow-events
+   #:terminal-allow-event
+   #:tt-alternate-characters	  #:terminal-alternate-characters
+   #:with-saved-cursor
+   #:with-terminal-output-to-string
+   #:with-style
+   #:with-immediate
+   )
   (:documentation
    "The TERMINAL package provides a generic interface to terminals.
 
@@ -150,94 +238,7 @@ text attributes or color, and output or erase characters. It is probably best
 to keep the generic functionality to a minimum. Terminal specific
 functionality can be easily added and called for specific types, and it's
 fairly easy to sub-class a type.
-")
-  (:use :cl :dlib :opsys :trivial-gray-streams :fatchar)
-  (:export
-   #:*standard-output-has-terminal-attributes*
-   #:*terminal*
-   #:*default-terminal-type*
-   #:*terminal-types*
-   #:has-terminal-attributes
-   #:likely-a-terminal-p
-   #:terminal-default-device-name
-   #:register-terminal-type
-   #:find-terminal-class-for-type
-   #:find-terminal-type-for-class
-   #:platform-default-terminal-type
-   #:pick-a-terminal-type
-   #:terminal-stream
-   #:terminal
-   #:terminal-file-descriptor       ;; #:file-descriptor
-   #:terminal-device-name           ;; #:device-name
-   #:terminal-output-stream         ;; #:output-stream
-   #:terminal-window-rows           ;; #:window-rows
-   #:terminal-window-columns        ;; #:window-columns
-   #:terminal-start-at-current-line ;; #:start-at-current-line
-   #:terminal-wrapper
-   #:terminal-wrapped-terminal      ;; #:wrapped-terminal
-   #:terminal-events-allowed	    ;; #:events-allowed
-   #:terminal-get-size
-   #:terminal-get-cursor-position
-   #:terminal-start
-   #:terminal-end
-   #:terminal-done
-   #:make-terminal-stream
-   #:with-terminal #:with-new-terminal
-   #:tt-format			  #:terminal-format
-   #:tt-write-string		  #:terminal-write-string
-   #:tt-write-string-at
-   #:tt-write-line		  #:terminal-write-line
-   #:tt-write-line-at
-   #:tt-write-char		  #:terminal-write-char
-   #:tt-write-char-at
-   #:tt-move-to			  #:terminal-move-to
-   #:tt-move-to-col		  #:terminal-move-to-col
-   #:tt-beginning-of-line	  #:terminal-beginning-of-line
-   #:tt-delete-char		  #:terminal-delete-char
-   #:tt-insert-char		  #:terminal-insert-char
-   #:tt-backward		  #:terminal-backward
-   #:tt-forward			  #:terminal-forward
-   #:tt-up			  #:terminal-up
-   #:tt-down			  #:terminal-down
-   #:tt-scroll-down		  #:terminal-scroll-down
-   #:tt-scroll-up		  #:terminal-scroll-up
-   #:tt-erase-to-eol		  #:terminal-erase-to-eol
-   #:tt-erase-line		  #:terminal-erase-line
-   #:tt-erase-above		  #:terminal-erase-above
-   #:tt-erase-below		  #:terminal-erase-below
-   #:tt-clear			  #:terminal-clear
-   #:tt-home			  #:terminal-home
-   #:tt-cursor-off		  #:terminal-cursor-off
-   #:tt-cursor-on		  #:terminal-cursor-on
-   #:tt-standout		  #:terminal-standout
-   #:tt-normal			  #:terminal-normal
-   #:tt-underline		  #:terminal-underline
-   #:tt-bold			  #:terminal-bold
-   #:tt-inverse			  #:terminal-inverse
-   #:tt-color			  #:terminal-color
-   #:tt-beep			  #:terminal-beep
-   #:tt-set-attributes            #:terminal-set-attributes
-   #:tt-set-scrolling-region	  #:terminal-set-scrolling-region
-   #:tt-finish-output		  #:terminal-finish-output
-   #:tt-get-char		  #:terminal-get-char
-   #:tt-get-key			  #:terminal-get-key
-   #:tt-listen-for		  #:terminal-listen-for
-   #:tt-input-mode                #:terminal-input-mode
-   #:tt-reset			  #:terminal-reset
-   #:tt-save-cursor		  #:terminal-save-cursor
-   #:tt-restore-cursor		  #:terminal-restore-cursor
-   #:tt-width
-   #:tt-height
-   #:tt-title                     #:terminal-title
-   #:tt-has-attribute             #:terminal-has-attribute
-   #:tt-allow-events              #:terminal-allow-events
-   #:terminal-allow-event
-   #:tt-alternate-characters	  #:terminal-alternate-characters
-   #:with-saved-cursor
-   #:with-terminal-output-to-string
-   #:with-style
-   #:with-immediate
-   ))
+"))
 (in-package :terminal)
 
 (declaim (optimize (debug 3)))
@@ -548,6 +549,17 @@ i.e. the terminal is \"line buffered\"")
 (defun tt-write-char-at (row column char)
   (tt-move-to row column)
   (tt-write-char char))
+
+;; @@@ I'm unsure if this is good idea. But it's very convenient.
+(defun terminal-write-span (terminal span)
+  "Output SPAN to TERMINAL. A span is attributed text as a list, as is 
+handled by fatchar:span-to-fat-string."
+  (terminal-write-string terminal (fatchar:span-to-fat-string span)))
+
+(defmacro tt-write-span (span)
+  "Output SPAN to the terminal. A span is attributed text as a list, as is
+handled by fatchar:span-to-fat-string."
+  `(terminal-write-span *terminal* ,span))
 
 (deftt move-to-col (column) "Move the cursor to COLUMN.")
 (deftt beginning-of-line () "Move the cursor to the beginning of the line.")
