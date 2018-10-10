@@ -160,8 +160,11 @@ found."
 	(when first-obj
 	  (if (sequence-of-classes-p object)
 	      (set-columns-names-from-class tt first-obj)
-	      (loop :for i :from 0 :to (length first-obj)
-		 :do (table-add-column tt (format nil "Column~d" i))))))
+	      ;; @@@ This will fail if first-object is not a propper list.
+	      ;; But we should be able to take an alist.
+	      (loop :for i :from 0 :below (olength first-obj)
+		 :do (table-add-column tt (format nil "Column~d" i)
+				       :type t)))))
     tt))
 
 (defmethod make-table-from ((object hash-table)
