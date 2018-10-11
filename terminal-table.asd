@@ -10,6 +10,7 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Table renderer for terminals."
-    :depends-on (:terminal :table :table-print)
+    :depends-on (:dlib :terminal :table :table-print :fatchar :fatchar-io
+		 :collections :char-util)
     :components
     ((:file "terminal-table")))

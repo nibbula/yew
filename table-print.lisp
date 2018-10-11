@@ -8,7 +8,7 @@
 from the computer. This package aims to make printing a sturdy table of any
 length, a relatively painless and risk free procedure. This does not, of course,
 make the table in the first place. For that you want the TABLE package.")
-  (:use :cl :dlib :collections :table)
+  (:use :cl :dlib :collections :table :char-util)
   (:import-from :dlib-misc #:justify-text)
   (:export
    #:table-renderer
@@ -30,6 +30,8 @@ make the table in the first place. For that you want the TABLE package.")
    #:text-table-renderer-prefix
    #:text-table-renderer-suffix
    #:text-table-renderer-separator
+   #:text-table-adjust-sizes
+   #:*trailing-spaces*
    
    #:output-table
    #:print-table
@@ -336,8 +338,15 @@ make the table in the first place. For that you want the TABLE package.")
     :initarg :separator :accessor text-table-renderer-separator
     :initform " " :type string
     :documentation "Separator between columns.")
-   )
+   (cursor
+    :initarg :cursor :accessor text-table-renderer-cursor
+    :initform 0 :type fixnum
+    :documentation
+    "Width of output already in this row, i.e. where the cursor would be."))
   (:documentation "Render a text table."))
+
+(defvar *trailing-spaces* nil
+  "True to output trailing spaces after the data in the last column.")
 
 (defmethod table-output-column-titles ((renderer text-table-renderer)
 				       table titles &key sizes)
@@ -399,8 +408,16 @@ column number."
 		       (and width (- width)))))
 		(t nil))))
 
-(defun adjust-sizes-for-data (table renderer sizes max-width)
-  "Adjust the sizes in the vector SIZES, by the data in TABLE."
+;; This is just for text-table-renderer based things.
+(defgeneric text-table-adjust-sizes (table renderer sizes max-width)
+  (:documentation "Adjust column sizes in the vector SIZES, by the data in
+TABLE, limited to MAX-WIDTH."))
+
+(defmethod text-table-adjust-sizes (table
+				    (renderer text-table-renderer)
+				    sizes max-width)
+  "Adjust the sizes in the vector SIZES, by the data in TABLE, limited
+to MAX-WIDTH.."
   (let ((sep-len (length (text-table-renderer-separator renderer))))
     (omap
      #'(lambda (row)
@@ -452,6 +469,62 @@ column number."
 ;; (defmethod table-column-sizes ((table table) (renderer text-table-renderer))
 ;;   )
 
+#|
+(defmethod table-output-cell ((renderer text-table-renderer)
+			      table cell width justification row column)
+  "Output a table cell."
+  (declare (ignore row))
+  (with-slots (cursor) renderer
+    (let ((len (display-length thing)))
+      (ecase justification
+	(:right
+	 (loop :repeat (max 0 (min (- width len) *max-width*))
+	    (write-char #\space *destination*))
+	 (loop :repeat (max 0 (min (- width len) *max-width*))
+	    (write-char (oelt thing *destination*)))
+	(:left
+       (loop :while (
+       (when (or (/= column (1- (length (table-columns table))))
+		 trailing-spaces)
+	 (loop :repeat (min (- width len)
+
+	 
+       )
+      (:none thing))))
+|#
+
+(defmethod table-output-cell ((renderer text-table-renderer)
+			      table cell width justification row column)
+  "Output a table cell."
+  (declare (ignore row))
+  (with-slots (cursor) renderer
+    (let* ((fmt (cond
+		  ((and (= column (1- (olength (table-columns table))))
+			(not *trailing-spaces*))
+		   "~*~a")
+		  ((eql justification :right)
+		   "~v@a")
+		  ((and (not justification) (typep cell 'number))
+		   "~v@a")
+		  (t
+		   "~va")))
+	   (field (let ((*print-pretty* nil))
+		    (format nil fmt width cell)))
+	   (len (display-length field)))
+      (incf cursor len)
+      (if (and (eq justification :overflow)
+	       (> len width))
+	  (progn
+	    (write-string field *destination*)
+	    (format *destination* "~%~v,,,va" width #\space #\space))
+	  (typecase cell
+	    (standard-object
+	     (princ (osubseq field 0 (min width (olength field)))
+		    *destination*))
+	    (t
+	     (write-string (osubseq field 0 (min width (olength field)))
+			   *destination*)))))))
+
 (defmethod output-table ((table table) (renderer text-table-renderer)
 			 destination
 			 &key
@@ -473,12 +546,17 @@ resized to fit in this, and the whole row is trimmed to this."
 		    (make-array `(,(olength (oelt table 0)))
 				:initial-element nil)))
 	 all-zero
-	 (stream destination))
+	 (stream destination)
+	 (*destination* destination)
+	 (*long-titles* long-titles)
+	 (*print-titles* print-titles)
+	 (*max-width* max-width)
+	 (*trailing-spaces* trailing-spaces))
 
     ;;(format t "sizes = ~s~%" sizes) (finish-output)
 
     ;; Adjust column sizes by field data
-    (adjust-sizes-for-data table renderer sizes max-width)
+    (text-table-adjust-sizes table renderer sizes max-width)
 
     ;; Flip pre-set sizes, and force unset sizes to zero.
     ;; (format t "sizes = ~s~%" sizes) (finish-output)
@@ -508,7 +586,7 @@ resized to fit in this, and the whole row is trimmed to this."
 		 name (car col)))
        (setf (aref sizes i)
 	     (list (if all-zero
-		       (length name)
+		       (display-length name)
 		       (aref sizes i))
 		   justification)))
 
@@ -519,65 +597,42 @@ resized to fit in this, and the whole row is trimmed to this."
       (table-output-column-titles renderer table column-names :sizes sizes))
 
     ;; Values
-    (let (fmt cell-lines cell-col cell-width)
-      (omap
-       #'(lambda (row)
-	   (let ((row-len (olength row))
-		 (col 0)
-		 (i 0)
-		 cell size just)
-	     (table-output-start-row renderer table)
-	     (omap
-	      #'(lambda (field)
-		  (setf size (car (aref sizes i))
-			just (cadr (aref sizes i)))
-		  (when (eq just :wrap)
-		    (setf cell-lines
-			  (split-sequence
-			   #\newline (justify-text field :cols (1+ size)
-						   :stream nil))
-			  cell-col col
-			  cell-width size
-			  field (car cell-lines)))
-		  (setf fmt
-			(cond
-			  ((and (= i (1- row-len)) (not trailing-spaces))
-			   "~*~a")
-			  ((eql just :right)
-			   "~v@a")
-			  ((and (not just) (typep field 'number))
-			   "~v@a")
-			  (t
-			   "~va")))
-		  (let ((*print-pretty* nil))
-		    (setf cell (format nil fmt size field)))
-		  (incf col (length cell))	; of course this isn't right
-		  (if (and (eq just :overflow)
-			   (> (length cell) size))
-		      (progn
-			(write-string cell stream)
-			;;(format stream fmt size field)
-			(format stream "~%~v,,,va" size #\space #\space))
-		      (typecase field
-			(standard-object
-			 (princ (osubseq field 0
-					 (min size (olength field)))
-				stream))
-			(t 
-			 (write-string (subseq cell 0 (min size (length cell)))
-				       stream))))
-		  (when (< i (1- row-len))
-		    (write-string separator stream)
-		    (incf col (length separator)))
-		  (incf i))
-	      row)
-	     (when cell-lines
-	       (loop :for l :in (cdr cell-lines) :do
-		  (format stream "~%~v,,,va~va"
-			  cell-col #\space #\space cell-width l))
-	       (setf cell-lines nil))
-	     (terpri stream)))
-       table))
+    (with-slots (cursor) renderer
+      (let (#|fmt|# cell-lines cell-col cell-width (row-num 0))
+	(omap
+	 #'(lambda (row)
+	     (let ((row-len (olength row))
+		   (column-num 0)
+		   #|cell|# size just)
+	       (setf cursor 0)
+	       (table-output-start-row renderer table)
+	       (omap
+		#'(lambda (field)
+		    (setf size (car (aref sizes column-num))
+			  just (cadr (aref sizes column-num)))
+		    (when (eq just :wrap)
+		      (setf cell-lines
+			    (split-sequence
+			     #\newline (justify-text field :cols (1+ size)
+						     :stream nil))
+			    cell-col cursor
+			    cell-width size
+			    field (car cell-lines)))
+		    (table-output-cell renderer table field size just
+				       row-num column-num)
+		    (when (< column-num (1- row-len))
+		      (write-string separator stream)
+		      (incf cursor (display-length separator)))
+		    (incf column-num))
+		row)
+	       (when cell-lines
+		 (loop :for l :in (cdr cell-lines) :do
+		    (format stream "~%~v,,,va~va"
+			    cell-col #\space #\space cell-width l))
+		 (setf cell-lines nil))
+	       (terpri stream))
+	     (incf row-num))
+	 table)))
     (olength (container-data table)))) ;; @@@ should actually be rows output?
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
