@@ -18,8 +18,8 @@ smidgeon of utility is a uniform interface between platforms. Otherwise, it is
 quite lacking of features."
     :depends-on
     (:dlib :char-util :keymap :table-print :opsys :terminal :terminal-ansi
-     :terminal-crunch :rl :collections :fatchar :fatchar-io :tiny-repl
-     #+sbcl :sb-introspect)
+     :terminal-crunch :terminal-table :rl :collections :fatchar :fatchar-io
+     :tiny-repl #+sbcl :sb-introspect)
     :serial t
     :components
     ((:file "package")

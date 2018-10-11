@@ -214,31 +214,70 @@
 ;  (finish-output *debug-io*)
   nil)
 
+;;; @@@ I actually want to take defcommand out of lish and make it be generic.
+;;; And then also the command completion from lish to generic completion.
+;;; Then we can define debugger commands nicely with completion and the whole
+;;; shebang.
+
+(defstruct debugger-command
+  name
+  aliases)
+
+(defparameter *debugger-commands* (make-hash-table :test #'equalp)
+  "Table of debugger commands.")
+
+(defparameter *debugger-command-list* nil
+  "List of debugger commands.")
+
+(defun debugger-command-list ()
+  (or *debugger-command-list*
+      (setf *debugger-command-list*
+	    (remove-duplicates
+	     (loop :for v :being :the :hash-values :of *debugger-commands*
+		:collect v)
+	     :test #'equalp))))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun command-name (symbol)
+    (symbolify (s+ #\_ symbol) :package :deblarg)))
+
+(defmacro define-debugger-command (name aliases &body body)
+  `(progn
+     (defun ,(command-name name) (state restarts)
+       (declare (ignorable state restarts))
+       ,@body)
+     (loop :for a :in ',aliases :do
+	(setf (gethash a *debugger-commands*)
+	      (make-debugger-command :name ',name :aliases ',aliases)))))
+
+(defun get-command (keyword)
+  (gethash keyword *debugger-commands*))
+
 (defun debugger-help ()
-  (print-span
-   `("Debugger help:" #\newline
-(:fg-cyan ":h") "      " (:fg-white "Show this help.") #\newline
-(:fg-cyan ":e") "      " (:fg-white "Show the error again.") #\newline
-(:fg-cyan ":a") "      " (:fg-white "Abort to top level.") #\newline
-(:fg-cyan ":c") "      " (:fg-white "Invoke continue restart.") #\newline
-(:fg-cyan ":q") "      " (:fg-white "Quit the whatever.") #\newline
-(:fg-cyan ":r") "      " (:fg-white "Show restarts.") #\newline
-(:fg-cyan ":b") "      " (:fg-white "Backtrace stack.") #\newline
-(:fg-cyan ":w") "      " (:fg-white "Wacktrace.") #\newline
-(:fg-cyan ":s [n]") "  " (:fg-white "Show source for a frame N, which defaults to the current frame.") #\newline
-(:fg-cyan ":l [n]") "  " (:fg-white "Show local variables for a frame N, which defaults to the current frame.") #\newline))
- #+tdb-has-breakpoints
-(print-span `(
-(:fg-cyan ":lbp") "    " (:fg-white "List breakpointss.") #\newline
-(:fg-cyan ":sbp") "    " (:fg-white "Set breakpoints on function.")  #\newline
-(:fg-cyan ":tbp") "    " (:fg-white "Toggle breakpoints.")  #\newline
-(:fg-cyan ":abp") "    " (:fg-white "Activate breakpoints.")  #\newline
-(:fg-cyan ":dbp") "    " (:fg-white "Deactivate breakpoints.")  #\newline
-(:fg-cyan ":xbp") "    " (:fg-white "Delete breakpoints.")  #\newline))
-(print-span `(
-(:fg-cyan "number") "     " (:fg-white "Invoke that number restart (from the :r list).") #\newline
-(:fg-cyan "...") "      " (:fg-white "Or just type a some lisp code.") #\newline))
-(list-restarts (cdr (compute-restarts *interceptor-condition*))))
+  (tt-format "Debugger help:~%")
+  (output-table
+   (make-table-from
+    (nconc
+     (loop :for c :in (debugger-command-list)
+	:collect
+	(list
+	 (span-to-fat-string
+	  `(:cyan ,(loop :for a :in (debugger-command-aliases c)
+		      :collect (s+ (prin1-to-string a) #\space))))
+	 (span-to-fat-string
+	  `(:white ,(documentation
+		     (command-name (debugger-command-name c)) 'function)))))
+     `(,(mapcar
+	  #'span-to-fat-string
+	  '((:fg-cyan "number")
+	    (:fg-white "Invoke that number restart (from the :r list).")))
+       ,(mapcar
+	  #'span-to-fat-string
+	  '((:fg-cyan "...")
+	    (:fg-white "Or just type a some lisp code."))))))
+   (make-instance 'terminal-table:terminal-table-renderer)
+   *terminal* :print-titles nil :trailing-spaces nil)
+  (list-restarts (cdr (compute-restarts *interceptor-condition*))))
 
 (defun debugger-snargle (arg)
   "Magic command just for me."
@@ -251,86 +290,114 @@
       (start-visual)
       (reset-visual)))
 
-;;; @@@ I actually want to take defcommand out of lish and make it be generic.
-;;; And then also the command completion from lish to generic completion.
-;;; Then we can define debugger commands nicely with completion and the whole
-;;; shebang.
+(defun do-restart (r restarts)
+  (format *debug-io* "~:(~a~).~%" r)
+  ;; This is like find-restart, but omits the most recent abort
+  ;; which is this debugger's.
+  (let ((borty (find r restarts :key #'restart-name)))
+    (if (not borty)
+	(format *debug-io* "Can't find an ~a restart!~%" r)
+	(invoke-restart-interactively borty))))
 
+(defmacro define-commands (var)
+  `(progn
+     ,@(loop :for c :across (symbol-value var)
+	  :collect
+	  `(define-debugger-command ,(first c) ,(second c) ,@(cddr c)))))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *base-commands*
+    #((backtrace  (:b) "Backtrace stack."
+       (debugger-backtrace (read-arg state)))
+      (wacktrace  (:w) "Wacktrace." (debugger-wacktrace (read-arg state)))
+      (restarts   (:r) "Show restarts." (list-restarts restarts))
+      (source     (:src)
+       "Show source for a frame N, which defaults to the current frame."
+       (debugger-show-source (read-arg state)))
+      (locals     (:l)
+       "Show local variables for frame N, which defaults to the current frame."
+       (debugger-show-locals (read-arg state)))
+      (snargle    (:z) "Snargle" (debugger-snargle (read-arg state)))
+      (visual     (:v) "Toggle visual mode."
+       (toggle-visual-mode (read-arg state)))
+      (up-frame   (:u) "Up a frame." (debugger-up-frame (read-arg state)))
+      (down-frame (:d) "Down a frame." (debugger-down-frame (read-arg state)))
+      (set-frame  (:f) "Set the frame." (debugger-set-frame (read-arg state)))
+      (top        (:t) "Go to the top frame."
+       (debugger-top-frame (read-arg state)))
+      (error      (:e)   "Show the error again."
+       (print-condition *interceptor-condition*))
+      (abort      (:a)   "Abort to top level."
+       (do-restart 'abort restarts))
+      (continue   (:c)   "Invoke continue restart."
+       (do-restart 'continue restarts))
+      ;; (next       (:n)   (debugger-next))
+      ;; (step       (:s)   (debugger-step))
+      ;; (out        (:o)   (debugger-out))
+      (help       (:h :help) "Show this help." (debugger-help))
+      (quit       (:q :quit) "Quit the whatever."
+       (when (y-or-n-p "Really quit?")
+	 (format *debug-io* "We quit.~%"))))))
+(define-commands *base-commands*)
+
+#+tdb-has-breakpoints
+(progn
+  (eval-when (:compile-toplevel :load-toplevel :execute)
+    (defparameter *breakpoint-commands*
+      #((list-breakpoints (:lb :lbp :list) "List breakpointss."
+	 (list-breakpoints))
+	(set-breakpoint (:sb :sbp :set)
+	 "Set breakpoints on function."
+	 (set-func-breakpoint (eval (read-arg state))))
+	(toggle-breakpoint (:tb :tbp :toggle)
+	 "Toggle breakpoints."
+	 (toggle-breakpoint (read-arg state)) t)
+	(activate-breakpoint (:ab :abp :activate)
+	 "Activate breakpoints."
+	 (activate-breakpoint (read-arg state)) t)
+	(deactivate-breakpoint (:db :dbp :deactivate)
+	 "Deactivate breakpoints."
+	 (deactivate-breakpoint (read-arg state)) t)
+	(delete-breakpoint (:xb :xbp :delete)
+	 "Delete breakpoints."
+	 (delete-breakpoint (read-arg state))))))
+  (define-commands *breakpoint-commands*))
+
+;; Remember we have to return non-NIL if we want to tell the REPL that we
+;; handled it.
 (defun debugger-interceptor (value state)
   "Handle special debugger commands, which are usually keywords."
   (let ((restarts (cdr (compute-restarts *interceptor-condition*))))
-    (labels
-	((do-restart (r)
-	   (format *debug-io* "~:(~a~).~%" r)
-	   ;; This is like find-restart, but omits the most recent abort
-	   ;; which is this debugger's.
-	   (let ((borty (find r restarts :key #'restart-name)))
-	     (if (not borty)
-		 (format *debug-io* "Can't find an ~a restart!~%" r)
-		 (invoke-restart-interactively borty)))))
-      (cond
-	;; We use keywords as commands, just in case you have a variable or some
-	;; other symbol clash. I dunno. I 'spose we could use regular symbols,
-	;; and have a "print" command.
-	((typep value 'keyword)
-	 (let ((ks (string value)))
-	   ;; :r<n> restart keywords - to be compatible with CLisp
-	   (when (and (> (length ks) 1) (equal (aref ks 0) #\R))
-	     (let ((n (parse-integer (subseq ks 1))))
-	       ;; (invoke-restart-interactively (nth n (compute-restarts)))))
-	       ;; (format t "[Invoking restart ~d (~a)]~%" n (nth n restarts))
-	       (invoke-restart-interactively (nth n restarts))))
-	   (or
-	    (case value
-	      (:b (debugger-backtrace (read-arg state)) t)
-	      (:w (debugger-wacktrace (read-arg state)) t)
-	      (:r (list-restarts restarts) t)
-	      (:s (debugger-show-source (read-arg state)) t)
-	      (:l (debugger-show-locals (read-arg state)) t)
-	      ((:h :help) (debugger-help) t)
-	      (:z (debugger-snargle    (read-arg state)) t)
-	      (:v (toggle-visual-mode  (read-arg state)) t)
-	      (:u (debugger-up-frame   (read-arg state)) t)
-	      (:d (debugger-down-frame (read-arg state)) t)
-	      (:f (debugger-set-frame  (read-arg state)) t)
-	      (:t (debugger-top-frame  (read-arg state)) t)
-	      (:e (print-condition *interceptor-condition*) t)
-	      (:a (do-restart 'abort) t)
-	      (:c (do-restart 'continue) t)
-	      ((:q :quit)
-	       (when (y-or-n-p "Really quit?")
-		 (format *debug-io* "We quit.~%")
-		 (nos:exit-lisp))
-	       t))
-	    #+tdb-has-breakpoints
-	    (case value
-	      ((:lb :lbp :list)	      (list-breakpoints) t)
-	      ((:sb :sbp :set)	      (set-func-breakpoint
-				       (eval (read-arg state))) t)
-	      ((:tb :tbp :toggle)     (toggle-breakpoint (read-arg state)) t)
-	      ((:ab :abp :activate)   (activate-breakpoint (read-arg state)) t)
-	      ((:db :dbp :deactivate) (deactivate-breakpoint (read-arg state)) t)
-	      ((:xb :xbp :delete)     (delete-breakpoint (read-arg state)) t)
-	      ))))
-	;; symbols that aren't keywords
-	((typep value 'symbol)
-	 (case (intern (string value) :deblarg)
-	   (backtrace (debugger-backtrace (read-arg state)) t)
-	   (source    (debugger-show-source (read-arg state)) t)
-	   (locals    (debugger-show-locals (read-arg state)) t)
-	   (help      (debugger-help) t)
-	   (abort     (do-restart 'abort) t)
-	   (continue  (do-restart 'continue) t)
-	   (next      t)
-	   (step      t)
-	   (out       t)
-	   ))
-	;; Numbers invoke that numbered restart.
-	((typep value 'number)
-	 (if (and (>= value 0) (< value (length restarts)))
-	     (invoke-restart-interactively (nth value restarts))
-	     (format *debug-io*
-		     "~a is not a valid restart number.~%" value)))))))
+    (cond
+      ;; We use keywords as commands, just in case you have a variable or some
+      ;; other symbol clash. I dunno. I 'spose we could use regular symbols,
+      ;; and have a "print" command.
+      ((typep value 'keyword)
+       (let ((ks (string value)))
+	 ;; :r<n> restart keywords - to be compatible with CLisp
+	 (when (and (> (length ks) 1) (equal (aref ks 0) #\R))
+	   (let ((n (parse-integer (subseq ks 1))))
+	     ;; (invoke-restart-interactively (nth n (compute-restarts)))))
+	     ;; (format t "[Invoking restart ~d (~a)]~%" n (nth n restarts))
+	     (invoke-restart-interactively (nth n restarts))))
+	 (let ((cmd (get-command value)))
+	   (when cmd
+	     (funcall (command-name (debugger-command-name cmd))
+		      state restarts)
+	     t))))
+      ;; symbols that aren't keywords
+      ((typep value 'symbol)
+       (let ((sym (command-name value)))
+	 (when (fboundp sym)
+	   (funcall sym state restarts)
+	   t)))
+      ;; Numbers invoke that numbered restart.
+      ((typep value 'number)
+       (if (and (>= value 0) (< value (length restarts)))
+	   (invoke-restart-interactively (nth value restarts))
+	   (format *debug-io*
+		   "~a is not a valid restart number.~%" value))
+       t))))
 
 ;; (defun try-to-reset-curses ()
 ;;   "If curses is loaded and active, try to reset the terminal to a sane state
