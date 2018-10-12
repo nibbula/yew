@@ -30,6 +30,7 @@ make the table in the first place. For that you want the TABLE package.")
    #:text-table-renderer-prefix
    #:text-table-renderer-suffix
    #:text-table-renderer-separator
+   #:text-table-renderer-cursor
    #:text-table-adjust-sizes
    #:*trailing-spaces*
    
@@ -630,7 +631,8 @@ resized to fit in this, and the whole row is trimmed to this."
 		    (format stream "~%~v,,,va~va"
 			    cell-col #\space #\space cell-width l))
 		 (setf cell-lines nil))
-	       (terpri stream))
+	       (when (or (not max-width) (/= cursor max-width))
+		 (terpri stream)))
 	     (incf row-num))
 	 table)))
     (olength (container-data table)))) ;; @@@ should actually be rows output?
