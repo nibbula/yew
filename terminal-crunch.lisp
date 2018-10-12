@@ -450,13 +450,14 @@ sizes. It only copies the smaller of the two regions."
 	    (setf start-line (terminal-get-cursor-position wtty)
 		  (screen-y (new-screen tty)) start-line
 		  (screen-y (old-screen tty)) start-line)
+	    ;; (update-size tty)
 	    (invalidate-before-start-row tty (new-screen tty))
 	    (invalidate-before-start-row tty (old-screen tty))
 	    (dbugf :crunch "Crunch auto re-starting at ~s.~%" start-line))
 	  ;; @@@ Is this reasonable?
-	  (terminal-erase-below tty)
-	  (terminal-erase-below wtty)
-	  (terminal-reset tty)
+	  ;; (terminal-erase-below tty)
+	  ;; (terminal-erase-below wtty)
+	  ;; (terminal-reset tty)
 	  (incf (started tty))
 	  nil) ;; no state
 	(let ((state (terminal-start wtty)))
@@ -1202,7 +1203,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	       (setf (cdr change-range) i)
 	       (push change-range changes)
 	       (setf change-range nil))))
-      (loop
+      (loop :with disp-len
 	 :for i :from 0 :below (length new-line) :do
 	 (if (not (fatchar= (aref new-line i) (aref old-line i)))
 	     (progn
@@ -1225,6 +1226,8 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	     (progn ;; chars are equal
 	       ;; Note change end
 	       (note-change-end i)))
+	 (when (> (setf disp-len (display-length (aref new-line i))) 1)
+	   (incf i (1- disp-len)))
 	 :finally (note-change-end (1- i))))
 
     (when changes
@@ -1243,7 +1246,8 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 
     (when (not first-change)
       (cerror "Forget about it."
-	      "We thought we had to update line ~s, but we didn't?" line))
+	      "We thought we had to update line ~s, but we didn't?" line)
+      (return-from update-line))
 
     ;; @@@ Try to see if we can use insert / delete.
     (crunched-move-to tty first-change line (update-x tty) (update-y tty))
@@ -1260,9 +1264,14 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 		 (terminal-write-char wtty (aref new-line start))
 		 (terminal-write-string wtty (make-fat-string :string new-line)
 					:start start
-					:end (1+ end)))
-	     ;; @@@ This is wrong since it should be display-length or *better*
-	     (setf (update-x tty) (1+ end))
+					:end (min (1+ end) (length new-line))))
+	     (setf (update-x tty)
+		   ;; (1+ end)
+		   (+ start
+		      (loop :for i :from start :to end
+			 ;; @@@ is this good enough?
+			 :sum (display-length (aref new-line i))))
+		   )
 	     ))
 	(progn
 	  ;; Write a whole new line
@@ -1270,7 +1279,8 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	  ;; 	 (1+ last-change))
 	  (terminal-write-string wtty (make-fat-string :string new-line)
 				 :start first-change
-				 :end (1+ last-change))
+				 :end (min (1+ last-change)
+					   (length new-line)))
 	  (setf (update-x tty) (1+ last-change))
 	  ))))
 
@@ -1329,7 +1339,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
     (dbugf :crunch "****** start update @ ~s~%" start-line)
     ;; (dbugf :crunch-update "****** start update @ ~s~%" start-line)
     ;; (if-dbugf (:crunch-update)
-    ;; 	      (tiny-debug::debugger-backtrace 10))
+    ;; 	      (deblarg::debugger-backtrace 10))
 
     ;; First, actually scroll unmanaged content if we have to.
     (when (and (not (zerop start-line))
