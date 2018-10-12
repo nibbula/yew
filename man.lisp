@@ -43,11 +43,16 @@
 			(glob (s+ d "/man*/"))))
 	     :test #'equal))))
 
-(defclass arg-manual-section (arg-lenient-choice)
+;; (defclass arg-manual-section (arg-lenient-choice)
+;;   ()
+;;   (:default-initargs
+;;    :choice-func #'get-manual-sections)
+;;   (:documentation "Manual section."))
+(defargtype manual-section (arg-lenient-choice)
+  "Manual section."
   ()
   (:default-initargs
-   :choice-func #'get-manual-sections)
-  (:documentation "Manual section."))
+   :choice-func #'get-manual-sections))
 
 (defparameter *suffixes* #(".gz" ".bz2" ".z" ".Z" ".F" ".Y" ".bz" ".xz" ".7z"))
 
@@ -103,12 +108,19 @@
 	(setf *man-entries* (remove-duplicates *man-entries* :test #'equal))
 	*man-entries*)))
 
-(defclass arg-manual-entry (arg-lenient-choice)
+;; (defclass arg-manual-entry (arg-lenient-choice)
+;;   ()
+;;   (:default-initargs
+;;    :test #'arg-choice-compare
+;;    :choice-func #'get-manual-entries)
+;;   (:documentation "Manual entry."))
+
+(defargtype manual-entry (arg-lenient-choice)
+  "Manual entry."
   ()
   (:default-initargs
    :test #'arg-choice-compare
-   :choice-func #'get-manual-entries)
-  (:documentation "Manual entry."))
+   :choice-func #'get-manual-entries))
 
 ;; @@@ This needs work
 (defcommand man

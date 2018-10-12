@@ -557,13 +557,13 @@ arguments are the same."
    (regexp	 boolean  :short-arg #\r :default t
     :help        "True if matching is done with regular expressions.")
    (case-mode	 choice  :short-arg #\C :default "smart"
-		 :choices (:smart :sensitive :insensitive)
+		 :choices '(:smart :sensitive :insensitive)
     :help        "The mode for matching letter characters. One of 'smart',
                   'sensitive', or 'insensitive'. (default 'smart')
                   'smart' is insensitive if there are no upper case letters,
                   sesitive otherwise. 'sesitive' matches the exact case.
                   'insensitive' matches any case.")
-   (collect	 boolean  :short-arg #\c :default (lish:accepts :sequence)
+   (collect	 boolean  :short-arg #\c :default '(lish:accepts :sequence)
     :help        "Return the file name as a list.")
    (name	 string   :short-arg #\n
     :help        "Matches file name.")

@@ -218,7 +218,7 @@ linked file."
   ((follow-links boolean :short-arg #\l
     :help "True to give information about the linked thing, not the link." )
    (style choice :short-arg #\s :default *default-style*
-    :choices ("generic" "unix" "ms")
+    :choices '("generic" "unix" "ms")
     :help "Operating system specific output style.")
    (files pathname :repeating t
     :help "The path names to give information about."))

@@ -449,11 +449,17 @@ user, pid, ppid, size, command."
   (mapcar #'nos:user-info-name (nos:user-list)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defclass arg-user (arg-lenient-choice)
+  (defargtype user (arg-lenient-choice)
+    "User name."
     ()
     (:default-initargs
-     :choice-func #'user-name-list)
-    (:documentation "User name.")))
+     :choice-func #'user-name-list))
+  ;; (defclass arg-user (arg-lenient-choice)
+  ;;   ()
+  ;;   (:default-initargs
+  ;;    :choice-func #'user-name-list)
+  ;;   (:documentation "User name."))
+  )
 
 #+lish
 (lish:defcommand ps

@@ -298,7 +298,7 @@ Second value is the scanner that was used.
     :short-arg #\c :default t
     :help "True to highlight substrings in color.")
    (collect boolean
-    :short-arg #\s :default (lish:accepts :sequence)
+    :short-arg #\s :default '(lish:accepts :sequence)
     :help "True to collect matches in a sequence.")
    (positions boolean :short-arg #\p
     :help "True to send positions to Lish output. Equivalent to -nqs, except

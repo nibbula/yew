@@ -99,7 +99,7 @@
     :default	:decimal
     :prompt	"Offset format"
     :help	"Base for byte offset."
-    :choices	("octal" "decimal" "hex"))
+    :choices	'("octal" "decimal" "hex"))
    (minimum-string-length integer
     :short-arg	#\n
     :default	4

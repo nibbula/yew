@@ -485,11 +485,12 @@ by nos:read-directory."))
     :help "True to list the directory itself, not its contents.")
    (sort-by choice :long-arg "sort" :help "Field to sort by."
     :default "name"
-    :choices ("none" "name" "size" "access-time" "creation-time"
-	      "modification-time" "extension" "type" "mime-type"))
+    ;; :choices ''("none" "name" "size" "access-time" "creation-time"
+    ;; 	      "modification-time" "extension" "type" "mime-type"))
+    :choices *sort-fields*)
    (date-format lenient-choice :short-arg #\f :help "Date format to use."
     :default "normal"
-    :choices ("normal" "nibby"))
+    :choices '("normal" "nibby"))
    (reverse boolean :short-arg #\r :help "Reverse sort order.")
    (show-size boolean :short-arg #\s :help "True to show the file size.")
    (collect boolean :short-arg #\c :help "Collect results as a sequence.")
