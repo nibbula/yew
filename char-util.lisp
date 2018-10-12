@@ -881,7 +881,8 @@ than space and delete."
 ;; of CLOS incompleteness.
 
 (defgeneric simplify-char (char)
-  (:documentation "Return a simplified version of the character."))
+  (:documentation "Return a simplified version of the character.")
+  (:method ((char character)) char))
 
 (defgeneric simplify-string (string)
   (:documentation "Return a simplified version of the string."))
