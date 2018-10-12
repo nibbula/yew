@@ -13,6 +13,6 @@
     "If perchance you have any interest in the testing of the DLIB-MISC, you may
 very well want to look into this very package. I wouldst heartily recommend that
 thou tryeth to invoke that petulant scamp DLIB-MISC-TEST:RUN forthwith."
-    :depends-on (:test :dlib-misc)
+    :depends-on (:test :dlib-misc :fatchar)
     :components
     ((:file "dlib-misc-test")))
