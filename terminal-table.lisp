@@ -21,12 +21,14 @@
   "Output all the column titles."
   (declare (ignore table))
   (with-accessors ((separator text-table-renderer-separator)
-		   (stream text-table-renderer-stream)) renderer
+		   (stream text-table-renderer-stream)
+		   (cursor text-table-renderer-cursor)) renderer
     (let ((has-underline (terminal-has-attribute stream :underline)))
+      (setf cursor 0)
       (loop :with str
 	 :and fmt = "~va"
 	 :and len = (length titles)
-	 :and size :and just
+	 :and size :and just :and out-str
 	 :for col :in titles
 	 :and i :from 0 :below (length sizes)
 	 :do
@@ -39,25 +41,30 @@
 		   fmt "~va"))
 	 (when has-underline
 	   (terminal-underline stream t))
-	 (terminal-format stream fmt size
-			  (subseq (string-capitalize
-				   (substitute #\space #\_ str))
-				  0 (min (length str) size)))
+	 (setf out-str (subseq (string-capitalize
+				(substitute #\space #\_ str))
+			       0 (min (length str) size)))
+	 (terminal-format stream fmt size out-str)
+	 (incf cursor (display-length out-str))
 	 (when has-underline
 	   (terminal-underline stream nil))
 	 (when (< i (1- len))
 	   (terminal-write-string stream separator)))
-      (terminal-write-char stream #\newline)
+      (when (or (not *max-width*) (/= cursor *max-width*))
+	(terminal-write-char stream #\newline))
 
       ;; Lines
       (when (not has-underline)
+	(setf cursor 0)
 	(loop :with len = (length sizes)
 	   :for i :from 0 :below len
 	   :do
 	   (terminal-format stream "~v,,,va" (car (aref sizes i)) #\- #\-)
+	   (incf cursor (aref sizes i))
 	   (when (< i (1- len))
 	     (terminal-write-string stream separator)))
-	(terminal-write-char stream #\newline)))))
+	(when (or (not *max-width*) (/= cursor *max-width*))
+	  (terminal-write-char stream #\newline))))))
 
 (defmethod text-table-adjust-sizes (table (renderer terminal-table-renderer)
 				    sizes max-width)
