@@ -11,7 +11,8 @@
 ;;  - way to invoke unbound subcommand?
 ;;  - improve git mode
 ;;    - show things to pull? (e.g. changes on remote)
-;;  - Consider making a branch editing mode
+;;    - stash editing mode
+;;    - Consider making a branch editing mode
 ;;  - Consider configuration / options editing
 ;;     like for "git config ..." or whatever the equivalent is in other systems
 

@@ -176,6 +176,10 @@ TABLE-PRINT:OUTPUT-TABLE.")
 	 (symbol-call :lish :accepts :grotty-stream))
   (symbol-call :lish :accepts :grotty-stream))
 
+;; @@@ Consider a way to support "NO_COLOR" environment variable.
+;; Perhaps make a terminal subclass that supresses color? Or just switch
+;; to a non-color theme?
+
 ;; If you need a specific one, just make it yourself.
 (defun make-grout (&optional (stream *standard-output*))
   "Return an appropriate grout instance. Try to figure out what kind to make

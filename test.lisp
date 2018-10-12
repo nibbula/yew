@@ -230,7 +230,14 @@ of forms which return a truth value indicating if the test failed. Each form
 can optionally be preceded by a string, which is it's documentation. If a form
 is a symbol, it is take as the name of a test group to run, allowing test group
 nesting. The form can be keyword which is a substitute for one of the keyword
-arguements."
+arguements, which are:
+  :SETUP    - Code to be run before the whole test group.
+  :TAKEDOWN - Code to be run after the whole test group.
+  :DOC        Documentation for the whole test group.
+Both SETUP and TAKEDOWN, can be a function, or an fbound symbol, which are are
+FUNCALLed, or a list which is EVALed. TAKEDOWN is run even if a non-local
+exit occurs.
+"
 ;  (let* ((group (find-group group-name))
 ;         (n (length group)))
   (clear-group group-name)
