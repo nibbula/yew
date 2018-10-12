@@ -305,6 +305,9 @@
 	  :collect
 	  `(define-debugger-command ,(first c) ,(second c) ,@(cddr c)))))
 
+(defun eval-print (vals)
+  (format t "~&~{~s~^ ;~%~}~%" vals))
+
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *base-commands*
     #((backtrace  (:b) "Backtrace stack."
@@ -325,6 +328,10 @@
       (set-frame  (:f) "Set the frame." (debugger-set-frame (read-arg state)))
       (top        (:t) "Go to the top frame."
        (debugger-top-frame (read-arg state)))
+      (eval-in    (:ev) "Evaluate in frame."
+       (eval-print
+	(multiple-value-list
+	 (debugger-eval-in-frame (read-arg state) (read-arg state)))))
       (error      (:e)   "Show the error again."
        (print-condition *interceptor-condition*))
       (abort      (:a)   "Abort to top level."
@@ -437,14 +444,15 @@ program that messes with the terminal, we can still type at the debugger."
 
 ;; @@@ This hackishly knows too much about RL.
 (defun debugger-redraw (e)
-  (when *visual-term*
+  (if *visual-term*
     (let ((tt *visual-term*))
       (terminal-clear tt)
       (terminal-beginning-of-line tt)
       (terminal-erase-to-eol tt)
       (setf (rl:screen-col e) 0)
       (debugger-prompt rl:*line-editor* "> ")
-      (terminal-finish-output tt)))
+      (terminal-finish-output tt))
+    (rl::redraw-command e))
   nil)
 
 (defvar *debugger-keymap* nil "Keymap for the debugger.")
