@@ -106,6 +106,17 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 (defmethod (setf oelt) (value (s fat-string) key) ;; @@@ ??? test
   (setf (aref (fat-string-string s) key) value))
 
+;; It's probably better to use oelt than oaref if you can.
+
+(defmethod oaref ((s fat-string) &rest subscripts)
+  (apply #'aref (fat-string-string s) subscripts))
+
+(defmethod (setf oaref) (value (s fat-string) &rest subscripts) ;; @@@ ??? test
+  (when (> (length subscripts) 1)
+    (error "Wrong number of subscripts, ~s, for a fat-string."
+	   (length subscripts)))
+  (setf (aref (fat-string-string s) (car subscripts)) value))
+
 (defmethod osubseq ((string fat-string) start &optional end)
   "Sub-sequence of a fat-string."
   (make-fat-string
