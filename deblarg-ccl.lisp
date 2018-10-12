@@ -5,7 +5,6 @@
 (in-package :deblarg)
 
 #|
-#+ccl
 (defun debugger-backtrace-lines (n)
   "Our own backtrace for CCL."
   (let ((frames '()) (*print-readably* nil))
@@ -26,7 +25,7 @@
        (incf i)
        :while (< i n))))
 |#
-#+ccl
+
 (defun debugger-backtrace-lines (n)
   (loop :with i = 0
      :for b :in (ccl::backtrace-as-list)
@@ -38,7 +37,6 @@
      (incf i)
      :while (< i (+ *current-frame* n))))
 
-#+ccl
 (defun debugger-wacktrace (n)
   "Our own backtrace for CCL."
   (declare (ignore n))			; @@@
@@ -67,7 +65,6 @@
 				    (ccl:frame-supplied-arguments f context))))))
        (incf i))))
 
-#+ccl
 (defun OLD-get-frame (n)
   (let ((f 0) frame-ptr context)
     (ccl:map-call-frames
@@ -81,7 +78,6 @@
      :count most-positive-fixnum)
     (values frame-ptr context)))
 
-#+ccl
 (defun get-frame (n)
   (let ((f 0) frame-ptr context)
     (ccl:map-call-frames
@@ -98,7 +94,6 @@
 ;;        (format t "~s ~s ~4d ~s~%~s~%" p c pc func
 ;; 	       (ccl:source-note-filename (ccl:function-source-note func))))))
 
-#+ccl
 (defun debugger-source-note (n)
   (multiple-value-bind (pointer context) (get-frame n)
     (multiple-value-bind (func pc) (ccl:frame-function pointer context)
@@ -106,7 +101,7 @@
 	  (or (ccl:find-source-note-at-pc func pc)
 	      (ccl:function-source-note func))
 	  (ccl:function-source-note func)))))
-#+ccl
+
 (defun debugger-show-source (n)
   (when (not n)
     (setf n 0))
@@ -130,7 +125,6 @@
 		   (read-sequence str stream)
 		   (format *debug-io* "~a~%" str)))))))))))
 
-#+ccl
 (defun debugger-source-path (frame &optional (window-size 10))
   (declare (ignore window-size)) ; @@@
   (let ((note (debugger-source-note frame)))
@@ -142,7 +136,6 @@
       (t
        ":Internal"))))
 
-#+ccl
 (defun debugger-source (frame &optional (window-size 10))
   (let ((note (debugger-source-note frame)))
     (if (not note)
@@ -163,13 +156,16 @@
 		:while (setf line (read-line stream nil nil))
 		:collect line)))))))
 
-#+ccl
 (defun debugger-show-locals (n)
   (let ((*print-readably* nil))
     (multiple-value-bind (pointer context) (get-frame n)
       (loop :for (name . value) :in (ccl:frame-named-variables pointer context)
 	 :do
-	 (format *debug-io* "~a = ~a~%" name value)))))
+	 (print-span
+	  `((:magenta ,(princ-to-string name)) " = "
+	    (:green ,(prin1-to-string value)) #\newline))
+	 ;; (format *debug-io* "~a = ~a~%" name value)
+	 ))))
 
 (defun debugger-backtrace (n)
   "Output a list of execution stack contexts. Try to limit it to the
@@ -188,23 +184,26 @@ innermost N contexts, if we can."
   ;;  #+ccl ccl:*top-error-frame*
   0)
 
-#+ccl
 (defun debugger-up-frame (&optional (count 1))
   (when (> *current-frame* 0)
     (decf *current-frame* (or count 1))))
 
-#+ccl
 (defun debugger-down-frame (&optional (count 1))
   (incf *current-frame* (or count 1)))
 
-#+ccl
 (defun debugger-set-frame (frame)
   (setf *current-frame* frame))
 
-#+ccl
 (defun debugger-top-frame (count)
   (declare (ignore count))
   (setf *current-frame* 0)) ;; XXX wrong?
+
+(defun debugger-eval-in-frame (form n)
+  (multiple-value-bind (pointer context) (get-frame n)
+    (let ((vars (ccl:frame-named-variables pointer context)))
+      (eval `(let ,(loop :for (var . val) :in vars :collect `(,var ',val))
+               (declare (ignorable ,@(mapcar #'car vars)))
+               ,form)))))
 
 (defun activate-stepper ()
   "Activate the setpper."
