@@ -395,16 +395,19 @@
       ;; symbols that aren't keywords
       ((typep value 'symbol)
        (let ((sym (command-name value)))
-	 (when (fboundp sym)
-	   (funcall sym state restarts)
-	   t)))
+	 (if (fboundp sym)
+	     (progn
+	       (funcall sym state restarts)
+	       t)
+	     nil)))
       ;; Numbers invoke that numbered restart.
       ((typep value 'number)
        (if (and (>= value 0) (< value (length restarts)))
 	   (invoke-restart-interactively (nth value restarts))
 	   (format *debug-io*
 		   "~a is not a valid restart number.~%" value))
-       t))))
+       t)
+      (t nil))))
 
 ;; (defun try-to-reset-curses ()
 ;;   "If curses is loaded and active, try to reset the terminal to a sane state
