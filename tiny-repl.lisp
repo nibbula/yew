@@ -309,7 +309,10 @@ The REPL also has a few commands:
        ;; can read out of the more string, if it wants to.
        (when (or (not interceptor)
 		 (and interceptor
-		      (not (funcall interceptor form state))))
+		      (and (not (funcall interceptor form state))
+			   (not (and (dbugf
+				      :repl
+				      "Interceptor returned NIL.~%") nil)))))
 	 (handler-case
 	     (handler-bind
 		 ;; @@@ Probably a bad idea but, ignore warnings in the REPL
@@ -331,6 +334,7 @@ The REPL also has a few commands:
 		  )
 	       (progn
 		 (setf - form)
+		 (dbugf :repl "About to eval ~s~%" form)
 		 (unwind-protect
 		      (let* ((vals (multiple-value-list (eval form)))
 			     (*print-circle* t))
