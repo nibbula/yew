@@ -12,7 +12,7 @@
 ;; I don't like the name “MISC”. Let’s think of something better.
 
 (defpackage :dlib-misc
-  (:use :cl :dlib :opsys :char-util :glob
+  (:use :cl :dlib :opsys :char-util :glob :collections
 	#+use-re :re #-use-re :ppcre)
   ;; Also has an inplicit dependency on ASDF.
   (:documentation "More generally dubious miscellaneous functions.")
@@ -673,7 +673,7 @@ which defaults to zero."
 
 ;; This slow and very consing, but remarkably succinct. It has the benefit of
 ;; knowing the stream's current column by way of the implementation's stream
-;; machinery. It might be nice if it got the COLS from the place.
+;; machinery. It might be nice if it got the COLS from the same place.
 
 (defun old-justify-text (s &key (cols 80) (stream *standard-output*)
 			 (prefix "") (separator #\space)
@@ -695,7 +695,8 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 ;; and therefore wrongly assumes zero.
 ;; Assumes fixed width characters, without all the unicode nonsense.
 
-(defun %justify-text (text &key (cols 80) (stream *standard-output*)
+;; Keep this around in case we need a faster simple character only version.
+(defun %justify-text-OLD (text &key (cols 80) (stream *standard-output*)
 			     (prefix "") (separator #\space) omit-first-prefix
 			     (start-column 0))
   (declare (optimize (speed 3) (safety 0) (debug 3) (space 0)
@@ -768,6 +769,96 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 	    (incf i)
 	    (incf column))))
       (when (< last-word-start i)
+	(write-word t)))))
+
+;; This can handle unicode and fatchars, but it only gives reasonable output for
+;; the the subset of unicode scripts that have a non-context-dependant word
+;; separator character (a.k.a. western style). Perhaps someday we can make it
+;; work in a more universal text rendering system, but it would be nice to at
+;; least have it support anything that we can reasonably render in a character
+;; grid system (i.e. terminals).
+(defun %justify-text (text &key (cols 80) (stream *standard-output*)
+			     (prefix "") (separator #\space) omit-first-prefix
+			     (start-column 0))
+  ;; (declare (optimize (speed 3) (safety 0) (debug 3) (space 0)
+  ;; 		     (compilation-speed 0))
+  (declare (optimize (speed 0) (safety 3) (debug 3) (space 0)
+   		     (compilation-speed 0))
+	   ;; (type simple-string text prefix)
+	   (type fixnum cols))
+  ;;(check-type text simple-string)
+  (let ((len             (olength text))
+	(i               0)
+	(last-word-start 0)
+	;;(line-start	 0)
+	(column          start-column)
+	(sep-len	 (display-length separator))
+	(prefix-len      (display-length prefix)))
+    (declare (type fixnum len i last-word-start column))
+    (flet ((write-word (final)
+	     (dbugf :justify-text "col ~d " column)
+	     (if (< column cols)
+		 (progn
+		   ;;(dbugf :justify-text "space")
+		   (princ (osubseq text last-word-start (min i len)) stream)
+		   (when (< column (- cols (1+ sep-len)))
+		     (when (not final)
+		       (princ separator stream))
+		     (incf column sep-len)))
+		 (progn
+		   (dbugf :justify-text "newline")
+		   (princ #\newline stream)
+		   (if prefix
+		       (progn
+			 (princ prefix stream)
+			 (setf column prefix-len))
+		       (setf column 0))
+		   (princ (osubseq text last-word-start i) stream)
+		   (princ separator stream)
+		   (incf column (+ (display-length
+				    (osubseq text last-word-start i))
+				    sep-len))))
+	     (dbugf :justify-text "~%")
+	     ))
+      (when (and prefix (not omit-first-prefix))
+	(princ prefix stream)
+	(setf column prefix-len))
+      (loop
+	 :while (< i len)
+	 :do
+	 (dbugf :justify-text "~s: " i)
+	 (cond
+	   ((char= (simplify-char (oelt text i)) #\Newline)
+	    ;; (when (not (zerop last-word-start))
+	    ;;   (write-char #\space stream))
+	    ;; (write-string text stream :start last-word-start :end i)
+	    (write-word nil)
+	    (write-char #\newline stream)
+	    (if prefix
+		(progn
+		  (princ prefix stream)
+		  (setf column prefix-len))
+		(setf column 0))
+	    (incf i)
+	    (setf last-word-start i
+		  ;; line-start i
+		  ))
+	   ((char= (simplify-char (oelt text i)) separator)
+	    (write-word nil)
+	    (incf i)
+	    ;; eat multiple spaces
+	    (loop :while (and (< i len)
+			      (char= (simplify-char (oelt text i)) separator))
+	       :do (incf i))
+	    (setf last-word-start i)
+	    ;;(when (zerop column)
+	    ;;  (setf line-start i))
+	    )
+	   (t
+	    (incf column (display-length (oelt text i)))
+	    (incf i))))
+      (when (< last-word-start i)
+	(dbugf :justify-text "last word ~s ~s~%" i column)
 	(write-word t)))))
 
 (defun justify-text (text &key (cols 80) (stream *standard-output*)
