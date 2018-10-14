@@ -652,6 +652,19 @@ KEYS.")
   ;; should we do a check here so perhaps we could get a better error?
   (apply #'oaref (container-data array) subscripts))
 
+(defgeneric (setf oaref) (value array &rest subscripts)
+  (:documentation
+   "Set the element of ARRAY specified by SUBSCRIPTS to VALUE.")
+  (:method (value (array vector) &rest subscripts)
+    (setf (apply #'aref array subscripts) value))
+  (:method (value (array array) &rest subscripts)
+    (setf (apply #'aref array subscripts) value)))
+
+(defmethod (setf oaref) (value (array container) &rest subscripts)
+  ;; @@@ I suppose this will only work if the container data is an array, but
+  ;; should we do a check here so perhaps we could get a better error?
+  (setf (apply #'oaref (container-data array) subscripts) value))
+
 (defun oarray-ref (&rest args)
   "Like OAREF, but with the arguments reversed for convenience in pipelines."
   ;; @@@ Is it really permissible to do this? How crappy is the performace?
