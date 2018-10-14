@@ -295,20 +295,34 @@ return potentially updated data."
 
 ;; @@@ Solaris isn't really done yet.
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  #+(or darwin linux solaris freebsd) (config-feature :os-t-has-utmpx))
+
+#+os-t-has-utmpx
+(eval-when (:compile-toplevel :load-toplevel :execute)
 (define-constants #(
-;; Name               D   L   S   F
-#(+UTX-EMPTY+	      0   0   0   0   "No valid user accounting information.")
-#(+UTX-RUN-LVL+	      1   1   1   nil "Run level. For Compatibility, not used.")
-#(+UTX-BOOT-TIME+     2   2   2   1   "Time of a system boot.")
-#(+UTX-OLD-TIME+      3   4   3   2   "Time before system clock change.")
-#(+UTX-NEW-TIME+      4   3   4   3   "Time after system clock change.")
-#(+UTX-INIT-PROCESS+  5   5   5   5   "A process spawned by init(8).")
-#(+UTX-LOGIN-PROCESS+ 6   6   6   6   "The session leader of a logged-in user.")
-#(+UTX-USER-PROCESS+  7   7   7   4   "A user process.")
-#(+UTX-DEAD-PROCESS+  8   8   8   7   "A session leader exited.")
-#(+UTX-ACCOUNTING+    9   9   9   nil "")
-#(+UTX-SIGNATURE+     10  nil 10  nil  "")
-#(+UTX-SHUTDOWN-TIME+ 11  nil 11  8  "Time of system shutdown (extension)")))
+;; Name          D    L   S   F   O
+#(+UTX-USERSIZE+ 256  32  32  32  nil "Size of utmpx.ut_user.")
+#(+UTX-IDSIZE+	 4    4   4   8   nil "Size of utmpx.ut_id.")
+#(+UTX-LINESIZE+ 32   32  32  16  nil "Size of utmpx.ut_line.")
+#(+UTX-HOSTSIZE+ 256  256 256 128 nil "Size of utmpx.ut_host."))))
+
+#+os-t-has-utmpx
+(progn
+(define-constants #(
+;; Name               D   L   S   F   O
+#(+UTX-EMPTY+	      0   0   0   0   nil "No valid user accounting information.")
+#(+UTX-RUN-LVL+	      1   1   1   nil nil "Run level. For Compatibility, not used.")
+#(+UTX-BOOT-TIME+     2   2   2   1   nil "Time of a system boot.")
+#(+UTX-OLD-TIME+      3   4   3   2   nil "Time before system clock change.")
+#(+UTX-NEW-TIME+      4   3   4   3   nil "Time after system clock change.")
+#(+UTX-INIT-PROCESS+  5   5   5   5   nil "A process spawned by init(8).")
+#(+UTX-LOGIN-PROCESS+ 6   6   6   6   nil "The session leader of a logged-in user.")
+#(+UTX-USER-PROCESS+  7   7   7   4   nil "A user process.")
+#(+UTX-DEAD-PROCESS+  8   8   8   7   nil "A session leader exited.")
+#(+UTX-ACCOUNTING+    9   9   9   nil nil "")
+#(+UTX-SIGNATURE+     10  nil 10  nil nil "")
+#(+UTX-SHUTDOWN-TIME+ 11  nil 11  8   nil "Time of system shutdown (extension)")))
 
 #+darwin
 (progn
@@ -331,14 +345,6 @@ return potentially updated data."
   #(:EMPTY :RUN-LVL :BOOT-TIME :NEW-TIME :OLD-TIME :INIT-PROCESS :LOGIN-PROCESS
     :USER-PROCESS :DEAD-PROCESS :ACCOUNTING :SIGNATURE :SHUTDOWN-TIME)
   "utmpx type keywords.")
-
-(eval-when (:compile-toplevel :load-toplevel :execute)
-(define-constants #(
-;; Name          D    L   S   F
-#(+UTX-USERSIZE+ 256  32  32  32  "Size of utmpx.ut_user.")
-#(+UTX-IDSIZE+	 4    4   4   8   "Size of utmpx.ut_id.")
-#(+UTX-LINESIZE+ 32   32  32  16  "Size of utmpx.ut_line.")
-#(+UTX-HOSTSIZE+ 256  256 256 128 "Size of utmpx.ut_host."))))
 
 #+darwin
 (defcstruct foreign-utmpx
@@ -561,12 +567,80 @@ the default name for the TYPE."
 name, not the contents. Return NIL if we don't have a guess."
   (car (rassoc file *default-utmpx-files* :test #'equal)))
 
+) ;; os-t-has-utmpx
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  #+openbsd (config-feature :os-t-has-utmp))
+
+#+os-t-has-utmp
+(progn
+  (defconstant +UT-NAMESIZE+ 32)
+  (defconstant +UT-LINESIZE+ 8)
+  (defconstant +UT-HOSTSIZE+ 256)
+
+  (defparameter *utmp-paths*
+    '((:utmp    . "/var/run/utmp")
+      (:wtmp    . "/var/log/wtmp")
+      (:lastlog . "/var/log/lastlog")))
+
+  (defun bytes-to-string (bytes)
+    (with-output-to-string (str)
+      (loop :for b :across bytes
+	 :while (not (zerop b))
+	 :do (princ (code-char b) str))))
+
+  (defun read-utmp-time (stream)
+    (let* ((time-size (cffi:foreign-type-size 'time-t))
+	   (time-buf (make-array time-size :element-type '(unsigned-byte 8))))
+      (when (not (eql time-size (read-sequence time-buf stream)))
+	(throw 'eof nil))
+      (loop :with result integer = 0
+	 :for i :from 0 :below time-size
+	 :do (setf result (ash (aref time-buf i) (* i 8)))
+	 :finally (return result))))
+
+  (defun read-utmp-string (stream length)
+    (let ((buf (make-array length :element-type '(unsigned-byte 8))))
+      (when (not (eql length (read-sequence buf stream)))
+	(throw 'eof nil))
+      ;;(char-util:utf8-bytes-to-string buf)
+      (bytes-to-string buf)
+      ))
+
+  (defstruct utmp
+    time
+    line
+    name
+    host)
+
+  (defun read-utmp-record (stream type)
+    (catch 'eof
+      (ecase type
+	(:last
+	 (make-utmp :time (read-utmp-time stream)
+		    :line (read-utmp-string stream +UT-LINESIZE+)
+		    :host (read-utmp-string stream +UT-HOSTSIZE+)))
+	((:utmp :wtmp)
+	 (make-utmp :line (read-utmp-string stream +UT-LINESIZE+)
+		    :name (read-utmp-string stream +UT-NAMESIZE+)
+		    :host (read-utmp-string stream +UT-HOSTSIZE+)
+		    :time (read-utmp-time stream))))))
+
+  (defun get-utmp-entries (&optional (which :utmp))
+    (let ((path (cdr (assoc which *utmp-paths*))))
+      (with-open-file (stream path :direction :input
+			      :element-type '(unsigned-byte 8))
+	(loop :with record
+	   :while (setf record (read-utmp-record stream which))
+	   :collect record)))))
+
 ;; This is usually done only when you "log in", like with the window system or
 ;; like in the ssh deamon. See getlogin.
 #+darwin (defcfun setlogin :int (name :string))
 
 (defun users-logged-in ()
   "Return a list of names of logged in users."
+  #+os-t-has-utmpx
   (unwind-protect
     (progn
       (setutxent)
@@ -576,7 +650,11 @@ name, not the contents. Return NIL if we don't have a guess."
 	   :if (eq (utmpx-type u) :user-process)
 	   :collect
 	   (utmpx-user u))))
-    (endutxent)))
+    (endutxent))
+  #+os-t-has-utmp
+  (mapcar #'utmp-name (get-utmp-entries))
+  #-(or os-t-has-utmpx os-t-has-utmp)
+  (missing-implementation 'users-logged-in))
 
 (defcfun getuid uid-t)
 (defcfun getgid uid-t)

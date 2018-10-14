@@ -9,7 +9,7 @@
 
 ;#+(or darwin linux) (config-feature :os-t-has-vfork)
 
-#+(or darwin linux freebsd)
+#+(or darwin linux freebsd openbsd)
 ;; It's partially untested if this actually works on Linux.
 (progn
   (defconstant +WAIT-NO-HANG+    #x0001)

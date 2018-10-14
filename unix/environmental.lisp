@@ -8,7 +8,7 @@
 ;; when the setenv below is used, but it would become inaccurate if
 ;; other code modifies the environment.
 
-;; ??? Does it even make sense to have these as keywords??
+;; Does it even make sense to have these as keywords??
 
 #+(or sbcl clisp ccl ecl lispworks abcl)
 (defun convert-environ (env)
@@ -354,7 +354,7 @@ NIL, unset the VAR, using unsetenv."
   (kp_proc (:struct foreign-extern-proc))
   (kp_eproc (:struct foreign-eproc)))
 
-#+freebsd
+#+(or freebsd openbsd)
 (defcstruct foreign-vmtotal
   (t_rq     :int16)   ;; length of the run queue
   (t_dw     :int16)   ;; jobs in ``disk wait'' (neg priority)
@@ -520,8 +520,8 @@ NIL, unset the VAR, using unsetenv."
 
   (defun sysctl-names ()
     "Return a list of keywords that we support getting from sysctl."
-    (loop :for d :in *sysctl-data*
-       :collect (aref d 0)))
+    (loop :for d :across *sysctl-data*
+       :collect (svref d 0)))
 
   (defun get-sysctl-item (name &optional context)
     (let ((data (find name *sysctl-data* :key (_ (aref _ 0)))))
@@ -884,9 +884,16 @@ Returns an integer."
 		  (keyword (sysconf-number name))
 		  (integer name)))
 	result)
+    ;; We can't use this stupid trick on OpenBSD.
+    #-openbsd (setf *errno* 0)
+    ;; #+openbsd (when (= *errno* +EINVAL+)
+    ;; 		(error 'posix-error
+    ;; 		       :format-control
+    ;; 		       "Crap on a crap stick. We have no way of knowing if ~
+    ;; 			sysconf will actually fail or not. Way to go POSIX."
+    ;; 		       :error-code *errno*))
     ;; We can't use the SYSCALL macro becuase sometime sysconf returns -1.
-    (setf *errno* 0
-	  result (real-sysconf number))
+    (setf result (real-sysconf number))
     (when (and (< result 0) (= *errno* +EINVAL+))
       (error 'posix-error
 	     :error-code *errno*))

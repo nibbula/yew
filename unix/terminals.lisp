@@ -4,7 +4,7 @@
 
 (in-package :opsys-unix)
 
-#-(or darwin sunos linux freebsd)
+#-(or darwin sunos linux freebsd openbsd)
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (error "Your platform is not really supported yet."))
 
@@ -30,31 +30,35 @@
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (deftermio *cchars* "A list of all the control character symbols." #(
-;; Name         Darwin Linux SunOS FreeBSD
-#(+VEOF+	0      4     4     0)
-#(+VEOL+	1      11    5     1)
-#(+VEOL2+	2      16    6     2)
-#(+VERASE+	3      2     2     3)
-#(+VWERASE+	4      14    14    4)
-#(+VKILL+	5      3     3     5)
-#(+VREPRINT+	6      12    12    6)
-#(+VERASE2+	nil    nil   nil   7)
-#(+VINTR+	8      0     0     8)
-#(+VQUIT+	9      1     1     9)
-#(+VSUSP+	10     10    10    10)
-#(+VDSUSP+	11     nil   11    11)
-#(+VSWTCH+	nil    nil   7     nil)
-#(+VSTART+	12     8     8     12)
-#(+VSTOP+	13     9     9     13)
-#(+VLNEXT+	14     15    15    14)
-#(+VDISCARD+	15     13    13    15)
-#(+VMIN+	16     6     4     16)
-#(+VTIME+	17     5     5     17)
-#(+VSTATUS+	18     nil   nil   18)
+;; Name         Darwin Linux SunOS FreeBSD OpenBSD
+#(+VEOF+	0      4     4     0       0)
+#(+VEOL+	1      11    5     1       1)
+#(+VEOL2+	2      16    6     2       2)
+#(+VERASE+	3      2     2     3       3)
+#(+VWERASE+	4      14    14    4       4)
+#(+VKILL+	5      3     3     5       5)
+#(+VREPRINT+	6      12    12    6       6)
+#(+VERASE2+	nil    nil   nil   7       nil)
+#(+VINTR+	8      0     0     8       8)
+#(+VQUIT+	9      1     1     9       9)
+#(+VSUSP+	10     10    10    10      10)
+#(+VDSUSP+	11     nil   11    11      11)
+#(+VSWTCH+	nil    nil   7     nil     nil)
+#(+VSTART+	12     8     8     12      12)
+#(+VSTOP+	13     9     9     13      13)
+#(+VLNEXT+	14     15    15    14      14)
+#(+VDISCARD+	15     13    13    15      15)
+#(+VMIN+	16     6     4     16      16)
+#(+VTIME+	17     5     5     17      17)
+#(+VSTATUS+	18     nil   nil   18      18)
 )))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defconstant +NCCS+	#+darwin 20  #+sunos 19  #+linux 32 #+freebsd 20))
+  (defconstant +NCCS+ #+darwin 20
+                      #+sunos 19
+                      #+linux 32
+                      #+freebsd 20
+                      #+openbsd 20))
 
 (defcstruct termios
     "POSIX terminal driver interface structure"
@@ -70,166 +74,165 @@
 ;; input flags (c_iflag)
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (deftermio *iflags* "List of the input flag symbols." #(
-;; Name         Darwin     Linux     SunOS     FreeBSD
-#(+IGNBRK+	#x00000001 #o0000001 #o0000001 #x00000001 "Ignore BREAK condition")
-#(+BRKINT+	#x00000002 #o0000002 #o0000002 #x00000002 "Map BREAK to SIGINTR")
-#(+IGNPAR+	#x00000004 #o0000004 #o0000004 #x00000004 "Ignore (discard) parity errors")
-#(+PARMRK+	#x00000008 #o0000010 #o0000010 #x00000008 "Mark parity and framing errors")
-#(+INPCK+	#x00000010 #o0000020 #o0000020 #x00000010 "Enable checking of parity errors")
-#(+ISTRIP+	#x00000020 #o0000040 #o0000040 #x00000020 "Strip 8th bit off chars")
-#(+INLCR+	#x00000040 #o0000100 #o0000100 #x00000040 "Map NL into CR")
-#(+IGNCR+	#x00000080 #o0000200 #o0000200 #x00000080 "Ignore CR")
-#(+ICRNL+	#x00000100 #o0000400 #o0000400 #x00000100 "Map CR to NL (ala CRMOD)")
-#(+IXON+	#x00000200 #o0002000 #o0002000 #x00000200 "Enable output flow control")
-#(+IXOFF+	#x00000400 #o0010000 #o0010000 #x00000400 "Enable input flow control")
-#(+IXANY+	#x00000800 #o0004000 #o0004000 #x00000800 "Any char will restart after stop")
-#(+IMAXBEL+	#x00002000 #o0020000 #o0020000 #x00002000 "Ring bell on input queue full")
-#(+IUCLC+	nil        #o0001000 #o0001000 nil        "Map uppercase to lowercase")
-#(+IUTF8+	nil        #o0040000 nil       nil        "Input is UTF-8")
-#(+DOSMODE+	nil        nil       #o0100000 nil        "DOS mode")
+;; Name         Darwin     Linux     SunOS     FreeBSD    OpenBSD
+#(+IGNBRK+	#x00000001 #o0000001 #o0000001 #x00000001 #x00000001 "Ignore BREAK condition")
+#(+BRKINT+	#x00000002 #o0000002 #o0000002 #x00000002 #x00000002 "Map BREAK to SIGINTR")
+#(+IGNPAR+	#x00000004 #o0000004 #o0000004 #x00000004 #x00000004 "Ignore (discard) parity errors")
+#(+PARMRK+	#x00000008 #o0000010 #o0000010 #x00000008 #x00000008 "Mark parity and framing errors")
+#(+INPCK+	#x00000010 #o0000020 #o0000020 #x00000010 #x00000010 "Enable checking of parity errors")
+#(+ISTRIP+	#x00000020 #o0000040 #o0000040 #x00000020 #x00000020 "Strip 8th bit off chars")
+#(+INLCR+	#x00000040 #o0000100 #o0000100 #x00000040 #x00000040 "Map NL into CR")
+#(+IGNCR+	#x00000080 #o0000200 #o0000200 #x00000080 #x00000080 "Ignore CR")
+#(+ICRNL+	#x00000100 #o0000400 #o0000400 #x00000100 #x00000100 "Map CR to NL (ala CRMOD)")
+#(+IXON+	#x00000200 #o0002000 #o0002000 #x00000200 #x00000200 "Enable output flow control")
+#(+IXOFF+	#x00000400 #o0010000 #o0010000 #x00000400 #x00000400 "Enable input flow control")
+#(+IXANY+	#x00000800 #o0004000 #o0004000 #x00000800 #x00000800 "Any char will restart after stop")
+#(+IMAXBEL+	#x00002000 #o0020000 #o0020000 #x00002000 #x00002000 "Ring bell on input queue full")
+#(+IUCLC+	nil        #o0001000 #o0001000 nil        #x00001000 "Map uppercase to lowercase")
+#(+IUTF8+	nil        #o0040000 nil       nil        nil        "Input is UTF-8")
+#(+DOSMODE+	nil        nil       #o0100000 nil        nil        "DOS mode")
 )))
 
 ;; output flags (c_oflag)
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (deftermio *oflags* "List of oflags symbols." #(
-;; Name       Darwin     Linux     SunOS     FreeBSD
-#(+OPOST+     #x00000001 #o0000001 #o0000001 #x00000001 "Enable following output processing")
-#(+ONLCR+     #x00000002 #o0000004 #o0000004 #x00000002 "Map NL to CR-NL (ala CRMOD)")
-#(+OXTABS+    #x00000004 #o0014000 #o0014000 #x00000004 "Expand tabs to spaces")
-#(+ONOEOT+    #x00000008 nil       nil       #x00000008 "Discard EOT's (^D) on output)")
-#(+OLCUC+     nil        #o0000002 #o0000002 nil        "Output lowercase to uppercase")
-#(+OCRNL+     nil        #o0000010 #o0000010 #x00000010 "Map CR to NL on output")
-#(+ONOCR+     #x00000020 #o0000020 #o0000020 #x00000020 "No CR output at column 0")
-#(+ONLRET+    #x00000040 #o0000040 #o0000040 #x00000040 "NL performs CR function")
-#(+OFILL+     nil        #o0000100 #o0000100 nil        "Send fill chars for delay")
-#(+OFDEL+     nil        #o0000200 #o0000200 nil        "Fill char is DEL (ASCII 127)")
-#(  +NLDLY+   nil        #o0000400 #o0000400 nil)
-#(    +NL0+   nil        #o0000000 #o0000000 nil)
-#(    +NL1+   nil        #o0000400 #o0000400 nil)
-#(  +CRDLY+   nil        #o0003000 #o0003000 nil)
-#(    +CR0+   nil        #o0000000 #o0000000 nil)
-#(    +CR1+   nil        #o0001000 #o0001000 nil)
-#(    +CR2+   nil        #o0002000 #o0002000 nil)
-#(    +CR3+   nil        #o0003000 #o0003000 nil)
-#( +TABDLY+   nil        #o0014000 #o0014000 #x00000004)
-#(   +TAB0+   nil        #o0000000 #o0000000 #x00000000)
-#(   +TAB1+   nil        #o0004000 #o0004000 nil)
-#(   +TAB2+   nil        #o0010000 #o0010000 nil)
-#(   +TAB3+   nil        #o0014000 #o0014000 #x00000004)
-#(  +BSDLY+   nil        #o0020000 #o0020000 nil)
-#(    +BS0+   nil        #o0000000 #o0000000 nil)
-#(    +BS1+   nil        #o0020000 #o0020000 nil)
-#(  +FFDLY+   nil        #o0100000 #o0100000 nil)
-#(    +FF0+   nil        #o0000000 #o0000000 nil)
-#(    +FF1+   nil        #o0100000 #o0100000 nil)
-#(  +VTDLY+   nil        #o0040000 #o0040000 nil)
-#(    +VT0+   nil        #o0000000 #o0000000 nil)
-#(    +VT1+   nil        #o0040000 #o0040000 nil)
-#(  +XTABS+   nil        #o0014000 nil       nil)
-#(+PAGEOUT+   nil        nil       #o0200000 nil)
-#(   +WRAP+   nil        nil       #o0400000 nil))))
+;; Name       Darwin     Linux     SunOS     FreeBSD    OpenBSD
+#(+OPOST+     #x00000001 #o0000001 #o0000001 #x00000001 #x00000001 "Enable following output processing")
+#(+ONLCR+     #x00000002 #o0000004 #o0000004 #x00000002 #x00000002 "Map NL to CR-NL (ala CRMOD)")
+#(+OXTABS+    #x00000004 #o0014000 #o0014000 #x00000004 #x00000004 "Expand tabs to spaces")
+#(+ONOEOT+    #x00000008 nil       nil       #x00000008 #x00000008 "Discard EOT's (^D) on output)")
+#(+OLCUC+     nil        #o0000002 #o0000002 nil        #x00000020 "Output lowercase to uppercase")
+#(+OCRNL+     nil        #o0000010 #o0000010 #x00000010 #x00000010 "Map CR to NL on output")
+#(+ONOCR+     #x00000020 #o0000020 #o0000020 #x00000020 #x00000040 "No CR output at column 0")
+#(+ONLRET+    #x00000040 #o0000040 #o0000040 #x00000040 #x00000080 "NL performs CR function")
+#(+OFILL+     nil        #o0000100 #o0000100 nil        nil        "Send fill chars for delay")
+#(+OFDEL+     nil        #o0000200 #o0000200 nil        nil        "Fill char is DEL (ASCII 127)")
+#(  +NLDLY+   nil        #o0000400 #o0000400 nil        nil)
+#(    +NL0+   nil        #o0000000 #o0000000 nil        nil)
+#(    +NL1+   nil        #o0000400 #o0000400 nil        nil)
+#(  +CRDLY+   nil        #o0003000 #o0003000 nil        nil)
+#(    +CR0+   nil        #o0000000 #o0000000 nil        nil)
+#(    +CR1+   nil        #o0001000 #o0001000 nil        nil)
+#(    +CR2+   nil        #o0002000 #o0002000 nil        nil)
+#(    +CR3+   nil        #o0003000 #o0003000 nil        nil)
+#( +TABDLY+   nil        #o0014000 #o0014000 #x00000004 nil)
+#(   +TAB0+   nil        #o0000000 #o0000000 #x00000000 nil)
+#(   +TAB1+   nil        #o0004000 #o0004000 nil        nil)
+#(   +TAB2+   nil        #o0010000 #o0010000 nil        nil)
+#(   +TAB3+   nil        #o0014000 #o0014000 #x00000004 nil)
+#(  +BSDLY+   nil        #o0020000 #o0020000 nil        nil)
+#(    +BS0+   nil        #o0000000 #o0000000 nil        nil)
+#(    +BS1+   nil        #o0020000 #o0020000 nil        nil)
+#(  +FFDLY+   nil        #o0100000 #o0100000 nil        nil)
+#(    +FF0+   nil        #o0000000 #o0000000 nil        nil)
+#(    +FF1+   nil        #o0100000 #o0100000 nil        nil)
+#(  +VTDLY+   nil        #o0040000 #o0040000 nil        nil)
+#(    +VT0+   nil        #o0000000 #o0000000 nil        nil)
+#(    +VT1+   nil        #o0040000 #o0040000 nil        nil)
+#(  +XTABS+   nil        #o0014000 nil       nil        nil)
+#(+PAGEOUT+   nil        nil       #o0200000 nil        nil)
+#(   +WRAP+   nil        nil       #o0400000 nil        nil))))
 
 ;; Control flags - hardware control of terminal (c_cflag)
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (deftermio *cflags* "List of the control flag symbols." #(
-;; Name        Darwin     Linux          SunOS          FreeBSD
-#(+CIGNORE+    #x00000001 nil            nil            #x00000001 "Ignore control flags")
-#(+CSIZE+      #x00000300 #o0000060      #o0000060      #x00000300 "Character size mask")
-#(+CS5+        #x00000000 #o0000000      #o0000000      #x00000000 "5 bits (pseudo)")
-#(+CS6+        #x00000100 #o0000020      #o0000020      #x00000100 "6 bits")
-#(+CS7+        #x00000200 #o0000040      #o0000040      #x00000200 "7 bits")
-#(+CS8+        #x00000300 #o0000060      #o0000060      #x00000300 "8 bits")
-#(+CSTOPB+     #x00000400 #o0000100      #o0000100      #x00000400 "Send 2 stop bits")
-#(+CREAD+      #x00000800 #o0000200      #o0000200      #x00000800 "Enable receiver")
-#(+PARENB+     #x00001000 #o0000400      #o0000400      #x00001000 "Parity enable")
-#(+PARODD+     #x00002000 #o0001000      #o0001000      #x00002000 "Odd parity, else even")
-#(+HUPCL+      #x00004000 #o0002000      #o0002000      #x00004000 "Hang up on last close")
-#(+CLOCAL+     #x00008000 #o0004000      #o0004000      #x00008000 "Ignore modem status lines")
-#(+CCTS_OFLOW+ #x00010000 nil            #o010000000000 #x00010000 "CTS flow control of output")
-#(+CRTS_IFLOW+ #x00020000 nil            #o020000000000 #x00020000 "RTS flow control of input")
-#(+CRTSCTS+    (logior +CCTS_OFLOW+ +CRTS_IFLOW+)
-                          #o020000000000 #o020000000000 (logior +CCTS_OFLOW+ +CRTS_IFLOW+) "")
-#(+CDTR_IFLOW+ #x00040000 nil            nil            #x00040000 "DTR flow control of input")
-#(+CDSR_OFLOW+ #x00080000 nil            nil            #x00080000 "DSR flow control of output")
-#(+CCAR_OFLOW+ #x00100000 nil            nil            #x00100000 "DCD flow control of output")
-#(+MDMBUF+     #x00100000 nil            nil            #x00100000 "old name for CCAR_OFLOW")
-#(+CBAUDEX+    nil        #o0010000      nil            nil        "")
-#(+CMSPAR+     nil        #o010000000000 nil            nil        "mark or space (stick) parity"))))
+;; Name        Darwin     Linux          SunOS          FreeBSD    OpenBSD
+#(+CIGNORE+    #x00000001 nil            nil            #x00000001 #x00000001 "Ignore control flags")
+#(+CSIZE+      #x00000300 #o0000060      #o0000060      #x00000300 #x00000300 "Character size mask")
+#(+CS5+        #x00000000 #o0000000      #o0000000      #x00000000 #x00000000 "5 bits (pseudo)")
+#(+CS6+        #x00000100 #o0000020      #o0000020      #x00000100 #x00000100 "6 bits")
+#(+CS7+        #x00000200 #o0000040      #o0000040      #x00000200 #x00000200 "7 bits")
+#(+CS8+        #x00000300 #o0000060      #o0000060      #x00000300 #x00000300 "8 bits")
+#(+CSTOPB+     #x00000400 #o0000100      #o0000100      #x00000400 #x00000400 "Send 2 stop bits")
+#(+CREAD+      #x00000800 #o0000200      #o0000200      #x00000800 #x00000800 "Enable receiver")
+#(+PARENB+     #x00001000 #o0000400      #o0000400      #x00001000 #x00001000 "Parity enable")
+#(+PARODD+     #x00002000 #o0001000      #o0001000      #x00002000 #x00002000 "Odd parity, else even")
+#(+HUPCL+      #x00004000 #o0002000      #o0002000      #x00004000 #x00004000 "Hang up on last close")
+#(+CLOCAL+     #x00008000 #o0004000      #o0004000      #x00008000 #x00008000 "Ignore modem status lines")
+#(+CCTS_OFLOW+ #x00010000 nil            #o010000000000 #x00010000 #x00100000 "CTS flow control of output")
+#(+CRTS_IFLOW+ #x00020000 nil            #o020000000000 #x00020000 #x00100000 "RTS flow control of input")
+#(+CRTSCTS+    #x00030000 #o020000000000 #o020000000000 #x00030000 #x00100000 "RTS/CTS full-duplex flow control")
+#(+CDTR_IFLOW+ #x00040000 nil            nil            #x00040000 #x00040000 "DTR flow control of input")
+#(+CDSR_OFLOW+ #x00080000 nil            nil            #x00080000 #x00080000 "DSR flow control of output")
+#(+CCAR_OFLOW+ #x00100000 nil            nil            #x00100000 #x00100000 "DCD flow control of output")
+#(+MDMBUF+     #x00100000 nil            nil            #x00100000 #x00100000 "old name for CCAR_OFLOW")
+#(+CBAUDEX+    nil        #o0010000      nil            nil        nil        "")
+#(+CMSPAR+     nil        #o010000000000 nil            nil        nil        "mark or space (stick) parity"))))
 
 ;; local flags (c_lflag)
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (deftermio *lflags* "List of lflag symbols." #(
-;; Name        Darwin     Linux     SunOS     FreeBSD
-#(+ECHOKE+     #x00000001 #o0004000 #o0004000 #x00000001 "visual erase for line kill")
-#(+ECHOE+      #x00000002 #o0000020 #o0000010 #x00000002 "visually erase chars")
-#(+ECHOK+      #x00000004 #o0000040 #o0000040 #x00000004 "echo NL after line kill")
-#(+ECHO+       #x00000008 #o0000010 #o0000010 #x00000008 "enable echoing")
-#(+ECHONL+     #x00000010 #o0000100 #o0000100 #x00000010 "echo NL even if ECHO is off")
-#(+ECHOPRT+    #x00000020 #o0002000 #o0002000 #x00000020 "visual erase mode for hardcopy")
-#(+ECHOCTL+    #x00000040 #o0001000 #o0001000 #x00000040 "echo control chars as ^(Char)")
-#(+ISIG+       #x00000080 #o0000001 #o0000001 #x00000080 "enable signals INTR, QUIT, [D]SUSP")
-#(+ICANON+     #x00000100 #o0000002 #o0000002 #x00000100 "canonicalize input lines")
-#(+ALTWERASE+  #x00000200 nil       nil       #x00000200 "use alternate WERASE algorithm")
-#(+IEXTEN+     #x00000400 #o0100000 #o0100000 #x00000400 "enable DISCARD and LNEXT")
-#(+EXTPROC+    #x00000800 nil       nil       #x00000800 "external processing")
-#(+TOSTOP+     #x00400000 #o0000400 #o0000400 #x00400000 "stop background jobs from output")
-#(+FLUSHO+     #x00800000 #o0010000 #o0020000 #x00800000 "output being flushed (state)")
-#(+NOKERNINFO+ #x02000000 nil       nil       #x02000000 "no kernel output from VSTATUS")
-#(+PENDIN+     #x20000000 #o0040000 #o0040000 #x20000000 "XXX retype pending input (state)")
-#(+NOFLSH+     #x80000000 #o0000200 #o0000200 #x80000000 "don't flush after interrupt"))))
+;; Name        Darwin     Linux     SunOS     FreeBSD    OpenBSD
+#(+ECHOKE+     #x00000001 #o0004000 #o0004000 #x00000001 #x00000001 "visual erase for line kill")
+#(+ECHOE+      #x00000002 #o0000020 #o0000010 #x00000002 #x00000002 "visually erase chars")
+#(+ECHOK+      #x00000004 #o0000040 #o0000040 #x00000004 #x00000004 "echo NL after line kill")
+#(+ECHO+       #x00000008 #o0000010 #o0000010 #x00000008 #x00000008 "enable echoing")
+#(+ECHONL+     #x00000010 #o0000100 #o0000100 #x00000010 #x00000010 "echo NL even if ECHO is off")
+#(+ECHOPRT+    #x00000020 #o0002000 #o0002000 #x00000020 #x00000020 "visual erase mode for hardcopy")
+#(+ECHOCTL+    #x00000040 #o0001000 #o0001000 #x00000040 #x00000040 "echo control chars as ^(Char)")
+#(+ISIG+       #x00000080 #o0000001 #o0000001 #x00000080 #x00000080 "enable signals INTR, QUIT, [D]SUSP")
+#(+ICANON+     #x00000100 #o0000002 #o0000002 #x00000100 #x00000100 "canonicalize input lines")
+#(+ALTWERASE+  #x00000200 nil       nil       #x00000200 #x00000200 "use alternate WERASE algorithm")
+#(+IEXTEN+     #x00000400 #o0100000 #o0100000 #x00000400 #x00000400 "enable DISCARD and LNEXT")
+#(+EXTPROC+    #x00000800 nil       nil       #x00000800 #x00000800 "external processing")
+#(+TOSTOP+     #x00400000 #o0000400 #o0000400 #x00400000 #x00400000 "stop background jobs from output")
+#(+FLUSHO+     #x00800000 #o0010000 #o0020000 #x00800000 #x00800000 "output being flushed (state)")
+#(+NOKERNINFO+ #x02000000 nil       nil       #x02000000 #x02000000 "no kernel output from VSTATUS")
+#(+PENDIN+     #x20000000 #o0040000 #o0040000 #x20000000 #x20000000 "XXX retype pending input (state)")
+#(+NOFLSH+     #x80000000 #o0000200 #o0000200 #x80000000 #x80000000 "don't flush after interrupt"))))
 
 #+sunos (defconstant +TIOC+ (ash 84 8))
 
 ;; Commands passed to tcsetattr() for setting the termios structure.
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (define-constants #(
-;; Name       Darwin Linux SunOS              FreeBSD
-#(+TCSANOW+   0      0     (logior +TIOC+ 14) 0       "make change immediate")
-#(+TCSADRAIN+ 1      1     (logior +TIOC+ 15) 1       "drain output, then change")
-#(+TCSAFLUSH+ 2      2     (logior +TIOC+ 16) 2       "drain output, flush input")
-#(+TCSASOFT+  #x10   nil   nil                #x10    "flag - don't alter h.w. state"))))
+;; Name       Darwin Linux SunOS              FreeBSD OpenBSD
+#(+TCSANOW+   0      0     (logior +TIOC+ 14) 0       0       "make change immediate")
+#(+TCSADRAIN+ 1      1     (logior +TIOC+ 15) 1       1       "drain output, then change")
+#(+TCSAFLUSH+ 2      2     (logior +TIOC+ 16) 2       2       "drain output, flush input")
+#(+TCSASOFT+  #x10   nil   nil                #x10    #x10    "flag - don't alter h.w. state"))))
 
 ;; Standard speeds
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (define-constants #(
-;; Name     Darwin Linux      SunOS FreeBSD
-#(+B0+      0       #o0000000  0    0     )
-#(+B50+     50      #o0000001  1    50    )
-#(+B75+     75      #o0000002  2    75    )
-#(+B110+    110     #o0000003  3    110   )
-#(+B134+    134     #o0000004  4    134   )
-#(+B150+    150     #o0000005  5    150   )
-#(+B200+    200     #o0000006  6    200   )
-#(+B300+    300     #o0000007  7    300   )
-#(+B600+    600     #o0000010  8    600   )
-#(+B1200+   1200    #o0000011  9    1200  )
-#(+B1800+   1800    #o0000012  10   1800  )
-#(+B2400+   2400    #o0000013  11   2400  )
-#(+B4800+   4800    #o0000014  12   4800  )
-#(+B9600+   9600    #o0000015  13   9600  )
-#(+B19200+  19200   #o0000016  14   19200 )
-#(+B38400+  38400   #o0000017  15   38400 )
-#(+B7200+   7200    nil        nil  7200  )
-#(+B14400+  14400   nil        nil  14400 )
-#(+B28800+  28800   nil        nil  28800 )
-#(+B57600+  57600   nil        16   57600 )
-#(+B76800+  76800   nil        17   76800 )
-#(+B115200+ 115200  nil        18   115200)
-#(+B230400+ 230400  nil        20   230400)
-#(+B460800+ nil     nil        nil  460800)
-#(+B921600+ nil     nil        nil  921600)
-#(+EXTA+    19200   #o0000016  nil  19200 )
-#(+EXTB+    38400   #o0000017  nil  38400 )))
+;; Name     Darwin Linux      SunOS FreeBSD OpenBSD
+#(+B0+      0       #o0000000  0    0       0     )
+#(+B50+     50      #o0000001  1    50      50    )
+#(+B75+     75      #o0000002  2    75      75    )
+#(+B110+    110     #o0000003  3    110     110   )
+#(+B134+    134     #o0000004  4    134     134   )
+#(+B150+    150     #o0000005  5    150     150   )
+#(+B200+    200     #o0000006  6    200     200   )
+#(+B300+    300     #o0000007  7    300     300   )
+#(+B600+    600     #o0000010  8    600     600   )
+#(+B1200+   1200    #o0000011  9    1200    1200  )
+#(+B1800+   1800    #o0000012  10   1800    1800  )
+#(+B2400+   2400    #o0000013  11   2400    2400  )
+#(+B4800+   4800    #o0000014  12   4800    4800  )
+#(+B9600+   9600    #o0000015  13   9600    9600  )
+#(+B19200+  19200   #o0000016  14   19200   19200 )
+#(+B38400+  38400   #o0000017  15   38400   38400 )
+#(+B7200+   7200    nil        nil  7200    7200  )
+#(+B14400+  14400   nil        nil  14400   14400 )
+#(+B28800+  28800   nil        nil  28800   28800 )
+#(+B57600+  57600   nil        16   57600   57600 )
+#(+B76800+  76800   nil        17   76800   76800 )
+#(+B115200+ 115200  nil        18   115200  115200)
+#(+B230400+ 230400  nil        20   230400  230400)
+#(+B460800+ nil     nil        nil  460800  nil   )
+#(+B921600+ nil     nil        nil  921600  nil   )
+#(+EXTA+    19200   #o0000016  nil  19200   19200 )
+#(+EXTB+    38400   #o0000017  nil  38400   38400 )))
 
   (define-constants #(
-;; Name       Darwin Linux SunOS FreeBSD
-#(+TCIFLUSH+  1      0     0     1)
-#(+TCOFLUSH+  2      1     1     2)
-#(+TCIOFLUSH+ 3      2     2     3)
-#(+TCOOFF+    1      0     0     1)
-#(+TCOON+     2      1     1     2)
-#(+TCIOFF+    3      2     2     3)
-#(+TCION+     4      3     3     4))))
+;; Name       Darwin Linux SunOS FreeBSD OpenBSD
+#(+TCIFLUSH+  1      0     0     1       1)
+#(+TCOFLUSH+  2      1     1     2       2)
+#(+TCIOFLUSH+ 3      2     2     3       3)
+#(+TCOOFF+    1      0     0     1       1)
+#(+TCOON+     2      1     1     2       2)
+#(+TCIOFF+    3      2     2     3       3)
+#(+TCION+     4      3     3     4       4))))
 
 (defcfun cfgetispeed speed-t (tio :pointer))
 (defcfun cfgetospeed speed-t (tio :pointer))
@@ -255,16 +258,16 @@
 
 ;; Now for even more non-standard freakshow!
 
-#+(or darwin freebsd) ;; & maybe others?
+#+(or darwin freebsd openbsd) ;; & maybe others?
 (progn
   (defconstant +IOCPARM_MASK+ #x1fff "Parameter length, at most 13 bits")
   (defmacro IOCPARM_LEN (x) `(logand (ash ,x -16) +IOCPARM_MASK+))
   (defmacro IOCBASECMD (x) `(logand ,x (lognot (ash +IOCPARM_MASK+ -16))))
   (defmacro IOGROUP (x) `(logand (ash ,x -8) #xff))
   (defconstant +IOCPARM_MAX+ (1+ +IOCPARM_MASK+) "Max size of ioctl args")
-  (defconstant +IOC_VOID+	   #x20000000 "No parameters")
-  (defconstant +IOC_OUT+	   #x40000000 "Copy parameters out")
-  (defconstant +IOC_IN+	   #x80000000 "Copy parameters in")
+  (defconstant +IOC_VOID+    #x20000000 "No parameters")
+  (defconstant +IOC_OUT+     #x40000000 "Copy parameters out")
+  (defconstant +IOC_IN+	     #x80000000 "Copy parameters in")
   (defconstant +IOC_INOUT+   (logior +IOC_IN+ +IOC_OUT+) "Copy paramters in and out")
   (defconstant +IOC_DIRMASK+ #xe0000000 "mask for IN/OUT/VOID")
 
@@ -275,9 +278,9 @@
       `(logior ,inout (ash (logand ,len +IOCPARM_MASK+) 16)
 	       (ash ,grp 8) ,num)))
 
-  (defmacro _IO (g n)      `(_IOC +IOC_VOID+  ,g ,n 0))
-  (defmacro _IOR (g n ty)  `(_IOC +IOC_OUT+   ,g ,n ,(foreign-type-size ty)))
-  (defmacro _IOW (g n ty)  `(_IOC +IOC_IN+    ,g ,n ,(foreign-type-size ty)))
+  (defmacro _IO   (g n)    `(_IOC +IOC_VOID+  ,g ,n 0))
+  (defmacro _IOR  (g n ty) `(_IOC +IOC_OUT+   ,g ,n ,(foreign-type-size ty)))
+  (defmacro _IOW  (g n ty) `(_IOC +IOC_IN+    ,g ,n ,(foreign-type-size ty)))
   (defmacro _IOWR (g n ty) `(_IOC +IOC_INOUT+ ,g ,n ,(foreign-type-size ty))))
 
 ;; "Window sizes. Not used by the kernel. Just for applications."
@@ -337,10 +340,10 @@
 #+sunos (defmacro l-tioc (n) (logior n (ash (char-int #\t) 8)))
 #+sunos (defmacro b-tioc (n) (logior n (ash (char-int #\T) 8)))
 
-;; I personally love this one.
+;; Who wouldn't love this one.
 ;; @@@ I don't understand why it doesn't work on Lispworks.
-#+darwin  (defconstant TIOCSTI #-lispworks (_IOW #\t 114 :char) "simulate terminal input")
-#+freebsd (defconstant TIOCSTI #-lispworks (_IOW #\t 114 :char) "simulate terminal input")
+#+(or darwin freebsd openbsd)
+(defconstant TIOCSTI #-lispworks (_IOW #\t 114 :char) "simulate terminal input")
 #+sunos   (defconstant TIOCSTI (l-tioc 23)          "simulate terminal input")
 #+linux   (defconstant TIOCSTI #x5412               "simulate terminal input")
 
@@ -365,13 +368,13 @@
 |#
 
 ;; These are actually useful!
-#+(or darwin freebsd)
+#+(or darwin freebsd openbsd)
 (defconstant +TIOCGWINSZ+
 	   #-lispworks (_IOR #\t 104  (:struct winsize))
 	   #+lispworks #x40087468
 	   "get window size")
 
-#+(or darwin freebsd)
+#+(or darwin freebsd openbsd)
 (defconstant +TIOCSWINSZ+
 	   #-lispworks (_IOW #\t 103  (:struct winsize))
 	   #+lispworks #x80087467
@@ -786,6 +789,43 @@ characters. If we don't get anything after a while, just return what we got."
 (defparameter *sane-lflag*   #x200005cf) ; ECHOKE | ECHOE | ECHOK | ECHO |
 					 ; ECHOCTL | ISIG | ICANON | IEXTEN |
 					 ; PENDIN
+(declaim (type (unsigned-byte 8) *sane-discard*))
+(defparameter *sane-discard* #xff)	 ; undef
+(defparameter *sane-dsusp*   #xff)	 ; undef
+(defparameter *sane-eof*     #x4)	 ; ^D
+(defparameter *sane-eol*     #xff)	 ; undef
+(defparameter +sane-eol2+    #x0)	 ; ^@
+(defparameter *sane-erase*   #x7f)	 ; Delete
+(defparameter *sane-intr*    #x3)	 ; ^C
+(defparameter *sane-kill*    #x15)	 ; ^U
+(defparameter *sane-lnext*   #x11)	 ; ^Q
+(defparameter *sane-min*     #x1)	 ; ^A
+(defparameter *sane-quit*    #x1c)	 ; ^\
+(defparameter *sane-reprint* #xff)	 ; undef
+(defparameter *sane-start*   #xff)	 ; undef
+(defparameter *sane-status*  #x14)	 ; ^T
+(defparameter *sane-stop*    #xff)	 ; undef
+(defparameter *sane-susp*    #x1a)	 ; ^Z
+(defparameter *sane-time*    #x0)	 ; ^@
+(defparameter *sane-werase*  #xff)	 ; undef
+(defparameter *sane-ispeed*  38400)
+(defparameter *sane-ospeed*  38400)
+
+(defparameter *sanity*
+  `((,*sane-iflag* ,*sane-oflag* ,*sane-cflag* ,*sane-lflag*
+     ,*sane-ispeed* ,*sane-ospeed*)
+    #(,*sane-discard* ,*sane-dsusp* ,*sane-eof* ,*sane-eol* ,+sane-eol2+
+      ,*sane-erase* ,*sane-intr* ,*sane-kill* ,*sane-lnext* ,*sane-min*
+      ,*sane-quit* ,*sane-reprint* ,*sane-start* ,*sane-status* ,*sane-stop*
+      ,*sane-susp* ,*sane-time* ,*sane-werase*)))
+)
+
+#+openbsd (progn
+(defparameter *sane-iflag*   #x2b02)	 ; BRKINT | ICRNL | IMAXBEL | IXON | IXANY
+(defparameter *sane-oflag*   #x7)	 ; OPOST | ONLCR | OXTABS
+(defparameter *sane-cflag*   #x4b00)	 ; CREAD | CS8 | HUPCL
+(defparameter *sane-lflag*   #x5cf)	 ; ECHOKE | ECHOE | ECHOK | ECHO |
+					 ; ECHOCTL | ISIG | ICANON | IEXTEN
 (declaim (type (unsigned-byte 8) *sane-discard*))
 (defparameter *sane-discard* #xff)	 ; undef
 (defparameter *sane-dsusp*   #xff)	 ; undef

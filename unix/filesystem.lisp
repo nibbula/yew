@@ -76,9 +76,9 @@ if not given."
 (defcfun ("getcwd" real-getcwd) :pointer (buf :pointer) (size size-t))
 (defcfun pathconf :long (path :string) (name :int))
 (defconstant +PC-PATH-MAX+
-	 #+(or darwin sunos freebsd) 5
+	 #+(or darwin sunos freebsd openbsd) 5
 	 #+linux 4)
-#-(or darwin sunos linux freebsd) (missing-implementation 'PC-PATH-MAX)
+#-(or darwin sunos linux freebsd openbsd) (missing-implementation 'PC-PATH-MAX)
 ;; Using the root "/" is kind of bogus, because it can depend on the
 ;; filesystem type, but since we're using it to get the working directory.
 ;; This is where grovelling the MAXPATHLEN might be good.
@@ -111,7 +111,7 @@ C library function getcwd."
   (missing-implementation 'current-directory))
 
 (defcfun mkdir :int (path :string) (mode mode-t))
-#+(or linux freebsd)
+#+(or linux freebsd openbsd)
 (defcfun mkdirat :int (fd :int) (path :string) (mode mode-t))
 
 (defun make-directory (path &key (mode #o755))
@@ -231,12 +231,22 @@ C library function getcwd."
   (d_namlen	:uint8)
   (d_name	:char :count #.(+ 255 1)))
 
-#+(or linux darwin freebsd)
+#+openbsd
+(defcstruct foreign-dirent
+  (d_ino	ino-t) ;; aka d_fileno
+  (d_off	off-t)
+  (d_reclen	:uint16)
+  (d_type	:uint8)
+  (d_namlen	:uint8)
+  (pad-ding	:uint8 :count 4)	; WHY DO I NEED THIS??
+  (d_name	:char :count #.(+ 255 1)))
+
+#+(or linux darwin freebsd openbsd)
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (config-feature :os-t-has-d-type))
 
 ;; If one of these is not defined, we just use strlen(d_name).
-#+(or darwin freebsd) (config-feature :os-t-has-namlen)
+#+(or darwin freebsd openbsd) (config-feature :os-t-has-namlen)
 #+linux (config-feature :os-t-has-reclen)
 
 #|
@@ -733,30 +743,32 @@ calls. Returns NIL when there is an error."
 
 (defparameter *file-flags* nil "Flag for open and fcntl.")
 
-#+(or darwin freebsd linux)
+#+(or darwin freebsd openbsd linux)
 (define-to-list *file-flags*
   #(#(+O_RDONLY+   #x0000 "Open for reading only")
     #(+O_WRONLY+   #x0001 "Open for writing only")
     #(+O_RDWR+	   #x0002 "Open for reading and writing")
-    #(+O_NONBLOCK+ #+(or darwin freebsd) #x0004 #+linux #o04000 "No delay")
-    #(+O_APPEND+   #+(or darwin freebsd) #x0008 #+linux #o02000
-      "Set append mode")
-    #(+O_ASYNC+	   #+(or darwin freebsd) #x0040 #+linux #x020000
-      "Signal pgrp when data ready")
-    #(+O_SYNC+	   #+(or darwin freebsd) #x0080 #+linux #o04010000
-      "Synchronous writes")
+    #(+O_NONBLOCK+ #+(or darwin freebsd openbsd) #x0004
+                   #+linux #o04000 "No delay")
+    #(+O_APPEND+   #+(or darwin freebsd openbsd) #x0008
+                   #+linux #o02000 "Set append mode")
+    #(+O_ASYNC+	   #+(or darwin freebsd openbsd) #x0040
+                   #+linux #x020000 "Signal pgrp when data ready")
+    #(+O_SYNC+	   #+(or darwin freebsd openbsd) #x0080
+                   #+linux #o04010000 "Synchronous writes")
     #(+O_SHLOCK+   #x0010 "Atomically obtain a shared lock")
     #(+O_EXLOCK+   #x0020 "Atomically obtain an exclusive lock")
-    #(+O_CREAT+	   #+(or darwin freebsd) #x0200 #+linux #o100
+    #(+O_CREAT+	   #+(or darwin freebsd openbsd) #x0200 #+linux #o100
       "Create if nonexistant")
-    #(+O_TRUNC+	   #+(or darwin freebsd) #x0400 #+linux #o01000
+    #(+O_TRUNC+	   #+(or darwin freebsd openbsd) #x0400 #+linux #o01000
       "Truncate to zero length")
-    #(+O_EXCL+	   #+(or darwin freebsd) #x0800 #+linux #o0200
+    #(+O_EXCL+	   #+(or darwin freebsd openbsd) #x0800 #+linux #o0200
       "Error if create and already exists")
-    #(+O_NOCTTY+   #+darwin #x20000 #+linux #o0400 #+freebsd #x8000
+    #(+O_NOCTTY+   #+darwin #x20000 #+linux #o0400
+                   #+(or freebsd openbsd) #x8000
       "Don't assign controlling terminal")))
 
-#+(or darwin freebsd linux)
+#+(or darwin freebsd openbsd linux)
 (defconstant +O_ACCMODE+ #x0003 "Mask for above modes")
 
 #+darwin
@@ -785,6 +797,13 @@ calls. Returns NIL when there is an error."
     #(+O_TTY_INIT+  #x00080000 "Restore default termios attributes")
     #(+O_CLOEXEC+   #x00100000 "Close on exec")))
 
+#+openbsd
+(define-to-list *file-flags*
+  #(#(+O_FSYNC+	    #x00000080 "Synchronous writes")
+    #(+O_NOFOLLOW+  #x00000100 "Don't follow symlinks")
+    #(+O_CLOEXEC+   #x00010000 "Close on exec")
+    #(+O_DIRECTORY+ #x00020000 "Fail if not directory")))
+
 (defvar *seek-whence* nil
   "Values for lseek 'whence' argument.")
 
@@ -808,7 +827,7 @@ calls. Returns NIL when there is an error."
   (fd :int) (buf :pointer) (nbytes size-t) (offset off-t))
 (defcfun ("unlink" posix-unlink) :int (path :string))
 
-#+(or linux freebsd)
+#+(or linux freebsd openbsd)
 (progn
   (defcfun ("openat" posix-openat) :int
     (dirfd :int) (path :string) (flags :int) (mode mode-t))
@@ -884,20 +903,21 @@ versions of the keywords used in Lisp open.
 
 ;; what about ioctl defines?
 
-#+(or darwin linux freebsd)
+#+(or darwin linux freebsd openbsd)
 (progn
-  (defconstant +F_DUPFD+	  0)
-  (defconstant +F_DUPFD_CLOEXEC+  #+darwin 67 #+linux 1030 #+freebsd 17)
-  (defconstant +F_GETFD+	  1)
-  (defconstant +F_SETFD+	  2)
-  (defconstant +F_GETFL+	  3)
-  (defconstant +F_SETFL+	  4)
-  (defconstant +F_GETOWN+	  #+(or darwin freebsd) 5 #+linux 9)
-  (defconstant +F_SETOWN+	  #+(or darwin freebsd) 6 #+linux 8)
-  (defconstant +F_GETLK+	  #+darwin 7 #+linux 5 #+freebsd 11)
-  (defconstant +F_SETLK+	  #+darwin 8 #+linux 6 #+freebsd 12)
-  (defconstant +F_SETLKW+	  #+darwin 9 #+linux 7 #+freebsd 13)
-  (defconstant +FD_CLOEXEC+       1))
+  (defconstant +F_DUPFD+	 0)
+  (defconstant +F_GETFD+	 1)
+  (defconstant +F_SETFD+	 2)
+  (defconstant +F_GETFL+	 3)
+  (defconstant +F_SETFL+	 4)
+  (defconstant +F_GETOWN+	 #+(or darwin freebsd openbsd) 5 #+linux 9)
+  (defconstant +F_SETOWN+	 #+(or darwin freebsd openbsd) 6 #+linux 8)
+  (defconstant +F_GETLK+	 #+(or darwin openbsd) 7 #+linux 5 #+freebsd 11)
+  (defconstant +F_SETLK+	 #+(or darwin openbsd) 8 #+linux 6 #+freebsd 12)
+  (defconstant +F_SETLKW+	 #+(or darwin openbsd) 9 #+linux 7 #+freebsd 13)
+  (defconstant +F_DUPFD_CLOEXEC+ #+darwin 67 #+linux 1030 #+freebsd 17
+	                         #+openbsd 10)
+  (defconstant +FD_CLOEXEC+      1))
 
 #+linux
 (progn
@@ -924,11 +944,14 @@ versions of the keywords used in Lisp open.
   (defconstant +DN_MULTISHOT+   #x80000000 "Don't remove notifier.")
   )
 
-#+freebsd
+#+(or freebsd openbsd)
 (progn
   (defconstant +F_RDLCK+	   1  "Shared or read lock")
   (defconstant +F_UNLCK+	   2  "Unlock")
-  (defconstant +F_WRLCK+	   3  "Exclusive or write lock")
+  (defconstant +F_WRLCK+	   3  "Exclusive or write lock"))
+
+#+freebsd
+(progn
   (defconstant +F_UNLCKSYS+	   4  "Purge locks for a given system ID")
   (defconstant +F_CANCEL+	   5  "Cancel an async lock request")
   (defconstant +F_DUP2FD+	   10 "Duplicate file descriptor to arg")
@@ -936,8 +959,7 @@ versions of the keywords used in Lisp open.
   (defconstant +F_READAHEAD+	   15 "Read ahead")
   (defconstant +F_RDAHEAD+	   16 "Read ahead")
   (defconstant +F_DUPFD_CLOEXEC+   17 "Like F_DUPFD, but FD_CLOEXEC is set")
-  (defconstant +F_DUP2FD_CLOEXEC+  18 "Like F_DUP2FD, but FD_CLOEXEC is set")
-)
+  (defconstant +F_DUP2FD_CLOEXEC+  18 "Like F_DUP2FD, but FD_CLOEXEC is set"))
 
 #+darwin
 (progn
@@ -1491,6 +1513,25 @@ versions of the keywords used in Lisp open.
   (st_birthtim  (:struct foreign-timespec))
   (junk		:uint8 :count 8))
 
+#+(and openbsd 64-bit-target) ;; @@@ maybe it's the same for 32 bit?
+(defcstruct foreign-stat
+  (st_mode 	mode-t)
+  (st_dev 	dev-t)
+  (st_ino 	ino-t)
+  (st_nlink 	nlink-t)
+  (st_uid 	uid-t)
+  (st_gid 	gid-t)
+  (st_rdev 	dev-t)
+  (st_atimespec	(:struct foreign-timespec)) ;; st_atim
+  (st_mtimespec	(:struct foreign-timespec)) ;; st_mtim
+  (st_ctimespec	(:struct foreign-timespec)) ;; st_ctim
+  (st_size	off-t)
+  (st_blocks	blkcnt-t)
+  (st_blksize	blksize-t)
+  (st_flags	:uint32)
+  (st_gen	:uint32)
+  (st_birthtim  (:struct foreign-timespec)))
+
 ;;  (unsigned int :(8 / 2) * (16 - (int)sizeof(struct timespec))
 ;;  (unsigned int :(8 / 2) * (16 - (int)sizeof(struct timespec))
 
@@ -1752,7 +1793,7 @@ it is not a symbolic link."
   ;; @@@ take the symbolic mode forms when we're done with the above
   (syscall (real-fchmod fd mode)))
 
-#+(or linux freebsd)
+#+(or linux freebsd openbsd)
 (defcfun ("fchmodat" real-fchmodat) :int (fd :int) (path :string)
 	 (mode mode-t) (flags :int))
 
@@ -1768,7 +1809,7 @@ it is not a symbolic link."
   ;; @@@ take string owner and group and convert to numeric
   (syscall (real-fchown fd owner group)))
 
-#+(or linux freebsd)
+#+(or linux freebsd openbsd)
 (defcfun ("fchownat" real-fchownat) :int (fd :int) (path :string)
 	 (owner uid-t) (group gid-t) (flags :int))
 
@@ -2071,7 +2112,10 @@ current effective user. THING can be a path or a FILE-STATUS structure."
 ;; This is mostly from:
 ;;   https://specifications.freedesktop.org/basedir-spec/latest/
 
-#+(or linux sunos freebsd) ;; I'm not sure about sunos and freebsd.
+;; openbsd doesn't have /run/usr, but /var/run isn't really the same.
+;; openbsd doesn't have /etc/xdg, but is there somewhere else?
+
+#+(or linux sunos freebsd openbsd) ;; I'm not sure about sunos and freebsd.
 (progn
   (defun xdg-thing (env-var default)
     "Return the the ENV-VAR or if it's not set or empty then the DEFAULT."
@@ -2420,6 +2464,13 @@ objects should be stored."
    (define-constant +STATFS_VERSION+ #x20030518) ; version of this struct?
    )
 
+#+openbsd
+(eval-when (:compile-toplevel :load-toplevel :execute)
+   (define-constant +MFSNAMELEN+ 16)   ; length of fs type name including null
+   (define-constant +MNAMELEN+ 90)     ; size of on/from name bufs
+   (define-constant +STATFS_VERSION+ #x20030518) ; version of this struct?
+   )
+
 #+freebsd
 (defcstruct foreign-statfs
   (f_version 	 :uint32)
@@ -2445,7 +2496,31 @@ objects should be stored."
   (f_mntfromname :char :count #.+MNAMELEN+)
   (f_mntonname   :char :count #.+MNAMELEN+))
 
-#+freebsd
+#+openbsd
+(defcstruct foreign-statfs
+  (f_flags 	 :uint32)
+  (f_bsize 	 :uint32)
+  (f_iosize 	 :uint32)
+  (f_blocks 	 :uint64)
+  (f_bfree 	 :uint64)
+  (f_bavail 	 :int64)
+  (f_files 	 :uint64)
+  (f_ffree 	 :uint64)
+  (f_favail 	 :int64)
+  (f_syncwrites  :uint64)
+  (f_syncreads   :uint64)
+  (f_asyncwrites :uint64)
+  (f_asyncreads  :uint64)
+  (f_fsid 	 :int32 :count 2)
+  (f_namemax 	 :uint32)
+  (f_owner 	 uid-t)
+  (f_ctime       :uint64)
+  (f_fstypename	 :char :count #.+MFSNAMELEN+)
+  (f_mntonname   :char :count #.+MNAMELEN+)
+  (f_mntfromname :char :count #.+MNAMELEN+)
+  (f_mntfromspec :char :count #.+MNAMELEN+))
+
+#+(or freebsd openbsd)
 (defstruct statfs
   "File system statistics."
   version
@@ -2458,24 +2533,27 @@ objects should be stored."
   bavail
   files
   ffree
+  favail
   syncwrites
   asyncwrites
   syncreads
   asyncreads
   namemax
   owner
+  ctime
   fsid
   fstypename
   mntfromname
-  mntonname)
+  mntonname
+  mntfromspec)
 
 ;; @@@ It seems I still have to do this.
-#+freebsd
+#+(or freebsd openbsd)
 (defun convert-statfs (statfs)
   (if (and (pointerp statfs) (null-pointer-p statfs))
       nil
-      (with-foreign-slots ((f_version
-			    f_type
+      (with-foreign-slots ((#+freebsd f_version
+			    #+freebsd f_type
 			    f_flags
 			    f_bsize
 			    f_iosize
@@ -2484,19 +2562,22 @@ objects should be stored."
 			    f_bavail
 			    f_files
 			    f_ffree
+			    #+openbsd f_favail
 			    f_syncwrites
 			    f_asyncwrites
 			    f_syncreads
 			    f_asyncreads
 			    f_namemax
 			    f_owner
+			    #+openbsd f_ctime
 			    f_fsid
 			    f_fstypename
 			    f_mntfromname
 			    f_mntonname
+			    #+openbsd f_mntfromspec
 			    ) statfs (:struct foreign-statfs))
-	(make-statfs :version     f_version
-		     :type        f_type
+	(make-statfs :version     #+freebsd f_version #-freebsd nil
+		     :type        #+freebsd f_type #-freebsd nil
 		     :flags       f_flags
 		     :bsize       f_bsize
 		     :iosize      f_iosize
@@ -2505,13 +2586,15 @@ objects should be stored."
 		     :bavail      f_bavail
 		     :files       f_files
 		     :ffree       f_ffree
+		     :favail      #+openbsd f_favail #-openbsd nil
 		     :syncwrites  f_syncwrites
 		     :asyncwrites f_asyncwrites
 		     :syncreads   f_syncreads
 		     :asyncreads  f_asyncreads
 		     :namemax     f_namemax
 		     :owner       f_owner
-		     :fsid	  (vector (mem-aref f_fsid :int32 0)
+		     :fsid	  #+(or freebsd openbsd)
+		                  (vector (mem-aref f_fsid :int32 0)
 					  (mem-aref f_fsid :int32 1))
 		     :fstypename (foreign-string-to-lisp
 				  f_fstypename :max-chars +MFSNAMELEN+)
@@ -2519,9 +2602,13 @@ objects should be stored."
 				   f_mntfromname :max-chars +MNAMELEN+)
 		     :mntonname (foreign-string-to-lisp
 				 f_mntonname :max-chars +MNAMELEN+)
+		     :mntfromspec #+openbsd
+		                  (foreign-string-to-lisp
+				   f_mntfromspec :max-chars +MNAMELEN+)
+				  #-openbsd nil
 		     ))))
 
-#+freebsd
+#+(or freebsd openbsd)
 (defun convert-filesystem-info (statfs)
   (if (and (pointerp statfs) (null-pointer-p statfs))
       nil
@@ -2549,10 +2636,10 @@ objects should be stored."
 #+(and darwin 64-bit-target)
 (defcfun ("statfs$INODE64" real-statfs) :int (path :string)
 	 (buf (:pointer (:struct foreign-statfs))))
-#+(or (and darwin 32-bit-target) linux freebsd)
+#+(or (and darwin 32-bit-target) linux freebsd openbsd)
 (defcfun ("statfs" real-statfs) :int (path :string)
 	 (buf (:pointer (:struct foreign-statfs))))
-#+(or freebsd linux)
+#+(or freebsd openbsd linux)
 (defcfun ("fstatfs" real-fstatfs) :int (fd :int)
 	 (buf (:pointer (:struct foreign-statfs))))
 #+(and darwin 64-bit-target)
@@ -2573,10 +2660,10 @@ objects should be stored."
 #+(and darwin 64-bit-target)
 (defcfun ("getmntinfo$INODE64" real-getmntinfo)
     :int (mntbufp :pointer) (flags :int))
-#+(or (and darwin 32-bit-target) freebsd)
+#+(or (and darwin 32-bit-target) freebsd openbsd)
 (defcfun ("getmntinfo" real-getmntinfo)
     :int (mntbufp :pointer) (flags :int))
-#+(or darwin freebsd)
+#+(or darwin freebsd openbsd)
 (defun getmntinfo (&optional (flags 0))
   (with-foreign-object (ptr :pointer)
     (let ((n (syscall (real-getmntinfo ptr flags))))
@@ -2717,7 +2804,7 @@ objects should be stored."
 
 (defun mounted-filesystems ()
   "Return a list of filesystem info."
-  #+(or darwin freebsd)
+  #+(or darwin freebsd openbsd)
   (with-foreign-object (ptr :pointer)
     (let ((n (syscall (real-getmntinfo ptr 0))))
       (loop :for i :from 0 :below n
@@ -2764,7 +2851,7 @@ objects should be stored."
        (when (> (setf len (length (car f))) max-len)
 	 (setf longest f max-len len)))
     longest)
-  #+(or darwin freebsd)
+  #+(or darwin freebsd openbsd)
   (handler-case
       (let ((s (statfs file)))
 	(cons (statfs-mntonname s) (statfs-mntfromname s)))

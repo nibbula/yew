@@ -13,6 +13,7 @@
      #+linux            2
      #+sunos            3
      #+freebsd          4
+     #+openbsd          5
      nil))
 
   (defparameter *platform-bitsize-index*
@@ -22,6 +23,7 @@
      #+(and linux 64-bit-target)        3
      #+sunos                            4
      #+(and freebsd 64-bit-target)      5
+     #+(and openbsd 64-bit-target)      6
      nil))
 
   (when (not (and *platform-index* *platform-bitsize-index*))

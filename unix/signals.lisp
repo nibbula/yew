@@ -10,54 +10,74 @@
 #+sunos (defcvar ("_sys_siglistn" *nsig*) :int)
 #+sunos (defcvar ("_sys_siglistp" sys-siglist) :pointer)
 
-#+(or darwin freebsd) (defcvar ("sys_siglist" sys-siglist) :pointer)
-#+(or darwin freebsd) (defcvar ("sys_signame" sys-signame) :pointer)
+#+(or darwin freebsd openbsd) (defcvar ("sys_siglist" sys-siglist) :pointer)
+#+(or darwin freebsd openbsd) (defcvar ("sys_signame" sys-signame) :pointer)
 
 (defparameter *signal-count*
-  #+(or darwin freebsd linux) 32
+  #+(or darwin freebsd openbsd linux) 32
   ;; actually 65 if you count realtime (RT) signals
   #+sunos *nsig*
-  #-(or darwin sunos linux freebsd) (missing-implementation) ; @@@ or perhaps 0?
-  "Number of signal types, a.k.a. NSIG."
-)
+  #-(or darwin sunos linux freebsd openbsd)
+  (missing-implementation '*signal-count*)
+  "Number of signal types, a.k.a. NSIG.")
 
-(defconstant +SIGHUP+	 1			  "Hangup")
-(defconstant +SIGINT+	 2			  "Interrupt")
-(defconstant +SIGQUIT+	 3			  "Quit")
-(defconstant +SIGILL+	 4			  "Illegal instruction")
-(defconstant +SIGTRAP+	 5			  "Trace/BPT trap")
-(defconstant +SIGABRT+	 6			  "Abort trap")
-(defconstant +SIGPOLL+	 #+darwin 7 #+linux 29 #+freebsd nil "pollable event")
-(defconstant +SIGEMT+	 #+(or darwin freebsd) 7 #+linux nil "EMT trap")
-(defconstant +SIGFPE+	 8			  "Floating point exception")
-(defconstant +SIGKILL+	 9			  "Killed")
-(defconstant +SIGBUS+	 #+(or darwin freebsd) 10 #+linux 7 "Bus error")
-(defconstant +SIGSEGV+	 11			  "Segmentation fault")
-(defconstant +SIGSYS+	 #+darwin 12 #+linux 31	#+freebsd nil "Bad system call")
-(defconstant +SIGPIPE+	 13			  "Broken pipe")
-(defconstant +SIGALRM+	 14			  "Alarm clock")
-(defconstant +SIGTERM+	 15			  "Terminated")
-(defconstant +SIGURG+	 #+(or darwin freebsd) 16 #+linux 23 "Urgent I/O condition")
-(defconstant +SIGSTOP+	 #+(or darwin freebsd) 17 #+linux 19 "Suspended (signal)")
-(defconstant +SIGTSTP+	 #+(or darwin freebsd) 18 #+linux 20 "Suspended")
-(defconstant +SIGCONT+	 #+(or darwin freebsd) 19 #+linux 18 "Continued")
-(defconstant +SIGCHLD+	 #+(or darwin freebsd) 20 #+linux 17 "Child exited")
-(defconstant +SIGTTIN+	 21			  "Stopped (tty input)")
-(defconstant +SIGTTOU+	 22			  "Stopped (tty output)")
-(defconstant +SIGIO+	 #+(or darwin freebsd) 23 #+linux 29 "I/O possible")
-(defconstant +SIGXCPU+	 24			  "Cputime limit exceeded")
-(defconstant +SIGXFSZ+	 25			  "Filesize limit exceeded")
-(defconstant +SIGVTALRM+ 26			  "Virtual timer expired")
-(defconstant +SIGPROF+	 27			  "Profiling timer expired")
-(defconstant +SIGWINCH+	 28			  "Window size changes")
-(defconstant +SIGINFO+	 #+(or darwin freebsd) 29 #+linux nil "Information request")
-(defconstant +SIGUSR1+	 #+(or darwin freebsd) 30 #+linux 10	  "User defined signal 1")
-(defconstant +SIGUSR2+	 #+(or darwin freebsd) 31 #+linux 12	  "User defined signal 2")
-(defconstant +SIGSTKFLT+ #+(or darwin freebsd) nil #+linux 16  "Stack fault")
-(defconstant +SIGPWR+	 #+(or darwin freebsd) nil #+linux 30  "Power failure restart")
+(defconstant +SIGHUP+	 1  "Hangup")
+(defconstant +SIGINT+	 2  "Interrupt")
+(defconstant +SIGQUIT+	 3  "Quit")
+(defconstant +SIGILL+	 4  "Illegal instruction")
+(defconstant +SIGTRAP+	 5  "Trace/BPT trap")
+(defconstant +SIGABRT+	 6  "Abort trap")
+(defconstant +SIGPOLL+	 #+darwin 7
+	                 #+linux 29
+			 #+(or freebsd openbsd) nil
+			 "pollable event")
+(defconstant +SIGEMT+	 #+(or darwin freebsd openbsd) 7
+	                 #+linux nil "EMT trap")
+(defconstant +SIGFPE+	 8 "Floating point exception")
+(defconstant +SIGKILL+	 9 "Killed")
+(defconstant +SIGBUS+	 #+(or darwin freebsd openbsd) 10
+	                 #+linux 7 "Bus error")
+(defconstant +SIGSEGV+	 11 "Segmentation fault")
+(defconstant +SIGSYS+	 #+(or darwin openbsd) 12
+	                 #+linux 31
+			 #+freebsd nil "Bad system call")
+(defconstant +SIGPIPE+	 13 "Broken pipe")
+(defconstant +SIGALRM+	 14 "Alarm clock")
+(defconstant +SIGTERM+	 15 "Terminated")
+(defconstant +SIGURG+	 #+(or darwin freebsd openbsd) 16
+                         #+linux 23 "Urgent I/O condition")
+(defconstant +SIGSTOP+	 #+(or darwin freebsd openbsd) 17
+                         #+linux 19 "Suspended (signal)")
+(defconstant +SIGTSTP+	 #+(or darwin freebsd openbsd) 18
+                         #+linux 20 "Suspended")
+(defconstant +SIGCONT+	 #+(or darwin freebsd openbsd) 19
+                         #+linux 18 "Continued")
+(defconstant +SIGCHLD+	 #+(or darwin freebsd openbsd) 20
+                         #+linux 17 "Child exited")
+(defconstant +SIGTTIN+	 21 "Stopped (tty input)")
+(defconstant +SIGTTOU+	 22 "Stopped (tty output)")
+(defconstant +SIGIO+	 #+(or darwin freebsd openbsd) 23
+	                 #+linux 29 "I/O possible")
+(defconstant +SIGXCPU+	 24 "Cputime limit exceeded")
+(defconstant +SIGXFSZ+	 25 "Filesize limit exceeded")
+(defconstant +SIGVTALRM+ 26 "Virtual timer expired")
+(defconstant +SIGPROF+	 27 "Profiling timer expired")
+(defconstant +SIGWINCH+	 28 "Window size changes")
+(defconstant +SIGINFO+	 #+(or darwin freebsd openbsd) 29
+                         #+linux nil "Information request")
+(defconstant +SIGUSR1+	 #+(or darwin freebsd openbsd) 30
+                         #+linux 10 "User defined signal 1")
+(defconstant +SIGUSR2+	 #+(or darwin freebsd openbsd) 31
+                         #+linux 12 "User defined signal 2")
+(defconstant +SIGSTKFLT+ #+(or darwin freebsd openbsd) nil
+                         #+linux 16 "Stack fault")
+(defconstant +SIGPWR+	 #+(or darwin freebsd openbsd) nil
+                         #+linux 30 "Power failure restart")
+#+(or freebsd openbsd)
+(defconstant +SIGTHR+    32 "thread library")
+
 #+freebsd
 (progn
-  (defconstant +SIGTHR+	  32 "thread library")
   (defconstant +SIGLWP+	  32 "thread library")
   (defconstant +SIGLIBRT+ 33 "real-time library"))
 
@@ -76,26 +96,26 @@
   #+sunos (with-foreign-pointer-as-string (s SIG2STR_MAX)
 	    (sig2str sig s)
 	    s)
-  #+(or darwin freebsd)
+  #+(or darwin freebsd openbsd)
   (if (< sig *signal-count*)
       (foreign-string-to-lisp
        (mem-aref (get-var-pointer 'sys-signame) :pointer sig)))
   #+linux (when (< sig *signal-count*)
 	    (aref *signal-name* sig))
-  #-(or darwin sunos linux freebsd) (declare (ignore sig))
-  #-(or darwin sunos linux freebsd) (missing-implementation 'signal-name)
+  #-(or darwin sunos linux freebsd openbsd) (declare (ignore sig))
+  #-(or darwin sunos linux freebsd openbsd) (missing-implementation 'signal-name)
 )
 
 #+(or sunos linux) (defcfun strsignal :string (sig :int))
 
 (defun signal-description (sig)
   #+(or sunos linux) (strsignal sig)
-  #+darwin
+  #+(or darwin openbsd)
   (if (< sig *signal-count*)
       (foreign-string-to-lisp
        (mem-aref (get-var-pointer 'sys-siglist) :pointer sig)))
-  #-(or darwin sunos linux) (declare (ignore sig))
-  #-(or darwin sunos linux) (missing-implementation 'signal-description)
+  #-(or darwin sunos linux openbsd) (declare (ignore sig))
+  #-(or darwin sunos linux openbsd) (missing-implementation 'signal-description)
 )
 
 ;(defparameter signal-names (make-hash-table 
@@ -115,7 +135,7 @@
 (defcfun sigfillset :int (set (:pointer sigset-t)))
 (defcfun sigismember :int (set (:pointer sigset-t)) (signo :int))
 
-#+(or darwin linux)
+#+(or darwin linux openbsd)
 (defcstruct foreign-sigaction
   "What to do with a signal, as given to sigaction(2)."
   (sa_handler :pointer)	       ; For our purposes it's the same as sa_sigaction
@@ -194,7 +214,7 @@ nearly want to put in in separate file.
 
 (defconstant SIG_DFL  0 "Default action.")
 (defconstant SIG_IGN  1 "Ignore the signal.")
-(defconstant SIG_HOLD #+darwin 5 #+linux 2 #+freebsd 2
+(defconstant SIG_HOLD #+darwin 5 #+linux 2 #+freebsd 2 #+openbsd 3
 	     "Hold on to the signal for later.")
 (defconstant SIG_ERR -1 "Error?")
 

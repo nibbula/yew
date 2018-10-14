@@ -2,12 +2,15 @@ This is a non-groveling interface to operating system functionality.
 I recommend you don't use it.
 
 Since it doesn't grovel, it has at least the advantage that it doesn't require
-a C compiler and operating system headers. It has the disadvantage of only
-working on fairly specific OS versions, and making it work on something
-different or new, requires some work. This has been partially done for Linux,
-MacOS, FreeBSD, Solaris, and Windows. The biggest disadvantage is that it breaks
-horribly with the slightest hidden change to system calls, kernels, and C
-libraries. Such changes seem to be happening continuously.
+a C compiler and operating system headers. So when you're on a interstellar
+voyage with just a kernel and a Lisp implementation, you're still good to go.
+It has the disadvantage of only working on fairly specific OS versions, and
+making it work on something different or new, requires some work. This has
+been partially done for Linux, MacOS, FreeBSD, OpenBSD, Solaris, and Windows.
+The biggest disadvantage is that it breaks horribly with the slightest hidden
+change to system calls, kernels, and C libraries. Such changes seem to be
+happening continuously. On the other hand, many of the system calls it uses
+have been nearly the same for over 30 years.
 
 If you are for some reason compelled to use this, the packages are:
 
@@ -21,7 +24,7 @@ unix:
 
 ms:
   Interfaces to Microsoft Windows specific things.
-  This part is incomplete!
+  This is the most incomplete part.
 
 libc:
   Interfaces to standard C library things, which is really only for
@@ -30,8 +33,8 @@ libc:
 We are trying to cover mostly the space which is system calls, and some
 slightly higher level things that would be in a C library. There are many
 many other things in an operating system which this should probably never cover.
-Also, we are only adding things that are needed by the "village". We are not
-adding things for completeness.
+Also, we are only adding things that are needed by the "town". We are mostly
+not adding things for completeness.
 
 ##### How to use it.
 

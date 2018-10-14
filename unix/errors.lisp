@@ -9,7 +9,17 @@
 
 #+(or darwin linux freebsd) (config-feature :os-t-has-strerror-r)
 
-(defcvar ("errno" *errno*) :int) ; aka *errno*
+;; OpenBSD has an errno function, instead of a variable.
+#+openbsd
+(progn
+  (defcfun ("__errno" errno-func) (:pointer :int))
+  (defun %errno () (let ((p (errno-func)))
+		     (when (not (null-pointer-p p))
+		       (mem-ref p :int))))
+  (define-symbol-macro *errno* (%errno)))
+
+#-openbsd
+(defcvar ("errno" *errno*) :int)
 
 (defparameter *errors* nil)
 
@@ -419,7 +429,7 @@
       ;; Network File System
       #(+ESTALE+            151 "Stale NFS file handle")))
 
-#+freebsd
+#+(or freebsd openbsd)
 (define-to-list *errors*
     #(#(+EPERM+	          1  "Operation not permitted")
       #(+ENOENT+	  2  "No such file or directory")
@@ -466,8 +476,7 @@
       #(+ENOPROTOOPT+	  42 "Protocol not available")
       #(+EPROTONOSUPPORT+ 43 "Protocol not supported")
       #(+ESOCKTNOSUPPORT+ 44 "Socket type not supported")
-      #(+ENOTSUP+	  45 "Operation not supported")
-      #(+EOPNOTSUPP+	  +ENOTSUP+ "Operation not supported")
+      #(+EOPNOTSUPP+	  45 "Operation not supported")
       #(+EPFNOSUPPORT+	  46 "Protocol family not supported")
       #(+EAFNOSUPPORT+	  47 "Address family not supported by protocol family")
       #(+EADDRINUSE+	  48 "Address already in use")
@@ -503,7 +512,13 @@
       #(+ENOSYS+	  78 "Function not implemented")
       #(+EFTYPE+	  79 "Inappropriate file type or format")
       #(+EAUTH+		  80 "Authentication error")
-      #(+ENEEDAUTH+	  81 "Need authenticator")
+      #(+ENEEDAUTH+	  81 "Need authenticator")))
+
+;; Where freebsd and openbsd diverge:
+
+#+freebsd
+(define-to-list *errors*
+    #(#(+ENOTSUP+	  45 "Operation not supported")
       #(+EIDRM+		  82 "Identifier removed")
       #(+ENOMSG+	  83 "No message of desired type")
       #(+EOVERFLOW+	  84 "Value too large to be stored in data type")
@@ -519,8 +534,25 @@
       #(+ECAPMODE+	  94 "Not permitted in capability mode")
       #(+ENOTRECOVERABLE+ 95 "State not recoverable")
       #(+EOWNERDEAD+	  96 "Previous owner died")
-      #(+ELAST+		  96 "Must be equal largest errno")
-      ))
+      #(+ELAST+		  96 "Must be equal largest errno")))
+
+#+openbsd
+(define-to-list *errors*
+    #(#(+EIPSEC+	  82 "IPsec processing failure")
+      #(+ENOATTR+	  83 "Attribute not found")
+      #(+EILSEQ+	  84 "Illegal byte sequence")
+      #(+ENOMEDIUM+	  85 "No medium found")
+      #(+EMEDIUMTYPE+	  86 "Wrong medium type")
+      #(+EOVERFLOW+	  87 "Value too large to be stored in data type")
+      #(+ECANCELED+	  88 "Operation canceled")
+      #(+EIDRM+		  89 "Identifier removed")
+      #(+ENOMSG+	  90 "No message of desired type")
+      #(+ENOTSUP+	  91 "Not supported")
+      #(+EBADMSG+	  92 "Bad message")
+      #(+ENOTRECOVERABLE+ 93 "State not recoverable")
+      #(+EOWNERDEAD+	  94 "Previous owner died")
+      #(+EPROTO+	  95 "Protocol error")
+      #(+ELAST+		  96 "Must be equal largest errno")))
 
 #+os-t-has-strerror-r
 (defcfun (#+linux "__xpg_strerror_r" #-linux "strerror_r" strerror-r)

@@ -299,18 +299,66 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; kqueue
 
-;; @@@ need to check these structs with the source
+#+(or darwin freebsd openbsd)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (config-feature :os-t-has-kqueue))
 
-#+darwin
+#+os-t-has-kqueue
 (progn
+  (defparameter *kqueue-flags* nil)
+  (define-to-list *kqueue-flags*
+    #(#(+EV-ADD+       #x0001 "Add an event to kq (implies enable)")
+      #(+EV-DELETE+    #x0002 "Delete an event from kq")
+      #(+EV-ENABLE+    #x0004 "Enable an event")
+      #(+EV-DISABLE+   #x0008 "Disable an event (not reported)")
+      #(+EV-ONESHOT+   #x0010 "Only report one occurrence")
+      #(+EV-CLEAR+     #x0020 "Clear the event state after reporting")
+      #(+EV-RECEIPT+   #x0040 "Force an EV_ERROR on success, data=0")
+      #(+EV-DISPATCH+  #x0080 "Disable an event after reporting")
+      #(+EV-EOF+       #x8000 "EOF detected")
+      #(+EV-ERROR+     #x4000 "Error, data contains errno")))
+
+  (defparameter *kqueue-filters* nil)
+  (define-to-list *kqueue-filters*
+    #(#(+EVFILT-READ+    -1)
+      #(+EVFILT-WRITE+   -2)
+      #(+EVFILT-AIO+     -3 "Attached to aio requests")
+      #(+EVFILT-VNODE+   -4 "Attached to vnodes")
+      #(+EVFILT-PROC+    -5 "Attached to struct process")
+      #(+EVFILT-SIGNAL+  -6 "Attached to struct process")
+      #(+EVFILT-TIMER+   -7 "Timers")))
+
+  (defparameter *kqueue-events* nil)
+  (define-to-list *kqueue-events*
+    #(#(+NOTE-DELETE+     #x00000001 "Removed")
+      #(+NOTE-WRITE+      #x00000002 "Data contents changed")
+      #(+NOTE-EXTEND+     #x00000004 "Size increased")
+      #(+NOTE-ATTRIB+     #x00000008 "Attributes changed")
+      #(+NOTE-LINK+       #x00000010 "Link count changed")
+      #(+NOTE-RENAME+     #x00000020 "Renamed")
+      #(+NOTE-REVOKE+     #x00000040 "Access was revoked")
+      #(+NOTE-TRUNCATE+   #x00000080 "Truncated")
+      #(+NOTE-EXIT+       #x80000000 "Process exited")
+      #(+NOTE-FORK+       #x40000000 "Process forked")
+      #(+NOTE-EXEC+       #x20000000 "Process exec'd")
+      #(+NOTE-PCTRLMASK+  #xf0000000 "Mask for hint bits")
+      #(+NOTE-PDATAMASK+  #x000fffff "Mask for PID")
+      #(+NOTE-TRACK+      #x00000001 "Follow across forks")
+      #(+NOTE-TRACKERR+   #x00000002 "Could not track child")
+      #(+NOTE-CHILD+      #x00000004 "A child process")
+      #(+NOTE-LOWAT+      #x0001 "low water mark")
+      #(+NOTE-EOF+        #x0002 "return on EOF")))
+
+  #+darwin
   (defcstruct foreign-kevent
-    (ident	(:pointer :uint32))	; XXX uintptr-t
+    (ident	uintptr-t)
     (filter	:int16)
     (flags	:uint16)
     (fflags	:uint32)
-    (data	(:pointer :int))	; XXX intptr
+    (data	intptr-t)
     (udata	(:pointer :void)))
 
+  #+darwin
   (defcstruct foreign-kevent64
     (ident	:uint64)
     (filter	:int16)
@@ -320,34 +368,52 @@
     (udata	:uint64)
     (ext	:uint64 :count 2))
 
+  #+openbsd
+  (defcstruct foreign-kevent
+    (ident	uintptr-t)
+    (filter	:short)
+    (flags	:unsigned-short)
+    (fflags	:unsigned-int)
+    (data	:int64)
+    (udata	(:pointer :void)))
+
   (defcfun kqueue :void)
   (defcfun ("kevent" real-kevent) :int
     (kq :int) (changelist (:pointer (:struct foreign-kevent))) (nchanges :int)
     (eventlist (:pointer (:struct foreign-kevent))) (nevents :int)
     (timeout (:pointer (:struct foreign-timespec))))
 
+  #+darwin
   (defcfun ("kevent64" real-kevent64) :int
     (kq :int) (changelist (:pointer (:struct foreign-kevent64))) (nchanges :int)
     (eventlist (:pointer (:struct foreign-kevent64))) (nevents :int)
     (timeout (:pointer (:struct foreign-timespec))))
 
+  #+darwin
   (defun ev-set32 (key ident filter flags fflags data udata)
     (declare (ignore key ident filter flags fflags data udata))
     )
 
+  #+darwin
   (defun ev-set64 (key ident filter flags fflags data udata)
     (declare (ignore key ident filter flags fflags data udata))
     )
 
-  (defun ev-set (key ident filter flags fflags data udata)
+  (defun ev-set (kev i f fl ffl d ud)
     "Do the appropriate version of EV_SET."
-    (declare (ignore key ident filter flags fflags data udata))
-    )
+    (with-foreign-slots ((ident filter flags fflags data udata)
+			 kev (:struct foreign-kevent))
+      (setf ident i
+	    filter f
+	    flags fl
+	    fflags ffl
+	    data d
+	    udata ud)))
 
   (defun kevent (kq changelist nchanges eventlist nevents timeout)
     "Do the appropriate version of kevent."
-    (declare (ignore kq changelist nchanges eventlist nevents timeout))
-    ))
+    (syscall (real-kevent kq changelist nchanges eventlist nevents timeout)))
+  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -412,6 +478,11 @@ evaluate the IO-FORM."
 ;; overhead, and for that matter call it from the kernel to eliminate syscall
 ;; and context switch overhead. It's possible a LispOS could do it with
 ;; userland security *and* less overhead. #-rant
+
+;; @@@ This is all epoll specific for now. It needs work AND we need to
+;; create a kqueue version.
+#+linux
+(progn
 
 ;; @@@ How should we deal with multiple threads doing epoll?
 ;; With this setup you could workaround it by just binding your own thread
@@ -814,6 +885,7 @@ the count of event triggered."
 		       ;; @@@ or some better message
 		       :format-control "Event not found in set."))))))
     triggered-count))
+) ;; @@@ epoll (linux) specific code
 
 (defun pick-events (event-types &key (event-set *event-set*) remove timeout)
   "Return any pending events of the types given in EVENT-TYPES. If REMOVE is
