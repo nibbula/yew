@@ -33,11 +33,17 @@
   (append (mapcar #'nos:user-info-name (nos:user-list))
 	  (list "am" "i")))
 
-(defclass arg-user (arg-lenient-choice)
+;; (defclass arg-user (arg-lenient-choice)
+;;   ()
+;;   (:default-initargs
+;;    :choice-func #'user-name-list)
+;;   (:documentation "User name."))
+
+(defargtype user (arg-lenient-choice)
+  "User name."
   ()
   (:default-initargs
-   :choice-func #'user-name-list)
-  (:documentation "User name."))
+   :choice-func #'user-name-list))
 
 (defun dev-name (device)
   "Convert a short device from utmpx to a stat-able pathname."
