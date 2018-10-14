@@ -128,7 +128,7 @@ user, pid, ppid, size, command."
 			:name (cddddr z))))))
 
 (defun list-processes (&key (show-kernel-processes t))
-  #+darwin (declare (ignore show-kernel-processes))
+  #-linux (declare (ignore show-kernel-processes))
   #+darwin (process-list-from-ps)
   #+linux
   ;; We don't have to use ps.
@@ -148,7 +148,6 @@ user, pid, ppid, size, command."
 		;;(map 'list #'identity (unix-process-args p))
 		(join-by 'string (unix-process-args p) #\space)
 		)))
-  #+windows (declare (ignore show-kernel-processes))
   #+windows
   ;; (loop :for p :in (if show-kernel-processes
   ;; 		       (process-list)
