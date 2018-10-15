@@ -54,7 +54,10 @@
   "Our own backtrace for SBCL."
   ;; (or *saved-frame* (sb-di:top-frame))
   (loop
-     :with f = (sbcl-start-frame)
+     ;; @@@ It might be nice to do this, but then the counts are all off.
+     ;; :with f = (sbcl-start-frame)
+     ;; :with f = *current-frame*
+     :with f = (sb-di:top-frame)
      :and i = 0
      :do
      ;; (format *debug-io* "~3d " (sb-di:frame-number f))
