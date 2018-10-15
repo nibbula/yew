@@ -2,9 +2,6 @@
 ;; fatchar.lisp - Characters with attributes.
 ;;
 
-;; ToDo:
-;;  - handle RGB direct color
-
 (defpackage :fatchar
   (:documentation "Characters with attributes.
 Defines a FATCHAR which is a character with color and font attributes.
@@ -36,7 +33,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:span-length
    #:fat-string-to-span
    #:fatchar-string-to-span
-   #:span-to-fat-string
+   #:span-to-fat-string #:ß
    #:span-to-fatchar-string
    #:process-ansi-colors
    #:remove-effects
@@ -94,6 +91,8 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
     :documentation "A lot of crust around a string."))
   (:documentation "A vector of FATCHAR."))
 ;;(string (vector) :type fatchar-string)) ; Is this better or worse?
+
+;; Collection methods
 
 (defmethod olength ((s fat-string))
   (length (fat-string-string s)))
@@ -155,6 +154,64 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 		     #'fatchar-c)
 	   ,@(when start-p `(:start ,start))
 	   ,@(when end-p `(:end ,end)))))
+
+(defmethod osplit ((separator fatchar) (string fat-string)
+		   &key omit-empty test key
+		     (start nil start-p)
+		     (end nil end-p))
+  (mapcar (_ (make-fat-string :string _))
+	  (apply 'split-sequence
+		 `(,separator ,(fat-string-string string)
+		   :omit-empty ,omit-empty
+		   ;; Default to a reasonable test for fatchars.
+		   :test ,(or test #'equalp)
+		   :key ,key
+		   ,@(when start-p `(:start ,start))
+		   ,@(when end-p `(:end ,end))))))
+
+(defmethod osplit ((separator character) (string fat-string)
+		   &key omit-empty test key
+		     (start nil start-p)
+		     (end nil end-p))
+  (mapcar (_ (make-fat-string :string _))
+	  (apply 'split-sequence
+		 `(,separator ,(fat-string-string string)
+		  :omit-empty ,omit-empty
+		  :test ,test
+		  ;; Make the key reach into the fatchar for the character.
+		  :key ,(or (and key (_ (funcall key (fatchar-c _))))
+			    #'fatchar-c)
+		  ,@(when start-p `(:start ,start))
+		  ,@(when end-p `(:end ,end))))))
+
+(defmethod osplit ((separator string) (string fat-string)
+		   &key omit-empty test key
+		     (start nil start-p)
+		     (end nil end-p))
+  (mapcar (_ (make-fat-string :string _))
+	  (apply 'split-sequence
+		 `(,separator ,(fat-string-string string)
+		   :omit-empty ,omit-empty
+		   :test ,test
+		   ;; Make the key reach into the fatchar for the character.
+		   :key ,(or (and key (_ (funcall key (fatchar-c _))))
+			     #'fatchar-c)
+		   ,@(when start-p `(:start ,start))
+		   ,@(when end-p `(:end ,end))))))
+
+(defmethod osplit ((separator fat-string) (string fat-string)
+		   &key omit-empty test key
+		     (start nil start-p)
+		     (end nil end-p))
+  (mapcar (_ (make-fat-string :string _))
+	  (apply 'split-sequence
+		 `(,(fat-string-string separator) ,(fat-string-string string)
+		   :omit-empty ,omit-empty
+		   ;; Default to a reasonable test for fatchars.
+		   :test ,(or test #'equalp)
+		   :key ,key
+		   ,@(when start-p `(:start ,start))
+		   ,@(when end-p `(:end ,end))))))
 
 (defun make-fatchar-string (thing)
   "Make a string of fatchars from THING, which can be a string or a character."
@@ -643,12 +700,16 @@ attr | iiiiiiii
 
 (defun span-to-fat-string (span &key (start 0) end fatchar-string
 				  unknown-func filter)
+"Make a FAT-STRING from SPAN. See the documentation for SPAN-TO-FATCHAR-STRING."
   (make-fat-string
    :string
    (span-to-fatchar-string span :start start :end end
 			   :fatchar-string fatchar-string
 			   :unknown-func unknown-func
 			   :filter filter)))
+
+;; Wherein I inappropriately appropriate more of latin1.
+(defalias 'ß 'span-to-fat-string)
 
 (defparameter *known-attrs*
   `(:normal :standout :underline :bold :inverse)
@@ -659,7 +720,32 @@ attr | iiiiiiii
 
 (defun span-to-fatchar-string (span &key (start 0) end fatchar-string
 				      unknown-func filter)
-  "Make a fat string from a span."
+  "Make a FATCHAR-STRING from SPAN. A span is a list representation of a
+fatchar string.  The grammar is something like:
+
+span ->
+  string | fat-string |
+  character | fatchar |
+  span-list
+
+span-list ->
+  ([color-name] [span]*)
+  ([attribute-name] [span]*)
+  (:fg-[color-name] [span]*)
+  (:bg-[color-name] [span]*)
+  (:fg :color [color] [span]*)
+  (:bg :color [color] [span]*)
+
+Known colors are from color:*simple-colors* and known attributes are in
+fatchar:*known-attrs*.
+
+  - START and END are character index limits.
+  - FATCHAR-STRING can be provided as an already created adjustable string with a
+    fill-pointer to put the result into.
+  - UNKNOWN-FUNC is a fuction to call with un-recognized attributes, colors, or
+    object types.
+  - FILTER is a function which is called with every string, which should return
+    similar typed string to use as a replacement."
   (when (not fatchar-string)
     (setf fatchar-string (make-array 40
 				     :element-type 'fatchar
