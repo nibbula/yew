@@ -572,24 +572,38 @@ return history for the whole repository."))
 If RELIST is true (the default), regenerate the file list. If DO-PAUSE is true,
 pause after the command's output. If CONFIRM is true, ask the user for
 confirmation first."
-  (tt-clear)
-  (tt-finish-output)
-  (terminal-end *terminal*)
-  (when (and confirm (not (yes-or-no-p "Are you sure? ")))
-    (return-from do-literal-command (values)))
   (let* ((command (apply #'format nil format-str format-args)))
-    ;; (debug-msg "command ~s" command)
-    (lish:! command))
-  (when do-pause
-    (write-string "[Press Return]")
-    (terpri)
-    (read-line))
-  (terminal-start *terminal*)
-  (message *puca* "*terminal* = ~s" *terminal*)
-  (when relist
-    (get-list *puca*))
-  (tt-clear)
-  (draw-screen *puca*))
+    (handler-case
+      (progn
+	(tt-clear)
+	(tt-finish-output)
+	(terminal-end *terminal*)
+	(when (and confirm (not (yes-or-no-p "Are you sure? ")))
+	  (return-from do-literal-command (values)))
+	;; (debug-msg "command ~s" command)
+	(lish:! command)
+	(when do-pause
+	  (write-string "[Press Return]")
+	  (terpri)
+	  (read-line))
+	(terminal-start *terminal*)
+	(message *puca* "*terminal* = ~s" *terminal*)
+	(when relist
+	  (get-list *puca*))
+	(tt-clear)
+	(draw-screen *puca*))
+      (error (c)
+	(terminal-start *terminal*)
+	(when relist
+	  (get-list *puca*))
+	(tt-clear)
+	(draw-screen *puca*)
+	(info-window
+	 "Error"
+	 (mapcar #'span-to-fat-string
+		 `((:red (:underline ,(type-of c)))
+		   ("The command \"" (:cyan ,command) "\" got an error:")
+		   (:red ,(format nil "~a" c)))))))))
 
 (defun do-command (command format-args
 		   &rest keys &key (relist t) (do-pause t) confirm)
@@ -1097,6 +1111,7 @@ for the command-function).")
 			 :backend (puca-backend p)
 			 :debug (puca-debug p))
       (event-loop *puca*))
+    (inator:redraw p) ;; @@@ workaround: we should fix the real bug
     (draw-screen p)))
 
 ;;; custom table renderer
