@@ -4,7 +4,8 @@
 
 (defpackage :fui
   (:documentation "Fake UI")
-  (:use :cl :dlib :dlib-misc :stretchy :char-util :keymap :terminal :inator)
+  (:use :cl :dlib :dlib-misc :stretchy :char-util :keymap :terminal :inator
+	:collections :fatchar :fatchar-io)
   (:export
    #:*interactive*
    #:non-interactively
@@ -148,6 +149,12 @@ drawing, which will get overwritten."
 	    text-y row)
       (tt-move-to start-y start-x))))
 
+(defun refangle (string)
+  "Turn FATCHAR-STRINGS back to FAT-STRINGS, but leave other things."
+  (typecase string
+    (fatchar-string (make-fat-string :string string))
+    (t string)))
+
 (defun window-text (window text &key row column)
   (with-slots (x y width height text-x text-y) window
     (when (not row)
@@ -161,7 +168,11 @@ drawing, which will get overwritten."
 	   (output-y 0)
 	   ;; (start-pos (if (< column 0) (min len (- column)) 0))
 	   ;; (end-pos   (min len (max 0 (- width column))))
-	   (lines (split-sequence #\newline text)))
+	   (lines
+	    (mapcar #'refangle
+		    (split-sequence #\newline
+				    (string-vector text)
+				    :key #'simplify-char))))
       ;; (dbugf :fui "start-x ~d start-y ~d~%start-pos ~d end-pos ~d~%"
       ;; 	      start-x start-y start-pos end-pos)
       (dbugf :fui "lines = ~s~%" lines)
@@ -209,13 +220,19 @@ waits for a key press and then returns."
   (let* ((mid    (truncate (/ (tt-width) 2)))
 	 (width  (min (- (tt-width) 6)
 		      (+ 4 (loop :for l :in text-lines
-			      :maximize (length l)))))
-	 (height (min (+ 4 (loop :for l :in text-lines
-			      :sum
-			      (1+ (count
-				   #\newline
-				   (justify-text l :cols (- width 2)
-						 :stream nil)))))
+			      :maximize (display-length l)))))
+	 (justified-lines (loop :for l :in text-lines
+			     :nconc
+			     (split-sequence
+			      #\newline
+			      (if justify
+				  (fat-string-string
+				   (with-output-to-fat-string (str)
+				     (justify-text l :cols (- width 2)
+						   :stream str)))
+				  (string-vector l))
+			      :key #'simplify-char)))
+	 (height (min (+ 4 (length justified-lines))
 		      (- (tt-height) 4)))
 	 (xpos   (truncate (- mid (/ width 2))))
 	 (w      (make-window :width width :height height :y 3 :x xpos
@@ -223,18 +240,10 @@ waits for a key press and then returns."
 	 result)
     (window-centered-text w 0 title)
     (loop :with i = 2
-       :for l :in text-lines
+       :for l :in justified-lines
        :do
-       (if justify
-	   (loop :for sub-line
-	      :in (split-sequence #\newline (justify-text l :cols (- width 2)
-							  :stream nil))
-	      :do
-	      (window-text w sub-line :row i :column 2)
-	      (incf i))
-	   (progn
-	     (window-text w l :row i :column 2)
-	     (incf i))))
+       (window-text w (refangle l) :row i :column 2)
+       (incf i))
     (tt-finish-output)
     (setf result (if input-func
 		     (funcall input-func w)
