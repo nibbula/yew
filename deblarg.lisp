@@ -306,7 +306,7 @@
 	  `(define-debugger-command ,(first c) ,(second c) ,@(cddr c)))))
 
 (defun eval-print (vals)
-  (format t "~&~{~s~^ ;~%~}~%" vals))
+  (format *debug-io* "~&~{~s~^ ;~%~}~%" vals))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *base-commands*
@@ -401,8 +401,8 @@
 	       t)
 	     nil)))
       ;; Numbers invoke that numbered restart.
-      ((typep value 'number)
-       (if (and (>= value 0) (< value (length restarts)))
+      ((typep value 'integer)
+       (if (and restarts (>= value 0) (< value (length restarts)))
 	   (invoke-restart-interactively (nth value restarts))
 	   (format *debug-io*
 		   "~a is not a valid restart number.~%" value))
