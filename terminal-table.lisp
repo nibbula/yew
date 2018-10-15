@@ -5,7 +5,7 @@
 (defpackage :terminal-table
   (:documentation "Table renderer for terminals.")
   (:use :cl :dlib :terminal :table :table-print :fatchar :fatchar-io
-	:collections :char-util)
+	:collections :char-util :dlib-misc)
   (:export
    #:terminal-table-renderer
    ))
@@ -15,7 +15,10 @@
   ()
   (:documentation "Render a table to a terminal."))
 
-;; @@@ This is kludgey hack of the text-table-renderer.
+;; @@@ This whole thing is crap becuase it copy & pastes most of the
+;; text-table-renderer methods. We should make it not do that, and just
+;; call to them appropriately.
+
 (defmethod table-output-column-titles ((renderer terminal-table-renderer)
 				       table titles &key sizes)
   "Output all the column titles."
@@ -28,6 +31,7 @@
       (loop :with str
 	 :and fmt = "~va"
 	 :and len = (length titles)
+	 :and sep-len = (display-length separator)
 	 :and size :and just :and out-str
 	 :for col :in titles
 	 :and i :from 0 :below (length sizes)
@@ -45,12 +49,14 @@
 				(substitute #\space #\_ str))
 			       0 (min (length str) size)))
 	 (terminal-format stream fmt size out-str)
-	 (incf cursor (display-length out-str))
+	 (incf cursor size)
 	 (when has-underline
 	   (terminal-underline stream nil))
 	 (when (< i (1- len))
-	   (terminal-write-string stream separator)))
+	   (terminal-write-string stream separator)
+	   (incf cursor sep-len)))
       (when (or (not *max-width*) (/= cursor *max-width*))
+	;;(dbugf :termtab "Fuckler--- ~s ~s~%" cursor *max-width*)
 	(terminal-write-char stream #\newline))
 
       ;; Lines
@@ -101,10 +107,16 @@ to MAX-WIDTH.."
 	    row)))
      table)))
 
+(defmethod text-table-cell-lines (table (renderer terminal-table-renderer)
+				  cell width)
+  "Return the lines of CELL fitting in WIDTH."
+  (osplit #\newline (with-output-to-fat-string (str)
+		      (justify-text cell :cols width :stream str))))
+
 (defmethod table-output-cell ((renderer terminal-table-renderer)
 			      table cell width justification row column)
   "Output a table cell."
-  (declare (ignore row))
+  ;;(declare (ignore row))
   (with-slots ((cursor table-print::cursor)) renderer
     (let* ((op (typecase cell
 		 ((or string fat-string) "/fatchar-io:print-string/")
@@ -123,24 +135,22 @@ to MAX-WIDTH.."
 		    (with-output-to-fat-string (str)
 		      (format str fmt width cell))))
 	   (len (display-length field)))
-      (incf cursor len)
       (if (and (eq justification :overflow)
 	       (> len width))
 	  (progn
-	    ;; (write-string field *destination*)
 	    (write field :stream *destination* :escape nil :readably nil
 		   :pretty nil)
-	    (format *destination* "~%~v,,,va" width #\space #\space))
+	    (format *destination* "~%~v,,,va" width #\space #\space)
+	    (setf cursor width))
 	  (typecase cell
 	    (standard-object
+	     (dbugf :termtab "POOTY ~s ~s ~s~%" row column (type-of cell))
 	     (princ (osubseq field 0 (min width (olength field)))
-		    *destination*))
+		    *destination*)
+	     (incf cursor (min width (olength field))))
 	    (t
-	     ;; (write-string (osubseq field 0 (min width (olength field)))
-	     ;; 		   *destination*)
-	     ;;(princ (osubseq field 0 (min width (olength field))) *destination*)
 	     (write (osubseq field 0 (min width (olength field)))
 		    :stream *destination* :escape nil :readably nil :pretty nil)
-	     ))))))
+	     (incf cursor (min width (olength field)))))))))
 
 ;; EOF

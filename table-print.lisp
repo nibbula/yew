@@ -32,6 +32,7 @@ make the table in the first place. For that you want the TABLE package.")
    #:text-table-renderer-separator
    #:text-table-renderer-cursor
    #:text-table-adjust-sizes
+   #:text-table-cell-lines
    #:*trailing-spaces*
    
    #:output-table
@@ -353,36 +354,46 @@ make the table in the first place. For that you want the TABLE package.")
 				       table titles &key sizes)
   "Output all the column titles."
   (declare (ignore table))
-  (with-slots (stream separator) renderer
-    (loop :with str
-       :and fmt = "~va"
-       :and len = (length titles)
-       :and size :and just
-       :for col :in titles
-       :and i :from 0 :below (length sizes)
-       :do
-       (setf size (car (aref sizes i))
-	     just (cadr (aref sizes i)))
-       (if (listp col)
-	   (setf str (first col)
-		 fmt (if (eql just :right) "~v@a" "~va"))
-	   (setf str col
-		 fmt "~va"))
-       (format stream fmt size
-	       (subseq (string-capitalize (substitute #\space #\_ str))
-		       0 (min (length str) size)))
-       (when (< i (1- len))
-	 (write-string separator stream)))
-    (terpri stream)
+  (with-slots (stream separator cursor) renderer
+    (setf cursor 0)
+    (let ((sep-len (display-length separator)))
+      (loop :with str
+	 :and fmt = "~va"
+	 :and len = (length titles)
+	 :and size :and just
+	 :for col :in titles
+	 :and i :from 0 :below (length sizes)
+	 :do
+	 (setf size (car (aref sizes i))
+	       just (cadr (aref sizes i)))
+	 (if (listp col)
+	     (setf str (first col)
+		   fmt (if (eql just :right) "~v@a" "~va"))
+	     (setf str col
+		   fmt "~va"))
+	 (format stream fmt size
+		 (subseq (string-capitalize (substitute #\space #\_ str))
+			 0 (min (length str) size)))
+	 (incf cursor size)
+	 (when (< i (1- len))
+	   (write-string separator stream)
+	   (incf cursor sep-len)))
+      (when (or (not *max-width*) (/= cursor *max-width*))
+	(terpri stream))
 
-    ;; Lines
-    (loop :with len = (length sizes)
-       :for i :from 0 :below len
-       :do
-       (format stream "~v,,,va" (car (aref sizes i)) #\- #\-)
-       (when (< i (1- len))
-	 (write-string separator stream)))
-    (terpri stream)))
+      ;; Lines
+      (setf cursor 0)
+      (loop :with len = (length sizes) :and size
+	 :for i :from 0 :below len
+	 :do
+	 (setf size (car (aref sizes i)))
+	 (format stream "~v,,,va" size #\- #\-)
+	 (incf cursor size)
+	 (when (< i (1- len))
+	   (write-string separator stream)
+	   (incf cursor sep-len)))
+      (when (or (not *max-width*) (/= cursor *max-width*))
+	(terpri stream)))))
 
 (defun column-name-list (table &optional (template "Column~d"))
   "Return a list of column names for TABLE or a TEMPLATE filled in with the
@@ -448,6 +459,14 @@ to MAX-WIDTH.."
 	    row)))
      table)))
 
+;; This is just for text-table-renderer based things.
+(defgeneric text-table-cell-lines (table renderer cell width)
+  (:documentation "Return the lines of CELL fitting in WIDTH.")
+  (:method (table (renderer text-table-renderer) cell width)
+    (osplit #\newline
+	    (with-output-to-string (str)
+	      (justify-text cell :cols width :stream str)))))
+
 (defmethod table-output-start-row ((renderer text-table-renderer) table)
   "Start a row of table output."
   (declare (ignore table))
@@ -512,19 +531,22 @@ to MAX-WIDTH.."
 	   (field (let ((*print-pretty* nil))
 		    (format nil fmt width cell)))
 	   (len (display-length field)))
-      (incf cursor len)
+      ;;(incf cursor len)
       (if (and (eq justification :overflow)
 	       (> len width))
 	  (progn
 	    (write-string field *destination*)
-	    (format *destination* "~%~v,,,va" width #\space #\space))
+	    (format *destination* "~%~v,,,va" width #\space #\space)
+	    (setf cursor width))
 	  (typecase cell
 	    (standard-object
 	     (princ (osubseq field 0 (min width (olength field)))
-		    *destination*))
+		    *destination*)
+	     (incf cursor (min width (olength field))))
 	    (t
 	     (write-string (osubseq field 0 (min width (olength field)))
-			   *destination*)))))))
+			   *destination*)
+	     (incf cursor (min width (olength field)))))))))
 
 (defmethod output-table ((table table) (renderer text-table-renderer)
 			 destination
@@ -554,8 +576,6 @@ resized to fit in this, and the whole row is trimmed to this."
 	 (*max-width* max-width)
 	 (*trailing-spaces* trailing-spaces))
 
-    ;;(format t "sizes = ~s~%" sizes) (finish-output)
-
     ;; Adjust column sizes by field data
     (text-table-adjust-sizes table renderer sizes max-width)
 
@@ -572,7 +592,7 @@ resized to fit in this, and the whole row is trimmed to this."
     ;; This makes the sizes elements be: (width :justification).
     (loop :with name :and justification
        :for i :from 0 :below (length sizes)
-       :for col = column-names :then (cdr col)
+       :for col = (column-name-list table) :then (cdr col)
        :do
        (if (listp (car col))
 	   (progn
@@ -613,9 +633,8 @@ resized to fit in this, and the whole row is trimmed to this."
 			  just (cadr (aref sizes column-num)))
 		    (when (eq just :wrap)
 		      (setf cell-lines
-			    (split-sequence
-			     #\newline (justify-text field :cols (1+ size)
-						     :stream nil))
+			    (text-table-cell-lines table renderer field
+						   (1+ size))
 			    cell-col cursor
 			    cell-width size
 			    field (car cell-lines)))
@@ -628,8 +647,13 @@ resized to fit in this, and the whole row is trimmed to this."
 		row)
 	       (when cell-lines
 		 (loop :for l :in (cdr cell-lines) :do
-		    (format stream "~%~v,,,va~va"
-			    cell-col #\space #\space cell-width l))
+		    (when (or (not max-width) (/= cursor max-width))
+		      (terpri stream))
+		    (format stream "~v,,,va"
+			    cell-col #\space #\space)
+		    (setf cursor cell-col)
+		    (table-output-cell renderer table l cell-width just
+				       row-num column-num))
 		 (setf cell-lines nil))
 	       (when (or (not max-width) (/= cursor max-width))
 		 (terpri stream)))
