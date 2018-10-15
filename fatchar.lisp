@@ -27,6 +27,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:make-fat-string
    #:make-fatchar-string
    #:fatchar-string-to-string
+   #:string-vector
    #:fat-string-to-string
    #:fat-string< #:fat-string> #:fat-string= #:fat-string/=
    #:fat-string<= #:fat-string>= #:fat-string-lessp #:fat-string-greaterp
@@ -156,7 +157,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 	   ,@(when end-p `(:end ,end)))))
 
 (defun make-fatchar-string (thing)
-  "Make a fat string from something. THING can be a string or a character."
+  "Make a string of fatchars from THING, which can be a string or a character."
   (let (result)
     (flet ((from-string (string)
 	     (setf result (make-array (list (length string))
@@ -196,6 +197,16 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
      ;;   s))
      (map 'string (_ (if (fatchar-p _) (fatchar-c _) _)) string))
     (t string)))
+
+;; @@@ Maybe this should be generic?
+(defun string-vector (string)
+  "Return the STRING as a vector. This converts FAT-STRINGs to FATCHAR-STRINGs,
+and returns STRINGs or FATCHAR-STRINGs as-is. This is useful so you can iterate
+over a string's characters, even with the 'normal' (non-collections) sequence
+functions."
+  (etypecase string
+    (fat-string (fat-string-string string))
+    ((or string fatchar-string) string)))
 
 ;; @@@ What about equality considering the effects?
 
