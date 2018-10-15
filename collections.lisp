@@ -54,6 +54,7 @@ We should entertain other naming ideas.")
    #:omerge
    #:oremove
    #:oremove-duplicates
+   #:osplit
    #:oaref
    #:opush
    #:opushnew
@@ -624,6 +625,63 @@ false. If no element satifies the test, NIL is returned.")
   (:method ((collection XX))
 	    ))
 |#
+
+(defgeneric osplit (separator ordered-collection
+		    &key omit-empty start end test key #| count |#)
+  (:documentation
+   "Split the ORDERED-COLLECTION into subsequences separated by SEPARATOR.
+Return an ORDERED-COLLECTION of the subsequences. SEPARATOR can be a
+ORDERED-COLLECTION itself, which means the whole sequence is the separator.
+The returned collection might not be the same type you passed in. For example it
+might always be a list. But the pieces in that collection should be of the same
+type as the one given.
+  OMIT-EMPTY - If true, then don't return empty subsequnces.
+  START      - Element number to start gathering from. Defaults to 0.
+  END        - Element number to end gathering at. Defaults to the end of the
+               collection.
+  TEST       - A function called with an element which should return true if
+               that element is a separator. The SEPARATOR argument is ignored
+               if TEST is supplied and non-NIL.
+  KEY        - A function called with each element, which should return an
+               element to be tested.
+")
+  (:method (separator (collection list)
+	    &key omit-empty test key
+	      (start nil start-p)
+	      (end nil end-p))
+    (apply 'dlib:split-sequence
+	   `(,separator ,collection
+	     :omit-empty ,omit-empty :test ,test :key ,key
+	     ,@(when start-p `(:start ,start))
+	     ,@(when end-p `(:end ,end)))))
+  (:method (separator (collection vector)
+	    &key omit-empty test key
+	      (start nil start-p)
+	      (end nil end-p))
+    (apply 'dlib:split-sequence
+	   `(,separator ,collection
+	     :omit-empty ,omit-empty :test ,test :key ,key
+	     ,@(when start-p `(:start ,start))
+	     ,@(when end-p `(:end ,end)))))
+  (:method (separator (collection sequence)
+	    &key omit-empty test key
+	      (start nil start-p)
+	      (end nil end-p))
+    (apply 'dlib:split-sequence
+	   `(,separator ,collection
+	     :omit-empty ,omit-empty :test ,test :key ,key
+	     ,@(when start-p `(:start ,start))
+	     ,@(when end-p `(:end ,end))))))
+
+(defmethod osplit (separator (collection container)
+		   &key omit-empty test key
+		     (start nil start-p)
+		     (end nil end-p))
+  (apply #'osplit
+	 `(,separator (container-data ,collection)
+		 :omit-empty ,omit-empty :test ,test :key ,key
+		 ,@(when start-p `(:start ,start))
+		 ,@(when end-p `(:end ,end)))))
 
 #|
 (defgeneric opick (collection &rest keys)
