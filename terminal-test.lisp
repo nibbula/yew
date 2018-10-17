@@ -555,21 +555,24 @@ drawing, which will get overwritten."
 
 (defun test-rgb-colors ()
   "Test to see if the terminal can handle a lot of RGB colors."
-  (let* ((rows (- (tt-height) 2))
-	 (cols (- (tt-width) 1))
-	 (blue-step (/ 255 rows))
-	 (red-green-step (/ 255 cols))
-	 (r 0) (g 0) (b 0))
+  (let* ((rows (- (tt-height) 1))
+	 (cols (tt-width))
+	 (blue-step (/ 255.0 rows))
+	 (red-green-step (/ 255.0 cols))
+	 (r 0.0) (g 0.0) (b 0.0))
     (tt-clear)
     (tt-home)
     (loop :for row :from 0 :below rows
        :do
        (setf r 0 g 255)
        (loop :for col :from 0 :below cols :do
-	  (tt-color :default (make-color :rgb8 :red r :blue b :green g))
+	  (tt-color :default (make-color :rgb8
+					 :red (truncate r)
+					 :blue (truncate b)
+					 :green (truncate g)))
 	  (tt-write-char #\space)
 	  (incf r red-green-step)
-	  (incf g red-green-step))
+	  (decf g red-green-step))
        (incf b blue-step)))
   (tt-normal)
   (tt-finish-output)
