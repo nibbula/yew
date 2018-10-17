@@ -771,12 +771,13 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
       (when (< last-word-start i)
 	(write-word t)))))
 
-;; This can handle unicode and fatchars, but it only gives reasonable output for
-;; the the subset of unicode scripts that have a non-context-dependant word
-;; separator character (a.k.a. western style). Perhaps someday we can make it
-;; work in a more universal text rendering system, but it would be nice to at
-;; least have it support anything that we can reasonably render in a character
-;; grid system (i.e. terminals).
+;; This can handle some wide and fatchars, but it only gives reasonable output
+;; for the the subset of unicode scripts that have a non-context-dependant
+;; word separator character (a.k.a. western style). This is certainly not an
+;; implementation of the unicode line breaking algorithm. Perhaps someday we
+;; can make it work in a more universal text rendering system, but it would be
+;; nice to at least have it support anything that we can reasonably render in
+;; a character grid system (i.e. terminals).
 (defun %justify-text (text &key (cols 80) (stream *standard-output*)
 			     (prefix "") (separator #\space) omit-first-prefix
 			     (start-column 0))

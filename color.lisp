@@ -41,6 +41,7 @@
 ;; standard RGB, or maybe R G B A
 ;;
 ;; Some standard color names should be defined as keywords.
+;; [see color-names.lisp for a bunch of stupid color names]
 ;;
 ;; Note that a color model is not a color space. A color model just says
 ;; what color components we store, not a precise definition of how to render,

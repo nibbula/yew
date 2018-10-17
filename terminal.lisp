@@ -610,7 +610,8 @@ Attributes are usually keywords.")
 
 (deftt listen-for (seconds)
   "Listen for at most N seconds or until input is available. SECONDS can be
-fractional, down to some limit.")
+fractional, down to some limit. Returns true if we got an event before SECONDS
+elapsed, false otherwise.")
 
 (deftt input-mode ()
   "Accessor for the input mode. Modes are :LINE for line at time with echo
