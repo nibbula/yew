@@ -374,6 +374,10 @@ the SCREEN-COL and SCREEN-ROW."
 		   (progn
 		     ;;(log-message e "mooo ~a ~a ~a" i col endings)
 		     ;;(setf col (- cols len))
+		     ;; If the line endings were calculated correctly, there
+		     ;; should be one here, since we backing up over the line
+		     ;; boundary. Also we need to get the appropriate column
+		     ;; from it.
 		     (assert (assoc (1- i) endings))
 		     (setf col (cdr (assoc (1- i) endings)))
 		     (decf row))
