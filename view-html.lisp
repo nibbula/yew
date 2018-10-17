@@ -122,6 +122,10 @@
 				(declare (ignore c))
 				nil)))
 		  (member (puri:uri-scheme uri) '(:http :https))
+		  ;; @@@ We should probably check something like:
+		  ;; (sb-unicode:confusable-p url
+		  ;;   (sb-unicode:canonically-deconfuse url))
+		  ;; and some site blacklist or something.
 		  #+use-drakma
 		  (drakma:http-request uri :user-agent *user-agent*)))))
       ((or pathname stream)
