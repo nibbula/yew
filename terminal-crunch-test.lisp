@@ -6,6 +6,7 @@
   (:documentation "Tests for terminal-crunch.")
   (:use :cl :dlib :dlib-misc :terminal :terminal-crunch :terminal-ansi :fatchar
 	:table :table-print :rl :lish)
+  (:import-from :terminal-crunch #:dump-hashes #:dump-screen)
   (:export
    #:test-1 #:test-2 #:test-3 #:test-4 #:test-5 #:test-6 #:test-7 #:test-8
    #:test-hashing
