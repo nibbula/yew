@@ -4,7 +4,7 @@
 
 (defpackage :char-util
   (:documentation "Utility functions for characters.")
-  (:use :cl :dlib)
+  (:use :cl :dlib :stretchy)
   (:export
    #:meta-char
    #:meta-char-p
@@ -18,6 +18,7 @@
    #:double-wide-char-p
    #:control-char-graphic
    #:display-length
+   #:do-graphemes
    #:graphemes
    #:grapheme-length
    #:simplify-char
@@ -38,6 +39,8 @@
     (d-add-feature :has-sb-unicode)))
 
 ;(
+
+(declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
 
 ;; Sadly #\^A is not portable. This assumes ASCII or UTF8 or something. 
 (defun ctrl (c)
@@ -755,7 +758,16 @@ than space and delete."
 
 (defun general-category (c)
   #+sbcl (sb-unicode:general-category c)
-  #-sbcl (cl-unicode:general-category c))
+  #-sbcl (keywordify (cl-unicode:general-category c)))
+
+(defun has-property (c property)
+  #+sbcl (sb-unicode:proplist-p c property)
+  #-sbcl (cl-unicode:has-property
+	  c (typecase property
+	      ;; @@@ This probably has bad performance.
+	      (keyword
+	       (substitute #\_ #\- (string-capitalize property)))
+	      (t property))))
 
 (defun is-zero-width-type (c)
   (member (general-category c) '(:mn	; non spacing mark
@@ -781,10 +793,176 @@ than space and delete."
 			(and (>= cc (car b))
 			     (<= cc (cdr b)))))))
 
-(defmacro with-graphemes ((string) &body body)
-  (declare (ignore string body))
-  ;; @@@
-  )
+;; adapted from sbcl/src/code/target-unicode.lisp
+
+(defun hangul-syllable-type (character)
+  "Returns the Hangul syllable type of CHARACTER.
+The syllable type can be one of :L, :V, :T, :LV, or :LVT.
+If the character is not a Hangul syllable or Jamo, returns NIL"
+  (let ((cp (char-code character)))
+    (cond
+      ((or
+        (and (<= #x1100 cp) (<= cp #x115f))
+        (and (<= #xa960 cp) (<= cp #xa97c))) :L)
+      ((or
+        (and (<= #x1160 cp) (<= cp #x11a7))
+        (and (<= #xd7B0 cp) (<= cp #xd7C6))) :V)
+      ((or
+        (and (<= #x11a8 cp) (<= cp #x11ff))
+        (and (<= #xd7c8 cp) (<= cp #xd7fb))) :T)
+      ((and (<= #xac00 cp) (<= cp #xd7a3))
+       (if (= 0 (rem (- cp #xac00) 28)) :LV :LVT)))))
+
+(defparameter *not-spacing-marks*
+  #(
+    #x102B
+    #x102C
+    #x1038
+    #x1062
+    #x1063
+    #x1064
+    #x1067
+    #x1068
+    #x1069
+    #x106A
+    #x106B
+    #x106C
+    #x106D
+    #x1083
+    #x1087
+    #x1088
+    #x1089
+    #x108A
+    #x108B
+    #x108C
+    #x108F
+    #x109A
+    #x109B
+    #x109C
+    #x19B0
+    #x19B1
+    #x19B2
+    #x19B3
+    #x19B4
+    #x19B8
+    #x19B9
+    #x19BB
+    #x19BC
+    #x19BD
+    #x19BE
+    #x19BF
+    #x19C0
+    #x19C8
+    #x19C9
+    #x1A61
+    #x1A63
+    #x1A64
+    #xAA7B
+    #xAA7D
+    ))
+
+;; @@@ do we need this?
+(defvar *other-break-special-graphemes* nil
+  "Word breaking sets this to make their algorithms less tricky.")
+
+(defun grapheme-break-class (char)
+  "Returns the grapheme breaking class of CHARACTER, as specified in UAX #29."
+  (let ((code (when char (char-code char)))
+        (category (when char (general-category char))))
+    (cond
+      ((not char) nil)
+      ((= code 10) :LF)
+      ((= code 13) :CR)
+      ((or (member category '(:Mn :Me))
+           (has-property char :other-grapheme-extend)
+           (and *other-break-special-graphemes*
+                (member category '(:Mc :Cf)) (not (<= #x200B code #x200D))))
+       :extend)
+      ((or (member category '(:Zl :Zp :Cc :Cs :Cf))
+           ;; From Cn and Default_Ignorable_Code_Point
+           (eql code #x2065) (eql code #xE0000)
+           (<= #xFFF0 code #xFFF8)
+           (<= #xE0002 code #xE001F)
+           (<= #xE0080 code #xE00FF)
+           (<= #xE01F0 code #xE0FFF)) :control)
+      ((<= #x1F1E6 code #x1F1FF) :regional-indicator)
+      ((and (or (eql category :Mc)
+                (eql code #x0E33) (eql code #x0EB3))
+            (not
+	     (ordered-char-search char *not-spacing-marks*)
+	     ;; (combining-char-p char)
+	     )) :spacing-mark)
+      (t (hangul-syllable-type char)))))
+
+(defun grapheme-break-p (c1 c2)
+  "Return true if we should break a grapheme between characters of class
+C1 and C2."
+  (cond
+    ;; ((and (eql c1 :cr) (eql c2 :lf))
+    ;;  ;; Don't break between CR-LF
+    ;;  nil)
+    ((or (member c1 '(:control :cr :lf))
+	 (member c2 '(:control :cr :lf)))
+     ;; Control characters or line endings not between CRLF are separate.
+     t)
+    ((or (and (eql c1 :l) (member c2 '(:l :v :lv :lvt)))
+	 (and (or (eql c1 :v) (eql c1 :lv))
+	      (or (eql c2 :v) (eql c2 :t)))
+	 (and (eql c2 :t) (or (eql c1 :lvt) (eql c1 :t))))
+     ;; Don't break up Hangul composite characters.
+     nil)
+    ((and (eql c1 :regional-indicator)
+	  (eql c2 :regional-indicator))
+     ;; Don't break Emoji flags.
+     nil)
+    ((or (eql c2 :extend) (eql c2 :spacing-mark) (eql c1 :prepend))
+     ;; Don't break between non-spacing things or a thing and a non-spacing
+     ;; thing. @@@ where would :prepend comming from??
+     nil)
+    (t t))) ;; Break the fuck out of everything else.
+
+(defmacro do-graphemes ((grapheme-var string
+			 &key key (result-type 'character)) &body body)
+  "Evaluate BODY once for each grapheme in STRING, with GRAPHEME-VAR bound to
+the grapheme. STRING can be any vector type as long as KEY can get a character
+out of an element of it. RESULT-TYPE is the type of vector which the
+GRAPHEME-VARs will be, which defaults to character so it's compatable with a
+'normal' string."
+  (with-unique-names (class last-class c i)
+    (let ((grapheme-maker `(make-stretchy-vector 0 :element-type ',result-type))
+	  (cc (if key `(,key ,c) c)))
+      `(progn
+	 (let ((,grapheme-var ,grapheme-maker))
+	   (flet ((thunk () (progn ,@body)))
+	     (loop
+		:with ,class :and ,last-class
+		:for ,i :from 0
+		:for ,c :across ,string
+		:do
+		(shiftf ,last-class ,class (grapheme-break-class ,cc))
+		:when (and (> ,i 0) (grapheme-break-p ,last-class ,class))
+		:do
+		  (thunk)
+		  (setf ,grapheme-var ,grapheme-maker)
+		  (stretchy-append ,grapheme-var ,c)
+		:else :do
+		(stretchy-append ,grapheme-var ,c))
+	     (when (not (zerop (length ,grapheme-var)))
+	       (thunk))))))))
+
+(defgeneric graphemes (string)
+  (:documentation "Return a sequence of graphemes in STRING.")
+  (:method ((string string))
+    (dbugf :char-util "grapheme ~s ~s~%" (type-of string) string)
+    ;; #+(and sbcl has-sb-unicode) (sb-unicode:graphemes string)
+    ;; #-(and sbcl has-sb-unicode)
+    (let (result)
+      (do-graphemes (g string)
+	(push g result))
+      (nreverse result))))
+
+;; (char-util:graphemes "d⃝u⃝c⃝k⃝")
+;; (values (char-util:graphemes "수도") (char-util:graphemes "수도"))
 
 #|
 ;; Note: no tab or newline
@@ -902,19 +1080,6 @@ than space and delete."
 ;;   #-(and sbcl has-sb-unicode) (declare (ignore c))
 ;;   #-(and sbcl has-sb-unicode) nil	; @@@ too hard without tables
 ;;   )
-
-;; (defgeneric graphemes (string)
-;;   (:documentation "Return a list of graphemes in STRING."))
-
-;; (defmethod graphemes ((string array))
-;;   #+(and sbcl has-sb-unicode) (sb-unicode:graphemes string)
-;;   #-(and sbcl has-sb-unicode) (map 'list #'string string) ; @@@ fail
-;;   )
-
-(defun graphemes (string)
-  #+(and sbcl has-sb-unicode) (sb-unicode:graphemes string)
-  #-(and sbcl has-sb-unicode) (map 'list #'string string) ; @@@ fail
-  )
 
 ;; XXX This is still wrong for unicode! @@@
 (defmethod display-length ((c character))
