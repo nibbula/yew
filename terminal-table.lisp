@@ -110,6 +110,7 @@ to MAX-WIDTH.."
 (defmethod text-table-cell-lines (table (renderer terminal-table-renderer)
 				  cell width)
   "Return the lines of CELL fitting in WIDTH."
+  (declare (ignore table renderer))
   (osplit #\newline (with-output-to-fat-string (str)
 		      (justify-text cell :cols width :stream str))))
 
