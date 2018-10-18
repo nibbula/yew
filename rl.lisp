@@ -405,7 +405,7 @@ Keyword arguments:
     (when editor
       (freshen editor))
     (setf (fill-pointer (buf e)) (point e))
-    #+ccl (setf ccl::*auto-flush-streams* nil)
+    ;;#+ccl (setf ccl::*auto-flush-streams* nil)
     ;; (when (typep (line-editor-terminal e)
     ;; 		 (find-terminal-class-for-type :crunch))
     ;;   (setf (oelt (line-editor-terminal e) :start-line)
