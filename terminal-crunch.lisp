@@ -20,7 +20,8 @@ out how to update the wrapped terminal.
 Other terminal types should help terminal-crunch work by providing cost metrics
 for various operations through the OUTPUT-COST methods.
 ")
-  (:use :cl :dlib :char-util :fatchar :terminal :trivial-gray-streams)
+  (:use :cl :dlib :char-util :fatchar :terminal :trivial-gray-streams
+	:fatchar-io)
   (:import-from :terminal #:wrapped-terminal)
   (:export
    #:terminal-crunch
@@ -29,10 +30,247 @@ for various operations through the OUTPUT-COST methods.
    ))
 (in-package :terminal-crunch)
 
-(declaim
- (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 ;; (declaim
-;;  (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
+;;  (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+(declaim
+ (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
+
+;; As you may know, many of the world's lovely scripts, do not fit perfectly
+;; into a character grid, so neither will all unicode characters. This will only
+;; really work for those scripts that do. But we do at least try to make it a
+;; grid of unicode graphemes, instead of just characters. That means there can
+;; be multiple characters per screen cell, or sort of hidden empty cells that
+;; are under double wide characters.
+;;
+;; So, grid-char is like a fatchar with coalesced graphemes.
+;; @@@ Someday do the experiment to make them a class and see what happens.
+
+(defstruct grid-char
+  "A grapheme with attributes."
+  (c nil :type (or null character string))
+  (fg nil)
+  (bg nil)
+  (line 0 :type fixnum)
+  (attrs nil :type list))
+
+(deftype grid-string (&optional n) `(vector grid-char ,(or n '*)))
+(defun make-grid-string (n) (make-array n :element-type 'grid-char))
+
+(defmethod display-length ((c grid-char))
+  (display-length (grid-char-c c)))
+
+(defmethod display-length ((c null))
+  0) ;; @@@ so bogus
+
+(defun gs-display-length (gs)
+  (loop :for c :across gs :sum (display-length c)))
+
+(defgeneric grid-char-same-effects (a b)
+  (:documentation
+   "Return true if the two fatchars have the same colors and attributes.")
+  (:method ((a grid-char) (b grid-char))
+    (and (equal (grid-char-fg a) (grid-char-fg b))
+	 (equal (grid-char-bg a) (grid-char-bg b))
+	 (not (set-exclusive-or (grid-char-attrs a) (grid-char-attrs b)
+				:test #'eq))))
+  (:method ((a grid-char) (b fatchar))
+    (and (equal (grid-char-fg a) (fatchar-fg b))
+	 (equal (grid-char-bg a) (fatchar-bg b))
+	 (not (set-exclusive-or (grid-char-attrs a) (fatchar-attrs b)
+				:test #'eq)))))
+
+(defgeneric grid-char= (a b)
+  (:documentation "True if everything about a grid-char is the equivalent.")
+  (:method ((a grid-char) (b grid-char))
+    (and (equal (grid-char-c a) (grid-char-c b))
+	 (grid-char-same-effects a b)
+	 (= (grid-char-line a) (grid-char-line b))))
+  (:method ((a grid-char) (b fatchar))
+    (and (characterp (grid-char-c a))
+	 (char= (grid-char-c a) (fatchar-c b))
+	 (grid-char-same-effects a b)
+	 (= (grid-char-line a) (fatchar-line b)))))
+
+(defgeneric set-grid-char (char value)
+  (:documentation "Set the grid-char CHAR to VALUE.")
+  (:method ((char grid-char) (value grid-char))
+    (setf (grid-char-c char)     (grid-char-c value)
+	  (grid-char-fg char)    (grid-char-fg value)
+	  (grid-char-bg char)    (grid-char-bg value)
+	  (grid-char-attrs char) (grid-char-attrs value)
+	  (grid-char-line char)  (grid-char-line value)))
+  (:method ((char grid-char) (value fatchar))
+    (setf (grid-char-c char)     (fatchar-c value)
+	  (grid-char-fg char)    (fatchar-fg value)
+	  (grid-char-bg char)    (fatchar-bg value)
+	  (grid-char-attrs char) (fatchar-attrs value)
+	  (grid-char-line char)  (fatchar-line value))))
+
+(defun grapheme-to-grid-char (grapheme &key tty)
+  "Make a GRID-CHAR from GRAPHEME, which can be any of fat-string,
+fatchar-string, string, fatchar, or character. Note that in the case of a fat
+strings, only the attributes of the first character are preserved."
+  (typecase grapheme
+    (fat-string
+     (grapheme-to-grid-char (fat-string-string grapheme) :tty tty))
+    (fatchar-string
+     ;; Take the attributes from the first character only.
+     (if (not (zerop (length grapheme)))
+	 (make-grid-char :fg    (fatchar-fg    (elt grapheme 0))
+			 :bg    (fatchar-bg    (elt grapheme 0))
+			 :attrs (fatchar-attrs (elt grapheme 0))
+			 :line  (fatchar-line  (elt grapheme 0))
+			 :c (if (= 1 (length grapheme))
+				(fatchar-c (elt grapheme 0))
+				(coerce (loop :for c :across grapheme
+					   :collect (fatchar-c c))
+					'string)))
+	 (make-grid-char :c nil)))
+    (string
+     (if tty ;; @@@ the non tty case probably isn't used, also below
+	 (make-grid-char :c (case (length grapheme)
+			      (0 nil)
+			      (1 (char grapheme 0))
+			      (t grapheme))
+			 :fg (fg tty)
+			 :bg (bg tty)
+			 :attrs (attrs tty))
+	 (make-grid-char :c (case (length grapheme)
+			      (0 nil)
+			      (1 (char grapheme 0))
+			      (t grapheme)))))
+    (fatchar
+     (let ((result (make-grid-char)))
+       (set-grid-char result grapheme)
+       result))
+    (character
+     (if tty ;; @@@
+	 (make-grid-char :c grapheme
+			 :fg (fg tty)
+			 :bg (bg tty)
+			 :attrs (attrs tty))
+	 (make-grid-char :c grapheme)))))
+
+(defun set-fat-char (fc gc)
+  "Set the fatchar CHAR to a grid-char VALUE."
+  (let* ((c (grid-char-c gc))
+	 (cc (etypecase c
+	       (character c)
+	       (string (if (>= (length c) 1) (char c 0) nil))
+	       (null (code-char 0))))) ;; @@@ o'really?
+    ;; (assert (characterp cc))
+    (setf (fatchar-c fc)     cc
+	  (fatchar-fg fc)    (grid-char-fg gc)
+	  (fatchar-bg fc)    (grid-char-bg gc)
+	  (fatchar-attrs fc) (grid-char-attrs gc)
+	  (fatchar-line fc)  (grid-char-line gc))
+    fc))
+
+(defun grid-char-character-length (c)
+  "Return the length of a grid-char in characters."
+  (if c
+      (etypecase (grid-char-c c)
+	(null 0)
+	(character 1)
+	(string (length (grid-char-c c))))
+      0))
+
+(defun grid-string-character-length (s)
+  "Return the length of a grid-char string in characters."
+  (etypecase s
+    (null 0)
+    (grid-char (grid-char-character-length s))
+    (vector
+     (loop :for g :across s :sum
+	(grid-char-character-length g)))))
+
+(defun grid-to-fat-string (s &key (start 0) end)
+  "Return a fat-string equivalent to S. S can be a grid-string or a grid-char."
+  ;; (with-output-to-fat-string (str)
+  ;;   (let ((fc (make-fatchar)))
+  ;;     (flet ((print-it (c)
+  ;; 	       (set-fat-char fc c)
+  ;; 	       (if (characterp (grid-char-c c))
+  ;; 		   (progn
+  ;; 		     (setf (fatchar-c fc) (grid-char-c c))
+  ;; 		     (princ fc str))
+  ;; 		   (loop :for j :from 0 :below (length (grid-char-c c))
+  ;; 		      :do
+  ;; 		      (setf (fatchar-c fc) (aref (grid-char-c c) j))
+  ;; 		      (princ fc str)))))
+  ;; 	(if (grid-char-p s)
+  ;; 	    (print-it s)
+  ;; 	    (loop :for i :from start :below (or end (length s))
+  ;; 	       :do (print-it (aref s i))))))))
+  (let* ((len (grid-string-character-length s))
+	 (result (make-array len
+			     :element-type 'fatchar
+			     :initial-element (make-fatchar)))
+	 (j 0))
+    (flet ((add-grid-char (char)
+	     "Add CHAR to the result."
+	     (etypecase (grid-char-c char)
+	       (null #|nothing|#)
+	       (character
+		(setf (aref result j)
+		      (make-fatchar :c     (grid-char-c char)
+				    :fg    (grid-char-fg    char)
+				    :bg    (grid-char-bg    char)
+				    :attrs (grid-char-attrs char)
+				    :line  (grid-char-line  char)))
+		(incf j))
+	       (string
+		(loop :for c :across (grid-char-c char)
+		   :do
+		   (setf (aref result j)
+			 (make-fatchar :c c
+			               :fg    (grid-char-fg    char)
+			               :bg    (grid-char-bg    char)
+			               :attrs (grid-char-attrs char)
+			               :line  (grid-char-line  char)))
+		   (incf j))))))
+    (etypecase s
+      (null result)
+      (grid-char (add-grid-char s))
+      (vector
+       (loop
+	  :for i :from start :below (or end (length s))
+	  :do
+	  (add-grid-char (aref s i)))))
+    (make-fat-string :string result))))
+
+;; @@@ This is probably only for debugging
+(defun fat-string-to-grid-string (fs)
+  "Make a grid-char string from a fat-string."
+  (coerce
+   (loop :for c :in (graphemes fs)
+      :collect (grapheme-to-grid-char c))
+   'vector))
+
+(defmethod print-object ((obj grid-char) stream)
+  "Print a FATCHAR to a FAT-STRING-OUTPUT-STREAM."
+  ;;(format t "stream is a ~a ~a~%" (type-of stream) stream)
+  (cond
+    ((or *print-readably* *print-escape*)
+     ;; Print as a structure:
+     ;;(dbugf :crunch "NOPE ~s~%" (type-of obj))
+     ;;(print-unreadable-object (obj stream :identity t :type t))
+     (call-next-method obj stream)
+     )
+    ((typep stream 'terminal:terminal-stream)
+     (format t "BLURB~s~%" (type-of obj)) (finish-output)
+     (let ((str (grid-to-fat-string obj)))
+       (render-fat-string str)))
+    ((typep stream 'fat-string-output-stream)
+     ;;(dbugf :crunch "BLURB Good ~s~%" (type-of obj))
+     (let ((str (grid-to-fat-string obj)))
+       (write-fat-string str :stream stream)))
+    (t
+     ;; (dbugf :crunch "NLURB not so good ~s ~s~%"
+     ;; 	    (type-of obj) (type-of stream))
+     (let ((str (grid-to-fat-string obj)))
+       (write (fat-string-to-string str) :stream stream))
+     )))
 
 (defstruct screen
   "Representation of the screen."
@@ -44,7 +282,7 @@ for various operations through the OUTPUT-COST methods.
   scrolling-region
   (cursor-state t :type boolean)
   (beep-count 0 :type fixnum)
-  (lines  nil :type (or null (vector fatchar-string)))
+  (lines  nil :type (or null (vector grid-string)))
   (index  nil :type (or null (vector fixnum)))
   (hashes nil :type (or null (vector fixnum))))
 
@@ -55,11 +293,13 @@ for various operations through the OUTPUT-COST methods.
   (end-y   0 :type fixnum)
   op)
 
-(defparameter *blank-char*
-  (make-fatchar :c #\space))
-
+(defparameter *blank-char* (make-grid-char :c #\space))
 (defun blank-char ()
-  (copy-fatchar *blank-char*))
+  (copy-grid-char *blank-char*))
+
+(defparameter *nil-char* (make-grid-char :c nil))
+(defun nil-char ()
+  (copy-grid-char *nil-char*))
 
 (defmacro clamp (n start end)
   `(cond
@@ -323,6 +563,15 @@ two values ROW and COLUMN."
 	  (setf ,hv (hash-thing (fatchar-line ,thing) ,hv))
 	  (setf ,hv (hash-thing (fatchar-attrs ,thing) ,hv))
 	  ,hv))
+       (grid-char
+	(let ((,hv ,value))
+	  (declare (type fixnum ,hv))
+	  (setf ,hv (hash-thing (grid-char-c ,thing) ,hv))
+	  (setf ,hv (hash-thing (grid-char-fg ,thing) ,hv))
+	  (setf ,hv (hash-thing (grid-char-bg ,thing) ,hv))
+	  (setf ,hv (hash-thing (grid-char-line ,thing) ,hv))
+	  (setf ,hv (hash-thing (grid-char-attrs ,thing) ,hv))
+	  ,hv))
        (otherwise
 	(error "I don't know how to hash a ~s." (type-of ,thing))))))
 
@@ -356,7 +605,7 @@ sizes. It only copies the smaller of the two regions."
 				   (length (screen-lines to-screen)))
      :do
      (map-into (aref (screen-lines to-screen) i)
-	       #'copy-fatchar (aref (screen-lines from-screen) i))
+	       #'copy-grid-char (aref (screen-lines from-screen) i))
      (setf (aref (screen-index to-screen) i)
 	   (aref (screen-index from-screen) i)))
   (compute-hashes to-screen))
@@ -374,12 +623,11 @@ sizes. It only copies the smaller of the two regions."
     (dotimes (i rows)
       (setf (aref lines i)
 	    (make-array cols
-			:element-type 'fatchar
-			:initial-element (make-fatchar))
+			:element-type 'grid-char
+			:initial-element (make-grid-char))
 	    (aref index i) i)
       (dotimes (j cols)
-	(setf (aref (aref lines i) j)
-	      (copy-fatchar *blank-char*))))
+	(setf (aref (aref lines i) j) (blank-char))))
     (compute-hashes result)
     result))
 
@@ -391,11 +639,11 @@ sizes. It only copies the smaller of the two regions."
 (defun update-size (tty)
   (with-slots ((wtty wrapped-terminal)) tty
     (when (size-changed-p tty)
-      (dbugf :crunch "resize ~s ~s -> ~s ~s~%"
-	   (terminal-window-rows tty)
-	   (terminal-window-columns tty)
-	   (terminal-window-rows wtty)
-	   (terminal-window-columns wtty))
+      ;; (dbugf :crunch "resize ~s ~s -> ~s ~s~%"
+      ;; 	   (terminal-window-rows tty)
+      ;; 	   (terminal-window-columns tty)
+      ;; 	   (terminal-window-rows wtty)
+      ;; 	   (terminal-window-columns wtty))
       ;; Resize the screens
       (let ((screen (make-new-screen (terminal-window-rows wtty)
 				     (terminal-window-columns wtty))))
@@ -412,26 +660,28 @@ sizes. It only copies the smaller of the two regions."
   "Get the window size from the wrapped terminal and store it in tty."
   (with-slots ((wtty wrapped-terminal)) tty
     (terminal-get-size wtty)
-    (dbugf :crunch "get-size ~s ~s~%"
-	   (terminal-window-rows wtty)
-	   (terminal-window-columns wtty))
+    ;; (dbugf :crunch "get-size ~s ~s~%"
+    ;; 	   (terminal-window-rows wtty)
+    ;; 	   (terminal-window-columns wtty))
     ;; Potentially resize the screens
     (update-size tty)))
 
-(defun unset-fatchar (c)
+(defun unset-grid-char (c)
   "Make a fatchar unset."
-  (setf (fatchar-c     c)	(code-char 0)
-	(fatchar-fg    c)	nil
-	(fatchar-bg    c)	nil
-	(fatchar-line  c)	0
-	(fatchar-attrs c)	nil))
+  (setf (grid-char-c     c)	nil
+	(grid-char-fg    c)	nil
+	(grid-char-bg    c)	nil
+	(grid-char-line  c)	0
+	(grid-char-attrs c)	nil))
 
 (defun invalidate-before-start-row (tty screen)
   (with-slots (start-line) tty
     (loop :for i :from 0 :below (start-line tty)
        :do
        (loop :for c :across (aref (screen-lines screen) i)
-	  :do (unset-fatchar c))
+	  :do (unset-grid-char c))
+       ;; (setf (aref (screen-lines screen) i)
+       ;; 	     (make-grid-string (screen-width screen)))
        (setf (aref (screen-hashes screen) i)
 	     (hash-thing (aref (screen-lines screen) i)))
        ;; @@@ do we really need to set the index?
@@ -443,7 +693,7 @@ sizes. It only copies the smaller of the two regions."
 	       (start-at-current-line terminal::start-at-current-line)) tty
     (if (started tty)
 	(progn
-	  (dbugf :crunch "Crunch ~s not recursivley re-started.~%" tty)
+	  ;;(dbugf :crunch "Crunch ~s not recursivley re-started.~%" tty)
 	  ;; Non-dumb terminals are supposed to start in :char mode.
 	  (setf (terminal-input-mode wtty) :char)
 	  (when start-at-current-line
@@ -453,7 +703,8 @@ sizes. It only copies the smaller of the two regions."
 	    ;; (update-size tty)
 	    (invalidate-before-start-row tty (new-screen tty))
 	    (invalidate-before-start-row tty (old-screen tty))
-	    (dbugf :crunch "Crunch auto re-starting at ~s.~%" start-line))
+	    ;;(dbugf :crunch "Crunch auto re-starting at ~s.~%" start-line)
+	    )
 	  ;; @@@ Is this reasonable?
 	  ;; (terminal-erase-below tty)
 	  ;; (terminal-erase-below wtty)
@@ -467,7 +718,7 @@ sizes. It only copies the smaller of the two regions."
 		  (terminal-file-descriptor wtty)))
 	  (terminal-get-size wtty)
 	  (when start-at-current-line
-	    (dbugf :crunch "Crunch auto starting at ~s.~%" start-line)
+	    ;;(dbugf :crunch "Crunch auto starting at ~s.~%" start-line)
 	    (setf start-line (terminal-get-cursor-position wtty)))
 
 	  ;; new screen
@@ -495,13 +746,15 @@ sizes. It only copies the smaller of the two regions."
 	      (progn
 		(terminal-clear wtty)
 		(terminal-home wtty)
-		(dbugf :crunch "Crunch ~s started.~%" tty))
+		;;(dbugf :crunch "Crunch ~s started.~%" tty)
+		)
 	      (progn
 		(invalidate-before-start-row tty (new-screen tty))
 		(invalidate-before-start-row tty (old-screen tty))
 		(terminal-move-to wtty start-line 0)
 		(terminal-erase-below wtty)
-		(dbugf :crunch "Crunch ~s started at ~d.~%" tty start-line)))
+		;;(dbugf :crunch "Crunch ~s started at ~d.~%" tty start-line)
+		))
 	  (terminal-finish-output wtty)
 	  (setf (started tty) 1)
 	  state))))
@@ -509,7 +762,7 @@ sizes. It only copies the smaller of the two regions."
 (defmethod terminal-end ((tty terminal-crunch) &optional state)
   "Put the terminal back to the way it was before we called terminal-start."
   (when (not (started tty))
-    (dbugf :crunch "Crunch ~s not started or already ended!!.~%" tty)
+    ;;(dbugf :crunch "Crunch ~s not started or already ended!!.~%" tty)
     ;; @@@ This is probably a bug I should fix.
     (warn "Crunch double ended.")
     (return-from terminal-end nil))
@@ -517,10 +770,11 @@ sizes. It only copies the smaller of the two regions."
   (terminal-end (terminal-wrapped-terminal tty) state)
   (if (zerop (decf (started tty)))
       (progn
-	(dbugf :crunch "Crunch ~s ended.~%" tty)
+	;;(dbugf :crunch "Crunch ~s ended.~%" tty)
 	(setf (started tty) nil))
       (progn
-	(dbugf :crunch "Crunch ~s pop, but not ended.~%" tty))))
+	;; (dbugf :crunch "Crunch ~s pop, but not ended.~%" tty)
+	)))
 
 (defmethod terminal-done ((tty terminal-crunch) &optional state)
   "Forget about the whole terminal thing and stuff."
@@ -585,33 +839,48 @@ sizes. It only copies the smaller of the two regions."
 changed the screen content."
   (with-slots (fg bg attrs delay-scroll) tty
     (with-slots (x y width height scrolling-region lines) (new-screen tty)
-      (let (changed new-fc)
+      (let (changed)
 	(labels ((char-char (c)
 		   (etypecase c
+		     (grid-char (grid-char-c c))
 		     (fatchar (fatchar-c c))
+		     (fatchar-string (if (= (length c) 1) (elt c 0) c))
+		     (string (if (= (length c) 1) (char c 0) c))
 		     (character c)))
-		 (set-char (fc char)
+		 (regularize (c)
+		   (etypecase c
+		     ((or fatchar character) c)
+		     (string (case (length c)
+			       (0 nil)
+			       (1 (char c 0))
+			       (otherwise c)))))
+		 (set-char (gc char)
 		   (etypecase char
-		     (character
-		      (setf new-fc
-			    (make-fatchar
-			     :c char :fg fg :bg bg :attrs attrs
-			     :line 0)) ;; unless it's a line char??
-		      (when (not (fatchar= fc new-fc))
-			(setf (fatchar-c fc) char
-			      (fatchar-fg fc) fg
-			      (fatchar-bg fc) bg
-			      (fatchar-attrs fc) attrs
-			      (fatchar-line fc) 0
-			      changed t)))
+		     ((or character string)
+		      (let* ((rc (regularize char))
+			     (new-gc
+			      (make-grid-char
+			       :c rc :fg fg :bg bg :attrs attrs
+			       :line 0))) ;; unless it's a line char??
+			(when (not (grid-char= gc new-gc))
+			  (setf (grid-char-c gc) rc
+				(grid-char-fg gc) fg
+				(grid-char-bg gc) bg
+				(grid-char-attrs gc) attrs
+				(grid-char-line gc) 0
+				changed t))))
 		     (fatchar
-		      (when (not (fatchar= fc char))
-			(setf (fatchar-c fc) (fatchar-c char)
-			      (fatchar-fg fc) (fatchar-fg char)
-			      (fatchar-bg fc) (fatchar-bg char)
-			      (fatchar-attrs fc) (fatchar-attrs char)
-			      (fatchar-line fc) (fatchar-line char)
-			      changed t)))))
+		      (when (not (grid-char= gc char))
+			(setf (grid-char-c gc)     (fatchar-c char)
+			      (grid-char-fg gc)    (fatchar-fg char)
+			      (grid-char-bg gc)    (fatchar-bg char)
+			      (grid-char-attrs gc) (fatchar-attrs char)
+			      (grid-char-line gc)  (fatchar-line char)
+			      changed t)))
+		     (grid-char
+		      (when (not (grid-char= gc char))
+			(set-grid-char gc char)
+			(setf changed t)))))
 		 (scroll-one-line ()
 		   (no-hints tty)
 		   (scroll tty 1)
@@ -653,29 +922,41 @@ changed the screen content."
 	     (set-char (aref (aref lines y) x) char)
 	     (when changed
 	       (note-single-line tty))
-	     (let ((new-x (+ x (display-length char))))
+	     (let* ((len (display-length char))
+		    (new-x (+ x len)))
 	       (if (< new-x width)
-		   (setf x new-x)
-		   (next-line))))))
+		   (progn
+		     (when (> len 1)
+		       ;; "Underchar removal"
+		       (unset-grid-char (aref (aref lines y) (1+ x))))
+		     (setf x new-x))
+		   (next-line)))
+	     )))
 	changed))))
 
-(defun copy-to-screen (tty string &key (start 0) end)
+(defun copy-to-screen (tty string &key start end)
   "Copy the STRING from START to END to the screen. Return true if we actually
 changed the screen contents."
   (with-slots (x y width height fg bg attrs scrolling-region) (new-screen tty)
     (loop
-       :with i = (or start 0) :and changed
+       :with changed
        ;; :and str = (if (or (and start (not (zerop start))) end)
        ;; 		      (if end
        ;; 			  (displaced-subseq string (or start 0) end)
        ;; 			  (displaced-subseq string start))
        ;; 		      string)
-       :with len = (or end (length string))
-       :while (< i len)
+       ;; :with len = (or end (length string))
+       ;; :while (< i len)
+       :for c :in (graphemes
+		   (cond ;; @@@ What's better? this or splicing?
+		     ((and start end) (subseq string start end))
+		     (start (subseq string start))
+		     (end (subseq string 0 end))
+		     (t string)))
        :do
-       (when (copy-char tty (aref string i))
+       (when (copy-char tty (grapheme-to-grid-char c :tty tty))
 	 (setf changed t))
-       (incf i)
+       ;;(incf i)
        :finally (return changed))))
 
 (defun no-hints (tty)
@@ -712,11 +993,11 @@ that the change is more than one character."
     (setf (single-char-change tty) nil)))
 
 (defun rest-of-the-line-blank-p (line start)
-  "Return true if the rest of the fatchar LINE is blank, starting from START."
+  "Return true if the rest of the grid-char LINE is blank, starting from START."
   ;; This seems faster than the equivalent position-if.
   (and (not (position *blank-char* line
 		      :start start
-		      :test (lambda (a b) (not (fatchar= a b)))))
+		      :test (lambda (a b) (not (grid-char= a b)))))
        t))
 
 (defun new-change (tty operation)
@@ -810,13 +1091,15 @@ optimization."
 (defmethod terminal-write-string ((tty terminal-crunch-stream) (str fat-string)
 				  &key start end)
   "Output a string to the terminal."
-  (when (copy-to-screen tty (fat-string-string str) :start start :end end)
+  ;;(when (copy-to-screen tty (fat-string-string str) :start start :end end)
+  (when (copy-to-screen tty str :start start :end end)
     (note-change tty str)))
 
 (defmethod terminal-write-line ((tty terminal-crunch-stream) (str fat-string)
 				  &key start end)
   "Output a string to the terminal."
-  (when (copy-to-screen tty (fat-string-string str) :start start :end end)
+  ;;(when (copy-to-screen tty (fat-string-string str) :start start :end end)
+  (when (copy-to-screen tty str :start start :end end)
     (note-change tty str))
   (when (copy-char tty #\newline)
     (note-change tty #\newline)))
@@ -879,23 +1162,23 @@ i.e. the terminal is 'line buffered'."
 ;; what characters are on the screen at a given time. Also the end of line
 ;; ‘hyperspace’ behaviour in terminals.
 
-(defmethod terminal-backward ((tty terminal-crunch-stream) n)
+(defmethod terminal-backward ((tty terminal-crunch-stream) &optional (n 1))
   (setf (screen-x (new-screen tty))
 	(max 0 (- (screen-x (new-screen tty)) n))))
 
-(defmethod terminal-forward ((tty terminal-crunch-stream) n)
+(defmethod terminal-forward ((tty terminal-crunch-stream) &optional (n 1))
   (setf (screen-x (new-screen tty))
 	(min (1- (screen-width (new-screen tty)))
 	     (+ (screen-x (new-screen tty)) n))))
 
-(defmethod terminal-up ((tty terminal-crunch-stream) n)
+(defmethod terminal-up ((tty terminal-crunch-stream) &optional (n 1))
   (setf (screen-y (new-screen tty))
 	(max 0 (- (screen-y (new-screen tty)) n)))
   (when (not (zerop (start-line tty)))
     (setf (start-line tty)
 	  (max 0 (min (start-line tty) (screen-y (new-screen tty)))))))
 
-(defmethod terminal-down ((tty terminal-crunch-stream) n)
+(defmethod terminal-down ((tty terminal-crunch-stream) &optional (n 1))
   (setf (screen-y (new-screen tty))
 	(min (1- (screen-height (new-screen tty)))
 	     (+ (screen-y (new-screen tty)) n))))
@@ -1193,9 +1476,10 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	 first-change
 	 (last-change 0)
 	 change-range
-	 changes)
+	 changes
+	 fs)
 
-    (dbugf :crunch "update-line ~s~%" line)
+    ;;(dbugf :crunch "update-line ~s~%" line)
     
     ;; Go through chars and calculate approximate cost to output differences.
     (flet ((note-change-end (i)
@@ -1205,7 +1489,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	       (setf change-range nil))))
       (loop :with disp-len
 	 :for i :from 0 :below (length new-line) :do
-	 (if (not (fatchar= (aref new-line i) (aref old-line i)))
+	 (if (not (grid-char= (aref new-line i) (aref old-line i)))
 	     (progn
 	       (when (not first-change)
 		 (setf first-change i))
@@ -1215,7 +1499,11 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 
 	       ;; Cost of writing this char (@@@ as if it was new)
 	       (incf change-cost
-		     (output-cost wtty :write-fatchar (aref new-line i)))
+		     (output-cost wtty :write-fatchar
+				  ;; (aref new-line i)
+				  ;; @@@ faked, should convert ^^
+				  (make-fatchar)
+				  ))
 
 	       ;; If we have to move since the last change, add that.
 	       (if (> (- i last-change) 1)
@@ -1260,28 +1548,52 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 		   end (cdr c))
 	     (crunched-move-to tty start line (update-x tty) (update-y tty))
 	     ;;(dbugf :crunch "update-line FLOOB ~s ~s ~s~%" line start c)
-	     (if (= start end)
-		 (terminal-write-char wtty (aref new-line start))
-		 (terminal-write-string wtty (make-fat-string :string new-line)
-					:start start
-					:end (min (1+ end) (length new-line))))
+	     ;; (if (= start end)
+	     ;; 	 (progn
+	     ;; 	   (when (not fc)
+	     ;; 	     (setf fc (make-fatchar)))
+	     ;; 	   (terminal-write-char wtty (set-fat-char
+	     ;; 				      fc (aref new-line start))))
+	     ;; 	 (terminal-write-string
+	     ;; 	  wtty
+	     ;; 	  ;;(make-fat-string :string new-line)
+	     ;; 	  ;;:start start
+	     ;; 	  ;;:end (min (1+ end) (length new-line))
+	     ;; 	  (grid-to-fat-string new-line
+	     ;; 			      :start start
+	     ;; 			      :end (min (1+ end) (length new-line)))))
+	     (setf fs (grid-to-fat-string new-line
+					  :start start
+					  :end (min (1+ end) (length new-line))))
+	     (terminal-write-string wtty fs)
+	     ;; (dbugf :crunch "write-string ~s ->~s<-~%"
+	     ;; 	    (length (fat-string-string fs)) fs)
 	     (setf (update-x tty)
 		   ;; (1+ end)
 		   (+ start
-		      (loop :for i :from start :to end
-			 ;; @@@ is this good enough?
-			 :sum (display-length (aref new-line i))))
+		      (display-length fs)
+		      ;; (loop :for i :from start :to end
+		      ;; 	 ;; @@@ is this good enough?
+		      ;; 	 :sum (display-length (aref new-line i)))
+		      )
 		   )
 	     ))
 	(progn
 	  ;; Write a whole new line
 	  ;; (dbugf :crunch "update-line WINKY ~s ~s-~s~%" line first-change
-	  ;; 	 (1+ last-change))
-	  (terminal-write-string wtty (make-fat-string :string new-line)
-				 :start first-change
-				 :end (min (1+ last-change)
-					   (length new-line)))
-	  (setf (update-x tty) (1+ last-change))
+	  ;;  	 (1+ last-change))
+	  (setf fs (grid-to-fat-string new-line
+				       :start first-change
+				       :end (min (1+ last-change)
+						 (length new-line))))
+	  (terminal-write-string wtty fs)
+	  ;;(setf (update-x tty) (1+ last-change))
+	  (setf (update-x tty) ;; @@@ useless subseq
+		(display-length fs)
+		;; (gs-display-length (subseq new-line first-change
+		;; 			   (min (1+ last-change)
+		;; 				(length new-line))))
+		)
 	  ))))
 
 (defun copy-new-to-old (tty)
@@ -1299,7 +1611,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
     (loop :for i :from 0 :below (length (screen-lines new))
        :do
        (map-into (aref (screen-lines old) i)
-		 #'copy-fatchar (aref (screen-lines new) i))
+		 #'copy-grid-char (aref (screen-lines new) i))
        ;; Sync both the new and old indexes.
        (setf (aref (screen-index old) i) i
 	     (aref (screen-index new) i) i))
@@ -1320,8 +1632,8 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	       (new new-screen)
 	       start-line really-scroll-amount) tty
 
-    (if-dbugf (:crunch) (dump-screen tty))
-    (if-dbugf (:crunch) (dump-hashes tty))
+    ;; (if-dbugf (:crunch) (dump-screen tty))
+    ;; (if-dbugf (:crunch) (dump-hashes tty))
     
     ;; Set starting point.
     (setf (update-x tty) (screen-x old)
@@ -1336,7 +1648,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	    (make-new-screen (screen-height old)
 			     (screen-width old))))
 
-    (dbugf :crunch "****** start update @ ~s~%" start-line)
+    ;;(dbugf :crunch "****** start update @ ~s~%" start-line)
     ;; (dbugf :crunch-update "****** start update @ ~s~%" start-line)
     ;; (if-dbugf (:crunch-update)
     ;; 	      (deblarg::debugger-backtrace 10))
@@ -1344,7 +1656,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
     ;; First, actually scroll unmanaged content if we have to.
     (when (and (not (zerop start-line))
 	       (not (zerop really-scroll-amount)))
-      (dbugf :crunch "-------- Really scroll ~s <-----~%" really-scroll-amount)
+      ;;(dbugf :crunch "-------- Really scroll ~s <-----~%" really-scroll-amount)
       (crunched-move-to tty 0 (1- (screen-height old))
 			(update-x tty) (update-y tty))
       (terminal-scroll-down wtty really-scroll-amount))
@@ -1352,9 +1664,9 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
     ;; Try to speed things up with hints.
     (cond
       ((not (text-change tty))
-       (dbugf :crunch "position only ~s ~s -> ~s ~s~%"
-	      (screen-x old) (screen-y old)
-	      (screen-x new) (screen-y new))
+       ;; (dbugf :crunch "position only ~s ~s -> ~s ~s~%"
+       ;; 	      (screen-x old) (screen-y old)
+       ;; 	      (screen-x new) (screen-y new))
        (update-position tty new old))
       ((single-char-change tty)
        (let* ((cx (change-start-x (single-char-change tty)))
@@ -1363,12 +1675,17 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	      move-x
 	      char-x
 	      c)
-	 (dbugf :crunch "single char ~s~%" (single-char-change tty))
+	 ;;(dbugf :crunch "single char ~s~%" (single-char-change tty))
 	 (flet ((put-it ()
 		  (crunched-move-to tty (max 0 move-x) cy
 				    (update-x tty) (update-y tty))
+		  ;;(setf c (aref (aref (screen-lines new) cy) (max 0 char-x)))
 		  (setf c (aref (aref (screen-lines new) cy) (max 0 char-x)))
-		  (terminal-write-char wtty c)
+		  (if (characterp (grid-char-c c))
+		      (let ((fc (make-fatchar)))
+			(set-fat-char fc c)
+			(terminal-write-char wtty fc))
+		      (terminal-write-string wtty (grid-to-fat-string c)))
 		  (incf (update-x tty) (display-length c))))
 	   (compute-hashes new cy (1+ cy))
 	   (case op
@@ -1395,13 +1712,14 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 		    char-x cx)
 	      (put-it)))
 	   (update-ending-position tty new))
-	 (dbugf :crunch "char = '~s'~%" c)))
+	 ;;(dbugf :crunch "char = '~s'~%" c)
+	 ))
       ((single-line-change tty)
        ;; diff the line
        ;; move, overwite, insert / delete as appropriate
        ;; @@@ it could be something else? like insert or delete?
        (let ((line (single-line-change tty)))
-	 (dbugf :crunch "single-line-change ~s~%" line)
+	 ;; (dbugf :crunch "single-line-change ~s~%" line)
 	 (compute-hashes new line (1+ line))
 	 (when (/= (aref (screen-hashes new) line)
 		   (aref (screen-hashes old) line))
@@ -1421,9 +1739,9 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
        ;;(time
        (loop :for i :from start-line :below (length (screen-hashes new)) :do
 	  (when (/= (aref (screen-hashes new) i) (aref (screen-hashes old) i))
-	    (dbugf :crunch "hash diff ~s old ~s new ~s~%" i
-		   (aref (screen-hashes new) i)
-		   (aref (screen-hashes old) i))
+	    ;; (dbugf :crunch "hash diff ~s old ~s new ~s~%" i
+	    ;; 	   (aref (screen-hashes new) i)
+	    ;; 	   (aref (screen-hashes old) i))
 	    (update-line tty i)))
        ;;)
 
@@ -1632,8 +1950,10 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	    (start-line tty))
     (loop :for i :from 0 :below (length old-lines) :do
        (format *debug-io* "[~a] [~a]~%"
-	       (make-fat-string :string (aref old-lines i))
-	       (make-fat-string :string (aref new-lines i))))))
+	       (make-fat-string
+		:string (grid-to-fat-string (aref old-lines i)))
+	       (make-fat-string
+		:string (grid-to-fat-string (aref new-lines i)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
