@@ -9,7 +9,7 @@
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :license            "GPLv3"
     :source-control	:git
-    :long-description   "blarg"
+    :long-description   "Outputing fat characters."
     :depends-on (:dlib :stretchy :char-util :fatchar :terminal
 		 :trivial-gray-streams)
     :components

@@ -275,7 +275,7 @@ colinc, and the space character for padchar.
     (fat-string-output-stream
      (typecase c
        (fatchar
-	(stretchy-append (fat-string-string stream) c)
+	(stretchy-append (fat-string-string stream) (copy-fatchar c))
 	(incf (fat-string-output-stream-column stream))
 	(when (char= (fatchar-c c) #\newline)
 	  (setf (fat-string-output-stream-column stream) 0)))
@@ -315,6 +315,7 @@ possible."
      (typecase string
        ;; @@@ unify these cases
        (fat-string
+	;;(dbugf :fatchar "write-fat-string ALL-FAT~%")
 	(loop
 	   :with c
 	   :and src-i = start
@@ -331,6 +332,7 @@ possible."
 	     (setf (fat-string-output-stream-column stream) 0))
 	   (incf src-i)))
        (string
+	;;(dbugf :fatchar "write-fat-string NORMAL-string -> FAT~%")
 	(loop
 	   :with c
 	   :and src-i = start
@@ -349,16 +351,19 @@ possible."
     (terminal-stream
      (typecase string
        (fat-string
+	;;(dbugf :fatchar "write-fat-string fat-string -> terminal~%")
 	;; (apply #'tt-write-string string `(,string
 	;; 				  ,@(and start `(:start ,start))
 	;; 				  ,@(and end `(:end ,end)))))))
 	(render-fat-string string :start start :end end))
        (string
+	;;(dbugf :fatchar "write-fat-string NORMAL-string -> terminal~%")
 	(apply #'terminal-write-string stream
 	       string `(,string
 			,@(and start `(:start ,start))
 			,@(and end `(:end ,end)))))))
     (t
+     ;;(dbugf :fatchar "write-fat-string NORMAL -> NORMAL~%")
      (if end
 	 (write-string (fat-string-to-string string) stream
 		       :start start :end end)
@@ -392,15 +397,15 @@ possible."
 	 (format stream "#.~s"
 		 `(fatchar:span-to-fat-string ,(fat-string-to-span obj)))
 	 (progn
-	   (dbugf :fatchar "print-object -> call-next-method~%")
+	   ;;(dbugf :fatchar "print-object -> call-next-method~%")
 	   (call-next-method)
 	   )))
     ((typep stream 'terminal:terminal-stream)
-     (dbugf :fatchar "print-obeject -> render ~s~%" (type-of obj))
+     ;;(dbugf :fatchar "print-object -> render ~s~%" (type-of obj))
      (render-fat-string obj))
     ((typep stream 'fat-string-output-stream)
-     (dbugf :fatchar "print-obeject -> write-fat-string ~s ~s~%" (type-of obj)
-	    (type-of stream))
+     ;; (dbugf :fatchar "print-object -> write-fat-string ~s ~s~%" (type-of obj)
+     ;; 	    (type-of stream))
      (write-fat-string obj :stream stream))
     (t
      ;;(print-object (fat-string-to-string obj) stream)
@@ -408,8 +413,8 @@ possible."
      ;; (write-string
      ;;  (with-terminal-output-to-string (:ansi)
      ;; 	(render-fat-string obj)) stream)
-     (dbugf :fatchar "print-object -> downconvert ~s stream ~s~%"
-	    (type-of obj) stream)
+     ;; (dbugf :fatchar "print-object -> downconvert ~s stream ~s~%"
+     ;; 	    (type-of obj) stream)
      (write (fat-string-to-string obj) :stream stream)
      ;;(call-next-method)
      )))
@@ -420,15 +425,19 @@ possible."
   (cond
     ((or *print-readably* *print-escape*)
      ;; Print as a structure:
-     (call-next-method))
+     ;;(dbugf :fatchar "NOPE ~s~%" (type-of obj))
+     ;;(print-unreadable-object (obj stream :identity t :type t))
+     (call-next-method)
+     )
     ((typep stream 'terminal:terminal-stream)
      ;;(format t "BLURB~s~%" (type-of obj)) (finish-output)
      (render-fatchar obj stream))
     ((typep stream 'fat-string-output-stream)
-     ;;(format t "BLURB~s~%" (type-of obj)) (finish-output)
-     (write-fat-string obj :stream stream))
+     ;;(dbugf :fatchar "BLURB Good ~s~%" (type-of obj))
+     (write-fatchar obj stream))
     (t
-     ;;(write (fatchar-c obj) :stream stream)
+     ;; (dbugf :fatchar "NLURB not so good ~s ~s~%"
+     ;; 	    (type-of obj) (type-of stream))
      (write-char (fatchar-c obj) stream)
      )))
 
@@ -438,6 +447,9 @@ possible."
 	  ;;(*standard-output* ,var)
 	  )
      ,@body
+     ;; (dbugf :fatchar "w-o-t-f-s -> ~s ~s~%" ,var (type-of ,var))
+     ;; (dbugf :fatchar "w-o-t-f-s ~s ~s~%" (type-of (fat-string-string ,var))
+     ;; 	    (fat-string-string ,var))
      (make-fat-string :string (fat-string-string ,var))))
 
 (defun fs+ (s &rest rest)
