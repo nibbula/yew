@@ -347,6 +347,12 @@ drawing, which will get overwritten."
      (tt-move-to 0 0)
      (tt-write-string "At the starting point. Press a key.")
      (tt-move-to half-height half-width)
+     (tt-up 2) (tt-write-char #\|)
+     (tt-down) (tt-backward 2) (tt-write-string "\\|/")
+     (tt-down) (tt-backward 5) (tt-write-string "--> <--")
+     (tt-down) (tt-backward 5) (tt-write-string "/|\\")
+     (tt-down) (tt-backward 2) (tt-write-string "|")
+     (tt-move-to half-height half-width)
      (tt-save-cursor)
      (tt-get-key)
      (loop :with last-dir = 2 :and new-dir :and len
