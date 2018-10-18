@@ -678,18 +678,18 @@ i.e. the terminal is 'line buffered'."
     ((= n -1) (terminal-raw-format tty "~c[~c" #\escape neg))
     ((< n -1) (terminal-raw-format tty "~c[~d~c" #\escape n neg))))
 
-(defmethod terminal-backward ((tty terminal-ansi-stream) n)
+(defmethod terminal-backward ((tty terminal-ansi-stream) &optional (n 1))
   (moverize tty n #\D #\C)
   (decf (terminal-ansi-stream-fake-column tty) n))
 
-(defmethod terminal-forward ((tty terminal-ansi-stream) n)
+(defmethod terminal-forward ((tty terminal-ansi-stream) &optional (n 1))
   (moverize tty n #\C #\D)
   (incf (terminal-ansi-stream-fake-column tty) n))
 
-(defmethod terminal-up ((tty terminal-ansi-stream) n)
+(defmethod terminal-up ((tty terminal-ansi-stream) &optional (n 1))
   (moverize tty n #\A #\B))
 
-(defmethod terminal-down ((tty terminal-ansi-stream) n)
+(defmethod terminal-down ((tty terminal-ansi-stream) &optional (n 1))
   (moverize tty n #\B #\A))
 
 (defmethod terminal-scroll-down ((tty terminal-ansi-stream) n)

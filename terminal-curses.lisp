@@ -391,16 +391,16 @@ i.e. the terminal is 'line buffered'."
   (dotimes (i n)
     (insch (char-code #\space))))
 
-(defmethod terminal-backward ((tty terminal-curses) n)
+(defmethod terminal-backward ((tty terminal-curses) &optional (n 1))
   (move (getcury (screen tty)) (- (getcurx (screen tty)) n)))
 
-(defmethod terminal-forward ((tty terminal-curses) n)
+(defmethod terminal-forward ((tty terminal-curses) &optional (n 1))
   (move (getcury (screen tty)) (+ (getcurx (screen tty)) n)))
 
-(defmethod terminal-up ((tty terminal-curses) n)
+(defmethod terminal-up ((tty terminal-curses) &optional (n 1))
   (move (- (getcury (screen tty)) n) (getcurx (screen tty))))
 
-(defmethod terminal-down ((tty terminal-curses) n)
+(defmethod terminal-down ((tty terminal-curses) &optional (n 1))
   (move (+ (getcury (screen tty)) n) (getcurx (screen tty))))
 
 (defmethod terminal-scroll-down ((tty terminal-curses) n)

@@ -322,16 +322,16 @@
 			     (max top (min (+ y offset-y) (+ top height)))
 			     (max 0 (min (+ x offset-x) width)))))))
 
-(defmethod terminal-backward ((tty terminal-ms) n)
+(defmethod terminal-backward ((tty terminal-ms) &optional (n 1))
   (move-offset tty (- n) 0))
 
-(defmethod terminal-forward ((tty terminal-ms) n)
+(defmethod terminal-forward ((tty terminal-ms) &optional (n 1))
   (move-offset tty n 0))
 
-(defmethod terminal-up ((tty terminal-ms) n)
+(defmethod terminal-up ((tty terminal-ms) &optional (n 1))
   (move-offset tty 0 (- n)))
 
-(defmethod terminal-down ((tty terminal-ms) n)
+(defmethod terminal-down ((tty terminal-ms) &optional (n 1))
   (move-offset tty 0 n))
 
 (defmethod terminal-scroll-down ((tty terminal-ms) n)
