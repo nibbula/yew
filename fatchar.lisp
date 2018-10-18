@@ -40,6 +40,8 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    ))
 (in-package :fatchar)
 
+(declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
+
 (defstruct fatchar
   "A character with attributes."
   (c (code-char 0) :type character)
@@ -1072,5 +1074,13 @@ set in this string."
 (defmethod simplify-char ((c fatchar))
   "Return the FATCHAR as a character."
   (fatchar-c c))
+
+(defmethod graphemes ((string fat-string))
+  (dbugf :fatchar "fat grapheme ~s ~s~%" (type-of string) string)
+  (let (result)
+    (do-graphemes (g (fat-string-string string)
+		     :result-type fatchar :key fatchar-c)
+      (push g result))
+    (nreverse result)))
 
 ;; EOF
