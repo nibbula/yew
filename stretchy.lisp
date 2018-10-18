@@ -90,6 +90,18 @@ amount of the total size to expand by when expansion is needed."
     (incf (fill-pointer dst))
     (setf (char dst dst-len) char)))
 
+(defun stretchy-append-object (dst object factor)
+  "Append the OBJECT to the stretchy string DST, with FACTOR as the
+amount of the total size to expand by when expansion is needed."
+  (declare (type (array * (*)) dst)
+	   (type number factor))
+  ;;(format *debug-io* "append object ~s ~s~%" (type-of object) object)
+  (let ((dst-len (length dst)))
+    (when (>= (1+ dst-len) (array-total-size dst))
+      (resize dst 1 factor))
+    (incf (fill-pointer dst))
+    (setf (elt dst dst-len) object)))
+
 (defun stretchy-set (vec n value &key (factor *default-stretch-factor*))
   "Put an element in a stretchy vector. Factor is the amount of the total size
 to expand by when expansion is needed."
@@ -158,8 +170,11 @@ to expand by when expansion is needed."
     ((and (typep dst 'stretchy-string)
 	  (typep src 'symbol))
      (stretchy-append-string-or-vector dst (string src) factor))
+    ((and (not (typep dst 'stretchy-string))
+	  (typep src 'vector))
+     (stretchy-append-string-or-vector dst src factor))
     ((not (typep dst 'stretchy-string))
-     (stretchy-append-string-or-vector dst (vector src) factor))
+     (stretchy-append-object dst src factor))
     (t
      (error "Can't append a ~(~a~) to a stretchy-string." (type-of src)))))
 
@@ -173,6 +188,7 @@ to expand by when expansion is needed."
 
 ;; Compare performance vs. with-output-to-string
 
+#|
 (defun dork1 (n)
   (let ((ss (make-stretchy-string 100)))
     (loop :for i fixnum :from 1 :to n :do
@@ -191,5 +207,6 @@ to expand by when expansion is needed."
   (time (dotimes (n 1000) (dork2 1000)))
   (time (dotimes (n 1000) (dork2 1000)))
   (time (dotimes (n 1000) (dork2 1000))))
+|#
 
 ;; EOF
