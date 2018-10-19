@@ -63,10 +63,13 @@
   (:documentation "Select a character."))
 
 (defun write-special-char (c)
-  (ctypecase c
-    (integer (tt-write-char (code-char c)))
-    (character (tt-write-char c))
-    (string (tt-write-string c))))
+  (let ((thing c))
+    (ctypecase c
+      (integer   (tt-write-char (setf thing (code-char c))))
+      (character (tt-write-char c))
+      (string    (tt-write-string c)))
+    (dotimes (i (max 1 (- 5 (display-length thing))))
+      (tt-write-char #\space))))
 
 ;; @@@ What should I do when the screen is so tall I run out of letters?
 (defun show-chars (start inc &optional search-string)
@@ -85,17 +88,15 @@
        (tt-move-to (+ 2 l) 0)
        (tt-erase-to-eol)
        (when (< i (1- char-code-limit))
-	 (tt-format "~c: (~4,'0x) "
+	 (tt-format "~c: (~4,'0x)  "
 			 (if (< l (length *letters*))
 			     (aref *letters* l)
 			     #\?)
 			 (+ start l))
 	 (setf cc (code-char i)
 	       name (or (char-name (code-char i)) ""))
-	 ;; (write-special-char (if (control-char-p cc)
-	 ;; 			 (displayable-char cc :all-control t)
-	 ;; 			 cc))
-	 (write-special-char (displayable-char cc :all-control t
+	 (write-special-char (displayable-char cc
+					       :all-control t
 					       :show-meta nil))
 	 (if (and search-string
 		  (setf ss-pos (search search-string name :test #'equalp)))
