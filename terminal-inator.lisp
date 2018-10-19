@@ -19,7 +19,7 @@
   "Initialize a terminal-inator."
   (declare (ignore initargs))
   ;; Allow resize events by default.
-  (tt-allow-events :resize))
+  (tt-enable-events :resize))
 
 ;; (defmethod start-inator ((i terminal-inator))
 ;;   "Start a TERMINAL-INATOR."

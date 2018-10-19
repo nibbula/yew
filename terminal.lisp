@@ -27,7 +27,7 @@
    #:terminal-start-at-current-line ;; #:start-at-current-line
    #:terminal-wrapper
    #:terminal-wrapped-terminal      ;; #:wrapped-terminal
-   #:terminal-events-allowed	    ;; #:events-allowed
+   #:terminal-events-enabled	    ;; #:events-enabled
    #:terminal-get-size
    #:terminal-get-cursor-position
    #:terminal-start
@@ -83,8 +83,10 @@
    #:tt-height
    #:tt-title                     #:terminal-title
    #:tt-has-attribute             #:terminal-has-attribute
-   #:tt-allow-events              #:terminal-allow-events
-   #:terminal-allow-event
+   #:tt-enable-events             #:terminal-enable-events
+   #:tt-disable-events            #:terminal-disable-events
+   #:terminal-enable-event
+   #:terminal-disable-event
    #:tt-alternate-characters	  #:terminal-alternate-characters
    #:with-saved-cursor
    #:with-terminal-output-to-string
@@ -216,7 +218,8 @@ Movement functions are usual row first then column.
   tt-cursor-on
   tt-set-scrolling-region
   tt-alternate-characters
-  tt-allow-events
+  tt-enable-events
+  tt-disable-events
   tt-reset
   tt-width
   tt-height
@@ -333,10 +336,10 @@ require terminal driver support."))
     :documentation
     "Tell terminals that care about it, to start managing the screen at the
 current line.")
-   (events-allowed
-    :initarg :events-allowed :accessor terminal-events-allowed
+   (events-enabled
+    :initarg :events-enabled :accessor terminal-events-enabled
     :initform nil :type list
-    :documentation "List of events allowed."))
+    :documentation "List of events enabled."))
   (:default-initargs
     :file-descriptor		nil
     :device-name		*default-console-device-name*
@@ -650,34 +653,59 @@ or :CHAR for character at time with no echo."))
 (deftt has-attribute (attribute)
   "Return true if the terminal can display the character attribute.")
 
-(deftt allow-events (events)
+(deftt enable-events (events)
   "Allow tt-get-* to return non-key events. EVENTS is a keyword or list of
 keywords specifiying events to alllow. Events supported by different terminal
 types vary, but you specify :ALL or :NONE for any terminal. If a terminal
 doesn't support an event type, it silently ignores it, but should return NIL
 when given that event alone. The starting state is to allow no events.")
 
-;; Terminals can either provide their own version of terminal-allow-events,
-;; or just provide a terminal-allow-event which returns true to add the event
-;; to the allowed events list.
+(deftt disable-events (events)
+  "The opposite of tt-enable-events. Returns true if the events were enabled.")
 
-(defmethod terminal-allow-events (terminal events)
-  "Return true if the terminal can display the character attribute."
-  (with-slots (events-allowed) terminal
+;; Terminals can either provide their own version of terminal-enable-events,
+;; or just provide a terminal-enable-event which returns true to add the event
+;; to the enabled events list.
+
+(defmethod terminal-enable-events (terminal events)
+  "Enable the EVENTS and return true if the terminal supports the events."
+  (with-slots (events-enabled) terminal
     (let (result)
       (loop :for e :in (if (atom events) (list events) events)
 	 :do
 	 (case e
-	   (:all    (setf result t events-allowed '(:all)))
-	   (:none   (setf result t events-allowed nil))
+	   (:all    (setf result t events-enabled '(:all)))
+	   (:none   (setf result t events-enabled nil))
 	   (otherwise
-	    (when (terminal-allow-event terminal e)
+	    (when (terminal-enable-event terminal e)
 	      (setf result t)))))
       result)))
 
-(defgeneric terminal-allow-event (tty event)
+(defmethod terminal-disable-events (terminal events)
+  "Disable the EVENTS and return true if the terminal supports the events."
+  (with-slots (events-enabled) terminal
+    (let (result)
+      (loop :for e :in (if (atom events) (list events) events)
+	 :do
+	 (case e
+	   (:all    (setf result t events-enabled nil))
+	   (:none   (setf result t events-enabled '(:all)))
+	   (otherwise
+	    (when (terminal-disable-event terminal e)
+	      (setf result t)))))
+      result)))
+
+(defgeneric terminal-enable-event (tty event)
   (:documentation
-   "Allow EVENT and return true if the terminal can allow it.")
+   "Enable EVENT and return true if the terminal can enable it.")
+  ;; A default method which doesn't handle any special events.
+  (:method (tty event)
+    (declare (ignore tty event))
+    nil))
+
+(defgeneric terminal-disable-event (tty event)
+  (:documentation
+   "Disable EVENT and return true if it was enabled.")
   ;; A default method which doesn't handle any special events.
   (:method (tty event)
     (declare (ignore tty event))
