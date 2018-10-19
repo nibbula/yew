@@ -99,14 +99,14 @@
   (test-screen-size-draw)
   (unwind-protect
        (progn
-	 (tt-allow-events :resize)
+	 (tt-enable-events :resize)
 	 (loop :while (case (tt-get-key)
 			((#\Q #\q)
 			 (throw 'quit nil))
 			(:resize t)
 			(otherwise nil))
 	    :do (test-screen-size-draw)))
-    (tt-allow-events :none)))
+    (tt-enable-events :none)))
 
 (defun test-move-to-col ()
   (blurp
@@ -372,6 +372,32 @@ drawing, which will get overwritten."
      (tt-get-key)
    )))
 
+(defun test-scrolling ()
+  (blurp
+   (tt-clear) (tt-finish-output)
+   (dotimes (i 5)
+     (tt-format "This line should disappear ~d.~%" (1+ i)))
+   (dotimes (i 5)
+     (tt-format "This line should stay ~d.~%" (1+ i)))
+   (tt-move-to (1- (tt-height)) 0)
+   (tt-scroll-down 5)
+   (tt-write-string
+    "You should see 5 lines that say 'stay' and none that say 'disappear'.")
+   (tt-finish-output)
+   (tt-get-key)
+   (tt-clear)
+   (tt-move-to (- (tt-height) 11) 0)
+   (dotimes (i 5)
+     (tt-format "~%This line should stay ~d." (1+ i)))
+   (dotimes (i 5)
+     (tt-format "~%This line should disappear ~d." (1+ i)))
+   (tt-move-to 0 0)
+   (tt-scroll-up 5)
+   (tt-write-string 
+    "You should see 5 lines that say 'stay' and none that say 'disappear'.")
+   (tt-finish-output)
+   (tt-get-key)))
+
 (defun test-scrolling-region ()
   (blurp
    (let ((width  (terminal-window-columns *terminal*))
@@ -584,6 +610,59 @@ drawing, which will get overwritten."
   (tt-finish-output)
   (tt-get-key))
 
+(defun test-mouse ()
+  (tt-home)
+  (tt-clear)
+  (tt-write-line "Try clicking, dragging, and scrolling with the mouse.")
+  (tt-write-line "Press 'q' to quit.")
+  (flet ((clear-modeline ()
+	   (tt-move-to (1- (tt-height)) 0)
+	   (tt-color :default :default)
+	   (tt-erase-to-eol))
+	 (write-modeline (e)
+	   (tt-move-to (1- (tt-height)) 0)
+	   (tt-color :default :default)
+	   (tt-erase-to-eol)
+	   (tt-format "~s" e)))
+    (unwind-protect
+	 (with-immediate ()
+	   (tt-enable-events :mouse-buttons)
+	   (loop :with e :and color = :default :and quit-flag
+	      :while (not quit-flag)
+	      :do
+	      (setf e (tt-get-key))
+	      (clear-modeline)
+	      (cond
+		((consp e)
+		 (let ((y (third e)) (x (second e))
+		       (button (fourth e)))
+
+		   (setf color (case button
+				 (:button-1 :red)
+				 (:button-2 :green)
+				 (:button-3 :blue)
+				 (:release :default)))
+		   (case button
+		     (:button-5
+		      (tt-move-to (1- (tt-height)) 0)
+		      (tt-scroll-down 2)
+		      (write-modeline e))
+		     (:button-4
+		      (tt-move-to 0 0)
+		      (tt-scroll-up 2)
+		      (write-modeline e))
+		     (otherwise
+		      (write-modeline e)
+		      (tt-move-to y x)
+		      (tt-color color :default)
+		      (tt-write-char #\X)))))
+		((or (equal e #\q) (equal e #\Q))
+		 (setf quit-flag t))
+		((eql e #\c)
+		 (tt-clear)))
+	      (tt-finish-output)))
+      (tt-disable-events :mouse-buttons))))
+
 (defparameter *menu*
   `(("Screen size"                 . test-screen-size)
     ("Basic functionality"         . test-basics)
@@ -597,6 +676,8 @@ drawing, which will get overwritten."
     ("Alternate characters"        . test-alternate-characters)
     ("Wide characters"             . test-wide-characters)
     ("RGB 24-bit colors"           . test-rgb-colors)
+    ("Mouse events"                . test-mouse)
+    ("Scrolling"		   . test-scrolling)
     ("Scrolling region"            . test-scrolling-region)
     ))
 
