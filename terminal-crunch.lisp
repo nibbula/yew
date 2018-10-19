@@ -30,10 +30,10 @@ for various operations through the OUTPUT-COST methods.
    ))
 (in-package :terminal-crunch)
 
-;; (declaim
-;;  (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 (declaim
- (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
+ (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;; (declaim
+;;  (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
 
 ;; As you may know, many of the world's lovely scripts, do not fit perfectly
 ;; into a character grid, so neither will all unicode characters. This will only
@@ -804,6 +804,28 @@ sizes. It only copies the smaller of the two regions."
 || `-- height  `--               || `--                           ||
 ||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||#
 
+;; scrolling back
+#|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+||          <Before>             ||            <After>            ||
+|| ,-- 0        ,--              || ,--                           ||
+|| |            |                || |                             ||
+|| |            | N blank lines  || | N blank lines               ||
+|| |            |                || |                             ||
+|| |            `--              || `--                           ||
+|| |                             || ,-- n + 1                     ||
+|| |  height - N lines to keep   || |                             ||
+|| |                             || |                             ||
+|| |                             || |                             ||
+|| |                             || |                             ||
+|| |                             || |  height - N lines to keep   ||
+|| `-- height - n                || |                             ||
+|| ,-- (height - n) + 1          || |                             ||
+|| |                             || |                             ||
+|| | N lines to discard          || |                             ||
+|| |                             || |                             ||
+|| `-- height                    || `-- height                    ||
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||#
+
 (defun scroll (tty n)
   (with-slots (x y width height fg bg attrs scrolling-region lines index)
       (new-screen tty)
@@ -813,16 +835,28 @@ sizes. It only copies the smaller of the two regions."
 	       (loop :for line :across x :do
 		  (fill-by line #'blank-char)))
 	     (scroll-copy (array blanker)
-	       (let ((new-blanks (subseq array 0 n))) ; save overwritten lines
-		 ;; Copy the retained lines up
-		 (setf (subseq array 0 (- height n))
-		       ;; (subseq lines n (1- height)))
-		       (subseq array n height))
-		 ;; Move the new blank lines in place.
-		 (setf (subseq array (- height n)) new-blanks)
-		 ;; Blank out the newly blank lines
-		 (funcall blanker new-blanks))))
-      (if (< n height)
+	       (cond
+		 ((plusp n)
+		  (let ((new-blanks (subseq array 0 n))) ; save overwritten lines
+		    ;; Copy the retained lines up
+		    (setf (subseq array 0 (- height n))
+			  ;; (subseq lines n (1- height)))
+			  (subseq array n height))
+		    ;; Move the new blank lines in place.
+		    (setf (subseq array (- height n)) new-blanks)
+		    ;; Blank out the newly blank lines
+		    (funcall blanker new-blanks)))
+		 (t ;; minusp
+		  (let ((offset (abs n))
+			(new-blanks (subseq array (+ height n))))
+		    ;; Copy the retained lines down
+		    (setf (subseq array (1+ offset))
+			  (subseq array 0 (+ height n)))
+		    ;; Move the new blank lines in place.
+		    (setf (subseq array 0 offset) new-blanks)
+		    ;; Blank out the newly blank lines
+		    (funcall blanker new-blanks))))))
+      (if (< (abs n) height)
 	  (progn
 	    (scroll-copy lines #'line-blanker)
 	    (scroll-copy index #'index-blanker))
@@ -1188,8 +1222,16 @@ i.e. the terminal is 'line buffered'."
   (when (> n 0)
     (terminal-down tty n)
     (with-slots (y height) (new-screen tty)
-      (when (> n (- height y))
-	(scroll tty (- n (- height y)))))))
+      (when (> n (- height (1+ y)))
+	(scroll tty (- n (- height (1+ y))))))))
+
+(defmethod terminal-scroll-up ((tty terminal-crunch-stream) n)
+  ;; Even if allow-scrolling is false.
+  (when (> n 0)
+    (terminal-up tty n)
+    (with-slots (y height) (new-screen tty)
+      (when (> n y)
+	(scroll tty (- (- n y)))))))
 
 (defmethod terminal-erase-to-eol ((tty terminal-crunch-stream))
   (fill-by (aref (screen-lines (new-screen tty)) (screen-y (new-screen tty)))
@@ -1305,10 +1347,15 @@ XTerm or something."
   "Return true if the terminal can display the character attribute."
   (terminal-has-attribute (terminal-wrapped-terminal tty) attribute))
 
-(defmethod terminal-allow-event ((tty terminal-crunch) event)
+(defmethod terminal-enable-event ((tty terminal-crunch) event)
   "Allow event and return true if the terminal can allow event."
   ;; Just call the wrapped one.
-  (terminal-allow-event (terminal-wrapped-terminal tty) event))
+  (terminal-enable-event (terminal-wrapped-terminal tty) event))
+
+(defmethod terminal-disable-event ((tty terminal-crunch) event)
+  "Allow event and return true if the terminal can allow event."
+  ;; Just call the wrapped one.
+  (terminal-disable-event (terminal-wrapped-terminal tty) event))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
