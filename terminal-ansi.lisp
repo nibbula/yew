@@ -132,7 +132,10 @@ require terminal driver support."))
    (previous-siggy
     :initarg :previous-siggy :accessor previous-siggy
     :initform nil
-    :documentation "Previous signal handler if we set it."))
+    :documentation "Previous signal handler if we set it.")
+   (mouse-down
+    :initarg :mouse-down :accessor mouse-down :initform nil :type boolean
+    :documentation "True if we think a mouse button is down."))
   (:default-initargs
     :file-descriptor		nil
     :device-name		*default-device-name*
@@ -211,7 +214,7 @@ two values ROW and COLUMN."
 ;; Signal handlers are a very stupid idea.
 (defcallback extraneous-sigwinch-handler :void ((signal-number :int))
   (declare (ignore signal-number))
-  (when (find :resize (terminal-events-allowed *terminal*))
+  (when (find :resize (terminal-events-enabled *terminal*))
     ;; If defcallback doesn't prevent GC, then we're screwed.
     ;; A without-gcing would have to be called before entering here.
     ;; This might be too dangerous.
@@ -417,12 +420,12 @@ TTY is a terminal, in case you didn't know."
 	      (terminal-start ,tty) (terminal-finish-output ,tty)
 	      (setf ,borked t))
 	    (opsys-resized ()
-	      (dbugf :terminal "events allowed ~s~%"
-		     (terminal-events-allowed ,tty))
+	      (dbugf :terminal "events enabled ~s~%"
+		     (terminal-events-enabled ,tty))
 	      (terminal-get-size ,tty)
-	      (when (and (find :resize (terminal-events-allowed ,tty))
+	      (when (and (find :resize (terminal-events-enabled ,tty))
 			 *allow-resize*)
-		(dbugf :terminal "terminal-ansi resize event is allowed~%")
+		(dbugf :terminal "terminal-ansi resize event is enabled~%")
 		(throw 'resize-event :resize))
 	      (setf ,borked t)))
 	  :while ,borked)
@@ -888,6 +891,17 @@ Attributes are usually keywords."
 	    (char-util::%get-utf8b-char read-it set-it)))
 	result))))
 
+(defun raw-get-char (tty &key timeout)
+  "Like get-char, but without UTF8b processing."
+  (with-slots (typeahead
+	       (file-descriptor terminal::file-descriptor)) tty
+    (when typeahead
+      (return-from raw-get-char
+	(pop typeahead)))
+    (with-interrupts-handled (tty)
+      (with-terminal-signals ()
+	(read-terminal-byte file-descriptor :timeout timeout)))))
+
 (defmethod terminal-get-char ((tty terminal-ansi))
   "Read a character from the terminal."
   (terminal-finish-output tty)
@@ -935,6 +949,37 @@ Attributes are usually keywords."
 		      (symbol-name symbol)) :keyword)
       symbol))
 
+(defun get-mouse-event (tty)
+  "Read a mouse event from TTY."
+  (block nil
+    (flet ((next ()
+	     (or (raw-get-char tty :timeout 1) (return :mouse-error))))
+      (with-slots (mouse-down) tty
+	(let (cb cx cy result button button-change motion)
+	  (setf cb (next)
+		cx (1- (- (next) 32))	; terminal coords start at 1
+		cy (1- (- (next) 32)))
+	  (push :mouse result)
+	  (push cx result)
+	  (push cy result)
+	  (when (not (zerop (logand cb #b0100000))) (setf button-change t))
+	  (when (not (zerop (logand cb #b1000000))) (setf motion t))
+	  (case (logand cb #b11)
+	    (0 (setf button (if (and button-change motion) :button-4 :button-1)
+		     mouse-down t))
+	    (1 (setf button (if (and button-change motion) :button-5 :button-2)
+		     mouse-down t))
+	    (2 (setf button :button-3 mouse-down t))
+	    (3 (setf button :release mouse-down nil)))
+	  (push button result)
+	  (when (and motion (not button-change))
+	    (push :motion result))
+	  (when (not (zerop (logand cb #b00100))) (push :shift   result))
+	  (when (not (zerop (logand cb #b01000))) (push :meta    result))
+	  (when (not (zerop (logand cb #b10000))) (push :control result))
+	  ;;(push cb result)
+	  (nreverse result))))))
+
 ;; This can unfortunately really vary between emulations, so we try to code
 ;; for multiple interpretations.
 (defun read-function-key (tty &key app-key-p)
@@ -965,6 +1010,8 @@ characters to the typeahead."
 	((null c)			; timeout
 	 (add-typeahead tty start-char)
 	 #\escape)
+	((char= c #\M) 			; mouse
+	 (get-mouse-event tty))
 	((digit-char-p c)
 	 ;; read a parameters followed by a tilde or tag
 	 (let ((param (read-params)))
@@ -1311,13 +1358,35 @@ XTerm or something."
   (case attribute
     ((:standout :underline :bold :inverse :color) t)))
 
-(defmethod terminal-allow-event ((tty terminal-ansi) event)
-  "Allow event and return true if the terminal can allow event."
+(defun set-mouse-event (tty event state)
   (case event
-    (:resize
-     (pushnew :resize (terminal-events-allowed tty))
-     t)
-    (otherwise nil)))
+    (:mouse-buttons
+     (terminal-raw-format tty "~a?1002~c" +csi+ (if state #\h #\l)))
+    (:mouse-motion
+     (terminal-raw-format tty "~a?1003~c" +csi+ (if state #\h #\l)))))
+
+(defmethod terminal-enable-event ((tty terminal-ansi) event)
+  "Enable event and return true if the terminal can enable event."
+  (let (result)
+    (when (member event '(:resize :mouse-buttons :mouse-motion))
+      (pushnew event (terminal-events-enabled tty))
+      (setf result t))
+    (case event
+      (:mouse-buttons (set-mouse-event tty :mouse-buttons t))
+      (:mouse-motion (set-mouse-event tty :mouse-motion t)))
+    result))
+
+(defmethod terminal-disable-event ((tty terminal-ansi) event)
+  "Enable event and return true if the terminal can disable event."
+  (let (result)
+    (when (member event '(:resize :mouse-buttons :mouse-motion))
+       (setf (terminal-events-enabled tty)
+	     (remove event (terminal-events-enabled tty)))
+      (setf result t))
+    (case event
+      (:mouse-buttons (set-mouse-event tty :mouse-buttons nil))
+      (:mouse-motion (set-mouse-event tty :mouse-motion nil)))
+    result))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; stream methods
