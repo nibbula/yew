@@ -20,8 +20,8 @@ out how to update the wrapped terminal.
 Other terminal types should help terminal-crunch work by providing cost metrics
 for various operations through the OUTPUT-COST methods.
 ")
-  (:use :cl :dlib :char-util :fatchar :terminal :trivial-gray-streams
-	:fatchar-io)
+  (:use :cl :dlib :collections :char-util :fatchar :terminal
+	:trivial-gray-streams :fatchar-io)
   (:import-from :terminal #:wrapped-terminal)
   (:export
    #:terminal-crunch
@@ -258,7 +258,7 @@ strings, only the attributes of the first character are preserved."
      (call-next-method obj stream)
      )
     ((typep stream 'terminal:terminal-stream)
-     (format t "BLURB~s~%" (type-of obj)) (finish-output)
+     ;;(format t "BLURB~s~%" (type-of obj)) (finish-output)
      (let ((str (grid-to-fat-string obj)))
        (render-fat-string str)))
     ((typep stream 'fat-string-output-stream)
@@ -983,9 +983,9 @@ changed the screen contents."
        ;; :while (< i len)
        :for c :in (graphemes
 		   (cond ;; @@@ What's better? this or splicing?
-		     ((and start end) (subseq string start end))
-		     (start (subseq string start))
-		     (end (subseq string 0 end))
+		     ((and start end) (osubseq string start end))
+		     (start (osubseq string start))
+		     (end (osubseq string 0 end))
 		     (t string)))
        :do
        (when (copy-char tty (grapheme-to-grid-char c :tty tty))
