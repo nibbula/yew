@@ -527,13 +527,15 @@ that wraps an ANSI terminal."
 	  (progn
 	    (symbol-call :terminal-ansi :set-bracketed-paste-mode
 			 *terminal* state)
-	    (terminal-finish-output *terminal*))
+	    ;;(terminal-finish-output *terminal*)
+	    )
 	  (when (and (typep *terminal* 'terminal-wrapper)
 		     (typep (terminal-wrapped-terminal *terminal*) ta))
 	    (symbol-call :terminal-ansi :set-bracketed-paste-mode
 			 (terminal-wrapped-terminal *terminal*)
 			 state)
-	    (terminal-finish-output (terminal-wrapped-terminal *terminal*)))))))
+	    ;; (terminal-finish-output (terminal-wrapped-terminal *terminal*))
+	    )))))
 
 ;; (defun bracketed-paste-on (c ct)
 ;;   (declare (ignore c ct))
