@@ -210,7 +210,19 @@ strings, only the attributes of the first character are preserved."
     (flet ((add-grid-char (char)
 	     "Add CHAR to the result."
 	     (etypecase (grid-char-c char)
-	       (null #|nothing|#)
+	       (null
+		;; Ignore it unless it has other data.
+		;; @@@ It this reasonable?
+		(when (or (grid-char-fg    char)
+			  (grid-char-bg    char)
+			  (grid-char-attrs char)
+			  (not (zerop (grid-char-line  char))))
+		  (setf (aref result j)
+			(make-fatchar :fg    (grid-char-fg    char)
+				      :bg    (grid-char-bg    char)
+				      :attrs (grid-char-attrs char)
+				      :line  (grid-char-line  char)))
+		  (incf j)))
 	       (character
 		(setf (aref result j)
 		      (make-fatchar :c     (grid-char-c char)
@@ -1465,7 +1477,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	       (progn
 		 (if (< (output-cost wtty :forward n) n)
 		     (terminal-forward wtty n)
-		     ;;; @@@ check of we can space over
+		     ;;; @@@ check if we can space over
 		     ;; (if (position *blank-char* (subseq line old-x new-x))
 		     (terminal-forward wtty n))))))
 	((not (eql new-y old-y))
@@ -1526,7 +1538,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	 changes
 	 fs)
 
-    ;;(dbugf :crunch "update-line ~s~%" line)
+    (dbugf :crunch "update-line ~s~%" line)
     
     ;; Go through chars and calculate approximate cost to output differences.
     (flet ((note-change-end (i)
@@ -1594,7 +1606,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	     (setf start (car c)
 		   end (cdr c))
 	     (crunched-move-to tty start line (update-x tty) (update-y tty))
-	     ;;(dbugf :crunch "update-line FLOOB ~s ~s ~s~%" line start c)
+	     (dbugf :crunch "update-line FLOOB ~s ~s ~s~%" line start c)
 	     ;; (if (= start end)
 	     ;; 	 (progn
 	     ;; 	   (when (not fc)
@@ -1627,8 +1639,8 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	     ))
 	(progn
 	  ;; Write a whole new line
-	  ;; (dbugf :crunch "update-line WINKY ~s ~s-~s~%" line first-change
-	  ;;  	 (1+ last-change))
+	  (dbugf :crunch "update-line WINKY ~s ~s-~s~%" line first-change
+		 (1+ last-change))
 	  (setf fs (grid-to-fat-string new-line
 				       :start first-change
 				       :end (min (1+ last-change)
@@ -1679,8 +1691,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	       (new new-screen)
 	       start-line really-scroll-amount) tty
 
-    ;; (if-dbugf (:crunch) (dump-screen tty))
-    ;; (if-dbugf (:crunch) (dump-hashes tty))
+    (if-dbugf (:crunch) (dump-screen tty))
     
     ;; Set starting point.
     (setf (update-x tty) (screen-x old)
@@ -1695,7 +1706,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	    (make-new-screen (screen-height old)
 			     (screen-width old))))
 
-    ;;(dbugf :crunch "****** start update @ ~s~%" start-line)
+    (dbugf :crunch "****** start update @ ~s~%" start-line)
     ;; (dbugf :crunch-update "****** start update @ ~s~%" start-line)
     ;; (if-dbugf (:crunch-update)
     ;; 	      (deblarg::debugger-backtrace 10))
@@ -1711,9 +1722,9 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
     ;; Try to speed things up with hints.
     (cond
       ((not (text-change tty))
-       ;; (dbugf :crunch "position only ~s ~s -> ~s ~s~%"
-       ;; 	      (screen-x old) (screen-y old)
-       ;; 	      (screen-x new) (screen-y new))
+       (dbugf :crunch "position only ~s ~s -> ~s ~s~%"
+	      (screen-x old) (screen-y old)
+	      (screen-x new) (screen-y new))
        (update-position tty new old))
       ((single-char-change tty)
        (let* ((cx (change-start-x (single-char-change tty)))
@@ -1722,7 +1733,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	      move-x
 	      char-x
 	      c)
-	 ;;(dbugf :crunch "single char ~s~%" (single-char-change tty))
+	 (dbugf :crunch "single char ~s~%" (single-char-change tty))
 	 (flet ((put-it ()
 		  (crunched-move-to tty (max 0 move-x) cy
 				    (update-x tty) (update-y tty))
@@ -1735,6 +1746,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 		      (terminal-write-string wtty (grid-to-fat-string c)))
 		  (incf (update-x tty) (display-length c))))
 	   (compute-hashes new cy (1+ cy))
+	   (if-dbugf (:crunch) (dump-hashes tty))
 	   (case op
 	     (:delete
 	      ;; Move to the position AT the spot and write the character
@@ -1766,8 +1778,9 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
        ;; move, overwite, insert / delete as appropriate
        ;; @@@ it could be something else? like insert or delete?
        (let ((line (single-line-change tty)))
-	 ;; (dbugf :crunch "single-line-change ~s~%" line)
+	 (dbugf :crunch "single-line-change ~s~%" line)
 	 (compute-hashes new line (1+ line))
+	 (if-dbugf (:crunch) (dump-hashes tty))
 	 (when (/= (aref (screen-hashes new) line)
 		   (aref (screen-hashes old) line))
 	   (update-line tty line)))
@@ -1776,6 +1789,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
       (t
        ;; Make the line hashes.
        (compute-hashes new start-line)
+       (if-dbugf (:crunch) (dump-hashes tty))
 
        ;; @@@
        ;; handle scrolling
@@ -1995,12 +2009,25 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	    (screen-x (new-screen tty))
 	    (screen-y (new-screen tty))
 	    (start-line tty))
-    (loop :for i :from 0 :below (length old-lines) :do
-       (format *debug-io* "[~a] [~a]~%"
-	       (make-fat-string
-		:string (grid-to-fat-string (aref old-lines i)))
-	       (make-fat-string
-		:string (grid-to-fat-string (aref new-lines i)))))))
+    (flet (
+	   ;; (line-str (line) (grid-to-fat-string line))
+	   (line-str (line)
+	     (let (str)
+	       (with-terminal-output-to-string (:ansi-stream)
+		 (setf str (grid-to-fat-string line))
+		 (when str
+		   (tt-write-string str)))))
+	   )
+      (loop :for i :from 0 :below (length old-lines) :do
+	 (format *debug-io* "[~a] [~a]~%"
+		 (line-str (aref old-lines i))
+		 (line-str (aref new-lines i)))))))
+      ;; (loop :for i :from 0 :below (length old-lines) :do
+      ;; 	 (format *debug-io* "[~a] [~a]~%"
+      ;; 		 (make-fat-string
+      ;; 		  :string (grid-to-fat-string (aref old-lines i)))
+      ;; 		 (make-fat-string
+      ;; 		  :string (grid-to-fat-string (aref new-lines i)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
