@@ -226,11 +226,12 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
 				   :output
 				   :input))))
     ((typep stream 'ccl::echoing-two-way-stream)
+     (stream-system-handle (slot-value stream (if (eql direction :output)
+						  'ccl:output-stream
+						  'ccl:input-stream))))
+    ((typep stream 'ccl::basic-stream)
      (ccl::ioblock-device
-      (ccl::basic-stream-ioblock
-       (slot-value stream (if (eql direction :output)
-			      'ccl:output-stream
-			      'ccl:input-stream))))))
+      (ccl::basic-stream-ioblock stream))))
   #+cmu
   (cond
     ((typep stream 'two-way-stream)
