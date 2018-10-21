@@ -481,17 +481,22 @@ program that messes with the terminal, we can still type at the debugger."
      (:fg-red (:underline ,(princ-to-string (type-of c))) #\newline
 	      ,(princ-to-string c) #\newline))))
 
+(defmacro with-debugger-io (() &body body)
+  "Evaluate BODY with a new *terminal* redirected to *debug-io*."
+  `(with-new-terminal (:ansi *terminal*
+			     :device-name (nos:file-handle-terminal-name
+					   (nos:stream-system-handle *debug-io*))
+			     :output-stream (make-broadcast-stream *debug-io*))
+     ,@body))
+
 (defun deblarg (c hook &optional frame)
   "Entry point for the debugger, used as the debugger hook."
   (declare (ignore hook))		;@@@ wrong
   (setf *saved-frame* (or frame (debugger-internal-frame)))
   (when (not *debugger-keymap*)
     (setup-keymap))
-  (with-new-terminal (:ansi *terminal*
-			    :device-name (nos:file-handle-terminal-name
-					  (nos:stream-system-handle *debug-io*))
-			    :output-stream (make-broadcast-stream *debug-io*))
-  (unwind-protect
+  (with-debugger-io ()
+    (unwind-protect
     (progn
       ;;(try-to-reset-curses)
       (try-to-reset-terminal)
@@ -527,7 +532,7 @@ program that messes with the terminal, we can still type at the debugger."
 		     :debug t
 		     :no-announce t))))
 ;;;    (Format *debug-io* "Exiting the debugger level ~d~%" *repl-level*)
-    (reset-visual))))
+      (reset-visual))))
 
 (defun in-emacs-p ()
   "Return true if we're being run under Emacs, like probably in SLIME."

@@ -17,6 +17,9 @@ least you can type things using RL.")
    #:toggle
    #:active-p
    #:activate
+   #:with-debugger-io
+   #:debugger-backtrace
+   #:debugger-wacktrace
    ))
 (in-package :deblarg)
 
