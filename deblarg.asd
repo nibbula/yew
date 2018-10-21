@@ -23,6 +23,7 @@ quite lacking of features."
     :serial t
     :components
     ((:file "package")
+     (:file "base")
      (:file "deblarg-sbcl"   :if-feature :sbcl)
      (:file "deblarg-ccl"    :if-feature :ccl)
      (:file "deblarg-clisp"  :if-feature :clisp)
