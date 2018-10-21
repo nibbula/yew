@@ -57,7 +57,12 @@ for various operations through the OUTPUT-COST methods.
 (defun make-grid-string (n) (make-array n :element-type 'grid-char))
 
 (defmethod display-length ((c grid-char))
-  (display-length (grid-char-c c)))
+  (cond
+    ((not (zerop (grid-char-line c)))
+     1)				    ; assume line drawing can happen in 1 cell
+    ;; ((char= #\nul (grid-char-c c))
+    ;;  0)		; since an unset fatchar is #\nul
+    (t (display-length (grid-char-c c)))))
 
 (defmethod display-length ((c null))
   0) ;; @@@ so bogus
@@ -1207,6 +1212,9 @@ i.e. the terminal is 'line buffered'."
 ;; cursor position, and perhaps the fact that we can pretend to know
 ;; what characters are on the screen at a given time. Also the end of line
 ;; ‘hyperspace’ behaviour in terminals.
+;;
+;; Except that it turns out we have little choice but to implement a form
+;; of ‘hyperspace’ in the bottom right corner with "delay-scroll".
 
 (defmethod terminal-backward ((tty terminal-crunch-stream) &optional (n 1))
   (setf (screen-x (new-screen tty))
@@ -1536,7 +1544,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	 (last-change 0)
 	 change-range
 	 changes
-	 fs)
+	 fs its-okay)
 
     (dbugf :crunch "update-line ~s~%" line)
     
@@ -1547,7 +1555,8 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	       (push change-range changes)
 	       (setf change-range nil))))
       (loop :with disp-len
-	 :for i :from 0 :below (length new-line) :do
+	 :for i :from 0 :below (length new-line)
+	 :do
 	 (if (not (grid-char= (aref new-line i) (aref old-line i)))
 	     (progn
 	       (when (not first-change)
@@ -1565,16 +1574,21 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 				  ))
 
 	       ;; If we have to move since the last change, add that.
-	       (if (> (- i last-change) 1)
-		   (incf change-cost
-			 (move-cost tty last-change line i line)))
+	       (when (> (- i last-change) 1)
+		 (incf change-cost
+		       (move-cost tty last-change line i line)))
 
 	       (setf last-change i))
 	     (progn ;; chars are equal
 	       ;; Note change end
 	       (note-change-end i)))
 	 (when (> (setf disp-len (display-length (aref new-line i))) 1)
-	   (incf i (1- disp-len)))
+	   ;; Skip over occluded cells
+	   (dbugf :crunch "skipping occluded cells at ~s~%" i)
+	   (loop :for zz :from (1+ i) :below (+ i disp-len) :do
+	      (when (not (grid-char= (aref new-line zz) (aref old-line zz)))
+		(setf its-okay t)) ;; it actually differs so don't fail below
+	      (incf i)))
 	 :finally (note-change-end (1- i))))
 
     (when changes
@@ -1592,9 +1606,10 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
     ;; 	   new-line-cost change-cost first-change last-change changes)
 
     (when (not first-change)
-      (cerror "Forget about it."
-	      "We thought we had to update line ~s, but we didn't?" line)
-      (return-from update-line))
+      (if (not its-okay)
+	  (cerror "Forget about it."
+		  "We thought we had to update line ~s, but we didn't?" line)
+	  (return-from update-line)))
 
     ;; @@@ Try to see if we can use insert / delete.
     (crunched-move-to tty first-change line (update-x tty) (update-y tty))
