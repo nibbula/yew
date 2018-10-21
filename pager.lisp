@@ -50,10 +50,10 @@ The shell command takes any number of file names.
    ))
 (in-package :pager)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
- 		   (compilation-speed 0)))
-;; (declaim (optimize (speed 3) (safety 0) (debug 0) (space 1)
-;; 		   (compilation-speed 0)))
+;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+;;  		   (compilation-speed 0)))
+(declaim (optimize (speed 3) (safety 0) (debug 0) (space 1)
+		   (compilation-speed 0)))
 
 (define-constant +digits+ #(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
   "For reading the numeric argument." #'equalp)
@@ -1009,6 +1009,17 @@ location doesn't have an offset part."
   (with-slots (left prefix-arg) *pager*
     (setf left (max 0 (- left (or prefix-arg 10))))))
 
+(defun scroll-up ()
+  "Scroll the pager back some lines."
+  (with-slots (line) *pager*
+    (setf line (max 0 (- line 5)))))
+
+(defun scroll-down ()
+  "Scroll the pager forward some lines."
+  (with-slots (line prefix-arg) *pager*
+    (setf prefix-arg 5)
+    (next-line)))
+
 (defun scroll-beginning ()
   "Scroll the pager window to the leftmost edge."
   (setf (pager-left *pager*) 0))
@@ -1231,6 +1242,8 @@ location doesn't have an offset part."
     (,(ctrl #\C)	. quit)
     (,(ctrl #\Z)	. suspend)
     (:resize		. resize)
+    (:scroll-up		. scroll-up)
+    (:scroll-down	. scroll-down)
     (#\space		. next-page)
     (:npage		. next-page)
     (:page-down		. next-page)
@@ -1359,6 +1372,13 @@ q - Abort")
 
 (defun perform-key (key &optional (keymap *normal-keymap*))
   (with-slots (message command last-command) *pager*
+    ;; @@@ this is a dumb hack
+    (when (consp key)
+      (when (eq :mouse (first key))
+	(case (fourth key)
+	  (:button-4 (setf key :scroll-up))
+	  (:button-5 (setf key :scroll-down)))))
+	
     (setf last-command command
 	  command (key-definition key keymap))
     (cond
@@ -1445,10 +1465,12 @@ q - Abort")
 (defun page (stream &key pager file-list close-me suspended options)
   "View a stream with the pager. Return whether we were suspended or not."
   (with-terminal ()
+;;  (with-new-terminal (:ansi)
     ;; (tt-allow-events :resize)
     (with-disabled-cchars ()
       (unwind-protect
         (progn
+	  (tt-enable-events :mouse-buttons)
 	  (when (and (not stream) file-list)
 	    (setf stream (open-lossy (file-location-file (elt file-list 0)))
 		  close-me t
@@ -1501,6 +1523,7 @@ q - Abort")
     (tt-move-to (- (tt-height) 1) 0)
     (tt-erase-to-eol)
     ;;(tt-write-char #\newline)
+    (tt-disable-events :mouse-buttons)
     (tt-finish-output))
   ;; @@@ This is wrong. 
   ;; (when (terminal-file-descriptor *terminal*)
