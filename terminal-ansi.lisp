@@ -87,6 +87,10 @@
     :initform nil
     :documentation
     "Another terminal-ansi-stream to keep around for calculating costs.")
+   (line-buffered-p
+    :initarg :line-buffered-p :accessor line-buffered-p
+    :initform nil :type boolean
+    :documentation "True if we always flush after outputting a newline.")
    (translate-alternate-characters
     :initarg :translate-alternate-characters
     :accessor translate-alternate-characters
@@ -385,7 +389,7 @@ processing."
     ;; (apply #'format (terminal-output-stream tty) fmt args)
     (apply #'format tty fmt args)
     (update-column tty string)
-    (when (position #\newline string)
+    (when (and (line-buffered-p tty) (position #\newline string))
       (finish-output tty))))
 
 (defmethod terminal-alternate-characters ((tty terminal-ansi-stream) state)
@@ -485,9 +489,10 @@ Report parameters are returned as values. Report is assumed to be in the form:
   "Output a string to the terminal. Flush output if it contains a newline,
 i.e. the terminal is 'line buffered'."
   (%write-string/line tty str #'write-string start end)
-  (when (apply #'position `(#\newline ,str
-				      ,@(and start `(:start ,start))
-				      ,@(and end `(:end ,end))))
+  (when (and (line-buffered-p tty)
+	     (apply #'position `(#\newline ,str
+					   ,@(and start `(:start ,start))
+					   ,@(and end `(:end ,end)))))
     (finish-output (terminal-output-stream tty))))
 
 (defmethod terminal-write-line ((tty terminal-ansi-stream) str
@@ -495,7 +500,8 @@ i.e. the terminal is 'line buffered'."
   "Output a string to the terminal, followed by a newline."
   (%write-string/line tty str #'write-line start end)
   (update-column tty #\newline)
-  (finish-output (terminal-output-stream tty)))
+  (when (line-buffered-p tty)
+    (finish-output (terminal-output-stream tty))))
 
 (defmethod terminal-write-char ((tty terminal-ansi-stream) char)
   "Output a character to the terminal. Flush output if it is a newline,
@@ -508,7 +514,7 @@ i.e. the terminal is 'line buffered'."
 	  (setf char replacement))))
     (write-char char stream)
     (update-column tty char)
-    (when (eql char #\newline)
+    (when (and (line-buffered-p tty) (eql char #\newline))
       (finish-output stream))))
 
 (defparameter *line-table-unicode*
@@ -596,7 +602,7 @@ i.e. the terminal is 'line buffered'."
 	  (write-char cc stream)
 	  (write-char (line-char line) stream))
       (update-column tty cc)
-      (when (eql cc #\newline)
+      (when (and (line-buffered-p tty) (eql cc #\newline))
 	(finish-output stream))
       (when reset
 	(write-string +zero-effect+ stream)))))
@@ -644,7 +650,7 @@ newline in it."
 				  &key start end)
   "Output a string to the terminal. Flush output if it contains a newline,
 i.e. the terminal is 'line buffered'."
-  (when (%write-fat-string tty str start end)
+  (when (and (%write-fat-string tty str start end) (line-buffered-p tty))
     (finish-output (terminal-output-stream tty))))
 
 (defmethod terminal-write-line ((tty terminal-ansi-stream) (str fat-string)
@@ -652,7 +658,8 @@ i.e. the terminal is 'line buffered'."
   "Output a string to the terminal, followed by a newline."
   (%write-fat-string tty str start end)
   (write-char #\newline (terminal-output-stream tty))
-  (finish-output (terminal-output-stream tty)))
+  (when (line-buffered-p tty)
+    (finish-output (terminal-output-stream tty))))
 
 (defmethod terminal-move-to ((tty terminal-ansi-stream) row col)
   (terminal-raw-format tty "~c[~d;~dH" #\escape (1+ row) (1+ col))
@@ -700,7 +707,7 @@ i.e. the terminal is 'line buffered'."
     (loop :with stream = (terminal-output-stream tty) and i = 0
        :while (< i n)
        :do (write-char #\newline stream) (incf i)
-       :finally (finish-output stream))))
+       :finally (when (line-buffered-p tty) (finish-output stream)))))
 
 (defmethod terminal-scroll-up ((tty terminal-ansi-stream) n)
   (when (> n 0)
@@ -708,7 +715,7 @@ i.e. the terminal is 'line buffered'."
        :while (< i n)
        :do (terminal-raw-format tty "~cM" #\escape)
        (incf i)
-       :finally (finish-output stream))))
+       :finally (when (line-buffered-p tty) (finish-output stream)))))
 
 (defmethod terminal-erase-to-eol ((tty terminal-ansi-stream))
   (terminal-raw-format tty "~c[K" #\escape))
@@ -856,6 +863,15 @@ Attributes are usually keywords."
 	   (terminal-raw-format tty "~a~dm" +csi+ (cdr n))))))))
 
 (defmethod terminal-finish-output ((tty terminal-ansi-stream))
+  ;; (when (maybe-refer-to :cl-user :*duh*)
+  ;;   (with-new-terminal (:ansi
+  ;; 			*terminal*
+  ;; 			:device-name (nos:file-handle-terminal-name
+  ;; 				      (nos:stream-system-handle *debug-io*))
+  ;; 			:output-stream (make-broadcast-stream *debug-io*))
+  ;;     (symbol-call :deblarg :debugger-backtrace 20))
+  ;;   ;; (cerror "Nah" "Crap")
+  ;;   )
   (finish-output (terminal-output-stream tty)))
 
 ; (defmethod terminal-get-row ((tty terminal-ansi))
@@ -949,8 +965,10 @@ Attributes are usually keywords."
 		      (symbol-name symbol)) :keyword)
       symbol))
 
+;; @@@ should probably make an event class
 (defun get-mouse-event (tty)
-  "Read a mouse event from TTY."
+  "Read a mouse event from TTY. Something like:
+  (:mouse x y [:button-<n> | :release] [:motion] [modifiers..])"
   (block nil
     (flet ((next ()
 	     (or (raw-get-char tty :timeout 1) (return :mouse-error))))
@@ -1131,12 +1149,14 @@ and add the characters the typeahead."
 (defmethod terminal-save-cursor ((tty terminal-ansi))
   "Save the cursor position."
   (terminal-format tty "~c7" #\escape)
-  (terminal-finish-output tty))
+  ;; (terminal-finish-output tty)
+  )
 
 (defmethod terminal-restore-cursor ((tty terminal-ansi))
   "Restore the cursor position, from the last saved postion."
   (terminal-format tty "~c8" #\escape)
-  (terminal-finish-output tty))
+  ;; (terminal-finish-output tty)
+  )
 
 (defun response-terminal-type (n)
   (case n
@@ -1566,6 +1586,8 @@ XTerm or something."
 (defmacro calculate-cost ((tty) &body body)
   "Cacluate the cost, in chacaters output, of evaluating terminal operations
 in BODY. Output should be done to COST-STREAM."
+  ;; (declare (ignore tty body))
+  ;; 8
   (with-unique-names (str)
     `(progn
        (ensure-cost-stream ,tty)
@@ -1574,7 +1596,8 @@ in BODY. Output should be done to COST-STREAM."
 	  (setf (terminal-output-stream
 		 (terminal-ansi-stream-cost-stream ,tty)) ,str)
 	  (let ((cost-stream (terminal-ansi-stream-cost-stream ,tty)))
-	    ,@body))))))
+	    ,@body)))))
+  )
 
 (defmethod output-cost ((tty terminal-ansi) (op (eql :move-to)) &rest params)
   (calculate-cost (tty)
