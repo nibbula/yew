@@ -138,9 +138,10 @@
 (defun start-visual ()
   (cond
     (*visual-mode*
-     (when (not *visual-term*)
-       (setf *visual-term* (make-instance 'terminal-ansi))
-       (terminal-start *visual-term*))
+     ;; (when (not *visual-term*)
+     ;;   (setf *visual-term* (make-instance 'terminal-ansi))
+     ;;   (terminal-start *visual-term*))
+     (setf *visual-term* *terminal*)
      (let ((tt *visual-term*))
        (terminal-get-size tt)
        (terminal-move-to tt (1- (terminal-window-rows tt)) 0)
@@ -158,7 +159,8 @@
        (terminal-set-scrolling-region tt nil nil)
        (terminal-move-to tt (1- (terminal-window-rows tt)) 0)
        (terminal-finish-output tt)
-       #| (terminal-end tt) |#))
+       #| (terminal-end tt) |#)
+     (setf *visual-term* nil))
     ;; @@@ temporary workaround
     ;; (*fake-term*
     ;;  (terminal-done *terminal*)
@@ -207,7 +209,7 @@
 (defun debugger-prompt (e p)
   (when *visual-mode*
     (visual))
-  (fresh-line *debug-io*)
+  ;; (fresh-line *debug-io*)
   (rl::editor-write-string		; XXX
    e
    (format nil "Debug ~d~a" *repl-level* p))
@@ -485,6 +487,10 @@ program that messes with the terminal, we can still type at the debugger."
   (setf *saved-frame* (or frame (debugger-internal-frame)))
   (when (not *debugger-keymap*)
     (setup-keymap))
+  (with-new-terminal (:ansi *terminal*
+			    :device-name (nos:file-handle-terminal-name
+					  (nos:stream-system-handle *debug-io*))
+			    :output-stream (make-broadcast-stream *debug-io*))
   (unwind-protect
     (progn
       ;;(try-to-reset-curses)
@@ -509,7 +515,8 @@ program that messes with the terminal, we can still type at the debugger."
 	      ;; printer vars
 	      (*print-readably* nil)
 	      (*print-length* 50)	; something reasonable?
-	      (*print-circle* t))
+	      (*print-circle* t)
+	      )
 	  (print-condition c)
 	  (list-restarts (compute-restarts c))
 	  (tt-finish-output)
@@ -520,7 +527,7 @@ program that messes with the terminal, we can still type at the debugger."
 		     :debug t
 		     :no-announce t))))
 ;;;    (Format *debug-io* "Exiting the debugger level ~d~%" *repl-level*)
-    (reset-visual)))
+    (reset-visual))))
 
 (defun in-emacs-p ()
   "Return true if we're being run under Emacs, like probably in SLIME."
