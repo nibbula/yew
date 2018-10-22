@@ -50,10 +50,11 @@ are indicated instead of being signaled."
   (restart-case
       (typecase v
 	;; Make strings with weird characters not screw up the display.
-	(string (with-output-to-string (str)
-		  (loop :for c :across v :do
-		     (displayable-char c :stream str
-				       :all-control t :show-meta nil))))
+	(string
+	 (with-output-to-string (str)
+	   (loop :for c :across v :do
+	      (displayable-char c :stream str
+				:all-control t :show-meta nil))))
 	(t (prin1 v stream)))
     (error (c)
       (declare (ignore c))
@@ -66,8 +67,10 @@ are indicated instead of being signaled."
     (print-span `((:fg-yellow ,(format nil "~3d" num) " ")))
     (debugger-print-string
      (if width
-	 (osubseq str 0 (min (length str) (- width 4)))
-	 (cdr line)))
-    (terpri *terminal*)))
+	 (osubseq str 0 (min (olength str) (- width 4)))
+	 str))
+    ;;(terpri *terminal*)
+    (tt-write-char #\newline)
+    ))
 
 ;; EOF
