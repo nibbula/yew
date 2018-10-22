@@ -632,11 +632,11 @@ drawing, which will get overwritten."
 	      :do
 	      (setf e (tt-get-key))
 	      (clear-modeline)
-	      (cond
-		((consp e)
-		 (let ((y (third e)) (x (second e))
-		       (button (fourth e)))
-
+	      (typecase e
+		(tt-mouse-button-event
+		 (let ((x (tt-mouse-event-x e))
+		       (y (tt-mouse-event-y e))
+		       (button (tt-mouse-button e)))
 		   (setf color (case button
 				 (:button-1 :red)
 				 (:button-2 :green)
@@ -656,12 +656,16 @@ drawing, which will get overwritten."
 		      (tt-move-to y x)
 		      (tt-color color :default)
 		      (tt-write-char #\X)))))
-		((or (equal e #\q) (equal e #\Q))
-		 (setf quit-flag t))
-		((eql e #\c)
-		 (tt-clear)))
+		(character
+		 (cond
+		   ((or (equal e #\q) (equal e #\Q))
+		    (setf quit-flag t))
+		   ((eql e #\c)
+		    (tt-clear)))))
 	      (tt-finish-output)))
       (tt-disable-events :mouse-buttons))))
+
+;; @@@ how about a test of mouse motion only events?
 
 (defparameter *menu*
   `(("Screen size"                 . test-screen-size)
