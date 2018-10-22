@@ -192,6 +192,7 @@ require terminal driver support."))
 (defmethod terminal-get-cursor-position ((tty terminal-ansi))
   "Try to somehow get the row of the screen the cursor is on. Returns the
 two values ROW and COLUMN."
+  (terminal-finish-output tty) ;; I think this is a rare necessary one.
   (eat-typeahead tty)
   (let ((row 1) (col 1) sep
 	(result (terminal-report tty #\R "~c[6n" #\escape)))
@@ -260,12 +261,11 @@ two values ROW and COLUMN."
 
 (defmethod terminal-end ((tty terminal-ansi) &optional state)
   "Put the terminal back to the way it was before we called terminal-start."
-  ;;  (format t "[terminal-end]~%")
-  ;; (set-terminal-mode (terminal-file-descriptor tty)
-  ;; 		     :line t :echo t :raw nil :timeout nil)
   (when (or state (saved-mode tty))
-    (dbugf :terminal-ansi "restoring terminal modes ~s ~s~%"
-	   tty (or state (saved-mode tty)))
+    ;; (dbugf :terminal-ansi "restoring terminal modes for ~s~%~
+    ;;                        state = ~s~%~
+    ;;                        saved-mode = ~s~%"
+    ;; 	   tty state (saved-mode tty))
     (set-terminal-mode (terminal-file-descriptor tty)
 		       :mode (or state (saved-mode tty)))
     #+unix
@@ -283,6 +283,45 @@ two values ROW and COLUMN."
   ;; (format t "[terminal-done]~%")
   ;; (setf *tty* nil)
   (values))
+
+(defmethod terminal-reinitialize ((tty terminal-ansi))
+  "Do any re-initialization necessary, and return the saved state."
+  (with-slots ((file-descriptor terminal::file-descriptor)) tty
+    (let ((current-mode (get-terminal-mode file-descriptor)))
+      (when (or (terminal-mode-line current-mode)
+		(terminal-mode-echo current-mode))
+	(set-terminal-mode file-descriptor :line nil :echo nil))
+      (terminal-get-size tty)
+      ;; Return the terminal's saved state.
+      ;; (saved-mode tty)
+      ;; Return the current mode
+      ;; @@@ should we just get rid of the saved mode in the terminal??
+      current-mode)))
+
+(defun test-modes ()
+  (labels ((get-mode ()
+	     (get-terminal-mode (terminal-file-descriptor *terminal*)))
+	   (show-mode (s)
+	     (format t "~a ~s~%" s (get-mode))))
+    (let ((start-mode (get-mode))
+	  first-mode second-mode)
+      (show-mode "starting mode")
+      (with-terminal ()
+	(show-mode "in first terminal")
+	(setf first-mode (get-mode))
+	(with-terminal ()
+	  (show-mode "in second terminal")
+	  (setf second-mode (get-mode))
+	  (with-terminal ()
+	    (show-mode "in third terminal"))
+	  (when (not (equalp second-mode (get-mode)))
+	    (format t "BUG: second mode not restored~%")))
+	(show-mode "back from second terminal")
+	(when (not (equalp first-mode (get-mode)))
+	  (format t "BUG: first mode not restored~%")))
+      (show-mode "ending mode")
+      (when (not (equalp start-mode (get-mode)))
+	(format t "BUG: Start mode != ending mode~%")))))
 
 (defparameter *acs-table* nil
   "Hash table of unicode character to ACS character.")
@@ -464,6 +503,7 @@ Report parameters are returned as values. Report is assumed to be in the form:
 		 ;;(posix-write fd qq (length q))
 		 ;;(terminal-write-string tty q) (terminal-finish-output tty)
 		 (write-terminal-string fd q)
+		 (terminal-finish-output tty)
 		 (with-interrupts-handled (tty)
 		   (read-until fd end-char :timeout 1)))))
       #| @@@ temporarily get rid of this error
@@ -965,38 +1005,52 @@ Attributes are usually keywords."
 		      (symbol-name symbol)) :keyword)
       symbol))
 
-;; @@@ should probably make an event class
 (defun get-mouse-event (tty)
-  "Read a mouse event from TTY. Something like:
-  (:mouse x y [:button-<n> | :release] [:motion] [modifiers..])"
+  "Read a mouse event from TTY. Return a sublcass of tt-mouse-event."
   (block nil
     (flet ((next ()
 	     (or (raw-get-char tty :timeout 1) (return :mouse-error))))
       (with-slots (mouse-down) tty
-	(let (cb cx cy result button button-change motion)
+	(let (cb cx cy button button-change motion-bit motion modifiers)
 	  (setf cb (next)
 		cx (1- (- (next) 32))	; terminal coords start at 1
 		cy (1- (- (next) 32)))
-	  (push :mouse result)
-	  (push cx result)
-	  (push cy result)
 	  (when (not (zerop (logand cb #b0100000))) (setf button-change t))
-	  (when (not (zerop (logand cb #b1000000))) (setf motion t))
+	  (when (not (zerop (logand cb #b1000000))) (setf motion-bit t))
 	  (case (logand cb #b11)
-	    (0 (setf button (if (and button-change motion) :button-4 :button-1)
+	    (0 (setf button (if (and button-change motion-bit)
+				:button-4 :button-1)
 		     mouse-down t))
-	    (1 (setf button (if (and button-change motion) :button-5 :button-2)
+	    (1 (setf button (if (and button-change motion-bit)
+				:button-5 :button-2)
 		     mouse-down t))
 	    (2 (setf button :button-3 mouse-down t))
 	    (3 (setf button :release mouse-down nil)))
-	  (push button result)
-	  (when (and motion (not button-change))
-	    (push :motion result))
-	  (when (not (zerop (logand cb #b00100))) (push :shift   result))
-	  (when (not (zerop (logand cb #b01000))) (push :meta    result))
-	  (when (not (zerop (logand cb #b10000))) (push :control result))
-	  ;;(push cb result)
-	  (nreverse result))))))
+	  (when (and motion-bit (not button-change))
+	    (setf motion t))
+	  (when (not (zerop (logand cb #b00100))) (push :shift   modifiers))
+	  (when (not (zerop (logand cb #b01000))) (push :meta    modifiers))
+	  (when (not (zerop (logand cb #b10000))) (push :control modifiers))
+	  (if motion
+	      (if button
+		  (progn
+		    (assert (not (eq button :release)))
+		    (make-instance 'tt-mouse-button-motion
+				   :terminal tty
+				   :x cx :y cy :button button
+				   :modifiers modifiers))
+		  (make-instance 'tt-mouse-motion
+				 :terminal tty :x cx :y cy))
+	      (progn
+		(if (eq button :release)
+		    (make-instance 'tt-mouse-button-release
+				   :terminal tty
+				   :x cx :y cy :button button
+				   :modifiers modifiers)
+		    (make-instance 'tt-mouse-button-event
+				   :terminal tty
+				   :x cx :y cy :button button
+				   :modifiers modifiers)))))))))
 
 ;; This can unfortunately really vary between emulations, so we try to code
 ;; for multiple interpretations.

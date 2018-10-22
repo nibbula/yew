@@ -33,6 +33,7 @@
    #:terminal-start
    #:terminal-end
    #:terminal-done
+   #:terminal-reinitialize
    #:make-terminal-stream
    #:with-terminal #:with-new-terminal
    #:tt-format			  #:terminal-format
@@ -87,6 +88,11 @@
    #:tt-disable-events            #:terminal-disable-events
    #:terminal-enable-event
    #:terminal-disable-event
+   #:tt-event #:tt-event-terminal
+   #:tt-mouse-event #:tt-mouse-event-x #:tt-mouse-event-y
+   #:tt-mouse-button-event #:tt-mouse-button #:tt-mouse-modifiers
+   #:tt-mouse-button-press #:tt-mouse-button-release #:tt-mouse-button-motion
+   #:tt-mouse-motion #:tt-resize-event
    #:tt-alternate-characters	  #:terminal-alternate-characters
    #:with-saved-cursor
    #:with-terminal-output-to-string
@@ -404,6 +410,12 @@ STATE should be an object returned by TERMINAL-START."))
   (:documentation "Forget about the whole terminal thing and stuff.
 STATE should be an object returned by TERMINAL-START."))
 
+(defgeneric terminal-reinitialize (terminal)
+  (:documentation
+   "Do anything necessary to make an already started terminal ready for
+fresh use. Return any saved state to be restored and passed to terminal-end
+or terminal-done."))
+
 ;; (defmacro with-terminal-stream ((var stream) &body body)
 ;;   "Evaluate the body with VAR set to a new terminal-stream."
 ;;   `(let ((,var (make-instance 'terminal-stream :output-stream ,stream)))
@@ -415,9 +427,6 @@ STATE should be an object returned by TERMINAL-START."))
 (defun make-terminal-stream (stream type)
   (make-instance type :output-stream stream))
 
-(defvar *terminal-state* nil
-  "Somewhere for terminals to save states.")
-
 ;; @@@ Could this be simplified?
 (defmacro %with-terminal ((&optional type
 				     (var '*terminal*)
@@ -426,7 +435,7 @@ STATE should be an object returned by TERMINAL-START."))
 			  &body body)
   "Evaluate the body with VAR possibly set to a new terminal depending on NEW-P.
 Cleans up afterward."
-  (with-unique-names (result make-it term-class new-type)
+  (with-unique-names (result make-it term-class new-type terminal-state)
     `(progn
        (let* ((,new-type (or ,type *default-terminal-type*
 			     (pick-a-terminal-type)))
@@ -461,7 +470,8 @@ Cleans up afterward."
 	      ;; (*standard-output* ,var)
 	      ;; (*standard-input* ,var)
 	      ,result
-	      *terminal-state*)
+	      ,terminal-state
+	      )
 	 ;; This ignorable is just to stop CCL from complaining.
 	 (declare (ignorable ,new-type))
 	 (dbugf :terminal "term-class = ~s~%" ,term-class)
@@ -479,11 +489,14 @@ Cleans up afterward."
 	 (dbugf :terminal "~s = ~s~%" ',var ,var)
 	 (unwind-protect
 	      (progn
-		(setf *terminal-state* (terminal-start ,var))
+		(setf ,terminal-state (terminal-start ,var))
+		(dbugf :terminal "start terminal-state = ~s~%" ,terminal-state)
 		(setf ,result (progn ,@body)))
 	   (if ,make-it
-	       (terminal-done ,var *terminal-state*)
-	       (terminal-end ,var *terminal-state*)))
+	       (terminal-done ,var ,terminal-state)
+	       (progn
+		 (dbugf :terminal "end terminal-state = ~s~%" ,terminal-state)
+		 (terminal-end ,var ,terminal-state))))
 	 ,result))))
 
 (defmacro with-terminal ((&optional type
@@ -652,6 +665,60 @@ or :CHAR for character at time with no echo."))
 
 (deftt has-attribute (attribute)
   "Return true if the terminal can display the character attribute.")
+
+(defclass tt-event ()
+  ((terminal
+   :initarg :terminal :accessor tt-event-terminal
+   :documentation "NURBS"))
+  (:documentation
+   "Just in case you were missing having a whole nother event class hierarchy."))
+
+(defclass tt-mouse-event (tt-event)
+  ((x
+    :initarg :x :accessor tt-mouse-event-x
+    :documentation "Horizontal coordinate.")
+   (y
+    :initarg :y :accessor tt-mouse-event-y
+    :documentation "Vertical coordinate"))
+  (:documentation "Somthing happened to yer mouse."))
+
+(defclass tt-mouse-button-event (tt-mouse-event)
+  ((button
+   :initarg :button :accessor tt-mouse-button
+   :documentation "The button that was changed.")
+   (modifiers
+    :initarg :modifiers :accessor tt-mouse-modifiers
+    :initform nil :type list
+    :documentation "List of modifiers that ye were a-smushin at the time."))
+  (:documentation "I hear a little clicky."))
+
+(defmethod print-object ((object tt-mouse-button-event) stream)
+  "Print a tt-mouse-button-event to STREAM."
+  (with-slots (x y button modifiers) object
+    (print-unreadable-object (object stream :type t)
+      (format stream "~s ~s ~s~@[ ~s~]" x y button modifiers))))
+
+;; I apoligize to those who hold consistency foremost.
+
+(defclass tt-mouse-button-press (tt-mouse-button-event)
+  ()
+  (:documentation "Ya stepped on yer mouses' little toes."))
+
+(defclass tt-mouse-button-release (tt-mouse-button-event)
+  ()
+  (:documentation "Now ya did it."))
+
+(defclass tt-mouse-button-motion (tt-mouse-button-event)
+  ()
+  (:documentation "We'll both just pretend yer dragging somthing."))
+
+(defclass tt-mouse-motion (tt-mouse-event)
+  ()
+  (:documentation "Just sliding around, eh?"))
+
+(defclass tt-resize-event (tt-event)
+  () ;; I'm sorry, but you'll have to get the size separately.
+  (:documentation "Messing with that window."))
 
 (deftt enable-events (events)
   "Allow tt-get-* to return non-key events. EVENTS is a keyword or list of
