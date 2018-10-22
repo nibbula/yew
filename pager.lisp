@@ -1373,11 +1373,10 @@ q - Abort")
 (defun perform-key (key &optional (keymap *normal-keymap*))
   (with-slots (message command last-command) *pager*
     ;; @@@ this is a dumb hack
-    (when (consp key)
-      (when (eq :mouse (first key))
-	(case (fourth key)
-	  (:button-4 (setf key :scroll-up))
-	  (:button-5 (setf key :scroll-down)))))
+    (when (typep key 'tt-mouse-button-event)
+      (case (tt-mouse-button key)
+	(:button-4 (setf key :scroll-up))
+	(:button-5 (setf key :scroll-down))))
 	
     (setf last-command command
 	  command (key-definition key keymap))
@@ -1498,7 +1497,6 @@ q - Abort")
 	      (setf quit-flag nil
 		    suspend-flag nil
 		    suspended nil)
-	      ;;(curses:raw)	     ; give a chance to exit during first read
 	      (pager-loop)
 	      (when suspend-flag
 		(setf suspended t)
@@ -1515,19 +1513,12 @@ q - Abort")
 		      )
 		    (format t "No shell loaded to suspend to.~%"))))))
 	  (when (and close-me (not suspended) stream)
-	    (close stream))
-	  ;; Why doesn't this work here??
-	  ;; (when (terminal-file-descriptor *terminal*)
-	  ;; 	(set-terminal-mode (terminal-file-descriptor *terminal*) :raw nil))
-	  ))
+	    (close stream))))
     (tt-move-to (- (tt-height) 1) 0)
     (tt-erase-to-eol)
     ;;(tt-write-char #\newline)
     (tt-disable-events :mouse-buttons)
     (tt-finish-output))
-  ;; @@@ This is wrong. 
-  ;; (when (terminal-file-descriptor *terminal*)
-  ;;   (set-terminal-mode (terminal-file-descriptor *terminal*) :raw nil))
   suspended)
 
 (defun resume (suspended)
