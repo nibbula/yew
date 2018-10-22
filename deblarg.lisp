@@ -330,10 +330,12 @@
       (set-frame  (:f) "Set the frame." (debugger-set-frame (read-arg state)))
       (top        (:t) "Go to the top frame."
        (debugger-top-frame (read-arg state)))
-      (eval-in    (:ev) "Evaluate in frame."
+      (eval-in    (:ev) "Evaluate in frame N."
        (eval-print
 	(multiple-value-list
-	 (debugger-eval-in-frame (read-arg state) (read-arg state)))))
+	 (let ((arg2 (read-arg state))
+	       (arg1 (read-arg state)))
+	 (debugger-eval-in-frame arg1 arg2)))))
       (error      (:e)   "Show the error again."
        (print-condition *interceptor-condition*))
       (abort      (:a)   "Abort to top level."
