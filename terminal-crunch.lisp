@@ -704,30 +704,36 @@ sizes. It only copies the smaller of the two regions."
        ;; @@@ do we really need to set the index?
        (setf (aref (screen-index screen) i) i))))
 
+(defmethod terminal-reinitialize ((tty terminal-crunch))
+  ;;(dbugf :crunch "Crunch ~s not recursivley re-started.~%" tty)
+  ;; Non-dumb terminals are supposed to start in :char mode.
+  ;; (setf (terminal-input-mode wtty) :char)
+  (with-slots ((wtty wrapped-terminal) start-line
+	       (start-at-current-line terminal::start-at-current-line)) tty
+    (when start-at-current-line
+      (setf start-line (terminal-get-cursor-position wtty)
+	    (screen-y (new-screen tty)) start-line
+	    (screen-y (old-screen tty)) start-line)
+      (update-size tty)
+      (invalidate-before-start-row tty (new-screen tty))
+      (invalidate-before-start-row tty (old-screen tty))
+      ;;(dbugf :crunch "Crunch auto re-starting at ~s.~%" start-line)
+      )
+    ;; @@@ Is this reasonable?
+    ;; (terminal-erase-below tty)
+    ;; (terminal-erase-below wtty)
+    ;; (terminal-reset tty)
+    (incf (started tty))
+    (terminal-reinitialize wtty)))
+
 (defmethod terminal-start ((tty terminal-crunch))
   "Set up the terminal for reading a character at a time without echoing."
   (with-slots ((wtty wrapped-terminal) start-line
 	       (start-at-current-line terminal::start-at-current-line)) tty
     (if (started tty)
-	(progn
-	  ;;(dbugf :crunch "Crunch ~s not recursivley re-started.~%" tty)
-	  ;; Non-dumb terminals are supposed to start in :char mode.
-	  (setf (terminal-input-mode wtty) :char)
-	  (when start-at-current-line
-	    (setf start-line (terminal-get-cursor-position wtty)
-		  (screen-y (new-screen tty)) start-line
-		  (screen-y (old-screen tty)) start-line)
-	    ;; (update-size tty)
-	    (invalidate-before-start-row tty (new-screen tty))
-	    (invalidate-before-start-row tty (old-screen tty))
-	    ;;(dbugf :crunch "Crunch auto re-starting at ~s.~%" start-line)
-	    )
-	  ;; @@@ Is this reasonable?
-	  ;; (terminal-erase-below tty)
-	  ;; (terminal-erase-below wtty)
-	  ;; (terminal-reset tty)
-	  (incf (started tty))
-	  nil) ;; no state
+	;; Already started
+	(terminal-reinitialize tty)
+	;; Not already started
 	(let ((state (terminal-start wtty)))
 	  ;; Set our file descriptor to the wrapped terminals.
 	  (when (terminal-file-descriptor wtty)
