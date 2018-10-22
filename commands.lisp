@@ -12,7 +12,7 @@
 in proper condition."
   (with-unique-names (result)
     `(let (,result)
-       (finish-output (terminal-output-stream (line-editor-terminal ,e)))
+       ;;(finish-output (terminal-output-stream (line-editor-terminal ,e)))
        (terminal-end (line-editor-terminal ,e))
        (setf ,result (progn ,@body))
        (terminal-start (line-editor-terminal ,e))
@@ -156,7 +156,8 @@ if it's blank or the same as the previous line."
       (tt-write-char #\return)
       (when (did-under-complete e)
 	(tt-erase-below))
-      (tt-finish-output))
+      ;;(tt-finish-output)
+      )
     (setf quit-flag t)))
 
 (defun copy-region (e)
@@ -404,8 +405,8 @@ Control-R searches again backward and Control-S searches again forward."
     (tt-clear) (tt-home)
     (setf (screen-col e) 0 (screen-row e) 0)
     (do-prompt e prompt prompt-func)
-    (finish-output (terminal-output-stream
-		    (line-editor-terminal e)))
+    ;; (finish-output (terminal-output-stream
+    ;; 		    (line-editor-terminal e)))
     (display-buf e)
     (when (< point (length buf))
       (move-over e (- (- (length buf) point)) :start (length buf)))
@@ -735,7 +736,7 @@ in order, \"{open}{close}...\".")
 	  (progn
 	    (tt-beginning-of-line)
 	    (tt-erase-line)
-	    (finish-output (terminal-output-stream (line-editor-terminal e)))
+	    ;;(finish-output (terminal-output-stream (line-editor-terminal e)))
 	    ;;(terminal-set-input-mode (line-editor-terminal e) :line)
 	    (terminal-end (line-editor-terminal e))
 	    (if (line-editor-terminal-device-name e)

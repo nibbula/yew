@@ -301,7 +301,7 @@ but perhaps reuse some resources."))
 (defun get-a-char (e)
   "Read a character from the editor's terminal."
   (declare (type line-editor e))
-  (tt-finish-output)
+  ;; (tt-finish-output)
   (let ((c (tt-get-key)))
     (when (line-editor-input-callback e)
       (funcall (line-editor-input-callback e) c))

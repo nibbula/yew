@@ -520,7 +520,7 @@ Updates the screen coordinates."
 
 (defun do-prefix (e prompt-str)
   "Output a prefix."
-  (finish-all-output)
+  ;; (finish-all-output)
   (let (row col start-row)
     (multiple-value-setq (row col)
       (terminal-get-cursor-position (line-editor-terminal e)))
@@ -528,7 +528,7 @@ Updates the screen coordinates."
     ;;(tt-write-string prompt-str)
     (write prompt-str :stream *terminal* :escape nil :pretty nil)
     ;;(finish-all-output)
-    (tt-finish-output)
+    ;; (tt-finish-output)
     ;; (eat-typeahead e)
     (multiple-value-setq (row col)
       (terminal-get-cursor-position (line-editor-terminal e)))
