@@ -405,13 +405,15 @@ Keyword arguments:
     (when editor
       (freshen editor))
     (setf (fill-pointer (buf e)) (point e))
-    ;;#+ccl (setf ccl::*auto-flush-streams* nil)
+    #+ccl (setf ccl::*auto-flush-streams* nil)
+    #+ccl (ccl::%remove-periodic-task 'ccl::auto-flush-interactive-streams)
     ;; (when (typep (line-editor-terminal e)
     ;; 		 (find-terminal-class-for-type :crunch))
     ;;   (setf (oelt (line-editor-terminal e) :start-line)
     ;; 	    (terminal-get-cursor-position
     ;; 	     (oelt (line-editor-terminal e) :wrapped-terminal))))
     (setf terminal-state (terminal-start (line-editor-terminal e)))
+    (setf (terminal-input-mode (line-editor-terminal e)) :char)
 
     ;; Add the new line we're working on.
     (history-add nil)
@@ -428,11 +430,11 @@ Keyword arguments:
 	(setf (point e) (length string))
 	(display-buf e 0)))
 
-    ;; If the terminal is in line mode, our whole thing is kind of moot, so just
-    ;; fall back to reading from the terminal driver, so we work on dumb
-    ;; terminals.
+    ;; If the terminal is in line mode even after we set it to :char mode,
+    ;; our whole thing is kind of moot, so just fall back to reading from the
+    ;; terminal driver, so we work on dumb terminals.
     (when (eq (tt-input-mode) :line)
-      (finish-output)
+      (finish-output *terminal*)
       (return-from rl (values (read-line *terminal*) e)))
 
     ;; Command loop
