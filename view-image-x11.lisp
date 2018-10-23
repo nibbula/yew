@@ -6,7 +6,10 @@
 
 (defpackage :view-image-x11
   (:documentation "Image viewer X11 driver.")
-  (:use :cl :dlib :dlib-misc :char-util :inator :view-image :xlib :terminal)
+  (:use :cl :dlib :dlib-misc :char-util :inator :view-image
+	;; :image
+	:xlib
+	:terminal)
   (:shadowing-import-from :xlib #:process-event)
   (:export
    #:x11-image-inator
@@ -98,6 +101,15 @@
 	 (setf s (split-sequence #\: display))
 	 (values (first s) (parse-integer (second s))))))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (d-add-feature :clx-use-classes))
+
+(defun make-window-from (&key display id)
+  #-clx-use-classes
+  (xlib::make-window :id id :display display)
+  #+clx-use-classes
+  (make-instance 'xlib:window :id id :display display))
+
 (defmethod start-inator ((o image-x11-inator))
   "Start the inator."
   (with-slots ((image view-image::image)
@@ -125,7 +137,7 @@
 		     (make-event-mask
 		      :key-press :button-press :button-release
 		      :exposure :visibility-change :structure-notify))
-		    (xlib::make-window
+		    (make-window-from
 		     :id (parse-integer (nos:environment-variable "WINDOWID"))
 		     :display display))
 		depth (drawable-depth window)
@@ -267,20 +279,20 @@
       (window-eraser o x y width height))))
 
 (defun erase-image (o)
-  (with-slots ((image view-image::image)
+  (with-slots ((image    view-image::image)
 	       (subimage view-image::subimage)
-	       (x view-image::x)
-	       (y view-image::y)
+	       (x        view-image::x)
+	       (y        view-image::y)
 	       display window erase-gc overlay-gc ximages-mask) o
-    (with-slots ((width view-image::width)
-		 (height view-image::height)) image
-      (with-slots ((si-x view-image::x)
-		   (si-y view-image::y)
-		   (si-width view-image::width)
-		   (si-height view-image::height)
-		   ;;(disposal view-image::disposal)
-		   )
-	  (aref (view-image::image-subimages image) subimage)
+    (with-accessors ((width image:image-width)
+		     (height image:image-height)) image
+      (with-accessors ((si-x image:sub-image-x)
+		       (si-y image:sub-image-y)
+		       (si-width image:sub-image-width)
+		       (si-height image:sub-image-height)
+		       ;;(disposal image:sub-image-disposal)
+		       )
+	  (aref (image:image-subimages image) subimage)
 	;;(setf (gcontext-clip-mask erase-gc) (aref ximages-mask subimage))
 	;;(draw-rectangle window erase-gc x y width height t)
 	;; (put-image window erase-gc (aref ximages subimage)
@@ -293,18 +305,18 @@
 	))))
 
 (defun update-pos (o)
-  (with-slots ((image view-image::image)
+  (with-slots ((image    view-image::image)
 	       (subimage view-image::subimage)
-	       (x view-image::x)
-	       (y view-image::y)
+	       (x        view-image::x)
+	       (y        view-image::y)
 	       display window erase-gc overlay-gc) o
-      (with-slots ((si-x view-image::x)
-		   (si-y view-image::y)
-		   (si-width view-image::width)
-		   (si-height view-image::height)
-		   ;;(disposal view-image::disposal)
-		   )
-	  (aref (view-image::image-subimages image) subimage)
+      (with-accessors ((si-x      image:sub-image-x)
+		       (si-y      image:sub-image-y)
+		       (si-width  image:sub-image-width)
+		       (si-height image:sub-image-height)
+		       ;;(disposal image:sub-image-disposal)
+		       )
+	  (aref (image:image-subimages image) subimage)
 	(let* ((start-x (+ x si-x))
 	       (start-y (+ y si-y))
 	       (x-pos (max start-x 0))
@@ -415,10 +427,10 @@
 	       ;; 		*terminal* :timeout 0))
 	       ;; 	     (terminal-ansi::get-char
 	       ;; 	      *terminal* :timeout (truncate ds))))
-	       (progn
-		 (when (dtime-plusp time-left)
-		   (tt-listen-for (dtime-to time-left :seconds)))
-		 (terminal-ansi::get-char *terminal* :timeout 0)) ;; XXX
+	       (when (tt-listen-for (if (dtime-plusp time-left)
+					(dtime-to time-left :seconds)
+					0))
+		 (tt-get-char))
 	       (tt-get-char)))))))
 
 (defmethod await-event ((inator image-x11-inator))
@@ -427,7 +439,7 @@
 	       (subimage view-image::subimage)
 	       (image view-image::image)
 	       display window own-window) inator
-    (with-slots ((subimages view-image::subimages)) image
+    (with-accessors ((subimages image:image-subimages)) image
       (cond
 	((and looping subimages)
 	 (let* ((timeout (view-image::sub-image-delay
@@ -487,12 +499,12 @@ XIMAGES-MASK array."
   (with-slots ((image view-image::image)
 	       (subimage view-image::subimage)
 	       display window ximage-mask-data ximages-mask) inator
-    (with-slots ((si-x view-image::x)
-		 (si-y view-image::y)
-		 (si-width view-image::width)
-		 (si-height view-image::height)
-		 (disposal view-image::disposal))
-	(aref (view-image::image-subimages image) subimage)
+    (with-accessors ((si-x image::sub-image-x)
+		     (si-y image::sub-image-y)
+		     (si-width image::sub-image-width)
+		     (si-height image::sub-image-height)
+		     (disposal image::sub-image-disposal))
+	(aref (image:image-subimages image) subimage)
     (let* ((mask-image (create-image
 		       :width si-width
 		       :height si-height
@@ -515,9 +527,9 @@ XIMAGES-MASK array."
 (defun use-mask-p (inator)
   (with-slots ((image view-image::image)
 	       (subimage view-image::subimage)) inator
-    (with-slots ((subimages view-image::subimages)) image
-      (with-slots ((disposal view-image::disposal)
-		   (transparent view-image::transparent))
+    (with-accessors ((subimages image:image-subimages)) image
+      (with-accessors ((disposal image:sub-image-disposal)
+		       (transparent image:sub-image-transparent))
 	  (aref subimages subimage)
 	(or transparent (eq disposal :none))))))
   
@@ -527,11 +539,11 @@ XIMAGES-MASK array."
 	       (subimage view-image::subimage)
 	       ;;(subimages view-image::subimages)
 	       depth ximages ximages-mask ximage-data ximage-mask-data) inator
-    (with-slots ((width view-image::width)
-		 (height view-image::height)
-		 (subimages view-image::subimages)) image
-      (with-slots ((disposal view-image::disposal)
-		   (transparent view-image::transparent))
+    (with-accessors ((width image:image-width)
+		     (height image:image-height)
+		     (subimages image:image-subimages)) image
+      (with-accessors ((disposal image:sub-image-disposal)
+		       (transparent image:sub-image-transparent))
 	  (aref subimages subimage)
 	(when (not (aref ximages subimage))
 	  (dbug "make image~%")
@@ -565,27 +577,29 @@ XIMAGES-MASK array."
 	     (type (simple-array (unsigned-byte 32) (* *)) ximage-data)
 	     ;;(type (simple-array (* *)) ximage-mask-data)
 	     )
-    (with-slots ((name view-image::name)
-		 (subimages view-image::subimages)) image
+    (with-accessors ((name image:image-name)
+		     (subimages image:image-subimages)) image
       ;;(format t "subimage = ~s ~s~%" subimage subimages)
-      (with-slots ((si-x view-image::x)
-		   (si-y view-image::y)
-		   (width view-image::width)
-		   (height view-image::height)
-		   (disposal view-image::disposal)
-		   (transparent view-image::transparent)
-		   (data view-image::data))
+      (with-accessors ((si-x        image:sub-image-x)
+		       (si-y        image:sub-image-y)
+		       (width       image:sub-image-width)
+		       (height      image:sub-image-height)
+		       (disposal    image:sub-image-disposal)
+		       (transparent image:sub-image-transparent)
+		       (data        image:sub-image-data))
 	  (aref subimages subimage)
 	(declare (type fixnum si-x si-y width height)
-		 (type (simple-array (unsigned-byte 8) (* * *)) data))
+		 ;;(type (simple-array (unsigned-byte 8) (* * *)) data)
+		 ;;(type (simple-array (unsigned-byte 32) (* *)) data)
+		 )
 	;;(format t "ximage-data = ~s~%" (type-of ximage-data))
 	;;(when (not (equal (array-dimensions ximage-data) `(,height ,width)))
 	(setf ximage-data
 	      (make-array `(,height ,width)
 			  :initial-element (coerce 0 `(unsigned-byte 32))
 			  :element-type `(unsigned-byte 32)))
-			    ;;:initial-element (coerce 0 '(unsigned-byte *))
-			    ;;:element-type `(unsigned-byte 8))))
+	;;:initial-element (coerce 0 '(unsigned-byte *))
+	;;:element-type `(unsigned-byte 8))))
 	(when (or transparent (eq disposal :none))
 	  (setf ximage-mask-data
 		(make-array `(,height ,width)
@@ -610,24 +624,44 @@ XIMAGES-MASK array."
 		:for ix fixnum :from 0 :below width :by step :do
 		(setf r (loop :for av-y fixnum :from 0 :below step :sum
 			   (loop :for av-x fixnum :from 0 :below step
-			      :sum (aref data
-					 (min (1- height) (+ iy av-y))
-					 (min (1- width) (+ ix av-x)) 0))))
+			      :sum
+			      ;; (aref data
+			      ;; 	    (min (1- height) (+ iy av-y))
+			      ;; 	    (min (1- width) (+ ix av-x)) 0)
+			      (get-pixel-r data
+					   (min (1- height) (+ iy av-y))
+					   (min (1- width) (+ ix av-x)))
+			      )))
 		(setf g (loop :for av-y fixnum :from 0 :below step :sum
 			   (loop :for av-x fixnum :from 0 :below step
-			      :sum (aref data
-					 (min (1- height) (+ iy av-y))
-					 (min (1- width) (+ ix av-x)) 1))))
+			      :sum
+			      ;; (aref data
+			      ;; 	    (min (1- height) (+ iy av-y))
+			      ;; 	    (min (1- width) (+ ix av-x)) 1)
+			      (get-pixel-g data
+					   (min (1- height) (+ iy av-y))
+					   (min (1- width) (+ ix av-x)))
+			      )))
 		(setf b (loop :for av-y fixnum :from 0 :below step :sum
 			   (loop :for av-x fixnum :from 0 :below step
-			      :sum (aref data
-					 (min (1- height) (+ iy av-y))
-					 (min (1- width) (+ ix av-x)) 2))))
+			      :sum
+			      ;; (aref data
+			      ;; 	    (min (1- height) (+ iy av-y))
+			      ;; 	    (min (1- width) (+ ix av-x)) 2)
+			      (get-pixel-b data
+					   (min (1- height) (+ iy av-y))
+					   (min (1- width) (+ ix av-x)))
+			      )))
 		(setf a (loop :for av-y fixnum :from 0 :below step :sum
 			   (loop :for av-x fixnum :from 0 :below step
-			      :sum (aref data
-					 (min (1- height) (+ iy av-y))
-					 (min (1- width) (+ ix av-x)) 3))))
+			      :sum
+			      ;; (aref data
+			      ;; 	    (min (1- height) (+ iy av-y))
+			      ;; 	    (min (1- width) (+ ix av-x)) 3)
+			      (get-pixel-a data
+					   (min (1- height) (+ iy av-y))
+					   (min (1- width) (+ ix av-x)))
+			      )))
 		(cond
 		  ((zerop a)
 		   (setf (aref ximage-data iy ix) #x000000)
@@ -658,14 +692,14 @@ XIMAGES-MASK array."
 	       display window ximages ximages-mask draw-gc erase-gc overlay-gc)
       inator
     (declare (type fixnum x y) (type float zoom))
-    (with-slots ((name view-image::name)
-		 (subimages view-image::subimages)) image
-      (with-slots ((si-x view-image::x)
-		   (si-y view-image::y)
-		   (width view-image::width)
-		   (height view-image::height)
-		   (disposal view-image::disposal)
-		   (data view-image::data)) (aref subimages subimage)
+    (with-accessors ((name image:image-name)
+		     (subimages image:image-subimages)) image
+      (with-accessors ((si-x     image:sub-image-x)
+		       (si-y     image:sub-image-y)
+		       (width    image:sub-image-width)
+		       (height   image:sub-image-height)
+		       (disposal image:sub-image-disposal)
+		       (data     image:sub-image-data)) (aref subimages subimage)
 	(declare (type fixnum si-x si-y width height))
 	;;(format t "width ~s height ~s~%" width height)
 	(dbug "put image~%")
