@@ -51,10 +51,11 @@ are indicated instead of being signaled."
       (typecase v
 	;; Make strings with weird characters not screw up the display.
 	(string
-	 (with-output-to-string (str)
-	   (loop :for c :across v :do
-	      (displayable-char c :stream str
-				:all-control t :show-meta nil))))
+	 (prin1 (with-output-to-string (str)
+		  (loop :for c :across v :do
+		     (displayable-char c :stream str
+				       :all-control t :show-meta nil)))
+		stream))
 	(t (prin1 v stream)))
     (error (c)
       (declare (ignore c))
