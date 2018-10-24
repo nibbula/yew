@@ -8,64 +8,84 @@
 ;; nature, treating various data structures uniformly has many potential
 ;; performance pitfalls.
 
+(let (#+sbcl (*on-package-variance* '(:warn (:collections) :error t)))
+  (dlib:without-warning
 (defpackage :collections
   (:documentation
    "So it seems like I'm doing this again. These aren't so much for the methods
 defined in here, but it's *really* so you can define your own methods which work
 somewhat orthogonally with system classes. The ‘o’ prefix is rather ugly.
 We should entertain other naming ideas.")
-  (:use :cl)				; Please don't add any dependencies.
-  (:nicknames :o)			; probably too presumptuous
-  (:export
-   #:collection
-   #:container #:container-data
-   #:emptyp
-   #:oelt
-   #:oitem
-   #:olength
-   #:omap
-   #:omapn
-   #:omapk
-   #:mappable
-   #:keyed-collection-p
-   #:omap-into
-   #:oevery
-   #:oany
-   #:ocopy
-   #:ofill
-   #:ofill-with
-   #:ofill-range-with
-   #:osubseq
-   #:oslice
-   #:oslice-from
-   #:oreduce
-   #:ocount
-   #:oreverse
-   #:osort
-   #:osort-by
-   #:ofind
-   #:ofind-with-key
-   #:oposition
-   #:osearch
-   #:omismatch
-   #:oreplace
-   #:osubstitute
-   #:oconcatenate
-   #:omerge
-   #:oremove
-   #:oremove-duplicates
-   #:osplit
-   #:oaref
-   #:opush
-   #:opushnew
-   #:opop
-   #:ointersection #:onintersection
-   #:oset-difference #:onset-difference
-   #:oset-exclusive-or #:onset-exclusive-or
-   #:osubsetp
-   #:ounion #:onunion
-  ))
+  (:use :cl)	   ; Please don't add any dependencies.
+  (:nicknames :o)))) ; too presumptuous, but maybe we could remove the 'o'
 (in-package :collections)
+
+;; This is so the generic functions that one might want to specialize, are
+;; separate, and we can use them to generate a template.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *methods*
+    '(emptyp
+      oelt
+      olength
+      omap
+      omapk
+      omapn
+      mappable
+      keyed-collection-p
+      omap-into
+      oevery
+      oany
+      ocopy
+      ofill
+      osubseq
+      oreduce
+      ocount
+      oreverse
+      osort
+      ofind
+      oposition
+      osearch
+      omismatch
+      oreplace
+      osubstitute
+      oconcatenate
+      omerge
+      oremove
+      oremove-duplicates
+      osplit
+      oaref
+      opush-element
+      opushnew-element
+      opop-element
+      ointersection
+      onintersection
+      oset-difference
+      onset-difference
+      oset-exclusive-or
+      onset-exclusive-or
+      osubsetp
+      ounion
+      onunion))
+
+  (defparameter *other-exports*
+    '(collection
+      container
+      container-data
+      oitem
+      ofill-with
+      ofill-range-with
+      oslice
+      oslice-from
+      osort-by
+      ofind-with-key
+      osplit
+      opush
+      opushnew
+      opop
+      make-collection-template))
+
+  (export *methods*)
+  (export *other-exports*))
 
 (defclass collection ()
   ()
@@ -329,6 +349,7 @@ values.")
   (mappable (container-data collection)))
 
 (defgeneric keyed-collection-p (collection)
+  (:documentation "Return true if COLLECTION is a keyed-collection.")
   (:method ((collection list))             nil)
   (:method ((collection vector))	   nil)
   (:method ((collection sequence))	   nil)
@@ -728,22 +749,182 @@ KEYS.")
   ;; @@@ Is it really permissible to do this? How crappy is the performace?
   (oaref (last args) (nbutlast args)))
 
-(defgeneric opush (collection item)
-  (:documentation ""))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Stack-like
 
-(defgeneric opushnew (collection item)
-  (:documentation ""))
+;; @@@ will these even work right?
 
-(defgeneric opop (collection)
-  (:documentation ""))
+(defgeneric opush-element (collection item)
+  (:documentation "Add ITEM to COLLECTION and return COLLECTION.")
+  (:method ((thing list) item)   (push item thing))
+  (:method ((thing vector) item) (vector-push-extend item thing) thing))
+
+(defmacro opush (collection item)
+  "Prepend ITEM to COLLECTION and return COLLECTION."
+  `(setf ,collection (opush-element ,collection ,item)))
+
+(defgeneric opushnew-element (collection item &rest key-args
+			      &key key test test-not)
+  (:documentation
+   "Add ITEM to COLLECTION only if it isn't already the same as any
+existing element, and return COLLECTION.")
+  (:method ((thing list) item &rest key-args &key key test test-not)
+    (declare (ignore key-args))
+    (cond
+      (test
+       (if key
+	   (pushnew item thing :key key :test test)
+	   (pushnew item thing :test test)))
+      (test-not
+       (if key
+	   (pushnew item thing :key key :test-not test-not)
+	   (pushnew item thing :test-not test-not)))))
+  (:method ((thing vector) item &rest key-args &key key test test-not)
+    (declare (ignorable key test test-not))
+    (when (not (apply #'find item thing key-args))
+      (vector-push-extend item thing))
+    thing))
+
+(defmacro opushnew (collection item &rest key-args &key key test test-not)
+  (declare (ignorable key test test-not))
+  `(setf ,collection
+	 (apply #'opushnew-element ,collection ,item ,key-args)))
+
+(defgeneric opop-element (collection)
+  (:documentation
+   "Remove the element from COLLECTION and return the element AND
+the modified COLLECTION.")
+  (:method ((thing list))   (values (pop thing) thing))
+  (:method ((thing vector)) (values (vector-pop thing) thing)))
+
+(defmacro opop (collection)
+  "Remove the first element from COLLECTION and return the element."
+  (dlib:with-unique-names (val new)
+    `(multiple-value-bind (,val ,new) (opop-element ,collection)
+       (setf ,collection ,new)
+       ,val)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; set-like
+;; Set-like
 
-;; intersection, nintersection
-;; set-difference, nset-difference
-;; set-exclusive-or, nset-exclusive-or
-;; subsetp
-;; union, nunion
+(defgeneric ointersection (collection-1 collection-2 &key key test test-not)
+  (:documentation
+   "Return a collection that contains every element that occurs in both
+COLLECTION-1 and COLLECTION-2."))
+
+(defgeneric onintersection (collection-1 collection-2 &key key test test-not)
+  (:documentation
+   "Return COLLECTION-1 destructively modified to contain every element that
+occurs in both COLLECTION-1 and COLLECTION-2."))
+
+(defgeneric oset-difference (collection-1 collection-2 &key key test test-not)
+  (:documentation
+   "Returns a collection of elements of COLLECTION-1 that do not appear in
+COLLECTION-2."))
+
+(defgeneric onset-difference (collection-1 collection-2 &key key test test-not)
+  (:documentation
+   "Returns COLLECTION-1 possibly destructively modified to remove elements
+that do not appear in COLLECTION-2."))
+
+(defgeneric oset-exclusive-or (collection-1 collection-2 &key key test test-not)
+  (:documentation
+   "Return a collection of elements that appear in exactly one of COLLECTION-1
+and COLLECTION-2"))
+
+(defgeneric onset-exclusive-or (collection-1 collection-2 &key key test test-not)
+  (:documentation
+   "Return a COLLECTION-1 possibly destructively modified to contain only
+elements that appear in exactly one of COLLECTION-1 and COLLECTION-2"))
+
+(defgeneric osubsetp (collection-1 collection-2 &key key test test-not)
+  (:documentation
+   "Return true if every elemnt of COLLECTION-1 matches eome element of
+COLLECTION-2."))
+
+(defgeneric ounion (collection-1 collection-2 &key key test test-not)
+  (:documentation
+   "Return a collection that contains every element that occurs in either
+COLLECTION-1 or COLLECTION-2."))
+
+(defgeneric onunion (collection-1 collection-2 &key key test test-not)
+  (:documentation
+   "Return COLLECTION-1 possibly destructively modfied so that contains every
+element that occurs in either COLLECTION-1 or COLLECTION-2."))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Generate a template
+
+(defun make-collection-template (name)
+  "Write a file named 'NAME.lisp' that is a template for making a new 
+collection type."
+  (let ((file-name (dlib:s+ name ".lisp")))
+    (with-open-file (stream file-name :direction :output)
+      (format stream ";;
+;; ~(~a~).lisp - Template for making a new collection type.
+;;
+
+;; 1. Decide if your collection is a container:
+;;
+;;    A container is a box around another collection type which is already
+;;    implemented.
+;;
+;;    If so, just subclass it from container, make sure to put something in
+;;    in the container-data slot, or override maybe even the container-data
+;;    method, and you're probably done.
+;;
+
+(defclass ~(~:*~a~) (container ?maybe-something-else?)
+  ....)
+
+;; 2. Decide if your collection is a:
+;;
+;;      keyed-collection     A collection with explicit keys.
+;;                           Example: hash-table.
+;;
+;;      ordered-collection   A collection with a specific order, and thus can be
+;;   			     indexed by the natural numbers.
+;;                           Example: vector.
+
+(defclass ~(~:*~a~) (keyed-collection)
+  ...
+  (:documentation \"A collection of ~:*~@:(~a~)s...\"))
+
+;; 3. Implement all the methods you want.
+;;
+;; Certain methods only make sense for certain type of collections. But, some
+;; methods that aren't stable (i.e. give different results for the same input)
+;; are still useful. For example, map and concatentate of un-ordered
+;; collections are not necessarily stable, but can be useful.
+;;
+;; Note that the docstrings are mostly here for reference. You could get rid of
+;; them, since they're on the generic function, or even customize them if
+;; there's something unusual about the method.
+;;
+;; My opinion is you should only implement the methods you think you will use.
+;; Writing code that never gets used, is not only pointless, but adds future
+;; maintenance overhead. On the other hand, for a wide audience, you may not
+;; know how it's going to be used, so it's nice to implement as many as you can.
+
+" name)
+;; (defun x ()
+;;   (progn
+;;     (progn
+;;       (progn
+	;; It's pathetic how crap Emacs is formatting Lisp code after 30 years!
+	(loop :for sym :in *methods* :do
+	   (when (and (fboundp sym)
+		      (typep (symbol-function sym) 'generic-function))
+	     (let ((ll (dlib:lambda-list sym))
+		   (*print-pretty* nil)
+		   (*print-escape* nil))
+	     (loop :for cc :in '(collection ordered-collection keyed-collection
+				 collection-1 collection-2)
+		:do
+		(setf ll (substitute `(,cc ,name) cc ll)))
+	     (format stream "(defmethod ~(~s~) ~(~w~)~%  ~s~%  )~%~%"
+		     sym ll (documentation sym 'function)))))
+	(format stream ";; End~%"))
+      (format t "Wrote ~a.~%" file-name)))
 
 ;; EOF
