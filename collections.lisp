@@ -17,7 +17,8 @@ defined in here, but it's *really* so you can define your own methods which work
 somewhat orthogonally with system classes. The ‘o’ prefix is rather ugly.
 We should entertain other naming ideas.")
   (:use :cl)	   ; Please don't add any dependencies.
-  (:nicknames :o)))) ; too presumptuous, but maybe we could remove the 'o'
+  (:nicknames :o)) ; too presumptuous, but maybe we could remove the 'o'
+))
 (in-package :collections)
 
 ;; This is so the generic functions that one might want to specialize, are
@@ -70,6 +71,8 @@ We should entertain other naming ideas.")
   (defparameter *other-exports*
     '(collection
       container
+      keyed-collection
+      ordered-collection
       container-data
       oitem
       ofill-with
