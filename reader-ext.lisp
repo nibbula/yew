@@ -48,6 +48,7 @@ loading this.
    #:clean-read-from-string
    #:package-robust-read-from-string
    #:package-robust-read
+   #:robust-read
    ))
 (in-package :reader-ext)
 
@@ -68,6 +69,16 @@ package if it doesn't. If DIRT-PILE is NIL, return a packageless symbol."
 
   (defmethod find-character ((client unicode-reader) name)
     (character-named name :try-lisp-names-p t))
+
+  (defclass robust-unicode-reader (unicode-reader)
+    ()
+    (:documentation
+     "A reader that reads unicode character names, avoids errors by substituting
+#\replacement_character for any unknown names."))
+
+  (defmethod find-character ((client robust-unicode-reader) name)
+    (or (character-named name :try-lisp-names-p t)
+	(code-char #XFFFD)))
 
   ;; @@@ maybe use this when make-structure-instance is in the quicklisp version.
 #|
@@ -208,7 +219,7 @@ un-interned symbol."
 
 #-has-read-intern
 (progn
-  (defclass robust-reader (unicode-reader)
+  (defclass robust-reader (robust-unicode-reader)
     ()
     (:documentation "A reader that doesn't fail on unknown packages."))
 
