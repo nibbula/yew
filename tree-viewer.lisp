@@ -290,20 +290,38 @@ generating function, so it will be called only the first time."))
 
 (defun convert-tree (tree &key (level 0) (type 'object-node))
   "Convert a list based TREE to a node based tree. "
-  (if (atom tree)
-      (make-instance type
-		     :object tree
-		     :open nil
-		     :branches nil)
-      (let ((node (make-instance type
-				:object (car tree)
-				:open (zerop level))))
-	(setf (node-branches node)
-	      (let ((list-of-rest-of-obj
-		     (if (listp (cdr tree)) (cdr tree) (list (cdr tree)))))
-		(loop :for n :in list-of-rest-of-obj
-		   :collect (convert-tree n :level (1+ level) :type type))))
-	node)))
+  (flet ((make-branch (n)
+	   (convert-tree n :level (1+ level) :type type))
+	 (make-leaf (n)
+	   (make-instance type :object n :open nil :branches nil)))
+    (cond
+      ((atom tree)
+       (make-leaf tree))
+      (t
+       (let ((node (make-instance type
+				  :object (car tree)
+				  :open (zerop level))))
+	 (setf (node-branches node)
+	       (cond
+		 ((null (rest tree)) nil)
+		 ((atom (rest tree))
+		  (list (make-leaf (rest tree))))
+		 (t
+		  ;; Handle dotted lists
+		  (loop :with n = (rest tree)
+		     :and result
+		     :do (if (consp n)
+			     ;; (push (car n) result)
+			     (push (make-branch (car n)) result)
+			     (progn
+			       (when n
+				 (push (make-branch n) result))
+			       (return (nreverse result))))
+		     :do (setf n (cdr n)))
+		  ;; (loop :for n :in (rest tree)
+		  ;;    :collect (make-branch n))
+		  )))
+	 node)))))
 
 (defgeneric %print-tree (tree &key max-depth indent level key)
   (:documentation "The inner part of print-tree which recurses and does all
