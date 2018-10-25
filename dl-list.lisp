@@ -14,7 +14,7 @@
 
 (defpackage :dl-list
   (:documentation "The nefarious doubly-linked list anti-pattern.")
-  (:use :cl)
+  (:use :cl :collections)
   (:export
    #:dl-list
    #:dl-node
@@ -40,7 +40,7 @@
 ; 	 :type (or null dl-list-type))
 ; but it doesn't work. So what should I do? For now I just omit the types.
 
-(defclass dl-list ()
+(defclass dl-list (ordered-collection)
   ((prev :initarg :prev :accessor %dl-prev :initform nil)
    (next :initarg :next :accessor %dl-next :initform nil)
    (content :initarg :content :accessor %dl-content :initform nil))
@@ -178,6 +178,218 @@
 	  :do (write (%dl-content i) :stream stream)
 	  :while (and (%dl-next i) (write-char #\space stream)))
     (write-char #\) stream)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; collection methods
+
+(defmethod emptyp ((thing dl-list))
+  "Return true if there are no objects in the collection."
+  (not (or (%dl-prev thing) (%dl-next thing)
+	   (%dl-content thing))))
+
+(defmethod oelt ((thing dl-list) n)
+  "Return the element of COLLECTION specified by KEY."
+  (dl-nth n thing))
+
+(defmethod olength ((thing dl-list))
+  "Return the length of a COLLECTION."
+  (dl-length thing))
+
+(defmethod omap (function (thing dl-list))
+  "Return a sequence of the results of applying FUNCTION to successive elements
+of COLLECTION. The sequence returned is usually a list unless COLLECTION is a
+sequence."
+  (loop :for i = thing :then (%dl-next i)
+     :collect (funcall function (%dl-content i))
+     :while (dl-next i)))
+
+(defmethod omapn (function (thing dl-list))
+  "Apply FUNCTION to successive elements of COLLECTION. Do not collect return
+values."
+  (dl-list-do thing function))
+
+(defmethod mappable ((collection dl-list)) t)
+(defmethod keyed-collection-p ((collection dl-list)) nil)
+
+(defmacro map-collections (list action collections)
+  "Not hygienic!!" 
+  `(catch 'done
+     (let ((i ,list))
+       (loop :for c :in ,collections :do
+	  (omapn (lambda (x)
+		   ,action
+		   (setf i (%dl-next i))
+		   (when (not (dl-next i))
+		     (throw 'done nil)))
+		 c)))))
+
+(defmethod omap-into ((mutable-collection dl-list) function &rest collections)
+  "Apply FUNCTION to each object in the COLLECTIONs and store the results in
+MUTABLE-COLLECTION. FUNCTION is a function of one argument that returns an
+object appropriate to be element of a collection of MUTABLE-COLLECTION.
+Returns MUTABLE-COLLECTION.
+
+If COLLECTIONS are SEQUENCEs, the elements are applied in the sequence order."
+  (map-collections mutable-collection (setf (%dl-content i) x) collections)
+  mutable-collection)
+
+(defmethod oevery (function &rest collections)
+  "Return true if FUNCTION returns true for every element of COLLECTIONS."
+  (catch 'done
+    (loop :for c :in collections :do
+       (let ((i c))
+	 (when (not (funcall function (%dl-content i)))
+	   (throw 'done nil))
+	 (setf i (%dl-next i))
+	 (when (not (dl-next i))
+	   (throw 'done nil))))
+    t))
+
+(defmethod oany (function &rest collections)
+  "Return true if FUNCTION returns true for any element of COLLECTIONS."
+  (catch 'done
+    (loop :for c :in collections :do
+       (let ((i c))
+	 (when (funcall function (%dl-content i))
+	   (throw 'done t))
+	 (setf i (%dl-next i))
+	 (when (not (dl-next i))
+	   (throw 'done nil))))
+    nil))
+
+(defmethod ocopy ((collection dl-list))
+  "Return new collection with the same elements as COLLECTION."
+  (make-dl-list collection))
+
+(defmethod ofill ((thing dl-list) item &key start end)
+  "Replaces the elements of SEQUENCE bounded by START and END with ITEM."
+  (block nil
+    (let ((l thing)
+	  (i 0))
+      (when (>= i start)
+	(setf (%dl-content l) item))
+      (setf l (%dl-next l))
+      (when (or (not (dl-next l)) (and end (>= i end)))
+	(return thing))
+      (incf i))))
+
+(defmethod osubseq ((thing dl-list) start &optional end)
+  "OSUBSEQ creates a sequence that is a copy of the subsequence of sequence
+bounded by START and END."
+  (block nil
+    (let ((l thing)
+	  (new nil)
+	  (i 0))
+      (when (>= i start)
+	(dl-push new (%dl-content l)))
+      (setf l (%dl-next l))
+      (when (or (not (dl-next l)) (and end (>= i end)))
+	(return new))
+      (incf i))))
+
+#|
+(defmethod osort ((collection dl-list) predicate &key key)
+  "Destructively sort a collection according to the order determined by the
+predicate function. PREDICATE should return non-NIL if ARG1 is to precede ARG2.
+As in other collection functions, KEY is a function that is given the collection
+element, and should return a value to be given to PREDICATE."
+  )
+
+(defmethod ofind (item (collection dl-list) &key from-end start end key test test-not)
+  "Search for an element of the COLLECTION bounded by START and END that
+satisfies the test TEST or TEST-NOT, as appropriate."
+  )
+
+(defmethod oposition (item (collection dl-list) &key from-end test test-not start end key)
+  "Return the index of the element that satisfies the TEST in COLLECTION.
+Return the leftmost if FROM-END is true, or of the rightmost if FROM-END is
+false. If no element satifies the test, NIL is returned."
+  )
+
+(defmethod osplit (separator (ordered-collection dl-list) &key omit-empty start end test key)
+  "Split the ORDERED-COLLECTION into subsequences separated by SEPARATOR.
+Return an ORDERED-COLLECTION of the subsequences. SEPARATOR can be a
+ORDERED-COLLECTION itself, which means the whole sequence is the separator.
+The returned collection might not be the same type you passed in. For example it
+might always be a list. But the pieces in that collection should be of the same
+type as the one given.
+  OMIT-EMPTY - If true, then don't return empty subsequnces.
+  START      - Element number to start gathering from. Defaults to 0.
+  END        - Element number to end gathering at. Defaults to the end of the
+               collection.
+  TEST       - A function called with an element which should return true if
+               that element is a separator. The SEPARATOR argument is ignored
+               if TEST is supplied and non-NIL.
+  KEY        - A function called with each element, which should return an
+               element to be tested.
+"
+  )
+
+(defmethod oaref (array &rest subscripts)
+  "Return an element of an array."
+  )
+
+(defmethod opush-element ((collection dl-list) item)
+  "Add ITEM to COLLECTION and return COLLECTION."
+  )
+
+(defmethod opushnew-element ((collection dl-list) item &rest key-args &key key test test-not)
+  "Add ITEM to COLLECTION only if it isn't already the same as any
+existing element, and return COLLECTION."
+  )
+
+(defmethod opop-element ((collection dl-list))
+  "Remove the element from COLLECTION and return the element AND
+the modified COLLECTION."
+  )
+
+(defmethod ointersection ((collection-1 dl-list) (collection-2 dl-list) &key key test test-not)
+  "Return a collection that contains every element that occurs in both
+COLLECTION-1 and COLLECTION-2."
+  )
+
+(defmethod onintersection ((collection-1 dl-list) (collection-2 dl-list) &key key test test-not)
+  "Return COLLECTION-1 destructively modified to contain every element that
+occurs in both COLLECTION-1 and COLLECTION-2."
+  )
+
+(defmethod oset-difference ((collection-1 dl-list) (collection-2 dl-list) &key key test test-not)
+  "Returns a collection of elements of COLLECTION-1 that do not appear in
+COLLECTION-2."
+  )
+
+(defmethod onset-difference ((collection-1 dl-list) (collection-2 dl-list) &key key test test-not)
+  "Returns COLLECTION-1 possibly destructively modified to remove elements
+that do not appear in COLLECTION-2."
+  )
+
+(defmethod oset-exclusive-or ((collection-1 dl-list) (collection-2 dl-list) &key key test test-not)
+  "Return a collection of elements that appear in exactly one of COLLECTION-1
+and COLLECTION-2"
+  )
+
+(defmethod onset-exclusive-or ((collection-1 dl-list) (collection-2 dl-list) &key key test test-not)
+  "Return a COLLECTION-1 possibly destructively modified to contain only
+elements that appear in exactly one of COLLECTION-1 and COLLECTION-2"
+  )
+
+(defmethod osubsetp ((collection-1 dl-list) (collection-2 dl-list) &key key test test-not)
+  "Return true if every elemnt of COLLECTION-1 matches eome element of
+COLLECTION-2."
+  )
+
+(defmethod ounion ((collection-1 dl-list) (collection-2 dl-list) &key key test test-not)
+  "Return a collection that contains every element that occurs in either
+COLLECTION-1 or COLLECTION-2."
+  )
+
+(defmethod onunion ((collection-1 dl-list) (collection-2 dl-list) &key key test test-not)
+  "Return COLLECTION-1 possibly destructively modfied so that contains every
+element that occurs in either COLLECTION-1 or COLLECTION-2."
+  )
+|#
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; @@@ how 'bout some tests?
 

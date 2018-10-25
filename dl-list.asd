@@ -10,6 +10,6 @@
     :licence            "GPLv3"
     :source-control	:git
     :long-description   "An ill advised list of dubious usefulness."
-;    :depends-on (@depends@)
+    :depends-on (:collections)
     :components
     ((:file "dl-list")))
