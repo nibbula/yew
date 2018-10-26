@@ -148,9 +148,10 @@ bound to."
   "Call FUNC on each binding in KEYMAP."
   (maphash func (keymap-map keymap)))
 
-(defun define-key (keymap key def)
-  "Define the KEY as performing the action in the KEYMAP."
-  (setf (gethash key (keymap-map keymap)) def))
+(defun define-key (keymap key definition)
+  "Define the KEY as DEFINITION in the KEYMAP. KEYMAP must be a keymap object.
+KEYs are compared with EQL. See also SET-KEY."
+  (setf (gethash key (keymap-map keymap)) definition))
 
 (defmacro push-keymap (new current)
   "Push a new keymap on the list of currently searched keymaps."
@@ -166,27 +167,33 @@ bound to."
     (when (eql ,current ,new)
       (setf ,current '()))))
 
-(defun set-key (keyseq def map)
-  "Define a key or sequence of keys in a keymap." ;; @@@ decribe me better
-  (when (not (or (keymap-p map) (consp map)))
-    (error "MAP should be a keymap or a keymap list"))
-  (if (or (vectorp keyseq) (listp keyseq))
-      (let* ((key (elt keyseq 0))
-	     (action (key-definition key map)))
+(defun set-key (key-sequence definition keymap)
+  "Define a key or sequence of keys in a keymap.
+  KEY-SEQUENCE    A single key, or a sequence of keys. Keys currently have
+                  the restriction that they have to be EQL.
+  DEFINITION      Customarily a function designator or a list to be applied,
+                  but has no formal restriction.
+  KEYMAP          A keymap object or keymap stack, which is a list of keymap
+                  objects. The keys are defined in the top keymap."
+  (when (not (or (keymap-p keymap) (consp keymap)))
+    (error "KEYMAP should be a keymap or a keymap list."))
+  (if (or (vectorp key-sequence) (listp key-sequence))
+      (let* ((key (elt key-sequence 0))
+	     (action (key-definition key keymap)))
 	;; If the key has a keymap binding
 	(if (and (symbolp action) (boundp action)
 		 (keymap-p (symbol-value action)))
 	    ;; look that up
-;	    (set-key (subseq keyseq 1) :map (symbol-value action))
-	    (set-key (subseq keyseq 1) def (symbol-value action))
+;	    (set-key (subseq key-sequence 1) :map (symbol-value action))
+	    (set-key (subseq key-sequence 1) definition (symbol-value action))
 	    ;; simple binding
-	    (typecase map
-	      (cons (define-key (car map) key action))
-	      (keymap (define-key map key def)))))
+	    (typecase keymap
+	      (cons (define-key (car keymap) key action))
+	      (keymap (define-key keymap key definition)))))
       ;; Just one key
-      (typecase map
-	(cons (define-key (car map) keyseq def))
-	(keymap (define-key map keyseq def)))))
+      (typecase keymap
+	(cons (define-key (car keymap) key-sequence definition))
+	(keymap (define-key keymap key-sequence definition)))))
 
 (defun key-binding (key keymap)
   "Return the binding of single key in single keymap. Return the default
@@ -323,11 +330,18 @@ to bind to the escape key, so you have escape key equivalents to meta keys."
 		    (define-key keymap key new-definition))) keymap)
   keymap)
 
-(defun keys-bound-to (definition keymap)
+(defun keys-bound-to (definition keymap &key test)
+  "Return a list of keys bound to DEFINITION in KEYMAP. Definitions are
+compared with TEST, which defaults to EQ."
   (let ((results))
-    (map-keymap #'(lambda (key def)
-		    (when (eq def definition)
-		      (push key results))) keymap)
+    (map-keymap (if test
+		    #'(lambda (key def)
+			(when (funcall test def definition)
+			  (push key results)))
+		    #'(lambda (key def)
+			(when (eq def definition)
+			  (push key results))))
+		    keymap)
     (remove-duplicates results)))
 
 ;; EOF
