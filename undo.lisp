@@ -121,10 +121,13 @@
     item))
 
 (defparameter *nice-undo-char-count* 20)
+(defparameter *nice-undo-big-threshold* 4)
 
 (defun undo-heuristic (e)
   "Undo until some aesthetically pleasing point."
-  (with-slots (non-word-chars) e
+  (with-slots (non-word-chars undo-recent-count) e
+    (when (not (equal (inator-last-command e) 'undo-command))
+      (setf undo-recent-count 0))
     (let (item last (count 0) non-word-this non-word-last)
       (labels ((is-char (item)
 		 (and item (undo-item-data item)
@@ -138,8 +141,10 @@
 	   :do
 	   (shiftf last item (undo-one e))
 	   (shiftf non-word-last non-word-this (is-non-word item))
+	   (incf undo-recent-count)
 	   :while
-	   (and (is-char item)
+	   (and (> undo-recent-count *nice-undo-big-threshold*)
+		(is-char item)
 		(< count *nice-undo-char-count*)
 		(or (and non-word-last non-word-this)
 		    (and (not non-word-this)

@@ -102,6 +102,10 @@ anything important.")
     :initform t
     :initarg :record-undo-p
     :documentation "True to enable undo recording.")
+   (undo-recent-count
+    :initarg :undo-recent-count :accessor undo-recent-count
+    :initform 0 :type fixnum
+    :documentation "How many undos have been done recently.")
    (exit-flag
     :accessor exit-flag
     :initform nil
