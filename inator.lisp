@@ -17,8 +17,7 @@ methods. You can also provide a custom keymap. You can probably get by with
 just providing methods for UPDATE-DISPLAY and AWAIT-EVENT, and then calling
 EVENT-LOOP with an INATOR sub-class instance.
 
-See FUI-INATOR for a curses based Inator. Despite it being well suited to
-terminal interfaces, it seems like it might be rather ill advised to make
+There is a terminal based TERMINAL-INATOR package, but please don't ever call it
 a TERM-INATOR.
 ")
   (:use :cl :dlib :keymap :char-util)
@@ -219,43 +218,88 @@ not call process-event with it."))
   "Default method which calls redraw."
   (redraw inator))
 
+;; @@@ This is quite hairy and not really reflected in keymap.lisp
 (defmethod process-event ((inator inator) event &optional keymap-in)
   "Default way to process an event."
   (with-slots (command last-command keymap) inator
-    (setf last-command command
-	  command (key-definition event (or keymap-in keymap)))
-    (flet ((apply-symbol (s &optional args)
+    (setf last-command command)
+    (let ((outer-map (or keymap-in keymap))
+	  event-list result saved-list)
+      (labels
+	  ((apply-symbol (s &optional args)
 	     (if (typep (symbol-function s) 'generic-function)
 		 (if (compute-applicable-methods (symbol-function s)
 						 (cons inator args))
 		     (apply s inator args)
 		     (message inator "(~S) has no applicable methods." s))
-		 (apply s inator args))))
-      (cond
-	((not command)
-	 (message inator "Event ~a is not bound in keymap ~w."
-		  event keymap)
-	 (return-from process-event))
-	;; a list to apply
-	((consp command)
-	 (if (fboundp (car command))
-	     (apply-symbol (car command) (cdr command))
-	     (message inator "(~S) is not defined." (car command))))
-	;; something represted by a symbol
-	((symbolp command)
-	 (cond
-	   ((fboundp command)		; a function
-	    (apply-symbol command))
-	   ((keymap-p (symbol-value command)) ; a keymap
-	    (process-event inator (await-event inator) (symbol-value command)))
-	   (t				; anything else
-	    (message inator "Key binding ~S is not a function or a keymap."
-		     command))))
-	;; a function object
-	((functionp command)
-	 (funcall command inator))
-	(t				; anything else is an error
-	 (error "Weird thing in keymap: ~s." command))))))
+		 (apply s inator args)))
+	   (get-event ()
+	     "Get a event from L, or if not L then push on event-list."
+	     (dbugf :event "get-event ~s~%" saved-list)
+	     (if saved-list
+		 (pop saved-list)
+		 (let ((ev (await-event inator)))
+		   (push ev event-list)
+		   ev)))
+	   (sub-process (ev map)
+	     "Look up the definition in keymap M and try to invoke it."
+	     (dbugf :event "sub-process ~s ~s ~s~%" ev saved-list map)
+	     (when (setf command (key-definition ev map))
+	       (invoke)))
+	   (invoke ()
+	     "Try to invoke command."
+	     (dbugf :event "invoke ~s ~s~%" saved-list command)
+	     (cond
+	       ;; a list to apply
+	       ((consp command)
+		(if (fboundp (car command))
+		    (progn
+		      (apply-symbol (car command) (cdr command))
+		      t)
+		    (progn
+		      (message inator "(~S) is not defined." (car command))
+		      (return-from process-event))))
+	       ;; something represted by a symbol
+	       ((symbolp command)
+		(cond
+		  ; a function
+		  ((fboundp command)
+		   (apply-symbol command)
+		   t)
+		  ; a keymap
+		  ((keymap-p (symbol-value command))
+		   (sub-process (get-event) (symbol-value command)))))
+	       ;; a plain keymap
+	       ((keymap-p command)
+		(sub-process (get-event) command))
+	       ;; a function object
+	       ((functionp command)
+		(funcall command inator)
+		t)
+	       (t ; anything else
+		(message inator "Key binding ~S is not a function or a keymap."
+			 command)
+		(return-from process-event nil))
+	       ((not command)
+		nil)
+	       (t ;; anything else is an error
+		(error "Weird thing in keymap: ~s." command)))))
+	;; (push event event-list)
+	(if (listp outer-map)
+	    ;; Try all the keymaps in outer-map, saving events in event-list,
+	    ;; until one invocation returns true. Re-pull events from
+	    ;; event-list for subsequent lookups.
+	    (loop
+	       :for m :in outer-map
+	       :while (not (setf result (sub-process event m)))
+	       :do
+	       (dbugf :event "try map ~s saved-list ~s~%" m saved-list)
+	       (setf saved-list (reverse event-list)))
+	    ;; Just one to try.
+	    (setf result (sub-process event outer-map)))
+	(when (not result)
+	  (message inator "Event ~a is not bound in keymap ~w."
+		   event keymap))))))
 
 (defmethod event-loop ((inator inator))
   "The default event loop. Using this loop a sub-class only has to supply the
@@ -302,7 +346,7 @@ UPDATE-DISPLAY and and AWAIT-EVENT methods."
        )))
 |#
 
-;; Unnecessary Syntactic Sugar™
+;; “Unnecessary Syntactic Sugar”™
 (defmacro with-inator ((var type &rest args) &body body)
   "Evaluate BODY with a new inator of type TYPE, made with ARGS passed to
 MAKE-INSTANCE, with VAR bound to the new instance."
