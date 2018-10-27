@@ -565,6 +565,18 @@ satisfies the test TEST or TEST-NOT, as appropriate.")
 pipelines."
   (ofind item collection :key key))
 
+(defmacro call-with-start-and-end (func args)
+  "Call func with args and START and END keywords, assume that an environemnt
+that has START and START-P and END and END-P."
+  `(progn
+     (if start-p
+	 (if end-p
+	     (,func ,@args :start start :end end)
+	     (,func ,@args :start start))
+	 (if end-p
+	     (,func ,@args ::end end)
+	     (,func ,@args)))))
+
 (defgeneric oposition (item collection &key from-end test test-not start end key)
   (:documentation
    "Return the index of the element that satisfies the TEST in COLLECTION.
@@ -574,39 +586,31 @@ false. If no element satifies the test, NIL is returned.")
 	    &key from-end test test-not key
 	      (start nil start-p)
 	      (end nil end-p))
-    (apply 'position
-	   `(,item ,collection
-	     :from-end ,from-end :test ,test :test-not ,test-not :key ,key
-	     ,@(when start-p `(:start ,start))
-	     ,@(when end-p `(:end ,end)))))
+    (call-with-start-and-end position (item collection
+					    :from-end from-end :test test
+					    :test-not test-not :key key)))
   (:method (item (collection vector)
 	    &key from-end test test-not key
 	      (start nil start-p)
 	      (end nil end-p))
-    (apply 'position
-	   `(,item ,collection
-	     :from-end ,from-end :test ,test :test-not ,test-not :key ,key
-	     ,@(when start-p `(:start ,start))
-	     ,@(when end-p `(:end ,end)))))
+    (call-with-start-and-end position (item collection
+					    :from-end from-end :test test
+					    :test-not test-not :key key)))
   (:method (item (collection sequence)
 	    &key from-end test test-not key
 	      (start nil start-p)
 	      (end nil end-p))
-    (apply 'position
-	   `(,item ,collection
-	     :from-end ,from-end :test ,test :test-not ,test-not :key ,key
-	     ,@(when start-p `(:start ,start))
-	     ,@(when end-p `(:end ,end))))))
+    (call-with-start-and-end position (item collection
+					    :from-end from-end :test test
+					    :test-not test-not :key key))))
 
 (defmethod oposition (item (collection container)
 		      &key from-end test test-not key
 			(start nil start-p)
 			(end nil end-p))
-  (apply #'oposition
-	 `(,item (container-data ,collection)
-		 :from-end ,from-end :test ,test :test-not ,test-not :key ,key
-		 ,@(when start-p `(:start ,start))
-		 ,@(when end-p `(:end ,end)))))
+  (call-with-start-and-end position (item (container-data collection)
+					  :from-end from-end :test test
+					  :test-not test-not :key key)))
 
 #|
 (defgeneric osearch (collection ...)
@@ -673,39 +677,31 @@ type as the one given.
 	    &key omit-empty test key
 	      (start nil start-p)
 	      (end nil end-p))
-    (apply 'dlib:split-sequence
-	   `(,separator ,collection
-	     :omit-empty ,omit-empty :test ,test :key ,key
-	     ,@(when start-p `(:start ,start))
-	     ,@(when end-p `(:end ,end)))))
+    (call-with-start-and-end dlib:split-sequence
+	   (separator collection
+	     :omit-empty omit-empty :test test :key key)))
   (:method (separator (collection vector)
 	    &key omit-empty test key
 	      (start nil start-p)
 	      (end nil end-p))
-    (apply 'dlib:split-sequence
-	   `(,separator ,collection
-	     :omit-empty ,omit-empty :test ,test :key ,key
-	     ,@(when start-p `(:start ,start))
-	     ,@(when end-p `(:end ,end)))))
+    (call-with-start-and-end dlib:split-sequence
+	   (separator collection
+	     :omit-empty omit-empty :test test :key key)))
   (:method (separator (collection sequence)
 	    &key omit-empty test key
 	      (start nil start-p)
 	      (end nil end-p))
-    (apply 'dlib:split-sequence
-	   `(,separator ,collection
-	     :omit-empty ,omit-empty :test ,test :key ,key
-	     ,@(when start-p `(:start ,start))
-	     ,@(when end-p `(:end ,end))))))
+    (call-with-start-and-end dlib:split-sequence
+	   (separator collection
+	     :omit-empty omit-empty :test test :key key))))
 
 (defmethod osplit (separator (collection container)
 		   &key omit-empty test key
 		     (start nil start-p)
 		     (end nil end-p))
-  (apply #'osplit
-	 `(,separator (container-data ,collection)
-		 :omit-empty ,omit-empty :test ,test :key ,key
-		 ,@(when start-p `(:start ,start))
-		 ,@(when end-p `(:end ,end)))))
+  (call-with-start-and-end
+   osplit (separator (container-data collection)
+		     :omit-empty omit-empty :test test :key key)))
 
 #|
 (defgeneric opick (collection &rest keys)
