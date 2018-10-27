@@ -10,18 +10,24 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Display-ish code
 
-(defun message (e fmt &rest args)
+;; @@@ I think this should probably be renamed to something like
+;; debug-message and
+;;
+;; (defmethod message ((e line-editor) fmt &rest args)
+;;
+;; should probably actually do what tmp-message does now.
+
+(defun debug-message (e fmt &rest args)
   "Show a little message for debugging."
   (declare (type line-editor e))
-  (tt-save-cursor)
-  (tt-cursor-off)
-  (tt-move-to 5 5)		; The only place we should call this
-  (tt-standout t)
-  ;; (apply #'tt-format (cons (line-editor-terminal e) (cons fmt args)))
-  (apply #'terminal-format (cons (line-editor-terminal e) (cons fmt args)))
-  (tt-standout nil)
-  (tt-cursor-on)
-  (tt-restore-cursor))
+  (with-saved-cursor (*terminal*)
+    (tt-cursor-off)
+    (tt-move-to 5 5)		; The only place we should call this
+    (tt-standout t)
+    ;; (apply #'tt-format (cons (line-editor-terminal e) (cons fmt args)))
+    (apply #'terminal-format (cons (line-editor-terminal e) (cons fmt args)))
+    (tt-standout nil)
+    (tt-cursor-on)))
 
 (defun log-message (e fmt &rest args)
   (when (debugging e)
@@ -440,35 +446,6 @@ Updates the screen coordinates."
 Updates the screen coordinates."
   (move-over e n))
 
-#|
-;;; @@@ Consider the issues of merging this with display-length.
-;;; @@@ Consider that this is quite wrong, especially since it would have to
-;;; do everything a terminal would do.
-(defun display-cols (str)
-  "Return the column the cursor is at after outputting STR."
-  (let ((sum 0))
-    (map nil
-	 #'(lambda (c)
-	     (cond
-	       ((graphic-char-p c)
-		(incf sum))
-	       ((eql c #\tab)
-		(incf sum (- 8 (mod sum 8))))
-	       ((eql c #\newline)
-		(setf sum 0))
-	       ((eql c #\backspace)
-		(decf sum))
-	       ((eql c #\escape)
-		#| here's where we're screwed |#)
-	       (t
-		(if (control-char-graphic c)
-		    2			; ^X
-		    4)			; \000
-		)))
-	 s)
-    sum))
-|#
-
 ;; Here's the problem:
 ;;
 ;; People can put any old stuff in the prompt that they want. This includes
@@ -518,6 +495,10 @@ Updates the screen coordinates."
   (tt-finish-output)
   )
 
+;; @@@ As a hack, on terminal-ansi we could check the string and see if there's
+;; anything weird in it, and if not, don't bother to do the slow asking the
+;; terminal to measure it for us.
+
 (defun do-prefix (e prompt-str)
   "Output a prefix."
   ;; (finish-all-output)
@@ -566,12 +547,12 @@ Updates the screen coordinates."
     ;; (log-message e "do-prompt s = ~s ~s" (olength s) s)
     (do-prefix e s)))
 
-(defun redraw (e)
+(defun redraw-line (e)
   "Erase and redraw the whole line."
   (tt-move-to-col 0)
   (tt-erase-to-eol)
   (setf (screen-col e) 0)
-  (do-prompt e (prompt e) (prompt-func e) :only-last-line t)
+  (do-prompt e (prompt-string e) (prompt-func e) :only-last-line t)
   (finish-output (terminal-output-stream (line-editor-terminal e)))
   (display-buf e)
   (with-slots (point buf) e
@@ -590,21 +571,36 @@ Updates the screen coordinates."
 
 (defun tmp-message (e fmt &rest args)
   ;;(apply #'tmp-prompt e fmt args)
-  (with-slots (screen-col screen-row buf point) e
+  (with-slots (screen-col screen-row buf point temporary-message) e
     (let ((saved-col screen-col)
-	  (saved-row screen-row))
+	  (saved-row screen-row)
+	  (offset 0)
+	  output-string endings)
       (move-over e (- (length buf) point))
       (tt-scroll-down 1)
+      (when (= saved-row (1- (tt-height)))
+	(incf offset))
       (tt-move-to-col 0)
       (tt-erase-to-eol)
-      (apply #'terminal-format *terminal* fmt args)
+      (setf output-string (with-output-to-fat-string (fs)
+			    (apply #'format fs fmt args))
+	    endings (calculate-line-endings
+		     e :buffer (fat-string-string output-string) :start 0))
+      (tt-write-string output-string)
+      (incf offset (length endings))
+      (decf saved-row offset)
       (tt-move-to saved-row saved-col)
       (setf screen-col saved-col
-	    screen-row saved-row)))
-  ;; (setf (need-to-redraw e) nil)
-  )
+	    screen-row saved-row
+	    temporary-message (1+ (length endings)))
+      ;; (setf (need-to-redraw e) nil)
+      )))
 
-;; @@@ should probably be called something else, like "clear under area"?
+(defmethod message ((e line-editor) fmt &rest args)
+  (apply #'tmp-message e fmt args))
+
+;; @@@ should probably be called something else, like "clear-under-area"?
+;; "flense-undercarriage" "scrub-nether-region", hmmm... or maybe this is fine.
 (defun clear-completions (e)
   "Erase completions, if there are any."
   (when (did-under-complete e)

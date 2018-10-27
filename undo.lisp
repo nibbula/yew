@@ -63,7 +63,7 @@
 	(tt-delete-char disp-len)
 	(buffer-delete
 	 e (undo-item-position item) (+ (undo-item-position item) item-len))
-	(setf (point e) (undo-item-position item))
+	(setf point (undo-item-position item))
 	(update-for-delete e disp-len item-len)))))
 
 (defun record-undo (e type &optional position data point)
@@ -100,7 +100,8 @@
 (defun undo-one (e)
   "Undo one item from the undo history. Return true if we should undo more."
   (let (item)
-    (if (equal (last-input e) (ctrl #\O)) ; @@@ bogus ^O until keymaps, etc
+    (if (equal (inator-last-command e) 'undo-command)
+	;;(ctrl #\O)) ; @@@ bogus ^O until keymaps, etc
       (progn
 	(if (undo-current e)
 	  (progn
@@ -116,11 +117,37 @@
 	    (undo-one-item e item))
 	  (beep e "No undo history."))))
 ;    (message-pause e "Undid ~s" item)
-    (and item (not (typep item 'boundary)))))
+    ;;(and item (not (typep item 'boundary)))))
+    item))
+
+(defparameter *nice-undo-char-count* 20)
+
+(defun undo-heuristic (e)
+  "Undo until some aesthetically pleasing point."
+  (with-slots (non-word-chars) e
+    (let (item last (count 0) non-word-this non-word-last)
+      (flet ((is-non-word (item)
+	       (and item (characterp (undo-item-data item))
+		    (find (simplify-char (undo-item-data item))
+			  non-word-chars))))
+	(loop
+	   :do
+	   (shiftf last item (undo-one e))
+	   (shiftf non-word-last non-word-this (is-non-word item))
+	   :while
+	   (and item (characterp (undo-item-data item))
+		(< count *nice-undo-char-count*)
+		(or (and non-word-last non-word-this)
+		    (and (not non-word-this)
+			 (not non-word-last))))
+	   :do
+	   (incf count))))))
 
 (defun undo (e)
   "Undo until an undo boundry or all undone."
-  (do () ((not (undo-one e)))))
+  ;; (do () ((not (undo-one e))))
+  (undo-heuristic e)
+  )
 
 (defmacro without-undo ((e) &body body)
   "Execute the body with undo recording off in the given editor."
@@ -135,7 +162,8 @@
 (defun undo-command (e)
   ;;(format t "~s~%" (undo-history e))
   ;;(undo e) ;; @@@ Please make undo boundries work @@@
-  (undo-one e)
+  ;;(undo-one e)
+  (undo e)
   ;; (redraw e) ;; @@@ This is overkill! (and screws up multiline prompts)
   )
 

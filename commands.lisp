@@ -65,6 +65,9 @@ beginning of the buffer if there is no word."
       (scan-over e :backward :not-in non-word-chars)
       (move-over e (- (- start point)) :start start))))
 
+(defmethod backward-multiple ((e line-editor))
+  (backward-word e))
+
 (defun forward-word (e)
   "Move the insertion point to the end of the next word or the end of the
 buffer if there is no word."
@@ -74,12 +77,18 @@ buffer if there is no word."
       (scan-over e :forward :not-in non-word-chars)
       (move-over e (- point start) :start start))))
 
+(defmethod forward-multiple ((e line-editor))
+  (forward-word e))
+
 (defun backward-char (e)
   "Move the insertion point backward one character in the buffer."
   (with-slots (point) e
     (when (> point 0)
       (move-over e -1)
       (decf point))))
+
+(defmethod backward-unit ((e line-editor))
+  (backward-char e))
 
 (defun forward-char (e)
   "Move the insertion point forward one character in the buffer."
@@ -88,17 +97,26 @@ buffer if there is no word."
       (move-over e 1)
       (incf point))))
 
+(defmethod forward-unit ((e line-editor))
+  (forward-char e))
+
 (defun beginning-of-line (e)
  "Move the insertion point to the beginning of the line (actually the buffer)."
   (with-slots (point buf) e
     (move-over e (- point))
     (setf point 0)))
 
+(defmethod move-to-beginning ((e line-editor))
+  (beginning-of-line e))
+
 (defun end-of-line (e)
   "Move the insertion point to the end of the line (actually the buffer)."
   (with-slots (point buf) e
     (move-over e (- (length buf) point))
     (setf point (fill-pointer buf))))
+
+(defmethod move-to-end ((e line-editor))
+  (end-of-line e))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Movement commands
@@ -109,11 +127,17 @@ buffer if there is no word."
   (history-prev (context e))
   (use-hist e))
 
+(defmethod previous ((e line-editor))
+  (previous-history e))
+
 (defun next-history (e)
   "Go to the next history entry."
   (history-put (buffer-string (buf e)) (context e))
   (history-next (context e))
   (use-hist e))
+
+(defmethod next ((e line-editor))
+  (next-history e))
 
 (defun beginning-of-history (e)
   "Go to the beginning of the history."
@@ -121,11 +145,17 @@ buffer if there is no word."
   (history-first (context e))
   (use-hist e))
 
+(defmethod move-to-top ((e line-editor))
+  (beginning-of-history e))
+
 (defun end-of-history (e)
   "Go to the end of the history."
   (history-put (buffer-string (buf e)) (context e))
   (history-last (context e))
   (use-hist e))
+
+(defmethod move-to-bottom ((e line-editor))
+  (end-of-history e))
 
 (defun add-to-history-p (e buf)
   "Returns true if we should add the current line to the history. Don't add it
@@ -160,15 +190,24 @@ if it's blank or the same as the previous line."
       )
     (setf quit-flag t)))
 
+(defmethod accept ((e line-editor))
+  (accept-line e))
+
 (defun copy-region (e)
   "Copy the text between the insertion point and the mark to the clipboard."
   (with-slots (point mark buf clipboard) e
     (setf clipboard (subseq buf mark point))))
 
+(defmethod copy ((e line-editor))
+  (copy-region e))
+
 (defun set-mark (e)
   "Set the mark to be the current point."
   (with-slots (point mark) e
     (setf mark point)))
+
+(defmethod select ((e line-editor))
+  (set-mark e))
 
 (defun exchange-point-and-mark (e)
   "Move point to the mark. Set the mark at the old point."
@@ -186,6 +225,9 @@ if it's blank or the same as the previous line."
 (defun isearch-backward (e)
   "Incremental search backward."
   (isearch e :backward))
+
+(defmethod search-command ((e line-editor))
+  (isearch-backward e))
 
 (defun isearch-forward (e)
   "Incremental search forward."
@@ -337,7 +379,7 @@ if it's blank or the same as the previous line."
 search can be ended by typing a control character, which usually performs a
 command, or Control-G which stops the search and returns to the start.
 Control-R searches again backward and Control-S searches again forward."
-  (with-slots (point buf cmd context) e
+  (with-slots (point buf command context) e
     (let ((quit-now nil)
 	  (start-point point)
 	  (start-hist (history-current-get context))
@@ -355,7 +397,7 @@ Control-R searches again backward and Control-S searches again forward."
 	(loop :while (not quit-now)
 	   :do
 	   (when (debugging e)
-	     (message e "pos = ~a start-from = ~a" pos start-from))
+	     (debug-message e "pos = ~a start-from = ~a" pos start-from))
 	   (display-search e search-string pos)
 	   (setf c (get-a-char e)
 		 added nil)
@@ -378,7 +420,7 @@ Control-R searches again backward and Control-S searches again forward."
 				 (max 0 (1- (length search-string)))))
 	     ((or (control-char-p c) (meta-char-p (char-code c)))
 	      (resync)
-	      (redraw e)
+	      (redraw-line e)
 	      (return-from isearch c))
 	     (t
 	      (stretchy-append search-string c)
@@ -395,22 +437,25 @@ Control-R searches again backward and Control-S searches again forward."
 		   (setf pos old-pos))
 		 (beep e "Not found"))))
 	(resync)
-	(redraw e)))))
+	(redraw-line e)))))
 
 
 ;; @@@ Consider calling redraw?
 (defun redraw-command (e)
   "Clear the screen and redraw the prompt and the input line."
-  (with-slots (prompt prompt-func point buf need-to-redraw) e
+  (with-slots (prompt-string prompt-func point buf need-to-redraw) e
     (tt-clear) (tt-home)
     (setf (screen-col e) 0 (screen-row e) 0)
-    (do-prompt e prompt prompt-func)
+    (do-prompt e prompt-string prompt-func)
     ;; (finish-output (terminal-output-stream
     ;; 		    (line-editor-terminal e)))
     (display-buf e)
     (when (< point (length buf))
       (move-over e (- (- (length buf) point)) :start (length buf)))
     (setf need-to-redraw nil)))
+
+(defmethod redraw ((e line-editor))
+  (redraw-command e))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Buffer editing
@@ -458,9 +503,9 @@ Don't update the display."
 
 (defun delete-char-or-exit (e)
   "At the beginning of a blank line, exit, otherwise delete-char."
-  (with-slots (point buf last-input quit-flag exit-flag) e
+  (with-slots (point buf last-command quit-flag exit-flag) e
     (if (and (= point 0) (= (length buf) 0)
-	     (not (eql last-input (ctrl #\d))))
+	     (not (eql last-command (ctrl #\d))))
 	;; At the beginning of a blank line, we exit,
 	;; so long as the last input wasn't ^D too.
 	(setf quit-flag t
@@ -534,6 +579,9 @@ Don't update the display."
 	(incf point len)
 	(update-for-insert e)
 	))))
+
+(defmethod paste ((e line-editor))
+  (yank e))
 
 (defun forward-word-action (e action)
   (with-slots (point buf non-word-chars) e
@@ -746,8 +794,8 @@ in order, \"{open}{close}...\".")
 	    (tt-beginning-of-line)
 	    (tt-erase-line)
 	    (setf (screen-col e) 0)
-	    (with-slots (prompt prompt-func point buf) e
-	      (do-prompt e prompt prompt-func)
+	    (with-slots (prompt-string prompt-func point buf) e
+	      (do-prompt e prompt-string prompt-func)
 	      (display-buf e)
 	      (when (< point (length buf))
 		(move-backward e (string-display-length (subseq buf point)))))
@@ -772,19 +820,18 @@ in order, \"{open}{close}...\".")
 
 (defun quoted-insert (e)
   "Insert the next character input without interpretation."
-  (setf (cmd e) (get-a-char e))
+  (setf (inator-command e) (get-a-char e))
   (self-insert e t))
 
 (defun self-insert (e &optional quoted char)
-  "Try to insert a character into the buffer."
-  (with-slots (cmd buf point screen-col) e
+  (with-slots (command last-event buf point screen-col) e
     (when (not char)
-      (setf char cmd))
+      (setf char last-event))
     (cond
       ((not (characterp char))
        ;; @@@ Perhaps we should get a real error, since this is probably a bug
        ;; not just a mis-configuration?
-       ;(cerror "Go on" "~a is not a character." char)
+       ;;(cerror "Go on" "~a is not a character." char)
        (beep e "~a is not a character." char))
       ((and (not (graphic-char-p char)) (not quoted))
        (beep e "~a is unbound." char))
@@ -831,10 +878,20 @@ in order, \"{open}{close}...\".")
 	       ;; do the dumb way out
 	       (update-for-insert e))))))))
 
-(defun read-key-sequence (e &optional keymap)
-  "Read a key sequence from the user. Descend into keymaps.
- Return a key or sequence of keys."
-  (get-key-sequence (λ () (get-a-char e)) (or keymap (line-editor-keymap e))))
+(defgeneric self-insert-command (line-editor)
+  (:documentation "Try to insert a character into the buffer.")
+  (:method ((e line-editor))
+    (self-insert e)))
+
+;; @@@ Is this reasonable?
+(defmethod default-action ((e line-editor))
+  (self-insert e))
+
+;; @@@ we can probably just use the one in terminal-inator?
+;; (defmethod read-key-sequence ((e line-editor) &optional keymap)
+;;   "Read a key sequence from the user. Descend into keymaps.
+;;  Return a key or sequence of keys."
+;;   (get-key-sequence (λ () (get-a-char e)) (or keymap (inator-keymap e))))
 
 (defun ask-function-name (&optional (prompt "Function: "))
   "Prompt for a function name and return symbol of a function."
@@ -853,7 +910,7 @@ in order, \"{open}{close}...\".")
 	(set-key key-seq cmd (line-editor-local-keymap e))
 	(tmp-message e "Not a function."))))
 
-(defun describe-key-briefly (e)
+(defmethod describe-key-briefly ((e line-editor))
   "Tell what function a key invokes."
   (tmp-prompt e "Describe key: ")
   (let* ((key-seq (read-key-sequence e))
@@ -868,7 +925,7 @@ in order, \"{open}{close}...\".")
 			(key-sequence-string key-seq) def)
 	   (tmp-message e "~w is not bound"
 			(key-sequence-string key-seq)))))
-    (redraw e)))
+    (redraw-line e)))
 
 (defun what-cursor-position (e)
   "Describe the cursor position."
@@ -885,7 +942,7 @@ in order, \"{open}{close}...\".")
 		       code code)
 	  (tmp-message e "~s of ~s Row: ~s Column: ~s"
 		       point (length buf) screen-row screen-col))
-      ;;(redraw e)
+      ;;(redraw-line e)
       )))
 
 (defun exit-editor (e)
@@ -893,6 +950,9 @@ in order, \"{open}{close}...\".")
   (with-slots (quit-flag exit-flag) e
     (setf quit-flag t
 	  exit-flag t)))
+
+(defmethod quit ((e line-editor))
+  (exit-editor e))
 
 ;; This is mostly for binding to purposely meaningless commands.
 (defun beep-command (e)

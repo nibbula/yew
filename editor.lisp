@@ -42,27 +42,17 @@ it can be somewhat unpredictable, especially with threads. Don't use it for
 anything important.")
 
 ;; The history is not in here because it is shared by all editors.
-(defclass line-editor ()
-  ((cmd
-    :accessor cmd
+(defclass line-editor (terminal-inator)
+  ((last-event
+    :accessor last-event
     :initform nil
-    :initarg :cmd
-    :documentation "Current command. Usually the input character")
-   (last-input
-    :accessor last-input
-    :initform nil
-    :initarg :last-input
-    :documentation "Last input command.")
+    :initarg :last-event
+    :documentation "Last input event.")
    (buf
     :accessor buf
     :initform nil
     :initarg :buf
     :documentation "Current line buffer.")
-   (point
-    :accessor point
-    :initform 0
-    :initarg :point
-    :documentation "Cursor position in buf.")
    (screen-row
     :accessor screen-row
     :initform 0
@@ -112,11 +102,6 @@ anything important.")
     :initform t
     :initarg :record-undo-p
     :documentation "True to enable undo recording.")
-   (quit-flag
-    :accessor quit-flag
-    :initform nil
-    :initarg :quit-flag
-    :documentation "True to stop editing.")
    (exit-flag
     :accessor exit-flag
     :initform nil
@@ -126,10 +111,10 @@ anything important.")
     :accessor non-word-chars
     :initarg :non-word-chars
     :documentation "Characters that are not considered part of a word.")
-   (prompt
-    :accessor prompt
-    :initarg :prompt
-    :documentation "Prompt string.")
+   (prompt-string
+    :accessor prompt-string
+    :initarg :prompt-string
+    :documentation "String to print before reading user input.")
    (prompt-func
     :accessor prompt-func
     :initarg :prompt-func
@@ -183,6 +168,11 @@ anything important.")
     :initarg :need-to-redraw
     :initform nil
     :documentation "True if we need to redraw the whole line.")
+   (temporary-message
+    :initarg :temporary-message :accessor temporary-message
+    :initform nil :type (or null fixnum)
+    :documentation
+    "Lines of temporary message we need to clear, or NIL if none.")
    (input-callback
     :accessor line-editor-input-callback
     :initarg :input-callback
@@ -203,10 +193,6 @@ anything important.")
     :initarg :debug-log
     :initform nil
     :documentation "A list of messages logged for debugging.")
-   (keymap
-    :accessor line-editor-keymap
-    :initarg :keymap
-    :documentation "The keymap.")
    (local-keymap
     :accessor line-editor-local-keymap
     :initarg :local-keymap
@@ -219,7 +205,7 @@ anything important.")
    )
   (:default-initargs
     :non-word-chars *default-non-word-chars*
-    :prompt *default-prompt*
+    :prompt-string *default-prompt*
     ;;:terminal-class 'terminal-ansi
     :terminal-class (or (and *terminal* (class-of *terminal*))
 			;;'terminal-ansi
@@ -252,11 +238,13 @@ anything important.")
     (setf (slot-value e 'local-keymap)
 	  (make-instance 'keymap)))
 
-  ;; Unless keymap was given, set the it to use the normal keymap and
+  ;; Unless keymap was given, set the it to use the normal keymaps and
   ;; the local keymap.
-  (unless (and (slot-boundp e 'keymap) (slot-value e 'keymap))
+  (unless (and (slot-boundp e 'keymap) (slot-value e 'keymap)
+	       (not (eq (slot-value e 'keymap) *default-inator-keymap*)))
     (setf (slot-value e 'keymap)
-	  `(,(slot-value e 'local-keymap) ,*normal-keymap*)))
+	  `(,(slot-value e 'local-keymap) ,*normal-keymap*
+	     ,*default-inator-keymap*)))
 
   ;; Make a default line sized buffer if one wasn't given.
   (when (or (not (slot-boundp e 'buf)) (not (slot-value e 'buf)))
@@ -273,9 +261,11 @@ but perhaps reuse some resources."))
 
 (defmethod freshen ((e line-editor))
   "Make the editor ready to read a fresh line."
-  (setf (cmd e)			nil
-	(last-input e)		nil
-	(point e)		0
+  (setf (inator-command e)	nil
+	(inator-last-command e) nil
+	(last-event e)          nil
+	(inator-point e)	0
+	(inator-quit-flag e)	nil
 	(fill-pointer (buf e))	0
 ;;;	(screen-row e) (terminal-get-cursor-position (line-editor-terminal e))
 	(screen-row e)		0
@@ -285,7 +275,6 @@ but perhaps reuse some resources."))
 	(undo-history e)	nil
 	(undo-current e)	nil
 	(need-to-redraw e)	nil
-	(quit-flag e)		nil
 	(exit-flag e)		nil
 	(did-under-complete e)	nil))
 
@@ -294,6 +283,10 @@ but perhaps reuse some resources."))
 (defun get-buffer-string (e)
   "Return a string of the buffer."
   (buffer-string (buf e)))
+
+;; @@@ compatibility
+(defalias 'point 'inator-point)
+(defalias 'line-editor-keymap 'inator-keymap)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; input
@@ -307,42 +300,13 @@ but perhaps reuse some resources."))
       (funcall (line-editor-input-callback e) c))
     c))
 
-#|
-;; Perhaps we should consider refactoring some part of get-a-char?
-(defun read-utf8-char (e)
-  "Read one UTF-8 character from the terminal of the line-editor E and return it."
-  (declare (type line-editor e))
-  (tt-finish-output)
-  (with-foreign-object (c :unsigned-char)
-    (let (status (tty (line-editor-terminal e)))
-      (loop
-	 :do (setf status (posix-read (terminal-file-descriptor tty) c 1))
-	 :if (and (< status 0) (or (= *errno* +EINTR+) (= *errno* +EAGAIN+)))
-	 :do
-	   (terminal-start tty) (redraw e) (tt-finish-output)
-	 :else
-	   :return
-	 :end)
-      (cond
-	((< status 0)
-	 (error "Read error ~d ~d ~a~%" status nos:*errno*
-		(nos:strerror nos:*errno*)))
-	((= status 0)
-	 nil)
-	((= status 1)
-	 (when (line-editor-input-callback e)
-	   (let ((cc (code-char (mem-ref c :unsigned-char))))
-	     (funcall (line-editor-input-callback e) cc)
-	     cc))
-	 (code-char (mem-ref c :unsigned-char)))))))
-|#
+(defmethod await-input ((e line-editor))
+  (setf (last-event e) (get-a-char e)))
 
+;; @@@ What was the idea?
 ;; (defvar *key-tree* '())
 ;;   "")
-;; @@@@@@@@@@@@@@@@@@@@@ SUPA
 ;; (defun record-key (key)
-;;   (
 ;;   )
-
 
 ;; EOF

@@ -66,7 +66,7 @@
     (#\escape			. *escape-keymap*)
     (,(ctrl #\X)		. *ctlx-keymap*)
     )
-  :default-binding 'self-insert
+  :default-binding 'self-insert-command
 )
 
 ;; These ^X commands are quite impoverished.
@@ -88,32 +88,7 @@
     (#\=		. what-cursor-position)
     (,(ctrl #\C)	. exit-editor)
     (,(ctrl #\X)	. exchange-point-and-mark)))
-;  :default-binding #| (beep e "C-x ~a is unbound." cmd |#
-
-#|
-(defkeymap *app-key-keymap*
-  `((#\A . previous-history)		; :up
-    (#\B . next-history)		; :down
-    (#\C . forward-char) 		; :right
-    (#\D . backward-char) 		; :left
-    ;; Movement keys
-    (#\H . beginning-of-line) 		; :home
-    (#\F . end-of-line) 		; :end
-    ;; Function keys
-;    (#\P . ) 				; :f1
-;    (#\Q . ) 				; :f2
-;    (#\R . ) 				; :f3
-;    (#\S . ) 				; :f4
-    ))
-
-(defkeymap *escape-raw-keymap*
-  `(
-    ;;(#\O	. do-app-key)
-    (#\O	. *app-key-keymap*)
-    (#\[	. do-function-key)
-    (#\newline  . finish-line)
-   ))
-|#
+;  :default-binding #| (beep e "C-x ~a is unbound." command |#
 
 (defkeymap *special-keymap*
   `(
@@ -164,7 +139,7 @@
     (,(ctrl #\O)		. vi-do-command)
     (,(ctrl #\X)		. *ctlx-keymap*)
     )
-  :default-binding 'self-insert
+  :default-binding 'self-insert-command
 )
 
 ;; Make the stuff in the special keymap appear in the vi insert keymap too.
@@ -259,28 +234,12 @@
     (#\escape			. beep-command)
     (,(ctrl #\X)		. *ctlx-keymap*)
     )
-  :default-binding 'self-insert
+  :default-binding 'self-insert-command
 )
 
 (add-keymap *special-keymap* *vi-command-mode-keymap*)
 
-;; @@@ do we really need this?
-;; (defun bad-special-key (e)
-;;   (beep e "Bad special key ~s." key))
-
 #|
-(defun do-app-key (e)
-  (with-slots (cmd) e
-    (do-special-key e (setf cmd (read-app-key e)))))
-
-(defun do-function-key (e)
-  (with-slots (cmd) e
-    (do-special-key e (setf cmd (read-function-key e)))))
-
-(defun do-special-key (e key)
-  (perform-key e key *special-keymap*))
-|#
-
 ;; Key bindings can be a list to apply, or a symbol bound to function to call,
 ;; or a keymap in which to look up further key presses.
 (defun perform-key (e key keymap)
@@ -302,9 +261,9 @@
 	 ((fboundp action)		; a function
 	  (funcall action e))
 	 ((keymap-p (symbol-value action)) ; a keymap
-	  (setf (cmd e) (get-a-char e))
-	  (log-message e "keymap cmd ~s" (cmd e))
-	  (perform-key e (cmd e) (symbol-value action)))
+	  (setf (inator-command e) (get-a-char e))
+	  (log-message e "keymap command ~s" (inator-command e))
+	  (perform-key e (inator-command e) (symbol-value action)))
 	 (t				; anything else
 	  (beep e "Key binding ~S is not a function or a keymap." action))))
       ;; a function object
@@ -313,6 +272,7 @@
        (funcall action e))
       (t					; anything else is an error
        (error "Weird thing in keymap: ~s." action)))))
+|#
 
 (defvar *terminal-name* nil
   "Device name of the terminal to use for input.")
@@ -384,7 +344,7 @@ Keyword arguments:
   (let* ((e (or editor (make-instance
 			'line-editor
 			:point		    	0
-			:prompt		    	prompt
+			:prompt-string	    	prompt
 			:prompt-func	    	output-prompt-func
 			:completion-func    	completion-func
 			:context	    	context
@@ -422,12 +382,12 @@ Keyword arguments:
     (run-hooks *entry-hook*)
 
     ;; Output the prompt
-    (setf (prompt e) prompt (prompt-func e) output-prompt-func)
-    (do-prompt e (prompt e) (prompt-func e))
+    (setf (prompt-string e) prompt (prompt-func e) output-prompt-func)
+    (do-prompt e (prompt-string e) (prompt-func e))
     (when string
       (without-undo (e)
 	(buffer-insert e 0 string)
-	(setf (point e) (length string))
+	(setf (inator-point e) (length string))
 	(display-buf e 0)))
 
     ;; If the terminal is in line mode even after we set it to :char mode,
@@ -438,8 +398,8 @@ Keyword arguments:
       (return-from rl (values (read-line *terminal*) e)))
 
     ;; Command loop
-    (with-slots (quit-flag exit-flag cmd buf point last-input terminal
-		 debugging) e
+    (with-slots (quit-flag exit-flag command buf point last-command terminal
+		 debugging temporary-message last-event) e
       (let ((result nil))
 	(unwind-protect
 	     (loop :do
@@ -452,7 +412,7 @@ Keyword arguments:
 			   ;; (when (typep *terminal*
 			   ;; 		'terminal-crunch:terminal-crunch)
 			   ;;   (terminal-crunch::start-line *terminal*))
-			   point cmd)
+			   point command)
 		  (show-message-log e))
 		;; @@ Is this really where I want it?
 		(when (line-editor-output-callback e)
@@ -462,18 +422,29 @@ Keyword arguments:
 		       (funcall (line-editor-output-callback e) e)
 		    (tt-cursor-on)
 		    (tt-restore-cursor)))
-		(setf cmd (get-a-char e))
-		(log-message e "cmd ~s" cmd)
+		;;(setf command (await-event e))
+		(setf last-event (await-event e))
+		(log-message e "command ~s" command)
 		(when (need-to-redraw e)
-		  (redraw e))
-		(if (equal cmd '(nil))
+		  (redraw-line e))
+		(when temporary-message
+		  ;; Clear out the temporary message.
+		  (loop :repeat temporary-message
+		     :do
+		     (tt-down)
+		     (tt-erase-line))
+		  (tt-up temporary-message)
+		  (tt-finish-output)
+		  (setf temporary-message nil))
+		(if (equal command '(nil))
 		    (if eof-error-p
 			(error (make-condition 'end-of-file
 					       :stream input-stream))
 			(setf result eof-value))
 		    (progn
 		      (setf (did-complete e) nil)
-		      (perform-key e cmd (line-editor-keymap e))
+		      ;;(perform-key e command (inator-keymap e))
+		      (process-event e last-event (inator-keymap e))
 		      (setf (last-command-was-completion e) (did-complete e))
 		      (when (not (last-command-was-completion e))
 			(set-completion-count e 0))
@@ -486,7 +457,7 @@ Keyword arguments:
 			    ((and (plusp point)
 				  (is-close-char (aref buf (1- point))))
 			     (highlight-paren e (1- point)))))))
-		(setf last-input cmd)
+		(setf last-command command)
 		:while (not quit-flag))
 	  (block nil
 	    (tt-finish-output)

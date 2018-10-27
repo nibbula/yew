@@ -27,7 +27,7 @@ command line.")
 
 ;; Most of the work is done by print-columns, from dlib-misc.
 (defun print-completions-over (e comp-result)
-  (with-slots (completion-func buf point saved-point prompt prompt-func) e
+  (with-slots (completion-func buf point saved-point prompt-string prompt-func) e
     ;; downcased list 1 per line
     (let ((saved-point point))
       (end-of-line e)
@@ -57,7 +57,7 @@ command line.")
 			:stream str))
        *terminal*))
     (setf (screen-col e) 0)
-    (do-prompt e prompt prompt-func)
+    (do-prompt e prompt-string prompt-func)
     (display-buf e)
     (when (< point (length buf))
       (move-over e (- (- (length buf) point))))))
@@ -211,7 +211,7 @@ terminal."
 
 (defun complete (e &optional comp-func)
   "Call the completion function and display the results, among other things."
-  (with-slots (completion-func point buf last-input) e
+  (with-slots (completion-func point buf) e
     (setf comp-func (or comp-func completion-func))
     (when (not comp-func)
       (beep e "No completion active.")
