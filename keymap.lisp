@@ -105,6 +105,8 @@ Keymap stacks:
 	  (alist-to-hash-table map (make-hash-table))))
   keymap)
 
+;; @@@ Make the map be an alist under a certain threshold of population, but
+;; allow a hint to make a big one when creating.
 (defmethod initialize-instance :after ((k keymap) &rest initargs)
   "Initialize a keymap. If the map is an alist convert it into a hash table."
   (declare (ignore initargs))
@@ -174,26 +176,35 @@ KEYs are compared with EQL. See also SET-KEY."
   DEFINITION      Customarily a function designator or a list to be applied,
                   but has no formal restriction.
   KEYMAP          A keymap object or keymap stack, which is a list of keymap
-                  objects. The keys are defined in the top keymap."
+                  objects. The keys are defined in the first keymap."
   (when (not (or (keymap-p keymap) (consp keymap)))
     (error "KEYMAP should be a keymap or a keymap list."))
-  (if (or (vectorp key-sequence) (listp key-sequence))
-      (let* ((key (elt key-sequence 0))
-	     (action (key-definition key keymap)))
-	;; If the key has a keymap binding
-	(if (and (symbolp action) (boundp action)
-		 (keymap-p (symbol-value action)))
-	    ;; look that up
-;	    (set-key (subseq key-sequence 1) :map (symbol-value action))
-	    (set-key (subseq key-sequence 1) definition (symbol-value action))
-	    ;; simple binding
-	    (typecase keymap
-	      (cons (define-key (car keymap) key action))
-	      (keymap (define-key keymap key definition)))))
-      ;; Just one key
-      (typecase keymap
-	(cons (define-key (car keymap) key-sequence definition))
-	(keymap (define-key keymap key-sequence definition)))))
+  (labels ((real-keymap (map)
+	     (etypecase map
+	       (cons (car map))
+	       (keymap map)))
+	   (set-single-key (map key def)
+	     (define-key (real-keymap map) key def)))
+    (if (or (vectorp key-sequence) (listp key-sequence))
+	(let* ((key (elt key-sequence 0))
+	       (action (key-definition key keymap)))
+	  (cond
+	    ((= (length key-sequence) 1)
+	     ;; simple single binding
+	     (set-single-key keymap key definition))
+	    ;; If the key has a symbolic keymap binding
+	    ((and action (symbolp action) (boundp action)
+		  (keymap-p (symbol-value action)))
+	     ;; look that up and try to set it
+	     (set-key (subseq key-sequence 1) definition (symbol-value action)))
+	    ((keymap-p action)
+	     (set-key (subseq key-sequence 1) definition action))
+	    (t ;; We have to make a new keyamp for this key
+	     (let ((new-map (make-instance 'keymap)))
+	       (set-single-key keymap key new-map)
+	       (set-key (subseq key-sequence 1) definition new-map)))))
+	;; Just one key
+	(set-single-key keymap key-sequence definition))))
 
 (defun key-binding (key keymap)
   "Return the binding of single key in single keymap. Return the default
@@ -223,13 +234,17 @@ there is no binding."
   (if (and (or (vectorp keyseq) (listp keyseq)) (not (zerop (length keyseq))))
       (let* ((key (elt keyseq 0))
 	     (action (key-definition key map)))
-	;; If the key has a keymap binding
-	(if (and (symbolp action) (boundp action)
-		 (keymap-p (symbol-value action)))
+	(cond
+	  ;; If the key has a symbol keymap binding
+	  ((and (symbolp action) (boundp action)
+		(keymap-p (symbol-value action)))
 	    ;; look that up
-	    (key-sequence-binding (subseq keyseq 1) (symbol-value action))
-	    ;; simple binding
-	    action))
+	   (key-sequence-binding (subseq keyseq 1) (symbol-value action)))
+	  ((keymap-p action)
+	   (key-sequence-binding (subseq keyseq 1) action))
+	  (t
+	   ;; simple binding
+	   action)))
       ;; Just one key
       (key-definition keyseq map)))
 
@@ -250,13 +265,17 @@ there is no binding."
 Descend into keymaps. Return a key or sequence of keys."
   (let* ((c (funcall get-key-function))
 	 (action (key-definition c keymap)))
-    (if (and (symbolp action) (boundp action) (keymap-p (symbol-value action)))
-	(let ((result-seq (get-key-sequence get-key-function
-					    (symbol-value action))))
-	  (if (listp result-seq)
-	      (append (list c) result-seq)
-	      (list c result-seq)))
-	c)))
+    (flet ((sub-map (map)
+	     (let ((result-seq (get-key-sequence get-key-function map)))
+	       (if (listp result-seq)
+		   (append (list c) result-seq)
+		   (list c result-seq)))))
+      (cond
+	((and (symbolp action) (boundp action) (keymap-p (symbol-value action)))
+	 (sub-map (symbol-value action)))
+	((keymap-p action)
+	 (sub-map action))
+	(t c)))))
 
 (defun add-keymap (source dest)
   "Add all the key definitions from the SOURCE keymap to the DEST keymap.
