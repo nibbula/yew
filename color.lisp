@@ -30,6 +30,18 @@
   '(:black :red :green :yellow :blue :magenta :cyan :white)
   "Simple color names.")
 
+;; In case you don't want to load color-names, but need to use lookup-color.
+(defparameter *simple-color-values*
+  '((:black   . #(:rgb 0 0 0))
+    (:red     . #(:rgb 1 0 0))
+    (:green   . #(:rgb 0 1 0))
+    (:yellow  . #(:rgb 1 1 0))
+    (:blue    . #(:rgb 0 0 1))
+    (:magenta . #(:rgb 1 0 1))
+    (:cyan    . #(:rgb 0 1 1))
+    (:white   . #(:rgb 1 1 1)))
+  "Simple color values.")
+
 ;; Colors are stored as:
 ;;
 ;; (color-model number [number...])
@@ -91,8 +103,12 @@
 (defun lookup-color (color)
   "Find the color values for a color name, or just return it."
   (if (keywordp color)
-      (let ((sym (find-symbol (symbol-name color) :color-names)))
-	(if sym (symbol-value sym) color))
+      (if (find-package :color-names)
+	  (let ((sym (find-symbol (symbol-name color) :color-names)))
+	    (if sym (symbol-value sym) color))
+	  (or (and *simple-color-values*
+		   (cdr (assoc color *simple-color-values*)))
+	      color))
       color))
 
 (defgeneric color-model-component (color-model color component-name)
