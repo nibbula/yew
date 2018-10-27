@@ -126,16 +126,20 @@
   "Undo until some aesthetically pleasing point."
   (with-slots (non-word-chars) e
     (let (item last (count 0) non-word-this non-word-last)
-      (flet ((is-non-word (item)
-	       (and item (characterp (undo-item-data item))
-		    (find (simplify-char (undo-item-data item))
-			  non-word-chars))))
+      (labels ((is-char (item)
+		 (and item (undo-item-data item)
+		      (= (length (undo-item-data item)) 1)
+		      (ocharacterp (oelt (undo-item-data item) 0))))
+	       (is-non-word (item)
+		 (and (is-char item)
+		      (find (simplify-char (oelt (undo-item-data item) 0))
+			    non-word-chars))))
 	(loop
 	   :do
 	   (shiftf last item (undo-one e))
 	   (shiftf non-word-last non-word-this (is-non-word item))
 	   :while
-	   (and item (characterp (undo-item-data item))
+	   (and (is-char item)
 		(< count *nice-undo-char-count*)
 		(or (and non-word-last non-word-this)
 		    (and (not non-word-this)
