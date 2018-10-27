@@ -57,6 +57,8 @@ bloatmobile to the heavens.")
   ()
   (:documentation "Objectable extended character."))
 
+;; @@@ Should we use this like simplify-char, or would the equivalent be just
+;; <character-type-name> for any character type? Or maybe we should have both?
 (defgeneric ocharacter (char)
   (:documentation "Returns the character denoted by the character designator.")
   (:method ((char character)) (character char)))
