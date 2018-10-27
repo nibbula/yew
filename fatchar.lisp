@@ -9,7 +9,7 @@ Define a FATCHAR-STRING as a vector of FATCHARS.
 Define a FAT-STRING as a struct with a FATCHAR-STRING so we can specialize.
 Define a TEXT-SPAN as a list representation of a FAT-STRING.
 ")
-  (:use :cl :dlib :stretchy :char-util :collections :color)
+  (:use :cl :dlib :stretchy :char-util :collections :ochar :color)
   (:export
    #:fatchar
    #:fatchar-p
@@ -40,7 +40,8 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    ))
 (in-package :fatchar)
 
-(declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
+;; (declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 (defstruct fatchar
   "A character with attributes."
@@ -82,6 +83,9 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
        (same-effects a b)
        (= (fatchar-line a) (fatchar-line b))))
 
+(defmethod ochar= ((char-1 fatchar) (char-2 fatchar))
+  (fatchar= char-1 char-2))
+
 (deftype fatchar-string (&optional size)
   "A string of FATCHARs."
   `(vector fatchar ,size))
@@ -93,6 +97,10 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
     :documentation "A lot of crust around a string."))
   (:documentation "A vector of FATCHAR."))
 ;;(string (vector) :type fatchar-string)) ; Is this better or worse?
+
+(defparameter *known-attrs*
+  `(:normal :standout :underline :bold :inverse)
+  "List of known attributes.")
 
 ;; Collection methods
 
@@ -267,13 +275,13 @@ functions."
     (fat-string (fat-string-string string))
     ((or string fatchar-string) string)))
 
-;; @@@ What about equality considering the effects?
+;; @@@ What about string equality considering the effects?
 
 (defun fat-string-compare (f a b)
   (funcall f (fat-string-to-string a) (fat-string-to-string b)))
 
 (eval-when (:compile-toplevel)
-  (defmacro make-comparators ()
+  (defmacro make-string-comparators ()
     (let ((forms
 	   (loop :with func
 	      :for f :in '(string< string> string= string/= string<= string>=
@@ -287,7 +295,105 @@ functions."
 				   (fat-string-to-string a)
 				   (fat-string-to-string b))))))
       `(progn ,@forms))))
-(make-comparators)
+(make-string-comparators)
+
+;; The char= methods are pre-done.
+(eval-when (:compile-toplevel)
+  (defmacro make-char-comparators (prefix)
+    (let ((forms
+	   (loop :with func
+	      :for f :in '(char< char> char/= char<= char>=
+			   char-lessp char-greaterp char-equal
+			   char-not-equal char-not-lessp
+			   char-not-greaterp)
+	      :do
+	      (setf func (symbolify (s+ prefix f)))
+	      :collect `(defun ,func (a b)
+			  (funcall #',f
+				   (fatchar-c a)
+				   (fatchar-c b))))))
+      `(progn ,@forms))))
+(make-char-comparators "FAT")
+
+;;;;;;;;;;;;;;;;;;
+;; ochar methods
+
+(eval-when (:compile-toplevel)
+  (defmacro make-char-comparator-methods (prefix)
+    (let ((forms
+	   (loop :with func
+	      :for f :in '(char< char> char/= char<= char>=
+			   char-lessp char-greaterp char-equal
+			   char-not-equal char-not-lessp
+			   char-not-greaterp)
+	      :do
+	      (setf func (symbolify (s+ prefix f)))
+	      :collect `(defmethod ,func ((a fatchar) (b fatchar))
+			  (funcall #',f
+				   (fatchar-c a)
+				   (fatchar-c b))))))
+      `(progn ,@forms))))
+(make-char-comparator-methods "O")
+
+;; All the rest that are just wrappers
+(eval-when (:compile-toplevel)
+  (defmacro make-char-wrapper-methods (prefix)
+    (let ((forms
+	   (loop :with func
+	      :for f :in '(alpha-char-p alphanumericp graphic-char-p
+			   char-upcase char-downcase upper-case-p lower-case-p
+			   both-case-p char-code char-int char-name)
+	      :do
+	      (setf func (symbolify (s+ prefix f)))
+	      :collect `(defmethod ,func ((character fatchar))
+			  (,f (fatchar-c character))))))
+      `(progn ,@forms))))
+
+(defmethod ocharacterp ((object fatchar)) T)
+(defmethod odigit-char (weight (type (eql 'fatchar)) &optional radix)
+  (make-fatchar :c (if radix (digit-char weight radix) (digit-char weight))))
+
+(defmethod odigit-char-p ((character fatchar) &optional radix)
+  (if radix (digit-char-p (fatchar-c character) radix)
+      (digit-char-p (fatchar-c character))))
+
+(defmethod ostandard-char-p ((character fatchar)) nil) ;; @@@ Right?
+
+;; I think this was intended to encode the attributes too, but we've made a
+;; character that's bigger than a fixnum. Should we really construct a bizzarely
+;; formatted bignum? Also we would have to define a limited fixed set of
+;; attributes. So this is inherently lossy.
+(defmethod ochar-int ((character fatchar))
+  (let ((int 0)
+	(fg (convert-color-to (lookup-color (fatchar-fg character)) :rgb8))
+	(bg (convert-color-to (lookup-color (fatchar-bg character)) :rgb8))
+	(line (logior (fatchar-line character) #b1111)))
+    (flet ((add (value width)
+	     (setf int (logior (ash int width) value)))
+	   (attr-bits ()
+	     (loop :with result = 0
+		:for a :in (rest *known-attrs*)
+		:as i = 0 :then (1+ i)
+		:do
+		(when (find a (fatchar-attrs character))
+		  (setf result (logior result (ash 1 i))))
+		:finally (return result))))
+      (add (attr-bits) (length (rest *known-attrs*)))
+      (add line 4)
+      (add (color-component fg :red)   8)
+      (add (color-component fg :green) 8)
+      (add (color-component fg :blue)  8)
+      (add (color-component bg :red)   8)
+      (add (color-component bg :green) 8)
+      (add (color-component bg :blue)  8)
+      (add (char-int (fatchar-c character)) 32))
+    int))
+
+(defmethod ocode-char (code (type (eql 'fatchar)))
+  (make-fatchar :c (code-char code)))
+
+(defmethod oname-char (name (type (eql 'fatchar)))
+  (make-fatchar :c (name-char name)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Spans
@@ -712,10 +818,6 @@ attr | iiiiiiii
 
 ;; Wherein I inappropriately appropriate more of latin1.
 (defalias 'ß 'span-to-fat-string)
-
-(defparameter *known-attrs*
-  `(:normal :standout :underline :bold :inverse)
-  "List of known attributes.")
 
 ;; @@@ Consider dealing with the overlap between this and
 ;; lish:symbolic-prompt-to-string and terminal:with-style.
