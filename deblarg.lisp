@@ -124,7 +124,7 @@
 	   (setf line (car sp))
 	   (if line
 	       (progn
-		 (print-stack-line line :width (tt-width))
+		 (print-stack-line line :width (terminal-window-columns tt))
 		 (setf sp (cdr sp)))
 	       (terminal-format tt "~~~%")))
 	(horizontal-line tt)
@@ -192,16 +192,16 @@
        (terpri *debug-io*))
      (incf i))
   |#
-  (format *terminal* "Restarts are:~%")
+  (format *debug-term* "Restarts are:~%")
   (loop :with i = 0 :for r :in rs :do
-     (format *terminal* "~&")
+     (format *debug-term* "~&")
      (print-span `((:fg-cyan ,(princ-to-string i)) ": "))
-     (when (not (ignore-errors (progn (format *terminal* "~s ~a~%"
+     (when (not (ignore-errors (progn (format *debug-term* "~s ~a~%"
 					      (restart-name r) r) t)))
-       (format *terminal* "Error printing restart ")
-       (print-unreadable-object (r *terminal* :type t :identity t)
-	 (format *terminal* "~a" (restart-name r)))
-       (terpri *terminal*))
+       (format *debug-term* "Error printing restart ")
+       (print-unreadable-object (r *debug-term* :type t :identity t)
+	 (format *debug-term* "~a" (restart-name r)))
+       (terpri *debug-term*))
      (incf i))
   )
 
@@ -256,7 +256,7 @@
   (gethash keyword *debugger-commands*))
 
 (defun debugger-help ()
-  (tt-format "Debugger help:~%")
+  (terminal-format *debug-term* "Debugger help:~%")
   (output-table
    (make-table-from
     (nconc
@@ -278,7 +278,7 @@
 	  '((:fg-cyan "...")
 	    (:fg-white "Or just type a some lisp code."))))))
    (make-instance 'terminal-table:terminal-table-renderer)
-   *terminal* :print-titles nil :trailing-spaces nil)
+   *debug-term* :print-titles nil :trailing-spaces nil)
   (list-restarts (cdr (compute-restarts *interceptor-condition*))))
 
 (defun debugger-snargle (arg)
@@ -483,21 +483,13 @@ program that messes with the terminal, we can still type at the debugger."
      (:fg-red (:underline ,(princ-to-string (type-of c))) #\newline
 	      ,(princ-to-string c) #\newline))))
 
-(defmacro with-debugger-io (() &body body)
-  "Evaluate BODY with a new *terminal* redirected to *debug-io*."
-  `(with-new-terminal (:ansi *terminal*
-			     :device-name (nos:file-handle-terminal-name
-					   (nos:stream-system-handle *debug-io*))
-			     :output-stream (make-broadcast-stream *debug-io*))
-     ,@body))
-
 (defun deblarg (c hook &optional frame)
   "Entry point for the debugger, used as the debugger hook."
   (declare (ignore hook))		;@@@ wrong
   (setf *saved-frame* (or frame (debugger-internal-frame)))
   (when (not *debugger-keymap*)
     (setup-keymap))
-  (with-debugger-io ()
+  (with-new-debugger-io ()
     (unwind-protect
     (progn
       ;;(try-to-reset-curses)
@@ -526,7 +518,7 @@ program that messes with the terminal, we can still type at the debugger."
 	      )
 	  (print-condition c)
 	  (list-restarts (compute-restarts c))
-	  (tt-finish-output)
+	  (terminal-finish-output *debug-term*)
 	  (tiny-repl :interceptor #'debugger-interceptor
 		     :prompt-func #'debugger-prompt
 		     :keymap *debugger-keymap*

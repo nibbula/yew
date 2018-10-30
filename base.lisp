@@ -25,24 +25,47 @@ the outermost. When entering the debugger the current frame is 0.")
 (defvar *interceptor-condition* nil
   "The condition that happened.")
 
+(defvar *debug-term* nil
+  "*debug-io* as a terminal.")
+
+(defmacro with-new-debugger-io (() &body body)
+  "Evaluate BODY with a new *terminal* redirected to *debug-io*."
+  `(with-new-terminal (:ansi *debug-term*
+			     :device-name (nos:file-handle-terminal-name
+					   (nos:stream-system-handle *debug-io*))
+			     :output-stream (make-broadcast-stream *debug-io*))
+     ,@body))
+
+(defmacro with-debugger-io (() &body body)
+  "Evaluate BODY with *debug-term* set up, either existing or new."
+  (with-unique-names (thunk)
+    `(flet ((,thunk () ,@body))
+       (if *debug-term*
+	   (,thunk)
+	   (with-new-debugger-io ()
+	     (,thunk))))))
+
 (defun debugger-sorry (x)
   "What to say when we can't do something."
   (format *debug-io* "~%Sorry, don't know how to ~a on ~a. ~
 		       Snarf some slime!~%" x (lisp-implementation-type)))
 
+;; @@@ Figure out some way to make these respect *debug-io*, even when not
+;; in the debugger.
+
 (defun debugger-print-string (string)
   (typecase string
-    (string (princ string *terminal*))
+    (string (princ string *debug-term*))
     (fatchar-string
-     (render-fatchar-string string :terminal *terminal*))
+     (render-fatchar-string string :terminal *debug-term*))
     (fat-string
-     (render-fat-string string :terminal *terminal*))))
+     (render-fat-string string :terminal *debug-term*))))
 
 (defun print-span (span)
   ;; This doesn't work since some implementations wrap our terminal stream
   ;; with something else before it gets to print-object.
   ;;(princ (span-to-fat-string span) *terminal*)
-  (render-fatchar-string (span-to-fatchar-string span) :terminal *terminal*))
+  (render-fatchar-string (span-to-fatchar-string span) :terminal *debug-term*))
 
 (defun display-value (v stream)
   "Display V in a way which hopefully won't mess up the display. Also errors
@@ -71,7 +94,7 @@ are indicated instead of being signaled."
 	 (osubseq str 0 (min (olength str) (- width 4)))
 	 str))
     ;;(terpri *terminal*)
-    (tt-write-char #\newline)
+    (terminal-write-char *debug-term* #\newline)
     ))
 
 ;; EOF
