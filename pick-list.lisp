@@ -477,7 +477,8 @@
 		   (sort string-list #'string-lessp
 			 :key #'car))
 	       string-list))
-     (tt-clear)
+     (when (not popup)
+       (tt-clear))
      (do-pick (if popup 'popup-pick 'pick)
        :message	        message
        :by-index	by-index
