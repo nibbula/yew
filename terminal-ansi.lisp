@@ -261,16 +261,17 @@ two values ROW and COLUMN."
 
 (defmethod terminal-end ((tty terminal-ansi) &optional state)
   "Put the terminal back to the way it was before we called terminal-start."
-  (when (or state (saved-mode tty))
-    ;; (dbugf :terminal-ansi "restoring terminal modes for ~s~%~
-    ;;                        state = ~s~%~
-    ;;                        saved-mode = ~s~%"
-    ;; 	   tty state (saved-mode tty))
-    (set-terminal-mode (terminal-file-descriptor tty)
-		       :mode (or state (saved-mode tty)))
+    (when (or state (and (slot-boundp tty 'saved-mode)
+			 (slot-value tty 'saved-mode)))
+      ;; (dbugf :terminal-ansi "restoring terminal modes for ~s~%~
+      ;;                        state = ~s~%~
+      ;;                        saved-mode = ~s~%"
+      ;; 	   tty state (saved-mode tty))
+      (set-terminal-mode (terminal-file-descriptor tty)
+			 :mode (or state (saved-mode tty))))
     #+unix
     (when (previous-siggy tty)
-      (set-signal-action +SIGWINCH+ (previous-siggy tty)))))
+      (set-signal-action +SIGWINCH+ (previous-siggy tty))))
 
 (defmethod terminal-done ((tty terminal-ansi) &optional state)
   "Forget about the whole terminal thing and stuff."
