@@ -58,6 +58,7 @@ of it.")
    #:copy-stream
    #:quote-format
    ;; sequences
+   ;;#:call-with-start-and-end
    #:initial-span
    #:split-sequence
    #:split-sequence-if
@@ -324,6 +325,23 @@ Useful for making your macro “hygenic”."
     result)
   #-(or clisp sbcl openmcl cmu ecl excl lispworks gcl abcl clasp cormanlisp)
   (missing-implementation 'd-getenv))
+
+;; This is useful implementing wrappers or methods for various standard
+;; functions that take START and END keywords.
+;; @@@ I would like to not have to pass: start start-p end end-p
+;; but then I would have to export them from here. :(
+#+(or)
+(defmacro call-with-start-and-end (func args start start-p end end-p)
+  "Call func with args and START and END keywords, assume that an environemnt
+that has START and START-P and END and END-P."
+  `(progn
+     (if ,start-p
+	 (if ,end-p
+	     (,func ,@args :start ,start :end ,end)
+	     (,func ,@args :start ,start))
+	 (if ,end-p
+	     (,func ,@args ::end ,end)
+	     (,func ,@args)))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun initial-span (sequence not-in)
@@ -1615,8 +1633,7 @@ the right package."
 
 (defmacro dbugf (facility fmt &rest args)
   "Print a debugging message when debugging is turned on and maybe we're in
-the right package, and the FACILITY is activated. It's recommended that
-facility be a non-keyword symbol."
+the right package, and the FACILITY is activated."
   `(when (and #| dlib:*dbug* |# dlib:*dbug-facility*
 	      (or
 	       (member ,facility *dbug-facility*)
