@@ -9,7 +9,7 @@
 ;; performance pitfalls.
 
 (let (#+sbcl (*on-package-variance* '(:warn (:collections) :error t)))
-  (dlib:without-warning
+(dlib:without-warning
 (defpackage :collections
   (:documentation
    "So it seems like I'm doing this again. These aren't so much for the methods
@@ -18,7 +18,8 @@ somewhat orthogonally with system classes. The ‘o’ prefix is rather ugly.
 We should entertain other naming ideas.")
   (:use :cl)	   ; Please don't add any dependencies.
   (:nicknames :o)) ; too presumptuous, but maybe we could remove the 'o'
-))
+)
+)
 (in-package :collections)
 
 ;; This is so the generic functions that one might want to specialize, are
@@ -45,6 +46,7 @@ We should entertain other naming ideas.")
       osort
       ofind
       oposition
+      oposition-if
       osearch
       omismatch
       oreplace
@@ -113,6 +115,48 @@ We should entertain other naming ideas.")
   (:documentation
    "A collection with a specific order, and thus can be indexed by the natural
 numbers."))
+
+(defmacro call-with-start-and-end (func args)
+  "Call func with args and START and END keywords, assume that an environemnt
+that has START and START-P and END and END-P."
+  `(progn
+     (if start-p
+	 (if end-p
+	     (,func ,@args :start start :end end)
+	     (,func ,@args :start start))
+	 (if end-p
+	     (,func ,@args ::end end)
+	     (,func ,@args)))))
+
+(defmacro call-with-start-end-test (func args)
+  "Call func with args and START, END, TEST, and TEST-NOT keywords. Assume that
+the environemnt has <arg> and <arg>-P for all those keywords."
+  `(progn
+     (cond
+       (test-not-p
+	(if start-p
+	    (if end-p
+		(,func ,@args :start start :end end :test-not test-not)
+		(,func ,@args :start start :test-not test-not))
+	    (if end-p
+		(,func ,@args ::end end :test-not test-not)
+		(,func ,@args :test-not test-not))))
+       (test-p
+	(if start-p
+	    (if end-p
+		(,func ,@args :start start :end end :test test)
+		(,func ,@args :start start :test test))
+	    (if end-p
+		(,func ,@args ::end end :test test)
+		(,func ,@args :test test))))
+       (t
+	(if start-p
+	    (if end-p
+		(,func ,@args :start start :end end)
+		(,func ,@args :start start))
+	    (if end-p
+		(,func ,@args ::end end)
+		(,func ,@args)))))))
 
 (defgeneric emptyp (collection)
   (:documentation "Return true if there are no objects in the collection.")
@@ -493,12 +537,72 @@ use in pipelines, and without the END argument. See also OSLICE."
   (:documentation "")
   (:method ((collection XX))
 	    ))
+|#
 
-(defgeneric ocount (collection ...)
-  (:documentation "")
-  (:method ((collection XX))
-	    ))
+(defgeneric ocount (item collection &key from-end start end key test test-not)
+  (:documentation "Return the number of elements of COLLECTION, bounded by START
+and END, that satisfy the TEST.")
+  (:method (item (collection list) &key from-end key
+				     (test nil test-p)
+				     (test-not nil test-not-p)
+				     (start nil start-p)
+				     (end nil end-p))
+    (call-with-start-end-test
+     count (item collection :from-end from-end :key key)))
+  (:method (item (collection vector) &key from-end key
+				       (test nil test-p)
+				       (test-not nil test-not-p)
+				       (start nil start-p)
+				       (end nil end-p))
+    (call-with-start-end-test
+     count (item collection :from-end from-end :key key)))
+  (:method (item (collection sequence) &key from-end key
+					 (test nil test-p)
+					 (test-not nil test-not-p)
+					 (start nil start-p)
+					 (end nil end-p))
+    (call-with-start-end-test
+     count (item collection :from-end from-end :key key)))
+  (:method (item (collection hash-table)
+	    &key from-end start end key test test-not)
+    (declare (ignore start end from-end))
+    (let ((count 0))
+      (labels ((test-test (k value)
+		 (declare (ignore k))
+		 (when (funcall test item value) (incf count)))
+	       (test-test-key (k value)
+		 (declare (ignore k))
+		 (when (funcall test item (funcall key value)) (incf count)))
+	       (test-test-not (k value)
+		 (declare (ignore k))
+		 (when (not (funcall test item value)) (incf count)))
+	       (test-test-not-key (k value)
+		 (declare (ignore k))
+		 (when (not (funcall test item (funcall key value)))
+		   (incf count)))
+	       (test-default (k value)
+		 (declare (ignore k))
+		 (when (eql item value) (incf count)))
+	       (test-default-key (k value)
+		 (declare (ignore k))
+		 (when (eql item (funcall key value)) (incf count))))
+	(maphash
+	 (cond
+	   (test     (if key #'test-test-key     #'test-test))
+	   (test-not (if key #'test-test-not-key #'test-test-not))
+	   (t        (if key #'test-default-key  #'test-default)))
+	 collection)
+	count))))
 
+(defmethod ocount (item (collection container) &key from-end key
+						 (test nil test-p)
+						 (test-not nil test-not-p)
+						 (start nil start-p)
+						 (end nil end-p))
+  (call-with-start-end-test ocount (item (container-data collection)
+					 :from-end from-end :key key)))
+
+#|
 (defgeneric oreverse (collection ...)
   (:documentation "")
   (:method ((collection XX))
@@ -565,18 +669,6 @@ satisfies the test TEST or TEST-NOT, as appropriate.")
 pipelines."
   (ofind item collection :key key))
 
-(defmacro call-with-start-and-end (func args)
-  "Call func with args and START and END keywords, assume that an environemnt
-that has START and START-P and END and END-P."
-  `(progn
-     (if start-p
-	 (if end-p
-	     (,func ,@args :start start :end end)
-	     (,func ,@args :start start))
-	 (if end-p
-	     (,func ,@args ::end end)
-	     (,func ,@args)))))
-
 (defgeneric oposition (item collection &key from-end test test-not start end key)
   (:documentation
    "Return the index of the element that satisfies the TEST in COLLECTION.
@@ -586,6 +678,7 @@ false. If no element satifies the test, NIL is returned.")
 	    &key from-end test test-not key
 	      (start nil start-p)
 	      (end nil end-p))
+    (declare (ignorable start start-p end end-p))
     (call-with-start-and-end position (item collection
 					    :from-end from-end :test test
 					    :test-not test-not :key key)))
@@ -593,6 +686,7 @@ false. If no element satifies the test, NIL is returned.")
 	    &key from-end test test-not key
 	      (start nil start-p)
 	      (end nil end-p))
+    (declare (ignorable start start-p end end-p))
     (call-with-start-and-end position (item collection
 					    :from-end from-end :test test
 					    :test-not test-not :key key)))
@@ -600,6 +694,7 @@ false. If no element satifies the test, NIL is returned.")
 	    &key from-end test test-not key
 	      (start nil start-p)
 	      (end nil end-p))
+    (declare (ignorable start start-p end end-p))
     (call-with-start-and-end position (item collection
 					    :from-end from-end :test test
 					    :test-not test-not :key key))))
@@ -608,9 +703,41 @@ false. If no element satifies the test, NIL is returned.")
 		      &key from-end test test-not key
 			(start nil start-p)
 			(end nil end-p))
+  (declare (ignorable start start-p end end-p))
   (call-with-start-and-end position (item (container-data collection)
 					  :from-end from-end :test test
 					  :test-not test-not :key key)))
+
+(defgeneric oposition-if (predicate collection &key from-end start end key)
+  (:documentation
+   "Return the index of the element that satisfies the TEST in COLLECTION.
+Return the leftmost if FROM-END is true, or of the rightmost if FROM-END is
+false. If no element satifies the test, NIL is returned.")
+  (:method (predicate (collection list)
+	    &key from-end key (start nil start-p) (end nil end-p))
+    (declare (ignorable start start-p end end-p))
+    (call-with-start-and-end position-if
+			     (predicate collection
+					:from-end from-end :key key)))
+  (:method (predicate (collection vector)
+	    &key from-end key (start nil start-p) (end nil end-p))
+    (declare (ignorable start start-p end end-p))
+    (call-with-start-and-end position-if (predicate
+					  collection
+					  :from-end from-end :key key)))
+  (:method (predicate (collection sequence)
+	    &key from-end key (start nil start-p) (end nil end-p))
+    (declare (ignorable start start-p end end-p))
+    (call-with-start-and-end position-if (predicate
+					  collection
+					  :from-end from-end :key key))))
+
+(defmethod oposition-if (predicate (collection container)
+			 &key from-end key (start nil start-p) (end nil end-p))
+  (declare (ignorable start start-p end end-p))
+  (call-with-start-and-end position-if (predicate
+					(container-data collection)
+					:from-end from-end :key key)))
 
 #|
 (defgeneric osearch (collection ...)
@@ -677,23 +804,26 @@ type as the one given.
 	    &key omit-empty test key
 	      (start nil start-p)
 	      (end nil end-p))
-    (call-with-start-and-end dlib:split-sequence
-	   (separator collection
-	     :omit-empty omit-empty :test test :key key)))
+    (call-with-start-and-end
+     dlib:split-sequence
+     (separator collection
+		:omit-empty omit-empty :test test :key key)))
   (:method (separator (collection vector)
 	    &key omit-empty test key
 	      (start nil start-p)
 	      (end nil end-p))
-    (call-with-start-and-end dlib:split-sequence
-	   (separator collection
-	     :omit-empty omit-empty :test test :key key)))
+    (call-with-start-and-end
+     dlib:split-sequence
+     (separator collection
+		:omit-empty omit-empty :test test :key key)))
   (:method (separator (collection sequence)
 	    &key omit-empty test key
 	      (start nil start-p)
 	      (end nil end-p))
-    (call-with-start-and-end dlib:split-sequence
-	   (separator collection
-	     :omit-empty omit-empty :test test :key key))))
+    (call-with-start-and-end
+     dlib:split-sequence
+     (separator collection
+		:omit-empty omit-empty :test test :key key))))
 
 (defmethod osplit (separator (collection container)
 		   &key omit-empty test key
