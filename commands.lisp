@@ -821,8 +821,8 @@ in order, \"{open}{close}...\".")
 
 (defun quoted-insert (e)
   "Insert the next character input without interpretation."
-  (setf (inator-command e) (get-a-char e))
-  (self-insert e t))
+  (let ((c (get-a-char e)))
+    (self-insert e t c)))
 
 (defun self-insert (e &optional quoted char)
   (with-slots (command last-event buf point screen-col) e
