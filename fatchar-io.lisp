@@ -391,33 +391,43 @@ possible."
 ;;; Here's how we can write fatchars to it?
 
 (defmethod print-object ((obj fat-string) stream)
-  (cond
-    (*print-readably*
-     (if *read-eval*
-	 (format stream "#.~s"
-		 `(fatchar:span-to-fat-string ,(fat-string-to-span obj)))
-	 (progn
-	   ;;(dbugf :fatchar "print-object -> call-next-method~%")
-	   (call-next-method)
-	   )))
-    ((typep stream 'terminal:terminal-stream)
-     ;;(dbugf :fatchar "print-object -> render ~s~%" (type-of obj))
-     (render-fat-string obj))
-    ((typep stream 'fat-string-output-stream)
-     ;; (dbugf :fatchar "print-object -> write-fat-string ~s ~s~%" (type-of obj)
-     ;; 	    (type-of stream))
-     (write-fat-string obj :stream stream))
-    (t
-     ;;(print-object (fat-string-to-string obj) stream)
-     ;;(format t "ZIEIE~s~%" (type-of stream)) (finish-output)
-     ;; (write-string
-     ;;  (with-terminal-output-to-string (:ansi)
-     ;; 	(render-fat-string obj)) stream)
-     ;; (dbugf :fatchar "print-object -> downconvert ~s stream ~s~%"
-     ;; 	    (type-of obj) stream)
-     (write (fat-string-to-string obj) :stream stream)
-     ;;(call-next-method)
-     )))
+  (macrolet ((with-quotes (() &body body)
+	       `(progn
+		  (when *print-escape*
+		    (write-char #\" stream))
+		  ,@body
+		  (when *print-escape*
+		    (write-char #\" stream)))))
+    (cond
+      (*print-readably*
+       (if *read-eval*
+	   (format stream "#.~s"
+		   `(fatchar:span-to-fat-string ,(fat-string-to-span obj)))
+	   (progn
+	     ;;(dbugf :fatchar "print-object -> call-next-method~%")
+	     (call-next-method)
+	     )))
+      ((typep stream 'terminal:terminal-stream)
+       ;;(dbugf :fatchar "print-object -> render ~s~%" (type-of obj))
+       (with-quotes ()
+	 (render-fat-string obj)))
+      ((typep stream 'fat-string-output-stream)
+       ;; (dbugf :fatchar "print-object -> write-fat-string ~s ~s~%"
+       ;;                 (type-of obj) (type-of stream))
+       (with-quotes ()
+	 (write-fat-string obj :stream stream)))
+      (t
+       ;;(print-object (fat-string-to-string obj) stream)
+       ;;(format t "ZIEIE~s~%" (type-of stream)) (finish-output)
+       ;; (write-string
+       ;;  (with-terminal-output-to-string (:ansi)
+       ;; 	(render-fat-string obj)) stream)
+       ;; (dbugf :fatchar "print-object -> downconvert ~s stream ~s~%"
+       ;; 	    (type-of obj) stream)
+       (with-quotes ()
+	 (write (fat-string-to-string obj) :stream stream))
+       ;;(call-next-method)
+       ))))
 
 (defmethod print-object ((obj fatchar) stream)
   "Print a FATCHAR to a FAT-STRING-OUTPUT-STREAM."
