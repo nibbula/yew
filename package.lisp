@@ -20,7 +20,7 @@
    #:line-editor
    #:line-editor-p
    #:make-line-editor
-   #:screen-row
+   #:screen-relative-row
    #:screen-col
    #:line-editor-terminal
    #:line-editor-terminal-device-name

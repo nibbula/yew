@@ -10,13 +10,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Display-ish code
 
-;; @@@ I think this should probably be renamed to something like
-;; debug-message and
-;;
-;; (defmethod message ((e line-editor) fmt &rest args)
-;;
-;; should probably actually do what tmp-message does now.
-
 (defun debug-message (e fmt &rest args)
   "Show a little message for debugging."
   (declare (type line-editor e))
@@ -66,36 +59,6 @@
     (fat-string (display-length str))
     (fatchar-string (display-length (fatchar-string-to-string str)))))
 
-(defun moo (e s)
-  (let* ((tt (line-editor-terminal e))
-	 (width (terminal-window-columns tt))
-	 ;;(height (terminal-window-rows tt))
-	 (row (screen-row e))
-	 (col (screen-col e))
-	 (plain (remove-effects s))
-	 (last-col col))
-    (loop :for c :across plain :do
-       (cond
-	 ((graphic-char-p c)
-	  (cond
-	    ((combining-char-p c) #|nothing|#)
-	    ((double-wide-char-p c) (incf col 2))
-	    (t (incf col))))		; normal case
-	 ((eql c #\tab)
-	  (setf col (1+ (logior 7 col)))
-	  (when (>= col width)
-	    (setf col (1- width))))
-	 ((eql c #\newline)
-	  (setf col 0) (incf row))
-	 ((control-char-graphic c)	; ^X
-	  (incf col 2))
-	 (t (incf col 4)))		; \000
-       (when (>= col width)
-	 (setf col (- col last-col))
-	 (incf row))
-       (setf last-col col))
-    (values col row)))
-
 ;; @@@ XXX wrong, because it doesn't account for double-width last col issues
 (defun editor-update-pos-for-string (e s)
   "Update the screen row and column for inserting the string S.
@@ -107,7 +70,7 @@ Assumes S is already converted to display characters."
      (loop :with remain = (max 0 (- len (- width (screen-col e))))
 	  :while (> remain 0)
 	  :do
-	  (incf (screen-row e))
+	  (incf (screen-relative-row e))
 	  (setf (screen-col e) 0)
 	  (decf remain (setf last-remain (min width remain))))
      (setf (screen-col e) last-remain)
@@ -130,14 +93,14 @@ Assumes S is already converted to display characters."
 
 (defun editor-write-char (e c)
   "Write a display character to the screen. Update screen coordinates."
-  (with-slots (screen-col screen-row) e
+  (with-slots (screen-col screen-relative-row) e
     (let ((len (display-length c))
 	  (width (terminal-window-columns (line-editor-terminal e)))
 	  (cc (if (fatchar-p c) (fatchar-c c) c)))
       (cond
 	((> (+ screen-col len) width)
 	 (setf screen-col len)
-	 (incf screen-row)
+	 (incf screen-relative-row)
 	 ;; @@@ Erroneously compensating for EOL hyperspace
 	 ;;(tt-scroll-down 1)
 	 ;;(tt-beginning-of-line)
@@ -145,7 +108,7 @@ Assumes S is already converted to display characters."
 	((= (+ screen-col len) width)
 	 (tt-write-char cc)
 	 (setf screen-col 0)
-	 (incf screen-row)
+	 (incf screen-relative-row)
 	 ;; @@@ Erroneously compensating for EOL hyperspace
 	 ;;(tt-scroll-down 1)
 	 ;;(tt-beginning-of-line)
@@ -175,7 +138,7 @@ Assumes S is already converted to display characters."
 	 (tt-write-char #\space)))
       ((eql cc #\newline)
        (setf (screen-col e) 0)
-       (incf (screen-row e))
+       (incf (screen-relative-row e))
        (tt-write-char cc))
       ((control-char-graphic cc)
        (editor-write-char e #\^)
@@ -200,15 +163,15 @@ Assumes S is already converted to display characters."
 (defmacro without-messing-up-cursor ((e) &body body)
   (let ((old-row (gensym "OLD-ROW"))
 	(old-col (gensym "OLD-COL")))
-  `(let ((,old-row (screen-row ,e))
+  `(let ((,old-row (screen-relative-row ,e))
 	 (,old-col (screen-col ,e)))
      (prog1 ,@body
-       (if (< ,old-row (screen-row ,e))
-	   (tt-up (- (screen-row ,e) ,old-row))
-	   (tt-down (- ,old-row (screen-row ,e))))
+       (if (< ,old-row (screen-relative-row ,e))
+	   (tt-up (- (screen-relative-row ,e) ,old-row))
+	   (tt-down (- ,old-row (screen-relative-row ,e))))
        (tt-beginning-of-line)
        (tt-forward ,old-col)
-       (setf (screen-row ,e) ,old-row
+       (setf (screen-relative-row ,e) ,old-row
 	     (screen-col ,e) ,old-col)))))
 
 (defun buffer-length-to (buf to-length)
@@ -241,13 +204,13 @@ the current cursor position."
 	  (when (< (- width delete-length) (screen-col e))
 	    (setf to-delete (- delete-length (- width (screen-col e))))
 	    (tt-down 1)
-	    (incf (screen-row e))
+	    (incf (screen-relative-row e))
 	    (tt-move-to-col 0)
 	    (setf (screen-col e) 0)
 	    (tt-erase-to-eol)
 	    (loop :while (> to-delete 0) :do
 	       (tt-down 1)
-	       (incf (screen-row e))
+	       (incf (screen-relative-row e))
 	       (tt-erase-to-eol)
 	       (log-message e "Bloot ~a" to-delete)
 	       (decf to-delete width))))))))
@@ -261,15 +224,15 @@ the current cursor position."
       ;;
       ;; @@@ We should really fix this someday to do it the right way, and
       ;; just fiddle the beginnings and ends of the lines. Or even better.
-      (let ((old-row (screen-row e))
+      (let ((old-row (screen-relative-row e))
 	    (old-col (screen-col e)))
 	(display-buf e point)
-	(if (< old-row (screen-row e))
-	    (tt-up (- (screen-row e) old-row))
-	    (tt-down (- old-row (screen-row e))))
+	(if (< old-row (screen-relative-row e))
+	    (tt-up (- (screen-relative-row e) old-row))
+	    (tt-down (- old-row (screen-relative-row e))))
 	(tt-beginning-of-line)
 	(tt-forward old-col)
-	(setf (screen-row e) old-row
+	(setf (screen-relative-row e) old-row
 	      (screen-col e) old-col)))))
 
 (defun erase-display (e)
@@ -327,8 +290,11 @@ buffer."
 	(last-col start)
 	(i 0)
 	c cc)
-    (loop :while (< i (length buffer)) :do
-       (setf c (aref buffer i)
+    (dbugf :rl "endings start ~s~%" start)
+    ;; (if-dbugf (:rl)
+    ;; 	      (symbol-call :deblarg :debugger-wacktrace 20))
+    (loop :while (< i (olength buffer)) :do
+       (setf c (oelt buffer i)
 	     cc (if (fatchar-p c) (fatchar-c c) c))
        (if (char= cc #\newline)
 	   (progn
@@ -336,7 +302,7 @@ buffer."
 	     (setf last-col col)
 	     (setf col 0))
 	   (progn
-	     (setf char-width (display-length (aref buffer i)))
+	     (setf char-width (display-length (oelt buffer i)))
 	     (if (> (+ col char-width) cols)
 		 (progn
 		   (push (cons (1- i) last-col) endings)
@@ -356,17 +322,22 @@ buffer."
 or NIL is there is none."
   (cdr (assoc pos endings)))
 
-(defun move-over (e n &key (start (point e)) (buffer (buf e)))
+(defun move-over (e n &key (start (point e)) (buffer (buf e)) (move t))
   "Move over N characters in the buffer, from START. N is negative for backward,
 positive for forward. Doesn't adjust POINT, but does move the cursor and update
-the SCREEN-COL and SCREEN-ROW."
-  (with-slots (screen-row screen-col) e
+the SCREEN-COL and SCREEN-RELATIVE-ROW."
+  (with-slots (screen-relative-row screen-col) e
     (let ((cols (terminal-window-columns (line-editor-terminal e)))
 	  (col screen-col)
-	  (row screen-row)
-	  (endings (calculate-line-endings e))
+	  (row screen-relative-row)
+	  (endings (if move
+		       (calculate-line-endings e :buffer buffer)
+		       (calculate-line-endings e :buffer buffer :start start)))
 	  len)
-      (log-message e "move-over ~a ~a" n start)
+      (dbugf :rl "move-over ~a ~a [~s ~s]~%"
+	     n start screen-relative-row screen-col)
+      (log-message e "move-over ~a ~a [~s ~s]"
+		   n start screen-relative-row screen-col)
       (if (minusp n)
 	  ;; backward
 	  (progn
@@ -375,7 +346,7 @@ the SCREEN-COL and SCREEN-ROW."
 	       ;;(tt-format "--> ~a ~a ~a ~a" row col i endings)
 	       ;;(tt-move-to row col)
 	       ;;(tt-get-key)
-	       (setf len (display-length (aref buffer (1- i))))
+	       (setf len (display-length (oelt buffer (1- i))))
 	       (if (< (- col len) 0)
 		   (progn
 		     ;;(log-message e "mooo ~a ~a ~a" i col endings)
@@ -395,22 +366,22 @@ the SCREEN-COL and SCREEN-ROW."
 	    ;;(tt-move-to row col)
 	    (log-message e "row=~a col=~a" row col)
 	    #| because we tt-move-to in the debug code |#
-	    (tt-up (- screen-row row))
+	    (when move (tt-up (- screen-relative-row row)))
 	    (if (< col screen-col)
 		(progn
 		  ;; could optimize by:
 		  ;;(tt-beginning-of-line)
 		  ;;(tt-forward col)
-		  (tt-backward (- screen-col col)))
+		  (when move (tt-backward (- screen-col col))))
 		(progn
-		  (tt-forward (- col screen-col))))
+		  (when move (tt-forward (- col screen-col)))))
 	    ;;(tt-move-to row col)
 	    (setf screen-col col
-		  screen-row row))
+		  screen-relative-row row))
 	  ;; forward
 	  (progn
 	    (loop :for i :from start :below (+ start n) :do
-	       (setf len (display-length (aref buffer i)))
+	       (setf len (display-length (oelt buffer i)))
 	       (cond
 		 ((assoc i endings)
 		  (setf col 0)
@@ -424,17 +395,17 @@ the SCREEN-COL and SCREEN-ROW."
 	    ;; (tt-beginning-of-line)
 	    ;; (tt-forward col)
 	    ;; (tt-down (- screen-row row))
-	    (tt-down (- row screen-row))
+	    (when move (tt-down (- row screen-relative-row)))
 	    (if (< col screen-col)
 		(progn
 		  ;; could optimize by:
 		  ;;(tt-beginning-of-line)
 		  ;;(tt-forward col)
-		  (tt-backward (- screen-col col)))
+		  (when move (tt-backward (- screen-col col))))
 		(progn
-		  (tt-forward (- col screen-col))))
+		  (when move (tt-forward (- col screen-col)))))
 	    (setf screen-col col
-		  screen-row row))))))
+		  screen-relative-row row))))))
 
 (defun move-backward (e n)
   "Move backward N columns on the screen. Properly wraps to previous lines.
@@ -499,26 +470,48 @@ Updates the screen coordinates."
 ;; anything weird in it, and if not, don't bother to do the slow asking the
 ;; terminal to measure it for us.
 
+(defun probably-safe (string)
+  "Return true if STRING probably doesn't have any weird control characters
+in it."
+  (not (oposition-if (_ (and (control-char-p _)
+			     (ochar/= _ #\newline))) string)))
+
 (defun do-prefix (e prompt-str)
   "Output a prefix."
-  ;; (finish-all-output)
-  (let (row col start-row)
-    (multiple-value-setq (row col)
-      (terminal-get-cursor-position (line-editor-terminal e)))
-    (setf start-row row)
-    ;;(tt-write-string prompt-str)
-    (write prompt-str :stream *terminal* :escape nil :pretty nil)
-    ;;(finish-all-output)
-    ;; (tt-finish-output)
-    ;; (eat-typeahead e)
-    (multiple-value-setq (row col)
-      (terminal-get-cursor-position (line-editor-terminal e)))
-    (setf (screen-row e) row
-	  (screen-col e) col
-	  ;; save end of the prefix as the starting column
-	  (start-col e) col
-	  (start-row e) row
-	  (prompt-height e) (1+ (- row start-row)))
+  (flet ((write-it ()
+	   (write prompt-str :stream *terminal* :escape nil :pretty nil)))
+    (if (probably-safe prompt-str)
+	(progn
+	  (write-it)
+	  (finish-output *terminal*)
+	  (setf (prompt-height e) (ocount #\newline prompt-str))
+	  (let ((saved-col (screen-col e))
+		(saved-row (screen-relative-row e)))
+	    (move-over e (olength prompt-str) :start 0 :buffer prompt-str
+		       :move nil)
+	    ;; really update the coordinates
+	    (setf (screen-col e) (+ saved-col (screen-col e))
+		  (screen-relative-row e) (+ saved-row (screen-relative-row e))
+		  (start-col e) (screen-col e)
+		  (start-row e) (screen-relative-row e))))
+	(let (row col start-row)
+	  (finish-all-output)
+	  (multiple-value-setq (row col)
+	    (terminal-get-cursor-position (line-editor-terminal e)))
+	  (setf start-row row)
+	  ;;(tt-write-string prompt-str)
+	  (write-it)
+	  ;;(finish-all-output)
+	  ;; (tt-finish-output)
+	  ;; (eat-typeahead e)
+	  (multiple-value-setq (row col)
+	    (terminal-get-cursor-position (line-editor-terminal e)))
+	  (setf (screen-relative-row e) row ; @@@@@@@@
+		(screen-col e) col
+		;; save end of the prefix as the starting column
+		(start-col e) col
+		(start-row e) row
+		(prompt-height e) (1+ (- row start-row)))))
     (log-message e "prompt-height = ~s" (prompt-height e))))
 
 (defun do-prompt (e prompt output-prompt-func &key only-last-line)
@@ -569,17 +562,22 @@ Updates the screen coordinates."
   (tt-write-string (apply #'format `(nil ,fmt ,@args)))
   (tt-finish-output))
 
+(defun relative-move-to-row (old new)
+  (if (< new old)
+      (tt-up (- old new))
+      (tt-down (- new old))))
+
 (defun tmp-message (e fmt &rest args)
   ;;(apply #'tmp-prompt e fmt args)
-  (with-slots (screen-col screen-row buf point temporary-message) e
+  (with-slots (screen-col screen-relative-row buf point temporary-message) e
     (let ((saved-col screen-col)
-	  (saved-row screen-row)
+	  (saved-row screen-relative-row)
 	  (offset 0)
 	  output-string endings)
       (move-over e (- (length buf) point))
       (tt-scroll-down 1)
-      (when (= saved-row (1- (tt-height)))
-	(incf offset))
+      (when (= saved-row (1- (tt-height))) ; at the bottom row
+	(incf offset))			   ; at least one line was scrolled
       (tt-move-to-col 0)
       (tt-erase-to-eol)
       (setf output-string (with-output-to-fat-string (fs)
@@ -587,14 +585,20 @@ Updates the screen coordinates."
 	    endings (calculate-line-endings
 		     e :buffer (fat-string-string output-string) :start 0))
       (tt-write-string output-string)
-      (incf offset (length endings))
+      ;; If there's not enough room for the message at the bottom:
+      (when (> (+ saved-row (length endings)) (1- (tt-height)))
+	(log-message e "dorked it")
+	(incf offset
+	      (- (1+ (length endings)) (- (tt-height) saved-row))))
+      (log-message e "endings ~s offset ~s" endings offset)
       (decf saved-row offset)
-      (tt-move-to saved-row saved-col)
+      ;;(tt-move-to saved-row saved-col)
+      ;; (relative-move-to-row (+ saved-row offset) saved-row)
+      (tt-up (1+ (length endings)))
+      (tt-move-to-col saved-col)
       (setf screen-col saved-col
-	    screen-row saved-row
-	    temporary-message (1+ (length endings)))
-      ;; (setf (need-to-redraw e) nil)
-      )))
+	    screen-relative-row saved-row
+	    temporary-message (1+ (length endings))))))
 
 (defmethod message ((e line-editor) fmt &rest args)
   (apply #'tmp-message e fmt args))
@@ -605,10 +609,10 @@ Updates the screen coordinates."
   "Erase completions, if there are any."
   (when (did-under-complete e)
     (without-messing-up-cursor (e)
-      (when (< (screen-row e)
+      (when (< (screen-relative-row e)
 	       (1- (terminal-window-rows (line-editor-terminal e))))
 	(tt-down 1)
-	(incf (screen-row e))
+	(incf (screen-relative-row e))
 	(tt-beginning-of-line)
 	(setf (screen-col e) 0)
 	(tt-erase-below)))))

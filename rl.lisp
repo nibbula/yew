@@ -300,6 +300,7 @@
 	     (editor nil)
 	     (local-keymap nil)
 	     (keymap nil)
+	     (terminal nil)
 	     (terminal-name *terminal-name*)
 	     (terminal-class (find-terminal-class-for-type
 			      (pick-a-terminal-type)))
@@ -311,30 +312,32 @@ Return the string read and the line-editor instance created.
 Keyword arguments: 
   EOF-ERROR-P (T)                 
     True to signal an error on end of file.
-  EOF-VALUE (nil)
+  EOF-VALUE
     Value to return on end of file. 
-  QUIT-VALUE (nil)
+  QUIT-VALUE
     Value to return if the user quit.
   PROMPT (*default-prompt*)
     String to prompt with.
-  OUTPUT-PROMPT-FUNC (nil)
+  OUTPUT-PROMPT-FUNC
     Function to print out a prompt. Called with the LINE-EDITOR instance and a
     prompt string.
   COMPLETION-FUNC (#'complete-symbol)
     Completion function to use. See the completion package for details.
-  EDITOR (nil)
+  EDITOR
     LINE-EDITOR instance to use.
-  LOCAL-KEYMAP (nil)
+  LOCAL-KEYMAP
     A LOCAL-KEYMAP to use. For when you want to add your own customized key
     bindings.
-  KEYMAP (nil)
+  KEYMAP
     A KEYMAP to use. If you want to completely replace all the key bindings
     by your own. This defaults to a list of (LOCAL-KEYMAP *NORMAL-KEYMAP*).
+  TERMINAL
+    An already started terminal to use.
   TERMINAL-NAME (*terminal-name*)
     Name of a terminal device to use. If NIL 
   ACCEPT-DOES-NEWLINE (t)
     True if accept-line outputs a newline.
-  CONTEXT (nil)
+  CONTEXT
     Symbol or string which defines the context for keeping history.
 "			    ; There must be a better way to format docstrings.
   (declare (ignore recursive-p))
@@ -354,6 +357,7 @@ Keyword arguments:
 			:local-keymap	    	local-keymap
 			:keymap		    	keymap
 			:accept-does-newline	accept-does-newline
+			:terminal		terminal
 			:terminal-device-name	terminal-name
 			:terminal-class	    	terminal-class)))
 	 (*terminal* (line-editor-terminal e))
@@ -406,7 +410,7 @@ Keyword arguments:
 		(finish-output)
 		(when debugging
 		  (message e "~d ~d [~d x ~d] ~a ~w"
-			   (screen-col e) (screen-row e)
+			   (screen-col e) (screen-relative-row e)
 			   (terminal-window-columns terminal)
 			   (terminal-window-rows terminal)
 			   ;; (when (typep *terminal*

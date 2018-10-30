@@ -445,7 +445,7 @@ Control-R searches again backward and Control-S searches again forward."
   "Clear the screen and redraw the prompt and the input line."
   (with-slots (prompt-string prompt-func point buf need-to-redraw) e
     (tt-clear) (tt-home)
-    (setf (screen-col e) 0 (screen-row e) 0)
+    (setf (screen-col e) 0 (screen-relative-row e) 0)
     (do-prompt e prompt-string prompt-func)
     ;; (finish-output (terminal-output-stream
     ;; 		    (line-editor-terminal e)))
@@ -542,21 +542,22 @@ Don't update the display."
 	(update-for-delete e del-len (- start point))))))
 
 (defun kill-line (e)
-  (with-slots (clipboard buf point screen-row screen-col) e
+  (with-slots (clipboard buf point screen-relative-row screen-col) e
     (setf clipboard (subseq buf point))
-    (let ((saved-row screen-row)
+    (let ((saved-row screen-relative-row)
 	  (saved-col screen-col))
       (move-over e (- (length buf) point))
       (tt-erase-to-eol)
-      (loop :with row = screen-row
+      (loop :with row = screen-relative-row
 	 :while (> row saved-row) :do
 	 (tt-beginning-of-line)
 	 (tt-erase-to-eol)
 	 (tt-up 1)
 	 (decf row))
-      (setf screen-row saved-row
+      (setf screen-relative-row saved-row
 	    screen-col saved-col)
-      (tt-move-to screen-row screen-col)
+      ;;(tt-move-to screen-row screen-col)
+      (tt-move-to-col screen-col)
       (tt-erase-to-eol)
       (buffer-delete e point (fill-pointer buf)))))
 
@@ -929,19 +930,19 @@ in order, \"{open}{close}...\".")
 
 (defun what-cursor-position (e)
   "Describe the cursor position."
-  (with-slots (point buf screen-row screen-col) e
+  (with-slots (point buf screen-relative-row screen-col) e
     (let* ((fc (and (< point (length buf))
 		    (aref buf point)))
 	   (char (and fc (fatchar-c fc)))
 	   (code (and char (char-code char))))
       (if fc
 	  (tmp-message e "~s of ~s Row: ~s Column: ~s Char: '~a' ~a ~s #x~x"
-		       point (length buf) screen-row screen-col
+		       point (length buf) screen-relative-row screen-col
 		       fc
 		       (and char (char-name char))
 		       code code)
 	  (tmp-message e "~s of ~s Row: ~s Column: ~s"
-		       point (length buf) screen-row screen-col))
+		       point (length buf) screen-relative-row screen-col))
       ;;(redraw-line e)
       )))
 

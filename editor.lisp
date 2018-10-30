@@ -53,10 +53,14 @@ anything important.")
     :initform nil
     :initarg :buf
     :documentation "Current line buffer.")
-   (screen-row
-    :accessor screen-row
+   ;; (screen-row
+   ;;  :accessor screen-row
+   ;;  :initform 0
+   ;;  :documentation "Screen row of the cursor.")
+   (screen-relative-row
+    :accessor screen-relative-row
     :initform 0
-    :documentation "Screen row of the cursor.")
+    :documentation "Screen row of the cursor relative to where we started.")
    (screen-col
     :accessor screen-col
     :initform 0
@@ -224,18 +228,19 @@ anything important.")
   (declare (ignore initargs))
 
   ;; Make a terminal using the device name and class, or use *TERMINAL*.
-  (setf (slot-value e 'terminal)
-	(if (and (slot-boundp e 'terminal-device-name)
-		 (slot-value e 'terminal-device-name))
-	    (make-instance (slot-value e 'terminal-class)
-			   :device-name (line-editor-terminal-device-name e)
-			   :start-at-current-line t)
-	    (or (progn
-		  (when *terminal*
-		    (dbug "Using *TERMINAL* ~a~%" (type-of *terminal*)))
-		  *terminal*)
-		(make-instance (slot-value e 'terminal-class)
-			       :start-at-current-line t))))
+  (when (not (and (slot-boundp e 'terminal) (slot-value e 'terminal)))
+    (setf (slot-value e 'terminal)
+	  (if (and (slot-boundp e 'terminal-device-name)
+		   (slot-value e 'terminal-device-name))
+	      (make-instance (slot-value e 'terminal-class)
+			     :device-name (line-editor-terminal-device-name e)
+			     :start-at-current-line t)
+	      (or (progn
+		    (when *terminal*
+		      (dbug "Using *TERMINAL* ~a~%" (type-of *terminal*)))
+		    *terminal*)
+		  (make-instance (slot-value e 'terminal-class)
+				 :start-at-current-line t)))))
 
   ;; If the local keymap wasn't given, make an empty one.
   (unless (and (slot-boundp e 'local-keymap) (slot-value e 'local-keymap))
@@ -272,7 +277,7 @@ but perhaps reuse some resources."))
 	(inator-quit-flag e)	nil
 	(fill-pointer (buf e))	0
 ;;;	(screen-row e) (terminal-get-cursor-position (line-editor-terminal e))
-	(screen-row e)		0
+	(screen-relative-row e) 0
 	(screen-col e)		0
 	(start-col e)		0
 	(start-row e)		0
