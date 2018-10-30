@@ -180,7 +180,6 @@ terminal."
 	 output-string
 	 real-content-rows
 	 rows-output
-	 rows-scrolled
 	 back-adjust
 	 (x (screen-col e))
 	 (y (screen-relative-row e))
