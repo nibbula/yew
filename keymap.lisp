@@ -229,33 +229,42 @@ there is no binding."
      (error "Key definition must be looked up in either a keymap or a list
  of keymaps."))))
 
-(defun key-sequence-binding (keyseq map)
-  "Return the binding for the given key sequence."
-  (if (and (or (vectorp keyseq) (listp keyseq)) (not (zerop (length keyseq))))
-      (let* ((key (elt keyseq 0))
-	     (action (key-definition key map)))
-	(cond
-	  ;; If the key has a symbol keymap binding
-	  ((and (symbolp action) (boundp action)
-		(keymap-p (symbol-value action)))
-	    ;; look that up
-	   (key-sequence-binding (subseq keyseq 1) (symbol-value action)))
-	  ((keymap-p action)
-	   (key-sequence-binding (subseq keyseq 1) action))
-	  (t
-	   ;; simple binding
-	   action)))
-      ;; Just one key
-      (key-definition keyseq map)))
+(defun key-sequence-binding (keyseq keymap-stack)
+  "Return the binding for the given key sequence, in MAP which can be a keymap
+or a keymap stack."
+  (labels ((try-map (keyseq map)
+	     (if (and (or (vectorp keyseq) (listp keyseq))
+		      (not (zerop (length keyseq))))
+		 ;; More than one key in the sequence
+		 (let* ((key (elt keyseq 0))
+			(action (key-definition key map)))
+		   (cond
+		     ;; If the key has a symbol keymap binding
+		     ((and (symbolp action) (boundp action)
+			   (keymap-p (symbol-value action)))
+		      ;; look that up
+		      (try-map (subseq keyseq 1) (symbol-value action)))
+		     ((keymap-p action)
+		      (try-map (subseq keyseq 1) action))
+		     (t
+		      ;; simple binding
+		      action)))
+		 ;; Just one key
+		 (key-definition keyseq map))))
+    (let (binding)
+      (map nil (_ (when (setf binding (try-map keyseq _))
+		    (return-from key-sequence-binding binding)))
+	   keymap-stack)
+      binding)))
 
 (defun key-sequence-string (keyseq)
   "Covert a key sequence to a human readable string."
   (cond
     ((vectorp keyseq)
-     (format nil "~{~A ~}"
+     (format nil "~{~A~^ ~}"
 	     (loop :for i :across keyseq :collect (nice-char i))))
     ((listp keyseq)
-     (format nil "~{~A ~}"
+     (format nil "~{~A~^ ~}"
 	     (loop :for i :in keyseq :collect (nice-char i))))
     (t
      (nice-char keyseq))))
