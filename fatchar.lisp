@@ -83,8 +83,14 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
        (same-effects a b)
        (= (fatchar-line a) (fatchar-line b))))
 
+(defun fatchar/= (a b)
+  (not (fatchar= a b)))
+
 (defmethod ochar= ((char-1 fatchar) (char-2 fatchar))
   (fatchar= char-1 char-2))
+
+(defmethod ochar/= ((char-1 fatchar) (char-2 fatchar))
+  (fatchar/= char-1 char-2))
 
 (deftype fatchar-string (&optional size)
   "A string of FATCHARs."
@@ -127,6 +133,48 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 	   (length subscripts)))
   (setf (aref (fat-string-string s) (car subscripts)) value))
 
+(defmacro call-with-start-and-end (func args)
+  "Call func with args and START and END keywords, assume that an environemnt
+that has START and START-P and END and END-P."
+  `(progn
+     (if start-p
+	 (if end-p
+	     (,func ,@args :start start :end end)
+	     (,func ,@args :start start))
+	 (if end-p
+	     (,func ,@args ::end end)
+	     (,func ,@args)))))
+
+(defmacro call-with-start-end-test (func args)
+  "Call func with args and START, END, TEST, and TEST-NOT keywords. Assume that
+the environemnt has <arg> and <arg>-P for all those keywords."
+  `(progn
+     (cond
+       (test-not-p
+	(if start-p
+	    (if end-p
+		(,func ,@args :start start :end end :test-not test-not)
+		(,func ,@args :start start :test-not test-not))
+	    (if end-p
+		(,func ,@args ::end end :test-not test-not)
+		(,func ,@args :test-not test-not))))
+       (test-p
+	(if start-p
+	    (if end-p
+		(,func ,@args :start start :end end :test test)
+		(,func ,@args :start start :test test))
+	    (if end-p
+		(,func ,@args ::end end :test test)
+		(,func ,@args :test test))))
+       (t
+	(if start-p
+	    (if end-p
+		(,func ,@args :start start :end end)
+		(,func ,@args :start start))
+	    (if end-p
+		(,func ,@args ::end end)
+		(,func ,@args)))))))
+
 (defmethod osubseq ((string fat-string) start &optional end)
   "Sub-sequence of a fat-string."
   (make-fat-string
@@ -135,93 +183,132 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
        (subseq (fat-string-string string) start end)
        (subseq (fat-string-string string) start))))
 
+(defmethod ocount ((item fatchar) (collection fat-string)
+		   &key from-end key
+		     (test nil test-p)
+		     (test-not nil test-not-p)
+		     (start nil start-p)
+		     (end nil end-p))
+  (if (or test-p test-not-p)
+      (call-with-start-end-test
+       count (item (fat-string-string collection) :from-end from-end
+		   :key key))
+      (call-with-start-and-end
+       count (item (fat-string-string collection) :from-end from-end
+		   :key key
+		   :test (or test #'fatchar=)))))
+
+(defmethod ocount ((item character) (collection fat-string)
+		   &key from-end key
+		     (test nil test-p)
+		     (test-not nil test-not-p)
+		     (start nil start-p)
+		     (end nil end-p))
+  (labels ((key-func (c)
+	     (funcall key (fatchar-c c))))
+  (call-with-start-end-test
+   count (item (fat-string-string collection) :from-end from-end
+	       :key (if key #'key-func #'fatchar-c)))))
+
 (defmethod oposition ((item fatchar) (string fat-string)
 		      &key from-end test test-not key
 			(start nil start-p)
 			(end nil end-p))
   "Position of a fatchar in a fat-string."
-  (apply 'position
-	 `(,item ,(fat-string-string string)
-	   :from-end ,from-end
-	    ;; Default to reasonable tests.
-	   :test (or ,test #'equalp)
-	   :key ,key
-	   :test-not (or ,test-not (lambda (x y) (not (equalp x y))))
-	   ,@(when start-p `(:start ,start))
-	   ,@(when end-p `(:end ,end)))))
+  (declare (ignorable start start-p end end-p))
+  (call-with-start-and-end
+   position
+   (item (fat-string-string string)
+	 :from-end from-end
+	 ;; Default to reasonable tests.
+	 :test (or test #'equalp)
+	 :key key
+	 :test-not (or test-not (lambda (x y) (not (equalp x y)))))))
 
 (defmethod oposition ((item character) (string fat-string)
 		      &key from-end test test-not key
 			(start nil start-p)
 			(end nil end-p))
   "Position of a fatchar in a fat-string."
-  (apply 'position
-	 `(,item ,(fat-string-string string)
-	   :from-end ,from-end
-	   :test ,test :test-not ,test-not
-	   ;; Make the key reach into the fatchar for the character.
-	   :key ,(or (and key (_ (funcall key (fatchar-c _))))
-		     #'fatchar-c)
-	   ,@(when start-p `(:start ,start))
-	   ,@(when end-p `(:end ,end)))))
+  (declare (ignorable start start-p end end-p))
+  (call-with-start-and-end
+   position
+   (item (fat-string-string string)
+	 :from-end from-end
+	 :test test :test-not test-not
+	 ;; Make the key reach into the fatchar for the character.
+	 :key (or (and key (_ (funcall key (fatchar-c _))))
+		  #'fatchar-c))))
+
+(defmethod oposition-if (predicate (string fat-string)
+			 &key from-end key
+			   (start nil start-p)
+			   (end nil end-p))
+  "Position of a fatchar in a fat-string."
+  (declare (ignorable start start-p end end-p))
+  (call-with-start-and-end
+   position-if
+   (predicate (fat-string-string string)
+	      :from-end from-end
+	      :key key)))
 
 (defmethod osplit ((separator fatchar) (string fat-string)
 		   &key omit-empty test key
 		     (start nil start-p)
 		     (end nil end-p))
+  (declare (ignorable start start-p end end-p))
   (mapcar (_ (make-fat-string :string _))
-	  (apply 'split-sequence
-		 `(,separator ,(fat-string-string string)
-		   :omit-empty ,omit-empty
-		   ;; Default to a reasonable test for fatchars.
-		   :test ,(or test #'equalp)
-		   :key ,key
-		   ,@(when start-p `(:start ,start))
-		   ,@(when end-p `(:end ,end))))))
+	  (call-with-start-and-end
+	   split-sequence
+	   (separator (fat-string-string string)
+		      :omit-empty omit-empty
+		      ;; Default to a reasonable test for fatchars.
+		      :test (or test #'equalp)
+		      :key key))))
 
 (defmethod osplit ((separator character) (string fat-string)
 		   &key omit-empty test key
 		     (start nil start-p)
 		     (end nil end-p))
+  (declare (ignorable start start-p end end-p))
   (mapcar (_ (make-fat-string :string _))
-	  (apply 'split-sequence
-		 `(,separator ,(fat-string-string string)
-		  :omit-empty ,omit-empty
-		  :test ,test
-		  ;; Make the key reach into the fatchar for the character.
-		  :key ,(or (and key (_ (funcall key (fatchar-c _))))
-			    #'fatchar-c)
-		  ,@(when start-p `(:start ,start))
-		  ,@(when end-p `(:end ,end))))))
+	  (call-with-start-and-end
+	   split-sequence
+	   (separator (fat-string-string string)
+		      :omit-empty omit-empty
+		      :test test
+		      ;; Make the key reach into the fatchar for the character.
+		      :key (or (and key (_ (funcall key (fatchar-c _))))
+			       #'fatchar-c)))))
 
 (defmethod osplit ((separator string) (string fat-string)
 		   &key omit-empty test key
 		     (start nil start-p)
 		     (end nil end-p))
+  (declare (ignorable start start-p end end-p))
   (mapcar (_ (make-fat-string :string _))
-	  (apply 'split-sequence
-		 `(,separator ,(fat-string-string string)
-		   :omit-empty ,omit-empty
-		   :test ,test
-		   ;; Make the key reach into the fatchar for the character.
-		   :key ,(or (and key (_ (funcall key (fatchar-c _))))
-			     #'fatchar-c)
-		   ,@(when start-p `(:start ,start))
-		   ,@(when end-p `(:end ,end))))))
+	  (call-with-start-and-end
+	   split-sequence
+	   (separator (fat-string-string string)
+		      :omit-empty omit-empty
+		      :test test
+		      ;; Make the key reach into the fatchar for the character.
+		      :key (or (and key (_ (funcall key (fatchar-c _))))
+			       #'fatchar-c)))))
 
 (defmethod osplit ((separator fat-string) (string fat-string)
 		   &key omit-empty test key
 		     (start nil start-p)
 		     (end nil end-p))
+  (declare (ignorable start start-p end end-p))
   (mapcar (_ (make-fat-string :string _))
-	  (apply 'split-sequence
-		 `(,(fat-string-string separator) ,(fat-string-string string)
-		   :omit-empty ,omit-empty
-		   ;; Default to a reasonable test for fatchars.
-		   :test ,(or test #'equalp)
-		   :key ,key
-		   ,@(when start-p `(:start ,start))
-		   ,@(when end-p `(:end ,end))))))
+	  (call-with-start-and-end
+	   split-sequence
+	   ((fat-string-string separator) (fat-string-string string)
+	    :omit-empty omit-empty
+	    ;; Default to a reasonable test for fatchars.
+	    :test (or test #'equalp)
+	    :key key))))
 
 (defun make-fatchar-string (thing)
   "Make a string of fatchars from THING, which can be a string or a character."
@@ -302,7 +389,7 @@ functions."
   (defmacro make-char-comparators (prefix)
     (let ((forms
 	   (loop :with func
-	      :for f :in '(char< char> char/= char<= char>=
+	      :for f :in '(char< char> char<= char>=
 			   char-lessp char-greaterp char-equal
 			   char-not-equal char-not-lessp
 			   char-not-greaterp)
@@ -322,7 +409,7 @@ functions."
   (defmacro make-char-comparator-methods (prefix)
     (let ((forms
 	   (loop :with func
-	      :for f :in '(char< char> char/= char<= char>=
+	      :for f :in '(char< char> char<= char>=
 			   char-lessp char-greaterp char-equal
 			   char-not-equal char-not-lessp
 			   char-not-greaterp)
