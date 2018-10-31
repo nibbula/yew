@@ -64,9 +64,9 @@ bloatmobile to the heavens.")
   (:method ((char character)) (character char)))
 
 ;; We have taken the mighty aribitrary arity functions and turned them into
-;; two arg bimbos. Why? Don't ask questions! It's already very stupid in here.
-;; We're lucky we even have this. And thankfully this whole crap will evaporate
-;; when we have the successor!
+;; two arg badgersnaps. Why? Don't ask questions! It's already very stupid in
+;; here. We're lucky we even have this. And hopefully this whole crap will
+;; evaporate when we have the successor!
 
 (defgeneric ochar= (char-1 char-2)
   (:documentation "Return true if all characters are the same.")
