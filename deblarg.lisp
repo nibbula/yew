@@ -1,6 +1,8 @@
 ;;
-;; deblarg.lisp - Debugger for use with :TINY-REPL
+;; deblarg.lisp - Debugger.
 ;;
+
+;; This would normally be used with TINY-REPL or LISH.
 
 ;;; TODO:
 ;;; - how about using swank? conium?
@@ -524,6 +526,7 @@ program that messes with the terminal, we can still type at the debugger."
 		     :keymap *debugger-keymap*
 		     :output *debug-io*
 		     :debug t
+		     :terminal *debug-term*
 		     :no-announce t))))
 ;;;    (Format *debug-io* "Exiting the debugger level ~d~%" *repl-level*)
       (reset-visual))))
