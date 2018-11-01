@@ -685,8 +685,8 @@ drawing, which will get overwritten."
     ("Scrolling region"            . test-scrolling-region)
     ))
 
-(defun run ()
-  (let ((class #| :ansi |# (ask-class)  ))
+(defun run (&optional terminal-type)
+  (let ((class (or terminal-type (ask-class))))
     (when class
       (with-new-terminal (class)
 	(catch 'quit
@@ -707,22 +707,22 @@ drawing, which will get overwritten."
 				(digit-char i (1+ (length *menu*)))) name))
   (tt-format "~%  [q]  Quit~%"))
 
-(defun menu ()
-  (let ((class #| :ansi |# (ask-class)))
+(defun menu (&optional terminal-type)
+  (let ((class (or terminal-type (ask-class))))
     (when class
       (with-new-terminal (class)
 	(catch 'quit
 	  (terminal-get-size *terminal*)
-	  (loop :with c :and quit-flag
+	  (loop :with c :and quit-flag :and num
 	     :while (not quit-flag)
 	     :do
 	     (show-menu)
 	     (tt-finish-output)
 	     (setf c (tt-get-key))
 	     (cond
-	       ((digit-char-p c (1+ (length *menu*)))
-		(funcall (cdr (nth (1- (digit-char-p c (1+ (length *menu*))))
-				   *menu*))))
+	       ((and (setf num (digit-char-p c (1+ (length *menu*))))
+		     (not (zerop num)))
+		(funcall (cdr (nth (1- num) *menu*))))
 	       ((eql #\q c)
 		(setf quit-flag t)))))))))
 
