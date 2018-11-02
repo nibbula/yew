@@ -36,6 +36,7 @@
    #:error-message
    #:environment
    #:environment-variable
+   #:env
    #:memory-page-size
    #:processor-count
    #:get-user-info
@@ -2665,11 +2666,8 @@ events considered to those in EVENT-TYPES, if it's not T."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Terminals
 
-;; The way terminals work on Windows probably would be better dealt with
-;; by a whole terminal-* driver. Unfortunately, to have an O/S specific
-;; terminal-* type breaks our current model. It's proabably okay to break that
-;; idea a bit, but we still want to have this opsys level interface for the time
-;; being and just cope with the mismatchedness.
+;; This is almost like a mini terminal-* driver, even though we have a whole
+;; terminal-ms. Is there a better way to do it?
 
 (defstruct ms-term
   "A dumb way to deal with it."
