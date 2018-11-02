@@ -992,8 +992,11 @@ for the command-function).")
      (mapcar (_ (make-history
 		 :hash (first _)
 		 :email (first (cdr _))
-		 :date (uos:unix-to-universal-time
-			(parse-integer (second (cdr _))))
+		 :date
+		 #+unix (uos:unix-to-universal-time
+			 (parse-integer (second (cdr _))))
+		 ;; @@@ Need to see what git on windows does?
+		 #+windows (parse-integer (second (cdr _)))
 		 :message (third (cdr _)))) hh)
      'vector)))
 
