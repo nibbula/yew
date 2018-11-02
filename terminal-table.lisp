@@ -62,11 +62,12 @@
       ;; Lines
       (when (not has-underline)
 	(setf cursor 0)
-	(loop :with len = (length sizes)
+	(loop :with len = (length sizes) :and size
 	   :for i :from 0 :below len
 	   :do
-	   (terminal-format stream "~v,,,va" (car (aref sizes i)) #\- #\-)
-	   (incf cursor (aref sizes i))
+	   (setf size (car (aref sizes i)))
+	   (terminal-format stream "~v,,,va" size #\- #\-)
+	   (incf cursor size)
 	   (when (< i (1- len))
 	     (terminal-write-string stream separator)))
 	(when (or (not *max-width*) (/= cursor *max-width*))
