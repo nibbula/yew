@@ -30,6 +30,11 @@
    #:system-info-names
    #:system-info-description
    #:get-system-info
+   #:os-machine-instance
+   #:os-machine-type
+   #:os-machine-version
+   #:os-software-type
+   #:os-software-version
 
    #:get-user-info
    #:user-home
@@ -166,6 +171,10 @@
    #:with-terminal-signals
    #:*default-console-device-name*
    
+   ;; network
+   #:network-host-name
+   #:network-domain-name
+
    ;; character coding / localization (or similar)
    #:char-width
    #:setlocale

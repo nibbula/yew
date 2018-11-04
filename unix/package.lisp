@@ -79,6 +79,19 @@
    #:system-info-names
    #:system-info-description
    #:get-system-info
+   #:uname
+   #:make-uname
+   #:uname-sysname
+   #:uname-nodename
+   #:uname-release
+   #:uname-version
+   #:uname-machine
+   #:uname-domainname
+   #:os-machine-instance
+   #:os-machine-type
+   #:os-machine-version
+   #:os-software-type
+   #:os-software-version
 
    #:passwd				; struct
    #:passwd-name
@@ -588,6 +601,14 @@
    #:test
    #:test-echo
    #:test-input
+
+   ;; Communication
+   #:gethostname
+   #:sethostname
+   #:getdomainname
+   #:setdomainname
+   #:network-host-name
+   #:network-domain-name
 
    ;; Character coding / localization
    #:wcwidth

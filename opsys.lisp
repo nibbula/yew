@@ -118,6 +118,21 @@ given one keyword, just the value is retuned. When given multiple keywords, an
 alist of (:keyword . value) is returned. On certain systems getting multiple
 names at once may be more efficent.")
 
+(defosfun os-machine-instance ()
+  "Like MACHINE-INSTANCE, but without implementation variation.")
+
+(defosfun os-machine-type ()
+  "Like MACHINE-TYPE, but without implementation variation.")
+
+(defosfun os-machine-version ()
+  "Like MACHINE-VERSION, but without implementation variation.")
+
+(defosfun os-software-type ()
+  "Like SOFTWARE-TYPE, but without implementation variation.")
+
+(defosfun os-software-version ()
+  "Like SOFTWARE-VERSION, but without implementation variation.")
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; User database
 ;; 
@@ -1108,6 +1123,15 @@ characters. If we don't get anything after a while, just return what we got.")
 (defosfun with-terminal-signals (() &body body)
   "Evaluate the BODY with signal handlers set appropriately for reading from
 a terminal.")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Communication / Network
+
+(defosfun network-host-name ()
+  "Return the netowrk host name.")
+
+(defosfun network-domain-name ()
+  "Return the network domain name.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Profiling and debugging?

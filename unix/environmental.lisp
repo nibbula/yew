@@ -1210,4 +1210,83 @@ Returns an integer."
 	   #+os-t-has-sysctl (get-sysctl-item names)
 	   (get-system-info-item names))))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defstruct uname
+  sysname
+  nodename
+  release
+  version
+  machine
+  domainname)
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconstant +UTSNAME-LENGTH+ 65))
+
+(defcstruct utsname
+  (sysname    :char :count #.+UTSNAME-LENGTH+)
+  (nodename   :char :count #.+UTSNAME-LENGTH+)
+  (release    :char :count #.+UTSNAME-LENGTH+)
+  (version    :char :count #.+UTSNAME-LENGTH+)
+  (machine    :char :count #.+UTSNAME-LENGTH+)
+  (domainname :char :count #.+UTSNAME-LENGTH+))
+
+(defcfun ("uname" real-uname) :int 
+  "Return system information in the structure pointed to by buf."
+  (buf (:pointer (:struct utsname))))
+
+(defun uname ()
+  (with-foreign-object (buf '(:struct utsname))
+    (syscall (real-uname buf))
+    (with-foreign-slots ((sysname nodename release version machine domainname)
+			 buf (:struct utsname))
+      (make-uname
+       :sysname    (foreign-string-to-lisp sysname)
+       :nodename   (foreign-string-to-lisp nodename)
+       :release    (foreign-string-to-lisp release)
+       :version    (foreign-string-to-lisp version)
+       :machine    (foreign-string-to-lisp machine)
+       :domainname (foreign-string-to-lisp domainname)))))
+
+(defun os-machine-instance ()
+  "Like MACHINE-INSTANCE, but without implementation variation."
+  ;;(gethostname)
+  (uname-nodename (uname))
+  )
+;; char nodename[];   ;; -n Name within "some implementation-definednetwork"
+
+(defun os-machine-type ()
+  "Like MACHINE-TYPE, but without implementation variation."
+  ;; We should normalize this so that it can be directly turned into
+  ;; the feaure, e.g. uname -m is "x86_64" but we want "X86-64"
+  (substitute #\- #\_ (string-upcase (uname-machine (uname)))))
+
+(defun os-machine-version ()
+  "Like MACHINE-VERSION, but without implementation variation."
+;; Machine-Version                 : "Intel(R) Core(TM) i7-3615QM CPU @ 2.30GHz"
+  (or #+linux
+      (with-open-file (stream "/proc/cpuinfo" :direction :input)
+	(let (line)
+	  (loop :while (and (setf line (read-line stream nil))
+			    (not (begins-with "model name" line))))
+	  (when line
+	    (let ((pos (position #\: line)))
+	      (subseq line (or (and pos (+ 2 pos)) 0))))))
+      #+darwin (sysctl "machdep.cpu.brand_string" :string)
+      #+(or openbsd freebsd) (sysctl "hw.hw-model" :string)
+      "unknown"))
+
+(defun os-software-type ()
+  "Like SOFTWARE-TYPE, but without implementation variation."
+  (uname-sysname (uname)))
+
+(defun os-software-version ()
+  "Like SOFTWARE-VERSION, but without implementation variation."
+  (uname-release (uname)))
+
+;; ?What about:
+;; char version[];    ;; -v Operating system version
+;; ;; -i, --hardware-platform print the hardware platform (non-portable) 
+;; ;; -o, --operating-system print the operating system 
+
 ;; End

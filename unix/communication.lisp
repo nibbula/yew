@@ -197,6 +197,46 @@ from the system command CMD with the arguments ARGS."
 
 |#
 
+(defcfun ("getdomainname" real-getdomainname) :int (name :string) (len size-t))
+(defun getdomainname ()
+  (let ((len (uos:sysconf uos::+sc-host-name-max+)))
+    (with-foreign-pointer-as-string (name len)
+      (syscall (real-getdomainname name len)))))
+
+(defcfun ("gethostname" real-gethostname) :int (name :string) (len size-t))
+(defun gethostname ()
+  (let ((len (uos:sysconf uos::+sc-host-name-max+)))
+    (with-foreign-pointer-as-string (name len)
+      (syscall (real-getdomainname name len)))))
+
+(defcfun ("sethostname" real-sethostname) :int (name :string) (len size-t))
+(defun sethostname (name)
+  (let ((len (uos:sysconf uos::+sc-host-name-max+)))
+    (with-foreign-string ((host byte-size) name)
+      (when (> byte-size len)
+	(error 'opsys-error
+	       :format-control "Host name too long ~s. must be less than ~s."
+	       :format-arguments `(,byte-size ,len)))
+      (syscall (real-sethostname host byte-size)))
+    name))
+
+(defcfun ("setdomainname" real-setdomainname) :int (name :string) (len size-t))
+(defun setdomainname (name)
+  (let ((len (uos:sysconf uos::+sc-host-name-max+)))
+    (with-foreign-string ((host byte-size) name)
+      (when (> byte-size len)
+	(error 'opsys-error
+	       :format-control "Domain name too long ~s. must be less than ~s."
+	       :format-arguments `(,byte-size ,len)))
+      (syscall (real-setdomainname host byte-size)))
+    name))
+
+(defun network-host-name ()
+  (gethostname))
+
+(defun network-domain-name ()
+  (getdomainname))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; semaphores: semsys/semctl/semget/semop/semconfig
