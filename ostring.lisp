@@ -33,6 +33,7 @@
    #:ostring-greaterp
    #:ostring-not-greaterp
    #:ostring-not-lessp
+   #:ostring-to-span
    ))
 (in-package :ostring)
 
@@ -176,5 +177,9 @@ that has START and START-P and END and END-P."
   (:documentation "")
   (:method ((string-1 string) (string-2 string))
     (string-not-lessp string-1 string-2)))
+
+(defgeneric ostring-to-span (string)
+  (:documentation "Convert STRING to a span.")
+  (:method ((string string)) (list string)))
 
 ;; EOF

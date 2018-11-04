@@ -9,7 +9,7 @@ Define a FATCHAR-STRING as a vector of FATCHARS.
 Define a FAT-STRING as a struct with a FATCHAR-STRING so we can specialize.
 Define a TEXT-SPAN as a list representation of a FAT-STRING.
 ")
-  (:use :cl :dlib :stretchy :char-util :collections :ochar :color)
+  (:use :cl :dlib :stretchy :char-util :collections :ochar :ostring :color)
   (:export
    #:fatchar
    #:fatchar-p
@@ -545,9 +545,6 @@ strings."
 
 ;; (fatchar:fat-string-to-span (pager::process-grotty-line (nth 4 (!_ "/bin/cat grotish.txt"))))
 
-(defun fat-string-to-span (fat-string &key (start 0))
-  (fatchar-string-to-span (fat-string-string fat-string) :start start))
-
 (defun fatchar-diffs (c1 c2)
   "The differences between c1 and c2, a list of :ATTR :FG :BG. NIL if the same."
   (let (diffs)
@@ -892,6 +889,12 @@ attr | iiiiiiii
     (setf span (nreverse span))
     `(,@attr ,@span)))
 |#
+
+(defun fat-string-to-span (fat-string &key (start 0))
+  (fatchar-string-to-span (fat-string-string fat-string) :start start))
+
+(defmethod ostring-to-span ((string fat-string))
+  (fat-string-to-span string))
 
 (defun span-to-fat-string (span &key (start 0) end fatchar-string
 				  unknown-func filter)
