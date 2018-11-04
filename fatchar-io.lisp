@@ -424,8 +424,7 @@ possible."
        ;; 	(render-fat-string obj)) stream)
        ;; (dbugf :fatchar "print-object -> downconvert ~s stream ~s~%"
        ;; 	    (type-of obj) stream)
-       (with-quotes ()
-	 (write (fat-string-to-string obj) :stream stream))
+       (write (fat-string-to-string obj) :stream stream)
        ;;(call-next-method)
        ))))
 
