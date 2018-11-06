@@ -84,6 +84,7 @@
    #:tt-height
    #:tt-title                     #:terminal-title
    #:tt-has-attribute             #:terminal-has-attribute
+   #:tt-has-autowrap-delay	  #:terminal-has-autowrap-delay
    #:tt-enable-events             #:terminal-enable-events
    #:tt-disable-events            #:terminal-disable-events
    #:terminal-enable-event
@@ -665,6 +666,9 @@ or :CHAR for character at time with no echo."))
 
 (deftt has-attribute (attribute)
   "Return true if the terminal can display the character attribute.")
+
+(deftt has-autowrap-delay ()
+  "Return true if the terminal delays automatic wrapping at the end of a line.")
 
 (defclass tt-event ()
   ((terminal

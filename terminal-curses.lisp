@@ -596,6 +596,11 @@ i.e. the terminal is 'line buffered'."
     (:inverse    (tigetstr "rev"))
     (:color 	 (has-colors))))
 
+(defmethod terminal-has-autowrap-delay ((tty terminal-curses))
+  "Return true if the terminal delays automatic wrapping at the end of a line."
+  ;; @@@ Is this really true??
+  nil)
+
 (defmethod terminal-set-attributes ((tty terminal-curses) attributes)
   "Set the attributes given in the list. If NIL turn off all attributes.
 Attributes are usually keywords."
@@ -603,7 +608,6 @@ Attributes are usually keywords."
      (when (setf n (assoc a *attributes*))
        (attron (cdr n)))))
      
-
 (defmethod terminal-alternate-characters ((tty terminal-curses) state)
   (setf (translate-alternate-characters tty) state)
   (when (and state (not *acs-table*))

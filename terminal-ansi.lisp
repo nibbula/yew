@@ -1433,6 +1433,10 @@ XTerm or something."
   (case attribute
     ((:standout :underline :bold :inverse :color) t)))
 
+(defmethod terminal-has-autowrap-delay ((tty terminal-ansi))
+  "Return true if the terminal delays automatic wrapping at the end of a line."
+  t)
+
 (defun set-mouse-event (tty event state)
   (case event
     (:mouse-buttons

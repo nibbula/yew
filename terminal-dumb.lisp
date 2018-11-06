@@ -219,6 +219,12 @@ require terminal driver support."))
   (declare (ignore attribute))
   nil)
 
+(defmethod terminal-has-autowrap-delay ((tty terminal-dumb))
+  "Return true if the terminal delays automatic wrapping at the end of a line."
+  ;; This isn't technically right, but we don't care, since we can't really do
+  ;; much that depends on it anyway.
+  nil)
+
 (defmethod terminal-alternate-characters ((tty terminal-dumb) state)
   (declare (ignore state)))
 
