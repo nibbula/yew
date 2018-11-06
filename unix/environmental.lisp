@@ -1251,9 +1251,7 @@ Returns an integer."
 (defun os-machine-instance ()
   "Like MACHINE-INSTANCE, but without implementation variation."
   ;;(gethostname)
-  (uname-nodename (uname))
-  )
-;; char nodename[];   ;; -n Name within "some implementation-definednetwork"
+  (uname-nodename (uname)))
 
 (defun os-machine-type ()
   "Like MACHINE-TYPE, but without implementation variation."
@@ -1284,9 +1282,54 @@ Returns an integer."
   "Like SOFTWARE-VERSION, but without implementation variation."
   (uname-release (uname)))
 
-;; ?What about:
-;; char version[];    ;; -v Operating system version
-;; ;; -i, --hardware-platform print the hardware platform (non-portable) 
-;; ;; -o, --operating-system print the operating system 
+;; If you realy need `uname -v` than you can just call uname based on
+;; the generic os-software-type and os-software-version.
+;;
+;; What about cases where uname -i differs from uname -m ?
+;; -i, --hardware-platform print the hardware platform (non-portable)
+
+#|
+ uname -o 
+   -o, --operating-system print the operating system
+
+is `configure`ed into uname, translating the thing guessed by configure into a
+nice (or semi-offical) name for humans to read, which if it doesn't have any
+stylized capitalization, punctuation, or spaces
+(like 'SunOS', "GNU/kFreeBSD", or 'Plan 9')
+then it's just the capitalized version from uname.
+
+which in turn comes from the immense hack that is the combination of the shell
+scripts: `config.guess` AND `config.sub`
+which usually gets it's information from the `uname` command anyway,
+which means the whole thing is of course meta-circular and image based!
+
+config.guess also gets stuff from the `sysctl` command,
+C compiler pre-defined pre-processor defininitions,
+(which are also meta-circular) and
+a whole wacked slew of other system specific commands from the amazingly unixly
+divergent 1980-1990's, like:
+  `arch`, `sizer` `psrinfo` `universe` `oslevel`, `lsdev` `lsattr`, `getconf`
+  `sysversion` `getsysinfo` `objdump` etc.
+and files (or pseduo-files) sitting around in places like:
+  /usr/include/, /usr/options/, /etc/, /proc/, /<kernel-name>,
+  /etc/motd (which some old O/Ss pinch from the kernel binary!)
+
+Another point of "interjection" is that the GNU uname command can assume it's
+on "GNU/Linux" vs. just "Linux" without a GNU userland, by virtue of it being
+itself, but we would have to either sniff libc for glibc specific symbols or
+do horribly hackish probing around for files.
+
+Even if one was going to support every historical machine-OS-vendor combo, one
+would do it a different, hopefully better, way.
+
+[this is really only of historical interest]
+
+blah blah blah
+
+If we really need to, we can hack up our own version of `uname -o` from the
+combination of the glibc/kernel uname and/or *features*. I think anything more
+than that is just excess pandering to a world of trouble.
+
+|#
 
 ;; End
