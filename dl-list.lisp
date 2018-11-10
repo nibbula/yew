@@ -230,7 +230,9 @@ object appropriate to be element of a collection of MUTABLE-COLLECTION.
 Returns MUTABLE-COLLECTION.
 
 If COLLECTIONS are SEQUENCEs, the elements are applied in the sequence order."
-  (map-collections mutable-collection (setf (%dl-content i) x) collections)
+  (map-collections mutable-collection
+		   (setf (%dl-content i) (funcall function x))
+		   collections)
   mutable-collection)
 
 (defmethod oevery (function &rest collections)
