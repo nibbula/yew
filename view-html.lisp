@@ -163,9 +163,11 @@
 (lish:defcommand view-html
   ((things pathname :repeating t :help "File or URL to view as HTML."))
   "View HTML as a tree."
-  (with-file-list (file things)
-    (when (= 1 (length (multiple-value-list (view-html file))))
-      (return))))
+  (if (not things)
+      (view-html *standard-input*)
+      (with-file-list (file things)
+	(when (= 1 (length (multiple-value-list (view-html file))))
+	  (return)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; plist viewr
