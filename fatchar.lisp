@@ -89,6 +89,19 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 (defmethod ochar= ((char-1 fatchar) (char-2 fatchar))
   (fatchar= char-1 char-2))
 
+;; @@@ Should we really do these lossy comparisons?
+(defmethod ochar= ((char-1 character) (char-2 fatchar))
+  (char= char-1 (fatchar-c char-2)))
+
+(defmethod ochar= ((char-1 fatchar) (char-2 character))
+  (char= (fatchar-c char-1) char-2))
+
+(defmethod ochar-equal ((char-1 character) (char-2 fatchar))
+  (char-equal char-1 (fatchar-c char-2)))
+
+(defmethod ochar-equal ((char-1 fatchar) (char-2 character))
+  (char-equal (fatchar-c char-1) char-2))
+
 (defmethod ochar/= ((char-1 fatchar) (char-2 fatchar))
   (fatchar/= char-1 char-2))
 
