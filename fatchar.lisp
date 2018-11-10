@@ -133,6 +133,15 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 	   (length subscripts)))
   (setf (aref (fat-string-string s) (car subscripts)) value))
 
+(defmethod ochar ((s fat-string) index)
+  (aref (fat-string-string s) index))
+
+(defmethod (setf ochar) ((value character) (s fat-string) index)
+  (setf (fatchar-c (aref (fat-string-string s) index)) value))
+
+(defmethod (setf ochar) ((value fatchar) (s fat-string) index)
+  (setf (aref (fat-string-string s) index) value))
+
 (defmacro call-with-start-and-end (func args)
   "Call func with args and START and END keywords, assume that an environemnt
 that has START and START-P and END and END-P."
