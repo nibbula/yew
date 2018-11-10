@@ -54,6 +54,15 @@
   (:documentation "Make an ostring from the thing.")
   (:method ((thing t)) (string thing)))
 
+(defgeneric ochar (thing index)
+  (:documentation "Return the INDEX-th character of THING.")
+  (:method ((thing string) index) (char thing index)))
+
+(defgeneric (setf ochar) (value thing index)
+  (:documentation "Return the INDEX-th character of THING.")
+  (:method ((value character) (thing string) index)
+    (setf (char thing index) value)))
+
 ;; Is there some better way than this bullshit? Without messing up the lambda
 ;; list with a &rest and without using apply??
 ;; You can do this:
