@@ -5,7 +5,7 @@
 (defpackage :view-lisp
   (:documentation "View things in the Lisp system.")
   (:use :cl :dlib :tree-viewer :dlib-interactive :syntax :syntax-lisp
-	:terminal :collections :fatchar :fatchar-io :completion)
+	:terminal :collections :fatchar :fatchar-io :completion :ochar :ostring)
   (:export
    #:view-lisp
    ))
@@ -240,9 +240,9 @@
 ;; Generic text nodes
 
 (defun trim-trailing-newline (str)
-  (when (and str (not (zerop (length str)))
-	     (eql (fatchar-c (aref str (1- (length str)))) #\newline))
-    (setf (fatchar-c (aref str (1- (length str)))) #\space)))
+  (when (and str (not (zerop (olength str)))
+	     (ochar= (oelt str (1- (olength str))) #\newline))
+    (setf (ochar str (1- (olength str))) #\space)))
 
 (defclass text-func-node (object-node)
   ((text-func
@@ -254,7 +254,7 @@
   (let ((str (with-output-to-fat-string (*standard-output*)
 	       (funcall (text-func node)))))
     (when (not (zerop (olength str)))
-      (trim-trailing-newline (fat-string-string str))
+      (trim-trailing-newline str)
       (display-fat-object node str level))))
 
 (defun make-text-func-node (name func &optional object)
