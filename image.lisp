@@ -12,6 +12,8 @@
    #:image-name
    #:image-width
    #:image-height
+   #:image-color-model
+   #:image-pixel-format
    #:image-subimages
    #:make-image
    #:make-sub-image
@@ -95,6 +97,14 @@
    (height
     :initarg :height :accessor image-height :initform 0 :type fixnum
     :documentation "Height in pixels.")
+   (color-model ;; @@@ not used yet
+    :initarg :color-model :accessor image-color-model
+    :initform *default-color-model* :type symbol
+    :documentation "Color model.")
+   (pixel-format ;; @@@ not used yet
+    :initarg :pixel-format :accessor image-pixel-format
+    :initform :uint8 :type symbol
+    :documentation "Format of pixels in data.")
    (subimages
     :initarg :subimages :accessor image-subimages
     :initform nil :type (or null (simple-array sub-image *))
