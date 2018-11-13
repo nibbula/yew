@@ -140,6 +140,7 @@ starting at START. If not found, return START."
 	  failed nil
 	  input nil
 	  result nil)
+    (tt-normal)
     (tt-clear)))
 
 (defun show-prompt (i prompt)
