@@ -429,8 +429,10 @@ by nos:read-directory."))
     ;; 	    *grout* (grout-stream *grout*) *terminal* *standard-output*)
     (flet ((print-it (x)
 	     (if (getf args :long)
-		 (grout-print-table (list-long x (getf args :date-format))
-				    :long-titles nil :trailing-spaces nil)
+		 (apply #'grout::%grout-print-table grout:*grout*
+			(list-long x (getf args :date-format))
+			`(:long-titles nil :trailing-spaces nil
+			  ,@(when (getf args :wide) '(:max-width nil))))
 		 (if (getf args :1-column)
 		     (mapcar (_ (grout-format "~a~%"
 					      (format-short-item
@@ -451,10 +453,10 @@ by nos:read-directory."))
 	   (grout-princ #\newline)
 	   (print-it list))))))
 
-(defun list-files (&rest args &key files long 1-column hidden directory sort-by
-				reverse date-format collect show-size
+(defun list-files (&rest args &key files long 1-column wide hidden directory
+				sort-by reverse date-format collect show-size
 				ignore-backups)
-  (declare (ignorable files long 1-column hidden directory sort-by reverse
+  (declare (ignorable files long 1-column wide hidden directory sort-by reverse
 		      date-format collect show-size ignore-backups))
   ;; It seems like we have to do our own defaulting.
   (when (not files)
@@ -480,6 +482,8 @@ by nos:read-directory."))
   ((files pathname :repeating t :help "The file(s) to list.")
    (long boolean :short-arg #\l :help "True to list in long format.")
    (1-column boolean :short-arg #\1 :help "True to list one file per line.")
+   (wide boolean :short-arg #\w
+    :help "True to not truncate the output to the terminal width.")
    (hidden boolean :short-arg #\a :help "True to list hidden files.")
    (directory boolean :short-arg #\d
     :help "True to list the directory itself, not its contents.")
