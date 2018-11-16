@@ -1712,7 +1712,7 @@ for long."
   (= 0 (real-stat (safe-namestring filename) *statbuf*)))
 
 (defcfun ("readlink" real-readlink) ssize-t (path :string)
-	 (buf (:pointer :char)) (bufsize size-t))
+	 (buf (:pointer :unsigned-char)) (bufsize size-t))
 
 (defun readlink (filename)
   "Return the name which the symbolic link FILENAME points to. Return NIL if
@@ -1720,7 +1720,10 @@ it is not a symbolic link."
   (with-foreign-pointer (buf (1+ (get-path-max)))
     (let ((result (real-readlink filename buf (get-path-max))))
       (if (> result 0)
-	  (subseq (foreign-string-to-lisp buf :count result) 0 result)
+	  ;; This isn't right for multi-byte characters. Shouldn't the :count
+	  ;; be enough?
+	  ;; (subseq (foreign-string-to-lisp buf :count result) 0 result)
+	  (foreign-string-to-lisp buf :count result)
 	  (let ((err *errno*))		; in case there are hidden syscalls
 	    (if (= err +EINVAL+)
 		nil
