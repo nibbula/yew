@@ -66,11 +66,15 @@
   #(:meta :link :script :a :form :input :img :div :span :frame)
   "Tags to print attributes for.")
 
-(defmethod display-thing ((obj plump-dom:element) stream)
+(defmethod limited-display-thing ((obj plump-dom:element) stream)
   (let ((tag (keywordify (plump:tag-name obj))))
     (format stream "~(~a~) " (plump:tag-name obj))
     (when (position tag *attr-tags*)
       (print-attrubutes obj stream))))
+
+(defmethod display-thing ((obj plump-dom:element) stream)
+  (format stream "~(~a~) " (plump:tag-name obj))
+  (print-attrubutes obj stream))
 
 (defmethod display-thing ((obj plump-dom:doctype) stream)
   (format stream "~(~a~) ~a" (type-of obj) (plump-dom:doctype obj)))
