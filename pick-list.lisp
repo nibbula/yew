@@ -571,7 +571,7 @@
 		   file-list (if allow-browse
 				 (append '(" [Up..]") files)
 				 files)))
-	   (cat (a b) (concatenate 'string a b))
+	   ;; (cat (a b) (concatenate 'string a b))
 	   (absolutize (f)
 	     (abspath (path-append dir (dir-entry-name f))))
 	   (single-file (f)
@@ -591,7 +591,10 @@
 	     (cond
 	       ;; picked up level
 	       ((and f (equal " [Up..]" f))
-		(setf dir (dirname (cat (abspath (cat dir "/..")) "/")))
+		(setf dir (dirname (s+ (abspath (path-append dir ".."))
+				       *directory-separator*)))
+		(when (zerop (length dir))
+		  (setf dir (string *directory-separator*)))
 		(generate-list))
 	       ;; picked a directory
 	       ((and f
