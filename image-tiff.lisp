@@ -3,10 +3,13 @@
 ;;
 
 (defpackage :image-tiff
-  (:documentation "TIFF images")
-  (:use :cl :dlib :image :retrospectiff)
+  (:documentation
+   "Read Tagged Image File Format images. Uses the Retrospectiff package.
+It doesn't handle all TIFF files.")
+  (:use :cl :dlib :image :retrospectiff :color)
   (:export
-   #:foo
+   #:read-tiff
+   #:tiff-image-format
    ))
 (in-package :image-tiff)
 
@@ -28,12 +31,25 @@
        (error "I don't understand a bits-per-sample of type ~s: ~s"
 	      (type-of (tiff-image-bits-per-sample image))
 	      (tiff-image-bits-per-sample image))))
-    (format t "bits-per-sample ~s samples-per-pixel ~a~%"
-	    (tiff-image-bits-per-sample image)
-	    (tiff-image-samples-per-pixel image))
     (case (tiff-image-samples-per-pixel image)
       (1
-       (loop :with i = 0 :and len = (length data)
+       (if (tiff-image-color-map image)
+	 (loop :with i = 0
+	   :and len = (length data)
+	   :and map = (tiff-image-color-map image)
+	   :and pixel
+	   :for y :from 0 :below (truncate len (tiff-image-width image))
+	   :while (< i len) :do
+             (loop :for x :from 0 :below (tiff-image-width image)
+		:while (< i len) :do
+		(setf pixel (aref map (aref data i)))
+		(set-pixel array y x
+			   (component-to-8bit (/ (first  pixel) #xffff))
+			   (component-to-8bit (/ (second pixel) #xffff))
+			   (component-to-8bit (/ (third  pixel) #xffff))
+			   +max-alpha+)
+		(incf i)))
+	 (loop :with i = 0 :and len = (length data)
 	  :for y :from 0 :below (truncate len (tiff-image-width image))
 	  ;;(tiff-image-length image)
 	  :while (< i len)
@@ -43,7 +59,7 @@
 	      :do 
 	      (set-pixel array y x (aref data i) (aref data i) (aref data i)
 			 +max-alpha+)
-	      (incf i))))
+	      (incf i)))))
       (3
        (loop :with i = 0 :and len = (length data)
 	  :for y :from 0 :below (truncate len (tiff-image-width image))
