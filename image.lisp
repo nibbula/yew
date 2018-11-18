@@ -49,6 +49,7 @@
    #:register-image-format
    #:read-image-format
    #:unknown-image-type
+   #:non-image-file
    #:read-image
    ))
 (in-package :image)
@@ -233,6 +234,10 @@ try to figure it out."
    ;;:format-control "~s is an image type ~a, which I don't know how to handle."
    :format-control "I don't know how to handle an image type of ~*~a."
     ))
+
+(define-condition non-image-file (simple-error) ()
+  (:default-initargs
+   :format-control "~s doesn't seem to be an image"))
 
 (defun read-image (file-or-stream)
   (let* (slurped-stream

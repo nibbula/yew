@@ -108,10 +108,6 @@
     (tt-move-to (1- (height inator)) 0)
     (tt-write-string string)))
 
-(define-condition non-image-file (simple-error) ()
-  (:default-initargs
-   :format-control "~s doesn't seem to be an image"))
-
 (defgeneric left (o &optional n)
   (:method ((o image-inator) &optional (n 1))
     (declare (type fixnum n))
