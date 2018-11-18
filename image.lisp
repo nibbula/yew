@@ -175,6 +175,10 @@ and format, since there is no checking."
     :initarg :lossy :accessor image-format-lossy
     :initform t :type boolean
     :documentation "True if the format can lose data.")
+   (lossless
+    :initarg :lossless :accessor image-format-lossless
+    :initform t :type boolean
+    :documentation "True if the format can preserve all data.")
    (multiple
     :initarg :multiple :accessor image-format-multiple
     :initform nil :type boolean
