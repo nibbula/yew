@@ -19,10 +19,14 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:fat-string #:fat-string-string
    #:fatchar-init
    #:copy-fatchar
+   #:copy-fatchar-effects
+   #:set-fatchar
    #:same-effects
    #:fatchar=
+   #:fatchar/=
    #:make-fat-string
    #:make-fatchar-string
+   #:copy-fatchar-string
    #:fatchar-string-to-string
    #:string-vector
    #:fat-string-to-string
@@ -69,6 +73,30 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 ;;      :bg    (fatchar-bg c)
 ;;      :line  (fatchar-line c)
 ;;      :attrs (fatchar-attrs c))))
+
+(defun copy-fatchar-effects (from to)
+  "Copy the effects from the fatchar FROM to the fatchar TO."
+  (assert (and from to (fatchar-p from) (fatchar-p to)))
+  (setf (fatchar-fg    to) (fatchar-fg   from)
+	(fatchar-bg    to) (fatchar-bg   from)
+	(fatchar-line  to) (fatchar-line from)
+	(fatchar-attrs to) (copy-list (fatchar-attrs from))))
+
+(defun copy-color (color)
+  (typecase color
+    (symbol color)
+    (list (copy-list color))
+    (array (copy-seq color))
+    (t color)))
+
+(defun set-fatchar (from to)
+  "Copy the effects from the fatchar FROM to the fatchar TO."
+  (assert (and from to (fatchar-p from) (fatchar-p to)))
+  (setf (fatchar-c     to) (fatchar-c from)
+	(fatchar-fg    to) (copy-color (fatchar-fg from))
+	(fatchar-bg    to) (copy-color (fatchar-bg from))
+	(fatchar-line  to) (fatchar-line from)
+	(fatchar-attrs to) (copy-list (fatchar-attrs from))))
 
 (defun same-effects (a b)
   "Return true if the two fatchars have the same colors and attributes."
@@ -352,6 +380,14 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 	;; the caller does it explicitly.
 	)
       result)))
+
+(defun copy-fatchar-string (fatchar-string)
+  (let ((result (make-array (length fatchar-string)
+			    :element-type 'fatchar
+			    :initial-element (make-fatchar))))
+    (loop :for i :from 0 :below (length fatchar-string) :do
+      (set-fatchar (aref fatchar-string i) (aref result i)))
+    result))
 
 (defun fat-string-to-string (fat-string)
   "Make a string from a fat string. This of course loses the attributes."
