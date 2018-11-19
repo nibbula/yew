@@ -13,19 +13,21 @@
    ))
 (in-package :style)
 
-(defun spannify-style-item (style item)
-  "Convert STYLE into a span with ITEM in it."
-  (labels ((flurp (n)
-	     "A typical function that only Lisp addled brains find sensible."
-	     (cond ((null (cdr n)) (car n))
-		   ((atom n) n)
-		   (t (list (car n) (flurp (cdr n)))))))
-    (flurp (append style (list item)))))
+;; (defun spannify-style-item (style item)
+;;   "Convert STYLE into a span with ITEM in it."
+;;   (labels ((flurp (n)
+;; 	     "A typical function that only Lisp addled brains find sensible."
+;; 	     (cond ((null (cdr n)) (car n))
+;; 		   ((atom n) n)
+;; 		   (t (list (car n) (flurp (cdr n)))))))
+;;     (flurp (append style (list item)))))
 
 (defun styled-string (style string)
   "Return a string or a fat-string with STYLE applied to it."
   (if style
-      (span-to-fat-string (spannify-style-item style string))
+      ;; Don't really need this since span-to-* is fixed.
+      ;;(span-to-fat-string (spannify-style-item style string))
+      (span-to-fat-string (append style (list string)))
       string))
 
 (defun themed-string (theme-item string)
