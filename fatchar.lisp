@@ -47,7 +47,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 ;; (declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
-(defstruct fatchar
+(defstruct (fatchar (:copier nil))
   "A character with attributes."
   (c (code-char 0) :type character)
   (fg nil)
@@ -63,17 +63,6 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 	(fatchar-line  c)	0
 	(fatchar-attrs c)	nil))
 
-;; I think we can just use the one made by defstruct?
-;; (defun copy-fatchar (c)
-;;   (declare (type fatchar c))
-;;   (when c
-;;     (make-fatchar
-;;      :c	    (fatchar-c c)
-;;      :fg    (fatchar-fg c)
-;;      :bg    (fatchar-bg c)
-;;      :line  (fatchar-line c)
-;;      :attrs (fatchar-attrs c))))
-
 (defun copy-fatchar-effects (from to)
   "Copy the effects from the fatchar FROM to the fatchar TO."
   (assert (and from to (fatchar-p from) (fatchar-p to)))
@@ -88,6 +77,17 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
     (list (copy-list color))
     (array (copy-seq color))
     (t color)))
+
+;; I think we can just use the one made by defstruct?
+(defun copy-fatchar (c)
+  (declare (type fatchar c))
+  (when c
+    (make-fatchar
+     :c	    (fatchar-c c)
+     :fg    (copy-color (fatchar-fg c))
+     :bg    (copy-color (fatchar-bg c))
+     :line  (fatchar-line c)
+     :attrs (copy-list (fatchar-attrs c)))))
 
 (defun set-fatchar (from to)
   "Copy the effects from the fatchar FROM to the fatchar TO."
@@ -386,7 +386,7 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 			    :element-type 'fatchar
 			    :initial-element (make-fatchar))))
     (loop :for i :from 0 :below (length fatchar-string) :do
-      (set-fatchar (aref fatchar-string i) (aref result i)))
+      (setf (aref result i) (copy-fatchar (aref fatchar-string i))))
     result))
 
 (defun fat-string-to-string (fat-string)
