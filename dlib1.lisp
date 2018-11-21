@@ -1634,6 +1634,8 @@ the right package."
 (defmacro dbugf (facility fmt &rest args)
   "Print a debugging message when debugging is turned on and maybe we're in
 the right package, and the FACILITY is activated."
+  (when (not (typep facility '(or symbol list)))
+    (error "You probably forgot the facility."))
   `(when (and #| dlib:*dbug* |# dlib:*dbug-facility*
 	      (or
 	       (member ,facility *dbug-facility*)
