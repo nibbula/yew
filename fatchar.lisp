@@ -105,6 +105,10 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
        (not (set-exclusive-or (fatchar-attrs a) (fatchar-attrs b)
 			      :test #'eq))))
 
+(defun same-char (a b)
+  "Return true if the two fatchars have the same underlying character."
+  (equal (fatchar-c a) (fatchar-c b)))
+
 (defun fatchar= (a b)
   "True if everything about a fatchar is the equivalent."
   (and (char= (fatchar-c a) (fatchar-c b))
@@ -539,6 +543,45 @@ functions."
 
 (defmethod oname-char (name (type (eql 'fatchar)))
   (make-fatchar :c (name-char name)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; ostring methods
+
+(eval-when (:compile-toplevel)
+  (defmacro make-ostring-comparators ()
+    (let ((forms
+	   (loop :with ofunc :and ffunc
+	      :for f :in '(string< string> string= string/= string<= string>=
+			   string-lessp string-greaterp string-equal
+			   string-not-equal string-not-lessp
+			   string-not-greaterp)
+	      :do
+		(setf ofunc (symbolify (s+ "O" f))
+		      ffunc (symbolify (s+ "FAT-" f)))
+	      :collect `(defalias ',ofunc ',ffunc))))
+      `(progn ,@forms))))
+(make-ostring-comparators)
+
+(defmethod ostring-left-trim (character-bag (string fat-string))
+  (let ((pos (position-if #'(lambda (c)
+			      (not (position c character-bag
+					     :test #'same-char)))
+			  (fat-string-string string))))
+    (make-fat-string :string (subseq (fat-string-string string)
+				     (or pos 0)))))
+
+(defmethod ostring-right-trim (character-bag (string fat-string))
+  (let ((pos (position-if #'(lambda (c)
+			      (not (position c character-bag
+					     :test #'same-char)))
+			  (fat-string-string string)
+			  :from-end t)))
+    (make-fat-string
+     :string (subseq (fat-string-string string) 0
+		     (1+ (or pos (length (fat-string-string string))))))))
+
+(defmethod ostring-trim (character-bag (string fat-string))
+  (ostring-left-trim character-bag (ostring-right-trim character-bag string)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Spans
