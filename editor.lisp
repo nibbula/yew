@@ -53,6 +53,11 @@ anything important.")
     :initform nil
     :initarg :buf
     :documentation "Current line buffer.")
+   (buf-str
+    :accessor buf-str
+    :initform nil
+    :initarg :buf-str
+    :documentation "The buffer as a fat-string.")
    ;; (screen-row
    ;;  :accessor screen-row
    ;;  :initform 0
@@ -73,6 +78,11 @@ anything important.")
     :accessor start-row
     :initform 0
     :documentation "Starting row of the input area after the prompt.")
+   (last-line
+    :initarg :last-line
+    :accessor last-line
+    :initform nil
+    :documentation "Last line of the buffer.")
    (clipboard
     :accessor clipboard
     :initform nil
@@ -137,6 +147,11 @@ anything important.")
     :accessor completion-func
     :initarg :completion-func
     :documentation "Function to call to generate completions.")
+   (filter-hook
+    :accessor filter-hook
+    :initarg :filter-hook
+    :initform nil
+    :documentation "Functions to call to filter the buffer.")
    (terminal
     :accessor line-editor-terminal
     :initarg :terminal
@@ -176,6 +191,14 @@ anything important.")
     :initarg :need-to-redraw
     :initform nil
     :documentation "True if we need to redraw the whole line.")
+   (need-to-recolor
+    :accessor need-to-recolor
+    :initarg :need-to-recolor
+    :initform nil
+    :documentation "True if we need to recolor some of the line.")
+   (old-line
+    :initarg :old-line :accessor old-line :initform nil
+    :documentation "A copy of the line as it was previously.")
    (temporary-message
     :initarg :temporary-message :accessor temporary-message
     :initform nil :type (or null fixnum)
@@ -258,7 +281,8 @@ anything important.")
   ;; Make a default line sized buffer if one wasn't given.
   (when (or (not (slot-boundp e 'buf)) (not (slot-value e 'buf)))
     (setf (slot-value e 'buf)
-	  (make-stretchy-vector *initial-line-size* :element-type 'fatchar)))
+	  (make-stretchy-vector *initial-line-size* :element-type 'fatchar)
+	  (slot-value e 'buf-str) (make-fat-string :string (slot-value e 'buf))))
 
   ;; Set the current dynamic var.
   (setf *line-editor* e))

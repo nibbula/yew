@@ -51,20 +51,14 @@
   (:method (e (item boundary)) (declare (ignore e)) #| do nothing |# )
   (:method (e (item deletion))
     (with-slots (point) e
-      (move-over e (- (undo-item-position item) point))
       (buffer-insert e (undo-item-position item) (undo-item-data item))
-      (setf point (undo-item-position item))
-      (update-for-insert e)))
+      (setf point (undo-item-position item))))
   (:method (e (item insertion))
     (with-slots (point buf) e
-      (let* ((item-len (undo-item-length item))
-	     (disp-len (display-length (undo-item-data item))))
-	(move-over e (- (undo-item-position item) point))
-	(tt-delete-char disp-len)
+      (let* ((item-len (undo-item-length item)))
 	(buffer-delete
 	 e (undo-item-position item) (+ (undo-item-position item) item-len))
-	(setf point (undo-item-position item))
-	(update-for-delete e disp-len item-len)))))
+	(setf point (undo-item-position item))))))
 
 (defun record-undo (e type &optional position data point)
   (let ((hist (car (undo-history e))))

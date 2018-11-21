@@ -60,10 +60,8 @@ it with ACTION's return value."
   "Move the insertion point to the beginning of the previous word or the
 beginning of the buffer if there is no word."
   (with-slots (point non-word-chars) e
-    (let ((start point))
-      (scan-over e :backward :func #'(lambda (c) (position c non-word-chars)))
-      (scan-over e :backward :not-in non-word-chars)
-      (move-over e (- (- start point)) :start start))))
+    (scan-over e :backward :func #'(lambda (c) (position c non-word-chars)))
+    (scan-over e :backward :not-in non-word-chars)))
 
 (defmethod backward-multiple ((e line-editor))
   (backward-word e))
@@ -72,10 +70,8 @@ beginning of the buffer if there is no word."
   "Move the insertion point to the end of the next word or the end of the
 buffer if there is no word."
   (with-slots (point non-word-chars) e
-    (let ((start point))
-      (scan-over e :forward :func #'(lambda (c) (position c non-word-chars)))
-      (scan-over e :forward :not-in non-word-chars)
-      (move-over e (- point start) :start start))))
+    (scan-over e :forward :func #'(lambda (c) (position c non-word-chars)))
+    (scan-over e :forward :not-in non-word-chars)))
 
 (defmethod forward-multiple ((e line-editor))
   (forward-word e))
@@ -84,7 +80,6 @@ buffer if there is no word."
   "Move the insertion point backward one character in the buffer."
   (with-slots (point) e
     (when (> point 0)
-      (move-over e -1)
       (decf point))))
 
 (defmethod backward-unit ((e line-editor))
@@ -94,7 +89,6 @@ buffer if there is no word."
   "Move the insertion point forward one character in the buffer."
   (with-slots (point buf) e
     (when (< point (fill-pointer buf))
-      (move-over e 1)
       (incf point))))
 
 (defmethod forward-unit ((e line-editor))
@@ -103,7 +97,6 @@ buffer if there is no word."
 (defun beginning-of-line (e)
  "Move the insertion point to the beginning of the line (actually the buffer)."
   (with-slots (point buf) e
-    (move-over e (- point))
     (setf point 0)))
 
 (defmethod move-to-beginning ((e line-editor))
@@ -112,7 +105,6 @@ buffer if there is no word."
 (defun end-of-line (e)
   "Move the insertion point to the end of the line (actually the buffer)."
   (with-slots (point buf) e
-    (move-over e (- (length buf) point))
     (setf point (fill-pointer buf))))
 
 (defmethod move-to-end ((e line-editor))
@@ -181,7 +173,7 @@ if it's blank or the same as the previous line."
 	(history-put (buffer-string buf) context)
 	(history-delete-last context))
     (when accept-does-newline
-      (move-over e (- (length (buf e)) (point e)))
+      ;;(move-over e (- (length (buf e)) (point e)))
       (tt-write-char #\newline)
       (tt-write-char #\return)
       (when (did-under-complete e)
@@ -213,25 +205,22 @@ if it's blank or the same as the previous line."
   "Move point to the mark. Set the mark at the old point."
   (with-slots (point mark) e
     (when mark
-      (cond
-	((< mark point)
-	 ;;(move-backward e (- point mark))
-	 (move-over e (- (- point mark)) :start point))
-	((> mark point)
-	 ;;(move-forward e (- mark point))
-	 (move-over e (- mark point))))
       (rotatef point mark))))
 
 (defun isearch-backward (e)
   "Incremental search backward."
-  (isearch e :backward))
+  ;; (isearch e :backward)
+  (and e t)
+  )
 
 (defmethod search-command ((e line-editor))
   (isearch-backward e))
 
 (defun isearch-forward (e)
   "Incremental search forward."
-  (isearch e :forward))
+  ;; (isearch e :forward)
+  (and e t)
+  )
 
 ;; Sadly ASCII / UTF-8 specific. @@@ And should be moved to char-util?
 ;; (defun control-char-p (c)
@@ -280,6 +269,7 @@ if it's blank or the same as the previous line."
     ))
 |#
 
+#|
 (defun display-search (e str pos)
   "Display the current line with the search string highlighted."
   (with-slots (point context) e
@@ -438,7 +428,7 @@ Control-R searches again backward and Control-S searches again forward."
 		 (beep e "Not found"))))
 	(resync)
 	(redraw-line e)))))
-
+|#
 
 ;; @@@ Consider calling redraw?
 (defun redraw-command (e)
@@ -446,12 +436,7 @@ Control-R searches again backward and Control-S searches again forward."
   (with-slots (prompt-string prompt-func point buf need-to-redraw) e
     (tt-clear) (tt-home)
     (setf (screen-col e) 0 (screen-relative-row e) 0)
-    (do-prompt e prompt-string prompt-func)
-    ;; (finish-output (terminal-output-stream
-    ;; 		    (line-editor-terminal e)))
-    (display-buf e)
-    (when (< point (length buf))
-      (move-over e (- (- (length buf) point)) :start (length buf)))
+    (update-display e)
     (setf need-to-redraw nil)))
 
 (defmethod redraw ((e line-editor))
@@ -483,23 +468,15 @@ Don't update the display."
   "Backward delete a character from buf at point"
   (with-slots (point buf) e
     (when (> point 0)
-      (let ((del-len (display-length (aref buf (1- point)))))
-	(move-over e -1)
-	(buffer-delete e (1- point) point)
-	(decf point)
-	(tt-delete-char del-len)
-	(update-for-delete e del-len 1)))))
+      (buffer-delete e (1- point) point)
+      (decf point))))
 
 (defun delete-char (e)
   "Delete the character following the cursor."
   (with-slots (point buf) e
     (if (= point (fill-pointer buf))
 	(beep e "End of buffer")
-	(progn
-	  (let ((del-len (display-length (aref buf point))))
-	    (buffer-delete e point (1+ point))
-	    (tt-delete-char del-len)
-	    (update-for-delete e del-len 1))))))
+	(buffer-delete e point (1+ point)))))
 
 (defun delete-char-or-exit (e)
   "At the beginning of a blank line, exit, otherwise delete-char."
@@ -519,47 +496,26 @@ Don't update the display."
     (let ((start point))
       (scan-over e :backward :func #'(lambda (c) (position c non-word-chars)))
       (scan-over e :backward :not-in non-word-chars)
-      (let* ((region-str (subseq buf point start))
-	     (del-len (string-display-length region-str)))
-	(move-over e (- (- start point)) :start start)
-	(tt-delete-char del-len)
+      (let ((region-str (subseq buf point start)))
 	(setf clipboard region-str)
-	(buffer-delete e point start)
-	(update-for-delete e del-len (- start point))))))
+	(buffer-delete e point start)))))
 
 (defun kill-word (e)
   (with-slots (buf point non-word-chars clipboard) e
     (let ((start point))
       (scan-over e :forward :func #'(lambda (c) (position c non-word-chars)))
       (scan-over e :forward :not-in non-word-chars)
-      (if (< point (length buf)) (incf point))
-      (let* ((region-str (subseq buf start point))
-	     (del-len (string-display-length region-str)))
-	(tt-delete-char del-len)
+      (when (< point (length buf))
+	(incf point))
+      (let ((region-str (subseq buf start point)))
 	(setf clipboard region-str)
 	(buffer-delete e point start)
-	(setf point start)
-	(update-for-delete e del-len (- start point))))))
+	(setf point start)))))
 
 (defun kill-line (e)
-  (with-slots (clipboard buf point screen-relative-row screen-col) e
+  (with-slots (clipboard buf point) e
     (setf clipboard (subseq buf point))
-    (let ((saved-row screen-relative-row)
-	  (saved-col screen-col))
-      (move-over e (- (length buf) point))
-      (tt-erase-to-eol)
-      (loop :with row = screen-relative-row
-	 :while (> row saved-row) :do
-	 (tt-beginning-of-line)
-	 (tt-erase-to-eol)
-	 (tt-up 1)
-	 (decf row))
-      (setf screen-relative-row saved-row
-	    screen-col saved-col)
-      ;;(tt-move-to screen-row screen-col)
-      (tt-move-to-col screen-col)
-      (tt-erase-to-eol)
-      (buffer-delete e point (fill-pointer buf)))))
+    (buffer-delete e point (fill-pointer buf))))
 
 (defun backward-kill-line (e)
   (with-slots (point clipboard buf) e
@@ -572,26 +528,19 @@ Don't update the display."
 (defun yank (e)
   (with-slots (clipboard point) e
     (when clipboard
-      (let ((len (length clipboard))
-	    #| (string-display-length clipboard) |#)
+      (let ((len (length clipboard)))
 	(insert-string e clipboard)
-	;; (tt-insert-char disp-len)
-	(display-buf e point (+ point len))
-	(incf point len)
-	(update-for-insert e)
-	))))
+	(incf point len)))))
 
 (defmethod paste ((e line-editor))
   (yank e))
 
 (defun forward-word-action (e action)
   (with-slots (point buf non-word-chars) e
-    (let ((start point))
-      (scan-over e :forward :func #'(lambda (c) (position c non-word-chars)))
-      (scan-over e :forward :not-in non-word-chars :action action)
-      (if (< point (length buf)) (incf point))
-;      (move-forward e (string-display-length (subseq buf start point))))))
-      (display-buf e start point))))
+    (scan-over e :forward :func #'(lambda (c) (position c non-word-chars)))
+    (scan-over e :forward :not-in non-word-chars :action action)
+    (when (< point (length buf))
+      (incf point))))
 
 (defun apply-char-action-to-region (e char-action &optional beginning end)
   "Apply a function that takes a character and returns a character, to
@@ -626,9 +575,7 @@ is none."
 			)
 	     (if (< point (length buf)) (incf point)))
 	(setf mark old-mark
-	      point old-point)))
-    (move-over e (- (- point beginning)))
-    (display-buf e beginning end)))
+	      point old-point)))))
 
 (defun downcase-region (e &optional (begining (mark e)) (end (point e)))
   (apply-char-action-to-region e #'char-downcase begining end))
@@ -649,12 +596,11 @@ is none."
 				   (progn (setf bonk t) (char-upcase c))
 				   (char-downcase c))))))
 
-;; This is just an experiment to see how I would do it.
 (defun un-studly-cap (e)
   "Convert from StupidVarName to stupid-var-name."
   (with-slots (point buf) e
     (record-undo e 'boundary)
-    (let ((overall-start point) c start)
+    (let (c start)
       (loop :do
 	 (setf start point)
 	 (setf c (buffer-char buf point))
@@ -677,15 +623,12 @@ is none."
 	 (setf c (buffer-char buf point))
 	 ;;(message-pause e "fourth point ~s ~s" point c)
 	 :while (and (alpha-char-p c) (upper-case-p c)))
-      (record-undo e 'boundary)
-      (display-buf e overall-start point))))
+      (record-undo e 'boundary))))
 
 (defun delete-horizontal-space (e)
   "Delete space before and after the cursor."
   (with-slots (buf point) e
-    (let ((origin point)
-	  start end del-len disp-len deleted-string
-	  #| first-half-disp-len |#)
+    (let ((origin point) start end)
       (setf origin point)
       (scan-over e :forward
 		 :func #'(lambda (c) (position c dlib::*whitespace*)))
@@ -693,16 +636,8 @@ is none."
 	    point origin)
       (scan-over e :backward
 		 :func #'(lambda (c) (position c dlib::*whitespace*)))
-      (setf start point
-	    del-len (- end start)
-	    deleted-string (subseq buf start end)
-	    ;;first-half-disp-len (string-display-length (subseq buf start origin))
-	    disp-len (string-display-length deleted-string))
-      (delete-region e start end)
-      ;;(move-backward e first-half-disp-len)
-      (move-over e (- (- origin start)) :start origin)
-      (tt-delete-char disp-len)
-      (update-for-delete e disp-len del-len))))
+      (setf start point)
+      (delete-region e start end))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; hacks for typing lisp
@@ -731,48 +666,51 @@ in order, \"{open}{close}...\".")
 		   (if (evenp pos) (1+ pos) (1- pos))))))
 
 (defun flash-paren (e)
-  (let* ((str (buffer-string (buf e)))
-	 (point (point e))
-	 (ppos (matching-paren-position str :position point))
-	 (offset (and ppos (1+ (- point ppos)))))
-    (if ppos
-	(let ((saved-col (screen-col e)))
-	  (declare (ignore saved-col))
-	  ;; The +1 to point is because we haven't incremented point for the
-	  ;; close paren yet.
-	  (move-over e (- offset) :start (1+ point))
-	  (tt-finish-output)
-	  (tt-listen-for .5)
-	  (move-over e offset :start (- (1+ point) offset)))
-	(beep e "No match."))))
+  (with-slots (point buf) e
+    (let* ((str (buffer-string buf))
+	   (ppos (matching-paren-position str :position point)))
+      (if ppos
+	  (let ((saved-point point))
+	    (setf point ppos)
+	    (update-display e)
+	    (tt-finish-output)
+	    (tt-listen-for .5)
+	    (setf point saved-point))
+	  (beep e "No match.")))))
 
 (defun highlight-paren (e pos)
   (let* ((str (buffer-string (buf e)))
 	 (ppos (matching-paren-position str :position pos :char (aref str pos)))
-	 offset offset-back)
+	 #|offset offset-back |#)
     (log-message e "pos = ~s ppos = ~s" pos ppos)
     (if ppos
-	(let ((saved-col (screen-col e)))
-	  (declare (ignore saved-col))
-	  (cond
-	    ((> ppos pos)
-	     (setf offset (- ppos pos)
-		   offset-back (- (+ offset 1))))
-	    (t
-	     (setf offset (- (1+ (- pos ppos)))
-		   offset-back (- pos ppos))))
-	  (move-over e offset :start (point e))
-	  (tt-bold t)
-	  ;;(tt-write-char (match-char (aref str pos)))
-	  (display-char e (match-char (aref str pos)))
-	  (tt-bold nil)
-	  (move-over e offset-back :start (1+ ppos))))))
+	;; (let ((saved-col (screen-col e)))
+	;;   (declare (ignore saved-col))
+	;;   (cond
+	;;     ((> ppos pos)
+	;;      (setf offset (- ppos pos)
+	;; 	   offset-back (- (+ offset 1))))
+	;;     (t
+	;;      (setf offset (- (1+ (- pos ppos)))
+	;; 	   offset-back (- pos ppos))))
+	;;   (move-over e offset :start (point e))
+	;;   (tt-bold t)
+	;;   ;;(tt-write-char (match-char (aref str pos)))
+	;;   (display-char e (match-char (aref str pos)))
+	;;   (tt-bold nil)
+	;;   (move-over e offset-back :start (1+ ppos)))
+	(pushnew :bold (fatchar-attrs (aref (buf e) ppos)))
+	;; @@@ but how/when to un-bold??
+	)))
 
 (defun finish-line (e)
   "Add any missing close parentheses and accept the line."
   (with-slots (buf) e
     (loop :while (matching-paren-position (buffer-string buf))
-       :do (insert-char e #\)) (display-char e #\)))
+       :do
+	 (insert-char e #\))
+	 ;; (display-char e #\))
+	 )
     (accept-line e)))
 
 (defun pop-to-lish (e)
@@ -795,11 +733,11 @@ in order, \"{open}{close}...\".")
 	    (tt-beginning-of-line)
 	    (tt-erase-line)
 	    (setf (screen-col e) 0)
-	    (with-slots (prompt-string prompt-func point buf) e
-	      (do-prompt e prompt-string prompt-func)
-	      (display-buf e)
-	      (when (< point (length buf))
-		(move-backward e (string-display-length (subseq buf point)))))
+	    ;; (with-slots (prompt-string prompt-func point buf) e
+	    ;;   (do-prompt e prompt-string prompt-func)
+	    ;;   (display-buf e)
+	    ;;   (when (< point (length buf))
+	    ;; 	(move-backward e (string-display-length (subseq buf point)))))
 	    ;;(terminal-set-input-mode (line-editor-terminal e) :line)
 	    (setf (terminal-input-mode (line-editor-terminal e)) :line)
 	    (terminal-start (line-editor-terminal e)))))))
@@ -825,7 +763,7 @@ in order, \"{open}{close}...\".")
     (self-insert e t c)))
 
 (defun self-insert (e &optional quoted char)
-  (with-slots (command last-event buf point screen-col) e
+  (with-slots (command last-event buf point) e
     (when (not char)
       (setf char last-event))
     (cond
@@ -841,7 +779,6 @@ in order, \"{open}{close}...\".")
        (if (= (length buf) point)
 	   ;; end of the buf
 	   (progn
-	     (display-char e char)
 	     (insert-char e char)
 	     ;; flash paren and keep going
 	     (when (and (eq *paren-match-style* :flash) (is-close-char char))
@@ -849,35 +786,10 @@ in order, \"{open}{close}...\".")
 	     (incf point))
 	   ;; somewhere in the middle
 	   (progn
-	     (let* ((endings (calculate-line-endings e))
-		    (end (line-ending point endings))
-		    (len (display-length char))
-		    (at-len (display-length (aref buf point)))
-		    (cols (terminal-window-columns (line-editor-terminal e)))
-		    prev-end)
-	       (cond
-		 ;; We're at a wide char at EOL and inserting a smaller one.
-		 ((and (and end (< end screen-col))
-		       (< at-len len))
-		  (tt-erase-to-eol)
-		  (tt-down 1)
-		  (tt-beginning-of-line)
-		  (tt-insert-char len))
-		 ;; We're at the beginning with an empty col on the previous
-		 ((and (= screen-col 0)
-		       (setf prev-end (line-ending (1- point) endings))
-		       (< prev-end cols))
-		  (tt-backward 1))
-		 (t
-		  ;; normal
-		  (tt-insert-char len)))
-	       (display-char e char)
-	       (when (and (eq *paren-match-style* :flash) (is-close-char char))
-		 (flash-paren e))
-	       (insert-char e char)
-	       (incf point)
-	       ;; do the dumb way out
-	       (update-for-insert e))))))))
+	     (when (and (eq *paren-match-style* :flash) (is-close-char char))
+	       (flash-paren e))
+	     (insert-char e char)
+	     (incf point)))))))
 
 (defgeneric self-insert-command (line-editor)
   (:documentation "Try to insert a character into the buffer.")
@@ -926,7 +838,8 @@ in order, \"{open}{close}...\".")
 			(key-sequence-string key-seq) def)
 	   (tmp-message e "~w is not bound"
 			(key-sequence-string key-seq)))))
-    (redraw-line e)))
+    ;; (redraw-line e)
+    ))
 
 (defun what-cursor-position (e)
   "Describe the cursor position."
@@ -982,9 +895,7 @@ in order, \"{open}{close}...\".")
 	   (paste (read-bracketed-paste term))
 	   (len (length paste)))
       (insert-string e paste)
-      (display-buf e point (+ point len))
-      (incf point len)
-      (update-for-insert e))))
+      (incf point len))))
 
 (defun char-picker-command (e)
   "Pick unicode (or whatever) characters."

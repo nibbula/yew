@@ -55,12 +55,7 @@ command line.")
 			:columns (terminal-window-columns
 				  (line-editor-terminal e))
 			:stream str))
-       *terminal*))
-    (setf (screen-col e) 0)
-    (do-prompt e prompt-string prompt-func)
-    (display-buf e)
-    (when (< point (length buf))
-      (move-over e (- (- (length buf) point))))))
+       *terminal*))))
 
 (defun figure-line-endings (e content)
   "Call calculate-line-endings with proper processing of the string CONTENT."
@@ -82,93 +77,6 @@ terminal."
 
 (defvar *completion-short-divisor* 1
   "Divisor of your screen height for short completion.")
-
-#|
-(defun OLD-print-completions-under (e comp-result)
-  (let* ((comp-list (completion-result-completion comp-result))
-	 (term (line-editor-terminal e))
-	 (rows (terminal-window-rows term))
-	 (cols (terminal-window-columns term))
-	 (short-limit (truncate rows *completion-short-divisor*))
-	 content-rows content-cols column-size
-	 output-string
-	 real-content-rows
-	 rows-output
-	 rows-scrolled
-	 back-adjust
-	 (x (screen-col e))
-	 (y (screen-relative-row e))
-	 end-x end-y
-	 row-limit
-	 snip-lines
-	 line-endings
-	 (prefix (or (completion-result-prefix comp-result) ""))
-	 (prefix-height (or (and prefix (figure-content-rows e prefix)) 0)))
-    (declare (ignorable end-x column-size content-cols))
-    ;;(multiple-value-setq (y x) (terminal-get-cursor-position term))
-    (multiple-value-setq (content-rows content-cols column-size)
-      (print-columns-sizer comp-list :columns cols))
-
-    ;; Move over the rest of the input line.
-    (move-over e (- (length (buf e)) (point e)))
-    (tt-write-char #\newline)
-    (tt-erase-below)
-    ;; (tt-finish-output)
-    (setf (did-under-complete e) t)
-
-    (setf row-limit
-	  (if (and (< (last-completion-not-unique-count e) 2)
-		   (< short-limit rows))
-	      short-limit
-	      (- (- rows 1) ;; minus the "more" line
-		 (prompt-height e)
-		 (- (screen-relative-row e) (start-row e)) ;; input line height
-		 prefix-height
-		 ))
-	  output-string
-	  (with-output-to-fat-string (str)
-	    (setf content-rows
-		  (print-columns comp-list :columns cols
-				 :smush t :row-limit row-limit
-				 :format-char "/fatchar-io:print-string/"
-				 :stream str)))
-	  line-endings (figure-line-endings e output-string)
-	  real-content-rows (length line-endings)
-	  rows-output (min real-content-rows row-limit)
-	  snip-lines (max 0 (- real-content-rows row-limit)))
-    (tt-write-string prefix)
-    ;; Trim output-string to row-limit really for real lines.
-    (when (plusp snip-lines)
-      (setf output-string
-	    (osubseq output-string 0 (car (nth snip-lines line-endings)))))
-    ;;(princ output-string *terminal*)
-    (dbugf :crunch " BARK BARK ~%")
-    (tt-write-string output-string)
-      ;; (dbugf :foo
-      ;; 	   "~s ~s~%~s~%" (olength output-string) (type-of output-string)
-      ;; 	  (osubseq output-string 0 1000))
-      ;; (tt-write-string output-string)
-      ;; (tt-format "content-rows ~a rows-output ~s " content-rows rows-output)
-    (if (plusp (- content-rows rows-output))
-	(tt-format "[~d more lines]" (- content-rows row-limit))
-	(when (plusp snip-lines)
-	  (tt-format "~%[~d more lines]" snip-lines)))
-    (multiple-value-setq (end-y end-x) (terminal-get-cursor-position term))
-    ;;(setf rows-scrolled (max 0 (- (+ y (1+ rows-output)) (1- rows)))
-    ;;(setf rows-scrolled (max 0 (- (+ y (1+ real-content-rows)) (1- rows)))
-    (setf rows-scrolled (max 0 (- (+ y (- (1+ real-content-rows) snip-lines))
-				  (1- rows)))
-	  back-adjust (+ (- end-y y) rows-scrolled))
-    (log-message e "row-limit = ~s real-content-rows = ~s"
-		 row-limit real-content-rows)
-    (log-message e "rows-scrolled = ~s prompt-height = ~s" rows-scrolled
-		 (prompt-height e))
-    (tt-up back-adjust)
-    (tt-beginning-of-line)
-    (tt-move-to-col x)
-    (setf (screen-relative-row e) (- end-y back-adjust)
-	  (screen-col e) x)))
-|#
 
 (defun print-completions-under (e comp-result)
   (let* ((comp-list (completion-result-completion comp-result))
@@ -194,7 +102,7 @@ terminal."
       (print-columns-sizer comp-list :columns cols))
 
     ;; Move over the rest of the input line.
-    (move-over e (- (length (buf e)) (point e)))
+    ;;(move-over e (- (length (buf e)) (point e)))
     (tt-write-char #\newline)
     (tt-erase-below)
     (setf back-adjust (- (screen-relative-row e) y))
@@ -305,6 +213,7 @@ terminal."
       ;; If the completion succeeded we need a replace-pos!
       (assert (or (not comp) (numberp replace-pos)))
       (if comp
+	  #|
 	  (let* ((same (- saved-point replace-pos))) ; same part
 	    ;; f o o b a r
 	    ;;       ^    ^
@@ -326,6 +235,13 @@ terminal."
 	    (editor-write-string e comp)
 	    (incf point (length comp))
 	    (update-for-insert e))
+	  |#
+	  (progn
+	    ;; delete the different part
+	    (delete-region e replace-pos saved-point)
+	    (setf point replace-pos)
+	    (insert-string e comp)
+	    (incf point (length comp)))
 	  (progn
 	    (setf point saved-point)		   ; go back to where we were
 	    (beep e "No completions"))))))	   ; ring the bell

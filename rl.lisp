@@ -239,41 +239,6 @@
 
 (add-keymap *special-keymap* *vi-command-mode-keymap*)
 
-#|
-;; Key bindings can be a list to apply, or a symbol bound to function to call,
-;; or a keymap in which to look up further key presses.
-(defun perform-key (e key keymap)
-  "Perform the action for the key in the keymap."
-  (let* ((action (key-definition key keymap)))
-    (cond
-      ((not action)
-       (beep e "Key ~a is not bound in keymap ~w." (nice-char key) keymap)
-       (return-from perform-key))
-      ;; a list to apply
-      ((consp action)
-       ;;(dbug "action is a cons~%")
-       (if (fboundp (car action))
-	   (apply (car action) (cdr action))
-	   (beep e "(~S) is not defined." (car action))))
-      ;; something represted by a symbol
-      ((symbolp action)
-       (cond
-	 ((fboundp action)		; a function
-	  (funcall action e))
-	 ((keymap-p (symbol-value action)) ; a keymap
-	  (setf (inator-command e) (get-a-char e))
-	  (log-message e "keymap command ~s" (inator-command e))
-	  (perform-key e (inator-command e) (symbol-value action)))
-	 (t				; anything else
-	  (beep e "Key binding ~S is not a function or a keymap." action))))
-      ;; a function object
-      ((functionp action)
-       ;;(dbug "action is a function~%")
-       (funcall action e))
-      (t					; anything else is an error
-       (error "Weird thing in keymap: ~s." action)))))
-|#
-
 (defvar *terminal-name* nil
   "Device name of the terminal to use for input.")
 
@@ -387,27 +352,31 @@ Keyword arguments:
 
     ;; Output the prompt
     (setf (prompt-string e) prompt (prompt-func e) output-prompt-func)
-    (do-prompt e (prompt-string e) (prompt-func e))
     (when string
       (without-undo (e)
 	(buffer-insert e 0 string)
-	(setf (inator-point e) (length string))
-	(display-buf e 0)))
+	(setf (inator-point e) (length string))))
 
     ;; If the terminal is in line mode even after we set it to :char mode,
     ;; our whole thing is kind of moot, so just fall back to reading from the
     ;; terminal driver, so we work on dumb terminals.
     (when (eq (tt-input-mode) :line)
+      (update-display e)
       (finish-output *terminal*)
       (return-from rl (values (read-line *terminal*) e)))
 
     ;; Command loop
     (with-slots (quit-flag exit-flag command buf point last-command terminal
-		 debugging temporary-message last-event) e
+		 screen-relative-row screen-col debugging temporary-message
+		 last-event filter-hook) e
+      ;; (multiple-value-setq (screen-relative-row screen-col)
+      ;; 	(terminal-get-cursor-position *terminal*))
       (let ((result nil))
 	(unwind-protect
 	     (loop :do
-		(finish-output)
+	        (finish-output)
+		(update-display e)
+		(tt-finish-output)
 		(when debugging
 		  (message e "~d ~d [~d x ~d] ~a ~w"
 			   (screen-col e) (screen-relative-row e)
@@ -429,8 +398,9 @@ Keyword arguments:
 		;;(setf command (await-event e))
 		(setf last-event (await-event e))
 		(log-message e "command ~s" command)
-		(when (need-to-redraw e)
-		  (redraw-line e))
+		;; (when (need-to-redraw e)
+		;;   (redraw-display e :erase t))
+		;; (setf (old-line e) (copy-fatchar-string (buf e)))
 		(when temporary-message
 		  ;; Clear out the temporary message.
 		  (loop :repeat temporary-message
@@ -462,6 +432,9 @@ Keyword arguments:
 				  (is-close-char (aref buf (1- point))))
 			     (highlight-paren e (1- point)))))))
 		(setf last-command command)
+		(run-hooks filter-hook e)
+		;; (when (need-to-recolor e)
+		;;   (recolor-line e))
 		:while (not quit-flag))
 	  (block nil
 	    (tt-finish-output)

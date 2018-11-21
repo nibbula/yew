@@ -38,7 +38,6 @@
    "Delete characters from the buffer from the position START to END.")
   (:method ((e line-editor) start end)
     (with-slots (buf point) e
-;      (format t "del (~s ~s)~%" start end)
       ;; If end and start are reversed, swap them.
       (when (< end start)
 	(rotatef start end))
@@ -55,7 +54,6 @@
   (:documentation
    "Insert something into the buffer at position POS.")
   (:method ((e line-editor) pos (c character))
-    ;; (format t "ins (~s ~s)~%" pos c)
     (let ((fc (make-fatchar :c c)))
       (with-slots (buf) e
 	(record-undo e 'insertion pos (make-fatchar-string (string c)))
@@ -76,7 +74,6 @@
 	      (setf (subseq buf (1+ pos)) (subseq buf pos))
 	      (setf (aref buf pos) fc))))))
   (:method ((e line-editor) pos (s string))
-;    (format t "ins (~s ~s)~%" pos s)
     (with-slots (buf) e
       (let ((len (length s))
 	    (fat-string (make-fatchar-string s)))
@@ -101,13 +98,11 @@
   (:documentation
    "Insert something into the buffer at position POS.")
   (:method ((e line-editor) pos (c character))
-;    (format t "replace (~s ~s)~%" pos c)
     (with-slots (buf point) e
       (record-undo e 'deletion pos (make-fatchar-string (buffer-char buf point)))
       (record-undo e 'insertion pos (make-fatchar-string c))
       (setf (aref buf pos) (make-fatchar :c c))))
   (:method ((e line-editor) pos (s string))
-;    (format t "replace (~s ~s)~%" pos s)
     (with-slots (buf point) e
       (let ((len (length s))
 	    (fat-string (make-fatchar-string s)))
@@ -123,6 +118,5 @@
 ;;   "Return true if point is at (or after) the end of the buffer."
 ;;   (with-slots (point buf) e
 ;;     (>= point (length buf))))
-
 
 ;; EOF
