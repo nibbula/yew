@@ -322,9 +322,12 @@ TERMINAL-NAME and TERMINAL-TYPE should be in the environment."
 					 :start-at-current-line t)
 	     (,thunk))))))
 
+(defvar *default-terminal-type* :crunch)
+
 (defun tiny-repl (&key prompt-func prompt-string no-announce keymap
 		    terminal terminal-name
-		    (terminal-type (pick-a-terminal-type))
+		    ;;(terminal-type (pick-a-terminal-type))
+		    (terminal-type *default-terminal-type*)
 		    (output *standard-output*)
 		    (interceptor *default-interceptor*) (debug t))
   "Keep reading and evaluating lisp, with line editing. Return true if we want
