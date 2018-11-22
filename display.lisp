@@ -376,6 +376,7 @@ in it."
 
 ;; An update that probably requires an optimizing terminal to be at all
 ;; efficient.
+#+(or)
 (defun BROKEN-redraw-display (e &key erase)
   (with-slots (screen-relative-row screen-col prompt-str buf-str
 	       start-col start-row last-line prompt-height point) e
@@ -426,33 +427,50 @@ in it."
       (dbugf :rl "screen-relative-row = ~s~%" screen-relative-row)
       )))
 
-;; @@@ Not *as* broken, but not right. fails clearing EOL
+;; @@@ Not *as* broken, but still not right.
 (defun redraw-display (e &key erase)
+  (declare (ignore erase)) ; @@@
   (with-slots (buf-str prompt-height point start-row start-col
-	       screen-relative-row) e
+	       screen-relative-row last-line) e
     (let* ((prompt (make-prompt e))
-	   (prompt-lines (calculate-line-endings e :buffer prompt :start 0))
-	   buf-lines)
+	   (prompt-lines (length (calculate-line-endings e :buffer prompt
+							 :start 0)))
+	   buf-lines new-last-line erase-lines)
       (relative-move-to-row screen-relative-row 0)
       (tt-move-to-col 0)
       (tt-erase-to-eol)
 
-      (write prompt :stream *terminal* :escape nil :pretty nil)
+      ;;(write prompt :stream *terminal* :escape nil :pretty nil)
+      (tt-write-string prompt)
       (tt-erase-to-eol)
       (multiple-value-setq (start-row start-col)
 	(terminal-get-cursor-position *terminal*))
-      (setf prompt-height (length prompt-lines))
+      (setf prompt-height prompt-lines)
 
-      (setf buf-lines (calculate-line-endings e :start start-col))
+      (setf buf-lines (length (calculate-line-endings e :start start-col))
+	    new-last-line (+ prompt-lines buf-lines))
+
+      (dbugf :rl "buf = ~s~%" (buf-str e))
       (tt-write-string (buf-str e))
+      (tt-erase-to-eol)
+      (when last-line
+	(setf erase-lines (max 0 (- last-line new-last-line)))
+	(dbugf :rl "erase-lines = ~s~%" erase-lines)
+	(loop :repeat erase-lines
+	   :do
+	     (tt-down)
+	     (tt-move-to-col 0)
+	     (tt-erase-to-eol))
+	(when (not (zerop erase-lines))
+	  (tt-up erase-lines)))
 
       ;; (relative-move-to-row (1+ last-line) start-row)
-      (when (not (zerop (length buf-lines)))
-	(tt-up (length buf-lines)))
+      (when (not (zerop buf-lines))
+	(tt-up buf-lines))
       (tt-move-to-col start-col)
       (tt-write-string (buf-str e) :end point)
-      (setf screen-relative-row
-      	    (+ (length prompt-lines) (length buf-lines))))))
+      (setf screen-relative-row (+ prompt-lines buf-lines)
+	    last-line new-last-line))))
 
 (defmethod update-display ((e line-editor))
   (redraw-display e))
