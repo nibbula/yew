@@ -248,6 +248,8 @@
 (defvar *exit-hook* nil
   "Functions to run after reading a line.")
 
+(defvar *default-terminal-type* :crunch)
+
 ;; The main entry point
 
 (defun rl (&key (input-stream *standard-input*)
@@ -268,8 +270,7 @@
 	     (terminal nil)
 	     (terminal-name *terminal-name*)
 	     (terminal-class (find-terminal-class-for-type
-			      (pick-a-terminal-type)))
-			      ;; *default-terminal-type*))
+			      *default-terminal-type*)) ; (pick-a-terminal-type)
 	     (accept-does-newline t)
 	     (context :tiny))		; remnant
   "Read a line from the terminal, with line editing and completion.
