@@ -8,9 +8,19 @@
 ;; nature, treating various data structures uniformly has many potential
 ;; performance pitfalls.
 
-(let (#+sbcl (*on-package-variance* '(:warn (:collections) :error t)))
-(dlib:without-warning
-(defpackage :collections
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro stfu-defpackage (name &body body)
+    `(if (find-package ,name)
+	 (let (#+sbcl (*on-package-variance* '(:warn (,name) :error t)))
+	   (dlib:without-warning
+	       (defpackage ,name
+		 ,@body)))
+	 (dlib:without-warning
+	     (defpackage ,name
+	       ,@body)))))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+(stfu-defpackage :collections
   (:documentation
    "So it seems like I'm doing this again. These aren't so much for the methods
 defined in here, but it's *really* so you can define your own methods which work
@@ -19,7 +29,7 @@ We should entertain other naming ideas.")
   (:use :cl)	   ; Please don't add any dependencies.
   (:nicknames :o)) ; too presumptuous, but maybe we could remove the 'o'
 )
-)
+
 (in-package :collections)
 
 ;; This is so the generic functions that one might want to specialize, are
