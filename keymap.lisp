@@ -252,9 +252,13 @@ or a keymap stack."
 		 ;; Just one key
 		 (key-definition keyseq map))))
     (let (binding)
-      (map nil (_ (when (setf binding (try-map keyseq _))
-		    (return-from key-sequence-binding binding)))
-	   keymap-stack)
+      (etypecase keymap-stack
+	((or list vector)
+	 (map nil (_ (when (setf binding (try-map keyseq _))
+		       (return-from key-sequence-binding binding)))
+	      keymap-stack))
+	(keymap
+	 (setf binding (try-map keyseq keymap-stack))))
       binding)))
 
 (defun key-sequence-string (keyseq)
