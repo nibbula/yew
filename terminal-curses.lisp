@@ -405,7 +405,15 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-scroll-down ((tty terminal-curses) n)
   (when (> n 0)
-    (scrl n)))
+    (scrollok *stdscr* 1)
+    (scrl n)
+    (scrollok *stdscr* 0)))
+
+(defmethod terminal-scroll-up ((tty terminal-curses) n)
+  (when (> n 0)
+    (scrollok *stdscr* 1)
+    (scrl (- n))
+    (scrollok *stdscr* 0)))
   
 (defmethod terminal-erase-to-eol ((tty terminal-curses))
   (clrtoeol))
