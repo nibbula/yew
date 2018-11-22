@@ -4,7 +4,7 @@
 
 (defpackage :terminal-test
   (:documentation "Test the generic terminal library.")
-  (:use :cl :dlib :terminal :color #| :terminal-ansi :terminal-curses |#)
+  (:use :cl :dlib :terminal :color :char-util)
   (:export
    #:run
    #:menu
@@ -49,6 +49,13 @@
     ,@body
     (prompt-next)))
 
+(defun center (text offset)
+  (tt-move-to (+ (truncate (terminal-window-rows *terminal*) 2)
+		 offset)
+	      (- (truncate (terminal-window-columns *terminal*) 2)
+		 (truncate (display-length text) 2)))
+  (tt-format text))
+
 (defun test-screen-size-draw ()
   (tt-clear) (tt-home)
   ;; upper left
@@ -84,15 +91,9 @@
   ;;(case (tt-get-key) ((#\Q #\q) (throw 'quit nil)))
 
   ;; message
-  (flet ((center (text offset)
-	   (tt-move-to (+ (truncate (terminal-window-rows *terminal*) 2)
-			  offset)
-		       (- (truncate (terminal-window-columns *terminal*) 2)
-			  (truncate (length text) 2)))
-	   (tt-format text)))
-    (center "There should be an 'X' in every corner of the screen.~%" 0)
-    (center "Press Q to quit, anything else to continue." 1)
-    (center "Also try resizing the window." 2))
+  (center "There should be an 'X' in every corner of the screen.~%" 0)
+  (center "Press Q to quit, anything else to continue." 1)
+  (center "Also try resizing the window." 2)
   (tt-finish-output))
 
 (defun test-screen-size ()
@@ -372,6 +373,10 @@ drawing, which will get overwritten."
      (tt-get-key)
    )))
 
+;; (defun test-autowrap-delay ()
+;;   (blurp
+;;    (let ((width (tt-width)))
+
 (defun test-scrolling ()
   (blurp
    (tt-clear) (tt-finish-output)
@@ -562,8 +567,10 @@ drawing, which will get overwritten."
       (loop ;; :for i :from 1 :to 2000 :do
 	 (tt-move-to 0 0)
 	 (tt-erase-below)
-	 (tt-write-string "Ｙｅｓ， ｙｏｕ ｈａｖｅ ＷＩＤＥ ｃｈａｒｓ！")
-	 (tt-write-string-at 1 0 "You should see rectangles bouncing around.")
+	 (center "Ｙｅｓ， ｙｏｕ ｈａｖｅ ＷＩＤＥ ｃｈａｒｓ！" 0)
+	 (center "You should see rectangles bouncing around." 1)
+	 ;; (tt-write-string "Ｙｅｓ， ｙｏｕ ｈａｖｅ ＷＩＤＥ ｃｈａｒｓ！")
+	 ;; (tt-write-string-at 1 0 "You should see rectangles bouncing around.")
 	 (loop :for b :in blocks :do
 	    (show-blook b)
 	    (incf (blook-x b) (blook-xinc b))
