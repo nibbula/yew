@@ -55,6 +55,7 @@ We should entertain other naming ideas.")
       oreverse
       osort
       ofind
+      ofind-if
       oposition
       oposition-if
       osearch
@@ -673,6 +674,33 @@ satisfies the test TEST or TEST-NOT, as appropriate.")
 		  &key from-end (start 0) end key test test-not)
   (ofind item (container-data collection) :from-end from-end :start start
 	 :end end :key key :test test :test-not test-not))
+
+(defgeneric ofind-if (predicate collection
+		      &key from-end start end key)
+  (:documentation
+   "Search for an element of the COLLECTION bounded by START and END that
+satisfies the PREDICATE.")
+  (:method (predicate (collection list) &key from-end (start 0) end key)
+    (find-if predicate collection :from-end from-end :start start :end end
+	     :key key))
+  (:method (predicate (collection vector) &key from-end (start 0) end key)
+    (find predicate collection :from-end from-end :start start :end end :key key))
+  (:method (predicate (collection sequence) &key from-end (start 0) end key)
+    (find predicate collection :from-end from-end :start start :end end :key key))
+  (:method (predicate (collection hash-table) &key from-end (start 0) end key)
+    ;; This is certainly not perfect, but...
+    (declare (ignore from-end start end))
+    (maphash (lambda (k value)
+	       (declare (ignore k))
+	       (when (funcall predicate (if key (funcall key value) value))
+		 (return-from ofind-if value)))
+	       collection)))
+
+(defmethod ofind-if (predicate (collection container)
+		     &key from-end (start 0) end key)
+  (ofind-if predicate (container-data collection)
+	    :from-end from-end :start start
+	    :end end :key key))
 
 (defun ofind-with-key (item key collection)
   "Like ofind with supplying a KEY argument, but convenient for use in
