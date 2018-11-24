@@ -489,8 +489,7 @@ generic functions (i.e. %GROUT-*) directly."
   (terminal-finish-output (ansi-stream g)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; ANSI is a bad word. So is ‘terminal’ in this sense.
-;; We expect a real genuine fake.
+;; We expect a real genuine fake "ANSI" 'terminal'.
 
 (defclass ansi (grout)
   ((term
@@ -657,7 +656,8 @@ generic functions (i.e. %GROUT-*) directly."
 	      (finish-output *debug-io*)
 	      (setf (slot-value o 'own-term) t)
 	      (make-instance
-	       (find-terminal-class-for-type (pick-a-terminal-type)))
+	       (find-terminal-class-for-type (pick-a-terminal-type))
+	       :start-at-current-line t)
 	      )))
   (when (slot-value o 'own-term)
     (terminal-start (slot-value o 'term))))
