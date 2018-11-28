@@ -614,10 +614,10 @@ just return SEQUENCE. Elements are compared with TEST which defaults to EQL."
   ;; (labels ((as-string (s) (if (stringp s) s (princ-to-string s))))
   ;;   (apply #'concatenate 'string (as-string s) (mapcar #'as-string rest))))
   (if rest
-    (with-output-to-string (result)
-      (princ s result)
-      (loop :for x :in rest :do (princ x result)))
-    (princ-to-string s)))
+      (with-output-to-string (result)
+	(princ s result)
+	(loop :for x :in rest :do (princ x result)))
+      (princ-to-string s)))
 
 (defparameter *ascii-whitespace*
   ;;#(#\tab #\newline #-gcl #\vt #\page #\return #\space)
