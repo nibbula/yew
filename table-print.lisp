@@ -37,6 +37,7 @@ make the table in the first place. For that you want the TABLE package.")
    
    #:output-table
    #:print-table
+   #:print-as-table
    #:*long-titles*
    #:*print-titles*
    #:*max-width*
@@ -912,9 +913,23 @@ resized to fit in this, and the whole row is trimmed to this."
 (defun print-table (table &key (stream *standard-output*)
 			    (renderer (table-renderer))
 			    (long-titles t) (print-titles t) max-width)
-  "Print results nicely in horizontal table."
+  "Print the table, defaulting to the text-table-renderer on *standard-output*."
   (output-table table renderer stream
 		:long-titles long-titles
 		:print-titles print-titles
 		:max-width max-width))
+
+(defun print-as-table (thing &key titles table-type
+			       (stream *standard-output*)
+			       (renderer (table-renderer))
+			       (long-titles t) (print-titles t) max-width)
+  "Make a table from thing and print it like print-table."
+  (output-table (apply #'make-table-from thing
+		       `(,@(when titles `(:column-names ,titles))
+			 ,@(when table-type `(:type ,table-type))))
+		renderer stream
+		:long-titles long-titles
+		:print-titles print-titles
+		:max-width max-width))
+
 ;; EOF
