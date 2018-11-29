@@ -167,19 +167,17 @@ if it's blank or the same as the previous line."
 	       (and prev (dl-content prev) (equal (dl-content prev) buf)))))))
 
 (defun accept-line (e)
-  (with-slots (buf quit-flag context accept-does-newline) e
+  (with-slots (buf buf-str point quit-flag context accept-does-newline) e
     (history-last context)
     (if (add-to-history-p e buf)
 	(history-put (buffer-string buf) context)
 	(history-delete-last context))
     (when accept-does-newline
-      ;;(move-over e (- (length (buf e)) (point e)))
+      (tt-write-string buf-str :start point)
       (tt-write-char #\newline)
       (tt-write-char #\return)
       (when (did-under-complete e)
-	(tt-erase-below))
-      ;;(tt-finish-output)
-      )
+	(tt-erase-below)))
     (setf quit-flag t)))
 
 (defmethod accept ((e line-editor))
