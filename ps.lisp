@@ -19,6 +19,12 @@
  (optimize (speed 0) (safety 3) (debug 3) (space 2) (compilation-speed 0)))
 
 ;; @@@ I really need to re-think this whole rigmarole.
+;;
+;; collect
+;; select
+;; process
+;; print
+;; struct/class
 
 (defstruct short-process
    pid
@@ -468,15 +474,16 @@ user, pid, ppid, size, command."
    (user user :short-arg #\u :help "User to show processes for.")
    ;; (sort-by choice :short-arg #\s :default "size" :help "Field to sort by."
    ;; 	    #| :choice-func #'process-columns |# )
-   (long boolean :short-arg #\l :help "True to show the long output."))
+   (long boolean :short-arg #\l :help "True to show the long output.")
+   (quiet boolean :short-arg #\q :help "True to suppress printing output."))
   "Process status."
   (setf *output*
 	(if long
 	    (ps-long :matching matching
 		     :show-kernel-processes show-kernel-processes
-		     :user user)
+		     :user user :print (not quiet))
 	    (ps-short :matching matching
 		      :show-kernel-processes show-kernel-processes
-		      :user user))))
+		      :user user :print (not quiet)))))
 
 ;; EOF
