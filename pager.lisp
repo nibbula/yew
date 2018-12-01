@@ -58,8 +58,14 @@ The shell command takes any number of file names.
 (define-constant +digits+ #(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
   "For reading the numeric argument." #'equalp)
 
+(defparameter *default-text-pager-prompt* "%&%f line %l of %L%&"
+  "Default prompt for text.")
+
+(defparameter *default-binary-pager-prompt* "%&%f byte %b of %B%&"
+  "Default prompt for text.")
+
 ;; Since *prompt* is taken on some implementations.
-(defvar *pager-prompt* "%&%f line %l of %L%&"
+(defvar *pager-prompt* nil
   "The current default prompt. Supports formatting as done by FORMAT-PROMPT.")
 
 ;; "text text text"
@@ -195,7 +201,13 @@ The shell command takes any number of file names.
     :documentation "Number of bytes we've read.")
    (byte-pos
     :initarg :byte-pos :accessor pager-byte-pos :initform 0 :type fixnum
-    :documentation "The byte position we're at in the file."))
+    :documentation "The byte position we're at in the file.")
+   ;; (start-offset
+   ;;  :initarg :start-offset :accessor binary-pager-start-offset
+   ;;  :initform 0 :type fixnum
+   ;;  :documentation
+   ;;  "The offset of the start of the buffer, so it acts like a ring buffer.")
+   )
   (:documentation "Pager for binary data."))
 
 (defvar *pager* nil
@@ -440,26 +452,28 @@ read until we get an EOF."
 	(progn
 	  (when (not got-eof)
 	    (let ((read-count 0)
-		  (buf-size (* (hex-len) line-count))
+		  ;;(read-size (* (hex-len) line-count))
+		  (read-size (* (line-bytes) (1- (tt-height))))
 		  (pos (or (and (not got-eof) (file-position stream)) 0)))
-	      (dbugf :pager "buf-size ~s pos ~s~%" buf-size pos)
+	      (dbugf :pager "read-size ~s pos ~s~%" read-size pos)
 	      (when (not seekable)
 		(error "Unseekable binary streams not implemented yet."))
-	      (when (< (length buffer) buf-size)
-		(dbugf :pager "adjusting to ~s~%" buf-size)
-		(setf buffer (adjust-array buffer buf-size)))
+	      (when (< (length buffer) read-size)
+		(dbugf :pager "adjusting to ~s~%" read-size)
+		(setf buffer (adjust-array buffer read-size)))
 	      (when (/= byte-pos pos)
-		(dbugf :pager "seeking to ~s~%" pos)
-		(file-position stream pos))
+		(dbugf :pager "seeking to ~s~%" byte-pos)
+		(file-position stream byte-pos))
 	      (unwind-protect
 		   (progn
 		     ;; (when (zerop line-count)
 		     ;;   @@@ read the whole rest of an unseekable stream into
 		     ;;   the buffer
 		     ;;   )
-		     (setf buffer-start pos
+		     (setf buffer-start byte-pos
 			   read-count (read-sequence buffer stream))
-		     (incf byte-count read-count)
+		     ;;(incf byte-count read-count)
+		     (setf byte-count (file-length stream))
 		     (dbugf :pager "read-count ~s stream ~s~%" read-count stream)
 		     (when (< read-count (length buffer))
 		       (setf got-eof t))
@@ -496,7 +510,8 @@ read until we get an EOF."
       (let ((l (nth line lines)))
 	(if l (line-position l) "?"))))
   (:method ((pager binary-pager))
-    (+ (pager-buffer-start pager) (pager-byte-pos pager))))
+    ;; (+ (pager-buffer-start pager) (pager-byte-pos pager))))
+    (pager-byte-pos pager)))
 
 (defgeneric total-bytes (pager)
   (:documentation "Return total bytes.")
@@ -511,14 +526,14 @@ read until we get an EOF."
   (:method ((pager text-pager))
     (pager-line pager))
   (:method ((pager binary-pager))
-    (round (/ (bytes-current pager) (hex-len)))))
+    (round (/ (bytes-current pager) (line-bytes)))))
 
 (defgeneric maximum-line (pager)
   (:documentation "Return the maximum line.")
   (:method ((pager text-pager))
     (pager-count pager))
   (:method ((pager binary-pager))
-    (round (/ (total-bytes pager) (hex-len)))))
+    (round (/ (total-bytes pager) (line-bytes)))))
 
 (defgeneric percentage (pager)
   (:documentation "Return the current percentage in the file.")
@@ -531,7 +546,7 @@ read until we get an EOF."
       (round (/ (* (bytes-current pager) 100)
 		byte-count)))))
 
-(defun format-prompt (pager &optional (prompt *pager-prompt*))
+(defun format-prompt (pager &optional prompt)
   "Return the prompt string with a few less-like formatting character
 replacements. So far we support:
   %b / %B  Bytes at current postion / Total bytes
@@ -540,6 +555,10 @@ replacements. So far we support:
   %f       File name
   %%       A percent character '%'.
 "
+  (setf prompt (or prompt *pager-prompt*
+		   (typecase pager
+		     (binary-pager *default-binary-pager-prompt*)
+		     (t *default-text-pager-prompt*))))
   (with-slots (stream count page-size filter-exprs keep-expr)
       pager
     (with-output-to-string (str)
@@ -780,7 +799,15 @@ line : |----||-------||---------||---|
 	   (tt-write-string *empty-indicator*))))))
 
 (defun hex-len ()
-  (- (truncate (* 3/4 (tt-width))) 4))
+  ;;(- (truncate (* 3/4 (tt-width))) 4)
+  ;;(- (truncate (/ 3/4 (/ 1 (tt-width)))) 4)
+  ;;(- (truncate (/ 3/4 (/ 1 (tt-width)))) 4)
+  (* (line-bytes) 3)
+  )
+
+(defun line-bytes ()
+  ;;(1- (truncate (/ 3/4 (/ 1 (tt-width)) 3))))
+  (truncate (/ 3/4 (/ 1 (tt-width)) 3)))
 
 (defmethod display-page ((pager binary-pager))
   "Display the lines already read, starting from the current."
@@ -805,13 +832,15 @@ line : |----||-------||---------||---|
 		      (code-char (aref buffer i))
 		      ".")
 		  printable)
-	   (when (> len hex-len)
+	   (when (>= len hex-len)
 	     (tt-color :white :black)
 	     (loop :for c :across (get-output-stream-string printable) :do
 		  (tt-color (if (eql c #\.) :blue :white) :black)
-		  (tt-write-char c))
+		  (tt-write-char c)
+		  (incf len))
 	     (incf y)
-	     (tt-write-char #\newline)
+	     (when (< len (1- (tt-width)))
+	       (tt-write-char #\newline))
 	     (file-position printable :start)
 	     (setf len 0))
 	 :while (< y page-size))
@@ -1158,9 +1187,9 @@ location doesn't have an offset part."
   "After changing byte-pos, read more input if needed or availible, or adjust
 byte-pos."
   (with-slots (byte-pos page-size byte-count got-eof) pager
-    (let ((page-bytes (* page-size (hex-len))))
-      (when (> (+ byte-pos page-bytes) byte-count)
-	(read-input pager page-size))
+    (let ( #| (page-bytes (* page-size (line-bytes))) |#)
+      ;;(when (> (+ byte-pos page-bytes) byte-count)
+      (read-input pager page-size)
       (when (and (>= byte-pos byte-count) got-eof)
 	(setf byte-pos (1- byte-count))))))
 
@@ -1174,8 +1203,9 @@ byte-pos."
 
 (defmethod go-to-line ((pager binary-pager) n)
   (with-slots (page-size byte-pos byte-count) pager
-    (read-input pager (max 1 (- (+ n page-size) (round byte-count (hex-len)))))
-    (setf byte-pos (1- (* n (hex-len))))))
+    (read-input pager (max 1 (- (+ n page-size)
+				(round byte-count (line-bytes)))))
+    (setf byte-pos (1- (* n (line-bytes))))))
 
 (defgeneric next-page (pager)
   (:documentation "Display the next page."))
@@ -1192,7 +1222,7 @@ byte-pos."
 (defmethod next-page ((pager binary-pager))
   "Display the next page."
   (with-slots (page-size byte-count byte-pos got-eof) pager
-    (let ((page-bytes (* page-size (hex-len))))
+    (let ((page-bytes (* page-size (line-bytes))))
       (incf byte-pos page-bytes)
       (byte-pos-changed pager))))
 
@@ -1212,9 +1242,8 @@ byte-pos."
 (defmethod next-line ((pager binary-pager))
   "Display the next line."
   (with-slots (page-size byte-count byte-pos got-eof prefix-arg) pager
-    (let* ((n (or prefix-arg 1))
-	   (line-bytes (hex-len)))
-      (incf byte-pos (* n line-bytes))
+    (let* ((n (or prefix-arg 1)))
+      (incf byte-pos (* n (line-bytes)))
       (byte-pos-changed pager))))
 
 (defgeneric previous-page (pager)
@@ -1224,16 +1253,27 @@ byte-pos."
       (setf line (max 0 (- line page-size)))))
   (:method ((pager binary-pager))
     (with-slots (byte-pos page-size stream) pager
-      (setf byte-pos (max 0 (* page-size (hex-len))))
+      (setf byte-pos (max 0 (- byte-pos (* page-size (line-bytes)))))
       ;; (when (/= byte-pos (file-position stream))
       ;; 	(file-position stream byte-pos))
+      (byte-pos-changed pager)
       )))
 
-(defun previous-line (pager)
+(defgeneric previous-line (pager)
+  (:documentation "Display the previous line."))
+
+(defmethod previous-line ((pager text-pager))
   "Display the previous line."
   (with-slots (prefix-arg line) pager
     (let ((n (or prefix-arg 1)))
       (setf line (max 0 (- line n))))))
+
+(defmethod previous-line ((pager binary-pager))
+  "Display the previous line."
+  (with-slots (prefix-arg byte-pos) pager
+    (let ((n (or prefix-arg 1)))
+      (setf byte-pos (max 0 (- byte-pos (* (line-bytes) n))))
+      (byte-pos-changed pager))))
 
 (defun scroll-right (pager)
   "Scroll the pager window to the right."
@@ -1311,9 +1351,13 @@ byte-pos."
   (with-slots (prefix-arg byte-pos) pager
     (if prefix-arg
 	(go-to-line pager prefix-arg)
-	(setf byte-pos 0))))
+	(setf byte-pos 0))
+    (byte-pos-changed pager)))
 
-(defun go-to-end (pager)
+(defgeneric go-to-end (pager)
+  (:documentation "Go to the end of the stream, or the PREFIX-ARG'th line."))
+
+(defmethod go-to-end ((pager text-pager))
   "Go to the end of the stream, or the PREFIX-ARG'th line."
   (with-slots (prefix-arg count line page-size) pager
     (if prefix-arg
@@ -1321,6 +1365,20 @@ byte-pos."
 	(progn
 	  (read-input *pager* 0)
 	  (setf line (max 0 (- count page-size)))))))
+
+(defmethod go-to-end ((pager binary-pager))
+  "Go to the end of the stream, or the PREFIX-ARG'th line."
+  (with-slots (prefix-arg page-size byte-pos byte-count) pager
+    (let ((page-bytes (* page-size (line-bytes))))
+      (if prefix-arg
+	  (progn
+	    (go-to-line pager prefix-arg)
+	    (byte-pos-changed pager))
+	  (progn
+	    ;; (read-input pager 0)
+	    (setf byte-pos (max 0 (- byte-count page-bytes)))
+	    (byte-pos-changed pager)
+	    )))))
 
 (defun search-command (pager)
   "Search forwards for something in the stream."
