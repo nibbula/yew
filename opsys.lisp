@@ -480,21 +480,23 @@ calls. Returns NIL when there is an error.")
     ;; Go backwards from the end until we hit a separator.
     (loop :while (and (>= i 0) (char/= *directory-separator* (char our-path i)))
        :do (decf i))
-    (setf file-start i)
-;    (dlib:dbug "i = ~s~%" i)
-    ;; Go backwards over any more separators.
-    (loop :while (and (>= i 0) (char= *directory-separator* (char our-path i)))
-       :do (decf i))
-    (setf dir-end (1+ i))
+    (setf file-start (1+ i))
+    (if (and (zerop i) (char= *directory-separator* (char our-path 0)))
+	(setf dir-end 1)
+	(progn
+	  ;; Go backwards over any more separators.
+	  (loop :while (and (>= i 0)
+			    (char= *directory-separator* (char our-path i)))
+	     :do (decf i))
+	  (setf dir-end (1+ i))))
+    ;;(dlib:dbugf :path "i = ~s dir-end ~s file-start ~s~%" i dir-end file-start)
     (if (eq side :dir)
 	(if (< i 0)
 	    (make-string 0) ;;(subseq our-path 0 0)
-	    (if (and (zerop i) (char= (char our-path 0) *directory-separator*))
-		(subseq our-path 0 1)	; just the separator
-		(subseq our-path 0 dir-end)))
+	    (subseq our-path 0 dir-end))
 	(if (< i 0)
 	    path			 ; there was no separator
-	    (subseq our-path (1+ file-start))))))
+	    (subseq our-path file-start)))))
 
 (defun path-directory-name (path)
   "Return the directory portion of a PATH. This is similar to DIRECTORY-NAMESTRING."
@@ -829,7 +831,7 @@ Just return ENV if it doesn't seem like an alist."
 ;; Pipes
 
 ;; @@@@ We should make sure it's portable!
-;; @@@ add environment on other than sbcl
+;; @@@ add environment on others
 (defun pipe-program (cmd args &key in-stream (out-stream :stream)
 				(environment nil env-p))
   "Return an input stream with the output of the system command. Use IN-STREAM

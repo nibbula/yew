@@ -10,6 +10,28 @@
    ))
 (in-package :opsys-test)
 
+(deftests (opsys-path-1 :doc "Test path manipulation.")
+  (equal "foo" (path-file-name "foo"))
+  (equal "bar" (path-file-name "foo/bar"))
+  (equal "baz" (path-file-name "foo/bar/baz"))
+  (equal "bar" (path-file-name "foo////bar"))
+  (equal "baz" (path-file-name "foo////bar////baz"))
+  (equal "foo" (path-file-name "/foo"))
+  (equal "bar" (path-file-name "/foo/bar"))
+  (equal ""    (path-file-name "/"))
+  (equal ""           (path-directory-name "foo"))
+  (equal "foo"        (path-directory-name "foo/bar"))
+  (equal "foo/bar"    (path-directory-name "foo/bar/baz"))
+  (equal "foo"        (path-directory-name "foo////bar"))
+  (equal "foo////bar" (path-directory-name "foo////bar////baz"))
+  (equal "/"          (path-directory-name "/foo"))
+  (equal "/foo"       (path-directory-name "/foo/bar"))
+  (equal "/"          (path-directory-name "/"))
+  )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; terminals
+
 (defvar *tty* nil)
 
 (deftests (opsys-terminal-1 :doc "Basic tests")
@@ -77,6 +99,7 @@
   (eq (terminal-mode-timeout *new-mode*) nil))
 
 (deftests (opsys-all :doc "All tests for OPSYS.")
+  opsys-path-1
   opsys-terminal-1
   opsys-terminal-2
   opsys-terminal-3)
