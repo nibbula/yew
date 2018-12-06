@@ -18,6 +18,7 @@
    #:*theme*
    #:*file-type-suffixes*
    #:file-suffix-type
+   #:set-theme-items
    #:default-theme
    ))
 (in-package :theme)
@@ -416,6 +417,8 @@ If the path doesn't exist, it is created."
       (gethash suffix *file-suffix-table*))))
 
 (defun set-theme-items (theme item-value-list)
+  "Set item in theme from item-value-list which is a plist like list of
+alternating (item value ...)."
   (loop
      :for i = item-value-list :then (cdr i)
      :while i
