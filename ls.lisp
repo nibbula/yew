@@ -290,7 +290,8 @@ by nos:read-directory."))
 		   :key (_ (file-item-modification-date _))))
     (:extension
      (let ((str-func (if reverse #'string> #'string<)))
-       (sort-muffled file-list
+       (sort-muffled (sort-muffled file-list (if reverse #'string> #'string<)
+				   :key #'file-item-name)
 		     (lambda (a b)
 		       (cond
 			 ((and (not (car a)) (not (car b)))
