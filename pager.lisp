@@ -846,12 +846,15 @@ line : |----||-------||---------||---|
 	 :while (< y page-size))
       ;; When we're not a the beginning of a line, print the remaining printable
       (when (and (< y page-size) (/= len 0))
-	(loop :while (<= len (+ hex-len (- 3 (mod hex-len 3))))
+	;; (loop :while (<= len (+ hex-len (- 3 (mod hex-len 3))))
+	(loop :while (< len hex-len)
 	   :do (incf len) (tt-write-char #\space))
 	(loop :for c :across (get-output-stream-string printable) :do
 	     (tt-color (if (eql c #\.) :blue :white) :black)
 	     (tt-write-char c))
-	(tt-write-char #\newline))
+	(when (< len (1- (tt-width)))
+	  (tt-write-char #\newline))
+	(incf y))
       ;; Fill the rest of the screen with twiddles to indicate emptiness.
       (when (< y page-size)
 	(loop :for i :from y :below page-size
@@ -1401,24 +1404,24 @@ byte-pos."
 	  (setf search-string nil)
 	  (return nil))))))
 
-(defun search-backward-command ()
+(defun search-backward-command (pager)
   "Search backwards for something in the stream."
-  (with-slots (search-string) *pager*
+  (with-slots (search-string) pager
     (setf search-string (ask "Search backward for: "))
     (when (not (search-for search-string :backward))
       (tmp-message "--Not found--"))))
 
-(defun search-next ()
+(defun search-next (pager)
   "Search for the next occurance of the current search in the stream."
-  (with-slots (line search-string) *pager*
+  (with-slots (line search-string) pager
     (incf line)
     (when (not (search-for search-string))
       (decf line)
       (tmp-message "--Not found--"))))
 
-(defun search-previous ()
+(defun search-previous (pager)
   "Search for the previous occurance of the current search in the stream."
-  (with-slots (line search-string) *pager*
+  (with-slots (line search-string) pager
     (if (not (zerop line))
 	(progn
 	  (decf line)
@@ -1427,9 +1430,9 @@ byte-pos."
 	    (tmp-message "--Not found--")))
 	(tmp-message "Search stopped at the first line."))))
 
-(defun clear-search ()
+(defun clear-search (pager)
   "Clear the search string."
-  (setf (pager-search-string *pager*) nil))
+  (setf (pager-search-string pager) nil))
 
 (defun seekable-p ()
   (handler-case
