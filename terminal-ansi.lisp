@@ -745,14 +745,14 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-scroll-down ((tty terminal-ansi-stream) n)
   (when (> n 0)
-    (loop :with stream = (terminal-output-stream tty) and i = 0
+    (loop :with stream = (terminal-output-stream tty) :and i = 0
        :while (< i n)
        :do (write-char #\newline stream) (incf i)
        :finally (when (line-buffered-p tty) (finish-output stream)))))
 
 (defmethod terminal-scroll-up ((tty terminal-ansi-stream) n)
   (when (> n 0)
-    (loop :with stream = (terminal-output-stream tty) and i = 0
+    (loop :with stream = (terminal-output-stream tty) :and i = 0
        :while (< i n)
        :do (terminal-raw-format tty "~cM" #\escape)
        (incf i)
