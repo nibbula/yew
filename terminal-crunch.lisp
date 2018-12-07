@@ -21,7 +21,7 @@ Other terminal types should help terminal-crunch work by providing cost metrics
 for various operations through the OUTPUT-COST methods.
 ")
   (:use :cl :dlib :collections :char-util :fatchar :terminal
-	:trivial-gray-streams :fatchar-io)
+	:trivial-gray-streams :fatchar-io :ostring)
   (:import-from :terminal #:wrapped-terminal)
   (:export
    #:terminal-crunch
@@ -189,7 +189,7 @@ strings, only the attributes of the first character are preserved."
      (loop :for g :across s :sum
 	(grid-char-character-length g)))))
 
-(defun grid-to-fat-string (s &key (start 0) end)
+(defun grid-to-fat-string (s &key (start 0) end no-nulls)
   "Return a fat-string equivalent to S. S can be a grid-string or a grid-char."
   ;; (with-output-to-fat-string (str)
   ;;   (let ((fc (make-fatchar)))
@@ -218,10 +218,11 @@ strings, only the attributes of the first character are preserved."
 	       (null
 		;; Ignore it unless it has other data.
 		;; @@@ It this reasonable?
-		(when (or (grid-char-fg    char)
-			  (grid-char-bg    char)
-			  (grid-char-attrs char)
-			  (not (zerop (grid-char-line  char))))
+		(when (and (or (grid-char-fg    char)
+			       (grid-char-bg    char)
+			       (grid-char-attrs char)
+			       (not (zerop (grid-char-line  char))))
+			   (not no-nulls))
 		  (setf (aref result j)
 			(make-fatchar :fg    (grid-char-fg    char)
 				      :bg    (grid-char-bg    char)
@@ -229,23 +230,27 @@ strings, only the attributes of the first character are preserved."
 				      :line  (grid-char-line  char)))
 		  (incf j)))
 	       (character
-		(setf (aref result j)
-		      (make-fatchar :c     (grid-char-c char)
-				    :fg    (grid-char-fg    char)
-				    :bg    (grid-char-bg    char)
-				    :attrs (grid-char-attrs char)
-				    :line  (grid-char-line  char)))
-		(incf j))
+		(when (or (not no-nulls)
+			  (char/= (grid-char-c char) #.(code-char 0)))
+		  (setf (aref result j)
+			(make-fatchar :c     (grid-char-c char)
+				      :fg    (grid-char-fg    char)
+				      :bg    (grid-char-bg    char)
+				      :attrs (grid-char-attrs char)
+				      :line  (grid-char-line  char)))
+		  (incf j)))
 	       (string
 		(loop :for c :across (grid-char-c char)
 		   :do
-		   (setf (aref result j)
-			 (make-fatchar :c c
-			               :fg    (grid-char-fg    char)
-			               :bg    (grid-char-bg    char)
-			               :attrs (grid-char-attrs char)
-			               :line  (grid-char-line  char)))
-		   (incf j))))))
+		     (when (or (not no-nulls)
+			       (char/= (grid-char-c char) #.(code-char 0)))
+		       (setf (aref result j)
+			     (make-fatchar :c c
+					   :fg    (grid-char-fg    char)
+					   :bg    (grid-char-bg    char)
+					   :attrs (grid-char-attrs char)
+					   :line  (grid-char-line  char)))
+		       (incf j)))))))
     (etypecase s
       (null result)
       (grid-char (add-grid-char s))
@@ -317,6 +322,10 @@ strings, only the attributes of the first character are preserved."
 (defparameter *nil-char* (make-grid-char :c nil))
 (defun nil-char ()
   (copy-grid-char *nil-char*))
+
+(defparameter *nul-char* (make-fatchar :c #.(code-char 0)))
+(defun nul-char ()
+  (copy-fatchar *nul-char*))
 
 (defmacro clamp (n start end)
   `(cond
@@ -612,20 +621,23 @@ two values ROW and COLUMN."
 (defun copy-screen-contents (from-screen to-screen)
   "Copy the contents of FROM-SCREEN to TO-SCREEN. It's fine if they're diffrent
 sizes. It only copies the smaller of the two regions."
-  (setf (screen-x to-screen)                (screen-x from-screen)
-	(screen-y to-screen)                (screen-y from-screen)
-	(screen-background to-screen)       (screen-background from-screen)
-	(screen-scrolling-region to-screen) (screen-scrolling-region from-screen)
-	(screen-cursor-state to-screen)     (screen-cursor-state from-screen)
-	(screen-beep-count to-screen)       (screen-beep-count to-screen))
-  (loop :for i :from 0 :below (min (length (screen-lines from-screen))
-				   (length (screen-lines to-screen)))
-     :do
-     (map-into (aref (screen-lines to-screen) i)
-	       #'copy-grid-char (aref (screen-lines from-screen) i))
-     (setf (aref (screen-index to-screen) i)
-	   (aref (screen-index from-screen) i)))
-  (compute-hashes to-screen))
+  (let ((min-y (min (length (screen-lines from-screen))
+		    (length (screen-lines to-screen))))
+	(min-x (min (length (aref (screen-lines from-screen) 0))
+		    (length (aref (screen-lines to-screen) 0)))))
+    (setf
+     (screen-x to-screen)                (min min-x (screen-x from-screen))
+     (screen-y to-screen)                (min min-y (screen-y from-screen))
+     (screen-background to-screen)       (screen-background from-screen)
+     (screen-scrolling-region to-screen) (screen-scrolling-region from-screen)
+     (screen-cursor-state to-screen)     (screen-cursor-state from-screen)
+     (screen-beep-count to-screen)       (screen-beep-count to-screen))
+    (loop :for i :from 0 :below min-y :do
+      (map-into (aref (screen-lines to-screen) i)
+		#'copy-grid-char (aref (screen-lines from-screen) i))
+      (setf (aref (screen-index to-screen) i)
+	    (aref (screen-index from-screen) i)))
+    (compute-hashes to-screen)))
 
 (defun make-new-screen (rows cols)
   (let* ((lines  (make-array rows :element-type 'fatchar-string))
@@ -717,7 +729,8 @@ sizes. It only copies the smaller of the two regions."
       (update-size tty)
       (invalidate-before-start-row tty (new-screen tty))
       (invalidate-before-start-row tty (old-screen tty))
-      ;;(dbugf :crunch "Crunch auto re-starting at ~s.~%" start-line)
+      (dbugf :crunch "Crunch auto re-starting at ~s.~%" start-line)
+      (dbugf :crunch "allow-scrolling = ~s.~%" (allow-scrolling tty))
       )
     ;; @@@ Is this reasonable?
     ;; (terminal-erase-below tty)
@@ -849,47 +862,57 @@ sizes. It only copies the smaller of the two regions."
 || `-- height                    || `-- height                    ||
 ||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||#
 
+(defun index-blanker (x)
+  "Blank out line index X."
+  (fill x -1))
+
+(defun line-blanker (x)
+  "Blank out screen lines X."
+  (loop :for line :across x :do
+       (fill-by line #'blank-char)))
+
+(defun scroll-copy (n height array blanker)
+  "Copy ARRAY for scrolling N lines in a HEIGHT window. BLANKER a a function
+to blank with."
+  (cond
+    ((plusp n)
+     (let ((new-blanks (subseq array 0 n))) ; save overwritten lines
+       ;; Copy the retained lines up
+       (setf (subseq array 0 (- height n))
+	     ;; (subseq lines n (1- height)))
+	     (subseq array n height))
+       ;; Move the new blank lines in place.
+       (setf (subseq array (- height n)) new-blanks)
+       ;; Blank out the newly blank lines
+       (funcall blanker new-blanks)))
+    (t ;; minusp
+     (let ((offset (abs n))
+	   (new-blanks (subseq array (+ height n))))
+       ;; Copy the retained lines down
+       ;;(setf (subseq array (1+ offset))
+       (setf (subseq array offset)
+	     (subseq array 0 (+ height n)))
+       ;; Move the new blank lines in place.
+       (setf (subseq array 0 offset) new-blanks)
+       ;; Blank out the newly blank lines
+       (funcall blanker new-blanks)))))
+
 (defun scroll (tty n)
-  (with-slots (x y width height fg bg attrs scrolling-region lines index)
-      (new-screen tty)
-    (labels ((index-blanker (x)
-	       (fill x -1))
-	     (line-blanker (x)
-	       (loop :for line :across x :do
-		  (fill-by line #'blank-char)))
-	     (scroll-copy (array blanker)
-	       (cond
-		 ((plusp n)
-		  (let ((new-blanks (subseq array 0 n))) ; save overwritten lines
-		    ;; Copy the retained lines up
-		    (setf (subseq array 0 (- height n))
-			  ;; (subseq lines n (1- height)))
-			  (subseq array n height))
-		    ;; Move the new blank lines in place.
-		    (setf (subseq array (- height n)) new-blanks)
-		    ;; Blank out the newly blank lines
-		    (funcall blanker new-blanks)))
-		 (t ;; minusp
-		  (let ((offset (abs n))
-			(new-blanks (subseq array (+ height n))))
-		    ;; Copy the retained lines down
-		    (setf (subseq array (1+ offset))
-			  (subseq array 0 (+ height n)))
-		    ;; Move the new blank lines in place.
-		    (setf (subseq array 0 offset) new-blanks)
-		    ;; Blank out the newly blank lines
-		    (funcall blanker new-blanks))))))
-      (if (< (abs n) height)
-	  (progn
-	    (scroll-copy lines #'line-blanker)
-	    (scroll-copy index #'index-blanker))
-	  (progn
-	    ;; Just erase everything
-	    (line-blanker lines)
-	    (index-blanker index)))
-      (when (not (zerop (start-line tty)))
-	(setf (start-line tty) (max 0 (- (start-line tty) n)))
-	(incf (really-scroll-amount tty) n)))))
+  (dbugf :crunch "(scroll ~s)~%" n)
+  (with-slots (height lines index) (new-screen tty)
+    (when (not (zerop n))
+      (no-hints tty))
+    (if (< (abs n) height)
+	(progn
+	  (scroll-copy n height lines #'line-blanker)
+	  (scroll-copy n height index #'index-blanker))
+	(progn
+	  ;; Just erase everything
+	  (line-blanker lines)
+	  (index-blanker index)))
+    (when (not (zerop (start-line tty)))
+      (setf (start-line tty) (max 0 (- (start-line tty) n)))
+      (incf (really-scroll-amount tty) n))))
 
 (defun copy-char (tty char)
   "Put the CHAR at the current screen postion. Return true if we actually
@@ -1246,18 +1269,20 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-scroll-down ((tty terminal-crunch-stream) n)
   ;; Even if allow-scrolling is false.
   (when (> n 0)
-    (terminal-down tty n)
     (with-slots (y height) (new-screen tty)
-      (when (> n (- height (1+ y)))
-	(scroll tty (- n (- height (1+ y))))))))
+      (let ((start-y y))
+	(terminal-down tty n)
+	(when (> n (- height (1+ start-y)))
+	  (scroll tty (- n (- height (1+ start-y)))))))))
 
 (defmethod terminal-scroll-up ((tty terminal-crunch-stream) n)
   ;; Even if allow-scrolling is false.
   (when (> n 0)
-    (terminal-up tty n)
     (with-slots (y height) (new-screen tty)
-      (when (> n y)
-	(scroll tty (- (- n y)))))))
+      (let ((start-y y))
+	(terminal-up tty n)
+	(when (> n start-y)
+	  (scroll tty (- (- n start-y))))))))
 
 (defmethod terminal-erase-to-eol ((tty terminal-crunch-stream))
   (fill-by (aref (screen-lines (new-screen tty)) (screen-y (new-screen tty)))
@@ -1373,6 +1398,10 @@ XTerm or something."
   "Return true if the terminal can display the character attribute."
   (terminal-has-attribute (terminal-wrapped-terminal tty) attribute))
 
+(defmethod terminal-has-autowrap-delay ((tty terminal-crunch))
+  "Return true if the terminal delays automatic wrapping at the end of a line."
+  nil)
+
 (defmethod terminal-enable-event ((tty terminal-crunch) event)
   "Allow event and return true if the terminal can allow event."
   ;; Just call the wrapped one.
@@ -1451,6 +1480,30 @@ XTerm or something."
 |#
 
 (defun crunched-move-to (tty new-x new-y old-x old-y)
+  ;;(declare (ignore old-x old-y))
+  (let ((wtty (terminal-wrapped-terminal tty)))
+    (cond
+      ((and (not (eql new-x old-x)) (not (eql new-y old-y)))
+       (terminal-move-to wtty new-y new-x))
+      ((not (eql new-x old-x))
+       (let ((n (abs (- new-x old-x))))
+	 (if (> new-x old-x)
+	     ;; (terminal-move-to-col wtty new-x)
+	     (terminal-forward wtty n)
+	     ;; (dotimes (i n) (terminal-write-char wtty #\space))
+	     (terminal-move-to-col wtty new-x)
+	     ;;(terminal-backward wtty n)
+	     )))
+      ((not (eql new-y old-y))
+       (let ((n (abs (- new-y old-y))))
+	 (if (> new-y old-y)
+	     (terminal-down wtty n)
+	     (terminal-up wtty n)))))
+    (setf (update-x tty) new-x
+	  (update-y tty) new-y)))
+
+#|
+(defun crunched-move-to (tty new-x new-y old-x old-y)
   "Move to NEW-X NEW-Y from OLD-X OLD-Y in a hopefully efficient way.
 Set the current update position UPDATE-X UPDATE-Y in the TTY."
   (let ((wtty (terminal-wrapped-terminal tty)))
@@ -1506,6 +1559,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	       (terminal-up wtty n)))))
       (setf (update-x tty) new-x
 	    (update-y tty) new-y))))
+|#
 
 (defun update-position (tty new old)
   (crunched-move-to tty
@@ -1617,6 +1671,10 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 		  "We thought we had to update line ~s, but we didn't?" line)
 	  (return-from update-line)))
 
+    ;; @@@ problems:
+    ;;   - unbuffered write of each line?
+    ;;   - uselesly writing all the null at end?
+
     ;; @@@ Try to see if we can use insert / delete.
     (crunched-move-to tty first-change line (update-x tty) (update-y tty))
     (if (or (not new-line-cost) (> new-line-cost change-cost))
@@ -1627,7 +1685,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	     (setf start (car c)
 		   end (cdr c))
 	     (crunched-move-to tty start line (update-x tty) (update-y tty))
-	     (dbugf :crunch "update-line FLOOB ~s ~s ~s~%" line start c)
+	     ;; (dbugf :crunch "update-line FLOOB ~s ~s ~s~%" line start c)
 	     ;; (if (= start end)
 	     ;; 	 (progn
 	     ;; 	   (when (not fc)
@@ -1644,8 +1702,11 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	     ;; 			      :end (min (1+ end) (length new-line)))))
 	     (setf fs (grid-to-fat-string new-line
 					  :start start
-					  :end (min (1+ end) (length new-line))))
-	     (terminal-write-string wtty fs)
+					  :end (min (1+ end) (length new-line))
+					  :no-nulls t))
+	     (dbugf :koo "floob len ~s~%" (olength fs))
+	     (terminal-write-string wtty (ostring-right-trim
+					  (list *nul-char*) fs))
 	     ;; (dbugf :crunch "write-string ~s ->~s<-~%"
 	     ;; 	    (length (fat-string-string fs)) fs)
 	     (setf (update-x tty)
@@ -1665,8 +1726,11 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	  (setf fs (grid-to-fat-string new-line
 				       :start first-change
 				       :end (min (1+ last-change)
-						 (length new-line))))
-	  (terminal-write-string wtty fs)
+						 (length new-line))
+				       :no-nulls t))
+	  (dbugf :koo "winky len ~s~%" (olength fs))
+	  (terminal-write-string wtty (ostring-right-trim
+				       (list *nul-char*) fs))
 	  ;;(setf (update-x tty) (1+ last-change))
 	  (setf (update-x tty) ;; @@@ useless subseq
 		(display-length fs)
@@ -1704,6 +1768,73 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
     (crunched-move-to tty
 		      (screen-x new) (screen-y new)
 		      (update-x tty) (update-y tty))))
+
+(defun line-sames (s1 s2 &key (start 0))
+  "Return a list of regions that are the same in the sequences S1 and S1,
+starting from the index START, which defaults to 0. Each region is a list of
+two index range pairs that are the same, e.g. :
+  ((<start-1> . <end-1>) (<start-2> . <end-2>))
+which says the region from <start-1> to <end-1> is the same as region from
+<start-2> to <end-2>.
+
+The algorithm it uses isn't very good. It only finds the first one of
+duplicated sequences, and can have worst case O(n*m) performance."
+  (let (regions j si s1-start s2-start)
+    (loop :with i = start
+       :while (< i (length s1))
+       :do
+       (setf j start si i)
+       (loop :while (and (< j (length s2))
+			 (< si (length s1)))
+	  :do
+	  (if (equal (elt s1 si) (elt s2 j))
+	      (progn
+		(when (not s1-start)
+		  (setf s1-start si s2-start j))
+		(incf si)
+		(incf i))
+	      (when s1-start
+		(return)))
+	  (incf j))
+       (if s1-start
+	   (progn
+	     (push `((,s1-start . ,si) (,s2-start . ,j)) regions)
+	     (setf s1-start nil))
+	   (incf i)))
+    (nreverse regions)))
+
+(defun can-scroll (same start height)
+  "If we can scroll, return values:
+  DIRECTION -- :up or :down
+  AMOUNT    -- lines to scroll."
+  (let ((first (first same))
+	(last (car (last same))))
+    (labels ((moved-to-top (d)
+	       "True if the diff moved to the top."
+	       (and (zerop (car (second d)))
+		    (not (zerop (car (first d))))))
+	     (moved-to-bottom (d)
+	       (and (= (cdr (second d)) (1- height))
+		    (not (= (cdr (first d)) (1- height)))))
+	     (size (range)
+	       "The size of the range."
+	       (- (cdr range) (car range)))
+	     (big-enough (range)
+	       "True if the range is big enough to consider scrolling."
+	       (> (size range) (round height 3)))
+	     (whole-p ()
+	       "True if the whole thing matched."
+	       (and (= (length same) 1)
+		    (destructuring-bind (((s1 . e1) (s2 . e2))) same
+		      ;; (and (= s1 start) (= e1 (1- height))
+		      (and (= s1 start) (= e1 height)
+			   (eql s1 s2) (eql e1 e2))))))
+      (cond
+	((whole-p) (values :same 0))
+	((and (moved-to-top first) (big-enough (second first)))
+	 (values :up (- (1- height) (size (second first)))))
+	((and (moved-to-bottom last) (big-enough (second last)))
+	 (values :down (- (1- height) (size (second last)))))))))
 
 (defun update-display (tty)
   "This is the big crunch."
@@ -1812,20 +1943,57 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
        (compute-hashes new start-line)
        (if-dbugf (:crunch) (dump-hashes tty))
 
-       ;; @@@
        ;; handle scrolling
        ;;   detect scrolling
        ;;   move same lines
+       (let ((sames (line-sames (screen-hashes old) (screen-hashes new)
+				:start start-line))
+	     (start start-line)
+	     (end (length (screen-hashes new)))
+	     no-change)
+	 (when sames
+	   (dbugf :crunch "sames ~s~%" sames)
+	   (multiple-value-bind (dir amount)
+	       (can-scroll sames start (screen-height old))
+	     (case dir
+	       (:same
+		(setf no-change t)
+		(dbugf :crunch "scroll: no-change~%")
+		)
+	       (:up
+		;; actually scroll
+		(crunched-move-to tty 0 (1- (screen-height old))
+				  (update-x tty) (update-y tty))
+		(terminal-scroll-down wtty amount)
+		;; move the old screen lines so we update properly
+		(scroll-copy amount (screen-height old) (screen-lines old)
+			     #'line-blanker)
+		;;(setf start (1+ (cdr (second (first sames)))))
+		(setf start (cdr (second (first sames))))
+		;; re-compute the hashes of the lines we have to re-draw
+		(compute-hashes old start)
+		(dbugf :crunch "scroll :up ~s start = ~s~%" amount start)
+		)
+	       (:down
+		(crunched-move-to tty 0 0 (update-x tty) (update-y tty))
+		(terminal-scroll-up wtty amount)
+		(scroll-copy (- amount) (screen-height old) (screen-lines old)
+			     #'line-blanker)
+		;; (setf end (1+ (cdr (second (car (last sames))))))
+		;; (setf end (car (second (car (last sames)))))
+		(compute-hashes old start end)
+		(dbugf :crunch "scroll :down ~s end = ~s~%" amount end)
+		))))
 
-       ;; Update changed lines.
-       ;;(time
-       (loop :for i :from start-line :below (length (screen-hashes new)) :do
-	  (when (/= (aref (screen-hashes new) i) (aref (screen-hashes old) i))
-	    ;; (dbugf :crunch "hash diff ~s old ~s new ~s~%" i
-	    ;; 	   (aref (screen-hashes new) i)
-	    ;; 	   (aref (screen-hashes old) i))
-	    (update-line tty i)))
-       ;;)
+	 ;; Update changed lines.
+	 (when (not no-change)
+	   (loop :for i :from start :below end :do
+		(when (/= (aref (screen-hashes new) i)
+			  (aref (screen-hashes old) i))
+		  ;; (dbugf :crunch "hash diff ~s old ~s new ~s~%" i
+		  ;; 	   (aref (screen-hashes new) i)
+		  ;; 	   (aref (screen-hashes old) i))
+		  (update-line tty i)))))
 
        ;; Make sure we're at the right cursor position.
        (update-ending-position tty new)))
