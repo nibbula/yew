@@ -1421,6 +1421,11 @@ XTerm or something."
   (:documentation
    "Return a number representing the cost of OPERATION on TERMINAL."))
 
+(defmethod output-cost ((tty t) (op t) &rest params)
+  "Fallback for unknown costs."
+  (declare (ignore tty op params))
+  1)
+
 #|
 ;; Generic cost methods, that are based on ANSI terminals.
 ;; Other terminal types can tweak their costs if they like.
