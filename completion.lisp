@@ -882,13 +882,13 @@ defaults to the current package. Return how many symbols there were."
 			:omit-hidden (not hidden))
 		       (safe-read-directory
 			:full t :append-type t :omit-hidden (not hidden)))))
-;    (format t "dir-part = ~a~%file-part = ~a~%" dir-part file-part)
+    ;; (dbugf :completion "dir-part = ~a~%file-part = ~a~%dir-list ~s~%"
+    ;; 	   dir-part file-part dir-list)
     (locally
 	#+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
 	(setq dir-list (sort dir-list #'string> :key #'dir-entry-name)))
     (loop :for file :in dir-list
        :do
-;      (format t "~f~%" f)
        (when (and (setf pos (search file-part (dir-entry-name file)
 				    :test #'equalp))
 		  (= pos 0)
