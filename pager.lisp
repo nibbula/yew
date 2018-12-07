@@ -839,7 +839,7 @@ line : |----||-------||---------||---|
 		  (tt-write-char c)
 		  (incf len))
 	     (incf y)
-	     (when (< len (1- (tt-width)))
+	     (when (< len (tt-width))
 	       (tt-write-char #\newline))
 	     (file-position printable :start)
 	     (setf len 0))
