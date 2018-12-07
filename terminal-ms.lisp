@@ -77,7 +77,8 @@
       (setf (terminal-window-rows tty) rows
 	    ;; @@@ FIXME!: this -1 is totally terrible hack until I can figure
 	    ;; out how to work around the auto-newline at the last col thing!!
-	    (terminal-window-columns tty) (1- cols)))))
+	    ;;(terminal-window-columns tty) (1- cols)))))
+	    (terminal-window-columns tty) cols))))
 
 (defmethod terminal-get-cursor-position ((tty terminal-ms))
   "Get the position of the cursor. Returns the two values ROW and COLUMN."
@@ -142,6 +143,20 @@
   ;; (format t "[terminal-done]~%")
   ;; (setf *tty* nil)
   (values))
+
+(defmethod terminal-reinitialize ((tty terminal-ms))
+  "Do any re-initialization necessary, and return the saved state."
+  (with-slots ((file-descriptor terminal::file-descriptor)) tty
+    (let ((current-mode (get-terminal-mode file-descriptor)))
+      (when (or (terminal-mode-line current-mode)
+		(terminal-mode-echo current-mode))
+	(set-terminal-mode file-descriptor :line nil :echo nil))
+      (terminal-get-size tty)
+      ;; Return the terminal's saved state.
+      ;; (saved-mode tty)
+      ;; Return the current mode
+      ;; @@@ should we just get rid of the saved mode in the terminal??
+      current-mode)))
 
 (defmethod terminal-format ((tty terminal-ms) fmt &rest args)
   "Output a formatted string to the terminal."
@@ -319,8 +334,11 @@
       (multiple-value-bind (x y width height attr top) (get-console-info fd)
 	(declare (ignore attr))
 	(set-cursor-position fd
-			     (max top (min (+ y offset-y) (+ top height)))
-			     (max 0 (min (+ x offset-x) width)))))))
+			     ;; (max top (min (+ y offset-y) (+ top height)))
+			     ;; (max 0 (min (+ x offset-x) width)))))))
+			     (max top (min (+ y offset-y)
+					   (+ top (1- height))))
+			     (max 0 (min (+ x offset-x) (1- width))))))))
 
 (defmethod terminal-backward ((tty terminal-ms) &optional (n 1))
   (move-offset tty (- n) 0))
@@ -346,6 +364,20 @@
 			      :bottom (- (+ top height) n)
 			      :x 0 :y top)
 	      (set-cursor-position fd (+ row n) col))))))
+
+(defmethod terminal-scroll-up ((tty terminal-ms) n)
+  (with-slots ((fd terminal::file-descriptor)) tty
+    (if (> n 0)
+	(multiple-value-bind (col row width height attr top)
+	    (get-console-info fd)
+	  (declare (ignore attr))
+	  (if (< (- row n) 0)
+	      ;; @@@@ This would be right, but it's wrong.
+	      (scroll-console fd
+			      :left 0 :top top :right width
+			      :bottom (- (+ top height) n)
+			      :x 0 :y (+ top n))
+	      (set-cursor-position fd (- row n) col))))))
 
 (defun erase (fd &key x y length)
   (fill-console-char fd :x x :y y :length length)
@@ -677,6 +709,10 @@
   (case attribute
     ((:standout :bold :inverse :color) t)
     (:underline nil)))
+
+(defmethod terminal-has-autowrap-delay ((tty terminal-ms))
+  "Return true if the terminal delays automatic wrapping at the end of a line."
+  nil)
 
 (defmethod terminal-set-attributes ((tty terminal-ms) attributes)
   "Set the attributes given in the list. If NIL turn off all attributes.
