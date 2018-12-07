@@ -1341,9 +1341,23 @@ set in this string."
 	     (copy-char))))
     new-fat-line))
 
-(defun remove-effects (string)
-  "Remove any terminal colors or attributes from STRING."
-  (fatchar-string-to-string (process-ansi-colors (make-fatchar-string string))))
+(defun remove-effects (thing)
+  "Remove any terminal colors or attributes from THING, which can be a string,
+a fat-string, or a fatchar."
+  (etypecase thing
+    (string
+     (fatchar-string-to-string
+      (process-ansi-colors
+       (make-fatchar-string thing))))
+    (fat-string
+     (map nil #'remove-effects (fat-string-string thing))
+     thing)
+    (fatchar
+     (setf (fatchar-fg thing) nil
+	   (fatchar-bg thing) nil
+	   (fatchar-attrs thing) nil)
+     thing)
+    (character thing)))
 
 ;; Methods from char-util:
 
