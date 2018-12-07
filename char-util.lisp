@@ -1081,6 +1081,10 @@ GRAPHEME-VARs will be, which defaults to character so it's compatable with a
 ;;   #-(and sbcl has-sb-unicode) nil	; @@@ too hard without tables
 ;;   )
 
+;; @@@ Only Just for debugging
+(defmethod display-length ((c t))
+  (cerror "No." "Display length fail ~s ~s" (type-of c) c))
+
 ;; XXX This is still wrong for unicode! @@@
 (defmethod display-length ((c character))
   "Return the length of the character for display."
