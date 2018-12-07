@@ -140,6 +140,12 @@
    #:+FOREGROUND-INTENSITY+ #:+BACKGROUND-BLUE+ #:+BACKGROUND-GREEN+
    #:+BACKGROUND-RED+ #:+BACKGROUND-INTENSITY+
    #:get-console-title #:set-console-title
+   #:get-computer-name
+   #:os-machine-instance
+   #:os-machine-type
+   #:os-machine-version
+   #:os-software-type
+   #:os-software-version
    ))
 (in-package :ms)
 
@@ -4135,5 +4141,50 @@ a terminal."
 	(error "get-computer-name: ")
 	)
       (wide-string-to-lisp str))))
+
+;; void GetNativeSystemInfo(
+;;   LPSYSTEM_INFO lpSystemInfo
+;; );
+
+;; typedef struct _SYSTEM_INFO {
+;;   union {
+;;     DWORD dwOemId;
+;;     struct {
+;;       WORD wProcessorArchitecture;
+;;       WORD wReserved;
+;;     } DUMMYSTRUCTNAME;
+;;   } DUMMYUNIONNAME;
+;;   DWORD     dwPageSize;
+;;   LPVOID    lpMinimumApplicationAddress;
+;;   LPVOID    lpMaximumApplicationAddress;
+;;   DWORD_PTR dwActiveProcessorMask;
+;;   DWORD     dwNumberOfProcessors;
+;;   DWORD     dwProcessorType;
+;;   DWORD     dwAllocationGranularity;
+;;   WORD      wProcessorLevel;
+;;   WORD      wProcessorRevision;
+;; } SYSTEM_INFO, *LPSYSTEM_INFO;
+
+;; PROCESSOR_ARCHITECTURE_AMD64	       9  "x64 (AMD or Intel)"
+;; PROCESSOR_ARCHITECTURE_ARM	       5  "ARM"
+;; PROCESSOR_ARCHITECTURE_ARM64	      12  "ARM64"
+;; PROCESSOR_ARCHITECTURE_IA64	       6  "Intel Itanium-based"
+;; PROCESSOR_ARCHITECTURE_INTEL	       0  "x86"
+;; PROCESSOR_ARCHITECTURE_UNKNOWN 0xffff  "Unknown architecture"
+
+(defun os-machine-instance ()
+  (get-computer-name))
+
+(defun os-machine-type ()
+  "x86")
+
+(defun os-machine-version ()
+  nil)
+
+(defun os-software-type ()
+  "Windows")
+
+(defun os-software-version ()
+  "")
 
 ;; EOF
