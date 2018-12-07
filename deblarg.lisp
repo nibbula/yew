@@ -209,14 +209,15 @@
 
 ;; @@@ This hackishly knows too much about RL.
 (defun debugger-prompt (e p)
+  (declare (ignore e))
   (when *visual-mode*
     (visual))
   ;; (fresh-line *debug-io*)
-  (rl::editor-write-string		; XXX
-   e
-   (format nil "Debug ~d~a" *repl-level* p))
-;  (finish-output *debug-io*)
-  nil)
+  (let ((string (format nil "Debug ~d~a" *repl-level* p)))
+    ;; (rl::editor-write-string e string)
+    ;; (finish-output *debug-io*)
+    (format t "~a" string)
+    t))
 
 ;;; @@@ I actually want to take defcommand out of lish and make it be generic.
 ;;; And then also the command completion from lish to generic completion.
