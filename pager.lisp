@@ -445,6 +445,7 @@ read until we get an EOF."
 (defmethod read-input ((pager binary-pager) line-count)
   "Read new lines from the stream. Stop after COUNT lines. If COUNT is zero,
 read until we get an EOF."
+  (declare (ignore line-count)) ;; @@@
   (with-slots (got-eof count stream raw-output seekable
 	       buffer buffer-start byte-count byte-pos) pager
     (setf seekable (seekable-p))
