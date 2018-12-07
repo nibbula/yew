@@ -77,6 +77,10 @@ require terminal driver support."))
   (declare (ignore state))
   (values))
 
+(defmethod terminal-reinitialize ((tty terminal-dumb))
+  "Do any re-initialization necessary, and return the saved state."
+  (values))
+
 (defmethod terminal-format ((tty terminal-dumb) fmt &rest args)
   "Output a formatted string to the terminal."
   (apply #'format (terminal-output-stream tty)
