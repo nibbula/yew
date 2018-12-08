@@ -377,6 +377,15 @@
     (data	:int64)
     (udata	(:pointer :void)))
 
+  #+freebsd
+  (defcstruct foreign-kevent
+    (ident	uintptr-t)
+    (filter	:short)
+    (flags	:unsigned-short)
+    (fflags	:unsigned-int)
+    (data	intptr-t)
+    (udata	(:pointer :void)))
+
   (defcfun kqueue :void)
   (defcfun ("kevent" real-kevent) :int
     (kq :int) (changelist (:pointer (:struct foreign-kevent))) (nchanges :int)

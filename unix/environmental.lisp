@@ -1221,8 +1221,11 @@ Returns an integer."
   domainname)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defconstant +UTSNAME-LENGTH+ 65))
+  (define-constants #(
+   ;; Name            D    L   S   F    O
+   #(+UTSNAME-LENGTH+ 256  65  256 256  256 "Size of utsname strings."))))
 
+#+linux
 (defcstruct utsname
   (sysname    :char :count #.+UTSNAME-LENGTH+)
   (nodename   :char :count #.+UTSNAME-LENGTH+)
@@ -1231,14 +1234,32 @@ Returns an integer."
   (machine    :char :count #.+UTSNAME-LENGTH+)
   (domainname :char :count #.+UTSNAME-LENGTH+))
 
+#+freebsd
+(defcstruct utsname
+  (sysname    :char :count #.+UTSNAME-LENGTH+)
+  (nodename   :char :count #.+UTSNAME-LENGTH+)
+  (release    :char :count #.+UTSNAME-LENGTH+)
+  (version    :char :count #.+UTSNAME-LENGTH+)
+  (machine    :char :count #.+UTSNAME-LENGTH+))
+
+#+freebsd
+(defcfun ("__xuname" xuname) :int
+  "Variable record size uname."
+  (size :int)
+  (buf :pointer))
+
 (defcfun ("uname" real-uname) :int 
   "Return system information in the structure pointed to by buf."
   (buf (:pointer (:struct utsname))))
 
 (defun uname ()
   (with-foreign-object (buf '(:struct utsname))
-    (syscall (real-uname buf))
-    (with-foreign-slots ((sysname nodename release version machine domainname)
+    (syscall
+     #+freebsd (xuname +UTSNAME-LENGTH+ buf)
+     #-freebsd (real-uname buf)
+     )
+    (with-foreign-slots ((sysname nodename release version machine
+				  #+linux domainname)
 			 buf (:struct utsname))
       (make-uname
        :sysname    (foreign-string-to-lisp sysname)
@@ -1246,7 +1267,10 @@ Returns an integer."
        :release    (foreign-string-to-lisp release)
        :version    (foreign-string-to-lisp version)
        :machine    (foreign-string-to-lisp machine)
-       :domainname (foreign-string-to-lisp domainname)))))
+       :domainname
+       #+linux (foreign-string-to-lisp domainname)
+       #-linux ""
+       ))))
 
 (defun os-machine-instance ()
   "Like MACHINE-INSTANCE, but without implementation variation."
@@ -1257,7 +1281,10 @@ Returns an integer."
   "Like MACHINE-TYPE, but without implementation variation."
   ;; We should normalize this so that it can be directly turned into
   ;; the feaure, e.g. uname -m is "x86_64" but we want "X86-64"
-  (substitute #\- #\_ (string-upcase (uname-machine (uname)))))
+  (let ((base (substitute #\- #\_ (string-upcase (uname-machine (uname))))))
+    (cdr (assoc base
+		'((("AMD64") . "X86-64"))
+		:test (lambda (a b) (find a b :test #'string-equal))))))
 
 (defun os-machine-version ()
   "Like MACHINE-VERSION, but without implementation variation."
@@ -1271,7 +1298,8 @@ Returns an integer."
 	    (let ((pos (position #\: line)))
 	      (subseq line (or (and pos (+ 2 pos)) 0))))))
       #+darwin (sysctl "machdep.cpu.brand_string" :string)
-      #+(or openbsd freebsd) (sysctl "hw.hw-model" :string)
+      #+openbsd (sysctl "hw.hw-model" :string)
+      #+freebsd (sysctl "hw.model" :string)
       "unknown"))
 
 (defun os-software-type ()
