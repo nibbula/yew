@@ -189,6 +189,7 @@ strings, only the attributes of the first character are preserved."
      (loop :for g :across s :sum
 	(grid-char-character-length g)))))
 
+;; @@@ no-nulls seems broken at least w/regard to *-line
 (defun grid-to-fat-string (s &key (start 0) end no-nulls)
   "Return a fat-string equivalent to S. S can be a grid-string or a grid-char."
   ;; (with-output-to-fat-string (str)
@@ -221,7 +222,7 @@ strings, only the attributes of the first character are preserved."
 		(when (and (or (grid-char-fg    char)
 			       (grid-char-bg    char)
 			       (grid-char-attrs char)
-			       (not (zerop (grid-char-line  char))))
+			       (not (zerop (grid-char-line char))))
 			   (not no-nulls))
 		  (setf (aref result j)
 			(make-fatchar :fg    (grid-char-fg    char)
@@ -1705,13 +1706,15 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	     ;; 	  (grid-to-fat-string new-line
 	     ;; 			      :start start
 	     ;; 			      :end (min (1+ end) (length new-line)))))
-	     (setf fs (grid-to-fat-string new-line
-					  :start start
-					  :end (min (1+ end) (length new-line))
-					  :no-nulls t))
-	     (dbugf :koo "floob len ~s~%" (olength fs))
-	     (terminal-write-string wtty (ostring-right-trim
-					  (list *nul-char*) fs))
+	     (setf fs (ostring-right-trim
+		       (list *nul-char*)
+		       (grid-to-fat-string
+			new-line
+			:start start
+			:end (min (1+ end) (length new-line))
+			#| :no-nulls t |#)))
+	     (dbugf :koo "floob len ~s ~s~%" (olength fs) fs)
+	     (terminal-write-string wtty fs)
 	     ;; (dbugf :crunch "write-string ~s ->~s<-~%"
 	     ;; 	    (length (fat-string-string fs)) fs)
 	     (setf (update-x tty)
@@ -1728,14 +1731,17 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	  ;; Write a whole new line
 	  (dbugf :crunch "update-line WINKY ~s ~s-~s~%" line first-change
 		 (1+ last-change))
-	  (setf fs (grid-to-fat-string new-line
-				       :start first-change
-				       :end (min (1+ last-change)
-						 (length new-line))
-				       :no-nulls t))
+	  (setf fs (ostring-right-trim
+		    (list *nul-char*)
+		    (grid-to-fat-string new-line
+					:start first-change
+					:end (min (1+ last-change)
+						  (length new-line))
+					#|:no-nulls t|#)))
 	  (dbugf :koo "winky len ~s~%" (olength fs))
-	  (terminal-write-string wtty (ostring-right-trim
-				       (list *nul-char*) fs))
+	  ;; (terminal-write-string wtty (ostring-right-trim
+	  ;; 			       (list *nul-char*) fs))
+	  (terminal-write-string wtty fs)
 	  ;;(setf (update-x tty) (1+ last-change))
 	  (setf (update-x tty) ;; @@@ useless subseq
 		(display-length fs)
