@@ -863,15 +863,15 @@ line : |----||-------||---------||---|
 	   (tt-move-to i 0)
 	   (tt-write-string *empty-indicator*))))))
 
-(defun resize ()
+(defun resize (pager)
   "Resize the page and read more lines if necessary."
-  (with-slots (page-size line count) *pager*
+  (with-slots (page-size line count) pager
     (when (/= page-size (1- (tt-height)))
       (setf page-size (1- (tt-height)))
       ;;(message-pause "new page size ~d" page-size)
       (when (< count (+ line page-size))
 	;;(message-pause "read lines ~d" (- (+ line page-size) count))
-	(read-input *pager* (- (+ line page-size) count))))))
+	(read-input pager (- (+ line page-size) count))))))
 
 (defun ask-for (&key prompt space-exits)
   (let ((str (make-stretchy-string 10))
