@@ -11,13 +11,20 @@
    #:count-lines
    #:count-characters
    #:count-text
+   #:count-item
+   #:count-item-lines
+   #:count-item-words
+   #:count-item-chars
+   #:count-item-object
+   #:make-count-item
+   #:count-item
    #:wc
    #:!wc
    ))
 (in-package :wc)
 
 ;;(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
-(declaim (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
+(declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
 
 (defconstant +newline-length+ #+unix 1 #+windows 2
   "How many characters are considered a newline by read-line.")
@@ -193,46 +200,71 @@ This probably isn't the best way to do this."
     (declare (ignore junk1 junk2))
     chars))
 
-(defun count-text (things &key lines words chars)
+(defstruct count-item
+  "Counts returned by count-text."
+  lines
+  words
+  chars
+  object)
+
+(defun count-text (things &key lines words chars (print t) collect)
   "Count lines, words and characters in THINGS. THINGS can be filenames or
 a streams. If one of the keywords :LINES :WORDS :CHARS is true,
 then only print the count that thing, otherwise print all of them.
 Return a list of in the order (lines words chars) containing only the total
-count if that item was specified."
+count if that item was specified.
+When COLLECT is true, the second value is a list of count-item.
+If PRINT is nil, don't print any output. The default is T."
   (let ((do-lines lines) (do-words words) (do-chars chars) (count 0)
 	(total-lines 0) (total-words 0) (total-chars 0)
 	what
 	(*saved-buffer* nil)
-	result)
+	result totals)
     ;;(declare (type integer count total-lines total-words total-chars))
     (declare (type fixnum count total-lines total-words total-chars))
-    (when (not (or lines words chars))
-      (setf do-lines t do-words t do-chars t))
-    (when do-lines (push :lines what))
-    (when do-words (push :words what))
-    (when do-chars (push :chars what))
-    (loop
-       :for f :in things
-       :do
-       (multiple-value-bind (l w c) (count-thing f what)
-	 (declare (type (or fixnum null) l w c))
-	 (when (and do-lines l)
-	   (format t "~8d " l) (incf total-lines l))
-	 (when (and do-words w)
-	   (format t "~7d " w) (incf total-words w))
-	 (when (and do-chars c)
-	   (format t "~7d " c) (incf total-chars c)))
-       (incf count)
-       (format t "~a~%" f))
-    (when (> count 1)
-      (when do-lines (format t "~8d " total-lines))
-      (when do-words (format t "~7d " total-words))
-      (when do-chars (format t "~7d " total-chars))
-      (format t "total~%"))
-    (when do-chars (push total-chars result))
-    (when do-words (push total-words result))
-    (when do-lines (push total-lines result))
-    result))
+    (flet ((print-it (fmt x)
+	     (when print
+	       (format t fmt x))))
+      (when (not (or lines words chars))
+	(setf do-lines t do-words t do-chars t))
+      (when do-lines (push :lines what))
+      (when do-words (push :words what))
+      (when do-chars (push :chars what))
+      (loop
+	 :with item
+	 :for f :in things
+	 :do
+	   (multiple-value-bind (l w c) (count-thing f what)
+	     (declare (type (or fixnum null) l w c))
+	     (when collect
+	       (setf item (make-count-item :object f)))
+	     (when (and do-lines l)
+	       (print-it "~8d " l) (incf total-lines l)
+	       (when collect
+		 (setf (count-item-lines item) l)))
+	     (when (and do-words w)
+	       (print-it "~7d " w) (incf total-words w)
+	       (when collect
+		 (setf (count-item-words item) w)))
+	     (when (and do-chars c)
+	       (print-it "~7d " c) (incf total-chars c)
+	       (when collect
+		 (setf (count-item-chars item) c))))
+	   (incf count)
+	   (print-it "~a~%" f)
+	   (when collect
+	     (push item result)))
+      (when (> count 1)
+	(when do-lines (print-it "~8d " total-lines))
+	(when do-words (print-it "~7d " total-words))
+	(when do-chars (print-it "~7d " total-chars))
+	(print-it "~a~%" "total"))
+      (when do-chars (push total-chars totals))
+      (when do-words (push total-words totals))
+      (when do-lines (push total-lines totals))
+      (if collect
+	  (values totals result)
+	  totals))))
 
 (setf (symbol-function 'wc) #'count-text)
 
@@ -245,10 +277,15 @@ count if that item was specified."
   ((chars boolean :short-arg #\c :help "True to count characters.")
    (words boolean :short-arg #\w :help "True to words.")
    (lines boolean :short-arg #\l :help "True to count lines.")
+   (print boolean :short-arg #\p :default t :help "True to print counts.")
+   (collect boolean :short-arg #\c :help "True to collect results.")
    (files pathname :repeating t :default *standard-input*
     :help "Files to count."))
   :accepts (:stream :sequence)
-  "Count words, lines, and characters."
+  "Count words, lines, and characters. Return a list of in the order:
+lines, words, chars, containing only the total count if that item was specified.
+When COLLECT is true, return a list of the total counts and the collected list
+of struct COUNT-ITEM."
   ;; @@@ XXX I shouldn't have to do this. :default is broken?
   (when (not files)
     (dbug "input = ~s [~a]~%" lish:*input* (type-of lish:*input*))
@@ -258,6 +295,11 @@ count if that item was specified."
 	      lish:*input*
 	      (list *standard-input*))))
   (setf lish:*output*
-	(count-text files :chars chars :words words :lines lines)))
+	(if collect
+	    (multiple-value-list
+	     (count-text files :chars chars :words words :lines lines
+			 :print print :collect collect))
+	    (count-text files :chars chars :words words :lines lines
+			:print print :collect collect))))
 
 ;; EOF
