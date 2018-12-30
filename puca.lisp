@@ -229,11 +229,12 @@ return history for the whole repository."))
      (list (format nil "I don't know how to ignore with ~a."
 		   (backend-name backend))))
     (return-from add-ignore nil))
-  (with-open-file (stream (backend-ignore-file backend)
-			  :direction :output
-			  :if-exists :append
-			  :if-does-not-exist :create)
-    (write-line file stream))
+  (when (puca-yes-or-no-p "Are you sure you want ignore ~s ?" file)
+    (with-open-file (stream (backend-ignore-file backend)
+			    :direction :output
+			    :if-exists :append
+			    :if-does-not-exist :create)
+      (write-line file stream)))
   (get-list *puca*)
   (draw-screen *puca*))
 
