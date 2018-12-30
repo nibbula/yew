@@ -191,8 +191,8 @@ loading this library.")
 ;; Let's better hope this does it.
 
 (define-foreign-library libcurses
-  (:linux (:or "libncursesw.so" "libncursesw.so.5"
-	       "libncurses.so" "libncurses.so.5"))
+  (:linux (:or "libncursesw.so" "libncursesw.so.6" "libncursesw.so.5"
+	       "libncurses.so" "libncurses.so.6" "libncurses.so.5"))
 
   ;; Why does this fail?:
   ;; ((:and (;not :curses-dont-use-wide) :curses-use-ncurses)
