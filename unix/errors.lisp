@@ -9,28 +9,27 @@
 
 #+(or darwin linux freebsd) (config-feature :os-t-has-strerror-r)
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
 ;; OpenBSD has an errno function, instead of a variable.
-#+openbsd
-(progn
-  (defcfun ("__errno" errno-func) (:pointer :int))
-  (defun %errno () (let ((p (errno-func)))
-		     (when (not (null-pointer-p p))
-		       (mem-ref p :int))))
-  (define-symbol-macro *errno* (%errno))
-  (eval-when (:compile-toplevel :load-toplevel :execute)
-    (config-feature :os-t-has-errno-func)))
+  #+openbsd
+  (progn
+    (defcfun ("__errno" errno-func) (:pointer :int))
+    (defun %errno () (let ((p (errno-func)))
+		       (when (not (null-pointer-p p))
+			 (mem-ref p :int))))
+    (define-symbol-macro *errno* (%errno))
+    (config-feature :os-t-has-errno-func))
 
-#-openbsd
-(if (foreign-symbol-pointer "__errno_location")
-    (progn
-      (defcfun ("__errno_location" errno-func) (:pointer :int))
-      (defun %errno () (let ((p (errno-func)))
-			 (when (not (null-pointer-p p))
-			   (mem-ref p :int))))
-      (define-symbol-macro *errno* (%errno))
-      (eval-when (:compile-toplevel :load-toplevel :execute)
-	(config-feature :os-t-has-errno-func)))
-    (defcvar ("errno" *errno*) :int))
+  #-openbsd
+  (if (foreign-symbol-pointer "__errno_location")
+      (progn
+	(defcfun ("__errno_location" errno-func) (:pointer :int))
+	(defun %errno () (let ((p (errno-func)))
+			   (when (not (null-pointer-p p))
+			     (mem-ref p :int))))
+	(define-symbol-macro *errno* (%errno))
+	(config-feature :os-t-has-errno-func))
+      (defcvar ("errno" *errno*) :int)))
 
 (defparameter *errors* nil)
 
