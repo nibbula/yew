@@ -885,7 +885,7 @@ Returns an integer."
 		  (integer name)))
 	result)
     ;; We can't use this stupid trick on OpenBSD.
-    #-openbsd (setf *errno* 0)
+    #-os-t-has-errno-func (setf *errno* 0)
     ;; #+openbsd (when (= *errno* +EINVAL+)
     ;; 		(error 'posix-error
     ;; 		       :format-control

@@ -16,10 +16,21 @@
   (defun %errno () (let ((p (errno-func)))
 		     (when (not (null-pointer-p p))
 		       (mem-ref p :int))))
-  (define-symbol-macro *errno* (%errno)))
+  (define-symbol-macro *errno* (%errno))
+  (eval-when (:compile-toplevel :load-toplevel :execute)
+    (config-feature :os-t-has-errno-func)))
 
 #-openbsd
-(defcvar ("errno" *errno*) :int)
+(if (foreign-symbol-pointer "__errno_location")
+    (progn
+      (defcfun ("__errno_location" errno-func) (:pointer :int))
+      (defun %errno () (let ((p (errno-func)))
+			 (when (not (null-pointer-p p))
+			   (mem-ref p :int))))
+      (define-symbol-macro *errno* (%errno))
+      (eval-when (:compile-toplevel :load-toplevel :execute)
+	(config-feature :os-t-has-errno-func)))
+    (defcvar ("errno" *errno*) :int))
 
 (defparameter *errors* nil)
 
