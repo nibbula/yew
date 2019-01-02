@@ -279,16 +279,13 @@ If PRINT is nil, don't print any output. The default is T."
    (lines boolean :short-arg #\l :help "True to count lines.")
    (print boolean :short-arg #\p :default t :help "True to print counts.")
    (collect boolean :short-arg #\c :help "True to collect results.")
-   (files pathname :repeating t :default *standard-input*
-    :help "Files to count."))
+   (files pathname :repeating t :help "Files to count."))
   :accepts (:stream :sequence)
   "Count words, lines, and characters. Return a list of in the order:
 lines, words, chars, containing only the total count if that item was specified.
 When COLLECT is true, return a list of the total counts and the collected list
 of struct COUNT-ITEM."
-  ;; @@@ XXX I shouldn't have to do this. :default is broken?
   (when (not files)
-    (dbug "input = ~s [~a]~%" lish:*input* (type-of lish:*input*))
     (setf files
 	  (if (and lish:*input*
 		   (typep lish:*input* 'sequence))
