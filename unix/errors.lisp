@@ -18,6 +18,7 @@
 		       (when (not (null-pointer-p p))
 			 (mem-ref p :int))))
     (define-symbol-macro *errno* (%errno))
+    (defun errno () (%errno))
     (config-feature :os-t-has-errno-func))
 
   #-openbsd
@@ -28,8 +29,11 @@
 			   (when (not (null-pointer-p p))
 			     (mem-ref p :int))))
 	(define-symbol-macro *errno* (%errno))
+	(defun errno () (%errno))
 	(config-feature :os-t-has-errno-func))
-      (defcvar ("errno" *errno*) :int)))
+      (progn
+	(defcvar ("errno" *errno*) :int)
+	(defun errno () *errno*))))
 
 (defparameter *errors* nil)
 
@@ -593,7 +597,7 @@
 (defun error-check (c &optional fmt &rest args)
   "Check if a system call returns an error value and signal it."
   (if (< c 0)
-      (error 'posix-error :error-code *errno*
+      (error 'posix-error :error-code (errno) ;; *errno*
 	     :format-control fmt :format-arguments args)
       c))
 

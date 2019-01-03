@@ -272,6 +272,7 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
 			       (if (eq stream *standard-output*)
 				   :output
 				   :input))))
+    ((typep stream 'string-stream) nil)
     ((typep stream 'stream)
      (multiple-value-bind (in out) (socket:stream-handles stream)
        (if (eql direction :output)
