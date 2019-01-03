@@ -328,11 +328,6 @@ strings, only the attributes of the first character are preserved."
 (defun nul-char ()
   (copy-fatchar *nul-char*))
 
-(defmacro clamp (n start end)
-  `(cond
-     ((< ,n ,start) (setf ,n ,start))
-     ((> ,n ,end) (setf ,n ,end))))
-
 (defclass terminal-crunch-stream (terminal-stream terminal-wrapper)
   ((old-screen
     :initarg :old-screen :accessor old-screen :initform nil
@@ -1214,7 +1209,7 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-delete-char ((tty terminal-crunch-stream) n)
   (with-slots (x y width lines) (new-screen tty)
-    (clamp n 0 (- width x))
+    (clampf n 0 (- width x))
     (setf (subseq (aref lines y) x (max 0 (- width n)))
 	  (subseq (aref lines y) (min (+ x n) (1- width))))
     (fill-by (aref lines y) #'blank-char :start (max 0 (- width n)))
@@ -1222,7 +1217,7 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-insert-char ((tty terminal-crunch-stream) n)
   (with-slots (x y width lines) (new-screen tty)
-    (clamp n 0 (- width x))
+    (clampf n 0 (- width x))
     (setf (subseq (aref lines y) (min (+ x n) (1- width)))
 	  (subseq (aref lines y) x))
     (fill-by (aref lines y) #'blank-char :start x :end (+ x n))
