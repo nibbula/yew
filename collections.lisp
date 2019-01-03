@@ -472,8 +472,12 @@ If COLLECTIONS are SEQUENCEs, the elements are applied in the sequence order.")
   ;; This is one of those things that may not work for complex objects.
   ;; Callers should realize this, and object implementations should
   ;; error or something, if it doesn't make sense.
-  (make-instance (type-of collection)
-		 :container-data (ocopy (container-data collection))))
+
+  ;; (make-instance (type-of collection)
+  ;; 		 :data (ocopy (container-data collection))))
+  (let ((result (dlib:shallow-copy-object collection)))
+    (setf (container-data result) (ocopy (container-data collection)))
+    result))
 
 (defgeneric ofill (collection item &key start end)
   (:documentation
@@ -524,9 +528,13 @@ bounded by START and END.")
 
 (defmethod osubseq ((collection container) start &optional end)
   ;; Somewhat dubious, of course.
-  (make-instance (type-of collection)
-		 :container-data
-		 (osubseq (container-data collection) start end)))
+  ;; (make-instance (type-of collection)
+  ;; 		 :data (osubseq (container-data collection) start end))
+
+  (let ((result (dlib:shallow-copy-object collection)))
+    (setf (container-data result)
+	  (osubseq (container-data collection) start end))
+    result))
 
 ;; I wonder if the useful word "slice" is really appropriate to be even slightly
 ;; used up here.
