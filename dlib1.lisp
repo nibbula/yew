@@ -83,6 +83,8 @@ of it.")
    #:range-list
    #:range-array
    #:range-lazy #:range-start #:range-end #:range-step #:make-range
+   #:clamp
+   #:clampf
    ;; objects
    #:shallow-copy-object
    #:*mop-package*
@@ -840,6 +842,21 @@ Also, it can't really delete the first (zeroth) element."
   (if end
       (make-range :start start-or-end :end end :step step)
       (make-range :start 1 :end start-or-end :step step)))
+
+(defun clamp (n start end)
+  "If N isn't in the range START - END, return the one it's closest to.
+Otherwise, return N."
+  (cond
+    ((< n start) start)
+    ((> n end) end)
+    (t n)))
+(declaim (inline clamp))
+
+(defmacro clampf (n start end)
+  "Set N to be in the range START - END, if it's not already."
+  `(cond
+     ((< ,n ,start) (setf ,n ,start))
+     ((> ,n ,end) (setf ,n ,end))))
 
 ;; Objects
 
