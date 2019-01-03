@@ -51,6 +51,9 @@ for a range of rows, or a table-point for a specific item,"
     :initarg :selection :accessor table-viewer-selection :initform nil
     :type table-selection
     :documentation "Part of the table selected.")
+   (cursor
+    :initarg :cursor :accessor table-viewer-cursor
+    :documentation "Where the cursor is.")
    (renderer
     :initarg :renderer :accessor table-viewer-renderer
     :initform (make-instance 'viewer-table-renderer) :type table-renderer
@@ -58,6 +61,7 @@ for a range of rows, or a table-point for a specific item,"
   (:default-initargs
    :start (make-table-point :row 0 :col 0)
    :point (make-table-point :row 0)
+   :cursor (make-table-point)
    :keymap `(,*table-viewer-keymap* ,*default-inator-keymap*))
   (:documentation "View a table."))
 
@@ -152,7 +156,7 @@ for a range of rows, or a table-point for a specific item,"
 			      table cell width justification row column)
   "Output a table cell."
   (declare (ignore table))
-  (with-slots ((point inator::point) start rows) *table-viewer*
+  (with-slots ((point inator::point) start rows cursor) *table-viewer*
     (when (and (>= row (table-point-row start))
 	       (< row (+ (table-point-row start) rows))
 	       (>= column (table-point-col start)))
@@ -168,7 +172,15 @@ for a range of rows, or a table-point for a specific item,"
 	(when hilite
 	  (tt-standout t)
 	  ;; (tt-bold t)
-	  )
+	  (multiple-value-bind (r c)
+	      (terminal-get-cursor-position *terminal*)
+	    (setf (table-point-row cursor) r)
+	    (if (and (table-point-col point)
+		     (= column (table-point-col point)))
+		(progn
+		  (setf (table-point-row cursor) c)
+		  (tt-color :yellow :default))
+		(tt-color :default :default))))
 	(tt-format (if (eq justification :right) "~v@a" "~va")
 		   ;; width
 		   clipped-width
@@ -217,10 +229,9 @@ for a range of rows, or a table-point for a specific item,"
        (setf (table-point-row point) 0
 	     (table-point-col point) 0))
       ((and (table-point-row point) (table-point-col point))
-       (incf (table-point-col point) n)
-       (when (> (table-point-col point)
+       (when (< (+ (table-point-col point) n)
 		(olength (oelt table (table-point-row point))))
-	 (setf (table-point-col point) 0))))))
+	 (incf (table-point-col point) n))))))
 
 (defun backward-col (o &optional (n 1))
   (with-slots ((point inator::point) table) o
@@ -230,10 +241,8 @@ for a range of rows, or a table-point for a specific item,"
 	     (table-point-col point)
 	     (1- (olength (oelt table (table-point-row point))))))
       ((and (table-point-row point) (table-point-col point))
-       (decf (table-point-col point) n)
-       (when (> (table-point-col point)
-		(olength (oelt table (table-point-row point))))
-	 (setf (table-point-col point) 0))))))
+       (when (>= (- (table-point-col point) n) 0)
+	 (decf (table-point-col point) n))))))
 
 (defmethod forward-unit ((o table-viewer))
   "Move forward a column."
@@ -293,32 +302,32 @@ for a range of rows, or a table-point for a specific item,"
 (defun scroll-right (o &optional (n 1))
   "Move the view right."
   (with-slots (start table) o
-    (when (> (- (table-point-col start) n) 0)
+    (when (>= (- (table-point-col start) n) 0)
       (decf (table-point-col start) n))))
 
 ;; (defmethod search-command ((o table-viewer))
 ;;   )
 
 ;; (defmethod sort-command ((o table-viewer))
-;;   )
+;;   (with-slots ((point inator::point)) o
+;;     (when (table-point-col point)
+;;       (
+;;    )
 
 ;; (defmethod jump-command ((o table-viewer))
 ;;   )
 
 (defmethod update-display ((o table-viewer))
-  (with-slots (table renderer (point inator::point) start rows selection) o
+  (with-slots (table renderer (point inator::point) start rows cursor
+	       selection) o
     (tt-home)
     (tt-erase-below)
-    (when (> (table-point-row point) (+ (table-point-row start) rows))
-      (setf (table-point-row start) (table-point-row point)))
+    (when (>= (table-point-row point) (+ (table-point-row start) rows))
+      (setf (table-point-row start) (1+ (- (table-point-row point) rows))))
     (when (< (table-point-row point) (table-point-row start))
       (setf (table-point-row start) (table-point-row point)))
     (output-table table renderer *terminal* :max-width (1- (tt-width)))
-    ;;(tt-move-to)
-    )
-  ;; (when (next-method-p)
-  ;;   (call-next-method))
-  )
+    (tt-move-to (table-point-row cursor) 0)))
 
 ;; (defgeneric start-inator ((o table-viewer))
 ;;   )
@@ -337,6 +346,7 @@ for a range of rows, or a table-point for a specific item,"
 			   ;; :point (make-table-point)
 			   )))
       (event-loop *table-viewer*)
+      (tt-move-to (1- (tt-height)) 0)
       (table-viewer-selection *table-viewer*))))
 
 #+lish
