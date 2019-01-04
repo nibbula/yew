@@ -1807,8 +1807,8 @@ works, return NIL."
 an open a stream named by FILE-OR-STREAM. ARGS are standard arguments to OPEN."
   (let ((thunk (gensym "thunk"))
 	(abort-flag (gensym "abort-flag"))
-	(result (gensym "result")))
-    `(let ((,var nil) (,abort-flag t) ,result)
+	(results (gensym "results")))
+    `(let ((,var nil) (,abort-flag t) ,results)
        (flet ((,thunk () ,@body))
 	 (if (streamp ,file-or-stream)
 	     (progn
@@ -1820,10 +1820,10 @@ an open a stream named by FILE-OR-STREAM. ARGS are standard arguments to OPEN."
 	       (unwind-protect
 		  (progn
 		    (setf ,var (open ,file-or-stream ,@args))
-		    (setf ,result (,thunk)
+		    (setf ,results (multiple-value-list (,thunk))
 			  ,abort-flag nil))
 		 (when ,var (close ,var :abort ,abort-flag)))
-	       ,result))))))
+	       (values-list ,results)))))))
 
 (defmacro with-lines ((line-var file-or-stream) &body body)
   "Evaluate BODY with LINE-VAR set to successive lines of FILE-OR-STREAM.
