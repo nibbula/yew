@@ -1646,7 +1646,9 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	 (when (> (setf disp-len (display-length (aref new-line i))) 1)
 	   ;; Skip over occluded cells
 	   (dbugf :crunch "skipping occluded cells at ~s~%" i)
-	   (loop :for zz :from (1+ i) :below (+ i disp-len) :do
+	   (loop :for zz :from (1+ i) :below (min (+ i disp-len)
+						  (length new-line))
+	      :do
 	      (when (not (grid-char= (aref new-line zz) (aref old-line zz)))
 		(setf its-okay t)) ;; it actually differs so don't fail below
 	      (incf i)))
