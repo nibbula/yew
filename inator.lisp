@@ -68,6 +68,7 @@ a TERM-INATOR.
    #:start-inator
    #:finish-inator
    #:*default-inator-keymap*
+   #:*default-inator-escape-keymap*
    #:read-key-sequence
    #:with-inator
    #:with-file-list
@@ -161,27 +162,27 @@ not call process-event with it."))
   (:documentation "Called when we get a resize event."))
 
 (defkeymap *default-inator-keymap*
-  `((,(ctrl #\N)	. next)
-    (,(ctrl #\P)	. previous)
-    (,(ctrl #\F)	. forward-unit)
-    (,(ctrl #\B)	. backward-unit)
-    (,(meta-char #\F)	. forward-multiple)
-    (,(meta-char #\B)	. backward-multiple)
-    (,(ctrl #\V)	. next-page)
+  `((,(ctrl #\n)	. next)
+    (,(ctrl #\p)	. previous)
+    (,(ctrl #\f)	. forward-unit)
+    (,(ctrl #\b)	. backward-unit)
+    (,(meta-char #\f)	. forward-multiple)
+    (,(meta-char #\b)	. backward-multiple)
+    (,(ctrl #\v)	. next-page)
     (:page-down		. next-page)
-    (,(meta-char #\V)	. previous-page)
+    (,(meta-char #\v)	. previous-page)
     (:page-up		. previous-page)
-    (,(ctrl #\A)	. move-to-beginning)
-    (,(ctrl #\E)	. move-to-end)
+    (,(ctrl #\a)	. move-to-beginning)
+    (,(ctrl #\e)	. move-to-end)
     (,(meta-char #\<)	. move-to-top)
     (,(meta-char #\>)	. move-to-bottom)
-    (,(ctrl #\S)	. search-command)
+    (,(ctrl #\s)	. search-command)
     (,(meta-char #\s)	. sort-command)	; ?
     (,(meta-char #\j)	. jump-command)	; ?
     (,(meta-char #\=)   . describe-key-briefly)
     (#\return		. accept)
-    (,(ctrl #\L)	. redraw)
-    (,(ctrl #\G)	. quit)
+    (,(ctrl #\l)	. redraw)
+    (,(ctrl #\g)	. quit)
     (:resize		. resize)
     (#\escape		. *default-inator-escape-keymap*)
     )
