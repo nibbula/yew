@@ -644,7 +644,9 @@ element, and should return a value to be given to PREDICATE.")
 
 (defmethod osort ((collection container) predicate &key key)
   #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
-  (osort (container-data collection) predicate :key key))
+  (setf (container-data collection)
+	(osort (container-data collection) predicate :key key))
+  collection)
 
 ;; @@@ Should we make sort-by-key also?
 (defun osort-by (predicate collection)
