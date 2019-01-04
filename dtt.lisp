@@ -39,6 +39,7 @@
    #:+csv-rfc4180+
    ;; funcs
    #:read-file
+   #:read-table
    #:write-file
    #:write-table-to-file))
 
@@ -130,46 +131,58 @@ or :both.")
   (eat-whitespace	nil)
   (first-row-labels	t))
 
-(defparameter +tab+         (make-style :delimiter #\tab))
-(defparameter +pipe+        (make-style :delimiter #\|))
-(defparameter +csv-unix+    (make-style :delimiter #\,
-				       :quote-character #\"
-				       :escape-character #\\
-				       :input-quote-style :escape
-				       :output-quote-style :minimal
-				       :eol-style :nl))
-(defparameter +csv-mac+     (make-style :delimiter #\,
-				       :quote-character #\"
-				       :escape-character #\\
-				       :input-quote-style :escape
-				       :output-quote-style :minimal
-				       :eol-style :cr))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *styles* nil
+    "List of predefined text table styles.")
+
+  (defmacro defstyle (name &rest args)
+    (let ((const-name (symbolify (s+ "+" name "+")))
+	  ;;(str-name (
+	  )
+      `(progn
+	 (defparameter ,const-name (make-style ,@args))
+	 (push '(,name . ,const-name) *styles*)))))
+
+(defstyle tab         :delimiter #\tab)
+(defstyle pipe        :delimiter #\|)
+(defstyle csv-unix    :delimiter #\,
+                      :quote-character #\"
+                      :escape-character #\\
+                      :input-quote-style :escape
+                      :output-quote-style :minimal
+                      :eol-style :nl)
+(defstyle csv-mac     :delimiter #\,
+                      :quote-character #\"
+                      :escape-character #\\
+                      :input-quote-style :escape
+                      :output-quote-style :minimal
+                      :eol-style :cr)
 ;; @@@ These may not be exactly right, and should be tested:
-(defparameter +csv-excel+   (make-style :delimiter #\,
-				       :quote-character #\"
-				       :escape-character #\"
-				       :input-quote-style :double
-				       :output-quote-style :none
-				       :eol-style :crnl))
-(defparameter +csv-rfc4180+ (make-style :delimiter #\,
-				       :quote-character #\"
-				       :escape-character #\"
-				       :input-quote-style :double
-				       :output-quote-style :minimal
-				       :eol-style :crnl))
-(defparameter +tsv+	   (make-style :delimiter #\tab
-				       :quote-character #\"
-				       :escape-character #\"
-				       :input-quote-style :double
-				       :output-quote-style :minimal
-				       :eol-style :crnl))
-(defparameter +csv-euro+   (make-style :delimiter #\;
-				       :quote-character #\"
-				       :escape-character #\"
-				       :input-quote-style :double
-				       :output-quote-style :minimal
-				       :eol-style :crnl))
-(defparameter +csv-default+ (make-style))
+(defstyle csv-excel   :delimiter #\,
+                      :quote-character #\"
+                      :escape-character #\"
+                      :input-quote-style :double
+                      :output-quote-style :none
+                      :eol-style :crnl)
+(defstyle csv-rfc4180 :delimiter #\,
+                      :quote-character #\"
+                      :escape-character #\"
+                      :input-quote-style :double
+                      :output-quote-style :minimal
+                      :eol-style :crnl)
+(defstyle tsv         :delimiter #\tab
+                      :quote-character #\"
+                      :escape-character #\"
+                      :input-quote-style :double
+                      :output-quote-style :minimal
+                      :eol-style :crnl)
+(defstyle csv-euro    :delimiter #\;
+                      :quote-character #\"
+                      :escape-character #\"
+                      :input-quote-style :double
+                      :output-quote-style :minimal
+                      :eol-style :crnl)
+(defstyle csv-default)
 
 (defparameter *whitespace-chars* (make-array
 				  2 :element-type 'character
@@ -305,8 +318,7 @@ or :both.")
 which defaults to +csv-default+. If first-row-labels is true in the style
 then the second value is the labels."
   (with-open-file-or-stream (stream file-or-stream :direction :input)
-    (let ((recs '())
-	  (labels nil))
+    (let (labels recs)
       (when (style-first-row-labels style)
 	(setf labels (read-row stream :style style)))
       (setf recs
@@ -315,6 +327,25 @@ then the second value is the labels."
 	       :while (not (eql rec :eof))
 	       :collect rec))
       (values recs labels))))
+
+(defun read-table (file-or-stream &key (style +csv-default+))
+  (multiple-value-bind (recs labels) (read-file file-or-stream :style style)
+    (make-table-from (coerce recs 'vector) :column-names labels)))
+
+#+lish
+(lish:defcommand read-table
+  ((file pathname :help "File to read a table from.")
+   (style choice :short-arg #\s :default ''csv-default
+	  :choices (mapcar (_ (string-downcase (car _))) *styles*)
+	  ;; :test #'symbolify
+	  :help "Delimited text style."))
+  :accepts (pathname stream)
+  "Read a delimited text table."
+  (setf lish:*output*
+	(read-table (or file *standard-input*)
+		    :style (symbol-value
+			    (symbolify (s+ "+" style "+")
+				       :package :dtt)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Writing
