@@ -10,7 +10,7 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "View tables."
-    :depends-on (:collections :table :table-print :keymap :inator :terminal
-		 :terminal-inator)
+    :depends-on (:dlib :collections :table :table-print :keymap :inator
+		 :terminal :terminal-inator :dtt)
     :components
     ((:file "table-viewer")))
