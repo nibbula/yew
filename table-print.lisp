@@ -8,7 +8,7 @@
 from the computer. This package aims to make printing a sturdy table of any
 length, a relatively painless and risk free procedure. This does not, of course,
 make the table in the first place. For that you want the TABLE package.")
-  (:use :cl :dlib :collections :table :char-util)
+  (:use :cl :dlib :collections :table :char-util :stretchy)
   (:import-from :dlib-misc #:justify-text)
   (:export
    #:table-renderer
@@ -164,15 +164,15 @@ make the table in the first place. For that you want the TABLE package.")
 (defmethod table-output-sizes (renderer table)
   (if (zerop (olength (container-data table)))
       #()
-      (let ((sizes (make-array (max (olength
-				     (oelt (container-data table) 0))
-				    (olength (table-columns table)))))
+      (let ((sizes (make-stretchy-vector
+		    (max (olength (oelt (container-data table) 0))
+			 (olength (table-columns table)))))
 	    (col-num 0))
 	;; First set by pre-defined widths and name lengths.
 	(omapn
 	 (lambda (col)
-	   (setf (aref sizes col-num)
-		 (max (column-width col) (length (column-name col))))
+	   (stretchy-set sizes col-num
+			 (max (column-width col) (length (column-name col))))
 	   (incf col-num))
 	 (table-columns table))
 	;; Then set by actual data.
@@ -181,16 +181,27 @@ make the table in the first place. For that you want the TABLE package.")
 	   (setf col-num 0)
 	   (omapn
 	    (lambda (col)
-	      (setf (aref sizes col-num)
-		    (max
-		     (aref sizes col-num)
-		     (table-output-cell-display-width renderer table col
-						      col-num)))
+	      ;; Handle rows with different amounts of columns.
+	      (stretchy-set sizes col-num
+			    (max
+			     (if (< col-num (length sizes))
+				 (aref sizes col-num)
+				 0)
+			     (table-output-cell-display-width renderer table col
+							      col-num)))
 	      (incf col-num))
 	    row))
 	 ;;(container-data table)
 	 table)
-	sizes)))
+	;; (dbugf :tv "sizes ~s~%~s~%table-columns ~s~%~s~%"
+	;;        (length sizes) sizes
+	;;        (length (table-columns table)) (table-columns table))
+	;; Convert the stretchy back into an un-stretchy array.
+	;; @@@ Does this make any difference?
+	(make-array (max (length sizes)
+			 (olength (table-columns table)))
+		    :initial-contents sizes)
+	)))
 
 ;; Default method which does nothing.
 (defmethod table-output-footer (renderer table &key width sizes)
@@ -207,6 +218,7 @@ make the table in the first place. For that you want the TABLE package.")
 	(*destination* destination)
 	(row-num 0) (col-num 0)
 	(sizes (table-output-sizes renderer table)))
+    ;;(dbugf :tv "sizes ~s~%" sizes)
     (table-output-header renderer table :sizes sizes)
     (table-output-column-titles renderer table
 				(mapcar #'column-name (table-columns table))
@@ -220,11 +232,16 @@ make the table in the first place. For that you want the TABLE package.")
 		      (table-output-cell
 		       renderer table cell
 		       ;;(table-output-cell-display-width renderer table cell)
-		       (aref sizes col-num)
-		       (table-output-column-type-justification
-			renderer table
-			(column-type
-			 (elt (table-columns table) col-num)))
+		       ;; Just in case the row size changed.
+		       (if (< col-num (length sizes))
+			   (aref sizes col-num)
+			   (olength cell))
+		       (if (< col-num (length (table-columns table)))
+			   (table-output-column-type-justification
+			    renderer table
+			    (column-type
+			     (elt (table-columns table) col-num)))
+			   :left)
 		       row-num col-num)
 		      (incf col-num))
 		    row)

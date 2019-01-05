@@ -12,6 +12,6 @@
     :long-description
     "If you want to print tables, especially those with some kind of wacky
 generic table concept that Nibby has come up with, this package may be for you."
-    :depends-on (:dlib :collections :table :dlib-misc :char-util)
+    :depends-on (:dlib :collections :table :dlib-misc :char-util :stretchy)
     :components
     ((:file "table-print")))
