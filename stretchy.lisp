@@ -110,14 +110,23 @@ to expand by when expansion is needed."
 	   (type number factor))
   (when (>= n (array-total-size vec))
     (resize vec (- n (array-total-size vec)) factor))
-  ;;(setf (fill-pointer vec) n) ;; should this really be done?
-  (setf (fill-pointer vec) (1+ n)) ;; should this really be done?
+  (when (< (fill-pointer vec) (1+ n))
+    (setf (fill-pointer vec) (1+ n))) ;; should this really be done?
   (setf (aref vec n) value))
 
 #|
 
-;;; %%% Common Lisp fail:
-;;; I'd like to make methods on a deftype but classes and types are dismorphic!
+;;; %%% Common Lisp fail?
+;;; I'd like to make methods on a deftype but classes and types are dismorphic.
+;;; Is there some way to unify them while retaining the powers, and even most of
+;;; the efficiency, of both types and classes?
+;;;
+;;; In this case there are system classes, and a string *is* a vector, but
+;;; maybe I'd like to be able to define a non-string-vector. I suppose in
+;;; Dylan this could be a limited type? But I think in Dylan, limited types
+;;; are not necessarily extensible? You can define a vector of a limited type,
+;;; but perhaps not of "not some type". Also, how do limited types work with
+;;; unboxing?
 
 (defgeneric stretchy-append (dst src &key factor)
   (:documentation "Append SRC to DST. Expand by FACTOR if necessary."))
