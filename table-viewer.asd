@@ -11,6 +11,7 @@
     :source-control	:git
     :long-description   "View tables."
     :depends-on (:dlib :collections :table :table-print :keymap :inator
-		 :terminal :terminal-inator :dtt :char-util)
+		 :terminal :terminal-inator :dtt :char-util :fui :fatchar
+		 :fatchar-io)
     :components
     ((:file "table-viewer")))

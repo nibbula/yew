@@ -5,7 +5,7 @@
 (defpackage :table-viewer
   (:documentation "View tables.")
   (:use :cl :dlib :collections :table :table-print :keymap :inator :terminal
-	:terminal-inator :dtt :char-util)
+	:terminal-inator :dtt :char-util :fui :fatchar :fatchar-io)
   (:export
    #:view-table
    #:!view-table
@@ -23,6 +23,7 @@
     (:down		. next)
     (:right		. scroll-right)
     (:left		. scroll-left)
+    (,(meta-char #\i)	. table-info)
     (#\escape		. *table-viewer-escape-keymap*)
     ))
 
@@ -169,19 +170,13 @@ for a range of rows, or a table-point for a specific item,"
 	       (<= (output-column renderer) *max-width*))
       (tt-write-char #\newline))))
 
-;; (defmethod table-output-cell-display-width ((renderer viewer-table-renderer)
-;; 					    table cell column)
-;;   (declare (ignore renderer table))
-;;   (case column
-;;     (0 0)
-;;     (1 5)
-;;     (2 (display-length (dlib-misc:date-string :format :relative
-;; 					      :time cell)))
-;;     (3 (display-length cell))))
-
 (defmethod table-output-cell-display-width ((renderer viewer-table-renderer)
 					    table cell column)
-  (display-length cell))
+  (declare (ignore renderer table column))
+  (typecase cell
+    (string (display-length cell))
+    (otherwise
+     (length (princ-to-string cell)))))
 
 (defmethod table-output-cell ((renderer viewer-table-renderer)
 			      table cell width justification row column)
@@ -395,6 +390,37 @@ for a range of rows, or a table-point for a specific item,"
 
 ;; (defmethod jump-command ((o table-viewer))
 ;;   )
+
+(defun table-info-table (table)
+  (make-table-from
+   (mapcar (_ (list (if (listp (column-name _))
+			(first (column-name _))
+			(column-name _))
+		    (string-capitalize (column-type _))
+		    (if (listp (column-name _))
+			(string-capitalize (or (second (column-name _)) "Left"))
+			"Left")
+		    (column-width _)))
+	   (table-columns table))
+   :column-names '("Name" "Type" "Just" "Width")))
+
+(defun table-info (o)
+  (with-slots (table) o
+    (display-text
+     "Table Info"
+     (osplit #\newline
+	     (make-fat-string
+	      :string
+	      (process-ansi-colors
+	       (make-fatchar-string
+		(with-terminal-output-to-string (:ansi)
+		  (table-print:print-table
+		   (table-info-table table)
+		   :renderer (make-instance
+			      'terminal-table:terminal-table-renderer)
+		   :stream *terminal*)))))
+	     :omit-empty t)
+     :justify nil)))
 
 (defmethod message ((o table-viewer) format-string &rest args)
   (with-slots (message) o
