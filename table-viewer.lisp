@@ -5,7 +5,7 @@
 (defpackage :table-viewer
   (:documentation "View tables.")
   (:use :cl :dlib :collections :table :table-print :keymap :inator :terminal
-	:terminal-inator :dtt)
+	:terminal-inator :dtt :char-util)
   (:export
    #:view-table
    #:!view-table
@@ -154,12 +154,14 @@ for a range of rows, or a table-point for a specific item,"
       (let* ((clipped-width (min (- (1+ *max-width*) (output-column renderer))
 				 width))
 	     (str (if (consp title) (car title) title))
-	     (len (min (olength str) clipped-width)))
+	     (disp-len (display-length str))
+	     (len (min disp-len clipped-width))
+	     (clipped-str (osubseq str 0 len)))
 	;; (dbugf :tv "clipped-width = ~s len = ~a~%" clipped-width len)
 	(tt-underline t)
 	(tt-format (if (eq justification :right) "~v@a" "~va")
-		   clipped-width
-		   (osubseq str 0 len))
+		   (- clipped-width (- (olength str) disp-len))
+		   clipped-str)
 	(tt-underline nil)
 	(incf (output-column renderer) clipped-width)))
 
@@ -176,6 +178,10 @@ for a range of rows, or a table-point for a specific item,"
 ;;     (2 (display-length (dlib-misc:date-string :format :relative
 ;; 					      :time cell)))
 ;;     (3 (display-length cell))))
+
+(defmethod table-output-cell-display-width ((renderer viewer-table-renderer)
+					    table cell column)
+  (display-length cell))
 
 (defmethod table-output-cell ((renderer viewer-table-renderer)
 			      table cell width justification row column)
@@ -197,6 +203,7 @@ for a range of rows, or a table-point for a specific item,"
 					width)))
 	     (string (princ-to-string cell))
 	     (len (min clipped-width (olength string)))
+	     (clipped-str (osubseq string 0 len))
 	     (hilite (= row
 			;; (table-point-row point)
 			(- (table-point-row point) (table-point-row start))
@@ -215,8 +222,9 @@ for a range of rows, or a table-point for a specific item,"
 		(tt-color :default :default))))
 	(tt-format (if (eq justification :right) "~v@a" "~va")
 		   ;; width
-		   clipped-width
-		   (osubseq string 0 len))
+		   (- clipped-width (- (display-length clipped-str)
+				       len))
+		   clipped-str)
 	(incf (output-column renderer) clipped-width)
 	(tt-normal)))))
 
@@ -440,6 +448,11 @@ for a range of rows, or a table-point for a specific item,"
 				      (- (tt-height) 2))
 			   ;; :point (make-table-point)
 			   )))
+      ;; Calculate the sizes of the whole table for side effect.
+      (table-output-sizes (table-viewer-renderer *table-viewer*) table)
+      ;; (dbugf :tv "init sizes ~s~%~s~%"
+      ;; 	     (length (sizes (table-viewer-renderer *table-viewer*)))
+      ;; 	     (sizes (table-viewer-renderer *table-viewer*)))
       (event-loop *table-viewer*)
       (tt-move-to (1- (tt-height)) 0)
       (table-viewer-selection *table-viewer*))))
