@@ -193,9 +193,6 @@ make the table in the first place. For that you want the TABLE package.")
 	    row))
 	 ;;(container-data table)
 	 table)
-	;; (dbugf :tv "sizes ~s~%~s~%table-columns ~s~%~s~%"
-	;;        (length sizes) sizes
-	;;        (length (table-columns table)) (table-columns table))
 	;; Convert the stretchy back into an un-stretchy array.
 	;; @@@ Does this make any difference?
 	(make-array (max (length sizes)
@@ -218,7 +215,6 @@ make the table in the first place. For that you want the TABLE package.")
 	(*destination* destination)
 	(row-num 0) (col-num 0)
 	(sizes (table-output-sizes renderer table)))
-    ;;(dbugf :tv "sizes ~s~%" sizes)
     (table-output-header renderer table :sizes sizes)
     (table-output-column-titles renderer table
 				(mapcar #'column-name (table-columns table))
@@ -659,14 +655,16 @@ resized to fit in this, and the whole row is trimmed to this."
 			    field (car cell-lines)))
 		    (table-output-cell renderer table field size just
 				       row-num column-num)
-		    (when (< column-num (1- row-len))
+		    (when (and (< column-num (1- row-len))
+			       (or (not max-width)
+				   (< cursor (1- max-width))))
 		      (write-string separator stream)
 		      (incf cursor (display-length separator)))
 		    (incf column-num))
 		row)
 	       (when cell-lines
 		 (loop :for l :in (cdr cell-lines) :do
-		    (when (or (not max-width) (/= cursor max-width))
+		    (when (or (not max-width) (< cursor (1- max-width)))
 		      (terpri stream))
 		    (format stream "~v,,,va"
 			    cell-col #\space #\space)
@@ -674,7 +672,7 @@ resized to fit in this, and the whole row is trimmed to this."
 		    (table-output-cell renderer table l cell-width just
 				       row-num column-num))
 		 (setf cell-lines nil))
-	       (when (or (not max-width) (/= cursor max-width))
+	       (when (or (not max-width) (< cursor (1- max-width)))
 		 (terpri stream)))
 	     (incf row-num))
 	 table)))
@@ -808,7 +806,6 @@ resized to fit in this, and the whole row is trimmed to this."
 			   (t nil)))
 	     (make-list (length (first rows)) :initial-element nil)))
 	(sep-len (length separator)))
-    ;;(format t "sizes = ~s~%" sizes)
 
     ;; Adjust column sizes by field data
     (loop :for row :in rows
@@ -840,7 +837,6 @@ resized to fit in this, and the whole row is trimmed to this."
 		:collect new-size
 		)))
     ;; Flip pre-set sizes.
-    ;;(format t "sizes = ~s~%" sizes)
     (setf sizes (mapcar #'abs sizes))
 
     ;; Get justification
@@ -883,8 +879,6 @@ resized to fit in this, and the whole row is trimmed to this."
 	     (write-string separator stream))))
       (terpri stream))
 
-    ;; (dbug "sizes = ~a~%" sizes)
-    
     ;; Values
     (loop :with fmt :and cell-lines :and cell-col :and cell-width
        :for row :in rows :do
