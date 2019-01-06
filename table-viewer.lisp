@@ -5,7 +5,7 @@
 (defpackage :table-viewer
   (:documentation "View tables.")
   (:use :cl :dlib :collections :table :table-print :keymap :inator :terminal
-	:terminal-inator :dtt :char-util :fui :fatchar :fatchar-io)
+	:terminal-inator :dtt :char-util :fui :fatchar :fatchar-io :grout)
   (:export
    #:view-table
    #:!view-table
@@ -483,25 +483,42 @@ for a range of rows, or a table-point for a specific item,"
       (tt-move-to (1- (tt-height)) 0)
       (table-viewer-selection *table-viewer*))))
 
+(defmacro with-coerced-table ((var thing) &body body)
+  "Evalute BODY with VAR bound to THING coerced into a table. Don't do anything
+if THING or lish:*input* NIL."
+  (with-unique-names (thunk)
+    `(let ((,var (or ,thing lish:*input*)))
+       (flet ((,thunk () ,@body))
+	 (when ,var
+	   (typecase ,var
+	     (table)
+	     ((or string pathname stream)
+	      (setf ,var (read-table ,var)))
+	     ((or table list array hash-table structure-object)
+	      (setf ,var (make-table-from ,var)))
+	     (t
+	      ;; @@@ check with find-method?
+	      (setf ,var (make-table-from ,var))))
+	   (,thunk))))))
+
+#+lish
+(lish:defcommand print-table
+  ((table object :help "Table to print."))
+  :accepts '(table sequence hash-table structure-object)
+  "Print a table to the terminal."
+  (with-coerced-table (tab table)
+    (with-grout ()
+      (grout-print-table tab))))
+
 #+lish
 (lish:defcommand view-table
   ((table object :optional t :help "Table to view."))
+  :accepts '(table sequence hash-table structure-object)
   "View a table. Pass or pipe it either a table:table object, or something which
 has a table:make-table-from method, which by default are lists, hash-tables,
 arrays, and structures. If it's a string or pathname, try to read a table from
 the file."
-  :accepts '(table sequence hash-table structure-object)
-  (let ((tab (or table lish:*input*)))
-    (when tab
-      (typecase tab
-	(table
-	 (view-table tab))
-	((or string pathname stream)
-	 (view-table (read-table table)))
-	((or table list array hash-table structure-object)
-	 (view-table (make-table-from tab)))
-	(t
-	 ;; @@@ check with find-method?
-	 (view-table (make-table-from tab)))))))
+  (with-coerced-table (tab table)
+    (view-table tab)))
 
 ;; EOF

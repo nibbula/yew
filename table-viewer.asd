@@ -12,6 +12,6 @@
     :long-description   "View tables."
     :depends-on (:dlib :collections :table :table-print :keymap :inator
 		 :terminal :terminal-inator :dtt :char-util :fui :fatchar
-		 :fatchar-io)
+		 :fatchar-io :grout)
     :components
     ((:file "table-viewer")))
