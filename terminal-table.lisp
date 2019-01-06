@@ -52,10 +52,11 @@
 	 (incf cursor size)
 	 (when has-underline
 	   (terminal-underline stream nil))
-	 (when (< i (1- len))
-	   (terminal-write-string stream separator)
-	   (incf cursor sep-len)))
-      (when (or (not *max-width*) (/= cursor *max-width*))
+	   (when (and (< i (1- len))
+		      (or (not *max-width*) (< cursor *max-width*)))
+	     (terminal-write-string stream separator)
+	     (incf cursor sep-len)))
+      (when (or (not *max-width*) (< cursor (1- *max-width*)))
 	;;(dbugf :termtab "Fuckler--- ~s ~s~%" cursor *max-width*)
 	(terminal-write-char stream #\newline))
 
@@ -70,7 +71,7 @@
 	   (incf cursor size)
 	   (when (< i (1- len))
 	     (terminal-write-string stream separator)))
-	(when (or (not *max-width*) (/= cursor *max-width*))
+	(when (or (not *max-width*) (< cursor (1- *max-width*)))
 	  (terminal-write-char stream #\newline))))))
 
 (defmethod text-table-adjust-sizes (table (renderer terminal-table-renderer)
@@ -146,7 +147,6 @@ to MAX-WIDTH.."
 	    (setf cursor width))
 	  (typecase cell
 	    (standard-object
-	     (dbugf :termtab "POOTY ~s ~s ~s~%" row column (type-of cell))
 	     (princ (osubseq field 0 (min width (olength field)))
 		    *destination*)
 	     (incf cursor (min width (olength field))))
