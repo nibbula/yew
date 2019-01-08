@@ -488,7 +488,8 @@ The date part is considered to be the current date."
       (error "Unknown unit ~s~%" unit))
     (multiple-value-bind (s leftover) (truncate value divvy)
       (make-dtime :seconds s
-		  :nanoseconds (* leftover (/ +ns-per-sec+ divvy))))))
+		  :nanoseconds
+		  (truncate (* leftover (/ +ns-per-sec+ divvy)))))))
 
 (defun dtime-to (dtime unit)
   (let ((multy (dtime-unit-divisor unit)))
