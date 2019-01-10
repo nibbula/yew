@@ -16,7 +16,7 @@ Type name     Darwin           Linux-32         Linux-64         SunOS          
 #(uid-t       :uint32          :unsigned-int    :unsigned-int    :uint32          :uint32          :uint32)
 #(gid-t       :uint32          :unsigned-int    :unsigned-int    :uint32          :uint32          :uint32)
 #(pid-t       :int             :int             :int             :int             :int32           :int32)
-#(suseconds-t :int32           :int32           :int32           :int32           :long            :long)
+#(suseconds-t :int32           :int32           :long            :int32           :long            :long)
 #(ssize-t     :long            :long            :long            :long            :int64           :long)
 #(dev-t       :int32           :uint64          :unsigned-long   :ulong           :uint32          :uint32)
 #(nlink-t     :uint16          :unsigned-int    :unsigned-long   :uint            :uint16          :uint32)

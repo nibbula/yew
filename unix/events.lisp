@@ -91,9 +91,13 @@
       (with-foreign-slots ((tv_sec tv_usec) tv (:struct foreign-timeval))
 	(multiple-value-bind (sec frac) (truncate timeout)
 	  (setf tv_sec sec
-		tv_usec (truncate (* frac 1000000))))
- ;	(format t "timeval ~d ~d~%" tv_sec tv_usec)
-	)
+		tv_usec (truncate (* frac 1000000)))
+	  ;; (let ((usec (truncate (* frac 1000000))))
+	  ;;   (dbugf :select "nfds ~s sec ~s usec ~s ~g ~s~%"
+	  ;; 	   nfds sec usec usec (type-of usec))
+	  ;;   (dbugf :select "timveval sec ~s usec ~s~%"
+	  ;; 	   tv_sec tv_usec))
+	  ))
       (setf ret-val (unix-select (1+ nfds)
 				 read-fds write-fds err-fds
 				 tv))
