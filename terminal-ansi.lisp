@@ -14,7 +14,7 @@
   (:documentation "Standard terminal (ANSI).")
   (:use :cl :cffi :dlib :dlib-misc :terminal :char-util :opsys
 	:trivial-gray-streams :fatchar :color :terminal-crunch
-	#+unix :opsys-unix #+unix :cffi)
+	#+unix :opsys-unix)
   (:export
    #:terminal-ansi-stream
    #:terminal-ansi
