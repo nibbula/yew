@@ -12,8 +12,8 @@
     :long-description
     "Another in the increasingly long list of terminals implementations.
 This one works in a Windows console window, and probably not anywhere else.
-It has the chaming feature of not having any character attributes except
-for 16 colors."
+It has the charming feature of not having any character attributes except
+for 16 colors. How quaint and rustic. And it's very slow."
     :depends-on (:cffi :dlib :dlib-misc :terminal :char-util :opsys
 		 :trivial-gray-streams :fatchar :color :terminal-crunch)
     :components
