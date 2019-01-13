@@ -1871,15 +1871,19 @@ it is not a symbolic link."
   ;; @@@ perhaps we should add u+x, even though it's mostly pointless,
   ;; but just so things that traverse the filesystem won't get stupid
   ;; permission errors.
-  (let ((mode (file-status-mode (stat (safe-namestring pathname))))
-	(filename (lock-file-name pathname))
-	(time 0.0)
-	(f-timeout (float timeout)))
+  (let* ((name (safe-namestring pathname))
+	 (mode (and (file-exists name) (file-status-mode (stat name))))
+	 (filename (lock-file-name pathname))
+	 (time 0.0)
+	 (f-timeout (float timeout)))
     (declare (type single-float time f-timeout))
     ;; Very lame and slow polling.
     (loop :with wait :and inc single-float = (float increment)
        :do
-       (if (not (ignore-errors (make-directory filename :mode mode)))
+	 (if (not (ignore-errors
+		    (if mode
+			(make-directory filename :mode mode)
+			(make-directory filename))))
 	   (if (= *errno* +EEXIST+) ;; @@@ unix specific!
 	       (setf wait t)
 	       (error-check -1 "~s" filename))
