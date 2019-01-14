@@ -212,7 +212,7 @@ drawing, which will get overwritten."
 		 :column (round (- (/ width 2) (/ (length text) 2))))))
 
 ;; This is kind of like a old-timey typeout window.
-(defun display-text (title text-lines &key input-func (justify t))
+(defun display-text (title text-lines &key input-func (justify t) x y)
   "Display text in a pop up window. Optionally calls INPUT-FUNC with the
 window as an argument to get input. If no INPUT-FUNC is provided it just
 waits for a key press and then returns."
@@ -235,7 +235,7 @@ waits for a key press and then returns."
 	 (height (min (+ 4 (length justified-lines))
 		      (- (tt-height) 4)))
 	 (xpos   (truncate (- mid (/ width 2))))
-	 (w      (make-window :width width :height height :y 3 :x xpos
+	 (w      (make-window :width width :height height :y y :x (or x xpos)
 			      :border t))
 	 result)
     (window-centered-text w 0 title)
