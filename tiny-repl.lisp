@@ -299,16 +299,23 @@ The REPL also has a few commands:
 		+ -))))))
 
 (defmacro with-error-handling ((state) &body body)
-  `(handler-bind
-      (#+sbcl (sb-ext::step-condition 'repple-stepper)
-      (serious-condition
-       #'(lambda (c)
-	   (dbugf :repl "Handler bind~%")
-	   (setf (repl-state-got-error ,state) t)
-	   (if (repl-state-debug ,state)
-	       (invoke-debugger c)
-	       (format (repl-state-output ,state) "Condition: ~a~%" c)))))
-    ,@body))
+  (with-unique-names (thunk error-handler)
+    `(flet ((,thunk () ,@body)
+	    (,error-handler (c)
+	      (dbugf :repl "Handler bind~%")
+	      (setf (repl-state-got-error ,state) t)
+	      (if (repl-state-debug ,state)
+		  (invoke-debugger c)
+		  (format (repl-state-output ,state)
+			  "Condition: ~a~%" c))))
+       (if (repl-state-debug ,state)
+	   (handler-bind
+	       (#+sbcl (sb-ext::step-condition 'repple-stepper)
+		(serious-condition #',error-handler))
+	     (,thunk))
+	   (handler-bind
+	       ((serious-condition #',error-handler))
+	     (,thunk))))))
 
 (defmacro with-repl-terminal ((terminal) &body body)
   "If terminal isn't set Evaluate BODY with a *terminal* set up.
