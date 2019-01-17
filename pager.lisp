@@ -989,11 +989,11 @@ list containing strings and lists."
     (when filter
       (push filter (pager-filter-exprs *pager*)))))
 
-(defun set-option ()
+(defun set-option (pager)
   "Set a pager option. Propmpts for what option to toggle."
   (message "Set option: ")
   (with-slots (show-line-numbers ignore-case wrap-lines raw-output pass-special)
-      *pager*
+      pager
     (let ((char (tt-get-char)))
       (case char
 	((#\l #\L)
