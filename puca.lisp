@@ -939,6 +939,30 @@ for the command-function).")
 	  (message p "Option not found: ~a" c))))
   (get-list *puca*))
 
+(defmethod search-command ((p puca-app))
+  (with-slots (goo (point inator::point) top bottom) p
+    (tt-move-to (- (tt-height) 2) 3)
+    (tt-finish-output)
+    (flet ((find-it (str g)
+	     (position str g :key #'goo-filename
+		       :test (lambda (a b)
+			       (search a b :test #'char-equal))))
+	   (move-to (i)
+	     (setf point i)
+	     (cond
+	       ((< point top)
+		(setf top point))
+	       ((and (> (- point top) (- bottom 1)) (> bottom 1))
+		(setf top point)))))
+      (let* ((string (rl:rl :prompt " Search: " :context :puca-search))
+	     (item (find-it string (subseq goo point))))
+	(if item
+	    (move-to (+ point item))
+	    ;; Try again from the beginning.
+	    (if (setf item (find-it string goo))
+		(move-to item)
+		(message p "Not found.")))))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; history mode
 
