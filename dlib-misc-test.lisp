@@ -99,60 +99,60 @@
 
 (deftests (dlib-misc-justify-1 :doc "Basic tests of justify-text.")
   (equal (justify-text *text* :stream nil)
-"Lorem ipsum dolor sit amet, consectetur adipiscing elit. Etiam semper risus 
-mauris, et dignissim lorem lacinia non. Sed vitae lacus nisi. Fusce vitae 
+"Lorem ipsum dolor sit amet, consectetur adipiscing elit. Etiam semper risus
+mauris, et dignissim lorem lacinia non. Sed vitae lacus nisi. Fusce vitae
 lectus non quam dictum luctus et at mauris.")
   (equal (justify-text *text* :stream nil :cols 40)
 "Lorem ipsum dolor sit amet, consectetur
-adipiscing elit. Etiam semper risus 
+adipiscing elit. Etiam semper risus
 mauris, et dignissim lorem lacinia non.
-Sed vitae lacus nisi. Fusce vitae 
-lectus non quam dictum luctus et at 
-mauris. ")
+Sed vitae lacus nisi. Fusce vitae
+lectus non quam dictum luctus et at
+mauris.")
   (equal (justify-text *text* :stream nil :cols 20)
-  "Lorem ipsum dolor 
-sit amet, 
-consectetur 
-adipiscing elit. 
+  "Lorem ipsum dolor
+sit amet,
+consectetur
+adipiscing elit.
 Etiam semper risus
-mauris, et 
-dignissim lorem 
-lacinia non. Sed 
-vitae lacus nisi. 
+mauris, et
+dignissim lorem
+lacinia non. Sed
+vitae lacus nisi.
 Fusce vitae lectus
-non quam dictum 
-luctus et at 
-mauris. ")
+non quam dictum
+luctus et at
+mauris.")
   (equal (justify-text *text* :stream nil :cols 30 :prefix "-->")
-  "-->Lorem ipsum dolor sit 
--->amet, consectetur 
--->adipiscing elit. Etiam 
--->semper risus mauris, et 
--->dignissim lorem lacinia 
+  "-->Lorem ipsum dolor sit
+-->amet, consectetur
+-->adipiscing elit. Etiam
+-->semper risus mauris, et
+-->dignissim lorem lacinia
 -->non. Sed vitae lacus nisi.
--->Fusce vitae lectus non 
--->quam dictum luctus et at 
--->mauris. ")
+-->Fusce vitae lectus non
+-->quam dictum luctus et at
+-->mauris.")
   (equal (justify-text *text* :stream nil :cols 30 :prefix "[ ] "
 		       :omit-first-prefix t)
-"Lorem ipsum dolor sit amet, 
-[ ] consectetur adipiscing 
+"Lorem ipsum dolor sit amet,
+[ ] consectetur adipiscing
 [ ] elit. Etiam semper risus
-[ ] mauris, et dignissim 
-[ ] lorem lacinia non. Sed 
-[ ] vitae lacus nisi. Fusce 
-[ ] vitae lectus non quam 
-[ ] dictum luctus et at 
-[ ] mauris. ")
+[ ] mauris, et dignissim
+[ ] lorem lacinia non. Sed
+[ ] vitae lacus nisi. Fusce
+[ ] vitae lectus non quam
+[ ] dictum luctus et at
+[ ] mauris.")
   (equal (justify-text *text* :stream nil :cols 80 :prefix "| "
 		       :omit-first-prefix t :start-column 40)
 "Lorem ipsum dolor sit amet, consectetur
-| adipiscing elit. Etiam semper risus mauris, et dignissim lorem lacinia non. 
+| adipiscing elit. Etiam semper risus mauris, et dignissim lorem lacinia non.
 | Sed vitae lacus nisi. Fusce vitae lectus non quam dictum luctus et at mauris.")
   (equal (justify-text *text* :stream nil :separator #\.)
-  "Lorem ipsum dolor sit amet, consectetur adipiscing elit.
- Etiam semper risus mauris, et dignissim lorem lacinia non.
- Sed vitae lacus nisi. Fusce vitae lectus non quam dictum luctus et at mauris.")
+  "Lorem ipsum dolor sit amet, consectetur adipiscing elit
+ Etiam semper risus mauris, et dignissim lorem lacinia non
+ Sed vitae lacus nisi. Fusce vitae lectus non quam dictum luctus et at mauris")
   )
 
 (defparameter *fat-text*
@@ -170,12 +170,12 @@ mauris. ")
    (justify-text *fat-text* :stream nil :cols 40)
    (span-to-fat-string
     '((:red "Lorem ipsum dolor sit amet") (:blue ", consectetur") #\newline
-      (:blue "adipiscing elit. ") (:green "Etiam semper risus ") #\newline
+      (:blue "adipiscing elit. ") (:green "Etiam semper risus") #\newline
       (:green "mauris, ") (:magenta "et dignissim lorem lacinia non.") #\newline
-      (:cyan "Sed vitae lacus nisi. ") (:yellow "Fusce vitae ") #\newline
+      (:cyan "Sed vitae lacus nisi. ") (:yellow "Fusce vitae") #\newline
       (:yellow "lectus non quam ")
-      (:white (:bg-black "dictum luctus et at ")) #\newline
-      (:white (:bg-black"mauris. "))))))
+      (:white (:bg-black "dictum luctus et at")) #\newline
+      (:white (:bg-black"mauris."))))))
 
 (defparameter *fat-text*
   (span-to-fat-string
