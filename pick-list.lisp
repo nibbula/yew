@@ -343,7 +343,8 @@
 		      (- (- (tt-height) 2) y)
 		      (1+ lines))
 	    (slot-value o 'window) (make-window :height (+ max-y 1)
-						:width (+ cols 2 2)
+						:width (min (+ cols 2 2)
+							    (- (tt-width) 2))
 						:y y :x x
 						:border t)
 	    ;; top (1+ top)
@@ -352,7 +353,7 @@
 (defmethod update-display ((i popup-pick))
   "Display the pop-up list picker."
   (with-slots (message multiple items (point inator::point) result cur-line
-		       max-y top ttop error-message window #|x y|#) *pick*
+	       max-y top left ttop error-message window #|x y|#) *pick*
     (let ((message-string (and message (format nil message))))
       (draw-window window)
       (window-move-to window 0 0)
@@ -377,8 +378,12 @@
 	   (setf cur-line y)
 	   )
 	 ;;(dbugf :fui "cur-line=~d y=~s i=~s~%" cur-line y i)
-	 (window-text window f :row y :column 2)
-	 ;;(window-text window (s+ f #\newline))
+	 (when (<= left (1- (length f)))
+	     (window-text window
+			  (subseq f (max 0 left)
+				  (min (length f)
+				       (+ left (- (tt-width) 3))))
+			  :row y :column 2))
 	 (when (= i point)
 	   (tt-standout nil))
 	 (incf i)
