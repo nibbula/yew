@@ -697,6 +697,7 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 ;; Assumes fixed width characters, without all the unicode nonsense.
 
 ;; Keep this around in case we need a faster simple character only version.
+#|
 (defun %justify-text-OLD (text &key (cols 80) (stream *standard-output*)
 			     (prefix "") (separator #\space) omit-first-prefix
 			     (start-column 0))
@@ -771,6 +772,7 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 	    (incf column))))
       (when (< last-word-start i)
 	(write-word t)))))
+|#
 
 ;; This can handle some wide and fatchars, but it only gives reasonable output
 ;; for the the subset of unicode scripts that have a non-context-dependant
@@ -786,27 +788,25 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
   ;; 		     (compilation-speed 0))
   (declare (optimize (speed 0) (safety 3) (debug 3) (space 0)
    		     (compilation-speed 0))
-	   ;; (type simple-string text prefix)
 	   (type fixnum cols))
-  ;;(check-type text simple-string)
   (let ((len             (olength text))
 	(i               0)
 	(last-word-start 0)
-	;;(line-start	 0)
+	(first-word      t)
 	(column          start-column)
 	(sep-len	 (display-length separator))
 	(prefix-len      (display-length prefix)))
     (declare (type fixnum len i last-word-start column))
-    (flet ((write-word (final)
+    (flet ((write-word ()
 	     (dbugf :justify-text "col ~d " column)
-	     (if (< column cols)
+	     (if (< (+ column (if first-word 0 sep-len)) cols)
 		 (progn
 		   ;;(dbugf :justify-text "space")
-		   (princ (osubseq text last-word-start (min i len)) stream)
-		   (when (< column (- cols (1+ sep-len)))
-		     (when (not final)
-		       (princ separator stream))
-		     (incf column sep-len)))
+		   (when (not first-word)
+		     (princ separator stream)
+		     (incf column sep-len))
+		   (setf first-word nil)
+		   (princ (osubseq text last-word-start (min i len)) stream))
 		 (progn
 		   (dbugf :justify-text "newline")
 		   (princ #\newline stream)
@@ -816,52 +816,43 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 			 (setf column prefix-len))
 		       (setf column 0))
 		   (princ (osubseq text last-word-start i) stream)
-		   (princ separator stream)
 		   (incf column (+ (display-length
-				    (osubseq text last-word-start i))
-				    sep-len))))
+				    (osubseq text last-word-start i))))))
 	     (dbugf :justify-text "~%")
 	     ))
       (when (and prefix (not omit-first-prefix))
 	(princ prefix stream)
-	(setf column prefix-len))
+	(setf column (+ prefix-len start-column)))
       (loop
 	 :while (< i len)
 	 :do
 	 (dbugf :justify-text "~s: " i)
 	 (cond
 	   ((char= (simplify-char (oelt text i)) #\Newline)
-	    ;; (when (not (zerop last-word-start))
-	    ;;   (write-char #\space stream))
-	    ;; (write-string text stream :start last-word-start :end i)
-	    (write-word nil)
+	    (write-word)
 	    (write-char #\newline stream)
 	    (if prefix
 		(progn
 		  (princ prefix stream)
 		  (setf column prefix-len))
 		(setf column 0))
+	    (setf first-word t)
 	    (incf i)
-	    (setf last-word-start i
-		  ;; line-start i
-		  ))
+	    (setf last-word-start i))
 	   ((char= (simplify-char (oelt text i)) separator)
-	    (write-word nil)
+	    (write-word)
 	    (incf i)
 	    ;; eat multiple spaces
 	    (loop :while (and (< i len)
 			      (char= (simplify-char (oelt text i)) separator))
 	       :do (incf i))
-	    (setf last-word-start i)
-	    ;;(when (zerop column)
-	    ;;  (setf line-start i))
-	    )
+	    (setf last-word-start i))
 	   (t
 	    (incf column (display-length (oelt text i)))
 	    (incf i))))
       (when (< last-word-start i)
 	(dbugf :justify-text "last word ~s ~s~%" i column)
-	(write-word t)))))
+	(write-word)))))
 
 (defun justify-text (text &key (cols 80) (stream *standard-output*)
 			    (prefix "") (separator #\space) omit-first-prefix
