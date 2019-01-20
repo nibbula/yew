@@ -96,6 +96,7 @@
    #:simple-delete-file
    #:with-os-file
    #:set-file-time
+   #:make-symbolic-link
 
    ;; locking
    #:with-locked-file

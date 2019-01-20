@@ -1185,6 +1185,24 @@ time can be :NOW to use the current time."
 		      file-info
 		      (foreign-type-size '(:struct FILE_BASIC_INFO))))))))))
 
+
+(defconstant +SYMBOLIC-LINK-FLAG-FILE+      #x0 "Link target is a file.")
+(defconstant +SYMBOLIC-LINK-FLAG-DIRECTORY+ #x1 "Link target is a directory.")
+(defconstant +SYMBOLIC-LINK-FLAG-ALLOW-UNPRIVILEGED-CREATE #x2
+  "Allow creation of symbolic links when not privileged.
+Developer Mode has to be enabled.")
+
+(defcfun ("CreateSymbolicLinkW" %create-symbolic-link) BOOLEAN
+  ;; (lpSymlinkFileName LPCSTR)
+  ;; (lpTargetFileName LPCSTR)
+  (symlink-file-name :string)
+  (target-file-name :string)
+  (flags DWORD))
+
+(defun make-symbolic-link (from to)
+  "Make a symbolic link from FROM to TO."
+  (syscall (%create-symbolic-link from to 0)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
 

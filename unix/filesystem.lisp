@@ -1848,6 +1848,32 @@ it is not a symbolic link."
   #-(or clisp sbcl ccl cmu ecl lispworks abcl)
   (missing-implementation 'probe-directory))
 
+(defcfun ("symlink" real-symlink) :int
+  "Create a symbolic link named LINKPATH that refers to TARGET."
+  (target :string) (linkpath :string))
+
+(defcfun ("symlinkat" real-symlinkat) :int
+  "Create a symbolic link named LINKPATH that refers to TARGET.
+If the pathname given in linkpath is relative, then it is interpreted relative
+to the directory file descriptor newdirfd instead of the cwd.
+
+If linkpath is relative and new-dir-fd is the special value AT_FDCWD,
+then linkpath is interpreted relative to the current working directory of
+the calling process.
+
+If linkpath is absolute, then new-dir-fd is ignored."
+  (target :string) (new-dir-fd :int) (linkpath :string))
+
+(defun symlink (target link-path)
+  (syscall (real-symlink target link-path)))
+
+(defun symlinkat (target new-dir-fd link-path)
+  (syscall (real-symlinkat target new-dir-fd link-path)))
+
+(defun make-symbolic-link (from to)
+  "Make a symbolic link from FROM to TO."
+  (syscall (real-symlink to from)))
+
 ;; File locking? : fcntl F_GETLK / F_GETLK F_SETLKW
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

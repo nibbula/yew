@@ -309,6 +309,9 @@ versions of the keywords used in Lisp open.
   "Set the given times on PATH. The times are OS-TIME structures. Either
 time can be :NOW to use the current time.")
 
+(defosfun make-symbolic-link (from to)
+  "Make a symbolic link from FROM to TO.")
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
 
@@ -561,7 +564,7 @@ just everything after the last period '.'"
 systems, this means \".\" and \"..\".")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; file locking
+;; File locking
 
 (defosfun with-locked-file ((pathname &key (lock-type :write) (timeout 3)
 				      (increment .1))
@@ -938,7 +941,7 @@ so-called “universal” time. The second value is nanoseconds.")
 “universal” time.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; events
+;; Events
 
 (defosfun listen-for (seconds fd)
   "Listen on the OS file descriptor for at most N seconds or until input is ~

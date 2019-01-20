@@ -317,6 +317,9 @@
    #:utimes
    #:utimensat
    #:set-file-time
+   #:symlink
+   #:symlinkat
+   #:make-symbolic-link
    
    ;; signals
    #:*signal-count*
