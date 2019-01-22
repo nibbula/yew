@@ -310,14 +310,16 @@ in UNZIP-COMMAND."
     (setf results (nreverse results))
     (with-grout ()
       (when list-p
-	(grout-print-table (make-table-from
-			    results
-			    :column-names
-			    (if verbose
-				'("Size" "Compressed" "%" "Method" "CRC"
-				  "Made by" "Mode" "   Date    Time" "Name")
-				'("Size" "   Date    Time" "Name"))
-			    ) :max-width nil)
+	(grout-print-table
+	 (setf results
+	       (make-table-from
+		results
+		:column-names
+		(if verbose
+		    '("Size" "Compressed" "%" "Method" "CRC"
+		      "Made by" "Mode" "   Date    Time" "Name")
+		    '("Size" "   Date    Time" "Name"))))
+	 :max-width nil)
 	#| @@@ Add the ability to do nice footers to text-table-renderer
 	(with-slots (size compressed-size count) totals
 	  (grout-print-table
@@ -363,6 +365,7 @@ in UNZIP-COMMAND."
   "Extract or list files from a ZIP archive."
   (when verbose
     (setf list-p t))
-  (apply #'unzip-command `(,@keys :extract ,(if list-p nil t))))
+  (setf lish:*output*
+	(apply #'unzip-command `(,@keys :extract ,(if list-p nil t)))))
 
 ;; EOF
