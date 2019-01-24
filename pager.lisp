@@ -1800,7 +1800,7 @@ q - Abort")
 	      (when file-list
 		(setf file-index 0)
 		(when (not (zerop (file-location-offset (elt file-list 0))))
-		  (go-to-line pager
+		  (go-to-line *pager*
 			      (1+ (file-location-offset (elt file-list 0))))))
 	      (read-input *pager* page-size)
 	      (setf quit-flag nil
