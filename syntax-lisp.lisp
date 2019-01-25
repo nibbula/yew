@@ -63,6 +63,12 @@
 ;; like this to be portable to any implementation and without bootstrapping
 ;; quriks. Also we have different goals.
 
+;; Another annoying thing about about the reader, is it's not possible to
+;; write one in purely portable Common Lisp, because there isn't a specified
+;; way to construct structures portably. This is a subtle detail which seems
+;; like it probably could be fairly easily be fixed by an new version of the
+;; specification adding a structure creation function.
+
 (deftype char-syntax ()
   '(member
     :constituent			; things that can be in an identifier
