@@ -20,7 +20,10 @@
 ;; acct
 
 ;; Weird/simulation/emulation
-;; syscall
+
+(defcfun ("syscall" real-syscall) :long
+  "Invoke a kernel system call with the NUMBER."
+  (number :long) &rest)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; C dynamic libraries.
