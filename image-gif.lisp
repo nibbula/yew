@@ -4,7 +4,7 @@
 
 (defpackage :image-gif
   (:documentation "GIF images")
-  (:use :cl :image)
+  (:use :cl :dlib :image)
   (:export
    #:image-format-gif
    #:read-gif
@@ -77,6 +77,16 @@
 		:name file-or-stream
 		:subimages sub)))
 
+(defun guess-gif (file-or-stream)
+  (with-open-file-or-stream (str file-or-stream
+				 :element-type '(unsigned-byte 8))
+    (handler-case
+	(skippy::check-gif-signature str) ; @@@ export?
+      (skippy:skippy-error (c)
+	(declare (ignore c))
+	(return-from guess-gif nil)))
+    t))
+
 (defclass gif-image-format (image-format)
   ()
   (:default-initargs
@@ -98,5 +108,11 @@
 
 (defmethod read-image-format (file (format gif-image-format))
   (read-gif file))
+
+(defmethod guess-image-format (file (format (eql :gif)))
+  (guess-gif file))
+
+(defmethod guess-image-format (file (format gif-image-format))
+  (guess-gif file))
 
 ;; EOF
