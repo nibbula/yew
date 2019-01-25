@@ -235,7 +235,9 @@ waits for a key press and then returns."
 	 (height (min (+ 4 (length justified-lines))
 		      (- (tt-height) 4)))
 	 (xpos   (truncate (- mid (/ width 2))))
-	 (w      (make-window :width width :height height :y y :x (or x xpos)
+	 (w      (make-window :width width :height height
+			      :y (or y 1)
+			      :x (or x xpos)
 			      :border t))
 	 result)
     (window-centered-text w 0 title)
