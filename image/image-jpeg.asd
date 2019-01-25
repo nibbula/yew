@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "JPEG images"
-    :depends-on (:image :cl-jpeg :dlib-misc)
+    :depends-on (:image :cl-jpeg :dlib :dlib-misc)
     :components
     ((:file "image-jpeg")))

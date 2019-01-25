@@ -4,7 +4,7 @@
 
 (defpackage :image-jpeg
   (:documentation "JPEG images.")
-  (:use :cl :image :dlib-misc)
+  (:use :cl :image :dlib :dlib-misc)
   (:export
    #:jpeg-image-format
    #:read-jpeg
@@ -56,6 +56,21 @@
 				   :height height
 				   :data array))))))
 
+(defun guess-jpeg (file-or-stream)
+  (block nil
+    (with-open-file-or-stream (stream file-or-stream
+				 :element-type '(unsigned-byte 8))
+      (let ((buf (make-array 10 :element-type '(unsigned-byte 8))))
+	(handler-case
+	    (progn
+	      (read-sequence buf stream)
+	      (when (not (equalp (subseq buf 0 2) #(#xff #xd8)))
+		(return nil)))
+	  (stream-error (c)
+	    (declare (ignore c))
+	    (return nil))))))
+  t)
+
 (defclass jpeg-image-format (image-format)
   ()
   (:default-initargs
@@ -77,5 +92,11 @@
 
 (defmethod read-image-format (file (format jpeg-image-format))
   (read-jpeg file))
+
+(defmethod guess-image-format (file (format (eql :jpeg)))
+  (guess-jpeg file))
+
+(defmethod guess-image-format (file (format jpeg-image-format))
+  (guess-jpeg file))
 
 ;; EOF
