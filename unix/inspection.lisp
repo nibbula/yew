@@ -465,12 +465,23 @@ code instructions."
 
 |#
 
+;; @@@@
+#+(and linux 64-bit-target) (defparameter +SYS-BPF+ 357)
+
+;; It's not actually in libc.
+;;
+;; (defcfun ("bpf" real-bpf) :int
+;;   "Interface to the Berkely Packet Filter."
+;;   (cmd :int)
+;;   (attr (:pointer (:union bpf-attr)))
+;;   (size :unsigned-int))
+
 #+linux
-(defcfun ("bpf" real-bpf) :int
-  "Interface to the Berkely Packet Filter."
-  (cmd :int)
-  (attr (:pointer (:union bpf-attr)))
-  (size :unsigned-int))
+(defun real-bpf (cmd attr size)
+  (real-syscall +SYS-BPF+
+		:int cmd
+		(:pointer (:union bpf-attr)) attr
+		:unsigned-int size))
 
 (defun bpf (cmd &rest args)
   (case cmd
