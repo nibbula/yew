@@ -63,8 +63,14 @@ if we can't find it."
   "Regular expression for the bits declaration.")
 
 (defun guess-xbm (file-or-stream)
-  (let ((string (slurp file-or-stream)))
-    (and (find-define "width" string nil)
+  (let ((string
+	 (handler-case
+	     (slurp file-or-stream)
+	   (stream-error (c)
+	     (declare (ignore c))
+	     (return-from guess-xbm nil)))))
+    (and string
+	 (find-define "width" string nil)
 	 (find-define "height" string nil)
 	 (scan *bits-decl-regexp* string)
 	 t)))
