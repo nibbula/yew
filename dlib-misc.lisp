@@ -1527,7 +1527,7 @@ defaults to character) with the contents of FILE-OR-STREAM."
 		 (etypecase file-or-stream
 		   (null *standard-input*)
 		   (stream file-or-stream) ; already a stream
-		   (string ; a file name
+		   ((or string pathname) ; a file name
 		    (setf close-me t)
 		    (open file-or-stream :external-format external-format
 			  :element-type element-type))))
