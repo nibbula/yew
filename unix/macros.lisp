@@ -44,6 +44,15 @@ CONSTANT-ARRAY."
 	    :collect
 	    `(defconstant ,(aref type 0) ,(aref type *platform-index*)))))
 
+  (defmacro define-platform-constants (constant-array)
+    "Define the appropriate constant for the platform, with distict bit sizes,
+from the given CONSTANT-ARRAY."
+    `(progn
+       ,@(loop :for type :across constant-array
+	    :collect
+	      `(defconstant ,(aref type 0)
+		 ,(aref type *platform-bitsize-index*)))))
+
   (defmacro define-constants-from (constant-array)
     "Define the appropriate constants for the platform from the array in the
 given CONSTANT-ARRAY variable."
