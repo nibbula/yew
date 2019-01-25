@@ -47,6 +47,8 @@
    #:*image-formats*
    #:find-image-format
    #:register-image-format
+   #:guess-image-format
+   #:guess-registered-image-type
    #:read-image-format
    #:unknown-image-type
    #:non-image-file
@@ -226,6 +228,17 @@ try to figure it out."
 (defun register-image-format (tag object)
   (pushnew (cons tag object) *image-formats* :key #'car))
 
+(defgeneric guess-image-format (thing format)
+  (:documentation "Return true if we guess that THING is a FORMAT image."))
+
+(defun guess-registered-image-type (thing)
+  "Return the guessed format of THING, from the registered image formats."
+  (block nil
+    (loop :for (tag . obj) :in *image-formats*
+       :do
+	 (when (guess-image-format thing obj)
+	   (return obj)))))
+
 (defgeneric read-image-format (file format)
   (:documentation "Read an image file or stream with specific format."))
 
@@ -240,12 +253,15 @@ try to figure it out."
    :format-control "~s doesn't seem to be an image"))
 
 (defun read-image (file-or-stream)
+  "Try to read FILE-OR-STREAM as an image. Return an IMAGE object if we're
+ successful. It tries to guess the format, but it might help if the format
+is loaded already. Otherwise it tries to load a guessed format.
+It signals unknown-image-type or non-image-file, if it can't figure it out."
   (let* (slurped-stream
 	 (thing (typecase file-or-stream
 		  (string (pathname file-or-stream))
 		  (pathname file-or-stream)
 		  (stream
-		   ;;(pushnew "gomer" *modules* :test #'equal)
 		   (setf slurped-stream t)
 		   (flexi-streams:with-output-to-sequence
 		       (str :element-type '(unsigned-byte 8))
@@ -254,32 +270,38 @@ try to figure it out."
 				  :element-type '(unsigned-byte 8))
 		     ))
 		  (t file-or-stream))) 	; hope it's okay?
-	 (type
-	  (progn
-	    ;;(pushnew (s+ "blalp" (type-of thing)) *modules* :test #'equal)
-	    (guess-content-type thing))))
-    (if (equal (content-type-category type) "image")
-	(let ((format (find-image-format (s+ (content-type-category type) "/"
-					     (content-type-name type))
-					 :by :mime)))
-	  (when (not format)
-	    ;; Try to autoload
-	    (asdf:load-system (s+ "image-" (content-type-name type)))
-	    ;; And look for it registered again.
-	    (setf format (find-image-format
-			  (s+ (content-type-category type) "/"
-			      (content-type-name type))
-			  :by :mime)))
-	  (if format
-	      (if slurped-stream
-		  (flexi-streams:with-input-from-sequence (str thing)
-		    (read-image-format str format))
-		  (read-image-format thing format))
-	      (cerror "Skip the image."
-		      'unknown-image-type
-		      :format-arguments `(,file-or-stream
-					  ,(content-type-name type)))))
-	(cerror "Skip the file"
-		'non-image-file :format-arguments `(,file-or-stream)))))
+	 type format)
+    (flet ((read-it ()
+	     (if slurped-stream
+		 (flexi-streams:with-input-from-sequence (str thing)
+		   (read-image-format str format))
+		 (read-image-format thing format))))
+      (cond
+	;; First let the registered formats try guessing.
+	((setf format (guess-registered-image-type thing))
+	 (read-it))
+	;; Then try the system guesser, and autoloading the format.
+	((equal (content-type-category
+		 (setf type (guess-content-type thing))) "image")
+	 (when (not (setf format (find-image-format
+				  (s+ (content-type-category type) "/"
+				      (content-type-name type))
+				  :by :mime)))
+	   ;; Try to autoload
+	   (asdf:load-system (s+ "image-" (content-type-name type)))
+	   ;; And look for it registered again.
+	   (setf format (find-image-format
+			 (s+ (content-type-category type) "/"
+			     (content-type-name type))
+			 :by :mime)))
+	 (if format
+	     (read-it)
+	     (cerror "Skip the image."
+		     'unknown-image-type
+		     :format-arguments `(,file-or-stream
+					 ,(content-type-name type)))))
+	(t
+	 (cerror "Skip the file"
+		 'non-image-file :format-arguments `(,file-or-stream)))))))
 
 ;; EOF
