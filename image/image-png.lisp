@@ -4,7 +4,7 @@
 
 (defpackage :image-png
   (:documentation "PNG images")
-  (:use :cl :image)
+  (:use :cl :image :dlib)
   (:export
    #:image-format-png
    #:read-png
@@ -98,6 +98,22 @@
 				 :transparent transparent
 				 :data array)))))
 
+(defun guess-png (file-or-stream)
+  (block nil
+    (with-open-file-or-stream (stream file-or-stream
+				      :element-type '(unsigned-byte 8))
+      (let ((buf (make-array (length png-read::*png-header*) ;; @@@
+			     :element-type '(unsigned-byte 8))))
+	(handler-case
+	    (progn
+	      (read-sequence buf stream)
+	      (when (not (equalp buf png-read::*png-header*)) ;; @@@
+		(return nil)))
+	  (stream-error (c)
+	    (declare (ignore c))
+	    (return nil)))))
+    t))
+
 (defclass png-image-format (image-format)
   ()
   (:default-initargs
@@ -119,5 +135,11 @@
 
 (defmethod read-image-format (file (format png-image-format))
   (read-png file))
+
+(defmethod guess-image-format (file (format (eql :png)))
+  (guess-png file))
+
+(defmethod guess-image-format (file (format png-image-format))
+  (guess-png file))
 
 ;; EOF
