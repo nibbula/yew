@@ -86,6 +86,23 @@ It doesn't handle all TIFF files.")
 				 :transparent nil
 				 :data array)))))
 
+
+(defun guess-tiff (file-or-stream)
+  (block nil
+    (with-open-file-or-stream (stream file-or-stream
+				 :element-type '(unsigned-byte 8))
+      (let ((buf (make-array 4 :element-type '(unsigned-byte 8))))
+	(handler-case
+	    (progn
+	      (read-sequence buf stream)
+	      (when (not (or (equalp buf #(#\M #\M 42 0))
+			     (equalp buf #(#\I #\I 0 42))))
+		(return nil)))
+	  (stream-error (c)
+	    (declare (ignore c))
+	    (return nil)))))
+    t))
+
 (defclass tiff-image-format (image-format)
   ()
   (:default-initargs
@@ -108,5 +125,11 @@ It doesn't handle all TIFF files.")
 
 (defmethod read-image-format (file (format tiff-image-format))
   (read-tiff file))
+
+(defmethod guess-image-format (file (format (eql :tiff)))
+  (guess-tiff file))
+
+(defmethod guess-image-format (file (format tiff-image-format))
+  (guess-tiff file))
 
 ;; EOF
