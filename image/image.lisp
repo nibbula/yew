@@ -3,7 +3,39 @@
 ;;
 
 (defpackage :image
-  (:documentation "Image objects.")
+  (:documentation "Image objects.
+
+To use:
+  read-image file -> image
+  write-image image file
+
+  make-instance 'image
+
+  Accessors:
+    image-*
+    sub-image-*
+
+  Functions:
+    set-pixel image y x r g b a
+    set-whole-pixel image y x pixel
+    set-row image y x row
+    get-pixel-* image y x
+    get-whole-pixel image y x
+
+To make a new format:
+  - Follow an example in image-*.{lisp,asd}:
+    - Make an :image-ZZ system and package.
+    - Subclass image-format, as ZZ-image-format.
+    - Make methods for:
+       guess-image-format file X
+       read-image-format file X
+       write-image-format file X
+   - Optionally add a tag to *known-image-types*. It's optional because most
+     image types can be identified by the `magic` package, but if yours can't,
+     then it's best to put it in *known-image-types* so it can use the guesser.
+     This auto loading makes it so we don't always have to wastefully load every
+     archaic image type.
+")
   (:use :cl :dlib :magic)
   (:export
    #:+max-alpha+
@@ -49,6 +81,7 @@
    #:register-image-format
    #:guess-image-format
    #:guess-registered-image-type
+   #:load-known-formats
    #:read-image-format
    #:unknown-image-type
    #:non-image-file
@@ -238,6 +271,18 @@ try to figure it out."
        :do
 	 (when (guess-image-format thing obj)
 	   (return obj)))))
+
+(defparameter *known-image-types* '(:jpeg :png :gif :tiff :xbm)
+  "List of known image format tags.")
+
+(defun load-image-format (format-tag)
+  (asdf:load-system (s+ "image-" (string-downcase format-tag))))
+
+(defun load-known-formats ()
+  "Load all the image formats we know about. This is useful to make sure
+read-image knows about all the formats."
+  (loop :for tag :in *known-image-types*
+     :do (load-image-format tag)))
 
 (defgeneric read-image-format (file format)
   (:documentation "Read an image file or stream with specific format."))
