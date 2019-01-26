@@ -68,8 +68,8 @@
 		(return nil)))
 	  (stream-error (c)
 	    (declare (ignore c))
-	    (return nil))))))
-  t)
+	    (return nil)))))
+    t))
 
 (defclass jpeg-image-format (image-format)
   ()
