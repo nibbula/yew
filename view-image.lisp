@@ -326,6 +326,20 @@
        (simple-error (c)
 	 (pause "Error: ~a ~a" ,file-name c)))))
 
+(defun persistent-read-image (file)
+  "Try to read an image, but try to load image format stragglers after
+the first time it fails to identify the image."
+  (or (catch 'pequod
+	(handler-case
+	    (progn
+	      (read-image file))
+	  (non-image-file (c)
+	    (declare (ignore c))
+	    (throw 'pequod nil))))
+      (progn
+	(load-known-formats)
+	(read-image file))))
+
 (defmethod next-file ((o image-inator))
   (with-slots (file-list file-index image) o
     (flet ((next ()
@@ -338,7 +352,7 @@
 	   (next)
 	   (setf file-name (nth file-index file-list))
 	   (with-image-error-handling (file-name)
-	     (setf img (read-image file-name))))
+	     (setf img (persistent-read-image file-name))))
 	(clear-image o)
 	(setf image img)
 	(reset-image o)
@@ -358,7 +372,7 @@
 	   (prev)
 	   (setf file-name (nth file-index file-list))
 	   (with-image-error-handling (file-name)
-	     (setf img (read-image file-name))))
+	     (setf img (persistent-read-image file-name))))
 	(clear-image o)
 	(setf image img)
 	(reset-image o)))))
@@ -837,7 +851,7 @@ But also greatly increasing # of chars output.
 		  (format *error-output* "Error: ~a ~a~%" file c)
 		  (throw 'git-out nil)))))
 	  (let* ((*show-progress* nil)
-		 (image (read-image file))
+		 (image (persistent-read-image file))
 		 (view-width (or width t-width))
 		 (view-height (or height (image-height image)))
 		 (our-zoom (or (and zoom (coerce zoom 'float))
@@ -911,7 +925,8 @@ But also greatly increasing # of chars output.
       (when (not inator-type)
 	(error "Can't find a usable image viewer."))
       (loop :with file = file-or-stream :and list = file-list
-	 :while (and (or file list) (not (setf image (read-image file))))
+	 :while (and (or file list)
+		     (not (setf image (persistent-read-image file))))
 	 :do (setf list (cdr list)
 		   file (car list)))
       (when (not image)
