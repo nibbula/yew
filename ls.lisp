@@ -206,8 +206,16 @@ by nos:read-directory."))
 	   (format-date "~a ~2d ~2,'0d:~2,'0d" (:month-abbrev :date :hour :min)
 			:time time))))))
 
-(defun format-the-size (size)
-  (remove #\space (print-size size :traditional t :stream nil :unit "")))
+(defun format-the-size (size &optional (format :human))
+  (flet ((human ()
+	   (remove #\space (print-size size
+				       :traditional t :stream nil :unit ""))))
+    (case format
+      (:human (human))
+      (:bytes
+       (format nil "~d" size))
+      (otherwise
+       (human)))))
 
 (defun get-extended-type (file-item)
   #+unix
@@ -328,7 +336,7 @@ by nos:read-directory."))
       (when (= (opsys-error-code c) uos:+ENOENT+)
 	(uos:lstat path)))))
 
-(defun list-long (file-list date-format)
+(defun list-long (file-list date-format size-format)
   "Return a table filled with the long listing for files in FILE-LIST."
   #+unix
   (make-table-from
@@ -342,7 +350,7 @@ by nos:read-directory."))
        (uos:file-status-links s)
        (or (user-name (uos:file-status-uid s)) (uos:file-status-uid s))
        (or (group-name (uos:file-status-gid s)) (uos:file-status-gid s))
-       (format-the-size (uos:file-status-size s))
+       (format-the-size (uos:file-status-size s) (keywordify size-format))
        (format-the-date
 	(uos:unix-to-universal-time
 	 (uos:timespec-seconds
@@ -380,10 +388,12 @@ by nos:read-directory."))
 	   (get-styled-file-name file))
       (get-styled-file-name file)))
 
-(defun format-short-item (item show-size)
+(defun format-short-item (item show-size size-format max-width)
   (if show-size
-      (fs+ (format nil "~6@a "
-		   (format-the-size (file-item-size (make-full-item item))))
+      (fs+ (format nil "~v@a "
+		   max-width
+		   (format-the-size (file-item-size (make-full-item item))
+				    size-format))
 	   (get-styled-file-name item))
       (get-styled-file-name item)))
 
@@ -428,26 +438,53 @@ by nos:read-directory."))
   (with-grout ()
     ;; (format t "grout ~s~%grout-stream ~s~%term ~s~%stdout ~s~%"
     ;; 	    *grout* (grout-stream *grout*) *terminal* *standard-output*)
-    (flet ((print-it (x)
-	     (if (getf args :long)
-		 (apply #'grout::%grout-print-table grout:*grout*
-			(list-long x (getf args :date-format))
-			`(:long-titles nil :trailing-spaces nil
-			  ,@(when (getf args :wide) '(:max-width nil))))
-		 (if (getf args :1-column)
-		     (mapcar (_ (grout-format "~a~%"
-					      (format-short-item
-					       _ (getf args :show-size)))) x)
-		     (print-columns
-		      (mapcar (_ (format-short-item
-				  _ (getf args :show-size))) x)
-		      :smush t
-		      :format-char "/fatchar-io:print-string/"
-		      ;; :stream (or *terminal* *standard-output*)
-		      ;; :stream (grout-stream *grout*)
-		      :columns (terminal-window-columns
-				(or (ls-state-outer-terminal *ls-state*)
-				    *terminal*)))))))
+    (labels ((size-max-width (items)
+	       "Calcuate the maximum width size of the size field for the items."
+	       (loop :for f :in items
+		  :maximize
+		    (char-util:display-length (format-the-size
+					       (file-item-size
+						(make-full-item f))
+					       (getf args :size-format)))))
+	     (print-it (x)
+	       "Print the item list."
+	       (if (getf args :long)
+		   ;; Long format
+		   (apply #'grout::%grout-print-table grout:*grout*
+			  (list-long x (getf args :date-format)
+				     (getf args :size-format))
+			  `(:long-titles nil :trailing-spaces nil
+			    ,@(when (getf args :wide) '(:max-width nil))))
+		   ;; 1 column format
+		   (if (getf args :1-column)
+		       (if (getf args :show-size)
+			   (grout:grout-print-table
+			    (make-table-from
+			     (mapcar (_ (list
+					 (format-the-size
+					  (file-item-size
+					   (make-full-item _))
+					  (getf args :size-format))
+					 (get-styled-file-name _))) x)
+			     :column-names '(("Size" :right) "Name"))
+			    :print-titles nil)
+			   (mapcar
+			    (_ (grout-format
+				"~a~%" (get-styled-file-name _))) x))
+		       ;; Columns format
+		       (let ((max-width (if (getf args :show-size)
+					    (size-max-width x) 6)))
+			 (print-columns
+			  (mapcar (_ (format-short-item
+				      _ (getf args :show-size)
+				      (getf args :size-format) max-width)) x)
+			  :smush t
+			  :format-char "/fatchar-io:print-string/"
+			  ;; :stream (or *terminal* *standard-output*)
+			  ;; :stream (grout-stream *grout*)
+			  :columns (terminal-window-columns
+				    (or (ls-state-outer-terminal *ls-state*)
+					*terminal*))))))))
       (let ((*print-pretty* nil))
 	(print-it (car files))
 	(loop :for list :in (cdr files) ::do
@@ -455,10 +492,10 @@ by nos:read-directory."))
 	   (print-it list))))))
 
 (defun list-files (&rest args &key files long 1-column wide hidden directory
-				sort-by reverse date-format collect show-size
-				ignore-backups)
+				sort-by reverse date-format show-size
+				size-format collect ignore-backups)
   (declare (ignorable files long 1-column wide hidden directory sort-by reverse
-		      date-format collect show-size ignore-backups))
+		      date-format show-size size-format collect ignore-backups))
   ;; It seems like we have to do our own defaulting.
   (when (not files)
     (setf (getf args :files) (list (current-directory))))
@@ -498,6 +535,10 @@ by nos:read-directory."))
     :choices '("normal" "nibby"))
    (reverse boolean :short-arg #\r :help "Reverse sort order.")
    (show-size boolean :short-arg #\s :help "True to show the file size.")
+   (non-human-size boolean :short-arg #\h :help "True to show sizes in bytes.")
+   (size-format lenient-choice :long-arg "size-format" :default "human"
+		:choices '("human" "bytes")
+		:help "Format to show sizes with.")
    (collect boolean :short-arg #\c :help "Collect results as a sequence.")
    ;; Short cut sort args:
    (by-extension boolean :short-arg #\X :help "Sort by file name extension.")
@@ -523,6 +564,10 @@ by nos:read-directory."))
     (remf args :sort-by)
     (setf args (append args '(:sort-by :modification-time)))
     (remf args :by-time))
+  (when non-human-size
+    (remf args :size-format)
+    (setf args (append args '(:size-format :bytes))))
+  (remf args :non-human-size)
   (when help
     (lish::print-command-help (lish:get-command "ls"))
     (return-from !ls (values)))
