@@ -2822,7 +2822,7 @@ objects should be stored."
     (when line
       (setf words
 	    (split-sequence nil line
-			    :test (λ (a b)
+			    :test (lambda (a b)
 				     (declare (ignore a))
 				     (or (char= b #\space) (char= b #\tab)))))
       (make-mount-entry
