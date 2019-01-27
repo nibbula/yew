@@ -1628,7 +1628,7 @@ byte-pos."
   "Prompt for a key and say what function it invokes."
   (declare (ignore pager))
   (message "Press a key: ")
-  (let* ((key-seq (get-key-sequence (λ () (tt-get-key)) *normal-keymap*))
+  (let* ((key-seq (get-key-sequence (lambda () (tt-get-key)) *normal-keymap*))
 	 (action
 	  ;;(key-definition key *normal-keymap*)
 	  (key-sequence-binding key-seq *normal-keymap*)
@@ -1640,7 +1640,7 @@ byte-pos."
 (defun describe-key ()
   "Prompt for a key and describe the function it invokes."
   (message "Press a key: ")
-  (let* ((key-seq (get-key-sequence (λ () (tt-get-key)) *normal-keymap*))
+  (let* ((key-seq (get-key-sequence (lambda () (tt-get-key)) *normal-keymap*))
     	 (action (key-sequence-binding key-seq *normal-keymap*)))
     (cond
       (action

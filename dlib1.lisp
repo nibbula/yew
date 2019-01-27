@@ -6,7 +6,7 @@
 ;; But it's mostly stuff that I need just to start up.
 ;; So:
 ;;  - Don't add any dependencies.
-;;  - Try to keep it so-called “minimal”.
+;;  - Try to keep it so-called "minimal".
 ;; More optional stuff can go in dlib-misc.
 
 #+debug-rc (progn (format t "dlib") (force-output *standard-output*))
@@ -108,7 +108,7 @@ of it.")
    #:define-constant
    #:defconstant-to-list
    #:define-alias #:defalias
-   #-(or lispworks clasp) #:λ
+   ;; #-(or lispworks clasp) #:#.(code-char #x039B) #\greek_capital_letter_lamda
    #:_
    #:and-<> #:<> #:-> #:->>
    #:symbolify
@@ -121,8 +121,10 @@ of it.")
    #:ensure-exported
    #:shortest-package-nick
    #:not-so-funcall #:symbol-call
-   #:refer-to #-(or lispworks clasp) #:※
-   #:maybe-refer-to #-(or lispworks clasp) #:※?
+   #:refer-to
+   ;; #-(or lispworks clasp) #:#.(code-char #x203B) #\reference_mark
+   #:maybe-refer-to
+   ;; #-(or lispworks clasp) #:#.(code-char #x203B)?
    #:@
    #:ignore-conditions #:ignore-some-conditions
    #:find-slot-name
@@ -225,7 +227,7 @@ later versions.")
 
   (defmacro with-unique-names ((&rest names) &body body)
     "Bind each symbol in NAMES to a unique symbol and evaluate the BODY.
-Useful for making your macro “hygenic”."
+Useful for making your macro 'hygenic'."
     `(let ,(loop :for n :in names
 	      :collect `(,n (gensym (symbol-name ',n))))
        ,@body)))
@@ -896,7 +898,7 @@ to the same value as the slots in the original."
 ;; Also, without good optimization, it could be code bloating.
 #-clisp ;; Of course CLisp areeady had this idea and put it in by default.
 (defmacro doseq ((var seq) &body body)
-  "Iterate VAR on a ‘sequence’ SEQ, which can be a list, vector, hash-table
+  "Iterate VAR on a 'sequence' SEQ, which can be a list, vector, hash-table
 or package. For hash-tables, it iterates on the keys. For packages, it iterates
 on all accessible symbols."
   (let ((seq-sym (gensym)))
@@ -1534,7 +1536,7 @@ SYMBOLS is a designator for a symbol or list of symbols like for EXPORT."
 	 (funcall (intern ,sym (find-package ,package)) ,@args)
        (error "Not so funcall ~s ~s" ,package ,symbol))))
 
-(defmacro ※ (package symbol &rest args)
+(defmacro #.(code-char #x203b) (package symbol &rest args)
   "Call SYMBOL with ARGS if it's FBOUND in PACKAGE and PACKAGE exists."
   `(not-so-funcall ,package ,symbol ,@args))
 |#
@@ -1567,7 +1569,7 @@ SYMBOLS is a designator for a symbol or list of symbols like for EXPORT."
       (t
        (error "Symbol ~s not bound in ~s" symbol package)))))
 
-(defalias '※ 'refer-to)
+;; (defalias '#.(code-char #x203b) 'refer-to)
 
 (defun maybe-refer-to (package symbol &rest args)
   "Call or get the value of SYMBOL in PACKAGE, or return NIL if the symbol or
@@ -1583,7 +1585,7 @@ package doesn't exist or isn't bound."
 	   (warn "Useless refer-to args were provided."))
 	 (symbol-value sym))))))
 
-(defalias '※? 'maybe-refer-to)
+;; (defalias '#.(code-char #x203b)? 'maybe-refer-to)
 
 ;; Should I really?
 (defmacro @ (object &rest slot-names)
