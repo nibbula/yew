@@ -776,8 +776,8 @@ than space and delete."
 
 (defun zero-width-char-p (c)
   (or (combining-char-p c)
-      (char/= c (code-char #x00ad))	;; #\soft_hyphen
-      ;;(is-zero-width-type c)
+      (char= c (code-char #x00ad))	;; #\soft_hyphen
+      (is-zero-width-type c)
       (and (char> c (code-char #x1160)) ;; Hangul combining chars
 	   (char< c (code-char #x1200)))
       (char= c (code-char #x200B))))	;; #\zero_width_space
@@ -1091,7 +1091,7 @@ GRAPHEME-VARs will be, which defaults to character so it's compatable with a
   (cond
     ((graphic-char-p c)
      (cond
-       ;;((zero-width-char-p c) 0)
+       ((zero-width-char-p c) 0)
        ((combining-char-p c) 0)
        ((double-wide-char-p c) 2)
        ;; We could have an option to check if it's a CJK char and return 2,
