@@ -1,0 +1,3 @@
+[submodule "terminal"]
+	path = terminal
+	url = https://github.com/nibbula/terminal
