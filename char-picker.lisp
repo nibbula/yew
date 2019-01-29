@@ -68,8 +68,11 @@
       (integer   (tt-write-char (setf thing (code-char c))))
       (character (tt-write-char c))
       (string    (tt-write-string c)))
-    (dotimes (i (max 1 (- 5 (display-length thing))))
-      (tt-write-char #\space))))
+
+    ;; (dotimes (i (max 1 (- 5 (display-length thing))))
+    ;;   (tt-write-char #\space))
+    ;; (tt-move-to-col 20)
+    ))
 
 ;; @@@ What should I do when the screen is so tall I run out of letters?
 (defun show-chars (start inc &optional search-string)
@@ -98,6 +101,7 @@
 	 (write-special-char (displayable-char cc
 					       :all-control t
 					       :show-meta nil))
+	 (tt-move-to-col 20)
 	 (if (and search-string
 		  (setf ss-pos (search search-string name :test #'equalp)))
 	     (progn
