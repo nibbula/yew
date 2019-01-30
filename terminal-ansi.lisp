@@ -506,7 +506,10 @@ Report parameters are returned as values. Report is assumed to be in the form:
 		 (write-terminal-string fd q)
 		 (terminal-finish-output tty)
 		 (with-interrupts-handled (tty)
-		   (read-until fd end-char :timeout 1)))))
+		   (read-until fd end-char
+			       ;;:timeout 1
+			       :timeout 0.0001
+			       )))))
       #| @@@ temporarily get rid of this error
       (when (null str)
 	(error "Terminal failed to report \"~a\"." fmt))
@@ -1375,7 +1378,8 @@ bracketed read.")
 	     :if (listen-for *bracketed-read-timeout* fd) :do
 	     (with-interrupts-handled (tty)
 	       (setf s (read-until fd (char end-string i)
-				   :timeout (* *bracketed-read-timeout* 10)
+				   ;; :timeout (* *bracketed-read-timeout* 10)
+				   :timeout *bracketed-read-timeout*
 				   :octets-p t)))
 	     ;; (dbugf :bp "got dingus ~s ~s~%length ~s~%fill-pointer ~s"
 	     ;; 	    s (type-of s) (length s)
