@@ -99,91 +99,86 @@
 	(replace-buffer e (history-current (context e)))
 	(replace-buffer e ""))))
 
-;; If performance was really a problem, we could carefully maintain some of
-;; the line endings. But for a line editor, unless we're running on very slow
-;; systems, this seems unlikely to be a problem. It's not really advisable to
-;; edit megabytes of text in a line editor. If someone wants to do a really
-;; big paste, using an unprocessed read is better. Also for big pastes,
-;; there's timing tricks that one can do with the lower level read.
+;; Perhaps we could consider caching or memoizing this? Espeically when
+;; the buffer hasn't changed.
 
-(defun calculate-line-endings (e &key (buffer (buf e)) (start (start-col e)))
+(defun %calculate-line-endings (buffer start cols spots)
   "Return a list of pairs of character positions and columns, in reverse order
 of character position, which should be the end of the displayed lines in the
-buffer."
+buffer. SPOTS is an alist of character indexes to set the line and column of."
   (let (endings
 	(col start)			; Start after the prompt
-	(cols (terminal-window-columns (line-editor-terminal e)))
 	(char-width 0)
 	(last-col start)
+	(line 0)
 	(i 0)
-	c cc)
+	c cc spot)
     (dbugf :rl "endings start ~s~%" start)
     ;; (if-dbugf (:rl)
     ;; 	      (symbol-call :deblarg :debugger-wacktrace 20))
-    (loop :while (< i (olength buffer)) :do
-       (setf c (oelt buffer i)
-	     cc (if (fatchar-p c) (fatchar-c c) c))
-       (if (char= cc #\newline)
-	   (progn
-	     (push (cons (1- i) last-col) endings)
-	     (setf last-col col)
-	     (setf col 0))
-	   (progn
-	     (setf char-width (display-length (oelt buffer i)))
-	     (if (> (+ col char-width) cols)
-		 (progn
-		   (push (cons (1- i) last-col) endings)
-		   (setf last-col col)
-		   (setf col char-width))
-		 (progn
-		   (setf last-col col)
-		   (incf col char-width)))))
-       (incf i))
-    ;; Make sure we get the last one
-    (when (> (+ col char-width) cols)
-      (push (cons (1- i) last-col) endings))
-    endings))
+    (flet ((set-spot (x)
+	     (when (and spots (setf spot (assoc i spots)))
+	       (dbugf :rl "set-spot ~a~%" x)
+	       (rplacd spot (cons line col)))))
+      (loop :while (< i (olength buffer))
+	 :do
+	   (setf c (oelt buffer i)
+		 cc (if (fatchar-p c) (fatchar-c c) c))
+	   (if (char= cc #\newline)
+	       (progn
+		 (push (cons (1- i) last-col) endings)
+		 (setf last-col col)
+		 (incf line)
+		 (setf col 0)
+		 (set-spot "NL"))
+	       (progn
+		 (setf char-width (display-length (oelt buffer i)))
+		 (if (> (+ col char-width) cols)
+		     (progn
+		       (push (cons (1- i) last-col) endings)
+		       (set-spot "wrap")
+		       (setf last-col col)
+		       (setf col char-width)
+		       (incf line))
+		     (progn
+		       (set-spot "normal")
+		       (setf last-col col)
+		       (incf col char-width)))))
+	   (incf i))
+
+      ;; Make sure we get the last one
+      (when (> (+ col char-width) cols)
+	(push (cons (1- i) last-col) endings))
+
+      ;; Spot in empty buffer
+      (when (and spots (zerop (olength buffer)) (setf spot (assoc 0 spots)))
+	(rplacd spot (cons line col)))
+
+      ;; Spot after end
+      (when (> (+ col char-width) cols)
+	(incf line)
+	(setf col 0))
+      (set-spot "End")
+      endings)))
+
+(defun calculate-line-endings (e &key
+				   (buffer (buf e))
+				   (start (start-col e))
+				   (cols (terminal-window-columns
+					  (line-editor-terminal e)))
+				   spots)
+  "Return a list of pairs of character positions and columns, in reverse order
+of character position, which should be the end of the displayed lines in the
+buffer.
+  BUFFER  The string to compute endings for.
+  START   The column number of the first character in BUFFER.
+  COLS    The number columns in the terminal window, after which it wraps."
+  (%calculate-line-endings buffer start cols #| do-final |# spots))
 
 (defun line-ending (pos endings)
   "Return the line ending at character position POS, from the line ENDINGS,
 or NIL is there is none."
   (cdr (assoc pos endings)))
-
-;; Here's the problem:
-;;
-;; People can put any old stuff in the prompt that they want. This includes
-;; things that move the cursor around, characters that might be of different
-;; widths, escape sequences that may or may not move the cursor. So unless we
-;; emulate the terminal exactly, just to figure out where the cursor is after
-;; the prompt, things can get messed up.
-;;
-;; We could be like other shells and require that you delimit non-echoing
-;; characters yourself and allow you to specifiy an output width for
-;; characters. Not only is that annoying, but it won't always work.
-;;
-;; Since emulating the terminal seems infeasible, unless we wrapped ourselves
-;; in an emulation layer like screen or tmux, if we want to be sure to get
-;; things right, we are stuck with with asking the terminal where the cursor
-;; might be.
-;;
-;; The problem with asking the terminal, is that we have to output something,
-;; and then read the coordinates back in. But there might be a bunch of input,
-;; like a giant paste or something, or typing ahead, already in the terminal's
-;; input queue, in front of the response to our "where is the cursor" query,
-;; which blocks us from getting an answer.
-;;
-;; So we have to read all input available, BEFORE asking where the cursor
-;; is. This is the reason for all the otherwise useless 'eat-typeahead' and
-;; 'tty-slurp'ing. Of course this whole thing is quite kludgey and I think we
-;; should really be able ask the terminal where the cursor is with a nice
-;; _function call_, not going through the I/O queue. Of course that would
-;; require the terminal to be in our address space, or to have a separate
-;; command channel if it's far, far away.
-;;
-;; There is still a small opportunity for a race condition, between outputing
-;; the query, and getting an answer back, but it seems unlikely. I wonder if
-;; there's some way to 'lock' the terminal input queue for that time.
-;;
 
 (defun finish-all-output ()
   "Makes all output be in Finnish."
@@ -207,74 +202,6 @@ or NIL is there is none."
 in it."
   (not (oposition-if (_ (and (control-char-p _)
 			     (ochar/= _ #\newline))) string)))
-
-#|
-(defun do-prefix (e prompt-str)
-  "Output a prefix."
-  (flet ((write-it ()
-	   (write prompt-str :stream *terminal* :escape nil :pretty nil)))
-    (if (probably-safe prompt-str)
-	(progn
-	  (write-it)
-	  (finish-output *terminal*)
-	  (setf (prompt-height e) (ocount #\newline prompt-str))
-	  (let ((saved-col (screen-col e))
-		(saved-row (screen-relative-row e)))
-	    (move-over e (olength prompt-str) :start 0 :buffer prompt-str
-		       :move nil)
-	    ;; really update the coordinates
-	    (setf (screen-col e) (+ saved-col (screen-col e))
-		  (screen-relative-row e) (+ saved-row (screen-relative-row e))
-		  (start-col e) (screen-col e)
-		  (start-row e) (screen-relative-row e))))
-	(let (row col start-row)
-	  (finish-all-output)
-	  (multiple-value-setq (row col)
-	    (terminal-get-cursor-position (line-editor-terminal e)))
-	  (setf start-row row)
-	  ;;(tt-write-string prompt-str)
-	  (write-it)
-	  ;;(finish-all-output)
-	  ;; (tt-finish-output)
-	  ;; (eat-typeahead e)
-	  (multiple-value-setq (row col)
-	    (terminal-get-cursor-position (line-editor-terminal e)))
-	  (setf (screen-relative-row e) row ; @@@@@@@@
-		(screen-col e) col
-		;; save end of the prefix as the starting column
-		(start-col e) col
-		(start-row e) row
-		(prompt-height e) (1+ (- row start-row)))))
-    (log-message e "prompt-height = ~s" (prompt-height e))))
-|#
-
-#|
-(defun do-prompt (e prompt output-prompt-func &key only-last-line)
-  "Output the prompt in a specified way."
-;  (format t "e = ~w prompt = ~w output-prompt-func = ~w~%"
-;	  e prompt output-prompt-func)
-  (let* ((s (if (and output-prompt-func
-		     (or (functionp output-prompt-func)
-			 (fboundp output-prompt-func)))
-		(with-output-to-string (*standard-output*)
-		  (log-message e "do-prompt output-prompt-func -> ~s"
-			       output-prompt-func)
-		  (or (ignore-errors (funcall output-prompt-func e prompt))
-		      "Your prompt Function failed> "))
-		(progn
-		  (log-message e "do-prompt default-output-prompt")
-		  (default-output-prompt e prompt))))
-	 last-newline)
-    ;; (log-message e "do-prompt only-last-line = ~s" only-last-line)
-    ;; (log-message e "do-prompt last-newline = ~s"
-    ;; 		 (oposition #\newline s :from-end t))
-    (when (and only-last-line
-	       (setf last-newline (oposition #\newline s :from-end t)))
-      (setf s (osubseq s (1+ last-newline)))
-      (log-message e "partial prompt ~s" s))
-    ;; (log-message e "do-prompt s = ~s ~s" (olength s) s)
-    (do-prefix e s)))
-|#
 
 (defun make-prompt (e)
   "Return the prompt as a string."
@@ -302,175 +229,119 @@ in it."
     ;; (log-message e "do-prompt s = ~s ~s" (olength s) s)
     s))
 
-#|
-(defun redraw-line (e)
-  "Erase and redraw the whole line."
-  (tt-move-to-col 0)
-  (tt-erase-to-eol)
-  (setf (screen-col e) 0)
-  (do-prompt e (prompt-string e) (prompt-func e) :only-last-line t)
-  (finish-output (terminal-output-stream (line-editor-terminal e)))
-  (display-buf e)
-  (with-slots (point buf) e
-    (when (< point (length buf))
-      (move-over e (- (- (length buf) point)) :start (length buf))))
-  (setf (need-to-redraw e) nil))
-|#
-
-#|
-
-(defun recolor-line (e)
-  "Erase and redraw the whole line."
-  (with-slots (buf old-line need-to-recolor (point inator::point)) e
-    (dbugf :recolor "buf = ~s~%old = ~s~%" buf old-line)
-    (dbugf :recolor "point start ~s~%" point)
-    (dbugf :recolor "start screen-col = ~s~%" (screen-col e))
-    (let ((pos point) (i 0) (fs (make-fat-string :string buf)))
-      (flet ((fake-move (n &key (really t) (start pos))
-	       (dbugf :recolor "move by ~s~%" n)
-	       (if start
-		   (move-over e n :start start :move really)
-		   (move-over e n :move really))
-	       (incf pos n)))
-	(loop
-	   :with start
-	   :and max = (min (length buf) (length old-line))
-	   :while (< i max) :do
-	     (when (fatchar/= (aref (buf e) i) (aref (old-line e) i))
-	       ;; Go to the start of the difference
-	       (fake-move (- i pos))
-	       ;; Look to the end of the difference
-	       (setf start i)
-	       (loop :while (and (< i max)
-				 (fatchar/= (aref (buf e) i)
-					    (aref (old-line e) i)))
-		  :do (incf i))
-	       ;; Rely on tt-write-string to switch colors and attrs
-	       (tt-write-string fs :start start :end i)
-	       (dbugf :recolor "write [~s - ~s]~%" start i)
-	       ;; (fake-move (+ pos (- i start)) :really nil))
-	       (editor-update-pos-for-string e (osubseq fs start i)))
-	     (incf i))
-	(when (< i (length buf))	; buf is bigger than old-line
-	  (fake-move (- i pos))
-	  (tt-write-string fs :start i)	; write the rest
-	  (editor-update-pos-for-string e (osubseq fs i))
-	  (dbugf :recolor "end write ~s~%" i))
-	;; Move back to point
-	(if (< point (length buf))
-	    (move-over e (- point pos))
-	    (progn
-	      (move-over e (- (1- point) pos))
-	      ;; (incf (screen-col e))
-	      ))
-	(dbugf :recolor "end screen-col = ~s~%" (screen-col e))
-	(setf need-to-recolor nil)))))
-|#
-
 (defun relative-move-to-row (old new)
   (if (< new old)
-      (tt-up (- old new))
-      (tt-down (- new old))))
-
-;; (with-dbugf-to :rl "/dev/pts/2" (repl :terminal-type :crunch))
+      (progn
+	(dbugf :rl "up ~s~%" (- old new))
+	(tt-up (- old new)))
+      (progn
+	(dbugf :rl "down ~s~%" (- new old))
+	(tt-down (- new old)))))
 
 ;; An update that probably requires an optimizing terminal to be at all
 ;; efficient.
-#+(or)
-(defun BROKEN-redraw-display (e &key erase)
-  (with-slots (screen-relative-row screen-col prompt-str buf-str
-	       start-col start-row last-line prompt-height point) e
-    (let* ((prompt (make-prompt e))
-	   (prompt-lines (calculate-line-endings e :buffer prompt :start 0))
-	   buf-lines row col)
-      (relative-move-to-row screen-relative-row 0)
-      (tt-move-to-col 0)
-      (multiple-value-setq (row col)
-	(terminal-get-cursor-position *terminal*))
-      (dbugf :rl "current row = ~s col = ~s~%" row col)
 
-      (tt-move-to-col 0)
-      (tt-erase-to-eol)
-      (when erase
-	(tt-erase-below))
-      (write prompt :stream *terminal* :escape nil :pretty nil)
-      (multiple-value-setq (start-row start-col)
-	(terminal-get-cursor-position *terminal*))
-      (setf start-row (- start-row row)
-	    prompt-height start-row)
-      (dbugf :rl "start-row = ~s~%" start-row)
-
-      (setf buf-lines (calculate-line-endings e :start start-col))
-      (tt-write-string (buf-str e))
-
-      ;; Erase any part of a previous longer line 
-      (let ((new-last
-	     (- (terminal-get-cursor-position *terminal*) row)
-	     ;;(length buf-lines)
-	    ))
-	(when last-line
-	  (loop :for l :from new-last :to last-line :do
-               (tt-erase-to-eol)
-	       (tt-down)
-	       (tt-move-to-col 0)))
-	(setf last-line new-last))
-      (dbugf :rl "last-line = ~s~%" last-line)
-
-      (relative-move-to-row (1+ last-line) start-row)
-      ;; (relative-move-to-row last-line start-row)
-      (tt-move-to-col start-col)
-      (tt-write-string (buf-str e) :end point)
-      (setf screen-relative-row
-      	    (- (terminal-get-cursor-position *terminal*) row))
-      ;; (setf screen-relative-row
-      ;; 	    (+ (length prompt-lines) (length buf-lines)))
-      (dbugf :rl "screen-relative-row = ~s~%" screen-relative-row)
-      )))
-
-;; @@@ Not *as* broken, but still not right.
+;; Now with more ploof!
 (defun redraw-display (e &key erase)
   (declare (ignore erase)) ; @@@
   (with-slots (buf-str prompt-height point start-row start-col
 	       screen-relative-row last-line) e
+    (dbugf :rl "----------------~%")
     (let* ((prompt (make-prompt e))
-	   (prompt-lines (length (calculate-line-endings e :buffer prompt
-							 :start 0)))
-	   buf-lines new-last-line erase-lines)
-      (relative-move-to-row screen-relative-row 0)
-      (tt-move-to-col 0)
-      (tt-erase-to-eol)
+	   (cols (terminal-window-columns (line-editor-terminal e)))
+	   ;; Prompt figuring
+	   (prompt-end (max 0 (1- (olength prompt))))
+	   (prompt-spots (list `(,prompt-end . ())))
+	   (prompt-endings (calculate-line-endings
+			    e
+			    :buffer prompt
+			    :start 0 :cols cols
+			    :spots prompt-spots))
+	   (prompt-lines (length prompt-endings))
+	   (prompt-last-col (cddr (assoc prompt-end prompt-spots)))
+	   ;; Line figuring
+	   (line-end (max 0 (1- (olength buf-str))))
+	   (spots (list `(,point . ())
+			`(,line-end . ())))
+	   (endings (calculate-line-endings e :start (1+ prompt-last-col)
+					    :spots spots))
+	   (buf-lines     (length endings))
+	   (total-lines   (+ prompt-lines buf-lines))
+	   (line-last-col (cddr (assoc line-end spots)))
+	   (spot          (assoc point spots))
+	   (point-line    (cadr spot))
+	   (point-col     (cddr spot))
+	   (point-offset  (- buf-lines point-line))
+	   new-last-line erase-lines old-col relative-top)
+      (flet ((eol-compensate () ;; @@@ This is bullcrap. Maybe "fix" ansi?
+	       (when (and endings
+			  (= line-last-col (1- cols))
+			  (terminal-has-autowrap-delay
+			   (line-editor-terminal e)))
+		 (dbugf :rl "wrap compensation~%")
+		 (decf relative-top)
+		 (tt-write-char #\newline))))
 
-      ;;(write prompt :stream *terminal* :escape nil :pretty nil)
-      (tt-write-string prompt)
-      (tt-erase-to-eol)
-      (multiple-value-setq (start-row start-col)
-	(terminal-get-cursor-position *terminal*))
-      (setf prompt-height prompt-lines)
+	(relative-move-to-row screen-relative-row 0)
+	(setf relative-top (- screen-relative-row))
+	(dbugf :rl "start-row = ~s~%~
+                    screen-relative-row = ~s~%~
+                    spots = ~s~%"
+	       start-row screen-relative-row spots)
+	(dbugf :rl "-> prompt-spots ~s~%" prompt-spots)
+	(dbugf :rl "-> prompt-last-col ~s~%" prompt-last-col)
+	(dbugf :rl "-> line-last-col ~s~%" line-last-col)
 
-      (setf buf-lines (length (calculate-line-endings e :start start-col))
-	    new-last-line (+ prompt-lines buf-lines))
+	(dbugf :rl "-> spot ~s~%" spot)
+	(dbugf :rl "-> point-line ~s~%" point-line)
+	(dbugf :rl "-> point-col ~s~%" point-col)
+	(dbugf :rl "-> point-offset ~s~%" point-offset)
+	(multiple-value-setq (start-row old-col)
+	  (terminal-get-cursor-position (line-editor-terminal e)))
 
-      (dbugf :rl "buf = ~s~%" (buf-str e))
-      (tt-write-string (buf-str e))
-      (tt-erase-to-eol)
-      (when last-line
-	(setf erase-lines (max 0 (- last-line new-last-line)))
-	(dbugf :rl "erase-lines = ~s~%" erase-lines)
-	(loop :repeat erase-lines
-	   :do
-	     (tt-down)
-	     (tt-move-to-col 0)
-	     (tt-erase-to-eol))
-	(when (not (zerop erase-lines))
-	  (tt-up erase-lines)))
+	;; If there's not enough room to display the lines, make some.
+	(when (> (+ start-row relative-top total-lines) (tt-height))
+	  (let ((offset (- (+ start-row relative-top total-lines) (tt-height))))
+	    (dbugf :rl "scroll down ~s~%" offset)
+	    (tt-scroll-down offset)
+	    (decf relative-top offset)))
 
-      ;; (relative-move-to-row (1+ last-line) start-row)
-      (when (not (zerop buf-lines))
-	(tt-up buf-lines))
-      (tt-move-to-col start-col)
-      (tt-write-string (buf-str e) :end point)
-      (setf screen-relative-row (+ prompt-lines buf-lines)
-	    last-line new-last-line))))
+	;; Write the prompt
+	(tt-move-to-col 0)
+	(tt-erase-to-eol)
+	(tt-write-string prompt)
+	(tt-erase-to-eol)
+	(setf prompt-height prompt-lines
+	      new-last-line total-lines
+	      start-col prompt-last-col)
+
+	(dbugf :rl "buf-lines ~s prompt-lines ~s last-line ~s start-col ~s~%~
+                    buf = ~s~%"
+	       buf-lines prompt-lines last-line start-col (buf-str e))
+	;; Write the line
+	(tt-write-string (buf-str e))
+	(eol-compensate)
+	(tt-erase-to-eol)
+	;; Erase junk after the line
+	(when last-line
+	  (setf erase-lines (max 0 (- last-line new-last-line)))
+	  (dbugf :rl "erase-lines = ~s~%" erase-lines)
+	  (loop :repeat erase-lines
+	     :do
+	       (tt-down)
+	       (tt-move-to-col 0)
+	       (tt-erase-to-eol))
+	  (when (not (zerop erase-lines))
+	    (tt-up erase-lines)))
+
+	;; Move to the point.
+	(when (not (zerop point-offset))
+	  (tt-up point-offset))
+	(tt-move-to-col point-col)
+	(setf screen-relative-row (+ prompt-lines point-line)
+	      last-line new-last-line)
+	(dbugf :rl "new screen-relative-row ~s~%" screen-relative-row)
+	))))
 
 (defmethod update-display ((e line-editor))
   (redraw-display e))
