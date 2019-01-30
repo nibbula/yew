@@ -5,7 +5,8 @@
 (defpackage :table-viewer
   (:documentation "View tables.")
   (:use :cl :dlib :collections :table :table-print :keymap :inator :terminal
-	:terminal-inator :dtt :char-util :fui :fatchar :fatchar-io :grout)
+	:terminal-inator :dtt :char-util :fui :fatchar :fatchar-io :grout
+	:terminal-table)
   (:export
    #:view-table
    #:!view-table
@@ -80,7 +81,7 @@ for a range of rows, or a table-point for a specific item,"
 
 ;; Customized table renderer
 
-(defclass viewer-table-renderer (table-renderer)
+(defclass viewer-table-renderer (terminal-table-renderer) ;(table-renderer)
   ((output-column
     :initarg :output-column :accessor output-column
     :documentation "Column being output.")
@@ -178,10 +179,10 @@ for a range of rows, or a table-point for a specific item,"
     (otherwise
      (length (princ-to-string cell)))))
 
-(defmethod table-output-cell ((renderer viewer-table-renderer)
-			      table cell width justification row column)
+(defmethod table-output-cell :around ((renderer viewer-table-renderer)
+				      table cell width justification row column)
   "Output a table cell."
-  (declare (ignore table))
+  ;; (declare (ignore table))
   (with-slots ((point inator::point) start rows cursor) *table-viewer*
     ;; (when (and (>= row (table-point-row start))
     ;; 	       (< row (+ (table-point-row start) rows))
@@ -215,11 +216,18 @@ for a range of rows, or a table-point for a specific item,"
 		  (setf (table-point-col cursor) c)
 		  (tt-color :yellow :default))
 		(tt-color :default :default))))
-	(tt-format (if (eq justification :right) "~v@a" "~va")
-		   ;; width
-		   (- clipped-width (- (display-length clipped-str)
-				       len))
-		   clipped-str)
+
+	;; (tt-format (if (eq justification :right) "~v@a" "~va")
+	;; 	   ;; width
+	;; 	   (- clipped-width (- (display-length clipped-str)
+	;; 			       len))
+	;; 	   clipped-str)
+	;; (call-next-method)
+	;; @@@ Wrong?
+	(terminal-table::%output-cell
+	  renderer
+	  table cell width justification row column)
+
 	(incf (output-column renderer) clipped-width)
 	(tt-normal)))))
 
