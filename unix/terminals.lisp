@@ -1285,7 +1285,7 @@ The individual settings override the settings in MODE."
 
 (defun read-until (tty stop-token &key timeout octets-p)
   "Read until STOP-TOKEN is read. Return a string of the results.
-TTY is a file descriptor. TIMEOUT is in deci-seconds."
+TTY is a file descriptor. TIMEOUT is in seconds."
   (let ((result (make-array 0 :element-type (if octets-p
 						'(unsigned-byte 8)
 						'character)
@@ -1305,13 +1305,15 @@ TTY is a file descriptor. TIMEOUT is in deci-seconds."
 				  #'test-and-put-char))
       (with-BOGO-terminal-mode (tty)
         (when (and timeout
-		   (not (eql timeout
+		   (not (eql (truncate timeout 10)
 			     (terminal-mode-timeout (get-terminal-mode tty)))))
 	  ;; (format t "set timeout = ~s~%" timeout)
-	  (set-terminal-mode tty :timeout timeout))
+	  (set-terminal-mode tty :timeout (truncate timeout 10)))
 	(with-foreign-object (c :char)
 	  (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
 				 (+SIGTSTP+  . tstp-handler))
+	    (when timeout
+	      (listen-for timeout tty))
 	    (setf status (read-raw-char tty c test-and-put-func))
 	    (when (zerop status)
 	      (setf got-eof t)))))
