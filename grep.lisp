@@ -158,7 +158,8 @@ Second value is the scanner that was used.
     (with-grout (*grout* output-stream)
       (with-open-file-or-stream (stream file-or-stream)
 	(setf matches
-	      (loop :while (setf line (resilient-read-line stream nil nil))
+	      ;;(loop :while (setf line (resilient-read-line stream nil nil))
+	      (loop :while (setf line (read-line stream nil nil))
 		 :do
 		 (setf result (funcall check-it)
 		       match nil)
@@ -204,19 +205,26 @@ Second value is the scanner that was used.
 		     (output-stream *standard-output*)
 		     count extended fixed ignore-case quiet invert
 		     line-number files-with-match files-without-match
-		     use-color collect no-filename)
+		     use-color collect no-filename gather-errors)
   "Call GREP with PATTERN on FILES. Arguments are:
   FILES     - A list of files to search.
   RECURSIVE - If FILES contain directory names, recursively search them.
  See the documentation for GREP for an explanation the other arguments."
   (declare (ignorable count extended ignore-case invert
 		      recursive line-number use-color fixed)) ;; @@@
-  (let (results scanner)
-    (flet ((call-grep (pattern stream &optional args)
-	     "Call grep with the same arguments we got."
-	     (if args
-		 (apply #'grep pattern stream :scanner scanner args)
-		 (grep pattern stream :scanner scanner))))
+  (let (results scanner result)
+    (labels ((call-grep (pattern stream &optional args)
+	       "Call grep with the same arguments we got."
+	       (if args
+		   (apply #'grep pattern stream :scanner scanner args)
+		   (grep pattern stream :scanner scanner)))
+	     (grep-one-file (f)
+	       (with-open-file (stream (native-pathname f))
+		 (multiple-value-setq (result scanner)
+		   (call-grep pattern stream
+			      (if (not no-filename)
+				  (append keywords `(:filename ,f))
+				  keywords))))))
       ;;(with-term-if (use-color output-stream)
       (with-grout (*grout* output-stream)
 	(cond
@@ -225,40 +233,49 @@ Second value is the scanner that was used.
 	  (t
 	   (when (not (consp files))
 	     (setf files (list files)))
-	   (loop :with result :and info
+	   (loop
 	      :for f :in files
-	      :if (not (file-exists f)) :do
-	      ;; XXX this isn't unix, make this a real error.
-	      ;; But unfortunately errors are quite disruptive here, so we
-	      ;; also need an option to suppress or gather errors, which should
-	      ;; probably be the default.
-	      (format *error-output*
-		      "~a: No such file or directory~%" f)
-	      :else :do
-	      (setf info (get-file-info f))
-	      (if (eq :directory (file-info-type info))
-		  (format *error-output* "~a: Is a directory~%" f) ;; XXX
-		  (with-open-file (stream (native-pathname f))
-		    (multiple-value-setq (result scanner)
-		      (call-grep pattern stream
-				 (if (not no-filename)
-				     (append keywords
-					     `(:filename ,f))
-				     keywords)))
-		    (cond
-		      ((and result files-with-match (not quiet))
-		       (grout-format "~a~%" f))
-		      ((and (not result) files-without-match (not quiet))
-		       (grout-format "~a~%" f)))))
-	      ;;:when collect :nconc result))))
-	      (when collect
-		(mapc (_ (push _ results)) result)))
-	   (setf results (nreverse results))))
-	;;:when collect :collect result))
-	(when (and collect files-with-match)
-	  (setf results
-		(remove-duplicates (mapcar #'first results) :test #'equal)))
-	results))))
+	      :do
+		(restart-case
+		    (progn
+		      (if (not (file-exists f))
+			  (if gather-errors
+			      (format *error-output*
+				      "~a: No such file or directory~%" f)
+			      (error "~a: No such file or directory~%" f))
+			  (let ((info (get-file-info f)))
+			    (if (eq :directory (file-info-type info))
+				(if gather-errors
+				    (format *error-output*
+					    "~a: Is a directory~%" f)
+				    (error "~a: Is a directory~%" f))
+				(if gather-errors
+				    (handler-case
+					(grep-one-file f)
+				      (stream-error (c)
+					(let ((*print-pretty* nil))
+					  (format *error-output*
+						  "~a: ~a ~a~%" f (type-of c) c))
+					(invoke-restart 'continue)))
+				    (grep-one-file f)))
+			    (cond
+			      ((and result files-with-match (not quiet))
+			       (grout-format "~a~%" f))
+			      ((and (not result) files-without-match (not quiet))
+			       (grout-format "~a~%" f)))))
+		      (when collect
+			(mapc (_ (push _ results)) result)))
+		  (continue ()
+		    :report "Skip this file.")
+		  (skip-all ()
+		    :report "Skip remaining files with errors."
+		    (setf gather-errors t))))
+	   (setf results (nreverse results)))))
+      ;;:when collect :collect result))
+      (when (and collect files-with-match)
+	(setf results
+	      (remove-duplicates (mapcar #'first results) :test #'equal)))
+      results)))
 
 #+lish
 (lish:defcommand grep
@@ -300,6 +317,8 @@ Second value is the scanner that was used.
    (collect boolean
     :short-arg #\s :default '(lish:accepts :sequence)
     :help "True to collect matches in a sequence.")
+   (gather-errors boolean :short-arg #\e
+    :help "True to gather errors to *error-output*. Otherwise signal them.")
    (positions boolean :short-arg #\p
     :help "True to send positions to Lish output. Equivalent to -nqs, except
 it's only quiet if the receiving command accepts sequences."))
@@ -336,7 +355,8 @@ it's only quiet if the receiving command accepts sequences."))
 		      :line-number line-number
 		      :quiet quiet
 		      :use-color use-color
-		      :collect collect))
+		      :collect collect
+		      :gather-errors gather-errors))
     (if collect
 	(progn
 	  (dbugf :accepts "YOOOOOOO! output to *output*~%")
