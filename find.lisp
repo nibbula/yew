@@ -307,16 +307,16 @@ Options:
 		   (print nil))
   "Find files. Start in directory DIR.
 Tests are:
-  :name		  Matches file name.
-  :file-type	  Matches file type as returned by “file”.
-  :path		  Matches full path.
+  :name           Matches file name.
+  :file-type      Matches file type as returned by “file”.
+  :path           Matches full path.
   :perm           Matches permissions.
   :group          Matches group, a numeric GID or a name.
   :user           Matches user, a numeric UID or a name.
   :size           Matches size, a number with possible suffix.
   :type           Matches file type, one of: b, c, d, f, l, p, s.
   :time           Matches time, in some format or another.
-  :expr		  Matches the expression, which consists of operators:
+  :expr           Matches the expression, which consists of operators:
                    (and expr ...)
                    (or expr ...)
                    (not expr)
@@ -325,15 +325,15 @@ Tests are:
                    (perm string) or (permissions string)
                    (path string)
 Actions:
-  :do		  Calles the function with the full path for every match.
-  :collect	  True to return the file name(s) as a list. (default t)
-  :print	  True to print the file name. (default nil)
+  :do             Calles the function with the full path for every match.
+  :collect        True to return the file name(s) as a list. (default t)
+  :print          True to print the file name. (default nil)
 Options:
   :follow-links   True to follow symbolic links. (default t)
-  :verbose	  True to print directories as they are traversed.
-  :max-depth	  Maximum depth to consider.
-  :min-depth	  Minimum depth to consider.
-  :regexp	  True if matching is done with regular expressions. (default t)
+  :verbose        True to print directories as they are traversed.
+  :max-depth      Maximum depth to consider.
+  :min-depth      Minimum depth to consider.
+  :regexp         True if matching is done with regular expressions. (default t)
   :case-mode      The mode for matching letter characters. One of :smart,
                   :sensitive, or :insensitive. (default :smart)
                   :smart is insensitive if there are no upper case letters,
