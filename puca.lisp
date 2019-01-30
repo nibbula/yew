@@ -243,7 +243,11 @@ return history for the whole repository."))
   (tt-format "~a~%" (nos:current-directory)))
 
 (defun check-dir-and-command (dir command)
-  (let ((result (probe-directory dir)))
+  (let ((result
+	 ;; On git .git can sometimes be a regular file. (for submodules)
+	 ;;(probe-directory dir)
+	 (probe-file dir)
+	 ))
     (when (and result (not (command-pathname command)))
       (cerror "Proceed anyway."
 	      "Looks like a ~a directory, but ~a isn't installed?"
