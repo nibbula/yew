@@ -116,10 +116,7 @@ to MAX-WIDTH.."
   (osplit #\newline (with-output-to-fat-string (str)
 		      (justify-text cell :cols width :stream str))))
 
-(defmethod table-output-cell ((renderer terminal-table-renderer)
-			      table cell width justification row column)
-  "Output a table cell."
-  ;;(declare (ignore row))
+(defun %output-cell (renderer table cell width justification row column)
   (with-slots ((cursor table-print::cursor)) renderer
     (let* ((op (typecase cell
 		 ((or string fat-string) "/fatchar-io:print-string/")
@@ -154,5 +151,11 @@ to MAX-WIDTH.."
 	     (write (osubseq field 0 (min width (olength field)))
 		    :stream *destination* :escape nil :readably nil :pretty nil)
 	     (incf cursor (min width (olength field)))))))))
+
+(defmethod table-output-cell ((renderer terminal-table-renderer)
+			      table cell width justification row column)
+  "Output a table cell."
+  ;;(declare (ignore row))
+  (%output-cell renderer table cell width justification row column))
 
 ;; EOF
