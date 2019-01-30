@@ -252,7 +252,8 @@
 
 ;; The main entry point
 
-(defun rl (&key (input-stream *standard-input*)
+(defun rl (&key
+	     (input-stream *standard-input*)
 	     (eof-error-p t)
 	     (eof-value nil)
 	     (quit-value nil)
