@@ -1,3 +1,6 @@
 [submodule "terminal"]
 	path = terminal
 	url = https://github.com/nibbula/terminal
+[submodule "opsys"]
+	path = opsys
+	url = https://github.com/nibbula/opsys.git
