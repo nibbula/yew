@@ -117,6 +117,7 @@ to MAX-WIDTH.."
 		      (justify-text cell :cols width :stream str))))
 
 (defun %output-cell (renderer table cell width justification row column)
+  (declare (ignore row))
   (with-slots ((cursor table-print::cursor)) renderer
     (let* ((op (typecase cell
 		 ((or string fat-string) "/fatchar-io:print-string/")
@@ -155,7 +156,6 @@ to MAX-WIDTH.."
 (defmethod table-output-cell ((renderer terminal-table-renderer)
 			      table cell width justification row column)
   "Output a table cell."
-  ;;(declare (ignore row))
   (%output-cell renderer table cell width justification row column))
 
 ;; EOF
