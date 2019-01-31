@@ -19,15 +19,20 @@
 	     (defpackage ,name
 	       ,@body)))))
 
+;; @@@ The ‘o’ prefix is rather ugly. We should entertain other naming ideas.
+
 (eval-when (:compile-toplevel :load-toplevel :execute)
 (stfu-defpackage :collections
   (:documentation
-   "So it seems like I'm doing this again. These aren't so much for the methods
-defined in here, but it's *really* so you can define your own methods which work
-somewhat orthogonally with system classes. The ‘o’ prefix is rather ugly.
-We should entertain other naming ideas.")
+   "Generic collection functions. These aren't so much for the methods defined
+in here, but it's really so you can define your own methods which work
+somewhat orthogonally with system classes. Be warned that using things in here
+can be very slow compared to the similar CL sequence functions. There's some
+pretty foolish implementations in here, in the cause of orthogonality.
+Especially the parts where we rather clownishly dress up hash tables and
+structs as sequences. Also we really need the MOP for stuff.")
   (:use :cl)	   ; Please don't add any dependencies.
-  (:nicknames :o)) ; too presumptuous, but maybe we could remove the 'o'
+  (:nicknames :o)) ; too presumptuous, but maybe we could remove the 'o'?
 )
 
 (in-package :collections)
@@ -807,12 +812,118 @@ false. If no element satifies the test, NIL is returned.")
   (:documentation "")
   (:method ((collection XX))
 	    ))
+|#
 
-(defgeneric oconcatenate (collection ...)
-  (:documentation "")
-  (:method ((collection XX))
-	    ))
+(defgeneric oconcatenate (first-collection &rest collections)
+  (:documentation
+   "Return a collection containing all the individual elements of all the
+collections. If they are ordered collections, the elements will be in the order
+that they were supplied. The resulting collection is of the same type as the
+first collection. For some")
+  (:method ((first-collection list) &rest collections)
+    (when (not (every #'(lambda (_) (typep _ 'sequence)) collections))
+      (error
+       "I don't know how to concatenate things that aren't sequences~
+        to a list."))
+    (apply #'concatenate 'list first-collection collections))
+  (:method ((first-collection vector) &rest collections)
+    (when (not (every #'(lambda (_) (typep _ 'sequence)) collections))
+      (error
+       "I don't know how to concatenate things that aren't sequences~
+        to a vector."))
+    (apply #'concatenate 'vector first-collection collections))
+  (:method ((first-collection sequence) &rest collections)
+    (when (not (every #'(lambda (_) (typep _ 'sequence)) collections))
+      (error
+       "I don't know how to concatenate things that aren't sequences~
+        to a strange sequence type."))
+    (apply #'concatenate (type-of first-collection)
+	   first-collection collections))
+  (:method ((first-collection hash-table) &rest collections)
+    (when (not (every #'keyed-collection-p collections))
+      (error
+       "I don't know how to concatenate things that aren't keyed-collections~
+        to a hash-table."))
+    (let ((new-table (ocopy first-collection)))
+      (loop :for c :in collections :do
+	   (maphash #'(lambda (key value)
+			(setf (gethash key new-table) value))
+		   c))
+      new-table))
+  ;; We could do something ridiculous, like defining a new structure or
+  ;; class that has the slots of all the collections. But it's not only crazy
+  ;; sauce, it isn't even the same type as the arguments.
+  ;; (:method ((first-collection structure-object) &rest collections) @@@)
+  ;; (:method ((collection standard-object)) @@@)
+  )
 
+(defmethod oconcatenate ((first-collection container) &rest collections)
+  ;; @@@ Is this right? What should we check about collections?
+  (apply #'oconcatenate (container-data first-collection)
+	 (loop :for c :in collections
+	    :collect (container-data c))))
+
+(defgeneric oconcatenate-as (result-type &rest collections)
+  (:documentation
+   "Return a collection containing all the individual elements of all the
+collections. If they are ordered collections, the elements will be in the order
+that they were supplied. The resulting collection is of type RESULT-TYPE.")
+  (:method ((result-type (eql 'list)) &rest collections)
+    (when (not (every #'(lambda (_) (typep _ 'sequence)) collections))
+      (error
+       "I don't know how to concatenate things that aren't sequences~
+        to a list."))
+    (apply #'concatenate 'list collections))
+  (:method ((result-type (eql 'vector)) &rest collections)
+    (when (not (every #'(lambda (_) (typep _ 'sequence)) collections))
+      (error
+       "I don't know how to concatenate things that aren't sequences~
+        to a vector."))
+    (apply #'concatenate 'vector collections))
+  ;; You'll have to make your own method for a non-standard sequence.
+  (:method ((result-type (eql 'hash-table)) &rest collections)
+    (when (not (every #'keyed-collection-p collections))
+      (error
+       "I don't know how to concatenate things that aren't keyed-collections~
+        to a hash-table."))
+    (let ((new-table
+	   ;; Use the first hash table found as a template.
+	   (let ((hh (find-if #'hash-table-p collections)))
+	     (if hh
+		 (make-hash-table
+		  :test (hash-table-test hh)
+		  :size (hash-table-size hh)
+		  :rehash-size (hash-table-rehash-size hh)
+		  :rehash-threshold (hash-table-rehash-threshold hh))
+		 ;; There's no hash tables. We can just make any old one, but
+		 ;; there could be problems.
+		 (progn
+		   (cerror "I'm fine with that."
+			   ;; @@@ This should really be an error type so
+			   ;; someone could theoretically auto-continue.
+			   "There are no hash tables in collections that I can ~
+                          copy. You might lose something.")
+		   (make-hash-table))))))
+      (loop :for c :in collections :do
+	   (maphash #'(lambda (key value)
+			(setf (gethash key new-table) value))
+		    c))
+      new-table))
+  ;; We could do something ridiculous, like defining a new structure or
+  ;; class that has the slots of all the collections. But it's not only crazy
+  ;; sauce, it isn't even the same type as the arguments.
+  ;; (:method ((first-collection structure-object) &rest collections) @@@)
+  ;; (:method ((collection standard-object)) @@@)
+  )
+
+(defmethod oconcatenate-as ((result-type (eql 'container)) &rest collections)
+  ;; @@@ Is this right? What should we check about collections?
+  (when collections
+    (apply #'oconcatenate (container-data (first collections))
+	   (loop :for c :in collections
+	      :collect (container-data c)))))
+
+#|
 (defgeneric omerge (collection ...)
   (:documentation "")
   (:method ((collection XX))
