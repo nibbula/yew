@@ -780,7 +780,7 @@ Also, it can't really delete the first (zeroth) element."
 	      (setf (cdr cons) (cddr cons))
 	      cons)))))
 
-(defun alist-to-hash-table (alist table)
+(defun alist-to-hash-table (alist &optional (table (make-hash-table)))
   "Load a hash table with data from an association list."
   (loop :for i :in alist
 	:do (setf (gethash (car i) table) (cdr i)))
