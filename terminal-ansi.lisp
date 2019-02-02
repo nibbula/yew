@@ -196,7 +196,7 @@ two values ROW and COLUMN."
   (eat-typeahead tty)
   (let ((row 1) (col 1) sep
 	(result (terminal-report tty #\R "~c[6n" #\escape)))
-    ;; (format t "result = ~s~%" (coerce result 'list))
+    ;;(dbugf :crunch "curs pos result = ~s~%" (coerce result 'list))
     (when (and result (>= (length result) 5))
       (setf sep (position #\; result)
 	    row (parse-integer (subseq result 2 sep) :junk-allowed t)
@@ -508,7 +508,7 @@ Report parameters are returned as values. Report is assumed to be in the form:
 		 (with-interrupts-handled (tty)
 		   (read-until fd end-char
 			       ;;:timeout 1
-			       :timeout 0.0001
+			       :timeout 0.05
 			       )))))
       #| @@@ temporarily get rid of this error
       (when (null str)
