@@ -435,10 +435,11 @@ return    0 on success")
   (log-buf	     :uint64) ;; aligned (char *)
   (kernel-version    :uint32))
 
-(defcunion bpf-attr ;; aligned(8)
-  (map-spec (:struct bpf-map-spec))
-  (map      (:struct bpf-map))
-  (program  (:struct bpf-program)))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defcunion bpf-attr ;; aligned(8)
+    (map-spec (:struct bpf-map-spec))
+    (map      (:struct bpf-map))
+    (program  (:struct bpf-program))))
 
 #|
 
@@ -480,7 +481,7 @@ code instructions."
 (defun real-bpf (cmd attr size)
   (real-syscall +SYS-BPF+
 		:int cmd
-		'(:pointer (:union bpf-attr)) attr
+		(:pointer (:union bpf-attr)) attr
 		:unsigned-int size))
 
 (defun bpf (cmd &rest args)
