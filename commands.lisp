@@ -95,17 +95,24 @@ buffer if there is no word."
   (forward-char e))
 
 (defun beginning-of-line (e)
- "Move the insertion point to the beginning of the line (actually the buffer)."
+ "Move the insertion point to the beginning of the line."
   (with-slots (point buf) e
-    (setf point 0)))
+    (when (> point 0)
+      (let* ((end point)
+	     (pos (oposition #\newline buf :end end :test #'ochar=
+			     :from-end t)))
+	(setf point (or pos 0))))))
 
 (defmethod move-to-beginning ((e line-editor))
   (beginning-of-line e))
 
 (defun end-of-line (e)
-  "Move the insertion point to the end of the line (actually the buffer)."
+  "Move the insertion point to the end of the line."
   (with-slots (point buf) e
-    (setf point (fill-pointer buf))))
+    (when (< point (fill-pointer buf))
+      (let* ((start (if (ochar= #\newline (aref buf point)) (1+ point) point))
+	     (pos (oposition #\newline buf :start start :test #'ochar=)))
+	(setf point (or pos (fill-pointer buf)))))))
 
 (defmethod move-to-end ((e line-editor))
   (end-of-line e))
@@ -119,8 +126,62 @@ buffer if there is no word."
   (history-prev (context e))
   (use-hist e))
 
+(defun point-coords (e)
+  "Return the line and column of point."
+  (let* ((spots `((,(point e) . ())))
+	 (endings (calculate-line-endings e :spots spots)))
+    (dbugf :roo "in point-coords:~%spots = ~s endings = ~s~%" spots endings)
+    (values (cdr (assoc (point e) spots))
+	    endings)))
+
+(defun index-of-coords (e line col)
+  (let* ((pair `(,line ,col))
+	 (spots `((,pair . ())))
+	 (endings (calculate-line-endings e :col-spots spots)))
+    (dbugf :roo "in index-of-coords:~%spots = ~s endings = ~s~%" spots endings)
+    (values (cdr (assoc pair spots :test #'equal))
+	    endings)))
+
+(defun forward-line (e &key (n 1))
+  "Move the point N lines, in the same column, or the end of the destination
+line. Return NIL and do nothing if we can't move that far, otherwise return
+the new point."
+  ;; @@@ This is wasteful since it does calculate-line-endings twice. I'm not
+  ;; sure that's entirely avoidable, but perhaps it could be quicker by making
+  ;; it be a more generic buffer position iterator, and then bailing out as
+  ;; soon as we get our thing.
+  (with-slots (point) e
+    (dbugf :roo "FIPPPY~%")
+    (let* ((coords (point-coords e))
+	   (line (car coords))
+	   (col (cdr coords))
+	   to-index endings)
+      (dbugf :roo "FOOOOPY~%line = ~a col = ~a~%" line col)
+      (setf (values to-index endings) (index-of-coords e (+ line n) col))
+      (dbugf :roo "to-index = ~a endings = ~a~%" to-index endings)
+      (if to-index
+	  (setf point to-index)
+	  ;; If we didn't find the same column on the previous line,
+	  ;; try to use index of the end of the previous line, or do nothing.
+	  (when (and (< 0 line (length endings))
+		     (setf to-index (nth (+ line n) (reverse endings))))
+	    (setf point (car to-index)))))))
+
+(defun previous-line (e)
+  (forward-line e :n -1))
+
+(defun previous-line-or-history (e)
+  "Go to the previous line, or the previous history entry if we're already at
+the first line."
+  ;;(if (find #\newline (simplify-string (buf e)))
+  (when (not (previous-line e))
+    (previous-history e)))
+
 (defmethod previous ((e line-editor))
-  (previous-history e))
+  (previous-line-or-history e))
+
+(defun next-line (e)
+  (forward-line e))
 
 (defun next-history (e)
   "Go to the next history entry."
@@ -128,8 +189,15 @@ buffer if there is no word."
   (history-next (context e))
   (use-hist e))
 
+(defun next-line-or-history (e)
+  "Go to the next line, or the next history entry if we're at the last line."
+  ;; (let ((simple-buf (simplify-string (buf e))))
+  ;;   (if (find #\newline simple-buf)
+  (when (not (next-line e))
+    (next-history e)))
+
 (defmethod next ((e line-editor))
-  (next-history e))
+  (next-line-or-history e))
 
 (defun beginning-of-history (e)
   "Go to the beginning of the history."
@@ -798,6 +866,10 @@ in order, \"{open}{close}...\".")
 (defmethod default-action ((e line-editor))
   (self-insert e))
 
+(defun newline (e)
+  "Insert a newline."
+  (self-insert e #\newline))
+
 ;; @@@ we can probably just use the one in terminal-inator?
 ;; (defmethod read-key-sequence ((e line-editor) &optional keymap)
 ;;   "Read a key sequence from the user. Descend into keymaps.
@@ -914,5 +986,10 @@ in order, \"{open}{close}...\".")
     (if result
 	(self-insert e t result)
 	(beep e "unipose ~c ~c unknown" first-ccc second-ccc))))
+
+(defun insert-file (e)
+  "Insert a file into the line editor's buffer."
+  (let* ((file (read-filename :prompt "Insert-file: ")))
+    (insert-string e (slurp file))))
 
 ;; EOF

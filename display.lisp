@@ -102,10 +102,11 @@
 ;; Perhaps we could consider caching or memoizing this? Espeically when
 ;; the buffer hasn't changed.
 
-(defun %calculate-line-endings (buffer start cols spots)
+(defun %calculate-line-endings (buffer start cols spots col-spots)
   "Return a list of pairs of character positions and columns, in reverse order
 of character position, which should be the end of the displayed lines in the
-buffer. SPOTS is an alist of character indexes to set the line and column of."
+buffer. SPOTS is an alist of character indexes to set the line and column of.
+COL-SPOTS is an alist of line and column pairs to set the character indexes of."
   (let (endings
 	(col start)			; Start after the prompt
 	(char-width 0)
@@ -119,7 +120,10 @@ buffer. SPOTS is an alist of character indexes to set the line and column of."
     (flet ((set-spot (x)
 	     (when (and spots (setf spot (assoc i spots)))
 	       (dbugf :rl "set-spot ~a~%" x)
-	       (rplacd spot (cons line col)))))
+	       (rplacd spot (cons line col)))
+	     (when (and col-spots (setf spot (assoc `(,line ,col) col-spots
+						    :test #'equal)))
+	       (rplacd spot i))))
       (loop :while (< i (olength buffer))
 	 :do
 	   (setf c (oelt buffer i)
@@ -166,14 +170,14 @@ buffer. SPOTS is an alist of character indexes to set the line and column of."
 				   (start (start-col e))
 				   (cols (terminal-window-columns
 					  (line-editor-terminal e)))
-				   spots)
+				   spots col-spots)
   "Return a list of pairs of character positions and columns, in reverse order
 of character position, which should be the end of the displayed lines in the
 buffer.
   BUFFER  The string to compute endings for.
   START   The column number of the first character in BUFFER.
   COLS    The number columns in the terminal window, after which it wraps."
-  (%calculate-line-endings buffer start cols #| do-final |# spots))
+  (%calculate-line-endings buffer start cols spots col-spots))
 
 (defun line-ending (pos endings)
   "Return the line ending at character position POS, from the line ENDINGS,
