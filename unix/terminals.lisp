@@ -1304,11 +1304,12 @@ TTY is a file descriptor. TIMEOUT is in seconds."
 				  #'test-and-put-byte
 				  #'test-and-put-char))
       (with-BOGO-terminal-mode (tty)
-        (when (and timeout
-		   (not (eql (truncate timeout 10)
-			     (terminal-mode-timeout (get-terminal-mode tty)))))
-	  ;; (format t "set timeout = ~s~%" timeout)
-	  (set-terminal-mode tty :timeout (truncate timeout 10)))
+        ;; (when (and timeout
+	;; 	   (not (eql (truncate timeout 10)
+	;; 		     (terminal-mode-timeout (get-terminal-mode tty)))))
+	;;   ;; (format t "set timeout = ~s~%" timeout)
+	;;   ;; (set-terminal-mode tty :timeout (truncate timeout 10)))
+	(set-terminal-mode tty :echo nil :line nil :raw nil :timeout 0)
 	(with-foreign-object (c :char)
 	  (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
 				 (+SIGTSTP+  . tstp-handler))
