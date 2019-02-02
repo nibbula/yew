@@ -101,6 +101,8 @@ buffer if there is no word."
       (let* ((end point)
 	     (pos (oposition #\newline buf :end end :test #'ochar=
 			     :from-end t)))
+	(when pos
+	  (incf pos))
 	(setf point (or pos 0))))))
 
 (defmethod move-to-beginning ((e line-editor))
@@ -165,7 +167,7 @@ the new point."
 	  ;; try to use index of the end of the previous line, or do nothing.
 	  (when (and (< 0 line (length endings))
 		     (setf to-index (nth (+ line n) (reverse endings))))
-	    (setf point (car to-index)))))))
+	    (setf point (1+ (car to-index))))))))
 
 (defun previous-line (e)
   (forward-line e :n -1))

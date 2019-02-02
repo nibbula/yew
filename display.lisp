@@ -132,9 +132,13 @@ COL-SPOTS is an alist of line and column pairs to set the character indexes of."
 	       (progn
 		 (push (cons (1- i) last-col) endings)
 		 (setf last-col col)
+		 ;; (when (< col (1- cols))
+		 ;;   (incf col))		; just for the cursor?
+		 (set-spot "NL")
 		 (incf line)
 		 (setf col 0)
-		 (set-spot "NL"))
+		 ;;(set-spot "NL")
+		 )
 	       (progn
 		 (setf char-width (display-length (oelt buffer i)))
 		 (if (> (+ col char-width) cols)
