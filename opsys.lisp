@@ -18,7 +18,6 @@
 ;;  - Be implemented in opsys-base, if they are needed to be used by the
 ;;    system specific packages, and are generic enough.
 ;;
-;;
 ;; Conventions:
 ;;
 ;;  - Call anything defined by defcstruct like: foreign-<C struct Name> This
@@ -43,6 +42,12 @@
 		   (compilation-speed 0)))
 
 (in-package :opsys)
+
+;; General outline for adding something with defos*
+;;   - Add a definition with defos* in this file.
+;;   - Add the symbol to the export list in package.lisp.
+;;   - Add a definition in <os>/<appropriate-file>.lisp.
+;;   - Add the symbol to the export list in <os>/package.lisp.
 
 (defmacro defosthing (name type test &optional doc)
   "Import a thing from the proper OS specific package and set it's
@@ -1153,6 +1158,8 @@ a terminal.")
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Character coding / localization
 
+(defosfun language ()
+  "Return the system's idea of the language for communicating with the user.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Miscellaneous

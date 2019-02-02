@@ -180,6 +180,7 @@
    #:char-width
    #:setlocale
    #:setup-locale-from-environment
+   #:language
 
    ;; misc
    #:exit-lisp

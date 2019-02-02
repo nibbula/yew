@@ -616,6 +616,7 @@
    ;; Character coding / localization
    #:wcwidth
    #:char-width
+   #:language
 
    ;; C dynamic libraries
    #:dlopen
