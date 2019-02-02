@@ -33,7 +33,7 @@ for various operations through the OUTPUT-COST methods.
 (declaim
  (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 ;; (declaim
-;;  (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
+;;  (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
 
 ;; As you may know, many of the world's lovely scripts, do not fit perfectly
 ;; into a character grid, so neither will all unicode characters. This will only
@@ -725,8 +725,8 @@ sizes. It only copies the smaller of the two regions."
       (update-size tty)
       (invalidate-before-start-row tty (new-screen tty))
       (invalidate-before-start-row tty (old-screen tty))
-      (dbugf :crunch "Crunch auto re-starting at ~s.~%" start-line)
-      (dbugf :crunch "allow-scrolling = ~s.~%" (allow-scrolling tty))
+      ;; (dbugf :crunch "Crunch auto re-starting at ~s.~%" start-line)
+      ;; (dbugf :crunch "allow-scrolling = ~s.~%" (allow-scrolling tty))
       )
     ;; @@@ Is this reasonable?
     ;; (terminal-erase-below tty)
@@ -750,10 +750,11 @@ sizes. It only copies the smaller of the two regions."
 		  (terminal-file-descriptor wtty)))
 	  (terminal-get-size wtty)
 	  (when start-at-current-line
-	    ;;(dbugf :crunch "Crunch auto starting at ~s.~%" start-line)
+	    ;; (dbugf :crunch "Crunch auto starting at ~s.~%" start-line)
 	    (setf start-line (terminal-get-cursor-position wtty)))
 
 	  ;; new screen
+	  ;; (dbugf :crunch "new-screen.~%")
 	  (when (not (new-screen tty))
 	    (setf (new-screen tty)
 		  (make-new-screen (terminal-window-rows wtty)
@@ -762,6 +763,7 @@ sizes. It only copies the smaller of the two regions."
 	      (setf (screen-y (new-screen tty)) start-line)))
 
 	  ;; old screen
+	  ;; (dbugf :crunch "old-screen.~%")
 	  (when (not (old-screen tty))
 	    (setf (old-screen tty)
 		  (make-new-screen (terminal-window-rows wtty)
@@ -770,6 +772,7 @@ sizes. It only copies the smaller of the two regions."
 	      (setf (screen-y (old-screen tty)) start-line))
 	    (compute-hashes (old-screen tty)))
 
+	  ;; (dbugf :crunch "rows and cols.~%")
 	  (setf (terminal-window-rows tty) (terminal-window-rows wtty)
 		(terminal-window-columns tty) (terminal-window-columns wtty))
 
@@ -778,9 +781,10 @@ sizes. It only copies the smaller of the two regions."
 	      (progn
 		(terminal-clear wtty)
 		(terminal-home wtty)
-		;;(dbugf :crunch "Crunch ~s started.~%" tty)
+		;; (dbugf :crunch "Crunch ~s started.~%" tty)
 		)
 	      (progn
+		;; (dbugf :crunch "non-zero start line ~s~%" start-line)
 		(invalidate-before-start-row tty (new-screen tty))
 		(invalidate-before-start-row tty (old-screen tty))
 		(terminal-move-to wtty start-line 0)
@@ -1710,7 +1714,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 			:start start
 			:end (min (1+ end) (length new-line))
 			#| :no-nulls t |#)))
-	     (dbugf :koo "floob len ~s ~s~%" (olength fs) fs)
+	     ;; (dbugf :koo "floob len ~s ~s~%" (olength fs) fs)
 	     (terminal-write-string wtty fs)
 	     ;; (dbugf :crunch "write-string ~s ->~s<-~%"
 	     ;; 	    (length (fat-string-string fs)) fs)
@@ -1726,8 +1730,8 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	     ))
 	(progn
 	  ;; Write a whole new line
-	  (dbugf :crunch "update-line WINKY ~s ~s-~s~%" line first-change
-		 (1+ last-change))
+	  ;; (dbugf :crunch "update-line WINKY ~s ~s-~s~%" line first-change
+	  ;; 	 (1+ last-change))
 	  (setf fs (ostring-right-trim
 		    (list *nul-char*)
 		    (grid-to-fat-string new-line
@@ -1851,7 +1855,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
 	       (new new-screen)
 	       start-line really-scroll-amount) tty
 
-    (if-dbugf (:crunch) (dump-screen tty))
+    ;; (if-dbugf (:crunch) (dump-screen tty))
     
     ;; Set starting point.
     (setf (update-x tty) (screen-x old)
