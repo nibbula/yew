@@ -165,7 +165,7 @@ the new point."
 	  (setf point to-index)
 	  ;; If we didn't find the same column on the previous line,
 	  ;; try to use index of the end of the previous line, or do nothing.
-	  (when (and (< 0 line (length endings))
+	  (when (and endings (>= (+ line n) 0) (< (+ line n) (length endings))
 		     (setf to-index (nth (+ line n) (reverse endings))))
 	    (setf point (1+ (car to-index))))))))
 
@@ -582,16 +582,32 @@ Don't update the display."
 
 (defun kill-line (e)
   (with-slots (clipboard buf point) e
-    (setf clipboard (subseq buf point))
-    (buffer-delete e point (fill-pointer buf))))
+    (let ((end (or (position #\newline buf :start point :key #'fatchar-c)
+		   (fill-pointer buf))))
+      ;; If we're sitting on a newline, kill that.
+      (when (and (= end point)
+		 (< point (fill-pointer buf))
+		 (char= #\newline (simplify-char (aref buf point))))
+	(incf end))
+      (setf clipboard (subseq buf point end))
+      (buffer-delete e point end))))
 
 (defun backward-kill-line (e)
   (with-slots (point clipboard buf) e
-    (when (> point 0)
-      (setf clipboard (subseq buf 0 point))
-      (replace-buffer e (subseq buf point))
-      (beginning-of-line e))
-    (clear-completions e)))
+    (let ((start (or (position #\newline buf
+			       :from-end t :end point :key #'fatchar-c)
+		     0)))
+      (when (> point 0)
+	(when (not (zerop start))
+	  (incf start))
+	(setf clipboard (subseq buf start point))
+	;; (if (zerop start)
+	;;     (replace-buffer e (subseq buf point))
+	(buffer-delete e start point)
+	(setf point start)
+	;;(beginning-of-line e)
+	)
+      (clear-completions e))))
 
 (defun yank (e)
   (with-slots (clipboard point) e
