@@ -238,37 +238,54 @@ anything important.")
     :initarg :accept-does-newline
     :initform t :type boolean
     :documentation "True if accept-line outputs a newline.")
+   (highlight-region
+    :initarg :highlight-region :accessor line-editor-highlight-region
+    :initform t :type boolean
+    :documentation "True to highlight the region.")
+   (highlight-attr
+    :initarg :highlight-attr :accessor line-editor-highlight-attr
+    :initform :standout
+    :documentation "Attribute to use for region highlighting.")
+   (region-active
+    :initarg :region-active :accessor line-editor-region-active
+    :initform nil :type boolean
+    :documentation
+    "True if the region is active, which makes it eligible for highlighting.")
+   (keep-region-active
+    :initarg :keep-region-active :accessor line-editor-keep-region-active
+    :initform nil :type boolean
+    :documentation "True to keep the region active after the command is done.
+Otherwise the region is deactivated every command loop.")
    )
   (:default-initargs
     :non-word-chars *default-non-word-chars*
     :prompt-string *default-prompt*
-    ;;:terminal-class 'terminal-ansi
     :terminal-class (or (and *terminal* (class-of *terminal*))
-			;;'terminal-ansi
-			(find-terminal-class-for-type *default-terminal-type*)
-			)
+			(find-terminal-class-for-type
+			 (pick-a-terminal-type)))
   )
   (:documentation "State for a stupid little line editor."))
 
 (defvar *initial-line-size* 20)
 
 (defmethod initialize-instance :after ((e line-editor) &rest initargs)
-  (declare (ignore initargs))
-
+  (dbugf :rl "init editor~%")
   ;; Make a terminal using the device name and class, or use *TERMINAL*.
   (when (not (and (slot-boundp e 'terminal) (slot-value e 'terminal)))
-    (setf (slot-value e 'terminal)
-	  (if (and (slot-boundp e 'terminal-device-name)
-		   (slot-value e 'terminal-device-name))
-	      (make-instance (slot-value e 'terminal-class)
-			     :device-name (line-editor-terminal-device-name e)
-			     :start-at-current-line t)
-	      (or (progn
-		    (when *terminal*
-		      (dbug "Using *TERMINAL* ~a~%" (type-of *terminal*)))
-		    *terminal*)
-		  (make-instance (slot-value e 'terminal-class)
-				 :start-at-current-line t)))))
+    (let ((default-class (or (slot-value e 'terminal-class)
+		     (getf initargs :terminal-class))))
+      (setf (slot-value e 'terminal)
+	    (if (and (slot-boundp e 'terminal-device-name)
+		     (slot-value e 'terminal-device-name))
+		(make-instance default-class
+			       :device-name (line-editor-terminal-device-name e)
+			       :start-at-current-line t)
+		(or (progn
+		      (when *terminal*
+			(dbug "Using *TERMINAL* ~a~%" (type-of *terminal*)))
+		      *terminal*)
+		    (make-instance default-class :start-at-current-line t))))))
+  (dbugf :rl "terminal = ~s~%" (slot-value e 'terminal))
 
   ;; If the local keymap wasn't given, make an empty one.
   (unless (and (slot-boundp e 'local-keymap) (slot-value e 'local-keymap))

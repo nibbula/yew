@@ -59,9 +59,18 @@ it with ACTION's return value."
 (defun backward-word (e)
   "Move the insertion point to the beginning of the previous word or the
 beginning of the buffer if there is no word."
-  (with-slots (point non-word-chars) e
+  (with-slots (point non-word-chars keep-region-active) e
     (scan-over e :backward :func #'(lambda (c) (position c non-word-chars)))
-    (scan-over e :backward :not-in non-word-chars)))
+    (scan-over e :backward :not-in non-word-chars)
+    (setf keep-region-active t)))
+
+(defun mark-backward-word (e)
+  "Set the mark if it's not already set or the region is not active,
+and move backward a word."
+  (with-slots (mark region-active) e
+    (when (or (not region-active) (not mark))
+      (set-mark e))
+    (backward-word e)))
 
 (defmethod backward-multiple ((e line-editor))
   (backward-word e))
@@ -69,52 +78,95 @@ beginning of the buffer if there is no word."
 (defun forward-word (e)
   "Move the insertion point to the end of the next word or the end of the
 buffer if there is no word."
-  (with-slots (point non-word-chars) e
+  (with-slots (point non-word-chars keep-region-active) e
     (scan-over e :forward :func #'(lambda (c) (position c non-word-chars)))
-    (scan-over e :forward :not-in non-word-chars)))
+    (scan-over e :forward :not-in non-word-chars)
+    (setf keep-region-active t)))
+
+(defun mark-forward-word (e)
+  "Set the mark if it's not already set or the region is not active,
+and move forward a word."
+  (with-slots (mark region-active) e
+    (when (or (not region-active) (not mark))
+      (set-mark e))
+    (forward-word e)))
 
 (defmethod forward-multiple ((e line-editor))
   (forward-word e))
 
 (defun backward-char (e)
   "Move the insertion point backward one character in the buffer."
-  (with-slots (point) e
+  (with-slots (point keep-region-active) e
     (when (> point 0)
-      (decf point))))
+      (decf point))
+    (setf keep-region-active t)))
+
+(defun mark-backward-char (e)
+  "Set the mark if it's not already set or the region is not active,
+and move backward a character."
+  (with-slots (mark region-active) e
+    (when (or (not region-active) (not mark))
+      (set-mark e))
+    (backward-char e)))
 
 (defmethod backward-unit ((e line-editor))
   (backward-char e))
 
 (defun forward-char (e)
   "Move the insertion point forward one character in the buffer."
-  (with-slots (point buf) e
+  (with-slots (point buf keep-region-active) e
     (when (< point (fill-pointer buf))
-      (incf point))))
+      (incf point))
+    (setf keep-region-active t)))
+
+(defun mark-forward-char (e)
+  "Set the mark if it's not already set or the region is not active,
+and move forward a character."
+  (with-slots (mark region-active) e
+    (when (or (not region-active) (not mark))
+      (set-mark e))
+    (forward-char e)))
 
 (defmethod forward-unit ((e line-editor))
   (forward-char e))
 
 (defun beginning-of-line (e)
  "Move the insertion point to the beginning of the line."
-  (with-slots (point buf) e
+  (with-slots (point buf keep-region-active) e
     (when (> point 0)
       (let* ((end point)
 	     (pos (oposition #\newline buf :end end :test #'ochar=
 			     :from-end t)))
 	(when pos
 	  (incf pos))
-	(setf point (or pos 0))))))
+	(setf point (or pos 0))))
+    (setf keep-region-active t)))
+
+(defun beginning-of-buffer (e)
+  "Move the point to the beginning of the editor buffer."
+  (with-slots (point keep-region-active) e
+    (when (> point 0)
+      (setf point 0))
+    (setf keep-region-active t)))
 
 (defmethod move-to-beginning ((e line-editor))
   (beginning-of-line e))
 
 (defun end-of-line (e)
   "Move the insertion point to the end of the line."
-  (with-slots (point buf) e
+  (with-slots (point buf keep-region-active) e
     (when (< point (fill-pointer buf))
       (let* ((start (if (ochar= #\newline (aref buf point)) (1+ point) point))
 	     (pos (oposition #\newline buf :start start :test #'ochar=)))
-	(setf point (or pos (fill-pointer buf)))))))
+	(setf point (or pos (fill-pointer buf)))))
+    (setf keep-region-active t)))
+
+(defun end-of-buffer (e)
+  "Move the point to the end of the editor buffer."
+  (with-slots (point buf keep-region-active) e
+    (when (< point (fill-pointer buf))
+      (setf point (fill-pointer buf)))
+    (setf keep-region-active t)))
 
 (defmethod move-to-end ((e line-editor))
   (end-of-line e))
@@ -170,6 +222,7 @@ the new point."
 	    (setf point (1+ (car to-index))))))))
 
 (defun previous-line (e)
+  (setf (line-editor-keep-region-active e) t)
   (forward-line e :n -1))
 
 (defun previous-line-or-history (e)
@@ -183,6 +236,7 @@ the first line."
   (previous-line-or-history e))
 
 (defun next-line (e)
+  (setf (line-editor-keep-region-active e) t)
   (forward-line e))
 
 (defun next-history (e)
@@ -256,22 +310,28 @@ if it's blank or the same as the previous line."
 (defun copy-region (e)
   "Copy the text between the insertion point and the mark to the clipboard."
   (with-slots (point mark buf clipboard) e
-    (setf clipboard (subseq buf mark point))))
+    (let* ((start (min mark point))
+	   (end (min (max mark point) (fill-pointer buf))))
+      (setf clipboard (subseq buf start end)))))
 
 (defmethod copy ((e line-editor))
   (copy-region e))
 
 (defun set-mark (e)
   "Set the mark to be the current point."
-  (with-slots (point mark) e
-    (setf mark point)))
+  (with-slots (point mark region-active keep-region-active) e
+    (setf mark point
+	  region-active t
+	  keep-region-active t)
+    mark))
 
 (defmethod select ((e line-editor))
   (set-mark e))
 
 (defun exchange-point-and-mark (e)
   "Move point to the mark. Set the mark at the old point."
-  (with-slots (point mark) e
+  (with-slots (point mark keep-region-active) e
+    (setf keep-region-active t)
     (when mark
       (rotatef point mark))))
 
@@ -501,11 +561,13 @@ Control-R searches again backward and Control-S searches again forward."
 ;; @@@ Consider calling redraw?
 (defun redraw-command (e)
   "Clear the screen and redraw the prompt and the input line."
-  (with-slots (prompt-string prompt-func point buf need-to-redraw) e
+  (with-slots (prompt-string prompt-func point buf need-to-redraw
+	       keep-region-active) e
     (tt-clear) (tt-home)
     (setf (screen-col e) 0 (screen-relative-row e) 0)
     (update-display e)
-    (setf need-to-redraw nil)))
+    (setf need-to-redraw nil
+	  keep-region-active t)))
 
 (defmethod redraw ((e line-editor))
   (redraw-command e))
@@ -927,11 +989,11 @@ in order, \"{open}{close}...\".")
 	   (tmp-message e "~w is not bound"
 			(key-sequence-string key-seq)))))
     ;; (redraw-line e)
-    ))
+    (setf (line-editor-keep-region-active e) t)))
 
 (defun what-cursor-position (e)
   "Describe the cursor position."
-  (with-slots (point buf screen-relative-row screen-col) e
+  (with-slots (point buf screen-relative-row screen-col keep-region-active) e
     (let* ((fc (and (< point (length buf))
 		    (aref buf point)))
 	   (char (and fc (fatchar-c fc)))
@@ -944,8 +1006,7 @@ in order, \"{open}{close}...\".")
 		       code code)
 	  (tmp-message e "~s of ~s Row: ~s Column: ~s"
 		       point (length buf) screen-relative-row screen-col))
-      ;;(redraw-line e)
-      )))
+      (setf keep-region-active t))))
 
 (defun exit-editor (e)
   "Stop editing."

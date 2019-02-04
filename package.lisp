@@ -30,6 +30,8 @@
    #:line-editor-debug-log
    #:line-editor-keymap
    #:line-editor-local-keymap
+   #:line-editor-highlight-region
+   #:line-editor-highlight-attr
    #:get-buffer-string
    #:replace-buffer
    #:*history-context*

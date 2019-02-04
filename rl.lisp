@@ -14,12 +14,20 @@
     (,(ctrl #\F)		. forward-char)
     (,(ctrl #\A)		. beginning-of-line)
     (,(ctrl #\E)		. end-of-line)
+    (,(meta-char #\a)		. beginning-of-buffer)
+    (,(meta-char #\e)		. end-of-buffer)
     (,(ctrl #\P)		. previous-line-or-history)
     (,(ctrl #\N)		. next-line-or-history)
     (,(meta-char #\p)		. previous-history)
     (,(meta-char #\n)		. next-history)
     (,(meta-char #\b)		. backward-word)
     (,(meta-char #\f)		. forward-word)
+    (:c-left			. backward-word)
+    (:c-right			. forward-word)
+    (:s-left			. mark-backward-char)
+    (:s-right			. mark-forward-char)
+    (:s-c-left			. mark-backward-word)
+    (:s-c-right			. mark-forward-word)
     (,(meta-char #\<)		. beginning-of-history)
     (,(meta-char #\>)		. end-of-history)
 
@@ -271,8 +279,10 @@
 	     (keymap nil)
 	     (terminal nil)
 	     (terminal-name *terminal-name*)
+	     ;; (terminal-class (find-terminal-class-for-type
+	     ;; 		      *default-terminal-type*)) ; (pick-a-terminal-type)
 	     (terminal-class (find-terminal-class-for-type
-			      *default-terminal-type*)) ; (pick-a-terminal-type)
+			      (pick-a-terminal-type)))
 	     (accept-does-newline t)
 	     (context :tiny))		; remnant
   "Read a line from the terminal, with line editing and completion.
@@ -371,7 +381,7 @@ Keyword arguments:
     ;; Command loop
     (with-slots (quit-flag exit-flag command buf point last-command terminal
 		 screen-relative-row screen-col debugging temporary-message
-		 last-event filter-hook) e
+		 last-event filter-hook region-active keep-region-active) e
       ;; (multiple-value-setq (screen-relative-row screen-col)
       ;; 	(terminal-get-cursor-position *terminal*))
       (let ((result nil))
@@ -401,20 +411,10 @@ Keyword arguments:
 		;;(setf command (await-event e))
 		(setf last-event (await-event e))
 		(log-message e "command ~s" command)
-		;; (when (need-to-redraw e)
-		;;   (redraw-display e :erase t))
-		;; (setf (old-line e) (copy-fatchar-string (buf e)))
-		;; (when temporary-message
-		;;   ;; Clear out the temporary message.
-		;;   (loop :repeat temporary-message
-		;;      :do
-		;;      (tt-down)
-		;;      (tt-erase-line))
-		;;   (tt-up temporary-message)
-		;;   (tt-finish-output)
-		;;   (setf temporary-message nil))
+		;; Erase the temporary message.
 		(when temporary-message
 		  (setf temporary-message nil))
+		(setf keep-region-active nil)
 		(if (equal command '(nil))
 		    (if eof-error-p
 			(error (make-condition 'end-of-file
@@ -440,6 +440,10 @@ Keyword arguments:
 		(run-hooks filter-hook e)
 		;; (when (need-to-recolor e)
 		;;   (recolor-line e))
+		;; Turn off the region if it's not flagged to be kept.
+		;;(dbugf :rl "region-active = ~s~%keep-region-active = ~s~%")
+		(when (and region-active (not keep-region-active))
+		  (setf region-active nil))
 		:while (not quit-flag))
 	  (block nil
 	    (tt-finish-output)

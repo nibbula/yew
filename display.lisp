@@ -237,6 +237,28 @@ in it."
     ;; (log-message e "do-prompt s = ~s ~s" (olength s) s)
     s))
 
+;; @@@ or we could just modify it?
+(defun highlightify (e string)
+  "Highlight the region in string. A new fatchar-string is returned."
+  (assert (typep string '(or string fatchar-string fat-string)))
+  (with-slots (mark point highlight-region highlight-attr) e
+    (if (and highlight-region mark)
+	(progn
+	  (let* ((array (etypecase string
+			 (fat-string
+			  (copy-fatchar-string (fat-string-string string)))
+			 (fatchar-string
+			  (copy-fatchar-string string))
+			 (string
+			  (make-fatchar-string string))))
+		 (start (min mark point))
+		 (end (min (max mark point) (length array))))
+	    (loop
+	       :for i :from start :below end
+	       :do (pushnew highlight-attr (fatchar-attrs (aref array i))))
+	    array))
+	string)))
+
 (defun relative-move-to-row (old new)
   (if (< new old)
       (progn
@@ -252,8 +274,8 @@ in it."
 ;; Now with more ploof!
 (defun redraw-display (e &key erase)
   (declare (ignore erase)) ; @@@
-  (with-slots (buf-str prompt-height point start-row start-col
-	       screen-relative-row last-line temporary-message) e
+  (with-slots (buf-str buf prompt-height point mark start-row start-col
+	       screen-relative-row last-line temporary-message region-active) e
     (dbugf :rl "----------------~%")
     (let* ((prompt (make-prompt e))
 	   (cols (terminal-window-columns (line-editor-terminal e)))
@@ -334,7 +356,12 @@ in it."
                     buf = ~s~%"
 	       buf-lines prompt-lines last-line start-col (buf-str e))
 	;; Write the line
-	(tt-write-string (buf-str e))
+	(if (and mark region-active)
+	    (progn
+	      (let ((s (make-fat-string :string (highlightify e buf))))
+		(tt-write-string s)
+		(dbugf :rl "highlighted = ~a~%" s)))
+	    (tt-write-string (buf-str e)))
 	(eol-compensate)
 	(tt-erase-to-eol)
 	(when temporary-message
