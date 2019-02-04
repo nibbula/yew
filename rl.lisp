@@ -404,14 +404,16 @@ Keyword arguments:
 		;; (when (need-to-redraw e)
 		;;   (redraw-display e :erase t))
 		;; (setf (old-line e) (copy-fatchar-string (buf e)))
+		;; (when temporary-message
+		;;   ;; Clear out the temporary message.
+		;;   (loop :repeat temporary-message
+		;;      :do
+		;;      (tt-down)
+		;;      (tt-erase-line))
+		;;   (tt-up temporary-message)
+		;;   (tt-finish-output)
+		;;   (setf temporary-message nil))
 		(when temporary-message
-		  ;; Clear out the temporary message.
-		  (loop :repeat temporary-message
-		     :do
-		     (tt-down)
-		     (tt-erase-line))
-		  (tt-up temporary-message)
-		  (tt-finish-output)
 		  (setf temporary-message nil))
 		(if (equal command '(nil))
 		    (if eof-error-p

@@ -199,11 +199,16 @@ anything important.")
    (old-line
     :initarg :old-line :accessor old-line :initform nil
     :documentation "A copy of the line as it was previously.")
+   ;; (temporary-message
+   ;;  :initarg :temporary-message :accessor temporary-message
+   ;;  :initform nil :type (or null fixnum)
+   ;;  :documentation
+   ;;  "Lines of temporary message we need to clear, or NIL if none.")
    (temporary-message
     :initarg :temporary-message :accessor temporary-message
-    :initform nil :type (or null fixnum)
+    :initform nil
     :documentation
-    "Lines of temporary message we need to clear, or NIL if none.")
+    "Temporary message to display, or NIL if none.")
    (input-callback
     :accessor line-editor-input-callback
     :initarg :input-callback

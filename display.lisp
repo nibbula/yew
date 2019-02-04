@@ -253,7 +253,7 @@ in it."
 (defun redraw-display (e &key erase)
   (declare (ignore erase)) ; @@@
   (with-slots (buf-str prompt-height point start-row start-col
-	       screen-relative-row last-line) e
+	       screen-relative-row last-line temporary-message) e
     (dbugf :rl "----------------~%")
     (let* ((prompt (make-prompt e))
 	   (cols (terminal-window-columns (line-editor-terminal e)))
@@ -274,7 +274,14 @@ in it."
 	   (endings (calculate-line-endings e :start (1+ prompt-last-col)
 					    :spots spots))
 	   (buf-lines     (length endings))
-	   (total-lines   (+ prompt-lines buf-lines))
+	   (msg-endings   (and temporary-message
+			       (calculate-line-endings
+				e :buffer temporary-message
+				:start 0 :cols cols)))
+	   (msg-lines     (if temporary-message
+			      (1+ (length msg-endings))
+			      0))
+	   (total-lines   (+ prompt-lines buf-lines msg-lines))
 	   (line-last-col (cddr (assoc line-end spots)))
 	   (spot          (assoc point spots))
 	   (point-line    (cadr spot))
@@ -330,6 +337,10 @@ in it."
 	(tt-write-string (buf-str e))
 	(eol-compensate)
 	(tt-erase-to-eol)
+	(when temporary-message
+	  (tt-write-char #\newline)
+	  (tt-write-string temporary-message))
+	(tt-erase-to-eol)
 	;; Erase junk after the line
 	(when last-line
 	  (setf erase-lines (max 0 (- last-line new-last-line)))
@@ -343,8 +354,8 @@ in it."
 	    (tt-up erase-lines)))
 
 	;; Move to the point.
-	(when (not (zerop point-offset))
-	  (tt-up point-offset))
+	(when (not (zerop (+ point-offset msg-lines)))
+	  (tt-up (+ point-offset msg-lines)))
 	(tt-move-to-col point-col)
 	(setf screen-relative-row (+ prompt-lines point-line)
 	      last-line new-last-line)
@@ -363,6 +374,7 @@ in it."
   (tt-write-string (apply #'format `(nil ,fmt ,@args)))
   (tt-finish-output))
 
+#|
 (defun tmp-message (e fmt &rest args)
   ;;(apply #'tmp-prompt e fmt args)
   (with-slots (screen-col screen-relative-row buf point temporary-message) e
@@ -395,6 +407,14 @@ in it."
       (setf screen-col saved-col
 	    screen-relative-row saved-row
 	    temporary-message (1+ (length endings))))))
+|#
+
+(defun tmp-message (e fmt &rest args)
+  (with-slots (temporary-message) e
+    (setf temporary-message (with-output-to-fat-string (fs)
+			      (apply #'format fs fmt args)))
+    (redraw-display e)))
+
 
 (defmethod message ((e line-editor) fmt &rest args)
   (apply #'tmp-message e fmt args))
