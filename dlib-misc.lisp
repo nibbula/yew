@@ -584,7 +584,7 @@ The date part is considered to be the current date."
       (/= (dtime-nanoseconds time1) (dtime-nanoseconds time2))))
 
 (defun dtime+ (time1 time2)
-  "Return the sum of TIME1 and TIME2."
+  "Return the sum of TIME1 and TIME2, as a dtime."
   (let ((s (+ (dtime-seconds time1) (dtime-seconds time2)))
 	(n (+ (dtime-nanoseconds time1) (dtime-nanoseconds time2))))
     (cond
@@ -598,7 +598,7 @@ The date part is considered to be the current date."
 		:nanoseconds n)))
 
 (defun dtime- (time1 time2)
-  "Return the difference of TIME1 and TIME2."
+  "Return the difference of TIME1 and TIME2, as a dtime."
   (let ((n (- (dtime-nanoseconds time1) (dtime-nanoseconds time2)))
 	s)
     (cond
