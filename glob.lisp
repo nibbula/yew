@@ -4,7 +4,6 @@
 
 ;; ToDo:
 ;;  - ALL or OMIT-HIDDEN option to not omit files starting with '.'
-;;  - make BRACES work
 ;;  - Fix exponential behavior:
 #|
 in ~/src/lisp/glob-test:
@@ -16,7 +15,6 @@ Convert to NFA or DFA. Traverse all branches simultaneously.
 (a 'a') -> (* 'a') +--> (a 'a') -> (*
                     \-> (* 'a')
 
-Or do figure out what cl-ppcre does.
 |#
 
 (defpackage :glob
@@ -165,7 +163,7 @@ If TILDE is true, count tilde '~~' characters as special characters."
     set))
 
 #|
-Stuff between braces:
+Stuff between square brackets:
   ranges:			a-z
   equivalence clases:		[=a=]      (e.g.: a ā á ä ã ...)
   named classes:		[:digit:]  (e.g.: 1 2 3 １ ２ ３ 一 二 三)
@@ -274,6 +272,12 @@ Second value is where the character set ended."
     (if (char-set-inverted set)
 	(not (or (do-string) (do-ranges) (do-classes)))
 	(or (do-string) (do-ranges) (do-classes)))))
+
+;; This doesn't do braces. Brace expansion seems to vary between shells. Mine
+;; is no exception to this. I suppose maybe some day we could move the brace
+;; expansion code from the shell to here, but whereas glob is quite useful
+;; elsewhere, braces seems fairly hackish and like you'd mostly use it in a
+;; shell command line where you don't want to do a full-blown loop iteration.
 
 ;; We could make a wrapper to hide the keywords, but who cares? There might be
 ;; some circumstance where they help.
@@ -612,6 +616,8 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 ;; despite POSIX. In a POSIX shell you can usually _only_ get arithmetic
 ;; evaluation, and string functions, and so on, in those weird expansions, but
 ;; it doesn't mean it's good. We can do it some other way.
+;;
+;; Quite ironically most wordexp implementations just forked the shell to do it.
 (defun wordexp ()
   (error "Don't."))
 
