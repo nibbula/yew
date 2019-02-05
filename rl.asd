@@ -13,7 +13,7 @@
   :depends-on (:dlib :dlib-misc :dl-list :stretchy :char-util
 	       :opsys :terminal :terminal-ansi :terminal-dumb :terminal-crunch
 	       :collections :ochar :fatchar :fatchar-io :completion :keymap
-	       :syntax-lisp :unipose :inator :terminal-inator)
+	       :syntax-lisp :unipose :inator :terminal-inator :theme)
   :serial t	; not entirely correct, but convenient
   :components
   ((:file "package")

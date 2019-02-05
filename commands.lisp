@@ -337,85 +337,37 @@ if it's blank or the same as the previous line."
 
 (defun isearch-backward (e)
   "Incremental search backward."
-  ;; (isearch e :backward)
-  (and e t)
-  )
+  (isearch e :backward))
 
 (defmethod search-command ((e line-editor))
   (isearch-backward e))
 
 (defun isearch-forward (e)
   "Incremental search forward."
-  ;; (isearch e :forward)
-  (and e t)
-  )
+  (isearch e :forward))
 
 ;; Sadly ASCII / UTF-8 specific. @@@ And should be moved to char-util?
 ;; (defun control-char-p (c)
 ;;   (let ((code (char-code c)))
 ;;     (or (< code 32) (= code 128))))
 
-(defparameter *isearch-prompt* "isearch: ")
-
-#|
-(defun display-search (e str pos)
+(defun display-search (e str pos prompt)
   "Display the current line with the search string highlighted."
-  (with-slots (buf point) e
-    ;;(setf point (min (or pos (length buf)) (length buf)))
-    (erase-display e)
-    ;;(tt-move-to-col 0)
-    ;;(tt-erase-to-eol)
-    ;;(setf (screen-col e) 0)
-    ;;(do-prefix e *isearch-prompt*)
-    (when (and str pos)
-      (without-undo (e)
-	;;(erase-display e)
-	(setf point 0)
-	(buffer-delete e 0 (length buf))
-	(buffer-insert e 0 (or (history-current (context e)) ""))
-	(move-over e (min (or pos (length buf)) (length buf)))
-	(setf point (min (or pos (length buf)) (length buf)))
-	)
-      )
-    #|
-      (loop :with end = (if pos (+ pos (length str)) nil)
-	   :for c :across buf :and i = 0 :then (1+ i) :do
-	   (cond
-	     ((and pos (= i pos))
-	      (tt-underline t))
-	     ((and end (= i end))
-	      (tt-underline nil)))
-	   (display-char e c))
-	(tt-underline nil))
-    (tt-finish-output)
-    |#
-    ;;(display-buf e 0 pos)
-    ;;(tt-underline t)
-    ;;(display-buf e pos (+ pos (length str)))
-    ;;(tt-underline nil)
-    ;;(display-buf e (+ pos (length str))
-    ))
-|#
-
-#|
-(defun display-search (e str pos)
-  "Display the current line with the search string highlighted."
-  (with-slots (point context) e
-    (erase-display e)
-    (do-prefix e *isearch-prompt*)
-    ;;(log-message e "buf = ~s" buf)
-    (when (history-current context)
-      (loop :with end = (if pos (+ pos (length str)) nil)
-	 :for c :across (history-current context)
-	 :and i = 0 :then (1+ i) :do
-	 (cond
-	   ((and pos (= i pos))
-	    (tt-underline t))
-	   ((and end (= i end))
-	    (tt-underline nil)))
-	 (display-char e c)))
-    (tt-underline nil)
-    (tt-finish-output)))
+  (with-slots (point buf mark context temporary-message) e
+    (setf temporary-message
+	  (s+ prompt str))
+      (if (and pos (history-current context))
+	  (let ((start pos)
+		(end (+ pos (length str))))
+	    (save-excursion (e)
+              (setf point start
+		    mark end		; for the highlightify
+		    buf (highlightify
+			 e (make-fatchar-string (history-current context))
+			 :style (theme-value *theme* '(:rl :search :style)))
+		    mark nil)		; for the redraw-display
+	      (redraw-display e)))
+	  (redraw-display e))))
 
 (defun search-start-forward (context)
   ;; (or (and (history-current-get context)
@@ -492,31 +444,37 @@ if it's blank or the same as the previous line."
 		     (return-from search-history pos)))))))))
   nil)
 
+(defparameter *isearch-prompt* "~:[~;failed ~]~:[>~;<~] i-search: ")
+
 (defun isearch (e &optional (direction :backward))
   "Incremental search which updates the search position as the user types. The
 search can be ended by typing a control character, which usually performs a
 command, or Control-G which stops the search and returns to the start.
 Control-R searches again backward and Control-S searches again forward."
-  (with-slots (point buf command context) e
+  (with-slots (point buf command context temporary-message) e
     (let ((quit-now nil)
 	  (start-point point)
 	  (start-hist (history-current-get context))
 	  (search-string (make-stretchy-string *initial-line-size*))
 	  (start-from (or (history-current-get context)
 			  (history-head (get-history context))))
-	  (pos point) old-pos c added)
+	  (pos point) old-pos c added failed)
       (labels ((redisp ()
-		 (display-search e search-string pos))
+		 (display-search e search-string point
+				 (format nil *isearch-prompt*
+					 failed (eq direction :backward))))
 	       (resync ()
 		 (buffer-delete e 0 (length buf))
 		 (buffer-insert e 0 (or (history-current (context e)) ""))
-		 (setf point (min (or pos (length buf)) (length buf)))))
-	(redisp)
+		 (setf point (min (or pos (length buf)) (length buf))
+		       temporary-message nil)
+		 (redraw-display e)))
 	(loop :while (not quit-now)
 	   :do
-	   (when (debugging e)
-	     (debug-message e "pos = ~a start-from = ~a" pos start-from))
-	   (display-search e search-string pos)
+	   ;; (when (debugging e)
+	   ;;   (debug-message e "pos = ~a start-from = ~a" pos start-from))
+	   (redisp)
+	   (tt-finish-output)
 	   (setf c (get-a-char e)
 		 added nil)
 	   (cond
@@ -536,9 +494,10 @@ Control-R searches again backward and Control-S searches again forward."
 	     ((or (eql c (ctrl #\h)) (eql c #\backspace) (eql c #\rubout))
 	      (stretchy-truncate search-string
 				 (max 0 (1- (length search-string)))))
-	     ((or (control-char-p c) (meta-char-p (char-code c)))
+	     ((or (and (characterp c)
+		       (or (control-char-p c) (meta-char-p (char-code c))))
+		  (not (characterp c)))
 	      (resync)
-	      (redraw-line e)
 	      (return-from isearch c))
 	     (t
 	      (stretchy-append search-string c)
@@ -547,16 +506,17 @@ Control-R searches again backward and Control-S searches again forward."
 			  e search-string direction start-from pos))
 	       (progn
 		 (setf old-pos pos
-		       point pos))
+		       point pos
+		       failed nil))
 	       (progn
-		 (when added
-		   (stretchy-truncate search-string
-				      (max 0 (1- (length search-string))))
-		   (setf pos old-pos))
-		 (beep e "Not found"))))
-	(resync)
-	(redraw-line e)))))
-|#
+		 (setf failed t)
+		 ;; (when added
+		 ;;   (stretchy-truncate search-string
+		 ;; 		      (max 0 (1- (length search-string))))
+		 ;;   (setf pos old-pos))
+		 ;; (beep e "Not found")
+		 )))
+	(resync)))))
 
 ;; @@@ Consider calling redraw?
 (defun redraw-command (e)

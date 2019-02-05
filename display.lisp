@@ -238,10 +238,11 @@ in it."
     s))
 
 ;; @@@ or we could just modify it?
-(defun highlightify (e string)
-  "Highlight the region in string. A new fatchar-string is returned."
+(defun highlightify (e string &key style)
+  "Highlight the region in string with style. A new fatchar-string is returned.
+If style isn't given it uses the theme value: (:rl :selection :style)"
   (assert (typep string '(or string fatchar-string fat-string)))
-  (with-slots (mark point highlight-region highlight-attr) e
+  (with-slots (mark point highlight-region) e
     (if (and highlight-region mark)
 	(progn
 	  (let* ((array (etypecase string
@@ -252,10 +253,19 @@ in it."
 			 (string
 			  (make-fatchar-string string))))
 		 (start (min mark point))
-		 (end (min (max mark point) (length array))))
+		 (end (min (max mark point) (length array)))
+		 (style-char (make-array 1 :element-type 'fatchar
+					 :fill-pointer t
+					 :initial-element (make-fatchar))))
+	    (span-to-fatchar-string
+	     (append (or style
+			 (theme-value *theme* '(:rl :selection :style))
+			 '(:standout))
+			 (list #\x))
+		     :fatchar-string style-char)
 	    (loop
 	       :for i :from start :below end
-	       :do (pushnew highlight-attr (fatchar-attrs (aref array i))))
+	       :do (copy-fatchar-effects (aref style-char 0) (aref array i)))
 	    array))
 	string)))
 
@@ -277,6 +287,9 @@ in it."
   (with-slots (buf-str buf prompt-height point mark start-row start-col
 	       screen-relative-row last-line temporary-message region-active) e
     (dbugf :rl "----------------~%")
+    ;; Make sure buf-str uses buf.
+    (when (not (eq (fat-string-string buf-str) buf))
+      (setf (fat-string-string buf-str) buf))
     (let* ((prompt (make-prompt e))
 	   (cols (terminal-window-columns (line-editor-terminal e)))
 	   ;; Prompt figuring
@@ -441,7 +454,6 @@ in it."
     (setf temporary-message (with-output-to-fat-string (fs)
 			      (apply #'format fs fmt args)))
     (redraw-display e)))
-
 
 (defmethod message ((e line-editor) fmt &rest args)
   (apply #'tmp-message e fmt args))
