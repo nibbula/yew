@@ -482,6 +482,9 @@ Something like the default setting of typical GNU tools."))))
        (:command :alias		    :style) (:fg :color #(:rgb .8 .7 .9))
        (:command :function	    :style) (:magenta)
        (:command-arg :existing-path :style) (:underline)
+       ;; Line editor
+       (:rl :search    :style) (:underline :fg-red)
+       (:rl :selection :style) (:standout)
        ))
     tt))
 
