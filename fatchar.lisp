@@ -44,8 +44,8 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    ))
 (in-package :fatchar)
 
-;; (declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+(declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
+;;(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 (defstruct (fatchar (:copier nil))
   "A character with attributes."
@@ -1019,7 +1019,7 @@ attr | iiiiiiii
 (defun span-to-fatchar-string (span &key (start 0) end fatchar-string
 				      unknown-func filter)
   "Make a FATCHAR-STRING from SPAN. A span is a list representation of a
-fatchar string.  The grammar is something like:
+fatchar string. The grammar is something like:
 
 span ->
   string | fat-string |
