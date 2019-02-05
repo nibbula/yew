@@ -242,10 +242,6 @@ anything important.")
     :initarg :highlight-region :accessor line-editor-highlight-region
     :initform t :type boolean
     :documentation "True to highlight the region.")
-   (highlight-attr
-    :initarg :highlight-attr :accessor line-editor-highlight-attr
-    :initform :standout
-    :documentation "Attribute to use for region highlighting.")
    (region-active
     :initarg :region-active :accessor line-editor-region-active
     :initform nil :type boolean
@@ -332,6 +328,19 @@ but perhaps reuse some resources."))
 	(need-to-redraw e)	nil
 	(exit-flag e)		nil
 	(did-under-complete e)	nil))
+
+(defmacro save-excursion ((e) &body body)
+  "Evaluate the body with the buffer, point, and mark restored afterward."
+  (with-unique-names (saved-buf saved-point saved-mark)
+    `(let ((,saved-buf (buf ,e))
+	   (,saved-point (inator-point ,e))
+	   (,saved-mark (mark ,e)))
+       (unwind-protect
+	    (progn
+	      ,@body)
+	 (setf (buf ,e) ,saved-buf
+	       (inator-point ,e) ,saved-point
+	       (mark ,e) ,saved-mark)))))
 
 ;; For use in external commands.
 
