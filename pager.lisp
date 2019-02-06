@@ -52,7 +52,7 @@ The shell command takes any number of file names.
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 		   (compilation-speed 0)))
-;; (declaim (optimize (speed 3) (safety 0) (debug 0) (space 1)
+;; (declaim (optimize (speed 3) (safety 0) (debug 1) (space 1)
 ;; 		   (compilation-speed 0)))
 
 (define-constant +digits+ #(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
@@ -169,7 +169,12 @@ The shell command takes any number of file names.
    (pass-special
     :initarg :pass-special :accessor pager-pass-special
     :initform nil :type boolean
-    :documentation "True to pass special escape sequences to the terminal."))
+    :documentation "True to pass special escape sequences to the terminal.")
+   (color-bytes
+    :initarg :color-bytes :accessor pager-color-bytes
+    :initform nil :type boolean
+    :documentation "True for color bytes mode.")
+   )
   (:documentation "An instance of a pager."))
 
 (defclass text-pager (pager)
@@ -814,7 +819,7 @@ line : |----||-------||---------||---|
   "Display the lines already read, starting from the current."
   (tt-move-to 0 0)
   (tt-clear)
-  (with-slots (byte-pos buffer buffer-start left page-size) pager
+  (with-slots (byte-pos buffer buffer-start left page-size color-bytes) pager
     (let ((y 0)
 	  (len 0)
 	  (hex-len (hex-len))
@@ -826,10 +831,16 @@ line : |----||-------||---------||---|
 	   ;; @@@ implement offset
 	   ;; (when (and show-offset (zerop len))
 	   ;;   )
-	   (tt-color :green :black)
+	   (if color-bytes
+	       (tt-color (if (> (aref buffer i) 128)
+			     :black
+			     :white)
+			 (vector :gray8 (aref buffer i)))
+	       (tt-color :green :black))
 	   (tt-format "~2,'0x " (aref buffer i))
 	   (incf len 3)
-	   (princ (if (graphic-char-p (code-char (aref buffer i)))
+	   (princ (if (and (graphic-char-p (code-char (aref buffer i)))
+			   (= (display-length (code-char (aref buffer i))) 1))
 		      (code-char (aref buffer i))
 		      ".")
 		  printable)
@@ -863,7 +874,10 @@ line : |----||-------||---------||---|
 	   (tt-move-to i 0)
 	   (tt-write-string *empty-indicator*))))))
 
-(defun resize (pager)
+(defgeneric resize (pager)
+  (:documentation "Resize the pager. Call after getting a :resize event."))
+
+(defmethod resize ((pager text-pager))
   "Resize the page and read more lines if necessary."
   (with-slots (page-size line count) pager
     (when (/= page-size (1- (tt-height)))
@@ -872,6 +886,17 @@ line : |----||-------||---------||---|
       (when (< count (+ line page-size))
 	;;(message-pause "read lines ~d" (- (+ line page-size) count))
 	(read-input pager (- (+ line page-size) count))))))
+
+(defmethod resize ((pager binary-pager))
+  "Resize the page and read more lines if necessary."
+  (with-slots (page-size byte-count byte-pos) pager
+    (when (/= page-size (1- (tt-height)))
+      (setf page-size (1- (tt-height)))
+      ;; (when (< byte-count (+ byte-pos (* page-size (line-bytes))))
+      ;;  	(read-input pager (- (+ byte-pos (* page-size (line-bytes)))
+      ;; 			     (/ byte-count (line-bytes)))))
+      (read-input pager (+ byte-pos (* page-size (line-bytes))))
+      )))
 
 (defun ask-for (&key prompt space-exits)
   (let ((str (make-stretchy-string 10))
@@ -992,34 +1017,24 @@ list containing strings and lists."
 (defun set-option (pager)
   "Set a pager option. Propmpts for what option to toggle."
   (message "Set option: ")
-  (with-slots (show-line-numbers ignore-case wrap-lines raw-output pass-special)
-      pager
-    (let ((char (tt-get-char)))
-      (case char
-	((#\l #\L)
-	 (setf show-line-numbers (not show-line-numbers))
-	 (tmp-message "show-line-numbers is ~:[Off~;On~]"
-		      show-line-numbers))
-	((#\i #\I)
-	 (setf ignore-case (not ignore-case))
-	 (tmp-message "ignore-case is ~:[Off~;On~]" ignore-case))
-	((#\w #\S) ;; S is for compatibility with less
-	 (setf wrap-lines (not wrap-lines))
-	 (display-page *pager*)
-	 (tmp-message "wrap-lines is ~:[Off~;On~]" wrap-lines)
-	 (tt-finish-output))
-	(#\r
-	 (setf raw-output (not raw-output))
-	 (display-page *pager*)
-	 (tmp-message "raw-output is ~:[Off~;On~]" raw-output)
-	 (tt-finish-output))
-	(#\p
-	 (setf pass-special (not pass-special))
-	 (display-page *pager*)
-	 (tmp-message "pass-special is ~:[Off~;On~]" pass-special)
-	 (tt-finish-output))
-	(otherwise
-	 (tmp-message "Unknown option '~a'" (nice-char char)))))))
+  (with-slots (show-line-numbers ignore-case wrap-lines raw-output pass-special
+	       color-bytes) pager
+    (macrolet ((toggle-option (option)
+		 `(progn
+		    (setf ,option (not ,option))
+		    (display-page *pager*)
+		    (tmp-message "~(~a~) is ~:[Off~;On~]" ',option ,option)
+		    (tt-finish-output))))
+      (let ((char (tt-get-char)))
+	(case char
+	  ((#\l #\L) (toggle-option show-line-numbers))
+	  ((#\i #\I) (toggle-option ignore-case))
+	  ((#\w #\S) (toggle-option wrap-lines)) ;; S for compatibility w/less
+	  (#\r (toggle-option raw-output))
+	  (#\p (toggle-option pass-special))
+	  (#\c (toggle-option color-bytes))
+	  (otherwise
+	   (tmp-message "Unknown option '~a'" (nice-char char))))))))
 
 (defun open-lossy (filename &key binary)
   "Open FILENAME for reading in a way which is less likely to get encoding
@@ -1954,6 +1969,7 @@ compatible with 'less', 'vi' and 'emacs'.
     i I				  Ignore case when searching.
     w S				  Wrap long lines.
     l L				  Show line numbers.
+    c C				  Color bytes in binary mode.
 
 Press 'q' to exit this help.
 " output)))
@@ -2003,6 +2019,7 @@ then the key. Press 'q' to exit this help.
     :help "True to pass special escape sequences to the terminal.")
    (follow-mode boolean :short-arg #\f :help "True to start in follow mode.")
    (binary boolean :short-arg #\b :help "True to use binary mode.")
+   (color-bytes boolean :short-arg #\c :help "True to use color bytes mode.")
    (files pathname :repeating t :help "Files to view."))
   :accepts (:grotty-stream :file-list :file-locaations)
   "Look through text, one screen-full at a time."
@@ -2017,6 +2034,7 @@ then the key. Press 'q' to exit this help.
 	   :raw-output raw-output
 	   :pass-special pass-special
 	   :binary binary
+	   :color-bytes color-bytes
 	   :follow-mode follow-mode)))
 
 ;; EOF
