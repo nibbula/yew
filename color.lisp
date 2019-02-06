@@ -182,14 +182,6 @@ the VALUE."))
 (defmethod make-color ((color-model (eql :rgb)) &key red green blue)
   (vector color-model red green blue))
 
-(defmethod convert-color (color (from-color-model (eql :rgb))
-			          (to-color-model (eql :gray)))
-  (make-color :gray :value
-	      (/ (+ (color-component color :red)
-		    (color-component color :green)
-		    (color-component color :blue))
-		 3)))
-
 (defmethod convert-color (color (from-color-model (eql :gray))
 			          (to-color-model (eql :rgb)))
   (make-color :rgb
@@ -231,6 +223,81 @@ the VALUE."))
 	      :green (/ (color-component color :green) #xff)
 	      :blue  (/ (color-component color :blue)  #xff)))
 
+(defmethod convert-color (color (from-color-model (eql :gray8))
+			          (to-color-model (eql :rgb8)))
+  (make-color :rgb8
+	      :red   (color-component color :value)
+	      :green (color-component color :value)
+	      :blue  (color-component color :value)))
+
+(register-color-model :rgb8)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; Gray model - Value component stored as a Lisp number.
+;;
+
+(defmethod color-model-component ((color-model (eql :gray)) color component-name)
+  (let ((i (if (symbolp (svref color 0)) 1 0)))
+    (case component-name
+      (:value (svref color (+ 0 i)))
+      (t
+       (error "There's no color component ~a in the ~a color-model."
+	      component-name color-model)))))
+
+(defmethod set-color-model-component ((color-model (eql :gray))
+				      color component-name value)
+  (let ((i (if (symbolp (svref color 0)) 1 0)))
+    (case component-name
+      (:value  (setf (svref color (+ 0 i)) value))
+      (t
+       (error "There's No color component ~a in the ~a color-model."
+	      component-name color-model)))))
+
+(defmethod make-color ((color-model (eql :gray)) &key value)
+  (vector color-model value))
+
+(defmethod convert-color (color (from-color-model (eql :rgb))
+			          (to-color-model (eql :gray)))
+  (make-color :gray :value
+	      (/ (+ (color-component color :red)
+		    (color-component color :green)
+		    (color-component color :blue))
+		 3)))
+
+(defmethod convert-color (color (from-color-model (eql :gray8))
+			          (to-color-model (eql :gray)))
+  (make-color :gray :value
+	       (/ (color-component color :value) #xff)))
+
+(register-color-model :gray)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; The GRAY-8 color model: 8-bit integers
+;; Mostly the same as GRAY.
+;; We don't do any range checking.
+
+(defmethod color-model-component ((color-model (eql :gray8))
+				  color component-name)
+  (color-model-component :gray color component-name))
+
+(defmethod set-color-model-component ((color-model (eql :gray8))
+				      color component-name value)
+  (set-color-model-component :gray color component-name value))
+
+(defmethod make-color ((color-model (eql :gray8)) &key value)
+  (vector color-model value))
+
+(defmethod convert-color (color
+			  (from-color-model (eql :rgb))
+			  (to-color-model (eql :gray8)))
+  (make-color :gray8
+	      :value
+	      (/ (+ (component-to-8bit (color-component color :red))
+		    (component-to-8bit (color-component color :green))
+		    (component-to-8bit (color-component color :blue))) 3)))
+
 (defmethod convert-color (color
 			  (from-color-model (eql :rgb8))
 			  (to-color-model (eql :gray8)))
@@ -240,14 +307,20 @@ the VALUE."))
 		    (color-component color :blue))
 		 3)))
 
-(defmethod convert-color (color (from-color-model (eql :gray8))
-			          (to-color-model (eql :rgb8)))
+(defmethod convert-color (color
+			  (from-color-model (eql :gray8))
+			  (to-color-model (eql :rgb)))
   (make-color :rgb
-	      :red   (color-component color :value)
-	      :green (color-component color :value)
-	      :blue  (color-component color :value)))
+	      :red   (/ (color-component color :value) #xff)
+	      :green (/ (color-component color :value) #xff)
+	      :blue  (/ (color-component color :value) #xff)))
 
-(register-color-model :rgb8)
+(defmethod convert-color (color (from-color-model (eql :gray))
+			          (to-color-model (eql :gray8)))
+  (make-color :gray8 :value
+	      (component-to-8bit (color-component color :value))))
+
+(register-color-model :gray8)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
