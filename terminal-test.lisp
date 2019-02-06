@@ -706,7 +706,7 @@ drawing, which will get overwritten."
 (defun show-menu ()
   (tt-home)
   (tt-erase-below)
-  (tt-format " Terminal Tests ~%~%")
+  (tt-format " Terminal Tests (~a)~%~%" (class-name (class-of *terminal*)))
   (loop
      :for i :from 1
      :for (name . nil) :in *menu* :do
@@ -744,5 +744,24 @@ drawing, which will get overwritten."
 	   (asdf:load-system :terminal-test)
 	   :while (test-scrolling-region)))
       (format t "~%All done.~%"))))
+
+#+lish
+(lish:defcommand terminal-test
+  ((all boolean :short-arg #\a :help "True to run all tests.")
+   (type lenient-choice
+    :short-arg #\t
+    :default '(find-terminal-type-for-class (class-name (class-of *terminal*)))
+    :choices (loop :with x = terminal:*terminal-types*
+		:while x :collect (car x) :do (setf x (cddr x)))
+    :choice-labels `(loop :with x = terminal:*terminal-types*
+		       :while x :collect (string-downcase (car x))
+		       :do (setf x (cddr x)))
+    :help "Terminal type to test."))
+  "Test terminal functionality."
+  ;; (when (not type)
+  ;;   (setf type (find-terminal-type-for-class (class-of *terminal*))))
+  (if all
+      (run type)
+      (menu type)))
 
 ;; EOF
