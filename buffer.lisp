@@ -15,9 +15,10 @@
 ;; these.
 
 ;; Access methods
+;; @@@ Except of course these lose the effects.
 
 (defun buffer-string (buf)
-  "Return a buffer or buffer subsequence as string."
+  "Return a buffer as string."
   (fatchar-string-to-string buf))
 
 (defun buffer-char (buf i)
@@ -30,6 +31,28 @@
 
 (defsetf buffer-char set-buffer-char
   "Set the character at position I in buffer BUF.")
+
+;; Versions which don't lose the effects.
+;; @@@ And seem very pointless?
+
+(defun buffer-fat-string (buf)
+  "Return a buffer as new fat-string. Maybe you should use the buf-str slot?"
+  (make-fat-string :string buf))
+
+(defun buffer-fatchar-string (buf)
+  "Return a buffer or buffer subsequence as fatchar-string."
+  buf)
+
+(defun buffer-fatchar (buf i)
+  "Return the fatchar at position I in buffer BUF."
+  (aref buf i))
+
+(defun set-buffer-fatchar (buf i c)
+  "Set the fatchar at position I in buffer BUF to C."
+  (setf (aref buf i) c))
+
+(defsetf buffer-char set-buffer-fatchar
+  "Set the fatchar at position I in buffer BUF.")
 
 ;; Modify methods
 
@@ -44,6 +67,7 @@
       ;; If start equals end, it's a empty deletion, so we don't have to do
       ;; anything.
       (when (> end start)
+	(dbugf :rl "buffer-delete ~s ~s fill ~s~%" start end (fill-pointer buf))
 	(record-undo e 'deletion start (subseq buf start end) point)
 	;; Optimization: Deleting to the end, just decrement fill pointer.
 	(when (not (= end (fill-pointer buf)))
@@ -55,8 +79,8 @@
    "Insert something into the buffer at position POS.")
   (:method ((e line-editor) pos (c character))
     (let ((fc (make-fatchar :c c)))
-      (with-slots (buf) e
-	(record-undo e 'insertion pos (make-fatchar-string (string c)))
+      (with-slots (buf point) e
+	(record-undo e 'insertion pos (make-fatchar-string (string c)) point)
 	(if (= pos (length buf))
 	    ;; Appending to the end
 	    (progn
@@ -74,10 +98,10 @@
 	      (setf (subseq buf (1+ pos)) (subseq buf pos))
 	      (setf (aref buf pos) fc))))))
   (:method ((e line-editor) pos (s string))
-    (with-slots (buf) e
+    (with-slots (buf point) e
       (let ((len (length s))
 	    (fat-string (make-fatchar-string s)))
-	(record-undo e 'insertion pos fat-string)
+	(record-undo e 'insertion pos fat-string point)
 	(when (>= (+ len (length buf)) (array-total-size buf))
 	  (setf buf (adjust-array
 		     buf (+ (array-total-size buf) len
@@ -85,9 +109,9 @@
 	(incf (fill-pointer buf) len)
 	(setf (subseq buf (+ pos len)) (subseq buf pos))
 	(setf (subseq buf pos (+ pos len)) fat-string))))
-  (:method ((e line-editor) pos (s array))
+  (:method ((e line-editor) pos (s vector))
     ;; This is basically for a fat string which happens to be indistinguishable
-    ;; from an array.
+    ;; from a vector.
     ;; @@@ This has the effect of losing the attributes.
     (buffer-insert e pos (fatchar-string-to-string s))))
 
@@ -96,22 +120,35 @@
 
 (defgeneric buffer-replace (e pos thing)
   (:documentation
-   "Insert something into the buffer at position POS.")
+   "Replace THING in the buffer at position POS.")
   (:method ((e line-editor) pos (c character))
     (with-slots (buf point) e
-      (record-undo e 'deletion pos (make-fatchar-string (buffer-char buf point)))
-      (record-undo e 'insertion pos (make-fatchar-string c))
+      ;; (record-undo e 'deletion pos (make-fatchar-string (buffer-char buf pos)))
+      ;; (record-undo e 'insertion pos (make-fatchar-string c))
+      (record-undo e 'replacement pos
+		   (make-fatchar-string (buffer-char buf pos)) point)
       (setf (aref buf pos) (make-fatchar :c c))))
   (:method ((e line-editor) pos (s string))
     (with-slots (buf point) e
       (let ((len (length s))
-	    (fat-string (make-fatchar-string s)))
+	    (fs (make-fatchar-string s)))
 	(when (> (+ pos len) (length buf))
 	  (error "Replacement doesn't fit in the buffer."))
 	(when (> len 0)
-	  (record-undo e 'deletion pos (subseq buf pos (+ pos len)) point)
-	  (record-undo e 'insertion pos fat-string)
-	  (setf (subseq buf pos (+ pos len)) fat-string))))))
+	  ;; (record-undo e 'deletion pos (subseq buf pos (+ pos len)))
+	  ;; (record-undo e 'insertion pos fs)
+	  (record-undo e 'replacement pos (subseq buf pos (+ pos len)) point)
+	  (setf (subseq buf pos (+ pos len)) fs)))))
+  (:method ((e line-editor) pos (fs vector)) ; ?assume this means fatchar-string?
+    (with-slots (buf point) e
+      (let ((len (length fs)))
+	(when (> (+ pos len) (length buf))
+	  (error "Replacement doesn't fit in the buffer."))
+	(when (> len 0)
+	  ;; (record-undo e 'deletion pos (subseq buf pos (+ pos len)))
+	  ;; (record-undo e 'insertion pos fs)
+	  (record-undo e 'replacement pos (subseq buf pos (+ pos len)) point)
+	  (setf (subseq buf pos (+ pos len)) fs))))))
 
 ;; @@@ Currently unused.
 ;; (defun eobp (e)

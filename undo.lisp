@@ -36,6 +36,7 @@
 (defclass deletion (undo-item) ())
 (defclass insertion (undo-item) ())
 (defclass boundary (undo-item) ())
+(defclass replacement (undo-item) ())
 
 (defun undo-item-length (item)
   "Return the length of an undo item in buffer characters."
@@ -50,15 +51,33 @@
   (:documentation "Undo an undo item.")
   (:method (e (item boundary)) (declare (ignore e)) #| do nothing |# )
   (:method (e (item deletion))
-    (with-slots (point) e
+    (with-slots (point buf) e
       (buffer-insert e (undo-item-position item) (undo-item-data item))
-      (setf point (undo-item-position item))))
+      ;; (setf point (undo-item-position item))
+      (when (undo-item-point item)
+	(setf point (undo-item-point item)))
+      (when (> point (fill-pointer buf)) ;; @@@ debugging
+	(cerror "so what?" "Point is too far ~a ~a" point (fill-pointer buf)))))
   (:method (e (item insertion))
     (with-slots (point buf) e
       (let* ((item-len (undo-item-length item)))
 	(buffer-delete
 	 e (undo-item-position item) (+ (undo-item-position item) item-len))
-	(setf point (undo-item-position item))))))
+	;; (setf point (undo-item-position item))
+	(when (undo-item-point item)
+	  (setf point (undo-item-point item)))
+	(when (> point (fill-pointer buf)) ;; @@@ debugging
+	  (cerror "so what?" "Point is too far ~a ~a item ~a"
+		  point (fill-pointer buf) (undo-item-point item))))))
+  (:method (e (item replacement))
+    (with-slots (point buf) e
+      (buffer-replace
+       e (undo-item-position item) (undo-item-data item))
+      (when (undo-item-point item)
+	(setf point (undo-item-point item)))
+      (when (> point (fill-pointer buf)) ;; @@@ debugging
+	(cerror "so what?" "Point is too far ~a ~a"
+		point (fill-pointer buf))))))
 
 (defun record-undo (e type &optional position data point)
   (let ((hist (car (undo-history e))))

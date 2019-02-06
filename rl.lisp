@@ -43,6 +43,7 @@
     (,(ctrl #\Y)		. yank)
     (,(ctrl #\U)		. backward-kill-line)
     (,(ctrl #\O)		. undo-command)
+    (,(ctrl #\T)		. transpose-characters)
     (,(meta-char #\d)		. kill-word)
     (,(meta-char #\rubout)	. backward-kill-word)
     (,(meta-char #\u)		. upcase-word)
@@ -62,7 +63,6 @@
     (,(ctrl #\G)		. abort-command)
     (,(ctrl #\S)		. isearch-forward)
     (,(ctrl #\R)		. isearch-backward)
-    (,(ctrl #\T)		. toggle-debugging) ; @@@ temporary?
     (,(ctrl #\Q)		. quoted-insert)
 
     ;; key binding
@@ -71,6 +71,7 @@
 
     ;; dorky temporary
     (,(meta-char #\t)		. un-studly-cap)
+    (,(meta-char #\")		. quote-region)
     
     ;; Other keymaps
     (#\escape			. *escape-keymap*)
@@ -95,6 +96,7 @@
     (#\7		. char-picker-command)
     (#\l		. pop-to-lish)
     (#\=		. what-cursor-position)
+    (#\T	        . toggle-debugging) ; @@@ temporary?
     (,(ctrl #\C)	. exit-editor)
     (,(ctrl #\X)	. exchange-point-and-mark)))
 ;  :default-binding #| (beep e "C-x ~a is unbound." command |#
@@ -388,6 +390,7 @@ Keyword arguments:
 	(unwind-protect
 	     (loop :do
 	        (finish-output)
+		;;(describe buf *debug-io*)
 		(update-display e)
 		(tt-finish-output)
 		(when debugging

@@ -240,7 +240,7 @@ terminal."
 	    ;; delete the different part
 	    (delete-region e replace-pos saved-point)
 	    (setf point replace-pos)
-	    (insert-string e comp)
+	    (insert e comp)
 	    (incf point (length comp)))
 	  (progn
 	    (setf point saved-point)		   ; go back to where we were

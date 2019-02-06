@@ -84,9 +84,11 @@
   "Replace the buffer with the given string STR."
   ;;(declare (type string str))
   (with-slots (buf point) e
-    (setf point (length str))
+    (setf point 0)
     (buffer-delete e 0 (length buf))
-    (buffer-insert e 0 str)))
+    (buffer-insert e 0 str)
+    (setf point (length str))
+    ))
 
 (defun use-hist (e)
   "Replace the current line with the current history line."
@@ -334,18 +336,18 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 
 	(relative-move-to-row screen-relative-row 0)
 	(setf relative-top (- screen-relative-row))
-	(dbugf :rl "start-row = ~s~%~
-                    screen-relative-row = ~s~%~
-                    spots = ~s~%"
-	       start-row screen-relative-row spots)
-	(dbugf :rl "-> prompt-spots ~s~%" prompt-spots)
-	(dbugf :rl "-> prompt-last-col ~s~%" prompt-last-col)
-	(dbugf :rl "-> line-last-col ~s~%" line-last-col)
+	;; (dbugf :rl "start-row = ~s~%~
+        ;;             screen-relative-row = ~s~%~
+        ;;             spots = ~s~%"
+	;;        start-row screen-relative-row spots)
+	;; (dbugf :rl "-> prompt-spots ~s~%" prompt-spots)
+	;; (dbugf :rl "-> prompt-last-col ~s~%" prompt-last-col)
+	;; (dbugf :rl "-> line-last-col ~s~%" line-last-col)
 
-	(dbugf :rl "-> spot ~s~%" spot)
-	(dbugf :rl "-> point-line ~s~%" point-line)
-	(dbugf :rl "-> point-col ~s~%" point-col)
-	(dbugf :rl "-> point-offset ~s~%" point-offset)
+	;; (dbugf :rl "-> spot ~s~%" spot)
+	;; (dbugf :rl "-> point-line ~s~%" point-line)
+	;; (dbugf :rl "-> point-col ~s~%" point-col)
+	;; (dbugf :rl "-> point-offset ~s~%" point-offset)
 	(multiple-value-setq (start-row old-col)
 	  (terminal-get-cursor-position (line-editor-terminal e)))
 

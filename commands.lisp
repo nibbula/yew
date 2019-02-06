@@ -346,11 +346,6 @@ if it's blank or the same as the previous line."
   "Incremental search forward."
   (isearch e :forward))
 
-;; Sadly ASCII / UTF-8 specific. @@@ And should be moved to char-util?
-;; (defun control-char-p (c)
-;;   (let ((code (char-code c)))
-;;     (or (< code 32) (= code 128))))
-
 (defun display-search (e str pos prompt)
   "Display the current line with the search string highlighted."
   (with-slots (point buf mark context temporary-message) e
@@ -370,24 +365,14 @@ if it's blank or the same as the previous line."
 	  (redraw-display e))))
 
 (defun search-start-forward (context)
-  ;; (or (and (history-current-get context)
-  ;; 	   (dl-prev (history-current-get context)))
   (or (history-current-get context)
       (history-head (get-history context))))
 
 (defun search-start-backward (context)
-  ;; (or (and (history-current-get context)
-  ;; 	   (dl-next (history-current-get context)))
   (or (history-current-get context)
       (history-tail (get-history context))))
 
 (defun backward-start-pos (str pos)
-  ;; (cond
-  ;;   ((not pos)
-  ;;    (length str))
-  ;;   ((> pos 0)
-  ;;    (min (1- pos) (length str)))
-  ;;   (t 0)))
   (min (length str)
        (or pos (length str))))
 
@@ -403,10 +388,10 @@ if it's blank or the same as the previous line."
   (with-slots (point context) e
     (let ((hist (get-history context))
 	  (first-time t))
-;      (dbug "yoyo context ~w ~w~%" context hist)
+      ;; (dbug "yoyo context ~w ~w~%" context hist)
       (if (eq direction :backward)
 	  (progn
-;	    (dbug "starting-at ~w~%" start-from)
+	    ;; (dbug "starting-at ~w~%" start-from)
 	    (dl-list-do-element
 	     start-from
 	     #'(lambda (x)
@@ -424,8 +409,8 @@ if it's blank or the same as the previous line."
 			       first-time nil)
 			 (setf pos (search str (dl-content x) :from-end t)))
 		     (when pos
-		       (dbug "found pos = ~w in ~w (~w) x=~a~%"
-			     pos (dl-content x) str x)
+		       ;; (dbug "found pos = ~w in ~w (~w) x=~a~%"
+		       ;; 	     pos (dl-content x) str x)
 		       (setf (history-cur hist) x)
 		       (return-from search-history pos)))))))
 	  (dl-list-do-backward-element
@@ -518,7 +503,6 @@ Control-R searches again backward and Control-S searches again forward."
 		 )))
 	(resync)))))
 
-;; @@@ Consider calling redraw?
 (defun redraw-command (e)
   "Clear the screen and redraw the prompt and the input line."
   (with-slots (prompt-string prompt-func point buf need-to-redraw
@@ -535,15 +519,9 @@ Control-R searches again backward and Control-S searches again forward."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Buffer editing
 
-(defun insert-char (e c)
-  "Insert a character into the buffer at point. Don't update the display."
-  (declare (type character c))
-  (buffer-insert e (point e) c))
-
-(defun insert-string (e s)
-  "Insert a string into the buffer at point. Don't update the display."
-;  (declare (type string s))
-  (buffer-insert e (point e) s))
+(defun insert (e thing)
+  "Insert thing into the buffer at point."
+  (buffer-insert e (point e) thing))
 
 (defun delete-region (e start end)
   "Delete the region of the buffer between the positions start and end.
@@ -579,7 +557,7 @@ Don't update the display."
 	      exit-flag t)
 	(delete-char e))))
 
-;;; Higher level editing functions that DO update the display
+;;; Higher level editing functions
 
 (defun backward-kill-word (e)
   (with-slots (buf point non-word-chars clipboard) e
@@ -635,7 +613,7 @@ Don't update the display."
   (with-slots (clipboard point) e
     (when clipboard
       (let ((len (length clipboard)))
-	(insert-string e clipboard)
+	(insert e clipboard)
 	(incf point len)))))
 
 (defmethod paste ((e line-editor))
@@ -724,7 +702,7 @@ is none."
 	 (setf c (buffer-char buf point))
 	 ;;(message-pause e "third point ~s ~s" point c)
 	 (when (and (alpha-char-p c) (upper-case-p c))
-	   (insert-char e #\-)
+	   (insert e #\-)
 	   (incf point))
 	 (setf c (buffer-char buf point))
 	 ;;(message-pause e "fourth point ~s ~s" point c)
@@ -744,6 +722,44 @@ is none."
 		 :func #'(lambda (c) (position c dlib::*whitespace*)))
       (setf start point)
       (delete-region e start end))))
+
+(defun transpose-characters (e)
+  "Swap the character before the cursor with the one it's on, and advance the
+cursor. At the beginning or end of the buffer, adjust the point so it works.
+Don't do anything with less than 2 characters."
+  (with-slots (buf point) e
+    (when (>= (length buf) 2)
+      (cond
+	((zerop point)
+	 (incf point))
+	((= point (fill-pointer buf))
+	 (decf point)))
+      (let ((first-char (buffer-char buf (1- point))))
+	(buffer-replace e (1- point) (buffer-char buf point))
+	(buffer-replace e point first-char))
+      (incf point))))
+
+(defun quote-region (e)
+  "Put double quotes around the region, escaping any double quotes inside it."
+  (with-slots (point mark buf) e
+    (when (and mark (/= point mark))
+      (let* ((start (min point mark))
+	     (end (max point mark))
+	     (new (with-output-to-string (str)
+		    (write-char #\" str)
+		    (loop :for i :from start :below end
+		       :do
+			 (if (char= (buffer-char buf i) #\")
+			     (progn
+			       (write-char #\\ str)
+			       (write-char #\" str))
+			     (write-char (buffer-char buf i) str)))
+		    (write-char #\" str))))
+	(buffer-delete e start end)
+	(buffer-insert e start new)
+	;; Adjust the point to be at the end of the replacement.
+	(when (= point end)
+	  (incf point (- (length new) (- end start))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; hacks for typing lisp
@@ -814,7 +830,7 @@ in order, \"{open}{close}...\".")
   (with-slots (buf) e
     (loop :while (matching-paren-position (buffer-string buf))
        :do
-	 (insert-char e #\))
+	 (insert e #\))
 	 ;; (display-char e #\))
 	 )
     (accept-line e)))
@@ -885,7 +901,7 @@ in order, \"{open}{close}...\".")
        (if (= (length buf) point)
 	   ;; end of the buf
 	   (progn
-	     (insert-char e char)
+	     (insert e char)
 	     ;; flash paren and keep going
 	     (when (and (eq *paren-match-style* :flash) (is-close-char char))
 	       (flash-paren e))
@@ -894,7 +910,7 @@ in order, \"{open}{close}...\".")
 	   (progn
 	     (when (and (eq *paren-match-style* :flash) (is-close-char char))
 	       (flash-paren e))
-	     (insert-char e char)
+	     (insert e char)
 	     (incf point)))))))
 
 (defgeneric self-insert-command (line-editor)
@@ -1003,7 +1019,7 @@ in order, \"{open}{close}...\".")
                              a ~a." (type-of *terminal*))))
 	   (paste (read-bracketed-paste term))
 	   (len (length paste)))
-      (insert-string e paste)
+      (insert e paste)
       (incf point len))))
 
 (defun char-picker-command (e)
@@ -1029,6 +1045,6 @@ in order, \"{open}{close}...\".")
 (defun insert-file (e)
   "Insert a file into the line editor's buffer."
   (let* ((file (read-filename :prompt "Insert-file: ")))
-    (insert-string e (slurp file))))
+    (insert e (slurp file))))
 
 ;; EOF
