@@ -327,9 +327,10 @@ return history for the whole repository."))
    :update	      "git --no-pager pull ~{~a ~}"
    :update-all	      "git --no-pager pull"
    :push	      "git --no-pager push"
-   :history	      '("git" "--no-pager" "log"
-			;;"--format=(\"%h\" \"%ae\" %ct \"%s\")" "--")
-			"--format=%h%x00%ae%x00%ct%x00%s" "--")
+   :history           '("git" "--no-pager" "log"
+                        ;;"--format=(\"%h\" \"%ae\" %ct \"%s\")" "--")
+                        ;; "--format=%h%x00%ae%x00%ct%x00%s" "--")
+                        "--pretty=format:%h%x00%ae%x00%ct%x00%B%x1a" "--")
    :history-all	      '("git" "--no-pager" "log"
 			;;"--format=(\"%h\" \"%ae\" %ct \"%s\")")
 			"--format=%h%x00%ae%x00%ct%x00%s")
@@ -342,11 +343,13 @@ return history for the whole repository."))
 
 (defun get-branch (git)
   (or (git-saved-branch git)
-      (subseq (first (lish:!_ "git status -s -b --porcelain")) 3)))
+      (setf (git-saved-branch git)
+	    (subseq (first (lish:!_ "git status -s -b --porcelain")) 3))))
 
 (defun get-remotes (git)
   (or (git-saved-remotes git)
-      (lish:!_ "git remote -v")))
+      (setf (git-saved-remotes git)
+	    (lish:!_ "git remote -v"))))
 
 (defmethod banner ((backend git))
   "Print something useful at the top of the screen."
@@ -655,9 +658,9 @@ If CONFIRM is true, ask the user for confirmation first."
   (apply #'terminal-format *terminal* fmt args)
   (tt-get-char))
 
-(defun info-window (title text-lines)
+(defun info-window (title text-lines &key (justify t))
   ;; @@@ Is all this clearing and refreshing necessary?
-  (fui:display-text title text-lines)
+  (fui:display-text title text-lines :justify justify)
   (tt-clear)
   ;;(refresh)
   (draw-screen *puca*)
@@ -1011,22 +1014,34 @@ for the command-function).")
 (defmethod get-history ((backend git) &optional files)
   (let ((hh (loop :for r
 	       :in (if files
-		       (apply #'lish:!_=
-			      `(,@(backend-history backend) ,@files))
+		       (split-sequence
+			(code-char #x1a) ;; ^Z
+			(apply #'lish:!-=
+			       `(,@(backend-history backend) ,@files))
+			:omit-empty t)
+		       ;; @@@ we probably have to do !-= and iterate through
+		       ;; all the files, so we can get multiple line comments.
 		       (apply #'lish:!_=
 			      `(,@(backend-history-all backend))))
 	       ;;:collect (safe-read-from-string r))))
-	       :collect (split-sequence (code-char 0) r))))
+	       :collect (split-sequence (code-char 0) r :omit-empty t))))
     (coerce
      (mapcar (_ (make-history
-		 :hash (first _)
-		 :email (first (cdr _))
+		 :hash (trim (first _))
+		 ;; :email (first (cdr _))
+		 ;; :date
+		 ;; #+unix (uos:unix-to-universal-time
+		 ;; 	 (parse-integer (second (cdr _))))
+		 ;; ;; @@@ Need to see what git on windows does?
+		 ;; #+windows (parse-integer (second (cdr _)))
+		 ;; :message (third (cdr _)))) hh)
+		 :email (second _)
 		 :date
 		 #+unix (uos:unix-to-universal-time
-			 (parse-integer (second (cdr _))))
+		 	 (parse-integer (third _)))
 		 ;; @@@ Need to see what git on windows does?
-		 #+windows (parse-integer (second (cdr _)))
-		 :message (third (cdr _)))) hh)
+		 #+windows (parse-integer (third _))
+		 :message (fourth _))) hh)
      'vector)))
 
 (defmethod get-list ((puca puca-history))
@@ -1074,6 +1089,7 @@ for the command-function).")
 (defun inspect-history (p)
   (with-slots ((point inator::point) goo) p
     (let ((item (elt goo point)))
+      (dbugf :puca "message = ~s~%" (quote-format (history-message item)))
       (info-window
        (s+ "Revision " (history-hash (elt goo point)))
        (list (format nil "Files: ~a" (puca-history-files p))
@@ -1082,7 +1098,8 @@ for the command-function).")
 	     (format nil "Date:  ~a" (dlib-misc:date-string
 				      ;;:format :relative
 				      :time (history-date item)))
-	     "Message:" (quote-format (history-message item)))))))
+	     "Message:" (quote-format (history-message item)))
+       :justify nil))))
 
 ;; (defun inspect-history (p)
 ;;   (with-slots ((point inator::point) goo) p
@@ -1225,15 +1242,21 @@ for the command-function).")
 			 (- (output-line table) top))
 		      3)
 	  (let* ((*print-pretty* nil)
-		 (clipped-width (min (- *max-width* (output-column table))
+		 (clipped-width (min (- *max-width* (output-column table) 1)
 				     width))
 		 (string
 		  (case column
 		    (2 (dlib-misc:date-string :format :relative :time cell))
-		    (otherwise (princ-to-string cell))))
+		    (otherwise
+		     (let* ((s (princ-to-string cell))
+			    (nl (position-if
+				 (_ (find _ '(#\newline #\return))) s)))
+		       (if nl
+			   (subseq s 0 nl)
+			   s)))))
 		 (len (max 0
 			   (min (length string)
-				(- *max-width* (output-column table))
+				(- *max-width* (output-column table) 2)
 				width))))
 	    (tt-color (case column
 			(1 :green)
@@ -1388,6 +1411,7 @@ for the command-function).")
     (if backend
 	;;(with-terminal (#| :crunch |# :curses)
 	(with-new-terminal (:crunch)
+	;;(with-terminal ()
 	  (with-inator (*puca* 'puca
 		        :keymap (list *puca-keymap* *default-inator-keymap*)
 		        :backend backend)
