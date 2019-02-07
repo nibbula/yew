@@ -516,6 +516,7 @@
 #+lish
 (lish:defcommand pick-list
   ((multiple boolean :short-arg #\m :help "True to pick multiple results.")
+   (print boolean :short-arg #\p :help "True to force printing the results.")
    (lines string :repeating t))
   :accepts (:stream :list)
   "Pick something from the list of lines of input."
@@ -530,7 +531,7 @@
   (cond
     ((lish:accepts :sequence 'list)
      lish:*output*)
-    ((lish:accepts :stream :grotty-stream :unspecified)
+    ((or print (lish:accepts :stream :grotty-stream :unspecified))
      (if (listp lish:*output*)
 	 (loop :for o :in lish:*output* :do (princ o) (terpri))
 	 (progn (princ lish:*output*) (terpri))))))
