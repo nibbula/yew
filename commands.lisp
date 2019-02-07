@@ -346,22 +346,20 @@ if it's blank or the same as the previous line."
   "Incremental search forward."
   (isearch e :forward))
 
-(defun display-search (e str pos prompt)
+(defun display-search (e str start end prompt)
   "Display the current line with the search string highlighted."
   (with-slots (point buf mark context temporary-message) e
     (setf temporary-message
 	  (s+ prompt str))
-      (if (and pos (history-current context))
-	  (let ((start pos)
-		(end (+ pos (length str))))
-	    (save-excursion (e)
-              (setf point start
-		    mark end		; for the highlightify
-		    buf (highlightify
-			 e (make-fatchar-string (history-current context))
-			 :style (theme-value *theme* '(:rl :search :style)))
-		    mark nil)		; for the redraw-display
-	      (redraw-display e)))
+      (if (and start (history-current context))
+	  (save-excursion (e)
+            (setf point start
+		  mark end		; for the highlightify
+		  buf (highlightify
+		       e (make-fatchar-string (history-current context))
+		       :style (theme-value *theme* '(:rl :search :style)))
+		  mark nil)		; for the redraw-display
+	    (redraw-display e))
 	  (redraw-display e))))
 
 (defun search-start-forward (context)
@@ -443,9 +441,9 @@ Control-R searches again backward and Control-S searches again forward."
 	  (search-string (make-stretchy-string *initial-line-size*))
 	  (start-from (or (history-current-get context)
 			  (history-head (get-history context))))
-	  (pos point) old-pos c added failed)
+	  (pos point) end c added failed)
       (labels ((redisp ()
-		 (display-search e search-string point
+		 (display-search e search-string point end
 				 (format nil *isearch-prompt*
 					 failed (eq direction :backward))))
 	       (resync ()
@@ -490,7 +488,7 @@ Control-R searches again backward and Control-S searches again forward."
 	   (if (setf pos (search-history
 			  e search-string direction start-from pos))
 	       (progn
-		 (setf old-pos pos
+		 (setf end (+ pos (length search-string))
 		       point pos
 		       failed nil))
 	       (progn
