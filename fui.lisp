@@ -177,10 +177,11 @@ drawing, which will get overwritten."
       ;; 	      start-x start-y start-pos end-pos)
       (dbugf :fui "lines = ~s~%" lines)
       ;;(tt-move-to start-y start-x)
-      (loop :with len :and start-pos :and end-pos
+      (loop :with len :and start-pos :and end-pos :and str-len
 	 :for l :in lines
 	 :do
 	 (setf len (display-length l)
+	       str-len (olength l)
 	       start-pos (if (< column 0) (min len (- column)) 0)
 	       end-pos   (min len (max 0 (- width column))))
 	 (when (and (>= row 0) (< row height)
@@ -188,7 +189,7 @@ drawing, which will get overwritten."
 	   (window-move-to window (+ row output-y) column)
 	   (tt-write-string l
 			    :start (min (max 0 start-pos) len)
-			    :end   (min (max start-pos end-pos) len))
+			    :end   (min (max start-pos end-pos) str-len))
 	   (incf output-y)))
       (window-move-to window (+ row output-y 1) column)
       ;; (tt-write-string text
