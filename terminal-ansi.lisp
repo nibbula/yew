@@ -370,6 +370,7 @@ two values ROW and COLUMN."
     (cond
       ((graphic-char-p char)
        (cond
+	 ((zero-width-char-p char) 0)
 	 ((combining-char-p char) 0)
 	 ((double-wide-char-p char) 2)
 	 (t 1)))			;normal case
