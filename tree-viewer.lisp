@@ -812,6 +812,7 @@ been encountered."
   "Search for a node."
   (with-slots (current) o
     (tt-move-to (1- (tt-height)) 0) (tt-erase-to-eol)
+    (tt-finish-output)
     (let ((result (rl:rl :prompt "Search for: ")))
       (tt-finish-output)
       (when (and result (not (zerop (length result))))
