@@ -16,6 +16,7 @@
    #:displayable-char
    #:combining-char-p
    #:double-wide-char-p
+   #:zero-width-char-p
    #:control-char-graphic
    #:display-length
    #:do-graphemes
