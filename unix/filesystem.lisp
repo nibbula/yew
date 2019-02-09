@@ -1052,6 +1052,9 @@ versions of the keywords used in Lisp open.
       (push '+FD_CLOEXEC+ result))
     result))
 	  
+(defcfun fsync :int (fd :int))
+(defcfun fdatasync :int (fd :int))
+
 ;; stat / lstat
 
 ;; st_mode bits

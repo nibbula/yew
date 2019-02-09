@@ -218,6 +218,8 @@
    #:mkstemp
    #:fcntl
    #:get-file-descriptor-flags
+   #:fsync
+   #:fdatasync
 
    ;; stat
    #:stat
