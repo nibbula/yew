@@ -1829,6 +1829,26 @@ it is not a symbolic link."
 ;; This is sadly still actually useful.
 (defcfun sync :void)
 
+(defun directory-p (path)
+  "Return true if PATH is a directory."
+  (handler-case
+      (let (info)
+	(typecase path
+	  (stream
+	   ;; We can't use stream-system-handle because it's in opsys and
+	   ;; not defined yet. So we have to use file-namestring.
+	   ;; ;; One could in theory use file-namestring, but I don't trust it to
+	   ;; ;; work portably.
+	   ;; (setf info (fstat (stream-system-handle path)))
+	   (setf info (stat (file-namestring path))))
+	  ((or string pathname)
+	   (setf info (stat path))))
+	(and (is-directory (file-status-mode info))))
+    (posix-error (c)
+      (when (not (find (opsys-error-code c)
+		       `(,+ENOENT+ ,+EACCES+ ,+ENOTDIR+)))
+	(signal c)))))
+
 ;; @@@ I should probably make all implementations use my code, so things behave
 ;; uniformly, especially with regards to errors, but first it should tested.
 (defun probe-directory (dir)
@@ -1837,12 +1857,7 @@ it is not a symbolic link."
   ;; 				:directory (ext:absolute-pathname dir)))
   #+(or sbcl ccl cmu clisp ecl)
   ;; Let's be more specific: it must be a directory.
-  (handler-case
-    (let ((s (stat dir)))
-      (and (is-directory (file-status-mode s))))
-    (posix-error (c)
-      (when (not (find (opsys-error-code c) `(,+ENOENT+ ,+EACCES+ ,+ENOTDIR+)))
-	(signal c))))
+  (directory-p dir)
   #+(or lispworks abcl) ;; @@@ Really?
   ;; On some implementations probe-file can handle directories the way I want.
   (probe-file dir)

@@ -72,6 +72,7 @@
    #:dir-entry-inode
    #:without-access-errors
    #:probe-directory
+   #:directory-p
    #:split-path
    #:path-to-absolute #:abspath
    #:path-absolute-p #:absolute-path-p

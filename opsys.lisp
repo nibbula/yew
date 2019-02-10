@@ -375,6 +375,9 @@ if not given.")
 (defosfun probe-directory (dir)
   "Something like probe-file but for directories.")
 
+(defosfun directory-p (path)
+  "Return true if PATH is a directory.")
+
 (defosfun without-access-errors (&body body)
   "Evaluate the body while ignoring typical file access error from system
 calls. Returns NIL when there is an error.")

@@ -174,6 +174,7 @@
    #:dirent-type
    #:read-directory
    #:map-directory
+   #:directory-p
    #:probe-directory
    #:without-access-errors
 
