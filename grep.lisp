@@ -312,10 +312,10 @@ Second value is the scanner that was used.
    ;; (line-up boolean :short-arg #\l
    ;;  :help "Line up matches.")
    (use-color boolean
-    :short-arg #\c :default t
+    :short-arg #\C :default t
     :help "True to highlight substrings in color.")
    (collect boolean
-    :short-arg #\s :default '(lish:accepts :sequence)
+    :short-arg #\c :default '(lish:accepts :sequence)
     :help "True to collect matches in a sequence.")
    (gather-errors boolean :short-arg #\e
     :help "True to gather errors to *error-output*. Otherwise signal them.")
