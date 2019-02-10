@@ -1834,13 +1834,17 @@ it is not a symbolic link."
   (handler-case
       (let (info)
 	(typecase path
+	  ;; (file-stream
+	  ;;  ;; We can't use stream-system-handle because it's in opsys and
+	  ;;  ;; not defined yet. So we have to use file-namestring.
+	  ;;  ;; But I don't trust it to work properly.
+	  ;;  ;;
+	  ;;  ;; (setf info (fstat (stream-system-handle path)))
+	  ;;  (setf info (stat (file-namestring path))))
 	  (stream
-	   ;; We can't use stream-system-handle because it's in opsys and
-	   ;; not defined yet. So we have to use file-namestring.
-	   ;; ;; One could in theory use file-namestring, but I don't trust it to
-	   ;; ;; work portably.
-	   ;; (setf info (fstat (stream-system-handle path)))
-	   (setf info (stat (file-namestring path))))
+	   ;; @@@ for other types of streams, just return nil, because we
+	   ;; can't really necessarily figure it out.
+	   (return-from directory-p nil))
 	  ((or string pathname)
 	   (setf info (stat path))))
 	(and (is-directory (file-status-mode info))))
