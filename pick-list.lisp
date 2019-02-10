@@ -101,7 +101,11 @@
    (search-str
     :initarg :search-str :accessor pick-search-str
     :initform (make-stretchy-string 10) :type string
-    :documentation "The string to search for."))
+    :documentation "The string to search for.")
+   (before-hook
+    :initarg :before-hook :accessor pick-before-hook :initform nil
+    :documentation "Function to call before entering the event loop.
+The function receives a 'pick' as an argument."))
   (:documentation "State for a pick-list-inator."))
 
 ;; (defmethod quit ((i pick))
@@ -406,6 +410,8 @@
     (unwind-protect
 	 (progn
 	   (setf *pick* (apply #'make-instance type args))
+	   (when (pick-before-hook *pick*)
+	     (funcall (pick-before-hook *pick*) *pick*))
 	   (event-loop *pick*))
       (when *pick*
 	(delete-pick *pick*)))
@@ -451,7 +457,7 @@
 
 (defun pick-list (the-list &key message by-index sort-p default-value
 			     selected-item (typing-searches t) multiple
-			     popup (x 0) (y 0) height)
+			     popup (x 0) (y 0) height before-hook)
   "Have the user pick a value from THE-LIST and return it. Arguments:
   MESSAGE         - A string to be displayed before the list.
   BY-INDEX        - If true, return the index number of the item picked.
@@ -497,6 +503,7 @@
        :x		x
        :y		y
        :result	        default-value
+       :before-hook	before-hook
        :keymap	        (list *pick-list-keymap*
 			      *default-inator-keymap*)))))
 
