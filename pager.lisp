@@ -8,6 +8,7 @@
 ;;  - big stream issues?
 ;;    - direct read for files
 ;;    - option to use tmp file for pipe (disk vs mem tradeoff)
+;;  - inator-ify & clean-up (ironically the paginator isn't an inator)
 
 (defpackage :pager
   (:documentation "pager - More or less like more or less.
@@ -224,7 +225,11 @@ The shell command takes any number of file names.
   (declare (ignore initargs))
   ;; slot initialization, such as:
   (when (not (slot-boundp o 'page-size))
-    (setf (pager-page-size o) (1- (tt-height)))))
+    (setf (pager-page-size o) (1- (tt-height))))
+  (when (pager-stream o)
+    (dbugf :pager "init stupid ~s ~s~%" (pager-stream o)
+	   (seekable-p (pager-stream o)))
+    (setf (pager-seekable o) (seekable-p (pager-stream o)))))
 
 (defgeneric freshen (o)
   (:documentation
@@ -236,16 +241,16 @@ but perhaps reuse some resources."))
   (setf (pager-stream o) nil
 	(pager-left o) 0
 	(pager-max-width o) 0
-;	(pager-page-size o) 0
+	;; (pager-page-size o) 0
 	(pager-got-eof o) nil
-	(pager-seekable o) nil
+	;; (pager-seekable o) nil
 	(pager-binary o) nil
 	(pager-search-string o) nil
 	(pager-filter-exprs o) nil
 	(pager-keep-expr o) nil
 	(pager-mutate-function o) nil
-;	(pager-file-list o) nil
-;	(pager-index o) nil
+	;; (pager-file-list o) nil
+	;; (pager-index o) nil
 	(pager-message o) nil
 	(pager-prefix-arg o) nil
 	(pager-quit-flag o) nil
@@ -453,7 +458,7 @@ read until we get an EOF."
   (declare (ignore line-count)) ;; @@@
   (with-slots (got-eof count stream raw-output seekable
 	       buffer buffer-start byte-count byte-pos) pager
-    (setf seekable (seekable-p))
+    ;; (setf seekable (seekable-p))
     (handler-case
 	(progn
 	  (when (not got-eof)
@@ -1040,6 +1045,8 @@ list containing strings and lists."
   "Open FILENAME for reading in a way which is less likely to get encoding
 errors, but may lose data. Quotes the filename against special Lisp characters.
 Returns the the open stream or NIL."
+  (when (directory-p filename)
+    (error "~s is a directory." filename))
   (etypecase filename
     (stream
      (when (and binary (not (eq (stream-element-type filename)
@@ -1059,9 +1066,9 @@ Returns the the open stream or NIL."
 ;; ;;#+sbcl '(:utf-8 :replacement #\replacement_character)
 ;; #+sbcl '(:utf-8 :replacement #\?)
 
-(defun open-file (filename &key (offset 0))
+(defmethod open-file ((pager text-pager) filename &key (offset 0))
   "Open the given FILENAME."
-  (with-slots (count lines line got-eof stream page-size binary) *pager*
+  (with-slots (count lines line got-eof stream page-size binary seekable) pager
     (let ((new-stream (open-lossy filename :binary binary)))
       (when new-stream
 	(close stream)
@@ -1069,13 +1076,34 @@ Returns the the open stream or NIL."
 	      lines '()
 	      count 0
 	      line offset
-	      got-eof nil)
-	(read-input *pager* (+ page-size offset)))
+	      got-eof nil
+	      seekable (seekable-p))
+	(read-input pager (+ page-size offset)))
+      new-stream)))
+
+(defmethod open-file ((pager binary-pager) filename &key (offset 0))
+  "Open the given FILENAME."
+  (with-slots (got-eof stream page-size binary buffer buffer-start
+	       byte-count byte-pos seekable) pager
+    (let ((new-stream (open-lossy filename :binary t)))
+      (when new-stream
+	(close stream)
+	(setf stream new-stream
+	      buffer (make-empty-buffer)
+	      buffer-start 0
+	      byte-count 0
+	      byte-pos 0
+	      got-eof nil
+	      seekable (seekable-p))
+	(dbugf :pager
+	       "CRAP seekable ~s seekable-p ~a stream ~a pager-stream ~a~%"
+	       seekable (seekable-p) stream (pager-stream *pager*))
+	(read-input pager (+ page-size offset)))
       new-stream)))
 
 (defun open-file-command (filename &key (offset 0))
   "Open the given FILENAME."
-  (when (not (open-file filename :offset offset))
+  (when (not (open-file *pager* filename :offset offset))
     (tmp-message "Can't open file \"~s\".")))
 
 ;; File locations can be either a file name, or a list or vector with the first
@@ -1102,45 +1130,48 @@ location doesn't have an offset part."
 	 0))
     (t 0)))
 
+(defun advance-file-index (pager &optional (dir :forward))
+  "Set file-index to the next file in file-list. Return NIL if there's no
+more files."
+  (with-slots (file-list file-index) pager
+    (let ((len (length file-list)))
+      (ecase dir
+	(:forward
+	 (loop :while (and file-index (< file-index (1- len)))
+	    :do
+	    ;; Skip over locations until we find one with a new file.
+	      (when (not (equal
+			  (file-location-file (elt file-list file-index))
+			  (file-location-file (elt file-list (1+ file-index)))))
+		(return-from advance-file-index t))
+	      (incf file-index)))
+	(:backward
+	 (loop :while (and file-index (> file-index 0))
+	    :do
+	    ;; Skip over locations until we find one with a new file.
+	      (when (not (equal
+			  (file-location-file (elt file-list file-index))
+			  (file-location-file (elt file-list (1- file-index)))))
+		(return-from advance-file-index t))
+	      (decf file-index)))))))
+
 (defun next-file (pager)
   "Go to the next file in the set of files."
-  (with-slots (count lines line got-eof file-list file-index stream
-		     page-size) pager
-    (let (got-it (len (length file-list)))
-      (loop :while (and file-index (< file-index (1- len)))
-	 :do
-	 (when (not (equal (file-location-file
-			    (elt file-list file-index))
-			   (file-location-file
-			    (elt file-list (1+ file-index)))))
-	   (setf got-it t)
-	   (return))
-	 (incf file-index))
-    (if (and file-index got-it)
+  (with-slots (file-list file-index) pager
+    (if (and file-index (advance-file-index pager :forward))
 	(open-file-command
 	 (file-location-file (elt file-list file-index))
 	 :offset (file-location-offset (elt file-list file-index)))
-	(tmp-message "No next file.")))))
+	(tmp-message "No next file."))))
 
 (defun previous-file (pager)
   "Go to the previous file in the set of files."
-  (with-slots (count lines line got-eof file-list file-index stream
-		     page-size) pager
-    (let (got-it)
-      (loop :while (and file-index (> file-index 0))
-	 :do
-	 (when (not (equal (file-location-file
-			    (elt file-list file-index))
-			   (file-location-file
-			    (elt file-list (1- file-index)))))
-	   (setf got-it t)
-	   (return))
-	 (decf file-index))
-      (if (and file-index got-it)
-	  (open-file-command
-	   (file-location-file (elt file-list file-index))
-	   :offset (file-location-offset (elt file-list file-index)))
-	  (tmp-message "No previous file.")))))
+  (with-slots (file-list file-index) pager
+    (if (and file-index (advance-file-index pager :backward))
+	(open-file-command
+	 (file-location-file (elt file-list file-index))
+	 :offset (file-location-offset (elt file-list file-index)))
+	(tmp-message "No previous file."))))
 
 (defun next-file-location (pager)
   "Go to the next file in the set of files."
@@ -1156,7 +1187,7 @@ location doesn't have an offset part."
 		 :offset (file-location-offset (elt file-list file-index))))
 	      (progn
 		(incf file-index)
-		(go-to-line pager
+		(go-to-offset pager
 		 (1+ (file-location-offset (elt file-list file-index)))))))
 	(tmp-message "No next file."))))
 
@@ -1174,7 +1205,7 @@ location doesn't have an offset part."
 		 :offset (file-location-offset (elt file-list file-index))))
 	      (progn
 		(decf file-index)
-		(go-to-line pager
+		(go-to-offset pager
 		 (1+ (file-location-offset (elt file-list file-index)))))))
 	(tmp-message "No previous file."))))
 
@@ -1225,6 +1256,18 @@ byte-pos."
     (read-input pager (max 1 (- (+ n page-size)
 				(round byte-count (line-bytes)))))
     (setf byte-pos (1- (* n (line-bytes))))))
+
+(defgeneric go-to-offset (pager n)
+  (:documentation "Go to an offset N, in units determined by the pager."))
+
+(defmethod go-to-offset ((pager text-pager) n)
+  "Go to line N."
+  (go-to-line pager n))
+
+(defmethod go-to-offset ((pager binary-pager) n)
+  (with-slots (page-size byte-pos byte-count) pager
+    (read-input pager (max 1 n))
+    (setf byte-pos (1- n))))
 
 (defgeneric next-page (pager)
   (:documentation "Display the next page."))
@@ -1450,17 +1493,17 @@ byte-pos."
   "Clear the search string."
   (setf (pager-search-string pager) nil))
 
-(defun seekable-p ()
+(defun seekable-p (&optional (stream (pager-stream *pager*)))
   (handler-case
-      (let* ((pos (file-position (pager-stream *pager*)))
-	     (result (file-position (pager-stream *pager*) pos)))
+      (let* ((pos (file-position stream))
+	     (result (file-position stream pos)))
 	result)
     (stream-error ())))
 
 (defun show-info (pager)
   "Show information about the stream."
-  (declare (ignore pager))
-  (tmp-message "%f %l of %L %b/%B ~:[un~;~]seekable" (seekable-p)))
+  (with-slots (seekable) pager
+    (tmp-message "%f %l of %L %b/%B ~:[un~;~]seekable" seekable)))
 
 (defun redraw (pager)
   "Redraw the display."
@@ -1469,19 +1512,19 @@ byte-pos."
 
 ;; @@@ fix for binary
 (defun reread ()
-  (if (seekable-p)
-      (with-slots (stream line lines got-eof count page-size) *pager*
+  (with-slots (stream line lines got-eof count page-size seekable) *pager*
+    (if seekable
 	(let ((l (nth line lines)))
-	  (file-position stream (or (and l (line-position l)) 0)))
-	(setf got-eof nil)
-	(if (= line 0)
-	    (setf lines nil count 0)
-	    (progn
-	      (setf count line)
-	      ;; drop all following lines
-	      (rplacd (nthcdr (1- line) lines) nil)))
-	(read-input *pager* page-size))
-      (tmp-message "Can't re-read an unseekable stream.")))
+	  (file-position stream (or (and l (line-position l)) 0))
+	  (setf got-eof nil)
+	  (if (= line 0)
+	      (setf lines nil count 0)
+	      (progn
+		(setf count line)
+		;; drop all following lines
+		(rplacd (nthcdr (1- line) lines) nil)))
+	  (read-input *pager* page-size))
+	(tmp-message "Can't re-read an unseekable stream."))))
 
 (defun digit-argument (pager)
   "Accumulate digits for the PREFIX-ARG."
@@ -1737,22 +1780,29 @@ q - Abort")
   close-me)
 
 (defun pager-loop (pager)
-  (with-slots (message input-char command prefix-arg quit-flag suspend-flag)
-      pager
+  (with-slots (message input-char command prefix-arg file-list file-index
+	       quit-flag suspend-flag) pager
     (loop
-     :do
-     (display-page pager)
-     (if message
-	 (let ((*pager-prompt* message))
-	   (display-prompt pager)
-	   (setf message nil))
-       (display-prompt pager))
-     (tt-finish-output)
-     (setf input-char (tt-get-key))
-     (perform-key input-char)
-     (when (not (equal command 'digit-argument))
-       (setf prefix-arg nil))
-     :while (not (or quit-flag suspend-flag)))))
+       :do
+	 (handler-case
+	   (progn
+	     (display-page pager)
+	     (if message
+		 (let ((*pager-prompt* message))
+		   (display-prompt pager)
+		   (setf message nil))
+		 (display-prompt pager))
+	     (tt-finish-output)
+	     (setf input-char (tt-get-key))
+	     (perform-key input-char)
+	     (when (not (equal command 'digit-argument))
+	       (setf prefix-arg nil)))
+	   (error (c)
+	     (tmp-message "~a" (princ-to-string c))))
+	 (when file-list
+	   (advance-file-index pager :forward))
+       :while (not (or quit-flag suspend-flag
+		       (and file-list (< file-index (length file-list))))))))
 
 ;; @@@ Consider moving a generalized version of this to opsys
 (defmacro with-disabled-cchars (() &body body)
@@ -1831,10 +1881,7 @@ q - Abort")
 				  :stream stream
 				  :close-me close-me)))
 		      (funcall (find-symbol "SUSPEND-JOB" :lish)
-			       "pager" "" (lambda () (pager:resume suspy)))
-		      ;; It should be Lish's job to say something like this:
-		      ;;(format t "~&Suspended.~%")
-		      )
+			       "pager" "" (lambda () (pager:resume suspy))))
 		    (format t "No shell loaded to suspend to.~%"))))))
 	  (when (and close-me (not suspended) stream)
 	    (close stream))))
