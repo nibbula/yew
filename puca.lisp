@@ -333,7 +333,8 @@ return history for the whole repository."))
                         "--pretty=format:%h%x00%ae%x00%ct%x00%B%x1a" "--")
    :history-all	      '("git" "--no-pager" "log"
 			;;"--format=(\"%h\" \"%ae\" %ct \"%s\")")
-			"--format=%h%x00%ae%x00%ct%x00%s")
+			;;"--format=%h%x00%ae%x00%ct%x00%s"
+                        "--pretty=format:%h%x00%ae%x00%ct%x00%B%x1a")
    :ignore-file	      ".gitignore")
   (:documentation "Backend for git."))
 
@@ -790,7 +791,7 @@ for the command-function).")
 (defun push-command (p)
   "Push"
   (declare (ignore p))
-  (do-command #'backend-push nil :relist nil))
+  (do-command #'backend-push nil :relist t))
 
 (defun add-ignore-command (p)
   "Ignore"
@@ -1021,8 +1022,11 @@ for the command-function).")
 			:omit-empty t)
 		       ;; @@@ we probably have to do !-= and iterate through
 		       ;; all the files, so we can get multiple line comments.
-		       (apply #'lish:!_=
-			      `(,@(backend-history-all backend))))
+		       (split-sequence
+			(code-char #x1a) ;; ^Z
+			(apply #'lish:!-=
+			       `(,@(backend-history-all backend)))
+			:omit-empty t))
 	       ;;:collect (safe-read-from-string r))))
 	       :collect (split-sequence (code-char 0) r :omit-empty t))))
     (coerce
