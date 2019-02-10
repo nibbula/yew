@@ -357,27 +357,28 @@ MAKE-INSTANCE, with VAR bound to the new instance."
 ;; This doesn't really have to be an inator specific thing, but it is useful
 ;; for them. The names of the restarts _do_ have to come from somewhere.
 
-(defmacro with-file-list ((var list) &body body)
+(defmacro with-file-list ((var list &key index) &body body)
   "Evaluate the BODY in a return-able loop with next-file and previous-file
 restarts set up to move through the LIST, and FILE bind to the current file."
   (with-unique-names (i files len)
-    `(let* ((,i 0)
-	    (,files (coerce ,list 'vector))
-	    (,len (length ,files))
-	    ,var)
-       (block nil
-	 (loop :while (< ,i ,len) :do
-	    (restart-case
-		(progn
-		  (setf ,var (aref ,files ,i))
-		  ,@body)
-	      (inator:next-file ()
-		:report "Go to the next file."
-		(when (< ,i ,len)
-		  (incf ,i)))
-	      (inator:previous-file ()
-		:report "Go to the previous file."
-		(when (> ,i 0)
-		  (decf ,i)))))))))
+    (let ((ii (or index i)))
+      `(let* ((,ii 0)
+	      (,files (coerce ,list 'vector))
+	      (,len (length ,files))
+	      ,var)
+	 (block nil
+	   (loop :while (< ,ii ,len) :do
+		(restart-case
+		    (progn
+		      (setf ,var (aref ,files ,ii))
+		      ,@body)
+		  (inator:next-file ()
+		    :report "Go to the next file."
+		    (when (< ,ii ,len)
+		      (incf ,i)))
+		  (inator:previous-file ()
+		    :report "Go to the previous file."
+		    (when (> ,ii 0)
+		      (decf ,ii))))))))))
 
 ;; EOF
