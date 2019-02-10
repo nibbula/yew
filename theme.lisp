@@ -471,7 +471,7 @@ Something like the default setting of typical GNU tools."))))
        (:syntax :support :variable         :style) (:fg-green)
        (:syntax :support :function         :style) (:fg-magenta)
        (:syntax :variable :other           :style) (:fg-green)
-       ;; commands
+       ;; Commands
        (:command :not-found	    :style) (:red)
        (:command :found		    :style) (:bold :blue)
        (:command :system-command    :style) (:fg :color #(:rgb .4 .5 .9))
@@ -485,6 +485,11 @@ Something like the default setting of typical GNU tools."))))
        ;; Line editor
        (:rl :search    :style) (:underline :fg-red)
        (:rl :selection :style) (:standout)
+       ;; Programs
+       (:program :modeline             :style)     (:standout)
+       (:program :search-match         :style)     (:yellow :underline)
+       (:program :empty-line-indicator :style)     (:normal)
+       (:program :empty-line-indicator :character) #\~
        ))
     tt))
 
