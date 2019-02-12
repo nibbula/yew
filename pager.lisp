@@ -365,6 +365,17 @@ but perhaps reuse some resources."))
 	(pager-byte-count o) 0
 	(pager-byte-pos o) 0))
 
+(defmacro sub-page ((stream-var) &body body)
+  "Generate some output and run a sub-instance of the pager on it."
+  (declare (ignore stream-var)) ; @@@
+  (let ((input (gensym "SUB-PAGE-INPUT")))
+    `(with-input-from-string
+	 (,input
+	  ;; (with-output-to-string (,stream-var)
+	  (with-terminal-output-to-string (:ansi)
+	    ,@body))
+       (pager ,input))))
+
 #|
 (defun nop-process-line (line)
   "A line processor that doesn't do anything."
@@ -1684,21 +1695,11 @@ byte-pos."
 (defun digit-argument (pager)
   "Accumulate digits for the PREFIX-ARG."
   (with-slots (input-char prefix-arg message) pager
-    (when (and (characterp input-char) (digit-char-p input-char))
-      (setf prefix-arg (+ (* 10 (or prefix-arg 0))
-			  (position input-char +digits+))
-	    message (format nil "Prefix arg: ~d" prefix-arg)))))
-
-(defmacro sub-page ((stream-var) &body body)
-  "Generate some output and run a sub-instance of the pager on it."
-  (declare (ignore stream-var)) ; @@@
-  (let ((input (gensym "SUB-PAGE-INPUT")))
-    `(with-input-from-string
-	 (,input
-	  ;; (with-output-to-string (,stream-var)
-	  (with-terminal-output-to-string (:ansi)
-	    ,@body))
-       (pager ,input))))
+    (let (pos)
+      (when (and (characterp input-char) (digit-char-p input-char)
+		 (setf pos (position input-char +digits+)))
+	(setf prefix-arg (+ (* 10 (or prefix-arg 0)) pos)
+	      message (format nil "Prefix arg: ~d" prefix-arg))))))
 
 ;; The long commands are a meager attempt at mindless "less" compatibility.
 
