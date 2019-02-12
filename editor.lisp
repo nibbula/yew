@@ -252,7 +252,14 @@ anything important.")
     :initform nil :type boolean
     :documentation "True to keep the region active after the command is done.
 Otherwise the region is deactivated every command loop.")
-   )
+   (translate-return-to-newline-in-bracketed-paste
+    :initarg :translate-return-to-newline-in-bracketed-paste
+    :accessor translate-return-to-newline-in-bracketed-paste
+    :initform t :type boolean
+    :documentation "Does what is says on the package.")
+   (last-search
+    :initarg :last-search :accessor last-search :initform nil
+    :documentation "The last string searched for."))
   (:default-initargs
     :non-word-chars *default-non-word-chars*
     :prompt-string *default-prompt*

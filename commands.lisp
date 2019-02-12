@@ -382,6 +382,12 @@ if it's blank or the same as the previous line."
      (1+ pos))
     (t (length str))))
 
+(defun test-for-string (string)
+  "Return the test function we should use for STRING. This 'smart' case folding,
+where using any upper case triggers exact matching, and all lower case means,
+be case insensitive."
+  (if (some #'upper-case-p string) #'char= #'char-equal))
+
 (defun search-history (e str direction start-from search-pos)
   (with-slots (point context) e
     (let ((hist (get-history context))
@@ -403,9 +409,12 @@ if it's blank or the same as the previous line."
 			 (setf pos (search str (dl-content x)
 					   :from-end t
 					   :end2 (backward-start-pos
-						  (dl-content x) search-pos))
+						  (dl-content x) search-pos)
+					   :test (test-for-string str)
+					   )
 			       first-time nil)
-			 (setf pos (search str (dl-content x) :from-end t)))
+			 (setf pos (search str (dl-content x) :from-end t
+					   :test (test-for-string str))))
 		     (when pos
 		       ;; (dbug "found pos = ~w in ~w (~w) x=~a~%"
 		       ;; 	     pos (dl-content x) str x)
@@ -419,9 +428,11 @@ if it's blank or the same as the previous line."
 		   (if first-time
 		       (setf pos (search str (dl-content x)
 					 :start2 (forward-start-pos
-						  (dl-content x) search-pos))
+						  (dl-content x) search-pos)
+					 :test (test-for-string str))
 			     first-time nil)
-		       (setf pos (search str (dl-content x))))
+		       (setf pos (search str (dl-content x)
+					 :test (test-for-string str))))
 		   (when pos
 		     (setf (history-cur hist) x)
 		     (return-from search-history pos)))))))))
@@ -434,7 +445,7 @@ if it's blank or the same as the previous line."
 search can be ended by typing a control character, which usually performs a
 command, or Control-G which stops the search and returns to the start.
 Control-R searches again backward and Control-S searches again forward."
-  (with-slots (point buf command context temporary-message) e
+  (with-slots (point buf command context temporary-message last-search) e
     (let ((quit-now nil)
 	  (start-point point)
 	  (start-hist (history-current-get context))
@@ -450,7 +461,8 @@ Control-R searches again backward and Control-S searches again forward."
 		 (buffer-delete e 0 (length buf))
 		 (buffer-insert e 0 (or (history-current (context e)) ""))
 		 (setf point (min (or pos (length buf)) (length buf))
-		       temporary-message nil)
+		       temporary-message nil
+		       last-search search-string)
 		 (redraw-display e)))
 	(loop :while (not quit-now)
 	   :do
@@ -467,9 +479,13 @@ Control-R searches again backward and Control-S searches again forward."
 	      (use-hist e)
 	      (setf quit-now t))
 	     ((eql c (ctrl #\S))
+	      (when (and (zerop (length search-string)) last-search)
+		(stretchy-append search-string last-search))
 	      (setf direction :forward
 		    start-from (search-start-forward context)))
 	     ((eql c (ctrl #\R))
+	      (when (and (zerop (length search-string)) last-search)
+		(stretchy-append search-string last-search))
 	      (setf direction :backward
 		    start-from (search-start-backward context)))
 	     ((eql c (ctrl #\L))
@@ -1017,7 +1033,9 @@ in order, \"{open}{close}...\".")
                              a ~a." (type-of *terminal*))))
 	   (paste (read-bracketed-paste term))
 	   (len (length paste)))
-      (insert e paste)
+      (insert e (if (translate-return-to-newline-in-bracketed-paste e)
+		    (substitute #\newline #\return paste)
+		    paste))
       (incf point len))))
 
 (defun char-picker-command (e)
