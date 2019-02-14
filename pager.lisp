@@ -36,7 +36,7 @@ The shell command takes any number of file names.
   (:use :cl :dlib :opsys :dlib-misc :table-print :stretchy
 	:keymap :char-util :fatchar #+use-regex :regex #-use-regex :ppcre
 	:terminal :fatchar-io :pick-list :table-print :fui :inator
-	:terminal-inator :collections :ochar :theme :terminal-table)
+	:terminal-inator :collections :ochar :theme :terminal-table :completion)
   (:export
    #:*pager-prompt*
    #:*empty-indicator*
@@ -230,7 +230,7 @@ The shell command takes any number of file names.
     :initform '(:standout) :type list
     :documentation
     "Cached style for displaying the mode line. Read from theme value
-(:program :modline :style).")
+(:program :modeline :style).")
    (empty-indicator-char
     :initarg :empty-indicator-char :accessor empty-indicator-char
     :initform #\~ :type character
@@ -546,7 +546,7 @@ read until we get an EOF."
 	(setf got-eof t))
       (stream-error (c)
 	(setf got-eof t)
-	(tmp-message "Got an error: ~a on the stream." c)))))
+	(message pager "Got an error: ~a on the stream." c)))))
 
 (defmethod read-input ((pager binary-pager) line-count)
   "Read new lines from the stream. Stop after COUNT lines. If COUNT is zero,
@@ -596,7 +596,7 @@ read until we get an EOF."
 	(setf got-eof t))
       (stream-error (c)
 	(setf got-eof t)
-	(tmp-message "Got an error: ~a on the stream." c)))))
+	(message pager "Got an error: ~a on the stream." c)))))
 
 (defun stream-name (stream)
   (cond
@@ -716,9 +716,7 @@ the primary result printed as a string."
   (with-slots (modeline-style) pager
     (tt-move-to (1- (tt-height)) 0)
     (tt-erase-to-eol)
-    ;; (tt-inverse t)
-    ;; (tt-color :default :default)
-    ;; (tt-write-string (format-prompt pager))
+    (tt-normal)
     ;; (tt-write-span `(,@modeline-style ,(format-prompt pager)))
     (tt-write-span `( ; ,@modeline-style
 		     ,(symbolic-prompt-to-string
@@ -729,18 +727,17 @@ the primary result printed as a string."
 			     (t *default-text-pager-prompt*))))))
     (tt-normal)))
 
-(defmethod message ((pager pager) format-string &rest args)
+(defun display-message (format-string &rest args)
   "Display a formatted message at the last line immediately."
-  (tt-inverse t)
-  (tt-move-to (1- (tt-height)) 0)
-  (tt-erase-to-eol)
-  (apply #'terminal-format *terminal* format-string args)
-  (tt-inverse nil)
-  (tt-finish-output))
+  (with-slots (modeline-style) *pager*
+    (tt-move-to (1- (tt-height)) 0)
+    (tt-erase-to-eol)
+    (tt-write-span `(,@modeline-style ,(apply #'format nil format-string args)))
+    (tt-finish-output)))
 
 (defun message-pause (format-string &rest args)
   "Print a formatted message at the last line and pause until a key is hit."
-  (apply #'message *pager* format-string args)
+  (apply #'display-message format-string args)
   (tt-get-char))
 
 (defun message-pause-for (timeout format-string &rest args)
@@ -748,20 +745,19 @@ the primary result printed as a string."
 Wait for TIMEOUT milliseconds before returning an error (-1).
 This assumes there is no timeout (i.e. timeout is -1) before this is called,
 and resets it to be so afterward."
-  (apply #'message format-string args)
+  (apply #'display-message format-string args)
   (let (c)
     (when (tt-listen-for (/ timeout 100))
       (setf c (tt-get-char)))
     c))
 
-(defun tmp-message (format-string &rest args)
+(defmethod message ((pager pager) format-string &rest args)
   "Display a message at next command loop, until next input."
   (setf (pager-message *pager*) (apply #'format nil format-string args)))
 
-(defun real-attr (a)
-  "Return a curses attribute given a keyword attribute."
-  ;;(or (and a (cdr (assoc a *attr*))) +a-normal+)
-  a)
+(defmethod prompt ((pager pager) format-string &rest args)
+  "Display a short message, asking the user for input."
+  (apply #'display-message format-string args))
 
 #|
              left         *cols*
@@ -964,8 +960,8 @@ line : |----||-------||---------||---|
 	     (tt-move-to i 0)
 	     (tt-write-span `(,@empty-indicator-style ,empty-indicator-char))))
       (if message
-	  (let ((*pager-prompt* message))
-	    (display-prompt pager)
+	  (progn
+	    (display-message message)
 	    (setf message nil))
 	  (display-prompt pager)))))
 
@@ -1042,8 +1038,8 @@ line : |----||-------||---------||---|
 	     (tt-write-string *empty-indicator*)))
       ;; mode line
       (if message
-	  (let ((*pager-prompt* message))
-	    (display-prompt pager)
+	  (progn
+	    (display-message message)
 	    (setf message nil))
 	  (display-prompt pager)))))
 
@@ -1113,6 +1109,17 @@ line : |----||-------||---------||---|
 	     :context :pager)
     (setf (tt-input-mode) :char)))
 
+(defun ask-for-file (&optional prompt)
+  (tt-move-to (1- (tt-height)) 0)
+  (tt-erase-to-eol)
+  (tt-finish-output)
+  (prog1
+      (rl:rl :prompt prompt
+	     :completion-func #'complete-filename
+	     :context :read-filename
+	     :accept-does-newline nil)
+    (setf (tt-input-mode) :char)))
+
 (defun search-line (str line)
   "Return true if LINE contains the string STR. LINE can be a string, or a
 list containing strings and lists."
@@ -1175,14 +1182,14 @@ list containing strings and lists."
 
 (defun set-option (pager)
   "Set a pager option. Propmpts for what option to toggle."
-  (message pager "Set option: ")
+  (display-message "Set option: ")
   (with-slots (show-line-numbers ignore-case wrap-lines raw-output pass-special
 	       color-bytes) pager
     (macrolet ((toggle-option (option)
 		 `(progn
 		    (setf ,option (not ,option))
 		    (update-display *pager*)
-		    (tmp-message "~(~a~) is ~:[Off~;On~]" ',option ,option)
+		    (message pager "~(~a~) is ~:[Off~;On~]" ',option ,option)
 		    (tt-finish-output))))
       (let ((char (tt-get-char)))
 	(case char
@@ -1193,7 +1200,7 @@ list containing strings and lists."
 	  (#\p (toggle-option pass-special))
 	  (#\c (toggle-option color-bytes))
 	  (otherwise
-	   (tmp-message "Unknown option '~a'" (nice-char char))))))))
+	   (message pager "Unknown option '~a'" (nice-char char))))))))
 
 (define-condition directory-error (simple-error) ()
   ;; :report (lambda (c stream)
@@ -1265,8 +1272,8 @@ Returns the the open stream or NIL."
 
 (defun open-file-command (filename &key (offset 0))
   "Open the given FILENAME."
-  (when (not (open-file *pager* filename :offset offset))
-    (tmp-message "Can't open file \"~s\".")))
+  (or (open-file *pager* filename :offset offset)
+      (and (message *pager* "Can't open file \"~s\".") nil)))
 
 ;; File locations can be either a file name, or a list or vector with the first
 ;; element being a file name and the second being an offset in the file. If the
@@ -1318,23 +1325,28 @@ more files."
 		(return-from advance-file-index t))))))))
 
 (defmethod next-file ((pager pager))
-  "Go to the next file in the set of files."
+  "Try to go to the next file in the set of files. Return NIL if we can't."
   (with-slots (file-list file-index) pager
     (if (and file-index (advance-file-index pager :forward))
 	(progn
 	  (open-file-command
 	   (file-location-file (elt file-list file-index))
-	   :offset (file-location-offset (elt file-list file-index))))
-	(tmp-message "No next file."))))
+	   :offset (file-location-offset (elt file-list file-index)))
+	  t)
+	(progn
+	  (message pager "No next file.")
+	  nil))))
 
 (defmethod previous-file ((pager pager))
-  "Go to the previous file in the set of files."
+  "Try to go to the previous file in the set of files. Return NIL if we can't."
   (with-slots (file-list file-index) pager
     (if (and file-index (advance-file-index pager :backward))
 	(open-file-command
 	 (file-location-file (elt file-list file-index))
 	 :offset (file-location-offset (elt file-list file-index)))
-	(tmp-message "No previous file."))))
+	(progn
+	  (message pager "No previous file.")
+	  nil))))
 
 (defun next-file-location (pager)
   "Go to the next file in the set of files."
@@ -1352,7 +1364,7 @@ more files."
 		(incf file-index)
 		(go-to-offset pager
 		 (1+ (file-location-offset (elt file-list file-index)))))))
-	(tmp-message "No next file."))))
+	(message pager "No next file."))))
 
 (defun previous-file-location (pager)
   "Go to the previous file in the set of files."
@@ -1370,12 +1382,12 @@ more files."
 		(decf file-index)
 		(go-to-offset pager
 		 (1+ (file-location-offset (elt file-list file-index)))))))
-	(tmp-message "No previous file."))))
+	(message pager "No previous file."))))
 
 (defun show-file-list (pager)
   (with-slots (file-list file-index) pager
     (if (not file-list)
-	(tmp-message "The file list is empty.")
+	(message pager "The file list is empty.")
 	(sub-page (s)
 	  (let ((i 0))
 	    (map nil (_ (tt-format "~c ~s~%"
@@ -1385,11 +1397,13 @@ more files."
 
 (defun suspend (pager)
   "Suspend the pager."
-  (if (and (find-package :lish)
-	   (find-symbol "*LISH-LEVEL*" :lish)
-	   (symbol-value (find-symbol "*LISH-LEVEL*" :lish)))
-      (setf (pager-suspend-flag pager) t)
-      (tmp-message "No shell to suspend to.~%")))
+  (with-slots (suspend-flag (quit-flag inator::quit-flag)) pager
+    (if (and (find-package :lish)
+	     (find-symbol "*LISH-LEVEL*" :lish)
+	     (symbol-value (find-symbol "*LISH-LEVEL*" :lish)))
+	(setf suspend-flag t
+	      quit-flag t)
+	(message pager "No shell to suspend to.~%"))))
 
 (defun byte-pos-changed (pager)
   "After changing byte-pos, read more input if needed or availible, or adjust
@@ -1554,7 +1568,7 @@ byte-pos."
 	 (incf y)
 	 (incf i)
 	 (setf l (cdr l)))
-      ;; (tmp-message "max-col = ~d" max-col)
+      ;; (message pager "max-col = ~d" max-col)
       (setf left (max 0 (- max-col (tt-width)))))))
 
 (defmethod scroll-end ((pager binary-pager))
@@ -1606,7 +1620,7 @@ byte-pos."
     (block nil
       (handler-case
 	  (when (not (search-for search-string))
-	    (tmp-message "--Not found--"))
+	    (message pager "--Not found--"))
 	(ppcre-syntax-error (c)
 	  (fui:display-text
 	   "Error"
@@ -1625,7 +1639,7 @@ byte-pos."
   (with-slots (search-string) pager
     (setf search-string (ask "Search backward for: "))
     (when (not (search-for search-string :backward))
-      (tmp-message "--Not found--"))))
+      (message pager "--Not found--"))))
 
 (defun search-next (pager)
   "Search for the next occurance of the current search in the stream."
@@ -1633,7 +1647,7 @@ byte-pos."
     (incf line)
     (when (not (search-for search-string))
       (decf line)
-      (tmp-message "--Not found--"))))
+      (message pager "--Not found--"))))
 
 (defun search-previous (pager)
   "Search for the previous occurance of the current search in the stream."
@@ -1643,8 +1657,8 @@ byte-pos."
 	  (decf line)
 	  (when (not (search-for search-string :backward))
 	    (incf line)
-	    (tmp-message "--Not found--")))
-	(tmp-message "Search stopped at the first line."))))
+	    (message pager "--Not found--")))
+	(message pager "Search stopped at the first line."))))
 
 (defun clear-search (pager)
   "Clear the search string."
@@ -1660,16 +1674,15 @@ byte-pos."
 (defun show-info (pager)
   "Show information about the stream."
   (with-slots (seekable) pager
-    (tmp-message "%f %l of %L %b/%B ~:[un~;~]seekable" seekable)))
+    (message pager "%f %l of %L %b/%B ~:[un~;~]seekable" seekable)))
 
 ;; This is very bogus.
 (defun show-version (pager)
   "Show the version."
-  (declare (ignore pager))
   (let* ((system (asdf:find-system :pager))
 	 (version (asdf:component-version system))
 	 (name (asdf:component-name system)))
-    (tmp-message "~:(~a~) Version: ~a" name version)))
+    (message pager "~:(~a~) Version: ~a" name version)))
 
 (defmethod redraw ((pager pager))
   "Redraw the display."
@@ -1690,7 +1703,7 @@ byte-pos."
 		;; drop all following lines
 		(rplacd (nthcdr (1- line) lines) nil)))
 	  (read-input pager page-size))
-	(tmp-message "Can't re-read an unseekable stream."))))
+	(message pager "Can't re-read an unseekable stream."))))
 
 (defun digit-argument (pager)
   "Accumulate digits for the PREFIX-ARG."
@@ -1709,7 +1722,7 @@ byte-pos."
 (defparameter *long-commands*
   (vector
    `("edit"	  (#\e #\x)  "Examine a different file."
-     ,(lc (open-file-command (ask (s+ ":" c #\space)))))
+     ,(lc (open-file-command (ask-for-file (s+ ":" c #\space)))))
    `("next"	  (#\n)	    "Examine the next file in the arguments."
      ,(lc (next-file *pager*)))
    `("previous"	  (#\p)	    "Examine the previous file in the arguments."
@@ -1751,7 +1764,7 @@ byte-pos."
 
 (defun describe-key (pager)
   "Prompt for a key and describe the function it invokes."
-  (message pager "Press a key: ")
+  (display-message "Press a key: ")
   (let* ((key-seq (get-key-sequence (lambda () (tt-get-key)) *normal-keymap*))
     	 (action (key-sequence-binding key-seq *normal-keymap*)))
     (cond
@@ -1765,11 +1778,11 @@ byte-pos."
 	     `(,(format nil "Sorry, there's no documentation for ~a.~%"
 			action)))))
       (t
-       (tmp-message "~a is not defined" (key-sequence-string key-seq))))))
+       (message pager "~a is not defined" (key-sequence-string key-seq))))))
 
 (defun help-key (pager)
   "Sub-command for help commands."
-  (message pager "Help (? for more help): ")
+  (display-message "Help (? for more help): ")
   (process-event pager (tt-get-char) *help-keymap*)
   (setf (inator-quit-flag *pager*) nil))
 
@@ -1790,19 +1803,6 @@ q - Abort")
   file-list
   stream
   close-me)
-
-(defmethod await-event ((pager pager))
-  (let ((result (call-next-method)))
-    (with-slots (prefix-arg input-char) pager
-      (setf input-char result)
-      ;; Clear the prefix argument if we didn't read a digit.
-      (when (not (equal (inator-command pager) 'digit-argument))
-	(setf prefix-arg nil))
-      (when (typep result 'tt-mouse-button-event)
-	(case (tt-mouse-button result)
-	  (:button-4 (setf result :scroll-up))
-	  (:button-5 (setf result :scroll-down)))))
-    result))
 
 ;; @@@ Consider moving a generalized version of this to opsys
 (defmacro with-disabled-cchars (() &body body)
@@ -1833,12 +1833,28 @@ q - Abort")
   #-unix
   `(progn ,@body))
 
+(defmethod read-key-sequence ((pager pager))
+  (with-disabled-cchars () (call-next-method)))
+
+(defmethod await-event ((pager pager))
+  (let ((result (with-disabled-cchars () (call-next-method))))
+    (with-slots (prefix-arg input-char) pager
+      (setf input-char result)
+      ;; Clear the prefix argument if we didn't read a digit.
+      (when (not (equal (inator-command pager) 'digit-argument))
+	(setf prefix-arg nil))
+      (when (typep result 'tt-mouse-button-event)
+	(case (tt-mouse-button result)
+	  (:button-4 (setf result :scroll-up))
+	  (:button-5 (setf result :scroll-down)))))
+    result))
+
 (defun page (files &key pager close-me suspended options)
   "View a stream with the pager. Return whether we were suspended or not."
   (with-terminal ()
 ;;  (with-new-terminal (:ansi)
     (tt-enable-events :resize)
-    (with-disabled-cchars ()
+;;    (with-disabled-cchars ()
       (let* ((stream    (getf options :stream))
 	     (pager     (or pager (getf options :pager)))
 	     (binary    (getf options :binary))
@@ -1850,8 +1866,8 @@ q - Abort")
 				   :page-size (1- (tt-height))
 				   :file-list files
 				   options))))
-	(with-slots (page-size file-list file-index suspend-flag seekable stream)
-	    *pager*
+	(with-slots (page-size file-list file-index suspend-flag seekable stream
+		     (quit-flag inator::quit-flag)) *pager*
 	  (unwind-protect
 	       (tagbody
 		try-again
@@ -1859,7 +1875,8 @@ q - Abort")
 		      (progn
 			(when try-again
 			  (setf try-again nil)
-			  (next-file *pager*))
+			  (when (not (next-file *pager*))
+			    (go done)))
 			(when (not (pager-stream *pager*))
 			  (setf (pager-stream *pager*)
 				(open-lossy (file-location-file
@@ -1878,9 +1895,9 @@ q - Abort")
 					     (elt file-list file-index))))))
 			(tt-enable-events :mouse-buttons)
 			(read-input *pager* page-size)
-			;; (setf quit-flag nil
-			;;       suspend-flag nil
-			;;       suspended nil)
+			(setf quit-flag nil
+			      suspend-flag nil
+			      suspended nil)
 			(event-loop *pager*)
 			(when suspend-flag
 			  (setf suspended t)
@@ -1892,20 +1909,22 @@ q - Abort")
 					    :close-me close-me)))
 				(funcall (find-symbol "SUSPEND-JOB" :lish)
 					 "pager" "" (lambda ()
-						      (pager:resume suspy))))
+						      (pager:resume suspy)))
+				(go done))
 			      (format t "No shell loaded to suspend to.~%"))))
 		    ((or file-error stream-error opsys-error directory-error)
 			(c)
 		      (message-pause "~a" (princ-to-string c))
 		     (setf try-again t)
-		     (go try-again))))
+		     (go try-again)))
+		  done)
 	    (when (and close-me (not suspended) stream)
 	      (close stream))
 	    (tt-move-to (tt-height) 0)
 	    (tt-erase-to-eol)
 	    ;;(tt-write-char #\newline)
 	    (tt-disable-events :mouse-buttons)
-	    (tt-finish-output))))))
+	    (tt-finish-output)))))
   suspended)
 
 (defun resume (suspended)
