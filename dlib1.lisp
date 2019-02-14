@@ -519,6 +519,8 @@ is the separator. If :omit-empty is true, then don't return empty subsequnces.
 	    (loopy nil)))))))
 
 (defun split-sequence-by-range (ranges sequence)
+  "Split SEQUENCE into pieces specified by RANGES which is a list of pairs of
+start and end indices."
   (loop :with range-start :and range-end :and seq-end = (1- (length sequence))
      :for range :in ranges :do
      (setf range-start (or (car range) 0)
