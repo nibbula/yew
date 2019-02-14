@@ -74,6 +74,7 @@ FILENAME contains a slash take it as a path, otherwise look for it in some set
 of places. If it is a null pointer, return a handle for the current image."
   (filename :string) (flags :int))
 
+#+linux
 (defcfun dlmopen :pointer
   "Open a shared library into the namespace given in LMID, named by FILENAME
 and return a handle to it. If FILENAME contains a slash take it as a path,

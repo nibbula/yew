@@ -10,10 +10,12 @@
 #+(or darwin linux freebsd) (config-feature :os-t-has-strerror-r)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-;; OpenBSD has an errno function, instead of a variable.
-  #+openbsd
+  ;; OpenBSD and FreeBSD both have a differently named errno function,
+  ;; instead of a variable.
+  #+(or openbsd freebsd)
   (progn
-    (defcfun ("__errno" errno-func) (:pointer :int))
+    #+openbsd (defcfun ("__errno" errno-func) (:pointer :int))
+    #+freebsd (defcfun ("__error" errno-func) (:pointer :int))
     (defun %errno () (let ((p (errno-func)))
 		       (when (not (null-pointer-p p))
 			 (mem-ref p :int))))
@@ -21,7 +23,7 @@
     (defun errno () (%errno))
     (config-feature :os-t-has-errno-func))
 
-  #-openbsd
+  #-(or openbsd freebsd)
   (if (foreign-symbol-pointer "__errno_location")
       (progn
 	(defcfun ("__errno_location" errno-func) (:pointer :int))

@@ -1053,7 +1053,7 @@ versions of the keywords used in Lisp open.
     result))
 	  
 (defcfun fsync :int (fd :int))
-(defcfun fdatasync :int (fd :int))
+#+linux (defcfun fdatasync :int (fd :int))
 
 ;; stat / lstat
 
