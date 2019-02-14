@@ -567,13 +567,13 @@ arguments are the same."
     :help        "Return the file name as a list.")
    (name	 string   :short-arg #\n
     :help        "Matches file name.")
-   (file-type	 string   :short-arg #\t
+   (file-type	 string   :short-arg #\T
     :help        "Matches file type as returned by “file”.")
    (path	 pathname :short-arg #\P
     :help        "Matches full path.")
    (size	 string   :long-arg "size"
     :help        "Matches size.")
-   (type	 string   :long-arg "type"
+   (type	 string   :short-arg #\t :long-arg "type"
     :help        "Matches type.")
    (time	 string   :long-arg "time"
     :help        "Matches time.")
