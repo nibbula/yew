@@ -4,7 +4,7 @@
 
 (defpackage :theme
   (:documentation "Customize the style.")
-  (:use :cl :dlib)
+  (:use :cl :dlib :fatchar)
   (:export
    #:theme
    #:theme-activate
@@ -406,6 +406,7 @@ If the path doesn't exist, it is created."
 (defparameter *file-suffix-table* nil)
 
 (defun file-suffix-type (file)
+  "Return the file suffix type for the given file name."
   (when (not *file-suffix-table*)
     (setf *file-suffix-table* (make-hash-table :test #'equal))
     (loop :for type :in theme:*file-type-suffixes* :do
@@ -415,6 +416,55 @@ If the path doesn't exist, it is created."
 	 (suffix (and dot (subseq file dot))))
     (when suffix
       (gethash suffix *file-suffix-table*))))
+
+(defparameter *dircolor-map*
+  #(("rs" . nil) 			; reset
+    ("di" . (:file :type :directory             :style))
+    ("mh" . (:file :type :link                  :style))
+    ("ln" . (:file :type :symbolic-link         :style))
+    ("pi" . (:file :type :pipe                  :style))
+    ("so" . (:file :type :socket                :style))
+    ("bd" . (:file :type :block-device          :style))
+    ("cd" . (:file :type :character-device      :style))
+    ;;("or" . (:file :type :orphan                :style)) ;; broken symlink 
+    ;;("mi" . (:file :type :missing               :style)) ;; the missing file
+    ("su" . (:file :type :setuid                :style))
+    ("sg" . (:file :type :setgid                :style))
+    ;;("ca" . (:file :type :capability            :style)) ;; file with capability
+    ("st" . (:file :type :sticky                :style))
+    ("tw" . (:file :type :sticky-other-writable :style))
+    ("ow" . (:file :type :other-writable        :style))
+    ("ex" . (:file :type :executable            :style))))
+
+(defun find-theme-node-for (name)
+  (let (result)
+    (or (and (setf result (find name theme::*dircolor-map*
+				:key #'car :test #'equal))
+	     (cdr result))
+	(and (setf result (file-suffix-type name))
+	     `(:file :suffix ,result)))))
+  
+(defun dircolors-to-theme (&optional (dircolors (nos:env "LS_COLORS")))
+  "Convert from a dircolors format string, to a plist of theme-item value,
+which can be used to set the appropriate theme values, for example with
+set-theme-items."
+  (let (result name value tt)
+    (loop :for e in (split-sequence #\: dircolors) :do
+	 (setf name (split-sequence #\= e)
+	       value (second name)
+	       name (first name))
+       :if (setf tt (find-theme-node-for name))
+       :do
+	 (let ((i (assoc tt result :test #'equalp))
+	       (val (delete-if #'stringp
+			       (flatten
+				(fatchar-string-to-span
+				 (process-ansi-colors
+				  (make-fatchar-string
+				   (format nil "~c[~amx" #\escape value))))))))
+	   (if i (rplacd i val)
+	       (setf result (acons tt val result)))))
+    (alexandria:alist-plist result)))
 
 (defun set-theme-items (theme item-value-list)
   "Set item in theme from item-value-list which is a plist like list of
