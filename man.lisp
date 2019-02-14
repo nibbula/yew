@@ -153,6 +153,7 @@
       (progn
 	(setf (nos:environment-variable "MANWIDTH") cols
 	      (nos:environment-variable "MAN_KEEP_FORMATTING") "t"
+	      (nos:environment-variable "MANPAGER") "cat"
 	      )
 	(princ base str))
       #-(or linux freebsd) (princ base str)
@@ -164,9 +165,12 @@
       ;; (format t "cmd = ~s entry = ~s~%" cmd entry)
       ;; (read-line)
       (unwind-protect
-	(progn
-	  (setf stream (!! cmd (or entry "")))
-	  (pager:pager stream))
+	   (if (out-pipe-p)
+	       ;; (! cmd (or entry ""))
+	       (pipe (s+ cmd (or entry "")) "cat")
+	       (progn
+		 (setf stream (!! cmd (or entry "")))
+		 (pager:pager stream)))
 	(when stream
 	  (close stream))))))
 
@@ -178,9 +182,12 @@
     ;;(setf (nos:environment-variable "COLUMNS") cols)
     #+(or linux freebsd) (setf (nos:environment-variable "MANWIDTH") cols)
     (unwind-protect
-	 (progn
-	   (setf stream (!! "/usr/bin/man -P cat " (or crap "")))
-	   (pager:pager stream))
+	 (if (out-pipe-p)
+	     ;; (! "/usr/bin/man -P cat " (or crap ""))
+	     (pipe (s+ "/usr/bin/man " (or crap "")) "cat")
+	     (progn
+	       (setf stream (!! "/usr/bin/man -P cat " (or crap "")))
+	       (pager:pager stream)))
       (when stream
 	(close stream)))))
 
