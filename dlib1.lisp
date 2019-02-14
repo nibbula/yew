@@ -1977,7 +1977,8 @@ repleace a single tilde with double tidles."
 		       (machine-instance)
 		       #+cormanlisp (get-computer-name)
 		       ))
-		    '(#\. #\space))))
+		    '(#\. #\space)))
+  "The name of the machine. Usually the same as the network host name.")
 (d-add-feature *host*)
 
 #+(and darwin ecl) (d-add-feature :unix)
@@ -1990,7 +1991,10 @@ repleace a single tilde with double tidles."
 ; 	(rel  (shell-line "uname" "-r")
 
 ;; Figure out environmental features
-(defvar *arch* (or (d-getenv "ARCH") (d-getenv "MACHTYPE")))
+(defvar *arch* (or (d-getenv "ARCH") (d-getenv "MACHTYPE"))
+  "String uniquely identifying this platform. A combination of processor
+architecture, computer vendor, operating system, and operating system version.")
+
 (defparameter *arch-nickname*
   (cond
     ((search "sparc"   *arch*)	"sparc")
@@ -2006,23 +2010,24 @@ repleace a single tilde with double tidles."
     ((search "java"    *arch*)	"java")
     (t "unknown")
   )
-  "A short nickname for the current architecture."
-)
-; Petulant feature adding
+  "A short nickname for the current architecture.")
 (d-add-feature *arch-nickname*)
 
-(defvar *os* #+unix (shell-line "uname" "-s") #+(or win32 windows) "windows")
+(defvar *os*
+  #+unix (shell-line "uname" "-s")
+  #+(or win32 windows) "windows"
+  #-(or unix (or win32 windows)) "unknown"
+  "A string identifying the operating system.")
+
 (defparameter *os-nickname*
   (cond
     ((search "Linux"  *os*)	"linux")
     ((search "SunOS"  *os*)	"solaris") ; come on now
     ((search "Darwin" *os*)	"darwin")
     ((search "windows" *os*)	"windows")
-    (t "unknown")
-  )
-  "A short nickname for the current operating system."
-)
-(d-add-feature *os*)			; Gratuitous feature adding
+    (t "unknown"))
+  "A short nickname for the current operating system.")
+(d-add-feature *os*)
 
 (defparameter *lisp-implementation-nickname*
   #+clisp	"CLisp"
