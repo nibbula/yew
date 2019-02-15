@@ -219,12 +219,25 @@ Second value is the scanner that was used.
 		   (apply #'grep pattern stream :scanner scanner args)
 		   (grep pattern stream :scanner scanner)))
 	     (grep-one-file (f)
-	       (with-open-file (stream (native-pathname f))
+	       (with-open-file-or-stream (stream
+					  (if (streamp f)
+					      f
+					      (native-pathname f)))
 		 (multiple-value-setq (result scanner)
 		   (call-grep pattern stream
 			      (if (not no-filename)
 				  (append keywords `(:filename ,f))
-				  keywords))))))
+				  keywords)))))
+	     (grep-with-handling (f)
+	       (if gather-errors
+		   (handler-case
+		       (grep-one-file f)
+		     (stream-error (c)
+		       (let ((*print-pretty* nil))
+			 (format *error-output*
+				 "~a: ~a ~a~%" f (type-of c) c))
+		       (invoke-restart 'continue)))
+		   (grep-one-file f))))
       ;;(with-term-if (use-color output-stream)
       (with-grout (*grout* output-stream)
 	(cond
@@ -238,31 +251,27 @@ Second value is the scanner that was used.
 	      :do
 		(restart-case
 		    (progn
-		      (if (not (file-exists f))
+		      (cond
+			((streamp f)
+			 (grep-with-handling f))
+			((not (file-exists f))
 			  (if gather-errors
 			      (format *error-output*
 				      "~a: No such file or directory~%" f)
-			      (error "~a: No such file or directory~%" f))
-			  (let ((info (get-file-info f)))
-			    (if (eq :directory (file-info-type info))
-				(if gather-errors
-				    (format *error-output*
-					    "~a: Is a directory~%" f)
-				    (error "~a: Is a directory~%" f))
-				(if gather-errors
-				    (handler-case
-					(grep-one-file f)
-				      (stream-error (c)
-					(let ((*print-pretty* nil))
-					  (format *error-output*
-						  "~a: ~a ~a~%" f (type-of c) c))
-					(invoke-restart 'continue)))
-				    (grep-one-file f)))
-			    (cond
-			      ((and result files-with-match (not quiet))
-			       (grout-format "~a~%" f))
-			      ((and (not result) files-without-match (not quiet))
-			       (grout-format "~a~%" f)))))
+			      (error "~a: No such file or directory~%" f)))
+			(t
+			 (let ((info (get-file-info f)))
+			   (if (eq :directory (file-info-type info))
+			       (if gather-errors
+				   (format *error-output*
+					   "~a: Is a directory~%" f)
+				   (error "~a: Is a directory~%" f))
+			       (grep-with-handling f)))))
+		      (cond
+			((and result files-with-match (not quiet))
+			 (grout-format "~a~%" f))
+			((and (not result) files-without-match (not quiet))
+			 (grout-format "~a~%" f)))
 		      (when collect
 			(mapc (_ (push _ results)) result)))
 		  (continue ()
@@ -282,7 +291,7 @@ Second value is the scanner that was used.
   ((pattern string
     :optional nil
     :help "Regular expression to search for.")
-   (files pathname
+   (files input-stream-or-filename
     :repeating t
     :help "Files to search in.")
    (files-with-match boolean
