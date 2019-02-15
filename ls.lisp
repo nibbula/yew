@@ -340,10 +340,10 @@ by nos:read-directory."))
   "Return a table filled with the long listing for files in FILE-LIST."
   #+unix
   (make-table-from
-   (loop
+   (loop :with s
       :for file :in file-list
       ;;:for s = (unix-stat (item-full-path file))
-      :for s = (uos:lstat (item-full-path file))
+      :do (setf s (uos:lstat (item-full-path file)))
       :collect
       (list
        (uos:symbolic-mode (uos:file-status-mode s))
@@ -397,30 +397,48 @@ by nos:read-directory."))
 	   (get-styled-file-name item))
       (get-styled-file-name item)))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro when-not-missing (before after)
+    `(tagbody
+	(handler-case
+	    (progn ,before)
+	  (opsys-error (c)
+	    #+unix (if (/= (opsys-error-code c) uos:+ENOENT+)
+		       (signal c)
+		       (go MISSING))
+	    #-unix (signal c)))
+	(progn
+	  ,after)
+      MISSING)))
+
 (defun gather-file-info (args)
   (let* (main-list
 	 (sort-by (getf args :sort-by))
-	 (results
-	  (loop :for file :in (getf args :files)
-	     :if (and (probe-directory file)
-		      (not (getf args :directory)))
-	     :collect
-	     (mapcar (_ (make-full-item (dir-entry-name _) file))
-		     (read-directory
-		      :full t :dir file
-		      :omit-hidden (not (getf args :hidden))))
-	     :else
-	     :do
-	     (push (make-full-item (path-file-name file)
-				   (path-directory-name file))
-		   main-list)
-	     (setf (ls-state-mixed-bag *ls-state*) t))))
+	 results item)
+    (loop :for file :in (getf args :files)
+       :do
+	 (if (and (probe-directory file)
+		  (not (getf args :directory)))
+	     (loop :for x :in
+		  (read-directory
+		       :full t :dir file
+		       :omit-hidden (not (getf args :hidden)))
+		  :do
+		  (when-not-missing
+		   (setf item (make-full-item (dir-entry-name x) file))
+		   (push item results)))
+	     (progn
+	       (when-not-missing
+		(setf item (make-full-item (path-file-name file)
+					   (path-directory-name file)))
+		(push item main-list))
+	       (setf (ls-state-mixed-bag *ls-state*) t))))
 
     ;; group all the individual files into a list
     (setf results
 	  (if main-list
-	      (append (list (nreverse main-list)) results)
-	      results)
+	      (append (list (nreverse main-list)) (list results))
+	      (list (nreverse results)))
 	  sort-by (if sort-by (keywordify sort-by) :none))
     (when (not (eq sort-by :none))
       (setf results
