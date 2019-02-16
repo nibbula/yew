@@ -77,6 +77,7 @@ A: _This_ *is* your documentation.
    #:run-group-name
    #:run-all-tests
    #:list-tests
+   #:failed
    #:describe-test
    #:clear-tests
    #:test-in
@@ -380,6 +381,10 @@ documentation."
 		(terpri)))))
     (loop :for x :in *tests* :do
        (print-test x 2))))
+
+(defun failed ()
+  "Shorthand for (list-tests :failed t)."
+  (list-tests :failed t))
 
 (defun describe-test (name)
   "Describe the test named NAME."
