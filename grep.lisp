@@ -205,7 +205,7 @@ Second value is the scanner that was used.
 		     (output-stream *standard-output*)
 		     count extended fixed ignore-case quiet invert
 		     line-number files-with-match files-without-match
-		     use-color collect no-filename gather-errors)
+		     use-color collect no-filename signal-errors)
   "Call GREP with PATTERN on FILES. Arguments are:
   FILES     - A list of files to search.
   RECURSIVE - If FILES contain directory names, recursively search them.
@@ -229,15 +229,16 @@ Second value is the scanner that was used.
 				  (append keywords `(:filename ,f))
 				  keywords)))))
 	     (grep-with-handling (f)
-	       (if gather-errors
+	       (if signal-errors
+		   (grep-one-file f)
 		   (handler-case
 		       (grep-one-file f)
-		     (stream-error (c)
+		     ((or stream-error file-error) (c)
+		       (finish-output)
 		       (let ((*print-pretty* nil))
 			 (format *error-output*
 				 "~a: ~a ~a~%" f (type-of c) c))
-		       (invoke-restart 'continue)))
-		   (grep-one-file f))))
+		       (invoke-restart 'continue))))))
       ;;(with-term-if (use-color output-stream)
       (with-grout (*grout* output-stream)
 	(cond
@@ -255,17 +256,17 @@ Second value is the scanner that was used.
 			((streamp f)
 			 (grep-with-handling f))
 			((not (file-exists f))
-			  (if gather-errors
+			  (if signal-errors
+			      (error "~a: No such file or directory~%" f)
 			      (format *error-output*
-				      "~a: No such file or directory~%" f)
-			      (error "~a: No such file or directory~%" f)))
+				      "~a: No such file or directory~%" f)))
 			(t
 			 (let ((info (get-file-info f)))
 			   (if (eq :directory (file-info-type info))
-			       (if gather-errors
+			       (if signal-errors
+				   (error "~a: Is a directory~%" f)
 				   (format *error-output*
-					   "~a: Is a directory~%" f)
-				   (error "~a: Is a directory~%" f))
+					   "~a: Is a directory~%" f))
 			       (grep-with-handling f)))))
 		      (cond
 			((and result files-with-match (not quiet))
@@ -278,7 +279,7 @@ Second value is the scanner that was used.
 		    :report "Skip this file.")
 		  (skip-all ()
 		    :report "Skip remaining files with errors."
-		    (setf gather-errors t))))
+		    (setf signal-errors nil))))
 	   (setf results (nreverse results)))))
       ;;:when collect :collect result))
       (when (and collect files-with-match)
@@ -326,8 +327,8 @@ Second value is the scanner that was used.
    (collect boolean
     :short-arg #\c :default '(lish:accepts :sequence)
     :help "True to collect matches in a sequence.")
-   (gather-errors boolean :short-arg #\e
-    :help "True to gather errors to *error-output*. Otherwise signal them.")
+   (signal-errors boolean :short-arg #\e
+    :help "True to signal errors. Otherwise print them to *error-output*.")
    (positions boolean :short-arg #\p
     :help "True to send positions to Lish output. Equivalent to -nqs, except
 it's only quiet if the receiving command accepts sequences."))
@@ -365,7 +366,7 @@ it's only quiet if the receiving command accepts sequences."))
 		      :quiet quiet
 		      :use-color use-color
 		      :collect collect
-		      :gather-errors gather-errors))
+		      :signal-errors signal-errors))
     (if collect
 	(progn
 	  (dbugf :accepts "YOOOOOOO! output to *output*~%")
