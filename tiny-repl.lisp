@@ -415,7 +415,7 @@ to quit everything. Arguments are:
 	      (when (not result) (go TOP)))
 
 	;; Let's hope that this will clear an EOF on *standard-input*
-	(clear-input *standard-input*)
+	(ignore-errors (clear-input *standard-input*))
 
 	(when (> (repl-state-error-count state) 8)
 	  (format output "Quit due to too many errors.~%"))
