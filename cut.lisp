@@ -4,7 +4,7 @@
 
 (defpackage :cut
   (:documentation "Cut pieces from lines.")
-  (:use :cl :dlib :lish :stretchy :char-util)
+  (:use :cl :dlib :lish :stretchy :char-util :table)
   (:export
    #:cut-lines
    #:!cut
@@ -88,7 +88,7 @@ indicate only a start number, or :max to indicate it extends to the end."
 
 ;; @@@ Perhaps the args the be after get-regions is done?
 (defun cut-lines (stream &key bytes characters fields delimiter output-delimiter
-			   only-delimited)
+			   only-delimited collect)
   "Write lines from stream, while cutting, bytes, characters, or fields."
   (when (> (+ (if bytes 1 0) (if characters 1 0) (if fields 1 0)) 1)
     (error "Only one of bytes, characters, or fields can be specified."))
@@ -103,7 +103,7 @@ indicate only a start number, or :max to indicate it extends to the end."
 	  (line-vec (when bytes (make-stretchy-vector 20)))
 	  (newline-code (char-code #\newline))
 	  snip read-a-line write-newline write-a-string
-	  start end)
+	  start end result)
       (labels ((fix-char-region (s e len)
 		 "Make start and end reflect the real region for LEN."
 		 ;; (setf start (clamp (1- s) 0 (max 0 (1- len)))
@@ -122,17 +122,21 @@ indicate only a start number, or :max to indicate it extends to the end."
 	       (cut-regions (line)
 		 "Write the regions of the line."
 		 ;;(dbugf :cut "regions ~s~%" regions)
-		 (loop :with first = t
-		    :for (s . e) :in regions
-		    :do
-		      (fix-char-region s e (length line))
-		      (when (not first)
-			(funcall write-a-string output-delimiter))
-		      (setf first nil)
+		 (let ((first t) data)
+		   (loop :for (s . e) :in regions
+		      :do
+			(fix-char-region s e (length line))
+			(when (not first)
+			  (funcall write-a-string output-delimiter))
+			(setf first nil)
 		      ;; (format t "(~s . ~s) start ~s end ~s~%" s e start end)
-		      (when (< start (length line))
-			(funcall write-a-string (subseq line start end))))
-		 (funcall write-newline))
+			(when (< start (length line))
+			  (funcall write-a-string (subseq line start end))
+			  (when collect
+			    (push (subseq line start end) data))))
+		   (funcall write-newline)
+		   (when collect
+		     (push (nreverse data) result))))
 	       (print-fields (line)
 		 "Print the fields."
 		 ;;(dbugf :cut "delimiter ~s line ~s~%" delimiter line)
@@ -141,7 +145,8 @@ indicate only a start number, or :max to indicate it extends to the end."
 			(fn regions)
 			(i 0)
 			(region (car fn))
-			(first t))
+			(first t)
+			data)
 		   (if (= (length fs) 1)
 		       (when (not only-delimited)
 			 (write-line line))
@@ -156,6 +161,8 @@ indicate only a start number, or :max to indicate it extends to the end."
 				  (write-sequence output-delimiter
 						  *standard-output*))
 				(write-sequence f *standard-output*)
+				(when collect
+				  (push f data))
 				(setf first nil))
 			      (incf i)
 			      (when (> i end)
@@ -164,7 +171,9 @@ indicate only a start number, or :max to indicate it extends to the end."
 				(when fn
 				  (setf region (car fn))
 				  (fix-region (car region) (cdr region) len))))
-			 (terpri)))))
+			 (terpri)
+			 (when collect
+			   (push (nreverse data) result))))))
 	       (read-byte-line (stream bogo)
 		 "Read a line of bytes."
 		 (declare (ignore bogo))
@@ -192,7 +201,9 @@ indicate only a start number, or :max to indicate it extends to the end."
 	(loop :with line
 	   :while (setf line (funcall read-a-line str nil))
 	   :do
-	     (funcall snip line))))))
+	     (funcall snip line))
+	(when collect
+	  (nreverse result))))))
 
 (defcommand cut
   ((bytes string :short-arg #\b #| :repeating t |#
@@ -207,19 +218,33 @@ indicate only a start number, or :max to indicate it extends to the end."
     :help "Character that separates fields.")
    (only-delimited boolean :short-arg #\s
     :help "True to omit lines without any delimiters with -f.")
+   (collect boolean :short-arg #\C
+    :help "True to collect output as lists.")
+   (table boolean :short-arg #\t
+    :help "True to collect output as a table.")
    (files input-stream-or-filename
     :default '(list *standard-input*) :repeating t
     :help "Files to read from."))
+  :keys-as args
   "Remove sections of each line of input."
    (when (not files)
      (setf files (list *standard-input*)))
-   (loop :for f :in files :do
-	(cut-lines f
-		   :bytes bytes
-		   :characters characters
-		   :fields fields
-		   :delimiter delimiter
-		   :output-delimiter output-delimiter
-		   :only-delimited only-delimited)))
+   (when table
+     (setf collect t))
+   (flet ((call-cut (f)
+	    (remf args :files)
+	    (apply #'cut-lines f args)))
+     (let (results)
+       (loop :for f :in files :do
+	    (if collect
+		(push (call-cut f) results)
+		(call-cut f)))
+       (when collect
+	 (setf *output* (nreverse results))
+	 (when (= (length *output*) 1)
+	   (setf *output* (first *output*)))
+	 (if table
+	     (setf *output* (make-table-from *output*))
+	     *output*)))))
 
 ;; EOF
