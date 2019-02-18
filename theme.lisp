@@ -532,14 +532,15 @@ Something like the default setting of typical GNU tools."))))
        (:command :alias		    :style) (:fg :color #(:rgb .8 .7 .9))
        (:command :function	    :style) (:magenta)
        (:command-arg :existing-path :style) (:underline)
-       ;; Line editor
-       (:rl :search    :style) (:underline :fg-red)
-       (:rl :selection :style) (:standout)
        ;; Programs
        (:program :modeline             :style)     (:standout)
-       (:program :search-match         :style)     (:yellow :underline)
+       (:program :search-match         :style)     (:underline :red)
        (:program :empty-line-indicator :style)     (:normal)
        (:program :empty-line-indicator :character) #\~
+       (:program :selection            :style)     (:standout)
+       ;; Line editor
+       ;; (:rl      :search-match         :style)     (:underline :red)
+       ;; (:rl      :selection            :style)     (:standout)
        ))
     tt))
 
