@@ -325,7 +325,9 @@ Second value is the scanner that was used.
     :short-arg #\C :default t
     :help "True to highlight substrings in color.")
    (collect boolean
-    :short-arg #\c :default '(lish:accepts :sequence)
+    :short-arg #\c
+    :default '(lish:accepts :sequence)
+    :use-supplied-flag t
     :help "True to collect matches in a sequence.")
    (signal-errors boolean :short-arg #\e
     :help "True to signal errors. Otherwise print them to *error-output*.")
@@ -336,7 +338,7 @@ it's only quiet if the receiving command accepts sequences."))
   "Search for patterns in input."
   (let (result)
     (cond
-      ((lish:accepts :sequence)
+      ((and (lish:accepts :sequence) (not collect-supplied-p))
        (dbugf :accepts "HOWDUUUU output accepts a sequence~%")
        (setf collect t)
        (when positions
