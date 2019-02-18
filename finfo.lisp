@@ -52,17 +52,21 @@
   (setf *output* (append *output*
 			 (list (cons label (apply #'format nil format args))))))
 
-(defun output-finish ()
+(defun output-finish (collect)
   "Output the table in two appropriately sized and colored columns."
   (let ((max-label-length (loop :for (label . nil) :in *output*
-			     :maximize (length label))))
+			     :maximize (length label)))
+	results)
     (loop :for (label . data) :in *output* :do
        (grout-format "  ")
        (grout-color :green :default label)
        (grout-format ":~v,,,va" (max 1 (- (1+ max-label-length) (length label)))
 		     #\space #\space)
        (grout-color :white :default data)
-       (grout-format "~%"))))
+       (grout-format "~%")
+       (when collect
+	 (push (list label data) results)))
+    results))
   
 #+unix
 (defun print-mode (mode)
@@ -109,7 +113,7 @@
 		 :time ut)))
 
 #+unix
-(defun unix-file-info (file &key follow-links)
+(defun unix-file-info (file &key follow-links collect)
   (with-grout ()
     (let ((info (if follow-links (stat file) (lstat file)))
 	  (*output* nil))
@@ -155,13 +159,13 @@
 	(output "Blocks"      "~d" blocks)
 	(when flags
 	  (output "Flags"     "~a" (os-unix:flags-string flags)))
-	(output-finish)))))
+	(output-finish collect)))))
 
 #+windows
 (defun ms-file-info (file &key follow-links)
   (declare (ignore file follow-links)))
 
-(defun generic-file-info (file &key follow-links)
+(defun generic-file-info (file &key follow-links collect)
   (with-grout ()
     (let ((info (get-file-info file :follow-links follow-links))
 	  (*output* nil))
@@ -178,7 +182,7 @@
 	(output "Creation time"     "~a" (format-time creation-time))
 	(output "Access time"       "~a" (format-time access-time))
 	(output "Modification time" "~a" (format-time modification-time))
-	(output-finish)))))
+	(output-finish collect)))))
 
 (defparameter *default-style*
   #+unix :unix
@@ -186,32 +190,43 @@
   #+windows :generic
   #-(or unix windows) :generic)
 
-(defun file-info (file &key follow-links (style *default-style*))
+(defun file-info (file &key follow-links (style *default-style*) collect)
   (when (not style)
     (setf style *default-style*))
   (case style
-    #+unix (:unix (unix-file-info file :follow-links follow-links))
-    #+windows (:ms (ms-file-info file :follow-links follow-links))
-    (:generic (generic-file-info file :follow-links follow-links))
+    #+unix (:unix (unix-file-info file :follow-links follow-links
+				  :collect collect))
+    #+windows (:ms (ms-file-info file :follow-links follow-links
+				 :collect collect))
+    (:generic (generic-file-info file :follow-links follow-links
+				 :collect collect))
     (otherwise
-     (generic-file-info file :follow-links follow-links))))
+     (generic-file-info file :follow-links follow-links :collect collect))))
 
-(defun finfo (file-or-files &key follow-links style)
+(defun finfo (file-or-files &key follow-links style collect)
   "Print some information about a file. Argument can be a string or path or a
 list of strings or paths. If FOLLOW-LINKS is true, print information about the
 linked file."
   (with-grout ()
-    (typecase file-or-files
-      (list
-       (loop :for file :in file-or-files
-	  :do
-	  (with-simple-restart (continue "Continue with the next file.")
-	    (file-info file :follow-links follow-links :style style))))
-      (pathname
-       (file-info (namestring file-or-files)
-		  :follow-links follow-links :style style))
-      (string
-       (file-info file-or-files :follow-links follow-links :style style)))))
+    (flet ((call-it (f)
+	     (file-info f :follow-links follow-links :style style
+			:collect collect)))
+      (typecase file-or-files
+	(list
+	 (let (results)
+	   (loop :for file :in file-or-files
+	      :do
+		(with-simple-restart (continue "Continue with the next file.")
+		  (if collect
+		      (push (call-it file) results)
+		      (call-it file))))
+	   (if (= (length results) 1)
+	       (car results)
+	       results)))
+	(pathname
+	 (call-it (namestring file-or-files)))
+	(string
+	 (call-it file-or-files))))))
 
 #+lish
 (lish:defcommand finfo
@@ -220,9 +235,14 @@ linked file."
    (style choice :short-arg #\s :default *default-style*
     :choices '("generic" "unix" "ms")
     :help "Operating system specific output style.")
+   (collect boolean :short-arg #\c :help "True to collect results.")
    (files pathname :repeating t
     :help "The path names to give information about."))
+  :keys-as args
   "Print information about a file."
-  (finfo files :follow-links follow-links :style (keywordify style)))
+  (remf args :files)
+  (if collect
+      (setf lish:*output* (apply #'finfo files args))
+      (apply #'finfo files args)))
 
 ;; EOF
