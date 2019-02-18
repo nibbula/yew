@@ -88,7 +88,7 @@ indicate only a start number, or :max to indicate it extends to the end."
 
 ;; @@@ Perhaps the args the be after get-regions is done?
 (defun cut-lines (stream &key bytes characters fields delimiter output-delimiter
-			   only-delimited collect)
+			   only-delimited collect re-delimiter)
   "Write lines from stream, while cutting, bytes, characters, or fields."
   (when (> (+ (if bytes 1 0) (if characters 1 0) (if fields 1 0)) 1)
     (error "Only one of bytes, characters, or fields can be specified."))
@@ -140,7 +140,9 @@ indicate only a start number, or :max to indicate it extends to the end."
 	       (print-fields (line)
 		 "Print the fields."
 		 ;;(dbugf :cut "delimiter ~s line ~s~%" delimiter line)
-		 (let* ((fs (split-sequence delimiter line #|:omit-empty t|#))
+		 (let* ((fs (if re-delimiter
+				(ppcre:split re-delimiter line)
+				(split-sequence delimiter line)))
 			(len (length fs))
 			(fn regions)
 			(i 0)
@@ -214,6 +216,8 @@ indicate only a start number, or :max to indicate it extends to the end."
     :help "Print only specific fields.")
    (delimiter character :short-arg #\d :default #\tab
     :help "Character that separates fields.")
+   (re-delimiter string :short-arg #\r
+    :help "A Perl regular expression that separates fields.")
    (output-delimiter string :short-arg #\o
     :help "Character that separates fields.")
    (only-delimited boolean :short-arg #\s
