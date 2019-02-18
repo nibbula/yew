@@ -357,7 +357,10 @@ if it's blank or the same as the previous line."
 		  mark end		; for the highlightify
 		  buf (highlightify
 		       e (make-fatchar-string (history-current context))
-		       :style (theme-value *theme* '(:rl :search :style)))
+		       :style
+		       (or (theme-value *theme* '(:program :search-match :style))
+			   (theme-value *theme* '(:rl :search-match :style))
+			   '(:underline)))
 		  mark nil)		; for the redraw-display
 	    (redraw-display e))
 	  (redraw-display e))))

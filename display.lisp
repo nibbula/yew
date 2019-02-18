@@ -261,6 +261,7 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 					 :initial-element (make-fatchar))))
 	    (span-to-fatchar-string
 	     (append (or style
+			 (theme-value *theme* '(:program :selection :style))
 			 (theme-value *theme* '(:rl :selection :style))
 			 '(:standout))
 			 (list #\x))
