@@ -142,7 +142,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
   `(vector fatchar ,size))
 
 ;; This is potentially wasteful, but required to specialize methods.
-(defclass fat-string ()
+(defclass fat-string (ostring)
   ((string				; blurg :|
     :initarg :string :accessor fat-string-string
     :documentation "A lot of crust around a string."))
