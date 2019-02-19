@@ -16,21 +16,21 @@
   #(nil "K" "M" "G" "T" "P" "E" "Z" "Y" "*"))
 
 (defparameter *default-cols*
-  '(("Filesystem")
-    ("Size"	  :right)
-    ("Used"	  :right)
-    ("Avail"	  :right)
-    ("Use%"	  :right)
-    ("Mounted on")))
+  `((:name ("Filesystem"))
+    (:name ("Size"  :right) :type number :format ,#'size-out-with-width)
+    (:name ("Used"  :right) :type number :format ,#'size-out-with-width)
+    (:name ("Avail" :right) :type number :format ,#'size-out-with-width)
+    (:name ("Use%"  :right) :type number :width 4 :format "~*~3d%")
+    (:name ("Mounted on"))))
 
 (defparameter *type-cols*
-  '(("Filesystem")
-    ("Type")
-    ("Size"	  :right)
-    ("Used"	  :right)
-    ("Avail"	  :right)
-    ("Use%"	  :right)
-    ("Mounted on")))
+  `((:name ("Filesystem"))
+    (:name ("Type"))
+    (:name ("Size"  :right) :type number :format ,#'size-out-with-width)
+    (:name ("Used"  :right) :type number :format ,#'size-out-with-width)
+    (:name ("Avail" :right) :type number :format ,#'size-out-with-width)
+    (:name ("Use%"  :right) :type number :width 4 :format "~*~3d%")
+    (:name ("Mounted on"))))
 
 (defvar *cols* nil "Current column data.")
 
@@ -66,6 +66,16 @@
   (remove #\space
 	  (print-size n :abbrevs *size-abbrevs* :stream nil :unit "")))
 
+(defun size-out-with-width (n width)
+  "Print the size in our prefered style."
+  (if (numberp n)
+      (if width
+	  (format nil "~v@a" width (size-out n))
+	  (size-out n))
+      (if width
+	  (format nil "~v@a" width n)
+	  (format nil "~@a" n))))
+
 (defun bogus-filesystem-p (f)
   (or (zerop (filesystem-info-total-bytes f))
       #+linux (not (begins-with "/" (filesystem-info-device-name f)))
@@ -90,10 +100,10 @@
      (apply #'vector
 	    `(,(filesystem-info-device-name f)
 	       ,@(if show-type (list type) nil)
-	       ,(size-out size)
-	       ,(size-out used)
-	       ,(size-out avail)
-	       ,(format nil "~d%" pct)
+	       ,size
+	       ,used
+	       ,avail
+	       ,pct
 	       ,(filesystem-info-mount-point f)
 	       ))))
 
@@ -103,17 +113,12 @@
   (let ((*cols* (copy-tree (if show-type *type-cols* *default-cols*)))
 	data devs table)
     (with-grout ()
-      (dbug "files = ~w~%" files)
       (setf devs
 	    (and files
 		 (loop :for f :in files
 		    :collect (mount-point-of-file f)))
 	    data (generic-info include-dummies show-type))
-      (dbug "devs = ~w~%" devs)
-      (setf table (make-table-from
-		   data
-		   ;;:column-names (loop :for c :in *cols* :collect (car c))))
-		   :column-names *cols*))
+      (setf table (make-table-from data :columns *cols*))
       (when print
 	(grout-print-table table
 			   :print-titles (not omit-header)
