@@ -8,12 +8,14 @@
 from the computer. This package aims to make printing a sturdy table of any
 length, a relatively painless and risk free procedure. This does not, of course,
 make the table in the first place. For that you want the TABLE package.")
-  (:use :cl :dlib :collections :table :char-util :stretchy)
+  (:use :cl :dlib :collections :table :char-util :stretchy :ostring
+        :fatchar :fatchar-io)
   (:import-from :dlib-misc #:justify-text)
   (:export
    #:table-renderer
    #:table-output-header
    #:table-output-column-type-justification
+   #:table-format-cell
    #:table-output-column-titles
    #:table-output-column-title
    #:table-output-start-row
@@ -65,6 +67,18 @@ make the table in the first place. For that you want the TABLE package.")
 (defgeneric table-output-column-type-justification (renderer table type)
   (:documentation "Return the justification for TYPE."))
 
+(defgeneric table-format-cell (renderer table cell row column
+			       &key width justification use-given-format)
+  (:documentation "Return cell with any formatting applied. If use-given-format
+is NIL, don't use the formatting given in the table. USE-GIVEN-FORMAT should
+default to T. If width is given, use that as the field width. If justification
+is given, try to use that as the justification.
+
+Table cell formmating functions should accept CELL and WIDTH, and should be
+able accept WIDTH as NIL, to indicate no width limitation. Also, formmating
+strings should be alble to be prepended with ~* to ignore the width argument.
+These are given in the FORMAT slot of a TABLE:COLUMN."))
+
 (defgeneric table-output-column-titles (renderer table titles
 					&key sizes &allow-other-keys)
   (:documentation "Output all the column titles."))
@@ -80,7 +94,8 @@ make the table in the first place. For that you want the TABLE package.")
 			       row column)
   (:documentation "Output a table cell."))
 
-(defgeneric table-output-cell-display-width (renderer table cell column)
+(defgeneric table-output-cell-display-width (renderer table cell column
+					     &key use-given-format)
   (:documentation "Return the display width for a table cell."))
 
 (defgeneric table-output-sizes (renderer table)
@@ -125,6 +140,40 @@ make the table in the first place. For that you want the TABLE package.")
     ((subtypep type 'number) :right)
     (t :left)))
 
+(defmethod table-format-cell (renderer table cell row column
+			      &key width justification (use-given-format t))
+  (declare (ignore row))
+  (let ((given-format (when (< column (length (table-columns table)))
+			(column-format (oelt (table-columns table) column))))
+	op fmt field)
+    (flet ((format-it (fmt)
+	     (let ((*print-pretty* nil))
+	       (with-output-to-fat-string (str)
+		 (dbugf :tv "normal format ~s ~s ~s~%" fmt width cell)
+		 (format str fmt (or width 0) cell)))))
+      (cond
+	((and use-given-format (likely-callable given-format))
+	 (setf field (funcall given-format cell width)))
+	((and use-given-format (ostringp given-format))
+	 (setf field (format-it given-format)))
+	(t
+	 (setf op (typecase cell
+		    ((or string ostring) "/fatchar-io:print-string/")
+		    (t "a"))
+	       fmt (cond
+		     ((and (= column (1- (olength (table-columns table))))
+			   (not *trailing-spaces*))
+		      (setf width nil)
+		      (s+ "~v" op))
+		     ((eql justification :right)
+		      (s+ "~v@" op))
+		     ((and (not justification) (typep cell 'number))
+		      (s+ "~v@" op))
+		     (t
+		      (s+ "~v" op)))
+	       field (format-it fmt))))
+      field)))
+
 ;; Call output-column-title for each title.
 (defmethod table-output-column-titles (renderer table titles &key sizes)
   "Output all the column titles."
@@ -151,16 +200,14 @@ make the table in the first place. For that you want the TABLE package.")
 				  (table-output-column-type-justification
 				   renderer table (column-type col)) i))))
 
-;; This is just a simple character count.
-(defmethod table-output-cell-display-width (renderer table cell column)
+(defmethod table-output-cell-display-width (renderer table cell column
+					    &key (use-given-format t))
   "Return the display width for a table cell."
-  (declare (ignore renderer table column))
-  (typecase cell
-    (string (length cell))
-    (otherwise
-     (length (princ-to-string cell)))))
+  (display-length (table-format-cell renderer table
+				     (if (listp cell) (car cell) cell)
+				     nil column
+				     :use-given-format use-given-format)))
 
-;; This just figures the maximum of all sizes.
 (defmethod table-output-sizes (renderer table)
   (if (zerop (olength (container-data table)))
       #()
@@ -172,7 +219,10 @@ make the table in the first place. For that you want the TABLE package.")
 	(omapn
 	 (lambda (col)
 	   (stretchy-set sizes col-num
-			 (max (column-width col) (length (column-name col))))
+			 (max (column-width col)
+			      (table-output-cell-display-width
+			       renderer table (column-name col) col-num
+			       :use-given-format nil)))
 	   (incf col-num))
 	 (table-columns table))
 	;; Then set by actual data.
@@ -455,10 +505,9 @@ to MAX-WIDTH.."
 		      (if (and size (minusp size))
 			  size		; Don't mess with preset size
 			  (max (or size 0)
-			       (typecase field
-				 (string (length field))
-				 (otherwise
-				  (length (princ-to-string field)))))))
+			       (table-output-cell-display-width
+				renderer table field i)
+			       )))
 		;;(incf col (abs new-size))
 		(when (and max-width (> (+ col (abs new-size)) max-width))
 		  (setf new-size (max 0
@@ -531,20 +580,10 @@ to MAX-WIDTH.."
 (defmethod table-output-cell ((renderer text-table-renderer)
 			      table cell width justification row column)
   "Output a table cell."
-  (declare (ignore row))
   (with-slots (cursor) renderer
-    (let* ((fmt (cond
-		  ((and (= column (1- (olength (table-columns table))))
-			(not *trailing-spaces*))
-		   "~*~a")
-		  ((eql justification :right)
-		   "~v@a")
-		  ((and (not justification) (typep cell 'number))
-		   "~v@a")
-		  (t
-		   "~va")))
-	   (field (let ((*print-pretty* nil))
-		    (format nil fmt width cell)))
+    (let* ((field (table-format-cell renderer table cell row column
+				     :width width
+				     :justification justification))
 	   (len (display-length field)))
       ;;(incf cursor len)
       (if (and (eq justification :overflow)
@@ -553,7 +592,7 @@ to MAX-WIDTH.."
 	    (write-string field *destination*)
 	    (format *destination* "~%~v,,,va" width #\space #\space)
 	    (setf cursor width))
-	  (typecase cell
+	  (typecase field
 	    (standard-object
 	     (princ (osubseq field 0 (min width (olength field)))
 		    *destination*)
@@ -593,6 +632,7 @@ resized to fit in this, and the whole row is trimmed to this."
 
     ;; Adjust column sizes by field data
     (text-table-adjust-sizes table renderer sizes max-width)
+    (dbugf :tv "ttr sizes ~s~%" sizes)
 
     ;; Flip pre-set sizes, and force unset sizes to zero.
     ;; (format t "sizes = ~s~%" sizes) (finish-output)
