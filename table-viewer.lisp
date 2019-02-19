@@ -6,12 +6,14 @@
   (:documentation "View tables.")
   (:use :cl :dlib :collections :table :table-print :keymap :inator :terminal
 	:terminal-inator :dtt :char-util :fui :fatchar :fatchar-io :grout
-	:terminal-table)
+	:terminal-table :ostring)
   (:export
    #:view-table
    #:!view-table
    ))
 (in-package :table-viewer)
+
+(declaim (optimize (speed 0) (safety 0) (debug 3) (space 0)))
 
 (defkeymap *table-viewer-keymap*
   `((#\q		. quit)
@@ -24,12 +26,14 @@
     (:down		. next)
     (:right		. scroll-right)
     (:left		. scroll-left)
-    (,(meta-char #\i)	. table-info)
+    ;;(,(meta-char #\i)	. table-info)
     (#\escape		. *table-viewer-escape-keymap*)
     ))
 
-(defparameter *table-viewer-escape-keymap*
-  (build-escape-map *table-viewer-keymap*))
+(defkeymap *table-viewer-escape-keymap*
+  `((,(ctrl #\s)	. sort-descending-command)
+    (#\i		. table-info)))
+
 (add-keymap *default-inator-escape-keymap* *table-viewer-escape-keymap*)
 
 (defstruct table-point
@@ -60,11 +64,16 @@ for a range of rows, or a table-point for a specific item,"
     :documentation "Part of the table selected.")
    (cursor
     :initarg :cursor :accessor table-viewer-cursor
-    :documentation "Where the cursor is.")
+    :documentation "Where the actual cursor is or should be.")
    (last-displayed-col
     :initarg :last-displayed-col :accessor table-viewer-last-displayed-col
     :initform nil
     :documentation "The last column that was displayed.")
+   (last-sort-direction
+    :initarg :last-sort-direction :accessor last-sort-direction
+    :initform nil :type (or null (member :ascending :descending))
+    :documentation
+    "The direction of the last sort, or NIL if there wasn't one.")
    (renderer
     :initarg :renderer :accessor table-viewer-renderer
     :initform (make-instance 'viewer-table-renderer) :type table-renderer
@@ -79,158 +88,169 @@ for a range of rows, or a table-point for a specific item,"
    :keymap `(,*table-viewer-keymap* ,*default-inator-keymap*))
   (:documentation "View a table."))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Customized table renderer
 
-(defclass viewer-table-renderer (terminal-table-renderer) ;(table-renderer)
-  ((output-column
-    :initarg :output-column :accessor output-column
-    :documentation "Column being output.")
-   (output-line
-    :initarg :output-line :accessor output-line
-    :documentation "Line being output.")
+(defclass viewer-table-renderer (table-renderer)
+  ((output-x
+    :initarg :output-x :accessor output-x
+    :documentation "Current window X coordinate in character cells.")
+   (output-y
+    :initarg :output-y :accessor output-y
+    :documentation "Current window Y coordinate in character cells.")
    (sizes
     :initarg :sizes :accessor sizes :initform nil
-    :documentation "Pre-calculated sizes."))
+    :documentation "Pre-calculated sizes.")
+   (separator
+    :initarg :separator :accessor separator :initform " "
+    :documentation "Separator between columns."))
   (:documentation "An interactive table renderer."))
 
-(defmethod table-output-header ((renderer viewer-table-renderer)
-				table &key width sizes)
-  (declare (ignore table width sizes))
-  (setf (output-column renderer) 0
-	(output-line renderer) 0
-	(table-viewer-last-displayed-col *table-viewer*) nil))
-
-(defmethod table-output-start-row ((renderer viewer-table-renderer) table)
-  (declare (ignore table))
-  (setf (output-column renderer) 0)
-  ;;(setf (output-column renderer) 0)
-  )
+(defmethod table-output-sizes ((renderer viewer-table-renderer) table)
+  ;; Cache the sizes so we don't have to recompute them every time.
+  ;; Then use the default method.
+  (or (sizes renderer)
+      (setf (sizes renderer) (call-next-method))))
 
 (defun in-view (renderer #| &optional row-in |#)
   ;; (with-slots (start rows) *table-viewer*
-  ;;   (let ((row (or row-in (output-line renderer))))
+  ;;   (let ((row (or row-in (output-y renderer))))
   ;;     (and (>= row (table-point-row start))
   ;; 	   (< row (+ (table-point-row start) rows))
-  ;; 	   (< (output-column renderer) (1- *max-width*))))))
-  (< (output-column renderer) (1- *max-width*)))
+  ;; 	   (< (output-x renderer) (1- *max-width*))))))
+  (< (output-x renderer) (1- (tt-width))))
 
-(defmethod table-output-column-separator ((renderer viewer-table-renderer)
-					  table &key width)
-  (declare (ignore table width))
-  (when (in-view renderer)
-    (incf (output-column renderer))
-    (tt-write-char #\space)))
+(defun tv-output-cell (renderer table cell width justification row column
+		       given-format)
+  (declare (ignore row))
+  (with-slots (output-x) renderer
+    (let (op fmt field len)
+      (flet ((format-it (fmt)
+	       (let ((*print-pretty* nil))
+		 (with-output-to-fat-string (str)
+		   (format str fmt (or width 0) cell)))))
+	(cond
+	  ((likely-callable given-format)
+	   (setf field (funcall given-format cell width)))
+	  ((ostringp given-format)
+	   (setf field (format-it given-format)))
+	  (t
+	   (setf op (typecase cell
+		      ((or string fat-string) "/fatchar-io:print-string/")
+		      (t "a"))
+		 fmt (cond
+		       ((and (= column (1- (olength (table-columns table))))
+			     (not *trailing-spaces*))
+			(setf width nil)
+			(s+ "~v" op))
+		       ((eql justification :right)
+			(s+ "~v@" op))
+		       ((and (not justification) (typep cell 'number))
+			(s+ "~v@" op))
+		       (t
+			(s+ "~v" op)))
+		 field (format-it fmt))))
+	(setf len (min width (olength field)))
+	(typecase cell
+	  (standard-object
+	   (princ (osubseq field 0 len) *terminal*))
+	  (t
+	   (write (osubseq field 0 len)
+		  :stream *terminal* :escape nil :readably nil :pretty nil)))))))
 
-(defmethod table-output-end-row ((renderer viewer-table-renderer) table n)
-  (declare (ignore table n))
-  (when (in-view renderer)
-    (tt-write-char #\newline))
-  (incf (output-line renderer)))
+(defun de-dork (name)
+  (typecase name
+    (list
+     (values (first name) (or (second name) nil)))
+    (t
+     (values name nil))))
 
-(defmethod table-output-row-separator ((renderer viewer-table-renderer)
-				       table n &key width sizes)
-  (declare (ignore renderer table n width sizes))
-  ;; (tt-write-char #\newline)
-  )
-
-(defmethod table-output-column-title ((renderer viewer-table-renderer)
-				      table title width justification column)
-  ;;(declare (ignore table))
-  (with-slots (start last-displayed-col) *table-viewer*
-    (when (and (< (output-column renderer) *max-width*)
-	       (or (not (table-point-col start))
-		   (>= column (table-point-col start))))
-      (if (or (zerop column)
-	      (and (table-point-col start)
-		   (= column (table-point-col start))))
-	  (progn
-	    (tt-move-to-col 2)
-	    (setf (output-column renderer) 2)
-	    )
-	  (progn
-	    (tt-write-char #\space)
-	    (incf (output-column renderer))))
-
-      (setf last-displayed-col column)
-
-      (let* ((clipped-width (min (- (1+ *max-width*) (output-column renderer))
-				 width))
-	     (str (if (consp title) (car title) title))
-	     (disp-len (display-length str))
-	     (len (min disp-len clipped-width))
-	     (clipped-str (osubseq str 0 len)))
-	;; (dbugf :tv "clipped-width = ~s len = ~a~%" clipped-width len)
-	(tt-underline t)
-	(tt-format (if (eq justification :right) "~v@a" "~va")
-		   (- clipped-width (- (olength str) disp-len))
-		   clipped-str)
-	(tt-underline nil)
-	(incf (output-column renderer) clipped-width)))
-
-    (when (and (= column (1- (olength (table-columns table))))
-	       (<= (output-column renderer) *max-width*))
-      (tt-write-char #\newline))))
-
-(defmethod table-output-cell-display-width ((renderer viewer-table-renderer)
-					    table cell column)
-  (declare (ignore renderer table column))
-  (typecase cell
-    (string (display-length cell))
-    (otherwise
-     (length (princ-to-string cell)))))
-
-(defmethod table-output-cell :around ((renderer viewer-table-renderer)
-				      table cell width justification row column)
-  "Output a table cell."
-  ;; (declare (ignore table))
-  (with-slots ((point inator::point) start rows cursor) *table-viewer*
-    ;; (when (and (>= row (table-point-row start))
-    ;; 	       (< row (+ (table-point-row start) rows))
-    ;; 	       (>= column (table-point-col start)))
-    (when (>= column (table-point-col start))
-      (when (or (zerop column)
-		(and (table-point-col start)
-		     (= column (table-point-col start))))
+(defmethod table-output-column-titles ((renderer viewer-table-renderer)
+				       table titles &key sizes)
+  "Output all the column titles."
+  (with-slots (separator output-x output-y) renderer
+    (with-slots (start last-displayed-col) *table-viewer*
+      (let ((has-underline (tt-has-attribute :underline)))
 	(tt-move-to-col 2)
-	(setf (output-column renderer) 2))
-      (let* ((*print-pretty* nil)
-	     (clipped-width (max 0 (min (- (1+ *max-width*)
-					   (output-column renderer))
-					width)))
-	     (string (princ-to-string cell))
-	     (len (min clipped-width (olength string)))
-	     (clipped-str (osubseq string 0 len))
-	     (hilite (= row
-			;; (table-point-row point)
-			(- (table-point-row point) (table-point-row start))
-			)))
-	(when hilite
-	  (tt-standout t)
-	  (multiple-value-bind (r c)
-	      (terminal-get-cursor-position *terminal*)
+	(setf output-x 2)
+	(loop
+	   :with col-num = (table-point-col start)
+	   :and max-col  = (length (table-columns table))
+	   :and sep-len  = (display-length separator)
+	   :and cell-width
+	   :and clipped-width
+	   :and name
+	   :and justification
+	   :while (and (< col-num max-col)
+		       (< output-x *max-width*))
+	   :do
+	     ;; Write a separator if we have room and we're not at the first col
+	     (when (and (< (+ output-x sep-len) *max-width*)
+			(/= col-num (table-point-col start)))
+	       (tt-write-string separator)
+	       (incf output-x sep-len))
+
+	     (when has-underline
+	       (tt-underline t))
+
+	     (setf cell-width (aref sizes col-num)
+		   clipped-width (max 0 (min (- *max-width* output-x)
+					     cell-width)))
+	     (dbugf :tv "title cell-width ~s clipped-width ~s~%"
+		    cell-width clipped-width)
+	     (setf (values name justification)
+		   (de-dork
+		    (column-name (oelt (table-columns table) col-num))))
+	     (tv-output-cell renderer table
+			     name clipped-width justification 0 col-num nil)
+	     (incf output-x clipped-width)
+
+	     (when has-underline
+	       (tt-underline nil))
+
+	     (setf last-displayed-col col-num)
+	     (incf col-num))
+	(when (<= output-x *max-width*)
+	  (tt-write-char #\newline))
+	(incf output-y)))))
+
+(defmethod table-output-cell ((renderer viewer-table-renderer)
+			      table cell width justification row column)
+  (declare (ignore width justification))
+  "Output a table cell."
+  (with-slots ((point inator::point) start rows cursor selection
+	       last-displayed-col) *table-viewer*
+    (with-slots (output-x output-y sizes) renderer
+      (when (>= column (table-point-col start))
+	;; Move to the start of the row, for the first column.
+	(when (or (zerop column)
+		  (and (table-point-col start)
+		       (= column (table-point-col start))))
+	  (tt-move-to-col 2)
+	  (setf output-x 2))
+
+	(let* ((cell-width (aref sizes column))
+	       (clipped-width (max 0 (min (- *max-width* output-x)
+					  cell-width)))
+	       (hilite (= row (table-point-row point))))
+
+	  (when hilite
+	    (tt-standout t)
 	    (when (not (table-point-row cursor))
-	      (setf (table-point-row cursor) r))
+	      (setf (table-point-row cursor) output-y))
 	    (if (and (table-point-col point)
 		     (= column (table-point-col point)))
 		(progn
-		  (setf (table-point-col cursor) c)
-		  (tt-color :yellow :default))
-		(tt-color :default :default))))
+		  (setf (table-point-col cursor) output-x)
+		  (tt-color :yellow :default)) ; @@@ should get from theme
+		(tt-color :default :default)))
 
-	;; (tt-format (if (eq justification :right) "~v@a" "~va")
-	;; 	   ;; width
-	;; 	   (- clipped-width (- (display-length clipped-str)
-	;; 			       len))
-	;; 	   clipped-str)
-	;; (call-next-method)
-	;; @@@ Wrong?
-	(terminal-table::%output-cell
-	  renderer
-	  table cell width justification row column)
-
-	(incf (output-column renderer) clipped-width)
-	(tt-normal)))))
-
+	  (tv-output-cell renderer table cell clipped-width
+			  nil ;; bogus justification
+			  row column
+			  (column-format (oelt (table-columns table) column)))
+	  (incf (output-x renderer) clipped-width)
+	  (tt-normal))))))
 
 ;; (defmethod text-table-adjust-sizes (table
 ;; 				    (renderer viewer-table-renderer)
@@ -246,10 +266,59 @@ for a range of rows, or a table-point for a specific item,"
 ;; 	(setf (sizes renderer) (copy-seq sizes))))
 ;;   sizes)
 
-(defmethod table-output-sizes ((renderer viewer-table-renderer) table)
-  ;; Cache the sizes so we don't have to recompute them every time.
-  (or (sizes renderer)
-      (setf (sizes renderer) (call-next-method))))
+(defmethod output-table (table (renderer viewer-table-renderer) destination
+			 &key long-titles print-titles max-width
+			   &allow-other-keys)
+  "Output a table."
+  (declare (ignore long-titles print-titles max-width))
+  (with-slots (start rows last-displayed-col) *table-viewer*
+    (with-slots (output-x output-y separator) renderer
+      (let* ((row-num (table-point-row start))
+	     (col-num (table-point-col start))
+	     (sizes (table-output-sizes renderer table))
+	     (sep-len (display-length separator))
+	     ;; @@@ Hopefully this is not too slow. We should probably cache
+	     ;; it if the view start and size hasn't changed.
+	     (sub-table (osubseq table row-num (+ row-num rows)))
+	     (*destination* *terminal*)
+	     (*max-width* (1- (tt-width))) ;; @@@ dirt?
+	     (*trailing-spaces* t))	   ;; @@@ bogus?
+	(dbugf :tv "sizes ~s~%" sizes)
+	(setf output-x 0
+	      output-y 0
+	      last-displayed-col nil)
+
+	(table-output-column-titles renderer table
+				    (mapcar #'column-name (table-columns table))
+				    :sizes sizes)
+	(omapn
+	 (lambda (row)
+	   (setf output-x 0
+		 col-num 0)
+	   (omapn
+	    (lambda (cell)
+	      ;; Output the column separator
+	      (when (not (zerop col-num))
+		(when (in-view renderer)
+		  (incf (output-x renderer) sep-len)
+		  (tt-write-string separator)))
+
+	      ;; Output the cell
+	      (when (>= col-num (table-point-col start))
+		(table-output-cell renderer table cell
+				   nil		 ;; bogus width
+				   nil		 ;; bogus justification
+				   row-num col-num))
+	      (incf col-num))
+	    row)
+
+	   ;; End of the row.
+	   ;; (when (in-view renderer)
+	   ;;   (tt-write-char #\newline))
+	   (tt-write-char #\newline)
+	   (incf output-y)
+	   (incf row-num))
+	 sub-table)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Inator methods
@@ -381,20 +450,38 @@ for a range of rows, or a table-point for a specific item,"
 ;; (defmethod search-command ((o table-viewer))
 ;;   )
 
+(defun sort-table-in-direction (viewer direction)
+  (let (string-op number-op)
+    (ecase direction
+      (:ascending  (setf string-op #'string-lessp    number-op #'<))
+      (:descending (setf string-op #'string-greaterp number-op #'>)))
+    (with-slots ((point inator::point) table last-sort-direction) viewer
+      (when (table-point-col point)
+	(let ((col (table-point-col point)))
+	  (setf table
+		(case (column-type (oelt (table-columns table) col))
+		  (string
+		   (osort table string-op :key (_ (oelt _ col))))
+		  (number
+		   (osort table number-op :key (_ (oelt _ col))))
+		  (otherwise
+		   ;; sort the printed version like a string
+		   (osort table string-op
+			  :key (_ (princ-to-string (oelt _ col))))))
+		last-sort-direction direction))))))
+
 (defmethod sort-command ((o table-viewer))
-  (with-slots ((point inator::point) table) o
-    (when (table-point-col point)
-      (let ((col (table-point-col point)))
-	(setf table
-	      (case (column-type (oelt (table-columns table) col))
-		(string
-		 (osort table #'string-lessp :key (_ (oelt _ col))))
-		(number
-		 (osort table #'< :key (_ (oelt _ col))))
-		(otherwise
-		 ;; sort the printed version like a string
-		 (osort table #'string-lessp
-			:key (_ (princ-to-string (oelt _ col)))))))))))
+  "Sort the rows."
+  (with-slots (last-sort-direction) o
+    (case last-sort-direction
+      (:ascending (sort-table-in-direction o :descending))
+      (:descending (sort-table-in-direction o :ascending))
+      (otherwise
+       (sort-table-in-direction o :ascending)))))
+
+(defmethod sort-descending-command ((o table-viewer))
+  "Sort the rows in descending order."
+  (sort-table-in-direction o :descending))
 
 ;; (defmethod jump-command ((o table-viewer))
 ;;   )
@@ -452,9 +539,7 @@ for a range of rows, or a table-point for a specific item,"
     (setf (table-point-row cursor) nil)
 
     ;; Output the table rows
-    (output-table (osubseq table (table-point-row start)
-			   (+ (table-point-row start) rows))
-		  renderer *terminal* :max-width (1- (tt-width)))
+    (output-table table renderer *terminal*)
 
     ;; Show the message temporarily.
     (when message
@@ -484,9 +569,6 @@ for a range of rows, or a table-point for a specific item,"
 			   )))
       ;; Calculate the sizes of the whole table for side effect.
       (table-output-sizes (table-viewer-renderer *table-viewer*) table)
-      ;; (dbugf :tv "init sizes ~s~%~s~%"
-      ;; 	     (length (sizes (table-viewer-renderer *table-viewer*)))
-      ;; 	     (sizes (table-viewer-renderer *table-viewer*)))
       (event-loop *table-viewer*)
       (tt-move-to (1- (tt-height)) 0)
       (table-viewer-selection *table-viewer*))))
