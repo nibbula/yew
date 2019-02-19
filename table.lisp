@@ -22,6 +22,7 @@
   (:export
    ;; column struct
    #:column #:make-column #:column-name #:column-type #:column-width
+   #:column-format
    ;; table
    #:table #:table-columns
    #:mem-table
@@ -30,6 +31,7 @@
    #:table-add-column
    #:table-update-column-width
    #:table-set-column-type
+   #:table-set-column-format
    #:table-column-number
    #:make-table-from
    ))
@@ -41,8 +43,9 @@
 (defstruct column
   "Description of a table column."
   (name nil)
-  (type 'string)
-  (width 0))
+  (type t)
+  (width 0)
+  (format nil))
 
 ;; (defclass collection ()
 ;;   ((data :initarg :data
@@ -103,6 +106,16 @@ attributes."))
   (:method (table (col integer) type)
     (setf (column-type (nth col (table-columns table))) type)))
 
+;; Could be done with defsetf table-column-format
+(defgeneric table-set-column-format (table col format)
+  (:documentation "Update the column format.")
+  (:method (table (col string) type)
+    (setf (column-format
+	   (find col (table-columns table) :test #'string= :key #'column-name))
+	   type))
+  (:method (table (col integer) type)
+    (setf (column-format (nth col (table-columns table))) type)))
+
 (defun table-column-number (name table &key (test #'equal))
   "Return the ordinal number of column named NAME from from TABLE, comparing
 by the TEST function, which defaults to EQUAL. Return NIL if the column is not
@@ -114,7 +127,7 @@ found."
 ;; @@@ We should allow less column names than columns in the object, and make
 ;; up the rest of the names. Maybe we should consider signaling a correctable
 ;; error if there's more column names than data.
-(defgeneric make-table-from (object &key column-names type)
+(defgeneric make-table-from (object &key column-names columns type)
   (:documentation
    "Make a table from another object type.
   OBJECT       - An alist or a list of mappable things, or a hash-table, or a
@@ -123,6 +136,9 @@ found."
                  sub-class of MEM-TABLE.
   COLUMN-NAME  - A list of column names, which should match the number of
                  columns in OBJECT.
+  COLUMNS      - A list of plists for initializing table-columns, which should
+                 match the number of columns in OBJECT. E.g.:
+                 '((:name \"foo\" :type 'number :format \"[~d]\"))
 "))
 
 (defun uniform-classes (sequence)
@@ -148,15 +164,23 @@ found."
       (omapk function (container-data table))
       (omap function (container-data table))))
 
-(defmethod make-table-from ((object list) &key column-names type)
+(defun make-columns (columns-list)
+  (loop :for c :in columns-list
+     :collect
+       (apply #'make-column c)))
+
+(defmethod make-table-from ((object list) &key column-names columns type)
   "Make a table from an alist or a list of things."
   (let ((tt (make-instance (or type 'mem-table) :data object))
 	(first-obj (first object)))
-    (if column-names
-	;; @@@ When there's less column-names than potential columns in object,
-	;; we should make the missing column names.
-	(loop :for c :in column-names :do
-	   (table-add-column tt c))
+    (cond
+      (columns (setf (table-columns tt) (make-columns columns)))
+      (column-names
+       ;; @@@ When there's less column-names than potential columns in object,
+       ;; we should make the missing column names.
+       (loop :for c :in column-names :do
+	    (table-add-column tt c)))
+      (t
 	(when first-obj
 	  (if (sequence-of-classes-p object)
 	      (set-columns-names-from-class tt first-obj)
@@ -164,20 +188,23 @@ found."
 	      ;; But we should be able to take an alist.
 	      (loop :for i :from 0 :below (olength first-obj)
 		 :do (table-add-column tt (format nil "Column~d" i)
-				       :type t)))))
+				       :type t))))))
     tt))
 
 (defmethod make-table-from ((object hash-table)
-			    &key (column-names '("Key" "Value")) type)
+			    &key (column-names '("Key" "Value")) columns type)
   "Make a table from a hash table."
-  (when (> (length column-names) 2)
-    (error "Hash tables can only have 2 column names."))
+  (when (or (> (length column-names) 2) (> (length columns) 2))
+    (error "Hash tables can only have 2 columns."))
   (let ((tt (make-instance (or type 'mem-table) :data object)))
-    (loop :for c :in column-names :do
-       (table-add-column tt c))
+    (cond
+      (columns (setf (table-columns tt) (make-columns columns)))
+      (column-names
+       (loop :for c :in column-names :do
+	    (table-add-column tt c))))
     tt))
 
-(defmethod make-table-from ((object array) &key column-names type)
+(defmethod make-table-from ((object array) &key column-names columns type)
   "Make a table from a hash table."
   (when (not (< 0 (length (array-dimensions object)) 3))
     (error "I don't know how to make a table from an array that isn't 1 or ~
@@ -185,35 +212,44 @@ found."
   (let ((tt (make-instance (or type 'mem-table) :data object)))
     (case (length (array-dimensions object))
       (2
-       (if column-names
-	   (loop :for c :in column-names :do
-	      (table-add-column tt c))
-	   (loop :for i :from 0 :to (array-dimension object 0)
-	      :do (table-add-column tt (format nil "Column~d" i)))))
+       (cond
+	 (columns (setf (table-columns tt) (make-columns columns)))
+	 (column-names
+	  (loop :for c :in column-names :do
+	       (table-add-column tt c)))
+	 (t
+	  (loop :for i :from 0 :to (array-dimension object 0)
+	     :do (table-add-column tt (format nil "Column~d" i))))))
       (1
-       (if column-names
+       (cond
+	 (columns (setf (table-columns tt) (make-columns columns)))
+	 (column-names
 	   ;; @@@ When there's less column-names than potential columns in
 	   ;; object, we should make the missing column names.
 	   (loop :for c :in column-names :do
-	      (table-add-column tt c))
-	   (when (not (zerop (length object)))
-	     (let ((first-obj (aref object 0)))
-	       (when first-obj
-		 (if (sequence-of-classes-p object)
-		     (set-columns-names-from-class tt first-obj)
-		     (loop :for i :from 0 :to (olength first-obj)
-			:do (table-add-column
-			     tt (format nil "Column~d" i))))))))))
+		(table-add-column tt c)))
+	 (t
+	  (when (not (zerop (length object)))
+	    (let ((first-obj (aref object 0)))
+	      (when first-obj
+		(if (sequence-of-classes-p object)
+		    (set-columns-names-from-class tt first-obj)
+		    (loop :for i :from 0 :to (olength first-obj)
+		       :do (table-add-column
+			    tt (format nil "Column~d" i)))))))))))
     tt))
 
 (defmethod make-table-from ((object structure-object)
-			    &key (column-names '("Slot" "Value")) type)
+			    &key (column-names '("Slot" "Value")) columns type)
   "Make a table from an structure."
-  (when (> (length column-names) 2)
+  (when (or (> (length column-names) 2) (> (length columns) 2))
     (error "Structures can only have 2 column names."))
   (let ((tt (make-instance (or type 'mem-table) :data object)))
-    (loop :for c :in column-names :do
-       (table-add-column tt c))
+    (cond
+      (columns (setf (table-columns tt) (make-columns columns)))
+      (column-names
+       (loop :for c :in column-names :do
+	    (table-add-column tt c))))
     tt))
 
 ;; EOF
