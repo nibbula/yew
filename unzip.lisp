@@ -314,11 +314,26 @@ in UNZIP-COMMAND."
 	 (setf results
 	       (make-table-from
 		results
-		:column-names
+		;; :column-names
+		;; (if verbose
+		;;     '("Size" "Compressed" "%" "Method" "CRC"
+		;;       "Made by" "Mode" "   Date    Time" "Name")
+		;;     '("Size" "   Date    Time" "Name"))))
+		:columns
 		(if verbose
-		    '("Size" "Compressed" "%" "Method" "CRC"
-		      "Made by" "Mode" "   Date    Time" "Name")
-		    '("Size" "   Date    Time" "Name"))))
+		    '((:name "Size"       :type number)
+		      (:name "Compressed" :type number)
+		      (:name "%"          :type number)
+		      (:name "Method")
+		      (:name "CRC")
+		      (:name "Made by")
+		      (:name "Mode")
+		      (:name "   Date    Time")
+		      (:name "Name"))
+		    '((:name "Size" :type number)
+		      (:name "   Date    Time")
+		      (:name "Name")
+		      ))))
 	 :max-width nil)
 	#| @@@ Add the ability to do nice footers to text-table-renderer
 	(with-slots (size compressed-size count) totals
