@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Why do I feel the need to re-do everything?"
-    :depends-on (:dlib :dlib-misc :table-print :opsys :tree-viewer)
+    :depends-on (:dlib :dlib-misc :table-print :opsys :tree-viewer :collections)
     :components
     ((:file "ps")))

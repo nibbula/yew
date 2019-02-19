@@ -5,7 +5,7 @@
 (defpackage :ps
   (:documentation "Process status listing")
   (:use :cl :dlib :dlib-misc :opsys #+unix :os-unix :table :table-print :grout
-	:lish)
+	:lish :collections)
   (:export
    #:ps
    #:ps-tree
@@ -172,6 +172,18 @@ user, pid, ppid, size, command."
   "Print the size in our prefered style."
   (print-size n :traditional t :stream nil
 	      :format "~:[~3,1f~;~d~]~@[~a~]~@[~a~]"))
+
+(defun ps-print-size-with-width (n width)
+  "Print the size in our prefered style."
+  (if (numberp n)
+      (if width
+	  (format nil "~v@a" width
+		  (print-size n :traditional t :stream nil
+			      :format "~:[~3,1f~;~d~]~@[~a~]~@[~a~]"))
+	  (ps-print-size n))
+      (if width
+	  (format nil "~v@a" width n)
+	  (format nil "~@a" n))))
 
 ;; (defun print-proc (p)
 ;;   (format t "~8a ~6d ~8@a ~{~a ~}~%"
@@ -377,12 +389,16 @@ user, pid, ppid, size, command."
 				 (_ (search matching _ :test #'equalp))
 				 (append (list (short-process-user p))
 					 (list (short-process-name p))))))
-		   :collect (list (short-process-user p) (short-process-pid p)
-				  (ps-print-size (short-process-size p))
+		   :collect (list (short-process-user p)
+				  (short-process-pid p)
+				  ;;(ps-print-size (short-process-size p))
+				  (short-process-size p)
 				  (short-process-name p)))
 		(loop :for p :in proc-list
-		   :collect (list (short-process-user p) (short-process-pid p)
-				  (ps-print-size (short-process-size p))
+		   :collect (list (short-process-user p)
+				  (short-process-pid p)
+				  ;;(ps-print-size (short-process-size p))
+				  (short-process-size p)
 				  (short-process-name p)))))
 	   table)
       (when user
@@ -390,7 +406,11 @@ user, pid, ppid, size, command."
 				  out-list)))
       (setf table (make-table-from
 		   out-list
-		   :column-names '("User" "PID" ("Size" :right) "Command")))
+		   :column-names
+		   '("User" ("PID" :right) ("Size" :right) "Command")))
+      (table-set-column-type table 1 'number)
+      (table-set-column-type table 2 'number)
+      (table-set-column-format table 2 #'ps-print-size-with-width)
       (when print
 	(grout-print-table table :trailing-spaces nil))
       table)))
@@ -402,50 +422,57 @@ user, pid, ppid, size, command."
     (let* ((proc-list (system-process-list))
 	   table)
       (setf table (make-table-from proc-list))
-      (when print
-	;; @@@ make a workaround for printing the os-time on windows
-	;; The print-object methood should do something different based
-	;; on a dynamic variable. Or it would be nice if there was a way
-	;; to do it with the table renderer?
-	;;(make-method)
-	;;(add-method #'print-object (os-time))
-	;;(remove-method (find-method ))
-	#+windows ;; or how about this bullcrap?
-	(progn
-	  (macrolet ((fix-time (x)
-		       `(cond
-			  ((not (,x p)) (setf (,x p) ""))
-			  ((integerp (,x p))
-			   (setf (,x p)
-				 (format-date
-				  "~2,'0d:~2,'0d:~2,'0d"
-				  (:hrs :min :sec)
-				  :time (truncate (,x p) (expt 10 7))))))))
-	    (loop :for p :in proc-list :do
+      #+unix
+      (progn
+	(let ((i 0))
+	  (omap (_ (when (typep _ 'number)
+		     (table-set-column-type table i 'number))
+		   (incf i))
+		(oelt (container-data table) 0))))
+      ;; @@@ make a workaround for printing the os-time on windows
+      ;; The print-object methood should do something different based
+      ;; on a dynamic variable. Or it would be nice if there was a way
+      ;; to do it with the table renderer?
+      ;;(make-method)
+      ;;(add-method #'print-object (os-time))
+      ;;(remove-method (find-method ))
+      #+windows ;; or how about this bullcrap?
+      (progn
+	(macrolet ((fix-time (x)
+		     `(cond
+			((not (,x p)) (setf (,x p) ""))
+			((integerp (,x p))
+			 (setf (,x p)
+			       (format-date
+				"~2,'0d:~2,'0d:~2,'0d"
+				(:hrs :min :sec)
+				:time (truncate (,x p) (expt 10 7))))))))
+	  (loop :for p :in proc-list :do
 	       (fix-time wos::ms-process-creation-time)
 	       (fix-time wos::ms-process-exit-time)
 	       (fix-time wos::ms-process-kernel-time)
 	       (fix-time wos::ms-process-user-time)))
-	  (loop
-	     :for col :in (table:table-columns table)
-	     :for name :in '(("PID" :right)
-			     ("PPID" :right)
-			     ("Thread" :right)
-			     ("Priority" :right)
-			     "Create"
-			     "Exit"
-			     "Kernel"
-			     "User"
-			     ("GUI" :right)
-			     ("Handles" :right)
-			     ("Max WS" :right)
-			     ("Min WS" :right)
-			     "Name"
-			     "File")
-	     ;; :for type :in '(number number number number string string
-	     ;; 		     string string number number number number
-	     ;; 		     string string)
-	     :do (setf (table:column-name col) name)))
+	(loop
+	   :for col :in (table:table-columns table)
+	   :for name :in '(("PID" :right)
+			   ("PPID" :right)
+			   ("Thread" :right)
+			   ("Priority" :right)
+			   "Create"
+			   "Exit"
+			   "Kernel"
+			   "User"
+			   ("GUI" :right)
+			   ("Handles" :right)
+			   ("Max WS" :right)
+			   ("Min WS" :right)
+			   "Name"
+			   "File")
+	   ;; :for type :in '(number number number number string string
+	   ;; 		     string string number number number number
+	   ;; 		     string string)
+	   :do (setf (table:column-name col) name)))
+      (when print
 	(grout-print-table
 	 table :trailing-spaces nil :long-titles t :max-width nil))
       table)))
