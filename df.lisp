@@ -15,6 +15,20 @@
 (defparameter *size-abbrevs*
   #(nil "K" "M" "G" "T" "P" "E" "Z" "Y" "*"))
 
+(defun size-out (n)
+  (remove #\space
+	  (print-size n :abbrevs *size-abbrevs* :stream nil :unit "")))
+
+(defun size-out-with-width (n width)
+  "Print the size in our prefered style."
+  (if (numberp n)
+      (if width
+	  (format nil "~v@a" width (size-out n))
+	  (size-out n))
+      (if width
+	  (format nil "~v@a" width n)
+	  (format nil "~@a" n))))
+
 (defparameter *default-cols*
   `((:name ("Filesystem"))
     (:name ("Size"  :right) :type number :format ,#'size-out-with-width)
@@ -61,20 +75,6 @@
 	       to-name
 	       dev))))
 |#
-
-(defun size-out (n)
-  (remove #\space
-	  (print-size n :abbrevs *size-abbrevs* :stream nil :unit "")))
-
-(defun size-out-with-width (n width)
-  "Print the size in our prefered style."
-  (if (numberp n)
-      (if width
-	  (format nil "~v@a" width (size-out n))
-	  (size-out n))
-      (if width
-	  (format nil "~v@a" width n)
-	  (format nil "~@a" n))))
 
 (defun bogus-filesystem-p (f)
   (or (zerop (filesystem-info-total-bytes f))
