@@ -70,10 +70,14 @@ structs as sequences. Also we really need the MOP for stuff.")
       oreplace
       osubstitute
       oconcatenate
+      oconcatenate-as
       omerge
+      ochoose
       oremove
       oremove-duplicates
       osplit
+      oreplace-subseq-as
+      oreplace-subseq
       oaref
       opush-element
       opushnew-element
@@ -826,12 +830,34 @@ false. If no element satifies the test, NIL is returned.")
 					(container-data collection)
 					:from-end from-end :key key)))
 
-#|
-(defgeneric osearch (collection ...)
-  (:documentation "")
-  (:method ((collection XX))
-	    ))
+(defgeneric osearch (collection-1 collection-2
+		     &rest args ;; Yeah. I give up with this one.
+		     &key from-end test test-not key start1 start2 end1 end2)
+  (:documentation
+   "Searches collection-2 for a subsequence that matches collection-1.
+If from-end is true, the index of the leftmost element of the rightmost
+matching subsequence is returned.")
+  (:method ((collection-1 list) (collection-2 list) &rest args
+	     &key from-end test test-not key start1 start2 end1 end2)
+    (declare (ignorable from-end test test-not key start1 start2 end1 end2))
+    (apply #'search collection-1 collection-2 args))
+  (:method ((collection-1 vector) (collection-2 vector) &rest args
+	     &key from-end test test-not key start1 start2 end1 end2)
+    (declare (ignorable from-end test test-not key start1 start2 end1 end2))
+    (apply #'search collection-1 collection-2 args))
+  (:method ((collection-1 sequence) (collection-2 sequence) &rest args
+	     &key from-end test test-not key start1 start2 end1 end2)
+    (declare (ignorable from-end test test-not key start1 start2 end1 end2))
+    (apply #'search collection-1 collection-2 args)))
 
+(defmethod osearch ((collection-1 container) (collection-2 container)
+		    &rest args
+		    &key from-end test test-not key start1 start2 end1 end2)
+  (declare (ignorable from-end test test-not key start1 start2 end1 end2))
+  (apply #'osearch
+	 (container-data collection-1) (container-data collection-2) args))
+
+#|
 (defgeneric omismatch (collection ...)
   (:documentation "")
   (:method ((collection XX))
@@ -908,6 +934,12 @@ that they were supplied. The resulting collection is of type RESULT-TYPE.")
        "I don't know how to concatenate things that aren't sequences~
         to a list."))
     (apply #'concatenate 'list collections))
+  (:method ((result-type (eql 'string)) &rest collections)
+    (when (not (every #'(lambda (_) (typep _ 'sequence)) collections))
+      (error
+       "I don't know how to concatenate things that aren't sequences~
+        to a vector."))
+    (apply #'concatenate 'string collections))
   (:method ((result-type (eql 'vector)) &rest collections)
     (when (not (every #'(lambda (_) (typep _ 'sequence)) collections))
       (error
@@ -963,6 +995,29 @@ that they were supplied. The resulting collection is of type RESULT-TYPE.")
   (:method ((collection XX))
 	    ))
 
+(defgeneric ochoose (test collection)
+  (:documentation
+   "Returns elements of COLLECTION that satisfy TEST.")
+  (:method ((collection XX))
+	    ))
+
+(defgeneric ochoose-by (test value-collection collection)
+  (:documentation
+   "Returns elements of COLLECTION that correspond to those VALUE-COLLECTION
+that satisfy TEST.
+  (:method ((collection XX))
+	    ))
+
+(defgeneric opick (collection &rest keys)
+  (:documentation
+   "Return a collection, with only the elemnets of COLLECTION indicated by
+KEYS.")
+
+(defgeneric oremove (collection ...)
+  (:documentation "")
+  (:method ((collection XX))
+	    ))
+
 (defgeneric oremove (collection ...)
   (:documentation "")
   (:method ((collection XX))
@@ -972,6 +1027,8 @@ that they were supplied. The resulting collection is of type RESULT-TYPE.")
   (:documentation "")
   (:method ((collection XX))
 	    ))
+
+
 |#
 
 (defgeneric osplit (separator ordered-collection
@@ -1026,12 +1083,47 @@ type as the one given.
    osplit (separator (container-data collection)
 		     :omit-empty omit-empty :test test :key key)))
 
-#|
-(defgeneric opick (collection &rest keys)
+;; Collection-ified version of replace-subseq from dlib.
+(defun oreplace-subseq-as (type target replacement sequence &key count)
+  "Return a copy of SEQUECE as a TYPE, but with sub-sequences of TARGET replaced
+REPLACEMENT."
+  (if (and (> (olength target) 0) (or (not count) (> count 0)))
+      (let ((pos 0)
+	    (i 0)
+	    (n 0)
+	    new)
+	(loop :while (setf pos (osearch target sequence :start2 i))
+	   :do
+	   ;;(format t "i = ~a pos = ~a new = ~a~%" i pos new)
+	   (setf new (nconc new (list (osubseq sequence i pos) replacement)))
+	   (setf i (+ pos (olength target)))
+	   ;;(format t "i = ~a pos = ~a new = ~a~%" i pos new)
+	   (incf n)
+	   :until (and count (>= n count)))
+	(setf new (nconc new (list (osubseq sequence i))))
+	;;(apply #'concatenate (append '(string) new)))
+	;;(apply #'oconcatenate-as (type-of sequence) new)
+	(apply #'oconcatenate-as type new)
+	)
+      (ocopy sequence)))
+
+;; @@@ This is horrible.
+(defgeneric oreplace-subseq (target replacement sequence &key count)
   (:documentation
-   "Return a collection, with only the elemnets of COLLECTION indicated by
-KEYS.")
-|#
+   "Return a copy of SEQUECE but with sub-sequences of TARGET replaced
+REPLACEMENT.")
+  (:method (target replacement (sequence list) &key count)
+    #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+    (apply #'oreplace-subseq-as 'list
+	   target replacement sequence (list :count count)))
+  (:method (target replacement (sequence string) &key count)
+    #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+    (apply #'oreplace-subseq-as 'string
+	   target replacement sequence (list :count count)))
+  (:method (target replacement (sequence vector) &key count)
+    #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+    (apply #'oreplace-subseq-as 'vector
+	   target replacement sequence (list :count count))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
