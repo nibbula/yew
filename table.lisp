@@ -2,10 +2,6 @@
 ;; table.lisp - Generic table data types
 ;;
 
-;; @@@ This concept needs some refining. Like things called collection,
-;; element, length, map, mappable, should rather be in generic collection and
-;; sequence modules.
-;;
 ;; The idea is to provide a generic interface to tables, regardless of the
 ;; storage of the data. We would like to be able to operate on tables in
 ;; memory, for example stored in sequences like arrays, lists, or hash tables,
