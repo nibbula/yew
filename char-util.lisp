@@ -930,7 +930,7 @@ out of an element of it. RESULT-TYPE is the type of vector which the
 GRAPHEME-VARs will be, which defaults to character so it's compatable with a
 'normal' string."
   (with-unique-names (class last-class c i)
-    (let ((grapheme-maker `(make-stretchy-vector 0 :element-type ',result-type))
+    (let ((grapheme-maker `(make-stretchy-vector 4 :element-type ',result-type))
 	  (cc (if key `(,key ,c) c)))
       `(progn
 	 (let ((,grapheme-var ,grapheme-maker))
@@ -954,13 +954,17 @@ GRAPHEME-VARs will be, which defaults to character so it's compatable with a
 (defgeneric graphemes (string)
   (:documentation "Return a sequence of graphemes in STRING.")
   (:method ((string string))
-    (dbugf :char-util "grapheme ~s ~s~%" (type-of string) string)
-    ;; #+(and sbcl has-sb-unicode) (sb-unicode:graphemes string)
+    ;; #+(and sbcl has-sb-unicode)
+    ;; (progn
+    ;;   (dbugf :char-util "sbcl grapheme ~s ~s~%" (type-of string) string)
+    ;;   (sb-unicode:graphemes string))
     ;; #-(and sbcl has-sb-unicode)
-    (let (result)
-      (do-graphemes (g string)
-	(push g result))
-      (nreverse result))))
+    (progn
+      ;; (dbugf :char-util "my grapheme ~s ~s~%" (type-of string) string)
+      (let (result)
+	(do-graphemes (g string)
+	  (push g result))
+	(nreverse result)))))
 
 ;; (char-util:graphemes "d⃝u⃝c⃝k⃝")
 ;; (values (char-util:graphemes "수도") (char-util:graphemes "수도"))
