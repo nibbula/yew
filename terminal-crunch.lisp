@@ -701,7 +701,8 @@ sizes. It only copies the smaller of the two regions."
 
 (defun invalidate-before-start-row (tty screen)
   (with-slots (start-line) tty
-    (loop :for i :from 0 :below (start-line tty)
+    (loop :for i :from 0 :below (min (start-line tty)
+				     (length (screen-lines screen)))
        :do
        (loop :for c :across (aref (screen-lines screen) i)
 	  :do (unset-grid-char c))
