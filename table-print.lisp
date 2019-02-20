@@ -15,6 +15,7 @@ make the table in the first place. For that you want the TABLE package.")
    #:table-renderer
    #:table-output-header
    #:table-output-column-type-justification
+   #:table-cell-type-formatter
    #:table-format-cell
    #:table-output-column-titles
    #:table-output-column-title
@@ -140,6 +141,21 @@ These are given in the FORMAT slot of a TABLE:COLUMN."))
     ((subtypep type 'number) :right)
     (t :left)))
 
+;; @@@ I suppose we could make a formatter defining macro, but is that
+;; really useful/necessary?
+(defun table-cell-type-formatter (type func)
+  "Return a function that only does special cell formatting for type, but
+normal processing for other types. This useful for creating a cell formatting
+function."
+  (lambda (cell width)
+    (if (typep cell type)
+	(if width
+	    (format nil "~v@a" width (funcall func cell))
+	    (funcall func cell))
+	(if width
+	    (format nil "~v@a" width cell)
+	    (format nil "~@a" cell)))))
+
 (defmethod table-format-cell (renderer table cell row column
 			      &key width justification (use-given-format t))
   (declare (ignore row))
@@ -209,26 +225,30 @@ These are given in the FORMAT slot of a TABLE:COLUMN."))
 				     :use-given-format use-given-format)))
 
 (defmethod table-output-sizes (renderer table)
-  (if (zerop (olength (container-data table)))
-      #()
-      (let ((sizes (make-stretchy-vector
-		    (max (olength (oelt (container-data table) 0))
-			 (olength (table-columns table)))))
-	    (col-num 0))
-	;; First set by pre-defined widths and name lengths.
-	(omapn
-	 (lambda (col)
-	   (stretchy-set sizes col-num
-			 (max (column-width col)
-			      (table-output-cell-display-width
-			       renderer table (column-name col) col-num
-			       :use-given-format nil)))
-	   (incf col-num))
-	 (table-columns table))
-	;; Then set by actual data.
-	(omapn
-	 (lambda (row)
-	   (setf col-num 0)
+  (block nil
+    (let ((col-num 0)
+	  sizes)
+      ;; First set by pre-defined widths and name lengths.
+      (omapn
+       (lambda (col)
+	 (push (max (column-width col)
+		    (table-output-cell-display-width
+		     renderer table (column-name col) col-num
+		     :use-given-format nil))
+	       sizes)
+	 (incf col-num))
+       (table-columns table))
+      (when (zerop col-num)
+	(return #()))
+
+      ;; Then set by actual data. We make an ajustable array in case the table
+      ;; has variable length rows, we can handle it.
+      (setf sizes (make-array col-num :fill-pointer 0 :adjustable t
+			      :initial-contents sizes))
+      (omapn
+       (lambda (row)
+	 (setf col-num 0)
+	 (when (mappable-p row)
 	   (omapn
 	    (lambda (col)
 	      ;; Handle rows with different amounts of columns.
@@ -240,15 +260,9 @@ These are given in the FORMAT slot of a TABLE:COLUMN."))
 			     (table-output-cell-display-width renderer table col
 							      col-num)))
 	      (incf col-num))
-	    row))
-	 ;;(container-data table)
-	 table)
-	;; Convert the stretchy back into an un-stretchy array.
-	;; @@@ Does this make any difference?
-	(make-array (max (length sizes)
-			 (olength (table-columns table)))
-		    :initial-contents sizes)
-	)))
+	    row)))
+       table)
+      sizes)))
 
 ;; Default method which does nothing.
 (defmethod table-output-footer (renderer table &key width sizes)
