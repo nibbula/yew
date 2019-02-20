@@ -306,6 +306,45 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 	      :from-end from-end
 	      :key key)))
 
+(defmethod osearch ((collection-1 fat-string) (collection-2 fat-string)
+		    &rest args
+		    &key from-end test test-not key start1 start2 end1 end2)
+  (declare (ignorable from-end test test-not key start1 start2 end1 end2))
+  (let ((new-args args))
+    (when (not (getf args :test))
+      (setf new-args (copy-seq args)
+	    (getf new-args :test) #'ochar-equal))
+    (apply #'search
+	   (fat-string-string collection-1)
+	   (fat-string-string collection-2)
+	   new-args)))
+
+(defmethod osearch ((collection-1 string) (collection-2 fat-string)
+		    &rest args
+		    &key from-end test test-not key start1 start2 end1 end2)
+  (declare (ignorable from-end test test-not key start1 start2 end1 end2))
+  (let ((new-args args))
+    (when (not (getf args :test))
+      (setf new-args (copy-seq args)
+	    (getf new-args :test) #'ochar-equal))
+    (apply #'search
+	   collection-1
+	   (fat-string-string collection-2)
+	   new-args)))
+
+(defmethod oconcatenate-as ((result-type (eql 'fat-string)) &rest collections)
+  (when (not (every #'(lambda (_) (typep _ '(or string fat-string)))
+		    collections))
+    (error
+     "I don't know how to concatenate things that aren't fat-strings or ~
+      strings to a fat-string."))
+  (make-fat-string :string
+		   (apply #'concatenate 'vector
+			  (mapcar (_ (if (stringp _)
+					 (make-fatchar-string _)
+					 (fat-string-string _)))
+				  collections))))
+
 (defmethod osplit ((separator fatchar) (string fat-string)
 		   &key omit-empty test key
 		     (start nil start-p)
@@ -363,6 +402,11 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 	    ;; Default to a reasonable test for fatchars.
 	    :test (or test #'equalp)
 	    :key key))))
+
+(defmethod oreplace-subseq (target replacement (sequence fat-string) &key count)
+  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+  (apply #'oreplace-subseq-as 'fat-string
+	 target replacement sequence (list :count count)))
 
 (defun make-fatchar-string (thing)
   "Make a string of fatchars from THING, which can be a string or a character."
