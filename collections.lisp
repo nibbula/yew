@@ -47,8 +47,10 @@ structs as sequences. Also we really need the MOP for stuff.")
       omap
       omapk
       omapn
-      mappable
+      mappable-p
+      collection-p
       keyed-collection-p
+      ordered-collection-p
       omap-into
       oevery
       oany
@@ -112,8 +114,21 @@ structs as sequences. Also we really need the MOP for stuff.")
   ()
   (:documentation "A bag of stuff."))
 
+;; This isn't really the way the type system is supposed to work.
+;; E.g. (typep x 'collection) doesn't match up.
+(defgeneric collection-p (thing)
+  (:documentation "Return true if THING is a collection.")
+  (:method ((thing t))                nil)
+  (:method ((thing list))             t)
+  (:method ((thing vector))	      t)
+  (:method ((thing sequence))	      t)
+  (:method ((thing hash-table))	      t)
+  (:method ((thing structure-object)) t)
+  (:method ((thing standard-object))  t)
+  (:method ((thing collection))       t))
+
 (defclass container (collection)
-  ;; In some way having this data slot is stupid and unnecessary, because you
+  ;; In some way, having this data slot is stupid and unnecessary, because you
   ;; can just get the data through the other methods, but it makes it easy to
   ;; define sub-types. Anyway you can just make it be IDENTITY or something?
   ((data :initarg :data
@@ -125,12 +140,40 @@ structs as sequences. Also we really need the MOP for stuff.")
   ()
   (:documentation "A collection with explicit keys."))
 
+(defgeneric keyed-collection-p (collection)
+  (:documentation "Return true if COLLECTION is a keyed-collection.")
+  (:method ((collection t))                nil)
+  (:method ((collection list))             nil)
+  (:method ((collection vector))	   nil)
+  (:method ((collection sequence))	   nil)
+  (:method ((collection hash-table))	   t)
+  (:method ((collection structure-object)) t)
+  (:method ((collection standard-object))  t)
+  (:method ((collection keyed-collection)) t))
+
+(defmethod keyed-collection-p ((collection container))
+  (keyed-collection-p (container-data collection)))
+
 ;; aka sequence
 (defclass ordered-collection (collection)
   ()
   (:documentation
    "A collection with a specific order, and thus can be indexed by the natural
 numbers."))
+
+(defgeneric ordered-collection-p (collection)
+  (:documentation "Return true if COLLECTION is an ordered-collection.")
+  (:method ((collection t))                  nil)
+  (:method ((collection list))               t)
+  (:method ((collection vector))	     t)
+  (:method ((collection sequence))	     t)
+  (:method ((collection hash-table))	     nil)
+  (:method ((collection structure-object))   nil)
+  (:method ((collection standard-object))    nil)
+  (:method ((collection ordered-collection)) t))
+
+(defmethod ordered-collection-p ((collection container))
+  (ordered-collection-p (container-data collection)))
 
 (defmacro call-with-start-and-end (func args)
   "Call func with args and START and END keywords, assume that an environemnt
@@ -399,8 +442,11 @@ values.")
 (defmethod omapn (function (collection container))
   (omapn function (container-data collection)))
 
-(defgeneric mappable (collection)
+;; @@@ I think I would actually like an omapkn too. And maybe an onapkin.
+
+(defgeneric mappable-p (collection)
   (:documentation "Return true if the COLLECTION can be iterated with OMAP.")
+  (:method ((collection t))                nil)
   (:method ((collection list))             t)
   (:method ((collection vector))	   t)
   (:method ((collection sequence))	   t)
@@ -408,20 +454,8 @@ values.")
   (:method ((collection structure-object)) t)
   (:method ((collection standard-object))  t))
 
-(defmethod mappable ((collection container))
-  (mappable (container-data collection)))
-
-(defgeneric keyed-collection-p (collection)
-  (:documentation "Return true if COLLECTION is a keyed-collection.")
-  (:method ((collection list))             nil)
-  (:method ((collection vector))	   nil)
-  (:method ((collection sequence))	   nil)
-  (:method ((collection hash-table))	   t)
-  (:method ((collection structure-object)) t)
-  (:method ((collection standard-object))  t))
-
-(defmethod keyed-collection-p ((collection container))
-  (keyed-collection-p (container-data collection)))
+(defmethod mappable-p ((collection container))
+  (mappable-p (container-data collection)))
 
 (defgeneric omap-into (mutable-collection function &rest collections)
   (:documentation
