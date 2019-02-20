@@ -22,6 +22,7 @@
    #:parse-integer-with-radix
    #:tree-ify
    #:un-tree-ify
+   #:oquote-format
 
    ;; time
    #:date-string
@@ -1619,5 +1620,12 @@ Return NIL if we can't find local variables or if the format is messed up.
 		       ("[ \\t]*([^ :]+)[ \\t]*:[ \\t]*([^ ;]+)" v)
 		       (push (list name value) result)))
 		   result)))))))
+
+;; Objectible version of one in dlib.
+(defun oquote-format (s)
+  "Quote a thing to send to format, so that any possible format directives
+are printed rather than interpreted as directives, which really just means:
+repleace a single tilde with double tidles."
+  (oreplace-subseq "~" "~~" s))
 
 ;; End
