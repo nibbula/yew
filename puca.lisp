@@ -20,8 +20,8 @@
   (:documentation
    "Putative Muca (A very simple(istic) interface to CVS/git/svn).")
   (:use :cl :dlib :dlib-misc :opsys :keymap :char-util :rl :completion :inator
-	:terminal :terminal-inator :fui :options :fatchar :table :table-print
-	:collections
+	:terminal :terminal-inator :fui :options :fatchar :fatchar-io
+	:table :table-print :collections :table-viewer
 	#+use-re :re #-use-re :ppcre)
   (:export
    ;; Main entry point
@@ -33,6 +33,8 @@
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 		   (compilation-speed 0)))
+;; (declaim (optimize (speed 3) (safety 0) (debug 1) (space 0)
+;; 		   (compilation-speed 0)))
 
 (defclass puca-item ()
   ()
@@ -801,9 +803,6 @@ for the command-function).")
 (defun view-file (p)
   "View file"
   (declare (ignore p))
-  ;; (pager:pager (selected-files))
-  ;;(view:view-things (selected-files))
-  ;;(draw-screen p)
   (do-literal-command "view ~{\"~a\" ~}" (list (selected-files))
 		      :do-pause nil))
 
@@ -814,9 +813,7 @@ for the command-function).")
     (when (< point 0)
       (setf point 0))
     (when (< point top)
-      (decf top)
-      ;;(draw-screen p)
-      )))
+      (decf top))))
 
 (defmethod next ((p puca-app))
   "Next line"
@@ -825,9 +822,7 @@ for the command-function).")
     (when (>= point maxima)
       (setf point (1- maxima)))
     (when (and (> (- point top) (- bottom 1)) (> bottom 1))
-      (incf top)
-      ;;(draw-screen p)
-      )))
+      (incf top))))
 
 (defmethod next-page ((p puca-app))
   "Next page"
@@ -836,9 +831,7 @@ for the command-function).")
     (when (>= point maxima)
       (setf point (1- maxima)))
     (when (>= point (+ top bottom))
-      (setf top (max 0 (- point (1- bottom))))
-      ;;(draw-screen p)
-      )))
+      (setf top (max 0 (- point (1- bottom)))))))
 
 (defmethod previous-page ((p puca-app))
   "Previous page"
@@ -847,27 +840,21 @@ for the command-function).")
     (when (< point 0)
       (setf point 0))
     (when (< point top)
-      (setf top point)
-      ;;(draw-screen p)
-      )))
+      (setf top point))))
 
 (defmethod move-to-bottom ((p puca-app))
   "Bottom"
   (with-slots ((point inator::point) maxima top bottom) *puca*
     (setf point (1- maxima))
     (when (> point (+ top bottom))
-      (setf top (max 0 (- maxima bottom)))
-      ;;(draw-screen p)
-      )))
+      (setf top (max 0 (- maxima bottom))))))
 
 (defmethod move-to-top ((p puca-app))
   "Top"
   (with-slots ((point inator::point) top) p
     (setf point 0)
     (when (> top 0)
-      (setf top 0)
-      ;;(draw-screen p)
-      )))
+      (setf top 0))))
 
 (defun set-mark (p)
   "Set Mark"
@@ -898,16 +885,12 @@ for the command-function).")
 (defun select-all-command (p)
   "Select all"
   (declare (ignore p))
-  (select-all)
-  ;; (draw-screen p)
-  )
+  (select-all))
 
 (defun select-none-command (p)
   "Select none"
   (declare (ignore p))
-  (select-none)
-  ;; (draw-screen p)
-  )
+  (select-none))
 
 (defun relist (p)
   "Re-list"
@@ -986,7 +969,7 @@ for the command-function).")
     :documentation "Universal time the item was created.")
    (message
     :initarg :message :accessor history-message :initform nil
-    :type (or null string)
+    ;; :type (or null string)
     :documentation "Commit message."))
   (:documentation "An history editor item."))
 
@@ -999,7 +982,13 @@ for the command-function).")
     :documentation "Files to show history for or NIL for all files.")
    (table
     :initarg :table :accessor puca-history-table :initform nil
-    :documentation "The items in a table for displaying."))
+    :documentation "The items in a table for displaying.")
+   (renderer
+    :initarg :renderer :accessor puca-history-renderer
+    :documentation "The table renderer."))
+  (:default-initargs
+   :renderer (make-instance 'history-table-renderer)
+    :table nil)
   (:documentation "History editor."))
 
 (defclass history-table (mem-table)
@@ -1032,28 +1021,63 @@ for the command-function).")
     (coerce
      (mapcar (_ (make-history
 		 :hash (trim (first _))
-		 ;; :email (first (cdr _))
-		 ;; :date
-		 ;; #+unix (uos:unix-to-universal-time
-		 ;; 	 (parse-integer (second (cdr _))))
-		 ;; ;; @@@ Need to see what git on windows does?
-		 ;; #+windows (parse-integer (second (cdr _)))
-		 ;; :message (third (cdr _)))) hh)
-		 :email (second _)
+		 :email (span-to-fat-string `(:green ,(second _)))
 		 :date
 		 #+unix (uos:unix-to-universal-time
 		 	 (parse-integer (third _)))
 		 ;; @@@ Need to see what git on windows does?
 		 #+windows (parse-integer (third _))
-		 :message (fourth _))) hh)
+		 :message (span-to-fat-string `(:cyan ,(fourth _))))) hh)
      'vector)))
+
+(defun date-cell-formatter (cell)
+  (span-to-fat-string
+   `(:white ,(dlib-misc:date-string :format :relative :time cell))))
+
+(defun raw-date-cell-formatter (cell width)
+  (flet ((raw ()
+	   (cond
+	     ((numberp cell)
+	      (span-to-fat-string
+	       `(:white ,(dlib-misc:date-string :format :relative :time cell))))
+	     ((ostring:ostringp cell)
+	      cell)
+	     (t ""))))
+    (cond
+      (width
+       (with-output-to-fat-string (str)
+	 (format str "~v/fatchar-io:print-string/" width (raw))))
+      (t (raw)))))
+
+(defun message-top-line-filter (cell width)
+  (with-slots (renderer) *puca*
+    (with-slots ((r-width table-viewer::width)
+		 (output-x table-viewer::output-x)) renderer
+      (let ((pos (oposition-if
+		  (_ (ofind _ '(#\newline #\tab #\return)
+			    :test #'ochar:ochar-equal)) cell))
+	    (ww (- r-width (+ 3 1 5 10))))
+	(if width
+	    (osubseq cell 0 (min (or pos width) width (olength cell)))
+	    (osubseq cell 0 (min (or pos ww) ww (olength cell))))))))
 
 (defmethod get-list ((puca puca-history))
   "Get the history list from the backend and parse them."
   (with-slots (goo maxima (point inator::point) top table) puca
     (setf goo (get-history (puca-backend puca) (puca-history-files puca))
 	  maxima (length goo)
-	  table (make-table-from goo :type 'history-table))
+	  table (make-table-from
+		 goo :type 'history-table
+		 :columns
+		 `((:name "Hash" :width 0 :format "~*") ;; ???
+		   (:name "Email" :width 5
+			  :format ,(lambda (c w)
+				     (declare (ignore w))
+				     (osubseq c 0 5)))
+		   ;; (:name "Date" :format ,(table-cell-type-formatter
+		   ;; 			   'number #'date-cell-formatter))
+		   (:name "Date" :format ,#'raw-date-cell-formatter)
+		   (:name "Message" :format ,#'message-top-line-filter))))
     (when (>= point maxima)
       (setf point (1- maxima)))
     (when (>= top point)
@@ -1102,7 +1126,7 @@ for the command-function).")
 	     (format nil "Date:  ~a" (dlib-misc:date-string
 				      ;;:format :relative
 				      :time (history-date item)))
-	     "Message:" (quote-format (history-message item)))
+	     "Message:" (oquote-format (history-message item)))
        :justify nil))))
 
 ;; (defun inspect-history (p)
@@ -1162,143 +1186,45 @@ for the command-function).")
 			 :keymap (list *puca-history-keymap*
 				       *default-inator-keymap*)
 			 :backend (puca-backend p)
-			 :debug (puca-debug p))
-      (event-loop *puca*))
+			 :debug (puca-debug p)
+			 )
+      (let ((table-viewer::*table-viewer* *puca*))
+	(event-loop *puca*)))
     (inator:redraw p) ;; @@@ workaround: we should fix the real bug
     (draw-screen p)))
 
 ;;; custom table renderer
 
-(defclass history-table-renderer (table-renderer)
+(defclass history-table-renderer (table-viewer:viewer-table-renderer)
   ()
   (:documentation "A table renderer to show the history."))
 
-(defmethod table-output-header ((renderer history-table-renderer)
-				table &key width sizes)
-  (declare (ignore renderer width sizes))
-  (setf (output-column table) 0
-	(output-line table) 0))
-
-(defmethod table-output-start-row ((renderer history-table-renderer) table)
-  (declare (ignore renderer))
-  (setf (output-column table) 0))
-
-(defmethod table-output-column-separator ((renderer history-table-renderer)
-					  table &key width)
-  (declare (ignore renderer width))
-  (incf (output-column table))
-  (tt-write-char #\space))
-
-(defmethod table-output-end-row ((renderer history-table-renderer) table n)
-  (declare (ignore renderer n))
-  ;; (when (< (output-column table) *max-width*)
-  ;;   (tt-write-char #\newline))
-  (setf (output-column table) 0)
-  (incf (output-line table)))
-
-(defmethod table-output-row-separator ((renderer history-table-renderer)
-				       table n &key width sizes)
-  (declare (ignore renderer table n width sizes)))
-
-(defmethod table-output-column-title ((renderer history-table-renderer)
-				      table title width justification column)
-  (declare (ignore renderer))
-  (when (< (output-column table) *max-width*)
-    (when (not (zerop column))
-      (tt-write-char #\space)
-      (incf (output-column table))))
-
-  (when (/= 0 column)
-    (let* ((clipped-width (min (- *max-width* (output-column table))
-			       width))
-	   (len (min (length title) clipped-width)))
-      (tt-underline t)
-      (tt-format (if (eq justification :right) "~v@a" "~va")
-		 ;;width
-		 clipped-width
-		 (subseq title 0 len))
-      (tt-underline nil)
-      (incf (output-column table) clipped-width)))
-
-  ;; (when (and (= column (1- (olength (table-columns table))))
-  ;; 	     (< (output-column table) *max-width*))
-  ;;   (tt-write-char #\newline))
-  )
-
-(defmethod table-output-cell-display-width ((renderer history-table-renderer)
-					    table cell column)
-  (declare (ignore renderer table))
-  (case column
-    (0 0)
-    (1 5)
-    (2 (display-length (dlib-misc:date-string :format :relative
-					      :time cell)))
-    (3 (display-length cell))))
-
-(defmethod table-output-cell ((renderer history-table-renderer)
-			      table cell width justification row column)
-  "Output a table cell."
-  (declare (ignore renderer))
-  (with-slots (top bottom) *puca*
-    (when (and (>= row top) (< row (+ top bottom)))
-      (if (= column 0)
-	  (tt-move-to (+ (puca-first-line *puca*)
-			 (- (output-line table) top))
-		      3)
-	  (let* ((*print-pretty* nil)
-		 (clipped-width (min (- *max-width* (output-column table) 1)
-				     width))
-		 (string
-		  (case column
-		    (2 (dlib-misc:date-string :format :relative :time cell))
-		    (otherwise
-		     (let* ((s (princ-to-string cell))
-			    (nl (position-if
-				 (_ (find _ '(#\newline #\return))) s)))
-		       (if nl
-			   (subseq s 0 nl)
-			   s)))))
-		 (len (max 0
-			   (min (length string)
-				(- *max-width* (output-column table) 2)
-				width))))
-	    (tt-color (case column
-			(1 :green)
-			(2 :white)
-			(3 :cyan))
-		      :default)
-	    (tt-format (if (eq justification :right) "~v@a" "~va")
-		       ;; width
-		       clipped-width
-		       ;;(subseq string 0 (min width (length string)))
-		       (subseq string 0 len))
-	    (incf (output-column table) len)
-	    (tt-color :default :default))))))
-
-;; (defmethod draw-goo ((puca puca-history) i)
-;;   "Draw the goo object, with the appropriate color."
-;;   (with-slots (goo top first-line) puca
-;;     (let ((g (elt goo i)))
-;;       (tt-move-to (+ (- i top) first-line) 4)
-;;       (tt-write-string
-;;        (span-to-fat-string
-;; 	`((:green ,(s+ (subseq (history-email g) 0 3) "..")) #\space
-;; 	  (:white ,(dlib-misc:date-string :format :relative
-;; 					  :time (history-date g))) #\space
-;; 	  (:cyan ,(history-message g))))))))
-
 (defmethod draw-inner-screen ((puca puca-history))
-  (with-slots (table first-line bottom top maxima files) puca
+  (with-slots (renderer table first-line bottom top maxima files) puca
     (when table
       (tt-move-to first-line 3)
       (tt-format "History for: ~{~s~}" files)
-      (tt-move-to (+ first-line 2) 3)
+      ;; (tt-move-to (+ first-line 2) 3)
       (incf first-line 3)
       (setf bottom (min (- maxima top) (- (tt-height) first-line 3)))
-      (output-table table
-		     (make-instance 'history-table-renderer)
-		     *terminal*
-		     :max-width (- (tt-width) 5)))))
+      (with-accessors
+	    ((rows   table-viewer::rows)
+	     (start  table-viewer::start)
+	     (x      table-viewer::viewer-table-renderer-x)
+	     (y      table-viewer::viewer-table-renderer-y)
+	     (width  table-viewer::viewer-table-renderer-width)
+	     (height table-viewer::viewer-table-renderer-height)) renderer
+	(setf x      1
+	      y      (1- first-line)
+	      height (- (tt-height) first-line 3)
+	      width  (- (tt-width) (+ 3 x))
+	      rows   (min (olength (container-data table))
+			  height)
+	      (table-viewer::table-point-row start)  top)
+	;; @@@ maybe we should only output if it changed?
+	(output-table table renderer *terminal*
+		      ;; :max-width (- (tt-width) 5)
+		      )))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
