@@ -208,7 +208,7 @@ sequence."
 values."
   (dl-list-do thing function))
 
-(defmethod mappable ((collection dl-list)) t)
+(defmethod mappable-p ((collection dl-list)) t)
 (defmethod keyed-collection-p ((collection dl-list)) nil)
 
 (defmacro map-collections (list action collections)
