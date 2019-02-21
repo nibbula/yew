@@ -116,6 +116,26 @@
    #:opsys-error-code
    #:opsys-resumed
    #:opsys-resized
+
+   ;; os-stram
+   #:os-stream
+   #:os-stream-handle
+   #:os-input-stream
+   #:os-output-stream
+   #:os-io-stream
+   #:os-binary-stream
+   #:os-binary-input-stream
+   #:os-binary-output-stream
+   #:os-binary-io-stream
+   #:os-character-stream
+   #:os-character-input-stream
+   #:os-character-output-stream
+   #:os-character-io-stream
+   #:+buffer-size+
+   #:+input-buffer-size+
+   #:+output-buffer-size+
+   #:fill-buffer
+   #:flush-buffer
    ))
 (in-package :opsys-base)
 

@@ -187,6 +187,10 @@
    #:exit-lisp
    #:missing-implementation
 
+   ;; os-stream
+   #:os-stream
+   #:os-stream-handle
+
    ;; stdio
    #:*stdin* #:*stdout* #:*stderr*
    #-(and windows (not unix)) #:fileno

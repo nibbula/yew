@@ -479,6 +479,20 @@
    #:mounted-filesystems
    #:mount-point-of-file
 
+   ;; unix-stream
+   #:unix-stream
+   #:unix-input-stream
+   #:unix-output-stream
+   #:unix-io-stream
+   #:unix-character-input-stream
+   #:unix-character-output-stream
+   #:unix-character-io-stream
+   #:unix-binary-input-stream
+   #:unix-binary-output-stream
+   #:unix-binary-io-stream
+   #:fill-buffer
+   #:flush-buffer
+
    ;; Memory
    #:mmap
    #:munmap

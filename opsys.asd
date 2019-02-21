@@ -19,7 +19,8 @@
       :pathname ""
       :serial t
       :components ((:file "base")
-		   (:file "types")))
+		   (:file "types")
+		   (:file "os-stream")))
      (:module "unix"
       :depends-on ("base")
       :serial t
@@ -39,7 +40,8 @@
 		   (:file "terminals")
 		   (:file "communication")
 		   (:file "inspection")
-		   (:file "unix")))
+		   (:file "unix")
+		   (:file "unix-stream")))
      (:file "ms" :if-feature (:and :windows (:not :unix))
 	    :depends-on ("base"))
      (:module "platform-dependant"

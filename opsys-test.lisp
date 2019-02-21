@@ -98,6 +98,12 @@
   (eq (terminal-mode-raw *new-mode*) nil)
   (eq (terminal-mode-timeout *new-mode*) nil))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; os-streams
+
+;; (deftests (opsys-stream-1 :doc "OS streams")
+;;   (make-instance 'os-stream
+
 (deftests (opsys-all :doc "All tests for OPSYS.")
   opsys-path-1
   opsys-terminal-1
