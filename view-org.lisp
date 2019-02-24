@@ -150,6 +150,10 @@
 	       (push line (org-node-text cur))))))
     root))
 
+(defun view-org (file)
+  "View an org-mode FILE with the tree viewer."
+  (view-tree (read-org-mode-file file)))
+
 #+lish
 (lish:defcommand view-org
   ((org-files pathname :repeating t :help "Org-mode files to view."))
@@ -158,6 +162,5 @@
     (when (= 1 (length (multiple-value-list
 			(view-tree (read-org-mode-file file)))))
       (return))))
-    
 
 ;; EOF
