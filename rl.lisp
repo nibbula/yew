@@ -36,6 +36,8 @@
     (#\newline			. newline)
     (#\backspace		. delete-backward-char)
     (#\rubout			. delete-backward-char)
+    (:s-delete			. kill-region)
+    (,(meta-char (ctrl #\w))    . kill-region)
     (,(ctrl #\D)		. delete-char-or-exit)
     (,(ctrl #\W)		. backward-kill-word)
     (,(ctrl #\K)		. kill-line)
@@ -383,7 +385,8 @@ Keyword arguments:
     ;; Command loop
     (with-slots (quit-flag exit-flag command buf point last-command terminal
 		 screen-relative-row screen-col debugging temporary-message
-		 last-event filter-hook region-active keep-region-active) e
+		 keep-message last-event filter-hook region-active buf-str
+		 keep-region-active) e
       ;; (multiple-value-setq (screen-relative-row screen-col)
       ;; 	(terminal-get-cursor-position *terminal*))
       (let ((result nil))
@@ -415,7 +418,7 @@ Keyword arguments:
 		(setf last-event (await-event e))
 		(log-message e "command ~s" command)
 		;; Erase the temporary message.
-		(when temporary-message
+		(when (and temporary-message (not keep-message))
 		  (setf temporary-message nil))
 		(setf keep-region-active nil)
 		(if (equal command '(nil))
@@ -449,7 +452,17 @@ Keyword arguments:
 		  (setf region-active nil))
 		:while (not quit-flag))
 	  (block nil
-	    (tt-finish-output)
+	    (clear-completions e)
+	    (setf point (fill-pointer buf))
+	    (update-display e)
+	    ;;(tt-finish-output)
+	    (when accept-does-newline
+	      ;; (tt-write-string buf-str :start point)
+	      (tt-write-char #\newline)
+	      ;; (tt-write-char #\return)
+	      (tt-finish-output)
+	      ;; (write-char #\newline)
+	      )
 	    (run-hooks *exit-hook*)
 	    (terminal-end terminal terminal-state)))
 	(values (if result result (fatchar-string-to-string buf))

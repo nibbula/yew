@@ -199,16 +199,19 @@ anything important.")
    (old-line
     :initarg :old-line :accessor old-line :initform nil
     :documentation "A copy of the line as it was previously.")
-   ;; (temporary-message
-   ;;  :initarg :temporary-message :accessor temporary-message
-   ;;  :initform nil :type (or null fixnum)
-   ;;  :documentation
-   ;;  "Lines of temporary message we need to clear, or NIL if none.")
    (temporary-message
     :initarg :temporary-message :accessor temporary-message
     :initform nil
     :documentation
     "Temporary message to display, or NIL if none.")
+   (max-message-lines
+    :initarg :max-message-lines :accessor max-message-lines
+    :initform 0 :type fixnum
+    :documentation
+    "The maximum number of message lines available. Set by the last redisplay.")
+   (keep-message
+    :initarg :keep-message :accessor keep-message :initform nil :type boolean
+    :documentation "True to keep the temporary message.")
    (input-callback
     :accessor line-editor-input-callback
     :initarg :input-callback

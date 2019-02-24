@@ -288,7 +288,8 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 (defun redraw-display (e &key erase)
   (declare (ignore erase)) ; @@@
   (with-slots (buf-str buf prompt-height point mark start-row start-col
-	       screen-relative-row last-line temporary-message region-active) e
+	       screen-relative-row last-line temporary-message region-active
+	       max-message-lines) e
     (dbugf :rl "----------------~%")
     ;; Make sure buf-str uses buf.
     (when (not (eq (fat-string-string buf-str) buf))
@@ -353,11 +354,12 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 	  (terminal-get-cursor-position (line-editor-terminal e)))
 
 	;; If there's not enough room to display the lines, make some.
-	(when (> (+ start-row relative-top total-lines) (tt-height))
-	  (let ((offset (- (+ start-row relative-top total-lines) (tt-height))))
-	    (dbugf :rl "scroll down ~s~%" offset)
-	    (tt-scroll-down offset)
-	    (decf relative-top offset)))
+	;; (when (> (+ start-row relative-top total-lines) (tt-height))
+	;;   (let ((offset (- (+ start-row relative-top total-lines) (tt-height))))
+	;;     (dbugf :rl "scroll down ~s~%" offset)
+	;;     (tt-scroll-down offset)
+	;;     (decf relative-top offset)))
+	(setf max-message-lines (- (tt-height) prompt-lines buf-lines 2))
 
 	;; Write the prompt
 	(tt-move-to-col 0)
@@ -465,14 +467,16 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 ;; "flense-undercarriage" "scrub-nether-region", hmmm... or maybe this is fine.
 (defun clear-completions (e)
   "Erase completions, if there are any."
-  (when (did-under-complete e)
-    (without-messing-up-cursor (e)
-      (when (< (screen-relative-row e)
-	       (1- (terminal-window-rows (line-editor-terminal e))))
-	(tt-down 1)
-	(incf (screen-relative-row e))
-	(tt-beginning-of-line)
-	(setf (screen-col e) 0)
-	(tt-erase-below)))))
+  (setf (temporary-message e) nil (keep-message e) nil)
+  ;; (when (did-under-complete e)
+  ;;   (without-messing-up-cursor (e)
+  ;;     (when (< (screen-relative-row e)
+  ;;   	       (1- (terminal-window-rows (line-editor-terminal e))))
+  ;;   	(tt-down 1)
+  ;;   	(incf (screen-relative-row e))
+  ;;   	(tt-beginning-of-line)
+  ;;   	(setf (screen-col e) 0)
+  ;;   	(tt-erase-below))))
+  )
 
 ;; EOF

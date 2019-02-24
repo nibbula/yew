@@ -78,6 +78,7 @@ terminal."
 (defvar *completion-short-divisor* 1
   "Divisor of your screen height for short completion.")
 
+#|
 (defun print-completions-under (e comp-result)
   (let* ((comp-list (completion-result-completion comp-result))
 	 (term (line-editor-terminal e))
@@ -145,6 +146,89 @@ terminal."
     (tt-move-to-col x)
     (setf (screen-relative-row e) y
 	  (screen-col e) x)))
+|#
+
+(defun print-completions-under (e comp-result)
+  (let* ((comp-list (completion-result-completion comp-result))
+	 (term (line-editor-terminal e))
+	 (rows (terminal-window-rows term))
+	 (cols (terminal-window-columns term))
+	 (short-limit (truncate rows *completion-short-divisor*))
+	 content-rows content-cols column-size
+	 output-string
+	 real-content-rows
+	 rows-output
+	 ;; back-adjust
+	 ;; (x (screen-col e))
+	 ;; (y (screen-relative-row e))
+	 end-x
+	 row-limit
+	 snip-lines
+	 line-endings
+	 (prefix (or (completion-result-prefix comp-result) ""))
+	 ;; (prefix-height (or (and prefix (figure-content-rows e prefix)) 0))
+	 )
+    (declare (ignorable end-x column-size content-cols))
+    (multiple-value-setq (content-rows content-cols column-size)
+      (print-columns-sizer comp-list :columns cols))
+
+    ;; Move over the rest of the input line.
+    ;;(move-over e (- (length (buf e)) (point e)))
+    ;; (tt-write-char #\newline)
+    ;; (tt-erase-below)
+    ;; (setf back-adjust (- (screen-relative-row e) y))
+    (setf (did-under-complete e) t)
+
+    (setf row-limit
+	  (if (and (< (last-completion-not-unique-count e) 2)
+		   (< short-limit rows))
+	      short-limit
+	      #|
+	      (- (- rows 1) ;; minus the "more" line
+		 (1+ (prompt-height e))
+		 (- (screen-relative-row e) (start-row e)) ;; input line height
+		 prefix-height) |#
+	      (max-message-lines e)
+	      )
+	  output-string
+	  (with-output-to-fat-string (str)
+	    (setf content-rows
+		  (print-columns comp-list :columns cols
+				 :smush t :row-limit row-limit
+				 :format-char "/fatchar-io:print-string/"
+				 :stream str)))
+	  line-endings (figure-line-endings e output-string)
+	  real-content-rows (length line-endings)
+	  rows-output (min real-content-rows row-limit)
+	  snip-lines (max 0 (- real-content-rows row-limit)))
+    ;;z (tt-write-string prefix)
+    ;; Trim output-string to row-limit really for real lines.
+    (when (plusp snip-lines)
+      (setf output-string
+	    (osubseq output-string 0 (car (nth snip-lines line-endings)))))
+    ;; (tt-write-string output-string)
+    ;; (if (plusp (- content-rows rows-output))
+    ;; 	(tt-format "[~d more lines]" (- content-rows row-limit))
+    ;; 	(when (plusp snip-lines)
+    ;; 	  (tt-format "~%[~d more lines]" snip-lines)))
+    ;; (incf back-adjust (- (1+ real-content-rows) snip-lines))
+    ;; Go back to where we should be?
+    ;; (tt-up back-adjust)
+    ;; (tt-beginning-of-line)
+    ;; (tt-move-to-col x)
+    ;; (setf (screen-relative-row e) y
+    ;; 	  (screen-col e) x)
+    (message e "~a~a~a"
+	     prefix
+	     output-string
+	     (cond
+	       ((plusp (- content-rows rows-output))
+		(format nil "[~d more lines]" (- content-rows row-limit)))
+	       ((plusp snip-lines)
+		(format nil "~%[~d more lines]" snip-lines))
+	       (t "")))
+    (setf (keep-message e) t)
+    ))
 
 (defun show-completions (e &key func string)
   (with-slots (completion-func buf point) e

@@ -296,12 +296,12 @@ if it's blank or the same as the previous line."
     (if (add-to-history-p e buf)
 	(history-put (buffer-string buf) context)
 	(history-delete-last context))
-    (when accept-does-newline
-      (tt-write-string buf-str :start point)
-      (tt-write-char #\newline)
-      (tt-write-char #\return)
-      (when (did-under-complete e)
-	(tt-erase-below)))
+    ;; (when accept-does-newline
+    ;;   (tt-write-string buf-str :start point)
+    ;;   (tt-write-char #\newline)
+    ;;   (tt-write-char #\return)
+    ;;   (when (did-under-complete e)
+    ;; 	(tt-erase-below)))
     (setf quit-flag t)))
 
 (defmethod accept ((e line-editor))
@@ -320,13 +320,24 @@ if it's blank or the same as the previous line."
 (defun set-mark (e)
   "Set the mark to be the current point."
   (with-slots (point mark region-active keep-region-active) e
-    (setf mark point
-	  region-active t
-	  keep-region-active t)
+    (let ((toggle (not (eq 'set-mark (inator-last-command e)))))
+      (setf mark point
+	    region-active toggle
+	    keep-region-active toggle))
     mark))
 
 (defmethod select ((e line-editor))
   (set-mark e))
+
+(defun kill-region (e)
+  "Delete the text between the insertion point and the mark, and put it in
+the clipboard."
+  (with-slots (point mark buf clipboard) e
+    (let* ((start (min mark point))
+	   (end (min (max mark point) (fill-pointer buf))))
+      (setf clipboard (subseq buf start end)
+	    point start)
+      (buffer-delete e start end))))
 
 (defun exchange-point-and-mark (e)
   "Move point to the mark. Set the mark at the old point."
