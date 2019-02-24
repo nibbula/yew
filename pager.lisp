@@ -1674,7 +1674,8 @@ byte-pos."
 (defun show-info (pager)
   "Show information about the stream."
   (with-slots (seekable) pager
-    (message pager "%f %l of %L %b/%B ~:[un~;~]seekable" seekable)))
+    (message pager (format-prompt pager "%f %l of %L %b/%B ~:[un~;~]seekable")
+	     seekable)))
 
 ;; This is very bogus.
 (defun show-version (pager)
