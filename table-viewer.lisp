@@ -10,6 +10,8 @@
   (:export
    #:viewer-table-renderer
    #:table-viewer
+   #:view-table-file
+   #:view-table-thing
    #:view-table
    #:!view-table
    ))
@@ -22,6 +24,7 @@
     (#\?		. help)
     (#\<		. move-to-top)
     (#\>		. move-to-bottom)
+    (#\i		. record-info)
     (:home		. move-to-top)
     (:end		. move-to-bottom)
     (:up		. previous)
@@ -582,6 +585,37 @@ for a range of rows, or a table-point for a specific item,"
 	     :omit-empty t)
      :justify nil)))
 
+(defun record-info-table (table rec)
+  (make-table-from
+   (let ((i 0))
+     (mapcar (_ (prog1 (list (if (listp (column-name _))
+				 (first (column-name _))
+				 (column-name _))
+			     (princ-to-string (oelt rec i)))
+		  (incf i)))
+	   (table-columns table)))
+   :column-names '("Name" "Value")))
+
+(defun record-info (o)
+  (with-slots (table (point inator::point)) o
+    (dbugf :tv "table ~s row ~s~%" table
+	   (oelt table (table-point-row point)))
+    (display-text
+     "Record Info"
+     (osplit #\newline
+	     (make-fat-string
+	      :string
+	      (process-ansi-colors
+	       (make-fatchar-string
+		(with-terminal-output-to-string (:ansi)
+		  (table-print:print-table
+		   (record-info-table table (oelt table (table-point-row point)))
+		   :renderer (make-instance
+			      'terminal-table:terminal-table-renderer)
+		   :stream *terminal*)))))
+	     :omit-empty t)
+     :justify nil)))
+
 (defmethod message ((o table-viewer) format-string &rest args)
   (with-slots (message) o
     (setf message (apply #'format nil format-string args))
@@ -671,6 +705,15 @@ if THING or lish:*input* NIL."
     (with-grout ()
       (grout-print-table tab))))
 
+(defun view-table-file (file-name)
+  "View the contents of FILE-NAME as a table."
+  (view-table (read-table file-name)))
+
+(defun view-table-thing (thing)
+  "View the THING as a table."
+  (with-coerced-table (tab thing)
+    (view-table tab)))
+
 #+lish
 (lish:defcommand view-table
   ((table object :optional t :help "Table to view."))
@@ -679,7 +722,6 @@ if THING or lish:*input* NIL."
 has a table:make-table-from method, which by default are lists, hash-tables,
 arrays, and structures. If it's a string or pathname, try to read a table from
 the file."
-  (with-coerced-table (tab table)
-    (view-table tab)))
+  (view-table-thing table))
 
 ;; EOF
