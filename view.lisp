@@ -13,12 +13,21 @@
    ))
 (in-package :view)
 
+;; @@@ This and the other data here, should really be kept somewhere else,
+;; and probably done in a much more sophisticated way.
 (defparameter *viewer-alist*
   `(
     (("text" . "html")       . (:view-html :view-html))
     (("application" . "xml") . (:view-html :view-html))
+    (("text" . "org")        . (:view-org :view-org))
+    (("text" . "csv")        . (:table-viewer :view-table-thing))
     ("image"                 . (:view-image :view-image))
     ("text"                  . (:pager :pager))
+    ))
+
+(defparameter *file-name-types*
+  `(("csv"          . ("text" . "csv"))
+    ("org"	    . ("text" . "org"))
     ))
 
 (defun get-viewer-func (type)
@@ -39,9 +48,20 @@
 	      (content-type-name type)
 	      *viewer-alist*)))
 
+;; @@@ This is very wrong.
+(defun guess-file-name-type (thing)
+  "Return the mime type for THING, which should probably be a filename."
+  (loop :for (ext . type) :in *file-name-types*
+     :when (ends-with (s+ "." ext) thing :test #'equalp)
+     :do (return (make-content-type :name (cdr type) :category (car type)))))
+
+(defun guess-type (thing)
+  (or (guess-file-name-type thing)
+      (guess-file-type thing)))
+
 (defun view (thing)
   "Look at something."
-  (let* ((type (guess-file-type thing))
+  (let* ((type (guess-type thing))
 	 (viewer (get-viewer-func type))
 	 (pkg (first viewer))
 	 (func (second viewer)))
@@ -67,7 +87,11 @@
   ((things pathname :repeating t :optional t :help "The things to view."))
   "Look at something."
   (when (not things)
-    (setf things (list (pick-file))))
+    (setf things (or (and lish:*input*
+			  (if (listp lish:*input*)
+			      lish:*input*
+			      (list lish:*input*)))
+		     (list (pick-file)))))
   (view-things things))
 
 ;; EOF
