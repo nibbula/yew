@@ -10,3 +10,6 @@
 [submodule "deblarg"]
 	path = deblarg
 	url = https://github.com/nibbula/deblarg.git
+[submodule "lish"]
+	path = lish
+	url = https://github.com/nibbula/lish.git
