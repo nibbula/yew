@@ -7,3 +7,6 @@
 [submodule "rl"]
 	path = rl
 	url = https://github.com/nibbula/rl.git
+[submodule "deblarg"]
+	path = deblarg
+	url = https://github.com/nibbula/deblarg.git
