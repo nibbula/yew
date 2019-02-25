@@ -64,34 +64,71 @@
    "A stream that provides facility for using it with lower level operating
 system functions."))
 
+(defun os-stream-type-for (direction element-type)
+  "Return the appropirate stream type for direction and element-type."
+  (cond
+    ((and (eq direction :input)  (subtypep element-type 'character))
+     'os-character-input-stream)
+    ((and (eq direction :output) (subtypep element-type 'character))
+     'os-character-input-stream)
+    ((and (eq direction :io)     (subtypep element-type 'character))
+     'os-character-input-stream)
+    ((and (eq direction :input)  (subtypep element-type 'integer))
+     'os-binary-input-stream)
+    ((and (eq direction :output) (subtypep element-type 'integer))
+     'os-binary-input-stream)
+    ((and (eq direction :io)     (subtypep element-type 'integer))
+     'os-binary-input-stream)
+    ((not (find direction '(:input :output :io)))
+     (error 'opsys-error
+	    :format-control "Direction ~s is not valid."
+	    :format-arguments `(,direction)))
+    ((not (or (subtypep element-type 'character)
+	      (subtypep element-type 'integer)))
+     (error 'opsys-error
+	    :format-control
+	    "Element type ~s is not a subtype of character or integer."
+	    :format-arguments `(,element-type)))
+    (t ;; You seeing this Sbeecil?
+     (error 'opsys-error
+	    :format-control
+	    "Something is wack: direction = ~s element-type = ~s."
+	    :format-arguments `(,direction ,element-type)))))
+
 (defun make-os-stream (filename
 		       &key
 			 (direction :input)
-			 (element-type 'character)
+			 (element-type 'base-char)
 			 (if-exists nil if-exists-given)
 			 (if-does-not-exist nil if-does-not-exist-given)
-			 (external-format :default))
+			 (external-format :default)
+			 share)
   "Return a stream which reads from or writes to FILENAME.
    Defined keywords:
     :DIRECTION - one of :INPUT, :OUTPUT, :IO, or :PROBE
     :ELEMENT-TYPE - the type of object to read or write, default BASE-CHAR
     :IF-EXISTS - one of :ERROR, :NEW-VERSION, :RENAME, :RENAME-AND-DELETE,
                         :OVERWRITE, :APPEND, :SUPERSEDE or NIL
-    :IF-DOES-NOT-EXIST - one of :ERROR, :CREATE or NIL"
-  (declare (ignore filename direction element-type if-exists if-exists-given
-		   if-does-not-exist if-does-not-exist-given external-format))
-  )
+    :IF-DOES-NOT-EXIST - one of :ERROR, :CREATE or NIL
+    :SHARE - If true, allow passing to sub-processes."
+  (declare (ignore if-exists-given if-does-not-exist-given external-format))
+  (let* ((type (os-stream-type-for direction element-type))
+	 (stream (make-instance type)))
+    (os-stream-open stream filename if-exists if-does-not-exist share)))
 
 (defun make-os-stream-from-handle (handle
 				   &key
 				     (element-type 'base-char)
-				     (external-format default))
-  (declare (ignore handle element-type external-format))
+				     (external-format 'default))
+  (declare (ignore external-format))
   "Return an os-stream using the system file handle HANDLE. The direction is
 determined from the handle.
    Defined keywords:
     :ELEMENT-TYPE - the type of object to read or write, default BASE-CHAR"
-  )
+  (make-instance
+   (os-stream-type-for (stream-handle-direction handle)
+		       element-type)
+   :handle handle))
 
 (defmacro with-os-stream ((stream filespec &rest options) &body body)
   "Evaluate BODY with STREAM bound to an open os-stream, like WITH-OPEN-FILE.
@@ -136,7 +173,7 @@ use of throw), the file is automatically closed."
   (:documentation
    "An os-stream that does input."))
 
-(defmethod stream-clear-input (os-input-stream)
+(defmethod stream-clear-input ((stream os-input-stream))
   (with-slots (position unread-char) stream
     ;; @@@ Should we actually erase the data?
     (setf position 0
@@ -216,7 +253,7 @@ use of throw), the file is automatically closed."
        :while (not (zerop left))
        :do
 	 (setf copy-size (min left (- output-position
-				      (length output-bufer)))
+				      (length output-buffer)))
 	       (subseq output-buffer
 		       output-position (+ output-position copy-size))
 	       (subseq seq pos (+ pos copy-size)))
@@ -259,7 +296,7 @@ system functions."))
 		get-byte))
 
 (defun get-byte (stream)
-  (with-slots (input-buffer position) stream
+  (with-slots (input-buffer position got-eof) stream
     (or (if (= position (length input-buffer))
 	    (when (not (fill-buffer stream))
 	      (setf got-eof t)
@@ -325,7 +362,7 @@ system functions."))
    "An os-stream that does input of characters."))
 
 (defun get-char (stream)
-  (with-slots (unread-char input-buffer position) stream
+  (with-slots (unread-char input-buffer position got-eof) stream
     (or (and unread-char (prog1 unread-char (setf unread-char nil)))
 	(if (= position (length input-buffer))
 	    (when (not (fill-buffer stream))
@@ -342,7 +379,7 @@ system functions."))
   ;; ‘peek-type’ of ‘nil’.  It returns either a character or ‘:eof’.
   ;; The default method calls ‘stream-read-char’ and
   ;; ‘stream-unread-char’.
-  (with-slots (unread-char input-buffer position) stream
+  (with-slots (unread-char input-buffer position got-eof) stream
     (or (and got-eof :eof)
 	unread-char
 	(if (= position (length input-buffer))
@@ -431,7 +468,7 @@ system functions."))
    "An os-stream that does output of characters."))
 
 (defun put-char (stream char)
-  (with-slots (output-buffer column) stream
+  (with-slots (output-buffer output-position column) stream
     (when (= output-position (length output-buffer))
       (flush-buffer stream)
       (setf output-position 0))
@@ -545,7 +582,7 @@ system functions."))
 	:with the-end = (or end (length thing))
 	:and the-start = (or start 0)
 	:for i :from the-start :below the-end
-	:do (update-column-for-char tty (char thing i))))))
+	:do (update-column-for-char stream (char thing i))))))
 
 (defmethod stream-write-string ((stream os-character-output-stream) string
 				&optional (start 0) end)

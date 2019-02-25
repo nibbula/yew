@@ -8,9 +8,9 @@
   ()
   (:documentation "A generic file descriptor stream."))
 
-(defmethod close (stream &key abort)
-  (declare (ignore abort))
-  (posix-close (os-stream-handle stream)))
+;; (defmethod close (stream &key abort)
+;;   (declare (ignore abort))
+;;   (posix-close (os-stream-handle stream)))
 
 (defmethod stream-file-position ((stream os-stream) &optional position-spec)
   (declare (ignore position-spec)) ;; @@@
@@ -27,6 +27,43 @@
 (defclass unix-io-stream (unix-input-stream unix-output-stream)
   ()
   (:documentation "Your useful friend on the other end."))
+
+(defgeneric os-stream-open (stream filename share)
+  (:documentation "Open an os-stream for the FILENAME."))
+
+(defun stream-handle-direction (handle)
+  "Return a direction for an stream handle, or NIL if there isn't one."
+  (let ((flags (get-file-descriptor-flags handle)))
+    (cond
+      ((member '+O_RDONLY+ flags) :input)
+      ((member '+O_WRONLY+ flags) :output)
+      ((member '+O_RDWR+   flags) :io))))
+
+(defun %open (filename direction &key create truncate)
+  "Open a FILENAME in DIRECTION, which is one of the usual: :input :output :io.
+Create and truncate do the Unix things."
+  (let ((flags (logior +O_CLOEXEC+
+		       (ecase direction
+			 (:input  +O_RDONLY+)
+			 (:output +O_WRONLY+)
+			 (:io     +O_RDWR+))
+		       (if create +O_CREAT+ 0)
+		       (if truncate +O_TRUNC+ 0)))
+	(mode #o666)
+	(interrupt-count 0)
+	fd)
+    (loop :while (and (< (setf fd (posix-open filename flags mode)) 0)
+		      (= (errno) +EINTR+)) ; plusering bucket wallop
+       :do (if (< interrupt-count 10)
+	       (incf interrupt-count)
+	       (error 'opsys-error
+		      :format-control
+		      "Got a bunch of interrupts when opening ~s."
+		      :format-arguments `(,filename))))
+    (when (< fd 0)
+      (error 'posix-error :error-code (errno)
+	     :format-control "open ~s" :format-arguments `(,filename)))
+    fd))
 
 ;; @@@ Maybe if I have nothing better to do, I could unify flush & fill, since
 ;; they're nearly the same.
@@ -132,6 +169,9 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
   ()
   (:documentation "A file descriptor stream for input."))
 
+(defmethod os-stream-open ((stream unix-character-input-stream) filename share)
+  (setf (os-stream-handle stream) (%open filename :direction :input)))
+
 (defmethod fill-buffer ((stream unix-character-input-stream))
   (%fill-buffer stream))
 
@@ -146,6 +186,9 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 (defclass unix-character-output-stream (os-character-output-stream unix-stream)
   ()
   (:documentation "A file descriptor stream for output."))
+
+(defmethod os-stream-open ((stream unix-character-output-stream) filename share)
+  (setf (os-stream-handle stream) (%open filename :direction :output)))
 
 (defmethod flush-buffer ((stream unix-character-output-stream) &key force)
   (%flush-buffer stream :force force))
@@ -162,12 +205,18 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
   ()
   (:documentation "Your useful friend on the other end."))
 
+(defmethod os-stream-open ((stream unix-character-io-stream) filename share)
+  (setf (os-stream-handle stream) (%open filename :direction :io)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; binary
 
 (defclass unix-binary-input-stream (os-binary-input-stream unix-stream)
   ()
   (:documentation "A file descriptor stream for input."))
+
+(defmethod os-stream-open ((stream unix-binary-input-stream) filename share)
+  (setf (os-stream-handle stream) (%open filename :direction :input)))
 
 (defmethod fill-buffer ((stream unix-binary-input-stream))
   (%fill-buffer stream))
@@ -189,6 +238,9 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
   ()
   (:documentation "A file descriptor stream for output."))
 
+(defmethod os-stream-open ((stream unix-binary-output-stream) filename share)
+  (setf (os-stream-handle stream) (%open filename :direction :output)))
+
 (defmethod flush-buffer ((stream unix-binary-output-stream) &key force)
   (%flush-buffer stream :force force))
 
@@ -209,5 +261,8 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 				 unix-binary-output-stream)
   ()
   (:documentation "Your useful friend on the other end."))
+
+(defmethod os-stream-open ((stream unix-binary-io-stream) filename share)
+  (setf (os-stream-handle stream) (%open filename :direction :io)))
 
 ;; EOF
