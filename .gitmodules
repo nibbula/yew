@@ -13,3 +13,6 @@
 [submodule "lish"]
 	path = lish
 	url = https://github.com/nibbula/lish.git
+[submodule "los"]
+	path = los
+	url = https://github.com/nibbula/los.git
