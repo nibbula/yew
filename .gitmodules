@@ -4,3 +4,6 @@
 [submodule "opsys"]
 	path = opsys
 	url = https://github.com/nibbula/opsys.git
+[submodule "rl"]
+	path = rl
+	url = https://github.com/nibbula/rl.git
