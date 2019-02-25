@@ -134,6 +134,7 @@ for a range of rows, or a table-point for a specific item,"
 (defmethod table-output-sizes ((renderer viewer-table-renderer) table)
   ;; Cache the sizes so we don't have to recompute them every time.
   ;; Then use the default method.
+  (declare (ignorable table))
   (or (sizes renderer)
       (setf (sizes renderer) (call-next-method))))
 
@@ -194,6 +195,7 @@ for a range of rows, or a table-point for a specific item,"
 (defmethod table-output-column-titles ((renderer viewer-table-renderer)
 				       table titles &key sizes)
   "Output all the column titles."
+  (declare (ignorable titles))
   (with-slots (start last-displayed-col separator output-x output-y x y width)
       renderer
     (let ((has-underline (tt-has-attribute :underline)))
