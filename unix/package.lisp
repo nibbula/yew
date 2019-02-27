@@ -257,7 +257,7 @@
    #:file-type-symbol
    #:symbolic-mode
    #:file-exists
-   #:simple-delete-file
+   #:os-delete-file
    #:readlink
 
    #:UF_SETTABLE #:UF_NODUMP #:UF_IMMUTABLE #:UF_APPEND #:UF_OPAQUE

@@ -855,9 +855,13 @@ calls. Returns NIL when there is an error."
   (fd :int) (iov (:pointer (:struct foreign-iovec))) (iov-count :int)
   (offset off-t))
 
-(defun simple-delete-file (path)
+(defun os-delete-file (path)
   "Delete a file."
   (syscall (posix-unlink (safe-namestring path))))
+
+;; @@@ Renamed.
+;; (defalias simple-delete-file os-delete-file
+;;   "Delete a file.")
 
 (defmacro with-posix-file ((var filename flags &optional (mode 0)) &body body)
   "Evaluate the body with the variable VAR bound to a posix file descriptor

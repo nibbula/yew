@@ -53,7 +53,7 @@
    #:users-logged-in
    #:get-file-info
    #:file-exists
-   #:simple-delete-file
+   #:os-delete-file
    #:with-os-file
    #:set-file-time
    #:read-directory
@@ -886,10 +886,10 @@ for long."
     BOOL
   (file-name LPCTSTR))
 
-(defun simple-delete-file (pathname)
+(defun os-delete-file (pathname)
   "Delete a file. Doesn't monkey with the name, which should be a string.
 Doesn't operate on streams."
-  (with-wide-string (w-path pathname)
+  (with-wide-string (w-path (safe-namestring pathname))
     (syscall (%delete-file w-path))))
 
 ;; For sahre-mode

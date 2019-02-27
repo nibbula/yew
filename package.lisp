@@ -94,7 +94,7 @@
    #:get-file-info
    #:stream-system-handle
    #:file-exists
-   #:simple-delete-file
+   #:os-delete-file
    #:with-os-file
    #:set-file-time
    #:make-symbolic-link
