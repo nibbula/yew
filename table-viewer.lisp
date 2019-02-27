@@ -14,6 +14,7 @@
    #:view-table-thing
    #:view-table
    #:!view-table
+   #:!print-table
    ))
 (in-package :table-viewer)
 
@@ -724,6 +725,7 @@ if THING or lish:*input* NIL."
 has a table:make-table-from method, which by default are lists, hash-tables,
 arrays, and structures. If it's a string or pathname, try to read a table from
 the file."
+  :accepts '(table sequence hash-table structure-object)
   (view-table-thing table))
 
 ;; EOF
