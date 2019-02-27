@@ -40,14 +40,31 @@
 	   (declare (ignore c))
 	   nil))))
 
+(defun discard-lines (file-or-stream count &key forever)
+  "Copy from `file-or-stream' to `*standard-output*' after discarding `count'
+lines. If `forever' is true, keep displaying lines added to the end."
+  (let ((discard-count (- count))
+	line (i 0))
+    (with-open-file-or-stream (stream file-or-stream)
+      (loop :while (and (< i discard-count)
+			(setf line (read-line stream nil)))
+	   :do (incf i))
+      (copy-stream stream *standard-output*)
+      (finish-output)
+      (when forever
+	(tail-forever stream forever)))))
+
+(defparameter *plus-p* nil
+  "A stupid hack to support +1 without polluting the arguments of tail-line.")
+
 (defun tail-lines (file-or-stream count &key forever)
   "Output the last COUNT lines of FILE-OR-STREAM. If FOREVER is true, use it as
 the time to sleep between checking for output."
   (cond
-    ((zerop count) (return-from tail-lines nil))
-    ((minusp count)
-     ;; Assume a negtaive count is actually positive.
-     (setf count (- count))))
+    ((or (minusp count) (and (zerop count) *plus-p*))
+     (discard-lines file-or-stream count :forever forever)
+     (return-from tail-lines nil))
+    ((zerop count) (return-from tail-lines nil)))
   (with-open-file-or-stream (stream file-or-stream)
     (let* ((seekable (really-seekable stream))
 	   (buf-len (nos:memory-page-size))
@@ -100,8 +117,28 @@ the time to sleep between checking for output."
 ;; the automatic arg parsing to be able to support it.
 
 #+lish
+(defun convert-plungas (value)
+  (cons (if (and value (stringp value) (> (length value) 1))
+	    (case (char value 0)
+	      (#\+ '+)
+	      (#\- '-)
+	      (otherwise nil))
+	    nil)
+	(parse-integer value)))
+
+#+lish
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (lish:defargtype plungas-int (lish:argument)
+    "A stupid argument type that is an integer that records whether it had a
+preceding sign. It evaluates to a cons of (sign . integer). The sign is a
+symbol, `+' '-' or nil."
+    ()
+    :convert t
+    (convert-plungas lish::value)))
+
+#+lish
 (lish:defcommand tail
-  ((line-count integer :short-arg #\n :default 10
+  ((line-count plungas-int :short-arg #\n :default '(cons nil 10)
     :help "Lines to show.")
    (byte-count integer :short-arg #\c
     :help "Bytes to show.")
@@ -115,26 +152,32 @@ the time to sleep between checking for output."
    (files pathname :repeating t
     :help "Files to use as input."))
   "Output the last portion of input."
-  (if byte-count
-      (progn
+  (let* ((*plus-p* nil)
+	 (real-line-count (case (car line-count)
+			    (+ (setf *plus-p* t) (- (1- (cdr line-count))) )
+			    (- (- (1- (cdr line-count))))
+			    (otherwise (cdr line-count)))))
+    (if byte-count
+	(progn
+	  (if files
+	      (loop :for f :in files :do
+		   (snip-bytes f byte-count :before))
+	      (snip-bytes *standard-input* byte-count :before))
+	  (when forever
+	    (with-open-file-or-stream (stream (car (last files)))
+	      (let ((seekable (really-seekable stream)))
+		(when (not seekable)
+		  (error "I didn't implement non-seekable streams yet."))
+		(file-position stream (file-length stream))
+		(tail-forever stream sleep-interval)))))
 	(if files
-	    (loop :for f :in files :do
-	       (snip-bytes f byte-count :before))
-	    (snip-bytes *standard-input* byte-count :before))
-	(when forever
-	  (with-open-file-or-stream (stream (car (last files)))
-	    (let ((seekable (really-seekable stream)))
-	      (when (not seekable)
-		(error "I didn't implement non-seekable streams yet."))
-	      (file-position stream (file-length stream))
-	      (tail-forever stream sleep-interval)))))
-      (if files
-	  (loop :with i = 0 :and len = (length files)
-	     :for f :in files :do
-	     (tail-lines f line-count
-			 :forever (and forever (= i (1- len)) sleep-interval))
-	     (incf i))
-	  (tail-lines *standard-input* line-count
-		      :forever (and forever sleep-interval)))))
+	    (loop :with i = 0 :and len = (length files)
+	       :for f :in files :do
+		 (tail-lines f real-line-count
+			     :forever (and forever (= i (1- len))
+					   sleep-interval))
+		 (incf i))
+	    (tail-lines *standard-input* real-line-count
+			:forever (and forever sleep-interval))))))
 
 ;; EOF
