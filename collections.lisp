@@ -883,26 +883,26 @@ first collection. For some")
   (:method ((first-collection list) &rest collections)
     (when (not (every #'(lambda (_) (typep _ 'sequence)) collections))
       (error
-       "I don't know how to concatenate things that aren't sequences~
+       "I don't know how to concatenate things that aren't sequences ~
         to a list."))
     (apply #'concatenate 'list first-collection collections))
   (:method ((first-collection vector) &rest collections)
     (when (not (every #'(lambda (_) (typep _ 'sequence)) collections))
       (error
-       "I don't know how to concatenate things that aren't sequences~
+       "I don't know how to concatenate things that aren't sequences ~
         to a vector."))
     (apply #'concatenate 'vector first-collection collections))
   (:method ((first-collection sequence) &rest collections)
     (when (not (every #'(lambda (_) (typep _ 'sequence)) collections))
       (error
-       "I don't know how to concatenate things that aren't sequences~
+       "I don't know how to concatenate things that aren't sequences ~
         to a strange sequence type."))
     (apply #'concatenate (type-of first-collection)
 	   first-collection collections))
   (:method ((first-collection hash-table) &rest collections)
     (when (not (every #'keyed-collection-p collections))
       (error
-       "I don't know how to concatenate things that aren't keyed-collections~
+       "I don't know how to concatenate things that aren't keyed-collections ~
         to a hash-table."))
     (let ((new-table (ocopy first-collection)))
       (loop :for c :in collections :do
