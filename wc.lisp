@@ -30,9 +30,9 @@
   "How many characters are considered a newline by read-line.")
 (declaim (type fixnum +newline-length+))
 
-;; (define-constant +buffer-size+ #.(* 1024 1024)
+;; (define-constant +wc-buffer-size+ #.(* 1024 1024)
 ;;   "Size of the buffer.")
-(defconstant +buffer-size+ #.(* 1024 1024)
+(defconstant +wc-buffer-size+ #.(* 1024 1024)
    "Size of the buffer.")
 
 (defvar *saved-buffer* nil
@@ -43,7 +43,7 @@
   `(if (and *saved-buffer*
 	    (equal (array-element-type *saved-buffer*) ,type))
        *saved-buffer*
-       (setf *saved-buffer* (make-array +buffer-size+ :element-type ,type))))
+       (setf *saved-buffer* (make-array +wc-buffer-size+ :element-type ,type))))
 
 (defun fast-line-count (stream)
   (dbugf :wc "fast-line-count~%")
@@ -61,7 +61,7 @@
 	  :do
 	  (incf start)
 	  (incf lines))
-       :while (= end +buffer-size+))
+       :while (= end +wc-buffer-size+))
     lines))
 
 (defun fast-line-count-fixnum (stream)
@@ -71,7 +71,7 @@
 	start (end 0))
     (declare (type fixnum lines end)
 	     (type (or null fixnum) start)
-	     ;;(type (vector character +buffer-size+) buf))
+	     ;;(type (vector character +wc-buffer-size+) buf))
 	     (type (vector character *) buf))
     (loop 
        :do
@@ -82,7 +82,7 @@
 	  :do
 	  (incf start)
 	  (incf lines))
-       :while (= end +buffer-size+))
+       :while (= end +wc-buffer-size+))
     lines))
 
 (defconstant +newline-code+ (char-code #\newline)
@@ -95,7 +95,7 @@
 	start (end 0))
     (declare (type fixnum lines end)
 	     (type (or null fixnum) start)
-	     ;;(type (vector (unsigned-byte 8) +buffer-size+) buf))
+	     ;;(type (vector (unsigned-byte 8) +wc-buffer-size+) buf))
 	     (type (vector (unsigned-byte 8) *) buf))
     (loop
        :do
@@ -121,7 +121,7 @@
        ;; 	 (when (= (aref buf start) +newline-code+)
        ;; 	   (incf lines))
        ;; 	 (incf start))
-       :while (= end +buffer-size+))
+       :while (= end +wc-buffer-size+))
     lines))
 
 (defun count-thing (file things)
