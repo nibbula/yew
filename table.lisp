@@ -37,7 +37,15 @@
 		   (space 0) (compilation-speed 0)))
 
 (defstruct column
-  "Description of a table column."
+  "Description of a table column.
+  name   - A printable name.
+  type   - A Lisp type.
+  width  - An integer specifying the desired display width.
+  format - A format string for `format', or a format function.
+
+Table cell formmating functions should accept CELL and WIDTH, and should be
+able accept WIDTH as NIL, to indicate no width limitation. Also, formmating
+strings should be alble to be prepended with ~* to ignore the width argument."
   (name nil)
   (type t)
   (width 0)
