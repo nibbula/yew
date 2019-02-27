@@ -1168,16 +1168,21 @@ a terminal.")
 ;; Miscellaneous
 
 ;; Not exactly an operating system function, but implementation specific
-(defun exit-lisp ()
+(defun exit-lisp (&key code abort timeout)
   "Halt the entire Lisp system." ;; But not necessarily the operating system.
-  #+openmcl (ccl::quit 0)
+  (when (not code)
+    (setf code (if abort 1 0)))
+  #+openmcl (ccl::quit code)
+  #+ccl (ccl::quit code)
   #+cmu (ext:quit)
-;  #+sbcl (sb-ext:quit)
-  #+sbcl (sb-ext:exit)
-  #+excl (excl:exit)
+  ;; #+sbcl (sb-ext:quit)
+  #+sbcl (sb-ext:exit :code code :abort abort :timeout timeout)
+  #+excl (excl:exit code)
   #+clisp (funcall 'ext:quit)
-  #+ecl (ext:quit)
-  #-(or openmcl cmu sbcl excl clisp ecl) (missing-implementation 'exit-lisp)
+  #+ecl (ext:quit code)
+  #+abcl (ext:quit :status code)
+  #-(or openmcl ccl cmu sbcl excl clisp ecl abcl)
+  (missing-implementation 'exit-lisp)
   )
 
 ;; This isn't really OS specific, but implementation specific.
