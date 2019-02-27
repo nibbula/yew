@@ -38,7 +38,7 @@ the path."
 
 (defun rm (path)
   "Remove a file."
-  (delete-file path))
+  (os-delete-file path))
 
 #+lish
 (lish:defcommand rm
