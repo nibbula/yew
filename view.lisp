@@ -21,13 +21,15 @@
     (("application" . "xml") . (:view-html :view-html))
     (("text" . "org")        . (:view-org :view-org))
     (("text" . "csv")        . (:table-viewer :view-table-thing))
+    (("text" . "neox")       . (:neox :neox-on-file))
     ("image"                 . (:view-image :view-image))
     ("text"                  . (:pager :pager))
     ))
 
 (defparameter *file-name-types*
-  `(("csv"          . ("text" . "csv"))
-    ("org"	    . ("text" . "org"))
+  `(("csv"          . ("text"  . "csv"))
+    ("org"	    . ("text"  . "org"))
+    ("nx"	    . ("text"  . "neox"))
     ))
 
 (defun get-viewer-func (type)
