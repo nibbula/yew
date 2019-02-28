@@ -2,10 +2,6 @@
 ;; grep.lisp - “Global” Regular Expression Print
 ;;
 
-;; TODO:
-;;   - return objects instead of printing
-;;     file references / line references
-
 (defpackage :grep
   (:documentation "Regular expression search in streams.")
   (:use :cl :cl-ppcre :opsys :dlib :grout :fatchar :stretchy)
@@ -289,8 +285,8 @@ Second value is the scanner that was used.
 
 #+lish
 (lish:defcommand grep
-  ((pattern string
-    :optional nil
+  ((pattern string :help "Regular expression to search for.")
+   (pattern-expression string :short-arg #\e
     :help "Regular expression to search for.")
    (files input-stream-or-filename
     :repeating t
@@ -329,7 +325,7 @@ Second value is the scanner that was used.
     :default '(lish:accepts :sequence)
     :use-supplied-flag t
     :help "True to collect matches in a sequence.")
-   (signal-errors boolean :short-arg #\e
+   (signal-errors boolean :short-arg #\E
     :help "True to signal errors. Otherwise print them to *error-output*.")
    (positions boolean :short-arg #\p
     :help "True to send positions to Lish output. Equivalent to -nqs, except
@@ -339,22 +335,23 @@ it's only quiet if the receiving command accepts sequences."))
   (let (result)
     (cond
       ((and (lish:accepts :sequence) (not collect-supplied-p))
-       (dbugf :accepts "HOWDUUUU output accepts a sequence~%")
        (setf collect t)
        (when positions
 	 (setf quiet t)))
       ((lish:accepts :grotty-stream)
-       (dbugf :accepts "grep going to grotty, so in color~%")
        (setf use-color t))
       (t
-       (dbugf :accepts "grep output accepts ~s~%" lish::*accepts*)))
-    (dbugf :accepts "no files given~%")
-    (dbugf :accepts "type-of *input* = ~s~%" (type-of lish:*input*))
-    (dbugf :accepts "*input* = ~s~%" lish:*input*)
+       ;; (dbugf :accepts "grep output accepts ~s~%" lish::*accepts*)
+       ))
+    ;; (dbugf :accepts "no files given~%")
+    ;; (dbugf :accepts "type-of *input* = ~s~%" (type-of lish:*input*))
+    ;; (dbugf :accepts "*input* = ~s~%" lish:*input*)
     (when positions
       (setf line-number t collect t))
+    (when (not (or pattern pattern-expression))
+      (error "A pattern argument wasn't given."))
     (setf result
-	  (grep-files pattern
+	  (grep-files (or pattern pattern-expression)
 		      :files (or files (and lish:*input*
 					    (typep lish:*input* 'sequence)
 					    lish:*input*))
@@ -371,7 +368,7 @@ it's only quiet if the receiving command accepts sequences."))
 		      :signal-errors signal-errors))
     (if collect
 	(progn
-	  (dbugf :accepts "YOOOOOOO! output to *output*~%")
+	  ;;(dbugf :accepts "YOOOOOOO! output to *output*~%")
 	  (setf lish:*output* result))
 	result)))
 
