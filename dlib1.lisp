@@ -20,7 +20,7 @@ my addition to the problem, and hope I can some day contribute to the solution
 of it.")
   (:use :common-lisp
 	;; We must have the MOP!!! Don't ever drop the MOP!
-	#+(and clisp mop) :mop
+	#+(or (and clisp mop) abcl) :mop
 	#+sbcl :sb-mop
 	#+cmu :pcl
 	#+ccl :ccl
@@ -865,14 +865,14 @@ Otherwise, return N."
 ;; Objects
 
 (defvar *mop-package*
-  #+(and clisp mop) :mop
+  #+(or (and clisp mop) abcl) :mop
   #+sbcl :sb-mop
   #+(or cmu gcl) :pcl
   #+ccl :ccl
   #+lispworks :hcl
   #+(or ecl clasp) :clos
   #+cormanlisp :cl
-  #-(or mop sbcl cmu ccl lispworks gcl ecl clasp cormanlisp)
+  #-(or mop sbcl cmu ccl lispworks gcl ecl clasp cormanlisp abcl)
   (error "GIVE ME MOP!!")
   "The package in which the traditional Meta Object Protocol resides.")
 
