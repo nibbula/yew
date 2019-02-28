@@ -701,7 +701,7 @@ sizes. It only copies the smaller of the two regions."
 
 (defun invalidate-before-start-row (tty screen)
   (with-slots (start-line) tty
-    (loop :for i :from 0 :below (min (start-line tty)
+    (loop :for i :from 0 :below (min start-line
 				     (length (screen-lines screen)))
        :do
        (loop :for c :across (aref (screen-lines screen) i)
@@ -1018,7 +1018,7 @@ changed the screen content."
 (defun copy-to-screen (tty string &key start end)
   "Copy the STRING from START to END to the screen. Return true if we actually
 changed the screen contents."
-  (with-slots (x y width height fg bg attrs scrolling-region) (new-screen tty)
+  (with-slots (#|x y width height fg bg attrs scrolling-region|#) (new-screen tty)
     (loop
        :with changed
        ;; :and str = (if (or (and start (not (zerop start))) end)
