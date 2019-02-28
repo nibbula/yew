@@ -289,6 +289,10 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
   #-(or ccl sbcl cmu clisp lispworks abcl ecl)
   (missing-implementation 'stream-system-handle))
 
+;; This is really just for the os-stream code.
+(defosfun stream-handle-direction (handle)
+  "Return a direction for an stream handle, or NIL if there isn't one.")
+
 ;; Sadly I find the need to do this because probe-file might be losing.
 (defosfun file-exists (filename)
   "Check that a file with FILENAME exists at the moment. But it might not exist
@@ -1175,6 +1179,7 @@ a terminal.")
 ;; Not exactly an operating system function, but implementation specific
 (defun exit-lisp (&key code abort timeout)
   "Halt the entire Lisp system." ;; But not necessarily the operating system.
+  (declare (ignorable code timeout abort))
   (when (not code)
     (setf code (if abort 1 0)))
   #+openmcl (ccl::quit code)

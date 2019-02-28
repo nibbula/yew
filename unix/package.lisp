@@ -492,6 +492,7 @@
    #:unix-binary-io-stream
    #:fill-buffer
    #:flush-buffer
+   #:stream-handle-direction
 
    ;; Memory
    #:mmap

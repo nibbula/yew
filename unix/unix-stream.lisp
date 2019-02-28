@@ -28,9 +28,6 @@
   ()
   (:documentation "Your useful friend on the other end."))
 
-(defgeneric os-stream-open (stream filename share)
-  (:documentation "Open an os-stream for the FILENAME."))
-
 (defun stream-handle-direction (handle)
   "Return a direction for an stream handle, or NIL if there isn't one."
   (let ((flags (get-file-descriptor-flags handle)))

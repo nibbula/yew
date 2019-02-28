@@ -2,7 +2,7 @@
 ;; os-stream.lisp - Streams that expose low level O/S functionality.
 ;;
 
-(in-package :opsys-base)
+(in-package :opsys)
 
 ;; Hello and welcome to yet another re-implementation of that terrible Common
 ;; Lisp "anti-pattern", the fd-stream, otherwise known as normal Lisp streams
@@ -94,6 +94,9 @@ system functions."))
 	    :format-control
 	    "Something is wack: direction = ~s element-type = ~s."
 	    :format-arguments `(,direction ,element-type)))))
+
+(defgeneric os-stream-open (stream filename share)
+  (:documentation "Open an os-stream for the FILENAME."))
 
 (defun make-os-stream (filename
 		       &key
@@ -315,6 +318,10 @@ system functions."))
   (:documentation
    "An os-stream that does output of bytes."))
 
+(declaim (inline put-byte)
+	 (ftype (function (os-output-stream (unsigned-byte 8))
+			  (unsigned-byte 8)) put-byte))
+
 (defun put-byte (stream byte)
   (with-slots (output-buffer output-position) stream
     (when (= output-position (length output-buffer))
@@ -323,10 +330,6 @@ system functions."))
     (setf (aref output-buffer output-position) byte)
     (incf output-position))
   byte)
-
-(declaim (inline put-byte)
-	 (ftype (function (os-output-stream (unsigned-byte 8))
-			  (unsigned-byte 8)) put-byte))
 
 (defmethod stream-write-byte ((stream os-binary-output-stream) integer)
   ;; Implements ‘write-byte’; writes the integer to the stream and
@@ -361,6 +364,9 @@ system functions."))
   (:documentation
    "An os-stream that does input of characters."))
 
+(declaim (inline get-char)
+	 (ftype (function (os-input-stream) (or character null)) get-char))
+
 (defun get-char (stream)
   (with-slots (unread-char input-buffer position got-eof) stream
     (or (and unread-char (prog1 unread-char (setf unread-char nil)))
@@ -370,9 +376,6 @@ system functions."))
 	      (return-from get-char nil))
 	    (prog1 (aref input-buffer position)
 	      (incf position))))))
-
-(declaim (inline get-char)
-	 (ftype (function (os-input-stream) (or character null)) get-char))
 
 (defmethod stream-peek-char ((stream os-character-input-stream))
   ;; This is used to implement ‘peek-char’; this corresponds to
@@ -494,8 +497,8 @@ system functions."))
   ;; ‘stream-write-char’ with a ‘#space’ character; it returns ‘nil’ if
   ;; ‘stream-line-column’ returns ‘nil’.
   (with-slots (column) stream
-    (while (< column col)
-      (put-char stream #\space)))
+    (loop :while (< column col)
+	 :do (put-char stream #\space)))
   t)
 
 (defmethod stream-fresh-line ((stream os-character-output-stream))

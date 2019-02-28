@@ -93,6 +93,7 @@
    ;; files
    #:get-file-info
    #:stream-system-handle
+   #:stream-handle-direction
    #:file-exists
    #:os-delete-file
    #:with-os-file
