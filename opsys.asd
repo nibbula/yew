@@ -20,7 +20,7 @@
       :serial t
       :components ((:file "base")
 		   (:file "types")
-		   (:file "os-stream")))
+		   (:file "os-stream-base")))
      (:module "unix"
       :depends-on ("base")
       :serial t
@@ -52,4 +52,5 @@
 			:if-feature (:and :windows (:not :unix)))))
      (:file "package" :depends-on ("base"))
      (:file "libc" :depends-on ("package"))
-     (:file "opsys" :depends-on ("platform-dependant"))))
+     (:file "opsys" :depends-on ("platform-dependant"))
+     (:file "os-stream" :depends-on ("opsys"))))
