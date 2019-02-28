@@ -602,7 +602,9 @@ functions."
 	      :do
 		(setf ofunc (symbolify (s+ "O" f))
 		      ffunc (symbolify (s+ "FAT-" f)))
-	      :collect `(defalias ',ofunc ',ffunc))))
+;;	      :collect `(defalias ',ofunc ',ffunc))))
+	      :collect `(defmethod ,ofunc ((a fat-string) (b fat-string))
+			  (,ffunc a b)))))
       `(progn ,@forms))))
 (make-ostring-comparators)
 
