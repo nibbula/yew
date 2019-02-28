@@ -1,9 +1,5 @@
 ;;
-;; puca.lisp - Putative Muca (A very simple(istic) interface to CVS/git/svn)
-;;
-;; (a.k.a Muca-ing for fun)
-;; This was translated from puca.pl, written in Perl, which is my excuse for
-;; why it's poorly organized.
+;; puca.lisp - Putative Muca (A simple(istic) interface to CVS/git/svn)
 ;;
 ;; TODO:
 ;;  - puca options help?
@@ -18,7 +14,7 @@
 
 (defpackage :puca
   (:documentation
-   "Putative Muca (A very simple(istic) interface to CVS/git/svn).")
+   "Putative Muca (A simple(istic) interface to CVS/git/svn).")
   (:use :cl :dlib :dlib-misc :opsys :keymap :char-util :rl :completion :inator
 	:terminal :terminal-inator :fui :options :fatchar :fatchar-io
 	:table :table-print :collections :table-viewer
