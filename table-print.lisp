@@ -124,6 +124,8 @@ These are given in the FORMAT slot of a TABLE:COLUMN."))
 (defvar *print-titles* t "True to print titles.")
 (defvar *max-width* nil "Maximum output width of the table.")
 (defvar *destination* nil "The current table output destination.")
+(defvar *trailing-spaces* nil
+  "True to output trailing spaces after the data in the last column.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -424,9 +426,6 @@ function."
     :documentation
     "Width of output already in this row, i.e. where the cursor would be."))
   (:documentation "Render a text table."))
-
-(defvar *trailing-spaces* nil
-  "True to output trailing spaces after the data in the last column.")
 
 (defmethod table-output-column-titles ((renderer text-table-renderer)
 				       table titles &key sizes)
