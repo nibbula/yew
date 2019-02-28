@@ -4,6 +4,26 @@
 
 (in-package :opsys-unix)
 
+;; This should have the union of all Unix-like OS's slots, so that Unix
+;; portable code can check for specific slots with impunity.
+(defstruct file-status
+  device
+  inode
+  (mode 0 :type integer)
+  links
+  (uid -1 :type integer)
+  (gid -1 :type integer)
+  device-type
+  access-time
+  modify-time
+  change-time
+  birth-time
+  size
+  blocks
+  block-size
+  flags
+  generation)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
 
@@ -1541,26 +1561,6 @@ versions of the keywords used in Lisp open.
 
 ;;  (unsigned int :(8 / 2) * (16 - (int)sizeof(struct timespec))
 ;;  (unsigned int :(8 / 2) * (16 - (int)sizeof(struct timespec))
-
-;; This should have the union of all Unix-like OS's slots, so that Unix
-;; portable code can check for specific slots with impunity.
-(defstruct file-status
-  device
-  inode
-  (mode 0 :type integer)
-  links
-  (uid -1 :type integer)
-  (gid -1 :type integer)
-  device-type
-  access-time
-  modify-time
-  change-time
-  birth-time
-  size
-  blocks
-  block-size
-  flags
-  generation)
 
 (defun convert-stat (stat-buf)
   (if (and (pointerp stat-buf) (null-pointer-p stat-buf))
