@@ -35,7 +35,7 @@ The shell command takes any number of file names.
 ")
   (:use :cl :dlib :opsys :dlib-misc :table-print :stretchy
 	:keymap :char-util :fatchar #+use-regex :regex #-use-regex :ppcre
-	:terminal :fatchar-io :pick-list :table-print :fui :inator
+	:terminal :fatchar-io :pick-list :table-print :fui :inator :file-inator
 	:terminal-inator :collections :ochar :theme :terminal-table :completion)
   (:export
    #:*pager-prompt*
@@ -151,7 +151,7 @@ The shell command takes any number of file names.
     ))
 
 (defparameter *escape-keymap* (build-escape-map *normal-keymap*))
-(add-keymap *default-inator-escape-keymap* *escape-keymap*)
+(add-keymap *default-file-inator-escape-keymap* *escape-keymap*)
 
 ;; "text text text"
 ;; ((:tag "text") "text" (:tag "text") "text")
@@ -165,7 +165,7 @@ The shell command takes any number of file names.
   prev					; previous line
   text)					; text string of the line
 
-(defclass pager (terminal-inator)
+(defclass pager (terminal-inator file-inator)
   ((stream
     :initarg :stream :accessor pager-stream
     :documentation "Input stream")
@@ -267,7 +267,7 @@ from theme value (:program :empty-line-indicator :style)")
     :initform nil :type boolean
     :documentation "True for color bytes mode."))
   (:default-initargs
-   :keymap `(,*normal-keymap* ,*default-inator-keymap*))
+   :keymap `(,*normal-keymap* ,*default-file-inator-keymap*))
   (:documentation "An instance of a pager."))
 
 (defclass text-pager (pager)
@@ -610,6 +610,13 @@ read until we get an EOF."
     (t
      (princ-to-string stream))))
 
+(defun stream-file-p (stream)
+  (cond
+    ((typep stream 'utf8b-stream:utf8b-input-stream)
+     (stream-file-p (utf8b-stream:input-stream stream)))
+    ((and (typep stream 'file-stream)
+	  (ignore-errors (truename stream))))))
+
 (defgeneric bytes-current (pager)
   (:documentation "Return bytes at current position.")
   (:method ((pager text-pager))
@@ -897,6 +904,16 @@ line : |----||-------||---------||---|
     (string (render-span line-number (list (line-text line))))
     (list   (render-span line-number (line-text line)))
     (t (error "Don't know how to render a line of ~s~%"
+	      (type-of (line-text line))))))
+
+(defun simplify-line (line)
+  (typecase (line-text line)
+    (null             "")		; NIL means a blank line?
+    (string           (line-text line))
+    (fatchar-string   (fatchar-string-to-string (line-text line)))
+    (list             (fatchar-string-to-string
+		       (span-to-fatchar-string (line-text line))))
+    (t (error "Don't know how to simplify a line of ~s~%"
 	      (type-of (line-text line))))))
 
 (defvar *empty-indicator* "~"
@@ -1236,7 +1253,10 @@ Returns the the open stream or NIL."
 ;; ;;#+sbcl '(:utf-8 :replacement #\replacement_character)
 ;; #+sbcl '(:utf-8 :replacement #\?)
 
-(defmethod open-file ((pager text-pager) filename &key (offset 0))
+(defgeneric %open-file (pager filename &key offset)
+  (:documentation "Open the given FILENAME."))
+
+(defmethod %open-file ((pager text-pager) filename &key (offset 0))
   "Open the given FILENAME."
   (with-slots (count lines line got-eof stream page-size binary seekable) pager
     (let ((new-stream (open-lossy filename :binary binary)))
@@ -1252,7 +1272,7 @@ Returns the the open stream or NIL."
 	(read-input pager (+ page-size offset)))
       new-stream)))
 
-(defmethod open-file ((pager binary-pager) filename &key (offset 0))
+(defmethod %open-file ((pager binary-pager) filename &key (offset 0))
   "Open the given FILENAME."
   (with-slots (got-eof stream page-size binary buffer buffer-start
 	       byte-count byte-pos seekable) pager
@@ -1270,10 +1290,39 @@ Returns the the open stream or NIL."
 	(read-input pager (+ page-size offset)))
       new-stream)))
 
-(defun open-file-command (filename &key (offset 0))
+(defun open-file-long-command (filename &key (offset 0))
   "Open the given FILENAME."
-  (or (open-file *pager* filename :offset offset)
+  (or (%open-file *pager* filename :offset offset)
       (and (message *pager* "Can't open file \"~s\".") nil)))
+
+(defmethod open-file ((pager pager))
+  "Prompt to open a file."
+  (let ((filename (ask-for-file "Open file: ")))
+    (if (and filename (not (zerop (length filename))))
+	(when (not (%open-file pager filename))
+	  (message pager "Can't open file \"~s\"."))
+	(message pager "No file was given."))))
+
+(defmethod save-file ((pager text-pager))
+  "Save the stream to a file."
+  (with-slots (stream lines) pager
+    (when (not (stream-file-p stream))
+      (let ((filename (quote-filename (ask-for-file "Save stream to file: "))))
+	(if (probe-file filename)
+	    ;; @@@ Should prompt for overwrite.
+	    (message pager "File exists. Not saved.")
+	    (progn
+	      (when (block nil
+		      (handler-case
+			  (with-open-file (str filename :direction :output)
+			    (loop :for l :in lines :do
+				 (write-line (simplify-line l) str)))
+			((or file-error stream-error opsys-error
+			     directory-error) (c)
+			  (message pager "Error saving file: ~a" c)
+			 (return nil)))
+		      t)
+		(message pager "Stream written to ~s." filename))))))))
 
 ;; File locations can be either a file name, or a list or vector with the first
 ;; element being a file name and the second being an offset in the file. If the
@@ -1329,7 +1378,7 @@ more files."
   (with-slots (file-list file-index) pager
     (if (and file-index (advance-file-index pager :forward))
 	(progn
-	  (open-file-command
+	  (open-file-long-command
 	   (file-location-file (elt file-list file-index))
 	   :offset (file-location-offset (elt file-list file-index)))
 	  t)
@@ -1341,7 +1390,7 @@ more files."
   "Try to go to the previous file in the set of files. Return NIL if we can't."
   (with-slots (file-list file-index) pager
     (if (and file-index (advance-file-index pager :backward))
-	(open-file-command
+	(open-file-long-command
 	 (file-location-file (elt file-list file-index))
 	 :offset (file-location-offset (elt file-list file-index)))
 	(progn
@@ -1357,7 +1406,7 @@ more files."
 			  (file-location-file (elt file-list (1+ file-index)))))
 	      (progn
 		(incf file-index)
-		(open-file-command
+		(open-file-long-command
 		 (file-location-file (elt file-list file-index))
 		 :offset (file-location-offset (elt file-list file-index))))
 	      (progn
@@ -1375,7 +1424,7 @@ more files."
 			  (file-location-file (elt file-list (1- file-index)))))
 	      (progn
 		(decf file-index)
-		(open-file-command
+		(open-file-long-command
 		 (file-location-file (elt file-list file-index))
 		 :offset (file-location-offset (elt file-list file-index))))
 	      (progn
@@ -1723,7 +1772,7 @@ byte-pos."
 (defparameter *long-commands*
   (vector
    `("edit"	  (#\e #\x)  "Examine a different file."
-     ,(lc (open-file-command (ask-for-file (s+ ":" c #\space)))))
+     ,(lc (open-file-long-command (ask-for-file (s+ ":" c #\space)))))
    `("next"	  (#\n)	    "Examine the next file in the arguments."
      ,(lc (next-file *pager*)))
    `("previous"	  (#\p)	    "Examine the previous file in the arguments."

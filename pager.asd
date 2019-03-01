@@ -14,8 +14,8 @@
 		 :keymap :char-util :fatchar
 		 #+use-re :re #-use-re :cl-ppcre
 		 :terminal :fatchar-io
-		 :rl :pick-list :utf8b-stream :fui :inator :terminal-inator
-		 :terminal-table :completion)
+		 :rl :pick-list :utf8b-stream :fui :inator :file-inator
+		 :terminal-inator :terminal-table :completion)
     :entry-point "pager:standalone"
     :build-operation 'program-op
     :components
