@@ -2,9 +2,6 @@
 ;; inator.lisp - Generic UI applet
 ;;
 
-;; Another try at just a simple ‘inator’. The way this works is hopefully
-;; temporary until I get FT working.
-
 (defpackage :inator
   (:documentation
 "This is a little scaffolding for making a certain style of applet. The style
@@ -17,7 +14,8 @@ methods. You can also provide a custom keymap. You can probably get by with
 just providing methods for UPDATE-DISPLAY and AWAIT-EVENT, and then calling
 EVENT-LOOP with an INATOR sub-class instance.
 
-There is a terminal based TERMINAL-INATOR package, but please don't ever call it
+There's a separate file-inator, for things that work with files. There is a
+terminal based TERMINAL-INATOR package, but please don't ever call it
 a TERM-INATOR.
 ")
   (:use :cl :dlib :keymap :char-util)
@@ -29,6 +27,7 @@ a TERM-INATOR.
    #:inator-quit-flag
    #:inator-command
    #:inator-last-command
+
    ;; Commands
    #:next
    #:previous
@@ -48,8 +47,6 @@ a TERM-INATOR.
    #:quit
    #:accept
    #:redraw
-   #:next-file
-   #:previous-file
    #:cut
    #:copy
    #:paste
@@ -71,7 +68,6 @@ a TERM-INATOR.
    #:*default-inator-escape-keymap*
    #:read-key-sequence
    #:with-inator
-   #:with-file-list
    ))
 (in-package :inator)
 
@@ -119,10 +115,6 @@ a TERM-INATOR.
   (:documentation "Accept the data and usually exit."))
 (defgeneric redraw (inator)
   (:documentation "Redraw the screen."))
-(defgeneric next-file (inator)
-  (:documentation "Go to the next file."))
-(defgeneric previous-file (inator)
-  (:documentation "Go to the previous file."))
 
 ;; Edit?
 (defgeneric cut (inator))		; kill
@@ -353,32 +345,5 @@ UPDATE-DISPLAY and and AWAIT-EVENT methods."
 MAKE-INSTANCE, with VAR bound to the new instance."
   `(let ((,var (make-instance ,type ,@args)))
      ,@body))
-
-;; This doesn't really have to be an inator specific thing, but it is useful
-;; for them. The names of the restarts _do_ have to come from somewhere.
-
-(defmacro with-file-list ((var list &key index) &body body)
-  "Evaluate the BODY in a return-able loop with next-file and previous-file
-restarts set up to move through the LIST, and FILE bind to the current file."
-  (with-unique-names (i files len)
-    (let ((ii (or index i)))
-      `(let* ((,ii 0)
-	      (,files (coerce ,list 'vector))
-	      (,len (length ,files))
-	      ,var)
-	 (block nil
-	   (loop :while (< ,ii ,len) :do
-		(restart-case
-		    (progn
-		      (setf ,var (aref ,files ,ii))
-		      ,@body)
-		  (inator:next-file ()
-		    :report "Go to the next file."
-		    (when (< ,ii ,len)
-		      (incf ,i)))
-		  (inator:previous-file ()
-		    :report "Go to the previous file."
-		    (when (> ,ii 0)
-		      (decf ,ii))))))))))
 
 ;; EOF
