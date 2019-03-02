@@ -455,9 +455,10 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 |#
 
 (defun tmp-message (e fmt &rest args)
-  (with-slots (temporary-message) e
+  (with-slots (temporary-message keep-message) e
     (setf temporary-message (with-output-to-fat-string (fs)
-			      (apply #'format fs fmt args)))
+			      (apply #'format fs fmt args))
+	  keep-message nil)
     (redraw-display e)))
 
 (defmethod message ((e line-editor) fmt &rest args)
