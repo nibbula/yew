@@ -4,7 +4,7 @@
 
 (defpackage :view-org
   (:documentation "View Org Mode trees.")
-  (:use :cl :dlib :tree-viewer :terminal :inator)
+  (:use :cl :dlib :tree-viewer :terminal :inator :file-inator)
   (:export
    #:read-org-mode-file
    #:!view-org
@@ -154,13 +154,22 @@
   "View an org-mode FILE with the tree viewer."
   (view-tree (read-org-mode-file file)))
 
+(defclass org-viewer (tree-viewer file-inator)
+  ()
+  (:documentation "A viewer for Emacs Org Mode files."))
+
 #+lish
 (lish:defcommand view-org
   ((org-files pathname :repeating t :help "Org-mode files to view."))
   "View an Emacs Org mode file with the tree-viewer."
-  (with-file-list (file org-files)
-    (when (= 1 (length (multiple-value-list
-			(view-tree (read-org-mode-file file)))))
-      (return))))
+  (block nil
+    (with-file-list (file org-files)
+      (let ((tree (read-org-mode-file file)))
+	(when (= 1 (length (multiple-value-list
+			    (view-tree tree
+				       :viewer (make-instance
+						'org-viewer
+						:root tree)))))
+	  (return))))))
 
 ;; EOF
