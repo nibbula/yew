@@ -954,11 +954,11 @@ GRAPHEME-VARs will be, which defaults to character so it's compatable with a
 (defgeneric graphemes (string)
   (:documentation "Return a sequence of graphemes in STRING.")
   (:method ((string string))
-    ;; #+(and sbcl has-sb-unicode)
-    ;; (progn
-    ;;   (dbugf :char-util "sbcl grapheme ~s ~s~%" (type-of string) string)
-    ;;   (sb-unicode:graphemes string))
-    ;; #-(and sbcl has-sb-unicode)
+    #+(and sbcl has-sb-unicode)
+    (progn
+      (dbugf :char-util "sbcl grapheme ~s ~s~%" (type-of string) string)
+      (sb-unicode:graphemes string))
+    #-(and sbcl has-sb-unicode)
     (progn
       ;; (dbugf :char-util "my grapheme ~s ~s~%" (type-of string) string)
       (let (result)
