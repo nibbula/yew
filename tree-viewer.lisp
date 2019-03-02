@@ -1051,23 +1051,25 @@ and indented properly for multi-line objects."
 
 (defun view-tree (tree &key viewer default-action)
   "Look at a tree, with expandable and collapsible branches."
-  (with-terminal (:crunch)
-    (let ((*viewer* viewer))
-      (if viewer
-	  (progn
-	    (event-loop *viewer*)
-	    (picked-object *viewer*))
-	  (with-inator (*viewer* 'tree-viewer
-				 ;; :keymap (list *tree-keymap*
-				 ;; 	       inator:*default-inator-keymap*)
-				 :bottom (- (tt-height) 2)
-				 :root (if (listp tree)
-					   (convert-tree tree) tree)
-				 :default-action default-action)
-	    (setf (node-open (root *viewer*)) t)
-	    (event-loop *viewer*)
-	    (picked-object *viewer*))))
-    (tt-move-to (tt-height) 0)))
+  (let (result)
+    (with-terminal (:crunch)
+      (let ((*viewer* viewer))
+	(if viewer
+	    (progn
+	      (event-loop *viewer*)
+	      (setf result (picked-object *viewer*)))
+	    (with-inator (*viewer* 'tree-viewer
+				   ;; :keymap (list *tree-keymap*
+				   ;; 	       inator:*default-inator-keymap*)
+				   :bottom (- (tt-height) 2)
+				   :root (if (listp tree)
+					     (convert-tree tree) tree)
+				   :default-action default-action)
+	      (setf (node-open (root *viewer*)) t)
+	      (event-loop *viewer*)
+	      (setf result (picked-object *viewer*)))))
+      (tt-move-to (tt-height) 0))
+    result))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; some examples
