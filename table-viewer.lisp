@@ -530,15 +530,16 @@ for a range of rows, or a table-point for a specific item,"
       (when (table-point-col point)
 	(let ((col (table-point-col point)))
 	  (setf table
-		(case (column-type (oelt (table-columns table) col))
-		  (string
-		   (osort table string-op :key (_ (oelt _ col))))
-		  (number
-		   (osort table number-op :key (_ (oelt _ col))))
-		  (otherwise
-		   ;; sort the printed version like a string
-		   (osort table string-op
-			  :key (_ (princ-to-string (oelt _ col))))))
+		(let ((t1 (column-type (oelt (table-columns table) col))))
+		  (cond
+		    ((subtypep t1 'string)
+		     (osort table string-op :key (_ (oelt _ col))))
+		    ((subtypep t1 'number)
+		     (osort table number-op :key (_ (oelt _ col))))
+		    (t
+		     ;; sort the printed version like a string
+		     (osort table string-op
+			    :key (_ (princ-to-string (oelt _ col)))))))
 		last-sort-direction direction))))))
 
 (defmethod sort-command ((o table-viewer))
@@ -574,18 +575,24 @@ for a range of rows, or a table-point for a specific item,"
   (with-slots (table) o
     (display-text
      "Table Info"
-     (osplit #\newline
-	     (make-fat-string
-	      :string
-	      (process-ansi-colors
-	       (make-fatchar-string
-		(with-terminal-output-to-string (:ansi)
-		  (table-print:print-table
-		   (table-info-table table)
-		   :renderer (make-instance
-			      'terminal-table:terminal-table-renderer)
-		   :stream *terminal*)))))
-	     :omit-empty t)
+     (append
+      (osplit #\newline
+	      (make-fat-string
+	       :string
+	       (process-ansi-colors
+		(make-fatchar-string
+		 (with-terminal-output-to-string (:ansi)
+		   (table-print:print-table
+		    (table-info-table table)
+		    :renderer (make-instance
+			       'terminal-table:terminal-table-renderer)
+		    :stream *terminal*)))))
+	      :omit-empty t)
+      `("" ,(format nil "Rows: ~d Columns: ~d" (olength table)
+		 (or (and (table-columns table)
+			  (olength (table-columns table)))
+		     (and (oelt table 0) (olength (oelt table 0)))
+		     0))))
      :justify nil)))
 
 (defun record-info-table (table rec)
@@ -594,30 +601,37 @@ for a range of rows, or a table-point for a specific item,"
      (mapcar (_ (prog1 (list (if (listp (column-name _))
 				 (first (column-name _))
 				 (column-name _))
-			     (princ-to-string (oelt rec i)))
+			     (princ-to-string (oelt rec i))
+			     (princ-to-string (type-of (oelt rec i))))
 		  (incf i)))
 	   (table-columns table)))
-   :column-names '("Name" "Value")))
+   :column-names '("Name" "Value" "Actual Type")))
 
 (defun record-info (o)
   (with-slots (table (point inator::point)) o
     (dbugf :tv "table ~s row ~s~%" table
 	   (oelt table (table-point-row point)))
-    (display-text
-     "Record Info"
-     (osplit #\newline
-	     (make-fat-string
-	      :string
-	      (process-ansi-colors
-	       (make-fatchar-string
-		(with-terminal-output-to-string (:ansi)
-		  (table-print:print-table
-		   (record-info-table table (oelt table (table-point-row point)))
-		   :renderer (make-instance
-			      'terminal-table:terminal-table-renderer)
-		   :stream *terminal*)))))
-	     :omit-empty t)
-     :justify nil)))
+    (let ((outer-width (- (tt-width) 4)))
+      (display-text
+       "Record Info"
+       (append
+	(osplit #\newline
+		(make-fat-string
+		 :string
+		 (process-ansi-colors
+		  (make-fatchar-string
+		   (with-terminal-output-to-string (:ansi)
+		     (table-print:print-table
+		      (record-info-table table
+					 (oelt table (table-point-row point)))
+		      :renderer (make-instance
+				 'terminal-table:terminal-table-renderer)
+		      :max-width outer-width
+		      :stream *terminal*)))))
+		:omit-empty t)
+	`("" ,(format nil "Record ~d of ~d"
+		      (1+ (table-point-row point)) (olength table))))
+       :justify nil))))
 
 (defmethod message ((o table-viewer) format-string &rest args)
   (with-slots (message) o
