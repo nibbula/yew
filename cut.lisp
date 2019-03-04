@@ -234,11 +234,13 @@ indicate only a start number, or :max to indicate it extends to the end."
    (when (not files)
      (setf files (list *standard-input*)))
    (when table
+     (remf args :table)
+     (setf args (append args '(:collect t)))
      (setf collect t))
    (flet ((call-cut (f)
-	    (remf args :files)
 	    (apply #'cut-lines f args)))
      (let (results)
+       (remf args :files)
        (loop :for f :in files :do
 	    (if collect
 		(push (call-cut f) results)
