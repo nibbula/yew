@@ -171,7 +171,9 @@ found."
 (defun make-columns (columns-list)
   (loop :for c :in columns-list
      :collect
-       (apply #'make-column c)))
+       (if (column-p c)
+	   c
+	   (apply #'make-column c))))
 
 (defmethod make-table-from ((object list) &key column-names columns type)
   "Make a table from an alist or a list of things."
@@ -238,7 +240,7 @@ found."
 	      (when first-obj
 		(if (sequence-of-classes-p object)
 		    (set-columns-names-from-class tt first-obj)
-		    (loop :for i :from 0 :to (olength first-obj)
+		    (loop :for i :from 0 :below (olength first-obj)
 		       :do (table-add-column
 			    tt (format nil "Column~d" i)))))))))))
     tt))
