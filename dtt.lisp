@@ -328,24 +328,31 @@ then the second value is the labels."
 	       :collect rec))
       (values recs labels))))
 
-(defun read-table (file-or-stream &key (style +csv-default+))
+(defun read-table (file-or-stream &key (style +csv-default+) columns)
   (multiple-value-bind (recs labels) (read-file file-or-stream :style style)
-    (make-table-from (coerce recs 'vector) :column-names labels)))
+    (make-table-from (coerce recs 'vector) :column-names labels
+		     :columns columns)))
 
 #+lish
 (lish:defcommand read-table
   ((file pathname :help "File to read a table from.")
+   (first-row-labels boolean :short-arg #\l :default t
+    :help "True to use the first row of the table as labels, not data.")
    (style choice :short-arg #\s :default ''csv-default
 	  :choices (mapcar (_ (string-downcase (car _))) *styles*)
 	  ;; :test #'symbolify
-	  :help "Delimited text style."))
+	  :help "Delimited text style.")
+   (columns list :short-arg #\C
+    :help "List of table column initializers. For example:
+((:name \"Name\" :type string :width 20)
+ (:name \"Percent\" :type integer :format \"~d%\"))"))
   :accepts (pathname stream)
   "Read a delimited text table."
-  (setf lish:*output*
-	(read-table (or file *standard-input*)
-		    :style (symbol-value
-			    (symbolify (s+ "+" style "+")
-				       :package :dtt)))))
+  (let ((real-style (symbol-value (symbolify (s+ "+" style "+") :package :dtt))))
+    (setf (style-first-row-labels real-style) first-row-labels
+	  lish:*output*
+	  (read-table (or file *standard-input*)
+		      :style real-style :columns columns))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Writing
