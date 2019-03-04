@@ -46,6 +46,7 @@ loading this.
 		#:find-character)
   (:export
    #:clean-read-from-string
+   #:safe-clean-read-from-string
    #:package-robust-read-from-string
    #:package-robust-read
    #:robust-read
@@ -202,6 +203,24 @@ symbols."
     (read-from-string string eof-error-p eof-value
 		      :start start :end end
 		      :preserve-whitespace preserve-whitespace)))
+
+#+sbcl (declaim (sb-ext:muffle-conditions style-warning))
+(defun safe-clean-read-from-string (string package
+				    &optional (eof-error-p t) eof-value
+				    &key (start 0) end preserve-whitespace)
+  "Read from a string in a hopefully safe manner, such that the content cannot
+cause evaluation, and without interning unknown symbols in *package*, instead
+interning them in PACKAGE, or if PACKAGE is NIL, returning them as uninterned
+symbols."
+  (let (#+has-read-intern (*read-intern* #'(lambda (str pkg)
+					     (interninator str pkg package)))
+	#-has-read-intern (*client* *clean-client*)
+	#-has-read-intern (*dirt-pile* package))
+    (with-standard-io-syntax
+      (let ((*read-eval* nil))
+	(read-from-string string eof-error-p eof-value
+			  :start start :end end
+			  :preserve-whitespace preserve-whitespace)))))
 
 (defun package-robust-intern (s p)
   "Return S interned in package P, or S interned in *PACKAGE*, or S as an
