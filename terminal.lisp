@@ -314,7 +314,15 @@ subclasses.")
   ((output-stream
     :accessor terminal-output-stream
     :initarg :output-stream
-    :documentation "Lisp stream for output."))
+    :documentation "Lisp stream for output.")
+   (window-rows
+    :accessor terminal-window-rows
+    :initarg :window-rows
+    :documentation "Number of rows of characters in the window.")
+   (window-columns
+    :accessor terminal-window-columns
+    :initarg :window-columns
+    :documentation "Number of columns of characters in the window."))
   (:documentation
    "Terminal as purely a Lisp output stream. This can't do input or things that
 require terminal driver support."))
@@ -328,14 +336,6 @@ require terminal driver support."))
     :accessor terminal-device-name
     :initarg :device-name
     :documentation "System device name.")
-   (window-rows
-    :accessor terminal-window-rows
-    :initarg :window-rows
-    :documentation "Number of rows of characters in the window.")
-   (window-columns
-    :accessor terminal-window-columns
-    :initarg :window-columns
-    :documentation "Number of columns of characters in the window.")
    (start-at-current-line
     :initarg :start-at-current-line
     :accessor terminal-start-at-current-line
@@ -425,8 +425,8 @@ or terminal-done."))
 ;; 	    ,@body)
 ;;        (terminal-done ,var))))
 
-(defun make-terminal-stream (stream type)
-  (make-instance type :output-stream stream))
+(defun make-terminal-stream (stream type &rest args)
+  (apply #'make-instance type :output-stream stream args))
 
 ;; @@@ Could this be simplified?
 (defmacro %with-terminal ((&optional type
@@ -795,19 +795,31 @@ position. Return the primary result of evaluating the body."
 	 ,result-sym))))
 
 (defmacro with-terminal-output-to-string
-    ((&optional (type *default-terminal-type*)) &body body)
+    ((&optional (type :ansi-stream)) &body body)
   "Evaluate the body with *TERMINAL* bound to a terminal-stream which outputs to
 a string and return the string."
-  (with-unique-names (stream)
+  (with-unique-names (stream terminal-state result)
     `(with-output-to-string (,stream)
        (when (not (find-terminal-class-for-type ,type))
 	 (error "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
-       (let ((*terminal* (make-terminal-stream
+       (let* ((*terminal* (make-terminal-stream
 			  ,stream
-			  (find-terminal-class-for-type ,type))))
+			  (find-terminal-class-for-type ,type)
+			  :window-rows (if *terminal*
+					   (terminal-window-rows *terminal*)
+					   24)
+			  :window-columns (if *terminal*
+					      (terminal-window-columns
+					       *terminal*)
+					      80)))
+	      (*standard-output* *terminal*) ;; mostly for grout?
+	      ,terminal-state ,result)
 	 (unwind-protect
-	      ,@body
-	   (tt-finish-output))))))
+	      (progn
+		(setf ,terminal-state (terminal-start *terminal*))
+		(setf ,result (progn ,@body)))
+	   (terminal-done *terminal* ,terminal-state))
+	 ,result))))
 
 ;; @@@ There is overlap here between this and fatchar:span-to-fatchar-string.
 ;; fatchar depends on us, so maybe consider moving part of that code here?
