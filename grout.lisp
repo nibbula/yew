@@ -643,7 +643,7 @@ generic functions (i.e. %GROUT-*) directly."
 
 (defmethod initialize-instance
     :after ((o generic-term) &rest initargs &key &allow-other-keys)
-  "Initialize a ansi."
+  "Initialize a grout generic-term."
   (declare (ignore initargs))
   (setf (slot-value o 'term)
 	(if (typep (slot-value o 'stream) 'terminal-stream)
@@ -652,7 +652,8 @@ generic functions (i.e. %GROUT-*) directly."
 	      (finish-output *debug-io*)
 	      (slot-value o 'stream))
 	    (progn
-	      (dbugf :grout "Grout making a new stream.~%")
+	      (dbugf :grout "Grout making a new stream ~s.~%"
+		     (slot-value o 'stream))
 	      (finish-output *debug-io*)
 	      (setf (slot-value o 'own-term) t)
 	      (make-instance
