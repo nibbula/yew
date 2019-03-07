@@ -726,6 +726,8 @@ the primary result printed as a string."
     (tt-normal)
     ;; (tt-write-span `(,@modeline-style ,(format-prompt pager)))
     (tt-write-span `( ; ,@modeline-style
+		     ,@(when (not *pager-prompt*)
+			 modeline-style)
 		     ,(symbolic-prompt-to-string
 		       pager
 		       (or *pager-prompt*
