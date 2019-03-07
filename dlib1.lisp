@@ -847,6 +847,7 @@ Also, it can't really delete the first (zeroth) element."
       (make-range :start start-or-end :end end :step step)
       (make-range :start 1 :end start-or-end :step step)))
 
+(declaim (inline clamp))
 (defun clamp (n start end)
   "If N isn't in the range START - END, return the one it's closest to.
 Otherwise, return N."
@@ -854,7 +855,6 @@ Otherwise, return N."
     ((< n start) start)
     ((> n end) end)
     (t n)))
-(declaim (inline clamp))
 
 (defmacro clampf (n start end)
   "Set N to be in the range START - END, if it's not already."
