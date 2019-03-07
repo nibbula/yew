@@ -96,6 +96,17 @@ anything important.")
     :initarg :context
     :initform :tiny
     :documentation "A symbol selecting what line history to use.")
+   (allow-history-duplicates
+    :initarg :allow-history-duplicates
+    :accessor line-editor-allow-history-duplicates
+    :initform nil :type boolean
+    :documentation
+    "True to allow adding multiple history lines with the same text.")
+   (allow-history-blanks
+    :initarg :allow-history-blanks
+    :accessor line-editor-allow-history-blanks
+    :initform nil :type boolean
+    :documentation "True to allow adding blank lines to the history.")
    (saved-line
     :accessor saved-line
     :initarg :saved-line

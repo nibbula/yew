@@ -7,7 +7,7 @@
   (:use :cl :dlib :dlib-misc :dl-list :stretchy :char-util
 	:opsys :terminal :terminal-ansi :collections :ochar :fatchar :fatchar-io
 	:completion :keymap :syntax-lisp :unipose :inator :terminal-inator
-	:theme)
+	:theme :ostring)
   (:import-from :inator #:point #:quit-flag #:command #:last-command)
   (:export
    ;; Main functionality
@@ -33,6 +33,8 @@
    #:line-editor-local-keymap
    #:line-editor-highlight-region
    #:line-editor-highlight-attr
+   #:line-editor-allow-history-duplicates
+   #:line-editor-allow-history-blanks
    #:get-buffer-string
    #:replace-buffer
    #:*history-context*

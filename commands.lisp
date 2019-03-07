@@ -258,7 +258,7 @@ the first line."
 (defun beginning-of-history (e)
   "Go to the beginning of the history."
   (history-put (buffer-string (buf e)) (context e))
-  (history-first (context e))
+  (history-go-to-first (context e))
   (use-hist e))
 
 (defmethod move-to-top ((e line-editor))
@@ -267,41 +267,32 @@ the first line."
 (defun end-of-history (e)
   "Go to the end of the history."
   (history-put (buffer-string (buf e)) (context e))
-  (history-last (context e))
+  (history-go-to-last (context e))
   (use-hist e))
 
 (defmethod move-to-bottom ((e line-editor))
   (end-of-history e))
 
-(defun add-to-history-p (e buf)
+(defun add-to-history-p (e buf-str)
   "Returns true if we should add the current line to the history. Don't add it
 if it's blank or the same as the previous line."
-  (with-slots (context) e
+  (with-slots (context allow-history-blanks allow-history-duplicates) e
     (let* ((cur (history-current-get context))
 	   (prev (dl-next cur)))
-#|
-      (dbug "add-to-history-p = ~w~%  buf = ~w~%  (length buf) = ~w~%~
-  cur = ~w~%  prev = ~w~%  (dl-content prev) = ~w~%"
-	    (not (or (and buf (= (length buf) 0))
-		     (and prev (dl-content prev)
-			  (equal (dl-content prev) buf))))
-	    buf (length buf) cur prev (dl-content prev))
-|#
-      (not (or (and buf (= (length buf) 0))
-	       (and prev (dl-content prev) (equal (dl-content prev) buf)))))))
+      (flet ((is-blank ()
+	       (and buf-str (zerop (olength buf-str))))
+	     (is-dup ()
+	       (and prev (dl-content prev)
+		    (ostring= (dl-content prev) buf-str))))
+	(and (or (not (is-blank)) allow-history-blanks)
+	     (or (not (is-dup)) allow-history-duplicates))))))
 
 (defun accept-line (e)
   (with-slots (buf buf-str point quit-flag context accept-does-newline) e
-    (history-last context)
-    (if (add-to-history-p e buf)
+    (history-go-to-last context)
+    (if (add-to-history-p e buf-str)
 	(history-put (buffer-string buf) context)
 	(history-delete-last context))
-    ;; (when accept-does-newline
-    ;;   (tt-write-string buf-str :start point)
-    ;;   (tt-write-char #\newline)
-    ;;   (tt-write-char #\return)
-    ;;   (when (did-under-complete e)
-    ;; 	(tt-erase-below)))
     (setf quit-flag t)))
 
 (defmethod accept ((e line-editor))

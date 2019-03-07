@@ -105,12 +105,12 @@
     (when (and cur (dl-prev cur))
       (setf (history-cur hist) (dl-prev cur)))))
 
-(defun history-first (&optional (context *history-context*))
+(defun history-go-to-first (&optional (context *history-context*))
   "Move the current history to the oldest history item."
   (let ((hist (get-history context)))
     (setf (history-cur hist) (history-tail hist))))
 
-(defun history-last (&optional (context *history-context*))
+(defun history-go-to-last (&optional (context *history-context*))
   "Move the current history to the most recent history item."
   (let ((hist (get-history context)))
     (setf (history-cur hist) (history-head hist))))

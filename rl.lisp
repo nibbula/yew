@@ -464,7 +464,10 @@ Keyword arguments:
 	      ;; (write-char #\newline)
 	      )
 	    (run-hooks *exit-hook*)
-	    (terminal-end terminal terminal-state)))
+	    (terminal-end terminal terminal-state)
+	    ;; Make sure the NIL history item is gone.
+	    (when (not (dl-content (history-head (get-history context))))
+	      (history-delete-last context))))
 	(values (if result result (fatchar-string-to-string buf))
 		e)))))
 
