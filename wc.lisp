@@ -124,6 +124,13 @@
        :while (= end +wc-buffer-size+))
     lines))
 
+(declaim (inline space-char-p))
+(defun space-char-p (c)
+  "Return true if C is a whitespace character."
+  ;; (= 1 (iswspace (char-int c)))
+  (char-util:whitespace-p c)
+  )
+
 (defun count-thing (file things)
   "Count lines, words and characters in FILE. FILE can be a file name or
 a stream. Returns the values for lines, words and characters."
@@ -164,11 +171,13 @@ a stream. Returns the values for lines, words and characters."
 		:do
 		(incf words
 		      (length
-		       (the list (split-sequence
-				  " " l :omit-empty t
-				  :test #'(lambda (c1 c2)
-					    (declare (ignore c1))
-					    (= 1 (iswspace (char-int c2))))))))
+		       ;; (the list (split-sequence
+		       ;; 		  " " l :omit-empty t
+		       ;; 		  :test #'(lambda (c1 c2)
+		       ;; 			    (declare (ignore c1))
+		       ;; 			    (= 1 (iswspace (char-int c2))))))))
+		       (the list (split-sequence-if #'space-char-p
+						    l :omit-empty t))))
 		(incf lines)
 		(incf chars (+ (length l) +newline-length+))
 		:finally (return-from nil
