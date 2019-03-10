@@ -181,15 +181,20 @@ TABLE-PRINT:OUTPUT-TABLE.")
 ;; to a non-color theme?
 
 ;; If you need a specific one, just make it yourself.
-(defun make-grout (&optional (stream *standard-output*))
+(defun make-grout (&optional (stream *standard-output* #|stream-provided|#))
   "Return an appropriate grout instance. Try to figure out what kind to make
 from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
   (cond
     ((shell-output-accepts-grotty)
      (dbugf :grout "using ansi-stream~%")
      (make-instance 'ansi-stream :stream stream))
+    ;; ((and (not stream-provided) *terminal*)
+    ;;  (dbugf :grout "using generic-term *terminal*~%")
+    ;;  (make-instance 'generic-term :stream *terminal*))
+    ;; ((and stream-provided (typep stream 'terminal))
+    ;;  (dbugf :grout "using generic-term provided~%")
+    ;;  (make-instance 'generic-term :stream stream))
     ((has-terminal-attributes stream)
-     ;;(make-instance 'ansi :stream stream))
      (dbugf :grout "using generic-term~%")
      (make-instance 'generic-term :stream stream))
     ((and (nos:environment-variable "EMACS")
@@ -463,9 +468,11 @@ generic functions (i.e. %GROUT-*) directly."
   (declare (ignorable array base case circle escape gensym length level
 		      lines miser-width pprint-dispatch pretty radix
 		      readably right-margin))
-  (terminal-write-string (ansi-stream g)
-			 (with-output-to-string (str)
-			   (apply #'write object :stream str args))))
+  ;; (terminal-write-string (ansi-stream g)
+  ;; 			 (with-output-to-string (str)
+  ;; 			   (apply #'write object :stream str args)))
+  (apply #'write object :stream (ansi-stream g) args)
+  )
 
 (defmethod %grout-format ((g ansi-stream) format-string &rest format-args)
   (apply #'terminal-format (ansi-stream g) format-string format-args))
@@ -602,9 +609,11 @@ generic functions (i.e. %GROUT-*) directly."
   (declare (ignorable array base case circle escape gensym length level
 		      lines miser-width pprint-dispatch pretty radix
 		      readably right-margin))
-  (terminal-write-string (ansi-term g)
-		   (with-output-to-string (str)
-		     (apply #'write object :stream str args))))
+  ;; (terminal-write-string (ansi-term g)
+  ;; 		   (with-output-to-string (str)
+  ;; 		     (apply #'write object :stream str args)))
+  (apply #'write object :stream (ansi-term g) args)
+  )
 
 (defmethod %grout-format ((g ansi) format-string &rest format-args)
   (apply #'terminal-format (ansi-term g) format-string format-args))
@@ -746,9 +755,11 @@ generic functions (i.e. %GROUT-*) directly."
   (declare (ignorable array base case circle escape gensym length level
 		      lines miser-width pprint-dispatch pretty radix
 		      readably right-margin))
-  (terminal-write-string (generic-term g)
-		   (with-output-to-string (str)
-		     (apply #'write object :stream str args))))
+  ;; (terminal-write-string (generic-term g)
+  ;; 		   (with-output-to-string (str)
+  ;; 		     (apply #'write object :stream str args)))
+  (apply #'write object :stream (generic-term g) args)
+  )
 
 (defmethod %grout-format ((g generic-term) format-string &rest format-args)
   (apply #'terminal-format (generic-term g) format-string format-args))
