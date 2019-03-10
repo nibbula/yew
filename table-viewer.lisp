@@ -335,7 +335,7 @@ for a range of rows, or a table-point for a specific item,"
 	   ;; @@@ Hopefully this is not too slow. We should probably cache
 	   ;; it if the view start and size hasn't changed.
 	   (sub-table (table-subseq table row-num (+ row-num rows)))
-	   (*destination* *terminal*)
+	   (*destination* (or destination *terminal*))
 	   (*max-width* width)
 	   (*trailing-spaces* t)) ;; @@@ bogus?
       (dbugf :tv "sizes ~s~%" sizes)
@@ -677,6 +677,9 @@ for a range of rows, or a table-point for a specific item,"
 
 ;; (defgeneric finish-inator ((o table-viewer))
 ;;   )
+
+;; @@@@@@@
+;; (defgeneric table-viewer-for (
 
 (defun view-table (table)
   "View a table."
