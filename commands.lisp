@@ -457,7 +457,7 @@ Control-R searches again backward and Control-S searches again forward."
 	  (search-string (make-stretchy-string *initial-line-size*))
 	  (start-from (or (history-current-get context)
 			  (history-head (get-history context))))
-	  (pos point) end c added failed)
+	  (pos point) end c #| added |# failed)
       (labels ((redisp ()
 		 (display-search e search-string point end
 				 (format nil *isearch-prompt*
@@ -475,8 +475,8 @@ Control-R searches again backward and Control-S searches again forward."
 	   ;;   (debug-message e "pos = ~a start-from = ~a" pos start-from))
 	   (redisp)
 	   (tt-finish-output)
-	   (setf c (get-a-char e)
-		 added nil)
+	   (setf c (get-a-char e))
+	   ;; (setf added nil)
 	   (cond
 	     ((eql c (ctrl #\G))
 	      (setf point start-point)
@@ -505,7 +505,8 @@ Control-R searches again backward and Control-S searches again forward."
 	      (return-from isearch c))
 	     (t
 	      (stretchy-append search-string c)
-	      (setf added t)))
+	      ;; (setf added t)
+	      ))
 	   (if (setf pos (search-history
 			  e search-string direction start-from pos))
 	       (progn

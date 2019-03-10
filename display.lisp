@@ -327,6 +327,7 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 	   (point-col     (cddr spot))
 	   (point-offset  (- buf-lines point-line))
 	   new-last-line erase-lines old-col relative-top)
+      (declare (ignore old-col))
       (flet ((eol-compensate () ;; @@@ This is bullcrap. Maybe "fix" ansi?
 	       (when (and endings
 			  (= line-last-col (1- cols))
