@@ -453,7 +453,7 @@ arguments for that function, otherwise return NIL."
      ;; generate spans, so we don't have to do as much useless work.
      (process-ansi-colors
       (make-fatchar-string
-       (with-terminal-output-to-string (:ansi)
+       (with-terminal-output-to-string (:ansi-stream)
 	 (function-help-show-function symbol expr-number)
 	 (when (> *completion-count* 2)
 	   (function-help-show-doc symbol cols))))))))
