@@ -333,6 +333,9 @@ The function receives a 'pick' as an argument."))
     :documentation "The FUI window."))
   (:documentation "A pop up list."))
 
+(locally
+    ;; I really don't want to have a make-load-form.
+    #+sbcl (declare (sb-ext:muffle-conditions style-warning))
 (defmethod initialize-instance
     :after ((o popup-pick) &rest initargs &key &allow-other-keys)
   "Initialize a popup-pick."
@@ -352,7 +355,7 @@ The function receives a 'pick' as an argument."))
 						:y y :x x
 						:border t)
 	    ;; top (1+ top)
-	    ))))
+	    )))))
 
 (defmethod update-display ((i popup-pick))
   "Display the pop-up list picker."
