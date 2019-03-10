@@ -15,6 +15,7 @@
    #:char-as-ascii
    #:displayable-char
    #:combining-char-p
+   #:whitespace-p
    #:double-wide-char-p
    #:zero-width-char-p
    #:control-char-graphic
@@ -769,6 +770,10 @@ than space and delete."
 	      (keyword
 	       (substitute #\_ #\- (string-capitalize property)))
 	      (t property))))
+
+(defun whitespace-p (c)
+  "Return true if the character C has the Unicode “White_Space” property."
+  (and (has-property c :white-space) t))
 
 (defun is-zero-width-type (c)
   (member (general-category c) '(:mn	; non spacing mark
