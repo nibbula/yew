@@ -225,7 +225,8 @@ require terminal driver support."))
 
 #+curses-use-wide
 (defun add-wide-string (wide-string)
-  (declare (type string wide-string))
+  (declare (type string wide-string)
+	   #+sbcl (sb-ext:muffle-conditions sb-ext:compiler-note))
   (cffi:with-foreign-object (fstr :int (1+ (length wide-string)))
       (loop :with i = 0 :for c :across wide-string :do
 	 (setf (cffi:mem-aref fstr :int i) (char-code c))
