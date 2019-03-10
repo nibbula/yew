@@ -167,35 +167,43 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
   (:documentation "A file descriptor stream for input."))
 
 (defmethod os-stream-open ((stream unix-character-input-stream) filename share)
+  (declare (ignore share)) ;; @@@
   (setf (os-stream-handle stream) (%open filename :input)))
 
 (defmethod fill-buffer ((stream unix-character-input-stream))
   (%fill-buffer stream))
 
+#|
 (defmethod stream-read-sequence ((stream unix-character-input-stream)
 				 seq &optional start end)
   (declare (ignore start end)) ;; @@@
   ;; only if we created a unix-stream explicitly or are un-buffered?
   (with-slots (handle input-buffer position) stream
+    ;; @@@ If seq is the right type we can read directly?
+    ;; Or if not we have to convert encoding.
     (cffi:with-pointer-to-vector-data (buf input-buffer)
       (syscall (posix-read handle buf +input-buffer-size+)))))
+|#
 
 (defclass unix-character-output-stream (os-character-output-stream unix-stream)
   ()
   (:documentation "A file descriptor stream for output."))
 
 (defmethod os-stream-open ((stream unix-character-output-stream) filename share)
+  (declare (ignore share)) ;; @@@
   (setf (os-stream-handle stream) (%open filename :output)))
 
 (defmethod flush-buffer ((stream unix-character-output-stream) &key force)
   (%flush-buffer stream :force force))
 
+#|
 (defmethod stream-write-sequence ((stream unix-character-output-stream) seq
 				  &optional start end)
   (declare (ignore start end)) ;; @@@
   ;; only if we created a unix-stream explicitly or are un-buffered?
   (with-slots (handle output-buffer) stream
     (posix-write handle output-buffer 0))) ; @@@
+|#
 
 (defclass unix-character-io-stream (unix-character-input-stream
 				    unix-character-output-stream)
@@ -203,6 +211,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
   (:documentation "Your useful friend on the other end."))
 
 (defmethod os-stream-open ((stream unix-character-io-stream) filename share)
+  (declare (ignore share)) ;; @@@
   (setf (os-stream-handle stream) (%open filename :io)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -213,6 +222,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
   (:documentation "A file descriptor stream for input."))
 
 (defmethod os-stream-open ((stream unix-binary-input-stream) filename share)
+  (declare (ignore share)) ;; @@@
   (setf (os-stream-handle stream) (%open filename :input)))
 
 (defmethod fill-buffer ((stream unix-binary-input-stream))
@@ -236,6 +246,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
   (:documentation "A file descriptor stream for output."))
 
 (defmethod os-stream-open ((stream unix-binary-output-stream) filename share)
+  (declare (ignore share)) ;; @@@
   (setf (os-stream-handle stream) (%open filename :output)))
 
 (defmethod flush-buffer ((stream unix-binary-output-stream) &key force)
@@ -260,6 +271,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
   (:documentation "Your useful friend on the other end."))
 
 (defmethod os-stream-open ((stream unix-binary-io-stream) filename share)
+  (declare (ignore share)) ;; @@@
   (setf (os-stream-handle stream) (%open filename :io)))
 
 ;; EOF

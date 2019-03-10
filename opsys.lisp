@@ -580,6 +580,11 @@ just everything after the last period '.'"
   "Return true if the file NAME is considered redundant. On POSIX file
 systems, this means \".\" and \"..\".")
 
+;; (defun safe-truename (pathname)
+;;   "This is just like truename, but don't get pointless errors on some systems."
+;;   ;; @@@
+;;   )
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; File locking
 
