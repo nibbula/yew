@@ -23,6 +23,7 @@
 (defparameter +color-loop+
     '#1=(:red :yellow :blue :green :magenta :cyan :white . #1#))
 
+#|
 (defun print-fat-line (fat-line)
   (let ((part (make-array 10 :element-type 'character
 			  :fill-pointer 0 :adjustable t)))
@@ -47,10 +48,11 @@
 	(grout-princ part))
       (grout-set-underline nil)
       (grout-set-color :default :default))))
+|#
 
 ;; If you want fast, don't use color.
 
-(defvar *fat-line* nil)
+(defvar *fat-string* nil)
 
 (defun set-region (fat start end color attr)
   (declare (type (vector fatchar *) fat)
@@ -62,27 +64,30 @@
 
 (defun print-match (use-color pattern scanner line)
   (if use-color
-      (progn
-	(when (not *fat-line*)
-	  (setf *fat-line* (make-array (length line)
-				       :adjustable t :fill-pointer 0
-				       :element-type 'fatchar
-				       :initial-element (make-fatchar))))
-	(setf (fill-pointer *fat-line*) 0)
+      (let (fat-line)
+	(when (not *fat-string*)
+	  (setf *fat-string*
+		(make-fat-string
+		 :string (make-array (length line)
+				     :adjustable t :fill-pointer 0
+				     :element-type 'fatchar
+				     :initial-element (make-fatchar)))))
+	(setf fat-line (fat-string-string *fat-string*))
+	(setf (fill-pointer fat-line) 0)
 	(loop
 	   :for c :across line :and i = 0 :then (1+ i)
-	   :do (stretchy-append *fat-line* (make-fatchar :c c)))
+	   :do (stretchy-append fat-line (make-fatchar :c c)))
 	(if scanner
 	    ;; regexp
 	    (do-scans (s e rs re scanner line)
-	      (set-region *fat-line* s e (first +color-loop+) :underline)
+	      (set-region fat-line s e (first +color-loop+) :underline)
 	      (loop
 		 :for start :across rs
 		 :for end :across re
 		 :for color = (cdr +color-loop+) :then (cdr color) ;)
 		 :do
 		 (when (and start end)
-		   (set-region *fat-line* start end (car color) :underline))))
+		   (set-region fat-line start end (car color) :underline))))
 	    ;; fixed string
 	    (loop :with pos
 	       :and start = 0
@@ -90,11 +95,12 @@
 	       :and color = +color-loop+
 	       :while (setf pos (search pattern line :start2 start))
 	       :do
-	       (set-region *fat-line* pos (+ pos pattern-len)
+	       (set-region fat-line pos (+ pos pattern-len)
 			   (car color) :underline)
 	       (setf start (+ pos pattern-len)
 		     #| color (cdr color) |#)))
-	(print-fat-line *fat-line*)
+	;; (print-fat-line fat-line)
+	(grout-princ *fat-string*)
 	(grout-princ #\newline))
       ;; No color
       (progn
@@ -139,7 +145,7 @@ Second value is the scanner that was used.
     ;; results.
     (setf quiet t))
   
-  (let* ((*fat-line* nil)
+  (let* ((*fat-string* nil)
 	 line (match-count 0) (line-count 0) result match matches
 	 (check-it (if fixed
 		       (lambda () (search pattern line))
