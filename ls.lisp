@@ -403,10 +403,12 @@ by nos:read-directory."))
 	(handler-case
 	    (progn ,before)
 	  (opsys-error (c)
-	    #+unix (if (/= (opsys-error-code c) uos:+ENOENT+)
-		       (signal c)
-		       (go MISSING))
-	    #-unix (signal c)))
+	    (if #+unix
+		(/= (opsys-error-code c) uos:+ENOENT+)
+		#+(and windows (not unix))
+		(/= (opsys-error-code c) wos:+ERROR-FILE-NOT-FOUND+)
+		(signal c)
+		(go MISSING))))
 	(progn
 	  ,after)
       MISSING)))
