@@ -1553,13 +1553,13 @@ if not given."
 
 (defun directory-p (path)
   "Return true if PATH is a directory."
-  (with-wide-string (w-file path)
-    (let (result)
-      (typecase path
-	;; @@@ We should try to do better, at least for file-streams
-	;; or os-streams.
-	(stream (return-from directory-p nil))
-	((or string pathname)
+  (typecase path
+    ;; @@@ We should try to do better, at least for file-streams
+    ;; or os-streams.
+    (stream (return-from directory-p nil))
+    ((or string pathname)
+     (with-wide-string (w-file path)
+       (let (result)
 	 (setf result (%get-file-attributes w-file))
 	 (if (= result +INVALID-FILE-ATTRIBUTES+)
 	     (let ((err (get-last-error)))
