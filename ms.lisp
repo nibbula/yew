@@ -1715,7 +1715,7 @@ lock, checking at least every INCREMNT seconds."
 	   (syscall (%unlock-file-ex ,handle #xffffffff #xffffffff
 				     ,overlapped)))
 	 (when ,handle
-	   (syscall %close-handle ,handle))))))
+	   (syscall (%close-handle ,handle)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; System Commands?
@@ -1782,11 +1782,11 @@ current effective user. If REGULAR is true also check if it's a regular file."
 
 (defun config-dir (&optional (app-name (app-name)))
   "Where user specific configuration files should be stored."
-  (s+ "%USERPROFILE%\\AppData\\Local\\" app-name "\\"))
+  (s+ (env "USERPROFILE") "\\AppData\\Local\\" app-name "\\"))
 
 (defun data-dir (&optional (app-name (app-name)))
   "Where user specific data files should be stored."
-  (s+ "%USERPROFILE%\\AppData\\Local\\" app-name "\\"))
+  (s+ (env "USERPROFILE") "\\AppData\\Local\\" app-name "\\"))
 
 (defun data-path (&optional app-name)
   "Search path for user specific data files."
@@ -1796,8 +1796,8 @@ current effective user. If REGULAR is true also check if it's a regular file."
 (defun config-path (&optional (app-name (app-name)))
   "Search path for user specific configuration files."
   (list
-   (s+ "%USERPROFILE%\\AppData\\Local\\" app-name "\\")
-   (s+ "%PROGRAMDATA%\\" app-name "\\config\\")))
+   (s+ (env "USERPROFILE") "\\AppData\\Local\\" app-name "\\")
+   (s+ (env "PROGRAMDATA") "\\" app-name "\\config\\")))
 
 (defun cache-dir (&optional app-name)
   "Directory where user specific non-essential data files should be stored."
