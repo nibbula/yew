@@ -362,7 +362,8 @@ by nos:read-directory."))
 	   (get-styled-file-name file))))
    :column-names
    '("Mode" "Links" "User" "Group" ("Size" :right) "Date" "Name"))
-  #-unix ;; @@@ not even tested yet
+  #-unix (declare (ignore size-format)) ; @@@
+  #-unix
   (make-table-from
    (loop
       :for file :in file-list
