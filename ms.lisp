@@ -56,6 +56,7 @@
    #:os-delete-file
    #:with-os-file
    #:set-file-time
+   #:make-symbolic-link
    #:read-directory
    #:map-directory
    #:change-directory
@@ -63,6 +64,7 @@
    #:make-directory
    #:delete-directory
    #:probe-directory
+   #:directory-p
    #:without-access-errors
    #:hidden-file-name-p
    #:superfluous-file-name-p
@@ -119,6 +121,10 @@
    #:with-terminal-signals
    ;; Extra Windows specific stuff:
    #:windows-error
+   #:+ERROR-FILE-NOT-FOUND+
+   #:+ERROR-PATH-NOT-FOUND+
+   #:+ERROR-NOT-READY+
+   #:+ERROR-ENVVAR-NOT-FOUND+
    #:get-binary-type #:*binary-types*
    #:binary-type-description
    #:ms-process-handle
@@ -1192,7 +1198,7 @@ time can be :NOW to use the current time."
   "Allow creation of symbolic links when not privileged.
 Developer Mode has to be enabled.")
 
-(defcfun ("CreateSymbolicLinkW" %create-symbolic-link) BOOLEAN
+(defcfun ("CreateSymbolicLinkW" %create-symbolic-link) MS-BOOLEAN
   ;; (lpSymlinkFileName LPCSTR)
   ;; (lpTargetFileName LPCSTR)
   (symlink-file-name :string)
@@ -1544,6 +1550,27 @@ if not given."
   "Delete a directory."
   (with-wide-string (w-path path)
     (syscall (%remove-directory w-path))))
+
+(defun directory-p (path)
+  "Return true if PATH is a directory."
+  (with-wide-string (w-file path)
+    (let (result)
+      (typecase path
+	;; @@@ We should try to do better, at least for file-streams
+	;; or os-streams.
+	(stream (return-from directory-p nil))
+	((or string pathname)
+	 (setf result (%get-file-attributes w-file))
+	 (if (= result +INVALID-FILE-ATTRIBUTES+)
+	     (let ((err (get-last-error)))
+	       (if (or (= err +ERROR-FILE-NOT-FOUND+)
+		       (= err +ERROR-PATH-NOT-FOUND+))
+		   nil
+		   (error 'windows-error :error-code err
+			  :format-control "file-exists failed.")))
+	     (if (plusp (logand result +FILE-ATTRIBUTE-DIRECTORY+))
+		 t
+		 nil)))))))
 
 ;; This has similar issues as file-exists.
 (defun probe-directory (dir)
