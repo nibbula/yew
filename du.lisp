@@ -165,11 +165,36 @@
 
 (defclass du-top-node (du-dir-node)
   ((directory
-    :initarg :directory :accessor du-top-node-directory  
+    :initarg :directory :accessor du-top-node-directory
     :documentation
     "Directory which du was run from and all children are relative to."))
   (:documentation
    "A du-node for the top of a tree. Saves the current directory."))
+
+(defclass du-glom-node (du-dir-node)
+  ((directories
+    :initarg :directories :accessor du-top-node-directories
+    :documentation
+    "Set fo directories which du was run for."))
+  (:documentation
+   "A du-node for the top of a tree. Saves the set of directories."))
+
+(defmethod initialize-instance
+    :after ((o du-glom-node) &rest initargs &key &allow-other-keys)
+  "Initialize a du-glom-node."
+  (declare (ignore initargs))
+  (if (and (slot-boundp o 'directories)
+	   (slot-value  o 'directories))
+      (progn
+	(loop :with i
+	   :for dir :in (slot-value o 'directories)
+	   :do
+	   (setf i (make-instance 'du-top-node :name dir :directory dir))
+	   (push i (node-branches o))
+	   (incf (du-node-size o) (du-node-size i)))
+	(setf (node-branches o)
+	      (sort-muffled (node-branches o) #'> :key #'du-node-size)))
+      (make-instance 'du-top-node :name "" :directory nil)))
 
 (defun shrink-pathname (path &optional (to 70) (ellipsis "..."))
   "Make a path name fit in the given width, shrinking in a way to preserve
@@ -308,11 +333,29 @@ useful information."
   `((,(ctrl #\x)	. *du-ctrl-x-keymap*)
     (#\v		. view-file)))
 
-(defun du (&key (directory ".") #|follow-links tree |#
+(defun make-tree (directories)
+  (cond
+    ((not (listp directories))
+     (make-instance 'du-top-node
+		    :name directories :parent nil
+		    :directory (current-directory)))
+    ((= (length directories) 1)
+     (make-instance 'du-top-node
+		    :name (elt directories 0) :parent nil
+		    :directory (current-directory)))
+    (t
+     ;; (format t "directories = ~s~%" directories)
+     ;; (read-line)
+     (make-instance 'du-glom-node
+		    :name "Directories" :parent nil
+		    :directories directories
+		    ))))
+
+(defun du (&key (directories '(".")) #|follow-links tree |#
 	     (show-progress t) (all t) resume file exclude)
   "Show disk usage.
-DIRECTORY     - Directory to start from, which defaults to the current
-                directory.
+DIRECTORIES   - A list of directories to start from, which defaults to the
+                current directory.
 TREE          - A previously constructed tree to use.
 SHOW-PROGRESS - True to show the progress while gathering data. Defaults to T.
 ALL           - True to show sizes for all files. Otherwise it just shows
@@ -337,16 +380,8 @@ EXCLUDE       - Sub-tree(s) to exclude.
 	  (if show-progress
 	      (with-terminal ()
 	        (terminal-get-size *terminal*)
-		(setf tree
-		      (or tree (make-instance
-				'du-top-node
-				:name directory :parent nil
-				:directory (current-directory)))))
-	      (setf tree
-		    (or tree (make-instance
-			      'du-top-node
-			      :name directory :parent nil
-			      :directory (current-directory))))))
+		(setf tree (or tree (make-tree directories))))
+	      (setf tree (or tree (make-tree directories)))))
       (setf *last-tree* tree)
       (loop :do
 	 (setf reload nil
@@ -370,10 +405,12 @@ EXCLUDE       - Sub-tree(s) to exclude.
     :help "True to resume viewing the last tree.")
    (file pathname :short-arg #\f
     :help "Load a tree from a file.")
-   (directory directory :default "."
+   (directories directory :repeating t
     :help "Directory to show usage for."))
   :keys-as keys
   "Show disk usage."
+  (when (not directories)
+    (setf (getf keys :directories) '(".")))
   (apply #'du keys))
 
 ;; EOF
