@@ -121,7 +121,7 @@ system functions."))
 
 (defclass os-character-stream (os-stream fundamental-character-stream)
   ((encoding
-    :initarg :encoding :accessor os-character-stream-encoding  
+    :initarg :encoding :accessor os-character-stream-encoding
     :documentation "Character encoding for the stream."))
   (:documentation
    "An os-stream with an element type of character and supports encoding."))

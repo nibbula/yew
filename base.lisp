@@ -121,15 +121,25 @@
    #:os-stream
    #:os-stream-handle
    #:os-input-stream
+   #:os-stream-input-buffer
+   #:os-input-stream-position
+   #:os-input-stream-input-fill
+   #:os-input-stream-unread-char
+   #:os-input-stream-got-eof
    #:os-output-stream
+   #:os-stream-output-buffer
+   #:os-output-stream-output-position
+   #:os-output-stream-output-fill
    #:os-io-stream
    #:os-binary-stream
    #:os-binary-input-stream
    #:os-binary-output-stream
    #:os-binary-io-stream
    #:os-character-stream
+   #:os-character-stream-encoding
    #:os-character-input-stream
    #:os-character-output-stream
+   #:os-character-output-stream-column
    #:os-character-io-stream
    #:+buffer-size+
    #:+input-buffer-size+
