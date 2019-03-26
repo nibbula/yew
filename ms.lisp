@@ -1647,15 +1647,46 @@ of these can appear in path names.")
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; file locking
 
+#|
+(with-foreign-object (o '(struct overlapped))
+  (with-foreign-slots ((offset-pointer event) o (struct overlapped))
+    (print event)
+    (print offset-pointer)
+    (print
+     (foreign-slot-value offset-pointer '(union foreign-offset-pointer)
+                         'offset))
+    (with-foreign-slots ((offset-low offset-high) offset-pointer
+                         (struct foreign-offset))
+      (print offset-low)
+      (print offset-high)
+      (setf offset-low 0
+            offset-high 0)
+      (print
+       (foreign-slot-value offset-pointer '(struct foreign-offset)
+                           'offset-high))
+      (print
+       (foreign-slot-value offset-pointer '(struct foreign-offset)
+                           'offset-low))))
+  (values))
+|#
+
 (defun set-overlapped (overlapped offset-low-in offset-high-in event-handle)
   (with-foreign-slots ((offset-pointer event) overlapped (:struct OVERLAPPED))
-    (with-foreign-slots ((offset) offset-pointer
-			 (:union foreign-offset-pointer))
-      (with-foreign-slots ((offset-low offset-high) offset
-			   (:struct foreign-offset))
-	(setf offset-low offset-low-in
-	      offset-high offset-high-in)))
-    (setf event event-handle)))
+    (with-foreign-slots ((offset-low offset-high)
+			  (foreign-slot-pointer
+			   offset-pointer
+			   '(:union foreign-offset-pointer)
+			   'offset)
+			 (:struct foreign-offset))
+      ;; (setf (foreign-slot-value offset-pointer
+      ;; 				'(:struct foreign-offset) 'offset-low)
+      ;; 	    offset-low-in
+      ;; 	    (foreign-slot-value offset-pointer
+      ;; 				'(:struct foreign-offset) 'offset-high)
+      ;; 	    offset-high-in)
+      (setf offset-low offset-low-in
+	    offset-high offset-high-in)
+      (setf event event-handle))))
 
 (defconstant +LOCKFILE-EXCLUSIVE-LOCK+ #x00000002
   "Request an exclusive lock. Otherwise a shared lock is requested.")
@@ -1688,34 +1719,35 @@ lock, checking at least every INCREMNT seconds."
   (declare (ignore timeout increment))
   (with-unique-names (locked flags handle overlapped the-lock-type w-path)
     `(let ((,locked nil) (,handle nil) (,the-lock-type ,lock-type))
-       (unwind-protect
-         (let ((,flags (logior (ecase ,the-lock-type
-				 (:write 0)
-				 (:read +LOCKFILE-EXCLUSIVE-LOCK+))
-			       +LOCKFILE-FAIL-IMMEDIATELY+)))
-	   (with-wide-string (,w-path ,pathname)
-	     (setf ,handle (%create-file
-			    ,w-path
-			    (logior +GENERIC-READ+ +GENERIC-WRITE+)
-			    (if (eq ,the-lock-type :write)
-				+FILE-SHARE-READ+
-				0)
-			    +OPEN-EXISTING+
-			    0
-			    (null-pointer))))
-	   (with-foreign-object (,overlapped '(:struct OVERLAPPED))
-	     (set-overlapped ,overlapped 0 0 0)
-	     ;; We lock the maximum number of bytes to effectively lock the
-	     ;; whole file.
-	     (syscall (%lock-file-ex ,handle ,flags #xffffffff #xffffffff
-				     ,overlapped)))
-	   (setf ,locked t)
-	   ,@body)
-	 (when ,locked
-	   (syscall (%unlock-file-ex ,handle #xffffffff #xffffffff
-				     ,overlapped)))
-	 (when ,handle
-	   (syscall (%close-handle ,handle)))))))
+       (with-foreign-object (,overlapped '(:struct OVERLAPPED))
+	 (unwind-protect
+	      (let ((,flags (logior (ecase ,the-lock-type
+				      (:write 0)
+				      (:read +LOCKFILE-EXCLUSIVE-LOCK+))
+				    +LOCKFILE-FAIL-IMMEDIATELY+)))
+		(with-wide-string (,w-path ,pathname)
+		  (setf ,handle (%create-file
+				 ,w-path
+				 (logior +GENERIC-READ+ +GENERIC-WRITE+)
+				 (if (eq ,the-lock-type :write)
+				     +FILE-SHARE-READ+
+				     0)
+				 (null-pointer)	; SECURITY_ATTRIBUTES
+				 +OPEN-EXISTING+ ; disposition
+				 0
+				 (null-pointer))))
+		(set-overlapped ,overlapped 0 0 0)
+		;; We lock the maximum number of bytes to effectively lock the
+		;; whole file.
+		(syscall (%lock-file-ex ,handle ,flags 0 #xffffffff #xffffffff
+					,overlapped))
+		(setf ,locked t)
+		,@body)
+	   (when ,locked
+	     (syscall (%unlock-file-ex ,handle 0 #xffffffff #xffffffff
+				       ,overlapped)))
+	   (when ,handle
+	     (syscall (%close-handle ,handle))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; System Commands?
@@ -3619,15 +3651,21 @@ TTY is a file descriptor."
     (with-slots (in-handle) terminal
       (flush-console-events terminal)
       (let ((duration (seconds-to-100ns seconds))
-	    (start-time (mem-ref f-start-time 'ULARGE_INTEGER)))
-	(loop :do
+	    (start-time (mem-ref f-start-time 'ULARGE_INTEGER))
+	    expired key-pending)
+	(loop 
+	   :do
 	   (listen-for seconds (ms-term-in-handle terminal))
 	   (%get-system-time-as-file-time time)
-	   :while (and
-		   (< (- (mem-ref time 'ULARGE_INTEGER) start-time) duration)
-		   (not (event-pending terminal :types '(:key-char-down))))
+	   (when (>= (- (mem-ref time 'ULARGE_INTEGER) start-time) duration)
+	     (setf expired t))
+	   (when (and (not expired)
+		      (event-pending terminal :types '(:key-char-down)))
+	     (setf key-pending t))
+	   :while (and (not expired) (not key-pending))
 	   :do
-	   (flush-console-events terminal :not-types '(:key-char-down)))))))
+	   (flush-console-events terminal :not-types '(:key-char-down)))
+	(and (not expired) key-pending)))))
 
 (defcfun ("WriteConsoleW" %write-console)
     BOOL
@@ -4092,6 +4130,9 @@ boolean indicating visibility."
 (defconstant +BACKGROUND-GREEN+     #x0020)
 (defconstant +BACKGROUND-RED+       #x0040)
 (defconstant +BACKGROUND-INTENSITY+ #x0080)
+
+(defconstant +COMMON-LVB-REVERSE-VIDEO+ #x4000)
+(defconstant +COMMON-LVB-UNDERSCORE+    #x8000)
 
 (defun set-console-attribute (tty attribute)
   (with-slots (out-handle) tty
