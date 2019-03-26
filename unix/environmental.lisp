@@ -1234,7 +1234,7 @@ Returns an integer."
   (machine    :char :count #.+UTSNAME-LENGTH+)
   (domainname :char :count #.+UTSNAME-LENGTH+))
 
-#+(or freebsd openbsd)
+#+(or freebsd openbsd darwin)
 (defcstruct utsname
   (sysname    :char :count #.+UTSNAME-LENGTH+)
   (nodename   :char :count #.+UTSNAME-LENGTH+)
