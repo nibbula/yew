@@ -868,9 +868,11 @@ calls. Returns NIL when there is an error."
   (fd :int) (iov (:pointer (:struct foreign-iovec))) (iov-count :int))
 (defcfun ("writev" posix-writev) ssize-t
   (fd :int) (iov (:pointer (:struct foreign-iovec))) (iov-count :int))
+#+linux
 (defcfun ("preadv" posix-preadv) ssize-t
   (fd :int) (iov (:pointer (:struct foreign-iovec))) (iov-count :int)
   (offset off-t))
+#+linux
 (defcfun ("pwritev" posix-pwritev) ssize-t
   (fd :int) (iov (:pointer (:struct foreign-iovec))) (iov-count :int)
   (offset off-t))
