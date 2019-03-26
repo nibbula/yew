@@ -479,9 +479,10 @@ code instructions."
 
 #+linux
 (defun real-bpf (cmd attr size)
+  (declare (ignorable cmd attr size)) ;; @@@ Why?
   (real-syscall +SYS-BPF+
 		:int cmd
-		'(:pointer (:union bpf-attr)) attr
+		(:pointer (:union bpf-attr)) attr
 		:unsigned-int size))
 
 (defun bpf (cmd &rest args)
