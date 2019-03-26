@@ -365,6 +365,41 @@ two values ROW and COLUMN."
     (#.(code-char #x00a3) . #\}) ;; UK pound sign             sterling   £
     ))
 
+(defparameter *acs-table-data-plain*
+  `((#.(code-char #x250c) . #\,) ;; upper left corner         ulcorner   ┌
+    (#.(code-char #x2514) . #\`) ;; lower left corner         llcorner   └
+    (#.(code-char #x2510) . #\.) ;; upper right corner        urcorner   ┐
+    (#.(code-char #x2518) . #\') ;; lower right corner        lrcorner   ┘
+    (#.(code-char #x251c) . #\+) ;; tee pointing right        ltee       ├
+    (#.(code-char #x2524) . #\+) ;; tee pointing left         rtee       ┤
+    (#.(code-char #x2534) . #\+) ;; tee pointing up           btee       ┴
+    (#.(code-char #x252c) . #\+) ;; tee pointing down         ttee       ┬
+    (#.(code-char #x2500) . #\-) ;; horizontal line           hline      ─
+    (#.(code-char #x2502) . #\|) ;; vertical line             vline      │
+    (#.(code-char #x253c) . #\+) ;; large plus or crossover   plus       ┼
+    (#.(code-char #x23ba) . #\_) ;; scan line 1               s1         ⎺
+    (#.(code-char #x23bd) . #\~) ;; scan line 9               s9         ⎽
+    (#.(code-char #x25c6) . #\*) ;; diamond                   diamond    ◆
+    (#.(code-char #x2592) . #\#) ;; checker board (stipple)   ckboard    ▒
+    (#.(code-char #x00b0) . #\o) ;; degree symbol             degree     °
+    (#.(code-char #x00b1) . #\+) ;; plus/minus                plminus    ±
+    (#.(code-char #x00b7) . #\o) ;; bullet                    bullet     ·
+    (#.(code-char #x2190) . #\<) ;; arrow pointing left       larrow     ←
+    (#.(code-char #x2192) . #\>) ;; arrow pointing right      rarrow     →
+    (#.(code-char #x2193) . #\v) ;; arrow pointing down       darrow     ↓
+    (#.(code-char #x2191) . #\^) ;; arrow pointing up         uarrow     ↑
+    (#.(code-char #x2591) . #\#) ;; board of squares          board      ▒
+    (#.(code-char #x240b) . #\ ) ;; lantern symbol            lantern    ␋
+    (#.(code-char #x2588) . #\#) ;; solid square block        block      █
+    (#.(code-char #x23bb) . #\-) ;; scan line 3               s3         ⎻
+    (#.(code-char #x23bc) . #\_) ;; scan line 7               s7         ⎼
+    (#.(code-char #x2264) . #\<) ;; less/equal                lequal     ≤
+    (#.(code-char #x2265) . #\>) ;; greater/equal             gequal     ≥
+    (#.(code-char #x03c0) . #\?) ;; Pi                        pi         π
+    (#.(code-char #x2260) . #\?) ;; not equal                 nequal     ≠
+    (#.(code-char #x00a3) . #\?) ;; UK pound sign             sterling   £
+    ))
+
 (defun update-column-for-char (tty char)
   (with-slots (fake-column) tty
     (cond
@@ -394,10 +429,10 @@ two values ROW and COLUMN."
 	:for i :from the-start :below the-end
 	:do (update-column-for-char tty (char thing i))))))
 
-(defun make-acs-table ()
+(defun make-acs-table (&optional acs-data)
   "Make the alternate character set table."
   (setf *acs-table* (make-hash-table))
-  (loop :for (uc . ac) :in *acs-table-data* :do
+  (loop :for (uc . ac) :in (or *acs-table-data* acs-data) :do
      (setf (gethash uc *acs-table*) ac)))
 
 (defun translate-acs-chars (string &key start end)
@@ -495,6 +530,9 @@ TTY is a terminal, in case you didn't know."
 ;; 	      ,@body)
 ;; 	 (set-terminal-mode (terminal-file-descriptor ,tty) :mode ,mode)))))
 
+(defparameter *report-timeout* 0.05
+  "How long to wait for the terminal to send back characters when reporting.")
+
 (defun terminal-report (tty end-char fmt &rest args)
   "Output a formatted string to the terminal and get an immediate report back.
 Report parameters are returned as values. Report is assumed to be in the form:
@@ -509,7 +547,8 @@ Report parameters are returned as values. Report is assumed to be in the form:
 		 (with-interrupts-handled (tty)
 		   (read-until fd end-char
 			       ;;:timeout 1
-			       :timeout 0.05
+			       ;; :timeout 0.05
+			       :timeout *report-timeout*
 			       )))))
       #| @@@ temporarily get rid of this error
       (when (null str)

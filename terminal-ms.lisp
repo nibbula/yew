@@ -41,6 +41,9 @@
    (bold
     :initarg :bold :accessor bold :initform t :type boolean
     :documentation "True to make colors bold.")
+   ;; (underline
+   ;;  :initarg :underline :accessor underline :initform nil :type boolean
+   ;;  :documentation "True to make characters underlined.")
    (default-bold
     :initarg :default-bold :accessor default-bold :initform t :type boolean
     :documentation "True to use brigh colors by default.")
@@ -461,7 +464,18 @@
   (terminal-color tty :default :default))
 
 (defmethod terminal-underline ((tty terminal-ms) state)
-  (declare (ignore tty state)))
+  (declare (ignore tty state))
+  ;; (with-slots (underline (fd terminal::file-descriptor)) tty
+  ;;   (setf underline state)
+  ;;   (let ((attr (get-attributes fd)))
+  ;;     (set-console-attribute fd
+  ;; 			     (if state
+  ;; 				 (logior attr #x8000)
+  ;; 				 (logand
+  ;; 				  attr
+  ;; 				  (lognot
+  ;; 				   (logior #x8000)))))))
+  )
 
 (defmethod terminal-bold ((tty terminal-ms) state)
   (with-slots (bold (fd terminal::file-descriptor)) tty
@@ -532,8 +546,9 @@
     :magenta	,(logior +BACKGROUND-RED+ +BACKGROUND-BLUE+)
     :cyan	,(logior +BACKGROUND-GREEN+ +BACKGROUND-BLUE+)
     :white	,(logior +BACKGROUND-RED+ +BACKGROUND-GREEN+ +BACKGROUND-BLUE+)
-    nil		,(logior +BACKGROUND-RED+ +BACKGROUND-GREEN+ +BACKGROUND-BLUE+)
-    :default    0))
+    nil		0
+    :default    0
+    ))
 
 (defun color-attr (fg bg)
   (logior (getf *fg-colors* fg) (getf *bg-colors* bg)))
