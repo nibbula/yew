@@ -405,6 +405,34 @@ return history for the whole repository."))
 	)
       result)))
 
+(defmethod parse-line ((backend git) line i)
+  "Parse a status line LINE for a typical RCS. I is the line number."
+  (with-slots (goo errors extra) *puca*
+    (let (match words tag file arrow-pos)
+      (multiple-value-setq (match words)
+	(scan-to-strings "\\s*(\\S+)\\s+(.*)$" line))
+      (when (and match words)
+	(setf tag (elt words 0)
+	      file (elt words 1)))
+      ;; (debug-msg "~s ~s (~s) (~s)" line words tag file)
+      ;; Handle rename from -> to
+      (when (and (string=  tag "R")
+		 (setf arrow-pos (search " -> " file)))
+	(setf file (subseq file 0 arrow-pos)))
+      (cond
+	;; If the first word is more than 1 char long, save it as extra
+	((> (length tag) 2)
+	 (push line extra)
+	 (push (format nil "~d: ~a" i line) errors))
+	;; skip blank lines
+	((or (not match) (not words)))
+	(t
+	 (push (make-goo :modified (subseq tag 0 1) :filename file) goo)
+	 ;; If we've accumulated extra lines add them to this line.
+	 (when extra
+	   (setf (goo-extra-lines (car goo)) (nreverse extra))
+	   (setf extra nil)))))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; SVN
 
