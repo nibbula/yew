@@ -2896,31 +2896,35 @@ objects should be stored."
 		:bytes-free	 (* (statfs-bsize fs) (statfs-bfree fs))
 		:bytes-available (* (statfs-bsize fs) (statfs-bavail fs)))))))))
 
-(defun mount-point-of-file (file)
-  "Try to find the mount of FILE. This might not always be right."
+(defun get-filesystem-info (file)
+  "Try to return the filesystem-info of FILE. This might not always be right."
   #+linux
   ;; I suppose this could work on other systems too, but it's certainly
   ;; more efficient and effective to get it from the statfs.
   (let (longest len (max-len 0) (real-name (safe-namestring (truename file))))
     (loop :for f :in
        (remove-if
-	(_ (not (begins-with (car _) real-name)))
-	(mapcar (_ (cons (filesystem-info-mount-point _)
-			 (filesystem-info-device-name _)))
-		(mounted-filesystems)))
+	(_ (not (begins-with (filesystem-info-mount-point _) real-name)))
+	(mounted-filesystems))
        :do
-       (when (> (setf len (length (car f))) max-len)
+       (when (> (setf len (length (filesystem-info-mount-point f))) max-len)
 	 (setf longest f max-len len)))
     longest)
   #+(or darwin freebsd openbsd)
   (handler-case
-      (let ((s (statfs file)))
-	(cons (statfs-mntonname s) (statfs-mntfromname s)))
+      (convert-filesystem-info (statfs file))
     (os-unix:posix-error (c)
       (if (find (opsys-error-code c)
 		`(,os-unix:+EPERM+ ,os-unix:+ENOENT+ ,os-unix:+EACCES+))
 	  nil
 	  (list (opsys-error-code c) c)))))
+
+(defun mount-point-of-file (file)
+  "Try to find the mount of FILE. Return a cons of (mount-point . device-name).
+This might not always be right."
+  (let ((info (get-filesystem-info file)))
+    (cons (filesystem-info-mount-point info)
+	  (filesystem-info-device-name info))))
 
 ;; mount/unmount??
 

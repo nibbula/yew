@@ -152,6 +152,7 @@
 
    ;; filesystems
    #:mounted-filesystems
+   #:get-filesystem-info
    #:mount-point-of-file
 
    ;; terminals

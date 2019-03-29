@@ -1073,6 +1073,9 @@ events considered to those in EVENT-TYPES, if it's not T.")
 (defosfun mounted-filesystems ()
   "Return a list of filesystem info.")
 
+(defosfun get-filesystem-info (file)
+  "Try to return the filesystem-info of FILE. This might not always be right.")
+
 (defosfun mount-point-of-file (file)
   "Try to find the mount of FILE. This might not always be right.")
 
