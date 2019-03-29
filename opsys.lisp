@@ -224,6 +224,15 @@ information about the link itself.")
 ;;     (syscall (fcntl F_GETPATH path)))
 ;;   )
 
+#+clisp
+(defvar *stream-handles-func*
+  (let (s)
+    (when (find-if (_ (and (setf s (find-symbol "STREAM-HANDLES" _))
+			   (fboundp s)))
+		   '(:ext :socket))
+      s))
+  "CLisp Function to return a stream handle.")
+
 (defun stream-system-handle (stream &optional (direction :output))
   "Return the operating system handle for a stream. If there is more than one
 system handle, return an arbitrary one, or the one specified by `DIRECTION`,
@@ -279,9 +288,10 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
 				   :input))))
     ((typep stream 'string-stream) nil)
     ((typep stream 'stream)
-     (multiple-value-bind (in out) (socket:stream-handles stream)
-       (if (eql direction :output)
-	   out in))))
+     (when *stream-handles-func*
+       (multiple-value-bind (in out) (funcall *stream-handles-func* stream)
+	 (if (eql direction :output)
+	     out in)))))
   #+lispworks nil
   #+abcl nil
   #+ecl (declare (ignore direction))
