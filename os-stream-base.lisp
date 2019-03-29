@@ -27,7 +27,7 @@
    "A stream that provides facility for using it with lower level operating
 system functions."))
 
-(defgeneric os-stream-open (stream filename share)
+(defgeneric os-stream-open (stream filename if-exists if-does-not-exist share)
   (:documentation "Open an os-stream for the FILENAME."))
 
 (defgeneric fill-buffer (os-stream)
