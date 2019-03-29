@@ -120,6 +120,7 @@
    ;; os-stram
    #:os-stream
    #:os-stream-handle
+   #:os-stream-open
    #:os-input-stream
    #:os-stream-input-buffer
    #:os-input-stream-position

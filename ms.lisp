@@ -3653,7 +3653,7 @@ TTY is a file descriptor."
       (let ((duration (seconds-to-100ns seconds))
 	    (start-time (mem-ref f-start-time 'ULARGE_INTEGER))
 	    expired key-pending)
-	(loop 
+	(loop
 	   :do
 	   (listen-for seconds (ms-term-in-handle terminal))
 	   (%get-system-time-as-file-time time)
