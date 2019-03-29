@@ -1492,14 +1492,14 @@ KEYWORDS-P  If true, include keywords and variable names."
 				      (first (first a))
 				      (first a))))
 			 (if (and (> (length a) 2) all-p)
-			     ;;(list var (third a))
-			     `(,@(keyword-var key var)
-				 ,@(keyword-var (third a) (third a)))
+			     (list (keyword-var key var)
+				   (third a))
 			     (keyword-var key var)))
 		       (keyword-var a a))))
 	    (:aux (when all-p (setf thing a)))
 	    (otherwise (setf thing a)))))
-       :if (listp thing) :append thing :else :collect thing)))
+       :when thing
+         :if (listp thing) :append thing :else :collect thing)))
 
 (defmacro with-package (package &body body)
   "Evalute BODY with *package* set to the packaged designated by PACKAGE."
