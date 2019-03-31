@@ -168,7 +168,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 
 (defmethod os-stream-open ((stream unix-character-input-stream) filename
 			   if-exists if-does-not-exist share)
-  (declare (ignore share)) ;; @@@
+  (declare (ignore if-exists if-does-not-exist share)) ;; @@@
   (setf (os-stream-handle stream) (%open filename :input)))
 
 (defmethod fill-buffer ((stream unix-character-input-stream))
@@ -192,7 +192,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 
 (defmethod os-stream-open ((stream unix-character-output-stream) filename
 			   if-exists if-does-not-exist share)
-  (declare (ignore share)) ;; @@@
+  (declare (ignore if-exists if-does-not-exist share)) ;; @@@
   (setf (os-stream-handle stream) (%open filename :output)))
 
 (defmethod flush-buffer ((stream unix-character-output-stream) &key force)
@@ -214,7 +214,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 
 (defmethod os-stream-open ((stream unix-character-io-stream) filename
 			   if-exists if-does-not-exist share)
-  (declare (ignore share)) ;; @@@
+  (declare (ignore if-exists if-does-not-exist share)) ;; @@@
   (setf (os-stream-handle stream) (%open filename :io)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -226,7 +226,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 
 (defmethod os-stream-open ((stream unix-binary-input-stream) filename
 			   if-exists if-does-not-exist share)
-  (declare (ignore share)) ;; @@@
+  (declare (ignore if-exists if-does-not-exist share)) ;; @@@
   (setf (os-stream-handle stream) (%open filename :input)))
 
 (defmethod fill-buffer ((stream unix-binary-input-stream))
@@ -251,7 +251,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 
 (defmethod os-stream-open ((stream unix-binary-output-stream) filename
 			   if-exists if-does-not-exist share)
-  (declare (ignore share)) ;; @@@
+  (declare (ignore if-exists if-does-not-exist share)) ;; @@@
   (setf (os-stream-handle stream) (%open filename :output)))
 
 (defmethod flush-buffer ((stream unix-binary-output-stream) &key force)
@@ -277,7 +277,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 
 (defmethod os-stream-open ((stream unix-binary-io-stream) filename
 			   if-exists if-does-not-exist share)
-  (declare (ignore share)) ;; @@@
+  (declare (ignore if-exists if-does-not-exist share)) ;; @@@
   (setf (os-stream-handle stream) (%open filename :io)))
 
 ;; EOF
