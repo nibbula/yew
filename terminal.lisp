@@ -15,6 +15,7 @@
    #:register-terminal-type
    #:find-terminal-class-for-type
    #:find-terminal-type-for-class
+   #:terminal-types
    #:platform-default-terminal-type
    #:pick-a-terminal-type
    #:terminal-stream
@@ -284,6 +285,13 @@ subclasses.")
      (when (eq i class)
        (return last))
      (setf last i)))
+
+(defun terminal-types ()
+  "Return the list of registered terminal type keywords."
+  (loop
+     :for i = 0 :then (1+ i)
+     :for tt :in *terminal-types*
+     :when (evenp i) :collect tt))
 
 (defun terminal-type-based-on-environemt ()
   (cond
