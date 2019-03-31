@@ -82,10 +82,10 @@
       #+windows (not (filesystem-info-mount-point f))
       ))
 
-(defun generic-info (&optional (dummies nil) show-type)
+(defun generic-info (&key file-systems include-dummies show-type)
   (loop
      :with size :and free :and avail :and used :and pct :and type
-     :for f :in (mounted-filesystems)
+     :for f :in (or file-systems (mounted-filesystems))
      :do
      (setf size  (filesystem-info-total-bytes f)
 	   free  (filesystem-info-bytes-free f)
@@ -95,7 +95,7 @@
 	   pct   (if (zerop size)
 		     0
 		     (ceiling (* (/ used size) 100))))
-     :when (or (not (bogus-filesystem-p f)) dummies)
+     :when (or (not (bogus-filesystem-p f)) include-dummies file-systems)
      :collect
      (apply #'vector
 	    `(,(filesystem-info-device-name f)
@@ -111,14 +111,16 @@
 (defun df (&key files include-dummies show-type omit-header (print t))
   "Show how much disk is free."
   (let ((*cols* (copy-tree (if show-type *type-cols* *default-cols*)))
-	data devs table)
+	file-systems data table)
     (with-grout ()
-      (setf devs
-	    (and files
-		 (loop :for f :in files
-		    :collect (mount-point-of-file f)))
-	    data (generic-info include-dummies show-type))
-      (setf table (make-table-from data :columns *cols*))
+      (setf file-systems (and files
+			      (loop :for f :in files
+				 :collect (get-filesystem-info f)))
+	    data (generic-info
+		  :file-systems file-systems
+		  :include-dummies include-dummies
+		  :show-type show-type)
+	    table (make-table-from data :columns *cols*))
       (when print
 	(grout-print-table table
 			   :print-titles (not omit-header)
