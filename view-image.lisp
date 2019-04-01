@@ -18,10 +18,10 @@
    ))
 (in-package :view-image)
 
-;; (declaim (optimize (speed 3) (safety 0) (debug 1) (space 0)
-;; 		   (compilation-speed 0)))
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+(declaim (optimize (speed 3) (safety 0) (debug 1) (space 0)
  		   (compilation-speed 0)))
+;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+;;  		   (compilation-speed 0)))
 
 (defkeymap *image-viewer-keymap*)
 (defkeymap *image-viewer-escape-keymap*)
@@ -78,6 +78,11 @@
     :initform nil :type boolean
     :documentation
     "True if movement commands move the object instead of the view.")
+   (use-half-block
+    :initarg :use-half-block :accessor image-inator-use-half-block
+    :initform t :type boolean
+    :documentation
+    "True to use unicode half block to get double vertical resolution.")
    )
   (:default-initargs
    :keymap	`(,*image-viewer-keymap* ,*default-inator-keymap*))
@@ -181,24 +186,27 @@
 (defgeneric center (inator)
   (:documentation "Center the image in the window.")
   (:method ((inator image-inator))
-    (with-slots (x y image zoom move-object-mode) inator
+    (with-slots (x y image zoom move-object-mode use-half-block) inator
       (declare (type fixnum x y))
+      (let ((effective-image-width (* (image-width image) zoom))
+	    (effective-image-height (* (image-height image) zoom)))
+	(when use-half-block
+	  (setf effective-image-height (/ effective-image-height 2)))
 	(if move-object-mode
-	    (let ((effective-image-width
-		   (truncate (* (image-width image) zoom)))
-		  (effective-image-height
-		   (truncate (* (image-height image) zoom))))
-	      (setf x (truncate (max 0 (- (/ (width inator) 2)
+	    (progn
+	      (setf effective-image-width (truncate effective-image-width)
+		    effective-image-height (truncate effective-image-height)
+		    x (truncate (max 0 (- (/ (width inator) 2)
 					  (/ effective-image-width 2))))
 		    y (truncate (max 0 (- (/ (height inator) 2)
 					  (/ effective-image-height 2))))))
 	    (setf x (truncate (* (- (- (/ (width inator) 2)
-				       (/ (* (image-width image) zoom) 2)))
+				       (/ effective-image-width 2)))
 				 (/ 1 zoom)))
 		  y (truncate (* (- (- (/ (height inator) 2)
-				       (/ (* (image-height image) zoom) 2)))
+				       (/ effective-image-height 2)))
 				 (/ 1 zoom))))
-	    ))))
+	    )))))
 
 (defmethod next-page ((o image-inator))
   (with-slots (y image zoom) o
@@ -249,14 +257,17 @@
       )))
 
 (defun fit-height-to-window (o)
-  (with-slots (zoom image) o
+  (with-slots (zoom image use-half-block) o
     (with-accessors ((width image-width)
 		     (height image-height)) image
-      (setf zoom
-	    (min 1.0 ;; teporarily @@@
-		 (float (/ (height o) height))))
-      (center o)
-      )))
+      (let ((hh height))
+	(when use-half-block
+	  (setf hh (/ height 2)))
+	(setf zoom
+	      (min 1.0 ;; teporarily @@@
+		   (float (/ (height o) hh))))
+	(center o)
+	))))
 
 (defun fit-image-to-window (o)
   (fit-width-to-window o)
@@ -691,6 +702,7 @@ But also greatly increasing # of chars output.
     (:down  (dotimes (i n) (tt-write-char #\newline)))
     ((:right :forward) (dotimes (i n) (tt-write-char #\space)))))
 
+(declaim (inline set-pixel-fg))
 (defun set-pixel-fg (r g b step)
   (tt-color (vector :rgb8
 		    (truncate r (* step step))
@@ -698,15 +710,14 @@ But also greatly increasing # of chars output.
 		    (truncate b (* step step)))
 	    nil)
   (tt-write-char (code-char #x2588))) ; full_block
-(declaim (inline set-pixel-fg))
 
+(declaim (inline set-pixel-bg))
 (defun set-pixel-bg (r g b step)
   (tt-color nil (vector :rgb8
 			(truncate r (* step step))
 			(truncate g (* step step))
 			(truncate b (* step step))))
   (tt-write-char #\space))
-(declaim (inline set-pixel-bg))
 
 (defun output-image (x y zoom image subimage view-width view-height
 		     mover setter buffer)
@@ -831,7 +842,190 @@ But also greatly increasing # of chars output.
 	(tt-color nil nil)
 	))))
 
-(defun print-image (file &key zoom width height errorp)
+(declaim (inline set-pixel-half))
+(defun set-pixel-half (r1 g1 b1 r2 g2 b2 step)
+  (tt-color (vector :rgb8
+		    (truncate r1 (* step step))
+		    (truncate g1 (* step step))
+		    (truncate b1 (* step step)))
+	    (vector :rgb8
+		    (truncate r2 (* step step))
+		    (truncate g2 (* step step))
+		    (truncate b2 (* step step))))
+  (tt-write-char (code-char #x2580))) ; #\upper_half_block
+
+(defun output-image-half (x y zoom image subimage view-width view-height
+			  mover setter buffer)
+  (declare (type fixnum x y) (type float zoom)
+	   (ignore setter))
+  (with-slots (name (subimages image::subimages)) image
+    (with-accessors ((si-x     sub-image-x)
+		     (si-y     sub-image-y)
+		     (width    sub-image-width)
+		     (height   sub-image-height)
+		     (data     sub-image-data)
+		     (disposal sub-image-disposal))
+	(aref subimages subimage)
+      (declare (type fixnum si-x si-y width height))
+      (multiple-value-bind (start-x end-x start-y end-y)
+	  (clip x y width height view-width (* view-height 2) si-x si-y zoom)
+	(let ((step (max 1 (round 1 zoom)))
+	      (r1 0) (g1 0) (b1 0) (a1 0)
+	      (r2 0) (g2 0) (b2 0) (a2 0)
+	      source)
+	  (flet ((mover-down (n) (funcall mover :down n))
+		 (mover-right (n) (funcall mover :right n))
+		 (mover-forward (n) (funcall mover :forward n))
+		 ;; (pixel-setter () (funcall setter r g b step))
+		 )
+	  ;;(declare (type fixnum r g b a))
+	  ;;(pause "zoom = ~s step = ~s" zoom step)
+	  (when (> si-y y)
+	    ;;(tt-move-to (max y (truncate (- si-y y) step)) 0))
+	    (mover-down (max y (truncate (- (+ si-y start-y) y) step))))
+	  (loop ; vertical
+	     :with iy fixnum = start-y
+	     :while (< iy end-y) :do
+	     (when (> si-x x)
+	       ;;(tt-move-to-col (max x (truncate (- si-x x) step))))
+	       (mover-right (max x (truncate (- (+ si-x start-x) x) step))))
+	     (loop ; horizontal
+		:for ix fixnum :from start-x :below end-x :by step :do
+		(setf source (or buffer data))
+		(setf r1 (loop :for av-y :from 0 :below step :sum
+			   (loop :for av-x :from 0 :below step
+			      :sum
+			      ;; (aref source (min (1- height) (+ iy av-y))
+			      ;; 	      (min (1- width) (+ ix av-x)) 0)
+			      (get-pixel-r source
+					   (min (1- height) (+ iy av-y))
+					   (min (1- width) (+ ix av-x)))
+			      )))
+		(setf g1 (loop :for av-y :from 0 :below step :sum
+			   (loop :for av-x :from 0 :below step
+			      :sum
+			      ;; (aref source (min (1- height) (+ iy av-y))
+			      ;; 	      (min (1- width) (+ ix av-x)) 1)
+			      (get-pixel-g source
+					   (min (1- height) (+ iy av-y))
+					   (min (1- width) (+ ix av-x)))
+			      )))
+		(setf b1 (loop :for av-y :from 0 :below step :sum
+			   (loop :for av-x :from 0 :below step
+			      :sum
+			      ;; (aref source
+			      ;; 	    (min (1- height) (+ iy av-y))
+			      ;; 	    (min (1- width) (+ ix av-x)) 2)
+			      (get-pixel-b source
+					   (min (1- height) (+ iy av-y))
+					   (min (1- width) (+ ix av-x)))
+			      )))
+		(setf a1 (loop :for av-y :from 0 :below step :sum
+			   (loop :for av-x :from 0 :below step
+			      :sum
+			      ;; (aref source
+			      ;; 	    (min (1- height) (+ iy av-y))
+			      ;; 	    (min (1- width) (+ ix av-x)) 3)
+			      (get-pixel-a source
+					   (min (1- height) (+ iy av-y))
+					   (min (1- width) (+ ix av-x)))
+			      )))
+		(when (< (+ iy step) end-y)
+		  (setf r2 (loop :for av-y :from 0 :below step :sum
+			      (loop :for av-x :from 0 :below step
+				 :sum
+				 ;; (aref source (min (1- height) (+ iy av-y))
+				 ;; 	      (min (1- width) (+ ix av-x)) 0)
+				 (get-pixel-r source
+					      (min (1- height) (+ iy step av-y))
+					      (min (1- width) (+ ix av-x)))
+				 )))
+		  (setf g2 (loop :for av-y :from 0 :below step :sum
+			      (loop :for av-x :from 0 :below step
+				 :sum
+				 ;; (aref source (min (1- height) (+ iy av-y))
+				 ;; 	      (min (1- width) (+ ix av-x)) 1)
+				 (get-pixel-g source
+					      (min (1- height) (+ iy step av-y))
+					      (min (1- width) (+ ix av-x)))
+				 )))
+		  (setf b2 (loop :for av-y :from 0 :below step :sum
+			      (loop :for av-x :from 0 :below step
+				 :sum
+				 ;; (aref source
+				 ;; 	    (min (1- height) (+ iy av-y))
+				 ;; 	    (min (1- width) (+ ix av-x)) 2)
+				 (get-pixel-b source
+					      (min (1- height) (+ iy step av-y))
+					      (min (1- width) (+ ix av-x)))
+				 )))
+		  (setf a2 (loop :for av-y :from 0 :below step :sum
+			      (loop :for av-x :from 0 :below step
+				 :sum
+				 ;; (aref source
+				 ;; 	    (min (1- height) (+ iy av-y))
+				 ;; 	    (min (1- width) (+ ix av-x)) 3)
+				 (get-pixel-a source
+					      (min (1- height) (+ iy step av-y))
+					      (min (1- width) (+ ix av-x)))
+				 )))
+		  ;;(incf iy)
+		  )
+		(if (not (and (zerop a1) (zerop a2)))
+		    (progn
+		      (set-pixel-half r1 g1 b1 r2 g2 b2 step)
+		      #|
+		      (tt-color nil (vector :rgb8
+					    (truncate r (* step step))
+					    (truncate g (* step step))
+					    (truncate b (* step step))))
+		      (tt-write-char #\space)
+		      (tt-color (vector :rgb8
+					(truncate r (* step step))
+					(truncate g (* step step))
+					(truncate b (* step step)))
+				nil)
+		      (tt-write-char (code-char #x2588)) ; full_block
+		      |#
+		      (tt-color nil nil))
+		    (progn
+		      ;; (tt-forward 1)
+		      ;;(mover-right 1)
+		      (mover-forward 1)
+		      ))
+		(setf r1 0 g1 0 b1 0 a1 0 r2 0 g2 0 b2 0 a2 0)
+		)
+	     (incf iy (* 2 step))
+	     (when buffer
+	       ;; Copy the whole subimage into to buffer.
+	       (loop
+		  :for iy fixnum :from si-y :below (+ si-y height)
+		  :for source-y :from 0 :do
+		  ;; (loop :for ix fixnum :from si-x :below (+ si-x width)
+		  ;;    :for source-x :from 0 :do
+		     ;; (set-pixel buffer iy ix
+		     ;; 		(get-pixel-r data iy ix)
+		     ;; 		(get-pixel-g data iy ix)
+		     ;; 		(get-pixel-b data iy ix)
+		     ;; 		(get-pixel-a data iy ix))
+		     ;; (aref buffer iy ix 0) (aref data source-y source-x 0)
+		     ;; (aref buffer iy ix 1) (aref data source-y source-x 1)
+		     ;; (aref buffer iy ix 2) (aref data source-y source-x 2)
+		     ;; (aref buffer iy ix 3) (aref data source-y source-x 3)
+		     ;; (replace (row-major-aref buffer iy)
+		     ;; 	   (row-major-aref data source-y) :start1 si-x)))
+		  (set-row buffer y si-x
+			   (make-array width
+				       :element-type (array-element-type data)
+				       :displaced-to data
+				       :displaced-index-offset
+				       (array-row-major-index data iy 0)))))
+	     (tt-color nil nil)
+	     (tt-write-char #\newline))))
+	(tt-color nil nil)
+	))))
+
+(defun print-image (file &key zoom width height errorp use-full)
   (let ((t-width (tt-width))
 	;;(t-height (tt-height))
 	)
@@ -853,7 +1047,11 @@ But also greatly increasing # of chars output.
 	  (let* ((*show-progress* nil)
 		 (image (persistent-read-image file))
 		 (view-width (or width t-width))
-		 (view-height (or height (image-height image)))
+		 (view-height (or height
+				  (if use-full
+				      (image-height image)
+				      (/ (image-height image) 2))
+				  ))
 		 (our-zoom (or (and zoom (coerce zoom 'float))
 			       (min 1.0 ;; teporarily @@@
 				    (if height
@@ -863,23 +1061,35 @@ But also greatly increasing # of chars output.
 						  (image-width image)))
 					)))))
 	    (declare (ignorable *show-progress*))
-	    (output-image 0 0 our-zoom image 0
-			  view-width
-			  view-height
-			  #'print-mover
-			  #'set-pixel-fg nil)))))))
+	    (if use-full
+		(output-image 0 0 our-zoom image 0
+			      view-width
+			      view-height
+			      #'print-mover
+			      #'set-pixel-fg nil)
+		(output-image-half 0 0 our-zoom image 0
+			      view-width
+			      view-height
+			      #'print-mover
+			      #'set-pixel-half nil))
+	    ))))))
 
 (defun show-image (inator)
   (with-slots (x y zoom message file-index file-list image subimage looping
-	       show-modeline buffer) inator
+	       show-modeline use-half-block buffer) inator
     (declare (type fixnum x y) (type float zoom))
     (tt-home)
     ;; (when (not looping)
     ;;   (tt-clear))
     (when (not looping)
       (tt-erase-below))
-    (output-image x y zoom image subimage (width inator) (height inator)
-		  #'term-mover #'set-pixel-bg buffer)
+    (if use-half-block
+	(output-image-half
+	 x y zoom image subimage (width inator) (height inator)
+	 #'term-mover #'set-pixel-half buffer)
+	(output-image
+	 x y zoom image subimage (width inator) (height inator)
+	 #'term-mover #'set-pixel-bg buffer))
     (tt-move-to (1- (height inator)) 0)
     (when show-modeline
       (show-status inator))))
@@ -917,7 +1127,7 @@ But also greatly increasing # of chars output.
 	(length (image-subimages image))))
 
 
-(defun view-image (file-or-stream &key file-list type own-window)
+(defun view-image (file-or-stream &key file-list type own-window use-full)
 ;;  (with-terminal (:ansi)
   (with-terminal ()
     (let* ((inator-type (or type (pick-image-inator)))
@@ -934,7 +1144,8 @@ But also greatly increasing # of chars output.
       (setf *image-viewer* (make-instance inator-type
 					  :image image
 					  :file-list file-list
-					  :own-window own-window))
+					  :own-window own-window
+					  :use-half-block (not use-full)))
       (set-auto-looping image)
       (unwind-protect
         (progn
@@ -945,8 +1156,8 @@ But also greatly increasing # of chars output.
 
 (register-image-inator 'image-inator 1)
 
-(defun view-images (files &rest args &key type own-window)
-  (declare (ignorable type own-window))
+(defun view-images (files &rest args &key type own-window use-full)
+  (declare (ignorable type own-window use-full))
   (if (not files)
       (apply #'view-image *standard-input* args)
       (apply #'view-image (first files) :file-list files args)))
@@ -963,6 +1174,8 @@ But also greatly increasing # of chars output.
    ;;  :help "Type of image viewer to use.")
    (own-window boolean :short-arg #\o
     :help "True to use it's own window if the backend supports it.")
+   (use-full boolean :short-arg #\f
+    :help "True to use full blocks.")
    (images pathname :repeating t :help "Image to view."))
   :accepts (:sequence :stream)
   "View an image."
@@ -970,10 +1183,11 @@ But also greatly increasing # of chars output.
     (view-images (or images lish:*input* *standard-input*)
 		 :type (cdr (find type *image-inator-types*
 				  :key (_ (symbol-name (cdr _)))))
-		 :own-window own-window)))
+		 :own-window own-window
+		 :use-full use-full)))
 
-(defun cat-images (files &rest args &key zoom width height errorp)
-  (declare (ignorable zoom width height errorp))
+(defun cat-images (files &rest args &key zoom width height errorp use-full)
+  (declare (ignorable zoom width height errorp use-full))
   (flet ((print-it (f)
 	   (apply #'print-image f args)))
     (typecase files
@@ -989,13 +1203,16 @@ But also greatly increasing # of chars output.
     :help "Width to scale image to. Defaults to the terminal width.")
    (height number :short-arg #\h
     :help "Height to scale image to. Defaults to the appropriate height for ~
-           the width."))
+           the width.")
+   (use-full boolean :short-arg #\f
+    :help "True to use full blocks."))
   :accepts (:sequence :stream)
   "Print an image as terminal talk."
   (cat-images
    (or images lish:*input* *standard-input*)
    :width width
    :height height
-   :zoom (when zoom (/ zoom 100))))
+   :zoom (when zoom (/ zoom 100))
+   :use-full use-full))
 
 ;; EOF
