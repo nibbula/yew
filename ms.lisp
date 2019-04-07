@@ -3692,9 +3692,9 @@ TTY is a file descriptor."
 	 (with-foreign-object (written 'DWORD)
 	   (if not-console
 	       (syscall (%write-file out-handle str (length string)
-					 written (null-pointer)))
+				     written (null-pointer)))
 	       (syscall (%write-console out-handle str (length string)
-					    written (null-pointer))))
+					written (null-pointer))))
 	   ;; @@@ Should we complain if written != length ?
 	   (mem-ref written 'DWORD)))))
     ((output-stream-p tty)

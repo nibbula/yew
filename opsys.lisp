@@ -52,7 +52,7 @@
 (defmacro defosthing (name type test &optional doc)
   "Import a thing from the proper OS specific package and set it's
 documenatation."
-  (let ((sym (intern (symbol-name name) #+unix :os-unix #+windows :ms)))
+  (let ((sym (intern (symbol-name name) #+unix :os-unix #+windows :os-ms)))
     `(progn
        (when (,test ',sym)
 	 (import '(,sym))
@@ -616,23 +616,34 @@ current effective user. If REGULAR is true also check if it's a regular file.")
   "Return true if PATH has a directory part."
   (position *directory-separator* (safe-namestring path)))
 
+(defun command-test (test path &optional path2)
+  "Return true if the command passes the test. Do special platform specific
+processing, like adding `.exe' on windows. If path2 is provided, test takes
+two arguments."
+  (if path2
+      (or (funcall test path path2)
+	  #+windows (funcall test (s+ path ".exe") path2))
+      (or (funcall test path)
+	  #+windows (funcall test (s+ path ".exe")))))
+
 (defun command-pathname (cmd)
   "Return the full pathname of the first executable file in the PATH or nil
 if there isn't one."
   (when (has-directory-p cmd)
-    (return-from command-pathname (and (file-exists cmd)
-				       (is-executable cmd :regular t) cmd)))
-  (loop :for dir :in (split-sequence *path-separator*
-				     (environment-variable *path-variable*))
+    (return-from command-pathname (and (command-test #'file-exists cmd)
+				       (is-executable cmd :regular t)
+				       cmd)))
+  (loop :for dir :in (command-path-list)
+	;; (split-sequence *path-separator*
+	;; 		(environment-variable *path-variable*))
      :do
      (handler-case
        (when (probe-directory dir)
 	 (loop :with full = nil
 	    :for f :in (read-directory :dir dir) :do
-	    (when (and (equal f cmd)
+	    (when (and (command-test #'equal f cmd)
 		       (is-executable
-			(setf full (format nil "~a~c~a"
-					   dir *directory-separator* cmd))
+			(setf full (s+ dir *directory-separator* cmd))
 			:regular t))
 	      (return-from command-pathname full))))
        (opsys-error (c) (declare (ignore c)))))

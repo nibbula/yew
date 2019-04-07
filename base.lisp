@@ -229,7 +229,7 @@
 ;; Generic things
 
 ;; Define :32-bit-target or :64-bit-target
-#+(and (or darwin linux freebsd openbsd window) (or x86_64 x86-64))
+#+(and (or darwin linux freebsd openbsd windows) (or x86_64 x86-64))
   (config-feature :64-bit-target)
 #+ecl (eval-when (:compile-toplevel :load-toplevel :execute)
 	(when (= (cffi:foreign-type-size :long) 8)

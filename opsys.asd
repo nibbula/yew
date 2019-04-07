@@ -42,8 +42,26 @@
 		   (:file "unix")
 		   (:file "inspection")
 		   (:file "unix-stream")))
-     (:file "ms" :if-feature (:and :windows (:not :unix))
-	    :depends-on ("base"))
+     ;; (:file "ms" :if-feature (:and :windows (:not :unix))
+     ;; 	    :depends-on ("base"))
+     (:module "ms"
+      :depends-on ("base")
+      :serial t
+      :if-feature (:and :windows (:not :unix))
+      :components ((:file "package")
+		   (:file "types")
+		   (:file "ms")
+		   (:file "errors")
+		   (:file "environmental")
+		   (:file "time")
+		   (:file "users")
+		   (:file "filesystem")
+		   (:file "processes")
+		   (:file "events")
+		   (:file "terminals")
+		   (:file "communication")
+		   ;; (:file "ms-stream")
+		   ))
      (:module "platform-dependant"
 	      :components
 	      ((:module "unix"
