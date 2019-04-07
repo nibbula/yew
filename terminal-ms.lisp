@@ -7,7 +7,7 @@
 
 (defpackage :terminal-ms
   (:documentation "Microsoft console as a terminal.")
-  (:use :cl :cffi :dlib :dlib-misc :terminal :char-util :opsys :ms
+  (:use :cl :cffi :dlib :dlib-misc :terminal :char-util :opsys :os-ms
 	:trivial-gray-streams :fatchar :color :terminal-crunch)
   (:export
    #:terminal-ms
@@ -668,7 +668,7 @@
   (let ((key (read-terminal-byte (terminal-file-descriptor tty))))
     (typecase key
       (integer
-       (ms::wchar-to-character key))
+       (wos::wchar-to-character key))
       (symbol
        (normalize-key key)))))
  
