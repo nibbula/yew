@@ -202,7 +202,7 @@
 	     (tt-write-string " | ")
 	     (zerp a t)
 	     (zerp b t)
-	     (tt-write-string "Blargity  ")
+	     (tt-write-string "[Blargity]")
 	     (zerp b nil)
 	     (zerp a nil)
 	     )
