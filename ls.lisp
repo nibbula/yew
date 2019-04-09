@@ -407,7 +407,9 @@ by nos:read-directory."))
 	    (if #+unix
 		(/= (opsys-error-code c) uos:+ENOENT+)
 		#+(and windows (not unix))
-		(/= (opsys-error-code c) wos:+ERROR-FILE-NOT-FOUND+)
+		(not (find (opsys-error-code c)
+			   `(,wos:+ERROR-FILE-NOT-FOUND+
+			     ,wos:+ERROR-SHARING-VIOLATION+)))
 		(signal c)
 		(go MISSING))))
 	(progn
