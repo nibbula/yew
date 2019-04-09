@@ -889,10 +889,10 @@ the timeout is hit."
 	(read-handle-input in-handle)
 	(read-console-input terminal))))
 
-(defun read-until (tty stop-char &key timeout)
+(defun read-until (tty stop-char &key timeout octets-p)
   "Read until STOP-CHAR is read. Return a string of the results.
 TTY is a file descriptor."
-  (declare (ignore tty stop-char timeout))
+  (declare (ignore tty stop-char timeout octets-p))
   ;; @@@ taking the lazy slow way out
   ;; (loop :with c = (read-terminal-char tty)
   ;;    :while (char/= c stop-char))

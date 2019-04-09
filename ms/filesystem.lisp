@@ -1180,6 +1180,12 @@ objects should be stored."
   (target-path LPTSTR)			; out
   (ch-max DWORD))			; in
 
+(defcfun ("GetVolumePathNameW" %get-volume-path-name)
+    BOOL
+  (file-name LPCWSTR)
+  (volume-path-name LPWSTR)
+  (buffer-length DWORD))
+
 (defstruct volume-info
   device-name
   name
@@ -1313,9 +1319,34 @@ objects should be stored."
       :bytes-free      (volume-info-bytes-free	    f)
       :bytes-available (volume-info-bytes-available f))))
 
+(defun get-file-volume-path (file)
+  "Return the path of the volume FILE is on."
+  (with-wide-string (w-file (safe-namestring file))
+    (with-foreign-object (w-volume-path 'TCHAR +MAX-PATH+)
+      (syscall (%get-volume-path-name w-file w-volume-path +MAX-PATH+))
+      (wide-string-to-lisp w-volume-path))))
+
+(defun get-filesystem-info (file)
+  "Return the filesystem-info of FILE."
+  (let* ((vol-path (get-file-volume-path file))
+	 (vol-info (safer-get-volume-info vol-path))
+	 (mount-points (get-mount-points))
+	 letter)
+    (when vol-info
+      (setf letter (find (volume-info-device-name vol-info) mount-points
+			 :key #'cadr :test #'equal)
+	    (volume-info-mount-point vol-info)
+	    (and letter (s+ (car letter) ":\\")))
+      (make-filesystem-info
+       :device-name     (volume-info-name	     vol-info)
+       :mount-point     (volume-info-mount-point     vol-info)
+       :type	        (volume-info-type	     vol-info)
+       :total-bytes     (volume-info-total-bytes     vol-info)
+       :bytes-free      (volume-info-bytes-free	     vol-info)
+       :bytes-available (volume-info-bytes-available vol-info)))))
+
 (defun mount-point-of-file (file)
-  "Try to find the mount of FILE. This might not always be right."
-  (declare (ignore file))
-  nil)
+  "Return the mount of FILE."
+  (get-file-volume-path file))
 
 ;; End

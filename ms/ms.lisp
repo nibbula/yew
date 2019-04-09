@@ -31,10 +31,11 @@
   (defconstant +FALSE+ 0)
   (defconstant +MAX-PATH+ 260)
 
-  (defconstant +ERROR-FILE-NOT-FOUND+ 2)
-  (defconstant +ERROR-PATH-NOT-FOUND+ 3)
-  (defconstant +ERROR-NOT-READY+ 21)
-  (defconstant +ERROR-ENVVAR-NOT-FOUND+ 203)
+  (defconstant +ERROR-FILE-NOT-FOUND+           2)
+  (defconstant +ERROR-PATH-NOT-FOUND+           3)
+  (defconstant +ERROR-NOT-READY+                21)
+  (defconstant +ERROR-SHARING-VIOLATION+	32)
+  (defconstant +ERROR-ENVVAR-NOT-FOUND+		203)
 
   ;; a.k.a: ((HANDLE)~(ULONG_PTR)0) or the maximum pointer value.
   (defconstant +INVALID-HANDLE-VALUE+

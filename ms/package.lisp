@@ -98,6 +98,7 @@
    #:map-events
    #:events-pending-p
    #:mounted-filesystems
+   #:get-filesystem-info
    #:mount-point-of-file
    #:file-handle-terminal-p
    #:file-handle-terminal-name
@@ -121,6 +122,7 @@
    #:+ERROR-FILE-NOT-FOUND+
    #:+ERROR-PATH-NOT-FOUND+
    #:+ERROR-NOT-READY+
+   #:+ERROR-SHARING-VIOLATION+
    #:+ERROR-ENVVAR-NOT-FOUND+
    #:get-binary-type #:*binary-types*
    #:binary-type-description
