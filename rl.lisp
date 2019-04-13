@@ -34,6 +34,7 @@
     ;; Editing
     (#\return			. accept-line)
     (#\newline			. newline)
+    (,(meta-char #\m)		. newline)
     (#\backspace		. delete-backward-char)
     (#\rubout			. delete-backward-char)
     (:s-delete			. kill-region)
