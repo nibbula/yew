@@ -944,7 +944,7 @@ in order, \"{open}{close}...\".")
 
 (defun newline (e)
   "Insert a newline."
-  (self-insert e #\newline))
+  (self-insert e t #\newline))
 
 ;; @@@ we can probably just use the one in terminal-inator?
 ;; (defmethod read-key-sequence ((e line-editor) &optional keymap)
