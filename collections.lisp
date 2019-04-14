@@ -59,6 +59,7 @@ structs as sequences. Also we really need the MOP for stuff.")
       osubseq
       oreduce
       ocount
+      ocount-if
       oreverse
       osort
       ofind
@@ -72,8 +73,9 @@ structs as sequences. Also we really need the MOP for stuff.")
       oconcatenate
       oconcatenate-as
       omerge
-      ochoose
+      opick
       oremove
+      oremove-if
       oremove-duplicates
       osplit
       oreplace-subseq-as
@@ -664,6 +666,46 @@ and END, that satisfy the TEST.")
   (call-with-start-end-test ocount (item (container-data collection)
 					 :from-end from-end :key key)))
 
+(defgeneric ocount-if (predicate collection &key from-end start end key)
+  (:documentation "Return the number of elements of COLLECTION, bounded by START
+and END, that satisfy the PREDICATE.")
+  (:method (predicate (collection list) &key from-end key
+				     (start nil start-p)
+				     (end nil end-p))
+    (call-with-start-and-end
+     count-if (predicate collection :from-end from-end :key key)))
+  (:method (predicate (collection vector) &key from-end key
+				       (start nil start-p)
+				       (end nil end-p))
+    (call-with-start-and-end
+     count-if (predicate collection :from-end from-end :key key)))
+  (:method (predicate (collection sequence) &key from-end key
+					 (start nil start-p)
+					 (end nil end-p))
+    (call-with-start-and-end
+     count-if (predicate collection :from-end from-end :key key)))
+  (:method (predicate (collection hash-table)
+	    &key from-end start end key)
+    (declare (ignore start end from-end))
+    (let ((count 0)
+	  the-test-func)
+      (labels ((test-test (k value)
+		 (declare (ignore k))
+		 (when (funcall predicate value) (incf count)))
+	       (test-test-key (k value)
+		 (declare (ignore k))
+		 (when (funcall predicate (funcall key value)) (incf count))))
+	(setf the-test-func (if key #'test-test-key #'test-test))
+	(maphash the-test-func collection)
+	count))))
+
+(defmethod ocount-if (predicate (collection container) &key from-end key
+							 (start nil start-p)
+							 (end nil end-p))
+  (call-with-start-and-end ocount-if (predicate (container-data collection)
+						:from-end from-end
+						:key key)))
+
 #|
 (defgeneric oreverse (collection ...)
   (:documentation "")
@@ -995,7 +1037,14 @@ that they were supplied. The resulting collection is of type RESULT-TYPE.")
   (:method ((collection XX))
 	    ))
 
-(defgeneric ochoose (test collection)
+(defgeneric oremove-duplicates (collection ...)
+  (:documentation "")
+  (:method ((collection XX))
+	    ))
+
+;; @@@ I think these are really just intersection.
+
+(defgeneric ochoose (value-collection collection)
   (:documentation
    "Returns elements of COLLECTION that satisfy TEST.")
   (:method ((collection XX))
@@ -1004,32 +1053,148 @@ that they were supplied. The resulting collection is of type RESULT-TYPE.")
 (defgeneric ochoose-by (test value-collection collection)
   (:documentation
    "Returns elements of COLLECTION that correspond to those VALUE-COLLECTION
-that satisfy TEST.
+that satisfy TEST."
   (:method ((collection XX))
-	    ))
-
-(defgeneric opick (collection &rest keys)
-  (:documentation
-   "Return a collection, with only the elemnets of COLLECTION indicated by
-KEYS.")
-
-(defgeneric oremove (collection ...)
-  (:documentation "")
-  (:method ((collection XX))
-	    ))
-
-(defgeneric oremove (collection ...)
-  (:documentation "")
-  (:method ((collection XX))
-	    ))
-
-(defgeneric oremove-duplicates (collection ...)
-  (:documentation "")
-  (:method ((collection XX))
-	    ))
-
+	    )))
 
 |#
+
+;; This is really another name for remove-if-not.
+(defgeneric opick (predicate collection
+		   &key from-end start end count key)
+  (:documentation
+   "Return a new collection with only elemnets of COLLECTION that satisfy
+PREDICATE.")
+  (:method (predicate (collection list)
+	    &key from-end key (start nil start-p) (end nil end-p) count)
+    (declare (ignorable start start-p end end-p))
+    (call-with-start-and-end remove-if-not
+			     (predicate collection
+					:from-end from-end
+					:count count
+					:key key)))
+  (:method (predicate (collection vector)
+	    &key from-end key (start nil start-p) (end nil end-p) count)
+    (declare (ignorable start start-p end end-p))
+    (call-with-start-and-end remove-if-not (predicate
+					    collection
+					    :from-end from-end
+					    :count count
+					    :key key)))
+  (:method (predicate (collection sequence)
+	    &key from-end key (start nil start-p) (end nil end-p) count)
+    (declare (ignorable start start-p end end-p))
+    (call-with-start-and-end remove-if-not (predicate
+					    collection
+					    :from-end from-end
+					    :count count
+					    :key key))))
+
+(defmethod opick (predicate (collection container)
+		  &key from-end key (start nil start-p) (end nil end-p) count)
+  (declare (ignorable start start-p end end-p))
+  (call-with-start-and-end opick (predicate
+				  (container-data collection)
+				  :from-end from-end
+				  :count count
+				  :key key)))
+
+(defgeneric oremove (item collection
+		     &key from-end test test-not start end count key)
+  (:documentation "Return a copy of the collection with ITEM removed.")
+  (:method (item (collection list)
+	    &key from-end key
+	      (test nil test-p)
+	      (test-not nil test-not-p)
+	      (start nil start-p)
+	      (end nil end-p)
+	      count)
+    (declare (ignorable start start-p end end-p test test-not))
+    (call-with-start-end-test remove
+			      (item collection
+				    :from-end from-end
+				    :count count
+				    :key key)))
+  (:method (item (collection vector)
+	    &key from-end key
+	      (test nil test-p)
+	      (test-not nil test-not-p)
+	      (start nil start-p)
+	      (end nil end-p)
+	      count)
+    (declare (ignorable start start-p end end-p test test-not))
+    (call-with-start-end-test remove (item
+				      collection
+				      :from-end from-end
+				      :count count
+				      :key key)))
+  (:method (item (collection sequence)
+	    &key from-end key
+	      (test nil test-p)
+	      (test-not nil test-not-p)
+	      (start nil start-p)
+	      (end nil end-p)
+	      count)
+    (declare (ignorable start start-p end end-p test test-not))
+    (call-with-start-end-test remove (item
+				      collection
+				      :from-end from-end
+				      :count count
+				      :key key))))
+
+(defmethod oremove (item (collection container)
+		    &key from-end key
+		      (test nil test-p)
+		      (test-not nil test-not-p)
+		      (start nil start-p)
+		      (end nil end-p)
+		      count)
+  (declare (ignorable start start-p end end-p test test-not))
+  (call-with-start-end-test remove (item
+				    (container-data collection)
+				    :from-end from-end
+				    :count count
+				    :key key)))
+
+(defgeneric oremove-if (predicate collection
+			&key from-end start end count key)
+  (:documentation
+   "Return a copy of the collection with elements removed for which PREDICATE
+is true.")
+  (:method (predicate (collection list)
+	    &key from-end key (start nil start-p) (end nil end-p) count)
+    (declare (ignorable start start-p end end-p))
+    (call-with-start-and-end remove-if (predicate
+					collection
+					:from-end from-end
+					:count count
+					:key key)))
+  (:method (predicate (collection vector)
+	    &key from-end key (start nil start-p) (end nil end-p) count)
+    (declare (ignorable start start-p end end-p))
+    (call-with-start-and-end remove-if (predicate
+					collection
+					:from-end from-end
+					:count count
+					:key key)))
+  (:method (predicate (collection sequence)
+	    &key from-end key (start nil start-p) (end nil end-p) count)
+    (declare (ignorable start start-p end end-p))
+    (call-with-start-and-end remove-if (predicate
+					collection
+					:from-end from-end
+					:count count
+					:key key))))
+
+(defmethod oremove-if (predicate (collection container)
+		       &key from-end key (start nil start-p) (end nil end-p)
+			 count)
+  (declare (ignorable start start-p end end-p))
+  (call-with-start-and-end remove-if (predicate
+				      (container-data collection)
+				      :from-end from-end
+				      :count count
+				      :key key)))
 
 (defgeneric osplit (separator ordered-collection
 		    &key omit-empty start end test key #| count |#)
