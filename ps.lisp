@@ -7,7 +7,7 @@
   (:use :cl :dlib :dlib-misc :opsys #+unix :os-unix :table :table-print :grout
 	:lish :collections)
   (:export
-   #:ps
+   #:!ps
    #:ps-tree
    ))
 (in-package :ps)
@@ -417,9 +417,14 @@ user, pid, ppid, size, command."
 
 (defun ps-long (&key matching show-kernel-processes (print t) user)
   "Process status: Reformat the output of the \"ps\" command."
-  (declare (ignore matching show-kernel-processes user))
+  (declare (ignore matching #-linux show-kernel-processes user))
   (with-grout ()
-    (let* ((proc-list (system-process-list))
+    (let* ((proc-list
+	    #-linux (system-process-list)
+	    #+linux (if show-kernel-processes
+			(system-process-list)
+			(remove 0 (system-process-list)
+				:key #'unix-process-text-size)))
 	   table)
       (setf table (make-table-from proc-list))
       #+unix
