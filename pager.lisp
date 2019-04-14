@@ -1360,19 +1360,23 @@ more files."
 	 (loop :while (and file-index (< file-index (1- len)))
 	    :do
 	    ;; Skip over locations until we find one with a new file.
-	      (incf file-index)
-	      (when (not (equal
-			  (file-location-file (elt file-list file-index))
-			  (file-location-file (elt file-list (1+ file-index)))))
+	    (incf file-index)
+	    (when (or (>= file-index (1- len))
+		      (not
+		       (equal
+			(file-location-file (elt file-list file-index))
+			(file-location-file (elt file-list (1+ file-index))))))
 		(return-from advance-file-index t))))
 	(:backward
 	 (loop :while (and file-index (> file-index 0))
 	    :do
 	    ;; Skip over locations until we find one with a new file.
-	      (decf file-index)
-	      (when (not (equal
-			  (file-location-file (elt file-list file-index))
-			  (file-location-file (elt file-list (1- file-index)))))
+	    (decf file-index)
+	    (when (or (<= file-index 1)
+		      (not
+		       (equal
+			(file-location-file (elt file-list file-index))
+			(file-location-file (elt file-list (1- file-index))))))
 		(return-from advance-file-index t))))))))
 
 (defmethod next-file ((pager pager))
