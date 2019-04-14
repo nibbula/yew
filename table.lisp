@@ -168,6 +168,35 @@ found."
       (omapk function (container-data table))
       (omap function (container-data table))))
 
+(defun copy-columns (table)
+  "Return a copy of TABLE's columns."
+  (omap (_ (copy-column _)) (table-columns table)))
+
+(defmacro call-with-start-and-end (func args)
+  "Call func with args and START and END keywords, assume that an environemnt
+that has START and START-P and END and END-P."
+  `(progn
+     (if start-p
+	 (if end-p
+	     (,func ,@args :start start :end end)
+	     (,func ,@args :start start))
+	 (if end-p
+	     (,func ,@args ::end end)
+	     (,func ,@args)))))
+
+(defmethod opick (predicate (collection mem-table)
+		  &key from-end key (start nil start-p) (end nil end-p) count)
+  (declare (ignorable start start-p end end-p))
+  (make-instance
+   'mem-table
+   :columns (copy-columns collection)
+   :data (call-with-start-and-end opick
+				  (predicate
+				   (container-data collection)
+				   :from-end from-end
+				   :count count
+				   :key key))))
+
 (defun make-columns (columns-list)
   (loop :for c :in columns-list
      :collect
