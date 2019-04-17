@@ -332,6 +332,20 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 	   (fat-string-string collection-2)
 	   new-args)))
 
+(defmethod oconcatenate ((first-collection fat-string) &rest collections)
+  (when (not (every #'(lambda (_) (typep _ '(or string fat-string)))
+		    collections))
+    (error
+     "I don't know how to concatenate things that aren't fat-strings or ~
+      strings to a fat-string."))
+  (make-fat-string :string
+		   (apply #'concatenate 'vector
+			  (mapcar (_ (if (stringp _)
+					 (make-fatchar-string _)
+					 (fat-string-string _)))
+				  (append (list first-collection)
+					  collections)))))
+
 (defmethod oconcatenate-as ((result-type (eql 'fat-string)) &rest collections)
   (when (not (every #'(lambda (_) (typep _ '(or string fat-string)))
 		    collections))
