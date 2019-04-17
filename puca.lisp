@@ -1085,6 +1085,12 @@ for the command-function).")
 	    (osubseq cell 0 (min (or pos width) width (olength cell)))
 	    (osubseq cell 0 (min (or pos ww) ww (olength cell))))))))
 
+(defun pad-to (string width)
+  (if (< (olength string) width)
+      (oconcatenate string (make-string (- width (olength string))
+					:initial-element #\space))
+      string))
+
 (defmethod get-list ((puca puca-history))
   "Get the history list from the backend and parse them."
   (with-slots (goo maxima (point inator::point) top table) puca
@@ -1097,7 +1103,8 @@ for the command-function).")
 		   (:name "Email" :width 5
 			  :format ,(lambda (c w)
 				     (declare (ignore w))
-				     (osubseq c 0 5)))
+				     (pad-to (osubseq c 0 (min (olength c) 5))
+					     5)))
 		   ;; (:name "Date" :format ,(table-cell-type-formatter
 		   ;; 			   'number #'date-cell-formatter))
 		   (:name "Date" :format ,#'raw-date-cell-formatter)
