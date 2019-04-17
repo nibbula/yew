@@ -62,7 +62,8 @@
     (tt-finish-output)))
 
 (defun get-title (&optional (which :window))
-  (set-utf8-title-mode t)
+  ;; @@@ Why does this output a bunch of crap?
+  ;; (set-utf8-title-mode t)
   (let ((param (case which
 		 (:icon "20")
 		 (:window "21")
@@ -272,16 +273,16 @@
     :initarg :y :accessor xterminator-y  :type integer
     :documentation "Y coordinate in pixels.")
    (char-width
-    :initarg :width :accessor xterminator-char-width  :type integer
+    :initarg :width :accessor xterminator-char-width :type integer
     :documentation "Width in character cells.")
    (char-height
-    :initarg :char-height :accessor xterminator-char-height  :type integer
+    :initarg :char-height :accessor xterminator-char-height :type integer
     :documentation "Height in character cells.")
    (pixel-width
-    :initarg :pixel-width :accessor xterminator-pixel-width  :type integer
+    :initarg :pixel-width :accessor xterminator-pixel-width :type integer
     :documentation "Width in pixels.")
    (pixel-height
-    :initarg :pixel-height :accessor xterminator-pixel-height  :type integer
+    :initarg :pixel-height :accessor xterminator-pixel-height :type integer
     :documentation "Height in pixels.")
    (screen-char-width
     :initarg :screen-char-width :accessor xterminator-screen-char-width
@@ -292,20 +293,20 @@
     :type integer
     :documentation "Height of the screen in characters.")
    (fullscreen
-    :initarg :fullscreen :accessor xterminator-fullscreen :initform nil
+    :initarg :fullscreen :accessor xterminator-fullscreen
     :type boolean
     :documentation "True if the window is in fullscreen mode.")
    (background
-    :initarg :background :accessor xterminator-background  
+    :initarg :background :accessor xterminator-background
     :documentation "Background color.")
    (foreground
-    :initarg :foreground :accessor xterminator-foreground  
+    :initarg :foreground :accessor xterminator-foreground
     :documentation "Foreground color.")
    (title
     :initarg :title :accessor xterminator-title
     :documentation "Window title.")
    (icon-title
-    :initarg :icon-title :accessor xterminator-icon-title  
+    :initarg :icon-title :accessor xterminator-icon-title
     :documentation "Icon title.")
    (font
     :initarg :font :accessor xterminator-font
@@ -316,91 +317,84 @@
     :documentation "Size to increment.")
    (initialize-all
     :initarg :initialize-all :accessor xterminator-initialize-all
-    :initform nil :type boolean
+    :initform t :type boolean
     :documentation "True to initialize all parameters.")
    )
   (:documentation "XTerm compatible terminal manipulator."))
 
 (defun get-xterm-parameter (o parameter)
   (let (result)
-    ;; location
-    (when (find parameter '(x y))
-      (when (not (slot-boundp o parameter))
-	(if (setf result (query-parameters "13t"))
-	    (setf (slot-value o 'x) (elt result 1)
-		  (slot-value o 'y) (elt result 2))
-	    (setf (slot-value o 'x) 0
-		  (slot-value o 'y) 0)))
-      (slot-value o parameter))
+    (macrolet ((set-params2 (p1 e1 d1 p2 e2 d2 query-string)
+		 `(when (find parameter '(,p1 ,p2))
+		    (when (not (slot-boundp o parameter))
+		      (if (setf result (query-parameters ,query-string))
+			  (setf (slot-value o ',p1) ,e1
+				(slot-value o ',p2) ,e2)
+			  (setf (slot-value o ',p1) ,d1
+				(slot-value o ',p2) ,d2)))
+		    (setf result (slot-value o parameter)))))
 
-    ;; pixel size
-    (when (find parameter '(pixel-width pixel-height))
-      (when (not (slot-boundp o parameter))
-	(if (setf result (query-parameters "14t"))
-	    (setf (slot-value o 'pixel-width) (elt result 2)
-		  (slot-value o 'pixel-height) (elt result 1))
-	    (setf (slot-value o 'pixel-width) 0
-		  (slot-value o 'pixel-height) 0)))
-      (slot-value o parameter))
+      ;; location
+      (set-params2 x (elt result 1) 0
+		   y (elt result 2) 0
+		   "13t")
 
-    ;; character size
-    (when (find parameter '(char-height char-width))
-      (when (not (slot-boundp o parameter))
-	(if (setf result (query-parameters "18t"))
-	    (setf (slot-value o 'char-width) (elt result 2)
-		  (slot-value o 'char-height) (elt result 1))
-	    (setf (slot-value o 'char-width) 0
-		  (slot-value o 'char-height) 0)))
-      (slot-value o parameter))
+      ;; pixel size
+      (set-params2 pixel-width (elt result 2) 0
+		   pixel-height (elt result 1) 0
+		   "14t")
 
-    ;; screen size
-    (when (find parameter '(screen-char-width screen-char-height))
-      (when (not (slot-boundp o parameter))
-	(if (setf result (query-parameters "19t"))
-	    (setf (slot-value o 'screen-char-width) (elt result 2)
-		  (slot-value o 'screen-char-height) (elt result 1))
-	    (setf (slot-value o 'screen-char-width) 0
-		  (slot-value o 'screen-char-height) 0)))
-      (slot-value o parameter))
+      ;; character size
+      (set-params2 char-width (elt result 2) 0
+		   char-height (elt result 1) 0
+		   "18t")
 
-    ;; Try to figure out fullscreen
-    (when (eq parameter 'fullscreen)
-      (when (not (slot-boundp o parameter))
-	(setf (slot-value o 'fullscreen)
-	      (and (not (zerop (slot-value o 'screen-char-width)))
-		   (= (slot-value o 'screen-char-width)
-		      (slot-value o 'char-width))
-		   (= (slot-value o 'screen-char-height)
-		      (slot-value o 'char-height)))))
-      (slot-value o parameter))
+      ;; screen size
+      (set-params2 screen-char-width (elt result 2) 0
+		   screen-char-height (elt result 1) 0
+		   "19t")
 
-    ;; Foreground & background colors
-    (when (find parameter '(foreground background))
-      (when (not (slot-boundp o parameter))
-	(setf (slot-value o 'foreground)
-	      (and-<> (foreground-color)
-		      (convert-color-to <> :rgb8))
-	      (slot-value o 'background)
-	      (and-<> (background-color)
-		      (convert-color-to <> :rgb8))))
-      (slot-value o parameter))
+      ;; Try to figure out fullscreen
+      (when (eq parameter 'fullscreen)
+	(when (not (slot-boundp o parameter))
+	  (setf (slot-value o 'fullscreen)
+		(and (not (zerop (slot-value o 'screen-char-width)))
+		     (= (slot-value o 'screen-char-width)
+			(slot-value o 'char-width))
+		     (= (slot-value o 'screen-char-height)
+			(slot-value o 'char-height)))))
+	(setf result (slot-value o parameter)))
 
-    ;; title
-    (when (eq parameter 'title)
-      (when (not (slot-boundp o parameter))
-	(setf (slot-value o 'title) (get-title)))
-      (slot-value o parameter))
+      ;; Foreground & background colors
+      (when (find parameter '(foreground background))
+	(when (not (slot-boundp o parameter))
+	  (setf (slot-value o 'foreground)
+		(and-<> (foreground-color)
+			(convert-color-to <> :rgb8))
+		(slot-value o 'background)
+		(and-<> (background-color)
+			(convert-color-to <> :rgb8))))
+	(setf result (slot-value o parameter)))
 
-    ;; icon
-    (when (eq parameter 'icon-title)
-      (when (not (slot-boundp o parameter))
-	(setf (slot-value o 'icon-title) (get-title :icon)))
-      (slot-value o parameter))
+      ;; title
+      (when (eq parameter 'title)
+	(when (not (slot-boundp o parameter))
+	  (setf (slot-value o 'title) (get-title)))
+	(setf result (slot-value o parameter)))
 
-    (when (eq parameter 'font)
-      (when (not (slot-boundp o parameter))
-	(setf (slot-value o 'font) (get-font)))
-      (slot-value o parameter))))
+      ;; icon
+      (when (eq parameter 'icon-title)
+	(when (not (slot-boundp o parameter))
+	  (setf (slot-value o 'icon-title) (get-title :icon)))
+	(setf result (slot-value o parameter)))
+
+      ;; font
+      (when (eq parameter 'font)
+	(when (not (slot-boundp o parameter))
+	  (setf (slot-value o 'font) (get-font)))
+	(set result (slot-value o parameter)))
+
+      result)))
 
 (defun get-xterm-parameters (o)
   (with-slots (x y pixel-width pixel-height char-width char-height
@@ -451,7 +445,7 @@
   (when (or (and (slot-boundp o 'initialize-all)
 		 (slot-value o 'initialize-all))
 	    (getf initargs :initialize-all))
-    (format t "Initializing all..~%")
+    ;; (format t "Initializing all..~%")
     (get-xterm-parameters o)))
 
 (defvar *xterminator* nil
@@ -688,7 +682,6 @@
    (get-parameter choice :short-arg #\p
     :choices '(title icon-title font x y char-width char-height
 	       pixel-width pixel-height fullscreen foreground background)
-    :repeating t
     :help "Get an parmeter value.")
    )
   "Control an XTerm comaptible terminal. If no arguments are given, go into an
@@ -720,12 +713,13 @@ interactive control mode."
 	(when get-icon-title (format t "~a~%" (get-title :icon)))
 	(when get-font (format t "~a~%" (get-font)))
 	(when get-parameter
-	  (let ((x (make-instance 'xterminator :initizlize-all nil))
-		(params (mapcar (_ (intern (string-upcase _) :xterm-control))
-				get-parameter)))
-	    ;; (format t "~s ~s~%" params (symbol-package (car params)))
+	  (let ((x (make-instance 'xterminator :initialize-all nil))
+		(params (if (listp get-parameter)
+			    (mapcar (_ (intern (string-upcase _) :xterm-control))
+				    get-parameter)
+			    (list get-parameter))))
 	    (setf lish:*output*
-		  (if (= (length get-parameter) 1)
+		  (if (= (length params) 1)
 		      (progn
 			(get-xterm-parameter x (car params))
 			(slot-value x (car params)))
