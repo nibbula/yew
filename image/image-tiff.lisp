@@ -86,6 +86,12 @@ It doesn't handle all TIFF files.")
 				 :transparent nil
 				 :data array)))))
 
+(defun read-tiff-synopsis (file-or-stream)
+  ;; @@@ fix not to read the whole thing
+  (let ((image (read-tiff-file file-or-stream)))
+    (make-image :name file-or-stream
+		:width (tiff-image-width image)
+		:height (tiff-image-length image))))
 
 (defun guess-tiff (file-or-stream)
   (block nil
@@ -131,5 +137,11 @@ It doesn't handle all TIFF files.")
 
 (defmethod guess-image-format (file (format tiff-image-format))
   (guess-tiff file))
+
+(defmethod read-image-synopsis-format (file (format (eql :tiff)))
+  (read-tiff-synopsis file))
+
+(defmethod read-image-synopsis-format (file (format tiff-image-format))
+  (read-tiff-synopsis file))
 
 ;; EOF

@@ -117,7 +117,7 @@ Eat following punctuation. Return the number and the new position."
 	(values (logior (ash x1 4) x2)
 		pos)))))
 
-(defun read-xbm (file-or-stream)
+(defun read-xbm (file-or-stream &key synopsis)
   "Read an X Bitmap image from FILE-OR-STREAM."
   (let* ((string (slurp file-or-stream))
 	 (width (find-define "width" string))
@@ -129,28 +129,29 @@ Eat following punctuation. Return the number and the new position."
     (setf x-hot (find-define "x_hot" string nil)
 	  y-hot (find-define "y_hot" string nil)
 	  array (make-image-array width height))
-    (multiple-value-setq (start end starts ends)
-      (scan *bits-decl-regexp* string))
-    (when (not start)
-      (fail "bits"))
-    (setf name (subseq string (aref starts 0) (aref ends 0))
-	  start (1+ end))
-    (loop
-       :with num :and x fixnum = 0 :and y fixnum = 0
-       :while (and (multiple-value-setq (num start)
-		     (read-hex string start))
-		   (< y height))
-       :do
+    (when (not synopsis)
+      (multiple-value-setq (start end starts ends)
+	(scan *bits-decl-regexp* string))
+      (when (not start)
+	(fail "bits"))
+      (setf name (subseq string (aref starts 0) (aref ends 0))
+	    start (1+ end))
+      (loop
+	 :with num :and x fixnum = 0 :and y fixnum = 0
+	 :while (and (multiple-value-setq (num start)
+		       (read-hex string start))
+		     (< y height))
+	 :do
 	 (loop
 	    :for i :from 0 :to 7
 	    :do
-	      (when (logbitp i num)
-		(setf (aref array y x) #xffffffff))
-	      (incf x)
+	    (when (logbitp i num)
+	      (setf (aref array y x) #xffffffff))
+	    (incf x)
 	    (when (= x width)
 	      (setf x 0)
 	      (incf y)
-	      (return nil))))
+	      (return nil)))))
     (make-instance 'xbm-image
 		   :bitmap-name name
 		   :name file-or-stream
@@ -159,11 +160,12 @@ Eat following punctuation. Return the number and the new position."
 		   :x-hot-spot x-hot
 		   :y-hot-spot y-hot
 		   :subimages
-		   (vector
-		    (make-sub-image :x 0 :y 0
-				    :width width
-				    :height height
-				    :data array)))))
+		   (when (not synopsis)
+		     (vector
+		      (make-sub-image :x 0 :y 0
+				      :width width
+				      :height height
+				      :data array))))))
 
 (defclass xbm-image-format (image-format)
   ()
@@ -192,5 +194,11 @@ Eat following punctuation. Return the number and the new position."
 
 (defmethod guess-image-format (file (format xbm-image-format))
   (guess-xbm file))
+
+(defmethod read-image-synopsis-format (file (format (eql :xbm)))
+  (read-xbm file :synopsis t))
+
+(defmethod read-image-synopsis-format (file (format xbm-image-format))
+  (read-xbm file :synopsis t))
 
 ;; EOF

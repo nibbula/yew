@@ -77,6 +77,14 @@
 		:name file-or-stream
 		:subimages sub)))
 
+(defun read-gif-synopsis (file-or-stream)
+  (let ((gif (if (streamp file-or-stream)
+		 (skippy:read-data-stream file-or-stream :synopsis t)
+		 (skippy:load-data-stream file-or-stream :synopsis t))))
+    (make-image :width (skippy:width gif)
+		:height (skippy:height gif)
+		:name file-or-stream)))
+
 (defun guess-gif (file-or-stream)
   (with-open-file-or-stream (str file-or-stream
 				 :element-type '(unsigned-byte 8))
@@ -114,5 +122,11 @@
 
 (defmethod guess-image-format (file (format gif-image-format))
   (guess-gif file))
+
+(defmethod read-image-synopsis-format (file (format (eql :gif)))
+  (read-gif-synopsis file))
+
+(defmethod read-image-synopsis-format (file (format gif-image-format))
+  (read-gif-synopsis file))
 
 ;; EOF

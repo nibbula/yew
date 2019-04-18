@@ -68,6 +68,7 @@ To make a new format:
    #:get-pixel-a
    #:get-whole-pixel
    #:image-format
+   #:image-format-name
    #:image-format-description
    #:image-format-extensions
    #:image-format-mime-types
@@ -83,9 +84,12 @@ To make a new format:
    #:guess-registered-image-type
    #:load-known-formats
    #:read-image-format
+   #:read-image-synopsis-format
    #:unknown-image-type
    #:non-image-file
    #:read-image
+   #:read-image-synopsis
+   #:write-image
    ))
 (in-package :image)
 
@@ -250,6 +254,7 @@ try to figure it out."
 		      :key (_ (image-format-extensions (cdr _))))))
     ((nil)
      (typecase type
+       (image-format type)
        (keyword (or (cdr (find type *image-formats* :key #'car))
 		    (find-image-format (string type) :by :ext)
 		    (find-image-format (string type) :by :mime)))
@@ -297,7 +302,7 @@ read-image knows about all the formats."
   (:default-initargs
    :format-control "~s doesn't seem to be an image"))
 
-(defun read-image (file-or-stream)
+(defun read-image-with-function (file-or-stream function)
   "Try to read FILE-OR-STREAM as an image. Return an IMAGE object if we're
  successful. It tries to guess the format, but it might help if the format
 is loaded already. Otherwise it tries to load a guessed format.
@@ -319,12 +324,13 @@ It signals unknown-image-type or non-image-file, if it can't figure it out."
     (flet ((read-it ()
 	     (if slurped-stream
 		 (flexi-streams:with-input-from-sequence (str thing)
-		   (read-image-format str format))
-		 (read-image-format thing format))))
+		   (funcall function str format))
+		 (progn
+		   (funcall function thing format)))))
       (cond
 	;; First let the registered formats try guessing.
 	((setf format (guess-registered-image-type thing))
-	 (read-it))
+	 (values (read-it) format))
 	;; Then try the system guesser, and autoloading the format.
 	((equal (content-type-category
 		 (setf type (guess-content-type thing))) "image")
@@ -340,7 +346,7 @@ It signals unknown-image-type or non-image-file, if it can't figure it out."
 			     (content-type-name type))
 			 :by :mime)))
 	 (if format
-	     (read-it)
+	     (values (read-it) format)
 	     (cerror "Skip the image."
 		     'unknown-image-type
 		     :format-arguments `(,file-or-stream
@@ -348,5 +354,55 @@ It signals unknown-image-type or non-image-file, if it can't figure it out."
 	(t
 	 (cerror "Skip the file"
 		 'non-image-file :format-arguments `(,file-or-stream)))))))
+
+(defun read-image (file-or-stream)
+  "Try to read FILE-OR-STREAM as an image. Return an IMAGE object if we're
+ successful. It tries to guess the format, but it might help if the format
+is loaded already. Otherwise it tries to load a guessed format.
+It signals unknown-image-type or non-image-file, if it can't figure it out.
+The format type is returned as the second value."
+  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+  (read-image-with-function file-or-stream #'read-image-format))
+
+(defgeneric read-image-synopsis-format (file format)
+  (:documentation
+   "Read a synopsis of an image from file or stream with a specific format."))
+
+(defun read-image-synopsis (file-or-stream)
+  "Try to read FILE-OR-STREAM as an image. Return an IMAGE object if we're
+ successful, but without the image data. It tries to guess the format, but it
+might help if the format is loaded already. Otherwise it tries to load a
+guessed format. It signals unknown-image-type or non-image-file, if it can't
+figure it out. The format type is returned as the second value."
+  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+  (read-image-with-function file-or-stream #'read-image-synopsis-format))
+
+(defgeneric write-image-format (image stream format)
+  (:documentation "Read an image file or stream with specific format."))
+
+(defun write-image (image file-or-stream format)
+  "Try to write FILE-OR-STREAM as an image. Signal an error if we fail,
+which, among other possiblities, will be unknown-image-type if format isn't a
+known type, or a file-error if we can't open it."
+  (let ((real-format (find-image-format format)))
+    (if (not real-format)
+	(progn
+	  ;; Try to autoloading
+	  (asdf:load-system (s+ "image-" (string-downcase format)))
+	  (when (not (setf real-format (find-image-format format)))
+	    (cerror "Skip the image."
+		    'unknown-image-type
+		    :format-arguments `(,file-or-stream ,format))))
+	(typecase file-or-stream
+	  ((or pathname string)
+	   (with-open-file (stream file-or-stream
+				   :direction :output
+				   :if-does-not-exist :create
+				   :element-type '(unsigned-byte 8))
+	     (write-image-format image stream format)))
+	  (stream
+	   ;; @@@ make sure it's a binary stream or convert it with flexistreams
+	   ;; like above?
+	   (write-image-format image file-or-stream format))))))
 
 ;; EOF

@@ -56,6 +56,16 @@
 				   :height height
 				   :data array))))))
 
+(defun read-jpeg-synopsis (file-or-stream)
+  ;; @@@ fix not to read the whole image
+  (multiple-value-bind (data height width colors)
+      (if (streamp file-or-stream)
+	  (cl-jpeg:decode-stream file-or-stream)
+	  (cl-jpeg:decode-image (nos:quote-filename file-or-stream)))
+    (declare (ignore data colors))
+    (make-image :name file-or-stream
+		:width width :height height)))
+
 (defun guess-jpeg (file-or-stream)
   (block nil
     (with-open-file-or-stream (stream file-or-stream
@@ -98,5 +108,11 @@
 
 (defmethod guess-image-format (file (format jpeg-image-format))
   (guess-jpeg file))
+
+(defmethod read-image-synopsis-format (file (format (eql :jpeg)))
+  (read-jpeg-synopsis file))
+
+(defmethod read-image-synopsis-format (file (format jpeg-image-format))
+  (read-jpeg-synopsis file))
 
 ;; EOF
