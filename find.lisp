@@ -170,6 +170,7 @@
 
 (defun compare-type (info type)
   "Return true if the type matches."
+  ;; (format t "compare-type ~s ~s ~s~%" (type-char info) type)
   (let ((c (type-char info)))
     (cond
       ((stringp type)
@@ -192,10 +193,11 @@
   ;; @@@ need a lot of work here
   (equal (modification-time info) time))
 
-(defun resilient-stat (path)
+(defun resilient-stat (path follow-links)
   "Stat that returns the link information when the symbolic link is missing."
-  #+unix (or (ignore-errors (os-unix:stat path)) (os-unix:lstat path))
-  #-unix (or (ignore-errors (get-file-info path))
+  #+unix (or (and follow-links (ignore-errors (os-unix:stat path)))
+	     (os-unix:lstat path))
+  #-unix (or (and follow-links (ignore-errors (get-file-info path)))
 	     (get-file-info path :follow-links nil)))
 
 ;; (defun matches-expr (filename expr)
@@ -406,7 +408,7 @@ Options:
 		  (path-matched
 		   (or (not path)
 		       (compare path full verbose case-insensitivity)))
-		  (stat (when need-to-stat (resilient-stat full)))
+		  (stat (when need-to-stat (resilient-stat full follow-links)))
 		  (perm-matched  (or (not perm)  (compare-perm  stat perm)))
 		  (user-matched  (or (not user)  (compare-user  stat user)))
 		  (group-matched (or (not group) (compare-group stat group)))
