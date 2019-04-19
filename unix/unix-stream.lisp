@@ -68,38 +68,53 @@ Create and truncate do the Unix things."
 (defun %fill-buffer (stream)
   "Fill the input buffer. Return the size we read. Return NIL on EOF, which
 only happens the second time we get a zero read. Throw errors if we get 'em."
-  (with-slots (handle input-buffer position) stream
+  (with-accessors ((handle os-stream-handle)
+		   (input-buffer os-stream-input-buffer)
+		   (position os-stream-position)
+		   (input-fill os-stream-input-fill)) stream
     (let ((status 0)
-	  (remaining +input-buffer-size+)
+	  (remaining (- +input-buffer-size+ input-fill))
+	  (start-fill input-fill)
 	  problem result)
+      ;; Got to the beginning of the buffer, if we used it up.
+      (when (zerop remaining)
+	(when (not (zerop position))
+	  (cerror "Whatever"
+		  "Fill when not consumed. This isn't supposed to happen."))
+	(setf input-fill 0
+	      position 0
+	      remaining +input-buffer-size+))
       ;; This loop is a little wacky because I don't want to throw errors
       ;; inside the with-pointer-to-vector-data, which could turn off GC.
       ;; Instead we set a problem flag and signal afterward. We need to keep
       ;; the loop in there because we have to increment the pointer on partial
       ;; reads.
       (cffi:with-pointer-to-vector-data (buf input-buffer)
+	(incf-pointer buf input-fill)
 	(loop
 	   :do
-	     (setf status (posix-read handle buf remaining))
-	     (cond
-	       ((and (< status 0) (or (= (errno) +EINTR+)
-				      (= (errno) +EAGAIN+)))
-		#| try again |#)
-	       ((or (> status remaining) (< status 0))
-		(setf problem t))
-	       ((= status 0)
-		;; EOF
-		;; or maybe some other bullshit?
-		(return-from %fill-buffer
-		  ;; Return the bytes read or nil if no bytes read.
-		  (if (zerop
-		       (setf result (- +input-buffer-size+ remaining)))
-		      nil
-		      result)))
-	       (t
-		;; Eat some of the buffer and go again.
-		(decf remaining status)
-		(incf-pointer buf status)))
+	   (setf status (posix-read handle buf remaining))
+	   (cond
+	     ((and (< status 0) (or (= (errno) +EINTR+)
+				    (= (errno) +EAGAIN+)))
+	      #| try again |#)
+	     ((or (> status remaining) (< status 0))
+	      (setf problem t))
+	     ((= status 0)
+	      ;; EOF
+	      ;; or maybe some other bullshit?
+	      (return-from %fill-buffer
+		;; Return the bytes read or nil if no bytes read.
+		(if (zerop
+		     ;; (setf result (- +input-buffer-size+ remaining)))
+		     (setf result (- start-fill input-fill)))
+		    nil
+		    result)))
+	     (t
+	      ;; Eat some of the buffer and go again.
+	      (decf remaining status)
+	      (incf-pointer buf status)
+	      (incf input-fill status)))
 	   :while (not (or (zerop remaining) problem))))
       (when problem
 	(cond
@@ -111,11 +126,16 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 	   (error 'posix-error :error-code (errno)
 		  :format-control "%fill-buffer read"
 		  :format-arguments `(,handle ,input-buffer ,remaining)))))
-      (- +input-buffer-size+ remaining))))
+      ;; (- +input-buffer-size+ remaining)
+      (- start-fill input-fill)
+      )))
 
 (defun %flush-buffer (stream &key force)
   "Flush the input buffer. Throw errors if we get 'em."
-  (with-slots (handle output-buffer ouput-position) stream
+  (with-accessors ((handle os-stream-handle)
+		   (output-buffer os-stream-output-buffer)
+		   (ouput-position os-stream-ouput-position))
+      stream
     (let ((status 0)
 	  (remaining +output-buffer-size+)
 	  problem #| result @@@ |#)
@@ -169,7 +189,11 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 (defmethod os-stream-open ((stream unix-character-input-stream) filename
 			   if-exists if-does-not-exist share)
   (declare (ignore if-exists if-does-not-exist share)) ;; @@@
-  (setf (os-stream-handle stream) (%open filename :input)))
+  (setf (os-stream-handle stream) (%open filename :input))
+  stream)
+
+(defmethod os-stream-system-type ((stream (eql 'os-character-input-stream)))
+  'unix-character-input-stream)
 
 (defmethod fill-buffer ((stream unix-character-input-stream))
   (%fill-buffer stream))
@@ -193,7 +217,11 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 (defmethod os-stream-open ((stream unix-character-output-stream) filename
 			   if-exists if-does-not-exist share)
   (declare (ignore if-exists if-does-not-exist share)) ;; @@@
-  (setf (os-stream-handle stream) (%open filename :output)))
+  (setf (os-stream-handle stream) (%open filename :output))
+  stream)
+
+(defmethod os-stream-system-type ((stream (eql 'os-character-output-stream)))
+  'unix-character-output-stream)
 
 (defmethod flush-buffer ((stream unix-character-output-stream) &key force)
   (%flush-buffer stream :force force))
@@ -215,7 +243,11 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 (defmethod os-stream-open ((stream unix-character-io-stream) filename
 			   if-exists if-does-not-exist share)
   (declare (ignore if-exists if-does-not-exist share)) ;; @@@
-  (setf (os-stream-handle stream) (%open filename :io)))
+  (setf (os-stream-handle stream) (%open filename :io))
+  stream)
+
+(defmethod os-stream-system-type ((stream (eql 'os-character-io-stream)))
+  'unix-character-io-stream)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; binary
@@ -227,7 +259,11 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 (defmethod os-stream-open ((stream unix-binary-input-stream) filename
 			   if-exists if-does-not-exist share)
   (declare (ignore if-exists if-does-not-exist share)) ;; @@@
-  (setf (os-stream-handle stream) (%open filename :input)))
+  (setf (os-stream-handle stream) (%open filename :input))
+  stream)
+
+(defmethod os-stream-system-type ((stream (eql 'os-binary-input-stream)))
+  'unix-binary-input-stream)
 
 (defmethod fill-buffer ((stream unix-binary-input-stream))
   (%fill-buffer stream))
@@ -235,7 +271,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 (defmethod stream-read-sequence ((stream unix-binary-input-stream)
 				 seq &optional start end)
   ;; This is only if we created a unix-stream explicitly or are un-buffered?
-  (with-slots (handle) stream
+  (with-accessors ((handle os-stream-handle)) stream
     (let* ((seq-start (clamp (or start 0)          0 (length seq)))
 	   (seq-end   (clamp (or end (length seq)) 0 (length seq)))
 	   (len (min (- seq-start seq-end) (- (length seq) start))))
@@ -252,7 +288,11 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 (defmethod os-stream-open ((stream unix-binary-output-stream) filename
 			   if-exists if-does-not-exist share)
   (declare (ignore if-exists if-does-not-exist share)) ;; @@@
-  (setf (os-stream-handle stream) (%open filename :output)))
+  (setf (os-stream-handle stream) (%open filename :output))
+  stream)
+
+(defmethod os-stream-system-type ((stream (eql 'os-binary-output-stream)))
+  'unix-binary-output-stream)
 
 (defmethod flush-buffer ((stream unix-binary-output-stream) &key force)
   (%flush-buffer stream :force force))
@@ -260,7 +300,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 (defmethod stream-write-sequence ((stream os-output-stream) seq
 				  &optional (start 0) end)
   ;; This is only if we created a unix-stream explicitly or are un-buffered?
-  (with-slots (handle) stream
+  (with-accessors ((handle os-stream-handle)) stream
     (let* ((seq-start (clamp (or start 0)          0 (length seq)))
 	   (seq-end   (clamp (or end (length seq)) 0 (length seq)))
 	   (len (min (- seq-start seq-end) (- (length seq) start))))
@@ -278,6 +318,10 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 (defmethod os-stream-open ((stream unix-binary-io-stream) filename
 			   if-exists if-does-not-exist share)
   (declare (ignore if-exists if-does-not-exist share)) ;; @@@
-  (setf (os-stream-handle stream) (%open filename :io)))
+  (setf (os-stream-handle stream) (%open filename :io))
+  stream)
+
+(defmethod os-stream-system-type ((stream (eql 'os-binary-io-stream)))
+  'unix-binary-io-stream)
 
 ;; EOF

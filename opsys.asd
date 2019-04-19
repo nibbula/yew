@@ -13,6 +13,7 @@
     :depends-on (:cffi 
 		 ;; How can I avoid using reader conditionals here?
 		 #+(and (or windows win32) (not unix) (not ccl)) :cffi-libffi
+		 :trivial-gray-streams
 		 :dlib)
     :components
     ((:module "base"

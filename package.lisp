@@ -13,7 +13,7 @@
 (defpackage :opsys
   (:documentation "Generic interface to operating system functionality.")
   (:nicknames :nos)
-  (:use :cl :cffi :dlib :opsys-base
+  (:use :cl :cffi :dlib :opsys-base :trivial-gray-streams
 	#+unix :os-unix
 	#+(and windows (not unix)) :os-ms)
   (:export
@@ -192,6 +192,9 @@
    ;; os-stream
    #:os-stream
    #:os-stream-handle
+   #:make-os-stream
+   #:make-os-stream-from-handle
+   #:with-os-stream
 
    ;; stdio
    #:*stdin* #:*stdout* #:*stderr*

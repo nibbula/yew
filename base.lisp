@@ -5,7 +5,7 @@
 
 (defpackage :opsys-base
   (:documentation "Helper functions and setup which are not system specific.")
-  (:use :cl :cffi :dlib)
+  (:use :cl :cffi :dlib :trivial-gray-streams)
   (:export
    ;; Stuff in this file:
    #:config-feature
@@ -121,26 +121,27 @@
    #:os-stream
    #:os-stream-handle
    #:os-stream-open
+   #:os-stream-system-type
    #:os-input-stream
    #:os-stream-input-buffer
-   #:os-input-stream-position
-   #:os-input-stream-input-fill
-   #:os-input-stream-unread-char
-   #:os-input-stream-got-eof
+   #:os-stream-position
+   #:os-stream-input-fill
+   #:os-stream-unread-char
+   #:os-stream-got-eof
    #:os-output-stream
    #:os-stream-output-buffer
-   #:os-output-stream-output-position
-   #:os-output-stream-output-fill
+   #:os-stream-output-position
+   #:os-stream-output-fill
    #:os-io-stream
    #:os-binary-stream
    #:os-binary-input-stream
    #:os-binary-output-stream
    #:os-binary-io-stream
    #:os-character-stream
-   #:os-character-stream-encoding
+   #:os-stream-encoding
    #:os-character-input-stream
    #:os-character-output-stream
-   #:os-character-output-stream-column
+   #:os-stream-column
    #:os-character-io-stream
    #:+buffer-size+
    #:+input-buffer-size+

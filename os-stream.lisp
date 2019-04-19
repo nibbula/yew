@@ -7,7 +7,7 @@
 ;; Hello and welcome to yet another re-implementation of that terrible Common
 ;; Lisp "anti-pattern", the fd-stream, otherwise known as normal Lisp streams
 ;; that give you very slightly more access to the underlying operating system
-;; features, most specifically the system file handle, that can be use with
+;; features, most specifically the system file handle, that can be used with
 ;; other low level O/S API calls. On a Lisp O/S, this is probably unnecessary.
 ;;
 ;; Regardless of how wise the designers of Common Lisp were, they did not try
@@ -108,8 +108,14 @@
     :IF-DOES-NOT-EXIST - one of :ERROR, :CREATE or NIL
     :SHARE - If true, allow passing to sub-processes."
   (declare (ignore if-exists-given if-does-not-exist-given external-format))
-  (let* ((type (os-stream-type-for direction element-type))
-	 (stream (make-instance type)))
+  ;; (let* ((type (os-stream-type-for direction element-type))
+  ;; 	 (stream (make-instance (os-stream-system-type type))))
+  (let* (type stream)
+    (setf type (os-stream-type-for direction element-type))
+    ;; (format t "type = ~s~%" type)
+    ;; (format t "os type = ~s~%" (os-stream-system-type type))
+    (setf stream (make-instance (os-stream-system-type type)))
+    ;; (format t "stream = ~s~%" stream)
     (os-stream-open stream filename if-exists if-does-not-exist share)))
 
 (defun make-os-stream-from-handle (handle
@@ -139,7 +145,9 @@ use of throw), the file is automatically closed."
 	 (close ,stream)))))
   
 (defmethod stream-clear-input ((stream os-input-stream))
-  (with-slots (position unread-char) stream
+  (with-accessors ((position os-stream-position)
+		   (unread-char os-stream-unread-char))
+      stream
     ;; @@@ Should we actually erase the data?
     (setf position 0
 	  unread-char nil))
@@ -147,7 +155,9 @@ use of throw), the file is automatically closed."
 
 (defmethod stream-read-sequence ((stream os-input-stream) seq start end
 				 &key &allow-other-keys)
-  (with-slots (input-buffer position) stream
+  (with-accessors ((input-buffer os-stream-input-buffer)
+		   (position os-stream-position))
+      stream
     (when (= position (length input-buffer))
       (fill-buffer stream)
       (setf position 0))
@@ -173,7 +183,9 @@ use of throw), the file is automatically closed."
 (defmethod stream-clear-output ((stream os-output-stream))
   ;; This is like ‘cl:clear-output’, but for Gray streams: clear the
   ;; given output ‘stream’.  The default method does nothing.
-  (with-slots (output-position output-buffer) stream
+  (with-accessors ((output-position os-stream-output-position)
+		   (output-buffer os-stream-output-buffer))
+      stream
     (setf output-position (length output-buffer))))
 
 (defmethod stream-finish-output ((stream os-output-stream))
@@ -190,7 +202,9 @@ use of throw), the file is automatically closed."
 ;; This is like ‘cl:write-sequence’, but for Gray streams.
 (defmethod stream-write-sequence ((stream os-output-stream) seq start end
 				  &key &allow-other-keys)
-  (with-slots (output-buffer output-position) stream
+  (with-accessors ((output-buffer os-stream-output-buffer)
+		   (output-position os-stream-output-position))
+      stream
     (when (= output-position (length output-buffer))
       (flush-buffer stream)
       (setf output-position 0))
@@ -221,7 +235,10 @@ use of throw), the file is automatically closed."
 		get-byte))
 
 (defun get-byte (stream)
-  (with-slots (input-buffer position got-eof) stream
+  (with-accessors ((input-buffer os-stream-input-buffer)
+		   (position os-stream-position)
+		   (got-eof os-stream-got-eof))
+      stream
     (or (if (= position (length input-buffer))
 	    (when (not (fill-buffer stream))
 	      (setf got-eof t)
@@ -239,7 +256,9 @@ use of throw), the file is automatically closed."
 			  (unsigned-byte 8)) put-byte))
 
 (defun put-byte (stream byte)
-  (with-slots (output-buffer output-position) stream
+  (with-accessors ((output-buffer os-stream-output-buffer)
+		   (output-position os-stream-output-position))
+      stream
     (when (= output-position (length output-buffer))
       (flush-buffer stream)
       (setf output-position 0))
@@ -262,28 +281,40 @@ use of throw), the file is automatically closed."
 	 (ftype (function (os-input-stream) (or character null)) get-char))
 
 (defun get-char (stream)
-  (with-slots (unread-char input-buffer position got-eof) stream
+  (with-accessors ((unread-char os-stream-unread-char)
+		   (input-buffer os-stream-input-buffer)
+		   (position os-stream-position)
+		   (input-fill os-stream-input-fill)
+		   (got-eof os-stream-got-eof))
+      stream
     (or (and unread-char (prog1 unread-char (setf unread-char nil)))
-	(if (= position (length input-buffer))
-	    (when (not (fill-buffer stream))
-	      (setf got-eof t)
-	      (return-from get-char nil))
-	    (prog1 (aref input-buffer position)
-	      (incf position))))))
+	(when (or (= position (length input-buffer))
+		  (= position input-fill))
+	  (when (not (fill-buffer stream))
+	    (setf got-eof t)
+	    (return-from get-char nil)))
+	(prog1 (code-char (aref input-buffer position))
+	  (incf position)))))
 
 (defmethod stream-peek-char ((stream os-character-input-stream))
   ;; This is used to implement ‘peek-char’; this corresponds to
   ;; ‘peek-type’ of ‘nil’.  It returns either a character or ‘:eof’.
   ;; The default method calls ‘stream-read-char’ and
   ;; ‘stream-unread-char’.
-  (with-slots (unread-char input-buffer position got-eof) stream
+  (with-accessors ((unread-char os-stream-unread-char)
+		   (input-buffer os-stream-input-buffer)
+		   (position os-stream-position)
+		   (input-fill os-stream-position)
+		   (got-eof os-stream-got-eof))
+      stream
     (or (and got-eof :eof)
 	unread-char
-	(if (= position (length input-buffer))
-	    (when (not (fill-buffer stream))
-	      (setf got-eof t)
-	      (return-from stream-peek-char :eof))
-	    (aref input-buffer position)))))
+	(when (or (= position (length input-buffer))
+		  (= position input-fill))
+	  (when (not (fill-buffer stream))
+	    (setf got-eof t)
+	    (return-from stream-peek-char :eof)))
+	(code-char (aref input-buffer position)))))
 
 (defmethod stream-read-char-no-hang ((stream os-character-input-stream))
   ;; This is used to implement ‘read-char-no-hang’.  It returns either a
@@ -292,7 +323,9 @@ use of throw), the file is automatically closed."
   ;; ‘fundamental-character-input-stream’ simply calls
   ;; ‘stream-read-char’; this is sufficient for file streams, but
   ;; interactive streams should define their own method.
-  (with-slots (unread-char got-eof) stream
+  (with-accessors ((unread-char os-stream-unread-char)
+		   (got-eof os-stream-got-eof))
+      stream
     (or (and unread-char (prog1 unread-char (setf unread-char nil)))
 	(and (listen-for stream 0)
 	     (get-char stream))
@@ -303,30 +336,48 @@ use of throw), the file is automatically closed."
   ;; object, or the symbol ‘:eof’ if the stream is at end-of-file.
   ;; Every subclass of ‘fundamental-character-input-stream’ must define
   ;; a method for this function.
-  (with-slots (input-buffer position) stream
-    (when (= position (length input-buffer))
-      (when (not (fill-buffer stream))
-	(return-from stream-read-char :eof)))
-    (prog1 (aref input-buffer position)
-      (incf position))))
+  ;; (with-accessors ((input-buffer os-stream-input-buffer)
+  ;; 		   (position os-stream-position)
+  ;; 		   (input-fill os-stream-input-fill))
+  ;;     stream
+  ;;   (when (or (= position (length input-buffer))
+  ;; 	      (= position input-fill))
+  ;;     (when (not (fill-buffer stream))
+  ;; 	(return-from stream-read-char :eof)))
+  ;;   (prog1 (code-char (aref input-buffer position))
+  ;;     (incf position))))
+  (or (get-char stream) :eof))
 
 (defmethod stream-read-line ((stream os-character-input-stream))
   ;; This is used by ‘read-line’.  A string is returned as the first
   ;; value.  The second value is true if the string was terminated by
   ;; end-of-file instead of the end of a line.  The default method uses
   ;; repeated calls to ‘stream-read-char’.
-  (with-slots (input-buffer position) stream
-    (with-output-to-string (str)
-      (loop
-	 (cond
-	   ((char/= (aref input-buffer position) #\newline)
-	    (return-from stream-read-line (values str nil)))
-	   ((= position (length input-buffer))
-	    (when (not (fill-buffer stream))
-	      (return-from stream-read-line (values str t))))
-	   (t
-	    (write-char (aref input-buffer position) str)
-	    (incf position)))))))
+  (with-accessors ((input-buffer os-stream-input-buffer)
+		   (position os-stream-position)
+		   (input-fill os-stream-input-fill))
+      stream
+    (let (eof)
+      (values
+       (with-output-to-string (str)
+	 (loop
+	    (cond
+	      ((= position (length input-buffer))
+	       (when (not (fill-buffer stream))
+		 (setf eof t)
+		 (return nil)))
+	      ((= position input-fill) ;; @@@ maybe merge with previous case
+	       (when (not (fill-buffer stream))
+		 (setf eof t)
+		 (return nil)))
+	      ((char= (code-char (aref input-buffer position)) #\newline)
+	       (incf position)
+	       (setf eof nil)
+	       (return nil))
+	      (t
+	       (write-char (code-char (aref input-buffer position)) str)
+	       (incf position)))))
+       eof))))
 
 (defmethod stream-listen ((stream os-character-input-stream))
   ;; This is used by ‘listen’.  It returns true or false.  The default
@@ -334,7 +385,9 @@ use of throw), the file is automatically closed."
   ;; Most streams should define their own method since it will usually
   ;; be trivial and will always be more efficient than the default
   ;; method.
-  (with-slots (input-buffer position) stream
+  (with-accessors ((input-buffer os-stream-input-buffer)
+		   (position os-stream-position))
+      stream
     (or (< position (length input-buffer))
 	(listen-for stream 0))))
 
@@ -343,20 +396,27 @@ use of throw), the file is automatically closed."
   ;; Return ‘nil’.  Every subclass of
   ;; ‘fundamental-character-input-stream’ must define a method for this
   ;; function.
-  (with-slots (input-buffer position unread-char) stream
-    (if (not (zerop position))
-	(progn
-	  (decf position)
-	  ;; @@@ should we error if the character isn't the same?
-	  (setf (aref input-buffer position) character))
-	(setf unread-char character)))
-  nil)
+  (with-accessors ((input-buffer os-stream-input-buffer)
+		   (position os-stream-position)
+		   (unread-char os-stream-unread-char))
+      stream
+    (let ((code (char-code character)))
+      (if (not (zerop position))
+	  (progn
+	    (decf position)
+	    ;; @@@ should we error if the character isn't the same?
+	    (setf (aref input-buffer position) code))
+	  (setf unread-char character)))
+    nil))
 
 ;;;;;;;;;;;
 ;; output
 
 (defun put-char (stream char)
-  (with-slots (output-buffer output-position column) stream
+  (with-accessors ((output-buffer os-stream-output-buffer)
+		   (output-position os-stream-output-position)
+		   (column os-stream-column))
+      stream
     (when (= output-position (length output-buffer))
       (flush-buffer stream)
       (setf output-position 0))
@@ -381,7 +441,7 @@ use of throw), the file is automatically closed."
   ;; method uses ‘stream-line-column’ and repeated calls to
   ;; ‘stream-write-char’ with a ‘#space’ character; it returns ‘nil’ if
   ;; ‘stream-line-column’ returns ‘nil’.
-  (with-slots (column) stream
+  (with-accessors ((column os-stream-column)) stream
     (loop :while (< column col)
 	 :do (put-char stream #\space)))
   t)
@@ -391,7 +451,7 @@ use of throw), the file is automatically closed."
   ;; beginning of a line.  Returns ‘t’ if it output a new line, nil
   ;; otherwise.  Used by ‘fresh-line’.  The default method uses
   ;; ‘stream-start-line-p’ and ‘stream-terpri’.
-  (with-slots (column) stream
+  (with-accessors ((column os-stream-column)) stream
     (if (/= 0 column)
 	(and (put-char stream #\newline)
 	     t)
@@ -405,7 +465,7 @@ use of throw), the file is automatically closed."
   ;; every character output stream class that is defined, a method must
   ;; be defined for this function, although it is permissible for it to
   ;; always return ‘nil’.
-  (os-character-output-stream-column stream))
+  (os-stream-column stream))
 
 (defmethod stream-line-length ((stream os-character-output-stream))
   ;; Return the stream line length or ‘nil’.
@@ -428,7 +488,7 @@ use of throw), the file is automatically closed."
   ;; ‘fundamental-character-output-stream’ uses ‘stream-line-column’, so
   ;; if that is defined to return ‘nil’, then a method should be
   ;; provided for either ‘stream-start-line-p’ or ‘stream-fresh-line’.
-  (zerop (os-character-output-stream-column stream)))
+  (zerop (os-stream-column stream)))
 
 (defmethod stream-terpri ((stream os-character-output-stream) )
   ;; Writes an end of line, as for ‘terpri’.  Returns ‘nil’.  The
@@ -443,7 +503,7 @@ use of throw), the file is automatically closed."
   (put-char stream character))
 
 (defun update-column-for-char (stream char)
-  (with-slots (column) stream
+  (with-accessors ((column os-stream-column)) stream
     (cond
       ((graphic-char-p char)
        (cond

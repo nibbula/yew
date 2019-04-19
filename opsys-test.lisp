@@ -101,14 +101,103 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; os-streams
 
-;; (deftests (opsys-stream-1 :doc "OS streams")
-;;   (make-instance 'os-stream
+(defvar *test-file-num* nil)
+
+(defun test-file-name (str)
+  (format nil "~a-~d" str *test-file-num*))
+
+(defun stream-setup ()
+  (setf *test-file-num* (random (expt 2 30)))
+  ;; file with 5 lines
+  (with-open-file (str (test-file-name "fizz") :direction :output)
+    (loop :for i :from 1 :to 5 :do
+       (format str "line ~d~%" i)))
+
+  ;; file with 5 lines the last of which doesn't have a trailing newline
+  (with-open-file (str (test-file-name "fizz-nonl") :direction :output)
+    (loop :for i :from 1 :to 4 :do
+       (format str "line ~d~%" i))
+    (format str "line ~d" 5))
+
+  (with-open-file (str (test-file-name "fizz-chars") :direction :output)
+    (format str "12345"))
+
+  (with-open-file (str (test-file-name "fizz-blank") :direction :output)
+    (format str "    x")))
+
+(defun stream-takedown ()
+  (dolist (x '("fizz" "fizz-nonl" "fizz-chars" "fizz-blank")) 
+    (delete-file (test-file-name x))))
+
+(defun lines-test (filename)
+  (let (ss (okay t) (i 1))
+    (unwind-protect
+	 (progn
+	   (setf ss (make-os-stream (test-file-name filename)))
+	   ;; (setf ss (open (test-file-name filename)))
+	   (loop :with line
+	      :while (setf line (read-line ss nil nil))
+	      :do
+	      (when (not (equal line (format nil "line ~d" i)))
+		(format t "line ~d is not equal~%" i)
+		(setf okay nil))
+	      (incf i))
+	   (when (/= i 6)
+	     (format t "last line is not 6 ~d~%" i)
+	     (setf okay nil)))
+      (close ss))
+    okay))
+
+(defun chars-test (filename)
+  (let (ss (okay t) (i 1) c)
+    (unwind-protect
+	 (progn
+	   (setf ss (make-os-stream (test-file-name filename)))
+	   ;; (setf ss (open (test-file-name filename)))
+	   (loop
+	      :while (setf c (read-char ss nil))
+	      :do
+	      (when (not (char= c (digit-char i)))
+		(format t "char ~d is not right~%" i)
+		(setf okay nil))
+	      (incf i))
+	   (when (/= i 6)
+	     (format t "last char is not 6 ~d~%" i)
+	     (setf okay nil)))
+      (close ss))
+    okay))
+
+(defmacro with-test-stream ((var file) &body body)
+  `(let (,var (okay t))
+     (unwind-protect
+	  (progn
+	    (setf ,var (make-os-stream (test-file-name ,file)))
+	    ,@body)
+       (close ,var))
+     okay))
+
+(deftests (opsys-stream-1 :doc "OS streams")
+  :setup stream-setup
+  :takedown stream-takedown
+  "Test reading lines."
+  (lines-test "fizz")
+  "Test reading lines without a trailing newline."
+  (lines-test "fizz-nonl")
+  "Test reading by characters."
+  (chars-test "fizz-chars")
+  (with-test-stream (ss "fizz-chars")
+    (char= #\1 (peek-char nil ss)))
+  (with-test-stream (ss "fizz-chars")
+    (char= #\2 (peek-char #\1 ss)))
+  (with-test-stream (ss "fizz-blank")
+    (char= #\x (peek-char t ss))))
 
 (deftests (opsys-all :doc "All tests for OPSYS.")
   opsys-path-1
   opsys-terminal-1
   opsys-terminal-2
-  opsys-terminal-3)
+  opsys-terminal-3
+  opsys-stream-1)
 
 (defun run ()
   (run-group-name 'opsys-all :verbose t))
