@@ -139,7 +139,7 @@ use of throw), the file is automatically closed."
   `(let (,stream)
      (unwind-protect
 	  (progn
-	    (setf ,stream (apply #'make-os-stream ,filespec ,@options))
+	    (setf ,stream (apply #'make-os-stream (list ,filespec) ,@options))
 	    ,@body)
        (when ,stream
 	 (close ,stream)))))
@@ -153,7 +153,29 @@ use of throw), the file is automatically closed."
 	  unread-char nil))
   nil)
 
-(defmethod stream-read-sequence ((stream os-input-stream) seq start end
+(defmethod stream-clear-output ((stream os-output-stream))
+  ;; This is like ‘cl:clear-output’, but for Gray streams: clear the
+  ;; given output ‘stream’.  The default method does nothing.
+  (with-accessors ((output-position os-stream-output-position)
+		   (output-buffer os-stream-output-buffer))
+      stream
+    (setf output-position (length output-buffer))))
+
+(defmethod stream-finish-output ((stream os-output-stream))
+  ;; Attempts to ensure that all output sent to the Stream has reached
+  ;; its destination, and only then returns false.  Implements
+  ;; ‘finish-output’.  The default method does nothing.
+  (flush-buffer stream))
+
+(defmethod stream-force-output ((stream os-output-stream))
+  ;; Attempts to force any buffered output to be sent.  Implements
+  ;; ‘force-output’.  The default method does nothing.
+  (flush-buffer stream :force t))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; "binary" streams
+
+(defmethod stream-read-sequence ((stream os-binary-input-stream) seq start end
 				 &key &allow-other-keys)
   (with-accessors ((input-buffer os-stream-input-buffer)
 		   (position os-stream-position))
@@ -180,27 +202,8 @@ use of throw), the file is automatically closed."
 	   (setf position 0))))
   seq)
 
-(defmethod stream-clear-output ((stream os-output-stream))
-  ;; This is like ‘cl:clear-output’, but for Gray streams: clear the
-  ;; given output ‘stream’.  The default method does nothing.
-  (with-accessors ((output-position os-stream-output-position)
-		   (output-buffer os-stream-output-buffer))
-      stream
-    (setf output-position (length output-buffer))))
-
-(defmethod stream-finish-output ((stream os-output-stream))
-  ;; Attempts to ensure that all output sent to the Stream has reached
-  ;; its destination, and only then returns false.  Implements
-  ;; ‘finish-output’.  The default method does nothing.
-  (flush-buffer stream))
-
-(defmethod stream-force-output ((stream os-output-stream))
-  ;; Attempts to force any buffered output to be sent.  Implements
-  ;; ‘force-output’.  The default method does nothing.
-  (flush-buffer stream :force t))
-
 ;; This is like ‘cl:write-sequence’, but for Gray streams.
-(defmethod stream-write-sequence ((stream os-output-stream) seq start end
+(defmethod stream-write-sequence ((stream os-binary-output-stream) seq start end
 				  &key &allow-other-keys)
   (with-accessors ((output-buffer os-stream-output-buffer)
 		   (output-position os-stream-output-position))
@@ -226,9 +229,6 @@ use of throw), the file is automatically closed."
 	   (flush-buffer stream)
 	   (setf output-position 0))))
   seq)
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; "binary" streams
 
 (declaim (inline get-byte)
 	 (ftype (function (os-input-stream) (or (unsigned-byte 8) null))
@@ -276,6 +276,33 @@ use of throw), the file is automatically closed."
 
 ;;;;;;;;;;
 ;; input
+
+(defmethod stream-read-sequence ((stream os-binary-input-stream) seq start end
+				 &key &allow-other-keys)
+  (with-accessors ((input-buffer os-stream-input-buffer)
+		   (position os-stream-position))
+      stream
+    (when (= position (length input-buffer))
+      (fill-buffer stream)
+      (setf position 0))
+    (loop
+       :with pos = (or start 0)
+       :and seq-end = (or end (length seq))
+       :with copy-size
+       :and left = (- seq-end pos)
+       ;; :and len = (- seq-end pos)
+       :while (not (zerop left))
+       :do
+	 (setf copy-size (min left (- (length input-buffer) position))
+	       (subseq seq pos (+ pos copy-size))
+	       (subseq input-buffer position (+ position copy-size)))
+	 (incf pos copy-size)
+	 (incf position copy-size)
+	 (decf left copy-size)
+	 (when (= position (length input-buffer))
+	   (fill-buffer stream)
+	   (setf position 0))))
+  seq)
 
 (declaim (inline get-char)
 	 (ftype (function (os-input-stream) (or character null)) get-char))
@@ -411,6 +438,34 @@ use of throw), the file is automatically closed."
 
 ;;;;;;;;;;;
 ;; output
+
+;; This is like ‘cl:write-sequence’, but for Gray streams.
+(defmethod stream-write-sequence ((stream os-binary-output-stream) seq start end
+				  &key &allow-other-keys)
+  (with-accessors ((output-buffer os-stream-output-buffer)
+		   (output-position os-stream-output-position))
+      stream
+    (when (= output-position (length output-buffer))
+      (flush-buffer stream)
+      (setf output-position 0))
+    (loop
+       :with left = (- (or end (length seq)) (or start 0))
+       :and pos = (or start 0)		; position in seq
+       :and copy-size
+       :while (not (zerop left))
+       :do
+	 (setf copy-size (min left (- output-position
+				      (length output-buffer)))
+	       (subseq output-buffer
+		       output-position (+ output-position copy-size))
+	       (subseq seq pos (+ pos copy-size)))
+	 (incf pos copy-size)
+	 (incf output-position copy-size)
+	 (decf left copy-size)
+	 (when (= output-position (length output-buffer))
+	   (flush-buffer stream)
+	   (setf output-position 0))))
+  seq)
 
 (defun put-char (stream char)
   (with-accessors ((output-buffer os-stream-output-buffer)
