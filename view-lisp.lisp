@@ -558,7 +558,6 @@
 (defun view-lisp ()
   (view-tree (make-instance 'lisp-node)))
 
-;; This is really just for the autoload.
 #+lish
 (lish:defcommand view-lisp ()
   "View things in the Lisp system."
