@@ -31,7 +31,7 @@ the branches and subsequently behave like a static OBJECT-NODE.
 
 There are methods which one can specialize to change the behavior of nodes:
 
-   node-branches ndoe => list of brances
+   node-branches ndoe => list of branches
      Specializing this, you can make a tree out of anything. This is how the
      dynamic and cached-dynamic trees work, so for those you would have to
      preserve their semantics, if you want them to live up to their name.
@@ -392,7 +392,7 @@ of node."
 
 (defun make-tree (thing func &key max-depth (test #'equal) type)
   "Generate a tree for THING, where FUNC is a function (FUNC THING) which ~
-returns a list of the brances of THING. Makes a tree of up to a depth of ~
+returns a list of the branches of THING. Makes a tree of up to a depth of ~
 MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
   (if type
       (%make-tree-with-type thing func type :max-depth max-depth :test test)
@@ -845,6 +845,13 @@ been encountered."
 	   (format nil " open     : ~a" (node-open current))
 	   (format nil " branches : ~a" (node-branches current))
 	   (format nil " parent   : ~a" (get-parent current))))))
+
+(defmethod sort-command ((o tree-viewer))
+  "Sort the branches of the current node."
+  (with-slots (current) o
+    (setf (node-branches current)
+	  (sort (node-branches current) #'string<
+		:key (_ (princ-to-string (node-object _)))))))
 
 (defmethod initialize-instance
     :after ((o tree-viewer) &rest initargs &key &allow-other-keys)
