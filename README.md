@@ -1,1 +1,1 @@
-This is a quaint and shabby town in the land of Lisp.
+This is a quaint and shabby village in the land of Lisp.
