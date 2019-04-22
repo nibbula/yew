@@ -22,6 +22,14 @@
    #:!ls
    #:ls
    #:list-files
+   #:file-item-name
+   #:file-item-directory
+   #:file-item-info
+   #:file-item-creation-date
+   #:file-item-access-date
+   #:file-item-modification-date
+   #:file-item-size
+   #:file-item-type
    ))
 (in-package :ls)
 
