@@ -311,6 +311,7 @@ PARENT pid, and PROC-LIST as returned by opsys:process-list."
 	   (children (remove-if (_ (/= (os-process-parent-id _) parent))
 				proc-list))
 	   (tty-dev (file-status-device-type (stat (dev-name tty)))))
+      ;;(format t "ffp ~s ~s ~s ~s~%" tty-dev parent pick children)
       (loop :for p :in children :do
 	 #+unix
 	 (let ((sys-proc (system-process-info (os-process-id p))))
@@ -338,7 +339,7 @@ PARENT pid, and PROC-LIST as returned by opsys:process-list."
     (declare (ignore long))
     (let ((proc (find (find-foreground-process proc-list pid tty pid)
 		      proc-list :key #'os-process-id)))
-      (os-process-name proc)))
+      (and proc (os-process-name proc))))
 
   (defun who-what (&key users no-header long)
     (declare (ignore users))
@@ -362,13 +363,16 @@ PARENT pid, and PROC-LIST as returned by opsys:process-list."
 			       (unix-to-universal-time
 				(timeval-seconds (utmpx-tv u))))
 			      (device-idle-string (dev-name (utmpx-line u)))
-			      (guess-command long proc-list
-					     (utmpx-pid u) (utmpx-line u))))))
+			      (or (guess-command long proc-list
+						 (utmpx-pid u)
+						 (utmpx-line u))
+				  "")))))
 	  (endutxent))
-	(grout-print-table 
-	 (make-table-from
-	  tab :column-names '("User" "Tty" "From" "Login@" "Idle" "What"))
-	  :print-titles (not no-header))))))
+	(setf tab
+	      (make-table-from
+	       tab :column-names '("User" "Tty" "From" "Login@" "Idle" "What")))
+	(grout-print-table tab :print-titles (not no-header))
+	tab))))
 
 #-unix
 (defun who-what (users &key no-header long)
@@ -379,6 +383,6 @@ PARENT pid, and PROC-LIST as returned by opsys:process-list."
    (long boolean :short-arg #\l :help "True show the longer output.")
    (users user :repeating t :help "Users to show."))
   "Show who's doing what."
-  (who-what :users users :no-header no-header :long long))
+  (setf lish:*output* (who-what :users users :no-header no-header :long long)))
 
 ;; EOF
