@@ -67,6 +67,10 @@ for a range of rows, or a table-point for a specific item,"
     :initarg :renderer :accessor table-viewer-renderer
     :initform (make-instance 'viewer-table-renderer) :type table-renderer
     :documentation "The table renderer.")
+   (long-titles
+    :initarg :long-titles :accessor table-viewer-long-titles
+    :initform nil :type boolean
+    :documentation "True to show long column titles.")
    (message
     :initarg :message :accessor table-viewer-message :initform nil
     :documentation "Temporary message."))
@@ -226,9 +230,9 @@ for a range of rows, or a table-point for a specific item,"
 	   (setf cell-width (aref sizes col-num)
 		 clipped-width (max 0 (min (- *max-width* output-x)
 					   cell-width)))
-	   (dbugf :tv "title cell-width ~s clipped-width ~s output-x ~s ~
-                       *max-width* ~s~%"
-		  cell-width clipped-width output-x *max-width*)
+	   ;; (dbugf :tv "title cell-width ~s clipped-width ~s output-x ~s ~
+           ;;             *max-width* ~s~%"
+	   ;; 	  cell-width clipped-width output-x *max-width*)
 	   (setf (values name justification)
 		 (de-dork
 		  (column-name (oelt (table-columns table) col-num))))
@@ -325,10 +329,11 @@ for a range of rows, or a table-point for a specific item,"
 			 &key long-titles print-titles max-width
 			   &allow-other-keys)
   "Output a table."
-  (declare (ignore long-titles print-titles max-width))
+  (declare (ignore print-titles max-width))
   (with-slots (output-x output-y separator width x y start rows
 	       last-displayed-col) renderer
-    (let* ((row-num (table-point-row start))
+    (let* ((*long-titles* long-titles)
+	   (row-num (table-point-row start))
 	   (col-num (table-point-col start))
 	   (sizes (table-output-sizes renderer table))
 	   (sep-len (display-length separator))
@@ -338,7 +343,7 @@ for a range of rows, or a table-point for a specific item,"
 	   (*destination* (or destination *terminal*))
 	   (*max-width* width)
 	   (*trailing-spaces* t)) ;; @@@ bogus?
-      (dbugf :tv "sizes ~s~%" sizes)
+      ;; (dbugf :tv "sizes ~s~%" sizes)
       (setf output-x 0
 	    output-y 0
 	    last-displayed-col nil)
@@ -609,8 +614,8 @@ for a range of rows, or a table-point for a specific item,"
 
 (defun record-info (o)
   (with-slots (table (point inator::point)) o
-    (dbugf :tv "table ~s row ~s~%" table
-	   (oelt table (table-point-row point)))
+    ;; (dbugf :tv "table ~s row ~s~%" table
+    ;; 	   (oelt table (table-point-row point)))
     (let ((outer-width (- (tt-width) 4)))
       (display-text
        "Record Info"
@@ -640,7 +645,7 @@ for a range of rows, or a table-point for a specific item,"
       (call-next-method))))
 
 (defmethod update-display ((o table-viewer))
-  (with-slots (table renderer (point inator::point) message) o
+  (with-slots (table renderer (point inator::point) message long-titles) o
     (with-slots (x y start rows cursor selection last-displayed-col) renderer
       (tt-home)
       (tt-erase-below)
@@ -658,7 +663,8 @@ for a range of rows, or a table-point for a specific item,"
       (setf (current-position renderer) point)
 
       ;; Output the table rows
-      (output-table table renderer *terminal*)
+      ;; (dbugf :tv "Before output table ~s~%" long-titles)
+      (output-table table renderer *terminal* :long-titles long-titles)
 
       ;; Show the message temporarily.
       (when message
@@ -681,15 +687,17 @@ for a range of rows, or a table-point for a specific item,"
 ;; @@@@@@@
 ;; (defgeneric table-viewer-for (
 
-(defun view-table (table)
+(defun view-table (table &key long-titles)
   "View a table."
   (with-terminal ()
     (let* ((*table-viewer*
 	    (make-instance 'table-viewer
 			   :table table
 			   ;; :point (make-table-point)
+			   :long-titles long-titles
 			   ))
-	   (renderer (table-viewer-renderer *table-viewer*)))
+	   (renderer (table-viewer-renderer *table-viewer*))
+	   (*long-titles* long-titles))
       (setf (rows renderer)
 	    (min (olength (container-data table)) (- (tt-height) 2)))
       ;; Calculate the sizes of the whole table for side effect.
@@ -718,31 +726,35 @@ if THING or lish:*input* NIL."
 
 #+lish
 (lish:defcommand print-table
-  ((table object :help "Table to print."))
+  ((long-titles boolean :short-arg #\l :default nil
+    :help "True to show full column titles.")
+   (table object :help "Table to print."))
   :accepts '(table sequence hash-table structure-object)
   "Print a table to the terminal."
   (with-coerced-table (tab table)
     (with-grout ()
-      (grout-print-table tab))))
+      (grout-print-table tab :long-titles long-titles))))
 
 (defun view-table-file (file-name)
   "View the contents of FILE-NAME as a table."
   (view-table (read-table file-name)))
 
-(defun view-table-thing (thing)
+(defun view-table-thing (thing &key long-titles)
   "View the THING as a table."
   (with-coerced-table (tab thing)
-    (view-table tab)))
+    (view-table tab :long-titles long-titles)))
 
 #+lish
 (lish:defcommand view-table
-  ((table object :optional t :help "Table to view."))
+  ((long-titles boolean :short-arg #\l :default nil
+    :help "True to show full column titles.")
+   (table object :optional t :help "Table to view."))
   :accepts '(table sequence hash-table structure-object)
   "View a table. Pass or pipe it either a table:table object, or something which
 has a table:make-table-from method, which by default are lists, hash-tables,
 arrays, and structures. If it's a string or pathname, try to read a table from
 the file."
   :accepts '(table sequence hash-table structure-object)
-  (view-table-thing table))
+  (view-table-thing table :long-titles long-titles))
 
 ;; EOF

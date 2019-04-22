@@ -167,7 +167,7 @@ function."
     (flet ((format-it (fmt)
 	     (let ((*print-pretty* nil))
 	       (with-output-to-fat-string (str)
-		 (dbugf :tv "normal format ~s ~s ~s~%" fmt width cell)
+		 ;; (dbugf :tv "normal format ~s ~s ~s~%" fmt width cell)
 		 (format str fmt (or width 0) cell)))))
       (cond
 	((and use-given-format (likely-callable given-format))
@@ -227,6 +227,7 @@ function."
 				     :use-given-format use-given-format)))
 
 (defmethod table-output-sizes (renderer table)
+  ;;(dbugf :tv "Default table-output-sizes~%")
   (block nil
     (let ((col-num 0)
 	  sizes)
@@ -234,19 +235,30 @@ function."
       (omapn
        (lambda (col)
 	 (push (max (column-width col)
-		    (table-output-cell-display-width
-		     renderer table (column-name col) col-num
-		     :use-given-format nil))
+		    (if *long-titles*
+			(table-output-cell-display-width
+			 renderer table (column-name col) col-num
+			 :use-given-format nil)
+			0))
 	       sizes)
+	 ;; (dbugf :tv "col ~s ~s ~s~%" (column-name col)
+	 ;; 	(table-output-cell-display-width
+	 ;; 	 renderer table (column-name col) col-num
+	 ;; 	 :use-given-format nil))
 	 (incf col-num))
        (table-columns table))
+      (setf sizes (nreverse sizes))
+      ;; (dbugf :tv "zeroth round  ~s~%" sizes)
       (when (zerop col-num)
 	(return #()))
 
       ;; Then set by actual data. We make an ajustable array in case the table
       ;; has variable length rows, we can handle it.
-      (setf sizes (make-array col-num :fill-pointer 0 :adjustable t
+      (setf sizes (make-array col-num
+			      :fill-pointer (length sizes)
+			      :adjustable t
 			      :initial-contents sizes))
+      ;; (dbugf :tv "first round  ~s~%" sizes)
       (omapn
        (lambda (row)
 	 (setf col-num 0)
@@ -264,6 +276,7 @@ function."
 	      (incf col-num))
 	    row)))
        table)
+      ;; (dbugf :tv "second round ~s~%" sizes)
       sizes)))
 
 ;; Default method which does nothing.
@@ -645,7 +658,7 @@ resized to fit in this, and the whole row is trimmed to this."
 
     ;; Adjust column sizes by field data
     (text-table-adjust-sizes table renderer sizes max-width)
-    (dbugf :tv "ttr sizes ~s~%" sizes)
+    ;; (dbugf :tv "ttr sizes ~s~%" sizes)
 
     ;; Flip pre-set sizes, and force unset sizes to zero.
     ;; (format t "sizes = ~s~%" sizes) (finish-output)
