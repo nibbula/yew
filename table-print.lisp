@@ -718,25 +718,39 @@ resized to fit in this, and the whole row is trimmed to this."
 						   (1+ size))
 			    cell-col cursor
 			    cell-width size
-			    field (car cell-lines)))
+			    field (car cell-lines))
+		      ;;(dbugf :tp "cell-col 0 ~s ~s~%" cell-col cell-lines)
+		      )
 		    (table-output-cell renderer table field size just
 				       row-num column-num)
+		    ;; (incf cursor (table-output-cell-display-width
+		    ;;  		  renderer table field column-num))
+		    ;; (incf cursor size)
+		    ;; (dbugf :tp "cursor ~s~%" cursor)
 		    (when (and (< column-num (1- row-len))
 			       (or (not max-width)
 				   (< cursor (1- max-width))))
 		      (write-string separator stream)
 		      (incf cursor (display-length separator)))
+		    ;; (dbugf :tp "cursor ~s~%" cursor)
 		    (incf column-num))
 		row)
 	       (when cell-lines
 		 (loop :for l :in (cdr cell-lines) :do
-		    (when (or (not max-width) (< cursor (1- max-width)))
+		    (when (or (not max-width) (<= cursor (1- max-width)))
 		      (terpri stream))
 		    (format stream "~v,,,va"
 			    cell-col #\space #\space)
 		    (setf cursor cell-col)
+		    ;; (write-string separator stream)
+		    ;; (incf cursor (display-length separator))
+		    ;; (dbugf :tp "cell-col n ~s~%" cell-col)
 		    (table-output-cell renderer table l cell-width just
-				       row-num column-num))
+				       row-num column-num)
+		    (incf cursor (table-output-cell-display-width
+				  renderer table l column-num))
+		    (when (or (not max-width) (< cursor (1- max-width)))
+		      (terpri stream)))
 		 (setf cell-lines nil))
 	       (when (or (not max-width) (< cursor (1- max-width)))
 		 (terpri stream)))
