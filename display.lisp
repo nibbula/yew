@@ -284,6 +284,10 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 ;; An update that probably requires an optimizing terminal to be at all
 ;; efficient.
 
+(defun ends-with-newline-p (string)
+  "Return true if =string= end with a newline."
+  (and (ochar-equal #\newline (ochar string (1- (olength string)))) t))
+
 ;; Now with more ploof!
 (defun redraw-display (e &key erase)
   (declare (ignore erase)) ; @@@
@@ -318,7 +322,11 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 				e :buffer temporary-message
 				:start 0 :cols cols)))
 	   (msg-lines     (if temporary-message
-			      (1+ (length msg-endings))
+			      (+
+			       ;; (if (ends-with-newline-p temporary-message)
+			       ;; 	   1 1)
+			       1
+			       (length msg-endings))
 			      0))
 	   (total-lines   (+ prompt-lines buf-lines msg-lines))
 	   (line-last-col (cddr (assoc line-end spots)))
