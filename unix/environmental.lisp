@@ -1072,6 +1072,12 @@ Returns an integer."
 
 (setf *rlimit-resources* (nreverse *rlimit-resources*))
 
+(defconstant +RLIMIT-INFINITY+
+  #.(1- (ash 1 (* (cffi:foreign-type-size :unsigned-long) 8)))
+  "The unlimited value.")
+
+(defconstant +RLIM-INFINITY+ #.+RLIMIT-INFINITY+)
+
 (defcstruct foreign-rlimit
   (rlim_cur rlim-t)			; soft limit
   (rlim_max rlim-t))			; hard limit
@@ -1094,11 +1100,17 @@ Returns an integer."
   maximum				; hard limit
   )
 
-(defun rlimit-number (resource)
-  "Return the value of +SC-*+ constant corresponding to KEYWORD."
+(defun rlimit-number (resource &optional (error-p t))
+  "Return the value of +RLIMIT-*+ constant corresponding to KEYWORD. If ERROR-P is
+NIL, return NIL if RESOURCE is not known, otherwise an error would be signaled.
+If RESOURCE is an integer, just return it."
   (etypecase resource
-    (keyword (symbol-value
-	      (intern (s+ "+RLIMIT-" (symbol-name resource) #\+) :opsys-unix)))
+    (keyword
+     (let ((sym-str (s+ "+RLIMIT-" (symbol-name resource) #\+))
+	   sym)
+       (when (or error-p (and (setf sym (find-symbol sym-str :opsys-unix))
+			      (boundp sym)))
+	 (symbol-value (intern sym-str :opsys-unix)))))
     (integer resource)))
 
 (defun getrlimit (resource)
@@ -1129,6 +1141,15 @@ Returns an integer."
 				  '(:struct foreign-rlimit) 'rlim_cur)
      :maximum (foreign-slot-value old-rlim
 				  '(:struct foreign-rlimit) 'rlim_max))))
+
+(defun get-pipe-size ()
+  ;; linux version < 2.6.11 = 4096 
+  ;; linux version > 2.6.11 < 2.6.35 = (* 16 page-size)
+  ;; linux versoin > 2.6.35 =  (or (fcntl fd F_GETPIPE_SZ) (* 16 page-size))
+  ;; In other words, it can be set differently for each pipe, but defaults to
+  ;; 16 pages. So this call is bullshit, which you shouldn't be doing anyway.
+  #+linux (* 16 (memory-page-size))
+  #-linux (missing-implementation 'get-pipe-size))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; get-system-info

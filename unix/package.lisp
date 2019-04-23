@@ -411,9 +411,12 @@
    #:+RLIMIT-MEMLOCK+ #:+RLIMIT-AS+ #:+RLIMIT-LOCKS+ #:+RLIMIT-SIGPENDING+
    #:+RLIMIT-MSGQUEUE+ #:+RLIMIT-NICE+ #:+RLIMIT-RTPRIO+ #:+RLIMIT-RTTIME+
    #:+RLIMIT-NLIMITS+ #:+RLIMIT-OFILE+
+   #:+RLIMIT-INFINITY+ #:+RLIM-INFINITY+
    #:rlimit #:rlimit-current #:rlimit-maximum
+   #:rlimit-number
    #:setrlimit #:getrlimit
    #+linux #:prlimit
+   #:get-pipe-size
    
    #:popen
    #:posix-pipe
