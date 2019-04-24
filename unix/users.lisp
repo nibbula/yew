@@ -688,7 +688,7 @@ name, not the contents. Return NIL if we don't have a guess."
 
 (defun member-of (group)
   "Return true if the current user is a member of GROUP."
-  (position group (get-groups)))
+  (and (position group (get-groups)) t))
 
 ;; setgroups?
 
