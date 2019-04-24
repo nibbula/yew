@@ -372,6 +372,7 @@
    #:getsid
    #:getgroups
    #:get-groups
+   #:member-of
 
    #:process-list
    #:process-info
