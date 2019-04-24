@@ -28,10 +28,10 @@ A: Just say:
    (run-all-tests)
 
 Q: What if a test fails? How do I know which one it was or what happened?
-A: Say: (describe-test 'test-name). It will show you the code that failed.
+A: Say: (test:describe-test 'test-name). It will show you the code that failed.
 
 Q: What if a bunch of tests fail?
-A: Say (list-tests :failed t), to show all tests that failed.
+A: Say (test:failed), to show all tests that failed.
 
 Q: What if I need to set up pre-conditions for my tests?
 A: You can use :setup and :takedown arguments to deftests.
@@ -49,17 +49,18 @@ A: Say:
    and it will append them to a file.
    You will probably have to edit the output to make it reasonable.
 
+Q: What if I need to trap exceptions from my tests?
+A: You can use the GOT-CONDITION macro in your test.
+
 Q: What if I need to capture the output from my test?
 A: You're on your own.
 
-Q: What if I need to trap exceptions from my tests?
-A: You're on your own.
-
 Q: What if I need to ...
-A: I SAID, you're on your own!
+A: Sorry, you're on your own!
 
 Q: Why did you write yet another test framework?
 A: <no comment>
+   (but probably the same reasons as everyone else)
 
 Q: Are you at least going to write some documentation?
 A: _This_ *is* your documentation.
@@ -80,6 +81,7 @@ A: _This_ *is* your documentation.
    #:failed
    #:describe-test
    #:clear-tests
+   #:got-condition
    #:test-in
    #:run-tests
    #:save-tests
@@ -417,6 +419,21 @@ documentation."
 (defun clear-tests ()
   "Forget about ALL the tests."
   (setf *tests* '()))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Things to use in tests.
+
+(defmacro got-condition ((condition-type &key ignore-others) &body body)
+  "Return true if evaluating BODY signaled a condition of CONDITION-TYPE.
+Retrun NIL otherwise."
+  (let ((result (gensym "result")))
+    `(let (,result)
+       (handler-case
+           (progn ,@body)
+         (,condition-type ()
+           (setf ,result t))
+	 ,@(if ignore-others '((condition ()))))
+       ,result)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Things for interactive test definition
