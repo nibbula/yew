@@ -29,17 +29,17 @@
 
 (defun hidden-file-name-p (name)
   "Return true if the file NAME is normally hidden."
-  (and name (> (length name) 0) (equal (char name 0) #\.)))
+  (and name (> (length name) 0) (char= (char name 0) #\.)))
 
 (defun superfluous-file-name-p (name)
   "Return true if the file NAME is considered redundant. On POSIX file
 systems, this means \".\" and \"..\"."
   (and name (> (length name) 0)
        (or (and (= (length name) 1)
-		(equal (char name 0) #\.))
+		(char= (char name 0) #\.))
 	   (and (= (length name) 2)
-		(equal (char name 0) #\.)
-		(equal (char name 1) #\.)))))
+		(char= (char name 0) #\.)
+		(char= (char name 1) #\.)))))
 
 (defun %path-absolute-p (path)
   "Return true if the PATH is absolute."
@@ -145,6 +145,9 @@ C library function getcwd."
 (defun delete-directory (path)
   "Delete a directory."
   (syscall (rmdir (safe-namestring path))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Directory reading
 
 ;; It's hard to fathom how insanely shitty the Unix/POSIX interface to
 ;; directories is. On the other hand, I might have trouble coming up with a
