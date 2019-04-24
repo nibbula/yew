@@ -183,14 +183,198 @@
   (integerp (uos:group-id))
   (let ((l (uos:group-list)))
     (and l (> (length l) 0)))
+  "Test users-logged-in"
+  (listp (users-logged-in))
+  ;; @@@ figure out how to test utmpx vs utmp
+  "Test uid getting functions"
+  (and (integerp (getuid)) (plusp (getuid)))
+  (and (integerp (getgid)) (plusp (getgid)))
+  (and (integerp (geteuid)) (plusp (geteuid)))
+  (and (integerp (getegid)) (plusp (getegid)))
+  "Test get-groups"
+  (and (uos:get-groups) (>= (length (uos:get-groups)) 1))
+  (uos:member-of (elt (uos:get-groups) 0))
   )
 
-#|
 ;; filesystem
 (deftests (opsys-unix-filesystem-1 :doc "Test file system things.")
-  ""
+  "Test hidden-file-name-p"
+  (not (uos:hidden-file-name-p "hey"))
+  (not (uos:hidden-file-name-p "hey."))
+  (not (uos:hidden-file-name-p "/hey."))
+  (not (uos:hidden-file-name-p "/"))
+  (uos:hidden-file-name-p "./hey.")
+  (uos:hidden-file-name-p ".hey.")
+  (uos:hidden-file-name-p "..")
+  (uos:hidden-file-name-p ".")
+  "Test superfluous-file-name-p"
+  (not (superfluous-file-name-p "..foo"))
+  (not (superfluous-file-name-p ".foo"))
+  (not (superfluous-file-name-p "./"))
+  (superfluous-file-name-p "..")
+  (superfluous-file-name-p ".")
+  (%path-absolute-p "/")
+  (%path-absolute-p "/foo/bar/baz")
+  (not (%path-absolute-p "foo"))
+  (not (%path-absolute-p "./foo"))
+  (not (%path-absolute-p "foo/bar//"))
+  (and (integerp (get-path-max)) (> (get-path-max) 6))
   )
 
+(deftests (opsys-unix-dir-1 :doc "Test directories.")
+  "Test a bunch of directory stuff."
+  (let ((test-dir (format nil "floop~s" (random *unlikely*)))
+	(start-dir (uos:current-directory))
+	result)
+    (unwind-protect
+	 (progn
+	   (uos:make-directory test-dir)
+	   (setf result (and (uos:directory-p test-dir)
+			     (uos:probe-directory test-dir)))
+	   (uos:change-directory test-dir)
+	   (setf result
+		 (and result
+		      (equal (uos:current-directory)
+			     (format nil "~a/~a" start-dir test-dir)))))
+      (uos:change-directory start-dir)
+      (uos:delete-directory test-dir))
+    result))
+
+#|
+(deftests (opsys-unix-read-dir-1 :doc "Test directories.")
+  "Test a reading directories."
+  ;; dirent-name
+  ;; dirent-type
+  ;; read-directory
+  ;; map-directory
+  ;; without-access-errors
+
+   #:posix-open #+(or linux freebsd) #:posix-openat
+   #:posix-close
+   #:posix-read
+   #:posix-write
+   #:posix-ioctl
+   #:posix-unlink #+(or linux freebsd) #:posix-unlinkat
+   #:posix-lseek
+   #:posix-pread
+   #:posix-pwrite
+   #:posix-readv
+   #:posix-writev
+   #:posix-preadv
+   #:posix-pwritev
+   #:with-posix-file
+   #:with-os-file
+   #:mkstemp
+   #:fcntl
+   #:get-file-descriptor-flags
+   #:fsync
+   #:fdatasync
+
+   #:stat
+   #:lstat
+   #:fstat
+   #+(or linux freebsd) #:fstatat
+   #:get-file-info
+   #:+S_IFMT+ #:+S_IFIFO+ #:+S_IFCHR+ #:+S_IFDIR+ #:+S_IFBLK+ #:+S_IFREG+
+   #:+S_IFLNK+ #:+S_IFSOCK+ #:+S_IFWHT+ #:+S_ISUID+ #:+S_ISGID+ #:+S_ISVTX+
+   #:+S_IRUSR+ #:+S_IWUSR+ #:+S_IXUSR+
+   #:is-user-readable
+   #:is-user-writable
+   #:is-user-executable
+   #:is-group-readable
+   #:is-group-writable
+   #:is-group-executable
+   #:is-other-readable
+   #:is-other-writable
+   #:is-other-executable
+   #:is-set-uid
+   #:is-set-gid
+   #:is-sticky
+   #:is-fifo
+   #:is-character-device
+   #:is-directory
+   #:is-block-device
+   #:is-regular-file
+   #:is-symbolic-link
+   #:is-socket
+   #:is-door
+   #:is-whiteout
+   #:file-type-char
+   #:file-type-name
+   #:file-type-symbol
+   #:symbolic-mode
+   #:file-exists
+   #:os-delete-file
+   #:readlink
+
+   #:UF_SETTABLE #:UF_NODUMP #:UF_IMMUTABLE #:UF_APPEND #:UF_OPAQUE
+   #:UF_NOUNLINK #:UF_COMPRESSED #:UF_TRACKED #:UF_HIDDEN #:SF_SETTABLE
+   #:SF_ARCHIVED #:SF_IMMUTABLE #:SF_APPEND #:SF_RESTRICTED #:SF_SNAPSHOT
+   #:flag-user-settable
+   #:flag-user-nodump
+   #:flag-user-immutable
+   #:flag-user-append
+   #:flag-user-opaque
+   #:flag-user-nounlink
+   #:flag-user-compressed
+   #:flag-user-tracked
+   #:flag-user-hidden
+   #:flag-root-settable
+   #:flag-root-archived
+   #:flag-root-immutable
+   #:flag-root-append
+   #:flag-root-restricted
+   #:flag-root-snapshot
+   #:flags-string
+
+   #:umask
+   #:chmod #:fchmod
+   #:chown #:fchown #:lchown
+   #:sync
+   #:extended-attribute-list
+   #:extended-attribute-value
+
+   #:is-executable
+   ;; #:command-pathname
+
+   #:data-dir
+   #:config-dir
+   #:data-path
+   #:config-path
+   #:cache-dir
+   #:runtime-dir
+   
+   #:file-status
+   #:file-status-device
+   #:file-status-inode
+   #:file-status-mode
+   #:file-status-links
+   #:file-status-uid
+   #:file-status-gid
+   #:file-status-device-type
+   #:file-status-access-time
+   #:file-status-modify-time
+   #:file-status-change-time
+   #:file-status-size
+   #:file-status-blocks
+   #:file-status-block-size
+   #:file-status-flags
+   #:file-status-generation
+
+   #:with-locked-file
+
+   #:+AT-FDCWD+ #:+AT-SYMLINK-NOFOLLOW+
+   #:utimes
+   #:utimensat
+   #:set-file-time
+   #:symlink
+   #:symlinkat
+   #:make-symbolic-link
+
+   )
+   |#
+
+#|
 ;; memory
 (deftests (opsys-unix-memory-1 :doc "Test memory functions.")
   ""
@@ -199,6 +383,27 @@
 ;; signals
 (deftests (opsys-unix-signals-1 :doc "Test signal functions.")
   ""
+  ;; *signal-count*
+  ;; signal-name
+  ;; signal-description
+  ;; signal-action
+  ;; set-signal-action
+  ;; with-signal-handlers
+  ;; with-blocked-signals
+  ;; with-all-signals-blocked
+  ;; signal-mask
+  ;; set-signal-mask
+  ;; describe-signals
+  ;; kill
+  ;; killpg
+
+  ;; #:+SIGHUP+ #:+SIGINT+ #:+SIGQUIT+ #:+SIGILL+ #:+SIGTRAP+ #:+SIGABRT+
+  ;; #:+SIGPOLL+ #:+SIGEMT+ #:+SIGFPE+ #:+SIGKILL+ #:+SIGBUS+ #:+SIGSEGV+
+  ;; #:+SIGSYS+ #:+SIGPIPE+ #:+SIGALRM+ #:+SIGTERM+ #:+SIGURG+ #:+SIGSTOP+
+  ;; #:+SIGTSTP+ #:+SIGCONT+ #:+SIGCHLD+ #:+SIGTTIN+ #:+SIGTTOU+ #:+SIGIO+
+  ;; #:+SIGXCPU+ #:+SIGXFSZ+ #:+SIGVTALRM+ #:+SIGPROF+ #:+SIGWINCH+ #:+SIGINFO+
+  ;; #:+SIGUSR1+ #:+SIGUSR2+ #:+SIGSTKFLT+ #:+SIGPWR+
+
   )
 
 ;; processes
@@ -226,6 +431,7 @@
   opsys-unix-environment-2
   opsys-unix-time-1
   opsys-unix-users-1
+  opsys-unix-dir-1
   )
 
 (defun run ()
