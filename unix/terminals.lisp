@@ -620,7 +620,7 @@ even process interrupts. If TIMEOUT is true, it's a number of deciseconds,
 	(when raw (foreign-free raw))))
     result))
 
-(defun test (&key (filename "termios.lisp") (debug nil))
+(defun terminal-test (&key (filename "termios.lisp") (debug nil))
   "This is pushcat."
   (raw-test #'(lambda (tty) (pushcat-file tty filename debug)) :debug debug))
 

@@ -141,6 +141,7 @@
    #:getgrnam
    #:getgrent
    #:endgrent
+   #:setgrent
 
    ;; user login accounting
    #:utmpx #:utmpx-user #:utmpx-id #:utmpx-line #:utmpx-pid #:utmpx-type
@@ -623,7 +624,7 @@
    #:set-control-char
 
    ;; testing
-   #:test
+   #:terminal-test
    #:test-echo
    #:test-input
 
