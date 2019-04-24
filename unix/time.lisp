@@ -115,7 +115,7 @@ time."
 
 ;; setitimer/getitimer
 ;;
-;; Interval timers ared probably best provided in relation to some kind of
+;; Interval timers are probably best provided in relation to some kind of
 ;; "event loop"
 
 ;; timerfd
