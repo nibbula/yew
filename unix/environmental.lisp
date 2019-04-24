@@ -204,13 +204,13 @@ NIL, unset the VAR, using unsetenv."
 ;; isn't officially defined in the API. Why couldn't they have designed it in?
 ;;
 ;; Now, many years after first writing this, it seems as if someone has
-;; implemented my wish, at least in FreeBSD. There is now mechanism to get the
+;; implemented my wish, at least in FreeBSD. There is now a mechanism to get the
 ;; names of sysctl items from sysctl itself. However, it seems to be
 ;; undocumented. Had it been there all along? If everything works out, this
 ;; rant can be tossed in the bins of history.
 ;;
 ;; So far, sysctl seems work best on BSDs, partially on macOS and, not on
-;; Linux. If performance need to be improved, we could consider caching the
+;; Linux. If performance needs to be improved, we could consider caching the
 ;; integer values by using sysctlnametomib.
 ;;
 ;; NOTE: This should probably come fairly early since we may use it later on
@@ -1303,9 +1303,10 @@ If RESOURCE is an integer, just return it."
   ;; We should normalize this so that it can be directly turned into
   ;; the feaure, e.g. uname -m is "x86_64" but we want "X86-64"
   (let ((base (substitute #\- #\_ (string-upcase (uname-machine (uname))))))
-    (cdr (assoc base
-		'((("AMD64") . "X86-64"))
-		:test (lambda (a b) (find a b :test #'string-equal))))))
+    (or (cdr (assoc base
+		    '((("AMD64") . "X86-64"))
+		    :test (lambda (a b) (find a b :test #'string-equal))))
+	base)))
 
 (defun os-machine-version ()
   "Like MACHINE-VERSION, but without implementation variation."
