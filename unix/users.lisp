@@ -281,8 +281,11 @@ Return nil for foreign null pointer."
 
 (defun group-list ()
   "How to annoy people in large organizations."
-  (setgrent)
-  (loop :with g :while (setf g (get-next-group)) :collect g))
+  (unwind-protect
+       (progn
+	 (setgrent)
+	 (loop :with g :while (setf g (get-next-group)) :collect g))
+    (endgrent)))
 
 (defun refresh-group-list ()
   "Just in case you are bored, this will make get-next-group or group-list
