@@ -67,9 +67,9 @@
    (maxima
     :initarg :maxima :accessor puca-maxima :initform 0
     :documentation "Number of items.")
-   (mark
-    :initarg :mark :accessor puca-mark :initform nil
-    :documentation "One end of the region")
+   ;; (mark
+   ;;  :initarg :mark :accessor puca-mark :initform nil
+   ;;  :documentation "One end of the region")
    (top
     :initarg :top :accessor puca-top :initform 0
     :documentation "Top item")
@@ -92,7 +92,8 @@
     :initarg :debug :accessor puca-debug :initform nil :type boolean
     :documentation "True to turn on debugging."))
   (:default-initargs
-   :point 0)
+   :point 0
+   :mark nil)
   (:documentation "A version control frontend app."))
 
 (defclass puca (puca-app)
@@ -735,7 +736,7 @@ for the command-function).")
   (let ((command (rl:rl
 		  :prompt ": "
 		  :completion-func *complete-extended-command*
-		  :context :puca))
+		  :history-context :puca))
 	func)
     (setf func (cadr (assoc command *extended-commands* :test #'equalp)))
     (when (and func (fboundp func))
@@ -969,7 +970,7 @@ for the command-function).")
 		(setf top point))
 	       ((and (> (- point top) (- bottom 1)) (> bottom 1))
 		(setf top point)))))
-      (let* ((string (rl:rl :prompt " Search: " :context :puca-search))
+      (let* ((string (rl:rl :prompt " Search: " :history-context :puca-search))
 	     (item (find-it string (subseq goo point))))
 	(if item
 	    (move-to (+ point item))
