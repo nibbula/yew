@@ -129,6 +129,7 @@ of it.")
    #:ignore-conditions #:ignore-some-conditions
    #:find-slot-name
    #:defmethod-quiet
+   #:with-decls-and-body #:doc-and-decls #:fixed-body
    #:+simple-condition-format-control-slot+
    #:+simple-condition-format-arguments-slot+
    ;; debugging
@@ -1617,6 +1618,39 @@ the condition."
   ;; #-sbcl
   `(without-warning
        (defmethod ,name ,@args)))
+
+;; @@@ Perhaps we should also have a version that separates doc and decls?
+
+(defmacro with-decls-and-body ((your-body) &body my-body)
+  "Pull the documentation and declarations out of YOUR-BODY, and bind them to
+DOC-AND-DECLS. The body without DOC-AND-DECLS is bound to FIXED-BODY.
+Evaluate MY-BODY. This is useful for making a macro that wraps a standard
+definition form, like defun. For example:
+
+  (defmacro defoo (name args &body body)
+     (with-decls-and-body (body)
+       `(defun ,name ,args
+           ,@doc-and-decls
+           (format t \"Hi.~%\")
+           ,@fixed-body)))"
+  `(let* ((fixed-body ,your-body)
+	  (doc-and-decls
+	   (loop :with doc :and first = t
+	      :for form = ,your-body :then (cdr form)
+	      :while form
+	        :if (and (stringp (car form))
+		       (not (and first (not (cdr form)))) ; a single string
+		       (not doc))
+	          :collect (setf doc (car form))
+	        :else :if (and (consp (car form))
+			       (eq (caar form) 'declare))
+	          :collect (car form)
+                :else
+	          :do (loop-finish)
+	        :end
+	      :do (setf fixed-body (cdr form)
+			first nil))))
+     ,@my-body))
 
 ;; Debugging messages
 ;;
