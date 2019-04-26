@@ -199,7 +199,7 @@ The REPL also has a few commands:
 		   :terminal terminal
 		   :terminal-name terminal-name
 		   :terminal-class terminal-class
-		   :context :repl
+		   :history-context :repl
 		   :prompt (or (and (stringp prompt) prompt) *default-prompt*)
 		   :output-prompt-func (and (or (symbolp prompt)
 						(functionp prompt))
