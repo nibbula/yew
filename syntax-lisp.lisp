@@ -3,7 +3,8 @@
 ;;
 
 (defpackage :syntax-lisp
-  (:documentation "Things for dealing with the syntax of Lisp code.")
+  (:documentation
+   "Functions for dealing with Lots of Irritating Superfluous Parentheses.")
   (:use :cl :dlib :syntax
 	#+use-regex :regex
 	#-use-regex :ppcre
