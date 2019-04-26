@@ -8,6 +8,7 @@
   (:documentation "Choose things from a list.")
   (:use :cl :dlib :char-util :stretchy :keymap :opsys :inator :terminal
 	:terminal-inator :fui)
+  (:import-from :inator #:mark #:point #:quit-flag)
   (:export
    #:pick-list
    #:pick-file
@@ -49,7 +50,12 @@
    (item-line
     :initarg :item-line :accessor pick-item-line
     :initform @@@ :type @@@
-    :documentation ".") |#
+    :documentation ".")
+   Replaced by inator-mark
+   (mark
+    :initarg :mark :accessor pick-mark
+    :initform nil
+    :documentation "One end of the region.") |#
    (result
     :initarg :result :accessor pick-result
     :initform nil
@@ -58,10 +64,6 @@
     :initarg :second-result :accessor pick-second-result
     :initform nil :type boolean
     :documentation "True if we exited normally. False, if we canceled.")
-   (mark
-    :initarg :mark :accessor pick-mark
-    :initform nil
-    :documentation "One end of the region.")
    (cur-line
     :initarg :cur-line :accessor pick-cur-line
     :initform 0 :type fixnum
@@ -114,9 +116,8 @@ The function receives a 'pick' as an argument."))
 
 (defmethod accept ((pick pick)) ; pick-list-pick
   "Pick the current item."
-  (with-slots (multiple by-index result items input second-result
-	       (point inator::point)
-	       (quit-flag inator::quit-flag)) pick
+  (with-slots (multiple by-index result items input second-result point
+	       quit-flag) pick
     (if multiple
 	(when (not by-index)
 	  (setf result (nreverse (mapcar (_ (cdr (elt items _))) result))))
@@ -128,7 +129,7 @@ The function receives a 'pick' as an argument."))
 
 (defun pick-list-toggle-item (pick)
   "Toggle the item for multiple choice."
-  (with-slots (multiple (point inator::point) result) pick
+  (with-slots (multiple point result) pick
     (when multiple
       (if (position point result)
 	  (setf result (delete point result))
@@ -136,11 +137,11 @@ The function receives a 'pick' as an argument."))
 
 (defun pick-list-set-mark (pick)
   "Set the mark to where the point is."
-  (setf (pick-mark pick) (inator-point pick)))
+  (setf (inator-mark pick) (inator-point pick)))
 
 (defun pick-list-toggle-region (pick)
   "Toggle the items in the region."
-  (with-slots (multiple mark (point inator::point) result) pick
+  (with-slots (multiple mark point result) pick
     (when (and multiple mark)
       (loop :for i :from (min mark point)
 	    :to (max mark point)
@@ -151,7 +152,7 @@ The function receives a 'pick' as an argument."))
 
 (defmethod next ((i pick))		; pick-list-next-line
   "Go to the next line. Scroll and wrap around if need be."
-  (with-slots (cur-line max-y top (point inator::point) max-line) i
+  (with-slots (cur-line max-y top point max-line) i
     (when (>= (+ cur-line 1) max-y)
       (incf top))
     (if (< point (1- max-line))
@@ -160,7 +161,7 @@ The function receives a 'pick' as an argument."))
 
 (defmethod previous ((i pick))		; pick-list-previous-line
   "Go to the previous line. Scroll and wrap around if need be."
-  (with-slots ((point inator::point) top max-line items max-y ttop) i
+  (with-slots (point top max-line items max-y ttop) i
     (when (<= point top)
       (decf top))
     (if (> point 0)
@@ -172,7 +173,7 @@ The function receives a 'pick' as an argument."))
 
 (defmethod move-to-bottom ((i pick))	; pick-list-end-of-list
   "Go to the end of the list."
-  (with-slots ((point inator::point) max-line top items max-y ttop) i
+  (with-slots (point max-line top items max-y ttop) i
     ;; (pause (format nil "~d ~d ~d ~d ~d"
     ;; 		    point max-line top max-y ttop))
     (setf point (1- max-line))
@@ -180,19 +181,19 @@ The function receives a 'pick' as an argument."))
 
 (defmethod move-to-top ((i pick))	; pick-list-beginning-of-list
   "Go to the beginning of the list."
-  (with-slots ((point inator::point) top) i
+  (with-slots (point top) i
     (setf point 0 top 0)))
 
 (defmethod next-page ((i pick))		; pick-list-next-page
   "Scroll to the next page."
-  (with-slots ((point inator::point) max-line page-size cur-line top) i
+  (with-slots (point max-line page-size cur-line top) i
     (setf point     (min (1- max-line) (+ point page-size))
 	  cur-line  (+ top point)
 	  top       point)))
 
 (defmethod previous-page ((i pick))	; pick-list-previous-page
   "Scroll to the previous page."
-  (with-slots ((point inator::point) page-size cur-line top) *pick*
+  (with-slots (point page-size cur-line top) *pick*
     (setf point	    (max 0 (- point page-size))
 	  cur-line  (+ top point)
 	  top       point)))
@@ -214,7 +215,7 @@ The function receives a 'pick' as an argument."))
 
 (defun shift-end (o)
   "Shift to the end of the rightmost content."
-  (with-slots (left items (point inator::point)) o
+  (with-slots (left items point) o
     (setf left
 	  (max 0
 	       (- (length (car (elt items point)))
@@ -249,7 +250,7 @@ The function receives a 'pick' as an argument."))
 
 (defmethod update-display ((i pick)) ; pick-list-display
   "Display the list picker."
-  (with-slots (message multiple items (point inator::point) result cur-line
+  (with-slots (message multiple items point result cur-line
 	       max-y top left ttop error-message) *pick*
     (tt-home)
     (when message (tt-format message))
@@ -284,7 +285,7 @@ The function receives a 'pick' as an argument."))
 
 (defmethod default-action ((pick pick)) ; pick-typing-search
   "Try to search for typed input and return T if we did."
-  (with-slots (typing-searches input search-str (point inator::point) max-line
+  (with-slots (typing-searches input search-str point max-line
 	       items top page-size) pick
     (if (and typing-searches
 	     (and (characterp input)
@@ -359,7 +360,7 @@ The function receives a 'pick' as an argument."))
 
 (defmethod update-display ((i popup-pick))
   "Display the pop-up list picker."
-  (with-slots (message multiple items (point inator::point) result cur-line
+  (with-slots (message multiple items point result cur-line
 	       max-y top left ttop error-message window #|x y|#) *pick*
     (let ((message-string (and message (format nil message))))
       (draw-window window)
