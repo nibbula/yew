@@ -1125,7 +1125,7 @@ line : |----||-------||---------||---|
   (prog1
       (rl:rl :prompt prompt
 	     :accept-does-newline nil
-	     :context :pager)
+	     :history-context :pager)
     (setf (tt-input-mode) :char)))
 
 (defun ask-for-file (&optional prompt)
@@ -1135,7 +1135,7 @@ line : |----||-------||---------||---|
   (prog1
       (rl:rl :prompt prompt
 	     :completion-func #'complete-filename
-	     :context :read-filename
+	     :history-context :read-filename
 	     :accept-does-newline nil)
     (setf (tt-input-mode) :char)))
 
