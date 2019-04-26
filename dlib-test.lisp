@@ -179,15 +179,20 @@
 	   :doc "Things relating to basic programming language expression.")
   ;; (define-constant)
   ;; (defalias)
-  "λ"
-  (functionp (λ (x) (+ x 2)))
-  (equal "luuhrg" ;; I suppose this could fail for weird encodings.
-	 (map 'string (λ (x) (code-char (+ 6 (char-code x)))) "foobla"))
-  (equal 23 (let ((f (λ (&rest args) (apply #'+ 2 args))))
-	      (funcall f 1 2 3 4 5 6)))
+  ;; "λ"
+  ;; (functionp (λ (x) (+ x 2)))
+  ;; (equal "luuhrg" ;; I suppose this could fail for weird encodings.
+  ;; 	 (map 'string (λ (x) (code-char (+ 6 (char-code x)))) "foobla"))
+  ;; (equal 23 (let ((f (λ (&rest args) (apply #'+ 2 args))))
+  ;; 	      (funcall f 1 2 3 4 5 6)))
   ;; (_)
   ;; (symbolify)
-  ;; (keywordify)
+  "Test keywordify."
+  (eq (keywordify "foo") :foo)
+  (eq (keywordify "FOO") :foo)
+  (eq (keywordify 'foo)  :foo)
+  (eq (keywordify :FOO)  :foo)
+  (eq (keywordify #\x) :x)
   ;; (likely-callable)
   ;; (lambda-list)
   ;; (lambda-list-vars)
@@ -196,6 +201,43 @@
   ;; (shortest-package-nick)
   ;; (not-so-funcall)
   ;; (@)
+  )
+
+(deftests (dlib-language-2
+	   :doc "Things relating to language expression.")
+  "Test with-decls-and-body."
+  (prog1 t
+    (defmacro defoo (name args &body body)
+      (with-decls-and-body (body)
+	`(defun ,name ,args
+	   ,@doc-and-decls
+	   (yow)
+	   ,@fixed-body))))
+  (equal (macroexpand-1 '(defoo hey (x) (+ x x)))
+	 '(defun hey (x) (yow) (+ x x)))
+  (equal (macroexpand-1 '(defoo hey (x) "boo"))
+	 '(defun hey (x) (yow) "boo"))
+  (equal (macroexpand-1 '(defoo hey (x) "boo" (+ x x)))
+	 '(defun hey (x) "boo" (yow) (+ x x)))
+  (equal (macroexpand-1
+	  '(defoo hey (x &optional y)
+	    (declare (ignore y)) "boo" (+ x x)))
+	 '(defun hey (x &optional y)
+	   (declare (ignore y)) "boo" (yow) (+ x x)))
+  (equal (macroexpand-1 '(defoo hey (x &optional y)
+			  "boo" (declare (ignore y)) (+ x x)))
+	 '(defun hey (x &optional y)
+	   "boo" (declare (ignore y)) (yow) (+ x x)))
+  (equal (macroexpand-1 '(defoo hey (x &optional y)
+			  (declare (ignore y))
+			  (declare (type number x))
+			  (+ x x)))
+	 '(defun hey (x &optional y)
+	   (declare (ignore y))
+	   (declare (type number x))
+	   (yow) (+ x x)))
+  (equal (macroexpand-1 '(defoo hey (x) "boo" "ba" (+ x x)))
+	 '(defun hey (x) "boo" (yow) "ba" (+ x x)))
   )
 
 (deftests (dlib-debug-1
@@ -289,8 +331,15 @@
 				   #(#\f #\o #\o 0 #\t #\h #\e 0 #\b #\a #\r))))
 
 (deftests (dlib-all :doc "Test :dlib and :dlib-misc.")
-  dlib-1 split-sequence-1 split-sequence-by-range-1 dlib-2 dlib-language-1
-  dlib-io-1 dlib-environment-1 dlib-debug-1)
+  dlib-1
+  split-sequence-1
+  split-sequence-by-range-1
+  dlib-2
+  dlib-language-1
+  dlib-language-2
+  dlib-io-1
+  dlib-environment-1
+  dlib-debug-1)
 
 (defun run ()
   (run-group-name 'dlib-all :verbose t))
