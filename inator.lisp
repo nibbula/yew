@@ -24,6 +24,8 @@ a TERM-INATOR.
    #:inator
    #:inator-keymap
    #:inator-point
+   #:inator-mark
+   #:inator-clipboard
    #:inator-quit-flag
    #:inator-command
    #:inator-last-command
@@ -62,6 +64,7 @@ a TERM-INATOR.
    #:update-display
    #:await-event
    #:process-event
+   #:call-command
    #:start-inator
    #:finish-inator
    #:*default-inator-keymap*
@@ -78,6 +81,12 @@ a TERM-INATOR.
    (point
     :initarg :point :accessor inator-point
     :documentation "Where the action is.")
+   (clipboard
+    :initarg :clipboard :accessor inator-clipboard
+    :documentation "An object to copy and paste with.")
+   (mark
+    :initarg :mark :accessor inator-mark
+    :documentation "An editing reference position.")
    (quit-flag
     :initarg :quit-flag :accessor inator-quit-flag :initform nil :type boolean
     :documentation "True to quit the inator.")
@@ -211,6 +220,13 @@ not call process-event with it."))
   "Default method which calls redraw."
   (redraw inator))
 
+(defmethod call-command ((inator inator) function args)
+  "Default method to invoke inator commands. This can be useful to extend
+command invocation, or have something done on every command. The default
+is just to call function with the INATOR as the first argument and the list ARGS
+as the subsequent arguments."
+  (apply function inator args))
+
 ;; @@@ This is quite hairy and not really reflected in keymap.lisp
 (defmethod process-event ((inator inator) event &optional keymap-in)
   "Default way to process an event."
@@ -223,9 +239,9 @@ not call process-event with it."))
 	     (if (typep (symbol-function s) 'generic-function)
 		 (if (compute-applicable-methods (symbol-function s)
 						 (cons inator args))
-		     (apply s inator args)
+		     (call-command inator s args)
 		     (message inator "(~S) has no applicable methods." s))
-		 (apply s inator args)))
+		 (call-command inator s args)))
 	   (get-event ()
 	     "Get a event from L, or if not L then push on event-list."
 	     (dbugf :event "get-event ~s~%" saved-list)
@@ -267,7 +283,7 @@ not call process-event with it."))
 		(sub-process (get-event) command))
 	       ;; a function object
 	       ((functionp command)
-		(funcall command inator)
+		(call-command inator command nil)
 		t)
 	       (t ; anything else
 		(message inator "Key binding ~S is not a function or a keymap."
