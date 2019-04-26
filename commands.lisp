@@ -19,6 +19,48 @@ in proper condition."
        (redraw-command ,e) 			; maybe could do better?
        ,result)))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro defmulti (name args &body body)
+    "Define a command that should be called for each editing context.
+The slots of the editing context are bound in the body."
+    (with-decls-and-body (body)
+      `(progn
+	 (defun ,name ,args
+	   ,@doc-and-decls
+	   (with-context ()
+	     ,@fixed-body))
+	 (setf (get ',name 'multiple) t))))
+
+  (defmacro defmulti-method (name args &body body)
+    "Define a command that should be called for each editing context.
+The slots of the editing context are bound in the body."
+    (with-decls-and-body (body)
+      `(progn
+	 (defmethod ,name ,args
+	   ,@doc-and-decls
+	   (with-context ()
+	     ,@fixed-body))
+	 (setf (get ',name 'multiple) t))))
+
+  (defmacro defsingle (name args &body body)
+    "Define a command that should be called once for all editing contexts."
+    `(progn
+       (defun ,name ,args ,@body)
+       (setf (get ',name 'multiple) nil)))
+
+  (defmacro defsingle-method (name args &body body)
+    "Define a command that should be called once for all editing contexts."
+    `(progn
+       (defmethod ,name ,args ,@body)
+       (setf (get ',name 'multiple) nil))))
+
+(defmethod call-command ((e line-editor) function args)
+  "Command invoker that handles calling commands for multiple editing contexts."
+  (if (get function 'multiple)
+      (do-contexts (e)
+	(apply function e args))
+      (apply function e args)))
+
 ;; @@@ Perhaps this should be merged with one in completion?
 (defun scan-over (e dir &key func not-in action)
   "If FUNC is provied move over characters for which FUNC is true.
@@ -28,111 +70,112 @@ If ACTION is given, it's called with the substring scanned over and replaces
 it with ACTION's return value."
   (when (and (not func) not-in)
     (setf func #'(lambda (c) (not (position c not-in)))))
-  (with-slots (point buf) e
-    (let (cc)
-      (if (eql dir :backward)
-	  ;; backward
-	  (loop :while (and (> point 0)
-			   (funcall func (buffer-char buf (1- point))))
-	    :do
-	    (when action
-	      (when (setf cc (funcall action (buffer-char buf (1- point))))
-		(buffer-replace e (1- point) cc)))
-	     (decf point))
-	  ;; forward
-	  (let ((len (length buf))
-		(did-one nil))
-	    (loop :while (and (< point len)
-			     (funcall func (buffer-char buf point)))
-	      :do
+  (with-slots (buf) e
+    (with-context ()
+      (let (cc)
+	(if (eql dir :backward)
+	    ;; backward
+	    (loop :while (and (> point 0)
+			      (funcall func (buffer-char buf (1- point))))
+	       :do
 	       (when action
-		 (when (setf cc (funcall action (buffer-char buf point)))
-		   (buffer-replace e point cc)
-		   (setf did-one t)))
-	       (incf point))
-	    (when did-one (decf point)))))))
+		 (when (setf cc (funcall action (buffer-char buf (1- point))))
+		   (buffer-replace e (1- point) cc point)))
+	       (decf point))
+	    ;; forward
+	    (let ((len (length buf))
+		  (did-one nil))
+	      (loop :while (and (< point len)
+				(funcall func (buffer-char buf point)))
+		 :do
+		 (when action
+		   (when (setf cc (funcall action (buffer-char buf point)))
+		     (buffer-replace e point cc point)
+		     (setf did-one t)))
+		 (incf point))
+	      (when did-one (decf point))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Movement commands
 
 ;; @@@ Should follow a more 'unicode' algorithm for finding word breaks.
-(defun backward-word (e)
+(defmulti backward-word (e)
   "Move the insertion point to the beginning of the previous word or the
 beginning of the buffer if there is no word."
-  (with-slots (point non-word-chars keep-region-active) e
+  (with-slots (non-word-chars keep-region-active) e
     (scan-over e :backward :func #'(lambda (c) (position c non-word-chars)))
     (scan-over e :backward :not-in non-word-chars)
     (setf keep-region-active t)))
 
-(defun mark-backward-word (e)
+(defmulti mark-backward-word (e)
   "Set the mark if it's not already set or the region is not active,
 and move backward a word."
-  (with-slots (mark region-active) e
+  (with-slots (region-active) e
     (when (or (not region-active) (not mark))
       (set-mark e))
     (backward-word e)))
 
-(defmethod backward-multiple ((e line-editor))
+(defmulti-method backward-multiple ((e line-editor))
   (backward-word e))
 
-(defun forward-word (e)
+(defmulti forward-word (e)
   "Move the insertion point to the end of the next word or the end of the
 buffer if there is no word."
-  (with-slots (point non-word-chars keep-region-active) e
+  (with-slots (non-word-chars keep-region-active) e
     (scan-over e :forward :func #'(lambda (c) (position c non-word-chars)))
     (scan-over e :forward :not-in non-word-chars)
     (setf keep-region-active t)))
 
-(defun mark-forward-word (e)
+(defmulti mark-forward-word (e)
   "Set the mark if it's not already set or the region is not active,
 and move forward a word."
-  (with-slots (mark region-active) e
+  (with-slots (region-active) e
     (when (or (not region-active) (not mark))
       (set-mark e))
     (forward-word e)))
 
-(defmethod forward-multiple ((e line-editor))
+(defmulti-method forward-multiple ((e line-editor))
   (forward-word e))
 
-(defun backward-char (e)
+(defmulti backward-char (e)
   "Move the insertion point backward one character in the buffer."
-  (with-slots (point keep-region-active) e
+  (with-slots (keep-region-active) e
     (when (> point 0)
       (decf point))
     (setf keep-region-active t)))
 
-(defun mark-backward-char (e)
+(defmulti mark-backward-char (e)
   "Set the mark if it's not already set or the region is not active,
 and move backward a character."
-  (with-slots (mark region-active) e
+  (with-slots (region-active) e
     (when (or (not region-active) (not mark))
       (set-mark e))
     (backward-char e)))
 
-(defmethod backward-unit ((e line-editor))
+(defmulti-method backward-unit ((e line-editor))
   (backward-char e))
 
-(defun forward-char (e)
+(defmulti forward-char (e)
   "Move the insertion point forward one character in the buffer."
-  (with-slots (point buf keep-region-active) e
+  (with-slots (buf keep-region-active) e
     (when (< point (fill-pointer buf))
       (incf point))
     (setf keep-region-active t)))
 
-(defun mark-forward-char (e)
+(defmulti mark-forward-char (e)
   "Set the mark if it's not already set or the region is not active,
 and move forward a character."
-  (with-slots (mark region-active) e
+  (with-slots (region-active) e
     (when (or (not region-active) (not mark))
       (set-mark e))
     (forward-char e)))
 
-(defmethod forward-unit ((e line-editor))
+(defmulti-method forward-unit ((e line-editor))
   (forward-char e))
 
-(defun beginning-of-line (e)
+(defmulti beginning-of-line (e)
  "Move the insertion point to the beginning of the line."
-  (with-slots (point buf keep-region-active) e
+  (with-slots (buf keep-region-active) e
     (when (> point 0)
       (let* ((end point)
 	     (pos (oposition #\newline buf :end end :test #'ochar=
@@ -142,51 +185,53 @@ and move forward a character."
 	(setf point (or pos 0))))
     (setf keep-region-active t)))
 
-(defun beginning-of-buffer (e)
+(defmulti beginning-of-buffer (e)
   "Move the point to the beginning of the editor buffer."
-  (with-slots (point keep-region-active) e
+  (with-slots (keep-region-active) e
     (when (> point 0)
       (setf point 0))
     (setf keep-region-active t)))
 
-(defmethod move-to-beginning ((e line-editor))
+(defmulti-method move-to-beginning ((e line-editor))
   (beginning-of-line e))
 
-(defun end-of-line (e)
+(defmulti end-of-line (e)
   "Move the insertion point to the end of the line."
-  (with-slots (point buf keep-region-active) e
+  (with-slots (buf keep-region-active) e
     (when (< point (fill-pointer buf))
       (let* ((start (if (ochar= #\newline (aref buf point)) (1+ point) point))
 	     (pos (oposition #\newline buf :start start :test #'ochar=)))
 	(setf point (or pos (fill-pointer buf)))))
     (setf keep-region-active t)))
 
-(defun end-of-buffer (e)
+(defmulti end-of-buffer (e)
   "Move the point to the end of the editor buffer."
-  (with-slots (point buf keep-region-active) e
+  (with-slots (buf keep-region-active) e
     (when (< point (fill-pointer buf))
       (setf point (fill-pointer buf)))
     (setf keep-region-active t)))
 
-(defmethod move-to-end ((e line-editor))
+(defmulti-method move-to-end ((e line-editor))
   (end-of-line e))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Movement commands
 
-(defun previous-history (e)
+(defsingle previous-history (e)
   "Go to the previous history entry."
-  (history-put (buffer-string (buf e)) (context e))
-  (history-prev (context e))
-  (use-hist e))
+  (use-first-context (e)
+    (history-put (buffer-string (buf e)) (history-context e))
+    (history-prev (history-context e))
+    (use-hist e)))
 
 (defun point-coords (e)
   "Return the line and column of point."
-  (let* ((spots `((,(point e) . ())))
-	 (endings (calculate-line-endings e :spots spots)))
-    (dbugf :roo "in point-coords:~%spots = ~s endings = ~s~%" spots endings)
-    (values (cdr (assoc (point e) spots))
-	    endings)))
+  (with-context ()
+    (let* ((spots `((,point . ())))
+	   (endings (calculate-line-endings e :spots spots)))
+      (dbugf :roo "in point-coords:~%spots = ~s endings = ~s~%" spots endings)
+      (values (cdr (assoc point spots))
+	      endings))))
 
 (defun index-of-coords (e line col)
   (let* ((pair `(,line ,col))
@@ -196,7 +241,7 @@ and move forward a character."
     (values (cdr (assoc pair spots :test #'equal))
 	    endings)))
 
-(defun forward-line (e &key (n 1))
+(defmulti forward-line (e &key (n 1))
   "Move the point N lines, in the same column, or the end of the destination
 line. Return NIL and do nothing if we can't move that far, otherwise return
 the new point."
@@ -204,80 +249,82 @@ the new point."
   ;; sure that's entirely avoidable, but perhaps it could be quicker by making
   ;; it be a more generic buffer position iterator, and then bailing out as
   ;; soon as we get our thing.
-  (with-slots (point) e
-    (dbugf :roo "FIPPPY~%")
-    (let* ((coords (point-coords e))
-	   (line (car coords))
-	   (col (cdr coords))
-	   to-index endings)
-      (dbugf :roo "FOOOOPY~%line = ~a col = ~a~%" line col)
-      (setf (values to-index endings) (index-of-coords e (+ line n) col))
-      (dbugf :roo "to-index = ~a endings = ~a~%" to-index endings)
-      (if to-index
-	  (setf point to-index)
-	  ;; If we didn't find the same column on the previous line,
-	  ;; try to use index of the end of the previous line, or do nothing.
-	  (when (and endings (>= (+ line n) 0) (< (+ line n) (length endings))
-		     (setf to-index (nth (+ line n) (reverse endings))))
-	    (setf point (1+ (car to-index))))))))
+  (dbugf :roo "FIPPPY~%")
+  (let* ((coords (point-coords e))
+	 (line (car coords))
+	 (col (cdr coords))
+	 to-index endings)
+    (dbugf :roo "FOOOOPY~%line = ~a col = ~a~%" line col)
+    (setf (values to-index endings) (index-of-coords e (+ line n) col))
+    (dbugf :roo "to-index = ~a endings = ~a~%" to-index endings)
+    (if to-index
+	(setf point to-index)
+	;; If we didn't find the same column on the previous line,
+	;; try to use index of the end of the previous line, or do nothing.
+	(when (and endings (>= (+ line n) 0) (< (+ line n) (length endings))
+		   (setf to-index (nth (+ line n) (reverse endings))))
+	  (setf point (1+ (car to-index)))))))
 
-(defun previous-line (e)
+(defmulti previous-line (e)
   (setf (line-editor-keep-region-active e) t)
   (forward-line e :n -1))
 
-(defun previous-line-or-history (e)
+(defmulti previous-line-or-history (e)
   "Go to the previous line, or the previous history entry if we're already at
 the first line."
   ;;(if (find #\newline (simplify-string (buf e)))
   (when (not (previous-line e))
     (previous-history e)))
 
-(defmethod previous ((e line-editor))
+(defmulti-method previous ((e line-editor))
   (previous-line-or-history e))
 
-(defun next-line (e)
+(defmulti next-line (e)
   (setf (line-editor-keep-region-active e) t)
   (forward-line e))
 
-(defun next-history (e)
+(defsingle next-history (e)
   "Go to the next history entry."
-  (history-put (buffer-string (buf e)) (context e))
-  (history-next (context e))
-  (use-hist e))
+  (use-first-context (e)
+    (history-put (buffer-string (buf e)) (history-context e))
+    (history-next (history-context e))
+    (use-hist e)))
 
-(defun next-line-or-history (e)
+(defmulti next-line-or-history (e)
   "Go to the next line, or the next history entry if we're at the last line."
   ;; (let ((simple-buf (simplify-string (buf e))))
   ;;   (if (find #\newline simple-buf)
   (when (not (next-line e))
     (next-history e)))
 
-(defmethod next ((e line-editor))
+(defmulti-method next ((e line-editor))
   (next-line-or-history e))
 
-(defun beginning-of-history (e)
+(defsingle beginning-of-history (e)
   "Go to the beginning of the history."
-  (history-put (buffer-string (buf e)) (context e))
-  (history-go-to-first (context e))
-  (use-hist e))
+  (use-first-context (e)
+    (history-put (buffer-string (buf e)) (history-context e))
+    (history-go-to-first (history-context e))
+    (use-hist e)))
 
-(defmethod move-to-top ((e line-editor))
+(defsingle-method move-to-top ((e line-editor))
   (beginning-of-history e))
 
-(defun end-of-history (e)
+(defsingle end-of-history (e)
   "Go to the end of the history."
-  (history-put (buffer-string (buf e)) (context e))
-  (history-go-to-last (context e))
-  (use-hist e))
+  (use-first-context (e)
+    (history-put (buffer-string (buf e)) (history-context e))
+    (history-go-to-last (history-context e))
+    (use-hist e)))
 
-(defmethod move-to-bottom ((e line-editor))
+(defsingle-method move-to-bottom ((e line-editor))
   (end-of-history e))
 
 (defun add-to-history-p (e buf-str)
   "Returns true if we should add the current line to the history. Don't add it
 if it's blank or the same as the previous line."
-  (with-slots (context allow-history-blanks allow-history-duplicates) e
-    (let* ((cur (history-current-get context))
+  (with-slots (history-context allow-history-blanks allow-history-duplicates) e
+    (let* ((cur (history-current-get history-context))
 	   (prev (dl-next cur)))
       (flet ((is-blank ()
 	       (and buf-str (zerop (olength buf-str))))
@@ -287,93 +334,102 @@ if it's blank or the same as the previous line."
 	(and (or (not (is-blank)) allow-history-blanks)
 	     (or (not (is-dup)) allow-history-duplicates))))))
 
-(defun accept-line (e)
-  (with-slots (buf buf-str point quit-flag context accept-does-newline) e
-    (history-go-to-last context)
+(defsingle accept-line (e)
+  (with-slots (buf buf-str quit-flag history-context accept-does-newline) e
+    (history-go-to-last history-context)
     (if (add-to-history-p e buf-str)
-	(history-put (buffer-string buf) context)
-	(history-delete-last context))
+	(history-put (buffer-string buf) history-context)
+	(history-delete-last history-context))
     (setf quit-flag t)))
 
-(defmethod accept ((e line-editor))
+(defsingle-method accept ((e line-editor))
   (accept-line e))
 
-(defun copy-region (e)
+(defmulti copy-region (e)
   "Copy the text between the insertion point and the mark to the clipboard."
-  (with-slots (point mark buf clipboard) e
+  (with-slots (buf) e
     (let* ((start (min mark point))
 	   (end (min (max mark point) (fill-pointer buf))))
       (setf clipboard (subseq buf start end)))))
 
-(defmethod copy ((e line-editor))
+(defmulti-method copy ((e line-editor))
   (copy-region e))
 
-(defun set-mark (e)
+(defmulti set-mark (e)
   "Set the mark to be the current point."
-  (with-slots (point mark region-active keep-region-active) e
+  (with-slots (region-active keep-region-active) e
     (let ((toggle (not (eq 'set-mark (inator-last-command e)))))
       (setf mark point
 	    region-active toggle
 	    keep-region-active toggle))
     mark))
 
-(defmethod select ((e line-editor))
+(defmulti-method select ((e line-editor))
   (set-mark e))
 
-(defun kill-region (e)
+(defmulti kill-region (e)
   "Delete the text between the insertion point and the mark, and put it in
 the clipboard."
-  (with-slots (point mark buf clipboard) e
+  (with-slots (buf) e
     (let* ((start (min mark point))
 	   (end (min (max mark point) (fill-pointer buf))))
       (setf clipboard (subseq buf start end)
 	    point start)
-      (buffer-delete e start end))))
+      (buffer-delete e start end point))))
 
-(defun exchange-point-and-mark (e)
+(defmulti exchange-point-and-mark (e)
   "Move point to the mark. Set the mark at the old point."
-  (with-slots (point mark keep-region-active) e
+  (with-slots (keep-region-active) e
     (setf keep-region-active t)
     (when mark
       (rotatef point mark))))
 
-(defun isearch-backward (e)
+(defsingle isearch-backward (e)
   "Incremental search backward."
   (isearch e :backward))
 
-(defmethod search-command ((e line-editor))
+(defsingle-method search-command ((e line-editor))
   (isearch-backward e))
 
-(defun isearch-forward (e)
+(defsingle isearch-forward (e)
   "Incremental search forward."
   (isearch e :forward))
 
 (defun display-search (e str start end prompt)
   "Display the current line with the search string highlighted."
-  (with-slots (point buf mark context temporary-message) e
+  (with-slots (buf history-context contexts temporary-message) e
     (setf temporary-message
 	  (s+ prompt str))
-      (if (and start (history-current context))
+      (if (and start (history-current history-context))
 	  (save-excursion (e)
-            (setf point start
-		  mark end		; for the highlightify
+            ;; (setf point start
+	    ;; 	  mark end		; for the highlightify
+	    ;; 	  buf (highlightify
+	    ;; 	       e (make-fatchar-string (history-current history-context))
+	    ;; 	       :style
+	    ;; 	       (or (theme-value *theme* '(:program :search-match :style))
+	    ;; 		   (theme-value *theme* '(:rl :search-match :style))
+	    ;; 		   '(:underline)))
+	    ;; 	  mark nil)		; for the redraw-display
+	    (setf contexts (make-contexts)
+		  (context-point (aref contexts 0)) start
+		  (context-mark (aref contexts 0)) end
 		  buf (highlightify
-		       e (make-fatchar-string (history-current context))
+		       e (make-fatchar-string (history-current history-context))
 		       :style
 		       (or (theme-value *theme* '(:program :search-match :style))
 			   (theme-value *theme* '(:rl :search-match :style))
-			   '(:underline)))
-		  mark nil)		; for the redraw-display
+			   '(:underline))))
 	    (redraw-display e))
 	  (redraw-display e))))
 
-(defun search-start-forward (context)
-  (or (history-current-get context)
-      (history-head (get-history context))))
+(defun search-start-forward (history-context)
+  (or (history-current-get history-context)
+      (history-head (get-history history-context))))
 
-(defun search-start-backward (context)
-  (or (history-current-get context)
-      (history-tail (get-history context))))
+(defun search-start-backward (history-context)
+  (or (history-current-get history-context)
+      (history-tail (get-history history-context))))
 
 (defun backward-start-pos (str pos)
   (min (length str)
@@ -394,10 +450,10 @@ be case insensitive."
   (if (some #'upper-case-p string) #'char= #'char-equal))
 
 (defun search-history (e str direction start-from search-pos)
-  (with-slots (point context) e
-    (let ((hist (get-history context))
+  (with-slots (history-context) e
+    (let ((hist (get-history history-context))
 	  (first-time t))
-      ;; (dbug "yoyo context ~w ~w~%" context hist)
+      ;; (dbug "yoyo history-context ~w ~w~%" histroy-context hist)
       (if (eq direction :backward)
 	  (progn
 	    ;; (dbug "starting-at ~w~%" start-from)
@@ -450,82 +506,86 @@ be case insensitive."
 search can be ended by typing a control character, which usually performs a
 command, or Control-G which stops the search and returns to the start.
 Control-R searches again backward and Control-S searches again forward."
-  (with-slots (point buf command context temporary-message last-search) e
-    (let ((quit-now nil)
-	  (start-point point)
-	  (start-hist (history-current-get context))
-	  (search-string (make-stretchy-string *initial-line-size*))
-	  (start-from (or (history-current-get context)
-			  (history-head (get-history context))))
-	  (pos point) end c #| added |# failed)
-      (labels ((redisp ()
-		 (display-search e search-string point end
-				 (format nil *isearch-prompt*
-					 failed (eq direction :backward))))
-	       (resync ()
-		 (buffer-delete e 0 (length buf))
-		 (buffer-insert e 0 (or (history-current (context e)) ""))
-		 (setf point (min (or pos (length buf)) (length buf))
-		       temporary-message nil
-		       last-search search-string)
-		 (redraw-display e)))
-	(loop :while (not quit-now)
-	   :do
-	   ;; (when (debugging e)
-	   ;;   (debug-message e "pos = ~a start-from = ~a" pos start-from))
-	   (redisp)
-	   (tt-finish-output)
-	   (setf c (get-a-char e))
-	   ;; (setf added nil)
-	   (cond
-	     ((eql c (ctrl #\G))
-	      (setf point start-point)
-	      (setf (history-current context) start-hist)
-	      (use-hist e)
-	      (setf quit-now t))
-	     ((eql c (ctrl #\S))
-	      (when (and (zerop (length search-string)) last-search)
-		(stretchy-append search-string last-search))
-	      (setf direction :forward
-		    start-from (search-start-forward context)))
-	     ((eql c (ctrl #\R))
-	      (when (and (zerop (length search-string)) last-search)
-		(stretchy-append search-string last-search))
-	      (setf direction :backward
-		    start-from (search-start-backward context)))
-	     ((eql c (ctrl #\L))
-	      (redisp))
-	     ((or (eql c (ctrl #\h)) (eql c #\backspace) (eql c #\rubout))
-	      (stretchy-truncate search-string
-				 (max 0 (1- (length search-string)))))
-	     ((or (and (characterp c)
-		       (or (control-char-p c) (meta-char-p (char-code c))))
-		  (not (characterp c)))
-	      (resync)
-	      (return-from isearch c))
-	     (t
-	      (stretchy-append search-string c)
-	      ;; (setf added t)
-	      ))
-	   (if (setf pos (search-history
-			  e search-string direction start-from pos))
-	       (progn
-		 (setf end (+ pos (length search-string))
-		       point pos
-		       failed nil))
-	       (progn
-		 (setf failed t)
-		 ;; (when added
-		 ;;   (stretchy-truncate search-string
-		 ;; 		      (max 0 (1- (length search-string))))
-		 ;;   (setf pos old-pos))
-		 ;; (beep e "Not found")
-		 )))
-	(resync)))))
+  (with-slots (buf command history-context temporary-message last-search
+		   contexts) e
+    (with-slots (point) (aref contexts 0)
+      (let ((quit-now nil)
+	    (start-point point)
+	    (start-hist (history-current-get history-context))
+	    (search-string (make-stretchy-string *initial-line-size*))
+	    (start-from (or (history-current-get history-context)
+			    (history-head (get-history history-context))))
+	    (pos point) end c #| added |# failed)
+	(labels ((redisp ()
+		   (display-search e search-string point end
+				   (format nil *isearch-prompt*
+					   failed (eq direction :backward))))
+		 (resync ()
+		   (buffer-delete e 0 (length buf) point)
+		   (buffer-insert e 0 (or (history-current
+					   (history-context e)) "")
+				  point)
+		   (setf point (min (or pos (length buf)) (length buf))
+			 temporary-message nil
+			 last-search search-string)
+		   (redraw-display e)))
+	  (loop :while (not quit-now)
+	     :do
+	     ;; (when (debugging e)
+	     ;;   (debug-message e "pos = ~a start-from = ~a" pos start-from))
+	     (redisp)
+	     (tt-finish-output)
+	     (setf c (get-a-char e))
+	     ;; (setf added nil)
+	     (cond
+	       ((eql c (ctrl #\G))
+		(setf point start-point)
+		(setf (history-current history-context) start-hist)
+		(use-hist e)
+		(setf quit-now t))
+	       ((eql c (ctrl #\S))
+		(when (and (zerop (length search-string)) last-search)
+		  (stretchy-append search-string last-search))
+		(setf direction :forward
+		      start-from (search-start-forward history-context)))
+	       ((eql c (ctrl #\R))
+		(when (and (zerop (length search-string)) last-search)
+		  (stretchy-append search-string last-search))
+		(setf direction :backward
+		      start-from (search-start-backward history-context)))
+	       ((eql c (ctrl #\L))
+		(redisp))
+	       ((or (eql c (ctrl #\h)) (eql c #\backspace) (eql c #\rubout))
+		(stretchy-truncate search-string
+				   (max 0 (1- (length search-string)))))
+	       ((or (and (characterp c)
+			 (or (control-char-p c) (meta-char-p (char-code c))))
+		    (not (characterp c)))
+		(resync)
+		(return-from isearch c))
+	       (t
+		(stretchy-append search-string c)
+		;; (setf added t)
+		))
+	     (if (setf pos (search-history
+			    e search-string direction start-from pos))
+		 (progn
+		   (setf end (+ pos (length search-string))
+			 point pos
+			 failed nil))
+		 (progn
+		   (setf failed t)
+		   ;; (when added
+		   ;;   (stretchy-truncate search-string
+		   ;; 		      (max 0 (1- (length search-string))))
+		   ;;   (setf pos old-pos))
+		   ;; (beep e "Not found")
+		   )))
+	  (resync))))))
 
-(defun redraw-command (e)
+(defsingle redraw-command (e)
   "Clear the screen and redraw the prompt and the input line."
-  (with-slots (prompt-string prompt-func point buf need-to-redraw
+  (with-slots (prompt-string prompt-func buf need-to-redraw
 	       keep-region-active) e
     (tt-clear) (tt-home)
     (setf (screen-col e) 0 (screen-relative-row e) 0)
@@ -533,42 +593,42 @@ Control-R searches again backward and Control-S searches again forward."
     (setf need-to-redraw nil
 	  keep-region-active t)))
 
-(defmethod redraw ((e line-editor))
+(defsingle-method redraw ((e line-editor))
   (redraw-command e))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Buffer editing
 
-(defun insert (e thing)
+(defmulti insert (e thing)
   "Insert thing into the buffer at point."
-  (buffer-insert e (point e) thing))
+  (buffer-insert e point thing point))
 
-(defun delete-region (e start end)
+(defmulti delete-region (e start end)
   "Delete the region of the buffer between the positions start and end.
 Don't update the display."
-  (with-slots (point buf) e
-    (buffer-delete e start end)
+  (with-slots (buf) e
+    (buffer-delete e start end point)
     ;; Make sure the point stays in the buffer.
     (when (> point (fill-pointer buf))
       (setf point (fill-pointer buf)))))
 
-(defun delete-backward-char (e)
+(defmulti delete-backward-char (e)
   "Backward delete a character from buf at point"
-  (with-slots (point buf) e
+  (with-slots (buf) e
     (when (> point 0)
-      (buffer-delete e (1- point) point)
+      (buffer-delete e (1- point) point point)
       (decf point))))
 
-(defun delete-char (e)
+(defmulti delete-char (e)
   "Delete the character following the cursor."
-  (with-slots (point buf) e
+  (with-slots (buf) e
     (if (= point (fill-pointer buf))
 	(beep e "End of buffer")
-	(buffer-delete e point (1+ point)))))
+	(buffer-delete e point (1+ point) point))))
 
-(defun delete-char-or-exit (e)
+(defmulti delete-char-or-exit (e)
   "At the beginning of a blank line, exit, otherwise delete-char."
-  (with-slots (point buf last-command quit-flag exit-flag) e
+  (with-slots (buf last-command quit-flag exit-flag) e
     (if (and (= point 0) (= (length buf) 0)
 	     (not (eql last-command (ctrl #\d))))
 	;; At the beginning of a blank line, we exit,
@@ -579,17 +639,17 @@ Don't update the display."
 
 ;;; Higher level editing functions
 
-(defun backward-kill-word (e)
-  (with-slots (buf point non-word-chars clipboard) e
+(defmulti backward-kill-word (e)
+  (with-slots (buf non-word-chars) e
     (let ((start point))
       (scan-over e :backward :func #'(lambda (c) (position c non-word-chars)))
       (scan-over e :backward :not-in non-word-chars)
       (let ((region-str (subseq buf point start)))
 	(setf clipboard region-str)
-	(buffer-delete e point start)))))
+	(buffer-delete e point start point)))))
 
-(defun kill-word (e)
-  (with-slots (buf point non-word-chars clipboard) e
+(defmulti kill-word (e)
+  (with-slots (buf non-word-chars) e
     (let ((start point))
       (scan-over e :forward :func #'(lambda (c) (position c non-word-chars)))
       (scan-over e :forward :not-in non-word-chars)
@@ -597,11 +657,11 @@ Don't update the display."
 	(incf point))
       (let ((region-str (subseq buf start point)))
 	(setf clipboard region-str)
-	(buffer-delete e point start)
+	(buffer-delete e point start point)
 	(setf point start)))))
 
-(defun kill-line (e)
-  (with-slots (clipboard buf point) e
+(defmulti kill-line (e)
+  (with-slots (buf) e
     (let ((end (or (position #\newline buf :start point :key #'fatchar-c)
 		   (fill-pointer buf))))
       ;; If we're sitting on a newline, kill that.
@@ -610,10 +670,10 @@ Don't update the display."
 		 (char= #\newline (simplify-char (aref buf point))))
 	(incf end))
       (setf clipboard (subseq buf point end))
-      (buffer-delete e point end))))
+      (buffer-delete e point end point))))
 
-(defun backward-kill-line (e)
-  (with-slots (point clipboard buf) e
+(defmulti backward-kill-line (e)
+  (with-slots (buf) e
     (let ((start (or (position #\newline buf
 			       :from-end t :end point :key #'fatchar-c)
 		     0)))
@@ -623,86 +683,91 @@ Don't update the display."
 	(setf clipboard (subseq buf start point))
 	;; (if (zerop start)
 	;;     (replace-buffer e (subseq buf point))
-	(buffer-delete e start point)
+	(buffer-delete e start point point)
 	(setf point start)
 	;;(beginning-of-line e)
 	)
       (clear-completions e))))
 
-(defun yank (e)
-  (with-slots (clipboard point) e
-    (when clipboard
-      (let ((len (length clipboard)))
-	(insert e clipboard)
-	(incf point len)))))
+(defmulti yank (e)
+  (when clipboard
+    (let ((len (length clipboard)))
+      (insert e clipboard)
+      (incf point len))))
 
-(defmethod paste ((e line-editor))
+(defmulti-method paste ((e line-editor))
   (yank e))
 
 (defun forward-word-action (e action)
-  (with-slots (point buf non-word-chars) e
-    (scan-over e :forward :func #'(lambda (c) (position c non-word-chars)))
-    (scan-over e :forward :not-in non-word-chars :action action)
-    (when (< point (length buf))
-      (incf point))))
+  (with-context ()
+    (with-slots (buf non-word-chars) e
+      (scan-over e :forward :func #'(lambda (c) (position c non-word-chars)))
+      (scan-over e :forward :not-in non-word-chars :action action)
+      (when (< point (length buf))
+	(incf point)))))
 
 (defun apply-char-action-to-region (e char-action &optional beginning end)
   "Apply a function that takes a character and returns a character, to
 every character in the region delimited by BEGINING and END. If BEGINING
 and END aren't given uses the the current region, or gets an error if there
 is none."
-  (with-slots (point mark buf) e
-    (when (and (not mark) (or (not beginning) (not end)))
-      (error "Mark must be set if beginning or end not given."))
-    (when (not beginning)
-      (setf beginning (min mark point)))
-    (when (not end)
-      (setf end (max mark point)))
-    (when (> beginning end)
-      (rotatef end beginning))
-    (let ((old-mark mark)
-	  (old-point point))
-      (unwind-protect
-	   (progn
-	     ;;(setf mark beginning)
-	     ;;(rotatef point mark)
-	     ;;(exchange-point-and-mark e)
-	     (setf point beginning)
-	     ;;(scan-over e :forward :func (constantly t) :action char-action))
-	     (log-message e "point = ~s end = ~s" point end)
-	     (scan-over e :forward :func (_ (< (point e) end))
-			:action
-			char-action
-			;; (_ (let ((r (funcall char-action _)))
-			;;      (message-pause e "~s -> ~s" _ r)
-			;;      r))
-			)
-	     (if (< point (length buf)) (incf point)))
-	(setf mark old-mark
-	      point old-point)))))
+  (with-slots (buf) e
+    (with-context ()
+      (when (and (not mark) (or (not beginning) (not end)))
+	(error "Mark must be set if beginning or end not given."))
+      (when (not beginning)
+	(setf beginning (min mark point)))
+      (when (not end)
+	(setf end (max mark point)))
+      (when (> beginning end)
+	(rotatef end beginning))
+      (let ((old-mark mark)
+	    (old-point point))
+	(unwind-protect
+	     (progn
+	       ;;(setf mark beginning)
+	       ;;(rotatef point mark)
+	       ;;(exchange-point-and-mark e)
+	       (setf point beginning)
+	       ;;(scan-over e :forward :func (constantly t) :action char-action))
+	       (log-message e "point = ~s end = ~s" point end)
+	       (scan-over e :forward :func (_ (< point end))
+			  :action
+			  char-action
+			  ;; (_ (let ((r (funcall char-action _)))
+			  ;;      (message-pause e "~s -> ~s" _ r)
+			  ;;      r))
+			  )
+	       (if (< point (length buf)) (incf point)))
+	  (setf mark old-mark
+		point old-point))))))
 
-(defun downcase-region (e &optional (begining (mark e)) (end (point e)))
-  (apply-char-action-to-region e #'char-downcase begining end))
+(defmulti downcase-region (e &optional beginning end)
+  (apply-char-action-to-region e #'char-downcase
+			       (or beginning mark)
+			       (or end point)))
 
-(defun upcase-region (e &optional begining end)
-  (apply-char-action-to-region e #'char-upcase begining end))
+(defmulti upcase-region (e &optional beginning end)
+  (apply-char-action-to-region e #'char-upcase
+			       (or beginning mark)
+			       (or end point)))
 
-(defun downcase-word (e)
+(defmulti downcase-word (e)
   (forward-word-action e #'(lambda (c) (char-downcase c))))
 
-(defun upcase-word (e)
+(defmulti upcase-word (e)
   (forward-word-action e #'(lambda (c) (char-upcase c))))
 
-(defun capitalize-word (e)
+(defmulti capitalize-word (e)
   (let (bonk)
     (forward-word-action e #'(lambda (c)
 			       (if (not bonk)
 				   (progn (setf bonk t) (char-upcase c))
 				   (char-downcase c))))))
 
-(defun un-studly-cap (e)
+(defmulti un-studly-cap (e)
   "Convert from StupidVarName to stupid-var-name."
-  (with-slots (point buf) e
+  (with-slots (buf) e
     (record-undo e 'boundary)
     (let (c start)
       (loop :do
@@ -729,9 +794,9 @@ is none."
 	 :while (and (alpha-char-p c) (upper-case-p c)))
       (record-undo e 'boundary))))
 
-(defun delete-horizontal-space (e)
+(defmulti delete-horizontal-space (e)
   "Delete space before and after the cursor."
-  (with-slots (buf point) e
+  (with-slots (buf) e
     (let ((origin point) start end)
       (setf origin point)
       (scan-over e :forward
@@ -743,11 +808,11 @@ is none."
       (setf start point)
       (delete-region e start end))))
 
-(defun transpose-characters (e)
+(defmulti transpose-characters (e)
   "Swap the character before the cursor with the one it's on, and advance the
 cursor. At the beginning or end of the buffer, adjust the point so it works.
 Don't do anything with less than 2 characters."
-  (with-slots (buf point) e
+  (with-slots (buf) e
     (when (>= (length buf) 2)
       (cond
 	((zerop point)
@@ -755,13 +820,13 @@ Don't do anything with less than 2 characters."
 	((= point (fill-pointer buf))
 	 (decf point)))
       (let ((first-char (buffer-char buf (1- point))))
-	(buffer-replace e (1- point) (buffer-char buf point))
-	(buffer-replace e point first-char))
+	(buffer-replace e (1- point) (buffer-char buf point) point)
+	(buffer-replace e point first-char point))
       (incf point))))
 
-(defun quote-region (e)
+(defmulti quote-region (e)
   "Put double quotes around the region, escaping any double quotes inside it."
-  (with-slots (point mark buf) e
+  (with-slots (buf) e
     (when (and mark (/= point mark))
       (let* ((start (min point mark))
 	     (end (max point mark))
@@ -775,14 +840,14 @@ Don't do anything with less than 2 characters."
 			       (write-char #\" str))
 			     (write-char (buffer-char buf i) str)))
 		    (write-char #\" str))))
-	(buffer-delete e start end)
-	(buffer-insert e start new)
+	(buffer-delete e start end point)
+	(buffer-insert e start new point)
 	;; Adjust the point to be at the end of the replacement.
 	(when (= point end)
 	  (incf point (- (length new) (- end start))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; hacks for typing lisp
+;; Hacks for typing Lisp.
 
 (defparameter *paren-match-style* :flash
   "Style of parentheses matching. :FLASH, :HIGHLIGHT or :NONE.")
@@ -808,17 +873,30 @@ in order, \"{open}{close}...\".")
 		   (if (evenp pos) (1+ pos) (1- pos))))))
 
 (defun flash-paren (e)
-  (with-slots (point buf) e
-    (let* ((str (buffer-string buf))
-	   (ppos (matching-paren-position str :position point)))
-      (if ppos
-	  (let ((saved-point point))
-	    (setf point ppos)
-	    (update-display e)
-	    (tt-finish-output)
-	    (tt-listen-for .5)
-	    (setf point saved-point))
-	  (beep e "No match.")))))
+  (with-slots (buf) e
+    (with-context ()
+      (let* ((str (buffer-string buf))
+	     (ppos (matching-paren-position str :position point)))
+	(if ppos
+	    (let ((saved-point point))
+	      (setf point ppos)
+	      (update-display e)
+	      (tt-finish-output)
+	      (tt-listen-for .5)
+	      (setf point saved-point))
+	    (beep e "No match."))))))
+
+(defun highlight-matching-parentheses (e)
+  (with-slots (buf) e
+    (do-contexts (e)
+      (with-context ()
+	(if (eq *paren-match-style* :highlight)
+	    (cond
+	      ((is-open-char (aref buf point))
+	       (highlight-paren e point))
+	      ((and (plusp point)
+		    (is-close-char (aref buf (1- point))))
+	       (highlight-paren e (1- point)))))))))
 
 (defun highlight-paren (e pos)
   (let* ((str (buffer-string (buf e)))
@@ -845,7 +923,7 @@ in order, \"{open}{close}...\".")
 	;; @@@ but how/when to un-bold??
 	)))
 
-(defun finish-line (e)
+(defsingle finish-line (e)
   "Add any missing close parentheses and accept the line."
   (with-slots (buf) e
     (loop :while (matching-paren-position (buffer-string buf))
@@ -855,7 +933,7 @@ in order, \"{open}{close}...\".")
 	 )
     (accept-line e)))
 
-(defun pop-to-lish (e)
+(defsingle pop-to-lish (e)
   "If we're inside lish, throw to a quick exit. If we're not in lish, enter it."
   (let* ((lish-package (find-package :lish))
 	 (level-symbol (intern "*LISH-LEVEL*" lish-package)))
@@ -884,7 +962,7 @@ in order, \"{open}{close}...\".")
 	    (setf (terminal-input-mode (line-editor-terminal e)) :line)
 	    (terminal-start (line-editor-terminal e)))))))
 
-(defun abort-command (e)
+(defsingle abort-command (e)
   "Invoke the debugger from inside."
   (declare (ignore e))
   ;; Maybe this should just flash the screen?
@@ -894,18 +972,19 @@ in order, \"{open}{close}...\".")
   ;; 		      :format-control "Abort command")))
   (abort))
 
-(defun toggle-debugging (e)
+(defsingle toggle-debugging (e)
   "Toggle debugging output."
   (with-slots (debugging) e
     (setf debugging (not debugging))))
 
-(defun quoted-insert (e)
+(defsingle quoted-insert (e)
   "Insert the next character input without interpretation."
   (let ((c (get-a-char e)))
-    (self-insert e t c)))
+    (do-contexts (e)
+      (self-insert e t c))))
 
-(defun self-insert (e &optional quoted char)
-  (with-slots (command last-event buf point) e
+(defmulti self-insert (e &optional quoted char)
+  (with-slots (command last-event buf) e
     (when (not char)
       (setf char last-event))
     (cond
@@ -934,15 +1013,17 @@ in order, \"{open}{close}...\".")
 	     (incf point)))))))
 
 (defgeneric self-insert-command (line-editor)
-  (:documentation "Try to insert a character into the buffer.")
-  (:method ((e line-editor))
-    (self-insert e)))
+  (:documentation "Try to insert a character into the buffer."))
 
-;; @@@ Is this reasonable?
-(defmethod default-action ((e line-editor))
+(defmulti-method self-insert-command ((e line-editor))
+  "Try to insert a character into the buffer."
   (self-insert e))
 
-(defun newline (e)
+;; @@@ Is this reasonable?
+(defmulti-method default-action ((e line-editor))
+  (self-insert e))
+
+(defmulti newline (e)
   "Insert a newline."
   (self-insert e t #\newline))
 
@@ -954,12 +1035,12 @@ in order, \"{open}{close}...\".")
 
 (defun ask-function-name (&optional (prompt "Function: "))
   "Prompt for a function name and return symbol of a function."
-  (let* ((str (rl :prompt prompt :context :ask-function-name))
+  (let* ((str (rl :prompt prompt :history-context :ask-function-name))
 	 (cmd (and str (stringp str)
 		   (ignore-errors (safe-read-from-string str)))))
     (and (symbolp cmd) (fboundp cmd) cmd)))
 
-(defun set-key-command (e)
+(defsingle set-key-command (e)
   "Bind a key interactively."
   (tmp-prompt e "Set key: ")
   (let* ((key-seq (read-key-sequence e))
@@ -969,7 +1050,7 @@ in order, \"{open}{close}...\".")
 	(set-key key-seq cmd (line-editor-local-keymap e))
 	(tmp-message e "Not a function."))))
 
-(defmethod describe-key-briefly ((e line-editor))
+(defsingle-method describe-key-briefly ((e line-editor))
   "Tell what function a key invokes."
   (tmp-prompt e "Describe key: ")
   (let* ((key-seq (read-key-sequence e))
@@ -987,34 +1068,35 @@ in order, \"{open}{close}...\".")
     ;; (redraw-line e)
     (setf (line-editor-keep-region-active e) t)))
 
-(defun what-cursor-position (e)
+(defsingle what-cursor-position (e)
   "Describe the cursor position."
-  (with-slots (point buf screen-relative-row screen-col keep-region-active) e
-    (let* ((fc (and (< point (length buf))
-		    (aref buf point)))
-	   (char (and fc (fatchar-c fc)))
-	   (code (and char (char-code char))))
-      (if fc
-	  (tmp-message e "~s of ~s Row: ~s Column: ~s Char: '~a' ~a ~s #x~x"
-		       point (length buf) screen-relative-row screen-col
-		       fc
-		       (and char (char-name char))
-		       code code)
-	  (tmp-message e "~s of ~s Row: ~s Column: ~s"
-		       point (length buf) screen-relative-row screen-col))
-      (setf keep-region-active t))))
+  (with-slots (contexts buf screen-relative-row screen-col keep-region-active) e
+    (with-slots (point) (aref contexts 0)
+      (let* ((fc (and (< point (length buf))
+		      (aref buf point)))
+	     (char (and fc (fatchar-c fc)))
+	     (code (and char (char-code char))))
+	(if fc
+	    (tmp-message e "~s of ~s Row: ~s Column: ~s Char: '~a' ~a ~s #x~x"
+			 point (length buf) screen-relative-row screen-col
+			 fc
+			 (and char (char-name char))
+			 code code)
+	    (tmp-message e "~s of ~s Row: ~s Column: ~s"
+			 point (length buf) screen-relative-row screen-col))
+	(setf keep-region-active t)))))
 
-(defun exit-editor (e)
+(defsingle exit-editor (e)
   "Stop editing."
   (with-slots (quit-flag exit-flag) e
     (setf quit-flag t
 	  exit-flag t)))
 
-(defmethod quit ((e line-editor))
+(defsingle-method quit ((e line-editor))
   (exit-editor e))
 
 ;; This is mostly for binding to purposely meaningless commands.
-(defun beep-command (e)
+(defsingle beep-command (e)
   "Just ring the bell or something."
   (beep e "Woof! Woof!"))
 
@@ -1032,19 +1114,22 @@ in order, \"{open}{close}...\".")
   (when (typep term 'terminal-ansi)
     term))
 
-(defun bracketed-paste (e)
-  (with-slots (point) e
-    (let* ((term (or (find-ansi-terminal (line-editor-terminal e))
-		     (error "I don't know how to read a bracketed paste on ~
+;; This is a defsingle, because we want to read a single paste, even though we
+;; want to paste it in multiple places.
+(defsingle bracketed-paste (e)
+  (let* ((term (or (find-ansi-terminal (line-editor-terminal e))
+		   (error "I don't know how to read a bracketed paste on ~
                              a ~a." (type-of *terminal*))))
-	   (paste (read-bracketed-paste term))
-	   (len (length paste)))
-      (insert e (if (translate-return-to-newline-in-bracketed-paste e)
-		    (substitute #\newline #\return paste)
-		    paste))
-      (incf point len))))
+	 (paste (read-bracketed-paste term))
+	 (len (length paste)))
+    (do-contexts (e)
+      (with-context ()
+	(insert e (if (translate-return-to-newline-in-bracketed-paste e)
+		      (substitute #\newline #\return paste)
+		      paste))
+	(incf point len)))))
 
-(defun char-picker-command (e)
+(defsingle char-picker-command (e)
   "Pick unicode (or whatever) characters."
   (let ((result
 	 (with-external (e)
@@ -1052,21 +1137,50 @@ in order, \"{open}{close}...\".")
 	     (asdf:load-system :char-picker))
 	   (symbol-call :char-picker :char-picker))))
     (if result
-	(self-insert e t result)
+	(do-contexts (e)
+	  (self-insert e t result))
 	(beep e "char-picker failed"))))
 
-(defun unipose-command (e)
+(defsingle unipose-command (e)
   "Compose unicode characters."
   (let ((first-ccc (get-a-char e)) second-ccc result)
     (setq second-ccc (get-a-char e))
     (setq result (unipose first-ccc second-ccc))
     (if result
-	(self-insert e t result)
+	(do-contexts (e)
+	  (self-insert e t result))
 	(beep e "unipose ~c ~c unknown" first-ccc second-ccc))))
 
-(defun insert-file (e)
+(defsingle insert-file (e)
   "Insert a file into the line editor's buffer."
   (let* ((file (read-filename :prompt "Insert-file: ")))
     (insert e (slurp file))))
+
+(defsingle add-cursor-on-next-line (e)
+  "Add a cursor where next-line would take us."
+  (with-slots (contexts) e
+    (let ((c (copy-context (aref contexts (1- (length contexts))))))
+      (use-context (c)
+        (forward-line e))
+      (add-context e (context-point c) nil))))
+
+(defsingle just-one-context (e)
+  "Get rid of all the contexts except one."
+  (with-slots (contexts) e
+    (when (> (length contexts) 1)
+      (setf contexts (subseq contexts 0 1)))))
+
+;; @@@ Consider adding:
+;; With negative ARG, delete the last one instead.
+;; With zero ARG, skip the last one and mark next.
+
+(defsingle next-like-this (e)
+  "If the selection is active, add another cursor and selection matching the
+current selection. Otherwise, add a cursor on the next line."
+  (with-slots (contexts) e
+    (let ((c (copy-context (aref contexts (1- (length contexts))))))
+      (use-context (c)
+        (forward-line e))
+      (add-context e (context-point c) nil))))
 
 ;; EOF

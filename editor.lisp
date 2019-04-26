@@ -36,6 +36,22 @@
 (defparameter *normal-keymap* nil
   "The normal key for use in the line editor.")
 
+(defstruct context
+  "Editing context."
+  (point 0 :type fixnum)
+  (mark nil :type (or fixnum null))
+  (clipboard nil))
+
+(defun make-contexts (&key (n 1) copy-from)
+  (if copy-from
+      (make-array n :element-type 'context
+		  :initial-contents
+		  (map 'list (_ (copy-context _)) copy-from)
+		  :adjustable t)
+      (make-array n :element-type 'context
+		  :initial-element (make-context)
+		  :adjustable t)))
+
 (defvar *line-editor* nil
   "The last line editor that was instantiated. This is for debugging, since
 it can be somewhat unpredictable, especially with threads. Don't use it for
@@ -58,6 +74,11 @@ anything important.")
     :initform nil
     :initarg :buf-str
     :documentation "The buffer as a fat-string.")
+   (contexts
+    :initarg :contexts :accessor contexts
+    :initform (make-contexts)
+    :type (vector context *)
+    :documentation "The editing contexts.")
    ;; (screen-row
    ;;  :accessor screen-row
    ;;  :initform 0
@@ -83,17 +104,17 @@ anything important.")
     :accessor last-line
     :initform nil
     :documentation "Last line of the buffer.")
-   (clipboard
-    :accessor clipboard
-    :initform nil
-    :documentation "A string to copy and paste with.")
-   (mark
-    :accessor mark
-    :initform nil
-    :documentation "A reference position in the buffer.")
-   (context
-    :accessor context
-    :initarg :context
+   ;; (clipboard
+   ;;  :accessor clipboard
+   ;;  :initform nil
+   ;;  :documentation "A string to copy and paste with.")
+   ;; (mark
+   ;;  :accessor mark
+   ;;  :initform nil
+   ;;  :documentation "A reference position in the buffer.")
+   (history-context
+    :accessor history-context
+    :initarg :history-context
     :initform :tiny
     :documentation "A symbol selecting what line history to use.")
    (allow-history-duplicates
@@ -275,6 +296,8 @@ Otherwise the region is deactivated every command loop.")
     :initarg :last-search :accessor last-search :initform nil
     :documentation "The last string searched for."))
   (:default-initargs
+    :clipboard nil
+    :mark nil
     :non-word-chars *default-non-word-chars*
     :prompt-string *default-prompt*
     :terminal-class (or (and *terminal* (class-of *terminal*))
@@ -326,6 +349,75 @@ Otherwise the region is deactivated every command loop.")
   ;; Set the current dynamic var.
   (setf *line-editor* e))
 
+(declaim (ftype (function (line-editor) fixnum) first-point)
+	 (inline first-point))
+(defun first-point (e)
+  "Get the value of the first point."
+  (context-point (aref (contexts e) 0)))
+
+(defun set-first-point (e p)
+  "Set the first point of the editor E to P."
+  (setf (context-point (aref (contexts e) 0)) p))
+
+(defsetf first-point set-first-point
+  "Set the first point.")
+
+#|
+(defun incf-all-points (e increment)
+  (with-slots (point) e
+    ;; (map-into point (_ (+ _ increment)) point)
+    (loop :for i :from 0 :below (length point)
+       :do (incf (aref point i) increment))
+    ))
+
+(defun new-points (e)
+  (make-array (length point) :element-type 'fixnum :initial-element pos))
+|#
+
+(defvar *context* nil
+  "The current editing context.")
+
+(defmacro use-context ((context) &body body)
+  "Use CONTEXT as the dynamic editing context."
+  `(let ((*context* ,context))
+     ,@body))
+
+(defmacro use-first-context ((e) &body body)
+  "Use the first context in the editor E, as the dynamic editing context."
+  `(use-context ((aref (contexts ,e) 0))
+     ,@body))
+
+(defmacro with-context (() &body body)
+  "Evaluate the BODY with point, mark, and clipboard bound from *CONTEXT*."
+  `(with-slots (point mark clipboard) *context*
+     (declare (ignorable point mark clipboard))
+     ,@body))
+
+(defmacro do-contexts ((e) &body body)
+  "Evaluate the BODY once for each context in the editor E, with point, mark,
+and clipboard bound."
+  (with-unique-names (c)
+    `(loop :for ,c :across (contexts ,e) :do
+	(use-context (,c) ,@body))))
+
+(defun set-all-points (e pos)
+  (do-contexts (e)
+    (with-context ()
+      (setf point pos))))
+
+(defun copy-contexts (e)
+  "Return a copy of all the editing contexts in the editor E."
+  (make-contexts :n (length (contexts e)) :copy-from (contexts e)))
+
+(defun add-context (e point mark)
+  (with-slots (contexts) e
+    (adjust-array contexts (1+ (length contexts))
+		  :element-type 'context
+		  :initial-element (make-context))
+    (let ((new (aref contexts (1- (length contexts)))))
+      (setf (context-point new) point
+	    (context-mark new) mark))))
+
 (defgeneric freshen (e)
   (:documentation
    "Make something fresh. Make it's state like it just got initialized,
@@ -336,7 +428,10 @@ but perhaps reuse some resources."))
   (setf (inator-command e)	nil
 	(inator-last-command e) nil
 	(last-event e)          nil
-	(inator-point e)	0
+	;;(inator-point e)	#(0)
+	;;(inator-mark e)		nil
+	;;(inator-clipboard e)	nil	; should we really?
+	(contexts e)            (make-contexts)
 	(inator-quit-flag e)	nil
 	(fill-pointer (buf e))	0
 ;;;	(screen-row e) (terminal-get-cursor-position (line-editor-terminal e))
@@ -350,18 +445,31 @@ but perhaps reuse some resources."))
 	(exit-flag e)		nil
 	(did-under-complete e)	nil))
 
+#| old-way without contexts
 (defmacro save-excursion ((e) &body body)
   "Evaluate the body with the buffer, point, and mark restored afterward."
   (with-unique-names (saved-buf saved-point saved-mark)
     `(let ((,saved-buf (buf ,e))
 	   (,saved-point (inator-point ,e))
-	   (,saved-mark (mark ,e)))
+	   (,saved-mark (inator-mark ,e)))
        (unwind-protect
 	    (progn
 	      ,@body)
 	 (setf (buf ,e) ,saved-buf
 	       (inator-point ,e) ,saved-point
-	       (mark ,e) ,saved-mark)))))
+	       (inator-mark ,e) ,saved-mark)))))
+|#
+
+(defmacro save-excursion ((e) &body body)
+  "Evaluate the body with the buffer, point, and mark restored afterward."
+  (with-unique-names (saved-buf saved-contexts)
+    `(let ((,saved-buf (buf ,e))
+	   (,saved-contexts (copy-contexts e)))
+       (unwind-protect
+	    (progn
+	      ,@body)
+	 (setf (buf ,e) ,saved-buf
+	       (contexts e) ,saved-contexts)))))
 
 ;; For use in external commands.
 
@@ -370,7 +478,7 @@ but perhaps reuse some resources."))
   (buffer-string (buf e)))
 
 ;; @@@ compatibility
-(defalias 'point 'inator-point)
+;; (defalias 'point 'inator-point)
 (defalias 'line-editor-keymap 'inator-keymap)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

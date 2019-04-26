@@ -83,12 +83,12 @@
 (defun replace-buffer (e str)
   "Replace the buffer with the given string STR."
   ;;(declare (type string str))
-  (with-slots (buf point) e
-    (setf point 0)
-    (buffer-delete e 0 (length buf))
-    (buffer-insert e 0 str)
-    (setf point (length str))
-    ))
+  (with-slots (buf) e
+    (with-context ()
+      (setf point 0)
+      (buffer-delete e 0 (length buf) point)
+      (buffer-insert e 0 str point)
+      (setf point (length str)))))
 
 (defun use-hist (e)
   "Replace the current line with the current history line."
@@ -97,8 +97,8 @@
   ;; - The undo history (and all other buffer properties) are not
   ;;   retained.
   (without-undo (e)
-    (if (history-current (context e))
-	(replace-buffer e (history-current (context e)))
+    (if (history-current (history-context e))
+	(replace-buffer e (history-current (history-context e)))
 	(replace-buffer e ""))))
 
 ;; Perhaps we could consider caching or memoizing this? Espeically when
@@ -239,13 +239,19 @@ in it."
     ;; (log-message e "do-prompt s = ~s ~s" (olength s) s)
     s))
 
+(defun regions-p (e)
+  "Return true if there are regions."
+  (some (_ (context-mark _)) (contexts e)))
+
 ;; @@@ or we could just modify it?
 (defun highlightify (e string &key style)
   "Highlight the region in string with style. A new fatchar-string is returned.
 If style isn't given it uses the theme value: (:rl :selection :style)"
   (assert (typep string '(or string fatchar-string fat-string)))
-  (with-slots (mark point highlight-region) e
-    (if (and highlight-region mark)
+  (with-slots (contexts highlight-region) e
+    (if (or (> (length contexts) 1)
+	    (and highlight-region (regions-p e)))
+	;; @@@ We should really cache some of the stuff in here.
 	(progn
 	  (let* ((array (etypecase string
 			 (fat-string
@@ -254,21 +260,39 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 			  (copy-fatchar-string string))
 			 (string
 			  (make-fatchar-string string))))
-		 (start (min mark point))
-		 (end (min (max mark point) (length array)))
-		 (style-char (make-array 1 :element-type 'fatchar
-					 :fill-pointer t
-					 :initial-element (make-fatchar))))
+		 (style-char
+		  (make-array 1 :element-type 'fatchar
+			      :fill-pointer t
+			      :initial-element (make-fatchar))))
 	    (span-to-fatchar-string
 	     (append (or style
 			 (theme-value *theme* '(:program :selection :style))
 			 (theme-value *theme* '(:rl :selection :style))
 			 '(:standout))
 			 (list #\x))
-		     :fatchar-string style-char)
-	    (loop
-	       :for i :from start :below end
-	       :do (copy-fatchar-effects (aref style-char 0) (aref array i)))
+	     :fatchar-string style-char)
+	    ;; Highlight selection regions
+	    (do-contexts (e)
+	      (with-context ()
+		(when mark
+		  (loop
+		     :for i
+		     :from (min mark point)
+		     :below (min (max mark point) (length array))
+		     :do (copy-fatchar-effects (aref style-char 0)
+					       (aref array i))))))
+	    ;; Multiple cursors
+	    (when (> (length contexts) 1)
+	      (span-to-fatchar-string
+	       (append (or style
+			   (theme-value *theme* '(:program :cursor :style))
+			   (theme-value *theme* '(:rl :cursor :style))
+			   '(:standout))
+		       (list #\x))
+	       :fatchar-string style-char)
+	      (loop :for c :across contexts :do
+		 (copy-fatchar-effects (aref style-char 0)
+				       (aref array (context-point c)))))
 	    array))
 	string)))
 
@@ -291,7 +315,7 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 ;; Now with more ploof!
 (defun redraw-display (e &key erase)
   (declare (ignore erase)) ; @@@
-  (with-slots (buf-str buf prompt-height point mark start-row start-col
+  (with-slots (buf-str buf contexts prompt-height start-row start-col
 	       screen-relative-row last-line temporary-message region-active
 	       max-message-lines) e
     (dbugf :rl "----------------~%")
@@ -312,7 +336,8 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 	   (prompt-last-col (cddr (assoc prompt-end prompt-spots)))
 	   ;; Line figuring
 	   (line-end (max 0 (1- (olength buf-str))))
-	   (spots (list `(,point . ())
+	   (first-point (context-point (aref contexts 0)))
+	   (spots (list `(,first-point . ())
 			`(,line-end . ())))
 	   (endings (calculate-line-endings e :start (1+ prompt-last-col)
 					    :spots spots))
@@ -330,7 +355,7 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 			      0))
 	   (total-lines   (+ prompt-lines buf-lines msg-lines))
 	   (line-last-col (cddr (assoc line-end spots)))
-	   (spot          (assoc point spots))
+	   (spot          (assoc first-point spots))
 	   (point-line    (cadr spot))
 	   (point-col     (cddr spot))
 	   (point-offset  (- buf-lines point-line))
@@ -383,7 +408,7 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
                     buf = ~s~%"
 	       buf-lines prompt-lines last-line start-col (buf-str e))
 	;; Write the line
-	(if (and mark region-active)
+	(if (or (and (regions-p e) region-active) (> (length contexts) 1))
 	    (progn
 	      (let ((s (make-fat-string :string (highlightify e buf))))
 		(tt-write-string s)

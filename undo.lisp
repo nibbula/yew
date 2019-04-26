@@ -51,33 +51,41 @@
   (:documentation "Undo an undo item.")
   (:method (e (item boundary)) (declare (ignore e)) #| do nothing |# )
   (:method (e (item deletion))
-    (with-slots (point buf) e
-      (buffer-insert e (undo-item-position item) (undo-item-data item))
-      ;; (setf point (undo-item-position item))
-      (when (undo-item-point item)
-	(setf point (undo-item-point item)))
-      (when (> point (fill-pointer buf)) ;; @@@ debugging
-	(cerror "so what?" "Point is too far ~a ~a" point (fill-pointer buf)))))
-  (:method (e (item insertion))
-    (with-slots (point buf) e
-      (let* ((item-len (undo-item-length item)))
-	(buffer-delete
-	 e (undo-item-position item) (+ (undo-item-position item) item-len))
+    (with-slots (buf) e
+      (with-context ()
+	(buffer-insert e (undo-item-position item) (undo-item-data item) point)
 	;; (setf point (undo-item-position item))
 	(when (undo-item-point item)
 	  (setf point (undo-item-point item)))
-	(when (> point (fill-pointer buf)) ;; @@@ debugging
-	  (cerror "so what?" "Point is too far ~a ~a item ~a"
-		  point (fill-pointer buf) (undo-item-point item))))))
+	;; (when (> point (fill-pointer buf)) ;; @@@ debugging
+	;;   (cerror "so what?" "Point is too far ~a ~a" point
+	;; 	  (fill-pointer buf)))
+	)))
+  (:method (e (item insertion))
+    (with-slots (buf) e
+      (with-context ()
+	(let* ((item-len (undo-item-length item)))
+	  (buffer-delete
+	   e (undo-item-position item) (+ (undo-item-position item) item-len)
+	   point)
+	  ;; (setf point (undo-item-position item))
+	  (when (undo-item-point item)
+	    (setf point (undo-item-point item)))
+	  ;; (when (> point (fill-pointer buf)) ;; @@@ debugging
+	  ;;   (cerror "so what?" "Point is too far ~a ~a item ~a"
+	  ;; 	  point (fill-pointer buf) (undo-item-point item)))
+	  ))))
   (:method (e (item replacement))
-    (with-slots (point buf) e
-      (buffer-replace
-       e (undo-item-position item) (undo-item-data item))
-      (when (undo-item-point item)
-	(setf point (undo-item-point item)))
-      (when (> point (fill-pointer buf)) ;; @@@ debugging
-	(cerror "so what?" "Point is too far ~a ~a"
-		point (fill-pointer buf))))))
+    (with-slots (buf) e
+      (with-context ()
+	(buffer-replace
+	 e (undo-item-position item) (undo-item-data item) point)
+	(when (undo-item-point item)
+	  (setf point (undo-item-point item)))
+	;; (when (> point (fill-pointer buf)) ;; @@@ debugging
+	;; 	(cerror "so what?" "Point is too far ~a ~a"
+	;; 		point (fill-pointer buf)))
+	))))
 
 (defun record-undo (e type &optional position data point)
   (let ((hist (car (undo-history e))))
@@ -182,11 +190,12 @@
 	(setf (record-undo-p ,e) ,old-undo)))))
 
 (defun undo-command (e)
-  ;;(format t "~s~%" (undo-history e))
-  ;;(undo e) ;; @@@ Please make undo boundries work @@@
-  ;;(undo-one e)
-  (undo e)
-  ;; (redraw e) ;; @@@ This is overkill! (and screws up multiline prompts)
-  )
+  (use-first-context (e)
+    ;;(format t "~s~%" (undo-history e))
+    ;;(undo e) ;; @@@ Please make undo boundries work @@@
+    ;;(undo-one e)
+    (undo e)
+    ;; (redraw e) ;; @@@ This is overkill! (and screws up multiline prompts)
+    ))
 
 ;; EOF

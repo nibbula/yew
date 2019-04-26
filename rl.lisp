@@ -54,6 +54,7 @@
     (,(meta-char #\c)		. capitalize-word)
     (,(meta-char #\w)		. copy-region)
     (,(meta-char #\\)		. delete-horizontal-space)
+    (,(meta-char #\')		. add-cursor-on-next-line)
 
     ;; Completion
     (#\tab			. complete)
@@ -262,6 +263,9 @@
 (defvar *exit-hook* nil
   "Functions to run after reading a line.")
 
+(defvar *post-command-hook* nil
+  "Functions to run after a command has been processed.")
+
 (defvar *default-terminal-type* :crunch)
 
 ;; The main entry point
@@ -289,7 +293,7 @@
 	     (terminal-class (find-terminal-class-for-type
 			      (pick-a-terminal-type)))
 	     (accept-does-newline t)
-	     (context :tiny))		; remnant
+	     (history-context :tiny))		; remnant
   "Read a line from the terminal, with line editing and completion.
 Return the string read and the line-editor instance created.
 Keyword arguments: 
@@ -320,20 +324,20 @@ Keyword arguments:
     Name of a terminal device to use. If NIL 
   ACCEPT-DOES-NEWLINE (t)
     True if accept-line outputs a newline.
-  CONTEXT
+  HISORY-CONTEXT
     Symbol or string which defines the context for keeping history.
 "			    ; There must be a better way to format docstrings.
   (declare (ignore recursive-p))
-  (history-init context)
+  (history-init history-context)
 
   ;; Initialize the buffer
   (let* ((e (or editor (make-instance
 			'line-editor
-			:point		    	0
+			;;:point		    	#(0)
 			:prompt-string	    	prompt
 			:prompt-func	    	output-prompt-func
 			:completion-func    	completion-func
-			:context	    	context
+			:history-context        history-context
 			:input-callback	    	input-callback
 			:output-callback    	output-callback
 			:debugging	    	debug
@@ -347,11 +351,12 @@ Keyword arguments:
 	 ;;(*standard-output* *terminal*)
 	 ;;(*standard-input* *terminal*)
 	 (*completion-count* 0)
-	 (*history-context* context)
+	 (*history-context* history-context)
 	 terminal-state)
     (when editor
       (freshen editor))
-    (setf (fill-pointer (buf e)) (point e))
+    ;;(setf (fill-pointer (buf e)) (inator-point e))
+    (setf (fill-pointer (buf e)) 0)
     #+ccl (setf ccl::*auto-flush-streams* nil)
     #+ccl (ccl::%remove-periodic-task 'ccl::auto-flush-interactive-streams)
     ;; (when (typep (line-editor-terminal e)
@@ -372,8 +377,10 @@ Keyword arguments:
     (setf (prompt-string e) prompt (prompt-func e) output-prompt-func)
     (when string
       (without-undo (e)
-	(buffer-insert e 0 string)
-	(setf (inator-point e) (length string))))
+	(buffer-insert e 0 string 0)
+	;; (setf (inator-point e) (length string))
+	(set-all-points e (length string))
+	))
 
     ;; If the terminal is in line mode even after we set it to :char mode,
     ;; our whole thing is kind of moot, so just fall back to reading from the
@@ -405,7 +412,8 @@ Keyword arguments:
 			   ;; (when (typep *terminal*
 			   ;; 		'terminal-crunch:terminal-crunch)
 			   ;;   (terminal-crunch::start-line *terminal*))
-			   point command)
+			   ;;point command)
+			   (aref (contexts e) 0) command)
 		  (show-message-log e))
 		;; @@ Is this really where I want it?
 		(when (line-editor-output-callback e)
@@ -436,13 +444,9 @@ Keyword arguments:
 			(set-completion-count e 0))
 		      (when exit-flag (setf result quit-value))
 		      ;; @@@ perhaps this should be done by a hook?
-		      (if (eq *paren-match-style* :highlight)
-			  (cond
-			    ((is-open-char (aref buf point))
-			     (highlight-paren e point))
-			    ((and (plusp point)
-				  (is-close-char (aref buf (1- point))))
-			     (highlight-paren e (1- point)))))))
+		      (run-hooks *post-command-hook*)
+		      (highlight-matching-parentheses e)
+		      ))
 		(setf last-command command)
 		(run-hooks filter-hook e)
 		;; (when (need-to-recolor e)
@@ -454,7 +458,7 @@ Keyword arguments:
 		:while (not quit-flag))
 	  (block nil
 	    (clear-completions e)
-	    (setf point (fill-pointer buf))
+	    (setf (first-point e) (fill-pointer buf))
 	    (update-display e)
 	    ;;(tt-finish-output)
 	    (when accept-does-newline
@@ -467,8 +471,8 @@ Keyword arguments:
 	    (run-hooks *exit-hook*)
 	    (terminal-end terminal terminal-state)
 	    ;; Make sure the NIL history item is gone.
-	    (when (not (dl-content (history-head (get-history context))))
-	      (history-delete-last context))))
+	    (when (not (dl-content (history-head (get-history history-context))))
+	      (history-delete-last history-context))))
 	(values (if result result (fatchar-string-to-string buf))
 		e)))))
 
@@ -493,7 +497,7 @@ Keyword arguments:
        (setf (values filename editor)
 	     (rl :prompt prompt
 		 :completion-func #'complete-filename
-		 :context :read-filename
+		 :history-context :read-filename
 		 :accept-does-newline nil
 		 :string string
 		 :editor editor))
@@ -509,7 +513,7 @@ Keyword arguments:
        (setf (values item editor)
 	     (rl :prompt prompt
 		 :completion-func (list-completion-function list)
-		 :context :read-choice
+		 :history-context :read-choice
 		 :accept-does-newline nil
 		 :editor editor))
        :until (position item list :key #'princ-to-string :test #'equal)

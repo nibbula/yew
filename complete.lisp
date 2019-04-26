@@ -27,12 +27,13 @@ command line.")
 
 ;; Most of the work is done by print-columns, from dlib-misc.
 (defun print-completions-over (e comp-result)
-  (with-slots (completion-func buf point saved-point prompt-string prompt-func) e
-    ;; downcased list 1 per line
-    (let ((saved-point point))
-      (end-of-line e)
-      (setf point saved-point))
+  (with-slots (completion-func buf saved-point prompt-string prompt-func) e
+    ;; @@@ I'm not even sure if this works anymore.
+    ;; (let ((saved-point point))
+    ;;   (end-of-line e)
+    ;;   (setf point saved-point))
     (tt-write-char #\newline)
+    ;; downcased list 1 per line
     #| (tt-format "~{~a~%~}" comp-list) |#
     (let ((len (completion-result-count comp-result)))
       (when (> len *completion-really-limit*)
@@ -231,14 +232,14 @@ terminal."
     ))
 
 (defun show-completions (e &key func string)
-  (with-slots (completion-func buf point) e
+  (with-slots (completion-func buf) e
     (setf func (or func completion-func))
     (if (not func)
       (beep e "No completion installed.")
       (progn
 	(let* ((result
-		(funcall func (or string
-				  (fatchar-string-to-string buf)) point t))
+		(funcall func (or string (fatchar-string-to-string buf))
+			 (first-point e) t))
 	       comp-count)
 	  (if (not (typep result 'completion-result))
 	      (progn
@@ -273,62 +274,64 @@ terminal."
 
 (defun complete (e &optional comp-func)
   "Call the completion function and display the results, among other things."
-  (with-slots (completion-func point buf) e
+  (with-slots (completion-func buf) e
     (setf comp-func (or comp-func completion-func))
     (when (not comp-func)
       (beep e "No completion active.")
       (return-from complete))
-    (let* ((saved-point point)
-	   (result
-	    (funcall comp-func (fatchar-string-to-string buf) point nil))
-	   (comp (completion-result-completion result))
-	   (replace-pos (completion-result-insert-position result))
-	   (unique (completion-result-unique result)))
-      (dbugf 'completion "result = ~a ~s~%" (type-of result) result)
-      (when (and (not (zerop (last-completion-not-unique-count e)))
-		 (last-command-was-completion e))
-	(log-message e "show mo")
-	(show-completions e))
-      (setf (did-complete e) t)
-      (if (not unique)
-	  (set-completion-count e (1+ (last-completion-not-unique-count e)))
-	  (set-completion-count e 0))
-      ;; (format t "comp = ~s replace-pos = ~s~%" comp replace-pos)
-      ;; If the completion succeeded we need a replace-pos!
-      (assert (or (not comp) (numberp replace-pos)))
-      (if comp
-	  #|
-	  (let* ((same (- saved-point replace-pos))) ; same part
-	    ;; f o o b a r
-	    ;;       ^    ^
-	    ;;       |    |___ saved-point
-	    ;;       |
-	    ;;       +-- replace-pos
-	    ;;
-	    ;; f o o b a r n a c l e
+    (use-first-context (e)
+      (let* ((saved-point (first-point e))
+	     (result
+	      (funcall comp-func (fatchar-string-to-string buf)
+		       (first-point e) nil))
+	     (comp (completion-result-completion result))
+	     (replace-pos (completion-result-insert-position result))
+	     (unique (completion-result-unique result)))
+	(dbugf 'completion "result = ~a ~s~%" (type-of result) result)
+	(when (and (not (zerop (last-completion-not-unique-count e)))
+		   (last-command-was-completion e))
+	  (log-message e "show mo")
+	  (show-completions e))
+	(setf (did-complete e) t)
+	(if (not unique)
+	    (set-completion-count e (1+ (last-completion-not-unique-count e)))
+	    (set-completion-count e 0))
+	;; (format t "comp = ~s replace-pos = ~s~%" comp replace-pos)
+	;; If the completion succeeded we need a replace-pos!
+	(assert (or (not comp) (numberp replace-pos)))
+	(if comp
+	    #|
+	    (let* ((same (- saved-point replace-pos))) ; same part ;
+	    ;; f o o b a r		;
+	    ;;       ^    ^		;
+	    ;;       |    |___ saved-point ;
+	    ;;       |			;
+	    ;;       +-- replace-pos	;
+	    ;;				;
+	    ;; f o o b a r n a c l e	;
 
-	    ;; back up
+	    ;; back up			;
 	    (move-over e (- same))
 
-	    ;; delete the different part
+	    ;; delete the different part ;
 	    (delete-region e replace-pos saved-point)
 	    (setf point replace-pos)
 	    (insert-string e comp)
 
-	    ;; write out the new part
+	    ;; write out the new part	;
 	    (editor-write-string e comp)
 	    (incf point (length comp))
 	    (update-for-insert e))
-	  |#
+	    |#
 	  (progn
 	    ;; delete the different part
 	    (delete-region e replace-pos saved-point)
-	    (setf point replace-pos)
+	    (setf (first-point e) replace-pos)
 	    (insert e comp)
-	    (incf point (length comp)))
+	    (incf (first-point e) (length comp)))
 	  (progn
-	    (setf point saved-point)		   ; go back to where we were
-	    (beep e "No completions"))))))	   ; ring the bell
+	    (setf (first-point e) saved-point) ; go back to where we were
+	    (beep e "No completions")))))))    ; ring the bell
 
 (defun complete-filename-command (e)
   "Filename completion. This useful for when you want to explicitly complete a
@@ -340,7 +343,7 @@ binding."
   "Filename completion. This useful for when you want to explicitly complete a
 filename instead of whatever the default completion is. Convenient for a key
 binding."
-  (with-slots (buf point) e
+  (with-slots (buf) e
     (let* ((str (fatchar-string-to-string buf))
 	   (i (1- (length str))))
       (loop ;; back up until a double quote or a / or a ~ preceded by a space
