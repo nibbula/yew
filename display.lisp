@@ -279,8 +279,10 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 		     :for i
 		     :from (min mark point)
 		     :below (min (max mark point) (length array))
-		     :do (copy-fatchar-effects (aref style-char 0)
-					       (aref array i))))))
+		     :do
+		     (when (< i (length array))
+		       (copy-fatchar-effects (aref style-char 0)
+					     (aref array i)))))))
 	    ;; Multiple cursors
 	    (when (> (length contexts) 1)
 	      (span-to-fatchar-string
@@ -291,8 +293,9 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 		       (list #\x))
 	       :fatchar-string style-char)
 	      (loop :for c :across contexts :do
-		 (copy-fatchar-effects (aref style-char 0)
-				       (aref array (context-point c)))))
+		 (when (< (context-point c) (length array))
+		   (copy-fatchar-effects (aref style-char 0)
+					 (aref array (context-point c))))))
 	    array))
 	string)))
 

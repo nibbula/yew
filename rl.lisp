@@ -55,6 +55,7 @@
     (,(meta-char #\w)		. copy-region)
     (,(meta-char #\\)		. delete-horizontal-space)
     (,(meta-char #\')		. add-cursor-on-next-line)
+    (,(meta-char #\.)		. just-one-context)
 
     ;; Completion
     (#\tab			. complete)
@@ -413,7 +414,7 @@ Keyword arguments:
 			   ;; 		'terminal-crunch:terminal-crunch)
 			   ;;   (terminal-crunch::start-line *terminal*))
 			   ;;point command)
-			   (aref (contexts e) 0) command)
+			   command (contexts e))
 		  (show-message-log e))
 		;; @@ Is this really where I want it?
 		(when (line-editor-output-callback e)

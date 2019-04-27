@@ -54,6 +54,31 @@
 (defsetf buffer-char set-buffer-fatchar
   "Set the fatchar at position I in buffer BUF.")
 
+(defun update-markers-for-insert (e start len p)
+  (do-contexts (e)
+    (with-context ()
+      (when (and (>= point start) (/= p point))
+	(incf point len))
+      (when (and mark (>= mark start))
+	(incf mark len)))))
+
+;; @@@ What do we want to do when the marker is in the deleted region?
+;; Now we just put it at the end. Should we delete the whole context?
+(defun update-markers-for-delete (e start len end p)
+  (do-contexts (e)
+    (with-context ()
+      (cond
+	((and (>= point end) (/= p point))
+	 (decf point len))
+	((and (>= point start) (< point end) (/= p point))
+	 (setf point end)))
+      (when mark
+	(cond
+	  ((>= mark end)
+	   (decf point len))
+	  ((and (>= mark start) (< mark end))
+	   (setf mark end)))))))
+
 ;; Modify methods
 
 (defgeneric buffer-delete (e start end point)
@@ -69,6 +94,7 @@
       (when (> end start)
 	(dbugf :rl "buffer-delete ~s ~s fill ~s~%" start end (fill-pointer buf))
 	(record-undo e 'deletion start (subseq buf start end) point)
+	(update-markers-for-delete e start (- end start) end point)
 	;; Optimization: Deleting to the end, just decrement fill pointer.
 	(when (not (= end (fill-pointer buf)))
 	  (setf (subseq buf start) (subseq buf end)))
@@ -96,7 +122,8 @@
 				  (truncate (* (array-total-size buf) 2/3))))))
 	      (incf (fill-pointer buf))
 	      (setf (subseq buf (1+ pos)) (subseq buf pos))
-	      (setf (aref buf pos) fc))))))
+	      (setf (aref buf pos) fc)
+	      (update-markers-for-insert e pos 1 point))))))
   (:method ((e line-editor) pos (s string) point)
     (with-slots (buf) e
       (let ((len (length s))
@@ -108,7 +135,8 @@
 			    (truncate (* (array-total-size buf) 2/3))))))
 	(incf (fill-pointer buf) len)
 	(setf (subseq buf (+ pos len)) (subseq buf pos))
-	(setf (subseq buf pos (+ pos len)) fat-string))))
+	(setf (subseq buf pos (+ pos len)) fat-string)
+	(update-markers-for-insert e pos len point))))
   (:method ((e line-editor) pos (s vector) point)
     ;; This is basically for a fat string which happens to be indistinguishable
     ;; from a vector.

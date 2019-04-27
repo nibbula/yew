@@ -1168,7 +1168,8 @@ in order, \"{open}{close}...\".")
   "Get rid of all the contexts except one."
   (with-slots (contexts) e
     (when (> (length contexts) 1)
-      (setf contexts (subseq contexts 0 1)))))
+      ;; (setf contexts (subseq contexts 0 1)))))
+      (setf contexts (make-contexts :copy-from (subseq contexts 0 1))))))
 
 ;; @@@ Consider adding:
 ;; With negative ARG, delete the last one instead.
