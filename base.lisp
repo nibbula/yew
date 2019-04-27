@@ -5,7 +5,7 @@
 
 (defpackage :opsys-base
   (:documentation "Helper functions and setup which are not system specific.")
-  (:use :cl :cffi :dlib :trivial-gray-streams)
+  (:use :cl :cffi :trivial-gray-streams :fake-dlib)
   (:export
    ;; Stuff in this file:
    #:config-feature
@@ -163,16 +163,6 @@
     (multiple-value-bind (found-symbol status)
 	(find-symbol (symbol-name sym) (find-package pack))
       (and found-symbol (eql status :external) (fboundp found-symbol)))))
-
-;; Now we depend on dlib. :(
-;; I suppose we could use the one in alexandria, since but it's a dependency
-;; of CFFI, but I'm a little nervous about that.
-#| 
-(defmacro define-constant (name value &optional doc)
-  "Like defconstant but works with pendanticly anal SCBL."
-  `(cl:defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
-    ,@(when doc (list doc))))
-|#
 
 ;; The comments about define-constant apply to this as well.
 ;; This has to be a macro so it can be used in read time expressions

@@ -492,8 +492,8 @@ code instructions."
        (with-foreign-slots ((map-type key-size value-size max-entries) attr
 			    (:struct bpf-map-spec))
 	 (setf map-type    (or (getf args :type) +BPF-MAP-TYPE-ARRAY+)
-	       key-size    (or (getf args :key-size) :int)
-	       value-size  (or (getf args :value-size) :int)
+	       key-size    (or (getf args :key-size)   0 #| :int @@@ wrong |#)
+	       value-size  (or (getf args :value-size) 0 #| :int @@@ wrong |#)
 	       max-entries (or (getf args :value-size) 10))
 	 (syscall (real-bpf +BPF-MAP-CREATE+ attr
 			    (foreign-type-size '(:struct bpf-map-spec)))))))

@@ -14,7 +14,7 @@
 		 ;; How can I avoid using reader conditionals here?
 		 #+(and (or windows win32) (not unix) (not ccl)) :cffi-libffi
 		 :trivial-gray-streams
-		 :dlib)
+		 #+dlib :dlib #-dlib :fake-dlib)
     :components
     ((:module "base"
       :pathname ""
@@ -23,7 +23,7 @@
 		   (:file "types")
 		   (:file "os-stream-base")))
      (:module "unix"
-      :depends-on ("base")
+     :depends-on ("base")
       :serial t
       :if-feature (:or :unix :linux :darwin :sunos :bsd)
       :components ((:file "package")

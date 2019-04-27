@@ -467,6 +467,9 @@ use of throw), the file is automatically closed."
 	   (setf output-position 0))))
   seq)
 
+(declaim (inline put-char)
+	 (ftype (function (os-output-stream character) character) put-char))
+
 (defun put-char (stream char)
   (with-accessors ((output-buffer os-stream-output-buffer)
 		   (output-position os-stream-output-position)
@@ -484,9 +487,6 @@ use of throw), the file is automatically closed."
 	;; (incf column (display-length char))))
 	(incf column)))
   char)
-
-(declaim (inline put-char)
-	 (ftype (function (os-output-stream character) character) put-char))
 
 (defmethod stream-advance-to-column ((stream os-character-output-stream) col)
   ;; Write enough blank space so that the next character will be written

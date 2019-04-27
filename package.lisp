@@ -9,11 +9,11 @@
   ;; Of course we first have to make it be only a warning, before we can
   ;; suppress it.
   (let (#+sbcl (*on-package-variance* '(:warn (:opsys) :error t)))
-    (dlib:without-warning
+    (fake-dlib:without-warning
 (defpackage :opsys
   (:documentation "Generic interface to operating system functionality.")
   (:nicknames :nos)
-  (:use :cl :cffi :dlib :opsys-base :trivial-gray-streams
+  (:use :cl :cffi :fake-dlib :opsys-base :trivial-gray-streams
 	#+unix :os-unix
 	#+(and windows (not unix)) :os-ms)
   (:export

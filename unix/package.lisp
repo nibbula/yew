@@ -9,7 +9,7 @@
 ;; - Use defining macros, where appropriate:
 ;;     define-simple-types define-constants
 ;;     define-constants-from define-name-list-from
-;;   and from DLIB:
+;;   and from DLIB (or fake-dlib):
 ;;     define-constant defconstant-to-list
 ;; - Make sure the interface is nicely callable from Lisp code, e.i. don't
 ;;   make the caller pass pointers or have deal with foreign memory. Things
@@ -19,7 +19,7 @@
 
 (defpackage :opsys-unix
   (:documentation "Interface to UNIX-like systems.")
-  (:use :cl :cffi :dlib :opsys-base)
+  (:use :cl :cffi :fake-dlib :opsys-base)
   (:nicknames :os-unix :uos)
   (:export
    ;; defining macros
