@@ -36,6 +36,12 @@ many other things in an operating system which this should probably never cover.
 Also, we are only adding things that are needed by the "town". We are mostly
 not adding things for completeness.
 
+##### Dependencies (first-order)
+
+- ASDF
+- CFFI (and maybe CFFI-LIBFFI on Windows)
+- TRIVIAL-GRAY-STREAMS
+
 ##### How to use it.
 
 - ASDF load it with opsys.asd or toss it in ~/quicklisp/local-projects.
