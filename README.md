@@ -1,5 +1,5 @@
 This is a non-groveling interface to operating system functionality.
-I recommend you don't use it.
+**I recommend you don't use it.**
 
 Since it doesn't grovel, it has at least the advantage that it doesn't require
 a C compiler and operating system headers. So when you're on a interstellar
