@@ -11,6 +11,12 @@
 
 #+debug-rc (progn (format t "dlib") (force-output *standard-output*))
 
+(when (find-package :the-real-fake-dlib)
+  (cerror "Go ahead and load the real DLIB anyway."
+	  "Detected \"The IMPOSTER\"!!~%~
+           If you're going to use the real DLIB, load it before you load~%~
+           OPSYS and thus the FAKE-DLIB."))
+
 (defpackage :dlib
   (:documentation
    "Utilities of redundant doom.
@@ -30,6 +36,7 @@ of it.")
 	#+sbcl :sb-ext
 	)
   #+lispworks (:shadow #:lambda-list #:with-unique-names)
+  #-the-real-fake-dlib (:nicknames :fake-dlib) ; Crazy Sauce!
   (:export
    ;; System-ish
    #:d-getenv
@@ -275,7 +282,7 @@ Useful for making your macro 'hygenic'."
 
 (defmacro without-notes (&body body)
   "Get rid of compiler notes that you don't want to see.
- Just wrap your code with this."
+ Just wrap your code with this. Too bad it won't always work."
   #+sbcl
   `(handler-bind
      ((sb-ext:compiler-note
@@ -1089,7 +1096,7 @@ equal under TEST to result of evaluating INITIAL-VALUE."
 ;; Back to the olde shite:
 
 (defmacro define-constant (name value &optional doc (test 'equal))
-  "Like defconstant but works with pendanticly anal SCBL."
+  "Like defconstant but don't warn on re-definitions."
   (declare (ignore test))
   #-ccl
   `(cl:defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
@@ -2116,6 +2123,8 @@ architecture, computer vendor, operating system, and operating system version.")
 					  *arch-nickname*)
  "Nickname for the platform. Hopefully determines compiled code compatibility.")
 (d-add-feature *platform-nickname*)	; Incorrigible feature adding
+
+(d-add-feature :dlib)			; @@@ unecessary? only for fake-dlib?
 
 ;; Before you add stuff here, consider whether to put it in dlib-misc instead.
 ;; For example stuff that requires opsys should go in there.
