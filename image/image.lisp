@@ -272,7 +272,7 @@ try to figure it out."
 (defun guess-registered-image-type (thing)
   "Return the guessed format of THING, from the registered image formats."
   (block nil
-    (loop :for (tag . obj) :in *image-formats*
+    (loop :for (nil . obj) :in *image-formats* ;; actually (tag . obj)
        :do
 	 (when (guess-image-format thing obj)
 	   (return obj)))))
