@@ -1072,9 +1072,10 @@ Returns an integer."
 
 (setf *rlimit-resources* (nreverse *rlimit-resources*))
 
-(defconstant +RLIMIT-INFINITY+
-  #.(1- (ash 1 (* (cffi:foreign-type-size :unsigned-long) 8)))
-  "The unlimited value.")
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconstant +RLIMIT-INFINITY+
+    #.(1- (ash 1 (* (cffi:foreign-type-size :unsigned-long) 8)))
+    "The unlimited value."))
 
 (defconstant +RLIM-INFINITY+ #.+RLIMIT-INFINITY+)
 
