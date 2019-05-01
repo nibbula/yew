@@ -194,7 +194,8 @@
        (terpri *debug-io*))
      (incf i))
   |#
-  (format *debug-term* "Restarts are:~%")
+  ;; (format *debug-term* "Restarts are:~%")
+  (print-span '((:underline "Restarts") " are:" #\newline))
   (loop :with i = 0 :for r :in rs :do
      (format *debug-term* "~&")
      (print-span `((:fg-cyan ,(princ-to-string i)) ": "))
@@ -317,7 +318,9 @@
   (defparameter *base-commands*
     #((backtrace  (:b) "Backtrace stack."
        (debugger-backtrace (read-arg state)))
-      (wacktrace  (:w) "Wacktrace." (debugger-wacktrace (read-arg state)))
+      (wacktrace  (:w) "Wacktrace."
+       (print-span '((:underline "Backtrace") #\: #\newline))
+       (debugger-wacktrace (read-arg state)))
       (restarts   (:r) "Show restarts." (list-restarts restarts))
       (source     (:src)
        "Show source for a frame N, which defaults to the current frame."
