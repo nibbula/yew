@@ -277,7 +277,7 @@ use of throw), the file is automatically closed."
 ;;;;;;;;;;
 ;; input
 
-(defmethod stream-read-sequence ((stream os-binary-input-stream) seq start end
+(defmethod stream-read-sequence ((stream os-character-input-stream) seq start end
 				 &key &allow-other-keys)
   (with-accessors ((input-buffer os-stream-input-buffer)
 		   (position os-stream-position))
@@ -440,8 +440,8 @@ use of throw), the file is automatically closed."
 ;; output
 
 ;; This is like ‘cl:write-sequence’, but for Gray streams.
-(defmethod stream-write-sequence ((stream os-binary-output-stream) seq start end
-				  &key &allow-other-keys)
+(defmethod stream-write-sequence ((stream os-character-output-stream)
+				  seq start end &key &allow-other-keys)
   (with-accessors ((output-buffer os-stream-output-buffer)
 		   (output-position os-stream-output-position))
       stream
