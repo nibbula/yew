@@ -29,6 +29,9 @@ be used at a REPL, but not as likely to be called by other programs.")
    #:bracketed-paste-on
    #:bracketed-paste-off
    #:setup-bracketed-paste
+
+   #:untrace-all
+   #:trace-out
    ))
 (in-package :dlib-interactive)
 
@@ -552,5 +555,40 @@ that wraps an ANSI terminal."
   (add-hook rl:*entry-hook* 'bracketed-paste-on)
   (add-hook rl:*exit-hook* 'bracketed-paste-off)
   (safe-set-bracketed-paste t))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; tracing
+
+(defun untrace-all ()
+  "Untrace everything that's currently being traced."
+  (let ((things (trace)))
+    (cond
+      (things
+       (loop :for tt :in things
+	  :do (eval `(untrace ,tt)))
+       (format t "Untraced ~d: ~s.~%" (length things) things))
+      (t
+       (format t "Nothing to untrace."))))
+  (values))
+
+(defvar *saved-trace-output* nil)
+
+(defun trace-out (&optional file)
+  "Toggle tracing to a FILE. If FILE is omitted, restore the previous
+*TRACE-OUTPUT*, and close the file."
+  (cond
+    (*saved-trace-output*
+     (format t "Trace redirection off.~%")
+     (let (old)
+       (shiftf old *trace-output* *saved-trace-output* nil)
+       (close old)))
+    ((and (not *saved-trace-output*) file)
+     (format t "Trace redirection to ~s.~%" file)
+     (shiftf *saved-trace-output* *trace-output*
+	     (open file :direction :output :if-exists :append)))
+    (t
+     (format t "Trace output isn't already redirected. Give me a file name ~
+                to redirect to.~%")))
+  (values))
 
 ;; EOF
