@@ -485,6 +485,7 @@ by nos:read-directory."))
 			  (list-long x (getf args :date-format)
 				     (getf args :size-format))
 			  `(:long-titles nil :trailing-spaces nil
+			    :print-titles ,(not (getf args :omit-headers))
 			    ,@(when (getf args :wide) '(:max-width nil))))
 		   ;; 1 column format
 		   (if (getf args :1-column)
@@ -524,9 +525,10 @@ by nos:read-directory."))
 
 (defun list-files (&rest args &key files long 1-column wide hidden directory
 				sort-by reverse date-format show-size
-				size-format collect ignore-backups)
+				size-format collect ignore-backups omit-headers)
   (declare (ignorable files long 1-column wide hidden directory sort-by reverse
-		      date-format show-size size-format collect ignore-backups))
+		      date-format show-size size-format collect ignore-backups
+		      omit-headers))
   ;; It seems like we have to do our own defaulting.
   (when (not files)
     (setf (getf args :files) (list (current-directory))))
@@ -567,6 +569,7 @@ by nos:read-directory."))
    (reverse boolean :short-arg #\r :help "Reverse sort order.")
    (show-size boolean :short-arg #\s :help "True to show the file size.")
    (non-human-size boolean :short-arg #\h :help "True to show sizes in bytes.")
+   (omit-headers boolean :short-arg #\H :help "True to omit table headers.")
    (size-format lenient-choice :long-arg "size-format" :default "human"
 		:choices '("human" "bytes")
 		:help "Format to show sizes with.")
