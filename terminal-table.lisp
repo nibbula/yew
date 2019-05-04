@@ -24,9 +24,9 @@
   "Output all the column titles."
   (declare (ignore table))
   (with-accessors ((separator text-table-renderer-separator)
-		   (stream text-table-renderer-stream)
 		   (cursor text-table-renderer-cursor)) renderer
-    (let ((has-underline (terminal-has-attribute stream :underline)))
+    (let* ((stream *destination*)
+	   (has-underline (terminal-has-attribute stream :underline)))
       (setf cursor 0)
       (loop :with str
 	 :and fmt = "~va"

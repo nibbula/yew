@@ -29,7 +29,7 @@ make the table in the first place. For that you want the TABLE package.")
    #:table-output-footer
 
    #:text-table-renderer
-   #:text-table-renderer-stream
+   ;;#:text-table-renderer-stream
    #:text-table-renderer-prefix
    #:text-table-renderer-suffix
    #:text-table-renderer-separator
@@ -418,9 +418,10 @@ function."
 ;; Plain text table
 
 (defclass text-table-renderer (table-renderer)
-  ((stream
-    :initarg :stream :accessor text-table-renderer-stream
-    :documentation "The stream to output to.")
+  (
+   ;; (stream
+   ;;  :initarg :stream :accessor text-table-renderer-stream
+   ;;  :documentation "The stream to output to.")
    (prefix
     :initarg :prefix :accessor text-table-renderer-prefix
     :initform "" :type string
@@ -444,9 +445,10 @@ function."
 				       table titles &key sizes)
   "Output all the column titles."
   (declare (ignore table))
-  (with-slots (stream separator cursor) renderer
+  (with-slots (separator cursor) renderer
     (setf cursor 0)
-    (let ((sep-len (display-length separator)))
+    (let ((sep-len (display-length separator))
+	  (stream *destination*))
       (loop :with str
 	 :and fmt = "~va"
 	 :and len = (length titles)
@@ -560,21 +562,21 @@ to MAX-WIDTH.."
 (defmethod table-output-start-row ((renderer text-table-renderer) table)
   "Start a row of table output."
   (declare (ignore table))
-  (with-slots (stream prefix) renderer
-    (write-string prefix stream)))
+  (with-slots (prefix) renderer
+    (write-string prefix *destination*)))
 
 (defmethod table-output-column-separator ((renderer text-table-renderer)
 					  table &key width)
   "Output a separator between columns."
   (declare (ignore table width))
-  (with-slots (stream separator) renderer
-    (write-string separator stream)))
+  (with-slots (separator) renderer
+    (write-string separator *destination*)))
 
 (defmethod table-output-end-row ((renderer text-table-renderer) table n)
   "End a row of table output."
   (declare (ignore table n))
-  (with-slots (stream suffix) renderer
-    (write-string suffix stream)))
+  (with-slots (suffix) renderer
+    (write-string suffix *destination*)))
 
 ;; (defmethod table-column-sizes ((table table) (renderer text-table-renderer))
 ;;   )
@@ -610,13 +612,16 @@ to MAX-WIDTH.."
     (let* ((field (table-format-cell renderer table cell row column
 				     :width width
 				     :justification justification))
-	   (len (display-length field)))
+	   (len (display-length field))
+	   (stream *destination*))
       ;;(incf cursor len)
       (if (and (eq justification :overflow)
 	       (> len width))
 	  (progn
-	    (write-string field *destination*)
-	    (format *destination* "~%~v,,,va" width #\space #\space)
+	    ;;(write-string field *destination*)
+	    ;;(format *destination* "~%~v,,,va" width #\space #\space)
+	    (write-string field stream)
+	    (format stream "~%~v,,,va" width #\space #\space)
 	    (setf cursor width))
 	  (typecase field
 	    (standard-object
@@ -641,7 +646,7 @@ PRINT-TITLES can be nil, to make the columns headings not print.
 MAX-WIDTH is the maximum width of the table. If necessary, the last column is
 resized to fit in this, and the whole row is trimmed to this."
   ;; @@@ Setting the stream here is somewhat wrongish.
-  (setf (text-table-renderer-stream renderer) destination)
+  ;; (setf (text-table-renderer-stream renderer) destination)
   (let* ((column-names (and print-titles (column-name-list table)))
 	 (sizes (if column-names
 		    (coerce (column-name-sizes column-names long-titles)
@@ -649,8 +654,8 @@ resized to fit in this, and the whole row is trimmed to this."
 		    (make-array `(,(olength (oelt table 0)))
 				:initial-element nil)))
 	 all-zero
-	 (stream destination)
 	 (*destination* destination)
+	 (stream destination)
 	 (*long-titles* long-titles)
 	 (*print-titles* print-titles)
 	 (*max-width* max-width)
