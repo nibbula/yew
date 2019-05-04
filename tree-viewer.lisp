@@ -850,6 +850,7 @@ been encountered."
   "Sort the branches of the current node."
   (with-slots (current) o
     (setf (node-branches current)
+	  ;; @@@ Perhaps could make a node specific sort method?
 	  (sort (node-branches current) #'string<
 		:key (_ (princ-to-string (node-object _)))))))
 
