@@ -125,23 +125,37 @@
 	      (setf (aref buf pos) fc)
 	      (update-markers-for-insert e pos 1 point))))))
   (:method ((e line-editor) pos (s string) point)
+    ;; (with-slots (buf) e
+    ;;   (let ((len (length s))
+    ;; 	    (fat-string (make-fatchar-string s)))
+    ;; 	(record-undo e 'insertion pos fat-string point)
+    ;; 	(when (>= (+ len (length buf)) (array-total-size buf))
+    ;; 	  (setf buf (adjust-array
+    ;; 		     buf (+ (array-total-size buf) len
+    ;; 			    (truncate (* (array-total-size buf) 2/3))))))
+    ;; 	(incf (fill-pointer buf) len)
+    ;; 	(setf (subseq buf (+ pos len)) (subseq buf pos))
+    ;; 	(setf (subseq buf pos (+ pos len)) fat-string)
+    ;; 	(update-markers-for-insert e pos len point))))
+    (buffer-insert e pos (make-fatchar-string s) point))
+  (:method ((e line-editor) pos (s vector) point)
+    ;; This is basically for a fatchar string which happens to be
+    ;; indistinguishable from a vector.
+    ;; @@@ This has the effect of losing the attributes.
+    ;;(buffer-insert e pos (fatchar-string-to-string s) point)
     (with-slots (buf) e
-      (let ((len (length s))
-	    (fat-string (make-fatchar-string s)))
-	(record-undo e 'insertion pos fat-string point)
+      (let ((len (length s)))
+	(record-undo e 'insertion pos s point)
 	(when (>= (+ len (length buf)) (array-total-size buf))
 	  (setf buf (adjust-array
 		     buf (+ (array-total-size buf) len
 			    (truncate (* (array-total-size buf) 2/3))))))
 	(incf (fill-pointer buf) len)
 	(setf (subseq buf (+ pos len)) (subseq buf pos))
-	(setf (subseq buf pos (+ pos len)) fat-string)
+	(setf (subseq buf pos (+ pos len)) s)
 	(update-markers-for-insert e pos len point))))
-  (:method ((e line-editor) pos (s vector) point)
-    ;; This is basically for a fat string which happens to be indistinguishable
-    ;; from a vector.
-    ;; @@@ This has the effect of losing the attributes.
-    (buffer-insert e pos (fatchar-string-to-string s) point)))
+  (:method ((e line-editor) pos (s fat-string) point)
+    (buffer-insert e pos (fat-string-string s) point)))
 
 ;; Replace could just be a delete followed by an insert, but
 ;; for efficiency sake we do something special.
