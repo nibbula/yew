@@ -11,6 +11,8 @@
    ))
 (in-package :df)
 
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+
 ;; Custom short size abbreviations
 (defparameter *size-abbrevs*
   #(nil "K" "M" "G" "T" "P" "E" "Z" "Y" "*"))
