@@ -54,18 +54,20 @@
     (,(meta-char #\c)		. capitalize-word)
     (,(meta-char #\w)		. copy-region)
     (,(meta-char #\\)		. delete-horizontal-space)
-    (,(meta-char #\')		. add-cursor-on-next-line)
+    (,(meta-char #\/)		. add-cursor-on-next-line)
     (,(meta-char #\.)		. just-one-context)
 
     ;; Completion
     (#\tab			. complete)
     (#\?			. show-completions)
-    (,(meta-char #\/)		. complete-filename-command)
+    ;; (,(meta-char #\/)		. complete-filename-command)
+     (,(meta-char #\')		. complete-filename-command)
     (,(meta-char #\?)		. show-filename-completions-command)
 
     ;; Misc
     (,(ctrl #\L)		. redraw-command)
-    (,(ctrl #\G)		. abort-command)
+    ;;(,(ctrl #\G)		. abort-command)
+    (,(ctrl #\G)		. reset-stuff)
     (,(ctrl #\S)		. isearch-forward)
     (,(ctrl #\R)		. isearch-backward)
     (,(ctrl #\Q)		. quoted-insert)

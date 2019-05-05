@@ -1184,4 +1184,16 @@ current selection. Otherwise, add a cursor on the next line."
         (forward-line e))
       (add-context e (context-point c) nil))))
 
+;; This seems like a more useful thing to be on ^G than abort-command.
+(defsingle reset-stuff (e)
+  "Reset some stuff."
+  (with-slots (region-active contexts temporary-message) e
+    (cond
+      (region-active
+       (setf region-active nil))
+      ((> (length contexts) 1)
+       (just-one-context e))
+      (temporary-message
+       (clear-completions e)))))
+
 ;; EOF
