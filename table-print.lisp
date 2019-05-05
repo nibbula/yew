@@ -843,7 +843,7 @@ this row."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; @@@ This should eventually go away in favor of the object oriented code
-;; above.
+;; above. But we have to convert everything that uses it.
 
 ;; This is quite inefficient since it gets the whole data set in
 ;; one shot and then goes thru every datum twice. But it's nice for
@@ -1015,13 +1015,13 @@ resized to fit in this, and the whole row is trimmed to this."
 		:print-titles print-titles
 		:max-width max-width))
 
-(defun print-as-table (thing &key titles table-type
+(defun print-as-table (thing &key column-names table-type
 			       (stream *standard-output*)
 			       (renderer (table-renderer))
 			       (long-titles t) (print-titles t) max-width)
   "Make a table from thing and print it like print-table."
   (output-table (apply #'make-table-from thing
-		       `(,@(when titles `(:column-names ,titles))
+		       `(,@(when column-names `(:column-names ,column-names))
 			 ,@(when table-type `(:type ,table-type))))
 		renderer stream
 		:long-titles long-titles
