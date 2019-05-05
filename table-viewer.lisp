@@ -706,7 +706,7 @@ for a range of rows, or a table-point for a specific item,"
       (tt-move-to (1- (tt-height)) 0)
       (table-viewer-selection renderer))))
 
-(defmacro with-coerced-table ((var thing) &body body)
+(defmacro with-coerced-table ((var thing &key column-names) &body body)
   "Evalute BODY with VAR bound to THING coerced into a table. Don't do anything
 if THING or lish:*input* NIL."
   (with-unique-names (thunk)
@@ -716,22 +716,24 @@ if THING or lish:*input* NIL."
 	   (typecase ,var
 	     (table)
 	     ((or string pathname stream)
-	      (setf ,var (read-table ,var)))
+	      (setf ,var (read-table ,var :column-names ,column-names)))
 	     ((or table list array hash-table structure-object)
-	      (setf ,var (make-table-from ,var)))
+	      (setf ,var (make-table-from ,var :column-names ,column-names)))
 	     (t
 	      ;; @@@ check with find-method?
-	      (setf ,var (make-table-from ,var))))
+	      (setf ,var (make-table-from ,var :column-names ,column-names))))
 	   (,thunk))))))
 
 #+lish
 (lish:defcommand print-table
-  ((long-titles boolean :short-arg #\l :default nil
+  ((long-titles boolean :short-arg #\l
     :help "True to show full column titles.")
+   (column-names list :short-arg #\c
+    :help "List of column titles for the table.")
    (table object :help "Table to print."))
   :accepts '(table sequence hash-table structure-object)
   "Print a table to the terminal."
-  (with-coerced-table (tab table)
+  (with-coerced-table (tab table :column-names column-names)
     (with-grout ()
       (grout-print-table tab :long-titles long-titles))))
 
