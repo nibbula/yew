@@ -328,9 +328,11 @@ then the second value is the labels."
 	       :collect rec))
       (values recs labels))))
 
-(defun read-table (file-or-stream &key (style +csv-default+) columns)
+(defun read-table (file-or-stream &key (style +csv-default+)
+				    columns column-names)
   (multiple-value-bind (recs labels) (read-file file-or-stream :style style)
-    (make-table-from (coerce recs 'vector) :column-names labels
+    (make-table-from (coerce recs 'vector)
+		     :column-names (or column-names labels)
 		     :columns columns)))
 
 #+lish
