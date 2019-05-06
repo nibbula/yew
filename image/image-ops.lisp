@@ -20,59 +20,72 @@
 
 (in-package :image-ops)
 
-(defun map-pixels (image function)
-  "Calls the FUNCTION for every pixel of image. FUNCTION is called with
-with arguments: (IMAGE X Y PIXEL), where X and Y are positive integers, and
-PIXEL is a thing that can be accessed by the pixel macros.
-"
-  (declare (ignore function))
-  image)
-
-(defmacro do-image-or-subimage ((image-or-subimage) &body body)
-  "Evaluate body for the sub-image or all the sub-images. SUB-IMAGE
-is bound to the in the body. The body should return the new SUB-IMAGE."
+(defmacro do-image-or-subimage ((from-image to-image) &body body)
+  "Evaluate body for the sub-image or all the sub-images. FROM-SUB-IMAGE and
+TO-SUB-IMAGE are bound in the body. The body should return the new SUB-IMAGE.
+The layout of the 'FROM' image and the 'TO' image must be identical.
+They can be EQ, if that's what you want."
   (with-unique-names (do-it i)
-    `(flet ((,do-it (sub-image) ,@body))
-       (etypecase ,image-or-subimage
+    `(flet ((,do-it (from-sub-image to-sub-image)
+	      (declare (ignorable from-sub-image to-sub-image))
+	      ,@body))
+       (etypecase ,from-image
 	 (image
 	  (loop :for ,i :from 0
-	     :below (length (image-subimages ,image-or-subimage))
+	     :below (length (image-subimages ,from-image))
 	     :do
-	     (setf (aref (image-subimages ,image-or-subimage) ,i)
-		   (,do-it (aref (image-subimages ,image-or-subimage) ,i)))))
-	 (sub-image (,do-it ,image-or-subimage))))))
+	     (setf (aref (image-subimages ,to-image) ,i)
+		   (,do-it (aref (image-subimages ,from-image) ,i)
+		           (aref (image-subimages ,to-image) ,i)))))
+	 (sub-image (,do-it ,from-image ,to-image))))))
+
+(defun map-pixels (from-image to-image function)
+  "Calls the FUNCTION for every pixel of FROM-IMAGE. FUNCTION is called with
+with arguments: (SUB-IMAGE Y X PIXEL), where X and Y are positive integers, and
+PIXEL is a thing that can be accessed by the pixel macros."
+  (do-image-or-subimage (from-image to-image)
+    (with-slots (width height data) from-sub-image
+      (loop :for y :from 0 :below height :do
+	 (loop :for x :from 0 :below width :do
+	    (setf (whole-pixel (sub-image-data to-sub-image) y x)
+		  (funcall function from-sub-image y x
+			   (whole-pixel data y x))))))
+    to-sub-image)
+  to-image)
 
 (defun reflect-horizontal (image)
   "Flip the image horizontally, so the pixels are mirrored. Return the image."
-  (do-image-or-subimage (image)
-    (with-slots (width height data) sub-image
+  (do-image-or-subimage (image image)
+    (with-slots (width height data) from-sub-image
       (loop :for y :from 0 :below height :do
 	 (loop :for x :from 0 :below (floor width 2) :do
 	    (rotatef (whole-pixel data y x)
 		     (whole-pixel data y (- width x 1))))))
-    sub-image)
+    to-sub-image)
   image)
 
 (defun reflect-vertical (image)
   "Flip the image vertically, so the pixels are mirrored. Return the image."
-  (do-image-or-subimage (image)
-    (with-slots (width height data) sub-image
+  (do-image-or-subimage (image image)
+    (with-slots (width height data) from-sub-image
       (loop :for y :from 0 :below (floor height 2) :do
 	 (loop :for x :from 0 :below width :do
 	    (rotatef (whole-pixel data y x)
 		     (whole-pixel data (- height y 1) x)))))
-    sub-image)
+    to-sub-image)
   image)
+
+;; @@@ rename these. maybe rotate-left & rotate-right ?
 
 (defun rotate-1/4 (image)
   "Rotate the image 1/4 turn. Return the image."
-  (do-image-or-subimage (image)
-    (with-slots (width height data) sub-image
-      (let ((new-image (copy-sub-image sub-image))
+  (do-image-or-subimage (image image)
+    (with-slots (width height data) from-sub-image
+      (let ((new-image (copy-sub-image from-sub-image))
 	    new-data)
 	;; Make a new image with swapped width & height.
-	(setf (sub-image-width new-image) (sub-image-height sub-image)
-	      (sub-image-height new-image) (sub-image-width sub-image)
+	(setf (sub-image-width new-image) (sub-image-height from-sub-image)
+	      (sub-image-height new-image) (sub-image-width from-sub-image)
 	      new-data (make-image-array height width)
 	      (sub-image-data new-image) new-data)
 	(loop :for y :from 0 :below height :do
@@ -84,13 +97,13 @@ is bound to the in the body. The body should return the new SUB-IMAGE."
 
 (defun rotate-3/4 (image)
   "Rotate the image 3/4 turn. Return the image."
-  (do-image-or-subimage (image)
-    (with-slots (width height data) sub-image
-      (let ((new-image (copy-sub-image sub-image))
+  (do-image-or-subimage (image image)
+    (with-slots (width height data) from-sub-image
+      (let ((new-image (copy-sub-image from-sub-image))
 	    new-data)
 	;; Make a new image with swapped width & height.
-	(setf (sub-image-width new-image) (sub-image-height sub-image)
-	      (sub-image-height new-image) (sub-image-width sub-image)
+	(setf (sub-image-width new-image) (sub-image-height from-sub-image)
+	      (sub-image-height new-image) (sub-image-width from-sub-image)
 	      new-data (make-image-array height width)
 	      (sub-image-data new-image) new-data)
 	(loop :for y :from 0 :below height :do

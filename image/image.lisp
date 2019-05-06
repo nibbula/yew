@@ -48,6 +48,7 @@ To make a new format:
    #:image-pixel-format
    #:image-subimages
    #:make-image
+   #:make-blank-copy
    #:make-sub-image
    #:copy-sub-image
    #:sub-image
@@ -61,6 +62,7 @@ To make a new format:
    #:sub-image-data
    #:make-image-array
    #:set-pixel
+   #:make-pixel
    #:whole-pixel
    #:get-whole-pixel
    #:set-whole-pixel
@@ -165,6 +167,39 @@ To make a new format:
   (make-array `(,height ,width)
 	      :initial-element (coerce 0 `(unsigned-byte 32))
 	      :element-type `(unsigned-byte 32)))
+
+(defun make-blank-copy (image)
+  "Make a new blank version of image."
+  (let ((new-image
+	 (make-image
+	  :name (image-name image)
+	  :width (image-width image)
+	  :height (image-height image)
+	  :subimages
+	  (make-array
+	   (length (image-subimages image))
+	   :element-type 'sub-image
+	   :initial-contents ;; What a Horselover Fat of a function.
+	   (loop :with img
+	      :for i :from 0
+	      :below (length (image-subimages image))
+	      :collect
+	      (make-sub-image
+	       :x (sub-image-x
+		   (setf img (aref (image-subimages image) i)))
+	       :y           (sub-image-y           img)
+	       :width       (sub-image-width       img)
+	       :height      (sub-image-height      img)
+	       :delay       (sub-image-delay       img)
+	       :disposal    (sub-image-disposal    img)
+	       :transparent (sub-image-transparent img)
+	       :data (make-image-array
+		      (sub-image-width img)
+		      (sub-image-height img))))))))
+    new-image))
+
+(defun make-pixel (r g b &optional (a #xff))
+  (logior (ash r 24) (ash g 16) (ash b 8) a))
 
 (defun set-pixel (image y x r g b a)
   "Set pixel at X Y of IMAGE to red R, green G, and blue B."

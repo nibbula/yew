@@ -46,6 +46,12 @@
    (buffer
     :initarg :buffer :accessor image-inator-buffer :initform nil
     :documentation "Buffer for compositing images.")
+   (mod-buffer
+    :initarg :mod-buffer :accessor image-inator-mod-buffer :initform nil
+    :documentation "Buffer for modifying images.")
+   (last-func
+    :initarg :last-func :accessor image-inator-last-func :initform nil
+    :documentation "The last pixel function.")
    (looping
     :initarg :looping :accessor image-inator-looping :initform nil :type boolean
     :documentation "True if we are looping.")
@@ -304,7 +310,7 @@
 (defgeneric reset-image (inator)
   (:documentation "Reset things for a new image. Called after switching files.")
   (:method ((inator image-inator))
-    (with-slots (subimage looping image) inator
+    (with-slots (subimage looping image mod-buffer) inator
       (setf subimage 0)
       ;; too damn slow
       ;; Make a frame buffer for the whole image if some sub-image needs it.
@@ -313,6 +319,7 @@
       ;; 	(setf (image-inator-buffer inator)
       ;; 	      (make-image-array (image-width image) (image-height image))))
       (set-auto-looping image)
+      (setf mod-buffer nil)
       (fit-image-to-window inator)
       (center inator))))
 
@@ -381,7 +388,8 @@ the first time it fails to identify the image."
 	(setf img (perserverant-read-image file-name)))
       (clear-image o)
       (setf image img)
-      (reset-image o))))
+      ;; (reset-image o)
+      )))
 
 (defmethod next-file ((o image-inator))
   (with-slots (file-list file-index image) o
@@ -472,6 +480,109 @@ the first time it fails to identify the image."
     (message o "~s" result))
   (tt-cursor-off))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defpackage :view-image-popi
+  (:documentation "Image viewer POPI")
+  (:nicknames :popi)
+  (:import-from :view-image #:i #:y #:x #:p)
+  (:use :cl :dlib :dlib-misc :image :image-ops :color))
+
+(in-package :popi)
+
+(declaim (inline cvt))
+(defun cvt (n)
+  "Convert a pixel number."
+  (typecase n
+    (integer (mod n #x100))
+    (number (color:component-to-8bit n))
+    (t 0)))
+
+(declaim (inline px))
+(defun px (r g b &optional (a #xff))
+  "Make a pixel."
+  (make-pixel (cvt r) (cvt g) (cvt b) (cvt a)))
+
+(defun popi-result (pixel result)
+  (typecase result
+    (null pixel)
+    (integer
+     (logand #xffffffff result))
+    (float
+     ;; Grayscale
+     (let ((v (color:component-to-8bit result)))
+       (make-pixel v v v #xff)))
+    (number
+     (logand #xffffffff (truncate result)))
+    (list
+     (let ((r (or (car    result) 0))
+	   (g (or (cadr   result) 0))
+	   (b (or (caddr  result) 0))
+	   (a (or (cadddr result) 1.0)))
+       (make-pixel (cvt r) (cvt g) (cvt b) (cvt a))))
+    (t pixel)))
+
+(defmacro pr (p) "Pixel red component."     `(ash ,p -24))
+(defmacro pg (p) "Pixel green component."   `(logand #xff (ash ,p -16)))
+(defmacro pb (p) "Pixel blue component."    `(logand #xff (ash ,p -8)))
+(defmacro pa (p) "Pixel alpha component."   `(logand #xff ,p))
+(defmacro f  (p) "Pixel component to float." `(/ ,p #xff))
+(defmacro a  (x y)
+  "Image pixel ref."
+  `(aref (sub-image-data i)
+	 (mod (truncate ,y) (sub-image-height i))
+	 (mod (truncate ,x) (sub-image-width i))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(in-package :view-image)
+
+(defun apply-pixel-expr (o)
+  (tt-move-to 0 0)
+  (tt-cursor-on)
+  (tt-finish-output)
+  (let (form real-form func (*package* (find-package :popi)))
+    (catch 'flanky
+      (handler-case
+	  (progn
+	    (setf form (list (read-from-string (rl:rl :prompt ": ") nil nil))
+		  real-form
+		  `(lambda (i y x p)
+		     (declare (ignorable i y x p)
+			      (optimize (speed 3) (safety 0) (debug 0)
+					(space 0) (compilation-speed 0))
+			      #+sbcl (sb-ext:muffle-conditions
+				      sb-ext:compiler-note))
+		     (popi::popi-result p ,@form))
+		  func (compile nil real-form))
+	    (with-slots (image mod-buffer last-func) o
+	      (when (not mod-buffer)
+		(setf mod-buffer (make-blank-copy image)))
+	      (map-pixels image mod-buffer func)
+	      (setf last-func func)
+	      (rotatef image mod-buffer)))
+	(error (c)
+	  (pause "Form: ~s~%~a" form c)
+	  (throw 'flanky nil)
+	  #| (continue) |#
+	  ))))
+  (tt-cursor-off))
+
+(defun apply-last-pixel-expr (o)
+  (let ((*package* (find-package :popi)))
+    (catch 'flanky
+      (handler-case
+	  (with-slots (image mod-buffer last-func) o
+	    (when (not mod-buffer)
+	      (setf mod-buffer (make-blank-copy image)))
+	    (map-pixels image mod-buffer last-func)
+	    (rotatef image mod-buffer))
+	(condition (c)
+	  (pause "~a~%" c)
+	  (throw 'flanky nil)
+	  #| (continue) |#
+	  )))))
+
 (defun toggle-modeline (o)
   (with-slots (show-modeline) o
     (setf show-modeline (not show-modeline))))
@@ -528,6 +639,8 @@ the first time it fails to identify the image."
     (#\t     		  . toggle-looping)
     (,(meta-char #\=)	  . binding-of-key)
     (,(meta-char #\escape) . eval-expression)
+    (#\return		  . apply-pixel-expr)
+    (:F12		  . apply-last-pixel-expr)
     (,(meta-char #\m)     . toggle-modeline)
     (#\?		  . help)
     (,(ctrl #\@)	  . set-mark)))
