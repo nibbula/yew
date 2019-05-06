@@ -49,6 +49,7 @@ To make a new format:
    #:image-subimages
    #:make-image
    #:make-sub-image
+   #:copy-sub-image
    #:sub-image
    #:sub-image-x
    #:sub-image-y
@@ -60,13 +61,18 @@ To make a new format:
    #:sub-image-data
    #:make-image-array
    #:set-pixel
+   #:whole-pixel
+   #:get-whole-pixel
    #:set-whole-pixel
    #:set-row
    #:get-pixel-r
    #:get-pixel-g
    #:get-pixel-b
    #:get-pixel-a
-   #:get-whole-pixel
+   #:pixel-r
+   #:pixel-g
+   #:pixel-b
+   #:pixel-a
    #:image-format
    #:image-format-name
    #:image-format-description
@@ -169,6 +175,20 @@ To make a new format:
 and format, since there is no checking."
   (setf (aref image y x) pixel))
 
+;; @@@ I think the get-* forms should be deprecated.
+
+(defun get-whole-pixel (image y x)
+  "Return the whole pixel at X Y of IMAGE."
+  (aref image y x))
+
+(defun whole-pixel (image y x)
+  "Return the whole pixel at the X and Y coorindates of IMAGE."
+  (aref image y x))
+
+(defsetf whole-pixel set-whole-pixel
+  "Set pixel at X Y of IMAGE to PIXEL. The pixel had better be the right type
+and format, since there is no checking.")
+
 (defun set-row (image y x row)
   "Set row Y of the IMAGE to ROW, starting at X."
   (replace
@@ -178,25 +198,53 @@ and format, since there is no checking."
 	       :displaced-index-offset (array-row-major-index image y x))
    row))
 
-(defun get-pixel-r (image y x)
+(defun pixel-r (image y x)
   "Return the red component of the pixel at X Y of IMAGE."
   (ash (aref image y x) -24))
 
-(defun get-pixel-g (image y x)
+(defun set-pixel-r (image y x r)
+  "Set the red component of pixel at X Y of IMAGE to R."
+  (setf (aref image y x) (logior (logand (ash r 24) #xff000000)
+				 (logand #x00ffffff (aref image y x)))))
+
+(defsetf pixel-r set-pixel-r
+  "Set the red component of pixel at X Y of IMAGE.")
+
+(defun pixel-g (image y x)
   "Return the green component of the pixel at X Y of IMAGE."
   (logand #xff (ash (aref image y x) -16)))
 
-(defun get-pixel-b (image y x)
+(defun set-pixel-g (image y x g)
+  "Set the green component of pixel at X Y of IMAGE to G."
+  (setf (aref image y x) (logior (logand (ash g 16) #x00ff0000)
+				 (logand #xff00ffff (aref image y x)))))
+
+(defsetf pixel-g set-pixel-g
+  "Set the green component of pixel at X Y of IMAGE.")
+
+(defun pixel-b (image y x)
   "Return the blue component of the pixel at X Y of IMAGE."
   (logand #xff (ash (aref image y x) -8)))
 
-(defun get-pixel-a (image y x)
+(defun set-pixel-b (image y x b)
+  "Set the blue component of pixel at X Y of IMAGE to B."
+  (setf (aref image y x) (logior (logand (ash b 8) #x0000ff00)
+				 (logand #xffff00ff (aref image y x)))))
+
+(defsetf pixel-b set-pixel-b
+  "Set the green component of pixel at X Y of IMAGE.")
+
+(defun pixel-a (image y x)
   "Return the alpha (or transparency) component of the pixel at X Y of IMAGE."
   (logand #xff (aref image y x)))
 
-(defun get-whole-pixel (image y x)
-  "Return the whole pixel at X Y of IMAGE."
-  (aref image y x))
+(defun set-pixel-a (image y x a)
+  "Set the alpha component of pixel at X Y of IMAGE to A."
+  (setf (aref image y x) (logior (logand a #xff)
+				 (logand #xffffff00 (aref image y x)))))
+
+(defsetf pixel-a set-pixel-a
+  "Set the alpha component of pixel at X Y of IMAGE.")
 
 (defclass image-format ()
   ((name
