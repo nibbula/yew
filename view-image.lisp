@@ -5,7 +5,8 @@
 (defpackage :view-image
   (:documentation "Image viewer")
   (:use :cl :dlib :dlib-misc :keymap :char-util :terminal :terminal-ansi
-	:terminal-crunch :inator :terminal-inator :magic :grout :image)
+	:terminal-crunch :inator :terminal-inator :magic :grout :image
+	:image-ops)
   (:export
    #:view-image
    #:!view-image
@@ -14,7 +15,7 @@
    #:image-inator
    #:register-image-inator
    #:image-inator-usable-p
-   #:get-pixel-r #:get-pixel-g #:get-pixel-b #:get-pixel-a
+   ;; #:get-pixel-r #:get-pixel-g #:get-pixel-b #:get-pixel-a
    ))
 (in-package :view-image)
 
@@ -270,8 +271,29 @@
 	))))
 
 (defun fit-image-to-window (o)
-  (fit-width-to-window o)
-  (fit-height-to-window o))
+  (with-slots ((width image::width)
+	       (height image::height)) (image-inator-image o)
+    (cond
+      ((> width height)
+       (fit-width-to-window o))
+      (t
+       (fit-height-to-window o)))))
+
+(defun flip-image-vertical (o)
+  (with-slots (image) o
+    (reflect-vertical image)))
+
+(defun flip-image-horizontal (o)
+  (with-slots (image) o
+    (reflect-horizontal image)))
+
+(defun rotate-image-right (o)
+  (with-slots (image) o
+    (rotate-1/4 image)))
+
+(defun rotate-image-left (o)
+  (with-slots (image) o
+    (rotate-3/4 image)))
 
 (defgeneric clear-image (inator)
   (:documentation
@@ -337,7 +359,7 @@
        (simple-error (c)
 	 (pause "Error: ~a ~a" ,file-name c)))))
 
-(defun persistent-read-image (file)
+(defun perserverant-read-image (file)
   "Try to read an image, but try to load image format stragglers after
 the first time it fails to identify the image."
   (or (catch 'pequod
@@ -351,6 +373,16 @@ the first time it fails to identify the image."
 	(load-known-formats)
 	(read-image file))))
 
+(defun reload-file (o)
+  (with-slots (image) o
+    (let ((file-name (image-name image))
+	  img)
+      (with-image-error-handling (file-name)
+	(setf img (perserverant-read-image file-name)))
+      (clear-image o)
+      (setf image img)
+      (reset-image o))))
+
 (defmethod next-file ((o image-inator))
   (with-slots (file-list file-index image) o
     (flet ((next ()
@@ -363,7 +395,7 @@ the first time it fails to identify the image."
 	   (next)
 	   (setf file-name (nth file-index file-list))
 	   (with-image-error-handling (file-name)
-	     (setf img (persistent-read-image file-name))))
+	     (setf img (perserverant-read-image file-name))))
 	(clear-image o)
 	(setf image img)
 	(reset-image o)
@@ -383,7 +415,7 @@ the first time it fails to identify the image."
 	   (prev)
 	   (setf file-name (nth file-index file-list))
 	   (with-image-error-handling (file-name)
-	     (setf img (persistent-read-image file-name))))
+	     (setf img (perserverant-read-image file-name))))
 	(clear-image o)
 	(setf image img)
 	(reset-image o)))))
@@ -459,12 +491,16 @@ the first time it fails to identify the image."
     (#\p		  . previous-sub-image)
     (#\f		  . fit-width-to-window)
     (#\F		  . fit-height-to-window)
+    (#\|		  . flip-image-vertical)
+    (#\\		  . flip-image-horizontal)
+    (#\]		  . rotate-image-right)
+    (#\[		  . rotate-image-left)
     (#\d		  . decrease-delay)
     (#\D		  . increase-delay)
     (:down		  . next)
     (:up		  . previous)
     (:left		  . backward-unit)
-    (:right		  . forard-unit)
+    (:right		  . forward-unit)
     (,(ctrl #\F)	  . next-page)
     (#\space	  	  . next-file)
     (,(ctrl #\V)	  . next-page)
@@ -487,6 +523,7 @@ the first time it fails to identify the image."
     (#\=		  . zoom-reset)
     (,(meta-char #\n)     . next-file)
     (,(meta-char #\p)     . previous-file)
+    (,(ctrl #\R)	  . reload-file)
     (,(meta-char #\l)     . toggle-looping)
     (#\t     		  . toggle-looping)
     (,(meta-char #\=)	  . binding-of-key)
@@ -757,16 +794,16 @@ But also greatly increasing # of chars output.
 			      :sum
 			      ;; (aref source (min (1- height) (+ iy av-y))
 			      ;; 	      (min (1- width) (+ ix av-x)) 0)
-			      (get-pixel-r source
-					   (min (1- height) (+ iy av-y))
-					   (min (1- width) (+ ix av-x)))
+			      (pixel-r source
+				       (min (1- height) (+ iy av-y))
+				       (min (1- width) (+ ix av-x)))
 			      )))
 		(setf g (loop :for av-y :from 0 :below step :sum
 			   (loop :for av-x :from 0 :below step
 			      :sum
 			      ;; (aref source (min (1- height) (+ iy av-y))
 			      ;; 	      (min (1- width) (+ ix av-x)) 1)
-			      (get-pixel-g source
+			      (pixel-g source
 					   (min (1- height) (+ iy av-y))
 					   (min (1- width) (+ ix av-x)))
 			      )))
@@ -776,7 +813,7 @@ But also greatly increasing # of chars output.
 			      ;; (aref source
 			      ;; 	    (min (1- height) (+ iy av-y))
 			      ;; 	    (min (1- width) (+ ix av-x)) 2)
-			      (get-pixel-b source
+			      (pixel-b source
 					   (min (1- height) (+ iy av-y))
 					   (min (1- width) (+ ix av-x)))
 			      )))
@@ -786,7 +823,7 @@ But also greatly increasing # of chars output.
 			      ;; (aref source
 			      ;; 	    (min (1- height) (+ iy av-y))
 			      ;; 	    (min (1- width) (+ ix av-x)) 3)
-			      (get-pixel-a source
+			      (pixel-a source
 					   (min (1- height) (+ iy av-y))
 					   (min (1- width) (+ ix av-x)))
 			      )))
@@ -821,10 +858,10 @@ But also greatly increasing # of chars output.
 		  ;; (loop :for ix fixnum :from si-x :below (+ si-x width)
 		  ;;    :for source-x :from 0 :do
 		     ;; (set-pixel buffer iy ix
-		     ;; 		(get-pixel-r data iy ix)
-		     ;; 		(get-pixel-g data iy ix)
-		     ;; 		(get-pixel-b data iy ix)
-		     ;; 		(get-pixel-a data iy ix))
+		     ;; 		(pixel-r data iy ix)
+		     ;; 		(pixel-g data iy ix)
+		     ;; 		(pixel-b data iy ix)
+		     ;; 		(pixel-a data iy ix))
 		     ;; (aref buffer iy ix 0) (aref data source-y source-x 0)
 		     ;; (aref buffer iy ix 1) (aref data source-y source-x 1)
 		     ;; (aref buffer iy ix 2) (aref data source-y source-x 2)
@@ -897,18 +934,18 @@ But also greatly increasing # of chars output.
 			      :sum
 			      ;; (aref source (min (1- height) (+ iy av-y))
 			      ;; 	      (min (1- width) (+ ix av-x)) 0)
-			      (get-pixel-r source
-					   (min (1- height) (+ iy av-y))
-					   (min (1- width) (+ ix av-x)))
+			      (pixel-r source
+				       (min (1- height) (+ iy av-y))
+				       (min (1- width) (+ ix av-x)))
 			      )))
 		(setf g1 (loop :for av-y :from 0 :below step :sum
 			   (loop :for av-x :from 0 :below step
 			      :sum
 			      ;; (aref source (min (1- height) (+ iy av-y))
 			      ;; 	      (min (1- width) (+ ix av-x)) 1)
-			      (get-pixel-g source
-					   (min (1- height) (+ iy av-y))
-					   (min (1- width) (+ ix av-x)))
+			      (pixel-g source
+				       (min (1- height) (+ iy av-y))
+				       (min (1- width) (+ ix av-x)))
 			      )))
 		(setf b1 (loop :for av-y :from 0 :below step :sum
 			   (loop :for av-x :from 0 :below step
@@ -916,9 +953,9 @@ But also greatly increasing # of chars output.
 			      ;; (aref source
 			      ;; 	    (min (1- height) (+ iy av-y))
 			      ;; 	    (min (1- width) (+ ix av-x)) 2)
-			      (get-pixel-b source
-					   (min (1- height) (+ iy av-y))
-					   (min (1- width) (+ ix av-x)))
+			      (pixel-b source
+				       (min (1- height) (+ iy av-y))
+				       (min (1- width) (+ ix av-x)))
 			      )))
 		(setf a1 (loop :for av-y :from 0 :below step :sum
 			   (loop :for av-x :from 0 :below step
@@ -926,9 +963,9 @@ But also greatly increasing # of chars output.
 			      ;; (aref source
 			      ;; 	    (min (1- height) (+ iy av-y))
 			      ;; 	    (min (1- width) (+ ix av-x)) 3)
-			      (get-pixel-a source
-					   (min (1- height) (+ iy av-y))
-					   (min (1- width) (+ ix av-x)))
+			      (pixel-a source
+				       (min (1- height) (+ iy av-y))
+				       (min (1- width) (+ ix av-x)))
 			      )))
 		(when (< (+ iy step) end-y)
 		  (setf r2 (loop :for av-y :from 0 :below step :sum
@@ -936,16 +973,16 @@ But also greatly increasing # of chars output.
 				 :sum
 				 ;; (aref source (min (1- height) (+ iy av-y))
 				 ;; 	      (min (1- width) (+ ix av-x)) 0)
-				 (get-pixel-r source
-					      (min (1- height) (+ iy step av-y))
-					      (min (1- width) (+ ix av-x)))
+				 (pixel-r source
+					  (min (1- height) (+ iy step av-y))
+					  (min (1- width) (+ ix av-x)))
 				 )))
 		  (setf g2 (loop :for av-y :from 0 :below step :sum
 			      (loop :for av-x :from 0 :below step
 				 :sum
 				 ;; (aref source (min (1- height) (+ iy av-y))
 				 ;; 	      (min (1- width) (+ ix av-x)) 1)
-				 (get-pixel-g source
+				 (pixel-g source
 					      (min (1- height) (+ iy step av-y))
 					      (min (1- width) (+ ix av-x)))
 				 )))
@@ -955,9 +992,9 @@ But also greatly increasing # of chars output.
 				 ;; (aref source
 				 ;; 	    (min (1- height) (+ iy av-y))
 				 ;; 	    (min (1- width) (+ ix av-x)) 2)
-				 (get-pixel-b source
-					      (min (1- height) (+ iy step av-y))
-					      (min (1- width) (+ ix av-x)))
+				 (pixel-b source
+					  (min (1- height) (+ iy step av-y))
+					  (min (1- width) (+ ix av-x)))
 				 )))
 		  (setf a2 (loop :for av-y :from 0 :below step :sum
 			      (loop :for av-x :from 0 :below step
@@ -965,9 +1002,9 @@ But also greatly increasing # of chars output.
 				 ;; (aref source
 				 ;; 	    (min (1- height) (+ iy av-y))
 				 ;; 	    (min (1- width) (+ ix av-x)) 3)
-				 (get-pixel-a source
-					      (min (1- height) (+ iy step av-y))
-					      (min (1- width) (+ ix av-x)))
+				 (pixel-a source
+					  (min (1- height) (+ iy step av-y))
+					  (min (1- width) (+ ix av-x)))
 				 )))
 		  ;;(incf iy)
 		  )
@@ -1004,10 +1041,10 @@ But also greatly increasing # of chars output.
 		  ;; (loop :for ix fixnum :from si-x :below (+ si-x width)
 		  ;;    :for source-x :from 0 :do
 		     ;; (set-pixel buffer iy ix
-		     ;; 		(get-pixel-r data iy ix)
-		     ;; 		(get-pixel-g data iy ix)
-		     ;; 		(get-pixel-b data iy ix)
-		     ;; 		(get-pixel-a data iy ix))
+		     ;; 		(pixel-r data iy ix)
+		     ;; 		(pixel-g data iy ix)
+		     ;; 		(pixel-b data iy ix)
+		     ;; 		(pixel-a data iy ix))
 		     ;; (aref buffer iy ix 0) (aref data source-y source-x 0)
 		     ;; (aref buffer iy ix 1) (aref data source-y source-x 1)
 		     ;; (aref buffer iy ix 2) (aref data source-y source-x 2)
@@ -1045,7 +1082,7 @@ But also greatly increasing # of chars output.
 		  (format *error-output* "Error: ~a ~a~%" file c)
 		  (throw 'git-out nil)))))
 	  (let* ((*show-progress* nil)
-		 (image (persistent-read-image file))
+		 (image (perserverant-read-image file))
 		 (view-width (or width t-width))
 		 (view-height (or height
 				  (if use-full
@@ -1136,7 +1173,7 @@ But also greatly increasing # of chars output.
 	(error "Can't find a usable image viewer."))
       (loop :with file = file-or-stream :and list = file-list
 	 :while (and (or file list)
-		     (not (setf image (persistent-read-image file))))
+		     (not (setf image (perserverant-read-image file))))
 	 :do (setf list (cdr list)
 		   file (car list)))
       (when (not image)
@@ -1158,6 +1195,7 @@ But also greatly increasing # of chars output.
 
 (defun view-images (files &rest args &key type own-window use-full)
   (declare (ignorable type own-window use-full))
+  ;; (format t "type = ~s~%" type)
   (if (not files)
       (apply #'view-image *standard-input* args)
       (apply #'view-image (first files) :file-list files args)))
@@ -1167,24 +1205,26 @@ But also greatly increasing # of chars output.
 
 #+lish
 (lish:defcommand view-image
-  (;; @@@ take this out until args are fixed
-   ;; (type choice :short-arg #\t :optional t
-   ;;  :choice-func 'image-inator-types
-   ;;  :choice-test 'equalp
-   ;;  :help "Type of image viewer to use.")
+  ((images pathname :repeating t :help "Image to view.")
+   ;; @@@ take this out until args are fixed
+   (type choice :short-arg #\t :optional t
+    :choice-func 'image-inator-types
+    :choice-test 'equalp
+    :help "Type of image viewer to use.")
    (own-window boolean :short-arg #\o
     :help "True to use it's own window if the backend supports it.")
    (use-full boolean :short-arg #\f
     :help "True to use full blocks.")
-   (images pathname :repeating t :help "Image to view."))
+   ;;(images pathname :repeating t :help "Image to view.")
+   )
   :accepts (:sequence :stream)
   "View an image."
-  (let ((type nil))
+  ;;(let ((type nil))
     (view-images (or images lish:*input* *standard-input*)
 		 :type (cdr (find type *image-inator-types*
 				  :key (_ (symbol-name (cdr _)))))
 		 :own-window own-window
-		 :use-full use-full)))
+		 :use-full use-full))
 
 (defun cat-images (files &rest args &key zoom width height errorp use-full)
   (declare (ignorable zoom width height errorp use-full))

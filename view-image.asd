@@ -11,7 +11,7 @@
     :source-control	:git
     :long-description   "View an image."
     :depends-on (:dlib :dlib-misc :keymap :char-util :terminal :terminal-ansi
-		 :terminal-crunch :terminal-inator :image :magic :grout
-		 :flexi-streams)
+		 :terminal-crunch :terminal-inator :image :image-ops :magic
+		 :grout :flexi-streams)
     :components
     ((:file "view-image")))
