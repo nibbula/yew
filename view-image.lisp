@@ -19,17 +19,17 @@
    ))
 (in-package :view-image)
 
-(declaim (optimize (speed 3) (safety 0) (debug 1) (space 0)
- 		   (compilation-speed 0)))
-;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+;; (declaim (optimize (speed 3) (safety 0) (debug 1) (space 0)
 ;;  		   (compilation-speed 0)))
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+		   (compilation-speed 0)))
 
 (defkeymap *image-viewer-keymap*)
 (defkeymap *image-viewer-escape-keymap*)
 
 (defclass image-inator (terminal-inator)
   ((image
-    :initarg :image :accessor image-inator-image
+    :initarg :image :accessor image-inator-image :initform nil
     :documentation "The image to viewer.")
    (x
     :initarg :x :accessor image-inator-x :initform 0 :type fixnum
@@ -67,6 +67,10 @@
     :initarg :file-index :accessor image-inator-file-index
     :initform 0 :type fixnum
     :documentation "Position in FILE-LIST that we are viewing.")
+   (initial-command
+    :initarg :initial-command :accessor image-inator-initial-command
+    :initform nil
+    :documentation "Command to perform when starting.")
    (show-modeline
     :initarg :show-modeline :accessor image-inator-show-modeline
     :initform t :type boolean
@@ -393,11 +397,17 @@ the first time it fails to identify the image."
 
 (defmethod next-file ((o image-inator))
   (with-slots (file-list file-index image) o
-    (flet ((next ()
-	     (if (< file-index (1- (length file-list)))
-		 (incf file-index)
-		 (return-from next-file nil))))
-      (let (img)
+    (let (img (first-time t))
+      (flet ((next ()
+	       (cond
+		 ((and (not image) first-time)
+		  ;; Probably when we're used as an initial-command.
+		  (setf file-index 0
+			first-time nil))
+		 ((< file-index (1- (length file-list)))
+		  (incf file-index))
+		 (t
+		  (return-from next-file nil)))))
 	(loop :with file-name
 	   :while (not img) :do
 	   (next)
@@ -649,7 +659,8 @@ the first time it fails to identify the image."
 
 (defmethod await-event ((o image-inator))
   "Image viewer event."
-  (with-slots (looping subimage image frame-start-time delay-factor) o
+  (with-slots (looping subimage image frame-start-time delay-factor
+	       #| initial-command |#) o
     (with-slots ((subimages image::subimages)) image
       (if (and looping subimages)
 	  (let* ((t-o (truncate (* delay-factor
@@ -1252,8 +1263,11 @@ But also greatly increasing # of chars output.
 
 (defmethod start-inator ((o image-inator))
   (call-next-method)
-  (center *image-viewer*)
-  (fit-image-to-window *image-viewer*))
+  (with-slots (initial-command) o
+     (when initial-command
+       (call-command o initial-command nil))
+     (center *image-viewer*)
+     (fit-image-to-window *image-viewer*)))
 
 (defvar *image-inator-types* nil
   "A list of image inator types that are defined.")
@@ -1270,12 +1284,12 @@ But also greatly increasing # of chars output.
 
 (defun set-auto-looping (image)
   "Turn on looping for multi-frame images."
-  (setf (image-inator-looping *image-viewer*)
-	(and (image-subimages image)
-	     (> (length (image-subimages image)) 1)))
-  (dbug ";;;;;;;;;;;;;;;;AUTO;;;;;;;;;;LOOP;;;;;;;~d;;;;;;;;;~%"
-	(length (image-subimages image))))
-
+  (when image
+    (setf (image-inator-looping *image-viewer*)
+	  (and (image-subimages image)
+	       (> (length (image-subimages image)) 1)))
+    (dbug ";;;;;;;;;;;;;;;;AUTO;;;;;;;;;;LOOP;;;;;;;~d;;;;;;;;;~%"
+	  (length (image-subimages image)))))
 
 (defun view-image (file-or-stream &key file-list type own-window use-full)
 ;;  (with-terminal (:ansi)
@@ -1284,16 +1298,18 @@ But also greatly increasing # of chars output.
 	   image *image-viewer*)
       (when (not inator-type)
 	(error "Can't find a usable image viewer."))
-      (loop :with file = file-or-stream :and list = file-list
-	 :while (and (or file list)
-		     (not (setf image (perserverant-read-image file))))
-	 :do (setf list (cdr list)
-		   file (car list)))
-      (when (not image)
-	(error "No more files to try."))
+      ;; (loop :with file = file-or-stream :and list = file-list
+      ;; 	 :while (and (or file list)
+      ;; 		     (not (setf image (perserverant-read-image file))))
+      ;; 	 :do (setf list (cdr list)
+      ;; 		   file (car list)))
+      ;; (when (not image)
+      ;; 	(error "No more files to try."))
       (setf *image-viewer* (make-instance inator-type
-					  :image image
-					  :file-list file-list
+					  ;; :image image
+					  :initial-command 'next-file
+					  :file-list (or file-list
+							 (list file-or-stream))
 					  :own-window own-window
 					  :use-half-block (not use-full)))
       (set-auto-looping image)
