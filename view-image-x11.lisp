@@ -98,7 +98,7 @@
     :after ((o image-x11-inator) &rest initargs &key &allow-other-keys)
   "Initialize a image-x11-inator."
   (declare (ignore initargs))
-  )
+  (setf (slot-value o 'view-image::use-half-block) nil))
 
 (defun get-display-from-environment ()
   "Return the display host and the the display number from the environment."
