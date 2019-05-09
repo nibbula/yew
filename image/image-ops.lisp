@@ -81,7 +81,8 @@ PIXEL is a thing that can be accessed by the pixel macros."
 	     (left-over (rem height n))
 	     (width (sub-image-width from-sub-image))
 	     (piece 0)
-	     (y 0))
+	     (y 0)
+	     (done-count 0))
 	(loop :while (< piece (1- n)) :do
 	   ;; (submit-task chan #'map-piece
 	   ;; 	      from-sub-image to-sub-image function
@@ -102,9 +103,18 @@ PIXEL is a thing that can be accessed by the pixel macros."
 				       s e width))
 		     y (+ y piece-size left-over))
 	;; wait for every piece
-	(loop :with junk :and not-done
-	   :do (setf (values junk not-done) (try-receive-result chan))
-	   :while not-done)
+	;; (loop :with junk :and not-done
+	;;    :do (setf (values junk not-done)
+	;; 	     (try-receive-result chan :timeout .0000001))
+	;;    (format t "~s ~s~%" junk not-done)
+	;;    (incf done-count)
+	;;    :while not-done)
+	(loop :with junk
+	   :for i :from 1 :to n
+	   :do (setf junk (receive-result chan))
+	   (incf done-count))
+	(when (< done-count n)
+	  (format t "Only ~d done!~%" done-count))
 	)
       to-sub-image)
     to-image))
