@@ -19,10 +19,17 @@
    ))
 (in-package :view-image)
 
-;; (declaim (optimize (speed 3) (safety 0) (debug 1) (space 0)
-;;  		   (compilation-speed 0)))
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
-		   (compilation-speed 0)))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *fast*
+    '((speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
+  (defparameter *fastest*
+    '((speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
+  (defparameter *dev*
+    '((speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+
+  (defparameter *optimize-settings* *dev*))
+
+(declaim #.`(optimize ,.*optimize-settings*))
 
 (defkeymap *image-viewer-keymap*)
 (defkeymap *image-viewer-escape-keymap*)
@@ -291,19 +298,23 @@
 
 (defun flip-image-vertical (o)
   (with-slots (image) o
-    (reflect-vertical image)))
+    (reflect-vertical image)
+    (invalidate-cache o)))
 
 (defun flip-image-horizontal (o)
   (with-slots (image) o
-    (reflect-horizontal image)))
+    (reflect-horizontal image)
+    (invalidate-cache o)))
 
 (defun rotate-image-right (o)
   (with-slots (image) o
-    (rotate-1/4 image)))
+    (rotate-1/4 image)
+    (invalidate-cache o)))
 
 (defun rotate-image-left (o)
   (with-slots (image) o
-    (rotate-3/4 image)))
+    (rotate-3/4 image)
+    (invalidate-cache o)))
 
 (defgeneric clear-image (inator)
   (:documentation
@@ -315,17 +326,23 @@
   (:documentation "Reset things for a new image. Called after switching files.")
   (:method ((inator image-inator))
     (with-slots (subimage looping image mod-buffer) inator
-      (setf subimage 0)
-      ;; too damn slow
-      ;; Make a frame buffer for the whole image if some sub-image needs it.
-      ;; (when (notevery (_ (eq (sub-image-disposal _) :unspecified))
-      ;; 		      (image-subimages image))
-      ;; 	(setf (image-inator-buffer inator)
-      ;; 	      (make-image-array (image-width image) (image-height image))))
-      (set-auto-looping image)
-      (setf mod-buffer nil)
-      (fit-image-to-window inator)
-      (center inator))))
+      (when image
+	(setf subimage 0)
+	;; too damn slow
+	;; Make a frame buffer for the whole image if some sub-image needs it.
+	;; (when (notevery (_ (eq (sub-image-disposal _) :unspecified))
+	;; 		      (image-subimages image))
+	;; 	(setf (image-inator-buffer inator)
+	;; 	      (make-image-array (image-width image) (image-height image))))
+	(set-auto-looping image)
+	(setf mod-buffer nil)
+	(fit-image-to-window inator)
+	(center inator)))))
+
+(defgeneric invalidate-cache (inator)
+  (:documentation "Invalidate the image cache, if any.")
+  (:method ((inator image-inator))
+    (declare (ignore inator))))
 
 (defun increase-delay (o)
   "Slow down the looping rate."
@@ -392,18 +409,20 @@ the first time it fails to identify the image."
 	(setf img (perserverant-read-image file-name)))
       (clear-image o)
       (setf image img)
+      (invalidate-cache o)
       ;; (reset-image o)
       )))
 
 (defmethod next-file ((o image-inator))
   (with-slots (file-list file-index image) o
-    (let (img (first-time t))
+    (let (img (first-time t) (was-first-time nil))
       (flet ((next ()
 	       (cond
 		 ((and (not image) first-time)
 		  ;; Probably when we're used as an initial-command.
 		  (setf file-index 0
-			first-time nil))
+			first-time nil
+			was-first-time t))
 		 ((< file-index (1- (length file-list)))
 		  (incf file-index))
 		 (t
@@ -416,7 +435,8 @@ the first time it fails to identify the image."
 	     (setf img (perserverant-read-image file-name))))
 	(clear-image o)
 	(setf image img)
-	(reset-image o)
+	(when (not was-first-time)
+	  (reset-image o))
 	(dbug "filename ~s subimages ~s~%" (nth file-index file-list)
 	      (length (image-subimages image)))
 	))))
@@ -490,108 +510,83 @@ the first time it fails to identify the image."
     (message o "~s" result))
   (tt-cursor-off))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defpackage :view-image-popi
-  (:documentation "Image viewer POPI")
-  (:nicknames :popi)
-  (:import-from :view-image #:i #:y #:x #:p)
-  (:use :cl :dlib :dlib-misc :image :image-ops :color))
-
-(in-package :popi)
-
-(declaim (inline cvt))
-(defun cvt (n)
-  "Convert a pixel number."
-  (typecase n
-    (integer (mod n #x100))
-    (number (color:component-to-8bit n))
-    (t 0)))
-
-(declaim (inline px))
-(defun px (r g b &optional (a #xff))
-  "Make a pixel."
-  (make-pixel (cvt r) (cvt g) (cvt b) (cvt a)))
-
-(defun popi-result (pixel result)
-  (typecase result
-    (null pixel)
-    (integer
-     (logand #xffffffff result))
-    (float
-     ;; Grayscale
-     (let ((v (color:component-to-8bit result)))
-       (make-pixel v v v #xff)))
-    (number
-     (logand #xffffffff (truncate result)))
-    (list
-     (let ((r (or (car    result) 0))
-	   (g (or (cadr   result) 0))
-	   (b (or (caddr  result) 0))
-	   (a (or (cadddr result) 1.0)))
-       (make-pixel (cvt r) (cvt g) (cvt b) (cvt a))))
-    (t pixel)))
-
-(defmacro pr (p) "Pixel red component."     `(ash ,p -24))
-(defmacro pg (p) "Pixel green component."   `(logand #xff (ash ,p -16)))
-(defmacro pb (p) "Pixel blue component."    `(logand #xff (ash ,p -8)))
-(defmacro pa (p) "Pixel alpha component."   `(logand #xff ,p))
-(defmacro f  (p) "Pixel component to float." `(/ ,p #xff))
-(defmacro a  (x y)
-  "Image pixel ref."
-  `(aref (sub-image-data i)
-	 (mod (truncate ,y) (sub-image-height i))
-	 (mod (truncate ,x) (sub-image-width i))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(in-package :view-image)
-
 (defun apply-pixel-expr (o)
+  "Apply an expression to every pixel in the image."
   (tt-move-to 0 0)
   (tt-cursor-on)
   (tt-finish-output)
-  (let (form real-form func (*package* (find-package :popi)))
+  (let (form real-form func warns fails (*package* (find-package :popi)))
     (catch 'flanky
       (handler-case
 	  (progn
 	    (setf form (list (read-from-string (rl:rl :prompt ": ") nil nil))
-		  real-form
-		  `(lambda (i y x p)
-		     (declare (ignorable i y x p)
-			      (optimize (speed 3) (safety 0) (debug 0)
-					(space 0) (compilation-speed 0))
-			      #+sbcl (sb-ext:muffle-conditions
-				      sb-ext:compiler-note))
-		     (popi::popi-result p ,@form))
-		  func (compile nil real-form))
+		  real-form (popi:popi-form form)
+		  popi:w (width o)
+		  popi:h (height o)
+		  popi:n 0
+		  (values func warns fails) (compile nil real-form))
+	    ;; (format t "Warnings ~s Errors ~s~%" warns fails)
+	    ;; (format t "Real form ~s~%" (macroexpand real-form))
 	    (with-slots (image mod-buffer last-func) o
 	      (when (not mod-buffer)
 		(setf mod-buffer (make-blank-copy image)))
-	      (map-pixels image mod-buffer func)
+	      (pmap-pixels image mod-buffer func)
 	      (setf last-func func)
 	      (rotatef image mod-buffer)))
-	(error (c)
-	  (pause "Form: ~s~%~a" form c)
-	  (throw 'flanky nil)
-	  #| (continue) |#
-	  ))))
-  (tt-cursor-off))
+	;; (error (c)
+	;;   (pause "Form: ~w~%~a" form c)
+	;;   ;; (sb-debug:print-backtrace)
+	;;   (throw 'flanky nil)
+	;;   #| (continue) |#
+	;;   )
+	)))
+  (tt-cursor-off)
+  (invalidate-cache o)
+  (redraw o))
 
 (defun apply-last-pixel-expr (o)
+  "Apply the last entered pixel expression again."
   (let ((*package* (find-package :popi)))
     (catch 'flanky
       (handler-case
 	  (with-slots (image mod-buffer last-func) o
 	    (when (not mod-buffer)
 	      (setf mod-buffer (make-blank-copy image)))
-	    (map-pixels image mod-buffer last-func)
+	    (pmap-pixels image mod-buffer last-func)
+	    (incf popi:n)
 	    (rotatef image mod-buffer))
 	(condition (c)
 	  (pause "~a~%" c)
 	  (throw 'flanky nil)
 	  #| (continue) |#
-	  )))))
+	  )))
+    (invalidate-cache o)))
+
+(defmethod image-listen ((inator image-inator))
+  "Return true if there is input ready."
+  (tt-listen-for 0))
+
+(defun pixel-expr-loop (o)
+  "Apply the last entered pixel expression until a key is pressed."
+  (let ((*package* (find-package :popi)))
+    (catch 'flanky
+      (handler-case
+	  (with-slots (image mod-buffer last-func) o
+	    (when (not mod-buffer)
+	      (setf mod-buffer (make-blank-copy image)))
+	    (loop :while (not (image-listen o))
+	       :do
+	       (pmap-pixels image mod-buffer last-func)
+	       (incf popi:n)
+	       (rotatef image mod-buffer)
+	       (invalidate-cache o)
+	       (update-display o)))
+	(condition (c)
+	  (pause "~a~%" c)
+	  (throw 'flanky nil)
+	  #| (continue) |#
+	  )))
+    (invalidate-cache o)))
 
 (defun toggle-modeline (o)
   (with-slots (show-modeline) o
@@ -637,6 +632,7 @@ the first time it fails to identify the image."
     (,(meta-char #\<)     . move-to-top)
     (:home		  . move-to-top)
     (#\c		  . center)
+    (#\C		  . invalidate-cache)
     (,(ctrl #\a)	  . beginning-of-line)
     (,(ctrl #\e)	  . end-of-line)
     (#\+		  . zoom-in)
@@ -651,6 +647,8 @@ the first time it fails to identify the image."
     (,(meta-char #\escape) . eval-expression)
     (#\return		  . apply-pixel-expr)
     (:F12		  . apply-last-pixel-expr)
+    (,(meta-char #\a)     . pixel-expr-loop)
+    (:F11		  . pixel-expr-loop)
     (,(meta-char #\m)     . toggle-modeline)
     (#\?		  . help)
     (,(ctrl #\@)	  . set-mark)))
@@ -1264,10 +1262,13 @@ But also greatly increasing # of chars output.
 (defmethod start-inator ((o image-inator))
   (call-next-method)
   (with-slots (initial-command) o
-     (when initial-command
-       (call-command o initial-command nil))
-     (center *image-viewer*)
-     (fit-image-to-window *image-viewer*)))
+    (cond
+      (initial-command
+       (call-command o initial-command nil)
+       (setf initial-command nil))
+      ((image-inator-image o)
+       (center *image-viewer*)
+       (fit-image-to-window *image-viewer*)))))
 
 (defvar *image-inator-types* nil
   "A list of image inator types that are defined.")

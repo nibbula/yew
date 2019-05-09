@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Operations on images."
-    :depends-on (:image)
+    :depends-on (:image :lparallel)
     :components
     ((:file "image-ops")))

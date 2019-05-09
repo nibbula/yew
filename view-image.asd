@@ -12,6 +12,6 @@
     :long-description   "View an image."
     :depends-on (:dlib :dlib-misc :keymap :char-util :terminal :terminal-ansi
 		 :terminal-crunch :terminal-inator :image :image-ops :magic
-		 :grout :flexi-streams)
+		 :grout :flexi-streams :view-image-popi)
     :components
     ((:file "view-image")))

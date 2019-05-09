@@ -4,10 +4,11 @@
 
 (defpackage :image-ops
   (:documentation "Operations on images.")
-  (:use :cl :dlib :image)
+  (:use :cl :dlib :image :lparallel)
   (:import-from :image #:width #:height #:data)
   (:export
    #:map-pixels
+   #:pmap-pixels
    #:reflect-horizontal
    #:reflect-vertical
    #:rotate-1/4
@@ -44,7 +45,9 @@ They can be EQ, if that's what you want."
 with arguments: (SUB-IMAGE Y X PIXEL), where X and Y are positive integers, and
 PIXEL is a thing that can be accessed by the pixel macros."
   (do-image-or-subimage (from-image to-image)
-    (with-slots (width height data) from-sub-image
+    (with-slots ((width image::width)
+		 (height image::height)
+		 (data image::data)) from-sub-image
       (loop :for y :from 0 :below height :do
 	 (loop :for x :from 0 :below width :do
 	    (setf (whole-pixel (sub-image-data to-sub-image) y x)
@@ -52,6 +55,59 @@ PIXEL is a thing that can be accessed by the pixel macros."
 			   (whole-pixel data y x))))))
     to-sub-image)
   to-image)
+
+(defun ensure-parallel-kernel ()
+  (when (not lparallel:*kernel*)
+    (setf lparallel:*kernel*
+	  (lparallel:make-kernel (nos:processor-count)))))
+
+(defun map-piece (from-image to-image function start end width)
+  (loop :for y :from start :below end :do
+     (loop :for x :from 0 :below width :do
+	(setf (whole-pixel (sub-image-data to-image) y x)
+	      (funcall function from-image y x
+		       (whole-pixel (sub-image-data from-image) y x))))))
+
+(defun pmap-pixels (from-image to-image function)
+  "Calls the FUNCTION for every pixel of FROM-IMAGE. FUNCTION is called with
+with arguments: (SUB-IMAGE Y X PIXEL), where X and Y are positive integers, and
+PIXEL is a thing that can be accessed by the pixel macros."
+  (ensure-parallel-kernel)
+  (let ((n (nos:processor-count))
+	(chan (make-channel)))
+    (do-image-or-subimage (from-image to-image)
+      (let* ((height (sub-image-height from-sub-image))
+	     (piece-size (floor height n))
+	     (left-over (rem height n))
+	     (width (sub-image-width from-sub-image))
+	     (piece 0)
+	     (y 0))
+	(loop :while (< piece (1- n)) :do
+	   ;; (submit-task chan #'map-piece
+	   ;; 	      from-sub-image to-sub-image function
+	   ;; 	      y (+ y piece-size) width)
+	   (submit-task chan (lambda (s e)
+			       (map-piece
+				from-sub-image to-sub-image function s e width))
+			y (+ y piece-size))
+	   ;; (map-piece from-sub-image to-sub-image function
+	   ;; 	      y (+ y piece-size) width)
+	   (incf piece)
+	   (setf y (* piece piece-size)))
+	;; last piece
+	;; (submit-task chan #'map-piece from-sub-image to-sub-image function
+	;; 		   y (+ y piece-size left-over) width)
+	(submit-task chan (lambda (s e)
+			    (map-piece from-sub-image to-sub-image function
+				       s e width))
+		     y (+ y piece-size left-over))
+	;; wait for every piece
+	(loop :with junk :and not-done
+	   :do (setf (values junk not-done) (try-receive-result chan))
+	   :while not-done)
+	)
+      to-sub-image)
+    to-image))
 
 (defun reflect-horizontal (image)
   "Flip the image horizontally, so the pixels are mirrored. Return the image."

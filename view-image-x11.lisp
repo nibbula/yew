@@ -16,6 +16,9 @@
    ))
 (in-package :view-image-x11)
 
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;; (declaim (optimize (speed 3) (safety 0) (debug 2) (space 0) (compilation-speed 0)))
+
 (defclass image-x11-inator (image-inator)
   ((display
     :initarg :display :accessor image-x11-inator-display
@@ -83,6 +86,9 @@
     ;; 			       :initial-element (coerce 0 '(unsigned-byte 32))
     ;; 			       :element-type '(unsigned-byte 32)))
     :documentation "Mask data in X format.")
+   (cache-valid
+    :initarg :cache-valid :accessor cache-valid :initform t :type boolean
+    :documentation "True if the cache of ximage data is valid.")
    )
   (:default-initargs
    :move-object-mode t)
@@ -112,6 +118,7 @@
 
 (defmethod start-inator ((o image-x11-inator))
   "Start the inator."
+  (call-next-method)
   (with-slots ((image view-image::image)
 	       display window window-width window-height own-window font
 	       draw-gc erase-gc overlay-gc depth) o
@@ -130,8 +137,8 @@
 		    (create-window
 		     :parent (screen-root (display-default-screen display))
 		     :x 0 :y 0
-		     :width (view-image::image-width image)
-		     :height (view-image::image-height image)
+		     :width (image::image-width image)
+		     :height (image::image-height image)
 		     :background black
 		     :event-mask 
 		     (make-event-mask
@@ -171,7 +178,8 @@
 	    (let ((wmh (make-wm-hints :input :on)))
 	      (setf (wm-hints window) wmh))
 	    (map-window window))
-	  (call-next-method))))))
+	  ;; (call-next-method)
+	  )))))
 
 (defun get-window-width (inator)
   (with-slots (window window-width) inator
@@ -226,9 +234,12 @@
     (when display (close-display display))))
 
 (defmethod view-image::show-message ((o image-x11-inator) string)
-  (with-slots (window draw-gc font) o
-    (draw-image-glyphs window draw-gc 0 (- (drawable-height window)
-					   (font-descent font))
+  (with-slots (window draw-gc font (message view-image::message)) o
+    (draw-image-glyphs window draw-gc 0 (if message
+					  (+ (font-descent font)
+					     (font-ascent font))
+					  (- (drawable-height window)
+					     (font-descent font)))
 		       (string-to-utf8-bytes string))))
 
 (defun get-absolute-coords (win)
@@ -284,25 +295,26 @@
 	       (x        view-image::x)
 	       (y        view-image::y)
 	       display window erase-gc overlay-gc ximages-mask) o
-    (with-accessors ((width image:image-width)
-		     (height image:image-height)) image
-      (with-accessors ((si-x image:sub-image-x)
-		       (si-y image:sub-image-y)
-		       (si-width image:sub-image-width)
-		       (si-height image:sub-image-height)
-		       ;;(disposal image:sub-image-disposal)
-		       )
-	  (aref (image:image-subimages image) subimage)
-	;;(setf (gcontext-clip-mask erase-gc) (aref ximages-mask subimage))
-	;;(draw-rectangle window erase-gc x y width height t)
-	;; (put-image window erase-gc (aref ximages subimage)
-	;; 	   :x x-pos :y y-pos
-	;; 	   :src-x source-x :src-y source-y
-	;; 	   :width w :height h)
-	;;(display-finish-output display)
-	;;(setf (gcontext-clip-mask erase-gc) :none)
-	(erase-area o x y width height)
-	))))
+    (when image
+      (with-accessors ((width image:image-width)
+		       (height image:image-height)) image
+	(with-accessors ((si-x image:sub-image-x)
+			 (si-y image:sub-image-y)
+			 (si-width image:sub-image-width)
+			 (si-height image:sub-image-height)
+			 ;;(disposal image:sub-image-disposal)
+			 )
+	    (aref (image:image-subimages image) subimage)
+	  ;;(setf (gcontext-clip-mask erase-gc) (aref ximages-mask subimage))
+	  ;;(draw-rectangle window erase-gc x y width height t)
+	  ;; (put-image window erase-gc (aref ximages subimage)
+	  ;; 	   :x x-pos :y y-pos
+	  ;; 	   :src-x source-x :src-y source-y
+	  ;; 	   :width w :height h)
+	  ;;(display-finish-output display)
+	  ;;(setf (gcontext-clip-mask erase-gc) :none)
+	  (erase-area o x y width height)
+	  )))))
 
 (defun update-pos (o)
   (with-slots ((image    view-image::image)
@@ -376,6 +388,13 @@
   (update-pos o)
   )
 
+(defmethod view-image::image-listen ((inator image-x11-inator))
+  "Return true if there is input ready."
+  (with-slots (display own-window) inator
+    (if own-window
+	(xlib:event-listen display)
+	(tt-listen-for 0))))
+
 (defun our-get-key (inator timeout)
   (with-slots ((our-window window)
 	       (frame-start-time view-image::frame-start-time)
@@ -430,8 +449,8 @@
 	       (when (tt-listen-for (if (dtime-plusp time-left)
 					(dtime-to time-left :seconds)
 					0))
-		 (tt-get-char))
-	       (tt-get-char)))))))
+		 (tt-get-key))
+	       (tt-get-key)))))))
 
 (defmethod await-event ((inator image-x11-inator))
   "Wait for an event."
@@ -475,8 +494,11 @@
 (defmethod view-image::clear-image ((inator image-x11-inator))
   "Clear the current image. Called before switching files or ending."
   (erase-image inator)
-  (call-next-method)
-  )
+  (call-next-method))
+
+(defmethod view-image::invalidate-cache ((inator image-x11-inator))
+  "Invalidate the image cache. Re-generate the Ximages from the image data."
+  (setf (cache-valid inator) nil))
 
 (defmethod view-image::reset-image ((inator image-x11-inator))
   "Reset things for a new image. Called after switching files."
@@ -563,7 +585,7 @@ XIMAGES-MASK array."
 	  (when (use-mask-p inator)
 	    (make-mask inator)))))))
 
-(defun copy-image-to-ximage-data (inator)
+(defun copy-image-to-ximage-data (inator &key keep)
   ;; (declare (optimize (speed 3) (safety 0) (debug 0) (space 0)
   ;;  		     (compilation-speed 0)))
   (with-slots ((x view-image::x)
@@ -572,7 +594,8 @@ XIMAGES-MASK array."
 	       (image view-image::image)
 	       (subimage view-image::subimage)
 	       (looping view-image::looping)
-	       ximage-data ximage-mask-data depth) inator
+	       ximage-data ximage-mask-data depth
+	       cache-valid) inator
     (declare (type fixnum x y) (type float zoom)
 	     (type (simple-array (unsigned-byte 32) (* *)) ximage-data)
 	     ;;(type (simple-array (* *)) ximage-mask-data)
@@ -594,13 +617,14 @@ XIMAGES-MASK array."
 		 )
 	;;(format t "ximage-data = ~s~%" (type-of ximage-data))
 	;;(when (not (equal (array-dimensions ximage-data) `(,height ,width)))
-	(setf ximage-data
-	      (make-array `(,height ,width)
-			  :initial-element (coerce 0 `(unsigned-byte 32))
-			  :element-type `(unsigned-byte 32)))
+	(when (not keep)
+	  (setf ximage-data
+		(make-array `(,height ,width)
+			    :initial-element (coerce 0 `(unsigned-byte 32))
+			    :element-type `(unsigned-byte 32))))
 	;;:initial-element (coerce 0 '(unsigned-byte *))
 	;;:element-type `(unsigned-byte 8))))
-	(when (or transparent (eq disposal :none))
+	(when (and (not keep) (or transparent (eq disposal :none)))
 	  (setf ximage-mask-data
 		(make-array `(,height ,width)
 			    ;;:initial-element (coerce 0 `(unsigned-byte 32))
@@ -628,9 +652,9 @@ XIMAGES-MASK array."
 			      ;; (aref data
 			      ;; 	    (min (1- height) (+ iy av-y))
 			      ;; 	    (min (1- width) (+ ix av-x)) 0)
-			      (get-pixel-r data
-					   (min (1- height) (+ iy av-y))
-					   (min (1- width) (+ ix av-x)))
+			      (image:pixel-r data
+				       (min (1- height) (+ iy av-y))
+				       (min (1- width) (+ ix av-x)))
 			      )))
 		(setf g (loop :for av-y fixnum :from 0 :below step :sum
 			   (loop :for av-x fixnum :from 0 :below step
@@ -638,9 +662,9 @@ XIMAGES-MASK array."
 			      ;; (aref data
 			      ;; 	    (min (1- height) (+ iy av-y))
 			      ;; 	    (min (1- width) (+ ix av-x)) 1)
-			      (get-pixel-g data
-					   (min (1- height) (+ iy av-y))
-					   (min (1- width) (+ ix av-x)))
+			      (image:pixel-g data
+				       (min (1- height) (+ iy av-y))
+				       (min (1- width) (+ ix av-x)))
 			      )))
 		(setf b (loop :for av-y fixnum :from 0 :below step :sum
 			   (loop :for av-x fixnum :from 0 :below step
@@ -648,9 +672,9 @@ XIMAGES-MASK array."
 			      ;; (aref data
 			      ;; 	    (min (1- height) (+ iy av-y))
 			      ;; 	    (min (1- width) (+ ix av-x)) 2)
-			      (get-pixel-b data
-					   (min (1- height) (+ iy av-y))
-					   (min (1- width) (+ ix av-x)))
+			      (image:pixel-b data
+				       (min (1- height) (+ iy av-y))
+				       (min (1- width) (+ ix av-x)))
 			      )))
 		(setf a (loop :for av-y fixnum :from 0 :below step :sum
 			   (loop :for av-x fixnum :from 0 :below step
@@ -658,9 +682,9 @@ XIMAGES-MASK array."
 			      ;; (aref data
 			      ;; 	    (min (1- height) (+ iy av-y))
 			      ;; 	    (min (1- width) (+ ix av-x)) 3)
-			      (get-pixel-a data
-					   (min (1- height) (+ iy av-y))
-					   (min (1- width) (+ ix av-x)))
+			      (image:pixel-a data
+				       (min (1- height) (+ iy av-y))
+				       (min (1- width) (+ ix av-x)))
 			      )))
 		(cond
 		  ((zerop a)
@@ -689,7 +713,8 @@ XIMAGES-MASK array."
 	       (subimage view-image::subimage)
 	       (looping view-image::looping)
 	       (show-modeline view-image::show-modeline)
-	       display window ximages ximages-mask draw-gc erase-gc overlay-gc)
+	       display window ximages ximages-mask draw-gc erase-gc overlay-gc
+	       cache-valid)
       inator
     (declare (type fixnum x y) (type float zoom))
     (with-accessors ((name image:image-name)
@@ -720,9 +745,10 @@ XIMAGES-MASK array."
 	  (when (and (not ximages-mask) mask-p)
 	    (setf ximages-mask
 		  (make-array (length subimages) :initial-element nil)))
-	  (when (not (aref ximages subimage))
+	  (when (or (not (aref ximages subimage)) (not cache-valid))
 	    (dbug "blit~%")
-	    (copy-image-to-ximage-data inator))
+	    (copy-image-to-ximage-data inator :keep (not cache-valid))
+	    (setf cache-valid t))
 	  (make-image inator)
 	  (when (and (not (zerop w)) (not (zerop h)))
 	    (if mask-p
@@ -780,7 +806,7 @@ XIMAGES-MASK array."
     ))
 
 (defmethod image-inator-usable-p ((type (eql 'image-x11-inator)))
-  (get-display-from-environment))
+  (and (get-display-from-environment) t))
 
 (register-image-inator 'image-x11-inator 2)
 
