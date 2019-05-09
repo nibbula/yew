@@ -27,7 +27,7 @@
   (defparameter *dev*
     '((speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
-  (defparameter *optimize-settings* *dev*))
+  (defparameter *optimize-settings* *fast*))
 
 (declaim #.`(optimize ,.*optimize-settings*))
 
@@ -533,12 +533,12 @@ the first time it fails to identify the image."
 	      (pmap-pixels image mod-buffer func)
 	      (setf last-func func)
 	      (rotatef image mod-buffer)))
-	;; (error (c)
-	;;   (pause "Form: ~w~%~a" form c)
-	;;   ;; (sb-debug:print-backtrace)
-	;;   (throw 'flanky nil)
-	;;   #| (continue) |#
-	;;   )
+	(error (c)
+	  (pause "Form: ~w~%~a" form c)
+	  ;; (sb-debug:print-backtrace)
+	  (throw 'flanky nil)
+	  #| (continue) |#
+	  )
 	)))
   (tt-cursor-off)
   (invalidate-cache o)
@@ -591,6 +591,25 @@ the first time it fails to identify the image."
 (defun toggle-modeline (o)
   (with-slots (show-modeline) o
     (setf show-modeline (not show-modeline))))
+
+(defun open-file (o)
+  "Open a file."
+  (with-slots (image) o
+    (tt-move-to 0 0)
+    (tt-erase-to-eol)
+    (tt-cursor-on)
+    (tt-finish-output)
+    (let ((file-name (rl:read-filename :prompt "Open file: "))
+	img)
+      (with-image-error-handling (file-name)
+	(setf img (perserverant-read-image (glob:expand-tilde file-name)))
+	(clear-image o)
+	(setf image img)
+	(reset-image o)
+	;; (invalidate-cache o)
+	;; (redraw o)
+	)
+      (tt-cursor-off))))
 
 (set-keymap *image-viewer-keymap*
   `((#\escape		  . *image-viewer-escape-keymap*)
@@ -651,9 +670,15 @@ the first time it fails to identify the image."
     (:F11		  . pixel-expr-loop)
     (,(meta-char #\m)     . toggle-modeline)
     (#\?		  . help)
-    (,(ctrl #\@)	  . set-mark)))
+    (,(ctrl #\@)	  . set-mark)
+    (,(ctrl #\X)	  . *ctlx-keymap*)
+    ))
 
 (setf *image-viewer-escape-keymap* (build-escape-map *image-viewer-keymap*))
+
+(defkeymap *ctlx-keymap*
+  `((,(ctrl #\C)	. quit)
+    (,(ctrl #\F)	. open-file)))
 
 (defmethod await-event ((o image-inator))
   "Image viewer event."
