@@ -226,9 +226,10 @@ that has START and START-P and END and END-P."
 				       :type t))))))
     tt))
 
-(defmethod make-table-from ((object hash-table)
-			    &key (column-names '("Key" "Value")) columns type)
+(defmethod make-table-from ((object hash-table) &key column-names columns type)
   "Make a table from a hash table."
+  (when (not column-names)
+    (setf column-names '("Key" "Value")))
   (when (or (> (length column-names) 2) (> (length columns) 2))
     (error "Hash tables can only have 2 columns."))
   (let ((tt (make-instance (or type 'mem-table) :data object)))
