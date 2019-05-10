@@ -717,7 +717,7 @@ if THING or lish:*input* NIL."
 	     (table)
 	     ((or string pathname stream)
 	      (setf ,var (read-table ,var :column-names ,column-names)))
-	     ((or table list array hash-table structure-object)
+	     ((or list array hash-table structure-object)
 	      (setf ,var (make-table-from ,var :column-names ,column-names)))
 	     (t
 	      ;; @@@ check with find-method?
