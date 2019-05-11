@@ -197,7 +197,7 @@
   ;; (format *debug-term* "Restarts are:~%")
   (print-span '((:underline "Restarts") " are:" #\newline))
   (loop :with i = 0 :for r :in rs :do
-     (format *debug-term* "~&")
+     ;; (format *debug-term* "~&")
      (print-span `((:fg-cyan ,(princ-to-string i)) ": "))
      (when (not (ignore-errors (progn (format *debug-term* "~s ~a~%"
 					      (restart-name r) r) t)))
