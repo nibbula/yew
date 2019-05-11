@@ -625,12 +625,16 @@ to MAX-WIDTH.."
 	    (setf cursor width))
 	  (typecase field
 	    (standard-object
-	     (princ (osubseq field 0 (min width (olength field)))
-		    *destination*)
+	     ;; (princ (osubseq field 0 (min width (olength field)))
+	     ;; 	    stream)
+	     (write (osubseq field 0 (min width (olength field)))
+		    :stream stream :escape nil :readably nil :pretty nil)
 	     (incf cursor (min width (olength field))))
 	    (t
-	     (write-string (osubseq field 0 (min width (olength field)))
-			   *destination*)
+	     ;; (write-string (osubseq field 0 (min width (olength field)))
+	     ;; 		   stream)
+	     (write (osubseq field 0 (min width (olength field)))
+		    :stream stream :escape nil :readably nil :pretty nil)
 	     (incf cursor (min width (olength field)))))))))
 
 (defmethod output-table ((table table) (renderer text-table-renderer)
