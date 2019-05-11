@@ -31,9 +31,9 @@ the outermost. When entering the debugger the current frame is 0.")
 (defmacro with-new-debugger-io (() &body body)
   "Evaluate BODY with a new *terminal* redirected to *debug-io*."
   `(with-new-terminal ((pick-a-terminal-type) *debug-term*
-			     :device-name (nos:file-handle-terminal-name
-					   (nos:stream-system-handle *debug-io*))
-			     :output-stream (make-broadcast-stream *debug-io*))
+		       :device-name (nos:file-handle-terminal-name
+				     (nos:stream-system-handle *debug-io*))
+		       :output-stream (make-broadcast-stream *debug-io*))
      ,@body))
 
 (defmacro with-debugger-io (() &body body)
