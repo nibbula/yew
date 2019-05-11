@@ -355,7 +355,7 @@ possible."
 	;; (apply #'tt-write-string string `(,string
 	;; 				  ,@(and start `(:start ,start))
 	;; 				  ,@(and end `(:end ,end)))))))
-	(render-fat-string string :start start :end end))
+	(render-fat-string string :terminal stream :start start :end end))
        (string
 	;;(dbugf :fatchar "write-fat-string NORMAL-string -> terminal~%")
 	(apply #'terminal-write-string stream
@@ -410,7 +410,7 @@ possible."
       ((typep stream 'terminal:terminal-stream)
        ;;(dbugf :fatchar "print-object -> render ~s~%" (type-of obj))
        (with-quotes ()
-	 (render-fat-string obj)))
+	 (render-fat-string obj :terminal stream)))
       ((typep stream 'fat-string-output-stream)
        ;; (dbugf :fatchar "print-object -> write-fat-string ~s ~s~%"
        ;;                 (type-of obj) (type-of stream))
