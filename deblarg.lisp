@@ -181,20 +181,6 @@
   (visual))
 
 (defun list-restarts (rs)
-  #|
-  (format *debug-io* "Restarts are:~%")
-  (loop :with i = 0 :for r :in rs :do
-     (format *debug-io* "~&")
-     (print-span `((:fg-cyan ,(format nil "~d" i)) ": "))
-     (when (not (ignore-errors (progn (format *debug-io* "~s ~a~%"
-					      (restart-name r) r) t)))
-       (format *debug-io* "Error printing restart ")
-       (print-unreadable-object (r *debug-io* :type t :identity t)
-	 (format *debug-io* "~a" (restart-name r)))
-       (terpri *debug-io*))
-     (incf i))
-  |#
-  ;; (format *debug-term* "Restarts are:~%")
   (print-span '((:underline "Restarts") " are:" #\newline))
   (loop :with i = 0 :for r :in rs :do
      ;; (format *debug-term* "~&")
