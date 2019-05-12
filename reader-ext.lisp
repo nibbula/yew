@@ -47,11 +47,15 @@ loading this.
   (:export
    #:clean-read-from-string
    #:safe-clean-read-from-string
+   #:safe-clean-read
    #:package-robust-read-from-string
    #:package-robust-read
    #:robust-read
    ))
 (in-package :reader-ext)
+
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;; (declaim (optimize (speed 3) (safety 0) (debug 2) (space 0) (compilation-speed 0)))
 
 (defun interninator (name package dirt-pile)
   "Return the symbol NAME from package if it exists, or from the DIRT-PILE
@@ -159,10 +163,12 @@ package if it doesn't. If DIRT-PILE is NIL, return a packageless symbol."
     ()
     (:documentation "A reader that doesn't pollute packages."))
 
+  #+sbcl (declaim (sb-ext:muffle-conditions sb-ext:compiler-note))
   (defmethod interpret-symbol ((client clean-reader) input-stream
 			       package-name symbol-name internp)
     (declare (ignore client input-stream internp))
     (interninator symbol-name package-name *dirt-pile*))
+  #+sbcl (declaim (sb-ext:unmuffle-conditions sb-ext:compiler-note))
 
   (defparameter *clean-client* (make-instance 'clean-reader)
     "A ‘client’ for the clean reader."))
@@ -221,6 +227,20 @@ symbols."
 	(read-from-string string eof-error-p eof-value
 			  :start start :end end
 			  :preserve-whitespace preserve-whitespace)))))
+
+#+sbcl (declaim (sb-ext:muffle-conditions style-warning))
+(defun safe-clean-read (stream package &optional (eof-error-p t) eof-value)
+  "Read from a stream in a hopefully safe manner, such that the content cannot
+cause evaluation, and without interning unknown symbols in *package*, instead
+interning them in PACKAGE, or if PACKAGE is NIL, returning them as uninterned
+symbols."
+  (let (#+has-read-intern (*read-intern* #'(lambda (str pkg)
+					     (interninator str pkg package)))
+	#-has-read-intern (*client* *clean-client*)
+	#-has-read-intern (*dirt-pile* package))
+    (with-standard-io-syntax
+      (let ((*read-eval* nil))
+	(read stream eof-error-p eof-value)))))
 
 (defun package-robust-intern (s p)
   "Return S interned in package P, or S interned in *PACKAGE*, or S as an
