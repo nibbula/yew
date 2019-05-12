@@ -27,6 +27,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:make-fat-string
    #:make-fatchar-string
    #:copy-fatchar-string
+   #:string-to-fat-string
    #:fatchar-string-to-string
    #:string-vector
    #:fat-string-to-string
@@ -39,6 +40,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:fatchar-string-to-span
    #:span-to-fat-string #:ß
    #:span-to-fatchar-string
+   #:fatten
    #:process-ansi-colors
    #:remove-effects
    ))
@@ -450,6 +452,10 @@ the environemnt has <arg> and <arg>-P for all those keywords."
     (loop :for i :from 0 :below (length fatchar-string) :do
       (setf (aref result i) (copy-fatchar (aref fatchar-string i))))
     result))
+
+(defun string-to-fat-string (thing)
+  "Make a fat-string out of a string or character."
+  (make-fat-string :string (make-fatchar-string thing)))
 
 (defun fat-string-to-string (fat-string)
   "Make a string from a fat string. This of course loses the attributes."
@@ -1193,6 +1199,16 @@ fatchar:*known-attrs*.
 		  (spanky (funcall unknown-func s))))))))
       (spanky span)))
   fatchar-string)
+
+(defun fatten (thing)
+  "Turn almost anything into a fat-string."
+  (typecase thing
+    ((or string character)
+     (string-to-fat-string thing))
+    (list
+     (span-to-fat-string thing))
+    (t
+     (string-to-fat-string (princ-to-string thing)))))
 
 #|
 (defun map-span-strings (span &key (start 0) end fat-string)
