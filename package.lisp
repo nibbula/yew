@@ -8,7 +8,7 @@
 least you can type things using RL.")
   (:use :cl :dlib :char-util :table :table-print :keymap :terminal
 	:terminal-ansi :terminal-table :rl :collections :fatchar :fatchar-io
-	:tiny-repl #+sbcl :sb-introspect)
+	:tiny-repl #+sbcl :sb-introspect :reader-ext :source-path)
   (:export
    #:deblarg
    #:*default-interceptor*

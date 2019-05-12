@@ -19,7 +19,7 @@ quite lacking of features."
     :depends-on
     (:dlib :char-util :keymap :table-print :opsys :terminal :terminal-ansi
      :terminal-crunch :terminal-table :rl :collections :fatchar :fatchar-io
-     :tiny-repl #+sbcl :sb-introspect)
+     :tiny-repl #+sbcl :sb-introspect :reader-ext :source-path)
     :serial t
     :components
     ((:file "package")

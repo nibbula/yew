@@ -166,10 +166,19 @@
 ;;; form in depth-first order.
 ;;; (defun code-location-form-number (code-location)
 
-(defun get-loc-subform-pos (loc)
+(defun get-loc-subform-pos (loc stream)
   "Return the file position of the subform."
-  (declare (ignore loc))
-  )
+  (let ((form-number (sb-di::code-location-form-number loc))
+	(form-offset (sb-di::code-location-toplevel-form-offset loc)))
+    (multiple-value-bind (top-level-form position-map)
+	(read-source-form form-offset stream)
+      (let* ((path-table (sb-di::form-number-translations top-level-form 0))
+             (path (cond ((<= (length path-table) form-number)
+                          (warn "inconsistent form-number-translations")
+                          (list 0))
+                         (t
+                          (reverse (cdr (aref path-table form-number)))))))
+        (source-path-source-position path top-level-form position-map)))))
 
 (defmacro compiled-debug-function-form-number (fun)
   (let ((sym
@@ -187,6 +196,7 @@
       (sb-di:code-location-toplevel-form-offset loc)))
 
 (defun get-snippet-pos (stream loc)
+  "Return the character offset position in STREAM of the source location LOC."
   (let ((form-offset (get-loc-form-offset loc))
 	start-pos form)
     (let ((*read-suppress* t)
@@ -195,10 +205,18 @@
 	 :while (and (<= i form-offset)
 		     (not (eq eof
 			      (setf start-pos (file-position stream)
-				    form (read stream nil eof)))))
+				    form (safe-clean-read stream nil eof)))))
 	 :do
 	 (incf i)))
     (values start-pos form)))
+
+(defun highlight (string start end)
+  "Highlight the region from START to END in STRING and return it."
+  (let ((result (or (and (typep string 'fat-string) string)
+		    (string-to-fat-string string))))
+    (loop :for i :from start :below end
+       :do (pushnew :standout (fatchar-attrs (oaref result i))))
+    result))
 
 (defun debugger-source (frame &optional (window-size 10))
   (let* ((loc (sb-di:frame-code-location frame))
@@ -215,15 +233,35 @@
 	 ;; (sb-di::code-location-source-form loc context??)
 	 ;; (sb-di::get-toplevel-form loc)
 	 (path2       (sb-c::debug-source-namestring src2))
-	 offset)
+	 offset start end lines (i 1))
 ;;;    (if src2
     (with-open-file (stream path2)
       (setf offset (get-snippet-pos stream loc))
+      (format t "snippet-pos ~s~%" offset)
+      (file-position stream 0) ;; @@@ we should avoid re-reading it
+      (setf (values start end)
+	    (get-loc-subform-pos loc stream))
+      (format t "snippet subform pos ~s ~s~%" start end)
       (file-position stream offset)
-      (loop :with line
-	 :for i :from 1 :to window-size
-	 :while (setf line (read-line stream nil nil))
-	 :collect line))))
+      (loop
+	 :with line
+	 :and file-pos = offset
+	 :and line-end
+	 :while (and (setf line (read-line stream nil nil))
+		     (< i window-size)
+		     (< file-pos end))
+	 :do
+	 (setf line-end (+ file-pos (1+ (length line))))
+	 (when (< file-pos start line-end)
+	   (setf line (highlight (s+ "> " line)
+				 (- file-pos start)
+				 (- file-pos (min end line-end))))
+	   )
+	 (incf file-pos (1+ (length line)))
+	 (incf i)
+	 (push line lines))
+      (setf lines (nreverse lines))
+      (subseq lines (- i window-size)))))
 
 (defun debugger-show-source (n)
   (let ((frame
