@@ -27,7 +27,7 @@
   (defparameter *dev*
     '((speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
-  (defparameter *optimize-settings* *fast*))
+  (defparameter *optimize-settings* *dev*))
 
 (declaim #.`(optimize ,.*optimize-settings*))
 
@@ -101,6 +101,11 @@
     :initform t :type boolean
     :documentation
     "True to use unicode half block to get double vertical resolution.")
+   (use-serial-map
+    :initarg :use-serial-map :accessor use-serial-map
+    :initform nil :type boolean
+    :documentation
+    "True to use the non-parallel pixel mapping. Useful for debugging.")
    )
   (:default-initargs
    :keymap	`(,*image-viewer-keymap* ,*default-inator-keymap*))
@@ -527,10 +532,12 @@ the first time it fails to identify the image."
 		  (values func warns fails) (compile nil real-form))
 	    ;; (format t "Warnings ~s Errors ~s~%" warns fails)
 	    ;; (format t "Real form ~s~%" (macroexpand real-form))
-	    (with-slots (image mod-buffer last-func) o
+	    (with-slots (image mod-buffer last-func use-serial-map) o
 	      (when (not mod-buffer)
 		(setf mod-buffer (make-blank-copy image)))
-	      (pmap-pixels image mod-buffer func)
+	      (if use-serial-map
+		(map-pixels image mod-buffer func)
+		(pmap-pixels image mod-buffer func))
 	      (setf last-func func)
 	      (rotatef image mod-buffer)))
 	(error (c)
@@ -549,10 +556,12 @@ the first time it fails to identify the image."
   (let ((*package* (find-package :popi)))
     (catch 'flanky
       (handler-case
-	  (with-slots (image mod-buffer last-func) o
+	  (with-slots (image mod-buffer last-func use-serial-map) o
 	    (when (not mod-buffer)
 	      (setf mod-buffer (make-blank-copy image)))
-	    (pmap-pixels image mod-buffer last-func)
+	    (if use-serial-map
+		(map-pixels image mod-buffer last-func)
+		(pmap-pixels image mod-buffer last-func))
 	    (incf popi:n)
 	    (rotatef image mod-buffer))
 	(condition (c)
@@ -571,12 +580,14 @@ the first time it fails to identify the image."
   (let ((*package* (find-package :popi)))
     (catch 'flanky
       (handler-case
-	  (with-slots (image mod-buffer last-func) o
+	  (with-slots (image mod-buffer last-func use-serial-map) o
 	    (when (not mod-buffer)
 	      (setf mod-buffer (make-blank-copy image)))
 	    (loop :while (not (image-listen o))
 	       :do
-	       (pmap-pixels image mod-buffer last-func)
+	       (if use-serial-map
+		   (map-pixels image mod-buffer last-func)
+		   (pmap-pixels image mod-buffer last-func))
 	       (incf popi:n)
 	       (rotatef image mod-buffer)
 	       (invalidate-cache o)
@@ -610,6 +621,12 @@ the first time it fails to identify the image."
 	;; (redraw o)
 	)
       (tt-cursor-off))))
+
+(defun toggle-use-serial-map (o)
+  "Toggle the value of use-serial-map."
+  (with-slots (use-serial-map) o
+    (setf use-serial-map (not use-serial-map))
+    (message "Serial mapping is ~:[OFF~;ON~]" use-serial-map)))
 
 (set-keymap *image-viewer-keymap*
   `((#\escape		  . *image-viewer-escape-keymap*)
@@ -678,7 +695,8 @@ the first time it fails to identify the image."
 
 (defkeymap *ctlx-keymap*
   `((,(ctrl #\C)	. quit)
-    (,(ctrl #\F)	. open-file)))
+    (,(ctrl #\F)	. open-file)
+    (,(ctrl #\P)	. toggle-use-serial-map)))
 
 (defmethod await-event ((o image-inator))
   "Image viewer event."
