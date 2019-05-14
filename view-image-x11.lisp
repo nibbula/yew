@@ -82,6 +82,7 @@
     :documentation "Data in X format.")
    (ximage-mask-data
     :initarg :ximage-mask-data :accessor ximage-mask-data
+    :initform nil ;; @@@ XXX rong
     ;; :type (simple-array (unsigned-byte 32) (* *))
     ;; :initform (the (simple-array (unsigned-byte 32) (* *))
     ;; 		   (make-array '(1 1)
@@ -110,7 +111,9 @@
 	 (values (first s) (parse-integer (second s))))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (d-add-feature :clx-use-classes))
+  (if xlib::*def-clx-class-use-defclass*
+      (d-add-feature :clx-use-classes)
+      (d-remove-feature :clx-use-classes)))
 
 (defun make-window-from (&key display id)
   #-clx-use-classes
@@ -388,10 +391,14 @@
   )
 
 (defmethod view-image::center ((o image-x11-inator))
-  (erase-image o)
-  (call-next-method)
-  (update-pos o)
-  )
+  (when (image-x11-inator-display o)
+    (erase-image o)
+    (call-next-method)
+    (update-pos o)))
+
+(defmethod view-image::fit-image-to-window ((o image-x11-inator))
+  (when (image-x11-inator-display o)
+    (call-next-method)))
 
 (defmethod view-image::image-listen ((inator image-x11-inator))
   "Return true if there is input ready."

@@ -292,14 +292,16 @@
 	(center o)
 	))))
 
-(defun fit-image-to-window (o)
-  (with-slots ((width image::width)
-	       (height image::height)) (image-inator-image o)
-    (cond
-      ((> width height)
-       (fit-width-to-window o))
-      (t
-       (fit-height-to-window o)))))
+(defgeneric fit-image-to-window (o)
+  (:documentation "Resize the image to fit in the window.")
+  (:method ((o image-inator))
+    (with-slots ((width image::width)
+		 (height image::height)) (image-inator-image o)
+      (cond
+	((> width height)
+	 (fit-width-to-window o))
+	(t
+	 (fit-height-to-window o))))))
 
 (defun flip-image-vertical (o)
   (with-slots (image) o
@@ -1308,7 +1310,9 @@ But also greatly increasing # of chars output.
     (cond
       (initial-command
        (call-command o initial-command nil)
-       (setf initial-command nil))
+       (setf initial-command nil)
+       (center *image-viewer*)
+       (fit-image-to-window *image-viewer*))
       ((image-inator-image o)
        (center *image-viewer*)
        (fit-image-to-window *image-viewer*)))))
@@ -1335,27 +1339,48 @@ But also greatly increasing # of chars output.
     (dbug ";;;;;;;;;;;;;;;;AUTO;;;;;;;;;;LOOP;;;;;;;~d;;;;;;;;;~%"
 	  (length (image-subimages image)))))
 
-(defun view-image (file-or-stream &key file-list type own-window use-full)
-;;  (with-terminal (:ansi)
+(defun view-image (image-designator &key file-list type own-window use-full)
+  "View an image. The IMAGE-DESIGNATOR can be a file name or a stream or an
+object of class IMAGE:IMAGE.
+Key arguments:
+  FILE-LIST   - A list of file names to view
+  TYPE        - The type of image viewer to use
+  OWN-WINDOW  - True to view the image in a new window, otherwise try to view
+                it in the current window.
+  USE-FULL    - True to use full block characters in the character based viewer."
   (with-terminal ()
     (let* ((inator-type (or type (pick-image-inator)))
 	   image *image-viewer*)
       (when (not inator-type)
 	(error "Can't find a usable image viewer."))
-      ;; (loop :with file = file-or-stream :and list = file-list
-      ;; 	 :while (and (or file list)
-      ;; 		     (not (setf image (perserverant-read-image file))))
-      ;; 	 :do (setf list (cdr list)
-      ;; 		   file (car list)))
-      ;; (when (not image)
-      ;; 	(error "No more files to try."))
-      (setf *image-viewer* (make-instance inator-type
-					  ;; :image image
-					  :initial-command 'next-file
-					  :file-list (or file-list
-							 (list file-or-stream))
-					  :own-window own-window
-					  :use-half-block (not use-full)))
+      (etypecase image-designator
+	(image
+	 (setf *image-viewer*
+		(make-instance inator-type
+			       :image image-designator
+			       :file-list file-list
+			       :own-window own-window
+			       :use-half-block (not use-full)))
+	 ;; (clear-image *image-viewer*)
+	 ;; (reset-image *image-viewer*)
+	 )
+	((or string pathname)
+	 (setf *image-viewer*
+	       (make-instance inator-type
+			      :initial-command 'next-file
+			      :file-list (or file-list
+					     (list image-designator))
+			      :own-window own-window
+			      :use-half-block (not use-full))))
+	(null
+	 (when (not file-list)
+	   (error "Must provide an image or a file-list."))
+	  (setf *image-viewer*
+		(make-instance inator-type
+			       :initial-command 'next-file
+			       :file-list file-list
+			       :own-window own-window
+			       :use-half-block (not use-full)))))
       (set-auto-looping image)
       (unwind-protect
         (progn
