@@ -67,12 +67,13 @@
   "Show help for the inator."
   (typecase (inator-keymap i)
     (keymap
-     (display-text "Help"
+     (display-text (format nil "~:(~a~) Help" (type-of i))
 		   (help-list (inator-keymap i) (_ (inator-doc-finder i _)))
 		   :justify nil))
     (list
-     (display-text "Help"
+     (display-text (format nil "~:(~a~) Help" (type-of i))
 		   (loop :for k :in (inator-keymap i)
+		      ;; :append (list (princ-to-string k))
 		      :append
 		      (help-list k (_ (inator-doc-finder i _))))
 		   :justify nil))))
