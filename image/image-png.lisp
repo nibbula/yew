@@ -80,6 +80,29 @@
 				   :height (pngload:height png)
 				   :transparent transparent
 				   :data array))))))
+(defun write-png (image file)
+  (when (> (length (image-subimages image)) 1)
+    (error "PNG files don't support multiple images."))
+  (with-slots ((width image::width)
+	       (height image::height)
+	       (data image::data)) (svref (image-subimages image) 0)
+    (let ((png (make-instance 'zpng:pixel-streamed-png
+			      :color-type :truecolor-alpha
+			      :width width
+			      :height height))
+	  (pixel (make-array 4 :element-type 'fixnum)))
+    (with-open-file-or-stream (stream file :direction :output
+				      :if-does-not-exist :create
+				      :element-type '(unsigned-byte 8))
+      (zpng:start-png png stream)
+      (loop :for y :from 0 :below height :do
+	 (loop :for x :from 0 :below width :do
+	    (setf (aref pixel 0) (pixel-r data y x)
+		  (aref pixel 1) (pixel-g data y x)
+		  (aref pixel 2) (pixel-b data y x)
+		  (aref pixel 3) (pixel-a data y x))
+	    (zpng:write-pixel pixel png)))
+      (zpng:finish-png png)))))
 
 (defparameter *png-signature* '(137 80 78 71 13 10 26 10))
 
@@ -120,6 +143,12 @@
 
 (defmethod read-image-format (file (format png-image-format))
   (read-png file))
+
+(defmethod write-image-format (image file (format (eql :png)))
+  (write-png image file))
+
+(defmethod write-image-format (image file (format png-image-format))
+  (write-png image file))
 
 (defmethod guess-image-format (file (format (eql :png)))
   (guess-png file))

@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "PNG images."
-    :depends-on (:image :pngload :dlib)
+    :depends-on (:dlib :image :pngload :zpng)
     :components
     ((:file "image-png")))
