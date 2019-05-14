@@ -39,7 +39,8 @@
   about-a-year
   table-renderer
   outer-terminal
-  mixed-bag)
+  mixed-bag
+  nice-table)
 (defparameter *ls-state* nil)
 
 (defclass file-item ()
@@ -189,8 +190,9 @@ by nos:read-directory."))
 			      (full-path this-dir (file-item-name item)))
 		      #+unix (uos:lstat
 			      (full-path this-dir (file-item-name item))))))
-    (file-item-full
-     item)))
+    ;; (file-item-full
+    ;;  item)
+    ))
 
 (defun make-at-least-dir (item)
   (etypecase item
@@ -200,15 +202,15 @@ by nos:read-directory."))
 (defun ensure-full-info (file-list dir)
   (mapcar (_ (make-full-item _ dir)) file-list))
 
-(defun format-the-date (time format)
+(defun format-the-date (time format &optional today a-year)
   "Given a universal-time, return a date string according to FORMAT."
   (case format
     (:nibby
      (date-string :time time))
     (:normal
      (let ((d (make-dtime :seconds time)))
-       (if (dtime< d (dtime- (ls-state-today *ls-state*)
-			     (ls-state-about-a-year *ls-state*)))
+       (if (dtime< d (dtime- (or today (ls-state-today *ls-state*))
+			     (or a-year (ls-state-about-a-year *ls-state*))))
 	   (format-date "~a ~2d ~4,'0d" (:month-abbrev :date :year)
 			:time time)
 	   (format-date "~a ~2d ~2,'0d:~2,'0d" (:month-abbrev :date :hour :min)
@@ -344,51 +346,80 @@ by nos:read-directory."))
       (when (= (opsys-error-code c) uos:+ENOENT+)
 	(uos:lstat path)))))
 
+;; (defun pad-to (string width) ;; @@@ also in puca (maybe move to dlib-misc?)
+;;   (if (< (olength string) width)
+;;       (oconcatenate string (make-string (- width (olength string))
+;; 					:initial-element #\space))
+;;       string))
+
 (defun list-long (file-list date-format size-format)
   "Return a table filled with the long listing for files in FILE-LIST."
-  #+unix
-  (make-table-from
-   (loop :with s
-      :for file :in file-list
-      ;;:for s = (unix-stat (item-full-path file))
-      :do (setf s (uos:lstat (item-full-path file)))
-      :collect
-      (list
-       (uos:symbolic-mode (uos:file-status-mode s))
-       (uos:file-status-links s)
-       (or (user-name (uos:file-status-uid s)) (uos:file-status-uid s))
-       (or (group-name (uos:file-status-gid s)) (uos:file-status-gid s))
-       (format-the-size (uos:file-status-size s) (keywordify size-format))
-       (format-the-date
-	(uos:unix-to-universal-time
-	 (uos:timespec-seconds
-	  (uos:file-status-modify-time s)))
-	(keywordify date-format))
-       (if (uos:is-symbolic-link (uos:file-status-mode s))
-	   (fs+ (get-styled-file-name file) " -> "
-		(uos:readlink (item-full-path file)))
-	   (get-styled-file-name file))))
-   :column-names
-   '("Mode" "Links" "User" "Group" ("Size" :right) "Date" "Name"))
-  #-unix (declare (ignore size-format)) ; @@@
-  #-unix
-  (make-table-from
-   (loop
-      :for file :in file-list
-      ;;:for s = (nos:get-file-info (dir-entry-name file))
-      :for s = (nos:get-file-info (item-full-path file))
-      :collect (list
-		(file-info-type s)
-		(file-info-flags s)
-		(format-the-size (file-info-size s))
-		(format-the-date
-		 (os-time-seconds
-		  (file-info-modification-time s))
-		 (keywordify date-format))
-		(get-styled-file-name file)
-		))
-   :column-names
-   '("Type" "Flags" ("Size" :right) "Date" "Name")))
+  (let ((today (ls-state-today *ls-state*))
+	(a-year (ls-state-about-a-year *ls-state*)))
+    (setf date-format (keywordify date-format)
+	  size-format (keywordify size-format))
+    #+unix
+    (make-table-from
+     (loop :with s
+	:for file :in file-list
+	;;:for s = (unix-stat (item-full-path file))
+	:do (setf s (uos:lstat (item-full-path file)))
+	:collect
+	(list
+	 (uos:symbolic-mode (uos:file-status-mode s))
+	 (uos:file-status-links s)
+	 (or (user-name (uos:file-status-uid s)) (uos:file-status-uid s))
+	 (or (group-name (uos:file-status-gid s)) (uos:file-status-gid s))
+	 ;;(format-the-size (uos:file-status-size s) (keywordify size-format))
+	 (uos:file-status-size s)
+	 ;; (format-the-date
+	 ;; 	(uos:unix-to-universal-time
+	 ;; 	 (uos:timespec-seconds
+	 ;; 	  (uos:file-status-modify-time s)))
+	 ;; 	(keywordify date-format))
+	 (uos:unix-to-universal-time
+	  (uos:timespec-seconds
+	   (uos:file-status-modify-time s)))
+	 (if (uos:is-symbolic-link (uos:file-status-mode s))
+	     (fs+ (get-styled-file-name file) " -> "
+		  (uos:readlink (item-full-path file)))
+	     (get-styled-file-name file))))
+     ;; :column-names
+     ;; '("Mode" "Links" "User" "Group" ("Size" :right) "Date" "Name")
+     :columns
+     `((:name "Mode")
+       (:name "Links" :type number)
+       (:name "User")
+       (:name "Group")
+       (:name ("Size" :right) :type number
+	      :format ,(lambda (n width)
+			 (format nil "~v@a" width
+				 (format-the-size n size-format))))
+       (:name "Date"
+	      :format ,(lambda (n width)
+			 (format nil "~va" width
+				 (format-the-date n date-format today a-year))))
+       (:name "Name"))
+     )
+    #-unix (declare (ignore size-format)) ; @@@
+    #-unix
+    (make-table-from
+     (loop
+	:for file :in file-list
+	;;:for s = (nos:get-file-info (dir-entry-name file))
+	:for s = (nos:get-file-info (item-full-path file))
+	:collect (list
+		  (file-info-type s)
+		  (file-info-flags s)
+		  (format-the-size (file-info-size s))
+		  (format-the-date
+		   (os-time-seconds
+		    (file-info-modification-time s))
+		   (keywordify date-format))
+		  (get-styled-file-name file)
+		  ))
+     :column-names
+     '("Type" "Flags" ("Size" :right) "Date" "Name"))))
 
 (defun format-short (file dir show-size)
   (if show-size
@@ -482,8 +513,9 @@ by nos:read-directory."))
 	       (if (getf args :long)
 		   ;; Long format
 		   (apply #'grout::%grout-print-table grout:*grout*
-			  (list-long x (getf args :date-format)
-				     (getf args :size-format))
+			  (setf (ls-state-nice-table *ls-state*)
+				(list-long x (getf args :date-format)
+					   (getf args :size-format)))
 			  `(:long-titles nil :trailing-spaces nil
 			    :print-titles ,(not (getf args :omit-headers))
 			    ,@(when (getf args :wide) '(:max-width nil))))
@@ -491,14 +523,15 @@ by nos:read-directory."))
 		   (if (getf args :1-column)
 		       (if (getf args :show-size)
 			   (grout:grout-print-table
-			    (make-table-from
-			     (mapcar (_ (list
-					 (format-the-size
-					  (file-item-size
-					   (make-full-item _))
-					  (getf args :size-format))
-					 (get-styled-file-name _))) x)
-			     :column-names '(("Size" :right) "Name"))
+			    (setf (ls-state-nice-table *ls-state*)
+				  (make-table-from
+				   (mapcar (_ (list
+					       (format-the-size
+						(file-item-size
+						 (make-full-item _))
+						(getf args :size-format))
+					       (get-styled-file-name _))) x)
+				   :column-names '(("Size" :right) "Name")))
 			    :print-titles nil)
 			   (mapcar
 			    (_ (grout-format
@@ -525,10 +558,11 @@ by nos:read-directory."))
 
 (defun list-files (&rest args &key files long 1-column wide hidden directory
 				sort-by reverse date-format show-size
-				size-format collect ignore-backups omit-headers)
+				size-format collect nice-table ignore-backups
+				omit-headers)
   (declare (ignorable files long 1-column wide hidden directory sort-by reverse
-		      date-format show-size size-format collect ignore-backups
-		      omit-headers))
+		      date-format show-size size-format collect nice-table
+		      ignore-backups omit-headers))
   ;; It seems like we have to do our own defaulting.
   (when (not files)
     (setf (getf args :files) (list (current-directory))))
@@ -536,12 +570,17 @@ by nos:read-directory."))
     (setf (getf args :sort-by) :name))
   (when (not date-format)
     (setf (getf args :date-format) :normal))
+  (when (getf args :nice-table)
+    (setf (getf args :collect) t	; nice-table implies collect
+	  collect t))
 
   (let* ((*ls-state* (make-default-state))
 	 (file-info (gather-file-info args)))
     (present-files file-info args)
     (if collect
-	file-info
+	(if nice-table
+	    (ls-state-nice-table *ls-state*)
+	    file-info)
 	(values))))
 
 (defparameter *sort-fields*
@@ -574,6 +613,7 @@ by nos:read-directory."))
 		:choices '("human" "bytes")
 		:help "Format to show sizes with.")
    (collect boolean :short-arg #\c :help "Collect results as a sequence.")
+   (nice-table boolean :short-arg #\N :help "Collect results as a nice table.")
    ;; Short cut sort args:
    (by-extension boolean :short-arg #\X :help "Sort by file name extension.")
    (by-size boolean :short-arg #\S :help "Sort by size, largest first.")
@@ -602,6 +642,8 @@ by nos:read-directory."))
     (remf args :size-format)
     (setf args (append args '(:size-format :bytes))))
   (remf args :non-human-size)
+  (when nice-table
+    (setf args (append args '(:collect t))))
   (when help
     (lish::print-command-help (lish:get-command "ls"))
     (return-from !ls (values)))
@@ -609,7 +651,7 @@ by nos:read-directory."))
 	   (if (and lish:*input* (listp lish:*input*))
 	       (apply #'list-files :files lish:*input* args)
 	       (apply #'list-files args))))
-    (if collect
+    (if (or collect nice-table)
 	(setf lish:*output* (thunk))
 	(thunk))))
 
