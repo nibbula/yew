@@ -23,6 +23,9 @@
    #:tree-ify
    #:un-tree-ify
    #:oquote-format
+   #:group-by-alist
+   #:group-by-hash
+   #:group-by
 
    ;; time
    #:date-string
@@ -1627,5 +1630,41 @@ Return NIL if we can't find local variables or if the format is messed up.
 are printed rather than interpreted as directives, which really just means:
 repleace a single tilde with double tidles."
   (oreplace-subseq "~" "~~" s))
+
+(defun group-by-alist (function sequence &key test)
+  "Return an alist of lists the items of SEQUENCE, grouped by the results of
+calling FUNCTION on them. Equality is test by TEST, as usual."
+  (when (not test)
+    (setf test #'equal))
+  (let (result item key)
+    (omapn (lambda (x)
+	     (if (setf item (assoc (setf key (funcall function x))
+				   result :test test))
+		 (push x (cdr item))
+		 (setf result (acons key (list x) result))))
+	   sequence)
+    result))
+
+(defparameter *empty-hash* (gensym "gabba"))
+
+(defun group-by-hash (function sequence &key test)
+  "Return a hash table of lists the items of SEQUENCE, grouped by the results of
+calling FUNCTION on them. Equality is test by TEST, as usual."
+  (when (not test)
+    (setf test #'equal))
+  (let ((result (make-hash-table :test test)))
+    (omapn (lambda (x)
+	     (push x (gethash (funcall function x) result)))
+	   sequence)
+    result))
+
+(defun group-by (result-type function sequence)
+  "Return a RESULT-TYPE of the items of SEQUENCE, grouped by the results of
+calling FUNCTION on them. RESULT-TYPE can be HASH or ALIST. Equality is test by
+TEST, as usual. This is just wrapper around the group-by-hash and
+group-by-alist functions."
+  (ecase result-type
+    (hash (group-by-hash function sequence))
+    ((list alist) (group-by-alist function sequence))))
 
 ;; End
