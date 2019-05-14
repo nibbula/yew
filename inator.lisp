@@ -307,7 +307,8 @@ as the subsequent arguments."
 	    ;; Just one to try.
 	    (setf result (sub-process event outer-map)))
 	(when (not result)
-	  (message inator "Event ~a is not bound in keymap ~w."
+	  ;;;(message inator "Event ~a is not bound in keymap ~w."
+	  (message inator "Event ~s is not bound in keymap ~w."
 		   event keymap))))))
 
 (defmethod event-loop ((inator inator))
