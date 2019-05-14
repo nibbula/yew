@@ -48,6 +48,7 @@ To make a new format:
    #:image-pixel-format
    #:image-subimages
    #:make-image
+   #:make-blank-image
    #:make-blank-copy
    #:make-sub-image
    #:copy-sub-image
@@ -93,6 +94,7 @@ To make a new format:
    #:load-known-formats
    #:read-image-format
    #:read-image-synopsis-format
+   #:write-image-format
    #:unknown-image-type
    #:non-image-file
    #:read-image
@@ -167,6 +169,25 @@ To make a new format:
   (make-array `(,height ,width)
 	      :initial-element (coerce 0 `(unsigned-byte 32))
 	      :element-type `(unsigned-byte 32)))
+
+(defun make-blank-image (&rest args)
+  (unless (and (getf args :width)
+	       (getf args :height))
+    (error "You need to specify a width and height to make a blank image."))
+  (when (getf args :subimages)
+    (error "Don't specify subimages when making a blank image."))
+  (let ((result (apply #'make-instance 'image args))
+	(width (getf args :width))
+	(height (getf args :height)))
+    (setf (image-subimages result)
+	  (make-array
+	   1 :element-type 'sub-image
+	   :initial-contents
+	   (list (make-sub-image :x 0 :y 0
+				 :width width
+				 :height height
+				 :data (make-image-array width height)))))
+    result))
 
 (defun make-blank-copy (image)
   "Make a new blank version of image."
