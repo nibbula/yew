@@ -181,6 +181,90 @@ numbers."))
 (defmethod ordered-collection-p ((collection container))
   (ordered-collection-p (container-data collection)))
 
+;; I know, iterators are so C++ you say? Yes, we sure don't want to use
+;; them all the time, but sometimes they actually useful, like when you
+;; want to iterate over multiple generic sequences in parallel and want it
+;; to be even theoretically efficient for collections without O(1) or even O(n)
+;; random access.
+
+(defclass iterator ()
+  ()
+  (:documentation
+   "A thing that indicates a position in an ordered collection."))
+
+(defgeneric oiterator (ordered-collection &optional at)
+  (:documentation "Return an iterator for the collection.")
+  )
+
+(defclass forward-collection (ordered-collection)
+  ()
+  (:documentation
+   "A collection that can do onext and onext-p."))
+
+(defclass forward-iterator ()
+  ()
+  (:documentation
+   "An iterator that we can ."))
+
+(defgeneric forward-collection-p (collection)
+  (:documentation "Return true if COLLECTION is an forward-collection.")
+  (:method ((collection t))                  nil)
+  (:method ((collection list))               t)
+  (:method ((collection vector))	     t)
+  (:method ((collection sequence))	     t)
+  (:method ((collection hash-table))	     nil)
+  (:method ((collection structure-object))   nil)
+  (:method ((collection standard-object))    nil)
+  (:method ((collection ordered-collection)) nil) ; but not a forward-collection
+  (:method ((collection forward-collection)) t))
+
+(defgeneric oincr (iterator &optional increment)
+  (:documentation "Return the next element in the collection.")
+  ;; (:method ((collection list) &optional (increment 1)))
+  )
+
+(defgeneric obeginning-p (forward-collection)
+  (:documentation "Return the next element in the collection.")
+  (:method ((collection list))))
+
+(defgeneric oend-p (forward-collection)
+  (:documentation "Return the next element in the collection.")
+  (:method ((collection list))))
+
+(defclass backward-collection (ordered-collection)
+  ()
+  (:documentation
+   "A collection that can do oprev and oprev-p."))
+
+(defgeneric backward-collection-p (collection)
+  (:documentation "Return true if COLLECTION is an backward-collection.")
+  (:method ((collection t))                  nil)
+  (:method ((collection list))               nil)
+  (:method ((collection vector))	     t)
+  (:method ((collection sequence))	     t)
+  (:method ((collection hash-table))	     nil)
+  (:method ((collection structure-object))   nil)
+  (:method ((collection standard-object))    nil)
+  (:method ((collection ordered-collection)) nil) ; but not a backward-collection
+  (:method ((collection backward-collection)) t))
+
+(defgeneric odecr (iterator &optional decrement)
+  (:documentation "Return the next element in the collection.")
+  ;; (:method ((collection list) &optional (decrement 1)))
+  )
+
+(defclass bi-directional-collection (forward-collection backward-collection)
+  ()
+  (:documentation
+   "A collection that can do what both forward-collection and
+backward-collection can."))
+
+(defgeneric bi-directional-collection-p (collection)
+  (:documentation "Return true if COLLECTION is an backward-collection.")
+  (:method ((collection t))
+    (and (forward-collection-p collection)
+	 (backward-collection-p collection))))
+
 (defmacro call-with-start-and-end (func args)
   "Call func with args and START and END keywords, assume that an environemnt
 that has START and START-P and END and END-P."
@@ -422,7 +506,9 @@ unless COLLECTION is a sequence.")
    "Apply FUNCTION to successive elements of COLLECTION. Do not collect return
 values.")
   (:method (function (collection list))
-    (mapcan function collection))
+    ;; (mapcan function collection)
+    (mapc function collection)
+    )
 ;; (:method (function (collection vector))
 ;;   (progn (map nil function collection) collection))
   (:method (function (collection sequence))
