@@ -524,6 +524,7 @@ Something like the default setting of typical GNU tools."))))
        ;; Commands
        (:command :not-found	    :style) (:red)
        (:command :found		    :style) (:bold :blue)
+       (:command :directory	    :style) (:blue)
        (:command :system-command    :style) (:fg :color #(:rgb .4 .5 .9))
        (:command :external-command  :style) (:fg :color #(:rgb .0 .5 .9))
        (:command :builtin-command   :style) (:fg :color #(:rgb .9 .4 .7))
@@ -538,6 +539,8 @@ Something like the default setting of typical GNU tools."))))
        (:program :empty-line-indicator :style)     (:normal)
        (:program :empty-line-indicator :character) #\~
        (:program :selection            :style)     (:standout)
+       (:program :label		       :style)     (:cyan)
+       (:program :data		       :style)     (:green)
        ;; Line editor
        ;; (:rl      :search-match         :style)     (:underline :red)
        ;; (:rl      :selection            :style)     (:standout)
