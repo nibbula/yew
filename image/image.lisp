@@ -68,10 +68,6 @@ To make a new format:
    #:get-whole-pixel
    #:set-whole-pixel
    #:set-row
-   ;; #:get-pixel-r
-   ;; #:get-pixel-g
-   ;; #:get-pixel-b
-   ;; #:get-pixel-a
    #:pixel-r
    #:pixel-g
    #:pixel-b
