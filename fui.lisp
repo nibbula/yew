@@ -56,10 +56,17 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Output
 
-(defun draw-box (x y width height &key string)
+;;(defparameter *plain-acs-table* nil)
+
+(defun draw-box (x y width height &key string #| alt-chars plain |#)
   "Draw a box at X Y of WIDTH and HEIGHT. STRING a string of WIDTH to use for
 drawing, which will get overwritten."
-  (let* ((str-len (- width 2))
+  ;; (when (and plain (not *plain-acs-table*))
+  ;;   (let (terminal-ansi::*acs-table*)
+  ;;     (terminal-ansi::make-acs-table terminal-ansi::*acs-table-data-plain*)
+  ;;     (setf *plain-acs-table* terminal-ansi::*acs-table*)))
+  (let* (#|(terminal-ansi::*acs-table* *plain-acs-table*)|#
+	 (str-len (- width 2))
 	 (str (if string
 		  (fill string (code-char #x2500) :end str-len)
 		  (make-string str-len
@@ -77,6 +84,7 @@ drawing, which will get overwritten."
     (tt-write-char (code-char #x2514))	; └
     (tt-write-string str :end str-len)
     (tt-write-char (code-char #x2518)))) ; ┘
+
 
 ;; @@@ maybe windows should be implemented as a sub-terminal?
 
@@ -281,8 +289,12 @@ keymap bindings."
 			      (documentation func 'function))
 			 (and special-doc-finder
 			      (funcall special-doc-finder func))
-			 (and (keymap-p func)
+			 (and (symbolp func)
+			      (boundp func)
+			      (keymap-p (symbol-value func))
 			      (string-downcase func))
+			 (and (keymap-p func)
+			      (princ-to-string func))
 			 nil))
        :collect
        (with-output-to-string (str)
