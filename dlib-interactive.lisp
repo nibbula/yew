@@ -319,9 +319,10 @@ symbols, :all to show internal symbols too."
     (when (and symbols (> ext-count 0))
       (progn
 	(format t "External Symbols:~%")
-	(let* ((syms (sort (loop :for v :being :the external-symbols :in p
-			      :collect v)
-			   #'string-lessp))
+	(let* ((syms (sort-muffled
+		      (loop :for v :being :the external-symbols :in p
+			 :collect v)
+		      #'string-lessp))
 	       (max (if symbols
 			(apply #'max
 			       (mapcar
@@ -338,8 +339,9 @@ symbols, :all to show internal symbols too."
     (when (eql symbols :all)
       (progn
 	(format t "Internal Symbols:~%")
-	(let* ((syms (sort (loop :for v :being :the :present-symbols :in p
-			      :collect v) #'string-lessp))
+	(let* ((syms (sort-muffled
+		      (loop :for v :being :the :present-symbols :in p
+			 :collect v) #'string-lessp))
 	       (max (if syms
 			(apply #'max
 			       (mapcar
