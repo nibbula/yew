@@ -26,12 +26,15 @@
    #:dl-pop
    #:dl-length
    #:dl-nth
+   #:dl-last
    #:dl-list-do
    #:dl-list-do-element
    #:dl-list-do-backward
    #:dl-list-do-backward-element
    ))
 (in-package :dl-list)
+
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 ; I want to be able to specifiy the types like this:
 ;    (prev :initarg :prev :accessor dl-prev :initform nil
@@ -119,13 +122,25 @@
     result))
 
 (defun dl-nth (n list)
-  "Return the N element of a dl-list."
+  "Return the Nth element of a dl-list."
   (let ((i 0) (e list))
     (loop
        :while (and e (< i n))
        :do (incf i)
        (setf e (%dl-next e)))
     e))
+
+(defun dl-last (list &optional (n 1))
+  "Return the N th element from the end, where N defaults to 1, hence the last."
+  (let ((i 0) (e list) (last list))
+    (loop
+       :while e
+       :do
+       (when (>= i n)
+	 (setf last (%dl-next last)))
+       (incf i)
+       (setf e (%dl-next e)))
+    last))
 
 (defun make-dl-list (&optional from-sequence)
   "Construct a dl-list from a sequence."
