@@ -86,9 +86,9 @@
   (with-slots (buf) e
     (with-context ()
       (setf point 0)
-      (buffer-delete e 0 (length buf) point)
+      (buffer-delete e 0 (olength buf) point)
       (buffer-insert e 0 str point)
-      (setf point (length str)))))
+      (setf point (olength str)))))
 
 (defun use-hist (e)
   "Replace the current line with the current history line."
@@ -213,10 +213,10 @@ in it."
   (not (oposition-if (_ (and (control-char-p _)
 			     (ochar/= _ #\newline))) string)))
 
-(defun make-prompt (e)
+(defun make-prompt (e string function &key no-default)
   "Return the prompt as a string."
-  (let* ((prompt (prompt-string e))
-	 (output-prompt-func (prompt-func e))
+  (let* ((prompt string)
+	 (output-prompt-func function)
 	 (s (if (and output-prompt-func
 		     (or (functionp output-prompt-func)
 			 (fboundp output-prompt-func)))
@@ -227,8 +227,11 @@ in it."
 		      "Your prompt Function failed> "))
 		(progn
 		  (log-message e "do-prompt default-output-prompt")
-		  (default-output-prompt e prompt))))
-	 #| last-newline |#)
+		  (if (and (not prompt) (not no-default))
+		      (default-output-prompt e prompt)
+		      prompt)
+		  ))))
+    #| last-newline |#
     ;; (log-message e "do-prompt only-last-line = ~s" only-last-line)
     ;; (log-message e "do-prompt last-newline = ~s"
     ;; 		 (oposition #\newline s :from-end t))
@@ -248,7 +251,7 @@ in it."
   "Highlight the region in string with style. A new fatchar-string is returned.
 If style isn't given it uses the theme value: (:rl :selection :style)"
   (assert (typep string '(or string fatchar-string fat-string)))
-  (with-slots (contexts highlight-region) e
+  (with-slots (contexts highlight-region region-active) e
     (if (or (> (length contexts) 1)
 	    (and highlight-region (regions-p e)))
 	;; @@@ We should really cache some of the stuff in here.
@@ -272,17 +275,18 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 			 (list #\x))
 	     :fatchar-string style-char)
 	    ;; Highlight selection regions
-	    (do-contexts (e)
-	      (with-context ()
-		(when mark
-		  (loop
-		     :for i
-		     :from (min mark point)
-		     :below (min (max mark point) (length array))
-		     :do
-		     (when (< i (length array))
-		       (copy-fatchar-effects (aref style-char 0)
-					     (aref array i)))))))
+	    (when region-active
+	      (do-contexts (e)
+		(with-context ()
+		  (when mark
+		    (loop
+		       :for i
+		       :from (min mark point)
+		       :below (min (max mark point) (length array))
+		       :do
+		       (when (< i (length array))
+			 (copy-fatchar-effects (aref style-char 0)
+					       (aref array i))))))))
 	    ;; Multiple cursors
 	    (when (> (length contexts) 1)
 	      (span-to-fatchar-string
@@ -325,7 +329,15 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
     ;; Make sure buf-str uses buf.
     (when (not (eq (fat-string-string buf-str) buf))
       (setf (fat-string-string buf-str) buf))
-    (let* ((prompt (make-prompt e))
+    (let* ((prompt (make-prompt e (prompt-string e) (prompt-func e)))
+	   (right-prompt
+	    (make-prompt e (and (ostringp (right-prompt e))
+				(right-prompt e))
+			 (and (or (functionp (right-prompt e))
+				  (and (symbolp (right-prompt e))
+				       (fboundp (right-prompt e))))
+			      (right-prompt e))
+			 :no-default t))
 	   (cols (terminal-window-columns (line-editor-terminal e)))
 	   ;; Prompt figuring
 	   (prompt-end (max 0 (1- (olength prompt))))
@@ -362,6 +374,9 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 	   (point-line    (cadr spot))
 	   (point-col     (cddr spot))
 	   (point-offset  (- buf-lines point-line))
+	   (right-prompt-start (and right-prompt
+				    (- (tt-width)
+				       (display-length right-prompt) 1)))
 	   new-last-line erase-lines old-col relative-top)
       (declare (ignorable old-col))
       (flet ((eol-compensate () ;; @@@ This is bullcrap. Maybe "fix" ansi?
@@ -403,6 +418,12 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 	(tt-erase-to-eol)
 	(tt-write-string prompt)
 	(tt-erase-to-eol)
+	(dbugf :rl "right-prompt ~s ~s~%" right-prompt-start right-prompt)
+	;; (when (and right-prompt (< (+ point-col 2) right-prompt-start))
+	;;   (tt-move-to-col right-prompt-start)
+	;;   (tt-write-string right-prompt)
+	;;   (tt-move-to-col prompt-last-col)
+	;;   )
 	(setf prompt-height prompt-lines
 	      new-last-line total-lines
 	      start-col prompt-last-col)
@@ -411,6 +432,7 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
                     buf = ~s~%"
 	       buf-lines prompt-lines last-line start-col (buf-str e))
 	;; Write the line
+	;;(if (or (and (regions-p e) region-active) (> (length contexts) 1))
 	(if (or (and (regions-p e) region-active) (> (length contexts) 1))
 	    (progn
 	      (let ((s (make-fat-string :string (highlightify e buf))))
@@ -419,6 +441,12 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 	    (tt-write-string (buf-str e)))
 	(eol-compensate)
 	(tt-erase-to-eol)
+	;; (when (and right-prompt (< (+ point-col 2) right-prompt-start)
+	;; 	   (= 0 buf-lines))
+	;;   (dbugf :rl "right-prompt again ~s~%" right-prompt-start)
+	;;   (tt-move-to-col right-prompt-start)
+	;;   (tt-write-string right-prompt)
+	;;   (tt-move-to-col prompt-last-col))
 	(when temporary-message
 	  (tt-write-char #\newline)
 	  (tt-write-string temporary-message))

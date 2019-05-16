@@ -128,6 +128,28 @@ anything important.")
     :accessor line-editor-allow-history-blanks
     :initform nil :type boolean
     :documentation "True to allow adding blank lines to the history.")
+   (history-store-style
+    :initarg :history-store-style
+    :accessor line-editor-history-store-style
+    :initform :fancy :type (member :fancy :simple)
+    :documentation
+    "Style of the history storage. Use :SIMPLE to store only the text,
+:FANCY to store other attributes.")
+   (history-store-format
+    :initarg :history-store-format
+    :accessor line-editor-history-store-backend
+    :initform :database :type (member :database :text-file)
+    :documentation "Format for the history store. Either :DATABASE or
+:TEXT-FILE.")
+   (history-store-file-name
+    :initarg :history-store-file-name
+    :accessor line-editor-history-store-file-name  
+    :documentation "File name of the history store.")
+   (history-storage-unified
+    :initarg :history-storage-unified
+    :accessor line-editor-history-storage-unified :initform nil :type boolean
+    :documentation "True to all command history in the same database. This
+probably only works for database formats.")
    (saved-line
     :accessor saved-line
     :initarg :saved-line
@@ -170,6 +192,10 @@ anything important.")
     :initarg :prompt-func
     :initform nil
     :documentation "Function to call to output the prompt.")
+   (right-prompt
+    :accessor right-prompt
+    :initarg :right-prompt
+    :documentation "Something to display on the right side of the command line.")
    (prompt-height
     :accessor prompt-height
     :initarg :prompt-height
@@ -300,6 +326,7 @@ Otherwise the region is deactivated every command loop.")
     :mark nil
     :non-word-chars *default-non-word-chars*
     :prompt-string *default-prompt*
+    :right-prompt nil
     :terminal-class (or (and *terminal* (class-of *terminal*))
 			(find-terminal-class-for-type
 			 (pick-a-terminal-type)))

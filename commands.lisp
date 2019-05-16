@@ -329,8 +329,8 @@ if it's blank or the same as the previous line."
       (flet ((is-blank ()
 	       (and buf-str (zerop (olength buf-str))))
 	     (is-dup ()
-	       (and prev (dl-content prev)
-		    (ostring= (dl-content prev) buf-str))))
+	       (and prev (dl-content prev) (history-line prev)
+		    (ostring= (history-line prev) buf-str))))
 	(and (or (not (is-blank)) allow-history-blanks)
 	     (or (not (is-dup)) allow-history-duplicates))))))
 
@@ -453,7 +453,7 @@ be case insensitive."
   (with-slots (history-context) e
     (let ((hist (get-history history-context))
 	  (first-time t))
-      ;; (dbug "yoyo history-context ~w ~w~%" histroy-context hist)
+	;; (dbug "yoyo history-context ~w ~w~%" histroy-context hist)
       (if (eq direction :backward)
 	  (progn
 	    ;; (dbug "starting-at ~w~%" start-from)
@@ -461,20 +461,20 @@ be case insensitive."
 	     start-from
 	     #'(lambda (x)
 		 (when (dl-content x)
-		   (dbug "(search ~w ~w :end2 ~w) search-pos = ~w~%"
-			 str (dl-content x)
-			 (backward-start-pos (dl-content x) search-pos)
-			 search-pos)
+		   ;; (dbug "(search ~w ~w :end2 ~w) search-pos = ~w~%"
+		   ;; 	 str (dl-content x)
+		   ;; 	 (backward-start-pos (dl-content x) search-pos)
+		   ;; 	 search-pos)
 		   (let (pos)
 		     (if first-time
-			 (setf pos (search str (dl-content x)
+			 (setf pos (search str (history-line x)
 					   :from-end t
 					   :end2 (backward-start-pos
-						  (dl-content x) search-pos)
+						  (history-line x) search-pos)
 					   :test (test-for-string str)
 					   )
 			       first-time nil)
-			 (setf pos (search str (dl-content x) :from-end t
+			 (setf pos (search str (history-line x) :from-end t
 					   :test (test-for-string str))))
 		     (when pos
 		       ;; (dbug "found pos = ~w in ~w (~w) x=~a~%"
@@ -487,12 +487,12 @@ be case insensitive."
 	       (when (dl-content x)
 		 (let (pos)
 		   (if first-time
-		       (setf pos (search str (dl-content x)
+		       (setf pos (search str (history-line x)
 					 :start2 (forward-start-pos
-						  (dl-content x) search-pos)
+						  (history-line x) search-pos)
 					 :test (test-for-string str))
 			     first-time nil)
-		       (setf pos (search str (dl-content x)
+		       (setf pos (search str (history-line x)
 					 :test (test-for-string str))))
 		   (when pos
 		     (setf (history-cur hist) x)

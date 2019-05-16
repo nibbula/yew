@@ -13,12 +13,14 @@
   :depends-on (:dlib :dlib-misc :dl-list :stretchy :char-util
 	       :opsys :terminal :terminal-ansi :terminal-dumb :terminal-crunch
 	       :collections :ochar :fatchar :fatchar-io :completion :keymap
-	       :syntax-lisp :unipose :inator :terminal-inator :theme :ostring)
+	       :syntax-lisp :unipose :inator :terminal-inator :theme :ostring
+	       :clsql :clsql-sqlite3)
   :serial t	; not entirely correct, but convenient
   :components
   ((:file "package")
    (:file "editor")
    (:file "history")
+   (:file "history-store")
    (:file "undo")
    (:file "buffer")
    (:file "display")

@@ -36,9 +36,10 @@
 
 (defstruct history
   "Line editor history."
-  (head nil :type dl-node)		; Start of history list
-  (tail nil :type dl-node)		; End of history list
-  (cur nil :type dl-node))		; Current node
+  (head  nil :type dl-node)		; Start of history list
+  (tail  nil :type dl-node)		; End of history list
+  (start nil :type dl-node)		; Start of new nodes
+  (cur   nil :type dl-node))		; Current node
 
 (defstruct history-entry		; @@@ not used yet
   "An entry in the line editor history."
@@ -72,7 +73,11 @@
 (defun history-add (buf &optional (context *history-context*))
   "Adds the content BUF as the most recent history item."
   (let* ((hist (get-history context)))
-    (dl-push (history-head hist) (copy-seq buf))
+    (dl-push (history-head hist)
+	     ;; (copy-seq buf)
+	     (make-history-entry :time (get-universal-time)
+				 :line (copy-seq buf))
+	     )
     (when (not (history-cur hist))
       (setf (history-cur hist) (history-head hist)))
     (when (not (history-tail hist))
@@ -87,7 +92,11 @@
   (let* ((hist (get-history context))
 	 (cur (history-cur hist)))
     (when cur
-      (setf (dl-content cur) (copy-seq buf)))))
+      (setf (dl-content cur)
+	    ;; (copy-seq buf)
+	    (make-history-entry :time (get-universal-time)
+				:line (copy-seq buf))
+	    ))))
 
 (defun history-prev (&optional (context *history-context*))
   "Move the current history to the next oldest."
@@ -119,7 +128,11 @@
   "Return the content of the current item."
   (let* ((hist (get-history context))
 	 (cur (history-cur hist)))
-    (if cur (dl-content cur) nil)))
+    (if cur (history-entry-line (dl-content cur)) nil)))
+
+(defun history-line (history-node)
+  "Return the command line from a history node."
+  (history-entry-line (dl-content history-node)))
 
 (defun history-current-get (&optional (context *history-context*))
   "Return the current history node."
@@ -153,50 +166,8 @@
     (dl-list-do-backward
      (history-tail hist)
      #'(lambda (x)
-	 (format t "~4d  ~a~%" i x)	;; @@@ zorp
+	 (format t "~4d  ~a~%" i (history-entry-line x))
 	 (incf i))))
   (values))
-
-(defun history-file-name (&optional (context *history-context*))
-  (merge-pathnames
-   (make-pathname :name (format nil ".~(~a~)_history" (string context)))
-   (user-homedir-pathname)))
-
-;; Increment for every incompatible change.
-(defparameter *history-version* 1
-  "Version number of history format file.")
-
-(defun history-save (&optional (context *history-context*))
-  (let ((hist (get-history context)))
-    (with-open-file (str (history-file-name context)
-			 :direction :output
-			 :if-exists :supersede)
-      ;; write version
-      (format str "trlh ~a~%" *history-version*)
-      ;; history list
-      (princ #\()
-      (dl-list-do (history-head hist)
-		  #'(lambda (x)
-		      (format str "~s~%" x))) ;; @@@ zorp
-      (princ #\) (terpri)))))
-
-(defun history-load (&optional (context *history-context*))
-  (declare (ignore context)))
-  ;; (let ((hist (get-history context))
-  ;; 	(s (make-string 4)) i)
-  ;;   (with-open-file (stm (history-file-name context)
-  ;; 			 :direction :input)
-  ;;     (when (string/= (read-sequence s stm :end 4) "trlh")
-  ;; 	(error "Bad magic tag ~a in history file." s))
-  ;;     (when (/= *history-version*
-  ;; 		(setq i (parse-integer (setq s (read-line stm)))))
-  ;; 	(error "Bad version number ~a in history file." s))
-  ;;     ;; @@@ SECURITY ALERT !!!
-  ;;     (let ((*read-eval* nil))
-  ;;       (setq s (read stm)))
-  ;;     (when (not (listp s))
-  ;; 	(error "Malformed history list in history file: ~a." s))
-  ;;     (setf (history-current hist)
-  ;; 	    (make-dl-list :from-list s)))))
 
 ;; EOF
