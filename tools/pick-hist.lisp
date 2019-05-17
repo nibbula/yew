@@ -33,8 +33,8 @@ and most likely invoked from a key binding."
 		   (history-context history-context)) editor
 	(let ((cur-y (terminal-get-cursor-position *terminal*))
 	      hist pick height start)
-	  (omapn (_ (push _ hist)) (history-head
-				    (get-history history-context)))
+	  (omapn (_ (push (history-entry-line _) hist))
+		 (history-head (get-history history-context)))
 	  (setf start (+ 2 cur-y)
 		height (+ 2 (length hist)))
 	  (when (> start (truncate (tt-height) 2))
