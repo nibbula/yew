@@ -10,7 +10,7 @@
   :licence            "GPLv3"
   :source-control     :git
   :long-description   "A line editor which is not so tiny."
-  :defsystem-depends-on :rl-config
+  :defsystem-depends-on (:rl-config)
   :depends-on (:dlib :dlib-misc :dl-list :stretchy :char-util
 	       :opsys :terminal :terminal-ansi :terminal-dumb :terminal-crunch
 	       :collections :ochar :fatchar :fatchar-io :completion :keymap
