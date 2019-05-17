@@ -93,6 +93,17 @@
    #:os-software-type
    #:os-software-version
 
+   ;; C dynamic libraries
+   #:dlopen
+   #:dlmopen
+   #:dlclose
+   #:dlsym
+   #:dlinfo
+   #:dlerror
+   #:+RTLD-LAZY+ #:+RTLD-NOW+ #:+RTLD-NOLOAD+ #:+RTLD-DEEPBIND+ #:+RTLD-GLOBAL+
+   #:+RTLD-LOCAL+ #:+RTLD-NODELETE+ #:+RTLD-NEXT+ #:+RTLD-DEFAULT+
+   #:+LM-ID-BASE+ #:+LM-ID-NEWLM+
+
    #:passwd				; struct
    #:passwd-name
    #:passwd-passwd
@@ -641,18 +652,6 @@
    #:wcwidth
    #:char-width
    #:language
-
-   ;; C dynamic libraries
-   #:dlopen
-   #:dlmopen
-   #:dlclose
-   #:dlsym
-   #:dlinfo
-   #:dlerror
-
-   #:+RTLD-LAZY+ #:+RTLD-NOW+ #:+RTLD-NOLOAD+ #:+RTLD-DEEPBIND+ #:+RTLD-GLOBAL+
-   #:+RTLD-LOCAL+ #:+RTLD-NODELETE+ #:+RTLD-NEXT+ #:+RTLD-DEFAULT+
-   #:+LM-ID-BASE+ #:+LM-ID-NEWLM+
    ))
 
 (in-package :opsys-unix)
