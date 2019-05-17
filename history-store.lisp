@@ -190,8 +190,10 @@ is saved."))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Storage for format :database
 
+#+t-rl-config-use-sqlite
+(progn
 ;; Turn on SQL symbolic syntax.
-#.(clsql:file-enable-sql-reader-syntax)
+  #.(clsql:file-enable-sql-reader-syntax)
 
 (defclass db-history-store (history-file-store)
   ((connection
@@ -287,6 +289,7 @@ is saved."))
 (defmethod history-store-done ((store text-history-store) style)
   "Indicate we're done with using a text history store, of any style."
   (declare (ignore store style)))
+)
 
 ;; There is no database simple style.
 
