@@ -15,8 +15,8 @@
 	       :opsys :terminal :terminal-ansi :terminal-dumb :terminal-crunch
 	       :collections :ochar :fatchar :fatchar-io :completion :keymap
 	       :syntax-lisp :unipose :inator :terminal-inator :theme :ostring
-	       #+t-rl-config-use-sqlite :clsql
-	       #+t-rl-config-use-sqlite :clsql-sqlite3
+	       (:feature :t-rl-config-use-sqlite :clsql)
+	       (:feature :t-rl-config-use-sqlite :clsql-sqlite3)
 	       )
   :serial t	; not entirely correct, but convenient
   :components
