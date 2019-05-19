@@ -217,16 +217,17 @@ your software."))
 (defmacro defconfiguration (vars)
   "Define the set of configuration variables."
   (let ((conf (intern "*CONFIGURATION*" *package*)))
-    `(defvar ,conf
-       ,(loop :for v :in vars
-	   :collect `(make-instance
-		      ',(variable-class-name (second v))
-		      :name ,(first v)
-		      :documentation (third v)
-		      :value-function ,(when (fourth v)
-					 `(lambda (var)
-					    (declare (ignorable var))
-					    ,(fourth v)))))
+    `(defparameter ,conf
+       (list
+	,@(loop :for v :in vars
+	     :collect `(make-instance
+			',(variable-class-name (second v))
+			:name ',(first v)
+			:documentation ,(third v)
+			:value-function ,(when (fourth v)
+					   `(lambda (var)
+					      (declare (ignorable var))
+					      ,(fourth v))))))
        ,(format nil "Configuration variables for ~s" *package*))))
 
 ;; @@@ The verbose here should be dynamic
