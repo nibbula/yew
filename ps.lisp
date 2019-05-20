@@ -236,7 +236,7 @@ user, pid, ppid, size, command."
   (when (> level 0)
     (format t "~v@a" level "├──"))
   (when p
-    (format t "~d~15t~6d ~8a ~8@a ~va~{~a ~}~%"
+    (format t "~d~15t~6d ~8a ~8@a ~va ~a ~%"
 	    ;; (second p) (third p) (first p) (ps-print-size (fourth p))
 	    ;; level "" (fifth p))))
 	    (short-process-pid p) (short-process-parent-pid p)
@@ -249,8 +249,8 @@ user, pid, ppid, size, command."
        (if (consp (first x))
 	   (print-tree (first x) plist :level (1+ level))
 	   (progn 
-;	     (format t "~s ~a~%" x (find x plist :key #'second))
-	     (tree-print-proc (find (first x) plist :key #'second)
+;	     (format t "~s ~a~%" x (find x plist :key #'short-process-pid))
+	     (tree-print-proc (find (first x) plist :key #'short-process-pid)
 			      level prefix))))))
 
 (defun zprint-tree (tree &optional (level 0))
