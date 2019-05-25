@@ -47,7 +47,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 (in-package :fatchar)
 
 (declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
-;;(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 (defstruct (fatchar (:copier nil))
   "A character with attributes."
@@ -1111,7 +1111,8 @@ fatchar:*known-attrs*.
   - FATCHAR-STRING can be provided as an already created adjustable string with a
     fill-pointer to put the result into.
   - UNKNOWN-FUNC is a fuction to call with un-recognized attributes, colors, or
-    object types.
+    object types. The primary value is processed. If the second value is true,
+    ignore the rest of the list.
   - FILTER is a function which is called with every string, which should return
     similar typed string to use as a replacement."
   (when (not fatchar-string)
@@ -1158,7 +1159,8 @@ fatchar:*known-attrs*.
 	       (list
 		(let* ((f (first s))
 		       (tag (and (or (keywordp f) (symbolp f)) f))
-		       (rest (cdr s)))
+		       (rest (cdr s))
+		       value ignore-the-rest)
 		  (if tag
 		      (let ((fg fg) (bg bg) (attrs attrs)
 			    (tag-str (string tag)))
@@ -1183,11 +1185,15 @@ fatchar:*known-attrs*.
 			   (setf rest (cdddr s)))
 			  (t
 			   (if unknown-func
-			       (spanky (funcall unknown-func s))
+			       (progn
+				 (setf (values value ignore-the-rest)
+				       (funcall unknown-func s))
+				 (spanky value))
 			       (push tag attrs))))
 			;; (format t "tag ~s attrs ~s (cdr s) ~s~%"
 			;; 	tag attrs (cdr s))
-			(spanky rest)
+			(when (not ignore-the-rest)
+			  (spanky rest))
 			;;(setf fg nil bg nil)
 			;;(pop attrs)
 			)
