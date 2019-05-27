@@ -272,17 +272,21 @@ terminal."
 	  (eql func 'complete-filename-command)))))
 |#
 
-(defun complete (e &optional comp-func)
+(defun complete (e &key function (start-from 0))
   "Call the completion function and display the results, among other things."
   (with-slots (completion-func buf) e
-    (setf comp-func (or comp-func completion-func))
-    (when (not comp-func)
+    (setf function (or function completion-func))
+    (when (not function)
       (beep e "No completion active.")
       (return-from complete))
     (use-first-context (e)
+      (assert (and (numberp start-from) (<= start-from (first-point e))))
       (let* ((saved-point (first-point e))
+	     (str (fatchar-string-to-string buf))
 	     (result
-	      (funcall comp-func (fatchar-string-to-string buf)
+	      (funcall function (if (plusp start-from)
+				    (subseq str start-from)
+				    str)
 		       (first-point e) nil))
 	     (comp (completion-result-completion result))
 	     (replace-pos (completion-result-insert-position result))
@@ -291,7 +295,7 @@ terminal."
 	(when (and (not (zerop (last-completion-not-unique-count e)))
 		   (last-command-was-completion e))
 	  (log-message e "show mo")
-	  (show-completions e))
+	  (show-completions e :func function))
 	(setf (did-complete e) t)
 	(if (not unique)
 	    (set-completion-count e (1+ (last-completion-not-unique-count e)))
@@ -325,40 +329,12 @@ terminal."
 	    |#
 	  (progn
 	    ;; delete the different part
-	    (delete-region e replace-pos saved-point)
-	    (setf (first-point e) replace-pos)
+	    (delete-region e (+ start-from replace-pos) saved-point)
+	    (setf (first-point e) (+ start-from replace-pos))
 	    (insert e comp)
 	    (incf (first-point e) (length comp)))
 	  (progn
 	    (setf (first-point e) saved-point) ; go back to where we were
 	    (beep e "No completions")))))))    ; ring the bell
-
-(defun complete-filename-command (e)
-  "Filename completion. This useful for when you want to explicitly complete a
-filename instead of whatever the default completion is. Convenient for a key
-binding."
-  (complete e #'completion::complete-filename))
-
-(defun show-filename-completions-command (e)
-  "Filename completion. This useful for when you want to explicitly complete a
-filename instead of whatever the default completion is. Convenient for a key
-binding."
-  (with-slots (buf) e
-    (let* ((str (fatchar-string-to-string buf))
-	   (i (1- (length str))))
-      (loop ;; back up until a double quote or a / or a ~ preceded by a space
-	 :while (and (not (zerop i))
-		     (char/= (char str i) #\")
-		     (not (and (> i 0)
-			       (or (char= (char str i) #\/)
-				   (char= (char str i) #\~))
-			       (char= (char str (1- i)) #\space))))
-	 :do (decf i))
-      (log-message e "str = ~s" (subseq str i))
-      (show-completions e
-			:func #'completion::complete-filename
-			:string (if (zerop i)
-				    str
-				    (subseq str (1+ i)))))))
 
 ;; EOF

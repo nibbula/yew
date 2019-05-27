@@ -1196,4 +1196,43 @@ current selection. Otherwise, add a cursor on the next line."
       (temporary-message
        (clear-completions e)))))
 
+(defmacro with-filename-in-buffer ((e string-var position-var) &body body)
+  (with-unique-names (str i buf)
+    `(with-slots ((,buf buf)) ,e
+       (let* ((,str (fatchar-string-to-string ,buf))
+	      (,i (1- (length ,str)))
+	      ,string-var ,position-var)
+	 (declare (ignorable ,string-var ,position-var))
+	 (loop ;; back up until a double quote or a / or a ~ preceded by a space
+	    :while (and (not (zerop ,i))
+			(char/= (char ,str ,i) #\")
+			(not (and (> ,i 0)
+				  (or (char= (char ,str ,i) #\/)
+				      (char= (char ,str ,i) #\~))
+				  (char= (char ,str (1- ,i)) #\space))))
+	    :do (decf ,i))
+	 (log-message e "str = ~s" (subseq ,str ,i))
+	 (setf ,string-var (if (zerop ,i)
+			       ,str
+			       (subseq ,str (1+ ,i)))
+	       ,position-var (1+ ,i))
+	 ,@body))))
+
+(defsingle complete-filename-command (e)
+  "Filename completion. This useful for when you want to explicitly complete a
+filename instead of whatever the default completion is. Convenient for a key
+binding."
+  (with-filename-in-buffer (e str pos)
+    (complete e :function #'completion::complete-filename
+	      :start-from pos)))
+
+
+(defsingle show-filename-completions-command (e)
+  "Filename completion. This useful for when you want to explicitly complete a
+filename instead of whatever the default completion is. Convenient for a key
+binding."
+  (with-filename-in-buffer (e str pos)
+    (show-completions e :func #'completion::complete-filename
+		      :string str)))
+
 ;; EOF
