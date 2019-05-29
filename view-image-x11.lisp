@@ -149,9 +149,13 @@
 		     (make-event-mask
 		      :key-press :button-press :button-release
 		      :exposure :visibility-change :structure-notify))
-		    (make-window-from
-		     :id (parse-integer (nos:environment-variable "WINDOWID"))
-		     :display display))
+		    (let ((id (nos:env "WINDOWID")))
+		      (if id
+			  (make-window-from
+			   :id (parse-integer-with-radix id)
+			   :display display)
+			  (error "WINDOWID isn't set, so supply a window ID or ~
+                                  use -o."))))
 		depth (drawable-depth window)
 		font (open-font display "fixed")
 		draw-gc (create-gcontext
