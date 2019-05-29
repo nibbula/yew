@@ -725,16 +725,19 @@ the primary result printed as a string."
     (tt-erase-to-eol)
     (tt-normal)
     ;; (tt-write-span `(,@modeline-style ,(format-prompt pager)))
-    (tt-write-span `( ; ,@modeline-style
-		     ,@(when (not *pager-prompt*)
-			 modeline-style)
-		     ,(symbolic-prompt-to-string
-		       pager
-		       (or *pager-prompt*
-			   (typecase pager
-			     (binary-pager *default-binary-pager-prompt*)
-			     (t *default-text-pager-prompt*))))))
-    (tt-normal)))
+    (let ((prompt-string
+	   (symbolic-prompt-to-string
+	    pager
+	    (or *pager-prompt*
+		(typecase pager
+		  (binary-pager *default-binary-pager-prompt*)
+		  (t *default-text-pager-prompt*))))))
+      (tt-write-span `( ; ,@modeline-style
+		       ,@(when (not *pager-prompt*)
+			   modeline-style)
+		       ,(osubseq prompt-string
+				 0 (min (tt-width) (olength prompt-string)))))
+      (tt-normal))))
 
 (defun display-message (format-string &rest args)
   "Display a formatted message at the last line immediately."
