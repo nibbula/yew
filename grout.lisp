@@ -41,6 +41,8 @@ for relatively simple output.")
    ))
 (in-package :grout)
 
+(declaim (optimize (debug 2)))
+
 (defparameter *colors*
   #(:black :red :green :yellow :blue :magenta :cyan :white nil :default))
 
