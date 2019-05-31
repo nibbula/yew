@@ -182,7 +182,7 @@ numbers."))
   (ordered-collection-p (container-data collection)))
 
 ;; I know, iterators are so C++ you say? Yes, we sure don't want to use
-;; them all the time, but sometimes they actually useful, like when you
+;; them most of the time, but sometimes they actually useful, like when you
 ;; want to iterate over multiple generic sequences in parallel and want it
 ;; to be even theoretically efficient for collections without O(1) or even O(n)
 ;; random access.

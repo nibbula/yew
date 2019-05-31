@@ -622,6 +622,7 @@ just return SEQUENCE. Elements are compared with TEST which defaults to EQL."
 	(subseq sequence 0 pos)
 	(copy-seq sequence))))
 
+;; @@@ (apply #'s+ nil) sometimes crashes on sbcl?
 (defun s+ (s &rest rest)
   "Return a string which is the arguments concatenated as if output by PRINC."
   ;; This is usually slower:
