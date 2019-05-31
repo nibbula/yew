@@ -30,6 +30,7 @@
    #:table-set-column-format
    #:table-column-number
    #:make-table-from
+   ;; #:join
    ))
 (in-package :table)
 
@@ -50,12 +51,6 @@ strings should be alble to be prepended with ~* to ignore the width argument."
   (type t)
   (width 0)
   (format nil))
-
-;; (defclass collection ()
-;;   ((data :initarg :data
-;; 	 :accessor collection-data
-;; 	 :documentation "Collection of data."))
-;;   (:documentation "A pile of stuff."))
 
 (defclass table ()
   ((columns :initarg :columns
@@ -287,5 +282,79 @@ that has START and START-P and END and END-P."
        (loop :for c :in column-names :do
 	    (table-add-column tt c))))
     tt))
+
+;; We have two kinds of generic table joins, since the specialized method of
+;; joining a sequence of tables is very likely more efficient than performing a
+;; series of joins of two tables, but the latter allows us to do joins on
+;; sequences of tables of different types.
+;;
+;; @@@ Or use generic iterators to gather the rows?
+
+#|
+
+(defgeneric join-tables (tables type result-type)
+  (:documentation
+   "Join a sequence tables of type, with a result of RESULT-TYPE."))
+
+;; @@@ Maybe this would be better called join-two-tables?
+(defgeneric join-table (table-1 table-2 result-type)
+  (:documentation
+   "Join two tables, with a result of RESULT-TYPE."))
+
+(defmethod join-tables (tables (type (eql 'mem-table))
+			(result-type (eql 'mem-table)))
+  "Join a sequence of mem-tables."
+  (let* ((new-cols
+	  (omap #'copy-columns tables))
+	 (new-row-count
+	  (let ((rc 0))
+	    (omapn
+	     (_ (setf rc (+ rc (olength (table-data _)))))
+	     tables)
+	    rc))
+	 (result
+	  (make-instance
+	   'mem-table
+	   :columns
+	   (apply #'oconcatenate new-cols))
+	   :data
+	   (omap
+	    @@@ How about we need to finish iterators?
+	    (_ )
+	    tables)))
+    result))
+
+(defmethod join-table ((table-1 mem-table)
+		       (table-2 mem-table)
+		       (result-type (eql 'mem-table)))
+  "Join individual mem-tables."
+  ;; Just use the sequence joiner.
+  (join-tables (list table-1 table-2) 'mem-table))
+
+(defun join (tables &key by result-type)
+  "Join tables. The result table has rows with all the columns
+from the tables. If the tables different numbers of row, the columns from the
+shorter tables will be empty. By default, the resulting table is of the same
+type as the first table."
+  (let ((tables-type
+	 (reduce (lambda (a b) (and (eql a b) a)) tables :key #'type-of)))
+    (cond
+      (table-type
+       (join-tables tables tables-type result-type))
+      ;; @@@ We could check the whole chain of types works out,
+      ;; but, for now, let's just say there has to be a uniform result type.
+      #|
+      ((loop :with prev-type :and prev-result
+	  :for table :in tables
+	  :do
+	  (when prev-type
+	    (find-method 'join-table nil (list prev-type (type-of table)
+					       prev-result)
+			 nil))))
+      |#
+      (t
+       (reduce (lambda (a b) (join-table a b result-type)) tables)))))
+
+|#
 
 ;; EOF
