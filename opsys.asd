@@ -11,7 +11,6 @@
     :source-control	:git
     :long-description   "The cessation of the repetition of ‘Never Again’."
     :depends-on (:cffi 
-		 ;; How can I avoid using reader conditionals here?
 		 (:feature (:and (:or :windows :win32) (:not :unix) (:not ccl))
 			   :cffi-libffi)
 		 :trivial-gray-streams

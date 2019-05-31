@@ -92,6 +92,7 @@
 
    ;; files
    #:get-file-info
+   #:file-accessible-p
    #:stream-system-handle
    #:stream-handle-direction
    #:file-exists

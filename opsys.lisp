@@ -213,6 +213,12 @@ structure. If FOLLOW-LINKS is true (the default), then if PATH is a symbolic
 link, return information about the file it's linked to, otherwise return
 information about the link itself.")
 
+(defosfun file-accessible-p (path &optional access)
+  "Return true if a PATH is accessible with ACCESS, which is a list consisiting
+of the keywords :READ, :WRITE, or :EXECUTE. ACCESS defaults to :READ. Because of
+race conditions, and many other peculiarities, it's best not to call this, since
+something accessible now may not be accessible later.")
+
 ;; (defmacro with-temp-file ((var &optional template) &body body)
 ;;   "Evaluate the body with the variable VAR bound to a POSIX file descriptor with a temporary name. The file is supposedly removed after this form is done."
 ;;   (unwind-protect (progn @@@

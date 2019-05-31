@@ -1792,6 +1792,42 @@ it is not a symbolic link."
 		     (real-lstat path stat-buf)) "~s" path)
     (convert-file-info stat-buf)))
 
+(defparameter *access-flags* nil "Flags for accces.")
+
+(define-to-list *access-flags*
+  #(#(+X-OK+   #x0001 "Executable")
+    #(+W-OK+   #x0002 "Writable")
+    #(+R-OK+   #x0004 "Readable")))
+
+(defcfun ("access" real-access) :int (path :string) (mode :int))
+
+(defun file-accessible-p (path &optional (access :read))
+  "Return true if a PATH is accessible with ACCESS, which is a list consisiting
+of the keywords :READ, :WRITE, or :EXECUTE. ACCESS defaults to :READ. Because of
+race conditions, and many other peculiarities, it's best not to call this, since
+something accessible now may not be accessible later."
+  (etypecase access
+    (list)
+    (keyword
+     (setf access (list access))))
+  (let ((access-bits 0))
+    (when (find :read access)
+      (setf access-bits (logior access-bits +R-OK+)))
+    (when (find :write access)
+      (setf access-bits (logior access-bits +W-OK+)))
+    (when (find :execute access)
+      (setf access-bits (logior access-bits +X-OK+)))
+    (when (not (zerop access-bits))
+      (let ((result (real-access path access-bits)))
+	(cond
+	  ((= result -1)
+	   (if (= (errno) +EACCES+)
+	       nil
+	       (error 'posix-error :error-code (errno))))
+	  ((zerop result)
+	   t)
+	  (t nil))))))
+
 ;; Supposedly never fails so we don't have to wrap with syscall.
 ;; @@@ consider taking symbolic string arguments
 (defcfun umask mode-t (cmask mode-t))
