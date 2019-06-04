@@ -12,7 +12,7 @@
 ;; I don't like the name “MISC”. Let’s think of something better.
 
 (defpackage :dlib-misc
-  (:use :cl :dlib :opsys :char-util :glob :collections
+  (:use :cl :dlib :opsys :char-util :glob :collections :stretchy
 	#+use-re :re #-use-re :ppcre)
   ;; Also has an inplicit dependency on ASDF.
   (:documentation "More generally dubious miscellaneous functions.")
@@ -1521,11 +1521,27 @@ text into lisp and have it be stored as lines of words."
 
 (defun slurp (file-or-stream &key
 			       (external-format :default)
-			       (element-type 'character))
-  "Return a string (well actually an array of stream-element-type, which
-defaults to character) with the contents of FILE-OR-STREAM."
+			       (element-type 'character)
+			       count)
+  "Return an array of ELEMENT-TYPE, with the contents read from FILE-OR-STREAM.
+ELEMENT-TYPE defaults to CHARACTER. EXTERNAL-FORMAT is as in OPEN. If COUNT is
+non-nil, only read that many elements."
   (let (stream (close-me nil) buffer pos len result)
-    (unwind-protect
+    (macrolet ((copy-loop (outputer)
+		 ;; For hopefully higher speed, two versions of the loop.
+		 `(if count
+		      (loop :do
+			 (setf pos (read-sequence buffer stream))
+			 (when (> pos 0)
+			   ,outputer)
+			 (decf count pos)
+			 :while (and (= pos len) (> count 0)))
+		      (loop :do
+			 (setf pos (read-sequence buffer stream))
+			 (when (> pos 0)
+			   ,outputer)
+			 :while (= pos len)))))
+      (unwind-protect
 	 (progn
 	   (setf stream
 		 (etypecase file-or-stream
@@ -1538,9 +1554,13 @@ defaults to character) with the contents of FILE-OR-STREAM."
 	   (if (and (typep stream 'file-stream)
 		    ;; The length can be quite wrong, since it's probably in
 		    ;; octets and we read it in characters. But hopefully it
-		    ;; shouldn't be *less* than we need. 
-		    (setf len (safe-file-length stream))
-		    len)
+		    ;; shouldn't be *less* than we need.
+		    (progn
+		      (setf len (safe-file-length stream))
+		      (when (and len count)
+			(setf len (min count len)))
+		      len)
+		    (not (zerop len)))
 	       (progn
 		 ;; Read the whole thing at once.
 		 (setf buffer (make-array len
@@ -1551,22 +1571,25 @@ defaults to character) with the contents of FILE-OR-STREAM."
 		 (adjust-array buffer pos)
 		 (setf result buffer))
 	       (progn
-		 ;; Read in chunks and write to a string.
+		 ;; Read in chunks and write to a string or stretchy array.
 		 (setf len *slurp-buffer-size*
 		       buffer (make-array len
 					  :element-type
 					  (stream-element-type stream))
 		       result
-		       (with-output-to-string
-			   (str nil
-				:element-type (stream-element-type stream))
-			 (loop :do
-			    (setf pos (read-sequence buffer stream))
-			    (when (> pos 0)
-			      (write-sequence buffer str :end pos))
-			    :while (= pos len)))))))
+		       (if (subtypep (stream-element-type stream) 'character)
+			   (with-output-to-string
+			       (str nil
+				    :element-type (stream-element-type stream))
+			     (copy-loop (write-sequence buffer str :end pos)))
+			   (let ((str (make-stretchy-vector
+				       len
+				       :element-type
+				       (stream-element-type stream))))
+			     (copy-loop (stretchy-append str buffer))
+			     str))))))
       (when (and close-me stream)
-	(close stream)))
+	(close stream))))
     result))
 
 (defun confirm (action &key (output *standard-output*)
