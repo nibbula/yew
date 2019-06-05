@@ -67,9 +67,6 @@
    (maxima
     :initarg :maxima :accessor puca-maxima :initform 0
     :documentation "Number of items.")
-   ;; (mark
-   ;;  :initarg :mark :accessor puca-mark :initform nil
-   ;;  :documentation "One end of the region")
    (top
     :initarg :top :accessor puca-top :initform 0
     :documentation "Top item")
@@ -883,13 +880,13 @@ for the command-function).")
 
 (defun set-mark (p)
   "Set Mark"
-  (with-slots ((point inator::point) mark) p
+  (with-slots ((point inator::point) (mark inator::mark)) p
     (setf mark point)
     (message p "Set mark.")))
 
 (defun toggle-region (p)
   "Toggle region"
-  (with-slots ((point inator::point) mark) p
+  (with-slots ((point inator::point) (mark inator::mark)) p
     (if mark
       (let ((start (min mark point))
 	    (end (max mark point)))
