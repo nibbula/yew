@@ -287,6 +287,9 @@ by nos:read-directory."))
     (:name
      (sort-muffled file-list (if reverse #'string> #'string<)
 		   :key #'file-item-name))
+    (:iname
+     (sort-muffled file-list (if reverse #'string-greaterp #'string-lessp)
+		   :key #'file-item-name))
     (:size
      (sort-muffled (ensure-full-info file-list dir)
 		   (if reverse #'> #'<)
@@ -585,7 +588,7 @@ by nos:read-directory."))
 	(values))))
 
 (defparameter *sort-fields*
-  `("none" "name" "size" "access-time" "creation-time" "modification-time"
+  `("none" "name" "iname" "size" "access-time" "creation-time" "modification-time"
     "extension" "type" "mime-type"))
 
 #+lish
