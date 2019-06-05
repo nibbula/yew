@@ -126,11 +126,13 @@
 (defcommand man
    ((apropos string  :short-arg #\k :help "Search page titles for a string.")
     (section manual-section  :short-arg #\s :help "Show page from section.")
-    (all     boolean :short-arg #\a :help "Show all matching pages.")
-    (rehash  boolean :short-arg #\r :help "Re-calculate caches.")
-    (path    string  :short-arg #\M
-	       :help "Colon separated path to search for pages.")
-    (entry   manual-entry  :optional t :help "Name of manual entry."))
+    (all boolean :short-arg #\a :help "Show all matching pages.")
+    (rehash boolean :short-arg #\r :help "Re-calculate caches.")
+    (use-pager boolean :short-arg #\p :default t
+     :help "True to view the output in the pager.")
+    (path string  :short-arg #\M
+     :help "Colon separated path to search for pages.")
+    (entry manual-entry  :optional t :help "Name of manual entry."))
   "Display a manual page for a command. With -k search for a matching page."
   (when rehash
     (setf *man-sections* nil
@@ -165,7 +167,7 @@
       ;; (format t "cmd = ~s entry = ~s~%" cmd entry)
       ;; (read-line)
       (unwind-protect
-	   (if (out-pipe-p)
+	   (if (or (out-pipe-p) (not use-pager))
 	       ;; (! cmd (or entry ""))
 	       (pipe (s+ cmd (or entry "")) "cat")
 	       (progn
@@ -175,14 +177,16 @@
 	  (close stream))))))
 
 (defcommand crap
-    (("crap" manual-entry :help "Name of the manual entry."))
+  ((use-pager boolean :short-arg #\p :default t
+   :help "True to view the output in the pager.")
+   (crap manual-entry :help "Name of the manual entry."))
   "Very crap"
   (let* ((cols (princ-to-string (with-grout () (grout-width))))
 	 stream)
     ;;(setf (nos:environment-variable "COLUMNS") cols)
     #+(or linux freebsd) (setf (nos:environment-variable "MANWIDTH") cols)
     (unwind-protect
-	 (if (out-pipe-p)
+	 (if (or (out-pipe-p) (not use-pager))
 	     ;; (! "/usr/bin/man -P cat " (or crap ""))
 	     (pipe (s+ "/usr/bin/man " (or crap "")) "cat")
 	     (progn
