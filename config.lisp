@@ -11,8 +11,12 @@ Provide a way the user can customize the configuration.
 Provide a way other programs can customize the configuration.
 
 This is basically just an alternative to putting code in your ‘.asd’ file, in
-an effort to keep ‘asd’ files declarative without side-effects. The way to use
-this is:
+an effort to keep ‘asd’ files declarative without side-effects.
+
+@@@ Or maybe yet again I am not knowing about some ASDF feature that already
+@@@ does this, and this whole thing is completely useless!!
+
+The way to use this is:
 
 1. Make 2 files in your project:
      <system-name>-config.asd
@@ -32,6 +36,12 @@ this is:
 2. In the ‘.asd’ for your system, use whatever ‘*features*’ or other things
    that were set up. Your code can also consult the settings in
    ‘<x>-config:*config*’.
+
+   <x>-config:*configuration*
+     is a list of configuration-variable objects that have been defined.
+
+   <x>-config:*config*
+     is a plist of values after configuration in done.
 
 3. Load or compile, say with ‘asdf:load-system’, or ‘ql:quickload’ as normal.
 
@@ -73,7 +83,6 @@ tweak about the build process.
    ;; normal stuff
    #:defconfig
    #:defconfiguration
-   #:configure
    #:configure
    ))
 (in-package :config)
@@ -207,28 +216,35 @@ your software."))
     `(progn
        (when (not (boundp ',conf))
 	 (defvar ,conf nil
-	   ,(format nil "Configuration for ~a" (package-name *package*))))
+	   ,(format nil "Configuration for ~a" (package-name *package*)))
+	 ;; (export '(#:*configuration*))
+	 )
        (push (make-instance ',(variable-class-name type)
 	      :name ',name
 	      :documentation ,documentation
 	      :value-function ,func)
 	     ,conf))))
 
+;; @@@ Shouldn't there be a way to set the default value, instead of just
+;; the value function?
 (defmacro defconfiguration (vars)
   "Define the set of configuration variables."
   (let ((conf (intern "*CONFIGURATION*" *package*)))
-    `(defparameter ,conf
-       (list
-	,@(loop :for v :in vars
-	     :collect `(make-instance
-			',(variable-class-name (second v))
-			:name ',(first v)
-			:documentation ,(third v)
-			:value-function ,(when (fourth v)
-					   `(lambda (var)
-					      (declare (ignorable var))
-					      ,(fourth v))))))
-       ,(format nil "Configuration variables for ~s" *package*))))
+    `(progn
+       (defparameter ,conf
+	 (list
+	  ,@(loop :for v :in vars
+	       :collect `(make-instance
+			  ',(variable-class-name (second v))
+			  :name ',(first v)
+			  :documentation ,(third v)
+			  :value-function ,(when (fourth v)
+					     `(lambda (var)
+						(declare (ignorable var))
+						,(fourth v))))))
+	 ,(format nil "Configuration variables for ~s" *package*))
+       ;; (export '(#:*configuration*))
+       )))
 
 ;; @@@ The verbose here should be dynamic
 (defmacro configure (&key (package *package*) verbose)
@@ -238,6 +254,7 @@ your software."))
     `(progn
        (defvar ,(intern "*CONFIG*" package) nil
 	 ,(format nil "Configuration for ~a" (package-name *package*)))
+       ;; (export '(#:*config*))
        (when ,verbose
 	 (format t ";; Configuring ~a…" *package*) (finish-output))
        (loop :with value
