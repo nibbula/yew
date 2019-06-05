@@ -272,12 +272,13 @@ terminal."
 	  (eql func 'complete-filename-command)))))
 |#
 
-(defun complete (e &key function (start-from 0))
+(defun complete (e &key function (start-from 0) no-beep)
   "Call the completion function and display the results, among other things."
   (with-slots (completion-func buf) e
     (setf function (or function completion-func))
     (when (not function)
-      (beep e "No completion active.")
+      (when (not no-beep)
+	(beep e "No completion active."))
       (return-from complete))
     (use-first-context (e)
       (assert (and (numberp start-from) (<= start-from (first-point e))))
@@ -304,37 +305,15 @@ terminal."
 	;; If the completion succeeded we need a replace-pos!
 	(assert (or (not comp) (numberp replace-pos)))
 	(if comp
-	    #|
-	    (let* ((same (- saved-point replace-pos))) ; same part ;
-	    ;; f o o b a r		;
-	    ;;       ^    ^		;
-	    ;;       |    |___ saved-point ;
-	    ;;       |			;
-	    ;;       +-- replace-pos	;
-	    ;;				;
-	    ;; f o o b a r n a c l e	;
-
-	    ;; back up			;
-	    (move-over e (- same))
-
-	    ;; delete the different part ;
-	    (delete-region e replace-pos saved-point)
-	    (setf point replace-pos)
-	    (insert-string e comp)
-
-	    ;; write out the new part	;
-	    (editor-write-string e comp)
-	    (incf point (length comp))
-	    (update-for-insert e))
-	    |#
-	  (progn
-	    ;; delete the different part
-	    (delete-region e (+ start-from replace-pos) saved-point)
-	    (setf (first-point e) (+ start-from replace-pos))
-	    (insert e comp)
-	    (incf (first-point e) (length comp)))
-	  (progn
-	    (setf (first-point e) saved-point) ; go back to where we were
-	    (beep e "No completions")))))))    ; ring the bell
+	    (progn
+	      ;; delete the different part
+	      (delete-region e (+ start-from replace-pos) saved-point)
+	      (setf (first-point e) (+ start-from replace-pos))
+	      (insert e comp)
+	      (incf (first-point e) (length comp)))
+	    (progn
+	      (setf (first-point e) saved-point) ; Go back to where we were
+	      (when (not no-beep)
+		(beep e "No completions")))))))) ; Ring the bell
 
 ;; EOF
