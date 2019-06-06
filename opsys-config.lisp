@@ -26,6 +26,6 @@
 ;; sprawling monorepo, where the "config" package currently resides,
 ;; FAKE IT:
 
-(defvar *config* '(:optimization-settings '((debug 2))))
+(defvar *config* '(:optimization-settings ((debug 2))))
 
 ;; EOF
