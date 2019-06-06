@@ -17,7 +17,6 @@
 		 :trivial-gray-streams
 		 (:feature :dlib :dlib)
 		 (:feature (:not :dlib) :fake-dlib))
-    :around-compile "opsys-config:do-optimization-settings"
     :components
     ((:module "base"
       :pathname ""
