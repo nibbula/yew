@@ -34,14 +34,15 @@
 ;;
 ;;  - Put +plus-earmuffs+ on constants. Put *star-earmuffs* on variables.
 
+(in-package :opsys)
+
+(declaim #.`(optimize ,.(getf opsys-config::*config* :optimization-settings)))
+
 ;; (declaim (optimize (speed 3)) (optimize (safety 0))
 ;;    	 (optimize (debug 3)) (optimize (space 0))
 ;;     	 (optimize (compilation-speed 0)))
-
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
-		   (compilation-speed 0)))
-
-(in-package :opsys)
+;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+;; 		   (compilation-speed 0)))
 
 ;; General outline for adding something with defos*
 ;;   - Add a definition with defos* in this file.

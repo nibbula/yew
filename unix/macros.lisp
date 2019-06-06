@@ -4,6 +4,8 @@
 
 (in-package :opsys-unix)
 
+(declaim #.`(optimize ,.(getf opsys-config::*config* :optimization-settings)))
+
 ;; Macros for convenient defining of platform specific things.
 
 (eval-when (:compile-toplevel :load-toplevel :execute)

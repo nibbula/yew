@@ -4,6 +4,8 @@
 
 (in-package :opsys)
 
+(declaim #.`(optimize ,.(getf opsys-config::*config* :optimization-settings)))
+
 ;; Hello and welcome to yet another re-implementation of that terrible Common
 ;; Lisp "anti-pattern", the fd-stream, otherwise known as normal Lisp streams
 ;; that give you very slightly more access to the underlying operating system

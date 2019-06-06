@@ -4,6 +4,8 @@
 
 (in-package :opsys-unix)
 
+(declaim #.`(optimize ,.(getf opsys-config::*config* :optimization-settings)))
+
 #-(or darwin sunos linux freebsd openbsd)
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (error "Your platform is not really supported yet."))

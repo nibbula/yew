@@ -4,6 +4,8 @@
 
 (in-package :opsys-unix)
 
+(declaim #.`(optimize ,.(getf opsys-config::*config* :optimization-settings)))
+
 ;; C API types
 
 (eval-when (:compile-toplevel :load-toplevel :execute)

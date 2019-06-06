@@ -10,6 +10,8 @@
 
 (in-package :opsys-base)
 
+(declaim #.`(optimize ,.(getf opsys-config::*config* :optimization-settings)))
+
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defconstant +buffer-size+ #.(* 8 1024) "Buffer sizes in bytes.")
   (defconstant +input-buffer-size+ +buffer-size+

@@ -4,6 +4,8 @@
 
 (in-package :opsys-unix)
 
+(declaim #.`(optimize ,.(getf opsys-config::*config* :optimization-settings)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; User database
 ;; 

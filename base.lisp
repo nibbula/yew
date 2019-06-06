@@ -151,6 +151,8 @@
    ))
 (in-package :opsys-base)
 
+(declaim #.`(optimize ,.(getf opsys-config::*config* :optimization-settings)))
+
 ;; Stuff to assist in feature frobbing and portability.
 
 (defmacro config-feature (f)

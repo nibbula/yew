@@ -10,12 +10,14 @@
     :licence            "GPLv3"
     :source-control	:git
     :long-description   "The cessation of the repetition of ‘Never Again’."
-    :depends-on (:cffi 
+    :defsystem-depends-on (:opsys-config)
+    :depends-on (:cffi :opsys-config
 		 (:feature (:and (:or :windows :win32) (:not :unix) (:not ccl))
 			   :cffi-libffi)
 		 :trivial-gray-streams
 		 (:feature :dlib :dlib)
 		 (:feature (:not :dlib) :fake-dlib))
+    :around-compile "opsys-config:do-optimization-settings"
     :components
     ((:module "base"
       :pathname ""

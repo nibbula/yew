@@ -47,6 +47,7 @@
   ()
   (:documentation "Your useful friend on the other end."))
 
+#|
 (defun stream-handle-direction (handle)
   "Return a direction for an stream handle, or NIL if there isn't one."
   (let ((flags (get-file-descriptor-flags handle)))
@@ -54,6 +55,7 @@
       ((member '+O_RDONLY+ flags) :input)
       ((member '+O_WRONLY+ flags) :output)
       ((member '+O_RDWR+   flags) :io))))
+|#
 
 (defun %open (filename direction &key create truncate)
   "Open a FILENAME in DIRECTION, which is one of the usual: :input :output :io.

@@ -4,6 +4,8 @@
 
 (in-package :opsys-unix)
 
+(declaim #.`(optimize ,.(getf opsys-config::*config* :optimization-settings)))
+
 ;; This should have the union of all Unix-like OS's slots, so that Unix
 ;; portable code can check for specific slots with impunity.
 (defstruct file-status

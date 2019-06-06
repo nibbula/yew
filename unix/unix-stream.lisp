@@ -4,6 +4,8 @@
 
 (in-package :opsys-unix)
 
+(declaim #.`(optimize ,.(getf opsys-config::*config* :optimization-settings)))
+
 (defclass unix-stream (os-stream)
   ()
   (:documentation "A generic file descriptor stream."))

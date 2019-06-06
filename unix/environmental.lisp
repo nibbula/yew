@@ -4,6 +4,8 @@
 
 (in-package :opsys-unix)
 
+(declaim #.`(optimize ,.(getf opsys-config::*config* :optimization-settings)))
+
 ;; We could provide a cached value to make this faster, and update it
 ;; when the setenv below is used, but it would become inaccurate if
 ;; other code modifies the environment.

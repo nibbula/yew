@@ -4,6 +4,8 @@
 
 (in-package :opsys-base)
 
+(declaim #.`(optimize ,.(getf opsys-config::*config* :optimization-settings)))
+
 ;; Returned by read-directory.
 (defstruct dir-entry
   "Filesystem directory entry, like unix dirent."
