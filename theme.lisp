@@ -547,4 +547,17 @@ Something like the default setting of typical GNU tools."))))
        ))
     tt))
 
+(defun default-theme-16-color ()
+  "Default theme for 16-color"
+  (let ((theme (default-theme)))
+    (set-theme-items theme
+      `((:file :type :executable     :style) (:green :bold)
+	(:command :system-command    :style) (:cyan)
+	(:command :external-command  :style) (:cyan :bold)
+	(:command :builtin-command   :style) (:magenta)
+	(:command :shell-command     :style) (:magenta)
+	(:command :alias	     :style) (:magenta :bold)))))
+
+;; @@@ We should probably make a default monochrome theme.
+
 ;; EOF
