@@ -273,13 +273,14 @@ terminal."
 |#
 
 (defun complete (e &key function (start-from 0) no-beep)
-  "Call the completion function and display the results, among other things."
+  "Call the completion function and display the results, among other things.
+Return the completion result, or NIL if there wan't one."
   (with-slots (completion-func buf) e
     (setf function (or function completion-func))
     (when (not function)
       (when (not no-beep)
 	(beep e "No completion active."))
-      (return-from complete))
+      (return-from complete nil))
     (use-first-context (e)
       (assert (and (numberp start-from) (<= start-from (first-point e))))
       (let* ((saved-point (first-point e))
@@ -314,6 +315,7 @@ terminal."
 	    (progn
 	      (setf (first-point e) saved-point) ; Go back to where we were
 	      (when (not no-beep)
-		(beep e "No completions")))))))) ; Ring the bell
+		(beep e "No completions")))) ; Ring the bell
+	result))))
 
 ;; EOF
