@@ -671,9 +671,9 @@ foreach (object groupMember in (IEnumerable)members)
 
 (defun get-user-info (&key name id)
   (declare (ignore name id))
-  (make-user-info :name "dan"
-		  :id 1024
-		  :full-name "Nibby Nebbulous"
+  (make-user-info :name "you"
+		  :id 2001
+		  :full-name "Y. Random Hacker"
 		  :home-directory "e:\\"
 		  :shell "lish"
 		  :primary-group-id 1
@@ -682,7 +682,7 @@ foreach (object groupMember in (IEnumerable)members)
 
 (defun user-name (&optional id)
   (declare (ignore id))
-  "dan")
+  "you")
 
 (defun user-home (&optional (user (user-name)))
   (declare (ignore user))
@@ -696,7 +696,7 @@ foreach (object groupMember in (IEnumerable)members)
 (defun user-full-name (&optional id)
   "Return the full name of user with ID, which defaults to the current user."
   (declare (ignore id))
-  "Nibby Nebbulous")
+  "Y. Random Hacker")
 
 (defun user-name-char-p (c)
   "Return true if C is a valid character in a user name."
@@ -734,7 +734,7 @@ actually exists."
 
 (defun users-logged-in ()
   "Return a list of names of logged in users."
-  "dan")
+  "you")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Files
