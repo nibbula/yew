@@ -26,6 +26,9 @@
    ;; #:with-immediate
    #:set-bracketed-paste-mode
    #:read-bracketed-paste
+   #:*selection-codes*
+   #:selection
+   #:set-selection
    #:foreground-color
    #:background-color
    #:set-foreground-color
@@ -33,6 +36,8 @@
    #:reset-color-pallet
    ))
 (in-package :terminal-ansi)
+
+(declaim #.`(optimize ,.(getf terminal-config::*config* :optimization-settings)))
 
 ;; To be portable we have to restrict ourselves to calls to the system
 ;; independent part of OPSYS. So we shouldn't use anything in TERMIO or UNIX.
@@ -46,6 +51,8 @@
   "String terminator. Death to strings.")
 (define-constant +osc+ (s+ #\escape #\])
   "Operating System Command. C'est vrai? o_O")
+(define-constant +dcs+ (s+ #\escape #\p)
+  "Device Control String")
 
 (defparameter *attributes*
   '((:normal	       . 22)		; not bold or faint
@@ -914,6 +921,50 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-color ((tty terminal-ansi-stream) fg bg)
   (%terminal-color tty fg bg))
 
+(defun decode-hex-string (string)
+  "Decode a string encoded in hex bytes."
+  (with-output-to-string (stream)
+    (loop :with x
+       :for i :from 0 :below (length string) :by 2
+       :do
+       (setf x (parse-integer (subseq string i (+ i 2))
+			      :radix 16 :junk-allowed t))
+       (if x
+	   (princ (code-char x) stream)
+	   (loop-finish)))))
+
+(defmethod terminal-colors ((tty terminal-ansi-stream))
+  #|
+  (labels ((hex-string-to-integer (str)
+	     (when str
+	       (ignore-errors
+		 (parse-integer (decode-hex-string str)))))
+	   (try-string (str)
+	     (hex-string-to-integer
+	      (query-string (s+ "+q" str +st+) :lead-in +dcs+ :offset 5
+			    :tty (terminal-file-descriptor *terminal*)))))
+    ;; esc p 1 + r <Pt> ST
+    ;; esc p 0 + r <Pt> ST  -- for invalid requests
+    ;; "Co" or "colors"
+    (let (r)
+  |#
+      (cond
+	;; ((setf r (or (try-string "RGB") (try-string "colors")
+	;; 	     (try-string "Co")))
+	;;  r)
+	((query-string (s+ "4;256;?" #\bel) :lead-in +osc+ :ending 1)
+	 ;; Has at least 256 colors:
+	 256)
+	((query-string (s+ "4;88;?" #\bel) :lead-in +osc+ :ending 1)
+	 ;; Has at least 88 colors:
+	 88)
+	((ppcre:scan "(\\A|\\z|;)22(\\A|\\z|;)"
+		     (query-string "0c" :ending 1
+				   :tty (terminal-file-descriptor tty)))
+	 ;; Has at least 16 colors:
+	 16)
+	(t 0)))
+
 ;; 256 color? ^[[ 38;5;color <-fg 48;5;color <- bg
 ;; set color tab = ^[] Ps ; Pt BEL
 ;;;  4; color-number ; #rrggbb ala XParseColor
@@ -1441,11 +1492,68 @@ bracketed read.")
 		     "Bracketed paste timed out.")
 	     (setf done t)))))))
 
+(defparameter *selection-codes*
+  #((:clipboard    . #\c)
+    (:primary      . #\p)
+    (:select       . #\s)
+    (:cut-buffer-0 . #\0)
+    (:cut-buffer-1 . #\1)
+    (:cut-buffer-2 . #\2)
+    (:cut-buffer-3 . #\3)
+    (:cut-buffer-4 . #\4)
+    (:cut-buffer-5 . #\5)
+    (:cut-buffer-6 . #\6)
+    (:cut-buffer-7 . #\7))
+  "Selection type codes.")
+
+(defun selection-type-code (type)
+  "Return the terminal selection type code given a the keyword TYPE. If TYPE is
+already a character or string just return it."
+  (etypecase type
+    (string type)
+    (character (cdr (find type *selection-codes* :key #'cdr)))
+    (symbol (cdr (find type *selection-codes* :key #'car)))))
+
+;; the configurable primary/clipboard selection and cut buffer 0
+(defun selection (&key (type "s0") (tty *terminal*))
+  "Return the selection of TYPE, which defaults to the :select or :cut-buffer-0.
+Otherwise TYPE should be one of :clipboard :primary :select or :cut-buffer-<N>, 
+wheren <N> is a number 1-7."
+  (let* ((type-code (selection-type-code type))
+	 result)
+    (when (not type-code)
+      (error "Unknown selection type ~s" type))
+    (setf result (query-string (s+ "52;" type-code ";?" #\bel)
+			       :lead-in +osc+ :ending 1
+			       :tty (terminal-file-descriptor tty)))
+    (when result
+      (cl-base64:base64-string-to-string
+       (remove-prefix result (s+ "2;" type-code ";"))))))
+
+(defun set-selection (selection &key (type "s0"))
+  "Set the selection to the string SELECTION. TYPE should be one of :clipboard,
+:primary, :select, or :cut-buffer-<N>, wheren <N> is a number 1-7.
+TYPE  defaults to :select or :cut-buffer-0."
+  (tt-format "~a52;~a;~a~a" +osc+
+	     (selection-type-code type)
+	     (cl-base64:string-to-base64-string selection)
+	     +st+)
+  selection)
+
+(defsetf selection (&rest keys &key type) (val)
+  "Set the selection of TYPE, which defaults to the :select or :cut-buffer-0.
+Otherwise TYPE should be one of :clipboard :primary :select or :cut-buffer-<N>, 
+wheren <N> is a number 1-7."
+  (declare (ignorable type))
+  `(apply #'set-selection (list ,val ,@keys)))
+
 (defun set-utf8-title-mode (tty state)
   (terminal-raw-format tty "~c[>2;3~c" #\escape (if state #\t #\T))
   (terminal-finish-output tty))
 
 (defun set-title (tty title &optional (which :window))
+  "Set the window title of TTY to TITLE. WHICH should be one of :window, :icon,
+or :both. WHICH defaults to :window."
   (let ((param (case which
 		 (:window 2)
 		 (:icon 1)
@@ -1455,6 +1563,8 @@ bracketed read.")
     (terminal-finish-output tty)))
 
 (defun get-title (tty &optional (which :window))
+  "Return the window title of TTY. WHICH should be one of :window, :icon,
+or :both. WHICH defaults to :window."
   (set-utf8-title-mode tty t)
   (let ((param (case which
 		 (:icon "20")
@@ -1465,6 +1575,7 @@ bracketed read.")
 ;; If this is mysteriously not working, you might have to make sure to enable
 ;; it in your emulator. Like in xterm: "Allow Window Ops".
 (defmethod terminal-title ((tty terminal-ansi))
+  "Return the window title."
   (get-title tty))
 
 (defmethod (setf terminal-title) (title (tty terminal-ansi))

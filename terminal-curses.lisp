@@ -16,6 +16,8 @@
    ))
 (in-package :terminal-curses)
 
+(declaim #.`(optimize ,.(getf terminal-config::*config* :optimization-settings)))
+
 (defparameter *acs-table* nil
   "Hash table of unicode character to ACS character.")
 
@@ -485,6 +487,13 @@ i.e. the terminal is 'line buffered'."
 	(bg-num (color-number bg)))
     (when (and fg-num bg-num)
       (color-set (color-index fg-num bg-num) (cffi:null-pointer)))))
+
+(defmethod terminal-colors ((tty terminal-curses))
+  (declare (ignore tty))
+  (if (not (has-colors))
+      0
+      ;; @@@ Is this really right?
+      *colors*))
 
 ;; 256 color? ^[[ 38;5;color <-fg 48;5;color <- bg
 ;; set color tab = ^[] Ps ; Pt BEL

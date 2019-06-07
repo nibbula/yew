@@ -11,6 +11,8 @@
    ))
 (in-package :terminal-dumb)
 
+(declaim #.`(optimize ,.(getf terminal-config::*config* :optimization-settings)))
+
 (defclass terminal-dumb-stream-mixin ()
   ((fake-column
    :initarg :fake-column :accessor terminal-dumb-stream-fake-column
@@ -169,6 +171,11 @@ require terminal driver support."))
 
 (defmethod terminal-color ((tty terminal-dumb) fg bg)
   (declare (ignore tty fg bg)))
+
+(defmethod terminal-colors ((tty terminal-dumb))
+  (declare (ignore tty))
+  ;; We don't supporty any colors.
+  0)
 
 (defmethod terminal-beep ((tty terminal-dumb))
   (declare (ignore tty)))

@@ -45,6 +45,7 @@
    #:tt-write-char		  #:terminal-write-char
    #:tt-write-char-at
    #:tt-write-span		  #:terminal-write-span
+   #:tt-write-span-at
    #:tt-move-to			  #:terminal-move-to
    #:tt-move-to-col		  #:terminal-move-to-col
    #:tt-beginning-of-line	  #:terminal-beginning-of-line
@@ -70,6 +71,7 @@
    #:tt-bold			  #:terminal-bold
    #:tt-inverse			  #:terminal-inverse
    #:tt-color			  #:terminal-color
+   #:tt-colors			  #:terminal-colors
    #:tt-beep			  #:terminal-beep
    #:tt-set-attributes            #:terminal-set-attributes
    #:tt-set-scrolling-region	  #:terminal-set-scrolling-region
@@ -219,6 +221,7 @@ Movement functions are usual row first then column.
   tt-color
   tt-set-attributes
   tt-has-attribute
+  tt-colors
 
 ### Terminal state functions
 
@@ -252,7 +255,7 @@ fairly easy to sub-class a type.
 "))
 (in-package :terminal)
 
-(declaim (optimize (debug 3)))
+(declaim #.`(optimize ,.(getf terminal-config::*config* :optimization-settings)))
 
 (defvar *standard-output-has-terminal-attributes* nil
   "True if we want programs to treat *standard-output* like it can display
@@ -586,6 +589,10 @@ handled by fatchar:span-to-fat-string."
 handled by fatchar:span-to-fat-string."
   `(terminal-write-span *terminal* ,span))
 
+(defun tt-write-span-at (row column span)
+  (tt-move-to row column)
+  (tt-write-span span))
+
 (deftt move-to-col (column) "Move the cursor to COLUMN.")
 (deftt beginning-of-line () "Move the cursor to the beginning of the line.")
 (deftt delete-char (n) "Delete N characters in front of the cursor.")
@@ -619,6 +626,9 @@ scroll the screen up.")
   "Turn the inverse attribute on or off, depending on the boolean STATE.")
 (deftt color (fg bg)
   "Set the text foreground color to FG, and the background attribute to BG.")
+(deftt colors ()
+  "Return the number of colors the terminal supports. Return 0 if it doesn't
+support color, or NIL if it can't be determined.")
 (deftt beep ()
   "Make the terminal emit a sound, or perhaps flash the screen.")
 (deftt set-attributes (attributes)

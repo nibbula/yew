@@ -2,7 +2,9 @@
 ;; terminal-ms.lisp - Microsoft console as a terminal.
 ;;
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+(declaim #.`(optimize ,.(getf terminal-config::*config* :optimization-settings)))
+
+;;(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 ;;(declaim (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
 
 (defpackage :terminal-ms
@@ -616,6 +618,11 @@
 	 (set-console-attribute fd (logior our-bg bold-mix)))
 	(t
 	 (set-console-attribute fd (getf *fg-colors* :white)))))))
+
+(defmethod terminal-colors ((tty terminal-ms))
+  (declare (ignore tty))
+  ;; @@@ There might be more colors starting in Windows 10?
+  16)
 
 (defmethod terminal-beep ((tty terminal-ms))
   (terminal-write-char tty #\bel)) ; Not #\bell!!

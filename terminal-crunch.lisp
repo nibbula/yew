@@ -30,8 +30,12 @@ for various operations through the OUTPUT-COST methods.
    ))
 (in-package :terminal-crunch)
 
-(declaim
- (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+(declaim #.`(optimize ,.(getf terminal-config::*config* :optimization-settings)))
+
+(declaim (optimize (safety 3)))
+
+;; (declaim
+;;  (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 ;; (declaim
 ;;  (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
 
@@ -1372,6 +1376,10 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-color ((tty terminal-crunch-stream) fg bg)
   (setf (fg tty) fg (bg tty) bg))
+
+(defmethod terminal-colors ((tty terminal-crunch-stream))
+  ;; Just call the wrapped one.
+  (terminal-colors (terminal-wrapped-terminal tty)))
 
 (defmethod terminal-beep ((tty terminal-crunch-stream))
   (incf (screen-beep-count (new-screen tty))))
