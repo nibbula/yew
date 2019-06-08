@@ -61,6 +61,12 @@
 ;; specific device, e.g. and ICC color profile or something. Although, the color
 ;; model can affect the color space we can represent.
 ;;
+;; We can consider the color model as being the color of light, not the
+;; properties of a material which affects what happens to the light after it
+;; hits the material, which probably are best represented by statisical
+;; functions that approximate light modification. For example, what color is
+;; your opalescent ink with sparkles in it?
+;;
 ;; Note also that a color model isn't a color format, since it only specifies
 ;; what information we store, not exactly how, for example, a pixel should
 ;; be layed out in bits.
@@ -69,7 +75,8 @@
 ;; like defstruct with :type vector?
 
 ;; We should probably support:
-;; gray, rgb, rgba, hsv, hsl, cmyk, and perhaps yuv
+;; gray, RGB, RGBA, HSV, HSL, CMYK, and perhaps YUV, and YCbCr
+;; I know there's many other color models.
 
 (defvar *default-color-model* :rgb)
 

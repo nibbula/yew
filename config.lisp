@@ -14,7 +14,9 @@ This is basically just an alternative to putting code in your ‘.asd’ file, i
 an effort to keep ‘asd’ files declarative without side-effects.
 
 @@@ Or maybe yet again I am not knowing about some ASDF feature that already
-@@@ does this, and this whole thing is completely useless!!
+@@@ does this, and this whole thing is completely useless.
+@@@ I guess you can use :around-compile in the ‘.asd’ to do this.
+@@@ I'm not sure what's worse.
 
 The way to use this is:
 
@@ -25,7 +27,7 @@ The way to use this is:
        your <system-name>-config.lisp.
 
      <system-name>-config.lisp
- 
+
        This should have a ‘defconfiguration’ form, or some ‘defconfig’ forms
        to define the configuration variables. Then it should have a call to
        ‘configure’ which will actually set the values.
@@ -46,23 +48,31 @@ The way to use this is:
 3. Load or compile, say with ‘asdf:load-system’, or ‘ql:quickload’ as normal.
 
 4. If someone wants to do custom configuration to your package, they can
-   either:
+   set individual values:
 
-   (asdf:load-system :<x>-config)
+     (config :<package> :option value ...)
 
-   ;; To set the whole configuration:
-   (setf <x>-conifg:*config* '(:foo \"bar\" :bar 2.3 :optimize :fast))
+   Or set the whole configuration:
 
-   ;; To set a specific variable:
-   (setf (getf <x>-conifg:*config* :use-backend) :smolder-db)
+     (config :<package> '(:option1 value1 :option2 value2 ...))
+
+   These are equivalent to:
+     (asdf:load-system :<x>-config)
+     (setf (getf <x>-conifg:*config* :option) value)
+
+     (asdf:load-system :<x>-config)
+     (setf <x>-conifg:*config* '(:option1 value1 :option2 value2))
 
    This is also how a program can configure your package.
+
    OR [@@@ not done yet]
 
    (config :<package>)
 
    This will do some stupid thing where it interactively prompts you
-   for configuation variables to change. Try to avoid this.
+   for configuation variables to change. Try to avoid this. In other words,
+   try to make everything work right automatically, instead of having a bunch
+   of confusing build options.
 
 In general, please don't conflate this with user preferences or options, which
 should be handled in an appropriate way after your software is compiled and
