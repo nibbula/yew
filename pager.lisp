@@ -1567,32 +1567,34 @@ byte-pos."
   (with-slots (left prefix-arg) pager
     (setf left (max 0 (- left (or prefix-arg 10))))))
 
-(defmethod scroll-up ((pager text-pager))
-  "Scroll the pager back some lines."
-  (with-slots (line) pager
-    (setf line (max 0 (- line 5)))))
+(defgeneric scroll-up (pager)
+  (:documentation "Scroll the pager back some lines.")
+  (:method ((pager text-pager))
+    (with-slots (line) pager
+      (setf line (max 0 (- line 5)))))
+  (:method ((pager binary-pager))
+    (with-slots (line prefix-arg) pager
+      (setf prefix-arg 5)
+      (previous pager))))
 
-(defmethod scroll-up ((pager binary-pager))
-  "Scroll the pager back some lines."
-  (with-slots (line prefix-arg) pager
-    (setf prefix-arg 5)
-    (previous pager)))
-
-(defmethod scroll-down ((pager text-pager))
-  "Scroll the pager forward some lines."
-  (with-slots (line prefix-arg) pager
-    (setf prefix-arg 5)
-    (next pager)))
-
-(defmethod scroll-down ((pager binary-pager))
-  "Scroll the pager forward some lines."
-  (with-slots (prefix-arg) pager
-    (setf prefix-arg 5)
-    (next pager)))
+(defgeneric scroll-down (pager)
+  (:documentation "Scroll the pager forward some lines.")
+  (:method ((pager text-pager))
+    (with-slots (line prefix-arg) pager
+      (setf prefix-arg 5)
+      (next pager)))
+  (:method ((pager binary-pager))
+    (with-slots (prefix-arg) pager
+      (setf prefix-arg 5)
+      (next pager))))
 
 (defun scroll-beginning (pager)
   "Scroll the pager window to the leftmost edge."
   (setf (pager-left pager) 0))
+
+(defgeneric scroll-end (pager)
+  (:documentation
+   "Scroll the pager window to the rightmost edge of the content."))
 
 ;; We don't bother counting the max column during display, since it's possibly
 ;; expensive and unnecessary. We just count it here when needed, which is
