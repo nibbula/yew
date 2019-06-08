@@ -67,6 +67,7 @@ a TERM-INATOR.
    #:call-command
    #:start-inator
    #:finish-inator
+   #:resize
    #:*default-inator-keymap*
    #:*default-inator-escape-keymap*
    #:read-key-sequence
