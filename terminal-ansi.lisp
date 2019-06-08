@@ -146,7 +146,13 @@ require terminal driver support."))
     :documentation "Previous signal handler if we set it.")
    (mouse-down
     :initarg :mouse-down :accessor mouse-down :initform nil :type boolean
-    :documentation "True if we think a mouse button is down."))
+    :documentation "True if we think a mouse button is down.")
+   (cached-color-count
+    :initarg :cached-color-count :accessor cached-color-count
+    :initform nil :type (or null integer)
+    :documentation
+    "Cached count of colors the terminal supports. NIL if we haven't guessed
+it yet."))
   (:default-initargs
     :file-descriptor		nil
     :device-name		*default-device-name*
@@ -933,7 +939,51 @@ i.e. the terminal is 'line buffered'."
 	   (princ (code-char x) stream)
 	   (loop-finish)))))
 
+(defun guess-full-color-p (&optional (tty *terminal*))
+  "Try to guess whether TTY supports full 24-bit RGB color."
+  (destructuring-bind (type firmware rom)
+      (query-parameters ">0c" :tty tty)
+    (declare (ignore rom))
+    (cond
+      ((= type 19)
+       (cond
+	 ((>= firmware 330)		; probably XTerm
+	  t)))
+      ((= type 1)
+       (cond
+	 ((>= firmware 3600)		; Probably VTE
+	  t)))
+      ((= type 0)
+       (cond
+	 ((>= firmware 115)		; Probaby Konsole
+	  ;; @@@ probably supported in versions before this
+	  t)))
+      ((= type 24)
+       (cond
+	 ((>= firmware 279)		; Probably mlterm
+	  ;; @@@ probably supported in versions before this
+	  t)))
+      ((= type 85)
+       (cond
+	 ((<= firmware 95)		; Probabaly RXVT
+	  nil)))
+       (t nil))))
+
 (defmethod terminal-colors ((tty terminal-ansi-stream))
+  ;; For a stream, we don't have a back channel, so we can't ask the terminal.
+  ;; We could try (string-equal (nos:env "COLORTERM") "truecolor")
+  ;; or a bunch of other bullcrap from the environment, but for now,
+  ;; just try to respect FORCE_COLOR turning it off,
+  ;; and assume we do have full color.
+  (cond
+    ((let ((fc (nos:env "FORCE_COLOR")))
+       (or (equal fc "0")
+	   (string-equal fc "false")))
+     0)
+    (t ;; Assume the most, because so what.
+     (* 256 256 256))))
+
+(defmethod terminal-colors ((tty terminal-ansi))
   #|
   (labels ((hex-string-to-integer (str)
 	     (when str
@@ -948,22 +998,26 @@ i.e. the terminal is 'line buffered'."
     ;; "Co" or "colors"
     (let (r)
   |#
-      (cond
-	;; ((setf r (or (try-string "RGB") (try-string "colors")
-	;; 	     (try-string "Co")))
-	;;  r)
-	((query-string (s+ "4;256;?" #\bel) :lead-in +osc+ :ending 1)
-	 ;; Has at least 256 colors:
-	 256)
-	((query-string (s+ "4;88;?" #\bel) :lead-in +osc+ :ending 1)
-	 ;; Has at least 88 colors:
-	 88)
-	((ppcre:scan "(\\A|\\z|;)22(\\A|\\z|;)"
-		     (query-string "0c" :ending 1
-				   :tty (terminal-file-descriptor tty)))
-	 ;; Has at least 16 colors:
-	 16)
-	(t 0)))
+  (or (cached-color-count tty)
+      (setf (cached-color-count tty)
+	    (cond
+	      ;; ((setf r (or (try-string "RGB") (try-string "colors")
+	      ;; 	     (try-string "Co")))
+	      ;;  r)
+	      ((guess-full-color-p tty)
+	       (* 256 256 256))
+	      ((query-string (s+ "4;256;?" #\bel) :lead-in +osc+ :ending 1)
+	       ;; Has at least 256 colors:
+	       256)
+	      ((query-string (s+ "4;88;?" #\bel) :lead-in +osc+ :ending 1)
+	       ;; Has at least 88 colors:
+	       88)
+	      ((ppcre:scan "(\\A|\\z|;)22(\\A|\\z|;)"
+			   (query-string "0c" :ending 1
+					 :tty (terminal-file-descriptor tty)))
+	       ;; Has at least 16 colors:
+	       16)
+	      (t 0)))))
 
 ;; 256 color? ^[[ 38;5;color <-fg 48;5;color <- bg
 ;; set color tab = ^[] Ps ; Pt BEL
@@ -1320,8 +1374,9 @@ and add the characters the typeahead."
     (64 "VT520")
     (65 "VT525")))
 
-(defun query-parameters (s &key (offset 3))
-  (let ((response (terminal-query (s+ +csi+ s))))
+(defun query-parameters (s &key (offset 3) (tty *terminal*))
+  (let ((response (terminal-query (s+ +csi+ s)
+				  :tty (terminal-file-descriptor tty))))
     (if (zerop (length response))
 	'()
 	(mapcar (_ (ignore-errors (parse-integer _)))
@@ -1591,6 +1646,66 @@ XTerm or something."
 (defmethod terminal-has-autowrap-delay ((tty terminal-ansi))
   "Return true if the terminal delays automatic wrapping at the end of a line."
   t)
+
+;; @@@ I think this is a misfeature. Should I even include it?
+(defun text-link (text to &optional (params ""))
+  "Make a “hyperlink” linking TEXT to TO. TO should probably be a URI.
+According to iTerm2, params can be \"id=something\", to make adjacent
+links highlight differently?"
+  (tt-format "~a8;~a;~a~c~a~c]8;;~c"
+	     +osc+ params to #\bel text #\esc #\bel))
+
+;; Konsole and maybe VTE cursor shape ? : @@@ need to verify
+;;    #\esc #\[ p #\q
+;;              0  reset to default
+;;              1  block blink
+;;              2  block no-blink
+;;              3  underline blink
+;;              4  underline no-blink
+;;              5  ibeam blink
+;;              6  ibeam no-blink
+
+;; @@@ These probably shouldn't be in here as they're specific to iTerm2. But I
+;; don't care enough to make a terminal-iterm2 currently.
+
+#|
+(defun set-cursor-shape (shape)
+  (setf shape (etypecase shape
+		(integer
+		 (when (not (<= 0 shape 2))
+		   (error "Unknown cursor shape number ~d." shape)))
+		(symbol
+		 (case shape
+		   (:block 0)
+		   (:vertical-bar 1)
+		   (:underline 2)))))
+  (tt-format "~a1337;CursorShape=~d~c" +osc+ shape #\bel))
+
+(defun notification-message (message)
+  "Display some kind of out-of-band notification."
+  (tt-format "~a9;~a~c" +osc+ message #\bel))
+
+(defun change-profile (profile-name)
+  "Change the terminal's profile."
+  (tt-format "~a1337;SetProfile=~s~c" +osc+ profile-name #\bel))
+
+(defun copy-to-clipboard (text &key clipboard-name)
+  "Copy to TEXT to the clipboard"
+  (let ((name
+	 (etypecase clipboard-name
+	   (null "") ;; general pasteboard
+	   ((or string symbol)
+	    (or (and (stringp clipboard-name)
+		     (zerop (length clipboard-name)))
+		(case (keywordify clipboard-name)
+		  (:rule "rule")
+		  (:find "find")
+		  (:font "font")
+		  (otherwise
+		   (error "Unknown clipboard name ~s." clipboard-name))))))))
+    (tt-format "~a1337;CopyToClipboard=~a~c~a~a1377;EndCopy~c"
+	       +osc+ name #\bel text +osc+ #\bel)))
+|#
 
 (defun set-mouse-event (tty event state)
   (case event
