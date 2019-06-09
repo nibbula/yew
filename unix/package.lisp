@@ -302,6 +302,7 @@
 
    #:is-executable
    ;; #:command-pathname
+   #:command-test
 
    #:data-dir
    #:config-dir

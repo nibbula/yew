@@ -2200,6 +2200,14 @@ current effective user. THING can be a path or a FILE-STATUS structure."
      (or (not regular)
 	 (is-regular-file (file-status-mode s))))))
 
+(defun command-test (test path &optional path2)
+  "Return true if the command passes the test. Do special platform specific
+processing, like adding `.exe' on windows. If path2 is provided, test takes
+two arguments."
+  (if path2
+      (funcall test path path2)
+      (funcall test path)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Application paths
 

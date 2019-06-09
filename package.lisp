@@ -83,6 +83,7 @@
    #:path-extension
    #:hidden-file-name-p
    #:superfluous-file-name-p
+   #:command-test
    #:command-pathname
    #:command-path-list
    #:list-to-command-path

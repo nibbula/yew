@@ -623,15 +623,20 @@ current effective user. If REGULAR is true also check if it's a regular file.")
   "Return true if PATH has a directory part."
   (position *directory-separator* (safe-namestring path)))
 
-(defun command-test (test path &optional path2)
+;; (defun command-test (test path &optional path2)
+;;   "Return true if the command passes the test. Do special platform specific
+;; processing, like adding `.exe' on windows. If path2 is provided, test takes
+;; two arguments."
+;;   (if path2
+;;       (or (funcall test path path2)
+;; 	  #+windows (funcall test (s+ path ".exe") path2))
+;;       (or (funcall test path)
+;; 	  #+windows (funcall test (s+ path ".exe")))))
+
+(defosfun command-test (test path &optional path2)
   "Return true if the command passes the test. Do special platform specific
 processing, like adding `.exe' on windows. If path2 is provided, test takes
-two arguments."
-  (if path2
-      (or (funcall test path path2)
-	  #+windows (funcall test (s+ path ".exe") path2))
-      (or (funcall test path)
-	  #+windows (funcall test (s+ path ".exe")))))
+two arguments.")
 
 (defun command-pathname (cmd)
   "Return the full pathname of the first executable file in the PATH or nil
@@ -648,9 +653,10 @@ if there isn't one."
        (when (probe-directory dir)
 	 (loop :with full = nil
 	    :for f :in (read-directory :dir dir) :do
-	    (when (and (command-test #'equal f cmd)
+	    (when (and (command-test #'equal cmd f)
 		       (is-executable
-			(setf full (s+ dir *directory-separator* cmd))
+			;; (setf full (s+ dir *directory-separator* cmd))
+			(setf full (s+ dir *directory-separator* f))
 			:regular t))
 	      (return-from command-pathname full))))
        (opsys-error (c) (declare (ignore c)))))

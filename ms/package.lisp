@@ -70,6 +70,7 @@
    #:unlock-file
    #:with-locked-file
    #:is-executable
+   #:command-test
    #:config-dir
    #:data-path
    #:data-dir

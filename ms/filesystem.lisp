@@ -1059,6 +1059,23 @@ keywords from *BINARY-TYPE*."
 (defparameter *executable-types* '(".EXE" ".COM" ".BAT")
   "Horrible. We leave the dot in for ease of comparison.")
 
+(defun command-test (test path &optional path2)
+  "Return true if the command passes the test. Do special platform specific
+processing, like adding `.exe' on windows. If path2 is provided, test takes
+two arguments."
+  ;; Make equality tests case insensitive.
+  (when (and (eq test #'equal) path2)
+    (setf test #'string-equal))
+  (if path2
+      (or (funcall test path path2)
+	  (some (lambda (suffix)
+		  (funcall test (s+ path suffix) path2))
+		*executable-types*))
+      (or (funcall test path)
+	  (some (lambda (suffix)
+		  (funcall test (s+ path suffix)))
+		*executable-types*))))
+
 (defun is-executable (path &key user regular)
   "Return true if the PATH is executable by the USER. USER defaults to the
 current effective user. If REGULAR is true also check if it's a regular file."
@@ -1071,7 +1088,8 @@ current effective user. If REGULAR is true also check if it's a regular file."
 
   ;; This is just a terrible solution.
   (let ((tail (subseq path (max 0 (- (length path) 4)))))
-    (and (member tail *executable-types* :test #'equalp) t)))
+    (or (and (member tail *executable-types* :test #'equalp) t)
+	(command-test #'file-exists path))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Application paths
