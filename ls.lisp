@@ -356,6 +356,9 @@ by nos:read-directory."))
 ;; 					:initial-element #\space))
 ;;       string))
 
+;; (defun colorize-symbolic-mode ()
+;;   )
+
 (defun list-long (file-list date-format size-format)
   "Return a table filled with the long listing for files in FILE-LIST."
   (let ((today (ls-state-today *ls-state*))
@@ -405,7 +408,6 @@ by nos:read-directory."))
 				 (format-the-date n date-format today a-year))))
        (:name "Name"))
      )
-    #-unix (declare (ignore size-format)) ; @@@
     #-unix
     (make-table-from
      (loop
@@ -415,15 +417,30 @@ by nos:read-directory."))
 	:collect (list
 		  (file-info-type s)
 		  (file-info-flags s)
-		  (format-the-size (file-info-size s))
-		  (format-the-date
-		   (os-time-seconds
-		    (file-info-modification-time s))
-		   (keywordify date-format))
+		  ;; (format-the-size (file-info-size s))
+		  (file-info-size s)
+		  ;; (format-the-date
+		  ;;  (os-time-seconds
+		  ;;   (file-info-modification-time s))
+		  ;;  (keywordify date-format))
+		  (os-time-seconds (file-info-modification-time s))
 		  (get-styled-file-name file)
 		  ))
-     :column-names
-     '("Type" "Flags" ("Size" :right) "Date" "Name"))))
+     ;; :column-names
+     ;; '("Type" "Flags" ("Size" :right) "Date" "Name")
+     :columns
+     `((:name "Type")
+       (:name "Flags")
+       (:name ("Size" :right) :type number
+	      :format ,(lambda (n width)
+			 (format nil "~v@a" width
+				 (format-the-size n size-format))))
+       (:name "Date"
+	      :format ,(lambda (n width)
+			 (format nil "~va" width
+				 (format-the-date n date-format today a-year))))
+       (:name "Name"))
+     )))
 
 (defun format-short (file dir show-size)
   (if show-size
