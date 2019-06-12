@@ -41,13 +41,14 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:span-to-fat-string #:ß
    #:span-to-fatchar-string
    #:fatten
+   #:get-nearest-xterm-color-index
    #:process-ansi-colors
    #:remove-effects
    ))
 (in-package :fatchar)
 
-(declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
-;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;;(declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 (defstruct (fatchar (:copier nil))
   "A character with attributes."
@@ -1237,28 +1238,90 @@ fatchar:*known-attrs*.
   fat-string)
 |#
 
-(defparameter *xterm-256-color-table* nil
-  "Table for old-timey xterm colors.")
+(defparameter *xterm-base-colors*
+  #(#(:rgb8 #x00 #x00 #x00) ; black
+    #(:rgb8 #xff #x00 #x00) ; red
+    #(:rgb8 #x00 #xff #x00) ; green
+    #(:rgb8 #xff #xff #x00) ; yellow
+    #(:rgb8 #x00 #x00 #xff) ; blue
+    #(:rgb8 #xff #x00 #xff) ; magenta
+    #(:rgb8 #x00 #xff #xff) ; cyan
+    #(:rgb8 #xdd #xdd #xdd) ; dim white
+    #(:rgb8 #x44 #x44 #x44) ; bright black
+    #(:rgb8 #xff #x22 #x22) ; bright red
+    #(:rgb8 #x22 #xff #x22) ; bright green
+    #(:rgb8 #xff #xff #x22) ; bright yellow
+    #(:rgb8 #x25 #x25 #xff) ; bright blue
+    #(:rgb8 #xff #x22 #xff) ; bright magenta
+    #(:rgb8 #x22 #xff #xff) ; bright cyan
+    #(:rgb8 #xff #xff #xff) ; white
+    )
+  "Normal standard xterm color values.")
 
 ;; see xterm/256colres.pl
 (defun make-xterm-color-table ()
-  (setf *xterm-256-color-table* (make-array 256))
-  ;; colors 16-231 are a 6x6x6 color cube
-  (loop :for red :from 0 :below 6 :do
-     (loop :for green :from 0 :below 6 :do
-	(loop :for blue :from 0 :below 6 :do
-	   (setf (aref *xterm-256-color-table*
-		       (+ 16 (* red 36) (* green 6) blue))
-		 (make-color :rgb8
-			     :red   (if (= red   0) 0 (+ (* red   40) 55))
-			     :green (if (= green 0) 0 (+ (* green 40) 55))
-			     :blue  (if (= blue  0) 0 (+ (* blue  40) 55)))))))
-  ;; colors 232-255 are a grayscale ramp, without black & white
-  (loop :with level
-     :for gray :from 0 :below 24 :do
-     (setf level (+ (* gray 10) 8)
-	   (aref *xterm-256-color-table* (+ 232 gray))
-	   (make-color :rgb8 :red level :green level :blue level))))
+  (let ((result (make-array 256)))
+    (declare (type (vector t 256) result))
+    ;; colors 0-16 are the standard colors.
+    ;; Unfortunately we don't really know what they are unless we query it
+    ;; from the terminal, which is a big pain. So we just fake it, and use
+    ;; the default colors from xterm, which is probably wrong for other
+    ;; emulators.
+    (loop :for i :from 0 :below 16 :do
+       (setf (aref result i) (aref *xterm-base-colors* i)))
+
+    ;; colors 16-231 are a 6x6x6 color cube
+    (loop :for red :from 0 :below 6 :do
+       (loop :for green :from 0 :below 6 :do
+	  (loop :for blue :from 0 :below 6 :do
+	     (setf (aref result
+			 (+ 16 (* red 36) (* green 6) blue))
+		   (make-color :rgb8
+			       :red   (if (= red   0) 0 (+ (* red   40) 55))
+			       :green (if (= green 0) 0 (+ (* green 40) 55))
+			       :blue  (if (= blue  0) 0 (+ (* blue  40) 55)))))))
+    ;; colors 232-255 are a grayscale ramp, without black & white
+    (loop :with level
+       :for gray :from 0 :below 24 :do
+       (setf level (+ (* gray 10) 8)
+	     (aref result (+ 232 gray))
+	     (make-color :rgb8 :red level :green level :blue level)))
+    result))
+
+(defparameter *xterm-256-color-table* (make-xterm-color-table)
+  "Table for old-timey xterm colors.")
+(declaim (type (vector t 256) *xterm-256-color-table*))
+
+;; This is stupidly slow, and we should probably make a limited cache of it,
+;; or calculate it better?
+(defun get-nearest-xterm-color-index (color)
+  "Return the index of the closest match for COLOR in the
+*xterm-256-color-table*."
+  (declare (optimize (speed 3) (safety 0) (debug 0) (space 2)
+		     (compilation-speed 0)))
+  ;; (when (not *xterm-256-color-table*)
+  ;;   (make-xterm-color-table))
+  (let ((c (convert-color-to color :rgb8))
+	(best -1) (result 0) (dist 0) (d-red 0) (d-green 0) (d-blue 0))
+    (declare (type fixnum best result dist d-red d-green d-blue))
+    (loop :for i :from 0 :below (length *xterm-256-color-table*)
+       :do
+       (setf d-red
+	     (- (color-component c :red)
+		(color-component (aref *xterm-256-color-table* i) :red))
+	     d-green
+	     (- (color-component c :green)
+		(color-component (aref *xterm-256-color-table* i) :green))
+	     d-blue
+	     (- (color-component c :blue)
+		(color-component (aref *xterm-256-color-table* i) :blue))
+	     dist
+	     (+ (* d-red d-red) (* d-green d-green) (* d-blue d-blue)))
+       (when (or (minusp best)
+		 (< dist best))
+	 (setf best dist
+	       result i)))
+    result))
 
 ;;; ^[[00m	normal
 ;;; ^[[01;34m	bold, blue fg
@@ -1306,8 +1369,8 @@ set in this string."
 		    (5 (setf hi-color-type :1-color))))
 		 ((eq hi-color-type :1-color)
 		  (dbugf :fatchar "@~s 1-color ~s ~s~%" i hi-color num)
-		  (when (not *xterm-256-color-table*)
-		    (make-xterm-color-table))
+		  ;; (when (not *xterm-256-color-table*)
+		  ;;   (make-xterm-color-table))
 		  (if (eq hi-color :fg)
 		      (setf fg (aref *xterm-256-color-table* num))
 		      (setf bg (aref *xterm-256-color-table* num)))
