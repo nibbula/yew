@@ -594,6 +594,60 @@ drawing, which will get overwritten."
 	     (#\- (decf t-o .01))
 	     (#\+ (incf t-o .01))))))))
 
+#|
+(progn
+  (format t "~c[H~c[J" #\esc #\esc)
+  (loop for i from 0 below 256 do
+    (write-string (format nil "~c[48;5;~dm " #\esc i))
+    (case i
+      ((7 15) (write-char #\newline)))
+    (cond
+      ((zerop (mod (- 15 i) 36))
+       (write-char #\newline))))
+  (write-string (format nil "~c[0m " #\esc))
+  (tt-color :default :default)
+  ; (tt-move-to 0 15)
+  (tt-finish-output))
+|#
+
+(defun test-pallet-colors ()
+  "Test to see if the terminal can handle pallet colors."
+  (let* ((r 0) (red-step 64)
+	 (g 0) (green-step 64)
+	 (b 0) (blue-step 64))
+    (tt-clear)
+    (tt-home)
+    (loop :for row :from 0 :below 4
+       :do
+       (setf r 0)
+       (loop :for slice :from 0 :below 4 :do
+	  (setf b 0)
+	  (loop :for col :from 0 :below 4 :do
+	     (tt-color :default (make-color :rgb8
+					    :red (truncate r)
+					    :blue (truncate b)
+					    :green (truncate g)))
+	     (tt-write-string "  ")
+	     (incf b blue-step))
+	  (incf r red-step)
+	  (tt-color :default :default)
+	  (tt-write-char #\space))
+       (tt-write-char #\newline)
+       (incf g green-step))
+    (tt-write-char #\newline)
+    (loop :for g :from 32 :to 255 :by 28 :do
+       (tt-color :default (make-color :rgb8
+				      :red   (truncate g)
+				      :green (truncate g)
+				      :blue  (truncate g)))
+       (tt-write-string "  "))
+    (tt-normal)
+    (tt-write-char #\newline)
+    (tt-finish-output)
+    ;; (tt-get-key)
+    (values)
+    ))
+
 (defun test-rgb-colors ()
   "Test to see if the terminal can handle a lot of RGB colors."
   (let* ((rows (- (tt-height) 1))
@@ -688,6 +742,7 @@ drawing, which will get overwritten."
     ("Text colors"                 . test-colors)
     ("Alternate characters"        . test-alternate-characters)
     ("Wide characters"             . test-wide-characters)
+    ("Pallet colors"               . test-pallet-colors)
     ("RGB 24-bit colors"           . test-rgb-colors)
     ("Mouse events"                . test-mouse)
     ("Scrolling"		   . test-scrolling)

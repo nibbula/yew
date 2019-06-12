@@ -152,7 +152,10 @@ require terminal driver support."))
     :initform nil :type (or null integer)
     :documentation
     "Cached count of colors the terminal supports. NIL if we haven't guessed
-it yet."))
+it yet.")
+   (emulator
+    :initarg :emulator :accessor emulator :initform nil
+    :documentation "Guess of what the emulator is."))
   (:default-initargs
     :file-descriptor		nil
     :device-name		*default-device-name*
@@ -898,20 +901,48 @@ i.e. the terminal is 'line buffered'."
     (when (not unwrapped)
       (terminal-raw-format tty +csi+))
     (when (structured-color-p fg)
-      (let ((c (convert-color-to fg :rgb8)))
-	(terminal-raw-format tty "38;2;~d;~d;~d" 
-			     (color-component c :red)
-			     (color-component c :green)
-			     (color-component c :blue))
-	(setf did-one t)))
+      (case (terminal-colors tty)
+	(#.(* 256 256 256)
+	   (let ((c (convert-color-to fg :rgb8)))
+	     (terminal-raw-format tty "38;2;~d;~d;~d"
+				  (color-component c :red)
+				  (color-component c :green)
+				  (color-component c :blue))
+	     (setf did-one t)))
+	(256
+	 (let ((c (convert-color-to fg :rgb8)))
+	   (terminal-raw-format tty "38;5;~d" (get-nearest-xterm-color-index c))
+	   (setf did-one t)))
+	(88
+	 (let ((c (convert-color-to fg :rgb8)))
+	   (terminal-raw-format tty "38;5;~d" (get-nearest-xterm-color-index c))
+	   (setf did-one t)))
+	(16)
+	(0)
+	(otherwise
+	 )))
     (when (structured-color-p bg)
-      (let ((c (convert-color-to bg :rgb8)))
-	(if did-one (write-char #\; (terminal-output-stream tty)))
-	(terminal-raw-format tty "48;2;~d;~d;~d"
-			     (color-component c :red)
-			     (color-component c :green)
-			     (color-component c :blue))
-	(setf did-one t)))
+      (if did-one (write-char #\; (terminal-output-stream tty)))
+      (case (terminal-colors tty)
+	(#.(* 256 256 256)
+	   (let ((c (convert-color-to bg :rgb8)))
+	     (terminal-raw-format tty "48;2;~d;~d;~d"
+				  (color-component c :red)
+				  (color-component c :green)
+				  (color-component c :blue))
+	     (setf did-one t)))
+	(256
+	 (let ((c (convert-color-to bg :rgb8)))
+	   (terminal-raw-format tty "48;5;~d" (get-nearest-xterm-color-index c))
+	   (setf did-one t)))
+	(88
+	 (let ((c (convert-color-to bg :rgb8)))
+	   (terminal-raw-format tty "48;5;~d" (get-nearest-xterm-color-index c))
+	   (setf did-one t)))
+	(16)
+	(0)
+	(otherwise
+	 )))
     (cond
       ((and fg bg fg-pos bg-pos)
        (terminal-raw-format tty "~d;~d" (+ 30 fg-pos) (+ 40 bg-pos)))
@@ -939,35 +970,50 @@ i.e. the terminal is 'line buffered'."
 	   (princ (code-char x) stream)
 	   (loop-finish)))))
 
+(defstruct emulator
+  type
+  firmware
+  name)
+
+(defparameter *emulators*
+  #((19    330 :xterm)
+    ( 0    115 :konsole)
+    ( 1   3600 :vte)
+    (24    279 :mlterm)
+    (83  40602 :screen)
+    (84      0 :tmux)
+    (85     95 :rxvt)
+    )
+  "Data for terminal emualtors.")
+
+(defun guess-emulator (&optional (tty *terminal*))
+  "Try to guess what terminal emulator we're running under."
+  (or (emulator tty)
+      (setf (emulator tty)
+	    (destructuring-bind (type firmware rom)
+		(query-parameters ">0c" :tty tty)
+	      (declare (ignore rom))
+	      (let ((e (find type *emulators* :key #'car)))
+		(if e
+		    (make-emulator :type type
+				   :firmware firmware
+				   :name (third e))
+		    (make-emulator :name :unknown)))))))
+
 (defun guess-full-color-p (&optional (tty *terminal*))
   "Try to guess whether TTY supports full 24-bit RGB color."
-  (destructuring-bind (type firmware rom)
-      (query-parameters ">0c" :tty tty)
-    (declare (ignore rom))
-    (cond
-      ((= type 19)
-       (cond
-	 ((>= firmware 330)		; probably XTerm
-	  t)))
-      ((= type 1)
-       (cond
-	 ((>= firmware 3600)		; Probably VTE
-	  t)))
-      ((= type 0)
-       (cond
-	 ((>= firmware 115)		; Probaby Konsole
-	  ;; @@@ probably supported in versions before this
-	  t)))
-      ((= type 24)
-       (cond
-	 ((>= firmware 279)		; Probably mlterm
-	  ;; @@@ probably supported in versions before this
-	  t)))
-      ((= type 85)
-       (cond
-	 ((<= firmware 95)		; Probabaly RXVT
-	  nil)))
-       (t nil))))
+  (let ((e (guess-emulator tty)))
+    (case (emulator-name e)
+      (:xterm   (>= (emulator-firmware e) 330))
+      (:vte     (>= (emulator-firmware e) 3600))
+      (:konsole (>= (emulator-firmware e) 115)) ;; @@@ versions before this?
+      (:mlterm  (>= (emulator-firmware e) 279))	;; @@@ versions before this?
+      ((:tmux :screen)
+       ;; @@@ This is wrong for tmux, screen, and others, because it depends
+       ;; on the underlying terminal. How can we figure it out?
+       nil)
+      (:rxvt     nil)
+      (otherwise nil))))
 
 (defmethod terminal-colors ((tty terminal-ansi-stream))
   ;; For a stream, we don't have a back channel, so we can't ask the terminal.
@@ -1000,24 +1046,29 @@ i.e. the terminal is 'line buffered'."
   |#
   (or (cached-color-count tty)
       (setf (cached-color-count tty)
-	    (cond
-	      ;; ((setf r (or (try-string "RGB") (try-string "colors")
-	      ;; 	     (try-string "Co")))
-	      ;;  r)
-	      ((guess-full-color-p tty)
-	       (* 256 256 256))
-	      ((query-string (s+ "4;256;?" #\bel) :lead-in +osc+ :ending 1)
-	       ;; Has at least 256 colors:
-	       256)
-	      ((query-string (s+ "4;88;?" #\bel) :lead-in +osc+ :ending 1)
-	       ;; Has at least 88 colors:
-	       88)
-	      ((ppcre:scan "(\\A|\\z|;)22(\\A|\\z|;)"
-			   (query-string "0c" :ending 1
-					 :tty (terminal-file-descriptor tty)))
-	       ;; Has at least 16 colors:
-	       16)
-	      (t 0)))))
+	    (let ((e (guess-emulator tty)))
+	      (cond
+		;; ((setf r (or (try-string "RGB") (try-string "colors")
+		;; 	     (try-string "Co")))
+		;;  r)
+		((guess-full-color-p tty)
+		 (* 256 256 256))
+		((and (not (eq (emulator-name e) :unknown))
+		      (eq (emulator-name e) :rxvt))
+		 ;; Special case for rxvt which doesn't report correctly.
+		 256)
+		((query-string (s+ "4;256;?" #\bel) :lead-in +osc+ :ending 1)
+		 ;; Has at least 256 colors:
+		 256)
+		((query-string (s+ "4;88;?" #\bel) :lead-in +osc+ :ending 1)
+		 ;; Has at least 88 colors:
+		 88)
+		((ppcre:scan "(\\A|\\z|;)22(\\A|\\z|;)"
+			     (query-string "0c" :ending 1
+					   :tty (terminal-file-descriptor tty)))
+		 ;; Has at least 16 colors:
+		 16)
+		(t 0))))))
 
 ;; 256 color? ^[[ 38;5;color <-fg 48;5;color <- bg
 ;; set color tab = ^[] Ps ; Pt BEL
