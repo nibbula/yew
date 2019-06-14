@@ -35,12 +35,14 @@
 
 ;; Dynamic state
 (defstruct ls-state
-  today
-  about-a-year
-  table-renderer
-  outer-terminal
-  mixed-bag
-  nice-table)
+  today			; dtime for now
+  about-a-year		; dtime for about a year ago
+  table-renderer	; so we don't have to keep remaking it
+  outer-terminal	; keep track of *terminal* when we were called
+  mixed-bag		; True if we were asked to list some dirs and non-dirs
+  (first-dir t)		; True if this is the first directory printed.
+  signal-errors		; True to signal errors
+  nice-table)		; Keep the result table around
 (defparameter *ls-state* nil)
 
 (defclass file-item ()
@@ -51,6 +53,12 @@
     :initarg :directory :accessor file-item-directory
     :documentation "The directory the file is in."))
   (:documentation "The minimal file item. Just the name."))
+
+(defmethod print-object ((object file-item) stream)
+  "Print a file-item to STREAM."
+  (with-slots (name directory) object
+    (print-unreadable-object (object stream :type t)
+      (format stream "~a ~a" directory name))))
 
 (defclass file-item-with-info (file-item)
   ((info
@@ -459,7 +467,7 @@ by nos:read-directory."))
       (get-styled-file-name item)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defmacro when-not-missing (before after)
+  (defmacro when-not-missing (before &body after)
     `(tagbody
 	(handler-case
 	    (progn ,before)
@@ -473,117 +481,184 @@ by nos:read-directory."))
 		(signal c)
 		(go MISSING))))
 	(progn
-	  ,after)
-      MISSING)))
+	  ,@after)
+      MISSING))
+
+  (defmacro with-error-handling ((thing) &body body)
+    (declare (ignore thing))
+    (with-unique-names (thunk)
+      `(flet ((,thunk ()
+		,@body))
+	 (restart-case
+	     (if (ls-state-signal-errors *ls-state*)
+		 (,thunk)
+		 (handler-case
+		     (,thunk)
+		   ((or stream-error file-error nos:opsys-error) (c)
+		     (finish-output)
+		     (let ((*print-pretty* nil))
+		       (format *error-output*
+			       ;; "~a: ~a ~a~%" ,thing (type-of c) c))
+			       "~a ~a~%" (type-of c) c))
+		    (invoke-restart 'continue))))
+	   (continue ()
+	     :report "Skip this error.")
+	   ;; (skip-all ()
+	   ;;   :report "Skip remaining errors.")
+	   )))))
+
+(defun is-dir (x)
+  "Take a file-item or a path, and return true if it's a directory."
+  (etypecase x
+    (file-item (eq (file-item-type x) :directory))
+    (t (probe-directory x))))
 
 (defun gather-file-info (args)
+  "Gather file information for displaying as specified in the plist ARGS, which
+is mostly the args from ‘ls’ command. Returns two values, the list of FILE-ITEMs
+gathered, and a list of directories to be recursively listed."
   (let* (main-list
 	 (sort-by (getf args :sort-by))
-	 results item)
-    (loop :for file :in (getf args :files)
-       :do
-	 (if (and (probe-directory file)
-		  (not (getf args :directory)))
-	     (loop :for x :in
+	 (recursive (getf args :recursive))
+	 results item more)
+    (labels ((file-path (x)
+	       (etypecase x
+		 (file-item (item-full-path x))
+		 (t x)))
+	     (file-item (d f)
+	       ;; (format t "file-item ~s ~s~%" d f)
+	       (etypecase d
+		 (file-item d)
+		 (nos:dir-entry (make-full-item (dir-entry-name d)
+						(file-path f)))
+		 (t (make-full-item (path-file-name f)
+				    (path-directory-name f))))))
+      (loop :for file :in (getf args :files)
+	 :do
+	 (if (and (is-dir file) (not (getf args :directory)))
+	     (with-error-handling ((file-path file))
+	       ;; (format t "Jang dir ~s~%" (file-path file))
+	       (loop :for x :in
 		  (read-directory
-		       :full t :dir file
-		       :omit-hidden (not (getf args :hidden)))
+		   :full t :dir (file-path file)
+		   :omit-hidden (not (getf args :hidden)))
 		  :do
 		  (when-not-missing
-		   (setf item (make-full-item (dir-entry-name x) file))
-		   (push item results)))
+		   (setf item (file-item x file))
+		   ;; (format t "Floop~%")
+		   (when (and recursive (eq (file-item-type item) :directory))
+		     (push item more))
+		   (push item results))))
 	     (progn
+	       ;; (format t "Jing file~%")
 	       (when-not-missing
-		(setf item (make-full-item (path-file-name file)
-					   (path-directory-name file)))
+		(setf item (file-item file file))
+		;; (when (and recursive (eq (file-item-type item) :directory))
+		;;   (push item more))
 		(push item main-list))
 	       (setf (ls-state-mixed-bag *ls-state*) t))))
 
-    ;; group all the individual files into a list
-    (setf results
-	  (if main-list
-	      (append (list (nreverse main-list)) (list results))
-	      (list (nreverse results)))
-	  sort-by (if sort-by (keywordify sort-by) :none))
-    (when (not (eq sort-by :none))
-      (setf results
-	    (loop :for list :in results
-	       :collect
-	       (progn
-		 (when (getf args :ignore-backups)
-		   (setf list (delete-if (_ (ends-with "~" _)) list
-					 :key #'file-item-name)))
-		 (sort-files-by list sort-by (getf args :reverse))))))
-    results))
+      ;; group all the individual files into a list
+      (setf results (cond
+		      (main-list
+		       (append (list (nreverse main-list)) (list results)))
+		      (results
+		       (list (nreverse results)))
+		      (t nil))
+	    sort-by (if sort-by (keywordify sort-by) :none))
+      (when (not (eq sort-by :none))
+	(setf results
+	      (loop :for list :in results
+		 :collect
+		 (progn
+		   (when (getf args :ignore-backups)
+		     (setf list (delete-if (_ (ends-with "~" _)) list
+					   :key #'file-item-name)))
+		   (sort-files-by list sort-by (getf args :reverse))))
+	      more
+	      (sort-files-by more sort-by (getf args :reverse))))
+      (values results more))))
 
-(defun present-files (files args)
+(defun print-dir-label (x)
+  (if (not (ls-state-first-dir *ls-state*))
+      (grout-format "~%")
+      (setf (ls-state-first-dir *ls-state*) nil))
+  ;; (grout-format "~a:~%" (file-item-directory x)))
+  (grout-format "~a:~%" x))
+
+(defun present-files (files args label-dir-p)
+  "Show the FILES, displayed according the the plist ARGS. See the lish ‘ls’
+command for details. If LABEL-DIR is true, print directory labels."
   ;;(format t "present files -> ~s~%" files)
-  (with-grout ()
     ;; (format t "grout ~s~%grout-stream ~s~%term ~s~%stdout ~s~%"
     ;; 	    *grout* (grout-stream *grout*) *terminal* *standard-output*)
-    (labels ((size-max-width (items)
-	       "Calcuate the maximum width size of the size field for the items."
-	       (loop :for f :in items
-		  :maximize
-		    (char-util:display-length (format-the-size
-					       (file-item-size
-						(make-full-item f))
-					       (getf args :size-format)))))
-	     (print-it (x)
-	       "Print the item list."
-	       (if (getf args :long)
-		   ;; Long format
-		   (apply #'grout::%grout-print-table grout:*grout*
+  (labels ((size-max-width (items)
+	     "Calcuate the maximum width size of the size field for the items."
+	     (loop :for f :in items
+		:maximize
+		(char-util:display-length (format-the-size
+					   (file-item-size
+					    (make-full-item f))
+					   (getf args :size-format)))))
+	   (print-it (x)
+	     "Print the item list."
+	     (when label-dir-p
+	       (print-dir-label (file-item-directory (car x))))
+	     (if (getf args :long)
+		 ;; Long format
+		 (apply #'grout::%grout-print-table grout:*grout*
+			(setf (ls-state-nice-table *ls-state*)
+			      (list-long x (getf args :date-format)
+					 (getf args :size-format)))
+			`(:long-titles nil :trailing-spaces nil
+			  :print-titles ,(not (getf args :omit-headers))
+			  ,@(when (getf args :wide) '(:max-width nil))))
+		 ;; 1 column format
+		 (if (getf args :1-column)
+		     (if (getf args :show-size)
+			 (grout:grout-print-table
 			  (setf (ls-state-nice-table *ls-state*)
-				(list-long x (getf args :date-format)
-					   (getf args :size-format)))
-			  `(:long-titles nil :trailing-spaces nil
-			    :print-titles ,(not (getf args :omit-headers))
-			    ,@(when (getf args :wide) '(:max-width nil))))
-		   ;; 1 column format
-		   (if (getf args :1-column)
-		       (if (getf args :show-size)
-			   (grout:grout-print-table
-			    (setf (ls-state-nice-table *ls-state*)
-				  (make-table-from
-				   (mapcar (_ (list
-					       (format-the-size
-						(file-item-size
-						 (make-full-item _))
-						(getf args :size-format))
-					       (get-styled-file-name _))) x)
-				   :column-names '(("Size" :right) "Name")))
-			    :print-titles nil)
-			   (mapcar
-			    (_ (grout-format
-				"~a~%" (get-styled-file-name _))) x))
-		       ;; Columns format
-		       (let ((max-width (if (getf args :show-size)
-					    (size-max-width x) 6)))
-			 (print-columns
-			  (mapcar (_ (format-short-item
-				      _ (getf args :show-size)
-				      (getf args :size-format) max-width)) x)
-			  :smush t
-			  :format-char "/fatchar-io:print-string/"
-			  ;; :stream (or *terminal* *standard-output*)
-			  ;; :stream (grout-stream *grout*)
-			  :columns (terminal-window-columns
-				    (or (ls-state-outer-terminal *ls-state*)
-					*terminal*))))))))
+				(make-table-from
+				 (mapcar (_ (list
+					     (format-the-size
+					      (file-item-size
+					       (make-full-item _))
+					      (getf args :size-format))
+					     (get-styled-file-name _))) x)
+				 :column-names '(("Size" :right) "Name")))
+			  :print-titles nil)
+			 (mapcar
+			  (_ (grout-format
+			      "~a~%" (get-styled-file-name _))) x))
+		     ;; Columns format
+		     (let ((max-width (if (getf args :show-size)
+					  (size-max-width x) 6)))
+		       (print-columns
+			(mapcar (_ (format-short-item
+				    _ (getf args :show-size)
+				    (getf args :size-format) max-width)) x)
+			:smush t
+			:format-char "/fatchar-io:print-string/"
+			;; :stream (or *terminal* *standard-output*)
+			;; :stream (grout-stream *grout*)
+			:columns (terminal-window-columns
+				  (or (ls-state-outer-terminal *ls-state*)
+				      *terminal*))))))))
       (let ((*print-pretty* nil))
-	(print-it (car files))
-	(loop :for list :in (cdr files) ::do
-	   (grout-princ #\newline)
-	   (print-it list))))))
+	(when files
+	  (print-it (car files))
+	  (loop :for list :in (cdr files) ::do
+	     (grout-princ #\newline)
+	     (print-it list))))))
 
 (defun list-files (&rest args &key files long 1-column wide hidden directory
 				sort-by reverse date-format show-size
 				size-format collect nice-table ignore-backups
-				omit-headers)
+				omit-headers recursive signal-errors)
+  "List or collect files. See !ls for a description of arguments."
   (declare (ignorable files long 1-column wide hidden directory sort-by reverse
 		      date-format show-size size-format collect nice-table
-		      ignore-backups omit-headers))
+		      ignore-backups omit-headers recursive signal-errors))
   ;; It seems like we have to do our own defaulting.
   (when (not files)
     (setf (getf args :files) (list (current-directory))))
@@ -595,18 +670,41 @@ by nos:read-directory."))
     (setf (getf args :collect) t	; nice-table implies collect
 	  collect t))
 
-  (let* ((*ls-state* (make-default-state))
-	 (file-info (gather-file-info args)))
-    (present-files file-info args)
-    (if collect
-	(if nice-table
-	    (ls-state-nice-table *ls-state*)
-	    file-info)
-	(values))))
+  (let* ((*ls-state* (or *ls-state* (make-default-state)))
+	 file-info more results)
+    (with-grout ()
+      (flet ((recur ()
+	       (let ((new-args (copy-list args)))
+		 (loop :for x :in more :do
+		    (setf (getf new-args :files) (list x))
+		    ;; (format t "~&--> ") (finish-output) (read-line)
+		    (apply #'list-files new-args))))
+	     (pick-results ()
+	       (if nice-table
+		   (ls-state-nice-table *ls-state*)
+		   file-info)))
+	;;(with-error-handling ()
+	(setf (values file-info more) (gather-file-info args))
+	(cond
+	  (file-info
+	   (present-files file-info args recursive))
+	  ((and (= (length files) 1) (is-dir (car files)))
+	   ;; (print-dir-label (car files))))
+	   (print-dir-label (item-full-path (car files)))))
+	(if collect
+	    (if more
+		(progn
+		  (setf results (recur))
+		  (push (pick-results) results))
+		(pick-results))
+	    (progn
+	      (when more
+		(recur))
+	      (values)))))))
 
 (defparameter *sort-fields*
-  `("none" "name" "iname" "size" "access-time" "creation-time" "modification-time"
-    "extension" "type" "mime-type"))
+  `("none" "name" "iname" "size" "access-time" "creation-time"
+    "modification-time" "extension" "type" "mime-type"))
 
 #+lish
 (lish:defcommand ls
@@ -635,6 +733,9 @@ by nos:read-directory."))
 		:help "Format to show sizes with.")
    (collect boolean :short-arg #\c :help "Collect results as a sequence.")
    (nice-table boolean :short-arg #\N :help "Collect results as a nice table.")
+   (recursive boolean :short-arg #\R :help "Recursively list sub-directories.")
+   (signal-errors boolean :short-arg #\E
+    :help "True to signal errors. Otherwise print them to *error-output*.")
    ;; Short cut sort args:
    (by-extension boolean :short-arg #\X :help "Sort by file name extension.")
    (by-size boolean :short-arg #\S :help "Sort by size, largest first.")
@@ -643,7 +744,8 @@ by nos:read-directory."))
    (help boolean :long-arg "help" :help "Show the help."))
   :keys-as args
   :accepts (sequence list)
-  "List files."
+  "List files in a peculiar way that's not really compatible with the
+traditional ‘ls’ command."
   ;; Translate some args
   (when by-extension
     (remf args :sort-by)
@@ -673,7 +775,7 @@ by nos:read-directory."))
 	       (apply #'list-files :files lish:*input* args)
 	       (apply #'list-files args))))
     (if (or collect nice-table)
-	(setf lish:*output* (thunk))
+	(setf lish:*output* (nreverse (thunk)))
 	(thunk))))
 
 ;; End
