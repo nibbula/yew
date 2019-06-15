@@ -977,9 +977,10 @@ i.e. the terminal is 'line buffered'."
 
 (defparameter *emulators*
   #((19    330 :xterm)
-    ( 0    115 :konsole)
+    ( 0    115 :konsole) ;; or maybe qterminal
     ( 1   3600 :vte)
     (24    279 :mlterm)
+    (41    285 :terminology)
     (83  40602 :screen)
     (84      0 :tmux)
     (85     95 :rxvt)
@@ -1007,7 +1008,8 @@ i.e. the terminal is 'line buffered'."
       (:xterm   (>= (emulator-firmware e) 330))
       (:vte     (>= (emulator-firmware e) 3600))
       (:konsole (>= (emulator-firmware e) 115)) ;; @@@ versions before this?
-      (:mlterm  (>= (emulator-firmware e) 279))	;; @@@ versions before this?
+      ;; mlterm full color is buggy
+      ;; (:mlterm  (>= (emulator-firmware e) 279)) ;; @@@ versions before this?
       ((:tmux :screen)
        ;; @@@ This is wrong for tmux, screen, and others, because it depends
        ;; on the underlying terminal. How can we figure it out?
