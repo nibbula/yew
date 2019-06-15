@@ -621,7 +621,7 @@ drawing, which will get overwritten."
   (loop :for c :in '(:black :red :green :yellow :blue :magenta :cyan :white)
      :do
      (tt-color c :black)
-     (tt-write-char "  "))
+     (tt-write-string "  "))
   (tt-normal))
 
 ;; @@@ this isn't right? or maybe the mapping in terminal-ansi isn't right?
