@@ -610,19 +610,32 @@ drawing, which will get overwritten."
   (tt-finish-output))
 |#
 
-(defun test-pallet-colors ()
-  "Test to see if the terminal can handle pallet colors."
-  (let* ((r 0) (red-step 64)
-	 (g 0) (green-step 64)
-	 (b 0) (blue-step 64))
-    (tt-clear)
-    (tt-home)
-    (loop :for row :from 0 :below 4
+(defun base-colors ()
+  (loop :for c :in '(:black :red :green :yellow :blue :magenta :cyan :white)
+     :do
+     (tt-color :black c)
+     (tt-write-string "  "))
+  (tt-write-char #\newline)
+  (tt-bold t)
+  (tt-inverse t)
+  (loop :for c :in '(:black :red :green :yellow :blue :magenta :cyan :white)
+     :do
+     (tt-color c :black)
+     (tt-write-char "  "))
+  (tt-normal))
+
+;; @@@ this isn't right? or maybe the mapping in terminal-ansi isn't right?
+(defun color-cube (n)
+  (let* ((r 0) (red-step   (/ 256 n))
+	 (g 0) (green-step (/ 256 n))
+	 (b 0) (blue-step  (/ 256 n)))
+    (tt-format "~%~%~d * ~:*~d * ~:*~d cube:~%" n)
+    (loop :for row :from 0 :below n
        :do
        (setf r 0)
-       (loop :for slice :from 0 :below 4 :do
+       (loop :for slice :from 0 :below n :do
 	  (setf b 0)
-	  (loop :for col :from 0 :below 4 :do
+	  (loop :for col :from 0 :below n :do
 	     (tt-color :default (make-color :rgb8
 					    :red (truncate r)
 					    :blue (truncate b)
@@ -633,20 +646,41 @@ drawing, which will get overwritten."
 	  (tt-color :default :default)
 	  (tt-write-char #\space))
        (tt-write-char #\newline)
-       (incf g green-step))
-    (tt-write-char #\newline)
-    (loop :for g :from 32 :to 255 :by 28 :do
-       (tt-color :default (make-color :rgb8
-				      :red   (truncate g)
-				      :green (truncate g)
-				      :blue  (truncate g)))
-       (tt-write-string "  "))
-    (tt-normal)
-    (tt-write-char #\newline)
-    (tt-finish-output)
-    ;; (tt-get-key)
-    (values)
-    ))
+       (incf g green-step))))
+
+(defun gray-ramp (n)
+  (tt-format "~%~d gray ramp:~%" n)
+  (loop :for g :from 32 :to 256 :by (round (/ (- 256 32) n)) :do
+     (tt-color :default (make-color :rgb8
+				    :red   (truncate g)
+				    :green (truncate g)
+				    :blue  (truncate g)))
+     (tt-write-string "  "))
+  (tt-write-char #\newline))
+
+(defun test-pallet-colors-88 ()
+  "Test to see if the terminal can handle 88 pallet colors."
+  (blurp
+   (tt-format "88 colors~%~%16 base colors:~%")
+   (base-colors)
+   (color-cube 4)
+   (gray-ramp 8)
+   (tt-normal)
+   (tt-write-char #\newline)))
+
+(defun test-pallet-colors-256 ()
+  "Test to see if the terminal can handle 256 pallet colors."
+  (blurp
+   (tt-format "256 colors~%~%16 base colors:~%")
+   (base-colors)
+   (color-cube 6)
+   (gray-ramp 24)
+   (tt-normal)
+   (tt-write-char #\newline)))
+
+(defun test-pallet-colors ()
+  (test-pallet-colors-88)
+  (test-pallet-colors-256))
 
 (defun test-rgb-colors ()
   "Test to see if the terminal can handle a lot of RGB colors."
