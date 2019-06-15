@@ -594,23 +594,35 @@ drawing, which will get overwritten."
 	     (#\- (decf t-o .01))
 	     (#\+ (incf t-o .01))))))))
 
-#|
-(progn
-  (format t "~c[H~c[J" #\esc #\esc)
-  (loop for i from 0 below 256 do
-    (write-string (format nil "~c[48;5;~dm " #\esc i))
+(defun show-real-pallet ()
+  "Show the terminal's real pallet directly."
+  (loop :for i :from 0 :below 256 :do
+    (write-string (format nil "~c[48;5;~dm  " #\esc i))
     (case i
-      ((7 15) (write-char #\newline)))
+      ((7 15 231) (write-char #\newline)))
     (cond
       ((zerop (mod (- 15 i) 36))
        (write-char #\newline))))
+  (write-char #\newline)
   (write-string (format nil "~c[0m " #\esc))
-  (tt-color :default :default)
-  ; (tt-move-to 0 15)
+  (finish-output))
+
+(defun dump-colors ()
+  "Dump the colors from the *xterm-256-color-table*."
+  (loop :for i :from 0 :below 256 :do
+     (tt-color :default (aref fatchar::*xterm-256-color-table* i))
+     (tt-write-string "  ")
+     (case i
+       ((7 15 231) (tt-write-char #\newline)))
+     (cond
+       ((zerop (mod (- 15 i) 36))
+	(tt-write-char #\newline))))
+  (tt-write-char #\newline)
+  (tt-normal)
   (tt-finish-output))
-|#
 
 (defun base-colors ()
+  "Output the base 16 system colors."
   (loop :for c :in '(:black :red :green :yellow :blue :magenta :cyan :white)
      :do
      (tt-color :black c)
@@ -624,63 +636,58 @@ drawing, which will get overwritten."
      (tt-write-string "  "))
   (tt-normal))
 
-;; @@@ this isn't right? or maybe the mapping in terminal-ansi isn't right?
-(defun color-cube (n)
-  (let* ((r 0) (red-step   (/ 256 n))
-	 (g 0) (green-step (/ 256 n))
-	 (b 0) (blue-step  (/ 256 n)))
+(defun color-cube (n func)
+  "Output an N * N * N color cube, defined by FUNC."
+  (let (r-val g-val b-val)
     (tt-format "~%~%~d * ~:*~d * ~:*~d cube:~%" n)
-    (loop :for row :from 0 :below n
-       :do
-       (setf r 0)
-       (loop :for slice :from 0 :below n :do
-	  (setf b 0)
-	  (loop :for col :from 0 :below n :do
+    (loop :for r :from 0 :below n :do
+       (setf r-val (funcall func r))
+       (loop :for g :from 0 :below n :do
+	  (setf g-val (funcall func g))
+	  (loop :for b :from 0 :below n :do
+	     (setf b-val (funcall func b))
 	     (tt-color :default (make-color :rgb8
-					    :red (truncate r)
-					    :blue (truncate b)
-					    :green (truncate g)))
-	     (tt-write-string "  ")
-	     (incf b blue-step))
-	  (incf r red-step)
-	  (tt-color :default :default)
-	  (tt-write-char #\space))
-       (tt-write-char #\newline)
-       (incf g green-step))))
+					    :red   r-val
+					    :green g-val
+					    :blue  b-val))
+	     (tt-write-string "  ")))
+       (tt-write-char #\newline))
+    (tt-normal)))
 
-(defun gray-ramp (n)
+(defun gray-ramp (n func)
+  "Output a gray ramp of length N, defined by FUNC."
   (tt-format "~%~d gray ramp:~%" n)
-  (loop :for g :from 32 :to 256 :by (round (/ (- 256 32) n)) :do
+  (loop :with value
+     :for g :from 0 :below n :do
+     (setf value (funcall func g))
      (tt-color :default (make-color :rgb8
-				    :red   (truncate g)
-				    :green (truncate g)
-				    :blue  (truncate g)))
+				    :red   value
+				    :green value
+				    :blue  value))
      (tt-write-string "  "))
   (tt-write-char #\newline))
 
 (defun test-pallet-colors-88 ()
   "Test to see if the terminal can handle 88 pallet colors."
-  (blurp
-   (tt-format "88 colors~%~%16 base colors:~%")
-   (base-colors)
-   (color-cube 4)
-   (gray-ramp 8)
-   (tt-normal)
-   (tt-write-char #\newline)))
+  (tt-format "88 colors~%~%16 base colors:~%")
+  (base-colors)
+  (color-cube 4 (_ (aref #(0 139 205 255) _)))
+  (gray-ramp 8 (_ (+ (* _ 23) 46)))
+  (tt-normal)
+  (tt-write-char #\newline))
 
 (defun test-pallet-colors-256 ()
   "Test to see if the terminal can handle 256 pallet colors."
-  (blurp
-   (tt-format "256 colors~%~%16 base colors:~%")
-   (base-colors)
-   (color-cube 6)
-   (gray-ramp 24)
-   (tt-normal)
-   (tt-write-char #\newline)))
+  (tt-format "256 colors~%~%16 base colors:~%")
+  (base-colors)
+  (color-cube 6 (_ (if (zerop _) 0 (+ 55 (* 40 _)))))
+  (gray-ramp 24 (_ (+ (* _ 10) 8)))
+  (tt-normal)
+  (tt-write-char #\newline))
 
 (defun test-pallet-colors ()
-  (test-pallet-colors-88)
-  (test-pallet-colors-256))
+  (blurp (test-pallet-colors-88))
+  (blurp (test-pallet-colors-256)))
 
 (defun test-rgb-colors ()
   "Test to see if the terminal can handle a lot of RGB colors."
