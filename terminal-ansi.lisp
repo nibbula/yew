@@ -1431,7 +1431,7 @@ and add the characters the typeahead."
   (let ((response (terminal-query (s+ +csi+ s)
 				  :tty (terminal-file-descriptor tty))))
     (if (zerop (length response))
-	'()
+	'(nil nil nil)
 	(mapcar (_ (ignore-errors (parse-integer _)))
 		(split-sequence
 		 #\;
