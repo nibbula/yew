@@ -1292,8 +1292,9 @@ fatchar:*known-attrs*.
   "Table for old-timey xterm colors.")
 (declaim (type (vector t 256) *xterm-256-color-table*))
 
-;; This is stupidly slow, and we should probably make a limited cache of it,
-;; or calculate it better?
+(defvar *color-cache* (make-hash-table))
+
+;; Could we calculate this better?
 (defun get-nearest-xterm-color-index (color)
   "Return the index of the closest match for COLOR in the
 *xterm-256-color-table*."
@@ -1301,27 +1302,34 @@ fatchar:*known-attrs*.
 		     (compilation-speed 0)))
   ;; (when (not *xterm-256-color-table*)
   ;;   (make-xterm-color-table))
-  (let ((c (convert-color-to color :rgb8))
-	(best -1) (result 0) (dist 0) (d-red 0) (d-green 0) (d-blue 0))
-    (declare (type fixnum best result dist d-red d-green d-blue))
-    (loop :for i :from 0 :below (length *xterm-256-color-table*)
-       :do
-       (setf d-red
-	     (- (color-component c :red)
-		(color-component (aref *xterm-256-color-table* i) :red))
-	     d-green
-	     (- (color-component c :green)
-		(color-component (aref *xterm-256-color-table* i) :green))
-	     d-blue
-	     (- (color-component c :blue)
-		(color-component (aref *xterm-256-color-table* i) :blue))
-	     dist
-	     (+ (* d-red d-red) (* d-green d-green) (* d-blue d-blue)))
-       (when (or (minusp best)
-		 (< dist best))
-	 (setf best dist
-	       result i)))
-    result))
+  (let* ((c (convert-color-to color :rgb8))
+	 (r (color-component c :red))
+	 (g (color-component c :green))
+	 (b (color-component c :blue))
+	 (pixel (logior (ash r 16) (ash g 8) b))
+	 (hit (gethash pixel *color-cache*)))
+    (declare (type fixnum pixel r g b))
+    (or hit
+	(let ((best -1) (result 0) (dist 0) (d-red 0) (d-green 0) (d-blue 0))
+	  (declare (type fixnum best result dist d-red d-green d-blue))
+	  (loop :for i :from 0 :below (length *xterm-256-color-table*)
+	     :do
+	     (setf d-red
+		   (- r
+		      (color-component (aref *xterm-256-color-table* i) :red))
+		   d-green
+		   (- g
+		      (color-component (aref *xterm-256-color-table* i) :green))
+		   d-blue
+		   (- b
+		      (color-component (aref *xterm-256-color-table* i) :blue))
+		   dist
+		   (+ (* d-red d-red) (* d-green d-green) (* d-blue d-blue)))
+	     (when (or (minusp best)
+		       (<= dist best)) ;; Take the highest index one
+	       (setf best dist         ;; because the base colors may be wrong
+		     result i)))
+	  (setf (gethash pixel *color-cache*) result)))))
 
 ;;; ^[[00m	normal
 ;;; ^[[01;34m	bold, blue fg
