@@ -48,8 +48,19 @@
    #:history-current
    #:history-file-name
    #:show-history
+   #:history-table
    #:history-save
    #:history-load
+   #:history-store
+   #:history-store-file-name
+   #:history-store-save
+   #:history-store-load
+   #:history-store-start
+   #:history-store-done
+   #:history-store-default-file-name
+   #:text-history-store
+   #:db-history-store
+   #:db-history-store-connection
    #:complete-filename-command
    ;; Variables?
    #:*line-editor*
