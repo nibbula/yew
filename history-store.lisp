@@ -218,8 +218,8 @@ is saved."))
 		   "command-history.sqlite"))
 
 (defmethod initialize-instance
-    :after ((o text-history-store) &rest initargs &key &allow-other-keys)
-  "Initialize a text-history-store."
+    :after ((o db-history-store) &rest initargs &key &allow-other-keys)
+  "Initialize a db-history-store."
   (declare (ignore initargs))
   (when (not (and (slot-boundp o 'file-name)
 		  (slot-value o 'file-name)))
@@ -237,21 +237,8 @@ is saved."))
 			       (style (eql :fancy))
 			       &key update (history-context *history-context*))
   "Simple text file saving."
-  (with-slots (file-name) store
-    (let ((hist (get-history history-context))
-	  (db-name (list file-name))
-	  new)
-      (ensure-directories-exist file-name)
-      (when (not (nos:file-exists file-name))
-	(clsql:create-database db-name :database-type :sqlite3)
-	(setf new t))
-      (clsql:connect db-name :database-type :sqlite3)
-      (when new
-	(clsql:create-table [history]
-			    '(([context]  text)
-			      ([time]     integer)
-			      ([line]     text)
-			      ([modified] integer))))
+  (with-slots (file-name connection) store
+    (let ((hist (get-history history-context)))
       (omapn #'(lambda (x)
 		 (when (not (and (eq x (dl-content (history-head hist)))
 				 (not (history-entry-line x))))
@@ -261,7 +248,8 @@ is saved."))
 				([time]     ,(history-entry-time x))
 				([line]     ,(history-entry-line x))
 				([modified]
-				 ,(if (history-entry-modified x) 1 0))))))
+				 ,(if (history-entry-modified x) 1 0)))
+		    :database connection)))
 	     (if update
 		 (history-start hist)
 		 (history-head hist)))
@@ -275,33 +263,55 @@ is saved."))
   "Load the history to HISTORY-CONTEXT from STORE in STYLE."
   (declare (ignore update)) ;; @@@ implement update
   (let ((hist (get-history history-context)))
-    (with-slots (file-name) store
+    (with-slots (file-name connection) store
       (when (not (nos:file-exists file-name))
 	;; @@@ make an error type, so we can ignore it
 	(error "Command history database does not exist."))
       ;; @@@ If update is set, we should probably only get with a time greater
       ;; than last time.
-      (setf (history-current hist)
-	    (make-dl-list
+      (let ((records
 	     (loop :for item
 		:in (clsql:select [*]
 				  :from [history]
-				  :where [= [context] history-context])
+				  :where [= [context] history-context]
+				  :flatp t
+				  :database connection)
 		:collect (make-history-entry :time (first item)
 					     :line (second item)
-					     :modified nil)))
-	    (history-tail hist)  (last (history-head hist))
-	    (history-start hist) (history-tail hist)
-	    (history-cur hist)   (history-tail hist)))))
+					     :modified nil))))
+	(when records
+	  (setf (history-current hist)
+		(make-dl-list records)
+		(history-tail hist)  (last (history-head hist))
+		(history-start hist) (history-tail hist)
+		(history-cur hist)   (history-tail hist)))))))
 
-(defmethod history-store-start ((store text-history-store) style)
+(defmethod history-store-start ((store db-history-store) style)
   "Start using a text history store, of any style."
-  (declare (ignore store style)))
+  (declare (ignore style))
+  (with-slots (file-name connection) store
+    (let ((db-name (list file-name))
+	  new)
+      (ensure-directories-exist file-name)
+      (when (not (nos:file-exists file-name))
+	(clsql:create-database db-name :database-type :sqlite3)
+	(setf new t))
+      (setf connection (clsql:connect db-name :database-type :sqlite3))
+      (when new
+	(clsql:create-table [history]
+			    '(([context]  #| text |# varchar)
+			      ([time]     integer)
+			      ([line]     #| text |# varchar)
+			      ([modified] integer))
+			    :database connection)))))
 
-(defmethod history-store-done ((store text-history-store) style)
+(defmethod history-store-done ((store db-history-store) style)
   "Indicate we're done with using a text history store, of any style."
-  (declare (ignore store style)))
-)
+  (declare (ignore style))
+  (with-slots (connection) store
+    (clsql:disconnect :database connection)))
+
+) ;; t-rl-config-use-sqlite progn
 
 ;; There is no database simple style.
 
