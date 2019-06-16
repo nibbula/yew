@@ -139,8 +139,8 @@ anything important.")
     :initarg :history-store-format
     :accessor line-editor-history-store-backend
     :initform :database :type (member :database :text-file)
-    :documentation "Format for the history store. Either :DATABASE or
-:TEXT-FILE.")
+    :documentation
+    "Format for the history store. Either :DATABASE or :TEXT-FILE.")
    (history-store-file-name
     :initarg :history-store-file-name
     :accessor line-editor-history-store-file-name  
@@ -148,8 +148,9 @@ anything important.")
    (history-storage-unified
     :initarg :history-storage-unified
     :accessor line-editor-history-storage-unified :initform nil :type boolean
-    :documentation "True to all command history in the same database. This
-probably only works for database formats.")
+    :documentation
+    "True to all command history in the same database. This probably only works
+for database formats.")
    (saved-line
     :accessor saved-line
     :initarg :saved-line
