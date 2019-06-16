@@ -161,7 +161,7 @@ The REPL also has a few commands:
   Help         - You are looking at it.~%"))
 	 t)
 	((matches value "History")
-	 (rl:show-history :repl)
+	 (rl:show-history :context :repl)
 	 t)
 	((or (matches value "IP") (matches value "IN"))
 	 ;; Since this doesn't work: (in-package (read-arg state))
