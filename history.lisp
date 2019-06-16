@@ -159,15 +159,40 @@
 	     (setf element (dl-nth (- (dl-length list) n) list)))
 	 (dl-content element))))
 
-(defun show-history (&optional (context *history-context*))
+(defun show-history (&key (context *history-context*) show-time)
   "Print the history with numbers."
   (let ((hist (get-history context))
 	(i 1))
     (dl-list-do-backward
      (history-tail hist)
      #'(lambda (x)
-	 (format t "~4d  ~a~%" i (history-entry-line x))
+	 (if show-time
+	     (format t "~4d  ~a ~a~%" i
+		     (and (history-entry-time x)
+			  (date-string :time (history-entry-time x)))
+		     (history-entry-line x))
+	     (format t "~4d  ~a~%" i (history-entry-line x)))
 	 (incf i))))
   (values))
+
+(defun history-table (&key (context *history-context*) #| show-time |#)
+  "Return the history as a table."
+  (let ((hist (get-history context))
+	(i 1) result)
+    (dl-list-do-backward
+     (history-tail hist)
+     #'(lambda (x)
+	 (push (list i (rl:history-entry-time x) (rl:history-entry-line x))
+	       result)
+	 (incf i)))
+    (table:make-table-from
+     (nreverse result)
+     :columns
+     `((:name "Number" :type integer)
+       (:name "Date"
+	      :format ,(lambda (n width)
+			 (format nil "~v@a" width
+				 (and n (date-string :time n)))))
+       (:name "Line")))))
 
 ;; EOF
