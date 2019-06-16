@@ -775,7 +775,11 @@ traditional ‘ls’ command."
 	       (apply #'list-files :files lish:*input* args)
 	       (apply #'list-files args))))
     (if (or collect nice-table)
-	(setf lish:*output* (nreverse (thunk)))
+	(setf lish:*output*
+	      (let ((result (thunk)))
+		(etypecase result
+		  (list (nreverse result))
+		  (table result))))
 	(thunk))))
 
 ;; End
