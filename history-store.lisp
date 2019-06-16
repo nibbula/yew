@@ -102,7 +102,10 @@ is saved."))
 	       (dl-prev (history-start hist)))
 	   #'(lambda (x)
 	       ;; Write the history-entry struct.
-	       (write-line x stream)))
+	       ;; But, don't bother writing NIL for the empty current.
+	       (when (not (and (eq x (dl-content (history-head hist)))
+			       (not (history-entry-line x))))
+		 (write-line x stream))))
 	  ;; Move the start to the end.
 	  (setf (history-start hist) (history-head hist)))))))
 
@@ -140,6 +143,8 @@ is saved."))
 ;;;;;;;;;;;;;;;;;
 ;; Simple style
 
+;; Let's try to keep this one compatible with other shells.
+
 (defmethod history-store-save ((store text-history-store)
 			       (style (eql :simple))
 			       &key update (history-context *history-context*))
@@ -163,7 +168,12 @@ is saved."))
 	       (history-tail hist)
 	       (dl-prev (history-start hist)))
 	   #'(lambda (x)
-	       (write-line (history-entry-line x) stream)))
+	       ;; Don't bother writing a blank for the empty current.
+	       (when (not (and (eq x (dl-content (history-head hist)))
+			       (not (history-entry-line x))))
+		 (write-line
+		  (or (history-entry-line x) "") ;; @@@ workaround for NIL
+		  stream))))
 	  ;; Move the start to the end.
 	  (setf (history-start hist) (history-head hist))))))
   (values))
@@ -243,13 +253,15 @@ is saved."))
 			      ([line]     text)
 			      ([modified] integer))))
       (omapn #'(lambda (x)
-		 (clsql:insert-records
-		  :into [history]
-		  :av-pairs `(([context]  ,(string-downcase history-context))
-			      ([time]     ,(history-entry-time x))
-			      ([line]     ,(history-entry-line x))
-			      ([modified]
-			       ,(if (history-entry-modified x) 1 0)))))
+		 (when (not (and (eq x (dl-content (history-head hist)))
+				 (not (history-entry-line x))))
+		   (clsql:insert-records
+		    :into [history]
+		    :av-pairs `(([context]  ,(string-downcase history-context))
+				([time]     ,(history-entry-time x))
+				([line]     ,(history-entry-line x))
+				([modified]
+				 ,(if (history-entry-modified x) 1 0))))))
 	     (if update
 		 (history-start hist)
 		 (history-head hist)))
