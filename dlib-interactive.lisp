@@ -33,6 +33,9 @@ be used at a REPL, but not as likely to be called by other programs.")
 
    #:untrace-all
    #:trace-out
+
+   #:file-filter
+   #:file-filter-not
    ))
 (in-package :dlib-interactive)
 
@@ -593,5 +596,144 @@ that wraps an ANSI terminal."
      (format t "Trace output isn't already redirected. Give me a file name ~
                 to redirect to.~%")))
   (values))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; file-filter
+
+;; @@@ Is this really the best place for this?
+
+#+unix
+(progn
+  (defun is-device (info)
+    "Return true if INFO is a device."
+    (or (uos:is-block-device (uos:file-status-mode info))
+	(uos:is-character-device (uos:file-status-mode info))))
+
+  (defun is-owner (info)
+    "Return is owned by the current user."
+    (= (uos:file-status-uid info) (uos:getuid)))
+
+  (defun is-group (info)
+    "Return is owned by the current group."
+    (= (uos:file-status-gid info) (uos:getgid)))
+
+  (defparameter *file-filters*
+    #((#\/ :directory        uos:is-directory          "Directories")
+      ;; (#\F :full             is-not-"Full (not empty) directories")
+      (#\. :regular          uos:is-regular-file       "Regular files")
+      (#\@ :symlink          uos:is-symbolic-link      "Symlinks")
+      (#\= :socket           uos:is-socket             "Sockets")
+      (#\s :socket           uos:is-socket             "Sockets")
+      (#\p :named-pipe       uos:is-fifo               "Named pipes")
+      (#\% :device           is-device		       "Device files")
+      (#\* :executable       uos:is-executable         "Executable files")
+      (#\U :user             is-owner                  "Owned by current UID")
+      (#\G :group            is-group                  "Owned by current GID")
+      ;; (#\u :user             "Owned by the given user account or UID")
+      ;; (#\g :group            "Owned by the given group account or GID")
+      (#\r :owner-readable   uos:is-user-readable      "Readable by owner")
+      (#\A :group-readable   uos:is-group-readable     "readable by group")
+      (#\R :world-readable   uos:is-other-readable     "Readable by World")
+      (#\w :owner-writable   uos:is-user-writable      "Writable by owner")
+      (#\I :group-writable   uos:is-group-writable     "writable by group")
+      (#\W :world-writable   uos:is-other-writable     "Writable by World")
+      (#\x :owner-executable uos:is-user-executable    "Executable by owner")
+      (#\E :group-executable uos:is-group-executable   "executable by group")
+      (#\X :world-executable uos:is-other-executable   "Executable by world")
+      (#\s :owner-setuid     uos:is-set-uid            "setuid (for user)")
+      (#\S :group-setuid     uos:is-set-gid            "setgid (for group)")
+      (#\t :sticky           uos:is-sticky             "Sticky bit"))
+    "Filters for files."))
+
+#-unix
+(progn
+  (defun is-directory (info file)
+    (declare (ignore file))
+    (eq (file-info-type info) :directory))
+
+  (defun is-symbolic-link (info file)
+    (declare (ignore file))
+    (eq (file-info-type info) :link))
+
+  (defun is-device (info file)
+    (declare (ignore file))
+    (eq (file-info-type info) :device))
+
+  (defun is-regular-file (info file)
+    (declare (ignore file))
+    (eq (file-info-type info) :regular))
+
+  (defun is-device (info file)
+    (declare (ignore file))
+    (eq (file-info-type info) :other))
+
+  (defun is-executable (info file)
+    (declare (ignore info))
+    (nos:is-executable file))
+
+  (defparameter *file-filters*
+    #((#\/ :directory        is-directory     "Directories")
+      (#\. :regular          is-regular-file  "Regular files")
+      (#\@ :symlink          is-symbolic-link "Symlinks")
+      (#\% :device           is-device        "Device files")
+      (#\* :executable       is-executable    "Executable files")
+      (#\U :user             is-owner         "Owned by current UID")
+      (#\G :group            is-group         "Owned by current GID")
+      (#\r :owner-readable   :missing         "Readable by owner")
+      (#\A :group-readable   :missing         "readable by group")
+      (#\R :world-readable   :missing         "Readable by World")
+      (#\w :owner-writable   :missing         "Writable by owner")
+      (#\I :group-writable   :missing         "writable by group")
+      (#\W :world-writable   :missing         "Writable by World")
+      (#\x :owner-executable :missing         "Executable by owner")
+      (#\E :group-executable :missing         "executable by group")
+      (#\X :world-executable :missing         "Executable by world")
+      (#\s :owner-setuid     :missing         "setuid (for user)")
+      (#\S :group-setuid     :missing         "setgid (for group)")
+      (#\t :sticky           :missing         "Sticky bit"))
+    "Filters for files."))
+
+(defparameter *file-filter-table*
+  (let ((tab (make-hash-table)))
+    (loop :for f :across *file-filters* :do
+       (setf (gethash (first f) tab) (third f))
+       (setf (gethash (second f) tab) (third f)))
+    tab))
+
+(defun %file-filter (tag-sequence file-list &optional invert)
+  (labels ((ff-match (tag info file #| &optional param |#)
+	     #+unix (declare (ignore file))
+	     (let ((func (gethash tag *file-filter-table*)))
+	       (cond
+		 ((not func)
+		  (error "Unknown file filter tag ~s" tag))
+		 ((eq func :missing)
+		  (warn "file filter tag ~s is not defined for this system."
+			tag)
+		  nil)
+		 #+unix ((eq (symbol-package func) (find-package :uos))
+			 (funcall func (uos:file-status-mode info)))
+		 (t
+		  #+unix (funcall func info)
+		  #-unix (funcall func info file)))))
+	   (matches (file)
+	     (let ((info #+unix (uos:lstat file)
+			 #-unix (nos:get-file-info file)))
+	       (every (_ (ff-match _ info file)) tag-sequence)))
+	   (not-matches (file)
+	     (let ((info #+unix (uos:lstat file)
+			 #-unix (nos:get-file-info file)))
+	       (some (_ (not (ff-match _ info file))) tag-sequence))))
+    (if invert
+	(remove-if #'matches file-list)
+	(remove-if #'not-matches file-list))))
+
+(defun file-filter (tag-sequence file-list)
+  (declare (optimize (safety 3) (debug 3)))
+  (%file-filter tag-sequence file-list))
+
+(defun file-filter-not (tag-sequence file-list)
+  (declare (optimize (safety 3) (debug 3)))
+  (%file-filter tag-sequence file-list t))
 
 ;; EOF
