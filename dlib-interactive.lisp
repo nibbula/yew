@@ -729,11 +729,11 @@ that wraps an ANSI terminal."
 	(remove-if #'not-matches file-list))))
 
 (defun file-filter (tag-sequence file-list)
-  (declare (optimize (safety 3) (debug 3)))
+  (declare (optimize (debug 3)))
   (%file-filter tag-sequence file-list))
 
 (defun file-filter-not (tag-sequence file-list)
-  (declare (optimize (safety 3) (debug 3)))
+  (declare (optimize (debug 3)))
   (%file-filter tag-sequence file-list t))
 
 ;; EOF
