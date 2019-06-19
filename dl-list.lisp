@@ -31,6 +31,7 @@
    #:dl-list-do-element
    #:dl-list-do-backward
    #:dl-list-do-backward-element
+   #:dl-list-to-list
    ))
 (in-package :dl-list)
 
@@ -184,15 +185,27 @@
 	:do (funcall func i)
 	:while (%dl-prev i)))
 
+(defun dl-list-to-list (list)
+  "Call FUNC with the content each successive element of LIST."
+  (declare (type dl-list list))
+  (loop :for i = list :then (%dl-next i)
+     :collect (%dl-content i)
+     :while (dl-next i)))
+
 ;; @@@ Actually, it could be able to be readable, right?
 (defmethod print-object ((obj dl-list) stream)
   "Print a dl-list in an unreadable way."
-  (print-unreadable-object (obj stream :type t :identity t)
-    (write-char #\( stream)
-    (loop :for i = obj :then (%dl-next i)
-	  :do (write (%dl-content i) :stream stream)
-	  :while (and (%dl-next i) (write-char #\space stream)))
-    (write-char #\) stream)))
+  (print-unreadable-object (obj stream)
+    (write-string "DL-LIST " stream)
+    (let ((as-list (dl-list-to-list obj)))
+      (pprint-logical-block (stream as-list :prefix "(" :suffix ")")
+	(loop
+	   :initially (when (and as-list (car as-list))
+			(write (car as-list) :stream stream))
+	   :for e :in (cdr as-list) :do
+	   (pprint-newline :fill stream)
+	   (write-char #\space stream)
+	   (write e :stream stream))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; collection methods
