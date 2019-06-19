@@ -2,15 +2,12 @@
 ;; dl-list - a doubly-linked list
 ;;
 
-;; People tell me you should never use doubly-linked list.
-;; I'm not quite sure I believe them, but after this there is a zipper-ish
-;; structure that does just about the same thing while taking less space,
-;; like about by half. I'm not sure about performance though.
+;; As you may know, the doubly linked list is wasteful of space, but allows
+;; quick editing as well aa quick forward and backward traversal.
 ;;
-;; This actually demonstrates some palpable flaws in Common Lisp!
-;; - sequences should be generic (and still be fast)
-;;   i.e. objects all the way down (like dylan).
-;; - Classes can't really be self referential
+;; This actually demonstrates some palpable issues in Common Lisp.
+;; - We would like sequences to be generic (and still be fast).
+;; - Classes can't be explicitly self referential.
 
 (defpackage :dl-list
   (:documentation "The nefarious doubly-linked list anti-pattern.")
