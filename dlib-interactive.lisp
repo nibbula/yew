@@ -34,10 +34,14 @@ be used at a REPL, but not as likely to be called by other programs.")
    #:untrace-all
    #:trace-out
 
+   #:file-matches
+   #:not-file-matches			; this is inconsistent
    #:file-filter
-   #:file-filter-not
-   ))
-(in-package :dlib-interactive)
+   #:file-filter-not			; with this, but ...
+   ))					; file-does-not-match is also crap
+(in-package :dlib-interactive)		; and not-file-filter seems wrong too
+
+(declaim (optimize (debug 2)))
 
 (defun show-expansion (form &optional full)
   "Show a pretty printed macro expansion of the form. If full is true,
@@ -617,6 +621,9 @@ that wraps an ANSI terminal."
     "Return is owned by the current group."
     (= (uos:file-status-gid info) (uos:getgid)))
 
+  (defun our-is-executable (info)
+    (uos:is-executable info))
+
   (defparameter *file-filters*
     #((#\/ :directory        uos:is-directory          "Directories")
       ;; (#\F :full             is-not-"Full (not empty) directories")
@@ -626,7 +633,7 @@ that wraps an ANSI terminal."
       (#\s :socket           uos:is-socket             "Sockets")
       (#\p :named-pipe       uos:is-fifo               "Named pipes")
       (#\% :device           is-device		       "Device files")
-      (#\* :executable       uos:is-executable         "Executable files")
+      (#\* :executable       our-is-executable         "Executable files")
       (#\U :user             is-owner                  "Owned by current UID")
       (#\G :group            is-group                  "Owned by current GID")
       ;; (#\u :user             "Owned by the given user account or UID")
@@ -672,25 +679,25 @@ that wraps an ANSI terminal."
     (nos:is-executable file))
 
   (defparameter *file-filters*
-    #((#\/ :directory        is-directory     "Directories")
-      (#\. :regular          is-regular-file  "Regular files")
-      (#\@ :symlink          is-symbolic-link "Symlinks")
-      (#\% :device           is-device        "Device files")
-      (#\* :executable       is-executable    "Executable files")
-      (#\U :user             is-owner         "Owned by current UID")
-      (#\G :group            is-group         "Owned by current GID")
-      (#\r :owner-readable   :missing         "Readable by owner")
+    #((#\/ :directory        is-directory     "directories")
+      (#\. :regular          is-regular-file  "regular files")
+      (#\@ :symlink          is-symbolic-link "symlinks")
+      (#\% :device           is-device        "device files")
+      (#\* :executable       is-executable    "executable files")
+      (#\U :user             is-owner         "owned by current UID")
+      (#\G :group            is-group         "owned by current GID")
+      (#\r :owner-readable   :missing         "readable by owner")
       (#\A :group-readable   :missing         "readable by group")
-      (#\R :world-readable   :missing         "Readable by World")
-      (#\w :owner-writable   :missing         "Writable by owner")
+      (#\R :world-readable   :missing         "readable by World")
+      (#\w :owner-writable   :missing         "writable by owner")
       (#\I :group-writable   :missing         "writable by group")
-      (#\W :world-writable   :missing         "Writable by World")
-      (#\x :owner-executable :missing         "Executable by owner")
+      (#\W :world-writable   :missing         "writable by World")
+      (#\x :owner-executable :missing         "executable by owner")
       (#\E :group-executable :missing         "executable by group")
-      (#\X :world-executable :missing         "Executable by world")
+      (#\X :world-executable :missing         "executable by world")
       (#\s :owner-setuid     :missing         "setuid (for user)")
       (#\S :group-setuid     :missing         "setgid (for group)")
-      (#\t :sticky           :missing         "Sticky bit"))
+      (#\t :sticky           :missing         "the sticky bit"))
     "Filters for files."))
 
 (defparameter *file-filter-table*
@@ -700,40 +707,81 @@ that wraps an ANSI terminal."
        (setf (gethash (second f) tab) (third f)))
     tab))
 
-(defun %file-filter (tag-sequence file-list &optional invert)
-  (labels ((ff-match (tag info file #| &optional param |#)
-	     #+unix (declare (ignore file))
-	     (let ((func (gethash tag *file-filter-table*)))
-	       (cond
-		 ((not func)
-		  (error "Unknown file filter tag ~s" tag))
-		 ((eq func :missing)
-		  (warn "file filter tag ~s is not defined for this system."
-			tag)
-		  nil)
-		 #+unix ((eq (symbol-package func) (find-package :uos))
-			 (funcall func (uos:file-status-mode info)))
-		 (t
-		  #+unix (funcall func info)
-		  #-unix (funcall func info file)))))
-	   (matches (file)
-	     (let ((info #+unix (uos:lstat file)
-			 #-unix (nos:get-file-info file)))
-	       (every (_ (ff-match _ info file)) tag-sequence)))
-	   (not-matches (file)
-	     (let ((info #+unix (uos:lstat file)
-			 #-unix (nos:get-file-info file)))
-	       (some (_ (not (ff-match _ info file))) tag-sequence))))
-    (if invert
-	(remove-if #'matches file-list)
-	(remove-if #'not-matches file-list))))
+(eval-when (:load-toplevel :execute)
+  (defparameter *file-tag-doc*
+    (with-output-to-string (stream)
+      (loop :for f :across *file-filters*
+	 :do
+	 (format stream "  |~a  ~(~20s~) Matches ~a~%"
+		 (first f) (second f) (fourth f))))))
+
+(defun %file-info-matches-tag (tag info file #| &optional param |#)
+  #+unix (declare (ignore file))
+  (let ((func (gethash tag *file-filter-table*)))
+    (cond
+      ((not func)
+       (error "Unknown file filter tag ~s" tag))
+      ((eq func :missing)
+       (warn "file filter tag ~s is not defined for this system."
+	     tag)
+       nil)
+      #+unix ((eq (symbol-package func) (find-package :uos))
+	      (funcall func (uos:file-status-mode info)))
+      (t
+       #+unix (funcall func info)
+       #-unix (funcall func info file)))))
+
+(defun %file-info (file info)
+  (cond
+    ;; If we already have the info, just return it.
+    ((and info
+	  #+unix (uos::file-status-p info)
+	  #-unix (nos::file-info-p info))
+     info)
+    ;; Otherwise, gather it.
+    (t
+     #+unix (uos:lstat file)
+     #-unix (nos:get-file-info file))))
+
+;; Since these things are for interactive use, it seems fairly useful to have
+;; the unabridged tag doc in each one.
+
+(defun file-matches (tag-sequence file &optional info)
+  (let ((info (%file-info file info)))
+    (every (_ (%file-info-matches-tag _ info file)) tag-sequence)))
+
+(setf (documentation #'file-matches 'function)
+      (format nil
+	      "Return true if the FILE matches every tag in TAG-SEQUENCE.~%
+Tags are:~%~a" *file-tag-doc*))
+
+(defun not-file-matches (tag-sequence file &optional info)
+  (let ((info (%file-info file info)))
+    (some (_ (not (%file-info-matches-tag _ info file))) tag-sequence)))
+
+(setf (documentation #'not-file-matches 'function)
+      (format nil
+      "Return true if the FILE does not matches any tag in TAG-SEQUENCE.~%
+Tags are:~%~a" *file-tag-doc*))
 
 (defun file-filter (tag-sequence file-list)
   (declare (optimize (debug 3)))
-  (%file-filter tag-sequence file-list))
+  (remove-if (_ (not-file-matches tag-sequence _)) file-list))
+
+(setf (documentation #'file-filter 'function)
+      (format nil
+  "Given a list of file names in FILE-LIST, return a sequence with only the
+files that match the tags in TAG-SEQUENCE. ~%
+Tags are:~%~a" *file-tag-doc*))
 
 (defun file-filter-not (tag-sequence file-list)
   (declare (optimize (debug 3)))
-  (%file-filter tag-sequence file-list t))
+  (remove-if (_ (file-matches tag-sequence _)) file-list))
+
+(setf (documentation #'file-filter-not 'function)
+      (format nil
+  "Given a list of file names in FILE-LIST, return a sequence with only the
+files that do NOT match the tags in TAG-SEQUENCE.~%
+Tags are:~%~a" *file-tag-doc*))
 
 ;; EOF
