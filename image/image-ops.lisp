@@ -40,21 +40,47 @@ They can be EQ, if that's what you want."
 		           (aref (image-subimages ,to-image) ,i)))))
 	 (sub-image (,do-it ,from-image ,to-image))))))
 
+(define-condition pixel-function-error (simple-error)
+  ((conditions
+    :initarg :conditions :accessor pixel-function-error-conditions
+    :initform nil :type list
+    :documentation "A list of conditions occured during the pixel function."))
+  (:documentation "Some condition occured in a pixel function."))
+
+(defmacro with-condition-gathering ((conditions-var) &body body)
+  "Handle any condition that occurs in BODY and gather them in ERRORS-VAR.
+Sets ERRORS-VAR to NIL beforehand, so it's only non-NIL if you got errors.
+Return CONDITIONS-VAR."
+  `(progn
+     (setf ,conditions-var nil)
+     (handler-case
+	 (progn ,@body)
+       (condition (c)
+	 (push c ,conditions-var)))
+     ,conditions-var))
+
 (defun map-pixels (from-image to-image function)
   "Calls the FUNCTION for every pixel of FROM-IMAGE. FUNCTION is called with
 with arguments: (SUB-IMAGE Y X PIXEL), where X and Y are positive integers, and
 PIXEL is a thing that can be accessed by the pixel macros."
-  (do-image-or-subimage (from-image to-image)
-    (with-slots ((width image::width)
-		 (height image::height)
-		 (data image::data)) from-sub-image
-      (loop :for y :from 0 :below height :do
-	 (loop :for x :from 0 :below width :do
-	    (setf (whole-pixel (sub-image-data to-sub-image) y x)
-		  (funcall function from-sub-image y x
-			   (whole-pixel data y x))))))
-    to-sub-image)
-  to-image)
+  (let ((conditions nil))
+    (with-condition-gathering (conditions)
+      (do-image-or-subimage (from-image to-image)
+	(with-slots ((width image::width)
+		     (height image::height)
+		     (data image::data)) from-sub-image
+	  (loop :for y :from 0 :below height :do
+	     (loop :for x :from 0 :below width :do
+		(setf (whole-pixel (sub-image-data to-sub-image) y x)
+		      (funcall function from-sub-image y x
+			       (whole-pixel data y x))))))
+	to-sub-image)
+      to-image)
+    (when conditions
+      (error 'pixel-function-error
+	     :format-control "Pixel errors: ~s"
+	     :format-arguments conditions
+	     :conditions conditions))))
 
 (defun ensure-parallel-kernel ()
   (when (not lparallel:*kernel*)
@@ -74,7 +100,8 @@ with arguments: (SUB-IMAGE Y X PIXEL), where X and Y are positive integers, and
 PIXEL is a thing that can be accessed by the pixel macros."
   (ensure-parallel-kernel)
   (let ((n (nos:processor-count))
-	(chan (make-channel)))
+	(chan (make-channel))
+	(conditions nil))
     (do-image-or-subimage (from-image to-image)
       (let* ((height (sub-image-height from-sub-image))
 	     (piece-size (floor height n))
@@ -87,9 +114,11 @@ PIXEL is a thing that can be accessed by the pixel macros."
 	   ;; (submit-task chan #'map-piece
 	   ;; 	      from-sub-image to-sub-image function
 	   ;; 	      y (+ y piece-size) width)
-	   (submit-task chan (lambda (s e)
-			       (map-piece
-				from-sub-image to-sub-image function s e width))
+	   (submit-task chan
+			(lambda (s e)
+			  (with-condition-gathering (conditions)
+			    (map-piece
+			     from-sub-image to-sub-image function s e width)))
 			y (+ y piece-size))
 	   ;; (map-piece from-sub-image to-sub-image function
 	   ;; 	      y (+ y piece-size) width)
@@ -98,9 +127,11 @@ PIXEL is a thing that can be accessed by the pixel macros."
 	;; last piece
 	;; (submit-task chan #'map-piece from-sub-image to-sub-image function
 	;; 		   y (+ y piece-size left-over) width)
-	(submit-task chan (lambda (s e)
-			    (map-piece from-sub-image to-sub-image function
-				       s e width))
+	(submit-task chan
+		     (lambda (s e)
+		       (with-condition-gathering (conditions)
+			 (map-piece from-sub-image to-sub-image function
+				    s e width)))
 		     y (+ y piece-size left-over))
 	;; wait for every piece
 	;; (loop :with junk :and not-done
@@ -112,7 +143,13 @@ PIXEL is a thing that can be accessed by the pixel macros."
 	(loop :with junk
 	   :for i :from 1 :to n
 	   :do (setf junk (receive-result chan))
-	   (incf done-count))
+	   (incf done-count)
+	   :while (not conditions))
+	(when conditions
+	  (error 'pixel-function-error
+		 :format-control "Pixel errors: ~s"
+		 :format-arguments conditions
+		 :conditions conditions))
 	(when (< done-count n)
 	  (format t "Only ~d done!~%" done-count))
 	)
