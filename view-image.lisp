@@ -538,8 +538,8 @@ the first time it fails to identify the image."
 	      (when (not mod-buffer)
 		(setf mod-buffer (make-blank-copy image)))
 	      (if use-serial-map
-		(map-pixels image mod-buffer func)
-		(pmap-pixels image mod-buffer func))
+		  (map-pixels image mod-buffer func)
+		  (pmap-pixels image mod-buffer func))
 	      (setf last-func func)
 	      (rotatef image mod-buffer)))
 	(error (c)
