@@ -303,7 +303,7 @@ Options:
 		   (parallel nil)
 		   ;; tests
 		   name file-type path perm group user size type time
-		   expr
+		   expr test
 		   ;; actions
 		   do action
 		   (print nil))
@@ -326,6 +326,7 @@ Tests are:
                    (file-type string)
                    (perm string) or (permissions string)
                    (path string)
+  :test           Satisfies the boolean predicate given the file name.
 Actions:
   :do             Calles the function with the full path for every match.
   :collect        True to return the file name(s) as a list. (default t)
@@ -351,7 +352,8 @@ Options:
     (setf action do))
 
   (block nil
-  (let* ((no-test (not (or name file-type path perm group user size type time)))
+  (let* ((no-test (not (or name file-type path perm group user size type time
+                           test)))
 	 (files '())
 	 (need-to-stat (or perm user group size type time))
 	 (depth 0)
@@ -402,7 +404,7 @@ Options:
 	(loop :for f :in dir-list
 	   :if (not (superfluous-file-name-p (dir-entry-name f))) :do
 	   (let* ((n (dir-entry-name f))
-		  (full (format nil "~a~a~a" dir *directory-separator* n))
+		  (full (path-append dir n))
 		  (name-matched
 		   (or (not name) (compare name n verbose case-insensitivity)))
 		  (path-matched
@@ -418,11 +420,12 @@ Options:
 		  (file-type-matched (or (not file-type)
 					 (compare file-type
 						  (file-type full) verbose
-						  case-insensitivity))))
+						  case-insensitivity)))
+		  (test-matched  (or (not test) (funcall test full))))
 	     (cond
 	       ((and name-matched type-matched path-matched perm-matched
 		     user-matched group-matched size-matched time-matched
-		     file-type-matched)
+		     file-type-matched test-matched)
 		(perform-action full))
 	       (no-test
 		(perform-action full)))))))
@@ -476,6 +479,7 @@ Options:
 			       :time time
 			       :expr expr
 			       :do action
+			       :test test
 			       :print print))
 	       ;; )
 	 (if collect (setf files (nconc files result)))))
@@ -520,7 +524,7 @@ arguments are the same."
    min-depth  
    ;; tests
    name file-type path perm group user size type time
-   expr
+   test expr
    ;; actions
    do action (print t)))
 
@@ -587,6 +591,9 @@ arguments are the same."
     :help        "Matches user.")
    (expr	 string   :short-arg #\e
     :help        "Matches expression (NOT IMPLEMENTED YET)")
+   (test	 object   :long-arg "test"
+    :help        "A function that given the path name, returns true if we
+                 should include the file.")
    (action	 object   :short-arg #\a :long-arg "do"
     :help        "Calls the function with the full path for every match.")
    (print	 boolean  :short-arg #\p :default t
