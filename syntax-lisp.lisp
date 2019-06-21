@@ -387,13 +387,17 @@ accordingly. Case can be :upper :lower :mixed or :none."
     (let ((lines (split-sequence #\newline (token-object token)))
 	  par new-paragraph s e ss ee prefix)
       (declare (ignorable e))
-      (labels ((print-it (string-list &optional prefix)
-		 (grout-color :white :default
-			      (justify-text
-			       (join-by-string string-list #\space)
-			       :prefix (or prefix "")
-			       :stream nil
-			       :cols (or columns (grout-width))))
+      (labels ((print-it (string-list &key prefix verbatim)
+		 (grout-color
+		  :white :default
+		  (if verbatim
+		      (s+ (or prefix "")
+			  (join-by-string string-list #\space))
+		      (justify-text
+		       (join-by-string string-list #\space)
+		       :prefix (or prefix "")
+		       :stream nil
+		       :cols (or columns (grout-width)))))
 		 (grout-princ (s+ #+nil "‼" #\newline)))
 	       (print-paragraph ()
 		 (when new-paragraph
@@ -430,11 +434,17 @@ accordingly. Case can be :upper :lower :mixed or :none."
 	      (push l par))
 	     ;; a line starting with blanks
 	     ((multiple-value-setq (s e ss ee)
-		(scan "^([ \\t]+)[^ \\t]" l))
+		(scan "^([ \\t]+)([^ \\t])" l))
 	      (when par
 		(print-it (nreverse par))
 		(setf par nil))
-	      (print-it (list l) (subseq l (aref ss 0) (aref ee 0))))
+	      ;; Special verbatim line. @@@ Is this even good???
+	      (if (equal "|" (subseq l (aref ss 1) (aref ee 1)))
+		  (print-it (list (subseq l (aref ee 1)))
+			    :verbatim t
+			    :prefix (subseq l (aref ss 0) (aref ee 0)))
+		  (print-it (list l)
+			    :prefix (subseq l (aref ss 0) (aref ee 0)))))
 	     (t
 	      (when par
 		(print-paragraph)
