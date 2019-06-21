@@ -669,7 +669,9 @@ Don't update the display."
 		 (< point (fill-pointer buf))
 		 (char= #\newline (simplify-char (aref buf point))))
 	(incf end))
-      (setf clipboard (subseq buf point end))
+      (setf clipboard (if (eq (inator-last-command e) 'kill-line)
+			  (oconcatenate clipboard (subseq buf point end))
+			  (subseq buf point end)))
       (buffer-delete e point end point))))
 
 (defmulti backward-kill-line (e)
@@ -1154,7 +1156,9 @@ in order, \"{open}{close}...\".")
 (defsingle insert-file (e)
   "Insert a file into the line editor's buffer."
   (let* ((file (read-filename :prompt "Insert-file: ")))
-    (insert e (slurp file))))
+    (use-first-context (e)
+      (with-context ()
+	(buffer-insert e point (slurp file) point)))))
 
 (defsingle add-cursor-on-next-line (e)
   "Add a cursor where next-line would take us."
