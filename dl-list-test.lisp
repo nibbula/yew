@@ -58,10 +58,51 @@
     (and (= (dl-nth 0 sub-l) 3)
 	 (= (dl-nth 1 sub-l) 4)
 	 (= (dl-nth 2 sub-l) 5)))
+  "Making and unmaking a list"
+  (let* ((l1 (loop :for i :from 1 :to 77 :collect i))
+	 (l (make-dl-list l1))
+	 (l2 (dl-list-to-list l)))
+    (equal l1 l2))
+  )
+
+(deftests (dl-list-2 :doc "Iterating.")
+  "do iteration"
+  (let* ((n 100)
+	 (l (make-dl-list (loop :for i :from 1 :to n :collect i)))
+	 (sum 0))
+    (dl-list-do l (lambda (x) (incf sum x)))
+    (= sum (+ (* (/ n 2) n) (/ n 2))))
+  "iterate backward"
+  (let* ((l1 '(0 1 2 3 4 5))
+	 (l2 nil)
+	 (l3 (make-dl-list l1)))
+    (dl-list-do-backward (dl-last l3) (lambda (x) (push x l2)))
+    (equal l1 l2))
+   )
+
+(deftests (dl-list-printing :doc "Iterating.")
+  "printing"
+  (equal "#<DL-LIST (1 2 3 4 5)>"
+	 (prin1-to-string (dl-list:make-dl-list '(1 2 3 4 5))))
+  "elided printing"
+  (let ((*print-length* 3))
+    (equal "#<DL-LIST (1 2 3 ...)>"
+	   (prin1-to-string (dl-list:make-dl-list '(1 2 3 4 5 6)))))
+  "pretty printing"
+  (let ((*print-right-margin* 17))
+    (equal (format nil
+		   (concatenate 'string
+				;;012345678901234567
+				"#<DL-LIST (A B C~%"
+				"            D E F~%"
+				"            G H~%"
+				"            I)>"))
+	   (princ-to-string
+	    (dl-list:make-dl-list '(a b c d e f g h i)))))
   )
 
 (deftests (dl-list-all :doc "All the tests.")
-  dl-list-1)
+  dl-list-1 dl-list-2 dl-list-printing)
 
 (defun run ()
   "Run all the dl-list tests."
