@@ -110,6 +110,7 @@ of it.")
    #:missing-implementation
    #:without-warning
    #:without-notes
+   #:with-muffled-notes
    #:sort-muffled
    ;; language-ish
    #:define-constant
@@ -292,6 +293,13 @@ Useful for making your macro 'hygenic'."
      ,@body)
   #-sbcl
   `(progn ,@body))
+
+;; @@@ What are the advantages or diffreneces, if any, of using
+;; with-muffled-notes vs without-notes?
+(defmacro with-muffled-notes (&body body)
+  "Evaluate BODY with compiler notes muffled."
+  `(locally #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+	    ,@body))
 
 ;; This is just for a particularly complaintive implementation.
 (declaim (inline sort-muffled))
