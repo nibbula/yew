@@ -165,9 +165,9 @@ A: _This_ *is* your documentation.
 	    (when (setf result (find-test-or-group name (test-group-tests tt)))
 	      (return result)))))))
 
-(defun report-start (test)
+(defun report-start (test &optional doc)
   (when *verbose*
-    (format t "Test ~a: " test)
+    (format t "Test ~a~:[~; ~:*~a~]:   " test doc)
     (finish-output)))
 
 (defun report-done (result)
@@ -267,7 +267,7 @@ exit occurs.
 	      :collect
 	    `(progn
 	       (defun ,func-name ()
-		 (report-start ',func-name)
+		 (report-start ',func-name ,fdoc)
 		 (setf (test-result (find-test ',func-name))
 		       (report-done ,b)))
 	       (add-to-group-name ',group-name
