@@ -732,36 +732,39 @@ the first time it fails to identify the image."
   "Display the status/message line."
   (with-slots (image message file-index file-list subimage zoom x y
 	       move-object-mode delay-factor buffer) o
-    (with-accessors ((name image-name)
-		     (width image-width)
-		     (height image-height)
-		     (subimages image-subimages)) image
-      (if message
-	  (progn
-	    (show-message o message)
-	    (setf message nil))
-	  (let ((position (format nil "+~d+~d " x y))
-		(file-count (if (> (length file-list) 1)
-				(format nil "(file ~d of ~d) "
-					file-index (length file-list)) ""))
-		(frame-count (if (> (length subimages) 1)
-				 (format nil "[frame ~d of ~d] " subimage
-					 (length subimages)) ""))
-		(disposal (sub-image-disposal (aref subimages subimage))))
-	    (multiple-value-bind (start-x end-x start-y end-y) (old-clip o)
-	      (let ((line
-		     (format nil "~a ~dx~d ~a~a~a~f% ~s <~d-~d ~d-~d> o:~s ~s ~
+    (if (not image)
+	(show-message o "--NO IMAGE--")
+	(with-accessors ((name image-name)
+			 (width image-width)
+			 (height image-height)
+			 (subimages image-subimages)) image
+	  (if message
+	      (progn
+		(show-message o message)
+		(setf message nil))
+	      (let ((position (format nil "+~d+~d " x y))
+		    (file-count (if (> (length file-list) 1)
+				    (format nil "(file ~d of ~d) "
+					    file-index (length file-list)) ""))
+		    (frame-count (if (> (length subimages) 1)
+				     (format nil "[frame ~d of ~d] " subimage
+					     (length subimages)) ""))
+		    (disposal (sub-image-disposal (aref subimages subimage))))
+		(multiple-value-bind (start-x end-x start-y end-y) (old-clip o)
+		  (let ((line
+			 (format nil
+				 "~a ~dx~d ~a~a~a~f% ~s <~d-~d ~d-~d> o:~s ~s ~
                                   ~:[b~;~]"
-			     (nos:path-file-name name)
-			     width height position file-count frame-count
-			     zoom delay-factor
-			     start-x end-x start-y end-y
-			     move-object-mode
-			     disposal
-			     buffer
-			     )))
-		(show-message o (subseq line 0 (min (length line)
-						    (1- (width o))))))))))))
+				 (nos:path-file-name name)
+				 width height position file-count frame-count
+				 zoom delay-factor
+				 start-x end-x start-y end-y
+				 move-object-mode
+				 disposal
+				 buffer
+				 )))
+		    (show-message o (subseq line 0 (min (length line)
+							(1- (width o)))))))))))))
 
 #|
 
@@ -1287,13 +1290,14 @@ But also greatly increasing # of chars output.
     ;;   (tt-clear))
     (when (not looping)
       (tt-erase-below))
-    (if use-half-block
-	(output-image-half
-	 x y zoom image subimage (width inator) (height inator)
-	 #'term-mover #'set-pixel-half buffer)
-	(output-image
-	 x y zoom image subimage (width inator) (height inator)
-	 #'term-mover #'set-pixel-bg buffer))
+    (when image
+      (if use-half-block
+	  (output-image-half
+	   x y zoom image subimage (width inator) (height inator)
+	   #'term-mover #'set-pixel-half buffer)
+	  (output-image
+	   x y zoom image subimage (width inator) (height inator)
+	   #'term-mover #'set-pixel-bg buffer)))
     (tt-move-to (1- (height inator)) 0)
     (when show-modeline
       (show-status inator))))
@@ -1311,8 +1315,9 @@ But also greatly increasing # of chars output.
       (initial-command
        (call-command o initial-command nil)
        (setf initial-command nil)
-       (center *image-viewer*)
-       (fit-image-to-window *image-viewer*))
+       (when (image-inator-image o)
+	 (center *image-viewer*)
+	 (fit-image-to-window *image-viewer*)))
       ((image-inator-image o)
        (center *image-viewer*)
        (fit-image-to-window *image-viewer*)))))

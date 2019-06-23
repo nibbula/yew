@@ -733,6 +733,10 @@ XIMAGES-MASK array."
 	       cache-valid)
       inator
     (declare (type fixnum x y) (type float zoom))
+    (when (not image)
+      (when show-modeline
+	(view-image::show-status inator))
+      (return-from show-image nil))
     (with-accessors ((name image:image-name)
 		     (subimages image:image-subimages)) image
       (with-accessors ((si-x     image:sub-image-x)
@@ -804,16 +808,16 @@ XIMAGES-MASK array."
   (dbug "update~%")
   (with-slots ((frame-start-time view-image::frame-start-time)
 	       display window erase-gc need-to-redraw) o
-    (setf frame-start-time (get-dtime))
-    (when need-to-redraw
-      (dbug "redraw~%")
-      ;; (draw-rectangle window erase-gc 0 0
-      ;; 		      (drawable-width window) (drawable-height window)
-      ;; 		      t)
-      (erase-area o 0 0 (drawable-width window) (drawable-height window))
-      (setf need-to-redraw nil))
-    (show-image o)
-    (display-finish-output display)))
+      (setf frame-start-time (get-dtime))
+      (when need-to-redraw
+	(dbug "redraw~%")
+	;; (draw-rectangle window erase-gc 0 0
+	;; 		      (drawable-width window) (drawable-height window)
+	;; 		      t)
+	(erase-area o 0 0 (drawable-width window) (drawable-height window))
+	(setf need-to-redraw nil))
+      (show-image o)
+      (display-finish-output display)))
 
 (defmethod redraw ((o image-x11-inator))
   (with-slots (need-to-redraw) o
