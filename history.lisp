@@ -155,8 +155,8 @@
     (and h
 	 (setf list (history-head h))
 	 (if (minusp n)
-	     (setf element (dl-nth (abs n) list))
-	     (setf element (dl-nth (- (dl-length list) n) list)))
+	     (setf element (dl-nth-element (abs n) list))
+	     (setf element (dl-nth-element (- (dl-length list) n) list)))
 	 (dl-content element))))
 
 (defun show-history (&key (context *history-context*) show-time)
