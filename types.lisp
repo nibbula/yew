@@ -46,12 +46,16 @@ string (denoting itself)."
   seconds
   nanoseconds)
 
+(deftype file-type ()
+  "Most general category of a file in a file system."
+  `(member :regular :directory :link :device :other))
+
 ;; Whatever
 (defstruct file-info
   "File information."
   ;; Type and flags should only have things which can be reliably detected
   ;; on all systems and have nearly the same meaning and are useful.
-  (type nil  :type (member :regular :directory :link :device :other))
+  (type nil  :type file-type)
   (size 0    :type integer)		; in bytes
   (flags nil :type list)		; :hidden :immutable :compressed
   creation-time
