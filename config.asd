@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Package build configuration."
-    :depends-on (:cffi)
+    :depends-on ((:feature (:not :mezzano) :cffi))
     :components
     ((:file "config")))

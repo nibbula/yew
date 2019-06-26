@@ -161,6 +161,7 @@ defconfig* forms."
 (defun library-loadable-p (library-spec)
   "Return true if we can load the operating system library, which usually
 means 'C' language interface, dynamic library."
+  #-mezzano
   ;; We just use CFFI
   (prog (library (library-symbol (gensym "llp")))
      (when (stringp library-spec)
@@ -177,7 +178,10 @@ means 'C' language interface, dynamic library."
        ;; again soon?
        (when library
 	 (cffi:close-foreign-library library)))
-     (return t)))
+     (return t))
+  #+mezzano (declare (ignore library-spec))
+  #+mezzano nil
+  )
 
 (defun temporary-feature-name (var)
   "Return the name we should use for a temporary configuration feature."

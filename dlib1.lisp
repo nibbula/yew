@@ -343,7 +343,10 @@ Useful for making your macro 'hygenic'."
       (when value
 	(ct:free value)))
     result)
-  #-(or clisp sbcl openmcl cmu ecl excl lispworks gcl abcl clasp cormanlisp)
+  #+mezzano (declare (ignore s))
+  #+mezzano nil ; no such thing, not missing
+  #-(or clisp sbcl openmcl cmu ecl excl lispworks gcl abcl clasp cormanlisp
+	mezzano)
   (missing-implementation 'd-getenv))
 
 ;; This is useful implementing wrappers or methods for various standard
@@ -881,7 +884,7 @@ Otherwise, return N."
 
 ;; Objects
 
-(defvar *mop-package*
+(defparameter *mop-package*
   #+(or (and clisp mop) abcl) :mop
   #+sbcl :sb-mop
   #+(or cmu gcl) :pcl
@@ -889,11 +892,12 @@ Otherwise, return N."
   #+lispworks :hcl
   #+(or ecl clasp) :clos
   #+cormanlisp :cl
-  #-(or mop sbcl cmu ccl lispworks gcl ecl clasp cormanlisp abcl)
+  #+mezzano :mezzano.clos
+  #-(or mop sbcl cmu ccl lispworks gcl ecl clasp cormanlisp abcl mezzano)
   (error "GIVE ME MOP!!")
   "The package in which the traditional Meta Object Protocol resides.")
 
-#+(or (and clisp mop) sbcl cmu gcl ccl) (d-add-feature :has-mop)
+#+(or (and clisp mop) sbcl cmu gcl ccl mezzano) (d-add-feature :has-mop)
 
 (defun slot-documentation (slot-def)
   "Return the documentation string for a slot as returned by something like
@@ -968,9 +972,11 @@ on all accessible symbols."
   #+lispworks (system:run-shell-command (format nil "~a~{ ~a~}" cmd args)
 					:output :stream :wait nil)
   #+abcl (system:process-output (system:run-program cmd args))
-  #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl)
+  #+mezzano (declare (ignore cmd args))
+  #+mezzano (make-string-input-stream "")
+  #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl mezzano)
   (declare (ignore cmd args))
-  #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl)
+  #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl mezzano)
   (missing-implementation 'system-command-stream))
 
 (defun shell-line (cmd &rest args)
@@ -1008,8 +1014,8 @@ May be list or vector of strings."
   #+excl (sys:command-line-arguments)
   #+lispworks sys:*line-arguments-list*
   #+abcl ext:*command-line-argument-list*
-  
-  #-(or sbcl clisp cmu ecl openmcl excl lispworks abcl)
+  #+mezzano nil
+  #-(or sbcl clisp cmu ecl openmcl excl lispworks abcl mezzano)
   (missing-implementation 'system-args))
 
 #+sbcl
@@ -1028,6 +1034,7 @@ May be list or vector of strings."
   #+ecl (ext:quit)
   #+abcl (ext:quit)
   #+clasp (core:quit)
+  #+mezzano nil ;; or we could (mezzano.supervisor:reboot) ?
   #-(or openmcl cmu sbcl excl clisp ecl abcl clasp)
   (missing-implementation 'exit-system))
 
@@ -1038,8 +1045,13 @@ May be list or vector of strings."
 			   :init-function initial-function)
   #+ccl (save-application image-name :prepend-kernel t
 			  :toplevel-function initial-function)
-  #-(or sbcl clisp ccl) (declare (ignore image-name initial-function))
-  #-(or sbcl clisp ccl) (missing-implementation 'save-image-and-exit))
+  ;; ?? or something. but should we really shutdown?
+  ;; Should we even consider this to be the same?
+  ;; or maybe (snapshot-and-exit)
+  #+mezzano (declare (ignore image-name initial-function))
+  #+mezzano (mezzano.supervisor:snapshot)
+  #-(or sbcl clisp ccl mezzano) (declare (ignore image-name initial-function))
+  #-(or sbcl clisp ccl mezzano) (missing-implementation 'save-image-and-exit))
 
 ;; a.k.a root
 (defun overwhelming-permission ()
@@ -1051,7 +1063,8 @@ May be list or vector of strings."
   #+cmu (= (unix:unix-getuid) 0)
   #+ecl (= (ext:getuid) 0)
   #+(or lispworks abcl) nil
-  #-(or ccl sbcl clisp cmu ecl lispworks abcl)
+  #+mezzano t				; sort of?
+  #-(or ccl sbcl clisp cmu ecl lispworks abcl mezzano)
   (missing-implementation 'overwhelming-permission))
 
 ;; Be forewarned! You will not get any more stupid defconstant warnings!
@@ -1684,14 +1697,14 @@ definition form, like defun. For example:
 ;; go somewhere else, like:
 ;;  (let ((*debug-io* *earth*)) (with-dbug (land-on-mars)))
 
-(defvar *dbug* nil
+(defparameter *dbug* nil
   "Dude, do you even debug?")
 
-(defvar *dbug-package* nil
+(defparameter *dbug-package* nil
   "A package to debug. Output debugging message when we're in this package.")
 
 (declaim (type (or cons null vector) *dbug-facility*))
-(defvar *dbug-facility* nil
+(defparameter *dbug-facility* nil
   "Facilities to debug. A sequence of symbols or something.")
 
 (defmacro dbug (fmt &rest args)
@@ -1951,7 +1964,7 @@ is named \"COPY-OF-<Package><n>\"."
 
 ;; The size of this should really be taken from the system's page size or
 ;; some other known thing which is optimal for the system.
-(defvar *buffer-size* (* 8 1014)
+(defparameter *buffer-size* (* 8 1014)
   "The default buffer size for efficient copying of streams and files.")
 
 ;; I suppose we could make this generic so that streams can do a special
@@ -2019,17 +2032,19 @@ repleace a single tilde with double tidles."
       (when len (ct:free len)))
     result))
 
-(defvar *host* (or (and (not (null (machine-instance)))
-			(length (machine-instance))
-			(machine-instance))
-		   (initial-span
-		    (try-things
-		     '(("scutil" "--get" "ComputerName")
-		       ("hostname") ("uname" "-n")
-		       (machine-instance)
-		       #+cormanlisp (get-computer-name)
-		       ))
-		    '(#\. #\space)))
+(defparameter *host* (or (and (not (null (machine-instance)))
+			      (length (machine-instance))
+			      (machine-instance))
+			 #+mezzano "bogozzano"
+			 (initial-span
+			  (try-things
+			   '(("scutil" "--get" "ComputerName")
+			     ("hostname") ("uname" "-n")
+			     (machine-instance)
+			     #+cormanlisp (get-computer-name)
+			     ;; (machine-instance) return NIL on mezzano?
+			     ))
+			  '(#\. #\space)))
   "The name of the machine. Usually the same as the network host name.")
 (d-add-feature *host*)
 
@@ -2043,14 +2058,16 @@ repleace a single tilde with double tidles."
 ; 	(rel  (shell-line "uname" "-r")
 
 ;; Figure out environmental features
-(defvar *arch* (or (d-getenv "ARCH") (d-getenv "MACHTYPE"))
+(defparameter *arch* (or (d-getenv "ARCH") (d-getenv "MACHTYPE")
+			 (machine-type))
   "String uniquely identifying this platform. A combination of processor
 architecture, computer vendor, operating system, and operating system version.")
 
 (defparameter *arch-nickname*
   (cond
     ((search "sparc"   *arch*)	"sparc")
-    ((and (search "x86_64"  *arch*)
+    ((and (or (search "x86_64"  *arch*)
+	      (search "x86-64"  *arch*))
 	  (or (has-feature :X86-64) (has-feature :64-bit-target))
 	  #+clisp (not (search "arch i386 " (software-type))))
 	  "x86_64")
@@ -2065,10 +2082,11 @@ architecture, computer vendor, operating system, and operating system version.")
   "A short nickname for the current architecture.")
 (d-add-feature *arch-nickname*)
 
-(defvar *os*
+(defparameter *os*
   #+unix (shell-line "uname" "-s")
+  #+mezzano "Mezzano"
   #+(or win32 windows) "windows"
-  #-(or unix (or win32 windows)) "unknown"
+  #-(or unix (or win32 windows) mezzano) "unknown"
   "A string identifying the operating system.")
 
 (defparameter *os-nickname*
@@ -2077,7 +2095,10 @@ architecture, computer vendor, operating system, and operating system version.")
     ((search "SunOS"  *os*)	"solaris") ; come on now
     ((search "Darwin" *os*)	"darwin")
     ((search "windows" *os*)	"windows")
-    (t "unknown"))
+    (t
+     #+mezzano "mezzano"
+     #-mezzano "unknown"
+     ))
   "A short nickname for the current operating system.")
 (d-add-feature *os*)
 
@@ -2092,7 +2113,8 @@ architecture, computer vendor, operating system, and operating system version.")
   #+ecl		"ECL"
   #+abcl	"ABCL"
   #+clasp	"Clasp"
-  #-(or clisp sbcl cmu excl openmcl lispworks ecl abcl clasp) "Unknown"
+  #+mezzano	"Mezzano"
+  #-(or clisp sbcl cmu excl openmcl lispworks ecl abcl clasp mezzano) "Unknown"
   "A short nickname for the current implementation.")
 
 (defparameter *lisp-version*
@@ -2121,8 +2143,15 @@ architecture, computer vendor, operating system, and operating system version.")
 			  (substitute
 			   #\- #\.
 			   (subseq v (1- (position #\- v :from-end t))))))
-
-  #-(or clisp sbcl cmu excl openmcl lispworks ecl abcl) "unknown"
+  #+mezzano
+  (let* ((v (lisp-implementation-version))
+	 (s (position #\space v)))
+    (or (and s (>= (length v) (+ s 9))
+	     (format nil "~a-~a" (subseq v (1+ s) (+ s 9))
+		     (subseq v 0 s)))
+	(lisp-implementation-version)
+	"unknown"))
+  #-(or clisp sbcl cmu excl openmcl lispworks ecl abcl mezzano) "unknown"
   "A version suitable for putting in a logical pathname.")
 
 (defparameter *platform-nickname* (format nil "~(~a~)~a-~a-~a"
