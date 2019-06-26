@@ -670,8 +670,8 @@ Don't update the display."
 		 (char= #\newline (simplify-char (aref buf point))))
 	(incf end))
       (setf clipboard (if (eq (inator-last-command e) 'kill-line)
-			  (oconcatenate clipboard (subseq buf point end))
-			  (subseq buf point end)))
+			  (oconcatenate clipboard (osubseq buf point end))
+			  (osubseq buf point end)))
       (buffer-delete e point end point))))
 
 (defmulti backward-kill-line (e)
