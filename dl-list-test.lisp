@@ -4,7 +4,7 @@
 
 (defpackage :dl-list-test
   (:documentation "Tests for dl-list.")
-  (:use :cl :dl-list :test)
+  (:use :cl :dl-list :test :collections)
   (:export
    #:run
    ))
@@ -65,7 +65,7 @@
     (equal l1 l2))
   )
 
-(deftests (dl-list-2 :doc "Iterating.")
+(deftests (dl-list-2 :doc "Iterating")
   "do iteration"
   (let* ((n 100)
 	 (l (make-dl-list (loop :for i :from 1 :to n :collect i)))
@@ -80,7 +80,7 @@
     (equal l1 l2))
    )
 
-(deftests (dl-list-printing :doc "Iterating.")
+(deftests (dl-list-printing :doc "Printing")
   "printing"
   (equal "#<DL-LIST (1 2 3 4 5)>"
 	 (prin1-to-string (dl-list:make-dl-list '(1 2 3 4 5))))
@@ -101,8 +101,23 @@
 	    (dl-list:make-dl-list '(a b c d e f g h i)))))
   )
 
+(deftests (dl-list-collections :doc "Collection methods")
+  "emptyness"
+  (emptyp (make-dl-list '()))
+  "elt"
+  (let* ((l1 '(0 1 2 3 4 5 6 7 8))
+	 (l (make-dl-list l1)))
+    (every (lambda (x) (= (oelt l x) x)) l1))
+  "length"
+  (= (olength (make-dl-list '())) 0)
+  (= (olength (make-dl-list '(1))) 1)
+  (= (olength (make-dl-list (loop :for i :from 1 :to 88 :collect i))) 88)
+  ;; "map"
+  ;; (let ((l (make-dl-list
+  )
+
 (deftests (dl-list-all :doc "All the tests.")
-  dl-list-1 dl-list-2 dl-list-printing)
+  dl-list-1 dl-list-2 dl-list-printing dl-list-collections)
 
 (defun run ()
   "Run all the dl-list tests."
