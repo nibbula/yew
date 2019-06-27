@@ -296,6 +296,7 @@
 	     (terminal-class (find-terminal-class-for-type
 			      (pick-a-terminal-type)))
 	     (accept-does-newline t)
+	     (re-edit nil)
 	     (history-context :tiny))		; remnant
   "Read a line from the terminal, with line editing and completion.
 Return the string read and the line-editor instance created.
@@ -327,6 +328,8 @@ Keyword arguments:
     Name of a terminal device to use. If NIL 
   ACCEPT-DOES-NEWLINE (t)
     True if accept-line outputs a newline.
+  RE-EDIT
+    True to re-edit the previous line as if accept was a newline.
   HISORY-CONTEXT
     Symbol or string which defines the context for keeping history.
 "			    ; There must be a better way to format docstrings.
@@ -356,34 +359,43 @@ Keyword arguments:
 	 (*completion-count* 0)
 	 (*history-context* history-context)
 	 terminal-state)
-    (when editor
-      (freshen editor))
-    ;;(setf (fill-pointer (buf e)) (inator-point e))
-    (setf (fill-pointer (buf e)) 0)
+
     #+ccl (setf ccl::*auto-flush-streams* nil)
     #+ccl (ccl::%remove-periodic-task 'ccl::auto-flush-interactive-streams)
-    ;; (when (typep (line-editor-terminal e)
-    ;; 		 (find-terminal-class-for-type :crunch))
-    ;;   (setf (oelt (line-editor-terminal e) :start-line)
-    ;; 	    (terminal-get-cursor-position
-    ;; 	     (oelt (line-editor-terminal e) :wrapped-terminal))))
     (setf terminal-state (terminal-start (line-editor-terminal e)))
     (setf (terminal-input-mode (line-editor-terminal e)) :char)
 
-    ;; Add the new line we're working on.
-    (history-add nil)
-    (history-next)
+    (cond
+      (re-edit
+       (setf (inator-quit-flag e) nil)
+       (use-first-context (e)
+	 (newline e)))
+      (t
+       (when editor
+	 (freshen editor))
 
-    (run-hooks *entry-hook*)
+       ;;(setf (fill-pointer (buf e)) (inator-point e))
+       (setf (fill-pointer (buf e)) 0)
+       ;; (when (typep (line-editor-terminal e)
+       ;; 		 (find-terminal-class-for-type :crunch))
+       ;;   (setf (oelt (line-editor-terminal e) :start-line)
+       ;; 	    (terminal-get-cursor-position
+       ;; 	     (oelt (line-editor-terminal e) :wrapped-terminal))))
 
-    ;; Output the prompt
-    (setf (prompt-string e) prompt (prompt-func e) output-prompt-func)
-    (when string
-      (without-undo (e)
-	(buffer-insert e 0 string 0)
-	;; (setf (inator-point e) (length string))
-	(set-all-points e (length string))
-	))
+       ;; Add the new line we're working on.
+       (history-add nil)
+       (history-next)
+
+       (run-hooks *entry-hook*)
+
+       ;; Set the prompt
+       (setf (prompt-string e) prompt (prompt-func e) output-prompt-func)
+       (when string
+	 (without-undo (e)
+	   (buffer-insert e 0 string 0)
+	   ;; (setf (inator-point e) (length string))
+	   (set-all-points e (length string))
+	   ))))
 
     ;; If the terminal is in line mode even after we set it to :char mode,
     ;; our whole thing is kind of moot, so just fall back to reading from the
