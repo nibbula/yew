@@ -2,12 +2,6 @@
 ;;; tiny-repl.lisp - A poor little REPL that works with RL.
 ;;;
 
-;;; TODO:
-;;;   - mutli-line
-;;;     - make multi-line statements 1 history entry
-;;;     - make enter just go to the next line in RL
-;;;       - Meta-M for really accept-line
-
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 		   (compilation-speed 0)))
 
@@ -191,7 +185,7 @@ The REPL also has a few commands:
     (let ((result nil)
 	  (pre-str nil)
 	  (str nil))
-      (flet ((call-rl (prompt)
+      (flet ((call-rl (prompt re-edit)
 	       (rl :eof-value 'repl-real-eof
 		   :quit-value 'repl-quit
 		   :editor editor
@@ -200,6 +194,8 @@ The REPL also has a few commands:
 		   :terminal-name terminal-name
 		   :terminal-class terminal-class
 		   :history-context :repl
+		   :accept-does-newline nil
+		   :re-edit re-edit
 		   :prompt (or (and (stringp prompt) prompt) *default-prompt*)
 		   :output-prompt-func (and (or (symbolp prompt)
 						(functionp prompt))
@@ -213,12 +209,16 @@ The REPL also has a few commands:
 	    (setf more nil)
 	    (dbugf :repl "Using MORE~%"))
 	   (pre-str
-	    (setf (values str editor) (call-rl "")))
+	    (setf pre-str nil
+		  (values str editor) (call-rl (or prompt-string
+						   prompt-func
+						   'repl-output-prompt)
+					       t)))
 	   (t
 	    (setf (values str editor)
 		  (call-rl (or prompt-string
 			       prompt-func
-			       'repl-output-prompt)))))
+			       'repl-output-prompt) nil))))
 	 (dbugf :repl "str = ~s~%editor after = ~a~%" str editor)
 	 (setf result
 	       (cond
@@ -233,7 +233,11 @@ The REPL also has a few commands:
 			 pre-str str)
 		  (let ((cat (or (and pre-str (s+ pre-str str)) str)))
 		    (multiple-value-bind (obj pos)
-			(read-from-string cat nil 'repl-continue)
+			(block nil
+			  (handler-case
+			      (read-from-string cat nil 'repl-continue)
+			    (end-of-file ()
+			      (return (values 'repl-continue nil)))))
 		      ;; Make MORE be the rest of the string, if any.
 		      (setf more (if (and (not (eql obj 'repl-continue))
 					  (< pos (length cat)))
@@ -247,7 +251,7 @@ The REPL also has a few commands:
 		   (s+ pre-str str #\newline)
 		   (s+ str #\newline)))
 	 (dbugf :repl "set pre-str = ~w~%" pre-str)
-	 (dbugf :repl "Do CONTIUE~%"))
+	 (dbugf :repl "Do CONTINUE~%"))
       result))))
 
 (defun repple-stepper (c)
@@ -257,6 +261,7 @@ The REPL also has a few commands:
 ;; Eval and print
 (defun repl-eval (form state)
   (with-slots (got-error error-count interceptor debug output) state
+    (format t "~%") ;; <<the newline>>
     (when (or (eq form 'repl-empty) (eq form 'repl-error))
       (dbugf :repl "Do Nothing~%")
       (return-from repl-eval nil))
