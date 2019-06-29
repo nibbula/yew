@@ -2056,15 +2056,19 @@ duplicated sequences, and can have worst case O(n*m) performance."
 
 (defmethod terminal-reset ((tty terminal-crunch-stream))
   "Try to reset the terminal to a sane state, without being too disruptive."
-  ;; @@@ wrapped terminal reset? or what?
   (with-slots (fg bg attrs (wtty wrapped-terminal)) tty
     (setf fg nil bg nil attrs nil)
     (terminal-normal wtty)
-    (terminal-cursor-on tty))
+    (terminal-cursor-on tty)
+    ;; @@@ wrapped terminal reset? or what? Is this too much?
+    ;; (terminal-reset wtty)
+    )
   (terminal-finish-output tty))
 
 (defmethod terminal-reset ((tty terminal-crunch))
-  (call-next-method)) ;; Do the terminal-stream version
+  (call-next-method) ;; Do the terminal-stream version
+  (terminal-reset (terminal-wrapped-terminal tty))
+  )
 
 (defmethod terminal-save-cursor ((tty terminal-crunch))
   "Save the cursor position."
