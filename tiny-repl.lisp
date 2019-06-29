@@ -5,23 +5,20 @@
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 		   (compilation-speed 0)))
 
-(defpackage "TINY-REPL"
+(defpackage :tiny-repl
   (:use :common-lisp :terminal :rl :keymap :dlib :dlib-misc)
-  (:documentation "A tiny REPL replacement that works with RL.")
+  (:documentation "A tiny REPL that works with RL.")
   (:export
    #:tiny-repl
    #:*repl-level*
    #:snarky-interceptor
    #:read-arg
   ))
-(in-package "TINY-REPL")
+(in-package :tiny-repl)
 
-(defparameter *real-eof-symbol* 'repl-real-eof)
-(defparameter *continue-symbol* 'repl-continue)
-(defparameter *empty-symbol* 'repl-empty)
-(defparameter *error-symbol* 'repl-error)
-(defparameter *quit-symbol* 'repl-quit)
-(defparameter *exit-symbol* 'repl-exit)
+(defparameter *repl-symbols*
+  '(repl-real-eof repl-continue repl-empty repl-error repl-quit repl-exit)
+  "Internal things that we use instead of actual values.")
 
 (defvar *repl-level* -1
   "How many recursive command loops are active.")
@@ -31,8 +28,7 @@
 (lisp-implementation-type) \":\"
 *package* (if not :cl-user) \":\"
 *repl-*level* \">\""
-   ;; ^^ docstring really fucks over emacs (still...) ^^
-   ;; Emacs can finally handle it now (as of 24.4.1)
+   ;; ^^ this docstring fucks up emacs ^^
   (declare (ignore e))
   (let ((pkg (if (not (eq *package* (find-package :cl-user)))
 		 (shortest-package-nick)
@@ -45,15 +41,6 @@
 	       pkg
 	       (> *repl-level* 0) *repl-level*
 	       (if (and prompt-supplied p) p *default-prompt*))))
-    ;; (rl::editor-write-string
-    ;;  e (format nil "~a~@[:~a~]~:[~*~;:~d~]~a"
-    ;; 	       #+(and ccl 32-bit-target) "CCL-32"
-    ;; 	       #+(and ccl 64-bit-target) "CCL-64"
-    ;; 	       #+(and ccl (not (or 32-bit-target 64-bit-target))) "CCL"
-    ;; 	       #-ccl *lisp-implementation-nickname*
-    ;; 	       pkg
-    ;; 	       (> *repl-level* 0) *repl-level*
-    ;; 	       (if prompt-supplied p *default-prompt*)))))
 
 (defstruct repl-state
   "Internal state of the REPL. Slots are:
