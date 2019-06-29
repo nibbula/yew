@@ -1384,16 +1384,18 @@ and add the characters the typeahead."
     ;; This is pretty much the idea of termcap/info reset string, usually the
     ;; "rs2", since "rs" usually just does ^[c.
     (mapcar
-     #'out '(" F"    ;; 7 bit controls
-	     "[0m"   ;; color and attributes
-	     ">"     ;; normal keypad
-	     "#@"    ;; default char set
-	     "m"     ;; memory unlock
-	     "[4l"   ;; replace mode (vs insert mode)
-	     "[?4l"  ;; jump scroll (vs smooth scroll)
-	     "[?25h" ;; show the cursor
-	     "[?9l"  ;; Don't send position on mouse press
-	     "[?47l" ;; Use normal screen buffer
+     #'out '(" F"      ;; 7 bit controls
+	     "[0m"     ;; color and attributes
+	     ">"       ;; normal keypad
+	     "#@"      ;; default char set
+	     "m"       ;; memory unlock
+	     "[4l"     ;; replace mode (vs insert mode)
+	     "[?4l"    ;; jump scroll (vs smooth scroll)
+	     "[?25h"   ;; show the cursor
+	     "[?9l"    ;; Don't send position on mouse press
+	     "[?47l"   ;; Use normal screen buffer
+	     "[?1002l" ;; Turn off mouse button events
+	     "[?1003l" ;; Turn off mouse motion events
 	     ))
     (terminal-finish-output tty)))
 
