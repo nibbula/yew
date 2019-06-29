@@ -5,8 +5,7 @@ It's not fully baked yet, but it's more than half baked.
 Unusual characteristics:
 - Doesn't require curses, but can use it.
 - Sort of works Windows, as well Unix.
-- 100% Common Lisp.
-- Depends on some junk in the [the town.](https://github.com/nibbula/useless-pile-of-junk-with-a-catchy-name)
+- Depends on some junk in the [the town.](https://github.com/nibbula/yew)
   and on [opsys](https://github.com/nibbula/opsys).
 
 Example usage:
@@ -28,3 +27,8 @@ Example usage:
     (tt-move-to (random (tt-height)) (random (tt-width)))
     (tt-write-char #\X)))
 ```
+
+There's a fairly big docstring on the :terminal package.
+
+There are no automated tests yet, but there are interactive tests in
+terminal-test.
