@@ -1322,6 +1322,11 @@ But also greatly increasing # of chars output.
        (center *image-viewer*)
        (fit-image-to-window *image-viewer*)))))
 
+(defmethod resize ((o image-inator))
+  (center *image-viewer*)
+  (fit-image-to-window *image-viewer*)
+  (call-next-method))
+
 (defvar *image-inator-types* nil
   "A list of image inator types that are defined.")
 
