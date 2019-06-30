@@ -1,5 +1,5 @@
 ;;
-;; terminal-inator.lisp - What is even going on?
+;; terminal-inator.lisp - Inator methods for terminals.
 ;;
 
 (defpackage :terminal-inator
