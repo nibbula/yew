@@ -397,7 +397,8 @@ the clipboard."
 
 (defun display-search (e str start end prompt)
   "Display the current line with the search string highlighted."
-  (with-slots (buf history-context contexts temporary-message) e
+  (with-slots ((contexts inator::contexts)
+	       buf history-context temporary-message) e
     (setf temporary-message
 	  (s+ prompt str))
       (if (and start (history-current history-context))
@@ -412,8 +413,8 @@ the clipboard."
 	    ;; 		   '(:underline)))
 	    ;; 	  mark nil)		; for the redraw-display
 	    (setf contexts (make-contexts)
-		  (context-point (aref contexts 0)) start
-		  (context-mark (aref contexts 0)) end
+		  (inator-point (aref contexts 0)) start
+		  (inator-mark (aref contexts 0)) end
 		  buf (highlightify
 		       e (make-fatchar-string (history-current history-context))
 		       :style
@@ -506,8 +507,8 @@ be case insensitive."
 search can be ended by typing a control character, which usually performs a
 command, or Control-G which stops the search and returns to the start.
 Control-R searches again backward and Control-S searches again forward."
-  (with-slots (buf command history-context temporary-message last-search
-		   contexts) e
+  (with-slots ((contexts inator::contexts)
+	       buf command history-context temporary-message last-search) e
     (with-slots (point) (aref contexts 0)
       (let ((quit-now nil)
 	    (start-point point)
@@ -1072,7 +1073,8 @@ in order, \"{open}{close}...\".")
 
 (defsingle what-cursor-position (e)
   "Describe the cursor position."
-  (with-slots (contexts buf screen-relative-row screen-col keep-region-active) e
+  (with-slots ((contexts inator::contexts)
+	       buf screen-relative-row screen-col keep-region-active) e
     (with-slots (point) (aref contexts 0)
       (let* ((fc (and (< point (length buf))
 		      (aref buf point)))
@@ -1162,15 +1164,15 @@ in order, \"{open}{close}...\".")
 
 (defsingle add-cursor-on-next-line (e)
   "Add a cursor where next-line would take us."
-  (with-slots (contexts) e
-    (let ((c (copy-context (aref contexts (1- (length contexts))))))
+  (with-slots ((contexts inator::contexts)) e
+    (let ((c (copy-editing-context (aref contexts (1- (length contexts))))))
       (use-context (c)
         (forward-line e))
-      (add-context e (context-point c) nil))))
+      (add-context e (inator-point c) nil))))
 
 (defsingle just-one-context (e)
   "Get rid of all the contexts except one."
-  (with-slots (contexts) e
+  (with-slots ((contexts inator::contexts)) e
     (when (> (length contexts) 1)
       ;; (setf contexts (subseq contexts 0 1)))))
       (setf contexts (make-contexts :copy-from (subseq contexts 0 1))))))
@@ -1182,16 +1184,16 @@ in order, \"{open}{close}...\".")
 (defsingle next-like-this (e)
   "If the selection is active, add another cursor and selection matching the
 current selection. Otherwise, add a cursor on the next line."
-  (with-slots (contexts) e
-    (let ((c (copy-context (aref contexts (1- (length contexts))))))
+  (with-slots ((contexts inator::contexts)) e
+    (let ((c (copy-editing-context (aref contexts (1- (length contexts))))))
       (use-context (c)
         (forward-line e))
-      (add-context e (context-point c) nil))))
+      (add-context e (inator-point c) nil))))
 
 ;; This seems like a more useful thing to be on ^G than abort-command.
 (defsingle reset-stuff (e)
   "Reset some stuff."
-  (with-slots (region-active contexts temporary-message) e
+  (with-slots ((contexts inator::contexts) region-active temporary-message) e
     (cond
       (region-active
        (setf region-active nil))

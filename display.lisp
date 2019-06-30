@@ -244,14 +244,14 @@ in it."
 
 (defun regions-p (e)
   "Return true if there are regions."
-  (some (_ (context-mark _)) (contexts e)))
+  (some (_ (inator-mark _)) (inator-contexts e)))
 
 ;; @@@ or we could just modify it?
 (defun highlightify (e string &key style)
   "Highlight the region in string with style. A new fatchar-string is returned.
 If style isn't given it uses the theme value: (:rl :selection :style)"
   (assert (typep string '(or string fatchar-string fat-string)))
-  (with-slots (contexts highlight-region region-active) e
+  (with-slots ((contexts inator::contexts) highlight-region region-active) e
     (if (or (> (length contexts) 1)
 	    (and highlight-region (regions-p e)))
 	;; @@@ We should really cache some of the stuff in here.
@@ -297,9 +297,10 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 		       (list #\x))
 	       :fatchar-string style-char)
 	      (loop :for c :across contexts :do
-		 (when (< (context-point c) (length array))
+		 (when (< (inator-point c) (length array))
 		   (copy-fatchar-effects (aref style-char 0)
-					 (aref array (context-point c))))))
+					 (aref array
+					       (inator-point c))))))
 	    array))
 	string)))
 
@@ -322,7 +323,8 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 ;; Now with more ploof!
 (defun redraw-display (e &key erase)
   (declare (ignore erase)) ; @@@
-  (with-slots (buf-str buf contexts prompt-height start-row start-col
+  (with-slots ((contexts inator::contexts)
+	       buf-str buf prompt-height start-row start-col
 	       screen-relative-row last-line temporary-message region-active
 	       max-message-lines) e
     (dbugf :rl "----------------~%")
@@ -351,7 +353,7 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 	   (prompt-last-col (cddr (assoc prompt-end prompt-spots)))
 	   ;; Line figuring
 	   (line-end (max 0 (1- (olength buf-str))))
-	   (first-point (context-point (aref contexts 0)))
+	   (first-point (inator-point (aref contexts 0)))
 	   (spots (list `(,first-point . ())
 			`(,line-end . ())))
 	   (endings (calculate-line-endings e :start (1+ prompt-last-col)

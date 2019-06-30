@@ -36,20 +36,40 @@
 (defparameter *normal-keymap* nil
   "The normal key for use in the line editor.")
 
-(defstruct context
-  "Editing context."
-  (point 0 :type fixnum)
-  (mark nil :type (or fixnum null))
-  (clipboard nil))
+;; (defstruct context
+;;   "Editing context."
+;;   (point 0 :type fixnum)
+;;   (mark nil :type (or fixnum null))
+;;   (clipboard nil))
+
+#|
+(defclass line-editing-location (editing-location)
+  ((position
+    :initarg :position :accessor line-editing-location-position
+    :initform 0 :type fixnum
+    :documentation "Position in the sequence."))
+  (:documentation "An editing location in the line editor."))
+
+(defun make-point (n)
+  (make-instance 'line-editing-location :position n))
+|#
+
+(defclass line-editing-context (editing-context)
+  ()
+  (:default-initargs
+   :point 0
+   :mark nil
+   :clipboard nil)
+  (:documentation "Editing context for the line editor."))
 
 (defun make-contexts (&key (n 1) copy-from)
   (if copy-from
-      (make-array n :element-type 'context
+      (make-array n :element-type 'line-editing-context
 		  :initial-contents
-		  (map 'list (_ (copy-context _)) copy-from)
+		  (map 'list (_ (copy-editing-context _)) copy-from)
 		  :adjustable t)
-      (make-array n :element-type 'context
-		  :initial-element (make-context)
+      (make-array n :element-type 'editing-context
+		  :initial-element (make-instance 'line-editing-context)
 		  :adjustable t)))
 
 (defvar *line-editor* nil
@@ -58,7 +78,7 @@ it can be somewhat unpredictable, especially with threads. Don't use it for
 anything important.")
 
 ;; The history is not in here because it is shared by all editors.
-(defclass line-editor (terminal-inator)
+(defclass line-editor (terminal-inator multi-inator-mixin)
   ((last-event
     :accessor last-event
     :initform nil
@@ -74,11 +94,11 @@ anything important.")
     :initform nil
     :initarg :buf-str
     :documentation "The buffer as a fat-string.")
-   (contexts
-    :initarg :contexts :accessor contexts
-    :initform (make-contexts)
-    :type (vector context *)
-    :documentation "The editing contexts.")
+   ;; (contexts
+   ;;  :initarg :contexts :accessor contexts
+   ;;  :initform (make-contexts)
+   ;;  :type (vector context *)
+   ;;  :documentation "The editing contexts.")
    ;; (screen-row
    ;;  :accessor screen-row
    ;;  :initform 0
@@ -323,8 +343,9 @@ Otherwise the region is deactivated every command loop.")
     :initarg :last-search :accessor last-search :initform nil
     :documentation "The last string searched for."))
   (:default-initargs
-    :clipboard nil
-    :mark nil
+    ;; :clipboard nil
+    ;; :mark nil
+    :contexts (make-contexts)
     :non-word-chars *default-non-word-chars*
     :prompt-string *default-prompt*
     :right-prompt nil
@@ -381,11 +402,11 @@ Otherwise the region is deactivated every command loop.")
 	 (inline first-point))
 (defun first-point (e)
   "Get the value of the first point."
-  (context-point (aref (contexts e) 0)))
+  (inator-point (aref (inator-contexts e) 0)))
 
 (defun set-first-point (e p)
   "Set the first point of the editor E to P."
-  (setf (context-point (aref (contexts e) 0)) p))
+  (setf (inator-point (aref (inator-contexts e) 0)) p))
 
 (defsetf first-point set-first-point
   "Set the first point.")
@@ -412,12 +433,14 @@ Otherwise the region is deactivated every command loop.")
 
 (defmacro use-first-context ((e) &body body)
   "Use the first context in the editor E, as the dynamic editing context."
-  `(use-context ((aref (contexts ,e) 0))
+  `(use-context ((aref (inator-contexts ,e) 0))
      ,@body))
 
 (defmacro with-context (() &body body)
   "Evaluate the BODY with point, mark, and clipboard bound from *CONTEXT*."
-  `(with-slots (point mark clipboard) *context*
+  `(with-slots ((point     inator::point)
+		(mark      inator::mark)
+		(clipboard inator::clipboard)) *context*
      (declare (ignorable point mark clipboard))
      ,@body))
 
@@ -425,7 +448,7 @@ Otherwise the region is deactivated every command loop.")
   "Evaluate the BODY once for each context in the editor E, with point, mark,
 and clipboard bound."
   (with-unique-names (c)
-    `(loop :for ,c :across (contexts ,e) :do
+    `(loop :for ,c :across (inator-contexts ,e) :do
 	(use-context (,c) ,@body))))
 
 (defun set-all-points (e pos)
@@ -435,16 +458,17 @@ and clipboard bound."
 
 (defun copy-contexts (e)
   "Return a copy of all the editing contexts in the editor E."
-  (make-contexts :n (length (contexts e)) :copy-from (contexts e)))
+  (make-contexts :n (length (inator-contexts e))
+		 :copy-from (inator-contexts e)))
 
 (defun add-context (e point mark)
-  (with-slots (contexts) e
+  (with-slots ((contexts inator::contexts)) e
     (adjust-array contexts (1+ (length contexts))
-		  :element-type 'context
-		  :initial-element (make-context))
+		  :element-type 'editing-context
+		  :initial-element (make-instance 'line-editing-context))
     (let ((new (aref contexts (1- (length contexts)))))
-      (setf (context-point new) point
-	    (context-mark new) mark))))
+      (setf (inator-point new) point
+	    (inator-mark new) mark))))
 
 (defgeneric freshen (e)
   (:documentation
@@ -459,7 +483,7 @@ but perhaps reuse some resources."))
 	;;(inator-point e)	#(0)
 	;;(inator-mark e)		nil
 	;;(inator-clipboard e)	nil	; should we really?
-	(contexts e)            (make-contexts)
+	(inator-contexts e)     (make-contexts)
 	(inator-quit-flag e)	nil
 	(fill-pointer (buf e))	0
 ;;;	(screen-row e) (terminal-get-cursor-position (line-editor-terminal e))
@@ -497,7 +521,7 @@ but perhaps reuse some resources."))
 	    (progn
 	      ,@body)
 	 (setf (buf ,e) ,saved-buf
-	       (contexts e) ,saved-contexts)))))
+	       (inator-contexts e) ,saved-contexts)))))
 
 ;; For use in external commands.
 

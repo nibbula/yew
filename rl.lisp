@@ -428,7 +428,7 @@ Keyword arguments:
 			   ;; 		'terminal-crunch:terminal-crunch)
 			   ;;   (terminal-crunch::start-line *terminal*))
 			   ;;point command)
-			   command (contexts e))
+			   command (inator-contexts e))
 		  (show-message-log e))
 		;; @@ Is this really where I want it?
 		(when (line-editor-output-callback e)
