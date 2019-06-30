@@ -36,12 +36,6 @@
 (defparameter *normal-keymap* nil
   "The normal key for use in the line editor.")
 
-;; (defstruct context
-;;   "Editing context."
-;;   (point 0 :type fixnum)
-;;   (mark nil :type (or fixnum null))
-;;   (clipboard nil))
-
 #|
 (defclass line-editing-location (editing-location)
   ((position
@@ -61,6 +55,15 @@
    :mark nil
    :clipboard nil)
   (:documentation "Editing context for the line editor."))
+
+(defmethod print-object ((object line-editing-context) stream)
+  "Print a line-editing-context to STREAM."
+  (with-slots (point mark clipboard) object
+    (print-unreadable-object (object stream :type t)
+      (format stream "~s ~s ~a" point mark
+	      (typecase clipboard
+		(fatchar-string (make-fat-string :string clipboard))
+		(t clipboard))))))
 
 (defun make-contexts (&key (n 1) copy-from)
   (if copy-from
@@ -94,11 +97,6 @@ anything important.")
     :initform nil
     :initarg :buf-str
     :documentation "The buffer as a fat-string.")
-   ;; (contexts
-   ;;  :initarg :contexts :accessor contexts
-   ;;  :initform (make-contexts)
-   ;;  :type (vector context *)
-   ;;  :documentation "The editing contexts.")
    ;; (screen-row
    ;;  :accessor screen-row
    ;;  :initform 0
@@ -124,14 +122,6 @@ anything important.")
     :accessor last-line
     :initform nil
     :documentation "Last line of the buffer.")
-   ;; (clipboard
-   ;;  :accessor clipboard
-   ;;  :initform nil
-   ;;  :documentation "A string to copy and paste with.")
-   ;; (mark
-   ;;  :accessor mark
-   ;;  :initform nil
-   ;;  :documentation "A reference position in the buffer.")
    (history-context
     :accessor history-context
     :initarg :history-context
@@ -343,8 +333,6 @@ Otherwise the region is deactivated every command loop.")
     :initarg :last-search :accessor last-search :initform nil
     :documentation "The last string searched for."))
   (:default-initargs
-    ;; :clipboard nil
-    ;; :mark nil
     :contexts (make-contexts)
     :non-word-chars *default-non-word-chars*
     :prompt-string *default-prompt*
