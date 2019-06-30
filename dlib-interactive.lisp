@@ -452,7 +452,8 @@ symbols, :all to show internal symbols too."
 			    "SYSTEM-DEPENDS-ON")
 	    :if (setf s (find-symbol name :asdf))
 	    :collect s)))
-    (print-values-of symbol-list sys :prefix 'system-)))
+    (when sys
+      (print-values-of symbol-list sys :prefix 'system- :error-p nil))))
 
 ;; (defmacro stfu (&body body)
 ;;   "I mean it."
