@@ -929,7 +929,7 @@ lexical variables."
 		      ,snork))))
     `(progn ,@spudgers)))
 
-(defun print-values-of (value-list object &key (stream t) prefix
+(defun print-values-of (value-list object &key (stream t) prefix (error-p t)
 					    (value-format "~S"))
   "Print a vertical list of results of applying functions to OBJECT.
 VALUE-LIST is a list of symbols who are functions of one argument, which can
@@ -952,7 +952,9 @@ is printed. This is useful for printing, e.g. slots of a structure or class."
 			    (remove-prefix (string f) (string prefix))
 			    (string f)))
 	       (if (fboundp f)
-		   (apply f (list object))
+		   (if error-p
+		       (apply f (list object))
+		       (ignore-errors (apply f (list object))))
 		   (symbol-value f))))))
 
 ;; @@@ Is this really necessary or maybe should it be a constant?
