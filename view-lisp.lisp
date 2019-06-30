@@ -299,7 +299,20 @@
      :collect (make-instance 'child-component-node :object c :open nil)))
 
 (defun system-use-list (name)
-  (asdf:system-depends-on (asdf:find-system name)))
+  (typecase name
+    (null nil)
+    (list
+     ;; Could be:?
+     ;; | ( :feature FEATURE-EXPRESSION dependency-def )
+     ;; | ( :version simple-component-name version-specifier )
+     ;; | ( :require module-name )
+     (let ((s (asdf/find-component::resolve-dependency-spec nil name)))
+       (when s
+	 $(list (asdf:component-name s)))))
+    ((or string symbol)
+     (let ((sys (asdf:find-system name nil)))
+       (when sys
+	 (asdf:system-depends-on sys))))))
 
 (defun system-contents (system)
   (list
