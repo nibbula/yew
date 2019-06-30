@@ -12,23 +12,26 @@ can be applied to many types of data.
 To make an app, you subclass INATOR and provide editing, input and display
 methods. You can also provide a custom keymap. You can probably get by with
 just providing methods for UPDATE-DISPLAY and AWAIT-EVENT, and then calling
-EVENT-LOOP with an INATOR sub-class instance.
-
-There's a separate file-inator, for things that work with files. There is a
-terminal based TERMINAL-INATOR package, but please don't ever call it
-a TERM-INATOR.
-")
+EVENT-LOOP with an INATOR sub-class instance.")
   (:use :cl :dlib :keymap :char-util)
   (:export
-   ;; Inator class
+   ;; Inator classes
+   #:editing-location
+   #:editing-context
+   #:copy-editing-context
+   #:base-inator
    #:inator
    #:inator-keymap
    #:inator-point
    #:inator-mark
    #:inator-clipboard
+   #:inator-contexts
    #:inator-quit-flag
    #:inator-command
    #:inator-last-command
+   #:inator-views
+   #:multi-inator-mixin
+   #:multi-inator
 
    ;; Commands
    #:next
@@ -75,19 +78,45 @@ a TERM-INATOR.
    ))
 (in-package :inator)
 
-(defclass inator ()
+(defclass editing-location ()
+  ()
+  (:documentation "A generic location for edits to happen."))
+
+(defclass editing-context ()
+  ((point
+    :initarg :point :accessor inator-point
+    ;; :type editing-location
+    :documentation "The location that edits happen at.")
+   (mark
+    :initarg :mark :accessor inator-mark
+    ;; :type editing-location
+    :documentation "A location that defines the selection.")
+   (clipboard
+    :initarg :clipboard :accessor inator-clipboard
+    :documentation "A saved piece of the edited thing for copying."))
+  (:documentation "A context for editing operations."))
+
+;; Some struct-like generics:
+
+(defgeneric copy-editing-context (editing-context)
+  (:documentation "Copy an editing context.")
+  (:method (editing-context)
+    (make-instance (type-of editing-context)
+		   :point     (inator-point     editing-context)
+		   :mark      (inator-mark      editing-context)
+		   :clipboard (inator-clipboard editing-context))))
+
+;; (defgeneric make-editing-context (&rest keys &keys point mark clipboard
+;; 				    &allow-other-keys)
+;;   (apply #'make-instance 'editing-context keys))
+
+(defclass base-inator ()
   ((keymap
     :initarg :keymap :accessor inator-keymap
     :documentation "What to do when a key is pressed.")
-   (point
-    :initarg :point :accessor inator-point
-    :documentation "Where the action is.")
-   (clipboard
-    :initarg :clipboard :accessor inator-clipboard
-    :documentation "An object to copy and paste with.")
-   (mark
-    :initarg :mark :accessor inator-mark
-    :documentation "An editing reference position.")
+   (contexts
+    :initarg :contexts :accessor inator-contexts
+    :documentation "A set of contexts for editing.")
    (quit-flag
     :initarg :quit-flag :accessor inator-quit-flag :initform nil :type boolean
     :documentation "True to quit the inator.")
@@ -96,9 +125,29 @@ a TERM-INATOR.
     :documentation "The current command.")
    (last-command
     :initarg :last-command :accessor inator-last-command :initform nil
-    :documentation "The last command."))
+    :documentation "The last command.")
+   (views
+    :initarg :views :accessor inator-views
+    :documentation "A set of views of the inator."))
   (:documentation
    "Have some kind of editing style interaction."))
+
+(defclass inator (base-inator editing-context)
+  ()
+  (:documentation
+   "An editor with a single editing context."))
+
+;; @@@ I think this is temporary until we implement views?
+(defclass multi-inator-mixin ()
+  ((contexts
+    :initarg :contexts :accessor inator-contexts
+    :documentation "A set of contexts for editing."))
+  (:documentation
+   "Mixin for multiple editing contexts."))
+
+(defclass multi-inator (base-inator multi-inator-mixin)
+  ()
+  (:documentation "An editor with multiple editing contexts."))
 
 ;; Navigation
 (defgeneric next (inator))
