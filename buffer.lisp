@@ -75,7 +75,7 @@
       (when mark
 	(cond
 	  ((>= mark end)
-	   (decf point len))
+	   (decf mark len))
 	  ((and (>= mark start) (< mark end))
 	   (setf mark end)))))))
 
