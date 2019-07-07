@@ -37,26 +37,31 @@
       (finish-output)
       (clear-input))))
 
-(defun prompt-next ()
-  (tt-move-to (1- (terminal-window-rows *terminal*)) 0)
-  (tt-format "Press Q to quit, anything else to continue.")
-  (tt-finish-output)
-  (case (tt-get-key)
-    ((#\Q #\q)
-     (throw 'quit nil))))
-
-(defmacro blurp (&body body)
-  `(progn
-    (tt-clear) (tt-home)
-    ,@body
-    (prompt-next)))
-
 (defun center (text offset)
   (tt-move-to (+ (truncate (terminal-window-rows *terminal*) 2)
 		 offset)
 	      (- (truncate (terminal-window-columns *terminal*) 2)
 		 (truncate (display-length text) 2)))
   (tt-format text))
+
+(defun prompt-next (&optional (position :bottom))
+  (let ((msg "Press Q to quit, anything else to continue."))
+    (ecase position
+      (:bottom
+       (tt-write-string-at (1- (terminal-window-rows *terminal*)) 0 msg))
+      (:top
+       (tt-write-string-at 0 0 msg))
+      (:center (center msg 0)))
+    (tt-finish-output)
+    (case (tt-get-key)
+      ((#\Q #\q)
+       (throw 'quit nil)))))
+
+(defmacro blurp ((&key (position :bottom)) &body body)
+  `(progn
+    (tt-clear) (tt-home)
+    ,@body
+    (prompt-next ,position)))
 
 (defun test-screen-size-draw ()
   (tt-clear) (tt-home)
@@ -112,7 +117,7 @@
     (tt-enable-events :none)))
 
 (defun test-move-to-col ()
-  (blurp
+  (blurp ()
    (loop :for i :from -4 :to 4 :do
       (loop :for j :from 1 :below (1- (terminal-window-columns *terminal*)) :do
 	 (let ((s (* 3 (cos (/ j 4.2)))))
@@ -136,7 +141,7 @@
    ))
 
 (defun test-ins-del ()
-  (blurp
+  (blurp ()
    (let* ( #| (half (/ (terminal-window-columns *terminal*) 2)) |#
 	  (full (terminal-window-columns *terminal*))
 	  (height 8)
@@ -172,7 +177,7 @@
      )))
 
 (defun test-attrs ()
-  (blurp
+  (blurp ()
    (labels ((zerp (attr state)
 	      (let ((sym (intern (s+ "TERMINAL-" (string-upcase attr))
 				 (find-package :terminal))))
@@ -212,7 +217,7 @@
      (tt-format "~%You should see a table of combined attributes."))))
 
 (defun test-colors ()
-  (blurp
+  (blurp ()
    (let ((colors '(:default :black :red :green :yellow :blue :magenta :cyan
 		   :white))
 	 (i 0))
@@ -238,7 +243,7 @@
        (tt-normal)))))
 
 (defun test-alternate-characters ()
-  (blurp
+  (blurp ()
    (flet ((test-char (number name)
 	    (tt-format "~30a: \"" name)
 	    (tt-alternate-characters t)
@@ -303,7 +308,7 @@ drawing, which will get overwritten."
 
 (defun test-boxes ()
   "Test drawing boxes."
-  (blurp
+  (blurp ()
    (let ((limit (truncate (tt-height) 2)))
      (loop :for i :from 1 :below limit :by 1 :do
 	(draw-box i i (- (tt-width) (* 2 i)) (- (tt-height) (* 2 i)))
@@ -313,7 +318,7 @@ drawing, which will get overwritten."
 			 "This should be surrounded by concentric boxes."))))
 
 (defun test-cursor-visibility ()
-  (blurp
+  (blurp ()
    (let ((half-width (truncate (/ (terminal-window-columns *terminal*) 2)))
 	 (half-height (truncate (/ (terminal-window-rows *terminal*) 2))))
      (tt-cursor-on)
@@ -340,7 +345,7 @@ drawing, which will get overwritten."
      )))
 
 (defun test-save-and-restore-cursor ()
-  (blurp
+  (blurp ()
    (let ((half-width (truncate (/ (terminal-window-columns *terminal*) 2)))
 	 (half-height (truncate (/ (terminal-window-rows *terminal*) 2)))
 	 (opposite #(2 3 0 1))
@@ -376,11 +381,11 @@ drawing, which will get overwritten."
    )))
 
 ;; (defun test-autowrap-delay ()
-;;   (blurp
+;;   (blurp ()
 ;;    (let ((width (tt-width)))
 
-(defun test-scrolling ()
-  (blurp
+(defun test-scrolling-basic ()
+  (blurp ()
    (tt-clear) (tt-finish-output)
    (dotimes (i 5)
      (tt-format "This line should disappear ~d.~%" (1+ i)))
@@ -405,20 +410,80 @@ drawing, which will get overwritten."
    (tt-finish-output)
    (tt-get-key)))
 
+(defun test-scrolling-with-fixed-line ()
+  (blurp (:position :center)
+   (labels ((bottom-line ()
+	      (tt-move-to (1- (tt-height)) 0)
+	      (loop
+		 :with blob = "{--------}"
+		 :with len = (length blob)
+		 :for x :from 0 :below (tt-width) :by len
+		 :do
+		 (tt-write-string
+		  (subseq blob 0 (min len
+				      (+ len (- (tt-width) (+ x len))))))))
+	    (show-lines (n)
+	      (tt-erase-below)
+	      (loop :for i :from n :downto 1 :do
+		 (tt-move-to (- (tt-height) i 1) 0)
+		 (tt-format "-=-=- Line ~d -=-=-" (- n i)))
+	      (bottom-line)
+	      ;; (tt-get-key)
+	      (tt-finish-output)
+	      (sleep .2)
+	      ))
+     (let ((test-lines 15))
+       (tt-clear)
+       (loop :for i :from 1 :to test-lines :do
+	  (tt-home)
+	  (tt-format "Scrolling ~d lines at the bottom.~%~
+                      The bottom line should stay in place." test-lines)
+	  (show-lines i))))))
+
+(defun test-scrolling-n ()
+  (blurp (:position :center)
+   (flet ((scroll-by (n)
+	    (loop :for i :from 0 :below (tt-height)
+	       :do (tt-format-at i 0 "-- Line ~d ~r" i i))
+	    (tt-get-key)
+	    (dotimes (j 3)
+	      (dotimes (i n)
+		(tt-format-at (1- (tt-height)) 0 "~%~d: Scroll by ~d" (1+ i) n))
+	      (tt-get-key))))
+     (tt-format
+      "This tests scrolling by a number of lines at a time.~%~
+       Then screen will be filled with numbered lines, then wait for you~%~
+       to press a key, after which there should be lines N lines at the~%~
+       bottom which say \"I: Scroll by N\" where N is the amount scrolled~%~
+       and I is the number of the scrolled line.~%~%~
+       Press a key to start the test.")
+     (tt-get-key)
+     (tt-home) (tt-erase-below)
+     (loop :for n :from 1 :to 10 :do
+	(scroll-by n)))))
+
+(defun test-scrolling ()
+  (test-scrolling-basic)
+  (test-scrolling-with-fixed-line)
+  (test-scrolling-n))
+
 (defun test-scrolling-region ()
-  (blurp
+  (blurp ()
    (let ((width  (terminal-window-columns *terminal*))
 	 (height (terminal-window-rows *terminal*))
 	 (junk "%@#-."))
-     (tt-format "We will now test setting the scrolling region.~%")
-     (tt-format "This should be visible and unaffected by scrolling below.~%")
-     (tt-format "There should be some similar text at the bottom.~%")
+     (tt-format
+      "We will now test setting the scrolling region.~@
+       This should remain visible and unaffected by scrolling below.~@
+       There should be some similar text at the bottom.~%~@
+       Press any key to begin.")
      (tt-move-to 8 0)
      (tt-format "~v,,,'-a" width "-")
      (tt-move-to (- height 3) 0)
      (tt-format "~v,,,'-a~%" width "-")
-     (tt-format "This should be visible and unaffected.~%")
-     (tt-format "There should be some similar text at the top.~%")
+     (tt-format "This should remain visible and unaffected.~%")
+     (tt-format "There should be some similar text at the top.")
+     (tt-get-key)
      (tt-set-scrolling-region 9 (- height 4))
      (tt-move-to 10 0)
      (loop :for i :from 1 :to 200 :do
@@ -428,15 +493,24 @@ drawing, which will get overwritten."
 	(tt-finish-output)
 	(sleep .03))
      (tt-set-scrolling-region nil nil)
-     (tt-move-to 0 0)
-     (tt-format "We will now un-set the scrolling region.~%")
-     (tt-format "This should disappear by scrolling off the top.~%")
-     (tt-move-to 8 0)
-     (tt-format "~v,,,'-a" width "-")
+     (tt-move-to 4 0)
+     (tt-erase-line)
+     (tt-write-span '("Press any key to " (:standout "continue.")))
+     (tt-get-key)
+     (tt-erase-line) (tt-format "We will now un-set the scrolling region.~%")
+     (tt-erase-line) (tt-format
+		      "This should soon disappear by scrolling off the top.~%")
+     (tt-erase-line) (tt-format "~%")
+     (tt-erase-line) (tt-format "~%")
+     ;; (tt-move-to 8 0)
+     ;; (tt-format "~v,,,'-a" width "-")
      (tt-move-to (- height 3) 0)
-     (tt-format "~v,,,'-a~%" width "-")
-     (tt-format "This should disappear by scrolling off the top.~%")
-     (tt-format "You should not see this when scrolling is done!.~%")
+     ;; (tt-format "~v,,,'-a~%" width "-")
+     (tt-erase-line)
+     (tt-format "This should soon disappear by scrolling off the top.")
+     (tt-erase-line)
+     (tt-format-at (1- height) 0
+		   "You should not see this when scrolling is done!.~%")
      (tt-move-to 10 0)
      (loop :with str
 	:for i :from 1 :to 400 :do
@@ -456,16 +530,16 @@ drawing, which will get overwritten."
 	  (tt-write-char (elt junk (random (length junk))))))))
 
 (defun test-basics ()
-  (blurp
+  (blurp ()
    (tt-format "The screen should have cleared.~%"))
 
 
-  (blurp
+  (blurp ()
    (tt-write-string "You should see this sentence.")
    (tt-write-char #\newline)
    (tt-write-string "This should be on another line."))
 
-  (blurp
+  (blurp ()
    (let ((size 10))
      (loop :for i :from 0 :below size
 	:do
@@ -478,7 +552,7 @@ drawing, which will get overwritten."
      (tt-move-to size 0)
      (tt-write-string "You should see an X of X's.")))
 
-  (blurp
+  (blurp ()
    (let ((height 8)
 	 (half (truncate (terminal-window-columns *terminal*) 2)))
      (junk-block height)
@@ -488,7 +562,7 @@ drawing, which will get overwritten."
      (tt-move-to height half)
      (tt-write-string "Above here should be blank.")))
 
-  (blurp
+  (blurp ()
    (let ((height 8)
 	 (half (truncate (terminal-window-columns *terminal*) 2)))
      (junk-block height)
@@ -498,7 +572,7 @@ drawing, which will get overwritten."
      (tt-move-to height 0)
      (tt-write-string "Everything above here should be blank.")))
 
-  (blurp
+  (blurp ()
    (let ((height 8)
 	 (half (truncate (terminal-window-columns *terminal*) 2)))
      (junk-block height)
@@ -506,14 +580,14 @@ drawing, which will get overwritten."
      (tt-erase-above)
      (tt-write-string "Above and left of here should be blank.")))
 
-  (blurp
+  (blurp ()
    (let ((height 8))
      (junk-block height)
      (tt-move-to (truncate height 2) 0)
      (tt-write-string "Below and right of here should be blank.")
      (tt-erase-below)))
 
-  (blurp
+  (blurp ()
    (tt-format "I am very sorry, but we will now try to BEEP.~%")
    (tt-format "You should hear a sound or see some visual indication.~%")
    (tt-beep))
@@ -571,8 +645,7 @@ drawing, which will get overwritten."
 	 (tt-erase-below)
 	 (center "Ｙｅｓ， ｙｏｕ ｈａｖｅ ＷＩＤＥ ｃｈａｒｓ！" 0)
 	 (center "You should see rectangles bouncing around." 1)
-	 ;; (tt-write-string "Ｙｅｓ， ｙｏｕ ｈａｖｅ ＷＩＤＥ ｃｈａｒｓ！")
-	 ;; (tt-write-string-at 1 0 "You should see rectangles bouncing around.")
+	 (center "Press 'n' to add more blocks, 'q' to quit." 2)
 	 (loop :for b :in blocks :do
 	    (show-blook b)
 	    (incf (blook-x b) (blook-xinc b))
@@ -686,8 +759,8 @@ drawing, which will get overwritten."
   (tt-write-char #\newline))
 
 (defun test-pallet-colors ()
-  (blurp (test-pallet-colors-88))
-  (blurp (test-pallet-colors-256)))
+  (blurp () (test-pallet-colors-88))
+  (blurp () (test-pallet-colors-256)))
 
 (defun test-rgb-colors ()
   "Test to see if the terminal can handle a lot of RGB colors."
