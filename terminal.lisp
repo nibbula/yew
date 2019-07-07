@@ -38,6 +38,7 @@
    #:make-terminal-stream
    #:with-terminal #:with-new-terminal
    #:tt-format			  #:terminal-format
+   #:tt-format-at
    #:tt-write-string		  #:terminal-write-string
    #:tt-write-string-at
    #:tt-write-line		  #:terminal-write-line
@@ -362,7 +363,6 @@ current line.")
     :file-descriptor		nil
     :device-name		*default-console-device-name*
     :output-stream		nil
-    ;;:start-at-current-line	nil
   )
   (:documentation "What we need to know about terminal device."))
 
