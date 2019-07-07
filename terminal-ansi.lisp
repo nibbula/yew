@@ -1082,7 +1082,10 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-set-scrolling-region ((tty terminal-ansi-stream) start end)
   (if (and (not start) (not end))
       (terminal-raw-format tty "~c[r" #\escape)
-      (terminal-raw-format tty "~c[~d;~dr" #\escape start end)))
+      (if (or (< start 0) (> end (terminal-window-rows tty)))
+	  (cerror "Just try it anyway."
+		  "The scrolling region doesn't fit in the screen.")
+	  (terminal-raw-format tty "~c[~d;~dr" #\escape (1+ start) (1+ end)))))
 
 (defmethod terminal-set-attributes ((tty terminal-ansi-stream) attributes)
   "Set the attributes given in the list. If NIL turn off all attributes.
