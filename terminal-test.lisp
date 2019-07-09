@@ -44,24 +44,51 @@
 		 (truncate (display-length text) 2)))
   (tt-format text))
 
-(defun prompt-next (&optional (position :bottom))
-  (let ((msg "Press Q to quit, anything else to continue."))
-    (ecase position
-      (:bottom
-       (tt-write-string-at (1- (terminal-window-rows *terminal*)) 0 msg))
-      (:top
-       (tt-write-string-at 0 0 msg))
-      (:center (center msg 0)))
-    (tt-finish-output)
-    (case (tt-get-key)
-      ((#\Q #\q)
-       (throw 'quit nil)))))
+(defun prompt-next (&key
+		      (message "Press Q to quit, anything else to continue.")
+		      (position :bottom)
+		      redraw-func)
+  (with-immediate ()
+    (flet ((show-message ()
+	     (when message
+	       (ecase position
+		 (:bottom
+		  (tt-write-string-at (1- (terminal-window-rows *terminal*)) 0
+				      message))
+		 (:top
+		  (tt-write-string-at 0 0 message))
+		 (:center (center message 0))))))
+      (show-message)
+      (tt-finish-output)
+      (unwind-protect
+	   (progn
+	     (tt-enable-events :resize)
+	     (loop :with again
+		:do
+		(case (tt-get-key)
+		  ((#\Q #\q)
+		   (invoke-restart (find-restart 'quit)))
+		  (:resize
+		   ;; (tt-format "GOT A RESIZE")
+		   ;; (tt-get-key)
+		   (terminal-get-size *terminal*)
+		   (setf again t)))
+		:while again
+		:do (setf again nil)
+		:when (and redraw-func
+			   (or (functionp redraw-func)
+			       (and (symbolp redraw-func)
+				    (fboundp  redraw-func))))
+		:do
+		(funcall redraw-func)
+		(show-message)))
+	(tt-enable-events :none)))))
 
 (defmacro blurp ((&key (position :bottom)) &body body)
   `(progn
     (tt-clear) (tt-home)
     ,@body
-    (prompt-next ,position)))
+    (prompt-next :position ,position)))
 
 (defun test-screen-size-draw ()
   (tt-clear) (tt-home)
@@ -105,16 +132,18 @@
 
 (defun test-screen-size ()
   (test-screen-size-draw)
-  (unwind-protect
-       (progn
-	 (tt-enable-events :resize)
-	 (loop :while (case (tt-get-key)
-			((#\Q #\q)
-			 (throw 'quit nil))
-			(:resize t)
-			(otherwise nil))
-	    :do (test-screen-size-draw)))
-    (tt-enable-events :none)))
+  (prompt-next :redraw-func #'test-screen-size-draw :message nil)
+  ;; (unwind-protect
+  ;;      (progn
+  ;; 	 (tt-enable-events :resize)
+  ;; 	 (loop :while (case (tt-get-key)
+  ;; 			((#\Q #\q)
+  ;; 			 (invoke-restart (find-restart 'quit)))
+  ;; 			(:resize t)
+  ;; 			(otherwise nil))
+  ;; 	    :do (test-screen-size-draw)))
+  ;;   (tt-enable-events :none))
+  )
 
 (defun test-move-to-col ()
   (blurp ()
@@ -135,7 +164,7 @@
       (tt-down 1))
    (tt-move-to 10 0)
    (tt-color :default :default)
-   (tt-write-string "You should see a waveform.")
+   (tt-write-string "You should see an approximately smooth sine wave.")
    (tt-write-char #\newline)
    (tt-write-string "The top should be cyan and the bottom should be magenta.")
    ))
@@ -308,14 +337,20 @@ drawing, which will get overwritten."
 
 (defun test-boxes ()
   "Test drawing boxes."
-  (blurp ()
-   (let ((limit (truncate (tt-height) 2)))
-     (loop :for i :from 1 :below limit :by 1 :do
-	(draw-box i i (- (tt-width) (* 2 i)) (- (tt-height) (* 2 i)))
-	(tt-finish-output)
-	(sleep .1))
-     (tt-write-string-at limit limit
-			 "This should be surrounded by concentric boxes."))))
+  (flet ((draw-boxes (#|delay|#)
+	   (tt-clear) (tt-home)
+	   (let ((limit (truncate (tt-height) 2)))
+	     (loop :for i :from 1 :below limit :by 1 :do
+		(draw-box i i (- (tt-width) (* 2 i)) (- (tt-height) (* 2 i)))
+		(tt-finish-output)
+		;; (when delay
+		;;   (sleep delay))
+		)
+	     (tt-write-string-at
+	      limit limit
+	      "This should be surrounded by concentric boxes."))))
+    (draw-boxes #|nil .1|#)
+    (prompt-next :redraw-func (lambda () (draw-boxes #|nil|#)))))
 
 (defun test-cursor-visibility ()
   (blurp ()
@@ -412,10 +447,10 @@ drawing, which will get overwritten."
 
 (defun test-scrolling-with-fixed-line ()
   (blurp (:position :center)
-   (labels ((bottom-line ()
-	      (tt-move-to (1- (tt-height)) 0)
+   (labels ((bottom-line (offset)
+	      (tt-move-to (- (tt-height) offset) 0)
 	      (loop
-		 :with blob = "{--------}"
+		 :with blob = "{--The-Bottom-Line--}"
 		 :with len = (length blob)
 		 :for x :from 0 :below (tt-width) :by len
 		 :do
@@ -423,49 +458,66 @@ drawing, which will get overwritten."
 		  (subseq blob 0 (min len
 				      (+ len (- (tt-width) (+ x len))))))))
 	    (show-lines (n)
+	      (tt-home)
+	      (tt-move-to 0 0)
 	      (tt-erase-below)
 	      (loop :for i :from n :downto 1 :do
 		 (tt-move-to (- (tt-height) i 1) 0)
 		 (tt-format "-=-=- Line ~d -=-=-" (- n i)))
-	      (bottom-line)
-	      ;; (tt-get-key)
-	      (tt-finish-output)
-	      (sleep .2)
+	      (bottom-line 1)
+	      (tt-get-key)
+	      ;; (tt-finish-output)
+	      ;; (sleep .2)
 	      ))
      (let ((test-lines 15))
        (tt-clear)
+       (tt-home)
+       (tt-format "Scrolling ~d lines at the bottom.~%~
+                   The bottom line should stay in place." test-lines)
+       (prompt-next :message "Press any key to continue.")
        (loop :for i :from 1 :to test-lines :do
-	  (tt-home)
-	  (tt-format "Scrolling ~d lines at the bottom.~%~
-                      The bottom line should stay in place." test-lines)
 	  (show-lines i))))))
+
+(defun test-scroll-by (n &key (reps 3))
+  (with-immediate ()
+    (tt-home) (tt-erase-below)
+    (loop :for i :from 0 :below (tt-height)
+       :do (tt-format-at i 0 "-- Line ~d ~r" i i))
+    (tt-get-key)
+    (dotimes (j reps)
+      (dotimes (i n)
+	(tt-move-to (1- (tt-height)) 0)
+	(tt-write-char #\newline)
+	(cond
+	  ((= n 1)
+	   (tt-write-string "< "))
+	  ((= i 0)
+	   (tt-write-string "/ "))
+	  ((= i (1- n))
+	   (tt-write-string "\\ "))
+	  (t
+	   (tt-write-string "| ")))
+	(tt-format "~d: Scroll by ~d" (1+ i) n))
+      (tt-get-key))))
 
 (defun test-scrolling-n ()
   (blurp (:position :center)
-   (flet ((scroll-by (n)
-	    (loop :for i :from 0 :below (tt-height)
-	       :do (tt-format-at i 0 "-- Line ~d ~r" i i))
-	    (tt-get-key)
-	    (dotimes (j 3)
-	      (dotimes (i n)
-		(tt-format-at (1- (tt-height)) 0 "~%~d: Scroll by ~d" (1+ i) n))
-	      (tt-get-key))))
-     (tt-format
-      "This tests scrolling by a number of lines at a time.~%~
-       Then screen will be filled with numbered lines, then wait for you~%~
-       to press a key, after which there should be lines N lines at the~%~
-       bottom which say \"I: Scroll by N\" where N is the amount scrolled~%~
-       and I is the number of the scrolled line.~%~%~
-       Press a key to start the test.")
-     (tt-get-key)
-     (tt-home) (tt-erase-below)
-     (loop :for n :from 1 :to 10 :do
-	(scroll-by n)))))
+    (tt-format
+     "This tests scrolling by a number of lines at a time.~%~
+      Then screen will be filled with numbered lines, then wait for you~%~
+      to press a key, after which there should be lines N lines at the~%~
+      bottom which say \"I: Scroll by N\" where N is the amount scrolled~%~
+      and I is the number of the scrolled line.~%~%~
+      Press a key to start the test.")
+    (tt-get-key)
+    (tt-home) (tt-erase-below)
+    (loop :for n :from 1 :to 10 :do
+       (test-scroll-by n))))
 
-(defun test-scrolling ()
-  (test-scrolling-basic)
-  (test-scrolling-with-fixed-line)
-  (test-scrolling-n))
+;; (defun test-scrolling-no-newline ()
+;;   (blurp
+;;     (loop :for i :from 0 :below (tt-height)
+;;        :do (tt-format-at i 0 "-- Line ~d ~r" i i))))
 
 (defun test-scrolling-region ()
   (blurp ()
@@ -762,7 +814,7 @@ drawing, which will get overwritten."
   (blurp () (test-pallet-colors-88))
   (blurp () (test-pallet-colors-256)))
 
-(defun test-rgb-colors ()
+(defun draw-rgb-colors ()
   "Test to see if the terminal can handle a lot of RGB colors."
   (let* ((rows (- (tt-height) 1))
 	 (cols (tt-width))
@@ -784,8 +836,13 @@ drawing, which will get overwritten."
 	  (decf g red-green-step))
        (incf b blue-step)))
   (tt-normal)
-  (tt-finish-output)
-  (tt-get-key))
+  (center "You should see colors smoothly blended from the screen corners." 0)
+  (center "Upper left: green, Upper right: red" 1)
+  (center "Lower left: cyan, Lower right: magenta" 2))
+
+(defun test-rgb-colors ()
+  (draw-rgb-colors)
+  (prompt-next :message nil :redraw-func #'draw-rgb-colors))
 
 (defun test-mouse ()
   (tt-home)
@@ -844,65 +901,121 @@ drawing, which will get overwritten."
 
 ;; @@@ how about a test of mouse motion only events?
 
+(defstruct menu
+  name
+  items)
+
 (defparameter *menu*
-  `(("Screen size"                 . test-screen-size)
-    ("Basic functionality"         . test-basics)
-    ("Box drawing"                 . test-boxes)
-    ("Cursor visibility"           . test-cursor-visibility)
-    ("Cursor save and restore"     . test-save-and-restore-cursor)
-    ("Column movement"             . test-move-to-col)
-    ("Insert & delete characters"  . test-ins-del)
-    ("Text attributes"             . test-attrs)
-    ("Text colors"                 . test-colors)
-    ("Alternate characters"        . test-alternate-characters)
-    ("Wide characters"             . test-wide-characters)
-    ("Pallet colors"               . test-pallet-colors)
-    ("RGB 24-bit colors"           . test-rgb-colors)
-    ("Mouse events"                . test-mouse)
-    ("Scrolling"		   . test-scrolling)
-    ("Scrolling region"            . test-scrolling-region)
-    ))
+  (make-menu
+   :items
+   `(("Screen size"                   . test-screen-size)
+     ("Basic functionality"           . test-basics)
+     ("Box drawing"                   . test-boxes)
+     ("Cursor visibility"             . test-cursor-visibility)
+     ("Cursor save and restore"       . test-save-and-restore-cursor)
+     ("Column movement"               . test-move-to-col)
+     ("Insert & delete characters"    . test-ins-del)
+     ("Text attributes"               . test-attrs)
+     ("Text colors"                   . test-colors)
+     ("Alternate characters"          . test-alternate-characters)
+     ("Wide characters"               . test-wide-characters)
+     ("Pallet colors"                 . test-pallet-colors)
+     ("RGB 24-bit colors"             . test-rgb-colors)
+     ("Mouse events"                  . test-mouse)
+     ("Scrolling menu"		      . *scrolling-menu*)
+     )))
+
+(defparameter *scrolling-menu*
+  (make-menu :name "Scrolling"
+   :items
+   `(("Basic scrolling"		      . test-scrolling-basic)
+     ("Scrolling with a fixed line"   . test-scrolling-with-fixed-line)
+     ("Scrolling by various amounts"  . test-scrolling-n)
+;;     ("Scrolling without newlines"    . test-scrolling-no-newline)
+     ("Scrolling region"              . test-scrolling-region)
+     )))
+
+(defun run-menu (menu)
+  "Run every test in the menu, recursing into sub-menus."
+  (loop :with action
+     :for item :in (menu-items menu) :do
+     (setf action (cdr item))
+     (cond
+       ((fboundp action) (funcall action))
+       (t (run-menu (symbol-value action))))))
 
 (defun run (&optional terminal-type)
+  "Run all the tests."
   (let ((class (or terminal-type (ask-class))))
     (when class
       (with-new-terminal (class)
-	(catch 'quit
+	(with-simple-restart (quit "Quit testing the terminal")
 	  (terminal-get-size *terminal*)
-	  (loop :for item :in *menu*
-	     :do
-	     (funcall (cdr item)))))
+	  (run-menu *menu*)))
       (format t "~%All done.~%"))))
 
-(defun show-menu ()
-  (tt-home)
-  (tt-erase-below)
-  (tt-format " Terminal Tests (~a)~%~%" (class-name (class-of *terminal*)))
-  (loop
-     :for i :from 1
-     :for (name . nil) :in *menu* :do
-     (tt-format "  [~c]  ~a~%" (char-downcase
-				(digit-char i (1+ (length *menu*)))) name))
-  (tt-format "~%  [q]  Quit~%"))
+(defun show-menu (menu)
+  "Display the MENU with keys for invoking the items."
+  (with-slots (name items) menu
+    (tt-home)
+    (tt-erase-below)
+    (tt-format " Terminal Tests (~a)~@[ ~a~]~%~%"
+	       (class-name (class-of *terminal*)) name)
+    (loop
+       :for i :from 1
+       :for (item-name . nil) :in items :do
+       (tt-format "  [~c]  ~a~%" (char-downcase
+				  (digit-char i (1+ (length items))))
+		  item-name))
+    (tt-format "~%")
+    (when (find-restart 'back)
+      (tt-format "  [,]  Back to previous menu~%"))
+    (tt-format "  [^L] Clear screen~%")
+    (tt-format "  [q]  Quit~%")))
+
+(defun do-menu-item (item)
+  "Either call the function or enter the menu bound to the symbol ITEM."
+  (check-type item symbol)
+  (cond
+    ((fboundp item) (funcall item))
+    (t
+     (with-simple-restart (back "Back to previous menu")
+       (menu-loop (symbol-value item))))))
+
+(defun menu-loop (menu)
+  "Menu event loop."
+  (loop :with c :and num
+     :do
+     (terminal-get-size *terminal*)
+     (show-menu menu)
+     (tt-finish-output)
+     (setf c (tt-get-key))
+     (cond
+       ((and (setf num (digit-char-p c (1+ (length (menu-items menu)))))
+	     (not (zerop num)))
+	(do-menu-item (cdr (nth (1- num) (menu-items menu)))))
+       ((eql #\q c)
+	(invoke-restart (find-restart 'quit)))
+       ((eql #\, c)
+	(let ((r (find-restart 'back)))
+	  (when r
+	    (invoke-restart r))))
+       ((eql #\page c)
+	(tt-clear)))))
 
 (defun menu (&optional terminal-type)
+  "Allow the user to pick which tests to run from menus."
   (let ((class (or terminal-type (ask-class))))
     (when class
       (with-new-terminal (class)
-	(catch 'quit
+	(with-simple-restart (quit "Quit testing the terminal")
 	  (terminal-get-size *terminal*)
-	  (loop :with c :and quit-flag :and num
-	     :while (not quit-flag)
-	     :do
-	     (show-menu)
-	     (tt-finish-output)
-	     (setf c (tt-get-key))
-	     (cond
-	       ((and (setf num (digit-char-p c (1+ (length *menu*))))
-		     (not (zerop num)))
-		(funcall (cdr (nth (1- num) *menu*))))
-	       ((eql #\q c)
-		(setf quit-flag t)))))))))
+	  (when (or (< (tt-width) 80)
+		    (< (tt-height) 24))
+	    (tt-format "Your terminal is less than 80x24 characters.~%~
+                        You might have trouble.")
+	    (prompt-next))
+	  (menu-loop *menu*))))))
 
 (defun churn ()
   (let ((class :ansi #| (ask-class) |# ))
