@@ -71,12 +71,13 @@
    #:spin
    #:with-spin
 
-   ;; packages
-   #:*loadable-packages*
-   #:loadable-packages
+   ;; systems and packages 
+   #:*loadable-systems*
+   #:loadable-systems
+   #:loadable-system-p
    #:*quickloadable-systems*
    #:quickloadable-systems
-   #:clear-loadable-package-cache
+   #:clear-loadable-system-cache
    #:ensure-package
    #:unintern-conflicts
    #:d-autoload
@@ -878,7 +879,9 @@ If STREAM is nil, return a string of the output."
 
 (defun print-properties (prop-list &key (right-justify nil) (de-lispify t)
 				     (stream t))
-  "Print a set of names and values nicely in two vertical columns."
+  "Print a set of names and values nicely in two vertical columns. If the first
+element of PROP-LIST is a cons, it guesses that it's an alist, otherwise it
+assumes it's a plist."
   (let ((label-length (loop :for p :in prop-list
 			 :maximize (length (princ-to-string (car p))))))
     (flet ((niceify (s)
@@ -1369,12 +1372,15 @@ SPIN-STRING can be given and defaults to the value of *DEFAULT-SPIN-STRING*."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; packages
 
-(defvar *loadable-packages* nil
+(defvar *loadable-systems* nil
   "Cached list of ASDF loadable packages. Set to NIL to recompute.")
 
+(defvar *loadable-system-table* nil
+  "Cached table of ASDF loadable packages. Set to NIL to recompute.")
+
 ;; This is an horrible hack. I wish we could ask ASDF and Quicklisp.
-(defun loadable-packages (&key as-strings)
-  "List of potentially ASDF loadable packages."
+(defun loadable-systems (&key as-strings)
+  "List of potentially ASDF loadable systems."
   (labels ((place-dir (p)
 	     "Resolve place into a directory."
 	     (with-output-to-string (s)
@@ -1386,12 +1392,12 @@ SPIN-STRING can be given and defaults to the value of *DEFAULT-SPIN-STRING*."
 		      :else
 		      :do (write-string e s))
 		   (write-string p s)))))
-    (or (and *loadable-packages*
-	     (or (and (and as-strings (stringp (car *loadable-packages*)))
-		      *loadable-packages*)
-		 (and (not as-strings) (keywordp (car *loadable-packages*))
-		      *loadable-packages*)))
-	(setf *loadable-packages*
+    (or (and *loadable-systems*
+	     (or (and (and as-strings (stringp (car *loadable-systems*)))
+		      *loadable-systems*)
+		 (and (not as-strings) (keywordp (car *loadable-systems*))
+		      *loadable-systems*)))
+	(setf *loadable-systems*
 	      (with-spin ()
 		(let ((s-dirs (loop :for e in asdf:*source-registry-parameter*
 				 :if (and (listp e) (eq (car e) :directory))
@@ -1439,10 +1445,19 @@ SPIN-STRING can be given and defaults to the value of *DEFAULT-SPIN-STRING*."
 			(string-downcase (ql-dist:name s))
 			(keywordify (ql-dist:name s)))))))))
 
-(defun clear-loadable-package-cache ()
+(defun loadable-system-p (system-designator)
+  "Return true if SYSTEM-DESIGNATOR denotes a loadable system."
+  (when (not *loadable-system-table*)
+    (setf *loadable-system-table* (make-hash-table :test 'equal))
+    (loop :for p :in (loadable-systems :as-strings t)
+       :do (setf (gethash p *loadable-system-table*) t)))
+  (gethash (string system-designator) *loadable-system-table*))
+
+(defun clear-loadable-system-cache ()
   "This should be done whenever packages are added or removed or the search
 configuration is changed."
-  (setf *loadable-packages* nil
+  (setf *loadable-systems* nil
+	*loadable-system-table* nil
 	*quickloadable-systems* nil))
 
 (defun ensure-package (package)
