@@ -417,7 +417,8 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 
 	;; Write the prompt
 	(tt-move-to-col 0)
-	(tt-erase-to-eol)
+	(tt-erase-below)
+	;; (tt-erase-to-eol)
 	(tt-write-string prompt)
 	(tt-erase-to-eol)
 	(dbugf :rl "right-prompt ~s ~s~%" right-prompt-start right-prompt)
