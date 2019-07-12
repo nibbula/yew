@@ -970,7 +970,7 @@ drawing, which will get overwritten."
     (tt-format "~%")
     (when (find-restart 'back)
       (tt-format "  [,]  Back to previous menu~%"))
-    (tt-format "  [^L] Clear screen~%")
+    (tt-format "  [^L] Redraw the screen~%")
     (tt-format "  [q]  Quit~%")))
 
 (defun do-menu-item (item)
