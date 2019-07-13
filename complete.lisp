@@ -287,7 +287,7 @@ Return the completion result, or NIL if there wan't one."
 	     (str (fatchar-string-to-string buf))
 	     (result
 	      (funcall function (if (plusp start-from)
-				    (subseq str start-from)
+				    (subseq str start-from (first-point e))
 				    str)
 		       (first-point e) nil))
 	     (comp (completion-result-completion result))
