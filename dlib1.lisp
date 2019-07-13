@@ -86,6 +86,9 @@ of it.")
    ;; lists
    #:delete-nth
    #:alist-to-hash-table
+   #:do-plist
+   #:do-alist
+   #:do-kv-list
    #:flatten
    #:range-list
    #:range-array
@@ -807,6 +810,45 @@ Also, it can't really delete the first (zeroth) element."
   (loop :for i :in alist
 	:do (setf (gethash (car i) table) (cdr i)))
   table)
+
+(defmacro do-plist ((key value list) &body body)
+  (with-unique-names (l thunk)
+    `(let ((,l ,list) ,key ,value)
+       (flet ((,thunk () ,@body))
+	 (when ,l
+	   (loop
+	      (setf ,key (car ,l)
+		    ,value (if (cdr ,l)
+			       (cadr ,l)
+			       (error "Malformed property list")))
+	      (,thunk)
+	      (if (cddr ,l)
+		  (setf ,l (cddr ,l))
+		  (return))))))))
+
+(defmacro do-alist ((key value list) &body body)
+  (with-unique-names (l thunk)
+    `(let ((,l ,list) ,key ,value)
+       (flet ((,thunk () ,@body))
+	 (when ,l
+	   (loop
+	      (when (not (consp (car ,l)))
+		(error "Malformed association list"))
+	      (setf ,key (caar ,l)
+		    ,value (cdar ,l))
+	      (,thunk)
+	      (if (cdr ,l)
+		  (setf ,l (cdr ,l))
+		  (return))))))))
+
+(defmacro do-kv-list ((key value list) &body body)
+  "Iterate over the keys and values of a plist or an alist. If the first element
+of LIST is an atom, assume it's a plist, otherwise it's an alist."
+  (with-unique-names (l)
+    `(let ((,l ,list))
+       (if (and ,l (atom (car ,l)))
+	   (do-plist (,key ,value ,l) ,@body)
+	   (do-alist (,key ,value ,l) ,@body)))))
 
 ;; I took this from rosetta code. This seems to be the fastest of 8 methods
 ;; I tested. I converted it from using DO* to LOOP, and added comments, so I
