@@ -1206,7 +1206,8 @@ current selection. Otherwise, add a cursor on the next line."
   (with-unique-names (str i buf)
     `(with-slots ((,buf buf)) ,e
        (let* ((,str (fatchar-string-to-string ,buf))
-	      (,i (1- (length ,str)))
+	      ;; (,i (1- (length ,str)))
+	      (,i (1- (first-point e)))
 	      ,string-var ,position-var)
 	 (declare (ignorable ,string-var ,position-var))
 	 (loop ;; back up until a double quote or a / or a ~ preceded by a space
@@ -1217,10 +1218,10 @@ current selection. Otherwise, add a cursor on the next line."
 				      (char= (char ,str ,i) #\~))
 				  (char= (char ,str (1- ,i)) #\space))))
 	    :do (decf ,i))
-	 (log-message e "str = ~s" (subseq ,str ,i))
+	 (log-message e "i = ~s str = ~s" ,i (subseq ,str ,i))
 	 (setf ,string-var (if (zerop ,i)
 			       ,str
-			       (subseq ,str (1+ ,i)))
+			       (subseq ,str (1+ ,i) (first-point e)))
 	       ,position-var (1+ ,i))
 	 ,@body))))
 
