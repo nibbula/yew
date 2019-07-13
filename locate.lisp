@@ -269,10 +269,11 @@ handlers can tell if things were okay."
 	    (incf filename-bytes (length (dir-name dir)))
 	    (incf filename-bytes)
 	    (incf filename-bytes (length f))))
-      (print-properties `(("Database" ,(db-file db))
-			  ("Directories" ,(length (db-directories db)))
-			  ("Files" ,(db-count db))
-			  ("Bytes in file names" ,filename-bytes))))))
+      (print-properties `("Database" ,(db-file db)
+			  "Directories" ,(length (db-directories db))
+			  "Files" ,(db-count db)
+			  "Bytes in file names" ,filename-bytes)
+			:de-lispify nil :right-justify t))))
 
 #+lish
 (lish:defargtype locate-database (lish:arg-pathname)
