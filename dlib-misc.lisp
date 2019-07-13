@@ -882,22 +882,23 @@ If STREAM is nil, return a string of the output."
   "Print a set of names and values nicely in two vertical columns. If the first
 element of PROP-LIST is a cons, it guesses that it's an alist, otherwise it
 assumes it's a plist."
-  (let ((label-length (loop :for p :in prop-list
-			 :maximize (length (princ-to-string (car p))))))
+  (let ((label-length 0))
     (flet ((niceify (s)
 	     (string-capitalize
 		    (substitute #\space #\_
 				(substitute #\space #\- s)))))
-      (loop :with name :and value
-	 :for p :in prop-list :do
-	 (setf name (car p)
-	       value (if (and (cdr p) (listp (cdr p))) (cadr p) (cdr p)))
-	 (format stream (if right-justify "~v@a: ~a~%" "~va: ~a~%")
-		   label-length
-		   (if de-lispify
-		       (niceify (princ-to-string name))
-		       (string-downcase (princ-to-string name)))
-		   value)))))
+      (do-kv-list (key value prop-list)
+	(setf label-length
+	      (max label-length (length (princ-to-string key)))))
+      (do-kv-list (name value prop-list)
+	;;value (if (and (cdr p) (listp (cdr p))) (cadr p) (cdr p)))
+	(format stream (if right-justify "~v@a: ~a~%" "~va: ~a~%")
+		label-length
+		(if de-lispify
+		    (niceify (princ-to-string name))
+		    ;; (string-downcase (princ-to-string name)))
+		    (princ-to-string name))
+		value)))))
 
 (defun print-values (value-list &optional (stream t))
   "Print a vertical list of values. VALUE-LIST is a list of symbols whose
