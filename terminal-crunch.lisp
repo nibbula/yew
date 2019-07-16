@@ -377,12 +377,6 @@ strings, only the attributes of the first character are preserved."
     :documentation
     "Line of the screen that we start our manangment on. This can change if we
 are directed to move above it, or if we scroll.")
-;;    (start-at-current-line
-;;     :initarg :start-at-current-line :accessor start-at-current-line
-;;     #|:initform nil|# :type boolean
-;;     :documentation
-;;     "True to set START-LINE to the cursor position when starting the wrapped
-;; terminal.")
    (really-scroll-amount
     :initarg :really-scroll-amount :accessor really-scroll-amount
     :initform 0 :type fixnum
@@ -405,9 +399,8 @@ content, when there's a start-line.")
     :documentation
     "Line number of a single line only change. Or NIL if there was more than one line changed.")
    )
-  (:default-initargs
-   #| :start-at-current-line nil |#
-   )
+  ;; (:default-initargs
+  ;;  )
   (:documentation
    "Terminal output crunching."))
 
@@ -705,7 +698,7 @@ sizes. It only copies the smaller of the two regions."
 
 (defun invalidate-before-start-row (tty screen)
   (with-slots (start-line) tty
-    (loop :for i :from 0 :below (min start-line
+    (loop :for i :from 0 :below (min (1+ start-line)
 				     (length (screen-lines screen)))
        :do
        (loop :for c :across (aref (screen-lines screen) i)
@@ -716,6 +709,20 @@ sizes. It only copies the smaller of the two regions."
 	     (hash-thing (aref (screen-lines screen) i)))
        ;; @@@ do we really need to set the index?
        (setf (aref (screen-index screen) i) i))))
+
+(defun invalidate-lines (tty screen start end)
+  (assert (and (>= start 0) (< start (terminal-window-rows tty))))
+  (assert (and (>= end 0) (<= end (terminal-window-rows tty))))
+  (loop :for i :from start :below end
+     :do
+     (loop :for c :across (aref (screen-lines screen) i)
+	:do (unset-grid-char c))
+     ;; (setf (aref (screen-lines screen) i)
+     ;; 	     (make-grid-string (screen-width screen)))
+     (setf (aref (screen-hashes screen) i)
+	   (hash-thing (aref (screen-lines screen) i)))
+     ;; @@@ do we really need to set the index?
+     (setf (aref (screen-index screen) i) i)))
 
 (defmethod terminal-reinitialize ((tty terminal-crunch))
   ;;(dbugf :crunch "Crunch ~s not recursivley re-started.~%" tty)
@@ -728,8 +735,17 @@ sizes. It only copies the smaller of the two regions."
 	    (screen-y (new-screen tty)) start-line
 	    (screen-y (old-screen tty)) start-line)
       (update-size tty)
-      (invalidate-before-start-row tty (new-screen tty))
-      (invalidate-before-start-row tty (old-screen tty))
+      ;; @@@ Maybe everything should be invalidated?
+      ;; (invalidate-before-start-row tty (new-screen tty))
+      ;; (invalidate-before-start-row tty (old-screen tty))
+      ;; (invalidate-lines tty (new-screen tty) start-line
+      ;; 			(1- (terminal-window-rows tty)))
+      ;; (invalidate-lines tty (old-screen tty) start-line
+      ;; 			(1- (terminal-window-rows tty)))
+      (invalidate-lines tty (new-screen tty) 0
+			(terminal-window-rows tty))
+      (invalidate-lines tty (old-screen tty) 0
+			(terminal-window-rows tty))
       ;; (dbugf :crunch "Crunch auto re-starting at ~s.~%" start-line)
       ;; (dbugf :crunch "allow-scrolling = ~s.~%" (allow-scrolling tty))
       )
@@ -790,11 +806,19 @@ sizes. It only copies the smaller of the two regions."
 		)
 	      (progn
 		;; (dbugf :crunch "non-zero start line ~s~%" start-line)
-		(invalidate-before-start-row tty (new-screen tty))
-		(invalidate-before-start-row tty (old-screen tty))
+		;; (invalidate-before-start-row tty (new-screen tty))
+		;; (invalidate-before-start-row tty (old-screen tty))
+		;; (invalidate-lines tty (new-screen tty) start-line
+		;; 		  (1- (terminal-window-rows tty)))
+		;; (invalidate-lines tty (old-screen tty) start-line
+		;; 		  (1- (terminal-window-rows tty)))
+		(invalidate-lines tty (new-screen tty) 0
+				  (terminal-window-rows tty))
+		(invalidate-lines tty (old-screen tty) 0
+				  (terminal-window-rows tty))
 		(terminal-move-to wtty start-line 0)
 		(terminal-erase-below wtty)
-		;;(dbugf :crunch "Crunch ~s started at ~d.~%" tty start-line)
+		;; (dbugf :crunch "Crunch ~s started at ~d.~%" tty start-line)
 		))
 	  (terminal-finish-output wtty)
 	  (setf (started tty) 1)
@@ -876,16 +900,21 @@ sizes. It only copies the smaller of the two regions."
   (loop :for line :across x :do
        (fill-by line #'blank-char)))
 
+;; (defun xline-blanker (x)
+;;   "Blank out screen lines X."
+;;   (loop :for line :across x :do
+;;        (fill-by line (lambda () (make-grid-char :c #\x)))))
+
 (defun scroll-copy (n height array blanker)
-  "Copy ARRAY for scrolling N lines in a HEIGHT window. BLANKER a a function
+  "Copy ARRAY for scrolling N lines in a HEIGHT window. BLANKER is a function
 to blank with."
   (cond
     ((plusp n)
      (let ((new-blanks (subseq array 0 n))) ; save overwritten lines
        ;; Copy the retained lines up
        (setf (subseq array 0 (- height n))
-	     ;; (subseq lines n (1- height)))
 	     (subseq array n height))
+       ;; (dbugf :crunch "scroll-copy ~d ~d -> 0 ~d~%" n height (- height n))
        ;; Move the new blank lines in place.
        (setf (subseq array (- height n)) new-blanks)
        ;; Blank out the newly blank lines
@@ -903,10 +932,11 @@ to blank with."
        (funcall blanker new-blanks)))))
 
 (defun scroll (tty n)
-  (dbugf :crunch "(scroll ~s)~%" n)
+  ;; (dbugf :crunch "(scroll ~s)~%" n)
   (with-slots (height lines index) (new-screen tty)
     (when (not (zerop n))
       (no-hints tty))
+    ;; (if-dbugf (:crunch) (dump-screen tty))
     (if (< (abs n) height)
 	(progn
 	  (scroll-copy n height lines #'line-blanker)
@@ -973,8 +1003,10 @@ changed the screen content."
 		 (delayed-scroll ()
 		   (when (delay-scroll tty)
 		     (setf (delay-scroll tty) nil)
+		     ;; Actually scroll when in the bottom right corner.
 		     (when (and (= y (1- height))
 				(= x (1- width)))
+		       ;; (dbugf :crunch "Delayed scroll~%")
 		       (scroll-one-line))))
 		 (next-line ()
 		   (if (< y (1- height))
@@ -985,13 +1017,15 @@ changed the screen content."
 			 (if (= x (1- width))
 			     (progn
 			       ;; @@@ horrible
+			       ;; (dbugf :crunch "Delaying scroll @ ~d ~d~%" x y)
 			       (setf (delay-scroll tty) t))
 			     (progn
+			       ;; (dbugf :crunch "next-line scroll-one-line~%")
 			       (scroll-one-line)))))))
 	  (case (char-char char)
 	    (#\newline
 	     (delayed-scroll)
-	     (terminal-erase-to-eol tty)
+	     ;; (terminal-erase-to-eol tty)
 	     (setf x 0 changed t)
 	     (next-line))
 	    (#\return
@@ -1620,7 +1654,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	 changes
 	 fs its-okay)
 
-    (dbugf :crunch "update-line ~s~%" line)
+    ;; (dbugf :crunch "update-line ~s~%" line)
     
     ;; Go through chars and calculate approximate cost to output differences.
     (flet ((note-change-end (i)
@@ -1658,7 +1692,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	       (note-change-end i)))
 	 (when (> (setf disp-len (display-length (aref new-line i))) 1)
 	   ;; Skip over occluded cells
-	   (dbugf :crunch "skipping occluded cells at ~s~%" i)
+	   ;; (dbugf :crunch "skipping occluded cells at ~s~%" i)
 	   (loop :for zz :from (1+ i) :below (min (+ i disp-len)
 						  (length new-line))
 	      :do
@@ -1748,7 +1782,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 					:end (min (1+ last-change)
 						  (length new-line))
 					#|:no-nulls t|#)))
-	  (dbugf :koo "winky len ~s~%" (olength fs))
+	  ;; (dbugf :koo "winky len ~s~%" (olength fs))
 	  ;; (terminal-write-string wtty (ostring-right-trim
 	  ;; 			       (list *nul-char*) fs))
 	  (terminal-write-string wtty fs)
@@ -1853,9 +1887,14 @@ duplicated sequences, and can have worst case O(n*m) performance."
       (cond
 	((whole-p) (values :same 0))
 	((and (moved-to-top first) (big-enough (second first)))
-	 (values :up (- (1- height) (size (second first)))))
+	 ;; The offset of the start of the "from" range, is the amount to scroll
+	 (values :up (car (first first)))
+	 )
 	((and (moved-to-bottom last) (big-enough (second last)))
-	 (values :down (- (1- height) (size (second last)))))))))
+	 ;; (values :down (- (1- height) (size (second last)))))))))
+	 ;; The offset from the bottom of the end of the "from" range
+	 (values :down (- height (size (second last))))
+	 )))))
 
 (defun update-display (tty)
   "This is the big crunch."
@@ -1879,7 +1918,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
 	    (make-new-screen (screen-height old)
 			     (screen-width old))))
 
-    (dbugf :crunch "****** start update @ ~s~%" start-line)
+    ;; (dbugf :crunch "****** start update @ ~s~%" start-line)
     ;; (dbugf :crunch-update "****** start update @ ~s~%" start-line)
     ;; (if-dbugf (:crunch-update)
     ;; 	      (deblarg::debugger-backtrace 10))
@@ -1887,7 +1926,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
     ;; First, actually scroll unmanaged content if we have to.
     (when (and (not (zerop start-line))
 	       (not (zerop really-scroll-amount)))
-      ;;(dbugf :crunch "-------- Really scroll ~s <-----~%" really-scroll-amount)
+      ;; (dbugf :crunch "-------- Really scroll ~s <-----~%" really-scroll-amount)
       (crunched-move-to tty 0 (1- (screen-height old))
 			(update-x tty) (update-y tty))
       (terminal-scroll-down wtty really-scroll-amount))
@@ -1895,9 +1934,9 @@ duplicated sequences, and can have worst case O(n*m) performance."
     ;; Try to speed things up with hints.
     (cond
       ((not (text-change tty))
-       (dbugf :crunch "position only ~s ~s -> ~s ~s~%"
-	      (screen-x old) (screen-y old)
-	      (screen-x new) (screen-y new))
+       ;; (dbugf :crunch "position only ~s ~s -> ~s ~s~%"
+       ;; 	      (screen-x old) (screen-y old)
+       ;; 	      (screen-x new) (screen-y new))
        (update-position tty new old))
       ((single-char-change tty)
        (let* ((cx (change-start-x (single-char-change tty)))
@@ -1906,7 +1945,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
 	      move-x
 	      char-x
 	      c)
-	 (dbugf :crunch "single char ~s~%" (single-char-change tty))
+	 ;; (dbugf :crunch "single char ~s~%" (single-char-change tty))
 	 (flet ((put-it ()
 		  (crunched-move-to tty (max 0 move-x) cy
 				    (update-x tty) (update-y tty))
@@ -1951,9 +1990,9 @@ duplicated sequences, and can have worst case O(n*m) performance."
        ;; move, overwite, insert / delete as appropriate
        ;; @@@ it could be something else? like insert or delete?
        (let ((line (single-line-change tty)))
-	 (dbugf :crunch "single-line-change ~s~%" line)
+	 ;; (dbugf :crunch "single-line-change ~s~%" line)
 	 (compute-hashes new line (1+ line))
-	 (if-dbugf (:crunch) (dump-hashes tty))
+	 ;; (if-dbugf (:crunch) (dump-hashes tty))
 	 (when (/= (aref (screen-hashes new) line)
 		   (aref (screen-hashes old) line))
 	   (update-line tty line)))
@@ -1962,7 +2001,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
       (t
        ;; Make the line hashes.
        (compute-hashes new start-line)
-       (if-dbugf (:crunch) (dump-hashes tty))
+       ;; (if-dbugf (:crunch) (dump-hashes tty))
 
        ;; handle scrolling
        ;;   detect scrolling
@@ -1973,13 +2012,13 @@ duplicated sequences, and can have worst case O(n*m) performance."
 	     (end (length (screen-hashes new)))
 	     no-change)
 	 (when sames
-	   (dbugf :crunch "sames ~s~%" sames)
+	   ;; (dbugf :crunch "sames ~s~%" sames)
 	   (multiple-value-bind (dir amount)
 	       (can-scroll sames start (screen-height old))
 	     (case dir
 	       (:same
 		(setf no-change t)
-		(dbugf :crunch "scroll: no-change~%")
+		;; (dbugf :crunch "scroll: no-change~%")
 		)
 	       (:up
 		;; actually scroll
@@ -1993,7 +2032,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
 		(setf start (cdr (second (first sames))))
 		;; re-compute the hashes of the lines we have to re-draw
 		(compute-hashes old start)
-		(dbugf :crunch "scroll :up ~s start = ~s~%" amount start)
+		;; (dbugf :crunch "scroll :up ~s start = ~s~%" amount start)
 		)
 	       (:down
 		(crunched-move-to tty 0 0 (update-x tty) (update-y tty))
@@ -2003,7 +2042,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
 		;; (setf end (1+ (cdr (second (car (last sames))))))
 		;; (setf end (car (second (car (last sames)))))
 		(compute-hashes old start end)
-		(dbugf :crunch "scroll :down ~s end = ~s~%" amount end)
+		;; (dbugf :crunch "scroll :down ~s end = ~s~%" amount end)
 		))))
 
 	 ;; Update changed lines.
