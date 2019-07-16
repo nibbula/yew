@@ -85,7 +85,7 @@
 	(tt-enable-events :none)))))
 
 (defmacro blurp ((&key (position :bottom)) &body body)
-  `(progn
+  `(with-immediate ()
     (tt-clear) (tt-home)
     ,@body
     (prompt-next :position ,position)))
