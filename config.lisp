@@ -94,6 +94,7 @@ tweak about the build process.
    #:defconfig
    #:defconfiguration
    #:configure
+   #:config
    ))
 (in-package :config)
 
@@ -130,9 +131,9 @@ tweak about the build process.
     :documentation "A description of the variable."))
   (:documentation "A generic configuration variable."))
 
-(defun package-config-name ()
+(defun package-config-name (&optional (package *package*))
   "Name of the package configuration."
-  (intern "*CONFIG*" *package*))
+  (intern "*CONFIG*" package))
 
 (defgeneric set-var (var value)
   (:documentation "Set a configuration value.")
@@ -270,7 +271,7 @@ your software."))
 	 ,(format nil "Configuration for ~a" (package-name *package*)))
        ;; (export '(#:*config*))
        (when ,verbose
-	 (format t ";; Configuring ~a…" *package*) (finish-output))
+	 (format t ";; Configuring ~a..." *package*) (finish-output))
        (loop :with value
 	  :for v :in ,conf
 	  :do (setf value (or (and (%value-function v)
@@ -282,5 +283,45 @@ your software."))
 	    (finish-output)))
        (when ,verbose
 	 (format t ".~%")))))
+
+(defun print-config (var &key (stream t))
+  (let ((label-length 0))
+    ;; I do the whole load, in two nostril mode.
+    (loop :with l = var
+       :while l
+       :do
+       (setf label-length (max (length (string (pop l))) label-length))
+       (pop l))
+    (loop :with l = var
+       :while l
+       :do
+       (format stream "~(~v@a~): ~a~%" label-length (pop l) (pop l)))))
+
+(defun config (package &rest args)
+  "Set or print the configuration variables for PACKAGE. If ARGS is a single
+plist, set the entire configuration. Otherwise ARGS are individual keywords
+and values to set. When setting values, this loads the <PACKAGE>-CONFIG
+package, and sets it's *config* variable."
+  (let ((config-package-name
+	 (intern (concatenate 'string (string package) "-CONFIG") :keyword))
+	(len (length args)))
+    (and (asdf:load-system config-package-name)
+	 (cond
+	   ((zerop len)
+	    (print-config
+	     (symbol-value (package-config-name config-package-name))))
+	   ((and (= len 1) (consp (car args)))
+	    (setf (symbol-value (package-config-name config-package-name))
+		  args))
+	   ((evenp len)
+	    (loop :with l = args
+	       :while l
+	       :do
+	       (setf (getf (symbol-value
+			    (package-config-name config-package-name))
+			   (pop l))
+		     (pop l))))
+	   (t
+	    (error "Malformed property list"))))))
 
 ;; End
