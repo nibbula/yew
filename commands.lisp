@@ -629,13 +629,19 @@ Don't update the display."
 
 (defmulti delete-char-or-exit (e)
   "At the beginning of a blank line, exit, otherwise delete-char."
-  (with-slots (buf last-command quit-flag exit-flag) e
+  (with-slots (buf last-command quit-flag exit-flag history-context) e
     (if (and (= point 0) (= (length buf) 0)
 	     (not (eql last-command (ctrl #\d))))
 	;; At the beginning of a blank line, we exit,
 	;; so long as the last input wasn't ^D too.
-	(setf quit-flag t
-	      exit-flag t)
+	(progn
+	  (setf quit-flag t
+		exit-flag t)
+	  ;; Don't leave nil entires in the history.
+	  ;; @@@ we should probably make this the responsibility of the calling
+	  ;; code, not the command, like this and accept-line, etc.
+	  (history-go-to-last history-context)
+	  (history-delete-last history-context))
 	(delete-char e))))
 
 ;;; Higher level editing functions
