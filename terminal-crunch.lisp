@@ -932,6 +932,7 @@ to blank with."
        (funcall blanker new-blanks)))))
 
 (defun scroll (tty n)
+  "Scroll by N lines."
   ;; (dbugf :crunch "(scroll ~s)~%" n)
   (with-slots (height lines index) (new-screen tty)
     (when (not (zerop n))
