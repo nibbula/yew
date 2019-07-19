@@ -118,27 +118,29 @@ is saved."))
   (let ((hist (get-history history-context))
   	(s (make-string 4)) i)
     (with-slots (file-name) store
-      (with-open-file (stream file-name :direction :input)
-	(read-sequence s stream :end 4)
-	(when (string/= s "trlh")
-	  (error "Bad magic tag ~a in history file." s))
-	(when (/= *text-history-version*
-		  (setq i (parse-integer (setq s (read-line stream)))))
-	  (error "Bad version number ~a in history file." s))
-	(let ((*read-eval* nil))
-	  (setf (history-head hist)
-		(make-dl-list
-		 (nreverse ;; <<-- N.B.
-		  (loop :with s
-		     :while (setq s (safe-read stream nil))
-		     :do
-		     (when (not (history-entry-p s))
-		       (error "Malformed history entry in history file: ~a."
-			      s))
-		     :collect s)))
-		(history-tail hist)  (dl-last (history-head hist))
-		(history-start hist) (history-head hist)
-		(history-cur hist)   (history-head hist)))))))
+      (ensure-directories-exist file-name)
+      (when (file-exists file-name) ;; Don't fail if the file doesn't exist.
+	(with-open-file (stream file-name :direction :input)
+	  (read-sequence s stream :end 4)
+	  (when (string/= s "trlh")
+	    (error "Bad magic tag ~a in history file." s))
+	  (when (/= *text-history-version*
+		    (setq i (parse-integer (setq s (read-line stream)))))
+	    (error "Bad version number ~a in history file." s))
+	  (let ((*read-eval* nil))
+	    (setf (history-head hist)
+		  (make-dl-list
+		   (nreverse ;; <<-- N.B.
+		    (loop :with s
+		       :while (setq s (safe-read stream nil))
+		       :do
+		       (when (not (history-entry-p s))
+			 (error "Malformed history entry in history file: ~a."
+				s))
+		       :collect s)))
+		  (history-tail hist)  (dl-last (history-head hist))
+		  (history-start hist) (history-head hist)
+		  (history-cur hist)   (history-head hist))))))))
 
 ;;;;;;;;;;;;;;;;;
 ;; Simple style
@@ -150,7 +152,7 @@ is saved."))
 			       &key update (history-context *history-context*))
   "Simple text file saving."
   (declare (ignore update)) ;; @@@ is it really even necessary?
-  (let ((hist (get-history history-context)) pos)
+  (let ((hist (get-history history-context)) #|have-any|# pos)
     (with-slots (file-name) store
       (ensure-directories-exist file-name)
       (with-open-file (stream file-name
@@ -163,6 +165,7 @@ is saved."))
 	;; We have to have at least
 	(when (or (> (dl-length (history-start hist)) 1)
 		  (zerop pos))
+	  ;; (format t "pos = ~d~%" pos)
 	  (dl-list-do-backward
 	   (if (zerop pos)
 	       (history-tail hist)
@@ -171,12 +174,12 @@ is saved."))
 	       ;; Don't bother writing a blank for the empty current.
 	       (when (not (and (eq x (dl-content (history-head hist)))
 			       (not (history-entry-line x))))
+		 ;; (format t "--> ~s <--~%" (history-entry-line x))
 		 (write-line
 		  (or (history-entry-line x) "") ;; @@@ workaround for NIL
 		  stream))))
 	  ;; Move the start to the end.
-	  (setf (history-start hist) (history-head hist))))))
-  (values))
+	  (setf (history-start hist) (history-head hist)))))))
 
 (defmethod history-store-load ((store text-history-store)
 			       (style (eql :simple))
@@ -186,16 +189,16 @@ is saved."))
   (declare (ignore update)) ;; @@@ implement update
   (let ((hist (get-history history-context)))
     (with-slots (file-name) store
-      (with-open-file (stream file-name :direction :input)
-	(setf (history-head hist)
-	      (make-dl-list (nreverse ;; <<-- N.B.
-			     (loop :with line
-				:while (setf line (read-line stream nil))
-				:collect (make-history-entry :line line))))
-	      (history-tail hist)  (dl-last (history-head hist))
-	      (history-start hist) (history-head hist)
-	      (history-cur hist)   (history-head hist)))))
-  (values))
+      (when (file-exists file-name) ;; Don't fail if the file doesn't exist.
+	(with-open-file (stream file-name :direction :input)
+	  (setf (history-head hist)
+		(make-dl-list (nreverse ;; <<-- N.B.
+			       (loop :with line
+				  :while (setf line (read-line stream nil))
+				  :collect (make-history-entry :line line))))
+		(history-tail hist)  (dl-last (history-head hist))
+		(history-start hist) (history-head hist)
+		(history-cur hist)   (history-head hist)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Storage for format :database
@@ -232,6 +235,44 @@ is saved."))
 ;; Increment for every incompatible schema change.
 (defparameter *db-history-version* 1
   "Version number of history database.")
+;; @@@ maybe we should have a version table ?
+
+(defgeneric create-history-table (store version)
+  (:documentation "Create the history table.")
+  (:method ((store db-history-store) (version (eql 1)))
+    (with-slots (connection) store
+      (clsql:create-table [history]
+			  '(([id]       integer :primary-key :autoincrement)
+			    ([context]  varchar)
+			    ([time]     integer)
+			    ([line]     varchar)
+			    ([modified] integer))
+			  :database connection)
+      ;; @@@ create version table and add record
+      )))
+
+(defun ensure-history-table (store)
+  (declare (ignore store))
+  ;; @@@
+  #|
+  (when (not (clsql table-exists [version]))
+  (when (not (clsql table-exists [history]))
+  (create-history-table store *db-history-version*)
+  |#
+  )
+
+(define-condition create-db-error (simple-error) ()
+  (:default-initargs
+   :format-control "Failed to create the history database."))
+
+(defun ensure-history-db (store)
+  (with-slots (file-name connection) store
+    (ensure-directories-exist file-name)
+    (let ((db-name (list file-name)))
+      (when (not (nos:file-exists file-name))
+	(clsql:create-database db-name :database-type :sqlite3))
+      (setf connection (clsql:connect db-name :database-type :sqlite3))
+      (ensure-history-table store))))
 
 (defmethod history-store-save ((store db-history-store)
 			       (style (eql :fancy))
@@ -264,46 +305,36 @@ is saved."))
   (declare (ignore update)) ;; @@@ implement update
   (let ((hist (get-history history-context)))
     (with-slots (file-name connection) store
+      ;; @@@ make error types, so we can ignore them
+      ;; or instead of getting an error here, just create it?
       (when (not (nos:file-exists file-name))
-	;; @@@ make an error type, so we can ignore it
 	(error "Command history database does not exist."))
+      (when (not connection)
+	(error "Not connected to history database."))
+
       ;; @@@ If update is set, we should probably only get with a time greater
       ;; than last time.
       (let ((records
 	     (loop :for item
-		:in (clsql:select [*]
+		:in (clsql:select [time] [line] [modified]
 				  :from [history]
-				  :where [= [context] history-context]
+				  :where [= [context]
+					    (string-downcase history-context)]
 				  :flatp t
 				  :database connection)
 		:collect (make-history-entry :time (first item)
 					     :line (second item)
 					     :modified nil))))
 	(when records
-	  (setf (history-current hist)
-		(make-dl-list records)
-		(history-tail hist)  (last (history-head hist))
-		(history-start hist) (history-tail hist)
-		(history-cur hist)   (history-tail hist)))))))
+	  (setf (history-head hist)    (make-dl-list records)
+		(history-tail hist)    (dl-last (history-head hist))
+		(history-start hist)   (history-tail hist)
+		(history-cur hist)     (history-tail hist)))))))
 
 (defmethod history-store-start ((store db-history-store) style)
   "Start using a text history store, of any style."
   (declare (ignore style))
-  (with-slots (file-name connection) store
-    (let ((db-name (list file-name))
-	  new)
-      (ensure-directories-exist file-name)
-      (when (not (nos:file-exists file-name))
-	(clsql:create-database db-name :database-type :sqlite3)
-	(setf new t))
-      (setf connection (clsql:connect db-name :database-type :sqlite3))
-      (when new
-	(clsql:create-table [history]
-			    '(([context]  #| text |# varchar)
-			      ([time]     integer)
-			      ([line]     #| text |# varchar)
-			      ([modified] integer))
-			    :database connection)))))
+  (ensure-history-db store))
 
 (defmethod history-store-done ((store db-history-store) style)
   "Indicate we're done with using a text history store, of any style."
