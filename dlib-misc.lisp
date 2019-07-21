@@ -1595,17 +1595,24 @@ non-nil, only read that many elements."
 					  :element-type
 					  (stream-element-type stream))
 		       result
-		       (if (subtypep (stream-element-type stream) 'character)
-			   (with-output-to-string
-			       (str nil
-				    :element-type (stream-element-type stream))
-			     (copy-loop (write-sequence buffer str :end pos)))
-			   (let ((str (make-stretchy-vector
-				       len
-				       :element-type
-				       (stream-element-type stream))))
-			     (copy-loop (stretchy-append str buffer))
-			     str))))))
+		       (if (and (subtypep (stream-element-type stream)
+					  'character)
+				(eq element-type 'character))
+			   (progn
+			     (format t "String slurp~%")
+			     (with-output-to-string
+				 (str nil
+				      :element-type (stream-element-type stream))
+			       (copy-loop (write-sequence buffer str :end pos))))
+			   (progn
+			     (format t "Buffer slurp~%")
+			     (let ((str (make-stretchy-vector
+					 len
+					 :element-type
+					 (stream-element-type stream))))
+			       (copy-loop (stretchy-append str buffer))
+			       str))
+			   )))))
       (when (and close-me stream)
 	(close stream))))
     result))
