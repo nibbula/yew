@@ -1599,13 +1599,13 @@ non-nil, only read that many elements."
 					  'character)
 				(eq element-type 'character))
 			   (progn
-			     (format t "String slurp~%")
+			     ;; (format t "String slurp~%")
 			     (with-output-to-string
 				 (str nil
 				      :element-type (stream-element-type stream))
 			       (copy-loop (write-sequence buffer str :end pos))))
 			   (progn
-			     (format t "Buffer slurp~%")
+			     ;; (format t "Buffer slurp~%")
 			     (let ((str (make-stretchy-vector
 					 len
 					 :element-type
