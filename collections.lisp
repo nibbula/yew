@@ -8,6 +8,8 @@
 ;; nature, treating various data structures uniformly has many potential
 ;; performance pitfalls.
 
+(declaim (optimize (debug 2)))
+
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defmacro stfu-defpackage (name &body body)
     `(if (find-package ,name)
@@ -44,6 +46,7 @@ structs as sequences. Also we really need the MOP for stuff.")
     '(emptyp
       oelt
       olength
+      olast
       omap
       omapk
       omapn
@@ -418,6 +421,35 @@ but with the arguments reversed for convenient use in pipelines."
 
 (defmethod olength ((collection container))
   (olength (container-data collection)))
+
+;; This isn't exactly like LAST for lists, since it doesn't return a sub-list.
+;; @@@ The list version has: &optional n, but I think I would rather make a an
+;; OLASTN for n > 1, since for collections allocating a new collection is a
+;; potentially much more expensive operation.
+(defgeneric olast (collection)
+  (:documentation
+   "Return the last item of a COLLECTION. Note that this differs from the
+standard LAST function for lists, in that it doesn't return a LIST. It will
+probably only work for ordered-collections.")
+  (:method ((collection list))
+    (car (last collection)))
+  (:method ((collection vector))
+    (aref collection (1- (length collection))))
+  (:method ((collection sequence))
+    (elt collection (1- (length collection))))
+  ;; @@@ We could actually make this work for structs and classes, but it's kind
+  ;; of an anomaly, since it would depend on the order of class-slots, and not
+  ;; very useful, since you would have to know what the last slot is.
+  ;; (:method ((collection structure-object))
+  ;;   (oelt collection
+  ;; 	  (mop:slot-definition-name
+  ;; 	   (car (last (1- (length (mop:class-slots (class-of collection)))))))))
+  ;; (:method ((collection standard-object))
+  ;;   (length (mop:class-slots (class-of collection))))
+  )
+
+(defmethod olast ((collection container))
+  (olast (container-data collection)))
 
 ;; (defgeneric omap (function &rest collections)
 ;;   (:documentation
