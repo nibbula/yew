@@ -1583,7 +1583,8 @@ non-nil, only read that many elements."
 		 ;; Read the whole thing at once.
 		 (setf buffer (make-array len
 					  :element-type
-					  (stream-element-type stream)
+					  element-type
+					  ;; (stream-element-type stream)
 					  :adjustable t))
 		 (setf pos (read-sequence buffer stream))
 		 (adjust-array buffer pos)
