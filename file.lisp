@@ -6,7 +6,7 @@
   (:documentation "I can't believe you.")
   (:use :cl :dlib :dlib-misc :magic :grout :table)
   (:export
-   #:describe-file-type
+   #:describe-content-type
    #:!file
    ))
 (in-package :file)
