@@ -53,63 +53,84 @@ of characters with a fill pointer."
     (satisfies adjustable-array-p)
     (satisfies array-has-fill-pointer-p)))
 
+;; I don't know if this is useful, since it's probably just as easy to call
+;; make-array, which could be faster and supports initializers.
 (defun make-stretchy-vector (n &key (element-type t))
   "Make a stretchy vector of size N. A stretchy vector is an adjustable array
 of objects with a fill pointer."
   (make-array n :fill-pointer 0 :adjustable t :element-type element-type))
 
-(defun resize (array size factor)
-  "Resize the ARRAY to SIZE, expanding by FACTOR."
-  (declare (type (array * (*)) array)
-	   (type integer size)
-	   (type number factor))
-  (setf array (adjust-array
-	       array (+ (array-total-size array) size
-			(truncate (* (array-total-size array) factor))))))
+(defmacro %make-stretchy-vector (n &rest args
+				   &key (element-type t)
+				        (initial-element 0)
+				        (inital-contents nil))
+  "Make a stretchy vector of size N. A stretchy vector is an adjustable array
+of with a fill pointer."
+  (declare (ignorable element-type initial-element inital-contents))
+  (setf (getf args :adjustable) t)
+  `(make-array ,n ,@args))
 
-(defun stretchy-append-string-or-vector (dst src factor)
+;; (defun resize (array size factor)
+;;   "Resize the ARRAY to SIZE, expanding by FACTOR."
+;;   (declare (type (array * (*)) array)
+;; 	   (type fixnum size)
+;; 	   (type number factor))
+;;   (setf array (adjust-array
+;; 	       array (+ (array-total-size array) size
+;; 			(truncate (* (array-total-size array) factor))))))
+
+(defmacro resize (array size factor)
+  "Expand the ARRAY at least by SIZE, expanding by FACTOR."
+  (let ((a (gensym "resize-a")))
+    `(let ((,a ,array))
+       (setf ,array (adjust-array
+		     ,a (+ (array-total-size ,a) ,size
+			   (truncate (* (array-total-size ,a) ,factor))))))))
+
+(defun stretchy-append-string-or-vector (to from factor)
   "Append a vector to a stretchy vector. FACTOR is the amount of the total
 size to expand by when expansion is needed."
-  (declare (type (array * (*)) dst src))
-  (let ((src-len (length src))
-	(dst-len (length dst)))
-    (when (>= (+ src-len dst-len) (array-total-size dst))
-      (resize dst src-len factor))
-    (incf (fill-pointer dst) src-len)
-    (setf (subseq dst dst-len (+ dst-len src-len)) src)))
+  (declare (type (array * (*)) to from))
+  (let ((from-len (length from))
+	(to-len (length to)))
+    (when (>= (+ from-len to-len) (array-total-size to))
+      (resize to from-len factor))
+    (incf (fill-pointer to) from-len)
+    (setf (subseq to to-len (+ to-len from-len)) from)))
 
-(defun stretchy-append-character (dst char factor)
-  "Append the character CHAR to the stretchy string DST, with FACTOR as the
+(defun stretchy-append-character (to char factor)
+  "Append the character CHAR to the stretchy string TO, with FACTOR as the
 amount of the total size to expand by when expansion is needed."
-  (declare (type (array character (*)) dst)
+  (declare (type (array character (*)) to)
 	   (type character char)
 	   (type number factor))
-  (let ((dst-len (length dst)))
-    (when (>= (1+ dst-len) (array-total-size dst))
-      (resize dst 1 factor))
-    (incf (fill-pointer dst))
-    (setf (char dst dst-len) char)))
+  (let ((to-len (length to)))
+    (when (>= (1+ to-len) (array-total-size to))
+      (resize to 1 factor))
+    (incf (fill-pointer to))
+    (setf (char to to-len) char)))
 
-(defun stretchy-append-object (dst object factor)
-  "Append the OBJECT to the stretchy string DST, with FACTOR as the
+(defun stretchy-append-object (to object factor)
+  "Append the OBJECT to the stretchy string TO, with FACTOR as the
 amount of the total size to expand by when expansion is needed."
-  (declare (type (array * (*)) dst)
+  (declare (type (array * (*)) to)
 	   (type number factor))
   ;;(format *debug-io* "append object ~s ~s~%" (type-of object) object)
-  (let ((dst-len (length dst)))
-    (when (>= (1+ dst-len) (array-total-size dst))
-      (resize dst 1 factor))
-    (incf (fill-pointer dst))
-    (setf (elt dst dst-len) object)))
+  (let ((to-len (length to)))
+    (when (>= (1+ to-len) (array-total-size to))
+      (resize to 1 factor))
+    (incf (fill-pointer to))
+    (setf (aref to to-len) object)))
 
 (defun stretchy-set (vec n value &key (factor *default-stretch-factor*))
   "Put an element in a stretchy vector. Factor is the amount of the total size
 to expand by when expansion is needed."
   (declare (type (array * (*)) vec)
-	   (type integer n)
+	   (type fixnum n)
 	   (type number factor))
-  (when (>= n (array-total-size vec))
-    (resize vec (- n (array-total-size vec)) factor))
+  ;; (when (>= n (array-total-size vec))
+  (when (> n (1- (array-total-size vec)))
+    (resize vec (- (1+ n) (array-total-size vec)) factor))
   (when (< (fill-pointer vec) (1+ n))
     (setf (fill-pointer vec) (1+ n))) ;; should this really be done?
   (setf (aref vec n) value))
@@ -128,64 +149,64 @@ to expand by when expansion is needed."
 ;;; but perhaps not of "not some type". Also, how do limited types work with
 ;;; unboxing?
 
-(defgeneric stretchy-append (dst src &key factor)
-  (:documentation "Append SRC to DST. Expand by FACTOR if necessary."))
+(defgeneric stretchy-append (to from &key factor)
+  (:documentation "Append FROM to TO. Expand by FACTOR if necessary."))
 
-(defmethod stretchy-append ((dst stretchy-string) (src string) &key factor)
-  (stretchy-append-string-or-vector dst src :factor factor))
+(defmethod stretchy-append ((to stretchy-string) (from string) &key factor)
+  (stretchy-append-string-or-vector to from :factor factor))
 
-(defmethod stretchy-append ((dst stretchy-string) (src stretchy-string)
+(defmethod stretchy-append ((to stretchy-string) (from stretchy-string)
 			    &key factor)
-  (stretchy-append-string-or-vector dst src :factor factor))
+  (stretchy-append-string-or-vector to from :factor factor))
 
-(defmethod stretchy-append ((dst stretchy-vector) (src vector) &key factor)
-  (stretchy-append-string-or-vector dst src :factor factor))
+(defmethod stretchy-append ((to stretchy-vector) (from vector) &key factor)
+  (stretchy-append-string-or-vector to from :factor factor))
 
-(defmethod stretchy-append ((dst stretchy-vector) (src stretchy-vector)
+(defmethod stretchy-append ((to stretchy-vector) (from stretchy-vector)
 			    &key factor)
-  (stretchy-append-string-or-vector dst src :factor factor))
+  (stretchy-append-string-or-vector to from :factor factor))
 
 ;; @@@ Just punting and taking the easy way for now for the next two methods.
 ;; In the future, make these faster specific methods.
-(defmethod stretchy-append ((dst stretchy-string) (src character)
+(defmethod stretchy-append ((to stretchy-string) (from character)
 			    &key factor)
-  (stretchy-append-string-or-vector dst (string src) :factor factor))
+  (stretchy-append-string-or-vector to (string from) :factor factor))
 
-(defmethod stretchy-append ((dst stretchy-vector) src &key factor)
+(defmethod stretchy-append ((to stretchy-vector) from &key factor)
   "Append a single object (of any type) to a stretchy vector."
-  (stretchy-append-string-or-vector dst (vector src) :factor factor))
+  (stretchy-append-string-or-vector to (vector from) :factor factor))
 
 |#
 
-(defun stretchy-append (dst src &key (factor *default-stretch-factor*))
-  "Append SRC to stretchy thing DST. SRC can be a character or a string or a ~
-   symbol if DST is a string, or anything if DST is a vector. FACTOR is the ~
-   amount of the total size to expand by when expansion is needed."
-  (declare (type (array * (*)) dst)
+(defun stretchy-append (to from &key (factor *default-stretch-factor*))
+  "Append FROM to stretchy thing TO. FROM can be a character or a string or a
+symbol if TO is a string, or anything if TO is a vector. FACTOR is the
+amount of the total size to expand by when expansion is needed."
+  (declare (type (array * (*)) to)
 	   (type number factor))
-  (when (not (or (typep dst 'stretchy-string) (typep dst 'stretchy-vector)))
+  (when (not (or (typep to 'stretchy-string) (typep to 'stretchy-vector)))
     (error "Destination must be a stretchy-string or stretchy-vector"))
   (cond
     ;; @@@ Just punting and taking the easy way for now.
     ;; In the future, make these faster specific functions.
-    ((or (typep src 'stretchy-string)
-	 (typep src 'stretchy-vector)
-	 (typep src 'string)
-	 (typep src 'vector))
-     (stretchy-append-string-or-vector dst src factor))
-    ((and (typep dst 'stretchy-string)
-	  (typep src 'character))
-     (stretchy-append-character dst src factor))
-    ((and (typep dst 'stretchy-string)
-	  (typep src 'symbol))
-     (stretchy-append-string-or-vector dst (string src) factor))
-    ((and (not (typep dst 'stretchy-string))
-	  (typep src 'vector))
-     (stretchy-append-string-or-vector dst src factor))
-    ((not (typep dst 'stretchy-string))
-     (stretchy-append-object dst src factor))
+    ((or (typep from 'stretchy-string)
+	 (typep from 'stretchy-vector)
+	 (typep from 'string)
+	 (typep from 'vector))
+     (stretchy-append-string-or-vector to from factor))
+    ((and (typep to 'stretchy-string)
+	  (typep from 'character))
+     (stretchy-append-character to from factor))
+    ((and (typep to 'stretchy-string)
+	  (typep from 'symbol))
+     (stretchy-append-string-or-vector to (string from) factor))
+    ((and (not (typep to 'stretchy-string))
+	  (typep from 'vector))
+     (stretchy-append-string-or-vector to from factor))
+    ((not (typep to 'stretchy-string))
+     (stretchy-append-object to from factor))
     (t
-     (error "Can't append a ~(~a~) to a stretchy-string." (type-of src)))))
+     (error "Can't append a ~(~a~) to a stretchy-string." (type-of from)))))
 
 ;; Might also be called shrink, but shrink implies taking up less space, which
 ;; it doesn't really.
