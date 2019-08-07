@@ -270,7 +270,8 @@
 want to read the contents afterwards, it should be seekable or you should
 probably take a copy beforehand."
   (ensure-database)
-  (funcall *guess-func* (slurp thing) :buffer))
+  ;; @@@ XXX This could be wrong because it uses up the stream
+  (funcall *guess-func* (slurp thing :element-type '(unsigned-byte 8)) :buffer))
 
 (defun guess-file-type (file-name)
   "Guess the content of the file FILENAME."
