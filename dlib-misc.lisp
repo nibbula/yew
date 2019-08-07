@@ -85,6 +85,7 @@
    ;; I/O
    #:safe-file-length
    #:slurp
+   #:slurp-binary
    #:confirm
    #:get-file-local-variables
    )
@@ -1539,11 +1540,12 @@ text into lisp and have it be stored as lines of words."
 
 (defun slurp (file-or-stream &key
 			       (external-format :default)
-			       (element-type 'character)
+			       element-type
 			       count)
   "Return an array of ELEMENT-TYPE, with the contents read from FILE-OR-STREAM.
-ELEMENT-TYPE defaults to CHARACTER. EXTERNAL-FORMAT is as in OPEN. If COUNT is
-non-nil, only read that many elements."
+ELEMENT-TYPE defaults to CHARACTER or the stream-element-type for streams.
+EXTERNAL-FORMAT is as in OPEN. If COUNT is non-nil, only read that many
+elements."
   (let (stream (close-me nil) buffer pos len result)
     (macrolet ((copy-loop (outputer)
 		 ;; For hopefully higher speed, two versions of the loop.
@@ -1567,8 +1569,10 @@ non-nil, only read that many elements."
 		   (stream file-or-stream) ; already a stream
 		   ((or string pathname) ; a file name
 		    (setf close-me t)
-		    (open file-or-stream :external-format external-format
-			  :element-type element-type))))
+		    (open file-or-stream
+			  :external-format external-format
+			  :element-type (or element-type 'character))))
+		 element-type (or element-type (stream-element-type stream)))
 	   (if (and (typep stream 'file-stream)
 		    ;; The length can be quite wrong, since it's probably in
 		    ;; octets and we read it in characters. But hopefully it
@@ -1581,42 +1585,40 @@ non-nil, only read that many elements."
 		    (not (zerop len)))
 	       (progn
 		 ;; Read the whole thing at once.
-		 (setf buffer (make-array len
-					  :element-type
-					  element-type
-					  ;; (stream-element-type stream)
-					  :adjustable t))
+		 (setf buffer (make-array len :element-type element-type
+					      :adjustable t))
 		 (setf pos (read-sequence buffer stream))
 		 (adjust-array buffer pos)
 		 (setf result buffer))
 	       (progn
 		 ;; Read in chunks and write to a string or stretchy array.
 		 (setf len *slurp-buffer-size*
-		       buffer (make-array len
-					  :element-type
-					  (stream-element-type stream))
+		       buffer (make-array len :element-type element-type)
 		       result
 		       (if (and (subtypep (stream-element-type stream)
 					  'character)
 				(eq element-type 'character))
 			   (progn
-			     ;; (format t "String slurp~%")
 			     (with-output-to-string
-				 (str nil
-				      :element-type (stream-element-type stream))
+				 (str nil :element-type element-type)
 			       (copy-loop (write-sequence buffer str :end pos))))
 			   (progn
-			     ;; (format t "Buffer slurp~%")
-			     (let ((str (make-stretchy-vector
-					 len
-					 :element-type
-					 (stream-element-type stream))))
+			     (let ((str (make-array len
+						    :adjustable t
+						    :fill-pointer 0
+						    :element-type element-type)))
 			       (copy-loop (stretchy-append str buffer))
 			       str))
 			   )))))
       (when (and close-me stream)
 	(close stream))))
     result))
+
+(defun slurp-binary (file-or-stream &key count)
+  "Return an array of octets, with the contents read from FILE-OR-STREAM.
+If COUNT is non-nil, only read that many elements. This just a shorthand for
+calling SLURP with the appropriate ELEMENT-TYPE."
+  (slurp file-or-stream :element-type '(unsigned-byte 8) :count count))
 
 (defun confirm (action &key (output *standard-output*)
 			 (input *standard-input*)
