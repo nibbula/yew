@@ -13,8 +13,15 @@ It doesn't handle all TIFF files.")
    ))
 (in-package :image-tiff)
 
+(defun read-tiff-file-or-stream (thing)
+  (etypecase thing
+    ((or string pathname)
+     (read-tiff-file thing))
+    (stream
+     (read-tiff-stream thing))))
+
 (defun read-tiff (file-or-stream)
-  (let* ((image (read-tiff-file file-or-stream))
+  (let* ((image (read-tiff-file-or-stream file-or-stream))
 	 (array (make-image-array (tiff-image-width image)
 				  (tiff-image-length image)))
     	 (data (tiff-image-data image)))
@@ -88,7 +95,7 @@ It doesn't handle all TIFF files.")
 
 (defun read-tiff-synopsis (file-or-stream)
   ;; @@@ fix not to read the whole thing
-  (let ((image (read-tiff-file file-or-stream)))
+  (let ((image (read-tiff-file-or-stream file-or-stream)))
     (make-image :name file-or-stream
 		:width (tiff-image-width image)
 		:height (tiff-image-length image))))
@@ -96,13 +103,13 @@ It doesn't handle all TIFF files.")
 (defun guess-tiff (file-or-stream)
   (block nil
     (with-open-file-or-stream (stream file-or-stream
-				 :element-type '(unsigned-byte 8))
+			       :element-type '(unsigned-byte 8))
       (let ((buf (make-array 4 :element-type '(unsigned-byte 8))))
 	(handler-case
 	    (progn
 	      (read-sequence buf stream)
-	      (when (not (or (equalp buf #(#\M #\M 42 0))
-			     (equalp buf #(#\I #\I 0 42))))
+	      (when (not (or (equalp buf #(77 77 42 0))	  ; MM
+			     (equalp buf #(73 73 0 42)))) ; II
 		(return nil)))
 	  (stream-error (c)
 	    (declare (ignore c))
