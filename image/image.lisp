@@ -369,13 +369,22 @@ try to figure it out."
 (defgeneric guess-image-format (thing format)
   (:documentation "Return true if we guess that THING is a FORMAT image."))
 
+(defun coerce-to-stream-or-filename (thing)
+  (typecase thing
+    ((vector (unsigned-byte 8))
+     (flexi-streams:make-flexi-stream
+      (flexi-streams:make-in-memory-input-stream thing)
+      ;; :element-type '(unsigned-byte 8)
+      ))
+    (t thing)))
+
 (defun guess-registered-image-type (thing)
   "Return the guessed format of THING, from the registered image formats."
   (block nil
     (loop :for (nil . obj) :in *image-formats* ;; actually (tag . obj)
        :do
-	 (when (guess-image-format thing obj)
-	   (return obj)))))
+       (when (guess-image-format (coerce-to-stream-or-filename thing) obj)
+	 (return obj)))))
 
 (defparameter *known-image-types* '(:jpeg :png :gif :tiff :xbm)
   "List of known image format tags.")
@@ -407,33 +416,32 @@ read-image knows about all the formats."
  successful. It tries to guess the format, but it might help if the format
 is loaded already. Otherwise it tries to load a guessed format.
 It signals unknown-image-type or non-image-file, if it can't figure it out."
-  (let* (slurped-stream
+  (let* (array
 	 (thing (typecase file-or-stream
 		  (string (pathname file-or-stream))
 		  (pathname file-or-stream)
 		  (stream
-		   (setf slurped-stream t)
-		   (flexi-streams:with-output-to-sequence
-		       (str :element-type '(unsigned-byte 8))
-		     ;; (slow-byte-copy-stream file-or-stream str)
-		     (copy-stream file-or-stream str :errorp nil
-				  :element-type '(unsigned-byte 8))
-		     ))
+		   (coerce-to-stream-or-filename
+		    (setf array
+			  (flexi-streams:with-output-to-sequence
+			      (str :element-type '(unsigned-byte 8))
+			    (copy-stream file-or-stream str :errorp nil
+					 :element-type '(unsigned-byte 8))))))
 		  (t file-or-stream))) 	; hope it's okay?
 	 type format)
     (flet ((read-it ()
-	     (if slurped-stream
-		 (flexi-streams:with-input-from-sequence (str thing)
-		   (funcall function str format))
-		 (progn
-		   (funcall function thing format)))))
+	     (funcall function thing format)))
       (cond
 	;; First let the registered formats try guessing.
-	((setf format (guess-registered-image-type thing))
+	((setf format (guess-registered-image-type (or array thing)))
 	 (values (read-it) format))
 	;; Then try the system guesser, and autoloading the format.
 	((equal (content-type-category
-		 (setf type (guess-content-type thing))) "image")
+		 (setf type (cond
+			      (array (guess-content-type array))
+			      (thing (guess-file-type thing))
+			      (t (error "neither thing or array")))))
+		"image")
 	 (when (not (setf format (find-image-format
 				  (s+ (content-type-category type) "/"
 				      (content-type-name type))
@@ -449,11 +457,12 @@ It signals unknown-image-type or non-image-file, if it can't figure it out."
 	     (values (read-it) format)
 	     (cerror "Skip the image."
 		     'unknown-image-type
-		     :format-arguments `(,file-or-stream
+		     :format-arguments `(,thing #| file-or-stream |#
 					 ,(content-type-name type)))))
 	(t
 	 (cerror "Skip the file"
-		 'non-image-file :format-arguments `(,file-or-stream)))))))
+		 'non-image-file
+		 :format-arguments `(,thing #|file-or-stream|#)))))))
 
 (defun read-image (file-or-stream)
   "Try to read FILE-OR-STREAM as an image. Return an IMAGE object if we're
