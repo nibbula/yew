@@ -179,14 +179,17 @@ GUESS-TYPE can be one of:
     (:buffer
      (cond
        ((subtypep (array-element-type thing) 'character)
-	(magic-buffer (magic-db) thing (length thing)))
+	(cffi:with-pointer-to-vector-data (buf thing)
+	  (magic-buffer (magic-db) buf (length thing))))
        ((subtypep (array-element-type thing) '(unsigned-byte 8))
-	;; This is very inefficient
-	;; @@@ perhaps we should check for compatible element-types?
-	(let ((len (length thing)))
-	  (with-foreign-object (buf :uint8 len)
-	    (loop :for i :from 0 :below len
-	       :do (setf (mem-aref buf :uint8 i) (aref thing i)))
-	    (magic-buffer (magic-db) buf len))))))))
+	(if (typep thing 'simple-array)
+	    (cffi:with-pointer-to-vector-data (buf thing)
+	      (magic-buffer (magic-db) buf (length thing)))
+	    ;; @@@ This is very inefficient. Is there some other way?
+	    (let ((len (length thing)))
+	      (with-foreign-object (buf :uint8 len)
+		(loop :for i :from 0 :below len
+		   :do (setf (mem-aref buf :uint8 i) (aref thing i)))
+		(magic-buffer (magic-db) buf len)))))))))
 
 ;; EOF
