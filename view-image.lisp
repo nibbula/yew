@@ -755,7 +755,10 @@ the first time it fails to identify the image."
 			 (format nil
 				 "~a ~dx~d ~a~a~a~f% ~s <~d-~d ~d-~d> o:~s ~s ~
                                   ~:[b~;~]"
-				 (nos:path-file-name name)
+				 (typecase name
+				   ((or string pathname)
+				    (nos:path-file-name name))
+				   (t name))
 				 width height position file-count frame-count
 				 zoom delay-factor
 				 start-x end-x start-y end-y
@@ -1374,6 +1377,16 @@ Key arguments:
 	 ;; (clear-image *image-viewer*)
 	 ;; (reset-image *image-viewer*)
 	 )
+	(stream
+	 (setf *image-viewer*
+		(make-instance inator-type
+			       :image (perserverant-read-image image-designator)
+			       :file-list file-list
+			       :own-window own-window
+			       :use-half-block (not use-full)))
+	 ;; (clear-image *image-viewer*)
+	 ;; (reset-image *image-viewer*)
+	 )
 	((or string pathname)
 	 (setf *image-viewer*
 	       (make-instance inator-type
@@ -1428,11 +1441,13 @@ Key arguments:
   :accepts (:sequence :stream)
   "View an image."
   ;;(let ((type nil))
-    (view-images (or images lish:*input* *standard-input*)
-		 :type (cdr (find type *image-inator-types*
-				  :key (_ (symbol-name (cdr _)))))
-		 :own-window own-window
-		 :use-full use-full))
+  (view-images (or images
+		   (and lish:*input* (list lish:*input*))
+		   (list *standard-input*))
+	       :type (cdr (find type *image-inator-types*
+				:key (_ (symbol-name (cdr _)))))
+	       :own-window own-window
+	       :use-full use-full))
 
 (defun cat-images (files &rest args &key zoom width height errorp use-full)
   (declare (ignorable zoom width height errorp use-full))
