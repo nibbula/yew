@@ -4,9 +4,8 @@
 
 (defpackage :view
   (:documentation "Look at something.")
-  (:use :cl :dlib :magic :pick-list)
+  (:use :cl :view-generic :dlib :magic :pick-list)
   (:export
-   #:view
    #:view-things
    #:!view
    #:!open
@@ -61,8 +60,8 @@
   (or (guess-file-name-type thing)
       (guess-file-type thing)))
 
-(defun view (thing)
-  "Look at something."
+(defun view-file (thing)
+  "Look at a file."
   (let* ((type (guess-type thing))
 	 (viewer (get-viewer-func type))
 	 (pkg (first viewer))
@@ -77,6 +76,15 @@
 		thing
 		(content-type-category type)
 		(content-type-name type)))))
+
+(defmethod view ((thing string))
+  (view-file thing))
+
+(defmethod view ((thing pathname))
+  (view-file thing))
+
+(defmethod view ((thing stream))
+  (view-file thing))
 
 (defun view-things (things)
   (loop :for thing :in things :do

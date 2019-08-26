@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description
     "Blah, blah, frobulation, la, la, projection, blah, blah, presentation, ..."
-    :depends-on (:magic)
+    :depends-on (:view-generic :dlib :magic :pick-list)
     :components
     ((:file "view")))
