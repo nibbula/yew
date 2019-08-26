@@ -90,7 +90,8 @@ methods, and the like.
 ")
   (:nicknames :tb)
   (:use :cl :dlib :opsys :dlib-misc :char-util :keymap :pick-list
-	:glob :collections :inator :terminal :terminal-inator :fui)
+	:glob :collections :inator :terminal :terminal-inator :fui
+	:view-generic)
   (:export
    #:view-tree
    #:node #:node-branches #:node-open #:make-node
@@ -1078,6 +1079,9 @@ and indented properly for multi-line objects."
 	      (setf result (picked-object *viewer*)))))
       (tt-move-to (tt-height) 0))
     result))
+
+(defmethod view ((thing node))
+  (view-tree thing))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; some examples
