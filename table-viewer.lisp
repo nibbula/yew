@@ -6,7 +6,7 @@
   (:documentation "View tables.")
   (:use :cl :dlib :collections :table :table-print :keymap :inator :terminal
 	:terminal-inator :dtt :char-util :fui :fatchar :fatchar-io :grout
-	:terminal-table :ostring)
+	:terminal-table :ostring :view-generic)
   (:export
    #:viewer-table-renderer
    #:table-viewer
@@ -745,6 +745,9 @@ if THING or lish:*input* NIL."
   "View the THING as a table."
   (with-coerced-table (tab thing)
     (view-table tab :long-titles long-titles)))
+
+(defmethod view ((thing table))
+  (view-table thing))
 
 #+lish
 (lish:defcommand view-table

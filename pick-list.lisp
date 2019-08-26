@@ -7,7 +7,7 @@
 (defpackage :pick-list
   (:documentation "Choose things from a list.")
   (:use :cl :dlib :char-util :stretchy :keymap :opsys :inator :terminal
-	:terminal-inator :fui)
+	:terminal-inator :fui :view-generic)
   (:import-from :inator #:mark #:point #:quit-flag)
   (:export
    #:pick-list
@@ -523,6 +523,9 @@ The function receives a 'pick' as an argument."))
 ;; (pick-list (loop for i from 1 to 60 collect (format nil "~@r~8t~r" i i)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defmethod view ((thing list))
+  (pick-list thing))
 
 #+lish
 (lish:defcommand pick-list
