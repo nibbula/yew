@@ -12,7 +12,7 @@
 (defpackage :du
   (:documentation "Disk usage")
   (:use :cl :dlib :dlib-misc :opsys :tree-viewer :inator :terminal :char-util
-	:keymap)
+	:keymap :view-generic)
   (:export
    ;; Main entry point
    #:du
@@ -316,7 +316,7 @@ useful information."
   "View the file with the pager."
   (terminal-end *terminal*)
   (handler-case
-      (view:view (get-path (tree-viewer::current o)))
+      (view (get-path (tree-viewer::current o)))
     (simple-error (c)
       (message o "Error: ~a" c)))
   (terminal-start *terminal*)
