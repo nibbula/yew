@@ -213,7 +213,7 @@ return history for the whole repository."))
       (loop :while (setf line (read-line stream nil nil))
 	 :do
 	 (incf i)
-	 (message *puca* "Listing...~d" i)
+	 ;; (message *puca* "Listing...~d" i)
 	 ;; (tt-finish-output)
 	 :collect line))))
 
@@ -383,7 +383,7 @@ return history for the whole repository."))
 	      (loop :while (setf line (read-line stream nil nil))
 		 :do
 		 (incf i)
-		 (message *puca* "Listing...~d" i)
+		 ;; (message *puca* "Listing...~d" i)
 		 ;; (tt-finish-output)
 		 :collect line)))
       ;;(debug-msg "~a from git status" i)
@@ -394,7 +394,7 @@ return history for the whole repository."))
 			(loop :while (setf line (read-line stream nil nil))
 			   :do
 			   (incf i)
-			   (message *puca* "Listing...~d" i)
+			   ;; (message *puca* "Listing...~d" i)
 			   ;; (tt-finish-output)
 			   :collect (s+ " _ " line)))))
 	;;(tt-move-to 0 0) (tt-home) (tt-erase-below)
@@ -537,9 +537,14 @@ return history for the whole repository."))
   "Draw line I, with the appropriate color."
   (draw-goo *puca* i))
 
-(defmethod get-list ((puca puca))
+(defgeneric get-list (puca &key no-message)
+  (:documentation
+   "Get the list of files/objects from the backend and parse them."))
+
+(defmethod get-list ((puca puca) &key no-message)
   "Get the list of files/objects from the backend and parse them."
-  (message *puca* "Listing...")
+  (when (not no-message)
+    (message *puca* "Listing..."))
   (with-slots (goo top errors maxima (point inator::point) cur extra) *puca*
     (setf goo '()
 	  errors '()
@@ -556,7 +561,8 @@ return history for the whole repository."))
       (setf point (1- maxima)))
     (when (>= top point)
       (setf top (max 0 (- point 10)))))
-  (message *puca* "Listing...done"))
+  (when (not no-message)
+    (message *puca* "Listing...done")))
 
 (defgeneric draw-inner-screen (puca)
   (:documentation "Draw the inner part of the screen."))
@@ -939,18 +945,28 @@ for the command-function).")
   #((#\a show-all-tracked)))
 
 (defun set-option-command (p)
-  (format-message "Set option: ")
-  (let* ((c (tt-get-char))
-	 (tog (find c *option-setting* :key #'car))
-	 (name (string (second tog)))
-	 #| (options (options p)) |#)
-    (if tog
-	(progn
-	  (set-option p name (not (get-option p name)))
-	  (message p "~a is ~a" name (get-option p name)))
-	(progn
-	  (message p "Option not found: ~a" c))))
-  (get-list *puca*))
+  (loop
+     :with c :and tog :and name :and done
+     :do (format-message "Set option: ")
+     (setf c (tt-get-char)
+	   tog (find c *option-setting* :key #'car)
+	   name (string (second tog)))
+     (cond
+       ((eql c #\?)
+	(display-text "Options"
+		      (loop :for o :across *option-setting*
+			 :collect (format nil "~a - ~(~a~)"
+					  (car o) (cadr o))))
+	(draw-screen p))
+       (tog
+	(set-option p name (not (get-option p name)))
+	(message p "~a is ~a" name (get-option p name))
+	(setf done t))
+       (t
+	(message p "Option not found: ~a" c)
+	(setf done t)))
+     :while (not done))
+  (get-list *puca* :no-message t))
 
 (defmethod search-command ((p puca-app))
   (with-slots (goo (point inator::point) top bottom) p
@@ -1089,8 +1105,9 @@ for the command-function).")
 					:initial-element #\space))
       string))
 
-(defmethod get-list ((puca puca-history))
+(defmethod get-list ((puca puca-history) &key no-message)
   "Get the history list from the backend and parse them."
+  (declare (ignore no-message))
   (with-slots (goo maxima (point inator::point) top table) puca
     (setf goo (get-history (puca-backend puca) (puca-history-files puca))
 	  maxima (length goo)
