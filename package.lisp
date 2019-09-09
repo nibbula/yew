@@ -1,6 +1,6 @@
-;;
-;; package.lisp - RL package definition.
-;;
+;;;
+;;; package.lisp - RL package definition.
+;;;
 
 (defpackage :rl
   (:documentation "A line editor.")

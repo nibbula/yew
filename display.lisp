@@ -1,11 +1,10 @@
-;;
-;; display.lisp
-;;
+;;;
+;;; display.lisp
+;;;
 
 (in-package :rl)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
-		   (compilation-speed 0)))
+(declaim #.`(optimize ,.(getf rl-config::*config* :optimization-settings)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Display-ish code
@@ -375,6 +374,9 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 	   (spot          (assoc first-point spots))
 	   (point-line    (cadr spot))
 	   (point-col     (cddr spot))
+	   ;; (quaqua (and (dbugf :rl "FLooP FLooP ~s ~s ~s ~s ~s~%"
+	   ;; 		       buf-lines point-line first-point spots
+	   ;; 		       contexts) 2/3))
 	   (point-offset  (- buf-lines point-line))
 	   (right-prompt-start (and right-prompt
 				    (- (tt-width)

@@ -1,11 +1,10 @@
-;;
-;; history.lisp - Line editor history.
-;;
+;;;
+;;; history.lisp - Line editor history.
+;;;
 
 (in-package :rl)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
-		   (compilation-speed 0)))
+(declaim #.`(optimize ,.(getf rl-config::*config* :optimization-settings)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; History

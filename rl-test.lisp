@@ -1,6 +1,6 @@
-;;
-;; rl-test.lisp - Tests for the RL line editor.
-;;
+;;;
+;;; rl-test.lisp - Tests for the RL line editor.
+;;;
 
 (defpackage :rl-test
   (:documentation "Tests for the RL line editor.")
