@@ -29,6 +29,7 @@
    (:file "display")
    (:file "complete")
    (:file "commands")
+   (:file "search")
    (:file "rl"))
   :in-order-to ((test-op (load-op "rl-test")))
   :perform (test-op (o c) (symbol-call :rl-test :run)))
