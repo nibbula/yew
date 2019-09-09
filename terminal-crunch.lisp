@@ -2048,13 +2048,39 @@ duplicated sequences, and can have worst case O(n*m) performance."
 
 	 ;; Update changed lines.
 	 (when (not no-change)
-	   (loop :for i :from start :below end :do
+	   (let ((diff-count 0)
+		 (update-to end)
+		 blank-start)
+
+	     ;; Check if we can do an erase-below, when all the lines below a
+	     ;; some point are changed and blank.
+	     (loop :for i :from (1- end) :downto start :do
+		(when (/= (aref (screen-hashes new) i)
+			  (aref (screen-hashes old) i))
+		  (incf diff-count))
+		:until (not (every (_ (grid-char= _ *blank-char*))
+				   (aref (screen-lines new) i)))
+		:do (setf blank-start i))
+	     (when (and (> diff-count 0)
+			(and blank-start (< blank-start (1- end))))
+	        (setf update-to (1+ blank-start)))
+
+	     ;; Update the lines
+	     (loop :for i :from start :below update-to :do
 		(when (/= (aref (screen-hashes new) i)
 			  (aref (screen-hashes old) i))
 		  ;; (dbugf :crunch "hash diff ~s old ~s new ~s~%" i
 		  ;; 	   (aref (screen-hashes new) i)
 		  ;; 	   (aref (screen-hashes old) i))
-		  (update-line tty i)))))
+		  (update-line tty i)))
+
+	     ;; Erase below if we can.
+	     (when (and (> diff-count 0)
+			(and blank-start (< blank-start (1- end))))
+	       (crunched-move-to tty
+				 0 (1+ blank-start)		;; new-x new-y
+				 (update-x tty) (update-y tty)) ;; old-x old-y
+	       (terminal-erase-below wtty)))))
 
        ;; Make sure we're at the right cursor position.
        (update-ending-position tty new)))
