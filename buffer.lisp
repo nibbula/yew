@@ -77,7 +77,7 @@
 	  ((>= mark end)
 	   (decf mark len))
 	  ((and (>= mark start) (< mark end))
-	   (setf mark end)))))))
+	   (setf mark start)))))))
 
 ;; Modify methods
 
