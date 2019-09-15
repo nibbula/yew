@@ -563,6 +563,18 @@ for a range of rows, or a table-point for a specific item,"
 ;; (defmethod jump-command ((o table-viewer))
 ;;   )
 
+(defun resize-viewer (viewer)
+  "Resize the viewr from the current terminal."
+  (with-slots (width height rows) (table-viewer-renderer viewer)
+    (setf width (tt-width)
+	  height (tt-height)
+	  rows (min (olength (container-data (table-viewer-table viewer)))
+		    (- (tt-height) 2)))))
+
+(defmethod resize ((o table-viewer))
+  (resize-viewer o)
+  (call-next-method))
+
 (defun table-info-table (table)
   (make-table-from
    (mapcar (_ (list (if (listp (column-name _))
@@ -698,8 +710,7 @@ for a range of rows, or a table-point for a specific item,"
 			   ))
 	   (renderer (table-viewer-renderer *table-viewer*))
 	   (*long-titles* long-titles))
-      (setf (rows renderer)
-	    (min (olength (container-data table)) (- (tt-height) 2)))
+      (resize-viewer *table-viewer*)
       ;; Calculate the sizes of the whole table for side effect.
       (table-output-sizes renderer table)
       (event-loop *table-viewer*)
