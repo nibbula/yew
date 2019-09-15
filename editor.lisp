@@ -503,9 +503,10 @@ but perhaps reuse some resources."))
   "Evaluate the body with the buffer, point, and mark restored afterward."
   (with-unique-names (saved-buf saved-contexts)
     `(let ((,saved-buf (buf ,e))
-	   (,saved-contexts (copy-contexts e)))
+	   (,saved-contexts (inator-contexts e)))
        (unwind-protect
 	    (progn
+	      (setf (inator-contexts e) (copy-contexts e))
 	      ,@body)
 	 (setf (buf ,e) ,saved-buf
 	       (inator-contexts e) ,saved-contexts)))))
