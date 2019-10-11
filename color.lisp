@@ -1,9 +1,11 @@
 ;;
-;; color.lisp - you are this
+;; color.lisp - Color representations
 ;;
 
 (defpackage :color
-  (:documentation "What you see is not even real.")
+  (:documentation
+   "Provide color models and functions to manipulate color values, color names,
+and conversions between color models.")
   (:use :cl :dlib :cl-ppcre)
   (:export
    #:*simple-colors*
