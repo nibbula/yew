@@ -7,6 +7,7 @@
   (:use :cl :view-generic :dlib :magic :pick-list)
   (:export
    #:view-things
+   #:view
    #:!view
    #:!open
    ))
