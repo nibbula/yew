@@ -89,20 +89,18 @@
 	  (return)))))
 
 (defcommand head
-  (("line-count" integer :short-arg #\n :default 10
-    :help "Lines to show. For compatibility with Unix.")
-   ("byte-count" integer :short-arg #\c
-    :help "Bytes to show. For compatibility with Unix.")
+  ((line-count integer :short-arg #\n :default 10 :help "Lines to show.")
+   (byte-count integer :short-arg #\c :help "Bytes to show.")
    ;; ("count" integer :default 10
    ;;  :help "The number of units to show.")
-   ("files" pathname :repeating t
+   (files pathname :repeating t
     :help "Files to use as input."))
   "Output the first portion of input."
   (if byte-count
       (if files
 	  (loop :for f :in files :do
-	     (snip-bytes f byte-count :after))
-	  (snip-bytes *standard-input* byte-count :after))
+	     (snip-bytes f byte-count :before))
+	  (snip-bytes *standard-input* byte-count :before))
       (if files
 	  (loop :for f :in files :do
 	     (snip-lines-after f line-count))
