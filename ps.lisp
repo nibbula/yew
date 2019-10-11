@@ -295,7 +295,8 @@ user, pid, ppid, size, command."
   (let* ((plist (sort-muffled (copy-list (list-processes)) #'<
 			      :key #'short-process-pid))
 	 (tree (make-tree plist)))
-    (print-tree tree plist)))
+    (print-tree tree plist)
+    tree))
 
 ;;;;;;;;;;;
 
