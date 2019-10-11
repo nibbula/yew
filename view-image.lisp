@@ -6,7 +6,7 @@
   (:documentation "Image viewer")
   (:use :cl :dlib :dlib-misc :keymap :char-util :terminal :terminal-ansi
 	:terminal-crunch :inator :terminal-inator :magic :grout :image
-	:image-ops)
+	:image-ops :color)
   (:export
    #:view-image
    #:!view-image
@@ -106,6 +106,10 @@
     :initform nil :type boolean
     :documentation
     "True to use the non-parallel pixel mapping. Useful for debugging.")
+   (bg-color
+    :initarg :bg-color :accessor image-inator-bg-color
+    :initform (color:lookup-color :black)
+    :documentation "Background color of the window.")
    )
   (:default-initargs
    :keymap	`(,*image-viewer-keymap* ,*default-inator-keymap*))
@@ -731,7 +735,7 @@ the first time it fails to identify the image."
 (defun show-status (o)
   "Display the status/message line."
   (with-slots (image message file-index file-list subimage zoom x y
-	       move-object-mode delay-factor buffer) o
+	       move-object-mode delay-factor buffer bg-color) o
     (if (not image)
 	(show-message o "--NO IMAGE--")
 	(with-accessors ((name image-name)
@@ -859,8 +863,9 @@ the first time it fails to identify the image."
   (tt-write-char #\space))
 
 (defun output-image (x y zoom image subimage view-width view-height
-		     mover setter buffer)
-  (declare (type fixnum x y) (type float zoom))
+		     mover setter buffer bg-color)
+  (declare (type fixnum x y) (type float zoom)
+	   (ignore bg-color)) ;; @@@
   (with-slots (name (subimages image::subimages)) image
     (with-accessors ((si-x     sub-image-x)
 		     (si-y     sub-image-y)
@@ -982,14 +987,13 @@ the first time it fails to identify the image."
 	))))
 
 (declaim (inline set-pixel-half))
-(defun set-pixel-half (r1 g1 b1 r2 g2 b2 step)
-  (declare (ignore step))		; @@@
+(defun set-pixel-half (r1 g1 b1 r2 g2 b2)
   (tt-color (vector :rgb8 r1 g1 b1)
 	    (vector :rgb8 r2 g2 b2))
   (tt-write-char (code-char #x2580))) ; #\upper_half_block
 
 (defun output-image-half (x y zoom image subimage view-width view-height
-			  mover setter buffer)
+			  mover setter buffer bg-color)
   (declare (type fixnum x y) (type float zoom)
 	   (ignore setter))
   (with-slots (name (subimages image::subimages)) image
@@ -1005,15 +1009,30 @@ the first time it fails to identify the image."
 	  (clip x y width height view-width (* view-height 2) si-x si-y zoom)
 	(let* ((step (max 1 (round 1 zoom)))
 	       (ss (* step step))
-	       (r1 0) (g1 0) (b1 0) (a1 0)
-	       (r2 0) (g2 0) (b2 0) (a2 0)
+	       (bg-r (color-component bg-color :red))
+	       (bg-g (color-component bg-color :green))
+	       (bg-b (color-component bg-color :blue))
+	       (r1 bg-r) (g1 bg-g) (b1 bg-b) ;; (a1 0)
+	       (r2 bg-r) (g2 bg-g) (b2 bg-b) ;; (a2 0)
 	       source alpha-is-zero alpha (xx 0) (yy 0))
-	  (flet ((mover-down (n) (funcall mover :down n))
-		 (mover-right (n) (funcall mover :right n))
-		 (mover-forward (n) (funcall mover :forward n))
-		 ;; (pixel-setter () (funcall setter r g b step))
-		 )
+	  (macrolet
+	      ((mover-down (n) `(funcall mover :down ,n))
+	       (mover-right (n) `(funcall mover :right ,n))
+	       (mover-forward (n) `(funcall mover :forward ,n))
+	       ;; (pixel-setter () (funcall setter r g b step))
+	       (pixi (ix iy comp pixer plus)
+		 `(loop :for av-y :from 0 :below step :sum
+		     (loop :for av-x :from 0 :below step :sum
+			(progn
+			  (setf xx (min (1- width) (+ ,ix av-x))
+				yy (min (1- height) (+ ,iy ,plus av-y))
+				alpha (pixel-a source yy xx))
+			  (when (not (zerop alpha))
+			    (setf alpha-is-zero nil))
+			  (+ (* (/ alpha #xff) (,pixer source yy xx))
+			     (* ,comp (/ (- #xff alpha) #xff))))))))
 	  ;;(declare (type fixnum r g b a))
+	  (declare (type fixnum step ss xx yy))
 	  ;;(pause "zoom = ~s step = ~s" zoom step)
 	  (when (> si-y y)
 	    ;;(tt-move-to (max y (truncate (- si-y y) step)) 0))
@@ -1028,67 +1047,19 @@ the first time it fails to identify the image."
 		:for ix fixnum :from start-x :below end-x :by step :do
 		(setf source (or buffer data)
 		      alpha-is-zero t)
-		(setf r1 (loop :for av-y :from 0 :below step :sum
-			   (loop :for av-x :from 0 :below step
-			      :sum
-			      (progn
-				(setf xx (min (1- width) (+ ix av-x))
-				      yy (min (1- height) (+ iy av-y))
-				      alpha (pixel-a source yy xx))
-				(when (not (zerop alpha))
-				  (setf alpha-is-zero nil))
-				(* (/ alpha #xff) (pixel-r source yy xx))))))
-		(setf g1 (loop :for av-y :from 0 :below step :sum
-			   (loop :for av-x :from 0 :below step
-			      :sum
-			      (progn
-				(setf xx (min (1- width) (+ ix av-x))
-				      yy (min (1- height) (+ iy av-y))
-				      alpha (pixel-a source yy xx))
-				(when (not (zerop alpha))
-				  (setf alpha-is-zero nil))
-				(* (/ alpha #xff) (pixel-g source yy xx))))))
-		(setf b1 (loop :for av-y :from 0 :below step :sum
-			   (loop :for av-x :from 0 :below step
-			      :sum
-			      (progn
-				(setf xx (min (1- width) (+ ix av-x))
-				      yy (min (1- height) (+ iy av-y))
-				      alpha (pixel-a source yy xx))
-				(when (not (zerop alpha))
-				  (setf alpha-is-zero nil))
-				(* (/ alpha #xff) (pixel-b source yy xx))))))
+		(setf r1 (pixi ix iy bg-r pixel-r 0))
+		(setf g1 (pixi ix iy bg-g pixel-g 0))
+		(setf b1 (pixi ix iy bg-b pixel-b 0))
+		(setf r1 (truncate r1 ss)
+		      g1 (truncate g1 ss)
+		      b1 (truncate b1 ss))
 		(when (< (+ iy step) end-y)
-		  (setf r2 (loop :for av-y :from 0 :below step :sum
-			      (loop :for av-x :from 0 :below step
-				 :sum
-				 (progn
-				   (setf xx (min (1- width) (+ ix av-x))
-					 yy (min (1- height) (+ iy step av-y))
-					 alpha (pixel-a source yy xx))
-				   (when (not (zerop alpha))
-				     (setf alpha-is-zero nil))
-				   (* (/ alpha #xff) (pixel-r source yy xx))))))
-		  (setf g2 (loop :for av-y :from 0 :below step :sum
-			      (loop :for av-x :from 0 :below step
-				 :sum
-				 (progn
-				   (setf xx (min (1- width) (+ ix av-x))
-					 yy (min (1- height) (+ iy step av-y))
-					 alpha (pixel-a source yy xx))
-				   (when (not (zerop alpha))
-				     (setf alpha-is-zero nil))
-				   (* (/ alpha #xff) (pixel-g source yy xx))))))
-		  (setf b2 (loop :for av-y :from 0 :below step :sum
-			      (loop :for av-x :from 0 :below step
-				 :sum
-				 (progn
-				   (setf xx (min (1- width) (+ ix av-x))
-					 yy (min (1- height) (+ iy step av-y))
-					 alpha (pixel-a source yy xx))
-				   (when (not (zerop alpha))
-				     (setf alpha-is-zero nil))
-				   (* (/ alpha #xff) (pixel-b source yy xx))))))
+		  (setf r2 (pixi ix iy bg-r pixel-r step))
+		  (setf g2 (pixi ix iy bg-g pixel-g step))
+		  (setf b2 (pixi ix iy bg-b pixel-b step))
+		  (setf r2 (truncate r2 ss)
+			g2 (truncate g2 ss)
+			b2 (truncate b2 ss))
 		  ;;(incf iy)
 		  )
 		;; @@@ The alpha multiply should really use whatever the
@@ -1097,15 +1068,10 @@ the first time it fails to identify the image."
 		    (progn
 		      (mover-forward 1))
 		    (progn
-		      (setf r1 (truncate r1 ss)
-			    g1 (truncate g1 ss)
-			    b1 (truncate b1 ss))
-		      (setf r2 (truncate r2 ss)
-			    g2 (truncate g2 ss)
-			    b2 (truncate b2 ss))
-		      (set-pixel-half r1 g1 b1 r2 g2 b2 step)
+		      (set-pixel-half r1 g1 b1 r2 g2 b2)
 		      (tt-color nil nil)))
-		(setf r1 0 g1 0 b1 0 a1 0 r2 0 g2 0 b2 0 a2 0)
+		(setf r1 bg-r g1 bg-g b1 bg-b #| a1 0 |#
+		      r2 bg-r g2 bg-g b2 bg-b #| a2 0 |#)
 		)
 	     (incf iy (* 2 step))
 	     (when buffer
@@ -1140,7 +1106,7 @@ the first time it fails to identify the image."
 (defun print-image (file &key zoom width height errorp use-full)
   (let ((t-width (tt-width))
 	;;(t-height (tt-height))
-	)
+	(bg-color (color:lookup-color :black)))
     (with-terminal (:ansi-stream *terminal* :output-stream *standard-output*)
       ;; (format t "file = ~s~%" file)
       (catch 'git-out
@@ -1178,17 +1144,17 @@ the first time it fails to identify the image."
 			      view-width
 			      view-height
 			      #'print-mover
-			      #'set-pixel-fg nil)
+			      #'set-pixel-fg nil bg-color)
 		(output-image-half 0 0 our-zoom image 0
 			      view-width
 			      view-height
 			      #'print-mover
-			      #'set-pixel-half nil))
+			      #'set-pixel-half nil bg-color))
 	    ))))))
 
 (defun show-image (inator)
   (with-slots (x y zoom message file-index file-list image subimage looping
-	       show-modeline use-half-block buffer) inator
+	       show-modeline use-half-block buffer bg-color) inator
     (declare (type fixnum x y) (type float zoom))
     (tt-home)
     ;; (when (not looping)
@@ -1199,10 +1165,10 @@ the first time it fails to identify the image."
       (if use-half-block
 	  (output-image-half
 	   x y zoom image subimage (width inator) (height inator)
-	   #'term-mover #'set-pixel-half buffer)
+	   #'term-mover #'set-pixel-half buffer bg-color)
 	  (output-image
 	   x y zoom image subimage (width inator) (height inator)
-	   #'term-mover #'set-pixel-bg buffer)))
+	   #'term-mover #'set-pixel-bg buffer bg-color)))
     (tt-move-to (1- (height inator)) 0)
     (when show-modeline
       (show-status inator))))
@@ -1215,7 +1181,13 @@ the first time it fails to identify the image."
 
 (defmethod start-inator ((o image-inator))
   (call-next-method)
-  (with-slots (initial-command) o
+  (with-slots (initial-command bg-color) o
+    (when (or (typep *terminal* 'terminal-ansi:terminal-ansi)
+	      (and (terminal-wrapped-terminal *terminal*)
+		   (typep (terminal-wrapped-terminal *terminal*)
+			  'terminal-ansi:terminal-ansi)))
+      (setf bg-color
+	    (convert-color-to (terminal-ansi:background-color) :rgb8)))
     (cond
       (initial-command
        (call-command o initial-command nil)
