@@ -983,14 +983,9 @@ the first time it fails to identify the image."
 
 (declaim (inline set-pixel-half))
 (defun set-pixel-half (r1 g1 b1 r2 g2 b2 step)
-  (tt-color (vector :rgb8
-		    (truncate r1 (* step step))
-		    (truncate g1 (* step step))
-		    (truncate b1 (* step step)))
-	    (vector :rgb8
-		    (truncate r2 (* step step))
-		    (truncate g2 (* step step))
-		    (truncate b2 (* step step))))
+  (declare (ignore step))		; @@@
+  (tt-color (vector :rgb8 r1 g1 b1)
+	    (vector :rgb8 r2 g2 b2))
   (tt-write-char (code-char #x2580))) ; #\upper_half_block
 
 (defun output-image-half (x y zoom image subimage view-width view-height
@@ -1008,10 +1003,11 @@ the first time it fails to identify the image."
       (declare (type fixnum si-x si-y width height))
       (multiple-value-bind (start-x end-x start-y end-y)
 	  (clip x y width height view-width (* view-height 2) si-x si-y zoom)
-	(let ((step (max 1 (round 1 zoom)))
-	      (r1 0) (g1 0) (b1 0) (a1 0)
-	      (r2 0) (g2 0) (b2 0) (a2 0)
-	      source)
+	(let* ((step (max 1 (round 1 zoom)))
+	       (ss (* step step))
+	       (r1 0) (g1 0) (b1 0) (a1 0)
+	       (r2 0) (g2 0) (b2 0) (a2 0)
+	       source alpha-is-zero alpha (xx 0) (yy 0))
 	  (flet ((mover-down (n) (funcall mover :down n))
 		 (mover-right (n) (funcall mover :right n))
 		 (mover-forward (n) (funcall mover :forward n))
@@ -1030,108 +1026,85 @@ the first time it fails to identify the image."
 	       (mover-right (max x (truncate (- (+ si-x start-x) x) step))))
 	     (loop ; horizontal
 		:for ix fixnum :from start-x :below end-x :by step :do
-		(setf source (or buffer data))
+		(setf source (or buffer data)
+		      alpha-is-zero t)
 		(setf r1 (loop :for av-y :from 0 :below step :sum
 			   (loop :for av-x :from 0 :below step
 			      :sum
-			      ;; (aref source (min (1- height) (+ iy av-y))
-			      ;; 	      (min (1- width) (+ ix av-x)) 0)
-			      (pixel-r source
-				       (min (1- height) (+ iy av-y))
-				       (min (1- width) (+ ix av-x)))
-			      )))
+			      (progn
+				(setf xx (min (1- width) (+ ix av-x))
+				      yy (min (1- height) (+ iy av-y))
+				      alpha (pixel-a source yy xx))
+				(when (not (zerop alpha))
+				  (setf alpha-is-zero nil))
+				(* (/ alpha #xff) (pixel-r source yy xx))))))
 		(setf g1 (loop :for av-y :from 0 :below step :sum
 			   (loop :for av-x :from 0 :below step
 			      :sum
-			      ;; (aref source (min (1- height) (+ iy av-y))
-			      ;; 	      (min (1- width) (+ ix av-x)) 1)
-			      (pixel-g source
-				       (min (1- height) (+ iy av-y))
-				       (min (1- width) (+ ix av-x)))
-			      )))
+			      (progn
+				(setf xx (min (1- width) (+ ix av-x))
+				      yy (min (1- height) (+ iy av-y))
+				      alpha (pixel-a source yy xx))
+				(when (not (zerop alpha))
+				  (setf alpha-is-zero nil))
+				(* (/ alpha #xff) (pixel-g source yy xx))))))
 		(setf b1 (loop :for av-y :from 0 :below step :sum
 			   (loop :for av-x :from 0 :below step
 			      :sum
-			      ;; (aref source
-			      ;; 	    (min (1- height) (+ iy av-y))
-			      ;; 	    (min (1- width) (+ ix av-x)) 2)
-			      (pixel-b source
-				       (min (1- height) (+ iy av-y))
-				       (min (1- width) (+ ix av-x)))
-			      )))
-		(setf a1 (loop :for av-y :from 0 :below step :sum
-			   (loop :for av-x :from 0 :below step
-			      :sum
-			      ;; (aref source
-			      ;; 	    (min (1- height) (+ iy av-y))
-			      ;; 	    (min (1- width) (+ ix av-x)) 3)
-			      (pixel-a source
-				       (min (1- height) (+ iy av-y))
-				       (min (1- width) (+ ix av-x)))
-			      )))
+			      (progn
+				(setf xx (min (1- width) (+ ix av-x))
+				      yy (min (1- height) (+ iy av-y))
+				      alpha (pixel-a source yy xx))
+				(when (not (zerop alpha))
+				  (setf alpha-is-zero nil))
+				(* (/ alpha #xff) (pixel-b source yy xx))))))
 		(when (< (+ iy step) end-y)
 		  (setf r2 (loop :for av-y :from 0 :below step :sum
 			      (loop :for av-x :from 0 :below step
 				 :sum
-				 ;; (aref source (min (1- height) (+ iy av-y))
-				 ;; 	      (min (1- width) (+ ix av-x)) 0)
-				 (pixel-r source
-					  (min (1- height) (+ iy step av-y))
-					  (min (1- width) (+ ix av-x)))
-				 )))
+				 (progn
+				   (setf xx (min (1- width) (+ ix av-x))
+					 yy (min (1- height) (+ iy step av-y))
+					 alpha (pixel-a source yy xx))
+				   (when (not (zerop alpha))
+				     (setf alpha-is-zero nil))
+				   (* (/ alpha #xff) (pixel-r source yy xx))))))
 		  (setf g2 (loop :for av-y :from 0 :below step :sum
 			      (loop :for av-x :from 0 :below step
 				 :sum
-				 ;; (aref source (min (1- height) (+ iy av-y))
-				 ;; 	      (min (1- width) (+ ix av-x)) 1)
-				 (pixel-g source
-					      (min (1- height) (+ iy step av-y))
-					      (min (1- width) (+ ix av-x)))
-				 )))
+				 (progn
+				   (setf xx (min (1- width) (+ ix av-x))
+					 yy (min (1- height) (+ iy step av-y))
+					 alpha (pixel-a source yy xx))
+				   (when (not (zerop alpha))
+				     (setf alpha-is-zero nil))
+				   (* (/ alpha #xff) (pixel-g source yy xx))))))
 		  (setf b2 (loop :for av-y :from 0 :below step :sum
 			      (loop :for av-x :from 0 :below step
 				 :sum
-				 ;; (aref source
-				 ;; 	    (min (1- height) (+ iy av-y))
-				 ;; 	    (min (1- width) (+ ix av-x)) 2)
-				 (pixel-b source
-					  (min (1- height) (+ iy step av-y))
-					  (min (1- width) (+ ix av-x)))
-				 )))
-		  (setf a2 (loop :for av-y :from 0 :below step :sum
-			      (loop :for av-x :from 0 :below step
-				 :sum
-				 ;; (aref source
-				 ;; 	    (min (1- height) (+ iy av-y))
-				 ;; 	    (min (1- width) (+ ix av-x)) 3)
-				 (pixel-a source
-					  (min (1- height) (+ iy step av-y))
-					  (min (1- width) (+ ix av-x)))
-				 )))
+				 (progn
+				   (setf xx (min (1- width) (+ ix av-x))
+					 yy (min (1- height) (+ iy step av-y))
+					 alpha (pixel-a source yy xx))
+				   (when (not (zerop alpha))
+				     (setf alpha-is-zero nil))
+				   (* (/ alpha #xff) (pixel-b source yy xx))))))
 		  ;;(incf iy)
 		  )
-		(if (not (and (zerop a1) (zerop a2)))
+		;; @@@ The alpha multiply should really use whatever the
+		;; background color is.
+		(if alpha-is-zero
 		    (progn
+		      (mover-forward 1))
+		    (progn
+		      (setf r1 (truncate r1 ss)
+			    g1 (truncate g1 ss)
+			    b1 (truncate b1 ss))
+		      (setf r2 (truncate r2 ss)
+			    g2 (truncate g2 ss)
+			    b2 (truncate b2 ss))
 		      (set-pixel-half r1 g1 b1 r2 g2 b2 step)
-		      #|
-		      (tt-color nil (vector :rgb8
-					    (truncate r (* step step))
-					    (truncate g (* step step))
-					    (truncate b (* step step))))
-		      (tt-write-char #\space)
-		      (tt-color (vector :rgb8
-					(truncate r (* step step))
-					(truncate g (* step step))
-					(truncate b (* step step)))
-				nil)
-		      (tt-write-char (code-char #x2588)) ; full_block
-		      |#
-		      (tt-color nil nil))
-		    (progn
-		      ;; (tt-forward 1)
-		      ;;(mover-right 1)
-		      (mover-forward 1)
-		      ))
+		      (tt-color nil nil)))
 		(setf r1 0 g1 0 b1 0 a1 0 r2 0 g2 0 b2 0 a2 0)
 		)
 	     (incf iy (* 2 step))
