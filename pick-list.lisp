@@ -232,19 +232,8 @@ The function receives a 'pick' as an argument."))
   (tt-erase-to-eol)
   (tt-write-string (pick-error-message *pick*)))
 
-(defun pick-list-binding-of-key (inator)
-  (pick-list-tmp-message "Press a key: ")
-  (let* ((key (tt-get-key))
-	 ;; (action (key-definition key *pick-list-keymap*)))
-	 (action (key-definition key (inator-keymap inator))))
-    (if action
-	(pick-list-tmp-message
-	 (format nil "~a is bound to ~a" (nice-char key) action))
-	(pick-list-tmp-message
-	 (format nil "~a is not defined" (nice-char key))))))
-
-;; (defun pick-list-help ()
-;;   (display-text "List picker keys" (help-list *pick-list-keymap*)))
+(defmethod message ((i pick) format-string &rest args)
+  (apply #'pick-list-tmp-message format-string args))
 
 ;; (pick-list (loop :for i from 1 to 40 collect (format nil "~@r" i)) :message (format nil "foo~%the~%bar~%~%"))
 
@@ -448,8 +437,6 @@ The function receives a 'pick' as an argument."))
     (:right	     	  . shift-right)
     (,(ctrl #\A)	  . shift-beginning)
     (,(ctrl #\E)	  . shift-end)
-    (,(meta-char #\=)	  . pick-list-binding-of-key)
-    ;;(#\?		  . pick-list-help)
     (#\?		  . help)
     (,(ctrl #\@)	  . pick-list-set-mark)
     ))
