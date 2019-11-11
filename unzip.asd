@@ -10,6 +10,7 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Manipulate zip files."
-    :depends-on (:dlib :opsys :dlib-misc :zip :mkdir :table :grout :rl)
+    :depends-on (:dlib :opsys :dlib-misc :zip :mkdir :table :grout :rl
+		 :los-config)
     :components
     ((:file "unzip")))

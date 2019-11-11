@@ -11,7 +11,9 @@
    ))
 (in-package :unzip)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+
 (defun localize-path (path)
   "Convert a ZIP path into a local operating system path."
   #+unix path

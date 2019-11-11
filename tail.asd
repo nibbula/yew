@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Let us see that tail."
-    :depends-on (:dlib :stretchy :opsys :snip)
+    :depends-on (:dlib :stretchy :opsys :snip :los-config)
     :components
     ((:file "tail")))

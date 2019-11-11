@@ -13,6 +13,8 @@
    ))
 (in-package :rm)
 
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+
 (defun rmdir (dir &key parents)
   "Remove directory DIR. If PARENTS is true, remove the parent directories in
 the path."

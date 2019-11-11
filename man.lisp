@@ -21,6 +21,8 @@
    ))
 (in-package :man)
 
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+
 (defvar *man-sections* nil
   "Cached manual sections. Set it to NIL again to recalculate them.")
 
@@ -103,7 +105,7 @@
 		   ;; :do (terpri)
 		   )))
 	;;(format t "  Sorting...~%") (finish-output)
-	(setf *man-entries* (sort *man-entries* #'string-lessp))
+	(setf *man-entries* (sort-muffled *man-entries* #'string-lessp))
 	;;(format t "  De-duping...~%") (finish-output)
 	(setf *man-entries* (remove-duplicates *man-entries* :test #'equal))
 	*man-entries*)))

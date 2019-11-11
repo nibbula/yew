@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "dump file bytes"
-    :depends-on (:grout :opsys :terminal)
+    :depends-on (:grout :opsys :terminal :los-config)
     :components
     ((:file "dump")))

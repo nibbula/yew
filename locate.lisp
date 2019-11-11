@@ -11,7 +11,8 @@
    ))
 (in-package :locate)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)))
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)))
 ;; (declaim (optimize (speed 3) (safety 0) (debug 2) (space 0)))
 
 (defparameter *magic-str* "mlocate")

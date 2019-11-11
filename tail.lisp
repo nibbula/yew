@@ -11,6 +11,8 @@
    ))
 (in-package :tail)
 
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+
 (defun tail-forever (stream interval)
   (if (interactive-stream-p stream)
       (loop :with line

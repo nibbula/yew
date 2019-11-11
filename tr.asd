@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description
     "Translate characters, something like the traditional Unix command."
-    :depends-on (:dlib :glob :lish)
+    :depends-on (:dlib :glob :lish :los-config)
     :components
     ((:file "tr")))

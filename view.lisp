@@ -13,6 +13,8 @@
    ))
 (in-package :view)
 
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+
 ;; @@@ This and the other data here, should really be kept somewhere else,
 ;; and probably done in a much more sophisticated way.
 (defparameter *viewer-alist*

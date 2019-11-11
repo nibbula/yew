@@ -10,8 +10,9 @@
    ))
 (in-package :sort)
 
-(declaim (optimize (speed 3) (safety 0) (debug 3) (space 1)
-		   (compilation-speed 0)))
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+;; (declaim (optimize (speed 3) (safety 0) (debug 3) (space 1)
+;; 		   (compilation-speed 0)))
 
 (defun sort-lines (lines &key
 			   (numeric-compare #'<)
@@ -20,7 +21,7 @@
   (when (not (typep lines 'sequence))
     (error "LINES must be a sequence."))
   (when (first lines)
-    (sort lines
+    (sort-muffled lines
 	  (etypecase (first lines)
 	    (string string-compare)
 	    (number numeric-compare)
@@ -61,7 +62,7 @@
 			  (list (or (ignore-errors (parse-integer l)) 0)
 				l))))
 	       (declare (type list ll))
-	       (sort ll numeric-compare :key #'car)))
+	       (sort-muffled ll numeric-compare :key #'car)))
 	   (string-sort ()
 	     (sort-lines lines
 			 :string-compare string-compare

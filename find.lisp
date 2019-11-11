@@ -11,9 +11,7 @@
    ))
 (in-package :find)
 
-(declaim (optimize (speed 0)) (optimize (safety 3))
- 	 (optimize (debug 3)) (optimize (space 0))
- 	 (optimize (compilation-speed 0)))
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
 
 ;; (declaim (optimize (speed 3)) (optimize (safety 0))
 ;; 	 (optimize (debug 2)) (optimize (space 0))
@@ -21,6 +19,7 @@
 
 ;; (declaim (optimize (debug 3)))
 
+;; Of course this isn't really "safe".
 (defun safe-shell-line (command &rest args)
   ;; Handle encoding errors
   #+sbcl (let (line)

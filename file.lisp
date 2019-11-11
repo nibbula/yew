@@ -11,6 +11,8 @@
    ))
 (in-package :file)
 
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+
 (defun print-content-type (thing type &key full (stream t))
   "Print the content type to STREAM. TYPE should be magic:content-type
 structure. If FULL is true print all the data, otherwise just print the

@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description
     "This is rarely a very useful way to ask this question anymore."
-    :depends-on (:dlib :opsys :dlib-misc :table-print :grout :lish)
+    :depends-on (:dlib :opsys :dlib-misc :table-print :grout :lish :los-config)
     :components
     ((:file "who")))

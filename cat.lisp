@@ -10,6 +10,8 @@
    ))
 (in-package :cat)
 
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+
 ;; @@@
 ;; This whole thing has so many problems!
 ;; The problems center around Lisp stream element types and character encoding.

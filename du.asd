@@ -10,6 +10,7 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Calculate and explore disk usage"
-    :depends-on (:dlib :opsys :find :tree-viewer :terminal :view-generic)
+    :depends-on (:dlib :opsys :find :tree-viewer :terminal :view-generic
+		 :los-config)
     :components
     ((:file "du")))

@@ -21,20 +21,15 @@
    ))
 (in-package :du)
 
-;; (declaim (optimize (speed 2) (safety 0) (debug 0) (space 3)
-;; 		   (compilation-speed 0)))
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
- 		   (compilation-speed 0)))
-
-;; (defvar *show-progress* nil
-;;   "True to show a progress bar during the creation of the usage tree.")
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
 
 (defvar *default-ouput-file* "du.out"
   "The default file name to save data in.")
 
 (defvar *last-tree* nil "The last tree that was made.")
 
-;; @@@ should probably make a state obj, bro
+;; @@@ since a tree-viewer is an inator now, we should probably just make a
+;; tree-viewer sub class?
 (defstruct du-app
   tree					; The currently viewed tree.
   viewer

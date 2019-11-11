@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description
     "This will probably never be done."
-    :depends-on (:dlib :opsys :cl-ppcre :magic #| :lparallel |#)
+    :depends-on (:dlib :opsys :cl-ppcre :magic #| :lparallel |# :los-config)
     :components
     ((:file "find")))

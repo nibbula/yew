@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Just like in the good old times."
-    :depends-on (:opsys :dlib-misc :grout)
+    :depends-on (:opsys :dlib-misc :grout :los-config)
     :components
     ((:file "df")))

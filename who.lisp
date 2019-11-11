@@ -19,6 +19,8 @@
    ))
 (in-package :who)
 
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+
 ;; Generally there are too many traditional user information command in Unix
 ;; that basically do the same thing. I would like to have all that
 ;; functionality here.

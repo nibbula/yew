@@ -10,6 +10,8 @@
    ))
 (in-package :dump)
 
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+
 (defun dump (source &key line-length show-offset start end)
   "Hex dump of a file.
   SOURCE      - a stream or a pathname to input from. If SOURCE is NIL,

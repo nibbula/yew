@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Like in the old days, if you happen to need it."
-    :depends-on (:opsys)
+    :depends-on (:opsys :los-config)
     :components
     ((:file "slowcat")))

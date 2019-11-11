@@ -5,18 +5,16 @@
 (defpackage :ps
   (:documentation "Process status listing")
   (:use :cl :dlib :dlib-misc :opsys #+unix :os-unix :table :table-print :grout
-	:lish :collections)
+	:lish :collections :los-config)
   (:export
    #:!ps
    #:ps-tree
    ))
 (in-package :ps)
 
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
 ;; (declaim
 ;;  (optimize (speed 3) (safety 0) (debug 3) (space 2) (compilation-speed 0)))
-
-(declaim
- (optimize (speed 0) (safety 3) (debug 3) (space 2) (compilation-speed 0)))
 
 ;; @@@ I really need to re-think this whole rigmarole.
 ;;

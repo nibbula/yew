@@ -10,6 +10,8 @@
    ))
 (in-package :tr)
 
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+
 ;; @@@ We're probably too intimate with glob. Or glob should export this stuff.
 
 (defun compile-char-set (s)

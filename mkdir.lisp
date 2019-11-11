@@ -11,7 +11,7 @@
    ))
 (in-package :mkdir)
 
-;; This is basically just so I can have -p be the default.
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
 
 (defun mkdir (&key directories mode (make-parents t) verbose (errorp t))
   (loop :for d :in directories :do

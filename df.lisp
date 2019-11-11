@@ -11,7 +11,7 @@
    ))
 (in-package :df)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
 
 ;; Custom short size abbreviations
 (defparameter *size-abbrevs*

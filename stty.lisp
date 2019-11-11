@@ -13,6 +13,8 @@
    ))
 (in-package :stty)
 
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+
 (defun demuff (s)
   "Remove the earmuffs."
   (trim (string s) #(#\+)))

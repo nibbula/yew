@@ -11,7 +11,7 @@
    ))
 (in-package :cut)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)))
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
 
 (defun overlap-p (a b)
   "Return true if A an B overlap, given that A < B."

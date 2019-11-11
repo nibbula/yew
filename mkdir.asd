@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Make directories."
-    :depends-on (:opsys)
+    :depends-on (:opsys :los-config)
     :components
     ((:file "mkdir")))

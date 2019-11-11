@@ -11,6 +11,8 @@
    ))
 (in-package :strings)
 
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+
 ;; I'm not really sure how good this is yet.
 (defun strings-file-16 (file &key (minimum-string-length 4))
   (with-open-file-or-stream (stream file :direction :input

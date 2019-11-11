@@ -13,6 +13,8 @@
    ))
 (in-package :slowcat)
 
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+
 (defun slowcat (stream-or-file &key (delay .02))
   (flet ((catty (s)
 	   (loop :with line

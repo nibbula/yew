@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "sort or something"
-    :depends-on (:dlib #| :lish |#)
+    :depends-on (:dlib #| :lish |# :los-config)
     :components
     ((:file "sort")))

@@ -12,6 +12,6 @@
     :long-description
     "Delete files and directories. Provides something like the unix rm and
 rmdir commands."
-    :depends-on (:opsys)
+    :depends-on (:opsys :los-config)
     :components
     ((:file "rm")))

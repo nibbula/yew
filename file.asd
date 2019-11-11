@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Guess file contents."
-    :depends-on (:dlib :dlib-misc :magic :grout :table)
+    :depends-on (:dlib :dlib-misc :magic :grout :table :los-config)
     :components
     ((:file "file")))

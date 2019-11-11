@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Count words."
-    :depends-on (:dlib :opsys)
+    :depends-on (:dlib :opsys :los-config)
     :components
     ((:file "wc")))

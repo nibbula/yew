@@ -23,8 +23,10 @@
    ))
 (in-package :wc)
 
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+
 ;;(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
-(declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
+;;(declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
 
 (defconstant +newline-length+ #+unix 1 #+windows 2
   "How many characters are considered a newline by read-line.")

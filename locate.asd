@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Try to somehow locate files."
-    :depends-on (:dlib :dlib-misc :cl-ppcre #| :trie |# :opsys)
+    :depends-on (:dlib :dlib-misc :cl-ppcre #| :trie |# :opsys :los-config)
     :components
     ((:file "locate")))

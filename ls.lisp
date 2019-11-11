@@ -33,6 +33,8 @@
    ))
 (in-package :ls)
 
+(declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+
 ;; Dynamic state
 (defstruct ls-state
   today			; dtime for now
@@ -688,9 +690,10 @@ command for details. If LABEL-DIR is true, print directory labels."
 	(cond
 	  (file-info
 	   (present-files file-info args recursive))
-	  ((and (= (length files) 1) (is-dir (car files)))
+	  ((and (/= (length files) 1) (is-dir (car files)))
 	   ;; (print-dir-label (car files))))
-	   (print-dir-label (item-full-path (car files)))))
+	   (print-dir-label (item-full-path (make-full-item (car files)))))
+	  )
 	(if collect
 	    (if more
 		(progn
