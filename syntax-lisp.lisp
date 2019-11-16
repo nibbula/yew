@@ -385,9 +385,12 @@ accordingly. Case can be :upper :lower :mixed or :none."
   (with-grout (*grout* stream)
     ;; (format t "stream = ~s grout = ~s~%" stream *grout*)
     (let ((lines (split-sequence #\newline (token-object token)))
-	  par new-paragraph s e ss ee prefix)
+	  par new-paragraph s e ss ee prefix first-non-blank)
       (declare (ignorable e))
-      (labels ((print-it (string-list &key prefix verbatim)
+      (labels ((newline (x)
+		 (grout-princ (if dlib:*dbug* (s+ x #\newline) #\newline)))
+	       (print-it (string-list &key prefix verbatim)
+		 "Print the STRING-LIST with word wrap justification."
 		 (grout-color
 		  :white :default
 		  (if verbatim
@@ -397,46 +400,66 @@ accordingly. Case can be :upper :lower :mixed or :none."
 		       (join-by-string string-list #\space)
 		       :prefix (or prefix "")
 		       :stream nil
-		       :cols (or columns (grout-width)))))
-		 (grout-princ (s+ #+nil "‼" #\newline)))
+		       :cols (or columns (grout-width))))))
 	       (print-paragraph ()
-		 (when new-paragraph
-		   (grout-princ (s+ #+nil "•" #\newline)))
-		 (print-it (nreverse par))
-		 (setf new-paragraph t))
+		 "Print the paragraph that has accumulated in PAR."
+		 (when par
+		   (when new-paragraph
+		     (newline "-•-"))
+		   (print-it (nreverse par))
+		   (newline "‼")
+		   (setf new-paragraph t
+			 par nil)))
 	       (leading-space (l)
+		 "Return the leading blank space from L."
 		 (multiple-value-setq (s e ss ee)
 		   (scan "^([ \\t]+)[^ \\t]" l))
 		 (when s
-		   (subseq l (aref ss 0) (aref ee 0)))))
+		   (subseq l (aref ss 0) (aref ee 0))))
+	       (set-first-non-blank-line ()
+		 "Set first-non-blank to the first non-blank line or NIL if
+                  there isn't one."
+		 (setf first-non-blank
+		       (find-if (_ (not (zerop (length _)))) (cdr lines))))
+	       (indented-p ()
+		 "Return true if the lines look like they have a minimum uniform
+                  indent."
+		 (and (> (length lines) 1)
+		      (setf prefix (and (set-first-non-blank-line)
+					(leading-space first-non-blank)))
+		      (every (_ (or (zerop (length _))
+				    (equal prefix (leading-space _))
+				    (= (mismatch prefix _) (length prefix))))
+			     (cdr lines)))))
 	;; Get rid of uniform leading space on every line after the first.
 	;; This usualy comes from the typical style of indenting the docstring
 	;; text to align with it's first line.
-	(when (and (> (length lines) 1)
-		   (setf prefix (leading-space (second lines)))
-		   (every (_ (equal prefix (leading-space _))) (cdr lines)))
+	(when (indented-p)
+	  (when dlib:*dbug*
+	    (grout-color :red :black
+			 (s+ "•••••••• Doing the Thing ••••••••" #\newline)))
 	  (setf lines
 		(cons (first lines)
 		      (loop :with prefix-len = (length prefix)
 			 :for l :in (cdr lines)
-			 :collect (subseq l prefix-len)))))
+			 :collect (subseq l (min (length l) prefix-len))))))
 	;; Go through the lines and output them as justified paragraphs.
 	(loop :for l :in lines :do
 	   (cond
+	     ;; Empty line
 	     ((zerop (length l))
-	      (when par
-		(print-paragraph)
-		(setf par nil))
-	      ;;(grout-princ (s+ #+nil "•" #\newline))
-	      )
-	     ;; a line starting with text
+	      (print-paragraph)
+	      (newline "•")
+	      (setf new-paragraph nil))
+	     ;; A line starting with text
 	     ((alphanumericp (char l 0))
 	      (push l par))
-	     ;; a line starting with blanks
+	     ;; A line starting with blanks
 	     ((multiple-value-setq (s e ss ee)
 		(scan "^([ \\t]+)([^ \\t])" l))
 	      (when par
 		(print-it (nreverse par))
+		(newline "¿")
 		(setf par nil))
 	      ;; Special verbatim line. @@@ Is this even good???
 	      (if (equal "|" (subseq l (aref ss 1) (aref ee 1)))
@@ -444,17 +467,21 @@ accordingly. Case can be :upper :lower :mixed or :none."
 			    :verbatim t
 			    :prefix (subseq l (aref ss 0) (aref ee 0)))
 		  (print-it (list l)
-			    :prefix (subseq l (aref ss 0) (aref ee 0)))))
+			    :prefix (subseq l (aref ss 0) (aref ee 0))))
+	      (newline "ß"))
+	     ;; Line starting with something else?
 	     (t
 	      (when par
 		(print-paragraph)
-		;;(setf new-paragraph nil)
-		;;(grout-princ (s+ "˚" #\newline))
+		(newline "˚")
 		(setf par nil))
+	      (when new-paragraph
+		(newline "¢")
+		(setf new-paragraph nil))
 	      (grout-color :white :default l)
-	      (grout-princ (s+ #+nil "¶" #\newline)))))
+	      (newline "¶"))))
 	(when par
-	  (print-it (nreverse par)))))))
+	  (print-paragraph))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
