@@ -8,7 +8,16 @@
 
 ;; Returned by read-directory.
 (defstruct dir-entry
-  "Filesystem directory entry, like unix dirent."
+  "Filesystem directory entry.
+Slots are:
+  NAME - A string name of the file.
+  TYPE - A keyword indicating the file type. Most operating systems have at
+         least something like:
+           :DIRECTORY - A container of objects in the filesystem.
+           :LINK      - A link to something else.
+           :DEVICE    - Access to a device.
+           :REGULAR   - A regular data file.
+  INODE - A stupid name for a unique number on unix-like systems."
   (name  nil :type (or string null))
   (type  nil :type (or keyword null))
   (inode nil :type (or integer null)))
@@ -35,7 +44,19 @@ string (denoting itself)."
   picture)
 
 (defstruct terminal-mode
-  "Terminal settings."
+  "Terminal settings. Things that control how the terminal behaves.
+Slot are:
+  ECHO    - A boolean indicating if characters input should be automatically
+            output.
+  LINE    - A boolean which if true indicates that input should only processed
+            a whole line at a time after an end of line character is input,
+            which is usually #\return or #\newline. Otherwise characters are
+            processed when they are input.
+  RAW     - A boolean indicating that special characters, usually control
+            characters, should not processed specially but just treated as
+            input.
+  TIMEOUT - A integer indicating how many deci-seconds to wait before returning
+            with no input, or NIL for no time out."
   (echo    nil :type boolean)
   (line    nil :type boolean)
   (raw     nil :type boolean)
@@ -52,7 +73,25 @@ string (denoting itself)."
 
 ;; Whatever
 (defstruct file-info
-  "File information."
+  "File information.
+Slots are:
+  TYPE - A keyword indicating the type of the file. Likely one of 
+         :DIRECTORY - A container of objects in the filesystem.
+         :LINK      - A link to something else.
+         :DEVICE    - Access to a device.
+         :REGULAR   - A regular data file.
+         :OTHER     - Something which isn't one of the above.
+  SIZE - Positive integer count of 8 bit bytes in the file.
+  FLAGS - A list of keywords indicating specialy properties.
+          One of:
+            :HIDDEN     - Not normally visible.
+            :IMMUTABLE  - Can't be changed.
+            :COMPRESSED - Storage on the device is compressed.
+  CREATION-TIME - When the file was created.
+  ACCESS-TIME - When the file was last accessed.
+  MODIFICATION-TIME - When the file was last modified.
+
+Times are OS-TIME structures."
   ;; Type and flags should only have things which can be reliably detected
   ;; on all systems and have nearly the same meaning and are useful.
   (type nil  :type file-type)
@@ -63,7 +102,17 @@ string (denoting itself)."
   modification-time)
 
 (defstruct filesystem-info
-  "File system information."
+  "File system information.
+Slots are:
+  DEVICE-NAME     - The name of the device the file system is on.
+  MOUNT-POINT     - Place it's attached in the tree.
+  TYPE            - A string indicating the specific format of the filesystem,
+                    for example: \"NTFS\" \"APFS\" \"ZFS\" \"EXT4\" \"VFAT\"
+  TOTAL-BYTES     - A positive integer count of total possible octets.
+  BYTES-FREE      - A positive integer count of bytes not used.
+  BYTES-AVAILABLE - A positive integer count of octets available for use. You
+                    might think this would be the same as BYTES-FREE, but the
+                    system may reserve some."
   device-name
   mount-point
   type
