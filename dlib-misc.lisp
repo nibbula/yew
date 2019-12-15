@@ -879,11 +879,13 @@ If STREAM is nil, return a string of the output."
 		       :start-column start-column))))
 
 (defun print-properties (prop-list &key (right-justify nil) (de-lispify t)
-				     (stream t))
+				     (stream t) (format-char #\a))
   "Print a set of names and values nicely in two vertical columns. If the first
 element of PROP-LIST is a cons, it guesses that it's an alist, otherwise it
 assumes it's a plist."
-  (let ((label-length 0))
+  (let ((label-length 0)
+	(format-string
+	 (s+ "~v" (if right-justify "@" "") "a: ~" format-char "~%")))
     (flet ((niceify (s)
 	     (string-capitalize
 		    (substitute #\space #\_
@@ -893,7 +895,7 @@ assumes it's a plist."
 	      (max label-length (length (princ-to-string key)))))
       (do-kv-list (name value prop-list)
 	;;value (if (and (cdr p) (listp (cdr p))) (cadr p) (cdr p)))
-	(format stream (if right-justify "~v@a: ~a~%" "~va: ~a~%")
+	(format stream format-string
 		label-length
 		(if de-lispify
 		    (niceify (princ-to-string name))
