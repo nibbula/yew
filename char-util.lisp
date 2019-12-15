@@ -771,6 +771,18 @@ than space and delete."
 	       (substitute #\_ #\- (string-capitalize property)))
 	      (t property))))
 
+;; @@@ This only works with cl-unicode.
+#-has-sb-unicode
+(defun character-unicode-properties (char)
+  "Return a list of Unicode properties for the character."
+  (loop
+     :with test
+     :for prop :in (cl-unicode:recognized-properties)
+     :do
+     (setf test (cl-unicode:property-test p))
+     :when (funcall test char)
+       :collect p))
+
 (defun whitespace-p (c)
   "Return true if the character C has the Unicode “White_Space” property."
   (and (has-property c :white-space) t))
@@ -1035,9 +1047,14 @@ GRAPHEME-VARs will be, which defaults to character so it's compatable with a
      :do (setf (gethash k table) v))
   table)
 
+;; The whole control-char-graphic thing is for helpinging things that want to
+;; display "control" characters as something other than how they would display
+;; if just sent to the output. For example displaying backspace as "^H" or "␈"
+;; instead of just backing up one cell.
+
 (defparameter *control-char-graphics* nil)
 
-;; This is, of course, ASCII (and therefore also LATIN1 and UTF-8) specific.
+;; This is, of course, specific to ASCII, UTF-8, LATIN1, and others?
 (defun make-control-char-graphic-table ()
   (setf *control-char-graphics* (make-hash-table :test #'eql))
   (loop :for c :from 0 :to 31
@@ -1411,7 +1428,7 @@ BYTE-SETTER, which takes an (unsigned-byte 8)."
   "Return a vector of (unsigned-byte 8) representing the STRING."
   (declare (optimize speed (safety 0))
 	   (type simple-string string))
-  (let* ((result-length 
+  (let* ((result-length
 	  (loop :with sum fixnum = 0
 	     :for i fixnum :from 0 :below (length string) :do
 	     (incf sum (%length-in-utf8-bytes (char-code (char string i))))
