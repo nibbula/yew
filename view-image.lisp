@@ -1227,8 +1227,8 @@ the first time it fails to identify the image."
 	  (length (image-subimages image)))))
 
 (defun view-image (image-designator &key file-list type own-window use-full)
-  "View an image. The IMAGE-DESIGNATOR can be a file name or a stream or an
-object of class IMAGE:IMAGE.
+  "View an image. The IMAGE-DESIGNATOR can be a file name, a stream, an
+object of class IMAGE:IMAGE, or an array of (unsigned-byte 8).
 Key arguments:
   FILE-LIST   - A list of file names to view
   TYPE        - The type of image viewer to use
@@ -1267,6 +1267,17 @@ Key arguments:
 			      :initial-command 'next-file
 			      :file-list (or file-list
 					     (list image-designator))
+			      :own-window own-window
+			      :use-half-block (not use-full))))
+	((array (unsigned-byte 8) *) ;; presumably encoded
+	 (setf *image-viewer*
+	       (make-instance inator-type
+			      :image
+			      ;; (perserverant-read-image image-designator)
+			      (flexi-streams:with-input-from-sequence
+				  (str image-designator)
+				(perserverant-read-image str))
+			      :file-list file-list
 			      :own-window own-window
 			      :use-half-block (not use-full))))
 	(null
