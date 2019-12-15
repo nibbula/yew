@@ -30,8 +30,9 @@
 (defun manpath ()
   "Return the manual path."
   (or (nos:environment-variable "MANPATH")
-      (!$ "manpath")
-      (error "Can't figure out the where the manuals are.")))
+      (and (nos:command-pathname "manpath") (!$ "manpath"))
+      #-windows
+      (warn "Can't figure out the where the manuals are.")))
 
 (defun get-manual-sections ()
   "Approximate and flawed method for finding manual sections."
