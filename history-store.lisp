@@ -161,9 +161,11 @@ is saved."))
 	;; Assume if file-position is zero, we just created it, so
 	;; output the whole history even if update is true.
 	(setf pos (file-position stream))
-	;; We have to have at least
-	(when (or (dl-length-at-least-p (history-start hist) 1)
-		  (zerop pos))
+	;; We have to have at least one history entry or we're starting with a
+	;; blank file, and we have added at least one line
+	(when (and (or (dl-length-at-least-p (history-start hist) 1)
+		       (zerop pos))
+		   (dl-prev (history-start hist)))
 	  ;; (format t "pos = ~d~%" pos)
 	  (dl-list-do-backward
 	   (if (zerop pos)
