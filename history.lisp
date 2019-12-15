@@ -9,17 +9,29 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; History
 ;;;
-;;; History is a forward and backward navigable list of strings. We maintain
-;;; separate history contexts, so that line editor instances can have separate
-;;; histories or share the same history.
+;;; History is a forward and backward navigable list of history entries. An
+;;; history entry is the text that was entered and a few things like the time
+;;; it was entered and if it's modified. We maintain separate history
+;;; contexts, so that line editor instances can have separate histories or
+;;; share the same history.
 ;;;
 ;;; *history* is an alist of (CONTEXT . HISTORY), where CONTEXT is a symbol
-;;; and HISTORY is a history structure, which contains a dl-list of strings.
+;;; and HISTORY is a history structure, which contains a dl-list of entries.
 ;;;
 ;;; I know it's confusing, but the tail is the oldest entry and the head
 ;;; is the most recent entry. We push new entries on to the head, but we
-;;; print the list backwards from tail to the head. So, for example, the
+;;; print the list backwards from the tail to the head. So, for example, the
 ;;; previous history item is accessed by dl-next.
+;;;
+;;;  1  ls       |     tail
+;;;  2  cd      /\
+;;;  3  pwd     \ \     ↓ prev
+;;;  4  ps      / /
+;;;  5  ls     | /
+;;;  6  ss     \ \               <-- start of un-saved lines
+;;;  7  top     \ \     ↑ next
+;;;  8  wtf     /  \             <-- current line
+;;;  9  ls     (o/ \)  head
 ;;;
 ;;; The lines are editable, and the last line is usually the one we're working
 ;;; on. When we go back and edit a line and accept it (hit enter) we don't
@@ -40,10 +52,10 @@
   (start nil :type dl-node)		; Start of new nodes
   (cur   nil :type dl-node))		; Current node
 
-(defstruct history-entry		; @@@ not used yet
+(defstruct history-entry
   "An entry in the line editor history."
   time					; a universal time
-  line					; a string
+  line					; a string of some sort?
   (modified nil :type boolean))		; true if the entry has be edited
 
 (defvar *history* '() "Line history of some sort.")
