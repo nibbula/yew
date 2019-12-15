@@ -15,6 +15,7 @@
    #:dl-push
    #:dl-pop
    #:dl-length
+   #:dl-length-at-least-p
    #:dl-nth-element
    #:dl-nth
    #:dl-last
@@ -118,6 +119,14 @@
        :while e
        :do (incf result))
     result))
+
+(defun dl-length-at-least-p (list n)
+  "Return true if the length of a DL-LIST is at least N."
+  (let ((result 0))
+    (loop :for e = list :then (%dl-next e)
+       :while (and e (< result n))
+       :do (incf result))
+    (= result n)))
 
 (defun dl-nth-element (n list)
   "Return the Nth element of a DL-LIST."
