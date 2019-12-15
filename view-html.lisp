@@ -16,12 +16,15 @@
 
 (defpackage :view-html
   (:documentation "View HTML as a tree.")
-  (:use :cl :dlib :dlib-misc :rl :inator :file-inator :tree-viewer)
+  (:use :cl :dlib :dlib-misc :rl :inator :file-inator :tree-viewer
+	:terminal :fui :char-util :keymap)
   (:export
    #:view-html
    #:*user-agent*
    ))
 (in-package :view-html)
+
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   #-windows (add-feature :use-drakma))
@@ -48,6 +51,148 @@
   (:default-initargs
    :func #'html-node-contents)
   (:documentation "A tree node for plump HTML."))
+
+(defstruct history-node
+  "Record the place and time."
+  resource
+  time)
+
+(defclass location-node (object-node)
+  ((parent
+    :initarg :parent :accessor location-node-parent
+    :documentation "Parent node in the location tree."))
+  (:documentation "Node in the location tree. The object is the resource name."))
+
+(defclass html-viewer (tree-viewer)
+  ((visited
+    :initarg :visited :accessor html-viewer-visited
+    :initform (make-hash-table :test #'equal) :type hash-table
+    :documentation "Table of places visited.")
+   (history
+    :initarg :history :accessor html-viewer-history :initform nil :type list
+    :documentation
+    "A list of resources vistited. This records a path through the location
+tree.")
+   (location-tree
+    :initarg :location-tree :accessor html-viewer-location-tree :initform nil
+    :documentation "A navigation tree of where we've visted.")
+   (location
+    :initarg :location :accessor html-viewer-location :initform nil
+    ;; :type location-node
+    :documentation "The current location."))
+  (:documentation "A tree view of HTML/XML."))
+
+(defmethod initialize-instance
+    :after ((o html-viewer) &rest initargs &key &allow-other-keys)
+  "Initialize a html-viewer."
+  (declare (ignore initargs))
+  ;; Add our own keymap.
+  (when (not (find *view-html-keymap* (inator-keymap o)))
+    (push *view-html-keymap* (inator-keymap o))))
+
+(defun reset-view ()
+  "Reset the viewer for viewing a different tree."
+  (with-slots ((current tree-viewer::current)
+	       (root    tree-viewer::root)
+	       (top     tree-viewer::top)
+	       (parents tree-viewer::parents)) *viewer*
+    (setf parents (make-hash-table :test #'equal)
+	  current root
+	  top root)))
+
+(defun add-to-history (uri)
+  "Add a location to the linear history."
+  (with-slots (visited history) *viewer*
+    (let ((node (make-history-node :resource uri :time (get-dtime))))
+      (setf (gethash uri visited) node)
+      (push node history))))
+
+(defun make-location-current (uri &key parent)
+  (with-slots (location) *viewer*
+    (setf location
+	  (make-instance 'location-node :object uri :parent parent))))
+
+(defun register-visit (uri &key parent)
+  (with-slots (location) *viewer*
+    (add-to-history uri)
+    (make-location-current uri :parent (or parent location))))
+
+(defun relative-uri (relative)
+  "Return the full URI from a possibly relative URI."
+  (with-slots (location) *viewer*
+    (let* ((base (node-object location))
+	   (base-uri (handler-case (puri:parse-uri base)
+		       (puri:uri-parse-error (c)
+			 (declare (ignore c))
+			 nil)))
+	   merged)
+      (cond
+	((and base-uri (member (puri:uri-scheme base-uri) '(:http :https)))
+	 (setf merged (puri:merge-uris relative base-uri))
+	 (values (puri:render-uri merged nil) merged))
+	((and (not (puri:uri-scheme base-uri)) ; no scheme
+	      (nos:file-exists base))
+	 ;; @@@ should we even do this???? security issue?
+	 (let ((new (nos:path-append (nos:path-directory-name base) relative)))
+	   (and (nos:file-exists new)
+		(values new nil))))))))
+
+(defun coerce-to-parseable (file)
+  "Make FILE into something parseable by PLUMP:PARSE."
+  (block nil
+    (etypecase file
+      (string
+       (let* ((path (pathname (nos:quote-filename file)))
+	      uri)
+	 (or (and path (nos:file-exists path) path)
+	     (and (setf uri (handler-case
+				(puri:parse-uri file)
+			      (puri:uri-parse-error (c)
+				(declare (ignore c))
+				nil)))
+		  (member (puri:uri-scheme uri) '(:http :https))
+		  ;; @@@ We should probably check something like:
+		  ;; (sb-unicode:confusable-p url
+		  ;;   (sb-unicode:canonically-deconfuse url))
+		  ;; and some site blacklist or something.
+		  #+use-drakma
+		  (drakma:http-request uri :user-agent *user-agent*)))))
+      ((or pathname stream)
+       file)
+      (null
+       #| (read-filename :prompt "HTML file: ") |#
+       (pathname (nos:quote-filename
+		  (or (pick-list:pick-file)
+		      (return nil))))))))
+
+(defun make-tree-from-document (location document parsed-document)
+  "Make a tree-viewer tree from a parsed plump document."
+  (make-instance
+   'object-node
+   :object (or (and location (princ-to-string location))
+	       (princ-to-string document))
+   :branches
+   (loop :for n :in (map 'list #'identity (plump::children parsed-document))
+      :if (or (not (or (plump:text-node-p n)
+		       (plump:textual-node-p n)))
+	      (> (length (dlib:trim (plump:text n))) 0))
+      :collect
+      (make-instance 'html-node :object n))))
+
+(defun load-document (location)
+  "Load the document at LOCATION. Return the tree."
+  (with-slots ((root tree-viewer::root)) *viewer*
+    (let* ((document (or (coerce-to-parseable location)
+			 (return-from load-document nil)))
+	   (parsed-document (plump:parse document))
+	   (tree (make-tree-from-document location document parsed-document)))
+      (setf root tree)
+      (reset-view)
+      ;; (register-visit location)
+      tree)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Displaying
 
 (defgeneric display-thing (obj stream)
   (:documentation "Display a plump element OBJ to STREAM."))
@@ -80,7 +225,7 @@
   (format stream "~(~a~) ~a" (type-of obj) (plump-dom:doctype obj)))
 
 (defmethod print-object ((object html-node) stream)
-  "Print a system-node to STREAM."
+  "Print an html-node to STREAM."
   (let ((obj (node-object object)))
     (if (or *print-readably* *print-escape*)
 	(print-unreadable-object (object stream)
@@ -112,54 +257,136 @@
                    (display-thing obj stream))))))
     (display-object node str level)))
 
-(defun coerce-to-parseable (file)
-  "Make FILE into something parseable by PLUMP:PARSE."
-  (block nil
-    (etypecase file
-      (string
-       (let* ((path (pathname (nos:quote-filename file)))
-	      uri)
-	 (or (and path (nos:file-exists path) path)
-	     (and (setf uri (handler-case
-				(puri:parse-uri file)
-			      (puri:uri-parse-error (c)
-				(declare (ignore c))
-				nil)))
-		  (member (puri:uri-scheme uri) '(:http :https))
-		  ;; @@@ We should probably check something like:
-		  ;; (sb-unicode:confusable-p url
-		  ;;   (sb-unicode:canonically-deconfuse url))
-		  ;; and some site blacklist or something.
-		  #+use-drakma
-		  (drakma:http-request uri :user-agent *user-agent*)))))
-      ((or pathname stream)
-       file)
-      (null
-       #| (read-filename :prompt "HTML file: ") |#
-       (pathname (nos:quote-filename
-		  (or (pick-list:pick-file)
-		      (return nil))))))))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Visiting
 
-;; Here we parse the whole file with PLUMP and
-;; 
+(defgeneric visit-thing (thing)
+  (:documentation
+   "Visit a thing, most likely in a URL, in a way that replaces
+the current view with it, but lets us back."))
+
+(defmethod visit-thing ((thing t))
+  (display-text
+   "What is it?"
+   (list (format nil "I don't know how to visit a ~a." (type-of thing)))))
+
+(defmacro external-visit (&body body)
+  `(unwind-protect
+	(progn
+	  (terminal-end *terminal*)
+	  (handler-case
+	      ,@body
+	    (simple-error (c)
+	      (message *viewer* "Error: ~a" c))))
+     (terminal-start *terminal*)
+     (tt-clear)
+     (tt-finish-output)))
+
+(defmethod visit-thing ((thing plump-dom:element))
+  (case (symbolify (plump:tag-name thing) :package :view-html)
+    ((a link)
+     (let* ((relative (gethash "href" (plump:attributes thing)))
+	    (location (relative-uri relative)))
+       (display-text
+	"Visiting location"
+	(list (format nil "Visiting location ~s -> ~a" relative location)
+	      (with-output-to-string (s)
+		(describe (html-viewer-location *viewer*) s))
+	      (format nil "~s" (node-object (html-viewer-location *viewer*)))
+	      ))
+       ;; (view-html location)
+       (load-document location)
+       (register-visit location)
+       ))
+    (img
+     (let ((relative (gethash "src" (plump:attributes thing))))
+       (multiple-value-bind (location real-uri) (relative-uri relative)
+	 (display-text
+	  "Visiting image"
+	  (list (format nil "Visiting image ~s -> ~a" relative location)
+		(with-output-to-string (s)
+		  (describe (html-viewer-location *viewer*) s))
+		(s+ real-uri)
+		(format nil "~s" (node-object (html-viewer-location *viewer*)))))
+	 (add-to-history location)
+	 (external-visit
+	  (view-image:view-image
+	   (if (puri:uri-p real-uri)
+	       #+use-drakma (drakma:http-request real-uri
+						 :user-agent *user-agent*)
+	       #-use-drakma nil
+	       location))))))
+    (script
+     (let ((relative (gethash "src" (plump:attributes thing))))
+       (multiple-value-bind (location real-uri) (relative-uri relative)
+	 (display-text
+	  "Visiting script"
+	  (list (format nil "Visiting script ~s -> ~a" relative location)
+		(with-output-to-string (s)
+		  (describe (html-viewer-location *viewer*) s))
+		(format nil "~s" (node-object (html-viewer-location *viewer*)))))
+	 (add-to-history location)
+	 (external-visit
+	  (pager:pager
+	   (if (puri:uri-p real-uri)
+	       #+use-drakma (drakma:http-request real-uri
+						 :user-agent *user-agent*
+						 :want-stream t)
+	       #-use-drakma nil
+	       location))))))
+    (otherwise
+     (display-text
+      "Unknown tag"
+      (list (format nil "I don't know how to visit a ~s tag."
+		    (plump:tag-name thing)))))))
+
+(defmethod visit-thing-command ((o html-viewer))
+  (visit-thing (node-object (tree-viewer::current o))))
+
+(defun back-command (o)
+  "Load the previously viewed document."
+  (with-slots (history) o
+    (when history
+      (pop history) ;; current
+      (when history
+	(let ((location (history-node-resource (first history))))
+	  (load-document location)
+	  (make-location-current location))))))
+
+(defun history-command (o)
+  (with-slots (history) o
+    ;; (display-text
+    ;;  "History"
+    ;;  (loop :for h :in history
+    ;; 	:collect (history-node-resource h)))
+    (pick-list:pick-list (loop :for h :in history
+			    :when h
+			    :collect (history-node-resource h))
+			 :popup t)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defkeymap *view-html-ctrl-x-keymap*
+  `((,(ctrl #\s)	. save-file)
+    (,(ctrl #\f)	. load-file)))
+
+(defkeymap *view-html-keymap*
+  `((,(ctrl #\x)	. *view-ctrl-x-keymap*)
+    (#\h		. history-command)
+    (#\b		. back-command)
+    (#\v		. visit-thing-command)))
+
+;; Here we parse the whole file with PLUMP and make a tree-viewer tree out
+;; of it.
 
 (defun view-html (&optional file)
-  (let* ((ff (or (coerce-to-parseable file) (return-from view-html nil)))
-	 (hh (plump:parse ff)))
+  (let ((*viewer* (or *viewer* (make-instance 'html-viewer)))
+	tree)
     (unwind-protect
-      (progn
-	(view-tree
-	 (make-instance
-	  'object-node
-	  :object (or (and file (princ-to-string file))
-		      (princ-to-string ff))
-	  :branches
-	  (loop :for n :in (map 'list #'identity (plump::children hh))
-	     :if (or (not (or (plump:text-node-p n)
-			      (plump:textual-node-p n)))
-		     (> (length (dlib:trim (plump:text n))) 0))
-	     :collect
-	     (make-instance 'html-node :object n)))))
+	 (progn
+	   (setf tree (load-document file))
+	   (make-location-current file)
+	   (view-tree tree :viewer *viewer*))
       (when (streamp file)
 	(close file)))))
 
