@@ -30,6 +30,22 @@ description."
 	(terpri))
       (format stream "~a~%" (content-type-description type))))
 
+(defparameter *signal-errors* nil
+  "True to signal file errors instead of printing them.")
+
+(defun safer-guess-file-type (file)
+  (if (not *signal-errors*)
+      (handler-case
+	  (guess-file-type file)
+	((or stream-error file-error opsys:opsys-error) (c)
+	  (finish-output)
+	  (let ((*print-pretty* nil))
+	    (format *error-output*
+		    ;; "~a: ~a ~a~%" file (type-of c) c))
+		    "~a ~a~%" (type-of c) c))
+	  (invoke-restart 'continue)))
+      (guess-file-type file)))
+
 (defun describe-content-type (thing &key full (stream t))
   "Describe the content type of THING to STREAM. THING can be a pathname
 designator, or a vector of (unsigned-byte 8). If FULL is true print all the
@@ -37,11 +53,22 @@ data, otherwise just print the description."
   (let ((type
 	 (typecase thing
 	   ((or pathname string)
-	    (guess-file-type thing))
+	    (safer-guess-file-type thing))
 	   ((or stream (vector (unsigned-byte 8)))
 	    (guess-content-type thing)))))
-    (print-content-type thing type :full full :stream stream)
+    (when type
+      (print-content-type thing type :full full :stream stream))
     type))
+
+(defmacro with-restarts (&body body)
+  `(restart-case
+       (progn
+	 ,@body)
+     (continue ()
+       :report "Skip this file.")
+     (skip-all ()
+       :report "Skip remaining files with errors."
+       (setf *signal-errors* nil))))
 
 #+lish
 (lish:defcommand file
@@ -52,26 +79,37 @@ data, otherwise just print the description."
    (collect boolean :short-arg #\c
     :help "True to set *output* to a sequence of content-type structures.")
    (files pathname #|:optional nil XXX |# :repeating t
-    :help "Files to identify."))
+    :help "Files to identify.")
+   (signal-errors boolean :short-arg #\E
+    :help "True to signal errors instead of just printing them."))
   :accepts (or sequence pathname string)
   "Try to guess what a file is."
   (with-grout ()
-    (let (results)
-      (flet ((do-file-list (file-list)
-	       (if full
-		   (loop :for f :in file-list :do
-		      (push (list f (describe-content-type f :full t)) results))
-		   (grout-print-table
-		    (make-table-from
-		     (loop :for f :in file-list
-			:collect
-			(list (s+ f ":")
-			      (progn
-				(push (list f (guess-file-type f)) results)
-				(content-type-description
-				 (second (car results)))))))
-		    #| :trailing-spaces nil |#
-		    :print-titles nil))))
+    (let ((*signal-errors* signal-errors)
+	  results)
+      (labels ((do-file-list (file-list)
+		 (if full
+		     (loop :for f :in file-list :do
+			(with-restarts
+			    (push (list f (describe-content-type f :full t))
+				  results)))
+		     (progn
+		       (grout-print-table
+			(make-table-from
+			 (loop
+			    :with type
+			    :for f :in file-list
+			    :when (setf type
+					(with-restarts (safer-guess-file-type f)))
+			    :collect
+			    (list (s+ f ":")
+				  (progn
+				    (push (list f type)
+					  results)
+				    (content-type-description
+				     (second (car results)))))))
+			#| :trailing-spaces nil |#
+			:print-titles nil)))))
 	(when lish:*input*
 	  (do-file-list
 	      (if (listp lish:*input*) lish:*input* (list lish:*input*))))
@@ -86,8 +124,7 @@ data, otherwise just print the description."
 		     (slurp *standard-input* :element-type '(unsigned-byte 8))))
 		(push (list "*standard-input*"
 			    (describe-content-type content :full full))
-		      results)))
-	    )
+		      results))))
 	(when collect
 	  (setf lish:*output* (nreverse results)))))))
 
