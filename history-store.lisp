@@ -93,7 +93,7 @@ is saved."))
 	(when (zerop (setf pos (file-position stream)))
 	  ;; Write version
 	  (format stream "trlh ~a~%" *text-history-version*))
-	(when (or (> (dl-length (history-start hist)) 1)
+	(when (or (dl-length-at-least-p (history-start hist) 1)
 		  (zerop pos))
 	  (dl-list-do-backward
 	   (if (zerop pos)
@@ -162,7 +162,7 @@ is saved."))
 	;; output the whole history even if update is true.
 	(setf pos (file-position stream))
 	;; We have to have at least
-	(when (or (> (dl-length (history-start hist)) 1)
+	(when (or (dl-length-at-least-p (history-start hist) 1)
 		  (zerop pos))
 	  ;; (format t "pos = ~d~%" pos)
 	  (dl-list-do-backward
