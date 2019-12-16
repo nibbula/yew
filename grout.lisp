@@ -775,7 +775,10 @@ generic functions (i.e. %GROUT-*) directly."
   (output-table table (make-instance renderer)
 		(generic-term g)
 		:print-titles print-titles :long-titles long-titles
-		:max-width max-width :trailing-spaces trailing-spaces))
+		:max-width max-width :trailing-spaces trailing-spaces)
+  ;; One doesn't always want output-table to do a newline, although probably
+  ;; with print-table you do.
+  (terminal-fresh-line (generic-term g)))
 
 (defmethod %grout-finish ((g generic-term))
   (terminal-finish-output (generic-term g)))
