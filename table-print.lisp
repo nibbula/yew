@@ -1017,7 +1017,8 @@ resized to fit in this, and the whole row is trimmed to this."
   (output-table table renderer stream
 		:long-titles long-titles
 		:print-titles print-titles
-		:max-width max-width))
+		:max-width max-width)
+  (fresh-line stream)) ;; @@@ Is this right?
 
 (defun print-as-table (thing &key column-names table-type
 			       (stream *standard-output*)
