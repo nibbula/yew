@@ -377,6 +377,14 @@ i.e. the terminal is 'line buffered'."
   (terminal-write-string tty str :start start :end end)
   (addch (char-code #\newline)))
 
+(defmethod terminal-newline ((tty terminal-curses))
+  (addch (char-code #\newline)))
+
+(defmethod terminal-fresh-line ((tty terminal-curses))
+  (when (not (zerop (getcurx (screen tty))))
+    (addch (char-code #\newline))
+    t))
+
 (defmethod terminal-move-to ((tty terminal-curses) row col)
   (move row col))
 

@@ -124,6 +124,14 @@ require terminal driver support."))
   "Output a character to the terminal."
   (write-char (fatchar-c char) (terminal-output-stream tty)))
 
+(defmethod terminal-newline ((tty terminal-dumb))
+  (write-char #\newline (terminal-output-stream tty)))
+
+(defmethod terminal-fresh-line ((tty terminal-dumb))
+  (when (not (zerop (terminal-dumb-stream-fake-column tty)))
+    (write-char #\newline (terminal-output-stream tty))
+    t))
+
 (defmethod terminal-move-to ((tty terminal-dumb) row col)
   (declare (ignore tty row col)))
 

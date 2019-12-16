@@ -1236,6 +1236,14 @@ i.e. the terminal is 'line buffered'."
   (when (copy-char tty char)
     (note-change tty char)))
 
+(defmethod terminal-newline ((tty terminal-crunch-stream))
+  (terminal-write-char tty #\newline))
+
+(defmethod terminal-fresh-line ((tty terminal-crunch-stream))
+  (when (not (zerop (screen-x (new-screen tty))))
+    (terminal-write-char tty #\newline)
+    t))
+
 (defmethod terminal-move-to ((tty terminal-crunch-stream) row col)
   (setf (screen-y (new-screen tty))
 	(max 0 (min row (1- (screen-height (new-screen tty)))))

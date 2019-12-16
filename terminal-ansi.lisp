@@ -761,6 +761,15 @@ i.e. the terminal is 'line buffered'."
   (when (line-buffered-p tty)
     (finish-output (terminal-output-stream tty))))
 
+(defmethod terminal-newline ((tty terminal-ansi-stream))
+  (terminal-write-char tty #\newline))
+
+(defmethod terminal-fresh-line ((tty terminal-ansi-stream))
+  (when (not (zerop (second (multiple-value-list
+			     (terminal-get-cursor-position tty)))))
+    (terminal-write-char tty #\newline)
+    t))
+
 (defmethod terminal-move-to ((tty terminal-ansi-stream) row col)
   (terminal-raw-format tty "~c[~d;~dH" #\escape (1+ row) (1+ col))
   (setf (terminal-ansi-stream-fake-column tty) col))

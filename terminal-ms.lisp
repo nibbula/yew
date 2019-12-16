@@ -294,6 +294,17 @@
 	 (incf i))
       (terminal-normal tty))))
 
+(defmethod terminal-newline ((tty terminal-ms))
+  (terminal-write-char tty #\newline))
+
+(defmethod terminal-fresh-line ((tty terminal-ms))
+  (with-slots ((fd terminal::file-descriptor)) tty
+    (multiple-value-bind (col _) (get-cursor-position fd)
+      (declare (ignore _))
+      (when (not (zerop col))
+	(terminal-write-char tty #\newline)
+	t))))
+
 (defmethod terminal-move-to ((tty terminal-ms) row col)
   (with-slots ((fd terminal::file-descriptor)) tty
     (multiple-value-bind (_col _row  width height attr top)

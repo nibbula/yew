@@ -47,6 +47,8 @@
    #:tt-write-char-at
    #:tt-write-span		  #:terminal-write-span
    #:tt-write-span-at
+   #:tt-newline			  #:terminal-newline
+   #:tt-fresh-line		  #:terminal-fresh-line
    #:tt-move-to			  #:terminal-move-to
    #:tt-move-to-col		  #:terminal-move-to-col
    #:tt-beginning-of-line	  #:terminal-beginning-of-line
@@ -186,6 +188,8 @@ Movement functions are usual row first then column.
   tt-write-line
   tt-write-line-at
   tt-write-char
+  tt-newline
+  tt-fresh-line
   tt-beep
   tt-finish-output
 
@@ -559,9 +563,18 @@ i.e. the terminal is \"line buffered\"")
   "Output a character to the terminal. Flush output if it is a newline,
 i.e. the terminal is \"line buffered\"")
 
+(deftt newline ()
+  "Output a newline character. In other words, move to the cursor to the first
+column of the next row, scrolling if at the bottom line and it's necessary and
+allowed.")
+
+(deftt fresh-line ()
+  "Call newline if we're not at the first column. If for some reason
+this cannot be determined, then a newline is output anyway. fresh-line
+returns true if it outputs a newline; otherwise it returns false.")
+
 (deftt move-to (row column) "Move the cursor to ROW and COLUMN.")
 
-;; I've finally given in, 1000 years later, and made the *-at functions.
 (defun tt-format-at (row column fmt &rest args)
   (tt-move-to row column)
   (apply #'terminal-format *terminal* fmt args))
