@@ -15,6 +15,6 @@
      really want to rummage through all your stuff yet again?"
     :depends-on (:dlib :dlib-misc :char-util :opsys :terminal :terminal-ansi
 		 :grout :table :table-print :terminal-table :fatchar
-		 :fatchar-io :style :magic :los-config)
+		 :fatchar-io :theme :style :magic :los-config)
     :components
     ((:file "ls")))

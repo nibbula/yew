@@ -17,7 +17,8 @@
   (:documentation
    "This is a shitty fake implementation of the command I type the most.")
   (:use :cl :dlib :dlib-misc :opsys :terminal :terminal-ansi :grout :table
-	:table-print :terminal-table :fatchar :fatchar-io :style :magic)
+	:table-print :terminal-table :fatchar :fatchar-io :theme :style :magic
+	:collections)
   (:export
    #:!ls
    #:ls
@@ -366,8 +367,20 @@ by nos:read-directory."))
 ;; 					:initial-element #\space))
 ;;       string))
 
-;; (defun colorize-symbolic-mode ()
-;;   )
+#+unix
+(defun colorize-symbolic-mode (mode)
+  (if (uos:is-symbolic-link mode)
+      (uos:symbolic-mode mode)
+      (let ((s (fatchar-io:fs+ (uos:symbolic-mode mode))))
+	(flet ((check-w (n tag)
+		 (when (eql (fatchar-c (oelt s n)) #\w)
+		   (setf (oelt s n)
+			 (copy-fatchar
+			  (oelt (themed-string `(:file :type ,tag :style) #\w)
+				0))))))
+	  (check-w 5 :group-writable)
+	  (check-w 8 :other-writable)
+	  s))))
 
 (defun list-long (file-list date-format size-format)
   "Return a table filled with the long listing for files in FILE-LIST."
@@ -383,7 +396,7 @@ by nos:read-directory."))
 	:do (setf s (uos:lstat (item-full-path file)))
 	:collect
 	(list
-	 (uos:symbolic-mode (uos:file-status-mode s))
+	 (colorize-symbolic-mode (uos:file-status-mode s))
 	 (uos:file-status-links s)
 	 (or (user-name (uos:file-status-uid s)) (uos:file-status-uid s))
 	 (or (group-name (uos:file-status-gid s)) (uos:file-status-gid s))
