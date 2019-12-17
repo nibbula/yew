@@ -500,6 +500,8 @@ Something like the default setting of typical GNU tools."))))
        (:file :type :sticky                :style) (:fg-white :bg-blue)
        (:file :type :sticky-other-writable :style) (:fg-black :bg-green)
        (:file :type :other-writable        :style) (:fg-blue :bg-green)
+       (:file :type :group-writable        :style) (:fg :color
+						    #(:rgb8 #xff #x7f #x24))
        (:file :type :executable            :style) (:bold)
        ;; File name suffixes
        (:file :suffix :archive             :style) (:bold :fg-red)
