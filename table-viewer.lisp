@@ -308,10 +308,13 @@ for a range of rows, or a table-point for a specific item,"
 
 ;; This is so we can hopefully handle anyting that make-table-from can throw
 ;; at us. It's not as if it's a good idea.
-(defun table-subseq (table start end)
+(defun table-subseq (table start &optional end)
   "Return an object made from TABLE that we can do SUBSEQ on."
   (typecase (container-data table)
-    ((or list array) (osubseq table start end))
+    ((or list array)
+     (if end
+	 (osubseq table start end)
+	 (osubseq table start)))
     ;; @@@ Maybe this could be keyed-collection-p ?
     ((or structure-object hash-table)
      (let ((i 0) result)
@@ -320,7 +323,7 @@ for a range of rows, or a table-point for a specific item,"
 	 ;; a keyed collection? Or should we make a subseq that works on
 	 ;; these keyed things? This is sub-good.
 	 (omapk (_ (cond
-		     ((= i end) (return nil))
+		     ((and end (= i end)) (return nil))
 		     ((>= i start) (push _ result))))
 		(container-data table)))
        result))))
@@ -523,8 +526,67 @@ for a range of rows, or a table-point for a specific item,"
       (when (>= (- (table-point-col start) n) 0)
 	(decf (table-point-col start) n)))))
 
-;; (defmethod search-command ((o table-viewer))
-;;   )
+(defun ensure-point (o)
+  "Make sure point is set to a specific row and column, which both default to 0."
+  (with-slots ((point inator::point) table) o
+    (when (not (table-point-row point))
+      (setf (table-point-row point) 0))
+    (when (not (table-point-col point))
+      (setf (table-point-col point) 0))))
+
+(defun search-table (o string &optional (direction :forward))
+  "Search the table starting at point for the string and return the point
+at which it's found or NIL if it's not found."
+  (declare (ignore direction)) ; @@@
+  (with-slots ((point inator::point) table) o
+    (ensure-point o)
+    (let ((sub-table
+	   (if (and (zerop (table-point-row point))
+		    (zerop (table-point-col point)))
+	       table
+	       (table-subseq table (table-point-row point))))
+	  (result (copy-table-point point)))
+      (omapn
+       (lambda (row)
+	 (setf (table-point-col result) 0)
+	 (omapn
+	  (lambda (col)
+	    (when (search string
+			  (typecase col
+			    (string col)
+			    (t (princ-to-string col))))
+	      (return-from search-table result))
+	    (incf (table-point-col result)))
+	  row)
+	 (incf (table-point-row result)))
+       sub-table)
+      nil)))
+
+(defun search-table-command (o &optional (direction :forward))
+  "Search for a string."
+  (with-slots ((point inator::point)) o
+    (tt-move-to (1- (tt-height)) 0) (tt-erase-to-eol)
+    (tt-finish-output)
+    (let ((string (rl:rl :prompt "Search for: "))
+	  result)
+      (tt-finish-output)
+      (when (and string (not (zerop (length string))))
+	(if (setf result (search-table o string direction))
+	    (progn
+	      (setf (table-point-row point) (table-point-row result)
+		    (table-point-col point) (table-point-col result))
+	      ;; (message o "found at ~s" point)
+	      )
+	    (message o "~s not found" string))
+	result))))
+
+(defmethod search-command ((o table-viewer))
+  "Search forward for a string."
+  (search-table-command o :forward))
+
+(defun search-backward-command (o)
+  "Search backward for a string."
+  (search-table-command o :backward))
 
 (defun sort-table-in-direction (viewer direction)
   (let (string-op number-op)
