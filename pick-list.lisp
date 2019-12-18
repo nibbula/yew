@@ -104,6 +104,12 @@
     :initarg :search-str :accessor pick-search-str
     :initform (make-stretchy-string 10) :type string
     :documentation "The string to search for.")
+   (save-search
+    :initarg :save-search :accessor pick-save-search :initform nil :type boolean
+    :documentation "Flag for saving the search string while typing.")
+   (last-search
+    :initarg :last-search :accessor pick-last-search :initform "" :type string
+    :documentation "Last string searched for.")
    (before-hook
     :initarg :before-hook :accessor pick-before-hook :initform nil
     :documentation "Function to call before entering the event loop.
@@ -240,10 +246,14 @@ The function receives a 'pick' as an argument."))
 (defmethod update-display ((i pick)) ; pick-list-display
   "Display the list picker."
   (with-slots (message multiple items point result cur-line
-	       max-y top left ttop error-message) *pick*
+	       max-y top left ttop error-message search-str save-search
+	       last-search) *pick*
     (tt-home)
     (when message (tt-format message))
     (setf ttop (terminal-get-cursor-position *terminal*))
+    (when (not save-search)
+      (setf last-search (copy-seq search-str))
+      (stretchy-truncate search-str))
     ;; display the list
     (loop :with i = top :and y = ttop :and f = nil
        :do
@@ -267,20 +277,86 @@ The function receives a 'pick' as an argument."))
        (incf y)
        :while (and (< y max-y) (< i (length items))))
     (tt-erase-below)
-    (when error-message
-      (tt-move-to (- (tt-height) 1) 0)
-      (tt-write-string error-message))
+    (let ((msg (or error-message
+		   (and (not (zerop (length search-str)))
+			(format nil "Search: ~a" search-str)))))
+      (when msg
+	(tt-write-string-at (- (tt-height) 1) 0 msg)))
+    (setf save-search nil)
     (tt-move-to cur-line 0)))
+
+(defun search-for (o string &optional (direction :forward))
+  "Search for STRING and set POINT accordingly."
+  (with-slots (point max-line items top page-size) o
+    (let (found)
+      (ecase direction
+	(:forward
+	 (loop :for i :from point :below max-line
+	    :if (search string (car (elt items i)) :test #'equalp)
+	    :return (setf found i point i))
+	 (when (> point (+ top page-size))
+	   (setf top point)))
+	(:backward
+	 (loop :for i :from point :downto 0
+	    :if (search string (car (elt items i)) :test #'equalp)
+	    :return (setf found i point i))
+	 (when (< point top)
+	   (setf top point))))
+      found)))
+
+(defun search-list-command (o &optional (direction :forward))
+  (with-slots (search-str point max-line save-search last-search) o
+    (flet ((nudge-point ()
+	     "Move the start one line in the direction, with wrap around."
+	     (ecase direction
+	       (:forward
+		(if (< point max-line)
+		    (incf point)
+		    (move-to-top o)))
+	       (:backward
+		(if (= point 0)
+		    (move-to-bottom o)
+		    (decf point))))))
+      (setf save-search t)
+      (let ((old-point point))
+	(cond
+	  ;; Search for the next occurance of the already active search.
+	  ((not (zerop (length search-str)))
+	   (nudge-point)
+	   (when (not (search-for o search-str direction))
+	     (setf point old-point)))
+	  (t
+	   ;; Ask for a new string
+	   (tt-move-to (1- (tt-height)) 0) (tt-erase-to-eol)
+	   (tt-finish-output) ;; @@@ I wish this wasn't necessary!
+	   (let ((result (rl:rl :prompt "Search for: " :accept-does-newline nil
+				:string last-search)))
+	     (tt-finish-output)
+	     (if (and result (not (zerop (length result))))
+		 (progn
+		   (setf last-search (copy-seq result))
+		   (nudge-point)
+		   (when (not (search-for o result direction))
+		     (message o "~s not found" result)))
+		 ;; Clear the search string when nothing entered
+		 (stretchy-truncate search-str)))))))))
+
+(defmethod search-command ((o pick))
+  (search-list-command o :forward))
+
+(defun search-backward-command (o)
+  (search-list-command o :backward))
 
 (defmethod default-action ((pick pick)) ; pick-typing-search
   "Try to search for typed input and return T if we did."
   (with-slots (typing-searches input search-str point max-line
-	       items top page-size) pick
+	       items top page-size save-search) pick
     (if (and typing-searches
 	     (and (characterp input)
 		  (graphic-char-p input) (not (position input "<> "))))
 	;; Search for the seach string
 	(progn
+	  (setf save-search t)
 	  (stretchy-append search-str input)
 	  (loop :for i :from point :below max-line
 		:if (search search-str (car (elt items i)) :test #'equalp)
@@ -290,7 +366,7 @@ The function receives a 'pick' as an argument."))
 	  t)
       ;; Clear the string
       (progn
-	(stretchy-truncate search-str)
+	(setf save-search nil)
 	nil))))
 
 (defmethod await-event ((i pick))
@@ -350,12 +426,16 @@ The function receives a 'pick' as an argument."))
 (defmethod update-display ((i popup-pick))
   "Display the pop-up list picker."
   (with-slots (message multiple items point result cur-line
-	       max-y top left ttop error-message window #|x y|#) *pick*
+	       max-y top left ttop error-message window #|x y|#
+	       search-str save-search last-search) *pick*
     (let ((message-string (and message (format nil message))))
       (draw-window window)
       (window-move-to window 0 0)
       (when message
 	(window-text window message-string))
+      (when (not save-search)
+	(setf last-search (copy-seq search-str))
+	(stretchy-truncate search-str))
       ;;(setf ttop (getcury window))
       ;;(setf ttop (terminal-get-cursor-position *terminal*))
       (setf ttop (fui-window-text-y window))
@@ -386,8 +466,13 @@ The function receives a 'pick' as an argument."))
 	 (incf i)
 	 (incf y)
 	 :while (and (< y max-y) (< i (length items))))
-      (when error-message
-	(tt-write-string-at (- (tt-height) 1) 0 error-message))
+      (let ((msg (or error-message
+		     (and (not (zerop (length search-str)))
+			  (format nil "Search: ~a" search-str)))))
+	(when msg
+	  (window-move-to window (1- (fui-window-height window)) 0)
+	  (tt-write-string msg)))
+      (setf save-search nil)
       (window-move-to window cur-line 1)
       (tt-finish-output)
       )))
@@ -439,6 +524,7 @@ The function receives a 'pick' as an argument."))
     (,(ctrl #\E)	  . shift-end)
     (#\?		  . help)
     (,(ctrl #\@)	  . pick-list-set-mark)
+    (,(ctrl #\R)	  . search-backward-command)
     ))
 
 (defparameter *pick-list-escape-keymap*
@@ -460,7 +546,7 @@ The function receives a 'pick' as an argument."))
   POPUP		  - True to use a pop-up window, in which case provide X and Y."
   (when (not the-list)
     (return-from pick-list nil))
-  (with-terminal (#+unix :crunch)
+  (with-terminal (#| #+unix :crunch |#)
     (let* ((max-y (1- (tt-height)))
 	   (count (length the-list))
 	   (string-list (make-array count :element-type 'cons
