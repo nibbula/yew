@@ -263,7 +263,8 @@ Slots are:
     :type (signed-byte 32)
     :documentation "The error code of the last error."))
   (:report (lambda (c s)
-	     (if (and (slot-boundp c +simple-condition-format-control-slot+)
+	     (if (and (ignore-errors
+			(slot-boundp c +simple-condition-format-control-slot+))
 		      (slot-value c +simple-condition-format-control-slot+))
 		 (format s "~? ~a"
 			 (simple-condition-format-control c)
@@ -273,7 +274,7 @@ Slots are:
 			     (symbol-call :opsys :error-message
 					  (opsys-error-code c))
 			     ""))
-		 (if (and (slot-boundp c 'code)
+		 (if (and (ignore-errors (slot-boundp c 'code))
 			  (slot-value c 'code))
 		     (format s "~a"
 			     (symbol-call :opsys :error-message
