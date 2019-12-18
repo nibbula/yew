@@ -23,16 +23,16 @@
 ;;; print the list backwards from the tail to the head. So, for example, the
 ;;; previous history item is accessed by dl-next.
 ;;;
-;;;  1  ls       |     tail
-;;;  2  cd      /\
-;;;  3  pwd     \ \     ↓ prev
-;;;  4  ps      / /
-;;;  5  ls     | /
-;;;  6  ss     \ \               <-- start of un-saved lines
-;;;  7  top     \ \     ↑ next
-;;;  8  wtf     /  \             <-- current line
-;;;  9  ls     (o/ \)  head
-;;;
+;;;  1  ls   \\|//   tail
+;;;  2  cd   \\|//      
+;;;  3  pwd    |     ↓ prev
+;;;  4  ps     |     
+;;;  5  ls     |     
+;;;  6  ss     |               <-- start of un-saved lines
+;;;  7  top    |     ↑ next
+;;;  8  wtf   \|/              <-- current line
+;;;  9  ls     V     head
+;;;           
 ;;; The lines are editable, and the last line is usually the one we're working
 ;;; on. When we go back and edit a line and accept it (hit enter) we don't
 ;;; change the history, we just add it at the bottom. If you go back and
