@@ -93,8 +93,9 @@ is saved."))
 	(when (zerop (setf pos (file-position stream)))
 	  ;; Write version
 	  (format stream "trlh ~a~%" *text-history-version*))
-	(when (or (dl-length-at-least-p (history-start hist) 1)
-		  (zerop pos))
+	(when (and (or (dl-length-at-least-p (history-start hist) 1)
+		       (zerop pos))
+		   (dl-prev (history-start hist)))
 	  (dl-list-do-backward
 	   (if (zerop pos)
 	       (history-tail hist)
@@ -104,7 +105,8 @@ is saved."))
 	       ;; But, don't bother writing NIL for the empty current.
 	       (when (not (and (eq x (dl-content (history-head hist)))
 			       (not (history-entry-line x))))
-		 (write-line x stream))))
+		 (write x :stream stream)
+		 (terpri stream))))
 	  ;; Move the start to the end.
 	  (setf (history-start hist) (history-head hist)))))))
 
@@ -122,10 +124,10 @@ is saved."))
 	(with-open-file (stream file-name :direction :input)
 	  (read-sequence s stream :end 4)
 	  (when (string/= s "trlh")
-	    (error "Bad magic tag ~a in history file." s))
+	    (error "Bad magic tag ~s in history file." s))
 	  (when (/= *text-history-version*
 		    (setq i (parse-integer (setq s (read-line stream)))))
-	    (error "Bad version number ~a in history file." s))
+	    (error "Bad version number ~s in history file." s))
 	  (let ((*read-eval* nil))
 	    (setf (history-head hist)
 		  (make-dl-list
