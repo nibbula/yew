@@ -765,7 +765,7 @@ if THING or lish:*input* NIL."
   ((long-titles boolean :short-arg #\l :default nil
     :help "True to show full column titles.")
    (table object :optional t :help "Table to view."))
-  :accepts '(table sequence hash-table structure-object)
+  :accepts '(or table sequence hash-table structure-object)
   "View a table. Pass or pipe it either a table:table object, or something which
 has a table:make-table-from method, which by default are lists, hash-tables,
 arrays, and structures. If it's a string or pathname, try to read a table from
