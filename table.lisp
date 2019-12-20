@@ -30,6 +30,9 @@
    #:table-set-column-format
    #:table-column-number
    #:make-table-from
+   #:copy-table
+   #:map-cells
+   #:replace-cells
    ;; #:join
    ))
 (in-package :table)
@@ -162,6 +165,50 @@ found."
   (if (keyed-collection-p (container-data table))
       (omapk function (container-data table))
       (omap function (container-data table))))
+
+(defgeneric copy-table (table)
+  (:documentation "Make a copy of TABLE. This defaults to a shallow copy."))
+
+(defmethod copy-table ((table table))
+  (let* ((class (class-of table))
+	 (result (allocate-instance class)))
+    (loop :for slot :in (mapcar #'mop:slot-definition-name
+				(mop:class-slots class))
+       :when (slot-boundp table slot)
+       :do (setf (slot-value result slot)
+		 (slot-value table slot)))
+    (setf (container-data result)
+	  (omap (lambda (row)
+		  (copy-seq row))
+		(container-data table)))
+    result))
+
+(defgeneric replace-cells (function table)
+  (:documentation "Replace every cell in TABLE by the result of calling FUNCTION
+on it's value. This destructively modifies TABLE."))
+
+(defmethod replace-cells (function (table table))
+  (omapn
+   (lambda (row)
+     (omap-into row function row))
+   (container-data table))
+  table)
+
+(defgeneric map-cells (function table)
+  (:documentation "Return a new table which is the result of FUNCTION applied
+to every cell in TABLE. FUNCTION is called with the value of cell."))
+
+(defmethod map-cells (function (table table))
+  (let ((result (copy-table table)))
+    ;; (omapn
+    ;;  (lambda (row)
+    ;;    (omapn
+    ;; 	(lambda (col)
+    ;; 	  (funcall function col))
+    ;; 	row))
+    ;;  (container-data result))
+    (replace-cells function result)
+    result))
 
 (defun copy-columns (table)
   "Return a copy of TABLE's columns."
