@@ -6,11 +6,23 @@
 		   (compilation-speed 0)))
 
 (defpackage :tiny-repl
-  (:use :common-lisp :terminal :rl :keymap :dlib :dlib-misc)
+  (:use :common-lisp :terminal :rl :keymap :dlib :dlib-misc :ostring)
   (:documentation "A tiny REPL that works with RL.")
   (:export
    #:tiny-repl
    #:*repl-level*
+   #:*repl*
+   #:repl-state-editor
+   #:repl-state-interceptor
+   #:repl-state-prompt-func
+   #:repl-state-prompt-string
+   #:repl-state-terminal
+   #:repl-state-terminal-name
+   #:repl-state-terminal-class
+   #:repl-state-keymap
+   #:repl-state-output
+   #:repl-state-error-count
+   #:repl-state-debug
    #:snarky-interceptor
    #:read-arg
   ))
@@ -22,6 +34,9 @@
 
 (defvar *repl-level* -1
   "How many recursive command loops are active.")
+
+(defvar *repl* nil
+  "The current REPL state.")
 
 (defun repl-output-prompt (e &optional (p nil prompt-supplied))
   "Output the prompt. The prompt will look something like:
@@ -47,7 +62,8 @@
   editor	  The current RL editor. An instance of RL:LINE-EDITOR.
   interceptor	  A function of two arguments, a value to be intercepted and
                   copy of this REPL-STATE.
-  prompt-func     A propmpt function for RL.
+  prompt-func     A prompt function for RL.
+  prompt-string   A prompt string for RL.
   more		  If non-nil, a string of more input.
   terminal        A terminal to use.
   terminal-name   Name of a terminal device or nil.
@@ -183,7 +199,7 @@ The REPL also has a few commands:
 		   :history-context :repl
 		   :accept-does-newline nil
 		   :re-edit re-edit
-		   :prompt (or (and (stringp prompt) prompt) *default-prompt*)
+		   :prompt (or (and (ostringp prompt) prompt) *default-prompt*)
 		   :output-prompt-func (and (or (symbolp prompt)
 						(functionp prompt))
 					    prompt))))
@@ -354,20 +370,21 @@ to quit everything. Arguments are:
 		   (lisp-implementation-type)
 		   (lisp-implementation-version)))
   #+sbcl (declare (ignore no-announce))
-  (let ((state (make-repl-state
-		:debug          debug
-		:interceptor    interceptor
-		:prompt-func    prompt-func
-		:prompt-string  prompt-string
-		:keymap         keymap
-		:terminal       terminal
-		:terminal-class (find-terminal-class-for-type terminal-type)
-		:output         output))
-	(result nil)
-	(want-to-quit nil)
-	(old-debugger-hook *debugger-hook*)
-	(start-level (incf *repl-level*))
-	(*history-context* :repl))
+  (let* ((state (make-repl-state
+		 :debug          debug
+		 :interceptor    interceptor
+		 :prompt-func    prompt-func
+		 :prompt-string  prompt-string
+		 :keymap         keymap
+		 :terminal       terminal
+		 :terminal-class (find-terminal-class-for-type terminal-type)
+		 :output         output))
+	 (*repl* state)
+	 (result nil)
+	 (want-to-quit nil)
+	 (old-debugger-hook *debugger-hook*)
+	 (start-level (incf *repl-level*))
+	 (*history-context* :repl))
     (when (not theme:*theme*)
       (setf theme:*theme* (theme:default-theme)))
 

@@ -12,9 +12,8 @@
     :long-description   "Most likely if you're using RL, this is why.
 If you want to run a lisp without Slime, then this could make it usable.
 Unfortunately the debugger is very shabby."
-    :depends-on (:dlib :keymap :terminal :rl :theme
-		       :terminal-ansi
-		       #+windows :terminal-ms
-		       )
+    :depends-on (:dlib :keymap :terminal :rl :theme :ostring :terminal-ansi
+		 #+windows :terminal-ms
+		 )
     :components
     ((:file "tiny-repl")))
