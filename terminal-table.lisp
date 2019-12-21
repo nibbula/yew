@@ -16,7 +16,7 @@
   (:documentation "Render a table to a terminal."))
 
 ;; @@@ This whole thing is crap becuase it copy & pastes most of the
-;; text-table-renderer methods. We should make it not do that, and just
+;; text-table-renderer method. We should make it not do that, and just
 ;; call to them appropriately.
 
 (defmethod table-output-column-titles ((renderer terminal-table-renderer)
