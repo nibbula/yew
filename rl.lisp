@@ -275,27 +275,27 @@
 (defun rl (&key
 	     (input-stream *standard-input*)
 	     (eof-error-p t)
-	     (eof-value nil)
-	     (quit-value nil)
-	     (recursive-p nil)
+	     eof-value
+	     quit-value
+	     recursive-p
 	     (prompt *default-prompt*)
-	     (output-prompt-func nil)
+	     output-prompt-func
 	     (completion-func #'complete-symbol)
-	     (string nil)
-	     (input-callback nil)
-	     (output-callback nil)
-	     (debug nil)
-	     (editor nil)
-	     (local-keymap nil)
-	     (keymap nil)
-	     (terminal nil)
+	     string
+	     input-callback
+	     output-callback
+	     debug
+	     editor
+	     local-keymap
+	     keymap
+	     terminal
 	     (terminal-name *terminal-name*)
 	     ;; (terminal-class (find-terminal-class-for-type
 	     ;; 		      *default-terminal-type*)) ; (pick-a-terminal-type)
 	     (terminal-class (find-terminal-class-for-type
 			      (pick-a-terminal-type)))
 	     (accept-does-newline t)
-	     (re-edit nil)
+	     re-edit
 	     (history-context :tiny))		; remnant
   "Read a line from the terminal, with line editing and completion.
 Return the string read and the line-editor instance created.
@@ -313,6 +313,13 @@ Keyword arguments:
     prompt string.
   COMPLETION-FUNC (#'complete-symbol)
     Completion function to use. See the completion package for details.
+  STRING
+    A string to set as the initial contents of the buffer.
+  INPUT-CALLBACK
+    A function to call on input. Called with the editor object and the input.
+  OUTPUT-CALLBACK
+    A function to call after the display is updated, but before input.
+    Called with the editor object.
   EDITOR
     LINE-EDITOR instance to use.
   LOCAL-KEYMAP
