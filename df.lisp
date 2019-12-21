@@ -126,6 +126,7 @@
       (when print
 	(grout-print-table table
 			   :print-titles (not omit-header)
+			   :trailing-spaces nil
 			   :long-titles t)))
     table))
 
