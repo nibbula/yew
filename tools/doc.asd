@@ -10,6 +10,7 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Dig up documentation"
-    :depends-on (:dlib :dlib-misc :grout :completion :syntax :syntax-lisp)
+    :depends-on (:dlib :dlib-misc :terminal :grout :completion :syntax
+		 :syntax-lisp)
     :components
     ((:file "doc")))

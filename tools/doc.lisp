@@ -25,7 +25,7 @@ The DOC package provides:
   - \"doc\" command
     Useful from the shell. The \"doc\" command also just calls describe if it
     can't find anything else.")
-  (:use :cl :dlib :dlib-misc :grout :completion :syntax)
+  (:use :cl :dlib :dlib-misc :terminal :grout :completion :syntax)
   (:export
    #:doc
    ))
@@ -86,7 +86,13 @@ The DOC package provides:
   (when (stringp x)
     (setf x (make-symbol x)))
   (let ((did-one nil) (did-structure nil)
-	(p (ignore-conditions (type-error) (find-package x))))
+	(p (ignore-conditions (type-error) (find-package x)))
+        (cols (or (and *terminal*
+		       (or (ignore-errors
+			     (terminal-get-size *terminal*)
+			     (terminal-window-columns *terminal*))
+			   80))
+		  80)))
     (with-grout (*grout* stream)
       (labels ((maybe-doc (obj type)
 		 (without-warning (documentation obj type)))
@@ -102,7 +108,7 @@ The DOC package provides:
 			   (grout-color :green :default
 					(format nil "~:(~a~):~%"
 						(or fake-type doc-type))))
-			 (grout-format "~a~%" (function-help sym 0)))
+			 (grout-format "~a~%" (function-help sym 0 :width cols)))
 		       (progn
 			 (grout-color :green :default
 				      (format nil "~:(~a~): "
