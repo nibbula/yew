@@ -336,6 +336,124 @@ arguments for that function, otherwise return NIL."
 ;; Of course this whole thing should be in the syntax colorization module.
 
 (defun function-help-show-function (symbol expr-number)
+  (let (past-key past-rest #|standout|# (i 0) result)
+    (declare (special i))
+    (push #\( result)
+    (push (list :magenta (format nil "~(~a~)" symbol)) result)
+    (labels ((output-atom (a)
+	       (typecase a
+		 ((or null keyword number string boolean array)
+		  (push (list :white (format nil "~(~s~)" a)) result))
+		 (t
+		  (push (format nil "~(~a~)" a) result))))
+	     (print-list-interior (list)
+	       (let ((i 0))
+		 (declare (special i))
+		 (loop :for item :on list :do
+		    (print-it (car item))
+		    (when (and (consp item) (cdr item) (atom (cdr item)))
+		      (push " . " result)
+		      (output-atom (cdr item))))))
+	     (print-it (s)
+	       (when (not (zerop i))
+		 (push #\space result))
+	       (cond
+		 ((atom s)
+		  (cond
+		    ((position s *lambda-list-keywords*)
+		     (push `(:yellow ,(format nil "~(~a~)" s)) result)
+		     (when (equal s '&key)
+		       (setf past-key t))
+		     (when (equal s '&rest)
+		       (setf past-rest t)))
+		    (t
+		     (if (and expr-number
+			      (= i expr-number) (not (or past-key past-rest)))
+
+			 (push `(:standout ,(format nil "~(~a~)" s)) result)
+			 (push (format nil "~(~a~)" s) result)))))
+		 ;; @@@ Despite the above quote, pretty is very ugly here.
+		 ((and s (listp s) (cdr s) (not (atom (cdr s))))
+		  (push #\( result)
+		  (print-list-interior s)
+		  (push #\) result))
+		 ((consp s) ;; a cons but not a list
+		  (push #\( result)
+		  (output-atom (car s))
+		  (push " " result)
+		  (output-atom (cdr s))
+		  (push #\) result)))
+	       (incf i)))
+      (push #\space result)
+      ;;(print-it (dlib:lambda-list symbol))
+      (print-list-interior (dlib:lambda-list symbol))
+      (push #\) result)
+      (nreverse result))))
+
+(defun function-help-show-doc (symbol cols)
+  (let (result)
+    (labels ((maybe-doc (obj type)
+	       (without-warning (documentation obj type)))
+	     (print-doc (sym pkg doc-type &optional fake-type)
+	       (when (maybe-doc sym doc-type)
+		 ;; (when did-one
+		 (push #\newline result)
+		 (if (and (eq doc-type 'function) (maybe-doc sym doc-type))
+		     (progn
+		       (when (and pkg (not (eq pkg (find-package :cl))))
+			 (push `(:green ,(format nil "~a " (package-name pkg))
+					,(format nil "~:(~a~):~%"
+						 (or fake-type doc-type)))
+			       result))
+		       ;;(tt-format "~a~%" (function-help sym 0))
+		       )
+		     (progn
+		       (push `(:green
+			       ,(format nil "~:(~a~): " (or fake-type doc-type))
+			       ,@(when pkg
+				   (list (format nil "~a:" (package-name pkg))))
+			       ,(format nil "~a~%" sym))
+			     result)))
+		 (if (eq doc-type :command)
+		     (progn
+		       (push `(:white
+			       ,(format nil "~a" (maybe-doc sym doc-type)))
+			     result))
+		     (progn
+		       (push (fatchar-io:with-output-to-fat-string (stream)
+			       (format-comment-text
+				(make-instance 'lisp-token
+					       :object (maybe-doc sym doc-type))
+				;;*standard-output*
+				;; *terminal*
+				stream
+				:columns cols))
+			     ;;(output-text (maybe-doc sym doc-type) cols)
+			     ;;(grout-princ #\newline)
+			     result)))
+		 (nreverse result)
+		 )))
+      (print-doc symbol nil 'function))))
+
+(defun function-help (symbol expr-number &key width
+					   (show-doc (> *completion-count* 2)))
+  "Return a string with help for the function designated by SYMBOL."
+  (let* ((cols (or width
+		   (or (and *terminal*
+			    (progn
+			      (terminal-get-size *terminal*)
+			      (terminal-window-columns *terminal*)))
+		       80)))
+	 (*print-right-margin* cols))
+    ;;(dbug "~s ~s ~s~%" *terminal* cols (terminal-window-columns *terminal*))
+    (span-to-fat-string
+     (cons
+      (function-help-show-function symbol expr-number)
+      (when show-doc ; (> *completion-count* 2)
+	(function-help-show-doc symbol cols))))))
+
+#|
+(defun function-help-show-function (symbol expr-number)
   (let (past-key past-rest did-standout (i 0))
     (declare (special i))
     (tt-write-char #\()
@@ -439,12 +557,14 @@ arguments for that function, otherwise return NIL."
 		     )))))
     (print-doc symbol nil 'function)))
 
-(defun function-help (symbol expr-number)
+(defun function-help (symbol expr-number &key width)
   "Return a string with help for the function designated by SYMBOL."
-  (let* ((cols (or (and *terminal*
-			(progn
-			  (terminal-get-size *terminal*)
-			  (terminal-window-columns *terminal*))) 80))
+  (let* ((cols (or width
+		   (or (and *terminal*
+			    (progn
+			      (terminal-get-size *terminal*)
+			      (terminal-window-columns *terminal*)))
+		       80)))
 	 (*print-right-margin* cols))
     ;;(dbug "~s ~s ~s~%" *terminal* cols (terminal-window-columns *terminal*))
     (make-fat-string
@@ -457,6 +577,7 @@ arguments for that function, otherwise return NIL."
 	 (function-help-show-function symbol expr-number)
 	 (when (> *completion-count* 2)
 	   (function-help-show-doc symbol cols))))))))
+|#
 
 (defun function-keyword-completion (sym context pos word-start all)
   (dbug "function-keyword-completion ~s ~s~%" sym (subseq context pos))
