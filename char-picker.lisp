@@ -103,6 +103,7 @@
 					       :show-meta nil))
 	 (tt-move-to-col 20)
 	 (if (and search-string
+		  (not (zerop (length search-string)))
 		  (setf ss-pos (search search-string name :test #'equalp)))
 	     (progn
 	       (setf ss-end (+ ss-pos (length search-string)))
@@ -111,8 +112,12 @@
 	       (tt-standout t)
 	       (tt-write-string (subseq name ss-pos ss-end))
 	       (tt-standout nil)
-	       (tt-write-string (subseq name ss-end)))
-	     (tt-format " ~a" name))))))
+	       (tt-write-string (subseq name ss-end))
+	       ;; (tt-format " ~a" (uos:wcwidth i))
+	       )
+	     ;; (tt-format " ~a ~a" name (uos:wcwidth i))
+	     (tt-format " ~a" name)
+	     )))))
 
 (defun search-char-names (start match-str &optional (direction :forward))
   "Return char code of first match of STR in the characater names,
@@ -180,6 +185,15 @@ starting at START. If not found, return START."
   (tt-move-to (1- (tt-height)) 0)
   (tt-erase-to-eol)
   (char-picker-input i))
+
+(defmethod resize ((i char-picker))
+  (with-slots (view-size) i
+    (setf view-size (- (tt-height) 4))
+    (redraw i)))
+
+(defmethod redraw ((i char-picker))
+  (tt-home) (tt-clear)
+  (tt-erase-below))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Commands
