@@ -811,6 +811,11 @@ than space and delete."
 			(and (>= cc (car b))
 			     (<= cc (cdr b)))))))
 
+;; (defparameter *emoji-table* nil)
+;;
+;; (defun emoji-char-p (c)
+;;   (and (gethash c *emoji-table*) t))
+
 ;; adapted from sbcl/src/code/target-unicode.lisp
 
 (defun hangul-syllable-type (character)
@@ -1117,6 +1122,13 @@ GRAPHEME-VARs will be, which defaults to character so it's compatable with a
   "Return the length of the character for display."
   (cond
     ((graphic-char-p c)
+     #+unix
+     ;; @@@ Horrible workaround until unicode is fixed.
+     (let ((w (uos:wcwidth (char-code c))))
+       (case w
+	 (-1 0)
+	 (otherwise w)))
+     #-unix
      (cond
        ((zero-width-char-p c) 0)
        ((combining-char-p c) 0)
