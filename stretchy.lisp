@@ -81,11 +81,15 @@ of with a fill pointer."
 
 (defmacro resize (array size factor)
   "Expand the ARRAY at least by SIZE, expanding by FACTOR."
-  (let ((a (gensym "resize-a")))
-    `(let ((,a ,array))
-       (setf ,array (adjust-array
-		     ,a (+ (array-total-size ,a) ,size
-			   (truncate (* (array-total-size ,a) ,factor))))))))
+  #-ecl (declare (type (array * (*)) array)
+		 (type fixnum size)
+		 (type number factor))
+  (let ((a (gensym "resize-a"))
+	(new-size (gensym "resize-new-size")))
+    `(let* ((,a ,array)
+	    (,new-size (+ (array-total-size ,a) ,size
+			  (truncate (* (array-total-size ,a) ,factor)))))
+       (setf ,array (adjust-array ,a ,new-size)))))
 
 (defun stretchy-append-string-or-vector (to from factor)
   "Append a vector to a stretchy vector. FACTOR is the amount of the total
@@ -101,9 +105,9 @@ size to expand by when expansion is needed."
 (defun stretchy-append-character (to char factor)
   "Append the character CHAR to the stretchy string TO, with FACTOR as the
 amount of the total size to expand by when expansion is needed."
-  (declare (type (array character (*)) to)
-	   (type character char)
-	   (type number factor))
+  #-ecl (declare (type (array character (*)) to)
+		 (type character char)
+		 (type number factor))
   (let ((to-len (length to)))
     (when (>= (1+ to-len) (array-total-size to))
       (resize to 1 factor))
