@@ -66,8 +66,8 @@ and conversions between color models.")
 ;; We can consider the color model as being the color of light, not the
 ;; properties of a material which affects what happens to the light after it
 ;; hits the material, which probably are best represented by statisical
-;; functions that approximate light modification. For example, what color is
-;; your opalescent ink with sparkles in it?
+;; functions that approximate light modification or some other physical model.
+;; For example, what color is your opalescent ink with sparkles in it?
 ;;
 ;; Note also that a color model isn't a color format, since it only specifies
 ;; what information we store, not exactly how, for example, a pixel should
@@ -377,6 +377,154 @@ the VALUE."))
 	      :alpha (color-component color :alpha)))
 
 (register-color-model :rgba)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; HSV model - Hue, saturation, and value, components stored as Lisp numbers.
+;;
+
+(defmethod color-model-component ((color-model (eql :hsv)) color component-name)
+  (let ((i (if (symbolp (svref color 0)) 1 0)))
+    (case component-name
+      ((:hue :h)        (svref color (+ 0 i)))
+      ((:saturation :s) (svref color (+ 1 i)))
+      ((:value :v)      (svref color (+ 2 i)))
+      (t
+       (error "There's no color component ~a in the ~a color-model."
+	      component-name color-model)))))
+
+(defmethod set-color-model-component ((color-model (eql :hsv))
+				      color component-name value)
+  (let ((i (if (symbolp (svref color 0)) 1 0)))
+    (case component-name
+      ((:hue :h)        (setf (svref color (+ 0 i)) value))
+      ((:saturation :s) (setf (svref color (+ 1 i)) value))
+      ((:value :v)      (setf (svref color (+ 2 i)) value))
+      (t
+       (error "There's No color component ~a in the ~a color-model."
+	      component-name color-model)))))
+
+(defmethod make-color ((color-model (eql :hsv)) &key hue saturation value)
+  (vector color-model hue saturation value))
+
+;; I translated this and HSL from the annoyingly mathy description on:
+;; https://en.wikipedia.org/wiki/HSL_and_HSV
+
+(defmethod convert-color (color (from-color-model (eql :rgb))
+			          (to-color-model (eql :hsv)))
+  ;; Assuming that the rgb components are in the range [0…1]
+  (let* ((r (color-component color :red))
+	 (g (color-component color :green))
+	 (b (color-component color :blue))
+	 (c-max (max r g b))
+	 (c-min (min r g b))
+	 (c (- c-max c-min))
+	 (hue (cond
+		((= c-max c-min) 0)
+		((= c-max r) (* 60 (/ (- g b) c)))
+		((= c-max g) (* 60 (+ 2 (/ (- b r) c))))
+		((= c-max b) (* 60 (+ 4 (/ (- r g) c)))))))
+    (when (< hue 0)
+      (setf hue (+ hue 360)))
+    (make-color
+     :hsv
+     :hue hue
+     :saturation
+     (cond
+       ((zerop c-max) 0)
+       (t (/ c c-max)))
+     :value c-max)))
+
+(defmethod convert-color (color (from-color-model (eql :hsv))
+			          (to-color-model (eql :rgb)))
+  ;; Assuming that hue is [0…360] and v & s are [0…1]
+  (let ((h (color-component color :hue))
+	(s (color-component color :saturation))
+	(v (color-component color :value)))
+    (flet ((f (n)
+	     (let ((k (mod (+ n (/ h 60)) 6)))
+	       (- v (* v s (max (min k (- 4 k) 1) 0))))))
+      (make-color :rgb
+		  :red   (f 5)
+		  :green (f 3)
+		  :blue  (f 1)))))
+
+;; Also, fuck color model patents.
+
+(register-color-model :hsv)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; HSL model - Hue, saturation, and lightness, components stored as Lisp numbers.
+;;
+
+(defmethod color-model-component ((color-model (eql :hsl)) color component-name)
+  (let ((i (if (symbolp (svref color 0)) 1 0)))
+    (case component-name
+      ((:hue :h)        (svref color (+ 0 i)))
+      ((:saturation :s) (svref color (+ 1 i)))
+      ((:lightness :l)  (svref color (+ 2 i)))
+      (t
+       (error "There's no color component ~a in the ~a color-model."
+	      component-name color-model)))))
+
+(defmethod set-color-model-component ((color-model (eql :hsl))
+				      color component-name value)
+  (let ((i (if (symbolp (svref color 0)) 1 0)))
+    (case component-name
+      ((:hue :h)        (setf (svref color (+ 0 i)) value))
+      ((:saturation :s) (setf (svref color (+ 1 i)) value))
+      ((:lightness :l)  (setf (svref color (+ 2 i)) value))
+      (t
+       (error "There's No color component ~a in the ~a color-model."
+	      component-name color-model)))))
+
+(defmethod make-color ((color-model (eql :hsl)) &key hue saturation lightness)
+  (vector color-model hue saturation lightness))
+
+(defmethod convert-color (color (from-color-model (eql :rgb))
+			          (to-color-model (eql :hsl)))
+  ;; Assuming that the rgb components are in the range [0…1]
+  (let* ((r (color-component color :red))
+	 (g (color-component color :green))
+	 (b (color-component color :blue))
+	 (c-max (max r g b))
+	 (c-min (min r g b))
+	 (c (- c-max c-min))
+	 (hue (cond
+		((= c-max c-min) 0)
+		((= c-max r) (* 60 (/ (- g b) c)))
+		((= c-max g) (* 60 (+ 2 (/ (- b r) c))))
+		((= c-max b) (* 60 (+ 4 (/ (- r g) c)))))))
+    (when (< hue 0)
+      (setf hue (+ hue 360)))
+    (make-color
+     :hsv
+     :hue hue
+     :saturation
+     (cond
+       ((zerop c-max) 0)
+       ((= c-min 1) 0)
+       (t
+	(/ c (- 1 (abs (1- (+ c-max c-min)))))))
+     :lightness (/ (+ c-max c-min) 2))))
+
+(defmethod convert-color (color (from-color-model (eql :hsl))
+			          (to-color-model (eql :rgb)))
+  ;; Assuming that hue is [0…360] and v & s are [0…1]
+  (let ((h (color-component color :hue))
+	(s (color-component color :saturation))
+	(l (color-component color :lightness)))
+    (flet ((f (n)
+	     (let ((k (mod (+ n (/ h 30)) 12))
+		   (a (* s (min l (- 1 l)))))
+	       (- l (* a (max (min (- k 3) (- 9 k) 1) -1))))))
+      (make-color :rgb
+		  :red	  (f 0)
+		  :green  (f 8)
+		  :blue   (f 4)))))
+
+(register-color-model :hsl)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
