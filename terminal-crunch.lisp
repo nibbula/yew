@@ -2102,7 +2102,21 @@ duplicated sequences, and can have worst case O(n*m) performance."
 
 (defmethod terminal-finish-output ((tty terminal-crunch-stream))
   "Make sure everything is output to the terminal."
-  (update-display tty))
+  (let ((clear
+	 (block nil
+	   ;; One might hope that this might help? But does it?
+	   (restart-case
+	       (update-display tty)
+	     (stop-it ()
+	       :report (lambda (s) (format s "Stop updating the display."))
+	       (return nil))
+	     (stop-and-clear ()
+	       :report (lambda (s)
+			 (format s "Stop updating and clear the display."))
+	       (return t)))
+	   nil)))
+    (when clear
+      (terminal-clear tty))))
 
 (defmethod terminal-get-char ((tty terminal-crunch))
   (terminal-finish-output tty)
