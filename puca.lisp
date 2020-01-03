@@ -242,7 +242,8 @@ return history for the whole repository."))
   (let ((result
 	 ;; On git .git can sometimes be a regular file. (for submodules)
 	 ;;(probe-directory dir)
-	 (probe-file dir)
+	 ;; (probe-file dir)
+	 (nos:file-exists dir)
 	 ))
     (when (and result (not (command-pathname command)))
       (cerror "Proceed anyway."
