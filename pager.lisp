@@ -1001,7 +1001,7 @@ line : |----||-------||---------||---|
 (defmethod update-display ((pager binary-pager))
   "Display the lines already read, starting from the current."
   (tt-move-to 0 0)
-  (tt-clear)
+  (tt-erase-below)
   (with-slots (byte-pos buffer buffer-start left page-size color-bytes message)
       pager
     (get-theme-settings pager)
@@ -1727,7 +1727,7 @@ byte-pos."
 (defun seekable-p (&optional (stream (pager-stream *pager*)))
   (handler-case
       (let* ((pos (file-position stream))
-	     (result (file-position stream pos)))
+	     (result (and pos (file-position stream pos))))
 	(and result t))
     (stream-error ())))
 
