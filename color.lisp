@@ -449,6 +449,14 @@ the VALUE."))
 		  :green (f 3)
 		  :blue  (f 1)))))
 
+(defmethod convert-color (color (from-color-model (eql :hsv))
+			          (to-color-model (eql :rgb8)))
+  (convert-color (convert-color color :hsv :rgb) :rgb :rgb8))
+
+(defmethod convert-color (color (from-color-model (eql :rgb8))
+			          (to-color-model (eql :hsv)))
+  (convert-color (convert-color color :rgb8 :rgb) :rgb :hsv))
+
 ;; Also, fuck color model patents.
 
 (register-color-model :hsv)
