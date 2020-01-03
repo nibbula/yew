@@ -939,7 +939,7 @@ Otherwise, return N."
   (error "GIVE ME MOP!!")
   "The package in which the traditional Meta Object Protocol resides.")
 
-#+(or (and clisp mop) sbcl cmu gcl ccl mezzano) (d-add-feature :has-mop)
+#+(or (and clisp mop) sbcl cmu gcl ccl ecl mezzano) (d-add-feature :has-mop)
 
 (defun slot-documentation (slot-def)
   "Return the documentation string for a slot as returned by something like
