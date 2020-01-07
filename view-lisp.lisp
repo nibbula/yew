@@ -308,7 +308,7 @@
      ;; | ( :require module-name )
      (let ((s (asdf/find-component::resolve-dependency-spec nil name)))
        (when s
-	 $(list (asdf:component-name s)))))
+	 (list (asdf:component-name s)))))
     ((or string symbol)
      (let ((sys (asdf:find-system name nil)))
        (when sys
