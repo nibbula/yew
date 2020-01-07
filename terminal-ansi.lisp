@@ -473,6 +473,17 @@ processing."
   ;;   (write-string string stream)))
   (apply #'format (terminal-output-stream tty) fmt args))
 
+;; @@@ The hope is that this is faster than calling format, but does it make
+;; a difference?
+(defun terminal-escape-sequence (tty string &optional p1 p2 p3 p4)
+  (let ((stream (terminal-output-stream tty)))
+    (write-string +csi+ stream)
+    (when p1 (princ p1 stream))
+    (when p2 (write-char #\; stream) (princ p2 stream))
+    (when p3 (write-char #\; stream) (princ p3 stream))
+    (when p4 (write-char #\; stream) (princ p4 stream))
+    (write-string string stream)))
+
 (defmethod terminal-format ((tty terminal-ansi-stream) fmt &rest args)
   "Output a formatted string to the terminal."
   (let ((string (apply #'format nil fmt args)))
@@ -489,8 +500,9 @@ processing."
   (when (and state (not *acs-table*))
     (make-acs-table))
   (if state
-      (terminal-raw-format tty "~c(0" #\escape)
-      (terminal-raw-format tty "~c(B" #\escape)))
+      (terminal-escape-sequence tty "(0")
+      (terminal-escape-sequence tty "(B")
+      ))
 
 (defvar *allow-resize* nil
   "True to allow throwing resize events.")
@@ -771,11 +783,11 @@ i.e. the terminal is 'line buffered'."
     t))
 
 (defmethod terminal-move-to ((tty terminal-ansi-stream) row col)
-  (terminal-raw-format tty "~c[~d;~dH" #\escape (1+ row) (1+ col))
+  (terminal-escape-sequence tty "H" (1+ row) (1+ col))
   (setf (terminal-ansi-stream-fake-column tty) col))
 
 (defmethod terminal-move-to-col ((tty terminal-ansi-stream) col)
-  (terminal-raw-format tty "~c[~dG" #\escape (1+ col))
+  (terminal-escape-sequence tty "G" (1+ col))
   (setf (terminal-ansi-stream-fake-column tty) col))
 
 (defmethod terminal-beginning-of-line ((tty terminal-ansi-stream))
@@ -784,32 +796,32 @@ i.e. the terminal is 'line buffered'."
   (terminal-write-char tty #\return))
 
 (defmethod terminal-delete-char ((tty terminal-ansi-stream) n)
-  (terminal-raw-format tty "~c[~aP" #\escape (if (> n 1) n "")))
+  (terminal-escape-sequence "P" (when (> n 1) n)))
 
 (defmethod terminal-insert-char ((tty terminal-ansi-stream) n)
-  (terminal-raw-format tty "~c[~a@" #\escape (if (> n 1) n "")))
+  (terminal-escape-sequence tty "@" (when (> n 1) n)))
 
-(defun moverize (tty n pos neg)
+(defun moverize (tty n positive negative)
   (cond
-    ((= n 1)  (terminal-raw-format tty "~c[~c" #\escape pos))
-    ((> n 1)  (terminal-raw-format tty "~c[~d~c" #\escape n pos))
+    ((= n 1)  (terminal-escape-sequence tty positive))
+    ((> n 1)  (terminal-escape-sequence tty positive n))
     ((= n 0)  #| do nothing |#)
-    ((= n -1) (terminal-raw-format tty "~c[~c" #\escape neg))
-    ((< n -1) (terminal-raw-format tty "~c[~d~c" #\escape n neg))))
+    ((= n -1) (terminal-escape-sequence tty negative))
+    ((< n -1) (terminal-escape-sequence tty negative n))))
 
 (defmethod terminal-backward ((tty terminal-ansi-stream) &optional (n 1))
-  (moverize tty n #\D #\C)
+  (moverize tty n "D" "C")
   (decf (terminal-ansi-stream-fake-column tty) n))
 
 (defmethod terminal-forward ((tty terminal-ansi-stream) &optional (n 1))
-  (moverize tty n #\C #\D)
+  (moverize tty n "C" "D")
   (incf (terminal-ansi-stream-fake-column tty) n))
 
 (defmethod terminal-up ((tty terminal-ansi-stream) &optional (n 1))
-  (moverize tty n #\A #\B))
+  (moverize tty n "A" "B"))
 
 (defmethod terminal-down ((tty terminal-ansi-stream) &optional (n 1))
-  (moverize tty n #\B #\A))
+  (moverize tty n "B" "A"))
 
 (defmethod terminal-scroll-down ((tty terminal-ansi-stream) n)
   (when (> n 0)
@@ -827,46 +839,44 @@ i.e. the terminal is 'line buffered'."
        :finally (when (line-buffered-p tty) (finish-output stream)))))
 
 (defmethod terminal-erase-to-eol ((tty terminal-ansi-stream))
-  (terminal-raw-format tty "~c[K" #\escape))
+  (terminal-escape-sequence tty "K"))
 
 (defmethod terminal-erase-line ((tty terminal-ansi-stream))
-  (terminal-raw-format tty "~c[2K" #\escape))
+  (terminal-escape-sequence tty "2K"))
 
 (defmethod terminal-erase-above ((tty terminal-ansi-stream))
-  (terminal-raw-format tty "~c[1J" #\escape))
+  (terminal-escape-sequence tty "1J"))
 
 (defmethod terminal-erase-below ((tty terminal-ansi-stream))
-  (terminal-raw-format tty "~c[0J" #\escape))
+  (terminal-escape-sequence tty "J"))
 
 (defmethod terminal-clear ((tty terminal-ansi-stream))
-  (terminal-raw-format tty "~c[2J" #\escape))
+  (terminal-escape-sequence tty "2J"))
 
 (defmethod terminal-home ((tty terminal-ansi-stream))
-  (terminal-raw-format tty "~c[H" #\escape)
+  (terminal-escape-sequence tty "H")
   (setf (terminal-ansi-stream-fake-column tty) 0))
 
 (defmethod terminal-cursor-off ((tty terminal-ansi-stream))
-  ;;(terminal-format tty "~c7" #\escape))
-  (terminal-format tty "~c[?25l" #\escape))
+  (terminal-escape-sequence tty "?25l"))
 
 (defmethod terminal-cursor-on ((tty terminal-ansi-stream))
-  ;;(terminal-format tty "~c8" #\escape))
-  (terminal-format tty "~c[?25h" #\escape))
+  (terminal-escape-sequence tty "?25h"))
 
 (defmethod terminal-standout ((tty terminal-ansi-stream) state)
-  (terminal-format tty "~c[~dm" #\escape (if state 7 27)))
+  (terminal-escape-sequence tty "m" (if state "7" "27")))
 
 (defmethod terminal-normal ((tty terminal-ansi-stream))
-  (terminal-format tty "~c[0m" #\escape))
+  (terminal-escape-sequence tty "0m")) ;; @@@ zero is unnecessary?
 
 (defmethod terminal-underline ((tty terminal-ansi-stream) state)
-  (terminal-format tty "~c[~dm" #\escape (if state 4 24)))
+  (terminal-escape-sequence tty "m" (if state "4" "24")))
 
 (defmethod terminal-bold ((tty terminal-ansi-stream) state)
-  (terminal-format tty "~c[~dm" #\escape (if state 1 22)))
+  (terminal-escape-sequence tty "m" (if state "1" "22")))
 
 (defmethod terminal-inverse ((tty terminal-ansi-stream) state)
-  (terminal-format tty "~c[~dm" #\escape (if state 7 27)))
+  (terminal-escape-sequence tty "m" (if state "7" "27")))
 
 (defparameter *colors*
   #(:black :red :green :yellow :blue :magenta :cyan :white nil :default))
@@ -1090,11 +1100,11 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-set-scrolling-region ((tty terminal-ansi-stream) start end)
   (if (and (not start) (not end))
-      (terminal-raw-format tty "~c[r" #\escape)
+      (terminal-escape-sequence tty "r")
       (if (or (< start 0) (> end (terminal-window-rows tty)))
 	  (cerror "Just try it anyway."
 		  "The scrolling region doesn't fit in the screen.")
-	  (terminal-raw-format tty "~c[~d;~dr" #\escape (1+ start) (1+ end)))))
+	  (terminal-escape-sequence tty "r" (1+ start) (1+ end)))))
 
 (defmethod terminal-set-attributes ((tty terminal-ansi-stream) attributes)
   "Set the attributes given in the list. If NIL turn off all attributes.
@@ -1114,7 +1124,7 @@ Attributes are usually keywords."
       (keyword
        (let ((n (assoc attributes *attributes*)))
 	 (when n
-	   (terminal-raw-format tty "~a~dm" +csi+ (cdr n))))))))
+	   (terminal-escape-sequence tty "m" (cdr n))))))))
 
 (defmethod terminal-finish-output ((tty terminal-ansi-stream))
   ;; (when (maybe-refer-to :cl-user :*duh*)
