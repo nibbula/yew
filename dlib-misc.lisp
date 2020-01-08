@@ -26,6 +26,7 @@
    #:group-by-alist
    #:group-by-hash
    #:group-by
+   #:parse-bit-rate
 
    ;; time
    #:date-string
@@ -1719,5 +1720,70 @@ group-by-alist functions."
   (ecase result-type
     (hash (group-by-hash function sequence))
     ((list alist) (group-by-alist function sequence))))
+
+(defparameter *bit-suffixes*
+  #("b" "bps" "ps" "b/s" "/s"))
+
+(defparameter *byte-suffixes*
+  #("b" "bps" "ps" "b/s" "/s" "B" "Bps" "BPS" "PS" "B/s" "B/S" "/S"))
+
+(defparameter *bit-units*
+  `((#\k :bits  1024)
+    (#\K :bytes #.(* 1024 8))
+    (#\m :bits  #.(* 1024 1024))
+    (#\M :bytes #.(* 1024 1024 8))
+    (#\g :bits  #.(* 1024 1024 1024))
+    (#\G :bytes #.(* 1024 1024 1024 8))))
+
+;; This is sort of based on what jwz had in youtubedown.
+(defun parse-bit-rate (string)
+  "Return a bit rate based on STRING. Many variant spellings are allowed:
+
+  bits:  k, kb, kbps, kps, kb/s, k/s;
+  bytes: K, Kb, Kbps, Kps, Kb/s, K/s,
+            KB, KBps, KBPS, KPS, KB/s, KB/S, K/S."
+  (with-input-from-string (stream string)
+    (let (number c rest unit)
+      (labels ((number-char-p (c)
+		 (or (digit-char-p c)
+		     (find c #(#\. #\/ #\- #\+ #\d #\f #\e) :test #'equal)))
+	       (get-potential-number ()
+		 (let ((num-str
+			(loop :do (setf c (read-char stream nil))
+			   :while (and c (number-char-p c))
+			   :collect c)))
+		   (unread-char c stream)
+		   (safe-read-from-string (coerce num-str 'string))))
+	       (eat-whitespace ()
+		 (loop :do (setf c (read-char stream nil))
+		    :while (and c (whitespace-p c)))
+		 (when c (unread-char c stream)))
+	       (get-rest ()
+		 (when (not rest)
+		   (setf rest (read-line stream nil))))
+	       (suffix-p (type)
+		 (let (pos)
+		   (eat-whitespace)
+		   (get-rest)
+		   ;; (format t "rest = ~s~%" rest)
+		   (and rest
+			(some (_ (and (setf pos (search _ rest))
+				      (zerop pos)))
+			      (ecase type
+				(:bits *bit-suffixes*)
+				(:bytes *byte-suffixes*)))))))
+	(setf number (get-potential-number))
+	(when (not (numberp number))
+	  (error "Bit rate doesn't start with a number."))
+	(eat-whitespace)
+	(setf c (read-char stream nil))
+	(cond
+	  ((and (setf unit (find c *bit-units* :key #'first))
+		(suffix-p (second unit)))
+	   (* number (third unit)))
+	  ((suffix-p :bits) number)
+	  ((suffix-p :bytes) (/ number 8))
+	  (t ;; no units or suffix, assume k bits
+	   (* number 1024)))))))
 
 ;; End
