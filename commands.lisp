@@ -741,6 +741,7 @@ in order, \"{open}{close}...\".")
 	 )
     (accept-line e)))
 
+;; @@@ This shouldn't be in here. Maybe it should be in tiny-repl or lish itself?
 (defsingle pop-to-lish (e)
   "If we're inside lish, throw to a quick exit. If we're not in lish, enter it."
   (let* ((lish-package (find-package :lish))

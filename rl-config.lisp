@@ -21,7 +21,9 @@
 (defconfiguration
   ((use-sqlite boolean-feature
     "True to use CLSQL-SQLITE for command history storage."
-    (library-loadable-p '((t "libsqlite3.so"))))
+    ;; (library-loadable-p '((t "libsqlite3.so")))
+    nil
+    )
    (optimization-settings list
     "Default optimization settings for each file/compilation unit?."
     ;; If we don't have at least debug 2, then most compilers won't save

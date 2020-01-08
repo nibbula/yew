@@ -204,7 +204,7 @@ for database formats.")
     :documentation "Function to call to output the prompt.")
    (right-prompt
     :accessor right-prompt
-    :initarg :right-prompt
+    :initarg :right-prompt :initform nil
     :documentation "Something to display on the right side of the command line.")
    (prompt-height
     :accessor prompt-height

@@ -280,6 +280,7 @@
 	     recursive-p
 	     (prompt *default-prompt*)
 	     output-prompt-func
+	     right-prompt
 	     (completion-func #'complete-symbol)
 	     string
 	     input-callback
@@ -311,6 +312,8 @@ Keyword arguments:
   OUTPUT-PROMPT-FUNC
     Function to print out a prompt. Called with the LINE-EDITOR instance and a
     prompt string.
+  RIGHT-PROMPT
+    String to output on the right side of the input line.
   COMPLETION-FUNC (#'complete-symbol)
     Completion function to use. See the completion package for details.
   STRING
@@ -348,6 +351,7 @@ Keyword arguments:
 			;;:point		    	#(0)
 			:prompt-string	    	prompt
 			:prompt-func	    	output-prompt-func
+			:right-prompt		right-prompt
 			:completion-func    	completion-func
 			:history-context        history-context
 			:input-callback	    	input-callback
@@ -395,7 +399,8 @@ Keyword arguments:
        (run-hooks *entry-hook*)
 
        ;; Set the prompt
-       (setf (prompt-string e) prompt (prompt-func e) output-prompt-func)
+       (setf (prompt-string e) prompt (prompt-func e) output-prompt-func
+	     (right-prompt e) right-prompt)
        (when string
 	 (without-undo (e)
 	   (buffer-insert e 0 string 0)
