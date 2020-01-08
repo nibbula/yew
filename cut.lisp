@@ -88,7 +88,7 @@ indicate only a start number, or :max to indicate it extends to the end."
 
 ;; @@@ Perhaps the args the be after get-regions is done?
 (defun cut-lines (stream &key bytes characters fields delimiter output-delimiter
-			   only-delimited collect re-delimiter)
+			   only-delimited collect re-delimiter quiet)
   "Write lines from stream, while cutting, bytes, characters, or fields."
   (when (> (+ (if bytes 1 0) (if characters 1 0) (if fields 1 0)) 1)
     (error "Only one of bytes, characters, or fields can be specified."))
@@ -151,7 +151,8 @@ indicate only a start number, or :max to indicate it extends to the end."
 			data)
 		   (if (= (length fs) 1)
 		       (when (not only-delimited)
-			 (write-line line))
+			 (funcall write-a-string line)
+			 (funcall write-newline))
 		       (progn
 			 (fix-region (car region) (cdr region) len)
 			 (loop
@@ -160,9 +161,8 @@ indicate only a start number, or :max to indicate it extends to the end."
 			      ;; (format t "i ~s start ~s end ~s~%" i start end)
 			      (when (and (>= i start) (<= i end))
 				(when (not first)
-				  (write-sequence output-delimiter
-						  *standard-output*))
-				(write-sequence f *standard-output*)
+				  (funcall write-a-string output-delimiter))
+				(funcall write-a-string f)
 				(when collect
 				  (push f data))
 				(setf first nil))
@@ -173,7 +173,7 @@ indicate only a start number, or :max to indicate it extends to the end."
 				(when fn
 				  (setf region (car fn))
 				  (fix-region (car region) (cdr region) len))))
-			 (terpri)
+			 (funcall write-newline)
 			 (when collect
 			   (push (nreverse data) result))))))
 	       (read-byte-line (stream bogo)
@@ -191,13 +191,15 @@ indicate only a start number, or :max to indicate it extends to the end."
 	(setf snip (if fields #'print-fields #'cut-regions))
 	(setf read-a-line (if bytes #'read-byte-line #'read-line))
 	(setf write-newline
-	      (if bytes
-		  #'(lambda () (write-byte newline-code *standard-output*))
-		  #'terpri))
+	      (cond
+		(quiet #'values)
+		(bytes #'(lambda () (write-byte newline-code *standard-output*)))
+		(t #'terpri)))
 	(setf write-a-string
-	      (if bytes
-		  #'(lambda (str) (write-sequence str *standard-output*))
-		  #'write-string))
+	      (cond
+		(quiet #'values)
+		(bytes #'(lambda (str) (write-sequence str *standard-output*)))
+		(t #'write-string)))
 	;;(dbugf :cut "fields ~s chars ~s bytes ~s~%" fields characters bytes)
 	;;(dbugf :cut "snip ~s~%read-a-line ~s~%" snip read-a-line)
 	(loop :with line
@@ -226,6 +228,8 @@ indicate only a start number, or :max to indicate it extends to the end."
     :help "True to collect output as lists.")
    (table boolean :short-arg #\t
     :help "True to collect output as a table.")
+   (quiet boolean :short-arg #\q
+    :help "True to suppress printing output lines.")
    (files input-stream-or-filename
     :default '(list *standard-input*) :repeating t
     :help "Files to read from."))

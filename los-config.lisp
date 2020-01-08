@@ -18,6 +18,7 @@
     ;; the function arguments.
     ;; `((debug 2)))))
     '((speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))))
+    ;; '((speed 3) (safety 0) (debug 2) (space 0) (compilation-speed 0)))))
 
 (configure)
 
