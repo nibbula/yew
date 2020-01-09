@@ -72,6 +72,43 @@
      (timeval-micro-seconds timeval))
     (syscall (real-settimeofday tv (null-pointer)))))
 
+(defctype clockid-t :int)
+
+(defcfun ("clock_getres" real-clock-getres) :int
+  (clk_id clockid-t)
+  (res (:pointer (:struct foreign-timespec))))
+
+(defcfun ("clock_gettime" real-clock-gettime) :int
+  (clk_id clockid-t)
+  (tp (:pointer (:struct foreign-timespec))))
+
+(defcfun ("clock_settime" real-clock-settime) :int
+  (clk_id clockid-t)
+  (tp (:pointer (:struct foreign-timespec))))
+
+(defun clock-getres (clock-id)
+  "Get the resolution of the clock indicated by CLOCK-ID, which is one of the
++CLOCK-*+ constants in *clocks*."
+  (with-foreign-object (ts '(:struct foreign-timespec))
+    (syscall (real-clock-getres clock-id ts))
+    (timespec-to-os-time ts)))
+
+(defun clock-gettime (clock-id)
+  "Return the time as an OS-TIME of the clock indicated by CLOCK-ID, which is
+one of the +CLOCK-*+ constants in *clocks*."
+  (with-foreign-object (ts '(:struct foreign-timespec))
+    (syscall (real-clock-gettime clock-id ts))
+    (timespec-to-os-time ts)))
+
+(defun clock-settime (clock-id os-time)
+  "Set the time of the clock indicated by CLOCK-ID, to OS-TIME. CLOCK-ID is
+one of the +CLOCK-*+ constants in *clocks*."
+  (with-foreign-object (ts '(:struct foreign-timespec))
+    (with-foreign-slots ((tv_sec tv_nsec) ts (:struct foreign-timespec))
+      (setf tv_sec (os-time-seconds os-time)
+	    tv_nsec (os-time-nanoseconds os-time))
+      (syscall (real-clock-gettime clock-id ts)))))
+
 (defconstant +unix-to-universal-time+ 2208988800
   "Value to add to traditional 1970 based Unix time, to get a Common Lisp
 universal time.")

@@ -445,6 +445,9 @@
    #:timespec-nanoseconds
    #:gettimeofday
    #:settimeofday
+   #:clock-getres
+   #:clock-gettime
+   #:clock-settime
    #:+unix-to-universal-time+
    #:unix-to-universal-time
    #:universal-to-unix-time
