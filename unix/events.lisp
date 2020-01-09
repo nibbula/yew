@@ -50,13 +50,17 @@
 	 (write-fds :pointer) (error-fds :pointer) (timeout :pointer))
 
 ;; @@@ fix not to be lame? see below
-(defun lame-select (fds timeout)
-  "See if some data is available."
-;   (format t "NFDBITS = ~s~%" NFDBITS)
-;   (format t "howmany(FD_SETSIZE,NFDBITS) = ~s~%" (howmany FD_SETSIZE NFDBITS))
-;   (format t "+fd-count+ = ~s~%" +fd-count+)
-;   (format t "sizeof(fd_set) = ~s~%" (foreign-type-size 'fd_set))
-  (let ((nfds 0) ret-val results)
+(defun lame-select (fds timeout &key retry)
+  "See if a set of file descriptors are is available. FDS is a list of lists of
+file descriptors and actions, where action is one of: :read :write :error, e.g.:
+((23 :read) (12 :write :error)). TIMEOUT is the number of micro-seconds after
+which to return if nothing changed. If RETRY is true, keep trying if we are
+interrupted by a signal or something else stupid."
+  ;; (format t "NFDBITS = ~s~%" NFDBITS)
+  ;; (format t "howmany(FD_SETSIZE,NFDBITS) = ~s~%" (howmany FD_SETSIZE NFDBITS))
+  ;; (format t "+fd-count+ = ~s~%" +fd-count+)
+  ;; (format t "sizeof(fd_set) = ~s~%" (foreign-type-size 'fd_set))
+  (let ((nfds 0) ret-val results time-left)
     (with-foreign-objects ((read-fds :uint32 +fd-count+)
  			   (write-fds :uint32 +fd-count+)
  			   (err-fds :uint32 +fd-count+)
@@ -67,7 +71,7 @@
       (loop :with i = 0
 	    :for f :in fds
 	    :do
-	    (let* ((fd-in f) (fd (first fd-in)))
+	    (let* ((fd-in f) (fd (car fd-in)))
 	      (when (position :read (cdr fd-in))
 		(fd-set fd read-fds))
 	      (when (position :write (cdr fd-in))
@@ -76,33 +80,47 @@
 		(fd-set fd err-fds))
 	      (incf i)
 	      (setf nfds (max fd nfds))))
-;       (format t "nfds = ~d~%" nfds)
-;       (format t "read  = ")
-;       (loop for i from 0 to nfds
-; 	    do
-; 	    (princ (if (= 0 (fd-isset i read-fds)) #\0 #\1)))
-;       (format t "~%write = ")
-;       (loop for i from 0 to nfds
-; 	    do
-; 	    (princ (if (= 0 (fd-isset i write-fds)) #\0 #\1)))
-;       (format t "~%err   = ")
-;       (loop for i from 0 to nfds
-; 	    do
-; 	    (princ (if (= 0 (fd-isset i err-fds)) #\0 #\1)))
-;       (terpri)
+      ;; (format t "nfds = ~d~%" nfds)
+      ;; (format t "read  = ")
+      ;; (loop for i from 0 to nfds
+      ;; 	    do
+      ;; 	    (princ (if (= 0 (fd-isset i read-fds)) #\0 #\1)))
+      ;; (format t "~%write = ")
+      ;; (loop for i from 0 to nfds
+      ;; 	    do
+      ;; 	    (princ (if (= 0 (fd-isset i write-fds)) #\0 #\1)))
+      ;; (format t "~%err   = ")
+      ;; (loop for i from 0 to nfds
+      ;; 	    do
+      ;; 	    (princ (if (= 0 (fd-isset i err-fds)) #\0 #\1)))
+      ;; (terpri)
       (with-foreign-slots ((tv_sec tv_usec) tv (:struct foreign-timeval))
 	(multiple-value-bind (sec frac) (truncate timeout)
-	  (setf tv_sec sec
-		tv_usec (truncate (* frac 1000000)))
+	  (setf time-left
+		(make-timeval :seconds sec
+			      :micro-seconds (truncate (* frac 1000000)))
+		tv_sec sec
+		tv_usec (timeval-micro-seconds time-left))
 	  ;; (let ((usec (truncate (* frac 1000000))))
 	  ;;   (dbugf :select "nfds ~s sec ~s usec ~s ~g ~s~%"
 	  ;; 	   nfds sec usec usec (type-of usec))
 	  ;;   (dbugf :select "timveval sec ~s usec ~s~%"
 	  ;; 	   tv_sec tv_usec))
-	  ))
-      (setf ret-val (unix-select (1+ nfds)
-				 read-fds write-fds err-fds
-				 tv))
+	  (if retry
+	      (loop :with elapsed :and start-time :and end-time
+		 :do
+		 (setf start-time (gettimeofday))
+		 (setf ret-val
+		       (unix-select (1+ nfds) read-fds write-fds err-fds tv))
+		 (setf end-time (gettimeofday))
+		 :while (and (= ret-val -1) (= *errno* +EINTR+)
+			     ;; @@@ some systems we might need to check EAGAIN?
+			     (timeval-plusp
+			      (setf elapsed (timeval-sub end-time start-time))))
+		 :do (setf time-left (timeval-sub time-left elapsed)))
+	      ;; no retry loop
+	      (setf ret-val
+		    (unix-select (1+ nfds) read-fds write-fds err-fds tv)))))
       (when (= -1 ret-val)
 	(cond
 	  (*got-sigwinch*
@@ -117,7 +135,7 @@
 	  (t
 	   (error 'posix-error :error-code *errno*
 		  :format-control "Select failed:"))))
-;      (format t "return = ~d~%" ret-val)
+      ;; (format t "return = ~d~%" ret-val)
       (when (not (zerop ret-val))
 	(setf results
 	      (loop :for f :in fds
@@ -438,7 +456,7 @@
   "Listen on the OS file descriptor for at most N seconds or until input is ~
 available."
 ;  (lame-poll `((,fd :read)) (truncate (* 1000 seconds)))
-  (lame-select `((,fd :read)) seconds)
+  (lame-select `((,fd :read)) seconds :retry t)
   )
 
 (defun test-listen-for ()
