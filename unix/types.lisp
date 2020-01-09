@@ -86,6 +86,53 @@ Type name     Darwin           Linux-32         Linux-64         SunOS          
 	(make-timeval :seconds tv_sec
 		      :micro-seconds tv_usec))))
 
+(defconstant +ms-per-sec+ (expt 10 6)
+  "The number of microeconds in a second.")
+
+;; @@@ This is similar to the code in dlib-misc, but we can't depend on that,
+;; but perhaps if we ever make a separate time package we could depend on some
+;; part of that and have macros or something for defining time arithmetic.
+;; For now I'm only adding things that I need for other parts of opsys.
+
+(defun timeval-add (time1 time2)
+  "Return the sum of TIME1 and TIME2, as a timeval."
+  (let ((s (+ (timeval-seconds time1) (timeval-seconds time2)))
+	(n (+ (timeval-micro-seconds time1) (timeval-micro-seconds time2))))
+    (cond
+      ((> n +ms-per-sec+)
+       (incf s)
+       (decf n +ms-per-sec+))
+      ((= n +ms-per-sec+)
+       (incf s)
+       (setf n 0)))			; perhaps just saving a subtraction
+    (make-timeval :seconds s
+		  :micro-seconds n)))
+
+(defun timeval-sub (time1 time2)
+  "Return the difference of TIME1 and TIME2, as a timeval."
+  (let ((n (- (timeval-micro-seconds time1) (timeval-micro-seconds time2)))
+	s)
+    (cond
+      ((minusp n)
+       (incf n +ms-per-sec+)
+       (setf s (- (timeval-seconds time1) 1 (timeval-seconds time2))))
+      (t
+       (setf s (- (timeval-seconds time1) (timeval-seconds time2)))))
+    (make-timeval :seconds s
+		  :micro-seconds n)))
+
+(defun timeval-plusp (timeval)
+  "Return true if the time is positive."
+  (or (plusp (timeval-seconds timeval))
+      (and (zerop (timeval-seconds timeval))
+	   (plusp (timeval-micro-seconds timeval)))))
+
+(defun timeval-minusp (timeval)
+  "Return true if the time is less than zero."
+  (or (minusp (timeval-seconds timeval))
+      (and (zerop (timeval-seconds timeval))
+	   (minusp (timeval-micro-seconds timeval)))))
+
 #+not ; old darwin?
 (defcstruct foreign-rusage
   "Resource usage."
