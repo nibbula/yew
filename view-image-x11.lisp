@@ -840,4 +840,20 @@ XIMAGES-MASK array."
 	    (princ (aref a y x) out))
 	 (terpri out)))))
 
+#+lish
+(lish:defcommand view-image-x11
+  ((images pathname :repeating t :help "Image to view.")
+   (own-window boolean :short-arg #\o
+    :help "True to use it's own window if the backend supports it.")
+   ;;(images pathname :repeating t :help "Image to view.")
+   )
+  :accepts (:sequence :stream)
+  "View an image."
+  ;;(let ((type nil))
+  (view-image::view-images (or images
+			       (and lish:*input* (list lish:*input*))
+			       (list *standard-input*))
+			   :type 'image-x11-inator
+			   :own-window own-window))
+
 ;; EOF
