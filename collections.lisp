@@ -46,6 +46,7 @@ structs as sequences. Also we really need the MOP for stuff.")
     '(emptyp
       oelt
       olength
+      olength-at-least-p
       olast
       omap
       omapk
@@ -421,6 +422,46 @@ but with the arguments reversed for convenient use in pipelines."
 
 (defmethod olength ((collection container))
   (olength (container-data collection)))
+
+;; Palpable.
+(defgeneric olength-at-least-p (n collection)
+  (:documentation "Return true if the length of COLLECTION is at least N.")
+  (:method (n (collection list))
+    ;; Stolen from the CL spec entry for list-length.
+    (do ((i 0 (+ i 2))	      ;; Counter.
+	 (fast collection (cddr fast)) ;; Fast pointer: leaps by 2.
+	 (slow collection (cdr slow))) ;; Slow pointer: leaps by 1.
+	(nil)
+      ;; If fast pointer hits the end, return the count.
+      (when (endp fast) (return (if (>= i n) t nil)))
+      (when (endp (cdr fast)) (return (if (>= (1+ i) n) t nil)))
+      ;; If fast pointer eventually equals slow pointer,
+      ;;  then we must be stuck in a circular list.
+      ;; (A deeper property is the converse: if we are
+      ;;  stuck in a circular list, then eventually the
+      ;;  fast pointer will equal the slow pointer.
+      ;;  That fact justifies this implementation.)
+      (when (and (eq fast slow) (> i 0)) (return nil))))
+  (:method (n (collection vector))     (>= (length collection) n))
+  (:method (n (collection sequence))   (>= (length collection) n))
+  (:method (n (collection hash-table)) (>= (hash-table-count collection) n))
+  (:method (n (collection structure-object))
+    (block nil
+      (let ((i 0))
+	(map nil (lambda (_)
+		   (declare (ignore _))
+		   (if (= i n) (return t) (incf i)))
+	     (mop:class-slots (class-of collection))))))
+  (:method (n (collection standard-object))
+    (block nil
+      (let ((i 0))
+	(map nil (lambda (_)
+		   (declare (ignore _))
+		   (if (= i n) (return t) (incf i)))
+	     (mop:class-slots (class-of collection)))))))
+
+(defmethod olength-at-least-p (n (collection container))
+  (olength-at-least-p (container-data collection) n))
 
 ;; This isn't exactly like LAST for lists, since it doesn't return a sub-list.
 ;; @@@ The list version has: &optional n, but I think I would rather make a an
