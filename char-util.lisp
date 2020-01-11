@@ -14,6 +14,7 @@
    #:nice-char
    #:char-as-ascii
    #:displayable-char
+   #:string-character-case
    #:combining-char-p
    #:whitespace-p
    #:double-wide-char-p
@@ -133,6 +134,24 @@ than space and delete."
 	   (princ c stream)
 	   (princ-to-string c)))
       (t (format stream "~s" c)))))
+
+(defun string-character-case (s)
+  "Return :upper :lower :mixed or :none as a description of the set of
+ character cases in the given string."
+  (declare (type string s))
+  (block nil
+    (let ((state :none))
+      (loop :for c :across s
+	 :do
+	 (if (both-case-p c)
+	     (if (upper-case-p c)
+		 (case state
+		   (:lower (return :mixed))
+		   (:none  (setf state :upper)))
+		 (case state
+		   (:upper (return :mixed))
+		   (:none  (setf state :lower))))))
+      state)))
 
 (defun normalize-string (string &optional (form :nfd))
   "Return a Unicode normalized string based on STRING. FORM can be one of
