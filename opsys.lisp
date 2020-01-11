@@ -638,29 +638,93 @@ current effective user. If REGULAR is true also check if it's a regular file.")
 processing, like adding `.exe' on windows. If path2 is provided, test takes
 two arguments.")
 
-(defun command-pathname (cmd)
+(defstruct command-cache
+  dirs
+  (table (make-hash-table :size 2459 :test #'equal)))
+;; 2459 is the prime closest to 1.5 times the actual number of commands on my
+;; system at the moment, so hopefully it's not too oversized for a small
+;; system and only requires one table expansion on my system.
+
+(defun new-command-pathname-cache ()
+  (make-command-cache))
+
+(defvar *command-pathname-cache*
+  (new-command-pathname-cache))
+
+(defun command-pathname-cache-remove (command)
+  "Remove COMMAND from the pathname cache."
+  (remhash command (command-cache-table *command-pathname-cache*)))
+
+(defun command-pathname-cache-clear ()
+  "Clear the pathname cache."
+  (setf *command-pathname-cache* nil))
+
+(defun dir-changed (dir info)
+  "Return true if the time changed on DIR in CACHE given INFO."
+  (let ((saved-time
+	 (cdr (find dir (command-cache-dirs *command-pathname-cache*)
+		    :test #'equal :key #'car))))
+    (or (not saved-time)
+	(os-time> (file-info-modification-time info) saved-time))))
+
+(defun cached-path (cmd)
+  (let ((dir (gethash cmd (command-cache-table *command-pathname-cache*))))
+    (and dir (path-append dir cmd))))
+
+(defun command-pathname (cmd &key (cached :default))
   "Return the full pathname of the first executable file in the PATH or nil
-if there isn't one."
-  (when (has-directory-p cmd)
-    (return-from command-pathname (and (command-test #'file-exists cmd)
-				       (is-executable cmd :regular t)
-				       cmd)))
-  (loop :for dir :in (command-path-list)
-	;; (split-sequence *path-separator*
-	;; 		(environment-variable *path-variable*))
-     :do
-     (handler-case
-       (when (probe-directory dir)
-	 (loop :with full = nil
-	    :for f :in (read-directory :dir dir) :do
-	    (when (and (command-test #'equal cmd f)
-		       (is-executable
-			;; (setf full (s+ dir *directory-separator* cmd))
-			(setf full (s+ dir *directory-separator* f))
-			:regular t))
-	      (return-from command-pathname full))))
-       (opsys-error (c) (declare (ignore c)))))
-  nil)
+if there isn't one. If the command has a directory part, just verify that it
+exists and is executable, and return true if so, NIL if not.
+CACHED can be one of :ONLY, :NO, :BUILD, :DEFAULT.
+  :ONLY     Return only cahced results. Don't look on the file system.
+  :NO       Only look at the file system not the cache.
+  :BUILD    Force rebuilding of the cache.
+  :DEFAULT  Look in the cache first, if not there, look in the file system
+            and cache the result. Rebuild a directory if it's out of date."
+  (assert (member cached '(:only :no :build :default)))
+  (when (not *command-pathname-cache*)
+    (setf *command-pathname-cache* (new-command-pathname-cache)))
+  (cond
+    ((has-directory-p cmd)
+     (return-from command-pathname
+       (and (command-test #'file-exists cmd)
+	    (is-executable cmd :regular t)
+	    cmd)))
+    ((eq cached :only)
+     (cached-path cmd))
+    (t ;; :no :build :default
+     (or (and (eq cached :default) (cached-path cmd))
+	 (let ((table (command-cache-table *command-pathname-cache*))
+	   result info update)
+	   (loop :for dir :in (command-path-list)
+	      :do
+	      (handler-case
+		  (when (eq :directory
+			    (file-info-type (setf info (get-file-info dir))))
+		    (when (setf update (or (dir-changed dir info)
+					   (eq cached :build)))
+		      (pushnew (cons dir (file-info-modification-time info))
+			       (command-cache-dirs *command-pathname-cache*)
+			       :test #'equal))
+		    (loop
+		       :with full = nil
+		       :for f :in (read-directory :dir dir) :do
+		       (handler-case
+			   (when (is-executable
+				  (setf full (s+ dir *directory-separator* f))
+				  :regular t)
+			     (when (command-test #'equal cmd f)
+			       (when (not result)
+				 (setf result full
+				       (gethash cmd table) dir))
+			       (when (not update)
+				 (return-from command-pathname result)))
+			     (when (and update
+					(not (gethash f table)))
+			       (setf (gethash f table) dir)))
+			 (opsys-error (c) (declare (ignore c))))))
+		(opsys-error (c) (declare (ignore c)))))
+	   result)))))
 
 (defun command-path-list ()
   "Return the system command path as a list."
@@ -1204,7 +1268,46 @@ a terminal.")
 ;; For profiling you probably need to use tools specific to the implementation.
 
 ;; profil
-;; ptrace
+
+;; Debugging
+
+(defvar *traced-process-id* nil
+  "The process currently being traced.")
+
+(defosfun attach-process (process-id)
+  "")
+
+(defosfun detach-process (process-id)
+  "")
+
+(defmacro with-attached-process ((process-id) &body body)
+  `(let ((*traced-process-id* ,process-id))
+     (unwind-protect
+	  (progn
+	    (attach-process *traced-process-id*)
+	    ,@body)
+	 (detach-process *traced-process-id*))))
+
+(defosfun process-peek (address &key (pid *traced-process-id*))
+  "")
+
+(defosfun process-poke (address data &key (pid *traced-process-id*))
+  "")
+
+(defosfun process-registers (&key (pid *traced-process-id*))
+  "")
+
+(defosfun set-process-registers (register-set &key (pid *traced-process-id*))
+  "")
+
+(defosfun process-stop (&key (pid *traced-process-id*))  ;; probably just signal?
+  "")
+
+(defosfun process-continue (&key (pid *traced-process-id*))
+  "")
+
+(defosfun process-step (&key (pid *traced-process-id*))
+  "")
 
 ;; Weird/simulation/emulation/API munging:
 ;; syscall

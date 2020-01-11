@@ -84,7 +84,10 @@
    #:hidden-file-name-p
    #:superfluous-file-name-p
    #:command-test
+   #:*command-pathname-cache*
    #:command-pathname
+   #:command-pathname-cache-remove
+   #:command-pathname-cache-clear
    #:command-path-list
    #:list-to-command-path
    #:set-command-path-list
