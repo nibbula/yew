@@ -447,7 +447,8 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 	(tt-erase-to-eol)
 	(dbugf :rl "right-prompt ~s ~s~%" right-prompt-start right-prompt)
 	(when (and right-prompt (< point-col right-prompt-start)
-		   (= 0 buf-lines))
+		   (not endings)
+		   (and (< line-last-col right-prompt-start)))
 	  (dbugf :rl "right-prompt again ~s ~s~%" right-prompt-start
 		 prompt-last-col)
 	  (tt-move-to-col right-prompt-start)
