@@ -67,6 +67,44 @@ Slot are:
   seconds
   nanoseconds)
 
+;; @@@ This is similar to the code in dlib-misc and timeval in unix/types.lisp,
+;; but we can't depend on those. Perhaps if we ever make a separate time package
+;; we could depend on some part of that and have macros or something for
+;; defining time arithmetic. For now I'm only adding things that I need for
+;; other parts of opsys.
+
+(eval-when (:compile-toplevel)
+  (defun define-time-comparison-operator (op)
+    (let ((name (symbolify (s+ "OS-TIME" op)))
+	  (doc (s+ "Return true if TIME1 " op " TIME2, which should both be "
+		   "a struct os-time.")))
+      `(defun ,name (time1 time2)
+	 ,doc
+	 (or (,op (os-time-seconds time1) (os-time-seconds time2))
+	     (and
+	      (= (os-time-seconds time1) (os-time-seconds time2))
+	      (,op (os-time-nanoseconds time1) (os-time-nanoseconds time2)))))))
+
+  (defparameter %time-comp-op '(< <= > >=))
+
+  (defmacro def-comp-ops ()
+    (let ((forms
+	   (loop :for o :in %time-comp-op
+	      :collect (define-time-comparison-operator o))))
+      `(progn ,@forms))))
+
+(def-comp-ops)
+
+(defun os-time= (time1 time2)
+  "Return true if TIME1 = TIME2, which should both be a struct os-time."
+  (and (= (os-time-seconds time1) (os-time-seconds time2))
+       (= (os-time-nanoseconds time1) (os-time-nanoseconds time2))))
+
+(defun os-time/= (time1 time2)
+  "Return true if TIME1 = TIME2, which should both be a struct os-time."
+  (or (/= (os-time-seconds time1) (os-time-seconds time2))
+      (/= (os-time-nanoseconds time1) (os-time-nanoseconds time2))))
+
 (deftype file-type ()
   "Most general category of a file in a file system."
   `(member :regular :directory :link :device :other))

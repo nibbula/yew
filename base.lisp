@@ -56,6 +56,7 @@
    #:make-os-time
    #:os-time-seconds
    #:os-time-nanoseconds
+   #:os-time< #:os-time<= #:os-time> #:os-time>= #:os-time= #:os-time/=
 
    #:file-info
    #:file-info-p
