@@ -423,11 +423,6 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 	;; (tt-erase-to-eol)
 	(tt-write-string prompt)
 	(tt-erase-to-eol)
-	;; (when (and right-prompt (< (+ point-col 2) right-prompt-start))
-	;;   (tt-move-to-col right-prompt-start)
-	;;   (tt-write-string right-prompt)
-	;;   (tt-move-to-col prompt-last-col)
-	;;   )
 	(setf prompt-height prompt-lines
 	      new-last-line total-lines
 	      start-col prompt-last-col)
@@ -446,7 +441,8 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 	(eol-compensate)
 	(tt-erase-to-eol)
 	(dbugf :rl "right-prompt ~s ~s~%" right-prompt-start right-prompt)
-	(when (and right-prompt (< point-col right-prompt-start)
+	(when (and right-prompt
+		   (< point-col right-prompt-start)
 		   (not endings)
 		   (and (< line-last-col right-prompt-start)))
 	  (dbugf :rl "right-prompt again ~s ~s~%" right-prompt-start
