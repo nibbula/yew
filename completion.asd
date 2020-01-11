@@ -10,8 +10,8 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Blah blah blah"
-    :depends-on (:dlib :opsys :glob :dlib-misc :reader-ext :syntax-lisp
-		 :terminal :terminal-ansi
+    :depends-on (:dlib :opsys :glob :char-util :dlib-misc :reader-ext
+		 :syntax-lisp :terminal :terminal-ansi
 		 #+use-re :re
 		 #-use-re :cl-ppcre
 		 :theme :fatchar :style)

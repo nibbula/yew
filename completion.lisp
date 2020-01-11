@@ -19,8 +19,8 @@ result position. This allows completion functions to look at whatever they
 want to, and replace whatever they want to, even prior to the starting
 point. When asked for all completions, they return a sequence of strings and
 a count which is the length of the sequence.")
-  (:use :cl :dlib :opsys :glob :dlib-misc :reader-ext :syntax :syntax-lisp
-        :terminal :terminal-ansi
+  (:use :cl :dlib :opsys :glob :char-util :dlib-misc :reader-ext
+	:syntax :syntax-lisp :terminal :terminal-ansi
 	#+use-regex :regex
 	#-use-regex :cl-ppcre
 	:theme :fatchar :style)
@@ -584,7 +584,7 @@ arguments for that function, otherwise return NIL."
   (let* ((args (and (fboundp sym) (dlib:lambda-list sym)))
 	 (key-pos (position '&key args))
 	 (word (subseq context word-start))
-	 (case-in (character-case word))
+	 (case-in (string-character-case word))
 	 (stringser (if (eql case-in :lower) #'string-downcase #'string))
 	 keywords)
     (when (not (and key-pos args))
@@ -701,23 +701,6 @@ true, then just look at the external symbols."
        (do-external-symbols (,sym ,pak) ,@forms)
        (do-symbols (,sym ,pak) ,@forms)))
 
-(defun character-case (s)
-  (declare (type string s))
-  "Return :upper :lower :mixed or :none as a description of the set of~
- character cases in the given string."
-  (let ((state :none))
-    (loop :for c :across s
-       :do
-       (if (both-case-p c)
-	   (if (upper-case-p c)
-	       (case state
-		 (:lower (return-from character-case :mixed))
-		 (:none  (setf state :upper)))
-	       (case state
-		 (:upper (return-from character-case :mixed))
-		 (:none  (setf state :lower))))))
-    state))
-
 (defun not-inherited (symbol package)
   (multiple-value-bind (sym status)
       (find-symbol (string symbol) (or package *package*))
@@ -735,7 +718,7 @@ true, then just look at the external symbols."
 to the current package. If EXTERNAL is true, use only the external symbols.
 Return nil if none was found."
 ;  (message (format nil "c: ~w ~w" w package))
-  (let ((case-in (character-case w))
+  (let ((case-in (string-character-case w))
 	(match nil) match-len pos
 	(unique t))
     (do-the-symbols (sym (or package *package*) external)
@@ -787,7 +770,7 @@ defaults to the current package. Return how many symbols there were."
 ;;  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (let ((count 0)
 	(l '()) (pkg-list '())
-	(case-in (character-case w))
+	(case-in (string-character-case w))
 	(token (make-instance 'lisp-symbol-token))
 	pos)
     #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
