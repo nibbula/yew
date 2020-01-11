@@ -341,7 +341,7 @@ any new symbols, or fail on unknown packages or symbols."
 (defparameter *constant*
   '(t nil))
 
-(defmethod stylize-token ((token lisp-symbol-token) &key case)
+(defmethod stylize-token ((token lisp-symbol-token) &key case package-p)
   "Stylize a token that is a Lisp symbol. If CASE is given, change the case
 accordingly. Case can be :upper :lower :mixed or :none."
   (let ((s (token-object token))
@@ -378,7 +378,16 @@ accordingly. Case can be :upper :lower :mixed or :none."
 	       `(:syntax :constant :other :style))
 	      ((find-class s nil)
 	       `(:syntax :entity :name :type :style))))
-      (themed-string item (fix-case (string s))))))
+      (themed-string item (fix-case
+			   (if package-p
+			       (s+ (package-name (symbol-package s))
+				   (multiple-value-bind (s status)
+				       (find-symbol (string s)
+						    (symbol-package s))
+				     (declare (ignore s))
+				     (if (eq status :external) ":" "::"))
+				   (string s))
+			       (string s)))))))
 
 (defmethod format-comment-text ((token lisp-token) stream &key columns)
   (check-type (token-object token) string)
