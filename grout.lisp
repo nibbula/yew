@@ -9,7 +9,7 @@ few output features when they're available, but fall back to plain text
 when not. This is not for making “fancy” interactive applications. It's just
 for relatively simple output.")
   (:use :cl :dlib :dlib-misc :char-util :opsys :terminal :terminal-ansi
-	:table-print :terminal-table)
+	:table-print :terminal-table :fatchar)
   (:export
    #:grout
    #:grout-stream
@@ -33,6 +33,7 @@ for relatively simple output.")
    #:grout-prin1
    #:grout-print
    #:grout-format
+   #:grout-span
    #:grout-print-table
    #:grout-finish
    #:grout-done
@@ -147,6 +148,10 @@ unknown.")
 			     &allow-other-keys)
   "Print the table in some kind of nice way, probably using
 TABLE-PRINT:OUTPUT-TABLE.")
+
+(defgrout span (span)
+  "Output SPAN. A span is attributed text as a list, as is handled by
+fatchar:span-to-fat-string.")
 
 (defgrout finish ()
   "Make any pending output be sent to the grout.")
@@ -331,6 +336,10 @@ generic functions (i.e. %GROUT-*) directly."
 (defmethod %grout-format ((g dumb) format-string &rest format-args)
   (apply #'format (grout-stream g) format-string format-args))
 
+(defmethod %grout-span ((g dumb) span)
+  (write-string (fatchar-string-to-string (span-to-fatchar-string span))
+		(grout-stream g)))
+
 (defmethod %grout-print-table ((g dumb) table
 			       &key (print-titles t) long-titles
 				 (max-width (grout-width))
@@ -479,6 +488,9 @@ generic functions (i.e. %GROUT-*) directly."
 (defmethod %grout-format ((g ansi-stream) format-string &rest format-args)
   (apply #'terminal-format (ansi-stream g) format-string format-args))
 
+(defmethod %grout-span ((g ansi-stream) span)
+  (apply #'terminal-write-span (ansi-stream g) (list span)))
+
 (defmethod %grout-print-table ((g ansi-stream) table
 			       &key (print-titles t) long-titles
 				 max-width
@@ -619,6 +631,9 @@ generic functions (i.e. %GROUT-*) directly."
 
 (defmethod %grout-format ((g ansi) format-string &rest format-args)
   (apply #'terminal-format (ansi-term g) format-string format-args))
+
+(defmethod %grout-span ((g ansi) span)
+  (apply #'terminal-write-span (ansi-term g) (list span)))
 
 (defmethod %grout-print-table ((g ansi) table
 			       &key (print-titles t) long-titles
@@ -766,6 +781,9 @@ generic functions (i.e. %GROUT-*) directly."
 (defmethod %grout-format ((g generic-term) format-string &rest format-args)
   (apply #'terminal-format (generic-term g) format-string format-args))
 
+(defmethod %grout-span ((g generic-term) span)
+  (apply #'terminal-write-span (generic-term g) (list span)))
+
 (defmethod %grout-print-table ((g generic-term) table
 			       &key (print-titles t) long-titles
 				 (max-width (grout-width))
@@ -889,6 +907,10 @@ generic functions (i.e. %GROUT-*) directly."
 
 (defmethod %grout-format ((g slime) format-string &rest format-args)
   (apply #'format (grout-stream g) format-string format-args))
+
+(defmethod %grout-span ((g slime) span)
+  (write-string (fatchar-string-to-string (span-to-fatchar-string span))
+		(grout-stream g)))
 
 ;; Just use the plain text renderer for now, but perhaps 'twould be interesting
 ;; to use table-insert or org-table-*?
