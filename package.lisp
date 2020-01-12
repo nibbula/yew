@@ -36,6 +36,14 @@
    #:line-editor-highlight-attr
    #:line-editor-allow-history-duplicates
    #:line-editor-allow-history-blanks
+   #:first-point
+   #:use-context
+   #:use-first-context
+   #:with-context
+   #:do-contexts
+   #:set-all-points
+   #:freshen
+   #:save-excursion
    #:get-buffer-string
    #:replace-buffer
    #:*history-context*
@@ -62,6 +70,80 @@
    #:db-history-store
    #:db-history-store-connection
    #:complete-filename-command
+   ;; Things for defining commands
+   #:with-external
+   #:defmulti
+   #:defmulti-method
+   #:defsingle
+   #:defsingle-method
+   ;; Commands
+   #:backward-word
+   #:mark-backward-word
+   #:forward-word
+   #:mark-forward-word
+   #:backward-char
+   #:mark-backward-char
+   #:forward-char
+   #:mark-forward-char
+   #:beginning-of-line
+   #:beginning-of-buffer
+   #:end-of-line
+   #:end-of-buffer
+   #:previous-history
+   #:forward-line
+   #:previous-line
+   #:previous-line-or-history
+   #:next-line
+   #:next-history
+   #:next-line-or-history
+   #:beginning-of-history
+   #:end-of-history
+   #:accept-line
+   #:copy-region
+   #:set-mark
+   #:kill-region
+   #:exchange-point-and-mark
+   #:redraw-command
+   #:insert
+   #:delete-region
+   #:delete-backward-char
+   #:delete-char
+   #:delete-char-or-exit
+   #:backward-kill-word
+   #:kill-word
+   #:kill-line
+   #:backward-kill-line
+   #:yank
+   #:downcase-region
+   #:upcase-region
+   #:downcase-word
+   #:upcase-word
+   #:capitalize-word
+   #:un-studly-cap
+   #:delete-horizontal-space
+   #:transpose-characters
+   #:quote-region
+   #:finish-line
+   #:pop-to-lish
+   #:abort-command
+   #:toggle-debugging
+   #:quoted-insert
+   #:self-insert
+   #:newline
+   #:set-key-command
+   #:what-cursor-position
+   #:exit-editor
+   #:beep-command
+   #:bracketed-paste
+   #:char-picker-command
+   #:unipose-command
+   #:insert-file
+   #:add-cursor-on-next-line
+   #:just-one-context
+   #:next-like-this
+   #:reset-stuff
+   #:complete-filename-command
+   #:show-filename-completions-command
    ;; Variables?
    #:*line-editor*
    #:*normal-keymap*
