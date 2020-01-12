@@ -19,6 +19,7 @@
    #:*theme*
    #:*file-type-suffixes*
    #:file-suffix-type
+   #:dircolors-to-theme
    #:set-theme-items
    #:default-theme
    #:set-theme-defaults-for-16-color
