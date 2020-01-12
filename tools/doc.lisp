@@ -28,8 +28,12 @@ The DOC package provides:
   (:use :cl :dlib :dlib-misc :terminal :grout :completion :syntax)
   (:export
    #:doc
+   #:%doc
+   #:!doc
    ))
 (in-package :doc)
+
+(declaim (optimize (debug 2)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
