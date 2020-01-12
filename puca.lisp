@@ -15,7 +15,7 @@
 (defpackage :puca
   (:documentation
    "Putative Muca (A simple(istic) interface to CVS/git/svn).")
-  (:use :cl :dlib :dlib-misc :opsys :keymap :char-util :rl :completion :inator
+  (:use :cl :dlib :dlib-misc :opsys :keymap :char-util :completion :inator
 	:terminal :terminal-inator :fui :options :fatchar :fatchar-io
 	:table :table-print :collections :table-viewer
 	#+use-re :re #-use-re :ppcre)
