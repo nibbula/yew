@@ -4,12 +4,13 @@
 
 (defpackage :style
   (:documentation "Functions for styled objects.")
-  (:use :cl :theme :fatchar :opsys)
+  (:use :cl :theme :fatchar :opsys :grout)
   (:export
    #:spannify-style-item
    #:styled-string
    #:themed-string
    #:styled-file-name
+   #:show-styles
    ))
 (in-package :style)
 
@@ -56,4 +57,17 @@ DIR-ENTRY."
       (t
        name))))
 
-;; EOF
+(defun show-styles (&key (theme *theme*))
+  "List all the styles in a THEME in each style."
+  (with-grout ()
+    (loop :for (name . style) :in (theme-list theme)
+       :do
+       ;; (tt-format "~s ---> ~s~%" name style)
+       (when (and (listp name) (eq (car (last name)) :style)
+		  (listp style))
+	 (grout-span (append (car style)
+				(string-downcase (prin1-to-string name))))
+	 (grout-princ #\newline))))
+  (values))
+
+;; End
