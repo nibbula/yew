@@ -96,7 +96,7 @@
 	(setf did-one t))
       (when (not (or lish-only lisp-only))
 	(when did-one (grout-princ #\newline))
-	(system-apropos thing)))))
+	(system-apropos thing))
       (when (not (or lish-only lisp-only))
 	(when did-one (grout-princ #\newline))
 	(os-apropos thing)))))
@@ -148,10 +148,11 @@
     :help "Limit search to this Lisp package.")
    (type symbol :short-arg #\t
     :help "Limit search to this type of thing.")
-   (thing object :optional nil
-    :help "Like what?"))
+   (thing object :help "Like what?"))
   :args-as args
   "Words given but not taken."
+  (when (not thing)
+    (error "But apropos what?"))
   (apply #'mondo-apropos args))
 
 ;; EOF
