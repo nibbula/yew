@@ -11,6 +11,7 @@
    #:theme-deactivate
    #:theme-value
    #:theme-as-tree
+   #:theme-list
    #:print-theme
    #:make-theme
    #:save-theme
@@ -245,6 +246,33 @@ If the path doesn't exist, it is created."
 	(if (typep theme 'theme-value-node)
 	    (cons (theme-name theme) (theme-node-value theme))
 	    result))))
+
+(defun theme-list (theme)
+  "Turn the THEME tree into a linear list of (((name ...) value) ...). Note that
+this loses information, such as descriptions and titles."
+  (labels
+   ((build-theme-list (theme name-list result)
+      (typecase theme
+	(theme
+	 ;; (list nil) is like a pointer so we can push to it in the leaf
+	 ;; and get the value back up here.
+	 ;; The loop is like a safer (apply 'append X)
+	 (nreverse
+	  (loop :for l :in (mapcar (_ (car (build-theme-list _ nil (list nil))))
+				  (theme-children theme))
+	    :nconc l)))
+	(theme-value-node
+	 ;; This is the leaf where we actually add the thing to the results.
+	 (push `((,@name-list ,(theme-name theme)) .
+		 ,(list (theme-node-value theme)))
+	       (car result)))
+	(theme-node
+	 ;; We add the branch tags to name-list and send it down to the leaf.
+	 (map nil (_ (build-theme-list
+		      _ `(,@name-list ,(theme-name theme)) result))
+	      (theme-children theme))
+	 result))))
+    (build-theme-list theme nil nil)))
 
 (defconstant +theme-version+ 1)
 
@@ -529,7 +557,8 @@ Something like the default setting of typical GNU tools."))))
        (:command :not-found	    :style) (:red)
        (:command :found		    :style) (:bold :blue)
        (:command :directory	    :style) (:fg :color #(:rgb .0 .5 .9))
-       (:command :system-command    :style) (:fg :color #(:rgb .4 .5 .9))
+       ;;(:command :system-command    :style) (:fg :color #(:rgb .4 .5 .9))
+       (:command :system-command    :style) (:fg :color #(:rgb .0 .8 .9))
        (:command :external-command  :style) (:fg :color #(:rgb .0 .5 .9))
        (:command :builtin-command   :style) (:fg :color #(:rgb .9 .4 .7))
        (:command :shell-command	    :style) (:fg :color #(:rgb .7 .5 .9))
