@@ -1323,7 +1323,7 @@ Key arguments:
     :help "True to use full blocks.")
    ;;(images pathname :repeating t :help "Image to view.")
    )
-  :accepts (:sequence :stream)
+  :accepts (:sequence :stream image:image)
   "View an image."
   ;;(let ((type nil))
   (view-images (or images
