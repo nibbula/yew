@@ -1015,7 +1015,8 @@ drawing, which will get overwritten."
      (tt-finish-output)
      (setf c (tt-get-key))
      (cond
-       ((and (setf num (digit-char-p c (1+ (length (menu-items menu)))))
+       ((and (characterp c)
+	     (setf num (digit-char-p c (1+ (length (menu-items menu)))))
 	     (not (zerop num)))
 	(do-menu-item (cdr (nth (1- num) (menu-items menu)))))
        ((eql #\q c)
