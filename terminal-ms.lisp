@@ -48,7 +48,7 @@
    ;;  :documentation "True to make characters underlined.")
    (default-bold
     :initarg :default-bold :accessor default-bold :initform t :type boolean
-    :documentation "True to use brigh colors by default.")
+    :documentation "True to use bright colors by default.")
    (inverse
     :initarg :inverse :accessor inverse :initform nil :type boolean
     :documentation "True to make colors inverse.")
