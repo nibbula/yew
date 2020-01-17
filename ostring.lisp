@@ -54,6 +54,9 @@
   (:documentation "Make an ostring from the thing.")
   (:method ((thing t)) (string thing)))
 
+(defmethod ochar:osimplify ((thing string))
+  thing)
+
 (defgeneric ochar (thing index)
   (:documentation "Return the INDEX-th character of THING.")
   (:method ((thing string) index) (char thing index)))

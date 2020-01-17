@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Objectable strings for the downtrodden masses."
-    ;;:depends-on ()
+    :depends-on (:ochar)
     :components
     ((:file "ostring")))
