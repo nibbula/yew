@@ -1,0 +1,1926 @@
+;;
+;; terminal-x11.lisp - X11 window as a terminal.
+;;
+
+;; I know this is temporary and relatively pointless, and maybe I should wait
+;; util I can make a terminal-graf, but the idea is enticing. Of course this
+;; is only part of having a Lispy terminal. It will work okay for Lisp only
+;; programs, but to have it work for the shell, we'll have to make the stupid
+;; old terminal emulator part that makes a pty and can fork process attached
+;; to the slave end.
+
+(defpackage :terminal-x11
+  (:documentation "X11 window as a terminal.")
+  (:use :cl :dlib :dlib-misc :terminal :trivial-gray-streams :xlib :collections
+	:terminal-grid :ochar :fatchar :stretchy)
+  (:export
+   #:terminal-x11
+   ;; extensions:
+   #:*selection-codes*
+   #:selection
+   #:set-selection
+   #:foreground-color
+   #:background-color
+   #:set-foreground-color
+   #:set-background-color
+   ))
+(in-package :terminal-x11)
+
+(declaim #.`(optimize ,.(getf terminal-config::*config* :optimization-settings)))
+
+(defun get-display-from-environment ()
+  "Return the display host and the the display number from the environment."
+  (let ((display (nos:environment-variable "DISPLAY")) s)
+    (and display
+	 (setf s (split-sequence #\: display))
+	 (values (first s) (parse-integer (second s))))))
+
+(defun make-window-from (&key display id)
+  #-clx-use-classes
+  (xlib::make-window :id id :display display)
+  #+clx-use-classes
+  (make-instance 'xlib:window :id id :display display))
+
+(defparameter *default-window-size* '(80 . 24)
+  "The default size of a window in characters.")
+
+(defparameter *default-font-name* "9x15" ;; "fixed"
+  "Name of the font to use if not specified.")
+
+(defparameter *attributes*
+  '(:normal
+    :bold
+    :faint
+    :dim
+    :italic
+    :underline
+    :blink
+    :inverse
+    :reverse
+    :standout
+    :invisible
+    :crossed-out
+    :double-underline))
+
+(defparameter *attributes-off*
+  '(:all
+    :bold
+    :faint
+    :dim
+    :italic
+    :underline
+    :blink
+    :inverse
+    :reverse
+    :standout
+    :invisible
+    :crossed-out
+    :double-underline))
+
+(defclass terminal-x11 (terminal #| terminal-crunch |#)
+  ((display
+    :initarg :display :accessor display
+    :initform nil
+    :documentation "The X display, the connection to the server.")
+   (window
+    :initarg :window :accessor window
+    :initform nil
+    :documentation "The window.")
+   (depth
+    :initarg :depth :accessor depth :initform nil
+    :documentation "The depth of the display.")
+   (window-width
+    :initarg :window-width :accessor window-width
+    :initform 0 :type fixnum
+    :documentation "The width of the window in pixels.")
+   (window-height
+    :initarg :window-height :accessor window-height
+    :initform 0 :type fixnum
+    :documentation "The height of window in pixels.")
+   (cell-width
+    :initarg :cell-width :accessor cell-width :initform 0 :type fixnum
+    :documentation "The width of cells in the character grid, in pixels.")
+   (cell-height
+    :initarg :cell-height :accessor cell-height :initform 0 :type fixnum
+    :documentation "The height of the cells in character grid in pixels.")
+   (own-window
+    :initarg :own-window :accessor own-window
+    :initform nil :type boolean
+    :documentation "True to use our own window.")
+   (draw-gc
+    :initarg :draw-gc :accessor draw-gc :initform nil
+    :documentation "Graphics context for drawing.")
+   (erase-gc
+    :initarg :erase-gc :accessor erase-gc :initform nil
+    :documentation "Graphics context for erasing.")
+   (cursor-gc
+    :initarg :cursor-gc :accessor cursor-gc :initform nil
+    :documentation "Graphics context for drawing the cursor.")
+   (font-name
+    :initarg :font-name
+    ;; No accessor since it conflicts with xlib:font-name
+    ;; :accessor font-name
+    :initform ""
+    :type string
+    :documentation "Name of the font to use.")
+   (bold-font-name
+    :initarg :bold-font-name
+    ;; No accessor since it conflicts with xlib:font-name
+    ;; :accessor font-name
+    :initform ""
+    :type string
+    :documentation "Name of the bold font to use.")
+   (italic-font-name
+    :initarg :italic-font-name :accessor italic-font-name
+    :initform "" :type string
+    :documentation "Name of the italic font to use.")
+   (font
+    :initarg :font :accessor font :initform nil
+    :documentation "The font for text.")
+   (bold-font
+    :initarg :bold-font :accessor bold-font :initform nil
+    :documentation "The font for bold text.")
+   (bold-color
+    :initarg :bold-color :accessor bold-color :initform nil
+    :documentation "The color for bold text.")
+   (italic-font
+    :initarg :italic-font :accessor italic-font :initform nil
+    :documentation "The font for italic text.")
+   (title
+    :initarg :title :accessor title :initform "Lisp Terminal" :type string
+    :documentation "The title of the window.")
+   (cursor-row
+    :initarg :cursor-row :accessor cursor-row :initform 0 :type fixnum
+    :documentation "The grid row the cursor is at.")
+   (cursor-column
+    :initarg :cursor-column :accessor cursor-column :initform 0 :type fixnum
+    :documentation "The grid column the cursor is at.")
+   (saved-cursor-position
+    :initarg :saved-cursor-position :accessor saved-cursor-position
+    :initform nil :type list
+    :documentation "For saving and restoring the cursor position. NIL or a cons
+of (column . row)")
+   (cursor-state
+    :initarg :cursor-state :accessor cursor-state :initform :visible
+    :type (member :visible :invisible)
+    :documentation "Display state of the cursor.")
+   (cursor-rendition
+    :initarg :cursor-rendition :accessor cursor-rendition
+    :initform (make-fatchar) :type fatchar
+    :documentation "Attributes for drawing the cursor.")
+   (rendition
+    :initarg :rendition :accessor rendition
+    :initform (make-fatchar) :type fatchar
+    :documentation "The current character attributes.")
+   (foreground
+    :initarg :foreground :accessor foreground :initform :white
+    :documentation "The default foreground color for text. Note that this is
+different from the current foreground color which in rendition.")
+   (background
+    :initarg :background :accessor background :initform :black
+    :documentation "The background of the window.")
+   (pixel-format
+    :initarg :pixel-format :accessor pixel-format :initform nil
+    :documentation "Format of pixels for this thing.")
+   (lines
+    :initarg :lines :accessor lines
+    #| :initform (make-array) |# :type (or null (vector grid-string))
+    :documentation "The character grid rows of the screen.")
+   (scollback
+    :initarg :scollback :accessor scollback :initform #() :type array
+    :documentation "Lines of history.")
+   (scrolling-region
+    :initarg :scrolling-region :accessor scrolling-region
+    :initform nil :type list
+    :documentation "The lines definiing a region to scroll. A pair of
+ (start-line . end-line) or NIL.")
+   ;; @@@ I really don't want to implement line mode.
+   (input-mode
+    :initarg :input-mode :accessor input-mode :initform :line
+    :type (member :line :char)
+    :documentation "Fake input mode.")
+   (saved-mode
+    :initarg :saved-mode :accessor saved-mode
+    :documentation "Saved terminal modes for restoring on exit.")
+   (line-buffered-p
+    :initarg :line-buffered-p :accessor line-buffered-p
+    :initform nil :type boolean
+    :documentation "True if we always flush after outputting a newline.")
+   (pushback
+    :initarg :pushback :accessor pushback :initform nil :type list
+    :documentation "List of fake things to be read. For unread-char.")
+   (delay-scroll
+    :initarg :delay-scroll :accessor delay-scroll :initform nil :type boolean
+    :documentation "True to delay scrolling until the next character is output.")
+   )
+  (:default-initargs
+    :file-descriptor		nil
+    :device-name		(get-display-from-environment)
+    :output-stream		nil
+    :font-name			*default-font-name*
+    :window-columns		80
+    :window-rows		24
+  )
+  (:documentation "What we need to know about terminal device."))
+
+(defmethod terminal-default-device-name ((type (eql 'terminal-x11)))
+  "Return the default device name for a TERMINAL-X11."
+  (get-display-from-environment))
+
+(defun set-cell-size (tty)
+  "Set the cell-width and cell-height in TTY from the font."
+  (with-slots (font cell-width cell-height) tty
+    (setf cell-width (xlib:char-width font (xlib:font-default-char font))
+	  cell-height (+ (font-descent font) (font-ascent font)))))
+
+(defun window-size (tty width height)
+  "Return the window size in pixels for WIDTH and HEIGHT in characers in the
+font. If the cell size isn't set, it will be set from the font. Don't assume
+the window size is an exact multiple of the cell size."
+  (with-slots (font cell-width cell-height) tty
+    (when (or (zerop cell-width) (zerop cell-height))
+      (set-cell-size tty))
+    (values (* cell-width width)
+	    (* cell-height height))))
+
+(defun make-new-grid (tty)
+  "Make the character grid arrays for TTY assuming that the rows and columns
+are already set."
+  (with-slots (lines (window-rows terminal::window-rows)
+		     (window-columns terminal::window-columns)) tty
+    (setf lines (make-array window-rows :element-type 'grid-string))
+    (dotimes (i window-rows)
+      (setf (aref lines i)
+	    (make-array window-columns
+			:element-type 'grid-char
+			:initial-element (make-grid-char))
+	    ;; (aref index i) i
+	    )
+      (dotimes (j window-columns)
+	(setf (aref (aref lines i) j) (blank-char))))))
+
+(defun resize-grid (tty)
+  (with-slots (lines (window-rows terminal::window-rows)
+		     (window-columns terminal::window-columns)) tty
+    (let ((old-lines lines))
+      (setf lines (make-array window-rows :element-type 'grid-string))
+      (dotimes (i window-rows)
+	(setf (aref lines i)
+	      (make-array window-columns
+			  :element-type 'grid-char
+			  :initial-element (make-grid-char))
+	      ;; (aref index i) i
+	      )
+	(dotimes (j window-columns)
+	  (setf (aref (aref lines i) j) (blank-char))))
+      ;; @@@ Copy old screen
+      (loop :with min-width
+	 :for i :from 0 :below (min (length old-lines) (length lines))
+	 :do
+	 (setf min-width (min (length (aref old-lines i))
+			      (length (aref lines i))))
+	 (setf (osubseq (aref lines i) 0 min-width)
+	       (osubseq (aref old-lines i) 0 min-width))))))
+
+(defmethod initialize-instance
+    :after ((o terminal-x11) &rest initargs &key &allow-other-keys)
+  "Initialize a terminal-x11."
+  (declare (ignore initargs))
+  (with-slots (display window window-width window-height font title pixel-format
+	       draw-gc erase-gc cursor-gc) o
+    (multiple-value-bind (host number) (get-display-from-environment)
+      (when (not host)
+	(error "Can't get X display from the environment."))
+      (setf display (open-display host :display number))
+      (when (not display)
+	(error "Can't open the display ~a:~a." host number)))
+    (let* ((screen (display-default-screen display))
+	   (root (screen-root screen))
+	   (black (screen-black-pixel screen))
+	   (white (screen-white-pixel screen)))
+      (setf
+       font (open-font display (slot-value o 'font-name))
+       (terminal-window-columns o) (car *default-window-size*)
+       (terminal-window-rows o) (cdr *default-window-size*)
+       (values window-width window-height)
+       (window-size o (terminal-window-columns o) (terminal-window-rows o))
+       window (create-window
+	       :parent root
+	       :x 0 :y 0
+	       :width window-width
+	       :height window-height
+	       :background black
+	       :event-mask 
+	       (make-event-mask
+		:key-press :button-press :button-release
+		:exposure :visibility-change :structure-notify))
+       draw-gc (create-gcontext
+		:drawable window
+		:background black
+		:foreground white
+		:function boole-1
+		:subwindow-mode :include-inferiors
+		:font font)
+       cursor-gc (create-gcontext
+		  :drawable window
+		  :background white
+		  :foreground black
+		  :function boole-1
+		  :subwindow-mode :include-inferiors
+		  :font font)
+       erase-gc (create-gcontext
+		 :drawable window
+		 :background black
+		 :foreground white
+		 :function boole-clr
+		 :subwindow-mode :include-inferiors
+		 :font font)
+       (wm-name window) title
+       (wm-icon-name window) title)
+      (let ((wmh (make-wm-hints :input :on)))
+	(setf (wm-hints window) wmh))
+      (map-window window))
+    (terminal-get-size o)
+    (make-new-grid o)
+    (setf pixel-format (get-pixel-format o))
+    ))
+
+(defun set-grid-size-from-pixel-size (tty width height)
+  (with-slots (cell-width cell-height
+			  (window-columns terminal::window-columns)
+			  (window-rows terminal::window-rows)) tty
+    (setf window-rows    (truncate height cell-height)
+	  window-columns (truncate width cell-width))))
+
+(defmethod terminal-get-size ((tty terminal-x11))
+  "Get the window size from the server and store it in tty."
+  (with-slots (window cell-wdith cell-height) tty
+    (set-cell-size tty)
+    (set-grid-size-from-pixel-size
+     tty (drawable-width window) (drawable-height window))))
+
+(defmethod terminal-get-cursor-position ((tty terminal-x11))
+  "Get the row of the screen the cursor is on. Returns the two values ROW and
+COLUMN."
+  (values (cursor-row tty) (cursor-column tty)))
+
+(defmethod terminal-start ((tty terminal-x11))
+  "Set up the terminal for reading a character at a time without echoing."
+  (with-slots (#| (file-descriptor	   terminal::file-descriptor)
+	       (device-name   	   terminal::device-name)
+	       (output-stream 	   terminal::output-stream) |#
+	       saved-mode input-mode) tty
+    (setf saved-mode input-mode
+	  input-mode :char)
+    ;; We don't need a file-descriptor or output-stream or a device-name right?
+    (terminal-get-size tty)
+    saved-mode))
+
+(defmethod terminal-end ((tty terminal-x11) &optional state)
+  "Put the terminal back to the way it was before we called terminal-start."
+  (terminal-finish-output tty)
+  (when (or state (and (slot-boundp tty 'saved-mode)
+		       (slot-value tty 'saved-mode)))
+    (setf (input-mode tty) (or state (saved-mode tty)))))
+
+(defmethod terminal-done ((tty terminal-x11) &optional state)
+  "Forget about the whole terminal thing and stuff."
+  (with-slots (window display) tty
+    (terminal-end tty state)
+    (display-finish-output display)
+    (destroy-window window)
+    (close-display display))
+  (values))
+
+(defmethod terminal-reinitialize ((tty terminal-x11))
+  "Do any re-initialization necessary, and return the saved state."
+  (with-slots (input-mode) tty
+    (setf input-mode :char)
+    (terminal-get-size tty)
+    input-mode))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; @@@
+;; Consider what or if we can share with terminal-crunch.
+;; I considered making this a sub-class, but but it has problems with the
+;; wrapped terminal being used in non-generic code.
+;;
+;; Perhaps there's some way I could just share the resulting grid from crunch
+;; to x11 as the wrapped terminal? Otherwise we seem to be doubling up on the
+;; grid maintainance.
+;;
+;; I already pulled the grid-char stuff out to grid.lisp, but I don't dare
+;; replace it's use in terminal-crunch yet.
+
+(defun line-blanker (x)
+  "Blank out screen lines X."
+  (loop :for line :across x :do
+       (fill-by line #'blank-char)))
+
+;; (defun xline-blanker (x)
+;;   "Blank out screen lines X."
+;;   (loop :for line :across x :do
+;;        (fill-by line (lambda () (make-grid-char :c #\x)))))
+
+(defun scroll-copy (n height array blanker)
+  "Copy ARRAY for scrolling N lines in a HEIGHT window. BLANKER is a function
+to blank with."
+  (cond
+    ((plusp n)
+     (let ((new-blanks (subseq array 0 n))) ; save overwritten lines
+       ;; Copy the retained lines up
+       (setf (subseq array 0 (- height n))
+	     (subseq array n height))
+       ;; (dbugf :crunch "scroll-copy ~d ~d -> 0 ~d~%" n height (- height n))
+       ;; Move the new blank lines in place.
+       (setf (subseq array (- height n)) new-blanks)
+       ;; Blank out the newly blank lines
+       (funcall blanker new-blanks)))
+    (t ;; minusp
+     (let ((offset (abs n))
+	   (new-blanks (subseq array (+ height n))))
+       ;; Copy the retained lines down
+       ;;(setf (subseq array (1+ offset))
+       (setf (subseq array offset)
+	     (subseq array 0 (+ height n)))
+       ;; Move the new blank lines in place.
+       (setf (subseq array 0 offset) new-blanks)
+       ;; Blank out the newly blank lines
+       (funcall blanker new-blanks)))))
+
+(defun scroll (tty n)
+  "Scroll by N lines."
+  ;; (dbugf :crunch "(scroll ~s)~%" n)
+  (with-slots ((window-rows terminal::window-rows) lines) tty
+    ;; (when (not (zerop n))
+    ;;   (no-hints tty))
+    ;; (if-dbugf (:crunch) (dump-screen tty))
+    (if (< (abs n) window-rows)
+	(progn
+	  (scroll-copy n window-rows lines #'line-blanker)
+	  ;; (scroll-copy n window-rows index #'index-blanker)
+	  )
+	(progn
+	  ;; Just erase everything
+	  (line-blanker lines)
+	  ;; (index-blanker index)
+	  ))
+    ;; (when (not (zerop (start-line tty)))
+    ;;   (setf (start-line tty) (max 0 (- (start-line tty) n)))
+    ;;   (incf (really-scroll-amount tty) n))
+    ))
+
+(defun char-char (c)
+  "Return the Lisp character from whatever other type of thing."
+  (etypecase c
+    (grid-char (grid-char-c c))
+    (fatchar (fatchar-c c))
+    (fatchar-string (if (= (length c) 1) (elt c 0) c))
+    (string (if (= (length c) 1) (char c 0) c))
+    (character c)))
+
+(defgeneric draw-unit (tty unit &key gc)
+  (:documentation "Draw unit of text with the same attributes."))
+
+(defmethod draw-unit (tty (unit character) &key gc)
+  "Draw a character at the current cursor position."
+  (with-slots (window draw-gc cursor-column cursor-row font
+	       cell-width cell-height) tty
+    (draw-image-glyph window (or gc draw-gc)
+		      (* cursor-column cell-width)
+		      (+ (* cursor-row cell-height) (font-ascent font))
+		      (char-code (char-char unit)))))
+
+(defmethod draw-unit (tty (unit string) &key gc)
+  "Draw a string at the current cursor position."
+  (with-slots (window draw-gc cursor-column cursor-row font
+	       cell-width cell-height) tty
+    (draw-image-glyphs window (or gc draw-gc)
+		       (* cursor-column cell-width)
+		       (+ (* cursor-row cell-height) (font-ascent font))
+		       (char-util:string-to-utf8-bytes unit))))
+
+(defun copy-char (tty char)
+  "Put the CHAR at the current screen postion. Return true if we actually
+changed the screen content."
+  (with-slots (rendition delay-scroll cursor-row cursor-column
+	       (window-rows terminal::window-rows)
+	       (window-columns terminal::window-columns) lines) tty
+    (let (changed)
+      (labels ((regularize (c)
+		 (etypecase c
+		   ((or fatchar character) c)
+		   (string (case (length c)
+			     (0 nil)
+			     (1 (char c 0))
+			     (otherwise c)))))
+	       (set-char (gc char)
+		 (etypecase char
+		   ((or character string)
+		    (let* ((rc (regularize char))
+			   (new-gc
+			    (make-grid-char
+			     :c rc
+			     :fg (fatchar-fg rendition)
+			     :bg (fatchar-bg rendition)
+			     :attrs (fatchar-attrs rendition)
+			     :line 0))) ;; unless it's a line char??
+		      (when (not (grid-char= gc new-gc))
+			(setf (grid-char-c gc) rc
+			      (grid-char-fg gc) (fatchar-fg rendition)
+			      (grid-char-bg gc) (fatchar-bg rendition)
+			      (grid-char-attrs gc) (fatchar-attrs rendition)
+			      (grid-char-line gc) 0
+			      changed t))))
+		   (fatchar
+		    (when (not (grid-char= gc char))
+		      (setf (grid-char-c gc)     (fatchar-c char)
+			    (grid-char-fg gc)    (fatchar-fg char)
+			    (grid-char-bg gc)    (fatchar-bg char)
+			    (grid-char-attrs gc) (fatchar-attrs char)
+			    (grid-char-line gc)  (fatchar-line char)
+			    changed t)))
+		   (grid-char
+		    (when (not (grid-char= gc char))
+		      (set-grid-char gc char)
+		      (setf changed t)))))
+	       (scroll-one-line ()
+		 ;; (no-hints tty)
+		 (scroll tty 1)
+		 (setf cursor-column 0 changed t))
+	       (delayed-scroll ()
+		 (when delay-scroll
+		   (setf delay-scroll nil)
+		   ;; Actually scroll when in the bottom right corner.
+		   (when (and (= cursor-row (1- window-rows))
+			      (= cursor-column (1- window-columns)))
+		     ;; (dbugf :crunch "Delayed scroll~%")
+		     (scroll-one-line))))
+	       (next-line ()
+		 (if (< cursor-row (1- window-rows))
+		     (progn
+		       (incf cursor-row)
+		       (setf cursor-column 0))
+		     (when t #| (allow-scrolling tty) @@@ |#
+		       (if (= cursor-column (1- window-columns))
+			   (progn
+			     ;; @@@ horrible
+			     ;; (dbugf :crunch "Delaying scroll @ ~d ~d~%" x y)
+			     (setf delay-scroll t))
+			   (progn
+			     ;; (dbugf :crunch "next-line scroll-one-line~%")
+			     (scroll-one-line)))))))
+	(case (char-char char)
+	  (#\newline
+	   (delayed-scroll)
+	   ;; (terminal-erase-to-eol tty)
+	   (setf cursor-column 0 changed t)
+	   (next-line))
+	  (#\return
+	   (setf cursor-column 0))
+	  (#\backspace
+	   (setf cursor-column (max 0 (1- cursor-column))))
+	  (#\tab
+	   (let ((new-x
+		  (+ cursor-column
+		     (- (1+ (logior 7 cursor-column)) cursor-column))))
+	     ;; @@@ should tabs actually wrap?
+	     (setf cursor-column (min new-x (1- window-columns)))))
+	  (t
+	   (delayed-scroll)
+	   (set-char (aref (aref lines cursor-row) cursor-column) char)
+	   ;; (when changed
+	   ;;   (note-single-line tty))
+	   (let* ((len (char-util:display-length char))
+		  (new-x (+ cursor-column len)))
+	     (if (< new-x window-columns)
+		 (progn
+		   (when (> len 1)
+		     ;; "Underchar removal"
+		     (unset-grid-char (aref (aref lines cursor-row)
+					    (1+ cursor-column))))
+		   (setf cursor-column new-x))
+		 (next-line)))
+	   )))
+      changed)))
+
+(defun copy-to-screen (tty string &key start end)
+  "Copy the STRING from START to END to the screen. Return true if we actually
+changed the screen contents."
+  (loop
+     :with changed
+     ;; :and str = (if (or (and start (not (zerop start))) end)
+     ;; 		      (if end
+     ;; 			  (displaced-subseq string (or start 0) end)
+     ;; 			  (displaced-subseq string start))
+     ;; 		      string)
+     ;; :with len = (or end (length string))
+     ;; :while (< i len)
+     :for c :in (char-util:graphemes
+		 (cond ;; @@@ What's better? this or splicing?
+		   ((and start end) (osubseq string start end))
+		   (start (osubseq string start))
+		   (end (osubseq string 0 end))
+		   (t string)))
+     :do
+     (when (copy-char tty (grapheme-to-grid-char c :tty tty))
+       (setf changed t))
+     ;;(incf i)
+     :finally (return changed)))
+
+#|
+(defun update-column-for-char (tty char)
+  (with-slots (cursor-column window-columns) tty
+    (cond
+      ((graphic-char-p char)
+       (incf cursor-column (char-util:display-length char))
+       (when (> cursor-column window-columns)
+	 (setf cursor-column 0))
+      (t
+       (case char
+	 (#\return
+	  (setf fake-column 0))
+	 (#\tab
+	  (incf fake-column (- (1+ (logior 7 fake-column)) fake-column)))
+	 (otherwise
+	  0 ;; some non-graphic control char?
+	  ))))))
+
+(defun update-column (tty thing &key start end)
+  (etypecase thing
+    (character (update-column-for-char tty thing))
+    (string
+     (loop
+	:with the-end = (or end (length thing))
+	:and the-start = (or start 0)
+	:for i :from the-start :below the-end
+	:do (update-column-for-char tty (char thing i))))))
+|#
+
+(defmethod terminal-format ((tty terminal-x11) fmt &rest args)
+  "Output a formatted string to the terminal."
+  (let ((string (apply #'format nil fmt args)))
+    (apply #'format tty fmt args)
+    (copy-to-screen tty string)
+    (when (and (line-buffered-p tty) (position #\newline string))
+      (finish-output tty))))
+
+(defmethod terminal-alternate-characters ((tty terminal-x11) state)
+  (declare (ignore tty state))
+  #|
+  (setf (translate-alternate-characters tty) state)
+  (when (and state (not *acs-table*))
+    (make-acs-table))
+  (if state
+      (terminal-escape-sequence tty "(0")
+      (terminal-escape-sequence tty "(B")
+      )
+  |#
+  )
+
+(defun %write-fat-string (tty str start end)
+  "Write a fat string STR to TTY from START to END. Return true if there was a
+newline in it."
+  (when (and (not (and (and start (zerop start)) (and end (zerop end))))
+	     (fat-string-string str))
+    (let ((fs (fat-string-string str))
+	  ;;(translate (translate-alternate-characters tty))
+	  had-newline #|replacement|#)
+      (loop
+	 :with i = (or start 0)
+	 :and our-end = (or end (length fs))
+	 :and c :and last-c
+	 :and unit-start = 0
+	 :while (< i our-end)
+	 :do
+	 (setf c (aref fs i))
+	 (with-slots ((cc fatchar::c)
+		      #| (line fatchar::line) |#
+		      ) c
+	   (when (and last-c (not (same-effects c last-c)))
+	     ;; (if (zerop line)
+	     ;; 	   (if (and translate
+	     ;; 		    (setf replacement (gethash cc *acs-table*)))
+	     ;; 	       (write-char replacement stream)
+	     ;; 	       (write-char cc stream))
+	     ;; 	   (write-char (line-char line) stream))
+	     (%terminal-write-unit
+	      tty (osubseq fs unit-start (1- i)) :reset nil)
+	     (setf unit-start i))
+	   (setf last-c c)
+	   (when (char= cc #\newline)
+	     (setf had-newline t))
+	   (copy-char tty cc))
+	 (incf i))
+      ;;(write-string +zero-effect+ stream)
+      had-newline)))
+
+(defun %write-string/line (tty str start end)
+  (when (not (and (and start (zerop start)) (and end (zerop end))))
+    (etypecase str
+      (string
+       (%terminal-write-unit tty (if (or start end)
+				     (subseq str start end)
+				     str)))
+      (fat-string
+       (apply #'%write-fat-string `(,tty ,str
+					 ,@(and start `(:start ,start))
+					 ,@(and end `(:end ,end))))))
+    (copy-to-screen tty str :start start :end end)))
+
+(defmethod terminal-write-string ((tty terminal-x11) str
+				  &key start end)
+  "Output a string to the terminal. Flush output if it contains a newline,
+i.e. the terminal is 'line buffered'."
+  (%write-string/line tty str start end)
+  (when (and (line-buffered-p tty)
+	     (apply #'position `(#\newline ,str
+					   ,@(and start `(:start ,start))
+					   ,@(and end `(:end ,end)))))
+    (display-finish-output (display tty))))
+
+(defmethod terminal-write-line ((tty terminal-x11) str
+				&key start end)
+  "Output a string to the terminal, followed by a newline."
+  (%write-string/line tty str start end)
+  (copy-to-screen tty #\newline)
+  (when (line-buffered-p tty)
+    (display-finish-output (display tty))))
+
+(defmethod terminal-write-char ((tty terminal-x11) char)
+  "Output a character to the terminal. Flush output if it is a newline,
+i.e. the terminal is 'line buffered'."
+  #|
+  (let ((stream (terminal-output-stream tty)))
+    (when (and (translate-alternate-characters tty)
+	       (characterp char))
+      (let ((replacement (gethash char *acs-table*)))
+	(when replacement
+	  (setf char replacement))))
+  |#
+  (copy-char tty char)
+  (when (and (line-buffered-p tty) (eql char #\newline))
+    (display-finish-output (display tty))))
+
+(defparameter *line-table-unicode*
+  `#(,#\space
+     ,(code-char #x2577) ;; #\box_drawings_light_down)                     ╷
+     ,(code-char #x2576) ;; #\box_drawings_light_right)                    ╶
+     ,(code-char #x250c) ;; #\box_drawings_light_down_and_right)           ┌
+     ,(code-char #x2575) ;; #\box_drawings_light_up)                       ╵
+     ,(code-char #x2502) ;; #\box_drawings_light_vertical)                 │
+     ,(code-char #x2514) ;; #\box_drawings_light_up_and_right)             └
+     ,(code-char #x251c) ;; #\box_drawings_light_vertical_and_right)       ├
+     ,(code-char #x2574) ;; #\box_drawings_light_left)                     ╴
+     ,(code-char #x2510) ;; #\box_drawings_light_down_and_left)            ┐
+     ,(code-char #x2500) ;; #\box_drawings_light_horizontal)               ─
+     ,(code-char #x252c) ;; #\box_drawings_light_down_and_horizontal)      ┬
+     ,(code-char #x2518) ;; #\box_drawings_light_up_and_left)              ┘
+     ,(code-char #x2524) ;; #\box_drawings_light_vertical_and_left)        ┤
+     ,(code-char #x2534) ;; #\box_drawings_light_up_and_horizontal)        ┴
+     ,(code-char #x253c) ;; #\box_drawings_light_vertical_and_horizontal)  ┼
+     )
+  "Line drawing characters from Unicode.")
+
+(defparameter *line-table-vt100*
+  `#(#\space ;;            0 - 0000 - blank
+     #\x     ;; VLINE      1 - 0001 - bottom
+     #\q     ;; HLINE      2 - 0010 - right
+     #\l     ;; ULCORNER   3 - 0011 - bottom + right
+     #\x     ;; VLINE      4 - 0100 - top
+     #\x     ;; VLINE      5 - 0101 - top + bottom
+     #\m     ;; LLCORNER   6 - 0110 - top + right
+     #\t     ;; LTEE       7 - 0111 - bottom + right + top
+     #\q     ;; HLINE      8 - 1000 - left
+     #\k     ;; URCORNER   9 - 1001 - left + bottom
+     #\q     ;; HLINE     10 - 1010 - left + right
+     #\w     ;; TTEE      11 - 1011 - left + right + bottom
+     #\j     ;; LRCORNER  12 - 1100 - left + top
+     #\t     ;; RTEE      13 - 1101 - left + top + bottom
+     #\v     ;; BTEE      14 - 1110 - left + top + right
+     #\n     ;; PLUS      15 - 1111 - left + top + right + bottom
+     ))
+
+(defparameter *line-table* *line-table-unicode* ;; *line-table-vt100*
+  "The table to use for looking up line drawing characters.")
+
+(defun line-char (line)
+  "Convert line bits into line drawing characters."
+  (aref *line-table* line))
+
+;; @@@ It's possible we might need to get depth out of out xlib:screen-depths
+(defstruct pixel-format
+  name
+  class
+  bits-per-rgb
+  red-mask
+  green-mask
+  blue-mask)
+
+(defparameter *pixel-formats*
+  `(,(make-pixel-format
+      :name :RGB8
+      :class :true-color
+      :bits-per-rgb 8
+      :red-mask   #xff0000
+      :green-mask #x00ff00
+      :blue-mask  #x0000ff)
+     ,(make-pixel-format
+       :name :RGB565
+       :class :true-color		; correct ?
+       :red-mask   #xf800
+       :green-mask #x07e0
+       :blue-mask  #x001f))
+  "List of known pixel formats.")
+
+(defun get-pixel-format (tty)
+  "Return the pixel format for TTY."
+  (loop :with v = (xlib:window-visual-info (window tty))
+     :for f :in *pixel-formats*
+     :do
+     (when (and
+	    (eq (pixel-format-class        f) (visual-info-class        v))
+	    (=  (pixel-format-bits-per-rgb f) (visual-info-bits-per-rgb v))
+	    (=  (pixel-format-red-mask     f) (visual-info-red-mask     v))
+	    (=  (pixel-format-green-mask   f) (visual-info-green-mask   v))
+	    (=  (pixel-format-blue-mask    f) (visual-info-blue-mask    v)))
+       (return (pixel-format-name f)))))
+
+(defun color-pixel (tty color)
+  "Return a pixel value for a color."
+  ;; In the olden days we might have to allocate a color, but takes a lot
+  ;; of work and server traffic, so we just assume we can make the color
+  ;; ourselves given the data in the visual.
+  (let ((c (color:convert-color-to color :rgb8)))
+    (with-slots (pixel-format) tty
+      (case pixel-format
+	(:rgb8
+	 (logior (ash (color:color-component c :red)   16)
+		 (ash (color:color-component c :green) 8)
+		      (color:color-component c :blue)))
+	(:rgb565
+	 ;; This is mostly just an example. I don't think it will happen,
+	 ;; unless you're using an ancient graphics card. It's more likely
+	 ;; someone will have to add 30, 36, or 48 bit color.
+	 (logior (logand (ash (ash (color:color-component c :red  ) -3) 11) #x1f)
+		 (logand (ash (ash (color:color-component c :green) -2) 5)  #x3f)
+		 (logand      (ash (color:color-component c :blue ) -3)     #x1f)))
+	(otherwise
+	 ;; This probably means someone should write a new case here.
+	 (error "Unknown pixel format."))))))
+
+;; This is a slightly more direct way to write a fatchar than with
+;; fatchar:render-fatchar.
+(defun %terminal-write-unit (tty unit &key reset)
+  "Output a fatchar to the terminal. Flush output if it is a newline,
+i.e. the terminal is 'line buffered'."
+  (declare (ignore reset)) ;; @@@
+  (with-slots (display window rendition draw-gc font bold-font italic-font
+	       cell-width cell-height cursor-column cursor-row) tty
+    (let ((style (or (typecase unit
+		       (fatchar unit)
+		       (fat-string (oelt unit 0)) ;; assuming len > 1
+		       ((or character string)
+			rendition))))
+	  (plain-unit (osimplify unit)))
+      (with-slots ((cc fatchar::c)
+		   (fg fatchar::fg)
+		   (bg fatchar::bg)
+		   (line fatchar::line)
+		   (attrs fatchar::attrs)) style
+	;; We still do this dumb replacing, just in case.
+	;; (when (and (translate-alternate-characters tty)
+	;; 		 (characterp cc))
+	;; 	(let ((replacement (gethash cc *acs-table*)))
+	;; 	  (when replacement
+	;; 	    (setf cc replacement))))
+	(cond
+	  ((not (or fg bg attrs))
+	   ;; No effects
+	   (draw-unit tty unit))
+	  ((and (or fg bg) (not attrs))
+	   ;; Only colors
+	   (%terminal-color tty fg bg)
+	   (draw-unit tty plain-unit))
+	  (t ;; Attrs and maybe colors too
+	   (let (bold faint dim italic underline blink inverse reverse standout
+		 invisible crossed-out double-underline inverted dimmed
+		 (use-font font))
+	     (loop :for a :in attrs :do
+		(case a
+		  (:bold             (setf bold t))
+		  (:faint            (setf faint t))
+		  (:dim              (setf dim t))
+		  (:italic           (setf italic t))
+		  (:underline        (setf underline t))
+		  (:blink            (setf blink t))
+		  (:inverse          (setf inverse t))
+		  (:reverse          (setf reverse t))
+		  (:standout         (setf standout t))
+		  (:invisible        (setf invisible t))
+		  (:crossed-out      (setf crossed-out t))
+		  (:double-underline (setf double-underline t))))
+	     (setf inverted (or inverse reverse standout)
+		   dimmed (or faint dim))
+	     (cond
+	       ((or (and bold (not bold-font))
+		    dimmed inverted)
+		;; color change
+		(when dim ;; lower value
+		  )
+		(when faint ;; even lower value
+		  )
+		(when inverted ;; switch fg & bg
+		  (rotatef fg bg))
+		(when (and bold (not bold-font))
+		  ;; use bold color or increase value
+		  )
+		(%terminal-color tty fg bg))
+	       ((and italic italic-font)
+		(setf use-font italic-font))
+	       ((and bold bold-font)
+		(setf use-font bold-font)))
+	     (when (not invisible)
+	       (draw-unit tty plain-unit))
+	     (when (or underline crossed-out double-underline)
+	       (let* ((start-x (* cursor-column cell-width))
+		      (start-y (+ (* cursor-row cell-height) (font-ascent font)))
+		      (end-x (+ start-x (* cell-width
+					   (char-util:display-length unit))))
+		      (half-y (- start-y (truncate (font-ascent font) 2))))
+		 (when (or underline double-underline)
+		   (draw-line window draw-gc start-x start-y end-x start-y))
+		 (when crossed-out
+		   (draw-line window draw-gc start-x half-y end-x half-y))
+		 (when double-underline
+		   (draw-line window draw-gc
+			      start-x (+ start-y 2) end-x (+ start-y 2)))))
+	     ;; (if (zerop line)
+	     ;;     (write-char cc stream)
+	     ;;     (write-char (line-char line) stream))
+	     (copy-char tty cc)
+	     (when (and (line-buffered-p tty) (eql cc #\newline))
+	       (display-finish-output display)))))))))
+
+(defmethod terminal-write-char ((tty terminal-x11) (char fatchar))
+  (%terminal-write-unit tty char :reset t))
+
+(defun char-at (tty row column)
+  "Return the character at the ROW and COLUMN"
+  (with-slots (lines) tty
+    (aref (aref lines row) column)))
+
+(defun draw-cursor (tty)
+  "Draw the cursor."
+  (with-slots (cursor-gc draw-gc cursor-row cursor-column cursor-state) tty
+    ;; (format t "cursor char = ~s ~a~%" (char-at tty cursor-row cursor-column)
+    ;; 	    (type-of (char-at tty cursor-row cursor-column)))
+    (draw-unit tty (osimplify (char-at tty cursor-row cursor-column))
+	       :gc (if (eq cursor-state :visible)
+		       cursor-gc draw-gc))))
+
+(defmethod terminal-write-string ((tty terminal-x11) (str fat-string)
+				  &key start end)
+  "Output a string to the terminal. Flush output if it contains a newline,
+i.e. the terminal is 'line buffered'."
+  (when (and (%write-fat-string tty str start end) (line-buffered-p tty))
+    ;; (finish-output (terminal-output-stream tty))
+    (display-finish-output (display tty))
+    ))
+
+(defmethod terminal-write-line ((tty terminal-x11) (str fat-string)
+				&key start end)
+  "Output a string to the terminal, followed by a newline."
+  (%write-fat-string tty str start end)
+  ;; (write-char #\newline (terminal-output-stream tty))
+  (copy-char tty #\newline)
+  (when (line-buffered-p tty)
+    ;; (finish-output (terminal-output-stream tty))
+    (display-finish-output (display tty))
+    ))
+
+(defmethod terminal-newline ((tty terminal-x11))
+  (terminal-write-char tty #\newline))
+
+(defmethod terminal-fresh-line ((tty terminal-x11))
+  (when (not (zerop (cursor-column tty)))
+    (terminal-write-char tty #\newline)
+    t))
+
+(defmethod terminal-move-to ((tty terminal-x11) row col)
+  (setf (cursor-row tty) row
+	(cursor-column tty) col)
+  (draw-cursor tty))
+
+(defmethod terminal-move-to-col ((tty terminal-x11) col)
+  (setf (cursor-column tty) col)
+  (draw-cursor tty))
+
+(defmethod terminal-beginning-of-line ((tty terminal-x11))
+  (setf (cursor-column tty) 0)
+  (draw-cursor tty))
+
+(defun clear-text (tty start-x start-y end-x end-y)
+  "Clear an area of text, with coordinate in character cells."
+  (with-slots (window font cell-width cell-height) tty
+    (clear-area window
+		:x (* start-x cell-width)
+		:y (+ (* start-y cell-width) (font-ascent font))
+		:width (* end-x cell-width)
+		:height (+ (* end-y cell-height) (font-ascent font)))))
+
+(defun redraw-area (tty start-x start-y end-x end-y)
+  "Redraw a rectangular area."
+  (with-slots (lines cell-width cell-height
+	       (window-rows terminal::window-rows)
+	       (window-columns terminal::window-columns)) tty
+    (loop
+       :with c-start-x = (round start-x cell-width)
+       :and  c-start-y = (round start-y cell-height)
+       :and  c-end-x = (round end-x cell-width)
+       :and  c-end-y = (round end-y cell-height)
+       :for y :from c-start-y :to (clamp c-end-y 0 (1- window-rows)) :do
+       (%write-fat-string
+	tty (grid-to-fat-string (aref lines y)
+				:start c-start-x
+				:end (clamp c-end-x 0 (1- window-columns)))
+	c-start-x (clamp c-end-x 0 (1- window-columns))))))
+
+(defmethod terminal-delete-char ((tty terminal-x11) n)
+  (with-slots (lines cursor-row cursor-column) tty
+    (let* ((line (aref lines cursor-row))
+	   (line-len (length line)))
+      (setf (osubseq line cursor-column (- line-len (+ n 2)))
+	    (osubseq line (+ cursor-column 1 n) (1- line-len)))
+      (%terminal-write-unit
+       tty (grid-to-fat-string
+	    (osubseq line cursor-column (- line-len (+ n 2)))))
+      (clear-text tty cursor-column cursor-row
+		      (- line-len n 1) cursor-row))))
+
+(defmethod terminal-insert-char ((tty terminal-x11) n)
+  (with-slots (lines cursor-row cursor-column) tty
+    (let* ((line (aref lines cursor-row))
+	   (line-len (length line)))
+      (setf (osubseq line (+ cursor-column n) (- line-len 1))
+	    (osubseq line cursor-column (- line-len (+ n 2))))
+      (%terminal-write-unit
+       tty (grid-to-fat-string
+	    (osubseq line (+ cursor-column n) (- line-len 1))))
+      (clear-text tty cursor-column cursor-row
+		      (+ cursor-column n) cursor-row))))
+
+(defmethod terminal-backward ((tty terminal-x11) &optional (n 1))
+  (decf (cursor-column tty) n))
+
+(defmethod terminal-forward ((tty terminal-x11) &optional (n 1))
+  (incf (cursor-column tty) n))
+
+(defmethod terminal-up ((tty terminal-x11) &optional (n 1))
+  (decf (cursor-row tty) n))
+
+(defmethod terminal-down ((tty terminal-x11) &optional (n 1))
+  (incf (cursor-row tty) n))
+
+(defmethod terminal-scroll-down ((tty terminal-x11) n)
+  (declare (ignore tty n))
+  #|
+  @@@@@@@@@
+  @@@@@@@@@
+  @@@@@@@@@
+  (when (> n 0)
+    (loop :with stream = (terminal-output-stream tty) :and i = 0
+       :while (< i n)
+       :do (write-char #\newline stream) (incf i)
+       :finally (when (line-buffered-p tty) (finish-output stream))))
+  |#
+  )
+
+(defmethod terminal-scroll-up ((tty terminal-x11) n)
+  (declare (ignore tty n))
+  #|
+  @@@@@@@@@
+  @@@@@@@@@
+  @@@@@@@@@
+  (when (> n 0)
+    (loop :with stream = (terminal-output-stream tty) :and i = 0
+       :while (< i n)
+       :do (terminal-raw-format tty "~cM" #\escape)
+       (incf i)
+       :finally (when (line-buffered-p tty) (finish-output stream))))
+  |#
+  )
+
+(defmethod terminal-erase-to-eol ((tty terminal-x11))
+  (with-slots (cursor-column cursor-row
+               (window-columns terminal::window-columns)) tty
+    (clear-text tty cursor-column cursor-row
+		(1- window-columns) cursor-row)))
+
+(defmethod terminal-erase-line ((tty terminal-x11))
+  (with-slots (cursor-column cursor-row
+               (window-columns terminal::window-columns)) tty
+    (clear-text tty 0 cursor-row (1- window-columns) cursor-row)))
+
+(defmethod terminal-erase-above ((tty terminal-x11))
+  (with-slots (cursor-column cursor-row
+               (window-columns terminal::window-columns)) tty
+    (clear-text tty 0 cursor-row (1- cursor-column) cursor-row)
+    (clear-text tty 0 0 (1- window-columns) (1- cursor-row))))
+
+(defmethod terminal-erase-below ((tty terminal-x11))
+  (with-slots (cursor-column cursor-row 
+               (window-columns terminal::window-columns)
+               (window-rows terminal::window-rows)) tty
+    (terminal-erase-to-eol tty)
+    (clear-text tty 0 (1+ cursor-row)
+		(1- window-columns) (1- window-rows))))
+
+(defmethod terminal-clear ((tty terminal-x11))
+  (with-slots (cursor-column cursor-row
+	       (window-columns terminal::window-columns)
+	       (window-rows terminal::window-rows)) tty
+    (clear-text tty 0 0 (1- window-columns) (1- window-rows))))
+
+(defmethod terminal-home ((tty terminal-x11))
+  (setf (cursor-column tty) 0
+	(cursor-row tty) 0))
+
+(defmethod terminal-cursor-off ((tty terminal-x11))
+  (setf (cursor-state tty) :invisible)
+  (draw-cursor tty))
+
+(defmethod terminal-cursor-on ((tty terminal-x11))
+  (setf (cursor-state tty) :visible)
+  (draw-cursor tty))
+
+(defun set-attr (tty attr state)
+  "Set the attribute in the rendition on or off according to STATE."
+  (if state
+      (pushnew attr (fatchar-attrs (rendition tty)))
+      (setf (fatchar-attrs (rendition tty))
+	    (delete attr (fatchar-attrs (rendition tty))))))
+
+(defmethod terminal-standout ((tty terminal-x11) state)
+  (set-attr tty :standout state))
+
+(defmethod terminal-normal ((tty terminal-x11))
+  (setf (fatchar-attrs (rendition tty)) '()))
+
+(defmethod terminal-underline ((tty terminal-x11) state)
+  (set-attr tty :underline state))
+
+(defmethod terminal-bold ((tty terminal-x11) state)
+  (set-attr tty :bold state))
+
+(defmethod terminal-inverse ((tty terminal-x11) state)
+  (set-attr tty :inverse state))
+
+(defparameter *colors*
+  #(:black :red :green :yellow :blue :magenta :cyan :white nil :default))
+
+(defun foreground-color (tty)
+  "Get the default foreground color for text."
+  (foreground tty))
+
+(defun background-color (tty)
+  "Get the default background color for text."
+  (background tty))
+
+(defun set-foreground-color (tty color)
+  "Set the default forground color for text."
+  (when (not (color:known-color-p color))
+    (error "Unknown color ~s." color))
+  (setf (foreground tty) (color:lookup-color color)))
+
+(defun set-background-color (tty color)
+  "Set the default background color for the terminal."
+  (when (not (color:known-color-p color))
+    (error "Unknown color ~s." color))
+  (setf (background tty) (color:lookup-color color)))
+
+(defun %terminal-color (tty fg bg)
+  (with-slots (draw-gc) tty
+    (let ((fg-pos (and (keywordp fg) (position fg *colors*)))
+	  (bg-pos (and (keywordp bg) (position bg *colors*))))
+      (when (and (keywordp fg) (not fg-pos))
+	(error "Forground ~a is not a known color." fg))
+      (when (and (keywordp bg) (not bg-pos))
+	(error "Background ~a is not a known color." bg))
+      (when (color:structured-color-p fg)
+	(setf (gcontext-foreground draw-gc) (color-pixel tty fg)))
+      (when (color:structured-color-p bg)
+	(setf (gcontext-background draw-gc) (color-pixel tty bg)))
+      (when fg-pos
+	(setf (gcontext-foreground draw-gc)
+	      (color-pixel tty (color:lookup-color
+				(case fg
+				  ((nil) (foreground tty))
+				  (:default (foreground tty))
+				  (t fg))))))
+      (when bg-pos
+	(setf (gcontext-background draw-gc)
+	      (color-pixel tty (color:lookup-color
+				(case bg
+				  ((nil) (background tty))
+				  (:default (background tty))
+				  (t bg)))))))))
+
+(defmethod terminal-color ((tty terminal-x11) fg bg)
+  (%terminal-color tty fg bg))
+
+(defmethod terminal-colors ((tty terminal-x11))
+  (cond
+    ((let ((fc (nos:env "FORCE_COLOR")))
+       (or (equal fc "0")
+	   (string-equal fc "false")))
+     0)
+    (t ;; Assume the most, because so what.
+     ;; (* 256 256 256)
+     (with-slots (window) tty
+       (drawable-depth window)))))
+
+(defmethod terminal-beep ((tty terminal-x11))
+  (with-slots (display) tty
+    (bell display)))
+
+(defmethod terminal-set-scrolling-region ((tty terminal-x11) start end)
+  (with-slots (scrolling-region) tty
+    (if (and (not start) (not end))
+	(setf scrolling-region nil)
+	(if (or (< start 0) (> end (terminal-window-rows tty)))
+	    (cerror "Just try it anyway."
+		    "The scrolling region doesn't fit in the screen.")
+	    (setf scrolling-region (cons start end))))))
+
+(defmethod terminal-set-attributes ((tty terminal-x11) attributes)
+  "Set the attributes given in the list. If NIL turn off all attributes.
+Attributes are usually keywords."
+  (with-slots (rendition) tty
+    (etypecase attributes
+      (list
+       (let ((ng (find-if (_ (not (member _  *attributes*))) attributes)))
+	 (when ng
+	   (warn "Unsupported attribute ~a" ng))
+	 (setf (fatchar-attrs rendition) (remove-duplicates attributes))))
+       (keyword
+	(when (not (member attributes *attributes*))
+	  (warn "Unsupported attribute ~a" attributes))
+	(setf (fatchar-attrs rendition) (list attributes))))))
+
+(defmethod terminal-finish-output ((tty terminal-x11))
+  (display-finish-output (display tty)))
+
+(defun get-key (tty &key timeout)
+  (with-slots (display (our-window window) window-width window-height
+	       cell-width cell-height pushback) tty
+    (when pushback
+      (return-from get-key
+	(pop pushback)))
+
+    ;; If the timeout has already elapsed, don't use
+    (let ((start-time (get-dtime))
+	  (real-timeout (and timeout (make-dtime-as timeout :ms)))
+	  time-left result)
+      (loop :do
+	 (event-case (display :force-output-p t
+			      :timeout (and timeout
+					    time-left
+					    (dtime-plusp time-left)
+					    (dtime-to time-left :seconds)))
+	   ;; (:client-message ()
+	   ;;   t)
+	   (:button-press (code x y state)
+	      (let ((cx (round x cell-width))
+		    (cy (round y cell-height)))
+		(setf result
+		      (make-instance 'tt-mouse-button-event
+				     :terminal tty
+				     :x cx :y cy :button code
+				     :modifiers state)))
+	      t)
+	   (:button-release (code x y state)
+	      (let ((cx (round x cell-width))
+		    (cy (round y cell-height)))
+		(setf result
+		      (make-instance 'tt-mouse-button-event
+				     :terminal tty
+				     :x cx :y cy
+				     :button (list code :release)
+				     :modifiers state)))
+	      t)
+	   (:exposure (x y width height window #|count|#)
+	      (when (eq xlib:window our-window)
+	        (redraw-area tty x y width height))
+	      nil)
+	   (:configure-notify (#| x y |# xlib:window xlib::width xlib::height)
+	     (when (eq xlib:window our-window)
+	       (when (or (locally (declare (optimize (speed 0)))
+			   (/= xlib::width window-width)
+			   (/= xlib::height window-height)))
+		 (setf window-width xlib::width window-height xlib::height)
+		 (set-grid-size-from-pixel-size tty window-width window-height)
+		 (resize-grid tty)
+		 ;;(clear-area win :x x :y y :width w :height h)
+		 ;;(display-finish-output display)
+		 (locally (declare (optimize (speed 0)))
+		   (when (find :resize (terminal-events-enabled tty))
+		     (setf result :resize)))))
+	     nil)
+	   (:key-press (code state)
+	     (let* ((sym (keycode->keysym display code 0))
+		    (chr (keysym->character display sym state)))
+	       ;;; @@@@ keys! utf8 ?!
+	       (setf result chr))))
+	 (when timeout
+	   (setf time-left (dtime- (dtime+ start-time real-timeout)
+				   (get-dtime))))
+	 :while (and (not result)
+		     (or (not timeout) (dtime-plusp time-left))))
+      result)))
+
+(defmethod terminal-get-char ((tty terminal-x11))
+  "Read a character from the terminal."
+  (terminal-finish-output tty)
+  (get-key tty))
+
+(defmethod terminal-get-key ((tty terminal-x11))
+  (terminal-finish-output tty)
+  (get-key tty))
+
+(defmethod terminal-listen-for ((tty terminal-x11) seconds)
+  (event-listen (display tty) seconds))
+
+(defmethod terminal-input-mode ((tty terminal-x11))
+  (input-mode tty))
+
+(defmethod (setf terminal-input-mode) (mode (tty terminal-x11))
+  (when (not (member mode '(:line :char)))
+    (error "Unknown terminal input mode ~s" mode))
+  (setf (input-mode tty) mode))
+
+(defmethod terminal-reset ((tty terminal-x11))
+  "Try to reset the terminal to a sane state, without being too disruptive."
+  (setf (rendition tty) (make-fatchar :fg (foreground tty) :bg (background tty))
+	(cursor-rendition tty) (make-fatchar
+				;; Maybe faster then :inverse ?
+				:fg (background tty) :bg (foreground tty))
+	(cursor-row tty) 0
+	(cursor-column tty) 0
+	(saved-cursor-position tty) nil
+	(cursor-state tty) :visible
+	(scrolling-region tty) nil
+	(input-mode tty) :char
+	(delay-scroll tty) nil)
+  (terminal-finish-output tty))
+
+(defmethod terminal-save-cursor ((tty terminal-x11))
+  "Save the cursor position."
+  (setf (saved-cursor-position tty) (cons (cursor-column tty)
+					  (cursor-row tty))))
+
+(defmethod terminal-restore-cursor ((tty terminal-x11))
+  "Restore the cursor position, from the last saved postion."
+  (with-slots (saved-cursor-position cursor-column cursor-row) tty
+    (when saved-cursor-position
+      (setf cursor-column (car saved-cursor-position)
+	    cursor-row (cdr saved-cursor-position)))))
+
+#|
+(defun describe-terminal ()
+  "Interrogate the terminal properties and report the results."
+  (let (a props)
+    (push `("Cursor position" ,(format nil "~a ~a" cursor-column cursor-row))
+	  props)
+    ;; Window state
+    (setf a (query-parameters "11t" :offset 2))
+    (push `("Window state"
+	    ,(if (zerop (length a))
+		 "Unavailable"
+		 (case (first a)
+		   (1 "Open")
+		   (2 "Iconified")
+		   (t "Unknown"))))
+	  props)
+    ;; Window position
+    (setf a (query-parameters "13t" :offset 2))
+    (push `("Window position"
+	    ,(if (zerop (length a))
+		 "Unavailable"
+		 (format nil "~a ~a" (second a) (third a))))
+	  props)
+    ;; Window size
+    (setf a (query-parameters "14t" :offset 2))
+    (push `("Window size"
+	    ,(if (zerop (length a))
+		 "Unavailable"
+		 (format nil "~a ~a" (second a) (third a))))
+	  props)
+    ;; Text size
+    (setf a (query-parameters "18t" :offset 2))
+    (push `("Text size"
+	    ,(if (zerop (length a))
+		 "Unavailable"
+		 (format nil "~a ~a" (second a) (third a))))
+	  props)
+    ;; Text screen size
+    (push `("Text screen size"
+	    ,(if (zerop (length a))
+		 "Unavailable"
+		 (format nil "~a ~a" window-columns window-rows)))
+	  props)
+    ;; Icon label
+    (setf a (wm-icon-name window))
+    (push `("Icon label"
+	    ,(if (zerop (length a))
+		 "Unavailable"
+		 a))
+	  props)
+    ;; Title
+    (setf a (wm-name window))
+    (push `("Title"
+	    ,(if (zerop (length a))
+		 "Unavailable"
+		 a))
+	  props)
+    ;;
+    (setf props (nreverse props))
+    (print-properties props)))
+|#
+
+#| I think there no reason to do this
+
+(defgeneric set-bracketed-paste-mode (tty &optional state)
+  (:documentation "Set bracketed paste mode to STATE.")
+  (:method ((tty terminal-x11) &optional (state t))
+    (terminal-raw-format tty "~a?2004~c" +csi+ (if state #\h #\l))))
+
+(defvar *bracketed-read-timeout* 4
+  "Maximum time in seconds before bailing out of reading one buffer full of a
+bracketed read.")
+
+(defgeneric read-bracketed-paste (tty)
+  (:documentation "Read a bracketed paste and return it as a string.")
+  (:method ((tty terminal-x11))
+    (let ((end-string (s+ +csi+ "201~"))
+	  ;; (buf (make-string *buffer-size*))
+	  (fd (terminal-file-descriptor tty)))
+      (with-output-to-string (str)
+	(with-raw (fd)
+	  (loop :with done :and i = 0 :and len = (length end-string) :and s
+	     :while (not done)
+	     :if (listen-for *bracketed-read-timeout* fd) :do
+	     (with-interrupts-handled (tty)
+	       (setf s (read-until fd (char end-string i)
+				   ;; :timeout (* *bracketed-read-timeout* 10)
+				   :timeout *bracketed-read-timeout*
+				   :octets-p t)))
+	     ;; (dbugf :bp "got dingus ~s ~s~%length ~s~%fill-pointer ~s"
+	     ;; 	    s (type-of s) (length s)
+	     ;; 	    (when s (fill-pointer s))
+	     ;; 	    )
+	     (if s
+		 (progn
+		   ;; (princ s str)
+		   (let ((uu (char-util:utf8-bytes-to-string s)))
+		     ;; (dbugf :bp "why? ~s ~s~%" uu (type-of uu))
+		     (princ uu str))
+		   (setf i 1))
+		 (progn
+		   (incf i)))
+	     (when (= i len)
+	       (setf done t))
+	     :else :do
+	     (cerror "Return what we got so far."
+		     "Bracketed paste timed out.")
+	     (setf done t)))))))
+
+|#
+
+(defparameter *selection-codes*
+  #((:clipboard    . #\c)
+    (:primary      . #\p)
+    (:select       . #\s)
+    (:cut-buffer-0 . #\0)
+    (:cut-buffer-1 . #\1)
+    (:cut-buffer-2 . #\2)
+    (:cut-buffer-3 . #\3)
+    (:cut-buffer-4 . #\4)
+    (:cut-buffer-5 . #\5)
+    (:cut-buffer-6 . #\6)
+    (:cut-buffer-7 . #\7))
+  "Selection type codes.")
+
+(defun selection-type-code (type)
+  "Return the terminal selection type code given a the keyword TYPE. If TYPE is
+already a character or string just return it."
+  (etypecase type
+    (string type)
+    (character (cdr (find type *selection-codes* :key #'cdr)))
+    (symbol (cdr (find type *selection-codes* :key #'car)))))
+
+#| This is way too complicated for me to do now.
+   Have to implement the whole complicated selection event processing in
+   ~/doc/software/icccm.pdf
+
+;; the configurable primary/clipboard selection and cut buffer 0
+(defun selection (&key (type "s0") (tty *terminal*))
+  "Return the selection of TYPE, which defaults to the :select or :cut-buffer-0.
+Otherwise TYPE should be one of :clipboard :primary :select or :cut-buffer-<N>, 
+wheren <N> is a number 1-7."
+  (let* ((type-code (selection-type-code type))
+	 result)
+    (when (not type-code)
+      (error "Unknown selection type ~s" type))
+    (setf result (query-string (s+ "52;" type-code ";?" #\bel)
+			       :lead-in +osc+ :ending 1
+			       :tty (terminal-file-descriptor tty)))
+    (when result
+      (cl-base64:base64-string-to-string
+       (remove-prefix result (s+ "2;" type-code ";"))))))
+
+(defun set-selection (selection &key (type "s0"))
+  "Set the selection to the string SELECTION. TYPE should be one of :clipboard,
+:primary, :select, or :cut-buffer-<N>, wheren <N> is a number 1-7.
+TYPE  defaults to :select or :cut-buffer-0."
+  (tt-format "~a52;~a;~a~a" +osc+
+	     (selection-type-code type)
+	     (cl-base64:string-to-base64-string selection)
+	     +st+)
+  selection)
+
+(defsetf selection (&rest keys &key type) (val)
+  "Set the selection of TYPE, which defaults to the :select or :cut-buffer-0.
+Otherwise TYPE should be one of :clipboard :primary :select or :cut-buffer-<N>, 
+wheren <N> is a number 1-7."
+  (declare (ignorable type))
+  `(apply #'set-selection (list ,val ,@keys)))
+
+(defun set-utf8-title-mode (tty state)
+  (terminal-raw-format tty "~c[>2;3~c" #\escape (if state #\t #\T))
+  (terminal-finish-output tty))
+
+|#
+
+(defun set-title (tty title &optional (which :window))
+  "Set the window title of TTY to TITLE. WHICH should be one of :window, :icon,
+or :both. WHICH defaults to :window."
+  (with-slots (window) tty
+    (case which
+      (:window
+       (xlib:set-wm-properties window :name title))
+      (:icon
+       (xlib:set-wm-properties window :icon-name title))
+      (:both
+       (xlib:set-wm-properties window :name title :icon-name title)))
+    (terminal-finish-output tty)))
+
+(defun get-title (tty &optional (which :window))
+  "Return the window title of TTY. WHICH should be one of :window, :icon,
+or :both. WHICH defaults to :window"
+  (with-slots (window) tty
+    (ecase which
+      (:icon
+       (map 'string #'code-char (xlib:get-property window :wm_icon_name)))
+      (otherwise #| :window |#
+       (map 'string #'code-char (or
+				 (xlib:get-property window :_net_wm_name)
+				 (xlib:get-property window :wm_name)))))))
+
+(defmethod terminal-title ((tty terminal-x11))
+  "Return the window title."
+  (get-title tty))
+
+(defmethod (setf terminal-title) (title (tty terminal-x11))
+  "Set the title of a terminal window. The terminal is assumed to work like
+XTerm or something."
+  (set-title tty title))
+
+(defmethod terminal-has-attribute ((tty terminal-x11) attribute)
+  "Return true if the terminal can display the character attribute."
+  ;; (case attribute
+  ;;   ;; @@@ Consider what else we might want to support.
+  ;;   ((:standout :underline :bold :inverse :color) t)))
+  (and (find attribute *attributes*) t))
+
+(defmethod terminal-has-autowrap-delay ((tty terminal-x11))
+  "Return true if the terminal delays automatic wrapping at the end of a line."
+  nil ;; @@@ what do I want?
+  )
+
+;; @@@ I think this is a misfeature. Should I even include it?
+#|
+(defun text-link (text to &optional (params ""))
+  "Make a “hyperlink” linking TEXT to TO. TO should probably be a URI.
+According to iTerm2, params can be \"id=something\", to make adjacent
+links highlight differently?"
+  (tt-format "~a8;~a;~a~c~a~c]8;;~c"
+	     +osc+ params to #\bel text #\esc #\bel))
+|#
+
+;; Konsole and maybe VTE cursor shape ? : @@@ need to verify
+;;    #\esc #\[ p #\q
+;;              0  reset to default
+;;              1  block blink
+;;              2  block no-blink
+;;              3  underline blink
+;;              4  underline no-blink
+;;              5  ibeam blink
+;;              6  ibeam no-blink
+
+;; @@@ These probably shouldn't be in here as they're specific to iTerm2. But I
+;; don't care enough to make a terminal-iterm2 currently.
+
+#|
+(defun set-cursor-shape (shape)
+  (setf shape (etypecase shape
+		(integer
+		 (when (not (<= 0 shape 2))
+		   (error "Unknown cursor shape number ~d." shape)))
+		(symbol
+		 (case shape
+		   (:block 0)
+		   (:vertical-bar 1)
+		   (:underline 2)))))
+  (tt-format "~a1337;CursorShape=~d~c" +osc+ shape #\bel))
+
+(defun notification-message (message)
+  "Display some kind of out-of-band notification."
+  (tt-format "~a9;~a~c" +osc+ message #\bel))
+
+(defun change-profile (profile-name)
+  "Change the terminal's profile."
+  (tt-format "~a1337;SetProfile=~s~c" +osc+ profile-name #\bel))
+
+(defun copy-to-clipboard (text &key clipboard-name)
+  "Copy to TEXT to the clipboard"
+  (let ((name
+	 (etypecase clipboard-name
+	   (null "") ;; general pasteboard
+	   ((or string symbol)
+	    (or (and (stringp clipboard-name)
+		     (zerop (length clipboard-name)))
+		(case (keywordify clipboard-name)
+		  (:rule "rule")
+		  (:find "find")
+		  (:font "font")
+		  (otherwise
+		   (error "Unknown clipboard name ~s." clipboard-name))))))))
+    (tt-format "~a1337;CopyToClipboard=~a~c~a~a1377;EndCopy~c"
+	       +osc+ name #\bel text +osc+ #\bel)))
+|#
+
+(defun set-mouse-event (tty event state)
+  (with-slots (window) tty
+    ;; @@@ But actually we probably don't want to really change the
+    ;; window event masks, only change what we report from tt-get-key
+    (case event
+      (:mouse-buttons
+       (setf (window-event-mask window)
+	     (if state
+		 (logior (window-event-mask window)
+			 (make-event-mask :button-press :button-release))
+		 (logand (window-event-mask window)
+			 (lognot
+			  (make-event-mask :button-press :button-release))))))
+      (:mouse-motion
+       (setf (window-event-mask window)
+	     (if state
+		 (logior (window-event-mask window)
+			 (make-event-mask :pointer-motion))
+		 (logand (window-event-mask window)
+			 (lognot (make-event-mask :pointer-motion)))))))))
+
+(defmethod terminal-enable-event ((tty terminal-x11) event)
+  "Enable event and return true if the terminal can enable event."
+  (let (result)
+    (when (member event '(:resize :mouse-buttons :mouse-motion))
+      (pushnew event (terminal-events-enabled tty))
+      (setf result t))
+    (case event
+      (:mouse-buttons (set-mouse-event tty :mouse-buttons t))
+      (:mouse-motion (set-mouse-event tty :mouse-motion t)))
+    result))
+
+(defmethod terminal-disable-event ((tty terminal-x11) event)
+  "Enable event and return true if the terminal can disable event."
+  (let (result)
+    (when (member event '(:resize :mouse-buttons :mouse-motion))
+       (setf (terminal-events-enabled tty)
+	     (remove event (terminal-events-enabled tty)))
+      (setf result t))
+    (case event
+      (:mouse-buttons (set-mouse-event tty :mouse-buttons nil))
+      (:mouse-motion (set-mouse-event tty :mouse-motion nil)))
+    result))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; stream methods
+
+;; common methods
+
+(defmethod-quiet close ((stream terminal-x11) &key abort)
+  (declare (ignore abort))
+  (terminal-done stream))
+
+;; output stream methods
+
+(defmethod stream-clear-output ((stream terminal-x11))
+  ;; (clear-output (terminal-output-stream stream))
+  ;; @@@ I don't know if we can really do this without creating our
+  ;; own complex buffer structure which encodes every tt-* output change.
+  ;; But also, I don't know if it matters.
+  (setf (pushback stream) nil)) ;; At least we can do that.
+
+(defmethod stream-finish-output ((stream terminal-x11))
+  (terminal-finish-output stream))
+
+(defmethod stream-force-output ((stream terminal-x11))
+  (terminal-finish-output stream)
+  (display-force-output (display stream)))
+
+(defmethod stream-write-sequence ((stream terminal-x11) seq start end
+				  &key &allow-other-keys)
+  (etypecase seq
+    (string
+     (terminal-write-string stream seq :start start :end end))
+    (list
+     (with-slots (output-stream) stream
+       (loop :with i = 0 :and l = seq
+	  :while (and l (< i end))
+	  :do
+	    (when (>= i start)
+	      (terminal-write-char output-stream (car l)))
+	    (setf l (cdr l))
+	    (incf i))))))
+
+;; character output stream methods
+
+(defmethod stream-line-column ((stream terminal-x11))
+  (cursor-column stream))
+
+(defmethod stream-start-line-p ((stream terminal-x11))
+  (zerop (stream-line-column stream)))
+
+(defmethod stream-advance-to-column ((stream terminal-x11) column)
+  (with-slots (cursor-column cursor-row) stream
+    ;; :-D This is so magically easy, it must be right.
+    (when (> column cursor-column)
+      (clear-text stream cursor-column cursor-row column cursor-row)
+      (setf cursor-column column)))
+  t)
+
+;;(defmethod stream-fresh-line ((stream terminal-x11-stream))
+
+;; #+sbcl (defmethod sb-gray:stream-line-length ((stream terminal-x11-stream))
+;;   )
+
+(defmethod stream-write-char ((stream terminal-x11) char
+			     #| &optional start end |#)
+  (terminal-write-char stream char))
+
+(defmethod stream-write-string ((stream terminal-x11) string
+			       &optional start end)
+  (terminal-write-string stream string :start start :end end))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; stream methods for terminal-x11, which is also an input stream.
+
+(defmethod stream-clear-input ((stream terminal-x11))
+  (declare (ignore stream))
+  #|(with-slots (display) stream
+    ;; we want to
+    ;; (discard-current-event display)
+    ;; if it's an input event
+    ;; otherwise process events normally
+    ;; until the input queue is empty
+    ;;
+    ;; (loop :while (not (zerop (event-listen display)))
+    ;;    :do
+    ;;    (event-case (display :discard-p t :force-output-p t)
+    ;;      (:button-
+  ) |#
+  )
+
+(defmethod stream-read-sequence ((stream terminal-x11) seq start end
+				 &key &allow-other-keys
+					#| &optional (start 0) end |#)
+  (declare (ignore stream seq start end))
+  ;; @@@ we could actually do this?
+  nil)
+
+;;(defgeneric stream-peek-char ((stream terminal-x11))
+  ;; This is used to implement ‘peek-char’; this corresponds to
+  ;; ‘peek-type’ of ‘nil’.  It returns either a character or ‘:eof’.
+  ;; The default method calls ‘stream-read-char’ and
+  ;; ‘stream-unread-char’.
+;; )
+
+(defmethod stream-read-char-no-hang ((stream terminal-x11))
+  ;; This is used to implement ‘read-char-no-hang’.  It returns either a
+  ;; character, or ‘nil’ if no input is currently available, or ‘:eof’
+  ;; if end-of-file is reached.  The default method provided by
+  ;; ‘fundamental-character-input-stream’ simply calls
+  ;; ‘stream-read-char’; this is sufficient for file streams, but
+  ;; interactive streams should define their own method.
+  (get-key stream :timeout 0))
+
+(defmethod stream-read-char ((stream terminal-x11))
+  (terminal-get-char stream))
+
+(defun fake-read-line (tty)
+  (with-slots (cursor-column) tty
+    (let ((result (make-stretchy-string 33))
+	  got-eof)
+      (loop :with c :and done
+	 :do
+	 (setf c (get-key tty))
+	 (case c
+	   (#\newline (setf done t))
+	   (#.(char-util:ctrl #\c) (throw 'interactive-interrupt t))
+	   (#.(char-util:ctrl #\d) (setf done t got-eof t))
+	   (#.(char-util:ctrl #\u)
+	      (setf cursor-column 0)
+	      (stretchy-truncate result 0))
+	   (#\backspace
+	    (when (not (zerop (length result)))
+	      (when (not (zerop cursor-column))
+		(decf cursor-column))
+	      (stretchy-truncate result (1- (length result)))))
+	   (otherwise
+	    (stretchy-append result c)))
+	 :while (not done))
+      (values (or result "")
+	      got-eof))))
+
+(defmethod stream-read-line ((stream terminal-x11))
+  ;; This is used by ‘read-line’.  A string is returned as the first
+  ;; value.  The second value is true if the string was terminated by
+  ;; end-of-file instead of the end of a line.  The default method uses
+  ;; repeated calls to ‘stream-read-char’.
+  (fake-read-line stream))
+
+(defmethod stream-listen ((stream terminal-x11))
+  ;; This is used by ‘listen’.  It returns true or false.  The default
+  ;; method uses ‘stream-read-char-no-hang’ and ‘stream-unread-char’.
+  ;; Most streams should define their own method since it will usually
+  ;; be trivial and will always be more efficient than the default
+  ;; method.
+  (or (pushback stream)
+      (terminal-listen-for stream 0)))
+
+(defmethod stream-unread-char ((stream terminal-x11) character)
+  ;; Undo the last call to ‘stream-read-char’, as in ‘unread-char’.
+  ;; Return ‘nil’.  Every subclass of
+  ;; ‘fundamental-character-input-stream’ must define a method for this
+  ;; function.
+  (push character (pushback stream)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Costs
+
+;; @@@ Could some of these benefit from memo-ization?
+
+(defmethod output-cost ((tty terminal-x11) (op (eql :move-to)) &rest params)
+  (declare (ignore params))
+  1)
+
+(defmethod output-cost ((tty terminal-x11) (op (eql :move-to-col)) &rest params)
+  (declare (ignore params))
+  1)
+
+(defmethod output-cost ((tty terminal-x11) (op (eql :up)) &rest params)
+  (declare (ignore params))
+  1)
+
+(defmethod output-cost ((tty terminal-x11) (op (eql :down)) &rest params)
+  (declare (ignore params))
+  1)
+
+(defmethod output-cost ((tty terminal-x11) (op (eql :backward)) &rest params)
+  (declare (ignore params))
+  1)
+
+(defmethod output-cost ((tty terminal-x11) (op (eql :forward)) &rest params)
+  (declare (ignore params))
+  1)
+
+(defmethod output-cost ((tty terminal-x11) (op (eql :color)) &rest params)
+  (declare (ignore params))
+  5)
+
+(defmethod output-cost ((tty terminal-x11) (op (eql :write-fatchar))
+			&rest params)
+  (declare (ignore params))
+  3)
+
+(defmethod output-cost ((tty terminal-x11) (op (eql :write-fatchar-string))
+			&rest params)
+  ;; Not very accurate. Costs depend on how many effect switches, etc.
+  (* 3 (length (first params))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(register-terminal-type :x11 'terminal-x11)
+
+;; EOF
