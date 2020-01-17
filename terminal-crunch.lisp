@@ -633,7 +633,7 @@ sizes. It only copies the smaller of the two regions."
     (compute-hashes to-screen)))
 
 (defun make-new-screen (rows cols)
-  (let* ((lines  (make-array rows :element-type 'fatchar-string))
+  (let* ((lines  (make-array rows :element-type 'fatchar-string)) ;; @@@ WRONG?
 	 (hashes (make-array rows :element-type 'fixnum))
 	 (index  (make-array rows :element-type 'fixnum))
 	 (result (make-screen
@@ -946,6 +946,7 @@ to blank with."
 	  ;; Just erase everything
 	  (line-blanker lines)
 	  (index-blanker index)))
+    ;; @@@ Maybe this triggers the thing??
     (when (not (zerop (start-line tty)))
       (setf (start-line tty) (max 0 (- (start-line tty) n)))
       (incf (really-scroll-amount tty) n))))
