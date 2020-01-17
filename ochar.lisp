@@ -10,6 +10,7 @@ bloatmobile to the heavens.")
   (:use :cl)
   (:export
    #:ocharacter
+   #:osimplify
    #:obase-char
    #:oextended-char
    #:ochar=
@@ -62,6 +63,16 @@ bloatmobile to the heavens.")
 (defgeneric ocharacter (char)
   (:documentation "Returns the character denoted by the character designator.")
   (:method ((char character)) (character char)))
+
+;; I have to put this somewhere, and it's either this or make a *-base package
+;; which currently would only have this. So, it's in here. ostring doesn't
+;; really require ochar, except for this. And this is just so we can simplify
+;; a character or a string.
+(defgeneric osimplify (thing)
+  (:documentation
+   "Return a simplified version of THING. This can lose information. For
+example, for a character with attribues the attributes may be removed.")
+  (:method ((thing character)) thing))
 
 ;; We have taken the mighty aribitrary arity functions and turned them into
 ;; two arg badgersnaps. Why? Don't ask questions! It's already very stupid in
