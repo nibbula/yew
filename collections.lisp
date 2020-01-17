@@ -740,6 +740,26 @@ bounded by START and END.")
 	  (osubseq (container-data collection) start end))
     result))
 
+(defgeneric (setf osubseq) (value collection start &optional end)
+  (:documentation
+   "OSUBSEQ creates a sequence that is a copy of the subsequence of sequence
+bounded by START and END.")
+  (:method (value (collection list) start &optional end)
+    (setf (subseq collection start end) value))
+  (:method (value (collection vector) start &optional end)
+    (setf (subseq collection start end) value))
+  (:method (value (collection sequence) start &optional end)
+    (setf (subseq collection start end) value)))
+
+(defmethod (setf osubseq) (value (collection container) start &optional end)
+  ;; Somewhat dubious, of course.
+  ;; (make-instance (type-of collection)
+  ;; 		 :data (osubseq (container-data collection) start end))
+
+  (let ((result (dlib:shallow-copy-object collection)))
+    (setf (osubseq (container-data result) start end) value)
+    result))
+
 ;; I wonder if the useful word "slice" is really appropriate to be even slightly
 ;; used up here.
 
