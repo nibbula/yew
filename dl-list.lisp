@@ -383,6 +383,11 @@ bounded by START and END."
        (incf i))
     new))
 
+#| @@@@
+(defmethod (setf osubseq) (value (thing dl-list) start &optional end)
+  )
+|#
+
 #|
 (defmethod osort ((collection dl-list) predicate &key key)
   "Destructively sort a collection according to the order determined by the
