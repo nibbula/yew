@@ -28,6 +28,8 @@ and conversions between color models.")
    ))
 (in-package :color)
 
+(declaim (optimize (debug 2)))
+
 (defparameter *simple-colors*
   '(:black :red :green :yellow :blue :magenta :cyan :white)
   "Simple color names.")
