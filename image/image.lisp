@@ -135,7 +135,7 @@ To make a new format:
 
 (defclass image ()
   ((name
-    :initarg :name :accessor image-name  
+    :initarg :name :accessor image-name :initform ""
     :documentation "Image name, usually a file name.")
    (width
     :initarg :width :accessor image-width :initform 0 :type fixnum
