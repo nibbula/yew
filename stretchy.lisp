@@ -152,6 +152,12 @@ to expand by when expansion is needed."
 ;;; are not necessarily extensible? You can define a vector of a limited type,
 ;;; but perhaps not of "not some type". Also, how do limited types work with
 ;;; unboxing?
+;;;
+;;; One can make something with macros
+;;; template-function https://github.com/markcox80/template-function
+;;; specialization-store https://github.com/markcox80/specialization-store
+;;; inlined-generic-function https://github.com/guicho271828/inlined-generic-function
+;;; cl-parametric-types https://github.com/cosmos72/cl-parametric-types
 
 (defgeneric stretchy-append (to from &key factor)
   (:documentation "Append FROM to TO. Expand by FACTOR if necessary."))
