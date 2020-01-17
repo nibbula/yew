@@ -240,6 +240,14 @@ the environemnt has <arg> and <arg>-P for all those keywords."
        (subseq (fat-string-string string) start end)
        (subseq (fat-string-string string) start))))
 
+(defmethod (setf osubseq) (value (string fat-string) start &optional end)
+  "Set a sub-sequence of a fat-string."
+  (make-fat-string
+   :string
+   (if end
+       (setf (subseq (fat-string-string string) start end) value)
+       (setf (subseq (fat-string-string string) start) value))))
+
 (defmethod ocount ((item fatchar) (collection fat-string)
 		   &key from-end key
 		     (test nil test-p)
@@ -1328,9 +1336,15 @@ a fat-string, or a fatchar."
   "Return the fat-string as a string."
   (fat-string-to-string s))
 
+(defmethod osimplify ((thing fat-string))
+  (fat-string-to-string thing))
+
 (defmethod simplify-char ((c fatchar))
   "Return the FATCHAR as a character."
   (fatchar-c c))
+
+(defmethod osimplify ((thing fatchar))
+  (fatchar-c thing))
 
 (defmethod graphemes ((string fat-string))
   (dbugf :fatchar "fat grapheme ~s ~s~%" (type-of string) string)
