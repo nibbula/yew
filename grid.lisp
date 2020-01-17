@@ -6,7 +6,7 @@
   (:documentation
    "Character grid for terminals. This isn't a terminal type, just things for
 other terminals to use.")
-  (:use :cl :char-util :fatchar)
+  (:use :cl :char-util :ochar :fatchar :fatchar-io)
   (:export
    #:grid-char
    #:grid-char-c
@@ -14,8 +14,10 @@ other terminals to use.")
    #:grid-char-bg
    #:grid-char-line
    #:grid-char-attrs
+   #:make-grid-char
    #:grid-string
    #:make-grid-string
+   #:blank-char
    #:grid-char=
    #:set-grid-char
    #:grapheme-to-grid-char
@@ -48,6 +50,10 @@ other terminals to use.")
 
 (deftype grid-string (&optional n) `(vector grid-char ,(or n '*)))
 (defun make-grid-string (n) (make-array n :element-type 'grid-char))
+
+(defparameter *blank-char* (make-grid-char :c #\space))
+(defun blank-char ()
+  (copy-grid-char *blank-char*))
 
 (defmethod display-length ((c grid-char))
   (cond
@@ -104,13 +110,16 @@ other terminals to use.")
 	  (grid-char-attrs char) (fatchar-attrs value)
 	  (grid-char-line char)  (fatchar-line value))))
 
-(defun grapheme-to-grid-char (grapheme &key tty)
+;;; @@@ crunch may have to change to this rendition
+(defun grapheme-to-grid-char (grapheme &key rendition)
   "Make a GRID-CHAR from GRAPHEME, which can be any of fat-string,
 fatchar-string, string, fatchar, or character. Note that in the case of a fat
-strings, only the attributes of the first character are preserved."
+strings, only the attributes of the first character are preserved.
+RENDITION is a fatchar to take effects from."
   (typecase grapheme
     (fat-string
-     (grapheme-to-grid-char (fat-string-string grapheme) :tty tty))
+     (grapheme-to-grid-char (fat-string-string grapheme)
+			    :rendition rendition))
     (fatchar-string
      ;; Take the attributes from the first character only.
      (if (not (zerop (length grapheme)))
@@ -125,14 +134,14 @@ strings, only the attributes of the first character are preserved."
 					'string)))
 	 (make-grid-char :c nil)))
     (string
-     (if tty ;; @@@ the non tty case probably isn't used, also below
+     (if rendition ;; @@@ the non tty case probably isn't used, also below
 	 (make-grid-char :c (case (length grapheme)
 			      (0 nil)
 			      (1 (char grapheme 0))
 			      (t grapheme))
-			 :fg (fg tty)
-			 :bg (bg tty)
-			 :attrs (attrs tty))
+			 :fg (fatchar-fg rendition)
+			 :bg (fatchar-bg rendition)
+			 :attrs (fatchar-attrs rendition))
 	 (make-grid-char :c (case (length grapheme)
 			      (0 nil)
 			      (1 (char grapheme 0))
@@ -142,11 +151,11 @@ strings, only the attributes of the first character are preserved."
        (set-grid-char result grapheme)
        result))
     (character
-     (if tty ;; @@@
+     (if rendition ;; @@@
 	 (make-grid-char :c grapheme
-			 :fg (fg tty)
-			 :bg (bg tty)
-			 :attrs (attrs tty))
+			 :fg (fatchar-fg rendition)
+			 :bg (fatchar-bg rendition)
+			 :attrs (fatchar-attrs rendition))
 	 (make-grid-char :c grapheme)))))
 
 ;; @@@ should probably rename to set-fat-char-from-grid-char or something
@@ -263,6 +272,12 @@ strings, only the attributes of the first character are preserved."
    (loop :for c :in (graphemes fs)
       :collect (grapheme-to-grid-char c))
    'vector))
+
+;; (defmethod osimplify ((thing grid-string))
+;;   (fat-string-to-string thing))
+
+(defmethod osimplify ((thing grid-char))
+  (grid-char-c thing))
 
 (defmethod print-object ((obj grid-char) stream)
   "Print a FATCHAR to a FAT-STRING-OUTPUT-STREAM."
