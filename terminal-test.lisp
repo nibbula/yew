@@ -923,6 +923,34 @@ drawing, which will get overwritten."
 	      (tt-finish-output)))
       (tt-disable-events :mouse-buttons))))
 
+(defun test-input ()
+  (tt-home)
+  (tt-clear)
+  (tt-write-line "Try pressing keys. They should be printed.")
+  (tt-write-line "Press the <ESC> key four times in a row to exit.")
+  (let ((saved-events (terminal-events-enabled *terminal*)))
+    (unwind-protect
+	 (with-immediate ()
+	   (tt-enable-events '(:mouse-buttons #|:mouse-motion|# :resize))
+	   (loop :with escape-count = 0
+	      :and c
+	      :do
+	      (setf c (tt-get-key))
+	      (typecase c
+		(character
+		 (tt-format "~a ~s ~a ~x ~a~%" (char-util:displayable-char c)
+			    c (char-code c) (char-code c) (char-name c)))
+		(tt-event
+		 (tt-format "~s~%" c))
+		(t
+		 (tt-format "~a ~s ~a~%" c c (type-of c))))
+	      (if (or (eql c #\escape) (eq c :escape))
+		  (incf escape-count)
+		  (setf escape-count 0))
+	      :while (< escape-count 4)))
+      (tt-disable-events '(:mouse-buttons :mouse-motion :resize))
+      (tt-enable-events saved-events))))
+
 ;; @@@ how about a test of mouse motion only events?
 
 (defstruct menu
@@ -946,6 +974,7 @@ drawing, which will get overwritten."
      ("Pallet colors"                 . test-pallet-colors)
      ("RGB 24-bit colors"             . test-rgb-colors)
      ("Mouse events"                  . test-mouse)
+     ("Input and Keys"                . test-input)
      ("Scrolling menu"		      . *scrolling-menu*)
      )))
 
