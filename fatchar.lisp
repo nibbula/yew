@@ -1339,6 +1339,9 @@ a fat-string, or a fatchar."
 (defmethod osimplify ((thing fat-string))
   (fat-string-to-string thing))
 
+(defmethod osimplify ((thing fatchar))
+  (fatchar-c thing))
+
 (defmethod simplify-char ((c fatchar))
   "Return the FATCHAR as a character."
   (fatchar-c c))
