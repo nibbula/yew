@@ -790,33 +790,39 @@ i.e. the terminal is 'line buffered'."
 		  (when (and bold (not bold-font))
 		    ;; use bold color or increase value
 		    )
-		  (%terminal-color tty fg bg))
+		  ;; (%terminal-color tty fg bg)
+		  )
 		 ((and italic italic-font)
 		  (setf use-font italic-font))
 		 ((and bold bold-font)
 		  (setf use-font bold-font)))
 	       (when (not invisible)
-		 (draw-unit tty plain-unit :x col :y row))
-	       (when (or underline crossed-out double-underline)
-		 (let* ((start-x (* col cell-width))
-			(start-y (+ (* row cell-height)
-				    (font-ascent font)))
-			(end-x (+ start-x (* cell-width
-					     (char-util:display-length unit))))
-			(half-y (- start-y (truncate (font-ascent font) 2))))
-		   (when (or underline double-underline)
-		     (draw-line window draw-gc start-x start-y end-x start-y))
-		   (when crossed-out
-		     (draw-line window draw-gc start-x half-y end-x half-y))
-		   (when double-underline
-		     (draw-line window draw-gc
-				start-x (+ start-y 2) end-x (+ start-y 2)))))
+		 (with-color (tty fg bg)
+		   (draw-unit tty plain-unit :x col :y row)
+		   (when (or underline crossed-out double-underline)
+		     (let* ((start-x (* col cell-width))
+			    (start-y (+ (* row cell-height)
+					(font-ascent font)))
+			    (end-x (+ start-x
+				      (* cell-width
+					 (char-util:display-length unit))))
+			    (half-y (- start-y
+				       (truncate (font-ascent font) 2))))
+		       (when (or underline double-underline)
+			 (draw-line window draw-gc
+				    start-x start-y end-x start-y))
+		       (when crossed-out
+			 (draw-line window draw-gc start-x half-y end-x half-y))
+		       (when double-underline
+			 (draw-line window draw-gc
+				    start-x (+ start-y 2)
+				    end-x (+ start-y 2)))))
+		   (when copy
+		     (copy-unit-to-grid tty unit))))
 	       ;; (if (zerop line)
 	       ;;     (write-char cc stream)
 	       ;;     (write-char (line-char line) stream))
 	       ;; (copy-char-to-grid tty cc)
-	       (when copy
-		 (copy-unit-to-grid tty unit))
 	       (when (and (line-buffered-p tty) (eql cc #\newline))
 		 (display-finish-output display))))))))))
 
@@ -861,7 +867,8 @@ newline in it."
 	 (incf i)
 	 :finally
 	 (when (> (- i 1 unit-start) 0)
-	   (setf (fat-string-string substr) (osubseq fs unit-start (1- i)))
+	   (setf (fat-string-string substr)
+		 (osubseq fs unit-start (min (length fs) (1- i))))
 	   (%draw-fat-unit tty substr :copy copy :x x :y y)))
       ;;(write-string +zero-effect+ stream)
       had-newline)))
@@ -1040,22 +1047,30 @@ newline in it."
   (with-slots (lines cell-width cell-height window draw-gc
 	       (window-rows terminal::window-rows)
 	       (window-columns terminal::window-columns)) tty
-    (let ((c-start-x (round start-x cell-width))
-	  (c-start-y (round start-y cell-height))
-	  (c-width   (round width cell-width))
-	  (c-height  (round height cell-height)))
-      (format t "redraw-area ~s ~s ~s ~s~%"
-	      c-start-x c-start-y c-width c-height)
+    (let ((c-start-x (1- (ceiling start-x cell-width)))
+	  (c-start-y (1- (ceiling start-y cell-height)))
+	  (c-width   (1+ (ceiling width cell-width)))
+	  (c-height  (1+ (ceiling height cell-height))))
+      (setf c-start-x (max 0 c-start-x)
+	    c-start-y (max 0 c-start-y))
+      ;; (format t "redraw-area ~s ~s ~s ~s~%"
+      ;; 	      c-start-x c-start-y c-width c-height)
       ;; (draw-rectangle window draw-gc start-x start-y width height)
       (loop
-	 :for y :from c-start-y :to (clamp (+ c-start-y c-height)
-					   0 (1- window-rows)) :do
-	 (%draw-fat-string
-	  tty (grid-to-fat-string (aref lines y)
-				  :start c-start-x
-				  :end (clamp c-width 0 (1- window-columns)))
-	  :start c-start-x :end (clamp c-width 0 (1- window-columns))
-	  :x c-start-x :y y)))))
+	 :with actual-end :and str
+	 :for y :from (max 0 c-start-y)
+	 :to (clamp (+ c-start-y c-height) 0 (1- window-rows))
+	 :do
+	 (setf actual-end
+	       (clamp (+ c-start-x c-width) 0 (min (1- (length (aref lines y)))
+						   (1- window-columns)))
+	       str (grid-to-fat-string
+		    (aref lines y)
+		    :start c-start-x
+		    :end actual-end))
+	 (when (and (plusp (- actual-end c-start-x)) (not (zerop (olength str))))
+	   (%draw-fat-string
+	    tty str :start c-start-x :end actual-end :x c-start-x :y y))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; terminal methods
@@ -1440,7 +1455,7 @@ Attributes are usually keywords."
 	      t)
 	   (:exposure (x y width height xlib:window #|count|#)
 	      (when (equal xlib:window our-window)
-		(format t "exposure ~s ~s ~s ~s~%" x y width height)
+		;; (format t "exposure ~s ~s ~s ~s~%" x y width height)
 	        (redraw-area tty x y width height)
 		(display-finish-output display)
 		;; (dump-grid tty)
@@ -1453,7 +1468,7 @@ Attributes are usually keywords."
 			   (/= xlib::height window-height)))
 		 (setf window-width xlib::width window-height xlib::height)
 		 (set-grid-size-from-pixel-size tty window-width window-height)
-		 (format t "resize to ~s ~s~%" window-columns window-rows)
+		 ;; (format t "resize to ~s ~s~%" window-columns window-rows)
 		 (resize-grid tty)
 		 ;;(clear-area win :x x :y y :width w :height h)
 		 ;;(display-finish-output display)
