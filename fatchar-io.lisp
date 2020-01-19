@@ -87,7 +87,7 @@
 	 (format stream "#.~s"
 		 `(fatchar:span-to-fat-string ,(fat-string-to-span obj)))
 	 (call-next-method)))
-    ((typep stream 'terminal:terminal-stream)
+    ((typep stream '(or terminal:terminal terminal:terminal-stream))
      ;;(format t "BLURB~s~%" (type-of obj)) (finish-output)
      (render-fat-string obj))
     (t
@@ -134,7 +134,7 @@ colinc, and the space character for padchar.
 	     (skinny () (princ str stream)))
       (setf render #'skinny)
       (cond
-	((typep stream 'terminal-stream)
+	((typep stream '(or terminal terminal-stream))
 	 (cond
 	   ((or (typep obj 'fat-string) (typep obj 'fatchar-string))
 	    (setf str (if (typep obj 'fat-string) (fat-string-string obj) obj)
@@ -284,7 +284,7 @@ colinc, and the space character for padchar.
 	(incf (fat-string-output-stream-column stream))
 	(when (char= c #\newline)
 	  (setf (fat-string-output-stream-column stream) 0)))))
-    (terminal-stream
+    ((or terminal terminal-stream)
      (typecase c
        (fatchar
 	(render-fatchar c stream))
@@ -348,7 +348,7 @@ possible."
 	   (when (char= c #\newline)
 	     (setf (fat-string-output-stream-column stream) 0))
 	   (incf src-i)))))
-    (terminal-stream
+    ((or terminal terminal-stream)
      (typecase string
        (fat-string
 	;;(dbugf :fatchar "write-fat-string fat-string -> terminal~%")
@@ -407,7 +407,7 @@ possible."
 	     ;;(dbugf :fatchar "print-object -> call-next-method~%")
 	     (call-next-method)
 	     )))
-      ((typep stream 'terminal:terminal-stream)
+      ((typep stream '(or terminal:terminal terminal:terminal-stream))
        ;;(dbugf :fatchar "print-object -> render ~s~%" (type-of obj))
        (with-quotes ()
 	 (render-fat-string obj :terminal stream)))
@@ -438,7 +438,7 @@ possible."
      ;;(print-unreadable-object (obj stream :identity t :type t))
      (call-next-method)
      )
-    ((typep stream 'terminal:terminal-stream)
+    ((typep stream '(or terminal:terminal terminal:terminal-stream))
      ;;(format t "BLURB~s~%" (type-of obj)) (finish-output)
      (render-fatchar obj stream))
     ((typep stream 'fat-string-output-stream)
