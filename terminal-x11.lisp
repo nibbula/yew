@@ -285,6 +285,15 @@ are already set."
 	 (setf (osubseq (aref lines i) 0 min-width)
 	       (osubseq (aref old-lines i) 0 min-width))))))
 
+(defun dump-grid (tty)
+  (with-slots (lines (window-rows terminal::window-rows)
+		     (window-columns terminal::window-columns)) tty
+    (loop :for y :from 0 :below (length lines) :do
+       (loop :for x :from 0 :below (length (aref lines y)) :do
+	  (format t "~a" (grid-char-c (aref (aref lines y) x))))
+       (terpri))
+    (terpri)))
+
 (defmethod initialize-instance
     :after ((o terminal-x11) &rest initargs &key &allow-other-keys)
   "Initialize a terminal-x11."
@@ -350,8 +359,8 @@ are already set."
 
 (defun set-grid-size-from-pixel-size (tty width height)
   (with-slots (cell-width cell-height
-			  (window-columns terminal::window-columns)
-			  (window-rows terminal::window-rows)) tty
+	       (window-columns terminal::window-columns)
+               (window-rows terminal::window-rows)) tty
     (setf window-rows    (truncate height cell-height)
 	  window-columns (truncate width cell-width))))
 
@@ -482,30 +491,30 @@ to blank with."
     (string (if (= (length c) 1) (char c 0) c))
     (character c)))
 
-(defgeneric draw-unit (tty unit &key gc)
-  (:documentation "Draw unit of text with the same attributes."))
+(defgeneric draw-unit (tty unit &key x y gc)
+  (:documentation "Draw simple unit of text with the same attributes."))
 
-(defmethod draw-unit (tty (unit character) &key gc)
-  "Draw a character at the current cursor position."
+(defmethod draw-unit (tty (unit character) &key x y gc)
+  "Draw a character at a cursor position."
   (with-slots (window draw-gc cursor-column cursor-row font
 	       cell-width cell-height) tty
     (when (graphic-char-p unit)
       (draw-image-glyph window (or gc draw-gc)
-			(* cursor-column cell-width)
-			(+ (* cursor-row cell-height) (font-ascent font))
+			(* (or x cursor-column) cell-width)
+			(+ (* (or y cursor-row) cell-height) (font-ascent font))
 			(char-code (char-char unit))))))
 
-(defmethod draw-unit (tty (unit string) &key gc)
-  "Draw a string at the current cursor position."
+(defmethod draw-unit (tty (unit string) &key x y gc)
+  "Draw a string at a cursor position."
   (with-slots (window draw-gc cursor-column cursor-row font
 	       cell-width cell-height) tty
     (let ((str (remove-if-not #'graphic-char-p unit)))
       (draw-image-glyphs window (or gc draw-gc)
-			 (* cursor-column cell-width)
-			 (+ (* cursor-row cell-height) (font-ascent font))
+			 (* (or x cursor-column) cell-width)
+			 (+ (* (or y cursor-row) cell-height) (font-ascent font))
 			 (char-util:string-to-utf8-bytes str)))))
 
-(defun copy-char (tty char)
+(defun copy-char-to-grid (tty char)
   "Put the CHAR at the current screen postion. Return true if we actually
 changed the screen content."
   (with-slots (rendition delay-scroll cursor-row cursor-column
@@ -609,7 +618,7 @@ changed the screen content."
 	   )))
       changed)))
 
-(defun copy-to-screen (tty string &key start end)
+(defun copy-string-to-grid (tty string &key start end)
   "Copy the STRING from START to END to the screen. Return true if we actually
 changed the screen contents."
   (loop
@@ -628,16 +637,16 @@ changed the screen contents."
 		   (end (osubseq string 0 end))
 		   (t string)))
      :do
-     (when (copy-char tty (grapheme-to-grid-char c :tty tty))
+     (when (copy-char-to-grid tty (grapheme-to-grid-char c :tty tty))
        (setf changed t))
      ;;(incf i)
      :finally (return changed)))
 
-(defun copy-unit (tty unit)
+(defun copy-unit-to-grid (tty unit)
   (etypecase unit
-    ((or character fatchar grid-char) (copy-char tty unit))
-    ((or string fat-string) (copy-to-screen tty unit))
-    ;;(fat-string (copy-to-screen tty (osimplify unit)))))
+    ((or character fatchar grid-char) (copy-char-to-grid tty unit))
+    ((or string fat-string) (copy-string-to-grid tty unit))
+    ;;(fat-string (copy-string-to-grid tty (osimplify unit)))))
     ))
 
 #|
@@ -669,28 +678,152 @@ changed the screen contents."
 	:do (update-column-for-char tty (char thing i))))))
 |#
 
-(defmethod terminal-format ((tty terminal-x11) fmt &rest args)
-  "Output a formatted string to the terminal."
-  (let ((string (apply #'format nil fmt args)))
-    (apply #'format tty fmt args)
-    ;; (copy-to-screen tty string)
-    (when (and (line-buffered-p tty) (position #\newline string))
-      (finish-output tty))))
+(defparameter *colors*
+  #(:black :red :green :yellow :blue :magenta :cyan :white nil :default))
 
-(defmethod terminal-alternate-characters ((tty terminal-x11) state)
-  (declare (ignore tty state))
-  #|
-  (setf (translate-alternate-characters tty) state)
-  (when (and state (not *acs-table*))
-    (make-acs-table))
-  (if state
-      (terminal-escape-sequence tty "(0")
-      (terminal-escape-sequence tty "(B")
-      )
-  |#
-  )
+(defun %terminal-color (tty fg bg)
+  (with-slots (draw-gc rendition) tty
+    (let ((fg-pos (and (keywordp fg) (position fg *colors*)))
+	  (bg-pos (and (keywordp bg) (position bg *colors*))))
+      (when (and (keywordp fg) (not fg-pos))
+	(error "Forground ~a is not a known color." fg))
+      (when (and (keywordp bg) (not bg-pos))
+	(error "Background ~a is not a known color." bg))
+      (when (color:structured-color-p fg)
+	(setf (gcontext-foreground draw-gc) (color-pixel tty fg)))
+      (when (color:structured-color-p bg)
+	(setf (gcontext-background draw-gc) (color-pixel tty bg)))
+      (when fg-pos
+	(setf (gcontext-foreground draw-gc)
+	      (color-pixel tty (color:lookup-color
+				(case fg
+				  ((nil) (foreground tty))
+				  (:default (foreground tty))
+				  (otherwise fg))))))
+      (when bg-pos
+	(setf (gcontext-background draw-gc)
+	      (color-pixel tty (color:lookup-color
+				(case bg
+				  ((nil) (background tty))
+				  (:default (background tty))
+				  (otherwise bg))))))
+      (setf (fatchar-fg rendition) fg
+	    (fatchar-bg rendition) bg))))
 
-(defun %write-fat-string (tty str start end)
+(defmacro with-color ((tty fg bg) &body body)
+  "Evaluate the BODY with the current colors temporarily set to FG and BG."
+  (with-unique-names (saved-fg saved-bg)
+    `(let ((,saved-fg ,fg) (,saved-bg ,bg))
+       (%terminal-color ,tty ,fg ,bg)
+       ,@body
+       (%terminal-color ,tty ,saved-fg ,saved-bg))))
+
+;; This is a slightly more direct way to write a fatchar than with
+;; fatchar:render-fatchar.
+(defun %draw-fat-unit (tty unit &key copy x y)
+  "Output a unit to the terminal. Flush output if it is a newline,
+i.e. the terminal is 'line buffered'."
+  (with-slots (display window rendition draw-gc font bold-font italic-font
+	       cell-width cell-height cursor-column cursor-row) tty
+    (let ((style (or (typecase unit
+		       (fatchar unit)
+		       (fat-string (oelt unit 0)) ;; assuming len > 1
+		       ((or character string)
+			rendition))))
+	  (plain-unit (osimplify unit))
+	  (col (or x cursor-column))
+	  (row (or y cursor-row)))
+      (with-slots ((cc fatchar::c)
+		   (fg fatchar::fg)
+		   (bg fatchar::bg)
+		   (line fatchar::line)
+		   (attrs fatchar::attrs)) style
+	;; We still do this dumb replacing, just in case.
+	;; (when (and (translate-alternate-characters tty)
+	;; 		 (characterp cc))
+	;; 	(let ((replacement (gethash cc *acs-table*)))
+	;; 	  (when replacement
+	;; 	    (setf cc replacement))))
+	(cond
+	  ((not (or fg bg attrs))
+	   ;; No effects
+	   (draw-unit tty plain-unit :x col :y row)
+	   (when copy
+	     (copy-unit-to-grid tty plain-unit)))
+	  ((and (or fg bg) (not attrs))
+	   ;; Only colors
+	   (with-color (tty fg bg)
+	     (draw-unit tty plain-unit :x col :y row)
+	     (when copy
+	       (copy-unit-to-grid tty plain-unit))))
+	  (t ;; Attrs and maybe colors too
+	   (let (bold faint dim italic underline blink inverse reverse standout
+		 invisible crossed-out double-underline inverted dimmed
+		 (use-font font))
+	     (with-color (tty fg bg)
+	       (loop :for a :in attrs :do
+		  (case a
+		    (:bold             (setf bold t))
+		    (:faint            (setf faint t))
+		    (:dim              (setf dim t))
+		    (:italic           (setf italic t))
+		    (:underline        (setf underline t))
+		    (:blink            (setf blink t))
+		    (:inverse          (setf inverse t))
+		    (:reverse          (setf reverse t))
+		    (:standout         (setf standout t))
+		    (:invisible        (setf invisible t))
+		    (:crossed-out      (setf crossed-out t))
+		    (:double-underline (setf double-underline t))))
+	       (setf inverted (or inverse reverse standout)
+		     dimmed (or faint dim))
+	       (cond
+		 ((or (and bold (not bold-font))
+		      dimmed inverted)
+		  ;; color change
+		  (when dim ;; lower value
+		    )
+		  (when faint ;; even lower value
+		    )
+		  (when inverted ;; switch fg & bg
+		    (rotatef fg bg))
+		  (when (and bold (not bold-font))
+		    ;; use bold color or increase value
+		    )
+		  (%terminal-color tty fg bg))
+		 ((and italic italic-font)
+		  (setf use-font italic-font))
+		 ((and bold bold-font)
+		  (setf use-font bold-font)))
+	       (when (not invisible)
+		 (draw-unit tty plain-unit :x col :y row))
+	       (when (or underline crossed-out double-underline)
+		 (let* ((start-x (* col cell-width))
+			(start-y (+ (* row cell-height)
+				    (font-ascent font)))
+			(end-x (+ start-x (* cell-width
+					     (char-util:display-length unit))))
+			(half-y (- start-y (truncate (font-ascent font) 2))))
+		   (when (or underline double-underline)
+		     (draw-line window draw-gc start-x start-y end-x start-y))
+		   (when crossed-out
+		     (draw-line window draw-gc start-x half-y end-x half-y))
+		   (when double-underline
+		     (draw-line window draw-gc
+				start-x (+ start-y 2) end-x (+ start-y 2)))))
+	       ;; (if (zerop line)
+	       ;;     (write-char cc stream)
+	       ;;     (write-char (line-char line) stream))
+	       ;; (copy-char-to-grid tty cc)
+	       (when copy
+		 (copy-unit-to-grid tty unit))
+	       (when (and (line-buffered-p tty) (eql cc #\newline))
+		 (display-finish-output display))))))))))
+
+(defun %write-fat-unit (tty unit)
+  (%draw-fat-unit tty unit :copy t))
+
+(defun %draw-fat-string (tty str &key start end x y copy)
   "Write a fat string STR to TTY from START to END. Return true if there was a
 newline in it."
   (when (and (not (and (and start (zerop start)) (and end (zerop end))))
@@ -720,66 +853,35 @@ newline in it."
 	     ;; 	   (write-char (line-char line) stream))
 	     (when (> (- i 1 unit-start) 0)
 	       (setf (fat-string-string substr) (osubseq fs unit-start (1- i)))
-	       (%terminal-write-unit tty substr :reset nil))
+	       (%draw-fat-unit tty substr :copy copy :x x :y y))
 	     (setf unit-start i))
 	   (setf last-c c)
 	   (when (char= cc #\newline)
-	     (setf had-newline t))
-	   ;; (copy-char tty cc)
-	   )
-	 (incf i))
+	     (setf had-newline t)))
+	 (incf i)
+	 :finally
+	 (when (> (- i 1 unit-start) 0)
+	   (setf (fat-string-string substr) (osubseq fs unit-start (1- i)))
+	   (%draw-fat-unit tty substr :copy copy :x x :y y)))
       ;;(write-string +zero-effect+ stream)
       had-newline)))
 
-(defun %write-string/line (tty str start end)
+(defun %write-fat-string (tty str start end)
+  (%draw-fat-string tty str :start start :end end :copy t))
+
+(defun %write-string (tty str start end)
   (when (not (and (and start (zerop start)) (and end (zerop end))))
     (etypecase str
       (string
-       (%terminal-write-unit tty (if (or start end)
-				     (subseq str (or start 0) end)
-				     str)))
+       (%draw-fat-unit tty (if (or start end)
+			       (subseq str (or start 0) end)
+			       str) :copy t))
       (fat-string
-       (apply #'%write-fat-string `(,tty ,str
-					 ,@(and start `(:start ,start))
-					 ,@(and end `(:end ,end))))))
-    ;;(copy-to-screen tty str :start start :end end)
-    ))
-
-(defmethod terminal-write-string ((tty terminal-x11) str
-				  &key start end)
-  "Output a string to the terminal. Flush output if it contains a newline,
-i.e. the terminal is 'line buffered'."
-  (%write-string/line tty str start end)
-  (when (and (line-buffered-p tty)
-	     (apply #'position `(#\newline ,str
-					   ,@(and start `(:start ,start))
-					   ,@(and end `(:end ,end)))))
-    (display-finish-output (display tty))))
-
-(defmethod terminal-write-line ((tty terminal-x11) str
-				&key start end)
-  "Output a string to the terminal, followed by a newline."
-  (%write-string/line tty str start end)
-  (copy-char tty #\newline)
-  (when (line-buffered-p tty)
-    (display-finish-output (display tty))))
-
-(defmethod terminal-write-char ((tty terminal-x11) (char character))
-  "Output a character to the terminal. Flush output if it is a newline,
-i.e. the terminal is 'line buffered'."
-  #|
-  (let ((stream (terminal-output-stream tty)))
-    (when (and (translate-alternate-characters tty)
-	       (characterp char))
-      (let ((replacement (gethash char *acs-table*)))
-	(when replacement
-	  (setf char replacement))))
-  |#
-  ;; (format *trace-output* "terminal-write-char ~s~%" char)
-  (%terminal-write-unit tty char)
-  ;;(copy-char tty char)
-  (when (and (line-buffered-p tty) (eql char #\newline))
-    (display-finish-output (display tty))))
+       (%write-fat-string tty str start end)
+       ;; (apply #'%write-fat-string `(,tty ,str
+       ;; 					 ,@(and start `(:start ,start))
+       ;; 					 ,@(and end `(:end ,end))))
+       ))))
 
 (defparameter *line-table-unicode*
   `#(,#\space
@@ -888,105 +990,6 @@ i.e. the terminal is 'line buffered'."
 	 ;; This probably means someone should write a new case here.
 	 (error "Unknown pixel format."))))))
 
-;; This is a slightly more direct way to write a fatchar than with
-;; fatchar:render-fatchar.
-(defun %terminal-write-unit (tty unit &key reset)
-  "Output a fatchar to the terminal. Flush output if it is a newline,
-i.e. the terminal is 'line buffered'."
-  (declare (ignore reset)) ;; @@@
-  (with-slots (display window rendition draw-gc font bold-font italic-font
-	       cell-width cell-height cursor-column cursor-row) tty
-    (let ((style (or (typecase unit
-		       (fatchar unit)
-		       (fat-string (oelt unit 0)) ;; assuming len > 1
-		       ((or character string)
-			rendition))))
-	  (plain-unit (osimplify unit)))
-      (with-slots ((cc fatchar::c)
-		   (fg fatchar::fg)
-		   (bg fatchar::bg)
-		   (line fatchar::line)
-		   (attrs fatchar::attrs)) style
-	;; We still do this dumb replacing, just in case.
-	;; (when (and (translate-alternate-characters tty)
-	;; 		 (characterp cc))
-	;; 	(let ((replacement (gethash cc *acs-table*)))
-	;; 	  (when replacement
-	;; 	    (setf cc replacement))))
-	(cond
-	  ((not (or fg bg attrs))
-	   ;; No effects
-	   (draw-unit tty plain-unit)
-	   (copy-unit tty plain-unit))
-	  ((and (or fg bg) (not attrs))
-	   ;; Only colors
-	   (%terminal-color tty fg bg)
-	   (draw-unit tty plain-unit)
-	   (copy-unit tty plain-unit))
-	  (t ;; Attrs and maybe colors too
-	   (let (bold faint dim italic underline blink inverse reverse standout
-		 invisible crossed-out double-underline inverted dimmed
-		 (use-font font))
-	     (loop :for a :in attrs :do
-		(case a
-		  (:bold             (setf bold t))
-		  (:faint            (setf faint t))
-		  (:dim              (setf dim t))
-		  (:italic           (setf italic t))
-		  (:underline        (setf underline t))
-		  (:blink            (setf blink t))
-		  (:inverse          (setf inverse t))
-		  (:reverse          (setf reverse t))
-		  (:standout         (setf standout t))
-		  (:invisible        (setf invisible t))
-		  (:crossed-out      (setf crossed-out t))
-		  (:double-underline (setf double-underline t))))
-	     (setf inverted (or inverse reverse standout)
-		   dimmed (or faint dim))
-	     (cond
-	       ((or (and bold (not bold-font))
-		    dimmed inverted)
-		;; color change
-		(when dim ;; lower value
-		  )
-		(when faint ;; even lower value
-		  )
-		(when inverted ;; switch fg & bg
-		  (rotatef fg bg))
-		(when (and bold (not bold-font))
-		  ;; use bold color or increase value
-		  )
-		(%terminal-color tty fg bg))
-	       ((and italic italic-font)
-		(setf use-font italic-font))
-	       ((and bold bold-font)
-		(setf use-font bold-font)))
-	     (when (not invisible)
-	       (draw-unit tty plain-unit))
-	     (when (or underline crossed-out double-underline)
-	       (let* ((start-x (* cursor-column cell-width))
-		      (start-y (+ (* cursor-row cell-height) (font-ascent font)))
-		      (end-x (+ start-x (* cell-width
-					   (char-util:display-length unit))))
-		      (half-y (- start-y (truncate (font-ascent font) 2))))
-		 (when (or underline double-underline)
-		   (draw-line window draw-gc start-x start-y end-x start-y))
-		 (when crossed-out
-		   (draw-line window draw-gc start-x half-y end-x half-y))
-		 (when double-underline
-		   (draw-line window draw-gc
-			      start-x (+ start-y 2) end-x (+ start-y 2)))))
-	     ;; (if (zerop line)
-	     ;;     (write-char cc stream)
-	     ;;     (write-char (line-char line) stream))
-	     ;; (copy-char tty cc)
-	     (copy-unit tty unit)
-	     (when (and (line-buffered-p tty) (eql cc #\newline))
-	       (display-finish-output display)))))))))
-
-(defmethod terminal-write-char ((tty terminal-x11) (char fatchar))
-  (%terminal-write-unit tty char :reset t))
-
 (defun char-at (tty row column)
   "Return the character at the ROW and COLUMN"
   (with-slots (lines) tty
@@ -1012,6 +1015,114 @@ i.e. the terminal is 'line buffered'."
        (when (eq ,our-state :visible)
 	 (draw-cursor ,tty)))))
 
+(defun erase-grid (tty start-x start-y end-x end-y)
+  "Erase an area of the character grid."
+  (with-slots (lines) tty
+    (loop :for y :from start-y :to end-y :do
+       (loop :for x :from start-x :to end-x :do
+	  (unset-grid-char (aref (aref lines y) x))))))
+
+(defun clear-text (tty start-x start-y end-x end-y &key erase)
+  "Clear an area of the window, with coordinates in character cells."
+  (with-slots (window font cell-width cell-height) tty
+    (when erase
+      (erase-grid tty start-x start-y end-x end-y))
+    (clear-area window
+		:x (* start-x cell-width)
+		;;:y (+ (* start-y cell-width) (font-ascent font))
+		:y (+ (* start-y cell-width))
+		:width (* (1+ end-x) cell-width)
+		:height (+ (* end-y cell-height)
+			   (+ (font-ascent font) (font-descent font))))))
+
+(defun redraw-area (tty start-x start-y width height)
+  "Redraw a rectangular area."
+  (with-slots (lines cell-width cell-height window draw-gc
+	       (window-rows terminal::window-rows)
+	       (window-columns terminal::window-columns)) tty
+    (let ((c-start-x (round start-x cell-width))
+	  (c-start-y (round start-y cell-height))
+	  (c-width   (round width cell-width))
+	  (c-height  (round height cell-height)))
+      (format t "redraw-area ~s ~s ~s ~s~%"
+	      c-start-x c-start-y c-width c-height)
+      ;; (draw-rectangle window draw-gc start-x start-y width height)
+      (loop
+	 :for y :from c-start-y :to (clamp (+ c-start-y c-height)
+					   0 (1- window-rows)) :do
+	 (%draw-fat-string
+	  tty (grid-to-fat-string (aref lines y)
+				  :start c-start-x
+				  :end (clamp c-width 0 (1- window-columns)))
+	  :start c-start-x :end (clamp c-width 0 (1- window-columns))
+	  :x c-start-x :y y)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; terminal methods
+
+(defmethod terminal-format ((tty terminal-x11) fmt &rest args)
+  "Output a formatted string to the terminal."
+  (let ((string (apply #'format nil fmt args)))
+    (apply #'format tty fmt args)
+    ;; (copy-string-to-grid tty string)
+    (when (and (line-buffered-p tty) (position #\newline string))
+      (finish-output tty))))
+
+(defmethod terminal-alternate-characters ((tty terminal-x11) state)
+  (declare (ignore tty state))
+  #|
+  (setf (translate-alternate-characters tty) state)
+  (when (and state (not *acs-table*))
+    (make-acs-table))
+  (if state
+      (terminal-escape-sequence tty "(0")
+      (terminal-escape-sequence tty "(B")
+      )
+  |#
+  )
+
+(defmethod terminal-write-string ((tty terminal-x11) str
+				  &key start end)
+  "Output a string to the terminal. Flush output if it contains a newline,
+i.e. the terminal is 'line buffered'."
+  (%write-string tty str start end)
+  (when (and (line-buffered-p tty)
+	     (apply #'position `(#\newline ,str
+					   ,@(and start `(:start ,start))
+					   ,@(and end `(:end ,end)))))
+    (display-finish-output (display tty))))
+
+(defmethod terminal-write-line ((tty terminal-x11) str
+				&key start end)
+  "Output a string to the terminal, followed by a newline."
+  (%write-string tty str start end)
+  (copy-char-to-grid tty #\newline)
+  (when (line-buffered-p tty)
+    (display-finish-output (display tty))))
+
+(defmethod terminal-write-char ((tty terminal-x11) (char fatchar))
+  (%write-fat-unit tty char)
+  (when (and (line-buffered-p tty) (eql (fatchar-c char) #\newline))
+    (display-finish-output (display tty))))
+
+(defmethod terminal-write-char ((tty terminal-x11) (char character))
+  "Output a character to the terminal. Flush output if it is a newline,
+i.e. the terminal is 'line buffered'."
+  #|
+  (let ((stream (terminal-output-stream tty)))
+    (when (and (translate-alternate-characters tty)
+	       (characterp char))
+      (let ((replacement (gethash char *acs-table*)))
+	(when replacement
+	  (setf char replacement))))
+  |#
+  ;; (format *trace-output* "terminal-write-char ~s~%" char)
+  ;;(%terminal-write-unit tty char)
+  (%write-fat-unit tty char)
+  ;;(copy-char-to-grid tty char)
+  (when (and (line-buffered-p tty) (eql char #\newline))
+    (display-finish-output (display tty))))
+
 (defmethod terminal-write-string ((tty terminal-x11) (str fat-string)
 				  &key start end)
   "Output a string to the terminal. Flush output if it contains a newline,
@@ -1025,7 +1136,7 @@ i.e. the terminal is 'line buffered'."
 				&key start end)
   "Output a string to the terminal, followed by a newline."
   (%write-fat-string tty str start end)
-  (copy-char tty #\newline)
+  (copy-char-to-grid tty #\newline)
   (when (line-buffered-p tty)
     ;; (finish-output (terminal-output-stream tty))
     (display-finish-output (display tty))
@@ -1056,50 +1167,13 @@ i.e. the terminal is 'line buffered'."
   (with-cursor-movement (tty)
     (setf (cursor-column tty) 0)))
 
-(defun erase-text (tty start-x start-y end-x end-y)
-  "Erase an area of the character grid."
-  (with-slots (lines) tty
-    (loop :for y :from start-y :to end-y :do
-       (loop :for x :from start-x :to end-x :do
-	  (unset-grid-char (aref (aref lines y) x))))))
-
-(defun clear-text (tty start-x start-y end-x end-y &key erase)
-  "Clear an area of the window, with coordinates in character cells."
-  (with-slots (window font cell-width cell-height) tty
-    (when erase
-      (erase-text tty start-x start-y end-x end-y))
-    (clear-area window
-		:x (* start-x cell-width)
-		;;:y (+ (* start-y cell-width) (font-ascent font))
-		:y (+ (* start-y cell-width))
-		:width (* end-x cell-width)
-		:height (+ (* end-y cell-height)
-			   (+ (font-ascent font) (font-descent font))))))
-
-(defun redraw-area (tty start-x start-y end-x end-y)
-  "Redraw a rectangular area."
-  (with-slots (lines cell-width cell-height
-	       (window-rows terminal::window-rows)
-	       (window-columns terminal::window-columns)) tty
-    (loop
-       :with c-start-x = (round start-x cell-width)
-       :and  c-start-y = (round start-y cell-height)
-       :and  c-end-x = (round end-x cell-width)
-       :and  c-end-y = (round end-y cell-height)
-       :for y :from c-start-y :to (clamp c-end-y 0 (1- window-rows)) :do
-       (%write-fat-string
-	tty (grid-to-fat-string (aref lines y)
-				:start c-start-x
-				:end (clamp c-end-x 0 (1- window-columns)))
-	c-start-x (clamp c-end-x 0 (1- window-columns))))))
-
 (defmethod terminal-delete-char ((tty terminal-x11) n)
   (with-slots (lines cursor-row cursor-column) tty
     (let* ((line (aref lines cursor-row))
 	   (line-len (length line)))
       (setf (osubseq line cursor-column (- line-len (+ n 2)))
 	    (osubseq line (+ cursor-column 1 n) (1- line-len)))
-      (%terminal-write-unit
+      (%draw-fat-string
        tty (grid-to-fat-string
 	    (osubseq line cursor-column (- line-len (+ n 2)))))
       (clear-text tty cursor-column cursor-row
@@ -1111,7 +1185,7 @@ i.e. the terminal is 'line buffered'."
 	   (line-len (length line)))
       (setf (osubseq line (+ cursor-column n) (- line-len 1))
 	    (osubseq line cursor-column (- line-len (+ n 2))))
-      (%terminal-write-unit
+      (%draw-fat-string
        tty (grid-to-fat-string
 	    (osubseq line (+ cursor-column n) (- line-len 1))))
       (clear-text tty cursor-column cursor-row
@@ -1224,7 +1298,13 @@ i.e. the terminal is 'line buffered'."
   (set-attr tty :standout state))
 
 (defmethod terminal-normal ((tty terminal-x11))
-  (setf (fatchar-attrs (rendition tty)) '()))
+  (with-slots (rendition foreground background) tty
+    ;; (setf (fatchar-attrs rendition) '()
+    ;; 	  (fatchar-fg rendition) foreground
+    ;; 	  (fatchar-bg rendition) background)
+    (setf rendition (make-fatchar :fg foreground :bg background))
+    (%terminal-color tty (fatchar-fg rendition) (fatchar-bg rendition))
+    ))
 
 (defmethod terminal-underline ((tty terminal-x11) state)
   (set-attr tty :underline state))
@@ -1234,9 +1314,6 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-inverse ((tty terminal-x11) state)
   (set-attr tty :inverse state))
-
-(defparameter *colors*
-  #(:black :red :green :yellow :blue :magenta :cyan :white nil :default))
 
 (defun foreground-color (tty)
   "Get the default foreground color for text."
@@ -1257,33 +1334,6 @@ i.e. the terminal is 'line buffered'."
   (when (not (color:known-color-p color))
     (error "Unknown color ~s." color))
   (setf (background tty) (color:lookup-color color)))
-
-(defun %terminal-color (tty fg bg)
-  (with-slots (draw-gc) tty
-    (let ((fg-pos (and (keywordp fg) (position fg *colors*)))
-	  (bg-pos (and (keywordp bg) (position bg *colors*))))
-      (when (and (keywordp fg) (not fg-pos))
-	(error "Forground ~a is not a known color." fg))
-      (when (and (keywordp bg) (not bg-pos))
-	(error "Background ~a is not a known color." bg))
-      (when (color:structured-color-p fg)
-	(setf (gcontext-foreground draw-gc) (color-pixel tty fg)))
-      (when (color:structured-color-p bg)
-	(setf (gcontext-background draw-gc) (color-pixel tty bg)))
-      (when fg-pos
-	(setf (gcontext-foreground draw-gc)
-	      (color-pixel tty (color:lookup-color
-				(case fg
-				  ((nil) (foreground tty))
-				  (:default (foreground tty))
-				  (t fg))))))
-      (when bg-pos
-	(setf (gcontext-background draw-gc)
-	      (color-pixel tty (color:lookup-color
-				(case bg
-				  ((nil) (background tty))
-				  (:default (background tty))
-				  (t bg)))))))))
 
 (defmethod terminal-color ((tty terminal-x11) fg bg)
   (%terminal-color tty fg bg))
@@ -1338,6 +1388,8 @@ Attributes are usually keywords."
 
 (defun get-key (tty &key timeout)
   (with-slots (display (our-window window) window-width window-height
+	       (window-rows terminal::window-rows)
+	       (window-columns terminal::window-columns)
 	       cell-width cell-height pushback modifiers) tty
     (when pushback
       (return-from get-key
@@ -1352,6 +1404,7 @@ Attributes are usually keywords."
 	  (real-timeout (and timeout (make-dtime-as timeout :ms)))
 	  time-left result)
       (loop :do
+	 (setf result nil)
 	 (event-case (display :force-output-p t
 			      :timeout (and timeout
 					    time-left
@@ -1385,10 +1438,14 @@ Attributes are usually keywords."
 					 ;;:button :release
 					 :modifiers state)))))
 	      t)
-	   (:exposure (x y width height window #|count|#)
-	      (when (eq xlib:window our-window)
-	        (redraw-area tty x y width height))
-	      nil)
+	   (:exposure (x y width height xlib:window #|count|#)
+	      (when (equal xlib:window our-window)
+		(format t "exposure ~s ~s ~s ~s~%" x y width height)
+	        (redraw-area tty x y width height)
+		(display-finish-output display)
+		;; (dump-grid tty)
+		)
+	      t)
 	   (:configure-notify (#| x y |# xlib:window xlib::width xlib::height)
 	     (when (eq xlib:window our-window)
 	       (when (or (locally (declare (optimize (speed 0)))
@@ -1396,13 +1453,16 @@ Attributes are usually keywords."
 			   (/= xlib::height window-height)))
 		 (setf window-width xlib::width window-height xlib::height)
 		 (set-grid-size-from-pixel-size tty window-width window-height)
+		 (format t "resize to ~s ~s~%" window-columns window-rows)
 		 (resize-grid tty)
 		 ;;(clear-area win :x x :y y :width w :height h)
 		 ;;(display-finish-output display)
 		 (locally (declare (optimize (speed 0)))
 		   (when (find :resize (terminal-events-enabled tty))
-		     (setf result :resize)))))
-	     nil)
+		     (setf result :resize)))
+		 ;; (dump-grid tty)
+		 ))
+	     t)
 	   (:key-press (code state)
 	     (let* ((sym (keycode->keysym display code 0))
 		    (sym-name (gethash sym *keysym-names*))
@@ -1411,7 +1471,7 @@ Attributes are usually keywords."
 	       ;; (format t "code ~s state ~x sym ~s ~s chr ~s~%" code state
 	       ;; 	       sym sym-name chr)
 	       (cond
-		 ((find code *modifiers*)
+		 ((find code modifiers)
 		  ;; @@@ Ignore modifier presses by themselves
 		  (setf result nil))
 		 ((not (zerop (logand state (logior +shift-mask+ +lock-mask+))))
