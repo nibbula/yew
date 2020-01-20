@@ -1387,8 +1387,8 @@ for the command-function).")
   (let ((backend (pick-backend backend-type)))
     (if backend
 	;;(with-terminal (#| :crunch |# :curses)
-	(with-new-terminal (:crunch)
-	;;(with-terminal ()
+	;;(with-new-terminal (:crunch)
+	(with-terminal ()
 	  (with-inator (*puca* 'puca
 		        :keymap (list *puca-keymap* *default-inator-keymap*)
 		        :backend backend)
