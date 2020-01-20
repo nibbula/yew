@@ -15,9 +15,11 @@ other terminals to use.")
    #:grid-char-line
    #:grid-char-attrs
    #:make-grid-char
+   #:copy-grid-char
    #:grid-string
    #:make-grid-string
    #:blank-char
+   #:grid-char-same-effects
    #:grid-char=
    #:set-grid-char
    #:grapheme-to-grid-char
@@ -27,6 +29,11 @@ other terminals to use.")
    #:grid-to-fat-string
    #:fat-string-to-grid-string
    #:unset-grid-char
+   #:any-char-c
+   #:any-char-fg
+   #:any-char-bg
+   #:any-char-line
+   #:any-char-attrs
    ))
 (in-package :terminal-grid)
 
@@ -63,6 +70,7 @@ other terminals to use.")
     ;;  0)		; since an unset fatchar is #\nul
     (t (display-length (grid-char-c c)))))
 
+;; This probably gives a warning since it's already done in crunch.
 (defmethod display-length ((c null))
   0) ;; @@@ so bogus
 
@@ -311,5 +319,32 @@ RENDITION is a fatchar to take effects from."
 	(grid-char-bg    c)	nil
 	(grid-char-line  c)	0
 	(grid-char-attrs c)	nil))
+
+;; Should things like this be in ochar?
+;; Or should grid-char and fatchar be classes????
+(defgeneric any-char-c (c)
+  (:method ((c character)) c)
+  (:method ((c fatchar)) (fatchar-c c))
+  (:method ((c grid-char)) (grid-char-c c)))
+
+(defgeneric any-char-fg (c)
+  (:method ((c character)) nil)
+  (:method ((c fatchar)) (fatchar-fg c))
+  (:method ((c grid-char)) (grid-char-fg c)))
+
+(defgeneric any-char-bg (c)
+  (:method ((c character)) nil)
+  (:method ((c fatchar)) (fatchar-bg c))
+  (:method ((c grid-char)) (grid-char-bg c)))
+
+(defgeneric any-char-line (c)
+  (:method ((c character)) nil)
+  (:method ((c fatchar)) (fatchar-line c))
+  (:method ((c grid-char)) (grid-char-line c)))
+
+(defgeneric any-char-attrs (c)
+  (:method ((c character)) nil)
+  (:method ((c fatchar)) (fatchar-attrs c))
+  (:method ((c grid-char)) (grid-char-attrs c)))
 
 ;; EOF
