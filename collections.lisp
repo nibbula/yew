@@ -150,6 +150,7 @@ structs as sequences. Also we really need the MOP for stuff.")
   ()
   (:documentation "A collection with explicit keys."))
 
+;; I supposed we could treat a vector as a keyed collection too, but why?
 (defgeneric keyed-collection-p (collection)
   (:documentation "Return true if COLLECTION is a keyed-collection.")
   (:method ((collection t))                nil)
