@@ -43,14 +43,17 @@
        ;;(format t "----> ~s [~d]~%" c i)
        (when (not (equal last-attr (fatchar-attrs c)))
 	 (tt-normal)
-	 (loop :for a :in (fatchar-attrs c)
-	    :do
-	    (case a
-	      (:normal    (tt-normal))
-	      (:standout  (tt-standout t))
-	      (:underline (tt-underline t))
-	      (:bold      (tt-bold t))
-	      (:inverse   (tt-inverse t))))
+	 ;; This can potentially handle attributes we don't know about.
+	 (tt-set-attributes (fatchar-attrs c))
+	 ;; This won't.
+	 ;; (loop :for a :in (fatchar-attrs c)
+	 ;;    :do
+	 ;;    (case a
+	 ;;      (:normal    (tt-normal))
+	 ;;      (:standout  (tt-standout t))
+	 ;;      (:underline (tt-underline t))
+	 ;;      (:bold      (tt-bold t))
+	 ;;      (:inverse   (tt-inverse t))))
 	 (setf last-attr (fatchar-attrs c)
 	       set-attr t))
        (when (or (not (equal fg (fatchar-fg c)))
@@ -68,14 +71,16 @@
     (error "Please supply a terminal or set *terminal*."))
   (let ((*terminal* terminal))
     (tt-normal)
-    (loop :for a :in (fatchar-attrs c)
-       :do
-       (case a
-	 (:normal    (tt-normal))
-	 (:standout  (tt-standout t))
-	 (:underline (tt-underline t))
-	 (:bold      (tt-bold t))
-	 (:inverse   (tt-inverse t))))
+    ;; This can potentially handle attributes we don't know about.
+    (tt-set-attributes (fatchar-attrs c))
+    ;; (loop :for a :in (fatchar-attrs c)
+    ;;    :do
+    ;;    (case a
+    ;; 	 (:normal    (tt-normal))
+    ;; 	 (:standout  (tt-standout t))
+    ;; 	 (:underline (tt-underline t))
+    ;; 	 (:bold      (tt-bold t))
+    ;; 	 (:inverse   (tt-inverse t))))
     (tt-color (or (fatchar-fg c) :default) (or (fatchar-bg c) :default))
     (tt-write-char (fatchar-c c))))
 
