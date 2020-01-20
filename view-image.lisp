@@ -121,8 +121,9 @@
 (defgeneric image-inator-usable-p (type)
   (:documentation "Return true if an image-inator of TYPE can be used.")
   (:method ((type (eql 'image-inator)))
-    (or (typep *terminal* 'terminal-ansi)
-	(typep *terminal* 'terminal-crunch))))
+    (or (equal (symbol-name (type-of *terminal*)) "TERMINAL-ANSI")
+	(equal (symbol-name (type-of *terminal*)) "TERMINAL-CRUNCH")
+	(equal (symbol-name (type-of *terminal*)) "TERMINAL-X11"))))
 
 (defgeneric width (inator)
   (:documentation "Return the width of the image-inator in pixels.")
@@ -1183,7 +1184,8 @@ the first time it fails to identify the image."
   (call-next-method)
   (with-slots (initial-command bg-color) o
     (when (or (typep *terminal* 'terminal-ansi:terminal-ansi)
-	      (and (terminal-wrapped-terminal *terminal*)
+	      (and (typep *terminal* 'terminal-wrapper)
+		   (terminal-wrapped-terminal *terminal*)
 		   (typep (terminal-wrapped-terminal *terminal*)
 			  'terminal-ansi:terminal-ansi)))
       (setf bg-color
