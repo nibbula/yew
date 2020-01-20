@@ -190,6 +190,21 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 (defmethod (setf ochar) ((value fatchar) (s fat-string) index)
   (setf (aref (fat-string-string s) index) value))
 
+(defmethod omap (function (collection fat-string))
+  (make-fat-string :string
+		   (map 'vector function (fat-string-string collection))))
+
+(defmethod omapn (function (collection fat-string))
+  (map nil function (fat-string-string collection)))
+
+(defmethod mappable-p ((collection fat-string)) t)
+
+(defmethod omap-into ((mutable-collection fat-string)
+		      function &rest collections)
+  (apply #'map-into (fat-string-string mutable-collection) function
+	 collections)
+  mutable-collection)
+
 (defmacro call-with-start-and-end (func args)
   "Call func with args and START and END keywords, assume that an environemnt
 that has START and START-P and END and END-P."
