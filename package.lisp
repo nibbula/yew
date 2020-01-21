@@ -47,6 +47,7 @@
    #:get-buffer-string
    #:replace-buffer
    #:*history-context*
+   #:get-history
    #:history-entry-time
    #:history-entry-line
    #:history-entry-modified
