@@ -1715,7 +1715,7 @@ handler cases."
 						  :key-press :key-release))
 		 (not (allow-send-events tty)))
 	(warn "Synthetic button press!")
-	(return-from key-handler nil))
+	(return-from key-handler t))
       (case event-key
 	((:exposure :configure-notify)
 	 (apply #'window-handler slots))
@@ -1731,7 +1731,7 @@ handler cases."
 				    :button (keywordify (s+ "BUTTON-" code))
 				    :modifiers (modifier-mask-to-list state))
 		     *input-available* t))
-	     result)))
+	     (or result t))))
 	(:button-release
 	 (event-slots (slots code x y state)
 	   (let ((cx (round x cell-width))
@@ -1746,7 +1746,7 @@ handler cases."
 				    ;;:button :release
 				    :modifiers (modifier-mask-to-list state))
 		     *input-available* t))
-	     result)))
+	     (or result t))))
 	(:key-press
 	 (event-slots (slots code state)
 	   (let* ((sym (keycode->keysym display code 0))
@@ -1781,7 +1781,7 @@ handler cases."
 		;; Try to return something at least
 		(setf result (or chr sym-name sym code))))
 	     (when result (setf *input-available* t))
-	     result)))
+	     (or result t))))
 	(otherwise t)))))
 
 (defun get-key (tty &key timeout)
