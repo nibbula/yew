@@ -269,7 +269,43 @@
        (squares 0 1 "Color pairs" nil)
        (squares 0 12 "Bold colors" #'terminal-bold)
        (squares 30 1 "Bold & inverse colors" #'terminal-inverse)
-       (tt-normal)))))
+
+       ;; Try writing colored strings in various ways.
+       (let ((line 13))
+	 (tt-normal)
+	 (tt-move-to line 30)
+	 (tt-write-span '((:red "Red") " " (:green "Green") " " (:blue "Blue")
+			  " Normal"))
+
+	 (tt-move-to (incf line) 30)
+	 (tt-color :red nil) (tt-write-string "Red") (tt-write-char #\space)
+	 (tt-color :green nil) (tt-write-string "Green") (tt-write-char #\space)
+	 (tt-color :blue nil) (tt-write-string "Blue") (tt-write-char #\space)
+	 (tt-color :default :default) (tt-write-string "Normal")
+
+	 (tt-move-to (incf line) 30)
+	 (tt-write-span '((:red "Red") " "))
+	 (tt-color :green nil) (tt-write-string "Green ")
+	 (tt-color :default nil)
+	 (tt-write-span '((:blue "Blue") " "))
+	 (tt-write-string "Normal")
+
+	 (tt-move-to (incf line) 30)
+	 (tt-write-span '((:cyan "Cyan") " " (:magenta "Magenta") " "
+			  (:yellow "Yellow") " Normal"))
+
+	 (tt-move-to (incf line) 30)
+	 (tt-color :cyan nil) (tt-write-string "Cyan") (tt-write-char #\space)
+	 (tt-color :magenta nil) (tt-write-string "Magenta") (tt-write-char #\ )
+	 (tt-color :yellow nil) (tt-write-string "Yellow") (tt-write-char #\ )
+	 (tt-color :default :default) (tt-write-string "Normal")
+
+	 (tt-move-to (incf line) 30)
+	 (tt-write-span '((:cyan "Cyan") " "))
+	 (tt-color :magenta nil) (tt-write-string "Magenta ")
+	 (tt-color :default nil)
+	 (tt-write-span '((:yellow "Yellow") " "))
+	 (tt-write-string "Normal"))))))
 
 (defun test-alternate-characters ()
   (blurp ()
