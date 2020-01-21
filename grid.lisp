@@ -37,6 +37,8 @@ other terminals to use.")
    ))
 (in-package :terminal-grid)
 
+(declaim #.`(optimize ,.(getf terminal-config::*config* :optimization-settings)))
+
 ;; As you may know, many of the world's lovely scripts, do not fit perfectly
 ;; into a character grid, so neither will all unicode characters. This will only
 ;; really work for those scripts that do. But we do at least try to make it a
@@ -71,8 +73,8 @@ other terminals to use.")
     (t (display-length (grid-char-c c)))))
 
 ;; This probably gives a warning since it's already done in crunch.
-(defmethod display-length ((c null))
-  0) ;; @@@ so bogus
+;; (defmethod display-length ((c null))
+;;   0) ;; @@@ so bogus
 
 (defun gs-display-length (gs)
   (loop :for c :across gs :sum (display-length c)))
@@ -200,6 +202,7 @@ RENDITION is a fatchar to take effects from."
      (loop :for g :across s :sum
 	(grid-char-character-length g)))))
 
+#|
 ;; @@@ no-nulls seems broken at least w/regard to *-line
 (defun grid-to-fat-string (s &key (start 0) end no-nulls)
   "Return a fat-string equivalent to S. S can be a grid-string or a grid-char."
@@ -224,7 +227,7 @@ RENDITION is a fatchar to take effects from."
 			     :element-type 'fatchar
 			     :initial-element (make-fatchar)))
 	 (j 0))
-    (flet ((add-grid-char (char)
+z    (flet ((add-grid-char (char)
 	     "Add CHAR to the result."
 	     (etypecase (grid-char-c char)
 	       (null
@@ -272,6 +275,87 @@ RENDITION is a fatchar to take effects from."
 	  :do
 	  (add-grid-char (aref s i)))))
     (make-fat-string :string result))))
+|#
+
+(defun grid-to-fat-string (s &key (start 0) end null-as keep-nulls)
+  "Return a fat-string equivalent to S. S can be a grid-string or a grid-char."
+  (let* ((len (length s)) ;; (grid-string-character-length s))
+	 (result (make-array len
+			     :element-type 'fatchar
+			     :initial-element (make-fatchar)))
+	 (j 0)
+	 output-start output-end)
+    (flet ((add-grid-char (i char)
+	     "Add CHAR to the result."
+	     (etypecase (grid-char-c char)
+	       (null
+		;; Ignore it unless it has other data.
+		;; @@@ It this reasonable?
+		(when (or (grid-char-fg    char)
+			  (grid-char-bg    char)
+			  (grid-char-attrs char)
+			  (not (zerop (grid-char-line char)))
+			  output-start)
+		  (when (not output-start)
+		    (setf output-start i))
+		  (setf (aref result j)
+			(make-fatchar :fg    (grid-char-fg    char)
+				      :bg    (grid-char-bg    char)
+				      :attrs (grid-char-attrs char)
+				      :line  (grid-char-line  char)
+				      :c null-as))
+		  (when (not output-end)
+		    (setf output-end j))
+		  (incf j)))
+	       (character
+		(when (or output-start
+			  ;; (char/= (grid-char-c char) #.(code-char 0)))
+			  (or (char/= (grid-char-c char) #.(code-char 0))
+			      keep-nulls))
+		  (when (not output-start)
+		    (setf output-start i))
+		  (setf (aref result j)
+			(make-fatchar :c     (or (grid-char-c char) null-as)
+				      :fg    (grid-char-fg    char)
+				      :bg    (grid-char-bg    char)
+				      :attrs (grid-char-attrs char)
+				      :line  (grid-char-line  char)))
+		  (when (not output-end)
+		    (setf output-end
+			  (if (grid-char-c char) nil j)))
+		  (incf j)))
+	       (string
+		(loop :for c :across (grid-char-c char)
+		   :do
+		   (when (or output-start
+			     (char/= (grid-char-c char) #.(code-char 0))
+			     keep-nulls)
+		     (when (not output-start)
+		       (setf output-start i))
+		     (setf (aref result j)
+			   (make-fatchar :c     (or c null-as)
+					 :fg    (grid-char-fg    char)
+					 :bg    (grid-char-bg    char)
+					 :attrs (grid-char-attrs char)
+					 :line  (grid-char-line  char)))
+		     (when (not output-end)
+		       (setf output-end
+			     (if c nil j)))
+		     (incf j)))))))
+      (etypecase s
+	(null result)
+	(grid-char (add-grid-char 0 s))
+	(vector
+	 (loop
+	    :for i :from start :below (or end (length s))
+	    :do
+	    (add-grid-char i (aref s i)))))
+      (if (not output-start)
+	  (values (make-fat-string :string (vector)) nil)
+	  (values (make-fat-string :string (if keep-nulls
+					       result
+					       (subseq result 0 output-end)))
+		  output-start)))))
 
 ;; @@@ This is probably only for debugging
 (defun fat-string-to-grid-string (fs)
