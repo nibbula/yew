@@ -509,7 +509,7 @@ the VALUE."))
     (when (< hue 0)
       (setf hue (+ hue 360)))
     (make-color
-     :hsv
+     :hsl
      :hue hue
      :saturation
      (cond
@@ -533,6 +533,14 @@ the VALUE."))
 		  :red	  (f 0)
 		  :green  (f 8)
 		  :blue   (f 4)))))
+
+(defmethod convert-color (color (from-color-model (eql :hsl))
+			          (to-color-model (eql :rgb8)))
+  (convert-color (convert-color color :hsl :rgb) :rgb :rgb8))
+
+(defmethod convert-color (color (from-color-model (eql :rgb8))
+			          (to-color-model (eql :hsl)))
+  (convert-color (convert-color color :rgb8 :rgb) :rgb :hsl))
 
 (register-color-model :hsl)
 
