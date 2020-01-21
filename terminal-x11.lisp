@@ -216,6 +216,10 @@ different from the current foreground color which in rendition.")
    (modifiers
     :initarg :modifiers :accessor modifiers :initform nil :type list
     :documentation "List of keycodes that are modifiers.")
+   (allow-send-events
+    :initarg :allow-send-events :accessor allow-send-events
+    :initform nil :type boolean
+    :documentation "True to allow synthetic events sent by other programs.")
    (output-buffer
     :initarg :output-buffer :accessor output-buffer :initform nil
     :documentation "Buffer for output.")
@@ -324,7 +328,7 @@ are already set."
   "Initialize a terminal-x11."
   (declare (ignore initargs))
   (with-slots (display window window-width window-height font title pixel-format
-	       draw-gc erase-gc cursor-gc) o
+	       draw-gc erase-gc cursor-gc modifiers) o
     (multiple-value-bind (host number) (get-display-from-environment)
       (when (not host)
 	(error "Can't get X display from the environment."))
@@ -356,21 +360,21 @@ are already set."
 		:background black
 		:foreground white
 		:function boole-1
-		:subwindow-mode :include-inferiors
+		;;:subwindow-mode :include-inferiors
 		:font font)
        cursor-gc (create-gcontext
 		  :drawable window
 		  :background white
 		  :foreground black
 		  :function boole-1
-		  :subwindow-mode :include-inferiors
+		  ;;:subwindow-mode :include-inferiors
 		  :font font)
        erase-gc (create-gcontext
 		 :drawable window
 		 :background black
 		 :foreground white
 		 :function boole-clr
-		 :subwindow-mode :include-inferiors
+		 ;;:subwindow-mode :include-inferiors
 		 :font font)
        (wm-name window) title
        (wm-icon-name window) title)
@@ -379,7 +383,8 @@ are already set."
       (map-window window))
     (terminal-get-size o)
     (make-new-grid o)
-    (setf pixel-format (get-pixel-format o))
+    (setf pixel-format (get-pixel-format o)
+	  modifiers (flatten (multiple-value-list (modifier-mapping display))))
     ))
 
 (defun set-grid-size-from-pixel-size (tty width height)
@@ -519,10 +524,13 @@ to blank with."
 (defmacro with-color ((tty fg bg) &body body)
   "Evaluate the BODY with the current colors temporarily set to FG and BG."
   (with-unique-names (saved-fg saved-bg)
-    `(let ((,saved-fg ,fg) (,saved-bg ,bg))
-       (%terminal-color ,tty ,fg ,bg)
-       ,@body
-       (%terminal-color ,tty ,saved-fg ,saved-bg))))
+    `(let ((,saved-fg (fatchar-fg (rendition ,tty)))
+	   (,saved-bg (fatchar-bg (rendition ,tty))))
+       (unwind-protect
+	    (progn
+	      (%terminal-color ,tty ,fg ,bg)
+	      ,@body)
+	 (%terminal-color ,tty ,saved-fg ,saved-bg)))))
 
 (defmacro with-position ((tty row col) &body body)
   "Evaluate the BODY with the cursor temporarily at ROW COL."
@@ -574,8 +582,7 @@ to blank with."
 	    (with-output-to-string (str)
 	      (omapn (_
 		      ;; (format t "type-of _ ~s~%" (type-of _))
-		      (when (any-char-c _)
-			(princ (any-char-c _) str)))
+		      (princ (or (any-char-c _) #\space) str))
 		     string))))
       ;; (let ((*print-length* 3))
       ;;  	(format t "render-unit-string ~s ~s ~s ~s ~s~%"
@@ -585,13 +592,14 @@ to blank with."
       (when (not col)
 	(setf col cursor-column))
       (cond
-	((not (or fg bg attrs))
-	 ;; No effects
-	 (draw-thing tty plain-string :x col :y row))
-	((not (or fg bg attrs))
-	 ;; No effects
-	 (draw-thing tty plain-string :x col :y row))
-	((and (or fg bg) (not attrs))
+	;; ((not (or fg bg attrs))
+	;;  ;; No effects
+	;;  (draw-thing tty plain-string :x col :y row))
+	;; ((and (or fg bg) (not attrs))
+	;;  ;; Only colors
+	;;  (with-color (tty fg bg)
+	;;    (draw-thing tty plain-string :x col :y row)))
+	((not attrs)
 	 ;; Only colors
 	 (with-color (tty fg bg)
 	   (draw-thing tty plain-string :x col :y row)))
@@ -615,44 +623,56 @@ to blank with."
 		(:double-underline (setf double-underline t))))
 	   (setf inverted (or inverse reverse standout)
 		 dimmed (or faint dim))
-	   (cond
-	     ((or (and bold (not bold-font)) dimmed inverted)
-	      ;; color change
-	      (when dim ;; lower value
-		)
-	      (when faint ;; even lower value
-		)
-	      (when inverted ;; switch fg & bg
-		(rotatef fg bg))
-	      (when (and bold (not bold-font))
-		;; use bold color or increase value
-		))
-	     ((and italic italic-font)
-	      (setf use-font italic-font))
-	     ((and bold bold-font)
-	      (setf use-font bold-font)))
 	   (when (not invisible)
 	     (with-color (tty fg bg)
-	       (draw-thing tty plain-string :x col :y row))
-	     (when (or underline crossed-out double-underline)
-	       ;; Draw lines over characters
-	       (let* ((start-x (* col cell-width))
-		      (start-y (+ (* row cell-height)
-				  (font-ascent font)))
-		      (end-x (+ start-x
-				(* cell-width
-				   (char-util:display-length plain-string))))
-		      (half-y (- start-y
-				 (truncate (font-ascent font) 2))))
-		 (when (or underline double-underline)
-		   (draw-line window draw-gc
-			      start-x start-y end-x start-y))
-		 (when crossed-out
-		   (draw-line window draw-gc start-x half-y end-x half-y))
-		 (when double-underline
-		   (draw-line window draw-gc
-			      start-x (+ start-y 2)
-			      end-x (+ start-y 2))))))))))))
+	       (cond
+		 ((or (and bold (not bold-font)) dimmed inverted)
+		  ;; color change
+		  (when dim ;; lower value
+		    )
+		  (when faint ;; even lower value
+		    )
+		  (when (and bold (not bold-font))
+		    ;; use bold color or increase value
+		    (let* ((bfg (color:convert-color-to
+				 (color-from-rendition tty fg :fg) :hsl))
+			   (l (color:color-component bfg :lightness))
+			   (s (color:color-component bfg :saturation)))
+		      (setf l (min 1.0 (+ l .3))
+			    s (if (= l 1.0) (+ s 0.3) s)
+			    (color:color-component bfg :lightness) l
+			    (color:color-component bfg :saturation) s
+			    fg bfg)))
+		  (when inverted ;; switch fg & bg
+		    (rotatef fg bg))
+		  ;; (setf fg (color:convert-color-to fg :rgb8)
+		  ;; 	bg (color:convert-color-to bg :rgb8))
+		  ;; (format t "fg ~s bg ~s~%" fg bg)
+		  ;; (finish-output *standard-output*)
+		  (%terminal-color tty fg bg))
+		 ((and italic italic-font)
+		  (setf use-font italic-font))
+		 ((and bold bold-font)
+		  (setf use-font bold-font)))
+	       (draw-thing tty plain-string :x col :y row)
+	       (when (or underline crossed-out double-underline)
+		 ;; Draw lines over characters
+		 (let* ((start-x (* col cell-width))
+			(start-y (+ (* row cell-height)
+				    (font-ascent font)))
+			(end-x (+ start-x
+				  (* cell-width
+				     (char-util:display-length plain-string))))
+			(half-y (- start-y
+				   (truncate (font-ascent font) 2))))
+		   (when (or underline double-underline)
+		     (draw-line window draw-gc start-x start-y end-x start-y))
+		   (when crossed-out
+		     (draw-line window draw-gc start-x half-y end-x half-y))
+		   (when double-underline
+		     (draw-line window draw-gc
+				start-x (+ start-y 2)
+				end-x (+ start-y 2)))))))))))))
 
 (defun copy-char-to-grid (tty char)
   "Put the CHAR at the current screen postion."
@@ -794,28 +814,34 @@ to blank with."
 (defun copy-string-to-grid (tty string &key start end)
   "Copy the STRING from START to END to the screen. Return true if we actually
 changed the screen contents."
-  (loop
-     :with changed
-     ;; :and str = (if (or (and start (not (zerop start))) end)
-     ;; 		      (if end
-     ;; 			  (displaced-subseq string (or start 0) end)
-     ;; 			  (displaced-subseq string start))
-     ;; 		      string)
-     ;; :with len = (or end (length string))
-     ;; :while (< i len)
-     :for c :in (char-util:graphemes
-		 (cond ;; @@@ What's better? this or splicing?
-		   ((and start end) (osubseq string start end))
-		   (start (osubseq string start))
-		   (end (osubseq string 0 end))
-		   (t string)))
-     :do
-     (when (copy-char-to-grid tty (grapheme-to-grid-char c :tty tty))
-       (setf changed t))
-     ;;(incf i)
-     :finally
-     ;; (flush-buffer tty)
-     (return changed)))
+  (with-slots (rendition) tty
+    (loop
+       :with changed :and gchar
+       ;; :and str = (if (or (and start (not (zerop start))) end)
+       ;; 		      (if end
+       ;; 			  (displaced-subseq string (or start 0) end)
+       ;; 			  (displaced-subseq string start))
+       ;; 		      string)
+       ;; :with len = (or end (length string))
+       ;; :while (< i len)
+       :for c :in (char-util:graphemes
+		   (cond ;; @@@ What's better? this or splicing?
+		     ((and start end) (osubseq string start end))
+		     (start (osubseq string start))
+		     (end (osubseq string 0 end))
+		     (t string)))
+       :do
+       ;; Make sure the color is set properly in the upgraded char
+       (setf gchar (grapheme-to-grid-char c))
+       (when (typep c '(or string character))
+	 (setf (grid-char-fg gchar) (fatchar-fg rendition)
+	       (grid-char-bg gchar) (fatchar-bg rendition)
+	       (grid-char-attrs gchar) (fatchar-attrs rendition)))
+       (when (copy-char-to-grid tty gchar)
+	 (setf changed t))
+       ;;(incf i)
+       :finally
+       (return changed))))
 
 (defun copy-text-to-grid (tty text)
   (etypecase text
@@ -854,7 +880,18 @@ changed the screen contents."
 (defparameter *colors*
   #(:black :red :green :yellow :blue :magenta :cyan :white nil :default))
 
+(defun color-from-rendition (tty color type)
+  (assert (member type '(:fg :bg)))
+  (cond
+    ((or (not color) (eq color :default))
+     (color:lookup-color (case type
+			   (:fg (foreground tty))
+			   (:bg (background tty)))))
+    ((color:structured-color-p color) color)
+    (t (color:lookup-color color))))
+
 (defun %terminal-color (tty fg bg)
+  ;; (format t "%terminal-color fg ~s bg ~s~%" fg bg)
   (with-slots (draw-gc rendition) tty
     (flush-buffer tty)
     (let ((fg-pos (and (keywordp fg) (position fg *colors*)))
@@ -863,24 +900,10 @@ changed the screen contents."
 	(error "Forground ~a is not a known color." fg))
       (when (and (keywordp bg) (not bg-pos))
 	(error "Background ~a is not a known color." bg))
-      (when (color:structured-color-p fg)
-	(setf (gcontext-foreground draw-gc) (color-pixel tty fg)))
-      (when (color:structured-color-p bg)
-	(setf (gcontext-background draw-gc) (color-pixel tty bg)))
-      (when fg-pos
-	(setf (gcontext-foreground draw-gc)
-	      (color-pixel tty (color:lookup-color
-				(case fg
-				  ((nil) (foreground tty))
-				  (:default (foreground tty))
-				  (otherwise fg))))))
-      (when bg-pos
-	(setf (gcontext-background draw-gc)
-	      (color-pixel tty (color:lookup-color
-				(case bg
-				  ((nil) (background tty))
-				  (:default (background tty))
-				  (otherwise bg))))))
+      (setf (gcontext-foreground draw-gc)
+	    (color-pixel tty (color-from-rendition tty fg :fg)))
+      (setf (gcontext-background draw-gc)
+	    (color-pixel tty (color-from-rendition tty bg :bg)))
       (setf (fatchar-fg rendition) fg
 	    (fatchar-bg rendition) bg))))
 
@@ -1012,6 +1035,7 @@ to the grid. It must be on a single line and have no motion characters."
 	  (substr (make-fat-string))
 	  ;;(translate (translate-alternate-characters tty))
 	  had-newline #|replacement|#)
+      ;; (format t ">> draw-fat-string ~s ~s~%" str (olength str))
       (loop
 	 :with i = (or start 0)
 	 :and our-end = (or (and end (min end (length fs))) (length fs))
@@ -1031,8 +1055,9 @@ to the grid. It must be on a single line and have no motion characters."
 	     ;; 	       (write-char cc stream))
 	     ;; 	   (write-char (line-char line) stream))
 	     (when (> (- i 1 unit-start) 0)
-	       (setf (fat-string-string substr) (osubseq fs unit-start (1- i)))
-	       (render-unit-string tty substr :row y :col x))
+	       ;; (setf (fat-string-string substr) (osubseq fs unit-start (1- i)))
+	       (setf (fat-string-string substr) (osubseq fs unit-start i))
+	       (render-unit-string tty substr :row y :col (+ unit-start x)))
 	     (setf unit-start i))
 	   (setf last-c c)
 	   (when (char= cc #\newline)
@@ -1041,8 +1066,9 @@ to the grid. It must be on a single line and have no motion characters."
 	 :finally
 	 (when (> (- i 1 unit-start) 0)
 	   (setf (fat-string-string substr)
-		 (osubseq fs unit-start (min (length fs) (1- i))))
-	   (render-unit-string tty substr :row y :col x)))
+		 (osubseq fs unit-start (min (length fs) i)))
+	   ;; (format t "draw-fat-string ~s ~s~%" substr (olength substr))
+	   (render-unit-string tty substr :row y :col (+ x unit-start))))
       had-newline)))
 
 ;; (defun %write-fat-string (tty str start end)
@@ -1232,24 +1258,28 @@ to the grid. It must be on a single line and have no motion characters."
 	  (c-height  (1+ (ceiling height cell-height))))
       (setf c-start-x (max 0 c-start-x)
 	    c-start-y (max 0 c-start-y))
-      ;; (format t "redraw-area ~s ~s ~s ~s~%"
-      ;; 	      c-start-x c-start-y c-width c-height)
+      (dbugf :tx11 "redraw-area ~s ~s ~s ~s~%"
+	     c-start-x c-start-y c-width c-height)
       ;; (draw-rectangle window draw-gc start-x start-y width height)
       (loop
-	 :with actual-end :and str
+	 :with actual-end :and str :and output-start
 	 :for y :from (max 0 c-start-y)
 	 :to (clamp (+ c-start-y c-height) 0 (1- window-rows))
 	 :do
 	 (setf actual-end
-	       (clamp (+ c-start-x c-width) 0 (min (1- (length (aref lines y)))
+	       (clamp (+ c-start-x c-width) 0 (min (length (aref lines y))
 						   (1- window-columns)))
-	       str (grid-to-fat-string
-		    (aref lines y)
-		    :start c-start-x
-		    :end actual-end))
-	 (when (and (plusp (- actual-end c-start-x)) (not (zerop (olength str))))
+	       (values str output-start) (grid-to-fat-string
+					  (aref lines y)
+					  :start c-start-x
+					  :end actual-end
+					  :null-as #\space))
+	 ;;(format t "str ~s ~s output-start ~s~%" (olength str) str output-start)
+	 (when (and (plusp (- actual-end c-start-x))
+		    (not (zerop (olength str))))
 	   (%draw-fat-string
-	    tty str :start c-start-x :end actual-end :x c-start-x :y y))))))
+	    tty str :start c-start-x :end actual-end
+	    :x (+ c-start-x output-start) :y y))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; terminal methods
@@ -1364,7 +1394,9 @@ i.e. the terminal is 'line buffered'."
 	    (osubseq line (+ cursor-column 1 n) (1- line-len)))
       (%draw-fat-string
        tty (grid-to-fat-string
-	    (osubseq line cursor-column (- line-len (+ n 2)))))
+	    (osubseq line cursor-column (- line-len (+ n 2)))
+	    :null-as #\space :keep-nulls t)
+       :x cursor-column :y cursor-row)
       (clear-text tty cursor-column cursor-row
 		      (- line-len n 1) cursor-row))))
 
@@ -1377,7 +1409,9 @@ i.e. the terminal is 'line buffered'."
 	    (osubseq line cursor-column (- line-len (+ n 2))))
       (%draw-fat-string
        tty (grid-to-fat-string
-	    (osubseq line (+ cursor-column n) (- line-len 1))))
+	    (osubseq line (+ cursor-column n) (- line-len 1))
+	    :null-as #\space :keep-nulls t)
+       :x cursor-column :y cursor-row)
       (clear-text tty cursor-column cursor-row
 		      (+ cursor-column n) cursor-row))))
 
@@ -1517,12 +1551,10 @@ i.e. the terminal is 'line buffered'."
 
 (defun foreground-color (tty)
   "Get the default foreground color for text."
-  (flush-buffer tty)
   (foreground tty))
 
 (defun background-color (tty)
   "Get the default background color for text."
-  (flush-buffer tty)
   (background tty))
 
 (defun set-foreground-color (tty color)
@@ -1585,17 +1617,175 @@ Attributes are usually keywords."
   (flush-buffer tty)
   (display-finish-output (display tty)))
 
-(defconstant +shift-mask+ (make-state-mask :shift))
-(defconstant +lock-mask+ (make-state-mask :lock))
+(defconstant +shift-mask+   (make-state-mask :shift))
+(defconstant +lock-mask+    (make-state-mask :lock))
 (defconstant +control-mask+ (make-state-mask :control))
-(defconstant +mod-1-mask+ (make-state-mask :mod-1))
-(defconstant +mod-2-mask+ (make-state-mask :mod-2))
+(defconstant +mod-1-mask+   (make-state-mask :mod-1))
+(defconstant +mod-2-mask+   (make-state-mask :mod-2))
+
+(defparameter *event-tty* nil
+  "For passing the TTY to event handlers.")
+
+(defvar *input-available* nil
+  "Indicator that there's mouse or keyboard input.")
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro event-slots ((slots &rest vars) &body body)
+    "Bind VARS from the SLOTS property list, and evaluate BODY. For use in event
+handler cases."
+    (with-unique-names (slot-var)
+      `(let* ((,slot-var ,slots)
+	      ,@(loop
+		   :for v :in vars
+		   :collect `(,v (getf ,slot-var ,(keywordify v)))))
+	 ,@body))))
+
+(defun window-handler (&rest slots
+		       &key display event-key send-event-p &allow-other-keys)
+  "Handle normal window maintenance events that aren't input."
+  (declare (ignore send-event-p))
+  (let ((tty *event-tty*) result)
+    (with-slots ((our-window window) window-width window-height) tty
+      (case event-key
+	(:exposure
+	 (event-slots (slots x y width height xlib:window #|count|#)
+	   (when (eq xlib:window our-window)
+	     ;; (format t "exposure ~s ~s ~s ~s~%" x y width height)
+	     (redraw-area tty x y width height)
+	     (display-finish-output display)
+	     ;; (dump-grid tty)
+	     )
+	   t))
+	(:configure-notify
+	 (event-slots (slots #| x y |# xlib:window xlib::width xlib::height)
+	   (when (eq xlib:window our-window)
+	     (when (or (locally (declare (optimize (speed 0)))
+			 (/= xlib::width window-width)
+			 (/= xlib::height window-height)))
+	       (setf window-width xlib::width window-height xlib::height)
+	       (set-grid-size-from-pixel-size tty window-width window-height)
+	       ;; (format t "resize to ~s ~s~%" window-columns window-rows)
+	       (resize-grid tty)
+	       ;;(clear-area win :x x :y y :width w :height h)
+	       ;;(display-finish-output display)
+	       (locally (declare (optimize (speed 0)))
+		 (when (find :resize (terminal-events-enabled tty))
+		   (setf result :resize)))
+	       ;; (dump-grid tty)
+	       ))
+	   t))
+	(:visibility-notify
+	 t)
+	;; (:client-message ()
+	;;   at least handle DELETE-WINDOW!
+	;;   t)
+	;; :enter-notify fill the cursor
+	;; :leave-notify hollow the cursor
+	;; probably :keymap-notify
+	;; so we know what keys are down
+	;; :mapping-notify
+	;;   update the map, calling xlib:mapping-notify
+	;; :map-notify
+	;; :unmap-notify
+	;;   maybe turn off outputting? icon window or something?
+	;; :property-notify :selection-clear :selection-notify :selection-request
+	;;   complicated selection crap
+	;; what else? extensions?
+	(otherwise t)))))
+
+(defun modifier-mask-to-list (mask)
+  "Return a list of modifier keywords from an event state."
+  (substitute :meta :mod-1 (make-state-keys mask)))
+
+(defun modifier-prefixed (symbol mask)
+  "Return a keyword of SYMBOL prefixed by modifiers mask MASK."
+  (intern (format nil "~:[~;S-~]~:[~;A-~]~:[~;C-~]~:[~;M-~]~@:(~a~)"
+		  (logtest +shift-mask+   mask)
+		  (logtest +mod-2-mask+   mask)
+		  (logtest +control-mask+ mask)
+		  (logtest +mod-1-mask+   mask)
+		  (symbol-name symbol)) :keyword))
+
+(defun key-handler (&rest slots
+		    &key display event-key send-event-p &allow-other-keys)
+  "Handle key or mouse input."
+  (with-slots (cell-width cell-height modifiers) *event-tty*
+    (let ((tty *event-tty*) result)
+      (when (and send-event-p (member event-key '(::button-press :button-release
+						  :key-press :key-release))
+		 (not (allow-send-events tty)))
+	(warn "Synthetic button press!")
+	(return-from key-handler nil))
+      (case event-key
+	((:exposure :configure-notify)
+	 (apply #'window-handler slots))
+	(:button-press
+	 (event-slots (slots code x y state)
+           (let ((cx (round x cell-width))
+		 (cy (round y cell-height)))
+	     (when (find :mouse-buttons (terminal-events-enabled tty))
+	       (setf result
+		     (make-instance 'tt-mouse-button-event
+				    :terminal tty
+				    :x cx :y cy
+				    :button (keywordify (s+ "BUTTON-" code))
+				    :modifiers (modifier-mask-to-list state))
+		     *input-available* t))
+	     result)))
+	(:button-release
+	 (event-slots (slots code x y state)
+	   (let ((cx (round x cell-width))
+		 (cy (round y cell-height)))
+	     (when (find :mouse-buttons (terminal-events-enabled tty))
+	       (setf result
+		     (make-instance 'tt-mouse-button-release
+				    :terminal tty
+				    :x cx :y cy
+				    :button (keywordify (s+ "BUTTON-" code))
+				    ;;:button (list code :release)
+				    ;;:button :release
+				    :modifiers (modifier-mask-to-list state))
+		     *input-available* t))
+	     result)))
+	(:key-press
+	 (event-slots (slots code state)
+	   (let* ((sym (keycode->keysym display code 0))
+		  (sym-name (gethash sym *keysym-names*))
+		  (chr (keycode->character display code state)))
+	     ;; @@@ the keyword is pretty bogus, maybe we should drop it?
+	     ;; (format t "code ~s state ~x sym ~s ~s chr ~s~%" code state
+	     ;; 	       sym sym-name chr)
+	     (cond
+	       ;; @@@ Ignore modifier presses by themselves for now
+	       ((find code modifiers)
+		(setf result nil))
+	       ;; A character was found
+	       (chr
+		(setf result chr)
+		(when (or (logtest state +shift-mask+)
+			  (logtest state +lock-mask+))
+		  (setf result (char-upcase chr)))
+		(when (logtest state +control-mask+)
+		  (setf result (char-util:ctrl chr)))
+		(when (logtest state +mod-1-mask+)
+		   ;; @@@ this isn't really good
+		   ;; perhaps we should stuff Escape?
+		  (setf result (char-util:meta-char chr))))
+	       ;; A key symbol was found
+	       (sym-name
+		(setf result
+		      (if (not (zerop state))
+			  (modifier-prefixed sym-name state)
+			  sym-name)))
+	       (t
+		;; Try to return something at least
+		(setf result (or chr sym-name sym code))))
+	     (when result (setf *input-available* t))
+	     result)))
+	(otherwise t)))))
 
 (defun get-key (tty &key timeout)
-  (with-slots (display (our-window window) window-width window-height
-	       (window-rows terminal::window-rows)
-	       (window-columns terminal::window-columns)
-	       cell-width cell-height pushback modifiers) tty
+  (with-slots (display pushback modifiers) tty
     (when pushback
       (return-from get-key
 	(pop pushback)))
@@ -1605,110 +1795,35 @@ Attributes are usually keywords."
 	    (flatten (multiple-value-list (modifier-mapping display)))))
 
     ;; If the timeout has already elapsed, don't use
-    (let ((start-time (get-dtime))
-	  (real-timeout (and timeout (make-dtime-as timeout :ms)))
-	  time-left result)
+    (let* ((start-time (get-dtime))
+	   (real-timeout (and timeout (make-dtime-as timeout :seconds)))
+	   (*event-tty* tty)
+	   (*input-available* nil)
+	   (time-left real-timeout)
+	   result)
       (loop :do
-	 (setf result nil)
-	 (event-case (display :force-output-p t
+	 (dbugf :tx11 "get-key BEFORE ~s ~s ~s ~s ~s~%"
+		timeout time-left
+		(and time-left (dtime-plusp time-left))
+		(and time-left (dtime-to time-left :seconds))
+		(and timeout
+		     time-left
+		     (dtime-plusp time-left)
+		     (dtime-to time-left :seconds)))
+	 (setf result
+	       (process-event display
+			      :handler #'key-handler
+			      :force-output-p t
 			      :timeout (and timeout
 					    time-left
 					    (dtime-plusp time-left)
-					    (dtime-to time-left :seconds)))
-	   ;; (:client-message ()
-	   ;;   t)
-	   (:button-press (code x y state)
-	      (let ((cx (round x cell-width))
-		    (cy (round y cell-height)))
-		(locally (declare (optimize (speed 0)))
-		  (when (find :mouse-buttons (terminal-events-enabled tty))
-		    (setf result
-			  (make-instance 'tt-mouse-button-event
-					 :terminal tty
-					 :x cx :y cy
-					 :button (keywordify (s+ "BUTTON-" code))
-					 :modifiers state)))))
-	      t)
-	   (:button-release (code x y state)
-	      (let ((cx (round x cell-width))
-		    (cy (round y cell-height)))
-		(locally (declare (optimize (speed 0)))
-		  (when (find :mouse-buttons (terminal-events-enabled tty))
-		    (setf result
-			  (make-instance 'tt-mouse-button-release
-					 :terminal tty
-					 :x cx :y cy
-					 :button (keywordify (s+ "BUTTON-" code))
-					 ;;:button (list code :release)
-					 ;;:button :release
-					 :modifiers state)))))
-	      t)
-	   (:exposure (x y width height xlib:window #|count|#)
-	      (when (equal xlib:window our-window)
-		;; (format t "exposure ~s ~s ~s ~s~%" x y width height)
-	        (redraw-area tty x y width height)
-		(display-finish-output display)
-		;; (dump-grid tty)
-		)
-	      t)
-	   (:configure-notify (#| x y |# xlib:window xlib::width xlib::height)
-	     (when (eq xlib:window our-window)
-	       (when (or (locally (declare (optimize (speed 0)))
-			   (/= xlib::width window-width)
-			   (/= xlib::height window-height)))
-		 (setf window-width xlib::width window-height xlib::height)
-		 (set-grid-size-from-pixel-size tty window-width window-height)
-		 ;; (format t "resize to ~s ~s~%" window-columns window-rows)
-		 (resize-grid tty)
-		 ;;(clear-area win :x x :y y :width w :height h)
-		 ;;(display-finish-output display)
-		 (locally (declare (optimize (speed 0)))
-		   (when (find :resize (terminal-events-enabled tty))
-		     (setf result :resize)))
-		 ;; (dump-grid tty)
-		 ))
-	     t)
-	   (:key-press (code state)
-	     (let* ((sym (keycode->keysym display code 0))
-		    (sym-name (gethash sym *keysym-names*))
-		    (chr (keycode->character display code state)))
-	       ;; @@@ the keyword is pretty bogus, maybe we should drop it?
-	       ;; (format t "code ~s state ~x sym ~s ~s chr ~s~%" code state
-	       ;; 	       sym sym-name chr)
-	       (cond
-		 ((find code modifiers)
-		  ;; @@@ Ignore modifier presses by themselves
-		  (setf result nil))
-		 ((not (zerop (logand state (logior +shift-mask+ +lock-mask+))))
-		  (cond
-		    (chr
-		     (locally
-			 (declare (optimize (speed 0)))
-		       (setf result (char-upcase chr))))
-		    (sym-name
-		     (setf result (keywordify (s+ "S-" sym-name))))))
-		 ((not (zerop (logand state +control-mask+)))
-		  (cond
-		    (chr
-		     (setf result (char-util:ctrl chr)))
-		    (sym-name
-		     (setf result (keywordify (s+ "C-" sym-name))))))
-		 ((not (zerop (logand state +mod-1-mask+)))
-		  (cond
-		    (chr
-		     ;; @@@ this isn't really good
-		     ;; perhaps we should stuff Escape?
-		     (setf result (char-util:meta-char chr)))
-		    (sym-name
-		     (setf result (keywordify (s+ "M-" sym-name))))))
-		 (t
-		  (setf result (or chr sym-name sym code)))))
-	     result))
+					    (dtime-to time-left :seconds))))
+	 (dbugf :tx11 "get-key ~s~%" result)
 	 (when timeout
 	   (setf time-left (dtime- (dtime+ start-time real-timeout)
 				   (get-dtime))))
-	 :while (and (not result)
-		     (or (not timeout) (dtime-plusp time-left))))
+	 :while (and (not *input-available*)
+		     (or (not timeout) (and time-left (dtime-plusp time-left)))))
       result)))
 
 (defmethod terminal-get-char ((tty terminal-x11))
@@ -1717,12 +1832,74 @@ Attributes are usually keywords."
   (get-key tty))
 
 (defmethod terminal-get-key ((tty terminal-x11))
-  (terminal-finish-output tty)
+  ;; (terminal-finish-output tty)
   (get-key tty))
 
-(defmethod terminal-listen-for ((tty terminal-x11) seconds)
-  (terminal-finish-output tty)
-  (event-listen (display tty) seconds))
+(defun listen-handler (&rest slots
+		       &key display event-key send-event-p &allow-other-keys)
+  (declare (ignore send-event-p))
+  (case event-key
+    ((:exposure :configure-notify)
+     (apply #'window-handler slots)
+     (discard-current-event display)
+     t)
+    ((:button-press :button-release :key-press)
+     (dbugf :tx11 "something pressed~%")
+     (dbugf :tx11 "WTF input? ~s ~s~%" event-key slots) (finish-output)
+     (apply #'queue-event display event-key slots)
+     (setf *input-available* t)
+     t)
+    (otherwise
+     ;; (discard-current-event display)
+     t)))
+
+(defun useless-handler (&rest slots
+			&key display event-key send-event-p &allow-other-keys)
+  (declare (ignore display send-event-p))
+  (format t "~s slots ~s~%" event-key slots)
+  t)
+
+(defun fuxor (tty)
+  "Clear out the event queue."
+  (with-slots (display) tty
+    (let ((result))
+      (loop :while (and (setf result (event-listen display))
+			(not (zerop result)))
+	 :do
+	 (format t "eating event ~s~%" result)
+	 (process-event display :handler #'useless-handler)
+	 (discard-current-event display)))))
+
+(defmethod terminal-listen-for ((tty terminal-x11) timeout)
+  (with-slots (display) tty
+    (terminal-finish-output tty)
+    (let* ((start-time (get-dtime))
+	   (real-timeout (and timeout (make-dtime-as timeout :seconds)))
+	   (time-left real-timeout)
+	   (*event-tty* tty)
+	   (*input-available* nil)
+	   result)
+      (flet ((timeout ()
+	       (and timeout (dtime-to time-left :seconds))))
+	(loop
+	   :do
+	   (dbugf :tx11 "time-left ~s ~s~%" time-left (timeout))
+	   (setf result
+		 (process-event display
+				;;:peek-p t ;; <<--
+				;; :handler #'window-handler
+				:handler #'listen-handler
+				:force-output-p t
+				:timeout (timeout)))
+	   (dbugf :tx11 "result ~s *input-available* ~s~%" result
+		  *input-available*)
+	   (when timeout
+	     (setf time-left (dtime- (dtime+ start-time real-timeout)
+				     (get-dtime))))
+	   :while (and (not *input-available*)
+		       (or (not timeout) (dtime-plusp time-left))))
+	(dbugf :tx11 "CHANG ~s~%" *input-available*)
+	*input-available*))))
 
 (defmethod terminal-input-mode ((tty terminal-x11))
   (input-mode tty))
