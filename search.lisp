@@ -134,7 +134,7 @@ Control-R searches again backward and Control-S searches again forward."
     (with-slots ((point inator::point)) (aref contexts 0)
       (let ((quit-now nil)
 	    (start-point point)
-	    (start-hist (history-current-get history-context))
+	    (start-hist (history-cur (get-history history-context)))
 	    (search-string (make-stretchy-string *initial-line-size*))
 	    (start-from (or (history-current-get history-context)
 			    (history-head (get-history history-context))))
@@ -166,10 +166,10 @@ Control-R searches again backward and Control-S searches again forward."
 	     ;; (setf added nil)
 	     (cond
 	       ((eql c (ctrl #\G))
-		(setf point start-point)
-		(setf (history-current history-context) start-hist)
-		(use-hist e)
-		(setf quit-now t))
+		(use-first-context (e)
+		  (setf (history-cur (get-history history-context)) start-hist)
+                  (setf point start-point)
+		  (return-from isearch c)))
 	       ((eql c (ctrl #\S))
 		(when (and (zerop (length search-string)) last-search)
 		  (stretchy-append search-string last-search))
@@ -208,6 +208,7 @@ Control-R searches again backward and Control-S searches again forward."
 		   ;;   (setf pos old-pos))
 		   ;; (beep e "Not found")
 		   )))
-	  (resync))))))
+	  #| (resync) |#
+	  )))))
 
 ;; End
