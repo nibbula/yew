@@ -246,6 +246,9 @@ from theme value (:program :empty-line-indicator :style)")
     :initarg :show-line-numbers :accessor pager-show-line-numbers
     :initform nil :type boolean
     :documentation "True to show line numbers along the left side.")
+   (show-modeline
+    :initarg :show-modeline :accessor -show-modeline :initform t :type boolean
+    :documentation "True to show the mode line.")
    (ignore-case
     :initarg :ignore-case :accessor pager-ignore-case
     :initform t :type boolean
@@ -955,17 +958,18 @@ line : |----||-------||---------||---|
 
 (defmethod update-display ((pager text-pager))
   "Display the lines already read, starting from the current."
-  (with-slots (line lines left page-size message modeline-style
+  (with-slots (line lines left page-size message modeline-style show-modeline
 	       search-match-char empty-indicator-char empty-indicator-style)
       pager
     (get-theme-settings pager)
     (tt-move-to 0 0)
     (tt-erase-below)
-    (let ((y 0))
+    (let ((y 0) (bottom (if show-modeline (1- page-size) page-size)))
       (when (and (>= line 0) lines)
 	(loop
 	   :with l = (nthcdr line lines) :and i = line
-	   :while (and (<= y (1- page-size)) (car l))
+	   ;; :while (and (<= y (1- page-size)) (car l))
+	   :while (and (<= y bottom) (car l))
 	   :do
 	     (tt-move-to y 0)
 	     ;; janky filtering
@@ -985,7 +989,8 @@ line : |----||-------||---------||---|
 	  (progn
 	    (display-message message)
 	    (setf message nil))
-	  (display-prompt pager)))))
+	  (when show-modeline
+	    (display-prompt pager))))))
 
 (defun hex-len ()
   ;;(- (truncate (* 3/4 (tt-width))) 4)
@@ -1002,7 +1007,8 @@ line : |----||-------||---------||---|
   "Display the lines already read, starting from the current."
   (tt-move-to 0 0)
   (tt-erase-below)
-  (with-slots (byte-pos buffer buffer-start left page-size color-bytes message)
+  (with-slots (byte-pos buffer buffer-start left page-size color-bytes message
+	       show-modeline)
       pager
     (get-theme-settings pager)
     (let ((y 0)
@@ -1063,28 +1069,31 @@ line : |----||-------||---------||---|
 	  (progn
 	    (display-message message)
 	    (setf message nil))
-	  (display-prompt pager)))))
+	  (when show-modeline
+	    (display-prompt pager))))))
 
 (defmethod resize ((pager text-pager))
   "Resize the page and read more lines if necessary."
-  (with-slots (page-size line count) pager
-    (when (/= page-size (1- (tt-height)))
-      (setf page-size (1- (tt-height)))
-      ;;(message-pause "new page size ~d" page-size)
-      (when (< count (+ line page-size))
-	;;(message-pause "read lines ~d" (- (+ line page-size) count))
-	(read-input pager (- (+ line page-size) count))))))
+  (with-slots (page-size line count show-modeline) pager
+    (let ((normal-page-size (if show-modeline (1- (tt-height)) (tt-height))))
+      (when (/= page-size normal-page-size)
+	(setf page-size normal-page-size)
+	;;(message-pause "new page size ~d" page-size)
+	(when (< count (+ line page-size))
+	  ;;(message-pause "read lines ~d" (- (+ line page-size) count))
+	  (read-input pager (- (+ line page-size) count)))))))
 
 (defmethod resize ((pager binary-pager))
   "Resize the page and read more lines if necessary."
-  (with-slots (page-size byte-count byte-pos) pager
-    (when (/= page-size (1- (tt-height)))
-      (setf page-size (1- (tt-height)))
-      ;; (when (< byte-count (+ byte-pos (* page-size (line-bytes))))
-      ;;  	(read-input pager (- (+ byte-pos (* page-size (line-bytes)))
-      ;; 			     (/ byte-count (line-bytes)))))
-      (read-input pager (+ byte-pos (* page-size (line-bytes))))
-      )))
+  (with-slots (page-size byte-count byte-pos show-modeline) pager
+    (let ((normal-page-size (if show-modeline (1- (tt-height)) (tt-height))))
+      (when (/= page-size normal-page-size)
+	(setf page-size normal-page-size)
+	;; (when (< byte-count (+ byte-pos (* page-size (line-bytes))))
+	;;  	(read-input pager (- (+ byte-pos (* page-size (line-bytes)))
+	;; 			     (/ byte-count (line-bytes)))))
+	(read-input pager (+ byte-pos (* page-size (line-bytes))))
+	))))
 
 (defun ask-for (&key prompt space-exits)
   (let ((str (make-stretchy-string 10))
@@ -1205,8 +1214,8 @@ list containing strings and lists."
 (defun set-option (pager)
   "Set a pager option. Propmpts for what option to toggle."
   (display-message "Set option: ")
-  (with-slots (show-line-numbers ignore-case wrap-lines raw-output pass-special
-	       color-bytes) pager
+  (with-slots (show-line-numbers show-modeline ignore-case wrap-lines raw-output
+	       pass-special color-bytes page-size) pager
     (macrolet ((toggle-option (option)
 		 `(progn
 		    (setf ,option (not ,option))
@@ -1216,6 +1225,8 @@ list containing strings and lists."
       (let ((char (tt-get-char)))
 	(case char
 	  ((#\l #\L) (toggle-option show-line-numbers))
+	  ((#\m #\M) (toggle-option show-modeline)
+	   (setf page-size (if show-modeline (1- (tt-height)) (tt-height))))
 	  ((#\i #\I) (toggle-option ignore-case))
 	  ((#\w #\S) (toggle-option wrap-lines)) ;; S for compatibility w/less
 	  (#\r (toggle-option raw-output))
@@ -2081,6 +2092,7 @@ compatible with 'less', 'vi' and 'emacs'.
     w S				  Wrap long lines.
     l L				  Show line numbers.
     c C				  Color bytes in binary mode.
+    m M				  Show the mode line.
 
 Press 'q' to exit this help.
 " output)))
