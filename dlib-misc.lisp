@@ -87,6 +87,9 @@
    #:safe-file-length
    #:slurp
    #:slurp-binary
+   #:barf
+   #:barf-append
+   #:barf-binary
    #:confirm
    #:get-file-local-variables
    )
@@ -1622,6 +1625,43 @@ elements."
 If COUNT is non-nil, only read that many elements. This just a shorthand for
 calling SLURP with the appropriate ELEMENT-TYPE."
   (slurp file-or-stream :element-type '(unsigned-byte 8) :count count))
+
+(defun barf (file-or-stream object)
+  "Write OBJECT to FILE-OR-STREAM. If FILE-OR-STREAM is a file name, create it."
+  (with-open-file-or-stream (stream file-or-stream
+				    :direction :output
+				    :if-does-not-exist :create)
+    (typecase object
+      (string
+       (write-string object stream))
+      (t
+       (princ object stream)))))
+
+(defun barf-append (file-or-stream object)
+  "Write OBJECT to FILE-OR-STREAM. If FILE-OR-STREAM is a file name, open it
+and append to it. If it doesn't exist, create it."
+  (with-open-file-or-stream (stream file-or-stream
+				    :direction :output
+				    :if-does-not-exist :create
+				    :if-exists :append)
+    (typecase object
+      (string
+       (write-string object stream))
+      (t
+       (princ object stream)))))
+
+(defun barf-binary (file-or-stream object &key count)
+  "Output a vector of octets to FILE-OR-STREAM. OBJECT must be a
+(vector (unsigned-byte 8)). If COUNT is non-nil, only write that many elements."
+  (with-open-file-or-stream (stream file-or-stream
+                                    :direction :output
+				    :if-does-not-exist :create
+				    :if-exists :append
+				    :element-type '(unsigned-byte 8))
+    (assert (typep object '(vector (unsigned-byte 8))))
+    (if count
+	(write-sequence object stream :start 0 :end count)
+	(write-sequence object stream))))
 
 (defun confirm (action &key (output *standard-output*)
 			 (input *standard-input*)
