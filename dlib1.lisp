@@ -120,7 +120,7 @@ of it.")
    #:defconstant-to-list
    #:define-alias #:defalias
    ;; #-(or lispworks clasp) #:#.(code-char #x039B) #\greek_capital_letter_lamda
-   #:_
+   #:_ #:__
    #:and-<> #:<> #:-> #:->>
    #:symbolify
    #:keywordify
@@ -1295,6 +1295,17 @@ ORIGINAL is something that a define-alias method is defined for."
   `(lambda (_)
      (declare (ignorable _))
      ,@exprs))
+
+(defmacro __ ((&rest args) &body body)
+  "Extra bogus shorthand for lambda, but with auto ignored args. Arguments whose
+names start with #\_ are ignored."
+  (let ((ignore-list
+	 (loop :for a :in args
+	    :when (char= #\_ (char (symbol-name a) 0))
+	    :collect a)))
+    `(lambda (,@args)
+       ,@(when ignore-list `((declare (ignore ,@ignore-list))))
+       ,@body)))
 
 ;; We can pronounce "<>" as lozenge.
 (defmacro and-<> (&rest expressions)
