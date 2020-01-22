@@ -44,7 +44,9 @@
 (defparameter *default-window-size* '(80 . 24)
   "The default size of a window in characters.")
 
-(defparameter *default-font-name* "9x15" ;; "fixed"
+(defparameter *default-font-name*
+  "-misc-fixed-medium-r-*-*-20-*-iso10646-*"
+  ;; "9x15" "fixed"
   "Name of the font to use if not specified.")
 
 (defparameter *attributes*
@@ -490,27 +492,52 @@ to blank with."
        ;; Blank out the newly blank lines
        (funcall blanker new-blanks)))))
 
+;; @@@ It would be best to batch scrolling too. e.g. turn successive scrolls 1
+;; into a scroll n.
+
 (defun scroll (tty n)
   "Scroll by N lines."
   ;; (dbugf :crunch "(scroll ~s)~%" n)
-  (with-slots ((window-rows terminal::window-rows) lines) tty
+  (with-slots ((window-rows terminal::window-rows)
+	       (window-columns terminal::window-columns)
+	       lines cell-width cell-height window draw-gc) tty
     ;; (when (not (zerop n))
     ;;   (no-hints tty))
     ;; (if-dbugf (:crunch) (dump-screen tty))
-    (if (< (abs n) window-rows)
-	(progn
-	  (scroll-copy n window-rows lines #'line-blanker)
-	  ;; (scroll-copy n window-rows index #'index-blanker)
-	  )
-	(progn
-	  ;; Just erase everything
-	  (line-blanker lines)
-	  ;; (index-blanker index)
-	  ))
-    ;; (when (not (zerop (start-line tty)))
-    ;;   (setf (start-line tty) (max 0 (- (start-line tty) n)))
-    ;;   (incf (really-scroll-amount tty) n))
-    ))
+    (let ((abs-n (abs n)))
+      (if (< abs-n window-rows)
+	  (progn
+	    (scroll-copy n window-rows lines #'line-blanker)
+	    ;; (scroll-copy n window-rows index #'index-blanker)
+	    (cond
+	      ((plusp n)
+	       (copy-area window draw-gc 0 (* cell-height n)
+			  (* window-columns cell-height)
+			  (* (- window-rows n) cell-height)
+			  window
+			  0 0)
+	       (clear-area window
+			   :x 0
+			   :y (* (- window-rows n) cell-height)
+			   :width (* window-columns cell-height)
+			   :height (* n cell-height)))
+	      (t ;; minusp
+	       (copy-area window draw-gc 0 0
+			  (* window-columns cell-height)
+			  (* (- window-rows abs-n) cell-height)
+			  window
+			  0 (* cell-height abs-n))
+	       (clear-area window :x 0 :y 0
+			   :width (* window-columns cell-height)
+			   :height (* abs-n cell-height))
+	       )))
+	  (progn
+	    ;; Just erase everything
+	    (line-blanker lines)
+	    ;; (index-blanker index)
+	    (clear-area window :x 0 :y 0
+			:width (* window-columns cell-height)
+			:height (* window-rows cell-height)))))))
 
 (defun char-char (c)
   "Return the Lisp character from whatever other type of thing."
@@ -745,9 +772,12 @@ to blank with."
 		 (setf last-char gc))
 	       (scroll-one-line ()
 		 ;; (no-hints tty)
+		 (when output-buffer
+		   (flush-buffer tty))
 		 (scroll tty 1)
 		 (setf cursor-column 0 changed t)
-		 (set-moved tty))
+		 ;; (set-moved tty)
+		 )
 	       (delayed-scroll ()
 		 (when delay-scroll
 		   (setf delay-scroll nil)
@@ -1438,33 +1468,12 @@ i.e. the terminal is 'line buffered'."
       (setf cursor-row (clamp (+ cursor-row n) 0 (1- window-rows))))))
 
 (defmethod terminal-scroll-down ((tty terminal-x11) n)
-  (declare (ignore tty n))
-  #|
-  @@@@@@@@@
-  @@@@@@@@@
-  @@@@@@@@@
   (when (> n 0)
-    (loop :with stream = (terminal-output-stream tty) :and i = 0
-       :while (< i n)
-       :do (write-char #\newline stream) (incf i)
-       :finally (when (line-buffered-p tty) (finish-output stream))))
-  |#
-  )
+    (scroll tty n)))
 
 (defmethod terminal-scroll-up ((tty terminal-x11) n)
-  (declare (ignore tty n))
-  #|
-  @@@@@@@@@
-  @@@@@@@@@
-  @@@@@@@@@
   (when (> n 0)
-    (loop :with stream = (terminal-output-stream tty) :and i = 0
-       :while (< i n)
-       :do (terminal-raw-format tty "~cM" #\escape)
-       (incf i)
-       :finally (when (line-buffered-p tty) (finish-output stream))))
-  |#
-  )
+    (scroll tty (- n))))
 
 (defmethod terminal-erase-to-eol ((tty terminal-x11))
   (with-slots (cursor-column cursor-row
