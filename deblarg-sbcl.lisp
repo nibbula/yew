@@ -178,6 +178,7 @@
                           (list 0))
                          (t
                           (reverse (cdr (aref path-table form-number)))))))
+	(format t "path ~s~%" path)
         (source-path-source-position path top-level-form position-map)))))
 
 (defmacro compiled-debug-function-form-number (fun)
@@ -215,7 +216,10 @@
   (let ((result (or (and (typep string 'fat-string) string)
 		    (string-to-fat-string string))))
     (loop :for i :from start :below end
-       :do (pushnew :standout (fatchar-attrs (oaref result i))))
+       :do
+       ;; (pushnew :standout (fatchar-attrs (oaref result i)))
+       (setf (fatchar-fg (oaref result i)) :red)
+       )
     result))
 
 (defun debugger-source (frame &optional (window-size 10))
@@ -233,7 +237,7 @@
 	 ;; (sb-di::code-location-source-form loc context??)
 	 ;; (sb-di::get-toplevel-form loc)
 	 (path2       (sb-c::debug-source-namestring src2))
-	 offset start end lines (i 1))
+	 offset start end lines (i 0) first-line)
 ;;;    (if src2
     (with-open-file (stream path2)
       (setf offset (get-snippet-pos stream loc))
@@ -248,20 +252,25 @@
 	 :and file-pos = offset
 	 :and line-end
 	 :while (and (setf line (read-line stream nil nil))
-		     (< i window-size)
-		     (< file-pos end))
+		     (or (< i window-size)
+			 (< file-pos end)))
 	 :do
-	 (setf line-end (+ file-pos (1+ (length line))))
-	 (when (< file-pos start line-end)
-	   (setf line (highlight (s+ "> " line)
-				 (- file-pos start)
-				 (- file-pos (min end line-end))))
-	   )
-	 (incf file-pos (1+ (length line)))
-	 (incf i)
-	 (push line lines))
+	 (setf line-end (+ file-pos (1+ (olength line))))
+	 (when (<= start file-pos line-end)
+	   (setf line (highlight line
+		       ;;(format nil "~6d: ~a" file-pos line)
+				 (max 0 (- start file-pos))
+				 (clamp (- (min end line-end) file-pos)
+					0 (olength line))))
+	   (when (not first-line)
+	     (setf first-line i)))
+	 (incf file-pos (1+ (olength line)))
+	 (when (> file-pos start)
+	   (incf i)
+	   (push line lines)))
       (setf lines (nreverse lines))
-      (subseq lines (- i window-size)))))
+      (subseq lines first-line
+	      (min (length lines) (max 0 (- i window-size)))))))
 
 (defun debugger-show-source (n)
   (let ((frame

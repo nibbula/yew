@@ -80,8 +80,32 @@
 
 (defun sanitize-line (line)
   (when line
-    (if (> (length line) 0)
-	(apply #'s+ (map 'list #'char-util:displayable-char line))
+    (if (> (olength line) 0)
+	;; (apply #'s+ (map 'list #'char-util:displayable-char line))
+	(with-output-to-fat-string (stream)
+	  (let (dc new-c)
+	    (flet ((print-char-with-effects-from (c ec)
+		     (setf new-c (make-fatchar :c c))
+		     (copy-fatchar-effects ec new-c)
+		     (princ new-c stream)))
+	      (omapn (lambda (c)
+		       (typecase c
+			 (fatchar
+			  (setf dc (char-util:displayable-char (fatchar-c c)))
+			  (if (equal dc (fatchar-c c))
+			      (princ c stream)
+			      (typecase dc
+				(character
+				 (print-char-with-effects-from dc c))
+				(string
+				 (omapn 
+				  (_ (print-char-with-effects-from _ c))
+				  dc)))))
+			 (t
+			  (princ (char-util:displayable-char c) stream))))
+		     (if (typep line 'fat-string) (fat-string-string line) line)
+		     ))))
+	;; (apply #'fs+ (map 'list #'char-util:displayable-char line))
 	line)))
 
 (defun visual ()
@@ -93,9 +117,14 @@
 	     (command-height (- (terminal-window-rows tt)
 				(+ stack-height source-height 2)))
 	     (command-top (- (terminal-window-rows tt) (1- command-height)))
-	     (src (or (ignore-errors
-			(debugger-source *current-frame* source-height))
-		      '("Unavailable.")))
+	     (src (or
+		   ;; (ignore-errors
+		   ;;   (debugger-source *current-frame* source-height))
+		   (handler-case
+		       (debugger-source *current-frame* source-height)
+		     (condition (c)
+		       (list (format nil "~w" c))))
+		   '("Unavailable.")))
 	     (path (or (ignore-errors
 			 (debugger-source-path *current-frame*))
 		       '("Unknown")))
@@ -113,10 +142,11 @@
 	   (if line
 	       (progn
 		 (setf line (sanitize-line line))
-		 (terminal-format tt "~a~%"
-			    (subseq line
-				    0 (min (- (terminal-window-columns tt) 2)
-					   (length line))))
+		 ;;(terminal-format tt "~a~%"
+		 (terminal-write-line
+		  tt (osubseq line
+			      0 (min (- (terminal-window-columns tt) 2)
+				     (olength line))))
 		 (setf sp (cdr sp)))
 	       (terminal-format tt "~~~%")))
 	(horizontal-line tt path)
