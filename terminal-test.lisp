@@ -1024,6 +1024,22 @@ drawing, which will get overwritten."
      ("Scrolling region"              . test-scrolling-region)
      )))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro with-maybe-new-terminal ((class no-new) &body body)
+    "Evaluate the BODY but try not to make a new terminal if the class is the
+same as the current and NO-NEW is true."
+    (with-unique-names (thunk class-value)
+      `(let ((,class-value ,class))
+	 (flet ((,thunk () ,@body))
+	   (when ,class-value
+	     (if (and (typep *terminal*
+			     (find-terminal-class-for-type ,class-value))
+		      ,no-new)
+		 (with-new-terminal (,class-value)
+		   (,thunk))
+		 (with-terminal (,class-value)
+		   (,thunk)))))))))
+
 (defun run-menu (menu)
   "Run every test in the menu, recursing into sub-menus."
   (loop :with action
@@ -1033,14 +1049,13 @@ drawing, which will get overwritten."
        ((fboundp action) (funcall action))
        (t (run-menu (symbol-value action))))))
 
-(defun run (&optional terminal-type)
+(defun run (&key type no-new)
   "Run all the tests."
-  (let ((class (or terminal-type (ask-class))))
-    (when class
-      (with-new-terminal (class)
-	(with-simple-restart (quit "Quit testing the terminal")
-	  (terminal-get-size *terminal*)
-	  (run-menu *menu*)))
+  (let ((class (or type (ask-class))))
+    (with-maybe-new-terminal (class no-new)
+      (with-simple-restart (quit "Quit testing the terminal")
+	(terminal-get-size *terminal*)
+	(run-menu *menu*))
       (format t "~%All done.~%"))))
 
 (defun show-menu (menu)
@@ -1093,19 +1108,18 @@ drawing, which will get overwritten."
        ((eql #\page c)
 	(tt-clear)))))
 
-(defun menu (&optional terminal-type)
+(defun menu (&key type no-new)
   "Allow the user to pick which tests to run from menus."
-  (let ((class (or terminal-type (ask-class))))
-    (when class
-      (with-new-terminal (class)
-	(with-simple-restart (quit "Quit testing the terminal")
-	  (terminal-get-size *terminal*)
-	  (when (or (< (tt-width) 80)
-		    (< (tt-height) 24))
-	    (tt-format "Your terminal is less than 80x24 characters.~%~
+  (let ((class (or type (ask-class))))
+    (with-maybe-new-terminal (class no-new)
+      (with-simple-restart (quit "Quit testing the terminal")
+	(terminal-get-size *terminal*)
+	(when (or (< (tt-width) 80)
+		  (< (tt-height) 24))
+	  (tt-format "Your terminal is less than 80x24 characters.~%~
                         You might have trouble.")
-	    (prompt-next))
-	  (menu-loop *menu*))))))
+	  (prompt-next))
+	(menu-loop *menu*)))))
 
 (defun churn ()
   (let ((class :ansi #| (ask-class) |# ))
@@ -1122,6 +1136,8 @@ drawing, which will get overwritten."
 #+lish
 (lish:defcommand terminal-test
   ((all boolean :short-arg #\a :help "True to run all tests.")
+   (no-new boolean :short-arg #\n
+    :help "True not to make a new terminal if the type is the same.")
    (type lenient-choice
     :short-arg #\t
     :default '(find-terminal-type-for-class (class-name (class-of *terminal*)))
@@ -1135,7 +1151,7 @@ drawing, which will get overwritten."
   ;; (when (not type)
   ;;   (setf type (find-terminal-type-for-class (class-of *terminal*))))
   (if all
-      (run type)
-      (menu type)))
+      (run :type type :no-new no-new)
+      (menu :type type :no-new no-new)))
 
 ;; EOF
