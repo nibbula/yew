@@ -60,7 +60,7 @@ command line.")
 (defun figure-line-endings (e content)
   "Call calculate-line-endings with proper processing of the string CONTENT."
   (calculate-line-endings e :buffer (fat-string-to-string content)
- 			  :start 0))
+			  :start-column 0))
 
 (defun figure-content-rows (e content)
   "Take a string and return how many rows it takes up when output to the
@@ -71,7 +71,7 @@ terminal."
   ;; 		       :buffer (fatchar-string-to-string
   ;; 				(process-ansi-colors
   ;; 				 (make-fatchar-string _)))
-  ;; 		       :start 0)))
+  ;; 		       :start-column 0)))
   ;; 		  content)))
   (length (figure-line-endings e content)))
 

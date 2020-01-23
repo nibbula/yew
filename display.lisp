@@ -103,27 +103,26 @@
 ;; Perhaps we could consider caching or memoizing this? Espeically when
 ;; the buffer hasn't changed.
 
-(defun %calculate-line-endings (buffer start cols spots col-spots)
-  "Return a list of pairs of character positions and columns, in reverse order
-of character position, which should be the end of the displayed lines in the
-buffer. SPOTS is an alist of character indexes to set the line and column of.
-COL-SPOTS is an alist of line and column pairs to set the character indexes of."
+(defun %calculate-line-endings (buffer start-column end-column spots
+				column-spots)
+  "The real guts of it. See the generic function for documentation."
   (let (endings
-	(col start)			; Start after the prompt
+	(col start-column)		; Start after the prompt
 	(char-width 0)
-	(last-col start)
+	(last-col start-column)
 	(line 0)
 	(i 0)
 	c cc spot)
-    (dbugf :rl "endings start ~s~%" start)
+    (dbugf :rl "endings start-column ~s~%" start-column)
     ;; (if-dbugf (:rl)
     ;; 	      (symbol-call :deblarg :debugger-wacktrace 20))
     (flet ((set-spot (x)
 	     (when (and spots (setf spot (assoc i spots)))
 	       (dbugf :rl "set-spot ~a~%" x)
 	       (rplacd spot (cons line col)))
-	     (when (and col-spots (setf spot (assoc `(,line ,col) col-spots
-						    :test #'equal)))
+	     (when (and column-spots
+			(setf spot (assoc `(,line ,col) column-spots
+					  :test #'equal)))
 	       (rplacd spot i))))
       (loop :while (< i (olength buffer))
 	 :do
@@ -133,16 +132,16 @@ COL-SPOTS is an alist of line and column pairs to set the character indexes of."
 	       (progn
 		 (push (cons (1- i) last-col) endings)
 		 (setf last-col col)
-		 ;; (when (< col (1- cols))
+		 ;; (when (< col (1- end-column))
 		 ;;   (incf col))		; just for the cursor?
 		 (set-spot "NL")
 		 (incf line)
-		 (setf col 0)
+		 (setf col 0) ;; @@@ left-margin
 		 ;;(set-spot "NL")
 		 )
 	       (progn
 		 (setf char-width (display-length (oelt buffer i)))
-		 (if (> (+ col char-width) cols)
+		 (if (> (+ col char-width) end-column)
 		     (progn
 		       (push (cons (1- i) last-col) endings)
 		       (set-spot "wrap")
@@ -156,7 +155,7 @@ COL-SPOTS is an alist of line and column pairs to set the character indexes of."
 	   (incf i))
 
       ;; Make sure we get the last one
-      (when (> (+ col char-width) cols)
+      (when (> (+ col char-width) end-column)
 	(push (cons (1- i) last-col) endings))
 
       ;; Spot in empty buffer
@@ -164,25 +163,37 @@ COL-SPOTS is an alist of line and column pairs to set the character indexes of."
 	(rplacd spot (cons line col)))
 
       ;; Spot after end
-      (when (> (+ col char-width) cols)
+      (when (> (+ col char-width) end-column)
 	(incf line)
-	(setf col 0))
+	(setf col 0)) ;; @@@ left-margin
       (set-spot "End")
       endings)))
 
-(defun calculate-line-endings (e &key
-				   (buffer (buf e))
-				   (start (start-col e))
-				   (cols (terminal-window-columns
-					  (line-editor-terminal e)))
-				   spots col-spots)
-  "Return a list of pairs of character positions and columns, in reverse order
+(defgeneric calculate-line-endings (editor &key
+					     buffer
+					     start-column
+					     end-column
+					     spots
+					     column-spots)
+  (:documentation
+   "Return a list of pairs of character positions and columns, in reverse order
 of character position, which should be the end of the displayed lines in the
 buffer.
-  BUFFER  The string to compute endings for.
-  START   The column number of the first character in BUFFER.
-  COLS    The number columns in the terminal window, after which it wraps."
-  (%calculate-line-endings buffer start cols spots col-spots))
+  BUFFER        The string to compute endings for.
+  START-COLUMN  The column number of the first character in BUFFER.
+  END-COLUMN    The number columns in the view, after which it wraps.
+  SPOTS         An alist of character indexes to set the line and column of.
+  COLUMN-SPOTS  An alist of line and column pairs to set the character
+                indexes of."))
+
+(defmethod calculate-line-endings ((editor line-editor)
+				   &key
+				     (buffer (buf editor))
+				     (start-column (start-col editor))
+				     (end-column (terminal-window-columns
+						  (line-editor-terminal editor)))
+				     spots column-spots)
+  (%calculate-line-endings buffer start-column end-column spots column-spots))
 
 (defun line-ending (pos endings)
   "Return the line ending at character position POS, from the line ENDINGS,
@@ -346,7 +357,7 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 	   (prompt-endings (calculate-line-endings
 			    e
 			    :buffer prompt
-			    :start 0 :cols cols
+			    :start-column 0 :end-column cols
 			    :spots prompt-spots))
 	   (prompt-lines (length prompt-endings))
 	   (prompt-last-col (cddr (assoc prompt-end prompt-spots)))
@@ -355,13 +366,13 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 	   (first-point (inator-point (aref contexts 0)))
 	   (spots (list `(,first-point . ())
 			`(,line-end . ())))
-	   (endings (calculate-line-endings e :start (1+ prompt-last-col)
+	   (endings (calculate-line-endings e :start-column (1+ prompt-last-col)
 					    :spots spots))
 	   (buf-lines     (length endings))
 	   (msg-endings   (and temporary-message
 			       (calculate-line-endings
 				e :buffer temporary-message
-				:start 0 :cols cols)))
+				:start-column 0 :end-column cols)))
 	   (msg-lines     (if temporary-message
 			      (+
 			       ;; (if (ends-with-newline-p temporary-message)
@@ -505,7 +516,8 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
       (setf output-string (with-output-to-fat-string (fs)
 			    (apply #'format fs fmt args))
 	    endings (calculate-line-endings
-		     e :buffer (fat-string-string output-string) :start 0))
+		     e :buffer (fat-string-string output-string)
+                       :start-column 0))
       (tt-write-string output-string)
       ;; If there's not enough room for the message at the bottom:
       (when (> (+ saved-row (length endings)) (1- (tt-height)))
