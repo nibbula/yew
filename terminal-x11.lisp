@@ -249,6 +249,8 @@ different from the current foreground color which in rendition.")
     (setf cell-width (xlib:char-width font (xlib:font-default-char font))
 	  cell-height (+ (font-descent font) (font-ascent font)))))
 
+(defparameter *crap* #| 4 |# 0)
+
 (defun window-size (tty width height)
   "Return the window size in pixels for WIDTH and HEIGHT in characers in the
 font. If the cell size isn't set, it will be set from the font. Don't assume
@@ -256,8 +258,8 @@ the window size is an exact multiple of the cell size."
   (with-slots (font cell-width cell-height) tty
     (when (or (zerop cell-width) (zerop cell-height))
       (set-cell-size tty))
-    (values (* cell-width width)
-	    (* cell-height height))))
+    (values (+ (* cell-width width) *crap*)
+	    (+ (* cell-height height) *crap*))))
 
 (defvar *already-flushing* nil)
 
@@ -330,7 +332,7 @@ are already set."
   "Initialize a terminal-x11."
   (declare (ignore initargs))
   (with-slots (display window window-width window-height font title pixel-format
-	       draw-gc erase-gc cursor-gc modifiers) o
+	       draw-gc erase-gc cursor-gc modifiers cell-width cell-height) o
     (multiple-value-bind (host number) (get-display-from-environment)
       (when (not host)
 	(error "Can't get X display from the environment."))
@@ -380,8 +382,17 @@ are already set."
 		 :font font)
        (wm-name window) title
        (wm-icon-name window) title)
-      (let ((wmh (make-wm-hints :input :on)))
+      ;; (format t "size ~d ~d~%" window-width window-height) 
+      (let ((wmh (make-wm-hints :input :on :initial-state :normal)))
 	(setf (wm-hints window) wmh))
+      (set-cell-size o)
+      (let ((wmh (make-wm-size-hints
+		  :width window-width :height window-height
+		  ;; :base-width 2 :base-height 2
+		  :base-width 0 :base-height 0
+		  :min-width cell-width :min-height cell-height
+		  :width-inc cell-width :height-inc cell-height)))
+	(setf (wm-normal-hints window) wmh))
       (map-window window))
     (terminal-get-size o)
     (make-new-grid o)
@@ -577,10 +588,13 @@ to blank with."
   (with-slots (window draw-gc cursor-column cursor-row font
 	       cell-width cell-height) tty
     (when (graphic-char-p thing)
-      (draw-image-glyph window (or gc draw-gc)
-			(* (or x cursor-column) cell-width)
-			(+ (* (or y cursor-row) cell-height) (font-ascent font))
-			(char-code (char-char thing))))))
+      (let ((cc (char-code (char-char thing))))
+	(draw-image-glyph window (or gc draw-gc)
+			  (* (or x cursor-column) cell-width)
+			  (+ (* (or y cursor-row) cell-height)
+			     (font-ascent font))
+			  (if (> cc #xffff) #xfffd cc)
+			  :size 16)))))
 
 (defmethod draw-thing (tty (thing string) &key x y gc)
   (with-slots (window draw-gc cursor-column cursor-row font
@@ -588,8 +602,12 @@ to blank with."
     (let ((str (remove-if-not #'graphic-char-p thing)))
       (draw-image-glyphs window (or gc draw-gc)
 			 (* (or x cursor-column) cell-width)
-			 (+ (* (or y cursor-row) cell-height) (font-ascent font))
-			 (char-util:string-to-utf8-bytes str)))))
+			 (+ (* (or y cursor-row) cell-height)
+			    (font-ascent font))
+			 ;; (char-util:string-to-utf8-bytes str)
+			 (map 'vector (_ (let ((cc (char-code _)))
+					   (if (> cc #xffff) #xfffd cc))) str)
+			 :size 16))))
 
 ;; A "unit" is what we are calling a character or a string with uniform
 ;; attributes that should be drawn at one position.
