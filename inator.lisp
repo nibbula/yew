@@ -58,10 +58,12 @@ EVENT-LOOP with an INATOR sub-class instance.")
    #:select
    #:default-action
    #:describe-key-briefly
+
    ;; Output
    #:message
    #:prompt
    #:help
+
    ;; Events
    #:event-loop
    #:update-display

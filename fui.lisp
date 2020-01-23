@@ -1,6 +1,6 @@
-;;
-;; fui.lisp - Fake UI
-;;
+;;;
+;;; fui.lisp - Fake UI
+;;;
 
 (defpackage :fui
   (:documentation "Fake UI")
