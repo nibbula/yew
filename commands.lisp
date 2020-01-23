@@ -235,7 +235,7 @@ and move forward a character."
 (defun index-of-coords (e line col)
   (let* ((pair `(,line ,col))
 	 (spots `((,pair . ())))
-	 (endings (calculate-line-endings e :col-spots spots)))
+	 (endings (calculate-line-endings e :column-spots spots)))
     (dbugf :roo "in index-of-coords:~%spots = ~s endings = ~s~%" spots endings)
     (values (cdr (assoc pair spots :test #'equal))
 	    endings)))
@@ -264,7 +264,10 @@ the new point."
 		   (setf to-index (nth (+ line n) (reverse endings))))
 	  (setf point (1+ (car to-index)))))))
 
-(defmulti previous-line (e)
+(defgeneric previous-line (editor)
+  (:documentation "Move the point to the previous line."))
+
+(defmulti-method previous-line (e)
   (setf (line-editor-keep-region-active e) t)
   (forward-line e :n -1))
 
@@ -278,7 +281,10 @@ the first line."
 (defmulti-method previous ((e line-editor))
   (previous-line-or-history e))
 
-(defmulti next-line (e)
+(defgeneric next-line (editor)
+  (:documentation "Move the point to the next line."))
+
+(defmulti-method next-line ((e line-editor))
   (setf (line-editor-keep-region-active e) t)
   (forward-line e))
 
@@ -394,6 +400,7 @@ the clipboard."
 	  keep-region-active t)))
 
 (defsingle-method redraw ((e line-editor))
+  "Clear the screen and redraw the prompt and the input line."
   (redraw-command e))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

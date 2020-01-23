@@ -48,6 +48,7 @@
     (,(ctrl #\T)		. transpose-characters)
     (,(meta-char #\d)		. kill-word)
     (,(meta-char #\rubout)	. backward-kill-word)
+    (,(meta-char (ctrl #\h))	. backward-kill-word)
     (,(meta-char #\u)		. upcase-word)
     (,(meta-char #\l)		. downcase-word)
     (,(meta-char #\c)		. capitalize-word)
@@ -64,7 +65,7 @@
     (,(meta-char #\?)		. show-filename-completions-command)
 
     ;; Misc
-    (,(ctrl #\L)		. redraw-command)
+    (,(ctrl #\L)		. redraw)
     ;;(,(ctrl #\G)		. abort-command)
     (,(ctrl #\G)		. reset-stuff)
     (,(ctrl #\S)		. isearch-forward)
@@ -146,7 +147,7 @@
     (,(ctrl #\D)		. show-completions)
 
     ;; Misc
-    (,(ctrl #\L)		. redraw-command)
+    (,(ctrl #\L)		. redraw)
     ;; (,(ctrl #\R)		. @@@ redisplay? @@@)
     (,(ctrl #\Q)		. quoted-insert)
 
@@ -238,7 +239,7 @@
     (#\7			. vi-digit)		; *
     (#\8			. vi-digit)		; *
     (#\9			. vi-digit)		; *
-    (,(ctrl #\L)		. redraw-command)	;
+    (,(ctrl #\L)		. redraw)		;
     ;; (,(ctrl #\R)		. @@@ redisplay? @@@)
     (,(ctrl #\G)		. what-cursor-position)	; *
     (#\n			. vi-next-match)	; *
