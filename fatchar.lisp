@@ -26,6 +26,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:fatchar/=
    #:make-fat-string
    #:make-fatchar-string
+   #:make-fatchar-string-of-length
    #:copy-fatchar-string
    #:string-to-fat-string
    #:fatchar-string-to-string
@@ -144,7 +145,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
   "A string of FATCHARs."
   `(vector fatchar ,size))
 
-;; This is potentially wasteful, but required to specialize methods.
+;; This is quite wasteful, but how else can I specialize methods?
 (defclass fat-string (ostring)
   ((string				; blurg :|
     :initarg :string :accessor fat-string-string
@@ -161,8 +162,23 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 (defmethod olength ((s fat-string))
   (length (fat-string-string s)))
 
-(defun make-fat-string (&key string)
-  (make-instance 'fat-string :string string))
+(defun make-fat-string (&key string length initial-element)
+  "Make a FAT-STRING. You can make it from a FATCHAR-STRING, given in STRING,
+or if you give LENGTH, one will be made for you. If you supply LENGTH, you can
+also supply INITIAL-ELEMENT to make that the initial element of the string."
+  (check-type string (or null fatchar-string string))
+  (when (and string length)
+    (error "I can't both use your STRING, and make one of LENGTH."))
+  (make-instance 'fat-string
+		 :string
+		 (cond
+		   (string
+		    (etypecase string
+		      (fatchar-string string)
+		      (string (make-fatchar-string string))))
+		   (length
+		    (make-fatchar-string-of-length
+		     length :initial-element initial-element)))))
 
 (defmethod oelt ((s fat-string) key)
   (aref (fat-string-string s) key))
@@ -448,24 +464,28 @@ the environemnt has <arg> and <arg>-P for all those keywords."
   (apply #'oreplace-subseq-as 'fat-string
 	 target replacement sequence (list :count count)))
 
+(defun make-fatchar-string-of-length (length &key initial-element)
+  "Return a FATCHAR-STRING of LENGTH. If INITIAL-ELEMENT is supplied, make that
+as the INITIAL-ELEMENT of the storage which is probably an array or something."
+  (make-array (list length)
+	      :element-type 'fatchar
+	      :initial-element (or initial-element (make-fatchar))))
+
 (defun make-fatchar-string (thing)
   "Make a string of fatchars from THING, which can be a string or a character."
   (let (result)
     (flet ((from-string (string)
-	     (setf result (make-array (list (length string))
-				      :element-type 'fatchar
-				      :initial-element (make-fatchar)))
+	     (setf result (make-fatchar-string-of-length (length string)))
 	     (loop :for i :from 0 :below (length string) :do
 		(setf (aref result i) (make-fatchar :c (char string i))))))
       (etypecase thing
 	(string
 	 (from-string thing))
 	(character
-	 (setf result
-	       (make-array '(1) :element-type 'fatchar
-			   :initial-element (make-fatchar :c thing))))
-	;; We could princ-to-string other stuff, but it's probably better if
-	;; the caller does it explicitly.
+	 (setf result (make-fatchar-string-of-length
+		       1 :initial-element (make-fatchar :c thing))))
+	;; We could princ-to-string for other stuff, but it's probably better
+	;; if the caller does it explicitly.
 	)
       result)))
 
@@ -602,8 +622,16 @@ functions."
 ;; attributes. So this is inherently lossy.
 (defmethod ochar-int ((character fatchar))
   (let ((int 0)
-	(fg (convert-color-to (lookup-color (fatchar-fg character)) :rgb8))
-	(bg (convert-color-to (lookup-color (fatchar-bg character)) :rgb8))
+	;; @@@ How do a represent a NIL aka unspecified color as a number?
+	;; For now it's just black & white :(
+	(fg (or (and (fatchar-fg character)
+		     (convert-color-to
+		      (lookup-color (fatchar-fg character)) :rgb8))
+		#(:rgb8 #xff #xff #xff)))
+	(bg (or (and (fatchar-bg character)
+		     (convert-color-to
+		      (lookup-color (fatchar-bg character)) :rgb8))
+		#(:rgb8 0 0 0)))
 	(line (logior (fatchar-line character) #b1111)))
     (flet ((add (value width)
 	     (setf int (logior (ash int width) value)))
