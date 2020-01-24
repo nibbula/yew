@@ -165,7 +165,8 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 (defun make-fat-string (&key string length initial-element)
   "Make a FAT-STRING. You can make it from a FATCHAR-STRING, given in STRING,
 or if you give LENGTH, one will be made for you. If you supply LENGTH, you can
-also supply INITIAL-ELEMENT to make that the initial element of the string."
+also supply INITIAL-ELEMENT that will be copied to the initial elements of
+the string."
   (check-type string (or null fatchar-string string))
   (when (and string length)
     (error "I can't both use your STRING, and make one of LENGTH."))
@@ -465,11 +466,16 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 	 target replacement sequence (list :count count)))
 
 (defun make-fatchar-string-of-length (length &key initial-element)
-  "Return a FATCHAR-STRING of LENGTH. If INITIAL-ELEMENT is supplied, make that
-as the INITIAL-ELEMENT of the storage which is probably an array or something."
-  (make-array (list length)
-	      :element-type 'fatchar
-	      :initial-element (or initial-element (make-fatchar))))
+  "Return a FATCHAR-STRING of LENGTH. If INITIAL-ELEMENT is supplied, copy that
+for the initial contents. Note that this is different than if you supplied
+initial-element to make-array, or if you don't supply initial-element."
+  (let ((result (make-array (list length)
+			    :element-type 'fatchar
+			    :initial-element (make-fatchar))))
+    (when initial-element
+      (loop :for i :from 0 :below length
+	 :do (setf (aref result i) (copy-fatchar initial-element))))
+    result))
 
 (defun make-fatchar-string (thing)
   "Make a string of fatchars from THING, which can be a string or a character."
