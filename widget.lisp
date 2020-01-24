@@ -44,10 +44,16 @@
     :documentation "True to draw a box around the widget."))
   (:documentation "The line editor as a widget."))
 
-(defkeymap *widget-keymap*
-  "Keymap for text widgets."
+(defparameter *widget-keys*
   `((,(ctrl #\P)	. previous-line)
-    (,(ctrl #\N)	. next-line)))
+    (,(ctrl #\N)	. next-line)
+    (,(ctrl #\D)	. delete-char)
+    (,(meta-char #\<)	. beginning-of-buffer)
+    (,(meta-char #\>)	. end-of-buffer)
+    ((#\escape #\<)	. beginning-of-buffer)
+    ((#\escape #\>)	. end-of-buffer)
+    )
+  "Keys for text widgets.")
 
 (defmethod initialize-instance
     :after ((o widget) &rest initargs &key &allow-other-keys)
@@ -64,24 +70,67 @@
 			   :x col :y row
 			   :width (tt-width) :height (tt-height)))))
 
-  ;; Use a keymap customized for widgets.
-  (when (or (not (slot-boundp o 'keymap)) (not (slot-value o 'keymap)))
-    (setf (slot-value o 'keymap)
-	  (copy-keymap *widget-keymap*))))
+  ;; Add customized keys for widgets.
+  (when (and (slot-boundp o 'rl::local-keymap)
+	     (slot-value o 'rl::local-keymap))
+    ;; (add-keymap *widget-keymap* (slot-value o 'rl::local-keymap))
+    (loop :for (key-seq . binding) :in *widget-keys* :do
+       (set-key key-seq binding (slot-value o 'rl::local-keymap)))))
 
 ;; @@@ copied from fui
-(defun erase-area (x y width height &key string)
-  (let ((str (if string
-		 (fill string #\space :end width)
-		 (make-string width :initial-element #\space))))
+(defun erase-area (x y width height &key string rendition)
+  (let ((str (cond
+	       ((and string (not rendition))
+		string ;; Just use the string.
+		;; (fill string #\space :end width))
+		)
+	       ((and string rendition)
+		(error "FUK THIS")
+		;; (ofill string rendition :end width)
+		)
+	       ((not rendition)
+		(make-string width :initial-element #\space))))
+	(char (or (and rendition (let ((c (copy-fatchar rendition)))
+				   (setf (fatchar-c c) #\space)
+				   c))
+		  #\space)))
     (loop :for iy :from y :below (+ y height) :do
-       (tt-move-to iy x)
-       (tt-write-string str))))
+       (if str
+	   (tt-write-string-at iy x str)
+	   (loop :for ix :from x :below (+ x width) :do
+	      (tt-write-char-at iy ix char))))))
 
-(defun erase-bbox (bbox &key string)
+(defun erase-bbox (bbox &key string rendition)
   (erase-area (bbox-x bbox) (bbox-y bbox)
 	      (bbox-width bbox) (bbox-height bbox)
-	      :string string))
+	      :string string
+	      :rendition rendition
+	      ))
+
+(defun apply-rendition (rendition string)
+  "Apply the effects from the fatchar RENDITION to STRING. If string is a normal
+string, make a new fat-string with the attributes set. If STRING is already a
+fat-string, set unset effects to be from RENDITION."
+  (let (result)
+    (etypecase string
+      (string
+       ;; Make a new fat-string with the rendition.
+       (setf result
+	     (make-fat-string :length (length string)
+			      :initial-element rendition))
+       (loop :for i :from 0 :below (length string)
+	  :do (setf (aref result i) (aref string i)))
+       result)
+      (fat-string
+       (omapn (_ (when (not (fatchar-fg _))
+		   (setf (fatchar-fg _) (fatchar-fg rendition)))
+		 (when (not (fatchar-bg _))
+		   (setf (fatchar-bg _) (fatchar-bg rendition)))
+		 (when (not (fatchar-attrs _))
+		   (setf (fatchar-attrs _)
+			 (copy-seq (fatchar-attrs rendition)))))
+	      string)
+       string))))
 
 ;; This is to get different defaults for the view. We should probably have
 ;; just made a view object.
@@ -92,11 +141,9 @@
 				      (bbox-x (widget-bbox editor)))
 				     (end-column
 				      (bbox-width (widget-bbox editor)))
-				     spots column-spots
-				     (left-margin
-				      (bbox-x (widget-bbox editor))))
+				     spots column-spots)
   (rl::%calculate-line-endings
-   buffer start-column end-column spots column-spots left-margin))
+   buffer start-column end-column spots column-spots))
 
 ;; Now with much less ploof!
 (defun widget-redraw (e &key erase)
@@ -110,7 +157,7 @@
 	       (temporary-message rl::temporary-message)     ;; unnecessary?
 	       (region-active rl::region-active)
 	       (max-message-lines rl::max-message-lines)     ;; unnecessary?
-	       bbox) e
+	       rendition bbox) e
     (dbugf :rl "----------------~%")
     ;; Make sure buf-str uses buf.
     (when (not (eq (fat-string-string buf-str) buf))
@@ -172,7 +219,7 @@
       (tt-move-to y x)
 
       ;; Erase all the contents
-      (erase-bbox bbox)
+      (erase-bbox bbox :rendition rendition)
 
       ;; @@@ unnecessary junk??
       ;; (setf new-last-line total-lines
@@ -181,6 +228,9 @@
 
       ;; Write the line
       ;;(if (or (and (regions-p e) region-active) (> (length contexts) 1))
+
+      (when rendition
+	(apply-rendition rendition str))
 
       (if endings
 	  (progn
@@ -215,7 +265,8 @@
 	  (setf end-width (- width (or last-end-col
 				       (- (olength str) pos))))
 	  (when (< row (+ y height))
-	    (erase-area (+ x (- width end-width)) row end-width 1))
+	    (erase-area (+ x (- width end-width)) row end-width 1
+			:rendition rendition))
 
 	  #| temporary message should go somewhere else
 	  (when temporary-message
@@ -237,19 +288,26 @@
 
 (defsingle-method redraw ((e widget))
   "Clear the screen and redraw the prompt and the input line."
-  (with-slots ((keep-region-active rl::keep-region-active)) e
+  (with-slots ((keep-region-active rl::keep-region-active)
+	       bbox box-p) e
     ;; (setf (rl::screen-col e) 0 (rl::screen-relative-row e) 0)
+    (if box-p
+	(erase-area (1- (bbox-x bbox)) (1- (bbox-y bbox))
+		    (1+ (bbox-width bbox)) (1+ (bbox-height bbox)))
+	(erase-bbox bbox))
+    (tt-finish-output)
     (update-display e)
+    (tt-finish-output)
     (setf keep-region-active t)))
 
 (defun widget-read (&rest initargs &key (x 0) (y 0) (width 33) (height 1) box-p
 				     &allow-other-keys)
-  (declare (ignore initargs))
-  (let ((w (make-instance
-	    'widget
-	    :bbox (make-instance
-		   'bbox :x x :y y :width width :height height)
-	    :box-p box-p)))
+  ;; (declare (ignore initargs))
+  (let* ((args (append (copy-seq initargs)
+		       `(:bbox ,(make-instance 'bbox
+			         :x x :y y :width width :height height)
+			       :box-p ,box-p)))
+	(w (apply #'make-instance 'widget args)))
     (rl:rl :editor w)))
 
 (defun make-widget (&key (x 0) (y 0) (width 33) (height 1) rendition box-p)
