@@ -531,7 +531,12 @@ the first time it fails to identify the image."
     (catch 'flanky
       (handler-case
 	  (progn
-	    (setf form (list (read-from-string (rl:rl :prompt ": ") nil nil))
+	    ;;(setf form (list (read-from-string (rl:rl :prompt ": ") nil nil))
+	    (setf form (list (read-from-string
+			      (rl-widget:widget-read
+			       :width 60 :height 2
+			       :completion-func #'complete-symbol)
+			      nil nil))
 		  real-form (popi:popi-form form)
 		  popi:w (width o)
 		  popi:h (height o)
