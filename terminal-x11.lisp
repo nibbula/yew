@@ -222,6 +222,10 @@ different from the current foreground color which in rendition.")
     :initarg :allow-send-events :accessor allow-send-events
     :initform nil :type boolean
     :documentation "True to allow synthetic events sent by other programs.")
+   (interrupt-key
+    :initarg :interrupt-key :accessor interrupt-key
+    :initform (char-util:ctrl #\c)
+    :documentation "Key or character to throw an interrupt, or NIL for none.")
    (output-buffer
     :initarg :output-buffer :accessor output-buffer :initform nil
     :documentation "Buffer for output.")
@@ -323,9 +327,10 @@ are already set."
 		     (window-columns terminal::window-columns)) tty
     (loop :for y :from 0 :below (length lines) :do
        (loop :for x :from 0 :below (length (aref lines y)) :do
-	  (format t "~a" (grid-char-c (aref (aref lines y) x))))
-       (terpri))
-    (terpri)))
+	  (format *trace-output* "~a" (grid-char-c (aref (aref lines y) x))))
+       (terpri *trace-output*))
+    (terpri *trace-output*)
+    (finish-output *trace-output*)))
 
 (defmethod initialize-instance
     :after ((o terminal-x11) &rest initargs &key &allow-other-keys)
@@ -775,7 +780,7 @@ to blank with."
 		     (out-buf-moved output-buffer)
 		     nil))
 	       (put-char (gc char)
-		 "Put a char in the grid and output with batching."
+		 "Put a char in the grid and output with buffering."
 		 (set-char gc char)
 		 (cond
 		   ((not output-buffer)
@@ -842,6 +847,8 @@ to blank with."
 	  (t
 	   (delayed-scroll)
 	   (put-char (aref (aref lines cursor-row) cursor-column) char)
+	   (format *trace-output* "put-char ~s ~s~%" cursor-column cursor-row)
+	   (finish-output *trace-output*)
 	   ;; (when changed
 	   ;;   (note-single-line tty))
 	   (let* ((len (char-util:display-length char))
@@ -1258,10 +1265,17 @@ to the grid. It must be on a single line and have no motion characters."
   (with-slots (cursor-gc draw-gc cursor-row cursor-column cursor-state) tty
     ;; (format t "cursor char = ~s ~a~%" (char-at tty cursor-row cursor-column)
     ;; 	    (type-of (char-at tty cursor-row cursor-column)))
-    (let ((c (or (osimplify (char-at tty cursor-row cursor-column)) #\space))
-	  (%state (or state cursor-state)))
-      (draw-thing tty c :gc (if (eq %state :visible)
-				cursor-gc draw-gc)))))
+    (let* ((gchar (char-at tty cursor-row cursor-column))
+	   (c (or (osimplify gchar) #\space))
+	   (%state (or state cursor-state)))
+      (if (eq %state :visible)
+	  (draw-thing tty c :gc cursor-gc)
+	  (let ((str (vector (or gchar
+				 (make-fatchar
+				  :c #\space
+				  :bg (background tty)
+				  :fg (foreground tty))))))
+	    (render-unit-string tty str :row cursor-row :col cursor-column))))))
 
 (defmacro with-cursor-movement ((tty) &body body)
   "Wrap around something that moves the cursor to make the cursor be drawn."
@@ -1523,7 +1537,7 @@ i.e. the terminal is 'line buffered'."
     (flush-buffer tty)
     (terminal-erase-to-eol tty)
     (clear-text tty 0 (1+ cursor-row)
-		(1- window-columns) (1- window-rows))
+		(1- window-columns) (1- window-rows) :erase t)
     (draw-cursor tty)))
 
 (defmethod terminal-clear ((tty terminal-x11))
@@ -1686,26 +1700,28 @@ handler cases."
 	(:configure-notify
 	 (event-slots (slots #| x y |# xlib:window xlib::width xlib::height)
 	   (when (eq xlib:window our-window)
-	     (when (or (locally (declare (optimize (speed 0)))
-			 (/= xlib::width window-width)
-			 (/= xlib::height window-height)))
+	     (when (or (/= xlib::width window-width)
+		       (/= xlib::height window-height))
 	       (setf window-width xlib::width window-height xlib::height)
 	       (set-grid-size-from-pixel-size tty window-width window-height)
-	       ;; (format t "resize to ~s ~s~%" window-columns window-rows)
+	       (format *trace-output*
+		       "resize to ~s ~s~%" window-width window-height)
+	       (finish-output *trace-output*)
 	       (resize-grid tty)
 	       ;;(clear-area win :x x :y y :width w :height h)
 	       ;;(display-finish-output display)
-	       (locally (declare (optimize (speed 0)))
-		 (when (find :resize (terminal-events-enabled tty))
-		   (setf result :resize)))
-	       ;; (dump-grid tty)
-	       ))
-	   t))
+	       (when (find :resize (terminal-events-enabled tty))
+		 (setf result :resize))))
+	   (or result (and (discard-current-event display) nil))))
 	(:visibility-notify
 	 t)
-	;; (:client-message ()
-	;;   at least handle DELETE-WINDOW!
-	;;   t)
+	(:client-message ()
+	  (event-slots (slots type format data)
+	    ;;(when (and (= format 32))
+	    ;; at least handle DELETE-WINDOW!
+	    (format t "client message type ~s format ~s data ~s~%"
+		    type format data))
+	  t)
 	;; :enter-notify fill the cursor
 	;; :leave-notify hollow the cursor
 	;; probably :keymap-notify
@@ -1736,7 +1752,7 @@ handler cases."
 (defun key-handler (&rest slots
 		    &key display event-key send-event-p &allow-other-keys)
   "Handle key or mouse input."
-  (with-slots (cell-width cell-height modifiers) *event-tty*
+  (with-slots (cell-width cell-height modifiers interrupt-key) *event-tty*
     (let ((tty *event-tty*) result)
       (when (and send-event-p (member event-key '(::button-press :button-release
 						  :key-press :key-release))
@@ -1744,7 +1760,7 @@ handler cases."
 	(warn "Synthetic button press!")
 	(return-from key-handler t))
       (case event-key
-	((:exposure :configure-notify)
+	((:exposure :configure-notify :visibility-notify :client-message)
 	 (apply #'window-handler slots))
 	(:button-press
 	 (event-slots (slots code x y state)
@@ -1803,11 +1819,21 @@ handler cases."
 		(setf result
 		      (if (not (zerop state))
 			  (modifier-prefixed sym-name state)
-			  sym-name)))
+			  ;; special translations
+			  (case sym-name
+			    (:escape #\escape)
+			    (t sym-name)))))
 	       (t
 		;; Try to return something at least
 		(setf result (or chr sym-name sym code))))
 	     (when result (setf *input-available* t))
+	     (when (eq result :f11) ;; @@@ debugging
+	       (dump-grid tty)
+	       (discard-current-event display)
+	       (return-from key-handler nil))
+	     (when (and interrupt-key (eq result interrupt-key))
+	       (discard-current-event display)
+	       (throw 'interactive-interrupt nil))
 	     (or result t))))
 	(otherwise t)))))
 
@@ -1856,17 +1882,21 @@ handler cases."
 (defmethod terminal-get-char ((tty terminal-x11))
   "Read a character from the terminal."
   (terminal-finish-output tty)
-  (get-key tty))
+  (let (result)
+    (loop
+       :do (setf result (get-key tty))
+       :while (not (characterp result)))
+    result))
 
 (defmethod terminal-get-key ((tty terminal-x11))
-  ;; (terminal-finish-output tty)
+  (terminal-finish-output tty)
   (get-key tty))
 
 (defun listen-handler (&rest slots
 		       &key display event-key send-event-p &allow-other-keys)
   (declare (ignore send-event-p))
   (case event-key
-    ((:exposure :configure-notify)
+    ((:exposure :configure-notify :visibility-notify :client-message)
      (apply #'window-handler slots)
      (discard-current-event display)
      t)
@@ -2351,7 +2381,7 @@ links highlight differently?"
   (with-slots (cursor-column cursor-row) stream
     ;; :-D This is so magically easy, it must be right.
     (when (> column cursor-column)
-      (clear-text stream cursor-column cursor-row column cursor-row)
+      (clear-text stream cursor-column cursor-row column cursor-row :erase t)
       (with-cursor-movement (stream)
 	(setf cursor-column column))))
   t)
@@ -2388,12 +2418,14 @@ links highlight differently?"
   ) |#
   )
 
+#|
 (defmethod stream-read-sequence ((stream terminal-x11) seq start end
 				 &key &allow-other-keys
 					#| &optional (start 0) end |#)
   (declare (ignore stream seq start end))
   ;; @@@ we could actually do this?
   nil)
+|#
 
 ;;(defgeneric stream-peek-char ((stream terminal-x11))
   ;; This is used to implement ‘peek-char’; this corresponds to
@@ -2409,6 +2441,7 @@ links highlight differently?"
   ;; ‘fundamental-character-input-stream’ simply calls
   ;; ‘stream-read-char’; this is sufficient for file streams, but
   ;; interactive streams should define their own method.
+  (terminal-finish-output stream)
   (get-key stream :timeout 0))
 
 (defmethod stream-read-char ((stream terminal-x11))
