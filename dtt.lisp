@@ -328,16 +328,255 @@ then the second value is the labels."
 	       :collect rec))
       (values recs labels))))
 
+;; What the flying flapper pans is wrong with me???
+;; @@@ Of course this should be somewhere else, probably syntax-lisp.
+;; And it maybe it should make the actual number while we're at it?
+;; We could also pull the macros out of here for general utility in making
+;; simple quick and dirty parsers.
+(defun potential-number-p (string &key junk-allowed)
+  (let ((i 0) results)
+    (macrolet ((optional (&body body)
+		 "If BODY doesn't evaluate to true, restore the point."
+		 (with-unique-names (start result)
+		   `(let ((,start i) ,result)
+		      (when (not (setf ,result (progn ,@body)))
+			(setf i ,start))
+		      t)))
+	       (must-be (&body body)
+		 "BODY must evaluate true."
+		 (with-unique-names (start result)
+		   `(let ((,start i) ,result)
+		      (when (not (setf ,result (progn ,@body)))
+			(setf i ,start))
+		      ,result)))
+	       (sequence-of (&body body)
+		 "Every form of BODY must be true."
+		 (with-unique-names (start result)
+		   `(let ((,start i) ,result)
+		      (when (not (setf ,result (and ,@body)))
+			(setf i ,start))
+		      ,result)))
+	       (one-or-more (&body body)
+		 "Do the body, once and as many more times as it returns true."
+		 (with-unique-names (thunk)
+		   `(flet ((,thunk () ,@body))
+		      (and (,thunk)
+			   (or (loop :while (,thunk)) t)))))
+	       (zero-or-more (&body body)
+		 "Do the body, until it returns false. Always true."
+		 (with-unique-names (thunk)
+		   `(flet ((,thunk () ,@body))
+		      (loop :while (,thunk))
+		      t)))
+	       (one-of (&body body)
+		 "Return after the first optional expression of BODY is true."
+		 `(or ,@(loop :for expr :in body
+			   :collect `(must-be ,expr))))
+	       (note ((x) &body body)
+		 (with-unique-names (r)
+		   `(let ((,r (progn ,@body)))
+		      (when ,r
+			(push ,x results))
+		      ,r))))
+      (labels (;; Utility functions
+	       (peek ()
+		 (when (< i (length string))
+		   (char string i)))
+	       (next-char ()
+		 (if (< i (length string))
+		     (prog1 (char string i)
+		       (incf i))
+		     (throw 'eof nil)))
+	       (char-in (c string)
+		 "True if C is in STRING."
+		 (find c string :test #'char=))
+
+	       ;; Pieces of numbers:
+	       (exponent-marker ()
+		 (and (peek)
+		      (char-in (char-downcase (peek)) "defls")
+		      (next-char)))
+	       (sign ()
+		 (and (peek) (char-in (peek) "+-")
+		      (next-char)))
+	       (digit () ;; al monsters
+		 "Succeed if positioned at a digit character in *READ-BASE*."
+		 (and (peek)
+		      (digit-char-p (peek) *read-base*)
+		      (next-char)))
+	       (decimal-digit ()
+		 (and (peek)
+		      (char-in (peek) "0123456789")
+		      (next-char)))
+	       (decimal-point ()
+		 (and (peek) (char= (peek) #\.)
+		      (next-char)))
+	       (exponent ()
+		 (sequence-of (exponent-marker)
+			      (optional (sign))
+			      (one-or-more (digit))))
+	       (slash ()
+		 (and (peek)
+		      (char= (peek) #\/)
+		      (next-char)))
+	       (@ratio ()
+		 (note (:ratio)
+		       (sequence-of (optional (sign))
+				    (one-or-more (digit))
+				    (slash)
+				    (one-or-more (digit)))))
+	       (@integer ()
+		 (note (:integer)
+		       (one-of (sequence-of (optional (sign))
+					    (one-or-more (decimal-digit))
+					    (decimal-point))
+			       (sequence-of (optional (sign))
+					    (one-or-more (digit))))))
+	       (@float ()
+		 (note (:float)
+		       (one-of (sequence-of (optional (sign))
+					    (zero-or-more (decimal-digit))
+					    (decimal-point)
+					    (one-or-more (decimal-digit))
+					    (optional (exponent)))
+			       (sequence-of (optional (sign))
+					    (one-or-more (decimal-digit))
+					    (optional
+					     (sequence-of
+					      (decimal-point)
+					      (zero-or-more (decimal-digit))))
+					    (exponent)))))
+	       (numeric-token ()
+		 (one-of (@ratio)
+			 (@float)
+			 (@integer))))
+	;; (and (catch 'eof
+	;;        (numeric-token))
+	;;      (and (not junk-allowed)
+	;; 	  (>= i (length string))
+	;; 	  ;; (error "Junk was found! Not allowed! Reported!")
+	;; 	  nil))))))
+	(values (and (catch 'eof (numeric-token))
+		     (and (not junk-allowed)
+			  (>= i (length string))))
+		results)))))
+
+(defun guess-column-types (table #| &key convert-p |#)
+  "Try to set column types for TABLE from the contents. How it works:
+If every object in a column:
+  - is a number or string that looks like a number, the type is NUMBER.
+  - is the same TYPE-OF, than use that.
+  - Anything else just set to T."
+  (let ((guess (make-sequence 'vector (length (table-columns table))
+			      :initial-element nil)))
+    (loop
+       :with e
+       :for col :in (table-columns table)
+       :for i = 0 :then (1+ i)
+       :do
+       (block nil
+	 (omapn (_
+		 (setf e (oelt _ i))
+		 ;; (format t "~s " e)
+		 (typecase e
+		   (number
+		    (case (aref guess i)
+		      ((nil)
+		       ;; (format t "new number~%")
+		       (setf (aref guess i) 'number))
+		      (number #| still a number |#)
+		      (string
+		       (when (not (potential-number-p e))
+			 ;; (format t "number -> string~%")
+			 (setf (aref guess i) 'string)))
+		      (otherwise
+		       ;; (format t "number -> ~s~%" (type-of e))
+		       (setf (aref guess i) (type-of e)))))
+		   (string
+		    (case (aref guess i)
+		      (number
+		       (when (not (potential-number-p e))
+			 ;; (format t "string -> number~%")
+			 (setf (aref guess i) 'string)))
+		      ((nil)
+		       (if (potential-number-p e)
+			   (progn
+			     ;; (format t "string -> number~%")
+			     (setf (aref guess i) 'number))
+			   (progn
+			     ;; (format t "new string~%")
+			     (setf (aref guess i) 'string))))
+		      (string #| still strings |# )
+		      (otherwise
+		       ;; (format t "string -> ~s~%" (type-of e))
+		       (setf (aref guess i) t)
+		       ;; It's not uniform so just stop.
+		       (return nil))))
+		   (t
+		    (cond
+		      ((or (eq (type-of e) (aref guess i))
+			   (typep e (aref guess i)))
+		       #| We're still okay, I suppose. |#)
+		      ((subtypep e (aref guess i))
+		       ;; Set it to a more specific type
+		       ;; (setf (aref guess i) (type-of e))
+		       ;; @@@ actually don't
+		       )
+		      ((null (aref guess i))
+		       ;; (format t "new ~s~%" (type-of e))
+		       (setf (aref guess i) (type-of e)))
+		      (t
+		       ;; (format t "~s -> t~%" (type-of e))
+		       (setf (aref guess i) t)
+		       ;; It's not uniform, so bail out.
+		       (return nil))))))
+		table)))
+	guess))
+
+(defun convert-data (from to)
+  "Return FROM converted to type TO, or leave it alone and warn if we can't."
+  (typecase from
+    (string
+     (case to
+       (number (safe-read-from-string from))
+       (string from)
+       (t
+	(warn "Don't know how to convert from a string to a ~a~%" to)
+	from)))
+    (number
+     (case to
+       (number from)
+       (string (princ-to-string from))
+       (t
+	(warn "Don't know how to convert from a number to a ~a~%" to)
+	from)))
+    (t
+     (warn "Don't know how to convert from a ~a to a ~a~%" (type-of from) to)
+     from)))
+
+(defun set-column-type-guesses (table guess)
+  "Convert the column data in TABLE to the types in GUESSES."
+  (loop :for i :from 0 :below (length guess) :do
+     (table-set-column-type table i (aref guess i)))
+  (omapn (_ (loop :for i :from 0 :below (length guess) :do
+	       (setf (oelt _ i) (convert-data (oelt _ i) (oelt guess i)))))
+	 table))
+
 (defun read-table (file-or-stream &key (style +csv-default+)
-				    columns column-names)
-  (multiple-value-bind (recs labels) (read-file file-or-stream :style style)
-    (make-table-from (coerce recs 'vector)
-		     :column-names (or column-names labels)
-		     :columns columns)))
+				    columns column-names guess-types)
+  (let (table)
+    (multiple-value-bind (recs labels) (read-file file-or-stream :style style)
+      (setf table (make-table-from (coerce recs 'vector)
+				   :column-names (or column-names labels)
+				   :columns columns)))
+    (when guess-types
+      (set-column-type-guesses table (guess-column-types table)))
+    table))
 
 #+lish
 (lish:defcommand read-table
   ((file pathname :help "File to read a table from.")
+   (guess-types boolean :short-arg #\g :help "Guess column data types.")
    (first-row-labels boolean :short-arg #\l :default t
     :help "True to use the first row of the table as labels, not data.")
    (style choice :short-arg #\s :default ''csv-default
@@ -354,7 +593,8 @@ then the second value is the labels."
     (setf (style-first-row-labels real-style) first-row-labels
 	  lish:*output*
 	  (read-table (or file *standard-input*)
-		      :style real-style :columns columns))))
+		      :style real-style :columns columns
+		      :guess-types guess-types))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Writing
