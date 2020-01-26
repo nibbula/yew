@@ -4,7 +4,7 @@ It's not fully baked yet, but it's more than half baked.
 
 Unusual characteristics:
 - Doesn't require curses, but can use it.
-- Sort of works Windows, as well Unix.
+- Sort of works on Windows, as well as Unix.
 - Depends on some junk in the [the town.](https://github.com/nibbula/yew)
   and on [opsys](https://github.com/nibbula/opsys).
 
