@@ -226,6 +226,10 @@ different from the current foreground color which in rendition.")
     :initarg :interrupt-key :accessor interrupt-key
     :initform (char-util:ctrl #\c)
     :documentation "Key or character to throw an interrupt, or NIL for none.")
+;;    (threads
+;;     :initarg :threads :accessor threads :initform nil :type 
+;;     :documentation "Threads running in the terminal, so we can kill them when
+;; we close the window.")
    (output-buffer
     :initarg :output-buffer :accessor output-buffer :initform nil
     :documentation "Buffer for output.")
@@ -387,7 +391,8 @@ are already set."
 		 :font font)
        (wm-name window) title
        (wm-icon-name window) title)
-      ;; (format t "size ~d ~d~%" window-width window-height) 
+
+      ;; Set up the window manager hints and stuff.
       (let ((wmh (make-wm-hints :input :on :initial-state :normal)))
 	(setf (wm-hints window) wmh))
       (set-cell-size o)
@@ -398,6 +403,10 @@ are already set."
 		  :min-width cell-width :min-height cell-height
 		  :width-inc cell-width :height-inc cell-height)))
 	(setf (wm-normal-hints window) wmh))
+      (setf (wm-protocols window)
+	    (list "WM_DELETE_WINDOW")
+	    ;; (map 'vector #'char-code (s+ "WM_DELETE_WINDOW" #\nul))
+	    )
       (map-window window))
     (terminal-get-size o)
     (make-new-grid o)
@@ -847,8 +856,8 @@ to blank with."
 	  (t
 	   (delayed-scroll)
 	   (put-char (aref (aref lines cursor-row) cursor-column) char)
-	   (format *trace-output* "put-char ~s ~s~%" cursor-column cursor-row)
-	   (finish-output *trace-output*)
+	   ;; (format *trace-output* "put-char ~s ~s~%" cursor-column cursor-row)
+	   ;; (finish-output *trace-output*)
 	   ;; (when changed
 	   ;;   (note-single-line tty))
 	   (let* ((len (char-util:display-length char))
@@ -1686,7 +1695,7 @@ handler cases."
   "Handle normal window maintenance events that aren't input."
   (declare (ignore send-event-p))
   (let ((tty *event-tty*) result)
-    (with-slots ((our-window window) window-width window-height) tty
+    (with-slots ((our-window window) window-width window-height threads) tty
       (case event-key
 	(:exposure
 	 (event-slots (slots x y width height xlib:window #|count|#)
@@ -1717,10 +1726,17 @@ handler cases."
 	 t)
 	(:client-message ()
 	  (event-slots (slots type format data)
-	    ;;(when (and (= format 32))
-	    ;; at least handle DELETE-WINDOW!
-	    (format t "client message type ~s format ~s data ~s~%"
-		    type format data))
+	    (when (and (eq type :WM_PROTOCOLS)
+		       (= format 32)
+		       (eq (atom-name display (aref data 0)) :WM_DELETE_WINDOW))
+	      ;; (format *trace-output*
+	      ;; 	      "client message type ~s format ~s data ~s~%"
+	      ;; 	      type format data)
+	      ;; (finish-output *trace-output*)
+	      ;; Suppossedly:
+	      ;; • The atom that names their protocol in the data[0] field
+	      ;; • A timestamp in their data[1] field
+	      (throw :lish-quick-exit :lish-quick-exit)))
 	  t)
 	;; :enter-notify fill the cursor
 	;; :leave-notify hollow the cursor
