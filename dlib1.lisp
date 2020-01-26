@@ -38,7 +38,7 @@ of it.")
   #+lispworks (:shadow #:lambda-list #:with-unique-names)
   #-the-real-fake-dlib (:nicknames :fake-dlib) ; Crazy Sauce!
   (:export
-   ;; System-ish
+   ;; bootstrapping System-ish
    #:d-getenv
    #:shell-line
    #:shell-lines
@@ -64,6 +64,7 @@ of it.")
    #:*buffer-size*
    #:copy-stream
    #:quote-format
+   #:interactive-interrupt
    ;; sequences
    ;;#:call-with-start-and-end
    #:initial-span
