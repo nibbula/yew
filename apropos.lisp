@@ -32,7 +32,7 @@
 	   ;; thing-string :case-insensitive-mode (not (functionp thing))))
 	   thing-string :case-insensitive-mode t))
 	 (table (make-hash-table))
-	 matches)
+	 matches did-one)
     ;; We use a hash table since symbols are frequently duplicated in packages,
     ;; and we only want each once.
     ;; Presumably with-package-iterator is faster than do-
@@ -52,7 +52,11 @@
 	 (when (and symbol (or (eq status :internal)
 			       (eq status :external)))
 	   ;; (grout-format "~a:~%" (package-name pkg))
-	   (print-info symbol))))))
+	   (when (not did-one)
+	     (grout-format "Lisp symbols:~%"))
+	   (setf did-one t)
+	   (print-info symbol))))
+    did-one))
 
 (defun command-apropos (thing)
   (let* ((scanner
@@ -67,19 +71,42 @@
 		       (scan scanner doc))
 	     :collect (list (lish:command-name cmd) doc))))
     (when tab
+      (grout-format "Lish commands:~%")
       (grout-print-table (make-table-from
-			  tab :column-names '("Command" "Description"))))))
+			  tab :column-names '("Command" "Description")))
+      t)))
 
 (defun system-apropos (thing)
-  (declare (ignore thing))
-  ;; (ql:system-apropos)
-  )
+  (let (did-one)
+    (when (find-package :quicklisp)
+      (loop :for system :in (symbol-call :ql :system-apropos-list thing)
+	 :do 
+	 (when (not did-one)
+	   (grout-format "Quicklisp systems:~%"))
+	 (grout-format "~a~%"
+		       ;; I wish there was a real description.
+		       (symbol-call :ql-dist :short-description system))
+	 (setf did-one t)))
+    did-one))
 
 (defun os-apropos (thing)
-  (declare (ignore thing))
   ;; /var/cache/man/index.db
   ;; GNU dbm 1.x or ndbm database, little endian, 64-bit
-  )
+  ;; Ugh. For now just run the dang thing.
+  (let ((full (nos:command-pathname "apropos"))
+	table)
+    (when full
+      (setf table
+	    (loop :with pos
+	       :for line :in (!_= full thing)
+	       :when (setf pos (search "- " line))
+	       :collect (list (rtrim (subseq line 0 pos))
+			      (ltrim (subseq line (1+ pos))))))
+      (when (and table (olength table))
+	(grout-format "System commands:~%")
+	(grout-print-table
+	 (make-table-from table :column-names '("Command" "Description")))
+	t))))
 
 (defun mondo-apropos (&key thing type package
 			os-only lish-only lisp-only external-only)
@@ -88,18 +115,18 @@
   (with-grout ()
     (let ((did-one nil))
       (when (not (or os-only lish-only))
-	(symbol-apropos thing :package package :external-only external-only)
-	(setf did-one t))
+	(setf did-one
+	      (symbol-apropos thing :package package
+			      :external-only external-only)))
+      (when (not (or lish-only lisp-only))
+	(when did-one (grout-princ #\newline))
+	(setf did-one (system-apropos thing)))
       (when (not (or os-only lisp-only))
 	(when did-one (grout-princ #\newline))
-	(command-apropos thing)
-	(setf did-one t))
+	(setf did-one (command-apropos thing)))
       (when (not (or lish-only lisp-only))
 	(when did-one (grout-princ #\newline))
-	(system-apropos thing))
-      (when (not (or lish-only lisp-only))
-	(when did-one (grout-princ #\newline))
-	(os-apropos thing)))))
+	(setf did-one (os-apropos thing))))))
 
 #|
 ;; test the speed of 3 different ways
