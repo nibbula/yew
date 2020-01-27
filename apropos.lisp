@@ -108,23 +108,25 @@
 	 (make-table-from table :column-names '("Command" "Description")))
 	t))))
 
-(defun mondo-apropos (&key thing type package
-			os-only lish-only lisp-only external-only)
+(defparameter *types* '(:lisp :lish :quicklisp :os))
+
+(defun mondo-apropos (&key thing types package external-only)
   "Look for stuff you can do."
-  (declare (ignore type))
+  (when (not thing)
+    (error "But apropos what?"))
   (with-grout ()
     (let ((did-one nil))
-      (when (not (or os-only lish-only))
+      (when (find :lisp types)
 	(setf did-one
 	      (symbol-apropos thing :package package
 			      :external-only external-only)))
-      (when (not (or lish-only lisp-only))
+      (when (find :quicklisp types)
 	(when did-one (grout-princ #\newline))
 	(setf did-one (system-apropos thing)))
-      (when (not (or os-only lisp-only))
+      (when (find :lish types)
 	(when did-one (grout-princ #\newline))
 	(setf did-one (command-apropos thing)))
-      (when (not (or lish-only lisp-only))
+      (when (find :os types)
 	(when did-one (grout-princ #\newline))
 	(setf did-one (os-apropos thing))))))
 
@@ -169,6 +171,8 @@
     :help "True to search for Lish commands only.")
    (lisp-only boolean :short-arg #\L
     :help "True to search for Common Lisp symbols only.")
+   (quicklisp-only boolean :short-arg #\q
+    :help "True to search for Quicklisp systems only.")
    (external-only boolean :short-arg #\e
     :help "Limit search to only external symbols in packages.")
    (package package :short-arg #\p
@@ -178,8 +182,13 @@
    (thing object :help "Like what?"))
   :args-as args
   "Words given but not taken."
-  (when (not thing)
-    (error "But apropos what?"))
-  (apply #'mondo-apropos args))
+  (let ((types *types*))
+    (when os-only (setf types '(:os)))
+    (when lish-only (setf types '(:lish)))
+    (when lisp-only (setf types '(:lisp)))
+    (when quicklisp-only (setf types '(:quicklisp)))
+    (when type (setf types (list type)))
+    (mondo-apropos :thing thing :types types :package package
+		   :external-only external-only)))
 
 ;; EOF
