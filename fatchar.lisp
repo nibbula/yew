@@ -818,7 +818,7 @@ attr | iiiiiiii
   "How many characters allocate initially for a span piece.")
 
 ;; @@@ remove all the debugging junk someday.
-(defun fatchar-string-to-span (fatchar-string &key (start 0) pause)
+(defun fatchar-string-to-span (fatchar-string &key (start 0) #|pause|#)
   "Convert a FATCHAR line to tagged spans."
   (let ((i start)
 	(len (length fatchar-string))
@@ -852,9 +852,9 @@ attr | iiiiiiii
 	   "Build a span of TYPE and VALUE."
 	   (dbugf :fatchar "build-span ~s ~a ~s ~s~%" type value rendition in)
 	   (let (sub-span new-type added)
-	     (when pause
-	       (format *debug-io* "-> ") (finish-output *debug-io*)
-	       (read-line *debug-io*))
+	     ;; (when pause
+	     ;;   (format *debug-io* "-> ") (finish-output *debug-io*)
+	     ;;   (read-line *debug-io*))
 	     (cond
 	       ((> (length type) 1)
 		(dbugf :fatchar "subtype ~s~%" type)
