@@ -373,12 +373,12 @@ generic functions (i.e. %GROUT-*) directly."
   (setf (slot-value o 'term-stream)
 	(if (typep (slot-value o 'stream) 'terminal-stream)
 	    (progn
-	      (dbugf :grout "Grout re-using stream.~%")
-	      (finish-output *debug-io*)
+	      ;; (dbugf :grout "Grout re-using stream.~%")
+	      ;; (finish-output *debug-io*)
 	      (slot-value o 'stream))
 	    (progn
-	      (dbugf :grout "Grout making a new stream.~%")
-	      (finish-output *debug-io*)
+	      ;; (dbugf :grout "Grout making a new stream.~%")
+	      ;; (finish-output *debug-io*)
 	      (make-instance 'terminal-ansi-stream
 			     :output-stream (slot-value o 'stream))))))
 
@@ -425,7 +425,8 @@ generic functions (i.e. %GROUT-*) directly."
     (terminal-underline term-stream t)
     (terminal-write-string term-stream string)
     (terminal-underline term-stream nil)
-    (terminal-finish-output term-stream)))
+    ;; (terminal-finish-output term-stream)
+    ))
 
 (defmethod %grout-set-underline ((g ansi-stream) flag)
   "Turn underlining on or off."
@@ -528,12 +529,12 @@ generic functions (i.e. %GROUT-*) directly."
   (setf (slot-value o 'term)
 	(if (typep (slot-value o 'stream) 'terminal-stream)
 	    (progn
-	      (dbugf :grout "Grout re-using stream.~%")
-	      (finish-output *debug-io*)
+	      ;; (dbugf :grout "Grout re-using stream.~%")
+	      ;; (finish-output *debug-io*)
 	      (slot-value o 'stream))
 	    (progn
-	      (dbugf :grout "Grout making a new stream.~%")
-	      (finish-output *debug-io*)
+	      ;; (dbugf :grout "Grout making a new stream.~%")
+	      ;; (finish-output *debug-io*)
 	      (setf (slot-value o 'own-term) t)
 	      (make-instance 'terminal-ansi)
 	      )))
@@ -569,7 +570,8 @@ generic functions (i.e. %GROUT-*) directly."
     (terminal-underline term t)
     (terminal-write-string term string)
     (terminal-underline term nil)
-    (terminal-finish-output term)))
+    ;; (terminal-finish-output term)
+    ))
 
 (defmethod %grout-set-underline ((g ansi) flag)
   "Turn underlining on or off."
@@ -674,13 +676,13 @@ generic functions (i.e. %GROUT-*) directly."
   (setf (slot-value o 'term)
 	(if (typep (slot-value o 'stream) 'terminal-stream)
 	    (progn
-	      (dbugf :grout "Grout re-using stream.~%")
-	      (finish-output *debug-io*)
+	      ;; (dbugf :grout "Grout re-using stream.~%")
+	      ;; (finish-output *debug-io*)
 	      (slot-value o 'stream))
 	    (progn
-	      (dbugf :grout "Grout making a new stream ~s.~%"
-		     (slot-value o 'stream))
-	      (finish-output *debug-io*)
+	      ;; (dbugf :grout "Grout making a new stream ~s.~%"
+	      ;; 	     (slot-value o 'stream))
+	      ;; (finish-output *debug-io*)
 	      (setf (slot-value o 'own-term) t)
 	      (make-instance
 	       (find-terminal-class-for-type (pick-a-terminal-type))
@@ -718,7 +720,8 @@ generic functions (i.e. %GROUT-*) directly."
     (terminal-underline term t)
     (terminal-write-string term string)
     (terminal-underline term nil)
-    (terminal-finish-output term)))
+    ;; (terminal-finish-output term)
+    ))
 
 (defmethod %grout-set-underline ((g generic-term) flag)
   "Turn underlining on or off."
