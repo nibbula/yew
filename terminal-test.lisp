@@ -205,6 +205,21 @@
 	(sleep sleep))
      )))
 
+(defparameter *all-attrs*
+  '(:normal
+    :bold
+    :faint
+    :dim
+    :italic
+    :underline
+    :blink
+    :inverse
+    :reverse
+    :standout
+    :invisible
+    :crossed-out
+    :double-underline))
+
 (defun test-attrs ()
   (blurp ()
    (labels ((zerp (attr state)
@@ -243,7 +258,41 @@
 	     (zerp a nil)
 	     )
 	  (tt-write-char #\newline)))
-     (tt-format "~%You should see a table of combined attributes."))))
+     (tt-format "~%You should see a table of combined attributes.")))
+
+  (blurp ()
+    ;; Test all exotic attributes
+    (tt-format "All attributes:~%")
+    (loop :for a :in *all-attrs*
+       :do
+       (tt-set-attributes (list a))
+       (tt-write-string (string-capitalize a))
+       (when (eq a :invisible)
+	 (tt-normal)
+	 (tt-format " <-- ~a" (string-capitalize a)))
+       (tt-newline))
+    (tt-normal))
+
+  #| Too ugly
+  (blurp ()
+    (let (span)
+      (loop :for a :in (remove :invisible *all-attrs*)
+	 :for i = 0 :then (+ i 2)
+	 :do
+	 (setf span `(,a
+		      ,(make-string i :initial-element #\space)
+		      ,(string-capitalize a) #\newline ,@span )))
+      (tt-write-span span)
+      (setf span nil)
+      (loop :for a :in (reverse (remove :invisible *all-attrs*))
+	 :for i = 0 :then (+ i 2)
+	 :do
+	 (setf span `(,a
+		      ,(make-string i :initial-element #\space)
+		      ,(string-capitalize a) #\newline ,@span )))
+      (tt-write-span span)))
+  |#
+  )
 
 (defun test-colors ()
   (blurp ()
