@@ -341,7 +341,8 @@ are already set."
   "Initialize a terminal-x11."
   (declare (ignore initargs))
   (with-slots (display window window-width window-height font title pixel-format
-	       draw-gc erase-gc cursor-gc modifiers cell-width cell-height) o
+	       draw-gc erase-gc cursor-gc modifiers cell-width cell-height
+	       foreground background rendition) o
     (multiple-value-bind (host number) (get-display-from-environment)
       (when (not host)
 	(error "Can't get X display from the environment."))
@@ -406,6 +407,7 @@ are already set."
       (setf (wm-protocols window)
 	    (list "WM_DELETE_WINDOW")
 	    ;; (map 'vector #'char-code (s+ "WM_DELETE_WINDOW" #\nul))
+	    rendition (make-fatchar :fg foreground :bg background)
 	    )
       (map-window window))
     (terminal-get-size o)
@@ -598,30 +600,34 @@ to blank with."
   (:documentation
    "Draw a string or character at a position with the graphics context."))
 
-(defmethod draw-thing (tty (thing character) &key x y gc)
+(defmethod draw-thing (tty (thing character) &key x y gc overstrike)
   (with-slots (window draw-gc cursor-column cursor-row font
 	       cell-width cell-height) tty
     (when (graphic-char-p thing)
-      (let ((cc (char-code (char-char thing))))
-	(draw-image-glyph window (or gc draw-gc)
-			  (* (or x cursor-column) cell-width)
-			  (+ (* (or y cursor-row) cell-height)
-			     (font-ascent font))
-			  (if (> cc #xffff) #xfffd cc)
-			  :size 16)))))
+      (let ((cc (char-code (char-char thing)))
+	    (func (if overstrike #'draw-glyph #'draw-image-glyph)))
+	(funcall func window (or gc draw-gc)
+		 (+ (* (or x cursor-column) cell-width)
+		    (if overstrike 1 0))
+		 (+ (* (or y cursor-row) cell-height)
+		    (font-ascent font))
+		 (if (> cc #xffff) #xfffd cc)
+		 :size 16)))))
 
-(defmethod draw-thing (tty (thing string) &key x y gc)
+(defmethod draw-thing (tty (thing string) &key x y gc overstrike)
   (with-slots (window draw-gc cursor-column cursor-row font
 	       cell-width cell-height) tty
-    (let ((str (remove-if-not #'graphic-char-p thing)))
-      (draw-image-glyphs window (or gc draw-gc)
-			 (* (or x cursor-column) cell-width)
-			 (+ (* (or y cursor-row) cell-height)
-			    (font-ascent font))
-			 ;; (char-util:string-to-utf8-bytes str)
-			 (map 'vector (_ (let ((cc (char-code _)))
-					   (if (> cc #xffff) #xfffd cc))) str)
-			 :size 16))))
+    (let ((str (remove-if-not #'graphic-char-p thing))
+	  (func (if overstrike #'draw-glyphs #'draw-image-glyphs)))
+      (funcall func  window (or gc draw-gc)
+	       (+ (* (or x cursor-column) cell-width)
+		  (if overstrike 1 0))
+	       (+ (* (or y cursor-row) cell-height)
+		  (font-ascent font))
+	       ;; (char-util:string-to-utf8-bytes str)
+	       (map 'vector (_ (let ((cc (char-code _)))
+				 (if (> cc #xffff) #xfffd cc))) str)
+	       :size 16))))
 
 ;; A "unit" is what we are calling a character or a string with uniform
 ;; attributes that should be drawn at one position.
@@ -687,10 +693,13 @@ to blank with."
 	       (cond
 		 ((or (and bold (not bold-font)) dimmed inverted)
 		  ;; color change
-		  (when dim ;; lower value
-		    )
-		  (when faint ;; even lower value
-		    )
+		  (when (or dim faint)
+		    (let* ((ffg (color:convert-color-to
+				 (color-from-rendition tty fg :fg) :hsl))
+			   (l (color:color-component ffg :lightness)))
+		      (setf l (max 0.2 (- l .5))
+			    (color:color-component ffg :lightness) l
+			    fg ffg)))
 		  (when (and bold (not bold-font))
 		    ;; use bold color or increase value
 		    (let* ((bfg (color:convert-color-to
@@ -714,6 +723,10 @@ to blank with."
 		 ((and bold bold-font)
 		  (setf use-font bold-font)))
 	       (draw-thing tty plain-string :x col :y row)
+	       (when (and bold (not bold-font))
+		 ;; Overstrike for bold
+		 (draw-thing tty plain-string :x col :y row
+			     :overstrike t))
 	       (when (or underline crossed-out double-underline)
 		 ;; Draw lines over characters
 		 (let* ((start-x (* col cell-width))
@@ -723,15 +736,18 @@ to blank with."
 				  (* cell-width
 				     (char-util:display-length plain-string))))
 			(half-y (- start-y
-				   (truncate (font-ascent font) 2))))
-		   (when (or underline double-underline)
-		     (draw-line window draw-gc start-x start-y end-x start-y))
+				   (round (* (font-ascent font) 3) 8))))
+		   (cond
+		     ((and underline (not double-underline))
+		      (draw-line window draw-gc start-x (1+ start-y)
+				 end-x (1+ start-y)))
+		     (double-underline
+		      (draw-line window draw-gc start-x start-y end-x start-y)
+		      (draw-line window draw-gc start-x (+ start-y 2)
+				 end-x (+ start-y 2))))
 		   (when crossed-out
-		     (draw-line window draw-gc start-x half-y end-x half-y))
-		   (when double-underline
-		     (draw-line window draw-gc
-				start-x (+ start-y 2)
-				end-x (+ start-y 2)))))))))))))
+		     (draw-line window
+				draw-gc start-x half-y end-x half-y))))))))))))
 
 (defun copy-char-to-grid (tty char)
   "Put the CHAR at the current screen postion."
@@ -768,14 +784,18 @@ to blank with."
 		   (fatchar
 		    (when (not (grid-char= gc char))
 		      (setf (grid-char-c gc)     (fatchar-c char)
-			    (grid-char-fg gc)    (fatchar-fg char)
-			    (grid-char-bg gc)    (fatchar-bg char)
-			    (grid-char-attrs gc) (fatchar-attrs char)
+			    (grid-char-fg gc)    (or (fatchar-fg char)
+						     (fatchar-fg rendition))
+			    (grid-char-bg gc)    (or (fatchar-bg char)
+						     (fatchar-fg rendition))
+			    (grid-char-attrs gc) (intersection
+						  (fatchar-attrs char)
+						  (fatchar-fg rendition))
 			    (grid-char-line gc)  (fatchar-line char)
 			    changed t)))
 		   (grid-char
 		    (when (not (grid-char= gc char))
-		      (set-grid-char gc char)
+		      (set-grid-char gc char) ;; @@@ merge rendition??
 		      (setf changed t)))))
 	       (push-buf (c)
 		 ;; (format t "push ~s~%" c)
