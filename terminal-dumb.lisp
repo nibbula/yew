@@ -182,7 +182,6 @@ require terminal driver support."))
 
 (defmethod terminal-colors ((tty terminal-dumb))
   (declare (ignore tty))
-  ;; We don't supporty any colors.
   0)
 
 (defmethod terminal-beep ((tty terminal-dumb))
@@ -190,6 +189,9 @@ require terminal driver support."))
 
 (defmethod terminal-set-scrolling-region ((tty terminal-dumb) start end)
   (declare (ignore tty start end)))
+
+(defmethod terminal-set-attributes ((tty terminal-dumb) attributes)
+  (declare (ignore tty attributes)))
 
 (defmethod terminal-finish-output ((tty terminal-dumb))
   (finish-output (terminal-output-stream tty)))
