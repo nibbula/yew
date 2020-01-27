@@ -234,7 +234,8 @@ Second value is the scanner that was used.
 		   (handler-case
 		       (grep-one-file f)
 		     ((or stream-error file-error) (c)
-		       (finish-output)
+		       ;; (finish-output)
+		       (grout-finish)
 		       (let ((*print-pretty* nil))
 			 (format *error-output*
 				 "~a: ~a ~a~%" f (type-of c) c))
@@ -258,15 +259,28 @@ Second value is the scanner that was used.
 			((not (file-exists f))
 			  (if signal-errors
 			      (error "~a: No such file or directory~%" f)
-			      (format *error-output*
-				      "~a: No such file or directory~%" f)))
+			      (progn
+				;; Note that if we don't do grout-finish here,
+				;; and in the other places before printing
+				;; errors, it can trigger some very annoying
+				;; bugs where the error message is printed in
+				;; the middle of the search output, and
+				;; potentially output in the middle of an escape
+				;; sequence that can fuck up the terminal,
+				;; seemingly at random, since it's data
+				;; dependant and a rare coincidence.
+				(grout-finish)
+				(format *error-output*
+					"~a: No such file or directory~%" f))))
 			(t
 			 (let ((info (get-file-info f)))
 			   (if (eq :directory (file-info-type info))
 			       (if signal-errors
 				   (error "~a: Is a directory~%" f)
-				   (format *error-output*
-					   "~a: Is a directory~%" f))
+				   (progn
+				     (grout-finish)
+				     (format *error-output*
+					   "~a: Is a directory~%" f)))
 			       (grep-with-handling f)))))
 		      (cond
 			((and result files-with-match (not quiet))
