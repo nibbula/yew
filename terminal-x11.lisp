@@ -1825,10 +1825,19 @@ handler cases."
 			  (logtest state +lock-mask+))
 		  (setf result (char-upcase chr)))
 		(when (logtest state +control-mask+)
-		  (setf result (char-util:ctrl chr)))
+		  (setf result
+			(if (char-util:control-char-p (char-util:ctrl chr))
+			    (char-util:ctrl chr)
+			    ;; For control combos which aren't traditional
+			    ;; control character, do a prefixed symbol.
+			    ;; But with more special cases!
+			    (case sym-name
+			      (:space #\nul)
+			      (t
+			       (modifier-prefixed sym-name state))))))
 		(when (logtest state +mod-1-mask+)
-		   ;; @@@ this isn't really good
-		   ;; perhaps we should stuff Escape?
+		  ;; @@@ this isn't really good
+		  ;; perhaps we should stuff Escape?
 		  (setf result (char-util:meta-char chr))))
 	       ;; A key symbol was found
 	       (sym-name
