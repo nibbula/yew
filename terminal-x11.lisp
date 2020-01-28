@@ -339,10 +339,9 @@ are already set."
 (defmethod initialize-instance
     :after ((o terminal-x11) &rest initargs &key &allow-other-keys)
   "Initialize a terminal-x11."
-  (declare (ignore initargs))
   (with-slots (display window window-width window-height font title pixel-format
 	       draw-gc erase-gc cursor-gc modifiers cell-width cell-height
-	       foreground background rendition) o
+	       foreground background rendition cursor-rendition) o
     (multiple-value-bind (host number) (get-display-from-environment)
       (when (not host)
 	(error "Can't get X display from the environment."))
@@ -367,7 +366,7 @@ are already set."
 	       :background black
 	       :event-mask 
 	       (make-event-mask
-		:key-press :button-press :button-release
+		:key-press :button-press :button-release :button-motion
 		:exposure :visibility-change :structure-notify))
        draw-gc (create-gcontext
 		:drawable window
@@ -408,13 +407,24 @@ are already set."
 	    (list "WM_DELETE_WINDOW")
 	    ;; (map 'vector #'char-code (s+ "WM_DELETE_WINDOW" #\nul))
 	    rendition (make-fatchar :fg foreground :bg background)
-	    )
+	    cursor-rendition (or cursor-rendition
+				 (getf initargs :cursor-rendition)
+				 (make-fatchar :fg background :bg foreground)))
       (map-window window))
     (terminal-get-size o)
     (make-new-grid o)
     (setf pixel-format (get-pixel-format o)
-	  modifiers (flatten (multiple-value-list (modifier-mapping display))))
-    ))
+	  modifiers (flatten (multiple-value-list (modifier-mapping display)))
+	  cursor-gc (create-gcontext
+		     :drawable window
+		     :foreground (color-pixel o
+				   (color-from-rendition o
+				     (fatchar-fg cursor-rendition) :fg))
+		     :background (color-pixel o
+				   (color-from-rendition o
+				     (fatchar-bg cursor-rendition) :bg))
+		     :function boole-1
+		     :font font))))
 
 (defun set-grid-size-from-pixel-size (tty width height)
   (with-slots (cell-width cell-height
@@ -575,26 +585,39 @@ to blank with."
     (string (if (= (length c) 1) (char c 0) c))
     (character c)))
 
-(defmacro with-color ((tty fg bg) &body body)
-  "Evaluate the BODY with the current colors temporarily set to FG and BG."
-  (with-unique-names (saved-fg saved-bg)
-    `(let ((,saved-fg (fatchar-fg (rendition ,tty)))
-	   (,saved-bg (fatchar-bg (rendition ,tty))))
-       (unwind-protect
-	    (progn
-	      (%terminal-color ,tty ,fg ,bg)
-	      ,@body)
-	 (%terminal-color ,tty ,saved-fg ,saved-bg)))))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro with-color ((tty fg bg) &body body)
+    "Evaluate the BODY with the current colors temporarily set to FG and BG."
+    (with-unique-names (saved-fg saved-bg)
+      `(let ((,saved-fg (fatchar-fg (rendition ,tty)))
+	     (,saved-bg (fatchar-bg (rendition ,tty))))
+	 (unwind-protect
+	      (progn
+		(%terminal-color ,tty ,fg ,bg)
+		,@body)
+	   (%terminal-color ,tty ,saved-fg ,saved-bg)))))
 
-(defmacro with-position ((tty row col) &body body)
-  "Evaluate the BODY with the cursor temporarily at ROW COL."
-  (with-unique-names (saved-row saved-col)
-    `(let ((,saved-row ,row) (,saved-col ,col))
-       (setf (cursor-row ,tty) ,row
-	     (cursor-column ,tty) ,col)
-       ,@body
-       (setf (cursor-row ,tty) ,saved-row
-	     (cursor-column ,tty) ,saved-col))))
+  (defmacro with-position ((tty row col) &body body)
+    "Evaluate the BODY with the cursor temporarily at ROW COL."
+    (with-unique-names (saved-row saved-col)
+      `(let ((,saved-row ,row) (,saved-col ,col))
+	 (setf (cursor-row ,tty) ,row
+	       (cursor-column ,tty) ,col)
+	 ,@body
+	 (setf (cursor-row ,tty) ,saved-row
+	       (cursor-column ,tty) ,saved-col))))
+
+  (defmacro with-cursor-movement ((tty) &body body)
+    "Wrap around something that moves the cursor to make the cursor be drawn."
+    (with-unique-names (our-state tty-val)
+      `(let ((,tty-val ,tty))
+	 (with-slots ((,our-state cursor-state)) ,tty-val
+	   (set-moved ,tty-val)
+	   (when (eq ,our-state :visible)
+	     (draw-cursor ,tty-val :state :invisible))
+	   ,@body
+	   (when (eq ,our-state :visible)
+	     (draw-cursor ,tty-val)))))))
 
 (defgeneric draw-thing (tty thing &key x y gc)
   (:documentation
@@ -921,15 +944,18 @@ changed the screen contents."
 	 (setf (grid-char-fg gchar) (fatchar-fg rendition)
 	       (grid-char-bg gchar) (fatchar-bg rendition)
 	       (grid-char-attrs gchar) (fatchar-attrs rendition)))
-       (when (copy-char-to-grid tty gchar)
-	 (setf changed t))
+       (with-cursor-movement (tty)
+	 (when (copy-char-to-grid tty gchar)
+	   (setf changed t)))
        ;;(incf i)
        :finally
        (return changed))))
 
 (defun copy-text-to-grid (tty text)
   (etypecase text
-    ((or character fatchar grid-char) (copy-char-to-grid tty text))
+    ((or character fatchar grid-char)
+     (with-cursor-movement (tty)
+       (copy-char-to-grid tty text)))
     ((or string fat-string) (copy-string-to-grid tty text))))
 
 #|
@@ -1305,18 +1331,6 @@ to the grid. It must be on a single line and have no motion characters."
 				  :bg (background tty)
 				  :fg (foreground tty))))))
 	    (render-unit-string tty str :row cursor-row :col cursor-column))))))
-
-(defmacro with-cursor-movement ((tty) &body body)
-  "Wrap around something that moves the cursor to make the cursor be drawn."
-  (with-unique-names (our-state tty-val)
-    `(let ((,tty-val ,tty))
-       (with-slots ((,our-state cursor-state)) ,tty-val
-	 (set-moved ,tty-val)
-	 (when (eq ,our-state :visible)
-	   (draw-cursor ,tty-val :state :invisible))
-	 ,@body
-	 (when (eq ,our-state :visible)
-	   (draw-cursor ,tty-val))))))
 
 (defun erase-grid (tty start-x start-y end-x end-y)
   "Erase an area of the character grid."
@@ -1774,7 +1788,12 @@ handler cases."
 
 (defun modifier-mask-to-list (mask)
   "Return a list of modifier keywords from an event state."
-  (substitute :meta :mod-1 (make-state-keys mask)))
+  (remove-if (_ (begins-with "BUTTON" (symbol-name _)))
+	     (substitute :meta :mod-1 (make-state-keys mask))))
+
+(defun modifier-mask-buttons (mask)
+  (remove-if-not (_ (begins-with "BUTTON" (symbol-name _)))
+		 (make-state-keys mask)))
 
 (defun modifier-prefixed (symbol mask)
   "Return a keyword of SYMBOL prefixed by modifiers mask MASK."
@@ -1790,7 +1809,7 @@ handler cases."
   "Handle key or mouse input."
   (with-slots (cell-width cell-height modifiers interrupt-key) *event-tty*
     (let ((tty *event-tty*) result)
-      (when (and send-event-p (member event-key '(::button-press :button-release
+      (when (and send-event-p (member event-key '(:button-press :button-release
 						  :key-press :key-release))
 		 (not (allow-send-events tty)))
 	(warn "Synthetic button press!")
@@ -1821,6 +1840,23 @@ handler cases."
 				    :terminal tty
 				    :x cx :y cy
 				    :button (keywordify (s+ "BUTTON-" code))
+				    ;;:button (list code :release)
+				    ;;:button :release
+				    :modifiers (modifier-mask-to-list state))
+		     *input-available* t))
+	     (or result t))))
+	(:motion-notify
+	 (event-slots (slots #|code|# x y state)
+	   (let ((cx (round x cell-width))
+		 (cy (round y cell-height)))
+	     (when (find :mouse-buttons (terminal-events-enabled tty))
+	       (setf result
+		     (make-instance 'tt-mouse-button-motion
+				    :terminal tty
+				    :x cx :y cy
+				    ;;:button (keywordify (s+ "BUTTON-" code))
+				    :button (first ;; @@@ what about others?
+					     (modifier-mask-buttons state))
 				    ;;:button (list code :release)
 				    ;;:button :release
 				    :modifiers (modifier-mask-to-list state))
