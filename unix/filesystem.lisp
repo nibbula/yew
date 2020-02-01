@@ -687,12 +687,13 @@ all the files in directory have been enumerated."
 		    :do
 		    (push (or (and dir (join-dir dir real-name))
 			      real-name) sub-dirs)))
-	    (when post-dir-function
-	      (funcall post-dir-function actual-dir))
-	    (if sub-dirs
-		;; @@@ Use of flatten here is probably inappropriate.
-		(flatten (nconc files (mapcar #'recursive-call sub-dirs)))
-		files))
+	    (prog1
+		(if sub-dirs
+		    ;; @@@ Use of flatten here is probably inappropriate.
+		    (flatten (nconc files (mapcar #'recursive-call sub-dirs)))
+		    files)
+	      (when post-dir-function
+		(funcall post-dir-function actual-dir))))
 	  ;; Don't collect, just funcall and count.
 	  (let ((count 0) sub-dirs)
 	    (%with-directory-entries (:result (count))
@@ -705,9 +706,10 @@ all the files in directory have been enumerated."
 	      :do
 	      (push (or (and dir (join-dir dir real-name))
 			real-name) sub-dirs))
-	    (when post-dir-function
-	      (funcall post-dir-function actual-dir))
-	    (+ count (reduce #'+  (mapcar #'recursive-call sub-dirs))))))))
+	    (prog1
+		(+ count (reduce #'+  (mapcar #'recursive-call sub-dirs)))
+	      (when post-dir-function
+		(funcall post-dir-function actual-dir))))))))
 
 (defmacro without-access-errors (&body body)
   "Evaluate the body while ignoring typical file access error from system
