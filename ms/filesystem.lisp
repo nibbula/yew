@@ -696,19 +696,17 @@ if not given."
   "Implement directory iteration. See the documentation for read-directory or
 map-directory for more information."
   `(block nil
-     (let (handle dir-list item is-dir
-	   (real-dir (or (and dir (s+ dir "\\*"))
-			 ".\\*")))
-       ;; (format t "dir = ~s real-dir ~s~%" dir real-dir)
+     (let (handle dir-list item is-dir)
        (unwind-protect
 	  (with-foreign-object (find-data '(:struct WIN32_FIND_DATA))
-	    (with-wide-string (w-dir real-dir)
+	    (with-wide-string (w-dir actual-dir)
 	      (setf handle (%find-first-file w-dir find-data))
 	      (when (= (pointer-address handle) +INVALID-HANDLE-VALUE+)
-		(cerror "Just go on."
-			'windows-error :error-code (get-last-error)
-			:format-control
-			"read-directory failed to read first file.")
+		(when errorp
+		  (cerror "Just go on."
+			  'windows-error :error-code (get-last-error)
+			  :format-control
+			  "read-directory failed to read first file."))
 		(return nil)))
 	    (setf dir-list
 		  (loop
@@ -737,8 +735,10 @@ map-directory for more information."
 		     ;;:collect item
 		     ,@body
 		     :while (not (zerop (%find-next-file handle find-data)))))
-	    (when (/= (get-last-error) +ERROR-NO-MORE-FILES+)
-	      (error 'windows-error :error-code (get-last-error)
+	    (when (and (/= (get-last-error) +ERROR-NO-MORE-FILES+)
+		       errorp)
+	      (cerror "Just go on."
+		      'windows-error :error-code (get-last-error)
 		     :format-control
 		     "read-directory failed to read next file.")))
 	 (when (and handle (/= (pointer-address handle) +INVALID-HANDLE-VALUE+))
@@ -805,7 +805,7 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
   dir-list))
 |#
 
-(defun read-directory (&key dir append-type full omit-hidden)
+(defun read-directory (&key dir append-type full omit-hidden (errorp t))
   "Return a list of the file names in DIR as strings. DIR defaults to the ~
 current directory. If APPEND-TYPE is true, append a character to the end of ~
 the name indicating what type of file it is. Indicators are:
@@ -825,14 +825,16 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 "
   (declare (ignore append-type))
   (declare (type (or string null) dir) (type boolean full))
-  (%with-directory-entries (:result (dir-list))
-    :collect item))
+  (let ((actual-dir (or (and dir (s+ dir "\\*")) ".\\*")))
+    (%with-directory-entries (:result (dir-list))
+      :collect item)))
 
 ;; @@@ I'm sure this could use some speeding up.
 ;; @@@ Try to keep this and read-directory exactly like the ones in
 ;; unix/filesytem.lisp so that we can get rid of this duplication.
 (defun map-directory (function
-		      &key dir append-type full omit-hidden collect recursive)
+		      &key dir append-type full omit-hidden collect recursive
+			(errorp t) post-dir-function)
   "Call FUNCTION with the file name of each file in directory DIR. DIR defaults ~
 to the current directory. If APPEND-TYPE is true, append a character to the end ~
 of the name indicating what type of file it is. Indicators are:
@@ -851,58 +853,69 @@ by FILE-INFO-TYPE.
 If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 If COLLECT is true, return the results of calling FUNCTION as a list.
 If RECURSIVE is true, descend breadth-first into sub-directories.
+If ERRORP is true, signal correctable errors. The default is T.
+POST-DIR-FUNCTION is called with the directory only when RECURSIVE is true and
+all the files in directory have been enumerated.
 "
   ;; (declare (ignore append-type))
-  (declare (type (or string null) dir) (type boolean full collect))
-  (labels ((join-dir (dir name)
-	     "Tack the directory on the front."
-	     (concatenate 'string dir *directory-separator-string* name))
-	   (thingy (item real-name)
-	     "Return an appropriately fixed dir-entry or joined name."
-	     (or (and dir
-		      (if full
-			  (and (setf (dir-entry-name item)
-				     (join-dir dir real-name))
-			       item)
-			  (join-dir dir real-name)))
-		 item))
-	   (recursive-call (dir)
-	     (map-directory function :dir dir
-			    :append-type append-type
-			    :full full
-			    :omit-hidden omit-hidden
-			    :collect collect
-			    :recursive t)))
-    (if collect
-	;; Collect results breadth first.
-	(let (sub-dirs files)
-	  (setf files
-		(%with-directory-entries (:result (dir-list))
-		  :collect (funcall function (thingy item real-name))
-		  :when (and recursive is-dir
-			     (not (superfluous-file-name-p real-name))
-			     (not (and omit-hidden
-				       (hidden-file-name-p real-name))))
-		  :do
-		  (push (or (and dir (join-dir dir real-name))
-			    real-name) sub-dirs)))
-	  (if sub-dirs
-	      ;; @@@ Use of flatten here is probably inappropriate.
-	      (flatten (nconc files (mapcar #'recursive-call sub-dirs)))
-	      files))
-	;; Don't collect, just funcall and count.
-	(let ((count 0) sub-dirs)
-	  (%with-directory-entries (:result (count))
-	    :do
-	    (funcall function (thingy item real-name))
-	    (incf count)
-	    :when (and recursive is-dir
-		       (not (superfluous-file-name-p real-name))
-		       (not (and omit-hidden (hidden-file-name-p real-name))))
-	    :do
-	    (push (or (and dir (join-dir dir real-name))
-		      real-name) sub-dirs))
-	  (+ count (reduce #'+ (mapcar #'recursive-call sub-dirs)))))))
+  (declare (type (or string null) dir) (type boolean full collect)
+	   (type function-designator post-dir-function))
+  (let ((actual-dir (or (and dir (s+ dir "\\*")) ".\\*")))
+    (labels ((join-dir (dir name)
+	       "Tack the directory on the front."
+	       (concatenate 'string dir *directory-separator-string* name))
+	     (thingy (item real-name)
+	       "Return an appropriately fixed dir-entry or joined name."
+	       (or (and dir
+			(if full
+			    (and (setf (dir-entry-name item)
+				       (join-dir dir real-name))
+				 item)
+			    (join-dir dir real-name)))
+		   item))
+	     (recursive-call (dir)
+	       (map-directory function :dir dir
+			      :append-type append-type
+			      :full full
+			      :omit-hidden omit-hidden
+			      :collect collect
+			      :recursive t
+			      :errorp errorp
+			      :post-dir-function post-dir-function)))
+      (if collect
+	  ;; Collect results breadth first.
+	  (let (sub-dirs files)
+	    (setf files
+		  (%with-directory-entries (:result (dir-list))
+		    :collect (funcall function (thingy item real-name))
+		    :when (and recursive is-dir
+			       (not (superfluous-file-name-p real-name))
+			       (not (and omit-hidden
+					 (hidden-file-name-p real-name))))
+		    :do
+		    (push (or (and dir (join-dir dir real-name))
+			      real-name) sub-dirs)))
+	    (when post-dir-function
+	      (funcall post-dir-function actual-dir))
+	    (if sub-dirs
+		;; @@@ Use of flatten here is probably inappropriate.
+		(flatten (nconc files (mapcar #'recursive-call sub-dirs)))
+		files))
+	  ;; Don't collect, just funcall and count.
+	  (let ((count 0) sub-dirs)
+	    (%with-directory-entries (:result (count))
+	      :do
+	      (funcall function (thingy item real-name))
+	      (incf count)
+	      :when (and recursive is-dir
+			 (not (superfluous-file-name-p real-name))
+			 (not (and omit-hidden (hidden-file-name-p real-name))))
+	      :do
+	      (push (or (and dir (join-dir dir real-name))
+			real-name) sub-dirs))
+	    (when post-dir-function
+	      (funcall post-dir-function actual-dir))
+	    (+ count (reduce #'+ (mapcar #'recursive-call sub-dirs))))))))
 
 
 (defmacro without-access-errors (&body body)
