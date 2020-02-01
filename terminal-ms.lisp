@@ -109,6 +109,22 @@
     (when (or (terminal-mode-line saved-mode)
 	      (terminal-mode-echo saved-mode))
       (set-terminal-mode file-descriptor :line nil :echo nil))
+
+    ;; (set-terminal-mode file-descriptor :line nil :echo nil)
+    #| @@@ trying to find the problem
+    (wos::%set-console-mode (wos::ms-term-in-handle file-descriptor) 0)
+
+    (cffi:with-foreign-object (ms-mode 'wos::DWORD)
+      (let ((result (wos::%get-console-mode
+		     (wos::ms-term-in-handle file-descriptor) ms-mode)))
+        (format t "get-console-mode = ~s mode = #x~x in-handle = ~s~%"
+	        result (cffi:mem-ref ms-mode 'wos::DWORD)
+		(wos::ms-term-in-handle file-descriptor))))
+    (format t "full starting terminal mode ~s~%"
+	    (wos:get-terminal-mode file-descriptor))
+    (finish-output)
+    |#
+
     ;; @@@ This isn't entirely applicable to us. Maybe remove it?
     (when (not output-stream)
       (setf output-stream (open-terminal
@@ -695,7 +711,10 @@
 
 (defmethod terminal-input-mode ((tty terminal-ms))
   (let ((mode (get-terminal-mode (terminal-file-descriptor tty))))
-    (terminal-mode-line mode)))
+    ;; (format t "terminal-mode ~s~%" mode)
+    ;; (terminal-mode-line mode)
+    (if (terminal-mode-line mode) :line :char)
+    ))
 
 (defmethod (setf terminal-input-mode) (mode (tty terminal-ms))
   (case mode
