@@ -696,10 +696,11 @@ if not given."
   "Implement directory iteration. See the documentation for read-directory or
 map-directory for more information."
   `(block nil
-     (let (handle dir-list item is-dir)
+     (let ((find-dir (s+ actual-dir "\\*")) ;; for find-first-file
+	   handle dir-list item is-dir)
        (unwind-protect
 	  (with-foreign-object (find-data '(:struct WIN32_FIND_DATA))
-	    (with-wide-string (w-dir actual-dir)
+	    (with-wide-string (w-dir find-dir)
 	      (setf handle (%find-first-file w-dir find-data))
 	      (when (= (pointer-address handle) +INVALID-HANDLE-VALUE+)
 		(when errorp
@@ -825,7 +826,7 @@ If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
 "
   (declare (ignore append-type))
   (declare (type (or string null) dir) (type boolean full))
-  (let ((actual-dir (or (and dir (s+ dir "\\*")) ".\\*")))
+  (let ((actual-dir (or dir ".")))
     (%with-directory-entries (:result (dir-list))
       :collect item)))
 
@@ -860,7 +861,7 @@ all the files in directory have been enumerated.
   ;; (declare (ignore append-type))
   (declare (type (or string null) dir) (type boolean full collect)
 	   (type function-designator post-dir-function))
-  (let ((actual-dir (or (and dir (s+ dir "\\*")) ".\\*")))
+  (let ((actual-dir (or dir ".")))
     (labels ((join-dir (dir name)
 	       "Tack the directory on the front."
 	       (concatenate 'string dir *directory-separator-string* name))
@@ -895,12 +896,13 @@ all the files in directory have been enumerated.
 		    :do
 		    (push (or (and dir (join-dir dir real-name))
 			      real-name) sub-dirs)))
-	    (when post-dir-function
-	      (funcall post-dir-function actual-dir))
-	    (if sub-dirs
-		;; @@@ Use of flatten here is probably inappropriate.
-		(flatten (nconc files (mapcar #'recursive-call sub-dirs)))
-		files))
+	    (prog1
+		(if sub-dirs
+		    ;; @@@ Use of flatten here is probably inappropriate.
+		    (flatten (nconc files (mapcar #'recursive-call sub-dirs)))
+		    files)
+	      (when post-dir-function
+		(funcall post-dir-function actual-dir))))
 	  ;; Don't collect, just funcall and count.
 	  (let ((count 0) sub-dirs)
 	    (%with-directory-entries (:result (count))
@@ -913,9 +915,10 @@ all the files in directory have been enumerated.
 	      :do
 	      (push (or (and dir (join-dir dir real-name))
 			real-name) sub-dirs))
-	    (when post-dir-function
-	      (funcall post-dir-function actual-dir))
-	    (+ count (reduce #'+ (mapcar #'recursive-call sub-dirs))))))))
+	    (prog1
+		(+ count (reduce #'+ (mapcar #'recursive-call sub-dirs)))
+	      (when post-dir-function
+		(funcall post-dir-function actual-dir))))))))
 
 
 (defmacro without-access-errors (&body body)
