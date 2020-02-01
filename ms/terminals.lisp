@@ -871,10 +871,14 @@ caller should handle these possibilites. Returns the character read or NIL if it
 the timeout is hit."
   (declare (ignore timeout))
   (with-slots (in-handle not-console) terminal
-    (wchar-to-character
-     (if not-console
-	 (read-handle-input in-handle)
-	 (read-console-input terminal)))))
+    (let ((c (if not-console
+		 (read-handle-input in-handle)
+		 (read-console-input terminal))))
+      (typecase c
+	(integer (wchar-to-character c))
+	;; @@@ Maybe if it's not a character, we shouldn't return until we get
+	;; a character?
+	(t c)))))
 
 (defun read-terminal-byte (terminal &key timeout)
   "Return an unsigned byte read from the terminal TERMINAL-HANDLE.
