@@ -412,7 +412,7 @@ Keyword arguments:
     ;; If the terminal is in line mode even after we set it to :char mode,
     ;; our whole thing is kind of moot, so just fall back to reading from the
     ;; terminal driver, so we work on dumb terminals.
-    (when (eq (tt-input-mode) :line)
+    (when #-window (eq (tt-input-mode) :line) #+windows nil ;; @@@ WORKAROUND
       (update-display e)
       (finish-output *terminal*)
       (return-from rl (values (read-line *terminal*) e)))
