@@ -142,6 +142,7 @@ of it.")
    #:find-slot-name
    #:defmethod-quiet
    #:with-decls-and-body #:doc-and-decls #:fixed-body
+   #:function-designator
    #:+simple-condition-format-control-slot+
    #:+simple-condition-format-arguments-slot+
    ;; debugging
@@ -1734,6 +1735,10 @@ definition form, like defun. For example:
 	      :do (setf fixed-body (cdr form)
 			first nil))))
      ,@my-body))
+
+(deftype function-designator ()
+  "Something that denotes a function."
+  `(or function symbol null))
 
 ;; Debugging messages
 ;;
