@@ -24,8 +24,8 @@
 ;; variations, versions and distributions, but also between implementations
 ;; themselves.
 ;;
-;; In the modern world one can fairly easily get to a point where one needs to
-;; use system level I/O features, but one would really like to provide an easy
+;; In the modern world one can fairly easily get the point of needing to use
+;; system level I/O features, but one would really like to provide an easy
 ;; to use and portable Lisp stream to higher level code. Thankfully, with the
 ;; MOP, and gray-streams (among others), one can make streams that will likely
 ;; work just like normal Lisp streams. But unfortunately such streams have to
@@ -35,12 +35,11 @@
 ;; So you might notice that you can find numerous examples of exactly this
 ;; throughout the Lisp community. I found about four to six without looking
 ;; too hard. So I should just be able to use one of those, and avoid the
-;; horrible waste that is NIH syndrome, right? Right? Well, maybe. We'll see
-;; what happens. In any case it has to be written or adapted to the rest of
-;; the opsys package and the lower level therein.
+;; horrible waste that is NIH syndrome, right? Right? Well, maybe, but it seems
+;; unlikely. In any case it has to be written or adapted to the rest of the
+;; opsys package and the lower level therein.
 ;;
 ;; I extend my sincere apologies to everyone for writing this.
-;;
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; This is split into three parts:
@@ -50,8 +49,8 @@
 ;;   be used be the system specific code.
 ;;
 ;; • os-stream.lisp
-;;   This is the top, OS independant layer, which handles mostly handles
-;;   buffering and things.
+;;   This is the top, OS independant layer, which mostly handles buffering
+;;   and things.
 ;;
 ;; • <os>/<os>-stream.lisp
 ;;   The lower level in the system specific code such as unix-stream, which
