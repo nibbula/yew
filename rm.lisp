@@ -15,11 +15,39 @@
 
 (declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
 
-(defun rmdir (dir &key parents)
+(defun rmdir (dir &key parents recursive dry-run verbose)
   "Remove directory DIR. If PARENTS is true, remove the parent directories in
 the path."
-  (nos:delete-directory dir)
-  (when parents
+  (assert dir)
+  (if recursive
+      ;; CAUTION: This is the super dangerous part!!
+      (labels ((delete-entry (entry)
+	        (let ((name (dir-entry-name entry)))
+		  (when (not (superfluous-file-name-p (path-file-name name)))
+		    (if (eq (dir-entry-type entry) :directory)
+			(progn
+			  (when (or verbose dry-run)
+			    (format t "delete dir ~s~%" name))
+			  ;; (when (not dry-run)
+			  ;;   (nos:delete-directory name))
+			  )
+			(progn
+			  (when (or verbose dry-run)
+			    (format t "delete file ~s~%" name))
+			  (when (not dry-run)
+			    (os-delete-file name)))))))
+	       (delete-dir (name)
+	         (when (not (superfluous-file-name-p (path-file-name name)))
+		   (when (or verbose dry-run)
+		     (format t "delete dir ~s~%" name))
+		   (when (not dry-run)
+		     (nos:delete-directory name)))))
+	(map-directory
+	 #'delete-entry
+	 :dir dir :recursive t :full t
+	 :post-dir-function #'delete-dir))
+      (nos:delete-directory dir))
+  (when (and parents (not recursive))
     (loop
        :with splitsville = (split-path dir)
        :with parent-list = (if (path-absolute-p dir)
@@ -46,11 +74,17 @@ the path."
 (lish:defcommand rm
   ((force boolean :short-arg #\f
     :help "True to try to delete files even if you don't have write permission.")
-   ;; @@@ I don't want to do this until everything is much better tested.
-   ;; (recursive boolean :short-arg #\r
-   ;;  :help "True to delete directories recursively.")
+   ;; Life is short. Make backups. Also, see section 15,16,17 of LICENSE.
+   (recursive boolean :short-arg #\r
+    :help "True to delete directories recursively.")
    (no-preserve-root boolean :short-arg nil
     :help "True to not treat '/' with special care.")
+   (dry-run boolean :short-arg #\n
+    :help
+    "FOR RECURSIVE ONLY: Don't delete anything, just report what would be deleted.")
+   (verbose boolean :short-arg #\v
+    :help
+    "FOR RECURSIVE ONLY: Print what is being deleted.")
    (files pathname :optional nil :repeating t :help "Files to delete."))
   "Delete directories."
   (declare (ignore force))
@@ -62,7 +96,7 @@ the path."
                no-preserve-root."))
      (setf info (get-file-info file :follow-links nil))
      (if (eq :directory (file-info-type info))
-	 (rmdir file)
+	 (rmdir file :recursive recursive :dry-run dry-run :verbose verbose)
 	 (rm file)))
   (values))
 
