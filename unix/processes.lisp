@@ -753,4 +753,101 @@ wait. Returns NILs if nothing changed."
 	     (wait-return-status int-status)
 	   (values pid result status)))))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defparameter *ptrace-requests* nil "Requests for process tracing.")
+
+#+linux
+(define-to-list *ptrace-requests*
+  #(#(+PTRACE_TRACEME+          0
+      "Indicate that the process making this request should be traced.
+All signals received by this process can be intercepted by its
+parent, and its parent can use the other `ptrace' requests.")
+    #(+PTRACE_PEEKTEXT+         1
+      "Return the word in the process's text space at address ADDR.")
+    #(+PTRACE_PEEKDATA+         2
+      "Return the word in the process's data space at address ADDR.")
+    #(+PTRACE_PEEKUSER+         3
+      "Return the word in the process's user area at offset ADDR.")
+    #(+PTRACE_POKETEXT+         4
+      "Write the word DATA into the process's text space at address ADDR.")
+    #(+PTRACE_POKEDATA+         5
+      "Write the word DATA into the process's data space at address ADDR.")
+    #(+PTRACE_POKEUSER+         6
+      "Write the word DATA into the process's user area at offset ADDR.")
+    #(+PTRACE_CONT+             7
+      "Continue the process.")
+    #(+PTRACE_KILL+             8
+      "Kill the process.")
+    #(+PTRACE_SINGLESTEP+       9
+      "Single step the process.")
+    #(+PTRACE_GETREGS+          12
+      "Get all general purpose registers used by a processes.")
+    #(+PTRACE_SETREGS+          13
+      "Set all general purpose registers used by a processes.")
+    #(+PTRACE_GETFPREGS+        14
+      "Get all floating point registers used by a processes.")
+    #(+PTRACE_SETFPREGS+        15
+      "Set all floating point registers used by a processes.")
+    #(+PTRACE_ATTACH+           16
+      "Attach to a process that is already running.")
+    #(+PTRACE_DETACH+           17
+      "Detach from a process attached to with PTRACE_ATTACH.")
+    #(+PTRACE_GETFPXREGS+	18
+      "Get all extended floating point registers used by a processes.")
+    #(+PTRACE_SETFPXREGS+	19
+      "Set all extended floating point registers used by a processes.")
+    #(+PTRACE_SYSCALL+		24
+      "Continue and stop at the next entry to or return from syscall.")
+    #(+PTRACE_GET_THREAD_AREA+	25
+      "Get a TLS entry in the GDT.")
+    #(+PTRACE_SET_THREAD_AREA+	26
+      "Change a TLS entry in the GDT.")
+
+#|
+#ifdef __x86_64__
+  /* Access TLS data.  */
+  PTRACE_ARCH_PRCTL = 30,
+# define PT_ARCH_PRCTL PTRACE_ARCH_PRCTL
+#endif
+|#
+
+    #(+PTRACE_SYSEMU+                 31
+      "Continue and stop at the next syscall, it will not be executed.")
+    #(+PTRACE_SYSEMU_SINGLESTEP+      32
+      "Single step the process, the next syscall will not be executed.")
+    #(+PTRACE_SINGLEBLOCK+            33
+      "Execute process until next taken branch.")
+    #(+PTRACE_SETOPTIONS+             #x4200
+      "Set ptrace filter options.")
+    #(+PTRACE_GETEVENTMSG+            #x4201
+      "Get last ptrace message.")
+    #(+PTRACE_GETSIGINFO+             #x4202
+      "Get siginfo for process.")
+    #(+PTRACE_SETSIGINFO+             #x4203
+      "Set new siginfo for process.")
+    #(+PTRACE_GETREGSET+              #x4204
+      "Get register content.")
+    #(+PTRACE_SETREGSET+              #x4205
+      "Set register content.")
+    #(+PTRACE_SEIZE+                  #x4206
+      "Like PTRACE_ATTACH, but do not force tracee to trap and do not affect
+signal or group stop state.")
+    #(+PTRACE_INTERRUPT+              #x4207
+      "Trap seized tracee.")
+    #(+PTRACE_LISTEN+                 #x4208
+      "Wait for next group event.")
+    #(+PTRACE_PEEKSIGINFO+            #x4209
+      "Retrieve siginfo_t structures without removing signals from a queue.")
+    #(+PTRACE_GETSIGMASK+             #x420a
+      "Get the mask of blocked signals.")
+    #(+PTRACE_SETSIGMASK+             #x420b
+      "Change the mask of blocked signals.")
+    #(+PTRACE_SECCOMP_GET_FILTER+     #x420c
+      "Get seccomp BPF filters.")))
+
+#+linux
+(defcfun ("ptrace" real-ptrace) :long (request :int)
+	 (pid pid-t) (address :pointer) (data :pointer))
+
 ;; End
