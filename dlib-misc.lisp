@@ -20,13 +20,15 @@
    ;; general
    #:randomize-vector
    #:parse-integer-with-radix
+   #:parse-bit-rate
    #:tree-ify
    #:un-tree-ify
    #:oquote-format
    #:group-by-alist
    #:group-by-hash
    #:group-by
-   #:parse-bit-rate
+   #:*default-ellipsis*
+   #:shrink-pathname
 
    ;; time
    #:date-string
@@ -151,6 +153,71 @@ swaps to do times the length of the vector."
     (t
      (parse-integer str :junk-allowed nil))))
 
+(defparameter *bit-suffixes*
+  #("b" "bps" "ps" "b/s" "/s"))
+
+(defparameter *byte-suffixes*
+  #("b" "bps" "ps" "b/s" "/s" "B" "Bps" "BPS" "PS" "B/s" "B/S" "/S"))
+
+(defparameter *bit-units*
+  `((#\k :bits  1024)
+    (#\K :bytes #.(* 1024 8))
+    (#\m :bits  #.(* 1024 1024))
+    (#\M :bytes #.(* 1024 1024 8))
+    (#\g :bits  #.(* 1024 1024 1024))
+    (#\G :bytes #.(* 1024 1024 1024 8))))
+
+;; This is sort of based on what jwz had in youtubedown.
+(defun parse-bit-rate (string)
+  "Return a bit rate based on STRING. Many variant spellings are allowed:
+
+  bits:  k, kb, kbps, kps, kb/s, k/s;
+  bytes: K, Kb, Kbps, Kps, Kb/s, K/s,
+            KB, KBps, KBPS, KPS, KB/s, KB/S, K/S."
+  (with-input-from-string (stream string)
+    (let (number c rest unit)
+      (labels ((number-char-p (c)
+		 (or (digit-char-p c)
+		     (find c #(#\. #\/ #\- #\+ #\d #\f #\e) :test #'equal)))
+	       (get-potential-number ()
+		 (let ((num-str
+			(loop :do (setf c (read-char stream nil))
+			   :while (and c (number-char-p c))
+			   :collect c)))
+		   (unread-char c stream)
+		   (safe-read-from-string (coerce num-str 'string))))
+	       (eat-whitespace ()
+		 (loop :do (setf c (read-char stream nil))
+		    :while (and c (whitespace-p c)))
+		 (when c (unread-char c stream)))
+	       (get-rest ()
+		 (when (not rest)
+		   (setf rest (read-line stream nil))))
+	       (suffix-p (type)
+		 (let (pos)
+		   (eat-whitespace)
+		   (get-rest)
+		   ;; (format t "rest = ~s~%" rest)
+		   (and rest
+			(some (_ (and (setf pos (search _ rest))
+				      (zerop pos)))
+			      (ecase type
+				(:bits *bit-suffixes*)
+				(:bytes *byte-suffixes*)))))))
+	(setf number (get-potential-number))
+	(when (not (numberp number))
+	  (error "Bit rate doesn't start with a number."))
+	(eat-whitespace)
+	(setf c (read-char stream nil))
+	(cond
+	  ((and (setf unit (find c *bit-units* :key #'first))
+		(suffix-p (second unit)))
+	   (* number (third unit)))
+	  ((suffix-p :bits) number)
+	  ((suffix-p :bytes) (/ number 8))
+	  (t ;; no units or suffix, assume k bits
+	   (* number 1024)))))))
+
 ;;
 ;; foo bar quux
 ;; (("foo" ()) ("bar" ()) ("quux" ()))
@@ -208,6 +275,61 @@ swaps to do times the length of the vector."
 		 (format t "<- ~s~%" (s+ prefix i))))
 	  ;;(format t "<. ~s~%" (s+ prefix list))
 	  )))
+
+(defun group-by-alist (function sequence &key test)
+  "Return an alist of lists the items of SEQUENCE, grouped by the results of
+calling FUNCTION on them. Equality is test by TEST, as usual."
+  (when (not test)
+    (setf test #'equal))
+  (let (result item key)
+    (omapn (lambda (x)
+	     (if (setf item (assoc (setf key (funcall function x))
+				   result :test test))
+		 (push x (cdr item))
+		 (setf result (acons key (list x) result))))
+	   sequence)
+    result))
+
+(defparameter *empty-hash* (gensym "gabba"))
+
+(defun group-by-hash (function sequence &key test)
+  "Return a hash table of lists the items of SEQUENCE, grouped by the results of
+calling FUNCTION on them. Equality is test by TEST, as usual."
+  (when (not test)
+    (setf test #'equal))
+  (let ((result (make-hash-table :test test)))
+    (omapn (lambda (x)
+	     (push x (gethash (funcall function x) result)))
+	   sequence)
+    result))
+
+(defun group-by (result-type function sequence)
+  "Return a RESULT-TYPE of the items of SEQUENCE, grouped by the results of
+calling FUNCTION on them. RESULT-TYPE can be HASH or ALIST. Equality is test by
+TEST, as usual. This is just wrapper around the group-by-hash and
+group-by-alist functions."
+  (ecase result-type
+    (hash (group-by-hash function sequence))
+    ((list alist) (group-by-alist function sequence))))
+
+(defvar *default-ellipsis*
+  (string (code-char #x2026)) ; #\HORIZONTAL_ELLIPSIS
+  "A string to indicate something was elided.")
+
+(defun shrink-pathname (path &key (to 70) (ellipsis *default-ellipsis*))
+  "Make a path name fit in the given width, shrinking in a way to preserve
+useful information. TO is the limit on the length. ELLIPSIS is a string to use
+for to indicate omission, which defaults to *DEFAULT-ELLIPSIS*."
+  (let* ((str (safe-namestring (quote-filename path)))
+	 (len (length str)))
+    (declare (string str ellipsis) (fixnum to))
+    (if (> len to)
+	(let* ((ellipsis-length (length ellipsis))
+	       (half (- (truncate to 2) ellipsis-length)))
+	  (declare (type fixnum ellipsis-length half))
+	  (s+ (subseq str 0 half) ellipsis
+	      (subseq str (- len (+ half ellipsis-length 1)))))
+	str)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; time
@@ -1724,106 +1846,5 @@ Return NIL if we can't find local variables or if the format is messed up.
 are printed rather than interpreted as directives, which really just means:
 repleace a single tilde with double tidles."
   (oreplace-subseq "~" "~~" s))
-
-(defun group-by-alist (function sequence &key test)
-  "Return an alist of lists the items of SEQUENCE, grouped by the results of
-calling FUNCTION on them. Equality is test by TEST, as usual."
-  (when (not test)
-    (setf test #'equal))
-  (let (result item key)
-    (omapn (lambda (x)
-	     (if (setf item (assoc (setf key (funcall function x))
-				   result :test test))
-		 (push x (cdr item))
-		 (setf result (acons key (list x) result))))
-	   sequence)
-    result))
-
-(defparameter *empty-hash* (gensym "gabba"))
-
-(defun group-by-hash (function sequence &key test)
-  "Return a hash table of lists the items of SEQUENCE, grouped by the results of
-calling FUNCTION on them. Equality is test by TEST, as usual."
-  (when (not test)
-    (setf test #'equal))
-  (let ((result (make-hash-table :test test)))
-    (omapn (lambda (x)
-	     (push x (gethash (funcall function x) result)))
-	   sequence)
-    result))
-
-(defun group-by (result-type function sequence)
-  "Return a RESULT-TYPE of the items of SEQUENCE, grouped by the results of
-calling FUNCTION on them. RESULT-TYPE can be HASH or ALIST. Equality is test by
-TEST, as usual. This is just wrapper around the group-by-hash and
-group-by-alist functions."
-  (ecase result-type
-    (hash (group-by-hash function sequence))
-    ((list alist) (group-by-alist function sequence))))
-
-(defparameter *bit-suffixes*
-  #("b" "bps" "ps" "b/s" "/s"))
-
-(defparameter *byte-suffixes*
-  #("b" "bps" "ps" "b/s" "/s" "B" "Bps" "BPS" "PS" "B/s" "B/S" "/S"))
-
-(defparameter *bit-units*
-  `((#\k :bits  1024)
-    (#\K :bytes #.(* 1024 8))
-    (#\m :bits  #.(* 1024 1024))
-    (#\M :bytes #.(* 1024 1024 8))
-    (#\g :bits  #.(* 1024 1024 1024))
-    (#\G :bytes #.(* 1024 1024 1024 8))))
-
-;; This is sort of based on what jwz had in youtubedown.
-(defun parse-bit-rate (string)
-  "Return a bit rate based on STRING. Many variant spellings are allowed:
-
-  bits:  k, kb, kbps, kps, kb/s, k/s;
-  bytes: K, Kb, Kbps, Kps, Kb/s, K/s,
-            KB, KBps, KBPS, KPS, KB/s, KB/S, K/S."
-  (with-input-from-string (stream string)
-    (let (number c rest unit)
-      (labels ((number-char-p (c)
-		 (or (digit-char-p c)
-		     (find c #(#\. #\/ #\- #\+ #\d #\f #\e) :test #'equal)))
-	       (get-potential-number ()
-		 (let ((num-str
-			(loop :do (setf c (read-char stream nil))
-			   :while (and c (number-char-p c))
-			   :collect c)))
-		   (unread-char c stream)
-		   (safe-read-from-string (coerce num-str 'string))))
-	       (eat-whitespace ()
-		 (loop :do (setf c (read-char stream nil))
-		    :while (and c (whitespace-p c)))
-		 (when c (unread-char c stream)))
-	       (get-rest ()
-		 (when (not rest)
-		   (setf rest (read-line stream nil))))
-	       (suffix-p (type)
-		 (let (pos)
-		   (eat-whitespace)
-		   (get-rest)
-		   ;; (format t "rest = ~s~%" rest)
-		   (and rest
-			(some (_ (and (setf pos (search _ rest))
-				      (zerop pos)))
-			      (ecase type
-				(:bits *bit-suffixes*)
-				(:bytes *byte-suffixes*)))))))
-	(setf number (get-potential-number))
-	(when (not (numberp number))
-	  (error "Bit rate doesn't start with a number."))
-	(eat-whitespace)
-	(setf c (read-char stream nil))
-	(cond
-	  ((and (setf unit (find c *bit-units* :key #'first))
-		(suffix-p (second unit)))
-	   (* number (third unit)))
-	  ((suffix-p :bits) number)
-	  ((suffix-p :bytes) (/ number 8))
-	  (t ;; no units or suffix, assume k bits
-	   (* number 1024)))))))
 
 ;; End
