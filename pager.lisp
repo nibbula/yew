@@ -122,6 +122,7 @@ The shell command takes any number of file names.
     (#\=		. show-info)
     (,(ctrl #\G)	. show-info)
     (,(meta-char #\l)	. show-file-list)
+    (#\i		. show-detailed-info)
     (#\V                . show-version)
     (#\-		. set-option)
     (#\R		. reread)
@@ -1747,6 +1748,22 @@ byte-pos."
   (with-slots (seekable) pager
     (message pager (format-prompt pager "%f %l of %L %b/%B ~:[un~;~]seekable")
 	     seekable)))
+
+(defun show-detailed-info (pager)
+  "Show information about the stream."
+  (with-slots (stream count page-size filter-exprs keep-expr seekable) pager
+    (fui:with-typeout (str :title "Pager Buffer Information")
+      (print-properties
+       `("Name"             ,(stream-name stream)
+	 "Current position" ,(bytes-current pager)
+         "Total Length"     ,(total-bytes pager)
+	 "Current line"     ,(current-line pager)
+	 "Maximum line"     ,(maximum-line pager)
+	 "Percentage"       ,(percentage pager)
+	 "Filters"          ,filter-exprs
+	 "Keep"		    ,keep-expr
+	 "Seekable?"        ,seekable)
+       :stream str))))
 
 ;; This is very bogus.
 (defun show-version (pager)
