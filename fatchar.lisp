@@ -163,10 +163,10 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
   (length (fat-string-string s)))
 
 (defun make-fat-string (&key string length initial-element)
-  "Make a FAT-STRING. You can make it from a FATCHAR-STRING, given in STRING,
-or if you give LENGTH, one will be made for you. If you supply LENGTH, you can
-also supply INITIAL-ELEMENT that will be copied to the initial elements of
-the string."
+  "Make a FAT-STRING. You can make it from a FATCHAR-STRING or a normal string,
+given in STRING, or if you give LENGTH, one will be made for you. If you supply
+LENGTH, you can also supply INITIAL-ELEMENT that will be copied to the initial
+elements of the string."
   (check-type string (or null fatchar-string string))
   (when (and string length)
     (error "I can't both use your STRING, and make one of LENGTH."))
