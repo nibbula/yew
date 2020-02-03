@@ -191,20 +191,6 @@
 	      (sort-muffled (node-branches o) #'> :key #'du-node-size)))
       (make-instance 'du-top-node :name "" :directory nil)))
 
-(defun shrink-pathname (path &optional (to 70) (ellipsis "..."))
-  "Make a path name fit in the given width, shrinking in a way to preserve
-useful information."
-  (let* ((str (safe-namestring (quote-filename path)))
-	 (len (length str)))
-    (declare (string str ellipsis) (fixnum to))
-    (if (> len to)
-	(let* ((ellipsis-length (length ellipsis))
-	       (half (- (truncate to 2) ellipsis-length)))
-	  (declare (type fixnum ellipsis-length half))
-	  (s+ (subseq str 0 half) ellipsis
-	      (subseq str (- len (+ half ellipsis-length 1)))))
-	str)))
-
 (defun get-path (node)
   "Return the full pathname of NODE by walking up the tree."
   (let (path)
@@ -280,7 +266,7 @@ useful information."
 	    (tt-move-to-col 0)
 	    (tt-write-string (shrink-pathname
 			      full-name
-			      (1- (terminal-window-columns *terminal*))))
+			      :to (1- (terminal-window-columns *terminal*))))
 	    (tt-erase-to-eol)
 	    ;;(tt-finish-output)
 	    ;;(tt-get-char)
