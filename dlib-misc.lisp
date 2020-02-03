@@ -316,19 +316,46 @@ group-by-alist functions."
   (string (code-char #x2026)) ; #\HORIZONTAL_ELLIPSIS
   "A string to indicate something was elided.")
 
-(defun shrink-pathname (path &key (to 70) (ellipsis *default-ellipsis*))
+(defun shrink-pathname (path &key (to 70) (ellipsis *default-ellipsis*)
+			       abbreviate)
   "Make a path name fit in the given width, shrinking in a way to preserve
-useful information. TO is the limit on the length. ELLIPSIS is a string to use
-for to indicate omission, which defaults to *DEFAULT-ELLIPSIS*."
+useful information.
+  TO           the limit on the length.
+  ELLIPSIS     a string to use to indicate omission, which defaults to *DEFAULT-ELLIPSIS*.
+  ABBREVIATE   True to allow abbreviating leading directories to one letter."
   (let* ((str (safe-namestring (quote-filename path)))
 	 (len (length str)))
     (declare (string str ellipsis) (fixnum to))
     (if (> len to)
-	(let* ((ellipsis-length (length ellipsis))
-	       (half (- (truncate to 2) ellipsis-length)))
-	  (declare (type fixnum ellipsis-length half))
-	  (s+ (subseq str 0 half) ellipsis
-	      (subseq str (- len (+ half ellipsis-length 1)))))
+	(if abbreviate
+	    (let (result (result-len len))
+	      (loop :for p :on (nos:split-path path) :do
+		 ;; Stop a the first abbreviation that puts us under the limit.
+		 (if (< (- result-len (1- (length (car p)))) to)
+		     (progn
+		       ;; Add the rest of the non-abbreviated elements.
+		       (setf result (append (reverse result)
+					    (list (subseq (car p) 0 1))
+					    (cdr p)))
+		       (return t))
+		     (progn
+		       ;; Add the abbreviated element.
+		       (push (subseq (car p) 0 1) result)
+		       ;; Subtract the piece we removed from to total length.
+		       (decf result-len (1- (length (car p)))))))
+	      (if (equal (car result) nos:*directory-separator-string*)
+		  (progn
+		    ;; Don't double add the first /
+		    (pop result)
+		    (s+ nos:*directory-separator*
+			(join-by-string result nos:*directory-separator*)))
+		  (join-by-string result nos:*directory-separator*)))
+	    ;; Replace excess by an ellipsis in the center
+	    (let* ((ellipsis-length (length ellipsis))
+		   (half (- (truncate to 2) ellipsis-length)))
+	      (declare (type fixnum ellipsis-length half))
+	      (s+ (subseq str 0 half) ellipsis
+		  (subseq str (- len (+ half ellipsis-length 1))))))
 	str)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
