@@ -1,6 +1,6 @@
-;;
-;; syntax.lisp - Generic language syntax
-;;
+;;;
+;;; syntax.lisp - Generic language syntax
+;;;
 
 (defpackage :syntax
   (:documentation "Generic language syntax")
@@ -8,6 +8,7 @@
   (:export
    #:*syntaxes*
    #:syntax
+   #:find-syntax
    #:register-syntax
    #:guess-syntax
    #:guess-language
@@ -19,6 +20,7 @@
    #:print-syntax
    #:format-comment-text
    #:stylize-token
+   #:colorize
    ))
 (in-package :syntax)
 
@@ -46,6 +48,10 @@
   "Initalize a syntax."
   (declare (ignore initargs))
   (register-syntax (class-of o)))
+
+(defun find-syntax (name)
+  "Return the registered syntax with NAME, or NIL if it isn't registered."
+  (find name *syntaxes* :key #'syntax-name :test #'string-equal))
 
 (defgeneric guess-syntax (syntax stream)
   (:documentation
@@ -214,5 +220,15 @@ designated as any available grammar.
 Usually this means as documentation. This interprets any special markup or
 conventions for the language. Output should be specialized on the stream if
 necessary."))
+
+(defgeneric colorize (syntax string)
+  (:documentation
+   "Return a colorized version of STRING, in assuming it's in SYNTAX.
+If STRING is already a fat-string, it will be modified in place, so make a
+copy first if you don't want it modified."))
+
+(defmethod colorize (syntax string)
+  "Allow syntax to be a SYNTAX-DESIGNATOR, which something FIND-SYNTAX can find."
+  (colorize (find-syntax syntax) string))
 
 ;; EOF
