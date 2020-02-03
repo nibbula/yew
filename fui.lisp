@@ -23,6 +23,7 @@
    #:window-text
    #:window-centered-text
    #:display-text
+   #:with-typeout
    #:help-list
    ))
 (in-package :fui)
@@ -241,16 +242,18 @@ waits for a key press and then returns."
 						   :stream str)))
 				  (string-vector l))
 			      :key #'simplify-char)))
-	 (height (min (+ 4 (length justified-lines))
-		      (- (tt-height) 4)))
+	 (margin (if title 4 0))
+	 (height (min (+ margin (length justified-lines))
+		      (- (tt-height) margin)))
 	 (xpos   (truncate (- mid (/ width 2))))
 	 (w      (make-window :width width :height height
 			      :y (or y 1)
 			      :x (or x xpos)
 			      :border t))
 	 result)
-    (window-centered-text w 0 title)
-    (loop :with i = 2
+    (when title
+      (window-centered-text w 0 title))
+    (loop :with i = (if title 2 0)
        :for l :in justified-lines
        :do
        (window-text w (refangle l) :row i :column 2)
@@ -263,6 +266,29 @@ waits for a key press and then returns."
     ;; (tt-clear) ;; ?? really
     (tt-finish-output)
     result))
+
+;; @@@ make justify work? maybe it's the re-fangling?
+(defmacro with-typeout ((stream-var &key title input-func #|(justify t)|# x y)
+			&body body)
+  "Evaluate BODY with STREAM-VAR bound to an output-stream, which will be
+displayed as text in a pop up window.
+
+TITLE       Displayed at the top of the window.
+INPUT-FUNC  A function called with the window as an argument to get input.
+            If no INPUT-FUNC is provided it just waits for a key press and then
+            returns.
+X Y         Top left coordinates of the window."
+;; JUSTIFY     If true, wrap words in the output.
+  `(display-text
+    ,title
+    (split-sequence
+     #\newline
+     (fat-string-string
+      (with-output-to-fat-string (,stream-var)
+	,@body)))
+    :input-func ,input-func
+    :justify nil
+    :x ,x :y ,y))
 
 (defun help-list (keymap &optional special-doc-finder)
   "Return a list of key binding help lines, suitable for the HELP function.
