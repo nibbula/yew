@@ -1511,7 +1511,8 @@ REPLACEMENT.")
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Stack-like
 
-;; @@@ will these even work right?
+;; @@@ Will these even work right?
+;; @@@ Why did I make the args reversed from normal push??
 
 (defgeneric opush-element (collection item)
   (:documentation "Add ITEM to COLLECTION and return COLLECTION.")
