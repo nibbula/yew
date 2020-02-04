@@ -25,7 +25,6 @@
     (grout-format "~s~%" thing)))
 
 (defun symbol-apropos (thing &key package external-only)
-  (declare (ignore package external-only)) ;; @@@
   (let* ((thing-string (princ-to-string thing))
 	 (scanner
 	  (create-scanner
@@ -36,9 +35,13 @@
     ;; We use a hash table since symbols are frequently duplicated in packages,
     ;; and we only want each once.
     ;; Presumably with-package-iterator is faster than do-
-    (do-all-symbols (symbol)
-      (when (not (gethash symbol table))
-	(setf (gethash symbol table) t)))
+    (if package
+	(do-symbols (symbol package)
+	  (when (not (gethash symbol table))
+	    (setf (gethash symbol table) t)))
+	(do-all-symbols (symbol)
+	  (when (not (gethash symbol table))
+	    (setf (gethash symbol table) t))))
     (omapk (_ (let ((str (string (aref _ 0))))
 		;;(when (funcall scanner str 0 (length str))
 		(when (scan scanner str)
@@ -49,7 +52,7 @@
        (multiple-value-bind (symbol status)
 	   (ignore-errors (find-symbol (string match)
 				       (symbol-package match)))
-	 (when (and symbol (or (eq status :internal)
+	 (when (and symbol (or (and (eq status :internal) (not external-only))
 			       (eq status :external)))
 	   ;; (grout-format "~a:~%" (package-name pkg))
 	   (when (not did-one)
