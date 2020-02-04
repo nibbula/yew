@@ -47,6 +47,39 @@
   (make-instance 'line-editing-location :position n))
 |#
 
+(defclass line-editing-spot (spot)
+  ((editor
+    :initarg :editor :accessor spot-editor :initform nil
+    :documentation "The editor the spot in in.")
+   (position
+    :initarg :position :accessor spot-position
+    :initform 0 :type fixnum
+    :documentation "Position in the sequence."))
+  (:documentation "An editing location in the line editor."))
+
+(defmethod object-at (spot)
+  (aref (buf (spot-editor spot)) (spot-position spot)))
+
+(defmethod (setf object-at) (value spot)
+  (setf (aref (buf (spot-editor spot)) (spot-position spot)) value))
+
+(defun make-point (n)
+  (make-instance 'line-editing-spot :position n))
+
+(defclass line-editing-spot-range (spot-range)
+  ()
+  (:documentation "A range of characters in the line editor buffer."))
+
+(defmethod make-spot-range ((start line-editing-spot) (end line-editing-spot))
+  (make-instance 'line-editing-spot-range :start start :end end))
+
+(defmethod range-objects ((spot-range line-editing-spot-range))
+  (with-slots ((start spot::start) (end spot::end)) spot-range
+    (assert (eq (spot-editor start) (spot-editor end)))
+    (subseq (buf (spot-editor (spot-range-start start)))
+	   (spot-range-start spot-range)
+	   (spot-range-end spot-range))))
+
 (defclass line-editing-context (editing-context)
   ()
   (:default-initargs
