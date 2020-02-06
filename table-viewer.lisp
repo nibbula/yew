@@ -26,6 +26,8 @@
     (#\<		. move-to-top)
     (#\>		. move-to-bottom)
     (#\i		. record-info)
+    (#\a		. add-row)
+    (#\e		. edit-cell)
     (:home		. move-to-top)
     (:end		. move-to-bottom)
     (:up		. previous)
@@ -711,6 +713,19 @@ at which it's found or NIL if it's not found."
 	`("" ,(format nil "Record ~d of ~d"
 		      (1+ (table-point-row point)) (olength table))))
        :justify nil))))
+
+(defun edit-cell (o)
+  "Edit the current cell."
+  ;; (with-slots ((point inator::point) table) o
+  ;;   (ensure-point o)
+  ;;   (rl:
+  (declare (ignore o))
+  )
+
+(defun add-row (o)
+  "Add a row to the table."
+  (declare (ignore o))
+  )
 
 (defmethod message ((o table-viewer) format-string &rest args)
   (with-slots (message) o
