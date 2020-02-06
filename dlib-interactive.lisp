@@ -31,7 +31,7 @@ be used at a REPL, but not as likely to be called by other programs.")
    #:bracketed-paste-off
    #:setup-bracketed-paste
 
-   #:untrace-all
+   #:trace-package
    #:trace-out
 
    #:file-matches
@@ -570,6 +570,8 @@ that wraps an ANSI terminal."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; tracing
 
+;; This is totally unnecessary since you can just say (untrace). Duh.
+#|
 (defun untrace-all ()
   "Untrace everything that's currently being traced."
   (let ((things (trace)))
@@ -581,6 +583,30 @@ that wraps an ANSI terminal."
       (t
        (format t "Nothing to untrace."))))
   (values))
+|#
+
+(defun trace-package (package &key internal-p)
+  "Trace everything in a package. If INTERNAL-P is true, trace internal
+functions too."
+  (let ((count 0))
+    (macrolet
+	((do-it (x)
+	   `(,(if x 'do-symbols 'do-external-symbols) (s (find-package package))
+	      (when (and (fboundp s)
+			 (let ((type (second
+				      (multiple-value-list
+				       (find-symbol (symbol-name s) package)))))
+			   (or (eq type :external)
+			       (and ,x (eq type :internal)))))
+		;; grrr
+		(with-simple-restart (skip-it "Skip it then, okay?")
+		  (eval `(trace ,s))
+		  (incf count))))))
+      (if internal-p
+	  (do-it t)
+	  (do-it nil)))
+    (format t "~d symbols traced.~%" count)
+    count))
 
 (defvar *saved-trace-output* nil)
 
