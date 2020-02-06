@@ -9,7 +9,7 @@
 ;; This is mostly separate from dlib so I can depend on other stuff like OPSYS,
 ;; and to keep dlib minimal.
 ;;
-;; I don't like the name “MISC”. Let’s think of something better.
+;; I don't like the name “misc”. Let’s think of something better.
 
 (defpackage :dlib-misc
   (:use :cl :dlib :opsys :char-util :glob :collections :stretchy
@@ -27,6 +27,7 @@
    #:group-by-alist
    #:group-by-hash
    #:group-by
+   #:partition
    #:*default-ellipsis*
    #:shrink-pathname
 
@@ -311,6 +312,17 @@ group-by-alist functions."
   (ecase result-type
     (hash (group-by-hash function sequence))
     ((list alist) (group-by-alist function sequence))))
+
+;; @@@ We could make a generic one that returns a sequence of the same type,
+;; but it's probably not as quick and do we need it?
+(defun partition (by sequence)
+  "Return two lists, the first containing items of SEQUENCE for which the
+function BY returns true, the second for which it returns false. The order of
+elements of the result sequence is unspecified, but probably backwards. Of
+course, you can reverse them yourself if you want."
+  (let (a b)
+    (omapn (_ (if (funcall by _) (push _ a) (push _ b))) seq)
+    (values a b)))
 
 (defvar *default-ellipsis*
   (string (code-char #x2026)) ; #\HORIZONTAL_ELLIPSIS
