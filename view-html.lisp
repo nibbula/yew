@@ -79,7 +79,10 @@ tree.")
    (location
     :initarg :location :accessor html-viewer-location :initform nil
     ;; :type location-node
-    :documentation "The current location."))
+    :documentation "The current location.")
+   (cookies
+    :initarg :cookies :accessor html-viewer-cookies :initform nil
+    :documentation "The cookie jar."))
   (:documentation "A tree view of HTML/XML."))
 
 (defmethod initialize-instance
@@ -88,7 +91,8 @@ tree.")
   (declare (ignore initargs))
   ;; Add our own keymap.
   (when (not (find *view-html-keymap* (inator-keymap o)))
-    (push *view-html-keymap* (inator-keymap o))))
+    (push *view-html-keymap* (inator-keymap o)))
+  (setf (slot-value o 'cookies) (make-instance 'drakma:cookie-jar)))
 
 (defun reset-view ()
   "Reset the viewer for viewing a different tree."
