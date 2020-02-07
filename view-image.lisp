@@ -535,7 +535,7 @@ the first time it fails to identify the image."
 	    (setf form (list (read-from-string
 			      (rl-widget:widget-read
 			       :width 60 :height 2
-			       :completion-func #'complete-symbol)
+			       :completion-func #'completion:complete-symbol)
 			      nil nil))
 		  real-form (popi:popi-form form)
 		  popi:w (width o)
@@ -1194,7 +1194,8 @@ the first time it fails to identify the image."
 		   (typep (terminal-wrapped-terminal *terminal*)
 			  'terminal-ansi:terminal-ansi)))
       (setf bg-color
-	    (convert-color-to (terminal-ansi:background-color) :rgb8)))
+	    (convert-color-to
+	     (or (terminal-ansi:background-color) #(:rgb8 0 0 0)) :rgb8)))
     (cond
       (initial-command
        (call-command o initial-command nil)
