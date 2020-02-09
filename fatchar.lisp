@@ -831,9 +831,9 @@ attr | iiiiiiii
             if we added one."
 	   (let (did-one)
 	     (loop
+		:while (< i len)
 		:do (setf c (aref fatchar-string i))
-		:while (and (< i len) (not (and did-one
-						(fatchar-diffs last c))))
+		:while (not (and did-one (fatchar-diffs last c)))
 		:do
 		(stretchy-append piece (fatchar-c c))
 		(dbugf :fatchar "char ~s ~s ~%" i (fatchar-c c))
