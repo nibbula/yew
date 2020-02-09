@@ -447,9 +447,13 @@
 (defun try-to-reset-terminal ()
   "Try to reset the terminal to a sane state so when we get in error in some
 program that messes with the terminal, we can still type at the debugger."
+  ;; This whole thing assumes too much!
+  #|
   (flet ((out (s) (format *terminal-io* "~c~a" #\escape s)))
+
     ;; First reset the terminal driver to a sane state.
     (nos:reset-terminal-modes)
+
     ;; Then try to reset the terminal itself to a sane state, assuming an ANSI
     ;; terminal. We could just do ^[c, which is quite effective, but it's
     ;; pretty drastic, and usually clears the screen and can even resize the
@@ -470,7 +474,13 @@ program that messes with the terminal, we can still type at the debugger."
 	       "[?9l"  ;; Don't send position on mouse press
 	       "[?47l" ;; Use normal screen buffer
 	       )))
-    (finish-output)))
+    (finish-output))
+  |#
+  ;; Instead, let's try:
+  (setf (terminal-input-mode *terminal*) :char)
+  (setf (terminal-input-mode *terminal*) :line)
+  (terminal-reset *terminal*)
+  )
 
 ;; @@@ This hackishly knows too much about RL.
 (defun debugger-redraw (e)
