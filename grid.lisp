@@ -365,6 +365,14 @@ z    (flet ((add-grid-char (char)
       :collect (grapheme-to-grid-char c))
    'vector))
 
+(defun copy-grid-string (grid-string)
+  (let ((result (make-array (length grid-string)
+			    :element-type 'grid-char
+			    :initial-element (make-grid-char))))
+    (loop :for i :from 0 :below (length grid-string) :do
+      (setf (aref result i) (copy-grid-char (aref grid-string i))))
+    result))
+
 ;; (defmethod osimplify ((thing grid-string))
 ;;   (fat-string-to-string thing))
 
