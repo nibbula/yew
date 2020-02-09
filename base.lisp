@@ -38,13 +38,20 @@ the outermost. When entering the debugger the current frame is 0.")
        (if *dont-use-a-new-term*
 	   (let ((*debug-term* *terminal*))
 	     (,thunk))
-	   (with-new-terminal ((pick-a-terminal-type) *debug-term*
-			       :device-name
-			       (nos:file-handle-terminal-name
-				(nos:stream-system-handle *debug-io*))
-			       :output-stream
-			       (make-broadcast-stream *debug-io*))
-	     (,thunk))))))
+	   (let ((fd (nos:stream-system-handle *debug-io*))
+		 device-name)
+	     (when fd
+	       (setf device-name (nos:file-handle-terminal-name fd)))
+	     (if device-name
+		 (with-new-terminal ((pick-a-terminal-type) *debug-term*
+				     :device-name device-name
+				     :output-stream
+				     (make-broadcast-stream *debug-io*))
+		   (,thunk))
+		 (with-new-terminal ((pick-a-terminal-type) *debug-term*
+				     :output-stream
+				     (make-broadcast-stream *debug-io*))
+		   (,thunk))))))))
 
 (defmacro with-debugger-io (() &body body)
   "Evaluate BODY with *debug-term* set up, either existing or new."
