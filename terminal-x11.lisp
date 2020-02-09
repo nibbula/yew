@@ -49,6 +49,10 @@
   ;; "9x15" "fixed"
   "Name of the font to use if not specified.")
 
+(defparameter *default-scrollback-size* 4000
+  "Number of scrolled lines to save. NIL or 0 to not save lines, or T for
+limited only by availabile memory. It's probably a bad idea to set it to T.")
+
 (defparameter *attributes*
   '(:normal
     :bold
@@ -82,6 +86,83 @@
 (defstruct out-buf
   "Buffered output."
   row col string moved)
+
+(defclass scrollback (ordered-collection)
+  ((lines
+    :initarg :lines :accessor scrollback-lines :initform #() :type vector
+    :documentation "An adjustable array of lines.")
+   (bottom
+    :initarg :bottom :accessor scrollback-bottom :initform -1 :type fixnum
+    :documentation "The end of the circular buffer."))
+  (:documentation "A circular buffer of lines."))
+
+(defmethod initialize-instance
+    :after ((o scrollback) &rest initargs &key &allow-other-keys)
+  "Initialize a scrollback."
+  (let ((size (or (getf initargs :size)
+		  *default-scrollback-size*)))
+    (setf (slot-value o 'lines) (make-array size
+					    :fill-pointer t
+					    :adjustable (eq size t)))))
+
+(defmethod oelt ((o scrollback) n)
+  (with-slots (lines bottom) o
+    (if (minusp bottom)
+	;; We're not full yet. Just index backward.
+	(aref (scrollback-lines o) n)
+	;; We're full, so we have to offset from the bottom.
+	(aref (scrollback-lines o)
+	      (if (< (+ bottom n) (length (scrollback-lines o)))
+		  (+ bottom n)
+		  (- n (- (length (scrollback-lines o)) bottom)))))))
+
+(defmethod olength ((o scrollback))
+  (length (scrollback-lines o)))
+
+(defun add-line (o item)
+  "Add the line ITEM to the scrollback."
+  (with-slots (lines bottom) o
+    (cond
+      ((minusp bottom)
+       (when (not (vector-push item lines))
+	 (setf bottom 1
+	       (aref lines 0) item)))
+      (t
+       (setf (aref lines bottom) item)
+       (incf bottom)))))
+
+;; (defvar *empty-fs* (make-fat-string :length 0))
+;;
+;; (defun snip-line (grid-line)
+;;   "Trim off trailing unset grid chars. Replace other NIL grid chars with space.
+;; If it's all unset, just return the empty fat-string."
+;;   ;; Find the last empty.
+;;   (let ((last (position-if #'grid-char-c :from-end t))
+;; 	copy)
+;;     (if (zerop last)
+;; 	*empty-fs*
+;; 	(loop :for i :from 0 :below last
+;; 	   :do
+;; 	   (when (not (grid-char-c (aref grid-line i)))
+;; 	     (when (not copy)
+;; 	       (setf copy (copy-grid-string
+
+(defun add-scrollback (tty lines-to-add)
+  "Add the LINES-TO-ADD to the scrollback for TTY."
+  (with-slots (scrollback) tty
+    (let (last)
+      (map nil (_ (setf last (or (position-if #'grid-char-c _ :from-end t)
+				 (length _)))
+		  (add-line scrollback
+			    (fat-string-to-span
+			     (grid-to-fat-string _ :null-as #\space
+						 :end last
+						 :keep-nulls t))))
+	   lines-to-add))))
+
+(defun add-scrollback-blanks (tty n)
+  "Add N blank lines to the scrollback for TTY."
+  (loop :repeat n :do (add-line tty "")))
 
 (defclass terminal-x11 (terminal #| terminal-crunch |#)
   ((display
@@ -192,9 +273,13 @@ different from the current foreground color which in rendition.")
     :initarg :lines :accessor lines
     #| :initform (make-array) |# :type (or null (vector grid-string))
     :documentation "The character grid rows of the screen.")
-   (scollback
-    :initarg :scollback :accessor scollback :initform #() :type array
-    :documentation "Lines of history.")
+   (scrollback
+    :initarg :scollback :accessor scollback
+    :documentation "History lines.")
+   (top
+    :initarg :top :accessor terminal-x11-top :initform 0 :type fixnum
+    :documentation
+    "How many lines back in scrollback the top of the screen is.")
    (scrolling-region
     :initarg :scrolling-region :accessor scrolling-region
     :initform nil :type list
@@ -254,8 +339,13 @@ different from the current foreground color which in rendition.")
 (defun set-cell-size (tty)
   "Set the cell-width and cell-height in TTY from the font."
   (with-slots (font cell-width cell-height) tty
-    (setf cell-width (xlib:char-width font (xlib:font-default-char font))
-	  cell-height (+ (font-descent font) (font-ascent font)))))
+    (let* ((def-char (xlib:font-default-char font))
+	   (def-char-width (and def-char (xlib:char-width font def-char))))
+      (setf cell-width
+	    (if (and def-char def-char-width (plusp def-char-width))
+		(xlib:char-width font (xlib:font-default-char font))
+		(xlib:max-char-width font))
+	    cell-height (+ (font-descent font) (font-ascent font))))))
 
 (defparameter *crap* #| 4 |# 0)
 
@@ -341,7 +431,7 @@ are already set."
   "Initialize a terminal-x11."
   (with-slots (display window window-width window-height font title pixel-format
 	       draw-gc erase-gc cursor-gc modifiers cell-width cell-height
-	       foreground background rendition cursor-rendition) o
+	       foreground background rendition cursor-rendition scrollback) o
     (multiple-value-bind (host number) (get-display-from-environment)
       (when (not host)
 	(error "Can't get X display from the environment."))
@@ -424,7 +514,8 @@ are already set."
 				   (color-from-rendition o
 				     (fatchar-bg cursor-rendition) :bg))
 		     :function boole-1
-		     :font font))))
+		     :font font)
+	  scrollback (make-instance 'scrollback))))
 
 (defun set-grid-size-from-pixel-size (tty width height)
   (with-slots (cell-width cell-height
@@ -544,6 +635,8 @@ to blank with."
     (let ((abs-n (abs n)))
       (if (< abs-n window-rows)
 	  (progn
+	    (when (plusp n)
+	      (add-scrollback tty (subseq lines 0 n)))
 	    (scroll-copy n window-rows lines #'line-blanker)
 	    ;; (scroll-copy n window-rows index #'index-blanker)
 	    (cond
@@ -569,6 +662,8 @@ to blank with."
 			   :height (* abs-n cell-height))
 	       )))
 	  (progn
+	    (add-scrollback tty lines)
+	    (add-scrollback-blanks tty (- abs-n window-rows))
 	    ;; Just erase everything
 	    (line-blanker lines)
 	    ;; (index-blanker index)
@@ -1352,22 +1447,38 @@ to the grid. It must be on a single line and have no motion characters."
 			   ;; (+ (font-ascent font) (font-descent font))
 			   )))
 
-(defun redraw-area (tty start-x start-y width height)
+(defun redraw-area (tty &optional (start-x 0) (start-y 0) width height)
   "Redraw a rectangular area."
-  (with-slots (lines cell-width cell-height window draw-gc
+  (with-slots (lines cell-width cell-height window draw-gc top scrollback
 	       (window-rows terminal::window-rows)
 	       (window-columns terminal::window-columns)) tty
     (let ((c-start-x (1- (ceiling start-x cell-width)))
 	  (c-start-y (1- (ceiling start-y cell-height)))
-	  (c-width   (1+ (ceiling width cell-width)))
-	  (c-height  (1+ (ceiling height cell-height))))
+	  (c-width   (if width
+			 (1+ (ceiling width cell-width))
+			 window-columns))
+	  (c-height  (if height
+			 (1+ (ceiling height cell-height))
+			 window-rows))
+	  actual-end str output-start)
       (setf c-start-x (max 0 c-start-x)
 	    c-start-y (max 0 c-start-y))
       (dbugf :tx11 "redraw-area ~s ~s ~s ~s~%"
 	     c-start-x c-start-y c-width c-height)
       ;; (draw-rectangle window draw-gc start-x start-y width height)
+      (when (not (zerop top))
+	(loop
+	   :for y = 0 :then (1+ y)
+	   :for i :from top :downto (max 0 (- top window-rows))
+	   :do
+	   (setf str (span-to-fat-string (oelt scrollback i))
+		 actual-end
+		 (clamp (+ c-start-x c-width) 0 (min (olength str)
+						     (1- window-columns))))
+	   (%draw-fat-string tty str
+			     :end actual-end :start c-start-x
+			     :x 0 :y y)))
       (loop
-	 :with actual-end :and str :and output-start
 	 :for y :from (max 0 c-start-y)
 	 :to (clamp (+ c-start-y c-height) 0 (1- window-rows))
 	 :do
@@ -1379,12 +1490,29 @@ to the grid. It must be on a single line and have no motion characters."
 					  :start c-start-x
 					  :end actual-end
 					  :null-as #\space))
-	 ;;(format t "str ~s ~s output-start ~s~%" (olength str) str output-start)
+	 ;; (format t "str ~s ~s output-start ~s~%"
+	 ;;         (olength str) str output-start)
 	 (when (and (plusp (- actual-end c-start-x))
 		    (not (zerop (olength str))))
 	   (%draw-fat-string
 	    tty str :start c-start-x :end actual-end
 	    :x (+ c-start-x output-start) :y y))))))
+
+(defun scrollback-backward (tty n)
+  "Move the top of the terminal view backward N lines in the scrollback history."
+  (with-slots (display top scrollback) tty
+    (when (< top (1- (olength scrollback)))
+      (setf top (min (1- (olength scrollback)) (+ top n)))
+      (redraw-area tty)
+      (display-finish-output display))))
+
+(defun scrollback-forward (tty n)
+  "Move the top of the terminal view forward N lines in the scrollback history."
+  (with-slots (display top) tty
+    (when (> top 0)
+      (setf top (max 0 (- top n)))
+      (redraw-area tty)
+      (display-finish-output display))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; terminal methods
@@ -1770,6 +1898,11 @@ handler cases."
 	      ;; Suppossedly:
 	      ;; • The atom that names their protocol in the data[0] field
 	      ;; • A timestamp in their data[1] field
+
+	      ;; @@@@ This is quite wrong and only works if we are running
+	      ;; lish in the window. We should probably have the process or
+	      ;; thing running in the window make a restart which we should
+	      ;; invoke, or if it's missing, just delete the window.
 	      (throw :lish-quick-exit :lish-quick-exit)))
 	  t)
 	;; :enter-notify fill the cursor
@@ -1804,10 +1937,22 @@ handler cases."
 		  (logtest +mod-1-mask+   mask)
 		  (symbol-name symbol)) :keyword))
 
+(defun discard-key-release (display key)
+  "Discard a key-relase event for key."
+  (event-cond (display)
+    (:key-release (code #|state|#)
+		  (let* ((sym (keycode->keysym display code 0))
+			 (sym-name (gethash sym *keysym-names*)))
+		    (dbugf :tx11 "code ~s sym ~s name ~s ~s~%" code sym sym-name
+			   (eq sym-name key))
+		    (eq sym-name key))
+		  t)))
+
 (defun key-handler (&rest slots
 		    &key display event-key send-event-p &allow-other-keys)
   "Handle key or mouse input."
-  (with-slots (cell-width cell-height modifiers interrupt-key) *event-tty*
+  (with-slots (cell-width cell-height modifiers interrupt-key
+	       (window-rows terminal::window-rows)) *event-tty*
     (let ((tty *event-tty*) result)
       (when (and send-event-p (member event-key '(:button-press :button-release
 						  :key-press :key-release))
@@ -1908,10 +2053,22 @@ handler cases."
 		;; Try to return something at least
 		(setf result (or chr sym-name sym code))))
 	     (when result (setf *input-available* t))
-	     (when (eq result :f11) ;; @@@ debugging
-	       (dump-grid tty)
-	       (discard-current-event display)
-	       (return-from key-handler nil))
+	     ;; Keys intercepted by the terminal
+	     (let (got-one)
+	       (case result
+		 (:f11 ;; @@@ temporary debugging
+		  (dump-grid tty)
+		  (setf got-one t))
+		 (:s-page-up
+		  (scrollback-backward tty window-rows)
+		  (setf got-one t))
+		 (:s-page-down
+		  (scrollback-backward tty window-rows)
+		  (setf got-one t)))
+	       (when got-one
+		 (discard-current-event display)
+		 ;; (discard-key-release display result)
+		 (return-from key-handler nil)))
 	     (when (and interrupt-key (eq result interrupt-key))
 	       (discard-current-event display)
 	       (throw 'interactive-interrupt nil))
@@ -1988,6 +2145,8 @@ handler cases."
      (setf *input-available* t)
      t)
     (otherwise
+     (apply #'window-handler slots)
+     (discard-current-event display)
      ;; (discard-current-event display)
      t)))
 
@@ -2523,7 +2682,9 @@ links highlight differently?"
   ;; ‘stream-read-char’; this is sufficient for file streams, but
   ;; interactive streams should define their own method.
   (terminal-finish-output stream)
-  (get-key stream :timeout 0))
+  (if (terminal-listen-for stream 0)
+      (get-key stream)
+      nil))
 
 (defmethod stream-read-char ((stream terminal-x11))
   (terminal-get-char stream))
