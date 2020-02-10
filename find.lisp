@@ -4,7 +4,7 @@
 
 (defpackage :find
   (:documentation "Find files in an old fashioned and slow manner.")
-  (:use :cl :dlib :opsys :cl-ppcre #| :lparallel |#)
+  (:use :cl :dlib :opsys :cl-ppcre #| :lparallel |# :char-util)
   (:export
    ;; Main entry point
    #:find-files
@@ -59,7 +59,17 @@
 	(magic:content-type-description (magic:guess-file-type f)))
       ""))
 
-(defun prepare (pattern verbose regexp case-insensitive)
+(defun normalize-filter (string)
+  "Return STRING in Unicode normalized form NFD."
+  (char-util:normalize-string string))
+
+(defun remove-combining-filter (string)
+  "Return STRING in Unicode normalized form NFD, with combining characters
+removeed."
+  (remove-if #'char-util:combining-char-p
+	     (char-util:normalize-string string)))
+
+(defun prepare (pattern verbose regexp case-insensitive filter)
   (declare (ignore verbose))
   ;;(when verbose
   ;;    (format t "prepare ~a~%" pattern))
@@ -68,32 +78,36 @@
 	;; (format t "pattern = ~s ~s~%" (type-of pattern) pattern)
 	(if (functionp pattern)
 	    pattern
-	    (create-scanner pattern :case-insensitive-mode case-insensitive)))
-      pattern))
+	    (create-scanner
+	     (if filter (funcall filter pattern) pattern)
+	     :case-insensitive-mode case-insensitive)))
+      (if filter (funcall filter pattern) pattern)))
 
-(defgeneric compare (pattern data verbose case-insensitive)
+(defgeneric compare (pattern data verbose case-insensitive filter)
   (:documentation "Compare pattern and data. Return nil if no match."))
 
 ;; I don't think I can do anything about the SBCL performance note about the
 ;; unsed function in the CL-PPCRE search macro. CL-PPCRE has a lot of
 ;; performance notes, but seems very fast anyway. :)
-(defmethod compare ((pattern string) (data string) verbose case-insensitive)
+(defmethod compare ((pattern string) (data string) verbose case-insensitive
+		    filter)
   "Compare strings."
   (declare (type simple-string pattern data)
 	   (ignore verbose) #| (type boolean verbose) |#)
   ;;(when verbose
   ;;  (format t "compare ~s ~s~%" pattern data))
   (if case-insensitive
-      (search pattern data :test #'char-equal)
-      (search pattern data)))
+      (search pattern (if filter (funcall filter data) data) :test #'char-equal)
+      (search pattern (if filter (funcall filter data) data))))
 
-(defmethod compare ((pattern function) (data string) verbose case-insensitive)
+(defmethod compare ((pattern function) (data string) verbose case-insensitive
+		    filter)
   "Compare string and regexp."
   (declare (ignore verbose case-insensitive))
   ;;(if verbose
   ;;    (format t "compare ~s ~s~%" pattern data))
   ;; (format t "compare pattern = ~s ~s~%" (type-of pattern) pattern)
-  (scan pattern data))
+  (scan pattern (if filter (funcall filter data) data)))
 
 (defun compare-perm (stat perm)
   "Return true if the permissions match."
@@ -296,6 +310,8 @@ Options:
 		   verbose
 		   (regexp t)
 		   (case-mode :smart)
+		   (unicode-normalize t)
+		   unicode-remove-combining
 		   (collect t)
 		   max-depth
 		   min-depth
@@ -373,15 +389,20 @@ Options:
 				      (typep name 'sequence)
 				      (notany #'upper-case-p name))
 				 (eq case-mode :insensitive)))
+	 (filter (cond
+		   (unicode-remove-combining #'remove-combining-filter)
+		   (unicode-normalize #'normalize-filter)
+		   (t nil)))
 	 actions)
     (declare (type list files) (type integer depth))
     ;; Convert args into regex scanners.
     (when name
-      (setf name (prepare name verbose regexp case-insensitivity)))
+      (setf name (prepare name verbose regexp case-insensitivity filter)))
     (when path
-      (setf path (prepare path verbose regexp case-insensitivity)))
+      (setf path (prepare path verbose regexp case-insensitivity filter)))
     (when file-type
-      (setf file-type (prepare file-type verbose regexp case-insensitivity)))
+      (setf file-type (prepare file-type verbose regexp case-insensitivity
+			       filter)))
     (when print
       (push (_ (format t "~a~%" _)) actions))
     (when collect
@@ -405,10 +426,11 @@ Options:
 	   (let* ((n (dir-entry-name f))
 		  (full (path-append dir n))
 		  (name-matched
-		   (or (not name) (compare name n verbose case-insensitivity)))
+		   (or (not name) (compare name n verbose case-insensitivity
+					   filter)))
 		  (path-matched
 		   (or (not path)
-		       (compare path full verbose case-insensitivity)))
+		       (compare path full verbose case-insensitivity filter)))
 		  (stat (when need-to-stat (resilient-stat full follow-links)))
 		  (perm-matched  (or (not perm)  (compare-perm  stat perm)))
 		  (user-matched  (or (not user)  (compare-user  stat user)))
@@ -419,7 +441,8 @@ Options:
 		  (file-type-matched (or (not file-type)
 					 (compare file-type
 						  (file-type full) verbose
-						  case-insensitivity)))
+						  case-insensitivity
+						  filter)))
 		  (test-matched  (or (not test) (funcall test full))))
 	     (cond
 	       ((and name-matched type-matched path-matched perm-matched
@@ -460,26 +483,28 @@ Options:
 	       ;; 			:expr expr
 	       ;; 			:do action
 	       ;; 			:print print)
-		   (find-files :dir sub
-			       :follow-links follow-links
-			       :verbose verbose
-			       :regexp regexp
-			       :case-mode case-mode
-			       :collect collect
-			       :parallel parallel
-			       :name name
-			       :file-type file-type
-			       :path path
-			       :perm perm
-			       :group group
-			       :user user
-			       :size size
-			       :type type
-			       :time time
-			       :expr expr
-			       :do action
-			       :test test
-			       :print print))
+	       (find-files :dir sub
+			   :follow-links follow-links
+			   :verbose verbose
+			   :regexp regexp
+			   :case-mode case-mode
+			   :unicode-normalize unicode-normalize
+			   :unicode-remove-combining unicode-remove-combining
+			   :collect collect
+			   :parallel parallel
+			   :name name
+			   :file-type file-type
+			   :path path
+			   :perm perm
+			   :group group
+			   :user user
+			   :size size
+			   :type type
+			   :time time
+			   :expr expr
+			   :do action
+			   :test test
+			   :print print))
 	       ;; )
 	 (if collect (setf files (nconc files result)))))
     ;; (format t "files = ~a~%" files)
@@ -518,6 +543,8 @@ arguments are the same."
    verbose
    (regexp t)
    (case-mode :smart)
+   (unicode-normalize t)
+   unicode-remove-combining
    (collect nil)
    max-depth
    min-depth  
@@ -568,6 +595,10 @@ arguments are the same."
                   'smart' is insensitive if there are no upper case letters,
                   sesitive otherwise. 'sesitive' matches the exact case.
                   'insensitive' matches any case.")
+   (unicode-normalize boolean :short-arg #\u :default t
+    :help "Normalize unicode before comparison.")
+   (unicode-remove-combining boolean :short-arg #\U
+    :help "Normalize and remove unicode combining characters.")
    (collect	 boolean  :short-arg #\c :default '(lish:accepts :sequence)
     :help        "Return the file name as a list.")
    (name	 string   :short-arg #\n
@@ -596,7 +627,8 @@ arguments are the same."
    (action	 object   :short-arg #\a :long-arg "do"
     :help        "Calls the function with the full path for every match.")
    (print	 boolean  :short-arg #\p :default t
-    :help        "True to print the file name."))
+    :help        "True to print the file name.")
+   )
   :keys-as all-keys
   "Find files recursively in subdirectories. Start in the directory given
 by --dir, which defaults to the current directory."
