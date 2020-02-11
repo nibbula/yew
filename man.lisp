@@ -127,22 +127,25 @@
 
 ;; @@@ This needs work
 (defcommand man
-   ((apropos string  :short-arg #\k :help "Search page titles for a string.")
-    (section manual-section  :short-arg #\s :help "Show page from section.")
+   ((apropos string :short-arg #\k :help "Search page titles for a string.")
+    (section manual-section :short-arg #\s :help "Show page from section.")
     (all boolean :short-arg #\a :help "Show all matching pages.")
     (rehash boolean :short-arg #\r :help "Re-calculate caches.")
     (use-pager boolean :short-arg #\p :default t
      :help "True to view the output in the pager.")
-    (path string  :short-arg #\M
+    (path string :short-arg #\M
      :help "Colon separated path to search for pages.")
-    (entry manual-entry  :optional t :help "Name of manual entry."))
+    (entry manual-entry :optional t :help "Name of manual entry."))
   "Display a manual page for a command. With -k search for a matching page."
+  :accepts '(arg-manual-entry)
   (when rehash
     (setf *man-sections* nil
 	  *man-entries* nil
 	  *man-entries* (get-manual-entries))
     (when (not (or entry apropos))
       (return-from !man (values))))
+  (when (and *input* (not entry))
+    (setf entry *input*))
   (let* ((base "/usr/bin/man -P cat ")
 	 (cmd (make-array (list (length base))
 			  :element-type 'character
