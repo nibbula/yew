@@ -15,6 +15,7 @@
    #:char-as-ascii
    #:displayable-char
    #:string-character-case
+   #:normalize-string
    #:combining-char-p
    #:whitespace-p
    #:double-wide-char-p
@@ -156,9 +157,11 @@ than space and delete."
 (defun normalize-string (string &optional (form :nfd))
   "Return a Unicode normalized string based on STRING. FORM can be one of
 :NFD, :NFC, :NFKD, or :NFKC."
-  #+sbcl (normalize-string string form)
-  #-(or sbcl) (declare (ignore string form))
-  #-(or sbcl) (error "Missing implementation: normalize-string"))
+  #+sbcl (sb-unicode:normalize-string string form)
+  ;; #-(or sbcl) (declare (ignore string form))
+  ;; #-(or sbcl) (error "Missing implementation: normalize-string")
+  #-sbcl (uax-15:normalize string form)
+  )
 
 (defparameter *general-category-name*
   #(

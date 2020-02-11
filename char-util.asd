@@ -10,6 +10,8 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "General utilites for characters."
-    :depends-on (:dlib #-sbcl :cl-unicode :stretchy :ochar)
+    :depends-on (:dlib :stretchy :ochar
+		       #-sbcl :cl-unicode
+		       #-sbcl :uax-15)
     :components
     ((:file "char-util")))
