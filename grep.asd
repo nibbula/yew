@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Regular expression search in streams."
-    :depends-on (:cl-ppcre :opsys :grout :los-config)
+    :depends-on (:cl-ppcre :opsys :grout :los-config :char-util)
     :components
     ((:file "grep")))

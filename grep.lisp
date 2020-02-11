@@ -4,7 +4,7 @@
 
 (defpackage :grep
   (:documentation "Regular expression search in streams.")
-  (:use :cl :cl-ppcre :opsys :dlib :grout :fatchar :stretchy)
+  (:use :cl :cl-ppcre :opsys :dlib :grout :fatchar :stretchy :char-util)
   (:export
    #:grep
    #:grep-files
@@ -60,7 +60,10 @@
      (setf (fatchar-fg (aref fat i)) color)
      (pushnew attr (fatchar-attrs (aref fat i)))))
 
-(defun print-match (use-color pattern scanner line)
+;; I might be nice if we could highlight the unfiltered match in the unfiltered
+;; line, but I have no idea how to do it.
+(defun print-match (use-color pattern scanner line
+		    filtered-pattern filtered-line)
   (if use-color
       (let (fat-line)
 	(when (not *fat-string*)
@@ -77,7 +80,7 @@
 	   :do (stretchy-append fat-line (make-fatchar :c c)))
 	(if scanner
 	    ;; regexp
-	    (do-scans (s e rs re scanner line)
+	    (do-scans (s e rs re scanner (or filtered-line line))
 	      (set-region fat-line s e (first +color-loop+) :underline)
 	      (loop
 		 :for start :across rs
@@ -91,7 +94,8 @@
 	       :and start = 0
 	       :and pattern-len = (length pattern)
 	       :and color = +color-loop+
-	       :while (setf pos (search pattern line :start2 start))
+	       :while (setf pos (search filtered-pattern (or filtered-line line)
+					:start2 start))
 	       :do
 	       (set-region fat-line pos (+ pos pattern-len)
 			   (car color) :underline)
@@ -109,6 +113,29 @@
   (grout-color :magenta :default (princ-to-string prefix))
   (grout-color :cyan :default ":"))
 
+(defun normalize-filter (string)
+  "Return STRING in Unicode normalized form NFD."
+  (char-util:normalize-string string))
+
+(defun remove-combining-filter (string)
+  "Return STRING in Unicode normalized form NFD, with combining characters
+removeed."
+  (remove-if #'char-util:combining-char-p
+	     (char-util:normalize-string string)))
+
+(defun make-filter (unicode-normalize unicode-remove-combining filter)
+  (cond
+    (filter
+     (cond
+       (unicode-remove-combining
+	(lambda (s) (remove-combining-filter (funcall filter s))))
+       (unicode-normalize
+	(lambda (s) (normalize-filter (funcall filter s))))
+       (t filter)))
+    (t
+     (or (and unicode-remove-combining #'remove-combining-filter)
+	 (and unicode-normalize #'normalize-filter)))))
+
 (defun grep (pattern file-or-stream
 	     &key
 	       (output-stream *standard-output*)
@@ -116,6 +143,7 @@
 	       line-number files-with-match files-without-match
 	       filename use-color collect
 	       scanner
+	       unicode-normalize unicode-remove-combining filter
 	       &allow-other-keys)
   "Print occurances of the regular expression PATTERN in STREAM.
 Aruguments are:
@@ -145,14 +173,29 @@ Second value is the scanner that was used.
   
   (let* ((*fat-string* nil)
 	 line (match-count 0) (line-count 0) result match matches
-	 (check-it (if fixed
-		       (lambda () (search pattern line))
-		       (lambda () (scan scanner line)))))
+	 (composed-filter (make-filter
+			  unicode-normalize unicode-remove-combining filter))
+	 (filtered-pattern (or (and composed-filter
+				    (funcall composed-filter pattern))
+			       pattern))
+	 filtered-line
+	 (check-it
+	  (if fixed
+	      (if composed-filter
+		  (lambda () (search filtered-pattern
+				     (setf filtered-line
+					   (funcall composed-filter line))))
+		  (lambda () (search filtered-pattern line)))
+	      (if composed-filter
+		  (lambda () (scan scanner
+				   (setf filtered-line
+					 (funcall composed-filter line))))
+		  (lambda () (scan scanner line))))))
     (declare (type fixnum line-count match-count))
     (setf scanner (and (not fixed)
 		       (or scanner
 			   (create-scanner
-			    pattern
+			    filtered-pattern
 			    :extended-mode extended
 			    :case-insensitive-mode ignore-case))))
     (with-grout (*grout* output-stream)
@@ -179,7 +222,9 @@ Second value is the scanner that was used.
 			(when collect
 			  (push line-count match)))
 		      (when (not quiet)
-			(print-match use-color pattern scanner line))
+			(print-match use-color pattern scanner
+				     (or filtered-line line)
+				     filtered-pattern filtered-line))
 		      (when collect
 			(push line match))))
 		   ((or (and (not result) (not invert))
@@ -205,13 +250,15 @@ Second value is the scanner that was used.
 		     (output-stream *standard-output*)
 		     count extended fixed ignore-case quiet invert
 		     line-number files-with-match files-without-match
-		     use-color collect no-filename signal-errors)
+		     use-color collect no-filename signal-errors
+		     unicode-normalize unicode-remove-combining filter)
   "Call GREP with PATTERN on FILES. Arguments are:
   FILES     - A list of files to search.
   RECURSIVE - If FILES contain directory names, recursively search them.
  See the documentation for GREP for an explanation the other arguments."
   (declare (ignorable count extended ignore-case invert
-		      recursive line-number use-color fixed)) ;; @@@
+		      recursive line-number use-color fixed
+		      unicode-normalize unicode-remove-combining filter)) ;; @@@
   (let (results scanner result)
     (labels ((call-grep (pattern stream &optional args)
 	       "Call grep with the same arguments we got."
@@ -347,7 +394,13 @@ Second value is the scanner that was used.
     :help "True to signal errors. Otherwise print them to *error-output*.")
    (positions boolean :short-arg #\p
     :help "True to send positions to Lish output. Equivalent to -nqs, except
-it's only quiet if the receiving command accepts sequences."))
+it's only quiet if the receiving command accepts sequences.")
+   (unicode-normalize boolean :short-arg #\u :default t
+    :help "Normalize unicode before comparison.")
+   (unicode-remove-combining boolean :short-arg #\U
+    :help "Normalize and remove unicode combining characters.")
+   (filter function :short-arg #\f
+    :help "Function to apply to strings before comparing."))
   :accepts (:stream :sequence)
   "Search for patterns in input."
   (let (result)
@@ -383,7 +436,10 @@ it's only quiet if the receiving command accepts sequences."))
 		      :quiet quiet
 		      :use-color use-color
 		      :collect collect
-		      :signal-errors signal-errors))
+		      :signal-errors signal-errors
+		      :unicode-normalize unicode-normalize
+		      :unicode-remove-combining unicode-remove-combining
+		      :filter filter))
     (if collect
 	(progn
 	  ;;(dbugf :accepts "YOOOOOOO! output to *output*~%")
