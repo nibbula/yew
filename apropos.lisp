@@ -24,17 +24,16 @@
   (:method ((thing t))
     (grout-format "~s~%" thing)))
 
-(defun symbol-apropos (thing &key package external-only)
+(defun symbol-apropos (thing &key package external-only collect)
   (let* ((thing-string (princ-to-string thing))
 	 (scanner
 	  (create-scanner
 	   ;; thing-string :case-insensitive-mode (not (functionp thing))))
 	   thing-string :case-insensitive-mode t))
 	 (table (make-hash-table))
-	 matches did-one)
+	 matches did-one results)
     ;; We use a hash table since symbols are frequently duplicated in packages,
     ;; and we only want each once.
-    ;; Presumably with-package-iterator is faster than do-
     (if package
 	(do-symbols (symbol package)
 	  (when (not (gethash symbol table))
@@ -58,12 +57,15 @@
 	   (when (not did-one)
 	     (grout-format "Lisp symbols:~%"))
 	   (setf did-one t)
+	   (when collect
+	     (push symbol results))
 	   (print-info symbol))))
-    did-one))
+    (or (and collect results) did-one)))
 
-(defun command-apropos (thing)
+(defun command-apropos (thing collect)
   (let* ((scanner
 	  (create-scanner (princ-to-string thing) :case-insensitive-mode t))
+	 results
 	 (tab
 	  (loop :with cmd :and doc
 	     :for c :in lish::*command-list*
@@ -72,27 +74,31 @@
 		   doc (documentation (lish:command-function cmd) 'function))
 	     :when (or (scan scanner c)
 		       (scan scanner doc))
-	     :collect (list (lish:command-name cmd) doc))))
+	     :collect (list (lish:command-name cmd) doc)
+	     ::and
+	     :when collect
+	     :do (push cmd results))))
     (when tab
       (grout-format "Lish commands:~%")
       (grout-print-table (make-table-from
 			  tab :column-names '("Command" "Description")))
-      t)))
+      (or (and collect results)
+	  t))))
 
-(defun system-apropos (thing)
-  (let (did-one)
+(defun system-apropos (thing &optional collect)
+  (let (results)
     (when (find-package :quicklisp)
       (loop :for system :in (symbol-call :ql :system-apropos-list thing)
 	 :do 
-	 (when (not did-one)
+	 (when (not results)
 	   (grout-format "Quicklisp systems:~%"))
 	 (grout-format "~a~%"
 		       ;; I wish there was a real description.
 		       (symbol-call :ql-dist :short-description system))
-	 (setf did-one t)))
-    did-one))
+	 (setf results (or (and collect (cons system results)) t))))
+    results))
 
-(defun os-apropos (thing)
+(defun os-apropos (thing &optional collect)
   ;; /var/cache/man/index.db
   ;; GNU dbm 1.x or ndbm database, little endian, 64-bit
   ;; Ugh. For now just run the dang thing.
@@ -109,29 +115,44 @@
 	(grout-format "System commands:~%")
 	(grout-print-table
 	 (make-table-from table :column-names '("Command" "Description")))
-	t))))
+	(or (and collect table) t)))))
 
 (defparameter *types* '(:lisp :lish :quicklisp :os))
 
-(defun mondo-apropos (&key thing types package external-only)
+(defun mondo-apropos (&key thing types package external-only collect)
   "Look for stuff you can do."
   (when (not thing)
     (error "But apropos what?"))
   (with-grout ()
-    (let ((did-one nil))
+    (let ((results nil) result)
       (when (find :lisp types)
-	(setf did-one
-	      (symbol-apropos thing :package package
-			      :external-only external-only)))
+	(when (and (setf result
+			 (symbol-apropos thing :package package
+					 :external-only external-only
+					 :collect collect))
+		   collect)
+	  (push `(:lisp . ,result) results)))
+
       (when (find :quicklisp types)
-	(when did-one (grout-princ #\newline))
-	(setf did-one (system-apropos thing)))
+	(when result
+	  (grout-princ #\newline))
+	(when (and (setf result (system-apropos thing collect)) collect)
+	  (push `(:quicklisp . ,result) results)))
+
       (when (find :lish types)
-	(when did-one (grout-princ #\newline))
-	(setf did-one (command-apropos thing)))
+	(when result
+	  (grout-princ #\newline))
+	(when (and (setf result (command-apropos thing collect)) collect)
+	  (push `(:lish . ,result) results)))
+
       (when (find :os types)
-	(when did-one (grout-princ #\newline))
-	(setf did-one (os-apropos thing))))))
+	(when result (grout-princ #\newline))
+	(when (and (setf result (os-apropos thing collect)) collect)
+	  (push `(:os . ,result) results)))
+
+      (if collect
+	  results
+	  (and result t)))))
 
 #|
 ;; test the speed of 3 different ways
@@ -182,6 +203,7 @@
     :help "Limit search to this Lisp package.")
    (type symbol :short-arg #\t
     :help "Limit search to this type of thing.")
+   (collect boolean :short-arg #\c :help "Collect results into lists.")
    (thing object :help "Like what?"))
   :args-as args
   "Words given but not taken."
@@ -191,7 +213,11 @@
     (when lisp-only (setf types '(:lisp)))
     (when quicklisp-only (setf types '(:quicklisp)))
     (when type (setf types (list type)))
-    (mondo-apropos :thing thing :types types :package package
-		   :external-only external-only)))
+    (if collect
+	(setf *output*
+	      (mondo-apropos :thing thing :types types :package package
+			     :external-only external-only :collect collect))
+	(mondo-apropos :thing thing :types types :package package
+		       :external-only external-only :collect collect))))
 
 ;; EOF
