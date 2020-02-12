@@ -54,6 +54,7 @@ of it.")
    #:with-open-file-or-stream
    #:with-lines
    #:get-lines
+   #:file-lines
    #:copy-package
    #:fancy-read-from-string
    #:safe-read-from-string
@@ -1978,6 +1979,8 @@ FILE-OR-STREAM can be a stream or a pathname or namestring."
 	(stream-loop file-or-stream)
 	(with-open-file (stream file-or-stream)
 	  (stream-loop stream)))))
+
+(defalias 'file-lines 'get-lines)
 
 (defun package-copy-name (package &optional (prefix "COPY-OF-"))
   "Pick a stupid name for a copied package."
