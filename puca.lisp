@@ -17,7 +17,7 @@
    "Putative Muca (A simple(istic) interface to CVS/git/svn).")
   (:use :cl :dlib :dlib-misc :opsys :keymap :char-util :completion :inator
 	:terminal :terminal-inator :fui :options :fatchar :fatchar-io
-	:table :table-print :collections :table-viewer
+	:table :table-print :collections :table-viewer :ochar
 	#+use-re :re #-use-re :ppcre)
   (:export
    ;; Main entry point
@@ -969,14 +969,20 @@ for the command-function).")
      :while (not done))
   (get-list *puca* :no-message t))
 
+(defgeneric item-match (string item)
+  (:documentation "Return true if STRING is found in a puca-item.")
+  (:method (string (item goo))
+    (osearch string (goo-filename item) :test #'ochar-equal))
+  (:method (string (item history))
+    (or (osearch string (history-message item) :test #'ochar-equal)
+	(osearch string (history-email item) :test #'ochar-equal))))
+
 (defmethod search-command ((p puca-app))
   (with-slots (goo (point inator::point) top bottom) p
     (tt-move-to (- (tt-height) 2) 3)
     (tt-finish-output)
     (flet ((find-it (str g)
-	     (position str g :key #'goo-filename
-		       :test (lambda (a b)
-			       (search a b :test #'char-equal))))
+	     (position str g :test #'item-match))
 	   (move-to (i)
 	     (setf point i)
 	     (cond
