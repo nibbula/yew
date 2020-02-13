@@ -21,6 +21,7 @@
    ;; Things that one might want to use externally, like in external commands.
    #:line-editor
    #:line-editor-p
+   #:*line-editor-prototype*
    #:make-line-editor
    #:screen-relative-row
    #:screen-col

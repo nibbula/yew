@@ -113,7 +113,7 @@ it can be somewhat unpredictable, especially with threads. Don't use it for
 anything important.")
 
 ;; The history is not in here because it is shared by all editors.
-(defclass line-editor (terminal-inator multi-inator-mixin)
+(defclass line-editor (terminal-inator multi-inator-mixin options:options-mixin)
   ((last-event
     :accessor last-event
     :initform nil
@@ -374,6 +374,9 @@ Otherwise the region is deactivated every command loop.")
 			 (pick-a-terminal-type)))
   )
   (:documentation "State for a stupid little line editor."))
+
+(defvar *line-editor-prototype* nil
+  "Thing for options mixin.")
 
 (defvar *initial-line-size* 20)
 
