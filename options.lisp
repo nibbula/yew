@@ -61,11 +61,7 @@ For example:
    )
   (:documentation "Options mixin."))
 
-(defmethod initialize-instance
-    :after ((o options-mixin) &rest initargs &key &allow-other-keys)
-  "Initialize a options-mixin."
-  (declare (ignore initargs))
-  ;; Instantiate options from the defined option list.
+(defmethod initialize-options ((o options-mixin))
   (let* ((package (symbol-package (class-name (class-of o))))
 	 (prototype-name (symbolify
 			  (s+ "*" (class-name (class-of o)) "-prototype*")
@@ -73,40 +69,65 @@ For example:
 	 (prototype (and (boundp prototype-name)
 			 (symbol-value prototype-name))))
     (loop :for option :in prototype :do
-       (push (apply #'make-instance (second option)
-		    (cddr option))
-	     (options o)))))
+       (when (not (find (getf (cddr option) :name) (options o)
+			:key #'option-name :test #'equalp))
+	 (push (apply #'make-instance (second option)
+		      (cddr option))
+	       (options o))))))
+
+(defmethod initialize-instance
+    :after ((o options-mixin) &rest initargs &key &allow-other-keys)
+  "Initialize a options-mixin."
+  (declare (ignore initargs))
+  ;; Instantiate options from the defined option list.
+  (initialize-options o))
 
 (defgeneric find-option (obj name)
   (:documentation
    "Find the option of the object OBJ, named NAME. Error if there is none.")
   (:method ((obj options-mixin) name)
+    (when (not (options obj))
+      (initialize-options obj))
     (or (find name (options obj) :key #'option-name :test #'equalp)
-	(error "No such option ~s" name))))
+	(progn
+	  ;; Initialize and try again.
+	  (initialize-options obj)
+	  (or (find name (options obj) :key #'option-name :test #'equalp)
+	      (error "No such option ~s" name))))))
 
 (defgeneric set-option (obj name value)
   (:documentation "Set the option named NAME, for OBJ, to VALUE.")
   (:method ((obj options-mixin) name value)
+    (when (not (options obj))
+      (initialize-options obj))
     (setf (option-value (find-option obj name)) value)))
 
 (defgeneric get-option (obj name)
   (:documentation "Get the option named NAME, for OBJ.")
   (:method ((obj options-mixin) name)
+    (when (not (options obj))
+      (initialize-options obj))
     (option-value (find-option obj name))))
 
-;;; This is pretty weird.
-;;;
-;;; When we define an option we squirrel away it's details in a *global*
-;;; variable for it's containing class. Then, when we create an object with
-;;; options, we intuit it's varible name from the object's class name and
-;;; package, and instantiate the options, with the initargs given here.
-;;;
-;;; I would like to hang these on a class allocated slot, but there's no
-;;; instance around at the time we're defining them.
+;; This is pretty messed up.
+;;
+;; When we define an option we squirrel away it's details in a *global*
+;; variable for it's containing class. Then, when we create an object with
+;; options, we intuit it's varible name from the object's class name and
+;; package, and instantiate the options, with the initargs given here.
+;;
+;; I would like to hang these on a class allocated slot, but there's no
+;; instance around at the time we're defining them.
+;;
+;; The stupid thing is this: if the defoption is done after the object is
+;; created, then the object doesn't have the options, so we have to make them,
+;; when we first try to access them.
 
 (defmacro defoption (class name type &rest args)
   "Define an option of type TYPE, named NAME for THING, with the initargs ARGS."
-  (let* ((prototype (symbolify (s+ "*" class "-prototype*")))
+  (let* ((package (symbol-package class))
+	 (prototype (symbolify (s+ "*" class "-prototype*")
+			       :package package))
 	 (sym (symbolify (s+ class "-" name)))
 	 (name-string (string-downcase name)))
     `(progn
