@@ -45,18 +45,18 @@ we can use pick-list effectively."
      "𝟎𝟏𝟐𝟑𝟒𝟓𝟔𝟕𝟖𝟗")
     ("𝐼𝑡𝑎𝑙𝑖𝑐"
      "𝐴𝐵𝐶𝐷𝐸𝐹𝐺𝐻𝐼𝐽𝐾𝐿𝑀𝑁𝑂𝑃𝑄𝑅𝑆𝑇𝑈𝑉𝑊𝑋𝑌𝑍"
-     "𝑎𝑏𝑐𝑑𝑒𝑓𝑔𝑖𝑗𝑘𝑙𝑚𝑛𝑜𝑝𝑞𝑟𝑠𝑡𝑢𝑣𝑤𝑥𝑦𝑧")
+     "𝑎𝑏𝑐𝑑𝑒𝑓𝑔ℎ𝑖𝑗𝑘𝑙𝑚𝑛𝑜𝑝𝑞𝑟𝑠𝑡𝑢𝑣𝑤𝑥𝑦𝑧")
     ("𝑩𝒐𝒍𝒅 𝑰𝒕𝒂𝒍𝒊𝒄"
      "𝑨𝑩𝑪𝑫𝑬𝑭𝑮𝑯𝑰𝑱𝑲𝑳𝑴𝑵𝑶𝑷𝑸𝑹𝑺𝑻𝑼𝑽𝑾𝑿𝒀𝒁"
      "𝒂𝒃𝒄𝒅𝒆𝒇𝒈𝒉𝒊𝒋𝒌𝒍𝒎𝒏𝒐𝒑𝒒𝒓𝒔𝒕𝒖𝒗𝒘𝒙𝒚𝒛")
     ("𝒮𝒸𝓇𝒾𝓅𝓉"
-     "𝒜𝒞𝒟𝒢𝒥𝒦𝒩𝒪𝒫𝒬𝒮𝒯𝒰𝒱𝒲𝒳𝒴𝒵"
-     "𝒶𝒷𝒸𝒹𝒻𝒽𝒾𝒿𝓀𝓁𝓂𝓃𝓅𝓆𝓇𝓈𝓉𝓊𝓋𝓌𝓍𝓎𝓏")
+     "𝒜ℬ𝒞𝒟ℰℱ𝒢ℋℐ𝒥𝒦ℒℳ𝒩𝒪𝒫𝒬ℛ𝒮𝒯𝒰𝒱𝒲𝒳𝒴𝒵"
+     "𝒶𝒷𝒸𝒹ℯ𝒻ℊ𝒽𝒾𝒿𝓀𝓁𝓂𝓃ℴ𝓅𝓆𝓇𝓈𝓉𝓊𝓋𝓌𝓍𝓎𝓏")
     ("𝓑𝓸𝓵𝓭 𝓢𝓬𝓻𝓲𝓹𝓽"
      "𝓐𝓑𝓒𝓓𝓔𝓕𝓖𝓗𝓘𝓙𝓚𝓛𝓜𝓝𝓞𝓟𝓠𝓡𝓢𝓣𝓤𝓥𝓦𝓧𝓨𝓩"
      "𝓪𝓫𝓬𝓭𝓮𝓯𝓰𝓱𝓲𝓳𝓴𝓵𝓶𝓷𝓸𝓹𝓺𝓻𝓼𝓽𝓾𝓿𝔀𝔁𝔂𝔃")
     ("𝔉𝔯𝔞𝔠𝔱𝔲𝔯"
-     "𝔄𝔅𝔇𝔈𝔉𝔊𝔍𝔎𝔏𝔐𝔑𝔒𝔓𝔔𝔖𝔗𝔘𝔙𝔚𝔛𝔜"
+     "𝔄𝔅ℭ𝔇𝔈𝔉𝔊ℌℑ𝔍𝔎𝔏𝔐𝔑𝔒𝔓𝔔ℜ𝔖𝔗𝔘𝔙𝔚𝔛𝔜ℨ"
      "𝔞𝔟𝔠𝔡𝔢𝔣𝔤𝔥𝔦𝔧𝔨𝔩𝔪𝔫𝔬𝔭𝔮𝔯𝔰𝔱𝔲𝔳𝔴𝔵𝔶𝔷")
     ("𝔻𝕠𝕦𝕓𝕝𝕖-𝕊𝕥𝕣𝕦𝕔𝕜"
      "𝔸𝔹ℂ𝔻𝔼𝔽𝔾ℍ𝕀𝕁𝕂𝕃𝕄ℕ𝕆ℙℚℝ𝕊𝕋𝕌𝕍𝕎𝕏𝕐ℤ"
@@ -140,10 +140,9 @@ we can use pick-list effectively."
        set))
   "List of alphabets.")
 
-(defoption line-editor saved-default-binding option :value nil
+(defoption line-editor saved-keymap option :value nil
   :documentation
-  "The default key binding before we turned on altchar-mode, so we can
-restore it.")
+  "The keymap that's pushed on the inator-keymap, so we can remove it.")
 
 (defoption line-editor character-set option :value nil
   :documentation "The alternate character set.")
@@ -167,39 +166,31 @@ restore it.")
 (defmulti-method altchar-insert-command ((e line-editor))
   (let ((set (line-editor-character-set e)))
     (when set
-      ;; (let ((char (key-binding (rl::last-event e) (alphabet-keymap set))))
       (let ((char (find-char (rl::last-event e) set)))
 	;; (message e "~s" char)
 	(if char
 	    (self-insert e :char char)
-	    ;;(process-event e (rl::last-event e) (inator-keymap e))
-	    (self-insert e)
-	    )))))
+	    (self-insert e))))))
 
 (defun altchar-mode (e &optional (state t state-provided-p))
   "Toggle or set altchar-mode."
   (with-slots ((local-keymap rl::local-keymap)) e
     (if (if state-provided-p (not state) (line-editor-altchar-mode e))
 	(progn
-	  ;;(setf (keymap-default-binding local-keymap) nil)
-	  (if (and (line-editor-character-set e)
-		   (alphabet-p (line-editor-character-set e)))
-	      (remove-keymap (alphabet-keymap (line-editor-character-set e))
-			     ;; local-keymap
-			     (inator-keymap e)
-			     )
-	      (message e "You need to pick a character set for this to work."))
+	  (when (line-editor-saved-keymap e)
+	    (remove-keymap (line-editor-saved-keymap e) (inator-keymap e)))
 	  (setf (line-editor-altchar-mode e) nil))
 	(progn
-	  ;;(setf (keymap-default-binding local-keymap) 'altchar-insert-command
-	  (when (and (line-editor-character-set e)
-		     (alphabet-p (line-editor-character-set e)))
-	    (push-keymap (alphabet-keymap (line-editor-character-set e))
-			 ;; local-keymap
-			 (inator-keymap e)
-			 ))
-	  (setf (line-editor-altchar-mode e) t))))
-  (message e "Altchar mode ~:[off~;on~]." (line-editor-altchar-mode e)))
+	  (if (and (line-editor-character-set e)
+		   (alphabet-p (line-editor-character-set e)))
+	      (progn
+		(push-keymap (alphabet-keymap (line-editor-character-set e))
+			     (inator-keymap e))
+		(setf (line-editor-saved-keymap e)
+		      (alphabet-keymap (line-editor-character-set e))))
+	      (message e "You need to pick a character set for this to work."))
+	  (setf (line-editor-altchar-mode e) t)))
+    (message e "Altchar mode ~:[off~;on~]." (line-editor-altchar-mode e))))
 
 (defun pick-altchar ()
   (pick-list (loop :for a :in *alphabets* :collect a)))
