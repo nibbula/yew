@@ -321,7 +321,7 @@ function BY returns true, the second for which it returns false. The order of
 elements of the result sequence is unspecified, but probably backwards. Of
 course, you can reverse them yourself if you want."
   (let (a b)
-    (omapn (_ (if (funcall by _) (push _ a) (push _ b))) seq)
+    (omapn (_ (if (funcall by _) (push _ a) (push _ b))) sequence)
     (values a b)))
 
 (defvar *default-ellipsis*
