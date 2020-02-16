@@ -972,10 +972,7 @@ for the command-function).")
 (defgeneric item-match (string item)
   (:documentation "Return true if STRING is found in a puca-item.")
   (:method (string (item goo))
-    (osearch string (goo-filename item) :test #'ochar-equal))
-  (:method (string (item history))
-    (or (osearch string (history-message item) :test #'ochar-equal)
-	(osearch string (history-email item) :test #'ochar-equal))))
+    (osearch string (goo-filename item) :test #'ochar-equal)))
 
 (defmethod search-command ((p puca-app))
   (with-slots (goo (point inator::point) top bottom) p
@@ -1020,6 +1017,10 @@ for the command-function).")
 
 (defun make-history (&rest initargs)
   (apply #'make-instance 'history initargs))
+
+(defmethod item-match (string (item history))
+  (or (osearch string (history-message item) :test #'ochar-equal)
+      (osearch string (history-email item) :test #'ochar-equal)))
 
 (defclass puca-history (puca-app)
   ((files
