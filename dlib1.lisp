@@ -1773,7 +1773,8 @@ the right package."
   `(when (and dlib:*dbug*
 	      (or (not *dbug-package*)
 		  (equal *dbug-package* (package-name *package*))))
-     (funcall #'format *debug-io* ,fmt ,@args) (finish-output *debug-io*)))
+     (funcall #'format *trace-output* ,fmt ,@args)
+     (finish-output *trace-output*)))
 
 (defmacro dbugf (facility fmt &rest args)
   "Print a debugging message when debugging is turned on and maybe we're in
@@ -1784,7 +1785,8 @@ the right package, and the FACILITY is activated."
 	      (or
 	       (member ,facility *dbug-facility*)
 	       (member :all *dbug-facility*)))
-     (funcall #'format *debug-io* ,fmt ,@args) (finish-output *debug-io*)))
+     (funcall #'format *trace-output* ,fmt ,@args)
+     (finish-output *trace-output*)))
 
 (defmacro if-dbugf ((facility) &body body)
   "Evaluate BODY when debugging is turned on and maybe we're in
@@ -1794,7 +1796,7 @@ the right package, and the FACILITY is activated."
 	       (member ,facility *dbug-facility*)
 	       (member :all *dbug-facility*)))
      (multiple-value-prog1 (progn ,@body)
-       (finish-output *debug-io*))))
+       (finish-output *trace-output*))))
 
 (defmacro with-dbug (&body body)
   "Evaluate the BODY with debugging message printing turned on."
@@ -2035,7 +2037,9 @@ is named \"COPY-OF-<Package><n>\"."
 					 (errorp t)
 					 element-type)
   "Copy data from reading from SOURCE and writing to DESTINATION, until we get
-an EOF on SOURCE."
+an EOF on SOURCE. If ERRORP is true, signal an error if the element types are
+not the same. Use ELEMENT-TYPE as the specific element type for copying, which
+could be useful in case the streams support multiple element types."
   ;; ^^^ We could try to make *buffer-size* be the minimum of the file size
   ;; (if it's a file) and the page size, but I'm pretty sure that the stat
   ;; call and possible file I/O is way more inefficient than wasting less than
