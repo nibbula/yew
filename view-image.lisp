@@ -19,17 +19,17 @@
    ))
 (in-package :view-image)
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defparameter *fast*
-    '((speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
-  (defparameter *fastest*
-    '((speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
-  (defparameter *dev*
-    '((speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;; (eval-when (:compile-toplevel :load-toplevel :execute)
+;;   (defparameter *fast*
+;;     '((speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
+;;   (defparameter *fastest*
+;;     '((speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
+;;   (defparameter *dev*
+;;     '((speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
-  (defparameter *optimize-settings* *dev*))
+;;   (defparameter *optimize-settings* *dev*))
 
-(declaim #.`(optimize ,.*optimize-settings*))
+;; (declaim #.`(optimize ,.*optimize-settings*))
 
 (defkeymap *image-viewer-keymap*)
 (defkeymap *image-viewer-escape-keymap*)
@@ -528,6 +528,7 @@ the first time it fails to identify the image."
   (tt-cursor-on)
   (tt-finish-output)
   (let (form real-form func warns fails (*package* (find-package :popi)))
+    (declare (ignorable warns fails))
     (catch 'flanky
       (handler-case
 	  (progn
