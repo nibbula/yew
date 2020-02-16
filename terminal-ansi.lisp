@@ -213,9 +213,10 @@ two values ROW and COLUMN."
   (let ((row 1) (col 1) sep
 	(result (terminal-report tty #\R "~c[6n" #\escape)))
     ;;(dbugf :crunch "curs pos result = ~s~%" (coerce result 'list))
-    (when (and result (>= (length result) 5))
-      (setf sep (position #\; result)
-	    row (parse-integer (subseq result 2 sep) :junk-allowed t)
+    (when (and result (>= (length result) 5)
+	       (setf sep (position #\; result))
+	       (< sep (1- (length result))))
+      (setf row (parse-integer (subseq result 2 sep) :junk-allowed t)
 	    col (parse-integer (subseq result (1+ sep) (length result))
 			       :junk-allowed t)))
     #| @@@ temporarily get rid of this error |#
@@ -796,7 +797,7 @@ i.e. the terminal is 'line buffered'."
   (terminal-write-char tty #\return))
 
 (defmethod terminal-delete-char ((tty terminal-ansi-stream) n)
-  (terminal-escape-sequence "P" (when (> n 1) n)))
+  (terminal-escape-sequence tty "P" (when (> n 1) n)))
 
 (defmethod terminal-insert-char ((tty terminal-ansi-stream) n)
   (terminal-escape-sequence tty "@" (when (> n 1) n)))
