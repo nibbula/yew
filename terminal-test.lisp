@@ -267,8 +267,8 @@
        :do
        (tt-set-attributes (list a))
        (tt-write-string (string-capitalize a))
+       (tt-normal)
        (when (eq a :invisible)
-	 (tt-normal)
 	 (tt-format " <-- ~a" (string-capitalize a)))
        (tt-newline))
     (tt-normal))
@@ -628,7 +628,9 @@ drawing, which will get overwritten."
 	  (tt-write-char (elt junk (random (length junk)))))
 	(tt-write-char #\newline)
 	(tt-finish-output)
-	(sleep .03))
+	;; (sleep .03)
+	(sleep .003)
+	)
      (tt-set-scrolling-region nil nil)
      (tt-move-to 4 0)
      (tt-erase-line)
@@ -1036,6 +1038,24 @@ drawing, which will get overwritten."
       (tt-disable-events '(:mouse-buttons :mouse-motion :resize))
       (tt-enable-events saved-events))))
 
+(defun test-autowrap ()
+  (blurp ()
+    (let ((width (tt-width))
+	  before-row before-col after-row after-col)
+      (tt-move-to (round (tt-height) 2) 0)
+      (loop :repeat width :do
+	 (tt-write-char #\-))
+      (tt-finish-output)
+      (setf (values before-row before-col)
+	    (terminal-get-cursor-position *terminal*))
+      (tt-write-char #\X)
+      (tt-finish-output)
+      (setf (values after-row after-col)
+	    (terminal-get-cursor-position *terminal*))
+      (tt-fresh-line)
+      (tt-format "before ~s ~s~%after  ~s ~s~%"
+		 before-row before-col after-row after-col))))
+
 ;; @@@ how about a test of mouse motion only events?
 
 (defstruct menu
@@ -1060,6 +1080,7 @@ drawing, which will get overwritten."
      ("RGB 24-bit colors"             . test-rgb-colors)
      ("Mouse events"                  . test-mouse)
      ("Input and Keys"                . test-input)
+     ("Autowrap"		      . test-autowrap)
      ("Scrolling menu"		      . *scrolling-menu*)
      )))
 
