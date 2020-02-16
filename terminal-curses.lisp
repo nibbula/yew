@@ -487,9 +487,9 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-color ((tty terminal-curses) fg bg)
   ;; This defaulting is bullcrap. But so is curses defaulting.
   ;; See man default_colors.
-  (when (eq fg :default)
+  (when (or (null fg) (eq fg :default))
     (setf fg :white))
-  (when (eq bg :default)
+  (when (or (null bg) (eq bg :default))
     (setf bg :black))
   (let ((fg-num (color-number fg))
 	(bg-num (color-number bg)))
