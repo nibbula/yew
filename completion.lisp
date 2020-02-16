@@ -713,6 +713,10 @@ true, then just look at the external symbols."
 ;; already. We should really base it on what the implementation does.
 ;; (probably mostly for Allegro)
 
+;; It might be nice if it also could do expansion like:
+;; m-v-b -> multiple-value-bind
+;; But that is indeed another interface, perhaps akin to shell expansions.
+
 (defun symbol-completion (w &key package (external nil) (include-packages t))
   "Return the first completion for W in the symbols of PACKAGE, which defaults
 to the current package. If EXTERNAL is true, use only the external symbols.
