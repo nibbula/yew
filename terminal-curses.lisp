@@ -186,6 +186,8 @@ require terminal driver support."))
 ;     (with-slots (window-rows window-columns) tty
 ;       (format t "[~d x ~d]~%" window-columns window-rows))))
 
+(defvar *default-scroll-ok* 1)
+
 (defmethod terminal-start ((tty terminal-curses))
   "Set up the terminal for reading a character at a time without echoing."
   (when (not (device tty))		; already done
@@ -203,7 +205,7 @@ require terminal driver support."))
   (bkgd 0)
   (idlok curses:*stdscr* 0)
   (leaveok curses:*stdscr* 0)
-  (scrollok curses:*stdscr* 0)
+  (scrollok curses:*stdscr* *default-scroll-ok*)
   (curs-set 1)
   (init-colors)
   (terminal-get-size tty))
@@ -418,13 +420,13 @@ i.e. the terminal is 'line buffered'."
   (when (> n 0)
     (scrollok *stdscr* 1)
     (scrl n)
-    (scrollok *stdscr* 0)))
+    (scrollok *stdscr* *default-scroll-ok*)))
 
 (defmethod terminal-scroll-up ((tty terminal-curses) n)
   (when (> n 0)
     (scrollok *stdscr* 1)
     (scrl (- n))
-    (scrollok *stdscr* 0)))
+    (scrollok *stdscr* *default-scroll-ok*)))
   
 (defmethod terminal-erase-to-eol ((tty terminal-curses))
   (clrtoeol))
@@ -707,7 +709,8 @@ Only replace in START and END range."
 				  &key &allow-other-keys)
   (etypecase seq
     (string
-     (terminal-write-string stream seq :start start :end end))
+     (terminal-write-string stream seq :start start :end end)
+     seq)
     (list
      (with-slots (output-stream) stream
        (loop :with i = 0 :and l = seq
