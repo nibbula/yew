@@ -346,11 +346,13 @@ if it's blank or the same as the previous line."
 	(and (or (not (is-blank)) allow-history-blanks)
 	     (or (not (is-dup)) allow-history-duplicates))))))
 
-(defsingle accept-line (e)
+(defsingle accept-line (e &key string)
+  "Accept the buffer as input. If STRING is given, use that instead of the
+current buffer."
   (with-slots (buf buf-str quit-flag history-context accept-does-newline) e
     (history-go-to-last history-context)
-    (if (add-to-history-p e buf-str)
-	(history-put (buffer-string buf) history-context)
+    (if (add-to-history-p e (or string buf-str))
+	(history-put (or string (buffer-string buf)) history-context)
 	(history-delete-last history-context))
     (setf quit-flag t)))
 

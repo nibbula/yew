@@ -394,8 +394,8 @@ Keyword arguments:
        ;; 	     (oelt (line-editor-terminal e) :wrapped-terminal))))
 
        ;; Add the new line we're working on.
-       (history-add nil)
-       (history-next)
+       ;; (history-add nil)		; @@@@@@@ This is bad.
+       ;; (history-next)
 
        (run-hooks *entry-hook*)
 
@@ -415,7 +415,13 @@ Keyword arguments:
     (when #-window (eq (tt-input-mode) :line) #+windows nil ;; @@@ WORKAROUND
       (update-display e)
       (finish-output *terminal*)
-      (return-from rl (values (read-line *terminal*) e)))
+      (let ((line (read-line *terminal*)))
+	(unwind-protect
+	     (progn
+	       (history-line-open)
+	       (accept-line e :string line))
+	  (history-line-close))
+	(return-from rl (values line e))))
 
     ;; Command loop
     (with-slots (quit-flag exit-flag command buf point last-command terminal
@@ -426,63 +432,65 @@ Keyword arguments:
       ;; 	(terminal-get-cursor-position *terminal*))
       (let ((result nil))
 	(unwind-protect
-	     (loop :do
-	        (finish-output)
-		;;(describe buf *debug-io*)
-		(update-display e)
-		(tt-finish-output)
-		(when debugging
-		  (message e "~d ~d [~d x ~d] ~a ~w"
-			   (screen-col e) (screen-relative-row e)
-			   (terminal-window-columns terminal)
-			   (terminal-window-rows terminal)
-			   ;; (when (typep *terminal*
-			   ;; 		'terminal-crunch:terminal-crunch)
-			   ;;   (terminal-crunch::start-line *terminal*))
-			   ;;point command)
-			   command (inator-contexts e))
-		  (show-message-log e))
-		;; @@ Is this really where I want it?
-		(when (line-editor-output-callback e)
-		  (tt-save-cursor)
-		  (tt-cursor-off)
-		  (unwind-protect
-		       (funcall (line-editor-output-callback e) e)
-		    (tt-cursor-on)
-		    (tt-restore-cursor)))
-		;;(setf command (await-event e))
-		(setf last-event (await-event e))
-		(log-message e "command ~s" command)
-		;; Erase the temporary message.
-		(when (and temporary-message (not keep-message))
-		  (setf temporary-message nil))
-		(setf keep-region-active nil)
-		(if (equal command '(nil))
-		    (if eof-error-p
-			(error (make-condition 'end-of-file
-					       :stream input-stream))
-			(setf result eof-value))
-		    (progn
-		      (setf (did-complete e) nil)
-		      ;;(perform-key e command (inator-keymap e))
-		      (process-event e last-event (inator-keymap e))
-		      (setf (last-command-was-completion e) (did-complete e))
-		      (when (not (last-command-was-completion e))
-			(set-completion-count e 0))
-		      (when exit-flag (setf result quit-value))
-		      ;; @@@ perhaps this should be done by a hook?
-		      (run-hooks *post-command-hook*)
-		      (highlight-matching-parentheses e)
-		      ))
-		(setf last-command command)
-		(run-hooks filter-hook e)
-		;; (when (need-to-recolor e)
-		;;   (recolor-line e))
-		;; Turn off the region if it's not flagged to be kept.
-		;;(dbugf :rl "region-active = ~s~%keep-region-active = ~s~%")
-		(when (and region-active (not keep-region-active))
-		  (setf region-active nil))
-		:while (not quit-flag))
+	     (progn
+	       (history-line-open)
+	       (loop :do
+		  (finish-output)
+		  ;;(describe buf *debug-io*)
+		  (update-display e)
+		  (tt-finish-output)
+		  (when debugging
+		    (message e "~d ~d [~d x ~d] ~a ~w"
+			     (screen-col e) (screen-relative-row e)
+			     (terminal-window-columns terminal)
+			     (terminal-window-rows terminal)
+			     ;; (when (typep *terminal*
+			     ;; 	     'terminal-crunch:terminal-crunch)
+			     ;;   (terminal-crunch::start-line *terminal*))
+			     ;;point command)
+			     command (inator-contexts e))
+		    (show-message-log e))
+		  ;; @@ Is this really where I want it?
+		  (when (line-editor-output-callback e)
+		    (tt-save-cursor)
+		    (tt-cursor-off)
+		    (unwind-protect
+			 (funcall (line-editor-output-callback e) e)
+		      (tt-cursor-on)
+		      (tt-restore-cursor)))
+		  ;;(setf command (await-event e))
+		  (setf last-event (await-event e))
+		  (log-message e "command ~s" command)
+		  ;; Erase the temporary message.
+		  (when (and temporary-message (not keep-message))
+		    (setf temporary-message nil))
+		  (setf keep-region-active nil)
+		  (if (equal command '(nil))
+		      (if eof-error-p
+			  (error (make-condition 'end-of-file
+						 :stream input-stream))
+			  (setf result eof-value))
+		      (progn
+			(setf (did-complete e) nil)
+			;;(perform-key e command (inator-keymap e))
+			(process-event e last-event (inator-keymap e))
+			(setf (last-command-was-completion e) (did-complete e))
+			(when (not (last-command-was-completion e))
+			  (set-completion-count e 0))
+			(when exit-flag (setf result quit-value))
+			;; @@@ perhaps this should be done by a hook?
+			(run-hooks *post-command-hook*)
+			(highlight-matching-parentheses e)
+			))
+		  (setf last-command command)
+		  (run-hooks filter-hook e)
+		  ;; (when (need-to-recolor e)
+		  ;;   (recolor-line e))
+		  ;; Turn off the region if it's not flagged to be kept.
+		  ;;(dbugf :rl "region-active = ~s~%keep-region-active = ~s~%")
+		  (when (and region-active (not keep-region-active))
+		    (setf region-active nil))
+		  :while (not quit-flag)))
 	  (block nil
 	    (clear-completions e)
 	    (setf (first-point e) (fill-pointer buf))
@@ -498,8 +506,7 @@ Keyword arguments:
 	    (run-hooks *exit-hook*)
 	    (terminal-end terminal terminal-state)
 	    ;; Make sure the NIL history item is gone.
-	    (when (not (dl-content (history-head (get-history history-context))))
-	      (history-delete-last history-context))))
+	    (history-line-close)))
 	(values (if result result (fatchar-string-to-string buf))
 		e)))))
 

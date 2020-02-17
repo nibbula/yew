@@ -158,6 +158,24 @@
   "SETF form for the current history node."
   `(history-current-set ,store ,context))
 
+;; @@@ I'm not fond of the next two, but otherwise I need to think of a way
+;; to have the current line navigable before we accept.
+
+(defun history-line-open (&optional (context *history-context*))
+  "Open a blank history item at the end that we're working on."
+  (declare (ignore context))
+  (history-add nil)		; @@@@@@@ This is bad.
+  (history-next)
+  nil)
+
+(defun history-line-close (&optional (context *history-context*))
+  "Make sure the NIL history item is gone."
+  (let ((content (dl-content (history-head (get-history context)))))
+    (when (or (null content)
+	      (null (history-entry-line content)))
+      (history-delete-last context)))
+  nil)
+
 ;; This is quite inefficient because dl-list's suck.
 (defun history-nth (n &optional (context *history-context*))
   "Return the Nth element of the history for CONTEXT, or nil."
