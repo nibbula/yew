@@ -8,23 +8,29 @@
 ;; nature, treating various data structures uniformly has many potential
 ;; performance pitfalls.
 
-(declaim (optimize (debug 2)))
+;; (declaim (optimize (debug 2)))
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defmacro stfu-defpackage (name &body body)
-    `(if (find-package ,name)
-	 (let (#+sbcl (*on-package-variance* '(:warn (,name) :error t)))
-	   (dlib:without-warning
-	       (defpackage ,name
-		 ,@body)))
-	 (dlib:without-warning
-	     (defpackage ,name
-	       ,@body)))))
+;; (eval-when (:compile-toplevel :load-toplevel :execute)
+;;   (defmacro stfu-defpackage (name &body body)
+;;     `(if (find-package ,name)
+;; 	 (let (#+sbcl (*on-package-variance* '(:warn (,name) :error t)))
+;; 	   (dlib:without-warning
+;; 	       (defpackage ,name
+;; 		 ,@body)))
+;; 	 (dlib:without-warning
+;; 	     (defpackage ,name
+;; 	       ,@body)))))
 
 ;; @@@ The ‘o’ prefix is rather ugly. We should entertain other naming ideas.
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-(stfu-defpackage :collections
+;; (eval-when (:compile-toplevel :load-toplevel :execute)
+;; (stfu-defpackage :collections
+
+(let #+sbcl ((sb-ext:*on-package-variance*
+	      (if (>= dlib:*lisp-version-number* 20001)
+		  '(:suppress t) '(:warn t))))
+     #-sbcl ()
+(defpackage :collections
   (:documentation
    "Generic collection functions. These aren't so much for the methods defined
 in here, but it's really so you can define your own methods which work
@@ -186,10 +192,10 @@ numbers."))
 (defmethod ordered-collection-p ((collection container))
   (ordered-collection-p (container-data collection)))
 
-;; I know, iterators are so C++ you say? Yes, we sure don't want to use
-;; them most of the time, but sometimes they actually useful, like when you
-;; want to iterate over multiple generic sequences in parallel and want it
-;; to be even theoretically efficient for collections without O(1) or even O(n)
+;; I know, iterators are so C++ you say? Yes, we sure don't want to use them
+;; most of the time, but sometimes they are actually useful, like when you
+;; want to iterate over multiple generic sequences in parallel and want it to
+;; be even theoretically efficient for collections without O(1) or even O(n)
 ;; random access.
 
 (defclass iterator ()
@@ -282,6 +288,7 @@ that has START and START-P and END and END-P."
 	     (,func ,@args ::end end)
 	     (,func ,@args)))))
 
+;; @@@ There must be a better way to do this??
 (defmacro call-with-start-end-test (func args)
   "Call func with args and START, END, TEST, and TEST-NOT keywords. Assume that
 the environemnt has <arg> and <arg>-P for all those keywords."
@@ -1517,6 +1524,9 @@ REPLACEMENT.")
 (defgeneric opush-element (collection item)
   (:documentation "Add ITEM to COLLECTION and return COLLECTION.")
   (:method ((thing list) item)   (push item thing))
+  ;; @@@ Hmmm. This isn't prepending, it's appending. Prepending is too
+  ;; expensive for a vector, but appending is too expensive for a list, which
+  ;; is maybe why this is a bad idea in the first place.
   (:method ((thing vector) item) (vector-push-extend item thing) thing))
 
 (defmacro opush (collection item)
