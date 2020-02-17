@@ -223,6 +223,7 @@ and move forward a character."
     (history-prev (history-context e))
     (use-hist e)))
 
+;; @@@ This is stupid. We should actually blow this thing up.
 (defun point-coords (e)
   "Return the line and column of point."
   (with-context ()
@@ -248,6 +249,12 @@ the new point."
   ;; sure that's entirely avoidable, but perhaps it could be quicker by making
   ;; it be a more generic buffer position iterator, and then bailing out as
   ;; soon as we get our thing.
+  ;;
+  ;; Also, we could prevent double traversal (at least here), by changing
+  ;; calculate-line-endings to make the spot (in column-spot) parameters
+  ;; functions, so that what column we wanted set in column-spots would be
+  ;; gotten from the index in spots, as soon at it was set. Unfortunately that
+  ;; wouldn't work for previous lines, only next lines.
   (dbugf :roo "FIPPPY~%")
   (let* ((coords (point-coords e))
 	 (line (car coords))
