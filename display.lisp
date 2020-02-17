@@ -417,8 +417,10 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 	;; (dbugf :rl "-> point-line ~s~%" point-line)
 	;; (dbugf :rl "-> point-col ~s~%" point-col)
 	;; (dbugf :rl "-> point-offset ~s~%" point-offset)
-	(multiple-value-setq (start-row old-col)
-	  (terminal-get-cursor-position (line-editor-terminal e)))
+
+	;; (multiple-value-setq (start-row old-col)
+	;;   (terminal-get-cursor-position (line-editor-terminal e)))
+	(setf start-row screen-relative-row old-col 0)
 
 	;; If there's not enough room to display the lines, make some.
 	;; (when (> (+ start-row relative-top total-lines) (tt-height))
