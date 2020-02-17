@@ -971,7 +971,9 @@ characters. If we don't get anything after a while, just return what we got."
       (syscall (tcgetattr tty mode))
       (with-foreign-slots ((c_cc) mode (:struct termios))
 	(setf (mem-aref c_cc :char char) code)
-	(syscall (tcsetattr tty +TCSANOW+ mode))))
+	;; (syscall (tcsetattr tty +TCSANOW+ mode))
+	(syscall (tcsetattr tty +TCSADRAIN+ mode))
+	))
     character))
 
 (defsetf control-char set-control-char)
@@ -1116,7 +1118,8 @@ The individual settings override the settings in MODE."
 	    (when raw-supplied (raw-mode raw))
 	    (when timeout-supplied (set-timeout timeout))))
 	;; Now actually set it.
-	(when (< (tcsetattr tty +TCSANOW+ new-mode) 0)
+	;; (when (< (tcsetattr tty +TCSANOW+ new-mode) 0)
+	(when (< (tcsetattr tty +TCSADRAIN+ new-mode) 0)
 	  (error "Can't set terminal mode. ~d ~d" *errno* tty)))
       (foreign-free new-mode))))
 
