@@ -104,7 +104,7 @@
 ;; the buffer hasn't changed.
 
 (defun %calculate-line-endings (buffer start-column end-column spots
-				column-spots)
+				column-spots autowrap-delay)
   "The real guts of it. See the generic function for documentation."
   (let (endings
 	(col start-column)		; Start after the prompt
@@ -130,6 +130,14 @@
 		 cc (if (fatchar-p c) (fatchar-c c) c))
 	   (if (char= cc #\newline)
 	       (progn
+		 (when (and (not autowrap-delay)
+			    (> (+ col char-width) end-column))
+		   (push (cons (1- i) last-col) endings)
+		   (setf last-col col)
+		   (setf col 0) ;; @@@ left-margin
+		   (incf line)
+		   (set-spot "newline wrap")
+		   )
 		 (push (cons (1- i) last-col) endings)
 		 (setf last-col col)
 		 ;; (when (< col (1- end-column))
@@ -144,10 +152,15 @@
 		 (if (> (+ col char-width) end-column)
 		     (progn
 		       (push (cons (1- i) last-col) endings)
-		       (set-spot "wrap")
+		       (when autowrap-delay
+			 (set-spot "wrap"))
 		       (setf last-col col)
+		       (setf col 0)
+		       (incf line)
+		       (when (not autowrap-delay)
+			 (set-spot "wrap"))
 		       (setf col char-width)
-		       (incf line))
+		       )
 		     (progn
 		       (set-spot "normal")
 		       (setf last-col col)
@@ -174,7 +187,8 @@
 					     start-column
 					     end-column
 					     spots
-					     column-spots)
+					     column-spots
+					     autowrap-delay)
   (:documentation
    "Return a list of pairs of character positions and columns, in reverse order
 of character position, which should be the end of the displayed lines in the
@@ -192,8 +206,12 @@ buffer.
 				     (start-column (start-col editor))
 				     (end-column (terminal-window-columns
 						  (line-editor-terminal editor)))
-				     spots column-spots)
-  (%calculate-line-endings buffer start-column end-column spots column-spots))
+				     spots column-spots
+				     (autowrap-delay
+				      (terminal-has-autowrap-delay
+				       (line-editor-terminal editor))))
+  (%calculate-line-endings buffer start-column end-column spots column-spots
+			   autowrap-delay))
 
 (defun line-ending (pos endings)
   "Return the line ending at character position POS, from the line ENDINGS,
@@ -323,12 +341,55 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 	(dbugf :rl "down ~s~%" (- new old))
 	(tt-down (- new old)))))
 
-;; An update that probably requires an optimizing terminal to be at all
-;; efficient.
-
 (defun ends-with-newline-p (string)
   "Return true if =string= end with a newline."
   (and (ochar-equal #\newline (ochar string (1- (olength string)))) t))
+
+(defun write-multiline-string (e string endings)
+  "Write the STRING to the terminal given the line ENDINGS. Properly account
+for multi-line strings which end exactly on the right side on terminals with
+auto-wrap and no autowrap delay."
+  (let ((cols (terminal-window-columns (line-editor-terminal e))))
+    (cond
+      ;; A single line less than the terminal width or no autowrap-delay.
+      ((or (not endings)
+	   (terminal-has-autowrap-delay (line-editor-terminal e))
+	   )
+       (dbugf :zarp "no endings or no a-w-d ~a ~a~%" cols endings)
+       (tt-write-string string))
+
+      ;; At least one exactly on the edge.
+      ((find (1- cols) endings :key #'cdr)
+       ;; @@@ Another way to do this would be to just remove the edge newlines.
+       ;; I'm assuming this way is faster. It certainly avoids copying the
+       ;; string at least.
+       (let ((pieces ;; Collect the endings that hit the edge.
+	      (loop
+		 :for (char-pos . col) :in (reverse endings)
+		 :when (= col (1- cols))
+		 :collect char-pos))
+	     (start 0))
+	 (setf pieces (coerce pieces 'vector))
+	 ;; Write the pieces of the string.
+	 (loop
+	    :for i :from 0 :below (length pieces)
+	    :do
+	    (tt-write-string string
+			     :start start
+			     :end (1+ (aref pieces i)))
+	    (dbugf :zarp "start ~s end ~s~%" start (1+ (aref pieces i)))
+	    (setf start (+ (aref pieces i) 2))) ;; 1+ for skipping the newline
+	 ;; Do the last piece
+	 (when (< start (olength string))
+	   (tt-write-string string :start start))
+	 (dbugf :zarp "start ~s END = ~s~%" start (olength string))
+	 ))
+      (t ;; No lines that end on the right edge.
+       (dbugf :zarp "no edge lines~%")
+       (tt-write-string string)))))
+
+;; An update that probably requires an optimizing terminal to be at all
+;; efficient.
 
 ;; Now with more ploof!
 (defun redraw-display (e &key erase)
@@ -449,9 +510,12 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 	    (progn
 	      (let ((s (make-fat-string :string (highlightify e buf))))
 		(tt-write-string s)
+		;; (write-multiline-string e s endings)
 		(dbugf :rl "highlighted = ~a~%" s)))
-	    (tt-write-string (buf-str e)))
-	(eol-compensate)
+	    (tt-write-string (buf-str e))
+	    ;; (write-multiline-string e (buf-str e) endings)
+	    )
+	;; (eol-compensate)
 	(tt-erase-to-eol)
 	(dbugf :rl "right-prompt ~s ~s~%" right-prompt-start right-prompt)
 	(when (and right-prompt
