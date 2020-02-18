@@ -223,15 +223,7 @@ and move forward a character."
     (history-prev (history-context e))
     (use-hist e)))
 
-;; @@@ This is stupid. We should actually blow this thing up.
-(defun point-coords (e)
-  "Return the line and column of point."
-  (with-context ()
-    (let* ((spots `((,point . ())))
-	   (endings (calculate-line-endings e :spots spots)))
-      (dbugf :roo "in point-coords:~%spots = ~s endings = ~s~%" spots endings)
-      (values (cdr (assoc point spots))
-	      endings))))
+;; see also point-coords
 
 (defun index-of-coords (e line col)
   (let* ((pair `(,line ,col))
@@ -256,7 +248,7 @@ the new point."
   ;; gotten from the index in spots, as soon at it was set. Unfortunately that
   ;; wouldn't work for previous lines, only next lines.
   (dbugf :roo "FIPPPY~%")
-  (let* ((coords (point-coords e))
+  (let* ((coords (point-coords e point))
 	 (line (car coords))
 	 (col (cdr coords))
 	 to-index endings)
@@ -893,23 +885,40 @@ in order, \"{open}{close}...\".")
     ;; (redraw-line e)
     (setf (line-editor-keep-region-active e) t)))
 
+;; @@@ This is stupid. We should actually blow this thing up.
+(defun point-coords (e a-point)
+  "Return the line and column of point."
+  (let* ((spots `((,a-point . ())))
+	 (endings (calculate-line-endings e :spots spots)))
+    (dbugf :roo "in point-coords:~%spots = ~s endings = ~s~%" spots endings)
+    (values (cdr (assoc a-point spots))
+	    endings)))
+
 (defsingle what-cursor-position (e)
   "Describe the cursor position."
   (with-slots ((contexts inator::contexts)
-	       buf screen-relative-row screen-col keep-region-active) e
+	       buf #| screen-relative-row screen-col |# keep-region-active) e
     (with-slots (point) (aref contexts 0)
       (let* ((fc (and (< point (length buf))
 		      (aref buf point)))
 	     (char (and fc (fatchar-c fc)))
-	     (code (and char (char-code char))))
+	     (code (and char (char-code char)))
+	     (coords (point-coords e point))
+	     (row (car coords))
+	     (col (cdr coords)))
 	(if fc
 	    (tmp-message e "~s of ~s Row: ~s Column: ~s Char: '~a' ~a ~s #x~x"
-			 point (length buf) screen-relative-row screen-col
+			 point (length buf)
+			 ;; screen-relative-row screen-col
+			 row col
 			 fc
 			 (and char (char-name char))
 			 code code)
 	    (tmp-message e "~s of ~s Row: ~s Column: ~s"
-			 point (length buf) screen-relative-row screen-col))
+			 point (length buf)
+			 ;; screen-relative-row screen-col
+			 row col
+			 ))
 	(setf keep-region-active t)))))
 
 (defsingle exit-editor (e)
