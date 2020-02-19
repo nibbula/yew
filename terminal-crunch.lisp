@@ -1040,18 +1040,33 @@ changed the screen content."
 	       (setf x (min new-x (1- width)))))
 	    (t
 	     (delayed-scroll)
-	     (set-char (aref (aref lines y) x) char)
-	     (when changed
-	       (note-single-line tty))
 	     (let* ((len (display-length char))
 		    (new-x (+ x len)))
-	       (if (< new-x width)
-		   (progn
-		     (when (> len 1)
-		       ;; "Underchar removal"
-		       (unset-grid-char (aref (aref lines y) (1+ x))))
-		     (setf x new-x))
-		   (next-line)))
+	       (cond
+		 ;; Normal, no wrap
+		 ((< new-x width)
+		  (set-char (aref (aref lines y) x) char)
+		  (when (> len 1)
+		    ;; "Underchar removal"
+		    (unset-grid-char (aref (aref lines y) (1+ x))))
+		  (setf x new-x))
+		 ;; Single cell wrap
+		 ((= new-x width)
+		  (set-char (aref (aref lines y) x) char)
+		  (when (> len 1)
+		    ;; "Underchar removal"
+		    (unset-grid-char (aref (aref lines y) (1+ x))))
+		  (next-line))
+		 ;; Multi-cell character wrap
+		 ((> new-x width)
+		  (next-line)
+		  (set-char (aref (aref lines y) x) char)
+		  (when (> len 1)
+		    ;; "Underchar removal"
+		    (unset-grid-char (aref (aref lines y) (1+ x))))
+		  (setf x len))))
+	     (when changed
+	       (note-single-line tty))
 	     )))
 	changed))))
 
@@ -1968,7 +1983,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
 		      (terminal-write-string wtty (grid-to-fat-string c)))
 		  (incf (update-x tty) (display-length c))))
 	   (compute-hashes new cy (1+ cy))
-	   (if-dbugf (:crunch) (dump-hashes tty))
+	   ;; (if-dbugf (:crunch) (dump-hashes tty))
 	   (case op
 	     (:delete
 	      ;; Move to the position AT the spot and write the character
@@ -2299,14 +2314,15 @@ duplicated sequences, and can have worst case O(n*m) performance."
 (defun dump-hashes (tty)
   (let ((old-hashes (screen-hashes (old-screen tty)))
 	(new-hashes (screen-hashes (new-screen tty))))
-    (format *debug-io* "Old -> New~%")
+    (format *trace-output* "Old -> New~%")
     (loop :for i :from 0 :below (length old-hashes) :do
-       (format *debug-io* "~s ~s~%" (aref old-hashes i) (aref new-hashes i)))))
+       (format *trace-output*
+	       "~s ~s~%" (aref old-hashes i) (aref new-hashes i)))))
 
 (defun dump-screen (tty)
   (let ((old-lines (screen-lines (old-screen tty)))
 	(new-lines (screen-lines (new-screen tty))))
-    (format *debug-io* "Old ~s ~s -> New ~s ~s +~s~%"
+    (format *trace-output* "Old ~s ~s -> New ~s ~s +~s~%"
 	    (screen-x (old-screen tty))
 	    (screen-y (old-screen tty))
 	    (screen-x (new-screen tty))
@@ -2322,7 +2338,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
 		   (tt-write-string str)))))
 	   )
       (loop :for i :from 0 :below (length old-lines) :do
-	 (format *debug-io* "[~a] [~a]~%"
+	 (format *trace-output* "[~a] [~a]~%"
 		 (line-str (aref old-lines i))
 		 (line-str (aref new-lines i)))))))
       ;; (loop :for i :from 0 :below (length old-lines) :do
