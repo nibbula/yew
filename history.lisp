@@ -188,6 +188,16 @@
 	     (setf element (dl-nth-element (- (dl-length list) n) list)))
 	 (dl-content element))))
 
+(defun map-history (function &optional (context *history-context*))
+  "Call FUNCTION with every history-entry in the history given by CONTEXT,
+from oldest to most recent."
+  (dl-list-do-backward (history-tail (get-history context)) function))
+
+(defun map-history-backward (function &optional (context *history-context*))
+  "Call FUNCTION with every history-entry in the history given by CONTEXT,
+from most recent to oldest."
+  (dl-list-do (history-head (get-history context)) function))
+
 (defun show-history (&key (context *history-context*) show-time)
   "Print the history with numbers."
   (let ((hist (get-history context))
