@@ -455,14 +455,16 @@ auto-wrap and no autowrap delay."
 				       (display-length right-prompt) 1)))
 	   new-last-line erase-lines old-col relative-top)
       (declare (ignorable old-col))
-      (flet ((eol-compensate () ;; @@@ This is bullcrap. Maybe "fix" ansi?
+      (flet (#|
+	     (eol-compensate () ;; @@@ This is bullcrap. Maybe "fix" ansi?
 	       (when (and endings
 			  (= line-last-col (1- cols))
 			  (terminal-has-autowrap-delay
 			   (line-editor-terminal e)))
 		 (dbugf :rl "wrap compensation~%")
 		 (decf relative-top)
-		 (tt-write-char #\newline))))
+		 (tt-write-char #\newline)))
+	     |# )
 
 	(relative-move-to-row screen-relative-row 0)
 	(setf relative-top (- screen-relative-row))
