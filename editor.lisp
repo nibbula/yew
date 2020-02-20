@@ -191,8 +191,21 @@ anything important.")
     :initarg :history-storage-unified
     :accessor line-editor-history-storage-unified :initform nil :type boolean
     :documentation
-    "True to all command history in the same database. This probably only works
-for database formats.")
+    "True to store all command history in the same database. This probably only
+works for database formats.")
+   (auto-suggest-p
+    :initarg :auto-suggest-p
+    :accessor line-editor-auto-suggest-p :initform t :type boolean
+    :documentation
+    "True to automatically suggest stuff.")
+   (auto-suggest-rendition
+    :initarg :auto-suggest-rendition
+    :accessor line-editor-auto-suggest-rendition
+    :initform (make-fatchar :fg #(:rgb8 #x50 #x50 #x50)) :type fatchar
+    :documentation "The character effects for the suggestion.")
+   (suggestion
+    :initarg :suggestion :accessor line-editor-suggestion :initform nil 
+    :documentation "The thing that was last suggested.")
    (saved-line
     :accessor saved-line
     :initarg :saved-line
@@ -433,6 +446,16 @@ Otherwise the region is deactivated every command loop.")
 
 (defsetf first-point set-first-point
   "Set the first point.")
+
+(defgeneric get-buf-str (editor)
+  (:documentation "Return the buffer as a fat string.")
+  (:method ((editor line-editor))
+    (if (slot-value editor 'buf-str)
+	(progn
+	  (setf (fat-string-string (slot-value editor 'buf-str))
+		(slot-value editor 'buf))
+	  (slot-value editor 'buf-str))
+	(make-fat-string :string (slot-value editor 'buf)))))
 
 #|
 (defun incf-all-points (e increment)

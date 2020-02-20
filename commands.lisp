@@ -161,6 +161,17 @@ and move backward a character."
       (incf point))
     (setf keep-region-active t)))
 
+(defmulti forward-char-or-accept-suggestion (e)
+  "Move the insertion point forward one character in the buffer, or if at the
+end of a line and there is an auto-suggestion, accept it."
+  (with-slots (buf keep-region-active suggestion) e
+    (if (< point (fill-pointer buf))
+	(incf point)
+	(when suggestion
+	  (insert e suggestion)
+	  (incf point (olength suggestion))))
+    (setf keep-region-active t)))
+
 (defmulti mark-forward-char (e)
   "Set the mark if it's not already set or the region is not active,
 and move forward a character."
@@ -1071,5 +1082,39 @@ binding."
   (with-filename-in-buffer (e str pos)
     (show-completions e :func #'completion::complete-filename
 		      :string str)))
+
+(defun history-prefix-match-ending (e &key line)
+  "Return the first ending of the most recent line from history that begins with
+the current line, or NIL if there is none."
+  (when (not line)
+    (setf line (get-buf-str e)))
+  (dbugf :suj "line = ~s~%" line)
+  (let (pos)
+    (block nil
+      (map-history-backward
+       #'(lambda (entry)
+	   (when (and (history-entry-line entry)
+		      (setf pos (osearch line (history-entry-line entry)))
+		      (zerop pos)
+		      (> (olength (history-entry-line entry)) (olength line)))
+	     (return
+	       (osubseq (history-entry-line entry) (olength line)))))))))
+
+(defgeneric auto-suggest (e)
+  (:documentation "Show a history suggestion in the line."))
+
+(defsingle-method auto-suggest (e)
+  (with-slots (buf auto-suggest-rendition suggestion) e
+    (let (ending)
+      (when (and (eobp e) (not (zerop (olength buf)))
+		 (setf ending (history-prefix-match-ending e)))
+	(tt-color (fatchar-fg auto-suggest-rendition)
+		  (fatchar-bg auto-suggest-rendition))
+	(tt-set-attributes (fatchar-attrs auto-suggest-rendition))
+	(tt-save-cursor)
+	(tt-write-string ending)
+	(tt-restore-cursor)
+	(tt-normal))
+      (setf suggestion ending))))
 
 ;; EOF

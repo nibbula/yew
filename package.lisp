@@ -37,6 +37,8 @@
    #:line-editor-highlight-attr
    #:line-editor-allow-history-duplicates
    #:line-editor-allow-history-blanks
+   #:line-editor-auto-suggest-p
+   #:line-editor-auto-suggest-rendition
    #:first-point
    #:use-context
    #:use-first-context

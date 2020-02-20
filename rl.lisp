@@ -10,7 +10,7 @@
   `(
     ;; Movement
     (,(ctrl #\B)		. backward-char)
-    (,(ctrl #\F)		. forward-char)
+    (,(ctrl #\F)		. forward-char-or-accept-suggestion)
     (,(ctrl #\A)		. beginning-of-line)
     (,(ctrl #\E)		. end-of-line)
     (,(meta-char #\a)		. beginning-of-buffer)
@@ -111,7 +111,7 @@
 (defkeymap *special-keymap*
   `(
     (:left            . backward-char)
-    (:right           . forward-char)
+    (:right           . forward-char-or-accept-suggestion)
     (:up              . previous-history)
     (:down            . next-history)
     (:backspace       . delete-backward-char)
@@ -427,7 +427,7 @@ Keyword arguments:
     (with-slots (quit-flag exit-flag command buf point last-command terminal
 		 screen-relative-row screen-col debugging temporary-message
 		 keep-message last-event filter-hook region-active buf-str
-		 keep-region-active) e
+		 keep-region-active auto-suggest-p) e
       ;; (multiple-value-setq (screen-relative-row screen-col)
       ;; 	(terminal-get-cursor-position *terminal*))
       (let ((result nil))
@@ -438,6 +438,8 @@ Keyword arguments:
 		  (finish-output)
 		  ;;(describe buf *debug-io*)
 		  (update-display e)
+		  (when auto-suggest-p
+		    (auto-suggest e))
 		  (tt-finish-output)
 		  (when debugging
 		    (message e "~d ~d [~d x ~d] ~a ~w"
