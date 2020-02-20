@@ -73,6 +73,10 @@ be case insensitive."
   (if (some #'upper-case-p string) #'char= #'char-equal))
 
 (defun search-history (e str direction start-from search-pos)
+  "Return the position of STR, in the history of editor E.
+  DIRECTION    Which way to search, either :backward or :forward.
+  START-FROM   The from history element to start from.
+  SEARCH-POS   The position in the line."
   (with-slots (history-context) e
     (let ((hist (get-history history-context))
 	  (first-time t))
