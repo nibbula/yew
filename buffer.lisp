@@ -192,10 +192,12 @@
 	  (record-undo e 'replacement pos (subseq buf pos (+ pos len)) point)
 	  (setf (subseq buf pos (+ pos len)) fs))))))
 
-;; @@@ Currently unused.
-;; (defun eobp (e)
-;;   "Return true if point is at (or after) the end of the buffer."
-;;   (with-slots (point buf) e
-;;     (>= point (length buf))))
+(defun eobp (e)
+  "Return true if point of the first editing context, is at (or after) the end
+of the buffer."
+  (use-first-context (e)
+    (with-context ()
+      (with-slots (buf) e
+	(>= point (olength buf))))))
 
 ;; EOF
