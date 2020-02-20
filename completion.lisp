@@ -19,7 +19,7 @@ result position. This allows completion functions to look at whatever they
 want to, and replace whatever they want to, even prior to the starting
 point. When asked for all completions, they return a sequence of strings and
 a count which is the length of the sequence.")
-  (:use :cl :dlib :opsys :glob :char-util :dlib-misc :reader-ext
+  (:use :cl :dlib :opsys :glob :collections :char-util :dlib-misc :reader-ext
 	:syntax :syntax-lisp :terminal :terminal-ansi
 	#+use-regex :regex
 	#-use-regex :cl-ppcre
@@ -40,6 +40,8 @@ a count which is the length of the sequence.")
    ;; list
    #:list-completion-function 
    #:string-completion-list
+   #:string-completion
+   #:ostring-completion
    #:complete-list
    #:*completion-list*
    ;; iter
@@ -155,6 +157,7 @@ the count of matches."
 	:end)
      :count i)))
 
+;; @@@ Consdier ditching this in favor of the "generic" ostring-completion.
 (defun string-completion (word list)
   "Return the longest possible unambiguous completion of WORD from LIST. Second
 value is true if it's unique."
@@ -179,6 +182,35 @@ value is true if it's unique."
 	       (setf unique nil))
 	     (setf match w
 		   match-len (length w)))))
+    (make-completion-result
+     :completion (subseq match 0 match-len)
+     :unique unique)))
+
+(defun ostring-completion (word string-sequence)
+  "Return the longest possible unambiguous completion of WORD from
+STRING-SEQUENCE which should be something for which OMAPN iterates over strings.
+Returns a completion-result."
+  (let ((match nil) (unique t) (match-len 0) pos w)
+    (omapn (lambda (obj)
+	     (setf w (stringify obj))
+	     (if (setq pos (mismatch w (or match word)))
+		 (when (and (/= 0 pos) (>= pos (length word)))
+		   (if (not match)
+		       (progn
+			 (setf match w)
+			 (setf match-len (length w)))
+		       (progn
+			 ;; shorter match, but no shorter the prefix
+			 (if (> match-len pos)
+			     (setf match w
+				   match-len pos)
+			     (setf unique nil)))))
+		 (progn
+		   (when match
+		     (setf unique nil))
+		   (setf match w
+			 match-len (length w)))))
+	   string-sequence)
     (make-completion-result
      :completion (subseq match 0 match-len)
      :unique unique)))
