@@ -375,6 +375,19 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 	   (fat-string-string collection-2)
 	   new-args)))
 
+(defmethod osearch ((collection-1 fat-string) (collection-2 string)
+		    &rest args
+		    &key from-end test test-not key start1 start2 end1 end2)
+  (declare (ignorable from-end test test-not key start1 start2 end1 end2))
+  (let ((new-args args))
+    (when (not (getf args :test))
+      (setf new-args (copy-seq args)
+	    (getf new-args :test) #'ochar-equal))
+    (apply #'search
+	   (fat-string-string collection-1)
+	   collection-2
+	   new-args)))
+
 (defmethod oconcatenate ((first-collection fat-string) &rest collections)
   (when (not (every #'(lambda (_) (typep _ '(or string fat-string)))
 		    collections))
