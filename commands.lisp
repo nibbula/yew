@@ -140,6 +140,7 @@ suggestion, insert one word from it."
 				     :function (_ (position _ non-word-chars))))
 	 (incf pos (scan-over-string suggestion pos :forward
 				     :not-in non-word-chars))
+	 (setf pos (clamp pos 0 (olength suggestion)))
 	 (insert e (osubseq suggestion 0 pos))
 	 (incf point pos))))
     (setf keep-region-active t)))

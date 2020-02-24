@@ -402,6 +402,8 @@ auto-wrap and no autowrap delay."
     ;; Make sure buf-str uses buf.
     (when (not (eq (fat-string-string buf-str) buf))
       (setf (fat-string-string buf-str) buf))
+    ;; point should be in the buffer, or else something did something wrong.
+    (assert (<= (inator-point (aref contexts 0)) (olength buf-str)))
     (let* ((prompt (make-prompt e (prompt-string e) (prompt-func e)))
 	   (right-prompt
 	    (make-prompt e (and (ostringp (right-prompt e))
@@ -449,7 +451,8 @@ auto-wrap and no autowrap delay."
 	   ;; (quaqua (and (dbugf :rl "FLooP FLooP ~s ~s ~s ~s ~s~%"
 	   ;; 		       buf-lines point-line first-point spots
 	   ;; 		       contexts) 2/3))
-	   (point-offset  (- buf-lines point-line))
+	   ;; @@@ Maybe we should ensure point-line isn't NIL???
+	   (point-offset  (- buf-lines (or point-line 0)))
 	   (right-prompt-start (and right-prompt
 				    (- (tt-width)
 				       (display-length right-prompt) 1)))
