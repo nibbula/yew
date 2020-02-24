@@ -91,28 +91,6 @@ by callers of this package and should usually be dynamically bound.")
   "Characters that are not considered to be part of a word in lisp.")
 ;; removed #\/ since it's common in package names
 
-;; @@@ Perhaps this should be merged with the one in RL?
-(defun scan-over-str (str pos direction &key func not-in)
-  "If FUNC is provied move over characters for which FUNC is true.
-If NOT-IN is provied move over characters for which are not in it.
-DIRECTION is :forward or :backward. Moves over characters in STR starting
-at POS. Returns the new position after moving."
-  (when (and (not func) not-in)
-    (setf func #'(lambda (c) (not (position c not-in)))))
-  (if (eql direction :backward)
-      ;; backward
-      (loop :while (and (> pos 0)
-			(funcall func (aref str (1- pos))))
-	 :do (decf pos))
-      ;; forward
-      (let ((len (length str)))
-	(loop :while (and (< pos len)
-			  ;; Why was this 1+ here???
-			  ;; (funcall func (aref str (1+ pos))))
-			  (funcall func (aref str pos)))
-	   :do (incf pos))))
-  pos)
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; List completion
 ;;
@@ -220,8 +198,8 @@ Returns a completion-result."
 		   
 (defun complete-list (context pos all &optional (list *completion-list*))
   "Completion function for lists. The entire context is matched."
-;  (let* ((word-start (scan-over-str context pos :backward
-;				    :not-in *lisp-non-word-chars*))
+  ;; (let* ((word-start (scan-over-string context pos :backward
+  ;; 				       :not-in *lisp-non-word-chars*))
   (let* ((word-start 0)
 	 (word (subseq context word-start pos)))
     (if all
@@ -302,8 +280,8 @@ ITERATOR. Second value is true if it's unique."
 
 (defun complete-iterator (context pos all iterator)
   "Completion function for iterators. The entire context is matched."
-;  (let* ((word-start (scan-over-str context pos :backward
-;				    :not-in *lisp-non-word-chars*))
+  ;; (let* ((word-start (scan-over-string context pos :backward
+  ;; 				       :not-in *lisp-non-word-chars*))
   (let* ((word-start 0)
 	 (word (subseq context word-start pos)))
     (if all
@@ -327,15 +305,15 @@ and return the package and whether we should look for only external symbols."
 	(decf pos)
 	(setf external nil))
       (let ((p-p pos))
-	(setf pos (scan-over-str context pos
-				 :backward :not-in *lisp-non-word-chars*))
+	(setf pos (scan-over-string context pos
+				    :backward :not-in *lisp-non-word-chars*))
 	(values
 	 (find-package (string-upcase (subseq context pos p-p)))
 	 external)))))
 
 (defun find-forward-pack (context pos)
-  (let ((end (scan-over-str context pos :forward
-			    :not-in *lisp-non-word-chars*)))
+  (let ((end (scan-over-string context pos :forward
+			       :not-in *lisp-non-word-chars*)))
     (if (and end (<= end (length context)) (char= (char context end) #\:))
 	(find-package (string-upcase (subseq context pos end)))
 	nil)))
@@ -345,9 +323,9 @@ and return the package and whether we should look for only external symbols."
   "If POS is right before a function in CONTEXT, return a string that shows the
 arguments for that function, otherwise return NIL."
   (let* ((trimmed (rtrim (subseq context 0 pos)))
-	 (word-start (scan-over-str trimmed (min pos (length trimmed))
-				    :backward
-				    :not-in *lisp-non-word-chars*))
+	 (word-start (scan-over-string trimmed (min pos (length trimmed))
+				       :backward
+				       :not-in *lisp-non-word-chars*))
 	 (pack (find-back-pack trimmed (length trimmed)))
 	 (sym (and word-start
 		   (symbolify (subseq trimmed word-start)
@@ -692,11 +670,12 @@ is in, and the start and end position of the expression in STRING."
 the index in CONTEXT of the start of the symbol."
   (let* ((ppos (matching-paren-position context :position pos))
 	 (start (or (and ppos (1+ ppos)) 0))
-	 (end (min (1+ (scan-over-str
+	 (end (min (1+ (scan-over-string
 			context start :forward
-			:func #'(lambda (c)
-				  (or (not (position c *lisp-non-word-chars*))
-				      (eql c #\:)))))
+			:function
+			#'(lambda (c)
+			    (or (not (position c *lisp-non-word-chars*))
+				(eql c #\:)))))
 		   (length context)))
 	 (word (subseq context start end))
 	 (*property-resolver* #'custom-resolver))
@@ -714,8 +693,8 @@ the index in CONTEXT of the start of the symbol."
   "If POS is right after a function in CONTEXT, return a string that shows the
 arguments for that function, otherwise return NIL."
   (multiple-value-bind (sym start) (symbol-whose-args-we-are-in context pos)
-    (let ((word-start (scan-over-str context pos :backward
-				     :not-in *lisp-non-word-chars*)))
+    (let ((word-start (scan-over-string context pos :backward
+					:not-in *lisp-non-word-chars*)))
       (if (and sym (fboundp sym))
 	  (if (could-be-a-keyword nil word-start context)
 	      (function-keyword-completion sym context pos word-start t)
@@ -850,8 +829,8 @@ defaults to the current package. Return how many symbols there were."
 
 (defun complete-symbol (context pos all)
   "Completion function for symbols."
-  (let* ((word-start (scan-over-str context pos :backward
-				    :not-in *lisp-non-word-chars*))
+  (let* ((word-start (scan-over-string context pos :backward
+				       :not-in *lisp-non-word-chars*))
 	 (word (subseq context word-start pos))
 	 (pack nil)
 	 (external nil)
