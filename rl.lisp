@@ -20,9 +20,9 @@
     (,(meta-char #\p)		. previous-history)
     (,(meta-char #\n)		. next-history)
     (,(meta-char #\b)		. backward-word)
-    (,(meta-char #\f)		. forward-word)
+    (,(meta-char #\f)		. forward-word-or-accept-suggestion)
     (:c-left			. backward-word)
-    (:c-right			. forward-word)
+    (:c-right			. forward-word-or-accept-suggestion)
     (:s-left			. mark-backward-char)
     (:s-right			. mark-forward-char)
     (:s-c-left			. mark-backward-word)
@@ -181,7 +181,7 @@
     (#\g			. vi-goto)		; *
     (#\b			. backward-word)	;
     (#\W			. backward-word)	;
-    (#\w			. forward-word)		;
+    (#\w			. forward-word-or-accept-suggestion) ;
     (#\|			. vi-goto-column)	; *
     (#\f			. vi-find-right)	; *
     (#\F			. vi-find-left)		; *

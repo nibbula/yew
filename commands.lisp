@@ -125,6 +125,25 @@ buffer if there is no word."
     (scan-over e :forward :not-in non-word-chars)
     (setf keep-region-active t)))
 
+(defmulti forward-word-or-accept-suggestion (e)
+  "Move the insertion point to the end of the next word or the end of the
+buffer if there is no word. If at the end of the buffer and there is a
+suggestion, insert one word from it."
+  (with-slots (non-word-chars keep-region-active buf suggestion) e
+    (cond
+      ((< point (fill-pointer buf))
+       (scan-over e :forward :func (_ (position _ non-word-chars)))
+       (scan-over e :forward :not-in non-word-chars))
+      (suggestion
+       (let ((pos 0))
+	 (incf pos (scan-over-string suggestion pos :forward
+				     :function (_ (position _ non-word-chars))))
+	 (incf pos (scan-over-string suggestion pos :forward
+				     :not-in non-word-chars))
+	 (insert e (osubseq suggestion 0 pos))
+	 (incf point pos))))
+    (setf keep-region-active t)))
+
 (defmulti mark-forward-word (e)
   "Set the mark if it's not already set or the region is not active,
 and move forward a word."
