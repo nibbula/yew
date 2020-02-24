@@ -4,10 +4,42 @@
 
 ;; This handles CSV and other delimited text format files.
 ;; I think DTT is a fairly stupid abbreviation, but I didn't want to use
-;; just CSV, and I can't think of anything else at the momemnt.
+;; just CSV, and I still can't think of anything better.
 
 (defpackage :dtt
-  (:documentation "Delimited Text Tables")
+  (:documentation
+   "This supports reading and writing of various delimited text table formats.
+This includes the common CSV - Comma Separated Values, and tab separated values,
+or nearly any style of separated value with delimiters and quoting. It has a
+few of the most common styles already defined, and defaults to the most common
+CSV.
+
+The main interface consists of:
+  read-file            - Read a delimited file and return a table as lists.
+  read-table           - Read a delimited file and return a table object.
+  write-file           - Write sequences to a file.
+  write-table-to-file  - Write a table object to a file.
+
+The the format of the file is controled by a STYLE object. You can make a style
+object yourself with MAKE-STYLE, or use one of the predefined styles:
+   +tab+	      - Tab separated values
+   +pipe+	      - Pipe #\| separated values
+   +csv-unix+         - Comma separated with Unix #\newline sperated lines.
+   +csv-mac+          - Comma separated with MacOS #\return sperated lines.
+   +csv-excel+        - Comma separated with Excel CRLF sperated lines.
+   +csv-rfc4180+      - Comma separated supposedly conforming to rfc4180.
+   +csv-default+      - Comma separated with any line endings and column labels.
+
+Style structures have the following slots:
+  delimiter		,	 Character between fields
+  quote-character	\"	 To quote fields containing delimiters
+  escape-character	\\	 To escape quotes in quoted fields
+  input-quote-style	:escape :double :triple
+  output-quote-style	:all :minimal :alpha :none
+  eol-style		:nl :cr :crnl :any
+  eat-whitespace	:both	 True to ignore whitespace
+  first-row-labels	t	 True to treat the first row as labels
+")
   (:use :cl :dlib :collections :table)
   (:export
    ;; vars
@@ -37,11 +69,15 @@
    #:+csv-mac+
    #:+csv-excel+
    #:+csv-rfc4180+
-   ;; funcs
+   ;; functions
    #:read-file
    #:read-table
    #:write-file
-   #:write-table-to-file))
+   #:write-table-to-file
+   ;; commands
+   #:!read-table
+   #:!write-dtt
+   ))
 
 (in-package :dtt)
 
@@ -270,7 +306,7 @@ or :both.")
 	      (cond
 		((eql eol-style :nl)
 		 (write-char #\return col)) ; Treated as normal
-		((or (eql eol-style :crnl) (eql eol-style :any))
+		((or (eql eol-style :crnl) #| (eql eol-style :any) |#)
 		 (setf expecting-newline t))
 		((eql eol-style :cr) (done) (return))
 		((eql eol-style :any)
@@ -600,7 +636,14 @@ If every object in a column:
 ;; Writing
 
 (defun write-datum (object stream)
-  (format stream "~@[~a~]" object))
+  (let ((*print-array* t)
+	(*print-escape* nil)
+	(*print-gensym* t)
+	(*print-level* nil)
+	(*print-length* nil)
+	(*print-readably* nil)
+	(*print-pretty* nil))
+    (format stream "~@[~w~]" object)))
 
 (defun needs-quoting (obj style)
   "Return true if OBJ needs quoting in the given style."
@@ -609,15 +652,16 @@ If every object in a column:
       (:all t)					; Always
       (:alpha (not (typep obj 'number)))	; If it's not a number.
       (:minimal					; If it needs it
-       ;; If the string representation has a delimiter, quote or EOL
-       ;; @@@ This is ineffiecent to seach thru it 4 times. Consider merging
+       ;; If the string representation has a delimiter, quote, or EOL
+       ;; @@@ This is inefficient to seach through it 4 times. Consider merging
        ;; with quotify output.
        (let ((str (write-datum obj nil))
 	     (chars (make-array
 		     4 :element-type 'character
 		     :initial-contents (vector delimiter quote-character
 					       #\newline #\return))))
-	 (declare (type (vector character) str chars))
+	 ;; (declare (type (vector character) str chars))
+	 (declare (type string str chars))
 	 (position-if #'(lambda (c)
 			  (declare (type character c))
 			  (position c chars))
@@ -685,5 +729,32 @@ sequences of objects to write. Use the given style which defaults to
 			  (and (table-columns table)
 			       (mapcar #'column-name
 				       (table-columns table))))))
+
+#+lish
+(lish:defcommand write-dtt
+  ((file pathname :help "File to write a table to.")
+   (table object :help "Table to output.")
+   (style choice :short-arg #\s :default ''csv-default
+	  :choices (mapcar (_ (string-downcase (car _))) *styles*)
+	  ;; :test #'symbolify
+	  :help "Delimited text style."))
+  :accepts (table)
+  "Write a delimited text table."
+  (when (not (or table lish:*input*))
+    ;; @@@ I want to do some kind of use-value restart, but how?
+    ;; Ideally it could use the prompt from the table argument.
+    (error "Please give me a table to output."))
+
+  (setf table (or table lish:*input*))
+  (when (not (typep table 'table))
+    (error
+     "Please make table be a table object. You could use table:make-table-from,
+to do so if you want to."))
+
+  (when (not file)
+    (error "Please give me an output file name."))
+
+  (let ((real-style (symbol-value (symbolify (s+ "+" style "+") :package :dtt))))
+    (write-table-to-file file table :style real-style)))
 
 ;; EOF
