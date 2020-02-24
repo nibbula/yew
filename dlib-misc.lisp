@@ -30,6 +30,7 @@
    #:partition
    #:*default-ellipsis*
    #:shrink-pathname
+   #:scan-over-string
 
    ;; time
    #:date-string
@@ -369,6 +370,28 @@ useful information.
 	      (s+ (subseq str 0 half) ellipsis
 		  (subseq str (- len (+ half ellipsis-length 1))))))
 	str)))
+
+;; @@@ Perhaps this could be merged with the one in RL?
+(defun scan-over-string (string pos direction &key function not-in)
+  "If FUNCTION is provied move over characters for which FUNCTION is true.
+If NOT-IN is provied move over characters for which are not in it.
+DIRECTION is :forward or :backward. Moves over characters in STRING starting
+at POS. Returns the new position after moving."
+  (when (and (not function) not-in)
+    (setf function #'(lambda (c) (not (oposition c not-in)))))
+  (if (eql direction :backward)
+      ;; backward
+      (loop :while (and (> pos 0)
+			(funcall function (oelt string (1- pos))))
+	 :do (decf pos))
+      ;; forward
+      (let ((len (olength string)))
+	(loop :while (and (< pos len)
+			  ;; Why was this 1+ here???
+			  ;; (funcall function (oelt string (1+ pos))))
+			  (funcall function (oelt string pos)))
+	   :do (incf pos))))
+  pos)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; time
