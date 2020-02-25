@@ -387,8 +387,6 @@ at POS. Returns the new position after moving."
       ;; forward
       (let ((len (olength string)))
 	(loop :while (and (< pos len)
-			  ;; Why was this 1+ here???
-			  ;; (funcall function (oelt string (1+ pos))))
 			  (funcall function (oelt string pos)))
 	   :do (incf pos))))
   pos)
