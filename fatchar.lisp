@@ -1408,9 +1408,6 @@ a fat-string, or a fatchar."
   "Return the FATCHAR as a character."
   (fatchar-c c))
 
-(defmethod osimplify ((thing fatchar))
-  (fatchar-c thing))
-
 (defmethod graphemes ((string fat-string))
   (dbugf :fatchar "fat grapheme ~s ~s~%" (type-of string) string)
   (let (result)
