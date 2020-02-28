@@ -147,7 +147,7 @@ of it.")
    #:+simple-condition-format-control-slot+
    #:+simple-condition-format-arguments-slot+
    ;; debugging
-   #:*dbug* #:*dbug-package* #:*dbug-facility*
+   #:*dbug* #:*dbug-output* #:*dbug-package* #:*dbug-facility*
    #:dbug #:dbugf #:if-dbugf #:with-dbug #:with-dbug-package
    #:with-dbugf
    #:with-dbugf-to
@@ -1753,12 +1753,15 @@ definition form, like defun. For example:
 ;; effects in your messages. Be careful, because the "dbug" form might also
 ;; have syntactic effects.
 ;;
-;; Output goes to *DEBUG-IO*, so you can modify that if you want the output to
-;; go somewhere else, like:
-;;  (let ((*debug-io* *earth*)) (with-dbug (land-on-mars)))
+;; Output goes to *DBUG-OUTPUT*, so you can modify that if you want the output
+;; to go somewhere else, like:
+;;  (let ((*dbug-output* *earth*)) (with-dbug (land-on-mars)))
 
 (defparameter *dbug* nil
-  "Dude, do you even debug?")
+  "True to output debugging messages.")
+
+(defparameter *dbug-output* *trace-output*
+  "Where debugging message go. Defaults to *TRACE-OUTPUT*.")
 
 (defparameter *dbug-package* nil
   "A package to debug. Output debugging message when we're in this package.")
@@ -1773,8 +1776,8 @@ the right package."
   `(when (and dlib:*dbug*
 	      (or (not *dbug-package*)
 		  (equal *dbug-package* (package-name *package*))))
-     (funcall #'format *trace-output* ,fmt ,@args)
-     (finish-output *trace-output*)))
+     (funcall #'format *dbug-output* ,fmt ,@args)
+     (finish-output *dbug-output*)))
 
 (defmacro dbugf (facility fmt &rest args)
   "Print a debugging message when debugging is turned on and maybe we're in
@@ -1785,8 +1788,8 @@ the right package, and the FACILITY is activated."
 	      (or
 	       (member ,facility *dbug-facility*)
 	       (member :all *dbug-facility*)))
-     (funcall #'format *trace-output* ,fmt ,@args)
-     (finish-output *trace-output*)))
+     (funcall #'format *dbug-output* ,fmt ,@args)
+     (finish-output *dbug-output*)))
 
 (defmacro if-dbugf ((facility) &body body)
   "Evaluate BODY when debugging is turned on and maybe we're in
@@ -1796,7 +1799,7 @@ the right package, and the FACILITY is activated."
 	       (member ,facility *dbug-facility*)
 	       (member :all *dbug-facility*)))
      (multiple-value-prog1 (progn ,@body)
-       (finish-output *trace-output*))))
+       (finish-output *dbug-output*))))
 
 (defmacro with-dbug (&body body)
   "Evaluate the BODY with debugging message printing turned on."
@@ -1820,8 +1823,8 @@ turned on. FACILITY can be an atom or a list of facilities to turn on."
 (defmacro with-dbugf-to (facility file &body body)
   "Evaluate the BODY with debugging message printing tagged with FACILITY
 turned on. FACILITY can be an atom or a list of facilities to turn on.
-FILE is a file to redirect *debug-io* to, and therefore also DBUGF messages."
-  `(with-open-file (*debug-io* ,file :direction :io :if-exists :append)
+FILE is a file to redirect *dbug-output* to, and therefore also DBUGF messages."
+  `(with-open-file (*dbug-output* ,file :direction :io :if-exists :append)
      (with-dbugf ,facility
        ,@body)))
 
