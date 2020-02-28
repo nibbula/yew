@@ -26,22 +26,23 @@
 ;; (eval-when (:compile-toplevel :load-toplevel :execute)
 ;; (stfu-defpackage :collections
 
-(let #+sbcl ((sb-ext:*on-package-variance*
-	      (if (>= dlib:*lisp-version-number* 20001)
-		  '(:suppress t) '(:warn t))))
-     #-sbcl ()
-(defpackage :collections
-  (:documentation
-   "Generic collection functions. These aren't so much for the methods defined
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (let #+sbcl ((sb-ext:*on-package-variance*
+		(if (>= dlib:*lisp-version-number* 20001)
+		    '(:suppress t) '(:warn t))))
+       #-sbcl ()
+       (defpackage :collections
+	 (:documentation
+"Generic collection functions. These aren't so much for the methods defined
 in here, but it's really so you can define your own methods which work
 somewhat orthogonally with system classes. Be warned that using things in here
 can be very slow compared to the similar CL sequence functions. There's some
 pretty foolish implementations in here, in the cause of orthogonality.
 Especially the parts where we rather clownishly dress up hash tables and
 structs as sequences. Also we really need the MOP for stuff.")
-  (:use :cl)	   ; Please don't add any dependencies.
-  (:nicknames :o)) ; too presumptuous, but maybe we could remove the 'o'?
-)
+	 (:use :cl)	; Please don't add any dependencies.
+	 (:nicknames :o)) ; too presumptuous, but maybe we could remove the 'o'?
+       ))
 
 (in-package :collections)
 
