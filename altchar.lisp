@@ -113,9 +113,10 @@ we can use pick-list effectively."
 ))
 
 (defun bind-letters (keymap letters base-letters)
+  (declare (ignore letters))
   (loop
      :for from :across base-letters
-     :for to :across letters
+     ;; :for to :across letters
      :do
      (define-key keymap from 'altchar-insert-command)))
 
