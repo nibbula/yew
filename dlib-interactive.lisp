@@ -613,6 +613,37 @@ functions too."
     (format t "~d symbols traced.~%" count)
     count))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro define-redirector (name stream-variable)
+    "Define a stream redirector function and variable."
+    (let ((save-name (symbolify (s+ "*SAVED-" stream-variable))))
+      `(progn
+	 (defvar ,save-name nil)
+
+	 (defun ,name (&optional file)
+	   ,(s+ "Toggle sending " stream-variable
+		" to a FILE. If FILE is omitted, restore the previous value, "
+		"and close the file.")
+	   (cond
+	     (,save-name
+	      (format t ,(s+ stream-variable " redirection off.~%"))
+	      (let (old)
+		(shiftf old ,stream-variable ,save-name nil)
+		(close old)))
+	     ((and (not ,save-name) file)
+	      (format t ,(s+ stream-variable " redirection to ~s.~%") file)
+	      (shiftf ,save-name ,stream-variable
+		      (open file :direction :output :if-exists :append)))
+	     (t
+	      (format t ,(s+ stream-variable
+			     " output isn't already redirected. Give me a file ~
+                            name to redirect to.~%"))))
+	   (values))))))
+
+(define-redirector trace-out *trace-output*)
+(define-redirector dbug-out *dbug-output*)
+
+#|
 (defvar *saved-trace-output* nil)
 
 (defun trace-out (&optional file)
@@ -632,6 +663,7 @@ functions too."
      (format t "Trace output isn't already redirected. Give me a file name ~
                 to redirect to.~%")))
   (values))
+|#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; file-filter
