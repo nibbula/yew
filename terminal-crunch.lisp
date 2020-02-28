@@ -30,9 +30,9 @@ for various operations through the OUTPUT-COST methods.
    ))
 (in-package :terminal-crunch)
 
-(declaim #.`(optimize ,.(getf terminal-config::*config* :optimization-settings)))
+;; (declaim #.`(optimize ,.(getf terminal-config::*config* :optimization-settings)))
 
-(declaim (optimize (safety 3)))
+;; (declaim (optimize (safety 3)))
 
 ;; (declaim
 ;;  (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
@@ -633,7 +633,7 @@ sizes. It only copies the smaller of the two regions."
     (compute-hashes to-screen)))
 
 (defun make-new-screen (rows cols)
-  (let* ((lines  (make-array rows :element-type 'fatchar-string)) ;; @@@ WRONG?
+  (let* ((lines  (make-array rows :element-type 'grid-string))
 	 (hashes (make-array rows :element-type 'fixnum))
 	 (index  (make-array rows :element-type 'fixnum))
 	 (result (make-screen
@@ -1939,9 +1939,15 @@ duplicated sequences, and can have worst case O(n*m) performance."
       (terminal-finish-output wtty)
       (setf (cleared tty) nil)
       (no-hints tty)
-      (setf (old-screen tty)
-	    (make-new-screen (screen-height old)
-			     (screen-width old))))
+      ;; I don't think this ends up being a good "optimization" considering
+      ;; memory bandwith.
+      ;; (setf (old-screen tty)
+      ;; 	    (make-new-screen (screen-height old)
+      ;; 			     (screen-width old)))
+      ;; So just clear the old screen manually.
+      (loop :for i :from 0 :below (screen-height old)
+	 :do (fill-by (aref (screen-lines old) i) #'blank-char))
+      (compute-hashes old))
 
     ;; (dbugf :crunch "****** start update @ ~s~%" start-line)
     ;; (dbugf :crunch-update "****** start update @ ~s~%" start-line)
