@@ -33,6 +33,7 @@ be used at a REPL, but not as likely to be called by other programs.")
 
    #:trace-package
    #:trace-out
+   #:dbug-out
 
    #:file-matches
    #:not-file-matches			; this is inconsistent
