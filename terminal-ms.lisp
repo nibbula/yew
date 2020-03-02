@@ -772,7 +772,7 @@ Attributes are usually keywords."
   (loop :for a :in attributes :do
      (case a
        (:standout  (terminal-standout tty t))
-       (:normal    (terminal-normal tty t))
+       (:normal    (terminal-normal tty))
        (:underline (terminal-underline tty t)) ; If we ever get it
        (:bold      (terminal-bold tty t))
        (:inverse   (terminal-inverse tty t))
