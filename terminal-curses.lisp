@@ -90,7 +90,11 @@ require terminal driver support."))
     :accessor translate-alternate-characters
     :initform nil :type boolean
     :documentation
-    "True to translate some unicode characters into the alternate character set."))
+    "True to translate some unicode characters into the alternate character set.")
+   (delay-scroll
+    :initarg :delay-scroll :accessor delay-scroll :initform nil :type boolean
+    :documentation
+    "True to delay scrolling until the next character is output."))
   (:default-initargs
   )
   (:documentation "A terminal using the curses library."))
@@ -253,16 +257,60 @@ require terminal driver support."))
 	       (stringp out-str))
       (translate-acs-chars out-str :start start :end end))
     #+curses-use-wide
-    ;; This seem very inefficient, but I'm not sure how to avoid it.
+    ;; This seems very inefficient, but I'm not sure how to avoid it.
     (if (position-if (_ (> (char-code _) #xff)) out-str)
 	(add-wide-string out-str)
-	(addstr out-str))
+	(%addstr tty out-str))
     #-curses-use-wide
-    (addstr out-str)))
+    (%addstr tty out-str)))
+
+(defun bottom-right-p (tty &optional x)
+  (dbugf :curses "bottom-right-p ~s ~s ~s ~s ~s~%"
+	 (getcury (screen tty)) (1- curses:*lines*)
+	 (or x (getcurx (screen tty))) (1- curses:*cols*)
+	 (and (= (getcury (screen tty)) (1- curses:*lines*))
+	      (>= (or x (getcurx (screen tty))) (1- curses:*cols*))))
+  (and (= (getcury (screen tty)) (1- curses:*lines*))
+       (>= (or x (getcurx (screen tty))) (1- curses:*cols*))
+       t))
+
+(defun delayed-scroll (tty)
+  (when (delay-scroll tty)
+    (dbugf :curses "delay scroll triggered~%")
+    (setf (delay-scroll tty) nil)
+    (when (bottom-right-p tty)
+      ;; (scroll-one-line)
+      (addch #.(char-code #\newline)))))
+
+(defun %addch (tty code)
+  "A version of addch that does delayed scroll only for the bottom right corner."
+  (delayed-scroll tty)
+  (if (bottom-right-p tty)
+      (progn
+	(dbugf :curses "delay scroll activated~%")
+	(setf (delay-scroll tty) t)
+	(scrollok (screen tty) 0)
+	(addch code)
+	(scrollok (screen tty) *default-scroll-ok*)
+	)
+      (addch code)))
+
+(defun %addstr (tty str)
+  (delayed-scroll tty)
+  (if (bottom-right-p tty (+ (getcurx (screen tty))
+			     (char-util:display-length str)))
+      (progn
+	(dbugf :curses "delay scroll string activated~%")
+	(setf (delay-scroll tty) t)
+	(scrollok (screen tty) 0)
+	(addstr str)
+	(scrollok (screen tty) *default-scroll-ok*)
+	)
+      (addstr str)))
 
 (defmethod terminal-write-line ((tty terminal-curses) str &key start end)
   (terminal-write-string tty str :start start :end end)
-  (addch (char-code #\newline)))
+  (%addch tty (char-code #\newline)))
 
 (defmethod terminal-format ((tty terminal-curses) fmt &rest args)
   "Output a formatted string to the terminal."
@@ -288,9 +336,9 @@ require terminal driver support."))
   #+curses-use-wide
   (if (> (char-code char) 255)
       (add-wide-char (char-code char))
-      (addch (char-code char)))
+      (%addch tty (char-code char)))
   #-curses-use-wide
-  (addch (char-code char)))
+  (%addch tty (char-code char)))
 
 (defparameter *attributes*
   `((:STANDOUT  . ,+A-STANDOUT+)
@@ -332,9 +380,9 @@ require terminal driver support."))
       #+curses-use-wide
       (if (> (char-code c) 255)
 	  (add-wide-char (char-code c))
-	  (addch (char-code c)))
+	  (%addch tty (char-code c)))
       #-curses-use-wide
-      (addch (char-code c))
+      (%addch tty (char-code c))
       (when reset
 	(attrset +a-normal+)))))
 
@@ -377,14 +425,14 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-write-line ((tty terminal-curses) (str fat-string)
 				&key start end)
   (terminal-write-string tty str :start start :end end)
-  (addch (char-code #\newline)))
+  (%addch tty (char-code #\newline)))
 
 (defmethod terminal-newline ((tty terminal-curses))
-  (addch (char-code #\newline)))
+  (%addch tty (char-code #\newline)))
 
 (defmethod terminal-fresh-line ((tty terminal-curses))
   (when (not (zerop (getcurx (screen tty))))
-    (addch (char-code #\newline))
+    (%addch tty (char-code #\newline))
     t))
 
 (defmethod terminal-move-to ((tty terminal-curses) row col)
@@ -717,7 +765,7 @@ Only replace in START and END range."
 	  :while (and l (< i end))
 	  :do
 	    (when (>= i start)
-	      (addch (car l)))
+	      (%addch stream (car l)))
 	    (setf l (cdr l))
 	    (incf i))))))
 
