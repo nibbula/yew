@@ -1,6 +1,6 @@
-;;
-;; ms/terminals.lisp - Windows interface to consoles
-;;
+;;;
+;;; ms/terminals.lisp - Windows interface to consoles
+;;;
 
 (in-package :opsys-ms)
 
@@ -1091,7 +1091,7 @@ The individual settings override the settings in MODE."
 
 (defun get-console-info (tty)
   "Return the values: X Y width height attributes top. TOP is the Y offset of
-the first line on visible in the window. Attributes is a integer with bits set
+the first line on visible in the window. Attributes is an integer with bits set
 for different text attributes."
   (dbugf :ms "get-window-info tty = ~s~%" tty)
   (with-slots (out-handle width height buffer-width buffer-height) tty
@@ -1337,7 +1337,7 @@ boolean indicating visibility."
 		`(x ,x y ,y)
 		fill-char)))))
 
-;; (defcfun ("FillConsoleOutputCharacterW" %fill-console-output-character
+;; (defcfun ("FillConsoleOutputCharacterW" %fill-console-output-character-w
 ;; 					:convention :stdcall)
 ;;     BOOL
 ;;   (console-output HANDLE)			  ; in
