@@ -634,7 +634,8 @@ functions too."
 	     ((and (not ,save-name) file)
 	      (format t ,(s+ stream-variable " redirection to ~s.~%") file)
 	      (shiftf ,save-name ,stream-variable
-		      (open file :direction :output :if-exists :append)))
+		      (open file :direction :output :if-exists :append
+			    :if-does-not-exist :create)))
 	     (t
 	      (format t ,(s+ stream-variable
 			     " output isn't already redirected. Give me a file ~
