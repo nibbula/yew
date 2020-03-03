@@ -1,6 +1,6 @@
-;;
-;; terminal-ms.lisp - Microsoft console as a terminal.
-;;
+;;;
+;;; terminal-ms.lisp - Microsoft console as a terminal.
+;;;
 
 (declaim #.`(optimize ,.(getf terminal-config::*config* :optimization-settings)))
 
@@ -62,7 +62,11 @@
     :initarg :standout-use-color :accessor standout-use-color
     :initform t :type boolean
     :documentation
-    "True to use colors for standout mode, otherwise it's just inverse."))
+    "True to use colors for standout mode, otherwise it's just inverse.")
+   (delay-scroll
+    :initarg :delay-scroll :accessor delay-scroll :initform nil :type boolean
+    :documentation
+    "True to delay scrolling until the next character is output."))
   (:default-initargs
     :file-descriptor		nil
     :device-name		*default-device-name*
@@ -213,6 +217,55 @@
 ;; 	      ,@body)
 ;; 	 (set-terminal-mode (terminal-file-descriptor ,tty) :mode ,mode)))))
 
+(defun bottom-right-p (tty &optional (x-offset 0))
+  (multiple-value-bind (x y width height attr top)
+      (get-console-info (terminal-file-descriptor tty))
+    (let ((rx (+ x x-offset))
+	  (ry (- y top)))
+      (dbugf :msterm "bottom-right-p ~s ~s ~s ~s ~s~%"
+	     ry height
+	     rx width
+	     (and (= ry (1- height))
+		  (>= rx width)))
+      (values
+       (and (= ry (1- height))
+	    (>= rx width)
+	    t)
+       x y attr))))
+
+(defun delayed-scroll (tty)
+  (when (delay-scroll tty)
+    (dbugf :msterm "delay scroll triggered~%")
+    (setf (delay-scroll tty) nil)
+    (when (bottom-right-p tty)
+      ;; (scroll-one-line)
+      (write-terminal-string (terminal-file-descriptor tty)
+			     #.(char-code #\newline)))))
+
+(defun %write-terminal-string (tty string)
+  (delayed-scroll tty)
+  (let ((display-length (char-util:display-length string)))
+    (multiple-value-bind (br-p x y attr)
+	(bottom-right-p tty display-length)
+      (if br-p
+	  (progn
+	    (dbugf :msterm "delay scroll string activated~%")
+	    (setf (delay-scroll tty) t)
+	    ;; @@@ should use graphemes not chars!
+	    (when (> display-length 1)
+	      (write-terminal-string (terminal-file-descriptor tty)
+				     (subseq string 0 (1- (length string))))
+	      (incf x (1- display-length)))
+	    (dbugf :msterm "delay scroll char ~s @ ~s ~s~%"
+		   (char string (1- (length string))) x y)
+	    (fill-console-char (terminal-file-descriptor tty)
+			       :char (char string (1- (length string)))
+			       :x x :y y :length 1)
+	    (fill-console-attribute (terminal-file-descriptor tty)
+			       :attribute attr
+			       :x x :y y :length 1))
+	  (write-terminal-string (terminal-file-descriptor tty) string)))))
+
 (defmethod terminal-write-string ((tty terminal-ms) str
 				  &key start end)
   "Output a string to the terminal."
@@ -225,11 +278,11 @@
 				      :element-type (array-element-type str)
 				      :displaced-to str
 				      :displaced-index-offset actual-start)))
-    (write-terminal-string (terminal-file-descriptor tty) actual-string)))
+    (%write-terminal-string tty actual-string)))
 
 (defmethod terminal-write-char ((tty terminal-ms) char)
   "Output a character to the terminal."
-  (write-terminal-string (terminal-file-descriptor tty) (string char)))
+  (%write-terminal-string tty (string char)))
 
 (defmethod terminal-write-line ((tty terminal-ms) str &key start end)
   "Output a string to the terminal, followed by a newline."
@@ -268,17 +321,19 @@
 	       (line fatchar::line)
 	       (attrs fatchar::attrs)) char
     (let ((c cc))
-      (if (or fg bg attrs)
-	  (progn
-	    (when (or fg bg)
-	      (terminal-color tty (or fg :default) (or bg :default)))
-	    (when attrs
-	      (terminal-set-attributes tty attrs)))
-	  (when reset
-	    (terminal-normal tty)))
+      ;; (if (or fg bg attrs)
+      ;; 	  (progn
+      ;; 	    (when (or fg bg)
+      ;; 	      (terminal-color tty (or fg :default) (or bg :default)))
+      ;; 	    (when attrs
+      ;; 	      (terminal-set-attributes tty attrs)))
+      ;; 	  (when reset
+      ;; 	    (terminal-normal tty)))
+      (terminal-color tty (or fg :default) (or bg :default))
+      (terminal-set-attributes tty attrs)
       (when (not (zerop line))
 	(setf c (line-char line)))
-      (write-terminal-string (terminal-file-descriptor tty) (string c))
+      (%write-terminal-string tty (string c))
       (when reset
 	(terminal-normal tty)))))
 
@@ -319,6 +374,7 @@
       (declare (ignore _))
       (when (not (zerop col))
 	(terminal-write-char tty #\newline)
+	(terminal-write-char tty #\return)
 	t))))
 
 (defmethod terminal-move-to ((tty terminal-ms) row col)
@@ -360,7 +416,7 @@
 
 (defun move-offset (tty offset-x offset-y)
   "Move the cursor to the offset, clamped to the current screen."
-  (dbugf :ms "move-offset tty = ~s ~s ~s~%" tty offset-x offset-y)
+  ;; (dbugf :ms "move-offset tty = ~s ~s ~s~%" tty offset-x offset-y)
   (when (not (and (zerop offset-x) (zerop offset-y)))
     (with-slots ((fd terminal::file-descriptor)) tty
       (multiple-value-bind (x y width height attr top) (get-console-info fd)
@@ -732,7 +788,8 @@
 (defmethod terminal-reset ((tty terminal-ms))
   ;; First reset the terminal driver to a sane state.
   (reset-terminal-modes :file-descriptor (terminal-file-descriptor tty))
-  (call-next-method)) ;; Do the terminal-stream version
+  ;; (call-next-method)
+  ) ;; Do the terminal-stream version
 
 (defmethod terminal-save-cursor ((tty terminal-ms))
   "Save the cursor position."
@@ -769,15 +826,21 @@
 (defmethod terminal-set-attributes ((tty terminal-ms) attributes)
   "Set the attributes given in the list. If NIL turn off all attributes.
 Attributes are usually keywords."
-  (loop :for a :in attributes :do
-     (case a
-       (:standout  (terminal-standout tty t))
-       (:normal    (terminal-normal tty))
-       (:underline (terminal-underline tty t)) ; If we ever get it
-       (:bold      (terminal-bold tty t))
-       (:inverse   (terminal-inverse tty t))
-       ;; Just ignore anything we don't support.
-       )))
+  (if attributes
+      (loop :for a :in attributes :do
+	 (case a
+	   (:standout  (terminal-standout tty t))
+	   (:normal    (terminal-normal tty))
+	   (:underline (terminal-underline tty t)) ; If we ever get it
+	   (:bold      (terminal-bold tty t))
+	   (:inverse   (terminal-inverse tty t))
+	   ;; Just ignore anything we don't support.
+	   ))
+      (progn
+	(terminal-standout tty nil)
+	(terminal-underline tty nil)
+	(terminal-bold tty (if (default-bold tty) t nil))
+	(terminal-inverse tty nil))))
 
 (defmethod terminal-alternate-characters ((tty terminal-ms) state)
   (declare (ignore state))
