@@ -164,16 +164,24 @@ This allows interspersing standard input between other things."
   (loop :for f :in (or files (list "-")) :do
      (if (equal f "-")
 	 (funcall *copy-stream-function* *standard-input* *standard-output*)
-	 (with-open-file (stream (quote-filename f)
-				 :element-type '(unsigned-byte 8))
+	 (with-open-file-or-stream (stream (quote-filename f)
+					   :element-type '(unsigned-byte 8))
 	   (funcall *copy-stream-function* stream *standard-output*))))
   (finish-output *standard-output*))
 
 ;; I *NEVER* want to add -vet!
 
 #+lish
-(lish:defcommand cat ((files pathname :repeating t))
+(lish:defcommand cat
+  ((files pathname :repeating t :help "Files to concatenate to the output."))
+  :accepts (or string pathname stream list)
   "Concatenate files. Copy streams."
+  (when lish:*input*
+    (ctypecase lish:*input*
+      ((or string pathname stream)
+       (push lish:*input* files))
+      (list
+       (setf files (append (list lish:*input*) files)))))
   (apply #'cat files))
 
 ;; EOF
