@@ -154,9 +154,16 @@ a stream. Returns the values for lines, words and characters."
 			(progn
 			  (format *error-output* "~s is a directory.~%" file)
 			  (invoke-restart 'continue))))
-		  (setf stream (open (nos:quote-filename file)
-				     :element-type type)
-			we-opened t)))))
+		  (handler-case
+		      (setf stream (open (nos:quote-filename file)
+					 :element-type type)
+			    we-opened t)
+		    (error (c)
+		      (if *signal-errors*
+			  (signal c)
+			  (progn
+			    (format *error-output* "~a ~a~%" (type-of c) c)
+			    (invoke-restart 'continue)))))))))
       (unwind-protect
         (progn
 	  (cond
