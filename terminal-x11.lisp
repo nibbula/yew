@@ -23,6 +23,7 @@
    #:background-color
    #:set-foreground-color
    #:set-background-color
+   #:make-xterm
    ))
 (in-package :terminal-x11)
 
@@ -45,7 +46,8 @@
   "The default size of a window in characters.")
 
 (defparameter *default-font-name*
-  "-misc-fixed-medium-r-*-*-20-*-iso10646-*"
+  ;;"-misc-fixed-medium-r-*-*-20-*-iso10646-*"
+  "-misc-fixed-medium-r-*-*-18-*-*-*-*-*-iso10646-*"
   ;; "9x15" "fixed"
   "Name of the font to use if not specified.")
 
@@ -164,6 +166,8 @@ limited only by availabile memory. It's probably a bad idea to set it to T.")
   "Add N blank lines to the scrollback for TTY."
   (loop :repeat n :do (add-line tty "")))
 
+;; Things marked with %%%% are like user settable options.
+
 (defclass terminal-x11 (terminal #| terminal-crunch |#)
   ((display
     :initarg :display :accessor display
@@ -184,10 +188,10 @@ limited only by availabile memory. It's probably a bad idea to set it to T.")
     :initarg :window-height :accessor window-height
     :initform 0 :type fixnum
     :documentation "The height of window in pixels.")
-   (cell-width
+   (cell-width				; %%%%
     :initarg :cell-width :accessor cell-width :initform 0 :type fixnum
     :documentation "The width of cells in the character grid, in pixels.")
-   (cell-height
+   (cell-height				; %%%%
     :initarg :cell-height :accessor cell-height :initform 0 :type fixnum
     :documentation "The height of the cells in character grid in pixels.")
    (own-window
@@ -203,21 +207,21 @@ limited only by availabile memory. It's probably a bad idea to set it to T.")
    (cursor-gc
     :initarg :cursor-gc :accessor cursor-gc :initform nil
     :documentation "Graphics context for drawing the cursor.")
-   (font-name
+   (font-name				; %%%%
     :initarg :font-name
     ;; No accessor since it conflicts with xlib:font-name
     ;; :accessor font-name
     :initform ""
     :type string
     :documentation "Name of the font to use.")
-   (bold-font-name
+   (bold-font-name			; %%%%
     :initarg :bold-font-name
     ;; No accessor since it conflicts with xlib:font-name
     ;; :accessor font-name
     :initform ""
     :type string
     :documentation "Name of the bold font to use.")
-   (italic-font-name
+   (italic-font-name			; %%%%
     :initarg :italic-font-name :accessor italic-font-name
     :initform "" :type string
     :documentation "Name of the italic font to use.")
@@ -227,13 +231,13 @@ limited only by availabile memory. It's probably a bad idea to set it to T.")
    (bold-font
     :initarg :bold-font :accessor bold-font :initform nil
     :documentation "The font for bold text.")
-   (bold-color
+   (bold-color				; %%%%
     :initarg :bold-color :accessor bold-color :initform nil
     :documentation "The color for bold text.")
    (italic-font
     :initarg :italic-font :accessor italic-font :initform nil
     :documentation "The font for italic text.")
-   (title
+   (title				; %%%%
     :initarg :title :accessor title :initform "Lisp Terminal" :type string
     :documentation "The title of the window.")
    (cursor-row
@@ -253,17 +257,18 @@ of (column . row)")
     :documentation "Display state of the cursor.")
    (cursor-rendition
     :initarg :cursor-rendition :accessor cursor-rendition
-    :initform (make-fatchar) :type fatchar
+    :initform nil
+    ;; :initform (make-fatchar) :type fatchar
     :documentation "Attributes for drawing the cursor.")
    (rendition
     :initarg :rendition :accessor rendition
     :initform (make-fatchar) :type fatchar
     :documentation "The current character attributes.")
-   (foreground
+   (foreground				; %%%%
     :initarg :foreground :accessor foreground :initform :white
     :documentation "The default foreground color for text. Note that this is
 different from the current foreground color which in rendition.")
-   (background
+   (background				; %%%%
     :initarg :background :accessor background :initform :black
     :documentation "The background of the window.")
    (pixel-format
@@ -274,7 +279,7 @@ different from the current foreground color which in rendition.")
     #| :initform (make-array) |# :type (or null (vector grid-string))
     :documentation "The character grid rows of the screen.")
    (scrollback
-    :initarg :scollback :accessor scollback
+    :initarg :scrollback :accessor scrollback
     :documentation "History lines.")
    (top
     :initarg :top :accessor terminal-x11-top :initform 0 :type fixnum
@@ -303,14 +308,18 @@ different from the current foreground color which in rendition.")
    (modifiers
     :initarg :modifiers :accessor modifiers :initform nil :type list
     :documentation "List of keycodes that are modifiers.")
-   (allow-send-events
+   (allow-send-events			; %%%%
     :initarg :allow-send-events :accessor allow-send-events
     :initform nil :type boolean
     :documentation "True to allow synthetic events sent by other programs.")
-   (interrupt-key
+   (interrupt-key			; %%%%
     :initarg :interrupt-key :accessor interrupt-key
     :initform (char-util:ctrl #\c)
     :documentation "Key or character to throw an interrupt, or NIL for none.")
+   (scroll-to-bottom
+    :initarg :scroll-to-bottom :accessor scroll-to-bottom
+    :initform :both :type (member :output :input :both)
+    :documentation "When to scroll to the bottom.")
 ;;    (threads
 ;;     :initarg :threads :accessor threads :initform nil :type 
 ;;     :documentation "Threads running in the terminal, so we can kill them when
@@ -448,19 +457,22 @@ are already set."
        (terminal-window-rows o) (cdr *default-window-size*)
        (values window-width window-height)
        (window-size o (terminal-window-columns o) (terminal-window-rows o))
+       pixel-format (get-pixel-format root)
        window (create-window
 	       :parent root
 	       :x 0 :y 0
 	       :width window-width
 	       :height window-height
-	       :background black
+	       :background (or (and background (color-to-pixel o background))
+			       black)
 	       :event-mask 
 	       (make-event-mask
 		:key-press :button-press :button-release :button-motion
 		:exposure :visibility-change :structure-notify))
        draw-gc (create-gcontext
 		:drawable window
-		:background black
+		:background (or (and background (color-to-pixel o background))
+				black)
 		:foreground white
 		:function boole-1
 		;;:subwindow-mode :include-inferiors
@@ -474,7 +486,9 @@ are already set."
 		  :font font)
        erase-gc (create-gcontext
 		 :drawable window
-		 :background black
+		 ;; :background black
+		 :background (or (and background (color-to-pixel o background))
+				 black)
 		 :foreground white
 		 :function boole-clr
 		 ;;:subwindow-mode :include-inferiors
@@ -503,7 +517,7 @@ are already set."
       (map-window window))
     (terminal-get-size o)
     (make-new-grid o)
-    (setf pixel-format (get-pixel-format o)
+    (setf pixel-format (get-pixel-format (window o))
 	  modifiers (flatten (multiple-value-list (modifier-mapping display)))
 	  cursor-gc (create-gcontext
 		     :drawable window
@@ -570,6 +584,61 @@ COLUMN."
     (setf input-mode :char)
     (terminal-get-size tty)
     input-mode))
+
+(defun start-in-terminal (new-term func)
+  (let* ((*terminal* new-term)
+	 (*standard-output* new-term)
+	 (*standard-input* new-term)
+	 (*error-output* new-term)
+	 (*query-io* new-term)
+	 ;; (*trace-output* new-term)
+	 (*debug-io* *trace-output*) ;; @@@
+	 (*terminal-io* new-term)
+	 (deblarg::*dont-use-a-new-term* t)
+	 (terminal:*default-terminal-type* :x11))
+    (funcall func new-term)))
+
+(defun make-xterm (&key
+		     width height font bold-font italic-font bold-color title
+		     foreground background cursor-rendition
+		     allow-send-events function
+		     (use-crunch t))
+  "Easy interface to making a customized TERMINAL-X11."
+  (declare (ignorable width height font bold-font italic-font bold-color title
+		      foreground background allow-send-events function))
+  (let ((arg-list
+	 `((:cell-width        . ,width)
+	   (:cell-width        . ,height)
+	   (:font-name         . ,font)
+	   (:bold-font-name    . ,bold-font)
+	   (:italic-font-name  . ,italic-font)
+	   (:bold-color        . ,bold-color)
+	   (:title             . ,title)
+	   (:foreground        . ,foreground)
+	   (:background        . ,background)
+	   (:cursor-rendition  . ,cursor-rendition)
+	   (:allow-send-events . ,allow-send-events)))
+	args new-term x-term)
+    (setf arg-list (delete-if-not #'cdr arg-list))
+    (loop :for (key . val) :in arg-list :do
+       (push val args)
+       (push key args))
+    ;; (format t "~s~%" args)
+    (setf new-term (apply #'make-instance 'terminal-x11 args))
+    (when (not function)
+      (setf function (_ (symbol-call :lish :lish))))
+    (when use-crunch
+      (setf x-term new-term
+	    new-term
+	    (make-instance
+	     'terminal-crunch:terminal-crunch
+	     :wrapped-terminal new-term)))
+    (unwind-protect
+	 (progn
+	   (terminal-start new-term)
+	   (start-in-terminal new-term function))
+      (terminal-done new-term) ;; @@@@ Until no more bugs!
+      )))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; @@@
@@ -1095,6 +1164,11 @@ changed the screen contents."
     ((color:structured-color-p color) color)
     (t (color:lookup-color color))))
 
+(defun color-to-pixel (tty color)
+  "Convert a color name or color to a pixel value."
+  (color-pixel tty (or (and (color:structured-color-p color) color)
+		       (color:lookup-color color))))
+
 (defun %terminal-color (tty fg bg)
   ;; (format t "%terminal-color fg ~s bg ~s~%" fg bg)
   (with-slots (draw-gc rendition) tty
@@ -1369,9 +1443,9 @@ to the grid. It must be on a single line and have no motion characters."
        :blue-mask  #x001f))
   "List of known pixel formats.")
 
-(defun get-pixel-format (tty)
+(defun get-pixel-format (window)
   "Return the pixel format for TTY."
-  (loop :with v = (xlib:window-visual-info (window tty))
+  (loop :with v = (xlib:window-visual-info window)
      :for f :in *pixel-formats*
      :do
      (when (and
@@ -1449,7 +1523,8 @@ to the grid. It must be on a single line and have no motion characters."
 
 (defun redraw-area (tty &optional (start-x 0) (start-y 0) width height)
   "Redraw a rectangular area."
-  (with-slots (lines cell-width cell-height window draw-gc top scrollback
+  (with-slots (lines cell-width cell-height window draw-gc erase-gc
+	       top scrollback window-width window-height
 	       (window-rows terminal::window-rows)
 	       (window-columns terminal::window-columns)) tty
     (let ((c-start-x (1- (ceiling start-x cell-width)))
@@ -1460,27 +1535,36 @@ to the grid. It must be on a single line and have no motion characters."
 	  (c-height  (if height
 			 (1+ (ceiling height cell-height))
 			 window-rows))
+	   (y 0)
 	  actual-end str output-start)
       (setf c-start-x (max 0 c-start-x)
 	    c-start-y (max 0 c-start-y))
       (dbugf :tx11 "redraw-area ~s ~s ~s ~s~%"
 	     c-start-x c-start-y c-width c-height)
-      ;; (draw-rectangle window draw-gc start-x start-y width height)
+      (draw-rectangle window erase-gc
+		      (or start-x 0) (or start-y 0)
+		      (or width window-width) (or height window-height)
+		      t)
       (when (not (zerop top))
 	(loop
-	   :for y = 0 :then (1+ y)
+	   ;; :for y = 0 :then (1+ y)
 	   :for i :from top :downto (max 0 (- top window-rows))
 	   :do
-	   (setf str (span-to-fat-string (oelt scrollback i))
+	   (setf str (span-to-fat-string (oelt scrollback (- c-height i)))
 		 actual-end
 		 (clamp (+ c-start-x c-width) 0 (min (olength str)
 						     (1- window-columns))))
+	   (dbugf :tx11 "bowser y ~s i ~s [~s ~s] str ~s~%"
+		  y i c-start-x actual-end str)
 	   (%draw-fat-string tty str
 			     :end actual-end :start c-start-x
-			     :x 0 :y y)))
+			     :x 0 :y y)
+	   (incf y)))
+      (setf y (+ (max 0 c-start-y) y))
       (loop
-	 :for y :from (max 0 c-start-y)
-	 :to (clamp (+ c-start-y c-height) 0 (1- window-rows))
+	 ;; :for y :from (max 0 c-start-y)
+	 ;; :to (clamp (+ c-start-y c-height) 0 (1- window-rows))
+	 :while (< y (clamp (+ c-start-y c-height) 0 (1- window-rows)))
 	 :do
 	 (setf actual-end
 	       (clamp (+ c-start-x c-width) 0 (min (length (aref lines y))
@@ -1496,21 +1580,31 @@ to the grid. It must be on a single line and have no motion characters."
 		    (not (zerop (olength str))))
 	   (%draw-fat-string
 	    tty str :start c-start-x :end actual-end
-	    :x (+ c-start-x output-start) :y y))))))
+	    :x (+ c-start-x output-start) :y y))
+	 (incf y)))))
 
 (defun scrollback-backward (tty n)
   "Move the top of the terminal view backward N lines in the scrollback history."
-  (with-slots (display top scrollback) tty
-    (when (< top (1- (olength scrollback)))
+  (with-slots (display top scrollback (window-rows terminal::window-rows)) tty
+    (when (< top (olength scrollback))
       (setf top (min (1- (olength scrollback)) (+ top n)))
+      (dbugf :tx11 "scroll back ~s ~s~%" top (olength scrollback))
       (redraw-area tty)
       (display-finish-output display))))
 
 (defun scrollback-forward (tty n)
   "Move the top of the terminal view forward N lines in the scrollback history."
-  (with-slots (display top) tty
+  (with-slots (display top scrollback) tty
     (when (> top 0)
       (setf top (max 0 (- top n)))
+      (dbugf :tx11 "scroll forward ~s ~s~%" top (olength scrollback))
+      (redraw-area tty)
+      (display-finish-output display))))
+
+(defun scrollback-to-bottom (tty)
+  (with-slots (display top) tty
+    (when (not (zerop top))
+      (setf top 0)
       (redraw-area tty)
       (display-finish-output display))))
 
@@ -1882,7 +1976,8 @@ handler cases."
 	       ;;(clear-area win :x x :y y :width w :height h)
 	       ;;(display-finish-output display)
 	       (when (find :resize (terminal-events-enabled tty))
-		 (setf result :resize))))
+		 (setf result :resize
+		       *input-available* t))))
 	   (or result (and (discard-current-event display) nil))))
 	(:visibility-notify
 	 t)
@@ -2063,7 +2158,7 @@ handler cases."
 		  (scrollback-backward tty window-rows)
 		  (setf got-one t))
 		 (:s-page-down
-		  (scrollback-backward tty window-rows)
+		  (scrollback-forward tty window-rows)
 		  (setf got-one t)))
 	       (when got-one
 		 (discard-current-event display)
@@ -2076,7 +2171,7 @@ handler cases."
 	(otherwise t)))))
 
 (defun get-key (tty &key timeout)
-  (with-slots (display pushback modifiers) tty
+  (with-slots (display pushback modifiers scroll-to-bottom) tty
     (when pushback
       (return-from get-key
 	(pop pushback)))
@@ -2093,14 +2188,14 @@ handler cases."
 	   (time-left real-timeout)
 	   result)
       (loop :do
-	 (dbugf :tx11 "get-key BEFORE ~s ~s ~s ~s ~s~%"
-		timeout time-left
-		(and time-left (dtime-plusp time-left))
-		(and time-left (dtime-to time-left :seconds))
-		(and timeout
-		     time-left
-		     (dtime-plusp time-left)
-		     (dtime-to time-left :seconds)))
+	 ;; (dbugf :tx11 "get-key BEFORE ~s ~s ~s ~s ~s~%"
+	 ;; 	timeout time-left
+	 ;; 	(and time-left (dtime-plusp time-left))
+	 ;; 	(and time-left (dtime-to time-left :seconds))
+	 ;; 	(and timeout
+	 ;; 	     time-left
+	 ;; 	     (dtime-plusp time-left)
+	 ;; 	     (dtime-to time-left :seconds)))
 	 (setf result
 	       (process-event display
 			      :handler #'key-handler
@@ -2109,12 +2204,14 @@ handler cases."
 					    time-left
 					    (dtime-plusp time-left)
 					    (dtime-to time-left :seconds))))
-	 (dbugf :tx11 "get-key ~s~%" result)
+	 ;; (dbugf :tx11 "get-key ~s~%" result)
 	 (when timeout
 	   (setf time-left (dtime- (dtime+ start-time real-timeout)
 				   (get-dtime))))
 	 :while (and (not *input-available*)
 		     (or (not timeout) (and time-left (dtime-plusp time-left)))))
+      (when (and *input-available* (member scroll-to-bottom '(:input :both)))
+	(scrollback-to-bottom tty))
       result)))
 
 (defmethod terminal-get-char ((tty terminal-x11))
