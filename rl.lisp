@@ -433,6 +433,7 @@ Keyword arguments:
       (let ((result nil))
 	(unwind-protect
 	     (progn
+	       ;; (tt-fresh-line)
 	       (history-line-open)
 	       (loop :do
 		  (finish-output)
@@ -497,14 +498,15 @@ Keyword arguments:
 	    (clear-completions e)
 	    (setf (first-point e) (fill-pointer buf))
 	    (update-display e)
-	    ;;(tt-finish-output)
 	    (when accept-does-newline
 	      ;; (tt-write-string buf-str :start point)
 	      (tt-write-char #\newline)
+	      ;;(tt-fresh-line)
 	      ;; (tt-write-char #\return)
-	      (tt-finish-output)
+	      ;; (tt-finish-output)
 	      ;; (write-char #\newline)
 	      )
+	    (tt-finish-output)
 	    (run-hooks *exit-hook*)
 	    (terminal-end terminal terminal-state)
 	    ;; Make sure the NIL history item is gone.
