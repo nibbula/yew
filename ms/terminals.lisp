@@ -1284,7 +1284,7 @@ the color values of the console text colors."
     colors))
 
 (defcfun ("SetConsoleScreenBufferInfoEx" %set-console-screen-buffer-info-ex)
-    BOOL 
+    BOOL
   (console-output HANDLE)					     ; in
   (console-screen-buffer-info-ex PCONSOLE_SCREEN_BUFFER_INFOEX))     ; in
 
