@@ -77,7 +77,7 @@
     (setf result
     	  (rl:rl :prompt (format nil "~:(~a~) Title: " which)
 		 :string (or title "")
-		 :terminal-class 'terminal-ansi:terminal-ansi
+		 ;; :terminal-class 'terminal-ansi:terminal-ansi
 		 :accept-does-newline nil))
     (when result
       (set-title result which))
@@ -101,7 +101,7 @@
     (setf result
 	  (rl:rl :prompt "Font: "
 		 :string (or font "")
-		 :terminal-class 'terminal-ansi:terminal-ansi
+		 ;; :terminal-class 'terminal-ansi:terminal-ansi
 		 :accept-does-newline nil))
     (when result
       (set-font result))
@@ -318,8 +318,7 @@
    (initialize-all
     :initarg :initialize-all :accessor xterminator-initialize-all
     :initform t :type boolean
-    :documentation "True to initialize all parameters.")
-   )
+    :documentation "True to initialize all parameters."))
   (:documentation "XTerm compatible terminal manipulator."))
 
 (defun get-xterm-parameter (o parameter)
@@ -369,10 +368,10 @@
       (when (find parameter '(foreground background))
 	(when (not (slot-boundp o parameter))
 	  (setf (slot-value o 'foreground)
-		(and-<> (foreground-color)
+		(and-<> (tt-window-foreground)
 			(convert-color-to <> :rgb8))
 		(slot-value o 'background)
-		(and-<> (background-color)
+		(and-<> (tt-window-background)
 			(convert-color-to <> :rgb8))))
 	(setf result (slot-value o parameter)))
 
@@ -429,9 +428,9 @@
 		 (= screen-char-width char-width)
 		 (= screen-char-height char-height)))
       ;; Foreground & background colors
-      (setf foreground (and-<> (foreground-color)
+      (setf foreground (and-<> (tt-window-foreground)
 			       (convert-color-to <> :rgb8))
-	    background (and-<> (background-color)
+	    background (and-<> (tt-window-background)
 			       (convert-color-to <> :rgb8)))
       ;; title
       (setf title (get-title))
@@ -578,7 +577,8 @@
 	   (type (member red green blue) element))
   (let ((fun    (symbolify (s+ dir "rement-" slot "-" element)))
 	(kw     (keywordify element))
-	(setter (symbolify (s+ "set-" slot "-color")))
+	;; (setter (symbolify (s+ "set-" slot "-color")))
+	(setter (symbolify (s+ "tt-window-" slot)))
 	(minimax (if (eq dir 'inc) 'min 'max))
 	(op      (if (eq dir 'inc) '+ '-))
 	(val     (if (eq dir 'inc) 255 0)))
@@ -587,7 +587,7 @@
 	 (when ,slot
 	   (setf (color-component ,slot ,kw)
 		 (,minimax ,val (,op (color-component ,slot ,kw) increment)))
-	   (,setter ,slot))))))
+	   (setf (,setter) ,slot))))))
 
 (def-cc dec background red)
 (def-cc dec background green)
@@ -647,7 +647,7 @@
                 q        - Quit~%")))
 
 (defun control-xterm ()
-  (with-terminal (:ansi)
+  (with-terminal ( #| :ansi |#)
     (let ((*xterminator*
 	   (make-instance 'xterminator
 			  :keymap (list *xterminator-keymap*
