@@ -1889,6 +1889,26 @@ i.e. the terminal is 'line buffered'."
      (with-slots (window) tty
        (drawable-depth window)))))
 
+(defmethod terminal-window-foreground ((tty terminal-x11))
+  (foreground tty))
+
+(defmethod (setf terminal-window-foreground) (color (tty terminal-x11))
+  (when (not (color:known-color-p color))
+    (error "Unknown color ~s." color))
+  (setf (foreground tty) (color:lookup-color color)))
+
+(defmethod terminal-window-background ((tty terminal-x11))
+  (background tty))
+
+(defmethod (setf terminal-window-background) (color (tty terminal-x11))
+  (when (not (color:known-color-p color))
+    (error "Unknown color ~s." color))
+  (setf (background tty) (color:lookup-color color)
+	(window-background (window tty)) (color-to-pixel tty color))
+  (clear-area (window tty) :x 0 :y 0
+	      :width (window-width tty) :height (window-height tty))
+  (redraw-area tty))
+
 (defmethod terminal-beep ((tty terminal-x11))
   (with-slots (display) tty
     (bell display)
