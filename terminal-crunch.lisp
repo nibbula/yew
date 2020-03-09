@@ -948,6 +948,8 @@ to blank with."
 	  (index-blanker index)))
     ;; @@@ Maybe this triggers the thing??
     (when (not (zerop (start-line tty)))
+      (dbugf :crunk "start-line ~s -> ~s~%" (start-line tty)
+	     (max 0 (- (start-line tty) n)))
       (setf (start-line tty) (max 0 (- (start-line tty) n)))
       (incf (really-scroll-amount tty) n))))
 
@@ -1439,6 +1441,18 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-colors ((tty terminal-crunch-stream))
   ;; Just call the wrapped one.
   (terminal-colors (terminal-wrapped-terminal tty)))
+
+(defmethod terminal-window-foreground ((tty terminal-crunch))
+  (terminal-window-foreground (terminal-wrapped-terminal tty)))
+
+(defmethod (setf terminal-window-foreground) (color (tty terminal-crunch))
+  (setf (terminal-window-foreground (terminal-wrapped-terminal tty)) color))
+
+(defmethod terminal-window-background ((tty terminal-crunch))
+  (terminal-window-background (terminal-wrapped-terminal tty)))
+
+(defmethod (setf terminal-window-background) (color (tty terminal-crunch))
+  (setf (terminal-window-background (terminal-wrapped-terminal tty)) color))
 
 (defmethod terminal-beep ((tty terminal-crunch-stream))
   (incf (screen-beep-count (new-screen tty))))

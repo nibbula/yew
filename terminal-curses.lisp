@@ -94,7 +94,13 @@ require terminal driver support."))
    (delay-scroll
     :initarg :delay-scroll :accessor delay-scroll :initform nil :type boolean
     :documentation
-    "True to delay scrolling until the next character is output."))
+    "True to delay scrolling until the next character is output.")
+   (default-fg
+    :initarg :default-fg :accessor default-fg :initform :white
+    :documentation "Default foreground color.")
+   (default-bg
+    :initarg :default-bg :accessor default-bg :initform :black
+    :documentation "Default background color."))
   (:default-initargs
   )
   (:documentation "A terminal using the curses library."))
@@ -538,9 +544,9 @@ i.e. the terminal is 'line buffered'."
   ;; This defaulting is bullcrap. But so is curses defaulting.
   ;; See man default_colors.
   (when (or (null fg) (eq fg :default))
-    (setf fg :white))
+    (setf fg (default-fg tty)))
   (when (or (null bg) (eq bg :default))
-    (setf bg :black))
+    (setf bg (default-bg tty)))
   (let ((fg-num (color-number fg))
 	(bg-num (color-number bg)))
     (when (and fg-num bg-num)
@@ -552,6 +558,31 @@ i.e. the terminal is 'line buffered'."
       0
       ;; @@@ Is this really right?
       *colors*))
+
+(defmethod terminal-window-foreground ((tty terminal-curses))
+  "Get the default foreground color for text."
+  ;; @@@ This isn't really right.
+  ;; I don't think there's a way to know this with ncurses?
+  (default-fg tty))
+
+(defmethod (setf terminal-window-foreground) (color (tty terminal-curses))
+  ;; @@@ This isn't really right either.
+  (setf (default-fg tty) color))
+
+(defmethod terminal-window-background ((tty terminal-curses))
+  "Get the default background color for text."
+  ;; (let* ((attr (getbkgd))
+  ;; 	 (pair (pair-number attr)))
+  ;;   (b))
+  )
+
+(defmethod (setf terminal-window-background) (color (tty terminal-curses))
+  (when (or (null color) (eq color :default))
+    (setf color (default-bg tty)))
+  (let ((color-num (color-number color)))
+    (when color-num
+      (setf (default-bg tty) color)
+      (bkgd (color-index 0 color-num)))))
 
 ;; 256 color? ^[[ 38;5;color <-fg 48;5;color <- bg
 ;; set color tab = ^[] Ps ; Pt BEL

@@ -18,6 +18,14 @@
 ;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 ;; 		   (compilation-speed 0)))
 
+(defparameter *basic-colors*
+  '(:black :red :green :yellow :blue :magenta :cyan :white))
+
+(defparameter *contrast-colors*
+  '(:white :black :black :black :white :black :black :black)
+  "Color which will contrast with *basic-colors*")
+
+
 (defun ask-class ()
   (format t "Which sub-class ?~%")
   (let (types)
@@ -296,8 +304,7 @@
 
 (defun test-colors ()
   (blurp ()
-   (let ((colors '(:default :black :red :green :yellow :blue :magenta :cyan
-		   :white))
+   (let ((colors (cons :default *basic-colors*))
 	 (i 0))
      (flet ((squares (x y title func)
 	      (setf i 0)
@@ -354,7 +361,22 @@
 	 (tt-color :magenta nil) (tt-write-string "Magenta ")
 	 (tt-color :default nil)
 	 (tt-write-span '((:yellow "Yellow") " "))
-	 (tt-write-string "Normal"))))))
+	 (tt-write-string "Normal")))))
+  (blurp ()
+    (let ((original-bg (tt-window-background)))
+      (unwind-protect
+	   (loop
+	      :for c :in *basic-colors*
+	      :for tc :in *contrast-colors*
+	      :do
+	      (setf (tt-window-background) c)
+	      (tt-home) (tt-erase-below)
+	      (tt-color tc :default)
+	      (center (format nil "The screen should be ~a" c) 0)
+	      (tt-color :default :default)
+	      (prompt-next))
+	(setf (tt-window-background) original-bg)
+	(tt-home) (tt-erase-below)))))
 
 (defun test-alternate-characters ()
   (blurp ()
@@ -859,14 +881,14 @@ drawing, which will get overwritten."
 
 (defun base-colors ()
   "Output the base 16 system colors."
-  (loop :for c :in '(:black :red :green :yellow :blue :magenta :cyan :white)
+  (loop :for c :in *basic-colors*
      :do
      (tt-color :black c)
      (tt-write-string "  "))
   (tt-write-char #\newline)
   (tt-bold t)
   (tt-inverse t)
-  (loop :for c :in '(:black :red :green :yellow :blue :magenta :cyan :white)
+  (loop :for c :in *basic-colors*
      :do
      (tt-color c :black)
      (tt-write-string "  "))

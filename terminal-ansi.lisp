@@ -29,8 +29,8 @@
    #:*selection-codes*
    #:selection
    #:set-selection
-   #:foreground-color
-   #:background-color
+   ;; #:foreground-color
+   ;; #:background-color
    #:set-foreground-color
    #:set-background-color
    #:reset-color-pallet
@@ -882,33 +882,41 @@ i.e. the terminal is 'line buffered'."
 (defparameter *colors*
   #(:black :red :green :yellow :blue :magenta :cyan :white nil :default))
 
-(defun foreground-color ()
+(defmethod terminal-window-foreground ((tty terminal-ansi))
   "Get the default foreground color for text."
   (let ((qq (query-string (s+ "10;?" +st+) :lead-in +osc+ :offset 5
-			  :tty (terminal-file-descriptor *terminal*))))
+			  :tty (terminal-file-descriptor tty))))
     (and qq (xcolor-to-color qq))))
 
-(defun background-color ()
+(defmethod terminal-window-background ((tty terminal-ansi))
   "Get the default background color for text."
   (let ((qq (query-string (s+ "11;?" +st+) :lead-in +osc+ :offset 5
-			  :tty (terminal-file-descriptor *terminal*))))
+			  :tty (terminal-file-descriptor tty))))
     (and qq (xcolor-to-color qq))))
 
-(defun set-foreground-color (color)
+(defun set-foreground-color (tty color)
   "Set the default forground color for text."
   (when (not (known-color-p color))
     (error "Unknown color ~s." color))
-  (tt-format "~a10;~a~a" +osc+ (color-to-xcolor (lookup-color color)) +st+))
+  (terminal-raw-format tty "~a10;~a~a"
+		       +osc+ (color-to-xcolor (lookup-color color)) +st+))
 
-(defun set-background-color (color)
+(defun set-background-color (tty color)
   "Set the default background color for the terminal."
   (when (not (known-color-p color))
     (error "Unknown color ~s." color))
-  (tt-format "~a11;~a~a" +osc+ (color-to-xcolor (lookup-color color)) +st+))
+  (terminal-raw-format tty "~a11;~a~a"
+		       +osc+ (color-to-xcolor (lookup-color color)) +st+))
 
-(defun reset-color-pallet ()
+(defmethod (setf terminal-window-foreground) (color (tty terminal-ansi))
+  (set-foreground-color tty color))
+
+(defmethod (setf terminal-window-background) (color (tty terminal-ansi))
+  (set-background-color tty color))
+
+(defun reset-color-pallet (tty)
   "Reset the whole color pallet to the default."
-  (terminal-raw-format *terminal* "~a104~a" +osc+ +st+))
+  (terminal-raw-format tty "~a104~a" +osc+ +st+))
 
 (defun %terminal-color (tty fg bg &key unwrapped)
   (let ((fg-pos (and (keywordp fg) (position fg *colors*)))
@@ -1169,7 +1177,7 @@ Attributes are usually keywords."
 		 (setf result x)))
 	(with-interrupts-handled (tty)
 	  (with-terminal-signals ()
-	    (char-util::%get-utf8b-char read-it set-it)))
+	    (unicode::%get-utf8b-char read-it set-it)))
 	result))))
 
 (defun raw-get-char (tty &key timeout)
@@ -1612,7 +1620,7 @@ bracketed read.")
 	     (if s
 		 (progn
 		   ;; (princ s str)
-		   (let ((uu (char-util:utf8-bytes-to-string s)))
+		   (let ((uu (unicode:utf8-bytes-to-string s)))
 		     ;; (dbugf :bp "why? ~s ~s~%" uu (type-of uu))
 		     (princ uu str))
 		   (setf i 1))

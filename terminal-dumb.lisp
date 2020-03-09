@@ -184,6 +184,18 @@ require terminal driver support."))
   (declare (ignore tty))
   0)
 
+(defmethod terminal-window-foreground ((tty terminal-dumb))
+  (declare (ignore tty)))
+
+(defmethod (setf terminal-window-foreground) (color (tty terminal-dumb))
+  (declare (ignore color tty)))
+
+(defmethod terminal-window-background ((tty terminal-dumb))
+  (declare (ignore tty)))
+
+(defmethod (setf terminal-window-background) (color (tty terminal-dumb))
+  (declare (ignore color tty)))
+
 (defmethod terminal-beep ((tty terminal-dumb))
   (declare (ignore tty)))
 

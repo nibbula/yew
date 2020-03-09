@@ -75,6 +75,8 @@
    #:tt-inverse			  #:terminal-inverse
    #:tt-color			  #:terminal-color
    #:tt-colors			  #:terminal-colors
+   #:tt-window-foreground	  #:terminal-window-foreground
+   #:tt-window-background	  #:terminal-window-background
    #:tt-beep			  #:terminal-beep
    #:tt-set-attributes            #:terminal-set-attributes
    #:tt-set-scrolling-region	  #:terminal-set-scrolling-region
@@ -642,6 +644,16 @@ scroll the screen up.")
 (deftt colors ()
   "Return the number of colors the terminal supports. Return 0 if it doesn't
 support color, or NIL if it can't be determined.")
+(deftt window-foreground ()
+  "Return the window foreground color, which is probably also the default text foreground color.")
+(defgeneric (setf terminal-window-foreground) (color tt)
+  (:documentation
+   "Set the window foreground color, which is probably also the default text foreground color."))
+(deftt window-background ()
+  "Return the window bacground color.")
+(defgeneric (setf terminal-window-background) (color tt)
+  (:documentation
+   "Set the window background color."))
 (deftt beep ()
   "Make the terminal emit a sound, or perhaps flash the screen.")
 (deftt set-attributes (attributes)

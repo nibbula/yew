@@ -707,6 +707,23 @@
   ;; @@@ There might be more colors starting in Windows 10?
   16)
 
+(defun foob (tty)
+  (with-slots ((fd terminal::file-descriptor)) tty
+    (get-console-extended-info fd)))
+
+(defmethod terminal-window-foreground ((tty terminal-ms))
+  (declare (ignore tty))
+  )
+
+(defmethod (setf terminal-window-foreground) (color (tty terminal-ms))
+  (declare (ignore tty color)))
+
+(defmethod terminal-window-background ((tty terminal-ms))
+  (declare (ignore tty)))
+
+(defmethod (setf terminal-window-background) (color (tty terminal-ms))
+  (declare (ignore tty color)))
+
 (defmethod terminal-beep ((tty terminal-ms))
   (terminal-write-char tty #\bel)) ; Not #\bell!!
 
