@@ -10,7 +10,6 @@
    #:terminal-curses
    ;; extensions:
    #:+color-names+
-   #:*color-table*
    #:color-index
    #:color-number
    ))
@@ -69,6 +68,8 @@
    "Terminal as purely a Lisp output stream. This can't do input or things that
 require terminal driver support."))
 
+(defparameter *default-default-bg* :black)
+
 (defclass terminal-curses (terminal)
   ((screen
     :initarg :screen :accessor screen :initform nil
@@ -90,7 +91,8 @@ require terminal driver support."))
     :accessor translate-alternate-characters
     :initform nil :type boolean
     :documentation
-    "True to translate some unicode characters into the alternate character set.")
+    "True to translate some unicode characters into the alternate character
+set.")
    (delay-scroll
     :initarg :delay-scroll :accessor delay-scroll :initform nil :type boolean
     :documentation
@@ -99,10 +101,18 @@ require terminal driver support."))
     :initarg :default-fg :accessor default-fg :initform :white
     :documentation "Default foreground color.")
    (default-bg
-    :initarg :default-bg :accessor default-bg :initform :black
-    :documentation "Default background color."))
-  (:default-initargs
-  )
+    :initarg :default-bg :accessor default-bg :initform *default-default-bg*
+    :documentation "Default background color.")
+   (has-color-p
+    :initarg :has-color-p :accessor has-color-p :initform nil :type boolean
+    :documentation "True if the device has color.")
+   (color-table
+    :initarg :color-table :accessor color-table
+    :documentation "Table of color pair numbers.")
+   (pair-color-table
+    :initarg :pair-color :accessor pair-color-table
+    :documentation "Table of pair numbers to forground and background colors.
+Elements are a cons of (foreground . backaground)"))
   (:documentation "A terminal using the curses library."))
 
 (defmethod terminal-default-device-name ((type (eql 'terminal-curses)))
@@ -147,47 +157,47 @@ require terminal driver support."))
 ;; or
 ;; (set-colors (color-index +COLOR-YELLOW+ +COLOR-BLUE+))
 
-(defvar *has-color* nil
-  "True if the device has color.")
-
-(defparameter *color-table* nil
-  "Table of color pair numbers.")
-
 (defparameter +color-names+
-  `((:black 	,+color-black+)
-    (:red 	,+color-red+)
-    (:green 	,+color-green+)
-    (:yellow 	,+color-yellow+)
-    (:blue 	,+color-blue+)
-    (:magenta 	,+color-magenta+)
-    (:cyan 	,+color-cyan+)
-    (:white 	,+color-white+))
+  `((:black 	. ,+color-black+)
+    (:red 	. ,+color-red+)
+    (:green 	. ,+color-green+)
+    (:yellow 	. ,+color-yellow+)
+    (:blue 	. ,+color-blue+)
+    (:magenta 	. ,+color-magenta+)
+    (:cyan 	. ,+color-cyan+)
+    (:white 	. ,+color-white+))
   "Associate symbols with color numbers.")
 
-(defun init-colors ()
+(defun init-colors (tty)
   ;; Initialize all the color pairs
   (start-color)
   (let ((ncolors 8))
-    (setf *color-table* (make-array (list ncolors ncolors)))
+    (setf (color-table tty) (make-array (list ncolors ncolors))
+	  (pair-color-table tty) (make-array (* ncolors ncolors)))
     (if (= (has-colors) 1)
     	(prog ((pair 0))
-	   (setf *has-color* t)
+	   (setf (has-color-p tty) t)
 	   (loop :for fg :from (- ncolors 1) :downto 0 :do
 	      (loop :for bg :from 0 :below ncolors :do
 		 (when (> pair 0) ;; Pair 0 defaults to WHITE on BLACK
 		   (init-pair pair fg bg))
-		 (setf (aref *color-table* fg bg) pair)
+		 (setf (aref (color-table tty) fg bg) pair
+		       (aref (pair-color-table tty) pair) (cons fg bg))
 		 (incf pair))))
-	(setf *has-color* nil)))
+	(setf (has-color-p tty) nil)))
   (bkgd (color-pair 0)))
 
-(defun color-index (fg bg)
+(defun color-index (tty fg bg)
   "Return the color pair number for the foreground FG and background BG."
-  (aref *color-table* fg bg))
+  (aref (color-table tty) fg bg))
 
 (defun color-number (color)
   "Return the curses color number given a symbol name."
-  (cadr (assoc color +color-names+)))
+  (cdr (assoc color +color-names+)))
+
+(defun color-name (color-number)
+  "Return the color name keyword given a curses color number."
+  (car (rassoc color-number +color-names+)))
 
 ;; Just for debugging
 ; (defun terminal-report-size ()
@@ -217,7 +227,7 @@ require terminal driver support."))
   (leaveok curses:*stdscr* 0)
   (scrollok curses:*stdscr* *default-scroll-ok*)
   (curs-set 1)
-  (init-colors)
+  (init-colors tty)
   (terminal-get-size tty))
 
 (defmethod terminal-end ((tty terminal-curses) &optional state)
@@ -550,7 +560,7 @@ i.e. the terminal is 'line buffered'."
   (let ((fg-num (color-number fg))
 	(bg-num (color-number bg)))
     (when (and fg-num bg-num)
-      (color-set (color-index fg-num bg-num) (cffi:null-pointer)))))
+      (color-set (color-index tty fg-num bg-num) (cffi:null-pointer)))))
 
 (defmethod terminal-colors ((tty terminal-curses))
   (declare (ignore tty))
@@ -571,18 +581,18 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-window-background ((tty terminal-curses))
   "Get the default background color for text."
-  ;; (let* ((attr (getbkgd))
-  ;; 	 (pair (pair-number attr)))
-  ;;   (b))
-  )
+  (let* ((attr (getbkgd (screen tty)))
+	 (pair (pair-number attr)))
+    (color-name (cdr (aref (pair-color-table tty) pair)))))
 
 (defmethod (setf terminal-window-background) (color (tty terminal-curses))
   (when (or (null color) (eq color :default))
-    (setf color (default-bg tty)))
+    (setf color *default-default-bg*))
   (let ((color-num (color-number color)))
     (when color-num
       (setf (default-bg tty) color)
-      (bkgd (color-index 0 color-num)))))
+      (bkgd (color-pair
+	     (color-index tty (color-number (default-fg tty)) color-num))))))
 
 ;; 256 color? ^[[ 38;5;color <-fg 48;5;color <- bg
 ;; set color tab = ^[] Ps ; Pt BEL
