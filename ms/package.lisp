@@ -132,6 +132,11 @@
    #:get-computer-name
    ;; Console stuff:
    #:get-console-info
+   #:get-console-extended-info
+   #:get-console-all-extended-info
+   #:set-console-all-extended-info
+   #:get-console-colors
+   #:set-console-colors
    #:get-window-size
    #:get-cursor-position
    #:get-cursor-info

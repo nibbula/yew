@@ -1140,6 +1140,175 @@ for different text attributes."
     (declare (ignore x y width height))
     (values attr)))
 
+(defctype COLORREF DWORD)
+
+(defcstruct CONSOLE_SCREEN_BUFFER_INFOEX
+  (size-in-bytes	ULONG)
+  (size			(:struct COORD))
+  (cursor-position	(:struct COORD))
+  (attributes		WORD)
+  (window		(:struct SMALL_RECT))
+  (maximum-window-size	(:struct COORD))
+  (popup-attributes	WORD)
+  (fullscreen-supported	BOOL)
+  (color-table		COLORREF :count 16))
+
+(defctype PCONSOLE_SCREEN_BUFFER_INFOEX
+    (:pointer (:struct CONSOLE_SCREEN_BUFFER_INFOEX)))
+
+(defcfun ("GetConsoleScreenBufferInfoEx" %get-console-screen-buffer-info-ex)
+    BOOL
+  (console-output HANDLE)					 ; in
+  (console-screen-buffer-info-ex PCONSOLE_SCREEN_BUFFER_INFOEX)) ; out
+
+(defstruct console-extended-info
+  size-in-bytes		; ULONG
+  size			; (:struct COORD)
+  cursor-position	; (:struct COORD)
+  attributes		; WORD
+  window		; (:struct SMALL_RECT)
+  maximum-window-size	; (:struct COORD)
+  popup-attributes	; WORD
+  fullscreen-supported	; BOOL
+  color-table		; COLORREF :count 16
+  )
+
+(defun get-console-extended-info (tty)
+  "Get the extended attributes for console TTY, returned as the values:
+ - an integer representing the text attributes to draw pop-ups with.
+ - a boolean indicating whether fullscreen mode is supported
+ - an array of 16 color integers of the format 0x00bbggrr, representing
+   the color values of the console text colors."
+  (with-slots (out-handle) tty
+    (with-foreign-object (buf '(:struct CONSOLE_SCREEN_BUFFER_INFOEX))
+      (with-foreign-slots ((size-in-bytes
+			    popup-attributes fullscreen-supported color-table)
+			   buf (:struct CONSOLE_SCREEN_BUFFER_INFOEX))
+	(setf size-in-bytes
+	      (foreign-type-size '(:struct CONSOLE_SCREEN_BUFFER_INFOEX)))
+	(when (zerop (%get-console-screen-buffer-info-ex out-handle buf))
+	  (error 'windows-error :error-code (get-last-error)
+		 :format-control "Can't get console extended info."))
+	(values popup-attributes fullscreen-supported
+		(let ((a (make-array 16 :element-type '(unsigned-byte 32))))
+		  (loop :for i :from 0 :below 16 :do
+		     (setf (aref a i) (mem-aref color-table 'COLORREF i)))
+		  a))))))
+
+(defun get-console-all-extended-info (tty)
+  "Get the extended attributes for console TTY, returned as a
+console-extended-info structure."
+  (with-slots (out-handle) tty
+    (with-foreign-object (buf '(:struct CONSOLE_SCREEN_BUFFER_INFOEX))
+      (with-foreign-slots ((size-in-bytes
+			    size
+			    cursor-position
+			    attributes
+			    window
+			    maximum-window-size
+			    popup-attributes fullscreen-supported color-table)
+			   buf (:struct CONSOLE_SCREEN_BUFFER_INFOEX))
+	(setf size-in-bytes
+	      (foreign-type-size '(:struct CONSOLE_SCREEN_BUFFER_INFOEX)))
+	(when (zerop (%get-console-screen-buffer-info-ex out-handle buf))
+	  (error 'windows-error :error-code (get-last-error)
+		 :format-control "Can't get console extended info."))
+	(make-console-extended-info
+          :size-in-bytes size-in-bytes	     ; ULONG
+          :size
+	  (cons (getf size 'x)
+		(getf size 'y))
+          :cursor-position
+	  (cons (getf cursor-position 'x)
+		(getf cursor-position 'y))
+          :attributes attributes
+          :window
+	  (list (cons (getf window 'left) (getf window 'top))
+		(cons (getf window 'right) (getf window 'bottom)))
+          :maximum-window-size
+	  (list (getf maximum-window-size 'x)
+		(getf maximum-window-size 'y))
+          :popup-attributes popup-attributes
+          :fullscreen-supported fullscreen-supported
+          :color-table
+	  (let ((a (make-array 16 :element-type '(unsigned-byte 32))))
+	    (loop :for i :from 0 :below 16 :do
+	       (setf (aref a i) (mem-aref color-table 'COLORREF i)))
+	    a))))))
+
+(defun set-console-all-extended-info (tty info)
+  "Set the console extended info from the console-extended-info structure."
+  (with-slots (out-handle) tty
+    (with-foreign-object (buf '(:struct CONSOLE_SCREEN_BUFFER_INFOEX))
+      (with-foreign-slots ((size-in-bytes
+			    size
+			    cursor-position
+			    attributes
+			    window
+			    maximum-window-size
+			    popup-attributes fullscreen-supported color-table)
+			   buf (:struct CONSOLE_SCREEN_BUFFER_INFOEX))
+	(setf size-in-bytes (console-extended-info-size-in-bytes info))
+	(with-foreign-slots ((x y) size (:struct COORD))
+	  (setf x (car (console-extended-info-size info))
+		y (cdr (console-extended-info-size info))))
+	(with-foreign-slots ((x y) cursor-position (:struct COORD))
+	  (setf x (car (console-extended-info-cursor-position info))
+		y (cdr (console-extended-info-cursor-position info))))
+	(setf attributes (console-extended-info-attributes info))
+	(with-foreign-slots ((left top right bottom) window (:struct SMALL_RECT))
+	  (setf left   (car (first (console-extended-info-window info)))
+	        top    (cdr (first (console-extended-info-window info)))
+		right  (car (second (console-extended-info-window info)))
+	        bottom (cdr (second (console-extended-info-window info)))))
+	(with-foreign-slots ((x y) maximum-window-size (:struct COORD))
+	  (setf x (car (console-extended-info-maximum-window-size info))
+		y (cdr (console-extended-info-maximum-window-size info))))
+	(setf popup-attributes
+	      (console-extended-info-popup-attributes info)
+	      fullscreen-supported
+	      (console-extended-info-fullscreen-supported info))
+	(loop :for i :from 0 :below 16 :do
+	   (setf (mem-aref color-table 'COLORREF i)
+		 (aref (console-extended-info-color-table info) i)))
+	(when (zerop (%set-console-screen-buffer-info-ex out-handle buf))
+	  (error 'windows-error :error-code (get-last-error)
+		 :format-control
+		 "Can't set console extended info for colors."))))))
+
+(defun get-console-colors (tty)
+  "Return an array of 16 color integers of the format 0x00bbggrr, representing
+the color values of the console text colors."
+  (multiple-value-bind (popup fs-p colors) (get-console-extended-info tty)
+    (declare (ignore popup fs-p))
+    colors))
+
+(defcfun ("SetConsoleScreenBufferInfoEx" %set-console-screen-buffer-info-ex)
+    BOOL 
+  (console-output HANDLE)					     ; in
+  (console-screen-buffer-info-ex PCONSOLE_SCREEN_BUFFER_INFOEX))     ; in
+
+;; @@@ This has a bug, at least on windows 7, that it changes the window size.
+(defun set-console-colors (tty colors)
+  "Set the console colors from COLORS, which should be an array of 16 color
+integers of the format 0x00bbggrr, representing the color values of the console
+text colors."
+  (with-slots (out-handle) tty
+    (with-foreign-object (buf '(:struct CONSOLE_SCREEN_BUFFER_INFOEX))
+      (with-foreign-slots ((size-in-bytes color-table) buf
+			   (:struct CONSOLE_SCREEN_BUFFER_INFOEX))
+	(setf size-in-bytes
+	      (foreign-type-size '(:struct CONSOLE_SCREEN_BUFFER_INFOEX)))
+	(when (zerop (%get-console-screen-buffer-info-ex out-handle buf))
+	  (error 'windows-error :error-code (get-last-error)
+		 :format-control "Can't get console extended info for colors."))
+	(loop :for i :from 0 :below 16 :do
+	   (setf (mem-aref color-table 'COLORREF i) (aref colors i)))
+	(when (zerop (%set-console-screen-buffer-info-ex out-handle buf))
+	  (error 'windows-error :error-code (get-last-error)
+		 :format-control
+		 "Can't set console extended info for colors."))))))
+
 (defcstruct CONSOLE_CURSOR_INFO
   (size DWORD)
   (visible BOOL))
