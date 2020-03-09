@@ -158,8 +158,8 @@ loading this library.")
    #:start-color #:has-colors #:can-change-color #:init-pair
    #:attron #:wattron #:attroff #:wattroff #:attrset #:wattrset #:color-set
    #:wcolor-set #:standend #:wstandend #:standout #:wstandout #:bkgd #:wbkgd
-   #:bkgdset #:wbkgdset
-   #:color-pair
+   #:bkgdset #:wbkgdset #:getbkgd
+   #:color-pair #:pair-number
    #:border #:wborder #:box
    #:hline #:whline #:vline #:wvline #:mvhline #:mvwhline #:mvvline #:mvwvline
    #:napms
@@ -1088,6 +1088,9 @@ of these, in which case it returns ERR."
 (defcfun ("COLOR_PAIR" color-pair) :int
   "Return a video attribute given an initialized color pair N."
   (n :int))
+(defcfun ("PAIR_NUMBER" pair-number) :int
+  "Extract the color value from ATTRS and return a color pair number."
+  (attrs :int))
 (defcfun attron :int
   "Turns on the given attributes without affecting any others."
   (attrs :int))
@@ -1145,6 +1148,9 @@ character are combined with blank characters."
 CHTYPE. The attributes are or'd with all non-blank characters. The attributes
 and the character are combined with blank characters."
   (win window-ptr :in) (ch chtype))
+(defcfun getbkgd chtype
+  "Return the current background character/attribute pair for WIN."
+  (win window-ptr :in))
 
 ;; Boxes and lines
 (defcfun border :int
