@@ -153,18 +153,19 @@ terminal."
 	 (term (line-editor-terminal e))
 	 (rows (terminal-window-rows term))
 	 (cols (terminal-window-columns term))
+	 ;; (top (message-top e))
 	 (short-limit (truncate rows *completion-short-divisor*))
 	 content-rows content-cols column-size
 	 output-string
-	 real-content-rows
-	 rows-output
+	 ;; real-content-rows
+	 ;; rows-output
 	 ;; back-adjust
 	 ;; (x (screen-col e))
 	 ;; (y (screen-relative-row e))
 	 end-x
 	 row-limit
-	 snip-lines
-	 line-endings
+	 ;; snip-lines
+	 ;; line-endings
 	 (prefix (or (completion-result-prefix comp-result) ""))
 	 ;; (prefix-height (or (and prefix (figure-content-rows e prefix)) 0))
 	 )
@@ -194,18 +195,29 @@ terminal."
 	  (with-output-to-fat-string (str)
 	    (setf content-rows
 		  (print-columns comp-list :columns cols
-				 :smush t :row-limit row-limit
+				 :smush t ;; :row-limit row-limit
 				 :format-char "/fatchar-io:print-string/"
 				 :stream str)))
-	  line-endings (figure-line-endings e output-string)
-	  real-content-rows (length line-endings)
-	  rows-output (min real-content-rows row-limit)
-	  snip-lines (max 0 (- real-content-rows row-limit)))
+	  ;; line-endings (figure-line-endings e output-string)
+	  ;; real-content-rows (length line-endings)
+	  ;; rows-output (min (- real-content-rows top) row-limit)
+	  ;; snip-lines (max 0 (- (- real-content-rows top) row-limit))
+	  )
     ;;z (tt-write-string prefix)
     ;; Trim output-string to row-limit really for real lines.
-    (when (plusp snip-lines)
-      (setf output-string
-	    (osubseq output-string 0 (car (nth snip-lines line-endings)))))
+    ;; (dbugf :rlp "prefix ~s line-endings = ~s~%" prefix line-endings)
+    #|
+    (let (start end)
+      (when (and (plusp top) line-endings)
+	(setf start (car (nth top line-endings))))
+      (when (and (plusp snip-lines) line-endings)
+	(setf end  (car (nth snip-lines line-endings))))
+      (when (or start end)
+	(setf output-string
+	      (osubseq output-string (or start 0)
+		       (or end (length output-string))))))
+    |#
+
     ;; (tt-write-string output-string)
     ;; (if (plusp (- content-rows rows-output))
     ;; 	(tt-format "[~d more lines]" (- content-rows row-limit))
@@ -218,15 +230,16 @@ terminal."
     ;; (tt-move-to-col x)
     ;; (setf (screen-relative-row e) y
     ;; 	  (screen-col e) x)
-    (message e "~a~a~a"
+    (message e "~a~a"
 	     prefix
 	     output-string
-	     (cond
-	       ((plusp (- content-rows rows-output))
-		(format nil "[~d more lines]" (- content-rows row-limit)))
-	       ((plusp snip-lines)
-		(format nil "~%[~d more lines]" snip-lines))
-	       (t "")))
+	     ;; (cond
+	     ;;   ((plusp (- content-rows rows-output))
+	     ;; 	(format nil "[~d more lines]" (- content-rows row-limit)))
+	     ;;   ((plusp snip-lines)
+	     ;; 	(format nil "~%[~d more lines]" snip-lines))
+	     ;;   (t ""))
+	     )
     (setf (keep-message e) t)
     ))
 

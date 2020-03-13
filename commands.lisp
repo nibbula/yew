@@ -243,6 +243,35 @@ and move forward a character."
 (defmulti-method move-to-end ((e line-editor))
   (end-of-line e))
 
+(defsingle-method next-page ((e line-editor))
+  (with-slots (max-message-lines message-lines message-top) e
+    ;; (dbugf :rlp "next-page ~s~%" message-lines)
+    (when (plusp message-lines)
+      (when (> message-lines (+ message-top max-message-lines))
+	(setf message-top (min (1- message-lines)
+			       (+ message-top (1- max-message-lines)))))
+      ;; (dbugf :rlp "message-top ~s~%" message-top)
+      )))
+
+(defsingle-method previous-page ((e line-editor))
+  (with-slots (max-message-lines message-lines message-top) e
+    ;; (dbugf :rlp "previous-page ~s~%" message-lines)
+    (when (plusp message-lines)
+      (setf message-top (max 0 (- message-top max-message-lines)))
+      ;; (dbugf :rlp "message-top ~s~%" message-top)
+      )))
+
+(defsingle message-home (e)
+  "Scroll the message to the beginning."
+  (setf (message-top e) 0))
+
+(defsingle message-end (e)
+  "Scroll the message to the end."
+  (with-slots (message-top max-message-lines message-lines) e
+    (when (and message-lines (plusp message-lines)
+	       max-message-lines)
+      (setf message-top (- message-lines max-message-lines)))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Movement commands
 
@@ -626,15 +655,22 @@ is none."
 	 (scan-over
 	  e :forward
 	  :func #'(lambda (c) (and (alpha-char-p c) (lower-case-p c))))
+	 (when (>= point (olength buf))
+	   (downcase-region e start (1- point))
+	   (return))
 	 (setf c (buffer-char buf point))
 	 ;;(message-pause e "second point = ~s ~s" point c)
 	 (downcase-region e start point)
 	 ;;(message-pause e "downcase ~s ~s" start point)
+	 (when (>= point (olength buf))
+	   (return))
 	 (setf c (buffer-char buf point))
 	 ;;(message-pause e "third point ~s ~s" point c)
 	 (when (and (alpha-char-p c) (upper-case-p c))
 	   (insert e #\-)
 	   (incf point))
+	 (when (>= point (olength buf))
+	   (return))
 	 (setf c (buffer-char buf point))
 	 ;;(message-pause e "fourth point ~s ~s" point c)
 	 :while (and (alpha-char-p c) (upper-case-p c)))
@@ -882,7 +918,8 @@ in order, \"{open}{close}...\".")
 
 (defun ask-function-name (&optional (prompt "Function: "))
   "Prompt for a function name and return symbol of a function."
-  (let* ((str (rl :prompt prompt :history-context :ask-function-name))
+  (let* ((str (rl :prompt prompt :history-context :ask-function-name
+		  :recursive-p t :accept-does-newline nil))
 	 (cmd (and str (stringp str)
 		   (ignore-errors (safe-read-from-string str)))))
     (and (symbolp cmd) (fboundp cmd) cmd)))
@@ -893,6 +930,8 @@ in order, \"{open}{close}...\".")
   (let* ((key-seq (read-key-sequence e))
 	 (cmd (ask-function-name (format nil "Set key ~a to command: "
 					 (key-sequence-string key-seq)))))
+    (clear-completions e)
+    (redraw-display e)
     (if cmd
 	(set-key key-seq cmd (line-editor-local-keymap e))
 	(tmp-message e "Not a function."))))
@@ -912,7 +951,6 @@ in order, \"{open}{close}...\".")
 			(key-sequence-string key-seq) def)
 	   (tmp-message e "~w is not bound"
 			(key-sequence-string key-seq)))))
-    ;; (redraw-line e)
     (setf (line-editor-keep-region-active e) t)))
 
 ;; @@@ This is stupid. We should actually blow this thing up.

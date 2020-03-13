@@ -397,7 +397,7 @@ auto-wrap and no autowrap delay."
   (with-slots ((contexts inator::contexts)
 	       buf-str buf prompt-height start-row start-col
 	       screen-relative-row last-line temporary-message region-active
-	       max-message-lines) e
+	       max-message-lines message-lines message-top message-endings) e
     (dbugf :rl "----------------~%")
     ;; Make sure buf-str uses buf.
     (when (not (eq (fat-string-string buf-str) buf))
@@ -425,39 +425,62 @@ auto-wrap and no autowrap delay."
 	   (prompt-lines (length prompt-endings))
 	   (prompt-last-col (cddr (assoc prompt-end prompt-spots)))
 	   ;; Line figuring
-	   (line-end (max 0 (1- (olength buf-str))))
-	   (first-point (inator-point (aref contexts 0)))
-	   (spots (list `(,first-point . ())
-			`(,line-end . ())))
-	   (endings (calculate-line-endings e :start-column (1+ prompt-last-col)
-					    :spots spots))
-	   (buf-lines     (length endings))
-	   (msg-endings   (and temporary-message
-			       (calculate-line-endings
-				e :buffer temporary-message
-				:start-column 0 :end-column cols)))
-	   (msg-lines     (if temporary-message
+	   line-end
+	   first-point
+	   spots
+	   endings
+	   buf-lines
+	   ;; message
+	   actual-message
+	   total-lines
+	   last-displayed-message-line
+	   message-lines-displayed
+	   more-lines
+	   ;; point
+	   line-last-col
+	   spot
+	   point-line
+	   point-col
+	   point-offset
+	   right-prompt-start
+	   new-last-line
+	   erase-lines
+	   old-col
+	   relative-top)
+      (declare (ignorable old-col))
+      ;; Line figuring
+      (setf line-end (max 0 (1- (olength buf-str)))
+	    first-point (inator-point (aref contexts 0))
+	    spots (list `(,first-point . ()) `(,line-end . ()))
+	    endings (calculate-line-endings e :start-column (1+ prompt-last-col)
+					    :spots spots)
+	    buf-lines (length endings))
+      ;; Message figuring
+      (setf
+            ;; message-endings (nreverse (and temporary-message
+	    ;; 				   (calculate-line-endings
+	    ;; 				    e :buffer temporary-message
+	    ;; 				    :start-column 0 :end-column cols)))
+	    message-lines (if temporary-message
 			      (+
-			       ;; (if (ends-with-newline-p temporary-message)
+			       ;; (if (ends-with-newline-p
+			       ;;      temporary-message)
 			       ;; 	   1 1)
-			       1
-			       (length msg-endings))
-			      0))
-	   (total-lines   (+ prompt-lines buf-lines msg-lines))
-	   (line-last-col (cddr (assoc line-end spots)))
-	   (spot          (assoc first-point spots))
-	   (point-line    (cadr spot))
-	   (point-col     (cddr spot))
-	   ;; (quaqua (and (dbugf :rl "FLooP FLooP ~s ~s ~s ~s ~s~%"
-	   ;; 		       buf-lines point-line first-point spots
-	   ;; 		       contexts) 2/3))
-	   ;; @@@ Maybe we should ensure point-line isn't NIL???
-	   (point-offset  (- buf-lines (or point-line 0)))
-	   (right-prompt-start (and right-prompt
+			       ;; 1
+			       (length message-endings))
+			      0)
+	    line-last-col (cddr (assoc line-end spots))
+	    spot          (assoc first-point spots)
+	    point-line    (cadr spot)
+	    point-col     (cddr spot)
+	    ;; (quaqua (and (dbugf :rl "FLooP FLooP ~s ~s ~s ~s ~s~%"
+	    ;; 		       buf-lines point-line first-point spots
+	    ;; 		       contexts) 2/3))
+	    ;; @@@ Maybe we should ensure point-line isn't NIL???
+	    point-offset (- buf-lines (or point-line 0))
+	    right-prompt-start (and right-prompt
 				    (- (tt-width)
 				       (display-length right-prompt) 1)))
-	   new-last-line erase-lines old-col relative-top)
-      (declare (ignorable old-col))
       (flet (#|
 	     (eol-compensate () ;; @@@ This is bullcrap. Maybe "fix" ansi?
 	       (when (and endings
@@ -494,8 +517,51 @@ auto-wrap and no autowrap delay."
 	;;     (dbugf :rl "scroll down ~s~%" offset)
 	;;     (tt-scroll-down offset)
 	;;     (decf relative-top offset)))
-	(setf max-message-lines (- (tt-height) prompt-lines buf-lines 2))
+	(setf max-message-lines
+	      (- (tt-height) 1 prompt-lines buf-lines #|1|# #|2|#)
 
+	      last-displayed-message-line
+	      (max (min (+ message-top (1- max-message-lines)) message-lines) 0)
+
+	      more-lines
+	      (max 0 (- message-lines last-displayed-message-line))
+
+	      message-lines-displayed
+	      (max 0 (- last-displayed-message-line message-top)))
+
+	;; Add one for the [.. more] line
+	(setf total-lines
+	      (+ prompt-lines buf-lines
+		 (- last-displayed-message-line message-top)
+		 (if (plusp more-lines) 1 0)))
+	;; (dbugf :rlp "message-top ~s message-lines ~s more-lines ~s~%~
+	;; 	     last-displayed-message-line ~s max-message-lines ~s~%"
+	;;        message-top message-lines more-lines
+	;;        last-displayed-message-line max-message-lines)
+	(let* (start end)
+	  (when (and (plusp message-top) message-endings)
+	    (setf start (car (nth
+			      ;; the line ending right before the top
+			      (if (plusp message-top) (1- message-top) 0)
+			      message-endings))))
+	  (when (and (plusp last-displayed-message-line) message-endings)
+	    (setf end (car (nth
+			    ;; (+ last-displayed-message-line
+			    ;;    (if (plusp message-top) 1 0))
+			    (1- last-displayed-message-line)
+			    message-endings))))
+	  (setf actual-message
+		(if (or start end)
+		    (osubseq temporary-message
+			     ;; +1 for the newline
+			     ;; +1 to be at the first char of the next line
+			     (or (and start (+ 2 start)) 0)
+			     ;; +1 for the newline
+			     (or (and end (1+ end))
+				 (olength temporary-message)))
+		    temporary-message))
+	  ;;(dbugf :rlp "start ~s end ~s~%" start end)
+	  )
 	;; Write the prompt
 	(tt-move-to-col 0)
 	(tt-erase-below)
@@ -506,9 +572,9 @@ auto-wrap and no autowrap delay."
 	      new-last-line total-lines
 	      start-col prompt-last-col)
 
-	(dbugf :rl "buf-lines ~s prompt-lines ~s last-line ~s start-col ~s~%~
-                    buf = ~s~%"
-	       buf-lines prompt-lines last-line start-col (buf-str e))
+	;; (dbugf :rlp "buf-lines ~s prompt-lines ~s last-line ~s start-col ~s~%~
+        ;;             buf = ~s~%"
+	;;        buf-lines prompt-lines last-line start-col (buf-str e))
 	;; Write the line
 	;;(if (or (and (regions-p e) region-active) (> (length contexts) 1))
 	(if (or (and (regions-p e) region-active) (> (length contexts) 1))
@@ -516,31 +582,36 @@ auto-wrap and no autowrap delay."
 	      (let ((s (make-fat-string :string (highlightify e buf))))
 		(tt-write-string s)
 		;; (write-multiline-string e s endings)
-		(dbugf :rl "highlighted = ~a~%" s)))
+		;; (dbugf :rl "highlighted = ~a~%" s)
+		))
 	    (tt-write-string (buf-str e))
 	    ;; (write-multiline-string e (buf-str e) endings)
 	    )
 	;; (eol-compensate)
 	(tt-erase-to-eol)
-	(dbugf :rl "right-prompt ~s ~s~%" right-prompt-start right-prompt)
+	;;(dbugf :rl "right-prompt ~s ~s~%" right-prompt-start right-prompt)
 	(when (and right-prompt
 		   (< point-col right-prompt-start)
 		   (not endings)
 		   (and (< line-last-col right-prompt-start)))
-	  (dbugf :rl "right-prompt again ~s ~s~%" right-prompt-start
-		 prompt-last-col)
+	  ;; (dbugf :rl "right-prompt again ~s ~s~%" right-prompt-start
+	  ;; 	 prompt-last-col)
 	  (tt-move-to-col right-prompt-start)
 	  (tt-write-string right-prompt)
 	  ;; (tt-move-to-col prompt-last-col)
 	  )
-	(when temporary-message
+	(when actual-message
 	  (tt-write-char #\newline)
-	  (tt-write-string temporary-message))
+	  (tt-write-string actual-message)
+	  (when (plusp more-lines)
+	    (tt-newline)
+	    (tt-erase-to-eol)
+	    (tt-format "[~d more lines]" more-lines)))
 	(tt-erase-to-eol)
 	;; Erase junk after the line
 	(when last-line
 	  (setf erase-lines (max 0 (- last-line new-last-line)))
-	  (dbugf :rl "erase-lines = ~s~%" erase-lines)
+	  ;; (dbugf :rlp "erase-lines = ~s~%" erase-lines)
 	  (loop :repeat erase-lines
 	     :do
 	       (tt-down)
@@ -550,25 +621,35 @@ auto-wrap and no autowrap delay."
 	    (tt-up erase-lines)))
 
 	;; Move to the point.
-	(when (not (zerop (+ point-offset msg-lines)))
-	  (tt-up (+ point-offset msg-lines)))
+	(when (not (zerop (+ point-offset message-lines)))
+	  ;; (tt-up (+ point-offset message-lines)))
+	  (tt-up (+ point-offset message-lines-displayed
+		    (if (not (zerop more-lines)) 1 0))))
+	;; (dbugf :rlp "going up ~s message-lines-displayed ~s~%"
+	;;        (+ point-offset message-lines-displayed
+	;; 	  (if (not (zerop more-lines)) 1 0))
+	;;        message-lines-displayed)
 	(tt-move-to-col point-col)
 	(setf screen-relative-row (+ prompt-lines point-line)
 	      last-line new-last-line)
-	(dbugf :rl "new screen-relative-row ~s~%" screen-relative-row)
+	;; (dbugf :rl "new screen-relative-row ~s~%" screen-relative-row)
 	))))
 
 (defmethod update-display ((e line-editor))
   (redraw-display e))
 
 (defun tmp-prompt (e fmt &rest args)
-  (declare (ignore e))
-  (tt-move-to-col 0)
-  (tt-erase-to-eol)
-  ;; (setf (screen-col e) 0)
-  ;; (do-prefix e (apply #'format `(nil ,fmt ,@args)))
-  (tt-write-string (apply #'format `(nil ,fmt ,@args)))
-  (tt-finish-output))
+  ;; (declare (ignore e))
+  ;; (tt-move-to-col 0)
+  ;; (tt-erase-to-eol)
+  ;; ;; (setf (screen-col e) 0)
+  ;; ;; (do-prefix e (apply #'format `(nil ,fmt ,@args)))
+  ;; (tt-write-string (apply #'format `(nil ,fmt ,@args)))
+  ;; (tt-finish-output)
+  (apply #'tmp-message e fmt args)
+  ;; (setf (did-under-complete e) t)
+  ;; (setf (keep-message e) t)
+  )
 
 #|
 (defun tmp-message (e fmt &rest args)
@@ -607,10 +688,25 @@ auto-wrap and no autowrap delay."
 |#
 
 (defun tmp-message (e fmt &rest args)
-  (with-slots (temporary-message keep-message) e
+  (with-slots (temporary-message keep-message message-top message-endings) e
     (setf temporary-message (with-output-to-fat-string (fs)
-			      (apply #'format fs fmt args))
-	  keep-message nil)
+			      (apply #'format fs fmt args)
+			      ;; @@@ It has to end in a newline?
+			      ;; but we should fix the display code so it
+			      ;; doesn't have to.
+			      (when (and (not (zerop (olength fs)))
+					 (ochar/= (oelt fs (1- (olength fs)))
+						  #\newline))
+				(write-char #\newline fs)))
+	  keep-message nil
+	  message-top 0
+	  message-endings (nreverse (and temporary-message
+					 (calculate-line-endings
+					  e :buffer temporary-message
+					  :start-column 0
+					  :end-column
+					  (terminal-window-columns
+					   (line-editor-terminal e))))))
     (redraw-display e)))
 
 (defmethod message ((e line-editor) fmt &rest args)
@@ -620,7 +716,12 @@ auto-wrap and no autowrap delay."
 ;; "flense-undercarriage" "scrub-nether-region", hmmm... or maybe this is fine.
 (defun clear-completions (e)
   "Erase completions, if there are any."
-  (setf (temporary-message e) nil (keep-message e) nil)
+  (setf (temporary-message e) nil
+	(max-message-lines e) 0
+	(message-lines e) 0
+	(message-endings e) nil
+	(message-top e) 0
+	(keep-message e) nil)
   ;; (when (did-under-complete e)
   ;;   (without-messing-up-cursor (e)
   ;;     (when (< (screen-relative-row e)

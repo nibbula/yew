@@ -29,6 +29,12 @@
     (:s-c-right			. mark-forward-word)
     (,(meta-char #\<)		. beginning-of-history)
     (,(meta-char #\>)		. end-of-history)
+    (,(meta-char #\v)		. previous-page)
+    (,(ctrl #\v)		. next-page)
+    (:page-up			. previous-page)
+    (:page-down			. next-page)
+    (:c-home			. message-home)
+    (:c-end			. message-end)
 
     ;; Editing
     (#\return			. accept-line)

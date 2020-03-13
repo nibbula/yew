@@ -323,6 +323,20 @@ works for database formats.")
     :initform 0 :type fixnum
     :documentation
     "The maximum number of message lines available. Set by the last redisplay.")
+   (message-lines
+    :initarg :message-lines :accessor message-lines
+    :initform 0 :type fixnum
+    :documentation
+    "The actual number of message lines. Set by the last redisplay.")
+   (message-endings
+    :initarg :message-endings :accessor message-endings
+    :initform nil
+    :documentation "Cached line endings of the message.")
+   (message-top
+    :initarg :message-top
+    :accessor message-top
+    :initform 0 :type integer
+    :documentation "First line the message to display.")
    (keep-message
     :initarg :keep-message :accessor keep-message :initform nil :type boolean
     :documentation "True to keep the temporary message.")
