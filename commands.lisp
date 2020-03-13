@@ -244,9 +244,9 @@ and move forward a character."
   (end-of-line e))
 
 (defsingle-method next-page ((e line-editor))
-  (with-slots (max-message-lines message-lines message-top) e
+  (with-slots (temporary-message max-message-lines message-lines message-top) e
     ;; (dbugf :rlp "next-page ~s~%" message-lines)
-    (when (plusp message-lines)
+    (when (and temporary-message (plusp message-lines))
       (when (> message-lines (+ message-top max-message-lines))
 	(setf message-top (min (1- message-lines)
 			       (+ message-top (1- max-message-lines)))))
@@ -254,9 +254,9 @@ and move forward a character."
       )))
 
 (defsingle-method previous-page ((e line-editor))
-  (with-slots (max-message-lines message-lines message-top) e
+  (with-slots (temporary-message max-message-lines message-lines message-top) e
     ;; (dbugf :rlp "previous-page ~s~%" message-lines)
-    (when (plusp message-lines)
+    (when (and temporary-message (plusp message-lines))
       (setf message-top (max 0 (- message-top max-message-lines)))
       ;; (dbugf :rlp "message-top ~s~%" message-top)
       )))

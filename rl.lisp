@@ -472,7 +472,8 @@ Keyword arguments:
 		  (log-message e "command ~s" command)
 		  ;; Erase the temporary message.
 		  (when (and temporary-message (not keep-message))
-		    (setf temporary-message nil))
+		    ;; (setf temporary-message nil)
+		    (clear-completions e))
 		  (setf keep-region-active nil)
 		  (if (equal command '(nil))
 		      (if eof-error-p
