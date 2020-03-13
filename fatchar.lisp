@@ -141,6 +141,12 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 (defmethod ochar/= ((char-1 fatchar) (char-2 fatchar))
   (fatchar/= char-1 char-2))
 
+(defmethod ochar/= ((char-1 fatchar) (char-2 character))
+  (char/= (fatchar-c char-1) char-2))
+
+(defmethod ochar/= ((char-1 character) (char-2 fatchar))
+  (char/= char-1 (fatchar-c char-2)))
+
 (deftype fatchar-string (&optional size)
   "A string of FATCHARs."
   `(vector fatchar ,size))
