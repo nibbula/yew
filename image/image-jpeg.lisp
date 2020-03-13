@@ -28,10 +28,6 @@
 	   (loop :for x :from 0 :below width :do
 	      (case colors
 		(3
-		 ;; (setf (aref array y x 3) +max-alpha+
-		 ;;       (aref array y x 2) (aref data i)
-		 ;;       (aref array y x 1) (aref data (+ i 1))
-		 ;;       (aref array y x 0) (aref data (+ i 2)))
 		 (set-pixel array y x
 			    (aref data (+ i 2))
 			    (aref data (+ i 1))
@@ -39,10 +35,6 @@
 			    +max-alpha+)
 		 (incf i 3))
 		(1
-		 ;; (setf (aref array y x 3) +max-alpha+
-		 ;;       (aref array y x 2) (aref data i)
-		 ;;       (aref array y x 1) (aref data i)
-		 ;;       (aref array y x 0) (aref data i))
 		 (set-pixel array y x
 			    (aref data i) (aref data i) (aref data i)
 			    +max-alpha+)
