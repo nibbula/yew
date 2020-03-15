@@ -574,15 +574,18 @@ but perhaps reuse some resources."))
 
 (defmacro save-excursion ((e) &body body)
   "Evaluate the body with the buffer, point, and mark restored afterward."
-  (with-unique-names (saved-buf saved-contexts)
-    `(let ((,saved-buf (buf ,e))
-	   (,saved-contexts (inator-contexts e)))
+  (with-unique-names (saved-buf saved-contexts saved-region-active editor)
+    `(let* ((,editor ,e)
+	    (,saved-buf (buf ,editor))
+	    (,saved-contexts (inator-contexts ,editor))
+	    (,saved-region-active (line-editor-region-active ,editor)))
        (unwind-protect
 	    (progn
-	      (setf (inator-contexts e) (copy-contexts e))
+	      (setf (inator-contexts ,e) (copy-contexts ,editor))
 	      ,@body)
 	 (setf (buf ,e) ,saved-buf
-	       (inator-contexts e) ,saved-contexts)))))
+	       (inator-contexts ,editor) ,saved-contexts
+	       (line-editor-region-active ,editor) ,saved-region-active)))))
 
 ;; For use in external commands.
 

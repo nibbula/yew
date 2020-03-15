@@ -402,8 +402,10 @@ auto-wrap and no autowrap delay."
     ;; Make sure buf-str uses buf.
     (when (not (eq (fat-string-string buf-str) buf))
       (setf (fat-string-string buf-str) buf))
-    ;; point should be in the buffer, or else something did something wrong.
-    (assert (<= (inator-point (aref contexts 0)) (olength buf-str)))
+    ;; point should be in the buffer or right after the buffer, or else
+    ;; something did something wrong.
+    (assert (<= (inator-point (aref contexts 0))
+		(olength buf-str)))
     (let* ((prompt (make-prompt e (prompt-string e) (prompt-func e)))
 	   (right-prompt
 	    (make-prompt e (and (ostringp (right-prompt e))
@@ -707,7 +709,8 @@ auto-wrap and no autowrap delay."
 					  :end-column
 					  (terminal-window-columns
 					   (line-editor-terminal e))))))
-    (redraw-display e)))
+    ;; (redraw-display e)
+    ))
 
 (defmethod message ((e line-editor) fmt &rest args)
   (apply #'tmp-message e fmt args))

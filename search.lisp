@@ -21,30 +21,25 @@
   "Display the current line with the search string highlighted."
   (with-slots ((contexts inator::contexts)
 	       buf history-context temporary-message) e
-    (setf temporary-message
-	  (s+ prompt str))
-      (if (and start (history-current history-context))
-	  (save-excursion (e)
-            ;; (setf point start
-	    ;; 	  mark end		; for the highlightify
-	    ;; 	  buf (highlightify
-	    ;; 	       e (make-fatchar-string (history-current history-context))
-	    ;; 	       :style
-	    ;; 	       (or (theme-value *theme* '(:program :search-match :style))
-	    ;; 		   (theme-value *theme* '(:rl :search-match :style))
-	    ;; 		   '(:underline)))
-	    ;; 	  mark nil)		; for the redraw-display
+    (tmp-message e "~a~a" prompt str)
+    (if (and start (history-current history-context))
+	(save-excursion (e)
+	  (let ((saved-point (inator-point (aref contexts 0))))
 	    (setf contexts (make-contexts)
 		  (inator-point (aref contexts 0)) start
 		  (inator-mark (aref contexts 0)) end
+		  (line-editor-region-active e) t
+		  ;; @@@ The way this works could use a little re-design.
 		  buf (highlightify
 		       e (make-fatchar-string (history-current history-context))
 		       :style
 		       (or (theme-value *theme* '(:program :search-match :style))
 			   (theme-value *theme* '(:rl :search-match :style))
-			   '(:underline))))
-	    (redraw-display e))
-	  (redraw-display e))))
+			   '(:underline)))
+		  (inator-point (aref contexts 0)) saved-point
+		  (inator-mark (aref contexts 0)) nil))
+	  (redraw-display e))
+	(redraw-display e))))
 
 (defun search-start-forward (history-context)
   (or (history-current-get history-context)
@@ -154,10 +149,11 @@ Control-R searches again backward and Control-S searches again forward."
 					   (history-context e)) "")
 				  point)
 		   (setf point (min (or pos (length buf)) (length buf))
-			 temporary-message nil
+			 ;; temporary-message nil
 			 last-search search-string)
-		   (dbugf :rl "CHOW ~s ~s ~s ~a~%"
-			  pos (length buf) point contexts)
+		   (clear-completions e)
+		   ;; (dbugf :rl "CHOW ~s ~s ~s ~a~%"
+		   ;; 	  pos (length buf) point contexts)
 		   (redraw-display e)
 		   ))
 	  (loop :while (not quit-now)
