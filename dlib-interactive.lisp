@@ -281,8 +281,8 @@ expand all macros recursively."
 (defun describe-packages (&key include-systems)
   "List packages in a hopefully consise format. If INCLUDE-SYSTEMS is true,
 it will also list packages it thinks are ASDF system packages."
-  (format t "~30a ~5a ~a~%" "Package Name" "Count" "Package Deps")
-  (format t "~30,,,'-a ~5,,,'-a ~43,,,'-a~%" "-" "-" "-")
+  ;; (format t "~30a ~5a ~a~%" "Package Name" "Count" "Package Deps")
+  ;; (format t "~30,,,'-a ~5,,,'-a ~43,,,'-a~%" "-" "-" "-")
   (let* ((paks (copy-seq (list-all-packages)))
 	 (spaks
 	  (locally
@@ -290,24 +290,44 @@ it will also list packages it thinks are ASDF system packages."
 	      (sort paks #'(lambda (p1 p2)
 			     (string< (package-name p1)
 				      (package-name p2))))))
-	 name nicks nice-used-by)
-    (loop :for p :in spaks
-       :do
-       (setf nicks (package-nicknames p)
-	     nice-used-by (mapcar
-			   #'(lambda (p)      ; shortest package id
-			       (reduce #'(lambda (a b) ; shortest sequence
-					   (if (< (length a) (length b)) a b))
-				       `(,(package-name p)
-					  ,@(package-nicknames p))))
-			   (package-use-list p)))
-       (when (or include-systems
-		 (not (and (equal nice-used-by '("CL" "ASDF"))
-			   (ends-with "-SYSTEM" (package-name p)))))
-	 (setf name (format nil "~a ~:[~;~:*~a~]" (package-name p) nicks))
-	 (format t "~(~30a ~5d ~s~)~%" name
-		 (package-symbol-count p :external t)
-		 nice-used-by)))))
+	 #|name|# nicks nice-used-by
+	 (table
+	  (make-table-from
+	   (loop :for p :in spaks
+	      :do
+	      (setf nicks (package-nicknames p)
+		    nice-used-by
+		    (mapcar
+		     #'(lambda (p)		 ; shortest package id
+			 (reduce #'(lambda (a b) ; shortest sequence
+				     (if (< (length a) (length b)) a b))
+				 `(,(package-name p)
+				    ,@(package-nicknames p))))
+		     (package-use-list p)))
+	      :when (or include-systems
+			(not (and (equal nice-used-by '("CL" "ASDF"))
+				  (ends-with "-SYSTEM" (package-name p)))))
+	      :collect
+	      ;;(setf name (format nil "~a ~:[~;~:*~a~]" (package-name p) nicks))
+	      (list
+	       (format nil "~a ~:[~;~:*~a~]" (package-name p) nicks)
+	       ;; (format t "~(~30a ~5d ~s~)~%" name
+	       ;; 	 (package-symbol-count p :external t)
+	       ;; 	 nice-used-by)
+	       (package-symbol-count p :external t)
+	       (let ((*print-pretty* nil)
+		     (*print-escape* nil))
+		 (format nil "~(~w~)" nice-used-by))
+	       ))
+	   :columns
+	   '((:name "Package Name" :type string :format "~(~va~)")
+	     (:name "Count" :type number)
+	     ;; (:name "Dependencies" :type 'string :format "~(~va~)")
+	     (:name "Dependencies")
+	     ))))
+    (with-grout ()
+      (grout-print-table table))
+    table))
 
 (defun describe-package (p &key symbols)
   "Describe a package. SYMBOLS is :ext (or just non-nil) to show external
