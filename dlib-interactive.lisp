@@ -281,8 +281,6 @@ expand all macros recursively."
 (defun describe-packages (&key include-systems)
   "List packages in a hopefully consise format. If INCLUDE-SYSTEMS is true,
 it will also list packages it thinks are ASDF system packages."
-  ;; (format t "~30a ~5a ~a~%" "Package Name" "Count" "Package Deps")
-  ;; (format t "~30,,,'-a ~5,,,'-a ~43,,,'-a~%" "-" "-" "-")
   (let* ((paks (copy-seq (list-all-packages)))
 	 (spaks
 	  (locally
@@ -290,7 +288,7 @@ it will also list packages it thinks are ASDF system packages."
 	      (sort paks #'(lambda (p1 p2)
 			     (string< (package-name p1)
 				      (package-name p2))))))
-	 #|name|# nicks nice-used-by
+	 nicks nice-used-by
 	 (table
 	  (make-table-from
 	   (loop :for p :in spaks
@@ -308,12 +306,8 @@ it will also list packages it thinks are ASDF system packages."
 			(not (and (equal nice-used-by '("CL" "ASDF"))
 				  (ends-with "-SYSTEM" (package-name p)))))
 	      :collect
-	      ;;(setf name (format nil "~a ~:[~;~:*~a~]" (package-name p) nicks))
 	      (list
 	       (format nil "~a ~:[~;~:*~a~]" (package-name p) nicks)
-	       ;; (format t "~(~30a ~5d ~s~)~%" name
-	       ;; 	 (package-symbol-count p :external t)
-	       ;; 	 nice-used-by)
 	       (package-symbol-count p :external t)
 	       (let ((*print-pretty* nil)
 		     (*print-escape* nil))
