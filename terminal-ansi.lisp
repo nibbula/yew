@@ -540,12 +540,17 @@ TTY is a terminal, in case you didn't know."
 	  :while ,borked)
        ,result)))
 
+(defparameter *report-interruptable* nil
+  "True to allow reporting to be interruptable.")
+
 (defmacro with-raw ((tty) &body body)
   (with-unique-names (mode)
     `(let ((,mode (get-terminal-mode ,tty)))
        (unwind-protect
 	    (progn
-	      (set-terminal-mode ,tty :raw t :echo nil)
+	      (set-terminal-mode ,tty
+				 :raw (not *report-interruptable*)
+				 :echo nil)
 	      ,@body)
 	 (set-terminal-mode ,tty :mode ,mode)))))
 
@@ -1186,7 +1191,10 @@ Attributes are usually keywords."
 	       (file-descriptor terminal::file-descriptor)) tty
     (when typeahead
       (return-from raw-get-char
-	(pop typeahead)))
+	;; try to convert it to an integer character code
+	(if (characterp (car typeahead))
+	    (char-code (pop typeahead))
+	    (pop typeahead))))
     (with-interrupts-handled (tty)
       (with-terminal-signals ()
 	(read-terminal-byte file-descriptor :timeout timeout)))))
