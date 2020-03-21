@@ -16,6 +16,7 @@
    #:fui-window-height #:fui-window-border
    #:fui-window-text-x #:fui-window-text-y
    #:draw-window
+   #:erase-window
    #:make-window
    #:delete-window
    #:draw-box
@@ -105,54 +106,71 @@ drawing, which will get overwritten."
    (border
     :initarg :border :accessor fui-window-border :initform nil :type boolean
     :documentation "True to draw a border around the window.")
+   (background-color
+    :initarg :background-color
+    :accessor fui-window-background-color :initform nil
+    :documentation "Window background color.")
    (text-x
     :initarg :text-x :accessor fui-window-text-x :initform 0 :type fixnum
     :documentation "Column to write text at.")
    (text-y
     :initarg :text-y :accessor fui-window-text-y :initform 0 :type fixnum
     :documentation "Row to write text at.")
-   )
+   (terminal
+    :initarg :terminal :accessor fui-window-terminal :initform nil
+    :documentation "The terminal the window is on."))
   (:documentation "A stupid text window."))
 
-(defun erase-area (x y width height &key string)
-  (let ((str (if string
-		 (fill string #\space :end width)
-		 (make-string width :initial-element #\space))))
-    (loop :for iy :from y :below (+ y height) :do
-       (tt-move-to iy x)
-       (tt-write-string str))))
+(defun erase-area (window x y width height &key string)
+  (with-slots (background-color terminal) window
+    (let* ((*terminal* terminal)
+	   (str (if string
+		    (fill string #\space :end width)
+		    (make-string width :initial-element #\space))))
+      (loop :for iy :from y :below (+ y height) :do
+	 (tt-move-to iy x)
+	 (when background-color
+	   (tt-color :default background-color))
+	 (tt-write-string str)))))
 
 (defun erase-window (window)
-  (with-slots (x y width height border) window
+  (with-slots (x y width height border background-color) window
     (if border
-	(erase-area (1- x) (1- y) (+ width 2) (+ height 2))
-	(erase-area x y width height))))
+	(erase-area window (1- x) (1- y) (+ width 2) (+ height 2))
+	(erase-area window x y width height))))
 
 (defun draw-window (window)
-  (with-slots (width height x y border) window
-    (erase-window window)
-    (let ((str (make-string width :initial-element #\space)))
-      ;; The border is outside the window.
-      (when border
-	(draw-box (1- x) (1- y) (+ width 2) (+ height 2) :string str)))))
+  (with-slots (width height x y border terminal) window
+    (let ((*terminal* terminal))
+      (erase-window window)
+      (let ((str (make-string width :initial-element #\space)))
+	;; The border is outside the window.
+	(when border
+	  (draw-box (1- x) (1- y) (+ width 2) (+ height 2) :string str))))))
 
-(defun make-window (&rest keys
-		    &key (width 40) (height 10) (x 1) (y 1) (border t))
-  (declare (ignorable border))
-  (let ((win (apply #'make-instance 'fui-window keys))
+(defun make-window (#| &rest keys |#
+		    &key (width 40) (height 10) (x 1) (y 1) (border t)
+		      background-color (terminal *terminal*))
+  (declare (ignorable border background-color terminal))
+  (let ((window (make-instance 'fui-window
+			       :width width :height height
+			       :x x :y y :border border
+			       :background-color background-color
+			       :terminal terminal))
 	(str (make-string width :initial-element #\space)))
     ;;(dbugf :fui "make-window ~s x ~s @ [~s ~s]~%" width height x y)
     ;; erase the window
-    (erase-area x y width height :string str)
-    (draw-window win)
-    win))
+    (erase-area window x y width height :string str)
+    (draw-window window)
+    window))
 
 (defun delete-window (window)
   (erase-window window))
 
 (defun window-move-to (window row column)
-  (with-slots (x y width height text-x text-y) window
-    (let ((start-x (if (< column 0) x (min (+ x column) (+ x (1- width)))))
+  (with-slots (x y width height text-x text-y terminal) window
+    (let ((*terminal* terminal)
+	  (start-x (if (< column 0) x (min (+ x column) (+ x (1- width)))))
 	  (start-y (if (< row 0)    y (min (+ y row)    (+ y (1- height))))))
       (setf text-x column
 	    text-y row)
@@ -165,13 +183,14 @@ drawing, which will get overwritten."
     (t string)))
 
 (defun window-text (window text &key row column)
-  (with-slots (x y width height text-x text-y) window
+  (with-slots (x y width height text-x text-y terminal) window
     (when (not row)
       (setf row text-y))
     (when (not column)
       (setf column text-x))
     ;;(dbugf :fui "text-x=~s text-y=~s~%" text-x text-y)
-    (let* (;; (len (display-length l))
+    (let* ((*terminal* terminal)
+	   ;; (len (display-length l))
 	   ;; (start-x (if (< column 0) x (min (+ x column) (+ x (1- width)))))
 	   ;; (start-y (if (< row 0)    y (min (+ y row)    (+ y (1- height)))))
 	   (output-y 0)
