@@ -727,7 +727,7 @@ or :CHAR for character at time with no echo."))
    (y
     :initarg :y :accessor tt-mouse-event-y
     :documentation "Vertical coordinate"))
-  (:documentation "Somthing happened to yer mouse."))
+  (:documentation "Somthing happened to the mouse."))
 
 (defclass tt-mouse-button-event (tt-mouse-event)
   ((button
@@ -736,8 +736,8 @@ or :CHAR for character at time with no echo."))
    (modifiers
     :initarg :modifiers :accessor tt-mouse-modifiers
     :initform nil :type list
-    :documentation "List of modifiers that ye were a-smushin at the time."))
-  (:documentation "I hear a little clicky."))
+    :documentation "List of modifiers that were pressed at the time."))
+  (:documentation "A mouse button changed."))
 
 (defmethod print-object ((object tt-mouse-button-event) stream)
   "Print a tt-mouse-button-event to STREAM."
@@ -749,23 +749,23 @@ or :CHAR for character at time with no echo."))
 
 (defclass tt-mouse-button-press (tt-mouse-button-event)
   ()
-  (:documentation "Ya stepped on yer mouses' little toes."))
+  (:documentation "A mouse button was pressed."))
 
 (defclass tt-mouse-button-release (tt-mouse-button-event)
   ()
-  (:documentation "Now ya did it."))
+  (:documentation "A mouse button was released."))
 
 (defclass tt-mouse-button-motion (tt-mouse-button-event)
   ()
-  (:documentation "We'll both just pretend yer dragging somthing."))
+  (:documentation "The mouse position changed while a button was pressed."))
 
 (defclass tt-mouse-motion (tt-mouse-event)
   ()
-  (:documentation "Just sliding around, eh?"))
+  (:documentation "The mouse position changed."))
 
 (defclass tt-resize-event (tt-event)
   () ;; I'm sorry, but you'll have to get the size separately.
-  (:documentation "Messing with that window."))
+  (:documentation "The window changed size."))
 
 (deftt enable-events (events)
   "Allow tt-get-* to return non-key events. EVENTS is a keyword or list of
