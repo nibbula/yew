@@ -75,12 +75,13 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 	(fatchar-line  to) (fatchar-line from)
 	(fatchar-attrs to) (copy-list (fatchar-attrs from))))
 
-(defun copy-color (color)
-  (typecase color
-    (symbol color)
-    (list (copy-list color))
-    (array (copy-seq color))
-    (t color)))
+;; Moved to color.lisp
+;; (defun copy-color (color)
+;;   (typecase color
+;;     (symbol color)
+;;     (list (copy-list color))
+;;     (array (copy-seq color))
+;;     (t color)))
 
 ;; I think we can just use the one made by defstruct?
 (defun copy-fatchar (c)
