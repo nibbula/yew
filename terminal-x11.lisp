@@ -2079,8 +2079,8 @@ handler cases."
 	 (apply #'window-handler slots))
 	(:button-press
 	 (event-slots (slots code x y state)
-           (let ((cx (round x cell-width))
-		 (cy (round y cell-height)))
+           (let ((cx (floor x cell-width))
+		 (cy (floor y cell-height)))
 	     (when (find :mouse-buttons (terminal-events-enabled tty))
 	       (setf result
 		     (make-instance 'tt-mouse-button-event
@@ -2092,8 +2092,8 @@ handler cases."
 	     (or result t))))
 	(:button-release
 	 (event-slots (slots code x y state)
-	   (let ((cx (round x cell-width))
-		 (cy (round y cell-height)))
+	   (let ((cx (floor x cell-width))
+		 (cy (floor y cell-height)))
 	     (when (find :mouse-buttons (terminal-events-enabled tty))
 	       (setf result
 		     (make-instance 'tt-mouse-button-release
@@ -2107,8 +2107,8 @@ handler cases."
 	     (or result t))))
 	(:motion-notify
 	 (event-slots (slots #|code|# x y state)
-	   (let ((cx (round x cell-width))
-		 (cy (round y cell-height)))
+	   (let ((cx (floor x cell-width))
+		 (cy (floor y cell-height)))
 	     (when (find :mouse-buttons (terminal-events-enabled tty))
 	       (setf result
 		     (make-instance 'tt-mouse-button-motion
