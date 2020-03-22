@@ -1,6 +1,6 @@
-;;
-;; color.lisp - Color representations
-;;
+;;;
+;;; color.lisp - Color representations
+;;;
 
 (defpackage :color
   (:documentation
@@ -14,6 +14,7 @@ and conversions between color models.")
    #:register-color-model
    #:color-model-name
    #:structured-color-p
+   #:copy-color
    #:known-color-p
    #:lookup-color
    #:color-model-component
@@ -103,6 +104,12 @@ and conversions between color models.")
        (or (consp x) (arrayp x))
        (or (find (elt x 0) *color-models*)
 	   (every #'numberp x))))
+
+(defun copy-color (color)
+  "Return a copy of COLOR."
+  (typecase color
+    (sequence (copy-seq color))
+    (t color)))
 
 (defun known-color-p (x)
   "True if x is a color or kind of color that we know about."
