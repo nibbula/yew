@@ -492,7 +492,7 @@ Cleans up afterward."
 	      )
 	 ;; This ignorable is just to stop CCL from complaining.
 	 (declare (ignorable ,new-type))
-	 (dbugf :terminal "term-class = ~s~%" ,term-class)
+	 ;;(dbugf :terminal "term-class = ~s~%" ,term-class)
 	 ;; (when (not ,term-class)
 	 ;;   (error "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
 	 ;; Make a new terminal if the we were told to or the var isn't
@@ -503,17 +503,17 @@ Cleans up afterward."
 	 ;;       ,var (if ,make-it
 	 ;; 		(make-instance ,term-class ,@initargs)
 	 ;; 		,var))
-	 (dbugf :terminal "make-it = ~s~%" ,make-it)
-	 (dbugf :terminal "~s = ~s~%" ',var ,var)
+	 ;; (dbugf :terminal "make-it = ~s~%" ,make-it)
+	 ;; (dbugf :terminal "~s = ~s~%" ',var ,var)
 	 (unwind-protect
 	      (progn
 		(setf ,terminal-state (terminal-start ,var))
-		(dbugf :terminal "start terminal-state = ~s~%" ,terminal-state)
+		;;(dbugf :terminal "start terminal-state = ~s~%" ,terminal-state)
 		(setf ,result (progn ,@body)))
 	   (if ,make-it
 	       (terminal-done ,var ,terminal-state)
 	       (progn
-		 (dbugf :terminal "end terminal-state = ~s~%" ,terminal-state)
+		 ;;(dbugf :terminal "end terminal-state = ~s~%" ,terminal-state)
 		 (terminal-end ,var ,terminal-state))))
 	 ,result))))
 
