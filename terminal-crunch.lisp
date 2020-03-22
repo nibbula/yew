@@ -1447,7 +1447,8 @@ i.e. the terminal is 'line buffered'."
 |#
 
 (defmethod terminal-color ((tty terminal-crunch-stream) fg bg)
-  (setf (fg tty) fg (bg tty) bg))
+  (setf (fg tty) (color:copy-color fg)
+	(bg tty) (color:copy-color bg)))
 
 (defmethod terminal-colors ((tty terminal-crunch-stream))
   ;; Just call the wrapped one.

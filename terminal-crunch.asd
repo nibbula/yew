@@ -15,7 +15,7 @@ terminal, acting like some kind of terminal compression. It allows software
 that uses terminal to be much simpler, since it doesn't have to worry about
 how to effiecntly update the screen. This is similar to techniques used by text
 editors, such as Emacs and Vim, the curses library."
-    :depends-on (:dlib :collections :char-util :fatchar :terminal
+    :depends-on (:dlib :collections :char-util :color :fatchar :terminal
 		 :trivial-gray-streams :fatchar-io :ostring)
     :components
     ((:file "terminal-crunch")))
