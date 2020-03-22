@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "something something something something etc."
-    :depends-on (:dlib :char-util :trivial-gray-streams)
+    :depends-on (:dlib :char-util :unicode :trivial-gray-streams)
     :components
     ((:file "utf8b-stream")))

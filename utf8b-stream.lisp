@@ -1,5 +1,6 @@
 ;;
-;; utf8b-stream.lisp - fucketyfuckfuck
+;; utf8b-stream.lisp - A stupid way of solving a problem that apparently nobody
+;;                     cares about.
 ;;
 
 (defpackage :utf8b-stream
@@ -11,7 +12,7 @@ converts it into UTF8b. The whole point of this is to be able to read UTF8
 characters from arbitrary bytes WITHOUT ERRORS!!! I know that seems to be a lot
 to ask, but I somehow persist in the delusion that it is possible to read things
 WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
-  (:use :cl :dlib :char-util :trivial-gray-streams)
+  (:use :cl :dlib :char-util :trivial-gray-streams :unicode)
   (:export
    #:utf8b-input-stream
    #:input-stream
@@ -19,8 +20,8 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
    ))
 (in-package :utf8b-stream)
 
-(declaim (optimize (speed 3) (safety 0) (debug 3) (space 0)
-		   (compilation-speed 0)))
+;; (declaim (optimize (speed 3) (safety 0) (debug 3) (space 0)
+;; 		   (compilation-speed 0)))
 ;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 ;; 		   (compilation-speed 0)))
 

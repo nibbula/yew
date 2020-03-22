@@ -6,7 +6,7 @@
 
 (defpackage :view-image-x11
   (:documentation "Image viewer X11 driver.")
-  (:use :cl :dlib :dlib-misc :char-util :inator :view-image
+  (:use :cl :dlib :dlib-misc :char-util :unicode :inator :view-image
 	;; :image
 	:xlib
 	:terminal)
