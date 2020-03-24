@@ -399,44 +399,47 @@
   (with-slots (x y pixel-width pixel-height char-width char-height
 	       screen-char-width screen-char-height fullscreen
 	       background foreground title icon-title font) o
-    (let (result)
-      ;; location
-      (if (setf result (query-parameters "13t"))
-	  (setf x (elt result 1) y (elt result 2))
-	  (setf x 0 y 0))
-      ;; pixel size
-      (if (setf result (query-parameters "14t"))
-	  (setf pixel-width (elt result 2)
-		pixel-height (elt result 1))
-	  (setf pixel-width 0
-		pixel-height 0))
-      ;; character size
-      (if (setf result (query-parameters "18t"))
-	  (setf char-width (elt result 2)
-		char-height (elt result 1))
-	  (setf char-width 0
-		char-height 0))
-      ;; screen size
-      (if (setf result (query-parameters "19t"))
-	  (setf screen-char-width (elt result 2)
-		screen-char-height (elt result 1))
-	  (setf screen-char-width 0
-		screen-char-height 0))
-      ;; Try to figure out fullscreen
-      (setf (slot-value o 'fullscreen)
-	    (and (not (zerop screen-char-width))
-		 (= screen-char-width char-width)
-		 (= screen-char-height char-height)))
-      ;; Foreground & background colors
-      (setf foreground (and-<> (tt-window-foreground)
-			       (convert-color-to <> :rgb8))
-	    background (and-<> (tt-window-background)
-			       (convert-color-to <> :rgb8)))
-      ;; title
-      (setf title (get-title))
-      ;; icon
-      (setf icon-title (get-title :icon))
-      (setf font (get-font)))))
+    (let (result (triple-nil '(nil nil nil)))
+      (flet ((query-it (q)
+	       (and (setf result (query-parameters q))
+		    (not (equal result triple-nil)))))
+	;; location
+	(if (query-it "13t")
+	    (setf x (elt result 1) y (elt result 2))
+	    (setf x 0 y 0))
+	;; pixel size
+	(if (query-it "14t")
+	    (setf pixel-width (elt result 2)
+		  pixel-height (elt result 1))
+	    (setf pixel-width 0
+		  pixel-height 0))
+	;; character size
+	(if (query-it "18t")
+	    (setf char-width (elt result 2)
+		  char-height (elt result 1))
+	    (setf char-width 0
+		  char-height 0))
+	;; screen size
+	(if (query-it "19t")
+	    (setf screen-char-width (elt result 2)
+		  screen-char-height (elt result 1))
+	    (setf screen-char-width 0
+		  screen-char-height 0))
+	;; Try to figure out fullscreen
+	(setf (slot-value o 'fullscreen)
+	      (and (not (zerop screen-char-width))
+		   (= screen-char-width char-width)
+		   (= screen-char-height char-height)))
+	;; Foreground & background colors
+	(setf foreground (and-<> (tt-window-foreground)
+				 (convert-color-to <> :rgb8))
+	      background (and-<> (tt-window-background)
+				 (convert-color-to <> :rgb8)))
+	;; title
+	(setf title (get-title))
+	;; icon
+	(setf icon-title (get-title :icon))
+	(setf font (get-font))))))
 
 (defmethod initialize-instance
     :after ((o xterminator) &rest initargs &key &allow-other-keys)
