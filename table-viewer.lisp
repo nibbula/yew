@@ -276,7 +276,7 @@ for a range of rows, or a table-point for a specific item,"
 	     (hilite (= row (table-point-row current-position))))
 
 	(when hilite
-	  (tt-standout t)
+	  (tt-inverse t)
 	  (when (not (table-point-row cursor))
 	    (setf (table-point-row cursor) output-y))
 	  (if (and (table-point-col current-position)
