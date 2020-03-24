@@ -193,7 +193,6 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
   ;; ‘fundamental-character-input-stream’ simply calls
   ;; ‘stream-read-char’; this is sufficient for file streams, but
   ;; interactive streams should define their own method.
-  (get-char stream :timeout 0)
   )
 |#
 
@@ -213,10 +212,7 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
   ;; value.  The second value is true if the string was terminated by
   ;; end-of-file instead of the end of a line.  The default method uses
   ;; repeated calls to ‘stream-read-char’.
-  (multiple-value-bind (result got-eof)
-      (read-until (terminal-file-descriptor stream) #\newline)
-    (values (or result "")
-	    got-eof)))
+)
 |#
 
 (defmethod stream-listen ((stream utf8b-input-stream))
