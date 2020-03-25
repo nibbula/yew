@@ -447,6 +447,9 @@ this loses information, such as descriptions and titles."
 	  (print-theme-node n :stream stream :max-size max-size)))))
   (values))
 
+#| Probably should be somewhere else, since theme is a dependency of lish
+   so it won't normally be loaded?
+
 #+lish
 (lish:defcommand print-theme
   ((theme object :default '*theme* :help "The theme to print.")
@@ -458,6 +461,7 @@ this loses information, such as descriptions and titles."
     (setf theme (or lish:*input* *theme*)))
   (print-theme theme :as-tree as-tree :readably readably)
   (setf lish:*output* theme))
+|#
 
 (defun make-theme (name &rest keys &key title description)
   "Make a new theme named NAME. If TITLE isn't given it's set from name."
