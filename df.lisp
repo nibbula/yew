@@ -1,10 +1,11 @@
-;;
-;; df.lisp - Show how much disk is free.
-;;
+;;;
+;;; df.lisp - Show how much disk is free.
+;;;
 
 (defpackage :df
   (:documentation "Show how much disk is free.")
-  (:use :cl :opsys :dlib :dlib-misc :table :grout :fatchar :fatchar-io)
+  (:use :cl :opsys :dlib :dlib-misc :table :grout :fatchar :fatchar-io
+	:theme)
   (:export
    #:df
    #:!df
@@ -101,7 +102,8 @@
     (loop :for i :from 1 :to (/ (* width pct) 100)
        :do
        (write (make-fatchar
-	       :c (code-char #x2592)
+	       :c (or (theme:value '(:program :meter :character))
+		      #\space) ;; (code-char #x2592)
 	       :bg (if (< i (* width .8)) :green :red))
 	      :stream str :escape nil :readably nil))))
 
