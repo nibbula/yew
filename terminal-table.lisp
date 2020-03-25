@@ -56,7 +56,8 @@
 		      (or (not *max-width*) (< cursor *max-width*)))
 	     (terminal-write-string stream separator)
 	     (incf cursor sep-len)))
-      (when (or (not *max-width*) (< cursor (1- *max-width*)))
+      ;; (when (or (not *max-width*) (< cursor (1- *max-width*)))
+      (when (or (not *max-width*) (< cursor *max-width*))
 	;;(dbugf :termtab "Fuckler--- ~s ~s~%" cursor *max-width*)
 	(terminal-write-char stream #\newline))
 
@@ -71,7 +72,8 @@
 	   (incf cursor size)
 	   (when (< i (1- len))
 	     (terminal-write-string stream separator)))
-	(when (or (not *max-width*) (< cursor (1- *max-width*)))
+	;; (when (or (not *max-width*) (< cursor (1- *max-width*)))
+	(when (or (not *max-width*) (< cursor *max-width*))
 	  (terminal-write-char stream #\newline))))))
 
 (defmethod text-table-cell-lines (table (renderer terminal-table-renderer)
