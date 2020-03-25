@@ -283,7 +283,9 @@ for a range of rows, or a table-point for a specific item,"
 		   (= column (table-point-col current-position)))
 	      (progn
 		(setf (table-point-col cursor) output-x)
-		(tt-color :yellow :default)) ; @@@ should get from theme
+		;; (tt-color :yellow :default)) ; @@@ should get from theme
+		(tt-inverse nil)
+		(tt-color :black :yellow)) ; @@@ should get from theme
 	      (tt-color :default :default)))
 
 	;; (dbugf :tv "is it? ~s~%" (table-columns table))
