@@ -21,14 +21,16 @@ invoke that program with a special dynamic setting of *theme*.
 HOW TO USE:
 
   The current theme is stored in the *THEME* variable. An easy way to see
-  what's in the theme is with PRINT-THEME, e.g.:
+  what's in the theme is with ‘print-theme’, e.g.:
     (print-theme *theme*).
 
-  THEME-VALUE is an accessor for things in the theme. You can a get a specific
+  ‘theme-value’ is an accessor for things in the theme. You can a get a specific
   value like:
     (theme-value *theme* '(:command :not-found :style))
   or set it like:
     (setf (theme-value *theme* '(:command :not-found :style)) '(:yellow))
+
+  Or use the simpler ‘value’ accessor for the current theme.
 
   The theme is like a tree, which divides the theme into categories and
   sub-categories. Branch and value names in the theme are usually keywords, to
@@ -37,8 +39,8 @@ HOW TO USE:
   in the vocabulary of terminal attributes as described in
   fatchar:span-to-fatchar-string.
 
-  The default theme is returned by DEFAULT-THEME, so you can always set *THEME*
-  back to that, e.g. (setf *theme* (default-theme))
+  The default theme is returned by ‘default-theme’, so you can always set
+  ‘*theme*’ back to that, e.g. (setf *theme* (default-theme))
 
   You can save a theme to a file with SAVE-THEME, and load it in back in with
   LOAD-THEME.
@@ -47,7 +49,7 @@ HOW TO USE:
   view it in the tree viewer, you could say:
    (tree-viewer:view-tree (theme:theme-as-tree theme:*theme*))
   You might also want it as a linear list of values, with the full paths,
-  which you can get with THEME-LIST. Note that both getting the theme as a
+  which you can get with ‘theme-list’. Note that both getting the theme as a
   tree and a list, loses the descriptions, so shouldn't be considered as
   equivalent to the theme.
 
@@ -61,32 +63,32 @@ HOW TO USE:
 
 USE FROM PROGRAMS:
 
-  Programs will mostly use THEME-VALUE, to get a value for a specific setting.
-  Programs should probably not change anything in the theme unless the user
-  requests it.
+  Programs will mostly use ‘theme-value’ or ‘value’, to get a value for a
+  specific setting. Programs should probably not change anything in the theme
+  unless the user requests it.
 
 CREATING AND CUSTOMIZING THEMES:
 
-  Probably the easiest way to customize a theme, is using set-theme-values in
+  Probably the easiest way to customize a theme, is using ‘set-theme-values’ in
   a startup file. For example:
     (theme:set-theme-items theme:*theme*
       '((:program :empty-line-indicator :character) #\~
         (:program :modeline :style)                 (:bg-blue :fg-cyan)
         (:program :search-match :style)             (:red :underline)))
 
-  Another way would be customize the current theme with THEME-VALUE, e.g.:
+  Another way would be customize the current theme with ‘theme-value’, e.g.:
     (setf (theme-value *theme* '(:program :modeline :style))
                                '(:fg :color #(:rgb 0 .80 1)
                                  :bg :color #(:rgb .4 0 .5)))
-  and then save it to a file with SAVE-THEME, e.g.:
+  and then save it to a file with ‘save-theme’, e.g.:
     (save-theme *theme* (opsys:path-append (opsys:data-dir \"lisp\") \"theme\"))
-  and load it in with LOAD-THEME from your startup file, e.g.:
+  and load it in with ‘load-theme’ from your startup file, e.g.:
     (setf *theme* (load-theme
                     (opsys:path-append (opsys:data-dir \"lisp\") \"theme\")))
 
-  To create a whole theme from scratch, one could do it with make-theme and
-  set-theme-values, like default-theme does. Or you could save the default theme
-  to a file and edit it.
+  To create a whole theme from scratch, one could do it with ‘make-theme’ and
+  ‘set-theme-values’, like ‘default-theme’ does. Or you could save the default
+  theme to a file and edit it.
 
   In the future there should be theme creation tool with a nice user interface.")
   (:use :cl :dlib :fatchar)
@@ -95,6 +97,7 @@ CREATING AND CUSTOMIZING THEMES:
    #:theme-activate
    #:theme-deactivate
    #:theme-value
+   #:value
    #:theme-as-tree
    #:theme-list
    #:print-theme
@@ -594,6 +597,17 @@ set-theme-items."
 	       (setf result (acons tt val result)))))
     (alexandria:alist-plist result)))
 
+(defun value (item)
+  "Get a value from the current theme."
+  (theme-value *theme* item))
+
+(defun set-value (item value)
+  "Set a value in the current theme."
+  (setf (theme-value *theme* item) value))
+
+(defsetf value set-value
+  "Accessor for a value in the current theme.")
+
 (defun set-theme-items (theme item-value-list)
   "Set item in theme from item-value-list which is a plist like list of
 alternating (item value ...)."
@@ -614,7 +628,7 @@ Something like the default setting of typical GNU tools."))))
     (set-theme-items
      tt
      ;; File type
-     '((:file :type :directory             :style) (:bold :fg-blue)
+     `((:file :type :directory             :style) (:bold :fg-blue)
        (:file :type :link                  :style) (:bold :fg-cyan)
        (:file :type :symbolic-link         :style) (:bold :fg-cyan)
        (:file :type :pipe                  :style) (:fg-black :fg-yellow)
@@ -673,6 +687,7 @@ Something like the default setting of typical GNU tools."))))
        (:program :selection            :style)     (:standout)
        (:program :label		       :style)     (:cyan)
        (:program :data		       :style)     (:green)
+       (:program :meter		       :character) #.(code-char #x2592)
        ))
     tt))
 
