@@ -608,6 +608,7 @@
    ;;#:describe-tty
    ;;#:set-tty
    #:getch
+   #:with-nonblocking-io
 
    ;; old fashioned tty ioctls
    #:winsize

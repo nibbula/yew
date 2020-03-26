@@ -638,6 +638,7 @@ even process interrupts. If TIMEOUT is true, it's a number of deciseconds,
 (defmacro with-very-raw-input (&body body)
   `(raw-test #'(lambda (tty) (declare (ignorable tty)) ,body) :very-raw t))
 
+#|
 (defun terminal-query (query &key max tty)
   "Output the string to the terminal and wait for a response. Read up to MAX
 characters. If we don't get anything after a while, just return what we got."
@@ -658,6 +659,7 @@ characters. If we don't get anything after a while, just return what we got."
    :very-raw t
    :tty tty
    :timeout 1))
+|#
 
 ;; This is just what I consider sane. You might not. You can change them if
 ;; you want to.
@@ -1277,6 +1279,7 @@ The individual settings override the settings in MODE."
 (defun read-terminal-char (terminal-handle &key timeout)
   (code-char (read-terminal-byte terminal-handle :timeout timeout)))
 
+#|
 ;; @@@ I would use stretchy, but I don't want to introduce dependencies.
 (defun append-thing (array thing)
   "Append the THING to the array ARRAY."
@@ -1288,7 +1291,7 @@ The individual settings override the settings in MODE."
     (incf (fill-pointer array))
     (setf (aref array len) thing)))
 
-(defun read-until (tty stop-token &key timeout octets-p)
+(defun old-read-until (tty stop-token &key timeout octets-p)
   "Read until STOP-TOKEN is read. Return a string of the results.
 TTY is a file descriptor. TIMEOUT is in seconds."
   (let ((result (make-array 0 :element-type (if octets-p
@@ -1335,6 +1338,144 @@ TTY is a file descriptor. TIMEOUT is in seconds."
 	   nil
 	   result)
        got-eof))))
+|#
+
+(defparameter *read-until-buffer-size* 12
+  "The default buffer size for read-until.")
+
+(defparameter *time-quanta* 0.0002 ;; 0.0001
+  "How long to sleep in seconds when input isn't available.")
+(declaim (type single-float *delay-time*))
+
+(defparameter *error-max* 4
+  "The number of times we can get an error before giving up.")
+(declaim (type fixnum *error-max*))
+
+(defun full-response-p (buf len char)
+  "Return true if we seem to have gotten a full response because there's a
+CHAR."
+  (loop :with c = (char-code char)
+     :for i :from 0 :below len
+     :when (= (cffi:mem-aref buf :unsigned-char i) c)
+     :return t))
+
+(defun convert-result (result count octets-p &optional partial)
+  "Convert the result of ‘read-until’ into a string or an octet vector depending
+on ‘octets-p’."
+  (if octets-p
+      (let ((a (make-array (+ count (if partial (length partial) 0))
+			   :element-type '(unsigned-byte 8))))
+	;; We really don't want to hit the partial cases, since they're slow.
+	;; If an ample buffer can't be supplied to read-until, consider
+	;; using another technique.
+	(if partial
+	    (progn
+	      (setf (subseq a 0 (length partial)) partial)
+	      (loop :for i :from 0 :below count
+		 :do (setf (aref a i) (cffi:mem-aref result :unsigned-char i))))
+	    (loop :for i :from 0 :below count
+	       :do (setf (aref a i) (cffi:mem-aref result :unsigned-char i)))))
+      (if partial
+	  (s+ partial (cffi:foreign-string-to-lisp result :count count))
+	  (cffi:foreign-string-to-lisp result :count count))))
+
+(defun read-until (fd char &key (timeout 4) octets-p
+			     (buffer-size *read-until-buffer-size*))
+  ;; (dbugf :fux "timeout ~s buffer-size ~s~%" timeout buffer-size)
+  (when (not buffer-size)
+    (setf buffer-size *read-until-buffer-size*))
+  (cffi:with-foreign-object (buf :unsigned-char buffer-size)
+    (prog ((fail-count 0)
+	   (error-count 0)
+	   (status 0)
+	   (fail-max (/ (or timeout 4) *time-quanta*))
+	   partial)
+       (declare (type fixnum status))
+     AGAIN
+       (setf status (posix-read fd buf buffer-size))
+       ;; (dbugf :fux "status ~s *errno* ~s~%" status *errno*)
+       (cond
+	 ;; Got something
+	 ((or (= status buffer-size) (< 0 status buffer-size))
+	  (cond
+	    ;; Got to the end, so parse it.
+	    ((or (= (cffi:mem-aref buf :unsigned-char (1- status))
+		    (char-code char))
+		 (full-response-p buf status char))
+	     (return (convert-result buf status octets-p partial)))
+	    ;; Didn't get to the end, add it to partial and read more.
+	    (t
+	     (setf partial
+		   (convert-result buf status octets-p partial)
+		   ;; (if partial
+		   ;;     (s+ partial
+		   ;; 	   (cffi:foreign-string-to-lisp buf :count status))
+		   ;;     (cffi:foreign-string-to-lisp buf :count status))
+		   )
+	     (go AGAIN))))
+	 ;; Nothing availabile
+	 ((= status 0)
+	  (when (> fail-count fail-max)
+	    (cerror "Try again?" "Reapeatedly got nothing.")
+	    (setf fail-count 0))
+	  (incf fail-count)
+	  ;; Try waiting, and going again, until the fail limit.
+	  (sleep *time-quanta*)
+	  (go AGAIN))
+	 ;; Got an error.
+	 ((< status 0)
+	  (cond
+	    ((> error-count *error-max*)
+	     ;; (cerror "Try again?" ':read-char-error
+	     ;; 	     :error-code *errno*))
+	     (cerror "Try again?"
+		     "read-until got too many errors. ~s" error-count))
+	    ((> fail-count fail-max)
+	     ;; (cerror "Try again?" 'read-char-error
+	     ;; 	     :error-code *errno*))
+	     (cerror "Try again?"
+		     "read-until took too long. ~s" fail-count))
+	    ((or (= *errno* +EWOULDBLOCK+))
+	     ;; Nothing there yet.
+	     (incf fail-count)
+	     (sleep *time-quanta*)
+	     (go AGAIN))
+	    ((or (= *errno* +EINTR+) (= *errno* +EAGAIN+))
+	     ;; If it's just normal plusering, go again.
+	     (incf error-count)
+	     (go AGAIN))
+	    (t
+	     ;; It's maybe a for real error.
+	     (cerror "Try again?"
+		     'read-char-error :error-code *errno*))))))))
+
+(defmacro with-nonblocking-io ((fd) &body body)
+  (with-unique-names (flags reset-it)
+    `(let ((,flags 0) ,reset-it)
+       (declare (type fixnum ,flags))
+       ;; Get the file descriptor flags.
+       (setf ,flags (syscall (fcntl ,fd +F_GETFL+)))
+       (unwind-protect
+	    (progn
+	      ;; Set it to non-blocking.
+	      (when (not (plusp (logand ,flags +O_NONBLOCK+)))
+		(setf ,reset-it t)
+		(syscall (fcntl ,fd +F_SETFL+ :int
+				(logior ,flags +O_NONBLOCK+))))
+	      ;; Do something with fd.
+	      ,@body)
+	 ;; Set the flags back to the original.
+	 (when ,reset-it
+	   (syscall (fcntl ,fd +F_SETFL+ :int ,flags)))))))
+
+(defun terminal-query (fd query end-char &key buffer-size)
+  (let ((query-length (length query)))
+    (cffi:with-foreign-string (buf query)
+      ;; Send the query to the terminal.
+      (syscall (posix-write fd buf query-length))
+      (with-nonblocking-io (fd)
+	;; Do the complicated read.
+	(read-until fd end-char :buffer-size buffer-size)))))
 
 (defun write-terminal-char (terminal-handle char)
   "Write CHAR to the terminal designated by TERMINAL-HANDLE."
