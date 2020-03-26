@@ -756,13 +756,15 @@
   (read-terminal-char (terminal-file-descriptor tty)))
 
 ;; This is so small it can just be an alist for now.
-(defvar *ms-keys*
+(defparameter *ms-keys*
   `((:back	#\backspace)
     (:return	#\return)
     (:tab	#\tab)
     (:escape	#\escape)
     (:space	#\space)
-    (:delete	#\rubout))
+    (:delete	#\rubout)
+    (:prior     :page-up)
+    (:next      :page-down))
   "Key normalization alist.")
 
 (defun normalize-key (symbol)

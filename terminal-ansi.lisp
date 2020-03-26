@@ -205,6 +205,7 @@ it yet.")
 	(loop :for i :from (1- (length ta)) :downto 0 :do
 	   (add-typeahead tty (aref ta i)))))))
 
+#|
 (defmethod terminal-get-cursor-position ((tty terminal-ansi))
   "Try to somehow get the row of the screen the cursor is on. Returns the
 two values ROW and COLUMN."
@@ -225,6 +226,40 @@ two values ROW and COLUMN."
 	(values 0 0)
 	;;(error "terminal reporting failed"))
 	(values (1- row) (1- col)))))
+|#
+
+(defun parse-cursor-position (string)
+  (declare (type simple-string string))
+  (let ((row 1) (col 1) sep)
+    (declare (type (or fixnum null) row col sep))
+    (when (or (char/= (char string 0) #\escape)
+	      (char/= (char string 1) #\[))
+      (error "Malformed cursor position response."))
+    (when (and string (>= (length string) 5)
+	       (setf sep (position #\; string))
+	       (< sep (1- (length string))))
+      (setf row (parse-integer (subseq string 2 sep) :junk-allowed t)
+	    col (parse-integer (subseq string (1+ sep) (length string))
+			       :junk-allowed t)))
+    (if (or (not row) (not col))
+	;; Probabbly because there was other I/O going on.
+	;; (values 0 0)
+	(error "Terminal cursor position reporting failed.")
+	(values (1- row) (1- col)))))
+
+(defparameter *cursor-position-query* (s+ #\escape "[6n"))
+(declaim (type string *cursor-position-query*))
+
+(defmethod terminal-get-cursor-position ((tty terminal-ansi))
+  "Try to somehow get the row of the screen the cursor is on. Returns the
+two values ROW and COLUMN."
+  ;; (terminal-ansi::eat-typeahead tty)
+  (terminal-finish-output tty)
+  (with-immediate ()
+    (let ((result (terminal-query (terminal-file-descriptor tty)
+				  *cursor-position-query* #\R
+				  :buffer-size 12)))
+      (parse-cursor-position result))))
 
 ;; Just for debugging
 ; (defun terminal-report-size ()
@@ -564,6 +599,7 @@ TTY is a terminal, in case you didn't know."
 ;; 	      ,@body)
 ;; 	 (set-terminal-mode (terminal-file-descriptor ,tty) :mode ,mode)))))
 
+#|
 (defparameter *report-timeout* 0.05
   "How long to wait for the terminal to send back characters when reporting.")
 
@@ -579,16 +615,18 @@ Report parameters are returned as values. Report is assumed to be in the form:
 		 (write-terminal-string fd q)
 		 (terminal-finish-output tty)
 		 (with-interrupts-handled (tty)
-		   (read-until fd end-char
-			       ;;:timeout 1
-			       ;; :timeout 0.05
-			       :timeout *report-timeout*
-			       )))))
+		   (with-nonblocking-io (fd)
+		     (read-until fd end-char
+				 ;;:timeout 1
+				 ;; :timeout 0.05
+				 :timeout *report-timeout*
+				 ))))))
       #| @@@ temporarily get rid of this error
       (when (null str)
 	(error "Terminal failed to report \"~a\"." fmt))
       |#
       str)))
+|#
 
 (defun %write-string/line (tty str func start end)
   (when (not (and (and start (zerop start)) (and end (zerop end))))
@@ -889,14 +927,12 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-window-foreground ((tty terminal-ansi))
   "Get the default foreground color for text."
-  (let ((qq (query-string (s+ "10;?" +st+) :lead-in +osc+ :offset 5
-			  :tty (terminal-file-descriptor tty))))
+  (let ((qq (query-string (s+ "10;?" +st+) :lead-in +osc+ :offset 5 :tty tty)))
     (and qq (xcolor-to-color qq))))
 
 (defmethod terminal-window-background ((tty terminal-ansi))
   "Get the default background color for text."
-  (let ((qq (query-string (s+ "11;?" +st+) :lead-in +osc+ :offset 5
-			  :tty (terminal-file-descriptor tty))))
+  (let ((qq (query-string (s+ "11;?" +st+) :lead-in +osc+ :offset 5 :tty tty)))
     (and qq (xcolor-to-color qq))))
 
 (defun set-foreground-color (tty color)
@@ -1073,7 +1109,7 @@ i.e. the terminal is 'line buffered'."
 	   (try-string (str)
 	     (hex-string-to-integer
 	      (query-string (s+ "+q" str +st+) :lead-in +dcs+ :offset 5
-			    :tty (terminal-file-descriptor *terminal*)))))
+			    :tty *terminal*))))
     ;; esc p 1 + r <Pt> ST
     ;; esc p 0 + r <Pt> ST  -- for invalid requests
     ;; "Co" or "colors"
@@ -1092,15 +1128,16 @@ i.e. the terminal is 'line buffered'."
 		      (eq (emulator-name e) :rxvt))
 		 ;; Special case for rxvt which doesn't report correctly.
 		 256)
-		((query-string (s+ "4;256;?" #\bel) :lead-in +osc+ :ending 1)
+		((query-string (s+ "4;256;?" #\bel) :lead-in +osc+ :ending 1
+			       :tty tty)
 		 ;; Has at least 256 colors:
 		 256)
-		((query-string (s+ "4;88;?" #\bel) :lead-in +osc+ :ending 1)
+		((query-string (s+ "4;88;?" #\bel) :lead-in +osc+ :ending 1
+			       :tty tty)
 		 ;; Has at least 88 colors:
 		 88)
 		((ppcre:scan "(\\A|\\z|;)22(\\A|\\z|;)"
-			     (query-string "0c" :ending 1
-					   :tty (terminal-file-descriptor tty)))
+			     (query-string "0c" :ending 1 :tty tty))
 		 ;; Has at least 16 colors:
 		 16)
 		(t 0))))))
@@ -1468,9 +1505,14 @@ and add the characters the typeahead."
     (64 "VT520")
     (65 "VT525")))
 
-(defun query-parameters (s &key (offset 3) (tty *terminal*))
-  (let ((response (terminal-query (s+ +csi+ s)
-				  :tty (terminal-file-descriptor tty))))
+(defun query-parameters (s &key end-char (offset 3) (tty *terminal*))
+  (let ((response
+	 (progn
+	   (terminal-finish-output tty)
+	   (with-immediate ()
+	     (terminal-query (terminal-file-descriptor tty)
+			     (s+ +csi+ s)
+			     (or end-char (char s (1- (length s)))))))))
     (if (zerop (length response))
 	'(nil nil nil)
 	(mapcar (_ (ignore-errors (parse-integer _)))
@@ -1480,8 +1522,15 @@ and add the characters the typeahead."
 				 (1- (length response)))
 			 'string))))))
 
-(defun query-string (s &key (offset 3) (ending 2) (lead-in +csi+) tty)
-  (let ((response (terminal-query (s+ lead-in s) :tty tty)))
+(defun query-string (s &key end-char (offset 3) (ending 2) (lead-in +csi+)
+			 (tty *terminal*))
+  (let ((response
+	 (progn
+	   (terminal-finish-output tty)
+	   (with-immediate ()
+	     (terminal-query (terminal-file-descriptor tty)
+			     (s+ lead-in s)
+			     (or end-char (char s (1- (length s)))))))))
     (if (zerop (length response))
 	'()
 	(coerce (subseq response offset
@@ -1617,10 +1666,11 @@ bracketed read.")
 	     :while (not done)
 	     :if (listen-for *bracketed-read-timeout* fd) :do
 	     (with-interrupts-handled (tty)
-	       (setf s (read-until fd (char end-string i)
-				   ;; :timeout (* *bracketed-read-timeout* 10)
-				   :timeout *bracketed-read-timeout*
-				   :octets-p t)))
+	       (with-nonblocking-io (fd)
+		 (setf s (read-until fd (char end-string i)
+				     ;; :timeout (* *bracketed-read-timeout* 10)
+				     :timeout *bracketed-read-timeout*
+				     :octets-p t))))
 	     ;; (dbugf :bp "got dingus ~s ~s~%length ~s~%fill-pointer ~s"
 	     ;; 	    s (type-of s) (length s)
 	     ;; 	    (when s (fill-pointer s))
@@ -1673,8 +1723,7 @@ wheren <N> is a number 1-7."
     (when (not type-code)
       (error "Unknown selection type ~s" type))
     (setf result (query-string (s+ "52;" type-code ";?" #\bel)
-			       :lead-in +osc+ :ending 1
-			       :tty (terminal-file-descriptor tty)))
+			       :lead-in +osc+ :ending 1 :tty tty))
     (when result
       (cl-base64:base64-string-to-string
        (remove-prefix result (s+ "2;" type-code ";"))))))
@@ -1719,7 +1768,7 @@ or :both. WHICH defaults to :window."
 		 (:icon "20")
 		 (:window "21")
 		 (otherwise "21"))))
-    (query-string (s+ param "t") :tty (terminal-file-descriptor tty))))
+    (query-string (s+ param "t") :tty tty :end-char #\\)))
 
 ;; If this is mysteriously not working, you might have to make sure to enable
 ;; it in your emulator. Like in xterm: "Allow Window Ops".
