@@ -68,7 +68,7 @@
 		 (:icon "20")
 		 (:window "21")
 		 (otherwise "21"))))
-    (query-string (s+ param "t"))))
+    (query-string (s+ param "t") :end-char #\\)))
 
 (defun edit-title (&optional (which :window))
   (let ((title (get-title which)) result)
@@ -88,7 +88,8 @@
 
 (defun get-font ()
   (query-string (format nil "50;?~c" (char-util:ctrl #\G))
-		:lead-in +osc+ :offset 3 :ending 1))
+		:lead-in +osc+ :offset 3 :ending 1
+		:end-char (ctrl #\G)))
 
 (defun set-font (font)
   (tt-format "~a50;~a~c" +osc+ font (char-util:ctrl #\G))
@@ -356,6 +357,20 @@
       ;; Try to figure out fullscreen
       (when (eq parameter 'fullscreen)
 	(when (not (slot-boundp o parameter))
+	  ;; Make sure we got the sizes first.
+	  (when (or (not (slot-boundp o 'screen-char-width))
+		    (not (slot-boundp o 'char-width)))
+	    (if (setf result (query-parameters "18t"))
+		(setf (slot-value o 'char-width) (elt result 2)
+		      (slot-value o 'char-height) (elt result 1))
+		(setf (slot-value o 'char-width) 0
+		      (slot-value o 'char-height) 0))
+	    (if (setf result (query-parameters "19t"))
+		(setf (slot-value o 'screen-char-width) (elt result 2)
+		      (slot-value o 'screen-char-height) (elt result 1))
+		(setf (slot-value o 'screen-char-width) 0
+		      (slot-value o 'screen-char-height) 0)))
+
 	  (setf (slot-value o 'fullscreen)
 		(and (not (zerop (slot-value o 'screen-char-width)))
 		     (= (slot-value o 'screen-char-width)
