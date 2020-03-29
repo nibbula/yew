@@ -250,16 +250,40 @@ two values ROW and COLUMN."
 (defparameter *cursor-position-query* (s+ #\escape "[6n"))
 (declaim (type string *cursor-position-query*))
 
+(defun handle-excess (tty result end-tag &key omit-tag-p)
+  "If something using read-until returned stuff after the end-tag, put it in
+the typeahead."
+  (let (end tag-len)
+    (typecase end-tag
+      (character
+       (setf end (position end-tag result)
+	     tag-len 1))
+      (string
+       (setf end (search end-tag result)
+	     tag-len (length end-tag))))
+    (when (> (length result) (+ end tag-len))
+      (add-typeahead tty (subseq result (+ end tag-len))))
+    (if omit-tag-p
+	(subseq result 0 (- end tag-len))
+	(subseq result 0 (1+ end)))))
+
+(defun ansi-terminal-query (tty query end-tag &key buffer-size omit-tag-p)
+  (terminal-finish-output tty)
+  (with-immediate ()
+    (handle-excess tty (terminal-query (terminal-file-descriptor tty)
+				       query
+				       end-tag
+				       :buffer-size buffer-size)
+		   end-tag
+		   :omit-tag-p omit-tag-p)))
+
 (defmethod terminal-get-cursor-position ((tty terminal-ansi))
   "Try to somehow get the row of the screen the cursor is on. Returns the
 two values ROW and COLUMN."
   ;; (terminal-ansi::eat-typeahead tty)
-  (terminal-finish-output tty)
-  (with-immediate ()
-    (let ((result (terminal-query (terminal-file-descriptor tty)
-				  *cursor-position-query* #\R
-				  :buffer-size 12)))
-      (parse-cursor-position result))))
+  (let ((result (ansi-terminal-query tty *cursor-position-query* #\R
+				     :buffer-size 12)))
+    (parse-cursor-position result)))
 
 ;; Just for debugging
 ; (defun terminal-report-size ()
@@ -1507,12 +1531,9 @@ and add the characters the typeahead."
 
 (defun query-parameters (s &key end-char (offset 3) (tty *terminal*))
   (let ((response
-	 (progn
-	   (terminal-finish-output tty)
-	   (with-immediate ()
-	     (terminal-query (terminal-file-descriptor tty)
-			     (s+ +csi+ s)
-			     (or end-char (char s (1- (length s)))))))))
+	 (ansi-terminal-query tty (s+ +csi+ s)
+			      (or end-char (char s (1- (length s))))
+			      #| :omit-tag-p t |#)))
     (if (zerop (length response))
 	'(nil nil nil)
 	(mapcar (_ (ignore-errors (parse-integer _)))
@@ -1525,12 +1546,9 @@ and add the characters the typeahead."
 (defun query-string (s &key end-char (offset 3) (ending 2) (lead-in +csi+)
 			 (tty *terminal*))
   (let ((response
-	 (progn
-	   (terminal-finish-output tty)
-	   (with-immediate ()
-	     (terminal-query (terminal-file-descriptor tty)
-			     (s+ lead-in s)
-			     (or end-char (char s (1- (length s)))))))))
+	 (ansi-terminal-query tty (s+ lead-in s)
+			      (or end-char (char s (1- (length s))))
+			      #| :omit-tag-p t |#)))
     (if (zerop (length response))
 	'()
 	(coerce (subseq response offset
@@ -1654,12 +1672,14 @@ and add the characters the typeahead."
   "Maximum time in seconds before bailing out of reading one buffer full of a
 bracketed read.")
 
+#|
 (defgeneric read-bracketed-paste (tty)
   (:documentation "Read a bracketed paste and return it as a string.")
   (:method ((tty terminal-ansi))
     (let ((end-string (s+ +csi+ "201~"))
 	  ;; (buf (make-string *buffer-size*))
 	  (fd (terminal-file-descriptor tty)))
+      (terminal-finish-output tty)
       (with-output-to-string (str)
 	(with-raw (fd)
 	  (loop :with done :and i = 0 :and len = (length end-string) :and s
@@ -1690,6 +1710,40 @@ bracketed read.")
 	     (cerror "Return what we got so far."
 		     "Bracketed paste timed out.")
 	     (setf done t)))))))
+|#
+
+(defgeneric read-bracketed-paste (tty)
+  (:documentation "Read a bracketed paste and return it as a string.")
+  (:method ((tty terminal-ansi))
+    (let ((end-string (s+ +csi+ "201~"))
+	  ;; (buf (make-string *buffer-size*))
+	  (fd (terminal-file-descriptor tty))
+	  result)
+      (terminal-finish-output tty)
+      (with-output-to-string (str)
+	(with-raw (fd)
+	  (with-interrupts-handled (tty)
+	    (with-nonblocking-io (fd)
+	      (setf result (read-until fd end-string
+				       ;;:timeout (* *bracketed-read-timeout* 10)
+				       :timeout *bracketed-read-timeout*
+				       :octets-p t))))
+	     ;; (dbugf :bp "got dingus ~s ~s~%length ~s~%fill-pointer ~s"
+	     ;; 	    s (type-of s) (length s)
+	     ;; 	    (when s (fill-pointer s))
+	     ;; 	    )
+	  (if result
+	      (let* ((uu (unicode:utf8-bytes-to-string result))
+		     (end (search end-string uu))
+		     (tail (when (> (length uu) (+ end (length end-string)))
+			     (subseq uu (+ end (length end-string)))))
+		     (content (subseq uu 0 end)))
+		;; (dbugf :bp "why? ~s ~s~%" uu (type-of uu))
+		(when tail
+		  (add-typeahead tty tail))
+		(princ content str))
+	      (cerror "Return what we got so far."
+		      "Bracketed paste timed out.")))))))
 
 (defparameter *selection-codes*
   #((:clipboard    . #\c)
