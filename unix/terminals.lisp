@@ -1359,28 +1359,40 @@ CHAR."
      :when (= (cffi:mem-aref buf :unsigned-char i) c)
      :return t))
 
+;; @@@ This should be improved to be less consing, probably use with-output-to-*
 (defun convert-result (result count octets-p &optional partial)
   "Convert the result of ‘read-until’ into a string or an octet vector depending
 on ‘octets-p’."
   (if octets-p
-      (let ((a (make-array (+ count (if partial (length partial) 0))
-			   :element-type '(unsigned-byte 8))))
+      (let* ((start (if partial (length partial) 0))
+	     (a (make-array (+ count start) :element-type '(unsigned-byte 8))))
 	;; We really don't want to hit the partial cases, since they're slow.
 	;; If an ample buffer can't be supplied to read-until, consider
 	;; using another technique.
 	(if partial
 	    (progn
-	      (setf (subseq a 0 (length partial)) partial)
+	      (setf (subseq a 0 start) partial)
 	      (loop :for i :from 0 :below count
-		 :do (setf (aref a i) (cffi:mem-aref result :unsigned-char i))))
+		 :do (setf (aref a (+ start i))
+			   (cffi:mem-aref result :unsigned-char i))))
 	    (loop :for i :from 0 :below count
-	       :do (setf (aref a i) (cffi:mem-aref result :unsigned-char i)))))
+	       :do (setf (aref a i) (cffi:mem-aref result :unsigned-char i))))
+	a)
       (if partial
 	  (s+ partial (cffi:foreign-string-to-lisp result :count count))
 	  (cffi:foreign-string-to-lisp result :count count))))
 
-(defun read-until (fd char &key (timeout 4) octets-p
-			     (buffer-size *read-until-buffer-size*))
+(defun done-check (string end-tag)
+  "Return true if END-TAG is in STRING. END-TAG can be a string or a character."
+  (and (etypecase end-tag
+	 (character
+	  (position end-tag string :from-end t))
+	 (vector
+	  (search end-tag string :from-end t)))
+       t))
+
+(defun read-until (fd end-tag &key (timeout 4) octets-p
+				(buffer-size *read-until-buffer-size*))
   ;; (dbugf :fux "timeout ~s buffer-size ~s~%" timeout buffer-size)
   (when (not buffer-size)
     (setf buffer-size *read-until-buffer-size*))
@@ -1389,6 +1401,13 @@ on ‘octets-p’."
 	   (error-count 0)
 	   (status 0)
 	   (fail-max (/ (or timeout 4) *time-quanta*))
+	   (real-end-tag
+	    (if octets-p
+		(make-array (length end-tag)
+			    :element-type '(unsigned-byte 8)
+			    :initial-contents
+			    (map 'list #'char-code end-tag))
+		end-tag))
 	   partial)
        (declare (type fixnum status))
      AGAIN
@@ -1396,23 +1415,11 @@ on ‘octets-p’."
        ;; (dbugf :fux "status ~s *errno* ~s~%" status *errno*)
        (cond
 	 ;; Got something
-	 ((or (= status buffer-size) (< 0 status buffer-size))
-	  (cond
-	    ;; Got to the end, so parse it.
-	    ((or (= (cffi:mem-aref buf :unsigned-char (1- status))
-		    (char-code char))
-		 (full-response-p buf status char))
-	     (return (convert-result buf status octets-p partial)))
-	    ;; Didn't get to the end, add it to partial and read more.
-	    (t
-	     (setf partial
-		   (convert-result buf status octets-p partial)
-		   ;; (if partial
-		   ;;     (s+ partial
-		   ;; 	   (cffi:foreign-string-to-lisp buf :count status))
-		   ;;     (cffi:foreign-string-to-lisp buf :count status))
-		   )
-	     (go AGAIN))))
+	 ((plusp status)
+	  (setf partial (convert-result buf status octets-p partial))
+	  (if (done-check partial real-end-tag)
+	      (return partial)
+	      (go AGAIN)))
 	 ;; Nothing availabile
 	 ((= status 0)
 	  (when (> fail-count fail-max)
