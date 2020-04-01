@@ -121,8 +121,14 @@ Keymap stacks:
 	    (hash-table-count (keymap-map obj)))))
 
 (defmacro defkeymap (name &body body)
-  "Define a keymap. DEFAULT-BINDING is what keys that aren't defined are
-bound to."
+  "Define a keymap.
+- NAME is a variable the keymap is bound to.
+- BODY is of the form:
+    [docstring] [:default-binding BINDING] ALIST
+  where ALIST is an alist of (KEY . BINDING).
+  KEY is a character or keyword.
+  BINDING is a symbol or a function to be called or a form to be evaluated.
+  DEFAULT-BINDING is what keys that aren't defined are bound to."
   (let (docstring map default-binding)
     (when body
       ;; See if there's a docstring
