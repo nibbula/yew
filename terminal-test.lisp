@@ -1233,8 +1233,7 @@ same as the current and NO-NEW is true."
    (type lenient-choice
     :short-arg #\t
     :default '(find-terminal-type-for-class (class-name (class-of *terminal*)))
-    :choices (loop :with x = terminal:*terminal-types*
-		:while x :collect (car x) :do (setf x (cddr x)))
+    :choice-func #'terminal-types
     :choice-labels `(loop :with x = terminal:*terminal-types*
 		       :while x :collect (string-downcase (car x))
 		       :do (setf x (cddr x)))
