@@ -141,9 +141,12 @@ fat-string, set unset effects to be from RENDITION."
 				      (bbox-x (widget-bbox editor)))
 				     (end-column
 				      (bbox-width (widget-bbox editor)))
-				     spots column-spots)
+				     spots column-spots
+				     (autowrap-delay
+				      (terminal-has-autowrap-delay
+				       (line-editor-terminal editor))))
   (rl::%calculate-line-endings
-   buffer start-column end-column spots column-spots))
+   buffer start-column end-column spots column-spots autowrap-delay))
 
 ;; Now with much less ploof!
 (defun widget-redraw (e &key erase)
