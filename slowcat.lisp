@@ -4,7 +4,7 @@
 
 (defpackage :slowcat
   (:documentation "Make things go by slowly, like the old days.")
-  (:use :cl :opsys)
+  (:use :cl :dlib :opsys)
   (:export
    ;; Main entry point
    #:slowcat
@@ -15,17 +15,33 @@
 
 (declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
 
-(defun slowcat (stream-or-file &key (delay .02))
-  (flet ((catty (s)
-	   (loop :with line
-	      :while (setf line (read-line s nil))
-	      :do
-	      (write-line line)
-	      (sleep delay))))
-    (if (streamp stream-or-file)
-	(catty stream-or-file)
-	(with-open-file (s (quote-filename stream-or-file) :direction :input)
-	  (catty s)))))
+(defun slowcat (stream-or-file &key (delay .02) (unit :char))
+  ;; (flet ((catty (s)
+  ;; 	   (loop :with line
+  ;; 	      :while (setf line (read-line s nil))
+  ;; 	      :do
+  ;; 	      (write-line line)
+  ;; 	      (sleep delay))))
+  ;;   (if (streamp stream-or-file)
+  ;; 	(catty stream-or-file)
+  ;; 	(with-open-file (s (quote-filename stream-or-file) :direction :input)
+  ;; 	  (catty s)))))
+  (with-open-file-or-stream (s (quote-filename stream-or-file) :direction :input)
+    (ecase unit
+      (:line
+       (loop :with line
+	  :while (setf line (read-line s nil))
+	  :do
+	  (write-line line)
+	  (finish-output)
+	  (sleep delay)))
+      (:char
+       (loop :with line
+	  :while (setf line (read-char s nil))
+	  :do
+	  (write-char line)
+	  (finish-output)
+	  (sleep delay))))))
 
 #| This seems fairly superfluous with lish working
 
@@ -49,13 +65,13 @@
 
 #+lish
 (lish:defcommand slowcat
-  ((delay number :short-arg #\d :default .02)
+  ((delay number :short-arg #\d :default .001)
+   (unit choice :short-arg #\u :default :char :choices '(:line :char))
    (files pathname :repeating t))
   "Make things go by slowly, like the old days."
-;  (format t "files = ~w delay = ~w~%" files delay)
   (if files
       (loop :for f :in files :do
-	 (slowcat f :delay delay))
-      (slowcat *standard-input* :delay delay)))
+	 (slowcat f :delay delay :unit unit))
+      (slowcat *standard-input* :delay delay :unit unit)))
 
 ;; EOF
