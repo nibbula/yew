@@ -3,8 +3,6 @@
 ;;
 
 ;; TODO:
-;;  - limit to window
-;;  - scrolling?
 ;;  - finish dictionary completion
 ;;  - more languageishnessification
 
@@ -58,8 +56,8 @@ a count which is the length of the sequence.")
    ))
 (in-package :completion)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
-		   (compilation-speed 0)))
+;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+;; 		   (compilation-speed 0)))
 
 (defstruct completion-result
   "The result of completion functions."

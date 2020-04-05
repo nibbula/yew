@@ -760,12 +760,12 @@ Arguments:
 MESSAGE is some text to display before the menu.
 SELECTED-ITEM is the item that is initially selected.
 This is a macro so you can use lexically scoped things in the menu."
-  ;;; @@@ improve to one loop
   (cond
     ((symbolp menu)
      `(do-menu* ,menu :message ,message :selected-item ,selected-item
 		:popup ,popup :x ,x :y ,y))
     ((listp menu)
+     ;; @@@ improve to one loop
      (let ((items (loop :for (i . nil) :in menu :collect i))
 	   (funcs (loop :for (nil . f) :in menu :collect f))
 	   (n-sym (gensym)))
