@@ -155,7 +155,11 @@ require terminal driver support."))
 it yet.")
    (emulator
     :initarg :emulator :accessor emulator :initform nil
-    :documentation "Guess of what the emulator is."))
+    :documentation "Guess of what the emulator is.")
+   (no-query
+    :initarg :no-query :accessor no-query
+    :initform nil :type boolean
+    :documentation "True to avoid any terminal querying."))
   (:default-initargs
     :file-descriptor		nil
     :device-name		*default-device-name*
@@ -260,15 +264,22 @@ the typeahead."
 	     tag-len 1))
       (string
        (setf end (search end-tag result)
-	     tag-len (length end-tag))))
+	     tag-len (length end-tag)))
+      (function
+       (setf end (position-if end-tag result)
+	     tag-len 1)))
     (when (> (length result) (+ end tag-len))
       (add-typeahead tty (subseq result (+ end tag-len))))
     (if omit-tag-p
-	(subseq result 0 (- end tag-len))
+	(subseq result 0 (1+ (- end tag-len)))
 	(subseq result 0 (1+ end)))))
 
 (defun ansi-terminal-query (tty query end-tag &key buffer-size omit-tag-p)
+  (when (and (typep tty 'terminal-ansi) (no-query tty))
+    (return-from ansi-terminal-query ""))
   (terminal-finish-output tty)
+  ;; (eat-typeahead tty)
+  ;; (uos:syscall (uos:tcflush (terminal-file-descriptor tty) uos::+TCIFLUSH+))
   (with-immediate ()
     (handle-excess tty (terminal-query (terminal-file-descriptor tty)
 				       query
@@ -283,7 +294,13 @@ two values ROW and COLUMN."
   ;; (terminal-ansi::eat-typeahead tty)
   (let ((result (ansi-terminal-query tty *cursor-position-query* #\R
 				     :buffer-size 12)))
-    (parse-cursor-position result)))
+    (cond
+      ((or (not result) (zerop (length result)))
+       (when (and (typep tty 'terminal-ansi) (not (no-query tty)))
+	 (warn "Getting cursor position failed"))
+       (values 0 0))
+      (t
+       (parse-cursor-position result)))))
 
 ;; Just for debugging
 ; (defun terminal-report-size ()
@@ -951,12 +968,16 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-window-foreground ((tty terminal-ansi))
   "Get the default foreground color for text."
-  (let ((qq (query-string (s+ "10;?" +st+) :lead-in +osc+ :offset 5 :tty tty)))
+  (let ((qq (query-string (s+ "10;?" +st+) :lead-in +osc+ :offset 5 :tty tty
+			  :ending 1
+			  :end-char (_ (or _ (ctrl #\G) #\\)))))
     (and qq (xcolor-to-color qq))))
 
 (defmethod terminal-window-background ((tty terminal-ansi))
   "Get the default background color for text."
-  (let ((qq (query-string (s+ "11;?" +st+) :lead-in +osc+ :offset 5 :tty tty)))
+  (let ((qq (query-string (s+ "11;?" +st+) :lead-in +osc+ :offset 5 :tty tty
+			  :ending 1
+			  :end-char (_ (or _ (ctrl #\G) #\\)))))
     (and qq (xcolor-to-color qq))))
 
 (defun set-foreground-color (tty color)
@@ -1548,11 +1569,12 @@ and add the characters the typeahead."
   (let ((response
 	 (ansi-terminal-query tty (s+ lead-in s)
 			      (or end-char (char s (1- (length s))))
-			      #| :omit-tag-p t |#)))
+			      :omit-tag-p t)))
     (if (zerop (length response))
 	'()
 	(coerce (subseq response offset
-			(- (length response) ending))
+			(- (length response) ending)
+			)
 		'string))))
 
 (defun describe-terminal ()
