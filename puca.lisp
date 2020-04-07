@@ -8,7 +8,7 @@
 ;;  - improve git mode
 ;;    - show things to pull? (e.g. changes on remote)
 ;;    - stash editing mode
-;;    - Consider making a branch editing mode
+;;    - branch editing mode
 ;;  - Consider configuration / options editing
 ;;     like for "git config ..." or whatever the equivalent is in other systems
 
@@ -310,7 +310,10 @@ return history for the whole repository."))
     :documentation "Saved branch description.")
    (saved-remotes
     :initarg :saved-remotes :accessor git-saved-remotes :initform nil
-    :documentation "Saved list of remotes."))
+    :documentation "Saved list of remotes.")
+   (saved-stashes
+    :initarg :saved-stashes :accessor git-saved-stashes :initform 'unset
+    :documentation "Saved list of stashes."))
   (:default-initargs
    :name	      "git"
    :list-command      '("git" "status" "--porcelain")
@@ -349,11 +352,18 @@ return history for the whole repository."))
       (setf (git-saved-remotes git)
 	    (lish:!_ "git remote -v"))))
 
+(defun get-stashes (git)
+  (if (eq 'unset (git-saved-stashes git))
+      (setf (git-saved-stashes git)
+	    (lish:!_ "git --no-pager stash list"))
+      (git-saved-stashes git)))
+
 (defmethod banner ((backend git))
   "Print something useful at the top of the screen."
   (let ((line (terminal-get-cursor-position *terminal*))
 	(col 5)
-	(branch (get-branch backend)))
+	(branch (get-branch backend))
+	(stashes (get-stashes backend)))
     (labels ((do-line (fmt &rest args)
 	       (let ((str (apply #'format nil fmt args)))
 		 (tt-move-to (incf line) col)
@@ -361,12 +371,16 @@ return history for the whole repository."))
 						     (- (tt-width) col 1)))))))
       (do-line "Repo:    ~a" (nos:current-directory))
       (do-line "Branch:  ~a" branch)
+      (when stashes
+	(do-line "Stashes: ~d" (length stashes))
+	(loop :for s :in stashes
+	   :do (do-line "  ~a" s)))
       (do-line "Remotes: ")
       (loop :with s
 	 :for r :in (get-remotes backend)
 	 :do
 	 (setf s (split "\\s" r))
-	 (do-line "~a ~a ~a" (elt s 0) (elt s 2) (elt s 1)))
+	 (do-line "  ~a ~a ~a" (elt s 0) (elt s 2) (elt s 1)))
       (tt-move-to (incf line) col))))
 
 (defmethod get-status-list ((backend git))
