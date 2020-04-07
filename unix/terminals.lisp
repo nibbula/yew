@@ -1388,7 +1388,9 @@ on ‘octets-p’."
 	 (character
 	  (position end-tag string :from-end t))
 	 (vector
-	  (search end-tag string :from-end t)))
+	  (search end-tag string :from-end t))
+	 (function
+	  (position-if end-tag string :from-end t)))
        t))
 
 (defun read-until (fd end-tag &key (timeout 4) octets-p
@@ -1478,6 +1480,7 @@ on ‘octets-p’."
 (defun terminal-query (fd query end-char &key buffer-size)
   (let ((query-length (length query)))
     (cffi:with-foreign-string (buf query)
+      (syscall (tcflush fd +TCIFLUSH+))
       ;; Send the query to the terminal.
       (syscall (posix-write fd buf query-length))
       (with-nonblocking-io (fd)
