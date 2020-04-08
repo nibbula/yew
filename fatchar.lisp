@@ -49,7 +49,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 (in-package :fatchar)
 
 ;;(declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;;(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 (defstruct (fatchar (:copier nil))
   "A character with attributes."
@@ -310,9 +310,20 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 		     (end nil end-p))
   (labels ((key-func (c)
 	     (funcall key (fatchar-c c))))
-  (call-with-start-end-test
-   count (item (fat-string-string collection) :from-end from-end
-	       :key (if key #'key-func #'fatchar-c)))))
+    (call-with-start-end-test
+     count (item (fat-string-string collection) :from-end from-end
+		 :key (if key #'key-func #'fatchar-c)))))
+
+(defmethod ocount-if (predicate (collection fat-string)
+		      &key from-end key
+			(start nil start-p)
+			(end nil end-p))
+  (labels ((key-func (c)
+	     (funcall key (fatchar-c c))))
+    (call-with-start-and-end
+     count-if (predicate (fat-string-string collection) :from-end from-end
+			 ;; :key (if key #'key-func #'fatchar-c)
+			 ))))
 
 (defmethod oposition ((item fatchar) (string fat-string)
 		      &key from-end test test-not key
