@@ -409,6 +409,8 @@ Keyword arguments:
        (setf (prompt-string e) prompt (prompt-func e) output-prompt-func
 	     (right-prompt e) right-prompt)
        (when string
+	 ;; @@@ It might be nice to get a better error if string is not
+	 ;; insert-able, but that might limit how we can extend the buffer.
 	 (without-undo (e)
 	   (buffer-insert e 0 string 0)
 	   ;; (setf (inator-point e) (length string))
