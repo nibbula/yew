@@ -334,7 +334,8 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 
 (defun slot-element (object name)
   "Return the value of the slot NAME in object, or NIL if it's doesn't exist or
-isn't bound."
+isn't bound. NAME is converted to a string, as with the STRING function, and
+compared with EQUALP, which is nice for avoiding symbol package problems."
   (let ((slot (find (string name) (mop:class-slots (class-of object))
 		    :key #'mop:slot-definition-name
 		    :test (lambda (a b) (equalp (string a) (string b))))))
