@@ -1,6 +1,6 @@
-;;
-;; grep.lisp - “Global” Regular Expression Print
-;;
+;;;
+;;; grep.lisp - “Global” Regular Expression Print
+;;;
 
 (defpackage :grep
   (:documentation "Regular expression search in streams.")
@@ -136,6 +136,37 @@ removeed."
      (or (and unicode-remove-combining #'remove-combining-filter)
 	 (and unicode-normalize #'normalize-filter)))))
 
+(defstruct grep-result
+  file
+  line-number
+  line)
+
+(eval-when (:compile-toplevel)
+  (defmacro with-grep-source ((source) &body body)
+    "Evalute body where a NEXT-LINE function returns subsequent lines from
+SOURCE. SOURCE can be a pathname designator, a stream, or a list of lines,
+or a list of GREP-RESULTS."
+    (with-unique-names (src stream thunk nl-func l)
+      `(let ((,src ,source) ,nl-func)
+	 (labels ((get-line () (funcall ,nl-func))
+		  (,thunk () ,@body))
+	   (etypecase ,src
+	     ((or stream string pathname)
+	      (with-open-file-or-stream (,stream ,src)
+		(setf ,nl-func (lambda () (read-line ,stream nil nil)))
+		(,thunk)))
+	     (list
+	      (let ((,l ,src))
+		(if (and (plusp (length ,src)) (typep (first ,src) 'grep-result))
+		    (progn
+		      (setf ,nl-func (lambda ()
+				       (let ((r (pop ,l)))
+					 (and r (grep-result-line r)))))
+		      (,thunk))
+		    (progn
+		      (setf ,nl-func (lambda () (pop ,l)))
+		      (,thunk)))))))))))
+
 (defun grep (pattern file-or-stream
 	     &key
 	       (output-stream *standard-output*)
@@ -154,13 +185,18 @@ Aruguments are:
   IGNORE-CASE         - True to ignore character case when matching.
   QUIET               - True to not print matches.
   INVERT              - True to only print lines that don't match.
-  LINE-NUMER          - True to preced matching lines by a line number.
+  LINE-NUMER          - True to precede matching lines by a line number.
   FILES-WITH-MATCH    - True to print only the file name for matches.
   FILES-WITHOUT-MATCH - True to print only the file name for matches.
   FILENAME            - Name of the file to print before the matching line.
   USE-COLOR           - True to highlight substrings in color.
   COLLECT             - True to return the results.
   SCANNER	      - A PPCRE scanner as returned by CREATE-SCANNER.
+The first value is:
+  if COLLECT is true, a list of GREP-RESULT,
+  if COUNT is true the number of matches,
+  if neither COLLECT or COUNT is true, a boolean indicating if there were any
+  matches.
 Second value is the scanner that was used.
 "  
   (declare (ignore file) ;; @@@
@@ -170,91 +206,110 @@ Second value is the scanner that was used.
     ;; either of these is true, providied we aren't otherwise collecting the
     ;; results.
     (setf quiet t))
-  
-  (let* ((*fat-string* nil)
-	 line (match-count 0) (line-count 0) result match matches
-	 (composed-filter (make-filter
-			  unicode-normalize unicode-remove-combining filter))
-	 (filtered-pattern (or (and composed-filter
-				    (funcall composed-filter pattern))
-			       pattern))
-	 filtered-line
-	 (check-it
-	  (if fixed
-	      (if composed-filter
-		  (lambda () (search filtered-pattern
+
+  (macrolet ((add-result (result slot value)
+	       ;; Just be aware we're not proctecting againt multiple eval.
+	       (let ((slot-name (symbolify (s+ "grep-result-" slot)))
+		     (slot-arg (keywordify slot)))
+		 `(if ,result
+		      (setf (,slot-name ,result) ,value)
+		      (setf ,result (make-grep-result ,slot-arg ,value))))))
+    (let* ((*fat-string* nil)
+	   line (match-count 0) (line-count 0) result match matches
+	   (composed-filter (make-filter
+			     unicode-normalize unicode-remove-combining filter))
+	   (filtered-pattern (or (and composed-filter
+				      (funcall composed-filter pattern))
+				 pattern))
+	   filtered-line
+	   (check-it
+	    (if fixed
+		(if composed-filter
+		    (lambda () (search filtered-pattern
+				       (setf filtered-line
+					     (funcall composed-filter line))))
+		    (lambda () (search filtered-pattern line)))
+		(if composed-filter
+		    (lambda () (scan scanner
 				     (setf filtered-line
 					   (funcall composed-filter line))))
-		  (lambda () (search filtered-pattern line)))
-	      (if composed-filter
-		  (lambda () (scan scanner
-				   (setf filtered-line
-					 (funcall composed-filter line))))
-		  (lambda () (scan scanner line))))))
-    (declare (type fixnum line-count match-count))
-    (setf scanner (and (not fixed)
-		       (or scanner
-			   (create-scanner
-			    filtered-pattern
-			    :extended-mode extended
-			    :case-insensitive-mode ignore-case))))
-    (with-grout (*grout* output-stream)
-      (with-open-file-or-stream (stream file-or-stream)
-	(setf matches
-	      ;;(loop :while (setf line (resilient-read-line stream nil nil))
-	      (loop :while (setf line (read-line stream nil nil))
-		 :do
-		 (setf result (funcall check-it)
-		       match nil)
-		 (cond
-		   ((or (and result (not invert))
-			(and (not result) invert))
-		    (progn
-		      (incf match-count)
-		      (when filename
+		    (lambda () (scan scanner line))))))
+      (declare (type fixnum line-count match-count))
+      (setf scanner (and (not fixed)
+			 (or scanner
+			     (create-scanner
+			      filtered-pattern
+			      :extended-mode extended
+			      :case-insensitive-mode ignore-case))))
+      (with-grout (*grout* output-stream)
+	;;(with-open-file-or-stream (stream file-or-stream)
+	(with-grep-source (file-or-stream)
+	  (setf matches
+		;;(loop :while (setf line (resilient-read-line stream nil nil))
+		;; (loop :while (setf line (read-line stream nil nil))
+		(loop :while (setf line (get-line))
+		   :do
+		   (setf result (funcall check-it)
+			 match nil)
+		   (cond
+		     ((or (and result (not invert))
+			  (and (not result) invert))
+		      (progn
+			(incf match-count)
+			(when filename
+			  (when (not quiet)
+			    (print-prefix use-color filename))
+			  (when collect
+			    ;; (push filename match)
+			    (add-result match file filename)
+			    ))
+			(when line-number
+			  (when (not quiet)
+			    (print-prefix use-color (1+ line-count)))
+			  (when collect
+			    ;; (push line-count match)
+			    (add-result match line-number line-count)
+			    ))
 			(when (not quiet)
-			  (print-prefix use-color filename))
+			  (print-match use-color pattern scanner
+				       (or filtered-line line)
+				       filtered-pattern filtered-line))
 			(when collect
-			  (push filename match)))
-		      (when line-number
-			(when (not quiet)
-			  (print-prefix use-color (1+ line-count)))
-			(when collect
-			  (push line-count match)))
-		      (when (not quiet)
-			(print-match use-color pattern scanner
-				     (or filtered-line line)
-				     filtered-pattern filtered-line))
-		      (when collect
-			(push line match))))
-		   ((or (and (not result) (not invert))
-			(and result invert))
-		    #| don't print match |#))
-		 (incf line-count)
-		 :when (and collect match)
-		 :collect (if (or filename line-number)
-			      (nreverse match)
-			      (car match))))))
-    (values
-     (if collect
-	 matches
-	 (if count match-count (/= 0 match-count)))
-     scanner)))
+			  ;; (push line match)
+			  (add-result match line line)
+			  )))
+		     ((or (and (not result) (not invert))
+			  (and result invert))
+		      #| don't print match |#))
+		   (incf line-count)
+		   :when (and collect match)
+		   :collect (if (or filename line-number)
+				;; (nreverse match)
+				;; (car match)
+				match
+				(grep-result-line match)
+				)))))
+      (values
+       (if collect
+	   matches
+	   (if count match-count (/= 0 match-count)))
+       scanner))))
 
 (defun native-pathname (str)
   #-sbcl str
   #+sbcl (sb-ext:native-pathname str))
 
 (defun grep-files (pattern &rest keywords
-		   &key files recursive
+		   &key files recursive input-lines
 		     (output-stream *standard-output*)
 		     count extended fixed ignore-case quiet invert
 		     line-number files-with-match files-without-match
 		     use-color collect no-filename signal-errors
 		     unicode-normalize unicode-remove-combining filter)
   "Call GREP with PATTERN on FILES. Arguments are:
-  FILES     - A list of files to search.
-  RECURSIVE - If FILES contain directory names, recursively search them.
+  FILES       - A list of files to search.
+  RECURSIVE   - If FILES contain directory names, recursively search them.
+  INPUT-LINES - A sequence of lines to use instead of *standard-input*.
  See the documentation for GREP for an explanation the other arguments."
   (declare (ignorable count extended ignore-case invert
 		      recursive line-number use-color fixed
@@ -291,7 +346,8 @@ Second value is the scanner that was used.
       (with-grout (*grout* output-stream)
 	(cond
 	  ((null files)
-	   (setf results (call-grep pattern *standard-input* keywords)))
+	   (setf results (call-grep pattern (or input-lines
+						*standard-input*) keywords)))
 	  (t
 	   (when (not (consp files))
 	     (setf files (list files)))
@@ -358,43 +414,45 @@ Second value is the scanner that was used.
     :help "Files to search in.")
    (files-with-match boolean
     :short-arg #\l
-    :help "True to print only the file name (list) once for matches.")
+    :help "Print only the file name (list) once for matches.")
    (files-without-match boolean
     :short-arg #\L
-    :help "True to print only the file name (list) of files with no matches.")
+    :help "Print only the file name (list) of files with no matches.")
    (ignore-case boolean
     :short-arg #\i
-    :help "True to ignore character case when matching.")
+    :help "Ignore character case when matching.")
    (invert boolean
     :short-arg #\v
-    :help "True to only print lines that don't match.")
+    :help "Only print lines that don't match.")
    (no-filename boolean
     :short-arg #\h
-    :help "True to never print filenames (headers) with output.")
+    :help "Never print filenames (headers) with output.")
    (line-number boolean
     :short-arg #\n
-    :help "True to print line numbers.")
+    :help "Print line numbers.")
    (quiet boolean
     :short-arg #\q
-    :help "True to not produce any output.")
+    :help "Don't produce output.")
    (fixed boolean
     :short-arg #\F
-    :help "True to search for a fixed strings, not regular expressions.")
+    :help "Search for a fixed strings, not regular expressions.")
    ;; (line-up boolean :short-arg #\l
    ;;  :help "Line up matches.")
    (use-color boolean
     :short-arg #\C :default t
-    :help "True to highlight substrings in color.")
+    :help "Highlight substrings in color.")
    (collect boolean
     :short-arg #\c
     :default '(lish:accepts :sequence)
     :use-supplied-flag t
-    :help "True to collect matches in a sequence.")
+    :help "Collect matches in a sequence.")
    (signal-errors boolean :short-arg #\E
-    :help "True to signal errors. Otherwise print them to *error-output*.")
+    :help "Signal errors. Otherwise print them to *error-output*.")
    (positions boolean :short-arg #\p
-    :help "True to send positions to Lish output. Equivalent to -nqs, except
+    :help "Send positions to Lish output. Equivalent to -nqc, except
 it's only quiet if the receiving command accepts sequences.")
+   (input-as-files boolean :short-arg #\s
+    :help "Treat *input* as files to search instead of text.")
    (unicode-normalize boolean :short-arg #\u :default t
     :help "Normalize unicode before comparison.")
    (unicode-remove-combining boolean :short-arg #\U
@@ -423,9 +481,18 @@ it's only quiet if the receiving command accepts sequences.")
       (error "A pattern argument wasn't given."))
     (setf result
 	  (grep-files (or pattern pattern-expression)
-		      :files (or files (and lish:*input*
-					    (typep lish:*input* 'sequence)
-					    lish:*input*))
+		      :input-lines (and (not input-as-files)
+					(not (streamp lish:*input*))
+					lish:*input*)
+		      :files
+		      (or files (and lish:*input*
+				     (typep lish:*input* 'sequence)
+				     (or input-as-files
+					 ;; too dwim-ish??
+					 (and (plusp (length lish:*input*))
+					      (typep (elt lish:*input* 0)
+						     'pathname)))
+				     lish:*input*))
 		      :files-with-match files-with-match
 		      :files-without-match files-without-match
 		      :no-filename no-filename
