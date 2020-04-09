@@ -1351,6 +1351,7 @@ Returns the the open stream or NIL."
   (typecase location
     ((or string stream) location)
     ((or list vector) (elt location 0))
+    ((or structure-object standard-object) (oelt location 'file))
     (t location)))
 
 (defun file-location-offset (location)
@@ -1363,6 +1364,7 @@ location doesn't have an offset part."
 	      (numberp (elt location 1)))
 	 (elt location 1)
 	 0))
+    ((or structure-object standard-object) (oelt location 'line-number))
     (t 0)))
 
 (defun advance-file-index (pager &optional (dir :forward))
