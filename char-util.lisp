@@ -68,6 +68,7 @@ than space and delete."
 
 (defun un-meta (c)
   "Return the non-meta character verion of character code C"
+  (check-type c integer)
   (code-char (logand (- (ash 1 7) 1) c)))
 
 (defun nice-char (c &key caret)
