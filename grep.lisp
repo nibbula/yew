@@ -8,6 +8,10 @@
   (:export
    #:grep
    #:grep-files
+   #:!grep
+   #:grep-result
+   #:grep-result-file #:grep-result-line-number #:grep-result-line
+   #:make-grep-result
    ))
 (in-package :grep)
 
@@ -142,29 +146,52 @@ removeed."
   line)
 
 (eval-when (:compile-toplevel)
-  (defmacro with-grep-source ((source) &body body)
-    "Evalute body where a NEXT-LINE function returns subsequent lines from
-SOURCE. SOURCE can be a pathname designator, a stream, or a list of lines,
-or a list of GREP-RESULTS."
-    (with-unique-names (src stream thunk nl-func l)
-      `(let ((,src ,source) ,nl-func)
-	 (labels ((get-line () (funcall ,nl-func))
+  (defmacro with-grep-source ((source filename) &body body)
+    "Evalute body where a GET-RESULT function sets it's GREP-RESULT argument
+to subsequent lines from SOURCE and returns the LINE or NIL at the end. SOURCE
+can be a pathname designator, a stream, or a list of lines, or a list of
+GREP-RESULTS."
+    (with-unique-names (src stream thunk nl-func l #|result|# line-count)
+      `(let ((,src ,source) ,nl-func #|,result|# (,line-count 0))
+	 (declare (type fixnum ,line-count))
+	 (labels ((get-result (r) (funcall ,nl-func r))
 		  (,thunk () ,@body))
 	   (etypecase ,src
 	     ((or stream string pathname)
 	      (with-open-file-or-stream (,stream ,src)
-		(setf ,nl-func (lambda () (read-line ,stream nil nil)))
+		(setf ,nl-func
+		      (lambda (r)
+			(setf
+			 (grep-result-file r) ,filename
+			 (grep-result-line-number r) (incf ,line-count)
+			 (grep-result-line r) (read-line ,stream nil nil))))
 		(,thunk)))
 	     (list
 	      (let ((,l ,src))
 		(if (and (plusp (length ,src)) (typep (first ,src) 'grep-result))
 		    (progn
-		      (setf ,nl-func (lambda ()
-				       (let ((r (pop ,l)))
-					 (and r (grep-result-line r)))))
+		      (setf ,nl-func
+			    (lambda (r)
+			      (let ((nr (pop ,l)))
+				(when nr
+				  (setf
+				   (grep-result-file r)
+				   (grep-result-file nr)
+				   (grep-result-line-number r)
+				   (grep-result-line-number nr)
+				   (grep-result-line r)
+				   (grep-result-line nr))))))
 		      (,thunk))
 		    (progn
-		      (setf ,nl-func (lambda () (pop ,l)))
+		      (setf ,nl-func
+			    (lambda (r)
+			      (let ((nr (pop ,l)))
+				(when nr
+				  (setf
+				   (grep-result-file r) ,filename
+				   (grep-result-line-number r)
+				   (incf ,line-count)
+				   (grep-result-line r) nr)))))
 		      (,thunk)))))))))))
 
 (defun grep (pattern file-or-stream
@@ -207,93 +234,104 @@ Second value is the scanner that was used.
     ;; results.
     (setf quiet t))
 
-  (macrolet ((add-result (result slot value)
-	       ;; Just be aware we're not proctecting againt multiple eval.
-	       (let ((slot-name (symbolify (s+ "grep-result-" slot)))
-		     (slot-arg (keywordify slot)))
-		 `(if ,result
-		      (setf (,slot-name ,result) ,value)
-		      (setf ,result (make-grep-result ,slot-arg ,value))))))
-    (let* ((*fat-string* nil)
-	   line (match-count 0) (line-count 0) result match matches
-	   (composed-filter (make-filter
-			     unicode-normalize unicode-remove-combining filter))
-	   (filtered-pattern (or (and composed-filter
-				      (funcall composed-filter pattern))
-				 pattern))
-	   filtered-line
-	   (check-it
-	    (if fixed
-		(if composed-filter
-		    (lambda () (search filtered-pattern
-				       (setf filtered-line
-					     (funcall composed-filter line))))
-		    (lambda () (search filtered-pattern line)))
-		(if composed-filter
-		    (lambda () (scan scanner
+  ;; (macrolet ((add-result (result slot value)
+  ;; 	       ;; Just be aware we're not proctecting againt multiple eval.
+  ;; 	       (let ((slot-name (symbolify (s+ "grep-result-" slot)))
+  ;; 		     (slot-arg (keywordify slot)))
+  ;; 		 `(if ,result
+  ;; 		      (setf (,slot-name ,result) ,value)
+  ;; 		      (setf ,result (make-grep-result ,slot-arg ,value))))))
+  (let* ((*fat-string* nil)
+	 (match-count 0)
+	 ;; (line-count 0)
+	 ;; result
+	 (line (make-grep-result))
+	 match
+	 matches
+	 filtered-line
+	 (composed-filter (make-filter
+			   unicode-normalize unicode-remove-combining filter))
+	 (filtered-pattern (or (and composed-filter
+				    (funcall composed-filter pattern))
+			       pattern))
+	 (check-it
+	  (if fixed
+	      (if composed-filter
+		  (lambda () (search filtered-pattern
 				     (setf filtered-line
-					   (funcall composed-filter line))))
-		    (lambda () (scan scanner line))))))
-      (declare (type fixnum line-count match-count))
-      (setf scanner (and (not fixed)
-			 (or scanner
-			     (create-scanner
-			      filtered-pattern
-			      :extended-mode extended
-			      :case-insensitive-mode ignore-case))))
-      (with-grout (*grout* output-stream)
-	;;(with-open-file-or-stream (stream file-or-stream)
-	(with-grep-source (file-or-stream)
-	  (setf matches
-		;;(loop :while (setf line (resilient-read-line stream nil nil))
-		;; (loop :while (setf line (read-line stream nil nil))
-		(loop :while (setf line (get-line))
-		   :do
-		   (setf result (funcall check-it)
-			 match nil)
-		   (cond
-		     ((or (and result (not invert))
-			  (and (not result) invert))
-		      (progn
-			(incf match-count)
-			(when filename
-			  (when (not quiet)
-			    (print-prefix use-color filename))
-			  (when collect
-			    ;; (push filename match)
-			    (add-result match file filename)
-			    ))
-			(when line-number
-			  (when (not quiet)
-			    (print-prefix use-color (1+ line-count)))
-			  (when collect
-			    ;; (push line-count match)
-			    (add-result match line-number line-count)
-			    ))
+					   (funcall composed-filter
+						    (grep-result-line line)))))
+		  (lambda () (search filtered-pattern (grep-result-line line))))
+	      (if composed-filter
+		  (lambda () (scan scanner
+				   (setf filtered-line
+					 (funcall composed-filter
+						  (grep-result-line line)))))
+		  (lambda () (scan scanner (grep-result-line line)))))))
+    (declare (type fixnum #|line-count|# match-count))
+    (setf scanner (and (not fixed)
+		       (or scanner
+			   (create-scanner
+			    filtered-pattern
+			    :extended-mode extended
+			    :case-insensitive-mode ignore-case))))
+    (with-grout (*grout* output-stream)
+      ;;(with-open-file-or-stream (stream file-or-stream)
+      (with-grep-source (file-or-stream filename)
+	(setf matches
+	      ;;(loop :while (setf line (resilient-read-line stream nil nil))
+	      ;; (loop :while (setf line (read-line stream nil nil))
+	      (loop :while (get-result line)
+		 :do
+		 (setf match (funcall check-it))
+		 (cond
+		   ((or (and match (not invert))
+			(and (not match) invert))
+		    (progn
+		      (incf match-count)
+		      (when filename
 			(when (not quiet)
-			  (print-match use-color pattern scanner
-				       (or filtered-line line)
-				       filtered-pattern filtered-line))
-			(when collect
-			  ;; (push line match)
-			  (add-result match line line)
-			  )))
-		     ((or (and (not result) (not invert))
-			  (and result invert))
-		      #| don't print match |#))
-		   (incf line-count)
-		   :when (and collect match)
-		   :collect (if (or filename line-number)
-				;; (nreverse match)
-				;; (car match)
-				match
-				(grep-result-line match)
-				)))))
-      (values
-       (if collect
-	   matches
-	   (if count match-count (/= 0 match-count)))
-       scanner))))
+			  (print-prefix use-color (grep-result-file line)))
+			;; (when collect
+			;;   (add-result match file (grep-result-file match))))
+			)
+		      (when line-number
+			(when (not quiet)
+			  ;; (print-prefix use-color (1+ line-count)))
+			  (print-prefix use-color
+					(grep-result-line-number line)))
+			;; (when collect
+			;;   ;; (push line-count match)
+			;;   ;; (add-result match line-number line-count)
+			;;   (add-result match line-number
+			;; 		(grep-result-line-number line))
+			;;   )
+			)
+		      (when (not quiet)
+			(print-match use-color pattern scanner
+				     (or filtered-line (grep-result-line line))
+				     filtered-pattern filtered-line))
+		      ;; (when collect
+		      ;;   ;; (push line match)
+		      ;;   (add-result match line line)
+		      ;;   )
+		      ))
+		   ((or (and (not match) (not invert))
+			(and match invert))
+		    #| don't print match |#))
+		 ;; (incf line-count)
+		 :when (and collect match)
+		 :collect (if (or filename line-number)
+			      (make-grep-result
+			       :file (grep-result-file line)
+			       :line-number (grep-result-line-number line)
+			       :line (grep-result-line line))
+			      (grep-result-line line))))))
+    (values
+     (if collect
+	 matches
+	 (if count match-count (/= 0 match-count)))
+     scanner)))
 
 (defun native-pathname (str)
   #-sbcl str
