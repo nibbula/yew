@@ -968,7 +968,7 @@ line : |----||-------||---------||---|
     (let ((y 0) (bottom (if show-modeline (1- page-size) page-size)))
       (when (and (>= line 0) lines)
 	(loop
-	   :with l = (nthcdr line lines) :and i = line
+	   :with l = (nthcdr line lines) :and i = (1+ line)
 	   ;; :while (and (<= y (1- page-size)) (car l))
 	   :while (and (<= y bottom) (car l))
 	   :do
@@ -979,7 +979,8 @@ line : |----||-------||---------||---|
 	       (incf i))
 	     ;; (incf y (display-line i (car l)))
 	     (setf l (cdr l))
-	     (incf i)))
+	     ;;(incf i)
+	     ))
       ;; Fill the rest of the screen with twiddles to indicate emptiness.
       (when (< y page-size)
 	(loop :for i :from y :below page-size
@@ -1434,8 +1435,8 @@ more files."
 		 :offset (file-location-offset (elt file-list file-index))))
 	      (progn
 		(incf file-index)
-		(go-to-offset pager
-		 (1+ (file-location-offset (elt file-list file-index)))))))
+		(go-to-offset pager (file-location-offset
+				     (elt file-list file-index))))))
 	(message pager "No next file."))))
 
 (defun previous-file-location (pager)
@@ -1452,8 +1453,8 @@ more files."
 		 :offset (file-location-offset (elt file-list file-index))))
 	      (progn
 		(decf file-index)
-		(go-to-offset pager
-		 (1+ (file-location-offset (elt file-list file-index)))))))
+		(go-to-offset pager (file-location-offset
+				     (elt file-list file-index))))))
 	(message pager "No previous file."))))
 
 (defun show-file-list (pager)
@@ -1982,8 +1983,8 @@ q - Abort")
 			  (when (not (zerop (file-location-offset
 					     (elt file-list file-index))))
 			    (go-to-line *pager*
-					(1+ (file-location-offset
-					     (elt file-list file-index))))))
+					(file-location-offset
+					 (elt file-list file-index)))))
 			(tt-enable-events :mouse-buttons)
 			(read-input *pager* page-size)
 			(setf quit-flag nil
