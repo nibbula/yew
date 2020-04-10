@@ -129,6 +129,14 @@ require terminal driver support."))
   (case attribute
     ((:standout :underline :bold :inverse :color) t)))
 
+
+(defmethod terminal-input-mode ((tty terminal-ansi-stream))
+  (declare (ignore tty))
+  :line) ;; @@@ or shoudld it be nil?
+
+(defmethod (setf terminal-input-mode) (mode (tty terminal-ansi-stream))
+  (declare (ignore tty mode)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defclass terminal-ansi (terminal terminal-ansi-stream)
