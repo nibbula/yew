@@ -83,6 +83,7 @@ innermost N contexts, if we can."
   ;; We don't want to be sorry here, so just be wrong.
   nil)
 
-(defun activate-stepper ()
+(defun activate-stepper (&key quietly)
   "Activate the setpper."
+  (declare (ignore quietly))
   (values))

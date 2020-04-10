@@ -385,10 +385,11 @@ innermost N contexts, if we can."
 	  (sb-ext::*stepper-hook* nil))
       (invoke-debugger c))))
 
-(defun activate-stepper ()
+(defun activate-stepper (&key quietly)
   "Activate the setpper."
   (setf sb-ext::*stepper-hook* 'stepper)
-  (format *debug-io* "Activating the DEBLARG stepper.~%"))
+  (when (not quietly)
+    (format *debug-io* "Activating the DEBLARG stepper.~%")))
 
 ;; Breakpoints
 

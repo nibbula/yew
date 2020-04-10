@@ -205,8 +205,9 @@ innermost N contexts, if we can."
                (declare (ignorable ,@(mapcar #'car vars)))
                ,form)))))
 
-(defun activate-stepper ()
+(defun activate-stepper (&key quietly)
   "Activate the setpper."
+  (declare (ignore quietly))
   (values))
 
 ;; EOF
