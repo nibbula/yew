@@ -1,6 +1,6 @@
-;;
-;; pager.lisp - More or less like more or less.
-;;
+;;;
+;;; pager.lisp - More or less like more or less.
+;;;
 
 ;; TODO:
 ;;  - sub-files for keep & filter ?
@@ -131,6 +131,7 @@ The shell command takes any number of file names.
     (,(meta-char #\p)	. previous-file-location)
     (,(meta-char #\N)	. next-file)
     (,(meta-char #\P)	. previous-file)
+    (,(meta-char #\+)	. set-key-command)
     (#\?		. help)
     (,(ctrl #\H)	. help-key)
     (:backspace		. help-key)
@@ -146,6 +147,8 @@ The shell command takes any number of file names.
     (#\9		. digit-argument)
     (#\escape		. *escape-keymap*)
     (#\:		. read-command)
+    (,(meta-char #\x)	. eval-expression-command)
+    (,(meta-char #\esc)	. eval-expression-command)
     (#\^                . keep-lines)
     (#\&                . filter-lines)
     (#\*                . filter-more)
@@ -1153,6 +1156,18 @@ line : |----||-------||---------||---|
 	     :accept-does-newline nil)
     (setf (tt-input-mode) :char)))
 
+(defun ask-for-function (&optional prompt)
+  (tt-move-to (1- (tt-height)) 0)
+  (tt-erase-to-eol)
+  (tt-finish-output)
+  (let* ((str (rl:rl :prompt prompt
+		     :completion-func #'complete-symbol
+		     :history-context :ask-function-name
+		     :accept-does-newline nil))
+	 (cmd (and str (stringp str)
+		   (ignore-errors (safe-read-from-string str)))))
+    (and (symbolp cmd) (fboundp cmd) cmd)))
+
 (defun search-line (str line)
   "Return true if LINE contains the string STR. LINE can be a string, or a
 list containing strings and lists."
@@ -1853,7 +1868,6 @@ byte-pos."
 	(when (not found)
 	  (message pager "~a is an unknown command." cmd))))))
 
-
 (defun describe-key (pager)
   "Prompt for a key and describe the function it invokes."
   (display-message "Press a key: ")
@@ -1871,6 +1885,34 @@ byte-pos."
 			action)))))
       (t
        (message pager "~a is not defined" (key-sequence-string key-seq))))))
+
+(defun set-key-command (pager)
+  "Bind a key interactively."
+  (display-message "Set key: ")
+  (let* ((key-seq (read-key-sequence pager))
+	 (cmd (ask-for-function (format nil "Set key ~a to command: "
+					(key-sequence-string key-seq)))))
+    (if cmd
+	(set-key key-seq cmd (inator-keymap pager))
+	(display-message "Not a function."))))
+
+(defun eval-expression-command (pager)
+  "Prompt for an expression an evaluate it."
+  (with-simple-restart (abort "Go back to the pager.")
+    (fui:display-text
+     "Eval results"
+     (list (with-output-to-string (stream)
+	     (prog1
+		 (let ((*standard-output* stream))
+		   (tiny-repl:tiny-repl :prompt-string "Eval: "
+					:quietly t :once t
+					:output stream))
+	       (redraw pager)
+	       (update-display pager)
+	       ;; (setf (tt-input-mode) :char)
+	       )))
+     :justify nil :min-width 16))
+  (redraw pager))
 
 (defun help-key (pager)
   "Sub-command for help commands."
