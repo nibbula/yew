@@ -43,7 +43,7 @@
 (lisp-implementation-type) \":\"
 *package* (if not :cl-user) \":\"
 *repl-*level* \">\""
-   ;; ^^ this docstring fucks up emacs ^^
+   ;; ^^ this docstring fucks up older emacs ^^
   (declare (ignore e))
   (let ((pkg (if (not (eq *package* (find-package :cl-user)))
 		 (shortest-package-nick)
@@ -73,6 +73,7 @@
   got-error	  A boolean which is true if we got an error.
   error-count     A fixnum which keeps the count of errors we have gotten.
   debug           A boolean which is true to enter the debugger on errors.
+  quietly         True to not print extraneous text on entry and exit.
 "
   editor
   interceptor
@@ -86,7 +87,8 @@
   output
   (got-error	nil	:type boolean)
   (error-count	0	:type fixnum)
-  (debug	nil	:type boolean))
+  (debug	nil	:type boolean)
+  (quietly      nil     :type boolean))
 
 (defvar +newline-string+ (string #\newline)
   "So we don't have to keep making one.")
@@ -263,8 +265,9 @@ The REPL also has a few commands:
 
 ;; Eval and print
 (defun repl-eval (form state)
-  (with-slots (got-error error-count interceptor debug output) state
-    (format t "~%") ;; <<the newline>>
+  (with-slots (got-error error-count interceptor debug output quietly) state
+    (when (not quietly)
+      (format t "~%")) ;; <<the newline>>
     (when (or (eq form 'repl-empty) (eq form 'repl-error))
       (dbugf :repl "Do Nothing~%")
       (return-from repl-eval nil))
@@ -339,12 +342,15 @@ TERMINAL-NAME and TERMINAL-TYPE should be in the environment."
 
 (defvar *default-terminal-type* :crunch)
 
-(defun tiny-repl (&key prompt-func prompt-string no-announce keymap
+(defun tiny-repl (&key prompt-func prompt-string
+		    (no-announce #+sbcl t #-sbcl nil no-announce-supplied-p)
+		    keymap
 		    terminal terminal-name
 		    (terminal-type (pick-a-terminal-type))
 		    ;;(terminal-type *default-terminal-type*)
 		    (output *standard-output*)
-		    (interceptor *default-interceptor*) (debug t))
+		    (interceptor *default-interceptor*) (debug t)
+		    once quietly)
   "Keep reading and evaluating lisp, with line editing. Return true if we want
 to quit everything. Arguments are:
  PROMPT-FUNC    -- A RL prompt function, which is called with a with
@@ -363,13 +369,14 @@ to quit everything. Arguments are:
                    interceptor should return true if does not want evaluation
                    to happen. Defaults to *DEFAULT-INTERCEPTOR*.
  DEBUG          -- True to install DeBLARG as the debugger. Default is T.
+ ONCE           -- True to only be a REP, i.e. only do the loop once.
+ QUIETLY        -- True to not print extraneous text on entry and exit.
 "
   ;; Annouce the implemtation and version on systems that don't always do it.
-  #-sbcl (when (not no-announce)
-	   (format output "~a ~a~%"
-		   (lisp-implementation-type)
-		   (lisp-implementation-version)))
-  #+sbcl (declare (ignore no-announce))
+  (when (and (not no-announce) (not quietly))
+    (format output "~a ~a~%"
+	    (lisp-implementation-type)
+	    (lisp-implementation-version)))
   (let* ((state (make-repl-state
 		 :debug          debug
 		 :interceptor    interceptor
@@ -378,12 +385,14 @@ to quit everything. Arguments are:
 		 :keymap         keymap
 		 :terminal       terminal
 		 :terminal-class (find-terminal-class-for-type terminal-type)
-		 :output         output))
+		 :output         output
+		 :quietly        quietly))
 	 (*repl* state)
 	 (result nil)
 	 (want-to-quit nil)
 	 (old-debugger-hook *debugger-hook*)
-	 (start-level (incf *repl-level*))
+	 ;; (start-level (incf *repl-level*))
+	 start-level
 	 (*history-context* :repl))
     (when (not theme:*theme*)
       (setf theme:*theme* (theme:default-theme)))
@@ -392,36 +401,53 @@ to quit everything. Arguments are:
       (setf (tt-input-mode) :line)
       ;; Activate the debugger if it's loaded.
       (when (and debug (find-package :deblarg))
-	(funcall (intern "ACTIVATE" (find-package :deblarg))))
+	(funcall (intern "ACTIVATE" (find-package :deblarg))
+		 :quietly (or quietly
+			      (if no-announce-supplied-p
+				  no-announce
+				  nil))))
+
       (unwind-protect
-	   (tagbody
-	    TOP
-	      (restart-case
-		  (with-error-handling (state)
-		    (loop :do
-		       (setf (repl-state-got-error state) nil)
-		       (setf result (repl-read state)) ;;; READ
-		       :until (or (equal result 'repl-real-eof)
-				  (equal result 'repl-exit))
-		       :do
-		       (dbugf :repl "~s (~a) ~s~%"
-			      result (type-of result)
-			      (eq result 'repl-empty))
-		       (if (equal result 'repl-quit)
-			   (when (confirm-quit state *repl-level*)
-			     (return result))
-			   (repl-eval result state)) ;;; EVAL
-		       :finally (return result)))
-		(abort ()
-		  :report
-		  (lambda (stream)
-		    (if (= start-level 0)
-			(format stream "Return to TOP command loop.")
-			(format stream "Return to command loop ~d."
-				start-level)))
-		  (setf result nil)))
-	      (dbugf :repl "main result = ~s~%" result)
-	      (when (not result) (go TOP)))
+	   (progn
+	     (setf start-level (incf *repl-level*))
+	     (cond
+	       (once
+		(setf (repl-state-got-error state) nil)
+		(setf result (repl-read state))
+		(when (not (or (equal result 'repl-real-eof)
+			       (equal result 'repl-exit)
+			       (equal result 'repl-quit)))
+		  (repl-eval result state))
+		result)
+	       (t
+		(tagbody
+		 TOP
+		   (restart-case
+		       (with-error-handling (state)
+			 (loop :do
+			    (setf (repl-state-got-error state) nil)
+			    (setf result (repl-read state)) ;;; READ
+			    :until (or (equal result 'repl-real-eof)
+				       (equal result 'repl-exit))
+			    :do
+			    (dbugf :repl "~s (~a) ~s~%"
+				   result (type-of result)
+				   (eq result 'repl-empty))
+			    (if (equal result 'repl-quit)
+				(when (confirm-quit state *repl-level*)
+				  (return result))
+				(repl-eval result state)) ;;; EVAL
+			    :finally (return result)))
+		     (abort ()
+		       :report
+		       (lambda (stream)
+			 (if (= start-level 0)
+			     (format stream "Return to TOP command loop.")
+			     (format stream "Return to command loop ~d."
+				     start-level)))
+		       (setf result nil)))
+		   (dbugf :repl "main result = ~s~%" result)
+		   (when (not result) (go TOP))))))
 
 	;; Let's hope that this will clear an EOF on *standard-input*
 	(ignore-errors (clear-input *standard-input*))
@@ -429,12 +455,13 @@ to quit everything. Arguments are:
 	(when (> (repl-state-error-count state) 8)
 	  (format output "Quit due to too many errors.~%"))
 
-	(setf want-to-quit
-	      (cond
-		((eq result 'repl-real-eof) (format output "*EOF*~%") t)
-		((eq result 'repl-quit) (format output "*Quit*~%")    t)
-		((eq result 'repl-exit) (format output "*Exit*~%")    nil)
-		(t (dbugf :repl "~s ~a~%" result (type-of result))    t)))
+	(let ((output (if quietly nil output)))
+	  (setf want-to-quit
+		(cond
+		  ((eq result 'repl-real-eof) (format output "*EOF*~%") t)
+		  ((eq result 'repl-quit) (format output "*Quit*~%")    t)
+		  ((eq result 'repl-exit) (format output "*Exit*~%")    nil)
+		  (t (dbugf :repl "~s ~a~%" result (type-of result))    t))))
 	(setf *debugger-hook* old-debugger-hook)
 	(decf *repl-level*))
       want-to-quit)))
