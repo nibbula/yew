@@ -155,7 +155,7 @@ The shell command takes any number of file names.
     ))
 
 (defparameter *escape-keymap* (build-escape-map *normal-keymap*))
-(add-keymap *default-file-inator-escape-keymap* *escape-keymap*)
+;; (add-keymap *default-file-inator-escape-keymap* *escape-keymap*)
 
 ;; "text text text"
 ;; ((:tag "text") "text" (:tag "text") "text")
