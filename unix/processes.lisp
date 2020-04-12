@@ -997,8 +997,8 @@ signal or group stop state.")
       "Get floating point exception mode.")
     #(+PR-GET-TIMING+		13      "Get timing mode.")
     #(+PR-SET-TIMING+		14      "Set timing mode.")
-    #(+PR-GET-NAME+		15      "Get process name.")
-    #(+PR-SET-NAME+		16      "Set process name.")
+    #(+PR-SET-NAME+		15      "Set process name.")
+    #(+PR-GET-NAME+		16      "Get process name.")
     #(+PR-GET-ENDIAN+		19      "Get process endianness.")
     #(+PR-SET-ENDIAN+		20      "Set process endianness.")
     #(+PR-GET-SECCOMP+		21      "Get process seccomp mode.")
@@ -1039,8 +1039,49 @@ signal or group stop state.")
 ;; but it's actually:
 ;; int prctl (int option, ...);
 
-(defcfun prctl :int (option :int) (arg2 :unsigned-long)
+(defcfun ("prctl" real-prctl) :int (option :int) (arg2 :unsigned-long)
 	 (arg3 :unsigned-long) (arg4 :unsigned-long) (arg5 :unsigned-long))
+
+(defconstant +process-name-max+ 16)
+
+(defun prctl (option &rest args)
+  "Control process settings."
+  (let ((arg2 (or (nth 0 args) 0))
+	(arg3 (or (nth 1 args) 0))
+	(arg4 (or (nth 2 args) 0))
+	(arg5 (or (nth 3 args) 0)))
+    ;; I think everything that returns a value, does not return -1 unless it's
+    ;; an error.
+    (cond
+      ((member option
+	       (list +PR-GET-CHILD-SUBREAPER+
+		     +PR-GET-ENDIAN+
+		     +PR-GET-FPEMU+
+		     +PR-GET-FPEXC+
+		     +PR-GET-PDEATHSIG+
+		     +PR-GET-TID-ADDRESS+ ; this isn't an int* but an int**
+		     +PR-GET-TSC+
+		     +PR-GET-UNALIGN+))
+       ;; Things that return an :unsigned-long in arg2.
+       (with-foreign-object (result :unsigned-long)
+	 (syscall (real-prctl option result arg3 arg4 arg5))
+	 (mem-ref result :unsigned-long)))
+      ((eql option +PR-GET-NAME+)
+	 (with-foreign-string (str (make-string +process-name-max+))
+	   (syscall (real-prctl option str arg3 arg4 arg5))
+	   (first (multiple-value-list (foreign-string-to-lisp str)))))
+      ((eql option +PR-SET-NAME+)
+       (when (not (stringp arg2))
+	 (error 'opsys-error
+		:format-control "Second argument must be a string."))
+       (let ((lisp-str (make-string +process-name-max+
+				    :initial-element (code-char 0))))
+	 (setf (subseq lisp-str 0 15) (subseq arg2 0 (min (length arg2) 15)))
+	 (with-foreign-string (str lisp-str)
+	   (syscall (real-prctl option str arg3 arg4 arg5)))))
+      (t
+       ;; Things that either only error, or return a positive integer.
+       (syscall (real-prctl option arg2 arg3 arg4 arg5))))))
 
 ;; All this prctl stuff is probably very seldom used, but if it was, or if
 ;; we care someday, it would be nice to provide an access functions (setter and
