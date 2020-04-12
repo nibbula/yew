@@ -840,7 +840,7 @@ calls. Returns NIL when there is an error."
     #(+O_CLOEXEC+   #x00010000 "Close on exec")
     #(+O_DIRECTORY+ #x00020000 "Fail if not directory")))
 
-(defvar *seek-whence* nil
+(defparameter *seek-whence* nil
   "Values for lseek 'whence' argument.")
 
 (define-to-list *seek-whence*
@@ -851,13 +851,35 @@ calls. Returns NIL when there is an error."
     #+linux #(+SEEK-HOLE+  4 "To the next hole.")
     ))
 
-(defcfun ("open"   posix-open)   :int (path :string) (flags :int) (mode mode-t))
-(defcfun ("close"  posix-close)  :int (fd :int))
-(defcfun ("read"   posix-read)   :int (fd :int) (buf :pointer) (nbytes size-t))
-(defcfun ("write"  posix-write)  :int (fd :int) (buf :pointer) (nbytes size-t))
-(defcfun ("ioctl"  posix-ioctl)  :int (fd :int) (request :int) (arg :pointer))
-(defcfun ("lseek"  posix-lseek)  off-t (fd :int) (offset off-t) (whence :int))
-(defcfun ("pread"  posix-pread)  ssize-t
+(defcfun ("open"   posix-open)   :int
+  #.(format nil
+     "Open a file named PATH. FLAGS is an integer which can have bits set as
+indicated by the constants: (in *file-flags*):~%~{~a~%~}"
+     (loop :for f :in *file-flags*
+	:collect (format nil "  ~16a: ~a" (string f)
+			 (documentation f 'variable))))
+  (path :string) (flags :int) (mode mode-t))
+
+(defcfun ("close" posix-close) :int
+  "Close the file descriptor FD." (fd :int))
+(defcfun ("read" posix-read) :int
+  "Read NBYTES bytes from file descriptor FD into BUF."
+  (fd :int) (buf :pointer) (nbytes size-t))
+(defcfun ("write"  posix-write) :int
+  "Write NBYTES bytes to file descriptor FD from BUF."
+  (fd :int) (buf :pointer) (nbytes size-t))
+(defcfun ("ioctl" posix-ioctl) :int
+  "Manipulate device parameters."
+  (fd :int) (request :int) (arg :pointer))
+(defcfun ("lseek" posix-lseek) off-t
+  #.(format nil
+"Set the position of the file offset of the open file descriptor FD to OFFSET,
+according to WHENCE, where WHENCE is one of:~%~{~a~%~}"
+      (loop :for f :in *seek-whence*
+        :collect (format nil "  ~16a: ~a" (string f)
+			 (documentation f 'variable))))
+  (fd :int) (offset off-t) (whence :int))
+(defcfun ("pread" posix-pread) ssize-t
   (fd :int) (buf :pointer) (nbytes size-t) (offset off-t))
 (defcfun ("pwrite" posix-pwrite) ssize-t
   (fd :int) (buf :pointer) (nbytes size-t) (offset off-t))
