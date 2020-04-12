@@ -850,4 +850,213 @@ signal or group stop state.")
 (defcfun ("ptrace" real-ptrace) :long (request :int)
 	 (pid pid-t) (address :pointer) (data :pointer))
 
+#+linux (progn
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; prctl - Linux control process state
+
+(defconstant +PR-UNALIGN-NOPRINT+	1
+  "Silently fix up unaligned user accesses.")
+(defconstant +PR-UNALIGN-SIGBUS+	2
+  "Generate SIGBUS on unaligned user access.")
+
+(defconstant +PR-FPEMU-NOPRINT+	1
+  "Silently emulate fp operations accesses")
+(defconstant +PR0FPEMU0SIGFPE+	2
+  "Don't emulate fp operations, send SIGFPE instead.")
+
+(defconstant +PR-FP-EXC-SW-ENABLE+ #x80     "Use FPEXC for FP exception enables")
+(defconstant +PR-FP-EXC-DIV+       #x010000 "Floating point divide by zero")
+(defconstant +PR-FP-EXC-OVF+       #x020000 "Floating point overflow")
+(defconstant +PR-FP-EXC-UND+       #x040000 "Floating point underflow")
+(defconstant +PR-FP-EXC-RES+       #x080000 "Floating point inexact result")
+(defconstant +PR-FP-EXC-INV+       #x100000 "Floating point invalid operation")
+(defconstant +PR-FP-EXC-DISABLED+  0        "FP exceptions disabled")
+(defconstant +PR-FP-EXC-NONRECOV+  1        "Async non-recoverable exc. mode")
+(defconstant +PR-FP-EXC-ASYNC+     2        "Async recoverable exception mode")
+(defconstant +PR-FP-EXC-PRECISE+   3        "Precise exception mode")
+
+(defconstant +PR-TIMING-STATISTICAL+ 0
+  "Normal, traditional, statistical process timing.")
+(defconstant +PR-TIMING-TIMESTAMP+   1
+  "Accurate timestamp based process timing.")
+
+(defconstant +PR-ENDIAN-BIG+        0 "Big endian mode.")
+(defconstant +PR-ENDIAN-LITTLE+     1 "True little endian mode.")
+(defconstant +PR-ENDIAN-PPC-LITTLE+ 2 "PowerPC pseudo little endian.")
+
+(defconstant +PR-TSC-ENABLE+  1 "Allow the use of the timestamp counter.")
+(defconstant +PR-TSC-SIGSEGV+ 2 "Throw a SIGSEGV instead of reading the TSC.")
+
+(defconstant +PR-MCE-KILL-CLEAR+   0)
+(defconstant +PR-MCE-KILL-SET+     1)
+
+(defconstant +PR-MCE-KILL-LATE+    0)
+(defconstant +PR-MCE-KILL-EARLY+   1)
+(defconstant +PR-MCE-KILL-DEFAULT+ 2)
+
+(defconstant +PR-SET-PTRACER-ANY+ -1)
+
+(defcstruct prctl-mm-map
+  "Process memory map parameters."
+   (start_code  :uint64)	; code section bounds
+   (end_code    :uint64)
+   (start_data  :uint64)	; data section bounds
+   (end_data    :uint64)	;
+   (start_brk   :uint64)	; heap for brk() syscall
+   (brk         :uint64)	;
+   (start_stack :uint64)	; stack starts at
+   (arg_start   :uint64)	; command line arguments bounds
+   (arg_end     :uint64)	;
+   (env_start   :uint64)	; environment variables bounds
+   (env_end     :uint64)	;
+   (*auxv       :uint64)	; auxiliary vector
+   (auxv_size   :uint32)	; vector size
+   (exe_fd      :uint32))	; /proc/$pid/exe link file
+
+(defparameter *memory-map-slot* nil "Memory map slots.")
+
+(define-to-list *memory-map-slot*
+  #(#(+PR-SET-MM-START-CODE   1 "Code section start.")
+    #(+PR-SET-MM-END-CODE     2 "Code section end.")
+    #(+PR-SET-MM-START-DATA   3 "Data section start.")
+    #(+PR-SET-MM-END-DATA     4 "Data section end.")
+    #(+PR-SET-MM-START-STACK  5 "Stack starts at.")
+    #(+PR-SET-MM-START-BRK    6 "Start of heap for brk() syscall.")
+    #(+PR-SET-MM-BRK          7 "End of heap for brk() syscall.")
+    #(+PR-SET-MM-ARG-START    8 "Command line arguments start.")
+    #(+PR-SET-MM-ARG-END      9 "Command line arguments end.")
+    #(+PR-SET-MM-ENV-START    10 "Environment variables start.")
+    #(+PR-SET-MM-ENV-END      11 "Environment variables end.")
+    #(+PR-SET-MM-AUXV         12 "Auxiliary vector.")
+    #(+PR-SET-MM-EXE-FILE     13 "Executable file.")
+    #(+PR-SET-MM-MAP          14 "Set all the memory map slots.")
+    #(+PR-SET-MM-MAP-SIZE     15 "Get the size of memory map struct.")))
+
+(defconstant +PR-FP-MODE-FR+  #.(ash 1 0)) ; 64b FP registers
+(defconstant +PR-FP-MODE-FRE+ #.(ash 1 1)) ; 32b compatibility
+
+(defconstant +PR-CAP-AMBIENT-IS-SET+     1)
+(defconstant +PR-CAP-AMBIENT-RAISE+      2)
+(defconstant +PR-CAP-AMBIENT-LOWER+      3)
+(defconstant +PR-CAP-AMBIENT-CLEAR-ALL+  4)
+
+(defconstant +PR-SVE-SET-VL-ONEXEC+	#.(ash 1 18) "Defer effect until exec")
+(defconstant +PR-SVE-VL-LEN-MASK+	#xffff)
+(defconstant +PR-SVE-VL-INHERIT+	#.(ash 1 17) "Inherit across exec")
+
+;; Per task speculation control. Speculation control variants.
+(defconstant +PR-SPEC-STORE-BYPASS+     0)
+(defconstant +PR-SPEC-INDIRECT-BRANCH+  1)
+
+;; Return and control values for PR_SET/GET_SPECULATION_CTRL */
+(defconstant +PR-SPEC-NOT_AFFECTED      0)
+(defconstant +PR-SPEC-PRCTL             #.(ash 1 0))
+(defconstant +PR-SPEC-ENABLE            #.(ash 1 1))
+(defconstant +PR-SPEC-DISABLE           #.(ash 1 2))
+(defconstant +PR-SPEC-FORCE_DISABLE     #.(ash 1 3))
+(defconstant +PR-SPEC-DISABLE_NOEXEC    #.(ash 1 4))
+
+;; Reset arm64 pointer authentication keys
+(defconstant +PR-PAC-APIAKEY+           #.(ash 1 0))
+(defconstant +PR-PAC-APIBKEY+           #.(ash 1 1))
+(defconstant +PR-PAC-APDAKEY+           #.(ash 1 2))
+(defconstant +PR-PAC-APDBKEY+           #.(ash 1 3))
+(defconstant +PR-PAC-APGAKEY+           #.(ash 1 4))
+
+(defparameter *prctl-option* nil "List of prctl options.")
+
+(define-to-list *prctl-option*
+  #(#(+PR-SET-PDEATHSIG+	1
+      "Set the parent death signal of the calling process.")
+    #(+PR-GET-PDEATHSIG+	2
+      "Get the parent death signal of the calling process.")
+    #(+PR-GET-DUMPABLE+		3
+      "Get how core dumps are allowed.")
+    #(+PR-SET-DUMPABLE+		4
+      "Set how core dumps are allowed.")
+    #(+PR-GET-UNALIGN+		5
+      "Get if unaligned acceeses are fixed up on some processors.")
+    #(+PR-SET-UNALIGN+		6
+      "Set if unaligned acceeses are fixed up on some processors.")
+    #(+PR-GET-KEEPCAPS+		7
+      "Get if capabilities are kept when switching UIDs from 0.")
+    #(+PR-SET-KEEPCAPS+		8
+      "Set if capabilities are kept when switching UIDs from 0.")
+    #(+PR-GET-KEEPCAPS+		7
+      "Get if capabilities are kept when switching UIDs from 0.")
+    #(+PR-SET-KEEPCAPS+		8
+      "Set if capabilities are kept when switching UIDs from 0.")
+    #(+PR-GET-FPEMU+		9
+      "Get floating point emulation control bits.")
+    #(+PR-SET-FPEMU+		10
+      "Set floating point emulation control bits.")
+    #(+PR-GET-FPEXC+		11
+      "Get floating point exception mode.")
+    #(+PR-SET-FPEXC+		12
+      "Get floating point exception mode.")
+    #(+PR-GET-TIMING+		13      "Get timing mode.")
+    #(+PR-SET-TIMING+		14      "Set timing mode.")
+    #(+PR-GET-NAME+		15      "Get process name.")
+    #(+PR-SET-NAME+		16      "Set process name.")
+    #(+PR-GET-ENDIAN+		19      "Get process endianness.")
+    #(+PR-SET-ENDIAN+		20      "Set process endianness.")
+    #(+PR-GET-SECCOMP+		21      "Get process seccomp mode.")
+    #(+PR-SET-SECCOMP+		22      "Set process seccomp mode.")
+    #(+PR-CAPBSET-READ+         23      "Read bounding set capability.")
+    #(+PR-CAPBSET-DROP+         24      "Drop bounding set capability.")
+    #(+PR-GET-TSC+              25      "Get timestamp count instruction mode.")
+    #(+PR-SET-TSC+              26      "Set timestamp count instruction mode.")
+    #(+PR-GET-SECUREBITS+       25      "Get securebits.")
+    #(+PR-SET-SECUREBITS+       26      "Set securebits.")
+    #(+PR-GET-TIMERSLACK+       25      "Get timer slack.")
+    #(+PR-SET-TIMERSLACK+       26      "Set timer slack.")
+    #(+PR-TASK-PERF-EVENTS-DISABLE+ 31  "Disable performance counters.")
+    #(+PR-TASK-PERF-EVENTS-ENABLE+  32  "Enable performance counters.")
+    #(+PR-MCE-KILL+             33      "Set machine check error kill policy.")
+    #(+PR-MCE-KILL-GET+         34      "Get machine check error kill policy.")
+    #(+PR-SET-MM+               35      "Set memory map specifics.")
+    #(+PR-SET-PTRACER+	#x59616d61      "Set a process that can ptrace.")
+    #(+PR-SET-CHILD-SUBREAPER+  36      "Set a child subreaper process.")
+    #(+PR-GET-CHILD-SUBREAPER+  37      "Get the child subreaper process.")
+    #(+PR-SET-NO-NEW-PRIVS+     38      "Set the no new priv bit.")
+    #(+PR-GET-NO-NEW-PRIVS+     39      "Get the no new priv bit.")
+    #(+PR-GET-TID-ADDRESS+      40      "Get the clear_child_tid address.")
+    #(+PR-SET-THP-DISABLE+      41      "Set trasparent huge page disable.")
+    #(+PR-GET-THP-DISABLE+      42      "Get trasparent huge page disable.")
+    #(+PR-MPX-ENABLE-MANAGEMENT+  43    "Enable MPX management.")
+    #(+PR-MPX-DISABLE-MANAGEMENT+ 44    "Disable MPX management.")
+    #(+PR-SET-FP-MODE+          45      "Set floating point mode.")
+    #(+PR-GET-FP-MODE+          46      "Get floating point mode.")
+    #(+PR-CAP-AMBIENT+          47      "Control the ambient capabillity set.")
+    #(+PR-SVE-SET-VL+           50	"Set task vector length.")
+    #(+PR-SVE-GET-VL+           51	"Get task vector length.")
+    #(+PR-GET-SPECULATION-CTRL+ 52      "Get speculation control.")
+    #(+PR-SET-SPECULATION-CTRL+ 53      "Set speculation control.")
+    #(+PR-PAC-RESET-KEYS+       54      "Reset pointer authentication keys?")
+    ))
+
+;; but it's actually:
+;; int prctl (int option, ...);
+
+(defcfun prctl :int (option :int) (arg2 :unsigned-long)
+	 (arg3 :unsigned-long) (arg4 :unsigned-long) (arg5 :unsigned-long))
+
+;; All this prctl stuff is probably very seldom used, but if it was, or if
+;; we care someday, it would be nice to provide an access functions (setter and
+;; getters) for each one, say e.g.:
+;;
+;; (process-death-signal)
+;; (setf (process-death-signal) +SIGUSR2+)
+;;
+;; (process-name)
+;; (setf (process-name) "Flimbar Naugahide III")
+;;
+;; etc.
+;; But then it would actually be good to coordinate the features and names
+;; between OSs, like the BSDs and even Windows, so if there is such a setting
+;; on the OS, it can be accessed using the generic interface.
+
+) ; #+linux progn
+
 ;; End

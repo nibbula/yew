@@ -438,6 +438,8 @@
    #+linux #:linux-splice
    #+linux #:linux-vmsplice
    #+linux #:linux-tee
+   #:ptrace
+   #+linux #:prctl
 
    ;; time
    #:timespec
