@@ -2010,7 +2010,9 @@ q - Abort")
 			(when try-again
 			  (setf try-again nil)
 			  (when (not (next-file *pager*))
-			    (go done)))
+			    (when (or (= (length file-list) 1)
+				      (not (previous-file *pager*)))
+			      (go done))))
 			(when (not (pager-stream *pager*))
 			  (setf (pager-stream *pager*)
 				(open-lossy (file-location-file
