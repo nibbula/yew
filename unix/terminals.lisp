@@ -1387,10 +1387,10 @@ on ‘octets-p’."
   (and (etypecase end-tag
 	 (character
 	  (position end-tag string :from-end t))
-	 (vector
+	 ((or vector string)
 	  (search end-tag string :from-end t))
 	 (function
-	  (position-if end-tag string :from-end t)))
+	  (funcall end-tag string)))
        t))
 
 (defun read-until (fd end-tag &key (timeout 4) octets-p
@@ -1477,7 +1477,7 @@ on ‘octets-p’."
 	 (when ,reset-it
 	   (syscall (fcntl ,fd +F_SETFL+ :int ,flags)))))))
 
-(defun terminal-query (fd query end-char &key buffer-size)
+(defun terminal-query (fd query end-tag &key buffer-size)
   (let ((query-length (length query)))
     (cffi:with-foreign-string (buf query)
       (syscall (tcflush fd +TCIFLUSH+))
@@ -1485,7 +1485,7 @@ on ‘octets-p’."
       (syscall (posix-write fd buf query-length))
       (with-nonblocking-io (fd)
 	;; Do the complicated read.
-	(read-until fd end-char :buffer-size buffer-size)))))
+	(read-until fd end-tag :buffer-size buffer-size)))))
 
 (defun write-terminal-char (terminal-handle char)
   "Write CHAR to the terminal designated by TERMINAL-HANDLE."
