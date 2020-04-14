@@ -82,7 +82,14 @@
     ;; 	 (:bold      (tt-bold t))
     ;; 	 (:inverse   (tt-inverse t))))
     (tt-color (or (fatchar-fg c) :default) (or (fatchar-bg c) :default))
-    (tt-write-char (fatchar-c c))))
+    (tt-write-char (fatchar-c c))
+    ;; It would be more efficient if we didn't have to do this, or even better
+    ;; if we could temporarily change the color and then change it back to what
+    ;; it was before, but not all terminal have the ability to efficiently query
+    ;; the current color.
+    ;; (tt-color :default :default)
+    (tt-normal)
+    ))
 
 #|
 (defmethod print-object ((obj fat-string) stream)
