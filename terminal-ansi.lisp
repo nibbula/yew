@@ -274,13 +274,17 @@ the typeahead."
        (setf end (search end-tag result)
 	     tag-len (length end-tag)))
       (function
-       (setf end (position-if end-tag result)
-	     tag-len 1)))
+       ;; (setf end (position-if end-tag result)
+       ;; 	     tag-len 1))
+       (setf (values end tag-len) (funcall end-tag result))
+       ))
     (when (> (length result) (+ end tag-len))
       (add-typeahead tty (subseq result (+ end tag-len))))
     (if omit-tag-p
-	(subseq result 0 (1+ (- end tag-len)))
-	(subseq result 0 (1+ end)))))
+	;; (subseq result 0 (1+ (- end tag-len)))
+	;; (subseq result 0 (1+ end)))))
+	(subseq result 0 end)
+	(subseq result 0 (+ end tag-len)))))
 
 (defun ansi-terminal-query (tty query end-tag &key buffer-size omit-tag-p)
   (when (and (typep tty 'terminal-ansi) (no-query tty))
@@ -974,33 +978,50 @@ i.e. the terminal is 'line buffered'."
 (defparameter *colors*
   #(:black :red :green :yellow :blue :magenta :cyan :white nil :default))
 
+(defun typical-report-ending (string)
+  "A tag function for terminal report that ends in ^G or +ST+."
+  (let (pos)
+    (cond
+      ((setf pos (position (ctrl #\G) string :from-end t))
+       (values pos 1))
+      ((setf pos (search +st+ string :from-end t))
+       (values pos (length +st+))))))
+
 (defmethod terminal-window-foreground ((tty terminal-ansi))
   "Get the default foreground color for text."
   (let ((qq (query-string (s+ "10;?" +st+) :lead-in +osc+ :offset 5 :tty tty
 			  :ending 1
-			  :end-char (_ (or _ (ctrl #\G) #\\)))))
+			  :end-tag #'typical-report-ending)))
     (and qq (xcolor-to-color qq))))
 
 (defmethod terminal-window-background ((tty terminal-ansi))
   "Get the default background color for text."
   (let ((qq (query-string (s+ "11;?" +st+) :lead-in +osc+ :offset 5 :tty tty
 			  :ending 1
-			  :end-char (_ (or _ (ctrl #\G) #\\)))))
+			  :end-tag #'typical-report-ending)))
     (and qq (xcolor-to-color qq))))
 
 (defun set-foreground-color (tty color)
   "Set the default forground color for text."
-  (when (not (known-color-p color))
-    (error "Unknown color ~s." color))
-  (terminal-raw-format tty "~a10;~a~a"
-		       +osc+ (color-to-xcolor (lookup-color color)) +st+))
+  (cond
+    ((known-color-p color)
+     (terminal-raw-format tty "~a10;~a~a"
+			  +osc+ (color-to-xcolor (lookup-color color)) +st+))
+    ((or (null color) (eq color :default))
+     (terminal-raw-format tty "~a110~a" +osc+ +st+))
+    (t
+     (error "Unknown color ~s." color))))
 
 (defun set-background-color (tty color)
   "Set the default background color for the terminal."
-  (when (not (known-color-p color))
-    (error "Unknown color ~s." color))
-  (terminal-raw-format tty "~a11;~a~a"
-		       +osc+ (color-to-xcolor (lookup-color color)) +st+))
+  (cond
+    ((known-color-p color)
+     (terminal-raw-format tty "~a11;~a~a"
+			  +osc+ (color-to-xcolor (lookup-color color)) +st+))
+    ((or (null color) (eq color :default))
+     (terminal-raw-format tty "~a111~a" +osc+ +st+))
+    (t
+     (error "Unknown color ~s." color))))
 
 (defmethod (setf terminal-window-foreground) (color (tty terminal-ansi))
   (set-foreground-color tty color))
@@ -1558,10 +1579,10 @@ and add the characters the typeahead."
     (64 "VT520")
     (65 "VT525")))
 
-(defun query-parameters (s &key end-char (offset 3) (tty *terminal*))
+(defun query-parameters (s &key end-tag (offset 3) (tty *terminal*))
   (let ((response
 	 (ansi-terminal-query tty (s+ +csi+ s)
-			      (or end-char (char s (1- (length s))))
+			      (or end-tag (char s (1- (length s))))
 			      #| :omit-tag-p t |#)))
     (if (zerop (length response))
 	'(nil nil nil)
@@ -1572,11 +1593,11 @@ and add the characters the typeahead."
 				 (1- (length response)))
 			 'string))))))
 
-(defun query-string (s &key end-char (offset 3) (ending 2) (lead-in +csi+)
+(defun query-string (s &key end-tag (offset 3) (ending 2) (lead-in +csi+)
 			 (tty *terminal*))
   (let ((response
 	 (ansi-terminal-query tty (s+ lead-in s)
-			      (or end-char (char s (1- (length s))))
+			      (or end-tag (char s (1- (length s))))
 			      :omit-tag-p t)))
     (if (zerop (length response))
 	'()
@@ -1852,7 +1873,11 @@ or :both. WHICH defaults to :window."
 		 (:icon "20")
 		 (:window "21")
 		 (otherwise "21"))))
-    (query-string (s+ param "t") :tty tty :end-char #\\)))
+    (query-string (s+ param "t") :tty tty
+		  ;; :end-tag #\\
+		  :end-tag #'typical-report-ending
+		  :ending 0
+		  )))
 
 ;; If this is mysteriously not working, you might have to make sure to enable
 ;; it in your emulator. Like in xterm: "Allow Window Ops".
