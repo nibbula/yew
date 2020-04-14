@@ -388,6 +388,29 @@ auto-wrap and no autowrap delay."
        (dbugf :zarp "no edge lines~%")
        (tt-write-string string)))))
 
+;; This is an horrible, horrible thing.
+(defun pre-read (e)
+  "When prompt-start-at-left is true, output a real #\return to get to the
+start of the line. If partial-line-indicator is set, output it first and just
+enough spaces to get to the next line if we weren't at the beginning of the
+line already. If we were already at the beginning of the line, the
+partial-line-idicator is overwritten by the prompt, so we don't see it."
+  (with-slots (prompt-start-at-left partial-line-indicator) e
+    (when prompt-start-at-left
+      (let ((tty (or (and (typep *terminal* 'terminal-wrapper)
+			  (terminal-wrapped-terminal *terminal*))
+		     *terminal*)))
+	(if partial-line-indicator
+	    (terminal-format tty
+			     "~a~va~c~va~c" partial-line-indicator
+			     (- (tt-width)
+				(display-length partial-line-indicator))
+			     "" #\return (display-length partial-line-indicator)
+			     "" #\return)
+	    (terminal-write-char tty #\return))
+	;; (terminal-finish-output tty)
+	))))
+
 ;; An update that probably requires an optimizing terminal to be at all
 ;; efficient.
 
@@ -406,6 +429,8 @@ auto-wrap and no autowrap delay."
     ;; something did something wrong.
     (assert (<= (inator-point (aref contexts 0))
 		(olength buf-str)))
+
+
     (let* ((prompt (make-prompt e (prompt-string e) (prompt-func e)))
 	   (right-prompt
 	    (make-prompt e (and (ostringp (right-prompt e))

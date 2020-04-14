@@ -252,6 +252,17 @@ works for database formats.")
     :accessor right-prompt
     :initarg :right-prompt :initform nil
     :documentation "Something to display on the right side of the command line.")
+   (prompt-start-at-left
+    :initarg :prompt-start-at-left :accessor prompt-start-at-left
+    :initform t :type boolean
+    :documentation
+    "True to make prompts start at the left side of the terminal.")
+   (partial-line-indicator
+    :initarg :partial-line-indicator :accessor partial-line-indicator
+    :initform (make-fatchar :c #\% #| #\⏎ |# :attrs '(:standout))
+    :documentation
+    "A character printed to indicate a partial line before the prompt, or NIL
+not to print one.")
    (prompt-height
     :accessor prompt-height
     :initarg :prompt-height

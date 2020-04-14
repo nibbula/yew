@@ -377,6 +377,10 @@ Keyword arguments:
 	 (*history-context* history-context)
 	 terminal-state)
 
+    ;; We have to do this horrible thing before the terminal potentially queries
+    ;; the row.
+    (pre-read e)
+
     #+ccl (setf ccl::*auto-flush-streams* nil)
     #+ccl (ccl::%remove-periodic-task 'ccl::auto-flush-interactive-streams)
     (setf terminal-state (terminal-start (line-editor-terminal e)))
@@ -442,6 +446,7 @@ Keyword arguments:
 	(unwind-protect
 	     (progn
 	       ;; (tt-fresh-line)
+	       (pre-read e)
 	       (history-line-open)
 	       (loop :do
 		  (finish-output)
