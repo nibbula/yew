@@ -549,7 +549,7 @@ read until we get an EOF."
 		  ((not line)
 		   ;; (dbugf :pager "got eof i=~s pos=~s~%" i pos)
 		   (setf got-eof t))
-		  ((not cur-line)
+		  ((and (not cur-line) (not (>= n line-count)))
 		   ;; We got an EOF but we got a partial line
 		   ;; (dbugf :pager "partial line ~s~%" line)
 		   (make-the-line)
