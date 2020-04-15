@@ -171,7 +171,7 @@ The shell command takes any number of file names.
 
 (defclass pager (terminal-inator file-inator)
   ((stream
-    :initarg :stream :accessor pager-stream
+    :initarg :stream :accessor pager-stream :initform nil
     :documentation "Input stream")
    (left
     :initarg :left :accessor pager-left :initform 0
@@ -286,7 +286,11 @@ from theme value (:program :empty-line-indicator :style)")
     :documentation "Number of lines")
    (line
     :initarg :line :accessor pager-line :initform 0
-    :documentation "Current line at the top of the screen."))
+    :documentation "Current line at the top of the screen.")
+   (missing-newline
+    :initarg :missing-newline :accessor missing-newline
+    :initform nil :type boolean
+    :documentation "True if the last line was missing a newline."))
   (:documentation "Text pager."))
 
 (defun make-empty-buffer ()
@@ -363,7 +367,8 @@ but perhaps reuse some resources."))
   (call-next-method)
   (setf (pager-lines o) nil
 	(pager-count o) 0
-	(pager-line o) 0))
+	(pager-line o) 0
+	(missing-newline o) nil))
 
 (defmethod freshen ((o binary-pager))
   (call-next-method)
@@ -506,7 +511,7 @@ read until we get an EOF."))
 (defmethod read-input ((pager text-pager) line-count)
   "Read new lines from the stream. Stop after COUNT lines. If COUNT is zero,
 read until we get an EOF."
-  (with-slots (got-eof count stream raw-output) pager
+  (with-slots (got-eof count stream raw-output missing-newline) pager
     (handler-case
 	(progn
 	  (when (not got-eof)
@@ -515,28 +520,42 @@ read until we get an EOF."
 		  line last-line cur-line
 		  (lines '())
 		  (pos (or (and (not got-eof) (file-position stream)) 0)))
-	      (unwind-protect
+
+	      (flet ((make-the-line ()
+		       (setf cur-line
+			     (make-line :number i
+					;; :position (incf pos (length line))
+					:position pos
+					:prev last-line
+					:text (if raw-output
+						  line
+						  (process-line line))))
+		       ;; (dbugf :pager "cur-line ~s~%" cur-line)
+		       (push cur-line lines)
+		       (setf last-line cur-line)))
+		(unwind-protect
 		   (loop
 		      :while (and (or (< n line-count) (zerop line-count))
-				  (setf line
+				  (setf (values line missing-newline)
 					;;(resilient-read-line stream nil nil)))
 					(read-line stream nil nil)))
 		      :do
-		      (setf cur-line
-			    (make-line :number i
-;;;			      :position (incf pos (length line))
-				       :position pos
-				       :prev last-line
-				       :text (if raw-output
-						 line
-						 (process-line line))))
-		      (push cur-line lines)
-		      (setf last-line cur-line)
+		      (make-the-line)
 		      (incf pos (length line))
 		      (incf i)
-		      (incf n))
-		(when (not line)
-		  (setf got-eof t))
+		      (incf n)
+		      (setf cur-line nil))
+		(cond
+		  ((not line)
+		   ;; (dbugf :pager "got eof i=~s pos=~s~%" i pos)
+		   (setf got-eof t))
+		  ((not cur-line)
+		   ;; We got an EOF but we got a partial line
+		   ;; (dbugf :pager "partial line ~s~%" line)
+		   (make-the-line)
+		   (incf i)
+		   ;; (setf missing-newline (and cur-line line t))
+		   ))
 		(when lines
 		  (let ((last-line
 			 (car (last lines)))) ;; really first of the chunk
@@ -546,14 +565,17 @@ read until we get an EOF."
 		     ;; and then reverse and attach them.
 		     (pager-lines *pager*) (nconc (pager-lines *pager*)
 						  (nreverse lines))
-		     count i)))))))
+		     count i))))))))
       (end-of-file (c)
 	;; Be quiet about EOFs. Some systems seem to get them more than others.
 	(declare (ignore c))
+	;; (dbugf :pager "eof signaled~%")
 	(setf got-eof t))
       (stream-error (c)
 	(setf got-eof t)
-	(message pager "Got an error: ~a on the stream." c)))))
+	(message pager "Got an error: ~a on the stream." c)))
+    ;;(dbugf :pager "done and got eof ~s ~s~%" got-eof count)
+    ))
 
 (defmethod read-input ((pager binary-pager) line-count)
   "Read new lines from the stream. Stop after COUNT lines. If COUNT is zero,
@@ -857,11 +879,15 @@ line : |----||-------||---------||---|
 				:end (+ *left* (tt-width))))
     (when search-string
       (search-a-matize))
-    (if (< (display-length *fat-buf*) (tt-width))
-	(tt-write-line (make-fat-string :string *fat-buf*))
-	(tt-write-string (make-fat-string :string *fat-buf*)))
-    ;; @@@ or something? minus the line numbers
-    (max 1 (ceiling (length *fat-buf*) (tt-width)))))
+    (let ((len (display-length *fat-buf*)))
+      ;; (if (= len (tt-width))
+      ;; 	  (tt-write-string (make-fat-string :string *fat-buf*)))
+      ;; 	  (tt-write-line (make-fat-string :string *fat-buf*))
+      (tt-write-string (make-fat-string :string *fat-buf*))
+      ;; @@@ or something? minus the line numbers
+      ;; (max 1 (ceiling (length *fat-buf*) (tt-width)))
+      ;; (max 1 (ceiling (display-length *fat-buf*) (tt-width)))
+      (max 1 (ceiling len (tt-width))))))
 
 (defun render-span (line-number line)
   (with-slots (left show-line-numbers) *pager*
@@ -963,28 +989,36 @@ line : |----||-------||---------||---|
 (defmethod update-display ((pager text-pager))
   "Display the lines already read, starting from the current."
   (with-slots (line lines left page-size message modeline-style show-modeline
-	       search-match-char empty-indicator-char empty-indicator-style)
+	       search-match-char empty-indicator-char empty-indicator-style
+	       missing-newline count)
       pager
     (get-theme-settings pager)
     (tt-move-to 0 0)
     (tt-erase-below)
-    (let ((y 0) (bottom (if show-modeline (1- page-size) page-size)))
+    (let ((y 0)
+	  (bottom page-size)
+	  (i (1+ line))
+	  l last-line)
       (when (and (>= line 0) lines)
+	(setf l (nthcdr line lines))
 	(loop
-	   :with l = (nthcdr line lines) :and i = (1+ line)
-	   ;; :while (and (<= y (1- page-size)) (car l))
-	   :while (and (<= y bottom) (car l))
+	   :while (and (< y bottom) (car l))
 	   :do
 	     (tt-move-to y 0)
 	     ;; janky filtering
 	     (when (not (filter-this (car l)))
 	       (incf y (display-line i (car l)))
 	       (incf i))
-	     ;; (incf y (display-line i (car l)))
-	     (setf l (cdr l))
-	     ;;(incf i)
-	     ))
+	     (setf last-line l
+		   l (cdr l))))
+      (dbugf :pager "final y = ~s~%" y)
       ;; Fill the rest of the screen with twiddles to indicate emptiness.
+      ;; (when (and missing-newline last-line (= (1- i) count))
+      ;; 	(tt-move-to (1- y) 0)
+      ;; 	;; Since we didn't save the rendered width, we have to display it
+      ;; 	;; again.
+      ;; 	(display-line i (car last-line))
+      ;; 	(tt-write-span `(,@empty-indicator-style ,empty-indicator-char)))
       (when (< y page-size)
 	(loop :for i :from y :below page-size
 	   :do
@@ -1280,7 +1314,9 @@ Returns the the open stream or NIL."
 	 (make-instance 'utf8b-stream:utf8b-input-stream
 			:input-stream
 			(open (quote-filename filename) :direction :input
-			      :element-type '(unsigned-byte 8)))))))
+			      :element-type '(unsigned-byte 8)))
+	 ;; (open (quote-filename filename) :direction :input)
+	 ))))
 
 ;; #+sbcl :external-format
 ;; ;;#+sbcl '(:utf-8 :replacement #\replacement_character)
