@@ -196,12 +196,26 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
   )
 |#
 
+;; Read one character from the stream.  Return either a character
+;; object, or the symbol ‘:eof’ if the stream is at end-of-file.
+;; Every subclass of ‘fundamental-character-input-stream’ must define
+;; a method for this function.
 (defmethod stream-read-char ((stream utf8b-input-stream))
   (with-slots (buffer input-stream) stream
     (if buffer
 	(pop buffer)
-	(let (c)
-	  (labels ((read-it () (read-byte input-stream))
+	(let (c b)
+	  (labels ((read-it ()
+		     (if (setf b (read-byte input-stream nil))
+			 b
+			 (return-from stream-read-char
+			   ;; If we already got part of a character,
+			   ;; return it, and return :eof next time.
+			   ;; Otherwise just return :eof now.
+			   (if c
+			       (prog1 c
+				 (push :eof buffer))
+			       :eof))))
 		   (set-it (x) (setf c x)))
 	    (%get-utf8b-char read-it set-it)
 	    c)))))
