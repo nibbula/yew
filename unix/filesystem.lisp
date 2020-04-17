@@ -777,7 +777,9 @@ calls. Returns NIL when there is an error."
   (defconstant +O_CLOEXEC+   #x00100000))
 |#
 
-(defparameter *file-flags* nil "Flag for open and fcntl.")
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *file-flags* nil "Flag for open and fcntl.")
+
 
 #+(or darwin freebsd openbsd linux)
 (define-to-list *file-flags*
@@ -803,9 +805,6 @@ calls. Returns NIL when there is an error."
     #(+O_NOCTTY+   #+darwin #x20000 #+linux #o0400
                    #+(or freebsd openbsd) #x8000
       "Don't assign controlling terminal")))
-
-#+(or darwin freebsd openbsd linux)
-(defconstant +O_ACCMODE+ #x0003 "Mask for above modes")
 
 #+darwin
 (define-to-list *file-flags*
@@ -850,8 +849,12 @@ calls. Returns NIL when there is an error."
     #+linux #(+SEEK-DATA+  3 "To the next data.")
     #+linux #(+SEEK-HOLE+  4 "To the next hole.")
     ))
+) ;; eval-when
 
-(defcfun ("open"   posix-open)   :int
+#+(or darwin freebsd openbsd linux)
+(defconstant +O_ACCMODE+ #x0003 "Mask for access modes.")
+
+(defcfun ("open" posix-open)   :int
   #.(format nil
      "Open a file named PATH. FLAGS is an integer which can have bits set as
 indicated by the constants: (in *file-flags*):~%~{~a~%~}"
