@@ -1,6 +1,6 @@
-;;
-;; completion.lisp - Pull endings out of somewhere.
-;;
+;;;
+;;; completion.lisp - Pull endings out of somewhere.
+;;;
 
 ;; TODO:
 ;;  - finish dictionary completion
@@ -784,17 +784,21 @@ defaults to the current package. Return how many symbols there were."
   (let ((count 0)
 	(l '()) (pkg-list '())
 	(case-in (string-character-case w))
-	(token (make-instance 'lisp-symbol-token))
+	(token (make-instance 'lisp-symbol-token :object nil))
+	(empty (zerop (length w)))
 	pos)
     #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
     (do-the-symbols (s (or package *package*) external)
-;;;      (princ (s+ (symbol-package s) "::" s " " #\newline))
       (when (and
 	     ;; It's actually in the package if the package is set
 	     (or external (not package) (not-inherited s package))
-	     ;; It matches the beginning
-	     (and (setf pos (search w (string s) :test #'equalp))
-		  (= pos 0)))
+	     #+ecl (not (eq 'si:unbound s)) ;; XXX This is some bullshit.
+	     (or
+	      ;; There's no word
+	      empty
+	      ;; It matches the beginning
+	      (and (setf pos (search w (string s) :test #'equalp))
+		   (= pos 0))))
 	(push s l)
 	(incf count)))
     (when (and include-packages (not package))
@@ -802,17 +806,20 @@ defaults to the current package. Return how many symbols there were."
 	 (setf s (package-name p))
 	 (when (and
 		;; It's actually in the package if the package is set
-;;;		(or (not package) (eql (symbol-package s) package))
+		;; (or (not package) (eql (symbol-package s) package))
 		;; It matches the beginning
-		(and (setf pos (search w s :test #'equalp))
-		     (= pos 0)))
+		(or
+		 empty
+		 (and (setf pos (search w s :test #'equalp))
+		      (= pos 0))))
 	   (push s pkg-list)
 	   (incf count))))
     (make-completion-result
      :completion
      ;;(sort (append (mapcar (_ (stylize-symbol _ case-in)) l)
-     (sort (append (mapcar (_ (setf (token-object token) _)
-			      (stylize-token token :case case-in))
+     (sort (append (mapcar (_
+			    (setf (token-object token) _)
+			    (stylize-token token :case case-in))
 			   l)
 		   pkg-list)
 	   #'fat-string-lessp)
