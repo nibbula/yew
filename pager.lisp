@@ -998,7 +998,7 @@ line : |----||-------||---------||---|
     (let ((y 0)
 	  (bottom page-size)
 	  (i (1+ line))
-	  l last-line)
+	  l #| last-line |#)
       (when (and (>= line 0) lines)
 	(setf l (nthcdr line lines))
 	(loop
@@ -1009,7 +1009,7 @@ line : |----||-------||---------||---|
 	     (when (not (filter-this (car l)))
 	       (incf y (display-line i (car l)))
 	       (incf i))
-	     (setf last-line l
+	     (setf #| last-line l |#
 		   l (cdr l))))
       (dbugf :pager "final y = ~s~%" y)
       ;; Fill the rest of the screen with twiddles to indicate emptiness.
