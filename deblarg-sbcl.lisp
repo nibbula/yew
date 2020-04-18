@@ -459,4 +459,10 @@ innermost N contexts, if we can."
     (nice-print-table rows '("#" "Act" "Kind" "What" "Info")
 		      :stream *debug-io*)))
 
+(defun debugger-hook ()
+  sb-ext:*invoke-debugger-hook*)
+
+(defun set-debugger-hook (function)
+  (setf sb-ext:*invoke-debugger-hook* function))
+
 ;; EOF

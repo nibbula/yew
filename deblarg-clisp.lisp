@@ -73,6 +73,9 @@
 (defun debugger-show-locals (n)
   (declare (ignore n)) (debugger-sorry "show locals"))
 
+;; Or perhaps
+;; (system::print-backtrace :mode 4)  ; @@@ pick different modes?
+
 (defun debugger-backtrace (n)
   "Output a list of execution stack contexts. Try to limit it to the
 innermost N contexts, if we can."
@@ -87,3 +90,14 @@ innermost N contexts, if we can."
   "Activate the setpper."
   (declare (ignore quietly))
   (values))
+
+(defun debugger-hook ()
+  *debugger-hook*
+  ;;sys::*break-driver*
+  )
+
+(defun set-debugger-hook (function)
+  (setf *debugger-hook* function
+	sys::*break-driver* function))
+
+;; End

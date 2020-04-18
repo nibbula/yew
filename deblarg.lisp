@@ -566,11 +566,11 @@ program that messes with the terminal, we can still type at the debugger."
   "Return true if we're being run under Emacs, like probably in SLIME."
   (d-getenv "EMACS"))
 
-(defun activate (&key quietly)
+(defun activate (&key quietly #| full |#)
   (when (not (in-emacs-p))
     (when (not quietly)
       (format *debug-io* "Activating the DEBLARGger.~%"))
-    (setf *debugger-hook* 'deblarg)
+    (set-debugger-hook 'deblarg)
     (activate-stepper :quietly quietly)))
 
 (defvar *saved-debugger-hook* nil
@@ -579,14 +579,15 @@ program that messes with the terminal, we can still type at the debugger."
 (defun toggle ()
   "Toggle the debugger on and off."
   (when (not (in-emacs-p))
-    (if (eq *debugger-hook* 'deblarg)
-	(setf *debugger-hook* *saved-debugger-hook*)
-	(setf *saved-debugger-hook* *debugger-hook*
-	      *debugger-hook* 'deblarg))))
+    (if (eq (debugger-hook) 'deblarg)
+	(set-debugger-hook *saved-debugger-hook*)
+	(progn
+	  (setf *saved-debugger-hook* (debugger-hook))
+	  (set-debugger-hook 'deblarg)))))
 
 (defun active-p ()
   "Return true if the debugger is set to activate."
-  (eq *debugger-hook* 'deblarg))
+  (eq (debugger-hook) 'deblarg))
 
 ;; Remove temporary features
 #+tbd-has-breakpoints (d-remove-feature :tdb-has-breakpoints)

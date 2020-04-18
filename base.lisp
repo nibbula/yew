@@ -111,7 +111,6 @@ are indicated instead of being signaled."
 	 (osubseq str 0 (min (olength str) (- width 4)))
 	 str))
     ;;(terpri *terminal*)
-    (terminal-write-char *debug-term* #\newline)
-    ))
+    (terminal-write-char *debug-term* #\newline)))
 
 ;; EOF

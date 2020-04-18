@@ -210,4 +210,11 @@ innermost N contexts, if we can."
   (declare (ignore quietly))
   (values))
 
+(defun debugger-hook ()
+  *debugger-hook*)
+
+(defun set-debugger-hook (function)
+  (setf *debugger-hook* function
+	ccl:*break-hook* function))
+
 ;; EOF

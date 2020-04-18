@@ -26,6 +26,7 @@ quite lacking of features."
      (:file "base")
      (:file "deblarg-sbcl"   :if-feature :sbcl)
      (:file "deblarg-ccl"    :if-feature :ccl)
+     (:file "deblarg-ecl"    :if-feature :ecl)
      (:file "deblarg-clisp"  :if-feature :clisp)
-     (:file "deblarg-others" :if-feature (:not (:or :sbcl :ccl :clisp)))
+     (:file "deblarg-others" :if-feature (:not (:or :sbcl :ccl :ecl :clisp)))
      (:file "deblarg")))
