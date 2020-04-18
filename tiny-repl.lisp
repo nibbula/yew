@@ -176,9 +176,10 @@ The REPL also has a few commands:
   "Help.")
 
 (defun confirm-quit (state level)
-  (with-slots (#|output|#) state
-    (or (>= level 1)
-	(confirm "quit the REPL"))))
+  (declare (ignore state))
+  ;; (with-slots (output) state
+  (or (>= level 1)
+      (confirm "quit the REPL")))
 
 (define-condition repl-read-continue (simple-condition)
   ()
