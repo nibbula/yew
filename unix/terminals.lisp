@@ -1393,6 +1393,10 @@ on ‘octets-p’."
 	  (funcall end-tag string)))
        t))
 
+(define-condition terminal-read-timeout (opsys-error)
+  ()
+  (:documentation "The terminal timed out when reading."))
+
 (defun read-until (fd end-tag &key (timeout 4) octets-p
 				(buffer-size *read-until-buffer-size*))
   ;; (dbugf :fux "timeout ~s buffer-size ~s~%" timeout buffer-size)
@@ -1438,12 +1442,25 @@ on ‘octets-p’."
 	     ;; (cerror "Try again?" ':read-char-error
 	     ;; 	     :error-code *errno*))
 	     (cerror "Try again?"
-		     "read-until got too many errors. ~s" error-count))
+		     "read-until got too many errors. ~s" error-count)
+	     (setf fail-count 0)
+	     (go AGAIN))
 	    ((> fail-count fail-max)
 	     ;; (cerror "Try again?" 'read-char-error
 	     ;; 	     :error-code *errno*))
+	     ;; (cerror "Try some more?"
+	     ;; 	     "read-until took too long. ~s" fail-count)
+	     ;; (setf fail-count 0)
+	     ;; (go AGAIN)
+	     ;; (cerror "Return an empty string."
+	     ;;  	     "read-until took too long. ~s" fail-count)
+	     ;; (error "read-until took too long. ~s" fail-count)
 	     (cerror "Try again?"
-		     "read-until took too long. ~s" fail-count))
+		     'terminal-read-timeout
+		     :format-control "read-until took too long. ~s"
+		     :format-arguments `(,fail-count))
+	     (setf fail-count 0)
+	     (go AGAIN))
 	    ((or (= *errno* +EWOULDBLOCK+))
 	     ;; Nothing there yet.
 	     (incf fail-count)
@@ -1477,7 +1494,7 @@ on ‘octets-p’."
 	 (when ,reset-it
 	   (syscall (fcntl ,fd +F_SETFL+ :int ,flags)))))))
 
-(defun terminal-query (fd query end-tag &key buffer-size)
+(defun terminal-query (fd query end-tag &key buffer-size (timeout 2.5))
   (let ((query-length (length query)))
     (cffi:with-foreign-string (buf query)
       (syscall (tcflush fd +TCIFLUSH+))
@@ -1485,7 +1502,8 @@ on ‘octets-p’."
       (syscall (posix-write fd buf query-length))
       (with-nonblocking-io (fd)
 	;; Do the complicated read.
-	(read-until fd end-tag :buffer-size buffer-size)))))
+	(read-until fd end-tag :buffer-size buffer-size
+		    :timeout (or timeout 2.5))))))
 
 (defun write-terminal-char (terminal-handle char)
   "Write CHAR to the terminal designated by TERMINAL-HANDLE."

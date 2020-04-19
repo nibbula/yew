@@ -611,6 +611,7 @@
    ;;#:set-tty
    #:getch
    #:with-nonblocking-io
+   #:terminal-read-timeout
 
    ;; old fashioned tty ioctls
    #:winsize
