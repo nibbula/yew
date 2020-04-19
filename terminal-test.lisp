@@ -363,7 +363,14 @@
 	 (tt-write-span '((:yellow "Yellow") " "))
 	 (tt-write-string "Normal")))))
   (blurp ()
-    (let ((original-bg (tt-window-background)))
+    (let ((original-bg
+	   (or (tt-window-background)
+	       (prog1 :black
+		 (tt-write-span
+		  '((:red "WARNING") ": Can't figure out the terminal "
+		    "background. Assuming it's black." #\newline
+		    (:standout "--Press a key--")))
+		 (tt-get-key)))))
       (unwind-protect
 	   (loop
 	      :for c :in *basic-colors*
@@ -1077,6 +1084,14 @@ drawing, which will get overwritten."
       (tt-fresh-line)
       (tt-format "before ~s ~s~%after  ~s ~s~%"
 		 before-row before-col after-row after-col))))
+
+(defun test-autowrap-2 ()
+  (with-immediate ()
+    (format t "~a" #\░)         (finish-output) (tt-get-key)
+    (format t "~v,,,'xa" 79 "") (finish-output) (tt-get-key)
+    (format t "~c" #\return)    (finish-output) (tt-get-key)
+    (format t "x")              (finish-output) (tt-get-key)
+    (format t "~c" #\return)    (finish-output) (tt-get-key)))
 
 ;; @@@ how about a test of mouse motion only events?
 
