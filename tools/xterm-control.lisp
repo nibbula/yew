@@ -68,7 +68,12 @@
 		 (:icon "20")
 		 (:window "21")
 		 (otherwise "21"))))
-    (query-string (s+ param "t") :end-char #\\)))
+    (query-string (s+ param "t")
+		  :end-tag #'terminal-ansi::typical-report-ending
+		  :ending 0
+		  :errorp nil
+		  :timeout .05
+		  )))
 
 (defun edit-title (&optional (which :window))
   (let ((title (get-title which)) result)
@@ -88,8 +93,12 @@
 
 (defun get-font ()
   (query-string (format nil "50;?~c" (char-util:ctrl #\G))
-		:lead-in +osc+ :offset 3 :ending 1
-		:end-char (ctrl #\G)))
+		:lead-in +osc+ :offset 3
+		:ending 0
+		:end-tag (ctrl #\G)
+		:errorp nil
+		:timeout .05
+		))
 
 (defun set-font (font)
   (tt-format "~a50;~a~c" +osc+ font (char-util:ctrl #\G))
@@ -327,7 +336,9 @@
     (macrolet ((set-params2 (p1 e1 d1 p2 e2 d2 query-string)
 		 `(when (find parameter '(,p1 ,p2))
 		    (when (not (slot-boundp o parameter))
-		      (if (setf result (query-parameters ,query-string))
+		      (if (setf result (query-parameters ,query-string
+							 :timeout .05
+							 :errorp nil))
 			  (setf (slot-value o ',p1) ,e1
 				(slot-value o ',p2) ,e2)
 			  (setf (slot-value o ',p1) ,d1
@@ -360,7 +371,9 @@
 	  ;; Make sure we got the sizes first.
 	  (when (or (not (slot-boundp o 'screen-char-width))
 		    (not (slot-boundp o 'char-width)))
-	    (if (setf result (query-parameters "18t"))
+	    (if (setf result (query-parameters "18t"
+					       :timeout 0.05
+					       :errorp nil))
 		(setf (slot-value o 'char-width) (elt result 2)
 		      (slot-value o 'char-height) (elt result 1))
 		(setf (slot-value o 'char-width) 0
@@ -416,7 +429,7 @@
 	       background foreground title icon-title font) o
     (let (result (triple-nil '(nil nil nil)))
       (flet ((query-it (q)
-	       (and (setf result (query-parameters q))
+	       (and (setf result (query-parameters q :timeout 0.05 :errorp nil))
 		    (not (equal result triple-nil)))))
 	;; location
 	(if (query-it "13t")
