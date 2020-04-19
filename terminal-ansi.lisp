@@ -286,19 +286,73 @@ the typeahead."
 	(subseq result 0 end)
 	(subseq result 0 (+ end tag-len)))))
 
-(defun ansi-terminal-query (tty query end-tag &key buffer-size omit-tag-p)
+(defun ansi-terminal-query (tty query end-tag &key buffer-size omit-tag-p
+						timeout (errorp t))
   (when (and (typep tty 'terminal-ansi) (no-query tty))
     (return-from ansi-terminal-query ""))
   (terminal-finish-output tty)
   ;; (eat-typeahead tty)
   ;; (uos:syscall (uos:tcflush (terminal-file-descriptor tty) uos::+TCIFLUSH+))
-  (with-immediate ()
-    (handle-excess tty (terminal-query (terminal-file-descriptor tty)
-				       query
-				       end-tag
-				       :buffer-size buffer-size)
-		   end-tag
-		   :omit-tag-p omit-tag-p)))
+  (handler-bind
+      ((terminal-read-timeout
+	#'(lambda (c)
+	    (if errorp
+		(signal c)
+		(return-from ansi-terminal-query nil)))))
+    (with-immediate ()
+      (handle-excess tty (terminal-query (terminal-file-descriptor tty)
+					 query
+					 end-tag
+					 :buffer-size buffer-size
+					 :timeout timeout)
+		     end-tag
+		     :omit-tag-p omit-tag-p))))
+
+(defun query-parameters (s &key end-tag (offset 3) (tty *terminal*) timeout
+			     (errorp t))
+  (let ((response
+	 (ansi-terminal-query tty (s+ +csi+ s)
+			      (or end-tag (char s (1- (length s))))
+			      #| :omit-tag-p t |#
+			      :timeout timeout
+			      :errorp errorp)))
+    (if (zerop (length response))
+	'(nil nil nil)
+	(mapcar (_ (ignore-errors (parse-integer _)))
+		(split-sequence
+		 #\;
+		 (coerce (subseq response offset
+				 (1- (length response)))
+			 'string))))))
+
+(defun query-string (s &key end-tag (offset 3) (ending 2) (lead-in +csi+)
+			 (tty *terminal*) timeout (errorp t))
+  (restart-case
+  ;; (restart-case
+      (let ((response
+	     (ansi-terminal-query tty (s+ lead-in s)
+				  (or end-tag (char s (1- (length s))))
+				  :omit-tag-p t :timeout timeout
+				  :errorp errorp)))
+	(if (zerop (length response))
+	    '()
+	    (coerce (subseq response offset
+			    (- (length response) ending)
+			    )
+		    'string)))
+    ;; (use-value (value)
+    ;;   :interactive
+    ;;   (lambda (value)
+    ;; 	(format *query-io* "~&Value (string): ")
+    ;; 	(finish-output *query-io*)
+    ;; 	(list 'value (read-line *query-io*)))
+    ;;   :report "Return a value."
+    ;;   ;; (return-from query-string value)
+    ;;   value
+    ;;   ))
+    (continue ()
+      ""))
+  )
 
 (defmethod terminal-get-cursor-position ((tty terminal-ansi))
   "Try to somehow get the row of the screen the cursor is on. Returns the
@@ -652,9 +706,10 @@ TTY is a terminal, in case you didn't know."
 ;; 	      ,@body)
 ;; 	 (set-terminal-mode (terminal-file-descriptor ,tty) :mode ,mode)))))
 
-#|
 (defparameter *report-timeout* 0.05
   "How long to wait for the terminal to send back characters when reporting.")
+
+#|
 
 (defun terminal-report (tty end-char fmt &rest args)
   "Output a formatted string to the terminal and get an immediate report back.
@@ -991,14 +1046,20 @@ i.e. the terminal is 'line buffered'."
   "Get the default foreground color for text."
   (let ((qq (query-string (s+ "10;?" +st+) :lead-in +osc+ :offset 5 :tty tty
 			  :ending 1
-			  :end-tag #'typical-report-ending)))
+			  :end-tag #'typical-report-ending
+			  :timeout *report-timeout*
+			  :errorp nil
+			  )))
     (and qq (xcolor-to-color qq))))
 
 (defmethod terminal-window-background ((tty terminal-ansi))
   "Get the default background color for text."
   (let ((qq (query-string (s+ "11;?" +st+) :lead-in +osc+ :offset 5 :tty tty
 			  :ending 1
-			  :end-tag #'typical-report-ending)))
+			  :end-tag #'typical-report-ending
+			  :timeout *report-timeout*
+			  :errorp nil
+			  )))
     (and qq (xcolor-to-color qq))))
 
 (defun set-foreground-color (tty color)
@@ -1198,22 +1259,34 @@ i.e. the terminal is 'line buffered'."
 		;;  r)
 		((guess-full-color-p tty)
 		 (* 256 256 256))
-		((and (not (eq (emulator-name e) :unknown))
+		((and #| (not (eq (emulator-name e) :unknown)) |#
 		      (eq (emulator-name e) :rxvt))
 		 ;; Special case for rxvt which doesn't report correctly.
 		 256)
 		((query-string (s+ "4;256;?" #\bel) :lead-in +osc+ :ending 1
-			       :tty tty)
+			       :tty tty :errorp nil :timeout *report-timeout*)
 		 ;; Has at least 256 colors:
 		 256)
 		((query-string (s+ "4;88;?" #\bel) :lead-in +osc+ :ending 1
-			       :tty tty)
+			       :tty tty :errorp nil :timeout *report-timeout*)
 		 ;; Has at least 88 colors:
 		 88)
 		((ppcre:scan "(\\A|\\z|;)22(\\A|\\z|;)"
-			     (query-string "0c" :ending 1 :tty tty))
+			     (query-string "0c" :ending 1 :tty tty
+					   :errorp nil
+					   :timeout *report-timeout*))
 		 ;; Has at least 16 colors:
 		 16)
+		((eq (emulator-name e) :tmux)
+		 ;; This is stupid and wrong. But how else can we guess?
+		 (cond
+		   ((equal (nos:env "COLORTERM") "truecolor")
+		    ;; no really "true" color
+		    ;; (* 256 256 256)
+		    256)
+		   ((equal (nos:env "COLOR_TERM") "true")
+		    16)
+		   (t 0)))
 		(t 0))))))
 
 ;; 256 color? ^[[ 38;5;color <-fg 48;5;color <- bg
@@ -1249,7 +1322,8 @@ Attributes are usually keywords."
       (keyword
        (let ((n (assoc attributes *attributes*)))
 	 (when n
-	   (terminal-escape-sequence tty "m" (cdr n))))))))
+	   (terminal-escape-sequence tty "m" (cdr n))))))
+    nil))
 
 (defmethod terminal-finish-output ((tty terminal-ansi-stream))
   ;; (when (maybe-refer-to :cl-user :*duh*)
@@ -1578,33 +1652,6 @@ and add the characters the typeahead."
     (61 "VT510")
     (64 "VT520")
     (65 "VT525")))
-
-(defun query-parameters (s &key end-tag (offset 3) (tty *terminal*))
-  (let ((response
-	 (ansi-terminal-query tty (s+ +csi+ s)
-			      (or end-tag (char s (1- (length s))))
-			      #| :omit-tag-p t |#)))
-    (if (zerop (length response))
-	'(nil nil nil)
-	(mapcar (_ (ignore-errors (parse-integer _)))
-		(split-sequence
-		 #\;
-		 (coerce (subseq response offset
-				 (1- (length response)))
-			 'string))))))
-
-(defun query-string (s &key end-tag (offset 3) (ending 2) (lead-in +csi+)
-			 (tty *terminal*))
-  (let ((response
-	 (ansi-terminal-query tty (s+ lead-in s)
-			      (or end-tag (char s (1- (length s))))
-			      :omit-tag-p t)))
-    (if (zerop (length response))
-	'()
-	(coerce (subseq response offset
-			(- (length response) ending)
-			)
-		'string))))
 
 (defun describe-terminal ()
   "Interrogate the terminal properties and report the results."
