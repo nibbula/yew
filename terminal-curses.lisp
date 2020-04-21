@@ -627,6 +627,21 @@ i.e. the terminal is 'line buffered'."
 ; 	((= status 1)
 ; 	 (code-char (mem-ref c :unsigned-char)))))))
 
+(defun translate-key (key)
+  "Fix some key names to conform to terminal naming."
+  (case key
+    (:ic    :insert)
+    (:dc    :delete)
+    (:npage :page-down)
+    (:ppage :page-up)
+    (:b2    :center)
+    (:btab  :back-tab)
+    (:sdc   :s-delete)
+    (:send  :s-end)
+    (:shome :s-home)
+    (:sleft :s-left)
+    (otherwise key)))
+
 (defun get-char ()
   "Get a lisp character or function key from curses."
   (let ((cc (getch)))
@@ -644,7 +659,7 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-get-key ((tty terminal-curses))
   "Read a character from the terminal."
-  (get-char))
+  (translate-key (get-char)))
 
 (defmethod terminal-listen-for ((tty terminal-curses) seconds)
   (let (c)
