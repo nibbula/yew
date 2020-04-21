@@ -78,6 +78,36 @@ is saved."))
 (defparameter *text-history-version* 2
   "Version number of history format file.")
 
+(defparameter *text-history-magic* "trlh"
+  "Magic identifier for the fancy style.")
+
+(defun check-version (stream &key no-error)
+  "Check STREAM for the fancy magic and version number. Signal an error if it
+doesn't match, or if NO-ERROR is true, return a keyword indicating what
+happened (:magic-bad :version-bad :ok). Assumes that stream is open for reading
+and positioned at the beginning of the file."
+  (block nil
+    (let ((s (make-string 4)) i)
+      (read-sequence s stream :end 4)
+      (when (string/= s *text-history-magic*)
+	(if no-error
+	    (return :bad-magic)
+	    (error "Bad magic tag ~s in history file." s)))
+      (when (/= *text-history-version*
+		(setq i (parse-integer (setq s (read-line stream)))))
+	(if no-error
+	    (return :bad-version)
+	    (error "Bad version number ~s in history file." s))))
+    :ok))
+
+(defun fancy-hist-p (file-name)
+  "Return true if the file named FILE-NAME is probably in fancy format."
+  (with-open-file (stream file-name :direction :input)
+    (let ((result (check-version stream :no-error t)))
+      (if (eq result :bad-magic)
+	  nil
+	  result))))
+
 (defmethod history-store-save ((store text-history-store)
 			       (style (eql :fancy))
 			       &key update (history-context *history-context*))
@@ -86,13 +116,22 @@ is saved."))
   (let ((hist (get-history history-context)) pos)
     (with-slots (file-name) store
       (ensure-directories-exist file-name)
+      (loop
+	 (if (and (file-exists file-name)
+		  (not (eq :ok (fancy-hist-p file-name))))
+	     (progn
+	       (cerror "Rename it and try again."
+		       "The history file exists, but is probably not in fancy ~
+                        format, so I'm not overwriting it.")
+	       (rename-file file-name (s+ file-name ".non-fancy")))
+	     (return)))
       (with-open-file (stream file-name
 			      :direction :output
 			      :if-does-not-exist :create
 			      :if-exists :append)
 	(when (zerop (setf pos (file-position stream)))
 	  ;; Write version
-	  (format stream "trlh ~a~%" *text-history-version*))
+	  (format stream "~a ~a~%" *text-history-magic* *text-history-version*))
 	(when (and (or (dl-length-at-least-p (history-start hist) 1)
 		       (zerop pos))
 		   (dl-prev (history-start hist)))
@@ -116,18 +155,14 @@ is saved."))
 				 (history-context *history-context*))
   "Load the history to HISTORY-CONTEXT from STORE in STYLE."
   (declare (ignore update)) ;; @@@ implement update
-  (let ((hist (get-history history-context))
-  	(s (make-string 4)) i)
+  (let ((hist (get-history history-context)))
     (with-slots (file-name) store
       (ensure-directories-exist file-name)
       (when (file-exists file-name) ;; Don't fail if the file doesn't exist.
 	(with-open-file (stream file-name :direction :input)
-	  (read-sequence s stream :end 4)
-	  (when (string/= s "trlh")
-	    (error "Bad magic tag ~s in history file." s))
-	  (when (/= *text-history-version*
-		    (setq i (parse-integer (setq s (read-line stream)))))
-	    (error "Bad version number ~s in history file." s))
+	  (when (not (eq :ok (check-version stream :no-error t)))
+	    (error "History format is fancy, but the history file isn't in ~
+                    fancy format."))
 	  (let ((*read-eval* nil))
 	    (setf (history-head hist)
 		  (make-dl-list
@@ -156,6 +191,14 @@ is saved."))
   (let ((hist (get-history history-context)) #|have-any|# pos)
     (with-slots (file-name) store
       (ensure-directories-exist file-name)
+      (loop
+	 (if (and (file-exists file-name) (fancy-hist-p file-name))
+	     (progn
+	       (cerror "Rename it and try again."
+		       "The history file exists, but is probably is in fancy ~
+                        format, so I'm not overwriting it.")
+	       (rename-file file-name (s+ file-name ".fancy")))
+	     (return)))
       (with-open-file (stream file-name
 			      :direction :output
 			      :if-does-not-exist :create
@@ -193,6 +236,9 @@ is saved."))
   (let ((hist (get-history history-context)))
     (with-slots (file-name) store
       (when (file-exists file-name) ;; Don't fail if the file doesn't exist.
+	(when (fancy-hist-p file-name)
+	  (error "The history file is probably in fancy format, but we're ~
+                  we're trying to load simple format."))
 	(with-open-file (stream file-name :direction :input)
 	  (setf (history-head hist)
 		(make-dl-list (nreverse ;; <<-- N.B.
