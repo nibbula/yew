@@ -1,6 +1,6 @@
-;;
-;; terminal-ansi.lisp - Standard terminals (aka ANSI).
-;;
+;;;
+;;; terminal-ansi.lisp - Standard terminals (aka ANSI).
+;;;
 
 ;; The actual related standard is:
 ;;   ISO/IEC 6429 (Ecma-048.pdf)
@@ -18,6 +18,7 @@
   (:export
    #:terminal-ansi-stream
    #:terminal-ansi
+   #:terminal-color-mixin
    ;; extensions:
    #:describe-terminal
    #:+csi+ #:+st+ #:+osc+
@@ -84,17 +85,8 @@
     (:crossed-out      . 29)
     (:double-underline . 24)))		; same as not underline
 
-(defclass terminal-ansi-stream (terminal-stream)
-  ((fake-column
-   :initarg :fake-column :accessor terminal-ansi-stream-fake-column
-   :initform 0 :type fixnum
-   :documentation "Guess for the current column.")
-   (cost-stream
-    :initarg :cost-stream :accessor terminal-ansi-stream-cost-stream
-    :initform nil
-    :documentation
-    "Another terminal-ansi-stream to keep around for calculating costs.")
-   (line-buffered-p
+(defclass terminal-color-mixin ()
+  ((line-buffered-p
     :initarg :line-buffered-p :accessor line-buffered-p
     :initform nil :type boolean
     :documentation "True if we always flush after outputting a newline.")
@@ -104,6 +96,31 @@
     :initform nil :type boolean
     :documentation
     "True to translate some unicode characters into the alternate character set."))
+  (:documentation "Mixin for just doing colors and text attributes."))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defclass terminal-ansi-stream (terminal-stream terminal-color-mixin)
+  ((fake-column
+   :initarg :fake-column :accessor terminal-ansi-stream-fake-column
+   :initform 0 :type fixnum
+   :documentation "Guess for the current column.")
+   (cost-stream
+    :initarg :cost-stream :accessor terminal-ansi-stream-cost-stream
+    :initform nil
+    :documentation
+    "Another terminal-ansi-stream to keep around for calculating costs.")
+   ;; (line-buffered-p
+   ;;  :initarg :line-buffered-p :accessor line-buffered-p
+   ;;  :initform nil :type boolean
+   ;;  :documentation "True if we always flush after outputting a newline.")
+   ;; (translate-alternate-characters
+   ;;  :initarg :translate-alternate-characters
+   ;;  :accessor translate-alternate-characters
+   ;;  :initform nil :type boolean
+   ;;  :documentation
+   ;;  "True to translate some unicode characters into the alternate character set.")
+   )
   (:documentation
    "Terminal as purely a Lisp output stream. This can't do input or things that
 require terminal driver support."))
@@ -128,7 +145,6 @@ require terminal driver support."))
   "Return true if the terminal can display the character attribute."
   (case attribute
     ((:standout :underline :bold :inverse :color) t)))
-
 
 (defmethod terminal-input-mode ((tty terminal-ansi-stream))
   (declare (ignore tty))
@@ -608,7 +624,8 @@ Only replace in START and END range."
       (map 'string (_ (or (gethash _ *acs-table*) _)) string)))
 
 (defgeneric terminal-raw-format (tty fmt &rest args))
-(defmethod terminal-raw-format ((tty terminal-ansi-stream) fmt &rest args)
+;;(defmethod terminal-raw-format ((tty terminal-ansi-stream) fmt &rest args)
+(defmethod terminal-raw-format ((tty terminal) fmt &rest args)
   "Output a formatted string to the terminal, without doing any content
 processing."
   ;; (let ((string (apply #'format nil fmt args))
@@ -871,7 +888,12 @@ i.e. the terminal is 'line buffered'."
       (when reset
 	(write-string +zero-effect+ stream)))))
 
+;; We have to have this since otherwise the plain char version ends up being
+;; more specific.
 (defmethod terminal-write-char ((tty terminal-ansi-stream) (char fatchar))
+  (%terminal-write-char tty char :reset t))
+
+(defmethod terminal-write-char ((tty terminal-color-mixin) (char fatchar))
   (%terminal-write-char tty char :reset t))
 
 (defun %write-fat-string (tty str start end)
@@ -910,6 +932,8 @@ newline in it."
       (write-string +zero-effect+ stream)
       had-newline)))
 
+;; We have to have this because otherwise the plain string version ends up being
+;; more specific. Same for the other duplicated color-mixin methods.
 (defmethod terminal-write-string ((tty terminal-ansi-stream) (str fat-string)
 				  &key start end)
   "Output a string to the terminal. Flush output if it contains a newline,
@@ -917,7 +941,22 @@ i.e. the terminal is 'line buffered'."
   (when (and (%write-fat-string tty str start end) (line-buffered-p tty))
     (finish-output (terminal-output-stream tty))))
 
+(defmethod terminal-write-string ((tty terminal-color-mixin) (str fat-string)
+				  &key start end)
+  "Output a string to the terminal. Flush output if it contains a newline,
+i.e. the terminal is 'line buffered'."
+  (when (and (%write-fat-string tty str start end) (line-buffered-p tty))
+    (finish-output (terminal-output-stream tty))))
+
 (defmethod terminal-write-line ((tty terminal-ansi-stream) (str fat-string)
+				&key start end)
+  "Output a string to the terminal, followed by a newline."
+  (%write-fat-string tty str start end)
+  (write-char #\newline (terminal-output-stream tty))
+  (when (line-buffered-p tty)
+    (finish-output (terminal-output-stream tty))))
+
+(defmethod terminal-write-line ((tty terminal-color-mixin) (str fat-string)
 				&key start end)
   "Output a string to the terminal, followed by a newline."
   (%write-fat-string tty str start end)
@@ -1015,19 +1054,19 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-cursor-on ((tty terminal-ansi-stream))
   (terminal-escape-sequence tty "?25h"))
 
-(defmethod terminal-standout ((tty terminal-ansi-stream) state)
+(defmethod terminal-standout ((tty terminal-color-mixin) state)
   (terminal-escape-sequence tty "m" (if state "7" "27")))
 
-(defmethod terminal-normal ((tty terminal-ansi-stream))
+(defmethod terminal-normal ((tty terminal-color-mixin))
   (terminal-escape-sequence tty "0m")) ;; @@@ zero is unnecessary?
 
-(defmethod terminal-underline ((tty terminal-ansi-stream) state)
+(defmethod terminal-underline ((tty terminal-color-mixin) state)
   (terminal-escape-sequence tty "m" (if state "4" "24")))
 
-(defmethod terminal-bold ((tty terminal-ansi-stream) state)
+(defmethod terminal-bold ((tty terminal-color-mixin) state)
   (terminal-escape-sequence tty "m" (if state "1" "22")))
 
-(defmethod terminal-inverse ((tty terminal-ansi-stream) state)
+(defmethod terminal-inverse ((tty terminal-color-mixin) state)
   (terminal-escape-sequence tty "m" (if state "7" "27")))
 
 (defparameter *colors*
@@ -1097,15 +1136,20 @@ i.e. the terminal is 'line buffered'."
 (defun %terminal-color (tty fg bg &key unwrapped)
   (let ((fg-pos (and (keywordp fg) (position fg *colors*)))
 	(bg-pos (and (keywordp bg) (position bg *colors*)))
-	did-one)
+	did-one
+	(structured-fg-p (structured-color-p fg))
+	(structured-bg-p (structured-color-p bg))
+	ncolors)
     (when (and (keywordp fg) (not fg-pos))
       (error "Forground ~a is not a known color." fg))
     (when (and (keywordp bg) (not bg-pos))
       (error "Background ~a is not a known color." bg))
+    (when (or structured-fg-p structured-bg-p)
+      (setf ncolors (terminal-colors tty)))
     (when (not unwrapped)
       (terminal-raw-format tty +csi+))
-    (when (structured-color-p fg)
-      (case (terminal-colors tty)
+    (when structured-fg-p
+      (case ncolors
 	(#.(* 256 256 256)
 	   (let ((c (convert-color-to fg :rgb8)))
 	     (terminal-raw-format tty "38;2;~d;~d;~d"
@@ -1123,10 +1167,9 @@ i.e. the terminal is 'line buffered'."
 	   (setf did-one t)))
 	(16)
 	(0)
-	(otherwise
-	 )))
-    (when (structured-color-p bg)
-      (if did-one (write-char #\; (terminal-output-stream tty)))
+	(otherwise #| what? |#)))
+    (when structured-bg-p
+      (when did-one (write-char #\; (terminal-output-stream tty)))
       (case (terminal-colors tty)
 	(#.(* 256 256 256)
 	   (let ((c (convert-color-to bg :rgb8)))
@@ -1159,7 +1202,7 @@ i.e. the terminal is 'line buffered'."
     (when (not unwrapped)
       (terminal-raw-format tty "m"))))
 
-(defmethod terminal-color ((tty terminal-ansi-stream) fg bg)
+(defmethod terminal-color ((tty terminal-color-mixin) fg bg)
   (%terminal-color tty fg bg))
 
 (defun decode-hex-string (string)
@@ -1304,7 +1347,7 @@ i.e. the terminal is 'line buffered'."
 		  "The scrolling region doesn't fit in the screen.")
 	  (terminal-escape-sequence tty "r" (1+ start) (1+ end)))))
 
-(defmethod terminal-set-attributes ((tty terminal-ansi-stream) attributes)
+(defmethod terminal-set-attributes ((tty terminal-color-mixin) attributes)
   "Set the attributes given in the list. If NIL turn off all attributes.
 Attributes are usually keywords."
   (with-slots ((stream terminal::output-stream)) tty
@@ -1937,7 +1980,7 @@ or :both. WHICH defaults to :window."
 XTerm or something."
   (set-title tty title))
 
-(defmethod terminal-has-attribute ((tty terminal-ansi) attribute)
+(defmethod terminal-has-attribute ((tty terminal-color-mixin) attribute)
   "Return true if the terminal can display the character attribute."
   (case attribute
     ((:standout :underline :bold :inverse :color) t)))
