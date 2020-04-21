@@ -25,6 +25,8 @@
   '(:white :black :black :black :white :black :black :black)
   "Color which will contrast with *basic-colors*")
 
+(defun z-width () (or (tt-width) 80))
+(defun z-height () (or (tt-height) 24))
 
 (defun ask-class ()
   (format t "Which sub-class ?~%")
@@ -46,9 +48,9 @@
       (clear-input))))
 
 (defun center (text offset)
-  (tt-move-to (+ (truncate (terminal-window-rows *terminal*) 2)
+  (tt-move-to (+ (truncate (z-height) 2)
 		 offset)
-	      (- (truncate (terminal-window-columns *terminal*) 2)
+	      (- (truncate (z-width) 2)
 		 (truncate (display-length text) 2)))
   (tt-format text))
 
@@ -61,7 +63,8 @@
 	     (when message
 	       (ecase position
 		 (:bottom
-		  (tt-write-string-at (1- (terminal-window-rows *terminal*)) 0
+		  ;; (tt-write-string-at (1- (terminal-window-rows *terminal*)) 0
+		  (tt-write-string-at (1- (z-height)) 0
 				      message))
 		 (:top
 		  (tt-write-string-at 0 0 message))
@@ -105,30 +108,30 @@
   ;;(case (tt-get-key) ((#\Q #\q) (throw 'quit nil)))
 
   ;; lower left
-  (tt-move-to (- (terminal-window-rows *terminal*) 4) 0)
+  (tt-move-to (- (z-height) 4) 0)
   (tt-format "|~%|~%v~%X <---")
   ;;(case (tt-get-key) ((#\Q #\q) (throw 'quit nil)))
 
   ;; upper right
-  (tt-move-to 0 (- (terminal-window-columns *terminal*) 6))
+  (tt-move-to 0 (- (z-width) 6))
   (tt-format "---> X")
-  (tt-move-to 1 (- (terminal-window-columns *terminal*) 1)) (tt-format "^")
-  (tt-move-to 2 (- (terminal-window-columns *terminal*) 1)) (tt-format "|")
-  (tt-move-to 3 (- (terminal-window-columns *terminal*) 1)) (tt-format "|")
+  (tt-move-to 1 (- (z-width) 1)) (tt-format "^")
+  (tt-move-to 2 (- (z-width) 1)) (tt-format "|")
+  (tt-move-to 3 (- (z-width) 1)) (tt-format "|")
   ;;(case (tt-get-key) ((#\Q #\q) (throw 'quit nil)))
 
   ;; lower right
-  (tt-move-to (- (terminal-window-rows *terminal*) 4)
-	      (- (terminal-window-columns *terminal*) 1))
+  (tt-move-to (- (z-height) 4)
+	      (- (z-width) 1))
   (tt-format "|")
-  (tt-move-to (- (terminal-window-rows *terminal*) 3)
-	      (- (terminal-window-columns *terminal*) 1))
+  (tt-move-to (- (z-height) 3)
+	      (- (z-width) 1))
   (tt-format "|")
-  (tt-move-to (- (terminal-window-rows *terminal*) 2)
-	      (- (terminal-window-columns *terminal*) 1))
+  (tt-move-to (- (z-height) 2)
+	      (- (z-width) 1))
   (tt-format "V")
-  (tt-move-to (- (terminal-window-rows *terminal*) 1)
-	      (- (terminal-window-columns *terminal*) 6))
+  (tt-move-to (- (z-height) 1)
+	      (- (z-width) 6))
   (tt-format "---> X")
   ;;(case (tt-get-key) ((#\Q #\q) (throw 'quit nil)))
 
@@ -156,7 +159,7 @@
 (defun test-move-to-col ()
   (blurp ()
    (loop :for i :from -4 :to 4 :do
-      (loop :for j :from 1 :below (1- (terminal-window-columns *terminal*)) :do
+      (loop :for j :from 1 :below (1- (z-width)) :do
 	 (let ((s (* 3 (cos (/ j 4.2)))))
 	   (if (<= (round s) i)
 	       (progn
@@ -180,7 +183,7 @@
 (defun test-ins-del ()
   (blurp ()
    (let* ( #| (half (/ (terminal-window-columns *terminal*) 2)) |#
-	  (full (terminal-window-columns *terminal*))
+	  (full (z-width))
 	  (height 8)
 	  (thing "|----->")
 	  (junk "#%_.")
@@ -453,9 +456,9 @@ drawing, which will get overwritten."
   "Test drawing boxes."
   (flet ((draw-boxes (#|delay|#)
 	   (tt-clear) (tt-home)
-	   (let ((limit (truncate (tt-height) 2)))
+	   (let ((limit (truncate (z-height) 2)))
 	     (loop :for i :from 1 :below limit :by 1 :do
-		(draw-box i i (- (tt-width) (* 2 i)) (- (tt-height) (* 2 i)))
+		(draw-box i i (- (z-width) (* 2 i)) (- (z-height) (* 2 i)))
 		(tt-finish-output)
 		;; (when delay
 		;;   (sleep delay))
@@ -468,8 +471,8 @@ drawing, which will get overwritten."
 
 (defun test-cursor-visibility ()
   (blurp ()
-   (let ((half-width (truncate (/ (terminal-window-columns *terminal*) 2)))
-	 (half-height (truncate (/ (terminal-window-rows *terminal*) 2))))
+   (let ((half-width (truncate (/ (z-width) 2)))
+	 (half-height (truncate (/ (z-height) 2))))
      (tt-cursor-on)
      (tt-move-to (1- half-height) 0)
      (tt-format "The cursor should be visible. Press a key.")
@@ -495,8 +498,8 @@ drawing, which will get overwritten."
 
 (defun test-save-and-restore-cursor ()
   (blurp ()
-   (let ((half-width (truncate (/ (terminal-window-columns *terminal*) 2)))
-	 (half-height (truncate (/ (terminal-window-rows *terminal*) 2)))
+   (let ((half-width (truncate (/ (z-width) 2)))
+	 (half-height (truncate (/ (z-height) 2)))
 	 (opposite #(2 3 0 1))
 	 (offs #((0 . -1) (1 . 0) (0 . 1) (-1 . 0)))
 	 ;;end-row end-col
@@ -540,14 +543,14 @@ drawing, which will get overwritten."
      (tt-format "This line should disappear ~d.~%" (1+ i)))
    (dotimes (i 5)
      (tt-format "This line should stay ~d.~%" (1+ i)))
-   (tt-move-to (1- (tt-height)) 0)
+   (tt-move-to (1- (z-height)) 0)
    (tt-scroll-down 5)
    (tt-write-string
     "You should see 5 lines that say 'stay' and none that say 'disappear'.")
    (tt-finish-output)
    (tt-get-key)
    (tt-clear)
-   (tt-move-to (- (tt-height) 11) 0)
+   (tt-move-to (- (z-height) 11) 0)
    (dotimes (i 5)
      (tt-format "~%This line should stay ~d." (1+ i)))
    (dotimes (i 5)
@@ -562,21 +565,21 @@ drawing, which will get overwritten."
 (defun test-scrolling-with-fixed-line ()
   (blurp (:position :center)
    (labels ((bottom-line (offset)
-	      (tt-move-to (- (tt-height) offset) 0)
+	      (tt-move-to (- (z-height) offset) 0)
 	      (loop
 		 :with blob = "{--The-Bottom-Line--}"
 		 :with len = (length blob)
-		 :for x :from 0 :below (tt-width) :by len
+		 :for x :from 0 :below (z-width) :by len
 		 :do
 		 (tt-write-string
 		  (subseq blob 0 (min len
-				      (+ len (- (tt-width) (+ x len))))))))
+				      (+ len (- (z-width) (+ x len))))))))
 	    (show-lines (n)
 	      (tt-home)
 	      (tt-move-to 0 0)
 	      (tt-erase-below)
 	      (loop :for i :from n :downto 1 :do
-		 (tt-move-to (- (tt-height) i 1) 0)
+		 (tt-move-to (- (z-height) i 1) 0)
 		 (tt-format "-=-=- Line ~d -=-=-" (- n i)))
 	      (bottom-line 1)
 	      ;; (tt-get-key)
@@ -595,12 +598,12 @@ drawing, which will get overwritten."
 (defun test-scroll-by (n &key (reps 3))
   (with-immediate ()
     (tt-home) (tt-erase-below)
-    (loop :for i :from 0 :below (tt-height)
+    (loop :for i :from 0 :below (z-height)
        :do (tt-format-at i 0 "-- Line ~d ~r" i i))
     (tt-get-key)
     (dotimes (j reps)
       (dotimes (i n)
-	(tt-move-to (1- (tt-height)) 0)
+	(tt-move-to (1- (z-height)) 0)
 	(tt-write-char #\newline)
 	(cond
 	  ((= n 1)
@@ -630,13 +633,13 @@ drawing, which will get overwritten."
 
 ;; (defun test-scrolling-no-newline ()
 ;;   (blurp
-;;     (loop :for i :from 0 :below (tt-height)
+;;     (loop :for i :from 0 :below (z-height)
 ;;        :do (tt-format-at i 0 "-- Line ~d ~r" i i))))
 
 (defun test-scrolling-region ()
   (blurp ()
-   (let ((width  (terminal-window-columns *terminal*))
-	 (height (terminal-window-rows *terminal*))
+   (let ((width  (z-width))
+	 (height (z-height))
 	 (junk "%@#-."))
      (tt-format
       "We will now test setting the scrolling region.~@
@@ -691,7 +694,7 @@ drawing, which will get overwritten."
 (defun junk-block (height)
   (let ((junk "#%_.")
 	#| (half (/ (terminal-window-columns *terminal*) 2)) |#
-	(full (terminal-window-columns *terminal*)))
+	(full (z-width)))
     (loop :for i :from 0 :below height :do
        (loop :for j :from 0 :below (1- full) :do
 	  (tt-move-to i j)
@@ -722,7 +725,7 @@ drawing, which will get overwritten."
 
   (blurp ()
    (let ((height 8)
-	 (half (truncate (terminal-window-columns *terminal*) 2)))
+	 (half (truncate (z-width) 2)))
      (junk-block height)
      (loop :for i :from 0 :below height :do
 	(tt-move-to i half)
@@ -732,7 +735,7 @@ drawing, which will get overwritten."
 
   (blurp ()
    (let ((height 8)
-	 (half (truncate (terminal-window-columns *terminal*) 2)))
+	 (half (truncate (z-width) 2)))
      (junk-block height)
      (loop :for i :from 0 :below height :do
 	(tt-move-to i half)
@@ -742,7 +745,7 @@ drawing, which will get overwritten."
 
   (blurp ()
    (let ((height 8)
-	 (half (truncate (terminal-window-columns *terminal*) 2)))
+	 (half (truncate (z-width) 2)))
      (junk-block height)
      (tt-move-to (truncate height 2) half)
      (tt-erase-above)
@@ -830,8 +833,8 @@ drawing, which will get overwritten."
 	   (loop :do (setf xi (- (random 3) 1) yi (- (random 3) 1))
 	      :while (and (= xi 0) (= yi 0)))
 	   (push (make-blook :color (random-color)
-			     :y (random (tt-height)) :xinc xi
-			     :x (random (tt-width))  :yinc yi) blocks)))
+			     :y (random (z-height)) :xinc xi
+			     :x (random (z-width))  :yinc yi) blocks)))
       (loop ;; :for i :from 1 :to 2000 :do
 	 (tt-move-to 0 0)
 	 (tt-erase-below)
@@ -842,10 +845,10 @@ drawing, which will get overwritten."
 	    (show-blook b)
 	    (incf (blook-x b) (blook-xinc b))
 	    (incf (blook-y b) (blook-yinc b))
-	    (when (<= (blook-x b) 0)		     (setf (blook-xinc b) 1))
-	    (when (>= (blook-x b) (- (tt-width) 8))  (setf (blook-xinc b) -1))
-	    (when (<= (blook-y b) 0)	    	     (setf (blook-yinc b) 1))
-	    (when (>= (blook-y b) (- (tt-height) 7)) (setf (blook-yinc b) -1)))
+	    (when (<= (blook-x b) 0)		    (setf (blook-xinc b) 1))
+	    (when (>= (blook-x b) (- (z-width) 8))  (setf (blook-xinc b) -1))
+	    (when (<= (blook-y b) 0)	    	    (setf (blook-yinc b) 1))
+	    (when (>= (blook-y b) (- (z-height) 7)) (setf (blook-yinc b) -1)))
 	 (tt-finish-output)
 
 	 (when (setf c (if (plusp t-o)
@@ -956,8 +959,8 @@ drawing, which will get overwritten."
 
 (defun draw-rgb-colors ()
   "Test to see if the terminal can handle a lot of RGB colors."
-  (let* ((rows (- (tt-height) 1))
-	 (cols (tt-width))
+  (let* ((rows (- (z-height) 1))
+	 (cols (z-width))
 	 (blue-step (/ 255.0 rows))
 	 (red-green-step (/ 255.0 cols))
 	 (r 0.0) (g 0.0) (b 0.0))
@@ -990,11 +993,11 @@ drawing, which will get overwritten."
   (tt-write-line "Try clicking, dragging, and scrolling with the mouse.")
   (tt-write-line "Press 'q' to quit.")
   (flet ((clear-modeline ()
-	   (tt-move-to (1- (tt-height)) 0)
+	   (tt-move-to (1- (z-height)) 0)
 	   (tt-color :default :default)
 	   (tt-erase-to-eol))
 	 (write-modeline (e)
-	   (tt-move-to (1- (tt-height)) 0)
+	   (tt-move-to (1- (z-height)) 0)
 	   (tt-color :default :default)
 	   (tt-erase-to-eol)
 	   (tt-format "~s" e)))
@@ -1018,7 +1021,7 @@ drawing, which will get overwritten."
 				 (:release :default)))
 		   (case button
 		     (:button-5
-		      (tt-move-to (1- (tt-height)) 0)
+		      (tt-move-to (1- (z-height)) 0)
 		      (tt-scroll-down 2)
 		      (write-modeline e))
 		     (:button-4
@@ -1069,9 +1072,9 @@ drawing, which will get overwritten."
 
 (defun test-autowrap ()
   (blurp ()
-    (let ((width (tt-width))
+    (let ((width (z-width))
 	  before-row before-col after-row after-col)
-      (tt-move-to (round (tt-height) 2) 0)
+      (tt-move-to (round (z-height) 2) 0)
       (loop :repeat width :do
 	 (tt-write-char #\-))
       (tt-finish-output)
@@ -1221,8 +1224,8 @@ same as the current and NO-NEW is true."
     (with-maybe-new-terminal (class no-new)
       (with-simple-restart (quit "Quit testing the terminal")
 	(terminal-get-size *terminal*)
-	(when (or (< (tt-width) 80)
-		  (< (tt-height) 24))
+	(when (or (< (z-width) 80)
+		  (< (z-height) 24))
 	  (tt-format "Your terminal is less than 80x24 characters.~%~
                         You might have trouble.")
 	  (prompt-next))
