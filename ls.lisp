@@ -1,6 +1,6 @@
-;;
-;; ls.lisp - list your shit
-;;
+;;;
+;;; ls.lisp - list your shit
+;;;
 
 ;; Actually I really hate this command. I'm so sick of hierarchical file
 ;; systems. I want to mutate this into a tag browser to surf my metadata.
@@ -676,7 +676,8 @@ command for details. If LABEL-DIR is true, print directory labels."
 		      ignore-backups omit-headers recursive signal-errors))
   ;; It seems like we have to do our own defaulting.
   (when (not files)
-    (setf (getf args :files) (list (current-directory))))
+    (setf files (list (current-directory))
+	  (getf args :files) files))
   (when (not sort-by)
     (setf (getf args :sort-by) :name))
   (when (not date-format)
