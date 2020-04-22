@@ -17,6 +17,7 @@ least you can type things using RL.")
    #:toggle
    #:active-p
    #:activate
+   #:deactivate
    #:with-debugger-io
    #:debugger-backtrace
    #:debugger-wacktrace

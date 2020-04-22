@@ -566,15 +566,21 @@ program that messes with the terminal, we can still type at the debugger."
   "Return true if we're being run under Emacs, like probably in SLIME."
   (d-getenv "EMACS"))
 
+(defvar *saved-debugger-hook* nil
+  "The old value of *debugger-hook*, so we can restore it.")
+
 (defun activate (&key quietly #| full |#)
-  (when (not (in-emacs-p))
+  (when (and (not (in-emacs-p)) (not (active-p)))
     (when (not quietly)
       (format *debug-io* "Activating the DEBLARGger.~%"))
     (set-debugger-hook 'deblarg)
     (activate-stepper :quietly quietly)))
 
-(defvar *saved-debugger-hook* nil
-  "The old value of *debugger-hook*, so we can restore it.")
+(defun deactivate (&key quietly #| full |#)
+  (when (and (not (in-emacs-p)) (active-p))
+    (when (not quietly)
+      (format *debug-io* "Deactivating the DEBLARGger.~%"))
+    (set-debugger-hook *saved-debugger-hook*)))
 
 (defun toggle ()
   "Toggle the debugger on and off."
