@@ -1170,7 +1170,7 @@ i.e. the terminal is 'line buffered'."
 	(otherwise #| what? |#)))
     (when structured-bg-p
       (when did-one (write-char #\; (terminal-output-stream tty)))
-      (case (terminal-colors tty)
+      (case ncolors
 	(#.(* 256 256 256)
 	   (let ((c (convert-color-to bg :rgb8)))
 	     (terminal-raw-format tty "48;2;~d;~d;~d"
