@@ -215,6 +215,8 @@
    #+linux #:SEEK-HOLE+
    #:posix-open #+(or linux freebsd) #:posix-openat
    #:posix-close
+   #:posix-dup
+   #:posix-dup2
    #:posix-read
    #:posix-write
    #:posix-ioctl

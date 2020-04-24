@@ -865,15 +865,27 @@ indicated by the constants: (in *file-flags*):~%~{~a~%~}"
 
 (defcfun ("close" posix-close) :int
   "Close the file descriptor FD." (fd :int))
+
+(defcfun ("dup" posix-dup) :int
+  "Duplicate the file descriptor FD using the lowest number available."
+  (fd :int))
+
+(defcfun ("dup2" posix-dup2) :int
+  "Duplicate the file descriptor OLD-FD to the file descriptor NEW-FD."
+  (old-fd :int) (new-fd :int))
+
 (defcfun ("read" posix-read) :int
   "Read NBYTES bytes from file descriptor FD into BUF."
   (fd :int) (buf :pointer) (nbytes size-t))
+
 (defcfun ("write"  posix-write) :int
   "Write NBYTES bytes to file descriptor FD from BUF."
   (fd :int) (buf :pointer) (nbytes size-t))
+
 (defcfun ("ioctl" posix-ioctl) :int
   "Manipulate device parameters."
   (fd :int) (request :int) (arg :pointer))
+
 (defcfun ("lseek" posix-lseek) off-t
   #.(format nil
 "Set the position of the file offset of the open file descriptor FD to OFFSET,
@@ -882,8 +894,10 @@ according to WHENCE, where WHENCE is one of:~%~{~a~%~}"
         :collect (format nil "  ~16a: ~a" (string f)
 			 (documentation f 'variable))))
   (fd :int) (offset off-t) (whence :int))
+
 (defcfun ("pread" posix-pread) ssize-t
   (fd :int) (buf :pointer) (nbytes size-t) (offset off-t))
+
 (defcfun ("pwrite" posix-pwrite) ssize-t
   (fd :int) (buf :pointer) (nbytes size-t) (offset off-t))
 (defcfun ("unlink" posix-unlink) :int (path :string))
@@ -1099,6 +1113,7 @@ versions of the keywords used in Lisp open.
   (l2p_contigbytes off-t)
   (l2p_devoffset off-t))
 
+;; @@@ maybe this should be called posix-fcntl to be like other things?
 (defcfun fcntl :int (fd :int) (cmd :int) &rest)
 
 (defun get-file-descriptor-flags (file-descriptor)
