@@ -287,7 +287,9 @@ The REPL also has a few commands:
 	(dbugf :repl "About to eval ~s~%" form)
 	(unwind-protect
 	     (let* ((vals (multiple-value-list (eval form)))
-		    (*print-circle* t))
+		    ;; This should be under the user's control.
+		    ;; (*print-circle* t)
+		    )
 	       ;; These ***shmoozy-vars*** are in the standard,
 	       ;; so we'd better support them.
 	       (setf /// //
@@ -300,7 +302,7 @@ The REPL also has a few commands:
 		  :for v :in vals
 		  :do
 		  ;; This is the "P" in REPL
-		  (format output "~&~s" v)
+		  (format output "~&~w" v)
 		  (when (and (> len 1) (< i (- len 1)))
 		    ;; It's kind of a convention for values.
 		    (format output " ;~%"))
