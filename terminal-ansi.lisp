@@ -864,9 +864,16 @@ i.e. the terminal is 'line buffered'."
 	(let ((replacement (gethash cc *acs-table*)))
 	  (when replacement
 	    (setf cc replacement))))
+
       (if (or fg bg attrs)
 	  (progn
 	    (when (or fg bg)
+	      ;; When we haven't queried the terminal for the colors yet,
+	      ;; we have to do it now, so it won't be in the middle of the
+	      ;; color sequence.
+	      (when (not (cached-color-count tty))
+		(terminal-colors tty))
+
 	      (write-string +intro+ stream)
 	      (write-char #\; stream)
 	      (%terminal-color tty fg bg :unwrapped t))
