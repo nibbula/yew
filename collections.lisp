@@ -1,6 +1,6 @@
-;;
-;; collections.lisp - Piles of junk.
-;;
+;;;
+;;; collections.lisp - Piles of junk.
+;;;
 
 ;; This isn't necessarily efficient or well designed, it's just practical and
 ;; straightforward, because I really just need it to work. It could at least
@@ -89,6 +89,7 @@ structs as sequences. Also we really need the MOP for stuff.")
       oremove-if
       oremove-duplicates
       osplit
+      osplit-if
       oreplace-subseq-as
       oreplace-subseq
       oaref
@@ -119,6 +120,7 @@ structs as sequences. Also we really need the MOP for stuff.")
       osort-by
       ofind-with-key
       osplit
+      osplit-if
       opush
       opushnew
       opop
@@ -1436,6 +1438,51 @@ type as the one given.
   (call-with-start-and-end
    osplit (separator (container-data collection)
 		     :omit-empty omit-empty :test test :key key)))
+
+(defgeneric osplit-if (predicate ordered-collection
+		       &key omit-empty start end key #| count |#)
+  (:documentation
+   "Split the ORDERED-COLLECTION into subsequences separated by elements for
+which PREDICATE returns true. Return an ORDERED-COLLECTION of the subsequences.
+The returned collection might not be the same type you passed in. For example it
+might always be a list. But the pieces in that collection should be of the same
+type as the one given.
+  OMIT-EMPTY - If true, then don't return empty subsequnces.
+  START      - Element number to start gathering from. Defaults to 0.
+  END        - Element number to end gathering at. Defaults to the end of the
+               collection.
+  KEY        - A function called with each element, which should return an
+               element to be tested.
+")
+  (:method (predicate (collection list)
+	    &key omit-empty key
+	      (start nil start-p)
+	      (end nil end-p))
+    (call-with-start-and-end
+     dlib:split-sequence-if
+     (predicate collection :omit-empty omit-empty :key key)))
+  (:method (predicate (collection vector)
+	    &key omit-empty key
+	      (start nil start-p)
+	      (end nil end-p))
+    (call-with-start-and-end
+     dlib:split-sequence-if
+     (predicate collection :omit-empty omit-empty :key key)))
+  (:method (predicate (collection sequence)
+	    &key omit-empty key
+	      (start nil start-p)
+	      (end nil end-p))
+    (call-with-start-and-end
+     dlib:split-sequence
+     (predicate collection :omit-empty omit-empty :key key))))
+
+(defmethod osplit-if (predicate (collection container)
+		      &key omit-empty key
+			(start nil start-p)
+			(end nil end-p))
+  (call-with-start-and-end
+   osplit-if (predicate (container-data collection)
+			:omit-empty omit-empty :key key)))
 
 ;; Collection-ified version of replace-subseq from dlib.
 (defun oreplace-subseq-as (type target replacement sequence &key count)
