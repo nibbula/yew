@@ -964,6 +964,7 @@ to the same value as the slots in the original."
 
 ;; I know this is a ruse, but it makes me feel better.
 ;; Also, without good optimization, it could be code bloating.
+;; Also, I've never used it once in practice.
 #-clisp ;; Of course CLisp areeady had this idea and put it in by default.
 (defmacro doseq ((var seq) &body body)
   "Iterate VAR on a 'sequence' SEQ, which can be a list, vector, hash-table
@@ -998,6 +999,8 @@ on all accessible symbols."
 	 |#
 	 ))))
 
+#+abcl (defvar *abcl-bug* nil "True if we've already hit the bug.")
+
 ;; I know the args are probably getting stringified then un-stringified,
 ;; but this is mostly just for startup.
 (defun system-command-stream (cmd args)
@@ -1016,7 +1019,13 @@ on all accessible symbols."
   ;; @@@ The LW manual says this only works on unix:
   #+lispworks (system:run-shell-command (format nil "~a~{ ~a~}" cmd args)
 					:output :stream :wait nil)
-  #+abcl (system:process-output (system:run-program cmd args))
+  #+abcl (progn
+	   (when (not *abcl-bug*)
+	     ;; It doesn't work the first time.
+	     ;; @@@ How can we suppress the giant stack trace???
+	     (ignore-errors
+	       (system:process-output (system:run-program "/bin/true" nil))))
+	   (system:process-output (system:run-program cmd args)))
   #+mezzano (declare (ignore cmd args))
   #+mezzano (make-string-input-stream "")
   #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl mezzano)
