@@ -491,6 +491,18 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 	    :test (or test #'equalp)
 	    :key key))))
 
+(defmethod osplit-if (predicate (string fat-string)
+		      &key omit-empty key
+			(start nil start-p)
+			(end nil end-p))
+  (declare (ignorable start start-p end end-p))
+  (mapcar (_ (make-fat-string :string _))
+	  (call-with-start-and-end
+	   split-sequence-if
+	   (predicate (fat-string-string string)
+		      :omit-empty omit-empty
+		      :key key))))
+
 (defmethod oreplace-subseq (target replacement (sequence fat-string) &key count)
   #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (apply #'oreplace-subseq-as 'fat-string
