@@ -51,6 +51,7 @@
     (,(ctrl #\Y)		. yank)
     (,(ctrl #\U)		. backward-kill-line)
     (,(ctrl #\O)		. undo-command)
+    (,(ctrl #\_)		. undo-command)
     (,(ctrl #\T)		. transpose-characters)
     (,(meta-char #\d)		. kill-word)
     (,(meta-char #\rubout)	. backward-kill-word)
@@ -61,7 +62,8 @@
     (,(meta-char #\w)		. copy-region)
     (,(meta-char #\\)		. delete-horizontal-space)
     (,(meta-char #\/)		. add-cursor-on-next-line)
-    (,(meta-char #\.)		. just-one-context)
+    (,(meta-char #\.)		. insert-last-argument)
+    ;; (,(meta-char #\.)		. just-one-context)
 
     ;; Completion
     (#\tab			. complete)
@@ -186,7 +188,8 @@
     (#\$			. end-of-line)		;
     (#\g			. vi-goto)		; *
     (#\b			. backward-word)	;
-    (#\W			. backward-word)	;
+    (#\B			. backward-syntax-word)	;
+    (#\W			. forward-syntax-word)	;
     (#\w			. forward-word-or-accept-suggestion) ;
     (#\|			. vi-goto-column)	; *
     (#\f			. vi-find-right)	; *
@@ -212,6 +215,7 @@
     (#\c			. vi-change)		; *
     (#\d			. vi-delete-move)	; *
     (#\D			. vi-delete-eol)	; *
+    (#\r			. vi-replace)		; *
     (#\m			. vi-mark)		; *
     (#\'			. vi-set-buffer)	; *
     (#\i			. vi-insert)		; *
