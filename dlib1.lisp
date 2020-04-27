@@ -84,7 +84,6 @@ of it.")
    #:join-by-string
    #:join-by
    #:fill-by
-   #-clisp #:doseq
    ;; lists
    #:delete-nth
    #:alist-to-hash-table
@@ -123,7 +122,7 @@ of it.")
    #:define-alias #:defalias
    ;; #-(or lispworks clasp) #:#.(code-char #x039B) #\greek_capital_letter_lamda
    #:_ #:__
-   #:and-<> #:<> #:-> #:->>
+   #:and-<> #:<> #:-> #:->> #:-<>>
    #:symbolify
    #:keywordify
    #:likely-callable
@@ -962,43 +961,6 @@ to the same value as the slots in the original."
               (slot-value original slot))))
     copy))
 
-;; I know this is a ruse, but it makes me feel better.
-;; Also, without good optimization, it could be code bloating.
-;; Also, I've never used it once in practice.
-#-clisp ;; Of course CLisp areeady had this idea and put it in by default.
-(defmacro doseq ((var seq) &body body)
-  "Iterate VAR on a 'sequence' SEQ, which can be a list, vector, hash-table
-or package. For hash-tables, it iterates on the keys. For packages, it iterates
-on all accessible symbols."
-  (let ((seq-sym (gensym)))
-    `(let ((,seq-sym ,seq))
-       ;; Could be ctypecase, but a sequence seems an unusual thing for the
-       ;; user to type in. Of course it could be programmatically correctable,
-       ;; but let's just fix those bugs.
-       (etypecase ,seq-sym
-	 (list
-	  (loop :for ,var :in ,seq-sym
-	     :do ,@body))
-	 (vector
-	  (loop :for ,var :across ,seq-sym
-	     :do ,@body))
-	 (hash-table
-	  ;; We pick the key not the value, since you can, of course, get
-	  ;; value from the key.
-	  (loop :for ,var :being :the :hash-keys :of ,seq-sym
-	     :do ,@body))
-	 (package
-	  (loop :for ,var :being :the :symbols :of ,seq-sym
-	     :do ,@body))
-	 #| I might like to have:
-
-	 (collection
-	   (do-forward-iteration ,var ,@body))
-
-	 See wip/collections.lisp.
-	 |#
-	 ))))
-
 #+abcl (defvar *abcl-bug* nil "True if we've already hit the bug.")
 
 ;; I know the args are probably getting stringified then un-stringified,
@@ -1295,7 +1257,8 @@ ORIGINAL is something that a define-alias method is defined for."
 #-(or lispworks clasp)
 (defmacro λ (&whole form &rest bvl-decls-and-body)
    (declare (ignore bvl-decls-and-body))
-   `#'(lambda ,@(cdr form)))
+   ;; `#'(lambda ,@(cdr form)))
+    `(lambda ,@(cdr form)))
 ;; Still doesn't work everywhere? WHY?
 ;; Also this doesn't work: (defalias 'λ 'lambda)
 
@@ -1336,6 +1299,22 @@ previous expression. Return the last expression or NIL."
 			  ,(car x))))
 		   (reverse (rest expressions))))))))
 
+(defmacro -<>> (&rest expressions)
+  "Evalute EXPRESSIONS until one is false, binding <> to the result of the
+previous expression. Return the last expression or NIL."
+  (cond
+    ((not expressions) nil)
+    ((= 1 (length expressions))
+     (car expressions))
+    (t
+     `(let ((<> ,(first expressions)))
+        ,(let (r)
+           (loop :for e :in (rest expressions)
+	      :do (setf r
+			(if r (if (listp e) `(,@r <> ,e) `(,@r <> (,e <>)))
+			    `(setf <> ,(if (listp e) `(,@e) `(,e <>))))))
+           r)))))
+
 ;; @@@ Despite it's popularity, this seems like it might be too seldomly
 ;; used to take the very iconic "->" syntax.
 (defmacro -> (&rest expressions)
@@ -1353,7 +1332,6 @@ into lists so they look like function applications."
 		     (rest expressions))
 	     :initial-value (first expressions)))))
 
-;; @@@ same sentiments as ->
 (defmacro ->> (&rest expressions)
   "Transform the expressions so each expression is the last argument to the
 previous expression. Expressions except the first that aren't lists are made
