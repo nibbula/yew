@@ -815,6 +815,17 @@ in order, \"{open}{close}...\".")
 	 )
     (accept-line e)))
 
+(defmulti insert-last-argument (e)
+  "Insert the last word of the previous history line."
+  (with-slots (non-word-chars) e
+    (let ((x (dl-next (history-head (get-history (history-context e))))))
+      (when x
+	(setf x (osplit-if (_ (oposition _ non-word-chars))
+			   (history-entry-line (dl-content x))))
+	(when (setf x (last x))
+	  (insert e (car x))))))
+  (end-of-line e))
+
 ;; @@@ This shouldn't be in here. Maybe it should be in tiny-repl or lish itself?
 (defsingle pop-to-lish (e)
   "If we're inside lish, throw to a quick exit. If we're not in lish, enter it."
