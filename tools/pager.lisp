@@ -889,7 +889,7 @@ line : |----||-------||---------||---|
       ;; (max 1 (ceiling (display-length *fat-buf*) (tt-width)))
       (max 1 (ceiling len (tt-width))))))
 
-(defun render-span (line-number line)
+(defun pager-render-span (line-number line)
   (with-slots (left show-line-numbers) *pager*
     (let ((*col* 0) (*left* left))
       (when show-line-numbers
@@ -939,8 +939,8 @@ line : |----||-------||---------||---|
 
 (defun display-line (line-number line)
   (typecase (line-text line)
-    (string (render-span line-number (list (line-text line))))
-    (list   (render-span line-number (line-text line)))
+    (string (pager-render-span line-number (list (line-text line))))
+    (list   (pager-render-span line-number (line-text line)))
     (t (error "Don't know how to render a line of ~s~%"
 	      (type-of (line-text line))))))
 
