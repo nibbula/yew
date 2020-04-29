@@ -9,6 +9,7 @@
    #:render-fat-string
    #:render-fatchar
    #:render-fatchar-string
+   #:render-span
    #:print-string
    #:fat-string-output-stream
    #:write-fatchar
@@ -45,15 +46,6 @@
 	 (tt-normal)
 	 ;; This can potentially handle attributes we don't know about.
 	 (tt-set-attributes (fatchar-attrs c))
-	 ;; This won't.
-	 ;; (loop :for a :in (fatchar-attrs c)
-	 ;;    :do
-	 ;;    (case a
-	 ;;      (:normal    (tt-normal))
-	 ;;      (:standout  (tt-standout t))
-	 ;;      (:underline (tt-underline t))
-	 ;;      (:bold      (tt-bold t))
-	 ;;      (:inverse   (tt-inverse t))))
 	 (setf last-attr (fatchar-attrs c)
 	       set-attr t))
        (when (or (not (equal fg (fatchar-fg c)))
@@ -73,14 +65,6 @@
     (tt-normal)
     ;; This can potentially handle attributes we don't know about.
     (tt-set-attributes (fatchar-attrs c))
-    ;; (loop :for a :in (fatchar-attrs c)
-    ;;    :do
-    ;;    (case a
-    ;; 	 (:normal    (tt-normal))
-    ;; 	 (:standout  (tt-standout t))
-    ;; 	 (:underline (tt-underline t))
-    ;; 	 (:bold      (tt-bold t))
-    ;; 	 (:inverse   (tt-inverse t))))
     (tt-color (or (fatchar-fg c) :default) (or (fatchar-bg c) :default))
     (tt-write-char (fatchar-c c))
     ;; It would be more efficient if we didn't have to do this, or even better
@@ -90,6 +74,9 @@
     ;; (tt-color :default :default)
     (tt-normal)
     ))
+
+(defun render-span (span &optional (terminal *terminal*))
+  (span-to-thing span #'render-fatchar terminal))
 
 #|
 (defmethod print-object ((obj fat-string) stream)
