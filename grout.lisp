@@ -9,7 +9,7 @@ few output features when they're available, but fall back to plain text
 when not. This is not for making “fancy” interactive applications. It's just
 for relatively simple output.")
   (:use :cl :dlib :dlib-misc :char-util :opsys :terminal :terminal-ansi
-	:table-print :terminal-table :fatchar)
+	:terminal-dumb-color :table-print :terminal-table :fatchar)
   (:export
    #:grout
    #:grout-stream
@@ -379,7 +379,8 @@ generic functions (i.e. %GROUT-*) directly."
 	    (progn
 	      ;; (dbugf :grout "Grout making a new stream.~%")
 	      ;; (finish-output *debug-io*)
-	      (make-instance 'terminal-ansi-stream
+	      (make-instance ;'terminal-ansi-stream
+	                     'terminal-dumb-color
 			     :output-stream (slot-value o 'stream))))))
 
 (defmethod %grout-supports-attributes ((g ansi-stream))
