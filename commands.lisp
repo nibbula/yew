@@ -1169,20 +1169,24 @@ the current line, or NIL if there is none."
 	       (osubseq (history-entry-line entry) (olength line)))))))))
 
 (defgeneric auto-suggest (e)
-  (:documentation "Show a history suggestion in the line."))
+  (:documentation "Calculate a suggested ending for the current line."))
 
 (defsingle-method auto-suggest (e)
+  "Pick a suggestion from the history, using history-prefix-match-ending."
   (with-slots (buf auto-suggest-rendition suggestion) e
-    (let (ending)
-      (when (and (eobp e) (not (zerop (olength buf)))
-		 (setf ending (history-prefix-match-ending e)))
-	(tt-color (fatchar-fg auto-suggest-rendition)
-		  (fatchar-bg auto-suggest-rendition))
-	(tt-set-attributes (fatchar-attrs auto-suggest-rendition))
-	(tt-save-cursor)
-	(tt-write-string ending)
-	(tt-restore-cursor)
-	(tt-normal))
-      (setf suggestion ending))))
+    (setf suggestion (history-prefix-match-ending e))
+    ;; Now done in display code.
+    ;; (let (ending)
+    ;;   (when (and (eobp e) (not (zerop (olength buf)))
+    ;; 		 (setf ending (history-prefix-match-ending e)))
+    ;; 	(tt-color (fatchar-fg auto-suggest-rendition)
+    ;; 		  (fatchar-bg auto-suggest-rendition))
+    ;; 	(tt-set-attributes (fatchar-attrs auto-suggest-rendition))
+    ;; 	(tt-save-cursor)
+    ;; 	(tt-write-string ending)
+    ;; 	(tt-restore-cursor)
+    ;; 	(tt-normal))
+    ;;   (setf suggestion ending))
+    ))
 
 ;; EOF

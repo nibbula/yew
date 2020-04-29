@@ -414,13 +414,14 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 ;; An update that probably requires an optimizing terminal to be at all
 ;; efficient.
 
-;; Now with more ploof!
+;; Now with even more ploof!
 (defun redraw-display (e &key erase)
   (declare (ignore erase)) ; @@@
   (with-slots ((contexts inator::contexts)
 	       buf-str buf prompt-height start-row start-col
 	       screen-relative-row last-line temporary-message region-active
-	       max-message-lines message-lines message-top message-endings) e
+	       max-message-lines message-lines message-top message-endings
+	       auto-suggest-p suggestion auto-suggest-rendition) e
     (dbugf :rl "----------------~%")
     ;; Make sure buf-str uses buf.
     (when (not (eq (fat-string-string buf-str) buf))
@@ -429,7 +430,6 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
     ;; something did something wrong.
     (assert (<= (inator-point (aref contexts 0))
 		(olength buf-str)))
-
 
     (let* ((prompt (make-prompt e (prompt-string e) (prompt-func e)))
 	   (right-prompt
@@ -473,14 +473,22 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	   new-last-line
 	   erase-lines
 	   old-col
-	   relative-top)
+	   relative-top
+	   buffer
+	   suggest-p)
       (declare (ignorable old-col))
       ;; Line figuring
-      (setf line-end (max 0 (1- (olength buf-str)))
+      (setf suggest-p (and auto-suggest-p suggestion
+			   (eobp e) (not (zerop (olength buf))))
+	    buffer (if suggest-p
+		       (make-compound-string buf-str suggestion)
+		       buf-str)
+            line-end (max 0 (1- (olength buffer)))
 	    first-point (inator-point (aref contexts 0))
 	    spots (list `(,first-point . ()) `(,line-end . ()))
 	    endings (calculate-line-endings e :start-column (1+ prompt-last-col)
-					    :spots spots)
+					    :spots spots
+					    :buffer buffer)
 	    buf-lines (length endings))
       ;; Message figuring
       (setf
@@ -611,9 +619,19 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 		;; (write-multiline-string e s endings)
 		;; (dbugf :rl "highlighted = ~a~%" s)
 		))
-	    (tt-write-string (buf-str e))
-	    ;; (write-multiline-string e (buf-str e) endings)
-	    )
+	    (progn
+	      (tt-write-string buf-str)
+	      (when suggest-p
+		(setf (fatchar-c auto-suggest-rendition) #\x)
+		(tt-write-span
+		 (substitute suggestion "x"
+			     (car (fatchar:fatchar-string-to-span
+				   (vector auto-suggest-rendition)))
+			     :test #'equal)))
+	      ;; (tt-write-string buffer)
+	      ;; (tt-write-string (buf-str e))
+	      ;; (write-multiline-string e (buf-str e) endings)
+	      ))
 	;; (eol-compensate)
 	(tt-erase-to-eol)
 	;;(dbugf :rl "right-prompt ~s ~s~%" right-prompt-start right-prompt)

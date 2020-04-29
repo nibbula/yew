@@ -383,7 +383,8 @@ Keyword arguments:
 
     ;; We have to do this horrible thing before the terminal potentially queries
     ;; the row.
-    (pre-read e)
+    (when (not re-edit)
+      (pre-read e))
 
     #+ccl (setf ccl::*auto-flush-streams* nil)
     #+ccl (ccl::%remove-periodic-task 'ccl::auto-flush-interactive-streams)
@@ -450,14 +451,15 @@ Keyword arguments:
 	(unwind-protect
 	     (progn
 	       ;; (tt-fresh-line)
-	       (pre-read e)
+	       ;; (when (not re-edit)
+	       ;; 	 (pre-read e))
 	       (history-line-open)
 	       (loop :do
 		  (finish-output)
 		  ;;(describe buf *debug-io*)
-		  (update-display e)
 		  (when auto-suggest-p
 		    (auto-suggest e))
+		  (update-display e)
 		  (tt-finish-output)
 		  (when debugging
 		    (message e "~d ~d [~d x ~d] ~a ~w"
