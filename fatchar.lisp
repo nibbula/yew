@@ -39,6 +39,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:span-length
    #:fat-string-to-span
    #:fatchar-string-to-span
+   #:span-to-thing
    #:span-to-fat-string #:ß
    #:span-to-fatchar-string
    #:fatten
@@ -324,6 +325,20 @@ the environemnt has <arg> and <arg>-P for all those keywords."
      count-if (predicate (fat-string-string collection) :from-end from-end
 			 ;; :key (if key #'key-func #'fatchar-c)
 			 ))))
+
+(defmethod ofind ((item character) (string fat-string)
+		  &key from-end key test test-not
+		    (start nil start-p)
+		    (end nil end-p))
+  (declare (ignorable start start-p end end-p))
+  (call-with-start-and-end
+   find
+   (item (fat-string-string string)
+	 :from-end from-end
+	 :test test :test-not test-not
+	 ;; Make the key reach into the fatchar for the character.
+	 :key (or (and key (_ (funcall key (fatchar-c _))))
+		  #'fatchar-c))))
 
 (defmethod oposition ((item fatchar) (string fat-string)
 		      &key from-end test test-not key
@@ -643,17 +658,31 @@ functions."
 
 ;; All the rest that are just wrappers
 (eval-when (:compile-toplevel)
-  (defmacro make-char-wrapper-methods (prefix)
+  (defmacro make-char-wrapper-methods (prefix names)
     (let ((forms
 	   (loop :with func
-	      :for f :in '(alpha-char-p alphanumericp graphic-char-p
-			   char-upcase char-downcase upper-case-p lower-case-p
-			   both-case-p char-code char-int char-name)
+	      :for f :in names
 	      :do
 	      (setf func (symbolify (s+ prefix f)))
 	      :collect `(defmethod ,func ((character fatchar))
 			  (,f (fatchar-c character))))))
       `(progn ,@forms))))
+
+(make-char-wrapper-methods
+ "OCHAR-" (alpha-char-p alphanumericp graphic-char-p
+	    upper-case-p lower-case-p both-case-p))
+
+(make-char-wrapper-methods "O" (char-code char-name))
+
+(defmethod ochar-upcase ((c fatchar))
+  (let ((result (copy-fatchar c)))
+    (setf (fatchar-c result) (char-upcase (fatchar-c c)))
+    result))
+
+(defmethod ochar-downcase ((c fatchar))
+  (let ((result (copy-fatchar c)))
+    (setf (fatchar-c result) (char-downcase (fatchar-c c)))
+    result))
 
 (defmethod ocharacterp ((object fatchar)) T)
 (defmethod odigit-char (weight (type (eql 'fatchar)) &optional radix)
@@ -879,7 +908,7 @@ attr | iiiiiiii
 		:while (not (and did-one (fatchar-diffs last c)))
 		:do
 		(stretchy-append piece (fatchar-c c))
-		(dbugf :fatchar "char ~s ~s ~%" i (fatchar-c c))
+		;; (dbugf :fatchar "char ~s ~s ~%" i (fatchar-c c))
 		(incf i)
 		(setf last (copy-fatchar c)
 		      did-one t))
@@ -893,27 +922,27 @@ attr | iiiiiiii
 		    (and (fatchar-bg a) (equal (fatchar-bg a) (fatchar-bg b))))))
 	 (build-span (type value rendition in)
 	   "Build a span of TYPE and VALUE."
-	   (dbugf :fatchar "build-span ~s ~a ~s ~s~%" type value rendition in)
+	   ;; (dbugf :fatchar "build-span ~s ~a ~s ~s~%" type value rendition in)
 	   (let (sub-span new-type added)
 	     ;; (when pause
 	     ;;   (format *debug-io* "-> ") (finish-output *debug-io*)
 	     ;;   (read-line *debug-io*))
 	     (cond
 	       ((> (length type) 1)
-		(dbugf :fatchar "subtype ~s~%" type)
+		;; (dbugf :fatchar "subtype ~s~%" type)
 		(setf sub-span (span-start (pop type) value))
 		(push (build-span type c rendition (cons (first type) in))
 		      sub-span))
 	       (t
-		(dbugf :fatchar "actual type ~s~%" type)
+		;; (dbugf :fatchar "actual type ~s~%" type)
 		(setf sub-span (span-start (pop type) value))
 		(when (add-chars)
 		  (push (copy-seq piece) sub-span)
 		  (stretchy-truncate piece))
 		(when (< i len)
 		  (setf new-type (fatchar-diffs last c))
-		  (dbugf :fatchar "differnce type ~s ~a ~a~%"
-			 new-type last c)
+		  ;; (dbugf :fatchar "differnce type ~s ~a ~a~%"
+		  ;; 	 new-type last c)
 		  ;; (when (and (not (member (first type) new-type))
 		  ;; 	     (not (intersection new-type in)))
 		  (when (and (sub-rendition-of-p rendition c)
@@ -928,14 +957,14 @@ attr | iiiiiiii
 				;; 		(fatchar-attrs c))
 				)
 			  (when added
-			    (dbugf :fatchar "add attr ~s~%" added)
+			    ;; (dbugf :fatchar "add attr ~s~%" added)
 			    (setf last nil)
 			    (push (build-span new-type c c
 					      (cons (first new-type) in))
 				  sub-span)
 			    (pop new-type)))
 			(progn
-			  (dbugf :fatchar "add color ~s~%" c)
+			  ;; (dbugf :fatchar "add color ~s~%" c)
 			  (setf last nil)
 			  (push (build-span new-type c c
 					    (cons (first new-type) in))
@@ -944,17 +973,18 @@ attr | iiiiiiii
 	     ;; Reverse it and return it.
 	     (setf sub-span (nreverse sub-span))
 	     sub-span)))
-      (dbugf :fatchar "~&############################~%")
-      (dbugf :fatchar "~&### string to span start ###~%")
-      (dbugf :fatchar "~&############################~%")
+      ;; (dbugf :fatchar "~&############################~%")
+      ;; (dbugf :fatchar "~&### string to span start ###~%")
+      ;; (dbugf :fatchar "~&############################~%")
       (loop
 	 :with rendition = (make-fatchar)
 	 :while (< i len)
-	 :do (dbugf :fatchar "Blurp ~s.~%" i)
+	 :do
+	 ;; (dbugf :fatchar "Blurp ~s.~%" i)
 	 (setf c (aref fatchar-string i))
 	 :collect
 	 (let ((cc (build-span (fatchar-diffs rendition c) c rendition nil)))
-	   (dbugf :fatchar "collected ~s~%" cc)
+	   ;; (dbugf :fatchar "collected ~s~%" cc)
 	   cc)))))
 
 (defun fat-string-to-span (fat-string &key (start 0))
@@ -976,6 +1006,7 @@ attr | iiiiiiii
 ;; Wherein I inappropriately appropriate more of latin1.
 (defalias 'ß 'span-to-fat-string)
 
+#|
 ;; @@@ Consider dealing with the overlap between this and terminal:with-style.
 (defun span-to-fatchar-string (span &key (start 0) end fatchar-string
 				      unknown-func filter)
@@ -1096,6 +1127,152 @@ fatchar:*known-attrs*.
 		  (spanky (funcall unknown-func s))))))))
       (spanky span)))
   fatchar-string)
+|#
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *span-grammar* "
+span ->
+  string | fat-string |
+  character | fatchar |
+  span-list
+
+span-list ->
+  ([color-name] [span]*)
+  ([attribute-name] [span]*)
+  (:fg-[color-name] [span]*)
+  (:bg-[color-name] [span]*)
+  (:fg :color [color] [span]*)
+  (:bg :color [color] [span]*)
+")
+
+  (defparameter *span-args*
+"
+Known colors are from color:*simple-colors* and known attributes are in
+fatchar:*known-attrs*.
+
+  - START and END are character index limits.
+  - UNKNOWN-FUNC is a fuction to call with un-recognized attributes, colors, or
+    object types. The primary value is processed. If the second value is true,
+    ignore the rest of the list.
+  - FILTER is a function which is called with every string, which should return
+    similar typed string to use as a replacement."))
+
+(defun span-to-thing (span out-func thing
+		      &key (start 0) end unknown-func filter)
+  #.(s+
+     "Convert a SPAN to something else, by calling OUT-FUNC with succesive
+FATCHARS and THING. A span is a list representation of a attributed string.
+The grammar is something like:
+
+"
+     *span-grammar*
+     *span-args*)
+  (let (fg bg attrs (i 0))
+    (declare (special fg bg attrs))
+    (labels
+	((spanky (s)
+	   (when s
+	     (typecase s
+	       (string
+		(loop :for c :across (if filter (funcall filter s) s)
+		   :do
+		   (when (and (>= i start)
+			      (or (not end) (< i end)))
+		     (funcall out-func
+		      (make-fatchar :c c :fg (car fg) :bg (car bg) :attrs attrs)
+		      thing))
+		   (incf i)))
+	       (fat-string
+		(loop :for c :across (fat-string-string
+				      (if filter (funcall filter s) s))
+		   :do
+		   (when (and (>= i start)
+			      (or (not end) (< i end)))
+		     (funcall out-func
+		      (make-fatchar :c (fatchar-c c)
+				    :fg (fatchar-fg c)
+				    :bg (fatchar-bg c)
+				    :line (fatchar-line c)
+				    :attrs (union attrs (fatchar-attrs c))); <--
+		      thing))
+		   (incf i)))
+	       (character
+		(funcall out-func
+		 (make-fatchar :c s :fg (car fg) :bg (car bg) :attrs attrs)
+		 thing)
+		(incf i))
+	       (list
+		(let* ((f (first s))
+		       (tag (and (or (keywordp f) (symbolp f)) f))
+		       (rest (cdr s))
+		       value ignore-the-rest)
+		  (if tag
+		      (let ((fg fg) (bg bg) (attrs attrs)
+			    (tag-str (string tag)))
+			(declare (special fg bg attrs))
+			(cond
+			  ((and (> (length tag-str) 3)
+				(string= (subseq tag-str 0 3) "FG-"))
+			   (push (keywordify (subseq (string tag) 3)) fg))
+			  ((and (> (length tag-str) 3)
+				(string= (subseq tag-str 0 3) "BG-"))
+			   (push (keywordify (subseq (string tag) 3)) bg))
+			  ((member tag *simple-colors*)
+			   ;; An un-prefixed color is a foreground color.
+			   (push tag fg))
+			  ((member tag *known-attrs*)
+			   (push tag attrs))
+			  ((and (eq tag :fg) (eq (second s) :color))
+			   (push (third s) fg)
+			   (setf rest (cdddr s)))
+			  ((and (eq tag :bg) (eq (second s) :color))
+			   (push (third s) bg)
+			   (setf rest (cdddr s)))
+			  (t
+			   (if unknown-func
+			       (progn
+				 (setf (values value ignore-the-rest)
+				       (funcall unknown-func s))
+				 (spanky value))
+			       (push tag attrs))))
+			;; (format t "tag ~s attrs ~s (cdr s) ~s~%"
+			;; 	tag attrs (cdr s))
+			(when (not ignore-the-rest)
+			  (spanky rest))
+			;;(setf fg nil bg nil)
+			;;(pop attrs)
+			)
+		      (progn
+			(spanky f)
+			(spanky (cdr s))))))
+	       (t
+		(when unknown-func
+		  (spanky (funcall unknown-func s))))))))
+      (spanky span)))
+  thing)
+
+(defun out-to-fatchar-string (fatchar string)
+  (vector-push-extend fatchar string))
+
+(defun span-to-fatchar-string (span &key (start 0) end
+				      unknown-func filter fatchar-string)
+  #.(s+ "Make a FATCHAR-STRING from SPAN. A span is a list representation of a
+fatchar string. The grammar is something like: "
+	*span-grammar*
+	*span-args* "
+  - FATCHAR-STRING can be provided as an already created adjustable string with a
+    fill-pointer to put the result into.")
+
+  (when (not fatchar-string)
+    (setf fatchar-string (make-array 40
+				     :element-type 'fatchar
+				     :initial-element (make-fatchar)
+				     :fill-pointer 0
+				     :adjustable t)))
+  (setf (fill-pointer fatchar-string) 0)
+  (span-to-thing span #'out-to-fatchar-string fatchar-string
+		 :start start :end end :unknown-func unknown-func
+		 :filter filter))
 
 (defun fatten (thing)
   "Turn almost anything into a fat-string."
