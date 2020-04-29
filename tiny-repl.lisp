@@ -208,12 +208,13 @@ The REPL also has a few commands:
 					    prompt))))
       (loop
 	 :do
-	 (dbugf :repl "editor before = ~a~%" editor)
+	 ;; (dbugf :repl "editor before = ~a~%" editor)
 	 (cond
 	   (more
 	    (setf str more)
 	    (setf more nil)
-	    (dbugf :repl "Using MORE~%"))
+	    ;; (dbugf :repl "Using MORE~%")
+	    )
 	   (pre-str
 	    (setf pre-str nil
 		  (values str editor) (call-rl (or prompt-string
@@ -225,7 +226,7 @@ The REPL also has a few commands:
 		  (call-rl (or prompt-string
 			       prompt-func
 			       'repl-output-prompt) nil))))
-	 (dbugf :repl "str = ~s~%editor after = ~a~%" str editor)
+	 ;; (dbugf :repl "str = ~s~%editor after = ~a~%" str editor)
 	 (setf result
 	       (cond
 		 ((and (stringp str) (zerop (length str))) 'repl-empty)
@@ -235,8 +236,8 @@ The REPL also has a few commands:
 		  'repl-real-eof)
 		 ((equal str 'repl-quit) 'repl-quit)
 		 (t
-		  (dbugf :repl "Before read: pre-str = ~w str = ~w~%"
-			 pre-str str)
+		  ;; (dbugf :repl "Before read: pre-str = ~w str = ~w~%"
+		  ;; 	 pre-str str)
 		  (let ((cat (or (and pre-str (s+ pre-str str)) str)))
 		    (multiple-value-bind (obj pos)
 			(block nil
@@ -256,8 +257,9 @@ The REPL also has a few commands:
 	       (if (stringp pre-str)
 		   (s+ pre-str str #\newline)
 		   (s+ str #\newline)))
-	 (dbugf :repl "set pre-str = ~w~%" pre-str)
-	 (dbugf :repl "Do CONTINUE~%"))
+	 ;; (dbugf :repl "set pre-str = ~w~%" pre-str)
+	 ;; (dbugf :repl "Do CONTINUE~%")
+	 )
       result))))
 
 (defun repple-stepper (c)
