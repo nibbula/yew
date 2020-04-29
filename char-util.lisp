@@ -1139,13 +1139,12 @@ GRAPHEME-VARs will be, which defaults to character so it's compatable with a
   "Return the length of the character for display."
   (cond
     ((graphic-char-p c)
-     #+(and unix SLOW-LORIS-UTOPIA-WITH-PREHISTORIC-BIRDS)
-     ;; @@@ Horrible workaround until unicode is fixed.
-     (let ((w (uos:wcwidth (char-code c))))
-       (case w
-	 (-1 0)
-	 (otherwise w)))
-     #-unix
+     ;; #+(and unix SLOW-LORIS-UTOPIA-WITH-PREHISTORIC-BIRDS)
+     ;; ;; @@@ Horrible workaround until unicode is fixed.
+     ;; (let ((w (uos:wcwidth (char-code c))))
+     ;;   (case w
+     ;; 	 (-1 0)
+     ;; 	 (otherwise w)))
      (cond
        ((zero-width-char-p c) 0)
        ((combining-char-p c) 0)
