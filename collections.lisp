@@ -10,29 +10,30 @@
 
 ;; (declaim (optimize (debug 2)))
 
-;; (eval-when (:compile-toplevel :load-toplevel :execute)
-;;   (defmacro stfu-defpackage (name &body body)
-;;     `(if (find-package ,name)
-;; 	 (let (#+sbcl (*on-package-variance* '(:warn (,name) :error t)))
-;; 	   (dlib:without-warning
-;; 	       (defpackage ,name
-;; 		 ,@body)))
-;; 	 (dlib:without-warning
-;; 	     (defpackage ,name
-;; 	       ,@body)))))
-
 ;; @@@ The ‘o’ prefix is rather ugly. We should entertain other naming ideas.
 
-;; (eval-when (:compile-toplevel :load-toplevel :execute)
-;; (stfu-defpackage :collections
-
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (let #+sbcl ((sb-ext:*on-package-variance*
-		(if (>= dlib:*lisp-version-number* 20001)
-		    '(:suppress t) '(:warn t))))
-       #-sbcl ()
-       (defpackage :collections
-	 (:documentation
+  #|
+  (defmacro without-package-variance (&body body)
+    #+sbcl
+    `(let ((sb-ext:*on-package-variance*
+	    (if (>= dlib:*lisp-version-number* 20001)
+		;; '(:ignore t)
+		'(:suppress t)
+		'(:warn t))))
+       (restart-bind
+	   ((package-at-variance-error
+	     (lambda () (invoke-restart 'sb-impl::keep-them)))
+	    (package-at-variance
+	     (lambda () (invoke-restart 'sb-impl::keep-them))))
+	 ,@body))
+    #-sbcl
+    (progn ,@body))
+  |#
+
+  (without-package-variance
+    (defpackage :collections
+      (:documentation
 "Generic collection functions. These aren't so much for the methods defined
 in here, but it's really so you can define your own methods which work
 somewhat orthogonally with system classes. Be warned that using things in here
@@ -40,9 +41,9 @@ can be very slow compared to the similar CL sequence functions. There's some
 pretty foolish implementations in here, in the cause of orthogonality.
 Especially the parts where we rather clownishly dress up hash tables and
 structs as sequences. Also we really need the MOP for stuff.")
-	 (:use :cl)	; Please don't add any dependencies.
-	 (:nicknames :o)) ; too presumptuous, but maybe we could remove the 'o'?
-       ))
+      (:use :cl)	; Please don't add any dependencies.
+      (:nicknames :o)) ; too presumptuous, but maybe we could remove the 'o'?
+    ))
 
 (in-package :collections)
 

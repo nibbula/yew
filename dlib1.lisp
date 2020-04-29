@@ -131,6 +131,7 @@ of it.")
    #-lispworks #:with-unique-names
    #:with-package
    #:ensure-exported
+   #:without-package-variance
    #:shortest-package-nick
    #:not-so-funcall #:symbol-call
    #:refer-to
@@ -1599,6 +1600,24 @@ SYMBOLS is a designator for a symbol or list of symbols like for EXPORT."
      (multiple-value-bind (symbol status) (find-symbol s)
        (when (and symbol (not (eq status :external)))
 	 (export symbol package)))))
+
+(defmacro without-package-variance (&body body)
+  ;; `(let (#+sbcl (sb-ext:*on-package-variance* '(:ignore t)))
+  ;;    ,@body))
+  #+sbcl
+  `(let ((sb-ext:*on-package-variance*
+	  (if (>= dlib:*lisp-version-number* 20001)
+	      ;; '(:ignore t)
+	      '(:suppress t)
+	      '(:warn t))))
+     (restart-bind
+	 ((package-at-variance-error
+	   (lambda () (invoke-restart 'sb-impl::keep-them)))
+	  (package-at-variance
+	   (lambda () (invoke-restart 'sb-impl::keep-them))))
+       ,@body))
+  #-sbcl
+  (progn ,@body))
 
 #| How about not a macro?
 
