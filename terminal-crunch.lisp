@@ -1216,7 +1216,7 @@ optimization."
   ;; Let's just assume it will work.
   )
 
-(defmethod terminal-write-string ((tty terminal-crunch-stream) str
+(defmethod terminal-write-string ((tty terminal-crunch-stream) (str string)
 				  &key start end)
   "Output a string to the terminal."
   (when (copy-to-screen tty str :start start :end end)

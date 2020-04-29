@@ -765,7 +765,9 @@ Report parameters are returned as values. Report is assumed to be in the form:
       ;;(write-string str stream :start start :end end)
       (update-column tty str :start start :end end))))
 
-(defmethod terminal-write-string ((tty terminal-ansi-stream) str
+;; (defmethod terminal-write-string ((tty terminal-ansi-stream) str
+;; 				  &key start end)
+(defmethod terminal-write-string ((tty terminal-ansi-stream) (str string)
 				  &key start end)
   "Output a string to the terminal. Flush output if it contains a newline,
 i.e. the terminal is 'line buffered'."
