@@ -31,7 +31,7 @@
     (progn ,@body))
   |#
 
-  (without-package-variance
+  (dlib:without-package-variance
     (defpackage :collections
       (:documentation
 "Generic collection functions. These aren't so much for the methods defined

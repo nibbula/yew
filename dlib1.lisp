@@ -1608,7 +1608,7 @@ SYMBOLS is a designator for a symbol or list of symbols like for EXPORT."
   `(let ((sb-ext:*on-package-variance*
 	  (if (>= dlib:*lisp-version-number* 20001)
 	      ;; '(:ignore t)
-	      '(:suppress t)
+	      ;; '(:suppress t)
 	      '(:warn t))))
      (restart-bind
 	 ((package-at-variance-error
