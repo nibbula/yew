@@ -162,6 +162,10 @@
 (lish:defcommand view-org
   ((org-files pathname :repeating t :help "Org-mode files to view."))
   "View an Emacs Org mode file with the tree-viewer."
+  (when (and lish:*input* (typep lish:*input* '(or string pathname list)))
+    (setf org-files (append
+		     (if (listp lish:*input*) lish:*input* (list lish:*input*))
+		     org-files)))
   (block nil
     (with-file-list (file org-files)
       (let ((tree (read-org-mode-file file)))
