@@ -2,9 +2,6 @@
 ;;; tiny-repl.lisp - A poor little REPL that works with RL.
 ;;;
 
-;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
-;; 		   (compilation-speed 0)))
-
 (defpackage :tiny-repl
   (:use :common-lisp :terminal :rl :keymap :dlib :dlib-misc :ostring)
   (:documentation "A tiny REPL that works with RL.")
