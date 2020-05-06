@@ -1605,19 +1605,19 @@ SYMBOLS is a designator for a symbol or list of symbols like for EXPORT."
   ;; `(let (#+sbcl (sb-ext:*on-package-variance* '(:ignore t)))
   ;;    ,@body))
   #+sbcl
-  `(let ((sb-ext:*on-package-variance*
-	  (if (>= dlib:*lisp-version-number* 20001)
-	      ;; '(:ignore t)
-	      ;; '(:suppress t)
-	      '(:warn t))))
-     (restart-bind
-	 ((package-at-variance-error
-	   (lambda () (invoke-restart 'sb-impl::keep-them)))
-	  (package-at-variance
-	   (lambda () (invoke-restart 'sb-impl::keep-them))))
-       ,@body))
+  ;; `(let ((sb-ext:*on-package-variance*
+  ;; 	  (if (>= dlib:*lisp-version-number* 20001)
+  ;; 	      ;; '(:ignore t)
+  ;; 	      ;; '(:suppress t)
+  ;; 	      '(:warn t))))
+  `(restart-bind
+       ((package-at-variance-error
+	 (lambda () (invoke-restart 'sb-impl::keep-them)))
+	(package-at-variance
+	 (lambda () (invoke-restart 'sb-impl::keep-them))))
+     (without-warning ,@body))
   #-sbcl
-  (progn ,@body))
+  `(progn ,@body))
 
 #| How about not a macro?
 
@@ -1646,6 +1646,7 @@ SYMBOLS is a designator for a symbol or list of symbols like for EXPORT."
 	(error "Symbol ~s not found in ~s" symbol package))))
 
 (defalias 'symbol-call 'not-so-funcall)
+;; (defalias 'ﬀ 'not-so-funcall)
 
 (defun refer-to (package symbol &rest args)
   "Call or get the value of SYMBOL in PACKAGE."
