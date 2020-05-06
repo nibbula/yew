@@ -13,23 +13,6 @@
 ;; @@@ The ‘o’ prefix is rather ugly. We should entertain other naming ideas.
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  #|
-  (defmacro without-package-variance (&body body)
-    #+sbcl
-    `(let ((sb-ext:*on-package-variance*
-	    (if (>= dlib:*lisp-version-number* 20001)
-		;; '(:ignore t)
-		'(:suppress t)
-		'(:warn t))))
-       (restart-bind
-	   ((package-at-variance-error
-	     (lambda () (invoke-restart 'sb-impl::keep-them)))
-	    (package-at-variance
-	     (lambda () (invoke-restart 'sb-impl::keep-them))))
-	 ,@body))
-    #-sbcl
-    (progn ,@body))
-  |#
 
   (dlib:without-package-variance
     (defpackage :collections
