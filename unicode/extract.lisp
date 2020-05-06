@@ -287,7 +287,7 @@ blank lines."
 		     :collect processed-line)
 		  :columns columns)))))
 
-(defun read-property-range-line (line)
+(defun read-property-range-line (line &key (symbolify t))
   "Read a line of the form:
 FFFF(..FFFF) ; property
 With optional comments starting with *comment-char*."
@@ -299,7 +299,9 @@ With optional comments starting with *comment-char*."
 	(setf line (subseq line 0 pos)))
       (let ((f (split-sequence *field-separator* line)))
 	(setf codepoints (trim (first f))
-	      property (symbolify (trim (second f))))
+	      property (trim (second f)))
+	(when symbolify
+	  (setf property (symbolify property)))
 	(if (setf pos (position #\. codepoints))
 	    (setf start (parse-integer codepoints :radix 16 :end pos)
 		  end (parse-integer codepoints
@@ -307,6 +309,9 @@ With optional comments starting with *comment-char*."
 	    (setf start (parse-integer codepoints :radix 16)
 		  end nil))
 	(vector start end property)))))
+
+(defun read-property-range-string-line (line)
+  (read-property-range-line line :symbolify nil))
 
 (defun get-decomposition-type (string)
   "Return the decomposition type as a keyword from the STRING, or nil if there
@@ -347,6 +352,9 @@ is none."
   (when (not (zerop (length string)))
     (safe-read-from-string string)))
 
+(defparameter *url-prefix*
+  "http://www.unicode.org/Public/UCD/latest/ucd/")
+
 (defparameter *unicode-file-field-count* 15
   "Number of fields in the file, which we have to set manually because it's
 different than the number of slots in the class.")
@@ -354,7 +362,7 @@ different than the number of slots in the class.")
 (defparameter *unicode-file* 
   (make-instance
    'data-file
-   :url "http://ftp.unicode.org/Public/UNIDATA/UnicodeData.txt"
+   :url (s+ *url-prefix* "UnicodeData.txt")
    :columns '((:name "code" :type number)
 	      (:name "name" :type string)
 	      (:name "general-category" :type symbol)
@@ -412,7 +420,7 @@ different than the number of slots in the class.")
 (defparameter *eaw-file*
   (make-instance
    'data-file
-   :url "http://ftp.unicode.org/Public/UNIDATA/EastAsianWidth.txt"
+   :url (s+ *url-prefix* "EastAsianWidth.txt")
    :columns '((:name "Start" :type integer)
 	      (:name "End" :type integer)
 	      (:name "Property" :type keyword))
@@ -421,11 +429,20 @@ different than the number of slots in the class.")
 (defparameter *emoji-file*
   (make-instance
    'data-file
-   :url "https://unicode.org/Public/emoji/5.0/emoji-data.txt"
+   :url (s+ *url-prefix* "emoji/emoji-data.txt")
    :columns '((:name "Start" :type integer)
 	      (:name "End" :type integer)
 	      (:name "Property" :type keyword))
    :process-line #'read-property-range-line))
+
+(defparameter *block-file*
+  (make-instance
+   'data-file
+   :url (s+ *url-prefix* "Blocks.txt")
+   :columns '((:name "Start" :type integer)
+	      (:name "End" :type integer)
+	      (:name "Property" :type string))
+   :process-line #'read-property-range-string-line))
 
 (defun check-hashes (output-file)
   "Compare the hashes in the OUTPUT-FILE with the downloaded files, and return
@@ -515,5 +532,10 @@ file, re-create the file.
 	(format *log* "Output to ~s~%" output-file)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun lookat (filename)
+  (symbol-call :table-viewer :view-table
+    (data-file-data
+     (find-if (_ (equalp filename (data-file-name _))) *files*))))
 
 ;; End
