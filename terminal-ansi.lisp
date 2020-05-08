@@ -332,7 +332,7 @@ the typeahead."
 			      #| :omit-tag-p t |#
 			      :timeout timeout
 			      :errorp errorp)))
-    (if (zerop (length response))
+    (if (or (not response) (zerop (length response)))
 	'(nil nil nil)
 	(mapcar (_ (ignore-errors (parse-integer _)))
 		(split-sequence
@@ -625,7 +625,16 @@ Only replace in START and END range."
 
 (defgeneric terminal-raw-format (tty fmt &rest args))
 ;;(defmethod terminal-raw-format ((tty terminal-ansi-stream) fmt &rest args)
-(defmethod terminal-raw-format ((tty terminal) fmt &rest args)
+
+(defmethod terminal-raw-format ((tty terminal-ansi-stream) fmt &rest args)
+  "Output a formatted string to the terminal, without doing any content
+processing."
+  ;; (let ((string (apply #'format nil fmt args))
+  ;; 	(stream (terminal-output-stream tty)))
+  ;;   (write-string string stream)))
+  (apply #'format (terminal-output-stream tty) fmt args))
+
+(defmethod terminal-raw-format ((tty terminal-ansi) fmt &rest args)
   "Output a formatted string to the terminal, without doing any content
 processing."
   ;; (let ((string (apply #'format nil fmt args))
@@ -1234,7 +1243,9 @@ i.e. the terminal is 'line buffered'."
 (defparameter *emulators*
   #((19    330 :xterm)
     ( 0    115 :konsole) ;; or maybe qterminal
+    ;; ( 0     95 :iterm)
     ( 1   3600 :vte)
+    ;; ( 1     95 :terminal.app)
     (24    279 :mlterm)
     (41    285 :terminology)
     (83  40602 :screen)
@@ -1248,7 +1259,7 @@ i.e. the terminal is 'line buffered'."
   (or (emulator tty)
       (setf (emulator tty)
 	    (destructuring-bind (type firmware rom)
-		(query-parameters ">0c" :tty tty)
+		(query-parameters ">0c" :tty tty :timeout 0.05 :errorp nil)
 	      (declare (ignore rom))
 	      (let ((e (find type *emulators* :key #'car)))
 		(if e
@@ -1333,7 +1344,7 @@ i.e. the terminal is 'line buffered'."
 		 ;; This is stupid and wrong. But how else can we guess?
 		 (cond
 		   ((equal (nos:env "COLORTERM") "truecolor")
-		    ;; no really "true" color
+		    ;; not really "true" color
 		    ;; (* 256 256 256)
 		    256)
 		   ((equal (nos:env "COLOR_TERM") "true")
