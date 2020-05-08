@@ -201,7 +201,7 @@ to be given to CHAR-SETTER."
         ((< code #x800) 2)
         ((< code #x10000) 3)
         ((< code #x110000) 4)
-        (t (error "character code to big for UTF-8 #x~x" code))))
+        (t (error "character code too big for UTF-8 #x~x" code))))
 
 (defun length-in-utf8-bytes (code)
   (typecase code
