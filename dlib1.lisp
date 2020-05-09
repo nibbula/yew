@@ -9,7 +9,7 @@
 ;;  - Try to keep it so-called "minimal".
 ;; More optional stuff can go in dlib-misc.
 
-#+debug-rc (progn (format t "dlib") (force-output *standard-output*))
+#+debug-rc (progn (format *terminal-io* "dlib") (force-output *terminal-io*))
 
 (when (find-package :the-real-fake-dlib)
   (cerror "Go ahead and load the real DLIB anyway."
