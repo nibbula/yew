@@ -1681,18 +1681,27 @@ with the same name. If it's a macro, pass MACRO as true, mmkay?"
 	     `(apply (intern (string ',symbol) ,system) args)))
 	;;(symbol-string (string symbol))
 	)
-    `(,(if macro 'defmacro 'defun) ,symbol (&rest args)
-       ,doc-string
-       (asdf:load-system ,system)
-       (unintern-conflicts *package* ,system)
-       ;;(unintern (find-symbol ,symbol-string) ,*package*)
-       ;;(unintern ,symbol ,*package*)
-       ;;(unintern (make-symbol ,symbol-string) *package*)
-       (use-package ,system)
-       ;(import (find-symbol ,symbol-string ,system))
-       (when (not (fboundp ',symbol))
-	 (error "Autoload of ~a didn't define ~a." ,system ',symbol))
-       ,doit)))
+    (if (and (asdf:find-system system)
+	     (find-package system)
+	     (let ((sym (find-symbol (symbolify symbol) system)))
+	       (and sym (fboundp sym))))
+	`(progn
+	   ;; Don't do anything if it's already loaded, except use it.
+	   ;; (unintern-conflicts *package* ,system)
+	   ;; (use-package ,system)
+	   )
+	`(,(if macro 'defmacro 'defun) ,symbol (&rest args)
+	   ,doc-string
+	   (asdf:load-system ,system)
+	   (unintern-conflicts *package* ,system)
+	   ;;(unintern (find-symbol ,symbol-string) ,*package*)
+	   ;;(unintern ,symbol ,*package*)
+	   ;;(unintern (make-symbol ,symbol-string) *package*)
+	   (use-package ,system)
+	   ;;(import (find-symbol ,symbol-string ,system))
+	   (when (not (fboundp ',symbol))
+	     (error "Autoload of ~a didn't define ~a." ,system ',symbol))
+	   ,doit))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; I/O
