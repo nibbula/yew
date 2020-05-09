@@ -4,7 +4,8 @@
 
 (defpackage :grep
   (:documentation "Regular expression search in streams.")
-  (:use :cl :cl-ppcre :opsys :dlib :grout :fatchar :stretchy :char-util)
+  (:use :cl :cl-ppcre :opsys :dlib :grout :fatchar :stretchy
+	:char-util)
   (:export
    #:grep
    #:grep-files
@@ -521,6 +522,7 @@ it's only quiet if the receiving command accepts sequences.")
 	  (grep-files (or pattern pattern-expression)
 		      :input-lines (and (not input-as-files)
 					(not (streamp lish:*input*))
+					(typep lish:*input* 'sequence)
 					lish:*input*)
 		      :files
 		      (or files (and lish:*input*
