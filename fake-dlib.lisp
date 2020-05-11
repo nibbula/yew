@@ -33,6 +33,7 @@ will disappear, when we resolve the issues with dlib.")
    #:without-warning
    #:define-alias
    #:defalias
+   #:symbolify
    #:keywordify
    #:symbol-call
    #:clamp
@@ -183,6 +184,19 @@ Otherwise, return N."
     ((< n start) start)
     ((> n end) end)
     (t n)))
+
+(defun symbolify (string &key (package *package*) no-new)
+  "Return a symbol, interned in PACKAGE, represented by STRING, after possibly
+doing conventional case conversion. The main reason for this function is to
+wrap the case conversion on implementations that need it. If NO-NEW is true,
+never create a new symbol, and return NIL if the symbol doesn't already exist."
+  (etypecase string
+    (string
+     (if no-new
+	 (find-symbol (string-upcase string) package)
+	 (intern (string-upcase string) package)))
+    (symbol
+     string)))
 
 (defun keywordify (string)
   "Make a keyword from a string."
