@@ -634,6 +634,14 @@ processing."
   ;;   (write-string string stream)))
   (apply #'format (terminal-output-stream tty) fmt args))
 
+(defmethod terminal-raw-format ((tty terminal-color-mixin) fmt &rest args)
+  "Output a formatted string to the terminal, without doing any content
+processing."
+  ;; (let ((string (apply #'format nil fmt args))
+  ;; 	(stream (terminal-output-stream tty)))
+  ;;   (write-string string stream)))
+  (apply #'format (terminal-output-stream tty) fmt args))
+
 (defmethod terminal-raw-format ((tty terminal-ansi) fmt &rest args)
   "Output a formatted string to the terminal, without doing any content
 processing."
