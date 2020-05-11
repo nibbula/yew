@@ -47,6 +47,7 @@ will disappear, when we resolve the issues with dlib.")
    #:flatten
    #:+simple-condition-format-control-slot+
    #:+simple-condition-format-arguments-slot+
+   #:function-designator
    #:dbugf
    ))
 (in-package :fake-dlib)
@@ -424,6 +425,10 @@ matches SYMBOL."
 (defparameter +simple-condition-format-arguments-slot+
   (find-slot-name 'simple-condition 'format-arguments)
   "Name of the slot that simple-condition-format-arguments accesses.")
+
+(deftype function-designator ()
+  "Something that denotes a function."
+  `(or function symbol null))
 
 ;; This is even a fake dbugf!! 
 (defmacro dbugf (facility fmt &rest args)
