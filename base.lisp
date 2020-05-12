@@ -144,6 +144,7 @@
    #:os-character-output-stream
    #:os-stream-column
    #:os-character-io-stream
+   #:os-file-error
    #:+buffer-size+
    #:+input-buffer-size+
    #:+output-buffer-size+
