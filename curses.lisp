@@ -1,13 +1,6 @@
-;;
-;; curses.lisp - Interface to the curses library
-;;
-
-;; TODO:
-;;   - fix bugs?
-;;     - line drawing chars on 64 bit?
-;;   - Add all the missing functions!
-;;   - More tests, with better coverage
-;;   - Finish adding docstrings
+;;;
+;;; curses.lisp - Interface to the curses library
+;;;
 
 #+cl-ncurses
 (eval-when (:load-toplevel :execute)
@@ -58,6 +51,7 @@ loading this library.")
    #:+ERR+ #:+OK+
    ;; variables
    #:*cols* #:*lines* #:*colors* #:*color-pairs* #:*stdscr*
+   #:*has-extended-colors*
    ;; attrs
    #:+a-normal+ #:+a-attributes+ #:+a-chartext+ #:+a-color+ #:+a-standout+
    #:+a-underline+ #:+a-reverse+ #:+a-blink+ #:+a-dim+ #:+a-bold+
@@ -160,6 +154,8 @@ loading this library.")
    #:wcolor-set #:standend #:wstandend #:standout #:wstandout #:bkgd #:wbkgd
    #:bkgdset #:wbkgdset #:getbkgd
    #:color-pair #:pair-number
+   #:init-extended-pair #:init-extended-color
+   #:extended-color-content #:extended-pair-content
    #:border #:wborder #:box
    #:hline #:whline #:vline #:wvline #:mvhline #:mvwhline #:mvvline #:mvwvline
    #:napms
@@ -178,7 +174,7 @@ loading this library.")
 )
 (in-package :curses)
 
-(defvar *this-is-it* t "The only one.")
+(defvar *this-is-it* t "The only one.") ; Yes, but actually, no.
 
 ;; If :curses-dont-use-wide is NOT in *features*, then use the wide character
 ;; version of the library. If :curses-use-ncurses is in *features* then use
@@ -235,6 +231,13 @@ loading this library.")
   ;; @@@ Is this a version or platform difference?
   #+freebsd (pushnew :curses-missing-use-tioctl *features*)
   )
+
+(defvar *has-extended-colors* nil
+  "True if this curses can use the extended color functions.")
+
+(when (cffi:foreign-symbol-pointer "init_extended_pair" :library 'libcurses)
+  (setf *has-extended-colors* t)
+  (pushnew :curses-has-extended-colors *features*))
 
 #|
 (define-foreign-library libcurses
@@ -1072,47 +1075,109 @@ of these, in which case it returns ERR."
 ;; Color and attributes
 (defcfun start-color :int
   "Enable use of color and initialize color variables.")
+
 (defcfun has-colors bool "True if the terminal has color capability.")
+
 (defcfun can-change-color bool "True if colors can be changed.")
 ;(defcfun init-pair :int (pair short) (fg short) (bg short))
+
 (defcfun init-pair :int 
   "Initialize a color pair to use foreground color FG and background color BG."
   (pair :int) (fg :int) (bg :int))
-(defcfun color-content :int
+
+(defcfun ("color_content" %color-content) :int
   "Return the amount of RED, GREEN and BLUE in a color."
   (color :int)
   (red (:pointer :int)) (green (:pointer :int)) (blue (:pointer :int)))
-(defcfun pair-content :int
+
+(defun color-content (color)
+  "Return the amount of red, green and blue in a color."
+  (with-foreign-objects ((r :int) (g :int) (b :int))
+    (%color-content color r g b)
+    (values (and (not (null-pointer-p r)) (mem-ref r :int))
+	    (and (not (null-pointer-p g)) (mem-ref g :int))
+	    (and (not (null-pointer-p b)) (mem-ref b :int)))))
+
+(defcfun ("pair_content" %pair-content) :int
   "Return the foreground FG and background BG for a color pair."
   (pair :int) (fg (:pointer :int)) (bg (:pointer :int)))
+
+(defun pair-content (pair)
+  "Return the foreground and background for a color pair."
+  (with-foreign-objects ((fg :int) (bg :int))
+    (%pair-content pair fg bg)
+    (values (and (not (null-pointer-p fg)) (mem-ref fg :int))
+	    (and (not (null-pointer-p bg)) (mem-ref bg :int)))))
+
+#+curses-has-extended-colors
+(when *has-extended-colors*
+  (defcfun init-extended-pair :int
+    (pair :int) (fg :int) (bg :int))
+
+  (defcfun init-extended-color :int
+    (color :int) (r :int) (g :int) (b :int))
+
+  (defcfun ("extended_color_content" %extended-color-content) :int
+    "Return the amount of RED, GREEN and BLUE in an extended color."
+    (color :int)
+    (red (:pointer :int)) (green (:pointer :int)) (blue (:pointer :int)))
+
+  (defun extended-color-content (color)
+    "Return the amount of red, green and blue in a color."
+    (with-foreign-objects ((r :int) (g :int) (b :int))
+      (%extended-color-content color r g b)
+      (values (and (not (null-pointer-p r)) (mem-ref r :int))
+	      (and (not (null-pointer-p g)) (mem-ref g :int))
+	      (and (not (null-pointer-p b)) (mem-ref b :int)))))
+
+  (defcfun ("extended_pair_content" %extended-pair-content) :int
+    "Return the foreground FG and background BG for a color pair."
+    (pair :int) (fg (:pointer :int)) (bg (:pointer :int)))
+
+  (defun extended-pair-content (pair)
+    "Return the foreground and background for a color pair."
+    (with-foreign-objects ((fg :int) (bg :int))
+      (%extended-pair-content pair fg bg)
+      (values (and (not (null-pointer-p fg)) (mem-ref fg :int))
+	      (and (not (null-pointer-p bg)) (mem-ref bg :int))))))
+
 (defcfun ("COLOR_PAIR" color-pair) :int
   "Return a video attribute given an initialized color pair N."
   (n :int))
+
 (defcfun ("PAIR_NUMBER" pair-number) :int
   "Extract the color value from ATTRS and return a color pair number."
   (attrs :int))
+
 (defcfun attron :int
   "Turns on the given attributes without affecting any others."
   (attrs :int))
+
 (defcfun wattron :int
   "Turns on the given attributes in the window without affecting any others."
   (win window-ptr :in) (attrs :int))
+
 (defcfun attroff :int
   "Turns off the given attributes without affecting any others."
   (attrs :int))
+
 (defcfun wattroff :int
   "Turns off the given attributes in the window without affecting any others."
   (win window-ptr :in) (attrs :int))
+
 (defcfun attrset :int
   "Sets the current attributes of the window to ATTRS."
   (attrs :int))
+
 (defcfun wattrset :int
   "Sets the current attributes of the given window to ATTRS."
   (win window-ptr :in) (attrs :int))
+
 (defcfun color-set :int
   "Sets the current color of the given window to the foreground/background
 combination given in COLOR-PAIR-NUMBER. OPT is reserved and should be null."
   (color-pair-number :int) (opt :pointer))
+
 (defcfun wcolor-set :int
   "Sets the current color of the given window to the foreground/background
 combination given in COLOR-PAIR-NUMBER. OPT is reserved and should be null."
