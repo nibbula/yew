@@ -44,6 +44,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:span-to-fatchar-string
    #:fatten
    #:get-nearest-xterm-color-index
+   #:*xterm-256-color-table*
    #:process-ansi-colors
    #:remove-effects
    ))
