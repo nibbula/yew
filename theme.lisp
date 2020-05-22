@@ -692,6 +692,8 @@ Something like the default setting of typical GNU tools."))))
        (:program :label		       :style)     (:cyan)
        (:program :data		       :style)     (:green)
        (:program :meter		       :character) #.(code-char #x2592)
+       (:program :suggestion           :style)
+       (:fg :color #(:rgb8 #x50 #x50 #x50))
        ))
     tt))
 
@@ -704,7 +706,8 @@ Something like the default setting of typical GNU tools."))))
       (:command :builtin-command   :style) (:magenta)
       (:command :shell-command     :style) (:magenta)
       (:command :loadable-system   :style) (:magenta)
-      (:command :alias		   :style) (:magenta :bold))))
+      (:command :alias		   :style) (:magenta :bold)
+      (:program :suggestion        :style) (:fg :black :bold))))
 
 (defun default-theme-16-color ()
   "Default theme for 16-color"

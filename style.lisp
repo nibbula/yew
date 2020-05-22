@@ -1,6 +1,6 @@
-;;
-;; style.lisp - Functions for styled objects.
-;;
+;;;
+;;; style.lisp - Functions for styled objects.
+;;;
 
 (defpackage :style
   (:documentation "Functions for styled objects.")
