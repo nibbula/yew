@@ -235,7 +235,8 @@ loading this library.")
 (defvar *has-extended-colors* nil
   "True if this curses can use the extended color functions.")
 
-(when (cffi:foreign-symbol-pointer "init_extended_pair" :library 'libcurses)
+(when (ignore-errors
+	(cffi:foreign-symbol-pointer "init_extended_pair" :library 'libcurses))
   (setf *has-extended-colors* t)
   (pushnew :curses-has-extended-colors *features*))
 
