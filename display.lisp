@@ -421,7 +421,7 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	       buf-str buf prompt-height start-row start-col
 	       screen-relative-row last-line temporary-message region-active
 	       max-message-lines message-lines message-top message-endings
-	       auto-suggest-p suggestion auto-suggest-rendition) e
+	       auto-suggest-p suggestion auto-suggest-style) e
     (dbugf :rl "----------------~%")
     ;; Make sure buf-str uses buf.
     (when (not (eq (fat-string-string buf-str) buf))
@@ -622,12 +622,15 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	    (progn
 	      (tt-write-string buf-str)
 	      (when suggest-p
-		(setf (fatchar-c auto-suggest-rendition) #\x)
-		(tt-write-span
-		 (substitute suggestion "x"
-			     (car (fatchar:fatchar-string-to-span
-				   (vector auto-suggest-rendition)))
-			     :test #'equal)))
+		(tt-write-string
+		 (styled-string auto-suggest-style suggestion))
+		;; (setf (fatchar-c auto-suggest-rendition) #\x)
+		;; (tt-write-span
+		;;  (substitute suggestion "x"
+		;; 	     (car (fatchar:fatchar-string-to-span
+		;; 		   (vector auto-suggest-rendition)))
+		;; 	     :test #'equal))
+		)
 	      ;; (tt-write-string buffer)
 	      ;; (tt-write-string (buf-str e))
 	      ;; (write-multiline-string e (buf-str e) endings)

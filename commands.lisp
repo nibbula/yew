@@ -1173,20 +1173,10 @@ the current line, or NIL if there is none."
 
 (defsingle-method auto-suggest (e)
   "Pick a suggestion from the history, using history-prefix-match-ending."
-  (with-slots (buf auto-suggest-rendition suggestion) e
-    (setf suggestion (history-prefix-match-ending e))
-    ;; Now done in display code.
-    ;; (let (ending)
-    ;;   (when (and (eobp e) (not (zerop (olength buf)))
-    ;; 		 (setf ending (history-prefix-match-ending e)))
-    ;; 	(tt-color (fatchar-fg auto-suggest-rendition)
-    ;; 		  (fatchar-bg auto-suggest-rendition))
-    ;; 	(tt-set-attributes (fatchar-attrs auto-suggest-rendition))
-    ;; 	(tt-save-cursor)
-    ;; 	(tt-write-string ending)
-    ;; 	(tt-restore-cursor)
-    ;; 	(tt-normal))
-    ;;   (setf suggestion ending))
-    ))
+  (with-slots (buf auto-suggest-style suggestion) e
+    (setf suggestion (history-prefix-match-ending e)
+	  auto-suggest-style
+	  (or (theme-value *theme* '(:program :suggestion :style))
+	      auto-suggest-style))))
 
 ;; EOF

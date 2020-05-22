@@ -198,11 +198,12 @@ works for database formats.")
     :accessor line-editor-auto-suggest-p :initform t :type boolean
     :documentation
     "True to automatically suggest stuff.")
-   (auto-suggest-rendition
-    :initarg :auto-suggest-rendition
-    :accessor line-editor-auto-suggest-rendition
-    :initform (make-fatchar :fg #(:rgb8 #x50 #x50 #x50)) :type fatchar
-    :documentation "The character effects for the suggestion.")
+   (auto-suggest-style
+    :initarg :auto-suggest-style
+    :accessor line-editor-auto-suggest-style
+    ;;:initform (make-fatchar :fg #(:rgb8 #x50 #x50 #x50)) :type fatchar
+    :initform '(:fg :color #(:rgb8 #x50 #x50 #x50)) :type list
+    :documentation "The style for the suggestion.")
    (suggestion
     :initarg :suggestion :accessor line-editor-suggestion :initform nil 
     :documentation "The thing that was last suggested.")

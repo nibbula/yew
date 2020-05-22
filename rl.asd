@@ -15,7 +15,7 @@
 	       :opsys :terminal :terminal-ansi :terminal-dumb :terminal-crunch
 	       :collections :ochar :fatchar :fatchar-io :completion :keymap
 	       :syntax-lisp :unipose :inator :terminal-inator :theme :ostring
-	       :spot :options :compound-string
+	       :spot :options :compound-string :style
 	       (:feature :t-rl-config-use-sqlite :clsql)
 	       (:feature :t-rl-config-use-sqlite :clsql-sqlite3)
 	       )
