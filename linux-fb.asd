@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description   "Interface to the Linux framebuffer device."
     :depends-on (:dlib :opsys :cffi :table :table-print :collections :color
-		 :image)
+		 :image :renderp)
     :components
     ((:file "linux-fb")))

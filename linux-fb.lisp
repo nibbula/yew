@@ -4,7 +4,8 @@
 
 (defpackage :linux-fb
   (:documentation "Interface to the Linux framebuffer device.")
-  (:use :cl :dlib :opsys :opsys-unix :cffi :table :table-print :collections)
+  (:use :cl :dlib :opsys :opsys-unix :cffi :table :table-print :collections
+	:renderp)
   (:export
    #:memory-region
    #:memory-region-start
@@ -32,12 +33,16 @@
    #:start
    #:describe-framebuffer
    #:done
+   #:*framebuffer*
    #:context
    #:context-fb
    #:context-mem
    #:context-stride
    #:*context*
    #:new-gc
+   #:ensure-framebuffer
+   #:ensure-gcontext
+   #:with-fb
    #:pixel-to-color
    #:color-pixel
    #:get-pixel
@@ -45,7 +50,7 @@
    #:rectangle
    #:rectangle-fill
    #:line
-   #:show-off
+   #:put-image
    ))
 (in-package :linux-fb)
 
@@ -463,6 +468,9 @@
 (defconstant +FB-BACKLIGHT-LEVELS+ 128)
 (defconstant +FB-BACKLIGHT-MAX+    #xFF)
 
+(defvar *framebuffer* nil
+  "The framebuffer.")
+
 (defun start (&key (device-name "/dev/fb0"))
   "Start using the framebuffer in DEVICE-NAME. Return a FRAMEBUFFER structure.
 DONE should be called when done using it to free resources."
@@ -564,7 +572,25 @@ DONE should be called when done using it to free resources."
 	   :fb fb
 	   :mem (memory-region-start (framebuffer-memory fb))
 	   :stride (/ (framebuffer-line-length fb) bytes-per-pixel)))))
-	
+
+(defun ensure-framebuffer ()
+  "Make sure *framebuffer* is the open framebuffer."
+  (when (not *framebuffer*)
+    (setf *framebuffer* (start))))
+
+(defun ensure-gcontext ()
+  "Make sure *context* is set."
+  (ensure-framebuffer)
+  (when (not *context*)
+    (setf *context* (new-gc *framebuffer*))))
+
+;; This isn't really like a normal with, since it keeps the framebuffer and
+;; context around, assuming you only ever really want one.
+(defmacro with-fb (() &body body)
+  `(progn
+     (ensure-gcontext)
+     ,@body))
+
 (defmacro pixel-at (x y mem stride)
   `(mem-aref ,mem :uint32 (+ (* ,y ,stride) ,x)))
 
@@ -575,6 +601,7 @@ DONE should be called when done using it to free resources."
 
 (defun set-pixel (x y pixel)
   "Set a pixel at X Y in FB to PIXEL."
+  ;; (dbugf :pixel "set-pixel ~s ~s ~s~%" x y pixel)
   (let ((mem (context-mem *context*))
 	(stride (context-stride *context*)))
     (setf (pixel-at x y mem stride) pixel)))
@@ -600,6 +627,7 @@ DONE should be called when done using it to free resources."
     ;;(loop :for x :from x1 :below x2 :do (set-pixel x  y2 pixel)))
     (scanline-set x1 y2 (- x2 x1) pixel mem stride)))
 
+#|
 (defun line (start-x start-y end-x end-y pixel)
   (let* ((x-inc (signum (- end-x start-x)))
 	 (y-inc (signum (- end-y start-y)))
@@ -640,6 +668,9 @@ DONE should be called when done using it to free resources."
 	   ;;(tt-format "x = ~s y = ~s" x y)
 	   ;;(tt-get-key)
 	   )))))
+|#
+
+(define-draw-line line set-pixel)
 
 (defun clip-rect (x y end-x end-y)
   "Return the input rectangle clipped to the framebuffer."
@@ -653,6 +684,7 @@ DONE should be called when done using it to free resources."
       (clip-rect x y
 		 (+ x (image:image-width image))
 		 (+ y (image:image-height image)))
+    ;; (format t "clip ~s ~s ~s ~s~%" cx cy cw ch)
     (let* ((data (image:sub-image-data
 		  (aref (image:image-subimages image) subimage)))
 	   ;; (step (max 1 (round 1 scale)))
@@ -662,6 +694,7 @@ DONE should be called when done using it to free resources."
 		     (- (+ x (image:image-width image)) cw)))
 	   (end-y (- (image:image-height image)
 		     (- (+ y (image:image-height image)) ch))))
+      ;; (format t "rect ~s ~s ~s ~s~%" start-x start-y end-x end-y)
       (when (and (plusp (- end-y start-y))
 		 (plusp (- end-x start-x)))
 	(loop :for iy :from start-y :below end-y :do

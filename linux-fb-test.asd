@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Tests for Linux framebuffer"
-    :depends-on (:dlib :linux-fb :terminal)
+    :depends-on (:dlib :linux-fb :terminal :image :glob)
     :components
     ((:file "linux-fb-test")))
