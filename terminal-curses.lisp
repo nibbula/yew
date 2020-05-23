@@ -1,6 +1,6 @@
-;;
-;; terminal-curses.lisp - Curses terminal
-;;
+;;;
+;;; terminal-curses.lisp - Curses terminal
+;;;
 
 (defpackage :terminal-curses
   (:documentation "Curses terminal")
@@ -61,6 +61,47 @@
   (loop :for (uc . ac) :in *acs-table-data* :do
      (setf (gethash uc *acs-table*) ac)))
 
+(defclass color-izer ()
+  ((pair-count
+    :initarg :pair-count :accessor pair-count :initform 0 :type fixnum
+    :documentation "The number of color pairs allocated.")
+   (color-table
+    :initarg :color-table :accessor color-table
+    :documentation "Table of color pair numbers.")
+   (pair-color-table
+    :initarg :pair-color :accessor pair-color-table
+    :documentation
+    "Table of pair numbers to forground and background colors. Elements are a
+cons of (foreground . backaground)"))
+  (:documentation
+   "An object to encapsulate color handling for different amounts of colors."))
+
+(defgeneric make-color-tables (color-izer)
+  (:documentation "Make the color tables for a color-izer."))
+
+(defgeneric make-color-pair (color-izer fg bg)
+  (:documentation
+   "Make a new color pair for the color numbers FG and BG, and return the pair
+number."))
+
+(defgeneric color-init (color-izer)
+  (:documentation ""))
+
+(defgeneric color-number (color-izer color)
+  (:documentation "Return the curses color number given a color."))
+
+(defgeneric color-name (color-izer color-number)
+  (:documentation "Return the color name keyword given a curses color number."))
+
+(defgeneric index-color (color-izer color-number)
+  (:documentation "Return the color given a curses color number."))
+
+(defgeneric get-pair (color-izer fg bg)
+  (:documentation "Return the color pair for FG and BG."))
+
+(defgeneric pair-color (color-izer pair-number)
+  (:documentation "Return a cons of (FG . BG) for the PAIR-NUMBER."))
+
 ;; @@@ Does this even make sense?
 (defclass terminal-curses-stream (terminal-stream)
   ()
@@ -97,6 +138,9 @@ set.")
     :initarg :delay-scroll :accessor delay-scroll :initform nil :type boolean
     :documentation
     "True to delay scrolling until the next character is output.")
+   (start-line
+    :initarg :start-line :accessor start-line :initform 0
+    :documentation "Line we started at.")
    (default-fg
     :initarg :default-fg :accessor default-fg :initform :white
     :documentation "Default foreground color.")
@@ -106,13 +150,9 @@ set.")
    (has-color-p
     :initarg :has-color-p :accessor has-color-p :initform nil :type boolean
     :documentation "True if the device has color.")
-   (color-table
-    :initarg :color-table :accessor color-table
-    :documentation "Table of color pair numbers.")
-   (pair-color-table
-    :initarg :pair-color :accessor pair-color-table
-    :documentation "Table of pair numbers to forground and background colors.
-Elements are a cons of (foreground . backaground)"))
+   (color-izer
+    :initarg :color-izer :accessor color-izer
+    :documentation "The color handling object."))
   (:documentation "A terminal using the curses library."))
 
 (defmethod terminal-default-device-name ((type (eql 'terminal-curses)))
@@ -120,10 +160,7 @@ Elements are a cons of (foreground . backaground)"))
   ;; This is silly.
   "stdscr")
 
-(defmethod initialize-instance
-    :after ((o terminal-curses) &rest initargs &key &allow-other-keys)
-  "Initialize a terminal-curses."
-  (declare (ignore initargs))
+(defun initialize-device (o)
   (with-slots (device term-type in-fp out-fp screen) o
     (when (not term-type)
       (setf term-type (nos:environment-variable "TERM")))
@@ -135,6 +172,12 @@ Elements are a cons of (foreground . backaground)"))
       (when (cffi:null-pointer-p
 	     (setf screen (newterm term-type out-fp in-fp)))
 	(error "Can't initialize curses terminal ~a" term-type)))))
+
+(defmethod initialize-instance
+    :after ((o terminal-curses) &rest initargs &key &allow-other-keys)
+  "Initialize a terminal-curses."
+  (declare (ignore initargs))
+  (initialize-device o))
 
 (defmethod terminal-get-size ((tty terminal-curses))
   "Get the window size from the kernel and store it in tty."
@@ -168,36 +211,154 @@ Elements are a cons of (foreground . backaground)"))
     (:white 	. ,+color-white+))
   "Associate symbols with color numbers.")
 
+(defun init-8-colors (o)
+  "Initialize the first 64 color pairs of the standard 8 colors."
+  (let ((ncolors 8))
+    (loop :for fg :from (- ncolors 1) :downto 0 :do
+       (loop :for bg :from 0 :below ncolors :do
+	  (make-color-pair o fg bg)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defclass color-izer-8 (color-izer)
+  ()
+  (:documentation "A color-izer for only 8 colors."))
+
+(defmethod make-color-tables ((o color-izer-8))
+  (let ((ncolors 8))
+    (setf (color-table o) (make-array (list ncolors ncolors))
+	  (pair-color-table o) (make-array (* ncolors ncolors)))))
+
+(defmethod make-color-pair ((o color-izer-8) fg bg)
+  (with-slots (pair-count) o
+    (when (plusp pair-count) ;; Pair 0 defaults to WHITE on BLACK
+      (init-pair pair-count fg bg))
+    (setf (aref (color-table o) fg bg) pair-count
+	  (aref (pair-color-table o) pair-count) (cons fg bg))
+    (incf pair-count)))
+
+(defmethod color-init ((o color-izer-8))
+  (init-8-colors o))
+
+(defmethod color-number ((o color-izer-8) color)
+  (declare (ignore o))
+  (cdr (assoc color +color-names+)))
+
+(defmethod color-name ((o color-izer-8) color-number)
+  (declare (ignore o))
+  (car (rassoc color-number +color-names+)))
+
+(defmethod index-color ((o color-izer-8) color-number)
+  ;; This is the same as color-name.
+  (color-name o color-number))
+
+(defmethod get-pair ((o color-izer-8) fg bg)
+  (aref (color-table o) fg bg))
+
+(defmethod pair-color ((o color-izer-8) pair-number)
+  (aref (pair-color-table o) pair-number))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defclass color-izer-small (color-izer)
+  ()
+  (:documentation "A color-izer for a small color cube. Usually 88 or 256."))
+
+(defmethod make-color-tables ((o color-izer-small))
+  (setf (color-table o) (make-hash-table :test #'equalp)
+	(pair-color-table o) (make-hash-table)))
+
+(defmethod make-color-pair ((o color-izer-small) fg bg)
+  (with-slots (pair-count) o
+    (if (< pair-count *colors*)
+	(progn
+	  (when (plusp pair-count) ;; Pair 0 defaults to WHITE on BLACK
+	    (init-pair pair-count fg bg))
+	  (let ((p (cons fg bg)))
+	    (setf (gethash p (color-table o)) pair-count
+		  (gethash pair-count (pair-color-table o)) p))
+	  (incf pair-count))
+	;; We could error here, but it's probably a bad idea.
+	0))) ;; @@@ maybe should be nil ?
+
+(defmethod color-init ((o color-izer-small))
+  (init-8-colors o))
+
+(defmethod color-number ((o color-izer-small) color)
+  "Return the curses color number given a color."
+  (typecase color
+    (keyword
+     (or (cdr (assoc color +color-names+))
+	 (get-nearest-xterm-color-index (lookup-color color))))
+    ((or vector list)
+     (get-nearest-xterm-color-index color))))
+
+(defmethod color-name ((o color-izer-small) color-number)
+  (declare (ignore o))
+  (car (rassoc color-number +color-names+)))
+
+(defmethod index-color ((o color-izer-small) color-number)
+  (declare (ignore o))
+  (cond
+    ((< 0 color-number 256)
+     ;; @@@ This is wrong in a number of ways
+     (aref fatchar:*xterm-256-color-table* color-number))))
+
+(defmethod get-pair ((o color-izer-small) fg bg)
+  (gethash (cons fg bg) (color-table o)))
+
+(defmethod pair-color ((o color-izer-small) pair-number)
+  (gethash pair-number (pair-color-table o)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defclass color-izer-big (color-izer-small)
+  ()
+  (:documentation "A color-izer for at least 24 bit direct color."))
+
+#|
+(defun color-number-direct-16 (color)
+  "Return the curses color number given a symbol name."
+  (let ((c (typecase color
+	     (keyword (lookup-color color))
+	     ((or vector list)
+	      (convert-color-to color :rgb8)))))
+    ;; Assume a 5 5 5
+    (a
+
+(defun color-number-direct-24 (color)
+  "Return the curses color number given a symbol name."
+  (let ((c (typecase color
+	     (keyword (lookup-color color))
+	     ((or vector list)
+	      (convert-color-to color :rgb8)))))
+    ;; 24 bit? 32 bit?
+    (a
+|#
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defun init-colors (tty)
   ;; Initialize all the color pairs
   (start-color)
-  (let ((ncolors 8))
-    (setf (color-table tty) (make-array (list ncolors ncolors))
-	  (pair-color-table tty) (make-array (* ncolors ncolors)))
-    (if (= (has-colors) 1)
-    	(prog ((pair 0))
-	   (setf (has-color-p tty) t)
-	   (loop :for fg :from (- ncolors 1) :downto 0 :do
-	      (loop :for bg :from 0 :below ncolors :do
-		 (when (> pair 0) ;; Pair 0 defaults to WHITE on BLACK
-		   (init-pair pair fg bg))
-		 (setf (aref (color-table tty) fg bg) pair
-		       (aref (pair-color-table tty) pair) (cons fg bg))
-		 (incf pair))))
-	(setf (has-color-p tty) nil)))
+  (if (/= (has-colors) 1)
+      (setf (has-color-p tty) nil)
+      (progn
+	(setf (has-color-p tty) t
+	      (color-izer tty)
+	      (make-instance (cond
+			       ((<= *colors* 8) 'color-izer-8)
+			       ((<= *colors* 256) 'color-izer-small)
+			       ((> *colors* 256) 'color-izer-big))))
+	;; @@@ Maybe we should put this in initialize-instance?
+	(make-color-tables (color-izer tty))
+	(color-init (color-izer tty))
+	))
   (bkgd (color-pair 0)))
 
 (defun color-index (tty fg bg)
   "Return the color pair number for the foreground FG and background BG."
-  (aref (color-table tty) fg bg))
-
-(defun color-number (color)
-  "Return the curses color number given a symbol name."
-  (cdr (assoc color +color-names+)))
-
-(defun color-name (color-number)
-  "Return the color name keyword given a curses color number."
-  (car (rassoc color-number +color-names+)))
+  (get-pair (color-izer tty) fg bg))
 
 ;; Just for debugging
 ; (defun terminal-report-size ()
@@ -210,25 +371,33 @@ Elements are a cons of (foreground . backaground)"))
 
 (defmethod terminal-start ((tty terminal-curses))
   "Set up the terminal for reading a character at a time without echoing."
-  (when (not (device tty))		; already done
-    (initscr)
-    (setf (screen tty) *stdscr*))
-  (noecho)
-  (nonl)
-  (cbreak)
-  (meta curses:*stdscr* 1)
-  (keypad curses:*stdscr* 1)
-  (typeahead -1)
-  (start-color)
-  ;; additional resets that wouldn't need to be done on a fresh application
-  (attrset 0)
-  (bkgd 0)
-  (idlok curses:*stdscr* 0)
-  (leaveok curses:*stdscr* 0)
-  (scrollok curses:*stdscr* *default-scroll-ok*)
-  (curs-set 1)
-  (init-colors tty)
-  (terminal-get-size tty))
+  (with-slots ((start-at-current-line terminal::start-at-current-line)
+	       start-line) tty
+    (when start-at-current-line
+      (filter))
+
+    (when (not (device tty))		; already done
+      (initscr)
+      (setf (screen tty) *stdscr*))
+    (noecho)
+    (nonl)
+    (cbreak)
+    (meta curses:*stdscr* 1)
+    (keypad curses:*stdscr* 1)
+    (typeahead -1)
+    (start-color)
+    ;; additional resets that wouldn't need to be done on a fresh application
+    (attrset 0)
+    (bkgd 0)
+    (idlok curses:*stdscr* 0)
+    (leaveok curses:*stdscr* 0)
+    (scrollok curses:*stdscr* *default-scroll-ok*)
+    (curs-set 1)
+    (init-colors tty)
+    (terminal-get-size tty)
+    (setf start-line (terminal-get-cursor-position tty))
+    (when (zerop start-line)
+      (nofilter))))
 
 (defmethod terminal-end ((tty terminal-curses) &optional state)
   "Put the terminal back to the way it was before we called terminal-start."
@@ -246,6 +415,16 @@ Elements are a cons of (foreground . backaground)"))
       (nos:fclose out-fp)
       (nos:fclose in-fp)))
   (values))
+
+(defun unfilter (tty)
+  "Stop doing the filter thing."
+  (with-slots (screen term-type in-fp out-fp) tty
+    (nofilter)
+    (endwin)
+    ;; (nofilter)
+    (initialize-device tty)
+    ;; (nofilter)
+    (initscr)))
 
 #+curses-use-wide
 (defun add-wide-string (wide-string)
@@ -281,11 +460,11 @@ Elements are a cons of (foreground . backaground)"))
     (%addstr tty out-str)))
 
 (defun bottom-right-p (tty &optional x)
-  (dbugf :curses "bottom-right-p ~s ~s ~s ~s ~s~%"
-	 (getcury (screen tty)) (1- curses:*lines*)
-	 (or x (getcurx (screen tty))) (1- curses:*cols*)
-	 (and (= (getcury (screen tty)) (1- curses:*lines*))
-	      (>= (or x (getcurx (screen tty))) (1- curses:*cols*))))
+  ;; (dbugf :curses "bottom-right-p ~s ~s ~s ~s ~s~%"
+  ;; 	 (getcury (screen tty)) (1- curses:*lines*)
+  ;; 	 (or x (getcurx (screen tty))) (1- curses:*cols*)
+  ;; 	 (and (= (getcury (screen tty)) (1- curses:*lines*))
+  ;; 	      (>= (or x (getcurx (screen tty))) (1- curses:*cols*))))
   (and (= (getcury (screen tty)) (1- curses:*lines*))
        (>= (or x (getcurx (screen tty))) (1- curses:*cols*))
        t))
@@ -341,7 +520,7 @@ Elements are a cons of (foreground . backaground)"))
 	(cffi:mem-aref *wide-char* :int 1) 0)
   (addnwstr *wide-char* 2))
 
-(defmethod terminal-write-char ((tty terminal-curses) char)
+(defmethod terminal-write-char ((tty terminal-curses) (char character))
   "Output a character to the terminal."
   ;; @@@ unicode!
   (when (and (translate-alternate-characters tty)
@@ -367,6 +546,7 @@ Elements are a cons of (foreground . backaground)"))
 (defun %terminal-write-char (tty char &key reset)
   "Output a character to the terminal."
   ;; @@@ unicode!
+  (dbugf :curses "howdy ~s ~s~%" reset char)
   (with-slots ((cc fatchar::c)
 	       (fg fatchar::fg)
 	       (bg fatchar::bg)
@@ -379,17 +559,23 @@ Elements are a cons of (foreground . backaground)"))
       	(let ((replacement (gethash cc *acs-table*)))
       	  (when replacement
       	    (setf c replacement))))
+
+      (terminal-color tty fg bg)
       (if (or fg bg attrs)
 	  (progn
-	    (when (or fg bg)
-	      (terminal-color tty (or fg :default) (or bg :default)))
+	    ;; (when (or fg bg)
+	    ;;   ;; (terminal-color tty (or fg :default) (or bg :default)))
+	    ;;   (dbugf :curses "chippy ~s ~s~%" fg bg)
 	    (when attrs
 	      (loop :with n
 		 :for a :in attrs :do
 		 (when (setf n (assoc a *attributes*))
 		   (attron (cdr n))))))
 	  (when reset
-	    (attrset +a-normal+)))
+	    (dbugf :curses "neow~%")
+	    (attrset +a-normal+)
+	    (color-set 0 (cffi:null-pointer))
+	    ))
       (when (not (zerop line))
 	(attron +A-ALTCHARSET+)
 	(setf c (line-char line)))
@@ -400,7 +586,10 @@ Elements are a cons of (foreground . backaground)"))
       #-curses-use-wide
       (%addch tty (char-code c))
       (when reset
-	(attrset +a-normal+)))))
+	(dbugf :curses "neow 2~%")
+	(attrset +a-normal+)
+	(color-set 0 (cffi:null-pointer))
+	))))
 
 (defmethod terminal-write-char ((tty terminal-curses) (char fatchar))
   "Output a character to the terminal."
@@ -433,6 +622,7 @@ i.e. the terminal is 'line buffered'."
 	       	   (terminal-write-char tty (line-char line)))
 	       (progn
 		 ;;(terminal-raw-format tty "~c[0m" #\escape)
+		 ;; (%terminal-write-char tty c :reset nil)))
 		 (%terminal-write-char tty c :reset nil)))
 	   (setf last-c c))
 	 (incf i))
@@ -452,7 +642,10 @@ i.e. the terminal is 'line buffered'."
     t))
 
 (defmethod terminal-move-to ((tty terminal-curses) row col)
-  (move row col))
+  (with-slots (start-line) tty
+    (when (< row start-line)
+      (unfilter tty))
+    (move row col)))
 
 (defmethod terminal-move-to-col ((tty terminal-curses) col)
   (move (getcury (screen tty)) col))
@@ -475,7 +668,11 @@ i.e. the terminal is 'line buffered'."
   (move (getcury (screen tty)) (+ (getcurx (screen tty)) n)))
 
 (defmethod terminal-up ((tty terminal-curses) &optional (n 1))
-  (move (- (getcury (screen tty)) n) (getcurx (screen tty))))
+  (with-slots (start-line) tty
+    (let ((new-y (- (getcury (screen tty)) n)))
+      (when (< new-y start-line)
+	(unfilter tty))
+      (move new-y (getcurx (screen tty))))))
 
 (defmethod terminal-down ((tty terminal-curses) &optional (n 1))
   (move (+ (getcury (screen tty)) n) (getcurx (screen tty))))
@@ -516,10 +713,16 @@ i.e. the terminal is 'line buffered'."
   (clrtobot))
 
 (defmethod terminal-clear ((tty terminal-curses))
-  (clear))
+  (with-slots (start-line) tty
+    (when (not (zerop start-line))
+      (unfilter tty))
+    (clear)))
 
 (defmethod terminal-home ((tty terminal-curses))
-  (move 0 0))
+  (with-slots (start-line) tty
+    (when (not (zerop start-line))
+      (unfilter tty))
+    (move 0 0)))
 
 (defmethod terminal-cursor-off ((tty terminal-curses))
   (curs-set 0))
@@ -557,10 +760,13 @@ i.e. the terminal is 'line buffered'."
     (setf fg (default-fg tty)))
   (when (or (null bg) (eq bg :default))
     (setf bg (default-bg tty)))
-  (let ((fg-num (color-number fg))
-	(bg-num (color-number bg)))
+  (let ((fg-num (color-number (color-izer tty) fg))
+	(bg-num (color-number (color-izer tty) bg)))
     (when (and fg-num bg-num)
-      (color-set (color-index tty fg-num bg-num) (cffi:null-pointer)))))
+      (let ((pair (or (color-index tty fg-num bg-num)
+		      (make-color-pair (color-izer tty) fg-num bg-num))))
+	(when pair
+	  (color-set pair (cffi:null-pointer)))))))
 
 (defmethod terminal-colors ((tty terminal-curses))
   (declare (ignore tty))
@@ -583,20 +789,30 @@ i.e. the terminal is 'line buffered'."
   "Get the default background color for text."
   (let* ((attr (getbkgd (screen tty)))
 	 (pair (pair-number attr)))
-    (color-name (cdr (aref (pair-color-table tty) pair)))))
+    (color-name (color-izer tty) (cdr (pair-color (color-izer tty) pair)))))
 
 (defmethod (setf terminal-window-background) (color (tty terminal-curses))
   (when (or (null color) (eq color :default))
     (setf color *default-default-bg*))
-  (let ((color-num (color-number color)))
+  (let ((color-num (color-number (color-izer tty) color)))
     (when color-num
       (setf (default-bg tty) color)
       (bkgd (color-pair
-	     (color-index tty (color-number (default-fg tty)) color-num))))))
+	     (color-index tty (color-number (color-izer tty) (default-fg tty))
+			  color-num))))))
 
-;; 256 color? ^[[ 38;5;color <-fg 48;5;color <- bg
-;; set color tab = ^[] Ps ; Pt BEL
-;;;  4; color-number ; #rrggbb ala XParseColor
+#+(or)
+(defun zerq ()
+  (with-terminal (:curses)
+    (tt-home)
+    (tt-format "colors : ~a~%pairs : ~a~%" curses:*colors* curses:*color-pairs*) 
+    (tt-format"color pair 23 : ~{~x ~}~%"
+	      (multiple-value-list (curses::pair-content 23)))
+    (tt-get-key)))
+
+#|
+TERM=xterm-direct sbcl --non-interactive --no-userinit --eval '(load "quicklisp/setup.lisp")' --eval "(mapcar (lambda (x) (push (concatenate 'string \"/home/dan/src/lisp/\" x) asdf:*central-registry*)) '(\"\" \"opsys/\" \"unicode/\" \"terminal/\"))" --eval '(asdf:load-system :dlib)' --eval '(asdf:load-system :terminal-curses)' --eval '(print (terminal:with-terminal (:curses) (list curses:*colors* curses:*color-pairs*)))' --eval '(terpri)'
+|#
 
 (defmethod terminal-beep ((tty terminal-curses))
   (beep))
