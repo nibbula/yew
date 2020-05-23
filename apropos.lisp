@@ -71,9 +71,11 @@
 	     :for c :in lish::*command-list*
 	     :do
 	     (setf cmd (lish:get-command c)
-		   doc (documentation (lish:command-function cmd) 'function))
-	     :when (or (scan scanner c)
-		       (scan scanner doc))
+		   doc (and (typep cmd 'lish:command)
+			    (documentation (lish:command-function cmd) 'function)))
+	     :when (and doc
+			(or (scan scanner c)
+			    (scan scanner doc)))
 	     :collect (list (lish:command-name cmd) doc)
 	     ::and
 	     :when collect
