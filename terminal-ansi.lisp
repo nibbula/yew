@@ -1724,16 +1724,20 @@ and add the characters the typeahead."
     (64 "VT520")
     (65 "VT525")))
 
+(defun quick-query-parameters (s &key (offset 3))
+  "Query failing quickly without an error."
+  (query-parameters s :timeout 0.05 :errorp nil :offset offset))
+
 (defun describe-terminal ()
   "Interrogate the terminal properties and report the results."
   (let (a props)
     ;; Terminal type
-    (setf a (query-parameters ">c"))
+    (setf a (quick-query-parameters ">c"))
     (push `("Terminal type" ,(response-terminal-type (first a))) props)
     (when (second a)
       (push `("Firmware version" ,(second a)) props))
     ;; Features
-    (setf a (query-parameters "c"))
+    (setf a (quick-query-parameters "c"))
     (loop :for prop :in (cdr a) :do
        (push `(,(case prop
 		      (1 "132-columns")
@@ -1749,11 +1753,11 @@ and add the characters the typeahead."
 		      (t "Unknown property"))
 		"Yes") props))
     ;; Cursor position
-    (setf a (query-parameters "?6n"))
+    (setf a (quick-query-parameters "?6n"))
     (push `("Cursor position" ,(format nil "~a ~a" (first a) (second a)))
 	  props)
     ;; Printer
-    (setf a (query-parameters "?15n"))
+    (setf a (quick-query-parameters "?15n"))
     (push `("Printer status"
 	    ,(case (first a)
 		   (10 "Ready")
@@ -1762,7 +1766,7 @@ and add the characters the typeahead."
 		   (t "Unknown")))
 	  props)
     ;; Locator status
-    (setf a (query-parameters "?55n"))
+    (setf a (quick-query-parameters "?55n"))
     (push `("Locator status"
 	    ,(case (first a)
 		   (53 "Available")
@@ -1770,14 +1774,14 @@ and add the characters the typeahead."
 		   (t "Unknown")))
 	  props)
     ;; Locator type
-    (setf a (query-parameters "?56n"))
+    (setf a (quick-query-parameters "?56n"))
     (push `("Locator type"
 	    ,(case (second a)
 		   (1 "Mouse")
 		   (t "Unknown")))
 	  props)
     ;; Window state
-    (setf a (query-parameters "11t" :offset 2))
+    (setf a (quick-query-parameters "11t" :offset 2))
     (push `("Window state"
 	    ,(if (zerop (length a))
 		 "Unavailable"
@@ -1787,42 +1791,50 @@ and add the characters the typeahead."
 		   (t "Unknown"))))
 	  props)
     ;; Window position
-    (setf a (query-parameters "13t" :offset 2))
+    (setf a (quick-query-parameters "13t" :offset 2))
     (push `("Window position"
 	    ,(if (zerop (length a))
 		 "Unavailable"
 		 (format nil "~a ~a" (second a) (third a))))
 	  props)
     ;; Window size
-    (setf a (query-parameters "14t" :offset 2))
+    (setf a (quick-query-parameters "14t" :offset 2))
     (push `("Window size"
 	    ,(if (zerop (length a))
 		 "Unavailable"
 		 (format nil "~a ~a" (second a) (third a))))
 	  props)
     ;; Text size
-    (setf a (query-parameters "18t" :offset 2))
+    (setf a (quick-query-parameters "18t" :offset 2))
     (push `("Text size"
 	    ,(if (zerop (length a))
 		 "Unavailable"
 		 (format nil "~a ~a" (second a) (third a))))
 	  props)
     ;; Text screen size
-    (setf a (query-parameters "19t" :offset 2))
+    (setf a (quick-query-parameters "19t" :offset 2))
     (push `("Text screen size"
 	    ,(if (zerop (length a))
 		 "Unavailable"
 		 (format nil "~a ~a" (second a) (third a))))
 	  props)
     ;; Icon label
-    (setf a (query-string "20t"))
+    (setf a (query-string "20t"
+			  :end-tag #'typical-report-ending
+			  :ending 0
+			  :timeout 0.1
+			  :errorp nil))
     (push `("Icon label"
 	    ,(if (zerop (length a))
 		 "Unavailable"
 		 a))
 	  props)
     ;; Title
-    (setf a (query-string "21t"))
+    (setf a (query-string "21t"
+			  :end-tag #'typical-report-ending
+			  :ending 0
+			  :timeout 0.1
+			  :errorp nil))
     (push `("Title"
 	    ,(if (zerop (length a))
 		 "Unavailable"
