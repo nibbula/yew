@@ -1477,8 +1477,10 @@ Attributes are usually keywords."
     ))
 
 (defparameter *key-num*
-  '((2  . :insert)			; Editing keys
+  '((1  . :home)			; linux console
+    (2  . :insert)			; Editing keys
     (3  . :delete)
+    (4  . :end)				; linux console
     (5  . :page-up)
     (6  . :page-down)
     (15 . :f5)				; Function keys
@@ -1581,6 +1583,18 @@ characters to the typeahead."
 	 #\escape)
 	((char= c #\M) 			; mouse
 	 (get-mouse-event tty))
+	((char= c #\[) 			; linux function key
+	 (case (setf c (get-char tty :timeout 1))
+	   (#\A :f1)
+	   (#\B :f2)
+	   (#\C :f3)
+	   (#\D :f4)
+	   (#\E :f5)
+	   (otherwise
+	    (add-typeahead tty start-char)
+	    (add-typeahead tty #\[)
+	    (add-typeahead tty c)
+	    #\escape)))
 	((digit-char-p c)
 	 ;; read a parameters followed by a tilde or tag
 	 (let ((param (read-params)))
