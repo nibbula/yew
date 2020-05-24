@@ -9,7 +9,7 @@
 (defmacro with-external ((e) &body body)
   "Do BODY outside the editor E, making sure that the terminal and display are
 in proper condition."
-  (with-unique-names (result)
+  (with-names (result)
     `(let (,result)
        ;;(finish-output (terminal-output-stream (line-editor-terminal ,e)))
        (terminal-end (line-editor-terminal ,e))
@@ -1113,7 +1113,7 @@ current selection. Otherwise, add a cursor on the next line."
        (clear-completions e)))))
 
 (defmacro with-filename-in-buffer ((e string-var position-var) &body body)
-  (with-unique-names (str i buf)
+  (with-names (str i buf)
     `(with-slots ((,buf buf)) ,e
        (let* ((,str (fatchar-string-to-string ,buf))
 	      ;; (,i (1- (length ,str)))

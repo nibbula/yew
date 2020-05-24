@@ -519,7 +519,7 @@ Otherwise the region is deactivated every command loop.")
 (defmacro do-contexts ((e) &body body)
   "Evaluate the BODY once for each context in the editor E, with point, mark,
 and clipboard bound."
-  (with-unique-names (c)
+  (with-names (c)
     `(loop :for ,c :across (inator-contexts ,e) :do
 	(use-context (,c) ,@body))))
 
@@ -572,7 +572,7 @@ but perhaps reuse some resources."))
 #| old-way without contexts
 (defmacro save-excursion ((e) &body body)
   "Evaluate the body with the buffer, point, and mark restored afterward."
-  (with-unique-names (saved-buf saved-point saved-mark)
+  (with-names (saved-buf saved-point saved-mark)
     `(let ((,saved-buf (buf ,e))
 	   (,saved-point (inator-point ,e))
 	   (,saved-mark (inator-mark ,e)))
@@ -586,7 +586,7 @@ but perhaps reuse some resources."))
 
 (defmacro save-excursion ((e) &body body)
   "Evaluate the body with the buffer, point, and mark restored afterward."
-  (with-unique-names (saved-buf saved-contexts saved-region-active editor)
+  (with-names (saved-buf saved-contexts saved-region-active editor)
     `(let* ((,editor ,e)
 	    (,saved-buf (buf ,editor))
 	    (,saved-contexts (inator-contexts ,editor))

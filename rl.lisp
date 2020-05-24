@@ -55,6 +55,7 @@
     (,(ctrl #\T)		. transpose-characters)
     (,(meta-char #\d)		. kill-word)
     (,(meta-char #\rubout)	. backward-kill-word)
+    (,(meta-char #\backspace)	. backward-kill-word)
     (,(meta-char (ctrl #\h))	. backward-kill-word)
     (,(meta-char #\u)		. upcase-word)
     (,(meta-char #\l)		. downcase-word)
