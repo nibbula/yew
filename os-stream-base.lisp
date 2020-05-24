@@ -1,6 +1,6 @@
-;;
-;; os-stream-base.lisp - OS stream stuff that has to go in the base package.
-;;
+;;;
+;;; os-stream-base.lisp - OS stream stuff that has to go in the base package.
+;;;
 
 ;; Things in here are used by the system specific os-stream implementation,
 ;; so must be defined before the system specific code is loaded. This means
@@ -13,21 +13,30 @@
 (declaim #.`(optimize ,.(getf opsys-config::*config* :optimization-settings)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defconstant +buffer-size+ #.(* 8 1024) "Buffer sizes in bytes.")
-  (defconstant +input-buffer-size+ +buffer-size+
-    "Input buffer size in bytes.")
-  (defconstant +output-buffer-size+ +buffer-size+
-    "Output buffer size in bytes."))
+  ;; (defconstant +buffer-size+ #.(* 8 1024) "Buffer sizes in octets.")
+  ;; (defconstant +input-buffer-size+ +buffer-size+
+  ;;   "Input buffer size in octets.")
+  ;; (defconstant +output-buffer-size+ +buffer-size+
+  ;;   "Output buffer size in octets.")
+  ;; @@@ This should theoretically change dependent on the encoding, but for
+  ;; speed we would probably like these to constant, so it's probably reasonable
+  ;; to pick a maximum character excess for all encodings.
+  (defparameter +character-excess+ 4 "Maximum octets for one encoded character.")
+  (defparameter +buffer-size+ 200
+    "Buffer sizes in octets, not including the +character-excess+.")
+  (defparameter +input-buffer-size+ +buffer-size+
+    "Input buffer size in octets.")
+  (defparameter +output-buffer-size+ +buffer-size+
+    "Output buffer size in octets."))
 
 (defclass os-stream (fundamental-stream)
   ((handle
    :initarg :handle :accessor os-stream-handle
    :documentation "Handle to the operating system stream.")
-   ;; Isn't this in fundamental-streams?
-   ;; (element-type
-   ;;  :initarg :element-type :accessor os-stream-element-type
-   ;;  :documentation "The type of data we operate on.")
-   )
+   ;; One might think this is in fundamental-stream, but it isn't.
+   (element-type
+    :initarg :element-type :accessor os-stream-element-type
+    :documentation "The type of data we operate on."))
   (:documentation
    "A stream that provides facility for using it with lower level operating
 system functions."))
@@ -48,8 +57,9 @@ stream type."))
 (defclass os-input-stream (os-stream fundamental-input-stream)
   ((input-buffer
     :initarg :input-buffer :accessor os-stream-input-buffer
-    ;; :initform (cffi:make-shareable-byte-vector +input-buffer-size+)
-    :initform (cffi:make-shareable-byte-vector 200) ;; @@@
+    :initform (cffi:make-shareable-byte-vector (+ +input-buffer-size+
+						  +character-excess+))
+    ;; :initform (cffi:make-shareable-byte-vector 200) ;; @@@
     ;; :type (simple-array (unsigned-byte 8) #.+input-buffer-size+)
     :type (simple-array (unsigned-byte 8) *)
     :documentation "Store characters that have been read but not consumed.")
@@ -60,7 +70,7 @@ stream type."))
    (input-fill
     :initarg :input-fill :accessor os-stream-input-fill
     :initform 0 :type fixnum
-    :documentation "Postion which in input buffer is filled to.")
+    :documentation "Postion which input buffer is filled to.")
    (unread-char
     :initarg :unread-char :accessor os-stream-unread-char
     :initform nil :type (or null character)
@@ -75,7 +85,8 @@ stream type."))
 (defclass os-output-stream (os-stream fundamental-output-stream)
   ((output-buffer
     :initarg :output-buffer :accessor os-stream-output-buffer
-    :initform (cffi:make-shareable-byte-vector +output-buffer-size+)
+    :initform (cffi:make-shareable-byte-vector (+ +output-buffer-size+
+						  +character-excess+))
     ;; :type (simple-array (unsigned-byte 8) #.+output-buffer-size+)
     :type (simple-array (unsigned-byte 8) *)
     :documentation "Store characters that have been written but not flushed.")
@@ -133,7 +144,7 @@ system functions."))
 
 (defclass os-character-stream (os-stream fundamental-character-stream)
   ((encoding
-    :initarg :encoding :accessor os-stream-encoding
+    :initarg :encoding :accessor os-stream-encoding :initform :utf8
     :documentation "Character encoding for the stream."))
   (:documentation
    "An os-stream with an element type of character and supports encoding."))
@@ -167,5 +178,16 @@ system functions."))
    "This notifies the stream machinery that changes at the O/S level may have
 happend since it's last operations. This may have to be done to allow the
 upper level of the stream to resume working properly."))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; conditions
+
+;; The implementation probably alread has appropriate things like a
+;; simple-file-error, but we can't really rely on it, or we would have to go
+;; dig them up, so instead we just make our own.
+
+(define-condition os-file-error (file-error simple-error)
+  ()
+  (:documentation "A simple error for things that should signal file-errors."))
 
 ;; EOF

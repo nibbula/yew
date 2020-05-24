@@ -269,6 +269,7 @@ Possible values of STATUS and VALUE are:
 	      (_exit 1))))
 	;; in the parent
 	(error-check child-pid)
+	;; (posix-close 
 	(wait-and-report child-pid)))))
 
 (defcfun getpid pid-t)
@@ -289,8 +290,185 @@ Possible values of STATUS and VALUE are:
 (defcfun setsid :int)
 (defcfun getsid :int (pid pid-t))
 
-;; Perhaps we should provide something high level like "run in pty" and
+;; @@@ We should provide something high level like "run in pty" and
 ;; or "detach process".
+
+(defun simple-write (message)
+  "Print the string MESSAGE simply."
+  (cffi:with-foreign-string ((str bytes) message)
+    (posix-write 2 str bytes)))
+
+(defun punt (message)
+  "Print the string MESSAGE simply and exit the process."
+  (simple-write message)
+  (_exit 1))
+
+(defun connect-pipes (in-fd out-fd &optional err-fd)
+  "Connect the IN-FD, OUT-FD, and ERR-FD to the process standard input, output
+and error, respectively. Print a message and exit quick if we fail."
+  ;; This is expected to be called from a forked child before exec, so we try
+  ;; to use simple error messages, and quick exiting.
+  (declare (ignore err-fd)) ;; @@@ hol up
+  (macrolet ((dup-it (from to)
+	       `(progn
+		  (when ,from
+		    (when (minusp (posix-dup2 ,from ,to))
+		      (punt (s+ "dup2 of " ,to " failed: " *errno* " "
+				(error-message *errno*) #\newline)))
+		    ;; (when (posix-close ,from)
+		    ;;   (punt (s+ "close of " ,from " failed: " *errno* " "
+		    ;; 		(error-message *errno*) #\newline)))
+		    ))))
+    (dup-it in-fd 0)
+    (dup-it out-fd 1)
+    ;; @@@ don't do this yet
+    ;; (dup-it (or err-fd 1) 2)
+    ))
+
+(defun pipe-fork (command args environment func)
+  "Fork and exec COMMAND with ARGS and ENV, call FUNC before in the child
+before execing."
+  (let* ((cmd-and-args (cons command args))
+	 (argc (length cmd-and-args))
+	 child-pid err-msg-str err-msg-len)
+    (setf err-msg-str (s+ "Exec of " command " failed." #\newline)
+	  err-msg-len (length err-msg-str))
+    (with-foreign-object (argv :pointer (1+ argc))
+      (with-foreign-strings ((path command) (err-msg err-msg-str))
+	(loop :with i = 0
+	      :for arg :in cmd-and-args :do
+	      (setf (mem-aref argv :pointer i) (foreign-string-alloc arg))
+	      (incf i))
+	(setf (mem-aref argv :pointer argc) (null-pointer))
+	(setf child-pid (fork))
+	(when (= child-pid 0)
+	  (progn
+	    (funcall func)
+	    (simple-write (s+ "about to exec" #\newline))
+	    (when (= (execve path argv (if environment
+					   (make-c-env environment)
+					   (real-environ)))
+		     -1)
+	      (posix-write 1 err-msg err-msg-len)
+	      (_exit 1))))
+	;; in the parent
+	(error-check child-pid)
+	child-pid))))
+
+(define-condition pipe-stream-type (simple-error cell-error)
+  ()
+  (:documentation "A pipe stream was not the right type."))
+
+(defun fork-with-pipes (cmd args &key in-stream (out-stream :stream)
+				   ;;(environment nil env-p)
+				   environment
+				   )
+  "Fork and exec CMD with ARGS and ENVIRONMENT, posibly piping to IN-STREAM and
+OUT-STREAM. See pipe-program. Return an output stream and a process ID."
+  (let (in-stream-write-side
+	in-stream-read-side
+        out-stream-write-side
+	out-stream-read-side
+	;; (our-pg (getpgid 0))
+	child-pid)
+    (when (and in-stream (streamp in-stream))
+      (when (not (typep in-stream 'os-output-stream))
+	(cerror "Provide a stream."	; @@@ probably no-one ever
+		'pipe-stream-type
+		:name 'in-stream
+		:format-control
+		"IN-STREAM must be an OS-OUTPUT-STREAM, not a ~s."
+		:format-args `(,(type-of in-stream))))
+      (setf (values in-stream-read-side in-stream-write-side) (posix-pipe)
+	    (os-stream-handle in-stream) in-stream-write-side))
+    (when out-stream
+      (when (streamp out-stream)
+	(when (not (typep out-stream 'os-input-stream))
+	  (cerror "Provide a stream."
+		  'pipe-stream-type
+		  :name 'out-stream
+		  :format-control
+		  "OUT-STREAM must be an OS-INPUT-STREAM, not a ~s."
+		  :format-args `(,(type-of out-stream)))))
+      (when (eq out-stream :stream)
+	(setf out-stream
+	      ;; @@@ need to handle element-type! not just 'character
+	      (make-instance
+	       'unix-character-input-stream
+	       ;; (os-stream-system-type
+	       ;; 	(os-stream-type-for :output 'character)
+	       )))
+      (setf (values out-stream-read-side out-stream-write-side) (posix-pipe)
+	    (os-stream-handle out-stream) out-stream-read-side))
+    (format t "out-read-side ~s out-write-side ~s~%"
+	    out-stream-read-side out-stream-write-side)
+    (format t "in-read-side ~s in-write-side ~s~%"
+	    in-stream-read-side in-stream-write-side)
+
+    ;; Set the sides we don't use to close in the child.
+    (when out-stream-write-side
+      (syscall (fcntl out-stream-write-side
+		      uos::+F_SETFD+ :int uos::+FD_CLOEXEC+)))
+    (when in-stream-read-side
+      (syscall (fcntl in-stream-read-side
+		      uos::+F_SETFD+ :int uos::+FD_CLOEXEC+)))
+    (setf (signal-action +SIGTSTP+) :ignore)
+    (setf (signal-action +SIGTTIN+) :ignore)
+    (setf (signal-action +SIGTTOU+) :ignore)
+    (setf child-pid
+	  (pipe-fork cmd args environment
+	       #'(lambda ()
+		   (connect-pipes in-stream-read-side out-stream-write-side)
+		   (setf (signal-action +SIGTSTP+) :default)
+		   (setf (signal-action +SIGTTIN+) :default)
+		   (setf (signal-action +SIGTTOU+) :default)
+		   (setf (signal-action +SIGCHLD+) :default)
+		   (when (= -1 (setpgid 0 0))
+		     (punt (s+ "child setpgid failed "
+		   	       *errno* " " (error-message *errno*) #\newline)))
+		   ;;(when (not background)
+		     ;; @@@ This is not exactly right. It should be the
+		     ;; whatever file descriptor is the controling terminal,
+		     ;; not necessarily stdin a.k.a. 0, (although it usually
+		   ;; is.)
+		   (with-signal-handlers ((+SIGTSTP+ . :ignore)
+					  (+SIGTTIN+ . :ignore)
+					  (+SIGTTOU+ . :ignore))
+		     ;; (when (= -1 (tcsetpgrp 0 (getpid)))
+		     (when (= -1 (tcsetpgrp 2 (getpid)))
+		       (punt (s+ "child tcsetpgrp failed "
+				 *errno* " " (error-message *errno*)
+				 #\newline))))
+		     ;;)
+		   )))
+    ;; This should be our terminal, not 2.
+    ;; (syscall (tcsetpgrp 2 child-pid))
+    ;; Close the sides the parent doesn't use.
+    (when out-stream-write-side
+      (syscall (posix-close out-stream-write-side)))
+    (when in-stream-read-side
+      (syscall (posix-close in-stream-read-side)))
+    (values out-stream child-pid)))
+    
+(defun pipe-program (cmd args &key in-stream (out-stream :stream)
+				;; (environment nil env-p)
+				environment
+				)
+  "Return an input stream with the output of the system command.
+  IN-STREAM can be:
+    An OS-OUTPUT-STREAM which can written to to supply input to the process.
+    NIL to use the current processes standard input.
+  OUT-STREAM can be:
+    :STREAM make a new input stream containing the processes output.
+    NIL to use the current processes standard output.
+  ENVIRONMENT is:
+    a list of strings of the form NAME=VALUE to be used as the process's
+    environment. If ENVIRONMENT is not provided, it defaults to the current
+    process's environment."
+  (fork-with-pipes cmd args
+		   :in-stream in-stream
+		   :out-stream out-stream
+		   :environment environment))
 
 #+linux
 (defun get-process-command-line (&optional (pid (getpid)))
@@ -1064,7 +1242,8 @@ signal or group stop state.")
 		     +PR-GET-UNALIGN+))
        ;; Things that return an :unsigned-long in arg2.
        (with-foreign-object (result :unsigned-long)
-	 (syscall (real-prctl option result arg3 arg4 arg5))
+	 (syscall (real-prctl option (cffi:pointer-address result)
+			      arg3 arg4 arg5))
 	 (mem-ref result :unsigned-long)))
       ((eql option +PR-GET-NAME+)
 	 (with-foreign-string (str (make-string +process-name-max+))

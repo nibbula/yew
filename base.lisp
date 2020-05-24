@@ -190,7 +190,7 @@
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defmacro define-enum-list (list-var constant-array &key (start 0))
     "Define enumerated constants and put the names in LIST-VAR."
-    (with-unique-names (offset)
+    (with-names (offset)
       `(progn
 	 (eval-when (:compile-toplevel :load-toplevel :execute)
 	   (let ((,offset ,start))

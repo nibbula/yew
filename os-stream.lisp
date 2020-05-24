@@ -1,6 +1,6 @@
-;;
-;; os-stream.lisp - Streams that expose low level O/S functionality.
-;;
+;;;
+;;; os-stream.lisp - Streams that expose low level O/S functionality.
+;;;
 
 (in-package :opsys)
 
@@ -67,15 +67,15 @@
     ((and (eq direction :input)  (subtypep element-type 'character))
      'os-character-input-stream)
     ((and (eq direction :output) (subtypep element-type 'character))
-     'os-character-input-stream)
+     'os-character-output-stream)
     ((and (eq direction :io)     (subtypep element-type 'character))
-     'os-character-input-stream)
+     'os-character-io-stream)
     ((and (eq direction :input)  (subtypep element-type 'integer))
      'os-binary-input-stream)
     ((and (eq direction :output) (subtypep element-type 'integer))
-     'os-binary-input-stream)
+     'os-binary-output-stream)
     ((and (eq direction :io)     (subtypep element-type 'integer))
-     'os-binary-input-stream)
+     'os-binary-io-stream)
     ((not (find direction '(:input :output :io)))
      (error 'opsys-error
 	    :format-control "Direction ~s is not valid."
@@ -96,8 +96,8 @@
 		       &key
 			 (direction :input)
 			 (element-type 'base-char)
-			 (if-exists nil if-exists-given)
-			 (if-does-not-exist nil if-does-not-exist-given)
+			 (if-exists :error if-exists-given)
+			 (if-does-not-exist :error if-does-not-exist-given)
 			 (external-format :default)
 			 share)
   "Return a stream which reads from or writes to FILENAME.
@@ -117,6 +117,10 @@
     ;; (format t "os type = ~s~%" (os-stream-system-type type))
     (setf stream (make-instance (os-stream-system-type type)))
     ;; (format t "stream = ~s~%" stream)
+    ;; @@@ Supposedly for if-exists:
+    ;;   "The default is :new-version if the version component of filespec is
+    ;;    :newest, or :error otherwise."
+    ;; but I'm not sure any implementation does that.
     (os-stream-open stream filename if-exists if-does-not-exist share)))
 
 (defun make-os-stream-from-handle (handle
@@ -140,10 +144,12 @@ use of throw), the file is automatically closed."
   `(let (,stream)
      (unwind-protect
 	  (progn
-	    (setf ,stream (apply #'make-os-stream (list ,filespec) ,@options))
+	    (setf ,stream (apply #'make-os-stream ,filespec ',options))
 	    ,@body)
        (when ,stream
 	 (close ,stream)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   
 (defmethod stream-clear-input ((stream os-input-stream))
   (with-accessors ((position os-stream-position)
@@ -275,6 +281,29 @@ use of throw), the file is automatically closed."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; character streams
 
+(defun string-to-octets (string &key (encoding :utf8) (start 0) end)
+  ;; @@@ support other encodings
+  (when (not (eq encoding :utf8))
+    (error "Sorry, we don't support a non-UTF8 encoding yet."))
+  ;; @@@ fix this unnecessary copying : make string-to-utf8-bytes
+  ;; take start & end. or use babel
+  ;; Also make string-to-utf8-bytes decode directly into our buffer.
+  (if (or (not (zerop start)) end)
+      (unicode:string-to-utf8-bytes (if end
+					(subseq string start end)
+					(subseq string start)))
+      (unicode:string-to-utf8-bytes string)))
+
+;; (defun char-to-octets (char buf pos &key (encoding :utf8))
+;;   (when (not (eq encoding :utf8))
+;;     (error "Sorry, we don't support a non-UTF8 encoding yet."))
+;;   (let ((oneth char) (i pos))
+;;     (flet ((gettor () (prog1 (or oneth (error "Bad UTF8 character? ~a" char))
+;; 			(setf oneth nil)))
+;; 	   (settor () (set
+;;   (put-utf8-char gettor settor)
+;;   (unicode:string-to-utf8-bytes string)
+
 ;;;;;;;;;;
 ;; input
 
@@ -391,17 +420,21 @@ use of throw), the file is automatically closed."
 	 (loop
 	    (cond
 	      ((= position (length input-buffer))
+	       ;; (format t "position at end ~d~%" position)
 	       (when (not (fill-buffer stream))
+		 (format t "filled eof ~d~%" position)
 		 (setf eof t)
-		 (return nil)))
+		 (return)))
 	      ((= position input-fill) ;; @@@ maybe merge with previous case
+	       ;; (dbugf :ostr "position at end of input ~d~%" position)
 	       (when (not (fill-buffer stream))
+		 ;; (format t "filled eof ~d~%" position)
 		 (setf eof t)
-		 (return nil)))
+		 (return)))
 	      ((char= (code-char (aref input-buffer position)) #\newline)
 	       (incf position)
 	       (setf eof nil)
-	       (return nil))
+	       (return))
 	      (t
 	       (write-char (code-char (aref input-buffer position)) str)
 	       (incf position)))))
@@ -455,32 +488,46 @@ use of throw), the file is automatically closed."
        :and copy-size
        :while (not (zerop left))
        :do
-	 (setf copy-size (min left (- output-position
-				      (length output-buffer)))
-	       (subseq output-buffer
-		       output-position (+ output-position copy-size))
-	       (subseq seq pos (+ pos copy-size)))
-	 (incf pos copy-size)
-	 (incf output-position copy-size)
-	 (decf left copy-size)
-	 (when (= output-position (length output-buffer))
-	   (flush-buffer stream)
-	   (setf output-position 0))))
+       ;; (setf copy-size (min left (- output-position
+       ;; 			      (length output-buffer)))
+       (setf copy-size (min left (- (length output-buffer)
+				    output-position))
+	     (subseq output-buffer
+		     output-position (+ output-position copy-size))
+	     (subseq seq pos (+ pos copy-size)))
+       (incf pos copy-size)
+       (incf output-position copy-size)
+       (decf left copy-size)
+       (when (= output-position (length output-buffer))
+	 (flush-buffer stream)
+	 (setf output-position 0))))
   seq)
 
-(declaim (inline put-char)
-	 (ftype (function (os-output-stream character) character) put-char))
+;; (declaim (inline put-char)
+;; 	 (ftype (function (os-output-stream character) character) put-char))
 
 (defun put-char (stream char)
   (with-accessors ((output-buffer os-stream-output-buffer)
 		   (output-position os-stream-output-position)
 		   (column os-stream-column))
       stream
-    (when (= output-position (length output-buffer))
+    (when (>= output-position
+	      ;; (length output-buffer)
+	      +output-buffer-size+
+	     )
       (flush-buffer stream)
       (setf output-position 0))
-    (setf (aref output-buffer output-position) char)
-    (incf output-position)
+    (unless (eq (os-stream-encoding stream) :utf8)
+      (error "Sorry, we don't support a non-UTF8 encoding yet."))
+    (let ((oneth char))
+      (labels ((gettor ()
+		 (prog1 (or oneth (error "Bad UTF8 character? ~a" char))
+		   (setf oneth nil)))
+	       (settor (c)
+		 ;; This shouldn't go over becuase of the *character-excess*
+		 (setf (aref output-buffer output-position) c)
+		 (incf output-position)))
+	(unicode:%put-utf8-char gettor settor)))
     (if (char= char #\newline)		; @@@ eol style ?
 	(setf column 0)
 	;; I wish I could do this, but that means we might have to depend
@@ -596,7 +643,13 @@ use of throw), the file is automatically closed."
   ;; provided by ‘fundamental-character-output-stream’ uses repeated
   ;; calls to ‘stream-write-char’.
 
-  (stream-write-sequence stream string :start start :end end)
+  ;; @@@@ This shouldn't copy, rather should use unicode:put-X-char with
+  ;; getters and setters
+  (let ((octets (string-to-octets
+		 string :encoding (os-stream-encoding stream)
+		 :start start :end end)))
+    (stream-write-sequence stream octets 0 (length octets)))
+  ;;; (stream-write-sequence stream string start end)
   (update-column stream string :start start :end end)
   string)
 

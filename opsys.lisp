@@ -1238,7 +1238,7 @@ characters. If we don't get anything after a while, just return what we got.")
 ;; @@@ Fix the duplication in termios.lisp
 (defmacro with-terminal-mode ((tty) &body body)
   "Evaluate the body, retoring terminal mode changes on exit."
-  (with-unique-names (mode)
+  (with-names (mode)
     `(let ((,mode (get-terminal-mode ,tty)))
        (unwind-protect
 	    (progn ,@body)

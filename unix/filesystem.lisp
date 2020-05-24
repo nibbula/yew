@@ -2024,7 +2024,7 @@ If linkpath is absolute, then new-dir-fd is ignored."
 	 (f-timeout (float timeout)))
     (declare (type single-float time f-timeout))
     ;; Very lame and slow polling.
-    (loop :with wait :and inc single-float = (float increment)
+    (loop :with wait :and inc :of-type single-float = (float increment)
        :do
 	 (if (not (ignore-errors
 		    (if mode
@@ -2056,7 +2056,7 @@ If linkpath is absolute, then new-dir-fd is ignored."
   "Evaluate BODY with PATHNAME locked. Only wait for TIMEOUT seconds to get a
 lock, checking at least every INCREMNT seconds."
   ;; @@@ Need to wrap with recursive thread locks
-  (with-unique-names (locked)
+  (with-names (locked)
     `(let ((,locked nil))
        (unwind-protect
 	    (progn

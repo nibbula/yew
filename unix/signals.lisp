@@ -311,7 +311,7 @@ the keywords: :DEFAULT :IGNORE :HOLD."
   "Evaluate the BODY with the signal handlers set as in HANDLER-LIST, with the
 handers restored to their orignal values on return. HANDLER-LIST is a list
 of (signal . action), as would be passed to SET-SIGNAL-ACTION."
-  (with-unique-names (saved-list)
+  (with-names (saved-list)
     `(let ((,saved-list
 	    (loop
 	       ;;:for (sig . act) :in ,evaled-list
@@ -332,7 +332,7 @@ of (signal . action), as would be passed to SET-SIGNAL-ACTION."
   "Evaluate the BODY with the signal handlers set as in HANDLER-LIST, with the
 handers restored to their orignal values on return. HANDLER-LIST is a list
 of (signal . action), as would be passed to SET-SIGNAL-ACTION."
-  (with-unique-names (evaled-list)
+  (with-names (evaled-list)
     `(let ((,evaled-list
 	    ;; fake eval the list
 	    (mapcar (_ (cons (typecase (car _)
@@ -360,7 +360,7 @@ of (signal . action), as would be passed to SET-SIGNAL-ACTION."
 
 (defmacro with-blocked-signals ((&rest signals) &body body)
   "Evaluate the BODY with the siganls in SIGNALS blocked."
-  (with-unique-names (set sig)
+  (with-names (set sig)
     `(with-foreign-object (,set 'sigset-t)
        (sigemptyset ,set)
        (loop :for ,sig :in ,signals :do
@@ -374,7 +374,7 @@ of (signal . action), as would be passed to SET-SIGNAL-ACTION."
 (defmacro with-all-signals-blocked ((&rest signals) &body body)
   "Evaluate BODY with all signgals blocked except those in SIGNALS, which can be
 NIL or left unspecified to block all blockable signals."
-  (with-unique-names (set sig)
+  (with-names (set sig)
     `(with-foreign-object (,set 'sigset-t)
        (sigfillset ,set)
        (loop :for ,sig :in ,signals :do

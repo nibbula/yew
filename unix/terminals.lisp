@@ -15,7 +15,7 @@
     `(progn
        (define-constants-from ,array)
        (define-name-list-from ,name ,array ,doc))))
-      ;; (with-unique-names (tt-var)
+      ;; (with-names (tt-var)
       ;; `(progn
       ;; 	 (defparameter ,tt-var ,array)
       ;; 	 (define-constants-from ,tt-var)
@@ -1002,15 +1002,17 @@ descriptor FD."
   "Open a terminal. Return the system file handle."
   (ecase direction
     (:output
-     (open device-name
-	   :direction :output
-	   #-(or clisp abcl) :if-exists
-	   #-(or clisp abcl) :append
-	   #+sbcl :external-format
-	   #+sbcl '(:utf-8 :replacement #\replacement_character)
-	   #+ccl :external-format
-	   #+ccl '(:character-encoding :utf-8 :line-termination :default)
-	   ))
+     (let (#+ccl (ccl::*vector-output-stream-default-initial-allocation*
+		  (* 8 1024)))
+       (open device-name
+	     :direction :output
+	     #-(or clisp abcl) :if-exists
+	     #-(or clisp abcl) :append
+	     #+sbcl :external-format
+	     #+sbcl '(:utf-8 :replacement #\replacement_character)
+	     #+ccl :external-format
+	     #+ccl '(:character-encoding :utf-8 :line-termination :default)
+	     )))
     (:input
      (syscall (posix-open device-name +O_RDWR+ 0)))))
 
@@ -1145,7 +1147,7 @@ The individual settings override the settings in MODE."
 ;; @@@ !!! Figure out how we can use this here and also in OPSYS
 (defmacro with-BOGO-terminal-mode ((tty) &body body)
   "Evaluate the body, retoring terminal mode changes on exit."
-  (with-unique-names (mode)
+  (with-names (mode)
     `(let ((,mode (get-terminal-mode ,tty)))
        (unwind-protect
 	    (progn ,@body)
@@ -1476,7 +1478,7 @@ on ‘octets-p’."
 		     'read-char-error :error-code *errno*))))))))
 
 (defmacro with-nonblocking-io ((fd) &body body)
-  (with-unique-names (flags reset-it)
+  (with-names (flags reset-it)
     `(let ((,flags 0) ,reset-it)
        (declare (type fixnum ,flags))
        ;; Get the file descriptor flags.
@@ -1500,6 +1502,7 @@ on ‘octets-p’."
       (syscall (tcflush fd +TCIFLUSH+))
       ;; Send the query to the terminal.
       (syscall (posix-write fd buf query-length))
+      (syscall (tcdrain fd))
       (with-nonblocking-io (fd)
 	;; Do the complicated read.
 	(read-until fd end-tag :buffer-size buffer-size

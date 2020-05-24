@@ -12,7 +12,7 @@
     :long-description   "The cessation of the repetition of ‘Never Again’."
     :defsystem-depends-on (:opsys-config)
     :depends-on ((:feature (:not :mezzano) :cffi)
-		 :opsys-config
+		 :opsys-config :unicode
 		 (:feature (:and (:or :windows :win32) (:not :unix) (:not ccl))
 			   :cffi-libffi)
 		 :trivial-gray-streams
