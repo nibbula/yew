@@ -1,13 +1,14 @@
-;;
-;; terminal-x11.lisp - X11 window as a terminal.
-;;
+;;;
+;;; terminal-x11.lisp - X11 window as a terminal.
+;;;
 
 ;; I know this is temporary and relatively pointless, and maybe I should wait
 ;; util I can make a terminal-graf, but the idea is enticing. Of course this
 ;; is only part of having a Lispy terminal. It will work okay for Lisp only
-;; programs, but to have it work for the shell, we'll have to make the stupid
-;; old terminal emulator part that makes a pty and can fork process attached
-;; to the slave end.
+;; programs, but to have it work for the running non-lisp things in the shell,
+;; we'll have to make the stupid old terminal emulator part that makes a pty
+;; and can fork process attached to the slave end, which is basically like
+;; "screen" or tmux implemented with terminal calls.
 
 (defpackage :terminal-x11
   (:documentation "X11 window as a terminal.")
@@ -330,7 +331,11 @@ different from the current foreground color which in rendition.")
    (delay-scroll
     :initarg :delay-scroll :accessor delay-scroll :initform nil :type boolean
     :documentation "True to delay scrolling until the next character is output.")
-   )
+   (autowrap-delay
+    :initarg :autowrap-delay :accessor autowrap-delay :initform t :type boolean
+    :documentation
+    "Use autowrap delay for the whole right edge, not just the bottom right
+corner."))
   (:default-initargs
     :file-descriptor		nil
     :device-name		(get-display-from-environment)
@@ -881,27 +886,27 @@ to blank with."
 		 ((or (and bold (not bold-font)) dimmed inverted)
 		  ;; color change
 		  (when (or dim faint)
-		    (let* ((ffg (color:convert-color-to
+		    (let* ((ffg (dcolor:convert-color-to
 				 (color-from-rendition tty fg :fg) :hsl))
-			   (l (color:color-component ffg :lightness)))
+			   (l (dcolor:color-component ffg :lightness)))
 		      (setf l (max 0.2 (- l .5))
-			    (color:color-component ffg :lightness) l
+			    (dcolor:color-component ffg :lightness) l
 			    fg ffg)))
 		  (when (and bold (not bold-font))
 		    ;; use bold color or increase value
-		    (let* ((bfg (color:convert-color-to
+		    (let* ((bfg (dcolor:convert-color-to
 				 (color-from-rendition tty fg :fg) :hsl))
-			   (l (color:color-component bfg :lightness))
-			   (s (color:color-component bfg :saturation)))
+			   (l (dcolor:color-component bfg :lightness))
+			   (s (dcolor:color-component bfg :saturation)))
 		      (setf l (min 1.0 (+ l .3))
 			    s (if (= l 1.0) (+ s 0.3) s)
-			    (color:color-component bfg :lightness) l
-			    (color:color-component bfg :saturation) s
+			    (dcolor:color-component bfg :lightness) l
+			    (dcolor:color-component bfg :saturation) s
 			    fg bfg)))
 		  (when inverted ;; switch fg & bg
 		    (rotatef fg bg))
-		  ;; (setf fg (color:convert-color-to fg :rgb8)
-		  ;; 	bg (color:convert-color-to bg :rgb8))
+		  ;; (setf fg (dcolor:convert-color-to fg :rgb8)
+		  ;; 	bg (dcolor:convert-color-to bg :rgb8))
 		  ;; (format t "fg ~s bg ~s~%" fg bg)
 		  ;; (finish-output *standard-output*)
 		  (%terminal-color tty fg bg))
@@ -1021,24 +1026,32 @@ to blank with."
 		 (when delay-scroll
 		   (setf delay-scroll nil)
 		   ;; Actually scroll when in the bottom right corner.
-		   (when (and (= cursor-row (1- window-rows))
-			      (= cursor-column (1- window-columns)))
-		     ;; (dbugf :crunch "Delayed scroll~%")
-		     (scroll-one-line))))
+		   (when (= cursor-row (1- window-rows))
+		     (if (= cursor-column (1- window-columns))
+			 (progn
+			   (dbugf :tx11 "Delayed scroll~%")
+			   (scroll-one-line))
+			 (progn ;; delayed wrap
+			   (dbugf :tx11 "Delayed wrap~%")
+			   (incf cursor-row)
+			   (setf cursor-column 0 changed t)
+			   (set-moved tty))))))
 	       (next-line ()
 		 (if (< cursor-row (1- window-rows))
 		     (progn
 		       (incf cursor-row)
 		       (setf cursor-column 0)
+		       (setf delay-scroll t)
 		       (set-moved tty))
 		     (when t #| (allow-scrolling tty) @@@ |#
 		       (if (= cursor-column (1- window-columns))
 			   (progn
 			     ;; @@@ horrible
-			     ;; (dbugf :crunch "Delaying scroll @ ~d ~d~%" x y)
+			     ;;(dbugf :tx11 "Delaying scroll @ ~d ~d~%" x y)
+			     (dbugf :tx11 "Delaying scroll~%")
 			     (setf delay-scroll t))
 			   (progn
-			     ;; (dbugf :crunch "next-line scroll-one-line~%")
+			     (dbugf :tx11 "next-line scroll-one-line~%")
 			     (scroll-one-line)))))))
 	(case (char-char char)
 	  (#\newline
@@ -1158,16 +1171,16 @@ changed the screen contents."
   (assert (member type '(:fg :bg)))
   (cond
     ((or (not color) (eq color :default))
-     (color:lookup-color (case type
+     (dcolor:lookup-color (case type
 			   (:fg (foreground tty))
 			   (:bg (background tty)))))
-    ((color:structured-color-p color) color)
-    (t (color:lookup-color color))))
+    ((dcolor:structured-color-p color) color)
+    (t (dcolor:lookup-color color))))
 
 (defun color-to-pixel (tty color)
   "Convert a color name or color to a pixel value."
-  (color-pixel tty (or (and (color:structured-color-p color) color)
-		       (color:lookup-color color))))
+  (color-pixel tty (or (and (dcolor:structured-color-p color) color)
+		       (dcolor:lookup-color color))))
 
 (defun %terminal-color (tty fg bg)
   ;; (format t "%terminal-color fg ~s bg ~s~%" fg bg)
@@ -1461,20 +1474,23 @@ to the grid. It must be on a single line and have no motion characters."
   ;; In the olden days we might have to allocate a color, but takes a lot
   ;; of work and server traffic, so we just assume we can make the color
   ;; ourselves given the data in the visual.
-  (let ((c (color:convert-color-to color :rgb8)))
+  (let ((c (dcolor:convert-color-to color :rgb8)))
     (with-slots (pixel-format) tty
       (case pixel-format
 	(:rgb8
-	 (logior (ash (color:color-component c :red)   16)
-		 (ash (color:color-component c :green) 8)
-		      (color:color-component c :blue)))
+	 (logior (ash (dcolor:color-component c :red)   16)
+		 (ash (dcolor:color-component c :green) 8)
+		      (dcolor:color-component c :blue)))
 	(:rgb565
 	 ;; This is mostly just an example. I don't think it will happen,
 	 ;; unless you're using an ancient graphics card. It's more likely
 	 ;; someone will have to add 30, 36, or 48 bit color.
-	 (logior (logand (ash (ash (color:color-component c :red  ) -3) 11) #x1f)
-		 (logand (ash (ash (color:color-component c :green) -2) 5)  #x3f)
-		 (logand      (ash (color:color-component c :blue ) -3)     #x1f)))
+	 (logior (logand
+		  (ash (ash (dcolor:color-component c :red  ) -3) 11) #x1f)
+		 (logand
+		  (ash (ash (dcolor:color-component c :green) -2) 5)  #x3f)
+		 (logand
+		       (ash (dcolor:color-component c :blue ) -3)     #x1f)))
 	(otherwise
 	 ;; This probably means someone should write a new case here.
 	 (error "Unknown pixel format."))))))
@@ -1865,15 +1881,15 @@ i.e. the terminal is 'line buffered'."
 
 (defun set-foreground-color (tty color)
   "Set the default forground color for text."
-  (when (not (color:known-color-p color))
+  (when (not (dcolor:known-color-p color))
     (error "Unknown color ~s." color))
-  (setf (foreground tty) (color:lookup-color color)))
+  (setf (foreground tty) (dcolor:lookup-color color)))
 
 (defun set-background-color (tty color)
   "Set the default background color for the terminal."
-  (when (not (color:known-color-p color))
+  (when (not (dcolor:known-color-p color))
     (error "Unknown color ~s." color))
-  (setf (background tty) (color:lookup-color color)))
+  (setf (background tty) (dcolor:lookup-color color)))
 
 (defmethod terminal-color ((tty terminal-x11) fg bg)
   (%terminal-color tty fg bg))
@@ -1893,17 +1909,17 @@ i.e. the terminal is 'line buffered'."
   (foreground tty))
 
 (defmethod (setf terminal-window-foreground) (color (tty terminal-x11))
-  (when (not (color:known-color-p color))
+  (when (not (dcolor:known-color-p color))
     (error "Unknown color ~s." color))
-  (setf (foreground tty) (color:lookup-color color)))
+  (setf (foreground tty) (dcolor:lookup-color color)))
 
 (defmethod terminal-window-background ((tty terminal-x11))
   (background tty))
 
 (defmethod (setf terminal-window-background) (color (tty terminal-x11))
-  (when (not (color:known-color-p color))
+  (when (not (dcolor:known-color-p color))
     (error "Unknown color ~s." color))
-  (setf (background tty) (color:lookup-color color)
+  (setf (background tty) (dcolor:lookup-color color)
 	(window-background (window tty)) (color-to-pixel tty color))
   (clear-area (window tty) :x 0 :y 0
 	      :width (window-width tty) :height (window-height tty))
