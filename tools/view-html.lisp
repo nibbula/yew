@@ -17,7 +17,7 @@
 (defpackage :view-html
   (:documentation "View HTML as a tree.")
   (:use :cl :dlib :dlib-misc :rl :inator :file-inator :tree-viewer
-	:terminal :fui :char-util :keymap)
+	:terminal :fui :char-util :keymap :rl-widget)
   (:export
    #:view-html
    #:*user-agent*
@@ -286,6 +286,12 @@ the current view with it, but lets us back."))
      (tt-clear)
      (tt-finish-output)))
 
+(defun visit-location (location)
+  "Visit a location, probably a URL."
+  ;; (view-html location)
+  (load-document location)
+  (register-visit location))
+
 (defmethod visit-thing ((thing plump-dom:element))
   (case (symbolify (plump:tag-name thing) :package :view-html)
     ((a link)
@@ -298,10 +304,7 @@ the current view with it, but lets us back."))
 		(describe (html-viewer-location *viewer*) s))
 	      (format nil "~s" (node-object (html-viewer-location *viewer*)))
 	      ))
-       ;; (view-html location)
-       (load-document location)
-       (register-visit location)
-       ))
+       (visit-location location)))
     (img
      (let ((relative (gethash "src" (plump:attributes thing))))
        (multiple-value-bind (location real-uri) (relative-uri relative)
@@ -368,6 +371,12 @@ the current view with it, but lets us back."))
 			    :collect (history-node-resource h))
 			 :popup t)))
 
+(defun ask-url-command (o)
+  (declare (ignore o))
+  (let ((url (widget-read)))
+    (when (and url (not (zerop (length url))))
+      (visit-location url))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defkeymap *view-html-ctrl-x-keymap*
@@ -378,7 +387,9 @@ the current view with it, but lets us back."))
   `((,(ctrl #\x)	. *view-ctrl-x-keymap*)
     (#\h		. history-command)
     (#\b		. back-command)
-    (#\v		. visit-thing-command)))
+    (#\v		. visit-thing-command)
+    (#\return		. ask-url-command)
+    ))
 
 ;; Here we parse the whole file with PLUMP and make a tree-viewer tree out
 ;; of it.
