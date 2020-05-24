@@ -15,6 +15,12 @@
 
 (defparameter *stack-base* 0)
 
+(defun env-assoc (arg env)
+  (loop :for a :in env
+     :when (and (consp a)
+		(equal (prin1-to-string (car a)) (prin1-to-string arg)))
+     :return (cdr a)))
+
 (defun ecl-args (func frame)
   "Return a list of (ARG-NAME-STRING . VALUE) for each argument of FUNC in
 stack frame number FRAME."
@@ -25,7 +31,8 @@ stack frame number FRAME."
     (loop :with arg
        :for a :in ll
        :do
-       (setf arg (assoc (prin1-to-string a) env :test #'equal))
+       ;; (setf arg (assoc (prin1-to-string a) env :test #'equal))
+       (setf arg (env-assoc a env))
        :when arg
        :collect arg)))
 
