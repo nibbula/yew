@@ -308,4 +308,8 @@
 	(with-dbugf '(:crunch :terminal)
 	  (lish:lish :terminal-type :crunch))))))
 
+;; (defun test-zerg ()
+;;   (
+
+
 ;; EOF

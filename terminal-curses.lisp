@@ -4,7 +4,7 @@
 
 (defpackage :terminal-curses
   (:documentation "Curses terminal")
-  (:use :cl :dlib :terminal :curses :trivial-gray-streams :fatchar :color)
+  (:use :cl :dlib :terminal :curses :trivial-gray-streams :fatchar :dcolor)
   (:export
    #:terminal-curses-stream
    #:terminal-curses

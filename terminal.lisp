@@ -453,7 +453,7 @@ or terminal-done."))
 			  &body body)
   "Evaluate the body with VAR possibly set to a new terminal depending on NEW-P.
 Cleans up afterward."
-  (with-unique-names (result make-it term-class new-type terminal-state)
+  (with-names (result make-it term-class new-type terminal-state)
     `(progn
        (let* ((,new-type (or ,type *default-terminal-type*
 			     (pick-a-terminal-type)))
@@ -841,7 +841,7 @@ position. Return the primary result of evaluating the body."
     ((&optional (type :ansi-stream)) &body body)
   "Evaluate the body with *TERMINAL* bound to a terminal-stream which outputs to
 a string and return the string."
-  (with-unique-names (stream terminal-state result)
+  (with-names (stream terminal-state result)
     `(with-output-to-string (,stream)
        (when (not (find-terminal-class-for-type ,type))
 	 (error "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
@@ -871,7 +871,7 @@ a string and return the string."
   "Evaluate the BODY with the style set to SYTLE. Unfortunately we can't set
 the color back to what it was, since terminals necessarily support querying
 the current color, so the caller will have to do that itself."
-  (with-unique-names (fg bg color-set s)
+  (with-names (fg bg color-set s)
     `(let (,fg ,bg ,color-set)
        (loop :for ,s :in (flatten ',style) :do
 	  (case ,s
@@ -910,7 +910,7 @@ characters, such as line drawing characters, into some antique representation."
 (defmacro with-immediate ((&optional tty) &body body)
   "Evaluate BODY with the terminal input mode set to :CHAR, and restore it
 afterwards."
-  (with-unique-names (mode ztty)
+  (with-names (mode ztty)
     `(let* ((,ztty (or ,tty *terminal*))
 	    (,mode (terminal-input-mode ,ztty)))
        (unwind-protect

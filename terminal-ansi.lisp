@@ -13,7 +13,7 @@
 (defpackage :terminal-ansi
   (:documentation "Standard terminal (ANSI).")
   (:use :cl :cffi :dlib :dlib-misc :terminal :char-util :opsys
-	:trivial-gray-streams :fatchar :color :terminal-crunch
+	:trivial-gray-streams :fatchar :dcolor :terminal-crunch
 	#+unix :opsys-unix)
   (:export
    #:terminal-ansi-stream
@@ -695,7 +695,7 @@ processing."
 (defmacro with-interrupts-handled ((tty) &body body)
   "Evaluate the BODY while handling terminal interrupts on TTY appropritately.
 TTY is a terminal, in case you didn't know."
-  (with-unique-names (borked result)
+  (with-names (borked result)
     `(let (,result ,borked)
        (loop :do
 	  (setf ,borked nil)
@@ -720,7 +720,7 @@ TTY is a terminal, in case you didn't know."
   "True to allow reporting to be interruptable.")
 
 (defmacro with-raw ((tty) &body body)
-  (with-unique-names (mode)
+  (with-names (mode)
     `(let ((,mode (get-terminal-mode ,tty)))
        (unwind-protect
 	    (progn
@@ -731,7 +731,7 @@ TTY is a terminal, in case you didn't know."
 	 (set-terminal-mode ,tty :mode ,mode)))))
 
 ;; (defmacro with-immediate ((tty) &body body)
-;;   (with-unique-names (mode)
+;;   (with-names (mode)
 ;;     `(let ((,mode (get-terminal-mode (terminal-file-descriptor ,tty))))
 ;;        (unwind-protect
 ;; 	    (progn
@@ -2313,7 +2313,7 @@ links highlight differently?"
 in BODY. Output should be done to COST-STREAM."
   ;; (declare (ignore tty body))
   ;; 8
-  (with-unique-names (str)
+  (with-names (str)
     `(progn
        (ensure-cost-stream ,tty)
        (length

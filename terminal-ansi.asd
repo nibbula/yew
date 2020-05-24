@@ -14,7 +14,7 @@
 It was last stop on the bit train. Now there is an imaginary protocol to
 display your fixed width text in a box with colors. This may help."
     :depends-on (:cffi :dlib :dlib-misc :terminal :char-util :unicode :opsys
-		 :trivial-gray-streams :fatchar :color :terminal-crunch
+		 :trivial-gray-streams :fatchar :dcolor :terminal-crunch
 		 :cl-base64)
     :components
     ((:file "terminal-ansi")))

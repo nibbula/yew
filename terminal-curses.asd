@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description   "So many layers of fake like a cake."
     :depends-on (:dlib :terminal :curses :opsys :trivial-gray-streams :fatchar
-		 :color :char-util)
+		 :dcolor :char-util)
     :components
     ((:file "terminal-curses")))

@@ -10,7 +10,7 @@
 (defpackage :terminal-ms
   (:documentation "Microsoft console as a terminal.")
   (:use :cl :cffi :dlib :dlib-misc :terminal :char-util :opsys :os-ms
-	:trivial-gray-streams :fatchar :color :terminal-crunch)
+	:trivial-gray-streams :fatchar :dcolor :terminal-crunch)
   (:export
    #:terminal-ms
    ;; Extras:

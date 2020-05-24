@@ -11,7 +11,7 @@
     :source-control	:git
     :long-description   "X11 window as a terminal."
     :depends-on (:dlib :dlib-misc :terminal :opsys :trivial-gray-streams :clx
-		 :collections :char-util :color :grid :ochar :fatchar :stretchy
+		 :collections :char-util :dcolor :grid :ochar :fatchar :stretchy
 		 :keysyms)
     :components
     ((:file "terminal-x11")))

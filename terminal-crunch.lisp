@@ -551,7 +551,7 @@ two values ROW and COLUMN."
 ;; @@@ Am I being too paranoid doing this with a macro?
 (defmacro hash-thing-with (thing value hash-func hash-seed-func)
   (declare (optimize (speed 3) (safety 0)))
-  (with-unique-names (hv c)
+  (with-names (hv c)
     `(typecase ,thing
        (character (,hash-func (char-code ,thing) ,value))
        (integer   (,hash-func ,thing ,value))
@@ -1447,8 +1447,8 @@ i.e. the terminal is 'line buffered'."
 |#
 
 (defmethod terminal-color ((tty terminal-crunch-stream) fg bg)
-  (setf (fg tty) (color:copy-color fg)
-	(bg tty) (color:copy-color bg)))
+  (setf (fg tty) (dcolor:copy-color fg)
+	(bg tty) (dcolor:copy-color bg)))
 
 (defmethod terminal-colors ((tty terminal-crunch-stream))
   ;; Just call the wrapped one.
