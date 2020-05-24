@@ -334,13 +334,18 @@ The REPL also has a few commands:
   "If terminal isn't set Evaluate BODY with a *terminal* set up.
 TERMINAL-NAME and TERMINAL-TYPE should be in the environment."
   (with-unique-names (thunk)
-    `(flet ((,thunk () ,@body))
+    `(progn
+       ;; (break)
+       (flet ((,thunk () ,@body))
        (if ,terminal
-	   (,thunk)
+	   (progn
+	     (dbugf :repl "We thought we didn't need a terminal ~s~%" ,terminal)
+	     (,thunk))
 	   (with-terminal (terminal-type *terminal*
 					 :device-name terminal-name
 					 :start-at-current-line t)
-	     (,thunk))))))
+	     (dbugf :repl "We made a terminal? ~s~%" *terminal*)
+	     (,thunk)))))))
 
 (defvar *default-terminal-type* :crunch)
 
@@ -399,7 +404,10 @@ to quit everything. Arguments are:
     (when (not theme:*theme*)
       (setf theme:*theme* (theme:default-theme)))
 
+    (format t "FUCK YOU ~s~%" *terminal*)
+
     (with-repl-terminal (terminal)
+      (format t "STUPID DUMBASS ~s~%" *terminal*)
       (setf (tt-input-mode) :line)
       ;; Activate the debugger if it's loaded.
       (when (and debug (find-package :deblarg))

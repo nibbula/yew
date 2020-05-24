@@ -1604,7 +1604,7 @@ the modified COLLECTION.")
 
 (defmacro opop (collection)
   "Remove the first element from COLLECTION and return the element."
-  (dlib:with-unique-names (val new)
+  (dlib:with-names (val new)
     `(multiple-value-bind (,val ,new) (opop-element ,collection)
        (setf ,collection ,new)
        ,val)))
@@ -1720,7 +1720,7 @@ collection type."
 	(loop :for sym :in *methods* :do
 	   (when (and (fboundp sym)
 		      (typep (symbol-function sym) 'generic-function))
-	     (let ((ll (dlib:lambda-list sym))
+	     (let ((ll (dlib:argument-list sym))
 		   (*print-pretty* nil)
 		   (*print-escape* nil))
 	     (loop :for cc :in '(collection ordered-collection keyed-collection

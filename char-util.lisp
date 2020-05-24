@@ -968,7 +968,7 @@ the grapheme. STRING can be any vector type as long as KEY can get a character
 out of an element of it. RESULT-TYPE is the type of vector which the
 GRAPHEME-VARs will be, which defaults to character so it's compatable with a
 'normal' string."
-  (with-unique-names (class last-class c i)
+  (with-names (class last-class c i)
     (let ((grapheme-maker `(make-stretchy-vector 4 :element-type ',result-type))
 	  (cc (if key `(,key ,c) c)))
       `(progn

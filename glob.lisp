@@ -78,7 +78,7 @@ which is tested for inclusion by a function. STRING is individual characters."
 
 (defmacro defcc (name &body body)
   "Define a character class an. C is the character parameter in the body."
-  (with-unique-names (cc)
+  (with-names (cc)
     (let ((funky (if (and (consp body) (consp (car body))
 			  (eql (caar body) 'function))
 		     body

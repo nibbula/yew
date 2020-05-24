@@ -9,7 +9,7 @@ Define a FATCHAR-STRING as a vector of FATCHARS.
 Define a FAT-STRING as a struct with a FATCHAR-STRING so we can specialize.
 Define a TEXT-SPAN as a list representation of a FAT-STRING.
 ")
-  (:use :cl :dlib :stretchy :char-util :collections :ochar :ostring :color)
+  (:use :cl :dlib :stretchy :char-util :collections :ochar :ostring :dcolor)
   (:export
    #:fatchar
    #:fatchar-p
@@ -1027,7 +1027,7 @@ span-list ->
   (:fg :color [color] [span]*)
   (:bg :color [color] [span]*)
 
-Known colors are from color:*simple-colors* and known attributes are in
+Known colors are from dcolor:*simple-colors* and known attributes are in
 fatchar:*known-attrs*.
 
   - START and END are character index limits.
@@ -1148,7 +1148,7 @@ span-list ->
 
   (defparameter *span-args*
 "
-Known colors are from color:*simple-colors* and known attributes are in
+Known colors are from dcolor:*simple-colors* and known attributes are in
 fatchar:*known-attrs*.
 
   - START and END are character index limits.

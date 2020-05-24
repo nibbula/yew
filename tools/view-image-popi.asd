@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description
     "Something like a pixel shader, for use in the image viewer."
-    :depends-on (:dlib :dlib-misc :image :image-ops :color)
+    :depends-on (:dlib :dlib-misc :image :image-ops :dcolor)
     :components
     ((:file "view-image-popi")))

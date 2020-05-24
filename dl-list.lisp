@@ -94,7 +94,7 @@
 
 (defmacro dl-push (list obj)
   "Push an element onto the front of the list, modifying it."
-  (dlib:with-unique-names (new list-value)
+  (dlib:with-names (new list-value)
     `(let* ((,list-value ,list)
 	    (,new (make-instance 'dl-list :next ,list-value :content ,obj)))
        (dlib:with-muffled-notes
@@ -104,7 +104,7 @@
 
 (defmacro dl-pop (list)
   "Pop an element off from the front of the list, modifying it."
-  (dlib:with-unique-names (list-value)
+  (dlib:with-names (list-value)
     `(let ((,list-value ,list))
        (if ,list-value
 	   (prog1 (%dl-content ,list-value)

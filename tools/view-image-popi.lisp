@@ -7,7 +7,7 @@
 Really, just some very terse macros for doing pixel manipulation, designed
 for use inside the pixel expression.")
   (:nicknames :popi)
-  (:use :cl :dlib :dlib-misc :image :image-ops :color)
+  (:use :cl :dlib :dlib-misc :image :image-ops :dcolor)
   (:export
    #:popi-form
    #:popi-result
@@ -22,7 +22,7 @@ for use inside the pixel expression.")
   "Convert a pixel number."
   (typecase num
     (integer (mod num #x100))
-    (number (color:component-to-8bit num))
+    (number (component-to-8bit num))
     (t 0)))
 
 (declaim (inline px))
@@ -61,7 +61,7 @@ alone otherwise, like when repeating the last expression.")
      (logand #xffffffff result))
     (float
      ;; Grayscale
-     (let ((v (color:component-to-8bit result)))
+     (let ((v (component-to-8bit result)))
        (make-pixel v v v #xff)))
     (number
      (logand #xffffffff (truncate result)))

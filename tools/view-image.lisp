@@ -6,7 +6,7 @@
   (:documentation "Image viewer")
   (:use :cl :dlib :dlib-misc :keymap :char-util :terminal :terminal-ansi
 	:terminal-crunch :inator :terminal-inator :magic :grout :image
-	:image-ops :color)
+	:image-ops :dcolor)
   (:export
    #:view-image
    #:!view-image
@@ -108,7 +108,7 @@
     "True to use the non-parallel pixel mapping. Useful for debugging.")
    (bg-color
     :initarg :bg-color :accessor image-inator-bg-color
-    :initform (color:lookup-color :black)
+    :initform (lookup-color :black)
     :documentation "Background color of the window.")
    )
   (:default-initargs
@@ -123,6 +123,7 @@
   (:method ((type (eql 'image-inator)))
     (or (equal (symbol-name (type-of *terminal*)) "TERMINAL-ANSI")
 	(equal (symbol-name (type-of *terminal*)) "TERMINAL-CRUNCH")
+	(equal (symbol-name (type-of *terminal*)) "TERMINAL-CURSES")
 	(equal (symbol-name (type-of *terminal*)) "TERMINAL-X11"))))
 
 (defgeneric width (inator)
@@ -1113,7 +1114,7 @@ the first time it fails to identify the image."
 (defun print-image (file &key zoom width height errorp use-full)
   (let ((t-width (tt-width))
 	;;(t-height (tt-height))
-	(bg-color (color:lookup-color :black)))
+	(bg-color (lookup-color :black)))
     (with-terminal (:ansi-stream *terminal* :output-stream *standard-output*)
       ;; (format t "file = ~s~%" file)
       (catch 'git-out

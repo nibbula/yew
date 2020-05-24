@@ -1,6 +1,6 @@
-;;
-;; utf8.lisp - Things for UTF8 encoding.
-;;
+;;;
+;;; utf8.lisp - Things for UTF8 encoding.
+;;;
 
 (in-package :unicode)
 
@@ -14,7 +14,7 @@
 ;; The regular kind, that throws a lot of errors, in case you want to make
 ;; sure your UTF-8 is valid.
 (defmacro %get-utf8-char (byte-getter char-setter)
-  (with-unique-names (u1 u2 u3 u4)
+  (with-names (u1 u2 u3 u4)
     `(prog ((,u1 0) (,u2 0) (,u3 0) (,u4 0))
 	(declare (type fixnum ,u1 ,u2 ,u3, u4))
       RESYNC
@@ -93,7 +93,7 @@
 ;; The good kind, that doesn't throw any errors, and allows preserving of
 ;; input, thanks to Markus Kuhn.
 (defmacro %get-utf8b-char (byte-getter char-setter)
-  (with-unique-names (bonk u1 u2 u3 u4 u5)
+  (with-names (bonk u1 u2 u3 u4 u5)
     `(macrolet ((,bonk (&rest args)
 		  `(,',char-setter (code-char (logior ,@args)))))
        (prog ((,u1 0) (,u2 0) (,u3 0) (,u4 0) (,u5 0))
@@ -213,7 +213,7 @@ to be given to CHAR-SETTER."
      (error "code #x~x isn't a character or an integer in range." code))))
 
 (defmacro %put-utf8-char (char-getter byte-setter)
-  (with-unique-names (code)
+  (with-names (code)
     `(prog ((,code (char-code (,char-getter))))
 	(case (%length-in-utf8-bytes ,code)
 	  (1 (,byte-setter ,code))
@@ -231,7 +231,7 @@ to be given to CHAR-SETTER."
 
 #| @@@ Do the 'b' specific part!
 (defmacro %put-utf8b-char (char-getter byte-setter)
-  (with-unique-names (code)
+  (with-names (code)
     `(prog ((,code (char-code (,char-getter))))
 	(case (%length-in-utf8-bytes ,code)
 	  (1 (,byte-setter ,code))

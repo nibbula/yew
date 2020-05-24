@@ -1,6 +1,6 @@
-;;							-*- encoding: utf-8 -*-
-;; dlib1.lisp - Utilities of redundant doom, first file.
-;;
+;;;							-*- encoding: utf-8 -*-
+;;; dlib1.lisp - Utilities of redundant doom, first file.
+;;;
 
 ;; These are mostly solving problems that have already been solved.
 ;; But it's mostly stuff that I need just to start up.
@@ -9,7 +9,7 @@
 ;;  - Try to keep it so-called "minimal".
 ;; More optional stuff can go in dlib-misc.
 
-#+debug-rc (progn (format *terminal-io* "dlib") (force-output *terminal-io*))
+;;#+debug-rc (progn (format *terminal-io* "dlib") (force-output *terminal-io*))
 
 (when (find-package :the-real-fake-dlib)
   (cerror "Go ahead and load the real DLIB anyway."
@@ -35,7 +35,7 @@ of it.")
 	;; extensions
 	#+sbcl :sb-ext
 	)
-  #+lispworks (:shadow #:lambda-list #:with-unique-names)
+   #+lispworks (:shadow #:lambda-list #:with-unique-names)
   #-the-real-fake-dlib (:nicknames :fake-dlib) ; Crazy Sauce!
   (:export
    ;; bootstrapping System-ish
@@ -126,9 +126,11 @@ of it.")
    #:symbolify
    #:keywordify
    #:likely-callable
-   #-lispworks #:lambda-list
+   ;; #-lispworks #:lambda-list
+   #:argument-list
    #:lambda-list-vars
    #-lispworks #:with-unique-names
+   #:with-names
    #:with-package
    #:ensure-exported
    #:without-package-variance
@@ -246,6 +248,12 @@ Useful for making your macro 'hygenic'."
     `(let ,(loop :for n :in names
 	      :collect `(,n (gensym (symbol-name ',n))))
        ,@body)))
+
+;; Because we don't have alias up here yet.
+(setf (macro-function 'with-names)
+      (macro-function 'with-unique-names)
+      (documentation 'with-names 'function)
+      (documentation 'with-unique-names 'function))
 
 (define-condition missing-implementation-error (warning)
   ((symbol
@@ -1505,8 +1513,7 @@ A utility for debugging DEBUG-FUNCTION-ARGLIST."
 		(t (intern (write-to-string x)))))
 	  tree))
 
-;; @@@ This is mis-named.
-(defun lambda-list (fun)
+(defun argument-list (fun)
   "Return the function's arguments."
   #+sbcl
   (let ((f (or (macro-function fun)

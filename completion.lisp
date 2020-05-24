@@ -330,7 +330,7 @@ arguments for that function, otherwise return NIL."
 			      (or pack *package*)))))
     (if (fboundp sym)
 	(format nil "~((~a~{ ~a~})~)"
-		sym (lambda-list (symbol-function sym)))
+		sym (argument-list (symbol-function sym)))
 	nil)))
 |#
 
@@ -393,8 +393,8 @@ arguments for that function, otherwise return NIL."
 		  (push #\) result)))
 	       (incf i)))
       (push #\space result)
-      ;;(print-it (dlib:lambda-list symbol))
-      (print-list-interior (dlib:lambda-list symbol))
+      ;;(print-it (dlib:argument-list symbol))
+      (print-list-interior (dlib:argument-list symbol))
       (push #\) result)
       (nreverse result))))
 
@@ -521,8 +521,8 @@ arguments for that function, otherwise return NIL."
 	       (when did-standout
 		 (tt-standout nil))))
       (tt-write-char #\space)
-      ;;(print-it (dlib:lambda-list symbol))
-      (print-list-interior (dlib:lambda-list symbol))
+      ;;(print-it (dlib:argument-list symbol))
+      (print-list-interior (dlib:argument-list symbol))
       (tt-write-char #\)))))
 
 (defun function-help-show-doc (symbol cols)
@@ -589,7 +589,7 @@ arguments for that function, otherwise return NIL."
 
 (defun function-keyword-completion (sym context pos word-start all)
   (dbug "function-keyword-completion ~s ~s~%" sym (subseq context pos))
-  (let* ((args (and (fboundp sym) (dlib:lambda-list sym)))
+  (let* ((args (and (fboundp sym) (dlib:argument-list sym)))
 	 (key-pos (position '&key args))
 	 (word (subseq context word-start))
 	 (case-in (string-character-case word))

@@ -33,7 +33,7 @@
    #:scan-over-string
 
    ;; time
-   #:date-string
+   #-lispworks #:date-string
    #:format-date
    #:simple-parse-time
    #:millennia-to-time #:centuries-to-time #:decades-to-time #:years-to-time

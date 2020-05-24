@@ -218,7 +218,7 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
 already bound, so multiple wrappings will use the same object. VAR defaults to
 *GROUT*. Note that if you supply your own VAR, you will have to use the
 generic functions (i.e. %GROUT-*) directly."
-  (with-unique-names (thunk)
+  (with-names (thunk)
     `(flet ((,thunk () ,@body))
        (if (and (boundp ',var) ,var)
 	   (,thunk)
