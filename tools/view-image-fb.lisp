@@ -28,7 +28,7 @@
     :initarg :need-to-redraw :accessor need-to-redraw :initform nil :type boolean
     :documentation "True if we need to redraw."))
   (:default-initargs
-   :move-object-mode t)
+   :move-object-mode nil)
   (:documentation "Image viwer for FB."))
 
 (defmethod initialize-instance
@@ -39,13 +39,13 @@
 
 (defmethod start-inator ((o image-fb-inator))
   "Start the inator."
-  (call-next-method)
   (with-slots ((image view-image::image)
 	       framebuffer fb-context) o
     (when (not fb-context)
       (setf framebuffer (linux-fb:start)
 	    fb-context (linux-fb:new-gc framebuffer)))
       ;; (call-next-method)
+    (call-next-method)
     (when (view-image::image-inator-image o)
       (view-image::center o)
       (view-image::fit-image-to-window o))))
@@ -76,7 +76,10 @@
   ;; 					  (- (drawable-height window)
   ;; 					     (font-descent font)))
   ;; 		       (string-to-utf8-bytes string)))
-  (tt-write-string-at (1- (tt-height)) 0 string))
+  (tt-move-to (1- (tt-height)) 0)
+  (tt-erase-to-eol)
+  (tt-write-string string)
+  )
 
 #|
 (defun get-absolute-coords (win)
@@ -127,8 +130,8 @@
   ;;   (display-finish-output display)
   ;;   (when (not own-window)
   ;;     (window-eraser o x y width height)))
-  (linux-fb:rectangle-fill x y width height #x00000000)
-  )
+  (multiple-value-bind (xx yy ww hh) (linux-fb::clip-rect x y width height)
+    (linux-fb:rectangle-fill xx yy ww hh #x00000000)))
 
 (defun erase-image (o)
   (with-slots ((image    view-image::image)
@@ -170,12 +173,14 @@
 	  (setf (gcontext-clip-x overlay-gc) x-pos
 		(gcontext-clip-y overlay-gc) y-pos)))))
 
+|#
+
 (defmethod view-image::left ((o image-fb-inator) &optional (n 1))
   (declare (ignore n))
   ;;(setf (need-to-redraw o) t)
   (erase-image o)
   (call-next-method)
-  (update-pos o)
+  ;; (update-pos o)
   )
 
 (defmethod view-image::down ((o image-fb-inator) &optional (n 1))
@@ -183,7 +188,7 @@
   ;;(setf (need-to-redraw o) t)
   (erase-image o)
   (call-next-method)
-  (update-pos o)
+  ;; (update-pos o)
   )
   
 (defmethod view-image::up ((o image-fb-inator) &optional (n 1))
@@ -191,7 +196,7 @@
   ;;(setf (need-to-redraw o) t)
   (erase-image o)
   (call-next-method)
-  (update-pos o)
+  ;; (update-pos o)
   )
 
 (defmethod view-image::right ((o image-fb-inator) &optional (n 1))
@@ -199,27 +204,28 @@
   ;;(setf (need-to-redraw o) t)
   (erase-image o)
   (call-next-method)
-  (update-pos o)
+  ;; (update-pos o)
   )
 
 (defmethod move-to-top ((o image-fb-inator))
   (erase-image o)
   (call-next-method)
-  (update-pos o)
+  ;; (update-pos o)
   )
 
 (defmethod move-to-bottom ((o image-fb-inator))
   (erase-image o)
   (call-next-method)
-  (update-pos o)
+  ;; (update-pos o)
   )
 
 (defmethod view-image::center ((o image-fb-inator))
-  (when (image-fb-inator-display o)
-    (erase-image o)
-    (call-next-method)
-    (update-pos o)))
+  (erase-image o)
+  (call-next-method)
+  ;; (update-pos o)
+  )
 
+#|
 (defmethod view-image::fit-image-to-window ((o image-fb-inator))
   (when (image-fb-inator-display o)
     (call-next-method)))
@@ -307,7 +313,6 @@
 	   result))
 	(t
 	 (our-get-key inator nil))))))
-|#
 
 (defun calculate-rowsize (width depth)
   (cond
@@ -328,7 +333,6 @@
 	 ;;  (* bytes-per-pixel width))
 	 )))))
 
-#|
 (defmethod view-image::clear-image ((inator image-fb-inator))
   "Clear the current image. Called before switching files or ending."
   (erase-image inator)
@@ -565,10 +569,11 @@ XIMAGES-MASK array."
 	(declare (type fixnum si-x si-y width height))
 	;;(format t "width ~s height ~s~%" width height)
 	(dbug "put image~%")
-	(let* ((start-x (+ x si-x))
-	       (start-y (+ y si-y))
-	       (x-pos (max start-x 0))
-	       (y-pos (max start-y 0))
+	(let* (
+	       ;; (start-x (+ x si-x))
+	       ;; (start-y (+ y si-y))
+	       ;; (x-pos (max start-x 0))
+	       ;; (y-pos (max start-y 0))
 	       ;;(x-pos start-x)
 	       ;;(y-pos start-y)
 	       ;;(source-x (if (minusp start-x) (abs start-x) 0))
@@ -577,7 +582,9 @@ XIMAGES-MASK array."
 	       ;;(h (max (min (- height source-y) (get-window-height inator)) 0))
 	       ;;(mask-p (use-mask-p inator))
 	       )
-	  (linux-fb:put-image image x-pos y-pos :subimage subimage))))
+	  ;; (linux-fb:put-image image x-pos y-pos :subimage subimage)
+	  (linux-fb:put-image image x y :subimage subimage :scale zoom)
+	  )))
     (dbug "put image done~%")
     (when show-modeline
       (dbug "modeline~%")

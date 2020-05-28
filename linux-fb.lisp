@@ -55,7 +55,7 @@
 (in-package :linux-fb)
 
 ;; (declaim (optimize (speed 0) (safety 3) (debug 2) (space 0) (compilation-speed 0)))
-(declaim (optimize (safety 3) (debug 3)))
+;; (declaim (optimize (safety 3) (debug 3)))
 ;; (declaim (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
 
 (defstruct memory-region
@@ -539,7 +539,7 @@ DONE should be called when done using it to free resources."
 
 (defun pixel-to-color (pixel)
   "Convert a framebuffer pixel into a color structure."
-  (color:make-color
+  (dcolor:make-color
    :rgb8
    :red   (ash (logand pixel #x00ff0000) -16)
    :green (ash (logand pixel #x0000ff00) -8)
@@ -678,31 +678,149 @@ DONE should be called when done using it to free resources."
 	  (min end-x (1- (framebuffer-width (context-fb *context*))))
 	  (min end-y (1- (framebuffer-height (context-fb *context*))))))
 
-(defun put-image (image x y &key (subimage 0) #|(scale 1)|#)
-  "Draw an image at coordinates X and Y."
-  (multiple-value-bind (cx cy cw ch)
-      (clip-rect x y
-		 (+ x (image:image-width image))
-		 (+ y (image:image-height image)))
-    ;; (format t "clip ~s ~s ~s ~s~%" cx cy cw ch)
-    (let* ((data (image:sub-image-data
-		  (aref (image:image-subimages image) subimage)))
-	   ;; (step (max 1 (round 1 scale)))
-	   (start-x (- cx x))
-	   (start-y (- cy y))
-	   (end-x (- (image:image-width image)
-		     (- (+ x (image:image-width image)) cw)))
-	   (end-y (- (image:image-height image)
-		     (- (+ y (image:image-height image)) ch))))
-      ;; (format t "rect ~s ~s ~s ~s~%" start-x start-y end-x end-y)
-      (when (and (plusp (- end-y start-y))
-		 (plusp (- end-x start-x)))
-	(loop :for iy :from start-y :below end-y :do
-	   (loop :for ix :from start-x :below end-x :do
-	      (linux-fb:set-pixel
-	       (+ ix x) (+ iy y)
-	       (ash (image:get-whole-pixel data iy ix) -8))))))))
 
+;; @@@ copied from view-image
+(defun clip (x y width height view-width view-height si-x si-y zoom)
+  (let* ((step (round 1 zoom))
+	 (start-x (if (> x si-x) (- x si-x) 0))
+	 (start-y (if (> y si-y) (- y si-y) 0))
+	 (end-x (min width (- width
+			      (- (+ si-x width)
+				 (+ x (* step (1- view-width)))))))
+	 (end-y (min height (- height
+			       (- (+ si-y height)
+				  (+ y (1- (* step (1- view-height)))))))))
+    (values start-x end-x start-y end-y)))
+
+;; @@@ Mostly from view-image
+(defun output-image (x y zoom image subimage view-width view-height
+		     #|mover setter buffer |# bg-color)
+  (declare (type fixnum x y) (type float zoom)
+	   (ignore bg-color)) ;; @@@
+  (with-slots (name (subimages image::subimages)) image
+    (with-accessors ((si-x     image:sub-image-x)
+		     (si-y     image:sub-image-y)
+		     (width    image:sub-image-width)
+		     (height   image:sub-image-height)
+		     (data     image:sub-image-data)
+		     (disposal image:sub-image-disposal))
+	(aref subimages subimage)
+      (declare (type fixnum si-x si-y width height))
+      (let ((out-x 0) (out-y 0))
+      (multiple-value-bind (start-x end-x start-y end-y)
+	  (clip x y width height view-width view-height si-x si-y zoom)
+	  ;; (clip-rect x y width height #| view-width view-height si-x si-y zoom |#)
+	(let* ((step (max 1 (round 1 zoom)))
+	       (step-squared (* step step))
+	       (r 0) (g 0) (b 0) (a 0))
+	  (declare (type fixnum r g b a))
+	  ;;(pause "zoom = ~s step = ~s" zoom step)
+	  (when (> si-y y)
+	    (incf out-y (max y (truncate (- (+ si-y start-y) y) step))))
+	  (loop ;; :with r = 0 :and g = 0 :and b = 0 :and a = 0
+	     :for iy fixnum :from start-y :below end-y :by step :do
+	     (when (> si-x x)
+	       (incf out-x (max x (truncate (- (+ si-x start-x) x) step))))
+	     (loop
+		:for ix fixnum :from start-x :below end-x :by step :do
+		(setf r (loop :for av-y :from 0 :below step :sum
+			   (loop :for av-x :from 0 :below step
+			      :sum
+			      (image:pixel-r data
+				       (min (1- height) (+ iy av-y))
+				       (min (1- width) (+ ix av-x)))
+			      )))
+		(setf g (loop :for av-y :from 0 :below step :sum
+			   (loop :for av-x :from 0 :below step
+			      :sum
+			      (image:pixel-g data
+				       (min (1- height) (+ iy av-y))
+				       (min (1- width) (+ ix av-x)))
+			      )))
+		(setf b (loop :for av-y :from 0 :below step :sum
+			   (loop :for av-x :from 0 :below step
+			      :sum
+			      (image:pixel-b data
+				       (min (1- height) (+ iy av-y))
+				       (min (1- width) (+ ix av-x)))
+			      )))
+		(setf a (loop :for av-y :from 0 :below step :sum
+			   (loop :for av-x :from 0 :below step
+			      :sum
+			      (image:pixel-a data
+				       (min (1- height) (+ iy av-y))
+				       (min (1- width) (+ ix av-x)))
+			      )))
+		(when (not (zerop a))
+		  (set-pixel out-x out-y
+			     (color-pixel
+			      (truncate r step-squared)
+			      (truncate g step-squared)
+			      (truncate b step-squared))))
+		(incf out-x))
+	     (incf out-y)
+	     (setf out-x 0)
+	     (setf r 0 g 0 b 0 a 0))))))))
+
+(defun put-image (image x y &key (subimage 0) (scale 1.0))
+  "Draw an image at coordinates X and Y."
+  (output-image x y scale image subimage
+		(framebuffer-width (context-fb *context*))
+		(framebuffer-height (context-fb *context*))
+		#(:rgb8 0 0 0)))
+
+#|
+(defun put-image (image x y &key (subimage 0) (scale 1))
+  "Draw an image at coordinates X and Y."
+  (with-slots (name (subimages image::subimages)) image
+    (with-accessors ((si-x     sub-image-x)
+		     (si-y     sub-image-y)
+		     (width    sub-image-width)
+		     (height   sub-image-height)
+		     (data     sub-image-data)
+		     (disposal sub-image-disposal))
+	(aref subimages subimage)
+      (declare (type fixnum si-x si-y width height))
+    (multiple-value-bind (cx cy cw ch)
+	(clip-rect x y (+ x width) (+ y height))
+      ;; (format t "image ~s ~s~%" width height)
+      ;; (format t "clip ~s ~s ~s ~s~%" cx cy cw ch)
+      ;; (step (max 1 (round 1 scale)))
+      (let* ((step (max 1 (round 1 scale)))
+	     (ss (* step step))
+	     (start-x (- cx x sx))
+	     (start-y (- cy y sy))
+	     (end-x (- width (- (+ x width) cw)))
+	     (end-y (- height (- (+ y height) ch)))
+	     (bg-r 0 #| (color-component bg-color :red)   |#)
+	     (bg-g 0 #| (color-component bg-color :green) |#)
+	     (bg-b 0 #| (color-component bg-color :blue)  |#)
+	     (r1 bg-r) (g1 bg-g) (b1 bg-b) ;; (a1 0)
+	     (r2 bg-r) (g2 bg-g) (b2 bg-b) ;; (a2 0)
+	     source alpha-is-zero alpha (xx 0) (yy 0))
+	;; (format t "rect ~s ~s ~s ~s~%" start-x start-y end-x end-y)
+	(macrolet
+	    ((pixi (ix iy comp pixer plus)
+	       `(loop :for av-y :from 0 :below step :sum
+		   (loop :for av-x :from 0 :below step :sum
+		      (progn
+			(setf xx (min (1- width) (+ ,ix av-x))
+			      yy (min (1- height) (+ ,iy ,plus av-y))
+			      alpha (pixel-a source yy xx))
+			(when (not (zerop alpha))
+			  (setf alpha-is-zero nil))
+			(+ (* (/ alpha #xff) (,pixer source yy xx))
+			   (* ,comp (/ (- #xff alpha) #xff))))))))
+	  (when (and (plusp (- end-y start-y))
+		     (plusp (- end-x start-x)))
+
+	    (loop :for iy :from start-y :below end-y :do
+	       (loop :for ix :from start-x :below end-x :do
+		  (linux-fb:set-pixel
+		   (+ ix x) (+ iy y)
+		   (ash (image:get-whole-pixel data iy ix) -8))))
+	    )))))
+|#
 
 ;; How to use:
 ;;
