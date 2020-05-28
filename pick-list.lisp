@@ -1,6 +1,6 @@
-;;
-;; pick-list.lisp - Choose things from a list.
-;;
+;;;
+;;; pick-list.lisp - Choose things from a list.
+;;;
 
 ;; This is basically part of FUI, but it got too big.
 
@@ -97,6 +97,12 @@
     :initarg :input :accessor pick-input
     :initform 0
     :documentation "The last input.")
+   (mouse-event
+    :initarg :mouse-event :accessor pick-mouse-event :initform nil
+    :documentation "The mouse event.")
+   (button-range
+    :initarg :button-range :accessor pick-button-range :initform nil
+    :documentation "The coordinate of items as buttons.")
    (error-message
     :initarg :error-message :accessor pick-error-message
     :initform nil
@@ -121,6 +127,12 @@ The function receives a 'pick' as an argument."))
 ;;   "Quit the list picker."
 ;;   (setf (inator-quit-flag i) t))
 
+(defmethod start-inator :after ((pick pick))
+  (tt-enable-events :mouse-buttons))
+
+(defmethod finish-inator :after ((pick pick))
+  (tt-disable-events :mouse-buttons))
+
 (defmethod accept ((pick pick)) ; pick-list-pick
   "Pick the current item."
   (with-slots (multiple by-index result items input second-result point
@@ -133,6 +145,24 @@ The function receives a 'pick' as an argument."))
 	    (setf result (cdr (elt items point)))))
     (setf quit-flag t
 	  second-result (eq input #\newline)))) ; @@@ bogus check for newline
+
+(defun handle-press (pick)
+  "Handlle a press event."
+  (with-slots (mouse-event button-range point top) pick
+    (when (and mouse-event button-range)
+      (loop
+	 :for item :in button-range
+	 :for i = 0 :then (1+ i)
+	 :when (and (= (tt-mouse-event-y mouse-event) (car item))
+		    (< (tt-mouse-event-x mouse-event) (cdr item)))
+	 :do
+	 (setf point (+ top i))
+	 ;; (update-display pick)
+	 ;;(accept pick)
+	 (return nil)))))
+
+(defun handle-release (pick)
+  (accept pick))
 
 (defun pick-list-toggle-item (pick)
   "Toggle the item for multiple choice."
@@ -177,6 +207,24 @@ The function receives a 'pick' as an argument."))
 	  (setf point (1- max-line))
 	  (setf top (max 0 (- (length items)
 			      (- max-y ttop))))))))
+
+(defun scroll-down (pick &optional (n 5))
+  "Scroll down by N items."
+  (with-slots (top point max-y) pick
+    (if (> top n)
+	(decf top n)
+	(setf top 0))
+    (when (>= point (+ top max-y))
+      (setf point (+ top (- max-y 2))))))
+
+(defun scroll-up (pick &optional (n 5))
+  "Scroll up by N items."
+  (with-slots (top point max-line) pick
+    (if (< (+ top n) max-line)
+	(incf top n)
+	(setf top (1- max-line)))
+    (when (< point top)
+      (setf point top))))
 
 (defmethod move-to-bottom ((i pick))	; pick-list-end-of-list
   "Go to the end of the list."
@@ -248,15 +296,16 @@ The function receives a 'pick' as an argument."))
   "Display the list picker."
   (with-slots (message multiple items point result cur-line
 	       max-y top left ttop error-message search-str save-search
-	       last-search) *pick*
+	       last-search button-range) *pick*
     (tt-home)
     (when message (tt-format message))
-    (setf ttop (terminal-get-cursor-position *terminal*))
+    (setf ttop (terminal-get-cursor-position *terminal*)
+	  button-range nil)
     (when (not save-search)
       (setf last-search (copy-seq search-str))
       (stretchy-truncate search-str))
     ;; display the list
-    (loop :with i = top :and y = ttop :and f = nil
+    (loop :with i = top :and y = ttop :and f = nil :and str
        :do
        (setf f (car (elt items i)))
        (tt-erase-to-eol)
@@ -267,16 +316,18 @@ The function receives a 'pick' as an argument."))
 	 (tt-inverse t)
 	 (setf cur-line y #| (getcury *stdscr*) |#))
        (when (<= left (1- (length f)))
-	 (tt-write-string
-	  (subseq f (max 0 left)
-		  (min (length f)
-		       (+ left (- (tt-width) 3)))))) ; 3 = (length "X ") + 1
+	 (setf str (subseq f (max 0 left)
+			   (min (length f)
+				(+ left (- (tt-width) 3))))) ; 3 = "X " + 1
+	 (tt-write-string str))
        (when (= i point)
 	 (tt-inverse nil))
+       (push (cons y (length str)) button-range)
        (tt-write-char #\linefeed)
        (incf i)
        (incf y)
        :while (and (< y max-y) (< i (length items))))
+    (setf button-range (nreverse button-range))
     (tt-erase-below)
     (let ((msg (or error-message
 		   (and (not (zerop (length search-str)))
@@ -372,9 +423,21 @@ The function receives a 'pick' as an argument."))
 
 (defmethod await-event ((i pick))
   "Pick list input."
-  (with-slots (error-message input) i
+  (with-slots (error-message input mouse-event) i
     (setf error-message nil
+	  mouse-event nil
 	  input (tt-get-key))
+    (when (and (typep input 'tt-mouse-button-event))
+      (setf mouse-event input)
+      (case (tt-mouse-button input)
+	(:button-1
+	 (setf input
+	       (if (typep input 'tt-mouse-button-release)
+		   :release
+		   :press)))
+	(:release (setf input :release))
+	(:button-4 (setf input :scroll-down))
+	(:button-5 (setf input :scroll-up))))
     input))
 
 (defgeneric delete-pick (pick)
@@ -526,6 +589,10 @@ The function receives a 'pick' as an argument."))
     (#\?		  . help)
     (,(ctrl #\@)	  . pick-list-set-mark)
     (,(ctrl #\R)	  . search-backward-command)
+    (:press		  . handle-press)
+    (:release		  . handle-release)
+    (:scroll-up		  . scroll-up)
+    (:scroll-down	  . scroll-down)
     ))
 
 (defparameter *pick-list-escape-keymap*
