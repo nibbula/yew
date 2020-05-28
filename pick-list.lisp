@@ -10,6 +10,7 @@
 	:terminal-inator :fui :view-generic)
   (:import-from :inator #:mark #:point #:quit-flag)
   (:export
+   #:pick
    #:pick-list
    #:pick-file
    #:pick-files
@@ -533,7 +534,7 @@ The function receives a 'pick' as an argument."))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun pick-list (the-list &key message by-index sort-p default-value
-			     selected-item (typing-searches t) multiple
+			     selected-item (typing-searches t) keymap multiple
 			     popup (x 0) (y 0) height before-hook)
   "Have the user pick a value from THE-LIST and return it. Arguments:
   MESSAGE         - A string to be displayed before the list.
@@ -542,6 +543,7 @@ The function receives a 'pick' as an argument."))
   DEFAULT-VALUE   - Return if no item is selected.
   SELECTED-ITEM   - Item to have initially selected.
   TYPING-SEARCHES - True to have alphanumeric input search for the item.
+  KEYMAP          - Add a custom keymap.
   MULTIPLE        - True to allow multiple items to be selected.
   POPUP		  - True to use a pop-up window, in which case provide X and Y."
   (when (not the-list)
@@ -550,39 +552,42 @@ The function receives a 'pick' as an argument."))
     (let* ((max-y (1- (tt-height)))
 	   (count (length the-list))
 	   (string-list (make-array count :element-type 'cons
-				    :initial-element (cons nil nil))))
+				    :initial-element (cons nil nil)))
+	   (new-keymap (list *pick-list-keymap*
+			     *default-inator-keymap*)))
+      (when keymap
+	(push keymap new-keymap))
       (loop
 	 :for i :from 0
 	 :for item :in the-list
 	 :do (setf (aref string-list i) (cons (princ-to-string item) item)))
-     (setf string-list
-	   (if (not (null sort-p))
-	       (locally
-		   #+sbcl (declare
-			   (sb-ext:muffle-conditions
-			    sb-ext:compiler-note))
-		   ;; Where's the unreachable code??
-		   (sort string-list #'string-lessp
-			 :key #'car))
-	       string-list))
-     (when (not popup)
-       (tt-clear))
-     (do-pick (if popup 'popup-pick 'pick)
-       :message	        message
-       :by-index	by-index
-       :multiple	multiple
-       :typing-searches typing-searches
-       :point	        (or selected-item 0)
-       :items	        string-list
-       :max-line        (length string-list)
-       :max-y           (or height max-y)
-       :page-size       (- max-y 2)
-       :x		x
-       :y		y
-       :result	        default-value
-       :before-hook	before-hook
-       :keymap	        (list *pick-list-keymap*
-			      *default-inator-keymap*)))))
+      (setf string-list
+	    (if (not (null sort-p))
+		(locally
+		    #+sbcl (declare
+			    (sb-ext:muffle-conditions
+			     sb-ext:compiler-note))
+		    ;; Where's the unreachable code??
+		    (sort string-list #'string-lessp
+			  :key #'car))
+		string-list))
+      (when (not popup)
+	(tt-clear))
+      (do-pick (if popup 'popup-pick 'pick)
+	:message        message
+	:by-index	by-index
+	:multiple	multiple
+	:typing-searches typing-searches
+	:point	        (or selected-item 0)
+	:items	        string-list
+	:max-line       (length string-list)
+	:max-y          (or height max-y)
+	:page-size      (- max-y 2)
+	:x		x
+	:y		y
+	:result	        default-value
+	:before-hook	before-hook
+	:keymap	        new-keymap))))
 
 #| Put in the event loop: 
 (when (not (pick-typing-search))
@@ -739,31 +744,36 @@ The function receives a 'pick' as an argument."))
 	    (eval code)
 	    :quit)))))
 
-(defun do-menu* (menu &key message selected-item popup (x 0) (y 0))
-  "Perform an action from a menu. Menu is an alist of (item . action)."
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *menu-doc*
+"Perform an action from a menu.
+ - MENU is an alist of (item . action) where ITEM is something to print,
+   as with princ, and ACTION is a function to call.
+ - MESSAGE is some text to display before the menu.
+ - SELECTED-ITEM is the item that is initially selected."))
+
+(defun do-menu* (menu &key message selected-item popup (x 0) (y 0) keymap)
+  #.*menu-doc*
   (let ((items (loop :for m :in menu :collect (car m)))
 	(funcs (loop :for m :in menu :collect (cdr m))))
     (let* ((n (pick-list items :by-index t
 			       :message message
 			       :selected-item selected-item
 			       :popup popup
+			       :keymap keymap
 			       :x x :y y))
 	   (code (if n (elt funcs n))))
       (if code
 	  (eval code)
 	  :quit))))
 
-(defmacro do-menu (menu &key message selected-item popup (x 0) (y 0))
-  "Perform an action from a menu. MENU is an alist of (ITEM . ACTION), where
-ITEM is something to print, as with princ, and ACTION is a function to call.
-Arguments:
-MESSAGE is some text to display before the menu.
-SELECTED-ITEM is the item that is initially selected.
-This is a macro so you can use lexically scoped things in the menu."
+(defmacro do-menu (menu &key message selected-item popup (x 0) (y 0) keymap)
+  #.(s+ *menu-doc*
+	"This is a macro so you can use lexically scoped things in the menu.")
   (cond
     ((symbolp menu)
      `(do-menu* ,menu :message ,message :selected-item ,selected-item
-		:popup ,popup :x ,x :y ,y))
+		:popup ,popup :x ,x :y ,y :keymap ,keymap))
     ((listp menu)
      ;; @@@ improve to one loop
      (let ((items (loop :for (i . nil) :in menu :collect i))
@@ -773,7 +783,8 @@ This is a macro so you can use lexically scoped things in the menu."
 	  (let* ((,n-sym (pick-list ',items :by-index t
 				    :message ,message
 				    :selected-item ,selected-item
-				    :popup ,popup :x ,x :y ,y)))
+				    :popup ,popup :x ,x :y ,y
+				    :keymap ,keymap)))
 	    (if ,n-sym
 		(case ,n-sym
 		  ,@(loop :for i :from 0 :below (length funcs)
