@@ -241,6 +241,14 @@ require terminal driver support."))
   "Restore the cursor position, from the last saved postion."
   (declare (ignore tty)))
 
+(defmethod terminal-selection ((tty terminal-dumb) &key type)
+  "Return the terminal's selection."
+  (declare (ignore tty)))
+
+(defmethod (setf terminal-selection) (selection (tty terminal-dumb) &key type)
+  "Set the terminal's selection."
+  (declare (ignore selection tty)))
+
 (defmethod terminal-title ((tty terminal-dumb))
   (declare (ignore tty)))
 
