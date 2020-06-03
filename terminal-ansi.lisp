@@ -1960,6 +1960,7 @@ already a character or string just return it."
   (etypecase type
     (string type)
     (character (cdr (find type *selection-codes* :key #'cdr)))
+    (null "s0")
     (symbol (cdr (find type *selection-codes* :key #'car)))))
 
 ;; the configurable primary/clipboard selection and cut buffer 0
@@ -1972,19 +1973,19 @@ wheren <N> is a number 1-7."
     (when (not type-code)
       (error "Unknown selection type ~s" type))
     (setf result (query-string (s+ "52;" type-code ";?" #\bel)
-			       :lead-in +osc+ :ending 1 :tty tty))
+			       :lead-in +osc+ :ending 0 :tty tty))
     (when result
       (cl-base64:base64-string-to-string
        (remove-prefix result (s+ "2;" type-code ";"))))))
 
-(defun set-selection (selection &key (type "s0"))
+(defun set-selection (selection &key (type "s0") (tty *terminal*))
   "Set the selection to the string SELECTION. TYPE should be one of :clipboard,
 :primary, :select, or :cut-buffer-<N>, wheren <N> is a number 1-7.
 TYPE  defaults to :select or :cut-buffer-0."
-  (tt-format "~a52;~a;~a~a" +osc+
-	     (selection-type-code type)
-	     (cl-base64:string-to-base64-string selection)
-	     +st+)
+  (terminal-raw-format tty "~a52;~a;~a~a" +osc+
+		       (selection-type-code type)
+		       (cl-base64:string-to-base64-string selection)
+		       +st+)
   selection)
 
 (defsetf selection (&rest keys &key type) (val)
@@ -1993,6 +1994,14 @@ Otherwise TYPE should be one of :clipboard :primary :select or :cut-buffer-<N>,
 wheren <N> is a number 1-7."
   (declare (ignorable type))
   `(apply #'set-selection (list ,val ,@keys)))
+
+(defmethod terminal-selection ((tty terminal-ansi) &key type)
+  "Return the selection of type."
+  (selection :tty tty :type type))
+
+(defmethod (setf terminal-selection) (selection (tty terminal-ansi) &key type)
+  "Set the selection of type."
+  (set-selection selection :tty tty :type type))
 
 (defun set-utf8-title-mode (tty state)
   (terminal-raw-format tty "~c[>2;3~c" #\escape (if state #\t #\T))

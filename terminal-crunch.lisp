@@ -1488,6 +1488,14 @@ Attributes are usually keywords."
 XTerm or something."
   (setf (terminal-title (terminal-wrapped-terminal tty)) title))
 
+(defmethod terminal-selection ((tty terminal-crunch) &key type)
+  (terminal-selection (terminal-wrapped-terminal tty) :type type))
+
+(defmethod (setf terminal-selection) (title (tty terminal-crunch) &key type)
+  "Set the title of a terminal window. The terminal is assumed to work like
+XTerm or something."
+  (setf (terminal-selection (terminal-wrapped-terminal tty) :type type) title))
+
 (defmethod terminal-has-attribute ((tty terminal-crunch) attribute)
   "Return true if the terminal can display the character attribute."
   (terminal-has-attribute (terminal-wrapped-terminal tty) attribute))

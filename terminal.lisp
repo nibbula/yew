@@ -91,6 +91,7 @@
    #:tt-width
    #:tt-height
    #:tt-title                     #:terminal-title
+   #:tt-selection                 #:terminal-selection
    #:tt-has-attribute             #:terminal-has-attribute
    #:tt-has-autowrap-delay	  #:terminal-has-autowrap-delay
    #:tt-enable-events             #:terminal-enable-events
@@ -706,6 +707,12 @@ or :CHAR for character at time with no echo."))
 (defgeneric (setf terminal-title) (title tt)
   (:documentation
    "Set the terminal title to TITLE, if it has a title."))
+
+(deftt selection (&key type)
+  "Accessor for the terminal selection, if it has one.")
+(defgeneric (setf terminal-selection) (selection tt &key type)
+  (:documentation
+   "Set the terminal selection to SELECTION, if it can."))
 
 (deftt has-attribute (attribute)
   "Return true if the terminal can display the character attribute.")
