@@ -11,6 +11,7 @@
     :source-control	:git
     :long-description
     "Cut pieces from lines, something like the traditional Unix command."
-    :depends-on (:dlib :lish :stretchy :char-util :table :cl-ppcre :los-config)
+    :depends-on (:dlib :lish :stretchy :char-util :unicode :table :cl-ppcre
+		 :los-config)
     :components
     ((:file "cut")))

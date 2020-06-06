@@ -4,7 +4,7 @@
 
 (defpackage :cut
   (:documentation "Cut pieces from lines.")
-  (:use :cl :dlib :lish :stretchy :char-util :table)
+  (:use :cl :dlib :lish :stretchy :char-util :unicode :table)
   (:export
    #:cut-lines
    #:!cut
