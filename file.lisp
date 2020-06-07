@@ -76,6 +76,7 @@ data, otherwise just print the description."
   ;; in the arg list.
   ((full boolean :short-arg #\f
     :help "True to show more information about the file.")
+   (brief boolean :short-arg #\b :help "Don't output file names.")
    (collect boolean :short-arg #\c
     :help "True to set *output* to a sequence of content-type structures.")
    (files pathname #|:optional nil XXX |# :repeating t
@@ -88,28 +89,29 @@ data, otherwise just print the description."
     (let ((*signal-errors* signal-errors)
 	  results)
       (labels ((do-file-list (file-list)
-		 (if full
+		 (cond
+		   ((or full brief)
 		     (loop :for f :in file-list :do
 			(with-restarts
-			    (push (list f (describe-content-type f :full t))
-				  results)))
-		     (progn
-		       (grout-print-table
-			(make-table-from
-			 (loop
-			    :with type
-			    :for f :in file-list
-			    :when (setf type
-					(with-restarts (safer-guess-file-type f)))
-			    :collect
-			    (list (s+ f ":")
-				  (progn
-				    (push (list f type)
-					  results)
-				    (content-type-description
-				     (second (car results)))))))
-			#| :trailing-spaces nil |#
-			:print-titles nil)))))
+			    (push (list f (describe-content-type f :full full))
+				  results))))
+		   (t
+		    (grout-print-table
+		     (make-table-from
+		      (loop
+			 :with type
+			 :for f :in file-list
+			 :when (setf type
+				     (with-restarts (safer-guess-file-type f)))
+			 :collect
+			 (list (s+ f ":")
+			       (progn
+				 (push (list f type)
+				       results)
+				 (content-type-description
+				  (second (car results)))))))
+		     #| :trailing-spaces nil |#
+		     :print-titles nil)))))
 	(when lish:*input*
 	  (do-file-list
 	      (if (listp lish:*input*) lish:*input* (list lish:*input*))))
