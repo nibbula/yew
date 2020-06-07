@@ -151,7 +151,7 @@
 		     (compare (if ignore-case #'equalp #'equal)))
 		 (omapn (_ (adjacent-body)) file)
 		 (adjacent-body))
-	       (omapn (_ (funcall line-saver line)) file))))
+	       (omapn (_ (funcall line-saver _)) file))))
 	;; The action loop for hashing.
 	(omapk (_
 		(multiple-value-bind (line count) (funcall line-getter _)
@@ -195,6 +195,7 @@ duplicate lines, unless adjacent is specified."
 	  (if (and lish:*input* (typep lish:*input* 'sequence))
 	      lish:*input*
 	      *standard-input*)))
+  ;; (format *trace-output* "input=~s~%" (getf args :file))
   (if collect
       (setf lish:*output* (apply #'uniq args))
       (apply #'uniq args)))
