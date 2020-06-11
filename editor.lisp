@@ -112,14 +112,8 @@
 it can be somewhat unpredictable, especially with threads. Don't use it for
 anything important.")
 
-;; The history is not in here because it is shared by all editors.
 (defclass line-editor (terminal-inator multi-inator-mixin options:options-mixin)
-  ((last-event
-    :accessor last-event
-    :initform nil
-    :initarg :last-event
-    :documentation "Last input event.")
-   (buf
+  ((buf
     :accessor buf
     :initform nil
     :initarg :buf
@@ -129,14 +123,47 @@ anything important.")
     :initform nil
     :initarg :buf-str
     :documentation "The buffer as a fat-string.")
-   ;; (screen-row
-   ;;  :accessor screen-row
-   ;;  :initform 0
-   ;;  :documentation "Screen row of the cursor.")
+
+   ;; Events
+   (last-event
+    :accessor last-event
+    :initform nil
+    :initarg :last-event
+    :documentation "Last input event.")
+   (exit-flag
+    :accessor exit-flag
+    :initform nil
+    :initarg :exit-flag
+    :documentation "True if the user requested to stop editing.")
+   (filter-hook
+    :accessor filter-hook
+    :initarg :filter-hook
+    :initform nil
+    :documentation "Functions to call to filter the buffer.")
+   (input-callback
+    :accessor line-editor-input-callback
+    :initarg :input-callback
+    :initform nil
+    :documentation "Function to call on character input.")
+   (output-callback
+    :accessor line-editor-output-callback
+    :initarg :output-callback
+    :initform nil
+    :documentation "Function to call on output.")
+   (local-keymap
+    :accessor line-editor-local-keymap
+    :initarg :local-keymap
+    :documentation "The local keymap.")
+
+   ;; Display
    (screen-relative-row
     :accessor screen-relative-row
     :initform 0
     :documentation "Screen row of the cursor relative to where we started.")
+   ;; (screen-row
+   ;;  :accessor screen-row
+   ;;  :initform 0
+   ;;  :documentation "Screen row of the cursor.")
    (screen-col
     :accessor screen-col
     :initform 0
@@ -154,6 +181,21 @@ anything important.")
     :accessor last-line
     :initform nil
     :documentation "Last line of the buffer.")
+   (need-to-redraw
+    :accessor need-to-redraw
+    :initarg :need-to-redraw
+    :initform nil
+    :documentation "True if we need to redraw the whole line.")
+   (need-to-recolor
+    :accessor need-to-recolor
+    :initarg :need-to-recolor
+    :initform nil
+    :documentation "True if we need to recolor some of the line.")
+
+   ;; History
+   ;;
+   ;; The actual history content is not in here because it is shared by all
+   ;; editors.
    (history-context
     :accessor history-context
     :initarg :history-context
@@ -193,25 +235,13 @@ anything important.")
     :documentation
     "True to store all command history in the same database. This probably only
 works for database formats.")
-   (auto-suggest-p
-    :initarg :auto-suggest-p
-    :accessor line-editor-auto-suggest-p :initform t :type boolean
-    :documentation
-    "True to automatically suggest stuff.")
-   (auto-suggest-style
-    :initarg :auto-suggest-style
-    :accessor line-editor-auto-suggest-style
-    ;;:initform (make-fatchar :fg #(:rgb8 #x50 #x50 #x50)) :type fatchar
-    :initform '(:fg :color #(:rgb8 #x50 #x50 #x50)) :type list
-    :documentation "The style for the suggestion.")
-   (suggestion
-    :initarg :suggestion :accessor line-editor-suggestion :initform nil 
-    :documentation "The thing that was last suggested.")
    (saved-line
     :accessor saved-line
     :initarg :saved-line
     :initform nil
     :documentation "Current line, saved when navigating history.")
+
+   ;; Undo
    (undo-history
     :accessor undo-history
     :initform nil
@@ -231,15 +261,24 @@ works for database formats.")
     :initarg :undo-recent-count :accessor undo-recent-count
     :initform 0 :type fixnum
     :documentation "How many undos have been done recently.")
-   (exit-flag
-    :accessor exit-flag
-    :initform nil
-    :initarg :exit-flag
-    :documentation "True if the user requested to stop editing.")
-   (non-word-chars
-    :accessor non-word-chars
-    :initarg :non-word-chars
-    :documentation "Characters that are not considered part of a word.")
+
+   ;; Susggestion
+   (auto-suggest-p
+    :initarg :auto-suggest-p
+    :accessor line-editor-auto-suggest-p :initform t :type boolean
+    :documentation
+    "True to automatically suggest stuff.")
+   (auto-suggest-style
+    :initarg :auto-suggest-style
+    :accessor line-editor-auto-suggest-style
+    ;;:initform (make-fatchar :fg #(:rgb8 #x50 #x50 #x50)) :type fatchar
+    :initform '(:fg :color #(:rgb8 #x50 #x50 #x50)) :type list
+    :documentation "The style for the suggestion.")
+   (suggestion
+    :initarg :suggestion :accessor line-editor-suggestion :initform nil 
+    :documentation "The thing that was last suggested.")
+
+   ;; Prompt
    (prompt-string
     :accessor prompt-string
     :initarg :prompt-string
@@ -269,27 +308,12 @@ not to print one.")
     :initarg :prompt-height
     :initform nil
     :documentation "Height of the prompt in lines.")
+
+   ;; Completion
    (completion-func
     :accessor completion-func
     :initarg :completion-func
     :documentation "Function to call to generate completions.")
-   (filter-hook
-    :accessor filter-hook
-    :initarg :filter-hook
-    :initform nil
-    :documentation "Functions to call to filter the buffer.")
-   (terminal
-    :accessor line-editor-terminal
-    :initarg :terminal
-    :documentation "The terminal device we are using.")
-   (terminal-device-name
-    :accessor line-editor-terminal-device-name
-    :initarg :terminal-device-name
-    :documentation "The name of the terminal device.")
-   (terminal-class
-    :accessor line-editor-terminal-class
-    :initarg :terminal-class
-    :documentation "The class of terminal we are using.")
    (did-complete
     :initarg :did-complete
     :accessor did-complete
@@ -312,19 +336,8 @@ not to print one.")
     :initform 0
     :type fixnum
     :documentation "How many times the last completion and was not unique.")
-   (need-to-redraw
-    :accessor need-to-redraw
-    :initarg :need-to-redraw
-    :initform nil
-    :documentation "True if we need to redraw the whole line.")
-   (need-to-recolor
-    :accessor need-to-recolor
-    :initarg :need-to-recolor
-    :initform nil
-    :documentation "True if we need to recolor some of the line.")
-   (old-line
-    :initarg :old-line :accessor old-line :initform nil
-    :documentation "A copy of the line as it was previously.")
+
+   ;; Message
    (temporary-message
     :initarg :temporary-message :accessor temporary-message
     :initform nil
@@ -352,16 +365,21 @@ not to print one.")
    (keep-message
     :initarg :keep-message :accessor keep-message :initform nil :type boolean
     :documentation "True to keep the temporary message.")
-   (input-callback
-    :accessor line-editor-input-callback
-    :initarg :input-callback
-    :initform nil
-    :documentation "Function to call on character input.")
-   (output-callback
-    :accessor line-editor-output-callback
-    :initarg :output-callback
-    :initform nil
-    :documentation "Function to call on output.")
+
+   ;; Terminal
+   (terminal
+    :accessor line-editor-terminal
+    :initarg :terminal
+    :documentation "The terminal device we are using.")
+   (terminal-device-name
+    :accessor line-editor-terminal-device-name
+    :initarg :terminal-device-name
+    :documentation "The name of the terminal device.")
+   (terminal-class
+    :accessor line-editor-terminal-class
+    :initarg :terminal-class
+    :documentation "The class of terminal we are using.")
+
    (debugging
     :accessor debugging
     :initarg :debugging
@@ -372,15 +390,6 @@ not to print one.")
     :initarg :debug-log
     :initform nil
     :documentation "A list of messages logged for debugging.")
-   (local-keymap
-    :accessor line-editor-local-keymap
-    :initarg :local-keymap
-    :documentation "The local keymap.")
-   (accept-does-newline
-    :accessor accept-does-newline
-    :initarg :accept-does-newline
-    :initform t :type boolean
-    :documentation "True if accept-line outputs a newline.")
    (highlight-region
     :initarg :highlight-region :accessor line-editor-highlight-region
     :initform t :type boolean
@@ -395,6 +404,19 @@ not to print one.")
     :initform nil :type boolean
     :documentation "True to keep the region active after the command is done.
 Otherwise the region is deactivated every command loop.")
+
+   (non-word-chars
+    :accessor non-word-chars
+    :initarg :non-word-chars
+    :documentation "Characters that are not considered part of a word.")
+   ;; (old-line
+   ;;  :initarg :old-line :accessor old-line :initform nil
+   ;;  :documentation "A copy of the line as it was previously.")
+   (accept-does-newline
+    :accessor accept-does-newline
+    :initarg :accept-does-newline
+    :initform t :type boolean
+    :documentation "True if accept-line outputs a newline.")
    (translate-return-to-newline-in-bracketed-paste
     :initarg :translate-return-to-newline-in-bracketed-paste
     :accessor translate-return-to-newline-in-bracketed-paste
