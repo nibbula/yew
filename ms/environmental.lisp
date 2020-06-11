@@ -64,11 +64,15 @@
 	  nil
 	  (with-foreign-object (str 'WCHAR (1+ size))
 	    (let ((result (%get-environment-variable w-name str size)))
-	      (when (/= (1+ result) size)
-		(error "environment-variable: ~s ~s" result size
-		       ;; (error-message 1)
-		       ))
-	      (wide-string-to-lisp str result)))))))
+	      (cond
+		((and (zerop result))
+		 nil)
+		((/= (1+ result) size)
+		 (error "environment-variable: ~s ~s" result size
+			;; (error-message 1)
+			))
+		(t
+		 (wide-string-to-lisp str result)))))))))
 
 (defalias 'env 'environment-variable)
 
