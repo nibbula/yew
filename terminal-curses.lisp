@@ -810,10 +810,6 @@ i.e. the terminal is 'line buffered'."
 	      (multiple-value-list (curses::pair-content 23)))
     (tt-get-key)))
 
-#|
-TERM=xterm-direct sbcl --non-interactive --no-userinit --eval '(load "quicklisp/setup.lisp")' --eval "(mapcar (lambda (x) (push (concatenate 'string \"/home/dan/src/lisp/\" x) asdf:*central-registry*)) '(\"\" \"opsys/\" \"unicode/\" \"terminal/\"))" --eval '(asdf:load-system :dlib)' --eval '(asdf:load-system :terminal-curses)' --eval '(print (terminal:with-terminal (:curses) (list curses:*colors* curses:*color-pairs*)))' --eval '(terpri)'
-|#
-
 (defmethod terminal-beep ((tty terminal-curses))
   (beep))
 
