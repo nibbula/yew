@@ -312,11 +312,11 @@ subclasses.")
 
 (defun platform-default-terminal-type ()
   "Return the platform default terminal type for the current circumstance."
-  #+(and windows unix) (terminal-type-based-on-environemt)
+  ;; #+(and windows unix) (terminal-type-based-on-environemt)
   #+windows (if (environment-variable "TERM")
 		(terminal-type-based-on-environemt)
 		:ms)
-  #+unix (terminal-type-based-on-environemt)
+  #+(and unix (not windows)) (terminal-type-based-on-environemt)
   #-(or windows unix) :ansi)
 
 (defun pick-a-terminal-type ()
