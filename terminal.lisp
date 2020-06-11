@@ -98,6 +98,7 @@
    #:tt-disable-events            #:terminal-disable-events
    #:terminal-enable-event
    #:terminal-disable-event
+   #:with-enabled-events
    #:tt-event #:tt-event-terminal
    #:tt-mouse-event #:tt-mouse-event-x #:tt-mouse-event-y
    #:tt-mouse-button-event #:tt-mouse-button #:tt-mouse-modifiers
@@ -831,6 +832,16 @@ when given that event alone. The starting state is to allow no events.")
   (:method (tty event)
     (declare (ignore tty event))
     nil))
+
+(defmacro with-enabled-events ((events &key (tty '*terminal*)) &body body)
+  "Evaluate BODY with EVENTS enabled for TTY which defaults to *TERMINAL*."
+  (with-names (tt ev)
+    `(let ((,tt ,tty) (,ev ,events))
+       (unwind-protect
+	    (progn
+	      (terminal-enable-events ,tt ,ev)
+	      ,@body)
+	 (terminal-disable-events ,tt ,ev)))))
 
 (defmacro with-saved-cursor ((tty) &body body)
   "Save the cursor position, evaluate the body forms, and restore the cursor
