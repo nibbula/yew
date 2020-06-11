@@ -34,9 +34,14 @@ make the table in the first place. For that you want the TABLE package.")
    #:text-table-renderer-suffix
    #:text-table-renderer-separator
    #:text-table-renderer-cursor
+   #:text-table-renderer-horizontal-line-char
    #:text-table-adjust-sizes
    #:text-table-cell-lines
    #:*trailing-spaces*
+
+   #:text-box-table-renderer
+   #:write-box-line
+   #:*fancy-box*
    
    #:output-table
    #:print-table
@@ -434,18 +439,25 @@ function."
     :initarg :separator :accessor text-table-renderer-separator
     :initform " " :type string
     :documentation "Separator between columns.")
+   (horizontal-line-char
+    :initarg :horizontal-line-char
+    :accessor text-table-renderer-horizontal-line-char
+    #| :initform #\- |# :type character
+    :documentation "Character for horizontal lines.")
    (cursor
     :initarg :cursor :accessor text-table-renderer-cursor
     :initform 0 :type fixnum
     :documentation
     "Width of output already in this row, i.e. where the cursor would be."))
+  (:default-initargs
+   :horizontal-line-char #\-)
   (:documentation "Render a text table."))
 
 (defmethod table-output-column-titles ((renderer text-table-renderer)
 				       table titles &key sizes)
   "Output all the column titles."
   (declare (ignore table))
-  (with-slots (separator cursor) renderer
+  (with-slots (separator cursor horizontal-line-char) renderer
     (setf cursor 0)
     (let ((sep-len (display-length separator))
 	  (stream *destination*))
@@ -479,7 +491,9 @@ function."
 	 :for i :from 0 :below len
 	 :do
 	 (setf size (car (aref sizes i)))
-	 (format stream "~v,,,va" size #\- #\-)
+	 ;; (format stream "~v,,,va" size #\- #\-)
+	 (format stream "~v,,,va" size horizontal-line-char
+		 horizontal-line-char)
 	 (incf cursor size)
 	 (when (< i (1- len))
 	   (write-string separator stream)
@@ -767,6 +781,194 @@ resized to fit in this, and the whole row is trimmed to this."
 	     (incf row-num))
 	 table)))
     (olength (container-data table)))) ;; @@@ should actually be rows output?
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Box tables
+
+(defstruct box-line
+  "A line style for a text box."
+  left
+  line
+  joint
+  right)
+
+(defstruct box-style
+  "Style of a text box."
+  top
+  under-titles
+  between-rows
+  bottom
+  separator)
+
+(defclass text-box-table-renderer (table-renderer)
+  ((box-style
+    :initarg :box-style :accessor text-box-table-renderer-box-style
+    :documentation "The style of the box."))
+  (:default-initargs
+   ;; :separator "|"
+   ;; :horizontal-line-char #\-
+   )
+  (:documentation "A table rendered in text box."))
+
+(defparameter *fancy-box*
+  (make-box-style
+   :top           (make-box-line :left "╒" :line "═" :joint "╤" :right "╕")
+   :under-titles  (make-box-line :left "╞" :line "═" :joint "╪" :right "╡")
+   :between-rows  (make-box-line :left "├" :line "─" :joint "┼" :right "┤")
+   :bottom        (make-box-line :left "╘" :line "═" :joint "╧" :right "╛")
+   :separator "│"
+   ))
+
+(defmethod write-box-line ((renderer text-box-table-renderer) style sizes)
+  (write-string (box-line-left style) *destination*)
+  (let ((first t))
+    (omapn
+     (lambda (s)
+       (when (not first)
+	  (write-string (box-line-joint style) *destination*))
+       (loop :repeat s
+	  :do (write-string (box-line-line style) *destination*))
+	(when first (setf first nil)))
+     sizes))
+  (write-string (box-line-right style) *destination*)
+  (write-char #\newline *destination*))
+
+(defmethod table-output-header ((renderer text-box-table-renderer) table
+				&key width sizes)
+  (declare (ignore width))
+  (write-box-line renderer
+   (box-style-top (text-box-table-renderer-box-style renderer)) sizes))
+
+(defmethod table-output-column-titles ((renderer text-box-table-renderer)
+				       table titles &key sizes)
+  "Output all the column titles."
+  (table-output-start-row renderer table)
+  (loop :with width :and justification :and size
+     :for title :in titles
+     :and i = 0 :then (1+ i)
+     :and col :in (table-columns table)
+     :do
+     (setf size (elt sizes i)
+	   width (if (listp size) (car size) size)
+	   justification (if (listp size)
+			     (cadr size)
+			     (table-output-column-type-justification
+			      renderer table (column-type col))))
+     (when (plusp i)
+       (table-output-column-separator renderer table))
+     (table-output-column-title renderer table title width justification i))
+  (table-output-end-row renderer table 0)
+  (write-box-line renderer
+   (box-style-under-titles (text-box-table-renderer-box-style renderer)) sizes))
+
+(defmethod table-output-column-title ((renderer text-box-table-renderer)
+				      table title width justification column)
+  ;;(format *destination* "~va" width title)
+  ;; (table-format-cell renderer table title nil column
+  ;; 		     :width width :justification justification)
+  (table-output-cell renderer table
+		     (oelt title 0)
+		     width justification nil column)
+  )
+
+;; @@@ resolve overlap between this and the text-table-renderer version
+(defmethod table-output-cell ((renderer text-box-table-renderer)
+			      table cell width justification row column)
+  "Output a table cell."
+  (let* ((*trailing-spaces* t)
+	 (field (table-format-cell renderer table cell row column
+				   :width width
+				   :justification justification))
+	 (len (display-length field))
+	 (stream *destination*))
+    ;;(incf cursor len)
+    (if (and (eq justification :overflow)
+	     (> len width))
+	(progn
+	  ;;(write-string field *destination*)
+	  ;;(format *destination* "~%~v,,,va" width #\space #\space)
+	  (write-string field stream)
+	  (format stream "~%~v,,,va" width #\space #\space)
+	  ;;(setf cursor width)
+	  )
+	(typecase field
+	  (standard-object
+	   ;; (princ (osubseq field 0 (min width (olength field)))
+	   ;; 	    stream)
+	   (write (osubseq field 0 (min width (olength field)))
+		  :stream stream :escape nil :readably nil :pretty nil)
+	   ;; (incf cursor (min width (olength field)))
+	   )
+	  (t
+	   ;; (write-string (osubseq field 0 (min width (olength field)))
+	   ;; 		   stream)
+	   (write (osubseq field 0 (min width (olength field)))
+		  :stream stream :escape nil :readably nil :pretty nil)
+	   ;; (incf cursor (min width (olength field)))
+	   )))))
+
+;; (defmethod table-output-cell ((renderer text-box-table-renderer)
+;; 			      table cell width justification row column)
+;;   "Output a table cell."
+;;   (declare (ignore renderer table row column))
+;;   (let ((*print-pretty* nil)
+;; 	(field (table-format-cell renderer table cell row column
+;; 				  :width width :justification justification)))
+;;     (write-string field *destination*
+;; 	    (if (eq justification :right) "~v@a" "~va") width cell)
+
+(defmethod table-output-start-row ((renderer text-box-table-renderer) table)
+  (declare (ignore table))
+  ;; (with-slots (box-style) renderer
+  ;;   (write-string (box-line-left box-style) *destination*))
+  ;; (with-slots (prefix) renderer
+  ;;   (format *destination* "~a " prefix))
+  (with-slots (box-style) renderer
+    ;; (format *destination* "~a " (box-style-separator box-style)))
+    (format *destination* "~a" (box-style-separator box-style)))
+  )
+
+(defmethod table-output-column-separator ((renderer text-box-table-renderer)
+					  table &key width)
+  "Output a separator between columns."
+  (declare (ignore table width))
+  (with-slots (box-style) renderer
+    (write-string (box-style-separator box-style) *destination*)))
+
+(defmethod table-output-end-row ((renderer text-box-table-renderer) table n)
+  (declare (ignore table n))
+  ;; (with-slots (box-style) renderer
+  ;;   (write-string (box-line-right box-style) *destination*))
+  (with-slots (box-style) renderer
+    (format *destination* "~a~%" (box-style-separator box-style)))
+  )
+
+(defmethod table-output-row-separator ((renderer text-box-table-renderer) table
+				       n &key width sizes)
+  (declare (ignore width))
+  (when (< n (1- (olength table)))
+    (with-slots (box-style) renderer
+      (write-box-line renderer (box-style-between-rows box-style) sizes))))
+
+(defmethod table-output-footer ((renderer text-box-table-renderer) table
+				&key width sizes)
+  (declare (ignore width))
+  (with-slots (box-style) renderer
+    (write-box-line renderer (box-style-bottom box-style) sizes)))
+
+#|
+(defmethod output-table ((table table) (renderer text-box-table-renderer)
+			 destination
+			 &key
+			   (long-titles t) (print-titles t) max-width
+			   (trailing-spaces t) separator)
+  (let ((sizes (table-output-sizes renderer table))
+	(*max-width* max-width)
+	(*destination* destination))
+    (table-output-header renderer table :sizes sizes #|:width |#)
+    (call-next-method)
+    (table-output-footer renderer table :sizes sizes #|:width |#)))
+|#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
