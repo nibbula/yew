@@ -1,6 +1,6 @@
-;;
-;; view-image.lisp - Image viewer
-;;
+;;;
+;;; view-image.lisp - Image viewer
+;;;
 
 (defpackage :view-image
   (:documentation "Image viewer")
@@ -1338,11 +1338,30 @@ Key arguments:
   "View an image."
   ;;(let ((type nil))
   (view-images (or images
-		   (and lish:*input* (list lish:*input*))
+		   (and lish:*input* (if (not (listp lish:*input*))
+					 (list lish:*input*)
+					 lish:*input*))
 		   (list *standard-input*))
 	       :type (cdr (find type *image-inator-types*
 				:key (_ (symbol-name (cdr _)))))
 	       :own-window own-window
+	       :use-full use-full))
+
+#+lish
+(lish:defcommand view-image-tty
+  ((images pathname :repeating t :help "Image to view.")
+   ;; @@@ take this out until args are fixed
+   (use-full boolean :short-arg #\f
+    :help "True to use full blocks.")
+   ;;(images pathname :repeating t :help "Image to view.")
+   )
+  :accepts (:sequence :stream image:image)
+  "View an image."
+  ;;(let ((type nil))
+  (view-images (or images
+		   (and lish:*input* (list lish:*input*))
+		   (list *standard-input*))
+	       :type 'image-inator
 	       :use-full use-full))
 
 (defun cat-images (files &rest args &key zoom width height errorp use-full)
