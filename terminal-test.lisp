@@ -4,7 +4,7 @@
 
 (defpackage :terminal-test
   (:documentation "Test the generic terminal library.")
-  (:use :cl :dlib :terminal :color :char-util)
+  (:use :cl :dlib :terminal :dcolor :char-util)
   (:export
    #:run
    #:menu
