@@ -776,7 +776,8 @@ traditional ‘ls’ command."
     (remf args :by-size))
   (when by-time
     (remf args :sort-by)
-    (setf args (append args '(:sort-by :modification-time)))
+    ;; (setf args (append args '(:sort-by :modification-time)))
+    (setf args (append args '(:sort-by :creation-time)))
     (remf args :by-time))
   (when non-human-size
     (remf args :size-format)

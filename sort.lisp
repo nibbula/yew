@@ -1,9 +1,9 @@
-;;
-;; sort.lisp - sort or something
-;;
+;;;
+;;; sort.lisp - Sort or something.
+;;;
 
 (defpackage :sort
-  (:documentation "sort or something")
+  (:documentation "Sort things.")
   (:use :cl :dlib)
   (:export
    #:sort-lines
@@ -31,16 +31,16 @@
 
 #+lish
 (lish:defcommand sort
-  (("numeric" boolean :short-arg #\n
+  ((numeric boolean :short-arg #\n
     :help "True to treat the line as starting with a number.")
-   ("reverse" boolean :short-arg #\r
+   (reverse boolean :short-arg #\r
     :help "True to reverse the sort order.")
-   ("ignore-case" boolean :short-arg #\i
+   (ignore-case boolean :short-arg #\i
     :help "True to ignore the case of strings.")
-   ("sequence" boolean :short-arg #\c
+   (sequence boolean :short-arg #\c
     :default '(lish:accepts 'sequence)
     :help "True to return a sequence instead of printing.")
-   ("files" string :repeating t
+   (files string :repeating t
     :help "Files to sort."))
   :accepts (:stream :sequence)
   "Sort input lines."
@@ -59,7 +59,8 @@
 		    lines)))
 	   (numeric-sort ()
 	     (let ((ll (loop :for l :in lines :collect
-			  (list (or (ignore-errors (parse-integer l)) 0)
+			  (list (or (ignore-errors
+				      (parse-integer l :junk-allowed t)) 0)
 				l))))
 	       (declare (type list ll))
 	       (sort-muffled ll numeric-compare :key #'car)))
