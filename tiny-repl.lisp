@@ -266,8 +266,10 @@ The REPL also has a few commands:
 ;; Eval and print
 (defun repl-eval (form state)
   (with-slots (got-error error-count interceptor debug output quietly) state
+    ;; (when (not quietly)
+    ;;   (format t "~%")) ;; <<the newline>>
     (when (not quietly)
-      (format t "~%")) ;; <<the newline>>
+      (format output "~%")) ;; <<the newline>>
     (when (or (eq form 'repl-empty) (eq form 'repl-error))
       (dbugf :repl "Do Nothing~%")
       (return-from repl-eval nil))
@@ -404,11 +406,10 @@ to quit everything. Arguments are:
     (when (not theme:*theme*)
       (setf theme:*theme* (theme:default-theme)))
 
-    (format t "FUCK YOU ~s~%" *terminal*)
-
     (with-repl-terminal (terminal)
-      (format t "STUPID DUMBASS ~s~%" *terminal*)
+      ;; This is where 'the trouble' likes to start:
       (setf (tt-input-mode) :line)
+
       ;; Activate the debugger if it's loaded.
       (when (and debug (find-package :deblarg))
 	(funcall (intern "ACTIVATE" (find-package :deblarg))
