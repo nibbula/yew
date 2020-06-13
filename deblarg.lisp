@@ -477,10 +477,12 @@ program that messes with the terminal, we can still type at the debugger."
     (finish-output))
   |#
   ;; Instead, let's try:
-  (setf (terminal-input-mode *terminal*) :char)
-  (setf (terminal-input-mode *terminal*) :line)
-  (terminal-reset *terminal*)
-  )
+  ;; (when *debug-io*
+  ;;   (format *debug-io* "wtf you badger ~s~%" *terminal*))
+  (when (and *terminal* (typep *terminal* 'terminal:terminal))
+    (setf (terminal-input-mode *terminal*) :char)
+    (setf (terminal-input-mode *terminal*) :line)
+    (terminal-reset *terminal*)))
 
 ;; @@@ This hackishly knows too much about RL.
 (defun debugger-redraw (e)
@@ -547,7 +549,8 @@ program that messes with the terminal, we can still type at the debugger."
 	      ;; printer vars
 	      (*print-readably* nil)
 	      (*print-length* 50)	; something reasonable?
-	      (*print-circle* t)
+	      (*print-pretty* nil)
+	      (*print-circle* nil)
 	      )
 	  (print-condition c)
 	  (list-restarts (compute-restarts c))
