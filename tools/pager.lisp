@@ -399,11 +399,19 @@ but perhaps reuse some resources."))
   (when (= (length line) 0)
     (return-from process-grotty-line line))
   (let ((fat-line (make-stretchy-vector (+ (length line) 16)
-					:element-type 'fatchar)))
-    (loop
-       :with i = 0 :and c :and len = (length line) :and attrs
-       :do
-       (if (< i (- len 2))
+					:element-type 'fatchar))
+	(i 0) (fi 0) (len (length line))
+	c attrs prev-char overwrite-char)
+    (flet ((do-backspace ()
+	     (setf overwrite-char prev-char
+		   prev-char #\backspace))
+	   (add-char ()
+	     (setf c (char line i)
+		   attrs nil
+		   overwrite-char nil
+		   prev-char c)))
+      (loop
+	 :do
 	 (cond
 	   ;; Bold bullet
 	   ((and (< i (- len 7))
@@ -411,22 +419,29 @@ but perhaps reuse some resources."))
 	    (setf c (code-char #x2022)) ; #\bullet •
 	    (pushnew :bold attrs)
 	    (incf i 6))
+
 	   ;; Normal bullet
 	   ((and (< i (- len 3))
 		 (equal "+o" (subseq line i (+ i 3))))
 	    (setf c (code-char #x2022)) ; #\bullet •
 	    (incf i 2))
-	   ;; Bold
-	   ((and (char= (char line (+ i 1)) #\backspace)
-		 (char= (char line (+ i 2)) (char line i)))
-	    (setf c (char line i))
+
+	   ;; A bold underscore character
+	   ((and (< i (- len 3))
+		 (char= (char line i) #\_)
+		 (char= (char line (+ i 1)) #\backspace)
+		 (char= (char line (+ i 2)) #\_))
 	    (incf i 2)
-	    (pushnew :bold attrs))
-	   ;; Underline
-	   ((and (char= (char line i) #\_)
+	    (pushnew :bold attrs)
+	    (setf c (char line i)))
+
+	   ;; Underline a character
+	   ((and (< i (- len 2))
+		 (char= (char line i) #\_)
 		 (char= (char line (+ i 1)) #\backspace))
 	    (incf i 2)
 	    (setf c (char line i))
+
 	    ;; Underline & Bold
 	    (when (and (< i (- len 2))
 		       (char= (char line (+ i 1)) #\backspace)
@@ -434,16 +449,27 @@ but perhaps reuse some resources."))
 	      (incf i 2)
 	      (pushnew :bold attrs))
 	    (pushnew :underline attrs))
+
+	   ;; Overwrite
+	   ((char= (char line i) #\backspace)
+	    (do-backspace))
+
+	   ;; Bold
+	   ((and prev-char (char= prev-char #\backspace)
+		 overwrite-char (char= overwrite-char (char line i)))
+	    (pushnew :bold (fatchar-attrs (aref fat-line (1- fi))))
+	    (setf prev-char overwrite-char))
+
+	   ;; Normal
 	   (t
-	    (setf c (char line i))
-	    (setf attrs nil)))
-	 (progn
-	   (setf attrs nil c (char line i))))
-       (stretchy:stretchy-append
-	fat-line
-	(make-fatchar :c c :attrs attrs))
-       (incf i)
-       :while (< i len))
+	    (add-char)))
+	 (when c
+	   (stretchy:stretchy-append
+	    fat-line (make-fatchar :c c :attrs (copy-seq attrs)))
+	   (incf fi)
+	   (setf c nil))
+	 (incf i)
+	 :while (< i len)))
     fat-line))
 
 ;; This is quite inefficient.
