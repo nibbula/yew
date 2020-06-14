@@ -137,7 +137,13 @@ names at once may be more efficent.")
   "Like SOFTWARE-TYPE, but without implementation variation.")
 
 (defosfun os-software-version ()
-  "Like SOFTWARE-VERSION, but without implementation variation.")
+  "Like uname -v, but for every operating system. Note that this is reversed
+from most CL:SOFTWARE-VERSION, which is what OS-SOFTWARE-RELEASE returns.")
+
+(defosfun os-software-release ()
+  "Like CL:SOFTWARE-VERSION, but without implementation variation. Note that
+this reversed from historical CL and is more like the POSIX notion of release
+and version.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; User database

@@ -1331,8 +1331,26 @@ If RESOURCE is an integer, just return it."
   "Like SOFTWARE-TYPE, but without implementation variation."
   (uname-sysname (uname)))
 
+;; BOGOSITY ALERT! The idea of release and version are reversed from what
+;; POSIX and uname mean! Which came first CL or POSIX? It's debatable, but
+;; CLtL1 was 1984 and POSIX.1 was 1988. I feel like they could have
+;; coordinated this, but I don't blame them since they both had enourmous jobs
+;; as it was.
+;;
+;; Since what CL returns for software-version is not well defined, and nobody
+;; uses my software, I'm deciding it's best for the future to try to eliminate
+;; the confusion at the expense of potential backwards compatibility, even
+;; though the POSIX notion of release and version are backwards from what I
+;; would call them and normally I wouldn't align with POSIX since I don't like
+;; it much, but this is a relatively minor issue and I just want to try
+;; minimize future confusion.
+
 (defun os-software-version ()
-  "Like SOFTWARE-VERSION, but without implementation variation."
+  "Like uname -v, but for other operating systems too."
+  (uname-version (uname)))
+
+(defun os-software-release ()
+  "Like CL:SOFTWARE-VERSION, but without implementation variation."
   (uname-release (uname)))
 
 ;; If you realy need `uname -v` than you can just call uname based on

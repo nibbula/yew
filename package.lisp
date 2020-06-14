@@ -35,6 +35,7 @@
    #:os-machine-version
    #:os-software-type
    #:os-software-version
+   #:os-software-release
 
    #:get-user-info
    #:user-home
