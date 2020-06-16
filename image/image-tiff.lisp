@@ -6,7 +6,7 @@
   (:documentation
    "Read Tagged Image File Format images. Uses the Retrospectiff package.
 It doesn't handle all TIFF files.")
-  (:use :cl :dlib :image :retrospectiff :color)
+  (:use :cl :dlib :image :retrospectiff :dcolor)
   (:export
    #:read-tiff
    #:tiff-image-format
