@@ -736,23 +736,23 @@ functions too."
 (progn
   (defun is-directory (info file)
     (declare (ignore file))
-    (eq (file-info-type info) :directory))
+    (eq (nos:file-info-type info) :directory))
 
   (defun is-symbolic-link (info file)
     (declare (ignore file))
-    (eq (file-info-type info) :link))
+    (eq (nos:file-info-type info) :link))
 
   (defun is-device (info file)
     (declare (ignore file))
-    (eq (file-info-type info) :device))
+    (eq (nos:file-info-type info) :device))
 
   (defun is-regular-file (info file)
     (declare (ignore file))
-    (eq (file-info-type info) :regular))
+    (eq (nos:file-info-type info) :regular))
 
-  (defun is-device (info file)
-    (declare (ignore file))
-    (eq (file-info-type info) :other))
+  ;; (defun is-device (info file)
+  ;;   (declare (ignore file))
+  ;;   (eq (file-info-type info) :other))
 
   (defun is-executable (info file)
     (declare (ignore info))
