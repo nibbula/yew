@@ -5,7 +5,7 @@
 (defpackage :xterm-control
   (:documentation "Control an XTerm compatible terminal.")
   (:use :cl :dlib :dlib-misc :char-util :keymap :terminal :terminal-ansi
-	:inator :terminal-inator :rl :ppcre :color)
+	:inator :terminal-inator :rl :ppcre :dcolor)
   (:export
    #:control-xterm
    #:!xterm-control
