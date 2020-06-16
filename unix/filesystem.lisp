@@ -53,7 +53,10 @@ systems, this means \".\" and \"..\"."
 ;; on the implementation.
 ;#+openmcl (config-feature :os-t-use-chdir)
 ;#+os-t-use-chdir (defcfun chdir :int (path :string))
-#+(or openmcl sbcl abcl) (defcfun chdir :int (path :string))
+#+(or openmcl sbcl abcl)
+(defcfun chdir :int
+  "Change the working directory."
+  (path :string))
 
 ;; The real question is should this munge *default-pathname-defaults* ?
 ;; On implementations where "load" works from *default-pathname-defaults*
@@ -96,7 +99,9 @@ if not given."
   (missing-implementation 'change-directory))
 
 (defcfun ("getcwd" real-getcwd) :pointer (buf :pointer) (size size-t))
-(defcfun pathconf :long (path :string) (name :int))
+(defcfun pathconf :long
+  "Get a file configuration value."
+  (path :string) (name :int))
 (defconstant +PC-PATH-MAX+
 	 #+(or darwin sunos freebsd openbsd) 5
 	 #+linux 4)
@@ -132,9 +137,14 @@ C library function getcwd."
   #-(or clisp excl openmcl ccl sbcl cmu ecl lispworks abcl)
   (missing-implementation 'current-directory))
 
-(defcfun mkdir :int (path :string) (mode mode-t))
+(defcfun mkdir :int
+  "Make a directory."
+  (path :string) (mode mode-t))
+
 #+(or linux freebsd openbsd)
-(defcfun mkdirat :int (fd :int) (path :string) (mode mode-t))
+(defcfun mkdirat :int
+  "Make a directory relative to a file descriptor."
+  (fd :int) (path :string) (mode mode-t))
 
 (defun make-directory (path &key (mode #o755))
   "Make a directory."
@@ -142,7 +152,9 @@ C library function getcwd."
   ;; of the mode are set.
   (syscall (mkdir (safe-namestring path) (logand #x1ff (or mode #o777)))))
 
-(defcfun rmdir :int (path :string))
+(defcfun rmdir :int
+  "Remove a directory."
+  (path :string))
 
 (defun delete-directory (path)
   "Delete a directory."
@@ -1114,7 +1126,9 @@ versions of the keywords used in Lisp open.
   (l2p_devoffset off-t))
 
 ;; @@@ maybe this should be called posix-fcntl to be like other things?
-(defcfun fcntl :int (fd :int) (cmd :int) &rest)
+(defcfun fcntl :int
+  "Do something to a file descriptor."
+  (fd :int) (cmd :int) &rest)
 
 (defun get-file-descriptor-flags (file-descriptor)
   "Return a list of the flags set on FILE-DESCRIPTOR."
@@ -1134,8 +1148,13 @@ versions of the keywords used in Lisp open.
       (push '+FD_CLOEXEC+ result))
     result))
 	  
-(defcfun fsync :int (fd :int))
-#+linux (defcfun fdatasync :int (fd :int))
+(defcfun fsync :int
+  "Synchronize a file to it's storage."
+  (fd :int))
+#+linux
+(defcfun fdatasync :int
+  "Synchronize file data only, but not it's metadata."
+  (fd :int))
 
 ;; stat / lstat
 
@@ -1883,7 +1902,9 @@ something accessible now may not be accessible later."
 
 ;; Supposedly never fails so we don't have to wrap with syscall.
 ;; @@@ consider taking symbolic string arguments
-(defcfun umask mode-t (cmask mode-t))
+(defcfun umask mode-t
+  "Set the file creation permission mask."
+  (cmask mode-t))
 
 (defcfun ("chmod" real-chmod) :int (path :string) (mode mode-t))
 (defun chmod (path mode)
@@ -1925,7 +1946,8 @@ something accessible now may not be accessible later."
   (syscall (real-lchown path owner group)))
 
 ;; This is sadly still actually useful.
-(defcfun sync :void)
+(defcfun sync :void
+  "Make sure write caches are written.")
 
 (defun directory-p (path)
   "Return true if PATH is a directory."
