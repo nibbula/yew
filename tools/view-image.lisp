@@ -1371,7 +1371,10 @@ Key arguments:
     (typecase files
       (null (print-it *standard-input*))
       ((or stream string) (print-it files))
-      (list (map nil #'print-it files)))))
+      (list (map nil
+		 (_ (with-simple-restart (continue "Continue to the next image.")
+		      (print-it _)))
+		 files)))))
 
 #+lish
 (lish:defcommand imgcat
