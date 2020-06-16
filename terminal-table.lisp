@@ -155,11 +155,24 @@
   ;; (table-format-cell renderer table title nil column
   ;; 		     :width width :justification justification)
   (with-slots (title-color) renderer
-    (terminal-color *destination* title-color nil)
     ;; (call-next-method)
+    #|
     (table-output-cell renderer table
-		       (span-to-fat-string
-			`(:fg :color ,title-color ,(oelt title 0)))
-		       width justification nil column)))
+		       ;; (span-to-fat-string
+		       ;; 	`(:fg :color ,title-color ,(oelt title 0)))
+		       (oelt title 0)
+		       width justification nil column)
+    |#
+    (let* ((*trailing-spaces* t)
+	   (field (table-format-cell renderer table (oelt title 0) nil column
+				     :width width
+				     :justification justification))
+	   ;; (len (display-length field))
+	   )
+      (terminal-color *destination* title-color nil)
+      (write (char-util:simplify-string
+	      (osubseq field 0 (min width (olength field))))
+	     :stream *destination* :escape nil :readably nil :pretty nil)
+    )))
 
 ;; EOF

@@ -41,7 +41,9 @@ make the table in the first place. For that you want the TABLE package.")
 
    #:text-box-table-renderer
    #:write-box-line
-   #:*fancy-box*
+   #:box-line #:make-box-line
+   #:box-style #:make-box-style
+   #:*fancy-box* #:*ascii-box* #:*thick-box*
    
    #:output-table
    #:print-table
@@ -788,8 +790,9 @@ resized to fit in this, and the whole row is trimmed to this."
 (defstruct box-line
   "A line style for a text box."
   left
-  line
+  horizontal
   joint
+  vertical
   right)
 
 (defstruct box-style
@@ -797,8 +800,8 @@ resized to fit in this, and the whole row is trimmed to this."
   top
   under-titles
   between-rows
-  bottom
-  separator)
+  data
+  bottom)
 
 (defclass text-box-table-renderer (table-renderer)
   ((box-style
@@ -812,11 +815,29 @@ resized to fit in this, and the whole row is trimmed to this."
 
 (defparameter *fancy-box*
   (make-box-style
-   :top           (make-box-line :left "╒" :line "═" :joint "╤" :right "╕")
-   :under-titles  (make-box-line :left "╞" :line "═" :joint "╪" :right "╡")
-   :between-rows  (make-box-line :left "├" :line "─" :joint "┼" :right "┤")
-   :bottom        (make-box-line :left "╘" :line "═" :joint "╧" :right "╛")
-   :separator "│"
+   :top          (make-box-line :left "╒" :horizontal "═" :joint "╤" :right "╕")
+   :under-titles (make-box-line :left "╞" :horizontal "═" :joint "╪" :right "╡")
+   :between-rows (make-box-line :left "├" :horizontal "─" :joint "┼" :right "┤")
+   :bottom       (make-box-line :left "╘" :horizontal "═" :joint "╧" :right "╛")
+   :data         (make-box-line :left "│" :vertical "│" :right "│")
+   ))
+
+(defparameter *ascii-box*
+  (make-box-style
+   :top          (make-box-line :left "," :horizontal "_" :joint "_" :right ".")
+   :under-titles (make-box-line :left "|" :horizontal "-" :joint "+" :right "|")
+   :between-rows (make-box-line :left "|" :horizontal "-" :joint "+" :right "|")
+   :bottom       (make-box-line :left "`" :horizontal "-" :joint "^" :right "'")
+   :data         (make-box-line :left "|" :vertical "|" :right "|")
+   ))
+
+(defparameter *thick-box*
+  (make-box-style
+   :top          (make-box-line :left "▗" :horizontal "▄" :joint "▄" :right "▖")
+   :under-titles (make-box-line :left "▐" :horizontal "▀" :joint "█" :right "▌")
+   :between-rows (make-box-line :left "▐" :horizontal "▀" :joint "█" :right "▌")
+   :bottom       (make-box-line :left "▝" :horizontal "▀" :joint "▀" :right "▘")
+   :data         (make-box-line :left "▐" :vertical "█" :right "▌")
    ))
 
 (defmethod write-box-line ((renderer text-box-table-renderer) style sizes)
@@ -827,7 +848,7 @@ resized to fit in this, and the whole row is trimmed to this."
        (when (not first)
 	  (write-string (box-line-joint style) *destination*))
        (loop :repeat s
-	  :do (write-string (box-line-line style) *destination*))
+	  :do (write-string (box-line-horizontal style) *destination*))
 	(when first (setf first nil)))
      sizes))
   (write-string (box-line-right style) *destination*)
@@ -919,29 +940,22 @@ resized to fit in this, and the whole row is trimmed to this."
 
 (defmethod table-output-start-row ((renderer text-box-table-renderer) table)
   (declare (ignore table))
-  ;; (with-slots (box-style) renderer
-  ;;   (write-string (box-line-left box-style) *destination*))
-  ;; (with-slots (prefix) renderer
-  ;;   (format *destination* "~a " prefix))
   (with-slots (box-style) renderer
-    ;; (format *destination* "~a " (box-style-separator box-style)))
-    (format *destination* "~a" (box-style-separator box-style)))
-  )
+    (format *destination* "~a" (box-line-left (box-style-data box-style)))))
 
 (defmethod table-output-column-separator ((renderer text-box-table-renderer)
 					  table &key width)
   "Output a separator between columns."
   (declare (ignore table width))
   (with-slots (box-style) renderer
-    (write-string (box-style-separator box-style) *destination*)))
+    (write-string (box-line-vertical (box-style-data box-style)) *destination*)))
 
 (defmethod table-output-end-row ((renderer text-box-table-renderer) table n)
   (declare (ignore table n))
   ;; (with-slots (box-style) renderer
   ;;   (write-string (box-line-right box-style) *destination*))
   (with-slots (box-style) renderer
-    (format *destination* "~a~%" (box-style-separator box-style)))
-  )
+    (format *destination* "~a~%" (box-line-right (box-style-data box-style)))))
 
 (defmethod table-output-row-separator ((renderer text-box-table-renderer) table
 				       n &key width sizes)
