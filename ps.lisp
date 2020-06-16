@@ -221,7 +221,7 @@ user, pid, ppid, size, command."
 	  (list ppid (list pid)))))
 
 ;; @@@ need to add all parents first?
-(defun make-tree (proc-list)
+(defun make-process-tree (proc-list)
   (let (tree)
     (loop :for p :in proc-list :do
        ;; (setf tree (add-node (third p) (second p) tree)))
@@ -292,7 +292,7 @@ user, pid, ppid, size, command."
   (format t "~6d ~8a ~8@a ~{~a ~}~%" "PID" "User" "Size" '("Command"))
   (let* ((plist (sort-muffled (copy-list (list-processes)) #'<
 			      :key #'short-process-pid))
-	 (tree (make-tree plist)))
+	 (tree (make-process-tree plist)))
     (print-tree tree plist)
     tree))
 
