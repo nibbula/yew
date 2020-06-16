@@ -243,11 +243,11 @@ require terminal driver support."))
 
 (defmethod terminal-selection ((tty terminal-dumb) &key type)
   "Return the terminal's selection."
-  (declare (ignore tty)))
+  (declare (ignore tty type)))
 
 (defmethod (setf terminal-selection) (selection (tty terminal-dumb) &key type)
   "Set the terminal's selection."
-  (declare (ignore selection tty)))
+  (declare (ignore selection tty type)))
 
 (defmethod terminal-title ((tty terminal-dumb))
   (declare (ignore tty)))
