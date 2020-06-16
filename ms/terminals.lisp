@@ -893,6 +893,10 @@ the timeout is hit."
 	(read-handle-input in-handle)
 	(read-console-input terminal))))
 
+(define-condition terminal-read-timeout (opsys-error)
+  ()
+  (:documentation "The terminal timed out when reading."))
+
 (defun read-until (tty stop-char &key timeout octets-p)
   "Read until STOP-CHAR is read. Return a string of the results.
 TTY is a file descriptor."
@@ -1595,6 +1599,12 @@ boolean indicating visibility."
 		`(x ,x y ,y)
 		chars-written))
       (mem-ref chars-written 'DWORD))))
+
+(defmacro with-nonblocking-io ((fd) &body body)
+  (declare (ignore fd))
+  ;; @@@
+  `(progn ,@body)
+  )
 
 (defun terminal-query (query &key max tty)
   "Output the string to the terminal and wait for a response. Read up to MAX

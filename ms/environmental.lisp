@@ -135,6 +135,19 @@ NIL, unset the VAR, using unsetenv."
 ;; (defcfun ("GetComputerName" real-get-computer-name :convention :stdcall) BOOL
 ;;    (buffer LPTSTR) (size LPDWORD))
 
+;; @@@ What should these do?
+
+(defun system-info-names ()
+  #())
+
+(defun system-info-description (name)
+  (declare (ignore name))
+  nil)
+
+(defun get-system-info (names)
+  (declare (ignore names))
+  nil)
+
 (defcfun ("GetComputerNameW" real-get-computer-name :convention :stdcall) BOOL
   (buffer LPTSTR) (size LPDWORD))
 
@@ -193,6 +206,9 @@ NIL, unset the VAR, using unsetenv."
 
 (defun os-software-type ()
   "Windows")
+
+(defun os-software-release ()
+  "")
 
 (defun os-software-version ()
   "")

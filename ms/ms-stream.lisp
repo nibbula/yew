@@ -47,19 +47,24 @@
   ()
   (:documentation "Your useful friend on the other end."))
 
-#|
+
 (defun stream-handle-direction (handle)
   "Return a direction for an stream handle, or NIL if there isn't one."
+  (declare (ignore handle))
+  #|
   (let ((flags (get-file-descriptor-flags handle)))
     (cond
       ((member '+O_RDONLY+ flags) :input)
       ((member '+O_WRONLY+ flags) :output)
       ((member '+O_RDWR+   flags) :io))))
-|#
+  |#
+  nil)
 
 (defun %open (filename direction &key create truncate)
   "Open a FILENAME in DIRECTION, which is one of the usual: :input :output :io.
 Create and truncate do the Unix things."
+  (declare (ignore filename direction create truncate))
+  #|
   (let ((flags (logior +O_CLOEXEC+
 		       (ecase direction
 			 (:input  +O_RDONLY+)
@@ -81,7 +86,9 @@ Create and truncate do the Unix things."
     (when (< fd 0)
       (error 'posix-error :error-code (errno)
 	     :format-control "open ~s" :format-arguments `(,filename)))
-    fd))
+    fd)
+  |#
+  )
 
 ;; @@@ Maybe if I have nothing better to do, I could unify flush & fill, since
 ;; they're nearly the same.
@@ -89,6 +96,8 @@ Create and truncate do the Unix things."
 (defun %fill-buffer (stream)
   "Fill the input buffer. Return the size we read. Return NIL on EOF, which
 only happens the second time we get a zero read. Throw errors if we get 'em."
+  (declare (ignore stream))
+  #|
   (with-slots (handle input-buffer position) stream
     (let ((status 0)
 	  (remaining +input-buffer-size+)
@@ -132,10 +141,14 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 	   (error 'posix-error :error-code (errno)
 		  :format-control "%fill-buffer read"
 		  :format-arguments `(,handle ,input-buffer ,remaining)))))
-      (- +input-buffer-size+ remaining))))
+      (- +input-buffer-size+ remaining)))
+  |#
+  )
 
 (defun %flush-buffer (stream &key force)
   "Flush the input buffer. Throw errors if we get 'em."
+  (declare (ignore stream force))
+  #|
   (with-slots (handle output-buffer ouput-position) stream
     (let ((status 0)
 	  (remaining +output-buffer-size+)
@@ -178,7 +191,9 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 		  :format-arguments `(,handle ,output-buffer ,remaining)))))
       (when force
 	(syscall (fsync handle)))
-      (- +input-buffer-size+ remaining))))
+      (- +input-buffer-size+ remaining)))
+  |#
+  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; character
@@ -255,7 +270,9 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 
 (defmethod stream-read-sequence ((stream ms-binary-input-stream)
 				 seq &optional start end)
+  (declare (ignore stream start end))
   ;; This is only if we created a ms-stream explicitly or are un-buffered?
+  #|
   (with-slots (handle) stream
     (let* ((seq-start (clamp (or start 0)          0 (length seq)))
 	   (seq-end   (clamp (or end (length seq)) 0 (length seq)))
@@ -264,6 +281,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 	(incf-pointer buf start)
 	;; @@@ This doesn't handle any problems
 	(syscall (posix-read handle buf len)))))
+  |#
   seq)
 
 (defclass ms-binary-output-stream (os-binary-output-stream ms-stream)
@@ -280,6 +298,8 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 
 (defmethod stream-write-sequence ((stream os-output-stream) seq
 				  &optional (start 0) end)
+  (declare (ignore stream start end))
+  #|
   ;; This is only if we created a ms-stream explicitly or are un-buffered?
   (with-slots (handle) stream
     (let* ((seq-start (clamp (or start 0)          0 (length seq)))
@@ -289,6 +309,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 	(incf-pointer buf start)
 	;; @@@ This doesn't handle any problems
 	(syscall (posix-read handle buf len)))))
+  |#
   seq)
 
 (defclass ms-binary-io-stream (ms-binary-input-stream

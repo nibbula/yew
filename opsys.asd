@@ -64,7 +64,7 @@
 		   (:file "events")
 		   (:file "terminals")
 		   (:file "communication")
-		   ;; (:file "ms-stream")
+		   (:file "ms-stream")
 		   ))
      (:module "mezzano"
       :depends-on ("base")

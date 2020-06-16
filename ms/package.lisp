@@ -36,6 +36,11 @@
    #:env
    #:memory-page-size
    #:processor-count
+   #:system-info-names
+   #:system-info-description
+   #:get-system-info
+
+   ;; users
    #:get-user-info
    #:user-name
    #:user-home
@@ -116,7 +121,9 @@
    #:set-terminal-mode
    #:get-terminal-mode
    #:reset-terminal-modes
+   #:with-nonblocking-io
    #:terminal-query
+   #:terminal-read-timeout
    #:with-terminal-signals
    ;; Extra Windows specific stuff:
    #:windows-error
@@ -156,7 +163,22 @@
    #:os-machine-type
    #:os-machine-version
    #:os-software-type
+   #:os-software-release
    #:os-software-version
+   ;; os-stream
+   #:ms-stream
+   #:ms-input-stream
+   #:ms-output-stream
+   #:ms-io-stream
+   #:ms-character-input-stream
+   #:ms-character-output-stream
+   #:ms-character-io-stream
+   #:ms-binary-input-stream
+   #:ms-binary-output-stream
+   #:ms-binary-io-stream
+   #:fill-buffer
+   #:flush-buffer
+   #:stream-handle-direction
    ))
 (in-package :opsys-ms)
 
