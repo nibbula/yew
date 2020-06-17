@@ -24,6 +24,7 @@
    #:window-text
    #:window-centered-text
    #:display-text
+   #:show-text
    #:with-typeout
    #:help-list
    ))
@@ -240,7 +241,7 @@ drawing, which will get overwritten."
 		 :row row
 		 :column (round (- (/ width 2) (/ (length text) 2))))))
 
-;; This is kind of like a old-timey typeout window.
+;; This interface is somewhat deprecated. I recommend using show-text.
 (defun display-text (title text-lines &key input-func (justify t)
 					x y width height
 					min-width min-height)
@@ -290,6 +291,24 @@ waits for a key press and then returns."
     ;; (tt-clear) ;; ?? really
     (tt-finish-output)
     result))
+
+;; This is kind of like a old-timey typeout window.
+;; @@@ Eventually display-text should be a wrapper to this?
+;; Differences from display-text:
+;;   - don't require title arg
+;;   - don't justify by default
+;;   - don't require lines to be pre-split
+;;   - In general, just take a string and display it as-is.
+(defun show-text (text &key title input-func justify
+			 x y width height min-width min-height)
+  (with-immediate ()
+    (display-text title (if justify
+			    (list text)
+			    (osplit #\newline text :omit-empty t))
+		  :input-func input-func
+		  :justify justify
+		  :x x :y y :width width :height height
+		  :min-width min-width :min-height min-height)))
 
 ;; @@@ make justify work? maybe it's the re-fangling?
 (defmacro with-typeout ((stream-var &key title input-func #|(justify t)|# x y)
