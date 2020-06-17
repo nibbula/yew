@@ -11,6 +11,7 @@
     :source-control	:git
     :long-description   "Choose things from a list."
     :depends-on (:dlib :char-util :stretchy :keymap :opsys :inator :terminal
+		 :collections :ostring :fatchar
 		 :terminal-inator #+unix :terminal-curses :fui :view-generic)
     :components
     ((:file "pick-list")))

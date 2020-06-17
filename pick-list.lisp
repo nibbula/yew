@@ -7,7 +7,7 @@
 (defpackage :pick-list
   (:documentation "Choose things from a list.")
   (:use :cl :dlib :char-util :stretchy :keymap :opsys :inator :terminal
-	:terminal-inator :fui :view-generic)
+	:terminal-inator :fui :view-generic :collections :ostring :fatchar)
   (:import-from :inator #:mark #:point #:quit-flag)
   (:export
    #:pick
@@ -273,7 +273,7 @@ The function receives a 'pick' as an argument."))
   (with-slots (left items point) o
     (setf left
 	  (max 0
-	       (- (length (car (elt items point)))
+	       (- (olength (car (elt items point)))
 		  (- (tt-width) 3))))))
 
 (defun pick-error (message &rest args)
@@ -315,14 +315,15 @@ The function receives a 'pick' as an argument."))
        (when (= i point)
 	 (tt-inverse t)
 	 (setf cur-line y #| (getcury *stdscr*) |#))
-       (when (<= left (1- (length f)))
-	 (setf str (subseq f (max 0 left)
-			   (min (length f)
-				(+ left (- (tt-width) 3))))) ; 3 = "X " + 1
-	 (tt-write-string str))
+       (when (<= left (1- (olength f)))
+	 (setf str (osubseq f (max 0 left)
+			    (min (olength f)
+				 (+ left (- (tt-width) 3))))) ; 3 = "X " + 1
+	 (tt-write-string
+	  (if (= i point) (span-to-fat-string `(:inverse ,str)) str)))
        (when (= i point)
 	 (tt-inverse nil))
-       (push (cons y (length str)) button-range)
+       (push (cons y (olength str)) button-range)
        (tt-write-char #\linefeed)
        (incf i)
        (incf y)
@@ -398,6 +399,16 @@ The function receives a 'pick' as an argument."))
 
 (defun search-backward-command (o)
   (search-list-command o :backward))
+
+(defmethod sort-command ((o pick))
+  "Sort the list items."
+  (with-slots (items) o
+    (locally
+	#+sbcl (declare
+		(sb-ext:muffle-conditions
+		 sb-ext:compiler-note))
+	;; Where's the unreachable code??
+	(setf items (sort items #'ostring-lessp :key #'car)))))
 
 (defmethod default-action ((pick pick)) ; pick-typing-search
   "Try to search for typed input and return T if we did."
@@ -627,7 +638,10 @@ The function receives a 'pick' as an argument."))
       (loop
 	 :for i :from 0
 	 :for item :in the-list
-	 :do (setf (aref string-list i) (cons (princ-to-string item) item)))
+	 :do (setf (aref string-list i)
+		   (cons (or (and (ostringp item) item)
+			     (princ-to-string item))
+			 item)))
       (setf string-list
 	    (if (not (null sort-p))
 		(locally
@@ -635,7 +649,7 @@ The function receives a 'pick' as an argument."))
 			    (sb-ext:muffle-conditions
 			     sb-ext:compiler-note))
 		    ;; Where's the unreachable code??
-		    (sort string-list #'string-lessp
+		    (sort string-list #'ostring-lessp
 			  :key #'car))
 		string-list))
       (when (not popup)
