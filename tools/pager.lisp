@@ -379,13 +379,15 @@ but perhaps reuse some resources."))
 
 (defmacro sub-page ((stream-var) &body body)
   "Generate some output and run a sub-instance of the pager on it."
-  (declare (ignore stream-var)) ; @@@
+  ;;(declare (ignore stream-var)) ; @@@
   (let ((input (gensym "SUB-PAGE-INPUT")))
     `(with-input-from-string
 	 (,input
 	  ;; (with-output-to-string (,stream-var)
 	  (with-terminal-output-to-string (:ansi)
-	    ,@body))
+	    (let ((,stream-var *terminal*))
+	      (declare (ignorable ,stream-var))
+	      ,@body)))
        (pager ,input))))
 
 #|
@@ -2045,6 +2047,9 @@ q - Abort")
 	  (:button-5 (setf result :scroll-down)))))
     result))
 
+(defvar *sub-pager* nil
+  "Indicator that we're in a pager inside a pager.")
+
 (defun page (files &key pager close-me suspended options)
   "View a stream with the pager. Return whether we were suspended or not."
   (with-terminal ()
@@ -2065,7 +2070,7 @@ q - Abort")
 	(with-slots (page-size file-list file-index suspend-flag seekable stream
 		     (quit-flag inator::quit-flag)) *pager*
 	  (unwind-protect
-	       (tagbody
+	       (prog ((*sub-pager* t))
 		try-again
 		  (handler-case
 		      (progn
@@ -2121,7 +2126,8 @@ q - Abort")
 	    (tt-move-to (tt-height) 0)
 	    (tt-erase-to-eol)
 	    ;;(tt-write-char #\newline)
-	    (tt-disable-events :mouse-buttons)
+	    (when (not *sub-pager*)
+	      (tt-disable-events :mouse-buttons))
 	    (tt-finish-output)))))
   suspended)
 
@@ -2161,15 +2167,13 @@ q - Abort")
 	'(streamp consp stringp pathnamep)))
 
 (defmethod help ((pager pager))
-  (with-input-from-string
-   (input
-    (with-output-to-string (output)
-      (format output
+  (sub-page (output)
+    (format output
 "Hi! You are using Nibby's pager. You seem to have hit '~a' again, which gives a
 summary of commands. Press 'q' to exit this help. The keys are superficially
 compatible with 'less', 'vi' and 'emacs'.
 " (pager-input-char pager))
-      (write-string "
+    (write-string "
 [1mGeneral[0m
   ?              		Show this help.
   q Q ^C         		Exit the pager.
@@ -2222,7 +2226,6 @@ compatible with 'less', 'vi' and 'emacs'.
 
 Press 'q' to exit this help.
 " output)))
-   (pager input)))
 
 (defun describe-bindings (pager)
   "Show help on pager key commands."
