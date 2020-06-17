@@ -7,7 +7,8 @@
 (defpackage :pick-list
   (:documentation "Choose things from a list.")
   (:use :cl :dlib :char-util :stretchy :keymap :opsys :inator :terminal
-	:terminal-inator :fui :view-generic :collections :ostring :fatchar)
+	:terminal-inator :fui :view-generic :collections :ochar :ostring
+	:fatchar)
   (:import-from :inator #:mark #:point #:quit-flag)
   (:export
    #:pick
@@ -20,8 +21,8 @@
    ))
 (in-package :pick-list)
 
-(declaim (optimize (debug 3)))
-;;(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;; (declaim (optimize (debug 3)))
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 (defvar *pick* nil
   "The current pick list state.")
@@ -345,13 +346,15 @@ The function receives a 'pick' as an argument."))
       (ecase direction
 	(:forward
 	 (loop :for i :from point :below max-line
-	    :if (search string (car (elt items i)) :test #'equalp)
+	    ;; :if (search string (car (elt items i)) :test #'equalp)
+	    :if (osearch string (car (elt items i)))
 	    :return (setf found i point i))
 	 (when (> point (+ top page-size))
 	   (setf top point)))
 	(:backward
 	 (loop :for i :from point :downto 0
-	    :if (search string (car (elt items i)) :test #'equalp)
+	    ;; :if (search string (car (elt items i)) :test #'equalp)
+	    :if (osearch string (car (elt items i)))
 	    :return (setf found i point i))
 	 (when (< point top)
 	   (setf top point))))
@@ -615,33 +618,37 @@ The function receives a 'pick' as an argument."))
 			     selected-item (typing-searches t) keymap multiple
 			     popup (x 0) (y 0) height before-hook)
   "Have the user pick a value from THE-LIST and return it. Arguments:
-  MESSAGE         - A string to be displayed before the list.
-  BY-INDEX        - If true, return the index number of the item picked.
-  SORT-P          - If true sort the list before displaying it.
-  DEFAULT-VALUE   - Return if no item is selected.
-  SELECTED-ITEM   - Item to have initially selected.
-  TYPING-SEARCHES - True to have alphanumeric input search for the item.
-  KEYMAP          - Add a custom keymap.
-  MULTIPLE        - True to allow multiple items to be selected.
-  POPUP		  - True to use a pop-up window, in which case provide X and Y."
+
+- MESSAGE         A string to be displayed before the list.
+- BY-INDEX        If true, return the index number of the item picked.
+- SORT-P          If true sort the list before displaying it.
+- DEFAULT-VALUE   Return if no item is selected.
+- SELECTED-ITEM   Item to have initially selected.
+- TYPING-SEARCHES True to have alphanumeric input search for the item.
+- KEYMAP          Add a custom keymap.
+- MULTIPLE        True to allow multiple items to be selected.
+- POPUP           True to use a pop-up window, in which case provide X and Y."
   (when (not the-list)
     (return-from pick-list nil))
   (with-terminal (#| #+unix :crunch |#)
     (let* ((max-y (1- (tt-height)))
-	   (count (length the-list))
+	   (count (olength the-list))
 	   (string-list (make-array count :element-type 'cons
-				    :initial-element (cons nil nil)))
+				    :initial-element (cons nil nil)
+				    ))
 	   (new-keymap (list *pick-list-keymap*
 			     *default-inator-keymap*)))
       (when keymap
 	(push keymap new-keymap))
-      (loop
-	 :for i :from 0
-	 :for item :in the-list
-	 :do (setf (aref string-list i)
-		   (cons (or (and (ostringp item) item)
-			     (princ-to-string item))
-			 item)))
+      (let ((i 0))
+	(omapn (lambda (item)
+		 (setf (aref string-list i)
+		       (cons
+			(or (and (ostringp item) item)
+			    (princ-to-string item))
+			item))
+		 (incf i))
+	       the-list))
       (setf string-list
 	    (if (not (null sort-p))
 		(locally
@@ -876,46 +883,5 @@ The function receives a 'pick' as an argument."))
 		:quit)))))
     (t
      (error "MENU must be a symbol or a list."))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; This is actually a weird experiment which I should probably get out of here.
-
-(defvar *interactive* t
-  "True when we can expect user interaction.")
-
-;; @@@ cribbed from fui. we should put it somewhere else.
-#|
-(defun pause (&optional (prompt "[Press Enter]") &rest args)
-  "Print a message and wait for Enter to be pressed. Does nothing if not
-*interactive*."
-  (when *interactive*
-    (apply #'format *standard-output* prompt args)
-    (finish-output *standard-output*)
-    (read-line)))
-|#
-
-(defun show-result (expr)
-  (unwind-protect
-     (progn
-       (terminal-end *terminal*)
-;       (format t "showing ~s~%" expr)
-       (let ((vals (multiple-value-list (eval expr))))
-	 (loop :for v :in vals :do (print v))
-	 (pause)))
-    (terminal-start *terminal*))
-  (values))
-
-(defun menu-load (&optional filename)
-  (let* ((fn (or filename (pick-file)))
-	 lines)
-    (when fn
-      (setf lines
-	    (with-open-file (ss fn)
-	      (loop :with line = nil
-		 :while (setf line (ignore-errors (read ss nil)))
-		 :collect (cons (format nil "~s" line)
-				`(show-result ',line))))))
-      (setf lines (append lines (list (cons "[Quit]" :quit))))
-      (loop :while (not (eql :quit (do-menu* lines))))))
 
 ;; EOF
