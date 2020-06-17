@@ -8,9 +8,7 @@
 	(:documentation "Names for your sensations.")
 	(:use :cl :dlib)
 	;; (:shadow cl:tan)
-	(:export
-	 #:mulge-names
-	 ))
+	)
 ;; ))
 
 ;; tan -> tan-color
