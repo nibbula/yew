@@ -759,7 +759,7 @@ generic functions (i.e. %GROUT-*) directly."
 			 &key
 			   (array            *print-array*)
 			   (base             *print-base*)
-			   (case             *print-case*)
+	#| see that? -> |# (case             *print-case*)
 			   (circle           *print-circle*)
 			   (escape           *print-escape*)
 			   (gensym           *print-gensym*)
