@@ -6,7 +6,7 @@
 
 (declaim #.`(optimize ,.(getf rl-config::*config* :optimization-settings)))
 
-(defkeymap *normal-keymap*
+(defkeymap *normal-keymap* (:default-binding 'self-insert-command)
   `(
     ;; Movement
     (,(ctrl #\B)		. backward-char)
@@ -92,12 +92,10 @@
     ;; Other keymaps
     (#\escape			. *escape-keymap*)
     (,(ctrl #\X)		. *ctlx-keymap*)
-    )
-  :default-binding 'self-insert-command
-)
+    ))
 
 ;; These ^X commands are quite impoverished.
-(defkeymap *ctlx-keymap*
+(defkeymap *ctlx-keymap* ()
   `(
     ;; (,(ctrl #\F) (edit-function))
     ;; (,(ctrl #\Q) (toggle-read-only))
@@ -117,7 +115,7 @@
     (,(ctrl #\X)	. exchange-point-and-mark)))
 ;  :default-binding #| (beep e "C-x ~a is unbound." command |#
 
-(defkeymap *special-keymap*
+(defkeymap *special-keymap* ()
   `(
     (:left            . backward-char)
     (:right           . forward-char-or-accept-suggestion)
@@ -141,7 +139,7 @@
 ;; Make the stuff in the special keymap appear in the normal keymap too.
 (add-keymap *special-keymap* *normal-keymap*)
 
-(defkeymap *vi-insert-mode-keymap*
+(defkeymap *vi-insert-mode-keymap* (:default-binding 'self-insert-command)
   `(
     ;; Editing
     (#\return			. accept-line)
@@ -165,14 +163,12 @@
     (,(ctrl #\C)		. set-vi-command-mode)
     (,(ctrl #\O)		. vi-do-command)
     (,(ctrl #\X)		. *ctlx-keymap*)
-    )
-  :default-binding 'self-insert-command
-)
+    ))
 
 ;; Make the stuff in the special keymap appear in the vi insert keymap too.
 (add-keymap *special-keymap* *vi-insert-mode-keymap*)
 
-(defkeymap *vi-command-mode-keymap*
+(defkeymap *vi-command-mode-keymap* (:default-binding 'self-insert-command)
   `(
     ;; Movement
     (,(ctrl #\N)		. next-history)		;
@@ -262,9 +258,7 @@
     ;; Other keymaps
     (#\escape			. beep-command)
     (,(ctrl #\X)		. *ctlx-keymap*)
-    )
-  :default-binding 'self-insert-command
-)
+    ))
 
 (add-keymap *special-keymap* *vi-command-mode-keymap*)
 
