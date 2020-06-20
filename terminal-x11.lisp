@@ -1821,7 +1821,8 @@ i.e. the terminal is 'line buffered'."
 		(1- window-columns) (1- window-rows) :erase t)
     (draw-cursor tty)))
 
-(defmethod terminal-clear ((tty terminal-x11))
+(defmethod terminal-clear ((tty terminal-x11) &key saved-p)
+  (declare (ignore saved-p)) ;; @@@ deal with this
   (with-slots (cursor-column cursor-row
 	       (window-columns terminal::window-columns)
 	       (window-rows terminal::window-rows)) tty

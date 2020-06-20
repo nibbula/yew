@@ -493,12 +493,12 @@
     (multiple-value-bind (x y) (get-cursor-position fd)
       (erase fd :x x :y y))))
 
-(defmethod terminal-clear ((tty terminal-ms))
+(defmethod terminal-clear ((tty terminal-ms) &key saved-p)
   (with-slots ((fd terminal::file-descriptor)) tty
     (multiple-value-bind (col row width height attr top)
 	(get-console-info fd)
       (declare (ignore col row width height attr))
-      (erase fd :x 0 :y top))))
+      (erase fd :x 0 :y (if saved-p 0 top)))))
 
 (defmethod terminal-home ((tty terminal-ms))
   (with-slots ((fd terminal::file-descriptor)) tty

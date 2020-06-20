@@ -366,9 +366,10 @@ strings, only the attributes of the first character are preserved."
     :initarg :update-y :accessor update-y :initform 0 :type fixnum
     :documentation "Row while we're updating.")
    (cleared
-    :initarg :cleared :accessor cleared :initform nil :type boolean
+    :initarg :cleared :accessor cleared :initform nil :type (member t nil saved)
     :documentation
-    "True if clear was called and we have to really clear the screen.")
+    "True if clear was called and we have to really clear the screen, or SAVED
+if we have to clear the saved history lines.")
    (started
     :initarg :started :accessor started :initform nil
     :documentation "True if we started and not ended.")
@@ -1388,10 +1389,10 @@ i.e. the terminal is 'line buffered'."
 	(note-single-line tty)
 	(no-hints tty))))
 
-(defmethod terminal-clear ((tty terminal-crunch-stream))
+(defmethod terminal-clear ((tty terminal-crunch-stream) &key saved-p)
   (loop :for line :across (screen-lines (new-screen tty)) :do
      (fill-by line #'blank-char))
-  (setf (cleared tty) t
+  (setf (cleared tty) (if saved-p 'saved t)
 	(start-line tty) 0)
   ;; (dbugf :crunk "clear start-line = 0~%")
   (no-hints tty))
@@ -1969,7 +1970,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
 	  (update-y tty) (screen-y old))
 
     (when (cleared tty)
-      (terminal-clear wtty)
+      (terminal-clear wtty :saved-p (eq (cleared tty) 'saved))
       (terminal-finish-output wtty)
       ;; (dbugf :crunk "actually clearing!~%")
       (setf (cleared tty) nil)

@@ -1068,8 +1068,10 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-erase-below ((tty terminal-ansi-stream))
   (terminal-escape-sequence tty "J"))
 
-(defmethod terminal-clear ((tty terminal-ansi-stream))
-  (terminal-escape-sequence tty "2J"))
+(defmethod terminal-clear ((tty terminal-ansi-stream) &key saved-p)
+  (terminal-escape-sequence tty "2J")
+  (when saved-p
+    (terminal-escape-sequence tty "3J")))
 
 (defmethod terminal-home ((tty terminal-ansi-stream))
   (terminal-escape-sequence tty "H")

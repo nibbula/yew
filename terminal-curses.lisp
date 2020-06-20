@@ -712,7 +712,8 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-erase-below ((tty terminal-curses))
   (clrtobot))
 
-(defmethod terminal-clear ((tty terminal-curses))
+(defmethod terminal-clear ((tty terminal-curses) &key saved-p)
+  (declare (ignore saved-p))
   (with-slots (start-line) tty
     (when (not (zerop start-line))
       (unfilter tty))

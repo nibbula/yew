@@ -631,6 +631,25 @@ drawing, which will get overwritten."
     (loop :for n :from 1 :to 10 :do
        (test-scroll-by n))))
 
+(defun test-scrolling-saved-clear ()
+  (blurp ()
+    ;; Try to put some stuff in the saved scrolled lines.
+    (loop
+       :with height = (or (tt-height) 24)
+       :and width = (or (tt-width) 80)
+       :for y :from 0 :below (* height 3)
+       :do
+       (tt-format "--->> You shouldn't see this line ~d" y)
+       (let ((right-side (format nil " page ~d <<---" (mod y height))))
+	 (tt-move-to-col (- width (length right-side) 1))
+	 (tt-write-string right-side)
+	 (tt-newline)))
+    ;; And try to clear it.
+    (tt-clear :saved-p t)
+    (tt-finish-output)
+    (center "The screen and the saved scrolled lines should have cleared," 0)
+    (center "if the terminal supports it." 1)))
+
 ;; (defun test-scrolling-no-newline ()
 ;;   (blurp
 ;;     (loop :for i :from 0 :below (z-height)
@@ -703,7 +722,6 @@ drawing, which will get overwritten."
 (defun test-basics ()
   (blurp ()
    (tt-format "The screen should have cleared.~%"))
-
 
   (blurp ()
    (tt-write-string "You should see this sentence.")
@@ -1131,6 +1149,7 @@ drawing, which will get overwritten."
      ("Scrolling with a fixed line"   . test-scrolling-with-fixed-line)
      ("Scrolling by various amounts"  . test-scrolling-n)
 ;;     ("Scrolling without newlines"    . test-scrolling-no-newline)
+     ("Saved scrolled lines clear"    . test-scrolling-saved-clear)
      ("Scrolling region"              . test-scrolling-region)
      )))
 
