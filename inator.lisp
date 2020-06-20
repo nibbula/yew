@@ -214,7 +214,11 @@ not call process-event with it."))
 (defgeneric resize (inator)
   (:documentation "Called when we get a resize event."))
 
-(defkeymap *default-inator-keymap*
+;;(defkeymap *default-inator-keymap* (:default-binding 'default-action)
+;; @@@ The problem is if there is default binding then it stops other
+;; keymaps from inheriting an event. I think if you want a default binding
+;; you should probably add it explicitly.
+(defkeymap *default-inator-keymap* ()
   `((,(ctrl #\n)	. next)
     (,(ctrl #\p)	. previous)
     (,(ctrl #\f)	. forward-unit)
@@ -238,8 +242,7 @@ not call process-event with it."))
     (,(ctrl #\g)	. quit)
     (:resize		. resize)
     (#\escape		. *default-inator-escape-keymap*)
-    )
-  :default-binding 'default-action)
+    ))
 
 (defparameter *default-inator-escape-keymap*
   (build-escape-map *default-inator-keymap*))
@@ -360,8 +363,9 @@ as the subsequent arguments."
 	    (setf result (sub-process event outer-map)))
 	(when (not result)
 	  ;;;(message inator "Event ~a is not bound in keymap ~w."
-	  (message inator "Event ~s is not bound in keymap ~w."
-		   event keymap))))))
+	  (message inator "Event ~@[~s ~]~@[~{~s ~}~]is not bound in keymap ~w."
+		   event event-list
+		   keymap))))))
 
 (defmethod event-loop ((inator inator))
   "The default event loop. Using this loop a sub-class only has to supply the
