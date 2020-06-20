@@ -19,7 +19,7 @@ function), a list which represents function application, or another keymap,
 where the next element in a key sequence is looked up.
 
 Keymaps:
-  macro DEFKEYMAP name [docstring] alist [:default-binding key]
+  macro DEFKEYMAP name (&key name default-binding) [docstring] alist
   function KEYMAP-P object -> boolean
   function SET-KEYMAP keymap alist -> keymap
   function MAP-KEYMAP function keymap -> NIL
@@ -57,6 +57,7 @@ Keymap stacks:
   (:export
    #:keymap
    #:keymap-map
+   #:keymap-name
    #:keymap-default-binding
    #:keymap-p
    #:set-keymap
@@ -87,6 +88,9 @@ Keymap stacks:
     :accessor		keymap-map
     :initarg		:map
     :documentation	"Hash table of key to binding.")
+   (name
+    :initarg :name :accessor keymap-name :initform nil
+    :documentation "A name for this keymap when printing.")
    (default-binding
     :accessor		keymap-default-binding
     :initarg		:default-binding
@@ -116,41 +120,38 @@ Keymap stacks:
 
 (defmethod print-object ((obj keymap) stream)
   "Print a KEYMAP on a STREAM."
-  (print-unreadable-object (obj stream :type t :identity t)
-    (format stream " [~d]"
+  (print-unreadable-object (obj stream :type t #|:identity t|#)
+    (format stream "~a [~d]" (keymap-name obj)
 	    (hash-table-count (keymap-map obj)))))
 
-(defmacro defkeymap (name &body body)
+(defmacro defkeymap (var-name (&key name default-binding) &body body)
   "Define a keymap.
-- NAME is a variable the keymap is bound to.
+- VAR-NAME is a variable the keymap is bound to.
+- NAME is a descriptive name for printing. It defaults to VAR-NAME.
 - BODY is of the form:
     [docstring] [:default-binding BINDING] ALIST
   where ALIST is an alist of (KEY . BINDING).
   KEY is a character or keyword.
   BINDING is a symbol or a function to be called or a form to be evaluated.
   DEFAULT-BINDING is what keys that aren't defined are bound to."
-  (let (docstring map default-binding)
+  (let (docstring map)
     (when body
       ;; See if there's a docstring
       (when (stringp (first body))
 	(setf docstring (pop body)))
       (setf map (pop body))
       ;; See if there's a default-binding keyword
-      (when (eql (first body) :default-binding)
-	(pop body)
-	(setf default-binding (pop body))))
-    `(defparameter ,name
+      ;; (when (eql (first body) :default-binding)
+      ;; 	(pop body)
+      ;; 	(setf default-binding (pop body)))
+      )
+    `(defparameter ,var-name
        (make-instance 'keymap:keymap
-		      #| :name ,(string-downcase name) |#
+		      :name ',(or name var-name)
 		      :map ,map
 		      ,@(when default-binding
-			      `(:default-binding ,default-binding)))
+			  `(:default-binding ,default-binding)))
        ,@(when docstring `(,docstring)))))
-
-;; semi-bogus wrapper for named-name
-;; (defun keymap-name (map)
-;;   "Return the name of the keymap."
-;;   (named-name map))
 
 (defun map-keymap (func keymap)
   "Call FUNC on each binding in KEYMAP."
@@ -337,23 +338,26 @@ assumed to be a prefix for all bindings in the keymap."
 	  (hash-table-count (keymap-map o)))
   (describe-keymap o :stream stream))
 
-(defun copy-keymap (keymap)
+(defun copy-keymap (keymap &key name)
   "Return a new copy of KEYMAP."
   (check-type keymap keymap)
-  (let ((new-keymap (make-instance
+  (let* ((new-name (or name (format nil "copy of ~s" (keymap-name keymap))))
+	 (new-keymap (make-instance
 		     (type-of keymap)
+		     :name new-name
 		     :default-binding (keymap-default-binding keymap))))
     (map-keymap #'(lambda (k f) (define-key new-keymap k f))
 		keymap)
     new-keymap))
 
 ;; This is very useful if you want Escape and Meta to be equivalent.
-(defun build-escape-map (keymap)
+(defun build-escape-map (keymap &key name)
   "Return a new keymap containing only the meta character bindings in KEYMAP
  converted to non-meta character bindings. This is useful for making a keymap
 to bind to the escape key, so you have escape key equivalents to meta keys."
   (check-type keymap keymap)
-  (let ((new-keymap (make-instance (type-of keymap))))
+  (let* ((new-name (or name (format nil "ESC-~s" (keymap-name keymap))))
+	 (new-keymap (make-instance (type-of keymap) :name new-name)))
     (map-keymap
      #'(lambda (k f)
 	 (when (and (characterp k) (meta-char-p (char-code k)))
