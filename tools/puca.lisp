@@ -1210,7 +1210,7 @@ for the command-function).")
 ;; 	  ,(span-to-fat-string `((:green "Message:")))
 ;; 	  ,(span-to-fat-string `((:cyan ,(history-message item)))))))))
 
-(defkeymap *puca-history-keymap*
+(defkeymap *puca-history-keymap* ()
   `((#\q		. quit)
     (#\Q		. quit)
     (#\?		. help)
@@ -1296,7 +1296,7 @@ for the command-function).")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defkeymap *puca-keymap*
+(defkeymap *puca-keymap* ()
   `((#\q		. quit)
     (#\Q		. quit)
     (#\?		. help)

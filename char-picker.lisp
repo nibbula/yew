@@ -338,7 +338,7 @@ starting at START. If not found, return START."
   "Jump to a character code."
   (enter-char-number i))
 
-(defkeymap *char-picker-keymap*
+(defkeymap *char-picker-keymap-addtions* ()
   "Keymap for the character picker."
   `((#\backspace	. backspace-command)
     (#\rubout		. backspace-command)
@@ -365,13 +365,17 @@ starting at START. If not found, return START."
     (#\=		. enter-char-number)
     ))
 
-;; Use
+;; We have to add in the default-inator-keymap because we want a modified keymap
+;; with a default binding.
+(defparameter *char-picker-keymap*
+  (let ((copy (copy-keymap *default-inator-keymap*
+			   :name '*char-picker-keymap*)))
+    (setf (keymap-default-binding copy) 'inator::default-action)
+    (add-keymap *char-picker-keymap-addtions* copy)))
 
 (defun char-picker ()
   (with-terminal ()
-    (let ((p (make-instance 'char-picker
-			    :keymap (list *char-picker-keymap*
-					  *default-inator-keymap*))))
+    (let* ((p (make-instance 'char-picker :keymap *char-picker-keymap*)))
       (event-loop p)
       (char-picker-result p))))
 

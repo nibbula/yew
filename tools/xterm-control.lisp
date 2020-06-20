@@ -120,7 +120,7 @@
     (tt-erase-to-eol)
     (or result font)))
 
-(defkeymap *xterminator-keymap*
+(defkeymap *xterminator-keymap* ()
   `((#\escape		  . *xterminator-escape-keymap*)
     (,(ctrl #\G)	  . quit)
     (#\q	  	  . quit)

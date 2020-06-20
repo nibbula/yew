@@ -48,26 +48,27 @@
 
 ;; Keymaps are copies of the default inator ones, with our additions.
 
-(defkeymap *default-file-inator-keymap-additions*
+(defkeymap *default-file-inator-keymap-additions* ()
   `((,(ctrl #\x) . *default-file-inator-ctrl-x-keymap*)
     (,(meta-char #\n) . next-file)
     (,(meta-char #\p) . previous-file)
     (#\escape    . *default-file-inator-escape-keymap*)))
 
 (defparameter *default-file-inator-keymap*
-  (copy-keymap *default-inator-keymap*))
+  (copy-keymap *default-inator-keymap* :name '*default-file-inator-keymap*))
 (add-keymap *default-file-inator-keymap-additions*
 	    *default-file-inator-keymap*)
 
 (defparameter *default-file-inator-escape-keymap*
-  (copy-keymap *default-inator-escape-keymap*))
+  (copy-keymap *default-inator-escape-keymap*
+	       :name '*default-file-inator-escape-keymap*))
 
 (defparameter *default-file-inator-escape-keymap-additions*
   (build-escape-map *default-file-inator-keymap-additions*))
 (add-keymap *default-file-inator-escape-keymap-additions*
 	    *default-file-inator-escape-keymap*)
 
-(defkeymap *default-file-inator-ctrl-x-keymap*
+(defkeymap *default-file-inator-ctrl-x-keymap* ()
   `((,(ctrl #\S)	. save-file)
     (,(ctrl #\W)	. save-as-file)
     (,(ctrl #\R)	. revert-file)

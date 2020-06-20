@@ -379,11 +379,11 @@ the current view with it, but lets us back."))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defkeymap *view-html-ctrl-x-keymap*
+(defkeymap *view-html-ctrl-x-keymap* ()
   `((,(ctrl #\s)	. save-file)
     (,(ctrl #\f)	. load-file)))
 
-(defkeymap *view-html-keymap*
+(defkeymap *view-html-keymap* ()
   `((,(ctrl #\x)	. *view-ctrl-x-keymap*)
     (#\h		. history-command)
     (#\b		. back-command)

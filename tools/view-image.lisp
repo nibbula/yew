@@ -31,8 +31,8 @@
 
 ;; (declaim #.`(optimize ,.*optimize-settings*))
 
-(defkeymap *image-viewer-keymap*)
-(defkeymap *image-viewer-escape-keymap*)
+(defkeymap *image-viewer-keymap* ())
+(defkeymap *image-viewer-escape-keymap* ())
 
 (defclass image-inator (terminal-inator)
   ((image
@@ -707,7 +707,7 @@ the first time it fails to identify the image."
 
 (setf *image-viewer-escape-keymap* (build-escape-map *image-viewer-keymap*))
 
-(defkeymap *ctlx-keymap*
+(defkeymap *ctlx-keymap* ()
   `((,(ctrl #\C)	. quit)
     (,(ctrl #\F)	. open-file)
     (,(ctrl #\P)	. toggle-use-serial-map)))

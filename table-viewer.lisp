@@ -20,7 +20,7 @@
 
 (declaim (optimize (speed 0) (safety 0) (debug 3) (space 0)))
 
-(defkeymap *table-viewer-keymap*
+(defkeymap *table-viewer-keymap* ()
   `((#\q		. quit)
     (#\?		. help)
     (#\<		. move-to-top)
@@ -38,7 +38,7 @@
     (#\escape		. *table-viewer-escape-keymap*)
     ))
 
-(defkeymap *table-viewer-escape-keymap*
+(defkeymap *table-viewer-escape-keymap* ()
   `((,(ctrl #\s)	. sort-descending-command)
     (#\i		. table-info)))
 

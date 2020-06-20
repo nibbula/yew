@@ -573,7 +573,7 @@ The function receives a 'pick' as an argument."))
 	(delete-pick *pick*)))
     (values (pick-result *pick*) (pick-second-result *pick*))))
 
-(defkeymap *pick-list-keymap*
+(defkeymap *pick-list-keymap* ()
   `((#\escape		  . *pick-list-escape-keymap*)
     (,(ctrl #\G)	  . quit)
     (#\return		  . accept)

@@ -69,7 +69,7 @@ The shell command takes any number of file names.
 (defvar *pager-prompt* nil
   "The current default prompt. Supports formatting as done by FORMAT-PROMPT.")
 
-(defkeymap *help-keymap*
+(defkeymap *help-keymap* ()
   `(
     (#\c		. describe-key-briefly)
     (#\k		. describe-key)
@@ -82,7 +82,7 @@ The shell command takes any number of file names.
 ;; mishmash of emacs, vi, less, more, pg, etc. Just pandering to whatever
 ;; people are used to scrolling with.
 
-(defkeymap *normal-keymap*
+(defkeymap *normal-keymap* ()
   `((#\q		. quit)
     (#\Q		. quit)
     (,(ctrl #\C)	. quit)
