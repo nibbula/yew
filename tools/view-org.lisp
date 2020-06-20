@@ -1,6 +1,6 @@
-;;
-;; view-org.lisp - View Org Mode trees
-;;
+;;;
+;;; view-org.lisp - View Org Mode trees
+;;;
 
 (defpackage :view-org
   (:documentation "View Org Mode trees.")
@@ -152,11 +152,38 @@
 
 (defun view-org (file)
   "View an org-mode FILE with the tree viewer."
-  (view-tree (read-org-mode-file file)))
+  (let ((tree (read-org-mode-file file)))
+    (view-tree (make-instance 'org-viewer :root tree
+			      :file-name file))))
 
 (defclass org-viewer (tree-viewer file-inator)
   ()
+  (:default-initargs
+   :keymap `(,tree-viewer::*tree-keymap*
+	     ,*default-file-inator-keymap*
+	     ,*default-inator-keymap*
+	     ))
   (:documentation "A viewer for Emacs Org Mode files."))
+
+(defmethod revert-file ((o org-viewer))
+  (with-slots ((file-name         file-inator::file-name)
+	       (root              tree-viewer::root)
+	       (current           tree-viewer::current)
+	       (current-position  tree-viewer::current-position)
+	       (top               tree-viewer::top)
+	       (bottom            tree-viewer::bottom)
+	       (left              tree-viewer::left)) o
+    (if file-name
+	(let ((new-root (read-org-mode-file file-name)))
+	  (setf root new-root
+		;; @@@ maybe we should have a freshen method?
+		top root
+		current top
+		current-position nil
+		;; bottom nil
+		left 0)
+	  (redraw o))
+	(message o "This org tree doesn't seem to have a file name."))))
 
 #+lish
 (lish:defcommand view-org
@@ -173,7 +200,8 @@
 			    (view-tree tree
 				       :viewer (make-instance
 						'org-viewer
-						:root tree)))))
+						:root tree
+						:file-name file)))))
 	  (return))))))
 
 ;; EOF
