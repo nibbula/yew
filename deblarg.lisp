@@ -501,7 +501,8 @@ program that messes with the terminal, we can still type at the debugger."
 (defvar *debugger-escape-keymap* nil "Escape key Keymap for the debugger.")
 
 (defun setup-keymap ()
-  (setf *debugger-keymap* (copy-keymap rl:*normal-keymap*))
+  (setf *debugger-keymap* (copy-keymap rl:*normal-keymap*
+				       :name '*debugger-keymap*))
   (loop :for key :in (keys-bound-to 'rl::redraw-command rl:*normal-keymap*)
      :do (define-key *debugger-keymap* key 'debugger-redraw))
   (define-key *debugger-keymap* (meta-char #\i) 'debugger-up-frame-command)
