@@ -9,7 +9,8 @@
 
 (defpackage :man
   (:documentation "Show a manual entry.")
-  (:use :cl :dlib :dlib-misc :opsys :glob :grout :lish :pager)
+  (:use :cl :dlib :dlib-misc :opsys :glob :grout :lish :pager :pick-list
+	:table)
   (:export
    #:*man-sections*
    #:get-manual-sections
@@ -25,6 +26,9 @@
 
 (defvar *man-sections* nil
   "Cached manual sections. Set it to NIL again to recalculate them.")
+
+(defparameter *prog* "/usr/bin/man"
+  "The man program we use.")
 
 ;; @@@ resolve vs. lish::manpath
 (defun manpath ()
@@ -59,7 +63,7 @@
 
 (defparameter *suffixes* #(".gz" ".bz2" ".z" ".Z" ".F" ".Y" ".bz" ".xz" ".7z"))
 
-(defun remove-man-page-suffixes (name)
+(defun remove-man-page-suffixes (name &key keep-section-p)
   "Desperately try to get rid of man page suffixes on NAME."
   (let ((c (count #\. name)) matches)
     (case c
@@ -70,23 +74,43 @@
 	 (loop :for s :across *suffixes* :do
 	    (when (ends-with s name)
 	      (setf result (remove-suffix name s))))
-	 (loop :for s :in (get-manual-sections) :do
-	    (when (ends-with (s+ #\. s) result)
-	      (setf result (remove-suffix result (s+ #\. s)))))
-	 (when (setf matches (ppcre:all-matches "\\.[1-9][^.]*$" result))
-	   (setf result (subseq result 0 (car matches))))
+	 (when (not keep-section-p)
+	   (loop :for s :in (get-manual-sections) :do
+	      (when (ends-with (s+ #\. s) result)
+		(setf result (remove-suffix result (s+ #\. s)))))
+	   (when (setf matches (ppcre:all-matches "\\.[1-9][^.]*$" result))
+	     (setf result (subseq result 0 (car matches)))))
 	 result)))))
+
+(defun section-from-file-name (file-name)
+  "Return the section name from the FILE-NAME."
+  (let* ((base (remove-man-page-suffixes (nos:path-file-name file-name)
+					 :keep-section-p t))
+	 (matches (ppcre:all-matches "\\.([1-9][^.]*)$" base)))
+    (if matches
+	(subseq base (1+ (car matches)))
+	(multiple-value-bind (s e ss ee)
+	  (ppcre:scan "(^[^.]*)\\." base)
+	  (declare (ignore s e ss))
+	  (subseq base (1+ (aref ee 0)))))))
 
 (defvar *man-entries* nil
   "Cached manual entries. Set it to NIL again to recalculate them.")
 
-(defun get-manual-entries ()
+(defvar *man-entries-table* nil
+  "Cached manual entries hash table. keys are the.")
+
+(defun get-manual-entries (&key rehash)
   "Approximate and flawed method for finding manual entries."
+  (when rehash
+    (setf *man-sections* nil
+	  *man-entries* nil))
   (or *man-entries*
       (progn
 	;; (format t "Getting manual entries...~%") (finish-output)
 	(with-spin ()
-	  (setf *man-entries*
+	  (setf *man-entries-table* (make-hash-table :test #'equal)
+	        *man-entries*
 		(loop :for d :in (split-sequence #\: (manpath))
 		   ;; :do (format t "  ~s~%" d) (finish-output)
 		   :append
@@ -96,12 +120,23 @@
 		      ;;(format t "   ~s ~%" s) (finish-output)
 		      (spin)
 		      (setf result
-			    (loop :for ff :in
+			    (loop :with key :and val
+			       :for ff :in
 			       (glob (s+ d *directory-separator* "man"
 					 s *directory-separator* "*"))
 			       ;;:do (format t "  --> ~s~%" ff)
-			       :collect
-			       (remove-man-page-suffixes (basename ff))))
+			       :do
+			       (setf key (remove-man-page-suffixes
+					  (basename ff))
+				     val (gethash key *man-entries-table*))
+			       (if val
+				   (if (listp val)
+				       (push ff
+					     (gethash key *man-entries-table*))
+				       (setf (gethash key *man-entries-table*)
+					     (list val ff)))
+				   (setf (gethash key *man-entries-table*) ff))
+			       :collect key))
 		      :append result)
 		   ;; :do (terpri)
 		   )))
@@ -111,12 +146,38 @@
 	(setf *man-entries* (remove-duplicates *man-entries* :test #'equal))
 	*man-entries*)))
 
-;; (defclass arg-manual-entry (arg-lenient-choice)
-;;   ()
-;;   (:default-initargs
-;;    :test #'arg-choice-compare
-;;    :choice-func #'get-manual-entries)
-;;   (:documentation "Manual entry."))
+(defun ask-which (entry table-entry)
+  "Ask the user which one ENTRY they want from the ones in TABLE-ENTRY."
+  (let* ((sections (mapcar #'section-from-file-name table-entry))
+	 (tab
+	  (make-table-from
+	   (loop :for sect :in sections
+	      :collect
+	      (list
+	       entry
+	       sect
+	       (ppcre:regex-replace "^[^-]*-"
+				    (!$= *prog* "-s" sect "-f" entry) "")))
+	   :column-names '("Name" "Section" "Description")))
+	 (lines (split-sequence
+		 #\newline
+		 (with-output-to-string (str)
+		   (table-print:print-table tab :stream str
+					    #| :print-titles nil |#
+					    ))
+		 :omit-empty t))
+	 (item-no
+	  (pick-list (cddr lines)
+		     :message
+		     (format nil "There is more than one entry for ~s. ~
+				  Which one do you want?~%~%  ~a~%  ~a~%"
+			     entry (car lines) (cadr lines))
+		     :by-index t
+		     ;; :popup t
+		     )))
+    (if item-no
+	(s+ entry "." (elt sections item-no))
+	entry)))
 
 (defargtype manual-entry (arg-lenient-choice)
   "Manual entry."
@@ -138,22 +199,27 @@
     (entry manual-entry :optional t :help "Name of manual entry."))
   "Display a manual page for a command. With -k search for a matching page."
   :accepts '(arg-manual-entry)
+  (when (not (or entry apropos))
+    (return-from !man (values)))
   (when rehash
-    (setf *man-sections* nil
-	  *man-entries* nil
-	  *man-entries* (get-manual-entries))
-    (when (not (or entry apropos))
-      (return-from !man (values))))
+    (setf *man-entries* (get-manual-entries :rehash t)))
   (when (and *input* (not entry))
     (setf entry *input*))
-  (let* ((base "/usr/bin/man -P cat ")
+
+  (let* ((base (s+ *prog* " -P cat "))
 	 (cmd (make-array (list (length base))
 			  :element-type 'character
 			  :adjustable t
 			  :fill-pointer t))
 	 (cols (princ-to-string (with-grout () (grout-width))))
+	 (table-entry (when (and entry (not apropos))
+			(gethash entry *man-entries-table*)))
 	 stream)
     #-(or linux freebsd) (declare (ignorable cols))
+
+    (when (and table-entry (listp table-entry) (> (length table-entry) 1))
+      (setf entry (ask-which entry table-entry)))
+
     (setf (fill-pointer cmd) 0)
     (with-output-to-string (str cmd)
       #+(or linux freebsd)
@@ -161,26 +227,23 @@
       (progn
 	(setf (nos:environment-variable "MANWIDTH") cols
 	      (nos:environment-variable "MAN_KEEP_FORMATTING") "t"
-	      (nos:environment-variable "MANPAGER") "cat"
-	      )
+	      (nos:environment-variable "MANPAGER") "cat")
 	(princ base str))
       #-(or linux freebsd) (princ base str)
       ;;#+linux (princ "-Tutf8 " str) ; force fancy text
       (when apropos (format str "-k ~a " apropos))
       (when all     (format str "-a "))
       (when section (format str "~a " section))
-      (when path    (format str "-M ~a " path))
-      ;; (format t "cmd = ~s entry = ~s~%" cmd entry)
-      ;; (read-line)
-      (unwind-protect
-	   (if (or (out-pipe-p) (not use-pager))
-	       ;; (! cmd (or entry ""))
-	       (pipe (s+ cmd (or entry "")) "cat")
-	       (progn
-		 (setf stream (!! cmd (or entry "")))
-		 (pager:pager stream)))
-	(when stream
-	  (close stream))))))
+      (when path    (format str "-M ~a " path)))
+    (unwind-protect
+	 (if (or (out-pipe-p) (not use-pager))
+	     ;; (! cmd (or entry ""))
+	     (pipe (s+ cmd (or entry "")) "cat")
+	     (progn
+	       (setf stream (!! cmd (or entry "")))
+	       (pager:pager stream)))
+      (when stream
+	(close stream)))))
 
 (defcommand crap
   ((use-pager boolean :short-arg #\p :default t
@@ -194,9 +257,9 @@
     (unwind-protect
 	 (if (or (out-pipe-p) (not use-pager))
 	     ;; (! "/usr/bin/man -P cat " (or crap ""))
-	     (pipe (s+ "/usr/bin/man " (or crap "")) "cat")
+	     (pipe (s+ *prog* " " (or crap "")) "cat")
 	     (progn
-	       (setf stream (!! "/usr/bin/man -P cat " (or crap "")))
+	       (setf stream (!! *prog* " -P cat " (or crap "")))
 	       (pager:pager stream)))
       (when stream
 	(close stream)))))

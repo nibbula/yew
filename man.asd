@@ -10,6 +10,7 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Show a manual entry."
-    :depends-on (:dlib :opsys :glob :grout :cl-ppcre :lish :pager :los-config)
+    :depends-on (:dlib :opsys :glob :grout :cl-ppcre :lish :pick-list :pager
+		 :table :table-print :los-config)
     :components
     ((:file "man")))
