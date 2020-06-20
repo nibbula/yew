@@ -306,11 +306,11 @@
   ;;(refresh)
   )
 
-(defkeymap *du-ctrl-x-keymap*
+(defkeymap *du-ctrl-x-keymap* ()
   `((,(ctrl #\s)	. save-file)
     (,(ctrl #\f)	. load-file)))
 
-(defkeymap *du-keymap*
+(defkeymap *du-keymap* ()
   `((,(ctrl #\x)	. *du-ctrl-x-keymap*)
     (#\v		. view-file)))
 
