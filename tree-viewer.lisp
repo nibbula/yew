@@ -414,7 +414,7 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
   (when (find-restart 'previous-file)
     (invoke-restart 'previous-file)))
 
-(defkeymap *tree-keymap*
+(defkeymap *tree-keymap* ()
   `((#\q		. quit)
     (#\Q		. quit)
     (#.(ctrl #\C)	. quit)
@@ -874,7 +874,8 @@ been encountered."
 
 (defun show-message (format-string &rest format-args)
   "Display a formatted message."
-  (tt-move-to (- (tt-height) 1) 2)
+  ;; (tt-move-to (- (tt-height) 1) 2)
+  (tt-move-to (- (tt-height) 1) 0)
   (tt-erase-to-eol)
   ;;(tt-write-string (apply #'format nil format-string format-args))
   (apply #'terminal-format *terminal* format-string format-args))
