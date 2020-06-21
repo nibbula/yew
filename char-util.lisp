@@ -1,6 +1,6 @@
-;;
-;; char-util.lisp - General utility functions dealing with characters.
-;;
+;;;
+;;; char-util.lisp - General utility functions dealing with characters.
+;;;
 
 (defpackage :char-util
   (:documentation "Utility functions for characters.")
@@ -38,11 +38,12 @@
 
 ;(
 
-(declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
+;; (declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
 
 ;; Sadly #\^A is not portable. This assumes ASCII or UTF8 or something. 
 (defun ctrl (c)
   "Return the control character corresponding to the normal character."
+  (declare (type character c))
   (code-char (1+ (- (char-code (char-upcase c)) (char-code #\A)))))
 
 (defun control-char-p (c)
@@ -609,9 +610,9 @@ than space and delete."
 (defparameter *combining-chars*
   (let ((contents (append (mapcar #'code-char *low-combining-chars*)
 			  *high-combining-chars*)))
-    (sort (make-array (length contents) :element-type 'character
-		      :initial-contents contents)
-	  #'char<))
+    (sort-muffled (make-array (length contents) :element-type 'character
+			      :initial-contents contents)
+		  #'char<))
   "Vector of combining characters.")
 
 ;; @@@ This is a temporary hack. We should patch cl-unicode to get data from
