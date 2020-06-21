@@ -1,6 +1,6 @@
-;;
-;; ostring.lisp - Objectable strings
-;;
+;;;
+;;; ostring.lisp - Objectable strings
+;;;
 
 (defpackage :ostring
   (:documentation
@@ -34,6 +34,7 @@
    #:ostring-not-greaterp
    #:ostring-not-lessp
    #:ostring-to-span
+   #:oparse-integer
    ))
 (in-package :ostring)
 
@@ -193,5 +194,26 @@ that has START and START-P and END and END-P."
 (defgeneric ostring-to-span (string)
   (:documentation "Convert STRING to a span.")
   (:method ((string string)) (list string)))
+
+;; @@@ I'm not sure this is really the best place for this.
+(defgeneric oparse-integer (string &key start end radix junk-allowed)
+  (:documentation
+   "Examine the substring of STRING delimited by START and END, which default
+to the beginning and end of the string. Skip over whitespace characters and then
+try to parse an integer. The radix parameter must be between 2 and 36, and
+defaults to 10.
+
+If JUNK-ALLOWED is false, an error of type parse-error is signaled if the
+substring isn't entirely a signed integer, possibly surrounded on either side
+by whitespace characters.
+
+The first value returned is either the integer that was parsed, or else
+NIL if no integer was seen and junk-allowed is true.
+
+The second value is either the index of the character that terminated the parse,
+or the end of the substring.")
+   (:method ((string string) &key (start 0) end (radix 10) junk-allowed)
+     (parse-integer string :start start :end end :radix radix
+		    :junk-allowed junk-allowed)))
 
 ;; EOF
