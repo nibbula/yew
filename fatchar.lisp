@@ -320,12 +320,16 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 		      &key from-end key
 			(start nil start-p)
 			(end nil end-p))
-  (labels ((key-func (c)
-	     (funcall key (fatchar-c c))))
-    (call-with-start-and-end
-     count-if (predicate (fat-string-string collection) :from-end from-end
-			 ;; :key (if key #'key-func #'fatchar-c)
-			 ))))
+  ;; We should probably let the caller decide if they want a char or a fatchar,
+  ;; but it would be natural to have a fatchar in this case anyway.
+  ;; (labels ((key-func (c)
+  ;; 	     (funcall key (fatchar-c c))))
+  ;;   (call-with-start-and-end
+  ;;    count-if (predicate (fat-string-string collection) :from-end from-end
+  ;; 			 :key (if key #'key-func #'fatchar-c))))
+  (call-with-start-and-end
+   count-if (predicate (fat-string-string collection) :from-end from-end
+		       :key key)))
 
 (defmethod ofind ((item character) (string fat-string)
 		  &key from-end key test test-not
@@ -1405,15 +1409,14 @@ fatchar string. The grammar is something like: "
 ;;; ^[[32m	green fg
 ;;; ^[[1m	bold
 
-;; We drink of the color and become the color.
 (defun grok-ansi-color (str &key (start 0))
-  "Take an string with an ANSI terminal color escape sequence, starting after
-the ^[[ and return NIL if there was no valid sequence, or an integer offset
-to after the sequence, the foreground, background and a list of attributes.
-NIL stands for whatever the default is, and :UNSET means that they were not
-set in this string."
+  "Take an ostring with an ANSI terminal color escape sequence, starting after
+the ^[[ and return NIL if there was no valid sequence, or an the values of
+an integer offset to after the sequence, the foreground, background and a list
+of attributes. NIL stands for whatever the default is, and :UNSET means that
+they were not set in this string."
   (let* ((i start)
-	 (len (length str))
+	 (len (olength str))
 	 (hi-color nil)
 	 (fg :unset)
 	 (bg :unset)
@@ -1421,21 +1424,21 @@ set in this string."
 	 num offset attr-was-set hi-color-type r g b)
     (loop
        :do
-       (setf (values num offset) (parse-integer str :start i :junk-allowed t))
+       (setf (values num offset) (oparse-integer str :start i :junk-allowed t))
        (dbugf :fatchar "@~s num ~s offset ~s~%" i num offset)
        (if (or (not num) (not offset))
 	   (progn
 	     ;; Just an #\m without arguments means no attrs and unset color
 	     (dbugf :fatchar "@~s done ~a" i
-		    (if (eql (char str i) #\m) "final m" "no numbers?"))
-	     (when (eql (char str i) #\m)
+		    (if (ochar= (ochar str i) #\m) "final m" "no numbers?"))
+	     (when (ochar= (ochar str i) #\m)
 	       (setf attr '() fg nil bg nil attr-was-set t i (1+ i)))
 	     (return))
 	   (progn
 	     (setf i offset)
 	     (when (and (< i len)
-			(or (eql (char str i) #\;)
-			    (eql (char str i) #\m)))
+			(or (ochar= (ochar str i) #\;)
+			    (ochar= (ochar str i) #\m)))
 	       (incf i)
 	       (cond
 		 ((and hi-color (not hi-color-type))
@@ -1510,7 +1513,7 @@ set in this string."
 		    (48 (setf hi-color :bg))
 		    (49 (setf bg nil))
 		    (otherwise #| just ignore unknown colors or attrs |#))))
-	       (when (eql (char str (1- i)) #\m)
+	       (when (ochar= (ochar str (1- i)) #\m)
 		 (dbugf :fatchar "@~s done ~s~%" i num)
 		 (return)))))
        :while (< i len))
@@ -1522,18 +1525,23 @@ set in this string."
      fg bg (if (not attr-was-set) :unset attr))))
 
 (defun process-ansi-colors (fat-line)
-  "Convert ANSI color escapes into colored fatchars."
-  (when (zerop (length fat-line))
+  "Convert ANSI color escapes into colored fatchars. FAT-LINE can be an ostring,
+but if it's a vector, it's assumed to be a vector of fatchar, aka a
+fatchar-string. Returns a either fatchar-string if it was given one, or a
+fat-string otherwise."
+  (when (zerop (olength fat-line))
     (return-from process-ansi-colors fat-line))
-  (let ((new-fat-line (make-stretchy-vector (length fat-line)
-					    :element-type 'fatchar))
-	(i 0)
-	(len (length fat-line))
-	;; @@@ Figure out how to get rid of this extra copy.
-	(line (map 'string #'(lambda (x) (fatchar-c x)) fat-line))
-	fg bg attrs)
+  (let* ((input-line
+	  (etypecase fat-line
+	    (ostring fat-line)
+	    (fatchar-string
+	     (make-fat-string :string fat-line))))
+	 (len (olength input-line))
+	 (new-fat-line (make-stretchy-vector len :element-type 'fatchar))
+	 (i 0)
+	 fg bg attrs)
     (labels ((char-at (i)
-	       (fatchar-c (aref fat-line i)))
+	       (osimplify (oaref input-line i)))
 	     (looking-at-attrs ()
 	       "Return true if might be looking at some attrs."
 	       (and (< i (1- len))
@@ -1543,7 +1551,7 @@ set in this string."
 	       "Get the attrs we might be looking at."
 	       (incf i 2)		; the ^[ and [
 	       (multiple-value-bind (offset i-fg i-bg i-attrs)
-		   (grok-ansi-color line :start i)
+		   (grok-ansi-color input-line :start i)
 		 (dbugf :fatchar "grok offset ~s fg ~s bg ~s attrs ~s~%" offset
 			i-fg i-bg i-attrs)
 		 (when offset
@@ -1556,10 +1564,13 @@ set in this string."
 	       "Copy the current character to result."
 	       ;;(dbug "attrs = ~a~%" attrs)
 	       ;;(dbug "(aref fat-line i) = ~a~%" (aref fat-line i))
-	       (let ((new-attrs (union attrs (fatchar-attrs (aref fat-line i)))))
+	       (let ((new-attrs
+		      (if (fatchar-p (oaref input-line i))
+			  (union attrs (fatchar-attrs (oaref input-line i)))
+			  attrs)))
 		 (stretchy:stretchy-append
 		  new-fat-line (make-fatchar
-				:c (fatchar-c (aref fat-line i))
+				:c (char-at i) ;;(fatchar-c (aref fat-line i))
 				:fg fg :bg bg
 				:attrs new-attrs)))
 	       (incf i)))
@@ -1567,7 +1578,9 @@ set in this string."
 	 (if (looking-at-attrs)
 	     (get-attrs)
 	     (copy-char))))
-    new-fat-line))
+    (if (ostringp fat-line)
+	(make-fat-string :string new-fat-line)
+	new-fat-line)))
 
 (defun remove-effects (thing)
   "Remove any terminal colors or attributes from THING, which can be a string,
@@ -1623,5 +1636,66 @@ a fat-string, or a fatchar."
 		     :result-type fatchar :key fatchar-c)
       (push g result))
     (nreverse result)))
+
+;; @@@ I'm not sure this is really the best place for this. But we need it for
+;; grok-ansi-color. It's not fatchar specific but works on ochars, but since
+;; there's a string method that wraps the normal implementaion function, this
+;; one will probably only be used for fat-strings. And it's stolen from sbcl
+;; of course.
+(defmethod oparse-integer ((string ostring)
+			  &key (start 0) end (radix 10) junk-allowed)
+  (flet ((parse-error (format-control)
+           ;;(declare (optimize #+sbcl sb-kernel:allow-non-returning-tail-call))
+           (error 'simple-parse-error
+                  :format-control format-control
+                  :format-arguments (list string))))
+    ;; @@@ I know with-array-data is way more optimized than this
+    (let* ((start (or start 0))
+	   (end (or end (olength string))))
+      (let ((index
+	     (do ((i start (1+ i)))
+		 ((= i end)
+		  (if junk-allowed
+		      (return-from oparse-integer (values nil end))
+		      (parse-error
+		       "string is all whitespace characters ~S.")))
+	       (declare (fixnum i))
+	       (unless (whitespace-p (osimplify (ochar string i))) (return i))))
+            (minusp nil)
+            (found-digit nil)
+            (result 0))
+        (declare (fixnum index))
+        (let ((char (ochar string index)))
+          (cond ((ochar= char #\-)
+                 (setq minusp t)
+                 (incf index))
+                ((ochar= char #\+)
+                 (incf index))))
+        (loop
+         (when (= index end) (return nil))
+         (let* ((char (ochar string index))
+                (weight (odigit-char-p char radix)))
+           (cond (weight
+                  (setq result (+ weight (* result radix))
+                        found-digit t))
+                 (junk-allowed (return nil))
+                 ((whitespace-p (osimplify char))
+                  (loop
+                   (incf index)
+                   (when (= index end) (return))
+                   (unless (whitespace-p (osimplify (char string index)))
+                     (parse-error "junk in string ~S")))
+                  (return nil))
+                 (t
+                  (parse-error "junk in string ~S"))))
+         (incf index))
+        (values
+         (if found-digit
+             (if minusp (- result) result)
+             (if junk-allowed
+                 nil
+                 (parse-error "no digits in string ~S")))
+         ;; (- index offset)
+	 index)))))
 
 ;; EOF
