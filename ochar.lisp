@@ -1,11 +1,11 @@
-;;
-;; ochar.lisp - Objectable characters
-;;
+;;;
+;;; ochar.lisp - Objectable characters
+;;;
 
 (defpackage :ochar
   (:documentation "Objectable characters.
 Wherein we take more of the simple performant Common Lisp types and make them
-bloated with CLOS encrustations, so we can eventually float our giant
+bloated with CLOS encrustations, so we can eventually float our gigantic
 bloatmobile to the heavens.")
   (:use :cl)
   (:export
