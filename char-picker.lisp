@@ -1,11 +1,11 @@
-;;
-;; char-picker.lisp - Pick characters that may be otherwise hard to type.
-;;
+;;;
+;;; char-picker.lisp - Pick characters that may be otherwise hard to type.
+;;;
 
 (defpackage :char-picker
   (:documentation "Pick characters that may be otherwise hard to type.")
   (:use :cl :dlib :stretchy :char-util :dlib-misc :keymap :inator
-	:terminal :terminal-inator)
+	:terminal :terminal-inator :cl-ppcre)
   (:export
    #:char-picker
    #:!char-picker
@@ -83,6 +83,8 @@
   (tt-erase-to-eol)
   (tt-format "~d - ~d" start (+ start inc))
   (let* ((end (+ start inc))
+	 (scanner (when (and search-string (not (zerop (length search-string))))
+		    (create-scanner search-string :case-insensitive-mode t)))
 	 cc name ss-pos ss-end)
     (loop
        :for i :from start :to end
@@ -102,11 +104,12 @@
 					       :all-control t
 					       :show-meta nil))
 	 (tt-move-to-col 20)
-	 (if (and search-string
-		  (not (zerop (length search-string)))
-		  (setf ss-pos (search search-string name :test #'equalp)))
+	 (if (and scanner
+		  (setf (values ss-pos ss-end)
+			;; (search search-string name :test #'equalp)
+			(scan scanner name)))
 	     (progn
-	       (setf ss-end (+ ss-pos (length search-string)))
+	       ;; (setf ss-end (+ ss-pos (length search-string)))
 	       (tt-write-char #\space)
 	       (tt-write-string (subseq name 0 ss-pos))
 	       (tt-standout t)
@@ -116,25 +119,28 @@
 	       ;; (tt-format " ~a" (uos:wcwidth i))
 	       )
 	     ;; (tt-format " ~a ~a" name (uos:wcwidth i))
-	     (tt-format " ~a" name)
-	     )))))
+	     (tt-format " ~a" name))))))
 
 (defun search-char-names (start match-str &optional (direction :forward))
   "Return char code of first match of STR in the characater names,
 starting at START. If not found, return START."
-  (macrolet
-      ((floop (&rest steps)
-	 `(loop :for c ,@steps
-	     :do (let* ((code  (code-char c))
-			(name  (when code (char-name code)))
-			(match (when name
-				 (search match-str name :test #'equalp))))
-		   (when match
-		     (return-from search-char-names c))))))
-    (ecase direction
-      (:forward  (floop :from start :below char-code-limit))
-      (:backward (floop :from start :downto 0))))
-  nil)
+  (let ((scanner (create-scanner match-str
+				 :extended-mode t
+				 :case-insensitive-mode t)))
+    (macrolet
+	((floop (&rest steps)
+	   `(loop :for c ,@steps
+	       :do (let* ((code  (code-char c))
+			  (name  (when code (char-name code)))
+			  (match (when name
+				   ;; (search match-str name :test #'equalp)
+				   (scan scanner name))))
+		     (when match
+		       (return-from search-char-names c))))))
+      (ecase direction
+	(:forward  (floop :from start :below char-code-limit))
+	(:backward (floop :from start :downto 0))))
+    nil))
 
 (defmethod start-inator ((i char-picker))
   (call-next-method)
