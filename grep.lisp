@@ -416,13 +416,16 @@ Second value is the scanner that was used.
 					"~a: No such file or directory~%" f))))
 			(t
 			 (let ((info (get-file-info f)))
-			   (if (eq :directory (file-info-type info))
+			   (if (and (eq :directory (file-info-type info))
+				    (= (length files) 1))
+			       ;; Don't bother complaining about directories if
+			       ;; we have more than one file.
 			       (if signal-errors
 				   (error "~a: Is a directory~%" f)
 				   (progn
 				     (grout-finish)
 				     (format *error-output*
-					   "~a: Is a directory~%" f)))
+					     "~a: Is a directory~%" f)))
 			       (grep-with-handling f)))))
 		      (cond
 			((and result files-with-match (not quiet))
@@ -549,7 +552,6 @@ it's only quiet if the receiving command accepts sequences.")
 		      :filter filter))
     (if collect
 	(progn
-	  ;;(dbugf :accepts "YOOOOOOO! output to *output*~%")
 	  (setf lish:*output* result))
 	result)))
 
