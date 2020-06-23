@@ -7,6 +7,7 @@
   (:use :cl :dlib :lish :opsys :terminal :collections)
   (:export
    #:!basename
+   #:!clear
    #:!dirname
    #:!tty
    #:!uname
@@ -51,6 +52,13 @@
 	 (action (first files)))))
     (when collect
       (setf *output* (nreverse results)))))
+
+(defcommand clear ()
+  "Clear the screen. You can just press Ctrl-L."
+  (with-terminal ()
+    (tt-home)
+    (tt-clear)
+    (tt-finish-output)))
 
 (defcommand dirname
   ((collect boolean :short-arg #\c :help "Collect output as a sequence.")
