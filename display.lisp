@@ -400,7 +400,7 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
       (let ((tty (or (and (typep *terminal* 'terminal-wrapper)
 			  (terminal-wrapped-terminal *terminal*))
 		     *terminal*)))
-	(if partial-line-indicator
+	(if (and partial-line-indicator (tt-width))
 	    (terminal-format tty
 			     "~a~va~c~va~c" partial-line-indicator
 			     (- (tt-width)
