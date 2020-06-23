@@ -1,6 +1,6 @@
-;;
-;; man.lisp - Show a manual entry.
-;;
+;;;
+;;; man.lisp - Show a manual entry.
+;;;
 
 ;; Note that this just uses an already existing system "man" command.
 ;; Otherwise we would have to implement a lot of crap, like groff.
@@ -10,7 +10,7 @@
 (defpackage :man
   (:documentation "Show a manual entry.")
   (:use :cl :dlib :dlib-misc :opsys :glob :grout :lish :pager :pick-list
-	:table)
+	:table :collections :fatchar-io)
   (:export
    #:*man-sections*
    #:get-manual-sections
@@ -23,6 +23,8 @@
 (in-package :man)
 
 (declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+
+(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 (defvar *man-sections* nil
   "Cached manual sections. Set it to NIL again to recalculate them.")
@@ -159,19 +161,24 @@
 	       (ppcre:regex-replace "^[^-]*-"
 				    (!$= *prog* "-s" sect "-f" entry) "")))
 	   :column-names '("Name" "Section" "Description")))
-	 (lines (split-sequence
+	 (lines (osplit
 		 #\newline
-		 (with-output-to-string (str)
-		   (table-print:print-table tab :stream str
-					    #| :print-titles nil |#
-					    ))
+		 (fatchar:process-ansi-colors
+		  (terminal:with-terminal-output-to-string ()
+		    (table-print:print-table
+		     tab
+		     :stream terminal:*terminal*
+		     :renderer
+		     (make-instance 'terminal-table:terminal-table-renderer)
+		     #| :print-titles nil |#
+		     )))
 		 :omit-empty t))
 	 (item-no
-	  (pick-list (cddr lines)
+	  (pick-list (cdr lines)
 		     :message
-		     (format nil "There is more than one entry for ~s. ~
-				  Which one do you want?~%~%  ~a~%  ~a~%"
-			     entry (car lines) (cadr lines))
+		     (fs+ "There is more than one entry for " entry "." #\newline
+			  "Which one do you want?" #\newline #\newline
+			  "  " (first lines) #\newline)
 		     :by-index t
 		     ;; :popup t
 		     )))
