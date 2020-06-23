@@ -299,7 +299,11 @@ The function receives a 'pick' as an argument."))
 	       max-y top left ttop error-message search-str save-search
 	       last-search button-range) *pick*
     (tt-home)
-    (when message (tt-format message))
+    (when message
+      ;; @@@ Ideally we should be able to format fat-strings.
+      (if (typep message 'fat-string)
+	  (tt-write-string message)
+	  (tt-format message)))
     (setf ttop (terminal-get-cursor-position *terminal*)
 	  button-range nil)
     (when (not save-search)
