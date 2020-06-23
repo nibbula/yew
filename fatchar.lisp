@@ -1425,12 +1425,12 @@ they were not set in this string."
     (loop
        :do
        (setf (values num offset) (oparse-integer str :start i :junk-allowed t))
-       (dbugf :fatchar "@~s num ~s offset ~s~%" i num offset)
+       ;; (dbugf :fatchar "@~s num ~s offset ~s~%" i num offset)
        (if (or (not num) (not offset))
 	   (progn
 	     ;; Just an #\m without arguments means no attrs and unset color
-	     (dbugf :fatchar "@~s done ~a" i
-		    (if (ochar= (ochar str i) #\m) "final m" "no numbers?"))
+	     ;; (dbugf :fatchar "@~s done ~a" i
+	     ;;        (if (ochar= (ochar str i) #\m) "final m" "no numbers?"))
 	     (when (ochar= (ochar str i) #\m)
 	       (setf attr '() fg nil bg nil attr-was-set t i (1+ i)))
 	     (return))
@@ -1442,12 +1442,12 @@ they were not set in this string."
 	       (incf i)
 	       (cond
 		 ((and hi-color (not hi-color-type))
-		  (dbugf :fatchar "@~s hi-color ~s~%" i num)
+		  ;; (dbugf :fatchar "@~s hi-color ~s~%" i num)
 		  (case num
 		    (2 (setf hi-color-type :3-color))
 		    (5 (setf hi-color-type :1-color))))
 		 ((eq hi-color-type :1-color)
-		  (dbugf :fatchar "@~s 1-color ~s ~s~%" i hi-color num)
+		  ;; (dbugf :fatchar "@~s 1-color ~s ~s~%" i hi-color num)
 		  ;; (when (not *xterm-256-color-table*)
 		  ;;   (make-xterm-color-table))
 		  (if (eq hi-color :fg)
@@ -1455,18 +1455,18 @@ they were not set in this string."
 		      (setf bg (aref *xterm-256-color-table* num)))
 		  (setf hi-color nil hi-color-type nil))
 		 ((eq hi-color-type :3-color)
-		  (dbugf :fatchar "@~s 3-color ~s ~s~%" i hi-color num)
+		  ;; (dbugf :fatchar "@~s 3-color ~s ~s~%" i hi-color num)
 		  (cond
 		    ((not r) (setf r num))
 		    ((not g) (setf g num))
 		    ((not b) (setf b num)
-		     (dbugf :fatchar "@~s 3-color end ~s ~s~%" i hi-color num)
+		     ;; (dbugf :fatchar "@~s 3-color end ~s ~s~%" i hi-color num)
 		     (if (eq hi-color :fg)
 			 (setf fg (make-color :rgb8 :red r :green g :blue b))
 			 (setf bg (make-color :rgb8 :red r :green g :blue b)))
 		     (setf hi-color nil hi-color-type nil r nil g nil b nil))))
 		 (t
-		  (dbugf :fatchar "@~s num ~s~%" i num)
+		  ;; (dbugf :fatchar "@~s num ~s~%" i num)
 		  (case num
 		    (0  (setf attr '() fg nil bg nil attr-was-set t))
 		    (1  (pushnew :bold attr)      (setf attr-was-set t))
@@ -1514,7 +1514,7 @@ they were not set in this string."
 		    (49 (setf bg nil))
 		    (otherwise #| just ignore unknown colors or attrs |#))))
 	       (when (ochar= (ochar str (1- i)) #\m)
-		 (dbugf :fatchar "@~s done ~s~%" i num)
+		 ;; (dbugf :fatchar "@~s done ~s~%" i num)
 		 (return)))))
        :while (< i len))
     (values
@@ -1533,7 +1533,7 @@ fat-string otherwise."
     (return-from process-ansi-colors fat-line))
   (let* ((input-line
 	  (etypecase fat-line
-	    (ostring fat-line)
+	    ((or ostring string) fat-line)
 	    (fatchar-string
 	     (make-fat-string :string fat-line))))
 	 (len (olength input-line))
@@ -1552,8 +1552,8 @@ fat-string otherwise."
 	       (incf i 2)		; the ^[ and [
 	       (multiple-value-bind (offset i-fg i-bg i-attrs)
 		   (grok-ansi-color input-line :start i)
-		 (dbugf :fatchar "grok offset ~s fg ~s bg ~s attrs ~s~%" offset
-			i-fg i-bg i-attrs)
+		 ;; (dbugf :fatchar "grok offset ~s fg ~s bg ~s attrs ~s~%"
+		 ;;        offset i-fg i-bg i-attrs)
 		 (when offset
 		   (unless (eq i-fg    :unset) (setf fg i-fg))
 		   (unless (eq i-bg    :unset) (setf bg i-bg))
@@ -1562,8 +1562,8 @@ fat-string otherwise."
 		   (setf i offset))))	; for the parameters read
 	     (copy-char ()
 	       "Copy the current character to result."
-	       ;;(dbug "attrs = ~a~%" attrs)
-	       ;;(dbug "(aref fat-line i) = ~a~%" (aref fat-line i))
+	       ;; (dbugf :attrs "attrs = ~a~%" attrs)
+	       ;; (dbugf :attrs "(aref fat-line i) = ~a~%" (aref fat-line i))
 	       (let ((new-attrs
 		      (if (fatchar-p (oaref input-line i))
 			  (union attrs (fatchar-attrs (oaref input-line i)))
@@ -1572,7 +1572,7 @@ fat-string otherwise."
 		  new-fat-line (make-fatchar
 				:c (char-at i) ;;(fatchar-c (aref fat-line i))
 				:fg fg :bg bg
-				:attrs new-attrs)))
+				:attrs (copy-seq new-attrs))))
 	       (incf i)))
       (loop :while (< i len) :do
 	 (if (looking-at-attrs)
@@ -1630,7 +1630,7 @@ a fat-string, or a fatchar."
   (fatchar-c c))
 
 (defmethod graphemes ((string fat-string))
-  (dbugf :fatchar "fat grapheme ~s ~s~%" (type-of string) string)
+  ;; (dbugf :fatchar "fat grapheme ~s ~s~%" (type-of string) string)
   (let (result)
     (do-graphemes (g (fat-string-string string)
 		     :result-type fatchar :key fatchar-c)
