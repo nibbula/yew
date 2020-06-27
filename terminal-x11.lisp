@@ -12,8 +12,8 @@
 
 (defpackage :terminal-x11
   (:documentation "X11 window as a terminal.")
-  (:use :cl :dlib :dlib-misc :terminal :trivial-gray-streams :xlib :collections
-	:terminal-grid :ochar :fatchar :stretchy :keysyms)
+  (:use :cl :dlib :dlib-misc :terminal :trivial-gray-streams :dtime :xlib
+	:collections :terminal-grid :ochar :fatchar :stretchy :keysyms)
   (:export
    #:terminal-x11
    ;; extensions:

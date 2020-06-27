@@ -10,8 +10,8 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "X11 window as a terminal."
-    :depends-on (:dlib :dlib-misc :terminal :opsys :trivial-gray-streams :clx
-		 :collections :char-util :dcolor :grid :ochar :fatchar :stretchy
-		 :keysyms)
+    :depends-on (:dlib :dlib-misc :terminal :opsys :dtime :trivial-gray-streams
+		 :clx :collections :char-util :dcolor :grid :ochar :fatchar
+		 :stretchy :keysyms)
     :components
     ((:file "terminal-x11")))
