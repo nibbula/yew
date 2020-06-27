@@ -1,10 +1,10 @@
-;;
-;; locate.lisp - locate files
-;;
+;;;
+;;; locate.lisp - locate files
+;;;
 
 (defpackage :locate
   (:documentation "Try to somehow locate files.")
-  (:use :cl :dlib :dlib-misc :ppcre #| :trie |#)
+  (:use :cl :dlib :dlib-misc :dtime :ppcre #| :trie |#)
   (:export
    #:locate
    #:!locate

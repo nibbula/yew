@@ -1,11 +1,11 @@
 ;;;
-;;; ls.lisp - list your shit
+;;; ls.lisp - list your stuff
 ;;;
 
 ;; Actually I really hate this command. I'm so sick of hierarchical file
 ;; systems. I want to mutate this into a tag browser to surf my metadata.
 ;;
-;; I mostly just wanted to implement this square wheel because:
+;; I mostly just wanted to implement this old square wheel because:
 ;;   - Unix ls loses at making columns out of multibyte characters.
 ;;   - I wish it had slightly better column smushing behavior.
 ;;     (not that this does much better yet)
@@ -16,9 +16,9 @@
 (defpackage :ls
   (:documentation
    "This is a shitty fake implementation of the command I type the most.")
-  (:use :cl :dlib :dlib-misc :opsys :terminal :terminal-ansi :grout :table
-	:table-print :terminal-table :fatchar :fatchar-io :theme :style :magic
-	:collections)
+  (:use :cl :dlib :dlib-misc :opsys :dtime :terminal :terminal-ansi :grout
+	:table :table-print :terminal-table :fatchar :fatchar-io :theme :style
+	:magic :collections)
   (:export
    #:!ls
    #:ls
