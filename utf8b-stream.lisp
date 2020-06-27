@@ -1,7 +1,7 @@
-;;
-;; utf8b-stream.lisp - A stupid way of solving a problem that apparently nobody
-;;                     cares about.
-;;
+;;;
+;;; utf8b-stream.lisp - A stupid way of solving a problem that apparently nobody
+;;;                     cares about.
+;;;
 
 (defpackage :utf8b-stream
   (:documentation
