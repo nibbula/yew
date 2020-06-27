@@ -10,7 +10,7 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "View HTML as a tree, using the tree-browser."
-    :depends-on (:dlib :dlib-misc :rl :tree-viewer :pick-list
+    :depends-on (:dlib :dlib-misc :dtime :rl :tree-viewer :pick-list
 		 :plump :puri #-windows :drakma
 		 :terminal :keymap :fui :pager :view-image :rl-widget)
     :components

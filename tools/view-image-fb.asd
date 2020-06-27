@@ -10,7 +10,7 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Linux framebuffer driver for the image viwer."
-    :depends-on (:dlib :dlib-misc :char-util :unicode :inator :image :view-image
-		 :linux-fb)
+    :depends-on (:dlib :dlib-misc :dtime :char-util :unicode :inator :image
+		 :view-image :linux-fb)
     :components
     ((:file "view-image-fb")))

@@ -10,7 +10,7 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "X11 driver for the image viwer."
-    :depends-on (:dlib :dlib-misc :char-util :unicode :inator :image :view-image
-		 :clx)
+    :depends-on (:dlib :dlib-misc :dtime :char-util :unicode :inator :image
+		 :view-image :clx)
     :components
     ((:file "view-image-x11")))

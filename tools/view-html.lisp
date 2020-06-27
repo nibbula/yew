@@ -1,6 +1,6 @@
-;;
-;; view-html.lisp - View HTML as a tree.
-;;
+;;;
+;;; view-html.lisp - View HTML as a tree.
+;;;
 
 ;; This uses the excellent PLUMP library to read HTML/XML and the tree-viewer
 ;; to display it. Using the TREE-VIEWER generally consists of making node
@@ -16,7 +16,7 @@
 
 (defpackage :view-html
   (:documentation "View HTML as a tree.")
-  (:use :cl :dlib :dlib-misc :rl :inator :file-inator :tree-viewer
+  (:use :cl :dlib :dlib-misc :dtime :rl :inator :file-inator :tree-viewer
 	:terminal :fui :char-util :keymap :rl-widget)
   (:export
    #:view-html

@@ -1,6 +1,7 @@
-;;
-;; puca.lisp - Putative Muca (A simple(istic) interface to CVS/git/svn)
-;;
+;;;
+;;; puca.lisp - Putative Muca (A simple(istic) interface to CVS/git/svn)
+;;;
+
 ;; TODO:
 ;;  - puca options help?
 ;;  - way to provide command options?
@@ -15,8 +16,8 @@
 (defpackage :puca
   (:documentation
    "Putative Muca (A simple(istic) interface to CVS/git/svn).")
-  (:use :cl :dlib :dlib-misc :opsys :keymap :char-util :completion :inator
-	:terminal :terminal-inator :fui :options :fatchar :fatchar-io
+  (:use :cl :dlib :dlib-misc :opsys :dtime :keymap :char-util :completion
+	:inator :terminal :terminal-inator :fui :options :fatchar :fatchar-io
 	:table :table-print :collections :table-viewer :ochar
 	#+use-re :re #-use-re :ppcre)
   (:export
@@ -1092,14 +1093,14 @@ for the command-function).")
 
 (defun date-cell-formatter (cell)
   (span-to-fat-string
-   `(:white ,(dlib-misc:date-string :format :relative :time cell))))
+   `(:white ,(date-string :format :relative :time cell))))
 
 (defun raw-date-cell-formatter (cell width)
   (flet ((raw ()
 	   (cond
 	     ((numberp cell)
 	      (span-to-fat-string
-	       `(:white ,(dlib-misc:date-string :format :relative :time cell))))
+	       `(:white ,(date-string :format :relative :time cell))))
 	     ((ostring:ostringp cell)
 	      cell)
 	     (t ""))))
@@ -1191,7 +1192,7 @@ for the command-function).")
        (list (format nil "Files: ~a" (puca-history-files p))
 	     (format nil "Hash:  ~a" (history-hash item))
 	     (format nil "Email: ~a" (history-email item))
-	     (format nil "Date:  ~a" (dlib-misc:date-string
+	     (format nil "Date:  ~a" (date-string
 				      ;;:format :relative
 				      :time (history-date item)))
 	     "Message:" (oquote-format (history-message item)))
@@ -1205,7 +1206,7 @@ for the command-function).")
 ;;        `(,(span-to-fat-string `((:green "Hash: ") (:cyan ,(history-hash item))))
 ;; 	  ,(span-to-fat-string `((:green "Email: ") (:cyan ,(history-email item))))
 ;; 	  ,(span-to-fat-string
-;; 	    `((:green "Date: ") (:cyan ,(dlib-misc:date-string
+;; 	    `((:green "Date: ") (:cyan ,(date-string
 ;; 				       :time (history-date item)))))
 ;; 	  ,(span-to-fat-string `((:green "Message:")))
 ;; 	  ,(span-to-fat-string `((:cyan ,(history-message item)))))))))

@@ -6,7 +6,7 @@
 
 (defpackage :view-image-fb
   (:documentation "Image viewer FB driver.")
-  (:use :cl :dlib :dlib-misc :char-util :inator :view-image :terminal)
+  (:use :cl :dlib :dlib-misc :dtime :char-util :inator :view-image :terminal)
   (:export
    #:fb-image-inator
    ))

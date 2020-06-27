@@ -10,9 +10,9 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "View an image."
-    :depends-on (:dlib :dlib-misc :keymap :char-util :terminal :terminal-ansi
-		 :terminal-crunch :terminal-inator :image :image-ops :dcolor
-		 :magic :grout :flexi-streams :view-image-popi :glob
-		 :rl-widget)
+    :depends-on (:dlib :dlib-misc :dtime :keymap :char-util :terminal
+		 :terminal-ansi :terminal-crunch :terminal-inator :image
+		 :image-ops :dcolor :magic :grout :flexi-streams
+		 :view-image-popi :glob :rl-widget)
     :components
     ((:file "view-image")))
