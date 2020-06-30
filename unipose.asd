@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Compose unicode characters."
-    :depends-on (:glob)
+    :depends-on (:dlib :glob :dtime)
     :components
     ((:file "unipose")))

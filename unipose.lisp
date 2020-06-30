@@ -139,7 +139,7 @@
 			  :if-exists :supersede)
     (format stream ";;;~%;;; unipose-data.el~%;;;~%~@
 		    ;;; Automatically generated from UNIPOSE at ~a~%~%"
-	    (dlib-misc::date-string))
+	    (dtime:date-string))
     (print-unipose-for-emacs :stream stream)
     (format stream "~%;; EOF~%")))
 

@@ -1,6 +1,6 @@
-;;
-;; tree-viewer.lisp - View trees.
-;;
+;;;
+;;; tree-viewer.lisp - View trees.
+;;;
 
 (defpackage :tree-viewer
   (:documentation "View trees.
@@ -89,7 +89,7 @@ which can be customized by the usual set of INATOR-isms, keymaps, display
 methods, and the like.
 ")
   (:nicknames :tb)
-  (:use :cl :dlib :opsys :dlib-misc :char-util :keymap :pick-list
+  (:use :cl :dlib :opsys :dlib-misc :dtime :char-util :keymap :pick-list
 	:glob :collections :inator :terminal :terminal-inator :fui
 	:view-generic)
   (:export
@@ -1115,17 +1115,17 @@ and indented properly for multi-line objects."
 	     (with-output-to-string (str)
 	       (format str "~a Size:        ~d~%" prefix size)
 	       (format str "~a Access time: ~a~%" prefix
-		       (dlib-misc:date-string
+		       (date-string
 			:time (nos:os-time-seconds access-time)))
 	       (format str "~a Mod time:    ~a~%" prefix
-		       (dlib-misc:date-string
+		       (date-string
 			:time (nos:os-time-seconds modify-time)))
 	       (format str "~a Change time: ~a~%" prefix
-		       (dlib-misc:date-string
+		       (date-string
 			:time (nos:os-time-seconds change-time)))
 	       #|
 	       (format str "~a Birth time:  ~a~%" prefix
-		       (dlib-misc:date-string
+		       (date-string
 			:time (nos:unix-to-universal-time
 			       (nos:timespec-seconds birth-time))))
 	       |#
