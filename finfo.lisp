@@ -9,7 +9,7 @@
 
 (defpackage :finfo
   (:documentation "Print some information about a file.")
-  (:use :cl :dlib :opsys :dlib-misc :grout #+unix :os-unix :los-config)
+  (:use :cl :dlib :opsys :dlib-misc :dtime :grout #+unix :os-unix :los-config)
   (:export
    ;; Main entry point
    #:finfo

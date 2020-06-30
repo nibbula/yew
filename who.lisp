@@ -6,7 +6,7 @@
 
 (defpackage :who
   (:documentation "User information commands.")
-  (:use :cl :dlib :opsys :dlib-misc :table :table-print :grout :lish
+  (:use :cl :dlib :opsys :dlib-misc :dtime :table :table-print :grout :lish
         #+unix :os-unix)
   (:export
    #:who

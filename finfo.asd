@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Basically like the Linux/BSD stat command."
-    :depends-on (:dlib :opsys :grout :los-config)
+    :depends-on (:dlib :opsys :dtime :grout :los-config)
     :components
     ((:file "finfo")))
