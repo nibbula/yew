@@ -1,6 +1,6 @@
-;;
-;; keymap.lisp - Associate functions with keys.
-;;
+;;;
+;;; keymap.lisp - Associate functions with keys.
+;;;
 
 (defpackage :keymap
   (:documentation
@@ -128,12 +128,12 @@ Keymap stacks:
   "Define a keymap.
 - VAR-NAME is a variable the keymap is bound to.
 - NAME is a descriptive name for printing. It defaults to VAR-NAME.
+- DEFAULT-BINDING is what keys that aren't defined are bound to.
 - BODY is of the form:
-    [docstring] [:default-binding BINDING] ALIST
+    [docstring] ALIST
   where ALIST is an alist of (KEY . BINDING).
   KEY is a character or keyword.
-  BINDING is a symbol or a function to be called or a form to be evaluated.
-  DEFAULT-BINDING is what keys that aren't defined are bound to."
+  BINDING is a symbol or a function to be called or a form to be evaluated."
   (let (docstring map)
     (when body
       ;; See if there's a docstring
@@ -213,25 +213,36 @@ KEYs are compared with EQL. See also SET-KEY."
 	;; Just one key
 	(set-single-key keymap key-sequence definition))))
 
-(defun key-binding (key keymap)
+(defun key-binding (key keymap &key use-default)
   "Return the binding of single key in single keymap. Return the default
 binding if it is set and no other binding has been specified or NIL if
 there is no binding."
   (or (gethash key (keymap-map keymap))
-      (keymap-default-binding keymap)))
+      (and use-default
+	   (keymap-default-binding keymap))))
 
-(defun key-definition (key keymap-stack)
+;; @@@ clean up keymap traversal code in here key-sequence-binding and
+;; inator:process-event.
+(defun key-definition (key keymap-stack &key use-default)
   "Return the definition of KEY in KEYMAP-STACK."
   (cond
-    ((consp keymap-stack)    ;; a list of keymaps
-     (loop
-	:with binding = nil
-	:for m :in keymap-stack
-	:when (setf binding (key-binding key m))
-	:return binding))
+    ((typep keymap-stack 'sequence)
+     (let (binding)
+       (or (map nil
+		(lambda (m)
+		  (when (setf binding (key-binding key m))
+		    (return-from key-definition binding)))
+		keymap-stack)
+	   ;; Check for default bindings in order.
+	   (and use-default
+		(map nil
+		     (lambda (m)
+		       (when (setf binding (keymap-default-binding m))
+			 (return-from key-definition binding)))
+		     keymap-stack)))))
     ;; handle a single keymap
     ((typep keymap-stack 'keymap)
-     (key-binding key keymap-stack))
+     (key-binding key keymap-stack :use-default use-default))
     (t
      (error "Key definition must be looked up in either a keymap or a list
  of keymaps."))))
@@ -239,33 +250,39 @@ there is no binding."
 (defun key-sequence-binding (keyseq keymap-stack)
   "Return the binding for the given key sequence, in MAP which can be a keymap
 or a keymap stack."
-  (labels ((try-map (keyseq map)
+  (labels ((try-map (keyseq map use-default)
 	     (if (and (or (vectorp keyseq) (listp keyseq))
 		      (not (zerop (length keyseq))))
 		 ;; More than one key in the sequence
 		 (let* ((key (elt keyseq 0))
-			(action (key-definition key map)))
+			(action (key-definition key map
+						:use-default use-default)))
 		   (cond
 		     ;; If the key has a symbol keymap binding
 		     ((and (symbolp action) (boundp action)
 			   (keymap-p (symbol-value action)))
 		      ;; look that up
-		      (try-map (subseq keyseq 1) (symbol-value action)))
+		      (try-map (subseq keyseq 1) (symbol-value action)
+			       use-default))
 		     ((keymap-p action)
-		      (try-map (subseq keyseq 1) action))
+		      (try-map (subseq keyseq 1) action use-default))
 		     (t
 		      ;; simple binding
 		      action)))
 		 ;; Just one key
-		 (key-definition keyseq map))))
+		 (key-definition keyseq map :use-default use-default))))
     (let (binding)
       (etypecase keymap-stack
-	((or list vector)
-	 (map nil (_ (when (setf binding (try-map keyseq _))
-		       (return-from key-sequence-binding binding)))
-	      keymap-stack))
+	(sequence
+	 (or (map nil (_ (when (setf binding (try-map keyseq _ nil))
+			   (return-from key-sequence-binding binding)))
+		  keymap-stack)
+	     ;; Check for default bindings in order.
+	     (map nil (_ (when (setf binding (try-map keyseq _ t))
+			   (return-from key-sequence-binding binding)))
+		  keymap-stack)))
 	(keymap
-	 (setf binding (try-map keyseq keymap-stack))))
+	 (setf binding (try-map keyseq keymap-stack t))))
       binding)))
 
 (defun key-sequence-string (keyseq)
@@ -284,7 +301,7 @@ or a keymap stack."
   "Read a sequence of keys returned by GET-KEY-FUNCTION, starting with keymap.
 Descend into keymaps. Return a key or sequence of keys."
   (let* ((c (funcall get-key-function))
-	 (action (key-definition c keymap)))
+	 (action (key-definition c keymap :use-default t)))
     (flet ((sub-map (map)
 	     (let ((result-seq (get-key-sequence get-key-function map)))
 	       (if (listp result-seq)
