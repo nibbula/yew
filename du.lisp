@@ -314,7 +314,7 @@
   `((,(ctrl #\x)	. *du-ctrl-x-keymap*)
     (#\v		. view-file)))
 
-(defun make-tree (directories)
+(defun make-dir-tree (directories)
   (cond
     ((not (listp directories))
      (make-instance 'du-top-node
@@ -361,8 +361,8 @@ EXCLUDE       - Sub-tree(s) to exclude.
 	  (if show-progress
 	      (with-terminal ()
 	        (terminal-get-size *terminal*)
-		(setf tree (or tree (make-tree directories))))
-	      (setf tree (or tree (make-tree directories)))))
+		(setf tree (or tree (make-dir-tree directories))))
+	      (setf tree (or tree (make-dir-tree directories)))))
       (setf *last-tree* tree)
       (loop :do
 	 (setf reload nil
