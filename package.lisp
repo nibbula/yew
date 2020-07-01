@@ -4,7 +4,7 @@
 
 (defpackage :rl
   (:documentation "A line editor.")
-  (:use :cl :dlib :dlib-misc :dl-list :stretchy :char-util
+  (:use :cl :dlib :dlib-misc :dl-list :stretchy :char-util :dtime
 	:opsys :terminal :terminal-ansi :collections :ochar :fatchar :fatchar-io
 	:completion :keymap :syntax-lisp :unipose :inator :terminal-inator
 	:theme :ostring :spot :compound-string :style)
