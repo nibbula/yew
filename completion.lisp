@@ -379,7 +379,9 @@ arguments for that function, otherwise return NIL."
 			      (= i expr-number) (not (or past-key past-rest)))
 
 			 (push `(:standout ,(format nil "~(~a~)" s)) result)
-			 (push (format nil "~(~a~)" s) result)))))
+			 ;;(push (format nil "~(~a~)" s) result)
+			 (output-atom s)
+			 ))))
 		 ;; @@@ Despite the above quote, pretty is very ugly here.
 		 ((and s (listp s) (cdr s) (not (atom (cdr s))))
 		  (push #\( result)
