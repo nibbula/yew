@@ -477,7 +477,12 @@ Cleans up afterward."
 		       (and ,var (typep ,var 'terminal:terminal)
 			    (class-of ,var))
 		       (and *default-terminal-type*
-			    (find-terminal-class-for-type ,type))
+			    ;; (find-terminal-class-for-type ,type))
+			    (find-terminal-class-for-type
+			     *default-terminal-type*))
+		       (let ((tt (pick-a-terminal-type)))
+			 (and tt
+			      (find-terminal-class-for-type tt)))
 		       (error
 			"Provide a type or set *DEFAULT-TERMINAL-TYPE*."))))
 	      (,make-it (or ,new-p

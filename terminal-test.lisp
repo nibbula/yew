@@ -1,6 +1,6 @@
-;;
-;; terminal-test.lisp - Test the generic terminal library.
-;;
+;;;
+;;; terminal-test.lisp - Test the generic terminal library.
+;;;
 
 (defpackage :terminal-test
   (:documentation "Test the generic terminal library.")
