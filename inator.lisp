@@ -283,12 +283,13 @@ as the subsequent arguments."
   (apply function inator args))
 
 ;; @@@ This is quite hairy and not really reflected in keymap.lisp
+;; @@@ clean up keymap traversal in here and keymap.lisp
 (defmethod process-event ((inator inator) event &optional keymap-in)
   "Default way to process an event."
   (with-slots (command last-command keymap) inator
     (setf last-command command)
     (let ((outer-map (or keymap-in keymap))
-	  event-list result saved-list)
+	  event-list result saved-list use-default)
       (labels
 	  ((apply-symbol (s &optional args)
 	     (if (typep (symbol-function s) 'generic-function)
@@ -308,7 +309,8 @@ as the subsequent arguments."
 	   (sub-process (ev map)
 	     "Look up the definition in keymap M and try to invoke it."
 	     (dbugf :event "sub-process ~s ~s ~s~%" ev saved-list map)
-	     (when (setf command (key-definition ev map))
+	     (when (setf command (key-definition ev map
+						 :use-default use-default))
 	       (invoke)))
 	   (invoke ()
 	     "Try to invoke command."
@@ -349,18 +351,25 @@ as the subsequent arguments."
 	       (t ;; anything else is an error
 		(error "Weird thing in keymap: ~s." command)))))
 	;; (push event event-list)
-	(if (listp outer-map)
+	(if (typep outer-map 'sequence) ;(listp outer-map)
 	    ;; Try all the keymaps in outer-map, saving events in event-list,
 	    ;; until one invocation returns true. Re-pull events from
 	    ;; event-list for subsequent lookups.
-	    (loop
-	       :for m :in outer-map
-	       :while (not (setf result (sub-process event m)))
-	       :do
-	       (dbugf :event "try map ~s saved-list ~s~%" m saved-list)
-	       (setf saved-list (reverse event-list)))
+	    (catch 'out
+	      (map nil (lambda (keymap)
+			 (when (setf result (sub-process event keymap))
+			   (throw 'out nil))
+			 (setf saved-list (reverse event-list)))
+		   outer-map)
+	      (setf use-default t)
+	      (map nil (lambda (keymap)
+			 (when (setf result (sub-process event keymap))
+			   (throw 'out nil))
+			 (setf saved-list (reverse event-list)))
+		   outer-map))
 	    ;; Just one to try.
-	    (setf result (sub-process event outer-map)))
+	    (setf use-default t
+		  result (sub-process event outer-map)))
 	(when (not result)
 	  ;;;(message inator "Event ~a is not bound in keymap ~w."
 	  (message inator "Event ~@[~s ~]~@[~{~s ~}~]is not bound in keymap ~w."
