@@ -96,6 +96,7 @@
    #:barf-binary
    #:confirm
    #:get-file-local-variables
+   #:read-limited-line
    )
 )
 (in-package :dlib-misc)
@@ -1299,11 +1300,10 @@ text into lisp and have it be stored as lines of words."
 ;; I don't think this should ever a slurp a URL, because security?.
 ;; Anyway Drakma does it better.
 
-(defun slurp (file-or-stream &key
-			       (external-format :default)
-			       element-type
-			       count)
-  "Return an array of ELEMENT-TYPE, with the contents read from FILE-OR-STREAM.
+(defun slurp (file &key (external-format :default)
+			 element-type
+			 count)
+  "Return an array of ELEMENT-TYPE, with the contents read from FILE.
 ELEMENT-TYPE defaults to CHARACTER or the stream-element-type for streams.
 EXTERNAL-FORMAT is as in OPEN. If COUNT is non-nil, only read that many
 elements."
@@ -1325,12 +1325,12 @@ elements."
       (unwind-protect
 	 (progn
 	   (setf stream
-		 (etypecase file-or-stream
+		 (etypecase file
 		   (null *standard-input*)
-		   (stream file-or-stream) ; already a stream
+		   (stream file)	 ; already a stream
 		   ((or string pathname) ; a file name
 		    (setf close-me t)
-		    (open file-or-stream
+		    (open file
 			  :external-format external-format
 			  :element-type (or element-type 'character))))
 		 element-type (or element-type (stream-element-type stream)))
@@ -1375,44 +1375,43 @@ elements."
 	(close stream))))
     result))
 
-(defun slurp-binary (file-or-stream &key count)
-  "Return an array of octets, with the contents read from FILE-OR-STREAM.
-If COUNT is non-nil, only read that many elements. This just a shorthand for
-calling SLURP with the appropriate ELEMENT-TYPE."
-  (slurp file-or-stream :element-type '(unsigned-byte 8) :count count))
+(defun slurp-binary (file &key count)
+  "Return an array of octets, with the contents read from FILE. If COUNT is
+non-nil, only read that many elements. This just a shorthand for calling SLURP
+with the appropriate ELEMENT-TYPE."
+  (slurp file :element-type '(unsigned-byte 8) :count count))
 
-(defun barf (file-or-stream object)
-  "Write OBJECT to FILE-OR-STREAM. If FILE-OR-STREAM is a file name, create it."
-  (with-open-file-or-stream (stream file-or-stream
-				    :direction :output
-				    :if-does-not-exist :create)
+(defun barf (file object)
+  "Write OBJECT to FILE. If FILE is a file name, create it."
+  (with-open-file (stream file
+			  :direction :output
+			  :if-does-not-exist :create)
     (typecase object
       (string
        (write-string object stream))
       (t
        (princ object stream)))))
 
-(defun barf-append (file-or-stream object)
-  "Write OBJECT to FILE-OR-STREAM. If FILE-OR-STREAM is a file name, open it
-and append to it. If it doesn't exist, create it."
-  (with-open-file-or-stream (stream file-or-stream
-				    :direction :output
-				    :if-does-not-exist :create
-				    :if-exists :append)
+(defun barf-append (file object)
+  "Write OBJECT to FILE. If FILE is a file name, open it and append to it. If
+it doesn't exist, create it."
+  (with-open-file (stream file
+			  :direction :output
+			  :if-does-not-exist :create
+			  :if-exists :append)
     (typecase object
       (string
        (write-string object stream))
       (t
        (princ object stream)))))
 
-(defun barf-binary (file-or-stream object &key count)
-  "Output a vector of octets to FILE-OR-STREAM. OBJECT must be a
+(defun barf-binary (file object &key count)
+  "Output a vector of octets to FILE. OBJECT must be a
 (vector (unsigned-byte 8)). If COUNT is non-nil, only write that many elements."
-  (with-open-file-or-stream (stream file-or-stream
-                                    :direction :output
-				    :if-does-not-exist :create
-				    :if-exists :append
-				    :element-type '(unsigned-byte 8))
+  (with-open-file (stream file :direction :output
+			       :if-does-not-exist :create
+			       :if-exists :append
+			       :element-type '(unsigned-byte 8))
     (assert (typep object '(vector (unsigned-byte 8))))
     (if count
 	(write-sequence object stream :start 0 :end count)
@@ -1437,7 +1436,7 @@ file is accepted as confirmation."
 	       (character (and (> (length l) 0)
 			       (equalp (aref l 0) confirming-input))))))))
 
-(defun get-file-local-variables (file-or-stream)
+(defun get-file-local-variables (file)
   "Return an alist of file local variables, like Emacs, e.g. variables that
 are in the first couple of lines that are like:
   -*- MODE-NAME -*-
@@ -1446,7 +1445,7 @@ or
 with the last ';' being optional.
 Return NIL if we can't find local variables or if the format is messed up.
 "
-  (with-open-file-or-stream (in file-or-stream)
+  (with-open-file (in file)
     (let ((line (read-line in nil))
 	  start end var-list-string result)
       ;; If it has an interpreter spec, check the next line.
@@ -1479,5 +1478,48 @@ Return NIL if we can't find local variables or if the format is messed up.
 are printed rather than interpreted as directives, which really just means:
 repleace a single tilde with double tidles."
   (oreplace-subseq "~" "~~" s))
+
+;; Old Mac EOL style is hopefully dead.
+;; I think this is mostly useful when you don't want potentially endless lines
+;; to cause a denial of service problem by exceeding memory. Of course this will
+;; still hang on endless lines, but so could any read that is waiting for a
+;; character. Hang prevention is probably better solved with a different
+;; approach.
+(defun read-limited-line (&optional (stream *standard-input*) (limit 88)
+			    (eof-error-p t) eof-value)
+  "Read a line from STREAM, but no longer than LIMIT. If the line is longer than
+LIMIT, the line up until that is returned, and the rest of the line is consumed
+and discarded. STREAM defaults to *standard-input*. Note that this only supports
+unix EOL style. But it will at least function with windows EOL style, it will
+just include the #\return. EOF-ERROR-P and EOF-VALUE should behave as in
+READ-LINE. Returns the line and MISSING-NEWLINE-P similar to READ-LINE, except
+MISSING-NEWLINE-P is also true if we hit the limit before the newline."
+  (let* ((count 0) c (missing-newline-p t)
+	 (line
+	  (with-output-to-string (out)
+	    (loop :while (and (not
+			       (equal eof-value
+				      (setf c (read-char
+					       stream eof-error-p eof-value))))
+			      (< count limit)
+			      (not (eql c #\newline)))
+	       :do
+	       (write-char c out)
+	       (incf count)))))
+    (when (eql c #\newline)
+      (setf missing-newline-p nil))
+    (if (and (zerop (length line)) (eql c eof-value))
+	(values eof-value missing-newline-p)
+	(progn
+	  ;; Eat the rest of the line.
+	  (when (and (= count limit) (not (eql c #\newline)))
+	    (loop :while (and (not
+			       (equal eof-value
+				      (setf c (read-char
+					       stream eof-error-p eof-value))))
+			      (not (eql c #\newline)))))
+	  ;; It doesn't matter if we got a newline later.
+	  ;; (setf missing-newline-p (not (char= c #\newline)))
+	  (values line missing-newline-p)))))
 
 ;; End
