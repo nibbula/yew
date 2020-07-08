@@ -825,6 +825,7 @@ Also, it can't really delete the first (zeroth) element."
 (defmacro do-plist ((key value list) &body body)
   (with-unique-names (l thunk)
     `(let ((,l ,list) ,key ,value)
+       (declare (ignorable ,value))
        (flet ((,thunk () ,@body))
 	 (when ,l
 	   (loop
@@ -840,6 +841,7 @@ Also, it can't really delete the first (zeroth) element."
 (defmacro do-alist ((key value list) &body body)
   (with-unique-names (l thunk)
     `(let ((,l ,list) ,key ,value)
+       (declare (ignorable ,value))
        (flet ((,thunk () ,@body))
 	 (when ,l
 	   (loop
@@ -1948,6 +1950,9 @@ works, return NIL."
   (read-line input-stream eof-error-p eof-value recursive-p)
 )
 
+;; @@@ I think this comes from my misreading of the spec. with-open-file
+;; already does this.
+#+(or)
 (defmacro with-open-file-or-stream ((var file-or-stream &rest args) &body body)
   "Evaluate BODY with VAR bound to FILE-OR-STREAM if it's already a stream, or
 an open a stream named by FILE-OR-STREAM. ARGS are standard arguments to OPEN."
