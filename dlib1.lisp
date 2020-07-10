@@ -1950,9 +1950,10 @@ works, return NIL."
   (read-line input-stream eof-error-p eof-value recursive-p)
 )
 
-;; @@@ I think this comes from my misreading of the spec. with-open-file
-;; already does this.
-#+(or)
+;; In theory the spec says (in 21.1.3 fig 21-7) that open and with-open-file
+;; can take a stream as the file argument. In practice, it seems this can only
+;; be some kinds of stream, like a file-stream. So I guess we have to do this
+;; anyway.
 (defmacro with-open-file-or-stream ((var file-or-stream &rest args) &body body)
   "Evaluate BODY with VAR bound to FILE-OR-STREAM if it's already a stream, or
 an open a stream named by FILE-OR-STREAM. ARGS are standard arguments to OPEN."
