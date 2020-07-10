@@ -118,6 +118,9 @@
    (reset
     :initarg :reset :accessor backend-reset :type string
     :documentation "Command to do something like whatever git reset does.")
+   (checkout
+    :initarg :checkout :accessor backend-checkout :type string
+    :documentation "Command to do something like whatever git checkout does.")
    (diff
     :initarg :diff :accessor backend-diff :type string
     :documentation "Command to show the difference vs the last change.")
@@ -262,6 +265,7 @@ return history for the whole repository."))
    :list-command '("cvs" "-n" "update")
    :add		 "cvs add ~{~a ~}"
    :reset	 "echo 'No reset in CVS'"
+   :checkout     "echo 'Checkout not implemented yet in CVS'"
    :diff	 "cvs diff ~{~a ~} | pager"
    :diff-repo	 "cvs diff -r HEAD ~{~a ~} | pager"
    :commit	 "cvs commit ~{~a ~}"
@@ -320,6 +324,7 @@ return history for the whole repository."))
    :list-command      '("git" "status" "--porcelain")
    :add		      "git --no-pager add ~{~a ~}"
    :reset	      "git --no-pager reset ~{~a ~}"
+   :checkout	      "git --no-pager checkout ~{~a ~}"
    :diff	      "git diff --color ~{~a ~} | pager"
    :diff-repo	      "git diff --color --staged | pager"
    :diff-history      "git diff --color ~a ~a -- ~{~a ~} | pager"
@@ -457,6 +462,7 @@ return history for the whole repository."))
    :list-command	'("svn" "status")
    :add			"svn add ~{~a ~}"
    :reset		"svn revert ~{~a ~}"
+   :checkout		"svn revert ~{~a ~}" ;; @@@ I guess it's the same??
    :diff		"svn diff ~{~a ~} | pager"
    :diff-repo		"svn diff -r HEAD ~{~a ~} | pager"
    :commit		"svn commit ~{~a ~}"
@@ -483,6 +489,7 @@ return history for the whole repository."))
    :list-command	'("hg" "status")
    :add			"hg add ~{~a ~}"
    :reset		"hg revert ~{~a ~}"
+   :checkout		"hg revert ~{~a ~}" ;; @@@ Is it the same??
    :diff		"hg diff ~{~a ~} | pager"
    :diff-repo		"hg diff ~{~a ~} | pager"
    :commit		"hg commit ~{~a ~}"
@@ -633,6 +640,7 @@ confirmation first."
 	(tt-clear)
 	(tt-finish-output)
 	(terminal-end *terminal*)
+	(format t "~a~%" command) (finish-output)
 	(when (and confirm (not (yes-or-no-p "Are you sure? ")))
 	  (return-from do-literal-command (values)))
 	;; (debug-msg "command ~s" command)
@@ -806,6 +814,11 @@ for the command-function).")
   "Revert file (undo an add)"
   (declare (ignore p))
   (do-command #'backend-reset (list (selected-files)) :confirm t))
+
+(defun checkout-command (p)
+  "Check out the committed version. Forget current changes."
+  (declare (ignore p))
+  (do-command #'backend-checkout (list (selected-files)) :confirm t))
 
 (defun diff-command (p)
   "Diff"
@@ -1305,6 +1318,7 @@ for the command-function).")
     (#\H		. history-all-command)
     (#\a		. add-command)
     (#\r		. reset-command)
+    (#\k		. checkout-command)
     (#\d		. diff-command)
     (#\D		. diff-repo-command)
     (#\c		. commit-command)
