@@ -24,6 +24,8 @@ live on Earth very recently only!")
    ))
 (in-package :dtime)
 
+(declaim (optimize (debug 2)))
+
 ;; It is very very rudimentary and should be someday redesigned for
 ;; universality (see universal_time.txt).
 
@@ -191,7 +193,8 @@ Note that :day is the day of the week number and :date is the day of the month."
 			  (:zone zone)
 			  (:daylight-p daylight-p)
 			  (otherwise
-			   (error "Unknown format-date keyword ~s." v))))))))))
+			   (error "Unknown format-date keyword ~s." v))))))
+		    (t v)))))
     `(multiple-value-bind (,seconds ,minutes ,hours ,date ,month ,year ,day
 				    ,daylight-p ,zone)
 	 ;; One of the branches of gmt-p will be unreachable.
@@ -407,10 +410,14 @@ The date part is considered to be the current date."
 
 (def-comp-ops)
 
-(defun dtime= (time1 time2)
-  "Return true if TIME1 = TIME2, which should both be a struct time."
-  (and (= (dtime-seconds time1) (dtime-seconds time2))
-       (= (dtime-nanoseconds time1) (dtime-nanoseconds time2))))
+;; (defgeneric dtime= (time1 time2)
+;;   (:documentation
+;;    "Return true if TIME1 = TIME2."))
+
+;; (defmethod dtime= ((time1 dtime) (time2 dtime))
+;;   "Return true if TIME1 = TIME2, which should both be a dtime."
+;;   (and (= (dtime-seconds time1) (dtime-seconds time2))
+;;        (= (dtime-nanoseconds time1) (dtime-nanoseconds time2))))
 
 (defun dtime/= (time1 time2)
   "Return true if TIME1 = TIME2, which should both be a struct time."
