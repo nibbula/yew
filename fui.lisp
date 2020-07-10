@@ -218,6 +218,10 @@ drawing, which will get overwritten."
 	   (window-move-to window (+ row output-y) column)
 	   (tt-write-string l
 			    :start (min (max 0 start-pos) len)
+			    ;; @@@ This is wrong. The problem is no knowing what
+			    ;; character length corresponds to what display
+			    ;; length.
+			    ;; @@@ make char-util:display-to-char-index work!
 			    :end   (min (max start-pos end-pos) str-len))
 	   (incf output-y)))
       (window-move-to window (+ row output-y 1) column)
@@ -239,7 +243,7 @@ drawing, which will get overwritten."
   (with-slots (width) window
     (window-text window text
 		 :row row
-		 :column (round (- (/ width 2) (/ (length text) 2))))))
+		 :column (round (- (/ width 2) (/ (display-length text) 2))))))
 
 ;; This interface is somewhat deprecated. I recommend using show-text.
 (defun display-text (title text-lines &key input-func (justify t)
@@ -299,8 +303,17 @@ waits for a key press and then returns."
 ;;   - don't justify by default
 ;;   - don't require lines to be pre-split
 ;;   - In general, just take a string and display it as-is.
-(defun show-text (text &key title input-func justify
+(defun show-text (text &key input-func title justify
 			 x y width height min-width min-height)
+  "Display TEXT in a pop up window. Optionally calls INPUT-FUNC with the
+window as an argument to get input. If no INPUT-FUNC is provided it just
+waits for a key press and then returns.
+Keyword arguments are:
+- TITLE                A title for the window.
+- JUSTIFY              True to justify the text in the window.
+- X Y                  Position of the window.
+- WIDTH HEIGHT         Size of the window.
+- MIN-WIDTH MIN-HEIGHT Minimum size of the window."
   (with-immediate ()
     (display-text title (if justify
 			    (list text)
