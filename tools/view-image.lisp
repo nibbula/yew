@@ -380,11 +380,11 @@
 (defun report-and-continue (c)
   (typecase c
     (simple-condition
-     (apply #'pause (simple-condition-format-control c)
+     (apply #'show-error (simple-condition-format-control c)
 	    (simple-condition-format-arguments c))
      (continue))
     (t
-     (pause "Error: ~s" c))))
+     (show-error "~s" c))))
 
 (defmacro with-image-error-handling ((file-name) &body body)
   `(handler-bind
@@ -396,9 +396,9 @@
        ;; (cl-jpeg:jpeg-error (c)
        ;; 	 (pause "Error: ~a ~a" ,file-name c))
        (error (c)
-	 (pause "Error: ~a ~a" ,file-name c))
+	 (show-error "~a ~a" ,file-name c))
        (simple-error (c)
-	 (pause "Error: ~a ~a" ,file-name c)))))
+	 (show-error "~a ~a" ,file-name c)))))
 
 (defun perserverant-read-image (file)
   "Try to read an image, but try to load image format stragglers after
@@ -497,8 +497,16 @@ the first time it fails to identify the image."
   (tt-write-string (apply #'format nil format-string args)))
 
 (defun pause (format-string &rest args)
-  (apply #'say format-string args)
-  (tt-write-string " --More--")
+  ;; (apply #'say format-string args)
+  ;; (tt-write-string " --More--")
+  (fui:show-text (apply #'format nil format-string args) :justify t)
+  (tt-get-key))
+
+(defun show-error (format-string &rest args)
+  ;; (apply #'say format-string args)
+  ;; (tt-write-string " --More--")
+  (fui:show-text (apply #'format nil format-string args)
+		 :title "Error" :justify t)
   (tt-get-key))
 
 (defun binding-of-key (o)

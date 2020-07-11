@@ -13,6 +13,6 @@
     :depends-on (:dlib :dlib-misc :dtime :keymap :char-util :terminal
 		 :terminal-ansi :terminal-crunch :terminal-inator :image
 		 :image-ops :dcolor :magic :grout :flexi-streams
-		 :view-image-popi :glob :rl-widget)
+		 :view-image-popi :glob :rl-widget :fui)
     :components
     ((:file "view-image")))
