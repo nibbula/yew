@@ -1,20 +1,19 @@
-;;
-;; snip.lisp - Snip the output
-;;
+;;;
+;;; snip.lisp - Snip the output
+;;;
 
 (defpackage :snip
   (:documentation "Snip the output.")
-  (:use :cl :dlib :cl-ppcre :opsys :stretchy :lish)
+  (:use :cl :dlib :cl-ppcre :opsys :stretchy :lish :utf8b-stream)
   (:export
-   #:snip #:!snip
+   #:!snip
    #:snip-bytes
-   #:head #:!head
+   #:take-lines
+   #:!head
    ))
 (in-package :snip)
 
 (declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
-;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
-;; 		   (compilation-speed 0)))
 
 ;; @@@ This performance of this is horrible!
 (defun snip-bytes (file-or-stream count direction)
@@ -89,9 +88,21 @@
 	    (incf n))
 	  (return)))))
 
+(defun take-lines (stream count)
+  (let ((n 0) result)
+    (with-lines (line stream)
+      (if (< n count)
+	  (progn
+	    (push line result)
+	    (incf n))
+	  (return)))
+    result))
+
 (defcommand head
   ((line-count integer :short-arg #\n :default 10 :help "Lines to show.")
    (byte-count integer :short-arg #\c :help "Bytes to show.")
+   (use-encoding boolean :short-arg #\e
+    :help "Use the default system encoding.") ; otherwise know as: get errors
    ;; ("count" integer :default 10
    ;;  :help "The number of units to show.")
    (files pathname :repeating t
@@ -104,8 +115,13 @@
 	  (snip-bytes *standard-input* byte-count :before))
       (if files
 	  (loop :for f :in files :do
-	     (snip-lines-after f line-count))
-	  (snip-lines-after *standard-input* line-count))))
-
+	     (if use-encoding
+		 (snip-lines-after f line-count)
+		 (with-utf8b-input (str f :errorp nil)
+		   (snip-lines-after str line-count))))
+	  (if use-encoding
+	      (snip-lines-after *standard-input* line-count)
+	      (with-utf8b-input (str *standard-input* :errorp nil)
+		(snip-lines-after str line-count))))))
 
 ;; EOF
