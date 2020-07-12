@@ -91,7 +91,7 @@
       (go resync))))
 
 ;; The good kind, that doesn't throw any errors, and allows preserving of
-;; input, thanks to Markus Kuhn.
+;; input, thanks to Markus Kuhn for the idea, but blame me for using it.
 (defmacro %get-utf8b-char (byte-getter char-setter)
   (with-names (bonk u1 u2 u3 u4 u5)
     `(macrolet ((,bonk (&rest args)
