@@ -7,16 +7,44 @@
   (:documentation
    "Herein we implement the despised UTF8b stream, much to the chagrin of
 everyone. Note the 'b'. The 'b' is very important! The loathsome UTF-8b stream
-takes an underlying stream of regular old (UNSIGNED-BYTE 8) characters, and
-converts it into UTF8b. The whole point of this is to be able to read UTF8
-characters from arbitrary bytes WITHOUT ERRORS!!! I know that seems to be a lot
-to ask, but I somehow persist in the delusion that it is possible to read things
-WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
+takes an underlying stream of regular old (UNSIGNED-BYTE 8) characters,
+otherwise known as octets or bytes, and converts it into UTF8b. The whole
+point of this is to be able to read UTF8 characters from arbitrary bytes
+WITHOUT ERRORS!!! I know that seems to be a lot to ask, but I somehow persist
+in the delusion that it is possible to read things WITHOUT getting errors ALL
+THE FUCKING TIME!!!!.
+
+So, you might ask: “Not getting errors doesn't really sound as bad as you've
+made it out to be, so what's the downside?” Good question. There seems to be
+at least three possible downsides to this technique:
+
+First, we have sacrificed a small range of your ‘private use’ unicode
+characters. Specifically the range #xdc00 to #xdcff. In other words, this uses
+them for storing any invalid UTF-8 bytes, and therefore there will be no way
+to distinguish them in the resulting unicode characters, and valid private
+use characters may be decoded into back into invalid UTF-8 bytes if the
+reverse UTF-8b filter is used. But if this happens, what you started off with
+wasn't valid UTF-8 in the first place. If you have a stream with valid UTF-8
+and which uses that range of private use characters, just don't use this
+filter.
+
+The second problem is that it probably slows things down quite a bit. This
+could be solved by adding UTF-8b encoding to the implementation level, where
+it would have about the same performance characteristics as normal UTF8.
+
+The third problem is that it software that uses this has to explicitly use it,
+and allow for turning it off. This adds fairly pointless complexity. This
+could be solved, like with the performance issue, by having in the normal set
+of encodings for the implementation. Usually there is a way for the user to
+pick the encoding. There are probably more problems but I forgot what they
+are.")
   (:use :cl :dlib :char-util :trivial-gray-streams :unicode)
   (:export
    #:utf8b-input-stream
-   #:input-stream
-   #:buffer
+   #:utf8b-stream-stream
+   #:utf8b-stream-buffer
+   #:with-utf8b-input
+   #:with-utf8b-stream
    ))
 (in-package :utf8b-stream)
 
@@ -27,11 +55,11 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
 
 (defclass utf8b-input-stream (fundamental-character-input-stream)
   ((input-stream
-    :initarg :input-stream :accessor input-stream
+    :initarg :input-stream :accessor utf8b-stream-stream
     ;;:type fundamental-binary-input-stream
     :documentation "The underlying stream from which we get input.")
    (buffer
-    :initarg :buffer :accessor buffer
+    :initarg :buffer :accessor utf8b-stream-buffer
     ;;:type (simple-array (unisgned-byte 8) (*))
     :initform nil
     :documentation "Yet another useless buffer.")
@@ -47,13 +75,13 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
   (declare (ignore initargs))
   (when (not (slot-boundp o 'input-stream))
     (error "An input-stream must be provided."))
-  (when (not (input-stream-p (input-stream o)))
+  (when (not (input-stream-p (utf8b-stream-stream o)))
     (error "input-stream must be an input stream."))
-  (when (not (equal (stream-element-type (input-stream o))
+  (when (not (equal (stream-element-type (utf8b-stream-stream o))
 		    '(unsigned-byte 8)))
     (error "input-stream must have an element type of (unsigned-byte 8)."))
   ;; (when (not (slot-boundp o 'buffer))
-  ;;   (setf (buffer o) (make-array 
+  ;;   (setf (utf8b-stream-buffer o) (make-array
   ;; 				 :element-type '(unsigned-byte 8)
   ;; 				 :fill-pointer t))
   )
@@ -244,6 +272,55 @@ WITHOUT getting errors ALL THE FUCKING TIME!!!!.")
   ;; Return ‘nil’.  Every subclass of
   ;; ‘fundamental-character-input-stream’ must define a method for this
   ;; function.
-  (push character (buffer stream)))
+  (push character (utf8b-stream-buffer stream)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-condition utf8b-stream-error (simple-error stream-error)
+  ()
+  (:documentation "A simple stream error for utf8b streams."))
+
+(defmacro with-utf8b-stream ((var stream &key (errorp t)) &body body)
+  "Evaluate the BODY with VAR bound to a UTF8B-INPUT-STREAM wrapping STREAM.
+If ERRORP is true, STREAM must be an open input stream with an element type
+of (UNSIGNED-BYTE 8). If ERRORP is false, then if the streem doesn't qualify, it
+still just binds STREAM to VAR and evaluates the BODY."
+  (with-names (source thunk)
+    `(let (,var
+	   (,source ,stream))
+       (flet ((,thunk () (progn ,@body)))
+	 (if (and (input-stream-p ,source)
+		  (open-stream-p ,source)
+		  (equal (stream-element-type ,source) '(unsigned-byte 8)))
+	     (unwind-protect
+		  (progn
+		    (setf ,var (make-instance 'utf8b-input-stream
+					      :input-stream ,source))
+		    (,thunk))
+	       (close ,var))
+	     (progn
+	       (with-simple-restart (continue
+				     "Just use the stream without UTF8b.")
+		 (if ,errorp
+		     (error 'utf8b-stream-error
+			    :stream ,source
+			    :format-control
+			    "The stream can't be used for utf8b input.")))
+	       (progn
+		 (setf ,var ,source)
+		 (,thunk))))))))
+
+(defmacro with-utf8b-input ((var input &key (errorp t)) &body body)
+  "Like with-utf8b-stream but INPUT can also be a file name."
+  (with-names (in fvar)
+    `(let ((,in ,input))
+       (etypecase ,in
+	 ((or string pathname)
+	  (with-open-file (,fvar ,in :element-type '(unsigned-byte 8))
+	    (with-utf8b-stream (,var ,fvar :errorp ,errorp)
+	      ,@body)))
+	 (stream
+	  (with-utf8b-stream (,var ,in :errorp ,errorp)
+	    ,@body))))))
 
 ;; EOF
