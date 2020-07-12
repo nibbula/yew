@@ -101,6 +101,7 @@ structs as sequences. Also we really need the MOP for stuff.")
       ofill-range-with
       oslice
       oslice-from
+      otake
       osort-by
       ofind-with-key
       osplit
@@ -770,6 +771,15 @@ use in pipelines. See also OSLICE-FROM."
   "This is the same as OSUBSEQ, but with the arguments reversed for convenient
 use in pipelines, and without the END argument. See also OSLICE."
   (osubseq collection start))
+
+;; Yes, more stupid subseq wrappers. I know there is wisdom in not having
+;; duplicate names for the same functionality, but I really just want to be
+;; able to say this.
+
+(defun otake (n collection)
+  "This is the same as (osubseq 0 n collection), but is more convenient use in
+pipelines, and maybe easier to remember."
+  (osubseq collection 0 n))
 
 #|
 @@@ You know the business...
