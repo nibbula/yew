@@ -204,36 +204,33 @@ Second value is where the character set ended."
 		(incf i))))
 	 (#\[ ;; class or symbol
 	  (incf i)
-	  (let ((my-range-start i))
-	    (setf c (char pattern i))
-	    (case c
-	      (#\=
-	       (incf i)
-	       (pushnew `(:equiv ,(char pattern i)) result)
-	       (incf i)
-	       (if (not (string= (subseq pattern i (+ i 2)) "=]"))
-		   (error "missing =]"))
-	       (incf i))
-	      (#\:
-	       (incf i)
-	       (let* ((end (or (position #\: (subseq pattern i))
-			       (error "Missing ending : in character ~
+	  (setf c (char pattern i))
+	  (case c
+	    (#\=
+	     (incf i)
+	     (pushnew `(:equiv ,(char pattern i)) result)
+	     (incf i)
+	     (if (not (string= (subseq pattern i (+ i 2)) "=]"))
+		 (error "missing =]"))
+	     (incf i))
+	    (#\:
+	     (incf i)
+	     (let* ((end (or (position #\: (subseq pattern i))
+			     (error "Missing ending : in character ~
                                        class name.")))
-		      (name (subseq pattern i (+ i end)))
-		      (class (find-named-char-class name)))
-		 (when (not class)
-		   (error "Unknown character class ~s" name))
-		 (pushnew `(:class ,class) result)
-		 (incf i end))
-	       (incf i)) ; the ending : ?
-	      (#\. #| @@@ TODO |# )
-	      (#\]
-	       (if (= i my-range-start)
-		   (error "Invalid empty character class")
-		   (pushnew #\] result)))
-	      (t
-	       (error "Invalid character class type indicator '~a' at ~d"
-		      c i)))))
+		    (name (subseq pattern i (+ i end)))
+		    (class (find-named-char-class name)))
+	       (when (not class)
+		 (error "Unknown character class ~s" name))
+	       (pushnew `(:class ,class) result)
+	       (incf i end))
+	     (incf i))			; the ending : ?
+	    (#\. #| @@@ TODO |# )
+	    (#\]
+	     (error "Invalid empty character class"))
+	    (t
+	     (error "Invalid character class type indicator '~a' at ~d"
+		    c i))))
 	 (#\]
 	  ;; If we're the first, or second (where the first is ^ or !),
 	  ;; treat it as a normal character.
