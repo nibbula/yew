@@ -658,7 +658,7 @@ read until we get an EOF."
 (defun stream-name (stream)
   (cond
     ((typep stream 'utf8b-stream:utf8b-input-stream)
-     (stream-name (utf8b-stream:input-stream stream)))
+     (stream-name (utf8b-stream:utf8b-stream-stream stream)))
     ((and (typep stream 'file-stream)
 	  (ignore-errors (truename stream)))
      (princ-to-string (namestring (truename stream))))
@@ -670,7 +670,7 @@ read until we get an EOF."
 (defun stream-file-p (stream)
   (cond
     ((typep stream 'utf8b-stream:utf8b-input-stream)
-     (stream-file-p (utf8b-stream:input-stream stream)))
+     (stream-file-p (utf8b-stream:utf8b-stream-stream stream)))
     ((and (typep stream 'file-stream)
 	  (ignore-errors (truename stream))))))
 
