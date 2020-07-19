@@ -85,6 +85,9 @@
    (message
     :initarg :message :accessor image-inator-message :initform nil
     :documentation "Message to show.")
+   (debug
+    :initarg :debug :accessor image-inator-debug :initform nil :type boolean
+    :documentation "True to enter the debugger on error.")
    (frame-start-time
     :initarg :frame-start-time :accessor frame-start-time
     :documentation "The time we start rendering a frame.")
@@ -396,9 +399,13 @@
        ;; (cl-jpeg:jpeg-error (c)
        ;; 	 (pause "Error: ~a ~a" ,file-name c))
        (error (c)
-	 (show-error "~a ~a" ,file-name c))
+	 (if (image-inator-debug *image-viewer*)
+	     (invoke-debugger c)
+	     (show-error "~a ~a" ,file-name c)))
        (simple-error (c)
-	 (show-error "~a ~a" ,file-name c)))))
+	 (if (image-inator-debug *image-viewer*)
+	     (invoke-debugger c)
+	     (show-error "~a ~a" ,file-name c))))))
 
 (defun perserverant-read-image (file)
   "Try to read an image, but try to load image format stragglers after
@@ -449,10 +456,7 @@ the first time it fails to identify the image."
 	(clear-image o)
 	(setf image img)
 	(when (not was-first-time)
-	  (reset-image o))
-	(dbug "filename ~s subimages ~s~%" (nth file-index file-list)
-	      (length (image-subimages image)))
-	))))
+	  (reset-image o))))))
 
 (defmethod previous-file ((o image-inator))
   (with-slots (file-list file-index image) o
@@ -1241,11 +1245,10 @@ the first time it fails to identify the image."
   (when image
     (setf (image-inator-looping *image-viewer*)
 	  (and (image-subimages image)
-	       (> (length (image-subimages image)) 1)))
-    (dbug ";;;;;;;;;;;;;;;;AUTO;;;;;;;;;;LOOP;;;;;;;~d;;;;;;;;;~%"
-	  (length (image-subimages image)))))
+	       (> (length (image-subimages image)) 1)))))
 
-(defun view-image (image-designator &key file-list type own-window use-full)
+(defun view-image (image-designator &key file-list type own-window use-full
+				      debug)
   "View an image. The IMAGE-DESIGNATOR can be a file name, a stream, an
 object of class IMAGE:IMAGE, or an array of (unsigned-byte 8).
 Key arguments:
@@ -1266,6 +1269,7 @@ Key arguments:
 			       :image image-designator
 			       :file-list file-list
 			       :own-window own-window
+			       :debug debug
 			       :use-half-block (not use-full)))
 	 ;; (clear-image *image-viewer*)
 	 ;; (reset-image *image-viewer*)
@@ -1276,6 +1280,7 @@ Key arguments:
 			       :image (perserverant-read-image image-designator)
 			       :file-list file-list
 			       :own-window own-window
+			       :debug debug
 			       :use-half-block (not use-full)))
 	 ;; (clear-image *image-viewer*)
 	 ;; (reset-image *image-viewer*)
@@ -1287,6 +1292,7 @@ Key arguments:
 			      :file-list (or file-list
 					     (list image-designator))
 			      :own-window own-window
+			      :debug debug
 			      :use-half-block (not use-full))))
 	((array (unsigned-byte 8) *) ;; presumably encoded
 	 (setf *image-viewer*
@@ -1298,6 +1304,7 @@ Key arguments:
 				(perserverant-read-image str))
 			      :file-list file-list
 			      :own-window own-window
+			      :debug debug
 			      :use-half-block (not use-full))))
 	(null
 	 (when (not file-list)
@@ -1307,6 +1314,7 @@ Key arguments:
 			       :initial-command 'next-file
 			       :file-list file-list
 			       :own-window own-window
+			       :debug debug
 			       :use-half-block (not use-full)))))
       (set-auto-looping image)
       (unwind-protect
@@ -1318,8 +1326,8 @@ Key arguments:
 
 (register-image-inator 'image-inator 1)
 
-(defun view-images (files &rest args &key type own-window use-full)
-  (declare (ignorable type own-window use-full))
+(defun view-images (files &rest args &key type own-window use-full debug)
+  (declare (ignorable type own-window use-full debug))
   ;; (format t "type = ~s~%" type)
   (if (not files)
       (apply #'view-image *standard-input* args)
@@ -1340,6 +1348,7 @@ Key arguments:
     :help "True to use it's own window if the backend supports it.")
    (use-full boolean :short-arg #\f
     :help "True to use full blocks.")
+   (debug boolean :short-arg #\d :help "Invoke the debugger on error.")
    ;;(images pathname :repeating t :help "Image to view.")
    )
   :accepts (:sequence :stream image:image)
@@ -1353,7 +1362,8 @@ Key arguments:
 	       :type (cdr (find type *image-inator-types*
 				:key (_ (symbol-name (cdr _)))))
 	       :own-window own-window
-	       :use-full use-full))
+	       :use-full use-full
+	       :debug debug))
 
 #+lish
 (lish:defcommand view-image-tty
