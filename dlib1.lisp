@@ -1360,12 +1360,15 @@ into lists so they look like function applications."
   "Return a symbol, interned in PACKAGE, represented by STRING, after possibly
 doing conventional case conversion. The main reason for this function is to
 wrap the case conversion on implementations that need it. If NO-NEW is true,
-never create a new symbol, and return NIL if the symbol doesn't already exist."
+never create a new symbol, and return NIL if the symbol doesn't already exist.
+Package can be NIL in which case it returns an un-interned symbol."
   (etypecase string
     (string
      (if no-new
 	 (find-symbol (string-upcase string) package)
-	 (intern (string-upcase string) package)))
+	 (if package
+	     (intern (string-upcase string) package)
+	     (make-symbol string))))
     (symbol
      string)))
 
