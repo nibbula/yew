@@ -120,7 +120,7 @@ and conversions between color models.")
 
 (defun lookup-color (color)
   "Find the color values for a color name, or just return it."
-  (if (keywordp color)
+  (if (or (keywordp color) (symbolp color))
       (if (find-package :color-names)
 	  (let ((sym (find-symbol (symbol-name color) :color-names)))
 	    (if sym (symbol-value sym) color))
