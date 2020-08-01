@@ -771,7 +771,9 @@ functions."
   (let ((pos (position-if #'(lambda (c)
 			      (not (position c character-bag
 					     ;; :test #'same-char)))
-					     :test #'fatchar=)))
+					     ;; :test #'fatchar=
+					     :test #'ochar=
+					     )))
 			  (fat-string-string string))))
     (make-fat-string :string (subseq (fat-string-string string)
 				     (or pos 0)))))
@@ -780,7 +782,9 @@ functions."
   (let ((pos (position-if #'(lambda (c)
 			      (not (position c character-bag
 					     ;;:test #'same-char)))
-					     :test #'fatchar=)))
+					     ;;:test #'fatchar=
+					     :test #'ochar=
+					     )))
 			  (fat-string-string string)
 			  :from-end t)))
     (make-fat-string
