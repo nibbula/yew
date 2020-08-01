@@ -2033,7 +2033,8 @@ or :both. WHICH defaults to :window."
 		  ;; :end-tag #\\
 		  :end-tag #'typical-report-ending
 		  :ending 0
-		  )))
+		  :timeout *report-timeout*
+		  :errorp nil)))
 
 ;; If this is mysteriously not working, you might have to make sure to enable
 ;; it in your emulator. Like in xterm: "Allow Window Ops".
