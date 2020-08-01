@@ -16,7 +16,7 @@
   (tree-viewer:view-tree
    ;; CL-JSON version
    ;; (car (cl-json:decode-json stream))
-   (jsown:parse (slurp file))
+   (jsown:parse (slurp (nos:quote-filename file)))
    ))
 
 #+lish
