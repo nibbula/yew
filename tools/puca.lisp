@@ -435,7 +435,7 @@ return history for the whole repository."))
 	      file (elt words 1)))
       ;; (debug-msg "~s ~s (~s) (~s)" line words tag file)
       ;; Handle rename from -> to
-      (when (and (string=  tag "R")
+      (when (and (or (string= tag "R") (string= tag "RM"))
 		 (setf arrow-pos (search " -> " file)))
 	(setf file (subseq file 0 arrow-pos)))
       (cond
