@@ -213,13 +213,6 @@
 (deftests (dlib-language-2
 	   :doc "Things relating to language expression.")
   "Test with-decls-and-body."
-  ;; (prog1 t
-  ;;   (defmacro defoo (name args &body body)
-  ;;     (with-decls-and-body (body)
-  ;; 	`(defun ,name ,args
-  ;; 	   ,@doc-and-decls
-  ;; 	   (yow)
-  ;; 	   ,@fixed-body))))
   (equal (macroexpand-1 '(defoo hey (x) (+ x x)))
 	 '(defun hey (x) (yow) (+ x x)))
   (equal (macroexpand-1 '(defoo hey (x) "boo"))
