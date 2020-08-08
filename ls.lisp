@@ -698,7 +698,9 @@ command for details. If LABEL-DIR is true, print directory labels."
 	     (pick-results ()
 	       (if nice-table
 		   (ls-state-nice-table *ls-state*)
-		   file-info)))
+		   (if (= (length file-info) 1)
+		       (car file-info)
+		       file-info))))
 	;;(with-error-handling ()
 	(setf (values file-info more) (gather-file-info args))
 	(cond
