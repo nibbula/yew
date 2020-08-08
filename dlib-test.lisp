@@ -203,16 +203,23 @@
   ;; (@)
   )
 
+(defmacro defoo (name args &body body)
+  (with-decls-and-body (body)
+    `(defun ,name ,args
+       ,@doc-and-decls
+       (yow)
+       ,@fixed-body)))
+
 (deftests (dlib-language-2
 	   :doc "Things relating to language expression.")
   "Test with-decls-and-body."
-  (prog1 t
-    (defmacro defoo (name args &body body)
-      (with-decls-and-body (body)
-	`(defun ,name ,args
-	   ,@doc-and-decls
-	   (yow)
-	   ,@fixed-body))))
+  ;; (prog1 t
+  ;;   (defmacro defoo (name args &body body)
+  ;;     (with-decls-and-body (body)
+  ;; 	`(defun ,name ,args
+  ;; 	   ,@doc-and-decls
+  ;; 	   (yow)
+  ;; 	   ,@fixed-body))))
   (equal (macroexpand-1 '(defoo hey (x) (+ x x)))
 	 '(defun hey (x) (yow) (+ x x)))
   (equal (macroexpand-1 '(defoo hey (x) "boo"))
@@ -244,15 +251,15 @@
 	   :doc "Things relating to debugging.")
   "dbug"
   (equal "Foo" (with-dbug
-		 (with-output-to-string (*debug-io*)
+		 (with-output-to-string (*dbug-output*)
 		   (dbug "Foo"))))
   (equal "Foobar 23" (with-dbug
-			 (with-output-to-string (*debug-io*)
+			 (with-output-to-string (*dbug-output*)
 			   (dbug "Foo~a ~d" "bar" 23))))
-  (equal "" (with-output-to-string (*debug-io*)
+  (equal "" (with-output-to-string (*dbug-output*)
 	      (dbug "Nope")))
-  (equal "" (with-dbug (without-dbug 
-			   (with-output-to-string (*debug-io*)
+  (equal "" (with-dbug (without-dbug
+			   (with-output-to-string (*dbug-output*)
 			     (dbug "Nope")))))
   ;; (with-dbug-package)
   (equal (format nil "A=1 B=2 C=3 D=4 ~%")
