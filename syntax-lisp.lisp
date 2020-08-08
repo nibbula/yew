@@ -391,6 +391,7 @@ accordingly. Case can be :upper :lower :mixed or :none."
 				   (string s))
 			       (string s)))))))
 
+#|
 (defun format-lisp-comment (comment-string stream &key columns)
   "Output COMMENT-STRING to strea"
   (with-grout (*grout* stream)
@@ -464,6 +465,7 @@ accordingly. Case can be :upper :lower :mixed or :none."
 	  (when dlib:*dbug-facility*
 	    (grout-color :red :black
 			 (s+ "•••••••• Doing the Thing ••••••••" #\newline)))
+	  (dbugf :poo "••••• Doing a Thing •••••~%")
 	  (setf lines
 		(cons (first lines)
 		      (loop :with prefix-len = (length prefix)
@@ -499,12 +501,14 @@ accordingly. Case can be :upper :lower :mixed or :none."
 			     (space-char-p (char next-line 0)))
 			;; Try to use the next line's indentation
 			(print-it (list l) :prefix (leading-space l))
+			;; (print-it (list l) :prefix (leading-space next-line))
 			;; Otherwise just use the first line's indentation.
 			(print-it (list l)
 				  :prefix (subseq l (aref ss 0) (aref ee 0))))))
 	      (newline "ß"))
 	     ;; Line starting with something else?
 	     (t
+	      (dbugf :poo "push other par ~s~%" l)
 	      (push l par)
 	      ;; (when par
 	      ;; 	(print-paragraph)
@@ -520,6 +524,125 @@ accordingly. Case can be :upper :lower :mixed or :none."
 	      )))
 	(when par
 	  (print-paragraph))))))
+|#
+
+(defun format-lisp-comment (comment-string stream &key columns)
+  "Output COMMENT-STRING to strea"
+  (with-grout (*grout* stream)
+    ;; (format t "stream = ~s grout = ~s~%" stream *grout*)
+    (let ((lines (split-sequence #\newline comment-string))
+	  par s e ss ee prefix first-non-blank)
+      (dbugf :poo "2 *grout* = ~s stream = ~s~%" *grout* stream)
+      (labels ((print-it (string-list &key prefix verbatim)
+		 "Print the STRING-LIST with word wrap justification."
+		 ;; (dbugf :poo "print-it ~s~%" string-list)
+		 (grout-color
+		  :white :default
+		  (if verbatim
+		      (s+ (or prefix "") string-list)
+		      (justify-text
+		       (join-by-string string-list #\space)
+		       :prefix (or prefix "")
+		       :stream nil
+		       :cols (or columns (grout-width))))))
+	       (print-paragraph ()
+		 "Print the paragraph that has accumulated in PAR."
+		 (when par
+		   (print-it (nreverse par))
+		   (grout-princ #\newline)
+		   (grout-princ #\newline)
+		   (setf par nil)))
+	       (leading-space (l)
+		 "Return the leading blank space from L."
+		 (multiple-value-setq (s e ss ee)
+		   (scan "^([ \\t]+)[^ \\t]" l))
+		 (when s
+		   (subseq l (aref ss 0) (aref ee 0))))
+	       (set-first-non-blank-line ()
+		 "Set first-non-blank to the first non-blank line or NIL if
+                  there isn't one."
+		 (setf first-non-blank
+		       (find-if (_ (not (zerop (length _)))) (cdr lines))))
+	       (space-char-p (c)
+		 ;; @@@ or maybe some others in unicode but not the same as
+		 ;; char-util:whitespace-p
+		 (find c #(#\space #\tab (char-code 12) ;; #\formfeed
+			   )))
+	       (indented-p ()
+		 "Return true if the lines look like they have a minimum uniform
+                  indent."
+		 (and (> (length lines) 1)
+		      (setf prefix (and (set-first-non-blank-line)
+					(leading-space first-non-blank)))
+		      (every (_ (or (zerop (length _))
+				    (equal prefix (leading-space _))
+				    (= (mismatch prefix _) (length prefix))))
+			     (cdr lines)))))
+	;; Get rid of uniform leading space on every line after the first.
+	;; This usualy comes from the typical style of indenting the docstring
+	;; text to align with it's first line.
+	#|
+	(when (indented-p)
+	  (when dlib:*dbug-facility*
+	    (grout-color :red :black
+			 (s+ "•••••••• Doing the Thing ••••••••" #\newline)))
+	  (dbugf :poo "••••• Doing a Thing •••••~%")
+	  (setf lines
+		(cons (first lines)
+		      (loop :with prefix-len = (length prefix)
+			 :for l :in (cdr lines)
+			 :collect (subseq l (min (length l) prefix-len))))))
+	|#
+	;; Go through the lines and output them as justified paragraphs.
+	(loop :with l
+	   :for ll :on lines :do
+	   (setf l (car ll))
+	   (dbugf :poo "consder line ~s~%" l)
+	   (cond
+	     ;; Empty line
+	     ((zerop (length l))
+	      (print-paragraph))
+	     ;; A line starting with text
+	     ((alphanumericp (char l 0))
+	      (push l par))
+	     ;; A line starting with blanks
+	     ((multiple-value-setq (s e ss ee)
+		(scan "^([ \\t]+)([^ \\t])" l))
+	      (print-paragraph)
+	      ;; Special verbatim line. @@@ Is this even good???
+	      (if (equal "|" (subseq l (aref ss 1) (aref ee 1)))
+		  (print-it (list (subseq l (aref ee 1)))
+			    :verbatim t
+			    :prefix (subseq l (aref ss 0) (aref ee 0)))
+		  (let ((next-line (cadr ll)))
+		    (if (and next-line (not (zerop (length next-line)))
+			     (space-char-p (char next-line 0)))
+			;; Try to use the next line's indentation
+			(print-it l ;; :prefix (leading-space l)
+				  :verbatim t)
+			;; (print-it (list l) :prefix (leading-space next-line))
+			;; Otherwise just use the first line's indentation.
+			(print-it l
+				  ;; :prefix (subseq l (aref ss 0) (aref ee 0))
+				  :verbatim t))))
+	      (grout-princ #\newline))
+	     ;; Line starting with something else?
+	     (t
+	      (dbugf :poo "push other par ~s~%" l)
+	      (push l par)
+	      ;; (when par
+	      ;; 	(print-paragraph)
+	      ;; 	(newline "˚")
+	      ;; 	(setf par nil))
+	      ;; (when new-paragraph
+	      ;; 	(newline "¢")
+	      ;; 	(setf new-paragraph nil))
+	      ;; (grout-color :white :default l)
+	      ;; (dbugf :poo "other line ~s~%" l)
+	      ;; (floo)
+	      ;; (newline "¶")
+	      )))
+	(print-paragraph)))))
 
 (defmethod format-comment-text ((token lisp-token) stream &key columns)
   (check-type (token-object token) string)
