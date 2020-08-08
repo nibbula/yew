@@ -648,16 +648,146 @@ just return SEQUENCE. Elements are compared with TEST which defaults to EQL."
 	(copy-seq sequence))))
 
 ;; @@@ (apply #'s+ nil) sometimes crashes on sbcl?
-(defun s+ (s &rest rest)
+;; probably when safey is off, because it can't doesn't check that you
+;; called it with the wrong number of arguments. So, let's fix it so it doesn't
+;; do that.
+;;
+;; (defun s+ (s &rest rest)
+;;   "Return a string which is the arguments concatenated as if output by PRINC."
+;;   ;; This is usually slower:
+;;   ;; (labels ((as-string (s) (if (stringp s) s (princ-to-string s))))
+;;   ;;   (apply #'concatenate 'string (as-string s) (mapcar #'as-string rest))))
+;;   (if rest
+;;       (with-output-to-string (result)
+;; 	(princ s result)
+;; 	(loop :for x :in rest :do (princ x result)))
+;;       (princ-to-string s)))
+
+(defun s+ (&rest rest)
   "Return a string which is the arguments concatenated as if output by PRINC."
   ;; This is usually slower:
   ;; (labels ((as-string (s) (if (stringp s) s (princ-to-string s))))
   ;;   (apply #'concatenate 'string (as-string s) (mapcar #'as-string rest))))
-  (if rest
-      (with-output-to-string (result)
-	(princ s result)
-	(loop :for x :in rest :do (princ x result)))
-      (princ-to-string s)))
+  (macrolet ((to-string (x)
+	       `(if (stringp ,x) ,x (princ-to-string ,x))))
+    (cond
+      ((null rest) (make-string 0))
+      (t
+       ;; Here's 3 different possible versions.
+       ;; This should pick the one that's fastest for the implementation.
+       ;; Currently version 1 is fastest for ECL, and version 3 seems fastest
+       ;; for others I tested: CCL, CLISP, ECL.
+       ;;
+       ;; Version 1: string streams
+       #+ecl
+       (with-output-to-string (result)
+	 (loop :for x :in rest :do (princ x result)))
+       ;;
+       ;; Version 2: adjustable strings
+       ;;
+       ;; (let ((result (make-array 0 :element-type 'character
+       ;; 			       :fill-pointer 0 :adjustable t
+       ;; 			       :initial-element (code-char 0)))
+       ;; 	   (new-size 0)
+       ;; 	   (old-len 0)
+       ;; 	   (str ""))
+       ;;   (declare (type fixnum new-size)
+       ;; 		(type string str))
+       ;;   (loop :for s :in rest :do
+       ;; 	  (setf str (if (stringp s) s (princ-to-string s))
+       ;; 		old-len (fill-pointer result)
+       ;; 		new-size (+ old-len (length str)))
+       ;; 	  (when (>= new-size (array-total-size result))
+       ;; 	    (setf result (adjust-array result new-size)))
+       ;; 	  (incf (fill-pointer result) (length str))
+       ;; 	  (setf (subseq result old-len new-size) str))
+       ;;   result)
+       ;;
+       ;; Version 3: reduce by concatenate
+       #-ecl
+       (if (not (cdr rest))
+	   ;; reduce only works for at least 2 elements
+	   (to-string (car rest))
+	   (reduce (lambda (a b)
+		     (concatenate 'string
+				  (if (stringp a) a (princ-to-string a))
+				  (if (stringp b) b (princ-to-string b))))
+		   rest))
+       ))))
+
+;; Version 0: apply concatenate
+;; This version probably shouldn't be used due to apply limits.
+#+(or)
+(defun s0+ (&rest rest)
+  "Return a string which is the arguments concatenated as if output by PRINC."
+  (labels ((as-string (s) (if (stringp s) s (princ-to-string s))))
+    (apply #'concatenate 'string (mapcar #'as-string rest))))
+
+;; Version 1: string streams
+#+(or)
+(defun s1+ (&rest rest)
+  "Return a string which is the arguments concatenated as if output by PRINC."
+  (macrolet ((to-string (x)
+	       `(if (stringp ,x) ,x (princ-to-string ,x))))
+    (cond
+      ((null rest) (make-string 0))
+      (t
+       (with-output-to-string (result)
+	 (loop :for x :in rest :do (princ x result)))))))
+
+;; Version 2: adjustable strings
+#+(or)
+(defun s2+ (&rest rest)
+  "Return a string which is the arguments concatenated as if output by PRINC."
+  (macrolet ((to-string (x)
+	       `(if (stringp ,x) ,x (princ-to-string ,x))))
+    (cond
+      ((null rest) (make-string 0))
+      (t
+       (let ((result (make-array 0 :element-type 'character
+				 :fill-pointer 0 :adjustable t
+				 :initial-element (code-char 0)))
+	     (new-size 0)
+	     (old-len 0)
+	     (str ""))
+         (declare (type fixnum new-size)
+		  (type string str))
+         (loop :for s :in rest :do
+	    (setf str (if (stringp s) s (princ-to-string s))
+		  old-len (fill-pointer result)
+		  new-size (+ old-len (length str)))
+	    (when (>= new-size (array-total-size result))
+	      (setf result (adjust-array result new-size)))
+	    (incf (fill-pointer result) (length str))
+	    (setf (subseq result old-len new-size) str))
+         result)))))
+
+;; Version 3: reduce by concatenate
+#+(or)
+(defun s3+ (&rest rest)
+  "Return a string which is the arguments concatenated as if output by PRINC."
+  (macrolet ((to-string (x)
+	       `(if (stringp ,x) ,x (princ-to-string ,x))))
+    (cond
+      ((null rest) (make-string 0))
+      (t
+       (if (not (cdr rest))
+	   ;; reduce only works for at least 2 elements
+	   (to-string (car rest))
+	   (reduce (lambda (a b)
+		     (concatenate 'string
+				  (if (stringp a) a (princ-to-string a))
+				  (if (stringp b) b (princ-to-string b))))
+		   rest))))))
+
+;; This seems likely to make things faster on any implementation.
+(define-compiler-macro s+ (&whole whole &rest rest)
+  "Special case for all string arguments."
+  (cond
+    ((null rest) (make-string 0))
+    ((every #'stringp rest)
+     `(concatenate 'string ,@rest))
+    (t whole)))
 
 (defparameter *ascii-whitespace*
   ;;#(#\tab #\newline #-gcl #\vt #\page #\return #\space)
