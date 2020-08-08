@@ -1,6 +1,6 @@
-;;
-;; syntax-lisp.lisp - Things for dealing with the syntax of Lisp code
-;;
+;;;
+;;; syntax-lisp.lisp - Things for dealing with the syntax of Lisp code
+;;;
 
 (defpackage :syntax-lisp
   (:documentation
@@ -15,6 +15,7 @@
    #:lisp-symbol-token
    #:read-token
    #:matching-paren-position
+   #:format-lisp-comment
    ))
 (in-package :syntax-lisp)
 
@@ -89,12 +90,13 @@
     :multiple-escape
     :whitespace))
 
-;;; @@@ I really want a tree here, but: collections.lisp!
+;;; @@@ I really might want a better data structure here.
 ;;; @@@ Assuming contiguous & increasing 0-9 A-Z a-z
-(defparameter *char-type*
-  `((#\Backspace . :constituent)
-    ,@(loop :for i :from 0 :to 9 :do
-	 (cons (char (princ-to-string i) 0) :constituent))
+(defparameter *char-type-table*
+  (alist-to-hash-table
+   `((#\Backspace . :constituent)
+    ,@(loop :for i :from 0 :to 9
+	 :collect (cons (digit-char i) :constituent))
     (#\Tab       . :whitespace)
     (#\Newline   . :whitespace)
     (#\Linefeed  . :whitespace)
@@ -110,8 +112,8 @@
     (#\>         . :constituent)
     (#\?         . :constituent*)
     (#\@         . :constituent)
-    ,@(loop :for i :from (char-code #\A) :to (char-code #\Z) :do
-	 (cons (code-char i) :constituent))
+    ,@(loop :for i :from (char-code #\A) :to (char-code #\Z)
+	 :collect (cons (code-char i) :constituent))
     (#\#         . :non-terminating)
     (#\$         . :constituent)
     (#\%         . :constituent)
@@ -125,8 +127,8 @@
     (#\^         . :constituent)
     (#\_         . :constituent)
     (#\`         . :terminating)
-    ,@(loop :for i :from (char-code #\a) :to (char-code #\z) :do
-       (cons (code-char i) :constituent))
+    ,@(loop :for i :from (char-code #\a) :to (char-code #\z)
+	 :collect (cons (code-char i) :constituent))
     (#\*         . :constituent)
     (#\+         . :constituent)
     (#\,         . :terminating)
@@ -137,12 +139,12 @@
     (#\|         . :multiple-escape)
     (#\}         . :constituent*)
     (#\~         . :constituent)
-    (#\Rubout    . :constituent)))
+    (#\Rubout    . :constituent))))
 
 (defun char-type (c)
   "Return the character type of the character C."
   (check-type c character)
-  (cdr (find c *char-type* :key #'car)))
+  (gethash c *char-type-table*))
 
 (deftype token-type ()
   '(member
@@ -389,17 +391,25 @@ accordingly. Case can be :upper :lower :mixed or :none."
 				   (string s))
 			       (string s)))))))
 
-(defmethod format-comment-text ((token lisp-token) stream &key columns)
-  (check-type (token-object token) string)
+(defun format-lisp-comment (comment-string stream &key columns)
+  "Output COMMENT-STRING to strea"
   (with-grout (*grout* stream)
     ;; (format t "stream = ~s grout = ~s~%" stream *grout*)
-    (let ((lines (split-sequence #\newline (token-object token)))
+    (let ((lines (split-sequence #\newline comment-string))
 	  par new-paragraph s e ss ee prefix first-non-blank)
       (declare (ignorable e))
-      (labels ((newline (x)
-		 (grout-princ (if dlib:*dbug* (s+ x #\newline) #\newline)))
+      (dbugf :poo "2 *grout* = ~s stream = ~s~%" *grout* stream)
+      (labels ((floo () #|(terminal:tt-finish-output) (terminal:tt-get-key) |#)
+	       (newline (x)
+		 (grout-princ
+		  (if dlib:*dbug-facility* (s+ x #\newline) #\newline))
+		 ;; (grout-format "~%")
+		 ;; (write-char #\newline stream)
+		 (floo)
+		 )
 	       (print-it (string-list &key prefix verbatim)
 		 "Print the STRING-LIST with word wrap justification."
+		 (dbugf :poo "print-it ~s~%" string-list)
 		 (grout-color
 		  :white :default
 		  (if verbatim
@@ -409,7 +419,9 @@ accordingly. Case can be :upper :lower :mixed or :none."
 		       (join-by-string string-list #\space)
 		       :prefix (or prefix "")
 		       :stream nil
-		       :cols (or columns (grout-width))))))
+		       :cols (or columns (grout-width)))))
+		 (floo)
+		 )
 	       (print-paragraph ()
 		 "Print the paragraph that has accumulated in PAR."
 		 (when par
@@ -430,6 +442,11 @@ accordingly. Case can be :upper :lower :mixed or :none."
                   there isn't one."
 		 (setf first-non-blank
 		       (find-if (_ (not (zerop (length _)))) (cdr lines))))
+	       (space-char-p (c)
+		 ;; @@@ or maybe some others in unicode but not the same as
+		 ;; char-util:whitespace-p
+		 (find c #(#\space #\tab (char-code 12) ;; #\formfeed
+			   )))
 	       (indented-p ()
 		 "Return true if the lines look like they have a minimum uniform
                   indent."
@@ -444,7 +461,7 @@ accordingly. Case can be :upper :lower :mixed or :none."
 	;; This usualy comes from the typical style of indenting the docstring
 	;; text to align with it's first line.
 	(when (indented-p)
-	  (when dlib:*dbug*
+	  (when dlib:*dbug-facility*
 	    (grout-color :red :black
 			 (s+ "•••••••• Doing the Thing ••••••••" #\newline)))
 	  (setf lines
@@ -453,7 +470,9 @@ accordingly. Case can be :upper :lower :mixed or :none."
 			 :for l :in (cdr lines)
 			 :collect (subseq l (min (length l) prefix-len))))))
 	;; Go through the lines and output them as justified paragraphs.
-	(loop :for l :in lines :do
+	(loop :with l
+	   :for ll :on lines :do
+	   (setf l (car ll))
 	   (cond
 	     ;; Empty line
 	     ((zerop (length l))
@@ -475,22 +494,36 @@ accordingly. Case can be :upper :lower :mixed or :none."
 		  (print-it (list (subseq l (aref ee 1)))
 			    :verbatim t
 			    :prefix (subseq l (aref ss 0) (aref ee 0)))
-		  (print-it (list l)
-			    :prefix (subseq l (aref ss 0) (aref ee 0))))
+		  (let ((next-line (cadr ll)))
+		    (if (and next-line (not (zerop (length next-line)))
+			     (space-char-p (char next-line 0)))
+			;; Try to use the next line's indentation
+			(print-it (list l) :prefix (leading-space l))
+			;; Otherwise just use the first line's indentation.
+			(print-it (list l)
+				  :prefix (subseq l (aref ss 0) (aref ee 0))))))
 	      (newline "ß"))
 	     ;; Line starting with something else?
 	     (t
-	      (when par
-		(print-paragraph)
-		(newline "˚")
-		(setf par nil))
-	      (when new-paragraph
-		(newline "¢")
-		(setf new-paragraph nil))
-	      (grout-color :white :default l)
-	      (newline "¶"))))
+	      (push l par)
+	      ;; (when par
+	      ;; 	(print-paragraph)
+	      ;; 	(newline "˚")
+	      ;; 	(setf par nil))
+	      ;; (when new-paragraph
+	      ;; 	(newline "¢")
+	      ;; 	(setf new-paragraph nil))
+	      ;; (grout-color :white :default l)
+	      ;; (dbugf :poo "other line ~s~%" l)
+	      ;; (floo)
+	      ;; (newline "¶")
+	      )))
 	(when par
 	  (print-paragraph))))))
+
+(defmethod format-comment-text ((token lisp-token) stream &key columns)
+  (check-type (token-object token) string)
+  (format-lisp-comment (token-object token) stream :columns columns))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -783,6 +816,15 @@ exponent      <- exponent-marker [sign] {digit}+
 
 ;;(defule lisp-expr (? whitespace) (macro-char
 
+|#
+
+#|
+(defmethod colorize ((syntax syntax-lisp) string)
+  (let ((fs (etypecase string
+	      (fat-string string)
+	      (string (make-fat-tring string)))))
+    (positioning-read-from-string )
+  )
 |#
 
 ;; EOF
