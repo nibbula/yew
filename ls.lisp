@@ -43,6 +43,7 @@
   table-renderer	; so we don't have to keep remaking it
   outer-terminal	; keep track of *terminal* when we were called
   mixed-bag		; True if we were asked to list some dirs and non-dirs
+  recurring		; True if we're doing multiple listings
   (first-dir t)		; True if this is the first directory printed.
   signal-errors		; True to signal errors
   nice-table)		; Keep the result table around
@@ -286,12 +287,13 @@ by nos:read-directory."))
 (defun mime-type-string (file table)
   (or (gethash file table)
       (setf (gethash file table)
-	    (let ((type (magic:guess-file-type (file-item-name file))))
-	      (or (and type
-		       (s+ (magic:content-type-category type)
-			   "/"
-			   (magic:content-type-name type)))
-		  "")))))
+	    (with-error-handling (t)
+	      (let ((type (magic:guess-file-type (item-full-path file))))
+		(or (and type
+			 (s+ (magic:content-type-category type)
+			     "/"
+			     (magic:content-type-name type)))
+		    ""))))))
 
 (defun sort-files-by (file-list key &optional reverse dir)
   (case key
@@ -429,8 +431,7 @@ by nos:read-directory."))
 	      :format ,(lambda (n width)
 			 (format nil "~va" width
 				 (format-the-date n date-format today a-year))))
-       (:name "Name"))
-     )
+       (:name "Name")))
     #-unix
     (make-table-from
      (loop
@@ -462,8 +463,7 @@ by nos:read-directory."))
 	      :format ,(lambda (n width)
 			 (format nil "~va" width
 				 (format-the-date n date-format today a-year))))
-       (:name "Name"))
-     )))
+       (:name "Name")))))
 
 (defun format-short (file dir show-size)
   (if show-size
@@ -532,7 +532,7 @@ by nos:read-directory."))
   "Gather file information for displaying as specified in the plist ARGS, which
 is mostly the args from ‘ls’ command. Returns two values, the list of FILE-ITEMs
 gathered, and a list of directories to be recursively listed."
-  (let* (main-list
+  (let* (main-list dir-list file-list
 	 (sort-by (getf args :sort-by))
 	 (recursive (getf args :recursive))
 	 results item more)
@@ -548,11 +548,12 @@ gathered, and a list of directories to be recursively listed."
 						(file-path f)))
 		 (t (make-full-item (path-file-name f)
 				    (path-directory-name f))))))
+      #|
       (loop :for file :in (getf args :files)
 	 :do
 	 (if (and (is-dir file) (not (getf args :directory)))
 	     (with-error-handling ((file-path file))
-	       ;; (format t "Jang dir ~s~%" (file-path file))
+	       (dbugf :ls "Jang dir ~s~%" (file-path file))
 	       (loop :for x :in
 		  (read-directory
 		   :full t :dir (file-path file)
@@ -565,13 +566,59 @@ gathered, and a list of directories to be recursively listed."
 		     (push item more))
 		   (push item results))))
 	     (progn
-	       ;; (format t "Jing file~%")
+	       (dbugf :ls "Jing file~%")
 	       (when-not-missing
 		(setf item (file-item file file))
 		;; (when (and recursive (eq (file-item-type item) :directory))
 		;;   (push item more))
 		(push item main-list))
 	       (setf (ls-state-mixed-bag *ls-state*) t))))
+      |#
+      ;; Separate the files into directories and regular files if we weren't
+      ;; given the -d flag.
+      (if (not (getf args :directory))
+	  (progn
+	    (loop :for file :in (getf args :files)
+	       :do
+	       (if (is-dir file)
+		   (push file dir-list)
+		   (push file file-list)))
+	    (setf file-list (nreverse file-list)
+		  dir-list (nreverse dir-list)))
+	  (setf file-list (getf args :files)))
+      ;; (dbugf :ls "file-list ~s~%dir-list ~s~%" file-list dir-list)
+
+      ;; Collect the file-list into main-list.
+      (loop :for file :in file-list
+	 :do
+	 ;; (dbugf :ls "Jing file~%")
+	 (when-not-missing
+	  (setf item (file-item file file))
+	  ;; (when (and recursive (eq (file-item-type item) :directory))
+	  ;;   (push item more))
+	  (push item main-list))
+	 (setf (ls-state-mixed-bag *ls-state*) t))
+
+      ;; Deal with the dir-list.
+      (if (cdr dir-list)
+	  ;; If it's more than one, list them after.
+	  (setf more dir-list)
+	  ;; otherwise list it now
+	  (when dir-list
+	    (let ((file (first dir-list)))
+	      (with-error-handling ((file-path file))
+		;; (dbugf :ls "Jang dir ~s~%" (file-path file))
+		(loop :for x :in
+		   (read-directory
+		    :full t :dir (file-path file)
+		    :omit-hidden (not (getf args :hidden)))
+		   :do
+		   (when-not-missing
+		    (setf item (file-item x file))
+		    ;; (format t "Floop~%")
+		    (when (and recursive (eq (file-item-type item) :directory))
+		      (push item more))
+		    (push item results)))))))
 
       ;; group all the individual files into a list
       (setf results (cond
@@ -663,8 +710,9 @@ command for details. If LABEL-DIR is true, print directory labels."
 	(when files
 	  (print-it (car files))
 	  (loop :for list :in (cdr files) ::do
-	     (grout-princ #\newline)
-	     (print-it list))))))
+	     (when list
+	       (grout-princ #\newline)
+	       (print-it list)))))))
 
 (defun list-files (&rest args &key files long 1-column wide hidden directory
 				sort-by reverse date-format show-size
@@ -691,6 +739,7 @@ command for details. If LABEL-DIR is true, print directory labels."
     (with-grout ()
       (flet ((recur ()
 	       (let ((new-args (copy-list args)))
+		 (setf (ls-state-recurring *ls-state*) t)
 		 (loop :for x :in more :do
 		    (setf (getf new-args :files) (list x))
 		    ;; (format t "~&--> ") (finish-output) (read-line)
@@ -705,10 +754,11 @@ command for details. If LABEL-DIR is true, print directory labels."
 	(setf (values file-info more) (gather-file-info args))
 	(cond
 	  (file-info
-	   (present-files file-info args recursive))
-	  ((and (/= (length files) 1) (is-dir (car files)))
-	   ;; (print-dir-label (car files))))
-	   (print-dir-label (item-full-path (make-full-item (car files)))))
+	   (present-files file-info args (or recursive
+					     (ls-state-recurring *ls-state*))))
+	  ;; ((and (/= (length files) 1) (is-dir (car files)))
+	  ;;  ;; (print-dir-label (car files))))
+	  ;;  (print-dir-label (item-full-path (make-full-item (car files)))))
 	  )
 	(if collect
 	    (if more
@@ -793,6 +843,10 @@ traditional ‘ls’ command."
   (flet ((thunk ()
 	   (if (and lish:*input* (listp lish:*input*))
 	       (apply #'list-files :files lish:*input* args)
+	       ;; (progn
+	       ;; 	 (setf (getf args :files)
+	       ;; 	       (append lish:*input* (getf args :files)))
+	       ;; 	 (apply #'list-files args))
 	       (apply #'list-files args))))
     (if (or collect nice-table)
 	(setf lish:*output*
