@@ -34,32 +34,32 @@
 
 #|
 (defparameter *default-cols*
-  `((:name ("Filesystem"))
-    (:name ("Size"  :right) :type number :format ,#'size-out-with-width)
-    (:name ("Used"  :right) :type number :format ,#'size-out-with-width)
-    (:name ("Avail" :right) :type number :format ,#'size-out-with-width)
-    (:name ("Use%"  :right) :type number :width 4 :format "~*~3d%")
-    (:name ("Mounted on"))))
+  `((:name "Filesystem")
+    (:name "Size"  :align :right :type number :format ,#'size-out-with-width)
+    (:name "Used"  :align :right :type number :format ,#'size-out-with-width)
+    (:name "Avail" :align :right :type number :format ,#'size-out-with-width)
+    (:name "Use%"  :align :right :type number :width 4 :format "~*~3d%")
+    (:name "Mounted on")))
 
 (defparameter *type-cols*
-  `((:name ("Filesystem"))
-    (:name ("Type"))
-    (:name ("Size"  :right) :type number :format ,#'size-out-with-width)
-    (:name ("Used"  :right) :type number :format ,#'size-out-with-width)
-    (:name ("Avail" :right) :type number :format ,#'size-out-with-width)
-    (:name ("Use%"  :right) :type number :width 4 :format "~*~3d%")
-    (:name ("Mounted on"))))
+  `((:name "Filesystem")
+    (:name "Type")
+    (:name "Size"  :align :right :type number :format ,#'size-out-with-width)
+    (:name "Used"  :align :right :type number :format ,#'size-out-with-width)
+    (:name "Avail" :align :right :type number :format ,#'size-out-with-width)
+    (:name "Use%"  :align :right :type number :width 4 :format "~*~3d%")
+    (:name "Mounted on")))
 |#
 
 (defun column-data (show-type visual)
-  `((:name ("Filesystem"))
-    ,@(if show-type '((:name ("Type"))) nil)
-    (:name ("Size"  :right) :type number :format ,#'size-out-with-width)
-    (:name ("Used"  :right) :type number :format ,#'size-out-with-width)
-    (:name ("Avail" :right) :type number :format ,#'size-out-with-width)
-    (:name ("Use%"  :right) :type number :width 4 :format "~*~3d%")
+  `((:name "Filesystem")
+    ,@(if show-type '((:name "Type")) nil)
+    (:name "Size"  :align :right :type number :format ,#'size-out-with-width)
+    (:name "Used"  :align :right :type number :format ,#'size-out-with-width)
+    (:name "Avail" :align :right :type number :format ,#'size-out-with-width)
+    (:name "Use%"  :align :right :type number :width 4 :format "~*~3d%")
     ,@(if visual '((:name "Free Space")) nil)
-    (:name ("Mounted on"))))
+    (:name "Mounted on")))
 
 (defvar *cols* nil "Current column data.")
 

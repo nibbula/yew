@@ -421,7 +421,7 @@ by nos:read-directory."))
        (:name "Links" :type number)
        (:name "User")
        (:name "Group")
-       (:name ("Size" :right) :type number
+       (:name "Size" :align :right :type number
 	      :format ,(lambda (n width)
 			 (format nil "~v@a" width
 				 (format-the-size n size-format))))
@@ -454,7 +454,7 @@ by nos:read-directory."))
      :columns
      `((:name "Type")
        (:name "Flags")
-       (:name ("Size" :right) :type number
+       (:name "Size" :align :right :type number
 	      :format ,(lambda (n width)
 			 (format nil "~v@a" width
 				 (format-the-size n size-format))))

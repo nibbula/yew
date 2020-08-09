@@ -1,6 +1,6 @@
-;;
-;; file.lisp - WTF is this file?
-;;
+;;;
+;;; file.lisp - WTF is this file?
+;;;
 
 (defpackage :file
   (:documentation "I can't believe you.")
@@ -79,6 +79,7 @@ data, otherwise just print the description."
    (brief boolean :short-arg #\b :help "Don't output file names.")
    (collect boolean :short-arg #\c
     :help "True to set *output* to a sequence of content-type structures.")
+   (table boolean :short-arg #\T :help "*output* to a table.")
    (files pathname #|:optional nil XXX |# :repeating t
     :help "Files to identify.")
    (signal-errors boolean :short-arg #\E
@@ -127,7 +128,29 @@ data, otherwise just print the description."
 		(push (list "*standard-input*"
 			    (describe-content-type content :full full))
 		      results))))
-	(when collect
-	  (setf lish:*output* (nreverse results)))))))
+	(when (or collect table)
+	  (setf results (nreverse results))
+	  (setf lish:*output*
+		(if table
+		    (make-table-from
+		     (loop :for r :in results
+			:collect
+			(let ((tt (second r)))
+			  (vector (first r)
+				   (content-type-name tt)
+				   (content-type-category tt)
+				   (content-type-description tt)
+				   (content-type-file-name-match tt)
+				   (content-type-encoding tt)
+				   (content-type-properties tt))))
+		     :columns
+		     '((:name "File")
+		       (:name "Type")
+		       (:name "Category")
+		       (:name "Description")
+		       (:name "Match")
+		       (:name "Encoding")
+		       (:name "Properties")))
+		    results)))))))
 
 ;; EOF

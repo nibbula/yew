@@ -1,6 +1,6 @@
-;;
-;; apropos.lisp - What can I say?
-;;
+;;;
+;;; apropos.lisp - What can I say?
+;;;
 
 (defpackage :apropos
   (:documentation "Dans lequel nous échouons preuve d'à propos.")

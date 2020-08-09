@@ -405,11 +405,15 @@ user, pid, ppid, size, command."
 				  out-list)))
       (setf table (make-table-from
 		   out-list
-		   :column-names
-		   '("User" ("PID" :right) ("Size" :right) "Command")))
-      (table-set-column-type table 1 'number)
-      (table-set-column-type table 2 'number)
-      (table-set-column-format table 2 #'ps-print-size-with-width)
+		   :columns
+		   `((:name "User")
+		     (:name "PID"  :align :right :type number)
+		     (:name "Size" :align :right :type number
+		      :format ,#'ps-print-size-with-width)
+		     (:name "Command"))))
+      ;; (table-set-column-type table 1 'number)
+      ;; (table-set-column-type table 2 'number)
+      ;; (table-set-column-format table 2 #'ps-print-size-with-width)
       (when print
 	(grout-print-table table :trailing-spaces nil))
       table)))
@@ -458,24 +462,25 @@ user, pid, ppid, size, command."
 	       (fix-time wos::ms-process-user-time)))
 	(loop
 	   :for col :in (table:table-columns table)
-	   :for name :in '(("PID" :right)
-			   ("PPID" :right)
-			   ("Thread" :right)
-			   ("Priority" :right)
-			   "Create"
-			   "Exit"
-			   "Kernel"
-			   "User"
-			   ("GUI" :right)
-			   ("Handles" :right)
-			   ("Max WS" :right)
-			   ("Min WS" :right)
-			   "Name"
-			   "File")
+	   :for (name align) :in '(("PID" :right)
+				   ("PPID" :right)
+				   ("Thread" :right)
+				   ("Priority" :right)
+				   ("Create")
+				   ("Exit")
+				   ("Kernel")
+				   ("User")
+				   ("GUI" :right)
+				   ("Handles" :right)
+				   ("Max WS" :right)
+				   ("Min WS" :right)
+				   ("Name")
+				   ("File"))
 	   ;; :for type :in '(number number number number string string
 	   ;; 		     string string number number number number
 	   ;; 		     string string)
-	   :do (setf (table:column-name col) name)))
+	   :do (setf (table:column-name col) name
+		     (table:column-align col) align)))
       (when print
 	(grout-print-table
 	 table :trailing-spaces nil :long-titles t :max-width nil))
