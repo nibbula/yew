@@ -18,7 +18,7 @@
   (:export
    ;; column struct
    #:column #:make-column #:column-name #:column-type #:column-width
-   #:column-format
+   #:column-format #:column-align
    ;; table
    #:table #:table-columns
    #:mem-table
@@ -46,6 +46,8 @@
   type   - A Lisp type.
   width  - An integer specifying the desired display width.
   format - A format string for `format', or a format function.
+  align  - An alignment such as :left or :right. If NIL, it means the printer
+           can make the decision. Format can override this.
 
 Table cell formmating functions should accept CELL and WIDTH, and should be
 able accept WIDTH as NIL, to indicate no width limitation. Also, formmating
@@ -53,7 +55,8 @@ strings should be alble to be prepended with ~* to ignore the width argument."
   (name nil)
   (type t)
   (width 0)
-  (format nil))
+  (format nil)
+  (align nil))
 
 (defclass table ()
   ((columns :initarg :columns
@@ -77,11 +80,14 @@ attributes."))
 	    :documentation "List of column names that are indexed."))
   (:documentation "A table that is stored in a database."))
 
-(defun table-add-column (table name &key type width)
-  "Shorthand for adding a column to a table."
-  (let ((col (make-column :name name)))
-    (when type  (setf (column-type  col) type))
-    (when width (setf (column-width col) width))
+(defun table-add-column (table name &key type width format align)
+  "Shorthand for adding a column to a table. Name can be just the name or a
+column structure."
+  (let ((col (or (and (column-p name) name) (make-column :name name))))
+    (when type   (setf (column-type   col) type))
+    (when width  (setf (column-width  col) width))
+    (when format (setf (column-format col) format))
+    (when align  (setf (column-align  col) align))
     (setf (table-columns table) (nconc (table-columns table) (list col)))))
 
 ;; I wish I could specialize on unsigned-byte.
@@ -111,12 +117,22 @@ attributes."))
 ;; Could be done with defsetf table-column-format
 (defgeneric table-set-column-format (table col format)
   (:documentation "Update the column format.")
-  (:method (table (col string) type)
+  (:method (table (col string) format)
     (setf (column-format
 	   (find col (table-columns table) :test #'string= :key #'column-name))
-	   type))
-  (:method (table (col integer) type)
-    (setf (column-format (nth col (table-columns table))) type)))
+	   format))
+  (:method (table (col integer) format)
+    (setf (column-format (nth col (table-columns table))) format)))
+
+;; Could be done with defsetf table-column-align
+(defgeneric table-set-column-align (table col align)
+  (:documentation "Update the column alignment.")
+  (:method (table (col string) align)
+    (setf (column-align
+	   (find col (table-columns table) :test #'string= :key #'column-name))
+	   align))
+  (:method (table (col integer) align)
+    (setf (column-align (nth col (table-columns table))) align)))
 
 (defun table-column-number (name table &key (test #'equal))
   "Return the ordinal number of column named NAME from from TABLE, comparing
@@ -133,16 +149,15 @@ found."
   (:documentation
    "Make a table from another object type.
 
-- OBJECT       An alist or a list of mappable things, or a hash-table, or a
-               uniform vector of other mappable types, or a 2d array.
-- TYPE         The class of the instance to create, which should be a
-               sub-class of MEM-TABLE.
-- COLUMN-NAME  A list of column names, which should match the number of
-               columns in OBJECT.
-- COLUMNS      A list of plists for initializing table-columns, which should
-               match the number of columns in OBJECT. E.g.:
-               '((:name \"foo\" :type 'number :format \"[~d]\"))
-"))
+ OBJECT       An alist or a list of mappable things, or a hash-table, or a
+              uniform vector of other mappable types, or a 2d array.
+ TYPE         The class of the instance to create, which should be a
+              sub-class of MEM-TABLE.
+ COLUMN-NAME  A list of column names, which should match the number of
+              columns in OBJECT.
+ COLUMNS      A list of plists for initializing table-columns, which should
+              match the number of columns in OBJECT. E.g.:
+              '((:name \"foo\" :type 'number :format \"[~d]\"))"))
 
 (defun uniform-classes (sequence)
   "Return true if every class in SEQUENCE is a subtype of the first element."

@@ -1,6 +1,6 @@
-;;
-;; table-print.lisp - Print tables
-;;
+;;;
+;;; table-print.lisp - Print tables
+;;;
 
 (defpackage :table-print
   (:documentation
@@ -208,10 +208,15 @@ function."
        :and i = 0 :then (1+ i)
        :and col :in (table-columns table)
        :do
-       (setf size (elt sizes i)
-	     width (if (listp size) (car size) size)
-	     justification (if (listp size)
-			       (cadr size)
+       (setf size (elt sizes i))
+       (assert (not (consp size)) () "Size shouldn't be a list anymore.")
+       ;; (setf width (if (listp size) (car size) size)
+       ;; 	     justification (if (listp size)
+       ;; 			       (cadr size)
+       ;; 			       (table-output-column-type-justification
+       ;; 				renderer table (column-type col))))
+       (setf width size
+	     justification (or (column-align col)
 			       (table-output-column-type-justification
 				renderer table (column-type col))))
        (table-output-column-title renderer table title width justification i))
@@ -228,8 +233,12 @@ function."
 (defmethod table-output-cell-display-width (renderer table cell column
 					    &key (use-given-format t))
   "Return the display width for a table cell."
+  ;; @@@ The list check was for when we would have the align in the name, but
+  ;; probably shouldn't be used anymore, and can be removed eventually.
+  ;; (assert (not (consp cell)) () "Cell shouldn't be a list anymore.")
   (display-length (table-format-cell renderer table
-				     (if (listp cell) (car cell) cell)
+				     ;; (if (listp cell) (car cell) cell)
+				     cell
 				     nil column
 				     :use-given-format use-given-format)))
 
@@ -351,17 +360,25 @@ function."
   "Output all the column titles."
   (princ "| ")
   (loop :with str :and fmt :and size :and just
-     :for title :in titles :and i = 0 :then (1+ i) :do
-     (if (listp (aref sizes i))
-	 (setf size (car (aref sizes i))
-	       just (cadr (aref sizes i)))
-	 (setf size (aref sizes i)
-	       just :left))
-     (if (listp title)
-	 (setf str (first title)
-	       fmt (if (eql just :right) "~v@a" "~va"))
-	 (setf str title
-	       fmt "~va"))
+     :for title :in titles
+     :and i = 0 :then (1+ i)
+     :do
+     (setf size (aref sizes i)
+	   just (or (column-align (oelt (table-columns table) i)) :left))
+     (assert (not (consp size)) () "Size shouldn't be a list anymore.")
+     ;; (if (listp (aref sizes i))
+     ;; 	 (setf size (car (aref sizes i))
+     ;; 	       just (cadr (aref sizes i)))
+     ;; 	 (setf size (aref sizes i)
+     ;; 	       just :left))
+     (assert (not (consp title)) () "Title shouldn't be a list anymore.")
+     ;; (if (listp title)
+     ;; 	 (setf str (first title)
+     ;; 	       fmt (if (eql just :right) "~v@a" "~va"))
+     ;; 	 (setf str title
+     ;; 	       fmt "~va"))
+     (setf str title
+	   fmt (if (eql just :right) "~v@a" "~va"))
      (format t (s+ fmt " | ")
       	     size
       	     (subseq str 0 (min (length str) size))))
@@ -404,8 +421,10 @@ function."
     (princ "+")
     (loop
        :for s :across sizes :do
+       (assert (not (consp s)) () "Size shouldn't be a list anymore.")
        (format t "~v,,,va+" (+ 2 #| one space of padding on either side |#
-			       (if (listp s) (car s) s))
+			       ;; (if (listp s) (car s) s))
+			       s)
 	       #\- #\-))
     (terpri)))
 
@@ -458,7 +477,7 @@ function."
 (defmethod table-output-column-titles ((renderer text-table-renderer)
 				       table titles &key sizes)
   "Output all the column titles."
-  (declare (ignore table))
+  ;; (declare (ignore table))
   (with-slots (separator cursor horizontal-line-char) renderer
     (setf cursor 0)
     (let ((sep-len (display-length separator))
@@ -470,13 +489,20 @@ function."
 	 :for col :in titles
 	 :and i :from 0 :below (length sizes)
 	 :do
-	 (setf size (car (aref sizes i))
-	       just (cadr (aref sizes i)))
-	 (if (listp col)
-	     (setf str (first col)
-		   fmt (if (eql just :right) "~v@a" "~va"))
-	     (setf str col
-		   fmt "~va"))
+	 (assert (not (consp (aref sizes i))) ()
+		 "Size shouldn't be a list anymore")
+	 ;; (setf size (car (aref sizes i))
+	 ;;       just (cadr (aref sizes i)))
+	 (setf size (aref sizes i)
+	       just (column-align (oelt (table-columns table) i)))
+	 (assert (not (consp col)) () "Column title shouldn't be a list anymore")
+	 ;; (if (listp col)
+	 ;;     (setf str (first col)
+	 ;; 	   fmt (if (eql just :right) "~v@a" "~va"))
+	 ;;     (setf str col
+	 ;; 	   fmt "~va"))
+	 (setf str col
+	       fmt (if (eql just :right) "~v@a" "~va"))
 	 (format stream fmt size
 		 (subseq (string-capitalize (substitute #\space #\_ str))
 			 0 (min (length str) size)))
@@ -492,7 +518,8 @@ function."
       (loop :with len = (length sizes) :and size
 	 :for i :from 0 :below len
 	 :do
-	 (setf size (car (aref sizes i)))
+	 ;; (setf size (car (aref sizes i)))
+	 (setf size (aref sizes i))
 	 ;; (format stream "~v,,,va" size #\- #\-)
 	 (format stream "~v,,,va" size horizontal-line-char
 		 horizontal-line-char)
@@ -515,17 +542,22 @@ column number."
 
 (defun column-name-sizes (column-names long-titles)
   ;; Initial column sizes from labels
+  ;; @@@ shouldn't this use display-width instead of length?
   (loop :for field :in column-names
      :collect (typecase field
 		(string
 		 (if long-titles (length field) nil))
+		;; @@@ We shouldn't hit this case anymore, so eventually get rid
+		;; of it.
 		(list
-		 (let ((width (find-if #'numberp field)))
-		   (if long-titles
-		       (if width
-			   (- (max (length (car field)) width 0))
-			   (length (car field)))
-		       (and width (- width)))))
+		 (assert nil () "We shouldn't have hit this case.")
+		 ;; (let ((width (find-if #'numberp field)))
+		 ;;   (if long-titles
+		 ;;       (if width
+		 ;; 	   (- (max (length (car field)) width 0))
+		 ;; 	   (length (car field)))
+		 ;;       (and width (- width))))
+		 )
 		(t nil))))
 
 ;; This is just for text-table-renderer based things.
@@ -700,22 +732,29 @@ resized to fit in this, and the whole row is trimmed to this."
        :for i :from 0 :below (length sizes)
        :for col = (column-name-list table) :then (cdr col)
        :do
-       (if (listp (car col))
-	   (progn
-	     (setf justification 
-		   (if (member (second (car col))
-			       '(:right :wrap :overflow))
-		       (second (car col))
-		       ;; default to left justification
-		       :left)
-		   name (first (car col))))
-	   (setf justification :left
-		 name (car col)))
+       (assert (not (consp (car col))) ()
+	       "Column names shouldn't be lists anymore")
+       ;; (if (listp (car col))
+       ;; 	   (progn
+       ;; 	     (setf justification
+       ;; 		   (if (member (second (car col))
+       ;; 			       '(:right :wrap :overflow))
+       ;; 		       (second (car col))
+       ;; 		       ;; default to left justification
+       ;; 		       :left)
+       ;; 		   name (first (car col))))
+       ;; 	   (setf justification :left
+       ;; 		 name (car col)))
+       (setf justification
+	     (or (column-align (oelt (table-columns table) i)) :left)
+	     name col)
        (setf (aref sizes i)
-	     (list (if all-zero
-		       (display-length name)
-		       (aref sizes i))
-		   justification)))
+	     ;; (list (if all-zero
+	     ;; 	       (display-length name)
+	     ;; 	       (aref sizes i))
+	     ;; 	   justification)
+	     (if all-zero (display-length name) (aref sizes i))
+	     ))
 
     (table-output-header renderer table)
 
@@ -735,8 +774,12 @@ resized to fit in this, and the whole row is trimmed to this."
 	       (table-output-start-row renderer table)
 	       (omap
 		#'(lambda (field)
-		    (setf size (car (aref sizes column-num))
-			  just (cadr (aref sizes column-num)))
+		    ;; (setf size (car (aref sizes column-num))
+		    ;; 	  just (cadr (aref sizes column-num)))
+		    (setf size (aref sizes column-num)
+			  just (or (column-align
+				    (oelt (table-columns table) column-num))
+				   :left))
 		    (when (eq just :wrap)
 		      (setf cell-lines
 			    (text-table-cell-lines table renderer field
@@ -847,7 +890,7 @@ resized to fit in this, and the whole row is trimmed to this."
      (lambda (s)
        (when (not first)
 	  (write-string (box-line-joint style) *destination*))
-       (loop :repeat s
+       (loop :repeat s ;; @@@ assumes size is a number
 	  :do (write-string (box-line-horizontal style) *destination*))
 	(when first (setf first nil)))
      sizes))

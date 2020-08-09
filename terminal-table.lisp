@@ -25,7 +25,7 @@
 (defmethod table-output-column-titles ((renderer terminal-table-renderer)
 				       table titles &key sizes)
   "Output all the column titles."
-  (declare (ignore table))
+  ;; (declare (ignore table))
   (with-accessors ((separator text-table-renderer-separator)
 		   (cursor text-table-renderer-cursor)
 		   (horizontal-line-char
@@ -41,13 +41,20 @@
 	 :for col :in titles
 	 :and i :from 0 :below (length sizes)
 	 :do
-	 (setf size (car (aref sizes i))
-	       just (cadr (aref sizes i)))
-	 (if (listp col)
-	     (setf str (first col)
-		   fmt (if (eql just :right) "~v@a" "~va"))
-	     (setf str col
-		   fmt "~va"))
+	 ;; (setf size (car (aref sizes i))
+	 ;;       just (cadr (aref sizes i)))
+	 (assert (not (listp (aref sizes i))) ()
+		 "Size shouldn't be a list anymore")
+	 (setf size (aref sizes i)
+	       just (column-align (oelt (table-columns table) i)))
+	 (assert (not (listp col)) () "Column title shouldn't be a list anymore")
+	 ;; (if (listp col)
+	 ;;     (setf str (first col)
+	 ;; 	   fmt (if (eql just :right) "~v@a" "~va"))
+	 ;;     (setf str col
+	 ;; 	   fmt "~va"))
+	 (setf str col
+	       fmt (if (eql just :right) "~v@a" "~va"))
 	 (when has-underline
 	   (terminal-underline stream t))
 	 (setf out-str (subseq (string-capitalize
@@ -72,7 +79,8 @@
 	(loop :with len = (length sizes) :and size
 	   :for i :from 0 :below len
 	   :do
-	   (setf size (car (aref sizes i)))
+	   ;; (setf size (car (aref sizes i)))
+	   (setf size (aref sizes i))
 	   ;; (terminal-format stream "~v,,,va" size #\- #\-)
 	   (terminal-format stream "~v,,,va" size horizontal-line-char
 			    horizontal-line-char)
