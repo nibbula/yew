@@ -112,12 +112,17 @@ expand all macros recursively."
 		 (format nil "~@[~a~]~@[.~a~]" (pathname-name p)
 			 (pathname-type p))
 		 (file-author p)
-		 (print-size
-		  (or (ignore-errors
-			(with-open-file (s p) (file-length s)))
-		      0)
-		  :stream nil)
-		 (date-string :time (file-write-date p)))
+		 ;; (print-size
+		 ;;  (or (ignore-errors
+		 ;; 	(with-open-file (s p) (file-length s)))
+		 ;;      0)
+		 ;;  :stream nil)
+		 (or (ignore-errors
+		       (with-open-file (s p) (file-length s)))
+		     0)
+		 ;; (date-string :time (file-write-date p))
+		 (file-write-date p)
+		 )
 		;; possibly a directory
 		(list
 		 (format nil "~a/"
@@ -125,10 +130,26 @@ expand all macros recursively."
 			 #+ccl (car (last (pathname-directory p)))
 			 )
 		 (file-author p)
-		 "-"
-		 (date-string :time (file-write-date p)))))))
-    (setf table (sort table #'string< :key #'first))
-    (nice-print-table table '("Name" "Author" ("Size" :right) "Date"))))
+		 0
+		 ;; (date-string :time (file-write-date p))
+		 (file-write-date p)
+		 )))))
+    (setf table (sort table #'string< :key #'first)
+	  table (make-table-from table :columns
+				 `((:name "Name")
+				   (:name "Author")
+				   (:name "Size" :align :right :type number
+				    :format
+				    ,(lambda (n width)
+				       (format nil "~v@a" width
+					       (print-size n :stream nil))))
+				   (:name "Date" :type number
+				    :format
+				    ,(lambda (n width)
+				       (format nil "~va" width
+					       (date-string :time n)))))))
+    (print-table table)
+    table))
 
 (defun pick-spin ()
   (let (result)
