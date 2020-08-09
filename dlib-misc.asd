@@ -12,7 +12,8 @@
     :long-description
     "A library of miscellaneous useful functions. This is for things that
 are nice, but not essential."
-    :depends-on (:dlib :collections :stretchy :char-util :opsys :glob :table
+    :depends-on (:dlib :collections :stretchy :char-util :opsys :glob
+		 #| :table |#
 		 :dtime
 		 (:feature :use-re :re)
 		 (:feature (:not :use-re) :cl-ppcre)
