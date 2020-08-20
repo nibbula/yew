@@ -1,6 +1,6 @@
-;;
-;; dtt.lisp - Delimited Text Tables
-;;
+;;;
+;;; dtt.lisp - Delimited Text Tables
+;;;
 
 ;; This handles CSV and other delimited text format files.
 ;; I think DTT is a fairly stupid abbreviation, but I didn't want to use
@@ -71,6 +71,7 @@ Style structures have the following slots:
    #:+csv-rfc4180+
    ;; functions
    #:read-file
+   #:guess-types
    #:read-table
    #:write-file
    #:write-table-to-file
@@ -586,8 +587,12 @@ If every object in a column:
        (t
 	(warn "Don't know how to convert from a number to a ~a~%" to)
 	from)))
+    (null
+     (if (null to)
+	 nil  ; ok
+	 (warn "Don't know how to convert from a NIL to a ~a~%" to)))
     (t
-     (warn "Don't know how to convert from a ~a to a ~a~%" (type-of from) to)
+     (warn "Don't know how to convert from a ~s to a ~a~%" (type-of from) to)
      from)))
 
 (defun set-column-type-guesses (table guess)
@@ -597,6 +602,12 @@ If every object in a column:
   (omapn (_ (loop :for i :from 0 :below (length guess) :do
 	       (setf (oelt _ i) (convert-data (oelt _ i) (oelt guess i)))))
 	 table))
+
+;; @@@ This is so useful, maybe we should move it to the table package?
+(defun guess-types (table)
+  "Guess column types in TABLE and set them, returning the updated TABLE."
+  (set-column-type-guesses table (guess-column-types table))
+  table)
 
 (defun read-table (file-or-stream &key (style +csv-default+)
 				    columns column-names guess-types)
