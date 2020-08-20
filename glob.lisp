@@ -1,6 +1,6 @@
-;;
-;; glob.lisp - Shell style file name pattern matching
-;;
+;;;
+;;; glob.lisp - Shell style file name pattern matching
+;;;
 
 ;; ToDo:
 ;;  - ALL or OMIT-HIDDEN option to not omit files starting with '.'
@@ -37,8 +37,8 @@ The documentation for FNMATCH describes the pattern syntax a little.
    ))
 (in-package :glob)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3)
-		   (space 0) (compilation-speed 0)))
+;; (declaim (optimize (speed 0) (safety 3) (debug 3)
+;; 		   (space 0) (compilation-speed 0)))
 
 ;; Maybe I should have just wrote this in terms of regexps instead. :(
 ;; I should test the speed of my code vs. re-translation to CL-PPCRE.
@@ -46,14 +46,15 @@ The documentation for FNMATCH describes the pattern syntax a little.
 ;; These are don't really do everything that the UNIX/POSIX versions do. I
 ;; only put in the features I needed for LISH.
 
+(declaim (type (vector string) +special-chars+))
 (define-constant +special-chars+ #("[*?" "[*?{}" "[*?~" "[*?{}~")
   "Array of strings that have special meaning for glob patterns. Indexed bitwise
 for braces and tildes.")
 
 (defstruct char-class
   "A class of characters, defined by a function. "
-  name
-  function)
+  (name "" :type string)
+  (function #'identity :type function))
 
 (defparameter *character-classes* '()
   "Named character classes.")
@@ -71,10 +72,10 @@ for braces and tildes.")
   "A set of characters. Can have ranges, classes and individual characters.
 RANGES is a list of (low . high) pairs. CLASSES are a vector of CHAR-CLASS,
 which is tested for inclusion by a function. STRING is individual characters."
-  ranges
+  (ranges nil :type (or null (simple-array (cons fixnum fixnum))))
   classes
-  string
-  inverted)
+  (string nil :type (or null string))
+  (inverted nil :type boolean))
 
 (defmacro defcc (name &body body)
   "Define a character class an. C is the character parameter in the body."
@@ -115,11 +116,15 @@ which is tested for inclusion by a function. STRING is individual characters."
   "Return true if PATTERN has any special characters in it.
 If BRACES is true, consider curly brace '{' '}' characters as special characters.
 If TILDE is true, count tilde '~~' characters as special characters."
+  (declare (type string pattern))
   (when (and pattern (length pattern))
     (let* ((ind (logior (ash (if tilde 1 0) 1) (if braces 1 0)))
 	   (specials (svref +special-chars+ ind)))
+      (declare (type string specials))
 ;      (format t "~a ~x~%" specials ind)
-      (not (null (find-if #'(lambda (c) (find c specials)) pattern))))))
+      (not (null (find-if #'(lambda (c)
+			      (declare (type character c))
+			      (find c specials)) pattern))))))
 
 (defun find-char-class (c)
   "Find the most restrictive character class for a character C."
@@ -133,10 +138,12 @@ If TILDE is true, count tilde '~~' characters as special characters."
   "Find the most restrictive character class for a character C."
   (gethash name *character-class-table*))
 
-;; This is stupid for a one shot comparison.
+;; This is probably stupid for a one shot comparison. Also compile isn't machine
+;; compile just more like gather.
 (defun compile-char-set (s)
   "Convert char set description into a char-set."
   (let* ((set (make-char-set))
+	 (ranges nil)
 	 (cc-str
 	  (with-output-to-string (str)
 	    (loop :for e :in s :do
@@ -153,12 +160,19 @@ If TILDE is true, count tilde '~~' characters as special characters."
 		    ((eql (car e) :class)
 		     (push (cadr e) (char-set-classes set)))
 		    ((characterp (car e))
-		     (push (vector (char-code (car e))
-				   (char-code (cadr e)))
-			   (char-set-ranges set)))
+		     ;; (push (vector (char-code (car e))
+		     ;; 		   (char-code (cadr e)))
+		     (push (cons (char-code (car e))
+				 (char-code (cadr e)))
+			   ranges))
 		    (t
 		     (error "Unkown type in char set"))))
 		 ((characterp (princ e str))))))))
+    (when ranges
+      (setf (char-set-ranges set)
+	    (make-array (length ranges)
+			:element-type 'cons
+			:initial-contents ranges)))
     (setf (char-set-string set) cc-str)
     set))
 
@@ -184,7 +198,10 @@ position START-POS. A symbolic character set is a list consisting of:
  - Character ranges, as a sublist with two character values.
  - Named classes, as a keyword, e.g :digit
 Second value is where the character set ended."
+  (declare (type string pattern)
+	   (type fixnum start-pos))
   (let ((result '()) (i start-pos) (got-close-bracket nil))
+    (declare (type fixnum i))
     (loop :with c
        :while (< i (length pattern))
        :do
@@ -251,16 +268,23 @@ Second value is where the character set ended."
 
 (defun match-char-set (set c)
   "Return true if C is in char-set SET."
+  (declare (type character c)
+	   (type char-set set))
   (labels
       ((do-string ()
 	 (when (char-set-string set)
 	   (find c (char-set-string set))))
        (do-ranges ()
 	 (when (char-set-ranges set)
-	   (loop :for r :in (char-set-ranges set) :do
-	      (when (and (>= (char-code c) (elt r 0))
-			 (<= (char-code c) (elt r 1)))
-		(return-from do-ranges t)))))
+	   (loop :for r :across (char-set-ranges set) :do
+	      ;; (when (and (>= (char-code c) (elt r 0))
+	      ;; 		 (<= (char-code c) (elt r 1)))
+	      (let ((first (car r))
+		    (second (cdr r)))
+		(declare (type fixnum first second))
+		(when (and (>= (char-code c) first)
+			   (<= (char-code c) second))
+		  (return-from do-ranges t))))))
        (do-classes ()
 	 (when (char-set-classes set)
 	   (loop :for r :in (char-set-classes set) :do
@@ -279,8 +303,14 @@ Second value is where the character set ended."
 ;; We could make a wrapper to hide the keywords, but who cares? There might be
 ;; some circumstance where they help.
 
+(declaim (ftype (function (string string &key
+				  (:pattern-start fixnum)
+				  (:string-start fixnum)
+				  (:escape boolean)
+				  (:ignore-case boolean)) boolean)
+		fnmatch))
 (defun fnmatch (pattern string &key (pattern-start 0) (string-start 0)
-				 (escape t))
+				 (escape t) ignore-case)
   "Return true if the STRING matches the PATTERN, with shell matching. '*' is
 any number of characters, '?' is one character, [] is some complictated range
 stuff that you can look up in unix or something, but breifly: 
@@ -307,17 +337,31 @@ stuff that you can look up in unix or something, but breifly:
 . PATTERN-START and STRING-START
 are mostly used internally for recursion, but you can go ahead and use them if
 you want. They are indexes that default to 0."
+  (declare (type string pattern string)
+	   (type fixnum pattern-start string-start)
+	   (type boolean escape ignore-case))
   (let ((p pattern-start) (s string-start)
 	(plen (length pattern))
         (slen (length string))
 	(quoting nil))
+    (declare (type fixnum s p plen slen)
+	     (type boolean quoting))
     (flet ((match-literal ()
-	     (when (char/= (char pattern p) (char string s))
+	     ;;(when (char/= (char pattern p) (char string s))
+	     ;; The 'if' version is slightly faster than 'funcall' in sbcl.
+	     (when (if ignore-case
+		       (char-not-equal (char pattern p) (char string s))
+		       (char/= (char pattern p) (char string s)))
 	       ;;(dbug "literal mismatch ~a /= ~a~%"
 	       ;;     (char pattern p) (char string s))
 	       (return-from fnmatch nil))
 	     ;;(dbug "literal ~a~%" (char string s))
-	     (incf s) (incf p)))
+	     (incf s) (incf p)
+	     (values))
+	   (string-eq (a b)
+	     (if ignore-case (string-equal a b) (string= a b))))
+      (declare (dynamic-extent (function match-literal)))
+
       (if (and pattern string
 	       (not (zerop (length pattern)))
 	       (not (zerop (length pattern)))
@@ -366,7 +410,8 @@ you want. They are indexes that default to 0."
 		     (if (fnmatch pattern string
 				  :pattern-start next
 				  :string-start s
-				  :escape escape)
+				  :escape escape
+				  :ignore-case ignore-case)
 			 ;; (incf p)
 			 (return-from fnmatch t) ; all done
 			 (incf s)))))
@@ -403,7 +448,7 @@ you want. They are indexes that default to 0."
 	  ;; Not a pattern, just do regular compare
 	  (progn
 	    ;;(dbug "non pattern compare~%")
-	    (return-from fnmatch (string= pattern string))))
+	    (return-from fnmatch (string-eq pattern string))))
 
       ;; Eat trailing *'s
       (loop :while (and (< p plen) (char= (char pattern p) #\*)) :do
@@ -411,7 +456,7 @@ you want. They are indexes that default to 0."
 	 (incf p))
 
       ;; If we got thru both, we matched.
-      (and (= s slen) (= p plen)))))
+      (and (= s slen) (= p plen) t))))
 
 #|
 If we wanted instead to translate into regexps:
@@ -427,10 +472,12 @@ Glob patterns:
 
 (defun expand-tilde (w)
   "Return a the expansion of the word W starting with tilde '~'."
+  (declare (type string w))
   ;; If we don't start with a tilde, just return now.
   (when (not (and w (stringp w) (> (length w) 0) (char= (char w 0) #\~)))
     (return-from expand-tilde w))
   (let* ((end-of-user (or (position-if #'(lambda (c)
+					   (declare (type character c))
 					   (not (user-name-char-p c)))
 				       (subseq w 1))
 			  (1- (length w))))
@@ -441,9 +488,9 @@ Glob patterns:
     (cond
       ((and (> (length username) 0) (setf home (user-home username)))
        (s+ home (subseq w (1+ end-of-user))))
-      ((and (>= (length w) 2) (eql *directory-separator* (aref w 1)))
+      ((and (>= (length w) 2) (eql *directory-separator* (char w 1)))
        (s+ (namestring (user-homedir-pathname)) (subseq w (+ end-of-user 2))))
-      ((equal w "~")
+      ((string= w "~")
        (namestring (user-homedir-pathname)))
       (t w))))
 
@@ -488,10 +535,12 @@ match & dir  - f(prefix: boo) readir boo
 
 (defun trailing-directory-p (path)
   "Return true if PATH has a trailing directory indicator."
+  (declare (type string path))
   (char= (char path (1- (length path))) *directory-separator*))
 
 (defun dir-append (dir file)
   "This is like a slightly simpler PATH-APPEND from OPSYS."
+  ;; (declare (type (or string null) dir file))
   (if dir
       ;; If it's the root dir "/", so we don't end up with doubled slashes.
       (if (and (char= (char dir 0) *directory-separator*)
@@ -507,9 +556,10 @@ match & dir  - f(prefix: boo) readir boo
 with GLOB patterns, and a directory DIR, which is a string directory path,
 without patterns, and returns a list of string paths that match the PATH in
 the directory DIR and it's subdirectories. Returns NIL if nothing matches."
+  (declare (type boolean escape recursive mark-directories))
   (when (not path)
     (return-from dir-matches nil))
-  (dbugf :glob "path = ~s dir = ~s~%" path dir)
+  ;; (dbugf :glob "path = ~s dir = ~s~%" path dir)
   (let ((path-element (car path))
 	result name recursive-match is-dir more-path either)
     (flet ((starts-with-dot (string)
@@ -538,6 +588,8 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 
 	      ;; Or just a normal match.
 	      (fnmatch path (dir-entry-name entry) :escape escape))))
+      (declare (ftype (function (dir-entry string) boolean) path-match)
+	       (ftype (function (string) string) decorated-name))
       (when recursive
 	(setf recursive-match (search "**" path-element)))
       (loop
@@ -551,16 +603,16 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 		   either    nil) ; for debugging
 	 :when (or recursive-match (path-match entry path-element))
 	 :do
-	 (dbugf :glob "path-element = ~s name = ~s " path-element name)
+	 ;; (dbugf :glob "path-element = ~s name = ~s " path-element name)
 	 (when (or (not more-path) (and recursive-match
 					(path-match entry (cadr path))))
 	   ;; There's no further path elements, so just append the match.
-	   (dbugf :glob "spoot ~s~%" name)
+	   ;; (dbugf :glob "spoot ~s~%" name)
 	   (append-result (list (dir-append dir (decorated-name name))))
 	   (setf either t))
 	 (when (and is-dir (or more-path recursive-match))
 	   ;; If it's a directory, get all the sub directory matches.
-	   (dbugf :glob "~s is dir~%" name)
+	   ;; (dbugf :glob "~s is dir~%" name)
 	   (append-result (dir-matches
 			   (or (and recursive-match path)
 			       (cdr path))
@@ -568,8 +620,9 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 			   :escape escape
 			   :recursive recursive))
 	   (setf either t))
-	 (when (not either)
-	   (dbugf :glob "not cool~%")))
+	 ;; (when (not either)
+	 ;;   (dbugf :glob "not cool~%"))
+	 )
       result)))
 
 (defparameter *dir-sep-string* (string *directory-separator*))
@@ -585,7 +638,8 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
   TWIDDLE is a synonym for TILDE.
   LIMIT as an integer, means limit the number of pathnames to LIMIT.
   RECURSIVE true, means double stars ** match down through directories."
-  (declare (ignore braces limit))
+  (declare (ignore braces limit)
+	   (type boolean mark-directories escape sort tilde twiddle recursive))
   (setf tilde (or tilde twiddle))
   (let* ((expanded-pattern (if tilde (expand-tilde pattern) pattern))
 	 (path (split-sequence *directory-separator* expanded-pattern
