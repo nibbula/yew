@@ -12,6 +12,7 @@
     :long-description   "View HTML as a tree, using the tree-browser."
     :depends-on (:dlib :dlib-misc :dtime :rl :tree-viewer :pick-list
 		 :plump :puri #-windows :drakma
-		 :terminal :keymap :fui :pager :view-image :rl-widget)
+		 :terminal :keymap :fui :pager :view-image :rl-widget
+		 :terminal-inator :fatchar :char-util :ostring)
     :components
     ((:file "view-html")))
