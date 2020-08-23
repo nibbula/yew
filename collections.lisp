@@ -56,6 +56,7 @@ structs as sequences. Also we really need the MOP for stuff.")
       ocount
       ocount-if
       oreverse
+      onreverse
       osort
       ofind
       ofind-if
@@ -893,12 +894,26 @@ and END, that satisfy the PREDICATE.")
 						:from-end from-end
 						:key key)))
 
-#|
-(defgeneric oreverse (collection ...)
-  (:documentation "")
-  (:method ((collection XX))
-	    ))
-|#
+(defgeneric oreverse (ordered-collection)
+  (:documentation
+   "Return a new sequence containing the same elements but in reverse order.")
+  (:method ((collection list)) 	 		(reverse collection))
+  (:method ((collection vector)) 	        (reverse collection))
+  (:method ((collection sequence))      	(reverse collection)))
+
+(defmethod oreverse ((ordered-collection container))
+  (oreverse (container-data ordered-collection)))
+
+(defgeneric onreverse (ordered-collection)
+  (:documentation
+   "Return a sequence of the same elements in reverse order, possibly modifying
+or destroying the argument.")
+  (:method ((collection list)) 	 		(nreverse collection))
+  (:method ((collection vector)) 	        (nreverse collection))
+  (:method ((collection sequence))      	(nreverse collection)))
+
+(defmethod onreverse ((ordered-collection container))
+  (oreverse (container-data ordered-collection)))
 
 (defgeneric osort (collection predicate &key key)
   (:documentation
@@ -907,8 +922,10 @@ predicate function. PREDICATE should return non-NIL if ARG1 is to precede ARG2.
 As in other collection functions, KEY is a function that is given the collection
 element, and should return a value to be given to PREDICATE.")
   (:method ((collection list) predicate &key key)
+    #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
     (sort collection predicate :key key))
   (:method ((collection vector) predicate &key key)
+    #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
     (sort collection predicate :key key))
   (:method ((collection sequence) predicate &key key)
     #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
