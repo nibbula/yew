@@ -1,6 +1,6 @@
-;;
-;; opsys-test.lisp - Tests for OPSYS.
-;;
+;;;
+;;; opsys-test.lisp - Tests for OPSYS.
+;;;
 
 (defpackage :opsys-test
   (:documentation "Tests for OPSYS.")
@@ -197,7 +197,8 @@
   opsys-terminal-1
   opsys-terminal-2
   opsys-terminal-3
-  opsys-stream-1)
+  opsys-stream-1
+  )
 
 (defun run ()
   (run-group-name 'opsys-all :verbose t))

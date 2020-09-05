@@ -424,6 +424,50 @@
 
 ;; unix-stream
 
+(defun test-out-pipe (program args)
+  (let (line)
+    (setf (values ss pid) (uos::pipe-program program args))
+    (format t "stream = ~s~%pid = ~s~%" ss pid)
+    (setf line (read-line ss))
+    (format t "output = ~s~%" line)
+    (format t "wait-and-chill = ~s~%" (uos::wait-and-chill pid))
+    line))
+
+(defun test-in-pipe (program args input)
+  (let ((in (make-instance 'uos:unix-character-output-stream))
+	stream pid)
+    (setf (values stream pid) (uos::pipe-program program args
+						 :out-stream nil
+						 :in-stream in))
+    ;;(format t "out stream = ~s~%pid = ~s~%" ss pid)
+    (write-string input in)
+    (finish-output in)
+    (close in)
+    (let ((l (multiple-value-list (uos::wait-and-chill pid))))
+      (format t "wait-and-chill = ~s~%" l))))
+
+;; So we don't have to explicitly depend on dlib.
+(defun s+ (&rest rest)
+  "Return a string which is the arguments concatenated as if output by PRINC."
+  (with-output-to-string (result)
+    (loop :for x :in rest :do (princ x result))))
+
+;; This assumes some typical unix program exist, so it won't work non-unix
+;; and won't even work on all unix. Of course we could make some exectuables be
+;; there, but that seems way way out of the scope of this test and might depend
+;; on even more stuff.
+(deftests (opsys-unix-pipe-1 :doc "OS stream pipes")
+  (or (and (every #'is-executable '("/bin/echo"
+				    "/usr/bin/od")))
+      (error "I'm sorry, but not all the executables exist, so this test ~
+              set will fail."))
+  (equal (test-out-pipe "/bin/echo" '("foo")) "foo")
+  (equal (test-in-pipe "/usr/bin/od" '("-t" "cd1")
+		       (s+ "fippy flimbar" #\newline))
+	 (s+ "0000000  102  105  112  112  121   32  102  108  105  109   98"
+	     "   97  114   10" #\newline "0000016" #\newline))
+  )
+
 (deftests (opsys-unix-all :doc "All tests for OPSYS-UNIX.")
   opsys-unix-errors-1
   opsys-unix-environment-1
@@ -432,6 +476,7 @@
   opsys-unix-time-1
   opsys-unix-users-1
   opsys-unix-dir-1
+  opsys-unix-pipe-1
   )
 
 (defun run ()
