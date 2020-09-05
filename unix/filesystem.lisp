@@ -1610,9 +1610,9 @@ versions of the keywords used in Lisp open.
   (st_blksize	 blksize-t)		; blocksize for file system I/O
   (__pad2	 :int)
   (st_blocks	 blkcnt-t)		; number of 512B blocks allocated **
-  (st_atim	 (:struct foreign-timespec)) ; time of last access
-  (st_mtim	 (:struct foreign-timespec)) ; time of last data modification
-  (st_ctim	 (:struct foreign-timespec)) ; time of last file status change
+  (st_atimespec	 (:struct foreign-timespec)) ; time of last access
+  (st_mtimespec	 (:struct foreign-timespec)) ; time of last data modification
+  (st_ctimespec	 (:struct foreign-timespec)) ; time of last file status change
   (__unused1     :unsigned-int)
   (__unused2     :unsigned-int))
 
