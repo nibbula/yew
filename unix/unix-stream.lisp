@@ -44,11 +44,13 @@
 (defun %open (filename direction &key create truncate #|append |# share)
   "Open a FILENAME in DIRECTION, which is one of the usual: :input :output :io.
 Create and truncate do the Unix things."
+  (dbugf :fu "%open ~s ~s :create ~s :truncate ~a :share ~s~%"
+	 filename direction create truncate share)
   (let ((flags (logior (if (not share) +O_CLOEXEC+ 0)
 		       (ecase direction
-			 (:input  +O_RDONLY+)
-			 (:output +O_WRONLY+)
-			 (:io     +O_RDWR+))
+			 ((:input :probe) +O_RDONLY+)
+			 (:output         +O_WRONLY+)
+			 (:io             +O_RDWR+))
 		       (if create +O_CREAT+ 0)
 		       (if truncate +O_TRUNC+ 0)
 		       #| (if append +O_APPEND+ 0) |#
@@ -56,6 +58,7 @@ Create and truncate do the Unix things."
 	(mode *typical-mode*)
 	(interrupt-count 0)
 	fd)
+    (dbugf :fu "posix-open ~s ~x ~x~%" filename flags mode)
     (loop :while (and (< (setf fd (posix-open filename flags mode)) 0)
 		      (= (errno) +EINTR+)) ; plusering bucket wallop
        :do (if (< interrupt-count 10)
@@ -85,21 +88,40 @@ Create and truncate do the Unix things."
 ;;   utterly impossible for an implementation to handle some option in a manner
 ;;   similar to what is specified here, it may simply signal an error.”
 ;;
+;; But of course I'll probably end up doing a partially-assed job too, since
+;; the whole versions in file names thing worked well in Lisp Machines and
+;; VMS, but seems like it would be a lot of complexity that would go unused in
+;; the modern day, because everyone just uses a more complex version control
+;; system where they care about it, and more efficiently, nothing, where they
+;; don't. But for the case of a person using a general purpose computer, and
+;; creating user managed files, it could be a great boon to have built-in
+;; automatic version control. It might be an interesting experiment to try a
+;; specifically versioned stream which could hook into a version control
+;; system. But it's a bit weird since :supersede might mean an automatic
+;; commit.
+;;
 ;; We're in a weird fractal frond of Greenspun/Morris land.
 
 (defun lispy-to-posix-open (filename direction if-exists if-does-not-exist share)
   "Try to do something like Common Lisp `open' on POSIX."
   ;; @@@ This is crap. And actually Unix is crap. Thanks for playing.
-  ;; Consider that even VMS, TOPS-20, Multics could do most this shit in the
+  ;; Consider that even VMS, TOPS-20, Multics could do most of this shit in the
   ;; 1970's. Maybe if 'git' wasn't crap at handling BLOBs, we could just do
   ;; "git add" or something.
   (let (fd create truncate append unlink old-fd)
-    (if (file-exists filename) ;; @@@ maybe this should be an open??
+    (cond
+      ((and (member direction '(:output :io))
+	    (file-exists filename)) ;; @@@ maybe should be an open?
 	;; @@@ What about if "filename" is a not a normal file?
 	(ecase if-exists
 	  (:error
-	   (error 'file-error "The file ~s already exists." filename
-		  :pathname filename))
+	   ;; (error 'file-error "The file ~s already exists." filename
+	   ;; 	  :pathname filename)
+	   (error 'os-file-error
+		  :format-control "The file ~s already exists."
+		  :format-arguments `(,filename)
+		  :pathname filename)
+	   )
 	  ((:new-version :rename-and-delete)
 	   ;; To do :new-version correctly, we would have duplicate whatever
 	   ;; decisions the implemetation made for versions, which seems
@@ -112,14 +134,14 @@ Create and truncate do the Unix things."
 	   (error 'os-file-error
 		  :format-control
 		  "The file ~s already exists, and I'm very sorry, but we ~
-                 haven't implemented :if-exists ~s yet."
+		   haven't implemented :if-exists ~s yet."
 		  :format-arguments `(,filename ,if-exists)))
 	  (:rename
 	   ;; @@@ This one we can do, but I'm putting it off.
 	   (error 'os-file-error
 		  :format-control
 		  "The file ~s already exists, and I'm very sorry, but we ~
-                 haven't implemented :if-exists ~s yet."
+		   haven't implemented :if-exists ~s yet."
 		  :format-arguments `(,filename ,if-exists)))
 	  (:overwrite
 	   #| Nothing. This is the totally "normal" open. Of course it is. |#
@@ -145,16 +167,27 @@ Create and truncate do the Unix things."
 	   ;; really what the spec says, so I don't think we should do
 	   ;; that. So we just straight up unlink it.  Bam!
 	   (setf unlink t))
-	  ((nil) #| Oh hai |# (return-from lispy-to-posix-open nil)))
+	  ((nil) #| Oh hai |# (return-from lispy-to-posix-open nil))))
+      ((and (or (eq direction :input) (null direction))
+	    (not (file-exists filename)))
 	;;; Not pre-existing:
 	(ecase if-does-not-exist
 	  (:error
-	   (error 'file-error "The file ~s doesn't exist." filename
-		  :pathname filename))
+	   ;; (error 'file-error "The file ~s doesn't exist." filename
+	   ;; 	  :pathname filename)
+	   (error 'os-file-error
+		  :format-control "The file ~s doesn't exist."
+		  :format-arguments `(,filename)
+		  :pathname filename)
+	   )
 	  (:create
 	   (setf create t))
 	  ((nil) (return-from lispy-to-posix-open nil))))
-
+      ((not (member direction '(:input :output :io :probe)))
+       (error 'os-file-error
+		:format-control "Bad :direction ~s for opening ~s."
+		:format-arguments `(,direction ,filename)
+		:pathname filename)))
     (unwind-protect
 	 (progn
 	   (when unlink
@@ -167,7 +200,7 @@ Create and truncate do the Unix things."
 	       (error "I'm very sorry, but you probably hit the race condition ~
                        with :supersede for ~s." filename))
 	     (syscall (posix-unlink filename)))
-	   (setf fd (%open filename :output
+	   (setf fd (%open filename direction
 			   :create create
 			   :truncate truncate
 			   #| :append append |#
@@ -219,7 +252,9 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 	(incf-pointer buf input-fill)
 	(loop
 	   :do
+	   (dbugf :fu "posix-read ~s ~s ~s~%" handle buf remaining)
 	   (setf status (posix-read handle buf remaining))
+	   (dbugf :fu "posix-read -> ~s~%" status)
 	   (cond
 	     ((and (< status 0) (or (= (errno) +EINTR+)
 				    (= (errno) +EAGAIN+)))
