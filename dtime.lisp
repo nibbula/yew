@@ -265,8 +265,7 @@ The date part is considered to be the current date."
 ;; The stupid base unit of time is seconds.
 ;; Anything after weeks is bogus because years are variable and poorly defined!
 ;; But for this bullcrap, we use the Jullian year which is exactly 365.25.
-;; I know I'm gonna have to end up writing that time lib (which should of
-;; course be properly integrated with a units system).
+;; Just more of the long painful future history of time.
 (defun millennia-to-time (millennia) (* millennia (* 60 60 24 (+ 365 1/4) 1000)))
 (defun centuries-to-time (centuries) (* centuries (* 60 60 24 (+ 365 1/4) 100)))
 (defun decades-to-time   (decades)   (* decades   (* 60 60 24 (+ 365 1/4) 10)))
@@ -276,14 +275,14 @@ The date part is considered to be the current date."
 (defun hours-to-time     (hours)     (* hours     (* 60 60)))
 (defun minutes-to-time   (minutes)   (* minutes   60))
 
-(defun time-to-millennia (millennia) (/ millennia (* 60 60 24 (+ 365 1/4) 1000)))
-(defun time-to-centuries (centuries) (/ centuries (* 60 60 24 (+ 365 1/4) 100)))
-(defun time-to-decades   (decades)   (/ decades   (* 60 60 24 (+ 365 1/4) 10)))
-(defun time-to-years     (years)     (/ years     (* 60 60 24 (+ 365 1/4))))
-(defun time-to-weeks     (weeks)     (/ weeks     (* 60 60 24 7)))
-(defun time-to-days      (days)      (/ days      (* 60 60 24)))
-(defun time-to-hours     (hours)     (/ hours     (* 60 60)))
-(defun time-to-minutes   (minutes)   (/ minutes   60))
+(defun time-to-millennia (seconds) (/ seconds (* 60 60 24 (+ 365 1/4) 1000)))
+(defun time-to-centuries (seconds) (/ seconds (* 60 60 24 (+ 365 1/4) 100)))
+(defun time-to-decades   (seconds) (/ seconds (* 60 60 24 (+ 365 1/4) 10)))
+(defun time-to-years     (seconds) (/ seconds (* 60 60 24 (+ 365 1/4))))
+(defun time-to-weeks     (seconds) (/ seconds (* 60 60 24 7)))
+(defun time-to-days      (seconds) (/ seconds (* 60 60 24)))
+(defun time-to-hours     (seconds) (/ seconds (* 60 60)))
+(defun time-to-minutes   (seconds) (/ seconds 60))
 
 ;; These, for lack of a better thing, these operate on the dual time from opsys.
 ;; To do better we probably need arbitrary precision floats.
