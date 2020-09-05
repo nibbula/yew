@@ -1309,6 +1309,9 @@ If RESOURCE is an integer, just return it."
     (or (cdr (assoc base
 		    '((("AMD64") . "X86-64"))
 		    :test (lambda (a b) (find a b :test #'string-equal))))
+	(cdr (assoc base
+		    '((("AARCH64") . "ARM64"))
+		    :test (lambda (a b) (find a b :test #'string-equal))))
 	base)))
 
 (defun os-machine-version ()

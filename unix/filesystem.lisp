@@ -1577,7 +1577,7 @@ versions of the keywords used in Lisp open.
   (st_ino	ino-t)			; 64 bit inode number **
 )
 
-#+(and linux 64-bit-target)
+#+(and linux 64-bit-target x86-64)
 (defcstruct foreign-stat
   (st_dev	dev-t)			; ID of device containing file
   (st_ino	ino-t)			; NOT inode number **
@@ -1595,6 +1595,26 @@ versions of the keywords used in Lisp open.
   (st_ctimespec	(:struct foreign-timespec)) ; time of last file status change
   (__glibc_reserved :long :count 3)
 )
+
+#+(and linux 64-bit-target arm64)
+(defcstruct foreign-stat
+  (st_dev	 dev-t)			; ID of device containing file
+  (st_ino	 ino-t)			; NOT inode number **
+  (st_mode	 mode-t)		; protection and type
+  (st_nlink	 nlink-t)		; number of hard links
+  (st_uid	 uid-t)			; user ID of owner
+  (st_gid	 gid-t)			; group ID of owner
+  (st_rdev	 dev-t)			; device ID (if special file)
+  (__pad1	 :unsigned-long)
+  (st_size	 off-t)			; total size, in bytes **
+  (st_blksize	 blksize-t)		; blocksize for file system I/O
+  (__pad2	 :int)
+  (st_blocks	 blkcnt-t)		; number of 512B blocks allocated **
+  (st_atim	 (:struct foreign-timespec)) ; time of last access
+  (st_mtim	 (:struct foreign-timespec)) ; time of last data modification
+  (st_ctim	 (:struct foreign-timespec)) ; time of last file status change
+  (__unused1     :unsigned-int)
+  (__unused2     :unsigned-int))
 
 #+(and freebsd 64-bit-target)
 (defcstruct foreign-stat
