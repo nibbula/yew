@@ -513,7 +513,7 @@ use of throw), the file is automatically closed."
       stream
     (when (>= output-position
 	      ;; (length output-buffer)
-	      +output-buffer-size+
+	      *output-buffer-size*
 	     )
       (flush-buffer stream)
       (setf output-position 0))

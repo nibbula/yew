@@ -232,7 +232,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 		   (position os-stream-position)
 		   (input-fill os-stream-input-fill)) stream
     (let ((status 0)
-	  (remaining (- +input-buffer-size+ input-fill))
+	  (remaining (- *input-buffer-size* input-fill))
 	  (start-fill input-fill)
 	  problem result)
       ;; Got to the beginning of the buffer, if we used it up.
@@ -242,7 +242,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 		  "Fill when not consumed. This isn't supposed to happen."))
 	(setf input-fill 0
 	      position 0
-	      remaining +input-buffer-size+))
+	      remaining *input-buffer-size*))
       ;; This loop is a little wacky because I don't want to throw errors
       ;; inside the with-pointer-to-vector-data, which could turn off GC.
       ;; Instead we set a problem flag and signal afterward. We need to keep
@@ -298,7 +298,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 		   (ouput-position os-stream-ouput-position))
       stream
     (let ((status 0)
-	  (remaining +output-buffer-size+)
+	  (remaining *output-buffer-size*)
 	  problem #| result @@@ |#)
       ;; This loop is a little wacky because I don't want to throw errors
       ;; inside the with-pointer-to-vector-data, which could turn off GC.
@@ -319,7 +319,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 		;; Disk is full or maybe some other bullshit?
 		(return-from %flush-buffer
 		  ;; Return the bytes written or nil if no bytes were written.
-		  (- +input-buffer-size+ remaining)))
+		  (- *input-buffer-size* remaining)))
 	       (t
 		;; Eat some of the buffer and go again.
 		(decf remaining status)
@@ -338,7 +338,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 		  :format-arguments `(,handle ,output-buffer ,remaining)))))
       (when force
 	(syscall (fsync handle)))
-      (- +input-buffer-size+ remaining))))
+      (- *input-buffer-size* remaining))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; character
@@ -369,7 +369,7 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
     ;; @@@ If seq is the right type we can read directly?
     ;; Or if not we have to convert encoding.
     (cffi:with-pointer-to-vector-data (buf input-buffer)
-      (syscall (posix-read handle buf +input-buffer-size+)))))
+      (syscall (posix-read handle buf *input-buffer-size*)))))
 |#
 
 (defclass unix-character-output-stream (os-character-output-stream unix-stream)

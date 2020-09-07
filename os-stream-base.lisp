@@ -21,12 +21,15 @@
   ;; @@@ This should theoretically change dependent on the encoding, but for
   ;; speed we would probably like these to constant, so it's probably reasonable
   ;; to pick a maximum character excess for all encodings.
-  (defparameter +character-excess+ 4 "Maximum octets for one encoded character.")
-  (defparameter +buffer-size+ 200
+  ;;(defparameter +character-excess+ 4 "Maximum octets for one encoded character.")
+  (defconstant +character-excess+ 4 "Maximum octets for one encoded character.")
+  ;; @@@ probably change *buffer-size* to constant +buffer-size+ when things
+  ;; are working.
+  (defparameter *buffer-size* 200
     "Buffer sizes in octets, not including the +character-excess+.")
-  (defparameter +input-buffer-size+ +buffer-size+
+  (defparameter *input-buffer-size* *buffer-size*
     "Input buffer size in octets.")
-  (defparameter +output-buffer-size+ +buffer-size+
+  (defparameter *output-buffer-size* *buffer-size*
     "Output buffer size in octets."))
 
 (defclass os-stream (fundamental-stream)
@@ -57,7 +60,7 @@ stream type."))
 (defclass os-input-stream (os-stream fundamental-input-stream)
   ((input-buffer
     :initarg :input-buffer :accessor os-stream-input-buffer
-    :initform (cffi:make-shareable-byte-vector (+ +input-buffer-size+
+    :initform (cffi:make-shareable-byte-vector (+ *input-buffer-size*
 						  +character-excess+))
     ;; :initform (cffi:make-shareable-byte-vector 200) ;; @@@
     ;; :type (simple-array (unsigned-byte 8) #.+input-buffer-size+)
@@ -85,7 +88,7 @@ stream type."))
 (defclass os-output-stream (os-stream fundamental-output-stream)
   ((output-buffer
     :initarg :output-buffer :accessor os-stream-output-buffer
-    :initform (cffi:make-shareable-byte-vector (+ +output-buffer-size+
+    :initform (cffi:make-shareable-byte-vector (+ *output-buffer-size*
 						  +character-excess+))
     ;; :type (simple-array (unsigned-byte 8) #.+output-buffer-size+)
     :type (simple-array (unsigned-byte 8) *)
