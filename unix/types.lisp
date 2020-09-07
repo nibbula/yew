@@ -35,7 +35,7 @@ Type name     Darwin           Linux-32         Linux-x86-64     Linux-arm64    
 #(rlim-t      :uint64          :uint32          :unsigned-long   :unsigned-long-long  :uint32          :uint64          :uint64)
 #(intptr-t    :long            :long            :long            :long                :long            :long            :long)
 #(uintptr-t   :unsigned-long   :unsigned-long   :unsigned-long   :unsigned-long       :unsigned-long   :unsigned-long   :unsigned-long)
-#(wchar-t     :int             :int             :int             :unsigned            :int             :int             :int)
+#(wchar-t     :int             :int             :int             :unsigned-int        :int             :int             :int)
 #(caddr-t     (:pointer :char) (:pointer :char) (:pointer :char) (:pointer :char)     (:pointer :char) (:pointer :char) (:pointer :char))
 #(quad-t      :int64           :int64           :int64           :long-long           :int64           :int64           :int64)
 #(u-quad-t    :uint64          :uint64          :uint64          :unsigned-long-long  :uint64          :uint64          :uint64)
