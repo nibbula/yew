@@ -22,10 +22,11 @@
     (or
      #+darwin                           1
      #+(and linux 32-bit-target)        2
-     #+(and linux 64-bit-target)        3
-     #+sunos                            4
-     #+(and freebsd 64-bit-target)      5
-     #+(and openbsd 64-bit-target)      6
+     #+(and linux 64-bit-target x86-64) 3
+     #+(and linux 64-bit-target arm64)  4
+     #+sunos                            5
+     #+(and freebsd 64-bit-target)      6
+     #+(and openbsd 64-bit-target)      7
      nil))
 
   (when (not (and *platform-index* *platform-bitsize-index*))
