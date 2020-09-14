@@ -91,9 +91,9 @@
    #:safe-file-length
    #:slurp
    #:slurp-binary
-   #:barf
-   #:barf-append
-   #:barf-binary
+   #:spit
+   #:spit-append
+   #:spit-binary
    #:confirm
    #:get-file-local-variables
    #:read-limited-line
@@ -1381,7 +1381,7 @@ non-nil, only read that many elements. This just a shorthand for calling SLURP
 with the appropriate ELEMENT-TYPE."
   (slurp file :element-type '(unsigned-byte 8) :count count))
 
-(defun barf (file object)
+(defun spit (file object)
   "Write OBJECT to FILE. If FILE is a file name, create it."
   (with-open-file (stream file
 			  :direction :output
@@ -1392,7 +1392,7 @@ with the appropriate ELEMENT-TYPE."
       (t
        (princ object stream)))))
 
-(defun barf-append (file object)
+(defun spit-append (file object)
   "Write OBJECT to FILE. If FILE is a file name, open it and append to it. If
 it doesn't exist, create it."
   (with-open-file (stream file
@@ -1405,7 +1405,7 @@ it doesn't exist, create it."
       (t
        (princ object stream)))))
 
-(defun barf-binary (file object &key count)
+(defun spit-binary (file object &key count)
   "Output a vector of octets to FILE. OBJECT must be a
 (vector (unsigned-byte 8)). If COUNT is non-nil, only write that many elements."
   (with-open-file (stream file :direction :output
