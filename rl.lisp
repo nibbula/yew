@@ -476,7 +476,9 @@ Keyword arguments:
 		      (tt-cursor-on)
 		      (tt-restore-cursor)))
 		  ;;(setf command (await-event e))
-		  (setf last-event (await-event e))
+		  (setf last-event (if (queued-input e)
+				       (pop (queued-input e))
+				       (await-event e)))
 		  (log-message e "command ~s" command)
 		  ;; Erase the temporary message.
 		  (when (and temporary-message (not keep-message))

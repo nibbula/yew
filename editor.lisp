@@ -154,6 +154,10 @@ anything important.")
     :accessor line-editor-local-keymap
     :initarg :local-keymap
     :documentation "The local keymap.")
+   (queued-input
+    :accessor queued-input
+    :initarg :queued-input :initform nil :type list
+    :documentation "A list of queued events.")
 
    ;; Display
    (screen-relative-row
@@ -574,6 +578,7 @@ but perhaps reuse some resources."))
   (setf (inator-command e)	nil
 	(inator-last-command e) nil
 	(last-event e)          nil
+	(queued-input e)	nil
 	;;(inator-point e)	#(0)
 	;;(inator-mark e)		nil
 	;;(inator-clipboard e)	nil	; should we really?
@@ -638,7 +643,9 @@ but perhaps reuse some resources."))
   "Read a character from the editor's terminal."
   (declare (type line-editor e))
   ;; (tt-finish-output)
-  (let ((c (tt-get-key)))
+  (let ((c (if (queued-input e)
+	       (pop (queued-input e))
+	       (tt-get-key))))
     (when (line-editor-input-callback e)
       (funcall (line-editor-input-callback e) c))
     c))
