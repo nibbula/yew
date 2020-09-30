@@ -25,6 +25,8 @@
    #:+csi+ #:+st+ #:+osc+
    #:query-parameters #:query-string
    #:with-raw
+   #:write-double-width-line
+   #:write-double-height-line
    ;; #:with-immediate
    #:set-bracketed-paste-mode
    #:read-bracketed-paste
@@ -576,34 +578,61 @@ two values ROW and COLUMN."
     (#.(code-char #x00a3) . #\?) ;; UK pound sign             sterling   £
     ))
 
-(defun update-column-for-char (tty char)
-  (with-slots (fake-column) tty
-    (cond
-      ((graphic-char-p char)
-       (cond
-	 ((zero-width-char-p char) 0)
-	 ((combining-char-p char) 0)
-	 ((double-wide-char-p char) 2)
-	 (t 1)))			;normal case
-      (t
-       (case char
-	 (#\return
-	  (setf fake-column 0))
-	 (#\tab
-	  (incf fake-column (- (1+ (logior 7 fake-column)) fake-column)))
-	 (otherwise
-	  0 ;; some non-graphic control char?
-	  ))))))
+;; All this macro crap for column updaters is hopefully so the multiplier case
+;; doesn't slow down the normal case. And actually it's only for double-width
+;; lines currently, which probably will hardly ever be used, due to how they
+;; mess up the character grid.
+;; @@@ Maybe it's better done with a compiler macro?
 
-(defun update-column (tty thing &key start end)
-  (etypecase thing
-    (character (update-column-for-char tty thing))
-    (string
-     (loop
-	:with the-end = (or end (length thing))
-	:and the-start = (or start 0)
-	:for i :from the-start :below the-end
-	:do (update-column-for-char tty (char thing i))))))
+(defmacro define-updater (name multiplier)
+  "Define a column updater with a character multiplier."
+  (let ((one multiplier)
+	(two (* 2 multiplier)))
+    `(defun ,name (tty char)
+       "Update the column in TTY for CHAR."
+       (with-slots (fake-column) tty
+	 (cond
+	   ((graphic-char-p char)
+	    (incf fake-column
+		  (cond
+		    ((zero-width-char-p char) 0)
+		    ((combining-char-p char) 0)
+		    ((double-wide-char-p char) ,two)
+		    (t ,one))))		;normal case
+	   (t
+	    (case char
+	      (#\return
+	       (setf fake-column 0))
+	      (#\tab
+	       (incf fake-column
+		     (* (- (1+ (logior 7 fake-column)) fake-column)
+			,multiplier)))
+	      (otherwise
+	       (setf fake-column 0))))))))) ;; some non-graphic control char?
+
+(define-updater update-column-for-single-char 1)
+(define-updater update-column-for-double-char 2)
+
+(defmacro define-update-column (name double-width-p)
+  "Define a column updater called NAME for double width characters if
+DOUBLE-WIDTH-P is true."
+  (let ((updater (if double-width-p
+		     'update-column-for-double-char
+		     'update-column-for-single-char)))
+    `(defun ,name (tty thing &key start end)
+       "Update the column for THING in TTY. If THING is string START and END are
+the range of character considered."
+       (etypecase thing
+	 (character (,updater tty thing))
+	 (string
+	  (loop
+	     :with the-end = (or end (length thing))
+	     :and the-start = (or start 0)
+	     :for i :from the-start :below the-end
+	     :do (,updater tty (char thing i))))))))
+
+(define-update-column update-column nil)
+(define-update-column update-column-double t)
 
 (defun make-acs-table (&optional acs-data)
   "Make the alternate character set table."
@@ -1259,6 +1288,7 @@ i.e. the terminal is 'line buffered'."
     ;; ( 1     95 :terminal.app)
     (24    279 :mlterm)
     (41    285 :terminology)
+    (65   6002 :kings-cross)
     (83  40602 :screen)
     (84      0 :tmux)
     (85     95 :rxvt)
@@ -2126,25 +2156,55 @@ links highlight differently?"
 (defmethod terminal-enable-event ((tty terminal-ansi) event)
   "Enable event and return true if the terminal can enable event."
   (let (result)
-    (when (member event '(:resize :mouse-buttons :mouse-motion))
+    (when (member event '(:resize :mouse-buttons :mouse-motion :all))
       (pushnew event (terminal-events-enabled tty))
       (setf result t))
     (case event
       (:mouse-buttons (set-mouse-event tty :mouse-buttons t))
-      (:mouse-motion (set-mouse-event tty :mouse-motion t)))
+      (:mouse-motion (set-mouse-event tty :mouse-motion t))
+      (:all
+       (set-mouse-event tty :mouse-buttons t)
+       ;; (set-mouse-event tty :mouse-motion t)
+       ))
     result))
 
 (defmethod terminal-disable-event ((tty terminal-ansi) event)
   "Enable event and return true if the terminal can disable event."
   (let (result)
-    (when (member event '(:resize :mouse-buttons :mouse-motion))
+    (when (member event '(:resize :mouse-buttons :mouse-motion :all))
        (setf (terminal-events-enabled tty)
 	     (remove event (terminal-events-enabled tty)))
       (setf result t))
     (case event
       (:mouse-buttons (set-mouse-event tty :mouse-buttons nil))
-      (:mouse-motion (set-mouse-event tty :mouse-motion nil)))
+      (:mouse-motion (set-mouse-event tty :mouse-motion nil))
+      (:all
+       (set-mouse-event tty :mouse-motion nil))
+       (set-mouse-event tty :mouse-buttons nil))
     result))
+
+(defgeneric write-double-width-line (terminal line)
+  (:documentation "Write a double width line, if the terminal supports it."))
+
+(defmethod write-double-width-line ((tty terminal-ansi) line)
+  (terminal-raw-format tty "~c#6" #\escape)
+  (write-line line (terminal-output-stream tty))
+  (update-column-double tty line)
+  (update-column tty #\newline)
+  (when (line-buffered-p tty)
+    (finish-output (terminal-output-stream tty))))
+
+(defmethod write-double-height-line ((tty terminal-ansi) line)
+  (flet ((do-line ()
+	   (write-line line (terminal-output-stream tty))
+	   (update-column-double tty line)
+	   (update-column tty #\newline)))
+    (terminal-raw-format tty "~c#3" #\escape)
+    (do-line)
+    (terminal-raw-format tty "~c#4" #\escape)
+    (do-line)
+    (when (line-buffered-p tty)
+      (finish-output (terminal-output-stream tty)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; stream methods
