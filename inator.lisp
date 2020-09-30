@@ -285,7 +285,8 @@ as the subsequent arguments."
 ;; @@@ This is quite hairy and not really reflected in keymap.lisp
 ;; @@@ clean up keymap traversal in here and keymap.lisp
 (defmethod process-event ((inator inator) event &optional keymap-in)
-  "Default way to process an event."
+  "Default way to process an event. If KEYMAP-IN is specified, use it instead
+of the inator's keymap."
   (with-slots (command last-command keymap) inator
     (setf last-command command)
     (let ((outer-map (or keymap-in keymap))
