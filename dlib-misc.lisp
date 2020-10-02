@@ -657,7 +657,7 @@ assumes it's a plist."
 (defun print-values (value-list &optional (stream t))
   "Print a vertical list of values. VALUE-LIST is a list of symbols whose
 values are printed. Symbols in the VALUE-LIST must either be dynamic variables
-of fbound to a function, which called with no arguments to get the value.
+or fbound to a function, which called with no arguments to get the value.
 Use PRINT-VALUES* if you want to print lexical variables."
   (let ((max-len (loop :for f :in value-list
 		       :maximize (length (string f)))))
