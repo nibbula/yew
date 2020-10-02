@@ -330,7 +330,7 @@
 	  (split-sequence-by-range '((0 2) (4 6) (8 10))
 				   #(#\f #\o #\o 0 #\t #\h #\e 0 #\b #\a #\r))))
 
-(deftests (dlib-all :doc "Test :dlib and :dlib-misc.")
+(deftests (dlib-all :doc "Test :dlib.")
   dlib-1
   split-sequence-1
   split-sequence-by-range-1
