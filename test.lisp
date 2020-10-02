@@ -167,7 +167,8 @@ A: _This_ *is* your documentation.
 
 (defun report-start (test &optional doc)
   (when *verbose*
-    (format t "Test ~a~:[~; ~:*~a~]:   " test doc)
+    ;; (format t "Test ~a~:[~; ~:*~a~]:   " test doc)
+    (format t "~:[~;~:*~a~%~]Test ~a:~40t" doc test)
     (finish-output)))
 
 (defun report-done (result)
