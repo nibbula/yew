@@ -26,6 +26,7 @@ be used at a REPL, but not as likely to be called by other programs.")
    #:describe-reader
    #:describe-system
    #:describe-class
+   #:describe-float
 
    #:safe-set-bracketed-paste
    #:bracketed-paste-on
@@ -568,6 +569,18 @@ symbols, :all to show internal symbols too."
     #-has-mop    
     (format stream "No MOP, so I don't know how to describe the class ~s~%"
 	    class))
+
+(defun describe-float (n)
+  (check-type n float)
+  (multiple-value-bind (significand exponent sign) (decode-float n)
+    (multiple-value-bind (i-significand i-exponent i-sign)
+	(integer-decode-float n)
+      (let ((radix (float-radix n))
+	    (digits (float-digits n))
+	    (precision (float-precision n)))
+      (print-values* (significand exponent sign
+		      i-significand i-exponent i-sign
+		      radix digits precision))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Bracketed paste
