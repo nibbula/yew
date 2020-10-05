@@ -5,7 +5,145 @@
 (defpackage :dcolor
   (:documentation
    "Provide color models and functions to manipulate color values, color names,
-and conversions between color models.")
+and conversions between color models.
+
+Colors are stored as:
+
+  (color-model number [number...])
+  OR
+  (number [number...])
+
+where color-model is a name defining the color model, and the numbers define
+values in that model. Alternatively a color can be stored without a color
+model which assumes the default color model in *default-color-model*, which is
+initially :rgb.
+
+Some standard color names are be defined as keywords, in *simple-colors*.
+See the color-names package for a bunch of color names.
+
+Note that a color model is not a color space. A color model just says
+what color components we store, not a precise definition of how to render,
+or what exactly that means in terms of light and/or pigments and/or a
+specific device, e.g. an ICC color profile or something. Although, the color
+model can affect the color space we can represent.
+
+We can consider the color model as being the color of light, not the
+properties of a material which affects what happens to the light after it
+hits the material, which probably are best represented by statisical
+functions that approximate light modification or some other physical model.
+For example, what color is your opalescent ink with sparkles in it?
+
+Note also that a color model isn't a color format, since it only specifies
+what information we store, not exactly how, for example, a pixel should
+be laid out in bits.
+
+# How to use
+
+## Making colors
+
+The easiest way to make a color is to just use a vector like:
+
+  #(:rgb 0.82 0.0 0.62)
+
+or with a fresh one, like:
+
+  (vector :rgb 0.82 0.0 0.62)
+
+Another way to make a color is ‘make-color’. For example:
+
+  (make-color :rgb :red 0.82 :blue 0.0 :green 0.62)
+
+We also support named colors. There are a small number of primary color names
+built in. For more color names you can load the ‘color-names’ package. You can
+make a color from a name with ‘lookup-color’:
+
+  (lookup-color :red)
+   ⇒ #(:RGB 1 0 0)
+
+  (dcolor:lookup-color :lightsteelblue)  ; with color-names
+   ⇒ #(:RGB 176/255 196/255 74/85)
+
+So you don't have to depend on the representation of colors, you can use
+‘copy-color’ to make a copy of an exsiting color. This is important if you want
+to modifiy a component, but don't want to change the places it's already used.
+
+## Testing for colors
+
+   #:structured-color-p
+   #:known-color-p
+
+## Color components
+
+You can examine or modifiy the components of a color with the access function
+‘color-component’. For example:
+
+  (color-component #(:rgb 1 0 2/3) :blue)
+   ⇒ 2/3
+  (defvar *my-color* (vector :rgb 1 0 2/3))
+  (setf (color-component *my-color* :green) .321)
+   ⇒ .321
+  *my-color*
+   ⇒ #(:rgb 1 .321 2/3)
+
+## Miscellaneous functions
+
+   Theses functions can be used convert back and forth between some color
+   representations used by XParseColor.
+
+   #:color-to-xcolor
+   #:xcolor-to-color
+
+## Color models implemented
+
+  ╒═════════╤═══════════════════════╤═══════════════════════════╕
+  │ Keyword │Ccmponents             │Examples                   │
+  ╞═════════╪═══════════════════════╪═══════════════════════════╡
+  │ :RGB    │(number 0 1) Red       │#(:rgb 0.388 0 0.345)      │
+  │         │(number 0 1) Green     │#(:rgb 33/85 0 88/255)     │
+  │         │(number 0 1) Blue      │                           │
+  ├─────────┼───────────────────────┼───────────────────────────┤
+  │ :RGB8   │(integer 0 255) Red    │#(:rgb8 99 0 88)           │
+  │         │(integer 0 255) Green  │                           │
+  │         │(integer 0 255) Blue   │                           │
+  ├─────────┼───────────────────────┼───────────────────────────┤
+  │ :RGBA   │(number 0 1) Red       │#(:rgba 0.388 0 0.345 0.5) │
+  │         │(number 0 1) Green     │#(:rgba 33/85 0 88/255 1/2)│
+  │         │(number 0 1) Blue      │                           │
+  │         │(number 0 1) Alpha     │                           │
+  ├─────────┼───────────────────────┼───────────────────────────┤
+  │ :GRAY   │(number 0 1) Value     │#(:gray .15)               │
+  ├─────────┼───────────────────────┼───────────────────────────┤
+  │ :GRAY8  │(integer 0 255) Value  │#(:gray8 38)               │
+  ├─────────┼───────────────────────┼───────────────────────────┤
+  │ :HSV    │(number 0 1) Hue       │#(:hsv 920/3 1 33/85)      │
+  │         │(number 0 1) Saturation│#(:hsv 306.666 1 0.388)    │
+  │         │(number 0 1) Value     │                           │
+  ├─────────┼───────────────────────┼───────────────────────────┤
+  │ :HSL    │(number 0 1) Hue       │#(:hsl 920/3 1 33/170)     │
+  │         │(number 0 1) Saturation│#(:HSL 306.666 1 0.194)    │
+  │         │(number 0 1) Lightness │                           │
+  ╘═════════╧═══════════════════════╧═══════════════════════════╛
+
+## Converting between color models
+
+To convert colors between color models you can use ‘convert-color’:
+
+  (convert-color-to (lookup-color :deepskyblue4) :hsv)
+   ⇒ #(:HSV 27120/139 1 139/255)
+
+## To add a new color model:
+
+Make methods for:
+ ‘color-model-components’    : Returns a sequence of color component keywords.
+ ‘color-model-component’     : Returns the value of color component.
+ ‘set-color-model-component’ : How to set a component.
+ ‘make-color’                : Guess what this does.
+
+Make methods for ‘convert-color’ of the color conversion you would like to
+support. And finally:
+
+  (register-color-model :<your-color-model-name>)
+")
   (:use :cl :dlib :cl-ppcre)
   (:export
    #:*simple-colors*
@@ -17,6 +155,7 @@ and conversions between color models.")
    #:copy-color
    #:known-color-p
    #:lookup-color
+   #:color-model-components
    #:color-model-component
    #:color-component
    #:set-color-component
@@ -46,35 +185,6 @@ and conversions between color models.")
     (:cyan    . #(:rgb 0 1 1))
     (:white   . #(:rgb 1 1 1)))
   "Simple color values.")
-
-;; Colors are stored as:
-;;
-;; (color-model number [number...])
-;; where color-model is a name defining the color model,
-;; and the numbers define values in that model
-;; OR
-;; (number [number...])
-;; Values in the current color model, which shoud probably default to:
-;; standard RGB, or maybe R G B A
-;;
-;; Some standard color names should be defined as keywords.
-;; [see color-names.lisp for a bunch of stupid color names]
-;;
-;; Note that a color model is not a color space. A color model just says
-;; what color components we store, not a precise definition of how to render,
-;; or what exactly that means in terms of light and/or pigments and/or a
-;; specific device, e.g. and ICC color profile or something. Although, the color
-;; model can affect the color space we can represent.
-;;
-;; We can consider the color model as being the color of light, not the
-;; properties of a material which affects what happens to the light after it
-;; hits the material, which probably are best represented by statisical
-;; functions that approximate light modification or some other physical model.
-;; For example, what color is your opalescent ink with sparkles in it?
-;;
-;; Note also that a color model isn't a color format, since it only specifies
-;; what information we store, not exactly how, for example, a pixel should
-;; be layed out in bits.
 
 ;; @@@ perhaps I should use a defstruct rigamarole for this?
 ;; like defstruct with :type vector?
@@ -133,6 +243,10 @@ and conversions between color models.")
   (:documentation
    "Return the component COMPONENT-NAME of the color of the COLOR-MODEL."))
 
+(defgeneric color-model-components (color-model)
+  (:documentation
+   "Return the sequence of COMPONENT-NAMEs for the COLOR-MODEL."))
+
 (defun color-component (color component-name)
   "Return the named color component."
   (color-model-component
@@ -171,10 +285,19 @@ the VALUE."))
   ;;(round (* component #xff)))
   (logand #xff (truncate (* component #xff))))
 
+(defun component-to-bits (component n-bits)
+  "Convert a [0-1] value to a [0-<n-bits>] value."
+  ;;(round (* component #xff)))
+  (let ((all (1- (ash 1 n-bits))))
+    (logand all (truncate (* component all)))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;; RGB model - Red, green, and blue, components stored as Lisp numbers.
 ;;
+
+(defmethod color-model-components ((color-model (eql :rgb)))
+  '(:red :green :blue))
 
 (defmethod color-model-component ((color-model (eql :rgb)) color component-name)
   (let ((i (if (symbolp (svref color 0)) 1 0)))
@@ -214,6 +337,9 @@ the VALUE."))
 ;; The RGB-8 color model: 8-bit integers
 ;; Mostly the same as RGB.
 ;; We don't do any range checking.
+
+(defmethod color-model-components ((color-model (eql :rgb8)))
+  '(:red :green :blue))
 
 (defmethod color-model-component ((color-model (eql :rgb8)) color component-name)
   (color-model-component :rgb color component-name))
@@ -255,6 +381,9 @@ the VALUE."))
 ;; Gray model - Value component stored as a Lisp number.
 ;;
 
+(defmethod color-model-components ((color-model (eql :gray)))
+  '(:value))
+
 (defmethod color-model-component ((color-model (eql :gray)) color component-name)
   (let ((i (if (symbolp (svref color 0)) 1 0)))
     (case component-name
@@ -295,6 +424,9 @@ the VALUE."))
 ;; The GRAY-8 color model: 8-bit integers
 ;; Mostly the same as GRAY.
 ;; We don't do any range checking.
+
+(defmethod color-model-components ((color-model (eql :gray8)))
+  '(:value))
 
 (defmethod color-model-component ((color-model (eql :gray8))
 				  color component-name)
@@ -345,6 +477,9 @@ the VALUE."))
 ;; The RGBA color model:
 ;;
 
+(defmethod color-model-components ((color-model (eql :rgba)))
+  '(:red :green :blue :alpha))
+
 (defmethod color-model-component ((color-model (eql :rgba)) color component-name)
   (case component-name
     (:red   (svref color 1))
@@ -391,6 +526,9 @@ the VALUE."))
 ;;
 ;; HSV model - Hue, saturation, and value, components stored as Lisp numbers.
 ;;
+
+(defmethod color-model-components ((color-model (eql :hsv)))
+  '(:hue :saturation :value))
 
 (defmethod color-model-component ((color-model (eql :hsv)) color component-name)
   (let ((i (if (symbolp (svref color 0)) 1 0)))
@@ -475,6 +613,9 @@ the VALUE."))
 ;; HSL model - Hue, saturation, and lightness, components stored as Lisp numbers.
 ;;
 
+(defmethod color-model-components ((color-model (eql :hsl)))
+  '(:hue :saturation :lightness))
+
 (defmethod color-model-component ((color-model (eql :hsl)) color component-name)
   (let ((i (if (symbolp (svref color 0)) 1 0)))
     (case component-name
@@ -553,30 +694,33 @@ the VALUE."))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun color-to-xcolor (color &key bits)
+;; @@@ I wish we could detect how many bits are needed and adjust appropriately,
+;; but I'm not sure how to do that with floating point.
+
+(defun color-to-xcolor (color &key (bits 8) integer-p)
   "Return a string in XParseColor format for a color with the given RED, BLUE,
-and GREEN, components. Default to 8 bit color. If values are over 8 bits,
-default to 16 bit color."
+and GREEN, components. Default to 8 bit color."
   (let* ((c (convert-color-to color :rgb))
-	 (r (component-to-8bit (color-component c :red)))
-	 (g (component-to-8bit (color-component c :green)))
-	 (b (component-to-8bit (color-component c :blue)))
+	 (r  (color-component c :red))
+	 (g  (color-component c :green))
+	 (b  (color-component c :blue))
 	 (l (list r g b)))
     (cond
-      ((every #'floatp l)
+      ((and (not integer-p) (every #'floatp l))
        (format nil "rgbi:~f/~f/~f" r g b))
-      ((every #'integerp l)
-       (let (fmt)
-	 (when (not bits)
-	   (setf bits (if (some (_ (> _ #xff)) l) 16 8)))
-	 (setf fmt
-	       (case bits
-		 (4  "~x")
-		 (8  "~2,'0x")
-		 (12 "~3,'0x")
-		 (16 "~4,'0x")
-		 (t (error "Bad color bit magnitudes: ~s" l))))
-	 (format nil (s+ "rgb:" fmt "/" fmt "/" fmt) r g b)))
+      ;; ((every #'integerp l)
+      ((every #'numberp l)
+       (let (fmt ri gi bi)
+	 (setf ri (component-to-bits r bits)
+	       gi (component-to-bits g bits)
+	       bi (component-to-bits b bits)
+	       fmt (case bits
+		     (4  "~x")
+		     (8  "~2,'0x")
+		     (12 "~3,'0x")
+		     (16 "~4,'0x")
+		     (t (error "Bad color bit magnitudes: ~s" bits))))
+	   (format nil (s+ "rgb:" fmt "/" fmt "/" fmt) ri gi bi)))
       (t
        (error "Bad color formats: ~s" l)))))
 
@@ -606,6 +750,24 @@ default to 16 bit color."
   TekHVC:<H>/<V>/<C>
 |#
 
+(defparameter *hex-scanners*
+  (mapcar #'ppcre:create-scanner
+	  '("#([0-9A-Fa-f]{4})([0-9A-Fa-f]{4})([0-9A-Fa-f]{4})"
+	    "#([0-9A-Fa-f]{3})([0-9A-Fa-f]{3})([0-9A-Fa-f]{3})"
+	    "#([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})"
+	    "#([0-9A-Fa-f])([0-9A-Fa-f])([0-9A-Fa-f])"))
+  "List of regular expression scanners for hex colors.")
+
+(defparameter *rgb-scanner*
+  (ppcre:create-scanner "rgb:([0-9A-Fa-f]+)/([0-9A-Fa-f]+)/([0-9A-Fa-f]+)"))
+
+(defparameter *rgbi-scanner*
+  (ppcre:create-scanner (let ((num "([-+]*[0-9]*[.]?[0-9]+([eE][-+]*[0-9]+)?)"))
+			  (s+ "rgbi:" num "/" num "/" num))))
+
+;; @@@ Consdier how best to add HTML and CSS color parsing, which has a slightly
+;; different syntax. rgb(r, g, b) vs rgb:(r/g/b), and also alpha.
+
 (defun xcolor-to-color (string)
   "Return an :RGB color from a XParseColor format string. Doesn't
 handle device independant color spaces yet, e.g. CIELab."
@@ -615,8 +777,7 @@ handle device independant color spaces yet, e.g. CIELab."
     (cond
       ((begins-with "rgb:" string)
        (multiple-value-bind (begin end starts ends)
-	   (ppcre:scan "rgb:([0-9A-Fa-f]+)/([0-9A-Fa-f]+)/([0-9A-Fa-f]+)"
-		       string)
+	   (ppcre:scan *rgb-scanner* string)
 	 (when (and (not (zerop begin)) (/= (length string) end))
 	   (error "Junk in an rgb color string: ~s." string))
 	 (when (or (/= (length starts) 3) (/= (length ends) 3))
@@ -632,9 +793,7 @@ handle device independant color spaces yet, e.g. CIELab."
 		       (- (elt ends i) (elt starts i)))))))
       ((begins-with "rgbi:" string)
        (multiple-value-bind (begin end starts ends)
-	   (ppcre:scan (let ((num "([-+]*[0-9]*[.]?[0-9]+([eE][-+]*[0-9]+)?)"))
-			 (s+ "rgbi:" num "/" num "/" num))
-		       string)
+	   (ppcre:scan *rgbi-scanner* string)
 	 (when (and (not (zerop begin)) (/= (length string) end))
 	   (error "Junk in an rgbi color string: ~s." string))
 	 (when (or (/= (length starts) 6) (/= (length ends) 6))
@@ -648,10 +807,7 @@ handle device independant color spaces yet, e.g. CIELab."
        (when (not (position (1- (length string)) #(3 6 9 12)))
 	 (error "Inappropriate length of # color string: ~s." string))
        (let (begin end starts ends)
-	 (loop :for exp :in '("#([0-9A-Fa-f]{4})([0-9A-Fa-f]{4})([0-9A-Fa-f]{4})"
-			      "#([0-9A-Fa-f]{3})([0-9A-Fa-f]{3})([0-9A-Fa-f]{3})"
-			      "#([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})"
-			      "#([0-9A-Fa-f])([0-9A-Fa-f])([0-9A-Fa-f])")
+	 (loop :for exp :in *hex-scanners*
 	    :until (multiple-value-setq (begin end starts ends)
 		     (ppcre:scan exp string)))
 	 (when (and (not (zerop begin)) (/= (length string) end))
