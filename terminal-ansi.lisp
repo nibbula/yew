@@ -2199,10 +2199,8 @@ links highlight differently?"
 	   (write-line line (terminal-output-stream tty))
 	   (update-column-double tty line)
 	   (update-column tty #\newline)))
-    (terminal-raw-format tty "~c#3" #\escape)
-    (do-line)
-    (terminal-raw-format tty "~c#4" #\escape)
-    (do-line)
+    (terminal-raw-format tty "~c#3" #\escape) (do-line)
+    (terminal-raw-format tty "~c#4" #\escape) (do-line)
     (when (line-buffered-p tty)
       (finish-output (terminal-output-stream tty)))))
 
