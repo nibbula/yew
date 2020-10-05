@@ -90,7 +90,8 @@
 (defun system-apropos (thing &optional collect)
   (let (results)
     (when (find-package :quicklisp)
-      (loop :for system :in (symbol-call :ql :system-apropos-list thing)
+      (loop :for system :in (symbol-call :ql :system-apropos-list
+					 (princ-to-string thing))
 	 :do 
 	 (when (not results)
 	   (grout-format "Quicklisp systems:~%"))
@@ -192,13 +193,13 @@
 #+lish
 (lish:defcommand apropos
   ((os-only boolean :short-arg #\o
-    :help "True to search for operating system commands only.")
+    :help "Search for operating system commands only.")
    (lish-only boolean :short-arg #\l
-    :help "True to search for Lish commands only.")
+    :help "Search for Lish commands only.")
    (lisp-only boolean :short-arg #\L
-    :help "True to search for Common Lisp symbols only.")
+    :help "Search for Common Lisp symbols only.")
    (quicklisp-only boolean :short-arg #\q
-    :help "True to search for Quicklisp systems only.")
+    :help "Search for Quicklisp systems only.")
    (external-only boolean :short-arg #\e
     :help "Limit search to only external symbols in packages.")
    (package package :short-arg #\p
@@ -210,9 +211,9 @@
   :args-as args
   "Words given but not taken."
   (let ((types *types*))
-    (when os-only (setf types '(:os)))
-    (when lish-only (setf types '(:lish)))
-    (when lisp-only (setf types '(:lisp)))
+    (when os-only        (setf types '(:os)))
+    (when lish-only      (setf types '(:lish)))
+    (when lisp-only      (setf types '(:lisp)))
     (when quicklisp-only (setf types '(:quicklisp)))
     (when type (setf types (list type)))
     (if collect
