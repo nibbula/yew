@@ -146,7 +146,17 @@
 (defvar *magic-db* nil
   "A magic_t representing the current magic database.")
 
-(defvar *magic-default-flags* +MAGIC-SYMLINK+
+;; N.B.: Having +MAGIC-DEVICES+ in the default flags can be dangerous, but
+;; otherwise we don't even have the option of checking device contents without
+;; re-opening and possibly re-reading the whole database. This isn't really
+;; acceptable for software that doesn't operate with the model of the old unix
+;; file command which rereads the database for every invocation in a separate
+;; process. Software that wants to extra cautious should change the default
+;; flags. Software that wants to both report on device file types and device
+;; file content, should check that a file is a device before passing it, and
+;; should probably do it's device file metadata reporting rather than
+;; re-opening the whole database.
+(defvar *magic-default-flags* (logior +MAGIC-SYMLINK+ +MAGIC-DEVICES+)
   "Default flags to use.")
 
 (defun magic-db ()
