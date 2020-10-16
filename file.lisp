@@ -33,10 +33,10 @@ description."
 (defparameter *signal-errors* nil
   "True to signal file errors instead of printing them.")
 
-(defun safer-guess-file-type (file)
+(defun safer-guess-file-type (file &key device-contents-p)
   (if (not *signal-errors*)
       (handler-case
-	  (guess-file-type file)
+	  (guess-file-type file :device-contents-p device-contents-p)
 	((or stream-error file-error opsys:opsys-error) (c)
 	  (finish-output)
 	  (let ((*print-pretty* nil))
@@ -44,16 +44,18 @@ description."
 		    ;; "~a: ~a ~a~%" file (type-of c) c))
 		    "~a ~a~%" (type-of c) c))
 	  (invoke-restart 'continue)))
-      (guess-file-type file)))
+      (guess-file-type file :device-contents-p device-contents-p)))
 
-(defun describe-content-type (thing &key full (stream t))
+(defun describe-content-type (thing &key full (stream t) device-contents-p)
   "Describe the content type of THING to STREAM. THING can be a pathname
 designator, or a vector of (unsigned-byte 8). If FULL is true print all the
-data, otherwise just print the description."
+data, otherwise just print the description. If DEVICE-CONTENTS-P is true, try
+to read the contents of the device, otherwise just return the device type based
+on metadata."
   (let ((type
 	 (typecase thing
 	   ((or pathname string)
-	    (safer-guess-file-type thing))
+	    (safer-guess-file-type thing :device-contents-p device-contents-p))
 	   ((or stream (vector (unsigned-byte 8)))
 	    (guess-content-type thing)))))
     (when type
@@ -77,6 +79,8 @@ data, otherwise just print the description."
   ((full boolean :short-arg #\f
     :help "True to show more information about the file.")
    (brief boolean :short-arg #\b :help "Don't output file names.")
+   (device-contents-p boolean :short-arg #\d
+    :help "Examine the contents of device files.")
    (collect boolean :short-arg #\c
     :help "True to set *output* to a sequence of content-type structures.")
    (table boolean :short-arg #\T :help "*output* to a table.")
@@ -94,7 +98,9 @@ data, otherwise just print the description."
 		   ((or full brief)
 		     (loop :for f :in file-list :do
 			(with-restarts
-			    (push (list f (describe-content-type f :full full))
+			    (push (list f (describe-content-type
+					   f :full full
+					   :device-contents-p device-contents-p))
 				  results))))
 		   (t
 		    (grout-print-table
@@ -103,7 +109,9 @@ data, otherwise just print the description."
 			 :with type
 			 :for f :in file-list
 			 :when (setf type
-				     (with-restarts (safer-guess-file-type f)))
+				     (with-restarts (safer-guess-file-type
+						     f :device-contents-p
+						     device-contents-p)))
 			 :collect
 			 (list (s+ f ":")
 			       (progn
@@ -126,7 +134,9 @@ data, otherwise just print the description."
 	      (let ((content
 		     (slurp *standard-input* :element-type '(unsigned-byte 8))))
 		(push (list "*standard-input*"
-			    (describe-content-type content :full full))
+			    (describe-content-type content :full full
+						   :device-contents-p
+						   device-contents-p))
 		      results))))
 	(when (or collect table)
 	  (setf results (nreverse results))
