@@ -55,6 +55,33 @@
   file-name
   matcher)
 
+(deftype offset-unit ()
+  `(member :byte :int :short :long))
+
+(defclass offset ()
+  ((count
+    :initarg :count :accessor offset-count :initform 0 :type integer
+    :documentation "The count of the offset.")
+   (unit
+    :initarg :unit :accessor offset-unit :initform :long :type offset-unit
+    :documentation "Unit which count is in.")
+   (relative-p
+    :initarg :relative-p :accessor offset-relative-p :initform nil :type boolean
+    :documentation "True if it's relative to the containing offset."))
+  (:documentation "An offset specification."))
+
+(defclass indirect-offset (offset)
+  ((name
+    :initarg :name :accessor indirect-offset-name :initform nil :type symbol
+    :documentation "Name for the value.")
+   (big-endian
+    :initarg :endianness :accessor indirect-offset-big-endian :initform nil
+    :type boolean :documentation "True for big endianness.")
+   (formula
+    :initarg :formula :accessor indirect-offset-formula :initform nil :type list
+    :documentation "A form to be evaluated."))
+  (:documentation "An indirect offset."))
+
 (defstruct magic-data
   "Data from ‘magic’ format files."
   offset
@@ -273,8 +300,10 @@ probably take a copy beforehand."
   ;; @@@ XXX This could be wrong because it uses up the stream
   (funcall *guess-func* (slurp thing :element-type '(unsigned-byte 8)) :buffer))
 
-(defun guess-file-type (file-name)
-  "Guess the content of the file FILENAME."
+(defun guess-file-type (file-name &key device-contents-p)
+  "Guess the content of the file FILENAME. If the file is a device and
+DEVICE-CONTENTS-P is true, try to read the contents of the device, otherwise
+just return the device type based on metadata."
   (ensure-database)
   (let* ((filename (safe-namestring file-name))
 	 (info (get-file-info filename)))
@@ -282,11 +311,15 @@ probably take a copy beforehand."
       (:directory (get-content-type "x-directory"))
       (:link      (get-content-type "x-symlink"))
       (:device
-       #+unix (if (os-unix:is-character-device
-		   (os-unix:file-status-mode (os-unix:stat filename)))
-		  (get-content-type "x-character-device")
-		  (get-content-type "x-block-device"))
-       #-unix (get-content-type "x-device"))
+       (cond
+	 (device-contents-p
+	  (funcall *guess-func* filename :file))
+	 #+unix
+	 ((os-unix:is-character-device
+	   (os-unix:file-status-mode (os-unix:stat filename)))
+	  (get-content-type "x-character-device"))
+	 #+unix (t (get-content-type "x-block-device"))
+	 #-unix (t (get-content-type "x-device"))))
       ;;(:regular (funcall *guess-func* (quote-filename filename) :file))
       (:regular (funcall *guess-func* filename :file))
       (t #| :other |#
