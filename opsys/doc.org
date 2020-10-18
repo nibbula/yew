@@ -1,0 +1,422 @@
+opsys                                        -*- org -*-
+
+This is just some temporary documentation pulled from docstrings until I
+decide how to do it better. I would like the eventual documentation to be at
+least partially generated from docstrings.
+
+* system independent
+** environmental
+*** function lisp-args ()
+    Arguments given when starting the Lisp system.
+*** function memory-page-size ()
+    Get the system's memory page size, in bytes.
+** users
+*** function user-name (&optional id)
+  "Return the name of the user with ID, which defaults to the current user."
+*** function user-home (&optional (user (user-name)))
+  "Return the namestring of the given USER's home directory or nil if the ~
+user is not found."
+*** function user-id (&key name effective)
+  "Return the ID of the user with NAME, which defaults to the current user."
+*** function user-full-name (&optional id)
+  "Return the full name of user with ID, which defaults to the current user."
+*** function user-name-char-p (c)
+  "Return true if C is a valid character in a user name."
+*** function valid-user-name (username)
+  "Return true if USERNAME could be a valid user name, but not that the user
+actually exists."
+*** function get-next-user ()
+  "Return the next user structure from the user database."
+*** function user-list ()
+  "Return the list of all users."
+*** function refresh-user-list ()
+  "Make GET-NEXT-GROUP or GROUP-LIST return potentially updated data."
+*** function is-administrator ()
+  "Return true if you are root, or effectively root."
+*** function users-logged-in ()
+    "Return a list of names of logged in users."
+*** structure user-info
+    user-info-p
+    make-user-info
+    user-info-name
+    user-info-id
+    user-info-full-name
+    user-info-home-directory
+    user-info-shell
+    user-info-primary-group-id
+    user-info-guid
+    user-info-picture
+** groups
+*** function group-name (&optional id)
+  "Return the name of the group with ID. Defaults to the current group."
+*** function group-id (&optional name)
+  "Return the ID of the group NAME. Defaults to the current group."
+*** function get-next-group ()
+  "Return the next group structure from the group database."
+*** function group-list ()
+  "Return the list of all groups."
+*** function refresh-group-list ()
+  "Make GET-NEXT-GROUP or GROUP-LIST return potentially updated data."
+** files
+*** function quote-filename
+    "Try to quote a file name so none of it's characters are noticed specially
+by the Lisp pathname monster. This is useful just before passing strings to
+standard functions that take a pathname designator, such as OPEN."
+*** function safe-namestring
+  "Like NAMESTRING, but if pathname is a string, just return it. This is
+useful for accepting pathnames or strings in case namestring would interpret
+any characters in strings specially."
+*** function get-file-info (path &key (follow-links t))
+  "Return information about the file described by PATH in a FILE-INFO
+structure. If FOLLOW-LINKS is true (the default), then if PATH is a symbolic
+link, return information about the file it's linked to, otherwise return
+information about the link itself."
+*** structure file-info 
+    file-info-p
+    make-file-info
+    file-info-creation-time
+    file-info-access-time
+    file-info-modification-time
+    file-info-size
+    file-info-type
+    file-info-flags
+*** function stream-system-handle (stream &optional (direction :output))
+  "Return the operating system handle for a stream. If there is more than one
+system handle, return an arbitrary one, or the one specified by `DIRECTION`,
+which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
+*** function file-exists (filename)
+  "Check that a file with FILENAME exists at the moment. But it might not exist
+for long."
+*** function simple-delete-file (pathname)
+    "Delete a file. Doesn't monkey with the name, which should be a string.
+    Doesn't operate on streams."
+*** macro with-os-file ((var filename &key (direction :input) (if-exists :error) (if-does-not-exist :error)) &body body)
+    "Evaluate the body with the variable VAR bound to a posix file descriptor
+opened on FILENAME. DIRECTION, IF-EXISTS, and IF-DOES-NOT-EXIST are simpler
+versions of the keywords used in Lisp open.
+  DIRECTION         - supports :INPUT, :OUTPUT, and :IO.
+  IF-EXISTS         - supports :ERROR and :APPEND.
+  IF-DOES-NOT-EXIST - supports :ERROR, and :CREATE.
+*** function hidden-file-name-p (name)
+    Return true if the file NAME is normally hidden.
+*** function superfluous-file-name-p (name)
+    Return true if the file NAME is considered redundant. On POSIX file
+    systems, this means "." and "..".
+*** function lock-file (pathname lock-type timeout increment)
+    "Lock PATHNAME."
+*** function unlock-file (pathname)
+    "Unlock PATHNAME."
+*** macro with-locked-file ((pathname &key (lock-type :write) (timeout 3) (increment .1)) &body body)
+    Evaluate BODY with PATHNAME locked. Only wait for TIMEOUT seconds to get a
+    lock, checking at least every INCREMNT seconds.
+** paths
+*** variable *directory-separator*
+    Character that separates directories in a path.
+*** variable *directory-separator-string*
+    The directory separator character as a string, for convenience or
+    efficiency.
+*** variable *path-separator*
+    Separator in the PATH environement variable.
+*** variable *path-variable*
+    The environment variable which stores the command search paths.
+*** function split-path (path)
+    "Return a list of components of PATH."
+*** function path-to-absolute (path)
+    "Return the PATH converted into an absolute path."
+*** function clip-path (path side)
+    "Return the directory portion of a path."
+*** function path-directory-name (path)
+    "Return the directory portion of a PATH. This is similar to DIRECTORY-NAMESTRING."
+*** function path-file-name (path)
+    "Return the last portion of a PATH. This is similar to FILE-NAMESTRING."
+*** function path-append (first-path &rest paths)
+    "Append the elements PATHS to FIRST-PATH. Put a directory separator between
+them if there isn't one already."
+** directories
+*** function read-directory (&key dir append-type full omit-hidden)
+    Return a list of the file names in DIR as strings. DIR defaults to the ~
+current directory. If APPEND-TYPE is true, append a character to the end of ~
+the name indicating what type of file it is. Indicators are:
+  / : directory
+  @ : symbolic link
+  | : FIFO (named pipe)
+  = : Socket
+  > : Doors
+If FULL is true, return a list of dir-entry structures instead of file name ~
+strings. Some dir-entry-type keywords are:
+  :unknown :pipe :character-device :dir :block-device :regular :link :socket
+  :whiteout :undefined
+If OMIT-HIDDEN is true, do not include entries that start with ‘.’.
+*** structure dir-entry
+    "Filesystem directory entry."
+**** dir-entry-p
+**** make-dir-entry
+**** dir-entry-name
+     nil :type (or string null)
+**** dir-entry-type
+     nil :type (or keyword null)
+**** dir-entry-inode
+     nil :type (or integer null)
+*** function change-directory (&optional path)
+  "Change the current directory to DIR. Defaults to (user-homedir-pathname) ~
+if not given."
+*** function current-directory ()
+  "Return the full path of the current working directory as a string."
+*** function make-directory (path &key (mode #o755))
+  "Make a directory."
+*** function delete-directory (path)
+  "Delete a directory."
+*** function probe-directory (dir)
+  "Something like probe-file but for directories."
+*** macro without-access-errors (&body body)
+  "Evaluate the body while ignoring typical file access error from system
+calls. Returns NIL when there is an error."
+*** macro in-directory ((dir) &body body)
+  "Evaluate the body with the current directory set to DIR."
+** system commands / processes
+*** function command-pathname (cmd)
+   "Return the full pathname of the first executable file in the PATH or nil
+if there isn't one."
+*** function system-command (cmd &optional args)
+  "Run a system command. The command is generally given to whatever the system
+shell would be and the output and input are to the standard places. You would
+think that the ARGS would end up as separate arguments to the eventual command, 
+because they're passed to the system shell, they may not."
+*** function run-program (cmd args &key (environment nil env-p))
+    Run CMD with arguments ARGS which should be a list. ENVIRONMENT is the list
+of environment variables defined. If ENVIRONMENT isn't provided, inherit it from
+the current processe.
+*** function suspend-process (&optional id)
+    "Suspend the process with the given ID. If ID is NIL or not given, suspend
+    the current process."
+*** function resume-process (id)
+    "Resume the suspended process with the given ID."
+*** function terminate-process (id)
+    "Terminate the process with the given ID."
+*** function process-times (who)
+    "Get CPU time for WHO, which is either :SELF or :CHILDREN. Return a four
+    integer values: seconds and microseconds of user time, seconds and microseconds
+    of system time."
+*** function process-list ()
+    "Return a list of OS-PROCESS structures that represent the processes active
+    around the time of the call."
+*** function pipe-program (cmd args &key in-stream (out-stream :stream) (environment nil env-p))
+    Return an input stream with the output of the system command. Use
+    IN-STREAM as an input stream, if it's supplied. If it's supplied, use
+    OUT-STREAM as the output stream. OUT-STREAM can be T to use
+    *standard-output*.  ENVIRONMENT is a list of strings of the form
+    NAME=VALUE to be used as the process's environment. If ENVIRONMENT is not
+    provided, it defaults to the current process's environment.
+*** macro with-process-output ((var cmd args) &body body)
+    "Evaluate the body with the variable VAR bound to a stream with the output
+    from the system command CMD with the arguments ARGS."
+*** structure os-process
+    "Information about a system process."
+**** id
+     :type integer
+**** parent-id
+     :type integer
+**** group-id
+     :type integer
+**** user-id
+     :type integer
+**** terminal
+**** text-size
+     :type integer
+**** resident-size
+     :type integer
+**** percent-cpu
+**** nice-level
+     :type integer
+**** usage
+**** command
+**** args
+     :type vector
+** i/o
+*** function listen-for (seconds &optional (fd 0))
+    "Listen on the OS file descriptor for at most N seconds or until input is
+    available."
+** filesystems
+*** function mounted-filesystems ()
+    "Return a list of filesystem info."
+*** function mount-point-of-file (file)
+    "Try to find the mount of FILE. This might not always be right."
+*** structure filesystem-info
+    "File system information."
+**** filesystem-info-p
+**** make-filesystem-info
+**** filesystem-info-device-name
+**** filesystem-info-mount-point
+**** filesystem-info-type
+**** filesystem-info-total-bytes
+     :type integer
+**** filesystem-info-bytes-free
+     :type integer
+**** filesystem-info-bytes-available
+     :type integer
+** terminals
+*** function file-handle-terminal-p (fd)
+    "Return true if the system file descriptor FD is attached to a terminal."
+*** function file-handle-terminal-name (fd)
+    "Return the device name of the terminal attached to the system file
+    descriptor FD."
+*** variable *default-console-device-name*
+    "Name of the default console device."
+*** function open-terminal (device-name)
+    "Open a terminal. Return the system file handle."
+*** function close-terminal (terminal-handle)
+    "Close a terminal."
+*** function read-terminal-char (terminal-handle &key timeout)
+    "Return a character read from the terminal TERMINAL-HANDLE.  If there's a
+    problem, it will signal a READ-CHAR-ERROR. If the terminal is resized it
+    will signal an OPSYS-RESIZED. If the program is continued from being
+    suspended, it will signal an OPSYS-RESUMED. Usually this means the caller
+    should handle these possibilites. Returns the character read or NIL if it
+    the timeout is hit."
+*** function read-until (tty stop-char &key timeout)
+    "Read until STOP-CHAR is read. Return a string of the results.
+    TTY is a file descriptor."
+*** function write-terminal-char (terminal-handle char)
+    "Write CHAR to the terminal designated by TERMINAL-HANDLE."
+*** function write-terminal-string (terminal-handle string)
+    "Write STRING to the terminal designated by TERMINAL-HANDLE."
+*** function slurp-terminal (tty &key timeout)
+    "Read until EOF. Return a string of the results. TTY is a file descriptor."
+*** function set-terminal-mode (tty &key echo line raw timeout mode)
+    "Set the terminal mode. Arguments are:
+    ECHO makes input automatically output back, so you can see what you typed.
+    LINE makes input wait for a newline until returning.
+    RAW ingores normal processing, like interrupt keys.
+    TIMEOUT is the time in milliseconds to wait before returning with no input.
+    MODE is a TERMINAL-MODE structure to take settings from.
+    The individual settings override the settings in MODE."
+*** function get-terminal-mode (tty)
+    "Return a TERMINAL-MODE structure with the current terminal settings."
+*** function get-window-size (tty-fd)
+    "Get the window size. The first value is columns, second value is rows."
+** language / localization
+** miscellaneous
+*** function exit-lisp ()
+   "Halt the entire Lisp system."
+** errors
+*** opsys-error
+    "An error from calling a POSIX function."
+**** opsys-error-code
+     "The error code of the last error."
+*** opsys-resumed
+    "The process was resumed from being suspended."
+*** opsys-resized
+    "The window changed size."
+* system dependent
+** unix
+*** posix
+*** linux
+**** function linux-splice
+**** function linux-vmsplice
+**** function linux-tee
+*** bsd
+**** darwin
+***** function extended-attribute-list (path)
+***** function extended-attribute-value (path name)
+** windows
+** standard C library
+*** I/O
+**** c type file-ptr
+     Pointer to FILE. FILE *
+**** c type fpos-t
+     File position. fpos_t
+**** c variable *stdin*  file-ptr
+**** c variable *stdout* file-ptr
+**** c variable *stderr* file-ptr
+**** c function fopen file-ptr (path :string) (mode :string)
+**** c function fclose :int (file file-ptr)
+**** c function fileno :int (file file-ptr)
+**** c function fflush :int (file file-ptr)
+**** c function fgetc :int (file file-ptr)
+**** c function getc :int (file file-ptr)
+**** c function getchar :int
+**** c function fgets :string (str :string) (size :int) (file file-ptr)
+**** c function gets :string (str :string)
+**** c function printf :int (format :string) &rest
+**** c function fprintf :int (file file-ptr) (format :string) &rest
+**** c function sprintf :int (str :string) (format :string) &rest
+**** c function snprintf :int (str :string) (size size-t) (format :string) &rest
+**** c function fputc :int (c :int) (file file-ptr)
+**** c function putc :int (c :int) (file file-ptr)
+**** c function putchar :int (c :int)
+**** c function fputs :int (s :string) (file file-ptr)
+**** c function puts :int (s :string)
+**** c function fread size-t (ptr :pointer) (size size-t) (nitems size-t) (file file-ptr)
+**** c function fwrite size-t (ptr :pointer) (size size-t) (nitems size-t) (file file-ptr)
+**** c function fscanf :int (file file-ptr) (format :string) &rest
+**** c function scanf :int  (format :string) &rest
+**** c function sscanf :int (s :string) (format :string) &rest
+**** c function fsetpos :int (file file-ptr) (pos fpos-t)
+**** c function fgetpos :int (file file-ptr) (pos fpos-t)
+**** c function fseek :int (file file-ptr) (offset :long) (whence :int)
+**** c function ftell :int (file file-ptr)
+**** c function perror :void (s :string)
+**** c function setbuf :int (file file-ptr) (buf :string)
+**** c function ungetc :int (file file-ptr)
+*** Processes
+**** c function system :int (command :string)
+*** Characters
+**** c type wint-t
+     wint_t
+**** c function iswalnum :int (wc wint-t)
+**** c function iswalpha :int (wc wint-t)
+**** c function iswblank :int (wc wint-t)
+**** c function iswcntrl :int (wc wint-t)
+**** c function iswdigit :int (wc wint-t)
+**** c function iswgraph :int (wc wint-t)
+**** c function iswlower :int (wc wint-t)
+**** c function iswprint :int (wc wint-t)
+**** c function iswpunct :int (wc wint-t)
+**** c function iswspace :int (wc wint-t)
+**** c function iswupper :int (wc wint-t)
+**** c function iswxdigit :int (wc wint-t)
+**** c function isalnum :int (c :int)
+**** c function isalpha :int (c :int)
+**** c function isascii :int (c :int)
+**** c function isblank :int (c :int)
+**** c function iscntrl :int (c :int)
+**** c function isdigit :int (c :int)
+**** c function isgraph :int (c :int)
+**** c function islower :int (c :int)
+**** c function isprint :int (c :int)
+**** c function ispunct :int (c :int)
+**** c function isspace :int (c :int)
+**** c function isupper :int (c :int)
+**** c function isxdigit :int (c :int)
+*** Character encoding / localization
+**** constant +LC-ALL+
+     Entire locale generally.
+**** constant +LC-COLLATE+  
+     String collation routines.
+**** constant +LC-CTYPE+    
+     Character types. Upper and lower case, alphabetic or non-alphabetic characters, etc.
+**** constant +LC-MONETARY+ 
+     For formatting monetary values.
+**** constant +LC-NUMERIC+  
+     For formatting numbers.  This controls the formatting of decimal points in input and output of floating point number
+**** constant +LC-TIME+     
+     For formatting dates and times.
+**** constant +LC-MESSAGES+ 
+     For message catalogs, see catopen(3) function.
+**** constant +LC-LAST+     
+     Highest locale category + 1.
+**** c function setlocale :string (category :int) (locale :string)
+**** constant +lc-category-alist+
+     List of all the +LC-*+ constants.
+**** function lc-category (c)
+     Return an valid integer locale category given a keyword. If the argument
+     is already a valid integer locale category, it is returned, otherwise an
+     error is signaled.
+**** function setlocale (category &optional locale)
+     See manpage for setlocale(3). CATEGORY can be a keyword or integer.
+**** function setup-locale-from-environment ()
+     Do appropriate setlocale calls based on the current settings of LC_* environment variables.
+* COMMENT MeTaDaTa
+creation date: [2017-03-04 05:02:44]
+creator: "Nibby Nebbulous" <nibbula@gmail.com>
+tags: lisp os "operating system" syscall unix posix linux windows documentation
