@@ -1,0 +1,154 @@
+*¡NOTA BENE! / WARNING*
+
+Lish is full of bugs! Don't use it near any data that you don't want to risk
+losing! Since it's a shell, it's very good at recursively wreaking havoc upon
+files and commands. You may quite regularly use software highly dubious
+quality, but a shell is perhaps far more dangerous than most software. Lish
+is also very incomplete. It will certainly change in incompatible ways. Unless
+you intrepidly want to experiment, or are interested in helping turn it into
+something stable and tested, I recommend not using it yet!
+
+* Installing
+  Pick one of the following options to install Lish:
+
+** Install a binary
+*** Pick one from the binary release page. [LINK NEEDED]
+*** Put it somewhere in your path.
+** Build from source
+   : git clone --recurse-submodules https://github.com/nibbula/yew.git
+   : cd yew/lish
+   : sh build.sh
+** Loading without the build script
+*** Loading
+**** Install quicklisp from https://quicklisp.org if you don't already have it.
+**** Install lish & dependencies into local-projects
+#+BEGIN_SRC shell
+   cd ~/quicklisp/local-projects
+   git clone --recurse-submodules https://github.com/nibbula/yew.git
+#+END_SRC shell
+
+**** In your Lisp, use quicklisp to load Lish:
+#+BEGIN_SRC lisp
+   (ql:quickload :lish)
+#+END_SRC
+
+**** Dependencies
+***** A Common Lisp implementation:
+****** sbcl (recommended)
+****** ccl
+****** ecl
+****** cmucl
+****** clisp
+***** Quicklisp
+***** Lisp software not in quicklisp:
+****** https://github.com/nibbula/yew.git
+******* dlib
+******* stretchy
+******* char-util
+******* tiny-repl
+******* keymap
+******* collections
+******* ochar
+******* ostring
+******* color
+******* fatchar
+******* fatchar-io
+******* glob
+******* table
+******* table-print
+******* dlib-misc
+******* dl-list
+******* reader-ext
+******* syntax
+******* syntax-lisp
+******* theme
+******* style
+******* terminal-table
+******* grout
+******* completion
+******* unipose
+******* inator
+******* fui
+******* terminal-inator
+******* dlib-interactive
+******* magic
+****** https://github.com/nibbula/opsys.git
+******* opsys
+******* opsys-base
+******* opsys-<system>
+****** https://github.com/nibbula/terminal.git
+******* terminal
+******* terminal-crunch
+******* terminal-ansi
+******* terminal-dumb
+****** https://github.com/nibbula/deblarg.git
+******* deblarg
+****** https://github.com/nibbula/rl.git
+******* rl
+****** https://github.com/nibbula/lish.git
+******* lish
+***** Lisp packages in quicklisp, are probably:
+      - asdf
+      - uiop
+      - trivial-features
+      - babel
+      - alexandria
+      - cffi
+      - trivial-gray-streams
+      - cl-ppcre
+      - eclector
+      - closer-mop
+      - acclimation
+      - cl-unicode
+      - flexi-streams
+      - chipz
+      - bordeaux-threads
+*** Building an executable
+
+#+BEGIN_SRC lisp
+  (lish:make-standlone)
+#+END_SRC
+
+  This should make an executable named "lish" in your current directory.
+  Put it wherevere you'd like.
+
+  Alternatively, you should be able to use:
+#+BEGIN_SRC lisp
+  (asdf:operate 'asdf:program-op :lish)
+#+END_SRC
+
+  Which will likely put an executable in whatever
+  `(asdf:apply-output-translations "lish")` returns.
+
+* Running
+  From another shell:
+#+BEGIN_SRC shell
+  lish
+#+END_SRC
+  Or from a Lisp REPL:
+#+BEGIN_SRC lisp
+  (lish:lish)
+#+END_SRC
+* Using
+  Lish is a combination of a Unix shell and Common Lisp REPL. As you might
+  expect, it allows you to both type Unix commands and evaluate Lisp
+  expressions. It tries to do so in way that would not be too annoying to
+  someone familiar with either one.
+
+** Examples of features
+*** Familiar Unix style command pipelines
+    : > ls
+*** In-line Lisp evaluation
+*** Lisp function pipelines
+*** Object pipelines
+*** Interactive features [animated gifs or whatever]
+**** Command completion
+**** Lisp completion
+**** File completion
+**** Help button
+**** History searching
+**** Easy prompts
+**** Themes
+**** Character picker
+**** List choosing
+**** Table broweer
