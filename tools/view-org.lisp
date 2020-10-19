@@ -153,8 +153,8 @@
 (defun view-org (file)
   "View an org-mode FILE with the tree viewer."
   (let ((tree (read-org-mode-file file)))
-    (view-tree (make-instance 'org-viewer :root tree
-			      :file-name file))))
+    (view-tree tree :viewer (make-instance 'org-viewer :root tree
+					   :file-name file))))
 
 (defclass org-viewer (tree-viewer file-inator)
   ()
