@@ -550,7 +550,8 @@ symbols, :all to show internal symbols too."
 	       :collect (list (slot-definition-name s)
 			      (slot-definition-type s)
 			      (slot-definition-initform s)))
-	    :column-names '("Name" "Type" ("Default" :left))))
+	    :columns '((:anem "Name") (:name "Type")
+		       (:name "Default" :align :left))))
 	 (:condition
 	   (make-table-from
 	    (loop :for s :in (class-slots class)
@@ -564,7 +565,8 @@ symbols, :all to show internal symbols too."
 			      (slot-definition-type s)
 			      (aref (string (slot-definition-allocation s)) 0)
 			      (documentation s t)))
-	    :column-names '("Name" "Type" "A" ("Description" :left)))))))
+	    :columns '((:name "Name") (:name "Type")
+		       (:name "A") (:name "Description" :align :left)))))))
     (values))
     #-has-mop    
     (format stream "No MOP, so I don't know how to describe the class ~s~%"
