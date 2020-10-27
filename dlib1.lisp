@@ -2,12 +2,11 @@
 ;;; dlib1.lisp - Utilities of redundant doom, first file.
 ;;;
 
-;; These are mostly solving problems that have already been solved.
-;; But it's mostly stuff that I need just to start up.
-;; So:
+;; THIS LIBRARY IS A DISEASE. FUCK THIS LIBRARY.
+;; I hate this and everyone else's stupid fucking utils library.
+
 ;;  - Don't add any dependencies.
-;;  - Try to keep it so-called "minimal".
-;; More optional stuff can go in dlib-misc.
+;;  - Try to be "minimal".
 
 ;;#+debug-rc (progn (format *terminal-io* "dlib") (force-output *terminal-io*))
 
@@ -647,22 +646,6 @@ just return SEQUENCE. Elements are compared with TEST which defaults to EQL."
 	(subseq sequence 0 pos)
 	(copy-seq sequence))))
 
-;; @@@ (apply #'s+ nil) sometimes crashes on sbcl?
-;; probably when safey is off, because it can't doesn't check that you
-;; called it with the wrong number of arguments. So, let's fix it so it doesn't
-;; do that.
-;;
-;; (defun s+ (s &rest rest)
-;;   "Return a string which is the arguments concatenated as if output by PRINC."
-;;   ;; This is usually slower:
-;;   ;; (labels ((as-string (s) (if (stringp s) s (princ-to-string s))))
-;;   ;;   (apply #'concatenate 'string (as-string s) (mapcar #'as-string rest))))
-;;   (if rest
-;;       (with-output-to-string (result)
-;; 	(princ s result)
-;; 	(loop :for x :in rest :do (princ x result)))
-;;       (princ-to-string s)))
-
 (defun s+ (&rest rest)
   "Return a string which is the arguments concatenated as if output by PRINC."
   ;; This is usually slower:
@@ -779,6 +762,37 @@ just return SEQUENCE. Elements are compared with TEST which defaults to EQL."
 				  (if (stringp a) a (princ-to-string a))
 				  (if (stringp b) b (princ-to-string b))))
 		   rest))))))
+
+;; Sum lengths and replace
+#+(or)
+(defun s4+ (&rest rest)
+  (macrolet ((to-string (x)
+	       `(if (stringp ,x) ,x (princ-to-string ,x))))
+    (let* ((str-list (mapcar (_ (to-string _)) rest))
+	   (len (loop :for i :in rest :sum (length str-list)))
+	   (new-str (make-string len)))
+      (loop :with i = 0
+	 :for s :in str-list
+	 :do
+	 (replace new-str s :start1 i)
+	 (incf i (length s)))
+      new-str)))
+
+;; format with pre-allocated fill pointer string
+#+(or)
+(defun s5+ (&rest rest)
+  (macrolet ((to-string (x)
+	       `(if (stringp ,x) ,x (princ-to-string ,x))))
+    (let* ((str-list (mapcar (_ (to-string _)) rest))
+	   (len (loop :for i :in rest :sum (length str-list)))
+	   (new-str (make-array len :fill-pointer 0 :element-type 'character)))
+      (format new-str "~{~a~}" str-list)
+      new-str)))
+
+;; format to a string
+#+(or)
+(defun s6+ (&rest rest)
+  (format nil "~{~a~}" rest))
 
 ;; This seems likely to make things faster on any implementation.
 (define-compiler-macro s+ (&whole whole &rest rest)
