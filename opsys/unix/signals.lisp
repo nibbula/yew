@@ -343,6 +343,13 @@ of (signal . action), as would be passed to SET-SIGNAL-ACTION."
        (with-signal-handlers-from-value (,evaled-list)
 	 ,@body))))
 
+(defmacro with-signal-handlers* (handler-list &body body)
+  "Evaluate the BODY with the signal handlers set as in HANDLER-LIST, with the
+handers restored to their orignal values on return. HANDLER-LIST is a list
+of (signal . action), as would be passed to SET-SIGNAL-ACTION."
+  `(with-signal-handlers-from-value (,handler-list)
+     ,@body))
+
 (defconstant +SIG-BLOCK+   0)
 (defconstant +SIG-UNBLOCK+ 1)
 (defconstant +SIG-SETMASK+ 2)

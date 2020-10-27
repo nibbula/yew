@@ -348,6 +348,7 @@
    #:signal-action
    #:set-signal-action
    #:with-signal-handlers
+   #:with-signal-handlers*
    #:with-blocked-signals
    #:with-all-signals-blocked
    #:signal-mask
