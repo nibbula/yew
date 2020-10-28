@@ -561,6 +561,7 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
     (return-from dir-matches nil))
   ;; (dbugf :glob "path = ~s dir = ~s~%" path dir)
   (let ((path-element (car path))
+	(actual-dir (or dir "."))
 	result name recursive-match is-dir more-path either)
     (flet ((starts-with-dot (string)
 	     (char= (char string 0) #\.))
@@ -595,10 +596,10 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
       (loop
 	 :for entry :in (ignore-conditions (opsys-error)
 			  (read-directory
-			   :dir (or dir ".") :full t
+			   :dir actual-dir :full t
 			   :omit-hidden (not (starts-with-dot path-element))))
 	 :do (setf name      (dir-entry-name entry)
-		   is-dir    (is-really-a-directory dir entry)
+		   is-dir    (is-really-a-directory actual-dir entry)
 		   more-path (> (length path) 1)
 		   either    nil) ; for debugging
 	 :when (or recursive-match (path-match entry path-element))
