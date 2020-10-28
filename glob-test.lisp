@@ -187,38 +187,54 @@
   (with-open-file (stm name :direction :output)
     (format stm "foo~%")))
 
+(defun trailing-directory-p (name)
+  (char= #\/ (char name (1- (length name)))))
+
+(defun make-dir-tree (tree)
+  (loop :for f :in tree :do
+     (if (trailing-directory-p f)
+	 (make-directory f)
+	 (touch f))))
+
+(defun delete-dir-tree (tree)
+  (loop :for f :in (reverse tree) :do
+     (if (trailing-directory-p f)
+	 (delete-directory f)
+	 (delete-file f))))
+
+(defparameter *tree-1*
+  '("foo"
+    "one"
+    "two"
+    "boo/"
+    "boo/baz"
+    "boo/foo"
+    "boo/bar/"
+    "boo/bar/corge"
+    "boo/bar/gralt.c"
+    "zoo/"
+    "zoo/bar"
+    "zoo/foo"
+    "zoo/baz/"
+    "zoo/baz/lemon"
+    "zoo/baz/foo"
+    "zoo/baz/bark.c"
+    "zoo/baz/pippy.c/"
+    "zoo/baz/pippy.c/fuzz"
+    "zoo/quux/"
+    "zoo/quux/pidge.c"
+    "zoo/quux/snoo"))
+
 (defun glob-setup ()
   (make-directory *test-dir*)
   (in-directory (*test-dir*)
-    (mapcar #'touch '("foo" "one" "two"))
-    (mapcar #'make-directory '("boo" "zoo"))
-    (in-directory ("boo")
-      (mapcar #'touch '("baz" "foo"))
-      (make-directory "bar")
-      (in-directory ("bar")
-	(mapcar #'touch '("corge" "gralt.c"))))
-    (in-directory ("zoo")
-      (mapcar #'touch '("bar" "foo"))
-      (mapcar #'make-directory '("baz" "quux"))
-      (in-directory ("baz")
-	(mapcar #'touch '("lemon" "foo" "bark.c"))
-	(make-directory "pippy.c")
-	(in-directory ("pippy.c")
-	  (touch "fuzz")))
-      (in-directory ("quux")
-	(mapcar #'touch '("pidge.c" "snoo")))))
+    (make-dir-tree *tree-1*))
   (change-directory *test-dir*))
 
 (defun glob-takedown ()
   (change-directory "..")
   (in-directory (*test-dir*)
-    (mapcar #'delete-file '("boo/bar/corge" "boo/bar/gralt.c" "boo/baz"
-			    "boo/foo" "zoo/bar" "zoo/foo" "zoo/baz/lemon"
-			    "zoo/baz/foo" "zoo/baz/bark.c"
-			    "zoo/baz/pippy.c/fuzz" "zoo/quux/pidge.c"
-			    "zoo/quux/snoo" "foo" "one" "two"))
-    (mapcar #'delete-directory '("boo/bar" "boo" "zoo/baz/pippy.c" "zoo/baz"
-				 "zoo/quux" "zoo")))
+    (delete-dir-tree *tree-1*))
   (delete-directory *test-dir*))
 
 ;; @@@ !!! Need tests for:
@@ -267,8 +283,7 @@
 	   "zoo/baz/pippy.c/fuzz" "zoo/foo" "zoo/quux" "zoo/quux/snoo"))
   (equal (in-directory ("boo") (muffle-sort (glob "../**/*.c")))
 	 '("../boo/bar/gralt.c" "../zoo/baz/bark.c" "../zoo/baz/pippy.c"
-	   "../zoo/quux/pidge.c"))
-)
+	   "../zoo/quux/pidge.c")))
 
 (deftests (glob-all)
   fnmatch-strings fnmatch-qmark fmatch-charset fnmatch-star fnmatch-escape
