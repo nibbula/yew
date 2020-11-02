@@ -2,9 +2,9 @@
 ;;; dlib1.lisp - Utilities of redundant doom, first file.
 ;;;
 
-;; THIS LIBRARY IS A DISEASE. FUCK THIS LIBRARY.
-;; I hate this and everyone else's stupid fucking utils library.
-
+;; Util libraries are a problem. I strongly dislike all of them, including
+;; this one.
+;;
 ;;  - Don't add any dependencies.
 ;;  - Try to be "minimal".
 
@@ -139,7 +139,8 @@ of it.")
    ;; #-(or lispworks clasp) #:#.(code-char #x203B) #\reference_mark
    #:maybe-refer-to
    ;; #-(or lispworks clasp) #:#.(code-char #x203B)?
-   #:@
+   ;; #:@
+   #:with-internal-slots
    #:ignore-conditions #:ignore-some-conditions
    #:find-slot-name
    #:defmethod-quiet
@@ -1838,14 +1839,22 @@ package doesn't exist or isn't bound."
 
 ;; (defalias '#.(code-char #x203b)? 'maybe-refer-to)
 
-;; Should I really?
-(defmacro @ (object &rest slot-names)
-  "Slot access."
-  (let ((result object))
-    (loop
-       :for n :in slot-names
-       :do (setf result `(slot-value ,result ',n)))
-    result))
+;; Is this even useful??
+;; (defmacro @ (object &rest slot-names)
+;;   "Slot access."
+;;   (let ((result object))
+;;     (loop
+;;        :for n :in slot-names
+;;        :do (setf result `(slot-value ,result ',n)))
+;;     result))
+
+;; This probably violates what people consider good design.
+;; @@@ This could probably use more error checking?
+(defmacro with-internal-slots ((&rest slot-names) package object &body body)
+  "Like WITH-SLOTS but getting using the slot names internal to PACKAGE."
+  `(with-slots (,@(mapcar (lambda (x) (list x (intern (symbol-name x) package)))
+			  slot-names)) ,object
+     ,@body))
 
 (defmacro ignore-conditions ((&rest conditions) &body body)
   "If body signals a condition type in CONDITIONS, return the values NIL and
