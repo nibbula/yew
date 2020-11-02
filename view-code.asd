@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description
     "This is an interesting experiment, but not very useful yet."
-    :depends-on (:terminal :tree-viewer :reader-ext)
+    :depends-on (:terminal :tree-viewer :reader-ext :tree-editor)
     :components
     ((:file "view-code")))

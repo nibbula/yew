@@ -7,7 +7,7 @@
 
 This is a somewhat weird experiment, and not very useful yet.
 ")
-  (:use :cl :terminal :tree-viewer :reader-ext)
+  (:use :cl :terminal :tree-viewer :reader-ext :tree-editor)
   (:export
    #:view-code
    #:view-project
@@ -22,11 +22,26 @@ This is a somewhat weird experiment, and not very useful yet.
 ;; collapsability unless we mutated the viewer somehow.
 
 (defmethod display-node ((node code-node) level)
-  (tt-format "~v,,,va~c "
-	     (* level (tree-viewer::indent *viewer*)) #\space ""
-	     (if (node-branches node)
-		 (if (node-open node) #\- #\+)
-		 #\space))
+  (let ((prefix (format nil "~v,,,va~c "
+			(* level (tree-viewer::indent *viewer*)) #\space ""
+			(if (node-branches node)
+			    (if (node-open node) #\- #\+)
+			    #\space))))
+    ;; (tt-format "~v,,,va~c "
+    ;; 	     (* level (tree-viewer::indent *viewer*)) #\space ""
+    ;; 	     (if (node-branches node)
+    ;; 		 (if (node-open node) #\- #\+)
+    ;; 		 #\space))
+    ;; (setf (tb::current-left tb::*viewer*) (char-util:display-length prefix))
+    ;; (setf (tb::current-left tb::*viewer*)
+    ;; 	  (+ (char-util:display-length prefix)
+    ;; 	     (second (multiple-value-list
+    ;; 		      (terminal:terminal-get-cursor-position *terminal*)))))
+    (tt-write-string prefix)
+    (setf (tb::current-left tb::*viewer*)
+	  (second (multiple-value-list
+		   (terminal:terminal-get-cursor-position *terminal*))))
+    )
   (flet ((get-name (n) (node-object (first (node-branches n))))
 	 (get-args (n)
 	   (let ((arg-node (second (node-branches n))))
@@ -91,13 +106,16 @@ This is a somewhat weird experiment, and not very useful yet.
 (defun view-code (&optional (file (pick-list:pick-file)))
   "This shows why s-exps are cool."
   (with-open-file (stm file)
-    (view-tree
-     (convert-tree
-      (append (list file)
-	      (loop :with exp
-		 :while (setf exp (safer-read stm))
-		 :collect exp))
-      :type 'code-node))))
+    ;; (view-tree
+    (let ((editor (make-instance 'tree-editor :node-type 'code-node)))
+      (edit-tree
+       (convert-tree
+	(append (list file)
+		(loop :with exp
+		   :while (setf exp (safer-read stm))
+		   :collect exp))
+	:type 'code-node)
+       :editor editor))))
 
 #+lish
 (lish:defcommand view-code
