@@ -108,6 +108,7 @@ methods, and the like.
    #:convert-tree #:print-tree #:make-tree #:subdirs
    #:tree-viewer
    #:*viewer*
+   #:get-parent
    #:display-indent
    #:display-prefix
    #:display-node-line
@@ -477,6 +478,9 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
    (current-position
     :initarg :current-position :accessor current-position :initform nil 
     :documentation "The position of the current element.")
+   (current-left
+    :initarg :current-left :accessor current-left :initform nil
+    :documentation "Horizontal position of the current item.")
    (parents
     :initarg :parent :accessor parents :initform nil 
     :documentation "A table of the node parents we have encountered.")
@@ -840,12 +844,15 @@ been encountered."
 (defun node-info (o)
   "Display node information."
   (with-slots (current) o
-    (fui:display-text
-     "Node Info"
-     (list (format nil "Node: ~a" current)
-	   (format nil " open     : ~a" (node-open current))
-	   (format nil " branches : ~a" (node-branches current))
-	   (format nil " parent   : ~a" (get-parent current))))))
+    (fui:show-text
+     (with-output-to-string (str)
+       (describe current str))
+     :title "Node Info"
+     ;; (list (format nil "Node: ~a" current)
+     ;; 	   (format nil " open     : ~a" (node-open current))
+     ;; 	   (format nil " branches : ~a" (node-branches current))
+     ;; 	   (format nil " parent   : ~a" (get-parent current)))
+     )))
 
 (defmethod sort-command ((o tree-viewer))
   "Sort the branches of the current node."
@@ -919,6 +926,8 @@ been encountered."
     If you don't use display-node-line to display your content, you should
     handle the LEFT offset yourself, if you want left/right scrolling."))
 
+;; @@@ probably olength and osubseq in here should be in terms of grid cells
+;; not cheracter codes, so somehow using display-length.
 (defmethod display-node-line ((node node) line)
   "Display a line of node output."
   (with-slots (left current current-max-right) *viewer*
@@ -938,16 +947,18 @@ been encountered."
 (defmethod display-object ((node node) object level)
   "Display an object for a node. The object is printed to a string as
 with PRINC, and indented properly for multi-line objects."
-  (let ((lines (split-sequence #\newline (princ-to-string object))))
-    (when (eq node (current *viewer*))
-      (tt-bold t))
-    (display-node-line node (s+ (display-prefix node level)
-				(format nil "~a~%" (first lines))))
-    (when (eq node (current *viewer*))
-      (tt-bold nil))
-    (loop :for l :in (cdr lines) :do
-       (display-node-line node (s+ (display-indent node level)
-				   (format nil "~a~%" l))))))
+  (with-slots (current current-left left) *viewer*
+    (let ((lines (split-sequence #\newline (princ-to-string object)))
+	  (prefix (display-prefix node level)))
+      (when (eq node current)
+	(setf current-left (- (display-length prefix) left))
+	(tt-bold t))
+      (display-node-line node (s+ prefix (format nil "~a~%" (first lines))))
+      (when (eq node current)
+	(tt-bold nil))
+      (loop :for l :in (cdr lines) :do
+	 (display-node-line node (s+ (display-indent node level)
+				     (format nil "~a~%" l)))))))
 
 (defgeneric display-node (node level)
   (:documentation "Display a node.
@@ -956,12 +967,10 @@ display-prefix to generate line strings, and then use display-node-line, to
 output them."))
 
 (defmethod display-node :before ((node node) level)
-  (declare (ignore level))
-  (when (eq node (current *viewer*))
-    ;; (setf (current-position *viewer*) (getcury *stdscr*)))
-    (setf (current-position *viewer*)
-	  (terminal-get-cursor-position *terminal*)))
-  (setf (bottom-node *viewer*) node))
+  (with-slots (current current-position bottom-node) *viewer*
+    (when (eq node current)
+      (setf current-position (terminal-get-cursor-position *terminal*)))
+    (setf bottom-node node)))
 
 (defmethod display-node ((node object-node) level)
   "Display an object node. The object is printed to a string as with PRINC,
@@ -984,10 +993,10 @@ and indented properly for multi-line objects."
 	  (setf *display-start* t))
 	(when *display-start*
 	  (display-node tree level))
-	(if (and (node-open tree) (node-branches tree))
-	    (loop :for n :in (node-branches tree) :do
-	       (set-parent n tree)
-	       (display-tree o n (1+ level))))))))
+	(when (and (node-open tree) (node-branches tree))
+	  (loop :for n :in (node-branches tree) :do
+	     (set-parent n tree)
+	     (display-tree o n (1+ level))))))))
 
 (defmethod redraw ((o tree-viewer))
   (with-slots (top current root current-max-right) o
@@ -1006,13 +1015,13 @@ and indented properly for multi-line objects."
 
 (defmethod update-display ((o tree-viewer))
   (with-slots (root quit-flag picked-object current left top bottom
-	       bottom-node current-position current-max-right
+	       bottom-node current-position current-max-right current-left
 	       message-string scroll-hint) o
     (tagbody
      again
        (tt-home)
        (tt-erase-below)
-       (setf current-position nil current-max-right nil)
+       (setf current-position nil current-left nil current-max-right nil)
        (let ((*display-start* nil))
 	 (display-tree *viewer* root 0))
        ;; Reposition display if the current node is not visible.
@@ -1044,7 +1053,7 @@ and indented properly for multi-line objects."
     (when (show-modeline *viewer*)
       (tt-move-to (- (tt-height) 2) 0)
       (tt-erase-to-eol)
-      (tt-format nil "~a ~a (left=~a top=~a bot=~a)"
+      (tt-format "~a ~a (left=~a top=~a bot=~a)"
 		 current-position
 		 (node-abbrev current)
 		 left
