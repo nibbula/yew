@@ -34,7 +34,9 @@ To make a new format:
      image types can be identified by the `magic` package, but if yours can't,
      then it's best to put it in *known-image-types* so it can use the guesser.
      This auto loading makes it so we don't always have to wastefully load every
-     archaic image type.
+     archaic image type. Unfortunately this can cause trouble when saving an
+     executeable, in which case use load-known-formats before saving the
+     exectuable.
 ")
   (:use :cl :dlib :magic)
   (:export
