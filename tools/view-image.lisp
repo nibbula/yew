@@ -78,9 +78,9 @@
     :initarg :initial-command :accessor image-inator-initial-command
     :initform nil
     :documentation "Command to perform when starting.")
-   (show-modeline
-    :initarg :show-modeline :accessor image-inator-show-modeline
-    :initform t :type boolean
+   (show-mode-line
+    :initarg :show-mode-line :accessor image-inator-show-mode-line
+    :initform nil :type boolean
     :documentation "True to show the mode line.")
    (message
     :initarg :message :accessor image-inator-message :initform nil
@@ -625,9 +625,9 @@ the first time it fails to identify the image."
 	  )))
     (invalidate-cache o)))
 
-(defun toggle-modeline (o)
-  (with-slots (show-modeline) o
-    (setf show-modeline (not show-modeline))))
+(defun toggle-mode-line (o)
+  (with-slots (show-mode-line) o
+    (setf show-mode-line (not show-mode-line))))
 
 (defun open-file (o)
   "Open a file."
@@ -711,7 +711,7 @@ the first time it fails to identify the image."
     (:F12		  . apply-last-pixel-expr)
     (,(meta-char #\a)     . pixel-expr-loop)
     (:F11		  . pixel-expr-loop)
-    (,(meta-char #\m)     . toggle-modeline)
+    (,(meta-char #\m)     . toggle-mode-line)
     (#\?		  . help)
     (,(ctrl #\@)	  . set-mark)
     (,(ctrl #\X)	  . *ctlx-keymap*)
@@ -1174,7 +1174,7 @@ the first time it fails to identify the image."
 
 (defun show-image (inator)
   (with-slots (x y zoom message file-index file-list image subimage looping
-	       show-modeline use-half-block buffer bg-color) inator
+	       show-mode-line use-half-block buffer bg-color) inator
     (declare (type fixnum x y) (type float zoom))
     (tt-home)
     ;; (when (not looping)
@@ -1190,7 +1190,7 @@ the first time it fails to identify the image."
 	   x y zoom image subimage (width inator) (height inator)
 	   #'term-mover #'set-pixel-bg buffer bg-color)))
     (tt-move-to (1- (height inator)) 0)
-    (when show-modeline
+    (when show-mode-line
       (show-status inator))))
 
 (defmethod update-display ((o image-inator))
