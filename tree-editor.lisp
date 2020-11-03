@@ -18,6 +18,7 @@
     (#\return		. insert-thing-after)
     (#\a		. add-thing-node)
     (,(ctrl #\d)	. delete-node)
+    (#\e		. edit-node)
     ))
 
 (defclass tree-editor (tree-viewer)
@@ -175,21 +176,36 @@ object-node."))
       (tt-finish-output)
       (setf (node-object node) (input e type)))))
 
-(defun add-thing-node (e)
-  (add-sub-node e t))
+(defgeneric edit-node-type (editor type)
+  (:documentation "Edit the current node of the given type."))
+
+(defmethod edit-node-type ((e tree-editor) type)
+  (with-internal-slots (current) e :tree-viewer
+    (setf (node-object current) (input e type))))
+
+(defun edit-thing-node (e)
+  (edit-node-type e t))
+
+(defgeneric edit-node (editor)
+  (:documentation "Edit the current node."))
+
+(defmethod edit-node ((e tree-editor))
+  "Edit the current node."
+  (edit-thing-node e))
 
 (defun edit-tree (tree &key editor)
   "Edit a tree."
   (with-terminal ()
     (let ((*viewer* editor)
 	  result)
-      (flet ((ensure-root ()
-	       ;; (when (not (tb::root *viewer*))
-	       (when (not (slot-boundp *viewer* 'tb::root))
-		 (setf (tb::root *viewer*) tree))
-	       (when (or (not (slot-boundp *viewer* 'tb::current))
-			 (not (slot-value *viewer* 'tb::current)))
-		 (setf (tb::current *viewer*) tree))))
+      (labels ((ensure-tree () (if (listp tree) (convert-tree tree) tree))
+	       (ensure-root ()
+		 ;; (when (not (tb::root *viewer*))
+		 (when (not (slot-boundp *viewer* 'tb::root))
+		   (setf (tb::root *viewer*) (ensure-tree)))
+		 (when (or (not (slot-boundp *viewer* 'tb::current))
+			   (not (slot-value *viewer* 'tb::current)))
+		   (setf (tb::current *viewer*) (tb::root *viewer*)))))
 	(if editor
 	    (progn
 	      (ensure-root)
@@ -199,8 +215,8 @@ object-node."))
 						 tb::*tree-keymap*
 						 inator:*default-inator-keymap*)
 				   :bottom (- (tt-height) 2)
-				   :root (when (listp tree)
-					   (convert-tree tree) tree))
+				   :root (if (listp tree)
+					     (convert-tree tree) tree))
 	      (ensure-root)
 	      (setf (node-open (tb::root *viewer*)) t)
 	      (event-loop *viewer*)))
