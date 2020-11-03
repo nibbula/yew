@@ -728,13 +728,13 @@ XIMAGES-MASK array."
 	       (image view-image::image)
 	       (subimage view-image::subimage)
 	       (looping view-image::looping)
-	       (show-modeline view-image::show-modeline)
+	       (show-mode-line view-image::show-mode-line)
 	       display window ximages ximages-mask draw-gc erase-gc overlay-gc
 	       cache-valid)
       inator
     (declare (type fixnum x y) (type float zoom))
     (when (not image)
-      (when show-modeline
+      (when show-mode-line
 	(view-image::show-status inator))
       (return-from show-image nil))
     (with-accessors ((name image:image-name)
@@ -799,8 +799,8 @@ XIMAGES-MASK array."
 			   :src-x source-x :src-y source-y
 			   :width w :height h))))
 	(dbug "put image done~%")
-	(when show-modeline
-	  (dbug "modeline~%")
+	(when show-mode-line
+	  (dbug "mode-line~%")
 	  (view-image::show-status inator))))))
 
 (defmethod update-display ((o image-x11-inator))
