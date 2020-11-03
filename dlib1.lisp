@@ -1850,7 +1850,7 @@ package doesn't exist or isn't bound."
 
 ;; This probably violates what people consider good design.
 ;; @@@ This could probably use more error checking?
-(defmacro with-internal-slots ((&rest slot-names) package object &body body)
+(defmacro with-internal-slots ((&rest slot-names) object package &body body)
   "Like WITH-SLOTS but getting using the slot names internal to PACKAGE."
   `(with-slots (,@(mapcar (lambda (x) (list x (intern (symbol-name x) package)))
 			  slot-names)) ,object
