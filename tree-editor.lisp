@@ -4,7 +4,8 @@
 
 (defpackage :tree-editor
   (:documentation "Edit trees.")
-  (:use :cl :dlib :terminal :keymap :char-util :inator :tree-viewer :rl-widget)
+  (:use :cl :dlib :terminal :keymap :char-util :ostring :inator :tree-viewer
+	:rl-widget)
   (:export
    #:tree-editor
    #:edit-tree
@@ -17,6 +18,7 @@
     (#\newline		. insert-thing)
     (#\return		. insert-thing-after)
     (#\a		. add-thing-node)
+    (#\s		. add-thing-node)
     (,(ctrl #\d)	. delete-node)
     (#\e		. edit-node)
     ))
@@ -52,40 +54,49 @@ object-node."))
 	(make-instance 'rl-widget::bbox
 		       :x x :y y :width width :height height)))
 
-(defgeneric input (e type)
+(defun value-string (value)
+  (when value
+    (if (not (ostringp value))
+	(princ-to-string value)
+	value)))
+
+(defgeneric input (e type &key value)
   (:documentation "Allow TYPE to be input."))
 
-(defmethod input ((e tree-editor) (type (eql 'string)))
+(defmethod input ((e tree-editor) (type (eql 'string)) &key value)
   (with-slots (widget) e
     (ensure-widget e)
     (let ((x (tb::current-left e))
 	  (y (tb::current-position e)))
       (set-box e :x x :y y
 	       :width (- (tt-width) x 1) :height 1)
-      (rl:rl :editor widget))))
+      (rl:rl :editor widget :string (value-string value)))))
 
-(defmethod input ((e tree-editor) (type (eql 'symbol)))
+(defmethod input ((e tree-editor) (type (eql 'symbol)) &key value)
   (with-slots (widget) e
     (ensure-widget e)
     (let ((x (tb::current-left e))
 	  (y (tb::current-position e)))
       (set-box e :x x :y y
 	       :width (- (tt-width) x 1) :height 1)
-      (symbolify (rl:rl :editor widget)))))
+      (symbolify (rl:rl :editor widget :string (value-string value))))))
 
-(defmethod input ((e tree-editor) type)
+(defmethod input ((e tree-editor) type &key value)
   (with-slots (widget) e
     (ensure-widget e)
     (let ((x (tb::current-left e))
 	  (y (tb::current-position e)))
       (set-box e :x x :y y
 	       :width (- (tt-width) x 1) :height 1)
-      (let ((result (rl:rl :editor widget)))
-	(handler-case
-	    (read-from-string result)
-	  (error (c)
-	    (fui:show-text (format nil "Your thing fucked up.~%~s~s" result c))
-	    (return-from input result)))))))
+      (let ((result (rl:rl :editor widget :string (value-string value))))
+	(if (not (stringp value))
+	    (handler-case
+		(read-from-string result)
+	      (error (c)
+		(fui:show-text
+		 (format nil "Your thing fucked up.~%~s~s" result c))
+		(return-from input result)))
+	    result)))))
 
 (defun insert-before (e thing)
   "Insert THING before the current in editor E."
@@ -176,12 +187,16 @@ object-node."))
       (tt-finish-output)
       (setf (node-object node) (input e type)))))
 
+(defun add-thing-node (e)
+  "Add a sub-node to the current node."
+  (add-sub-node e t))
+
 (defgeneric edit-node-type (editor type)
   (:documentation "Edit the current node of the given type."))
 
 (defmethod edit-node-type ((e tree-editor) type)
   (with-internal-slots (current) e :tree-viewer
-    (setf (node-object current) (input e type))))
+    (setf (node-object current) (input e type :value (node-object current)))))
 
 (defun edit-thing-node (e)
   (edit-node-type e t))

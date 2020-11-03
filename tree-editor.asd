@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Tree editor."
-    :depends-on (:tree-viewer :fui :rl-widget :keymap)
+    :depends-on (:tree-viewer :fui :rl-widget :keymap :ostring)
     :components
     ((:file "tree-editor")))
