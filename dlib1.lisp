@@ -1210,9 +1210,22 @@ May be list or vector of strings."
   #-(or openmcl cmu sbcl excl clisp ecl abcl clasp)
   (missing-implementation 'exit-system))
 
-(defun save-image-and-exit (image-name &optional initial-function)
-  #+sbcl (sb-ext:save-lisp-and-die image-name :executable t
-				   :toplevel initial-function)
+(defun save-image-and-exit (image-name &rest keys
+			    &key initial-function &allow-other-keys)
+  "Save an executable image in IMAGE-NAME. If provideed, call INITIAL-FUNCTION
+on starting the new image. Other unspecified implementation specific keywords
+can be provided, which are usually passed to the underlying function."
+  (declare (ignorable keys))
+  #+sbcl
+  (if keys
+      (let ((extra-args (copy-list keys)))
+	(remf extra-args :initial-function)
+	(when initial-function
+	  (setf (getf extra-args :toplevel) initial-function))
+	(apply #'sb-ext:save-lisp-and-die image-name :executable t
+	       extra-args))
+      (sb-ext:save-lisp-and-die image-name :executable t
+				:toplevel initial-function))
   #+clisp (ext:saveinitmem image-name :executable t :quiet t :norc t
 			   :init-function initial-function)
   #+ccl (save-application image-name :prepend-kernel t
