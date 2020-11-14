@@ -238,9 +238,18 @@ linked file."
    (collect boolean :short-arg #\c :help "True to collect results.")
    (files pathname :repeating t
     :help "The path names to give information about."))
+  :accepts (string pathname sequence)
   :keys-as args
   "Print information about a file."
   (remf args :files)
+  (when (not files)
+    (if lish:*input*
+	(setf files
+	      (typecase lish:*input*
+		((or string pathname) (list lish:*input*))
+		(list lish:*input*)
+		(sequence (map 'list #'identity lish:*input*))))
+	(error "But what file do you want information about?")))
   (if collect
       (setf lish:*output* (apply #'finfo files args))
       (apply #'finfo files args)))
