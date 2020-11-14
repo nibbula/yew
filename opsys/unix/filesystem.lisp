@@ -1710,7 +1710,15 @@ versions of the keywords used in Lisp open.
 ;; GLIBC_2.4   __fxstatat
 ;; GLIBC_2.4   __fxstatat64
 
-#+(and linux (or sbcl #|cmu|#)) ;; I'm not really sure how this works.
+;; @@@ I don't really know exactly when/how this happened, but some time around
+;; 20010 the stat wrapper on linux disappeared.
+#+(and linux sbcl)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (when (< dlib:*lisp-version-number* 20010)
+    (config-feature :os-t-has-stat-wrapper)))
+
+;; I'm not really sure how this works.
+#+(and linux os-t-has-stat-wrapper)
 (progn
   (defcfun ("stat" real-stat)
       :int (path :string) (buf (:pointer (:struct foreign-stat))))
@@ -1733,7 +1741,7 @@ versions of the keywords used in Lisp open.
   )
 
 ;; We have to do the wack crap.
-#+(and linux (and (not sbcl) #|(not cmu)|#))
+#+(and linux (not os-t-has-stat-wrapper))
 (progn
   (defcfun ("__xstat"  completely-fucking-bogus-but-actually-real-stat)
       :int (vers :int) (path :string) (buf (:pointer (:struct foreign-stat))))
