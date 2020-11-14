@@ -213,19 +213,21 @@ starting at START. If not found, return START."
 
 (defun clear-line-command (i)
   "Clear the search string."
-  (when (@ i searching)
-    (setf (fill-pointer (@ i search-string)) 0
-	  (@ i failed) nil)))
+  (with-slots (searching failed search-string) i
+    (when searching
+      (setf (fill-pointer search-string) 0
+	    failed nil))))
 
 (defun enter-command (i)
   "Quit and return the top character as the result."
   (with-slots (result searching failed start) i
-    (if searching
-	(setf searching nil
-	      failed nil)
-	(setf result (code-char start)
-	      *pick-char-start* start
-	      (@ i inator::quit-flag) t))))
+    (with-internal-slots (quit-flag) i :inator
+      (if searching
+	  (setf searching nil
+		failed nil)
+	  (setf result (code-char start)
+		*pick-char-start* start
+	         quit-flag t)))))
 
 (defmethod search-command ((i char-picker))
   "Search forward."
