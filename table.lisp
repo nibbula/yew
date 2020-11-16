@@ -149,15 +149,15 @@ found."
   (:documentation
    "Make a table from another object type.
 
- OBJECT       An alist or a list of mappable things, or a hash-table, or a
-              uniform vector of other mappable types, or a 2d array.
- TYPE         The class of the instance to create, which should be a
-              sub-class of MEM-TABLE.
- COLUMN-NAME  A list of column names, which should match the number of
-              columns in OBJECT.
- COLUMNS      A list of plists for initializing table-columns, which should
-              match the number of columns in OBJECT. E.g.:
-              '((:name \"foo\" :type 'number :format \"[~d]\"))"))
+ OBJECT        An alist or a list of mappable things, or a hash-table, or a
+               uniform vector of other mappable types, or a 2d array.
+ TYPE          The class of the instance to create, which should be a
+               sub-class of MEM-TABLE.
+ COLUMN-NAMES  A list of column names, which should match the number of
+               columns in OBJECT.
+ COLUMNS       A list of plists for initializing table-columns, which should
+               match the number of columns in OBJECT. E.g.:
+               '((:name \"foo\" :type 'number :format \"[~d]\"))"))
 
 (defun uniform-classes (sequence)
   "Return true if every class in SEQUENCE is a subtype of the first element."
