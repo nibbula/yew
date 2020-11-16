@@ -747,7 +747,7 @@ resized to fit in this, and the whole row is trimmed to this."
        ;; 		 name (car col)))
        (setf justification
 	     (or (column-align (oelt (table-columns table) i)) :left)
-	     name col)
+	     name (car col))
        (setf (aref sizes i)
 	     ;; (list (if all-zero
 	     ;; 	       (display-length name)
