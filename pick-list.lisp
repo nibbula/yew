@@ -466,6 +466,23 @@ The function receives a 'pick' as an argument."))
   ;; Don't do anything.
   (tt-move-to (- (tt-height) 2) 0))
 
+(defgeneric view-item (pick)
+  (:documentation "View an item."))
+
+(defmethod view-item (pick)
+  "View an item."
+  (with-slots (items point) pick
+    (let ((item (cdr (elt items point))))
+      ;; (message pick "View a ~s ~s" (type-of item) item)
+      (handler-case
+	  (view item)
+	(error (c)
+	  (display-text
+	   nil
+	   `("" "There was an error when viewing:" ""
+		,(princ-to-string c) "")))))
+    (tt-clear)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; popup pick-list
 
@@ -583,7 +600,8 @@ The function receives a 'pick' as an argument."))
     (#\return		  . accept)
     (#\newline		  . accept)
     (#\space		  . pick-list-toggle-item)
-    (,(ctrl #\X)	  . pick-list-toggle-region)
+    ;; (,(ctrl #\X)	  . pick-list-toggle-region)
+    (,(ctrl #\X)	  . *pick-list-ctrl-x-keymap*)
     ;; (,(ctrl #\N)	  . pick-list-next-line)
     (:down		  . next)
     ;; (,(ctrl #\P)	  . pick-list-previous-line)
@@ -615,6 +633,10 @@ The function receives a 'pick' as an argument."))
 
 (defparameter *pick-list-escape-keymap*
   (build-escape-map *pick-list-keymap*))
+
+(defkeymap *pick-list-ctrl-x-keymap* ()
+  `((,(ctrl #\V)	. view-item)
+    (,(ctrl #\X)	. pick-list-toggle-region)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -745,6 +767,10 @@ The function receives a 'pick' as an argument."))
   (loop :for f :in (nos:read-directory :dir dir :full t)
      :collect (make-pf-dir-entry
 	       :name (dir-entry-name f) :type (dir-entry-type f))))
+
+(defmethod view ((thing dir-entry))
+  "View a directory as it's file name."
+  (view (dir-entry-name thing)))
 
 (defun pick-file (&key message (directory ".") (allow-browse t) show-hidden
 		    (pick-directories) multiple)
