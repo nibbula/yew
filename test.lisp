@@ -34,7 +34,7 @@ Q: What if a bunch of tests fail?
 A: Say (test:failed), to show all tests that failed.
 
 Q: What if I need to set up pre-conditions for my tests?
-A: You can use :setup and :takedown arguments to deftests.
+A: You can use :setup and :takedown arguments to ‘deftests’.
 
 Q: Hey, but what if I'd like to add tests dynamically whilst I'm mucking
    about in the REPL?
@@ -51,6 +51,9 @@ A: Say:
 
 Q: What if I need to trap exceptions from my tests?
 A: You can use the GOT-CONDITION macro in your test.
+
+Q: What if I need to run just one test?
+A: Use ‘run-test’.
 
 Q: What if I need to capture the output from my test?
 A: You're on your own.
@@ -75,6 +78,7 @@ A: _This_ *is* your documentation.
    #:deftests
    #:defgroup
    #:add-to-group-name
+   #:run-test
    #:run-group-name
    #:run-all-tests
    #:list-tests
@@ -305,6 +309,33 @@ exit occurs.
 (defvar *running-all* nil
   "True if we are running all tests.")
 
+(defun report-multiple (pass-count fail-count)
+  "Report multiple pass fail results."
+  (format t "~&Passed: ~d~%Failed: ~d~%" pass-count fail-count)
+  (if (zerop fail-count)
+      (format t "ALL Tests PASSED~%")
+      (format t "FAIL!")))
+
+(defun run-test (name)
+  "Run a single test or a test group."
+  (flet ((run-test-or-group (x)
+	   (cond
+	     ((test-p x)
+	      (funcall (test-func x)))
+	     ((test-group-p x)
+	      (destructuring-bind (p f) (run-group x)
+		(report-multiple p f))))))
+    (cond
+      ((symbolp name)
+       (let ((test (find-test-or-group name)))
+	 (if test
+	     (run-test-or-group test)
+	     (format t "Can't find test name ~a.~%" name))))
+      ((or (test-p name) (test-group-p name))
+       (run-test-or-group name))
+      (t
+       (error "I don't know how to run a ~s.~%" (type-of name))))))
+
 (defun run-group (group)
   "Run the GROUP of tests. Return a pair of (pass-count fail-cout)."
   (let ((pass 0) (fail 0))
@@ -333,10 +364,7 @@ exit occurs.
   (let* ((pf (run-group (find-group group-name)))
 	 (pass (first pf)) (fail (second pf)))
     (when verbose
-      (format t "~&Passed: ~d~%Failed: ~d~%" pass fail)
-      (if (zerop fail)
-	  (format t "ALL Tests PASSED~%")
-	  (format t "FAIL!")))
+      (report-multiple pass fail))
     pf))
 
 (defun run-all-tests ()
