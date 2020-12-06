@@ -1,6 +1,6 @@
-;;
-;; dlib-misc.lisp - Library of miscellaneous useful functions.
-;;
+;;;
+;;; dlib-misc.lisp - Library of miscellaneous useful functions.
+;;;
 
 ;; See dlib.lisp for the most essential stuff.
 ;; This is for things that are nice, but not essential.
@@ -915,7 +915,7 @@ columns and the maximum width of a column."
 		   (if suffix (length suffix) 0)))
 	 (ccc   (floor width max-len))
 	 (cols  (if (zerop ccc) 1 ccc))
-	 (rows  (if (zerop cols) len (ceiling len cols))))
+	 (rows  (ceiling len cols))) ;; cols can't be zero here
     (when (> max-len width) (setf max-len width))
     (values rows cols max-len)))
 
