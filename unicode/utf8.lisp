@@ -262,51 +262,64 @@ BYTE-SETTER, which takes an (unsigned-byte 8)."
     (%put-utf8b-char our-char-getter our-byte-setter)))
 |#
 
-(defun string-to-utf8-bytes (string)
-  "Return a vector of (unsigned-byte 8) representing the STRING."
-  (declare (optimize speed (safety 0))
-	   (type simple-string string))
-  (let* ((result-length
-	  (loop :with sum fixnum = 0
-	     :for i fixnum :from 0 :below (length string) :do
-	     (incf sum (%length-in-utf8-bytes (char-code (char string i))))
-	     :finally (return sum)))
-	 (result (make-array result-length :element-type '(unsigned-byte 8)
-			     :initial-element 0 :adjustable nil))
-	 (i 0) (byte-num 0))
-    (declare (type fixnum i byte-num result-length))
-    (labels ((getter () (char string i))
-	     (putter (c)
-	       (setf (aref result byte-num) c)
-	       (incf byte-num)))
-      (dotimes (x (length string))
-	(%put-utf8-char getter putter)
-	(incf i)))
-    result))
+(defmacro define-string-converters (charset-name)
+  (let ((encode-func (symbolify (s+ "STRING-TO-" charset-name "-BYTES")))
+	(decode-func (symbolify (s+ charset-name "-BYTES-TO-STRING")))
+	(putter-name (symbolify (s+ "%PUT-" charset-name "-CHAR")))
+	(getter-name (symbolify (s+ "%GET-" charset-name "-CHAR")))
+	(length-name (symbolify (s+ "%LENGTH-IN-" charset-name "-BYTES"))))
+    `(progn
+       (defun ,encode-func (string)
+	 "Return a vector of (unsigned-byte 8) representing the STRING."
+	 (declare (optimize speed (safety 0))
+		  (type simple-string string))
+	 (let* ((result-length
+		 (loop :with sum fixnum = 0
+		    :for i fixnum :from 0 :below (length string) :do
+		    (incf sum (,length-name
+			       (char-code (char string i))))
+		    :finally (return sum)))
+		(result (make-array result-length
+				    :element-type '(unsigned-byte 8)
+				    :initial-element 0 :adjustable nil))
+		(i 0) (byte-num 0))
+	   (declare (type fixnum i byte-num result-length))
+	   (labels ((getter () (char string i))
+		    (putter (c)
+		      (setf (aref result byte-num) c)
+		      (incf byte-num)))
+	     (dotimes (x (length string))
+	       (,putter-name getter putter)
+	       (incf i)))
+	   result))
 
-(defun utf8-bytes-to-string (bytes)
-  "Convert the simple-array of (unsigned-byte 8) in BYTES to the string of
-characters they represent."
-  (declare (optimize speed (safety 0))
-	   ;; (type (simple-array (unsigned-byte 8) *) bytes)
-	   )
-  (let ((result-length 0) result (i 0) (byte-num 0) (source-len (length bytes)))
-    (declare (type fixnum result-length i byte-num source-len))
-    (labels ((getter ()
-	       (prog1 (aref bytes byte-num) (incf byte-num)))
-	     (putter (c)
-	       (declare (type character c))
-	       (setf (char result i) c) (incf i))
-	     (fake-putter (c)
-	       (declare (ignore c)) (incf i)))
-      (loop :while (< byte-num source-len)
-	 :do (%get-utf8-char getter fake-putter))
-      (setf result-length i
-	    result (make-string result-length)
-	    i 0
-	    byte-num 0)
-      (loop :while (< byte-num source-len)
-	 :do (%get-utf8-char getter putter))
-      result)))
+       (defun ,decode-func (bytes)
+	 "Convert the simple-array of (unsigned-byte 8) in BYTES to the string
+of characters they represent."
+	 (declare (optimize speed (safety 0))
+		  ;; (type (simple-array (unsigned-byte 8) *) bytes)
+		  )
+	 (let ((result-length 0) result (i 0) (byte-num 0)
+	       (source-len (length bytes)))
+	   (declare (type fixnum result-length i byte-num source-len))
+	   (labels ((getter ()
+		      (prog1 (aref bytes byte-num) (incf byte-num)))
+		    (putter (c)
+		      (declare (type character c))
+		      (setf (char result i) c) (incf i))
+		    (fake-putter (c)
+		      (declare (ignore c)) (incf i)))
+	     (loop :while (< byte-num source-len)
+		:do (,getter-name getter fake-putter))
+	     (setf result-length i
+		   result (make-string result-length)
+		   i 0
+		   byte-num 0)
+	     (loop :while (< byte-num source-len)
+		:do (,getter-name getter putter))
+	     result))))))
+
+(define-string-converters "UTF8")
+(define-string-converters "UTF8B")
 
 ;; End
