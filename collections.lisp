@@ -13,7 +13,6 @@
 ;; @@@ The ‘o’ prefix is rather ugly. We should entertain other naming ideas.
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-
   (dlib:without-package-variance
     (defpackage :collections
       (:documentation
@@ -1639,10 +1638,94 @@ the modified COLLECTION.")
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Set-like
 
+;; This is so we can get the decisions outside the body of loop, which should
+;; presumably be faster. Also it's nice to factor out the argument choosing.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro with-member-func ((func &key (finder 'find)) &body body)
+    "Evaluate the body with FUNC set an appropriate member function given KEY,
+TEST, and TEST-NOT. Use finder as the name of the member testing function,
+which defaults to FIND. Note that this macro is un-hygenic."
+    `(labels
+	 ((memb              (x seq) (,finder x seq))
+	  (memb-key          (x seq) (,finder x seq :key key))
+	  (memb-test         (x seq) (,finder x seq :test test))
+	  (memb-test-not     (x seq) (,finder x seq :test-not test-not))
+	  (memb-test-key     (x seq) (,finder x seq :key key :test test))
+	  (memb-test-not-key (x seq) (,finder x seq :key key
+					      :test-not test-not)))
+       (let ((,func
+	      (cond
+		((and test test-not)
+		 (error "Both :test and :test-not provided."))
+		(test
+		 (if key #'memb-test-key #'memb-test))
+		(test-not
+		 (if key #'memb-test-not-key #'memb-test-not))
+		(t
+		 (if key #'memb-key #'memb)))))
+	 ,@body))))
+
 (defgeneric ointersection (collection-1 collection-2 &key key test test-not)
   (:documentation
    "Return a collection that contains every element that occurs in both
-COLLECTION-1 and COLLECTION-2."))
+COLLECTION-1 and COLLECTION-2.")
+  (:method ((collection-1 list)
+	    (collection-2 list) &key key test test-not)
+    (cond
+      (test
+       (intersection collection-1 collection-2 :key key :test test))
+      (test-not
+       (intersection collection-1 collection-2 :key key :test-not test-not))
+      (t
+       (intersection collection-1 collection-2 :key key))))
+  (:method ((collection-1 vector)
+	    (collection-2 vector) &key key test test-not)
+    (let ((count 0) result)
+      (with-member-func (memb)
+	(setf result
+	      (loop
+		 :for i :from 0 :below (min (length collection-1)
+					    (length collection-2))
+		 :when (funcall memb (aref collection-1 i) collection-2)
+		 :collect (if key
+			      (funcall key (aref collection-1 i))
+			      (aref collection-1 i))
+		 :and :do (incf count))))
+      (when (plusp count)
+	(make-array count :element-type (array-element-type collection-1)
+		    :initial-contents result))))
+  (:method ((collection-1 hash-table)
+	    (collection-2 hash-table) &key key test test-not)
+    (let ((count 0) result)
+      (flet ((hash-member (k tab &key key test test-not)
+	       (declare (ignore test test-not))
+	       ;; We can't really do anything with test/test-not because it's
+	       ;; part of the hash-table.
+	       (if key (gethash (funcall key k) tab) (gethash k tab))))
+	(with-member-func (memb :finder hash-member)
+	  (setf result
+		(loop
+		   :with value
+		   :for k :being :the :hash-keys :of collection-1
+		   :when (funcall memb k collection-2)
+		   :collect (cons k (gethash k collection-1))
+		   :and :do (incf count)))))
+      (when (plusp count)
+	(let ((new-table
+	       (make-hash-table
+		:test (hash-table-test collection-1)
+		:size count
+		:rehash-size (hash-table-rehash-size collection-1)
+		:rehash-threshold (hash-table-rehash-threshold collection-1))))
+	  (loop :for (k . v) :in result
+	     :do (setf (gethash k new-table) v))
+	  new-table)))))
+
+(defmethod ointersection ((collection-1 container)
+			  (collection-2 container) &key key test test-not)
+  (ointersection (container-data collection-1)
+		 (container-data collection-1)
+		 :key key :test test :test-not test-not))
 
 (defgeneric onintersection (collection-1 collection-2 &key key test test-not)
   (:documentation
