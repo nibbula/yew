@@ -1,6 +1,6 @@
-;;
-;; reader-ext.lisp - Extensions to the Common Lisp reader.
-;;
+;;;
+;;; reader-ext.lisp - Extensions to the Common Lisp reader.
+;;;
 
 (defpackage :reader-ext
   (:documentation "Extensions to the Common Lisp reader.
@@ -17,14 +17,14 @@ code.
 The PACKAGE-ROBUST-READ* functions, read treating unknown symbols or packages
 as uninterned. This useful for reading code that is not loaded, so the packages
 don't exist yet. Or reading s-expressions data from other images which may
-include symbols from non-existant packages.
+include symbols from non-existent packages.
 
 I think the best way to do this is to have the *READ-INTERN* extension to your
 implementation. I have done this for SBCL and CCL. CLEAN-READ* has a fallback
 using temporary packages, but it's slow and maybe doesn't even work. I haven't
 come up with any fallback for PACKAGE-ROBUST-READ*.
 
-Another way to do it is to have whole separate read implementation. For this
+Another way to do it is to have a whole separate read implementation. For this
 we currently use the Eclector package.
 
 If you have *READ-INTERN*, :has-read-intern should be in features, before
@@ -51,6 +51,7 @@ loading this.
    #:package-robust-read-from-string
    #:package-robust-read
    #:robust-read
+   #:flexible-read
    ))
 (in-package :reader-ext)
 
@@ -286,6 +287,10 @@ un-interned symbol."
   (let (#+has-read-intern (*read-intern* #'package-robust-intern)
 	#-has-read-intern (*client* *robust-client*))
     (read stream eof-error-p eof-value recursive-p)))
+
+
+;; #-has-read-intern
+;; (defun flexible-read (
 
 #+sbcl (declaim (sb-ext:unmuffle-conditions style-warning))
 
