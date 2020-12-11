@@ -1338,8 +1338,8 @@ fatchar string. The grammar is something like: "
 (defun make-xterm-color-table ()
   ;; XXX This assumes the return type of make-color is a simple-vector, which
   ;; it is, but we probably shouldn't assume it.
-  (let ((placeholder-color (make-color :rgb8 :red 0 :green 0 :blue 0))
-	(result (make-array 256 :element-type (type-of placehold-color))))
+  (let* ((placeholder-color (make-color :rgb8 :red 0 :green 0 :blue 0))
+	 (result (make-array 256 :element-type (type-of placeholder-color))))
     ;; (declare (type (vector t 256) result))
     (declare (type (simple-vector simple-vector 256) result))
     ;; colors 0-16 are the standard colors.
