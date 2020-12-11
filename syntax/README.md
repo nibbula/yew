@@ -1,0 +1,1 @@
+The `syntax` directory is for packages dealing with programming language syntaxes.
