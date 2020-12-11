@@ -555,7 +555,7 @@ XIMAGES-MASK array."
 	       (image view-image::image)
 	       (subimage view-image::subimage)
 	       (looping view-image::looping)
-	       (show-modeline view-image::show-modeline))
+	       (show-mode-line view-image::show-mode-line))
       inator
     (declare (type fixnum x y) (type float zoom))
     (with-accessors ((name image:image-name)
@@ -586,7 +586,7 @@ XIMAGES-MASK array."
 	  (linux-fb:put-image image x y :subimage subimage :scale zoom)
 	  )))
     (dbug "put image done~%")
-    (when show-modeline
+    (when show-mode-line
       (dbug "modeline~%")
       (view-image::show-status inator))))
 
