@@ -20,6 +20,7 @@ make the table in the first place. For that you want the TABLE package.")
    #:table-output-column-titles
    #:table-output-column-title
    #:table-output-start-row
+   #:table-output-row
    #:table-output-cell
    #:table-output-cell-display-width
    #:table-output-sizes
@@ -97,6 +98,9 @@ These are given in the FORMAT slot of a TABLE:COLUMN."))
 
 (defgeneric table-output-start-row (renderer table)
   (:documentation "Start a row of table output."))
+
+(defgeneric table-output-row (renderer table row row-number &key sizes)
+  (:documentation "Output a whole table row."))
 
 (defgeneric table-output-cell (renderer table cell width justification
 			       row column)
@@ -299,6 +303,32 @@ function."
 (defmethod table-output-footer (renderer table &key width sizes)
   (declare (ignore renderer table width sizes)))
 
+(defmethod table-output-row (renderer table row row-number &key sizes)
+  "Output a whole table row."
+  (table-output-start-row renderer table)
+  (let ((col-num 0))
+    (omapn (lambda (cell)
+	     (when (not (zerop col-num))
+	       (table-output-column-separator renderer table))
+	     (table-output-cell
+	      renderer table cell
+	      ;;(table-output-cell-display-width renderer table cell)
+	      ;; Just in case the row size changed.
+	      (if (< col-num (length sizes))
+		  (aref sizes col-num)
+		  (olength cell))
+	      (if (< col-num (length (table-columns table)))
+		  (table-output-column-type-justification
+		   renderer table
+		   (column-type
+		    (elt (table-columns table) col-num)))
+		  :left)
+	      row-number col-num)
+	     (incf col-num))
+	   row)
+    (table-output-end-row renderer table row-number)
+    (table-output-row-separator renderer table row-number :sizes sizes)))
+
 ;; This is just one possible way of many.
 (defmethod output-table (table renderer destination
 			 &key long-titles print-titles max-width
@@ -308,37 +338,38 @@ function."
 	(*print-titles* print-titles)
 	(*max-width* max-width)
 	(*destination* destination)
-	(row-num 0) (col-num 0)
+	(row-num 0) #| (col-num 0) |#
 	(sizes (table-output-sizes renderer table)))
     (table-output-header renderer table :sizes sizes)
     (table-output-column-titles renderer table
 				(mapcar #'column-name (table-columns table))
 				:sizes sizes)
     (omapn (lambda (row)
-	     (table-output-start-row renderer table)
-	     (setf col-num 0)
-	     (omapn (lambda (cell)
-		      (when (not (zerop col-num))
-			(table-output-column-separator renderer table))
-		      (table-output-cell
-		       renderer table cell
-		       ;;(table-output-cell-display-width renderer table cell)
-		       ;; Just in case the row size changed.
-		       (if (< col-num (length sizes))
-			   (aref sizes col-num)
-			   (olength cell))
-		       (if (< col-num (length (table-columns table)))
-			   (table-output-column-type-justification
-			    renderer table
-			    (column-type
-			     (elt (table-columns table) col-num)))
-			   :left)
-		       row-num col-num)
-		      (incf col-num))
-		    row)
-	     (table-output-end-row renderer table row-num)
-	     (table-output-row-separator renderer table row-num :sizes sizes)
-	     (incf row-num))
+	     ;; (table-output-start-row renderer table)
+	     ;; (setf col-num 0)
+	     ;; (omapn (lambda (cell)
+	     ;; 	      (when (not (zerop col-num))
+	     ;; 		(table-output-column-separator renderer table))
+	     ;; 	      (table-output-cell
+	     ;; 	       renderer table cell
+	     ;; 	       ;;(table-output-cell-display-width renderer table cell)
+	     ;; 	       ;; Just in case the row size changed.
+	     ;; 	       (if (< col-num (length sizes))
+	     ;; 		   (aref sizes col-num)
+	     ;; 		   (olength cell))
+	     ;; 	       (if (< col-num (length (table-columns table)))
+	     ;; 		   (table-output-column-type-justification
+	     ;; 		    renderer table
+	     ;; 		    (column-type
+	     ;; 		     (elt (table-columns table) col-num)))
+	     ;; 		   :left)
+	     ;; 	       row-num col-num)
+	     ;; 	      (incf col-num))
+	     ;; 	    row)
+	     ;; (table-output-end-row renderer table row-num)
+	     ;; (table-output-row-separator renderer table row-num :sizes sizes)
+	     ;; (incf row-num))
+	     (table-output-row renderer table row row-num :sizes sizes))
 	   table)
     (table-output-footer renderer table :sizes sizes)))
 
