@@ -1,6 +1,6 @@
-;;
-;; table.lisp - Generic table data types
-;;
+;;;
+;;; table.lisp - Generic table data types
+;;;
 
 ;; The idea is to provide a generic interface to tables, regardless of the
 ;; storage of the data. We would like to be able to operate on tables in
