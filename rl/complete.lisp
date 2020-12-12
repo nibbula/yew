@@ -151,10 +151,10 @@ terminal."
 (defun print-completions-under (e comp-result)
   (let* ((comp-list (completion-result-completion comp-result))
 	 (term (line-editor-terminal e))
-	 (rows (terminal-window-rows term))
+	 #| (rows (terminal-window-rows term)) |#
 	 (cols (terminal-window-columns term))
 	 ;; (top (message-top e))
-	 (short-limit (truncate rows *completion-short-divisor*))
+	 #| (short-limit (truncate rows *completion-short-divisor*)) |#
 	 content-rows content-cols column-size
 	 output-string
 	 ;; real-content-rows
@@ -163,7 +163,7 @@ terminal."
 	 ;; (x (screen-col e))
 	 ;; (y (screen-relative-row e))
 	 end-x
-	 row-limit
+	 #| row-limit |#
 	 ;; snip-lines
 	 ;; line-endings
 	 (prefix (or (completion-result-prefix comp-result) ""))
@@ -180,7 +180,7 @@ terminal."
     ;; (setf back-adjust (- (screen-relative-row e) y))
     (setf (did-under-complete e) t)
 
-    (setf row-limit
+    (setf #| row-limit
 	  (if (and (< (last-completion-not-unique-count e) 2)
 		   (< short-limit rows))
 	      short-limit
@@ -190,7 +190,7 @@ terminal."
 		 (- (screen-relative-row e) (start-row e)) ;; input line height
 		 prefix-height) |#
 	      (max-message-lines e)
-	      )
+	      ) |#
 	  output-string
 	  (with-output-to-fat-string (str)
 	    (setf content-rows
