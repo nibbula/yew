@@ -114,14 +114,25 @@
     :accessor terminal-box-table-renderer-alternate-row-bg
     ;; :initform :default
     :initform nil
-    :documentation "Background color for alternate rows."))
+    :documentation "Background color for alternate rows.")
+   (x
+    :initarg :x :accessor terminal-box-table-renderer-x
+    :initform nil :type (or null fixnum)
+    :documentation "Horizontal coordinate to render at.")
+   (y
+    :initarg :y :accessor terminal-box-table-renderer-y
+    :initform nil :type (or null fixnum)
+    :documentation "Vertical coordinate to render at."))
   (:default-initargs
    ;;:horizontal-line-char (code-char #x2500)
   )
   (:documentation "Render a box table to a terminal."))
 
 (defmethod write-box-line ((renderer terminal-box-table-renderer) style sizes)
-  (with-slots (box-color) renderer
+  (with-slots (box-color x y) renderer
+    (cond
+      (y (terminal-move-to *destination* y (or x 0)))
+      (x (terminal-move-to-col *destination* x)))
     (terminal-color *destination* box-color nil)
     (call-next-method)))
 
@@ -137,7 +148,8 @@
 
 (defmethod table-output-start-row ((renderer terminal-box-table-renderer) table)
   (declare (ignore table))
-  (with-slots (box-color) renderer
+  (with-slots (box-color x) renderer
+    (terminal-move-to-col *destination* x)
     (terminal-color *destination* box-color nil)
     (call-next-method)))
 
