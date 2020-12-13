@@ -51,7 +51,7 @@
 
 ;; @@@ fix not to be lame? see below
 (defun lame-select (fds timeout &key retry)
-  "See if a set of file descriptors are is available. FDS is a list of lists of
+  "See if a set of file descriptors are available. FDS is a list of lists of
 file descriptors and actions, where action is one of: :read :write :error, e.g.:
 ((23 :read) (12 :write :error)). TIMEOUT is the number of micro-seconds after
 which to return if nothing changed. If RETRY is true, keep trying if we are
