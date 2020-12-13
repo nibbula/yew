@@ -401,7 +401,7 @@ accordingly. Case can be :upper :lower :mixed or :none."
 		 (string-downcase s)
 		 s)))
       (when (not *theme*)
-	(return-from stylize-token (fix-case (prin1-to-string s))))
+	(return-from stylize-token (fix-case (prin1-to-string o))))
       (setf item
 	    (typecase o
 	      ((or character string pathname)
@@ -414,7 +414,9 @@ accordingly. Case can be :upper :lower :mixed or :none."
 	      (symbol
 	       (return-from stylize-token
 		 (stylize-token (change-class token 'lisp-symbol-token
-					      :package (symbol-package o)))))
+					      :package (symbol-package o))
+				:package-p package-p
+				:case case)))
 	      (t
 	       (fix-case (prin1-to-string o)))))
       (themed-string item (fix-case (prin1-to-string o))))))
@@ -559,7 +561,7 @@ accordingly. Case can be :upper :lower :mixed or :none."
   (with-grout (*grout* stream)
     ;; (format t "stream = ~s grout = ~s~%" stream *grout*)
     (let ((lines (split-sequence #\newline comment-string))
-	  par s e ss ee prefix first-non-blank)
+	  par s e ss ee #|prefix first-non-blank|#)
       (dbugf :poo "2 *grout* = ~s stream = ~s~%" *grout* stream)
       (labels ((print-it (string-list &key prefix verbatim)
 		 "Print the STRING-LIST with word wrap justification."
@@ -580,7 +582,7 @@ accordingly. Case can be :upper :lower :mixed or :none."
 		   (grout-princ #\newline)
 		   (grout-princ #\newline)
 		   (setf par nil)))
-	       (leading-space (l)
+	       #| (leading-space (l)
 		 "Return the leading blank space from L."
 		 (multiple-value-setq (s e ss ee)
 		   (scan "^([ \\t]+)[^ \\t]" l))
@@ -590,12 +592,13 @@ accordingly. Case can be :upper :lower :mixed or :none."
 		 "Set first-non-blank to the first non-blank line or NIL if
                   there isn't one."
 		 (setf first-non-blank
-		       (find-if (_ (not (zerop (length _)))) (cdr lines))))
+		       (find-if (_ (not (zerop (length _)))) (cdr lines)))) |#
 	       (space-char-p (c)
 		 ;; @@@ or maybe some others in unicode but not the same as
 		 ;; char-util:whitespace-p
 		 (find c #(#\space #\tab (char-code 12) ;; #\formfeed
 			   )))
+	       #|
 	       (indented-p ()
 		 "Return true if the lines look like they have a minimum uniform
                   indent."
@@ -605,7 +608,9 @@ accordingly. Case can be :upper :lower :mixed or :none."
 		      (every (_ (or (zerop (length _))
 				    (equal prefix (leading-space _))
 				    (= (mismatch prefix _) (length prefix))))
-			     (cdr lines)))))
+			     (cdr lines))))
+	       |#
+	       )
 	;; Get rid of uniform leading space on every line after the first.
 	;; This usualy comes from the typical style of indenting the docstring
 	;; text to align with it's first line.
