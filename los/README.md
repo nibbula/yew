@@ -1,8 +1,7 @@
-A small ramshackle pub that is hand-painted to look like a popular chain of
-stylistically old-fashioned pubs in the city. It is immediately obvious that
-the familiar sounding things on the menu will have little in common with what
-you would expect.
+#### Replicas of some the ancient tools.
 
-## Don't use this.
+Why?
 
-![Fool!](xclbr.png)
+- "It's what my fingers were used to typing."
+- "It's easier than making something better."
+- "Another place, another time, the same, but different."
