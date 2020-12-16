@@ -1,6 +1,6 @@
-;;
-;; base.lisp - Things that need to be defined before the system specific code.
-;;
+;;;
+;;; base.lisp - Things that need to be defined before the system specific code.
+;;;
 
 (in-package :deblarg)
 

@@ -1,6 +1,6 @@
-;;
-;; deblarg.lisp - Debugger.
-;;
+;;;
+;;; deblarg.lisp - Debugger.
+;;;
 
 ;; This would normally be used with TINY-REPL or LISH.
 
@@ -273,6 +273,17 @@
 	(setf (gethash a *debugger-commands*)
 	      (make-debugger-command :name ',name :aliases ',aliases)))))
 
+(defun define-alias (alias command)
+  "Make ALIAS be another way to invoke COMMAND. COMMAND must already be a
+debugger command."
+  (let ((cmd (get-command command)))
+    (if (not cmd)
+	(format *debug-io*
+		"I can't make an alias to a non-existent command ~s." command)
+	(progn
+	  (push alias (debugger-command-aliases cmd))
+	  (setf (gethash alias *debugger-commands*) cmd)))))
+
 (defun get-command (keyword)
   (gethash keyword *debugger-commands*))
 
@@ -361,13 +372,15 @@
 	 (debugger-eval-in-frame arg1 arg2)))))
       (error      (:e)   "Show the error again."
        (print-condition *interceptor-condition*))
-      (abort      (:a)   "Abort to top level."
+      (abort      (:a :abort :pop)   "Abort to top level."
        (do-restart 'abort restarts))
       (continue   (:c)   "Invoke continue restart."
        (do-restart 'continue restarts))
       ;; (next       (:n)   (debugger-next))
       ;; (step       (:s)   (debugger-step))
       ;; (out        (:o)   (debugger-out))
+      (alias      (:ali :alias) "Define a alias command."
+       (define-alias (read-arg state) (read-arg state)))
       (help       (:h :help) "Show this help." (debugger-help))
       (quit       (:q :quit) "Quit the whatever."
        (when (y-or-n-p "Really quit?")
