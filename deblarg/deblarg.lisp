@@ -273,7 +273,7 @@
 	(setf (gethash a *debugger-commands*)
 	      (make-debugger-command :name ',name :aliases ',aliases)))))
 
-(defun define-alias (alias command)
+(defun define-debugger-alias (alias command)
   "Make ALIAS be another way to invoke COMMAND. COMMAND must already be a
 debugger command."
   (let ((cmd (get-command command)))
