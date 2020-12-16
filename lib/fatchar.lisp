@@ -1341,7 +1341,7 @@ fatchar string. The grammar is something like: "
   (let* ((placeholder-color (make-color :rgb8 :red 0 :green 0 :blue 0))
 	 (result (make-array 256 :element-type (type-of placeholder-color))))
     ;; (declare (type (vector t 256) result))
-    (declare (type (simple-vector simple-vector 256) result))
+    (declare (type (simple-vector 256) result))
     ;; colors 0-16 are the standard colors.
     ;; Unfortunately we don't really know what they are unless we query it
     ;; from the terminal, which is a big pain. So we just fake it, and use
