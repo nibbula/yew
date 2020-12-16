@@ -562,7 +562,7 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
   ;; (dbugf :glob "path = ~s dir = ~s~%" path dir)
   (let ((path-element (car path))
 	(actual-dir (or dir "."))
-	result name recursive-match is-dir more-path either)
+	result name recursive-match is-dir more-path #| either |#)
     (flet ((starts-with-dot (string)
 	     (char= (char string 0) #\.))
 	   (append-result (thing)
@@ -601,7 +601,7 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 	 :do (setf name      (dir-entry-name entry)
 		   is-dir    (is-really-a-directory actual-dir entry)
 		   more-path (> (length path) 1)
-		   either    nil) ; for debugging
+		   #|either    nil |#) ; for debugging
 	 :when (or recursive-match (path-match entry path-element))
 	 :do
 	 ;; (dbugf :glob "path-element = ~s name = ~s " path-element name)
@@ -610,7 +610,7 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 	   ;; There's no further path elements, so just append the match.
 	   ;; (dbugf :glob "spoot ~s~%" name)
 	   (append-result (list (dir-append dir (decorated-name name))))
-	   (setf either t))
+	   #|(setf either t) |#)
 	 (when (and is-dir (or more-path recursive-match))
 	   ;; If it's a directory, get all the sub directory matches.
 	   ;; (dbugf :glob "~s is dir~%" name)
@@ -620,7 +620,7 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 			   :dir (dir-append dir (decorated-name name))
 			   :escape escape
 			   :recursive recursive))
-	   (setf either t))
+	   #|(setf either t) |#)
 	 ;; (when (not either)
 	 ;;   (dbugf :glob "not cool~%"))
 	 )
