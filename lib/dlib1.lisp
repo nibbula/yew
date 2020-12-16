@@ -25,7 +25,7 @@ my addition to the problem, and hope I can some day contribute to the solution
 of it.")
   (:use :common-lisp
 	;; We must have the MOP!!! Don't ever drop the MOP!
-	#+(or (and clisp mop) abcl) :mop
+	#+(or (and clisp mop) abcl excl) :mop
 	#+sbcl :sb-mop
 	#+cmu :pcl
 	#+ccl :ccl
@@ -1085,7 +1085,7 @@ Otherwise, return N."
 ;; Objects
 
 (defparameter *mop-package*
-  #+(or (and clisp mop) abcl) :mop
+  #+(or (and clisp mop) abcl excl) :mop
   #+sbcl :sb-mop
   #+(or cmu gcl) :pcl
   #+ccl :ccl
@@ -1093,11 +1093,11 @@ Otherwise, return N."
   #+(or ecl clasp) :clos
   #+cormanlisp :cl
   #+mezzano :mezzano.clos
-  #-(or mop sbcl cmu ccl lispworks gcl ecl clasp cormanlisp abcl mezzano)
+  #-(or mop sbcl cmu ccl lispworks gcl ecl clasp cormanlisp abcl mezzano excl)
   (error "GIVE ME MOP!!")
   "The package in which the traditional Meta Object Protocol resides.")
 
-#+(or (and clisp mop) sbcl cmu gcl ccl ecl mezzano) (d-add-feature :has-mop)
+#+(or (and clisp mop) sbcl cmu gcl ccl ecl mezzano excl) (d-add-feature :has-mop)
 
 (defun slot-documentation (slot-def)
   "Return the documentation string for a slot as returned by something like
@@ -1418,7 +1418,7 @@ ORIGINAL is something that a define-alias method is defined for."
 (#+sbcl without-package-locks
  #+clisp ext:without-package-lock #+clisp ()
  #-(or sbcl clisp) progn
- #-cmu (defalias :mop (find-package *mop-package*)))
+ #-(or cmu excl) (defalias :mop (find-package *mop-package*)))
 
 ;; This is just to pretend that we're trendy and modern.
 ;(setf (macro-function 'λ) (macro-function 'cl:lambda))

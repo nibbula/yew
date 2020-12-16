@@ -93,6 +93,8 @@ matches SYMBOL."
 	 :test (lambda (a b)
 		 (search (symbol-name a) (symbol-name b) :test #'equalp)))))
 
+#+excl (mop:finalize-inheritance (find-class 'simple-condition))
+
 (defparameter +simple-condition-format-control-slot+
   (find-slot-name 'simple-condition
 		  #-lispworks 'format-control
