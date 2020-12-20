@@ -305,11 +305,20 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
        (multiple-value-bind (in out) (funcall *stream-handles-func* stream)
 	 (if (eql direction :output)
 	     out in)))))
+  #+excl
+  (cond
+    ((typep stream 'excl::terminal-simple-stream)
+     (excl::stream-output-handle stream)
+     ;; (slot-value stream 'excl::output-handle)
+     ;; (slot-value stream 'excl::input-handle)
+     )
+    (t
+     (excl::stream-output-handle stream)))
   #+lispworks nil
   #+abcl nil
   #+ecl (declare (ignore direction))
   #+ecl (and (typep stream 'file-stream) (ext:file-stream-fd stream))
-  #-(or ccl sbcl cmu clisp lispworks abcl ecl)
+  #-(or ccl sbcl cmu clisp lispworks abcl ecl excl)
   (missing-implementation 'stream-system-handle))
 
 ;; This is really just for the os-stream code.
