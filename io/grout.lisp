@@ -342,13 +342,15 @@ generic functions (i.e. %GROUT-*) directly."
 
 (defmethod %grout-print-table ((g dumb) table
 			       &key (print-titles t) long-titles
-				 (max-width (grout-width))
+				 ;;(max-width (grout-width))
+				 max-width
 				 (trailing-spaces t)
 				 (renderer 'text-table-renderer)
 				 &allow-other-keys)
   (output-table table (make-instance renderer) (grout-stream g)
 		:print-titles print-titles :long-titles long-titles
-		:max-width max-width :trailing-spaces trailing-spaces))
+		:max-width max-width
+		:trailing-spaces trailing-spaces))
 
 (defmethod %grout-finish ((g dumb))
   (finish-output (grout-stream g)))
