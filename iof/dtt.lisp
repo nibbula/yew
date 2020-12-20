@@ -637,11 +637,18 @@ If every object in a column:
   :accepts (pathname stream)
   "Read a delimited text table."
   (let ((real-style (symbol-value (symbolify (s+ "+" style "+") :package :dtt))))
+    (flet ((read-it ()
+	     (read-table (or file *standard-input*)
+			 :style real-style :columns columns
+			 :guess-types guess-types)))
     (setf (style-first-row-labels real-style) first-row-labels
 	  lish:*output*
-	  (read-table (or file *standard-input*)
-		      :style real-style :columns columns
-		      :guess-types guess-types))))
+          (if (and (not file) (not (nos:file-exists lish:*input*)))
+              (progn
+                (with-input-from-string (str lish:*input*)
+                  (setf file str)
+                  (read-it)))
+              (read-it))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Writing
