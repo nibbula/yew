@@ -262,9 +262,22 @@ that has START and START-P and END and END-P."
 	   c
 	   (apply #'make-column c))))
 
+(defun possibly-convert-from-alist (list)
+  "If the first element of list looks like an alist, try to convert the list
+from an alist to a list of proper lists."
+  (flet ((alist-element-p (x) (not (null (cdr (last x))))))
+    (if (alist-element-p (first list))
+	(loop :for x :in list
+	   :if (alist-element-p x)
+	   :collect (list (car x) (cdr x))
+	   :else
+	   :collect x)
+	list)))
+
 (defmethod make-table-from ((object list) &key column-names columns type)
   "Make a table from an alist or a list of things."
-  (let ((tt (make-instance (or type 'mem-table) :data object))
+  (let ((tt (make-instance (or type 'mem-table)
+			   :data (possibly-convert-from-alist object)))
 	(first-obj (first object)))
     (cond
       (columns (setf (table-columns tt) (make-columns columns)))
