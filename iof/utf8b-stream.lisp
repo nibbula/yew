@@ -104,7 +104,7 @@ are.")
 ;; It's probably easier to just copy-paste these optimized versions, than
 ;; to bother with a macro.
 
-#-(or ecl clisp)
+#-(or ecl clisp excl)
 ;; @@@ It seems like some implementations don't have a class for simple-vector.
 ;; We should probably make a typecase or something if it makes a difference.
 (defmethod stream-read-sequence ((stream utf8b-input-stream) (seq simple-vector)
