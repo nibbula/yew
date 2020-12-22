@@ -144,7 +144,7 @@ support. And finally:
 
   (register-color-model :<your-color-model-name>)
 ")
-  (:use :cl :dlib :cl-ppcre)
+  (:use :cl :dlib)
   (:export
    #:*simple-colors*
    #:*default-color-model*
