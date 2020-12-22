@@ -106,11 +106,13 @@
     ;; (#\( (start-macro))
     ;; (#\) (end-macro))
     (#\i		. insert-file)
+    (#\w		. save-line-command)
     (#\9		. unipose-command)
     (#\7		. char-picker-command)
     (#\l		. pop-to-lish)
     (#\=		. what-cursor-position)
     (#\T	        . toggle-debugging) ; @@@ temporary?
+    (#\m	        . toggle-mode-line)
     (,(ctrl #\C)	. exit-editor)
     (,(ctrl #\X)	. exchange-point-and-mark)))
 ;  :default-binding #| (beep e "C-x ~a is unbound." command |#
@@ -397,11 +399,15 @@ Keyword arguments:
 
        ;;(setf (fill-pointer (buf e)) (inator-point e))
        (setf (fill-pointer (buf e)) 0)
-       ;; (when (typep (line-editor-terminal e)
-       ;; 		 (find-terminal-class-for-type :crunch))
-       ;;   (setf (oelt (line-editor-terminal e) :start-line)
-       ;; 	    (terminal-get-cursor-position
-       ;; 	     (oelt (line-editor-terminal e) :wrapped-terminal))))
+
+       ;; Set the start line for crunch terminals. We use oelt here so we
+       ;; don't even have to depend on terminal-crunch being loaded.
+       (when (typep (line-editor-terminal e)
+		    (find-terminal-class-for-type :crunch))
+	 (setf (start-row e)
+	       (terminal-get-cursor-position
+		(oelt (line-editor-terminal e) :wrapped-terminal))
+	       (oelt (line-editor-terminal e) :start-line) (start-row e)))
 
        ;; Add the new line we're working on.
        ;; (history-add nil)		; @@@@@@@ This is bad.
@@ -418,8 +424,7 @@ Keyword arguments:
 	 (without-undo (e)
 	   (buffer-insert e 0 string 0)
 	   ;; (setf (inator-point e) (length string))
-	   (set-all-points e (length string))
-	   ))))
+	   (set-all-points e (length string))))))
 
     ;; If the terminal is in line mode even after we set it to :char mode,
     ;; our whole thing is kind of moot, so just fall back to reading from the

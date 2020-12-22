@@ -72,6 +72,24 @@
        (setf (screen-relative-row ,e) ,old-row
 	     (screen-col ,e) ,old-col)))))
 
+(defgeneric draw-mode-line (editor)
+  (:documentation "Draw the mode line."))
+
+(defmethod draw-mode-line ((e line-editor))
+  (with-slots (show-mode-line mode-line start-row screen-relative-row) e
+    (when (and show-mode-line mode-line)
+      (unwind-protect
+	   (progn
+	     (tt-save-cursor)
+	     (log-message e "mode-line ~s ~s" start-row screen-relative-row)
+	     (let ((momo (or (and (ostringp mode-line) mode-line)
+			     (princ-to-string mode-line))))
+	       (tt-write-string-at
+		(if (= (+ start-row screen-relative-row) (1- (tt-height)))
+		    0 (1- (tt-height)))
+		0 (osubseq momo 0 (min (olength momo) (tt-width))))))
+	(tt-restore-cursor)))))
+
 (defun buffer-length-to (buf to-length)
   (loop :with i = 0
      :for buf-i = 0 :then (1+ buf-i)
@@ -473,7 +491,7 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	   new-last-line
 	   erase-lines
 	   old-col
-	   relative-top
+	   #|relative-top|#
 	   buffer
 	   suggest-p)
       (declare (ignorable old-col))
@@ -528,7 +546,7 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	     |# )
 
 	(relative-move-to-row screen-relative-row 0)
-	(setf relative-top (- screen-relative-row))
+	#|(setf relative-top (- screen-relative-row))|#
 	;; (dbugf :rl "start-row = ~s~%~
         ;;             screen-relative-row = ~s~%~
         ;;             spots = ~s~%"
@@ -678,6 +696,7 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	;; 	  (if (not (zerop more-lines)) 1 0))
 	;;        message-lines-displayed)
 	(tt-move-to-col point-col)
+	(draw-mode-line e)
 	(setf screen-relative-row (+ prompt-lines point-line)
 	      last-line new-last-line)
 	;; (dbugf :rl "new screen-relative-row ~s~%" screen-relative-row)

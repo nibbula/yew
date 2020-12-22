@@ -175,8 +175,7 @@
 (defun undo (e)
   "Undo until an undo boundry or all undone."
   ;; (do () ((not (undo-one e))))
-  (undo-heuristic e)
-  )
+  (undo-heuristic e))
 
 (defmacro without-undo ((e) &body body)
   "Execute the body with undo recording off in the given editor."

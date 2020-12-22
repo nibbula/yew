@@ -195,6 +195,13 @@ anything important.")
     :initarg :need-to-recolor
     :initform nil
     :documentation "True if we need to recolor some of the line.")
+   (show-mode-line
+    :initarg :show-modeline :accessor show-mode-line
+    :initform nil :type boolean
+    :documentation "True to draw the modeline.")
+   (mode-line
+    :initarg :mode-line :accessor line-editor-mode-line :initform nil
+    :documentation "ostring to show as a modeline.")
 
    ;; History
    ;;
@@ -573,6 +580,7 @@ and clipboard bound."
    "Make something fresh. Make it's state like it just got initialized,
 but perhaps reuse some resources."))
 
+;;; @@@@ this should be the approprate MOP initialize thing!
 (defmethod freshen ((e line-editor))
   "Make the editor ready to read a fresh line."
   (setf (inator-command e)	nil
@@ -593,6 +601,7 @@ but perhaps reuse some resources."))
 	(undo-history e)	nil
 	(undo-current e)	nil
 	(need-to-redraw e)	nil
+	;; (show-mode-line e)	nil
 	(exit-flag e)		nil
 	(did-under-complete e)	nil))
 

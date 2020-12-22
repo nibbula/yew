@@ -39,6 +39,8 @@
    #:line-editor-allow-history-blanks
    #:line-editor-auto-suggest-p
    #:line-editor-auto-suggest-rendition
+   #:line-editor-mode-line
+   #:draw-mode-line
    #:first-point
    #:use-context
    #:use-first-context
@@ -148,6 +150,7 @@
    #:reset-stuff
    #:complete-filename-command
    #:show-filename-completions-command
+   #:toggle-mode-line
    ;; Variables?
    #:*line-editor*
    #:*normal-keymap*

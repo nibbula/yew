@@ -1072,6 +1072,19 @@ in order, \"{open}{close}...\".")
       (with-context ()
 	(buffer-insert e point (slurp file) point)))))
 
+(defsingle save-line-command (e)
+  "Save the current line to a file."
+  (let* ((file (read-filename :prompt "Save line to file: "
+			      :allow-nonexistent t)))
+    (if file
+	(use-first-context (e)
+          (with-context ()
+	    (with-open-file (stream file :direction :output
+				    :if-does-not-exist :create)
+	      (write-string (buffer-string (buf e)) stream)
+	      (terpri stream))))
+	(tmp-message e "Not a function."))))
+
 (defsingle add-cursor-on-next-line (e)
   "Add a cursor where next-line would take us."
   (with-slots ((contexts inator::contexts)) e
@@ -1178,5 +1191,13 @@ the current line, or NIL if there is none."
 	  auto-suggest-style
 	  (or (theme-value *theme* '(:program :suggestion :style))
 	      auto-suggest-style))))
+
+(defgeneric toggle-mode-line (e)
+  (:documentation "Toggle displaying the modeline."))
+
+(defsingle-method toggle-mode-line (e)
+  "Toggle displaying the modeline."
+  (with-slots (show-mode-line) e
+    (setf show-mode-line (not show-mode-line))))
 
 ;; EOF
