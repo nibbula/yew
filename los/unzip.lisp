@@ -4,7 +4,12 @@
 
 (defpackage :unzip
   (:documentation "Manipulate zip files.")
-  (:use :cl :dlib :opsys :dlib-misc :dtime :zip :mkdir :table :grout)
+  (:use :cl :dlib :opsys :dlib-misc :dtime #|:zip|# :mkdir :table :grout)
+  (:import-from :zip
+		#:zipfile-entry-name #:zipfile-entry-universal-time
+		#:zipfile-entry-contents #:do-zipfile-entries
+		#:zipfile-entry-size
+		#:zipfile-entry-compressed-size #:close-zipfile)
   (:export
    #:unzip-command
    #:zip-command
