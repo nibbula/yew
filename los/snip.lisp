@@ -4,7 +4,7 @@
 
 (defpackage :snip
   (:documentation "Snip the output.")
-  (:use :cl :dlib :cl-ppcre :opsys :stretchy :lish :utf8b-stream)
+  (:use :cl :dlib :opsys :stretchy :lish :utf8b-stream)
   (:export
    #:!snip
    #:snip-bytes
