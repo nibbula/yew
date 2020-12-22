@@ -4,8 +4,8 @@
 
 (defpackage :apropos
   (:documentation "Dans lequel nous échouons preuve d'à propos.")
-  (:use :cl :cl-ppcre :dlib :collections :char-util :table :grout :syntax
-	:syntax-lisp :lish)
+  (:use :cl :dlib :collections :char-util :table :grout :syntax :syntax-lisp
+	:lish)
   (:export
    #:mondo-apropos #:!apropos
    ))
@@ -27,7 +27,7 @@
 (defun symbol-apropos (thing &key package external-only collect)
   (let* ((thing-string (princ-to-string thing))
 	 (scanner
-	  (create-scanner
+	  (ppcre:create-scanner
 	   ;; thing-string :case-insensitive-mode (not (functionp thing))))
 	   thing-string :case-insensitive-mode t))
 	 (table (make-hash-table))
@@ -43,7 +43,7 @@
 	    (setf (gethash symbol table) t))))
     (omapk (_ (let ((str (string (aref _ 0))))
 		;;(when (funcall scanner str 0 (length str))
-		(when (scan scanner str)
+		(when (ppcre:scan scanner str)
 		  (push (aref _ 0) matches))))
 	   table)
     (loop :for match :in matches :do
@@ -64,7 +64,8 @@
 
 (defun command-apropos (thing collect)
   (let* ((scanner
-	  (create-scanner (princ-to-string thing) :case-insensitive-mode t))
+	  (ppcre:create-scanner (princ-to-string thing)
+				:case-insensitive-mode t))
 	 results
 	 (tab
 	  (loop :with cmd :and doc
@@ -72,10 +73,11 @@
 	     :do
 	     (setf cmd (lish:get-command c)
 		   doc (and (typep cmd 'lish:command)
-			    (documentation (lish:command-function cmd) 'function)))
+			    (documentation (lish:command-function cmd)
+					   'function)))
 	     :when (and doc
-			(or (scan scanner c)
-			    (scan scanner doc)))
+			(or (ppcre:scan scanner c)
+			    (ppcre:scan scanner doc)))
 	     :collect (list (lish:command-name cmd) doc)
 	     ::and
 	     :when collect
