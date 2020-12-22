@@ -1,10 +1,10 @@
-;;
-;; filter-stream-test.lisp - Test filter streams.
-;;
+;;;
+;;; filter-stream-test.lisp - Test filter streams.
+;;;
 
 (defpackage :filter-stream-test
   (:documentation "Test filter streams.")
-  (:use :cl :filter-stream :cl-ppcre)
+  (:use :cl :filter-stream)
   (:export
    #:test
    ))
@@ -75,7 +75,7 @@
    stream
    #'(lambda (s x)
        (declare (ignore s))
-       (cl-ppcre::regex-replace-all "\\.\\s" x ". Fnord\\&"))))
+       (ppcre:regex-replace-all "\\.\\s" x ". Fnord\\&"))))
 
 (defun b1ff (stream)
   (make-filter-stream
