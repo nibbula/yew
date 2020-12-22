@@ -1,11 +1,13 @@
-;;
-;; image-ops.lisp - Image operations.
-;;
+;;;
+;;; image-ops.lisp - Image operations.
+;;;
 
 (defpackage :image-ops
   (:documentation "Operations on images.")
-  (:use :cl :dlib :image :lparallel)
+  (:use :cl :dlib :image )
   (:import-from :image #:width #:height #:data)
+  (:import-from :lparallel
+		#:submit-task #:receive-result #:make-channel #:make-kernel)
   (:export
    #:map-pixels
    #:pmap-pixels

@@ -1,10 +1,10 @@
-;;
-;; image-xbm.lisp - X bitmap images
-;;
+;;;
+;;; image-xbm.lisp - X bitmap images
+;;;
 
 (defpackage :image-xbm
   (:documentation "XBM images")
-  (:use :cl :dlib :dlib-misc :image :ppcre)
+  (:use :cl :dlib :dlib-misc :image #| :ppcre |#)
   (:export
    #:image-format-xbm
    #:x-hot-spot
@@ -39,10 +39,10 @@
 if we can't find it."
   (let (result)
     (multiple-value-bind (start end starts ends)
-	;;(scan (s+ "\\s*#\\s*define\\s+(\\w+)_" name "\\s+([0-9]+)") string)
+	;;(ppcer:scan (s+ "\\s*#\\s*define\\s+(\\w+)_" name "\\s+([0-9]+)") string)
 	;; @@@ some other junk could appear in names besides "-A-Za-z0-9_."
-	(scan (s+ "\\s*#\\s*define\\s+([-A-Za-z0-9_.]+)_" name
-		  "\\s+([0-9]+)") string)
+	(ppcre:scan (s+ "\\s*#\\s*define\\s+([-A-Za-z0-9_.]+)_" name
+			"\\s+([0-9]+)") string)
       (when (not start)
 	(if error-p
 	    (fail name)
@@ -72,14 +72,14 @@ if we can't find it."
     (and string
 	 (find-define "width" string nil)
 	 (find-define "height" string nil)
-	 (scan *bits-decl-regexp* string)
+	 (ppcre:scan *bits-decl-regexp* string)
 	 t)))
 
 (defun read-hex (string start)
   "Read a C-like 2 digit hex surrounded by optional white space.
 Eat following punctuation. Return the number and the new position."
   ;; This should be faster than:
-  ;;  (scan "\\s*0x([0-9A-Fa-f][0-9A-Fa-f])\\s*." string :start start)
+  ;;  (ppcre:scan "\\s*0x([0-9A-Fa-f][0-9A-Fa-f])\\s*." string :start start)
   ;; and a parse-integer
   (block nil
     (let ((pos start)
@@ -131,7 +131,7 @@ Eat following punctuation. Return the number and the new position."
 	  array (make-image-array width height))
     (when (not synopsis)
       (multiple-value-setq (start end starts ends)
-	(scan *bits-decl-regexp* string))
+	(ppcre:scan *bits-decl-regexp* string))
       (when (not start)
 	(fail "bits"))
       (setf name (subseq string (aref starts 0) (aref ends 0))

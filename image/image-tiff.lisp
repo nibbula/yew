@@ -1,12 +1,17 @@
-;;
-;; image-tiff.lisp - TIFF images
-;;
+;;;
+;;; image-tiff.lisp - TIFF images
+;;;
 
 (defpackage :image-tiff
   (:documentation
    "Read Tagged Image File Format images. Uses the Retrospectiff package.
 It doesn't handle all TIFF files.")
-  (:use :cl :dlib :image :retrospectiff :dcolor)
+  (:use :cl :dlib :image :dcolor)
+  (:import-from :retrospectiff
+		#:read-tiff-file #:read-tiff-stream
+		#:tiff-image-width #:tiff-image-length #:tiff-image-data
+		#:tiff-image-bits-per-sample #:tiff-image-samples-per-pixel
+		#:tiff-image-color-map)
   (:export
    #:read-tiff
    #:tiff-image-format
