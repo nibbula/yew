@@ -33,7 +33,7 @@
 
 (defclass widget (line-editor)
   ((bbox
-    :initarg :bbox :accessor widget-bbox :initform nil :type bbox
+    :initarg :bbox :accessor widget-bbox :initform nil :type (or null bbox)
     :documentation "The bounding box.")
    (rendition
     :initarg :rendition :accessor widget-rendition
