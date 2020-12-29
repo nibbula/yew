@@ -1424,12 +1424,15 @@ ORIGINAL is something that a define-alias method is defined for."
 ;(setf (macro-function 'λ) (macro-function 'cl:lambda))
 ;;Umm actually I mean:
 #-(or lispworks clasp)
-(defmacro λ (&whole form &rest bvl-decls-and-body)
-   (declare (ignore bvl-decls-and-body))
-   ;; `#'(lambda ,@(cdr form)))
-    `(lambda ,@(cdr form)))
+(defmacro λ (&whole form &rest decls-and-body)
+   (declare (ignore decls-and-body))
+   ;; `#'(lambda r form)))
+   ;; `(function (lambda ,(cdr form))))
+   `(lambda ,@(cdr form)))
 ;; Still doesn't work everywhere? WHY?
 ;; Also this doesn't work: (defalias 'λ 'lambda)
+;; I think there's some set of places in standard CL where something does a
+;; (eq 'lambda x) in a context that doesn't macro expand, but what is that set?
 
 ;; Is it really worth doing this? Is this gratuitous language mutation?
 ;; This is weird. Why do I love using it so much? I wonder if there is a better
