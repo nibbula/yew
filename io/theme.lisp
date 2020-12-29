@@ -661,7 +661,8 @@ Something like the default setting of typical GNU tools."))))
        (:syntax :constant :language        :style) (:fg-white)
        (:syntax :constant :other           :style) (:fg-white)
        (:syntax :entity :name :function    :style) (:fg-red)
-       (:syntax :entity :name :macro       :style) (:fg-red)
+       ;; (:syntax :entity :name :macro       :style) (:fg-red)
+       (:syntax :entity :name :macro       :style) (:fg :color #(:rgb 1. .6 .1))
        (:syntax :entity :name :type        :style) (:fg-blue)
        (:syntax :entity :keyword :operator :style) (:fg-magenta)
        (:syntax :entity :keyword :control  :style) (:fg-magenta)
@@ -699,15 +700,16 @@ Something like the default setting of typical GNU tools."))))
 
 (defun set-theme-defaults-for-16-color (theme)
   (set-theme-items theme
-    `((:file :type :executable     :style) (:green :bold)
-      (:command :directory	   :style) (:blue)
-      (:command :system-command    :style) (:cyan)
-      (:command :external-command  :style) (:cyan :bold)
-      (:command :builtin-command   :style) (:magenta)
-      (:command :shell-command     :style) (:magenta)
-      (:command :loadable-system   :style) (:magenta)
-      (:command :alias		   :style) (:magenta :bold)
-      (:program :suggestion        :style) (:fg :black :bold))))
+    `((:file :type :executable      :style) (:green :bold)
+      (:command :directory	    :style) (:blue)
+      (:command :system-command     :style) (:cyan)
+      (:command :external-command   :style) (:cyan :bold)
+      (:command :builtin-command    :style) (:magenta)
+      (:command :shell-command      :style) (:magenta)
+      (:command :loadable-system    :style) (:magenta)
+      (:command :alias		    :style) (:magenta :bold)
+      (:program :suggestion         :style) (:fg :black :bold)
+      (:syntax :entity :name :macro :style) (:fg-yellow))))
 
 (defun default-theme-16-color ()
   "Default theme for 16-color"
@@ -715,5 +717,6 @@ Something like the default setting of typical GNU tools."))))
     (set-theme-defaults-for-16-color theme)))
 
 ;; @@@ We should probably make a default monochrome theme.
+;; And default light backgroud themes.
 
 ;; EOF
