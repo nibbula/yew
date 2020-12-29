@@ -1,6 +1,6 @@
-;;
-;; view/open.lisp - Look at something.
-;;
+;;;
+;;; view/open.lisp - Look at something.
+;;;
 
 (defpackage :view
   (:documentation "Look at something.")
@@ -24,6 +24,7 @@
     (("text" . "org")        . (:view-org :view-org))
     (("text" . "csv")        . (:table-viewer :view-table-thing))
     (("text" . "neox")       . (:neox :neox-on-file))
+    (("application" . "json") . (:view-json :view-json))
     ("video"		     . (:view-video :view-video))
     ("image"                 . (:view-image :view-image))
     ("text"                  . (:pager :pager))
@@ -33,6 +34,7 @@
   `(("csv"          . ("text"  . "csv"))
     ("org"	    . ("text"  . "org"))
     ("nx"	    . ("text"  . "neox"))
+    ("json"	    . ("application"  . "json"))
     ))
 
 (defun get-viewer-func (type)
