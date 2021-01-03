@@ -1,6 +1,6 @@
-;;
-;; inator.lisp - Generic UI applet
-;;
+;;;
+;;; inator.lisp - Generic UI applet
+;;;
 
 (defpackage :inator
   (:documentation
