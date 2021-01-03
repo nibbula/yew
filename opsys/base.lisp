@@ -1,7 +1,7 @@
-;;
-;; opsys-base.lisp - Helper functions, setup, and types which are not system
-;;                   specific, and need to come before the system specific
-;;		     package.
+;;;
+;;; opsys-base.lisp - Helper functions, setup, and types which are not system
+;;;                   specific, and need to come before the system specific
+;;;                   package.
 
 (defpackage :opsys-base
   (:documentation "Helper functions and setup which are not system specific.")
