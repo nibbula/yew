@@ -1,6 +1,6 @@
-;;
-;; terminal-inator.lisp - Inator methods for terminals.
-;;
+;;;
+;;; terminal-inator.lisp - Inator methods for terminals.
+;;;
 
 (defpackage :terminal-inator
   (:documentation "I'll be back.")
@@ -44,7 +44,13 @@
 
 (defmethod message ((i terminal-inator) format-string &rest args)
   "Display a short message."
-  (tt-move-to (1- (terminal-window-rows *terminal*)) 0)
+  (tt-move-to (- (terminal-window-rows *terminal*)
+		 ;; @@@ This is such a kludgey hack
+		 (length (rl::%calculate-line-endings
+			  (apply #'format nil format-string args)
+			  0 (tt-width) nil nil nil))
+		 1)
+	      0)
   (tt-erase-to-eol)
   ;; We use terminal-format here because tt-format is a macro.
   (apply #'terminal-format *terminal* format-string args))
