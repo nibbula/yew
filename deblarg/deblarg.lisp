@@ -27,6 +27,7 @@
 ;; debugger-eval-in-frame n form - Return the result of evaluating FORM in
 ;;                                 frame N.
 ;; For visual mode:
+;;
 ;; debugger-source frame source-height
 ;; debugger-source-path frame
 ;; debugger-backtrace-lines n
@@ -109,97 +110,101 @@
 	line)))
 
 (defun visual ()
-  (let ((tt *visual-term*))
-    (terminal-get-size tt)
-    (with-saved-cursor (tt)
-      (let* ((source-height (truncate (/ (terminal-window-rows tt) 3)))
-	     (stack-height (min 10 source-height))
-	     (command-height (- (terminal-window-rows tt)
-				(+ stack-height source-height 2)))
-	     (command-top (- (terminal-window-rows tt) (1- command-height)))
-	     (src (or
-		   ;; (ignore-errors
-		   ;;   (debugger-source *current-frame* source-height))
-		   (handler-case
-		       (debugger-source *current-frame* source-height)
-		     (condition (c)
-		       (list (format nil "~w" c))))
-		   '("Unavailable.")))
-	     (path (or (ignore-errors
-			 (debugger-source-path *current-frame*))
-		       '("Unknown")))
-	     (stack (or (ignore-errors
-			  (debugger-backtrace-lines stack-height))
-			'("????"))))
-	;; Source area
-	;;(terminal-clear tt)
-	(terminal-move-to tt (+ source-height stack-height 2) 0)
-	(terminal-erase-above tt)
-	(terminal-home tt)
-	(loop :with line :and sp = src
-	   :for i :from 0 :below source-height :do
-	   (setf line (car sp))
-	   (if line
-	       (progn
-		 (setf line (sanitize-line line))
-		 ;;(terminal-format tt "~a~%"
-		 (terminal-write-line
-		  tt (osubseq line
-			      0 (min (- (terminal-window-columns tt) 2)
-				     (olength line))))
-		 (setf sp (cdr sp)))
-	       (terminal-format tt "~~~%")))
-	(horizontal-line tt path)
-	;; Stack area
-	(loop :with line :and sp = stack
-	   :for i :from 0 :below stack-height :do
-	   (setf line (car sp))
-	   (if line
-	       (progn
-		 (print-stack-line line :width (terminal-window-columns tt))
-		 (setf sp (cdr sp)))
-	       (terminal-format tt "~~~%")))
-	(horizontal-line tt)
-	;; Command area
-	(terminal-set-scrolling-region tt command-top (terminal-window-rows tt))
-	(terminal-move-to tt (1- (terminal-window-rows tt)) 0)
-	(terminal-finish-output tt)))))
+  (with-slots (visual-term current-frame) *deblarg*
+    (let ((tt visual-term))
+      (terminal-get-size tt)
+      (with-saved-cursor (tt)
+	(let* ((source-height (truncate (/ (terminal-window-rows tt) 3)))
+	       (stack-height (min 10 source-height))
+	       (command-height (- (terminal-window-rows tt)
+				  (+ stack-height source-height 2)))
+	       (command-top (- (terminal-window-rows tt) (1- command-height)))
+	       (src (or
+		     ;; (ignore-errors
+		     ;;   (debugger-source current-frame source-height))
+		     (handler-case
+			 (debugger-source current-frame source-height)
+		       (condition (c)
+			 (list (format nil "~w" c))))
+		     '("Unavailable.")))
+	       (path (or (ignore-errors
+			   (debugger-source-path current-frame))
+			 '("Unknown")))
+	       (stack (or (ignore-errors
+			    (debugger-backtrace-lines stack-height))
+			  '("????"))))
+	  ;; Source area
+	  ;;(terminal-clear tt)
+	  (terminal-move-to tt (+ source-height stack-height 2) 0)
+	  (terminal-erase-above tt)
+	  (terminal-home tt)
+	  (loop :with line :and sp = src
+	     :for i :from 0 :below source-height :do
+	     (setf line (car sp))
+	     (if line
+		 (progn
+		   (setf line (sanitize-line line))
+		   ;;(terminal-format tt "~a~%"
+		   (terminal-write-line
+		    tt (osubseq line
+				0 (min (- (terminal-window-columns tt) 2)
+				       (olength line))))
+		   (setf sp (cdr sp)))
+		 (terminal-format tt "~~~%")))
+	  (horizontal-line tt path)
+	  ;; Stack area
+	  (loop :with line :and sp = stack
+	     :for i :from 0 :below stack-height :do
+	     (setf line (car sp))
+	     (if line
+		 (progn
+		   (print-stack-line line :width (terminal-window-columns tt))
+		   (setf sp (cdr sp)))
+		 (terminal-format tt "~~~%")))
+	  (horizontal-line tt)
+	  ;; Command area
+	  (terminal-set-scrolling-region tt command-top
+					 (terminal-window-rows tt))
+	  (terminal-move-to tt (1- (terminal-window-rows tt)) 0)
+	  (terminal-finish-output tt))))))
 
 (defvar *fake-term* nil "Workaround for problems with crunch.")
 
 (defun start-visual ()
-  (cond
-    (*visual-mode*
-     ;; (when (not *visual-term*)
-     ;;   (setf *visual-term* (make-instance 'terminal-ansi))
-     ;;   (terminal-start *visual-term*))
-     ;;(setf *visual-term* *terminal*)
-     (setf *visual-term* *debug-term*)
-     (let ((tt *visual-term*))
-       (terminal-get-size tt)
-       (terminal-move-to tt (1- (terminal-window-rows tt)) 0)
-       (terminal-finish-output tt)))
-    ;; @@@ temporary workaround
-    ;; ((typep *terminal* 'terminal-crunch:terminal-crunch)
-    ;;  (setf *fake-term* *terminal*
-    ;; 	   *terminal* (make-instance 'terminal-ansi)))
-    ))
+  (with-slots (visual-mode visual-term term) *deblarg*
+    (cond
+      (visual-mode
+       ;; (when (not visual-term)
+       ;;   (setf visual-term (make-instance 'terminal-ansi))
+       ;;   (terminal-start visual-term))
+       ;;(setf visual-term *terminal*)
+       (setf visual-term term)
+       (let ((tt visual-term))
+	 (terminal-get-size tt)
+	 (terminal-move-to tt (1- (terminal-window-rows tt)) 0)
+	 (terminal-finish-output tt)))
+      ;; @@@ temporary workaround
+      ;; ((typep *terminal* 'terminal-crunch:terminal-crunch)
+      ;;  (setf *fake-term* *terminal*
+      ;; 	   *terminal* (make-instance 'terminal-ansi)))
+      )))
 
 (defun reset-visual ()
-  (cond
-    (*visual-term*
-     (let ((tt *visual-term*))
-       (terminal-set-scrolling-region tt nil nil)
-       (terminal-move-to tt (1- (terminal-window-rows tt)) 0)
-       (terminal-finish-output tt)
-       #| (terminal-end tt) |#)
-     (setf *visual-term* nil))
-    ;; @@@ temporary workaround
-    ;; (*fake-term*
-    ;;  (terminal-done *terminal*)
-    ;;  (setf *terminal* *fake-term*
-    ;; 	   *fake-term* nil))
-    ))
+  (with-slots (visual-term) *deblarg*
+    (cond
+      (visual-term
+       (let ((tt visual-term))
+	 (terminal-set-scrolling-region tt nil nil)
+	 (terminal-move-to tt (1- (terminal-window-rows tt)) 0)
+	 (terminal-finish-output tt)
+	 #| (terminal-end tt) |#)
+       (setf visual-term nil))
+      ;; @@@ temporary workaround
+      ;; (*fake-term*
+      ;;  (terminal-done *terminal*)
+      ;;  (setf *terminal* *fake-term*
+      ;; 	   *fake-term* nil))
+      )))
 
 (defun debugger-up-frame-command (&optional foo)
   (declare (ignore foo))
@@ -212,23 +217,23 @@
   (visual))
 
 (defun list-restarts (rs)
-  (print-span '((:underline "Restarts") " are:" #\newline))
-  (loop :with i = 0 :for r :in rs :do
-     ;; (format *debug-term* "~&")
-     (print-span `((:fg-cyan ,(princ-to-string i)) ": "))
-     (when (not (ignore-errors (progn (format *debug-term* "~s ~a~%"
-					      (restart-name r) r) t)))
-       (format *debug-term* "Error printing restart ")
-       (print-unreadable-object (r *debug-term* :type t :identity t)
-	 (format *debug-term* "~a" (restart-name r)))
-       (terpri *debug-term*))
-     (incf i))
-  )
+  (with-slots (term) *deblarg*
+    (print-span '((:underline "Restarts") " are:" #\newline))
+    (loop :with i = 0 :for r :in rs :do
+       ;; (format *debug-term* "~&")
+       (print-span `((:fg-cyan ,(princ-to-string i)) ": "))
+       (when (not (ignore-errors (progn (format term "~s ~a~%"
+						(restart-name r) r) t)))
+	 (format term "Error printing restart ")
+	 (print-unreadable-object (r term :type t :identity t)
+	   (format term "~a" (restart-name r)))
+	 (terpri term))
+       (incf i))))
 
 ;; @@@ This hackishly knows too much about RL.
 (defun debugger-prompt (e p)
   (declare (ignore e))
-  (when *visual-mode*
+  (when (deblargger-visual-mode *deblarg*)
     (visual))
   ;; (fresh-line *debug-io*)
   (let ((string (format nil "Debug ~d~a" *repl-level* p)))
@@ -266,8 +271,8 @@
 
 (defmacro define-debugger-command (name aliases &body body)
   `(progn
-     (defun ,(command-name name) (state restarts)
-       (declare (ignorable state restarts))
+     (defun ,(command-name name) (repl-state restarts)
+       (declare (ignorable repl-state restarts))
        ,@body)
      (loop :for a :in ',aliases :do
 	(setf (gethash a *debugger-commands*)
@@ -288,50 +293,82 @@ debugger command."
   (gethash keyword *debugger-commands*))
 
 (defun debugger-help ()
-  (terminal-format *debug-term* "Debugger help:~%")
-  (output-table
-   (make-table-from
-    (nconc
-     (loop :for c :in (debugger-command-list)
-	:collect
-	(list
-	 (span-to-fat-string
-	  `(:cyan ,(loop :for a :in (debugger-command-aliases c)
-		      :collect (s+ (prin1-to-string a) #\space))))
-	 (span-to-fat-string
-	  `(:white ,(documentation
-		     (command-name (debugger-command-name c)) 'function)))))
-     `(,(mapcar
-	  #'span-to-fat-string
-	  '((:fg-cyan "number")
-	    (:fg-white "Invoke that number restart (from the :r list).")))
-       ,(mapcar
-	  #'span-to-fat-string
-	  '((:fg-cyan "...")
-	    (:fg-white "Or just type a some lisp code."))))))
-   (make-instance 'terminal-table:terminal-table-renderer)
-   *debug-term* :print-titles nil :trailing-spaces nil)
-  (list-restarts (cdr (compute-restarts *interceptor-condition*))))
+  (with-slots (term condition) *deblarg*
+    (terminal-format term "Debugger help:~%")
+    (output-table
+     (make-table-from
+      (nconc
+       (loop :for c :in (debugger-command-list)
+	  :collect
+	  (list
+	   (span-to-fat-string
+	    `(:cyan ,(loop :for a :in (debugger-command-aliases c)
+			:collect (s+ (prin1-to-string a) #\space))))
+	   (span-to-fat-string
+	    `(:white ,(documentation
+		       (command-name (debugger-command-name c)) 'function)))))
+       `(,(mapcar
+	   #'span-to-fat-string
+	   '((:fg-cyan "number")
+	     (:fg-white "Invoke that number restart (from the :r list).")))
+	  ,(mapcar
+	    #'span-to-fat-string
+	    '((:fg-cyan "...")
+	      (:fg-white "Or just type a some lisp code."))))))
+     (make-instance 'terminal-table:terminal-table-renderer)
+     term :print-titles nil :trailing-spaces nil)
+    (list-restarts (cdr (compute-restarts condition)))))
 
 (defun debugger-snargle (arg)
   "Magic command just for me."
   (error "Pizza ~s ~s." arg (type-of arg)))
 
-(defun toggle-visual-mode (state)
-  (declare (ignore state))
-  (setf *visual-mode* (not *visual-mode*))
-  (if *visual-mode*
-      (start-visual)
-      (reset-visual)))
+(defun toggle-visual-mode (repl-state)
+  (declare (ignore repl-state))
+  (with-slots (visual-mode) *deblarg*
+    (setf visual-mode (not visual-mode))
+    (if visual-mode
+	(start-visual)
+	(reset-visual))))
 
-(defun do-restart (r restarts)
+(defun restart-number (n restarts)
+  "Return the restart number N in RESTARTS or NIL if it's not in RESTARTS."
+  (when (and restarts (>= n 0) (< n (length restarts)))
+    (nth n restarts)))
+
+(defun clear-auto-restart ()
+  "Turn off automatic restarts."
+  (with-slots (repeat-restart repeat-condition) *thread*
+    (setf repeat-restart nil
+	  repeat-condition nil)
+    (format *debug-io* "Stopping automatic restarts.~%")))
+
+(defun do-restart (r restarts &key keep-p)
+  "Invoke restart named R from the list of RESTARTS. If KEEP-P is true, 
+keep the current automatic restarts set, otherwise clear them."
   (format *debug-io* "~:(~a~).~%" r)
   ;; This is like find-restart, but omits the most recent abort
   ;; which is this debugger's.
   (let ((borty (find r restarts :key #'restart-name)))
     (if (not borty)
 	(format *debug-io* "Can't find an ~a restart!~%" r)
-	(invoke-restart-interactively borty))))
+	(progn
+	  (when (not keep-p)
+	    (clear-auto-restart))
+	  (invoke-restart-interactively borty)))))
+
+(defun restart-until (r restarts)
+  "Repeatedly invoke a restart until we get a different condition."
+  (with-slots (condition) *deblarg*
+    (with-slots (repeat-condition repeat-restart) *thread*
+      (let ((real-restart (or (restart-number r restarts)
+			      (find r restarts :key #'restart-name))))
+	(if (not real-restart)
+	    (format *debug-io* "Can't find an '~a' restart!~%" r)
+	    (progn
+	      (setf repeat-condition condition
+		    repeat-restart (restart-name real-restart))
+	      (do-restart repeat-restart restarts :keep-p t)))))))
 
 (defmacro define-commands (var)
   `(progn
@@ -345,42 +382,49 @@ debugger command."
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *base-commands*
     #((backtrace  (:b) "Backtrace stack."
-       (debugger-backtrace (read-arg state)))
+       (debugger-backtrace (read-arg repl-state)))
       (wacktrace  (:w) "Wacktrace."
        (print-span '((:underline "Backtrace") #\: #\newline))
-       (debugger-wacktrace (read-arg state)))
+       (debugger-wacktrace (read-arg repl-state)))
       (restarts   (:r) "Show restarts." (list-restarts restarts))
       (source     (:src)
        "Show source for a frame N, which defaults to the current frame."
-       (debugger-show-source (read-arg state)))
+       (debugger-show-source (read-arg repl-state)))
       (locals     (:l)
        "Show local variables for frame N, which defaults to the current frame."
-       (debugger-show-locals (read-arg state)))
-      (snargle    (:z) "Snargle" (debugger-snargle (read-arg state)))
+       (debugger-show-locals (read-arg repl-state)))
+      (snargle    (:z) "Snargle" (debugger-snargle (read-arg repl-state)))
       (visual     (:v) "Toggle visual mode."
-       (toggle-visual-mode (read-arg state)))
-      (up-frame   (:u) "Up a frame." (debugger-up-frame (read-arg state)))
-      (down-frame (:d) "Down a frame." (debugger-down-frame (read-arg state)))
-      (set-frame  (:f) "Set the frame." (debugger-set-frame (read-arg state)))
+       (toggle-visual-mode (read-arg repl-state)))
+      (up-frame   (:u) "Up a frame."
+       (debugger-up-frame (read-arg repl-state)))
+      (down-frame (:d) "Down a frame."
+       (debugger-down-frame (read-arg repl-state)))
+      (set-frame  (:f) "Set the frame."
+       (debugger-set-frame (read-arg repl-state)))
       (top        (:t) "Go to the top frame."
-       (debugger-top-frame (read-arg state)))
+       (debugger-top-frame (read-arg repl-state)))
       (eval-in    (:ev) "Evaluate in frame N."
        (eval-print
 	(multiple-value-list
-	 (let ((arg2 (read-arg state))
-	       (arg1 (read-arg state)))
+	 (let ((arg2 (read-arg repl-state))
+	       (arg1 (read-arg repl-state)))
 	 (debugger-eval-in-frame arg1 arg2)))))
       (error      (:e)   "Show the error again."
-       (print-condition *interceptor-condition*))
+       (print-condition (deblargger-condition *deblarg*)))
       (abort      (:a :abort :pop)   "Abort to top level."
        (do-restart 'abort restarts))
       (continue   (:c)   "Invoke continue restart."
        (do-restart 'continue restarts))
+      (restart-until (:ru)   "Invoke restart until you get a different error."
+       (restart-until (read-arg repl-state) restarts))
+      (auto-restart-clear (:arc) "Clear the automatic restart."
+       (clear-auto-restart))
       ;; (next       (:n)   (debugger-next))
       ;; (step       (:s)   (debugger-step))
       ;; (out        (:o)   (debugger-out))
       (alias      (:ali :alias) "Define a alias command."
-       (define-alias (read-arg state) (read-arg state)))
+       (defalias (read-arg repl-state) (read-arg repl-state)))
       (help       (:h :help) "Show this help." (debugger-help))
       (quit       (:q :quit) "Quit the whatever."
        (when (y-or-n-p "Really quit?")
@@ -395,57 +439,58 @@ debugger command."
 	 (list-breakpoints))
 	(set-breakpoint (:sb :sbp :set)
 	 "Set breakpoints on function."
-	 (set-func-breakpoint (eval (read-arg state))))
+	 (set-func-breakpoint (eval (read-arg repl-state))))
 	(toggle-breakpoint (:tb :tbp :toggle)
 	 "Toggle breakpoints."
-	 (toggle-breakpoint (read-arg state)) t)
+	 (toggle-breakpoint (read-arg repl-state)) t)
 	(activate-breakpoint (:ab :abp :activate)
 	 "Activate breakpoints."
-	 (activate-breakpoint (read-arg state)) t)
+	 (activate-breakpoint (read-arg repl-state)) t)
 	(deactivate-breakpoint (:db :dbp :deactivate)
 	 "Deactivate breakpoints."
-	 (deactivate-breakpoint (read-arg state)) t)
+	 (deactivate-breakpoint (read-arg repl-state)) t)
 	(delete-breakpoint (:xb :xbp :delete)
 	 "Delete breakpoints."
-	 (delete-breakpoint (read-arg state))))))
+	 (delete-breakpoint (read-arg repl-state))))))
   (define-commands *breakpoint-commands*))
 
 ;; Remember we have to return non-NIL if we want to tell the REPL that we
 ;; handled it.
-(defun debugger-interceptor (value state)
+(defun debugger-interceptor (value repl-state)
   "Handle special debugger commands, which are usually keywords."
-  (let ((restarts (cdr (compute-restarts *interceptor-condition*))))
+  (let ((restarts (cdr (compute-restarts (deblargger-condition *deblarg*)))))
     (cond
       ;; We use keywords as commands, just in case you have a variable or some
       ;; other symbol clash. I dunno. I 'spose we could use regular symbols,
       ;; and have a "print" command.
       ((typep value 'keyword)
-       (let ((ks (string value)))
+       (let ((ks (string value)) n)
 	 ;; :r<n> restart keywords - to be compatible with CLisp
-	 (when (and (> (length ks) 1) (equal (aref ks 0) #\R))
-	   (let ((n (parse-integer (subseq ks 1))))
+	 (if (and (> (length ks) 1) (equal (aref ks 0) #\R)
+		  (setf n (parse-integer ks :start 1 :junk-allowed t)))
 	     ;; (invoke-restart-interactively (nth n (compute-restarts)))))
 	     ;; (format t "[Invoking restart ~d (~a)]~%" n (nth n restarts))
-	     (invoke-restart-interactively (nth n restarts))))
-	 (let ((cmd (get-command value)))
-	   (when cmd
-	     (funcall (command-name (debugger-command-name cmd))
-		      state restarts)
-	     t))))
+	     (invoke-restart-interactively (nth n restarts))
+	     (let ((cmd (get-command value)))
+	       (when cmd
+		 (funcall (command-name (debugger-command-name cmd))
+			  repl-state restarts)))))
+	 t)
       ;; symbols that aren't keywords
       ((typep value 'symbol)
        (let ((sym (command-name value)))
 	 (if (fboundp sym)
 	     (progn
-	       (funcall sym state restarts)
+	       (funcall sym repl-state restarts)
 	       t)
 	     nil)))
       ;; Numbers invoke that numbered restart.
       ((typep value 'integer)
-       (if (and restarts (>= value 0) (< value (length restarts)))
-	   (invoke-restart-interactively (nth value restarts))
-	   (format *debug-io*
-		   "~a is not a valid restart number.~%" value))
+       (let ((r (restart-number value restarts)))
+	 (if r
+	     (invoke-restart-interactively r)
+	     (format *debug-io*
+		     "~a is not a valid restart number.~%" value)))
        t)
       (t nil))))
 
@@ -499,16 +544,17 @@ program that messes with the terminal, we can still type at the debugger."
 
 ;; @@@ This hackishly knows too much about RL.
 (defun debugger-redraw (e)
-  (if *visual-term*
-    (let ((tt *visual-term*))
-      (terminal-clear tt)
-      (terminal-beginning-of-line tt)
-      (terminal-erase-to-eol tt)
-      (setf (rl:screen-col e) 0)
-      (debugger-prompt rl:*line-editor* "> ")
-      (terminal-finish-output tt))
-    (rl::redraw-command e))
-  nil)
+  (with-slots (visual-term) *deblarg*
+    (if visual-term
+	(progn
+	  (terminal-clear visual-term)
+	  (terminal-beginning-of-line visual-term)
+	  (terminal-erase-to-eol visual-term)
+	  (setf (rl:screen-col e) 0)
+	  (debugger-prompt rl:*line-editor* "> ")
+	  (terminal-finish-output visual-term))
+	(rl::redraw-command e))
+    nil))
 
 (defvar *debugger-keymap* nil "Keymap for the debugger.")
 (defvar *debugger-escape-keymap* nil "Escape key Keymap for the debugger.")
@@ -532,56 +578,74 @@ program that messes with the terminal, we can still type at the debugger."
      (:fg-red (:underline ,(princ-to-string (type-of c))) #\newline
 	      ,(princ-to-string c) #\newline))))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro with-deblargger ((frame) &body body)
+    `(let ((*deblarg*
+	    (make-deblargger
+	     :condition c
+	     :saved-frame (or ,frame (debugger-internal-frame))
+	     :current-frame (or ,frame (debugger-internal-frame)))))
+       (when (not *thread*)
+	 ;; @@@ This isn't really thread local yet.
+	 (setf *thread* (make-thread)))
+       (when (not *debugger-keymap*)
+	 (setup-keymap))
+       (with-new-debugger-io (*deblarg*)
+	 ,@body))))
+
 (defun deblarg (c hook &optional frame)
   "Entry point for the debugger, used as the debugger hook."
   (declare (ignore hook))		;@@@ wrong
-  (setf *saved-frame* (or frame (debugger-internal-frame)))
-  (when (not *debugger-keymap*)
-    (setup-keymap))
-  (with-new-debugger-io ()
+  (with-deblargger (frame)
+    (with-slots (condition) *deblarg*
+      (with-slots (repeat-condition repeat-restart) *thread*
+	(when repeat-restart
+	  (if (typep condition (type-of repeat-condition))
+	      (do-restart repeat-restart (compute-restarts c) :keep-p t)
+	      (progn
+		(setf repeat-restart nil
+		      repeat-condition nil)
+		(format *debug-io* "Stopping automatic restarts.~%"))))))
     (unwind-protect
-    (progn
-      ;;(try-to-reset-curses)
-      (try-to-reset-terminal)
-      (start-visual)
-      (when (> *repl-level* 20)
-	(format t "Something has probably gone wrong, so I'm breaking.~%")
-	;; Abort assumes a restart is active, which may not be the case.
-	;; But break seems to work.
-	(break))
-      (format *debug-io* "Entering the debugger.~a~%"
-	      (if (= (random 4) 1) (s+ " Blarg"
-				       (if (zerop (random 2)) #\. #\!)) ""))
-      (with-standard-io-syntax
-	(let ((*interceptor-condition* c)
-	      (*current-frame* *saved-frame*)
-	      ;; Reset reader vars to sane values:
-	      ;; [probably uneeded since we use with-standard-io-syntax]
-	      (*read-suppress* nil)
-	      (*read-base* 10)
-	      (*read-eval* t)
-	      ;; printer vars
-	      (*print-readably* nil)
-	      (*print-length* 50)	; something reasonable?
-	      (*print-pretty* nil)
-	      (*print-circle* nil)
-	      )
-	  (print-condition c)
-	  (list-restarts (compute-restarts c))
-	  (terminal-finish-output *debug-term*)
-	  (tiny-repl :interceptor #'debugger-interceptor
-		     :prompt-func #'debugger-prompt
-		     :keymap *debugger-keymap*
-		     :output *debug-io*
-		     :debug t
-		     :terminal *debug-term*
-		     :no-announce t))))
+      (progn
+	;;(try-to-reset-curses)
+	(try-to-reset-terminal)
+	(start-visual)
+	(when (> *repl-level* 20)
+	  (format t "Something has probably gone wrong, so I'm breaking.~%")
+	  ;; Abort assumes a restart is active, which may not be the case.
+	  ;; But break seems to work.
+	  (break))
+	(format *debug-io* "Entering the debugger.~a~%"
+		(if (= (random 4) 1)
+		    (s+ " Blarg" (if (zerop (random 2)) #\. #\!)) ""))
+	(with-standard-io-syntax
+	  ;; Reset reader vars to sane values:
+	  ;; [probably uneeded since we use with-standard-io-syntax]
+	  (let ((*read-suppress* nil)
+		(*read-base* 10)
+		(*read-eval* t)
+		;; printer vars
+		(*print-readably* nil)
+		(*print-length* 50)	; something reasonable?
+		(*print-pretty* nil)
+		(*print-circle* nil))
+	    (print-condition c)
+	    (list-restarts (compute-restarts c))
+	    (terminal-finish-output (deblargger-term *deblarg*))
+	    (tiny-repl :interceptor #'debugger-interceptor
+		       :prompt-func #'debugger-prompt
+		       :keymap *debugger-keymap*
+		       :output *debug-io*
+		       :debug t
+		       :terminal (deblargger-term *deblarg*)
+		       :no-announce t))))
 ;;;    (Format *debug-io* "Exiting the debugger level ~d~%" *repl-level*)
       (reset-visual))))
 
 (defun in-emacs-p ()
   "Return true if we're being run under Emacs, like probably in SLIME."
-  (d-getenv "EMACS"))
+  (nos:env "EMACS"))
 
 (defvar *saved-debugger-hook* nil
   "The old value of *debugger-hook*, so we can restore it.")

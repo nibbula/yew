@@ -1,6 +1,6 @@
-;;
-;; package.lisp - Deblarg package definition
-;;
+;;;
+;;; package.lisp - Deblarg package definition
+;;;
 
 (defpackage :deblarg
   (:documentation
@@ -10,10 +10,17 @@ least you can type things using RL.")
 	:terminal-ansi :terminal-table :rl :collections :fatchar :fatchar-io
 	:tiny-repl #+sbcl :sb-introspect :reader-ext :source-path)
   (:export
+   #:deblargger
+   #:deblargger-current-frame
+   #:deblargger-saved-frame
+   #:deblargger-condition
+   #:deblargger-term
+   #:deblargger-visual-mode
+   #:deblargger-visual-term
+   #:*deblarg*
+   #:*debug-term*
    #:deblarg
    #:*default-interceptor*
-   #:*interceptor-condition*
-   #:*visual-mode*
    #:toggle
    #:active-p
    #:activate

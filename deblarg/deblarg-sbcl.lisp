@@ -78,7 +78,7 @@
 (defun debugger-backtrace-lines (n)
   (loop 
 ;;;     :with f = *saved-frame* #| (sbcl-start-frame) |#
-     :with f = *current-frame*
+     :with f = (deblargger-current-frame *deblarg*)
      :for i :from 1 :to n
      :collect
      (cons (sb-di:frame-number f)
@@ -278,7 +278,7 @@
   (let ((frame
 	 (cond
 	   ((numberp n) (frame-number n))
-	   (t *current-frame*))))
+	   (t (deblargger-current-frame *deblarg*)))))
     ;;(format t "~s~%" (debugger-source frame))))
     (loop :for s :in (debugger-source frame)
        :do (format t "~a~%" s))))
@@ -293,8 +293,9 @@
     (assert (= (sb-di:frame-number result) n))
     result))
 
-(defun frame-number-or-current (&optional (n *current-frame*))
-  "Return the frame numbered N, or the *current-frame*, or the top frame."
+(defun frame-number-or-current (&optional
+				  (n (deblargger-current-frame *deblarg*)))
+  "Return the frame numbered N, or the current frame, or the top frame."
   (cond
     ((numberp n) (frame-number n))
     ((sb-di:frame-p n) n)
@@ -337,30 +338,34 @@ innermost N contexts, if we can."
 
 (defun debugger-up-frame (&optional (count 1))
   (declare (ignore count))
-  (let ((next (sb-di:frame-up *current-frame*)))
-    (if next
-	(setf *current-frame* next))))
+  (with-slots (current-frame) *deblarg*
+    (let ((next (sb-di:frame-up current-frame)))
+      (if next
+	  (setf current-frame next)))))
 
 (defun debugger-down-frame (&optional (count 1))
   (declare (ignore count))
-  (let ((next (sb-di:frame-down *current-frame*)))
-    (if next
-	(setf *current-frame* next))))
+  (with-slots (current-frame) *deblarg*
+    (let ((next (sb-di:frame-down current-frame)))
+      (if next
+	  (setf current-frame next)))))
 
 (defun debugger-set-frame (frame)
-  (cond
-    ((or (not frame) (and (numberp frame) (= frame 0)))
-     (sb-di:top-frame))
-    ((numberp frame)
-     (setf *current-frame* (frame-number frame)))
-    ((sb-di:frame-p frame)
-     (setf *current-frame* frame))
-    (t
-     (format *debug-io* "No such frame ~s~%" frame))))
+  (with-slots (current-frame) *deblarg*
+    (cond
+      ((or (not frame) (and (numberp frame) (= frame 0)))
+       (sb-di:top-frame))
+      ((numberp frame)
+       (setf current-frame (frame-number frame)))
+      ((sb-di:frame-p frame)
+       (setf current-frame frame))
+      (t
+       (format *debug-io* "No such frame ~s~%" frame)))))
 
 (defun debugger-top-frame (count)
   (declare (ignore count))
-  (setf *current-frame* *saved-frame*))
+  (with-slots (current-frame saved-frame) *deblarg*
+    (setf current-frame saved-frame)))
 
 ;; Stepping
 

@@ -27,15 +27,16 @@
 |#
 
 (defun debugger-backtrace-lines (n)
-  (loop :with i = 0
-     :for b :in (ccl::backtrace-as-list)
-     :if (>= i *current-frame*)
-     ;; :collect (format nil "~(~3d ~a~)" i b)
-     :collect (cons i (string-downcase (princ-to-string b)))
-     :end
-     :do
-     (incf i)
-     :while (< i (+ *current-frame* n))))
+  (with-slots (current-frame) *deblarg*
+    (loop :with i = 0
+       :for b :in (ccl::backtrace-as-list)
+       :if (>= i current-frame)
+       ;; :collect (format nil "~(~3d ~a~)" i b)
+       :collect (cons i (string-downcase (princ-to-string b)))
+       :end
+       :do
+       (incf i)
+       :while (< i (+ current-frame n)))))
 
 (defun debugger-wacktrace (n)
   "Our own backtrace for CCL."
@@ -185,18 +186,22 @@ innermost N contexts, if we can."
   0)
 
 (defun debugger-up-frame (&optional (count 1))
-  (when (> *current-frame* 0)
-    (decf *current-frame* (or count 1))))
+  (with-slots (current-frame) *deblarg*
+    (when (> current-frame 0)
+      (decf current-frame (or count 1)))))
 
 (defun debugger-down-frame (&optional (count 1))
-  (incf *current-frame* (or count 1)))
+  (with-slots (current-frame) *deblarg*
+    (incf current-frame (or count 1))))
 
 (defun debugger-set-frame (frame)
-  (setf *current-frame* frame))
+  (with-slots (current-frame) *deblarg*
+    (setf current-frame frame)))
 
 (defun debugger-top-frame (count)
   (declare (ignore count))
-  (setf *current-frame* 0)) ;; XXX wrong?
+  (with-slots (current-frame) *deblarg*
+    (setf current-frame 0))) ;; XXX wrong?
 
 (defun debugger-eval-in-frame (form n)
   (multiple-value-bind (pointer context) (get-frame n)
