@@ -53,6 +53,7 @@
    ;; printing
    #:untabify
    #:justify-text
+   #:calculate-line-endings
    #:print-properties
    #:print-values
    #:print-values*
@@ -628,6 +629,98 @@ If STREAM is nil, return a string of the output."
 		       :prefix prefix :separator separator
 		       :omit-first-prefix omit-first-prefix
 		       :start-column start-column))))
+
+;; @@@ Perhaps we could consider caching or memoizing this? Espeically when
+;; the buffer hasn't changed.
+;; @@@ I'm not sure this is the right place for this.
+
+(defun calculate-line-endings (buffer start-column end-column spots
+				column-spots autowrap-delay)
+  "Return a list of pairs of character positions and columns, in reverse order
+of character position, which should be the end of the displayed lines in the
+buffer.
+  BUFFER          The string to compute endings for.
+  START-COLUMN    The column number of the first character in BUFFER.
+  END-COLUMN      The number columns in the view, after which it wraps.
+  SPOTS           An alist of character indexes to set the line and column of.
+  COLUMN-SPOTS    An alist of line and column pairs to set the character
+                  indexes of.
+  AUTOWRAP-DELAY  True if the intended output device has autowrap delay."
+  (let (endings
+	(col start-column)		; Start after the prompt
+	(char-width 0)
+	(last-col start-column)
+	(line 0)
+	(i 0)
+	c cc spot)
+    ;; (dbugf :rl "endings start-column ~s~%" start-column)
+    ;; (if-dbugf (:rl)
+    ;; 	      (symbol-call :deblarg :debugger-wacktrace 20))
+    (flet ((set-spot (x)
+	     (when (and spots (setf spot (assoc i spots)))
+	       ;;(dbugf :rl "set-spot ~a~%" x)
+	       (rplacd spot (cons line col)))
+	     (when (and column-spots
+			(setf spot (assoc `(,line ,col) column-spots
+					  :test #'equal)))
+	       (rplacd spot i))))
+      (loop :while (< i (olength buffer))
+	 :do
+	   (setf c (oelt buffer i)
+		 ;; cc (if (fatchar-p c) (fatchar-c c) c))
+		 cc (simplify-char c))
+	   (if (char= cc #\newline)
+	       (progn
+		 (when (and (not autowrap-delay)
+			    (> (+ col char-width) end-column))
+		   (push (cons (1- i) last-col) endings)
+		   (setf last-col col)
+		   (setf col 0) ;; @@@ left-margin
+		   (incf line)
+		   (set-spot "newline wrap")
+		   )
+		 (push (cons (1- i) last-col) endings)
+		 (setf last-col col)
+		 ;; (when (< col (1- end-column))
+		 ;;   (incf col))		; just for the cursor?
+		 (set-spot "NL")
+		 (incf line)
+		 (setf col 0) ;; @@@ left-margin
+		 ;;(set-spot "NL")
+		 )
+	       (progn
+		 (setf char-width (display-length (oelt buffer i)))
+		 (if (> (+ col char-width) end-column)
+		     (progn
+		       (push (cons (1- i) last-col) endings)
+		       (when autowrap-delay
+			 (set-spot "wrap"))
+		       (setf last-col col)
+		       (setf col 0)
+		       (incf line)
+		       (when (not autowrap-delay)
+			 (set-spot "wrap"))
+		       (setf col char-width))
+		     (progn
+		       (set-spot "normal")
+		       (setf last-col col)
+		       (incf col char-width)))))
+	   (incf i))
+
+      ;; Make sure we get the last one
+      (when (> (+ col char-width) end-column)
+	(push (cons (1- i) last-col) endings))
+
+      ;; Spot in empty buffer
+      (when (and spots (zerop (olength buffer)) (setf spot (assoc 0 spots)))
+	(rplacd spot (cons line col)))
+
+      ;; Spot after end
+      (when (> (+ col char-width) end-column)
+	(incf line)
+	(setf col 0)) ;; @@@ left-margin
+      (set-spot "End")
+      endings)))
 
 (defun print-properties (prop-list &key (right-justify nil) (de-lispify t)
 				     (stream t) (format-char #\a))

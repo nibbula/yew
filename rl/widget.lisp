@@ -134,18 +134,18 @@ fat-string, set unset effects to be from RENDITION."
 
 ;; This is to get different defaults for the view. We should probably have
 ;; just made a view object.
-(defmethod calculate-line-endings ((editor widget)
-				   &key
-				     (buffer (rl::buf editor))
-				     (start-column
-				      (bbox-x (widget-bbox editor)))
-				     (end-column
-				      (bbox-width (widget-bbox editor)))
-				     spots column-spots
-				     (autowrap-delay
-				      (terminal-has-autowrap-delay
-				       (line-editor-terminal editor))))
-  (rl::%calculate-line-endings
+(defmethod editor-calculate-line-endings ((editor widget)
+					  &key
+					    (buffer (rl::buf editor))
+					    (start-column
+					     (bbox-x (widget-bbox editor)))
+					    (end-column
+					     (bbox-width (widget-bbox editor)))
+					    spots column-spots
+					    (autowrap-delay
+					     (terminal-has-autowrap-delay
+					      (line-editor-terminal editor))))
+  (calculate-line-endings
    buffer start-column end-column spots column-spots autowrap-delay))
 
 ;; Now with much less ploof!
@@ -202,9 +202,9 @@ fat-string, set unset effects to be from RENDITION."
 	   (first-point (inator-point (aref contexts 0)))
 	   (spots (list `(,first-point . ())
 			`(,line-end . ())))
-	   (endings     (calculate-line-endings e :start-column 0
-						:end-column width
-						:spots spots))
+	   (endings     (editor-calculate-line-endings e :start-column 0
+						       :end-column width
+						       :spots spots))
 	   ;; Get the cursor position from the results
 	   (spot          (assoc first-point spots))
 	   (point-line    (cadr spot))

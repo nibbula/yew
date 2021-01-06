@@ -118,6 +118,7 @@
 	(replace-buffer e (history-current (history-context e)))
 	(replace-buffer e ""))))
 
+#|
 ;; Perhaps we could consider caching or memoizing this? Espeically when
 ;; the buffer hasn't changed.
 
@@ -199,14 +200,15 @@
 	(setf col 0)) ;; @@@ left-margin
       (set-spot "End")
       endings)))
+|#
 
-(defgeneric calculate-line-endings (editor &key
-					     buffer
-					     start-column
-					     end-column
-					     spots
-					     column-spots
-					     autowrap-delay)
+(defgeneric editor-calculate-line-endings (editor &key
+						    buffer
+						    start-column
+						    end-column
+						    spots
+						    column-spots
+						    autowrap-delay)
   (:documentation
    "Return a list of pairs of character positions and columns, in reverse order
 of character position, which should be the end of the displayed lines in the
@@ -218,18 +220,19 @@ buffer.
   COLUMN-SPOTS  An alist of line and column pairs to set the character
                 indexes of."))
 
-(defmethod calculate-line-endings ((editor line-editor)
-				   &key
-				     (buffer (buf editor))
-				     (start-column (start-col editor))
-				     (end-column (terminal-window-columns
-						  (line-editor-terminal editor)))
-				     spots column-spots
-				     (autowrap-delay
-				      (terminal-has-autowrap-delay
-				       (line-editor-terminal editor))))
-  (%calculate-line-endings buffer start-column end-column spots column-spots
-			   autowrap-delay))
+(defmethod editor-calculate-line-endings
+    ((editor line-editor)
+     &key
+       (buffer (buf editor))
+       (start-column (start-col editor))
+       (end-column (terminal-window-columns
+		    (line-editor-terminal editor)))
+       spots column-spots
+       (autowrap-delay
+	(terminal-has-autowrap-delay
+	 (line-editor-terminal editor))))
+  (calculate-line-endings buffer start-column end-column spots column-spots
+			  autowrap-delay))
 
 (defun line-ending (pos endings)
   "Return the line ending at character position POS, from the line ENDINGS,
@@ -462,7 +465,7 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	   ;; Prompt figuring
 	   (prompt-end (max 0 (1- (olength prompt))))
 	   (prompt-spots (list `(,prompt-end . ())))
-	   (prompt-endings (calculate-line-endings
+	   (prompt-endings (editor-calculate-line-endings
 			    e
 			    :buffer prompt
 			    :start-column 0 :end-column cols
@@ -504,14 +507,15 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
             line-end (max 0 (1- (olength buffer)))
 	    first-point (inator-point (aref contexts 0))
 	    spots (list `(,first-point . ()) `(,line-end . ()))
-	    endings (calculate-line-endings e :start-column (1+ prompt-last-col)
-					    :spots spots
-					    :buffer buffer)
+	    endings (editor-calculate-line-endings
+		     e :start-column (1+ prompt-last-col)
+		     :spots spots
+		     :buffer buffer)
 	    buf-lines (length endings))
       ;; Message figuring
       (setf
             ;; message-endings (nreverse (and temporary-message
-	    ;; 				   (calculate-line-endings
+	    ;; 				   (editor-calculate-line-endings
 	    ;; 				    e :buffer temporary-message
 	    ;; 				    :start-column 0 :end-column cols)))
 	    message-lines (if temporary-message
@@ -734,7 +738,7 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
       (tt-erase-to-eol)
       (setf output-string (with-output-to-fat-string (fs)
 			    (apply #'format fs fmt args))
-	    endings (calculate-line-endings
+	    endings (editor-calculate-line-endings
 		     e :buffer (fat-string-string output-string)
                        :start-column 0))
       (tt-write-string output-string)
@@ -768,7 +772,7 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	  keep-message nil
 	  message-top 0
 	  message-endings (nreverse (and temporary-message
-					 (calculate-line-endings
+					 (editor-calculate-line-endings
 					  e :buffer temporary-message
 					  :start-column 0
 					  :end-column

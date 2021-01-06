@@ -57,17 +57,18 @@ command line.")
 			:stream str))
        *terminal*))))
 
+;; @@@ Couldn't we just call editor-calculate-line-endings now??
 (defun figure-line-endings (e content)
   "Call calculate-line-endings with proper processing of the string CONTENT."
-  (calculate-line-endings e :buffer (fat-string-to-string content)
-			  :start-column 0))
+  (editor-calculate-line-endings e :buffer (fat-string-to-string content)
+				 :start-column 0))
 
 (defun figure-content-rows (e content)
   "Take a string and return how many rows it takes up when output to the
 terminal."
   ;; (apply #'+ (map 'list
   ;; 		  (_ (length
-  ;; 		      (calculate-line-endings e
+  ;; 		      (editor-calculate-line-endings e
   ;; 		       :buffer (fatchar-string-to-string
   ;; 				(process-ansi-colors
   ;; 				 (make-fatchar-string _)))

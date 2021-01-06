@@ -46,7 +46,7 @@
   "Display a short message."
   (tt-move-to (- (terminal-window-rows *terminal*)
 		 ;; @@@ This is such a kludgey hack
-		 (length (rl::%calculate-line-endings
+		 (length (dlib-misc:calculate-line-endings
 			  (apply #'format nil format-string args)
 			  0 (tt-width) nil nil nil))
 		 1)

@@ -799,7 +799,15 @@ the primary result printed as a string."
 (defun display-message (format-string &rest args)
   "Display a formatted message at the last line immediately."
   (with-slots (modeline-style) *pager*
-    (tt-move-to (1- (tt-height)) 0)
+    ;; @@@ now you have two problems
+    (tt-move-to (- (terminal-window-rows *terminal*)
+		 ;; @@@ This is such a kludgey hack
+		   (length (calculate-line-endings
+			    (apply #'format nil format-string args)
+			    0 (tt-width) nil nil nil))
+		   1)
+		0)
+    ;; (tt-move-to (1- (tt-height)) 0)
     (tt-erase-to-eol)
     (tt-write-span `(,@modeline-style ,(apply #'format nil format-string args)))
     (tt-finish-output)))
