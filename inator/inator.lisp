@@ -236,8 +236,12 @@ not call process-event with it."))
     (:page-up		. previous-page)
     (,(ctrl #\a)	. move-to-beginning)
     (,(ctrl #\e)	. move-to-end)
+    (:home		. move-to-beginning)
+    (:end		. move-to-end)
     (,(meta-char #\<)	. move-to-top)
     (,(meta-char #\>)	. move-to-bottom)
+    (:c-home		. move-to-top)
+    (:c-end		. move-to-bottom)
     (,(ctrl #\s)	. search-command)
     (,(meta-char #\s)	. sort-command)	; ?
     (,(meta-char #\j)	. jump-command)	; ?
@@ -352,10 +356,11 @@ of the inator's keymap."
 		(message inator "Key binding ~S is not a function or a keymap."
 			 command)
 		(return-from process-event nil))
-	       ((not command)
-		nil)
-	       (t ;; anything else is an error
-		(error "Weird thing in keymap: ~s." command)))))
+	       ;; ((not command)
+	       ;; 	nil)
+	       ;; (t ;; anything else is an error
+	       ;; 	(error "Weird thing in keymap: ~s." command))
+	       )))
 	;; (push event event-list)
 	(if (typep outer-map 'sequence) ;(listp outer-map)
 	    ;; Try all the keymaps in outer-map, saving events in event-list,
