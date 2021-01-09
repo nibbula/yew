@@ -795,6 +795,10 @@ functions."
 (defmethod ostring-trim (character-bag (string fat-string))
   (ostring-left-trim character-bag (ostring-right-trim character-bag string)))
 
+(defmethod ostring ((string fat-string))
+  ;; @@@ but should we simplify?
+  string)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Spans
 ;;
