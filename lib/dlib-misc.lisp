@@ -95,11 +95,11 @@
    #:spit
    #:spit-append
    #:spit-binary
+   #:file-contents
    #:confirm
    #:get-file-local-variables
    #:read-limited-line
-   )
-)
+   ))
 (in-package :dlib-misc)
 
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 1)
@@ -657,6 +657,7 @@ buffer.
     ;; (if-dbugf (:rl)
     ;; 	      (symbol-call :deblarg :debugger-wacktrace 20))
     (flet ((set-spot (x)
+	     (declare (ignore x))
 	     (when (and spots (setf spot (assoc i spots)))
 	       ;;(dbugf :rl "set-spot ~a~%" x)
 	       (rplacd spot (cons line col)))
@@ -677,8 +678,7 @@ buffer.
 		   (setf last-col col)
 		   (setf col 0) ;; @@@ left-margin
 		   (incf line)
-		   (set-spot "newline wrap")
-		   )
+		   (set-spot "newline wrap"))
 		 (push (cons (1- i) last-col) endings)
 		 (setf last-col col)
 		 ;; (when (< col (1- end-column))
@@ -1509,6 +1509,10 @@ it doesn't exist, create it."
     (if count
 	(write-sequence object stream :start 0 :end count)
 	(write-sequence object stream))))
+
+;; This seems less sploodgey than the whole slurp/spit/barf metaphor.
+(defalias 'file-contents 'slurp)
+(defsetf file-contents (file) (string) `(spit ,file ,string))
 
 (defun confirm (action &key (output *standard-output*)
 			 (input *standard-input*)
