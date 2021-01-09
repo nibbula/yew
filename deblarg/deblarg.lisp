@@ -336,12 +336,13 @@ debugger command."
   (when (and restarts (>= n 0) (< n (length restarts)))
     (nth n restarts)))
 
-(defun clear-auto-restart ()
+(defun clear-auto-restart (&key (report-p t))
   "Turn off automatic restarts."
   (with-slots (repeat-restart repeat-condition) *thread*
     (setf repeat-restart nil
 	  repeat-condition nil)
-    (format *debug-io* "Stopping automatic restarts.~%")))
+    (when report-p
+      (format *debug-io* "Stopping automatic restarts.~%"))))
 
 (defun do-restart (r restarts &key keep-p)
   "Invoke restart named R from the list of RESTARTS. If KEEP-P is true, 
@@ -354,7 +355,7 @@ keep the current automatic restarts set, otherwise clear them."
 	(format *debug-io* "Can't find an ~a restart!~%" r)
 	(progn
 	  (when (not keep-p)
-	    (clear-auto-restart))
+	    (clear-auto-restart :report-p nil))
 	  (invoke-restart-interactively borty)))))
 
 (defun restart-until (r restarts)
@@ -602,10 +603,11 @@ program that messes with the terminal, we can still type at the debugger."
 	(when repeat-restart
 	  (if (typep condition (type-of repeat-condition))
 	      (do-restart repeat-restart (compute-restarts c) :keep-p t)
-	      (progn
-		(setf repeat-restart nil
-		      repeat-condition nil)
-		(format *debug-io* "Stopping automatic restarts.~%"))))))
+	      (clear-auto-restart)))))
+	      ;; (progn
+	      ;; 	(setf repeat-restart nil
+	      ;; 	      repeat-condition nil)
+	      ;; 	(format *debug-io* "Stopping automatic restarts.~%"))))))
     (unwind-protect
       (progn
 	;;(try-to-reset-curses)
