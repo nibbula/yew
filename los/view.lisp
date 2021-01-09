@@ -6,6 +6,8 @@
   (:documentation "Look at something.")
   (:use :cl :view-generic :dlib :magic :pick-list)
   (:export
+   #:*viewer-alist*
+   #:*file-name-types*
    #:view-things
    #:view
    #:!view
@@ -66,6 +68,10 @@
   (or (guess-file-name-type thing)
       (guess-file-type thing)))
 
+(define-condition no-viewer-error (simple-error)
+  ()
+  (:documentation "We can't find a viewer for something."))
+
 (defun view-file (thing)
   "Look at a file."
   (let* ((type (guess-type thing))
@@ -78,10 +84,12 @@
 	    (asdf:oos 'asdf:load-op pkg))
 	  (symbol-call pkg func thing))
 	(cerror "Skip the thing."
+		'no-viewer-error
+		:format-control
 		"No viewer for ~a of type ~a / ~a"
-		thing
-		(content-type-category type)
-		(content-type-name type)))))
+		:format-arguments
+		`(,thing ,(content-type-category type)
+			 ,(content-type-name type))))))
 
 (defmethod view ((thing string))
   (view-file thing))
