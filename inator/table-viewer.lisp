@@ -18,7 +18,7 @@
    ))
 (in-package :table-viewer)
 
-(declaim (optimize (speed 0) (safety 0) (debug 3) (space 0)))
+;; (declaim (optimize (speed 0) (safety 0) (debug 3) (space 0)))
 
 (defkeymap *table-viewer-keymap* ()
   `((#\q		. quit)
@@ -28,6 +28,7 @@
     (#\i		. record-info)
     (#\a		. add-row)
     (#\e		. edit-cell)
+    (#\v		. view-cell)
     (:home		. move-to-top)
     (:end		. move-to-bottom)
     (:up		. previous)
@@ -724,6 +725,33 @@ at which it's found or NIL if it's not found."
   ;;   (rl:
   (declare (ignore o))
   )
+
+(defgeneric current-cell (viewer)
+  (:documentation "Return the value in the current cell of VIEWER."))
+
+(defmethod current-cell ((viewer table-viewer))
+  (with-slots (table renderer) viewer
+    (with-slots (current-position) renderer
+      (oaref table
+	     (table-point-row current-position)
+	     (table-point-col current-position)))))
+
+(defmethod (setf current-cell) (value (viewer table-viewer))
+  (with-slots (table renderer) viewer
+    (with-slots (current-position) renderer
+      (setf (oaref table
+		   (table-point-row current-position)
+		   (table-point-col current-position))
+	    value))))
+
+(defun view-cell (o)
+  (handler-case
+      (view (current-cell o))
+    (error (c)
+      (fui:show-text
+       (span-to-fat-string
+	`((:red "Error: ") ,(apply #'format nil "~a" (list c))))
+       :justify t))))
 
 (defun add-row (o)
   "Add a row to the table."
