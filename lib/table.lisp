@@ -33,6 +33,8 @@
    #:copy-table
    #:map-cells
    #:replace-cells
+   #:map-column
+   #:map-into-column
    ;; #:join
    ))
 (in-package :table)
@@ -182,6 +184,59 @@ found."
       (omapk function (container-data table))
       (omap function (container-data table))))
 
+(defmethod oaref ((table mem-table) &rest subscripts)
+    (flet ((fail ()
+	     (error 'simple-type-error
+		    :format-control
+		    "Array dimemsions mismatch: given ~s, but should be ~s."
+		    :format-arguments
+		    (list (length subscripts)
+			  (length (array-dimensions (container-data table)))))))
+     (case (length subscripts)
+       (1 (oelt (container-data table) (first subscripts)))
+       (2
+	(typecase (container-data table)
+	  (array
+	   (case (length (array-dimensions (container-data table)))
+	     (1 ;; Pretend a nested thing is a 2d array.
+	      (oelt (aref (container-data table) (first subscripts))
+		    (second subscripts)))
+	     (2 ;; Probably really 2d array
+	      (apply #'oaref (container-data table) subscripts))
+	     (otherwise (fail))))
+	  (t
+	   (oelt (oelt (container-data table) (first subscripts))
+		 (second subscripts)))))
+       ;; hope for the best
+       (otherwise (apply #'oaref (container-data table) subscripts)))))
+
+(defmethod (setf oaref) (value (table mem-table) &rest subscripts)
+  (flet ((fail ()
+	   (error 'simple-type-error
+		  :format-control
+		  "Array dimemsions mismatch: given ~s, but should be ~s."
+		  :format-arguments
+		  (list (length subscripts)
+			(length (array-dimensions (container-data table)))))))
+    (case (length subscripts)
+      (1 (setf (oelt (container-data table) (first subscripts)) value))
+      (2
+       (typecase (container-data table)
+	 (array
+	  (case (length (array-dimensions (container-data table)))
+	    (1 ;; Pretend a nested thing is a 2d array.
+	     (setf (oelt (aref (container-data table) (first subscripts))
+			 (second subscripts)) value))
+	    (2 ;; Probably really 2d array
+	     (apply #'(setf oaref) value (container-data table) subscripts))
+	    (otherwise (fail))))
+	 (t
+	  (setf (oelt (oelt (container-data table) (first subscripts))
+		      (second subscripts)) value))))
+      ;; hope for the best
+      (otherwise
+       (apply #'(setf oaref) value (container-data table) subscripts)))))
+
 (defgeneric copy-table (table)
   (:documentation "Make a copy of TABLE. This defaults to a shallow copy."))
 
@@ -225,6 +280,35 @@ to every cell in TABLE. FUNCTION is called with the value of cell."))
     ;;  (container-data result))
     (replace-cells function result)
     result))
+
+(defgeneric map-column (column function table)
+  (:documentation
+   "Call FUNCTION with the value for row of COLUMN in TABLE. COLUMN can be a
+number or a column name. Return TABLE."))
+
+(defmethod map-column (column function (table mem-table))
+  (let ((col (or (and (integerp column) column)
+		 (table-column-number column table))))
+    (when (not col)
+      (error "Can't find a column designated by ~s." column))
+    (omap (_ (funcall function (oelt _ col))) table)
+    table))
+
+(defgeneric map-into-column (column function table)
+  (:documentation
+  "Set each value of COLUMN in TABLE, to the result of calling FUNCTION with
+the value. COLUMN can be a number or a column name. Return the TABLE."))
+
+(defmethod map-into-column (column function (table mem-table))
+  "Set each value of COLUMN in TABLE, to the result of calling FUNCTION with
+the value. COLUMN can be a number or a column name. Return the TABLE."
+  (let ((col (or (and (integerp column) column)
+		 (table-column-number column table))))
+    (when (not col)
+      (error "Can't find a column designated by ~s." column))
+    (omap (_ (setf (oelt _ col) (funcall function (oelt _ col))))
+	  table)
+    table))
 
 (defun copy-columns (table)
   "Return a copy of TABLE's columns."
