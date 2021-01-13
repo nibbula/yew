@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Show and set terminal settings."
-    :depends-on (:dlib :opsys :dlib-misc :char-util :los-config)
+    :depends-on (:dlib :opsys :dlib-misc :char-util :los-config :completion)
     :components
     ((:file "stty")))
