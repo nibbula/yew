@@ -105,10 +105,16 @@
 
 (defun get-display-from-environment ()
   "Return the display host and the the display number from the environment."
-  (let ((display (nos:environment-variable "DISPLAY")) s)
+  (let ((display (nos:environment-variable "DISPLAY"))
+	s num)
     (and display
-	 (setf s (split-sequence #\: display))
-	 (values (first s) (parse-integer (second s))))))
+	 (setf s (split-sequence #\: display)
+	       num (safe-read-from-string (second s)))
+	 (values (first s)
+		 ;; (parse-integer (second s))
+		 ;; (safe-read-from-string (second s))
+		 (if (numberp num) (truncate num) num)
+		 ))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (if xlib::*def-clx-class-use-defclass*
