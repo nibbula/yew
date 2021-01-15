@@ -340,8 +340,8 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
 	    (when (> (length contexts) 1)
 	      (span-to-fatchar-string
 	       (append (or style
-			   (theme-value *theme* '(:program :cursor :style))
 			   (theme-value *theme* '(:rl :cursor :style))
+			   (theme-value *theme* '(:program :cursor :style))
 			   '(:standout))
 		       (list #\x))
 	       :fatchar-string style-char)
