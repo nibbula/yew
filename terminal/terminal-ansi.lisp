@@ -13,7 +13,7 @@
 (defpackage :terminal-ansi
   (:documentation "Standard terminal (ANSI).")
   (:use :cl :cffi :dlib :dlib-misc :terminal :char-util :opsys
-	:trivial-gray-streams :fatchar :dcolor :terminal-crunch
+	:trivial-gray-streams :fatchar :dcolor :terminal-dumb :terminal-crunch
 	#+unix :opsys-unix
 	#+windows :opsys-ms)
   (:export
@@ -103,27 +103,13 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defclass terminal-ansi-stream (terminal-stream terminal-color-mixin)
-  ((fake-column
-   :initarg :fake-column :accessor terminal-ansi-stream-fake-column
-   :initform 0 :type fixnum
-   :documentation "Guess for the current column.")
-   (cost-stream
+(defclass terminal-ansi-stream (terminal-stream terminal-dumb-stream-mixin
+						terminal-color-mixin)
+  ((cost-stream
     :initarg :cost-stream :accessor terminal-ansi-stream-cost-stream
     :initform nil
     :documentation
-    "Another terminal-ansi-stream to keep around for calculating costs.")
-   ;; (line-buffered-p
-   ;;  :initarg :line-buffered-p :accessor line-buffered-p
-   ;;  :initform nil :type boolean
-   ;;  :documentation "True if we always flush after outputting a newline.")
-   ;; (translate-alternate-characters
-   ;;  :initarg :translate-alternate-characters
-   ;;  :accessor translate-alternate-characters
-   ;;  :initform nil :type boolean
-   ;;  :documentation
-   ;;  "True to translate some unicode characters into the alternate character set.")
-   )
+    "Another terminal-ansi-stream to keep around for calculating costs."))
   (:documentation
    "Terminal as purely a Lisp output stream. This can't do input or things that
 require terminal driver support."))
@@ -590,7 +576,7 @@ two values ROW and COLUMN."
 	(two (* 2 multiplier)))
     `(defun ,name (tty char)
        "Update the column in TTY for CHAR."
-       (with-slots (fake-column) tty
+       (with-accessors ((fake-column terminal-fake-column)) tty
 	 (cond
 	   ((graphic-char-p char)
 	    (incf fake-column
@@ -1031,11 +1017,11 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-move-to ((tty terminal-ansi-stream) row col)
   (terminal-escape-sequence tty "H" (1+ row) (1+ col))
-  (setf (terminal-ansi-stream-fake-column tty) col))
+  (setf (terminal-fake-column tty) col))
 
 (defmethod terminal-move-to-col ((tty terminal-ansi-stream) col)
   (terminal-escape-sequence tty "G" (1+ col))
-  (setf (terminal-ansi-stream-fake-column tty) col))
+  (setf (terminal-fake-column tty) col))
 
 (defmethod terminal-beginning-of-line ((tty terminal-ansi-stream))
   ;; (terminal-format tty "~c[G" #\escape))
@@ -1058,11 +1044,11 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-backward ((tty terminal-ansi-stream) &optional (n 1))
   (moverize tty n "D" "C")
-  (decf (terminal-ansi-stream-fake-column tty) n))
+  (decf (terminal-fake-column tty) n))
 
 (defmethod terminal-forward ((tty terminal-ansi-stream) &optional (n 1))
   (moverize tty n "C" "D")
-  (incf (terminal-ansi-stream-fake-column tty) n))
+  (incf (terminal-fake-column tty) n))
 
 (defmethod terminal-up ((tty terminal-ansi-stream) &optional (n 1))
   (moverize tty n "A" "B"))
@@ -1104,7 +1090,7 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-home ((tty terminal-ansi-stream))
   (terminal-escape-sequence tty "H")
-  (setf (terminal-ansi-stream-fake-column tty) 0))
+  (setf (terminal-fake-column tty) 0))
 
 (defmethod terminal-cursor-off ((tty terminal-ansi-stream))
   (terminal-escape-sequence tty "?25l"))
@@ -2271,10 +2257,10 @@ links highlight differently?"
   "The vast emptyness of space.")
 
 (defmethod stream-line-column ((stream terminal-ansi-stream))
-  (terminal-ansi-stream-fake-column stream)
+  (terminal-fake-column stream)
   ;;; On clisp or something this was getting a negative number?
   #|
-  (let ((col (terminal-ansi-stream-fake-column stream)))
+  (let ((col (terminal-fake-column stream)))
     (or (and (integerp col) (not (minusp col)) col)
 	;; @@@ Mindlessly patch over problems???
 	;; @@@ Make this an error and fix it.

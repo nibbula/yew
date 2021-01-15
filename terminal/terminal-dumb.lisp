@@ -6,6 +6,8 @@
   (:documentation "Dumb terminal")
   (:use :cl :dlib :terminal :char-util :trivial-gray-streams :fatchar)
   (:export
+   #:terminal-dumb-stream-mixin
+   #:terminal-fake-column
    #:terminal-dumb-stream
    #:terminal-dumb
    ))
@@ -15,7 +17,7 @@
 
 (defclass terminal-dumb-stream-mixin ()
   ((fake-column
-   :initarg :fake-column :accessor terminal-dumb-stream-fake-column
+   :initarg :fake-column :accessor terminal-fake-column
    :initform 0 :type fixnum
    :documentation "Guess for the current column."))
   (:documentation
@@ -128,7 +130,7 @@ require terminal driver support."))
   (write-char #\newline (terminal-output-stream tty)))
 
 (defmethod terminal-fresh-line ((tty terminal-dumb))
-  (when (not (zerop (terminal-dumb-stream-fake-column tty)))
+  (when (not (zerop (terminal-fake-column tty)))
     (write-char #\newline (terminal-output-stream tty))
     t))
 
@@ -342,7 +344,7 @@ require terminal driver support."))
   "The vast emptyness of space.")
 
 (defmethod stream-line-column ((stream terminal-dumb))
-  (terminal-dumb-stream-fake-column stream))
+  (terminal-fake-column stream))
 
 (defmethod stream-start-line-p ((stream terminal-dumb))
   (zerop (stream-line-column stream)))
