@@ -14,24 +14,6 @@
 
 (declaim #.`(optimize ,.(getf terminal-config::*config* :optimization-settings)))
 
-#|
-(defclass terminal-dumb-color-stream-mixin ()
-  ((fake-column
-   :initarg :fake-column :accessor terminal-dumb-color-stream-fake-column
-   :initform 0 :type fixnum
-   :documentation "Guess for the current column."))
-  (:documentation
-   "This is just so the inheritance for terminal-dumb-color doesn't get multiple
-terminal-streams."))
-
-;; @@@ Does this even make sense?
-(defclass terminal-dumb-color-stream (terminal-stream terminal-dumb-stream-mixin)
-  ()
-  (:documentation
-   "Terminal as purely a Lisp output stream. This can't do input or things that
-require terminal driver support."))
-|#
-
 (defparameter *dumb-color-height* nil #| 240000 |#)
 (defparameter *dumb-color-width* nil #| 8000 |#)
 
@@ -69,6 +51,10 @@ require terminal driver support."))
   ;;(values nil nil)
   (values (terminal-window-rows tty)
 	  (terminal-window-columns tty)))
+
+(defmethod terminal-ansi::cached-color-count ((tty terminal-dumb-color))
+  ;; @@@ This is not your mother's cached-color-count.
+  nil)
 
 (defmethod terminal-colors ((tty terminal-dumb-color))
   ;; For a stream, we don't have a back channel, so we can't ask the terminal.
