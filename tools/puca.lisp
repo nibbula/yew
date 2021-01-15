@@ -1041,7 +1041,7 @@ for the command-function).")
     :initarg :email :accessor history-email :initform nil
     :documentation "Email adddress that created the item.")
    (date
-    :initarg :date :accessor history-date :initform nil :type integer
+    :initarg :date :accessor history-date :initform 0 :type integer
     :documentation "Universal time the item was created.")
    (message
     :initarg :message :accessor history-message :initform nil
