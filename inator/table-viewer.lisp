@@ -275,7 +275,8 @@ for a range of rows, or a table-point for a specific item,"
       (let* ((cell-width (aref sizes column))
 	     (clipped-width (max 0 (min (- *max-width* output-x)
 					cell-width)))
-	     (hilite (= row (table-point-row current-position))))
+	     (hilite (and current-position
+			  (= row (table-point-row current-position)))))
 
 	(when hilite
 	  (tt-inverse t)
