@@ -111,6 +111,8 @@ CREATING AND CUSTOMIZING THEMES:
    #:set-theme-items
    #:default-theme
    #:set-theme-defaults-for-16-color
+   #:set-theme-defaults-for-monochrome-dark
+   #:default-theme-monochrome-light
    #:default-theme-16-color
    ))
 (in-package :theme)
@@ -348,8 +350,8 @@ this loses information, such as descriptions and titles."
 	 ;; The loop is like a safer (apply 'append X)
 	 (nreverse
 	  (loop :for l :in (mapcar (_ (car (build-theme-list _ nil (list nil))))
-				  (theme-children theme))
-	    :nconc l)))
+				   (theme-children theme))
+	     :nconc l)))
 	(theme-value-node
 	 ;; This is the leaf where we actually add the thing to the results.
 	 (push `((,@name-list ,(theme-name theme)) .
@@ -715,6 +717,82 @@ Something like the default setting of typical GNU tools."))))
   "Default theme for 16-color"
   (let ((theme (default-theme)))
     (set-theme-defaults-for-16-color theme)))
+
+(defun set-theme-defaults-for-monochrome-dark (theme)
+  (set-theme-items theme
+    `((:file :type :directory             :style) ()
+      (:file :type :link                  :style) ()
+      (:file :type :symbolic-link         :style) ()
+      (:file :type :pipe                  :style) ()
+      (:file :type :socket                :style) ()
+      (:file :type :block-device          :style) ()
+      (:file :type :character-device      :style) ()
+      (:file :type :setuid                :style) ()
+      (:file :type :setgid                :style) ()
+      (:file :type :sticky                :style) ()
+      (:file :type :sticky-other-writable :style) ()
+      (:file :type :other-writable        :style) ()
+      (:file :type :group-writable        :style) ()
+      (:file :type :executable            :style) ()
+      ;; File name suffixes
+      (:file :suffix :archive             :style) ()
+      (:file :suffix :compressed          :style) ()
+      (:file :suffix :image               :style) ()
+      (:file :suffix :video               :style) ()
+      (:file :suffix :audio               :style) ()
+      ;; Syntax
+      (:syntax :comment :line :semicolon  :style) ()
+      (:syntax :comment :block            :style) ()
+      (:syntax :comment :block            :style) ()
+      (:syntax :constant :character       :style) ()
+      (:syntax :constant :language        :style) ()
+      (:syntax :constant :other           :style) ()
+      (:syntax :entity :name :function    :style) ()
+      (:syntax :entity :name :macro       :style) ()
+      (:syntax :entity :name :type        :style) ()
+      (:syntax :entity :keyword :operator :style) ()
+      (:syntax :entity :keyword :control  :style) ()
+      (:syntax :support :function         :style) ()
+      (:syntax :support :variable         :style) ()
+      (:syntax :support :function         :style) ()
+      (:syntax :variable :other           :style) ()
+      ;; Commands
+      (:command :not-found	    :style) ()
+      (:command :found		    :style) ()
+      (:command :directory	    :style) ()
+      (:command :system-command     :style) ()
+      (:command :external-command   :style) ()
+      (:command :builtin-command    :style) ()
+      (:command :shell-command	    :style) ()
+      (:command :loadable-system    :style) ()
+      (:command :command	    :style) ()
+      (:command :alias		    :style) ()
+      (:command :function	    :style) ()
+      (:command-arg :existing-path :style) (:underline)
+      ;; Programs
+      (:program :modeline             :style)     (:standout)
+      (:program :search-match         :style)     (:underline)
+      (:program :empty-line-indicator :style)     (:normal)
+      (:program :empty-line-indicator :character) #\~
+      (:program :selection            :style)     (:standout)
+      (:program :label		       :style)     ()
+      (:program :data		       :style)     ()
+      (:program :meter		       :character) #.(code-char #x2592)
+      (:program :suggestion           :style)     ()
+      )))
+
+(defun set-theme-defaults-for-monochrome-light (theme)
+  (set-theme-defaults-for-monochrome-dark theme))
+
+(defun default-theme-monochrome-dark ()
+  "Default theme for monochrome with a dark background."
+  (let ((theme (default-theme)))
+    (set-theme-defaults-for-monochrome-dark theme)))
+
+(defun default-theme-monochrome-light ()
+  "Default theme for monochrome with a light background."
+  (let ((theme (default-theme)))
+    (set-theme-defaults-for-monochrome-dark theme)))
 
 ;; @@@ We should probably make a default monochrome theme.
 ;; And default light backgroud themes.
