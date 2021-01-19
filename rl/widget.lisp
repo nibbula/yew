@@ -4,7 +4,7 @@
 
 (defpackage :rl-widget
   (:documentation "An editor widget for terminals.")
-  (:use :cl :dlib :terminal :collections :ochar :char-util :fatchar 
+  (:use :cl :dlib :dlib-misc :terminal :collections :ochar :char-util :fatchar
 	:completion :keymap :inator :terminal-inator :ostring :rl)
   (:import-from :inator
 		#:point #:mark #:clipboard #:quit-flag #:command #:last-command)
