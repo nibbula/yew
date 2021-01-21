@@ -629,6 +629,12 @@ at which it's found or NIL if it's not found."
   "Sort the rows in descending order."
   (sort-table-in-direction o :descending))
 
+(defmethod sort-multiple-command ((o table-viewer))
+  "Sort by multiple columns."
+  (declare (ignore o))
+  ;; @@@
+  )
+
 ;; (defmethod jump-command ((o table-viewer))
 ;;   )
 
