@@ -2394,7 +2394,7 @@ objects should be stored."
 
 #+darwin
 (progn
-  ;; @@@ I know this is all wrong.
+  ;; @@@ I know this is all wrong. It should also probably use NS<?>Directory.
   
   (defparameter *default-app* "Lisp")
   (defun data-dir (&optional app-name)
