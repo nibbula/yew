@@ -36,6 +36,47 @@
 
 (declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro when-not-missing (before &body after)
+    `(tagbody
+	(handler-case
+	    (progn ,before)
+	  (opsys-error (c)
+	    (if #+unix
+		(/= (opsys-error-code c) uos:+ENOENT+)
+		#+(and windows (not unix))
+		(not (find (opsys-error-code c)
+			   `(,wos:+ERROR-FILE-NOT-FOUND+
+			     ,wos:+ERROR-SHARING-VIOLATION+)))
+		(signal c)
+		(go MISSING))))
+	(progn
+	  ,@after)
+      MISSING))
+
+  (defmacro with-error-handling ((thing) &body body)
+    (declare (ignore thing))
+    (with-unique-names (thunk)
+      `(flet ((,thunk ()
+		,@body))
+	 (restart-case
+	     (if (ls-state-signal-errors *ls-state*)
+		 (,thunk)
+		 (handler-case
+		     (,thunk)
+		   ((or stream-error file-error nos:opsys-error) (c)
+		     (finish-output)
+		     (let ((*print-pretty* nil))
+		       (format *error-output*
+			       ;; "~a: ~a ~a~%" ,thing (type-of c) c))
+			       "~a ~a~%" (type-of c) c))
+		    (invoke-restart 'continue))))
+	   (continue ()
+	     :report "Skip this error.")
+	   ;; (skip-all ()
+	   ;;   :report "Skip remaining errors.")
+	   )))))
+
 ;; Dynamic state
 (defstruct ls-state
   today			; dtime for now
@@ -480,47 +521,6 @@ by nos:read-directory."))
 				    size-format))
 	   (get-styled-file-name item))
       (get-styled-file-name item)))
-
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defmacro when-not-missing (before &body after)
-    `(tagbody
-	(handler-case
-	    (progn ,before)
-	  (opsys-error (c)
-	    (if #+unix
-		(/= (opsys-error-code c) uos:+ENOENT+)
-		#+(and windows (not unix))
-		(not (find (opsys-error-code c)
-			   `(,wos:+ERROR-FILE-NOT-FOUND+
-			     ,wos:+ERROR-SHARING-VIOLATION+)))
-		(signal c)
-		(go MISSING))))
-	(progn
-	  ,@after)
-      MISSING))
-
-  (defmacro with-error-handling ((thing) &body body)
-    (declare (ignore thing))
-    (with-unique-names (thunk)
-      `(flet ((,thunk ()
-		,@body))
-	 (restart-case
-	     (if (ls-state-signal-errors *ls-state*)
-		 (,thunk)
-		 (handler-case
-		     (,thunk)
-		   ((or stream-error file-error nos:opsys-error) (c)
-		     (finish-output)
-		     (let ((*print-pretty* nil))
-		       (format *error-output*
-			       ;; "~a: ~a ~a~%" ,thing (type-of c) c))
-			       "~a ~a~%" (type-of c) c))
-		    (invoke-restart 'continue))))
-	   (continue ()
-	     :report "Skip this error.")
-	   ;; (skip-all ()
-	   ;;   :report "Skip remaining errors.")
-	   )))))
 
 (defun is-dir (x)
   "Take a file-item or a path, and return true if it's a directory."
