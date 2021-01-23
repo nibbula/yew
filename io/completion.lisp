@@ -980,15 +980,20 @@ defaults to the current package. Return how many symbols there were."
     (make-completion-result
      :completion
      (and match
-	  (let* ((match-sub (subseq match 0 match-len)))
-	    ;; If it had a directory part, put it back on.
-	    (if (> (length dir-part) 0)
-		(if (and (= (length dir-part) 1)
-			 (char= (char dir-part 0) nos:*directory-separator*))
-		    ;; If it's the root directory, just put a separator.
-		    (s+ nos:*directory-separator* match-sub)
-		    (path-append dir-part-path match-sub))
-		match-sub)))
+	  (let* ((match-sub (subseq match 0 match-len))
+		 (result-path
+		  ;; If it had a directory part, put it back on.
+		  (if (> (length dir-part) 0)
+		      (if (and (= (length dir-part) 1)
+			       (char= (char dir-part 0)
+				      nos:*directory-separator*))
+			  ;; If it's the root directory, just put a separator.
+			  (s+ nos:*directory-separator* match-sub)
+			  (path-append dir-part-path match-sub))
+		      match-sub)))
+	    (if (and full-match (directory-p result-path))
+		(s+ result-path nos:*directory-separator*)
+		result-path)))
      :unique full-match)))
 
 (defun filename-completion-list (w &optional extra-test)
