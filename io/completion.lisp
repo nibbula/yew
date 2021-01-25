@@ -53,6 +53,8 @@ a count which is the length of the sequence.")
    ;; filenames
    #:complete-filename
    #:complete-directory
+   ;; characters
+   #:complete-char-name
    ))
 (in-package :completion)
 
@@ -1165,5 +1167,24 @@ defaults to the current package. Return how many symbols there were."
   (let ((dict (make-completion-dictionary file)))
     (lambda (context pos all)
       (complete-dictionary-word context pos all dict))))
+
+;; @@@ This is completely wateful. We should use dictionary completion as soon
+;; as we finish it.
+
+(defvar *char-names* nil
+  "A terrible way to hog memory.")
+
+(defun char-names ()
+  (or *char-names*
+      (setf *char-names*
+	    (with-spin ()
+	      (loop :for i :from 0 :below char-code-limit
+		 :collect (char-name (code-char i))
+		 :do (when (zerop (mod i 1000)) (spin)))))))
+
+(defun complete-char-name (str all)
+  ;; (complete-string-sequence
+  ;;  str all (mapcar #'(lambda (x) (string (car x))) (nos:environment))))
+  (complete-list (string-upcase str) (length str) all (char-names)))
 
 ;; EOF
