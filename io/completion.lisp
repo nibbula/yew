@@ -829,12 +829,20 @@ defaults to the current package. Return how many symbols there were."
 	   #'fat-string-lessp)
      :count count)))
 
-(defun could-be-a-keyword (pack word-start context)
-  "True if the thing right before the cursor could be a keyword."
+(defun symbol-prefix-is (prefix pack word-start context)
+  "Return true if the preceding two chars are PREFIX."
   (and (not pack)
        word-start (> word-start 1) (>= (length context) word-start)
-       (and (eql (aref context (1- word-start)) #\:)
-	    (eql (aref context (- word-start 2)) #\space))))
+       (and (eql (aref context (1- word-start)) (char prefix 1))
+	    (eql (aref context (- word-start 2)) (char prefix 0)))))
+
+(defun could-be-a-keyword (pack word-start context)
+  "True if the thing right before the cursor could be a keyword."
+  (symbol-prefix-is " :" pack word-start context))
+
+(defun could-be-a-char (pack word-start context)
+  "True if the thing right before the cursor could be a character."
+  (symbol-prefix-is "#\\" pack word-start context))
 
 (defun complete-symbol (context pos all)
   "Completion function for symbols."
@@ -848,33 +856,49 @@ defaults to the current package. Return how many symbols there were."
     ;; If the package is NIL, we complete on inherited symbols too.
 
     (dbug "pack=~s word-start=~s context=~s~%" pack word-start context)
-    (if (could-be-a-keyword pack word-start context)
-	(progn
-	  (dbug "Could be a keyword ~s~%" (subseq context word-start))
-	  (if all
-	      (or (try-symbol-help context pos)
-		  (symbol-completion-list
-		   word :package pack :external external))
-	      (let* ((sym (symbol-whose-args-we-are-in context pos))
-		     (result (function-keyword-completion sym context pos
-							 word-start nil)))
-		(dbug "snoopy ~a~%" pos)
-		(setf (completion-result-insert-position result)
-		      word-start)
-		result)))
-	(if all
-	    (if (and (= (length word) 0)
-		     (setf result (try-symbol-help context pos)))
-		;; (make-completion-result
-		;;  :completion (list result)
-		;;  :insert-position 1)
-		result
-		(symbol-completion-list word :package pack :external external))
-	    (progn
-	      (setf result (symbol-completion word :package pack
-					      :external external)
-		    (completion-result-insert-position result) word-start)
-	      result)))))
+    (cond
+      ((could-be-a-keyword pack word-start context)
+       (dbug "Could be a keyword ~s~%" (subseq context word-start))
+       (if all
+	   (or (try-symbol-help context pos)
+	       (symbol-completion-list
+		word :package pack :external external))
+	   (let* ((sym (symbol-whose-args-we-are-in context pos))
+		  (result (function-keyword-completion sym context pos
+						       word-start nil)))
+	     (dbug "snoopy ~a~%" pos)
+	     (setf (completion-result-insert-position result)
+		   word-start)
+	     result)))
+      ((could-be-a-char pack word-start context)
+       (dbug "Could be a character ~s~%" (subseq context word-start))
+       (if all
+	   (if (zerop (length word))	; @@@ bug in print-columns-smush ?
+	       (make-completion-result)
+	       (complete-char-name word all))
+	   (let ((case-in (string-character-case word)))
+	     (setf result (complete-char-name word all)
+		   (completion-result-insert-position result) word-start)
+	     (when (and result
+			(completion-result-completion result)
+			(eql case-in :lower))
+	       (setf (completion-result-completion result)
+		     (string-downcase (completion-result-completion result))))
+	     result)))
+      (t
+       (if all
+	   (if (and (= (length word) 0)
+		    (setf result (try-symbol-help context pos)))
+	       ;; (make-completion-result
+	       ;;  :completion (list result)
+	       ;;  :insert-position 1)
+	       result
+	       (symbol-completion-list word :package pack :external external))
+	   (progn
+	     (setf result (symbol-completion word :package pack
+					     :external external)
+		   (completion-result-insert-position result) word-start)
+	     result))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Filename completion
