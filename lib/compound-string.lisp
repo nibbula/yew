@@ -593,6 +593,8 @@ that has START and START-P and END and END-P."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; termminal methods
 
+;; @@@ This seems like it should be somewhere else.
+;; Currently only RL uses this, or compound string at all.
 (defmethod terminal-write-string (tty (string compound-string) &key start end)
   (when (or start end)
     (error "I'm so very sorry but I don't support start or end yet!"))
