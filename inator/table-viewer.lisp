@@ -795,7 +795,7 @@ at which it's found or NIL if it's not found."
 
       ;; Show the message temporarily.
       (when message
-	(message o message)
+	(message o (quote-format message))
 	(setf message nil))
 
       ;; Make the cursor show up in the right spot.
