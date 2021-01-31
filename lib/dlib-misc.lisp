@@ -87,6 +87,8 @@
    #:ensure-package
    #:unintern-conflicts
    #:d-autoload
+   #:system-depends-list
+   #:all-system-dependencies
 
    ;; I/O
    #:safe-file-length
@@ -1360,6 +1362,42 @@ with the same name. If it's a macro, pass MACRO as true, mmkay?"
 	   (when (not (fboundp ',symbol))
 	     (error "Autoload of ~a didn't define ~a." ,system ',symbol))
 	   ,doit))))
+
+(defun system-depends-list (system-name)
+  "Return the depends-on list for SYSTEM-NAME."
+  (typecase system-name
+    (null nil)
+    (list
+     ;; Could be:?
+     ;; | ( :feature FEATURE-EXPRESSION dependency-def )
+     ;; | ( :version simple-component-name version-specifier )
+     ;; | ( :require module-name )
+     (let ((s (asdf/find-component::resolve-dependency-spec nil system-name)))
+       (when s
+	 (list (asdf:component-name s)))))
+    ((or string symbol)
+     (let ((sys (asdf:find-system system-name nil)))
+       (when sys
+	 (asdf:system-depends-on sys))))))
+
+(defun all-system-dependencies (system)
+  "Return a list of all recursive dependencies of a loaded ASDF SYSTEM."
+  (let (use-list)
+    (declare (special use-list))
+    (labels ((sub-deps (sys)
+               (let (results)
+                 (loop :with sub
+                    :for s :in (system-depends-list sys)
+                    :do
+                      (when (not (find s use-list :test #'equalp))
+			(when (atom s)
+			  (push s use-list)
+			  (push s results))
+			(when (setf sub (sub-deps s))
+			  (setf results (append results sub)))))
+                 results)))
+      (sub-deps system))
+    use-list))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; I/O
