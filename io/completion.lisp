@@ -8,17 +8,56 @@
 
 (defpackage :completion
   (:documentation
-   ;; @@@ Improve this docstring
-"Completion functions are called with line of context and a position where
+"The completion package provides a generic interface to functions that find
+an expansion or the the set of possible expansaion for a string. It is
+typically used to find and insert endings for a prefix string that the user
+has input, but it could provide other kinds of expansions.
+
+Completion functions are called with line of context and a position where
 completion was requested. The are asked to return one completion, or all
 completions. When asked for one completion, they return a completion and a
 position where to insert it. Text should be replaced from the starting and
 result position. This allows completion functions to look at whatever they
 want to, and replace whatever they want to, even prior to the starting
 point. When asked for all completions, they return a sequence of strings and
-a count which is the length of the sequence.")
+a count which is the length of the sequence. Completion functions return a
+completion-result structure.
+
+A small set of completion functions are provided for :
+  Symbols:                  ‘complete-symbol’
+  Files and directories:    ‘complete-filename’ and ‘complete-directory’
+  Character names:          ‘complete-char-name’
+
+Facilities are also provided for making your own completion functions.
+
+List completion:
+
+For completing from lists, you can make new completion functions from a
+list with:
+  ‘list-completion-function’
+
+Or you can bind ‘*completion-list*’ and use ‘complete-list’.
+
+This is mostly useful for small things. For big things like a filessytem or
+database, that you don't want to make a copy of, use iterator completion.
+
+Iterator completion:
+
+You can make a compltion function from a iterator function with:
+  ‘iterator-completion-function’
+
+For completion purposes an iterator is a function that when called with a true
+argument returns the first item in a sequence, then when subsequently called
+with a false or not providied arguemnt, returns the subsequent items in a
+sequence. Upon reaching the end it returns false.
+
+Note that this means the sequence can't contain NIL.
+
+Dictionary completion:
+  [not finished yet]
+")
   (:use :cl :dlib :opsys :glob :collections :char-util :dlib-misc :reader-ext
-	:syntax :syntax-lisp :terminal :terminal-ansi
+	:syntax :syntax-lisp :terminal #|:terminal-ansi |#
 	#+use-regex :regex
 	#-use-regex :cl-ppcre
 	:theme :fatchar :style)
@@ -27,6 +66,7 @@ a count which is the length of the sequence.")
    #:complete-print
    #:complete-print-long
    #:*completion-count*
+   #:*highlight-difference*
    #:make-completion-result
    #:completion-result-p
    #:completion-result
@@ -81,6 +121,10 @@ for showing in a completion list.")
 (defvar *completion-count* 0
   "Count of how many completions in a row were done. This must be maintained
 by callers of this package and should usually be dynamically bound.")
+
+(defvar *highlight-differences* t
+  "True to use the theme's program.completion.difference.style on the first
+different character of completion lists.")
 
 ;; @@@ Duplication from RL
 (defvar *lisp-non-word-chars*
@@ -1099,8 +1143,7 @@ defaults to the current package. Return how many symbols there were."
 ;; This is completion for a big list of words, presumably in a natural
 ;; language. We read a file of one word per line into a trie.
 
-;; @@@ Of course this should use some generic Trie data structure from
-;; somewhere, IF THERE WAS ONE.
+;; @@@ finish lib/trie.lisp !!
 
 (defparameter *default-word-file* "/usr/share/dict/words")
 
