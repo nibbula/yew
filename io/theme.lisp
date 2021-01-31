@@ -18,7 +18,7 @@ changing the functionality.
 If one desires to have different theme settings for different programs, one can
 invoke that program with a special dynamic setting of *theme*.
 
-HOW TO USE:
+How to use:
 
   The current theme is stored in the *THEME* variable. An easy way to see
   what's in the theme is with ‘print-theme’, e.g.:
@@ -61,13 +61,13 @@ HOW TO USE:
   color version of the default theme with (default-theme-16-color), or just set
   it in the current theme with (set-theme-defaults-for-16-color *theme*).
 
-USE FROM PROGRAMS:
+Use from programs:
 
   Programs will mostly use ‘theme-value’ or ‘value’, to get a value for a
   specific setting. Programs should probably not change anything in the theme
   unless the user requests it.
 
-CREATING AND CUSTOMIZING THEMES:
+Creating and customizing themes:
 
   Probably the easiest way to customize a theme, is using ‘set-theme-values’ in
   a startup file. For example:
@@ -689,6 +689,7 @@ Something like the default setting of typical GNU tools."))))
        ;; Programs
        (:program :modeline             :style)     (:standout)
        (:program :search-match         :style)     (:underline :red)
+       (:program :completion :difference :style)   (:underline :red)
        (:program :empty-line-indicator :style)     (:normal)
        (:program :empty-line-indicator :character) #\~
        (:program :selection            :style)     (:standout)
