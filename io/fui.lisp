@@ -290,7 +290,7 @@ waits for a key press and then returns."
     (tt-finish-output)
     (setf result (if input-func
 		     (funcall input-func w)
-		     (tt-get-char)))
+		     (tt-get-key)))
     (delete-window w)
     ;; (tt-clear) ;; ?? really
     (tt-finish-output)
