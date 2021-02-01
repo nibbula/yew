@@ -62,20 +62,22 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
   (attrs nil :type list))
 
 (defun fatchar-init (c)
-  "Initialize a fatchar with the default vaules."
+  "Initialize a fatchar with the default vaules and return it."
   (setf (fatchar-c     c)	(code-char 0)
 	(fatchar-fg    c)	:white
 	(fatchar-bg    c)	:black
 	(fatchar-line  c)	0
-	(fatchar-attrs c)	nil))
+	(fatchar-attrs c)	nil)
+  c)
 
 (defun copy-fatchar-effects (from to)
-  "Copy the effects from the fatchar FROM to the fatchar TO."
+  "Copy the effects from the fatchar FROM to the fatchar TO and return it."
   (assert (and from to (fatchar-p from) (fatchar-p to)))
   (setf (fatchar-fg    to) (fatchar-fg   from)
 	(fatchar-bg    to) (fatchar-bg   from)
 	(fatchar-line  to) (fatchar-line from)
-	(fatchar-attrs to) (copy-list (fatchar-attrs from))))
+	(fatchar-attrs to) (copy-list (fatchar-attrs from)))
+  to)
 
 ;; Moved to color.lisp
 ;; (defun copy-color (color)
