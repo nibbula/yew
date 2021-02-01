@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Functions for styled objects."
-    :depends-on (:theme :fatchar :opsys :grout)
+    :depends-on (:dlib :theme :fatchar :opsys :grout)
     :components
     ((:file "style")))
