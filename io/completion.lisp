@@ -66,7 +66,7 @@ Dictionary completion:
    #:complete-print
    #:complete-print-long
    #:*completion-count*
-   #:*highlight-difference*
+   #:*highlight-differences*
    #:make-completion-result
    #:completion-result-p
    #:completion-result
@@ -151,6 +151,23 @@ different character of completion lists.")
     (string obj)
     (t (princ-to-string obj))))
 
+(defun highlight-difference (pos string)
+  "Highlight the difference at position POS in STRING."
+  (if (and *highlight-differences*
+	   (plusp pos)			; Don't bother if it's the first char.
+	   (< pos (olength string)))
+      (let* ((str (etypecase string
+		    (string (string-to-fat-string string))
+		    (fat-string string)))
+	     (style (theme-value *theme*
+				 '(:program :completion :difference :style))))
+	(when style
+	  (setf (oelt str pos)
+		(styled-char (append (char-style (oelt str pos)) style)
+			     (oelt str pos))))
+	str)
+      string))
+
 (defun string-list (list)
   "Return a new list of strings from a list of random objects. If there are
 strings in the list already, use them. If everything in the list is a string
@@ -169,13 +186,13 @@ already, just return the list."
 (defun string-completion-list (word list)
   "Return all the words from LIST that have the prefix WORD. Second value is
 the count of matches."
-  (let ((i 0) pos)
+  (let ((i 0) pos (len (olength word)))
     (make-completion-result
      :completion
      (loop :for w :in list
 	:if (or (not (setq pos (mismatch (stringify w) word)))
-		(>= pos (length word)))
-	  :collect (prog1 w (incf i))
+		(>= pos len))
+	  :collect (prog1 (highlight-difference len w) (incf i))
 	:end)
      :count i)))
 
@@ -283,13 +300,13 @@ Returns a completion-result."
 (defun iterator-completion-list (word iterator)
   "Return all the words from ITERATOR that have the prefix WORD. Second value is
 the count of matches."
-  (let ((i 0) pos)
+  (let ((i 0) pos (len (olength word)))
     (make-completion-result
      :completion
      (loop :with w = (stringish (funcall iterator t))
 	:if (or (not (setq pos (mismatch w word)))
-		(>= pos (length word)))
-	  :collect (prog1 w (incf i))
+		(>= pos len))
+	  :collect (prog1 (highlight-difference len w) (incf i))
 	:end
 	:while (setq w (stringish (funcall iterator))))
      :count i)))
@@ -867,7 +884,9 @@ defaults to the current package. Return how many symbols there were."
      ;;(sort (append (mapcar (_ (stylize-symbol _ case-in)) l)
      (sort (append (mapcar (_
 			    (setf (token-object token) _)
-			    (stylize-token token :case case-in))
+			    (highlight-difference
+			     (length w)
+			     (stylize-token token :case case-in)))
 			   l)
 		   pkg-list)
 	   #'fat-string-lessp)
@@ -1095,7 +1114,8 @@ defaults to the current package. Return how many symbols there were."
 		  (= pos 0)
 		  (or (not extra-test)
 		      (funcall extra-test file dir-part)))
-	 (push (styled-file-name file) result-list)
+	 (push (highlight-difference
+		(length file-part) (styled-file-name file)) result-list)
 	 (incf count)))
     ;;(setq result-list (sort result-list #'string-lessp))
     (make-completion-result
