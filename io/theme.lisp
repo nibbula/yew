@@ -689,7 +689,7 @@ Something like the default setting of typical GNU tools."))))
        ;; Programs
        (:program :modeline             :style)     (:standout)
        (:program :search-match         :style)     (:underline :red)
-       (:program :completion :difference :style)   (:underline :red)
+       (:program :completion :difference :style)   (:underline :bold)
        (:program :empty-line-indicator :style)     (:normal)
        (:program :empty-line-indicator :character) #\~
        (:program :selection            :style)     (:standout)

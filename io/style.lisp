@@ -4,10 +4,11 @@
 
 (defpackage :style
   (:documentation "Functions for styled objects.")
-  (:use :cl :theme :fatchar :opsys :grout)
+  (:use :cl :dlib :theme :fatchar :opsys :grout)
   (:export
-   #:spannify-style-item
    #:styled-string
+   #:styled-char
+   #:char-style
    #:themed-string
    #:styled-file-name
    #:show-styles
@@ -30,6 +31,33 @@
       ;;(span-to-fat-string (spannify-style-item style string))
       (span-to-fat-string (append style (list string)))
       string))
+
+(defun styled-char (style char)
+  "Apply style to CHAR, which can be character or a fatchar."
+  (let* ((c (etypecase char
+	      (character char)
+	      (fatchar (fatchar-c char))))
+	 (s (span-to-fatchar-string `(,@style ,c))))
+    (typecase char
+      (character (aref s 0))
+      (fatchar (copy-fatchar-effects (aref s 0) char)))))
+
+;; @@@ I feel like this maybe should be in fatchar.lisp.
+;; So we could just call fatchar-string-to-span for one char, but that seems
+;; overly expensive. Something like this could be factored out of
+;; fatchar-string-to-span, but it doesn't seem obvious. Maybe someday we'll
+;; overhaul all the span stuff.
+(defun char-style (char)
+  "Returnt the style of CHAR."
+  (when (fatchar-p char)
+    (let (result)
+      (when (fatchar-fg char)
+	(setf result (append (fatchar::span-start :fg char) result)))
+      (when (fatchar-bg char)
+	(setf result (append (fatchar::span-start :bg char) result)))
+      (when (fatchar-attrs char)
+	(setf result (append (fatchar::span-start :attr char) result)))
+      (nreverse result))))
 
 (defun themed-string (theme-item string)
   "Return a string or a fat-string with the style from THEME-ITEM applied to it."
