@@ -60,7 +60,11 @@
     :initform 0 :type fixnum
     :documentation "The size of the character viewing area.")
    )
-  (:documentation "Select a character."))
+  (:documentation
+   "The character picker helps you choose a character, by enabling scrolling and
+searching through the list of characters. Type the key on the left to pick the
+character.
+"))
 
 (defun write-special-char (c)
   (let ((thing c))
