@@ -346,23 +346,59 @@ X Y         Top left coordinates of the window."
     :justify nil
     :x ,x :y ,y))
 
+(defun make-reverse-keymap (keymap)
+  "Make table of actiions and all the keys that invoke them from a keymap."
+  (let ((rev-hash (make-hash-table)) prefix)
+    (declare (special prefix))
+    (labels ((action-is-keymap (action)
+	       (and (symbolp action) (boundp action)
+		    (typep (symbol-value action) 'keymap)))
+	     (key-to-add (key)
+	       (cond
+		 (prefix
+		  (append
+		   (if (atom prefix) (list prefix) prefix)
+		   (list key)))
+		  (t
+		   key)))
+	     (add-key (key action)
+	       ;; (format t "add-key ~s ~s~%" key action)
+	       (if (action-is-keymap action)
+		   (let ((prefix (key-to-add key)))
+		     (declare (special prefix))
+		     (map-keymap #'add-key (symbol-value action)))
+		   (push (key-to-add key) (gethash action rev-hash)))))
+      (map-keymap #'add-key keymap))
+    rev-hash))
+
 (defun help-list (keymap &optional special-doc-finder)
   "Return a list of key binding help lines, suitable for the HELP function.
 The optional SPECIAL-DOC-FINDER is a function which looks up documentation for
 keymap bindings."
   ;; Make a reverse hash of functions to keys, so we can put all the bindings
   ;; for a function on one line.
-  (let ((rev-hash (make-hash-table)) key-col-len)
-    (flet ((add-key (k v) (push k (gethash v rev-hash))))
-      (map-keymap #'add-key keymap))
-    ;; Get the maxiumum size of the keys section
-    (setf key-col-len
-	  (loop :for func :being :the :hash-keys :of rev-hash
-	     :maximize
-	     (length (format nil "~{~a~^, ~}"
-			     (loop :for k :in (gethash func rev-hash)
-				:collect (nice-char k :caret t))))))
+  (let* ((rev-hash (make-reverse-keymap keymap))
+	 (key-col-len 0)
+	 (table
+	  ;; Get the maxiumum size of the keys section
+	  (loop :with str
+	     :for func :being :the :hash-keys :of rev-hash
+	     :collect
+	       (cons
+		(setf str
+		      (format nil "~{~a~^, ~}"
+			      (loop :for k :in (gethash func rev-hash)
+				 :if (listp k)
+				 :collect
+				   (format nil "~{~a~^ ~}"
+					   (mapcar (_ (nice-char _ :caret t))
+						   k))
+				 :else
+				 :collect (nice-char k :caret t))))
+		func)
+	     :do (setf key-col-len (max key-col-len (length str))))))
     ;; Actually collect the strings
+    #|
     (loop :with doc
        :for func :being :the :hash-keys :of rev-hash
        ;; Look up the documentation for the function.
@@ -385,6 +421,24 @@ keymap bindings."
 			 (loop :for k :in (gethash func rev-hash)
 			    :collect (nice-char k :caret t)))
 		 doc)))))
+    |#
+    (loop :with doc
+       :for (keys . func) :in table
+       ;; Look up the documentation for the function.
+       :if (setf doc (or (and (or (functionp func)
+				  (and (symbolp func) (fboundp func)))
+			      (documentation func 'function))
+			 (and special-doc-finder
+			      (funcall special-doc-finder func))
+			 (and (symbolp func)
+			      (boundp func)
+			      (keymap-p (symbol-value func))
+			      (string-downcase func))
+			 (and (keymap-p func)
+			      (princ-to-string func))
+			 nil))
+       :collect
+       (format nil "~va - ~a" key-col-len keys doc))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

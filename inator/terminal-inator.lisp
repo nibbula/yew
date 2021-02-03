@@ -71,18 +71,24 @@
 
 (defmethod help ((i terminal-inator))
   "Show help for the inator."
-  (typecase (inator-keymap i)
-    (keymap
-     (display-text (format nil "~:(~a~) Help" (type-of i))
-		   (help-list (inator-keymap i) (_ (inator-doc-finder i _)))
-		   :justify nil))
-    (list
-     (display-text (format nil "~:(~a~) Help" (type-of i))
-		   (loop :for k :in (inator-keymap i)
-		      ;; :append (list (princ-to-string k))
-		      :append
-		      (help-list k (_ (inator-doc-finder i _))))
-		   :justify nil))))
+  (let* ((doc-string (documentation (class-of i) t))
+	 (inator-doc (or (and doc-string (list doc-string)) nil)))
+    (typecase (inator-keymap i)
+      (keymap
+       (display-text
+	(format nil "~:(~a~) Help" (type-of i))
+	`(,@inator-doc
+	  ,@(help-list (inator-keymap i) (_ (inator-doc-finder i _))))
+	:justify nil))
+      (list
+       (display-text
+	(format nil "~:(~a~) Help" (type-of i))
+	`(,@inator-doc
+	  ,@(loop :for k :in (inator-keymap i)
+	      ;; :append (list (princ-to-string k))
+	      :append
+		(help-list k (_ (inator-doc-finder i _)))))
+	:justify nil)))))
 
 (defmethod redraw ((i terminal-inator))
   "Redraw the screen."
