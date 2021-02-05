@@ -86,6 +86,7 @@ of it.")
    ;; lists
    #:delete-nth
    #:alist-to-hash-table
+   #:hash-table-to-alist
    #:do-plist
    #:do-alist
    #:do-kv-list
@@ -966,6 +967,11 @@ Also, it can't really delete the first (zeroth) element."
   (loop :for i :in alist
 	:do (setf (gethash (car i) table) (cdr i)))
   table)
+
+(defun hash-table-to-alist (hash-table)
+  "Return an association list constructed from HASH-TABLE."
+  (loop :for key :being :the :hash-keys :of hash-table
+     :collect (list key (gethash key hash-table))))
 
 (defmacro do-plist ((key value list) &body body)
   (with-unique-names (l thunk)
