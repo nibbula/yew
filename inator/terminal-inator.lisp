@@ -7,6 +7,7 @@
   (:use :cl :dlib :keymap :inator :terminal :fui)
   (:export
    #:terminal-inator
+   #:with-terminal-inator
    ))
 (in-package :terminal-inator)
 
@@ -108,5 +109,18 @@
     (if action
 	(message i "~a is bound to ~a" (key-sequence-string key-seq) action)
 	(message i "~a is not defined" (key-sequence-string key-seq)))))
+
+(defmacro with-terminal-inator ((var type &rest args) &body body)
+  "Evaluate BODY with a new terminal-inator of type TYPE, made with ARGS passed
+to MAKE-INSTANCE, with VAR bound to the new instance."
+  (with-names (result)
+    `(let ((,result
+	    (with-terminal ()
+	      (with-immediate ()
+		(let ((,var (make-instance ,type ,@args)))
+		  ,@body)
+		;; Move to the bottom of the screen on exit.
+		(tt-move-to (1- (tt-height)) 0)))))
+	   ,result)))
 
 ;; EOF
