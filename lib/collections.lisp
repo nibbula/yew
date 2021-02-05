@@ -45,6 +45,15 @@ structs as sequences. Also we really need the MOP for stuff.")
       collection-p
       keyed-collection-p
       ordered-collection-p
+      forward-collection-p
+      backward-collection-p
+      bi-directional-collection-p
+      oiterator
+      oiter-ref
+      oincr
+      odecr
+      obeginning-p
+      oend-p
       omap-into
       oevery
       oany
@@ -95,6 +104,13 @@ structs as sequences. Also we really need the MOP for stuff.")
       container
       keyed-collection
       ordered-collection
+      iterator
+      forward-collection
+      forward-iterator
+      backward-collection
+      backward-iterator
+      bi-directional-collection
+      bi-directional-iterator
       container-data
       oitem
       ofill-with
@@ -180,6 +196,29 @@ numbers."))
 (defmethod ordered-collection-p ((collection container))
   (ordered-collection-p (container-data collection)))
 
+(defgeneric make-collection (type &key size initial-element element-type)
+  (:documentation "Return an ordered collection of TYPE. Make it with COUNT
+elements, if applicable to the type.")
+  (:method ((type (eql 'list)) &key (size 0) initial-element element-type)
+    (declare (ignore element-type))
+    (make-list (or size 0) :initial-element initial-element))
+  (:method ((type (eql 'string)) &key (size 0)
+				   (initial-element (code-char 0))
+				   (element-type 'character))
+    (make-string (or size 0) :initial-element initial-element
+		 :element-type element-type))
+  (:method ((type (eql 'vector)) &key size initial-element element-type)
+    (make-array (or size 0) :initial-element initial-element
+		:element-type element-type))
+  (:method ((type (eql 'hash-table)) &key size initial-element element-type)
+    (declare (ignore initial-element element-type))
+    (make-hash-table :size (or size 0)))
+  ;; @@@ What should we do?
+  ;; (:method (type &key size initial-element element-type)
+  ;;   (case type
+  ;;     (
+  )
+
 ;; I know, iterators are so C++ you say? Yes, we sure don't want to use them
 ;; most of the time, but sometimes they are actually useful, like when you
 ;; want to iterate over multiple generic sequences in parallel and want it to
@@ -187,23 +226,21 @@ numbers."))
 ;; random access.
 
 (defclass iterator ()
-  ()
+  ((location
+    :initarg :location :accessor iterator-location :initform nil
+    :documentation "Where it's at."))
   (:documentation
    "A thing that indicates a position in an ordered collection."))
-
-(defgeneric oiterator (ordered-collection &optional at)
-  (:documentation "Return an iterator for the collection.")
-  )
 
 (defclass forward-collection (ordered-collection)
   ()
   (:documentation
    "A collection that can do onext and onext-p."))
 
-(defclass forward-iterator ()
+(defclass forward-iterator (iterator)
   ()
   (:documentation
-   "An iterator that we can ."))
+   "An iterator that we can move forward through a collection with."))
 
 (defgeneric forward-collection-p (collection)
   (:documentation "Return true if COLLECTION is an forward-collection.")
@@ -216,19 +253,6 @@ numbers."))
   (:method ((collection standard-object))    nil)
   (:method ((collection ordered-collection)) nil) ; but not a forward-collection
   (:method ((collection forward-collection)) t))
-
-(defgeneric oincr (iterator &optional increment)
-  (:documentation "Return the next element in the collection.")
-  ;; (:method ((collection list) &optional (increment 1)))
-  )
-
-(defgeneric obeginning-p (forward-collection)
-  (:documentation "Return the next element in the collection.")
-  (:method ((collection list))))
-
-(defgeneric oend-p (forward-collection)
-  (:documentation "Return the next element in the collection.")
-  (:method ((collection list))))
 
 (defclass backward-collection (ordered-collection)
   ()
@@ -247,10 +271,10 @@ numbers."))
   (:method ((collection ordered-collection)) nil) ; but not a backward-collection
   (:method ((collection backward-collection)) t))
 
-(defgeneric odecr (iterator &optional decrement)
-  (:documentation "Return the next element in the collection.")
-  ;; (:method ((collection list) &optional (decrement 1)))
-  )
+(defclass backward-iterator ()
+  ()
+  (:documentation
+   "An iterator that we can move forward through a collection with."))
 
 (defclass bi-directional-collection (forward-collection backward-collection)
   ()
@@ -263,6 +287,116 @@ backward-collection can."))
   (:method ((collection t))
     (and (forward-collection-p collection)
 	 (backward-collection-p collection))))
+
+(defclass bi-directional-iterator (forward-iterator backward-iterator)
+  ()
+  (:documentation
+   "An iterator that we can move forward or backward through a collection
+with."))
+
+;; With iterators there is an increased issue with stability of operations.
+;; Since the biggest case of stability problems is concurency, and Common Lisp
+;; doesn't include adequate facilities to address that, I suggest that
+;; stability and concurency issues should be left to another package which can
+;; depend on a portible concurrency library. I further suggest that a future
+;; Common Lisp, with concurency primitives, would likely also include
+;; facilites for generic collection operations. Nonetheless, future work on
+;; this library could address mutative stability.
+
+(defgeneric oiterator (ordered-collection &optional at)
+  (:documentation "Return an iterator for the collection."))
+
+(defgeneric oiter-ref (iterator)
+  (:documentation "Access the object at the current iterator position."))
+
+(defgeneric oincr (iterator &optional increment)
+  (:documentation
+   "Increment the iterator position by INCREMENT which defaults to 1."))
+
+(defgeneric odecr (iterator &optional decrement)
+  (:documentation
+   "Decrement iterator position by INCREMENT which defaults to 1."))
+
+(defgeneric obeginning-p (iterator)
+  (:documentation
+   "Return true if the iterator is a the beginning of the collection."))
+
+(defgeneric oend-p (iterator)
+  (:documentation
+   "Return true if the iterator is at the end of the collection."))
+
+;; List iterator
+
+(defclass list-iterator (forward-iterator)
+  ()
+  (:documentation
+   "A thing that indicates a position in a list."))
+
+(defmethod oiterator ((collection list) &optional at)
+  (make-instance 'list-iterator :location (or at collection)))
+
+(defmethod oiter-ref ((i list-iterator))
+  (car (iterator-location i)))
+
+(defmethod (setf oiter-ref) (value (i list-iterator))
+  (setf (car (iterator-location i)) value))
+
+(defmethod oincr ((i list-iterator) &optional (increment 1))
+  (setf (iterator-location i) (nthcdr increment (iterator-location i))))
+
+(defmethod oend-p ((i list-iterator))
+  (endp (iterator-location i)))
+
+;; Vector iterator
+
+(defclass vector-iterator (forward-iterator)
+  ((object
+    :initarg :object :accessor iterator-object
+    :documentation "The vector."))
+  (:default-initargs :location 0)
+  (:documentation
+   "A thing that indicates a position in a vector."))
+
+(defmethod oiterator ((collection vector) &optional at)
+  (make-instance 'vector-iterator :object collection :location (or at 0)))
+
+;; We could check if setting the iterator out of bounds, but you'll get an error
+;; when you try to use it when safety is on, and if safety is off, you probably
+;; don't want the check. One could also imagine uses where you might want the
+;; iterator out of bounds.
+
+(defmethod oiter-ref ((i vector-iterator))
+  (aref (iterator-object i) (iterator-location i)))
+
+(defmethod (setf oiter-ref) (value (i vector-iterator))
+  (setf (aref (iterator-object i) (iterator-location i)) value))
+
+(defmethod oincr ((i vector-iterator) &optional (increment 1))
+  (setf (iterator-location i) (+ (iterator-location i) increment)))
+
+(defmethod obeginning-p ((i vector-iterator))
+  (zerop (iterator-location i)))
+
+(defmethod oend-p ((i vector-iterator))
+  (>= (iterator-location i) (length (iterator-object i))))
+
+(defmethod odecr ((i vector-iterator) &optional decrement)
+  (setf (iterator-location i) (- (iterator-location i) decrement)))
+
+;; We actually could fake hash-table struct and class iteration, by keeping
+;; a vector of the keys.
+#|
+(defclass hash-table-iterator (forward-iterator)
+  ((key-array
+    :initarg :key-array :accessor hash-table-iterator-key-array :initform nil
+    :documentation "The array of hash keys."))
+  (:default-initargs :location 0)
+  (:documentation
+   "A thing that indicates a position in a vector."))
+
+(defmethod oiterator ((collection hash-table) &optional at)
+  (make-instance 'hash-table-iterator :location (or at 0)))
+|#
 
 (defmacro call-with-start-and-end (func args)
   "Call func with args and START and END keywords, assume that an environemnt
@@ -606,7 +740,20 @@ values.")
 (defmethod omapn (function (collection container))
   (omapn function (container-data collection)))
 
-;; @@@ I think I would actually like an omapkn too. And maybe an onapkin.
+;; @@@ Maybe we should make an omapkn too?
+
+;; This has the parallel sequence feature from normal MAP, but can't use
+;; generic dispatch on the collections.
+#|
+(defun omapm (result-type function &rest collections)
+  "Call FUNCTION with successive sets of arguments from COLLECTIONS. One
+argument is obtained from each collection. Return the collected results in
+collection of RESULT-TYPE."
+  (if result-type
+      (apply #'omap-into result-type function
+      (apply #'omap result-type function
+  )
+|#
 
 (defgeneric mappable-p (collection)
   (:documentation "Return true if the COLLECTION can be iterated with OMAP.")
