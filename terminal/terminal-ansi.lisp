@@ -2235,10 +2235,10 @@ links highlight differently?"
 ;; but it's WRONG, because it doesn't erase. So to be fast, it would seem we
 ;; could either make a tt-erase-area, or have full screen contents knowledge.
 ;; Even modern terminal emulators (such as libvte) don't do erase area
-;; currently, and full screen contents knowledge is a curses implementation.
-;; So, until that time, to be correct, we would have to be slow and just output
-;; spaces. Unfortunately, even outputting spaces requires knowing what column
-;; we're at, which we can't currently. Even doing the old counting newlines,
+;; currently, and full screen contents knowledge is in crunch, not here.
+;; So, to be correct, we would have to be slow and just output spaces.
+;; Unfortunately, even outputting spaces requires knowing what column we're at,
+;; which we can't currently. Even doing the old counting newlines,
 ;; backspaces, and tabs is unlikely to work, for the usual reasons.
 ;; So fuck it. Let's not implement any of the column dependent methods.
 ;; The sad thing is that we *should* be able to implement better column
@@ -2250,6 +2250,19 @@ links highlight differently?"
 ;; (defmethod stream-advance-to-column ((stream terminal-ansi) column)
 ;;   ;; @@@
 ;;   t)
+
+;; !!!! The above comment seems somehat wrong now, since we gave in and started
+;; !!!! tracking the fake-column thing. In any case, let's just try doing it.
+
+(defmethod stream-advance-to-column ((stream terminal-ansi) column)
+  (with-accessors ((fake-column terminal-fake-column)
+		   (window-columns terminal-window-columns)) stream
+    (when (< column window-columns)
+      (loop :while (< fake-column column window-columns)
+	 :do
+	   (write-char #\space stream)
+	   (update-column stream #\space))))
+  t)
 
 ;; This is a weird trick to presumably make it so we don't have to do our own
 ;; buffering and we can also be relatively quick?
