@@ -1200,4 +1200,78 @@ the current line, or NIL if there is none."
   (with-slots (show-mode-line) e
     (setf show-mode-line (not show-mode-line))))
 
+(defsingle re-indent (e)
+  "Try to re-indent the code."
+  (use-first-context (e)
+    (with-context ()
+      (let ((code (ignore-errors (read-from-string (simplify-string (buf e))))))
+	(when code
+	  (let ((saved-point point)
+		(re-code
+		 (with-output-to-string (str)
+		   (let ((*print-case* :downcase))
+		     (pprint code str)))))
+	    (setf point 0)
+	    (buffer-delete e 0 (olength (buf e)) point)
+	    (buffer-insert e 0 re-code point)
+	    (setf point (min saved-point (olength re-code)))))))))
+
+(defun in-initial-whitespace-p (e)
+  "Return true if point is between the start of the line and the first
+non-whitespace character."
+  (use-first-context (e)
+    (with-context ()
+      (save-excursion (e)
+	(scan-over e :backward
+		   :func (lambda (c)
+			   (and (ochar/= c #\newline)
+				(position c dlib::*whitespace*))))
+	(and (not (zerop point))
+	     (char= (buffer-char (buf e) (1- point)) #\newline))))))
+
+(defun indent-a-line (e)
+  (with-context ()
+    (with-slots (buf) e
+      (let* ((str (buffer-string buf))
+	     (ppos (matching-paren-position str :position point))
+	     indent)
+	(log-message e "ppos = ~s" ppos)
+	(save-excursion (e)
+	  (setf point ppos)
+	  (beginning-of-line e)
+	  (setf indent (- ppos point)
+		point ppos)
+	  (scan-over e :forward :not-in dlib::*whitespace*)
+	  (setf indent point))
+
+	(log-message e "indent = ~s" indent)
+	(beginning-of-line e)
+	;; Move over or insert spaces until indent.
+	(let ((len (olength buf))
+	      (i point))
+	  (loop :while (< i indent)
+	     :do
+	       (cond
+		 ((or (= point len)
+		      (not (position (buffer-char buf point)
+				     dlib::*whitespace*)))
+		  (buffer-insert e point #\space point)
+		  (incf point))
+		 (t
+		  (incf point)))
+	       (incf i)))))))
+
+(defsingle indent-single-line (e)
+  (use-first-context (e)
+    (indent-a-line e)))
+
+(defmulti indent-line (e)
+  (indent-signle-line e))
+
+(defsingle magic-tab (e)
+  (if (in-initial-whitespace-p e)
+      (do-contexts (e)
+	(indent-single-line e))
+      (complete e)))
+
 ;; EOF

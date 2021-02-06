@@ -44,6 +44,7 @@
     (#\rubout			. delete-backward-char)
     (:s-delete			. kill-region)
     (,(meta-char (ctrl #\w))    . kill-region)
+    (,(meta-char (ctrl #\q))    . re-indent)
     (,(ctrl #\D)		. delete-char-or-exit)
     (,(ctrl #\W)		. backward-kill-word)
     (,(ctrl #\K)		. kill-line)
