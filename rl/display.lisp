@@ -239,9 +239,20 @@ buffer.
 or NIL is there is none."
   (cdr (assoc pos endings)))
 
+;; XXX this sucks, and is probably the wrong approach
+(defun in-emacs-p ()
+  "Return true if we're being run under Emacs, like probably in SLIME."
+  (nos:env "EMACS"))
+
+(defun dumb-terminal-p ()
+  "Return true if we're in some kind of dumb terminal which we shouldn't expect
+to act like a real terminal."
+  (or (typep *terminal* 'terminal-dumb:terminal-dumb)
+      (in-emacs-p)))
+
 (defun finish-all-output ()
   "Makes all output be in Finnish."
-  (when (not (environment-variable "EMACS")) ; XXX so wrong
+  (when (not (dumb-terminal-p))
     ;;#+ccl (ccl::auto-flush-interactive-streams) ;; Jiminy Crickets!
     (finish-output *standard-output*)
     (finish-output *terminal-io*)
@@ -249,8 +260,7 @@ or NIL is there is none."
     (finish-output)
     ;(finish-output *standard-input*)
     )
-  (tt-finish-output)
-  )
+  (tt-finish-output))
 
 ;; @@@ As a hack, on terminal-ansi we could check the string and see if there's
 ;; anything weird in it, and if not, don't bother to do the slow asking the
@@ -416,21 +426,23 @@ start of the line. If partial-line-indicator is set, output it first and just
 enough spaces to get to the next line if we weren't at the beginning of the
 line already. If we were already at the beginning of the line, the
 partial-line-idicator is overwritten by the prompt, so we don't see it."
-  (with-slots (prompt-start-at-left partial-line-indicator) e
-    (when prompt-start-at-left
-      (let ((tty (or (and (typep *terminal* 'terminal-wrapper)
-			  (terminal-wrapped-terminal *terminal*))
-		     *terminal*)))
-	(if (and partial-line-indicator (tt-width))
-	    (terminal-format tty
-			     "~a~va~c~va~c" partial-line-indicator
-			     (- (tt-width)
-				(display-length partial-line-indicator))
-			     "" #\return (display-length partial-line-indicator)
-			     "" #\return)
-	    (terminal-write-char tty #\return))
-	;; (terminal-finish-output tty)
-	))))
+  (when (not (dumb-terminal-p))
+    (with-slots (prompt-start-at-left partial-line-indicator) e
+      (when prompt-start-at-left
+	(let ((tty (or (and (typep *terminal* 'terminal-wrapper)
+			    (terminal-wrapped-terminal *terminal*))
+		       *terminal*)))
+	  (if (and partial-line-indicator (tt-width))
+	      (terminal-format tty
+			       "~a~va~c~va~c" partial-line-indicator
+			       (- (tt-width)
+				  (display-length partial-line-indicator))
+			       "" #\return
+			       (display-length partial-line-indicator)
+			       "" #\return)
+	      (terminal-write-char tty #\return))
+	  ;; (terminal-finish-output tty)
+	  )))))
 
 ;; An update that probably requires an optimizing terminal to be at all
 ;; efficient.

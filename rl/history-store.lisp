@@ -108,6 +108,12 @@ and positioned at the beginning of the file."
 	  nil
 	  result))))
 
+(defun should-save-p (hist file-pos)
+  (and (or (dl-length-at-least-p (history-start hist) 1)
+	   (zerop file-pos))
+       (or (dl-prev (history-start hist))
+	   (dl-length-at-least-p (history-head hist) 1))))
+
 (defmethod history-store-save ((store text-history-store)
 			       (style (eql :fancy))
 			       &key update (history-context *history-context*))
@@ -132,9 +138,13 @@ and positioned at the beginning of the file."
 	(when (zerop (setf pos (file-position stream)))
 	  ;; Write version
 	  (format stream "~a ~a~%" *text-history-magic* *text-history-version*))
-	(when (and (or (dl-length-at-least-p (history-start hist) 1)
-		       (zerop pos))
-		   (dl-prev (history-start hist)))
+	;; We have to have at least one history entry or we're starting with a
+	;; blank file, and we have added at least one line
+	;; (when (and (or (dl-length-at-least-p (history-start hist) 1)
+	;; 	       (zerop pos))
+	;; 	   (or (dl-prev (history-start hist))
+	;; 	       (dl-length-at-least-p (history-head hist) 1)))
+	(when (should-save-p hist pos)
 	  (dl-list-do-backward
 	   (if (zerop pos)
 	       (history-tail hist)
@@ -148,6 +158,8 @@ and positioned at the beginning of the file."
 		 (terpri stream))))
 	  ;; Move the start to the end.
 	  (setf (history-start hist) (history-head hist)))))))
+
+
 
 (defmethod history-store-load ((store text-history-store)
 			       (style (eql :fancy))
@@ -210,7 +222,9 @@ and positioned at the beginning of the file."
 	;; blank file, and we have added at least one line
 	(when (and (or (dl-length-at-least-p (history-start hist) 1)
 		       (zerop pos))
-		   (dl-prev (history-start hist)))
+		   ;;(dl-prev (history-start hist)))
+		   (or (dl-prev (history-start hist))
+		       (dl-length-at-least-p (history-head hist) 1)))
 	  ;; (format t "pos = ~d~%" pos)
 	  (dl-list-do-backward
 	   (if (zerop pos)
