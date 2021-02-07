@@ -56,7 +56,8 @@
   "An entry in the line editor history."
   time					; a universal time
   line					; a string of some sort?
-  (modified nil :type boolean))		; true if the entry has be edited
+  (modified nil :type boolean)		; true if the entry has be edited
+  extra)				; plist of extra things to save
 
 (defvar *history* '() "Line history of some sort.")
 (defvar *history-context* nil "The current dynamic context.")
@@ -81,14 +82,14 @@
 	  (history-tail hist) lst
 	  (history-cur hist) lst)))
 
-(defun history-add (buf &optional (context *history-context*))
+(defun history-add (buf &key (context *history-context*) extra)
   "Adds the content BUF as the most recent history item."
   (let* ((hist (get-history context)))
     (dl-push (history-head hist)
 	     ;; (copy-seq buf)
 	     (make-history-entry :time (get-universal-time)
-				 :line (copy-seq buf))
-	     )
+				 :line (copy-seq buf)
+				 :extra extra))
     (when (not (history-cur hist))
       (setf (history-cur hist) (history-head hist)))
     (when (not (history-tail hist))
@@ -98,7 +99,7 @@
   "Delete the last history entry."
   (dl-pop (history-head (get-history context))))
 
-(defun history-put (buf &optional (context *history-context*))
+(defun history-put (buf &key (context *history-context*) extra)
   "Save the BUF in the current history item."
   (let* ((hist (get-history context))
 	 (cur (history-cur hist)))
@@ -106,8 +107,8 @@
       (setf (dl-content cur)
 	    ;; (copy-seq buf)
 	    (make-history-entry :time (get-universal-time)
-				:line (copy-seq buf))
-	    ))))
+				:line (copy-seq buf)
+				:extra extra)))))
 
 (defun history-prev (&optional (context *history-context*))
   "Move the current history to the next oldest."
@@ -198,7 +199,7 @@ from oldest to most recent."
 from most recent to oldest."
   (dl-list-do (history-head (get-history context)) function))
 
-(defun show-history (&key (context *history-context*) show-time)
+(defun show-history (&key (context *history-context*) show-time show-extra)
   "Print the history with numbers."
   (let ((hist (get-history context))
 	(i 1))
@@ -206,11 +207,14 @@ from most recent to oldest."
      (history-tail hist)
      #'(lambda (x)
 	 (if show-time
-	     (format t "~4d  ~a ~a~%" i
+	     (format t "~4d  ~a ~a" i
 		     (and (history-entry-time x)
 			  (date-string :time (history-entry-time x)))
 		     (history-entry-line x))
-	     (format t "~4d  ~a~%" i (history-entry-line x)))
+	     (format t "~4d  ~a" i (history-entry-line x)))
+	 (when show-extra
+	   (format t " ~s" (history-entry-extra x)))
+	 (terpri)
 	 (incf i))))
   (values))
 

@@ -74,8 +74,9 @@ is saved."))
 ;;;;;;;;;;;;;;;;;
 ;; Fancy style
 
-;; Increment for every incompatible change.
-(defparameter *text-history-version* 2
+;; Increment for every incompatible change. Woe be unto them that don't
+;; increment this appropriately.
+(defparameter *text-history-version* 3
   "Version number of history format file.")
 
 (defparameter *text-history-magic* "trlh"
@@ -158,8 +159,6 @@ and positioned at the beginning of the file."
 		 (terpri stream))))
 	  ;; Move the start to the end.
 	  (setf (history-start hist) (history-head hist)))))))
-
-
 
 (defmethod history-store-load ((store text-history-store)
 			       (style (eql :fancy))
@@ -309,7 +308,8 @@ and positioned at the beginning of the file."
 			    ([context]  varchar)
 			    ([time]     integer)
 			    ([line]     varchar)
-			    ([modified] integer))
+			    ([modified] integer)
+			    ([extra]    varchar))
 			  :database connection)
       ;; @@@ create version table and add record
       )))
@@ -352,7 +352,8 @@ and positioned at the beginning of the file."
 				([time]     ,(history-entry-time x))
 				([line]     ,(history-entry-line x))
 				([modified]
-				 ,(if (history-entry-modified x) 1 0)))
+				 ,(if (history-entry-modified x) 1 0))
+				([extra]    ,(history-entry-extra x)))
 		    :database connection)))
 	     (if update
 		 (history-start hist)
