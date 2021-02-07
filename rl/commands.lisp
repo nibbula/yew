@@ -278,7 +278,7 @@ and move forward a character."
 (defsingle previous-history (e)
   "Go to the previous history entry."
   (use-first-context (e)
-    (history-put (buffer-string (buf e)) (history-context e))
+    (history-put (buffer-string (buf e)) :context (history-context e))
     (history-prev (history-context e))
     (use-hist e)))
 
@@ -349,7 +349,7 @@ the first line."
 (defsingle next-history (e)
   "Go to the next history entry."
   (use-first-context (e)
-    (history-put (buffer-string (buf e)) (history-context e))
+    (history-put (buffer-string (buf e)) :context (history-context e))
     (history-next (history-context e))
     (use-hist e)))
 
@@ -366,7 +366,7 @@ the first line."
 (defsingle beginning-of-history (e)
   "Go to the beginning of the history."
   (use-first-context (e)
-    (history-put (buffer-string (buf e)) (history-context e))
+    (history-put (buffer-string (buf e)) :context (history-context e))
     (history-go-to-first (history-context e))
     (use-hist e)))
 
@@ -376,7 +376,7 @@ the first line."
 (defsingle end-of-history (e)
   "Go to the end of the history."
   (use-first-context (e)
-    (history-put (buffer-string (buf e)) (history-context e))
+    (history-put (buffer-string (buf e)) :context (history-context e))
     (history-go-to-last (history-context e))
     (use-hist e)))
 
@@ -403,7 +403,7 @@ current buffer."
   (with-slots (buf buf-str quit-flag history-context accept-does-newline) e
     (history-go-to-last history-context)
     (if (add-to-history-p e (or string buf-str))
-	(history-put (or string (buffer-string buf)) history-context)
+	(history-put (or string (buffer-string buf)) :context history-context)
 	(history-delete-last history-context))
     (setf quit-flag t)))
 
