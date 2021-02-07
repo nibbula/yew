@@ -1266,7 +1266,7 @@ non-whitespace character."
     (indent-a-line e)))
 
 (defmulti indent-line (e)
-  (indent-signle-line e))
+  (indent-single-line e))
 
 (defsingle magic-tab (e)
   (if (in-initial-whitespace-p e)
