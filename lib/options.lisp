@@ -4,12 +4,13 @@
 
 ;;; I'm not sure this is actually useful.
 ;;;
-;;; Why would I want some fake Javascript like prototyping?
+;;; Why would I want some fake Javascript/Smalltalk like prototyping?
 ;;; Perhaps it's just paranoia about having to reboot my nonexistent Lisp
 ;;; machine when class versioning somehow fails?
 ;;;
 ;;; Options look like a slot, but you're not supposed to really give a damn if
-;;; they're there or not.
+;;; they're there or not. And they don't change the type graph or method
+;;; dispatching.
 
 (defpackage :options
   (:documentation
