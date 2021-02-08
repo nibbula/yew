@@ -41,6 +41,7 @@ The shell command takes any number of file names.
    #:*pager-prompt*
    #:*empty-indicator*
    #:page
+   #:page-thing
    ;; Main entry points
    #:with-pager
    #:with-pager*
@@ -2142,6 +2143,23 @@ q - Abort")
 (defun resume (suspended)
   (with-slots (pager stream close-me) suspended
     (page stream :pager pager :close-me close-me :suspended t)))
+
+(defun page-thing (thing &rest options)
+  "Page the actual thing instead of trying to open it as a file."
+  (typecase thing
+    (string
+     (with-input-from-string (str thing)
+       (setf (getf options :stream) str)
+       (page nil :options options)))
+    (pathname
+     ;; But if it's explicitly a pathname then try to open it.
+     (page thing :options options))
+    (sequence
+     (page thing :options options))
+    (t
+     (with-input-from-string (str (prin1-to-string thing))
+       (setf (getf options :stream) str)
+       (page nil :options options)))))
 
 ;; This is quite inefficient. But it's easy and it works.
 (defmacro with-pager (&body body)
