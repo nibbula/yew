@@ -4,7 +4,7 @@
 
 (defpackage :wc
   (:documentation "Word (and other textual unit) count.")
-  (:use :cl :dlib :opsys)
+  (:use :cl :dlib :opsys :collections)
   (:export
    #:count-thing
    #:count-words
@@ -317,7 +317,10 @@ of struct COUNT-ITEM."
   (when (not files)
     (setf files
 	  (if (and lish:*input*
-		   (typep lish:*input* 'sequence))
+		   (typep lish:*input* 'sequence)
+		   ;; @@@ This is semi-bogus. What if we want to count the
+		   ;; contents of a string?
+		   (typep (oelt lish:*input* 0) '(or string pathname)))
 	      lish:*input*
 	      (list *standard-input*))))
   (let ((*signal-errors* signal-errors))
