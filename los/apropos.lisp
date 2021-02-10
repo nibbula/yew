@@ -196,9 +196,9 @@
 (lish:defcommand apropos
   ((os-only boolean :short-arg #\o
     :help "Search for operating system commands only.")
-   (lish-only boolean :short-arg #\l
+   (lish-only boolean :short-arg #\L
     :help "Search for Lish commands only.")
-   (lisp-only boolean :short-arg #\L
+   (lisp-only boolean :short-arg #\l
     :help "Search for Common Lisp symbols only.")
    (quicklisp-only boolean :short-arg #\q
     :help "Search for Quicklisp systems only.")
