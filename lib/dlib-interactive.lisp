@@ -184,19 +184,21 @@ expand all macros recursively."
       (when result
 	(format t "~s~%" (first (elt *spin-strings* result)))))))
 
-(defmacro do-at (time form)
-  "Call func with args at time. Time is a universal time or a string."
-  (let ((tm (gensym)))
-  `(progn
-    (let (,tm)
-      (etypecase ,time
-	(string
-	 (setf ,tm (simple-parse-time ,time)))
-	(integer
-	 (setf ,tm ,time)))
-      (loop :until (>= (get-universal-time) ,tm)
-	:do (sleep .2))
-      ,form))))
+(defmacro do-at ((time &key (interval 0.2)) form)
+  "Call evaluate FORM with args at TIME. TIME is a universal time or a string,
+parsed by simple-parse-time. INTERVAL is how many seconds between checks, which
+defaults to 0.2."
+  (with-names (u-time)
+    `(progn
+       (let (,u-time)
+	 (etypecase ,time
+	   (string
+	    (setf ,u-time (simple-parse-time ,time)))
+	   (integer
+	    (setf ,u-time ,time)))
+	 (loop :until (>= (get-universal-time) ,u-time)
+	    :do (sleep ,interval))
+	 ,form))))
 
 (defun show-features ()
   "Print the features list nicely."
