@@ -1,5 +1,5 @@
 ;;;
-;;; puca.lisp - Putative Muca (A simple(istic) interface to CVS/git/svn)
+;;; puca.lisp - A simple interface to version control.
 ;;;
 
 ;; TODO:
@@ -14,8 +14,7 @@
 ;;     like for "git config ..." or whatever the equivalent is in other systems
 
 (defpackage :puca
-  (:documentation
-   "Putative Muca (A simple(istic) interface to CVS/git/svn).")
+  (:documentation "A simple interface to version control.")
   (:use :cl :dlib :dlib-misc :opsys :dtime :keymap :char-util :completion
 	:inator :terminal :terminal-inator :fui :options :fatchar :fatchar-io
 	:table :table-print :collections :table-viewer :ochar
