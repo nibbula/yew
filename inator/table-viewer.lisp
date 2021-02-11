@@ -755,10 +755,12 @@ at which it's found or NIL if it's not found."
   (handler-case
       (view (current-cell o))
     (error (c)
-      (fui:show-text
-       (span-to-fat-string
-	`((:red "Error: ") ,(apply #'format nil "~a" (list c))))
-       :justify t))))
+      (when (fui:popup-y-or-n-p
+	     (span-to-fat-string
+	      `((:red "Error: ") ,(apply #'format nil "~a" (list c))
+		#\newline #\newline "Enter the debugger?"))
+	     :default #\N)
+	(invoke-debugger c)))))
 
 (defun add-row (o)
   "Add a row to the table."
