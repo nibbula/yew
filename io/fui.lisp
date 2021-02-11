@@ -25,6 +25,7 @@
    #:window-centered-text
    #:display-text
    #:show-text
+   #:popup-y-or-n-p
    #:with-typeout
    #:help-list
    ))
@@ -322,6 +323,42 @@ Keyword arguments are:
 		  :justify justify
 		  :x x :y y :width width :height height
 		  :min-width min-width :min-height min-height)))
+
+(defun popup-y-or-n-p (question &rest args
+		       &key title x y width height min-width min-height default)
+  "A popup window version of Y-OR-N-P. Display the QUESTION.
+Keyword arguments are:
+ - DEFAULT              If given, allow other characters to act as if the
+                        default was entered. Must be #\\Y be #\\N.
+ - TITLE                A title for the window.
+ - X Y                  Position of the window.
+ - WIDTH HEIGHT         Size of the window.
+ - MIN-WIDTH MIN-HEIGHT Minimum size of the window."
+  (declare (ignorable title x y width height min-width min-height))
+  (labels ((valid-answer (c)
+	     (and (characterp c)
+		  (find c "YN" :test #'equalp)))
+	   (yornp (w)
+	     (let (c)
+	       (loop :with key = (tt-get-key)
+		  :while (or (not (characterp key))
+			     (and (not (setf c (valid-answer key)))
+				  (not default)))
+		  :do
+		    (window-text w (ß `(:red " Please type Y or N."))
+				 :row (1- (fui-window-height w)) :column 0)
+		    (setf key (tt-get-key)))
+	       (or c default))))
+    (when (and default (not (valid-answer default)))
+      (error "The default must be #\\Y or #\\N."))
+    (remf args :default)
+    (with-immediate ()
+      (char= #\Y (apply 'display-text
+			nil
+			(list "" question "" "Y or N ?")
+			:input-func #'yornp
+			:justify nil
+			args)))))
 
 ;; @@@ make justify work? maybe it's the re-fangling?
 (defmacro with-typeout ((stream-var &key title input-func #|(justify t)|# x y)
