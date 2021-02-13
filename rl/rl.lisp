@@ -403,12 +403,12 @@ Keyword arguments:
 
        ;; Set the start line for crunch terminals. We use oelt here so we
        ;; don't even have to depend on terminal-crunch being loaded.
-       (when (typep (line-editor-terminal e)
-		    (find-terminal-class-for-type :crunch))
-	 (setf (start-row e)
-	       (terminal-get-cursor-position
-		(oelt (line-editor-terminal e) :wrapped-terminal))
-	       (oelt (line-editor-terminal e) :start-line) (start-row e)))
+       ;; (when (typep (line-editor-terminal e)
+       ;; 		    (find-terminal-class-for-type :crunch))
+       ;; 	 (setf (start-row e)
+       ;; 	       (terminal-get-cursor-position
+       ;; 		(oelt (line-editor-terminal e) :wrapped-terminal))
+       ;; 	       (oelt (line-editor-terminal e) :start-line) (start-row e)))
 
        ;; Add the new line we're working on.
        ;; (history-add nil)		; @@@@@@@ This is bad.
