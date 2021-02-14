@@ -13,6 +13,8 @@
 
 (declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
 
+;; @@@ Maybe we should use nos:ensure-directory, but I wrote this first.
+;; And what about the verboseness, and errorp ... ?
 (defun mkdir (&key directories mode (make-parents t) verbose (errorp t))
   (loop :for d :in directories :do
      (if (file-exists d)
