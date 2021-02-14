@@ -402,7 +402,11 @@ if not given.")
 (defosfun current-directory ()
   "Return the full path of the current working directory as a string.")
 
-(defosfun make-directory (path &key (mode #o755))
+(defparameter *default-directory-mode* #o755
+  ;; @@@ should we mention umask?
+  "The default POSIX style permissions for creating a directory.")
+
+(defosfun make-directory (path &key (mode *default-directory-mode*))
   "Make a directory.")
 
 (defosfun delete-directory (path)
@@ -413,6 +417,23 @@ if not given.")
 
 (defosfun directory-p (path)
   "Return true if PATH is a directory.")
+
+(defun ensure-directory (directory
+			 &key (make-parents t) (mode *default-directory-mode*))
+  "If DIRECTORY doesn't exist, create it.
+ - MAKE-PARENTS   If true, create the parent diretories. (default t)
+ - MODE           POSIX style permissions mode for created directories.
+                  Uses *default-directory-mode* if not specified."
+  (when (not (file-exists directory))
+    (loop :with prefix = ""
+       :for component :in (nos:split-path directory)
+       :do
+	 (setf prefix (path-append prefix component))
+	 (when (not (file-exists prefix))
+	   (when (not make-parents)
+	     (cerror "Create ~s?" "Parent directory ~s doen't exist."
+		     prefix))
+	   (make-directory prefix :mode mode)))))
 
 (defosfun without-access-errors (&body body)
   "Evaluate the body while ignoring typical file access error from system

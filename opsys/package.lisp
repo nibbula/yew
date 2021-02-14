@@ -61,6 +61,7 @@
    #:current-directory
    #:in-directory
    #:with-working-directory
+   #:*default-directory-mode*
    #:make-directory
    #:delete-directory
    #:read-directory
@@ -74,6 +75,7 @@
    #:without-access-errors
    #:probe-directory
    #:directory-p
+   #:ensure-directory
    #:split-path
    #:path-to-absolute #:abspath
    #:path-absolute-p #:absolute-path-p
