@@ -73,7 +73,7 @@
 (defmethod help ((i terminal-inator))
   "Show help for the inator."
   (let* ((doc-string (documentation (class-of i) t))
-	 (inator-doc (or (and doc-string (list doc-string)) nil)))
+	 (inator-doc (or (and doc-string (list doc-string "")) nil)))
     (typecase (inator-keymap i)
       (keymap
        (display-text
