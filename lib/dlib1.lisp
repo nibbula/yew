@@ -73,6 +73,8 @@ of it.")
    #:split-sequence-by-range
    #:replace-subseq
    #:displaced-subseq
+   #:copy-array-into
+   #:copy-array
    #:begins-with
    #:ends-with
    #:remove-prefix
@@ -618,6 +620,51 @@ REPLACEMENT."
 	      :element-type (array-element-type array)
 	      :displaced-to array
 	      :displaced-index-offset start))
+
+(defun copy-array-into (to from)
+  "Copy the contents of the array FROM to TO. They must be the same size."
+  (when (not (equal (array-dimensions from) (array-dimensions to)))
+    (error "This doesn't know how to copy arrays of different dimensions."))
+  (if (= (array-rank to) 1)
+      (replace to from)
+      (progn
+	#+sbcl
+	(replace (sb-ext:array-storage-vector to)
+		 (sb-ext:array-storage-vector from))
+	#-sbcl
+	(dotimes (i (array-total-size to))
+	  (setf (row-major-aref to i) (row-major-aref from i))))))
+
+(defun copy-array (array &key (element-type (array-element-type array))
+			   (adjustable (adjustable-array-p array))
+			   (fill-pointer (and (array-has-fill-pointer-p array)
+					      (fill-pointer array)))
+			   keep-displacement)
+  "Return a copy of ARRAY with the same properties, except when given as the
+keyword arguments. If KEEP-DISPLACEMENT is true, make a new array with the same
+displacement."
+  (if keep-displacement
+      (multiple-value-bind (to offset) (array-displacement array)
+	(if fill-pointer
+	    (make-array (array-dimensions array)
+			:element-type element-type
+			:adjustable adjustable
+			:displaced-to to :displaced-index-offset offset
+			:fill-pointer fill-pointer)
+	    (make-array (array-dimensions array) :adjustable adjustable
+			:element-type element-type
+			:displaced-to to :displaced-index-offset offset)))
+      (let ((result
+	     (if fill-pointer
+		 (make-array (array-dimensions array)
+			     :element-type element-type
+			     :adjustable adjustable
+			     :fill-pointer fill-pointer)
+		 (make-array (array-dimensions array)
+			     :element-type element-type
+			     :adjustable adjustable))))
+	(copy-array-into result array)
+	result)))
 
 ;; @@@ compare vs. the ones in alexandria?
 ;; The difference between using using search or mismatch seems quite negligible.
