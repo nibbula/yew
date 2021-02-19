@@ -220,6 +220,45 @@ set.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defclass color-izer-0 (color-izer)
+  ()
+  (:documentation "A color-izer for NO colors."))
+
+(defmethod make-color-tables ((o color-izer-0))
+  (declare (ignore o)))
+
+(defmethod make-color-pair ((o color-izer-0) fg bg)
+  (declare (ignore o fg bg)))
+
+(defmethod color-init ((o color-izer-0))
+  (declare (ignore o)))
+
+(defmethod color-number ((o color-izer-0) color)
+  (declare (ignore o))
+  (case color
+    (:black 0)
+    (:white 1)))
+
+(defmethod color-name ((o color-izer-0) color-number)
+  (declare (ignore o))
+  (case color-number
+    (0 :black)
+    (1 :white)))
+
+(defmethod index-color ((o color-izer-0) color-number)
+  ;; This is the same as color-name.
+  (color-name o color-number))
+
+(defmethod get-pair ((o color-izer-0) fg bg)
+  (declare (ignore o fg bg))
+  0)
+
+(defmethod pair-color ((o color-izer-0) pair-number)
+  (declare (ignore o pair-number))
+  0)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defclass color-izer-8 (color-izer)
   ()
   (:documentation "A color-izer for only 8 colors."))
@@ -342,7 +381,9 @@ set.")
   ;; Initialize all the color pairs
   (start-color)
   (if (/= (has-colors) 1)
-      (setf (has-color-p tty) nil)
+      (progn
+	(setf (has-color-p tty) nil
+	      (color-izer tty) (make-instance 'color-izer-0)))
       (progn
 	(setf (has-color-p tty) t
 	      (color-izer tty)
