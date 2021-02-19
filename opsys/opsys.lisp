@@ -923,8 +923,7 @@ it from the current process."
     (finish-output *standard-output*)
     (system:process-exit-code proc))
   #-(or clisp excl openmcl sbcl cmu lispworks ecl abcl)
-  (missing-implementation 'run-program)
-)
+  (missing-implementation 'run-program))
 
 ;; (defun get-groups ()
 ;;   "Return an array of group IDs for the current process."
@@ -1090,6 +1089,49 @@ so-called “universal” time. The second value is nanoseconds.")
 (defosfun set-time (seconds nanoseconds)
   "Set time in seconds and nanoseconds. Seconds are in so-called
 “universal” time.")
+
+;; Incredibly bogus hack alert:
+;;
+;; This tries to get the results of the CL time macro in a form we can better
+;; manipulate. It does very implementation dependent hackish things.
+(defvar *time-result* nil
+  "A place to dynamically store the timing results.")
+
+#+sbcl
+(progn
+  (defun gather-time (&rest args
+		      &key real-time-ms user-run-time-us system-run-time-us
+			gc-run-time-ms processor-cycles eval-calls
+			lambdas-converted page-faults bytes-consed
+			aborted)
+    (declare (ignorable real-time-ms user-run-time-us system-run-time-us
+			gc-run-time-ms processor-cycles eval-calls
+			lambdas-converted page-faults bytes-consed aborted))
+    (setf *time-result* (copy-list args)))
+
+  (defun our-print-time (&rest args
+			 &key real-time-ms user-run-time-us system-run-time-us
+			   gc-run-time-ms processor-cycles eval-calls
+			   lambdas-converted page-faults bytes-consed
+			   aborted)
+    (declare (ignorable real-time-ms user-run-time-us system-run-time-us
+			gc-run-time-ms processor-cycles eval-calls
+			lambdas-converted page-faults bytes-consed aborted))
+    (setf *time-result*
+	  (with-output-to-string (*trace-output*)
+	    (apply #'sb-impl::print-time args)))))
+
+;; I'm chosing to use a result variable instead of multiple layers of multiple
+;; values, since I think it's easier for the calling function to deal with.
+(defmacro fake-time ((&key as-plist) form)
+  "Evaluate form and try to return what TIME would have printed as the car of
+RESULT. Result must be a CONS."
+  #+sbcl
+  (if as-plist
+      `(sb-ext:call-with-timing #'gather-time (lambda () ,form))
+      `(sb-ext:call-with-timing #'our-print-time (lambda () ,form)))
+  #-(or sbcl)
+  (missing-implementation 'fake-time))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Events
@@ -1368,8 +1410,7 @@ a terminal.")
   #+ecl (ext:quit code)
   #+abcl (ext:quit :status code)
   #-(or openmcl ccl cmu sbcl excl clisp ecl abcl)
-  (missing-implementation 'exit-lisp)
-  )
+  (missing-implementation 'exit-lisp))
 
 ;; This isn't really OS specific, but implementation specific.
 ;(defun stream-file-name

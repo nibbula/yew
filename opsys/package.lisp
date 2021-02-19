@@ -143,6 +143,8 @@
    #:get-time
    #:get-os-time
    #:set-time
+   #:fake-time
+   #:*time-result*
 
    ;; events
    #:listen-for
