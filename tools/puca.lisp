@@ -96,7 +96,8 @@
 (defclass puca (puca-app)
   ()
   (:documentation
-   "The main view which operates on file and things in local repository."))
+   "View the status of files and things in local repository. Keys operate on
+the file on the current line or the selected files."))
 
 (defparameter *puca-prototype* nil
   "Prototype PUCA options.")
