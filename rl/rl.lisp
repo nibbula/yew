@@ -81,6 +81,7 @@
     (,(ctrl #\S)		. isearch-forward)
     (,(ctrl #\R)		. isearch-backward)
     (,(ctrl #\Q)		. quoted-insert)
+    (,(meta-char #\q)		. park-it)
 
     ;; key binding
     (,(meta-char #\=)		. describe-key-briefly)
@@ -400,6 +401,10 @@ Keyword arguments:
 
        ;;(setf (fill-pointer (buf e)) (inator-point e))
        (setf (fill-pointer (buf e)) 0)
+
+       ;; Restore a pushed buffer.
+       (when (pushed-buffers e)
+	 (pop-buffer e))
 
        ;; Set the start line for crunch terminals. We use oelt here so we
        ;; don't even have to depend on terminal-crunch being loaded.

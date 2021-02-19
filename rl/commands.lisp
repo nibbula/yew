@@ -1274,4 +1274,27 @@ non-whitespace character."
 	(indent-single-line e))
       (complete e)))
 
+;; This is vaugely like recursive edit.
+(defun push-buffer (e)
+  (use-first-context (e)
+    (with-context ()
+      (with-slots (pushed-buffers buf) e
+	(push (cons point (copy-array buf)) pushed-buffers)))))
+
+(defun pop-buffer (e)
+  (let ((b (pop (pushed-buffers e))))
+    (use-first-context (e)
+      (with-context ()
+	(setf point (car b)
+	      (buf e) (cdr b))))))
+
+(defsingle park-it (e)
+  "Go edit another line, and come back to this one next time the editor is
+invoked."
+  (push-buffer e)
+  (let ((saved-relative-row (screen-relative-row e)))
+    (freshen e)
+    (setf (screen-relative-row e) saved-relative-row)))
+
+
 ;; EOF

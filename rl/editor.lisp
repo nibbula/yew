@@ -435,7 +435,11 @@ Otherwise the region is deactivated every command loop.")
     :documentation "Does what is says on the package.")
    (last-search
     :initarg :last-search :accessor last-search :initform nil
-    :documentation "The last string searched for."))
+    :documentation "The last string searched for.")
+   (pushed-buffers
+    :initarg :pushed-buffers :accessor pushed-buffers
+    :initform nil :type list
+    :documentation "List of buffers and points to go back to editing."))
   (:default-initargs
     :contexts (make-contexts)
     :non-word-chars *default-non-word-chars*
