@@ -1,6 +1,6 @@
-;;
-;; terminal.lisp - The end of the line.
-;;
+;;;
+;;; terminal.lisp - The end of the line.
+;;;
 
 (defpackage :terminal
   (:use :cl :dlib :opsys :trivial-gray-streams :fatchar)
