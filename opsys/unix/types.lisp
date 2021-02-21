@@ -89,10 +89,9 @@ Type name     Darwin           Linux-32         Linux-x86-64     Linux-arm64    
 (defconstant +ms-per-sec+ (expt 10 6)
   "The number of microeconds in a second.")
 
-;; @@@ This is similar to the code in dlib-misc, but we can't depend on that,
-;; but perhaps if we ever make a separate time package we could depend on some
-;; part of that and have macros or something for defining time arithmetic.
-;; For now I'm only adding things that I need for other parts of opsys.
+;; @@@ This is similar to the code in dtime, but it depends on us, so for now
+;; it seems simpler to just duplicate only the things that I need for other
+;; parts of opsys.
 
 (defun timeval-add (time1 time2)
   "Return the sum of TIME1 and TIME2, as a timeval."
