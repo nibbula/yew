@@ -1094,6 +1094,10 @@ so-called “universal” time. The second value is nanoseconds.")
 ;;
 ;; This tries to get the results of the CL time macro in a form we can better
 ;; manipulate. It does very implementation dependent hackish things.
+;;
+;; @@@ Maybe I should scrap this idea, and make something that will return
+;; somewhat consistent results for different implementations.
+
 (defvar *time-result* nil
   "A place to dynamically store the timing results.")
 
@@ -1147,7 +1151,58 @@ so-called “universal” time. The second value is nanoseconds.")
 	    (apply #'ccl::standard-report-time args)))
     (values-list results)))
 
-#+(or ecl (and (not sbcl) (not ccl)))
+#+clisp
+(defun call-with-timing (function as-plist)
+  (flet ((tv-to-sec (s us)
+	   (+ s (/ us internal-time-units-per-second))))
+    (multiple-value-bind
+	  (start-real-time-sec start-real-time-ms
+	   start-run-time-sec start-run-time-ms
+	   start-gc-time-sec start-gc-time-ms
+	   start-space-high start-space-low
+	   start-gc-count)
+	(system::%%time)
+      (funcall function)
+      (multiple-value-bind
+	  (end-real-time-sec end-real-time-ms
+	   end-run-time-sec end-run-time-ms
+	   end-gc-time-sec end-gc-time-ms
+	   end-space-high end-space-low
+	   end-gc-count)
+	  (system::%%time)
+	(let ((timing
+	       (list
+		;; Time since system start
+		:real-time
+		(coerce
+		 (- (tv-to-sec end-real-time-sec end-real-time-ms)
+		    (tv-to-sec start-real-time-sec start-real-time-ms))
+		 'float)
+		;; Time used since system start
+		:run-time
+		(coerce
+		 (- (tv-to-sec end-run-time-sec end-run-time-ms)
+		    (tv-to-sec start-run-time-sec start-run-time-ms))
+		 'float)
+		;; Time used by GC since system start
+		:gc-time
+		(coerce
+		 (- (tv-to-sec end-gc-time-sec end-gc-time-ms)
+		    (tv-to-sec start-gc-time-sec start-gc-time-ms))
+		 'float)
+		;; Space used since system start, in bytes
+		:space
+		(- (logior (ash end-space-high 24) end-space-low)
+		   (logior (ash start-space-high 24) start-space-low))
+		;; Number of garbage collections carried out.
+		:gc-count
+		(- end-gc-count start-gc-count))))
+	(setf *time-result*
+	      (if as-plist
+		  timing
+		  (print-properties timing :stream nil))))))))
+
+#+(or ecl (and (not sbcl) (not ccl) (not clisp)))
 (defun call-with-timing (function as-plist)
   "Fallback shabby time function that should work with any implementation."
   (let ((real-start (get-internal-real-time))
@@ -1176,13 +1231,16 @@ so-called “universal” time. The second value is nanoseconds.")
 	     (run-end (get-internal-run-time))
 	     #+(and ecl (not boehm-gc)) (gc-end (si::gc-time))
 	     (timing
-	      (list :real-time  (/ (- real-end real-start)
-				   internal-time-units-per-second)
-		    :run-time  (/ (- run-end run-start)
-				  internal-time-units-per-second)
+	      (list :real-time (coerce (/ (- real-end real-start)
+					  internal-time-units-per-second)
+				       'float)
+		    :run-time  (coerce (/ (- run-end run-start)
+					  internal-time-units-per-second)
+				       'float)
 		    #+(and ecl (not boehm-gc)) :gc-time
-		    #+(and ecl (not boehm-gc)) (/ (- gc-end gc-start)
-						  internal-time-units-per-second)
+		    #+(and ecl (not boehm-gc))
+		    (coerce (/ (- gc-end gc-start)
+			       internal-time-units-per-second) 'float)
 		    #+(and ecl boehm-gc) :gc-count
 		    #+(and ecl boehm-gc) (- gc-count-end gc-count-start)
 		    #+(and ecl boehm-gc) :bytes-consed
@@ -1192,6 +1250,7 @@ so-called “universal” time. The second value is nanoseconds.")
 		  timing
 		  (print-properties timing :stream nil)))))))
 
+;; Simple portable version:
 ;; #-(or sbcl ccl ecl)
 ;; (progn
 ;;   (defun call-with-timing (function as-plist)
@@ -1225,8 +1284,6 @@ dependent property list of timing data."
   `(let ((ccl::*report-time-function*
 	  (if ,as-plist #'gather-time #'our-print-time)))
      (ccl::report-time ',form #'(lambda () (progn ,form))))
-  #+ecl
-  `(call-with-timing #'(lambda () ,form) ,as-plist)
   #-(or sbcl ccl)
   `(call-with-timing #'(lambda () ,form) ,as-plist))
 
