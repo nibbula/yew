@@ -1147,6 +1147,70 @@ so-called “universal” time. The second value is nanoseconds.")
 	    (apply #'ccl::standard-report-time args)))
     (values-list results)))
 
+#+(or ecl (and (not sbcl) (not ccl)))
+(defun call-with-timing (function as-plist)
+  "Fallback shabby time function that should work with any implementation."
+  (let ((real-start (get-internal-real-time))
+	(run-start (get-internal-run-time))
+	#+(and ecl (not boehmgc)) gc-start
+	#+(and ecl (not boehmgc)) gc-end
+	#+(and ecl boehm-gc) gc-count-start
+	#+(and ecl boehm-gc) gc-count-end
+	#+(and ecl boehm-gc) consed-start
+	#+(and ecl boehm-gc) consed-end)
+    #+ecl
+    (progn
+      (si::gc t)
+      #+boehm-gc
+      (progn
+	(when (zerop si::*do-time-level*) (si::gc-stats 0))
+	(multiple-value-setq (consed-start gc-count-start) (si::gc-stats t)))
+      #-boehm-gc
+      (setf gc-start (si::gc-time)))
+    (multiple-value-prog1 (funcall function)
+      #+(and ecl boehm-gc)
+      (progn
+	(si:gc t)
+	(multiple-value-setq (consed-end gc-count-end) (si::gc-stats nil)))
+      (let* ((real-end (get-internal-real-time))
+	     (run-end (get-internal-run-time))
+	     #+(and ecl (not boehm-gc)) (gc-end (si::gc-time))
+	     (timing
+	      (list :real-time  (/ (- real-end real-start)
+				   internal-time-units-per-second)
+		    :run-time  (/ (- run-end run-start)
+				  internal-time-units-per-second)
+		    #+(and ecl (not boehm-gc)) :gc-time
+		    #+(and ecl (not boehm-gc)) (/ (- gc-end gc-start)
+						  internal-time-units-per-second)
+		    #+(and ecl boehm-gc) :gc-count
+		    #+(and ecl boehm-gc) (- gc-count-end gc-count-start)
+		    #+(and ecl boehm-gc) :bytes-consed
+		    #+(and ecl boehm-gc) (- consed-end consed-start))))
+	(setf *time-result*
+	      (if as-plist
+		  timing
+		  (print-properties timing :stream nil)))))))
+
+;; #-(or sbcl ccl ecl)
+;; (progn
+;;   (defun call-with-timing (function as-plist)
+;;     "Fallback shabby time function that should work with any implementation."
+;;     (let ((real-start (get-internal-real-time))
+;; 	  (run-start (get-internal-run-time)))
+;;       (multiple-value-prog1 (funcall function)
+;; 	(let ((real-end (get-internal-real-time))
+;; 	      (run-end (get-internal-run-time))
+;; 	      (timing
+;; 	       (list :real-time  (/ (- real-end real-start)
+;; 				    internal-time-units-per-second)
+;; 		     :run-time  (/ (- real-end real-start)
+;; 				   internal-time-units-per-second))))
+;; 	  (setf *time-result*
+;; 		(if as-plist
+;; 		    timing
+;; 		    (print-properties timing :stream nil))))))))
+
 ;; I'm chosing to use a result variable instead of multiple layers of multiple
 ;; values, since I think it's easier for the calling function to deal with.
 (defmacro fake-time ((&key as-plist) form)
@@ -1161,8 +1225,10 @@ dependent property list of timing data."
   `(let ((ccl::*report-time-function*
 	  (if ,as-plist #'gather-time #'our-print-time)))
      (ccl::report-time ',form #'(lambda () (progn ,form))))
+  #+ecl
+  `(call-with-timing #'(lambda () ,form) ,as-plist)
   #-(or sbcl ccl)
-  '(missing-implementation 'fake-time))
+  `(call-with-timing #'(lambda () ,form) ,as-plist))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Events
