@@ -42,6 +42,10 @@
   "Return a buffer or buffer subsequence as fatchar-string."
   buf)
 
+(defun buffer-copy (buf)
+  "Return a copy of the buffer."
+  (copy-array buf))
+
 (defun buffer-fatchar (buf i)
   "Return the fatchar at position I in buffer BUF."
   (aref buf i))

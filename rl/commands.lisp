@@ -1279,7 +1279,7 @@ non-whitespace character."
   (use-first-context (e)
     (with-context ()
       (with-slots (pushed-buffers buf) e
-	(push (cons point (copy-array buf)) pushed-buffers)))))
+	(push (cons point (buffer-copy buf)) pushed-buffers)))))
 
 (defun pop-buffer (e)
   (let ((b (pop (pushed-buffers e))))
