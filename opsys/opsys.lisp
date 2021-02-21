@@ -1121,17 +1121,48 @@ so-called “universal” time. The second value is nanoseconds.")
 	  (with-output-to-string (*trace-output*)
 	    (apply #'sb-impl::print-time args)))))
 
+#+ccl
+(progn
+  (defun gather-time (&rest args
+		      &key form results elapsed-time user-time system-time
+			gc-time bytes-allocated minor-page-faults
+			major-page-faults swaps)
+    (declare (ignorable form results elapsed-time user-time system-time
+			gc-time bytes-allocated minor-page-faults
+			major-page-faults swaps))
+    (let ((our-results (copy-list args)))
+      (remf our-results :results)
+      (setf *time-result* our-results))
+    (values-list results))
+
+  (defun our-print-time (&rest args
+			 &key form results elapsed-time user-time system-time
+			   gc-time bytes-allocated minor-page-faults
+			   major-page-faults swaps)
+    (declare (ignorable form results elapsed-time user-time system-time
+			gc-time bytes-allocated minor-page-faults
+			major-page-faults swaps))
+    (setf *time-result*
+	  (with-output-to-string (*trace-output*)
+	    (apply #'ccl::standard-report-time args)))
+    (values-list results)))
+
 ;; I'm chosing to use a result variable instead of multiple layers of multiple
 ;; values, since I think it's easier for the calling function to deal with.
 (defmacro fake-time ((&key as-plist) form)
-  "Evaluate form and try to return what TIME would have printed as the car of
-RESULT. Result must be a CONS."
+  "Evaluate the FORM and try to return it's values. Store what TIME would have
+printed into *time-result*. If AS-PLIST is true, return a implementation
+dependent property list of timing data."
   #+sbcl
   (if as-plist
       `(sb-ext:call-with-timing #'gather-time (lambda () ,form))
       `(sb-ext:call-with-timing #'our-print-time (lambda () ,form)))
-  #-(or sbcl)
-  (missing-implementation 'fake-time))
+  #+ccl
+  `(let ((ccl::*report-time-function*
+	  (if ,as-plist #'gather-time #'our-print-time)))
+     (ccl::report-time ',form #'(lambda () (progn ,form))))
+  #-(or sbcl ccl)
+  '(missing-implementation 'fake-time))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Events
