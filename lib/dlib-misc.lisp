@@ -54,7 +54,6 @@
    #:untabify
    #:justify-text
    #:calculate-line-endings
-   #:print-properties
    #:print-values
    #:print-values*
    #:print-values-of
@@ -340,9 +339,10 @@ useful information.
   TO           the limit on the length.
   ELLIPSIS     a string to use to indicate omission, which defaults to *DEFAULT-ELLIPSIS*.
   ABBREVIATE   True to allow abbreviating leading directories to one letter."
+  (declare (type string ellipsis) (type fixnum to))
   (let* ((str (safe-namestring (quote-filename path)))
 	 (len (length str)))
-    (declare (string str ellipsis) (fixnum to))
+    (declare (type string str))
     (if (> len to)
 	(if abbreviate
 	    (let (result (result-len len))
@@ -723,31 +723,6 @@ buffer.
 	(setf col 0)) ;; @@@ left-margin
       (set-spot "End")
       endings)))
-
-(defun print-properties (prop-list &key (right-justify nil) (de-lispify t)
-				     (stream t) (format-char #\a))
-  "Print a set of names and values nicely in two vertical columns. If the first
-element of PROP-LIST is a cons, it guesses that it's an alist, otherwise it
-assumes it's a plist."
-  (let ((label-length 0)
-	(format-string
-	 (s+ "~v" (if right-justify "@" "") "a: ~" format-char "~%")))
-    (flet ((niceify (s)
-	     (string-capitalize
-		    (substitute #\space #\_
-				(substitute #\space #\- s)))))
-      (do-kv-list (key value prop-list)
-	(setf label-length
-	      (max label-length (length (princ-to-string key)))))
-      (do-kv-list (name value prop-list)
-	;;value (if (and (cdr p) (listp (cdr p))) (cadr p) (cdr p)))
-	(format stream format-string
-		label-length
-		(if de-lispify
-		    (niceify (princ-to-string name))
-		    ;; (string-downcase (princ-to-string name)))
-		    (princ-to-string name))
-		value)))))
 
 (defun print-values (value-list &optional (stream t))
   "Print a vertical list of values. VALUE-LIST is a list of symbols whose

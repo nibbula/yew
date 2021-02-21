@@ -64,6 +64,7 @@ of it.")
    #:*buffer-size*
    #:copy-stream
    #:quote-format
+   #:print-properties
    #:interactive-interrupt
    ;; sequences
    ;;#:call-with-start-and-end
@@ -2254,7 +2255,7 @@ is named \"COPY-OF-<Package><n>\"."
     (loop :for s :being :each :present-symbol :of package
        :do (import s new-package))
     (loop :for s :in (package-shadowing-symbols package)
-       :do (shadow (symbol-name s) new-package))
+       :do (shadow (list (symbol-name s)) new-package))
     (loop :for pkg in (package-use-list package)
        :do (use-package pkg new-package))
     new-package))
@@ -2319,6 +2320,38 @@ could be useful in case the streams support multiple element types."
 are printed rather than interpreted as directives, which really just means:
 repleace a single tilde with double tidles."
   (replace-subseq "~" "~~" s))
+
+;; I wish this could be in dlib-misc, but opsys needs it.
+(defun print-properties (prop-list &key (right-justify nil) (de-lispify t)
+				     (stream t) (format-char #\a))
+  "Print a set of names and values nicely in two vertical columns. If the first
+element of PROP-LIST is a cons, it guesses that it's an alist, otherwise it
+assumes it's a plist."
+  (let ((label-length 0)
+	(format-string
+	 (s+ "~v" (if right-justify "@" "") "a: ~" format-char "~%")))
+    (labels ((niceify (s)
+	       (string-capitalize
+		(substitute #\space #\_
+			    (substitute #\space #\- s))))
+	     (output-line (str name value)
+	       (format str format-string
+		       label-length
+		       (if de-lispify
+			   (niceify (princ-to-string name))
+			   ;; (string-downcase (princ-to-string name)))
+			   (princ-to-string name))
+		       value)))
+      (do-kv-list (key value prop-list)
+	(setf label-length
+	      (max label-length (length (princ-to-string key)))))
+      (if (null stream)
+	  (with-output-to-string (str)
+	    (do-kv-list (name value prop-list)
+	      ;;value (if (and (cdr p) (listp (cdr p))) (cadr p) (cdr p)))
+	      (output-line str name value)))
+	  (do-kv-list (name value prop-list)
+	    (output-line stream name value))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

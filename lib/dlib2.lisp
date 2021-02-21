@@ -1,6 +1,6 @@
-;;
-;; dlib2.lisp - Utilities of redundant doom, second file.
-;;
+;;;
+;;; dlib2.lisp - Utilities of redundant doom, second file.
+;;;
 
 ;; This is for things which depend on features added in dlib1.lisp
 
