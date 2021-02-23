@@ -466,22 +466,24 @@ The function receives a 'pick' as an argument."))
   ;; Don't do anything.
   (tt-move-to (- (tt-height) 2) 0))
 
+(defun view-this-item (pick item)
+  (declare (ignore pick))
+  (handler-case
+      (view item)
+    (error (c)
+      (display-text
+       nil
+       `("" "There was an error when viewing:" ""
+	    ,(princ-to-string c) ""))))
+  (tt-clear))
+
 (defgeneric view-item (pick)
   (:documentation "View an item."))
 
-(defmethod view-item (pick)
+(defmethod view-item ((pick pick))
   "View an item."
   (with-slots (items point) pick
-    (let ((item (cdr (elt items point))))
-      ;; (message pick "View a ~s ~s" (type-of item) item)
-      (handler-case
-	  (view item)
-	(error (c)
-	  (display-text
-	   nil
-	   `("" "There was an error when viewing:" ""
-		,(princ-to-string c) "")))))
-    (tt-clear)))
+    (view-this-item pick (cdr (elt items point)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; popup pick-list
@@ -582,17 +584,77 @@ The function receives a 'pick' as an argument."))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun do-pick (type &rest args)
-  (let ((*pick*))
-    (unwind-protect
-	 (progn
-	   (setf *pick* (apply #'make-instance type args))
-	   (when (pick-before-hook *pick*)
-	     (funcall (pick-before-hook *pick*) *pick*))
-	   (event-loop *pick*))
-      (when *pick*
-	(delete-pick *pick*)))
-    (values (pick-result *pick*) (pick-second-result *pick*))))
+;; (defun do-pick (instance &rest args)
+;;   (let ((*pick*))
+;;     (unwind-protect
+;; 	 (progn
+;; 	   (setf *pick* (apply #'make-instance type args))
+;; 	   (when (pick-before-hook *pick*)
+;; 	     (funcall (pick-before-hook *pick*) *pick*))
+;; 	   (event-loop *pick*))
+;;       (when *pick*
+;; 	(delete-pick *pick*)))
+;;     (values (pick-result *pick*) (pick-second-result *pick*))))
+
+(defun do-pick (the-list type &key message by-index sort-p default-value
+				selected-item typing-searches keymap
+				multiple popup x y height before-hook)
+  (when (not the-list)
+    (return-from do-pick nil))
+  (with-terminal (#| #+unix :crunch |#)
+    (let* (*pick*
+	   (max-y (1- (tt-height)))
+	   (count (olength the-list))
+	   (string-list (make-array count :element-type 'cons
+				    :initial-element (cons nil nil)
+				    ))
+	   (new-keymap (list *pick-list-keymap* *default-inator-keymap*)))
+      (when keymap
+	(push keymap new-keymap))
+      (let ((i 0))
+	(omapn (lambda (item)
+		 (setf (aref string-list i)
+		       (cons
+			(or (and (ostringp item) item)
+			    (princ-to-string item))
+			item))
+		 (incf i))
+	       the-list))
+      (setf string-list
+	    (if (not (null sort-p))
+		(locally
+		    #+sbcl (declare
+			    (sb-ext:muffle-conditions
+			     sb-ext:compiler-note))
+		    ;; Where's the unreachable code??
+		    (sort string-list #'ostring-lessp
+			  :key #'car))
+		string-list))
+      (when (not popup)
+	(tt-clear))
+      (unwind-protect
+	   (progn
+	     (setf *pick* (apply #'make-instance type
+				 (list :message         message
+				       :by-index        by-index
+				       :multiple        multiple
+				       :typing-searches typing-searches
+				       :point           (or selected-item 0)
+				       :items           string-list
+				       :max-line        (length string-list)
+				       :max-y           (or height max-y)
+				       :page-size       (- max-y 2)
+				       :x               x
+				       :y               y
+				       :result          default-value
+				       :before-hook     before-hook
+				       :keymap          new-keymap)))
+	     (when (pick-before-hook *pick*)
+	       (funcall (pick-before-hook *pick*) *pick*))
+	     (event-loop *pick*))
+	(when *pick*
+	  (delete-pick *pick*)))
+      *pick*)))
 
 (defkeymap *pick-list-keymap* (:default-binding #'default-action)
   `((#\escape		  . *pick-list-escape-keymap*)
@@ -647,63 +709,32 @@ The function receives a 'pick' as an argument."))
 			     popup (x 0) (y 0) height before-hook)
   "Have the user pick a value from THE-LIST and return it. Arguments:
 
-- MESSAGE         A string to be displayed before the list.
-- BY-INDEX        If true, return the index number of the item picked.
-- SORT-P          If true sort the list before displaying it.
-- DEFAULT-VALUE   Return if no item is selected.
-- SELECTED-ITEM   Item to have initially selected.
-- TYPING-SEARCHES True to have alphanumeric input search for the item.
-- KEYMAP          Add a custom keymap.
-- MULTIPLE        True to allow multiple items to be selected.
-- POPUP           True to use a pop-up window, in which case provide X and Y."
-  (when (not the-list)
-    (return-from pick-list nil))
-  (with-terminal (#| #+unix :crunch |#)
-    (let* ((max-y (1- (tt-height)))
-	   (count (olength the-list))
-	   (string-list (make-array count :element-type 'cons
-				    :initial-element (cons nil nil)
-				    ))
-	   (new-keymap (list *pick-list-keymap*
-			     *default-inator-keymap*)))
-      (when keymap
-	(push keymap new-keymap))
-      (let ((i 0))
-	(omapn (lambda (item)
-		 (setf (aref string-list i)
-		       (cons
-			(or (and (ostringp item) item)
-			    (princ-to-string item))
-			item))
-		 (incf i))
-	       the-list))
-      (setf string-list
-	    (if (not (null sort-p))
-		(locally
-		    #+sbcl (declare
-			    (sb-ext:muffle-conditions
-			     sb-ext:compiler-note))
-		    ;; Where's the unreachable code??
-		    (sort string-list #'ostring-lessp
-			  :key #'car))
-		string-list))
-      (when (not popup)
-	(tt-clear))
-      (do-pick (if popup 'popup-pick 'pick)
-	:message        message
-	:by-index	by-index
-	:multiple	multiple
-	:typing-searches typing-searches
-	:point	        (or selected-item 0)
-	:items	        string-list
-	:max-line       (length string-list)
-	:max-y          (or height max-y)
-	:page-size      (- max-y 2)
-	:x		x
-	:y		y
-	:result	        default-value
-	:before-hook	before-hook
-	:keymap	        new-keymap))))
+ - MESSAGE         A string to be displayed before the list.
+ - BY-INDEX        If true, return the index number of the item picked.
+ - SORT-P          If true sort the list before displaying it.
+ - DEFAULT-VALUE   Return if no item is selected.
+ - SELECTED-ITEM   Item to have initially selected.
+ - TYPING-SEARCHES True to have alphanumeric input search for the item.
+ - KEYMAP          Add a custom keymap.
+ - MULTIPLE        True to allow multiple items to be selected.
+ - POPUP           True to use a pop-up window, in which case provide X and Y.
+"
+  (let ((pick
+	 (do-pick the-list (if popup 'popup-pick 'pick)
+		  :message         message
+		  :by-index        by-index
+		  :sort-p          sort-p
+		  :default-value   default-value
+		  :selected-item   selected-item
+		  :typing-searches typing-searches
+		  :keymap          keymap
+		  :multiple        multiple
+		  :popup           popup
+		  :x               x
+		  :y               y
+		  :height          height
+		  :before-hook     before-hook)))
+    (values (pick-result pick) (pick-second-result pick))))
 
 #| Put in the event loop: 
 (when (not (pick-typing-search))
@@ -775,14 +806,39 @@ The function receives a 'pick' as an argument."))
   "View a directory as it's file name."
   (view (dir-entry-name thing)))
 
+(defclass file-picker (pick)
+  ((directory
+    :initarg :directory :accessor file-picker-directory
+    :documentation "The directory displayed.")
+   (directory-accepted
+    :initarg :directory-accepted :accessor directory-accepted
+    :initform nil :type boolean
+    :documentation "True if a directory was accepted."))
+  (:documentation "A list picker for files."))
+
+(defgeneric accept-file-or-directory (i)
+  (:documentation "Accept a file or directory."))
+
+(defmethod accept-file-or-directory ((i file-picker))
+  (accept i)
+  (setf (directory-accepted i) t))
+
+(defkeymap *pick-file-keymap* (:default-binding #'default-action)
+  `((#\newline		  . accept-file-or-directory)))
+
+(defmethod view-item ((pick file-picker))
+  (with-slots (items point) pick
+    ;; @@@ add directory
+    (view-this-item pick (cdr (elt items point)))))
+
 ;;; @@@ We should probably turn this into an separate inator.
 
 (defun pick-file (&key message (directory ".") (allow-browse t) show-hidden
-		    (pick-directories) multiple)
+		    pick-directories multiple)
   "Have the user choose a file."
   ;;@@@ to allow choosing directories instead of going to them
   (let* ((dir directory)
-	 files file-list filename msg did-dir)
+	 files file-list filename msg did-dir picker)
     (flet ((generate-list ()
 	     (setf files
 		   (loop :for file :in (pick-file-list-generator dir)
@@ -805,9 +861,18 @@ The function receives a 'pick' as an argument."))
 	     :while (not done)
 	     :do
 	     (setf msg (format nil "~@[~a~%~]~a~%" message dir)
-		   (values filename did-dir)
-		   (pick-list file-list :sort-p t :message msg
-			      :multiple multiple)
+		   ;; (values filename did-dir)
+		   ;; (pick-list file-list :sort-p t :message msg
+		   ;; 	      :keymap *pick-file-keymap*
+		   ;; 	      :class 'file-picker
+		   ;; 	      :multiple multiple)
+		   picker (do-pick file-list 'file-picker
+				   :sort-p t :message msg
+				   :typing-searches t
+				   :keymap *pick-file-keymap*
+				   :multiple multiple)
+		   filename (pick-result picker)
+		   did-dir (pick-second-result picker)
 		   f (single-file filename))
 	     (cond
 	       ;; picked up level
@@ -824,15 +889,20 @@ The function receives a 'pick' as an argument."))
 			 (eq (dir-entry-type f) :link))
 		     (probe-directory
 		      (path-append dir (dir-entry-name f)))
-		     (and (not pick-directories) (not did-dir)))
+		     (and (not pick-directories) (not did-dir)
+			  (not (directory-accepted picker))))
 		(setf dir (path-append dir (dir-entry-name f)))
 		(generate-list))
 	       ;; other files
 	       (t
 		(setf done t))))
 	  ;; Just pick from the current directory
-	  (setf filename (pick-list file-list :sort-p t :message message
-				    :multiple multiple)))
+	  (setf picker (do-pick file-list 'file-picker
+				:sort-p t :message message
+				:typing-searches t
+				:keymap *pick-file-keymap*
+				:multiple multiple)
+		filename (pick-result picker)))
       (when filename
 	(typecase filename
 	  ((or list array)
