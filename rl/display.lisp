@@ -444,6 +444,12 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	  ;; (terminal-finish-output tty)
 	  )))))
 
+(defun fake-width (e)
+  (or (terminal-window-columns (line-editor-terminal e)) 80))
+
+(defun fake-height (e)
+  (or (terminal-window-rows (line-editor-terminal e)) 24))
+
 ;; An update that probably requires an optimizing terminal to be at all
 ;; efficient.
 
@@ -473,7 +479,7 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 				       (fboundp (right-prompt e))))
 			      (right-prompt e))
 			 :no-default t))
-	   (cols (terminal-window-columns (line-editor-terminal e)))
+	   (cols (fake-width e))
 	   ;; Prompt figuring
 	   (prompt-end (max 0 (1- (olength prompt))))
 	   (prompt-spots (list `(,prompt-end . ())))
@@ -548,7 +554,7 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	    ;; @@@ Maybe we should ensure point-line isn't NIL???
 	    point-offset (- buf-lines (or point-line 0))
 	    right-prompt-start (and right-prompt
-				    (- (tt-width)
+				    (- (fake-width e)
 				       (display-length right-prompt) 1)))
       (flet (#|
 	     (eol-compensate () ;; @@@ This is bullcrap. Maybe "fix" ansi?
@@ -587,7 +593,7 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	;;     (tt-scroll-down offset)
 	;;     (decf relative-top offset)))
 	(setf max-message-lines
-	      (- (tt-height) 1 prompt-lines buf-lines #|1|# #|2|#)
+	      (- (fake-height e) 1 prompt-lines buf-lines #|1|# #|2|#)
 
 	      last-displayed-message-line
 	      (max (min (+ message-top (1- max-message-lines)) message-lines) 0)
