@@ -396,6 +396,15 @@ by nos:read-directory."))
    :table-renderer (make-instance
 		    'terminal-table:terminal-table-renderer)))
 
+(defun get-cols ()
+  "A desperate attempt to get the width of the window."
+  (or (terminal-window-columns
+       (or (ls-state-outer-terminal *ls-state*)
+	   *terminal*))
+      (let ((c (nos:env "COLUMNS")))
+	(and c (parse-integer c)))
+      80))
+
 #+unix
 (defun unix-stat (path)
   (handler-case
@@ -703,13 +712,14 @@ command for details. If LABEL-DIR is true, print directory labels."
 			:format-char "/fatchar-io:print-string/"
 			;; :stream (or *terminal* *standard-output*)
 			;; :stream (grout-stream *grout*)
-			:columns (terminal-window-columns
-				  (or (ls-state-outer-terminal *ls-state*)
-				      *terminal*))))))))
-      (let ((*print-pretty* nil))
-	(when files
-	  (print-it (car files))
-	  (loop :for list :in (cdr files) ::do
+			;; :columns (terminal-window-columns
+			;; 	  (or (ls-state-outer-terminal *ls-state*)
+			;; 	      *terminal*))))))))
+			:columns (get-cols)))))))
+    (let ((*print-pretty* nil))
+      (when files
+	(print-it (car files))
+	(loop :for list :in (cdr files) ::do
 	     (when list
 	       (grout-princ #\newline)
 	       (print-it list)))))))
