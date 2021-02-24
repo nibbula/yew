@@ -658,7 +658,11 @@ buffer.
     ;; (dbugf :rl "endings start-column ~s~%" start-column)
     ;; (if-dbugf (:rl)
     ;; 	      (symbol-call :deblarg :debugger-wacktrace 20))
-    (flet ((set-spot (x)
+    (flet ((past-edge ()
+	     "Return true when we're past the right edge. If end-column is NIL,
+              we never get past it."
+	     (and end-column (> (+ col char-width) end-column)))
+	   (set-spot (x)
 	     (declare (ignore x))
 	     (when (and spots (setf spot (assoc i spots)))
 	       ;;(dbugf :rl "set-spot ~a~%" x)
@@ -674,8 +678,7 @@ buffer.
 		 cc (simplify-char c))
 	   (if (char= cc #\newline)
 	       (progn
-		 (when (and (not autowrap-delay)
-			    (> (+ col char-width) end-column))
+		 (when (and (not autowrap-delay) (past-edge))
 		   (push (cons (1- i) last-col) endings)
 		   (setf last-col col)
 		   (setf col 0) ;; @@@ left-margin
@@ -692,7 +695,7 @@ buffer.
 		 )
 	       (progn
 		 (setf char-width (display-length (oelt buffer i)))
-		 (if (> (+ col char-width) end-column)
+		 (if (past-edge)
 		     (progn
 		       (push (cons (1- i) last-col) endings)
 		       (when autowrap-delay
@@ -710,7 +713,7 @@ buffer.
 	   (incf i))
 
       ;; Make sure we get the last one
-      (when (> (+ col char-width) end-column)
+      (when (past-edge)
 	(push (cons (1- i) last-col) endings))
 
       ;; Spot in empty buffer
@@ -718,7 +721,7 @@ buffer.
 	(rplacd spot (cons line col)))
 
       ;; Spot after end
-      (when (> (+ col char-width) end-column)
+      (when (past-edge)
 	(incf line)
 	(setf col 0)) ;; @@@ left-margin
       (set-spot "End")
