@@ -56,6 +56,7 @@
    #:history-entry-time
    #:history-entry-line
    #:history-entry-modified
+   #:history-entry-extra
    #:history-clear
    #:history-nth
    #:history-add
