@@ -1,6 +1,6 @@
-;;
-;; pick-hist.lisp - Pick a history item using pick-list.
-;;
+;;;
+;;; pick-hist.lisp - Pick a history item using pick-list.
+;;;
 
 (defpackage :pick-hist
   (:documentation
@@ -20,20 +20,19 @@
 		)
   (:export
    #:pick-hist
+   #:pick-hist-value
    ))
 (in-package :pick-hist)
 
-(defun pick-hist (editor)
-  "Pick a line from your history, with a popup list picker. This is meant to
-be invoked from inside an editor, most likely RL, which is given as EDITOR,
-and most likely invoked from a key binding."
+(defun %pick-history (editor function)
+  "The real history picker which calls function on the history entry to get"
   (use-first-context (editor)
     (with-context ()
       (with-slots ((buf buf)
 		   (history-context history-context)) editor
 	(let ((cur-y (terminal-get-cursor-position *terminal*))
 	      hist pick height start)
-	  (omapn (_ (push (history-entry-line _) hist))
+	  (omapn (_ (push (funcall function _) hist))
 		 (history-head (get-history history-context)))
 	  (setf start (+ 2 cur-y)
 		height (+ 2 (length hist)))
@@ -52,5 +51,23 @@ and most likely invoked from a key binding."
 	    (buffer-insert editor 0 pick point)
 	    (setf point (length buf)))
 	  (tt-move-to (- start 2) 0))))))
+
+(defun pick-hist (editor)
+  "Pick a line from your history, with a popup list picker. This is meant to
+be invoked from inside an editor, most likely RL, which is given as EDITOR,
+and most likely invoked from a key binding."
+  (%pick-history editor #'history-entry-line))
+
+(defun pick-hist-value (editor)
+  "Pick a previous result from your history, with a popup list picker. This is
+meant to be invoked from inside an editor, most likely RL, which is given as
+EDITOR, and most likely invoked from a key binding."
+  (%pick-history editor
+		 (_
+		  (let ((vals (getf (history-entry-extra _) :values)))
+		    (prin1-to-string
+		     (if (= (length vals) 1)
+			 (car vals)
+			 vals))))))
 
 ;; EOF
