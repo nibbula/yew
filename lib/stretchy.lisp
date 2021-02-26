@@ -42,9 +42,19 @@ it seems much faster on most implementations.
     (satisfies array-has-fill-pointer-p)))
 
 (defun make-stretchy-string (n)
-  "Make a stretchy string of size N. A stretchy string is an adjustable array
-of characters with a fill pointer."
-  (make-array n :element-type 'character :fill-pointer 0 :adjustable t))
+  "Make a stretchy string. A stretchy string is an adjustable array of
+characters with a fill pointer. If N is an integer, make it of size N. If N
+is a string, make it the same length as N, and copy N's characters into it."
+  (etypecase n
+    (integer
+     (make-array n :element-type 'character :fill-pointer 0 :adjustable t))
+    (string
+     (let* ((len (length n))
+	    (result
+	     (make-array len :element-type 'character :fill-pointer len
+			 :adjustable t)))
+       (setf (subseq result 0) (subseq n 0))
+       result))))
 
 (deftype stretchy-vector ()
   "An adjustable vector of objects."
