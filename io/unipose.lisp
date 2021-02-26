@@ -1,6 +1,6 @@
-;;
-;; unipose.lisp - Compose unicode characters
-;;
+;;;
+;;; unipose.lisp - Compose unicode characters
+;;;
 
 (defpackage :unipose
   (:documentation "Compose unicode characters.")
@@ -21,16 +21,17 @@
 ;; - It should handle arbitrary length / levels
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (cond
-    ((<= char-code-limit #xff)
-     (warn "Unipose isn't going to work for 8 bit characters.")
-     (d-add-feature :t-8))
-    ((<= char-code-limit #x10000)
-     (warn "Some unipose sequences won't work with 16 bit characters.")
-     (d-add-feature :t-16))
-    ((< char-code-limit #x110000)
-     (warn "You might be missing some characters.")
-     (d-add-feature :t-shrunk))))
+  (locally #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+    (cond
+      ((<= char-code-limit #xff)
+       (warn "Unipose isn't going to work for 8 bit characters.")
+       (d-add-feature :t-8))
+      ((<= char-code-limit #x10000)
+       (warn "Some unipose sequences won't work with 16 bit characters.")
+       (d-add-feature :t-16))
+      ((< char-code-limit #x110000)
+       (warn "You might be missing some characters.")
+       (d-add-feature :t-shrunk)))))
 
 ;; trouble makers:
 ;; #x1F18E 🆎 #x1F191 🆑 #x1F194 🆔 #x1F21A 🈚 #x1F196 🆖 #x1F197 🆗 #x1F19A 🆚
@@ -127,14 +128,15 @@
     (#\< ((#\= #\≤) (#\< #\«)))
     (#\> ((#\= #\≥) (#\> #\»)))
     (#\: ((#\- #\÷)))
-    (#\. ((#\o #\•) (#\. #\·) (#\- #\⋅) (#\^ #\˚)))
+    (#\. ((#\o #\•) #| (#\. #\·) |# (#\. #\…) (#\- #\⋅) (#\^ #\˚)))
     (#\$ ((#\$ #\¤)))
     (#\% ((#\% #\‰))))
   "Unicode compose character lists.")
 
 ;; Since this is probably just for me, does it really matter? 
-(defun save-unipose-for-emacs ()
-  (with-open-file (stream (glob:expand-tilde "~/src/el/unipose-data.el")
+(defun save-unipose-for-emacs (&optional (file "~/src/el/unipose-data.el"))
+  "Save the unipose date as loadable ELisp in FILE."
+  (with-open-file (stream (glob:expand-tilde file)
 			  :direction :output
 			  :if-exists :supersede)
     (format stream ";;;~%;;; unipose-data.el~%;;;~%~@
