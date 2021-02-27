@@ -588,7 +588,7 @@ arguments are the same."
     :help        "Minimum depth of files to consider.")
    (regexp	 boolean  :short-arg #\r :default t
     :help        "True if matching is done with regular expressions.")
-   (case-mode	 choice  :short-arg #\C :default "smart"
+   (case-mode	 choice  :short-arg #\C :default :smart
 		 :choices '(:smart :sensitive :insensitive)
     :help        "The mode for matching letter characters. One of 'smart',
                   'sensitive', or 'insensitive'. (default 'smart')
