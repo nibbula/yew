@@ -120,7 +120,9 @@ and positioned at the beginning of the file."
 			       &key update (history-context *history-context*))
   "Simple text file saving."
   (declare (ignore update)) ;; @@@ is it really even necessary?
-  (let ((hist (get-history history-context)) pos)
+  (let ((hist (get-history history-context))
+	(*print-readably* t)
+	pos)
     (with-slots (file-name) store
       (ensure-directories-exist file-name)
       (loop
@@ -155,8 +157,17 @@ and positioned at the beginning of the file."
 	       ;; But, don't bother writing NIL for the empty current.
 	       (when (not (and (eq x (dl-content (history-head hist)))
 			       (not (history-entry-line x))))
-		 (write x :stream stream)
-		 (terpri stream))))
+		 (let ((*print-readably* t))
+		   (handler-case
+		       (write x :stream stream)
+		     (print-not-readable ()
+		       (write (make-history-entry
+			       :time (history-entry-time x)
+			       :line (history-entry-line x)
+			       :modified (history-entry-modified x)
+			       :extra :unreadable)
+			      :stream stream)))
+		   (terpri stream)))))
 	  ;; Move the start to the end.
 	  (setf (history-start hist) (history-head hist)))))))
 
@@ -342,10 +353,18 @@ and positioned at the beginning of the file."
 			       &key update (history-context *history-context*))
   "Simple text file saving."
   (with-slots (file-name connection) store
-    (let ((hist (get-history history-context)))
+    (let ((hist (get-history history-context))
+	  (*print-readably* t)
+	  unreadable-values)
       (omapn #'(lambda (x)
 		 (when (not (and (eq x (dl-content (history-head hist)))
 				 (not (history-entry-line x))))
+		   (handler-case
+		       (progn
+			 (prin1-to-string (history-entry-extra x))
+			 (setf unreadable-values nil))
+		     (print-not-readable ()
+		       (setf unreadable-values t)))
 		   (clsql:insert-records
 		    :into [history]
 		    :av-pairs `(([context]  ,(string-downcase history-context))
@@ -353,7 +372,9 @@ and positioned at the beginning of the file."
 				([line]     ,(history-entry-line x))
 				([modified]
 				 ,(if (history-entry-modified x) 1 0))
-				([extra]    ,(history-entry-extra x)))
+				([extra]    ,(if unreadable-values
+						 :unreadable
+						 (history-entry-extra x))))
 		    :database connection)))
 	     (if update
 		 (history-start hist)
