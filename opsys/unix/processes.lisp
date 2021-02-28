@@ -1,6 +1,6 @@
-;;
-;; unix/processes.lisp - Unix interface to processes
-;;
+;;;
+;;; unix/processes.lisp - Unix interface to processes
+;;;
 
 (in-package :opsys-unix)
 
@@ -370,7 +370,8 @@ OUT-STREAM. See pipe-program. Return an output stream and a process ID."
         out-stream-write-side
 	out-stream-read-side
 	;; (our-pg (getpgid 0))
-	child-pid)
+	child-pid
+	(tty-p (file-handle-terminal-p 2)))
     (when (and in-stream (streamp in-stream))
       (when (not (typep in-stream 'os-output-stream))
 	(cerror "Provide a stream."	; @@@ probably no-one ever
@@ -435,7 +436,7 @@ OUT-STREAM. See pipe-program. Return an output stream and a process ID."
 					  (+SIGTTIN+ . :ignore)
 					  (+SIGTTOU+ . :ignore))
 		     ;; (when (= -1 (tcsetpgrp 0 (getpid)))
-		     (when (= -1 (tcsetpgrp 2 (getpid)))
+		     (when (and tty-p (= -1 (tcsetpgrp 2 (getpid))))
 		       (punt (s+ "child tcsetpgrp failed "
 				 *errno* " " (error-message *errno*)
 				 #\newline))))
@@ -743,7 +744,8 @@ the current process."
     (setf (signal-action +SIGTSTP+) 'tstp-handler)
     (setf pp (sb-ext:run-program program '() :input t :output t))
     ;; Take the terminal back.
-    (syscall (tcsetpgrp 0 (getpid)))
+    (when (file-handle-terminal-p 0)
+      (syscall (tcsetpgrp 0 (getpid))))
     ;; Suspend us again if we get a ^Z.
     (setf (signal-action +SIGTSTP+) :default)
     ;;(setf job (add-job program "" (process-pid pp)))
@@ -752,14 +754,17 @@ the current process."
 
 #+sbcl
 (defun re-turkey (pp)
-  (let ((pid (sb-ext:process-pid pp)))
-    (syscall (tcsetpgrp 0 pid))
+  (let ((pid (sb-ext:process-pid pp))
+	(tty-p (file-handle-terminal-p 0)))
+    (when tty-p
+      (syscall (tcsetpgrp 0 pid)))
     ;; Ignore terminal suspend signals.
     (setf (signal-action +SIGTSTP+) 'tstp-handler)
     (syscall (kill pid +SIGCONT+))
     (sb-ext:process-wait pp t)
     ;; Take the terminal back.
-    (syscall (tcsetpgrp 0 (getpid)))
+    (when tty-p
+      (syscall (tcsetpgrp 0 (getpid))))
     ;; Suspend us again if we get a ^Z.
     (setf (signal-action +SIGTSTP+) :default)))
 
@@ -811,15 +816,16 @@ the current process."
 	      #| (finish-output) |#
 	      ))
       ;; Take the terminal back.
-      (syscall (tcsetpgrp 0 (getpgid (getpid))))
+      (when (file-handle-terminal-p 0)
+	(syscall (tcsetpgrp 0 (getpgid (getpid)))))
       ;; Suspend us again if we get a ^Z.
       (setf (signal-action +SIGTSTP+) :default)
       (dbugf :sheep "Took the terminal back in wait-and-chill?~%"))
     (wait-return-status status)))
 
-(defvar *setpgid-err-len*)
+(defvar *setpgid-err-len* nil)
 (defvar *setpgid-err* "child setpgid fail~%")
-(defvar *tcsetpgrp-err-len*)
+(defvar *tcsetpgrp-err-len* nil)
 (defvar *tcsetpgrp-err* "child tcsetpgrp fail~%")
 
 (defun %make-error-messages ()
@@ -830,8 +836,10 @@ the current process."
 	  *tcsetpgrp-err* (foreign-string-alloc *tcsetpgrp-err*))))
 
 (defun forky (cmd args &key (environment nil env-p) background)
+  (%make-error-messages)
   (let* ((cmd-and-args (cons cmd args))
 	 (argc (length cmd-and-args))
+	 (tty-p (file-handle-terminal-p 2))
 	 child-pid err-msg-str err-msg-len)
     (setf err-msg-str (s+ "Exec of " cmd " failed." #\newline)
 	  err-msg-len (length err-msg-str))
@@ -856,7 +864,7 @@ the current process."
 	    ;;(when (= -1 (setpgid (getpid) (getpid)))
 	    (when (= -1 (setpgid 0 0))
 	      (posix-write 1 *setpgid-err* *setpgid-err-len*))
-	    (when (not background)
+	    (when (and (not background) tty-p)
 	      ;; @@@ This is not exactly right. It should be the whatever
 	      ;; file descriptor is the controling terminal, not necessarily
 	      ;; stdin a.k.a. 0, (although it usually is.)
@@ -889,7 +897,8 @@ the current process."
 (defun resume-background-pid (pid)
   "Put the process PID back in the foreground."
   ;; Make the terminal signals go to the child's group.
-  (syscall (tcsetpgrp 0 pid))
+  (when (file-handle-terminal-p 0)
+    (syscall (tcsetpgrp 0 pid)))
   ;; Ignore terminal suspend signals.
   (setf (signal-action +SIGTSTP+) 'tstp-handler)
   (syscall (kill pid +SIGCONT+))
