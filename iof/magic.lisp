@@ -145,7 +145,7 @@
     :initarg :name :accessor content-file-name :type string
     :documentation "The name of the file.")
    (stream
-    :accessor content-file-stream :initform nil :type stream
+    :accessor content-file-stream :initform nil #|:type stream|#
     :documentation "The stream to analyze."))
   (:documentation "Content which is in a seekable file."))
 
