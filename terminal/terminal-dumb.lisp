@@ -340,8 +340,8 @@ require terminal driver support."))
 
 ;; This is a weird trick to presumably make it so we don't have to do our own
 ;; buffering and we can also be relatively quick?
-(defvar *endless-spaces* '#1=(#\space . #1#)
-  "The vast emptyness of space.")
+;; (defvar *endless-spaces* '#1=(#\space . #1#)
+;;   "The vast emptiness of space.")
 
 (defmethod stream-line-column ((stream terminal-dumb))
   (terminal-fake-column stream))
@@ -350,9 +350,11 @@ require terminal driver support."))
   (zerop (stream-line-column stream)))
 
 (defmethod stream-advance-to-column ((stream terminal-dumb) column)
-  (write-sequence *endless-spaces*
-		  (terminal-output-stream stream) :start 0
-		  :end (- column (stream-line-column stream)))
+  ;; (write-sequence *endless-spaces*
+  ;; 		  (terminal-output-stream stream) :start 0
+  ;; 		  :end (- column (stream-line-column stream)))
+  (dotimes (i (- column (stream-line-column stream)))
+    (write-char #\space (terminal-output-stream stream)))
   t)
 
 ;;(defmethod stream-fresh-line ((stream terminal-dumb-stream))
