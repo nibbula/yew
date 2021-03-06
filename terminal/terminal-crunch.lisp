@@ -165,8 +165,8 @@ strings, only the attributes of the first character are preserved."
   (let* ((c (grid-char-c gc))
 	 (cc (etypecase c
 	       (character c)
-	       (string (if (>= (length c) 1) (char c 0) nil))
-	       (null (code-char 0))))) ;; @@@ o'really?
+	       (string (if (>= (length c) 1) (char c 0) +default-char+))
+	       (null +default-char+)))) ;; @@@ o'really?
     ;; (assert (characterp cc))
     (setf (fatchar-c fc)     cc
 	  (fatchar-fg fc)    (grid-char-fg gc)
