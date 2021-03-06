@@ -1260,6 +1260,7 @@ SPIN-STRING can be given and defaults to the value of *DEFAULT-SPIN-STRING*."
 
 (defun quickloadable-systems (&key as-strings)
   "List of packages the quickload can maybe load, if it can download them."
+  #-quicklisp (declare (ignore as-strings))
   (or *quickloadable-systems*
       #+quicklisp
       (setf *quickloadable-systems*
