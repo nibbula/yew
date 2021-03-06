@@ -1,6 +1,6 @@
-;;
-;; fatchar.lisp - Characters with attributes.
-;;
+;;;
+;;; fatchar.lisp - Characters with attributes.
+;;;
 
 (defpackage :fatchar
   (:documentation "Characters with attributes.
@@ -11,6 +11,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 ")
   (:use :cl :dlib :stretchy :char-util :collections :ochar :ostring :dcolor)
   (:export
+   #:+default-char+
    #:fatchar
    #:fatchar-p
    #:make-fatchar
@@ -53,9 +54,12 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 ;;(declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
 ;;(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
+(defconstant +default-char+ (code-char 0)
+  "Default character value for fatchars.")
+
 (defstruct (fatchar (:copier nil))
   "A character with attributes."
-  (c (code-char 0) :type character)
+  (c +default-char+ :type character)
   (fg nil)
   (bg nil)
   (line 0 :type fixnum)
@@ -63,7 +67,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 
 (defun fatchar-init (c)
   "Initialize a fatchar with the default vaules and return it."
-  (setf (fatchar-c     c)	(code-char 0)
+  (setf (fatchar-c     c)	+default-char+
 	(fatchar-fg    c)	:white
 	(fatchar-bg    c)	:black
 	(fatchar-line  c)	0
@@ -204,9 +208,9 @@ elements of the string."
   (apply #'aref (fat-string-string s) subscripts))
 
 (defmethod (setf oaref) (value (s fat-string) &rest subscripts) ;; @@@ ??? test
-  (when (> (length subscripts) 1)
-    (error "Wrong number of subscripts, ~s, for a fat-string."
-	   (length subscripts)))
+  ;; @@@ Perhaps we could make a compiler macro so we don't have to do this?
+  (when (/= (length subscripts) 1)
+    (error "A fat-string can only have one subscript."))
   (setf (aref (fat-string-string s) (car subscripts)) value))
 
 (defmethod ochar ((s fat-string) index)
@@ -1384,8 +1388,8 @@ fatchar string. The grammar is something like: "
 (defun get-nearest-xterm-color-index (color)
   "Return the index of the closest match for COLOR in the
 *xterm-256-color-table*."
-  (declare (optimize (speed 3) (safety 0) (debug 0) (space 2)
-		     (compilation-speed 0)))
+  ;; (declare (optimize (speed 3) (safety 0) (debug 0) (space 2)
+  ;; 		     (compilation-speed 0)))
   ;; (when (not *xterm-256-color-table*)
   ;;   (make-xterm-color-table))
   (let* ((c (convert-color-to color :rgb8))
