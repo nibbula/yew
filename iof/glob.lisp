@@ -590,7 +590,8 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 	      ;; Or just a normal match.
 	      (fnmatch path (dir-entry-name entry) :escape escape))))
       (declare (ftype (function (dir-entry string) boolean) path-match)
-	       (ftype (function (string) string) decorated-name))
+	       (ftype (function (string) (values string &optional))
+		      decorated-name))
       (when recursive
 	(setf recursive-match (search "**" path-element)))
       (loop
