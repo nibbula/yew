@@ -1,14 +1,14 @@
-;;
-;; stretchy.lisp - Adjustable arrays and strings
-;;
+;;;
+;;; stretchy.lisp - Adjustable arrays and strings
+;;;
 
 (defpackage :stretchy
   (:documentation
-   "Functions for manipulating stretchy arrays and strings.
+   "Functions for manipulating adjustable arrays and strings.
 
 Common Lisp provides adjustable arrays, and therefore also adjustable strings,
-but the mechanics of the programming interface is somewhat clumsy. This is an
-attempt to make it better.
+but the programming interface is somewhat clumsy. This is an attempt to make
+it better.
 
 Perhaps this is misguided and we should just use WITH-OUTPUT-TO-STRING since
 it seems much faster on most implementations.
@@ -28,8 +28,8 @@ it seems much faster on most implementations.
 
 ;; (declaim (optimize (speed 0) (safety 3) (debug 3)
 ;; 		   (space 0) (compilation-speed 0)))
-(declaim (optimize (speed 3) (safety 0) (debug 3)
-		   (space 0) (compilation-speed 0)))
+;; (declaim (optimize (speed 3) (safety 0) (debug 3)
+;; 		   (space 0) (compilation-speed 0)))
 
 (defvar *default-stretch-factor* 2/3
   "Default expansion factor for stretchy things.")
@@ -89,17 +89,18 @@ of with a fill pointer."
 ;; 	       array (+ (array-total-size array) size
 ;; 			(truncate (* (array-total-size array) factor))))))
 
-(defmacro resize (array size factor)
-  "Expand the ARRAY at least by SIZE, expanding by FACTOR."
-  #-ecl (declare (type (array * (*)) array)
-		 (type fixnum size)
-		 (type number factor))
-  (let ((a (gensym "resize-a"))
-	(new-size (gensym "resize-new-size")))
-    `(let* ((,a ,array)
-	    (,new-size (+ (array-total-size ,a) ,size
-			  (truncate (* (array-total-size ,a) ,factor)))))
-       (setf ,array (adjust-array ,a ,new-size)))))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro resize (array size factor)
+    "Expand the ARRAY at least by SIZE, expanding by FACTOR."
+    ;; #-ecl (declare (type (array * (*)) array)
+    ;; 		   (type fixnum size)
+    ;; 		   (type number factor))
+    (let ((a (gensym "resize-a"))
+	  (new-size (gensym "resize-new-size")))
+      `(let* ((,a ,array)
+	      (,new-size (+ (array-total-size ,a) ,size
+			    (truncate (* (array-total-size ,a) ,factor)))))
+	 (setf ,array (adjust-array ,a ,new-size))))))
 
 (defun stretchy-append-string-or-vector (to from factor)
   "Append a vector to a stretchy vector. FACTOR is the amount of the total
@@ -220,9 +221,9 @@ amount of the total size to expand by when expansion is needed."
     ((and (typep to 'stretchy-string)
 	  (typep from 'symbol))
      (stretchy-append-string-or-vector to (string from) factor))
-    ((and (not (typep to 'stretchy-string))
-	  (typep from 'vector))
-     (stretchy-append-string-or-vector to from factor))
+    ;; ((and (not (typep to 'stretchy-string))
+    ;; 	  (typep from 'vector))
+    ;;  (stretchy-append-string-or-vector to from factor))
     ((not (typep to 'stretchy-string))
      (stretchy-append-object to from factor))
     (t
