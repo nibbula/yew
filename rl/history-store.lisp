@@ -171,6 +171,19 @@ and positioned at the beginning of the file."
 	  ;; Move the start to the end.
 	  (setf (history-start hist) (history-head hist)))))))
 
+;; This is really just so we can get more informative errors.
+(defun read-history-record (stream count)
+  "Read a record and return it."
+  (let ((result (handler-case
+		    (safe-read stream nil)
+		  (error (c)
+		    (signal "Error reading history file: ~a at record ~s:~%~s"
+			    (pathname stream) count c)))))
+    (when (and result (not (history-entry-p result)))
+      (error "Malformed history entry in history file: ~a, record ~a: ~s"
+	     (pathname stream) count result))
+    result))
+
 (defmethod history-store-load ((store text-history-store)
 			       (style (eql :fancy))
 			       &key update
@@ -185,16 +198,15 @@ and positioned at the beginning of the file."
 	  (when (not (eq :ok (check-version stream :no-error t)))
 	    (error "History format is fancy, but the history file isn't in ~
                     fancy format."))
-	  (let ((*read-eval* nil))
+	  (let ((*read-eval* nil) (count 0))
 	    (setf (history-head hist)
 		  (make-dl-list
 		   (nreverse ;; <<-- N.B.
 		    (loop :with s
-		       :while (setq s (safe-read stream nil))
+		       ;; :while (setq s (safe-read stream nil))
+		       :while (setq s (read-history-record stream count))
 		       :do
-		       (when (not (history-entry-p s))
-			 (error "Malformed history entry in history file: ~a."
-				s))
+			 (incf count)
 		       :collect s)))
 		  (history-tail hist)  (dl-last (history-head hist))
 		  (history-start hist) (history-head hist)
