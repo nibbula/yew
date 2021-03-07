@@ -127,32 +127,68 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Character coding / localization
 
-(defconstant +LC-ALL+      0 "Entire locale generally.")
-(defconstant +LC-COLLATE+  1 "String collation routines.")
-(defconstant +LC-CTYPE+    2 "Character types. Upper and lower case, ~
-			      alphabetic or non-alphabetic characters, etc.")
-(defconstant +LC-MONETARY+ 3 "For formatting monetary values.")
-(defconstant +LC-NUMERIC+  4 "For formatting numbers.  This controls the ~
-			      formatting of decimal points in input and ~
-			      output of floating point numbers.")
-(defconstant +LC-TIME+     5 "For formatting dates and times.")
-(defconstant +LC-MESSAGES+ 6 "For message catalogs, see catopen(3) function.")
-(defconstant +LC-LAST+     7 "Highest locale category + 1.")
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *lc-categories* nil
+    "List of defined category names.")
+
+  #-linux
+  (progn
+    (define-to-list *lc-categories*
+      #(#(+LC-ALL+      0 "Entire locale generally.")
+	#(+LC-COLLATE+  1 "String collation routines.")
+	#(+LC-CTYPE+    2 "Character types. Upper and lower case,
+                         alphabetic or non-alphabetic characters, etc.")
+	#(+LC-MONETARY+ 3 "For formatting monetary values.")
+	#(+LC-NUMERIC+  4 "For formatting numbers.  This controls the
+                         formatting of decimal points in input and
+                         output of floating point numbers.")
+	#(+LC-TIME+     5 "For formatting dates and times.")
+	#(+LC-MESSAGES+ 6 "For message catalogs, see catopen(3) function.")
+	#(+LC-LAST+     7 "Highest locale category + 1."))))
+
+  #+linux ;; and also probably GNU libc
+  (progn
+    (define-to-list *lc-categories*
+      #(#(+LC-CTYPE+    0 "Character types. Upper and lower case,
+                         alphabetic or non-alphabetic characters, etc.")
+	#(+LC-NUMERIC+  1 "For formatting numbers.  This controls the
+                         formatting of decimal points in input and
+                         output of floating point numbers.")
+	#(+LC-TIME+     2 "For formatting dates and times.")
+	#(+LC-COLLATE+  3 "String collation routines.")
+	#(+LC-MONETARY+ 4 "For formatting monetary values.")
+	#(+LC-MESSAGES+ 5 "For message catalogs, see catopen(3) function.")
+	#(+LC-ALL+      6 "Entire locale generally.")
+	;; GNU extensions:
+	#(+LC-PAPER+          7 "Settings related to standard paper sizes.")
+	#(+LC-NAME+           8 "Formatting of salutations for persons.")
+	#(+LC-ADDRESS+        9 "Formatting of addresses andd geography.")
+	#(+LC-TELEPHONE+      10 "Settings related to paper sizes.")
+	#(+LC-MEASUREMENT+    11 "Settings about units and measurement.")
+	#(+LC-IDENTIFICATION+ 12 "Locale metadata?")
+	#(+LC-LAST+           13 "Highest locale category + 1."))))
+
+  ;; Get rid of the fake LAST entry.
+  (setf *lc-categories* (delete '+LC-LAST+ *lc-categories*)))
 
 (defcfun ("setlocale" real-setlocale) :string (category :int) (locale :string))
 
-(define-constant +lc-category-alist+ `((:all      . ,+LC-ALL+)
-				       (:collate  . ,+LC-COLLATE+)
-				       (:ctype    . ,+LC-CTYPE+)
-				       (:monetary . ,+LC-MONETARY+)
-				       (:numeric  . ,+LC-NUMERIC+)
-				       (:time     . ,+LC-TIME+)
-				       (:messages . ,+LC-MESSAGES+)))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (define-constant +lc-category-alist+
+      (loop :for c :in *lc-categories*
+	 :collect (cons (keywordify
+			 (remove-suffix
+			  (remove-prefix (string c) "+LC-") "+"))
+			(symbol-value c)))))
+
+(defun locale-categories ()
+  "Return a list of locale category keywords, These can be used with setlocale."
+  (mapcar #'car +lc-category-alist+))
 
 (defun lc-category (c)
-  "Return an valid integer locale category given a keyword. If the argument ~
-   is already a valid integer locale category, it is returned, otherwise an ~
-   error is signaled."
+  "Return an valid integer locale category given a keyword. If the argument is
+already a valid integer locale category, it is returned, otherwise an error is
+signaled."
   (ctypecase c
    (number
     (if (and (>= c 0) (< c +LC-LAST+))
@@ -170,13 +206,9 @@
 	(error "setlocale of locale ~s for category ~a failed."
 	       locale category))))
 
-(define-constant +lc-env-type+ `((:all      . "LANG")
-				 (:collate  . "LC_COLLATE")
-				 (:ctype    . "LC_CTYPE")
-				 (:monetary . "LC_MONETARY")
-				 (:numeric  . "LC_NUMERIC")
-				 (:time     . "LC_TIME")
-				 (:messages . "LC_MESSAGES")))
+(define-constant +lc-env-type+
+    (loop :for (k . nil) :in +lc-category-alist+
+       :collect (cons k (s+ "LC_" (string-upcase k)))))
 
 (defun setup-locale-from-environment ()
   "Do appropriate setlocale calls based on the current settings of LC_*

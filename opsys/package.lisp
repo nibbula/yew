@@ -191,6 +191,7 @@
 
    ;; character coding / localization (or similar)
    #:char-width
+   #:locale-categories
    #:setlocale
    #:setup-locale-from-environment
    #:language
