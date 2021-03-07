@@ -328,7 +328,7 @@ strings, only the attributes of the first character are preserved."
 (defun nil-char ()
   (copy-grid-char *nil-char*))
 
-(defparameter *nul-char* (make-fatchar :c #.(code-char 0)))
+(defparameter *nul-char* (make-fatchar :c +default-char+))
 (defun nul-char ()
   (copy-fatchar *nul-char*))
 
