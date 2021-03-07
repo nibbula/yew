@@ -27,6 +27,7 @@ be used at a REPL, but not as likely to be called by other programs.")
    #:describe-system
    #:describe-class
    #:describe-float
+   #:describe-locale
 
    #:safe-set-bracketed-paste
    #:bracketed-paste-on
@@ -585,6 +586,12 @@ symbols, :all to show internal symbols too."
       (print-values* (significand exponent sign
 		      i-significand i-exponent i-sign
 		      radix digits precision))))))
+
+(defun describe-locale ()
+  "Describe the operating system locale."
+  (print-properties
+   (mapcar (_ (cons _ (nos:setlocale _)))
+	   (remove :all (nos:locale-categories)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Bracketed paste
