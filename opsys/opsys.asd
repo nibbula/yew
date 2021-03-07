@@ -13,7 +13,7 @@
     :defsystem-depends-on (:opsys-config)
     :depends-on ((:feature (:not :mezzano) :cffi)
 		 :opsys-config :unicode
-		 (:feature (:and (:or :windows :win32) (:not :unix) (:not ccl))
+		 (:feature (:and (:or :windows :win32) (:not :unix) (:not :ccl))
 			   :cffi-libffi)
 		 :trivial-gray-streams
 		 (:feature :dlib :dlib)
