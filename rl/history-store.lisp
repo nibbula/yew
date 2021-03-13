@@ -110,6 +110,10 @@ and positioned at the beginning of the file."
 	  result))))
 
 (defun should-save-p (hist file-pos)
+  "Return true if we should save the history.
+   We must have at least one history entry or we're starting with a
+   blank file, and we have at least one line of history to save.
+   In other words, don't save an empty history to a blank file."
   (and (or (dl-length-at-least-p (history-start hist) 1)
 	   (zerop file-pos))
        (or (dl-prev (history-start hist))
@@ -122,6 +126,7 @@ and positioned at the beginning of the file."
   (declare (ignore update)) ;; @@@ is it really even necessary?
   (let ((hist (get-history history-context))
 	(*print-readably* t)
+	(str (make-string-output-stream))
 	pos)
     (with-slots (file-name) store
       (ensure-directories-exist file-name)
@@ -138,17 +143,13 @@ and positioned at the beginning of the file."
 			      :direction :output
 			      :if-does-not-exist :create
 			      :if-exists :append)
+	;; If we're starting a fresh file, write the version header.
 	(when (zerop (setf pos (file-position stream)))
-	  ;; Write version
 	  (format stream "~a ~a~%" *text-history-magic* *text-history-version*))
-	;; We have to have at least one history entry or we're starting with a
-	;; blank file, and we have added at least one line
-	;; (when (and (or (dl-length-at-least-p (history-start hist) 1)
-	;; 	       (zerop pos))
-	;; 	   (or (dl-prev (history-start hist))
-	;; 	       (dl-length-at-least-p (history-head hist) 1)))
 	(when (should-save-p hist pos)
 	  (dl-list-do-backward
+	   ;; If we're starting a new file start from the beginning, otherwise
+	   ;; use the start of the new history nodes.
 	   (if (zerop pos)
 	       (history-tail hist)
 	       (dl-prev (history-start hist)))
@@ -157,10 +158,16 @@ and positioned at the beginning of the file."
 	       ;; But, don't bother writing NIL for the empty current.
 	       (when (not (and (eq x (dl-content (history-head hist)))
 			       (not (history-entry-line x))))
-		 (let ((*print-readably* t))
+		 (let ((*print-readably* t)
+		       (*print-pretty* nil))
 		   (handler-case
-		       (write x :stream stream)
+		       (progn
+			 (write x :stream str)
+			 ;; @@@ will this help?
+			 (write-string (get-output-stream-string str) stream)
+			 )
 		     (print-not-readable ()
+		       (get-output-stream-string str)
 		       (write (make-history-entry
 			       :time (history-entry-time x)
 			       :line (history-entry-line x)
@@ -176,9 +183,19 @@ and positioned at the beginning of the file."
   "Read a record and return it."
   (let ((result (handler-case
 		    (safe-read stream nil)
+		  ;; (end-of-file ()
+		  ;;   ;; Why does it still throw an error when we say don't?
+		  ;;   nil)
+		  ;; Answer: It doesn't. It was really getting an EOF because
+		  ;; the file is fucked up with an unbalenced paren.
 		  (error (c)
-		    (signal "Error reading history file: ~a at record ~s:~%~s"
-			    (pathname stream) count c)))))
+		    (signal 'simple-error
+			    :format-control
+			    "Error reading history file: ~a at record ~s ~
+                             position ~s:~%~s"
+			    :format-arguments
+			    (list (pathname stream) count
+				  (file-position stream) c))))))
     (when (and result (not (history-entry-p result)))
       (error "Malformed history entry in history file: ~a, record ~a: ~s"
 	     (pathname stream) count result))
