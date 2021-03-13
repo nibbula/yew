@@ -195,7 +195,7 @@ to be given to CHAR-SETTER."
     (%get-utf8b-char our-byte-getter our-char-setter)))
 
 (defun %length-in-utf8-bytes (code)
-  (declare (optimize speed (safety 0))
+  (declare #| (optimize speed (safety 0)) |#
            (type (integer 0 #.char-code-limit) code))
   (cond ((< code #x80) 1)
         ((< code #x800) 2)
@@ -271,7 +271,7 @@ BYTE-SETTER, which takes an (unsigned-byte 8)."
     `(progn
        (defun ,encode-func (string)
 	 "Return a vector of (unsigned-byte 8) representing the STRING."
-	 (declare (optimize speed (safety 0))
+	 (declare #| (optimize speed (safety 0)) |#
 		  (type simple-string string))
 	 (let* ((result-length
 		 (loop :with sum fixnum = 0
@@ -296,7 +296,7 @@ BYTE-SETTER, which takes an (unsigned-byte 8)."
        (defun ,decode-func (bytes)
 	 "Convert the simple-array of (unsigned-byte 8) in BYTES to the string
 of characters they represent."
-	 (declare (optimize speed (safety 0))
+	 (declare #| (optimize speed (safety 0)) |#
 		  ;; (type (simple-array (unsigned-byte 8) *) bytes)
 		  )
 	 (let ((result-length 0) result (i 0) (byte-num 0)
