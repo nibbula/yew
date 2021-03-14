@@ -77,7 +77,7 @@ the path."
    ;; Life is short. Make backups. Also, see section 15,16,17 of LICENSE.
    (recursive boolean :short-arg #\r
     :help "True to delete directories recursively.")
-   (no-preserve-root boolean :short-arg nil
+   (no-preserve-root boolean :short-arg nil :long-arg "no-preserve-root"
     :help "True to not treat '/' with special care.")
    (dry-run boolean :short-arg #\n
     :help
