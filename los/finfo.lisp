@@ -90,18 +90,7 @@
 	(s+ " " (car where) " " (cdr where))
 	"")))
 
-;; @@@ i18n l10n
-;; (define-constant +day-names+ #("Mon" "Tue" "Wed" "Thu" "Fri" "Sat" "Sun")
-;;   "3 letter name of day abbreviations."
-;;   #'equal)
-
 (defun format-time (time)
-  ;; (multiple-value-bind (seconds minutes hours date month year day
-  ;; 			daylight-p zone)
-  ;;     (decode-universal-time )
-  ;;   (declare (ignore daylight-p zone))
-  ;;   (format nil "~d-~2,'0d-~2,'0d ~a ~2,'0d:~2,'0d:~2,'0d"
-  ;; 	    year month date (aref +day-names+ day) hours minutes seconds)))
   (let ((ut (typecase time
 	      #+unix
 	      (os-unix:timespec
