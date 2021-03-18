@@ -27,23 +27,11 @@
    #:group-by-alist
    #:group-by-hash
    #:group-by
+   #:frequencies
    #:partition
    #:*default-ellipsis*
    #:shrink-pathname
    #:scan-over-string
-
-   ;; time
-   ;; #-lispworks #:date-string
-   ;; #:format-date
-   ;; #:simple-parse-time
-   ;; #:millennia-to-time #:centuries-to-time #:decades-to-time #:years-to-time
-   ;; #:weeks-to-time #:days-to-time #:hours-to-time #:minutes-to-time
-   ;; #:time-to-millennia #:time-to-centuries #:time-to-decades #:time-to-years
-   ;; #:time-to-weeks #:time-to-days #:time-to-hours #:time-to-minutes
-   ;; #:dtime #:dtime-seconds #:dtime-nanoseconds #:make-dtime #:dtime-p
-   ;; #:get-dtime #:dtime-round #:make-dtime-as #:dtime-to
-   ;; #:dtime= #:dtime/= #:dtime< #:dtime> #:dtime<= #:dtime>= #:dtime+ #:dtime-
-   ;; #:dtime-zerop #:dtime-plusp #:dtime-minusp #:dtime-min #:dtime-max
 
    ;; hooks
    #:add-hook
@@ -316,6 +304,13 @@ group-by-alist functions."
   (ecase result-type
     (hash (group-by-hash function sequence))
     ((list alist) (group-by-alist function sequence))))
+
+(defun frequencies (sequence &key (test #'eql))
+  "Return a hash table with the counts of occurrences the elements of SEQUENCE.
+TEST is the hash table test function to use, which defaults to #'eql."
+  (let ((table (make-hash-table :test test)))
+    (omapn (_ (incf (gethash _ table 0))) sequence)
+    table))
 
 ;; @@@ We could make a generic one that returns a sequence of the same type,
 ;; but it's probably not as quick and do we need it?
