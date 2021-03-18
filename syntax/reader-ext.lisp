@@ -16,7 +16,7 @@ code.
 
 The PACKAGE-ROBUST-READ* functions, read treating unknown symbols or packages
 as uninterned. This useful for reading code that is not loaded, so the packages
-don't exist yet. Or reading s-expressions data from other images which may
+don't exist yet. Or reading s-expression data from other images which may
 include symbols from non-existent packages.
 
 I think the best way to do this is to have the *READ-INTERN* extension to your
@@ -55,7 +55,7 @@ loading this.
    ))
 (in-package :reader-ext)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 ;; (declaim (optimize (speed 3) (safety 0) (debug 2) (space 0) (compilation-speed 0)))
 
 (defun interninator (name package dirt-pile)
@@ -203,6 +203,7 @@ package if it doesn't. If DIRT-PILE is NIL, return a packageless symbol."
   "Read from a string without interning unknown symbols in *package*, instead
 interning them in PACKAGE, or if PACKAGE is NIL, returning them as uninterned
 symbols."
+  #+sbcl (declare (sb-ext:muffle-conditions style-warning))
   (let (#+has-read-intern (*read-intern* #'(lambda (str pkg)
 					     (interninator str pkg package)))
 	#-has-read-intern (*client* *clean-client*)
@@ -219,6 +220,7 @@ symbols."
 cause evaluation, and without interning unknown symbols in *package*, instead
 interning them in PACKAGE, or if PACKAGE is NIL, returning them as uninterned
 symbols."
+  #+sbcl (declare (sb-ext:muffle-conditions style-warning))
   (let (#+has-read-intern (*read-intern* #'(lambda (str pkg)
 					     (interninator str pkg package)))
 	#-has-read-intern (*client* *clean-client*)
@@ -235,6 +237,7 @@ symbols."
 cause evaluation, and without interning unknown symbols in *package*, instead
 interning them in PACKAGE, or if PACKAGE is NIL, returning them as uninterned
 symbols."
+  #+sbcl (declare (sb-ext:muffle-conditions style-warning))
   (let (#+has-read-intern (*read-intern* #'(lambda (str pkg)
 					     (interninator str pkg package)))
 	#-has-read-intern (*client* *clean-client*)
