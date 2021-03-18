@@ -6,7 +6,7 @@
   (:documentation
    "Things to deal with simple counting of time for stupid meat creatures that
 live on Earth very recently only!")
-  (:use :cl :dlib :opsys)
+  (:use :cl :dlib :opsys :calendar)
   (:export
    ;; dtime object
    #:dtime #:dtime-seconds #:dtime-nanoseconds #:make-dtime #:dtime-p
@@ -29,27 +29,19 @@ live on Earth very recently only!")
 ;; It is very very rudimentary and should be someday redesigned for
 ;; universality (see universal_time.txt).
 
-;; @@@ So where would we get this from for other languages?
-;; I suppose we could mine them from strftime.
-(defparameter *day-abbrevs* #("Mon" "Tue" "Wed"
-			      "Thu" "Fri" "Sat" "Sun")) ; @@@ i18n
-
-(defparameter *weekday* #("Monday" "Tuesday" "Wednesday"
-			  "Thursday" "Friday" "Saturday" "Sunday")) ; @@@ i18n
-
-(defparameter *month-abbrevs* #("Jan" "Feb" "Mar" "Apr"
-				"May" "Jun" "Jul" "Aug"
-				"Sep" "Oct" "Nov" "Dec")) ; @@@ i18n
-
-(defparameter *month* #("January" "February" "March" "April"
-			"May" "June" "July" "August"
-			"September" "October" "November" "December")) ; @@@ i18n
-
 (defun tz-minutes (tz)
   (* 60 (nth-value 1 (truncate tz))))
 
 (defun tz-hours (tz)
   (truncate tz))
+
+(defun lisp-weekday-name (day &key abbrev)
+  "Return the weekday name, given the Lisp decoded time DAY."
+  ;; Calendar days start from Sunday = 1
+  (calendar:weekday-name (if (= day 6) 1 (1+ day))
+			 :format (if abbrev :abbreviated t)))
+
+(calendar:weekday-name 7 :format :abbreviated)
 
 (defun date-string (&key (time (get-universal-time)) format
 			 (gmt-p nil gmt-p-set) now)
@@ -76,8 +68,8 @@ defaults to the current time."
     (case format
       ((:rfc822 :rfc :net)
        (format nil "~a, ~2,'0d ~a ~4,'0d ~2,'0d:~2,'0d:~2,'0d ~c~2,'0d~2,'0d"
-	       (aref *day-abbrevs* day)
-	       date (aref *month-abbrevs* (1- month)) year
+	       (lisp-weekday-name day)
+	       date (calendar:month-name month year) year
 	       hours minutes seconds
 	       (if (< zone 0) #\+ #\-) (tz-hours zone) (tz-minutes zone)))
       (:filename
@@ -163,13 +155,13 @@ Note that :day is the day of the week number and :date is the day of the month."
 		  (etypecase v
 		    (keyword
 		     (case v
-		       (:day-abbrev `(aref *day-abbrevs* ,day))
+		       (:day-abbrev `(lisp-weekday-name ,day :abbrev t))
 		       ((:weekday :day-name)
-			`(aref *weekday* ,day))
+			`(lisp-weekday-name,day))
 		       ((:month-name)
-			`(aref *month* ,month))
+			`(calendar:month-name ,month ,year))
 		       ((:month-abbrev :mon-abbrev)
-			`(aref *month-abbrevs* (1- ,month)))
+			`(calendar:month-name ,month ,year :format :abbreviated))
 		       ((:year-abbrev :yr-abbrev)
 			`(format nil "~2,'0d" (mod ,year 100)))
 		       (:std-zone

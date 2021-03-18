@@ -10,7 +10,8 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description
-    "Things to deal with simple counting of time for stupid meat creatures that live on Earth only!"
-    :depends-on (:dlib :opsys)
+    "Things to deal with simple counting of time for stupid meat creatures that
+live on Earth only!"
+    :depends-on (:dlib :opsys :calendar)
     :components
     ((:file "dtime")))
