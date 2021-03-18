@@ -1147,7 +1147,8 @@ Otherwise, return N."
   #+(or ecl clasp) :clos
   #+cormanlisp :cl
   #+mezzano :mezzano.clos
-  #-(or mop sbcl cmu ccl lispworks gcl ecl clasp cormanlisp abcl mezzano excl)
+  #-(or mop sbcl cmu ccl lispworks gcl ecl clasp cormanlisp abcl mezzano excl
+        clasp)
   (error "GIVE ME MOP!!")
   "The package in which the traditional Meta Object Protocol resides.")
 
@@ -1198,11 +1199,15 @@ to the same value as the slots in the original."
 	     (ignore-errors
 	       (system:process-output (system:run-program "/bin/true" nil))))
 	   (system:process-output (system:run-program cmd args)))
+  #+clasp (multiple-value-bind (result pid stream)
+	      (ext:fork-execvp (cons cmd args) t)
+	    (declare (ignore result pid))
+	    stream)
   #+mezzano (declare (ignore cmd args))
   #+mezzano (make-string-input-stream "")
-  #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl mezzano)
+  #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl clasp mezzano)
   (declare (ignore cmd args))
-  #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl mezzano)
+  #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl clasp mezzano)
   (missing-implementation 'system-command-stream))
 
 (defun shell-line (cmd &rest args)
@@ -1301,9 +1306,9 @@ can be provided, which are usually passed to the underlying function."
   #+clisp (= (posix:user-info-uid (posix:user-info :default)) 0)
   #+cmu (= (unix:unix-getuid) 0)
   #+ecl (= (ext:getuid) 0)
-  #+(or lispworks abcl) nil
+  #+(or lispworks abcl clasp) nil
   #+mezzano t				; sort of?
-  #-(or ccl sbcl clisp cmu ecl lispworks abcl mezzano)
+  #-(or ccl sbcl clisp cmu ecl lispworks abcl clasp mezzano)
   (missing-implementation 'overwhelming-permission))
 
 ;; Be forewarned! You will not get any more stupid defconstant warnings!
@@ -2492,7 +2497,7 @@ architecture, computer vendor, operating system, and operating system version.")
 			(let ((v (lisp-implementation-version)))
 			  (substitute
 			   #\- #\.
-			   (subseq v (1- (position #\- v :from-end t))))))
+			   (subseq v (1- (position #\. v))))))
   #+mezzano
   (let* ((v (lisp-implementation-version))
 	 (s (position #\space v)))
@@ -2501,7 +2506,7 @@ architecture, computer vendor, operating system, and operating system version.")
 		     (subseq v 0 s)))
 	(lisp-implementation-version)
 	"unknown"))
-  #-(or clisp sbcl cmu excl openmcl lispworks ecl abcl mezzano) "unknown"
+  #-(or clisp sbcl cmu excl openmcl lispworks ecl abcl clasp mezzano) "unknown"
   "A version suitable for putting in a logical pathname.")
 
 (defparameter *platform-nickname* (format nil "~(~a~)~a-~a-~a"
