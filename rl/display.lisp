@@ -655,12 +655,14 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	(if (or (and (regions-p e) region-active) (> (length contexts) 1))
 	    (progn
 	      (let ((s (make-fat-string :string (highlightify e buf))))
-		(tt-write-string s)
+		;; (tt-write-string s)
+		(fatchar-io:write-fat-string s :stream *terminal*)
 		;; (write-multiline-string e s endings)
 		;; (dbugf :rl "highlighted = ~a~%" s)
 		))
 	    (progn
-	      (tt-write-string buf-str)
+	      ;; (tt-write-string buf-str)
+	      (fatchar-io:write-fat-string buf-str :stream *terminal*)
 	      (when suggest-p
 		(tt-write-string
 		 (styled-string auto-suggest-style suggestion))

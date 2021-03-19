@@ -1,6 +1,6 @@
-;;
-;; fatchar-io.lisp - Outputting fat characters and fat strings as streams.
-;;
+;;;
+;;; fatchar-io.lisp - Outputting fat characters and fat strings as streams.
+;;;
 
 (defpackage :fatchar-io
   (:documentation "Outputing fat characters and fat strings as streams.")
@@ -16,6 +16,7 @@
    #:write-fat-string
    #:with-output-to-fat-string
    #:fs+
+   #:*print-control-char-with-caret*
    ))
 (in-package :fatchar-io)
 
@@ -24,6 +25,10 @@
 (defun render-fat-string (fat-string &key (terminal *terminal*) (start 0) end)
   (render-fatchar-string (fat-string-string fat-string)
 			 :terminal terminal :start start :end end))
+
+;; @@@ This is a terrible hack. But how else to do it?
+(defvar *print-control-char-with-caret* t
+  "True to print control characters with a caret, like ^X.")
 
 ;; @@@ why doesn't this work right???
 (defun render-fatchar-string (fatchar-string
@@ -53,9 +58,47 @@
 		 set-attr)
 	 (setf fg (fatchar-fg c) bg (fatchar-bg c))
 	 (tt-color (or fg :default) (or bg :default)))
-       (tt-write-char (fatchar-c c))
+       (if (and *print-control-char-with-caret*
+		(not (char-util::graphic-char-p (fatchar-c c)))
+		(not (or (eql (fatchar-c c) #\tab)
+			 (eql (fatchar-c c) #\newline))))
+	   ;; @@@ We should probably use something from char-util, but then
+	   ;; display-length might have to be more complicated.
+	   (cond
+	     ((char-util::control-char-graphic (fatchar-c c))
+	      (tt-write-char #\^)
+	      (tt-write-char
+	       (code-char (+ (char-code (fatchar-c c)) (char-code #\@)))))
+	     (t
+	      (tt-format "\\~o" (fatchar-c c))))
+	   (tt-write-char (fatchar-c c)))
        (incf i))
     (tt-normal)))
+
+(defun render-plain-string (string
+			    &key (terminal *standard-output*) (start 0) end)
+  (loop
+     :with c
+     :and i = (or start 0)
+     :and our-end = (or end (length string))
+     :while (< i our-end)
+     :do
+       (setf c (char string i))
+       (if (and *print-control-char-with-caret*
+		(not (char-util::graphic-char-p c))
+		(not (or (eql c #\tab)
+			 (eql c #\newline))))
+	   ;; @@@ We should probably use something from char-util, but then
+	   ;; display-length might have to be more complicated.
+	   (cond
+	     ((char-util::control-char-graphic c)
+	      (write-char #\^ terminal)
+	      (write-char
+	       (code-char (+ (char-code c) (char-code #\@))) terminal))
+	     (t
+	      (format terminal "\\~o" c)))
+	   (write-char c terminal))
+       (incf i)))
 
 (defun render-fatchar (c &optional (terminal *terminal*))
   "Render one FATCHAR on TERMINAL."
@@ -129,8 +172,15 @@ colinc, and the space character for padchar.
 	 (str obj)
 	 render
 	 len)
-    (labels ((fatty () (render-fatchar-string str :terminal stream))
-	     (skinny () (princ str stream)))
+    (labels ((fatty ()
+	       (render-fatchar-string str :terminal stream))
+	     (skinny ()
+	       ;; (princ str stream)
+	       ;; (render-plain-string str :terminal stream)
+	       (if (stringp str)
+		   (render-plain-string str :terminal stream)
+		   (write-fat-string str :stream stream))
+	       ))
       (setf render #'skinny)
       (cond
 	((typep stream '(or terminal terminal-stream))
@@ -357,17 +407,27 @@ possible."
 	(render-fat-string string :terminal stream :start start :end end))
        (string
 	;;(dbugf :fatchar "write-fat-string NORMAL-string -> terminal~%")
-	(apply #'terminal-write-string stream
-	       string `(,string
-			,@(and start `(:start ,start))
-			,@(and end `(:end ,end)))))))
+	;; (apply #'terminal-write-string stream
+	;;        string `(,string
+	;; 		,@(and start `(:start ,start))
+	;; 		,@(and end `(:end ,end))))
+	(apply #'render-plain-string string :terminal stream
+	       `(,@(and start `(:start ,start))
+		 ,@(and end `(:end ,end))))
+	)))
     (t
      ;;(dbugf :fatchar "write-fat-string NORMAL -> NORMAL~%")
+     ;; (if end
+     ;; 	 (write-string (fat-string-to-string string) stream
+     ;; 		       :start start :end end)
+     ;; 	 (write-string (fat-string-to-string string) stream
+     ;; 		       :start start))
      (if end
-	 (write-string (fat-string-to-string string) stream
-		       :start start :end end)
-	 (write-string (fat-string-to-string string) stream
-		       :start start)))))
+	 (render-plain-string (fat-string-to-string string) :terminal stream
+			      :start start :end end)
+	 (render-plain-string (fat-string-to-string string) :terminal stream
+			      :start start))
+     )))
 
 (defmethod stream-write-string ((stream fat-string-output-stream) string
 				&optional start end)
