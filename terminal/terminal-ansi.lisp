@@ -1293,7 +1293,13 @@ i.e. the terminal is 'line buffered'."
 		    (make-emulator :type type
 				   :firmware firmware
 				   :name (third e))
-		    (make-emulator :name :unknown)))))))
+		    (let ((device-attributes
+			   (query-parameters "0c" :tty tty :timeout 0.05
+					     :errorp nil)))
+		      (if (eql 6 (car device-attributes))
+			  ;; "suckless" terminal which doesn't do >0c
+			  (make-emulator :name :st :type 6 :firmware #x20)
+			  (make-emulator :name :unknown)))))))))
 
 (defun guess-full-color-p (&optional (tty *terminal*))
   "Try to guess whether TTY supports full 24-bit RGB color."
@@ -1309,6 +1315,7 @@ i.e. the terminal is 'line buffered'."
        ;; on the underlying terminal. How can we figure it out?
        nil)
       (:rxvt     nil)
+      (:st       t)			; Is this true? It has no versions?
       (otherwise nil))))
 
 (defmethod terminal-colors ((tty terminal-ansi-stream))
