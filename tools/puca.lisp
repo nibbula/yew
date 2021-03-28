@@ -96,8 +96,12 @@
 (defclass puca (puca-app)
   ()
   (:documentation
-   "View the status of files and things in local repository. Keys operate on
-the file on the current line or the selected files."))
+   "Puca - A version control front end.
+
+File status view:
+A header describes properties of the repository. Lines consist of a
+status code, and a file/object name. Keys operate on the file on the
+current line or the selected files."))
 
 (defparameter *puca-prototype* nil
   "Prototype PUCA options.")
@@ -753,12 +757,32 @@ If CONFIRM is true, ask the user for confirmation first."
        (delete-file file))
     (get-list *puca*)))
 
+(defun stash-push ()
+  "Push a new git stash."
+  (if (typep (puca-backend *puca*) 'git)
+      (do-literal-command "git stash push ~{\"~a\" ~}" (list (selected-files)))
+      (info-window "Error"
+		   `(,(format nil "I don't know how to stash on ~s"
+			      (type-of (puca-backend *puca*)))))))
+
+(defun stash-pop ()
+  "Pop the top git stash."
+  (if (typep (puca-backend *puca*) 'git)
+      (do-literal-command "git stash pop ~{\"~a\" ~}" (list (selected-files))
+			  :confirm t)
+      (info-window "Error"
+		   `(,(format nil "I don't know how to stash on ~s"
+			      (type-of (puca-backend *puca*)))))))
+
+
 (defparameter *extended-commands*
-  '(("delete" delete-files))
+  '(("delete" delete-files)
+    ("stash-push" stash-push)
+    ("stash-pop" stash-pop))
   "An alist of extended commands, key is the command name, value is a symbol
 for the command-function).")
 
-(defvar *complete-extended-command*
+(defparameter *complete-extended-command*
   (completion:list-completion-function (mapcar #'car *extended-commands*))
   "Completion function for extended commands.")
 
