@@ -380,14 +380,16 @@ Keyword arguments:
 	 (*history-context* history-context)
 	 terminal-state)
 
+
+    #+ccl (setf ccl::*auto-flush-streams* nil)
+    #+ccl (ccl::%remove-periodic-task 'ccl::auto-flush-interactive-streams)
+    (setf terminal-state (terminal-start (line-editor-terminal e)))
+
     ;; We have to do this horrible thing before the terminal potentially queries
     ;; the row.
     (when (not re-edit)
       (pre-read e))
 
-    #+ccl (setf ccl::*auto-flush-streams* nil)
-    #+ccl (ccl::%remove-periodic-task 'ccl::auto-flush-interactive-streams)
-    (setf terminal-state (terminal-start (line-editor-terminal e)))
     (setf (terminal-input-mode (line-editor-terminal e)) :char)
 
     (cond
