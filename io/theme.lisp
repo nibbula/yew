@@ -798,4 +798,7 @@ Something like the default setting of typical GNU tools."))))
 ;; @@@ We should probably make a default monochrome theme.
 ;; And default light backgroud themes.
 
+(when (not *theme*)
+  (setf *theme* (default-theme)))
+
 ;; EOF
