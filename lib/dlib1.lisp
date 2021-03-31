@@ -89,7 +89,9 @@ of it.")
    ;; lists
    #:delete-nth
    #:alist-to-hash-table
+   #:plist-to-hash-table
    #:hash-table-to-alist
+   #:hash-table-to-plist
    #:do-plist
    #:do-alist
    #:do-kv-list
@@ -1016,10 +1018,26 @@ Also, it can't really delete the first (zeroth) element."
 	:do (setf (gethash (car i) table) (cdr i)))
   table)
 
+(defun plist-to-hash-table (plist &optional (table (make-hash-table)))
+  "Load a hash table with data from a property list."
+  (loop :with l = plist
+	:while (not (endp l))
+	:do (if (cdr l)
+		(setf (gethash (pop l) table) (pop l))
+		(cerror "Just keep going."
+			"We weren't given a proper property list.")))
+  table)
+
 (defun hash-table-to-alist (hash-table)
   "Return an association list constructed from HASH-TABLE."
   (loop :for key :being :the :hash-keys :of hash-table
      :collect (list key (gethash key hash-table))))
+
+(defun hash-table-to-plist (hash-table)
+  "Return a property list constructed from HASH-TABLE."
+  (loop :for key :being :the :hash-keys :of hash-table
+	:collect key
+	:collect (gethash key hash-table)))
 
 (defmacro do-plist ((key value list) &body body)
   (with-unique-names (l thunk)
