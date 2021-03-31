@@ -143,8 +143,14 @@
                          formatting of decimal points in input and
                          output of floating point numbers.")
 	#(+LC-TIME+     5 "For formatting dates and times.")
+
+	#-windows
 	#(+LC-MESSAGES+ 6 "For message catalogs, see catopen(3) function.")
-	#(+LC-LAST+     7 "Highest locale category + 1."))))
+	#-windows
+	#(+LC-LAST+     7 "Highest locale category + 1.")
+	#+windows
+	#(+LC-LAST+     6 "Highest locale category + 1.")
+	)))
 
   #+linux ;; and also probably GNU libc
   (progn
