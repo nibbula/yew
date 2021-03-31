@@ -83,9 +83,10 @@ encoding, and return it as a plist."
 (defun ensure-locale ()
   "Make sure there's a current locale."
   (or *locale*
-      (let ((jink (decompose-locale-string (or (nos:setlocale :messages)
-					       (nos:setlocale :time)
-					       (nos:setlocale :numeric)))))
+      (let ((jink (decompose-locale-string (or
+					    #-windows (nos:setlocale :messages)
+					    (nos:setlocale :time)
+					    (nos:setlocale :numeric)))))
 	;; @@@ We should just load the thing to the theme.
 	(asdf:load-system :locale-data)
 	(setf *locale*
