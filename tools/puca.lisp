@@ -159,7 +159,13 @@ current line or the selected files."))
     :documentation "Get the history for all changes.")
    (ignore-file
     :initarg :ignore-file :accessor backend-ignore-file  :type string
-    :documentation "File which contains a list of files to ignore."))
+    :documentation "File which contains a list of files to ignore.")
+   (amend
+    :initarg :amend :accessor backend-amend
+    :documentation "Ammend the last commit message.")
+   (amend-file
+    :initarg :amend-file :accessor backend-amend-file
+    :documentation "Ammend the last commit message for specific files."))
   (:documentation "A generic version control back end."))
 
 ;; Things a backend may want / need to implement.
@@ -345,7 +351,9 @@ return history for the whole repository."))
 			;;"--format=(\"%h\" \"%ae\" %ct \"%s\")")
 			;;"--format=%h%x00%ae%x00%ct%x00%s"
                         "--pretty=format:%h%x00%ae%x00%ct%x00%B%x1a")
-   :ignore-file	      ".gitignore")
+   :ignore-file	      ".gitignore"
+   :amend	      "git --no-pager commit --amend"
+   :amend-file        "git --no-pager commit --amend ~{\"~a\" ~}")
   (:documentation "Backend for git."))
 
 (defmethod check-existence ((type (eql :git)))
@@ -887,6 +895,16 @@ for the command-function).")
   (loop :for f :in (selected-files)
      :do (add-ignore (puca-backend p) f)))
 
+(defun amend-command (p)
+  "Amend last commit message"
+  (declare (ignore p))
+  (do-command #'backend-amend '()))
+
+(defun amend-file-command (p)
+  "Amend last commit message for selected"
+  (declare (ignore p))
+  (do-command #'backend-amend-file (list (selected-files))))
+
 (defun view-file (p)
   "View file"
   (declare (ignore p))
@@ -1106,22 +1124,22 @@ for the command-function).")
   (:documentation "A table for history."))
 
 (defmethod get-history ((backend git) &optional files)
-  (let ((hh (loop :for r
-	       :in (if files
-		       (split-sequence
-			(code-char #x1a) ;; ^Z
-			(apply #'lish:!-=
-			       `(,@(backend-history backend) ,@files))
-			:omit-empty t)
-		       ;; @@@ we probably have to do !-= and iterate through
-		       ;; all the files, so we can get multiple line comments.
-		       (split-sequence
-			(code-char #x1a) ;; ^Z
-			(apply #'lish:!-=
-			       `(,@(backend-history-all backend)))
-			:omit-empty t))
-	       ;;:collect (safe-read-from-string r))))
-	       :collect (split-sequence (code-char 0) r :omit-empty t))))
+  (let* ((hh (loop :for r
+		:in (if files
+			(split-sequence
+			 (code-char #x1a) ;; ^Z
+			 (apply #'lish:!-=
+				`(,@(backend-history backend) ,@files))
+			 :omit-empty t)
+			;; @@@ we probably have to do !-= and iterate through
+			;; all the files, so we can get multiple line comments.
+			(split-sequence
+			 (code-char #x1a) ;; ^Z
+			 (apply #'lish:!-=
+				`(,@(backend-history-all backend)))
+			 :omit-empty t))
+		;;:collect (safe-read-from-string r))))
+		:collect (split-sequence (code-char 0) r :omit-empty t))))
     (coerce
      (mapcar (_ (make-history
 		 :hash (trim (first _))
@@ -1280,6 +1298,7 @@ for the command-function).")
     (#\g		. relist)
     (#\v	        . view-history-file)
     (#\i	        . inspect-history)
+    (#\a		. amend-command)
     (#\d	        . diff-history-command)
     (#\return	        . diff-history-command)
     (#\D	        . diff-history-head-command)
@@ -1356,6 +1375,7 @@ for the command-function).")
     (#\U        	. update-all-command)
     (#\P        	. push-command)
     (#\i        	. add-ignore-command)
+    (#\a		. amend-file-command)
     (#\v        	. view-file)
     (:UP        	. previous)
     (,(code-char 16)	. previous)
