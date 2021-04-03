@@ -12,7 +12,7 @@
    ))
 (in-package :cal)
 
-(defun print-calendar (&key year month type (stream *standard-output*))
+(defun print-calendar (&key year month type #|(stream *standard-output*) |#)
   (declare (ignore type)) ;; @@@
 
   (let* ((now (current-date)))
@@ -62,7 +62,7 @@
 	       (mon-pos (round (- (/ width 2)
 				  (/ (display-length month-name) 2)))))
 	  (grout-format "~v,,,' a~a~%" mon-pos #\space month-name))
-	(grout-print-table table :stream stream))
+	(grout-print-table table #| :stream stream |#))
       table)))
 
 #+lish
