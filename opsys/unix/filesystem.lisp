@@ -1,6 +1,6 @@
-;;
-;; unix/unix.lisp - Unix interface to files and filesystems
-;;
+;;;
+;;; unix/unix.lisp - Unix interface to files and filesystems
+;;;
 
 (in-package :opsys-unix)
 
@@ -258,6 +258,20 @@ C library function getcwd."
   (d_name	:char :count 1024))
 
 #+freebsd
+(defcstruct foreign-dirent
+  ;; I know they really want to call it "fileno", but please let's just call
+  ;; it "ino" for compatibility.
+  ;; (d_fileno	:uint32)
+  (d_ino	ino-t)
+  (d_off	off-t)
+  (d_reclen	:uint16)
+  (d_type	:uint8)
+  (d_pad0       :uint8)
+  (d_namlen	:uint16)
+  (d_pad1       :uint16)
+  (d_name	:char :count #.(+ 255 1)))
+
+#+(and freebsd freebsd-11) ;; or before maybe??
 (defcstruct foreign-dirent
   ;; I know they really want to call it "fileno", but please let's just call
   ;; it "ino" for compatibility.
@@ -1616,7 +1630,32 @@ versions of the keywords used in Lisp open.
   (__unused1     :unsigned-int)
   (__unused2     :unsigned-int))
 
+#+freebsd (config-feature :os-t-has-birthtime)
+
 #+(and freebsd 64-bit-target)
+(defcstruct foreign-stat
+  (st_dev       dev-t)
+  (st_ino       ino-t)
+  (st_nlink     nlink-t)
+  (st_mode      mode-t)
+  (st_padding0  :int16)
+  (st_uid       uid-t)
+  (st_gid       gid-t)
+  (st_padding1  :int32)
+  (st_rdev      dev-t)
+  (st_atimespec (:struct foreign-timespec)) ;; st_atim
+  (st_mtimespec (:struct foreign-timespec)) ;; st_mtim
+  (st_ctimespec (:struct foreign-timespec)) ;; st_ctim
+  (st_birthtimespec (:struct foreign-timespec)) ;; st_birthtim
+  (st_size      off-t)
+  (st_blocks    blkcnt-t)
+  (st_blksize   blksize-t)
+  (st_flags     fflags-t)
+  (st_gen       :uint64)
+  (st_spare     :int64 :count 10))
+
+;; Did this ever work?
+#+(and freebsd 64-bit-target some-old-version??)
 (defcstruct foreign-stat
   (st_dev 	dev-t)
   (st_ino 	ino-t)
@@ -1677,8 +1716,8 @@ versions of the keywords used in Lisp open.
 	    st_size
 	    st_blocks
 	    st_blksize
-	    #+darwin st_flags
-	    #+darwin st_gen
+	    #+(or darwin freebsd) st_flags
+	    #+(or darwin freebsd) st_gen
 	    ) stat-buf (:struct foreign-stat))
 	   (make-file-status
 	    :device st_dev
@@ -1696,8 +1735,8 @@ versions of the keywords used in Lisp open.
 	    :size st_size
 	    :blocks st_blocks
 	    :block-size st_blksize
-	    #+darwin :flags #+darwin st_flags
-	    #+darwin :generation #+darwin st_gen
+	    #+(or darwin freebsd) :flags #+(or darwin freebsd) st_flags
+	    #+(or darwin freebsd) :generation #+(or darwin freebsd) st_gen
 	    ))))
 
 ;; Here's the real stat functions in glibc on linux:

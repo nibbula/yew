@@ -1,6 +1,6 @@
-;;
-;; unix/types.lisp - Data types for the unix interface
-;;
+;;;
+;;; unix/types.lisp - Data types for the unix interface
+;;;
 
 (in-package :opsys-unix)
 
@@ -20,12 +20,12 @@ Type name     Darwin           Linux-32         Linux-x86-64     Linux-arm64    
 #(pid-t       :int             :int             :int             :int                 :int             :int32           :int32)
 #(suseconds-t :int32           :int32           :long            :long                :int32           :long            :long)
 #(ssize-t     :long            :long            :long            :long                :long            :int64           :long)
-#(dev-t       :int32           :uint64          :unsigned-long   :unsigned-long       :ulong           :uint32          :uint32)
-#(nlink-t     :uint16          :unsigned-int    :unsigned-long   :unsigned-int        :uint            :uint16          :uint32)
-#(ino-t       :uint64          :unsigned-long   :unsigned-long   :unsigned-long       :unsigned-long   :uint32          :uint64)
+#(dev-t       :int32           :uint64          :unsigned-long   :unsigned-long       :ulong           :uint64          :uint32)
+#(nlink-t     :uint16          :unsigned-int    :unsigned-long   :unsigned-int        :uint            :uint64          :uint32)
+#(ino-t       :uint64          :unsigned-long   :unsigned-long   :unsigned-long       :unsigned-long   :uint64          :uint64)
 #(off-t       :int64           :int32           :long            :long                :int32           :int64           :int64)
 #(blkcnt-t    :int64           :unsigned-long   :long            :long                :int64           :int64           :int64)
-#(blksize-t   :int64           :long            :unsigned-long   :int                 :int32           :uint32          :uint32)
+#(blksize-t   :int64           :long            :unsigned-long   :int                 :int32           :int32           :uint32)
 #(fixpt-t     :uint32          :uint32          :uint32          :uint32              :uint32          :uint32          :uint32)
 #(boolean-t   :unsigned-int    :unsigned-int    :unsigned-int    :unsigned-int        :unsigned-int    :unsigned-int    :int)
 #(segsz-t     :int32           :int32           :int32           :int32               :int32           :int64           :int32)

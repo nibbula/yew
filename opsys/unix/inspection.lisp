@@ -119,6 +119,8 @@
 ;; BPF
 
 ;; @@@ not even close yet
+;; @@@ Of course the BSDs have bpf, but I started with the Linux version.
+#+linux (config-feature :os-t-has-bpf)
 
 ;; Instruction classes
 (defun bpf-class (code) (logand code #x07))
@@ -487,6 +489,7 @@ code instructions."
 		(:pointer (:union bpf-attr)) attr
 		:unsigned-int size))
 
+#+os-t-has-bpf
 (defun bpf (cmd &rest args)
   (case cmd
     (:create

@@ -1,6 +1,6 @@
-;;
-;; unix/time.lisp - Unix interface to time and timers
-;;
+;;;
+;;; unix/time.lisp - Unix interface to time and timers
+;;;
 
 (in-package :opsys-unix)
 
