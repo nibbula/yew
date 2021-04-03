@@ -149,7 +149,7 @@
 (defmethod table-output-start-row ((renderer terminal-box-table-renderer) table)
   (declare (ignore table))
   (with-slots (box-color x) renderer
-    (terminal-move-to-col *destination* x)
+    (terminal-move-to-col *destination* (or x 0))
     (terminal-color *destination* box-color nil)
     (call-next-method)))
 
