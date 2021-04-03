@@ -1,6 +1,6 @@
-;;
-;; types.lisp - Operating system types
-;;
+;;;
+;;; types.lisp - Operating system types
+;;;
 
 (in-package :opsys-base)
 
