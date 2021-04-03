@@ -858,12 +858,15 @@ if THING or lish:*input* NIL."
     :help "True to show full column titles.")
    (column-names list :short-arg #\c
     :help "List of column titles for the table.")
+   (renderer object :short-arg #\r :help "Table renderer to use.")
    (table object :help "Table to print."))
   :accepts '(table sequence hash-table structure-object)
   "Print a table to the terminal."
   (with-coerced-table (tab table :column-names column-names)
     (with-grout ()
-      (grout-print-table tab :long-titles long-titles))))
+      (if renderer
+	  (grout-print-table tab :long-titles long-titles :renderer renderer)
+	  (grout-print-table tab :long-titles long-titles)))))
 
 (defun view-table-file (file-name)
   "View the contents of FILE-NAME as a table."
