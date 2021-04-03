@@ -75,6 +75,7 @@
        (incf i))
     (tt-normal)))
 
+;; @@@ refactor me
 (defun render-plain-string (string
 			    &key (terminal *standard-output*) (start 0) end)
   (loop
@@ -175,12 +176,10 @@ colinc, and the space character for padchar.
     (labels ((fatty ()
 	       (render-fatchar-string str :terminal stream))
 	     (skinny ()
-	       ;; (princ str stream)
-	       ;; (render-plain-string str :terminal stream)
-	       (if (stringp str)
-		   (render-plain-string str :terminal stream)
-		   (write-fat-string str :stream stream))
-	       ))
+	       (if (typep str 'fat-string)
+		   (write-fat-string str :stream stream)
+		   (render-plain-string (princ-to-string str)
+					:terminal stream))))
       (setf render #'skinny)
       (cond
 	((typep stream '(or terminal terminal-stream))
