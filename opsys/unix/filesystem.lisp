@@ -2707,11 +2707,23 @@ objects should be stored."
 ;;   (:simple-parser foreign-statfs)
 ;; )
 
-#+freebsd
+#+freebsd-11
 (eval-when (:compile-toplevel :load-toplevel :execute)
    (define-constant +MFSNAMELEN+ 16)   ; length of fs type name including null
    (define-constant +MNAMELEN+ 88)     ; size of on/from name bufs
    (define-constant +STATFS_VERSION+ #x20030518) ; version of this struct?
+   )
+
+#+freebsd
+(eval-when (:compile-toplevel :load-toplevel :execute)
+   (define-constant +MFSNAMELEN+ 16)   ; length of fs type name including null
+   (define-constant +MNAMELEN+ 1024)   ; size of on/from name bufs
+   (define-constant +STATFS_VERSION+ #x20140518) ; version of this struct?
+
+   (define-constant +MNT-WAIT+    1) ; synchronously wait for I/O to complete
+   (define-constant +MNT-NOWAIT+  2) ; start all I/O, but do not wait for it
+   (define-constant +MNT-LAZY+    3) ; push data not written by filesystem syncer
+   (define-constant +MNT-SUSPEND+ 4) ; Suspend file system after sync
    )
 
 #+openbsd
@@ -2721,7 +2733,7 @@ objects should be stored."
    (define-constant +STATFS_VERSION+ #x20030518) ; version of this struct?
    )
 
-#+freebsd
+#+(and freebsd freebsd-11)
 (defcstruct foreign-statfs
   (f_version 	 :uint32)
   (f_type 	 :uint32)
@@ -2741,6 +2753,31 @@ objects should be stored."
   (f_namemax 	 :uint32)
   (f_owner 	 uid-t)
   (f_fsid 	 :int32 :count 2)
+  (f_charspare   :char :count 80)
+  (f_fstypename	 :char :count #.+MFSNAMELEN+)
+  (f_mntfromname :char :count #.+MNAMELEN+)
+  (f_mntonname   :char :count #.+MNAMELEN+))
+
+#+(and freebsd (not freebsd-11))
+(defcstruct foreign-statfs
+  (f_version 	 :uint32)
+  (f_type 	 :uint32)
+  (f_flags 	 :uint64)
+  (f_bsize 	 :uint64)
+  (f_iosize 	 :uint64)
+  (f_blocks 	 :uint64)
+  (f_bfree 	 :uint64)
+  (f_bavail 	 :int64)
+  (f_files 	 :uint64)
+  (f_ffree 	 :int64)
+  (f_syncwrites  :uint64)
+  (f_asyncwrites :uint64)
+  (f_syncreads   :uint64)
+  (f_asyncreads  :uint64)
+  (f_spare       :uint64 :count 10)
+  (f_namemax 	 :uint32)
+  (f_owner 	 uid-t)
+  (f_fsid 	 :int32 :count 2) ;; which is an fsid_t
   (f_charspare   :char :count 80)
   (f_fstypename	 :char :count #.+MFSNAMELEN+)
   (f_mntfromname :char :count #.+MNAMELEN+)
@@ -2913,8 +2950,9 @@ objects should be stored."
 #+(or (and darwin 32-bit-target) freebsd openbsd)
 (defcfun ("getmntinfo" real-getmntinfo)
     :int (mntbufp :pointer) (flags :int))
-#+(or darwin freebsd openbsd)
-(defun getmntinfo (&optional (flags 0))
+
+#+(or darwin freebsd openbsd) ;; see also mounted-filesystems
+(defun getmntinfo (&optional (flags #+freebsd +MNT-WAIT+ #-freebsd 0))
   (with-foreign-object (ptr :pointer)
     (let ((n (syscall (real-getmntinfo ptr flags))))
       (loop :for i :from 0 :below n
@@ -3056,7 +3094,7 @@ objects should be stored."
   "Return a list of filesystem info."
   #+(or darwin freebsd openbsd)
   (with-foreign-object (ptr :pointer)
-    (let ((n (syscall (real-getmntinfo ptr 0))))
+    (let ((n (syscall (real-getmntinfo ptr #+freebsd +MNT-WAIT+ #-freebsd 0))))
       (loop :for i :from 0 :below n
 	 :collect (convert-filesystem-info
 		   (mem-aptr (mem-ref ptr :pointer)
