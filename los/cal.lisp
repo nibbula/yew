@@ -12,46 +12,70 @@
    ))
 (in-package :cal)
 
+#|
+Examples:
+
+Customized style:
+
+cal 1 2021 | print-table -r (make-instance
+                             'terminal-table:terminal-box-table-renderer
+                              :box-style table-print::*fancy-box*
+                              :box-color :magenta :title-color :cyan :x 0)
+
+
+|#
+
+(defun default-date (now year month)
+  "Return the YEAR and MONTH defaulting to the current."
+  ;; Use the current date if not given.
+  (when (or (null month) (null year))
+    (setf month (or month (date-month now))
+	  year  (or year (date-year now))))
+  (when (or (<= month 0) (> month (calendar:months year)))
+    (error "Month is not valid: ~d" month))
+  (values year month))
+
+(defun calendar-table (&key year month (now (current-date)))
+  "Return calendar table for YEAR and MONTH, which default to the current if
+not given."
+  (setf (values year month) (default-date now year month))
+  (let* ((start-weekday (calendar:day-of-week year month 1))
+	 (days (calendar:days-per-month month year))
+	 (tab) (table))
+    ;; (format t "~s ~s~%" start-weekday days)
+    (setf tab (loop
+		:with day = 1
+		:and weekday = start-weekday
+		:while (< day days)
+		:collect
+		(let ((week (make-array 7 :initial-element "")))
+		  (loop :for d :from weekday :below 7
+			:do
+			   (setf (aref week d)
+				 (cond
+				   ((> day days) "")
+				   ((and (= day (date-day now))
+					 (= month (date-month now))
+					 (= year (date-year now)))
+				    (ß `(:inverse ,(format nil "~d" day))))
+				   (t day)))
+			   (incf day))
+		  week)
+		:do (setf weekday 0))
+	  table (table:make-table-from
+		 tab :columns
+		 (loop :for i :from 1 :to 7
+		       :collect
+		       (list :name (calendar:weekday-name i :format :short)
+			     :type 'number
+			     :format "~v@/fatchar-io:print-string/"))))
+    table))
+
 (defun print-calendar (&key year month type #|(stream *standard-output*) |#)
   (declare (ignore type)) ;; @@@
-
-  (let* ((now (current-date)))
-    ;; Use the current date if not given.
-    (when (or (null month) (null year))
-      (setf month (or month (date-month now))
-	    year  (or year (date-year now))))
-    (when (not (< 0 month (calendar:months year)))
-      (error "Month is not valid: ~d" month))
-    (let* ((start-weekday (calendar:day-of-week year month 1))
-	   (days (calendar:days-per-month month year))
-	   (tab) (table))
-      ;; (format t "~s ~s~%" start-weekday days)
-      (setf tab (loop
-		   :with day = 1
-		   :and weekday = start-weekday
-		   :while (< day days)
-		   :collect
-		     (let ((week (make-array 7 :initial-element "")))
-		       (loop :for d :from weekday :below 7
-			  :do
-			    (setf (aref week d)
-				  (cond
-				    ((> day days) "")
-				    ((and (= day (date-day now))
-					  (= month (date-month now))
-					  (= year (date-year now)))
-				     (ß `(:inverse ,(format nil "~d" day))))
-				    (t day)))
-			    (incf day))
-		       week)
-		   :do (setf weekday 0))
-	    table (table:make-table-from
-		   tab :columns
-		   (loop :for i :from 1 :to 7
-			:collect
-			(list :name (calendar:weekday-name i :format :short)
-			      :type 'number
-			      :format "~v@/fatchar-io:print-string/"))))
+  (let ((now (current-date)))
+    (setf (values year month) (default-date now year month))
+    (let ((table (calendar-table :year year :month month :now now)))
       ;; (format t "~s~%" tab)
       (with-grout ()
 	(let* ((table-str (with-output-to-string (str)
