@@ -7,22 +7,43 @@
   (:use :cl :calendar :table :table-print :grout :fatchar :char-util
 	:collections)
   (:export
+   #:calendar-table
    #:print-calendar
    #:!cal
    ))
 (in-package :cal)
 
 #|
-Examples:
+* Examples:
 
-Customized style:
+** Customized style:
 
 cal 1 2021 | print-table -r (make-instance
                              'terminal-table:terminal-box-table-renderer
                               :box-style table-print::*fancy-box*
                               :box-color :magenta :title-color :cyan :x 0)
 
+** Bigger:
 
+(defun boo ()
+  (let ((cal (cal::calendar-table)))
+    (omap
+      (_
+       (loop for i from 0 below (olength _)
+             do (setf (oelt _ i)
+                        (s+  "   " (oelt _ i) "   "))))
+      cal)
+    (omap (_ (setf (table:column-align _) :wrap
+                   (table:column-width _) 8))
+          (table:table-columns cal))
+    ;; (print (table:table-columns cal))
+    (tt-newline)
+    (table-print:output-table cal
+     (make-instance 'terminal-table:terminal-box-table-renderer :box-style
+                    table-print:*fancy-box* :box-color :magenta :title-color
+                    :cyan)
+     *terminal*)
+    (tt-finish-output)))
 |#
 
 (defun default-date (now year month)
