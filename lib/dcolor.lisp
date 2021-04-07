@@ -115,11 +115,11 @@ You can examine or modifiy the components of a color with the access function
   ├─────────┼───────────────────────┼───────────────────────────┤
   │ :GRAY8  │(integer 0 255) Value  │#(:gray8 38)               │
   ├─────────┼───────────────────────┼───────────────────────────┤
-  │ :HSV    │(number 0 1) Hue       │#(:hsv 920/3 1 33/85)      │
+  │ :HSV    │(number 0 360) Hue     │#(:hsv 920/3 1 33/85)      │
   │         │(number 0 1) Saturation│#(:hsv 306.666 1 0.388)    │
   │         │(number 0 1) Value     │                           │
   ├─────────┼───────────────────────┼───────────────────────────┤
-  │ :HSL    │(number 0 1) Hue       │#(:hsl 920/3 1 33/170)     │
+  │ :HSL    │(number 0 360) Hue     │#(:hsl 920/3 1 33/170)     │
   │         │(number 0 1) Saturation│#(:HSL 306.666 1 0.194)    │
   │         │(number 0 1) Lightness │                           │
   ╘═════════╧═══════════════════════╧═══════════════════════════╛
