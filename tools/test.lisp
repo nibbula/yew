@@ -55,6 +55,9 @@ A: You can use the GOT-CONDITION macro in your test.
 Q: What if I need to run just one test?
 A: Use ‘run-test’.
 
+Q: What do you have against providing cute test macros in the test bodies?
+A: Nothing, execpt I think they're mostly pointless.
+
 Q: What if I need to capture the output from my test?
 A: You're on your own.
 
