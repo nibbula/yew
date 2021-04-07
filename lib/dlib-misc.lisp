@@ -66,6 +66,7 @@
 
    ;; systems and packages 
    #:*loadable-systems*
+   #:add-asdf-directory
    #:loadable-systems
    #:loadable-system-p
    #:*quickloadable-systems*
@@ -1164,13 +1165,14 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
 
 (defun spin (&optional (stream *standard-output*))
   "Do one iteration of a spin animation."
-  (write-char (char *spin-string* *spin*) stream)
-  (write-char #\backspace stream)
-  (finish-output stream)
-  (incf *spin*)
-  (setf *spin-spun* t)
-  (when (>= *spin* *spin-length*)
-    (setf *spin* 0)))
+  (when *spin*
+    (write-char (char *spin-string* *spin*) stream)
+    (write-char #\backspace stream)
+    (finish-output stream)
+    (incf *spin*)
+    (setf *spin-spun* t)
+    (when (>= *spin* *spin-length*)
+      (setf *spin* 0))))
 
 (defun unspin (&optional (stream *standard-output*))
   "Hopefully remove the spinning character."
@@ -1201,6 +1203,31 @@ SPIN-STRING can be given and defaults to the value of *DEFAULT-SPIN-STRING*."
 (defvar *loadable-system-table* nil
   "Cached table of ASDF loadable packages. Set to NIL to recompute.")
 
+(defun asdf-systems-in-directory (dir &key as-strings)
+  "Return a list of system in DIR. If AS-STRINGS is true, return them as strings,
+otherwise as keywords."
+  (loop :with base :and result
+     :for f :in (glob (path-append dir "*.[Aa][Ss][Dd]"))
+     :do (spin)
+     :collect
+     (progn
+       (setf base (path-file-name f)
+	     result (subseq base 0 (- (length base) 4)))
+       (if as-strings
+	   result
+	   (keywordify result)))))
+
+(defun add-asdf-directory (directory)
+  "Add directory to the list of loadable systems and the cache if it exists."
+  (when directory
+    (let ((new-systems (asdf-systems-in-directory directory)))
+      (when new-systems
+	(setf *loadable-systems*
+	      (append new-systems *loadable-systems*))
+	(when *loadable-system-table*
+	  (loop :for sys :in new-systems :do
+	    (setf (gethash sys *loadable-system-table*) t)))))))
+
 ;; This is an horrible hack. I wish we could ask ASDF and Quicklisp.
 (defun loadable-systems (&key as-strings)
   "List of potentially ASDF loadable systems."
@@ -1216,9 +1243,9 @@ SPIN-STRING can be given and defaults to the value of *DEFAULT-SPIN-STRING*."
 		      :do (write-string e s))
 		   (write-string p s)))))
     (or (and *loadable-systems*
-	     (or (and (and as-strings (stringp (car *loadable-systems*)))
+	     (or (and (and as-strings (every #'stringp *loadable-systems*))
 		      *loadable-systems*)
-		 (and (not as-strings) (keywordp (car *loadable-systems*))
+		 (and (not as-strings) (every #'keywordp *loadable-systems*)
 		      *loadable-systems*)))
 	(setf *loadable-systems*
 	      (with-spin ()
@@ -1229,16 +1256,7 @@ SPIN-STRING can be given and defaults to the value of *DEFAULT-SPIN-STRING*."
 		  (append
 		   (loop :for d :in (concatenate 'list s-dirs c-dirs)
 		      :append
-		      (loop :with base :and result
-			 :for f :in (glob (path-append d "*.[Aa][Ss][Dd]"))
-			 :do (spin)
-			 :collect
-			 (progn
-			   (setf base (path-file-name f)
-				 result (subseq base 0 (- (length base) 4)))
-			   (if as-strings
-			       result
-			       (keywordify result)))))
+		      (asdf-systems-in-directory d :as-strings as-strings))
 		   #+quicklisp
 		   ;; Quicklisp
 		   (loop :for d :in (ql-dist:all-dists)
@@ -1269,12 +1287,18 @@ SPIN-STRING can be given and defaults to the value of *DEFAULT-SPIN-STRING*."
 			(string-downcase (ql-dist:name s))
 			(keywordify (ql-dist:name s)))))))))
 
-(defun loadable-system-p (system-designator)
-  "Return true if SYSTEM-DESIGNATOR denotes a loadable system."
+(defun ensure-loadable-systems-table ()
+  "If it doesn't already exist, populate the *loadable-system-table* from the
+loadable-systems function."
   (when (not *loadable-system-table*)
     (setf *loadable-system-table* (make-hash-table :test 'equal))
     (loop :for p :in (loadable-systems :as-strings t)
-       :do (setf (gethash p *loadable-system-table*) t)))
+	  :do (setf (gethash p *loadable-system-table*) t))
+    *loadable-system-table*))
+
+(defun loadable-system-p (system-designator)
+  "Return true if SYSTEM-DESIGNATOR denotes a loadable system."
+  (ensure-loadable-systems-table)
   (gethash (string system-designator) *loadable-system-table*))
 
 (defun clear-loadable-system-cache ()
