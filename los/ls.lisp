@@ -674,6 +674,8 @@ command for details. If LABEL-DIR is true, print directory labels."
 					   (getf args :size-format)))))
 	   (print-it (x)
 	     "Print the item list."
+	     (when (null x)
+	       (return-from print-it nil))
 	     (when label-dir-p
 	       (print-dir-label (file-item-directory (car x))))
 	     (if (getf args :long)
