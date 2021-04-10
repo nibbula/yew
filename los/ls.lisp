@@ -549,14 +549,15 @@ gathered, and a list of directories to be recursively listed."
 	       (etypecase x
 		 (file-item (item-full-path x))
 		 (t x)))
-	     (file-item (d f)
-	       ;; (format t "file-item ~s ~s~%" d f)
+	     (file-item-for (d f)
+	       ;; (format t "file-item-for ~s ~s~%" d f)
 	       (etypecase d
 		 (file-item d)
-		 (nos:dir-entry (make-full-item (dir-entry-name d)
-						(file-path f)))
-		 (t (make-full-item (path-file-name f)
-				    (path-directory-name f))))))
+		 (nos:dir-entry
+		  (make-full-item (dir-entry-name d) (file-path f)))
+		 (t
+		  (make-full-item (path-file-name f)
+				  (path-directory-name f))))))
       #|
       (loop :for file :in (getf args :files)
 	 :do
@@ -569,7 +570,7 @@ gathered, and a list of directories to be recursively listed."
 		   :omit-hidden (not (getf args :hidden)))
 		  :do
 		  (when-not-missing
-		   (setf item (file-item x file))
+		   (setf item (file-item-for x file))
 		   ;; (format t "Floop~%")
 		   (when (and recursive (eq (file-item-type item) :directory))
 		     (push item more))
@@ -577,7 +578,7 @@ gathered, and a list of directories to be recursively listed."
 	     (progn
 	       (dbugf :ls "Jing file~%")
 	       (when-not-missing
-		(setf item (file-item file file))
+		(setf item (file-item-for file file))
 		;; (when (and recursive (eq (file-item-type item) :directory))
 		;;   (push item more))
 		(push item main-list))
@@ -600,13 +601,13 @@ gathered, and a list of directories to be recursively listed."
       ;; Collect the file-list into main-list.
       (loop :for file :in file-list
 	 :do
-	 ;; (dbugf :ls "Jing file~%")
-	 (when-not-missing
-	  (setf item (file-item file file))
-	  ;; (when (and recursive (eq (file-item-type item) :directory))
-	  ;;   (push item more))
-	  (push item main-list))
-	 (setf (ls-state-mixed-bag *ls-state*) t))
+	    (when-not-missing
+	     (with-error-handling (t)
+	       (setf item (file-item-for file file)))
+	     ;; (when (and recursive (eq (file-item-type item) :directory))
+	     ;;   (push item more))
+	     (push item main-list))
+	    (setf (ls-state-mixed-bag *ls-state*) t))
 
       ;; Deal with the dir-list.
       (if (cdr dir-list)
@@ -616,15 +617,13 @@ gathered, and a list of directories to be recursively listed."
 	  (when dir-list
 	    (let ((file (first dir-list)))
 	      (with-error-handling ((file-path file))
-		;; (dbugf :ls "Jang dir ~s~%" (file-path file))
 		(loop :for x :in
 		   (read-directory
 		    :full t :dir (file-path file)
 		    :omit-hidden (not (getf args :hidden)))
 		   :do
 		   (when-not-missing
-		    (setf item (file-item x file))
-		    ;; (format t "Floop~%")
+		    (setf item (file-item-for x file))
 		    (when (and recursive (eq (file-item-type item) :directory))
 		      (push item more))
 		    (push item results)))))))
@@ -642,6 +641,8 @@ gathered, and a list of directories to be recursively listed."
 	      (loop :for list :in results
 		 :collect
 		 (progn
+		   ;; Get rid of possible NILs from errors
+		   (setf list (remove-if #'null list))
 		   (when (getf args :ignore-backups)
 		     (setf list (delete-if (_ (ends-with "~" _)) list
 					   :key #'file-item-name)))
@@ -660,9 +661,9 @@ gathered, and a list of directories to be recursively listed."
 (defun present-files (files args label-dir-p)
   "Show the FILES, displayed according the the plist ARGS. See the lish ‘ls’
 command for details. If LABEL-DIR is true, print directory labels."
-  ;;(format t "present files -> ~s~%" files)
-    ;; (format t "grout ~s~%grout-stream ~s~%term ~s~%stdout ~s~%"
-    ;; 	    *grout* (grout-stream *grout*) *terminal* *standard-output*)
+  ;; (format t "present files -> ~s~%" files)
+  ;; (format t "grout ~s~%grout-stream ~s~%term ~s~%stdout ~s~%"
+  ;; 	     *grout* (grout-stream *grout*) *terminal* *standard-output*)
   (labels ((size-max-width (items)
 	     "Calcuate the maximum width size of the size field for the items."
 	     (loop :for f :in items
