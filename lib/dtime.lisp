@@ -37,8 +37,8 @@ live on Earth very recently only!")
 
 (defun lisp-weekday-name (day &key abbrev)
   "Return the weekday name, given the Lisp decoded time DAY."
-  ;; Calendar days start from Sunday = 1
-  (calendar:weekday-name (if (= day 6) 1 (1+ day))
+  ;; Calendar days start from Sunday = 1, Lisp days start from Monday = 0
+  (calendar:weekday-name (if (= day 6) 1 (+ day 2))
 			 :format (if abbrev :abbreviated t)))
 
 (calendar:weekday-name 7 :format :abbreviated)
@@ -157,7 +157,7 @@ Note that :day is the day of the week number and :date is the day of the month."
 		     (case v
 		       (:day-abbrev `(lisp-weekday-name ,day :abbrev t))
 		       ((:weekday :day-name)
-			`(lisp-weekday-name,day))
+			`(lisp-weekday-name ,day))
 		       ((:month-name)
 			`(calendar:month-name ,month ,year))
 		       ((:month-abbrev :mon-abbrev)
