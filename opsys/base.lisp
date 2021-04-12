@@ -189,7 +189,9 @@
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defmacro define-enum-list (list-var constant-array &key (start 0))
-    "Define enumerated constants and put the names in LIST-VAR."
+    "Define enumerated constants and put the names in LIST-VAR. The elements
+of CONSTANT-ARRAY should look like: #(name value docstring). START is a integer
+to start with, that defaults to 0."
     (with-names (offset)
       `(progn
 	 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -207,7 +209,8 @@
 	      `(push ',(aref c 0) ,list-var)))))
 
   (defmacro define-to-list (list-var constant-array)
-    "Define constants and put the names in LIST-VAR."
+    "Define constants and put the names in LIST-VAR. The elements of
+CONSTANT-ARRAY should look like: #(name value docstring)."
     `(progn
        ,@(loop :with name :and value :and doc
 	    :for c :across constant-array :do
