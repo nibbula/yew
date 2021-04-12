@@ -29,6 +29,9 @@
   (equal "/"          (path-directory-name "/"))
   )
 
+;; (deftests (opsys-dirs-1 :doc "Test directory functions.")
+;;   ())
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; terminals
 
