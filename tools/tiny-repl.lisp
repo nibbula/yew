@@ -85,7 +85,8 @@
   (got-error	nil	:type boolean)
   (error-count	0	:type fixnum)
   (debug	nil	:type boolean)
-  (quietly      nil     :type boolean))
+  (quietly      nil     :type boolean)
+  (partial-line-indicator rl:*default-partial-line-indicator*))
 
 (defvar +newline-string+ (string #\newline)
   "So we don't have to keep making one.")
@@ -198,6 +199,7 @@ The REPL also has a few commands:
 		   :terminal-class terminal-class
 		   :history-context :repl
 		   :accept-does-newline nil
+		   :partial-line-indicator rl:*default-partial-line-indicator*
 		   :re-edit re-edit
 		   :prompt (or (and (ostringp prompt) prompt) *default-prompt*)
 		   :output-prompt-func (and (or (symbolp prompt)
