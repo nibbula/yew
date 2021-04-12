@@ -6,6 +6,7 @@
   (:documentation "Terminal driver modes manipulator.")
   (:use :cl :dlib :opsys #+unix :os-unix :cffi :dlib-misc
 	:char-util :completion)
+  (:shadow #:sane)
   (:export
    #:describe-tty
    #:set-tty
@@ -19,6 +20,99 @@
   "Remove the earmuffs."
   (trim (string s) #(#\+)))
 
+(defun print-termios (desc cols rows format)
+  "Print the termios struct in desc."
+  (with-foreign-slots ((c_iflag c_oflag c_cflag c_lflag c_cc c_ispeed c_ospeed)
+		       desc (:struct termios))
+    (flet ((dump-char (sym c)
+	     (cond
+	       ((= c #xff) "undef")
+	       ((or (eq sym '+VMIN+) (eq sym '+VTIME+)) c)
+	       (t (nice-char (code-char c) :caret t))))
+	   (s-dump-flags (name flags var)
+	     (let* ((label (format nil "~a: " name))
+		    (prefix (make-string (display-length label)
+					 :initial-element #\space)))
+	       (fresh-line)
+	       (write-string label)
+	       (justify-text
+		(join-by-string
+		 (loop
+		   :for f :in flags
+		   :collect
+		   (format nil "~a~(~a~)"
+			   (if (= 0 (logand var (symbol-value f)))
+			       #\- "")
+			   (demuff f)))
+		 " ")
+		:omit-first-prefix t
+		:cols cols :prefix prefix
+		:start-column (display-length label))))
+	   (n-dump-flags (flags var)
+	     (print-columns
+	      (loop
+		:for f :in flags
+		:collect
+		(format nil "~a~(~a~)"
+			(if (= 0 (logand var (symbol-value f))) #\- "")
+			(demuff f)))
+	      :columns cols
+	      :prefix "  ")))
+      (case format
+	((:succinct :stty)
+	 (if (= c_ispeed c_ospeed)
+	     (format t "speed ~d baud; " c_ospeed)
+	     (format t "speed input ~d output ~d baud;"
+		     c_ispeed c_ospeed))
+	 (format t "~d rows; ~d columns;~%" rows cols)
+	 (s-dump-flags "lflags" *lflags* c_lflag)
+	 (s-dump-flags "iflags" *iflags* c_iflag)
+	 (s-dump-flags "oflags" *oflags* c_oflag)
+	 (s-dump-flags "cflags" *cflags* c_cflag)
+	 (format t "~&cchars: ")
+	 (justify-text
+	  (join-by-string
+	   (loop :for c :in *cchars*
+		 :collect
+		 (format nil "~(~a~) = ~a; " (demuff c)
+			 (dump-char
+			  c (mem-aref c_cc :unsigned-char
+				      (symbol-value c)))))
+	   " ")
+	  :cols cols :prefix "        " :omit-first-prefix t
+	  :start-column 8)
+	 (terpri))
+	(:nice
+	 (print-properties
+	  `(,@(if (= c_ispeed c_ospeed)
+		  `(("Speed" ,(format nil "~d baud" c_ospeed)))
+		  `(("Input Speed"
+		     ,(format nil "~d baud" c_ispeed))
+		    ("Output Speed"
+		     ,(format nil "~d baud" c_ospeed))))
+	    ("Rows" ,rows) ("Columns" ,cols))
+	  :right-justify t)
+	 (format t "Local flags: #x~x~%" c_lflag)
+	 (n-dump-flags *lflags* c_lflag)
+	 (format t "Input flags: #x~x~%" c_iflag)
+	 (n-dump-flags *iflags* c_iflag)
+	 (format t "Output flags: #x~x~%" c_oflag)
+	 (n-dump-flags *oflags* c_oflag)
+	 (format t "Control flags: #x~x~%" c_cflag)
+	 (n-dump-flags *cflags* c_cflag)
+	 (format t "Control chars: ~d~%" (length *cchars*))
+	 (print-columns
+	  (loop :with cc
+		:for c :in *cchars*
+		:do (setf cc (mem-aref c_cc :unsigned-char
+				       (symbol-value c)))
+		:collect
+		(format nil "~(~a~) = ~a"
+			(subseq (demuff c) 1)
+			(dump-char c cc)))
+	  :columns cols
+	  :prefix "  "))))))
+
 (defun describe-tty (&key (device "/dev/tty") (format :nice))
   "Describe the termios settings for DEVICE. Much like `stty -a`.
 FORMAT defaults to :NICE but can also be :STTY."
@@ -30,98 +124,8 @@ FORMAT defaults to :NICE but can also be :STTY."
 	(error-check tty "Error opening ~a~%" device)
 	(error-check (tcgetattr tty desc)
 		     "Can't get terminal description for ~a." device)
-	(with-foreign-slots ((c_iflag c_oflag c_cflag c_lflag c_cc
-			      c_ispeed c_ospeed)
-			     desc (:struct termios))
-	  (multiple-value-bind (cols rows) (get-window-size tty)
-	    (flet ((dump-char (sym c)
-		     (cond
-		       ((= c #xff) "undef")
-		       ((or (eq sym '+VMIN+) (eq sym '+VTIME+)) c)
-		       (t (nice-char (code-char c) :caret t))))
-		   (s-dump-flags (name flags var)
-		     (let* ((label (format nil "~a: " name))
-			    (prefix (make-string (display-length label)
-						 :initial-element #\space)))
-		       (fresh-line)
-		       (write-string label)
-		       (justify-text
-			(join-by-string
-			 (loop
-			    :for f :in flags
-			    :collect
-			    (format nil "~a~(~a~)"
-				    (if (= 0 (logand var (symbol-value f)))
-					#\- "")
-				    (demuff f)))
-			 " ")
-			:omit-first-prefix t
-			:cols cols :prefix prefix
-			:start-column (display-length label))))
-		   (n-dump-flags (flags var)
-		     (print-columns
-		      (loop
-			 :for f :in flags
-			 :collect
-			 (format nil "~a~(~a~)"
-				 (if (= 0 (logand var (symbol-value f))) #\- "")
-				 (demuff f)))
-		      :columns cols
-		      :prefix "  ")))
-	      (case format
-		((:succinct :stty)
-		 (if (= c_ispeed c_ospeed)
-		     (format t "speed ~d baud; " c_ospeed)
-		     (format t "speed input ~d output ~d baud;"
-			     c_ispeed c_ospeed))
-		 (format t "~d rows; ~d columns;~%" rows cols)
-		 (s-dump-flags "lflags" *lflags* c_lflag)
-		 (s-dump-flags "iflags" *iflags* c_iflag)
-		 (s-dump-flags "oflags" *oflags* c_oflag)
-		 (s-dump-flags "cflags" *cflags* c_cflag)
-		 (format t "~&cchars: ")
-		 (justify-text
-		  (join-by-string
-		   (loop :for c :in *cchars*
-		      :collect
-		      (format nil "~(~a~) = ~a; " (demuff c)
-			      (dump-char
-			       c (mem-aref c_cc :unsigned-char
-					   (symbol-value c)))))
-		   " ")
-		  :cols cols :prefix "        " :omit-first-prefix t
-		  :start-column 8)
-		 (terpri))
-		(:nice
-		 (print-properties
-		  `(,@(if (= c_ispeed c_ospeed)
-			  `(("Speed" ,(format nil "~d baud" c_ospeed)))
-			  `(("Input Speed"
-			     ,(format nil "~d baud" c_ispeed))
-			    ("Output Speed"
-			     ,(format nil "~d baud" c_ospeed))))
-		      ("Rows" ,rows) ("Columns" ,cols))
-		  :right-justify t)
-		 (format t "Local flags: #x~x~%" c_lflag)
-		 (n-dump-flags *lflags* c_lflag)
-		 (format t "Input flags: #x~x~%" c_iflag)
-		 (n-dump-flags *iflags* c_iflag)
-		 (format t "Output flags: #x~x~%" c_oflag)
-		 (n-dump-flags *oflags* c_oflag)
-		 (format t "Control flags: #x~x~%" c_cflag)
-		 (n-dump-flags *cflags* c_cflag)
-		 (format t "Control chars: ~d~%" (length *cchars*))
-		 (print-columns
-		  (loop :with cc
-		     :for c :in *cchars*
-		     :do (setf cc (mem-aref c_cc :unsigned-char
-					    (symbol-value c)))
-		     :collect
-		     (format nil "~(~a~) = ~a"
-			     (subseq (demuff c) 1)
-			     (dump-char c cc)))
-		  :columns cols
-		  :prefix "  ")))))))
+	(multiple-value-bind (cols rows) (get-window-size tty)
+	  (print-termios desc cols rows format)))
       ;; close the terminal
       (when (and tty (>= tty 0))
 	(posix-close tty))
@@ -132,6 +136,13 @@ FORMAT defaults to :NICE but can also be :STTY."
 (defun set-tty (&key (device "/dev/tty") set-modes unset-modes control-chars)
   "Change the termios settings for DEVICE. Similar to `stty`."
   (let (tty desc)
+    ;; Do function modes first
+    (loop :for mode :in set-modes :do
+      (when (fboundp mode)
+	(funcall mode device)))
+
+    (format t "set ~s~%unset ~s~%chars ~s~%" set-modes unset-modes control-chars)
+
     (unwind-protect
       (progn
         (setf tty (syscall (posix-open device (logior +O_RDWR+ +O_NONBLOCK+) 0))
@@ -167,8 +178,11 @@ FORMAT defaults to :NICE but can also be :STTY."
 	  (loop :for (name . char) :in control-chars :do
 	     (setf (mem-aref c_cc :unsigned-char (symbol-value name)) char))
 
+	  (print-termios desc 80 24 :nice)
+
 	  ;; actually do it now holmes
-	  (syscall (tcsetattr tty +TCSANOW+ desc))))
+	  (syscall (tcsetattr tty +TCSANOW+ desc))
+	  ))
       ;; Close the terminal
       (when (and tty (>= tty 0))
 	(syscall (posix-close tty)))
@@ -176,13 +190,21 @@ FORMAT defaults to :NICE but can also be :STTY."
       (when desc (foreign-free desc)))
   (values)))
 
+(defun sane (device)
+  (uos:sane :device device))
+
 (defparameter *all-settings*
   `(,@uos::*cchars*
-    ,@uos::*iflags* ,@uos::*oflags* ,@uos::*cflags* ,@uos::*lflags*))
+    ,@uos::*iflags* ,@uos::*oflags* ,@uos::*cflags* ,@uos::*lflags*
+    ,'sane))
 
 (defun setting-name (symbol)
   "Return the string for the setting symbol."
-  (string-downcase (trim (symbol-name symbol) "+")))
+  (cond
+    ((fboundp symbol)
+     (string-downcase (symbol-name symbol)))
+    (t
+     (string-downcase (trim (symbol-name symbol) "+")))))
 
 (defparameter *all-setting-strings*
   (map 'list (_ (setting-name _)) *all-settings*))
@@ -201,8 +223,9 @@ FORMAT defaults to :NICE but can also be :STTY."
   "Convert the shell style stty settings into Lisp style."
   (let (set-modes unset-modes cchars)
     (loop :with sym :and s
-       :for ss = settings :then (cdr settings)
-       :until (endp ss)
+       :for ss = settings :then (cdr ss)
+       ;;:until (endp ss)
+       :while (not (endp ss))
        :do
        (setf s (car ss))
        (cond
@@ -219,7 +242,8 @@ FORMAT defaults to :NICE but can also be :STTY."
 	     (progn
 	       (push (cons sym (cadr settings)) cchars)
 	       (setf ss (cdr settings)))
-	     (push sym set-modes)))))
+	     (progn
+	       (push sym set-modes))))))
     (values set-modes unset-modes cchars)))
 
 #+lish
@@ -228,7 +252,7 @@ FORMAT defaults to :NICE but can also be :STTY."
   ;;   ()
   ;;   (:documentation "Terminal setting name.")))
   (eval-when (:compile-toplevel :load-toplevel :execute)
-    (lish:defargtype stty-setting (lish:arg-choice)
+    (lish:defargtype stty-setting (lish:arg-lenient-choice)
       "Terminal setting name."
       ()))
 
