@@ -166,7 +166,8 @@ or :both.")
   (output-quote-style	:minimal)
   (eol-style		:any)
   (eat-whitespace	nil)
-  (first-row-labels	t))
+  (first-row-labels	t)
+  (strings-as-symbols   nil)) ;; @@@ should this really go in here?
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *styles* nil
@@ -248,13 +249,14 @@ or :both.")
 	(escape-character	(style-escape-character style))
 	(input-quote-style	(style-input-quote-style style))
 	(eol-style		(style-eol-style style))
-	(eat-whitespace		(style-eat-whitespace style)))
+	(eat-whitespace		(style-eat-whitespace style))
+	(strings-as-symbols     (style-strings-as-symbols style)))
     (flet ((done ()
 	     (let ((str (get-output-stream-string col)))
 	       (when (or (eql eat-whitespace :trailing)
 			 (eql eat-whitespace :both))
 		 (setf str (string-right-trim *whitespace-chars* str)))
-	       (push str row))))
+	       (push (if strings-as-symbols (intern str) str) row))))
       (handler-case
 	(loop :with c
 	       :and quoting
@@ -506,6 +508,7 @@ If every object in a column:
   - Anything else just set to T."
   (let ((guess (make-sequence 'vector (length (table-columns table))
 			      :initial-element nil)))
+    ;; @@@ wouldn't it be faster to go through by row?
     (loop
        :with e
        :for col :in (table-columns table)
@@ -591,6 +594,13 @@ If every object in a column:
      (if (null to)
 	 nil  ; ok
 	 (warn "Don't know how to convert from a NIL to a ~a~%" to)))
+    (symbol
+     (case to
+       (number (safe-read-from-string (string from)))
+       (string (string from))
+       (symbol from)
+       (t
+	(warn "Don't know how to convert from a NIL to a ~a~%" to))))
     (t
      (warn "Don't know how to convert from a ~s to a ~a~%" (type-of from) to)
      from)))
@@ -610,9 +620,14 @@ If every object in a column:
   table)
 
 (defun read-table (file-or-stream &key (style +csv-default+)
-				    columns column-names guess-types)
+				    columns column-names guess-types
+				    strings-as-symbols)
   (let (table)
-    (multiple-value-bind (recs labels) (read-file file-or-stream :style style)
+    (when strings-as-symbols
+      (setf style (copy-style style)
+	    (style-strings-as-symbols style) t))
+    (multiple-value-bind (recs labels)
+	(read-file file-or-stream :style style)
       (setf table (make-table-from (coerce recs 'vector)
 				   :column-names (or column-names labels)
 				   :columns columns)))
@@ -626,6 +641,7 @@ If every object in a column:
    (guess-types boolean :short-arg #\g :help "Guess column data types.")
    (first-row-labels boolean :short-arg #\l :default t
     :help "True to use the first row of the table as labels, not data.")
+   (strings-as-symbols boolean :short-arg #\S :help "Save strings as symbols.")
    (style choice :short-arg #\s :default ''csv-default
 	  :choices (mapcar (_ (string-downcase (car _))) *styles*)
 	  ;; :test #'symbolify
@@ -637,18 +653,12 @@ If every object in a column:
   :accepts (pathname stream)
   "Read a delimited text table."
   (let ((real-style (symbol-value (symbolify (s+ "+" style "+") :package :dtt))))
-    (flet ((read-it ()
-	     (read-table (or file *standard-input*)
-			 :style real-style :columns columns
-			 :guess-types guess-types)))
-    (setf (style-first-row-labels real-style) first-row-labels
-	  lish:*output*
-          (if (and (not file) (not (nos:file-exists lish:*input*)))
-              (progn
-                (with-input-from-string (str lish:*input*)
-                  (setf file str)
-                  (read-it)))
-              (read-it))))))
+    (lish:with-streamlike-input (file :use-stdin t)
+      (setf (style-first-row-labels real-style) first-row-labels
+	    lish:*output* (read-table file
+				      :style real-style :columns columns
+				      :guess-types guess-types
+				      :strings-as-symbols strings-as-symbols)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Writing
