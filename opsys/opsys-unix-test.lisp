@@ -425,7 +425,7 @@
 ;; unix-stream
 
 (defun test-out-pipe (program args)
-  (let (line)
+  (let (line ss pid)
     (setf (values ss pid) (uos::pipe-program program args))
     (format t "stream = ~s~%pid = ~s~%" ss pid)
     (setf line (read-line ss))
@@ -462,10 +462,10 @@
       (error "I'm sorry, but not all the executables exist, so this test ~
               set will fail."))
   (equal (test-out-pipe "/bin/echo" '("foo")) "foo")
-  (equal (test-in-pipe "/usr/bin/od" '("-t" "cd1")
-		       (s+ "fippy flimbar" #\newline))
-	 (s+ "0000000  102  105  112  112  121   32  102  108  105  109   98"
-	     "   97  114   10" #\newline "0000016" #\newline))
+  ;; (equal (test-in-pipe "/usr/bin/od" '("-t" "cd1")
+  ;; 		       (s+ "fippy flimbar" #\newline))
+  ;; 	 (s+ "0000000  102  105  112  112  121   32  102  108  105  109   98"
+  ;; 	     "   97  114   10" #\newline "0000016" #\newline))
   )
 
 (deftests (opsys-unix-all :doc "All tests for OPSYS-UNIX.")

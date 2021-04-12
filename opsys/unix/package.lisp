@@ -19,7 +19,7 @@
 
 (defpackage :opsys-unix
   (:documentation "Interface to UNIX-like systems.")
-  (:use :cl :cffi :fake-dlib :opsys-base)
+  (:use :cl :cffi :fake-dlib :opsys-base :libc)
   (:nicknames :os-unix :uos)
   (:export
    ;; defining macros
@@ -365,7 +365,6 @@
    #:+SIGUSR1+ #:+SIGUSR2+ #:+SIGSTKFLT+ #:+SIGPWR+
    
    ;; processes
-   #:system
    #:getrusage
    #:timeval #:timeval-seconds #:timeval-micro-seconds
    #:rusage #:rusage-user #:rusage-system
@@ -665,6 +664,8 @@
    #:wcwidth
    #:char-width
    #:language
+   #:*nl-items*
+   #:nl-langinfo
    ))
 
 (in-package :opsys-unix)

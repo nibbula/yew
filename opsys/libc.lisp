@@ -1,6 +1,6 @@
-;;
-;; libc.lisp - Interface to C library functions
-;;
+;;;
+;;; libc.lisp - Interface to C library functions
+;;;
 
 ;;
 ;; Limited stdio & standard C library support
@@ -26,7 +26,61 @@
 
 ;; (use-foreign-library libc)
 
-(in-package :opsys)
+(defpackage libc
+  (:documentation "Interface to the C library.")
+  (:use :cl :cffi :dlib :opsys-base)
+  (:export
+   ;; stdio
+   #:*stdin* #:*stdout* #:*stderr*
+   #-(and windows (not unix)) #:fileno
+   #:fopen #:fclose #:fflush
+   #:fgetc #:getc #:getchar #:fgets #:gets
+   #:printf #:fprintf #:sprintf #:snprintf
+   #:fputc #:putc #:putchar #:fputs #:puts
+   #:fread #:fwrite
+   #:fscanf #:scanf #:sscanf
+   #:fsetpos #:fgetpos #:fseek #:ftell
+   #:perror #:setbuf #:ungetc
+
+   ;; ctype
+   #-(and windows (not unix)) #:iswblank
+   #:iswalnum #:iswalpha #:iswascii #:iswcntrl #:iswdigit
+   #:iswgraph #:iswhexnumber #:iswideogram #:iswlower #:iswnumber
+   #:iswphonogram #:iswprint #:iswpunct #:iswrune #:iswspace #:iswspecial
+   #:iswupper #:iswxdigit
+
+   #-(and windows (not unix)) #:isascii
+   #-(and windows (not unix)) #:isblank
+   #:isalnum #:isalpha #:iscntrl #:isdigit #:isgraph
+   #:ishexnumber #:isideogram #:islower #:isnumber #:isphonogram #:isprint
+   #:ispunct #:isrune #:isspace #:isspecial #:isupper #:isxdigit
+
+   ;; i18n
+   #:locale-categories
+   #:lc-category
+   #:setup-locale-from-environment
+   #:+LC-ALL+
+   #:+LC-COLLATE+
+   #:+LC-CTYPE+
+   #:+LC-MONETARY+
+   #:+LC-NUMERIC+
+   #:+LC-TIME+
+   #:+LC-MESSAGES+
+   #:+LC-COLLATE+
+   #:+LC-MESSAGES+
+   #:+LC-PAPER+
+   #:+LC-NAME+
+   #:+LC-ADDRESS+
+   #:+LC-TELEPHONE+
+   #:+LC-MEASUREMENT+
+   #:+LC-IDENTIFICATION+
+   #:+LC-LAST+
+   #:setlocale
+
+   ;; stdlib
+   #:system
+   ))
+(in-package :libc)
 
 (defctype file-ptr :pointer)		; (FILE *)
 (defctype fpos-t
@@ -215,14 +269,5 @@ signaled."
 (define-constant +lc-env-type+
     (loop :for (k . nil) :in +lc-category-alist+
        :collect (cons k (s+ "LC_" (string-upcase k)))))
-
-(defun setup-locale-from-environment ()
-  "Do appropriate setlocale calls based on the current settings of LC_*
-environment variables."
-  (loop :with e = nil
-	:for f :in +lc-env-type+
-	:do
-	(when (setf e (environment-variable (cdr f)))
-	  (setlocale (car f) e))))
 
 ;; EOF

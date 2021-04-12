@@ -42,28 +42,6 @@
       (wcwidth (char-code char))
       (error "Can't determine the width of a non-graphic character: ~s" char)))
 
-(defun language ()
-  "Return a the system language."
-  (let (lang)
-    ;; This is lame. I'd like to turn these into something more readable
-    ;; to humans, but that seems likely to bitrot and error.
-    (cond
-      ((setf lang (env "LC_MESSAGES"))
-       lang)
-      ((setf lang (env "LC_ALL"))
-       lang)
-      ((setf lang (env "LANG"))
-       lang)
-      ;; But this is really just for look messages.
-      ;; On one hand, the user having more control over what language messages
-      ;; are in is good. On the other hand, then we don't have a concept of
-      ;; what the system default language is set to.
-      ;; Anyway we just take the first one.
-      ((setf lang (env "LANGUAGE"))
-       (setf lang (initial-span lang ":")))
-      ;; (t "Unknown") ;; Or should we just return NIL?
-      )))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Misc
 

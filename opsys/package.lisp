@@ -14,6 +14,7 @@
   (:documentation "Generic interface to operating system functionality.")
   (:nicknames :nos)
   (:use :cl :cffi :fake-dlib :opsys-base :trivial-gray-streams
+	:libc
 	#+unix :os-unix
 	#+(and windows (not unix)) :os-ms)
   (:export
@@ -207,7 +208,7 @@
    #:make-os-stream-from-handle
    #:with-os-stream
 
-   ;; stdio
+   ;; re-export the junk from lib
    #:*stdin* #:*stdout* #:*stderr*
    #-(and windows (not unix)) #:fileno
    #:fopen #:fclose #:fflush
@@ -231,6 +232,27 @@
    #:isalnum #:isalpha #:iscntrl #:isdigit #:isgraph
    #:ishexnumber #:isideogram #:islower #:isnumber #:isphonogram #:isprint
    #:ispunct #:isrune #:isspace #:isspecial #:isupper #:isxdigit
+
+   ;; i18n
+   #:locale-categories
+   #:lc-category
+   #:+LC-ALL+
+   #:+LC-COLLATE+
+   #:+LC-CTYPE+
+   #:+LC-MONETARY+
+   #:+LC-NUMERIC+
+   #:+LC-TIME+
+   #:+LC-MESSAGES+
+   #:+LC-COLLATE+
+   #:+LC-MESSAGES+
+   #:+LC-PAPER+
+   #:+LC-NAME+
+   #:+LC-ADDRESS+
+   #:+LC-TELEPHONE+
+   #:+LC-MEASUREMENT+
+   #:+LC-IDENTIFICATION+
+   #:+LC-LAST+
+   #:setlocale
 
    ;; stdlib
    #:system

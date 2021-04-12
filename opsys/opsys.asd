@@ -25,8 +25,12 @@
       :components ((:file "base")
 		   (:file "types")
 		   (:file "os-stream-base")))
+     (:file "libc" #| :depends-on ("package") |#
+      :if-feature (:not :mezzano))
+     ;; As you may know, :serial t is a convenient lie.
+     ;; Also in C land, libc is depends on the kernel, not the other way around.
      (:module "unix"
-      :depends-on ("base")
+      :depends-on ("base" "libc")
       :serial t
       :if-feature (:or :unix :linux :darwin :sunos :bsd)
       :components ((:file "package")
@@ -43,6 +47,7 @@
 		   (:file "events")
 		   (:file "terminals")
 		   (:file "communication")
+		   (:file "i18n")
 		   (:file "unix")
 		   (:file "inspection")
 		   (:file "unix-stream")))
@@ -80,7 +85,5 @@
 	       (:module "mezzano"
 			:if-feature :mezzano)))
      (:file "package" :depends-on ("base"))
-     (:file "libc" :depends-on ("package")
-	    :if-feature (:not :mezzano))
      (:file "opsys" :depends-on ("platform-dependant"))
      (:file "os-stream" :depends-on ("opsys"))))

@@ -1545,6 +1545,15 @@ a terminal.")
 (defosfun language ()
   "Return the system's idea of the language for communicating with the user.")
 
+(defun setup-locale-from-environment ()
+  "Do appropriate setlocale calls based on the current settings of LC_*
+environment variables."
+  (loop :with e = nil
+	:for f :in libc::+lc-env-type+
+	:do
+	(when (setf e (environment-variable (cdr f)))
+	  (setlocale (car f) e))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Miscellaneous
 
