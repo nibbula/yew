@@ -306,6 +306,7 @@
 	     (terminal-class (find-terminal-class-for-type
 			      (pick-a-terminal-type)))
 	     (accept-does-newline t)
+	     partial-line-indicator
 	     re-edit
 	     (history-context :tiny))		; remnant
   "Read a line from the terminal, with line editing and completion.
@@ -347,6 +348,8 @@ Keyword arguments:
     Name of a terminal device to use. If NIL 
   ACCEPT-DOES-NEWLINE (t)
     True if accept-line outputs a newline.
+  PARTIAL-LINE-INDICATOR
+    A character to output if starting on a partial line.
   RE-EDIT
     True to re-edit the previous line as if accept was a newline.
   HISORY-CONTEXT
@@ -370,6 +373,7 @@ Keyword arguments:
 			:local-keymap	    	local-keymap
 			:keymap		    	keymap
 			:accept-does-newline	accept-does-newline
+			:partial-line-indicator	partial-line-indicator
 			:terminal		terminal
 			:terminal-device-name	terminal-name
 			:terminal-class	    	terminal-class)))

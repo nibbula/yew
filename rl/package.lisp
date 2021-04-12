@@ -160,6 +160,7 @@
    #:*vi-insert-mode-keymap*
    #:*vi-command-mode-keymap*
    #:*default-prompt*
+   #:*default-partial-line-indicator*
    #:*completion-list-technique*
    #:*completion-really-limit*
    #:*completion-short-divisor*

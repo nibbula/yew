@@ -19,6 +19,11 @@
 (defvar *default-prompt* "> "
   "Output before reading to let you know it's your turn.")
 
+(defvar *default-partial-line-indicator*
+  (make-fatchar :c #\% #| #\⏎ |# :attrs '(:standout))
+  "A suggestion to use for the partial-line-indicator. The default is actually
+NIL, so we don't assume what's come before.")
+
 (defun default-output-prompt (e &optional (p nil prompt-supplied))
   "The default prompt output function. Prints *default-prompt* unless a ~
    prompt is supplied."
@@ -310,7 +315,7 @@ works for database formats.")
     "True to make prompts start at the left side of the terminal.")
    (partial-line-indicator
     :initarg :partial-line-indicator :accessor partial-line-indicator
-    :initform (make-fatchar :c #\% #| #\⏎ |# :attrs '(:standout))
+    :initform nil
     :documentation
     "A character printed to indicate a partial line before the prompt, or NIL
 not to print one.")
