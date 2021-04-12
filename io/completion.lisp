@@ -2,10 +2,6 @@
 ;;; completion.lisp - Pull endings out of somewhere.
 ;;;
 
-;; TODO:
-;;  - finish dictionary completion
-;;  - more languageishnessification
-
 (defpackage :completion
   (:documentation
 "The completion package provides a generic interface to functions that find
@@ -97,6 +93,10 @@ Dictionary completion:
    #:complete-char-name
    ))
 (in-package :completion)
+
+;; TODO:
+;;  - finish dictionary completion
+;;  - more languageishnessification
 
 ;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
 ;; 		   (compilation-speed 0)))
