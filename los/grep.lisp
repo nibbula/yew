@@ -186,7 +186,7 @@ GREP-RESULTS."
 		    (progn
 		      (setf ,nl-func
 			    (lambda (r)
-			      (let ((nr (pop ,l)))
+			      (let ((nr (princ-to-string (pop ,l))))
 				(when nr
 				  (setf
 				   (grep-result-file r) ,filename
