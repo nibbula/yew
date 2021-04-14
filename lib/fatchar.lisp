@@ -460,7 +460,7 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 				  collections))))
 
 (defmethod osplit ((separator fatchar) (string fat-string)
-		   &key omit-empty test key
+		   &key omit-empty test key bag
 		     (start nil start-p)
 		     (end nil end-p))
   (declare (ignorable start start-p end end-p))
@@ -471,10 +471,11 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 		      :omit-empty omit-empty
 		      ;; Default to a reasonable test for fatchars.
 		      :test (or test #'equalp)
-		      :key key))))
+		      :key key
+		      :bag bag))))
 
 (defmethod osplit ((separator character) (string fat-string)
-		   &key omit-empty test key
+		   &key omit-empty test key bag
 		     (start nil start-p)
 		     (end nil end-p))
   (declare (ignorable start start-p end end-p))
@@ -484,12 +485,13 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 	   (separator (fat-string-string string)
 		      :omit-empty omit-empty
 		      :test test
+		      :bag bag
 		      ;; Make the key reach into the fatchar for the character.
 		      :key (or (and key (_ (funcall key (fatchar-c _))))
 			       #'fatchar-c)))))
 
 (defmethod osplit ((separator string) (string fat-string)
-		   &key omit-empty test key
+		   &key omit-empty test key bag
 		     (start nil start-p)
 		     (end nil end-p))
   (declare (ignorable start start-p end end-p))
@@ -499,12 +501,13 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 	   (separator (fat-string-string string)
 		      :omit-empty omit-empty
 		      :test test
+		      :bag bag
 		      ;; Make the key reach into the fatchar for the character.
 		      :key (or (and key (_ (funcall key (fatchar-c _))))
 			       #'fatchar-c)))))
 
 (defmethod osplit ((separator fat-string) (string fat-string)
-		   &key omit-empty test key
+		   &key omit-empty test key bag
 		     (start nil start-p)
 		     (end nil end-p))
   (declare (ignorable start start-p end end-p))
@@ -515,7 +518,7 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 	    :omit-empty omit-empty
 	    ;; Default to a reasonable test for fatchars.
 	    :test (or test #'equalp)
-	    :key key))))
+	    :key key :bag bag))))
 
 (defmethod osplit-if (predicate (string fat-string)
 		      &key omit-empty key

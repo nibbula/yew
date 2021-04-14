@@ -1547,7 +1547,7 @@ is true.")
 				      :key key)))
 
 (defgeneric osplit (separator ordered-collection
-		    &key omit-empty start end test key #| count |#)
+		    &key omit-empty start end test key #| count |# bag)
   (:documentation
    "Split the ORDERED-COLLECTION into subsequences separated by SEPARATOR.
 Return an ORDERED-COLLECTION of the subsequences. SEPARATOR can be a
@@ -1566,37 +1566,37 @@ type as the one given.
                element to be tested.
 ")
   (:method (separator (collection list)
-	    &key omit-empty test key
+	    &key omit-empty test key bag
 	      (start nil start-p)
 	      (end nil end-p))
     (call-with-start-and-end
      dlib:split-sequence
      (separator collection
-		:omit-empty omit-empty :test test :key key)))
+		:omit-empty omit-empty :test test :key key :bag bag)))
   (:method (separator (collection vector)
-	    &key omit-empty test key
+	    &key omit-empty test key bag
 	      (start nil start-p)
 	      (end nil end-p))
     (call-with-start-and-end
      dlib:split-sequence
      (separator collection
-		:omit-empty omit-empty :test test :key key)))
+		:omit-empty omit-empty :test test :key key :bag bag)))
   (:method (separator (collection sequence)
-	    &key omit-empty test key
+	    &key omit-empty test key bag
 	      (start nil start-p)
 	      (end nil end-p))
     (call-with-start-and-end
      dlib:split-sequence
      (separator collection
-		:omit-empty omit-empty :test test :key key))))
+		:omit-empty omit-empty :test test :key key :bag bag))))
 
 (defmethod osplit (separator (collection container)
-		   &key omit-empty test key
+		   &key omit-empty test key bag
 		     (start nil start-p)
 		     (end nil end-p))
   (call-with-start-and-end
    osplit (separator (container-data collection)
-		     :omit-empty omit-empty :test test :key key)))
+		     :omit-empty omit-empty :test test :key key :bag bag)))
 
 (defgeneric osplit-if (predicate ordered-collection
 		       &key omit-empty start end key #| count |#)

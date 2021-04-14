@@ -369,23 +369,6 @@ Useful for making your macro 'hygenic'."
 	mezzano)
   (missing-implementation 'd-getenv))
 
-;; This is useful implementing wrappers or methods for various standard
-;; functions that take START and END keywords.
-;; @@@ I would like to not have to pass: start start-p end end-p
-;; but then I would have to export them from here. :(
-#+(or)
-(defmacro call-with-start-and-end (func args start start-p end end-p)
-  "Call func with args and START and END keywords, assume that an environemnt
-that has START and START-P and END and END-P."
-  `(progn
-     (if ,start-p
-	 (if ,end-p
-	     (,func ,@args :start ,start :end ,end)
-	     (,func ,@args :start ,start))
-	 (if ,end-p
-	     (,func ,@args ::end ,end)
-	     (,func ,@args)))))
-
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun initial-span (sequence not-in)
     "Return the initial portion of SEQUENCE consiting of objects not in
@@ -441,23 +424,52 @@ the sequence NOT-IN."
 ;;   :test #'(lambda (a b) (declare (ignore a)) (position b "1289"))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
+  ;; This is useful implementing wrappers or methods for various standard
+  ;; functions that take START and END keywords.
+  ;; @@@ I would like to not have to pass: start start-p end end-p
+  ;; but then I would have to export them from here. :(
+  (defmacro %call-with-start-and-end (func args)
+    "Call func with args and START and END keywords, assume that an environemnt
+that has START and START-P and END and END-P."
+    `(progn
+       (if start-p
+	   (if end-p
+	       (,func ,@args :start start :end end)
+	       (,func ,@args :start start))
+	   (if end-p
+	       (,func ,@args ::end end)
+	       (,func ,@args)))))
+
+  (defun bag-position (bag seq &key
+				 (start nil start-p)
+				 (end nil end-p)
+				 test test-not key)
+    (%call-with-start-and-end
+     position-if
+     (#'(lambda (c)
+	  (position c bag :test test :test-not test-not))
+	seq :key key)))
+
   (defmacro call-looker (function sep seq start end test key)
     "Call FUNCTION, which is likely to be POSITION or SEARCH. Make START, END,
 and TEST be the appropriate keywords."
     (let ((base
 	   `(,function ,sep ,seq
 		       ,@(when key `(:key ,key))
-		       ,@(if (eq function 'position)
+		       ,@(if (or (eq function 'position)
+				 (eq function 'bag-position))
 			     '(:start) '(:start2))
 		       ,start
 		       ,@(when end
-			       `(,(if (eq function 'position)
+			       `(,(if (or (eq function 'position)
+					  (eq function 'bag-position))
 				      :end :end2)
 				  ,end)))))
       `(if ,test ,(append base (list :test test)) ,base)))
 
   (defun split-sequence (sep seq &key
 			 omit-empty coalesce-separators remove-empty-subseqs
+			 bag
 			 (start 0) end test key #| count |#)
     "Split the sequence SEQ into subsequences separated by SEP. Return a list of
 the subsequences. SEP can be a sequence itself, which means the whole sequence
@@ -468,7 +480,7 @@ is the separator. If :omit-empty is true, then don't return empty subsequnces.
     (declare (type boolean omit-empty coalesce-separators remove-empty-subseqs))
     (setf omit-empty (or omit-empty coalesce-separators remove-empty-subseqs))
     (let* ((sep-is-seq (typecase sep (vector t) (list t) (t nil)))
-	   (sep-len (if sep-is-seq (length sep) 1))
+	   (sep-len (if (and sep-is-seq (not bag)) (length sep) 1))
 	   (seq-len (if omit-empty (length seq) 0)))
       (declare (type boolean sep-is-seq))
       (declare (type fixnum sep-len seq-len))
@@ -506,11 +518,19 @@ is the separator. If :omit-empty is true, then don't return empty subsequnces.
 	  (if sep-is-seq
 	      (if omit-empty
 		  (if test
-		      (loopy search t)
-		      (loopy search t))
+		      (if bag
+			  (loopy bag-position t)
+			  (loopy search t))
+		      (if bag
+			  (loopy bag-position t)
+			  (loopy search t)))
 		  (if test
-		      (loopy search nil)
-		      (loopy search nil)))
+		      (if bag
+			  (loopy bag-position nil)
+			  (loopy search nil))
+		      (if bag
+			  (loopy bag-position nil)
+			  (loopy search nil))))
 	      (if omit-empty
 		  (if test
 		      (loopy position t)
