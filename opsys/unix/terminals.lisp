@@ -1,6 +1,6 @@
-;;
-;; unix/terminals.lisp - Unix interface to terminals
-;;
+;;;
+;;; unix/terminals.lisp - Unix interface to terminals
+;;;
 
 (in-package :opsys-unix)
 
@@ -255,7 +255,7 @@
 (defcfun tcsetpgrp :int (fd :int) (pgid pid-t))
 (defcfun tcgetpgrp pid-t (fd :int))
 
-(defcfun isatty  :int (fd :int))
+(defcfun ("isatty" real-isatty) :int (fd :int))
 (defcfun ttyname :string (fd :int))
 
 ;; Now for even more non-standard freakshow!
@@ -284,6 +284,39 @@
   (defmacro _IOR  (g n ty) `(_IOC +IOC_OUT+   ,g ,n ,(foreign-type-size ty)))
   (defmacro _IOW  (g n ty) `(_IOC +IOC_IN+    ,g ,n ,(foreign-type-size ty)))
   (defmacro _IOWR (g n ty) `(_IOC +IOC_INOUT+ ,g ,n ,(foreign-type-size ty))))
+
+#+linux
+(progn
+  (defconstant +IOC_NRBITS+   8)
+  (defconstant +IOC_TYPEBITS+ 8)
+  (defconstant +IOC_SIZEBITS+ 14)
+  (defconstant +IOC_DIRBITS+  2)
+
+  (defconstant +IOC_NRSHIFT+   0)
+  (defconstant +IOC_TYPESHIFT+ (+ +IOC_NRSHIFT+   +IOC_NRBITS+))
+  (defconstant +IOC_SIZESHIFT+ (+ +IOC_TYPESHIFT+ +IOC_TYPEBITS+))
+  (defconstant +IOC_DIRSHIFT+  (+ +IOC_SIZESHIFT+ +IOC_SIZEBITS+))
+
+  (defmacro _IOC (inout group num len)
+    (let ((grp (etypecase group
+		 (integer group)
+		 (character (char-int group)))))
+      `(logior (ash ,inout +IOC_DIRSHIFT+)
+	       (ash ,grp   +IOC_TYPESHIFT+)
+	       (ash ,num   +IOC_NRSHIFT+)
+	       (ash ,len   +IOC_SIZESHIFT+))))
+
+  (defconstant +IOC_NONE+  0)
+  (defconstant +IOC_WRITE+ 1)
+  (defconstant +IOC_READ+  2)
+
+  (defmacro _IO   (type n)      `(_IOC +IOC_NONE+  ,type ,n 0))
+  (defmacro _IOR  (type n size)
+    `(_IOC +IOC_READ+  ,type ,n ,(foreign-type-size size)))
+  (defmacro _IOW  (type n size)
+    `(_IOC +IOC_WRITE+ ,type ,n ,(foreign-type-size size)))
+  (defmacro _IOWR (type n size)
+    `(_IOC +IOC_WRITE+ ,type ,n ,(foreign-type-size size))))
 
 ;; "Window sizes. Not used by the kernel. Just for applications."
 (defcstruct winsize
@@ -387,6 +420,10 @@
 
 #+linux (defconstant +TIOCGWINSZ+ #x5413 "get window size")
 #+linux (defconstant +TIOCSWINSZ+ #x5414 "set window size")
+
+;; We probably need this one for login-tty.
+#+linux (defconstant +TIOCSCTTY+ #x540e "become controlling tty")
+;; sunos? (defconstant +TIOCSCTTY+ (_IO #\t 97) "become controlling tty")
 
 #|
 (defun UIOCCMD (n) "User control OP 'n'" (_IO #\u n))
@@ -983,9 +1020,36 @@ characters. If we don't get anything after a while, just return what we got."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; The portable interface:
 
+(defun isatty (thing)
+  "Return true if THING is a terminal. THING can be a file descriptor or a file
+name."
+  (flet ((isatty-file (filename)
+	   (let (fd (result 0))
+	     (unwind-protect
+		  (progn
+		    (with-foreign-object (ptr :pointer)
+		      (setf fd (posix-open filename
+					   (logior +O_RDONLY+ +O_NOCTTY+) 0)
+			    ;; If we can get the terminal attributes, it must be
+			    ;; a terminal.
+		            result (tcgetattr fd ptr))))
+	       (posix-close fd))
+	     (zerop result))))
+    (etypecase thing
+      (integer
+       (= (real-isatty thing) 1))
+      (string
+       (isatty-file thing))
+      (pathname
+       (isatty-file (namestring thing))))))
+
+(defun terminal-p (thing) ;; @@@ Does this conflict with generic terminal?
+  "Return true if the system file descriptor FD is attached to a terminal."
+  (isatty thing))
+
 (defun file-handle-terminal-p (fd)
   "Return true if the system file descriptor FD is attached to a terminal."
-  (= (isatty fd) 1))
+  (isatty fd))
 
 (defun file-handle-terminal-name (fd)
   "Return the device name of the terminal attached to the system file
@@ -1006,8 +1070,10 @@ descriptor FD."
 		  (* 8 1024)))
        (open device-name
 	     :direction :output
-	     #-(or clisp abcl) :if-exists
-	     #-(or clisp abcl) :append
+	     #-(or clisp abcl excl) :if-exists
+	     #-(or clisp abcl excl) :append
+	     #+excl :if-exists
+	     #+excl :overwrite
 	     #+sbcl :external-format
 	     #+sbcl '(:utf-8 :replacement #\replacement_character)
 	     #+ccl :external-format
@@ -1026,12 +1092,24 @@ descriptor FD."
     (t
      (error "Unrecognized type of terminal handle."))))
 
+(defvar *handlers-set* nil
+  "True if we've already set the signal handlers.")
+
 (defmacro with-terminal-signals (() &body body)
   "Evaluate the BODY with signal handlers set appropriately for reading from
 a terminal."
-  `(with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
-			  (+SIGTSTP+  . tstp-handler))
-     ,@body))
+  (with-names (thunk)
+  `(flet ((,thunk () ,@body))
+     (if (not *handlers-set*)
+	 (let ((*handlers-set* t))
+	   ;; If a ^Z handler is active, don't overrride it.
+	   (if (not (member (signal-action +SIGTSTP+) '(:default :ignore)))
+	       (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler))
+		 (,thunk))
+	       (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
+				      (+SIGTSTP+  . tstp-handler))
+		 (,thunk))))
+	 (,thunk)))))
 
 ;; I'm not really sure if this is a good interface. ☹
 (defun set-terminal-mode (tty &key
@@ -1271,12 +1349,15 @@ The individual settings override the settings in MODE."
 	       (when (not (zerop (read-raw-char terminal-handle c)))
 		 (mem-ref c :unsigned-char))))
 	;; If a ^Z handler is active, don't overrride it.
-	(if (not (member (signal-action +SIGTSTP+) '(:default :ignore)))
-	    (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler))
-	      (read-it))
-	    (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
-				   (+SIGTSTP+  . tstp-handler))
-	      (read-it)))))))
+	;; (if (not (member (signal-action +SIGTSTP+) '(:default :ignore)))
+	;;     (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler))
+	;;       (read-it))
+	;;     (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
+	;; 			   (+SIGTSTP+  . tstp-handler))
+	;;       (read-it)))
+	(with-terminal-signals ()
+	  (read-it))
+	))))
 
 (defun read-terminal-char (terminal-handle &key timeout)
   (code-char (read-terminal-byte terminal-handle :timeout timeout)))
@@ -1563,5 +1644,128 @@ on ‘octets-p’."
       ;; close the terminal
       (when (and tty (>= tty 0))
 	(posix-close tty)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Pseudo-terminals
+
+;; The typical thing you do for a pseudo-terminal (hereafter called a pty) is:
+;;
+;; 1. Open the master:
+;;     open("/dev/ptmx") => master_fd
+;;       OR
+;;     posix-openpt(O_RDWR | O_NOCTTY) => master_fd
+;;
+;; 4. Grant the pty to the process.
+;;    grantpt(master_fd)
+;;    unlockpt(master_fd)
+;;
+;; 2. Get the slave device:
+;;     open(ptsname(master_fd), O_RDWR | O_NOCTTY, 0600) => slave_fd
+;;
+;; 3. Make a process
+;;     .. fork
+;;     close stdin, stdout, and stderr
+;;     open the slave_fd as stdin, stdout, and stderr
+;;     exec a program to run in the new pty..
+;;
+;; 5. Use the slave side as the child's terminal.
+;;     with the slave_fd as stdin, stdout, and stderr.
+
+;; The manual give us a heads up on this totally stupid design:
+;;
+;;  "The behavior of grantpt() is unspecified if a signal handler is
+;;   installed to catch SIGCHLD signals."
+;;
+;; It's because it can try to run pt_chown, which, unsuprisingly, is a security
+;; problem. So they had to fix it with another fake filesystem "devpts".
+;; Anywhere near recent kernels will have the devpts filesystem so we shouldn't
+;; have to worry much.
+
+;; @@@ Perhaps we should make our own version of theses which use syscalls?
+
+(defcfun grantpt :int
+  "Give the slave pseudo-terminal of the given master FD to the current user."
+  (fd :int))
+
+(defcfun unlockpt :int
+  "Unlock the slave side of the pseudo-terminal of the given master FD."
+  (fd :int))
+
+(defcfun ("posix_openpt" posix-openpt) :int
+  "Opens an usused pseudo-terminal master, and return the file descriptor.
+FLAGS is an bit-wise or of:
+  +O_RDWR+    Open for reading and writing.
+  +O_NOCTTY+  Don't make this the session's controlling terminal."
+  (flags :int))
+
+(defcfun ("ptsname_r" ptsname-r) :int
+  "Return the name of the pseduo-terminal slave corresponding to the master FD."
+  (fd :int) (buf :string) (buflen size-t))
+
+;; We really don't even need to provide the losing C ptsname.
+
+(defun ptsname (fd)
+  "Return the name of the slave pseduo-terminal device for the master FD."
+  (with-foreign-object (buf :char (get-path-max))
+    (syscall (ptsname-r fd buf (get-path-max)))
+    (foreign-string-to-lisp buf)))
+
+;; @@@ or should we use the C one? Should we add +O_CLOEXEC+ ?
+(defun getpt ()
+  "Open a pseudo-terminal master and return the file descriptor."
+  (syscall (posix-openpt (logior +O_RDWR+ +O_NOCTTY+))))
+
+;; These do the whole rigamarole for you:
+;; @@@ but do they really require -lutil ?
+
+;; (defcfun ("openpty" real-openpty) :int
+;;   (master (:pointer :int))
+;;   (slave (:pointer :int))
+;;   (name (:pointer :char))
+;;   (termios-pointer (:pointer (:struct termios)))
+;;   (winsize-pointer (:pointer (:struct winsize))))
+
+(defun openpty ()
+  "Create a pseudo-terminal with theand return the master and slave"
+  (let ((master (syscall (getpt))))
+    (syscall (grantpt master))
+    (syscall (unlockpt master))
+    ;; @@@@@
+  ))
+
+(defcfun ("forkpty" real-forkpty) :int
+  "Create a process and establish the slave pseudo-terminal as it's controlling
+terminal."
+  (master (:pointer :int))
+  (name (:pointer :char))
+  (termios-pointer (:pointer (:struct termios)))
+  (winsize-pointer (:pointer (:struct winsize))))
+
+(defun forkpty (&key termios winsize)
+  "Create a process and establish the slave pseudo-terminal as it's controlling
+terminal. "
+  (declare (ignore termios winsize))
+  )
+
+;; @@@ or is this the thing that requires -lutil ?
+;; (defcfun ("login_tty" login-tty) :int
+;;   "Prepare a for a login on the terminal FD. Creates a new session, making FD be
+;; the controlling terminal, setting it to be the input, output, and error, and
+;; then closes it."
+;;   (fd :int))
+
+(defun login-tty (fd)
+  "Prepare for a login on the terminal FD. Creates a new session, making FD be
+the controlling terminal, setting it to be the input, output, and error, and
+then closes it."
+  (flet ((try-to-dup-to (to-fd)
+	   (loop :until (not (and (= -1 (posix-dup2 fd to-fd))
+				  (= *errno* +EBUSY+))))))
+    (syscall (posix-ioctl fd +TIOCSCTTY+ (null-pointer)))
+    ;; Maybe if a system doesn't have +TIOCSCTTY+ we can just close the current
+    ;; controlling terminal then open what ttyname says it is?
+    (map 'nil #'try-to-dup-to '(0 1 2))
+    (when (not (member fd '(0 1 2)))
+      (posix-close fd))))
 
 ;; End
