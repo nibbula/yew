@@ -240,7 +240,7 @@ found."
 (defgeneric copy-table (table)
   (:documentation "Make a copy of TABLE. This defaults to a shallow copy."))
 
-(defmethod copy-table ((table table))
+(defmethod copy-table ((table mem-table))
   (let* ((class (class-of table))
 	 (result (allocate-instance class)))
     (loop :for slot :in (mapcar #'mop:slot-definition-name
