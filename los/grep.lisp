@@ -5,7 +5,7 @@
 (defpackage :grep
   (:documentation "Regular expression search in streams.")
   (:use :cl :cl-ppcre :opsys :dlib :grout :fatchar :stretchy
-	:char-util)
+	:char-util :collections :table)
   (:export
    #:grep
    #:grep-files
@@ -446,6 +446,95 @@ Second value is the scanner that was used.
 	      (remove-duplicates (mapcar #'first results) :test #'equal)))
       results)))
 
+(defmethod make-result-table (table results)
+  "Return a new copy of TABLE, but with only the rows from RESULTS, where
+RESULTS is a list of (row-number column-number match)."
+  (let* ((class (class-of table))
+	 (result (allocate-instance class)))
+    (loop :for slot :in (mapcar #'mop:slot-definition-name
+				(mop:class-slots class))
+       :when (slot-boundp table slot)
+       :do (setf (slot-value result slot)
+		 (slot-value table slot)))
+    (setf (container-data result)
+	  (omap (lambda (r)
+		  (copy-seq (oelt table (car r))))
+		results))
+    result))
+
+;; @@@ Maybe someday consider how to refactor overlap with (grep …)
+(defun grep-table (pattern table #| &rest keywords |#
+		   &key (output-stream *standard-output*)
+		     count extended fixed ignore-case quiet invert
+		     line-number use-color collect
+		     unicode-normalize unicode-remove-combining filter)
+  "Call GREP with PATTERN on TABLE. See the documentation for GREP for an
+explanation the other arguments."
+  (declare (ignorable count
+		      ;; extended
+		      ;; ignore-case
+		      invert
+		      line-number use-color
+		      ;; fixed
+		      ;; unicode-normalize unicode-remove-combining filter
+		      ))
+  (let* (match
+	 scanner
+	 (x 0) (y 0)
+	 (match-count 0)
+	 results
+	 result-table
+	 filtered-line ;; actually cell
+	 (composed-filter (make-filter
+			   unicode-normalize unicode-remove-combining filter))
+	 (filtered-pattern (or (and composed-filter
+				    (funcall composed-filter pattern))
+			       pattern))
+	 (check-it
+	   (if fixed
+	       (if composed-filter
+		   (lambda (x)
+		     (search filtered-pattern
+			     (setf filtered-line
+				   (funcall composed-filter x))))
+		   (lambda (x)
+		     (search filtered-pattern x)))
+	       (if composed-filter
+		   (lambda (x)
+		     (scan scanner
+			   (setf filtered-line
+				 (funcall composed-filter x))))
+		   (lambda (x)
+		     (scan scanner x))))))
+    (declare (type fixnum #|line-count|# match-count))
+    (setf scanner (and (not fixed)
+		       (or scanner
+			   (create-scanner
+			    filtered-pattern
+			    :extended-mode extended
+			    :case-insensitive-mode ignore-case))))
+    (with-grout (*grout* output-stream)
+      (omapn
+       (lambda (row)
+	 (omapn
+	  (lambda (col)
+	    (when (setf match
+			(funcall check-it
+				 (typecase col
+				   (string col)
+				   (t (princ-to-string col)))))
+	      (incf match-count)
+	      (push (list y x match) results))
+	    (incf x))
+	  row)
+	 (incf y))
+       table)
+      (setf results (nreverse results)
+	    result-table (make-result-table table results))
+      (when (not quiet)
+	(grout-print-table result-table))
+      (if collect result-table results))))
+
 #+lish
 (lish:defcommand grep
   ((pattern string :help "Regular expression to search for.")
@@ -503,7 +592,7 @@ it's only quiet if the receiving command accepts sequences.")
     :help "Function to apply to strings before comparing."))
   :accepts (:stream :sequence)
   "Search for patterns in input."
-  (let (result)
+  (let (result table)
     (cond
       ((and (lish:accepts :sequence) (not collect-supplied-p))
        (setf collect t)
@@ -522,34 +611,56 @@ it's only quiet if the receiving command accepts sequences.")
     (when (not (or pattern pattern-expression))
       (error "A pattern argument wasn't given."))
     (setf result
-	  (grep-files (or pattern pattern-expression)
-		      :input-lines (and (not input-as-files)
-					(not (streamp lish:*input*))
+	  (cond
+	    ((setf table (or (and lish:*input* (typep lish:*input* 'table)
+				  lish:*input*)
+			     (and files (typep files 'table)
+				  files)))
+	     ;; Default to collect when given a table.
+	     (when (not collect-supplied-p)
+	       (setf collect t))
+	     (finish-output)
+	     (grep-table (or pattern pattern-expression)
+			 table
+			 :fixed fixed
+			 :ignore-case ignore-case
+			 :invert invert
+			 :line-number line-number
+			 :quiet quiet
+			 :use-color use-color
+			 :collect collect
+			 :unicode-normalize unicode-normalize
+			 :unicode-remove-combining unicode-remove-combining
+			 :filter filter))
+	    (t
+	     (grep-files (or pattern pattern-expression)
+			 :input-lines (and (not input-as-files)
+					   (not (streamp lish:*input*))
+					   (typep lish:*input* 'sequence)
+					   lish:*input*)
+			 :files
+			 (or files (and lish:*input*
 					(typep lish:*input* 'sequence)
-					lish:*input*)
-		      :files
-		      (or files (and lish:*input*
-				     (typep lish:*input* 'sequence)
-				     (or input-as-files
-					 ;; too dwim-ish??
-					 (and (plusp (length lish:*input*))
-					      (typep (elt lish:*input* 0)
-						     'pathname)))
-				     lish:*input*))
-		      :files-with-match files-with-match
-		      :files-without-match files-without-match
-		      :no-filename no-filename
-		      :fixed fixed
-		      :ignore-case ignore-case
-		      :invert invert
-		      :line-number line-number
-		      :quiet quiet
-		      :use-color use-color
-		      :collect collect
-		      :signal-errors signal-errors
-		      :unicode-normalize unicode-normalize
-		      :unicode-remove-combining unicode-remove-combining
-		      :filter filter))
+					(or input-as-files
+					    ;; too dwim-ish??
+					    (and (plusp (length lish:*input*))
+						 (typep (elt lish:*input* 0)
+							'pathname)))
+					lish:*input*))
+			 :files-with-match files-with-match
+			 :files-without-match files-without-match
+			 :no-filename no-filename
+			 :fixed fixed
+			 :ignore-case ignore-case
+			 :invert invert
+			 :line-number line-number
+			 :quiet quiet
+			 :use-color use-color
+			 :collect collect
+			 :signal-errors signal-errors
+			 :unicode-normalize unicode-normalize
+			 :unicode-remove-combining unicode-remove-combining
+			 :filter filter))))
     (if collect
 	(progn
 	  (setf lish:*output* result))
