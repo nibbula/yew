@@ -866,7 +866,8 @@ if THING or lish:*input* NIL."
     (with-grout ()
       (if renderer
 	  (grout-print-table tab :long-titles long-titles :renderer renderer)
-	  (grout-print-table tab :long-titles long-titles)))))
+	  (grout-print-table tab :long-titles long-titles)))
+    (setf lish:*output* tab)))
 
 (defun view-table-file (file-name)
   "View the contents of FILE-NAME as a table."
