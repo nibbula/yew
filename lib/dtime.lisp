@@ -21,6 +21,7 @@ live on Earth very recently only!")
    #:weeks-to-time #:days-to-time #:hours-to-time #:minutes-to-time
    #:time-to-millennia #:time-to-centuries #:time-to-decades #:time-to-years
    #:time-to-weeks #:time-to-days #:time-to-hours #:time-to-minutes
+   #:lisp-to-calendar-weekday #:lisp-weekday-name
    ))
 (in-package :dtime)
 
@@ -35,13 +36,15 @@ live on Earth very recently only!")
 (defun tz-hours (tz)
   (truncate tz))
 
+(defun lisp-to-calendar-weekday (day)
+  "Return the calendar day number for the Lisp day number."
+  ;; Calendar days start from Sunday = 1, Lisp days start from Monday = 0
+  (if (= day 6) 1 (+ day 2)))
+
 (defun lisp-weekday-name (day &key abbrev)
   "Return the weekday name, given the Lisp decoded time DAY."
-  ;; Calendar days start from Sunday = 1, Lisp days start from Monday = 0
-  (calendar:weekday-name (if (= day 6) 1 (+ day 2))
+  (calendar:weekday-name (lisp-to-calendar-weekday day)
 			 :format (if abbrev :abbreviated t)))
-
-(calendar:weekday-name 7 :format :abbreviated)
 
 (defun date-string (&key (time (get-universal-time)) format
 			 (gmt-p nil gmt-p-set) now)
@@ -253,6 +256,24 @@ The date part is considered to be the current date."
 	  (error "Hour must be less than 13 with AM/PM."))
 	(incf hour 12))
       (done))))
+
+#|
+(defun tokenize-date (string)
+  ""
+  (let* ((len (length string))
+	 (i 0)
+	 (result)
+	 (words (osplit
+    (loop
+      :do
+      whe
+      :while (< i len))
+
+
+(defun simple-parse-date (string)
+  ""
+  (
+|#
 
 ;; The stupid base unit of time is seconds.
 ;; Anything after weeks is bogus because years are variable and poorly defined!
