@@ -10,7 +10,7 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Print a calendar."
-    :depends-on (:calendar :table :table-print :grout :fatchar :char-util
+    :depends-on (:dlib :calendar :table :table-print :grout :fatchar :char-util
 		 :collections)
     :components
     ((:file "cal")))
