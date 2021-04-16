@@ -4,12 +4,13 @@
 
 (defpackage :cal
   (:documentation "Calendar")
-  (:use :cl :calendar :table :table-print :grout :fatchar :char-util
-	:collections)
+  (:use :cl :dlib :calendar :table :table-print :grout :fatchar :char-util
+	:collections :dtime)
   (:export
    #:calendar-table
    #:print-calendar
    #:!cal
+   #:!date
    ))
 (in-package :cal)
 
@@ -130,5 +131,138 @@ not given."
        ;; processing?
        ))
     (setf lish:*output* (print-calendar :year year :month month))))
+
+;; The format unix date wants for setting the date:
+;; (format-date "~2,'0d~2,'0d~2,'0d~2,'0d~4d.~2,'0d~%"
+;; (:month :date :hour :min :year :sec #\return) :stream *standard-output*)
+
+(defun hour-24-to-12 (hours)
+  "Return 12 based hour from 24 based hour."
+  (let ((p (mod hours 12))) (if (zerop p) 12 p)))
+
+;; At least do: %a %d %b %Y %r %Z
+(defun mini-strftime (format &optional (time (get-dtime)))
+  "Fake strftime. Doesn't do modifiers, or every format."
+  (multiple-value-bind (second minute hour date month year day dst tz)
+      (decode-universal-time (dtime-seconds time))
+    (declare (ignore dst tz))
+    (with-output-to-string (str)
+      (loop :with percent
+        :for c :across format :do
+	(cond
+	  (percent
+	   (case c
+	     (#\a
+	      (write-string
+	       (calendar:weekday-name
+		(dtime:lisp-to-calendar-weekday day)
+		:context format :format :abbreviated) str))
+	     (#\A
+	      (write-string
+	       (calendar:weekday-name
+		(dtime:lisp-to-calendar-weekday day)) str))
+	     ((#\b #\h)
+	      (write-string
+	       (calendar:month-name month year :format :abbreviated) str))
+	     (#\B
+	      (write-string
+	       (calendar:month-name month year) str))
+	     (#\c
+	      (write-string
+	       (mini-strftime (uos:nl-langinfo uos::+D-T-FMT+))))
+	     (#\d
+	      (format str "~2,'0d" date))
+	     ;; Don't even fucking do %D
+	     (#\e
+	      (format str "~2d" date))
+	     ;; %E is a modifier
+	     (#\F
+	      (format str "~d-~2,'0d-~2,'0d" year month date))
+	     ;; %G %g week-based year?
+	     (#\H
+	      (format str "~2,'0d" hour))
+	     (#\I
+	      (format str "~2,'0d" (hour-24-to-12 hour)))
+	     ;; #\j day of the year 1-366
+	     (#\k
+	      (format str "~2d" hour))
+	     (#\l
+	      (format str "~2d" (hour-24-to-12 hour)))
+	     (#\m
+	      (format str "~2,'0d" month))
+	     (#\M
+	      (format str "~2,'0d" minute))
+	     (#\n
+	      (write-char #\newline str))
+	     ;; %O alternate format
+	     (#\p
+	      (write-string
+	       (if (> hour 12)
+		   (or (uos:nl-langinfo uos::+PM-STR+) "PM")
+		   (or (uos:nl-langinfo uos::+PM-STR+) "AM"))
+	       str))
+	     (#\r
+	      (write-string (mini-strftime "%I:%M:%S %p" time) str))
+	     (#\S
+	      (format str "~2,'0d" second))
+	     (#\Y
+	      (format str "~d" year))
+	     (#\Z
+	      ;; (format str "~d" tz)) ;; @@@ XXX Wrong. look up the name
+	      (format str "~a" (nos:timezone-name)))
+	     (#\%
+	      (write-char #\% str)))
+	   (setf percent nil))
+	  (t
+	   (if (eql c #\%)
+	       (setf percent t)
+	       (write-char c str))))))))
+
+;; If you really want to specify a complex format like posix date, just use
+;; format-date. If you want to set the date use, set-date.
+#+lish
+(lish:defcommand date
+  ((format string :short-arg #\f :default #+unix :unix #-unix :net
+    :help "Format for the date."))
+  "Print the date."
+  (write-line
+   (case (keywordify format)
+     (:unix
+      #+unix (mini-strftime (uos:nl-langinfo uos::+D-T-FMT+))
+      #-unix (mini-strftime "%a %d %b %Y %r %Z"))
+     (:net
+      (date-string :format :net))
+     (otherwise
+      (date-string)))))
+
+#| @@@ finish simple-parse-date
+(lish:defcommand set-date
+  ((date string :optional t :help "String date representation to set.")
+   (seconds integer :short-arg #\s :help "Lisp Universal time in seconds.")
+   (nanoseconds integer :short-arg #\n :default 0
+    :help "Nanosecond part of universal time.")
+   (from string :short-arg #\f :help "Where to get the date from."))
+  "Set the date."
+  (when (and date from)
+    (error "Only specify one of either date or from."))
+  (if (or date from (and *input* (typep *input* (or string integer))))
+      ;; Until we have our own network date thing
+      (cond
+	(date
+	 (etypecase date
+	   (integer
+	    (when (not (typep nanosecond integer))
+	      (error "Nanoseconds must be an integer."))
+	    (nos:set-time seconds nanoseconds))
+	   (string
+	    (let ((time (simple-parse-date date)))
+	      (nos:set-time time)))
+	   (t
+	    (error "Date should be an integer or string."))))
+	(from
+	 (error "We don't know how to do remote date setting yet.")))
+      (format t "~a~%" (date-string :format :net)))
+  (values))
+|#
 
 ;; End
