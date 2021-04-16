@@ -150,6 +150,26 @@ time."
 	  (universal-to-unix-time seconds))
     (syscall (real-settimeofday tv (null-pointer)))))
 
+(defcfun tzset :void
+  "Set timezone data.")
+
+(defcvar tzname :string
+  "Name of the timezone.")
+
+(defcvar timezone :long
+  "Seconds west of UTC.")
+
+(defcvar daylight :int
+  "Non-zero if daylight savings time is active.")
+
+(defun timezone-name ()
+  "Return the current timezone name."
+  tzname)
+
+(defun timezone-offset ()
+  "Seconds west of UTC."
+  timezone)
+
 ;; adjtime??
 
 ;; setitimer/getitimer

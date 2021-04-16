@@ -1,6 +1,6 @@
-;;
-;; unix/package.lisp - Interface to UNIX-like systems.
-;;
+;;;
+;;; unix/package.lisp - Interface to UNIX-like systems.
+;;;
 
 ;; Convetions:
 ;; - Unix system calls should usually be wrapped in SYSCALL which will
@@ -459,6 +459,12 @@
    #:timespec-to-os-time
    #:get-time
    #:set-time
+   #:tzset
+   #:tzname
+   #:timezone
+   #:daylight
+   #:timezone-name
+   #:timezone-offset
    #+linux #:timerfd-create
    #+linux #:timerfd-settime
    #+linux #:timerfd-gettime

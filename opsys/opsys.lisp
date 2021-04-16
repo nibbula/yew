@@ -1090,6 +1090,12 @@ so-called “universal” time. The second value is nanoseconds.")
   "Set time in seconds and nanoseconds. Seconds are in so-called
 “universal” time.")
 
+(defosfun timezone-name ()
+  "Return the current timezone name.")
+
+(defosfun timezone-offset ()
+  "Seconds west of UTC.")
+
 ;; Incredibly bogus hack alert:
 ;;
 ;; This tries to get the results of the CL time macro in a form we can better

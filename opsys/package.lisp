@@ -144,6 +144,8 @@
    #:get-time
    #:get-os-time
    #:set-time
+   #:timezone-name
+   #:timezone-offset
    #:fake-time
    #:*time-result*
 
