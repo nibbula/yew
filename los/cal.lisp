@@ -199,7 +199,7 @@ not given."
 	      (write-string
 	       (if (> hour 12)
 		   (or (uos:nl-langinfo uos::+PM-STR+) "PM")
-		   (or (uos:nl-langinfo uos::+PM-STR+) "AM"))
+		   (or (uos:nl-langinfo uos::+AM-STR+) "AM"))
 	       str))
 	     (#\r
 	      (write-string (mini-strftime "%I:%M:%S %p" time) str))
