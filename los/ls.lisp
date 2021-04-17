@@ -315,9 +315,9 @@ by nos:read-directory."))
 	   (styled-file-name
 	    (path-append (file-item-directory file-item)
 			 (file-item-name file-item))
-	    (get-extended-type file-item)))
+	    :type (get-extended-type file-item)))
 	 (styled-file-name (file-item-as-dir-entry file-item)
-			   (get-extended-type file-item))))
+			   :type (get-extended-type file-item))))
     (t file-item)))
 
 (defun plain-file-name (file)
