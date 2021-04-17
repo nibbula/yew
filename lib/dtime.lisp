@@ -168,6 +168,9 @@ Note that :day is the day of the week number and :date is the day of the month."
 		       ((:year-abbrev :yr-abbrev)
 			`(format nil "~2,'0d" (mod ,year 100)))
 		       (:std-zone
+		       ;; 	`(format nil "~c~2,'0d~2,'0d"
+		       ;; 		 (if (< ,zone 0) #\+ #\-)
+			;; 		 (tz-hours ,zone) (tz-minutes ,zone)))
 			`(format nil "~c~2,'0d~2,'0d"
 				 (if (< ,zone 0) #\+ #\-)
 				 (tz-hours ,zone) (tz-minutes ,zone)))
@@ -200,6 +203,8 @@ Note that :day is the day of the week number and :date is the day of the month."
 		 (decode-universal-time (or ,time (get-universal-time)))))
        (declare (ignorable ,seconds ,minutes ,hours ,date ,month ,year ,day
 			   ,daylight-p ,zone))
+       ;; @@@ Is this really right? or should we only do it for :std-zone?
+       (when ,daylight-p (decf ,zone))
        (format ,stream ,format ,@args))))
 
 (defun simple-parse-time (str)
