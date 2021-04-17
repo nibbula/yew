@@ -1,6 +1,6 @@
-;;
-;; terminal-crunch.lisp - Crunch terminal output.
-;;
+;;;
+;;; terminal-crunch.lisp - Crunch terminal output.
+;;;
 
 (defpackage :terminal-crunch
   (:documentation "Crunch terminal output.
@@ -593,7 +593,16 @@ two values ROW and COLUMN."
 	  (setf ,hv (hash-thing (grid-char-attrs ,thing) ,hv))
 	  ,hv))
        (otherwise
-	(error "I don't know how to hash a ~s." (type-of ,thing))))))
+	(cond
+	  ((typep ,thing '(or structure-object standard-object))
+	   (let ((,hv ,value))
+	     (declare (type fixnum ,hv))
+	     (setf ,hv
+		   #+sbcl (sb-kernel:get-lisp-obj-address ,thing)
+		   #-sbcl (sxhash ,thing))
+	     ,hv))
+	  (t
+	   (error "I don't know how to hash a ~s." (type-of ,thing))))))))
 
 (defun hash-thing (thing &optional (value (fnv-like-hash-seed)))
   (hash-thing-with thing value fnv-like-hash fnv-like-hash-seed))
@@ -688,6 +697,11 @@ sizes. It only copies the smaller of the two regions."
     ;; 	   (terminal-window-columns wtty))
     ;; Potentially resize the screens
     (update-size tty)))
+
+(defmethod terminal-char-at ((tty terminal-crunch) row col)
+  "Return the character at ROW and COL of terminal, or NIL if there is none or
+the terminal doesn't support it."
+  (grid-to-fat-string (aref (aref (screen-lines (new-screen tty)) row) col)))
 
 (defun unset-grid-char (c)
   "Make a fatchar unset."
@@ -1052,6 +1066,8 @@ changed the screen content."
 	       (cond
 		 ;; Normal, no wrap
 		 ((< new-x width)
+		  ;; (dbugf :fuk "Normal, no wrap. new-x = ~s x ~s y ~s~%"
+		  ;; 	 new-x x y)
 		  (set-char (aref (aref lines y) x) char)
 		  (when (> len 1)
 		    ;; "Underchar removal"
@@ -1059,6 +1075,8 @@ changed the screen content."
 		  (setf x new-x))
 		 ;; Single cell wrap
 		 ((= new-x width)
+		  ;; (dbugf :fuk "Single cell wrap. new-x = ~s x ~s y ~s~%"
+		  ;; 	 new-x x y)
 		  (set-char (aref (aref lines y) x) char)
 		  (when (> len 1)
 		    ;; "Underchar removal"
@@ -1066,6 +1084,8 @@ changed the screen content."
 		  (next-line))
 		 ;; Multi-cell character wrap
 		 ((> new-x width)
+		  ;; (dbugf :fuk "Multi-cell wrap. new-x = ~s x ~s y ~s~%"
+		  ;; 	 new-x x y)
 		  (next-line)
 		  (set-char (aref (aref lines y) x) char)
 		  (when (> len 1)
