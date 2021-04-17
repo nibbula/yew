@@ -29,8 +29,9 @@
    #:terminal-wrapper
    #:terminal-wrapped-terminal      ;; #:wrapped-terminal
    #:terminal-events-enabled	    ;; #:events-enabled
-   #:terminal-get-size
+   #:terminal-get-size		    ; @@@ "get" is stupid
    #:terminal-get-cursor-position
+   #:terminal-char-at		  #:tt-char-at
    #:terminal-start
    #:terminal-end
    #:terminal-done
@@ -709,6 +710,10 @@ or :CHAR for character at time with no echo."))
 (defmacro tt-height ()
   "Return the height of the terminal window in characters."
   '(terminal-window-rows *terminal*))
+
+(deftt char-at (row col)
+  "Return the character at ROW and COL of terminal, or NIL if the  terminal
+doesn't support it.")
 
 (deftt title ()
   "Accessor for the terminal title, if it has one.")
