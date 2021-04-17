@@ -1,11 +1,6 @@
-;;
-;; finfo.lisp - Print some information about a file
-;;
-
-;; This is basically a port of my Unix/C command of the same name, beacuse
-;; I wanted to change the date format slightly and I'm tired of coding in C.
-;; I know I could use "stat", like stat -x -t "%Y-%m-%d %H:%M:%S" or
-;; [too lazy to finish this comment].
+;;;
+;;; finfo.lisp - Print some information about a file
+;;;
 
 (defpackage :finfo
   (:documentation "Print some information about a file.")
@@ -67,7 +62,7 @@
        (when collect
 	 (push (list label data) results)))
     results))
-  
+
 #+unix
 (defun print-mode (mode)
   (output "Mode" "~o ~{~a~}~a~{~c~}" mode
@@ -242,5 +237,98 @@ linked file."
   (if collect
       (setf lish:*output* (apply #'finfo files args))
       (apply #'finfo files args)))
+
+#|
+  File: /dev/pts/1
+  Size: 0               Blocks: 0          IO Block: 1024   character special file
+Device: 18h/24d Inode: 4           Links: 1     Device type: 88,1
+Access: (0620/crw--w----)  Uid: ( 1024/     dan)   Gid: (    5/     tty)
+Access: 2021-04-17 03:08:11.374197577 -0700
+Modify: 2021-04-17 03:38:16.374197577 -0700
+Change: 2021-03-29 18:48:41.426197576 -0700
+ Birth: -
+|#
+
+(defun stat-format-time (time)
+  (if time
+      (let ((ut (typecase time
+		  #+unix
+		  (os-unix:timespec
+		   (os-unix:unix-to-universal-time
+		    (os-unix:timespec-seconds time)))
+		  (os-time (os-time-seconds time)))))
+	(with-output-to-string (str)
+          (format-date "~a-~2,'0d-~2,'0d ~2,'0d:~2,'0d:~2,'0d"
+		       (:year :month :date :hour :minute :second)
+		       :time ut :stream str)
+	  (format str ".~d" (uos:timespec-nanoseconds time))
+	  (format-date " ~a" (:std-zone) :time ut :stream str)))
+      "-"))
+
+(defun print-stat (file &key follow-links)
+  #+unix
+  ;; Just a dumb imitation of the default Linix stat
+  (let ((info (if follow-links (stat file) (lstat file))))
+    (with-slots ((device os-unix::device)
+		 (inode os-unix::inode)
+		 (mode os-unix::mode)
+		 (links os-unix::links)
+		 (uid os-unix::uid)
+		 (gid os-unix::gid)
+		 (device-type os-unix::device-type)
+		 (access-time os-unix::access-time)
+		 (modify-time os-unix::modify-time)
+		 (change-time os-unix::change-time)
+		 (birth-time os-unix::birth-time)
+		 (size os-unix::size)
+		 (blocks os-unix::blocks)
+		 (block-size os-unix::block-size)
+		 (flags os-unix::flags)
+		 (generation os-unix::generation)) info
+      (format t "  File: ~a~%" file)
+      (format t "  Size: ~15a Blocks: ~10a IO Block: ~6a ~{~a~}~a~%"
+	      size blocks block-size
+	      (loop :for (func str) :in *mode-tags*
+		    :when (apply func (list mode))
+		    :collect str)
+	      (if (is-set-gid mode)
+		  (if (is-group-executable mode)
+		      "set-GID "
+		    "mandatory locking ")
+		""))
+      (format t "Device: ~2xh/~2dd Inode: ~11a Links: ~5a Device type: ~a~%"
+	      device device inode links device-type)
+      (format t "Access: (~4o/~a)  Uid: (~5d/~8@a)   Gid: (~5d/~8@a)~%"
+	      mode (symbolic-mode mode) uid (user-name uid)
+	      gid (group-name gid))
+      (format t "Access: ~a~%" (stat-format-time access-time))
+      (format t "Modify: ~a~%" (stat-format-time modify-time))
+      (format t "Change: ~a~%" (stat-format-time change-time))
+      (format t " Birth: ~a~%" (stat-format-time birth-time))))
+  #-unix
+  ;; Just do finfo on non-unix.
+  (apply #'finfo file :follow-links follow-links))
+
+#+lish
+(lish:defcommand stat
+  ((follow-links boolean :short-arg #\L
+    :help "True to give information about the linked thing, not the link." )
+   (help boolean :short-arg #\?
+    :help "Show the help.")
+   (files pathname :repeating t
+    :help "The path names to give information about."))
+  :accepts (string pathname sequence)
+  :keys-as args
+  "Print information about a file."
+  (remf args :files)
+  (when (not files)
+    (if lish:*input*
+	(setf files
+	      (typecase lish:*input*
+		((or string pathname) (list lish:*input*))
+		(list lish:*input*)
+		(sequence (map 'list #'identity lish:*input*))))
+	(error "But what file do you want information about?")))
+  (mapc (_ (print-stat _ :follow-links follow-links)) files))
 
 ;; EOF
