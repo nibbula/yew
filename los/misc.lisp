@@ -102,7 +102,7 @@
 	    (setf fd (or (and lisp (stream-system-handle *standard-input*))
 			 0)))
 	  (setf name
-		#+unix (if (zerop (uos:isatty fd)) "not a tty" (uos:ttyname fd))
+		#+unix (if (uos:isatty fd) (uos:ttyname fd) "not a tty")
 		#-unix "unknown")
 	  (format t "~a~%" name)
 	  (setf *output* name)))))
