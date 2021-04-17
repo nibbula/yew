@@ -32,6 +32,13 @@
       (span-to-fat-string (append style (list string)))
       string))
 
+;; @@@ I'm not sure this is the best name?
+(defun styled-span (style span)
+  "Return SPAN enclosed in STYLE."
+  (if style
+      (append style (list span))
+      span))
+
 (defun styled-char (style char)
   "Apply style to CHAR, which can be character or a fatchar."
   (let* ((c (etypecase char
@@ -63,7 +70,7 @@
   "Return a string or a fat-string with the style from THEME-ITEM applied to it."
   (styled-string (and theme-item (theme-value *theme* theme-item)) string))
 
-(defun styled-file-name (name &optional type)
+(defun styled-file-name (name &key type object)
   "Return a stylized string for a file NAME and TYPE. The TYPE values are from
 OPSYS:DIR-ENTRY-TYPE or whatever. NAME can be a DIR-ENTRY in which the NAME
 and TYPE are extracted from. If TYPE is passed in, it overrides a type in the
@@ -81,7 +88,10 @@ DIR-ENTRY."
 				    (list :file :suffix
 					  (theme:file-suffix-type name)
 					  :style))))
-       (styled-string style name))
+       (styled-string style
+		      (if object
+			  (styled-span `(:object ,object) name)
+			  name)))
       (t
        name))))
 
