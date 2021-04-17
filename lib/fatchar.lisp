@@ -875,7 +875,8 @@ strings."
   "The differences between c1 and c2, a list of :ATTR :FG :BG. NIL if the same."
   (let (diffs)
     (when (set-exclusive-or (and c1 (fatchar-attrs c1)) (fatchar-attrs c2)
-				 :test #'eq)
+			    ;; :test #'eq)
+			    :test #'equal) ;; because :object
       (push :attr diffs))
     (when (not (equal (and c1 (fatchar-fg c1)) (fatchar-fg c2)))
       (push :fg diffs))
@@ -1165,6 +1166,7 @@ span-list ->
   (:bg-[color-name] [span]*)
   (:fg :color [color] [span]*)
   (:bg :color [color] [span]*)
+  (:object <object> [span]*)
 ")
 
   (defparameter *span-args*
@@ -1250,6 +1252,9 @@ The grammar is something like:
 			  ((and (eq tag :bg) (eq (second s) :color))
 			   (push (third s) bg)
 			   (setf rest (cdddr s)))
+			  ((and (eq tag :object) (cdr rest))
+			   (push (second s) attrs)
+			   (setf rest (cddr s)))
 			  (t
 			   (if unknown-func
 			       (progn
