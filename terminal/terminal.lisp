@@ -31,6 +31,7 @@
    #:terminal-events-enabled	    ;; #:events-enabled
    #:terminal-get-size		    ; @@@ "get" is stupid
    #:terminal-get-cursor-position
+   #:terminal-device-time
    #:terminal-char-at		  #:tt-char-at
    #:terminal-start
    #:terminal-end
@@ -436,6 +437,11 @@ STATE should be an object returned by TERMINAL-START."))
    "Do anything necessary to make an already started terminal ready for
 fresh use. Return any saved state to be restored and passed to terminal-end
 or terminal-done."))
+
+(defgeneric terminal-device-time (terminal)
+  (:documentation
+   "Return the last time the terminal device was modified, or NIL if we don't
+know."))
 
 ;; (defmacro with-terminal-stream ((var stream) &body body)
 ;;   "Evaluate the body with VAR set to a new terminal-stream."
