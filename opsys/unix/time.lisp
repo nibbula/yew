@@ -125,9 +125,15 @@ time."
 
 (defun timespec-to-os-time (ts)
   "Convert a timespec to a os-time."
-  (make-os-time
-   :seconds (unix-to-universal-time (getf ts 'tv_sec))
-   :nanoseconds (getf ts 'tv_nsec)))
+  (etypecase ts
+    (timespec
+     (make-os-time
+      :seconds (unix-to-universal-time (timespec-seconds ts))
+      :nanoseconds (timespec-nanoseconds ts)))
+    (cons
+     (make-os-time
+      :seconds (unix-to-universal-time (getf ts 'tv_sec))
+      :nanoseconds (getf ts 'tv_nsec)))))
 
 (defun get-time ()
   "Return the time in seconds and nanoseconds. Seconds are in so-called
