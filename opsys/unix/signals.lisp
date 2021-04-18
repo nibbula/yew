@@ -1,6 +1,6 @@
-;;
-;; unix/signals.lisp - Unix interface to signals
-;;
+;;;
+;;; unix/signals.lisp - Unix interface to signals
+;;;
 
 (in-package :opsys-unix)
 

@@ -1,6 +1,6 @@
-;;
-;; unix/events.lisp - Unix interface to events and polling
-;;
+;;;
+;;; unix/events.lisp - Unix interface to events and polling
+;;;
 
 (in-package :opsys-unix)
 

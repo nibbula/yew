@@ -1,6 +1,6 @@
-;;
-;; unix/users.lisp - Unix interface to user accounts, groups and authenticaion.
-;;
+;;;
+;;; unix/users.lisp - Unix interface to user accounts, groups and authenticaion.
+;;;
 
 (in-package :opsys-unix)
 

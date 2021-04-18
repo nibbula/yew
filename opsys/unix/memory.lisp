@@ -1,6 +1,6 @@
-;;
-;; unix/memory.lisp - Unix interface to memory
-;;
+;;;
+;;; unix/memory.lisp - Unix interface to memory
+;;;
 
 (in-package :opsys-unix)
 

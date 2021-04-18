@@ -1,6 +1,6 @@
-;;
-;; unix/environmental.lisp - Environmental information for unix
-;;
+;;;
+;;; unix/environmental.lisp - Environmental information for unix
+;;;
 
 (in-package :opsys-unix)
 

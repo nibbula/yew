@@ -1,6 +1,6 @@
-;;
-;; unix/inspection.lisp - Unix interface to debuging, profiling, and inspection.
-;;
+;;;
+;;; unix/inspection.lisp - Unix interface to debuging, profiling, and inspection.
+;;;
 
 (in-package :opsys-unix)
 

@@ -1,6 +1,6 @@
-;;
-;; unix/unix.lisp - Miscellanous unix interface pieces
-;;
+;;;
+;;; unix/unix.lisp - Miscellanous unix interface pieces
+;;;
 
 (in-package :opsys-unix)
 

@@ -1,6 +1,6 @@
-;;
-;; unix/errors.lisp - Error handling for the unix interface
-;;
+;;;
+;;; unix/errors.lisp - Error handling for the unix interface
+;;;
 
 (in-package :opsys-unix)
 
