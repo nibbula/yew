@@ -463,6 +463,11 @@ two values ROW and COLUMN."
       ;; @@@ should we just get rid of the saved mode in the terminal??
       current-mode)))
 
+(defmethod terminal-device-time ((tty terminal-ansi))
+  "Return the last time the terminal device was modified, or NIL if we don't
+know."
+  (opsys:terminal-time (terminal-file-descriptor tty)))
+
 (defun test-modes ()
   (labels ((get-mode ()
 	     (get-terminal-mode (terminal-file-descriptor *terminal*)))

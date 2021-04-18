@@ -378,6 +378,13 @@ if we have to clear the saved history lines.")
     :documentation
     "Line of the screen that we start our manangment on. This can change if we
 are directed to move above it, or if we scroll.")
+   (last-time
+    :initarg :last-time :accessor last-time :initform nil
+    :documentation "Last time the wrapped terminal's device was touched, or NIL
+if we dont' know.")
+   (touched
+    :initarg :touched :accessor touched :initform nil :type boolean
+    :documentation "True if we did actual output.")
    (really-scroll-amount
     :initarg :really-scroll-amount :accessor really-scroll-amount
     :initform 0 :type fixnum
@@ -462,6 +469,9 @@ content, when there's a start-line.")
 two values ROW and COLUMN."
   (values (screen-y (new-screen tty))
 	  (screen-x (new-screen tty))))
+
+(defgeneric touch (tty)
+  (:method ((tty terminal-crunch)) (setf (touched tty) t)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Hashing
@@ -864,6 +874,11 @@ the terminal doesn't support it."
   "Forget about the whole terminal thing and stuff."
   (terminal-done (terminal-wrapped-terminal tty) state)
   (values))
+
+(defmethod terminal-device-time ((tty terminal-crunch))
+  "Return the last time the terminal device was modified, or NIL if we don't
+know."
+  (terminal-device-time (terminal-wrapped-terminal tty)))
 
 ;; @@@ this needs to be complicated by the scrolling-region
 ;; As you may know:
@@ -1612,8 +1627,10 @@ XTerm or something."
   (let ((wtty (terminal-wrapped-terminal tty)))
     (cond
       ((and (not (eql new-x old-x)) (not (eql new-y old-y)))
+       (touch tty)
        (terminal-move-to wtty new-y new-x))
       ((not (eql new-x old-x))
+       (touch tty)
        (let ((n (abs (- new-x old-x))))
 	 (if (> new-x old-x)
 	     ;; (terminal-move-to-col wtty new-x)
@@ -1623,6 +1640,7 @@ XTerm or something."
 	     ;;(terminal-backward wtty n)
 	     )))
       ((not (eql new-y old-y))
+       (touch tty)
        (let ((n (abs (- new-y old-y))))
 	 (if (> new-y old-y)
 	     (terminal-down wtty n)
@@ -1694,15 +1712,18 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 		    (screen-x new) (screen-y new)
 		    (screen-x old) (screen-y old)))
 
-(defun update-cursor-state (wtty new old)
+(defun update-cursor-state (tty new old)
   (when (not (eq (screen-cursor-state new)
 		 (screen-cursor-state old)))
-    (if (screen-cursor-state new)
-	(terminal-cursor-on wtty)
-	(terminal-cursor-off wtty))))
+    (let ((wtty (terminal-wrapped-terminal tty)))
+      (touch tty)
+      (if (screen-cursor-state new)
+	  (terminal-cursor-on wtty)
+	  (terminal-cursor-off wtty)))))
 
 (defun update-beeps (tty new)
   (when (not (zerop (screen-beep-count new)))
+    (touch tty)
     ;; This is ridiculous. We could just compress multiple beeps to one.
     (dotimes (i (screen-beep-count new))
       (terminal-beep (terminal-wrapped-terminal tty)))
@@ -1839,6 +1860,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 			#| :no-nulls t |#)))
 	     ;; (dbugf :koo "floob len ~s ~s~%" (olength fs) fs)
 	     (terminal-write-string wtty fs)
+	     (touch tty)
 	     ;; (dbugf :crunch "write-string ~s ->~s<-~%"
 	     ;; 	    (length (fat-string-string fs)) fs)
 	     (setf (update-x tty)
@@ -1992,6 +2014,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
     (when (cleared tty)
       (terminal-clear wtty :saved-p (eq (cleared tty) 'saved))
       (terminal-finish-output wtty)
+      (touch tty)
       ;; (dbugf :crunk "actually clearing!~%")
       (setf (cleared tty) nil)
       (no-hints tty)
@@ -2002,7 +2025,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
       ;; 			     (screen-width old)))
       ;; So just clear the old screen manually.
       (loop :for i :from 0 :below (screen-height old)
-	 :do (fill-by (aref (screen-lines old) i) #'blank-char))
+	    :do (fill-by (aref (screen-lines old) i) #'blank-char))
       (compute-hashes old))
 
     ;; (dbugf :crunch "****** start update @ ~s~%" start-line)
@@ -2016,7 +2039,8 @@ duplicated sequences, and can have worst case O(n*m) performance."
       ;;(dbugf :crunch "-------- Really scroll ~s <-----~%" really-scroll-amount)
       (crunched-move-to tty 0 (1- (screen-height old))
 			(update-x tty) (update-y tty))
-      (terminal-scroll-down wtty really-scroll-amount))
+      (terminal-scroll-down wtty really-scroll-amount)
+      (touch tty))
 
     ;; Try to speed things up with hints.
     (cond
@@ -2069,7 +2093,8 @@ duplicated sequences, and can have worst case O(n*m) performance."
 	      (setf move-x cx
 		    char-x cx)
 	      (put-it)))
-	   (update-ending-position tty new))
+	   (update-ending-position tty new)
+	   (touch tty))
 	 ;;(dbugf :crunch "char = '~s'~%" c)
 	 ))
       ((single-line-change tty)
@@ -2117,6 +2142,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
 		(crunched-move-to tty 0 (1- (screen-height old))
 				  (update-x tty) (update-y tty))
 		(terminal-scroll-down wtty amount)
+		(touch tty)
 		;; move the old screen lines so we update properly
 		(scroll-copy amount (screen-height old) (screen-lines old)
 			     #'line-blanker)
@@ -2129,6 +2155,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
 	       (:down
 		(crunched-move-to tty 0 0 (update-x tty) (update-y tty))
 		(terminal-scroll-up wtty amount)
+		(touch tty)
 		(scroll-copy (- amount) (screen-height old) (screen-lines old)
 			     #'line-blanker)
 		;; (setf end (1+ (cdr (second (car (last sames))))))
@@ -2171,14 +2198,20 @@ duplicated sequences, and can have worst case O(n*m) performance."
 	       (crunched-move-to tty
 				 0 (1+ blank-start)		;; new-x new-y
 				 (update-x tty) (update-y tty)) ;; old-x old-y
-	       (terminal-erase-below wtty)))))
+	       (terminal-erase-below wtty)
+	       (touch tty)))))
 
        ;; Make sure we're at the right cursor position.
        (update-ending-position tty new)))
-    (update-cursor-state wtty new old)
+    (update-cursor-state tty new old)
     (update-beeps tty new)
     (copy-new-to-old tty)
     (finish-output wtty)
+    ;; @@@ Here's a race condition.
+    (when (touched tty)
+      (dbugf :kaka "Did something. ~s~%" (terminal-device-time wtty))
+      (setf (last-time tty) (terminal-device-time wtty))
+      (setf (touched tty) nil))
     (setf really-scroll-amount 0
 	  (delay-scroll tty) nil)
     (reset-hints tty)))
