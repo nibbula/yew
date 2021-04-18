@@ -183,6 +183,7 @@
    #:get-terminal-mode
    #:get-window-size
    #:reset-terminal-modes
+   #:terminal-time
    #:terminal-query
    #:with-terminal-mode
    #:with-terminal-signals

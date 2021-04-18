@@ -1469,6 +1469,10 @@ The individual settings override the settings in MODE.")
 (defosfun reset-terminal-modes (&key file-descriptor device)
   "Set the terminal modes to a normal starting state.")
 
+(defosfun terminal-time (tty-fd)
+  "Return the last modification time for the terminal device or NIL if we can't
+get it.")
+
 (defosfun terminal-query (query &key max)
   "Output the string to the terminal and wait for a response. Read up to MAX
 characters. If we don't get anything after a while, just return what we got.")

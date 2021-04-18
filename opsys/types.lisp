@@ -62,8 +62,9 @@ Slot are:
   (raw     nil :type boolean)
   (timeout nil :type (or null integer)))
 
+;; I can't tell you how much I dislike these units.
 (defstruct os-time
-  "I can't tell you how much I dislike these units."
+  "Time in Common Lisp universal time seconds, and nanoseconds."
   seconds
   nanoseconds)
 

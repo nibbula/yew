@@ -648,6 +648,7 @@
    #:get-window-size
    #:slurp-terminal
    #:reset-terminal-modes
+   #:terminal-time
    #:terminal-query
    #:with-terminal-signals
    #:control-char

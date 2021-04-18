@@ -1589,6 +1589,11 @@ on ‘octets-p’."
 	(read-until fd end-tag :buffer-size buffer-size
 		    :timeout (or timeout 2.5))))))
 
+(defun terminal-time (fd)
+  "Return the modifcation time for the terminal file descriptor."
+  (timespec-to-os-time
+   (uos:file-status-modify-time (uos:fstat fd))))
+
 (defun write-terminal-char (terminal-handle char)
   "Write CHAR to the terminal designated by TERMINAL-HANDLE."
   (with-foreign-string ((s size) (string char))
