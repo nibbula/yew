@@ -51,6 +51,7 @@ live on Earth very recently only!")
   "Return a formated date string. A universal time can be provided with the
 TIME keyword. FORMAT can be one of:
   :net          - an RFC822 formatted date.
+  :iso          - an ISO 8601 date.
   :filename     - a format that works well for a user readable file name.
   :relative     - a relative time, sensible for people
   anything else - some format that Nibby likes.
@@ -77,6 +78,9 @@ defaults to the current time."
 	       (if (< zone 0) #\+ #\-) (tz-hours zone) (tz-minutes zone)))
       (:filename
        (format nil "~d-~2,'0d-~2,'0d_~2,'0d-~2,'0d-~2,'0d"
+	       year month date hours minutes seconds))
+      ((:iso :iso8601)
+       (format nil "~d-~2,'0d-~2,'0dT~2,'0d:~2,'0d:~2,'0dZ"
 	       year month date hours minutes seconds))
       (:relative
        ;; @@@ This of course has language issues, as well as precision issues.
