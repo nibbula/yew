@@ -10,6 +10,7 @@
    #:calendar-table
    #:print-calendar
    #:!cal
+   #:*default-date-format*
    #:!date
    ))
 (in-package :cal)
@@ -218,11 +219,15 @@ not given."
 	       (setf percent t)
 	       (write-char c str))))))))
 
+(defvar *default-date-format* #+unix :unix #-unix :net
+  "Default format for date command.")
+
 ;; If you really want to specify a complex format like posix date, just use
 ;; format-date. If you want to set the date use, set-date.
 #+lish
 (lish:defcommand date
-  ((format string :short-arg #\f :default #+unix :unix #-unix :net
+  ((format choice :short-arg #\f :default *default-date-format*
+    :choices '("unix" "net" "iso" "filename" "nibby")
     :help "Format for the date."))
   "Print the date."
   (write-line
@@ -230,10 +235,8 @@ not given."
      (:unix
       #+unix (mini-strftime (uos:nl-langinfo uos::+D-T-FMT+))
       #-unix (mini-strftime "%a %d %b %Y %r %Z"))
-     (:net
-      (date-string :format :net))
      (otherwise
-      (date-string)))))
+      (date-string :format (keywordify format))))))
 
 #| @@@ finish simple-parse-date
 (lish:defcommand set-date
