@@ -12,33 +12,33 @@
 (define-simple-types
   #(
 #| This is just gonna go over 80 cols, so deal.
-Type name     Darwin           Linux-32         Linux-x86-64     Linux-arm64          SunOS            FreeBSD 64       OpenBSD 64 |#
-#(time-t      :long            :long            :long            :long                :long            :int64           :int64)
-#(mode-t      :uint16          :unsigned-int    :unsigned-int    :unsigned-int        :uint16          :uint16          :uint32)
-#(uid-t       :uint32          :unsigned-int    :unsigned-int    :unsigned-int        :uint32          :uint32          :uint32)
-#(gid-t       :uint32          :unsigned-int    :unsigned-int    :unsigned-int        :uint32          :uint32          :uint32)
-#(pid-t       :int             :int             :int             :int                 :int             :int32           :int32)
-#(suseconds-t :int32           :int32           :long            :long                :int32           :long            :long)
-#(ssize-t     :long            :long            :long            :long                :long            :int64           :long)
-#(dev-t       :int32           :uint64          :unsigned-long   :unsigned-long       :ulong           :uint64          :uint32)
-#(nlink-t     :uint16          :unsigned-int    :unsigned-long   :unsigned-int        :uint            :uint64          :uint32)
-#(ino-t       :uint64          :unsigned-long   :unsigned-long   :unsigned-long       :unsigned-long   :uint64          :uint64)
-#(off-t       :int64           :int32           :long            :long                :int32           :int64           :int64)
-#(blkcnt-t    :int64           :unsigned-long   :long            :long                :int64           :int64           :int64)
-#(blksize-t   :int64           :long            :unsigned-long   :int                 :int32           :int32           :uint32)
-#(fixpt-t     :uint32          :uint32          :uint32          :uint32              :uint32          :uint32          :uint32)
-#(boolean-t   :unsigned-int    :unsigned-int    :unsigned-int    :unsigned-int        :unsigned-int    :unsigned-int    :int)
-#(segsz-t     :int32           :int32           :int32           :int32               :int32           :int64           :int32)
-#(fsblkcnt-t  :unsigned-long   :unsigned-long   :unsigned-long   :unsigned-long       :unsigned-long   :uint64          :uint64)
-#(fsword-t    :int             :int             :int             :int                 :int             :int             :int)
-#(attrgroup-t :uint32          :uint32          :uint32          :uint32              :uint32          :uint32          :uint32)
-#(rlim-t      :uint64          :uint32          :unsigned-long   :unsigned-long-long  :uint32          :uint64          :uint64)
-#(intptr-t    :long            :long            :long            :long                :long            :long            :long)
-#(uintptr-t   :unsigned-long   :unsigned-long   :unsigned-long   :unsigned-long       :unsigned-long   :unsigned-long   :unsigned-long)
-#(wchar-t     :int             :int             :int             :unsigned-int        :int             :int             :int)
-#(caddr-t     (:pointer :char) (:pointer :char) (:pointer :char) (:pointer :char)     (:pointer :char) (:pointer :char) (:pointer :char))
-#(quad-t      :int64           :int64           :int64           :long-long           :int64           :int64           :int64)
-#(u-quad-t    :uint64          :uint64          :uint64          :unsigned-long-long  :uint64          :uint64          :uint64)
+Type name     Darwin           Linux-32         Linux-x86-64     Linux-arm64          SunOS            FreeBSD 64       OpenBSD 64        NetBSD 64 |#
+#(time-t      :long            :long            :long            :long                :long            :int64           :int64           :int64)
+#(mode-t      :uint16          :unsigned-int    :unsigned-int    :unsigned-int        :uint16          :uint16          :uint32          :uint32) ;@
+#(uid-t       :uint32          :unsigned-int    :unsigned-int    :unsigned-int        :uint32          :uint32          :uint32          :uint32) ;@
+#(gid-t       :uint32          :unsigned-int    :unsigned-int    :unsigned-int        :uint32          :uint32          :uint32          :uint32) ;@
+#(pid-t       :int             :int             :int             :int                 :int             :int32           :int32           :int32) ;@
+#(suseconds-t :int32           :int32           :long            :long                :int32           :long            :long            :int)
+#(ssize-t     :long            :long            :long            :long                :long            :int64           :long            :uint64) ; @
+#(dev-t       :int32           :uint64          :unsigned-long   :unsigned-long       :ulong           :uint64          :uint32          :uint64) ; @
+#(nlink-t     :uint16          :unsigned-int    :unsigned-long   :unsigned-int        :uint            :uint64          :uint32          :uint32) ;@
+#(ino-t       :uint64          :unsigned-long   :unsigned-long   :unsigned-long       :unsigned-long   :uint64          :uint64          :uint64) ;@
+#(off-t       :int64           :int32           :long            :long                :int32           :int64           :int64           :uint64) ;@
+#(blkcnt-t    :int64           :unsigned-long   :long            :long                :int64           :int64           :int64           :uint64) ;@
+#(blksize-t   :int64           :long            :unsigned-long   :int                 :int32           :int32           :uint32          :int32) ;@
+#(fixpt-t     :uint32          :uint32          :uint32          :uint32              :uint32          :uint32          :uint32          :uint32) ;@
+#(boolean-t   :unsigned-int    :unsigned-int    :unsigned-int    :unsigned-int        :unsigned-int    :unsigned-int    :int             :unsigned-int) ;@
+#(segsz-t     :int32           :int32           :int32           :int32               :int32           :int64           :int32           :int32) ;@
+#(fsblkcnt-t  :unsigned-long   :unsigned-long   :unsigned-long   :unsigned-long       :unsigned-long   :uint64          :uint64          :uint64) ;@
+#(fsword-t    :int             :int             :int             :int                 :int             :int             :int             :int) ;@
+#(attrgroup-t :uint32          :uint32          :uint32          :uint32              :uint32          :uint32          :uint32          :uint32) ;@
+#(rlim-t      :uint64          :uint32          :unsigned-long   :unsigned-long-long  :uint32          :uint64          :uint64          :uint64) ;@
+#(intptr-t    :long            :long            :long            :long                :long            :long            :long            :long) ;@
+#(uintptr-t   :unsigned-long   :unsigned-long   :unsigned-long   :unsigned-long       :unsigned-long   :unsigned-long   :unsigned-long   :unsigned-long)
+#(wchar-t     :int             :int             :int             :unsigned-int        :int             :int             :int             :int32)
+#(caddr-t     (:pointer :char) (:pointer :char) (:pointer :char) (:pointer :char)     (:pointer :char) (:pointer :char) (:pointer :char)  (:pointer :char)) ;@
+#(quad-t      :int64           :int64           :int64           :long-long           :int64           :int64           :int64           :int64) ;@
+#(u-quad-t    :uint64          :uint64          :uint64          :unsigned-long-long  :uint64          :uint64          :uint64          :uint64) ;@
 )))
 
 ;; At some time dev-t changed from 32 bits to 64 bits on Linux-32. Something
@@ -64,9 +64,9 @@ Type name     Darwin           Linux-32         Linux-x86-64     Linux-arm64    
 	 #.(/ 1024 (* 8 (cffi:foreign-type-size :unsigned-long)))))
 ;; unsigned long int __val[(1024 / (8 * sizeof (unsigned long int)))];
 
-#+freebsd (defcstruct foreign-sigset-t (__bits :uint32 :count 4))
+#+(or freebsd netbsd) (defcstruct foreign-sigset-t (__bits :uint32 :count 4))
 
-#+(or linux freebsd)
+#+(or linux freebsd netbsd)
 (defctype sigset-t (:struct foreign-sigset-t))
 
 (defcstruct foreign-timeval
@@ -151,7 +151,7 @@ Type name     Darwin           Linux-32         Linux-x86-64     Linux-arm64    
   (nvcsw    :long)			; voluntary context switches
   (nivcsw   :long))			; involuntary context switches
 
-#+(or darwin linux freebsd openbsd)
+#+(or darwin linux freebsd openbsd netbsd)
 (defcstruct foreign-rusage
   (ru_utime    (:struct foreign-timeval))
   (ru_stime    (:struct foreign-timeval))

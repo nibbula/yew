@@ -356,7 +356,7 @@ NIL, unset the VAR, using unsetenv."
   (kp_proc (:struct foreign-extern-proc))
   (kp_eproc (:struct foreign-eproc)))
 
-#+(or freebsd openbsd)
+#+(or freebsd openbsd netbsd)
 (defcstruct foreign-vmtotal
   (t_rq     :int16)   ;; length of the run queue
   (t_dw     :int16)   ;; jobs in ``disk wait'' (neg priority)
@@ -1246,8 +1246,8 @@ If RESOURCE is an integer, just return it."
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (define-constants #(
-   ;; Name            D    L   S   F    O
-   #(+UTSNAME-LENGTH+ 256  65  256 256  256 "Size of utsname strings."))))
+   ;; Name            D    L   S   F    O   N
+   #(+UTSNAME-LENGTH+ 256  65  256 256  256 256 "Size of utsname strings."))))
 
 #+linux
 (defcstruct utsname
@@ -1258,7 +1258,7 @@ If RESOURCE is an integer, just return it."
   (machine    :char :count #.+UTSNAME-LENGTH+)
   (domainname :char :count #.+UTSNAME-LENGTH+))
 
-#+(or freebsd openbsd darwin)
+#+(or freebsd openbsd darwin netbsd)
 (defcstruct utsname
   (sysname    :char :count #.+UTSNAME-LENGTH+)
   (nodename   :char :count #.+UTSNAME-LENGTH+)
@@ -1327,7 +1327,7 @@ If RESOURCE is an integer, just return it."
 	      (subseq line (or (and pos (+ 2 pos)) 0))))))
       #+darwin (sysctl "machdep.cpu.brand_string" :string)
       #+openbsd (sysctl "hw.hw-model" :string)
-      #+freebsd (sysctl "hw.model" :string)
+      #+(or freebsd netbsd) (sysctl "hw.model" :string)
       "unknown"))
 
 (defun os-software-type ()

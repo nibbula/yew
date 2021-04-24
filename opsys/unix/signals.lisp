@@ -12,14 +12,15 @@
 #+sunos (defcvar ("_sys_siglistn" *nsig*) :int)
 #+sunos (defcvar ("_sys_siglistp" sys-siglist) :pointer)
 
-#+(or darwin freebsd openbsd) (defcvar ("sys_siglist" sys-siglist) :pointer)
-#+(or darwin freebsd openbsd) (defcvar ("sys_signame" sys-signame) :pointer)
+#+(or darwin freebsd openbsd netbsd) (defcvar ("sys_siglist" sys-siglist) :pointer)
+#+(or darwin freebsd openbsd netbsd) (defcvar ("sys_signame" sys-signame) :pointer)
 
 (defparameter *signal-count*
-  #+(or darwin freebsd openbsd linux) 32
+  #+(or darwin linux freebsd openbsd) 32
+  #+netbsd 64
   ;; actually 65 if you count realtime (RT) signals
   #+sunos *nsig*
-  #-(or darwin sunos linux freebsd openbsd)
+  #-(or darwin sunos linux freebsd openbsd netbsd)
   (missing-implementation '*signal-count*)
   "Number of signal types, a.k.a. NSIG.")
 
@@ -31,49 +32,50 @@
 (defconstant +SIGABRT+	 6  "Abort trap")
 (defconstant +SIGPOLL+	 #+darwin 7
 	                 #+linux 29
-			 #+(or freebsd openbsd) nil
+			 #+(or freebsd openbsd netbsd) nil
 			 "pollable event")
-(defconstant +SIGEMT+	 #+(or darwin freebsd openbsd) 7
+(defconstant +SIGEMT+	 #+(or darwin freebsd openbsd netbsd) 7
 	                 #+linux nil "EMT trap")
 (defconstant +SIGFPE+	 8 "Floating point exception")
 (defconstant +SIGKILL+	 9 "Killed")
-(defconstant +SIGBUS+	 #+(or darwin freebsd openbsd) 10
+(defconstant +SIGBUS+	 #+(or darwin freebsd openbsd netbsd) 10
 	                 #+linux 7 "Bus error")
 (defconstant +SIGSEGV+	 11 "Segmentation fault")
-(defconstant +SIGSYS+	 #+(or darwin openbsd) 12
+(defconstant +SIGSYS+	 #+(or darwin openbsd netbsd) 12
 	                 #+linux 31
 			 #+freebsd nil "Bad system call")
 (defconstant +SIGPIPE+	 13 "Broken pipe")
 (defconstant +SIGALRM+	 14 "Alarm clock")
 (defconstant +SIGTERM+	 15 "Terminated")
-(defconstant +SIGURG+	 #+(or darwin freebsd openbsd) 16
+(defconstant +SIGURG+	 #+(or darwin freebsd openbsd netbsd) 16
                          #+linux 23 "Urgent I/O condition")
-(defconstant +SIGSTOP+	 #+(or darwin freebsd openbsd) 17
+(defconstant +SIGSTOP+	 #+(or darwin freebsd openbsd netbsd) 17
                          #+linux 19 "Suspended (signal)")
-(defconstant +SIGTSTP+	 #+(or darwin freebsd openbsd) 18
+(defconstant +SIGTSTP+	 #+(or darwin freebsd openbsd netbsd) 18
                          #+linux 20 "Suspended")
-(defconstant +SIGCONT+	 #+(or darwin freebsd openbsd) 19
+(defconstant +SIGCONT+	 #+(or darwin freebsd openbsd netbsd) 19
                          #+linux 18 "Continued")
-(defconstant +SIGCHLD+	 #+(or darwin freebsd openbsd) 20
+(defconstant +SIGCHLD+	 #+(or darwin freebsd openbsd netbsd) 20
                          #+linux 17 "Child exited")
 (defconstant +SIGTTIN+	 21 "Stopped (tty input)")
 (defconstant +SIGTTOU+	 22 "Stopped (tty output)")
-(defconstant +SIGIO+	 #+(or darwin freebsd openbsd) 23
+(defconstant +SIGIO+	 #+(or darwin freebsd openbsd netbsd) 23
 	                 #+linux 29 "I/O possible")
 (defconstant +SIGXCPU+	 24 "Cputime limit exceeded")
 (defconstant +SIGXFSZ+	 25 "Filesize limit exceeded")
 (defconstant +SIGVTALRM+ 26 "Virtual timer expired")
 (defconstant +SIGPROF+	 27 "Profiling timer expired")
 (defconstant +SIGWINCH+	 28 "Window size changes")
-(defconstant +SIGINFO+	 #+(or darwin freebsd openbsd) 29
+(defconstant +SIGINFO+	 #+(or darwin freebsd openbsd netbsd) 29
                          #+linux nil "Information request")
-(defconstant +SIGUSR1+	 #+(or darwin freebsd openbsd) 30
+(defconstant +SIGUSR1+	 #+(or darwin freebsd openbsd netbsd) 30
                          #+linux 10 "User defined signal 1")
-(defconstant +SIGUSR2+	 #+(or darwin freebsd openbsd) 31
+(defconstant +SIGUSR2+	 #+(or darwin freebsd openbsd netbsd) 31
                          #+linux 12 "User defined signal 2")
-(defconstant +SIGSTKFLT+ #+(or darwin freebsd openbsd) nil
+(defconstant +SIGSTKFLT+ #+(or darwin freebsd openbsd netbsd) nil
                          #+linux 16 "Stack fault")
 (defconstant +SIGPWR+	 #+(or darwin freebsd openbsd) nil
+                         #+netbsd 32
                          #+linux 30 "Power failure restart")
 #+(or freebsd openbsd)
 (defconstant +SIGTHR+    32 "thread library")
@@ -82,6 +84,11 @@
 (progn
   (defconstant +SIGLWP+	  32 "thread library")
   (defconstant +SIGLIBRT+ 33 "real-time library"))
+
+#+netbsd
+(progn
+  (defconstant +SIGRTMIN+ 33 "real-time minimum")
+  (defconstant +SIGRTMAX+ 63 "real-time maximum"))
 
 #+linux
 (defparameter *signal-name*
@@ -108,16 +115,18 @@
   #-(or darwin sunos linux freebsd openbsd) (missing-implementation 'signal-name)
 )
 
-#+(or sunos linux) (defcfun strsignal :string (sig :int))
+#+(or sunos linux netbsd) (defcfun strsignal :string (sig :int))
 
 (defun signal-description (sig)
-  #+(or sunos linux) (strsignal sig)
+  #+(or sunos linux netbsd) (strsignal sig)
   #+(or darwin openbsd)
   (if (< sig *signal-count*)
       (foreign-string-to-lisp
        (mem-aref (get-var-pointer 'sys-siglist) :pointer sig)))
-  #-(or darwin sunos linux openbsd) (declare (ignore sig))
-  #-(or darwin sunos linux openbsd) (missing-implementation 'signal-description)
+  #-(or darwin sunos linux openbsd netbsd)
+  (declare (ignore sig))
+  #-(or darwin sunos linux openbsd netbsd)
+  (missing-implementation 'signal-description)
 )
 
 ;(defparameter signal-names (make-hash-table 
@@ -137,7 +146,7 @@
 (defcfun sigfillset :int (set (:pointer sigset-t)))
 (defcfun sigismember :int (set (:pointer sigset-t)) (signo :int))
 
-#+(or darwin linux openbsd)
+#+(or darwin linux openbsd netbsd)
 (defcstruct foreign-sigaction
   "What to do with a signal, as given to sigaction(2)."
   (sa_handler :pointer)	       ; For our purposes it's the same as sa_sigaction
@@ -216,7 +225,7 @@ nearly want to put in in separate file.
 
 (defconstant SIG_DFL  0 "Default action.")
 (defconstant SIG_IGN  1 "Ignore the signal.")
-(defconstant SIG_HOLD #+darwin 5 #+linux 2 #+freebsd 2 #+openbsd 3
+(defconstant SIG_HOLD #+darwin 5 #+linux 2 #+freebsd 2 #+(or openbsd netbsd) 3
 	     "Hold on to the signal for later.")
 (defconstant SIG_ERR -1 "Error?")
 
@@ -350,9 +359,9 @@ of (signal . action), as would be passed to SET-SIGNAL-ACTION."
   `(with-signal-handlers-from-value (,handler-list)
      ,@body))
 
-(defconstant +SIG-BLOCK+   0)
-(defconstant +SIG-UNBLOCK+ 1)
-(defconstant +SIG-SETMASK+ 2)
+(defconstant +SIG-BLOCK+   #-netbsd 0 #+netbsd 1)
+(defconstant +SIG-UNBLOCK+ #-netbsd 1 #+netbsd 2)
+(defconstant +SIG-SETMASK+ #-netbsd 2 #+netbsd 3)
 
 (defcfun ("sigprocmask" real-sigprocmask)
     :int (how :int) (set (:pointer sigset-t)) (oldset (:pointer sigset-t)))

@@ -11,12 +11,12 @@
 
 ;#+(or darwin linux) (config-feature :os-t-has-vfork)
 
-#+(or darwin linux freebsd openbsd)
+#+(or darwin linux freebsd openbsd netbsd)
 ;; It's partially untested if this actually works on Linux.
 (progn
   (defconstant +WAIT-NO-HANG+    #x0001)
   (defconstant +WAIT-UNTRACED+   #x0002)
-  (defconstant +WAIT-STOPPED+    #o0177) ;; #x7f
+  (defconstant +WAIT-STOPPED+    #o0177) ;; #x7f (this is actually flag)
   (defconstant +WAIT-CORE-FLAG+  #o0200) ;; #x80
 
   (defun wait-status (s)	 (logand +WAIT-STOPPED+ s))

@@ -9,15 +9,14 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Error handling
 
-#+(or darwin linux freebsd) (config-feature :os-t-has-strerror-r)
+#+(or darwin linux freebsd netbsd) (config-feature :os-t-has-strerror-r)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   ;; OpenBSD and FreeBSD both have a differently named errno function,
   ;; instead of a variable.
-  #+(or openbsd freebsd)
+  #+(or openbsd freebsd netbsd)
   (progn
-    #+openbsd (defcfun ("__errno" errno-func) (:pointer :int))
-    #+freebsd (defcfun ("__error" errno-func) (:pointer :int))
+    #+(or openbsd freebsd netbsd) (defcfun ("__errno" errno-func) (:pointer :int))
     (defun %errno ()
       (let ((p (errno-func)))
 	(when (not (null-pointer-p p))
@@ -31,7 +30,7 @@
     (defun errno () (%errno))
     (config-feature :os-t-has-errno-func))
 
-  #-(or openbsd freebsd)
+  #-(or openbsd freebsd netbsd)
   (if (foreign-symbol-pointer "__errno_location")
       (progn
 	(defcfun ("__errno_location" errno-func) (:pointer :int))
@@ -460,7 +459,7 @@
       ;; Network File System
       #(+ESTALE+            151 "Stale NFS file handle")))
 
-#+(or freebsd openbsd)
+#+(or freebsd openbsd netbsd)
 (define-to-list *errors*
     #(#(+EPERM+	          1  "Operation not permitted")
       #(+ENOENT+	  2  "No such file or directory")
@@ -584,6 +583,25 @@
       #(+EOWNERDEAD+	  94 "Previous owner died")
       #(+EPROTO+	  95 "Protocol error")
       #(+ELAST+		  96 "Must be equal largest errno")))
+
+#+netbsd
+(define-to-list *errors*
+    #(#(+EIDRM+		  82 "Identifier removed")
+      #(+ENOMSG+	  83 "No message of desired type")
+      #(+EOVERFLOW+	  84 "Value too large to be stored in data type")
+      #(+EILSEQ+	  85 "Illegal byte sequence")
+      #(+ENOTSUP+	  86 "Operation not supported")
+      #(+ECANCELED+	  87 "Operation canceled")
+      #(+EBADMSG+         88 "Bad or Corrupt message")
+      #(+ENODATA+         89 "No message available")
+      #(+ENOSR+           90 "No STREAM resources")
+      #(+ENOSTR+          91 "Not a STREAM")
+      #(+ETIME+           92 "STREAM ioctl timeout")
+      #(+ENOATTR+         93 "Attribute not found")
+      #(+EMULTIHOP+       94 "Multihop attempted *")
+      #(+ENOLINK+         95 "Link has been severed")
+      #(+EPROTO+          96 "Protocol error")
+      #(+ELAST+           96 "Must equal to largest errno")))
 
 #+os-t-has-strerror-r
 (defcfun (#+linux "__xpg_strerror_r" #-linux "strerror_r" strerror-r)

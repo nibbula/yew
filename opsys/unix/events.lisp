@@ -323,7 +323,7 @@ interrupted by a signal or something else stupid."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; kqueue
 
-#+(or darwin freebsd openbsd)
+#+(or darwin freebsd openbsd netbsd)
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (config-feature :os-t-has-kqueue))
 
@@ -408,6 +408,15 @@ interrupted by a signal or something else stupid."
     (flags	:unsigned-short)
     (fflags	:unsigned-int)
     (data	intptr-t)
+    (udata	(:pointer :void)))
+
+  #+netbsd
+  (defcstruct foreign-kevent
+    (ident	uintptr-t)
+    (filter	:uint32)
+    (flags	:uint32)
+    (fflags	:uint32)
+    (data	:int64)
     (udata	(:pointer :void)))
 
   (defcfun kqueue :void)
