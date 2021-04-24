@@ -93,7 +93,8 @@
 
 (defun bogus-filesystem-p (f)
   (or (zerop (filesystem-info-total-bytes f))
-      #+linux (not (begins-with "/" (filesystem-info-device-name f)))
+      #+linux (not (or (begins-with "/" (filesystem-info-device-name f))
+		       (begins-with "fuse" (filesystem-info-type f))))
       #+windows (not (filesystem-info-mount-point f))
       ))
 
