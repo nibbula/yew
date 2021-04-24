@@ -900,13 +900,13 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
        (incf area l)
        (incf len))
     (setf max-area (* max-len len))
-    (dbug "List length:  ~d~%" len)
-    (dbug "Screen width:  ~d~%" screen-width)
-    (dbug "Minimum area: ~d ~d~%" area (ceiling area screen-width))
-    (dbug "Max item len: ~d~%" max-len)
-    (dbug "Min item len: ~d~%" min-len)
-    (dbug "Maxium area : ~d ~d~%" max-area
-    	    (floor max-area screen-width))
+    ;; (dbug "List length:  ~d~%" len)
+    ;; (dbug "Screen width:  ~d~%" screen-width)
+    ;; (dbug "Minimum area: ~d ~d~%" area (ceiling area screen-width))
+    ;; (dbug "Max item len: ~d~%" max-len)
+    ;; (dbug "Min item len: ~d~%" min-len)
+    ;; (dbug "Maxium area : ~d ~d~%" max-area
+    ;; 	    (floor max-area screen-width))
 
     (setf cols (max 1 (floor screen-width max-len))
 	  rows (ceiling len cols)
@@ -955,13 +955,14 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
 	   
 	   (multiple-value-setq (col-list extra)
 	     (smush-columns list new-cols new-rows cached-lengths))
-	   (dbug "Squish: ~d x ~d (~d)~25t~a~%"
-		 new-cols new-rows extra col-list)))
+	   ;; (dbug "Squish: ~d x ~d (~d)~25t~a~%"
+	   ;; 	 new-cols new-rows extra col-list)
+	   ))
 
     ;; Output the last good setup
-    (dbug "Squish Final: ~d x ~d (~d ~d)~25t~a~%"
-	  (length last-col-list) last-new-rows
-	  extra not-fit-count last-col-list)
+    ;; (dbug "Squish Final: ~d x ~d (~d ~d)~25t~a~%"
+    ;; 	  (length last-col-list) last-new-rows
+    ;; 	  extra not-fit-count last-col-list)
     (smush-output list last-col-list last-new-rows format-char stream
 		  row-limit screen-width)
     last-new-rows))
