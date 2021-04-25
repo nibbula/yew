@@ -878,7 +878,7 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
 	(max-len 0)
 	(min-len most-positive-fixnum)
 	(area 0)
-	max-area
+	;; max-area
 	cols rows
 	new-rows new-cols
 	col-list
@@ -899,7 +899,7 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
 	     min-len (min min-len l))
        (incf area l)
        (incf len))
-    (setf max-area (* max-len len))
+    ;; (setf max-area (* max-len len))
     ;; (dbug "List length:  ~d~%" len)
     ;; (dbug "Screen width:  ~d~%" screen-width)
     ;; (dbug "Minimum area: ~d ~d~%" area (ceiling area screen-width))
