@@ -556,6 +556,7 @@ set.")
 
 #-curses-dont-use-wide
 (defvar *wide-char* (cffi:foreign-alloc :int :count 2))
+#-curses-dont-use-wide
 (defun add-wide-char (wide-char)
   (setf (cffi:mem-aref *wide-char* :int 0) wide-char
 	(cffi:mem-aref *wide-char* :int 1) 0)
