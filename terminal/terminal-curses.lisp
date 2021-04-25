@@ -467,7 +467,7 @@ set.")
     ;; (nofilter)
     (initscr)))
 
-#+curses-use-wide
+#-curses-dont-use-wide
 (defun add-wide-string (wide-string)
   (declare (type string wide-string)
 	   #+sbcl (sb-ext:muffle-conditions sb-ext:compiler-note))
@@ -492,12 +492,12 @@ set.")
     (when (and (translate-alternate-characters tty)
 	       (stringp out-str))
       (translate-acs-chars out-str :start start :end end))
-    #+curses-use-wide
+    #-curses-dont-use-wide
     ;; This seems very inefficient, but I'm not sure how to avoid it.
     (if (position-if (_ (> (char-code _) #xff)) out-str)
 	(add-wide-string out-str)
 	(%addstr tty out-str))
-    #-curses-use-wide
+    #+curses-dont-use-wide
     (%addstr tty out-str)))
 
 (defun bottom-right-p (tty &optional x)
@@ -554,7 +554,7 @@ set.")
   ;;   (terminal-write-string tty string))
   (apply #'format tty fmt args))
 
-#+curses-use-wide
+#-curses-dont-use-wide
 (defvar *wide-char* (cffi:foreign-alloc :int :count 2))
 (defun add-wide-char (wide-char)
   (setf (cffi:mem-aref *wide-char* :int 0) wide-char
@@ -569,11 +569,11 @@ set.")
     (let ((replacement (gethash char *acs-table*)))
       (when replacement
 	(setf char replacement))))
-  #+curses-use-wide
+  #-curses-dont-use-wide
   (if (> (char-code char) 255)
       (add-wide-char (char-code char))
       (%addch tty (char-code char)))
-  #-curses-use-wide
+  #+curses-dont-use-wide
   (%addch tty (char-code char)))
 
 (defparameter *attributes*
@@ -620,11 +620,11 @@ set.")
       (when (not (zerop line))
 	(attron +A-ALTCHARSET+)
 	(setf c (line-char line)))
-      #+curses-use-wide
+      #-curses-dont-use-wide
       (if (> (char-code c) 255)
 	  (add-wide-char (char-code c))
 	  (%addch tty (char-code c)))
-      #-curses-use-wide
+      #+curses-dont-use-wide
       (%addch tty (char-code c))
       (when reset
 	(dbugf :curses "neow 2~%")
