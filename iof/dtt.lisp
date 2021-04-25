@@ -642,7 +642,7 @@ If every object in a column:
    (first-row-labels boolean :short-arg #\l :default t
     :help "True to use the first row of the table as labels, not data.")
    (strings-as-symbols boolean :short-arg #\S :help "Save strings as symbols.")
-   (style choice :short-arg #\s :default ''csv-default
+   (style choice :short-arg #\s :default 'csv-default
 	  :choices (mapcar (_ (string-downcase (car _))) *styles*)
 	  ;; :test #'symbolify
 	  :help "Delimited text style.")
@@ -762,7 +762,7 @@ sequences of objects to write. Use the given style which defaults to
 (lish:defcommand write-dtt
   ((file pathname :help "File to write a table to.")
    (table object :help "Table to output.")
-   (style choice :short-arg #\s :default ''csv-default
+   (style choice :short-arg #\s :default 'csv-default
 	  :choices (mapcar (_ (string-downcase (car _))) *styles*)
 	  ;; :test #'symbolify
 	  :help "Delimited text style."))
