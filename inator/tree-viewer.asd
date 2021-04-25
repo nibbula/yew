@@ -12,6 +12,7 @@
     :long-description   "A user interface for viewing generic trees."
     :depends-on (:dlib :opsys :dlib-misc :dtime :char-util :keymap :pick-list
 		 :glob :collections :inator :terminal :terminal-inator :fui :rl
-		 #+unix :terminal-curses :view-generic)
+		 ;; #+unix :terminal-curses
+		 :view-generic)
     :components
     ((:file "tree-viewer")))
