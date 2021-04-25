@@ -769,56 +769,6 @@ calls. Returns NIL when there is an error."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Files
 
-#|
-#+(or darwin freebsd linux)
-(progn
-  (defconstant +O_RDONLY+   #x0000 "Open for reading only")
-  (defconstant +O_WRONLY+   #x0001 "Open for writing only")
-  (defconstant +O_RDWR+	    #x0002 "Open for reading and writing")
-  (defconstant +O_ACCMODE+  #x0003 "Mask for above modes")
-  (defconstant +O_NONBLOCK+ #+(or darwin freebsd) #x0004 #+linux #o04000
-	       "No delay")
-  (defconstant +O_APPEND+   #+(or darwin freebsd) #x0008 #+linux #o02000
-	       "Set append mode")
-  (defconstant +O_ASYNC+    #+(or darwin freebsd) #x0040 #+linux #x020000
-	       "Signal pgrp when data ready")
-  (defconstant +O_SYNC+	    #+(or darwin freebsd) #x0080 #+linux #o04010000
-	       "Synchronous writes")
-  (defconstant +O_SHLOCK+   #x0010 "Atomically obtain a shared lock")
-  (defconstant +O_EXLOCK+   #x0020 "Atomically obtain an exclusive lock")
-  (defconstant +O_CREAT+    #+(or darwin freebsd) #x0200 #+linux #o100
-	       "Create if nonexistant")
-  (defconstant +O_TRUNC+    #+(or darwin freebsd) #x0400 #+linux #o01000
-	       "Truncate to zero length")
-  (defconstant +O_EXCL+	    #+(or darwin freebsd) #x0800 #+linux #o0200
-	       "Error if create and already exists")
-  (defconstant +O_NOCTTY+   #+darwin #x20000 #+linux #o0400 #+freebsd #x8000
-	       "Don't assign controlling terminal"))
-#+darwin
-(defconstant +O_EVTONLY+  #x8000 "Requested for event notifications only")
-
-#+linux
-(progn
-  (defconstant +O_LARGEFILE+ #o0100000)
-  (defconstant +O_DIRECTORY+ #o0200000)
-  (defconstant +O_NOFOLLOW+  #o0400000)
-  (defconstant +O_DIRECT+    #o040000)
-  (defconstant +O_NOATIME+   #o01000000)
-  (defconstant +O_PATH+	     #o010000000)
-  (defconstant +O_DSYNC+     #o010000)
-  (defconstant +O_TMPFILE+   #o020200000))
-
-#+freebsd
-(progn
-  (defconstant +O_NOFOLLOW+  #x00000100 "Don't follow symlinks")
-  (defconstant +O_DIRECT+    #x00010000 "Attempt to bypass buffer cache")
-  (defconstant +O_DIRECTORY+ #x00020000 "Fail if not directory")
-  (defconstant +O_EXEC+	     #x00040000 "Open for execute only")
-  (defconstant +O_FSYNC+     #x00000080 "Synchronous writes")
-  (defconstant +O_TTY_INIT+  #x00080000 "Restore default termios attributes")
-  (defconstant +O_CLOEXEC+   #x00100000))
-|#
-
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *file-flags* nil "Flag for open and fcntl.")
 
@@ -3146,16 +3096,19 @@ objects should be stored."
 #+netbsd
 (defcfun ("statvfs1" real-statfs) :int (path :string)
   (buf (:pointer (:struct foreign-statfs))) (flags :int))
+#+netbsd
 (defcfun ("fstatvfs1" real-fstatfs) :int (path :string)
   (buf (:pointer (:struct foreign-statfs))) (flags :int))
 
 (defun statfs (path &key wait)
+  #-netbsd (declare (ignore wait))
   (with-foreign-object (buf '(:struct foreign-statfs))
     (syscall #-netbsd (real-statfs path buf)
 	     #+netbsd (real-statfs path buf (if wait +ST-WAIT+ 0)))
     (convert-statfs buf)))
 
 (defun fstatfs (file-descriptor &key wait)
+  #-netbsd (declare (ignore wait))
   (with-foreign-object (buf '(:struct foreign-statfs))
     (syscall #-netbsd (real-statfs file-descriptor buf)
 	     #+netbsd (real-statfs file-descriptor buf (if wait +ST-WAIT+ 0)))
