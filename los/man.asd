@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description   "Show a manual entry."
     :depends-on (:dlib :opsys :glob :grout :cl-ppcre :lish :pick-list :pager
-		 :table :table-print :los-config)
+		 :table :table-print :los-config :grep)
     :components
     ((:file "man")))

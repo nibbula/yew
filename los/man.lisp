@@ -3,7 +3,7 @@
 ;;;
 
 ;; Note that this just uses an already existing system "man" command.
-;; Otherwise we would have to implement a lot of crap, like groff.
+;; Otherwise we would have to implement a lot of crap, like troff.
 ;; This is just so we can have our own command with completion and
 ;; use our pager.
 
@@ -24,7 +24,7 @@
 
 (declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 (defvar *man-sections* nil
   "Cached manual sections. Set it to NIL again to recalculate them.")
@@ -36,16 +36,26 @@
 (defun manpath ()
   "Return the manual path."
   (or (nos:environment-variable "MANPATH")
-      (and (nos:command-pathname "manpath") (!$ "manpath"))
-      #-windows
-      (warn "Can't figure out the where the manuals are.")))
+      (and (nos:command-pathname "manpath") (!$ "manpath"))))
+
+(defun manpath-list ()
+  (let ((p (manpath)))
+    (or (and p (split-sequence #\: p))
+	(lish::expand-braces
+	 (second
+	  (split-sequence
+	   '(#\space #\tab)
+	   (oitem 0 (grep:grep "^_default" "/etc/man.conf" :collect t :quiet t))
+	   :bag t)))
+	#-windows
+	(warn "Can't figure out the where the manuals are."))))
 
 (defun get-manual-sections ()
   "Approximate and flawed method for finding manual sections."
   (or *man-sections*
       (setf *man-sections*
 	    (remove-duplicates
-	     (loop :for d :in (split-sequence #\: (manpath))
+	     (loop :for d :in (manpath-list)
 		;; :do (format t "  ~a " d) (finish-output)
 		:append
 		(mapcar (_ (remove-prefix (nos:basename _) "man"))
@@ -65,17 +75,24 @@
 
 (defparameter *suffixes* #(".gz" ".bz2" ".z" ".Z" ".F" ".Y" ".bz" ".xz" ".7z"))
 
+(defun remove-compression-suffix (name)
+  (or (loop :for s :across *suffixes* :do
+        (when (ends-with s name)
+	  (return (remove-suffix name s))))
+      name))
+
 (defun remove-man-page-suffixes (name &key keep-section-p)
   "Desperately try to get rid of man page suffixes on NAME."
   (let ((c (count #\. name)) matches)
     (case c
       (0 name)
-      (1 (subseq name 0 (position #\. name)))
+      (1
+       (if keep-section-p
+	   (remove-compression-suffix name)
+	   (subseq name 0 (position #\. name))))
       (t
        (let ((result name))
-	 (loop :for s :across *suffixes* :do
-	    (when (ends-with s name)
-	      (setf result (remove-suffix name s))))
+	 (setf result (remove-compression-suffix name))
 	 (when (not keep-section-p)
 	   (loop :for s :in (get-manual-sections) :do
 	      (when (ends-with (s+ #\. s) result)
@@ -113,7 +130,7 @@
 	(with-spin ()
 	  (setf *man-entries-table* (make-hash-table :test #'equal)
 	        *man-entries*
-		(loop :for d :in (split-sequence #\: (manpath))
+		(loop :for d :in (manpath-list)
 		   ;; :do (format t "  ~s~%" d) (finish-output)
 		   :append
 		   (loop :with result
@@ -148,8 +165,19 @@
 	(setf *man-entries* (remove-duplicates *man-entries* :test #'equal))
 	*man-entries*)))
 
+(defun man-description (entry section)
+  "Return a one line description for ENTRY in SECTION."
+  (ppcre:regex-replace "^[^-]*-[ ]*"
+		       #-netbsd
+		       (!$= *prog* "-s" section "-f" entry)
+		       #+netbsd
+		       (find (s+ entry "(" section ")")
+			     (!_= "whatis" entry) :test #'begins-with)
+		       ""))
+
 (defun ask-which (entry table-entry)
-  "Ask the user which one ENTRY they want from the ones in TABLE-ENTRY."
+  "Ask the user which one ENTRY they want from the ones in TABLE-ENTRY.
+Return a list of (<entry> <section>), or just ENTRY if something goes wrong."
   (let* ((sections (mapcar #'section-from-file-name table-entry))
 	 (tab
 	  (make-table-from
@@ -158,8 +186,7 @@
 	      (list
 	       entry
 	       sect
-	       (ppcre:regex-replace "^[^-]*-"
-				    (!$= *prog* "-s" sect "-f" entry) "")))
+	       (man-description entry sect)))
 	   :column-names '("Name" "Section" "Description")))
 	 (lines (osplit
 		 #\newline
@@ -183,7 +210,8 @@
 		     ;; :popup t
 		     )))
     (if item-no
-	(s+ entry "." (elt sections item-no))
+	;; (s+ entry "." (elt sections item-no))
+	(list entry (elt sections item-no))
 	entry)))
 
 (defargtype manual-entry (arg-lenient-choice)
@@ -213,7 +241,7 @@
   (when (and *input* (not entry))
     (setf entry *input*))
 
-  (let* ((base (s+ *prog* " -P cat "))
+  (let* ((base (s+ *prog* " " #-netbsd "-P cat "))
 	 (cmd (make-array (list (length base))
 			  :element-type 'character
 			  :adjustable t
@@ -225,7 +253,9 @@
     #-(or linux freebsd) (declare (ignorable cols))
 
     (when (and table-entry (listp table-entry) (> (length table-entry) 1))
-      (setf entry (ask-which entry table-entry)))
+      (when (consp (setf entry (ask-which entry table-entry)))
+	(psetf entry (first entry)
+	       section (second entry))))
 
     (setf (fill-pointer cmd) 0)
     (with-output-to-string (str cmd)
@@ -257,7 +287,8 @@
    :help "True to view the output in the pager.")
    (crap manual-entry :help "Name of the manual entry."))
   "Very crap"
-  (let* ((cols (princ-to-string (with-grout () (grout-width))))
+  (let* (#+(or linux freebsd)
+	   (cols (princ-to-string (with-grout () (grout-width))))
 	 stream)
     ;;(setf (nos:environment-variable "COLUMNS") cols)
     #+(or linux freebsd) (setf (nos:environment-variable "MANWIDTH") cols)
