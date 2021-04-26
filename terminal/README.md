@@ -32,3 +32,5 @@ There's a fairly big docstring on the :terminal package.
 
 There are no automated tests yet, but there are interactive tests in
 terminal-test.
+
+*Note* that this is depends on [yew](https://github.com/nibbula/yew) and infrequently updated from there.

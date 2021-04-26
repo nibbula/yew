@@ -7,3 +7,5 @@ decent city folk would likely be better served by a right fancy debugger in
 [2]: https://github.com/nibbula/yew/tree/master/lish/
 [3]: https://github.com/slime/slime
 [4]: https://github.com/joaotavora/sly
+
+*Note* that this is depends on [yew](https://github.com/nibbula/yew) and infrequently updated from there.
