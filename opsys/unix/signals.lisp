@@ -12,14 +12,18 @@
 #+sunos (defcvar ("_sys_siglistn" *nsig*) :int)
 #+sunos (defcvar ("_sys_siglistp" sys-siglist) :pointer)
 
-#+(or darwin freebsd openbsd netbsd) (defcvar ("sys_siglist" sys-siglist) :pointer)
-#+(or darwin freebsd openbsd netbsd) (defcvar ("sys_signame" sys-signame) :pointer)
+#+(or darwin freebsd openbsd) (defcvar ("sys_siglist" sys-siglist) :pointer)
+#+netbsd (defcvar ("__sys_siglist14" sys-siglist) :pointer)
+
+#+(or darwin freebsd openbsd) (defcvar ("sys_signame" sys-signame) :pointer)
+#+netbsd (defcvar ("sys_signame" sys-signame) :pointer)
+
+#+netbsd (defcvar ("__sys_nsig14" *nsig*) :int)
 
 (defparameter *signal-count*
   #+(or darwin linux freebsd openbsd) 32
-  #+netbsd 64
   ;; actually 65 if you count realtime (RT) signals
-  #+sunos *nsig*
+  #+(or netbsd sunos) *nsig*
   #-(or darwin sunos linux freebsd openbsd netbsd)
   (missing-implementation '*signal-count*)
   "Number of signal types, a.k.a. NSIG.")
@@ -140,11 +144,26 @@
 
 ;; Should we do our own macros/functions?
 
-(defcfun sigaddset :int (set (:pointer sigset-t)) (signo :int))
-(defcfun sigdelset :int (set (:pointer sigset-t)) (signo :int))
-(defcfun sigemptyset :int (set (:pointer sigset-t)))
-(defcfun sigfillset :int (set (:pointer sigset-t)))
-(defcfun sigismember :int (set (:pointer sigset-t)) (signo :int))
+(defcfun (#-netbsd "sigaddset"
+	  #+netbsd "__sigaddset14"
+	  sigaddset)
+  :int (set (:pointer sigset-t)) (signo :int))
+(defcfun (#-netbsd "sigdelset"
+	  #+netbsd "__sigdelset14"
+	  sigdelset)
+  :int (set (:pointer sigset-t)) (signo :int))
+(defcfun (#-netbsd "sigemptyset"
+	  #+netbsd "__sigemptyset14"
+	  sigemptyset)
+  :int (set (:pointer sigset-t)))
+(defcfun (#-netbsd "sigfillset"
+	  #+netbsd "__sigfillset14"
+	  sigfillset)
+  :int (set (:pointer sigset-t)))
+(defcfun (#-netbsd "sigismember"
+	  #+netbsd "__sigismember14"
+	  sigismember)
+  :int (set (:pointer sigset-t)) (signo :int))
 
 #+(or darwin linux openbsd netbsd)
 (defcstruct foreign-sigaction
@@ -237,7 +256,11 @@ nearly want to put in in separate file.
 (defconstant SA_NOCLDWAIT #x0020 "Don't create zombies. Wait returns ECHILD.")
 (defconstant SA_SIGINFO   #x0040 "Deliver with sa_siginfo args.")
 
-(defcfun sigaction :int (sig :int) (action :pointer) (old-action :pointer))
+
+(defcfun (#-netbsd "sigaction"
+	  #+netbsd "__sigaction14"
+	  sigaction)
+  :int (sig :int) (action :pointer) (old-action :pointer))
 
 (defparameter *handler-actions*
   `((,SIG_DFL . :default) (,SIG_IGN . :ignore) (,SIG_HOLD . :hold)))
