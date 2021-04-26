@@ -109,14 +109,14 @@
   #+sunos (with-foreign-pointer-as-string (s SIG2STR_MAX)
 	    (sig2str sig s)
 	    s)
-  #+(or darwin freebsd openbsd)
+  #+(or darwin freebsd openbsd netbsd)
   (if (< sig *signal-count*)
       (foreign-string-to-lisp
        (mem-aref (get-var-pointer 'sys-signame) :pointer sig)))
   #+linux (when (< sig *signal-count*)
 	    (aref *signal-name* sig))
-  #-(or darwin sunos linux freebsd openbsd) (declare (ignore sig))
-  #-(or darwin sunos linux freebsd openbsd) (missing-implementation 'signal-name)
+  #-(or darwin sunos linux freebsd openbsd netbsd) (declare (ignore sig))
+  #-(or darwin sunos linux freebsd openbsd netbsd) (missing-implementation 'signal-name)
 )
 
 #+(or sunos linux netbsd) (defcfun strsignal :string (sig :int))

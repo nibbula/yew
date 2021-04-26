@@ -206,8 +206,8 @@ NIL, unset the VAR, using unsetenv."
 ;; isn't officially defined in the API. Why couldn't they have designed it in?
 ;;
 ;; Now, many years after first writing this, it seems as if someone has
-;; implemented my wish, at least in FreeBSD. There is now a mechanism to get the
-;; names of sysctl items from sysctl itself. However, it seems to be
+;; implemented my wish, at least in some BSDs. There is now a mechanism to get
+;; the names of sysctl items from sysctl itself. However, it seems to be
 ;; undocumented. Had it been there all along? If everything works out, this
 ;; rant can be tossed in the bins of history.
 ;;
@@ -640,7 +640,9 @@ constants. The return value varies base on the keyword."
 ;; @@@ even though it's supposedly POSIX, the numeric ordering might change?
 (defparameter *sysconf-names* nil "Names for sysconf parameters.")
 
-(define-enum-list *sysconf-names*
+#+linux
+(progn
+  (define-enum-list *sysconf-names*
     #(#(+SC-ARG-MAX+ "The maximum length of the arguments to the exec(3) family of functions.")
       #(+SC-CHILD-MAX+ "The maximum number of simultaneous processes per user ID.")
       #(+SC-CLK-TCK+ "The number of clock ticks per second.")
@@ -724,8 +726,8 @@ constants. The return value varies base on the keyword."
       #(+SC-THREAD-PRIO-INHERIT+ "")
       #(+SC-THREAD-PRIO-PROTECT+ "")
       #(+SC-THREAD-PROCESS-SHARED+ "")
-      #(+SC-NPROCESSORS-CONF+ "The number of processors configured.")
-      #(+SC-NPROCESSORS-ONLN+ "The number of processors currently online (available).")
+      #-netbsd #(+SC-NPROCESSORS-CONF+ "The number of processors configured.")
+      #-netbsd #(+SC-NPROCESSORS-ONLN+ "The number of processors currently online (available).")
       #(+SC-PHYS-PAGES+ "The number of pages of physical memory.  Note that it is possible for the product of this value and the value of _SC_PAGESIZE to overflow.")
       #(+SC-AVPHYS-PAGES+ "The number of currently available pages of physical memory.")
       #(+SC-ATEXIT-MAX+ "")
@@ -843,15 +845,15 @@ constants. The return value varies base on the keyword."
       #(+SC-LEVEL4-CACHE-LINESIZE+ "")
       ))
 
-;; duplicate names
-(defconstant +SC-PAGE-SIZE+ +SC-PAGESIZE+ "")
-(push '+SC-PAGE-SIZE+ *sysconf-names*)
+  ;; duplicate names
+  (defconstant +SC-PAGE-SIZE+ +SC-PAGESIZE+ "")
+  (push '+SC-PAGE-SIZE+ *sysconf-names*)
 
-(defconstant +SC-IOV-MAX+ +SC-UIO-MAXIOV+ "")
-(push '+SC-IOV-MAX+ *sysconf-names*)
+  (defconstant +SC-IOV-MAX+ +SC-UIO-MAXIOV+ "")
+  (push '+SC-IOV-MAX+ *sysconf-names*)
 
-;; names starting at +SC-LEVEL1-ICACHE-SIZE+ + 50
-(define-enum-list *sysconf-names*
+  ;; names starting at +SC-LEVEL1-ICACHE-SIZE+ + 50
+  (define-enum-list *sysconf-names*
     #(
       #(+SC-IPV6+ "Internet Protocol Version 6 is supported.")
       #(+SC-RAW-SOCKETS+ "Raw sockets are supported. Affected functions are getsockopt(), setsockopt().")
@@ -868,7 +870,109 @@ constants. The return value varies base on the keyword."
       #(+SC-THREAD-ROBUST-PRIO-INHERIT+ "")
       #(+SC-THREAD-ROBUST-PRIO-PROTECT+ "")
       )
-  :start (+ +SC-LEVEL1-ICACHE-SIZE+ 50))
+    :start (+ +SC-LEVEL1-ICACHE-SIZE+ 50)))
+
+#+netbsd
+(define-to-list *sysconf-names*
+  #(#(+SC-ARG-MAX+                      1)
+    #(+SC-CHILD-MAX+                    2)
+    #(+SC-NGROUPS-MAX+                  4)
+    #(+SC-OPEN-MAX+                     5)
+    #(+SC-JOB-CONTROL+                  6)
+    #(+SC-SAVED-IDS+                    7)
+    #(+SC-VERSION+                      8)
+    #(+SC-BC-BASE-MAX+                  9)
+    #(+SC-BC-DIM-MAX+                   10)
+    #(+SC-BC-SCALE-MAX+                 11)
+    #(+SC-BC-STRING-MAX+                12)
+    #(+SC-COLL-WEIGHTS-MAX+             13)
+    #(+SC-EXPR-NEST-MAX+                14)
+    #(+SC-LINE-MAX+                     15)
+    #(+SC-RE-DUP-MAX+                   16)
+    #(+SC-2-VERSION+                    17)
+    #(+SC-2-C-BIND+                     18)
+    #(+SC-2-C-DEV+                      19)
+    #(+SC-2-CHAR-TERM+                  20)
+    #(+SC-2-FORT-DEV+                   21)
+    #(+SC-2-FORT-RUN+                   22)
+    #(+SC-2-LOCALEDEF+                  23)
+    #(+SC-2-SW-DEV+                     24)
+    #(+SC-2-UPE+                        25)
+    #(+SC-STREAM-MAX+                   26)
+    #(+SC-TZNAME-MAX+                   27)
+    #(+SC-PAGESIZE+                     28)
+    #(+SC-PAGE-SIZE+                    28)
+    #(+SC-FSYNC+                        29)
+    #(+SC-XOPEN-SHM+                    30)
+    #(+SC-SYNCHRONIZED-IO+              31)
+    #(+SC-IOV-MAX+                      32)
+    #(+SC-MAPPED-FILES+                 33)
+    #(+SC-MEMLOCK+                      34)
+    #(+SC-MEMLOCK-RANGE+                35)
+    #(+SC-MEMORY-PROTECTION+            36)
+    #(+SC-LOGIN-NAME-MAX+               37)
+    #(+SC-MONOTONIC-CLOCK+              38)
+    #(+SC-CLK-TCK+                      39)
+    #(+SC-ATEXIT-MAX+                   40)
+    #(+SC-THREADS+                      41)
+    #(+SC-SEMAPHORES+                   42)
+    #(+SC-BARRIERS+                     43)
+    #(+SC-TIMERS+                       44)
+    #(+SC-SPIN-LOCKS+                   45)
+    #(+SC-READER-WRITER-LOCKS+          46)
+    #(+SC-GETGR-R-SIZE-MAX+             47)
+    #(+SC-GETPW-R-SIZE-MAX+             48)
+    #(+SC-CLOCK-SELECTION+              49)
+    #(+SC-ASYNCHRONOUS-IO+              50)
+    #(+SC-AIO-LISTIO-MAX+               51)
+    #(+SC-AIO-MAX+                      52)
+    #(+SC-MESSAGE-PASSING+              53)
+    #(+SC-MQ-OPEN-MAX+                  54)
+    #(+SC-MQ-PRIO-MAX+                  55)
+    #(+SC-PRIORITY-SCHEDULING+          56)
+    #(+SC-THREAD-DESTRUCTOR-ITERATIONS+ 57)
+    #(+SC-THREAD-KEYS-MAX+              58)
+    #(+SC-THREAD-STACK-MIN+             59)
+    #(+SC-THREAD-THREADS-MAX+           60)
+    #(+SC-THREAD-ATTR-STACKADDR+        61)
+    #(+SC-THREAD-ATTR-STACKSIZE+        62)
+    #(+SC-THREAD-PRIORITY-SCHEDULING+   63)
+    #(+SC-THREAD-PRIO-INHERIT+          64)
+    #(+SC-THREAD-PRIO-PROTECT+          65)
+    #(+SC-THREAD-PROCESS-SHARED+        66)
+    #(+SC-THREAD-SAFE-FUNCTIONS+        67)
+    #(+SC-TTY-NAME-MAX+                 68)
+    #(+SC-HOST-NAME-MAX+                69)
+    #(+SC-PASS-MAX+                     70)
+    #(+SC-REGEXP+                       71)
+    #(+SC-SHELL+                        72)
+    #(+SC-SYMLOOP-MAX+                  73)
+    #(+SC-V6-ILP32-OFF32+               74)
+    #(+SC-V6-ILP32-OFFBIG+              75)
+    #(+SC-V6-LP64-OFF64+                76)
+    #(+SC-V6-LPBIG-OFFBIG+              77)
+    #(+SC-2-PBS+                        80)
+    #(+SC-2-PBS-ACCOUNTING+             81)
+    #(+SC-2-PBS-CHECKPOINT+             82)
+    #(+SC-2-PBS-LOCATE+                 83)
+    #(+SC-2-PBS-MESSAGE+                84)
+    #(+SC-2-PBS-TRACK+                  85)
+    #(+SC-SPAWN+                        86)
+    #(+SC-SHARED-MEMORY-OBJECTS+        87)
+    #(+SC-TIMER-MAX+                    88)
+    #(+SC-SEM-NSEMS-MAX+                89)
+    #(+SC-CPUTIME+                      90)
+    #(+SC-THREAD-CPUTIME+               91)
+    #(+SC-DELAYTIMER-MAX+               92)
+    #(+SC-SIGQUEUE-MAX+                 93)
+    #(+SC-REALTIME-SIGNALS+             94)
+    #(+SC-PHYS-PAGES+                   121)
+    #(+SC-NPROCESSORS-CONF+             1001 "The number of processors configured.")
+    #(+SC-NPROCESSORS-ONLN+             1002 "The number of processors currently online (available).")
+    #(+SC-SCHED-RT-TS+                  2001)
+    #(+SC-SCHED-PRI-MIN+                2002)
+    #(+SC-SCHED-PRI-MAX+                2003)
+    ))
 
 (setf *sysconf-names* (nreverse *sysconf-names*))
 

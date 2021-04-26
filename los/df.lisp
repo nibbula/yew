@@ -93,10 +93,10 @@
 
 (defun bogus-filesystem-p (f)
   (or (zerop (filesystem-info-total-bytes f))
-      #+linux (not (or (begins-with "/" (filesystem-info-device-name f))
-		       (begins-with "fuse" (filesystem-info-type f))))
-      #+windows (not (filesystem-info-mount-point f))
-      ))
+      #+(or linux netbsd)
+      (not (or (begins-with "/" (filesystem-info-device-name f))
+	       (begins-with "fuse" (filesystem-info-type f))))
+      #+windows (not (filesystem-info-mount-point f))))
 
 (defun visual-percent (pct &key (width 10))
   (with-output-to-fat-string (str)

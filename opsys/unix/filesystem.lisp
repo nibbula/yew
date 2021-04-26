@@ -3119,7 +3119,9 @@ objects should be stored."
 (defcfun ("getmntinfo$INODE64" real-getmntinfo)
     :int (mntbufp :pointer) (flags :int))
 #+(or (and darwin 32-bit-target) freebsd openbsd netbsd)
-(defcfun ("getmntinfo" real-getmntinfo)
+(defcfun (#-netbsd "getmntinfo"
+	  #+netbsd "__getmntinfo13"
+	  real-getmntinfo)
     :int (mntbufp :pointer) (flags :int))
 
 #+(or darwin freebsd openbsd netbsd) ;; see also mounted-filesystems

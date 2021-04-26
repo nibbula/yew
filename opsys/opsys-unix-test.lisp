@@ -1,6 +1,6 @@
-;;
-;; opsys-unix-test.lisp - Tests for OPSYS-UNIX.
-;;
+;;;
+;;; opsys-unix-test.lisp - Tests for OPSYS-UNIX.
+;;;
 
 (defpackage :opsys-unix-test
   (:documentation "Tests for OPSYS-UNIX.")
@@ -184,7 +184,7 @@
   (let ((l (uos:group-list)))
     (and l (> (length l) 0)))
   "Test users-logged-in"
-  (listp (users-logged-in))
+  (and (listp (users-logged-in)) (> (length (users-logged-in)) 0))
   ;; @@@ figure out how to test utmpx vs utmp
   "Test uid getting functions"
   (and (integerp (getuid)) (plusp (getuid)))
