@@ -590,6 +590,12 @@ COLUMN."
     (terminal-get-size tty)
     input-mode))
 
+(defmethod terminal-device-time ((tty terminal-x11))
+  "Return the last time the terminal device was modified, or NIL if we don't
+know."
+  ;; @@@ fake it for now, later maybe get the time from clx?
+  (opsys:get-os-time))
+
 (defun start-in-terminal (new-term func)
   (let* ((*terminal* new-term)
 	 (*standard-output* new-term)
@@ -862,8 +868,8 @@ to blank with."
 	   (draw-thing tty plain-string :x col :y row)))
 	(t ;; Attrs and maybe colors too
 	 (let (bold faint dim italic underline blink inverse reverse standout
-		    invisible crossed-out double-underline inverted dimmed
-		    (use-font font))
+	       invisible crossed-out double-underline inverted dimmed
+	       (use-font font))
 	   (loop :for a :in attrs :do
 	      (case a
 		(:bold             (setf bold t))
@@ -1988,7 +1994,7 @@ handler cases."
   "Handle normal window maintenance events that aren't input."
   (declare (ignore send-event-p))
   (let ((tty *event-tty*) result)
-    (with-slots ((our-window window) window-width window-height threads) tty
+    (with-slots ((our-window window) window-width window-height #|threads|#) tty
       (case event-key
 	(:exposure
 	 (event-slots (slots x y width height xlib:window #|count|#)
@@ -2679,6 +2685,10 @@ links highlight differently?"
 			 (make-event-mask :pointer-motion))
 		 (logand (window-event-mask window)
 			 (lognot (make-event-mask :pointer-motion)))))))))
+
+(defmethod terminal-events-supported ((tty terminal-x11))
+  "Return a list of events supported."
+  (list :resize :mouse-buttons :mouse-motion))
 
 (defmethod terminal-enable-event ((tty terminal-x11) event)
   "Enable event and return true if the terminal can enable event."
