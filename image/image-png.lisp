@@ -1,6 +1,6 @@
-;;
-;; image-png.lisp - PNG images
-;;
+;;;
+;;; image-png.lisp - PNG images
+;;;
 
 (defpackage :image-png
   (:documentation "PNG images")
@@ -11,58 +11,113 @@
    ))
 (in-package :image-png)
 
+;; Pick whether to use png-read or pngload base on which one is already loaded.
+;; This is a horrible situation. The Lisp ecosystem mostly sucks donkey ass.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (when (find-package :png-read)
+    (add-feature :t-png-read)))
+
+#+t-png-read
+(defun png-load-stream (stream &key decode)
+  (declare (ignore decode))
+  (png-read:read-png-datastream stream))
+
+#-t-png-read
+(defun png-load-stream (stream &key decode)
+  (pngload:load-stream file-or-stream :decode decode))
+
+#+t-png-read
+(defun png-load-file (file &key decode)
+  (declare (ignore decode))
+  (png-read:read-png-file file))
+
+#-t-png-read
+(defun png-load-file (file &key decode)
+  (pngload:load-file file-or-stream :decode decode))
+
+(defun png-width (image)
+  #+t-png-read (png-read:width image)
+  #-t-png-read (pngload:width image))
+
+(defun png-height (image)
+  #+t-png-read (png-read:height image)
+  #-t-png-read (pngload:height image))
+
+(defun png-data (image)
+  #+t-png-read (png-read:image-data image)
+  #-t-png-read (pngload:data image))
+
+(defun png-data-ref (image y x &optional z)
+  #+t-png-read
+  (if z
+      (aref (png-read:image-data image) x y z)
+      (aref (png-read:image-data image) x y))
+  #-t-png-read
+  (if z
+      (aref (pngload:data image) y x z)
+      (aref (pngload:data image) y x)))
+;; @@@ defsetf?
+
+(defun png-bit-depth (image)
+  #+t-png-read (png-read:bit-depth image)
+  #-t-png-read (pngload:bit-depth image))
+
+(defun png-color-type (image)
+  #+t-png-read (png-read:colour-type image)
+  #-t-png-read (pngload:color-type image))
+
 (defun read-png (file-or-stream &key synopsis)
   (let ((png (if (streamp file-or-stream)
-		 (pngload:load-stream file-or-stream :decode (not synopsis))
-		 (pngload:load-file file-or-stream :decode (not synopsis))))
+		 (png-load-stream file-or-stream :decode (not synopsis))
+		 (png-load-file file-or-stream :decode (not synopsis))))
 	 array dims use-alpha transparent)
     (when (not synopsis)
-      (setf array (make-image-array (pngload:width png) (pngload:height png))
-	    dims (array-dimensions (pngload:data png)))
+      (setf array (make-image-array (png-width png) (png-height png))
+	    dims (array-dimensions (png-data png)))
 
       ;; We only really have to use our own array because of alpha.
       (cond
 	((= 2 (length dims))
 	 ;; Grayscale
-	 (case (pngload:bit-depth png)
+	 (case (png-bit-depth png)
 	   (8
 	    (loop :with pixel
-	       :for y :from 0 :below (pngload:height png) :do
-	       (loop :for x :from 0 :below (pngload:width png) :do
-		  (setf pixel (aref (pngload:data png) y x))
+	       :for y :from 0 :below (png-height png) :do
+	       (loop :for x :from 0 :below (png-width png) :do
+		  (setf pixel (png-data-ref png y x))
 		  (set-pixel array y x pixel pixel pixel +max-alpha+)
 		  )))
 	   (16
 	    (loop :with pixel
-	       :for y :from 0 :below (pngload:height png) :do
-	       (loop :for x :from 0 :below (pngload:width png) :do
+	       :for y :from 0 :below (png-height png) :do
+	       (loop :for x :from 0 :below (png-width png) :do
 		  (setf pixel
-			(ash (logand #xff00 (aref (pngload:data png) y x))
+			(ash (logand #xff00 (png-data-ref png y x))
 			     -8))
 		  (set-pixel array y x pixel pixel pixel +max-alpha+)
 		  )))))
 	((= 3 (length dims))
 	 ;; Color, probably RGB or RGBA
-	 (case (pngload:color-type png)
+	 (case (png-color-type png)
 	   (:greyscale-alpha
 	    (loop :with pixel
-	       :for y :from 0 :below (pngload:height png) :do
-	       (loop :for x :from 0 :below (pngload:width png) :do
-		  (setf pixel (aref (pngload:data png) y x 0))
+	       :for y :from 0 :below (png-height png) :do
+	       (loop :for x :from 0 :below (png-width png) :do
+		  (setf pixel (png-data-ref png y x 0))
 		  (set-pixel array y x pixel pixel pixel
-			     (aref (pngload:data png) y x 1))
+			     (png-data-ref png y x 1))
 		  )))
 	   ((:truecolour :truecolor :truecolour-alpha :truecolor-alpha
 	     :indexed-colour)
-	    (setf use-alpha (= 4 (array-dimension (pngload:data png) 2)))
-	    (loop :for y :from 0 :below (pngload:height png) :do
-	       (loop :for x :from 0 :below (pngload:width png) :do
+	    (setf use-alpha (= 4 (array-dimension (png-data png) 2)))
+	    (loop :for y :from 0 :below (png-height png) :do
+	       (loop :for x :from 0 :below (png-width png) :do
 		  (set-pixel array y x
-			     (aref (pngload:data png) y x 0)
-			     (aref (pngload:data png) y x 1)
-			     (aref (pngload:data png) y x 2)
+			     (png-data-ref png y x 0)
+			     (png-data-ref png y x 1)
+			     (png-data-ref png y x 2)
 			     (if use-alpha
-				 (prog1 (aref (pngload:data png) y x 3)
+				 (prog1 (png-data-ref png y x 3)
 				   (setf transparent t))
 				 +max-alpha+))
 		  )))))
@@ -70,14 +125,14 @@
 	 (error "I don't know how to handle ~d dimensions in a PNG."
 		(length dims)))))
     (make-image :name file-or-stream
-		:width (pngload:width png)
-		:height (pngload:height png)
+		:width (png-width png)
+		:height (png-height png)
 		:subimages
 		(when (not synopsis)
 		  (vector
 		   (make-sub-image :x 0 :y 0
-				   :width (pngload:width png)
-				   :height (pngload:height png)
+				   :width (png-width png)
+				   :height (png-height png)
 				   :transparent transparent
 				   :data array))))))
 (defun write-png (image file)
@@ -161,5 +216,7 @@
 
 (defmethod read-image-synopsis-format (file (format png-image-format))
   (read-png file :synopsis t))
+
+#+t-png-read (remove-feature :t-png-read)
 
 ;; EOF
