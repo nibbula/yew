@@ -382,6 +382,9 @@ are directed to move above it, or if we scroll.")
     :initarg :last-time :accessor last-time :initform nil
     :documentation "Last time the wrapped terminal's device was touched, or NIL
 if we dont' know.")
+   (last-time-start-line
+    :initarg :last-time :accessor last-time-start-line :initform nil
+    :documentation "The start line active for last-time, or NIL.")
    (touched
     :initarg :touched :accessor touched :initform nil :type boolean
     :documentation "True if we did actual output.")
@@ -755,27 +758,55 @@ the terminal doesn't support it."
   ;;(dbugf :crunch "Crunch ~s not recursivley re-started.~%" tty)
   ;; Non-dumb terminals are supposed to start in :char mode.
   ;; (setf (terminal-input-mode wtty) :char)
-  (with-slots ((wtty wrapped-terminal) start-line
+  (with-slots ((wtty wrapped-terminal) start-line last-time last-time-start-line
 	       (start-at-current-line terminal::start-at-current-line)) tty
     (when start-at-current-line
-      (setf start-line (terminal-get-cursor-position wtty)
-	    (screen-y (new-screen tty)) start-line
-	    (screen-y (old-screen tty)) start-line)
-      (update-size tty)
-      ;; @@@ Maybe everything should be invalidated?
-      ;; (invalidate-before-start-row tty (new-screen tty))
-      ;; (invalidate-before-start-row tty (old-screen tty))
-      ;; (invalidate-lines tty (new-screen tty) start-line
-      ;; 			(1- (terminal-window-rows tty)))
-      ;; (invalidate-lines tty (old-screen tty) start-line
-      ;; 			(1- (terminal-window-rows tty)))
-      (invalidate-lines tty (new-screen tty) 0
-			(terminal-window-rows tty))
-      (invalidate-lines tty (old-screen tty) 0
-			(terminal-window-rows tty))
-      ;; (dbugf :crunk "Crunch auto re-starting at ~s~%" start-line)
-      ;; (dbugf :crunch "allow-scrolling = ~s.~%" (allow-scrolling tty))
-      )
+      #+(or) ;; @@@@ FORKED UP
+      (let ((keep-stuff (equalp (terminal-device-time tty) last-time)))
+	(dbugf :kaka "@@@@@ Keeping stuff from ~s ~s~%" last-time-start-line
+	       start-line)
+	(setf start-line
+	      (if keep-stuff
+		  last-time-start-line
+		  (terminal-get-cursor-position wtty)))
+	(when (not keep-stuff)
+	  (setf (screen-y (new-screen tty)) start-line
+		(screen-y (old-screen tty)) start-line
+		last-time-start-line start-line))
+	(update-size tty)
+	;; @@@ Maybe everything should be invalidated?
+	;; (invalidate-before-start-row tty (new-screen tty))
+	;; (invalidate-before-start-row tty (old-screen tty))
+	;; (invalidate-lines tty (new-screen tty) start-line
+	;; 			(1- (terminal-window-rows tty)))
+	;; (invalidate-lines tty (old-screen tty) start-line
+	;; 			(1- (terminal-window-rows tty)))
+	(when (not keep-stuff)
+	  (invalidate-lines tty (new-screen tty) 0
+			    (terminal-window-rows tty))
+	  (invalidate-lines tty (old-screen tty) 0
+			    (terminal-window-rows tty)))
+	;; (dbugf :crunk "Crunch auto re-starting at ~s~%" start-line)
+	;; (dbugf :crunch "allow-scrolling = ~s.~%" (allow-scrolling tty))
+	))
+    (setf start-line
+	  (terminal-get-cursor-position wtty)
+	  (screen-y (new-screen tty)) start-line
+	  (screen-y (old-screen tty)) start-line)
+    (update-size tty)
+    ;; @@@ Maybe everything should be invalidated?
+    ;; (invalidate-before-start-row tty (new-screen tty))
+    ;; (invalidate-before-start-row tty (old-screen tty))
+    ;; (invalidate-lines tty (new-screen tty) start-line
+    ;; 			(1- (terminal-window-rows tty)))
+    ;; (invalidate-lines tty (old-screen tty) start-line
+    ;; 			(1- (terminal-window-rows tty)))
+    (invalidate-lines tty (new-screen tty) 0
+		      (terminal-window-rows tty))
+    (invalidate-lines tty (old-screen tty) 0
+		      (terminal-window-rows tty))
+    ;; (dbugf :crunk "Crunch auto re-starting at ~s~%" start-line)
+    ;; (dbugf :crunch "allow-scrolling = ~s.~%" (allow-scrolling tty))
     ;; @@@ Is this reasonable?
     ;; (terminal-erase-below tty)
     ;; (terminal-erase-below wtty)
@@ -1542,13 +1573,15 @@ XTerm or something."
 
 (defmethod terminal-enable-event ((tty terminal-crunch) event)
   "Allow event and return true if the terminal can allow event."
-  ;; Just call the wrapped one.
   (terminal-enable-event (terminal-wrapped-terminal tty) event))
 
 (defmethod terminal-disable-event ((tty terminal-crunch) event)
   "Allow event and return true if the terminal can allow event."
-  ;; Just call the wrapped one.
   (terminal-disable-event (terminal-wrapped-terminal tty) event))
+
+(defmethod terminal-events-supported ((tty terminal-crunch))
+  "Return a list of events this terminal supports."
+  (terminal-events-supported (terminal-wrapped-terminal tty)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -2210,7 +2243,8 @@ duplicated sequences, and can have worst case O(n*m) performance."
     ;; @@@ Here's a race condition.
     (when (touched tty)
       (dbugf :kaka "Did something. ~s~%" (terminal-device-time wtty))
-      (setf (last-time tty) (terminal-device-time wtty))
+      (setf (last-time tty) (terminal-device-time wtty)
+	    (last-time-start-line tty) (start-line tty))
       (setf (touched tty) nil))
     (setf really-scroll-amount 0
 	  (delay-scroll tty) nil)

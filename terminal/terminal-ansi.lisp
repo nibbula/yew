@@ -2151,6 +2151,9 @@ links highlight differently?"
     (:mouse-motion
      (terminal-raw-format tty "~a?1003~c" +csi+ (if state #\h #\l)))))
 
+(defmethod terminal-events-supported ((tty terminal-ansi))
+  (list :resize :mouse-buttons :mouse-motion))
+
 (defmethod terminal-enable-event ((tty terminal-ansi) event)
   "Enable event and return true if the terminal can enable event."
   (let (result)

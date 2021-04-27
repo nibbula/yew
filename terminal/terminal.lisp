@@ -98,6 +98,7 @@
    #:tt-has-autowrap-delay	  #:terminal-has-autowrap-delay
    #:tt-enable-events             #:terminal-enable-events
    #:tt-disable-events            #:terminal-disable-events
+   #:tt-events-supported	  #:terminal-events-supported
    #:terminal-enable-event
    #:terminal-disable-event
    #:with-enabled-events
@@ -242,6 +243,7 @@ Movement functions are usual row first then column.
   tt-alternate-characters
   tt-enable-events
   tt-disable-events
+  tt-events-supported
   tt-reset
   tt-width
   tt-height
@@ -802,6 +804,15 @@ when given that event alone. The starting state is to allow no events.")
 
 (deftt disable-events (events)
   "The opposite of tt-enable-events. Returns true if the events were enabled.")
+
+(deftt events-supported ()
+  "Return a list of events this terminal supports.")
+
+;; Provide a default method which returns nil. Of course key events are implict.
+(defmethod terminal-events-supported (terminal)
+  "Return a list of events this terminal supports."
+  (declare (ignore terminal))
+  '())
 
 ;; Terminals can either provide their own version of terminal-enable-events,
 ;; or just provide a terminal-enable-event which returns true to add the event
