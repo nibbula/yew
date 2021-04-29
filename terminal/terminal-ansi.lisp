@@ -1271,6 +1271,8 @@ i.e. the terminal is 'line buffered'."
   firmware
   name)
 
+;; @@@ This whole technique is crap. Why can't every terminal just report it's
+;; colors????
 (defparameter *emulators*
   #((19    330 :xterm)
     ( 0    115 :konsole) ;; or maybe qterminal
@@ -1279,7 +1281,8 @@ i.e. the terminal is 'line buffered'."
     ;; ( 1     95 :terminal.app)
     (24    279 :mlterm)
     (41    285 :terminology)
-    (65   6002 :kings-cross)
+    ;;(65   6002 :kings-cross)
+    (65   6002 :vte) ;; later?
     (83  40602 :screen)
     (84      0 :tmux)
     (85     95 :rxvt)
