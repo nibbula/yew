@@ -160,6 +160,8 @@ To make a new format:
   (:documentation "2d pixel arrays."))
 
 (defun make-image (&rest args)
+  "Make an image. ARGS are keys passed to make-instance, but can at least
+have :width and :height."
   (apply #'make-instance 'image args))
 
 (defun make-image-array (width height)
@@ -169,6 +171,8 @@ To make a new format:
 	      :element-type `(unsigned-byte 32)))
 
 (defun make-blank-image (&rest args)
+  "Make a blank image. ARGS are keys passed to make-instance, but can at least
+have :width and :height."
   (unless (and (getf args :width)
 	       (getf args :height))
     (error "You need to specify a width and height to make a blank image."))
