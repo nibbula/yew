@@ -1143,7 +1143,10 @@ the first time it fails to identify the image."
 		  (format *error-output* "Error: ~a ~a~%" file c)
 		  (throw 'git-out nil)))))
 	  (let* ((*show-progress* nil)
-		 (image (perserverant-read-image file))
+		 (image
+		  (if (typep file 'image)
+		      file
+		      (perserverant-read-image file)))
 		 (view-width (or width t-width))
 		 (view-height (or height
 				  (if use-full
