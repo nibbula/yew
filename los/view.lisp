@@ -4,7 +4,7 @@
 
 (defpackage :view
   (:documentation "Look at something.")
-  (:use :cl :view-generic :dlib :magic :pick-list)
+  (:use :cl :view-generic :dlib :magic :pick-list :ostring)
   (:export
    #:*viewer-alist*
    #:*file-name-types*
@@ -93,6 +93,9 @@
 
 (defmethod view ((thing string))
   (view-file thing))
+
+(defmethod view ((thing ostring))
+  (view-file (ostring-simplify thing)))
 
 (defmethod view ((thing pathname))
   (view-file thing))
