@@ -451,7 +451,7 @@ NIL or left unspecified to block all blockable signals."
   (loop :for i :from 1 :below *signal-count*
         :do (format t "~2a ~:@(~7a~) ~30a ~a~%"
 		   i (signal-name i) (signal-description i)
-		   (if (not (find i '(9 17)))
+		   (if (not (find i `(,+SIGKILL+ ,+SIGSTOP+)))
 		       (let ((act (signal-action i)))
 			 (if (pointerp act)
 			     (format nil "Handler #x~x" (pointer-address act))
