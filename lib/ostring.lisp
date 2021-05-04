@@ -21,6 +21,7 @@
    #:ostring-trim
    #:ostring-left-trim
    #:ostring-right-trim
+   #:ostring-simplify
    #:ostring=
    #:ostring/=
    #:ostring<
@@ -57,6 +58,13 @@
 
 (defmethod ochar:osimplify ((thing string))
   thing)
+
+(defgeneric ostring-simplify (thing)
+  (:documentation
+   "Return a simplified version of THING. This can lose information. For
+example, for a character with attribues the attributes may be removed. This
+most likely just calls ochar:osimplify.")
+  (:method (thing) (ochar:osimplify thing)))
 
 (defgeneric ochar (thing index)
   (:documentation "Return the INDEX-th character of THING.")
