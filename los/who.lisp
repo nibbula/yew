@@ -1,13 +1,13 @@
-;;
-;; who.lisp - User information commands.
-;;
+;;;
+;;; who.lisp - User information commands.
+;;;
 
 ;; @@@ This conflicts with cl-who.
 
 (defpackage :who
   (:documentation "User information commands.")
   (:use :cl :dlib :opsys :dlib-misc :dtime :table :table-print :grout :lish
-        #+unix :os-unix)
+        #+unix :os-unix :los-util)
   (:export
    #:who
    #:!who
@@ -31,21 +31,15 @@
 ;; Although I would like a mode which would print a bunch more user information
 ;; like 'finger'.
 
-(defun user-name-list ()
-  (append (mapcar #'nos:user-info-name (nos:user-list))
-	  (list "am" "i")))
+(defun who-user-name-list ()
+  (append (los-util:user-name-list) (list "am" "i")))
 
-;; (defclass arg-user (arg-lenient-choice)
-;;   ()
-;;   (:default-initargs
-;;    :choice-func #'user-name-list)
-;;   (:documentation "User name."))
-
-(defargtype user (arg-lenient-choice)
-  "User name."
-  ()
-  (:default-initargs
-   :choice-func #'user-name-list))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defclass arg-who-user (arg-user)
+    ()
+    (:default-initargs
+     :choice-func #'who-user-name-list)
+    (:documentation "User name.")))
 
 (defun dev-name (device)
   "Convert a short device from utmpx to a stat-able pathname."
@@ -102,7 +96,7 @@
     :help "Terminal to exclusively report on.")
    (file pathname :short-arg #\f
     :help "Name of a file to use as the database.")
-   (users user :repeating t :help "Users to report on."))
+   (users who-user :repeating t :help "Users to report on."))
   "Who is on."
   (when (equalp users '("am" "i"))
     (setf users (list (user-name))
@@ -212,6 +206,7 @@ If FROM-DAYS-P is true, days are the biggest units to break SECONDS into."
     (cond
       (pretty
        (write-string "up " stream)
+       ;; @@@ Maybe we could use date-string :format relative?
        (with-time-units (uptime)
 	 (when (not (zerop millennia))
 	   (format stream "~a millenni~a, " millennia
@@ -306,42 +301,37 @@ If FROM-DAYS-P is true, days are the biggest units to break SECONDS into."
 
   (defun find-foreground-process (proc-list parent tty
 				  &optional (pick parent) (level 1))
-    "Try to return a PID that is the current process running on TTY, given a
-PARENT pid, and PROC-LIST as returned by opsys:process-list."
-    ;; (format t "ffp:~va ~a ~a~%" level #\space parent pick)
+    "Try to return a unix-process that is the current process running on TTY,
+given a PARENT pid, and PROC-LIST as returned by opsys:process-list."
     (let* (;(parent-proc (find parent proc-list :key #'os-process-id))
-	   (children (remove-if (_ (/= (os-process-parent-id _) parent))
+	   (children (remove-if (_ (/= (unix-process-parent-id _) parent))
 				proc-list))
 	   (tty-dev (file-status-device-type (stat (dev-name tty)))))
-      ;;(format t "ffp ~s ~s ~s ~s~%" tty-dev parent pick children)
       (loop :for p :in children :do
-	 #+unix
-	 (let ((sys-proc (system-process-info (os-process-id p))))
-	   (when (equal (uos:unix-process-terminal sys-proc) tty-dev)
-	   ;; @@@ This is wrong. We just pick the process on the same terminal
-	   ;; with the highest PID.
-	   ;; On Linux we can check that it's a member of the foreground
-	   ;; process group, and use the latest process start time
-	   ;; (both from /proc/#/stat).
-	   ;; On MacOS & BSD we can do what? I'm guessing we probably won't be
-	   ;; able to do shit without root.
-	     (when (> (os-process-id p) pick)
-	       (setf pick (os-process-id p)))
-	     (setf pick
-		   (find-foreground-process proc-list (os-process-id p) tty pick
-					    (incf level))))))
+        (when (equal (unix-process-terminal p) tty-dev)
+	  ;; @@@ This is wrong. We just pick the process on the same terminal
+	  ;; with the highest PID.
+	  ;; On Linux we can check that it's a member of the foreground
+	  ;; process group, and use the latest process start time
+	  ;; (both from /proc/#/stat).
+	  ;; On MacOS & BSD we can do what? I'm guessing we probably won't be
+	  ;; able to do shit without root.
+	  (when (> (unix-process-id p) pick)
+	    (setf pick (unix-process-id p)))
+	  (setf pick
+		(find-foreground-process proc-list (unix-process-id p) tty pick
+					 (incf level)))))
       pick))
 
   (defun guess-command (long proc-list pid tty)
-    ;; (let ((proc (find (find-foreground-process proc-list pid tty pid)
-    ;; 		      proc-list :key #'os-process-id)))
-    ;;   (if long
-    ;; 	  (join-by-string (os-process-args proc) #\space)
-    ;; 	  (os-process-command proc))))
-    (declare (ignore long))
+    "Return a command taken from the PROC-LIST which we guess is the foreground
+process running on TTY in the process tree starting at PID. If LONG is true,
+return all the arguments too."
     (let ((proc (find (find-foreground-process proc-list pid tty pid)
-		      proc-list :key #'os-process-id)))
-      (and proc (os-process-name proc))))
+		      proc-list :key #'unix-process-id)))
+      (and proc (if long
+		    (join-by-string (unix-process-args proc) #\space)
+		    (unix-process-command proc)))))
 
   (defun who-what (&key users no-header long)
     (declare (ignore users))
@@ -349,7 +339,7 @@ PARENT pid, and PROC-LIST as returned by opsys:process-list."
       (when (not no-header)
 	(print-uptime)
 	(finish-output))
-      (let (tab (proc-list (process-list)))
+      (let (tab (proc-list (uos:system-process-list)))
 	(unwind-protect
 	     (progn
 	       (setutxent)

@@ -12,6 +12,6 @@
     :long-description
     "This is rarely a very useful way to ask this question anymore."
     :depends-on (:dlib :opsys :dlib-misc :dtime :table-print :grout :lish
-		 :los-config)
+		 :los-config :los-util)
     :components
     ((:file "who")))
