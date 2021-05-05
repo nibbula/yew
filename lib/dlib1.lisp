@@ -64,6 +64,7 @@ of it.")
    #:*buffer-size*
    #:copy-stream
    #:quote-format
+   #:name-to-title
    #:print-properties
    #:interactive-interrupt
    ;; sequences
@@ -2365,6 +2366,14 @@ are printed rather than interpreted as directives, which really just means:
 repleace a single tilde with double tidles."
   (replace-subseq "~" "~~" s))
 
+;; I would say titlify or titlize, but the spelling is weird.
+(defun name-to-title (s)
+  "Turn a typical Lisp identifier into a title, by capitalizing and changing
+deashes and underscores to spaces. This should be called with something that
+can be passed to STRING."
+  (string-capitalize
+   (substitute #\space #\_ (substitute #\space #\- (string s)))))
+
 ;; I wish this could be in dlib-misc, but opsys needs it.
 (defun print-properties (prop-list &key (right-justify nil) (de-lispify t)
 				     (stream t) (format-char #\a))
@@ -2374,15 +2383,11 @@ assumes it's a plist."
   (let ((label-length 0)
 	(format-string
 	 (s+ "~v" (if right-justify "@" "") "a: ~" format-char "~%")))
-    (labels ((niceify (s)
-	       (string-capitalize
-		(substitute #\space #\_
-			    (substitute #\space #\- s))))
-	     (output-line (str name value)
+    (labels ((output-line (str name value)
 	       (format str format-string
 		       label-length
 		       (if de-lispify
-			   (niceify (princ-to-string name))
+			   (name-to-title (princ-to-string name))
 			   ;; (string-downcase (princ-to-string name)))
 			   (princ-to-string name))
 		       value)))
