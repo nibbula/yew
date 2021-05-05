@@ -600,7 +600,7 @@ TABLE, limited to MAX-WIDTH."))
 				    (renderer text-table-renderer)
 				    sizes max-width)
   "Adjust the sizes in the vector SIZES, by the data in TABLE, limited
-to MAX-WIDTH.."
+to MAX-WIDTH."
   (let ((sep-len (length (text-table-renderer-separator renderer))))
     (omap
      #'(lambda (row)
