@@ -278,6 +278,7 @@ un-interned symbol."
 					&optional (eof-error-p t) eof-value
 					&key (start 0) end preserve-whitespace)
   "Read from a string treating unknown symbols or packages as uninterned."
+  #+sbcl (declare (sb-ext:muffle-conditions style-warning))
   (let (#+has-read-intern (*read-intern* #'package-robust-intern)
 	#-has-read-intern (*client* *robust-client*))
     (read-from-string string eof-error-p eof-value
