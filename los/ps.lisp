@@ -1,11 +1,11 @@
-;;
-;; ps.lisp - Process status listing
-;;
+;;;
+;;; ps.lisp - Process status listing
+;;;
 
 (defpackage :ps
   (:documentation "Process status listing")
   (:use :cl :dlib :dlib-misc :opsys #+unix :os-unix :table :table-print :grout
-	:lish :collections :los-config)
+	:lish :collections :los-config :los-util)
   (:export
    #:!ps
    #:ps-tree
@@ -401,7 +401,7 @@ user, pid, ppid, size, command."
 				  (short-process-name p)))))
 	   table)
       (when user
-	(setf out-list (delete-if (_ (not (equalp (short-process-user _) user)))
+	(setf out-list (delete-if (_ (not (equalp (oelt _ 0) user)))
 				  out-list)))
       (setf table (make-table-from
 		   out-list
@@ -486,21 +486,21 @@ user, pid, ppid, size, command."
 	 table :trailing-spaces nil :long-titles t :max-width nil))
       table)))
 
-(defun user-name-list ()
-  (mapcar #'nos:user-info-name (nos:user-list)))
+;; (defun user-name-list ()
+;;   (mapcar #'nos:user-info-name (nos:user-list)))
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defargtype user (arg-lenient-choice)
-    "User name."
-    ()
-    (:default-initargs
-     :choice-func #'user-name-list))
-  ;; (defclass arg-user (arg-lenient-choice)
-  ;;   ()
-  ;;   (:default-initargs
-  ;;    :choice-func #'user-name-list)
-  ;;   (:documentation "User name."))
-  )
+;; (eval-when (:compile-toplevel :load-toplevel :execute)
+;;   (defargtype user (arg-lenient-choice)
+;;     "User name."
+;;     ()
+;;     (:default-initargs
+;;      :choice-func #'user-name-list))
+;;   ;; (defclass arg-user (arg-lenient-choice)
+;;   ;;   ()
+;;   ;;   (:default-initargs
+;;   ;;    :choice-func #'user-name-list)
+;;   ;;   (:documentation "User name."))
+;;   )
 
 #+lish
 (lish:defcommand ps
