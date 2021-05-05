@@ -4,13 +4,15 @@
 
 (defpackage :misc
   (:documentation "Miscellaneous small commands.")
-  (:use :cl :dlib :lish :opsys :terminal :collections)
+  (:use :cl :dlib :opsys :terminal :collections :table :lish :grout)
   (:export
    #:!basename
    #:!clear
    #:!dirname
    #:!tty
    #:!uname
+   #:!groups
+   #:!id
    ))
 (in-package :misc)
 
@@ -133,5 +135,60 @@
       (foo machine os-machine-type)))
   (terpri)
   (values))
+
+(defcommand groups ()
+  "Print a list of groups that the current user is in."
+  #+unix
+  (let ((result (map 'list #'uos:group-name (uos:get-groups))))
+    (format t "~{~a~^ ~}~%" result)
+    (setf *output* result))
+  #-unix
+  (format t "I don't know how to show your groups on ~s.~%" *os*))
+
+(defcommand id
+  ((user user :default (nos:user-id) :optional t
+    :help "The user to print information about.")
+   (format choice :short-arg #\f :default :los :choices '("los" "unix")
+    :help "Format for output."))
+  "Print user information."
+  (let ((id (if (and user (numberp user)) user (nos:user-id :name user))))
+    (flet ((los-format ()
+	     (with-grout ()
+	       (let ((table
+		      (make-table-from
+		       (let (l)
+			 (omapk (_ (push
+				    (list
+				     (name-to-title
+				      (princ-to-string (oelt _ 0)))
+				     (princ-to-string (oelt _ 1))) l))
+				(nos:get-user-info :id user))
+			 (setf l (nreverse l))
+			 #+unix
+			 (progn
+			   (setf l
+			     (append l
+			       (list
+			         (list
+				  "Groups"
+				  (format nil "~{~{~d(~(~a~))~}~^ ~}"
+					  (map 'list
+					       (_ (list _ (uos:group-name _)))
+					       (uos:get-groups))))))))
+			 l)
+		       :columns '((:name "Name" :type string)
+				  (:name "Value" :align :wrap)))))
+		 (grout-print-table table)
+		 (setf *output* table)))))
+      (case (keywordify format)
+	(:unix
+	 (format t "uid=~d(~a) gid=~d(~a)" id (nos:user-name id)
+		 (nos:group-id) (nos:group-name (nos:group-id)))
+	 #+unix
+	 (format t " groups=~{~{~d(~(~a~))~}~^,~}"
+		 (map 'list (_ (list _ (uos:group-name _))) (uos:get-groups)))
+	 (terpri))
+	(:los (los-format))
+	(otherwise (los-format))))))
 
 ;; EOF

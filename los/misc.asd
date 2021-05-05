@@ -10,6 +10,6 @@
     :license            "GPLv3"
     :source-control	:git
     :long-description   "Miscellaneous small commands."
-    :depends-on (:dlib :opsys :lish :glob)
+    :depends-on (:dlib :opsys :collections :glob :table :terminal :lish :grout)
     :components
     ((:file "misc")))
