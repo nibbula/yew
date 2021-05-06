@@ -35,7 +35,7 @@
   (append (los-util:user-name-list) (list "am" "i")))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defclass arg-who-user (arg-user)
+  (defclass lish-user::arg-who-user (lish-user::arg-user)
     ()
     (:default-initargs
      :choice-func #'who-user-name-list)

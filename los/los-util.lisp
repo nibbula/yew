@@ -7,14 +7,13 @@
   (:use :cl :opsys :lish)
   (:export
    #:user-name-list
-   #:arg-user
    ))
 (in-package :los-util)
 
 (defun user-name-list ()
   (mapcar #'nos:user-info-name (nos:user-list)))
 
-(defclass arg-user (arg-lenient-choice)
+(defclass lish-user::arg-user (arg-lenient-choice)
   ()
   (:default-initargs
    :choice-func #'user-name-list)
