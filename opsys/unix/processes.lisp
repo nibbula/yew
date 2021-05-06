@@ -715,7 +715,65 @@ the current process."
   ;; be using unix:kill, and so can use SIGKILL.
   (kill id +SIGTERM+))
 
-;; setpriority
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconstant +PRIO-PROCESS+ 0 "A proccess ID.")
+  (defconstant +PRIO-PGRP+    1 "A proccess group ID.")
+  (defconstant +PRIO-USER+    2 "A user ID.")
+  (defconstant +PRIO-MIN+    -20 "Minimum priority (most favorable).")
+  (defconstant +PRIO-MAX+     20 "Maximum priority (least favorable)."))
+
+(defvar *os-process-most-favorable-priority* +PRIO-MIN+
+  "The process priority value for most favorable scheduling.")
+
+(defvar *os-process-least-favorable-priority* +PRIO-MAX+
+  "The process priority value for least favorable scheduling.")
+
+(defcfun getpriority :int
+  "Get the process scheduling priority."
+  (which :int) (who uid-t))
+
+(defcfun setpriority :int
+  "Set the process scheduling priority. Range is from 19 lowest to -20 highest."
+  (which :int) (who uid-t) (priority :int))
+
+;; Warning: very un-hygenic.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro with-priority-args ((user pid group) &body body)
+    `(let* ((args `((,,user  . ,+PRIO-USER+)
+		    (,,pid   . ,+PRIO-PROCESS+)
+		    (,,group . ,+PRIO-PGRP+)))
+	    (val (count-if-not #'null args :key #'car))
+	    who which)
+       (cond
+	((> val 1)
+	 (error "Please only supply one of USER, PID, or GROUP."))
+	((< val 1)
+	 (setf who (uos:getpid)
+	       which +PRIO-PROCESS+)
+	 ;;(error "Plese supply one of USER, PID, or GROUP.")
+	 )
+	(t
+	 (let* ((ww (find-if-not #'null args :key #'car)))
+	   (setf who (car ww)
+		 which (cdr ww)))))
+       (format t "args = ~s~%who = ~s which = ~s~%" args who which)
+       ,@body)))
+
+(defun os-process-priority (&key user pid group)
+  (let (result)
+    (with-priority-args (user pid group)
+      (setf (%errno) 0 ;; Set errno to 0, so fucking stupid.
+            result (getpriority which who))
+      (when (and (= result -1) (not (zerop (errno))))
+	(error-check result))
+      result)))
+
+(defun set-os-process-priority (priority &key user pid group)
+  (with-priority-args (user pid group)
+    (syscall (setpriority which who priority))))
+
+(defsetf os-process-priority (&key user pid group) (var)
+  `(set-os-process-priority ,var :user ,user :pid ,pid :group ,group))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; job control thingys

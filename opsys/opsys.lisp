@@ -961,13 +961,24 @@ around the time of the call.")
 (defosfun system-process-info (id)
   "Return system specific process information for ID.")
 
-(defosfun wait-and-chill ()
+(defosfun wait-and-chill () ;; @@@ shouldn't really be part of the interface
   "Wait for jobs to do something.")
 
-(defosfun check-jobs ()
+(defosfun check-jobs () ;; @@@ shouldn't really be part of the interface
   "Check if any sub-processes have changed status. Returns three values.
 The PID of the process that changed, and the RESULT and STATUS as returned by
 wait. Returns NILs if nothing changed.")
+
+(defosfun os-process-priority (&key user pid group)
+  "Get the process priority for USER number, process ID, or process GROUP.
+Returns a system dependant priority number. This may be settable if the O/S,
+allows it. Only one of USER, PID, or GROUP should be specified.")
+
+(defosvar *os-process-most-favorable-priority*
+  "The process priority value for most favorable scheduling.")
+
+(defosvar *os-process-least-favorable-priority*
+  "The process priority value for least favorable scheduling.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Inter-process communication

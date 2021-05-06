@@ -136,6 +136,9 @@
    #:current-process-id
    #:wait-and-chill
    #:check-jobs
+   #:os-process-priority
+   #:*os-process-most-favorable-priority*
+   #:*os-process-least-favorable-priority*
    #:*system-process-type*
    #:system-process-list
    #:system-process-info

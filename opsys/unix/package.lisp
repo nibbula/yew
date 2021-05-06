@@ -406,6 +406,9 @@
    #:tstp-handler
    #:wait-and-chill
    #:check-jobs
+   #:os-process-priority
+   #:*os-process-most-favorable-priority*
+   #:*os-process-least-favorable-priority*
 
    #:unix-process
    #:unix-process-p
