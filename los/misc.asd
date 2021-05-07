@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description   "Miscellaneous small commands."
     :depends-on (:dlib :opsys :collections :glob :table :terminal :lish :grout
-		 :los-util)
+		 :los-util :dlib-misc)
     :components
     ((:file "misc")))

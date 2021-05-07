@@ -260,4 +260,62 @@ just print the current process priority."
 	(format t "~d~%" result)
 	(setf *output* result))))
 
+
+(defun free-memory-table (&key in-bytes)
+  (flet ((format-the-size (n width)
+	   (if in-bytes
+	       (format nil "~vd" width n)
+	       (format nil "~v@a" width
+		       (remove #\space
+			       (dlib-misc:print-size n :traditional t
+						     :stream nil :unit ""))))))
+    (let* ((memory-unit-bytes   (nos:get-system-info :memory-unit-bytes))
+	   (total-memory
+	    (* (nos:get-system-info :total-memory) memory-unit-bytes))
+	   (free-memory
+	    (* (nos:get-system-info :free-memory) memory-unit-bytes))
+	   (shared-memory
+	    (* (nos:get-system-info :shared-memory) memory-unit-bytes))
+	   (buffer-memory
+	    (* (nos:get-system-info :buffer-memory) memory-unit-bytes))
+	   (total-swap
+	    (* (nos:get-system-info :total-swap) memory-unit-bytes))
+	   (free-swap
+	    (* (nos:get-system-info :free-swap) memory-unit-bytes))
+	   ;; (processes           (nos:get-system-info :processes))
+	   ;; (total-high-memory   (nos:get-system-info :total-high-memory))
+	   ;; (free-high-memory    (nos:get-system-info :free-high-memory))
+	   (table
+	    (make-table-from
+	     `(("Mem" ,total-memory ,(- total-memory free-memory) ,free-memory
+		,shared-memory ,buffer-memory
+		,(- total-memory free-memory shared-memory buffer-memory))
+	       ("Swap" ,total-swap ,(- total-swap free-swap) ,free-swap  0 0
+		,(- total-memory free-memory)))
+	     :columns
+	     `((:name "")
+	       (:name "Total"      :align :right :type number
+		      :format ,#'format-the-size)
+	       (:name "Used"       :align :right :type number
+		      :format ,#'format-the-size)
+	       (:name "Free"       :align :right :type number
+		      :format ,#'format-the-size)
+	       (:name "Shared"     :align :right :type number
+		      :format ,#'format-the-size)
+	       (:name "Buff/Cache" :align :right :type number
+		      :format ,#'format-the-size)
+	       (:name "Available"  :align :right :type number
+		      :format ,#'format-the-size)))))
+      table)))
+
+(defcommand free
+  ((bytes boolean :short-arg #\b :help "Show the sizes in bytes.")
+   (table boolean :short-arg #\t :help "Show as a table."))
+  "Describe free memory."
+  (declare (ignorable table))
+  (let ((table (free-memory-table :in-bytes bytes)))
+    (with-grout ()
+      (grout-print-table table))
+    (setf *output* table)))
+
 ;; EOF
