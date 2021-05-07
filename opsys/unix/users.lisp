@@ -164,7 +164,12 @@ user is not found."
 (defun user-id (&key name effective)
   "Return the ID of the user with NAME, which defaults to the current user."
   (if name
-      (passwd-uid (getpwnam name))
+      (let ((pw (getpwnam name)))
+	(if pw
+	    (passwd-uid pw)
+	    (error 'opsys-error
+		   :format-control "User ~s not found."
+		   :format-arguments name)))
       (if effective
 	  (geteuid)
 	  (getuid))))
