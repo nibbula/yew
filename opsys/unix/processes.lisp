@@ -148,13 +148,19 @@ Possible values of STATUS and VALUE are:
 
 (defcfun ("fork" posix-fork) pid-t)
 
+(defvar *post-fork-hook* nil
+  "A list functions to call in the child after forking. The functions are called
+without arguments.")
+
 (defun fork ()
-  #+sbcl (sb-sys:without-gcing
-	     (posix-fork)
-	     ;;(sb-posix:fork)
-	   )
-;  #+sbcl (sb-sys:without-gcing (sb-posix:fork))
-  #-sbcl (posix-fork))
+  (let ((pid
+	 (#+sbcl sb-sys:without-gcing	; @@@ Is this still useful/necessary?
+	  #-sbcl progn			; Should it be around more stuff?
+	  (posix-fork))))
+    (when (zerop pid)
+      (loop :for f :in *post-fork-hook*
+	    :do (funcall f)))
+    pid))
 
 ;; SBCL:
 ;;
@@ -756,7 +762,7 @@ the current process."
 	 (let* ((ww (find-if-not #'null args :key #'car)))
 	   (setf who (car ww)
 		 which (cdr ww)))))
-       (format t "args = ~s~%who = ~s which = ~s~%" args who which)
+       ;; (format t "args = ~s~%who = ~s which = ~s~%" args who which)
        ,@body)))
 
 (defun os-process-priority (&key user pid group)
@@ -772,8 +778,10 @@ the current process."
   (with-priority-args (user pid group)
     (syscall (setpriority which who priority))))
 
-(defsetf os-process-priority (&key user pid group) (var)
-  `(set-os-process-priority ,var :user ,user :pid ,pid :group ,group))
+(defsetf os-process-priority (&rest args &key user pid group &allow-other-keys)
+  (value)
+  (declare (ignorable user pid group))
+  `(apply #'set-os-process-priority ,value (list ,@args)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; job control thingys

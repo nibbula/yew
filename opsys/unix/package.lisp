@@ -372,6 +372,7 @@
    #:_exit
    #:exec
    #:fork
+   #:*post-fork-hook*
    #:wait
    #:fork-and-exec
    #:getuid #:geteuid
