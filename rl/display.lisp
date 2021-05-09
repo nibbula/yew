@@ -461,7 +461,7 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	       screen-relative-row last-line temporary-message region-active
 	       max-message-lines message-lines message-top message-endings
 	       auto-suggest-p suggestion auto-suggest-style) e
-    (dbugf :rl "----------------~%")
+    ;; (dbugf :rl "----------------~%")
     ;; Make sure buf-str uses buf.
     (when (not (eq (fat-string-string buf-str) buf))
       (setf (fat-string-string buf-str) buf))
@@ -525,8 +525,11 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
             line-end (max 0 (1- (olength buffer)))
 	    first-point (inator-point (aref contexts 0))
 	    spots (list `(,first-point . ()) `(,line-end . ()))
+	    start-col (if (>= (1+ prompt-last-col) (fake-width e))
+			  0
+			(1+ prompt-last-col))
 	    endings (editor-calculate-line-endings
-		     e :start-column (1+ prompt-last-col)
+		     e :start-column start-col
 		     :spots spots
 		     :buffer buffer)
 	    buf-lines (length endings))
@@ -555,7 +558,7 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	    point-offset (- buf-lines (or point-line 0))
 	    right-prompt-start (and right-prompt
 				    (- (fake-width e)
-				       (display-length right-prompt) 1)))
+				       (display-length right-prompt))))
       (flet (#|
 	     (eol-compensate () ;; @@@ This is bullcrap. Maybe "fix" ansi?
 	       (when (and endings
@@ -680,24 +683,29 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	;; (eol-compensate)
 	(tt-erase-to-eol)
 	;;(dbugf :rl "right-prompt ~s ~s~%" right-prompt-start right-prompt)
-	(when (and right-prompt
+	(if (and right-prompt
 		   (< point-col right-prompt-start)
 		   (not endings)
 		   (and (< line-last-col right-prompt-start)))
-	  ;; (dbugf :rl "right-prompt again ~s ~s~%" right-prompt-start
-	  ;; 	 prompt-last-col)
-	  (tt-move-to-col right-prompt-start)
-	  (tt-write-string right-prompt)
-	  ;; (tt-move-to-col prompt-last-col)
-	  )
+	    (progn
+	      ;; (dbugf :rl "right-prompt again ~s ~s~%" right-prompt-start
+	      ;; 	 prompt-last-col)
+	      (tt-move-to-col (1- right-prompt-start))
+	      (tt-write-string right-prompt)
+	      (tt-move-to-col (1- right-prompt-start))
+	      (tt-insert-char 1)
+	      ;; (tt-move-to-col prompt-last-col)
+	      )
+	    ;; Erase when no right prompt
+	    (tt-erase-to-eol))
 	(when actual-message
 	  (tt-write-char #\newline)
 	  (tt-write-string actual-message)
 	  (when (plusp more-lines)
 	    (tt-newline)
 	    (tt-erase-to-eol)
-	    (tt-format "[~d more lines]" more-lines)))
-	(tt-erase-to-eol)
+	    (tt-format "[~d more lines]" more-lines))
+	  (tt-erase-to-eol))
 	;; Erase junk after the line
 	(when last-line
 	  (setf erase-lines (max 0 (- last-line new-last-line)))
@@ -712,7 +720,6 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 
 	;; Move to the point.
 	(when (not (zerop (+ point-offset message-lines)))
-	  ;; (tt-up (+ point-offset message-lines)))
 	  (tt-up (+ point-offset message-lines-displayed
 		    (if (not (zerop more-lines)) 1 0))))
 	;; (dbugf :rlp "going up ~s message-lines-displayed ~s~%"
