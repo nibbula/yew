@@ -11,6 +11,9 @@
    ))
 (in-package :md5sum)
 
+;; This is separate from checksum, so we don't have to depend on ironclad if we
+;; don't need it.
+
 (defun md5sum (files &key collect as-bytes)
   (flet ((sum-thing (thing)
 	   (typecase thing
