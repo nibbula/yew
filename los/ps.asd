@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description   "Why do I feel the need to re-do everything?"
     :depends-on (:dlib :dlib-misc :table-print :opsys :tree-viewer :collections
-		 :los-config)
+		 :los-config :los-util)
     :components
     ((:file "ps")))
