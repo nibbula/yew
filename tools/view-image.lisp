@@ -549,6 +549,7 @@ the first time it fails to identify the image."
 	    (setf form (list (read-from-string
 			      (rl-widget:widget-read
 			       :width 60 :height 2
+			       :flex-height t
 			       :completion-func #'completion:complete-symbol)
 			      nil nil))
 		  real-form (popi:popi-form form)
