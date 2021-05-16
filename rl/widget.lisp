@@ -20,20 +20,26 @@
 
 (declaim #.`(optimize ,.(getf rl-config::*config* :optimization-settings)))
 
-(defclass bbox ()
+(defclass flex-bbox ()
   ((x :initarg :x :accessor bbox-x :type fixnum :initform 0
       :documentation "Horizontal position.")
    (y :initarg :y :accessor bbox-y :type fixnum :initform 0
       :documentation "Vertical position.")
    (width :initarg :width :accessor bbox-width :type fixnum :initform 0
 	  :documentation "Horizontal extent.")
+   (flex-width
+    :initarg :flex-width :accessor bbox-flex-width :initform nil :type boolean
+    :documentation "True to expand width.")
    (height :initarg :height :accessor bbox-height :type fixnum :initform 0
-	   :documentation "Horizontal extent."))
+	   :documentation "Horizontal extent.")
+   (flex-height
+    :initarg :flex-height :accessor bbox-flex-height :initform nil :type boolean
+    :documentation "True to flex height."))
   (:documentation "Bounding box in a character."))
 
 (defclass widget (line-editor)
   ((bbox
-    :initarg :bbox :accessor widget-bbox :initform nil :type (or null bbox)
+    :initarg :bbox :accessor widget-bbox :initform nil :type (or null flex-bbox)
     :documentation "The bounding box.")
    (rendition
     :initarg :rendition :accessor widget-rendition
@@ -66,7 +72,7 @@
     (setf (slot-value o 'bbox)
 	  (multiple-value-bind (row col)
 	      (terminal-get-cursor-position *terminal*)
-	    (make-instance 'bbox
+	    (make-instance 'flex-bbox
 			   :x col :y row
 			   :width (tt-width) :height (tt-height)))))
 
@@ -287,6 +293,21 @@ fat-string, set unset effects to be from RENDITION."
     (when box-p
       (fui:draw-box (1- (bbox-x bbox)) (1- (bbox-y bbox))
 		    (+ (bbox-width bbox) 2) (+ (bbox-height bbox) 2)))
+    ;; Possibly resize the widget, if it's flexible.
+    (when (or (bbox-flex-width bbox) (bbox-flex-height bbox))
+      (let ((endings
+	     (editor-calculate-line-endings e :end-column
+					    (if (bbox-flex-width bbox)
+						nil
+					      (bbox-width bbox)))))
+	(when (bbox-flex-width bbox)
+	  (let ((max-width
+		 (loop :for (pos . col) :in endings :maximize col)))
+	    (when (< (bbox-width bbox) max-width)
+	      (setf (bbox-width bbox) max-width))))
+	(when (bbox-flex-height bbox)
+	  (when (>= (length endings) (bbox-height bbox))
+	    (setf (bbox-height bbox) (1+ (length endings)))))))
     (widget-redraw e)))
 
 (defsingle-method redraw ((e widget))
@@ -304,18 +325,22 @@ fat-string, set unset effects to be from RENDITION."
     (setf keep-region-active t)))
 
 (defun widget-read (&rest initargs &key (x 0) (y 0) (width 33) (height 1) box-p
+			             flex-width flex-height
 				     &allow-other-keys)
   ;; (declare (ignore initargs))
   (let* ((args (append (copy-seq initargs)
-		       `(:bbox ,(make-instance 'bbox
-			         :x x :y y :width width :height height)
+		       `(:bbox ,(make-instance 'flex-bbox
+			         :x x :y y :width width :height height
+				 :flex-width flex-width :flex-height flex-height)
 			       :box-p ,box-p)))
 	(w (apply #'make-instance 'widget args)))
     (rl:rl :editor w)))
 
-(defun make-widget (&key (x 0) (y 0) (width 33) (height 1) rendition box-p)
+(defun make-widget (&key (x 0) (y 0) (width 33) (height 1) rendition box-p
+			 flex-width flex-height)
   (make-instance 'widget
-    :bbox (make-instance 'bbox :x x :y y :width width :height height)
+    :bbox (make-instance 'flex-bbox :x x :y y :width width :height height
+			 :flex-width flex-width :flex-height flex-height)
     :rendition (or rendition (make-fatchar))
     :box-p box-p))
 
