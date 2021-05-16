@@ -18,7 +18,9 @@
     (flet ((sum-thing (thing)
 	     (typecase thing
 	       (pathname (digest-file ic-digest thing))
-	       (stream (digest-stream ic-digest thing))
+	       (stream
+		;; @@@@@ try to convert stream to binary?
+		(digest-stream ic-digest thing))
 	       (string
 		(if (nos:file-exists thing)
 		    (digest-file ic-digest thing)
@@ -58,8 +60,9 @@
               :help "Return results as byte arrays.")
 	     (files pathname :repeating t :help "Files to sum."))
 	    ,(s+ "Print " name " checksums.")
-	    (checksum (or files (list lish:*input*)) :digest ',name
-		      :collect collect :as-bytes as-bytes)))))
+	    (checksum (or files (and lish:*input* (list lish:*input*))
+			  (list *standard-input*))
+		      :digest ',name :collect collect :as-bytes as-bytes)))))
      `(progn ,@forms))))
 
 #+lish
