@@ -7,7 +7,7 @@
     :description        "Faking a terminal with nothing."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "So many layers of fake like a cake."
     :depends-on (:dlib :terminal :char-util :trivial-gray-streams :fatchar)

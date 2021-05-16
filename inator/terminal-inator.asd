@@ -7,7 +7,7 @@
     :description        "Inator for terminals."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Inator for terminals."
     :depends-on (:dlib :dlib-misc :keymap :inator :terminal :fui)

@@ -7,7 +7,7 @@
     :description        "Library of miscellaneous useful functions."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :licence            "GPLv3"
+    :licence            "GPL-3.0-only"
     :source-control	:git
     :long-description
     "A library of miscellaneous useful functions. This is for things that

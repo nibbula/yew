@@ -7,7 +7,7 @@
     :description        "Filter a stream by a function."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description
     "Streams that filter an underlying stream with a function."

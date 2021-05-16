@@ -7,7 +7,7 @@
     :description        "Replacement REPL with editing and history."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :licence            "GPLv3"
+    :licence            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Most likely if you're using RL, this is why.
 If you want to run a lisp without Slime, then this could make it usable.

@@ -7,7 +7,7 @@
     :description        "An inator that uses files."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- uucp!gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "An inator that uses files."
     :depends-on (:dlib :inator :keymap :char-util)

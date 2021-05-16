@@ -7,7 +7,7 @@
     :description        "Command line Lisp debugger."
     :version            "0.2.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description
     "The “Dynamic Environment Belated Lisp Activation Record Grappler”.

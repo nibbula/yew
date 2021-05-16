@@ -7,7 +7,7 @@
     :description        "View Org Mode trees."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description
     "A simple appliction of the tree viewer to view Org Mode files."

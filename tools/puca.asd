@@ -7,7 +7,7 @@
     :description        "Putative Muca"
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :licence            "GPLv3"
+    :licence            "GPL-3.0-only"
     :source-control	:git
     :long-description
     "Putative Muca. A simple interface to revision control software.

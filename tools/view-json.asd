@@ -7,7 +7,7 @@
     :description        "View JSON as a tree."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- uucp!gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "View JSON as a tree."
     :depends-on (:dlib :opsys :dlib-misc :lish :tree-viewer :jsown)

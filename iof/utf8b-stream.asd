@@ -7,7 +7,7 @@
     :description        "Yutifaitbi streams for your slacking enjoyment."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "something something something something etc."
     :depends-on (:dlib :char-util :unicode :trivial-gray-streams)

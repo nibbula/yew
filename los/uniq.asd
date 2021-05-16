@@ -7,7 +7,7 @@
     :description        "Print unique lines."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- uucp!gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Print unique lines."
     :depends-on (:dlib :collections :los-config :cl-ppcre)

@@ -7,7 +7,7 @@
     :description        "Type with alternate alphabets."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- uucp!gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Type with alternate alphabets."
     :depends-on (:char-util :keymap :options :rl :pick-list :inator)

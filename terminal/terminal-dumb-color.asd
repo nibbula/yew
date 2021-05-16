@@ -7,7 +7,7 @@
     :description        "dumb color"
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- uucp!gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "very dumb color"
     :depends-on (:dlib :terminal :char-util :trivial-gray-streams :fatchar

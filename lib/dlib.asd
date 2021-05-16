@@ -7,7 +7,7 @@
     :description        "A crusty old shed of oddly shaped Lisp tools."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :licence            "GPLv3"
+    :licence            "GPL-3.0-only"
     :source-control	:git
     :long-description   "A new pile of old tires."
     ;; Don't ever add :depends-on

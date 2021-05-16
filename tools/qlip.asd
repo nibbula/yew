@@ -7,7 +7,7 @@
     :description        "Quicklisp package interface."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- uucp!gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Quicklisp package interface."
     :depends-on (:dlib :opsys :inator :table-viewer :tree-viewer :fui)

@@ -7,7 +7,7 @@
   :description        "A line editor."
   :version            "0.1.0"
   :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-  :licence            "GPLv3"
+  :licence            "GPL-3.0-only"
   :source-control     :git
   :long-description   "A line editor which is not so tiny."
   :defsystem-depends-on (:rl-config)

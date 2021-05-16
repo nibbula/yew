@@ -7,7 +7,7 @@
     :description        "List files."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description
     "Why would you ever want to use this command? You should know what files you

@@ -7,7 +7,7 @@
     :description        "Interface to the operating system."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :licence            "GPLv3"
+    :licence            "GPL-3.0-only"
     :source-control	:git
     :long-description   "The cessation of the repetition of ‘Never Again’."
     :defsystem-depends-on (:opsys-config)

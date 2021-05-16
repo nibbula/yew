@@ -7,7 +7,7 @@
     :description        "Regular expression search in streams."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Regular expression search in streams."
     :depends-on (:cl-ppcre :dlib :opsys :stretchy :grout :los-config :fatchar

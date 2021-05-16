@@ -7,7 +7,7 @@
     :description        "X11 window as a terminal."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- uucp!gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "X11 window as a terminal."
     :depends-on (:dlib :dlib-misc :terminal :opsys :dtime :trivial-gray-streams

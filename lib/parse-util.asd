@@ -7,9 +7,9 @@
     :description        "Parsing utilities."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- uucp!gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Minimal cheapo parsing junk."
-    :depends-on (:dlib)
+    :depends-on (:dlib :collections)
     :components
     ((:file "parse-util")))

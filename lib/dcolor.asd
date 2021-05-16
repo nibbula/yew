@@ -7,7 +7,7 @@
     :description        "Color representations."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description
     "Provide color models and functions to manipulate color values, color names, and conversions between color models."

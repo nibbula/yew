@@ -7,7 +7,7 @@
     :description        "Cats who take their good old time."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Like in the old days, if you happen to need it."
     :depends-on (:opsys :los-config)

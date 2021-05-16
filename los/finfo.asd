@@ -7,7 +7,7 @@
     :description        "Print some information about a file."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Basically like the Linux/BSD stat command."
     :depends-on (:dlib :opsys :dtime :grout :los-config)

@@ -7,7 +7,7 @@
     :description        "Browse trees."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "A user interface for viewing generic trees."
     :depends-on (:dlib :opsys :dlib-misc :dtime :char-util :keymap :pick-list

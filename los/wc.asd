@@ -7,7 +7,7 @@
     :description        "Word count."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Count words."
     :depends-on (:dlib :opsys :los-config)

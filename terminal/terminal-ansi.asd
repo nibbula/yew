@@ -7,7 +7,7 @@
     :description        "Standard terminal frobbing."
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description
     "Once there was a clunkly thing called a terminal.

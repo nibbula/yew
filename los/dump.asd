@@ -7,7 +7,7 @@
     :description        "dump bytes"
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
-    :license            "GPLv3"
+    :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "dump file bytes"
     :depends-on (:grout :opsys :terminal :los-config)
