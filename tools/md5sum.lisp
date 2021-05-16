@@ -50,6 +50,8 @@
    (as-bytes boolean :short-arg #\s :help "Return results as byte arrays.")
    (files pathname :repeating t :help "Files to sum."))
   "Print MD5 checksums. Use a stronger checksum for anything important."
-  (md5sum (or files (list lish:*input*)) :collect collect :as-bytes as-bytes))
+  (md5sum (or files (and lish:*input* (list lish:*input*))
+	      (list *standard-input*))
+	  :collect collect :as-bytes as-bytes))
 
 ;; End
