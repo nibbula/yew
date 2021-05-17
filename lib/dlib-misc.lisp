@@ -77,6 +77,7 @@
    #:d-autoload
    #:system-depends-list
    #:all-system-dependencies
+   #:system-pathnames
 
    ;; I/O
    #:safe-file-length
@@ -1397,6 +1398,14 @@ with the same name. If it's a macro, pass MACRO as true, mmkay?"
                  results)))
       (sub-deps system))
     use-list))
+
+(defun system-pathnames (system)
+  "Return a list of pathnames that are components of SYSTEM, including the
+system definition file."
+  (let ((sys (asdf/system:find-system system)))
+    (append (mapcar (_ (asdf/component:component-pathname _))
+		    (asdf/component:component-children sys))
+	    (list (asdf:system-source-file sys)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; I/O
