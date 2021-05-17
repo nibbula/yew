@@ -7,10 +7,13 @@
 
 This is a small utility for constructing simple recursive descent parsers.
 It's probably most applicable to simple grammars and short inputs. Perhaps
-things that you might consider parsing with a regular expression.
+things that you might consider parsing with a simple regular expression.
 
 Parsing is done with a set of macros inside a ‘with-parsing’ macro, which
 returns the parse results. Results are created with ‘note’ macro.
+
+The source is sequence of elements. In the common case of parsing a string, the
+sequence is a string and the elements are characters.
 
 Quantifiers macros are:
    (optional ...)      If the body doesn't evaluate to true, restore the point.
@@ -23,28 +26,29 @@ Quantifiers macros are:
 
 Result macro:
    (note () ...)       Push the of value of the body onto the results.
-   (with-substring (name) ...)
+   (with-sub-sequence (name) ...)
                        Make name be a function that returns the current
-                       substring, which the macro encloses.
+                       sub-sequence, which the macro encloses.
 
-Character functions are:
-   (peek)              Return the next character.
-   (next-char)         Return and consume the next character.
-   (char-in C STRING)  Return true if C is in STRING.
-   (is-char C)         Return true if C is the next character.
-   (is--not-char C)    Return true if C is not the next character.
-   (is-string STRING)  Return true if the next characters are STRING.
+Element functions are:
+   (peek)                        Return the next element.
+   (next-char)                   Return and consume the next element.
+   (element-in E SEQ &key test)  Return true if E is in SEQ.
+   (is-element E &key test)      Return true if E is the next element.
+   (is-not-element E &key test)  Return true if E is not the next element.
+   (in-sequence SEQ &key test)   Return true if the next element is in SEQ.
+   (is-sequence SEQ &key test)   Return true if the next elementss are SEQ.
 
 For example:
    (with-parsing ()
     )
 ")
-  (:use :cl :dlib)
-  (:nicknames :pu)
+  (:use :cl :dlib :collections)
+  (:nicknames :pu) ;; @@@
   (:export
    ;; state object
    #:state
-   #:state-string
+   #:state-sequence
    #:state-i
    #:state-results
    #:*state*
@@ -56,164 +60,210 @@ For example:
    #:zero-or-more
    #:one-of
    #:note
-   #:with-substring
+   #:with-sub-sequence
    #:with-parsing
    ;; functions
    #:peek
-   #:next-char
-   #:char-in
-   #:is-char
-   #:is-not-char
-   #:is-string
+   #:next-element
+   #:element-in
+   #:is-element
+   #:is-not-element
+   #:in-sequence
+   #:is-sequence
    ))
 (in-package :parse-util)
 
 (defstruct state
   "Parsing state."
-  (string "" :type simple-string)
-  (i 0 :type fixnum)
-  (results nil :type list))
+  sequence
+  (i          0   :type fixnum)
+  (next       nil :type list)
+  (track-next nil :type boolean)
+  (results    nil :type list))
 
 (defparameter *state* nil
   "Parsing state.")
 
-(defmacro optional (&body body)
-  "If BODY doesn't evaluate to true, restore the point."
+(defun at-end ()
+  (>= (state-i *state*) (olength (state-sequence *state*))))
+
+(defparameter *do-derp* nil)
+(defun derp ()
+  (when *do-derp*
+    (terminal:with-immediate ()
+      (terminal:tt-move-to 0 0)
+      (terminal:tt-clear)
+      (terminal:tt-erase-below)
+      (terminal:tt-write-string (state-sequence *state*))
+      (terminal:tt-newline)
+      (dotimes (i (state-i *state*)) (terminal:tt-write-char #\space))
+      (terminal:tt-format "^~%")
+      (terminal:tt-format "~(~a~)~%~a~%" (state-next *state*)
+			  (state-results *state*))
+      (terminal:tt-format "~s~%" *state*)
+      (when (eql #\q (terminal:tt-get-key))
+	(throw 'eof nil)))))
+
+(defmacro with-state ((&optional (result-form nil result-provided-p))
+		      &body body)
+  "Wrapper to handle backtracking and next tracking."
   (with-names (start result)
     `(let ((,start (state-i *state*)) ,result)
+       (when (state-track-next *state*)
+	 (setf (state-next *state*) ',body))
+       (derp)
        (when (not (setf ,result (progn ,@body)))
 	 (setf (state-i *state*) ,start))
-       t)))
+       (derp)
+       ,(if (not result-provided-p) result result-form))))
+
+(defmacro optional (&body body)
+  "If BODY doesn't evaluate to true, restore the point."
+  `(with-state (t)
+     ,@body))
 
 (defmacro must-be (&body body)
   "BODY must evaluate true."
-  (with-names (start result)
-    `(let ((,start (state-i *state*)) ,result)
-       (when (not (setf ,result (progn ,@body)))
-	 (setf (state-i *state*) ,start))
-       ,result)))
+  `(with-state ()
+     ,@body))
 
 (defmacro sequence-of (&body body)
   "Every form of BODY must be true."
-  (with-names (start result)
-    `(let ((,start (state-i *state*)) ,result)
-       (when (not (setf ,result (and ,@body)))
-	 (setf (state-i *state*) ,start))
-       ,result)))
+  `(with-state ()
+     (and ,@body)))
 
 (defmacro one-or-more (&body body)
   "Do the body once and until it is false."
   (with-names (thunk)
     `(flet ((,thunk () ,@body))
-       (and (,thunk)
-	    (or (loop :while (,thunk)) t)))))
+       (when (state-track-next *state*)
+	 (setf (state-next *state*) ',body))
+       (when (must-be (,thunk))
+	 (loop :while (must-be (and (not (at-end)) (,thunk))))
+	 t))))
 
 (defmacro zero-or-more (&body body)
   "Do the body, until it returns false. Always true."
-  (with-names (thunk)
-    `(flet ((,thunk () ,@body))
-       (loop :while (,thunk))
-       t)))
+  `(progn
+     (when (state-track-next *state*)
+       (setf (state-next *state*) ',body))
+     (loop :while (must-be (and (not (at-end)) (progn ,@body))))
+     t))
 
 (defmacro one-of (&body body)
   "Return after the first optional expression of BODY is true."
-  `(or ,@(loop :for expr :in body
-	    :collect `(must-be ,expr))))
+  (let ((choices (loop :for expr :in body :collect `(must-be ,expr))))
+    `(progn
+       (when (state-track-next *state*)
+	 (setf (state-next *state*) ',body))
+       (or ,@choices))))
 
 (defmacro note ((x) &body body)
   "Push the of value of the body onto the results."
   (with-names (r)
-    `(let ((,r (progn ,@body)))
-       (when ,r
-	 (push ,x (state-results *state*)))
-       ,r)))
+    `(progn
+       ;; (setf (state-next *state*) ',body)
+       (let ((,r (progn ,@body)))
+	 (when ,r
+	   (push ,x (state-results *state*)))
+	 ,r))))
 
 (defun peek ()
   "Return the next character."
-  (with-slots (i string) *state*
-    (declare (type simple-string string)
+  (with-slots (i sequence) *state*
+    (declare ;; (type simple-string string)
 	     (type fixnum i))
-    (when (< i (length string))
-      (char string i))))
+    (when (< i (olength sequence))
+      (oelt sequence i))))
 
-(defun next-char ()
+(defun next-element ()
   "Return and consume the next character."
-  (with-slots (i string) *state*
-    (declare (type simple-string string)
+  (with-slots (i sequence) *state*
+    (declare ;; (type simple-string string)
 	     (type fixnum i))
-    (if (< i (length string))
-	(prog1 (char string i)
+    (if (< i (olength sequence))
+	(prog1 (oelt sequence i)
 	  (incf i))
-	(throw 'eof nil))))
+        (progn
+	  (throw 'eof nil)))))
 
-(defun char-in (c string)
+(defun element-in (e sequence &key (test #'equal))
   "True if C is in STRING."
-  (declare (type simple-string string)
-	   (type character c))
-  (find c string :test #'char=))
+  ;; (declare (type simple-string string)
+  ;; 	   (type character c))
+  (ofind e sequence :test test))
 
-;; @@@ should be a function?
-(defun is-char (char)
-  "Return true if C is the next character."
+(defun is-element (element &key (test #'equal))
+  "Return true if ELEMENT is the next element."
   (and (peek)
-       (char= (peek) char)
-       (next-char)))
+       (funcall test (next-element) element)))
 
-(defun is-not-char (char)
-  "Return true if C is NOT the next character."
+(defun is-not-element (element &key (test #'equal))
+  "Return true if ELEMENT is NOT the next element."
   (and (peek)
-       (char/= (peek) char)
-       (next-char)))
+       (not (funcall test (next-element) element))))
 
-;; @@@ should be a function?
+;; (defun in-string (string)
+;;   "Return true if the next character is in STRING."
+;;   (and (peek)
+;;        (find (peek) string)
+;;        (next-char)))
+
+(defun in-sequence (sequence &key (test #'equal))
+  "Return true if the next character is in STRING."
+  (and (peek)
+       (ofind (peek) sequence :test test)
+       (next-element)))
+
+#+(or)
 (defun is-string (string)
   "Return true if the next characters are STRING."
   (declare (type simple-string string))
-  (let ((str string)
-	(start (state-i *state*))
+  (let ((start (state-i *state*))
+	(len (length string))
 	(i 0))
     (loop
-       :while (and (peek) (char= (peek) (char str i)))
-       :do (next-char))
+       :while (and (< i len) (peek) (char= (peek) (char string i)))
+       :do (next-char) (incf i))
     (cond
-      ((/= i (length string)) t)
+      ((= i (length string)) t)
       (t (setf (state-i *state*) start)
 	 nil))))
 
-(defmacro with-substring ((name) &body body)
+(defun is-sequence (sequence &key (test #'equal))
+  "Return true if the next elements are SEQUENCE."
+  ;;(declare (type simple-string string))
+  (let ((start (state-i *state*))
+	(len (olength sequence))
+	(i 0))
+    (loop
+       :while (and (< i len) (peek) (funcall test (peek) (oelt sequence i)))
+       :do (next-element) (incf i))
+    (cond
+      ((= i (olength sequence)) t)
+      (t (setf (state-i *state*) start)
+	 nil))))
+
+(defmacro with-sub-sequence ((name) &body body)
   "Evaluate the BODY with a function called NAME that returns the substring
 from the start of the macro to the current point."
   (with-names (start)
     `(let ((,start (state-i *state*)))
-       (flet ((,name ()
-		(subseq (state-string *state*) ,start (state-i *state*))))
+       (declare (ignorable ,start))
+       (symbol-macrolet ((,name (osubseq (state-sequence *state*)
+					 ,start (state-i *state*))))
 	 ,@body))))
 
-(defmacro with-parsing ((string &key junk-allowed) &body body)
+(defmacro with-parsing ((sequence &key junk-allowed track-next) &body body)
   "Use the parsing utilites on STRING and return the results."
-  (with-names (str)
-    `(let* ((,str ,string)
-	    (*state* (make-state :string ,str)))
-       (declare (type simple-string ,str))
+  (with-names (seq)
+    `(let* ((,seq ,sequence)
+	    (*state* (make-state :sequence ,seq :track-next ,track-next)))
+       ;; (declare (type simple-string ,str))
        (values (and (catch 'eof (progn ,@body))
 		    (and (not ,junk-allowed)
-			 (>= (state-i *state*) (length ,str))))
-	       (nreverse (state-results *state*))))))
-
-;; An example.
-(defun parse-path (path)
-  "Parse a unix path."
-  (with-parsing (path)
-    ;; This is so we can distinguish between relative and absolute paths.
-    ;; Absolute paths will have a "/" as the first element.
-    (optional
-     (note ("/") (is-char #\/)))
-    (one-or-more
-     (one-of
-      (one-or-more (is-char #\/))
-      (with-substring (element)
-	(note ((element))
-	      (one-or-more
-	       (is-not-char #\/))))))))
+			 (>= (state-i *state*) (olength ,seq))))
+	       (nreverse (state-results *state*))
+	       (state-next *state*)))))
 
 ;; End
