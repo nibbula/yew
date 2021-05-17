@@ -1,10 +1,10 @@
 ;;;
-;;; tiny-repl.lisp - A poor little REPL that works with RL.
+;;; tiny-repl.lisp - A not-so-tiny REPL that works with RL.
 ;;;
 
 (defpackage :tiny-repl
   (:use :common-lisp :terminal :rl :keymap :dlib :dlib-misc :ostring)
-  (:documentation "A tiny REPL that works with RL.")
+  (:documentation "A not-so-tiny REPL that works with RL.")
   (:export
    #:tiny-repl
    #:*repl-level*
@@ -22,8 +22,25 @@
    #:repl-state-debug
    #:snarky-interceptor
    #:read-arg
+   #:actually-tiny-repl
+   #:actually-tiny-but-comfy-repl
   ))
 (in-package :tiny-repl)
+
+;; If you were expecting an actually tiny repl:
+(defun actually-tiny-repl ()
+  (loop (format t "~s~%" (eval (read))) (finish-output)))
+;; Or even:
+(defun actually-tiny-but-comfy-repl ()
+  (loop (restart-case (progn
+      (format t "~{~s~^ ;~%~}~%"
+	      (multiple-value-list
+	       (eval (let ((str (rl:rl :prompt "> ")))
+		       (when (plusp (length str)) (read-from-string str))))))
+      (finish-output))
+    (abort () :report "Return to REPL."))))
+
+;; (tiny-repl:actually-tiny-but-comfy-repl)
 
 (defparameter *repl-symbols*
   '(repl-real-eof repl-continue repl-empty repl-error repl-quit repl-exit)
