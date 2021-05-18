@@ -6,7 +6,8 @@
   (:documentation "Characters with attributes.
 Defines a FATCHAR which is a character with color and font attributes.
 Define a FATCHAR-STRING as a vector of FATCHARS.
-Define a FAT-STRING as a struct with a FATCHAR-STRING so we can specialize.
+Define a FAT-STRING as a standard-object with a FATCHAR-STRING so we can
+specialize.
 Define a TEXT-SPAN as a list representation of a FAT-STRING.
 ")
   (:use :cl :dlib :stretchy :char-util :collections :ochar :ostring :dcolor)
@@ -294,6 +295,20 @@ the environemnt has <arg> and <arg>-P for all those keywords."
    (if end
        (setf (subseq (fat-string-string string) start end) value)
        (setf (subseq (fat-string-string string) start) value))))
+
+(defmethod ofill ((string fat-string) (item character) &key (start 0) end)
+  (when (not end)
+    (setf end (olength string)))
+  (loop :for i :from start :below end
+    :do (setf (aref (fat-string-string string) i)
+	      (make-fatchar :c item))))
+
+(defmethod ofill ((string fat-string) (item fatchar) &key (start 0) end)
+  (when (not end)
+    (setf end (olength string)))
+  (loop :for i :from start :below end
+    :do (setf (aref (fat-string-string string) i)
+	      (copy-fatchar item))))
 
 (defmethod ocount ((item fatchar) (collection fat-string)
 		   &key from-end key
