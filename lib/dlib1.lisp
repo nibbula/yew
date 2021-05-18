@@ -89,6 +89,7 @@ of it.")
    #:fill-by
    ;; lists
    #:delete-nth
+   #:insert-at
    #:alist-to-hash-table
    #:plist-to-hash-table
    #:hash-table-to-alist
@@ -1033,6 +1034,16 @@ Also, it can't really delete the first (zeroth) element."
 	  (if cons
 	      (setf (cdr cons) (cddr cons))
 	      cons)))))
+
+(defun insert-at (n item list)
+  "Insert ‘item’ at position ‘n’ in ‘list’."
+  (if (zerop n)
+      (cons item list)
+      (let ((x (nthcdr (1- n) list)))
+	(prog1 list
+	  (if x
+	      (rplacd x (cons item (cdr x)))
+	      x)))))
 
 (defun alist-to-hash-table (alist &optional (table (make-hash-table)))
   "Load a hash table with data from an association list."
