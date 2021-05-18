@@ -658,6 +658,22 @@ gathered, and a list of directories to be recursively listed."
   ;; (grout-format "~a:~%" (file-item-directory x)))
   (grout-format "~a:~%" x))
 
+(defun gather-results (files args)
+  "Get the ressults tables, for when quiet is set."
+  (flet ((get-it (x)
+	  "Print the item list."
+	   (when (null x)
+	     (return-from get-it nil))
+	   (if (getf args :long)
+	       (setf (ls-state-nice-table *ls-state*)
+		     (list-long x (getf args :date-format)
+				(getf args :size-format))))))
+    (when files
+      (get-it (car files))
+      (loop :for list :in (cdr files) :do
+	    (when list
+	      (get-it list))))))
+
 (defun present-files (files args label-dir-p)
   "Show the FILES, displayed according the the plist ARGS. See the lish ‘ls’
 command for details. If LABEL-DIR is true, print directory labels."
@@ -722,18 +738,19 @@ command for details. If LABEL-DIR is true, print directory labels."
     (let ((*print-pretty* nil))
       (when files
 	(print-it (car files))
-	(loop :for list :in (cdr files) ::do
+	(loop :for list :in (cdr files) :do
 	     (when list
 	       (grout-princ #\newline)
 	       (print-it list)))))))
 
 (defun list-files (&rest args &key files long 1-column wide hidden directory
 				sort-by reverse date-format show-size
-				size-format collect nice-table ignore-backups
-				omit-headers recursive signal-errors)
+				size-format collect nice-table quiet
+				ignore-backups omit-headers recursive
+				signal-errors)
   "List or collect files. See !ls for a description of arguments."
   (declare (ignorable files long 1-column wide hidden directory sort-by reverse
-		      date-format show-size size-format collect nice-table
+		      date-format show-size size-format collect nice-table quiet
 		      ignore-backups omit-headers recursive signal-errors))
   ;; It seems like we have to do our own defaulting.
   (when (not files)
@@ -749,40 +766,49 @@ command for details. If LABEL-DIR is true, print directory labels."
 
   (let* ((*ls-state* (or *ls-state* (make-default-state)))
 	 file-info more results)
-    (with-grout ()
-      (flet ((recur ()
-	       (let ((new-args (copy-list args)))
-		 (setf (ls-state-recurring *ls-state*) t)
-		 (loop :for x :in more :do
-		    (setf (getf new-args :files) (list x))
-		    ;; (format t "~&--> ") (finish-output) (read-line)
-		    (apply #'list-files new-args))))
-	     (pick-results ()
-	       (if nice-table
-		   (ls-state-nice-table *ls-state*)
-		   (if (= (length file-info) 1)
-		       (car file-info)
-		       file-info))))
-	;;(with-error-handling ()
-	(setf (values file-info more) (gather-file-info args))
-	(cond
+    (labels
+      ((recur ()
+         (let ((new-args (copy-list args)))
+	   (setf (ls-state-recurring *ls-state*) t)
+	   (loop :for x :in more :do
+             (setf (getf new-args :files) (list x))
+	     ;; (format t "~&--> ") (finish-output) (read-line)
+	     (apply #'list-files new-args))))
+       (pick-results ()
+         (if nice-table
+	     (ls-state-nice-table *ls-state*)
+	     (if (= (length file-info) 1)
+		 (car file-info)
+	         file-info)))
+       (body ()
+         (cond
 	  (file-info
-	   (present-files file-info args (or recursive
-					     (ls-state-recurring *ls-state*))))
+	   (if quiet
+	       (gather-results file-info args)
+	       (present-files file-info args
+			      (or recursive
+				  (ls-state-recurring *ls-state*)))))
 	  ;; ((and (/= (length files) 1) (is-dir (car files)))
 	  ;;  ;; (print-dir-label (car files))))
 	  ;;  (print-dir-label (item-full-path (make-full-item (car files)))))
 	  )
-	(if collect
-	    (if more
-		(progn
-		  (setf results (recur))
-		  (push (pick-results) results))
-		(pick-results))
-	    (progn
-	      (when more
-		(recur))
-	      (values)))))))
+	 (if collect
+	     (if more
+		 (progn
+		   (setf results (recur))
+		   (push (pick-results) results))
+	       (pick-results))
+	   (progn
+	     (when more
+	       (recur))
+	     (values)))))
+
+      ;;(with-error-handling ()
+      (setf (values file-info more) (gather-file-info args))
+      (if quiet
+	  (body)
+	  (with-grout ()
+	    (body))))))
 
 (defparameter *sort-fields*
   `("none" "name" "iname" "size" "access-time" "creation-time"
@@ -815,6 +841,7 @@ command for details. If LABEL-DIR is true, print directory labels."
 		:help "Format to show sizes with.")
    (collect boolean :short-arg #\c :help "Collect results as a sequence.")
    (nice-table boolean :short-arg #\N :help "Collect results as a nice table.")
+   (quiet boolean :short-arg #\q :help "Suppress output.")
    (recursive boolean :short-arg #\R :help "Recursively list sub-directories.")
    (signal-errors boolean :short-arg #\E
     :help "True to signal errors. Otherwise print them to *error-output*.")
