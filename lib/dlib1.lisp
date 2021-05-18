@@ -93,6 +93,7 @@ of it.")
    #:plist-to-hash-table
    #:hash-table-to-alist
    #:hash-table-to-plist
+   #:get-plist-values
    #:do-plist
    #:do-alist
    #:do-kv-list
@@ -1059,6 +1060,10 @@ Also, it can't really delete the first (zeroth) element."
   (loop :for key :being :the :hash-keys :of hash-table
 	:collect key
 	:collect (gethash key hash-table)))
+
+(defun get-plist-values (properties from-plist)
+  "Return a list of the values of the PROPERTIES from the plist FROM-PLIST."
+  (mapcar (_ (getf from-plist _)) properties))
 
 (defmacro do-plist ((key value list) &body body)
   (with-unique-names (l thunk)
