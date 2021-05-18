@@ -1,6 +1,6 @@
-;;
-;; table-viewer.lisp - View tables.
-;;
+;;;
+;;; table-viewer.lisp - View tables.
+;;;
 
 (defpackage :table-viewer
   (:documentation "View tables.")
@@ -10,8 +10,14 @@
   (:export
    #:viewer-table-renderer
    #:table-viewer
+   #:table-viewer-table
+   #:table-viewer-renderer
+   #:table-point
+   #:table-point-row
+   #:table-point-col
    #:view-table-file
    #:view-table-thing
+   #:view-cell
    #:view-table
    #:!view-table
    #:!print-table
@@ -751,7 +757,10 @@ at which it's found or NIL if it's not found."
 		   (table-point-col current-position))
 	    value))))
 
-(defun view-cell (o)
+(defgeneric view-cell (inator)
+  (:documentation "View the current cell."))
+
+(defmethod view-cell ((o table-viewer))
   (handler-case
       (view (current-cell o))
     (error (c)
