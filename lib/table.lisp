@@ -84,15 +84,14 @@ attributes."))
 
 (defun table-add-column (table name &key type width format align)
   "Shorthand for adding a column to a table. Name can be just the name or a
-column structure."
+column structure. Note that this just adds to the metadata in table-columns.
+To add data, use insert-column or collection functions."
   (let ((col (or (and (column-p name) name) (make-column :name name))))
     (when type   (setf (column-type   col) type))
     (when width  (setf (column-width  col) width))
     (when format (setf (column-format col) format))
     (when align  (setf (column-align  col) align))
     (setf (table-columns table) (nconc (table-columns table) (list col)))))
-
-;; I wish I could specialize on unsigned-byte.
 
 (defgeneric table-update-column-width (table col width)
   (:documentation "Update the column width, growing not shrinking.")
@@ -309,6 +308,39 @@ the value. COLUMN can be a number or a column name. Return the TABLE."
     (omap (_ (setf (oelt _ col) (funcall function (oelt _ col))))
 	  table)
     table))
+
+(defgeneric insert-column (name at table &key value)
+  (:documentation
+   "Insert a column named ‘name’ at column number ‘at’ in ‘table’. ‘name’ can
+be a name or a column structure. Not all tables support inserting columns."))
+
+(defmethod insert-column (at name (table mem-table) &key value)
+  "Insert a column named ‘name’ before column ‘at’ in ‘table’. Not a"
+  (let ((col (or (and (column-p name) name) (make-column :name name))))
+    (setf (table-columns table)
+	  (insert-at at col (table-columns table))))
+  (omap-into
+    (container-data table)
+    (lambda (row)
+      ;; This is stupid. We should have a specialized inserts.
+      (let ((glom-type (etypecase row
+			 (list 'list)
+			 (string 'string)
+			 (vector 'vector)
+			 (hash-table 'hash-table))))
+	(if (zerop at)
+	    (oconcatenate
+	     (collections::make-collection glom-type :size 1
+					   :initial-element value
+					   :element-type (type-of row))
+	     (osubseq row at))
+	  (oconcatenate
+	   (osubseq row 0 at)
+	   (collections::make-collection glom-type :size 1
+					 :initial-element value
+					 :element-type (type-of row))
+	   (osubseq row at)))))
+    (container-data table)))
 
 (defun copy-columns (table)
   "Return a copy of TABLE's columns."
