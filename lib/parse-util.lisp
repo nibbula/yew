@@ -5,12 +5,10 @@
 (defpackage :parse-util
   (:documentation "Parsing utilities.
 
-This is a small utility for constructing simple recursive descent parsers.
-It's probably most applicable to simple grammars and short inputs. Perhaps
-things that you might consider parsing with a simple regular expression.
-
-Parsing is done with a set of macros inside a ‘with-parsing’ macro, which
-returns the parse results. Results are created with ‘note’ macro.
+This is a small set of macros for constructing simple recursive descent
+parsers. It's probably most applicable to simple grammars and short inputs.
+A set of macros inside a ‘with-parsing’ macro, which returns the parse
+results. Results are created with ‘note’ macro.
 
 The source is sequence of elements. In the common case of parsing a string, the
 sequence is a string and the elements are characters.
@@ -24,7 +22,7 @@ Quantifiers macros are:
    (one-of ...)        Return after the first optional expression of the body
                        is true.
 
-Result macro:
+Result macros:
    (note () ...)       Push the of value of the body onto the results.
    (with-sub-sequence (name) ...)
                        Make name be a function that returns the current
@@ -39,9 +37,7 @@ Element functions are:
    (in-sequence SEQ &key test)   Return true if the next element is in SEQ.
    (is-sequence SEQ &key test)   Return true if the next elementss are SEQ.
 
-For example:
-   (with-parsing ()
-    )
+See parse-util-test for examples.
 ")
   (:use :cl :dlib :collections)
   (:nicknames :pu) ;; @@@
@@ -87,22 +83,25 @@ For example:
 (defun at-end ()
   (>= (state-i *state*) (olength (state-sequence *state*))))
 
-(defparameter *do-derp* nil)
-(defun derp ()
-  (when *do-derp*
-    (terminal:with-immediate ()
-      (terminal:tt-move-to 0 0)
-      (terminal:tt-clear)
-      (terminal:tt-erase-below)
-      (terminal:tt-write-string (state-sequence *state*))
-      (terminal:tt-newline)
-      (dotimes (i (state-i *state*)) (terminal:tt-write-char #\space))
-      (terminal:tt-format "^~%")
-      (terminal:tt-format "~(~a~)~%~a~%" (state-next *state*)
-			  (state-results *state*))
-      (terminal:tt-format "~s~%" *state*)
-      (when (eql #\q (terminal:tt-get-key))
-	(throw 'eof nil)))))
+#+(or)
+(progn
+  (defparameter *do-derp* nil)
+  (defun derp ()
+    "Visual debugging of parsers."
+    (when *do-derp*
+      (terminal:with-immediate ()
+	(terminal:tt-move-to 0 0)
+	(terminal:tt-clear)
+	(terminal:tt-erase-below)
+	(terminal:tt-write-string (state-sequence *state*))
+	(terminal:tt-newline)
+	(dotimes (i (state-i *state*)) (terminal:tt-write-char #\space))
+	(terminal:tt-format "^~%")
+	(terminal:tt-format "~(~a~)~%~a~%" (state-next *state*)
+			    (state-results *state*))
+	(terminal:tt-format "~s~%" *state*)
+	(when (eql #\q (terminal:tt-get-key))
+	  (throw 'eof nil))))))
 
 (defmacro with-state ((&optional (result-form nil result-provided-p))
 		      &body body)
