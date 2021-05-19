@@ -1342,7 +1342,8 @@ Returns the the open stream or NIL."
     (stream
      (when (and binary (not (eq (stream-element-type filename)
 				'(unsigned-byte 8))))
-       (error "Set binary but not given a binary stream."))
+       (error "I'm sorry, but the pager needs a binary stream to run in binary ~
+               mode."))
      filename)
     ((or string pathname)
      (if binary
