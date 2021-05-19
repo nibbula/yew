@@ -35,6 +35,7 @@
    #:replace-cells
    #:map-column
    #:map-into-column
+   #:insert-column
    ;; #:join
    ))
 (in-package :table)
@@ -340,7 +341,8 @@ be a name or a column structure. Not all tables support inserting columns."))
 					 :initial-element value
 					 :element-type (type-of row))
 	   (osubseq row at)))))
-    (container-data table)))
+    (container-data table))
+  table)
 
 (defun copy-columns (table)
   "Return a copy of TABLE's columns."
