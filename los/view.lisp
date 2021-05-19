@@ -27,6 +27,7 @@
     (("text" . "csv")        . (:table-viewer :view-table-thing))
     (("text" . "neox")       . (:neox :neox-on-file))
     (("application" . "json") . (:view-json :view-json))
+    (("application" . "x-directory") . (:dired :dired))
     ("video"		     . (:view-video :view-video))
     ("image"                 . (:view-image :view-image))
     ("text"                  . (:pager :pager))
@@ -53,8 +54,8 @@
 			      (equal name (cdr thing)))))))
 		   list))))
     ;; @@@ extend to support sublists of name and description
-    (get-func (content-type-category type)
-	      (content-type-name type)
+    (get-func (string-downcase (content-type-category type))
+	      (string-downcase (content-type-name type))
 	      *viewer-alist*)))
 
 ;; @@@ This is very wrong.
