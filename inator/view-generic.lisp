@@ -1,6 +1,6 @@
-;;
-;; view-generic.lisp - View a thing
-;;
+;;;
+;;; view-generic.lisp - View a thing
+;;;
 
 (defpackage :view-generic
   (:documentation
