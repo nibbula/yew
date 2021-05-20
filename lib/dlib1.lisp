@@ -1188,7 +1188,7 @@ Otherwise, return N."
 
 (defmacro clampf (n start end)
   "Set N to be in the range START - END, if it's not already."
-  (with-names (value)
+  (let ((value (gensym "VALUE")))
     `(let ((,value ,n))
        (cond
 	((< ,value ,start) (setf ,n ,start))
