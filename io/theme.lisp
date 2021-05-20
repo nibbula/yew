@@ -698,6 +698,8 @@ Something like the default setting of typical GNU tools."))))
        (:program :meter		       :character) #.(code-char #x2592)
        (:program :suggestion           :style)
        (:fg :color #(:rgb8 #x50 #x50 #x50))
+       (:program :table :current-cell  :style)    (:fg-yellow :inverse)
+       (:program :table :current-row   :style)    (:inverse)
        ))
     tt))
 
