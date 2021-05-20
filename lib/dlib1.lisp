@@ -1036,7 +1036,8 @@ Also, it can't really delete the first (zeroth) element."
 	      cons)))))
 
 (defun insert-at (n item list)
-  "Insert ‘item’ at position ‘n’ in ‘list’."
+  "Insert ‘item’ at position ‘n’ in ‘list’. Of course you have to use the return
+value, if you want to delete the first item."
   (if (zerop n)
       (cons item list)
       (let ((x (nthcdr (1- n) list)))
@@ -1187,9 +1188,11 @@ Otherwise, return N."
 
 (defmacro clampf (n start end)
   "Set N to be in the range START - END, if it's not already."
-  `(cond
-     ((< ,n ,start) (setf ,n ,start))
-     ((> ,n ,end) (setf ,n ,end))))
+  (with-names (value)
+    `(let ((,value ,n))
+       (cond
+	((< ,value ,start) (setf ,n ,start))
+	((> ,value ,end)   (setf ,n ,end))))))
 
 ;; Objects
 
