@@ -1,10 +1,8 @@
-;;
-;; pipe-stream.lisp - The unnecessary Pipe streams of Ill regard.
-;;
+;;;
+;;; pipe-stream.lisp - The unnecessary Pipe streams of Ill regard.
+;;;
 
-;; Do I really need a Pipe stream? You can do it with two STRING-STREAMs, but
-;; it's not really convenient. This should be easier to use, and hopefully will
-;; have decent performance. Much of the important code is in the PIPE-BUFFER.
+;; Much of the important code is in the PIPE-BUFFER.
 ;; See the end of the file for a diagram.
 
 (defpackage :pipe-stream
@@ -17,8 +15,8 @@
    ))
 (in-package :pipe-stream)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
-		   (compilation-speed 0)))
+;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+;; 		   (compilation-speed 0)))
 
 (defclass pipe-stream (trivial-gray-stream-mixin
 		       fundamental-binary-input-stream
