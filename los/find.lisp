@@ -1,6 +1,6 @@
-;;
-;; find.lisp - Replacement for unix find (eventually)
-;;
+;;;
+;;; find.lisp - Something vaguely like unix find
+;;;
 
 (defpackage :find
   (:documentation "Find files in an old fashioned and slow manner.")
