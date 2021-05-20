@@ -200,6 +200,46 @@ for a range of rows, or a table-point for a specific item,"
 	   (write (osubseq field 0 len)
 		  :stream *terminal* :escape nil :readably nil :pretty nil)))))))
 
+(defun tv-cell-output (renderer table cell width justification row column
+		       given-format)
+  (declare (ignore row))
+  (with-slots (output-x) renderer
+    (let (op fmt field len)
+      (flet ((format-it (fmt)
+	       (let ((*print-pretty* nil))
+		 (with-output-to-fat-string (str)
+		   (format str fmt (or width 0) cell)))))
+	(cond
+	  ((likely-callable given-format)
+	   (setf field (funcall given-format cell width)))
+	  ((ostringp given-format)
+	   (setf field (format-it given-format)))
+	  (t
+	   (setf op (typecase cell
+		      ((or string fat-string) "/fatchar-io:print-string/")
+		      (t "a"))
+		 fmt (cond
+		       ((and (= column (1- (olength (table-columns table))))
+			     (not *trailing-spaces*))
+			(setf width nil)
+			(s+ "~v" op))
+		       ((eql justification :right)
+			(s+ "~v@" op))
+		       ((and (not justification) (typep cell 'number))
+			(s+ "~v@" op))
+		       (t
+			(s+ "~v" op)))
+		 field (format-it fmt))))
+	(setf len (min width (olength field)))
+
+	(with-output-to-fat-string (str)
+	  (typecase cell
+	    (standard-object
+	     (princ (osubseq field 0 len) str))
+	    (t
+	     (write (osubseq field 0 len)
+		    :stream str :escape nil :readably nil :pretty nil))))))))
+
 (defun de-dork (name)
   (typecase name
     (list
@@ -282,26 +322,34 @@ for a range of rows, or a table-point for a specific item,"
 	     (clipped-width (max 0 (min (- *max-width* output-x)
 					cell-width)))
 	     (hilite (and current-position
-			  (= row (table-point-row current-position)))))
+			  (= row (table-point-row current-position))))
+	     (cell (tv-cell-output renderer table cell clipped-width
+				   nil ;; bogus justification
+				   row column
+				   (column-format
+				    (oelt (table-columns table) column)))))
+	(if hilite
+	    (progn
+	      ;; Save the cursor y position
+	      (when (not (table-point-row cursor))
+		(setf (table-point-row cursor) output-y))
+	      (if (and (table-point-col current-position)
+		       (= column (table-point-col current-position)))
+		  (progn
+		    ;; Save the cursor x position
+		    (setf (table-point-col cursor) output-x)
+		    (setf cell (ochar:osimplify cell))
+		    (tt-write-string
+		     (style:themed-string
+		      '(:program :table :current-cell :style) cell)
+		     ;; (style:styled-string '(:fg-black :bg-yellow) cell)
+		     ))
+		  (progn
+		    (tt-write-string
+		     (style:themed-string '(:program :table :current-row :style)
+					  cell)))))
+	    (tt-write-string cell))
 
-	(when hilite
-	  (tt-inverse t)
-	  (when (not (table-point-row cursor))
-	    (setf (table-point-row cursor) output-y))
-	  (if (and (table-point-col current-position)
-		   (= column (table-point-col current-position)))
-	      (progn
-		(setf (table-point-col cursor) output-x)
-		;; (tt-color :yellow :default)) ; @@@ should get from theme
-		(tt-inverse nil)
-		(tt-color :black :yellow)) ; @@@ should get from theme
-	      (tt-color :default :default)))
-
-	;; (dbugf :tv "is it? ~s~%" (table-columns table))
-	(tv-output-cell renderer table cell clipped-width
-			nil ;; bogus justification
-			row column
-			(column-format (oelt (table-columns table) column)))
 	(incf (output-x renderer) clipped-width)
 	(tt-normal)))))
 
@@ -646,11 +694,21 @@ at which it's found or NIL if it's not found."
 
 (defun resize-viewer (viewer)
   "Resize the viewr from the current terminal."
-  (with-slots (width height rows) (table-viewer-renderer viewer)
+  (with-slots (width height start rows current-position cursor sizes)
+      (table-viewer-renderer viewer)
     (setf width (tt-width)
 	  height (tt-height)
 	  rows (min (olength (container-data (table-viewer-table viewer)))
-		    (- (tt-height) 2)))))
+		    (- (tt-height) 2)))
+    (when start
+      (clampf (table-point-row start) 0 (1- rows)))
+    (when current-position
+      (clampf (table-point-row current-position) 0 (1- rows)))
+    (when cursor
+      (when (table-point-row cursor)
+	(clampf (table-point-row cursor) 0 (1- rows)))
+      (when (table-point-col cursor)
+	(clampf (table-point-col cursor) 0 (1- (olength sizes)))))))
 
 (defmethod resize ((o table-viewer))
   (resize-viewer o)
@@ -812,9 +870,7 @@ at which it's found or NIL if it's not found."
       ;; Make the cursor show up in the right spot.
       (when (table-point-row cursor) ;; @@@ XXX workaround
 	;;(tt-move-to (table-point-row cursor) 0)
-	(tt-move-to (+ y (table-point-row cursor)) x)
-	)
-      )))
+	(tt-move-to (+ y (table-point-row cursor)) x)))))
 
 ;; (defgeneric start-inator ((o table-viewer))
 ;;   )
