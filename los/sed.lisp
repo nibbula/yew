@@ -21,7 +21,7 @@ Addresses:
   number               integer   Line ‘number’.
   :last                keyword   The last line.
   \"regexp\"             string    A line matching ‘regexp’.
-  (first last)         cons      The range of line from ‘first’ address to 
+  (first last)         cons      The range of line from ‘first’ address to
                                  ‘last’ address.
   (first :plus number) cons      ‘first’ address, and ‘number’ more lines.
   (first :mod number) cons       ‘first’ address, until the line number is
@@ -75,9 +75,23 @@ and used as the line. If the command returns NIL, the line is deleted."))
   ((value :initarg :value :accessor address-value :initform nil))
   (:documentation "An address with a single value."))
 
+(defmethod print-object ((object single-value-address) stream)
+  "Print a range-address to STREAM."
+  (with-slots (value) object
+    (print-unreadable-object (object stream :type t)
+			     (format stream "~s" value))))
+
 (defclass line-number-address (single-value-address)
   ()
   (:documentation "An address which is a line number."))
+
+(defclass line-number-start-address (line-number-address)
+  ()
+  (:documentation "An address which is a starting line number."))
+
+(defclass line-number-end-address (line-number-address)
+  ()
+  (:documentation "An address which is a ending line number."))
 
 (defclass symbol-address (single-value-address)
   ()
@@ -97,13 +111,19 @@ and used as the line. If the command returns NIL, the line is deleted."))
     :documentation "True if the start was seen and the end wasn't."))
   (:documentation "An address that is a range of lines."))
 
+(defmethod print-object ((object range-address) stream)
+  "Print a range-address to STREAM."
+  (with-slots (start end) object
+    (print-unreadable-object (object stream :type t)
+			     (format stream "~s-~s" start end))))
+
 (defclass block-address (range-address)
   ((start-line
     :initarg :start-line :accessor address-start-line :initform 0 :type integer
     :documentation "Line which the start matched on."))
   (:documentation "A range address where the end is relative. End is a positive
 integer offset of lines from the starting line."))
-  
+
 (defclass modular-address (range-address)
   ()
   (:documentation
@@ -148,6 +168,12 @@ the currrent line number. ‘eof-p’ is true if we're at the last line."))
 
 (defmethod address-matches ((address line-number-address) line count eof-p)
   (= count (address-value address)))
+
+(defmethod address-matches ((address line-number-start-address) line count eof-p)
+  (>= count (address-value address)))
+
+(defmethod address-matches ((address line-number-end-address) line count eof-p)
+  (<= count (address-value address)))
 
 (defmethod address-matches ((address regex-address) line count eof-p)
   (multiple-value-bind (result strings)
@@ -205,10 +231,21 @@ the currrent line number. ‘eof-p’ is true if we're at the last line."))
 	 (0 (error "This shouldn't happen."))
 	 (1 ;; Just pretend it's not a range.
 	  (make-address (car form)))
-	 (2 
-	  (make-instance 'range-address
-			 :start (first form)
-			 :end (or (second form) (cdr form))))
+	 (2
+	  (flet ((make-range-x (n which)
+		  (etypecase n
+		    (integer
+		     (ecase which
+		       (:start
+			(make-instance 'line-number-start-address :value n))
+		       (:end
+			(make-instance 'line-number-end-address :value n))))
+		    (string
+		     (make-address n)))))
+	    (make-instance 'range-address
+			   :start (make-range-x (first form) :start)
+			   :end (make-range-x
+				 (or (second form) (cdr form)) :end))))
 	 (3
 	  (when (not (member (second form) '(:plus :mod)))
 	    (error "Second item in a range must be one of ~s" +range-types+))
