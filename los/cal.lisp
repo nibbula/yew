@@ -228,7 +228,10 @@ not given."
 (lish:defcommand date
   ((format choice :short-arg #\f :default *default-date-format*
     :choices '("unix" "net" "iso" "filename" "nibby")
-    :help "Format for the date."))
+    :help "Format for the date.")
+  ;; (timezone choice :short-arg #\z
+  ;;  :help "Use this timezone instead of the default.")
+  )
   "Print the date."
   (write-line
    (case (keywordify format)
