@@ -1,6 +1,6 @@
-;;
-;; terminal-table.lisp - Table renderer for terminals.
-;;
+;;;
+;;; terminal-table.lisp - Table renderer for terminals.
+;;;
 
 (defpackage :terminal-table
   (:documentation "Table renderer for terminals.")
@@ -13,7 +13,10 @@
 (in-package :terminal-table)
 
 (defclass terminal-table-renderer (text-table-renderer)
-  ()
+  ((x
+    :initarg :x :accessor terminal-table-renderer-x
+    :initform nil :type (or null fixnum)
+    :documentation "Horizontal coordinate to render at."))
   (:default-initargs
    :horizontal-line-char (code-char #x2500))
   (:documentation "Render a table to a terminal."))
@@ -97,6 +100,21 @@
   (declare (ignore table renderer))
   (osplit #\newline (with-output-to-fat-string (str)
 		      (justify-text cell :cols width :stream str))))
+
+;; @@@ to implement x
+;; (defmethod table-output-header ((renderer terminal-table-renderer) table
+;; 				&key width sizes)
+;;   )
+;; (defmethod table-output-column-titles ((renderer terminal-table-renderer)
+;; 				       table titles &key sizes)
+;;   )
+
+(defmethod table-output-start-row ((renderer terminal-box-table-renderer) table)
+  (declare (ignore table))
+  (with-slots (box-color x) renderer
+    (terminal-move-to-col *destination* (or x 0))
+    (terminal-color *destination* box-color nil)
+    (call-next-method)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -192,7 +210,6 @@
       (terminal-color *destination* title-color nil)
       (write (char-util:simplify-string
 	      (osubseq field 0 (min width (olength field))))
-	     :stream *destination* :escape nil :readably nil :pretty nil)
-    )))
+	     :stream *destination* :escape nil :readably nil :pretty nil))))
 
 ;; EOF
