@@ -36,23 +36,23 @@
   ()
   (:documentation "A generic item."))
 
-(defclass goo (puca-item)
+(defclass item (puca-item)
   ((selected
-    :initarg :selected :accessor goo-selected :initform nil :type boolean
+    :initarg :selected :accessor item-selected :initform nil :type boolean
     :documentation "True if this item is selected.")
    (modified
-    :initarg :modified :accessor goo-modified :initform nil
+    :initarg :modified :accessor item-modified :initform nil
     :documentation "@@@@ i dunno")
    (filename
-    :initarg :filename :accessor goo-filename :initform nil
+    :initarg :filename :accessor item-filename :initform nil
     :documentation "Name of the file?")
    (extra-lines
-    :initarg :extra-lines :accessor goo-extra-lines :initform nil
+    :initarg :extra-lines :accessor item-extra-lines :initform nil
     :documentation "Extra lines output from the backend command."))
   (:documentation "A file/object under version control."))
 
-(defun make-goo (&rest initargs)
-  (apply #'make-instance 'goo initargs))
+(defun make-item (&rest initargs)
+  (apply #'make-instance 'item initargs))
 
 (defvar *puca* nil
   "The current puca instance.")
@@ -61,11 +61,11 @@
   ((backend
     :initarg :backend :accessor puca-backend :initform nil
     :documentation "The revision control system backend that we are using.")
-   (goo
-    :initarg :goo :accessor puca-goo :initform nil
+   (items
+    :initarg :items :accessor puca-items :initform nil
     :documentation "A sequence of puca-item entries.")
-   (maxima
-    :initarg :maxima :accessor puca-maxima :initform 0
+   (item-count
+    :initarg :item-count :accessor puca-item-count :initform 0
     :documentation "Number of items.")
    (top
     :initarg :top :accessor puca-top :initform 0
@@ -87,7 +87,11 @@
     :documentation "The first line of the objects.")
    (debug
     :initarg :debug :accessor puca-debug :initform nil :type boolean
-    :documentation "True to turn on debugging."))
+    :documentation "True to turn on debugging.")
+   (universal-argument
+    :initarg :universal-argument :accessor puca-app-universal-argument
+    :initform  nil
+    :documentation "A universal argument for commands."))
   (:default-initargs
    :point 0
    :mark nil)
@@ -142,6 +146,10 @@ current line or the selected files."))
    (commit
     :initarg :commit :accessor backend-commit :type string
     :documentation "Commit the changes.")
+   (commit-interactive
+    :initarg :commit-interactive :accessor backend-commit-interactive
+    :type string
+    :documentation "Commit the changes interactively.")
    (update
     :initarg :update :accessor backend-update :type string
     :documentation "Update the file from the remote or repository.")
@@ -175,7 +183,7 @@ current line or the selected files."))
    "Return true if we guess we are in a directory under this type."))
 
 (defgeneric parse-line (backend line i)
-  (:documentation "Take a line and add stuff to goo and/or *errors*."))
+  (:documentation "Take a line and add stuff to items and/or *errors*."))
 
 (defgeneric add-ignore (backend file)
   (:documentation "Add FILE to the list of ignored files."))
@@ -194,7 +202,7 @@ return history for the whole repository."))
 
 (defmethod parse-line ((backend backend) line i)
   "Parse a status line LINE for a typical RCS. I is the line number."
-  (with-slots (goo errors extra) *puca*
+  (with-slots (items errors extra) *puca*
     (let (match words tag file)
       (multiple-value-setq (match words)
 	(scan-to-strings "\\s*(\\S+)\\s+(.*)$" line))
@@ -210,10 +218,10 @@ return history for the whole repository."))
 	;; skip blank lines
 	((or (not match) (not words)))
 	(t
-	 (push (make-goo :modified (subseq tag 0 1) :filename file) goo)
+	 (push (make-item :modified (subseq tag 0 1) :filename file) items)
 	 ;; If we've accumulated extra lines add them to this line.
 	 (when extra
-	   (setf (goo-extra-lines (car goo)) (nreverse extra))
+	   (setf (item-extra-lines (car items)) (nreverse extra))
 	   (setf extra nil)))))))
 
 (defmethod get-status-list ((backend backend))
@@ -291,7 +299,7 @@ return history for the whole repository."))
   (check-dir-and-command "CVS" "cvs"))
 
 (defmethod parse-line ((backend cvs) line i)
-  (with-slots (goo errors extra) *puca*
+  (with-slots (items errors extra) *puca*
     (let ((words (split-sequence " " line
 				 :omit-empty t
 				 :test #'(lambda (a b)
@@ -309,11 +317,11 @@ return history for the whole repository."))
 	     (and (= (length words) 1)
 		  (= (length (first words)) 0))))
 	(t
-	 (push (make-goo :modified (elt words 0)
-			 :filename (elt words 1)) goo)
+	 (push (make-item :modified (elt words 0)
+			  :filename (elt words 1)) items)
 	 ;; If we've accumulated extra lines add them to this line.
 	 (when extra
-	   (setf (goo-extra-lines (first goo)) (nreverse extra))
+	   (setf (item-extra-lines (first items)) (nreverse extra))
 	   (setf extra nil)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -340,6 +348,7 @@ return history for the whole repository."))
    :diff-history      "git diff --color ~a ~a -- ~{~a ~} | pager"
    :diff-history-head "git diff --color ..~a -- ~{~a ~} | pager"
    :commit	      "git --no-pager commit ~{~a ~}"
+   :commit-interactive "git --no-pager commit --patch ~{~a ~}"
    :update	      "git --no-pager pull ~{~a ~}"
    :update-all	      "git --no-pager pull"
    :push	      "git --no-pager push"
@@ -438,7 +447,7 @@ return history for the whole repository."))
 
 (defmethod parse-line ((backend git) line i)
   "Parse a status line LINE for a typical RCS. I is the line number."
-  (with-slots (goo errors extra) *puca*
+  (with-slots (items errors extra) *puca*
     (let (match words tag file arrow-pos)
       (multiple-value-setq (match words)
 	(scan-to-strings "\\s*(\\S+)\\s+(.*)$" line))
@@ -458,10 +467,10 @@ return history for the whole repository."))
 	;; skip blank lines
 	((or (not match) (not words)))
 	(t
-	 (push (make-goo :modified (subseq tag 0 1) :filename file) goo)
+	 (push (make-item :modified (subseq tag 0 1) :filename file) items)
 	 ;; If we've accumulated extra lines add them to this line.
 	 (when extra
-	   (setf (goo-extra-lines (car goo)) (nreverse extra))
+	   (setf (item-extra-lines (car items)) (nreverse extra))
 	   (setf extra nil)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -536,7 +545,7 @@ return history for the whole repository."))
   ;; (refresh)
   )
 
-(defun goo-color (status-char)
+(defun item-color (status-char)
   "Set the color based on the status character."
   (case status-char
     (#\M :red)	    ; modified
@@ -544,24 +553,24 @@ return history for the whole repository."))
     (#\C :magenta)  ; conflicts
     (t   :green)))  ; updated or other
 
-(defmethod draw-goo ((puca puca) i)
-  "Draw the goo object, with the appropriate color."
-  (with-slots (goo top first-line) *puca*
-    (let ((g (elt goo i)))
-      (let* ((color (goo-color (aref (goo-modified g) 0))))
+(defmethod draw-item ((puca puca) i)
+  "Draw the item, with the appropriate color."
+  (with-slots (items top first-line) *puca*
+    (let ((g (elt items i)))
+      (let* ((color (item-color (aref (item-modified g) 0))))
 	(tt-move-to (+ (- i top) first-line) 4)
 	;; (clrtoeol)
 	(tt-color color :default)
 	(tt-format "~a ~a ~30a"
-		   (if (goo-selected g) "x" " ")
-		   (goo-modified g)
-		   (goo-filename g)))
+		   (if (item-selected g) "x" " ")
+		   (item-modified g)
+		   (item-filename g)))
 	(tt-color :default :default)
-	(when (goo-extra-lines g)
+	(when (item-extra-lines g)
 ;; Ugly inline error display:
 ;;      (if (= i cur)
 ;; 	  (loop :with j = 0
-;; 	     :for line :in (goo-extra-lines g)
+;; 	     :for line :in (item-extra-lines g)
 ;; 	     :do
 ;; 	     (mvaddstr (+ (- i top) 3 j) 20 line)
 ;; 	     (incf j))
@@ -570,7 +579,7 @@ return history for the whole repository."))
 
 (defun draw-line (i)
   "Draw line I, with the appropriate color."
-  (draw-goo *puca* i))
+  (draw-item *puca* i))
 
 (defgeneric get-list (puca &key no-message)
   (:documentation
@@ -580,8 +589,8 @@ return history for the whole repository."))
   "Get the list of files/objects from the backend and parse them."
   (when (not no-message)
     (message *puca* "Listing..."))
-  (with-slots (goo top errors maxima (point inator::point) cur extra) *puca*
-    (setf goo '()
+  (with-slots (items top errors item-count (point inator::point) cur extra) *puca*
+    (setf items '()
 	  errors '()
 	  extra '())
     (loop
@@ -589,11 +598,11 @@ return history for the whole repository."))
        :and i = 0 :then (1+ i)
        :do
        (parse-line (puca-backend *puca*) line i))
-    (setf goo (nreverse goo)
+    (setf items (nreverse items)
 	  errors (nreverse errors))
-    (setf maxima (length goo))
-    (when (>= point maxima)
-      (setf point (1- maxima)))
+    (setf item-count (length items))
+    (when (>= point item-count)
+      (setf point (1- item-count)))
     (when (>= top point)
       (setf top (max 0 (- point 10)))))
   (when (not no-message)
@@ -603,13 +612,13 @@ return history for the whole repository."))
   (:documentation "Draw the inner part of the screen."))
 
 (defmethod draw-inner-screen ((puca puca))
-  (with-slots (top bottom goo) puca
-    (when (> (length goo) 0)
+  (with-slots (top bottom items) puca
+    (when (> (length items) 0)
       (loop :for i :from top :below (+ top bottom)
-	 :do (draw-goo puca i)))))
+	 :do (draw-item puca i)))))
 
 (defmethod draw-screen ((puca puca-app))
-  (with-slots (maxima top bottom goo message backend first-line) puca
+  (with-slots (item-count top bottom items message backend first-line) puca
     (tt-home)
     (tt-erase-below)
     (draw-box 0 0 (tt-width) (tt-height))
@@ -625,16 +634,16 @@ return history for the whole repository."))
       (multiple-value-setq (y x) (terminal-get-cursor-position *terminal*))
       ;; End of the banner and start of the first line of objects
       (setf first-line (1+ y)
-	    bottom (min (- maxima top) (- (tt-height) first-line 3)))
+	    bottom (min (- item-count top) (- (tt-height) first-line 3)))
       ;; top scroll indicator
       (when (> top 0)
 	(tt-write-string-at (1- first-line) 2 "^^^^^^^^^^^^^^^^^^^^^^^"))
-      ;; (when (> (length goo) 0)
+      ;; (when (> (length items) 0)
       ;; 	(loop :for i :from top :below (+ top bottom)
-      ;; 	   :do (draw-goo puca i)))
+      ;; 	   :do (draw-item puca i)))
       (draw-inner-screen puca)
       ;; bottom scroll indicator
-      (when (< bottom (- maxima top))
+      (when (< bottom (- item-count top))
 	(tt-write-string-at (+ first-line bottom) 2 "vvvvvvvvvvvvvvvvvvvvvvv"))
     (when message
       (draw-message *puca*)
@@ -692,28 +701,32 @@ confirmation first."
 FORMAT-ARGS. If RELIST is true (the default), regenerate the file list.
 If CONFIRM is true, ask the user for confirmation first."
   (declare (ignorable relist do-pause confirm))
-  (apply #'do-literal-command (apply command (list (puca-backend *puca*)))
-	 format-args keys)
+  (let ((command-result (apply command (list (puca-backend *puca*)))))
+    (if command-result
+	(apply #'do-literal-command command-result format-args keys)
+        (info-window nil
+		     `(,(format nil "Sorry, but the command ~s isn't defined ~
+                                     for ~s." command (puca-backend *puca*))))))
   (values))
 
 (defun selected-files ()
   "Return the selected files or the current line, if there's no selections."
-  (with-slots (maxima goo (point inator::point)) *puca*
+  (with-slots (item-count items (point inator::point)) *puca*
     (let* ((files
-	    (loop :for i :from 0 :below maxima
-	       :when (goo-selected (elt goo i))
-	       :collect (goo-filename (elt goo i)))))
-      (or files (and goo (list (goo-filename (elt goo point))))))))
+	    (loop :for i :from 0 :below item-count
+	       :when (item-selected (elt items i))
+	       :collect (item-filename (elt items i)))))
+      (or files (and items (list (item-filename (elt items point))))))))
 
 (defun select-all ()
-  (with-slots (maxima goo) *puca*
-    (loop :for i :from 0 :below maxima
-       :do (setf (goo-selected (elt goo i)) t))))
+  (with-slots (item-count items) *puca*
+    (loop :for i :from 0 :below item-count
+       :do (setf (item-selected (elt items i)) t))))
 
 (defun select-none ()
-  (with-slots (maxima goo) *puca*
-    (loop :for i :from 0 :below maxima
-       :do (setf (goo-selected (elt goo i)) nil))))
+  (with-slots (item-count items) *puca*
+    (loop :for i :from 0 :below item-count
+       :do (setf (item-selected (elt items i)) nil))))
 
 #|
 (defun fake-draw-screen ()
@@ -818,8 +831,8 @@ for the command-function).")
 
 (defun show-extra (p)
   "Show messages / errors"
-  (with-slots (goo) p
-    (let ((ext (and goo (goo-extra-lines (elt goo (inator-point *puca*))))))
+  (with-slots (items) p
+    (let ((ext (and items (item-extra-lines (elt items (inator-point *puca*))))))
       (info-window "Errors"
 		   (or ext
 		       '("There are no errors." "So this is" "BLANK"))))))
@@ -875,6 +888,11 @@ for the command-function).")
   (declare (ignore p))
   (do-command #'backend-commit (list (selected-files))))
 
+(defun commit-interactive-command (p)
+  "Commit selected"
+  (declare (ignore p))
+  (do-command #'backend-commit-interactive (list (selected-files))))
+
 (defun update-command (p)
   "Update selected"
   (declare (ignore p))
@@ -922,19 +940,19 @@ for the command-function).")
 
 (defmethod next ((p puca-app))
   "Next line"
-  (with-slots ((point inator::point) maxima top bottom) p
+  (with-slots ((point inator::point) item-count top bottom) p
     (incf point)
-    (when (>= point maxima)
-      (setf point (1- maxima)))
+    (when (>= point item-count)
+      (setf point (1- item-count)))
     (when (and (> (- point top) (- bottom 1)) (> bottom 1))
       (incf top))))
 
 (defmethod next-page ((p puca-app))
   "Next page"
-  (with-slots ((point inator::point) maxima top bottom) p
+  (with-slots ((point inator::point) item-count top bottom) p
     (setf point (+ point 1 bottom))
-    (when (>= point maxima)
-      (setf point (1- maxima)))
+    (when (>= point item-count)
+      (setf point (1- item-count)))
     (when (>= point (+ top bottom))
       (setf top (max 0 (- point (1- bottom)))))))
 
@@ -949,10 +967,10 @@ for the command-function).")
 
 (defmethod move-to-bottom ((p puca-app))
   "Bottom"
-  (with-slots ((point inator::point) maxima top bottom) *puca*
-    (setf point (1- maxima))
+  (with-slots ((point inator::point) item-count top bottom) *puca*
+    (setf point (1- item-count))
     (when (> point (+ top bottom))
-      (setf top (max 0 (- maxima bottom))))))
+      (setf top (max 0 (- item-count bottom))))))
 
 (defmethod move-to-top ((p puca-app))
   "Top"
@@ -974,17 +992,17 @@ for the command-function).")
       (let ((start (min mark point))
 	    (end (max mark point)))
 	(loop :for i :from start :to end :do
-	   (setf (goo-selected (elt (puca-goo p) i))
-		 (not (goo-selected (elt (puca-goo p) i))))
+	   (setf (item-selected (elt (puca-items p) i))
+		 (not (item-selected (elt (puca-items p) i))))
 	   (draw-line i)))
       (message p "No mark set."))))
 
 (defun toggle-line (p)
   "Toggle line"
-  (with-slots ((point inator::point) goo) p
-    (when goo
-      (setf (goo-selected (elt goo point))
-	    (not (goo-selected (elt goo point))))
+  (with-slots ((point inator::point) items) p
+    (when items
+      (setf (item-selected (elt items point))
+	    (not (item-selected (elt items point))))
       (draw-line point))))
 
 (defun select-all-command (p)
@@ -1047,11 +1065,11 @@ for the command-function).")
 
 (defgeneric item-match (string item)
   (:documentation "Return true if STRING is found in a puca-item.")
-  (:method (string (item goo))
-    (osearch string (goo-filename item) :test #'ochar-equal)))
+  (:method (string (item item))
+    (osearch string (item-filename item) :test #'ochar-equal)))
 
 (defmethod search-command ((p puca-app))
-  (with-slots (goo (point inator::point) top bottom) p
+  (with-slots (items (point inator::point) top bottom) p
     (tt-move-to (- (tt-height) 2) 3)
     (tt-finish-output)
     (flet ((find-it (str g)
@@ -1064,11 +1082,11 @@ for the command-function).")
 	       ((and (> (- point top) (- bottom 1)) (> bottom 1))
 		(setf top point)))))
       (let* ((string (rl:rl :prompt " Search: " :history-context :puca-search))
-	     (item (find-it string (subseq goo point))))
+	     (item (find-it string (subseq items point))))
 	(if item
 	    (move-to (+ point item))
 	    ;; Try again from the beginning.
-	    (if (setf item (find-it string goo))
+	    (if (setf item (find-it string items))
 		(move-to item)
 		(message p "Not found.")))))))
 
@@ -1192,11 +1210,11 @@ for the command-function).")
 (defmethod get-list ((puca puca-history) &key no-message)
   "Get the history list from the backend and parse them."
   (declare (ignore no-message))
-  (with-slots (goo maxima (point inator::point) top table) puca
-    (setf goo (get-history (puca-backend puca) (puca-history-files puca))
-	  maxima (length goo)
+  (with-slots (items item-count (point inator::point) top table) puca
+    (setf items (get-history (puca-backend puca) (puca-history-files puca))
+	  item-count (length items)
 	  table (make-table-from
-		 goo :type 'history-table
+		 items :type 'history-table
 		 :columns
 		 `((:name "Hash" :width 0 :format "~*") ;; ???
 		   (:name "Email" :width 5
@@ -1208,31 +1226,31 @@ for the command-function).")
 		   ;; 			   'number #'date-cell-formatter))
 		   (:name "Date" :format ,#'raw-date-cell-formatter)
 		   (:name "Message" :format ,#'message-top-line-filter))))
-    (when (>= point maxima)
-      (setf point (1- maxima)))
+    (when (>= point item-count)
+      (setf point (1- item-count)))
     (when (>= top point)
       (setf top (max 0 (- point 10))))))
 
 (defun diff-history-command (p)
   "Compare this change against the previous version."
-  (with-slots ((point inator::point) goo files maxima) p
+  (with-slots ((point inator::point) items files item-count) p
     (cond
-      ((>= point (1- maxima))
+      ((>= point (1- item-count))
        (info-window "Hey"
 		    '("You're at the first change."
 		      "Use 'D' to compare against the HEAD version.")))
       (t
        (do-command #'backend-diff-history
-	 (list (history-hash (elt goo (1+ point)))
-	       (history-hash (elt goo point))
+	 (list (history-hash (elt items (1+ point)))
+	       (history-hash (elt items point))
 	       (mapcar #'prin1-to-string files))
 	 :relist nil :do-pause nil)))))
 
 (defun diff-history-head-command (p)
   "Compare this change against the current version."
-  (with-slots ((point inator::point) goo files) p
+  (with-slots ((point inator::point) items files) p
     (do-command #'backend-diff-history-head
-      (list (history-hash (elt goo point))
+      (list (history-hash (elt items point))
 	    (mapcar #'prin1-to-string files))
       :relist nil :do-pause nil)))
 
@@ -1245,11 +1263,11 @@ for the command-function).")
     (list (mapcar #'prin1-to-string (puca-history-files p))) :do-pause nil))
 
 (defun inspect-history (p)
-  (with-slots ((point inator::point) goo) p
-    (let ((item (elt goo point)))
+  (with-slots ((point inator::point) items) p
+    (let ((item (elt items point)))
       (dbugf :puca "message = ~s~%" (quote-format (history-message item)))
       (info-window
-       (s+ "Revision " (history-hash (elt goo point)))
+       (s+ "Revision " (history-hash (elt items point)))
        (list (format nil "Files: ~a" (puca-history-files p))
 	     (format nil "Hash:  ~a" (history-hash item))
 	     (format nil "Email: ~a" (history-email item))
@@ -1260,10 +1278,10 @@ for the command-function).")
        :justify nil))))
 
 ;; (defun inspect-history (p)
-;;   (with-slots ((point inator::point) goo) p
-;;     (let ((item (elt goo point)))
+;;   (with-slots ((point inator::point) items) p
+;;     (let ((item (elt items point)))
 ;;       (fui:display-text
-;;        (s+ "Revision " (history-hash (elt goo point)))
+;;        (s+ "Revision " (history-hash (elt items point)))
 ;;        `(,(span-to-fat-string `((:green "Hash: ") (:cyan ,(history-hash item))))
 ;; 	  ,(span-to-fat-string `((:green "Email: ") (:cyan ,(history-email item))))
 ;; 	  ,(span-to-fat-string
@@ -1331,13 +1349,13 @@ for the command-function).")
   (:documentation "A table renderer to show the history."))
 
 (defmethod draw-inner-screen ((puca puca-history))
-  (with-slots (renderer table first-line bottom top maxima files) puca
+  (with-slots (renderer table first-line bottom top item-count files) puca
     (when table
       (tt-move-to first-line 3)
       (tt-format "History for: ~{~s~}" files)
       ;; (tt-move-to (+ first-line 2) 3)
       (incf first-line 3)
-      (setf bottom (min (- maxima top) (- (tt-height) first-line 3)))
+      (setf bottom (min (- item-count top) (- (tt-height) first-line 3)))
       (with-accessors
 	    ((rows   table-viewer::rows)
 	     (start  table-viewer::start)
@@ -1375,6 +1393,7 @@ for the command-function).")
     (#\U        	. update-all-command)
     (#\P        	. push-command)
     (#\i        	. add-ignore-command)
+    (#\I		. commit-interactive-command)
     (#\m		. amend-file-command)
     (#\v        	. view-file)
     (:UP        	. previous)
