@@ -179,9 +179,10 @@ fatchar:span-to-fat-string.")
 
 (defun shell-output-accepts-grotty ()
   ;;(dbugf :accepts "*accepts* = ~s~%" lish:*accepts*)
-  (dbugf :accepts "Grotty yo = ~s~%"
-	 (symbol-call :lish :accepts :grotty-stream))
-  (symbol-call :lish :accepts :grotty-stream))
+  ;; (dbugf :accepts "Grotty yo = ~s~%"
+  ;; 	 (symbol-call :lish :accepts :grotty-stream))
+  (when (find-package :lish)
+    (symbol-call :lish :accepts :grotty-stream)))
 
 ;; @@@ Consider a way to support "NO_COLOR" environment variable.
 ;; Perhaps make a terminal subclass that supresses color? Or just switch
@@ -193,7 +194,7 @@ fatchar:span-to-fat-string.")
 from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
   (cond
     ((shell-output-accepts-grotty)
-     (dbugf :grout "using ansi-stream~%")
+     ;; (dbugf :grout "using ansi-stream~%")
      (make-instance 'ansi-stream :stream stream))
     ;; ((and (not stream-provided) *terminal*)
     ;;  (dbugf :grout "using generic-term *terminal*~%")
@@ -202,15 +203,15 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
     ;;  (dbugf :grout "using generic-term provided~%")
     ;;  (make-instance 'generic-term :stream stream))
     ((has-terminal-attributes stream)
-     (dbugf :grout "using generic-term~%")
+     ;; (dbugf :grout "using generic-term~%")
      (make-instance 'generic-term :stream stream))
     ((and (nos:environment-variable "EMACS")
 	  (find-package :slime))
      ;; @@@ should really test the stream
-     (dbugf :grout "using slime~%")
+     ;; (dbugf :grout "using slime~%")
      (make-instance 'slime :stream stream))
     (t
-     (dbugf :grout "using dumb~%")
+     ;; (dbugf :grout "using dumb~%")
      (make-instance 'dumb :stream stream))))
 
 (defmacro with-grout ((&optional (var '*grout*) stream) &body body)
