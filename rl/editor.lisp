@@ -410,6 +410,10 @@ not to print one.")
     :initarg :highlight-region :accessor line-editor-highlight-region
     :initform t :type boolean
     :documentation "True to highlight the region.")
+   (copy-region-sets-selection
+    :initarg :copy-region-sets-selection
+    :accessor line-editor-copy-region-sets-selection :initform t :type boolean
+    :documentation "True if copy-region should set the terminal selection.")
    (region-active
     :initarg :region-active :accessor line-editor-region-active
     :initform nil :type boolean

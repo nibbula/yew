@@ -412,10 +412,13 @@ current buffer."
 
 (defmulti copy-region (e)
   "Copy the text between the insertion point and the mark to the clipboard."
-  (with-slots (buf) e
+  (with-slots (buf copy-region-sets-selection) e
     (let* ((start (min mark point))
 	   (end (min (max mark point) (fill-pointer buf))))
-      (setf clipboard (subseq buf start end)))))
+      (setf clipboard (subseq buf start end))
+      (when copy-region-sets-selection
+	;; @@@ Trying to copy the attributes is stupid right?
+	(setf (tt-selection) (fatchar-string-to-string clipboard))))))
 
 (defmulti-method copy ((e line-editor))
   (copy-region e))
