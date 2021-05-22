@@ -1,6 +1,6 @@
-;;
-;; image-jpeg.lisp - JPEG images
-;;
+;;;
+;;; image-jpeg.lisp - JPEG images
+;;;
 
 (defpackage :image-jpeg
   (:documentation "JPEG images.")

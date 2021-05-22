@@ -1,6 +1,6 @@
-;;
-;; image-gif.lisp - GIF images
-;;
+;;;
+;;; image-gif.lisp - GIF images
+;;;
 
 (defpackage :image-gif
   (:documentation "GIF images")

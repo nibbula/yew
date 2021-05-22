@@ -1,6 +1,6 @@
-;;
-;; image.lisp - Image objects
-;;
+;;;
+;;; image.lisp - Image objects
+;;;
 
 (defpackage :image
   (:documentation "Image objects.
