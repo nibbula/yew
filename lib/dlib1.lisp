@@ -1075,7 +1075,7 @@ value, if you want to delete the first item."
 
 (defun get-plist-values (properties from-plist)
   "Return a list of the values of the PROPERTIES from the plist FROM-PLIST."
-  (mapcar (_ (getf from-plist _)) properties))
+  (mapcar (lambda (x) (getf from-plist x)) properties))
 
 (defmacro do-plist ((key value list) &body body)
   (with-unique-names (l thunk)
