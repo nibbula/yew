@@ -3,7 +3,7 @@
 ;;;
 
 (defpackage :sed
-  (:use :cl :dlib :collections :cl-ppcre)
+  (:use :cl :dlib :collections)
   (:export
    #:edit-stream
    #:!sed
@@ -35,12 +35,16 @@ Variables:
   clip                A string for copying and pasting.
 
 Special functions:
-  Form                   Description
-  ────────────────────── ──────────────────────────────────────────────
-  (stop)                 Stop processing the stream.
-  (next-line)            Read the next line into ‘line’.
-  (append-next-line)     Append the next line to ‘line’.
-  (next-file-line file)  Get the next line from ‘file’.
+  Form                           Description
+  ────────────────────────────── ──────────────────────────────────────────────
+  (stop)                         Stop processing the stream.
+  (next-line)                    Read the next line into ‘line’.
+  (append-next-line)             Append the next line to ‘line’.
+  (next-file-line file)          Get the next line from ‘file’.
+  (s regex replacement &key all) Substitute replacement for regex.
+  (p &optional thing)            Print ‘thing’ or the current line.
+  (split regex &optional thing)  Split ‘thing’ or the current line, by ‘regex’.
+  (w &optional n)                After split, return the Nth thing.
 
 Whatever the command returns is converted to a string, like with princ-to-string,
 and used as the line. If the command returns NIL, the line is deleted."))
@@ -133,14 +137,18 @@ end number."))
 
 (defstruct state
   "State for a stream editor."
-  input				       ; The input stream
-  output			       ; The output stream
-  (count 0 :type integer)	       ; The number of the current line
-  (line nil :type (or string null))    ; The current line
-  (next nil :type (or string null))    ; The next line
-  (clip nil :type (or string null))    ; Copy and paste area
-  (eof-p nil :type boolean)	       ; True if we hit the end of the stream.
-  (stop-flag nil :type boolean)	       ; True to end processing
+  input				      ; The input stream
+  output			      ; The output stream
+  input-name			      ; The input file name
+  output-name			      ; The output file name
+  (count 0 :type integer)	      ; The number of the current line
+  (line nil :type (or string null))   ; The current line
+  (next nil :type (or string null))   ; The next line
+  (clip nil :type (or string null))   ; Copy and paste area
+  (eof-p nil :type boolean)	      ; True if we hit the end of the stream.
+  (stop-flag nil :type boolean)	      ; True to end processing
+  (missing-newline nil :type boolean) ; True if the newline was missing
+  words			              ; An array of words from split.
   ;; A hash table of regexp scanners for the current script.
   (scanners (make-hash-table :test #'equal) :type hash-table)
   ;; A hash table of file names to open streams.
@@ -272,19 +280,26 @@ the currrent line number. ‘eof-p’ is true if we're at the last line."))
 
 (defun next-line ()
   "Read the next line into ‘line’."
-  (with-slots (input count line next eof-p) *state*
-    (cond
-     (eof-p (setf line nil))
-     ((not line) ; first time
-      (setf line (read-line input nil)
-	    next (read-line input nil))
-      (incf count))
-     (next       ; subsequent lines
-      (setf line next
-	    next (read-line input nil))
-      (when (not next)
-	(setf eof-p t))
-      (incf count)))))
+  (with-slots (input count line next eof-p missing-newline) *state*
+    (let (m-n)
+      (cond
+       (eof-p (setf line nil))
+       ((not line)			; first time
+	(setf (values line m-n) (read-line input nil))
+	(when (and line m-n)
+	  (setf missing-newline t))
+	(setf (values next m-n) (read-line input nil))
+	(when (and next m-n)
+	  (setf missing-newline t))
+	(incf count))
+       (next				; subsequent lines
+	(setf line next
+	      (values next m-n) (read-line input nil))
+	(when (and next m-n)
+	  (setf missing-newline t))
+	(when (not next)
+	  (setf eof-p t))
+	(incf count))))))
 
 (defun append-next-line ()
   "Append the next line to ‘line’."
@@ -312,11 +327,12 @@ the currrent line number. ‘eof-p’ is true if we're at the last line."))
   )
 
 (defun p (&optional thing)
-  "Print a thing."
-  (with-slots (output line) *state*
+  "Print a ‘thing’. If ‘thing’ isn't given or is NIL, print the current line."
+  (with-slots (output line missing-newline eof-p) *state*
     (let ((result (or (and thing (princ-to-string thing)) line)))
       (write-string result output)
-      (write-char #\newline)
+      (when (not (and missing-newline eof-p))
+	(write-char #\newline))
       result)))
 
 (defun s (regex replacement &key all)
@@ -335,6 +351,18 @@ integer."
       (if matched-p
 	  result
 	  line))))
+
+(defun split (regex &optional thing)
+  "Split ‘thing’ or the current line, by ‘regex’."
+  (with-slots (line words) *state*
+    (setf words (ppcre:split regex (or thing line)))))
+
+(defun w (&optional n)
+  "After calling split, return the Nth split element. If N is NIL, return the
+ words vector."
+  (with-slots (words) *state*
+    (when words
+      (if n (elt words n) words))))
 
 ;; @@@ This whole idea seems too heavy. But how else to do it?
 #|
@@ -362,6 +390,8 @@ symbols we need for a command form."
 	  (%next-file-line   (flurb 'next-file-line))
 	  (%p                (flurb 'p))
 	  (%s                (flurb 's))
+	  (%split            (flurb 'split))
+	  (%w                (flurb 'w))
 	  ;; (%command-result   (flurb 'command-result))
 	  )
       `(lambda (state)
@@ -379,6 +409,8 @@ symbols we need for a command form."
 		  (,%next-file-line (file) (funcall 'sed::next-file-line file))
 		  (,%p (thing) (funcall 'sed::p thing))
 		  (,%s (re rep &key all) (funcall 'sed::s re rep :all all))
+		  (,%split (re &optional tt) (funcall 'sed::split re tt))
+		  (,%w (&optional n) (funcall 'sed::w n))
 		  ;; (,%command-result () (funcall 'sed::command-result))
 		  )
 	     (declare
@@ -388,6 +420,8 @@ symbols we need for a command form."
 			 (function ,%next-file-line)
 			 (function ,%p)
 			 (function ,%s)
+			 (function ,%split)
+			 (function ,%w)
 			 ;; (function ,%command-result)
 			 )
 	      (optimize (speed 0) (safety 3) (debug 3)
@@ -421,10 +455,96 @@ and command forms."
       :while (and (not (eq address 'eof)) (not (eq command 'eof)))
       :collect (list address command))))
 
+(defun backup-file-name (original-file pattern &optional count)
+  "Return a backup file name for ‘original-file’ using ‘pattern’. If ‘pattern’
+has an asterisk * in it, the asterisk is replaced by ‘original-file’. If it
+doens't have an asterisk, it is just appended to ‘original-file’. If ‘count’ is
+given, it's appended to the result."
+  (let* ((star-pos (position #\* pattern))
+	 (result
+	  (cond
+	   (star-pos
+	    (replace-subseq "*" original-file pattern))
+	   (t
+	    (s+ original-file pattern)))))
+    (if count
+	(s+ result "~" count)
+        result)))
+
+(defun temporary-file-name (original count)
+  (s+ original ".sed-" count))
+
+(defparameter *retry-limit* 10101)
+
+(defun open-output (file-name in-place)
+  "Open ‘file-name’ and return a stream. Create it if it doesn't exist.
+ If ‘in-place’ is true, open a temporary file based on ‘file-name’."
+  (cond
+   (in-place
+    (let* ((count 0) stream)
+      (loop :do
+        (setf stream
+	      (open (temporary-file-name file-name count)
+		    :direction :output :if-does-not-exist :create
+		    :if-exists nil))
+	(incf count)
+	:while (and (not stream) (< count *retry-limit*)))
+      (when (not stream)
+	;; We could do a correctable error here, but I don't really want
+	;; to make sed potentially interactive.
+	(error "Failed to open a temporary file too many times."))
+      stream))
+   (t
+    (open file-name :direction :output :if-does-not-exist :create))))
+
+(defun copy-metadata (from to)
+  #+unix
+  (let* ((stat (uos:stat (nos:safe-namestring from)))
+	 (to-name (nos:safe-namestring to)))
+    (uos:chmod to-name (uos:file-status-mode stat))
+    ;; Note there's things like xattrs and acls but they really suck. If we
+    ;; finish the cp command that does everything properly, then switch to
+    ;; using that.
+    ;;
+    ;; Use real-chown herebecause we want to ignore errors, becuase only root
+    ;; can be setting uid.
+    (when (= -1 (uos::real-chown to-name
+				 (uos:file-status-uid stat)
+				 (uos:file-status-gid stat)))
+      ;; Try to just set the group.
+      (uos::real-chown to-name -1 (uos:file-status-gid stat))))
+  #-unix
+  (declare (ignore from to)))
+
+(defun close-output (in-place backup-pattern delete-backup)
+  "Close ‘stream’. If ‘in-place’ is true, rename the stream according to
+ ‘backup-pattern’ as described in backup-file-name. If ‘delete-backup’ is true,
+delete the backup file at the end."
+  (with-slots (output output-name) *state*
+    (unwind-protect
+	(when in-place
+	  (let (fn)
+	    ;; Pick a backup file name.
+	    (loop :with count = 0
+	      :do
+	      (setf fn (backup-file-name output-name backup-pattern
+					 (when (> count 0) count)))
+	      (incf count)
+	      :while (and (probe-file fn) (< count *retry-limit*)))
+	    ;; Rename the the actual output file to a backup file.
+	    (rename-file output-name fn)
+	    ;; Rename the temopary output file to the real output file name.
+	    (nos:os-rename-file (probe-file output) output-name)
+	    (copy-metadata fn output-name)
+	    (when delete-backup
+	      (nos:os-delete-file fn))))
+      (close output))))
+
 (defun edit-stream (script &key
 			   (input *standard-input*)
 			   (output *standard-output*)
-			   script-file quiet)
+			   script-file quiet in-place backup-pattern
+			   delete-backup)
   #.(s+ "Edit a stream. Run the ‘script’ and/or the contents of ‘script-file’ on
 ‘input’. Write the results to ‘output’"	*doc*)
   (let* ((*state* (make-state :input input :output output))
@@ -439,14 +559,15 @@ and command forms."
 	 close-output close-input)
     ;; (format t "prepared ~s~%" prepared)
     (unwind-protect
-	(with-slots (count line next stop-flag eof-p) *state*
+	(with-slots (count line next stop-flag eof-p missing-newline) *state*
 	  (when (or (stringp output) (pathnamep output))
 	    (setf close-output t
-		  output (open output :direction :output
-			       :if-does-not-exist :create)
+		  (state-output-name *state*) output
+		  output (open-output output in-place)
 		  (state-output *state*) output))
 	  (when (or (stringp input) (pathnamep input))
 	    (setf close-input t
+		  (state-input-name *state*) input
 		  input (open input :direction :input)
 		  (state-input *state*) input))
 	  (loop :with result
@@ -459,48 +580,136 @@ and command forms."
 	       (when (address-matches address line count eof-p)
 		 (setf result (funcall func *state*)))
 	       (when (and result (not quiet))
-		 (write-line result output)))))
-      (when (and output close-output)
-	(close output))
+		 (if (and missing-newline eof-p)
+		     (write-string result output)
+		     (write-line result output))))))
       (when (and input close-input)
 	(close input))
+      (when (and output close-output)
+	(close-output in-place backup-pattern delete-backup))
       (when (state-files *state*)
 	(omapk (_ (when (open-stream-p (oelt _ 1))
 		    (close (oelt _ 1))))
 	       (state-files *state*))))))
 
-;; @@@ The macro version is probably better, but we need the non-macro version
-;; for calling from the shell.
+;; @@@ The macro version can probably be better, but we need the non-macro
+;; version for calling as shell command.
 #|
 (defmacro sed ((&key (input *standard-input*) (output *standard-output*))
 	       &body body)
   `(loop :with count :and line
     :while (setf line (read-line input) nil)
     :do
-    (loop 
+    (loop
 )
+|#
 
+#|
+
+(defun parse-address ()
+  )
+
+(defun parse-command-letter ()
+  (case (next-char)
+    (#\a (read-un
+    (#\b)
+    (#\c)
+    (#\d)
+    (#\D)
+    (#\e)
+    (#\F)
+    (#\g)
+    (#\G)
+    (#\h)
+    (#\H)
+    (#\i)
+    (#\l)
+    (#\n)
+    (#\N)
+    (#\p)
+    (#\P)
+    (#\q)
+    (#\Q)
+    (#\Q)
+    (#\r)
+    (#\R)
+    (#\s)
+    (#\t)
+    (#\T)
+    (#\v)
+    (#\w)
+    (#\W)
+    (#\x)
+    (#\y)
+    (#\z)
+    (#\#)
+    (#\{)
+    (#\=)
+    (#\:)
+  )
+
+(defun parse-options ()
+  )
+
+(defun parse-sed-command ()
+  (sequence-of
+   (zero-or-more (in-sequence *whitespace*))
+   (optional (parse-address))
+   (parse-command-letter)
+   (optional (parse-options))
+   (zero-or-more (in-sequence *whitespace*))))
+
+(defun parse-sed-program ()
+  "Turn a unix style sed script into Lisp style."
+  (with-parsing ()
+    (one-or-more (parse-sed-command))))
 |#
 
 #+lish
 (lish:defcommand sed
   ((quiet boolean :short-arg #\n :help "Don't automatically output lines.")
+   (in-place boolean :short-arg #\i
+    :help "Pretend to edit the file in place, but actually make a backup copy,
+ with the file name described by the -B option.")
+   (backup-pattern string :short-arg #\B :default ".bak"
+    :help "A pattern for making backup files, where ‘*’ is replaced with the
+ file name. If a file already exists with the backup name, a number is
+appended.")
+   (delete-backup boolean :long-arg "delete-backup" :optional t
+    :help "When doing in-place editing, delete the backup file afterwards.")
+   (separate boolean :short-arg #\s
+    :help "Treat input files as separate for line number counting. Otherwise
+ treat input files as one concatenated file. If in-place is true, separte is
+ forced true.")
    ;;(expression object :short-arg #\e :optional nil :help "Script to run.")
    (expression object :optional nil :help "Script to run.")
    (files pathname :optional t :repeating t :help "Files to use as input."))
   "Stream editor."
-  (if files
-      (let (streams)
-	(unwind-protect
-	    (edit-stream expression
-	     :input
-	     (apply #'make-concatenated-stream
-		    (mapcar (_ (let ((str (open _ :direction :input)))
-				 (push str streams)
-				 str))
-			    files))
-	     :quiet quiet)
-	  (map nil (_ (close _)) streams)))
-    (edit-stream expression :quiet quiet)))
+  (when in-place
+    (setf separate t))
+  (cond
+   ((and files (not separate))
+    ;; Treat all input files as one stream.
+    (let (streams)
+      (unwind-protect
+	  (edit-stream expression
+	    :input
+	    (apply #'make-concatenated-stream
+		   (mapcar (_ (let ((str (open _ :direction :input)))
+				(push str streams)
+				str))
+			   files))
+	    :quiet quiet)
+	(map nil (_ (close _)) streams))))
+   (t
+    (loop :for f :in files :do
+      ;; @@@ we should pull the compiling out, so it's only done once
+      (edit-stream expression
+		   :input f
+		   :output (if in-place f *standard-output*)
+		   :quiet quiet
+		   :in-place in-place
+		   :backup-pattern backup-pattern
+		   :delete-backup delete-backup)))))
 
 ;; End
