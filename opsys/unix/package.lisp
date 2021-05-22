@@ -229,6 +229,7 @@
    #:posix-writev
    #:posix-preadv
    #:posix-pwritev
+   #:posix-rename
    #:with-posix-file
    #:with-os-file
    #:mkstemp
@@ -274,6 +275,7 @@
    #:symbolic-mode
    #:file-exists
    #:os-delete-file
+   #:os-rename-file
    #:readlink
 
    #:UF_SETTABLE #:UF_NODUMP #:UF_IMMUTABLE #:UF_APPEND #:UF_OPAQUE

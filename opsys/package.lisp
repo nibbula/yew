@@ -105,6 +105,7 @@
    #:stream-handle-direction
    #:file-exists
    #:os-delete-file
+   #:os-rename-file
    #:with-os-file
    #:set-file-time
    #:make-symbolic-link

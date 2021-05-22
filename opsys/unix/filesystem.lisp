@@ -935,6 +935,16 @@ according to WHENCE, where WHENCE is one of:~%~{~a~%~}"
   "Delete a file."
   (syscall (posix-unlink (safe-namestring path))))
 
+(defcfun ("rename" posix-rename) :int
+  "Rename the file ‘from’ to the file ‘to’. If ‘to’ exists, it will be lost."
+  (old-path :string) (new-path :string))
+
+(defun os-rename-file (from to)
+  "Rename the file ‘from’ to the file ‘to’. Doesn't monkey with the names,
+which should be a strings. It doesn't operate on streams. CAUTION: If ‘to’
+already exists, it will be replaced, effectively deleting it."
+  (syscall (posix-rename (safe-namestring from) (safe-namestring to))))
+
 ;; @@@ Renamed.
 ;; (defalias simple-delete-file os-delete-file
 ;;   "Delete a file.")

@@ -334,6 +334,11 @@ for long.")
   "Delete a file. Doesn't monkey with the name, which should be a string.
 Doesn't operate on streams.")
 
+(defosfun os-rename-file (from to)
+  "Rename a file called ‘from’ to be called ‘to’. Doesn't monkey with the names,
+which should be a strings. It doesn't operate on streams. CAUTION: If ‘to’
+already exists, it will be replaced, effectively deleting it.")
+
 (defosfun with-os-file ((var filename &key
 			     (direction :input)
 			     (if-exists :error)
