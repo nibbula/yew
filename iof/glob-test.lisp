@@ -1,6 +1,6 @@
-;;
-;; glob-test.lisp - Test glob package.
-;;
+;;;
+;;; glob-test.lisp - Test glob package.
+;;;
 
 (defpackage :glob-test
   (:documentation "Test glob package")

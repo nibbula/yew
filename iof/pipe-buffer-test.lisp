@@ -1,6 +1,6 @@
-;;
-;; pipe-buffer-test.lisp - Test pipe buffers
-;;
+;;;
+;;; pipe-buffer-test.lisp - Test pipe buffers
+;;;
 
 (defpackage :pipe-buffer-test
   (:documentation "Test pipe buffers")

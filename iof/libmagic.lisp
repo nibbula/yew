@@ -1,6 +1,6 @@
-;;
-;; libmagic.lisp - Interface to libmagic.
-;;
+;;;
+;;; libmagic.lisp - Interface to libmagic.
+;;;
 
 (defpackage :libmagic
   (:documentation "Simple interface to libmagic.")

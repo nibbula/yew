@@ -1,6 +1,6 @@
-;;
-;; pipe-buffer.lisp - A pipe buffer of some sort
-;;
+;;;
+;;; pipe-buffer.lisp - A pipe buffer of some sort
+;;;
 
 (defpackage :pipe-buffer
   (:documentation "A pipe buffer of some sort.")

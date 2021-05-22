@@ -1,6 +1,6 @@
-;;
-;; magic.lisp - Content sniffer.
-;;
+;;;
+;;; magic.lisp - Content sniffer.
+;;;
 
 (defpackage :magic
   (:documentation "Content sniffer.")
