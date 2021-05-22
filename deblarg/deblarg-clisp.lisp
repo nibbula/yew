@@ -1,6 +1,6 @@
-;;
-;; deblarg-clisp.lisp - CLisp specific parts of the debugger.
-;;
+;;;
+;;; deblarg-clisp.lisp - CLisp specific parts of the debugger.
+;;;
 
 (in-package :deblarg)
 

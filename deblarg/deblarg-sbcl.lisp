@@ -1,6 +1,6 @@
-;;
-;; deblarg-sbcl.lisp - SBCL specific debugger pieces.
-;;
+;;;
+;;; deblarg-sbcl.lisp - SBCL specific debugger pieces.
+;;;
 
 (in-package :deblarg)
 

@@ -1,6 +1,6 @@
-;;
-;; deblarg-ccl.lisp - Clozure Common Lisp specific parts of the debugger.
-;;
+;;;
+;;; deblarg-ccl.lisp - Clozure Common Lisp specific parts of the debugger.
+;;;
 
 (in-package :deblarg)
 

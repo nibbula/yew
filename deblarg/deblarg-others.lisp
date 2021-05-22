@@ -1,7 +1,7 @@
-;;
-;; deblarg-others.lisp - Implementation specific parts for all other
-;;                       implementations that aren't in a separate file.
-;;
+;;;
+;;; deblarg-others.lisp - Implementation specific parts for all other
+;;;                       implementations that aren't in a separate file.
+;;;
 
 (in-package :deblarg)
 
