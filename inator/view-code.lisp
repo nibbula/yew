@@ -1,6 +1,6 @@
-;;
-;; view-code.lisp - View Lisp code with the tree viewer. 
-;;
+;;;
+;;; view-code.lisp - View Lisp code with the tree viewer.
+;;;
 
 (defpackage :view-code
   (:documentation "View Lisp code with the tree viewer.

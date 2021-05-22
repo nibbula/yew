@@ -1,6 +1,6 @@
-;;
-;; file-inator.lisp - Inators that use files.
-;;
+;;;
+;;; file-inator.lisp - Inators that use files.
+;;;
 
 (defpackage :file-inator
   (:documentation "Inators that use files.")

@@ -1,6 +1,6 @@
-;;
-;; curses-inator.lisp - Inator stuff for curses
-;;
+;;;
+;;; curses-inator.lisp - Inator stuff for curses
+;;;
 
 (defpackage :curses-inator
   (:documentation "Inator stuff for curses")

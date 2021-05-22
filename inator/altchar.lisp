@@ -1,6 +1,6 @@
-;;
-;; altchar.lisp - Type with alternate character sets.
-;;
+;;;
+;;; altchar.lisp - Type with alternate character sets.
+;;;
 
 (defpackage :altchar
   (:documentation "Type with alternate character sets.")
