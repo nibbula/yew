@@ -87,7 +87,18 @@ encoding, and return it as a plist."
 					    #-windows (nos:setlocale :messages)
 					    (nos:setlocale :time)
 					    (nos:setlocale :numeric)))))
-	;; @@@ We should just load the thing to the theme.
+	;; @@@ Maybe we should just load the thing to the theme?
+	;;
+	;; @@@ Also this isn't good because it then requires the locale data
+	;; to be around at runtime, and we'd have to distrubute it with an
+	;; executable. As a workaround, for now maybe we'll just call this
+	;; before saving an image, but maybe we should also have a method to
+	;; load all locale data, and have it be in the image, then the user
+	;; can still chose a diffrent locale at runtime.
+	;;
+	;; We should probably allow the application programmer to decide if they
+	;; want to include a specific locale data, all locale data, or
+	;; distribute separate files to be loaded at runtime.
 	(asdf:load-system :locale-data)
 	(setf *locale*
 	      (make-instance (find-locale
