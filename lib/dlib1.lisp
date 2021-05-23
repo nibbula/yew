@@ -187,8 +187,8 @@ of it.")
   (defun compute-version-integer (version-string)
     "Make a single testable value out of a typical result of
 LISP-IMPLEMENTATION-VERSION."
-    (let (i spos (sum 0) (pos 0) (mag #(10000 100 1))
-	    (str (substitute #\space #\. version-string)))
+    (let ((i 0) (spos 0) (sum 0) (pos 0) (mag #(10000 100 1))
+	  (str (substitute #\space #\. version-string)))
       (loop :with n = 0
 	 :while (and (< n 3) (< pos (length str)) (digit-char-p (aref str 0)))
 	 :do
@@ -434,14 +434,13 @@ the sequence NOT-IN."
   (defmacro %call-with-start-and-end (func args)
     "Call func with args and START and END keywords, assume that an environemnt
 that has START and START-P and END and END-P."
-    `(progn
-       (if start-p
-	   (if end-p
-	       (,func ,@args :start start :end end)
-	       (,func ,@args :start start))
-	   (if end-p
-	       (,func ,@args ::end end)
-	       (,func ,@args)))))
+    `(if start-p
+	 (if end-p
+	     (,func ,@args :start start :end end)
+	     (,func ,@args :start start))
+       (if end-p
+	   (,func ,@args ::end end)
+	   (,func ,@args))))
 
   (defun bag-position (bag seq &key
 				 (start nil start-p)
@@ -519,28 +518,29 @@ is the separator. If :omit-empty is true, then don't return empty subsequnces.
 	  (when (and test (< sep-len 1))
 	    (setf sep-len 1 sep '(nil))) ; fake separator!
 	  (if sep-is-seq
-	      (if omit-empty
-		  (if test
-		      (if bag
-			  (loopy bag-position t)
-			  (loopy search t))
-		      (if bag
-			  (loopy bag-position t)
-			  (loopy search t)))
-		  (if test
-		      (if bag
-			  (loopy bag-position nil)
-			  (loopy search nil))
-		      (if bag
-			  (loopy bag-position nil)
-			  (loopy search nil))))
-	      (if omit-empty
-		  (if test
-		      (loopy position t)
-		      (loopy position t))
-		  (if test
-		      (loopy position nil)
-		      (loopy position nil))))))))
+              (if omit-empty
+                  (if test
+                      (if bag
+                          (loopy bag-position t)
+                          (loopy search t))
+                      (if bag
+                          (loopy bag-position t)
+                          (loopy search t)))
+                  (if test
+                      (if bag
+                          (loopy bag-position nil)
+                          (loopy search nil))
+                      (if bag
+                          (loopy bag-position nil)
+                          (loopy search nil))))
+              (if omit-empty
+                  (if test
+                      (loopy position t)
+                      (loopy position t))
+                  (if test
+                      (loopy position nil)
+                      (loopy position nil))))))))
+
 
 (defun split-sequence-if (predicate seq &key omit-empty coalesce-separators
 					  remove-empty-subseqs
@@ -555,7 +555,7 @@ is the separator. If :omit-empty is true, then don't return empty subsequnces.
   (declare (type boolean omit-empty coalesce-separators remove-empty-subseqs))
   (declare (ignore end key))
   (setf omit-empty (or omit-empty coalesce-separators remove-empty-subseqs))
-  (let* ((seq-len (if omit-empty (length seq) 0)))
+  (let ((seq-len (if omit-empty (length seq) 0))) ;; @@@ don't length for lists?
     (declare (type fixnum seq-len))
     (macrolet
 	((loopy (t-omit-empty)
@@ -620,7 +620,7 @@ REPLACEMENT."
       (let ((pos 0)
 	    (i 0)
 	    (n 0)
-	    new)
+	    (new '()))
 	(loop :while (setf pos (search target sequence :start2 i))
 	   :do
 	   ;;(format t "i = ~a pos = ~a new = ~a~%" i pos new)
@@ -651,15 +651,16 @@ REPLACEMENT."
   "Copy the contents of the array FROM to TO. They must be the same size."
   (when (not (equal (array-dimensions from) (array-dimensions to)))
     (error "This doesn't know how to copy arrays of different dimensions."))
-  (if (= (array-rank to) 1)
-      (replace to from)
-      (progn
-	#+sbcl
-	(replace (sb-ext:array-storage-vector to)
-		 (sb-ext:array-storage-vector from))
-	#-sbcl
-	(dotimes (i (array-total-size to))
-	  (setf (row-major-aref to i) (row-major-aref from i))))))
+  (cond
+   ((= (array-rank to) 1)
+    (replace to from))
+   (t
+    #+sbcl
+    (replace (sb-ext:array-storage-vector to)
+	     (sb-ext:array-storage-vector from))
+    #-sbcl
+    (dotimes (i (array-total-size to))
+      (setf (row-major-aref to i) (row-major-aref from i))))))
 
 (defun copy-array (array &key (element-type (array-element-type array))
 			   (adjustable (adjustable-array-p array))
@@ -770,8 +771,7 @@ just return SEQUENCE. Elements are compared with TEST which defaults to EQL."
 		     (concatenate 'string
 				  (if (stringp a) a (princ-to-string a))
 				  (if (stringp b) b (princ-to-string b))))
-		   rest))
-       ))))
+		   rest))))))
 
 ;; Version 0: apply concatenate
 ;; This version probably shouldn't be used due to apply limits.
@@ -1014,14 +1014,16 @@ FUNCTION. START defaults to 0. END defaults to the end of the sequence."
   (etypecase sequence
     (list
      ;; This seems bad somehow.
-     (let ((our-end (or end (length sequence))))
-       (loop :for e :on (nth start sequence)
-	  :for i :from start :below our-end
-	  :do (rplaca e (funcall function)))))
+     (loop
+       :for e :on (nthcdr start sequence)
+       :for i = start :then (1+ i)
+       :while (and e (if end (< i end) t))
+         :do (rplaca e (funcall function))))
     (vector
      ;; I think it's more useful for vectors.
      (loop :for i :from start :below (or end (length sequence))
-	:do (setf (aref sequence i) (funcall function))))))
+	:do (setf (aref sequence i) (funcall function)))))
+  sequence)
 
 ;; As you may know, improper use of this can cause troublesome bugs.
 (defun delete-nth (n list)
@@ -1078,6 +1080,7 @@ value, if you want to delete the first item."
   (mapcar (lambda (x) (getf from-plist x)) properties))
 
 (defmacro do-plist ((key value list) &body body)
+  "Evalute ‘body’ with each successive ‘key’ and ‘value’ from the plist ‘list’."
   (with-unique-names (l thunk)
     `(let ((,l ,list) ,key ,value)
        (declare (ignorable ,value))
@@ -1094,13 +1097,14 @@ value, if you want to delete the first item."
 		  (return))))))))
 
 (defmacro do-alist ((key value list) &body body)
+  "Evalute ‘body’ with each successive ‘key’ and ‘value’ from the alist ‘list’."
   (with-unique-names (l thunk)
     `(let ((,l ,list) ,key ,value)
        (declare (ignorable ,value))
        (flet ((,thunk () ,@body))
 	 (when ,l
 	   (loop
-	      (when (not (consp (car ,l)))
+	      (when (atom (car ,l))
 		(error "Malformed association list"))
 	      (setf ,key (caar ,l)
 		    ,value (cdar ,l))
@@ -1135,22 +1139,19 @@ of LIST is an atom, assume it's a plist, otherwise it's an alist."
        :with node = result
        :until (null node)
        :do
-       (if (consp (car node))		      ; If the left side is a cons
-	   (progn
-	     (when (cdar node)		      ; If it has more sub-lists
-	       (push (cdar node) (cdr node))) ; move the sub-list up
-	     ;; Move contents of the one element list, up one
-	     (setf (car node) (caar node)))
-	   ;; Move on to the next item at the top level
-	   (setf node (cdr node)))
-       ;;(format t "~s~%" node) 
-       )
+       (cond
+         ((consp (car node))		      ; If the left side is a cons
+	   (when (cdar node)		      ; If it has more sub-lists
+	     (push (cdar node) (cdr node)))   ; move the sub-list up
+	   ;; Move contents of the one element list, up one
+	   (setf (car node) (caar node)))
+	 (t ;; Move on to the next item at the top level
+	  (setf node (cdr node)))))
     ;; Get rid of any fake NILs in the results
     (if preserve-nils
 	result
 	(delete nil result))))
 
-;; I have a feeling I'll regret this range crap.
 ;; See also: (alexandria:iota n &key (start 0) (step 1))
 
 (defun range-list (n &key (start 0) (step 1))
@@ -1192,7 +1193,8 @@ Otherwise, return N."
     `(let ((,value ,n))
        (cond
 	((< ,value ,start) (setf ,n ,start))
-	((> ,value ,end)   (setf ,n ,end))))))
+	((> ,value ,end)   (setf ,n ,end))
+	(t ,value)))))
 
 ;; Objects
 
@@ -1288,7 +1290,7 @@ to the same value as the slots in the original."
 	   (loop :with l = nil
 		 :while (setf l (read-line s nil nil))
 		 :collecting l))
-      (if s (close s)))))
+      (when s (close s)))))
 
 ;; Don't clash with nos:lisp-args.
 (defun system-args ()
@@ -1486,7 +1488,7 @@ equal under TEST to result of evaluating INITIAL-VALUE."
     "Make a alias for a package by adding new nicknames for it."
     (declare (ignore alias-type))
     (let* ((pkg (find-package original))
-	   (new-nicks (append (list alias) (package-nicknames pkg))))
+	   (new-nicks (cons alias (package-nicknames pkg))))
       ;; Hopefully this trick works on most implementations.
       (rename-package original (package-name original) new-nicks)))
   (:method (alias (original symbol) (alias-type (eql 'class)))
@@ -1514,7 +1516,9 @@ ORIGINAL is something that a define-alias method is defined for."
 	  ((macro-function original)
 	   (define-alias alias original 'macro))
 	  ((symbol-function original)
-	   (define-alias alias original 'function))))
+	   (define-alias alias original 'function))
+	  ;; (t (error "~s is fbound but isn't a function or macro?" original))
+	  ))
        ((find-class original)
 	;; symbols that denote class types or structure types
 	(typecase (find-class original)
@@ -1828,7 +1832,10 @@ ALL-P       if true, includes supplied-p parameters and &AUX variables.
 KEYWORDS-P  If true, include keywords and variable names."
   (flet ((keyword-var (k v)
 	   "If KEYWORDS-P return a list of (:K V) otherwise just V."
-	   (if keywords-p (list (keywordify k) v) v)))
+	   (if keywords-p (list (keywordify k) v) v))
+	 (more-than-2 (l)
+	   "True if there are more than two items left in L."
+	   (and (cddr l) t)))
     (loop :with state :and thing
        :for a :in args :do
        (setf thing nil)
@@ -1843,7 +1850,7 @@ KEYWORDS-P  If true, include keywords and variable names."
 	    (:optional
 	     (setf thing
 		   (if (listp a)
-		       (if (and (> (length a) 2) all-p)
+		       (if (and (more-than-2 a) all-p)
 			   (list (first a) (third a))
 			   (first a))
 		       a)))
@@ -1856,7 +1863,7 @@ KEYWORDS-P  If true, include keywords and variable names."
 			     (key (if (listp (first a))
 				      (first (first a))
 				      (first a))))
-			 (if (and (> (length a) 2) all-p)
+			 (if (and (more-than-2 a) all-p)
 			     (list (keyword-var key var)
 				   (third a))
 			     (keyword-var key var)))
