@@ -68,6 +68,10 @@ for a range of rows, or a table-point for a specific item,"
   ((table
     :initarg :table :accessor table-viewer-table
     :documentation "The table to view.")
+   (cached-table-length
+    :initarg :cached-table-length :accessor cached-table-length
+    :initform -1 :type fixnum
+    :documentation "The cached number of rows of the table data.")
    (last-sort-direction
     :initarg :last-sort-direction :accessor last-sort-direction
     :initform nil :type (or null (member :ascending :descending))
@@ -88,6 +92,12 @@ for a range of rows, or a table-point for a specific item,"
    :point (make-table-point :row 0)
    :keymap `(,*table-viewer-keymap* ,*default-inator-keymap*))
   (:documentation "View a table."))
+
+(defgeneric table-length (table-viewer)
+  (:documentation "Return the number of rows of the table data.")
+  (:method ((o table-viewer))
+    (or (and (plusp (cached-table-length o)) (cached-table-length o))
+	(olength (container-data (table-viewer-table o))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Customized table renderer
@@ -451,21 +461,21 @@ for a range of rows, or a table-point for a specific item,"
 
 ;; Navigation
 (defun forward-row (o &optional (n 1))
-  (with-slots ((point inator::point) table) o
+  (with-slots ((point inator::point)) o
     (cond
       ((not (table-point-row point))
        (setf (table-point-row point) 0
 	     (table-point-col point) 0))
       ((table-point-row point)
-       (if (< (+ (table-point-row point) n) (olength table))
+       (if (< (+ (table-point-row point) n) (table-length o))
 	   (incf (table-point-row point) n)
-	   (setf (table-point-row point) (1- (olength table))))))))
+	   (setf (table-point-row point) (1- (table-length o))))))))
 
 (defun backward-row (o &optional (n 1))
-  (with-slots ((point inator::point) table) o
+  (with-slots ((point inator::point)) o
     (cond
       ((not (table-point-row point))
-       (setf (table-point-row point) (1- (olength table))))
+       (setf (table-point-row point) (1- (table-length o))))
       ((table-point-row point)
        (if (> (- (table-point-row point) n) 0)
 	   (decf (table-point-row point) n)
@@ -569,7 +579,7 @@ for a range of rows, or a table-point for a specific item,"
 (defmethod move-to-bottom ((o table-viewer))
   "Move to the last row."
   (with-slots ((point inator::point) table) o
-    (setf (table-point-row point) (1- (olength table))
+    (setf (table-point-row point) (1- (table-length o))
 	  ;; (table-point-col point) 0
 	  )))
 
@@ -601,12 +611,11 @@ at which it's found or NIL if it's not found."
   (declare (ignore direction)) ; @@@
   (with-slots ((point inator::point) table) o
     (ensure-point o)
-    (let ((sub-table
-	   (if (and (zerop (table-point-row point))
-		    (zerop (table-point-col point)))
-	       table
-	       (table-subseq table (table-point-row point))))
-	  (result (copy-table-point point)))
+    (let* ((result (make-table-point :col 0
+				     :row
+				     (min (1+ (table-point-row point))
+					  (1- (table-length o)))))
+	   (sub-table (table-subseq table (table-point-row result))))
       (omapn
        (lambda (row)
 	 (setf (table-point-col result) 0)
@@ -698,8 +707,8 @@ at which it's found or NIL if it's not found."
       (table-viewer-renderer viewer)
     (setf width (tt-width)
 	  height (tt-height)
-	  rows (min (olength (container-data (table-viewer-table viewer)))
-		    (- (tt-height) 2)))
+	  ;; rows (min (olength (container-data (table-viewer-table viewer)))
+	  rows (min (table-length viewer) (- (tt-height) 2)))
     (when start
       (clampf (table-point-row start) 0 (1- rows)))
     (when current-position
@@ -744,7 +753,7 @@ at which it's found or NIL if it's not found."
 			       'terminal-table:terminal-table-renderer)
 		    :stream *terminal*)))))
 	      :omit-empty t)
-      `("" ,(format nil "Rows: ~d Columns: ~d" (olength table)
+      `("" ,(format nil "Rows: ~d Columns: ~d" (table-length o)
 		 (or (and (table-columns table)
 			  (olength (table-columns table)))
 		     (and (oelt table 0) (olength (oelt table 0)))
@@ -786,7 +795,7 @@ at which it's found or NIL if it's not found."
 		      :stream *terminal*)))))
 		:omit-empty t)
 	`("" ,(format nil "Record ~d of ~d"
-		      (1+ (table-point-row point)) (olength table))))
+		      (1+ (table-point-row point)) (table-length o))))
        :justify nil))))
 
 (defun edit-cell (o)
