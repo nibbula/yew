@@ -53,7 +53,7 @@ of these can appear in path names.")
 	     (and (>= (length path) 3)
 		  (device-letter-p (char path 0))
 		  (char= (char path 1) #\:)
-		  (char= (char path 1) *directory-separator*))))))
+		  (char= (char path 2) *directory-separator*))))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *file-attributes* nil "FILE_ATTRIBUTE_* constants")
