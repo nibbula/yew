@@ -170,7 +170,9 @@ not given."
 	       (calendar:month-name month year) str))
 	     (#\c
 	      (write-string
-	       (mini-strftime (uos:nl-langinfo uos::+D-T-FMT+))))
+	       #+unix (mini-strftime (uos:nl-langinfo uos::+D-T-FMT+))
+	       #-unix (mini-strftime "%a %d %b %Y %r %Z")
+	       ))
 	     (#\d
 	      (format str "~2,'0d" date))
 	     ;; Don't even fucking do %D
@@ -199,8 +201,14 @@ not given."
 	     (#\p
 	      (write-string
 	       (if (> hour 12)
-		   (or (uos:nl-langinfo uos::+PM-STR+) "PM")
-		   (or (uos:nl-langinfo uos::+AM-STR+) "AM"))
+		   (or 
+		    #+unix (uos:nl-langinfo uos::+PM-STR+)
+		    #-unix "PM"
+		    "PM")
+		   (or
+		    #+unix (uos:nl-langinfo uos::+AM-STR+)
+		    #-unix "AM"
+		    "AM"))
 	       str))
 	     (#\r
 	      (write-string (mini-strftime "%I:%M:%S %p" time) str))
