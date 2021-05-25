@@ -183,6 +183,13 @@
       ;; @@@ should we just get rid of the saved mode in the terminal??
       current-mode)))
 
+(defmethod terminal-device-time ((tty terminal-ms))
+  "Return the last time the terminal device was modified, or NIL if we don't
+know."
+  ;; (opsys:terminal-time (terminal-file-descriptor tty))
+  nil ;; @@@
+  )
+
 (defmethod terminal-format ((tty terminal-ms) fmt &rest args)
   "Output a formatted string to the terminal."
   (terminal-write-string tty (apply #'format tty fmt args)))
