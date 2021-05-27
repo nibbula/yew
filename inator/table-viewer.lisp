@@ -12,6 +12,7 @@
    #:table-viewer
    #:table-viewer-table
    #:table-viewer-renderer
+   #:table-viewer-recalculate-sizes
    #:table-point
    #:table-point-row
    #:table-point-col
@@ -701,6 +702,15 @@ at which it's found or NIL if it's not found."
 ;; (defmethod jump-command ((o table-viewer))
 ;;   )
 
+(defgeneric table-viewer-recalculate-sizes (viewer)
+  (:documentation "Recalculate the column sizes for the table."))
+
+(defmethod table-viewer-recalculate-sizes ((o table-viewer))
+  "Recalculate the column sizes for the table."
+  (with-slots (table renderer) o
+    (setf (sizes renderer) nil)
+    (table-output-sizes renderer table)))
+
 (defun resize-viewer (viewer)
   "Resize the viewr from the current terminal."
   (with-slots (width height start rows current-position cursor sizes)
@@ -828,15 +838,19 @@ at which it's found or NIL if it's not found."
   (:documentation "View the current cell."))
 
 (defmethod view-cell ((o table-viewer))
-  (handler-case
-      (view (current-cell o))
-    (error (c)
-      (when (fui:popup-y-or-n-p
+  (with-simple-restart (flarb "Back to the table view.")
+    (handler-case
+	(view (current-cell o))
+      (error (c)
+	(if (fui:popup-y-or-n-p
 	     (span-to-fat-string
 	      `((:red "Error: ") ,(apply #'format nil "~a" (list c))
 		#\newline #\newline "Enter the debugger?"))
 	     :default #\N)
-	(invoke-debugger c)))))
+	    (invoke-debugger c)
+	    ;; (continue)
+	    (invoke-restart (find-restart 'flarb))
+	    )))))
 
 (defun add-row (o)
   "Add a row to the table."
