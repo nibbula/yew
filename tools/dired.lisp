@@ -9,8 +9,26 @@
 	:view-generic :ochar :ostring)
   (:export
    #:dired
+   #:*no-warning*
+   #:!dired
    ))
 (in-package :dired)
+
+(defvar *no-warning* nil
+  "Set to squelch the warning.")
+
+(defparameter *warning*
+  (ß '((:red "Warning: ") "USE AT YOUR OWN RISK!!"
+       (:yellow :blink "   *Warning*")
+       #\newline
+       #\newline (:cyan "dired")
+       " does dangerous things like deleting files" #\newline
+"    " (:bold "AND") " has not been tested very well.
+        There is no undo! No trashcan!
+           Please exert caution.
+
+  [Set dired:*no-warning* to T to supress this].
+")))
 
 (defstruct mark
   "A thing to mark objects with."
@@ -34,6 +52,14 @@
 	     (mark-name x)))))
     (equal (prepare a) (prepare b))))
 
+(defstruct clipboard
+  "A clipboard for dired objects."
+  items			; A sequence of files.
+  operation)		; The operation to perform when pasting the clipboard.
+
+(defparameter *clip* (make-clipboard)
+  "The shared clipboard struct for directory-editors.")
+
 (defkeymap *dired-keymap* ()
   `((#\q			. quit)
     (#\Q			. quit-all)
@@ -48,17 +74,40 @@
     (#\>			. move-to-bottom)
     (,(char-util:meta-char #\<)	. move-to-top)
     (,(char-util:meta-char #\>)	. move-to-bottom)
+    (,(char-util:ctrl #\@)	. select)
+    (,(char-util:ctrl #\w)	. cut)
+    (,(char-util:meta-char #\w)	. copy)
+    (,(char-util:ctrl #\y)	. paste)
+    ;;(,(char-util:ctrl #\x)	. cut)
+    ;;(,(char-util:ctrl #\c)	. copy)
+    ;;(,(char-util:ctrl #\v)	. paste)
     (#\d			. mark-for-delete)
     (#\r			. rename)
+    (#\n			. new-directory)
     (#\m			. mark-item)
+    (#\M			. mark-region)
     (#\u			. unmark-item)
+    (#\U			. unmark-region)
     (#\g			. refresh)
     (#\x			. execute)
+    (,(char-util:meta-char #\x)	. shell-command)
+    (,(char-util:meta-char #\u)	. dired-up)
+    (#\:			. shell-command)
     ;; (:right		        . move-right)
     ;; (:left		        . move-left)
     ;;(,(meta-char #\i)	        . table-info)
-    ;; (#\escape		. *lazy-menu-escape-keymap*)
+    (#\escape			. *dired-escape-keymap*)
+    (,(ctrl #\X)		. *dired-ctrl-x-keymap*)
     ))
+
+(defparameter *dired-escape-keymap*
+  (build-escape-map *dired-keymap*))
+
+(add-keymap table-viewer::*table-viewer-escape-keymap* *dired-escape-keymap*)
+
+(defkeymap *dired-ctrl-x-keymap* ()
+  `((#\c		. show-clipboard)
+    (,(ctrl #\X)	. toggle-region)))
 
 (defvar *dired* nil
   "The current directory editor.")
@@ -158,6 +207,20 @@
   "View the file."
   (view-cell o))
 
+(defun dired-up (o)
+  "Go to the parent directory."
+  (with-slots (directory) o
+    (let ((parent (path-parent directory)))
+      (cond
+	((not (equal parent directory))
+	 (setf directory parent))
+	(t
+	 (let ((up (path-append directory "..")))
+	   (if (file-exists up)
+	       (setf directory (namestring (truename up)))
+	       (message o "I don't know how to go up from ~s." directory))))))
+    (refresh o)))
+
 #|
 (defun rename (o)
   "Change the name of the file."
@@ -183,6 +246,182 @@
 		       (path-append new-name directory)))))))
 |#
 
+(defun new-directory (o)
+  (let ((new-name (input-window "Create a new directory"
+				'("Enter a for the new directory:"
+				  ""))))
+    (mkdir:mkdir :directories `(,new-name))
+    (refresh o)))
+
+(defmethod select ((o directory-editor))
+  "Set the start of the region."
+  (setf (inator-mark o) (table-point-row (inator-point o))))
+
+(defun map-region (o function)
+  "Call ‘function’ with each row between the current point and mark."
+  (with-slots ((point inator::point)
+	       (mark inator::mark)
+	       (table table-viewer::table)
+	       directory) o
+    (loop
+      :with low = (min mark (table-point-row point))
+      :and high = (max mark (table-point-row point))
+      :for row :from low :to high
+      :collect (funcall function (oelt table row)))))
+
+(defun region-files (o)
+  "Return a list of files in the region."
+  (with-slots (directory) o
+    (let ((result '()))
+      (map-region o
+       (lambda (row)
+	 (push (truename (path-append directory
+				      (osimplify (file-cell row))))
+	       result)))
+      (nreverse result))))
+
+(defun grab-region-files (o)
+  "Return a list of files in the region."
+  (with-slots (directory) o
+    (let ((result '()))
+      (map-region o
+       (lambda (row)
+	 (push (truename (path-append directory
+				      (osimplify (file-cell row))))
+	       result)))
+      (nreverse result))))
+
+(defmethod cut ((o directory-editor))
+  "Mark the files in the region."
+  (with-slots ((mark inator::mark)) o
+    (cond
+      (mark
+       (setf (clipboard-items *clip*) (region-files o)
+	     (clipboard-operation *clip*) :cut))
+      (t (message o "The mark is not set.")))))
+
+(defmethod copy ((o directory-editor))
+  "Delete the files in the region."
+  (with-slots ((mark inator::mark)) o
+    (cond
+      (mark
+       (setf (clipboard-items *clip*) (region-files o)
+	     (clipboard-operation *clip*) :copy))
+      (t (message o "The mark is not set.")))))
+
+(defun toggle-region (o)
+  (rotatef (inator-point o) (inator-mark o)))
+
+(defun show-clipboard (o)
+  (declare (ignore o))
+  (let ((title "Clipboard Contents"))
+    (fui:display-text title
+      `(,@(map 'list #'princ-to-string (clipboard-items *clip*))
+	""
+	,(format nil "~d items" (olength (clipboard-items *clip*))))
+      :min-width (olength title))))
+
+(defun list-restarts (restarts condition)
+  (ß `((:fg-white "Condition: ")
+       (:fg-red (:underline ,(princ-to-string (type-of condition))) #\newline
+		 ,(princ-to-string condition)) #\newline
+       (:underline "Restarts") " are:" #\newline
+       ,(loop :with i = 0
+          :for r :in restarts
+	  :collect
+	   `((:fg-cyan ,(princ-to-string i)) ": "
+	     ,(let (rs)
+		(cond
+		  ((not (ignore-errors
+			 (and (setf rs (format nil "~s ~a"
+					       (restart-name r) r)) t)))
+		   (with-output-to-string (str)
+		     (format str "Error printing restart ")
+		     (print-unreadable-object (r str :type t :identity t)
+		       (format str "~a" (restart-name r)))))
+		  (t rs)))
+	     #\newline)
+	   :do (incf i)))))
+
+(defun restart-number (n restarts)
+  "Return the restart number N in RESTARTS or NIL if it's not in RESTARTS."
+  (when (and restarts (>= n 0) (< n (length restarts)))
+    (nth n restarts)))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro with-error-handling (() &body body)
+    `(handler-bind
+	 ((serious-condition
+	    (lambda (c)
+	      (let ((restarts (compute-restarts c)))
+		(fui:show-text
+		 (list-restarts restarts c)
+		 :input-func
+		 (lambda (w)
+		   (declare (ignore w))
+		   (loop
+		     :with key = (tt-get-key) :and digit
+		     :do
+		     (setf digit (and (characterp key) (digit-char-p key)))
+		     (cond
+		       ((or (eql key #\q)
+			    (eql key #\a))
+			(invoke-restart (find-restart 'abort)))
+		       ((and digit (< 0 digit (length restarts)))
+			;; (invoke-restart (nth digit (cdr restarts))))
+			(invoke-restart (nth digit restarts)))
+		       (t (message "What? ~s" key))))))))))
+       ,@body)))
+
+;; @@@ These are BOGUS!!
+;; We should make good versions suitable for "cp" and "mv"
+(defun dired-copy-file (from to)
+  "Copy contents of file ‘from’ to ‘to’. Error if either ‘from’ doesn't exist,
+or ‘to’ exists."
+  (with-open-file (output to :element-type '(unsigned-byte 8)
+			       :direction :output :if-exists :error)
+    (with-open-file (input from :element-type '(unsigned-byte 8)
+				:direction :input :if-does-not-exist :error)
+      (copy-stream input output :element-type '(unsigned-byte 8)))))
+
+(defun dired-rename-file (from to)
+  "Rename from ‘from’ to file ‘to’. Overwrites ‘to’ if it exists. Errors if
+‘from’ doesn't exist."
+  (nos:os-rename-file from to))
+
+(defun apply-file-op (o files operation)
+  (with-error-handling ()
+    (with-simple-restart (abort "Stop moving files.")
+      (loop
+	:with dir = (dired-directory o) :and to
+	:for f :in files
+	:do
+	   ;; (setf to (truename (nos:path-append dir (nos:path-file-name f))))
+	   (setf to (nos:path-append dir (nos:path-file-name f)))
+	   (with-simple-restart (skip "Skip this file and continue.")
+	     (with-simple-restart (overwite "Overwrite the file.")
+	       (cond
+		 ((equal f to)
+		  (error "Can't move ~s to itself." f))
+		 ((nos:file-exists to)
+		  (error "The file ~s already exits in ~s"
+			 (nos:path-file-name f) dir))))
+	     (case operation
+	       (:move (dired-rename-file f to))
+	       (:copy (dired-copy-file f to))
+	       (otherwise
+		(message o "Unknown clipboard operation ~s" operation)))))))
+  t)
+
+(defmethod paste ((o directory-editor))
+  "Paste the files from the clipboard here."
+  (with-slots (items operation) *clip*
+    (cond
+      ((not items)
+       (message o "There is nothing to paste on the clipboard."))
+      (t
+       (apply-file-op o items operation)))))
+
 (defun mark-for-delete (o)
   "Mark the current item for deleting."
   (setf (current-mark-cell o) (mark-display *delete-mark*))
@@ -192,6 +431,14 @@
   "Mark the current item."
   (setf (current-mark-cell o) (mark-display *select-mark*))
   (next o))
+
+(defun mark-row (row &optional (mark *select-mark*))
+  "Mark ‘row’ with ‘mark’, which defaults to *select-mark*."
+  (setf (mark-cell row) (mark-display mark)))
+
+(defun mark-region (o)
+  "Mark the current region with the *select-mark*."
+  (map-region o (_ (mark-row _))))
 
 (defun unmark-item (o)
   "Mark the current item."
@@ -262,6 +509,18 @@
       (when (not did-it)
 	(mark-files o to-delete *delete-mark*)))))
 
+(defun shell-command (o)
+  (tt-move-to (1- (tt-height)) 0)
+  (tt-finish-output)
+  ;; @@@ This is not good, since we won't get the shell completion and features.
+  ;; We should add a way to exit after one prompt to lish.
+  (nos:with-working-directory ((dired-directory o))
+    (let ((command (rl:rl :prompt "$ ")))
+      (lish:lish :command command))
+    (tt-format "~&[Press Enter]")
+    (tt-get-key))
+  (refresh o))
+
 (defun update-items (o)
   (with-accessors ((directory dired-directory)
 		   (table table-viewer-table)) o
@@ -273,6 +532,7 @@
 (defun refresh (o)
   "Refresh the directory listing."
   (update-items o)
+  (table-viewer-recalculate-sizes o)
   (tt-clear)
   (redraw o))
 
@@ -320,7 +580,11 @@
 	(tt-move-to (+ y (table-point-row cursor)) x)))))
 
 (defun dired (&optional (directory (nos:current-directory)))
-  (let ((top-level (not *dired*)))
+  (when (not *no-warning*)
+    (fui:show-text *warning* :justify nil
+			     :y (round (- (/ (tt-height) 2) 11/2))))
+  (let ((top-level (not *dired*))
+	(*no-warning* t))
     (flet ((body ()
 	    (with-terminal-inator (*dired* 'directory-editor
 				   :directory directory
