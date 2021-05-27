@@ -85,6 +85,9 @@
    #:path-append
    #:path-snip-ext
    #:path-extension
+   #:path-parent
+   #:os-pathname-namestring
+   #:os-pathname-pathname
    #:hidden-file-name-p
    #:superfluous-file-name-p
    #:command-test

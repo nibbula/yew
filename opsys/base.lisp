@@ -78,6 +78,14 @@
    #:filesystem-info-bytes-free
    #:filesystem-info-bytes-available
 
+   #:os-pathname
+   #:os-pathname-path
+   #:os-pathname-absolute-p
+   #:os-pathname-device
+   #:os-pathname-host
+   #:make-os-pathname
+   #:copy-os-pathname
+
    #:os-process
    #:os-process-p
    #:make-os-process

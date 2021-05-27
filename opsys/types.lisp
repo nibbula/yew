@@ -159,6 +159,14 @@ Slots are:
   (bytes-free      0 :type integer)
   (bytes-available 0 :type integer))
 
+;; Maybe stupid?
+(defstruct os-pathname
+  "Something simpler than a pathname."
+  path					; just a list of strings
+  absolute-p				; 
+  device				; dos drive
+  host)					; dos share
+
 ;; @@@ Perhaps we should rename this to process-info or something.
 (defstruct os-process
   "Information about a system process."

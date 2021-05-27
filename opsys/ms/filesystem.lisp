@@ -45,15 +45,135 @@ of these can appear in path names.")
 - A single backslash, for example, "\directory" or "\file.txt".
 |#
 
+(defun drive-prefix-p (str)
+  (and (>= (length path) 3)
+       (device-letter-p (char path 0))
+       (char= (char path 1) #\:)
+       (char= (char path 2) *directory-separator*)))
+
 (defun %path-absolute-p (path)
   "Return true if the PATH is absolute."
   (let ((len (length path)))
     (and path (stringp path) (not (zerop len))
 	 (or (char= *directory-separator* (char path 0))
-	     (and (>= (length path) 3)
-		  (device-letter-p (char path 0))
-		  (char= (char path 1) #\:)
-		  (char= (char path 2) *directory-separator*))))))
+	     (drive-prefix-p path)))))
+
+#|
+
+  <separator> := #\\
+  <volume separator> := #\:
+  <drive-letter> := [A-Za-z]
+  <volume> := <drive-letter> <volume separator>
+
+  ---------
+
+  <tradtional-dos-path> := <volume>
+                           [<separator>] { <directory> [<separator>] }...
+                           <file-name>
+  ---------
+
+  <unc-path> := <separator> <separator> <unc-volume> <separator>
+                { <directory> [<separator>] }... [<file-name>]
+  <unc-volume> := <host-name> <separator> <share-name>
+  <share-name> := [ <named-share> | <drive-share> ]
+  <named-share> := { <share-name-char> ... }
+  <drive-share> := #\$ <drive-letter>
+  <host-name> := [ <netbios-name> | <ip-address> ]
+  <ip-address> := [ <fqdn> | <ipv4-address> | <ipv6-address> ]
+
+  ---------
+
+  <time-low> := <hex-digit>*8
+  <time-mid> := <hex-digit>*4
+  <time-hi-and-version> := <hex-digit>*4
+  <clock-seq-hi-and-res> := <hex-digit>*2
+  <clock-seq-low> := <hex-digit>*2
+  <node> := <hex-digit>*12
+  <guid> := <time-low> #\- <time-mid> #\- <time-hi-and-version> #\- 
+            <clock-seq-hi-and-res> <clock-seq-low> #\- <node>
+  <guid-volume> := "Volume" #\{ <guid> #\}
+  <unc> := "UNC"
+  <partition-name-char> := ??? what ???
+  <partition-name> := <partition-name-char>...
+  <device-volume> := [ <guid-volume> | <volume> | <partition-name> | <unc> ]
+  <device-path> := <separator> <separator> [ #\. | #\? ] <separator>
+                   <device-volume>
+  ---------
+
+  <windows-path> := [ <tradtional-dos-path> | <unc-path> | <device-path> ]
+|#
+
+;; This just parses a <tradtional-dos-path> because fuck that noise.
+;; @@@ although we probably should add simple share names
+(defun parse-path (path)
+  "Return an os-pathname for ‘path’."
+  (let ((i 0) (start nil)
+	(str (safe-namestring path))
+	(result (make-os-pathname)))
+    (labels ((is-sep () (char= #\\ (char str i)))
+	     (note (x) (push x (os-pathname-path result)))
+	     (start () (setf start i))
+	     (end ()
+	       (when start
+		 (note (subseq str start i))
+		 (setf start nil)
+		 t))
+	     (done ()
+	       (end)
+	       (setf (os-pathname-path result)
+		     (nreverse (os-pathname-path result)))
+	       (return-from parse-path result))
+	     (next (&optional n)
+	       (incf i n)
+	       (when (>= i (length str))
+		 (done))
+	       t))
+      (cond
+	((drive-prefix-p str)
+	 (setf (os-pathname-result result) (char str 0)
+	       (os-pathname-absolute-p result) t)
+	 (next 3))
+	((is-sep)
+	 (setf (os-pathname-absolute-p result) t)
+	 (next)))
+      (loop :while
+	    (or
+	     (and (is-sep) (next)
+		  (loop :while (and (is-sep) (next))))
+	     (progn
+	       (start)
+	       (loop :while (and (not (is-sep)) (next)))
+	       (end)
+	       t))))))
+
+(defun os-pathname-namestring (os-path)
+  "Return a namestring for an os-pathname."
+  (check-type os-path os-pathname)
+  (with-slots (path absolute-p device host) os-path
+    (format nil "~:[~;~c:\\~]~:[~;\\~]~{~a~^\\~}"
+	    device
+	    (and absolute-p (not device))
+	    (os-pathname-path os-path))))
+
+(defun os-pathname-pathname (os-path)
+  "Return a pathname for an os-pathname."
+  (check-type os-path os-pathname)
+  (with-accessors ((path os-pathname-path)
+		   (absolute-p os-pathname-absolute-p)
+		   (device os-pathname-device)
+		   (host os-pathname-host)) os-path
+    (let* ((name (car (last path)))
+	   (pos (position #\. name :from-end t))
+	   (type nil))
+      (when (setf pos (position #\. name :from-end t))
+	(setf name (subseq name 0 pos)
+	      type (subseq name (1+ pos))))
+      (make-pathname :host host
+		     :device device
+		     :directory `(,(if absolute-p :absolute :relative)
+				  ,@(butlast path))
+		     :name name
+		     :type type))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *file-attributes* nil "FILE_ATTRIBUTE_* constants")

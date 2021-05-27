@@ -546,7 +546,8 @@ calls. Returns NIL when there is an error.")
 (defalias 'absolute-path-p 'path-absolute-p)
 
 (defun clip-path (path side)
-  "Return the directory portion of a path."
+  "Return a portion of ‘path’. If ‘side’ is :dir return the directory, otherwise
+return the file portion."
   (let* ((our-path (safe-namestring path))
 	 (i (1- (length our-path)))
 	 (file-start i)
@@ -625,6 +626,39 @@ just everything after the last period '.'"
   (let* ((our-path (safe-namestring path))
 	 (pos (position #\. our-path :from-end t)))
     (when (and pos (/= pos 0)) (subseq our-path (1+ pos)))))
+
+(defosfun parse-path (path)
+  "Return an os-pathname for path.")
+
+(defosfun os-pathname-namestring (os-path)
+  "Return a namestring for an os-pathname.")
+
+(defosfun os-pathname-pathname (os-path)
+  "Return a pathname for an os-pathname.")
+
+(defmethod print-object ((object os-pathname) stream)
+  "Print a os-pathname to STREAM."
+  (with-slots (path) object
+    (print-unreadable-object (object stream :type t)
+      (format stream "~s" (os-pathname-namestring object)))))
+
+(defgeneric path-parent (path)
+  (:documentation
+   "Return the parent directory of ‘path’, or NIL if it doesn't have one."))
+
+(defmethod path-parent ((path pathname))
+  (os-pathname-pathname (path-parent (parse-path (safe-namestring path)))))
+
+(defmethod path-parent ((path string))
+  (os-pathname-namestring (path-parent (parse-path path))))
+
+(defmethod path-parent ((path os-pathname))
+  (let ((par nil)
+	(result (copy-os-pathname path)))
+    (with-accessors ((p os-pathname-path)) result
+      (when (and p (setf par (butlast p)))
+	(setf p par)))
+    result))
 
 (defosfun hidden-file-name-p (name)
   "Return true if the file NAME is normally hidden.")

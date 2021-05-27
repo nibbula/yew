@@ -49,6 +49,68 @@ systems, this means \".\" and \"..\"."
        ;; This just checks if it starts with a slash.
        (char= *directory-separator* (char path 0))))
 
+(defun parse-path (path)
+  "Parse a unix ‘path’ and return an os-pathname."
+  (let ((i 0) (start nil)
+	(str (safe-namestring path))
+	(result (make-os-pathname)))
+    (labels ((is-sep () (char= #\/ (char str i)))
+	     (note (x) (push x (os-pathname-path result)))
+	     (start () (setf start i))
+	     (end ()
+	       (when start
+		 (note (subseq str start i))
+		 (setf start nil)
+		 t))
+	     (done ()
+	       (end)
+	       (setf (os-pathname-path result)
+		     (nreverse (os-pathname-path result)))
+	       (return-from parse-path result))
+	     (next ()
+	       (incf i)
+	       (when (>= i (length str))
+		 (done))
+	       t))
+      (when (is-sep)
+	(setf (os-pathname-absolute-p result) t)
+	(next))
+      (loop :while
+	    (or
+	     (and (is-sep) (next)
+		  (loop :while (and (is-sep) (next))))
+	     (progn
+	       (start)
+	       (loop :while (and (not (is-sep)) (next)))
+	       (end)
+	       t))))))
+
+(defun os-pathname-namestring (os-path)
+  "Return a namestring for an os-pathname."
+  (check-type os-path os-pathname)
+  (format nil "~:[~;/~]~{~a~^/~}" (os-pathname-absolute-p os-path)
+	  (os-pathname-path os-path)))
+
+(defun os-pathname-pathname (os-path)
+  "Return a pathname for an os-pathname."
+  (check-type os-path os-pathname)
+  (with-accessors ((path os-pathname-path)
+		   (absolute-p os-pathname-absolute-p)
+		   (device os-pathname-device)
+		   (host os-pathname-host)) os-path
+    (let* ((name (car (last path)))
+	   (pos (position #\. name :from-end t))
+	   (type nil))
+      (when (setf pos (position #\. name :from-end t))
+	(setf name (subseq name 0 pos)
+	      type (subseq name (1+ pos))))
+      (make-pathname :host host
+		     :device device
+		     :directory `(,(if absolute-p :absolute :relative)
+				  ,@(butlast path))
+		     :name name
+		     :type type))))
+
 ;; We need to use the posix version if there's no better way to do it
 ;; on the implementation.
 ;#+openmcl (config-feature :os-t-use-chdir)
