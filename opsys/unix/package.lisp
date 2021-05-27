@@ -177,6 +177,7 @@
    #:superfluous-file-name-p
    #:%path-absolute-p
    #:path-parent
+   #:parse-path
    #:os-pathname-namestring
    #:os-pathname-pathname
    ;;#:dir-entry-inode

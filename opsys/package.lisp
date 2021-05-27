@@ -86,6 +86,7 @@
    #:path-snip-ext
    #:path-extension
    #:path-parent
+   #:parse-path
    #:os-pathname-namestring
    #:os-pathname-pathname
    #:hidden-file-name-p
