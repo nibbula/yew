@@ -57,7 +57,7 @@ lines. If `forever' is true, keep displaying lines added to the end."
 	(tail-forever stream forever)))))
 
 (defparameter *plus-p* nil
-  "A stupid hack to support +1 without polluting the arguments of tail-line.")
+  "A stupid hack to support +1 without polluting the arguments of tail-lines.")
 
 (defun tail-lines (file-or-stream count &key forever)
   "Output the last COUNT lines of FILE-OR-STREAM. If FOREVER is true, use it as
@@ -140,7 +140,7 @@ symbol, `+' '-' or nil."
 
 #+lish
 (lish:defcommand tail
-  ((line-count plungas-int :short-arg #\n :default '(cons nil 10)
+  ((line-count plungas-int :short-arg #\n :default (cons nil 10)
     :help "Lines to show.")
    (byte-count integer :short-arg #\c
     :help "Bytes to show.")
