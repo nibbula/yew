@@ -7,12 +7,15 @@
   (:use :cl :dlib :keymap :inator :terminal :fui)
   (:export
    #:terminal-inator
+   #:terminal-inator-last-event
    #:with-terminal-inator
    ))
 (in-package :terminal-inator)
 
 (defclass terminal-inator (inator)
-  ()
+  ((last-event
+    :initarg :last-event :accessor terminal-inator-last-event :initform nil
+    :documentation "The last event we got."))
   (:documentation "A terminal-inator."))
 
 (defmethod initialize-instance
@@ -40,8 +43,16 @@
 
 (defmethod await-event ((i terminal-inator))
   "Get an event from a TERMINAL-INATOR."
-  (declare (ignore i))
-  (tt-get-key))
+  (with-slots (last-event) i
+    (let ((result (tt-get-key)))
+      ;; Translate some events
+      (typecase result
+	(tt-mouse-button-event
+	 (case (tt-mouse-button result)
+	   (:button-4 (setf result :scroll-up))
+	   (:button-5 (setf result :scroll-down)))))
+      (setf last-event result)
+      result)))
 
 (defmethod message ((i terminal-inator) format-string &rest args)
   "Display a short message."
@@ -117,10 +128,11 @@ to MAKE-INSTANCE, with VAR bound to the new instance."
     `(let ((,result
 	    (with-terminal ()
 	      (with-immediate ()
-		(let ((,var (make-instance ,type ,@args)))
-		  ,@body)
+		(with-enabled-events ('(:resize :mouse-buttons))
+		  (let ((,var (make-instance ,type ,@args)))
+		    ,@body))
 		;; Move to the bottom of the screen on exit.
 		(tt-move-to (1- (tt-height)) 0)))))
-	   ,result)))
+       ,result)))
 
 ;; EOF
