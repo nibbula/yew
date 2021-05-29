@@ -1541,6 +1541,8 @@ ORIGINAL is something that a define-alias method is defined for."
  #-(or sbcl clisp) progn
  #-(or cmu excl) (defalias :mop (find-package *mop-package*)))
 
+(defalias '⇚ 'multiple-value-list)
+
 ;; This is just to pretend that we're trendy and modern.
 ;(setf (macro-function 'λ) (macro-function 'cl:lambda))
 ;;Umm actually I mean:
