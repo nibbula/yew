@@ -620,7 +620,7 @@ for a range of rows, or a table-point for a specific item,"
 	(when (< (table-point-row start) 0)
 	  (setf (table-point-row start) 0))
 	(clampf (table-point-row point) (table-point-row start)
-		(+ (table-point-row start) rows))))))
+		(+ (table-point-row start) (1- rows)))))))
 
 (defun ensure-point (o)
   "Make sure point is set to a specific row and column, which both default to 0."
