@@ -1,5 +1,5 @@
 ;;;
-;;; collections.lisp - Piles of junk.
+;;; collections.lisp - Somewhere to put the junk.
 ;;;
 
 ;; This isn't necessarily efficient or well designed, it's just practical and
@@ -16,13 +16,13 @@
   (dlib:without-package-variance
     (defpackage :collections
       (:documentation
-"Generic collection functions. These aren't so much for the methods defined
-in here, but it's really so you can define your own methods which work
+"Generic collection functions. The methods defined here don't provide much over
+the normal functions, but they enable defining your own methods which work
 somewhat orthogonally with system classes. Be warned that using things in here
-can be very slow compared to the similar CL sequence functions. There's some
-pretty foolish implementations in here, in the cause of orthogonality.
-Especially the parts where we rather clownishly dress up hash tables and
-structs as sequences. Also we really need the MOP for stuff.")
+can be slow compared to the similar CL sequence functions. There's some pretty
+foolish implementations in here, in the cause of orthogonality. Especially the
+parts where we rather clownishly dress up hash tables and structs as sequences.
+Also we really need the MOP for stuff.")
       (:use :cl)	; Please don't add any dependencies.
       (:nicknames :o)) ; too presumptuous, but maybe we could remove the 'o'?
     ))
@@ -41,6 +41,7 @@ structs as sequences. Also we really need the MOP for stuff.")
       omap
       omapk
       omapn
+      omap-as
       mappable-p
       collection-p
       keyed-collection-p
@@ -742,6 +743,41 @@ values.")
 
 ;; @@@ Maybe we should make an omapkn too?
 
+;; @@@ The has the problems of combinatoric method explosion, so we only support
+;; a few values for type.
+
+(defgeneric omap-as (type function collection)
+  (:documentation
+   "Apply ‘function’ to successive elements of ‘collection’. Collect return
+values into a ‘type’ and return it.")
+  (:method ((type (eql 'nil)) function collection)
+    (omapn function collection))
+  (:method ((type (eql 'list)) function collection)
+    (let ((results '()))
+      (omapn (lambda (_) (push (funcall function _) results)) collection)
+      (nreverse results)))
+  (:method ((type (eql 'vector)) function collection)
+    (let ((results
+	    (make-collection type :size (olength collection)
+				  :element-type t)) ; @@@ yet another problem
+	  (i 0))
+      (omapn (lambda (_)
+	       (setf (oelt results i) (funcall function _))
+	       (incf i))
+	     collection)
+      results))
+  (:method ((type (eql 'string)) function collection)
+    (let ((results (make-collection type :size (olength collection)))
+	  (i 0))
+      (omapn (lambda (_)
+	       (setf (oelt results i) (funcall function _))
+	       (incf i))
+	     collection)
+      results)))
+
+(defmethod omap-as (type function (collection container))
+  (omap-as type function (container-data collection)))
+
 ;; This has the parallel sequence feature from normal MAP, but can't use
 ;; generic dispatch on the collections.
 #|
@@ -768,6 +804,7 @@ collection of RESULT-TYPE."
 (defmethod mappable-p ((collection container))
   (mappable-p (container-data collection)))
 
+;; This is actually not as useful, since we can't specialize on ‘collections’.
 (defgeneric omap-into (mutable-collection function &rest collections)
   (:documentation
 "Apply FUNCTION to each object in the COLLECTIONs and store the results in
