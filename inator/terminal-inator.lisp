@@ -47,6 +47,8 @@
     (let ((result (tt-get-key)))
       ;; Translate some events
       (typecase result
+	;; (tt-mouse-button-down
+	;;  )
 	(tt-mouse-button-event
 	 (case (tt-mouse-button result)
 	   (:button-4 (setf result :scroll-up))
@@ -110,7 +112,8 @@
 
 (defmethod read-key-sequence ((i terminal-inator))
   "Read a key sequence."
-  (get-key-sequence (lambda () (terminal-get-key *terminal*))
+  ;; (get-key-sequence (lambda () (terminal-get-key *terminal*))
+  (get-key-sequence (lambda () (await-event i))
 		    (inator-keymap i)))
 
 (defmethod describe-key-briefly ((i terminal-inator))
