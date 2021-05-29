@@ -455,7 +455,7 @@ Keyword arguments:
     ;; Command loop
     (with-slots (quit-flag exit-flag command buf point last-command terminal
 		 screen-relative-row screen-col debugging temporary-message
-		 keep-message last-event filter-hook region-active buf-str
+		 keep-message filter-hook region-active buf-str
 		 keep-region-active auto-suggest-p) e
       ;; (multiple-value-setq (screen-relative-row screen-col)
       ;; 	(terminal-get-cursor-position *terminal*))
@@ -493,9 +493,9 @@ Keyword arguments:
 		      (tt-cursor-on)
 		      (tt-restore-cursor)))
 		  ;;(setf command (await-event e))
-		  (setf last-event (if (queued-input e)
-				       (pop (queued-input e))
-				       (await-event e)))
+		  (setf (last-event e) (if (queued-input e)
+					   (pop (queued-input e))
+					   (await-event e)))
 		  (log-message e "command ~s" command)
 		  ;; Erase the temporary message.
 		  (when (and temporary-message (not keep-message))
@@ -510,7 +510,7 @@ Keyword arguments:
 		      (progn
 			(setf (did-complete e) nil)
 			;;(perform-key e command (inator-keymap e))
-			(process-event e last-event (inator-keymap e))
+			(process-event e (last-event e) (inator-keymap e))
 			(setf (last-command-was-completion e) (did-complete e))
 			(when (not (last-command-was-completion e))
 			  (set-completion-count e 0))

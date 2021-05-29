@@ -130,11 +130,6 @@ anything important.")
     :documentation "The buffer as a fat-string.")
 
    ;; Events
-   (last-event
-    :accessor last-event
-    :initform nil
-    :initarg :last-event
-    :documentation "Last input event.")
    (exit-flag
     :accessor exit-flag
     :initform nil
@@ -659,7 +654,15 @@ but perhaps reuse some resources."))
 (defalias 'line-editor-keymap 'inator-keymap)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; input
+;; Input
+
+;; @@@ For backwards compatibility. Remove?
+(defgeneric last-event (e)
+  (:documentation "The last input event that occured.")
+  (:method ((e line-editor)) (terminal-inator-last-event e)))
+
+(defmethod (setf last-event) (value (e line-editor))
+  (setf (terminal-inator-last-event e) value))
 
 (defun get-a-char (e)
   "Read a character from the editor's terminal."

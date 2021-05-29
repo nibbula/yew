@@ -881,9 +881,9 @@ in order, \"{open}{close}...\".")
       (self-insert e t c))))
 
 (defmulti self-insert (e &optional quoted char)
-  (with-slots (command last-event buf) e
+  (with-slots (command buf) e
     (when (not char)
-      (setf char last-event))
+      (setf char (last-event e)))
     (cond
       ((not (characterp char))
        ;; @@@ Perhaps we should get a real error, since this is probably a bug
