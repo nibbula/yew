@@ -124,6 +124,8 @@
 
 (defparameter *types* '(:lisp :lish :quicklisp :os))
 
+;; Maybe it would be cool to have a tree browser output version?
+
 (defun mondo-apropos (&key thing types package external-only collect)
   "Look for stuff you can do."
   (when (not thing)
