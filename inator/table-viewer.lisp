@@ -42,6 +42,8 @@
     (:down		. next)
     (:right		. scroll-right)
     (:left		. scroll-left)
+    (:scroll-up		. scroll-up)
+    (:scroll-down	. scroll-down)
     ;;(,(meta-char #\i)	. table-info)
     (#\escape		. *table-viewer-escape-keymap*)
     ))
@@ -598,6 +600,28 @@ for a range of rows, or a table-point for a specific item,"
       (when (>= (- (table-point-col start) n) 0)
 	(decf (table-point-col start) n)))))
 
+(defgeneric scroll-down (table-viewer)
+  (:documentation "Scroll the table back some lines.")
+  (:method ((o table-viewer))
+    (with-slots ((point inator::point) renderer cached-table-length) o
+      (with-slots (start rows) renderer
+	(incf (table-point-row start) 5)
+	(when (>= (table-point-row start) (- (table-length o) rows))
+	  (setf (table-point-row start) (- (table-length o) rows)))
+	(clampf (table-point-row point) (table-point-row start)
+		(+ (table-point-row start) rows))))))
+
+(defgeneric scroll-up (table-viewer)
+  (:documentation "Scroll the table forward some lines.")
+  (:method ((o table-viewer))
+    (with-slots ((point inator::point) renderer) o
+      (with-slots (start rows) renderer
+	(decf (table-point-row start) 5)
+	(when (< (table-point-row start) 0)
+	  (setf (table-point-row start) 0))
+	(clampf (table-point-row point) (table-point-row start)
+		(+ (table-point-row start) rows))))))
+
 (defun ensure-point (o)
   "Make sure point is set to a specific row and column, which both default to 0."
   (with-slots ((point inator::point) table) o
@@ -906,15 +930,12 @@ at which it's found or NIL if it's not found."
 
 (defun view-table (table &key long-titles)
   "View a table."
-  (with-terminal ()
-    (let* ((*table-viewer*
-	    (make-instance 'table-viewer
-			   :table table
-			   ;; :point (make-table-point)
-			   :long-titles long-titles
-			   ))
-	   (renderer (table-viewer-renderer *table-viewer*))
-	   (*long-titles* long-titles))
+  (with-terminal-inator (*table-viewer* 'table-viewer
+			 :table table
+			 ;; :point (make-table-point)
+			 :long-titles long-titles)
+    (let ((renderer (table-viewer-renderer *table-viewer*))
+	  (*long-titles* long-titles))
       (resize-viewer *table-viewer*)
       ;; Calculate the sizes of the whole table for side effect.
       (table-output-sizes renderer table)
