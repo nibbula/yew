@@ -29,13 +29,18 @@
    #:table-set-column-type
    #:table-set-column-format
    #:table-column-number
-   #:make-table-from
    #:copy-table
-   #:map-cells
    #:replace-cells
+   #:map-cells
    #:map-column
+   #:map-column-as
    #:map-into-column
+   #:table-column
+   #:table-column-as
+   #:sub-table
+   #:pick-columns
    #:insert-column
+   #:make-table-from
    ;; #:join
    ))
 (in-package :table)
@@ -284,7 +289,7 @@ to every cell in TABLE. FUNCTION is called with the value of cell."))
 (defgeneric map-column (column function table)
   (:documentation
    "Call FUNCTION with the value for row of COLUMN in TABLE. COLUMN can be a
-number or a column name. Return TABLE."))
+number or a column name. Return the results."))
 
 (defmethod map-column (column function (table mem-table))
   (let ((col (or (and (integerp column) column)
@@ -292,7 +297,21 @@ number or a column name. Return TABLE."))
     (when (not col)
       (error "Can't find a column designated by ~s." column))
     (omap (_ (funcall function (oelt _ col))) table)
-    table))
+    ;; @@@ We should return the results, right?
+    ;; table
+    ))
+
+(defgeneric map-column-as (column type function table)
+  (:documentation
+   "Call ‘function’ with the value for row of ‘column’ in ‘table’. ‘column’ can
+be a number or a column name. Return the results as a ‘type’."))
+
+(defmethod map-column-as (type column function (table mem-table))
+  (let ((col (or (and (integerp column) column)
+		 (table-column-number column table))))
+    (when (not col)
+      (error "Can't find a column designated by ~s." column))
+    (omap-as type (_ (funcall function (oelt _ col))) table)))
 
 (defgeneric map-into-column (column function table)
   (:documentation
@@ -309,6 +328,21 @@ the value. COLUMN can be a number or a column name. Return the TABLE."
     (omap (_ (setf (oelt _ col) (funcall function (oelt _ col))))
 	  table)
     table))
+
+;; @@@ or should it be called table-column-data ?
+(defgeneric table-column (column table)
+  (:documentation "Return the data from ‘column’ of ‘table’."))
+
+(defmethod table-column (column (table mem-table))
+  "Return the data from ‘column’ of ‘table’."
+  (map-column column #'identity table))
+
+(defgeneric table-column-as (type column table)
+  (:documentation "Return the data from ‘column’ of ‘table’ as ‘type’."))
+
+(defmethod table-column-as (type column (table mem-table))
+  "Return the data from ‘column’ of ‘table’ as ‘type’."
+  (map-column-as type column #'identity table))
 
 (defgeneric insert-column (name at table &key value)
   (:documentation
@@ -372,6 +406,80 @@ that has START and START-P and END and END-P."
 				   :from-end from-end
 				   :count count
 				   :key key))))
+
+(defgeneric sub-table (table &key start-row end-row start-col end-col)
+  (:documentation "Return a new table as sub-table of ‘table’, containing rows
+from ‘start-row’ to ‘end-row’, and columns from ‘start-col’ to ‘end-col’.
+Columns can be numbers or column labels. If the ‘end-col’ is a label, it's an
+inclusive limit, otherwise it's an exclusive limit."))
+
+(defmethod sub-table ((table mem-table)
+		      &key (start-row 0) end-row (start-col 0) end-col)
+  (flet ((col-num (row &optional (n 0))
+	   (etypecase row
+	     (null 0)
+	     (integer row)
+	     (symbol (+ n (table-column-number (string row) table)))
+	     (string (+ n (table-column-number row table))))))
+    (let* ((start (col-num start-col))
+	   (end (col-num end-col 1))
+	   (result
+	     (make-instance
+	      'mem-table
+	      :columns
+	      (if end-col
+		  (osubseq (table-columns table) start end)
+		  (osubseq (table-columns table) start))
+	      :data
+	      (omap
+	       (lambda (row)
+		 (if end-col
+		     (osubseq row start end)
+		     (osubseq row start)))
+	       (if end-row
+		   (osubseq table start-row end-row)
+		   (osubseq table start-row))))))
+      result)))
+
+#|
+(defgeneric select-from (table columns &key where)
+  (:documentation ""))
+
+(defun col-expr-form (col-expr col-names)
+  (let ((intern
+  `(lambda (,@)
+     let 
+  
+
+(defmethod select-from ((table mem-table) columns
+			&key where order-by limit)
+  (flet ((col-num (row &optional (n 0))
+	   (etypecase row
+	     (null 0)
+	     (integer row)
+	     (symbol (+ n (table-column-number
+			   (string row) table :test #'equalp)))
+	     (string (+ n (table-column-number row table :test #'equalp))))))
+    (let* ((cols
+	     (loop for (col-num end-col 1))
+	   (result
+	     (make-instance
+	      'mem-table
+	      :columns
+	      (if end-col
+		  (osubseq (table-columns table) start end)
+		  (osubseq (table-columns table) start))
+	      :data
+	      (omap
+	       (lambda (row)
+		 (if end-col
+		     (osubseq row start end)
+		     (osubseq row start)))
+	       (if end-row
+		   (osubseq table start-row end-row)
+		   (osubseq table start-row))))))
+      result)))
+|#
 
 (defun make-columns (columns-list)
   (loop :for c :in columns-list
