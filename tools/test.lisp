@@ -48,6 +48,7 @@ A: Say:
      (save-tests)
    and it will append them to a file.
    You will probably have to edit the output to make it reasonable.
+   Also, I never use this feature.
 
 Q: What if I need to trap exceptions from my tests?
 A: You can use the GOT-CONDITION macro in your test.
@@ -63,17 +64,19 @@ A: You're on your own.
 
 Q: What if I need to ...
 A: Sorry, you're on your own!
+   Why are you even using this instead of one of the 100s of others?
 
 Q: Why did you write yet another test framework?
 A: <no comment>
    (but probably the same reasons as everyone else)
 
 Q: Are you at least going to write some documentation?
-A: _This_ *is* your documentation.
+A: _This_ *is* the documentation.
 ")
   (:use :cl)
   (:export
    #:*verbose*
+   #:*fancy*
    #:test #:test-name #:test-doc #:test-func #:test-body
    #:test-group #:test-group-name #:test-group-tests #:test-group-doc
    #:test-group-setup #:test-group-takedown
@@ -108,6 +111,9 @@ A: _This_ *is* your documentation.
 
 (defparameter *verbose* t
   "T to print lines for every test. NIL to just show failures.")
+
+(defparameter *fancy* t
+  "T to use characters and effects for terminals that might not work for you.")
 
 (defvar *group* nil
   "The default test group to define tests in with the TEST macro.")
@@ -180,9 +186,9 @@ A: _This_ *is* your documentation.
 
 (defun report-done (result)
   (if *verbose*
-      (if result
-	  (format t "OK~%")
-	  (format t "FAILED~%"))
+      (if result ;; Pretend to look cool, even if we'll never be.
+	  (format t "~:[~;[32;1m✔~]~:* OK~:[~;[m~]~%" *fancy*)
+	  (format t "~:[~;[31;1m✘~]~:* FAILED~:[~;[m~]~%" *fancy*))
       (if result
 	  (format t ".")
 	  (format t "F~_")))
@@ -286,15 +292,16 @@ exit occurs.
 	      :and :do (setf fdoc nil) (incf n)
 	    :end
 	    :do (setf spot (cdr spot)))))
-    `(progn ,@bodies
-	    (let ((g (find-group ',group-name)))
-	      (setf (test-group-tests g) (nreverse (test-group-tests g))
-		    (test-group-setup g) ',setup
-		    (test-group-takedown g) ',takedown
-		    (test-group-doc g) ',doc))
-;	    (setf (cadr (assoc ',group-name *tests*))
-;		  (nreverse (cadr (assoc ',group-name *tests*))))
-	    (values))))
+    `(progn
+       ,@bodies
+       (let ((g (find-group ',group-name)))
+	 (setf (test-group-tests g) (nreverse (test-group-tests g))
+	       (test-group-setup g) ',setup
+	       (test-group-takedown g) ',takedown
+	       (test-group-doc g) ',doc))
+         ;; (setf (cadr (assoc ',group-name *tests*))
+	 ;;       (nreverse (cadr (assoc ',group-name *tests*))))
+       (values))))
 
 (defun maybe-run-code (code)
   (cond
