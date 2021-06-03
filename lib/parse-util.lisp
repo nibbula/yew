@@ -110,10 +110,10 @@ See parse-util-test for examples.
     `(let ((,start (state-i *state*)) ,result)
        (when (state-track-next *state*)
 	 (setf (state-next *state*) ',body))
-       (derp)
+       ;; (derp)
        (when (not (setf ,result (progn ,@body)))
 	 (setf (state-i *state*) ,start))
-       (derp)
+       ;; (derp)
        ,(if (not result-provided-p) result result-form))))
 
 (defmacro optional (&body body)
