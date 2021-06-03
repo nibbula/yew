@@ -576,7 +576,8 @@ arguments are the same."
 ;  "find [-lvrcp] [-d dir] [-n name] [-t type] [-p path] [-e expr] [-a action]"
 ;  (&key (dir ".") follow-links verbose regexp collect
 ;	name file-type path expr action print)
-  ((dir		 pathname :short-arg #\d :default "."
+  ((thing	 case-preserving-object :required nil :help "A thing to find.")
+   (dir		 pathname :short-arg #\d :default "."
     :help        "Directory to start from.")
    (follow-links boolean  :short-arg #\l :default t
     :help        "True to follow symbolic links.")
@@ -629,7 +630,7 @@ arguments are the same."
    (print	 boolean  :short-arg #\p :default t
     :help        "True to print the file name.")
    )
-  :keys-as all-keys
+  :args-as args
   "Find files recursively in subdirectories. Start in the directory given
 by --dir, which defaults to the current directory."
   (dbugf :accepts "find *accepts* = ~s~%" lish:*accepts*)
@@ -638,7 +639,13 @@ by --dir, which defaults to the current directory."
     ;; (format *debug-io* "something accepts ~s~%"
     ;; 	    (lish:accepts :sequence 'sequence :list))
     (setf collect t))
-  (let ((ff (apply #'find-files-interactive all-keys)))
+  (typecase thing
+    (null #| ignore it |#)
+    (symbol (setf (getf args :name) (string thing)))
+    ((or string pathname) (setf (getf args :name) thing))
+    (t (error "I don't know what to do with the ~s ~s." (type-of thing) thing)))
+  (remf args :thing)
+  (let ((ff (apply #'find-files-interactive args)))
     (when collect (setf lish:*output* ff))
     ;; (format *debug-io* "end of find, *output* = ~s~%" lish:*output*)
     ;; (finish-output *debug-io*)
