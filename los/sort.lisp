@@ -38,7 +38,7 @@
    (ignore-case boolean :short-arg #\i
     :help "True to ignore the case of strings.")
    (sequence boolean :short-arg #\c
-    :default '(lish:accepts 'sequence)
+    :default (lish:accepts 'sequence)
     :help "True to return a sequence instead of printing.")
    (files string :repeating t
     :help "Files to sort."))
