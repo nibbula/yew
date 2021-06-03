@@ -16,40 +16,51 @@
 (declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
 
 ;; @@@ This performance of this is horrible!
-(defun snip-bytes (file-or-stream count direction)
+(defun snip-bytes (file-or-stream count direction &key collect quiet)
   (declare (type integer count))
   (when (not (or (eq direction :before) (eq direction :after)))
     (error "Direction must be :BEFORE or :AFTER."))
-  (with-open-file-or-stream (stream file-or-stream
-				    :direction :input
-				    :element-type '(unsigned-byte 8))
-    (case direction
-      (:before
-       (loop :with b :and n :of-type integer = 0
-	  :while (and (< n count)
-		      (setf b (read-byte stream nil nil)))
-	  :do (write-byte b *standard-output*)
-	  (incf n)))
-      (:after
-       (let ((seekable (file-position stream 0)))
-	 (if seekable
-	     (progn
-	       (when (not (file-position stream count))
-		 (error "Can't position stream to ~a." count))
-	       (loop :with b
-		  :while (setf b (read-byte stream nil nil))
-		  :do (write-byte b *standard-output*)))
-	     (progn
-	       ;; Read the non-output part
-	       (loop :with n :of-type integer = 0
-	       	  :while (and (< n count)
-	       		      (read-byte stream nil nil))
-	       	  :do (incf n))
-	       ;; Read & output the rest
-	       (loop :with b
-		  :while (setf b (read-byte stream nil nil))
-		  :do (write-byte b *standard-output*)))))))
-    (finish-output *standard-output*)))
+  (let ((result nil) (n 0))
+    (declare (type integer n))
+    (flet ((put-byte (b)
+	     (unless quiet
+	       (write-byte b *standard-output*))
+	     (when collect
+	       (setf (aref result n) b))))
+      (with-open-file-or-stream (stream file-or-stream
+					:direction :input
+					:element-type '(unsigned-byte 8))
+	(when collect
+	  (setf result (make-array count :element-type '(unsigned-byte 8))))
+	(case direction
+	  (:before
+	   (loop :with b
+		 :while (and (< n count)
+			     (setf b (read-byte stream nil nil)))
+		 :do
+		    (put-byte b)
+		    (incf n)))
+	  (:after
+	   (let ((seekable (file-position stream 0)))
+	     (if seekable
+		 (progn
+		   (when (not (file-position stream count))
+		     (error "Can't position stream to ~a." count))
+		   (loop :with b
+			 :while (setf b (read-byte stream nil nil))
+			 :do (put-byte b) (incf n)))
+		 (progn
+		   ;; Read the non-output part
+		   (loop :while (and (< n count)
+				     (read-byte stream nil nil))
+			 :do (incf n))
+		   (setf n 0)
+		   ;; Read & output the rest
+		   (loop :with b
+			 :while (setf b (read-byte stream nil nil))
+			 :do (put-byte b) (incf n)))))))
+	(finish-output *standard-output*)))
+    result))
 
 (defcommand snip
   ((pattern	string #| regexp |# :optional nil
@@ -80,6 +91,7 @@
     (finish-output)))
 
 (defun snip-lines-after (stream count)
+  "Write the first ‘count’ lines of ‘stream’ to *standard-output*."
   (let ((n 0))
     (with-lines (line stream)
       (if (< n count)
@@ -88,7 +100,21 @@
 	    (incf n))
 	  (return)))))
 
+(defun snip-and-collect (stream count)
+  "Write the first ‘count’ lines of ‘stream’ to *standard-output*, and return
+them."
+  (let ((n 0) result)
+    (with-lines (line stream)
+      (if (< n count)
+	  (progn
+	    (write-line line)
+	    (push line result)
+	    (incf n))
+	  (return)))
+    (nreverse result)))
+
 (defun take-lines (stream count)
+  "Return the first ‘count’ lines of ‘stream’."
   (let ((n 0) result)
     (with-lines (line stream)
       (if (< n count)
@@ -96,32 +122,47 @@
 	    (push line result)
 	    (incf n))
 	  (return)))
-    result))
+    (nreverse result)))
 
 (defcommand head
   ((line-count integer :short-arg #\n :default 10 :help "Lines to show.")
    (byte-count integer :short-arg #\c :help "Bytes to show.")
+   (collect boolean :short-arg #\C :default (accepts 'sequence)
+    :help "Return a sequence.")
+   (quiet boolean :short-arg #\q :help "Don't produce output.")
    (use-encoding boolean :short-arg #\e
-    :help "Use the default system encoding.") ; otherwise know as: get errors
+    :help "Use the default system encoding.") ; otherwise known as: get errors
    ;; ("count" integer :default 10
    ;;  :help "The number of units to show.")
    (files pathname :repeating t
     :help "Files to use as input."))
   "Output the first portion of input."
-  (if byte-count
-      (if files
-	  (loop :for f :in files :do
-	     (snip-bytes f byte-count :before))
-	  (snip-bytes *standard-input* byte-count :before))
-      (if files
-	  (loop :for f :in files :do
-	     (if use-encoding
-		 (snip-lines-after f line-count)
-		 (with-utf8b-input (str f :errorp nil)
-		   (snip-lines-after str line-count))))
-	  (if use-encoding
-	      (snip-lines-after *standard-input* line-count)
-	      (with-utf8b-input (str *standard-input* :errorp nil)
-		(snip-lines-after str line-count))))))
+  (flet ((do-snip (stream)
+	   (if collect
+	       (setf *output* (if quiet
+				  (take-lines stream line-count)
+				  (snip-and-collect stream line-count)))
+	       (snip-lines-after stream line-count)))
+	 (do-byte-snip (stream)
+	   (if collect
+	       (setf *output*
+		     (snip-bytes stream byte-count :before :collect collect
+				 :quiet quiet))
+	       (snip-bytes stream byte-count :before :quiet quiet))))
+    (if byte-count
+	(if files
+	    (loop :for f :in files :do
+	      (do-byte-snip f))
+	    (do-byte-snip *standard-input*))
+	(if files
+	    (loop :for f :in files :do
+	      (if use-encoding
+		  (do-snip f)
+		  (with-utf8b-input (str f :errorp nil)
+		    (do-snip str))))
+	    (if use-encoding
+		(do-snip *standard-input*)
+		(with-utf8b-input (str *standard-input* :errorp nil)
+		  (do-snip str)))))))
 
 ;; EOF
