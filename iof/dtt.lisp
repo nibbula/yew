@@ -400,7 +400,7 @@ then the second value is the labels."
 		 (with-unique-names (thunk)
 		   `(flet ((,thunk () ,@body))
 		      (and (,thunk)
-			   (or (loop :while (,thunk)) t)))))
+			   (or (loop :while (,thunk)) t))))) ;; @@@ remove or?
 	       (zero-or-more (&body body)
 		 "Do the body, until it returns false. Always true."
 		 (with-unique-names (thunk)

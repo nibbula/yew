@@ -163,7 +163,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 
 ;; This is quite wasteful, but how else can I specialize methods?
 (defclass fat-string (ostring)
-  ((string				; blurg :|
+  ((string
     :initarg :string :accessor fat-string-string
     :documentation "A lot of crust around a string."))
   (:documentation "A vector of FATCHAR."))

@@ -23,14 +23,14 @@ Quantifiers macros are:
                        is true.
 
 Result macros:
-   (note () ...)       Push the of value of the body onto the results.
+   (note (x) ...)      Push ‘x’ onto the results if the ‘body’ is true.
    (with-sub-sequence (name) ...)
                        Make name be a function that returns the current
                        sub-sequence, which the macro encloses.
 
 Element functions are:
    (peek)                        Return the next element.
-   (next-char)                   Return and consume the next element.
+   (next-element)                Return and consume the next element.
    (element-in E SEQ &key test)  Return true if E is in SEQ.
    (is-element E &key test)      Return true if E is the next element.
    (is-not-element E &key test)  Return true if E is not the next element.
@@ -158,7 +158,7 @@ See parse-util-test for examples.
        (or ,@choices))))
 
 (defmacro note ((x) &body body)
-  "Push the of value of the body onto the results."
+  "Push ‘x’ onto the results if the ‘body’ is true."
   (with-names (r)
     `(progn
        ;; (setf (state-next *state*) ',body)
