@@ -138,7 +138,7 @@ end number."))
 (defstruct state
   "State for a stream editor."
   input				      ; The input stream
-  output			      ; The output stream
+  output			      ; The output stream, or list.
   input-name			      ; The input file name
   output-name			      ; The output file name
   (count 0 :type integer)	      ; The number of the current line
@@ -148,6 +148,7 @@ end number."))
   (eof-p nil :type boolean)	      ; True if we hit the end of the stream.
   (stop-flag nil :type boolean)	      ; True to end processing
   (missing-newline nil :type boolean) ; True if the newline was missing
+  (collect nil :type boolean)	      ; True to collect output lines
   words			              ; An array of words from split.
   ;; A hash table of regexp scanners for the current script.
   (scanners (make-hash-table :test #'equal) :type hash-table)
@@ -326,13 +327,28 @@ the currrent line number. ‘eof-p’ is true if we're at the last line."))
   result
   )
 
+(defun put-string (string output)
+  (if (state-collect *state*)
+      (push string (state-output *state*))
+      (write-string string output)))
+
+(defun put-line (line output)
+  (if (state-collect *state*)
+      (push line (state-output *state*))
+      (write-line line output)))
+
+(defun put-newline (output)
+  ;; We don't need to do this for collected output.
+  (unless (state-collect *state*)
+    (write-char #\newline output)))
+
 (defun p (&optional thing)
   "Print a ‘thing’. If ‘thing’ isn't given or is NIL, print the current line."
   (with-slots (output line missing-newline eof-p) *state*
     (let ((result (or (and thing (princ-to-string thing)) line)))
-      (write-string result output)
+      (put-string result output)
       (when (not (and missing-newline eof-p))
-	(write-char #\newline))
+	(put-newline output))
       result)))
 
 (defun s (regex replacement &key all)
@@ -544,10 +560,13 @@ delete the backup file at the end."
 			   (input *standard-input*)
 			   (output *standard-output*)
 			   script-file quiet in-place backup-pattern
-			   delete-backup)
+			   delete-backup
+			   collect)
   #.(s+ "Edit a stream. Run the ‘script’ and/or the contents of ‘script-file’ on
 ‘input’. Write the results to ‘output’"	*doc*)
-  (let* ((*state* (make-state :input input :output output))
+  (when (and in-place collect)
+    (error "in-place doesn't make sense with collect."))
+  (let* ((*state* (make-state :input input :output output :collect collect))
 	 ;; (code-package (make-code-package))
 	 (prepared
 	  (loop :for (addr form)
@@ -560,11 +579,14 @@ delete the backup file at the end."
     ;; (format t "prepared ~s~%" prepared)
     (unwind-protect
 	(with-slots (count line next stop-flag eof-p missing-newline) *state*
-	  (when (or (stringp output) (pathnamep output))
+	  (when (and (or (stringp output) (pathnamep output))
+		     (not collect))
 	    (setf close-output t
 		  (state-output-name *state*) output
 		  output (open-output output in-place)
 		  (state-output *state*) output))
+	  (when collect
+	    (setf (state-output *state*) '()))
 	  (when (or (stringp input) (pathnamep input))
 	    (setf close-input t
 		  (state-input-name *state*) input
@@ -581,8 +603,8 @@ delete the backup file at the end."
 		 (setf result (funcall func *state*)))
 	       (when (and result (not quiet))
 		 (if (and missing-newline eof-p)
-		     (write-string result output)
-		     (write-line result output))))))
+		     (put-string result output)
+		     (put-line result output))))))
       (when (and input close-input)
 	(close input))
       (when (and output close-output)
@@ -590,7 +612,9 @@ delete the backup file at the end."
       (when (state-files *state*)
 	(omapk (_ (when (open-stream-p (oelt _ 1))
 		    (close (oelt _ 1))))
-	       (state-files *state*))))))
+	       (state-files *state*))))
+    (when collect
+      (nreverse (state-output *state*)))))
 
 ;; @@@ The macro version can probably be better, but we need the non-macro
 ;; version for calling as shell command.
@@ -681,6 +705,8 @@ appended.")
     :help "Treat input files as separate for line number counting. Otherwise
  treat input files as one concatenated file. If in-place is true, separte is
  forced true.")
+   (collect boolean :short-arg #\c :default (lish:accepts 'sequence)
+    :help "Return output as a collection of lines, instead of normal output.")
    ;;(expression object :short-arg #\e :optional nil :help "Script to run.")
    (expression object :optional nil :help "Script to run.")
    (files pathname :optional t :repeating t :help "Files to use as input."))
@@ -692,24 +718,30 @@ appended.")
     ;; Treat all input files as one stream.
     (let (streams)
       (unwind-protect
-	  (edit-stream expression
-	    :input
-	    (apply #'make-concatenated-stream
-		   (mapcar (_ (let ((str (open _ :direction :input)))
-				(push str streams)
-				str))
-			   files))
-	    :quiet quiet)
-	(map nil (_ (close _)) streams))))
-   (t
-    (loop :for f :in files :do
-      ;; @@@ we should pull the compiling out, so it's only done once
-      (edit-stream expression
-		   :input f
-		   :output (if in-place f *standard-output*)
+	   (setf lish:*output*
+		 (edit-stream expression
+		   :input
+		   (apply #'make-concatenated-stream
+			  (mapcar (_ (let ((str (open _ :direction :input)))
+				       (push str streams)
+				       str))
+				  files))
 		   :quiet quiet
-		   :in-place in-place
-		   :backup-pattern backup-pattern
-		   :delete-backup delete-backup)))))
+		   :collect collect))
+	(map nil (_ (close _)) streams)))
+    lish:*output*)
+   (t
+    (setf lish:*output*
+	  (loop :for f :in files
+	    ;; @@@ we should pull the compiling out, so it's only done once
+		:collect
+		(edit-stream expression
+			     :input f
+			     :output (if in-place f *standard-output*)
+			     :quiet quiet
+			     :in-place in-place
+			     :backup-pattern backup-pattern
+			     :delete-backup delete-backup
+			     :collect collect))))))
 
 ;; End
