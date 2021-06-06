@@ -41,6 +41,7 @@ of it.")
    #:d-getenv
    #:shell-line
    #:shell-lines
+   #:run-system-command
    #:system-command-stream
    #:system-args
    #:exit-system
@@ -1236,39 +1237,68 @@ to the same value as the slots in the original."
 
 ;; I know the args are probably getting stringified then un-stringified,
 ;; but this is mostly just for startup.
-(defun system-command-stream (cmd args)
+(defun run-system-command (cmd args &key output-stream)
   "Return an output stream from the system command."
-  #+clisp (ext:run-shell-command
-	   (format nil "~a~{ ~a~}" cmd args) :output :stream)
-  #+sbcl (sb-ext:process-output
-	  (sb-ext:run-program cmd args :output :stream :search t))
-  #+cmu (ext:process-output
-	 (ext:run-program (exe-in-path cmd) args :output :stream))
-  #+openmcl (ccl::external-process-output-stream
-	     (ccl::run-program cmd args :output :stream))
-  #+ecl (ext:run-program cmd args)
-  #+excl (excl:run-shell-command (format nil "~a~{ ~a~}" cmd args)
-				 :output :stream :wait t)
+  #+clisp
+  (if output-stream
+      (ext:run-shell-command
+       (format nil "~a~{ ~a~}" cmd args) :output :stream)
+      (ext:run-shell-command
+       (format nil "~a~{ ~a~}" cmd args)))
+  #+sbcl
+  (if output-stream
+      (sb-ext:process-output
+       (sb-ext:run-program cmd args :output :stream :search t))
+      (sb-ext:run-program cmd args :search t))
+  #+cmu
+  (if output-stream
+      (ext:process-output
+       (ext:run-program (exe-in-path cmd) args :output :stream))
+      (ext:run-program (exe-in-path cmd) args))
+  #+openmcl
+  (if output-stream
+      (ccl::external-process-output-stream
+       (ccl::run-program cmd args :output :stream))
+      (ccl::run-program cmd args))
+  #+ecl
+  (ext:run-program cmd args) ;; @@@ is this right?
+  #+excl
+  (if output-stream
+      (excl:run-shell-command (format nil "~a~{ ~a~}" cmd args)
+			      :output :stream :wait t)
+      (excl:run-shell-command (format nil "~a~{ ~a~}" cmd args) :wait t))
   ;; @@@ The LW manual says this only works on unix:
-  #+lispworks (system:run-shell-command (format nil "~a~{ ~a~}" cmd args)
-					:output :stream :wait nil)
-  #+abcl (progn
-	   (when (not *abcl-bug*)
-	     ;; It doesn't work the first time.
-	     ;; @@@ How can we suppress the giant stack trace???
-	     (ignore-errors
-	       (system:process-output (system:run-program "/bin/true" nil))))
-	   (system:process-output (system:run-program cmd args)))
-  #+clasp (multiple-value-bind (result pid stream)
-	      (ext:fork-execvp (cons cmd args) t)
-	    (declare (ignore result pid))
-	    stream)
-  #+mezzano (declare (ignore cmd args))
+  #+lispworks
+  (if output-stream
+      (system:run-shell-command (format nil "~a~{ ~a~}" cmd args)
+				:output :stream :wait nil)
+      (system:run-shell-command (format nil "~a~{ ~a~}" cmd args) :wait t))
+  #+abcl
+  (progn
+    (when (not *abcl-bug*)
+      ;; It doesn't work the first time.
+      ;; @@@ How can we suppress the giant stack trace???
+      (ignore-errors
+       (system:process-output (system:run-program "/bin/true" nil))))
+    (if output-stream
+	(system:process-output (system:run-program cmd args))
+	(system:run-program cmd args)))
+  #+clasp
+  (if output-stream
+      (multiple-value-bind (result pid stream)
+	  (ext:fork-execvp (cons cmd args) t)
+	(declare (ignore result pid))
+	stream)
+      (ext:fork-execvp (cons cmd args) #| what was t for? |# ))
+  #+mezzano (declare (ignore cmd args output-stream))
   #+mezzano (make-string-input-stream "")
   #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl clasp mezzano)
-  (declare (ignore cmd args))
+  (declare (ignore cmd args output-stream))
   #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl clasp mezzano)
-  (missing-implementation 'system-command-stream))
+  (missing-implementation 'run-system-command))
+
+(defun system-command-stream (cmd args)
+  (run-system-command cmd args :output-stream t))
 
 (defun shell-line (cmd &rest args)
   "Return the first line of output from the given shell command as a string.
