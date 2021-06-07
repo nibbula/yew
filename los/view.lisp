@@ -8,6 +8,8 @@
   (:export
    #:*viewer-alist*
    #:*file-name-types*
+   #:viewer-for
+   #:set-viewers
    #:view-things
    #:view
    #:!view
@@ -16,6 +18,27 @@
 (in-package :view)
 
 (declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
+
+(defclass viewer ()
+  ()
+  (:documentation "Something which can view things with a MIME type."))
+
+(defclass function-viewer (viewer)
+  ((package
+    :initarg :package :accessor function-viewer-package :initform nil
+    :type symbol
+    :documentation "A keyword designating the package of the function.")
+   (function-name
+    :initarg :function-name :accessor function-viewer-function-name
+    :initform nil :type symbol
+    :documentation "A keyword naming the function."))
+  (:documentation "A viewer which is a Lisp function."))
+
+(defclass command-viewer (viewer)
+  ((command
+    :initarg :command :accessor command-viewer-command :initform nil
+    :documentation "A command to be invoked by a shell."))
+  (:documentation "A viewer which is a system or shell command."))
 
 ;; @@@ This and the other data here, should really be kept somewhere else,
 ;; and probably done in a much more sophisticated way.
@@ -40,23 +63,61 @@
     ("json"	    . ("application"  . "json"))
     ))
 
-(defun get-viewer-func (type)
-  "Return the viewer function for TYPE, or NIL if none."
-  (labels ((get-func (cat name list)
-	     (cdr (find-if
-		   (_
-		    (let ((thing (car _)))
-		      (cond
-			((atom thing)
-			 (equal cat thing))
-			((consp thing)
-			 (and (equal cat (car thing))
-			      (equal name (cdr thing)))))))
-		   list))))
+(defun find-in-list (cat name list)
+  "Find the the type with ‘cat’ and ‘name’ in ‘list’."
+  (let ((%cat (string-downcase cat))
+	(%name (string-downcase name)))
+    (find-if (_ (let ((thing (car _)))
+		  (cond
+		    ((atom thing)
+		     (equal %cat thing))
+		    ((consp thing)
+		     (and (equal %cat (car thing))
+			  (equal %name (cdr thing)))))))
+	     list)))
+
+(defun find-viewer (type)
+  "Return the viewer function for ‘type’, or NIL if none."
     ;; @@@ extend to support sublists of name and description
-    (get-func (string-downcase (content-type-category type))
-	      (string-downcase (content-type-name type))
-	      *viewer-alist*)))
+  (cdr (find-in-list (content-type-category type)
+		     (content-type-name type)
+		     *viewer-alist*)))
+
+(defun as-content-type (thing)
+  (etypecase thing
+    (content-type
+     (find-viewer thing))
+    (cons
+     (make-content-type :category (car thing) :name (cdr thing)))))
+
+(defun viewer-for (type-designator)
+  "Return the viewer function for ‘type’, or NIL if none."
+  (find-viewer (as-content-type type-designator)))
+
+(defun set-viewer-for (type-designator viewer-designator)
+  "Set the viewer for ‘type’ to ‘viewer-designator’, wher ‘type’ is a
+content-type, and ‘viewer-designator’ can something accepted by
+‘make-viewer-from’."
+  (let* ((type (as-content-type type-designator))
+	 (cat (string-downcase (content-type-category type)))
+	 (name (and (content-type-name type)
+		    (string-downcase (content-type-name type))))
+	 (item (find-in-list cat name *viewer-alist*)))
+    (if item
+	(setf (cdr item) viewer-designator)
+	(push (cons (if name
+			(cons cat name)
+			cat)
+		    viewer-designator)
+	      *viewer-alist*))))
+
+(defsetf viewer-for set-viewer-for)
+
+(defun set-viewers (list)
+  "Set the viewers in ‘list’ which should be a list of conses of
+(<type-designator> . <viewer-designator>)."
+  (loop :for (type . viewer) :in list :do
+    (setf (viewer-for type) viewer)))
 
 ;; @@@ This is very wrong.
 (defun guess-file-name-type (thing)
@@ -73,17 +134,46 @@
   ()
   (:documentation "We can't find a viewer for something."))
 
+(defgeneric invoke-viewer (viewer thing)
+  (:documentation "Invoke a viewer for ‘thing’."))
+
+(defmethod invoke-viewer ((viewer function-viewer) thing)
+  (with-slots (package function-name) viewer
+    (when (not (find-package package))
+      (asdf:oos 'asdf:load-op package))
+    (symbol-call package function-name thing)))
+
+(defmethod invoke-viewer ((viewer command-viewer) thing)
+  (with-slots (command) viewer
+    (if (find-package :lish)
+	(apply (find-symbol "!=" :lish) `(,@command ,thing))
+	(apply #'dlib:run-system-command `(,@command ,thing)))))
+
+(defun make-viewer-from (thing)
+  "Return a viewer object from the viewer-designator ‘thing’, which can
+designate a function, as a list of keywords (:<package> :<function-name>),
+or a system command, designated by either a string, or a list of
+(! command [arg]...) for commands with separate arguments."
+  (cond
+    ((or (stringp thing) (and (consp thing) (symbolp (first thing))
+			      (equal (symbol-name (first thing)) "!")))
+     (make-instance 'command-viewer
+		    :command (if (stringp thing)
+				 ;; this is troublesome
+				 (split-sequence #\space thing :omit-empty t)
+				 (rest thing))))
+    ((and (consp thing) (keywordp (first thing)) (keywordp (second thing)))
+     (make-instance 'function-viewer
+		    :package (first thing) :function-name (second thing)))
+    (t
+     (error "Sorry, but I don't know how to make a viewer out of ~s." thing))))
+
 (defun view-file (thing)
   "Look at a file."
   (let* ((type (guess-type thing))
-	 (viewer (get-viewer-func type))
-	 (pkg (first viewer))
-	 (func (second viewer)))
+	 (viewer (make-viewer-from (find-viewer type))))
     (if viewer
-	(progn
-	  (when (not (find-package pkg))
-	    (asdf:oos 'asdf:load-op pkg))
-	  (symbol-call pkg func thing))
+	(invoke-viewer viewer thing)
 	(cerror "Skip the thing."
 		'no-viewer-error
 		:format-control
