@@ -1169,9 +1169,14 @@ binding."
 
 (defsingle dictionary-complete (e)
   "Complete a word from the dictionary."
-  (complete e :function #'completion::complete-dictionary-word
-	      ;; :start-from pos
-	    ))
+  (use-first-context (e)
+    (with-context ()
+      (with-slots (non-word-chars str) e
+	(let ((start-pos point))
+	  (scan-over e :backward :not-in non-word-chars)
+	  (rotatef start-pos point)
+	  (complete e :function #'completion::complete-dictionary-word
+		      :start-from start-pos))))))
 
 (defun history-prefix-match-ending (e &key line)
   "Return the first ending of the most recent line from history that begins with
