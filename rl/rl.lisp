@@ -73,6 +73,7 @@
     ;; (,(meta-char #\/)		. complete-filename-command)
      (,(meta-char #\')		. complete-filename-command)
     (,(meta-char #\?)		. show-filename-completions-command)
+    (,(meta-char #\I)		. dictionary-complete)
 
     ;; Misc
     (,(ctrl #\L)		. redraw)

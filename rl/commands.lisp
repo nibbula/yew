@@ -1167,6 +1167,12 @@ binding."
     (show-completions e :func #'completion::complete-filename
 		      :string str)))
 
+(defsingle dictionary-complete (e)
+  "Complete a word from the dictionary."
+  (complete e :function #'completion::complete-dictionary-word
+	      ;; :start-from pos
+	    ))
+
 (defun history-prefix-match-ending (e &key line)
   "Return the first ending of the most recent line from history that begins with
 the current line, or NIL if there is none."
