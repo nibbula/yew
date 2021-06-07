@@ -89,6 +89,14 @@ Dictionary completion:
    ;; filenames
    #:complete-filename
    #:complete-directory
+   ;; dictionary
+   #:*dictionary*
+   #:*default-word-file*
+   #:make-completion-dictionary
+   #:dictionary-completion-list
+   #:dictionary-completion
+   #:complete-dictionary-word
+   #:dictionary-completion-function
    ;; characters
    #:complete-char-name
    ))
@@ -1163,85 +1171,28 @@ defaults to the current package. Return how many symbols there were."
 ;; This is completion for a big list of words, presumably in a natural
 ;; language. We read a file of one word per line into a trie.
 
-;; @@@ finish lib/trie.lisp !!
-
 (defparameter *default-word-file* "/usr/share/dict/words")
-
-;; foo
-;; fooble
-;; foozle
-;; fimbar
-;; fill
-;; no
-;; noodle
-;; nog
-;; zibble
-;;
-;; (f (o (o)))
-;; (f (o (o () (b (l (e ()))))))
-
-;; ((f (o (o ())) (b (l (e ()))))
-;;  (n (o ()) (d (l (e ()))) (g ()))
-;;  (z (i (b (b (l (e ())))))))
+(defvar *dictionary* nil
+  "The current default dictionary.")
 
 (defun make-completion-dictionary (file)
-  (let ((dict '(_ )))
-    (with-open-file (stm file)
-      (loop :with line :and node
-	 :while (setf line (read-line stm nil nil)) :do
-	 (setf node dict)
-	 (loop :with n
-	    :for c :across line :do
-	    (if (setf n (find (list c) node :key #'car))
-		(setf node n)
-		(progn
-		  (setf n (list c))
-		  (pushnew n node :key #'car)
-		  (setf node n)))
-	    (format t "~s~%" dict) (finish-output))
-	 (pushnew '() node)))
-    dict))
+  (setf *dictionary* (prefix-tree:make-trie (file-lines file))))
 
-#|
-(defun add-word (w d)
-  (let ((node d) n)
-    (loop for c across w do
-	 (if (setf n (find-if
-		      (lambda (x)
-			(and x (consp x) (eql (car x) c)))
-		      node))
-	     (setf node n)
-	     (progn (push c node))))
-    d))
+(defun dictionary-completion-list (word &optional (dict *dictionary*))
+  (let ((endings (prefix-tree:endings word dict)))
+    (make-completion-result
+     :completion (mapcar (_ (s+ word _)) endings)
+     :count (length endings))))
 
-(defun dump-dict (dict)
-  (let ((str (make-stretchy-string 25)))
-    (labels ((do-node (node)
-	       (loop :for n :in node
-		  :if (not node)
-		  :then (write-line str)
-		  (do-node
-  (loop :with node
+(defun dictionary-completion (word &optional (dict *dictionary*))
+  (string-completion word
+		     (mapcar (_ (s+ word _)) (prefix-tree:endings word dict))))
 
-     :for w :in dict :do
-     (setf node w)
-     (loop :while (> (length node) 0)
-	:do
-	(stretchy-append str (car node))
-	(
-|#
-
-(defun dictionary-completion-list (w dict)
-  (declare (ignore w dict))
-  (make-completion-result)) ;; @@@
-
-(defun dictionary-completion (w dict)
-  (declare (ignore w dict))
-  (make-completion-result)) ;; @@@
-
-(defun complete-dictionary-word (context pos all &optional dict)
+(defun complete-dictionary-word (context pos all &optional (dict *dictionary*))
   "Completion function for dictionary words."
   (declare (ignore pos))
+  (when (not *dictionary*)
+    (make-completion-dictionary *default-word-file*))
   ;; Let's ignore anything after pos for the sake of completion.
   (if all
       (dictionary-completion-list context dict)
@@ -1249,8 +1200,9 @@ defaults to the current package. Return how many symbols there were."
 	(setf (completion-result-insert-position result) 0)
 	result)))
 
-(defun dictionary-completion-function (file)
-  "Return a completion function for a dictionary."
+(defun dictionary-completion-function (&optional (file *default-word-file*))
+  "Return a completion function for the dictionary in ‘file’, which should be
+a list of words, one per line. ‘file’ defaults to ‘*default-word-file*’."
   (let ((dict (make-completion-dictionary file)))
     (lambda (context pos all)
       (complete-dictionary-word context pos all dict))))
@@ -1264,14 +1216,17 @@ defaults to the current package. Return how many symbols there were."
 (defun char-names ()
   (or *char-names*
       (setf *char-names*
-	    (with-spin ()
-	      (loop :for i :from 0 :below char-code-limit
-		 :collect (char-name (code-char i))
-		 :do (when (zerop (mod i 1000)) (spin)))))))
+	    (prefix-tree:make-trie
+	     (with-spin ()
+	       (loop :for i :from 0 :below char-code-limit
+	         :collect (char-name (code-char i))
+		 :do (when (zerop (mod i 1000)) (spin))))))))
 
 (defun complete-char-name (str all)
   ;; (complete-string-sequence
   ;;  str all (mapcar #'(lambda (x) (string (car x))) (nos:environment))))
-  (complete-list (string-upcase str) (length str) all (char-names)))
+  ;; (complete-list (string-upcase str) (length str) all (char-names))
+  (complete-dictionary-word (string-upcase str) (length str) all (char-names))
+  )
 
 ;; EOF
