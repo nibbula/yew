@@ -71,31 +71,44 @@ Summary:
 
 (defun find-node (letters tree)
   "Return the part of ‘tree’ that matches the list of ‘letters’."
-  (let* (sub-string
-	 (branch
+  (flet ((str-match (ll s)
+	   (let ((i 0) (l ll) (len (length s)))
+	     (loop
+	       :while (and (and l (< i len)) (char= (char s i) (car l)))
+	       :do (incf i) (pop l))
+	     (cond
+	       ((= i len) ; got to the end of the string
+		;; either there's no endings, or if there's some letters left,
+		;; we didn't match.
+		(return-from find-node nil))
+	       ((null l)
+		;; There is some string left, but no letters, so that's an
+		;; ending.
+		(return-from find-node (list (subseq s i))))
+	       (t
+		;; There are some letters left and some string, so this isn't
+		;; an ending.
+		nil)))))
+  (let* ((branch
 	   (find-if
 	    (_ (typecase _
 		 (character
 		  (if (null (car letters))
-		      (return-from find-node tree) ; nil
+		      (return-from find-node tree)
 		      (char= _ (car letters))))
 		 (symbol
 		  ;; (assert (eq _ :end))
 		  (when (null letters)
 		    (return-from find-node tree)))
 		 (string
-		  (if (equal _ (or sub-string
-				   (setf sub-string
-					 (coerce letters 'string))))
-		      (return-from find-node tree)
-		      nil))
+		  (str-match letters _))
 		 (t
 		  (error "Unexpected ~s in tree ~s."
 			 (type-of _) _))))
 	    tree :key (_ (if (consp _) (car _) _)))))
     (if (null branch)
-	(return-from find-node (if (null (rest letters)) tree nil))
-	(find-node (rest letters) (rest branch)))))
+	(return-from find-node (if (null letters) tree nil))
+	(find-node (rest letters) (rest branch))))))
 
 ;; @@@ We should probably change lookup to use find-node.
 
@@ -149,7 +162,9 @@ Summary:
 		 (etypecase branch
 		   (symbol
 		    (assert (eq branch :end))
-		    (push (coerce prefix 'string) result))
+		    (if (null prefix)
+			nil
+			(push (coerce prefix 'string) result)))
 		   (string
 		    (push (concatenate 'string (coerce prefix 'string) branch)
 			  result))
