@@ -164,10 +164,31 @@
 	(run-group-name 'lookup))
       (prog1 t (format t "---Skipped---~%"))))
 
+(defparameter *endings-list* '("dharma" "dhoti's" "dhoti" "dhotis"))
+
+(deftests (endings)
+  (null (endings "dhi" (make-trie '("dharma" "dhoti" "dhotis"))))
+  (equal (endings "dh" (make-trie '("dharma" "dhoti" "dhotis")))
+	 '("arma" "oti" "otis"))
+  (equal (endings "dho" (make-trie '("dharma" "dhoti" "dhotis")))
+	 '("ti" "tis"))
+  (null (endings "be" (make-trie '("foo" "bar" "baz"))))
+  (equal (endings "b" (make-trie '("foo" "bar" "baz")))
+	 '("ar" "az"))
+  (equal (endings "fo" (make-trie '("foo" "bar" "baz")))
+	 '("o"))
+  (equal (endings "foo" (make-trie '("foo" "bar" "baz")))
+	 nil)
+  (equal (endings "bar" (make-trie '("foo" "bar" "baz")))
+	 nil)
+  )
+
 (deftests (prefix-tree-all :doc "All test for prefix-tree.")
   "foo"
   small-lookup
-  big-lookup)
+  big-lookup
+  endings
+  )
 
 (defun run ()
   (run-group-name 'prefix-tree-all :verbose t))
