@@ -50,7 +50,7 @@ sequence. Upon reaching the end it returns false.
 Note that this means the sequence can't contain NIL.
 
 Dictionary completion:
-  [not finished yet]
+  [not documented yet]
 ")
   (:use :cl :dlib :opsys :glob :collections :char-util :dlib-misc :reader-ext
 	:syntax :syntax-lisp :terminal #|:terminal-ansi |#
@@ -1185,8 +1185,11 @@ defaults to the current package. Return how many symbols there were."
      :count (length endings))))
 
 (defun dictionary-completion (word &optional (dict *dictionary*))
-  (string-completion word
-		     (mapcar (_ (s+ word _)) (prefix-tree:endings word dict))))
+  (let ((word-list
+	  (mapcar (_ (s+ word _)) (prefix-tree:endings word dict))))
+    (when (prefix-tree:lookup word dict)
+      (setf word-list (cons word word-list)))
+    (string-completion word word-list)))
 
 (defun complete-dictionary-word (context pos all &optional (dict *dictionary*))
   "Completion function for dictionary words."

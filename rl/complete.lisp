@@ -244,14 +244,19 @@ terminal."
     (setf (keep-message e) t)
     ))
 
-(defun show-completions (e &key func string)
+
+
+(defun show-completions (e &key func string start-from)
   (with-slots (completion-func buf) e
     (setf func (or func completion-func))
     (if (not func)
       (beep e "No completion installed.")
       (progn
-	(let* ((result
-		(funcall func (or string (fatchar-string-to-string buf))
+	(let* ((str (or string (fatchar-string-to-string buf)))
+	       (result
+		(funcall func (if (and start-from (plusp start-from))
+				  (subseq str start-from (first-point e))
+				  str)
 			 (first-point e) t))
 	       comp-count)
 	  (if (not (typep result 'completion-result))
@@ -260,7 +265,7 @@ terminal."
 		(beep e "Completion function returned NIL!"))
 	      (progn
 		(setf comp-count (completion-result-count result))
-		(dbugf 'completion "result2 = ~a ~s~%" (type-of result) result)
+		(dbugf :completion "result2 = ~a ~s~%" (type-of result) result)
 		(when (and comp-count (> comp-count 0))
 		  (setf (did-complete e) t)
 		  (set-completion-count
@@ -306,11 +311,15 @@ Return the completion result, or NIL if there wasn't one."
 	     (comp (completion-result-completion result))
 	     (replace-pos (completion-result-insert-position result))
 	     (unique (completion-result-unique result)))
-	(dbugf 'completion "result = ~a ~s~%" (type-of result) result)
+	;; (dbugf :completion "result = ~a ~s~%" (type-of result) result)
+	;; (dbugf :completion "(last-completion-not-unique-count e) ~s~%~
+        ;;                       (last-command-was-completion e) ~s~%"
+	;;        (last-completion-not-unique-count e)
+	;;        (last-command-was-completion e))
 	(when (and (not (zerop (last-completion-not-unique-count e)))
 		   (last-command-was-completion e))
 	  (log-message e "show mo")
-	  (show-completions e :func function))
+	  (show-completions e :func function :start-from start-from))
 	(setf (did-complete e) t)
 	(if (not unique)
 	    (set-completion-count e (1+ (last-completion-not-unique-count e)))
