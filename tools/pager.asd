@@ -5,7 +5,7 @@
 (defsystem pager
     :name               "pager"
     :description        "something like more or less"
-    :version            "0.1.0"
+    :version            "0.1.1"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :license            "GPL-3.0-only"
     :source-control	:git

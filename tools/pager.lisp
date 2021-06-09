@@ -247,6 +247,9 @@ The shell command takes any number of file names.
     :documentation "Style for the character to indicating empty lines. Read
 from theme value (:program :empty-line-indicator :style)")
    ;; options
+   (options
+    :initarg :options :accessor pager-options :initform nil
+    :documentation "Option list passed in.")
    (show-line-numbers
     :initarg :show-line-numbers :accessor pager-show-line-numbers
     :initform nil :type boolean
@@ -1389,7 +1392,7 @@ list containing strings and lists."
   "Set a pager option. Propmpts for what option to toggle."
   (display-message "Set option: ")
   (with-slots (show-line-numbers show-modeline ignore-case wrap-lines raw-output
-	       pass-special color-bytes page-size) pager
+	       pass-special color-bytes page-size options stream seekable) pager
     (macrolet ((toggle-option (option)
 		 `(progn
 		    (setf ,option (not ,option))
@@ -1406,6 +1409,16 @@ list containing strings and lists."
 	  (#\r (toggle-option raw-output))
 	  (#\p (toggle-option pass-special))
 	  (#\c (toggle-option color-bytes))
+	  (#\b
+	   (let ((is-binary (getf options :binary)))
+	     (cond
+	       ((and (not is-binary)
+		     (not (stream-file-p stream)))
+		(message pager
+		 "Sorry, I can't switch to binary on an un-seekable stream."))
+	       (t
+		 (setf (getf options :binary) (not is-binary))
+		 (throw 'do-over 'do-over)))))
 	  (otherwise
 	   (message pager "Unknown option '~a'" (nice-char char))))))))
 
@@ -2175,7 +2188,7 @@ q - Abort")
 (defvar *sub-pager* nil
   "Indicator that we're in a pager inside a pager.")
 
-(defun page (files &key pager close-me suspended options)
+(defun %page (files &key pager close-me suspended options)
   "View a stream with the pager. Return whether we were suspended or not."
   (with-terminal ()
 ;;  (with-new-terminal (:ansi)
@@ -2191,6 +2204,7 @@ q - Abort")
 				   :stream stream
 				   :page-size (1- (tt-height))
 				   :file-list files
+				   :options options
 				   options))))
 	(with-slots (page-size file-list file-index suspend-flag seekable stream
 		     (quit-flag inator::quit-flag)) *pager*
@@ -2255,6 +2269,17 @@ q - Abort")
 	      (tt-disable-events :mouse-buttons))
 	    (tt-finish-output)))))
   suspended)
+
+(defun page (files &key pager close-me suspended options)
+  "View a stream with the pager. Return whether we were suspended or not."
+  (let (result)
+    (loop :while (eq 'do-over
+		     (setf result
+			   (catch 'do-over
+			     (%page files :pager pager :close-me close-me
+					  :suspended suspended
+					  :options options)))))
+    result))
 
 (defun resume (suspended)
   (with-slots (pager stream close-me) suspended
@@ -2401,13 +2426,13 @@ then the key. Press 'q' to exit this help.
 	      &rest options)
   "View the file with the pager. Prompt for a file name if one isn't given.
 Options are:
-  :show-line-numbers - True to show line numbers.
-  :ignore-case       - True to ignore case in searches.
-  :raw-output        - True to output characters without processing.
-  :pass-special      - True to pass special escape sequences to the terminal.
-  :follow-mode       - True to start in follow mode.
-  :binary            - True to use binary mode.
-  :color-bytes       - True to use color bytes mode."
+  :show-line-numbers - Show line numbers.
+  :ignore-case       - Ignore case in searches.
+  :raw-output        - Output characters without processing.
+  :pass-special      - Pass special escape sequences to the terminal.
+  :follow-mode       - Start in follow mode.
+  :binary            - Use binary mode.
+  :color-bytes       - Use color bytes mode."
   ;; Let's just say if you page nil, nothing happens.
   ;; This makes it nicer to quit from pick-file without getting an error.
   (when (and files-supplied-p (not file-or-files))
