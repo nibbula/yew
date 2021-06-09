@@ -615,39 +615,44 @@ read until we get an EOF."
     ;; (setf seekable (seekable-p))
     (handler-case
 	(progn
-	  (when (not got-eof)
-	    (let ((read-count 0)
-		  ;;(read-size (* (hex-len) line-count))
-		  (read-size (* (line-bytes) (1- (tt-height))))
-		  (pos (or (and (not got-eof) (file-position stream)) 0)))
-	      (dbugf :pager "read-size ~s pos ~s~%" read-size pos)
-	      (when (not seekable)
-		(error "Unseekable binary streams not implemented yet."))
-	      (when (< (length buffer) read-size)
-		(dbugf :pager "adjusting to ~s~%" read-size)
-		(setf buffer (adjust-array buffer read-size)))
-	      (when (/= byte-pos pos)
-		(dbugf :pager "seeking to ~s~%" byte-pos)
-		(file-position stream byte-pos))
-	      (unwind-protect
-		   (progn
-		     ;; (when (zerop line-count)
-		     ;;   @@@ read the whole rest of an unseekable stream into
-		     ;;   the buffer
-		     ;;   )
-		     (setf buffer-start byte-pos
-			   read-count (read-sequence buffer stream))
-		     ;;(incf byte-count read-count)
-		     (setf byte-count (file-length stream))
-		     (dbugf :pager "read-count ~s stream ~s~%" read-count stream)
-		     (when (< read-count (length buffer))
-		       (setf got-eof t))
-		     ;; @@@ process it ?
-		     ;; (if raw-output
-		     ;; 	 line
-		     ;; 	 (process-line line))
-		     ;; (setf byte-pos (+ buffer-start (length buffer)))
-		     )))))
+	  (let* ((read-count 0)
+		 (read-size (* (line-bytes) (1- (tt-height))))
+		 (file-len (file-length stream))
+		 (pos (or (file-position stream)
+			  (clamp byte-pos 0 file-len)))
+		seek-succeeded)
+	    ;; (dbugf :pager "read-size ~s pos ~s~%" read-size pos)
+	    (when (not seekable)
+	      (error "Unseekable binary streams not implemented yet."))
+	    (when (< (length buffer) read-size)
+	      ;; (dbugf :pager "adjusting to ~s~%" read-size)
+	      (setf buffer (adjust-array buffer read-size)))
+	    (when (/= byte-pos pos)
+	      (clampf byte-pos 0 (max 0 (- file-len read-size)))
+	      ;; (dbugf :pager "seeking to ~s~%" byte-pos)
+	      (setf seek-succeeded (file-position stream byte-pos))
+	      (assert seek-succeeded))
+	    (unwind-protect
+		 (progn
+		   ;; (when (zerop line-count)
+		   ;;   @@@ read the whole rest of an unseekable stream into
+		   ;;   the buffer
+		   ;;   )
+		   (setf buffer-start byte-pos
+			 read-count (read-sequence buffer stream))
+		   (setf byte-count file-len)
+		   ;; (dbugf :pager "byte-count ~s read-count ~s stream ~s~%"
+		   ;; 	  byte-count read-count stream)
+		   (when (< read-count (length buffer))
+		     (setf got-eof t)
+		     ;; (setf buffer-start (- byte-count read-count))
+		     )
+		   ;; @@@ process it ?
+		   ;; (if raw-output
+		   ;; 	 line
+		   ;; 	 (process-line line))
+		   ;; (setf byte-pos (+ buffer-start (length buffer)))
+		   ))))
       (end-of-file (c)
 	;; Be quiet about EOFs. Some systems seem to get them more than others.
 	(declare (ignore c))
@@ -1048,7 +1053,7 @@ line : |----||-------||---------||---|
 	       (incf i))
 	     (setf #| last-line l |#
 		   l (cdr l))))
-      (dbugf :pager "final y = ~s~%" y)
+      ;; (dbugf :pager "final y = ~s~%" y)
       ;; Fill the rest of the screen with twiddles to indicate emptiness.
       ;; (when (and missing-newline last-line (= (1- i) count))
       ;; 	(tt-move-to (1- y) 0)
@@ -1079,18 +1084,38 @@ line : |----||-------||---------||---|
   ;;(1- (truncate (/ 3/4 (/ 1 (tt-width)) 3))))
   (truncate (/ 3/4 (/ 1 (tt-width)) 3)))
 
+(defun search-byte-ranges (pager string)
+  "Return byte ranges in the page which contain the ‘string’."
+  (when (and string (not (zerop (length string))))
+    (with-slots (byte-pos buffer buffer-start) pager
+      (let ((byte-str (unicode:string-to-utf8b-bytes string)))
+	(loop
+	  :with pos = 0
+	  :while (setf pos (search byte-str buffer :start2 pos))
+	  :collect (cons pos (min (+ pos (length byte-str))
+				  (length buffer)))
+	  :do (incf pos (length byte-str)))))))
+
+(defun in-ranges (i ranges)
+  "Return true if ‘i’ is in ‘ranges’."
+  (loop :for r :in ranges
+    :when (and (>= i (car r)) (<= i (cdr r)))
+    :do (return t)))
+
 (defmethod update-display ((pager binary-pager))
   "Display the lines already read, starting from the current."
   (tt-move-to 0 0)
   (tt-erase-below)
   (with-slots (byte-pos buffer buffer-start left page-size color-bytes message
-	       show-modeline)
+	       show-modeline search-string search-match-char)
       pager
     (get-theme-settings pager)
     (let ((y 0)
 	  (len 0)
 	  (hex-len (hex-len))
-	  (printable (make-string-output-stream)))
+	  (printable (make-fat-string-output-stream))
+	  (ranges (search-byte-ranges pager search-string))
+	  (in-search nil))
       (assert (>= byte-pos buffer-start))
       (loop
 	 :for i :from (- byte-pos buffer-start) :below (length buffer)
@@ -1098,23 +1123,29 @@ line : |----||-------||---------||---|
 	   ;; @@@ implement offset
 	   ;; (when (and show-offset (zerop len))
 	   ;;   )
-	   (if color-bytes
-	       (tt-color (if (> (aref buffer i) 128)
-			     :black
-			     :white)
-			 (vector :gray8 (aref buffer i)))
-	       (tt-color :green :black))
+	   (cond
+	     ((and ranges (setf in-search (in-ranges i ranges)))
+	      (tt-color (fatchar-fg search-match-char)
+			(fatchar-bg search-match-char)))
+	     (color-bytes
+	      (tt-color (if (> (aref buffer i) 128)
+			    :black
+			    :white)
+			(vector :gray8 (aref buffer i))))
+	     (t
+	      (tt-color :green :black)))
 	   (tt-format "~2,'0x " (aref buffer i))
 	   (incf len 3)
 	   (princ (if (and (graphic-char-p (code-char (aref buffer i)))
 			   (= (display-length (code-char (aref buffer i))) 1))
-		      (code-char (aref buffer i))
-		      ".")
+		      (make-fatchar :c (code-char (aref buffer i))
+				    :fg (if in-search :red :white))
+		      (make-fatchar :c #\. :fg :blue))
 		  printable)
 	   (when (>= len hex-len)
-	     (tt-color :white :black)
-	     (loop :for c :across (get-output-stream-string printable) :do
-		  (tt-color (if (eql c #\.) :blue :white) :black)
+	     ;; (tt-color :white :black)
+	     (loop :for c :across (get-output-stream-fat-string printable) :do
+		  ;; (tt-color (if (eql c #\.) :blue :white) :black)
 		  (tt-write-char c)
 		  (incf len))
 	     (incf y)
@@ -1128,7 +1159,7 @@ line : |----||-------||---------||---|
 	;; (loop :while (<= len (+ hex-len (- 3 (mod hex-len 3))))
 	(loop :while (< len hex-len)
 	   :do (incf len) (tt-write-char #\space))
-	(loop :for c :across (get-output-stream-string printable) :do
+	(loop :for c :across (get-output-stream-fat-string printable) :do
 	     (tt-color (if (eql c #\.) :blue :white) :black)
 	     (tt-write-char c))
 	(when (< len (1- (tt-width)))
@@ -1249,7 +1280,12 @@ list containing strings and lists."
      (all-matches str (fatchar-string-to-string
 		       (span-to-fatchar-string line))))))
 
-(defun search-for (str &optional (direction :forward))
+(defgeneric search-for (pager str &key direction)
+  (:documentation
+   "Search for ‘str’. ‘direction’ can be :forward or :backward, defaulting to
+:forward."))
+
+(defmethod search-for ((pager text-pager) str &key (direction :forward))
   (with-slots (lines count line page-size ignore-case) *pager*
     (let ((search-regexp (if ignore-case (s+ "(?i)" str) str))
 	  ll l)
@@ -1278,6 +1314,56 @@ list containing strings and lists."
 	 (if l
 	     (setf line (line-number l))
 	     nil))
+	(otherwise
+	 (error "Search direction should be either :forward or :backward."))))))
+
+(defmethod search-for ((pager binary-pager) str &key (direction :forward))
+  (with-slots (buffer buffer-start byte-count byte-pos page-size ignore-case
+	       got-eof)
+      *pager*
+    (let (;(search-regexp (if ignore-case (s+ "(?i)" str) str)))
+	  (byte-str (unicode:string-to-utf8b-bytes str)))
+      (case direction
+	(:forward
+	 (loop :with pos
+	   :do
+	      (when (setf pos (search byte-str buffer))
+		(let* ((line-bytes (line-bytes))
+		       (new-pos
+			 (+ buffer-start
+			    (* (1- (mod (+ buffer-start pos) line-bytes))
+			       line-bytes))))
+		  (setf byte-pos (clamp new-pos 0
+					(+ buffer-start (length buffer)))))
+		(return t))
+	      (next-page pager)
+	    :while (not got-eof)))
+	(:backward
+	 ;; (loop
+	 ;;   :with buffer-string = (unicode:utf8b-bytes-to-string
+	 ;; 			  (subseq buffer 0 (- byte-pos buffer-start)))
+	 ;;   :and matches
+	 ;;   :while (not (zerop byte-pos))
+	 ;;   :do
+	 ;;      (setf matches (all-matches search-regexp buffer-string))
+	 ;;      (when matches
+	 ;; 	(return matches))
+	 ;;      (previous-page pager)
+	 ;;   :do (setf buffer-string (unicode:utf8b-bytes-to-string buffer))))
+	 (loop
+	   :with pos
+	   :do
+	      (previous-page pager)
+	      (when (setf pos (search byte-str buffer :from-end t))
+		(let* ((line-bytes (line-bytes))
+		       (new-pos
+			 (+ buffer-start
+			    (* (1- (mod (+ buffer-start pos) line-bytes))
+			       line-bytes))))
+		  (setf byte-pos (clamp new-pos 0
+					(+ buffer-start (length buffer)))))
+		(return t))
+	   :while (> byte-pos 0)))
 	(otherwise
 	 (error "Search direction should be either :forward or :backward."))))))
 
@@ -1574,8 +1660,9 @@ byte-pos."
     (let ( #| (page-bytes (* page-size (line-bytes))) |#)
       ;;(when (> (+ byte-pos page-bytes) byte-count)
       (read-input pager page-size)
-      (when (and (>= byte-pos byte-count) got-eof)
-	(setf byte-pos (1- byte-count))))))
+      ;; (when (and (>= byte-pos byte-count) got-eof)
+      ;; 	(setf byte-pos (1- byte-count)))
+      )))
 
 (defgeneric go-to-line (pager n)
   (:documentation "Go to line N."))
@@ -1783,7 +1870,7 @@ byte-pos."
     (setf search-string (ask "Search for: "))
     (block nil
       (handler-case
-	  (when (not (search-for search-string))
+	  (when (not (search-for pager search-string))
 	    (message pager "--Not found--"))
 	(ppcre-syntax-error (c)
 	  (fui:display-text
@@ -1802,25 +1889,53 @@ byte-pos."
   "Search backwards for something in the stream."
   (with-slots (search-string) pager
     (setf search-string (ask "Search backward for: "))
-    (when (not (search-for search-string :backward))
+    (when (not (search-for pager search-string :direction :backward))
       (message pager "--Not found--"))))
 
-(defun search-next (pager)
-  "Search for the next occurance of the current search in the stream."
+(defgeneric search-next (pager)
+  (:documentation
+   "Search for the next occurrence of the current search in the stream."))
+
+(defmethod search-next ((pager text-pager))
+  "Search for the next occurrence of the current search in the stream."
   (with-slots (line search-string) pager
     (incf line)
-    (when (not (search-for search-string))
+    (when (not (search-for pager search-string))
       (decf line)
       (message pager "--Not found--"))))
 
-(defun search-previous (pager)
+(defmethod search-next ((pager binary-pager))
+  "Search for the next occurrence of the current search in the stream."
+  (with-slots (byte-pos search-string) pager
+    (let ((byte-str (unicode:string-to-utf8b-bytes search-string)))
+      (incf byte-pos (length byte-str))
+      (when (not (search-for pager search-string))
+	(decf byte-pos (length byte-str))
+	(message pager "--Not found--")))))
+
+(defgeneric search-previous (pager)
+  (:documentation
+   "Search for the previous occurrence of the current search in the stream."))
+
+(defmethod search-previous ((pager text-pager))
   "Search for the previous occurance of the current search in the stream."
   (with-slots (line search-string) pager
     (if (not (zerop line))
 	(progn
 	  (decf line)
-	  (when (not (search-for search-string :backward))
+	  (when (not (search-for pager search-string :direction :backward))
 	    (incf line)
+	    (message pager "--Not found--")))
+	(message pager "Search stopped at the first line."))))
+
+(defmethod search-previous ((pager binary-pager))
+  "Search for the previous occurance of the current search in the stream."
+  (with-slots (byte-pos search-string) pager
+    (if (not (zerop byte-pos))
+	(progn
+	  (decf byte-pos (line-bytes))
+	  (when (not (search-for pager search-string :direction :backward))
+	    (incf byte-pos (line-bytes))
 	    (message pager "--Not found--")))
 	(message pager "Search stopped at the first line."))))
 
