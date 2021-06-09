@@ -12,6 +12,8 @@
    #:render-span
    #:print-string
    #:fat-string-output-stream
+   #:make-fat-string-output-stream
+   #:get-output-stream-fat-string
    #:write-fatchar
    #:write-fat-string
    #:with-output-to-fat-string
@@ -219,6 +221,16 @@ colinc, and the space character for padchar.
   (declare (ignore initargs))
   (setf (fat-string-string o)
 	(make-stretchy-vector 40 :element-type 'fatchar)))
+
+(defun make-fat-string-output-stream ()
+  (make-instance 'fat-string-output-stream))
+
+(defun get-output-stream-fat-string (stream)
+  (with-slots (column) stream
+    (let ((s (fat-string-string stream)))
+      (prog1 (displaced-subseq s 0 (fill-pointer s))
+	(setf column 0
+	      (fill-pointer s) 0)))))
 
 (defmethod print-object ((obj fat-string-output-stream) stream)
   (print-unreadable-object (obj stream :identity t :type t)
