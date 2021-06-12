@@ -55,4 +55,4 @@ not adding things for completeness.
 
 There's some very incomplete preliminary documentation in doc.org.
 
-*Note* that this is developed in [yew](https://github.com/nibbula/yew) and infrequently update from there.
+*Note* that this is developed in [yew](https://github.com/nibbula/yew) and is infrequently updated from there.

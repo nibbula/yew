@@ -27,4 +27,4 @@ customization, removes clutter from the command arguments, and preserves
 compatibility. If you want to change the command line arguments to suite your
 use, you can do so easily, and it shouldn't affect anything else.
 
-*Note* that this is depends on [yew](https://github.com/nibbula/yew) and infrequently updated from there.
+*Note* that this depends on [yew](https://github.com/nibbula/yew) and is infrequently updated from there.

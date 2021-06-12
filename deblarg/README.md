@@ -8,4 +8,4 @@ decent city folk would likely be better served by a right fancy debugger in
 [3]: https://github.com/slime/slime
 [4]: https://github.com/joaotavora/sly
 
-*Note* that this is depends on [yew](https://github.com/nibbula/yew) and infrequently updated from there.
+*Note* that this depends on [yew](https://github.com/nibbula/yew) and is infrequently updated from there.
