@@ -419,6 +419,16 @@ not to print one.")
     :initform nil :type boolean
     :documentation "True to keep the region active after the command is done.
 Otherwise the region is deactivated every command loop.")
+   (matching-char-pos
+    :initarg :matching-char-pos :accessor line-editor-matching-char-pos
+    :initform nil :type (or null fixnum)
+    :documentation
+    "Position of a currently highlighted matching character, or NIL for none.")
+   (saved-matching-char
+    :initarg :saved-matching-char :accessor line-editor-saved-matching-char
+    :initform nil
+    :documentation
+    "Copy of the matching highlighted character to restore, or NIL for none.")
 
    (non-word-chars
     :accessor non-word-chars

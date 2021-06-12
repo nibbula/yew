@@ -742,22 +742,24 @@ Don't do anything with less than 2 characters."
 in order, \"{open}{close}...\".")
 
 (defun is-matched-char (char)
-  (position char *matched-pairs*))
+  (oposition char *matched-pairs*))
 
 (defun is-open-char (char)
-  (let ((pos (position char *matched-pairs*)))
+  (let ((pos (oposition char *matched-pairs*)))
     (and pos (evenp pos))))
 
 (defun is-close-char (char)
-  (let ((pos (position char *matched-pairs*)))
+  (let ((pos (oposition char *matched-pairs*)))
     (and pos (oddp pos))))
 
 (defun match-char (char)
-  (let ((pos (position char *matched-pairs*)))
+  (let ((pos (oposition char *matched-pairs*)))
     (and pos (char *matched-pairs*
 		   (if (evenp pos) (1+ pos) (1- pos))))))
 
 (defun flash-paren (e)
+  "Move the cursor momentarily to the matching opening character for the one
+just before the cursor."
   (with-slots (buf) e
     (with-context ()
       (let* ((str (buffer-string buf))
@@ -772,41 +774,43 @@ in order, \"{open}{close}...\".")
 	    (beep e "No match."))))))
 
 (defun highlight-matching-parentheses (e)
+  "Hightlight the match of the current character if it's an opening character,
+ or of the previous, if it's a closing character."
   (with-slots (buf) e
     (do-contexts (e)
       (with-context ()
-	(if (eq *paren-match-style* :highlight)
-	    (cond
-	      ((is-open-char (aref buf point))
-	       (highlight-paren e point))
-	      ((and (plusp point)
-		    (is-close-char (aref buf (1- point))))
-	       (highlight-paren e (1- point)))))))))
+	(when (eq *paren-match-style* :highlight)
+	  (log-message e "highlight paren")
+	  (cond
+	    ((and (< point (length buf)) (is-open-char (aref buf point)))
+	     (highlight-paren e point))
+	    ((and (plusp point)
+		  (is-close-char (aref buf (1- point))))
+	     (highlight-paren e (1- point)))))))))
 
-(defun highlight-paren (e pos)
+(defun highlight-paren (e pos &key (state t))
+  "Hightlight the character at ‘pos’, or un-highlight if ‘state’ is nil."
   (let* ((str (buffer-string (buf e)))
-	 (ppos (matching-paren-position str :position pos :char (aref str pos)))
-	 #|offset offset-back |#)
-    (log-message e "pos = ~s ppos = ~s" pos ppos)
-    (if ppos
-	;; (let ((saved-col (screen-col e)))
-	;;   (declare (ignore saved-col))
-	;;   (cond
-	;;     ((> ppos pos)
-	;;      (setf offset (- ppos pos)
-	;; 	   offset-back (- (+ offset 1))))
-	;;     (t
-	;;      (setf offset (- (1+ (- pos ppos)))
-	;; 	   offset-back (- pos ppos))))
-	;;   (move-over e offset :start (point e))
-	;;   (tt-bold t)
-	;;   ;;(tt-write-char (match-char (aref str pos)))
-	;;   (display-char e (match-char (aref str pos)))
-	;;   (tt-bold nil)
-	;;   (move-over e offset-back :start (1+ ppos)))
-	(pushnew :bold (fatchar-attrs (aref (buf e) ppos)))
-	;; @@@ but how/when to un-bold??
-	)))
+	 (ppos 0))
+    (when (< pos (length str))
+      (setf ppos (matching-paren-position str :position pos
+					      :char (osimplify (aref str pos))))
+      (log-message e "pos = ~s ppos = ~s" pos ppos)
+      (when ppos
+	(with-slots (matching-char-pos saved-matching-char) e
+	  (cond
+	    (state
+	     ;; (add-attr :bold (aref (buf e) ppos))
+	     (setf saved-matching-char (copy-fatchar (aref (buf e) ppos))
+		   matching-char-pos pos)
+	     (styled-char (theme:theme-value theme:*theme*
+			   '(:program :editor :paren-highlight :style))
+			  (aref (buf e) ppos)))
+	     (t
+	      ;; (remove-attr :bold (aref (buf e) ppos))
+	      (setf matching-char-pos nil
+		    (aref (buf e) ppos) saved-matching-char
+		    saved-matching-char nil))))))))
 
 (defsingle finish-line (e)
   "Add any missing close parentheses and accept the line."

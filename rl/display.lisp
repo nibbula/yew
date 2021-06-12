@@ -280,12 +280,12 @@ in it."
 		     (or (functionp output-prompt-func)
 			 (fboundp output-prompt-func)))
 		(with-output-to-string (*standard-output*)
-		  (log-message e "do-prompt output-prompt-func -> ~s"
-			       output-prompt-func)
+		  ;; (log-message e "make-prompt output-prompt-func -> ~s"
+		  ;; 	       output-prompt-func)
 		  (or (ignore-errors (funcall output-prompt-func e prompt))
 		      "Your prompt Function failed> "))
 		(progn
-		  (log-message e "do-prompt default-output-prompt")
+		  ;; (log-message e "make-prompt default-output-prompt")
 		  (if (and (not prompt) (not no-default))
 		      (default-output-prompt e prompt)
 		      prompt)

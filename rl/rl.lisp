@@ -457,7 +457,7 @@ Keyword arguments:
     (with-slots (quit-flag exit-flag command buf point last-command terminal
 		 screen-relative-row screen-col debugging temporary-message
 		 keep-message filter-hook region-active buf-str
-		 keep-region-active auto-suggest-p) e
+		 keep-region-active auto-suggest-p matching-char-pos) e
       ;; (multiple-value-setq (screen-relative-row screen-col)
       ;; 	(terminal-get-cursor-position *terminal*))
       (let ((result nil))
@@ -485,6 +485,8 @@ Keyword arguments:
 			     ;;point command)
 			     command (inator-contexts e))
 		    (show-message-log e))
+		  (when matching-char-pos
+		    (highlight-paren e matching-char-pos :state nil))
 		  ;; @@ Is this really where I want it?
 		  (when (line-editor-output-callback e)
 		    (tt-save-cursor)
@@ -518,8 +520,7 @@ Keyword arguments:
 			(when exit-flag (setf result quit-value))
 			;; @@@ perhaps this should be done by a hook?
 			(run-hooks *post-command-hook*)
-			(highlight-matching-parentheses e)
-			))
+			(highlight-matching-parentheses e)))
 		  (setf last-command command)
 		  (run-hooks filter-hook e)
 		  ;; (when (need-to-recolor e)
