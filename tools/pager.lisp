@@ -1087,6 +1087,30 @@ line : |----||-------||---------||---|
   ;;(1- (truncate (/ 3/4 (/ 1 (tt-width)) 3))))
   (truncate (/ 3/4 (/ 1 (tt-width)) 3)))
 
+(defun search-bytes (string buffer &key start2 from-end)
+  "Return the position of ‘string’ in a byte array ‘buffer’. Respects the
+‘ignore-case’ option of the pager. ‘string’ can be a character string or a
+vector of character codes, which are interpreted as UTF8B octets. ‘start2’ is
+the position to start at in ‘buffer’. If ‘from-end’ is true, search from the
+end."
+  (when (not start2)
+    (setf start2 0))
+  (let ((byte-string
+	  (typecase string
+	    (string
+	     (unicode:string-to-utf8b-bytes string))
+	    (vector ;; assume it's a (array (unsigned-byte 8))
+	     string))))
+    (cond
+      ((pager-ignore-case *pager*)
+       (search byte-string buffer
+	       :test (lambda (x y) (or (eql x y)
+				       (eql (char-upcase (code-char x))
+					    (char-upcase (code-char y)))))
+	       :start2 start2 :from-end from-end))
+      (t
+       (search byte-string buffer :start2 start2 :from-end from-end)))))
+
 (defun search-byte-ranges (pager string)
   "Return byte ranges in the page which contain the ‘string’."
   (when (and string (not (zerop (length string))))
@@ -1094,8 +1118,8 @@ line : |----||-------||---------||---|
       (let ((byte-str (unicode:string-to-utf8b-bytes string)))
 	(loop
 	  :with pos = 0
-	  :while (setf pos (search byte-str buffer :start2 pos))
-	  :collect (cons pos (min (+ pos (length byte-str))
+	  :while (setf pos (search-bytes byte-str buffer :start2 pos))
+	  :collect (cons pos (min (+ pos (1- (length byte-str)))
 				  (length buffer)))
 	  :do (incf pos (length byte-str)))))))
 
@@ -1330,34 +1354,28 @@ list containing strings and lists."
 	(:forward
 	 (loop :with pos
 	   :do
-	      (when (setf pos (search byte-str buffer))
-		(let* ((line-bytes (line-bytes))
+	      (when (setf pos (search-bytes byte-str buffer))
+		(let* (#| (line-bytes (line-bytes)) |#
 		       (new-pos
-			 (+ buffer-start
-			    (* (1- (mod (+ buffer-start pos) line-bytes))
-			       line-bytes))))
+			 ;; (+ buffer-start
+			 ;;    (* (1- (mod (+ buffer-start pos) line-bytes))
+			 ;;       line-bytes))
+			 ;; ))
+			 (+ buffer-start pos)))
 		  (setf byte-pos (clamp new-pos 0
-					(+ buffer-start (length buffer)))))
+					(+ buffer-start (length buffer))))
+		  (read-input pager page-size))
 		(return t))
-	      (next-page pager)
-	    :while (not got-eof)))
+	    :while (not got-eof)
+	    :do
+	       (setf byte-pos (+ buffer-start (length buffer)))
+	       (read-input pager page-size)))
 	(:backward
-	 ;; (loop
-	 ;;   :with buffer-string = (unicode:utf8b-bytes-to-string
-	 ;; 			  (subseq buffer 0 (- byte-pos buffer-start)))
-	 ;;   :and matches
-	 ;;   :while (not (zerop byte-pos))
-	 ;;   :do
-	 ;;      (setf matches (all-matches search-regexp buffer-string))
-	 ;;      (when matches
-	 ;; 	(return matches))
-	 ;;      (previous-page pager)
-	 ;;   :do (setf buffer-string (unicode:utf8b-bytes-to-string buffer))))
 	 (loop
 	   :with pos
 	   :do
 	      (previous-page pager)
-	      (when (setf pos (search byte-str buffer :from-end t))
+	      (when (setf pos (search-bytes byte-str buffer :from-end t))
 		(let* ((line-bytes (line-bytes))
 		       (new-pos
 			 (+ buffer-start
@@ -1872,10 +1890,8 @@ byte-pos."
 	    (go-to-line pager prefix-arg)
 	    (byte-pos-changed pager))
 	  (progn
-	    ;; (read-input pager 0)
 	    (setf byte-pos (max 0 (- byte-count page-bytes)))
-	    (byte-pos-changed pager)
-	    )))))
+	    (byte-pos-changed pager))))))
 
 (defmethod search-command ((pager pager))
   "Search forwards for something in the stream."
