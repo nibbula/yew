@@ -171,8 +171,9 @@ or a system command, designated by either a string, or a list of
 (defun view-file (thing)
   "Look at a file."
   (let* ((type (guess-type thing))
-	 (viewer (make-viewer-from (find-viewer type))))
-    (if viewer
+	 (designator (find-viewer type))
+	 (viewer))
+    (if (and designator (setf viewer (make-viewer-from designator)))
 	(invoke-viewer viewer thing)
 	(cerror "Skip the thing."
 		'no-viewer-error
