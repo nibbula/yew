@@ -24,6 +24,8 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:copy-fatchar-effects
    #:set-fatchar
    #:same-effects
+   #:add-attr
+   #:remove-attr
    #:fatchar=
    #:fatchar/=
    #:make-fat-string
@@ -118,6 +120,14 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
        (equal (fatchar-bg a) (fatchar-bg b))
        (not (set-exclusive-or (fatchar-attrs a) (fatchar-attrs b)
 			      :test #'eq))))
+
+(defun add-attr (attr c)
+  "Set ‘attr’ in fatchar ‘c’."
+  (pushnew attr (fatchar-attrs c)))
+
+(defun remove-attr (attr c)
+  "Remove ‘attr’ from fatchar ‘c’."
+  (setf (fatchar-attrs c) (delete attr (fatchar-attrs c))))
 
 (defun same-char (a b)
   "Return true if the two fatchars have the same underlying character."
@@ -395,6 +405,19 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 	 ;; Make the key reach into the fatchar for the character.
 	 :key (or (and key (_ (funcall key (fatchar-c _))))
 		  #'fatchar-c))))
+
+(defmethod oposition ((item fatchar) (string string)
+		      &key from-end test test-not key
+			(start nil start-p)
+			(end nil end-p))
+  "Position of a fatchar in a string."
+  (declare (ignorable start start-p end end-p))
+  (call-with-start-and-end
+   position
+   ((fatchar-c item) string
+	             :from-end from-end
+	             :test test :test-not test-not
+	             :key key)))
 
 (defmethod oposition-if (predicate (string fat-string)
 			 &key from-end key
