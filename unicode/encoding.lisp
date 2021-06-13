@@ -4,7 +4,33 @@
 
 (in-package :unicode)
 
+;; @@@ It would really be good to have some super-fast platform specific bulk
+;; vectorized and/or paralellized versions, like described in this:
+;; <https://arxiv.org/pdf/2010.03090.pdf> Maybe even in-place, low copying,
+;; versions?
+
 (defmacro define-string-converters (charset-name)
+  "Define two functions ‘string-to-<charset-name>-bytes’ and
+‘<charset-name>-bytes-to-string.’. They use 3 functions or macros which must be
+defined for the charset:
+   (‘%put-<charset-name>-char’ get-func set-func)
+   (‘%get-<charset-name>-char’ get-func set-func)
+   (‘%length-in-<charset-name>-bytes’ code)
+
+Where get-func and put-func are:
+  (get-func)    Returns the unit or NIL if there are no more.
+  (set-func c)  Sets the unit to ‘c’.
+
+The unit is either a character or byte depending on which direction conversion
+is happening. So:
+                             │ get-func  │ put-func
+   ──────────────────────────┼───────────┼───────────
+    %put-<charset-name>-char │ character │ byte
+    %get-<charset-name>-char │ byte      │ character
+
+%length-in-<charset-name>-bytes returns how many bytes are needed to represent
+‘code’.
+"
   (let ((encode-func (symbolify (s+ "STRING-TO-" charset-name "-BYTES")))
 	(decode-func (symbolify (s+ charset-name "-BYTES-TO-STRING")))
 	(putter-name (symbolify (s+ "%PUT-" charset-name "-CHAR")))
@@ -42,28 +68,33 @@ of characters they represent."
 		  ;; (type (simple-array (unsigned-byte 8) *) bytes)
 		  )
 	 (let ((result-length 0) result (i 0) (byte-num 0)
-	       (source-len (length bytes)))
-	   (declare (type fixnum result-length i byte-num source-len))
+	       (source-length (length bytes)))
+	   (declare (type fixnum result-length i byte-num source-length))
 	   (labels ((getter ()
-		      (prog1 (aref bytes byte-num) (incf byte-num)))
+		      (prog1 (if (< byte-num source-length)
+				 (progn
+				   (aref bytes byte-num))
+				 nil)
+			(incf byte-num)))
 		    (putter (c)
 		      (declare (type character c))
 		      (setf (char result i) c) (incf i))
-		    (fake-putter (c)
-		      (declare (ignore c)) (incf i)))
-	     (loop :while (< byte-num source-len)
-		:do (,getter-name getter fake-putter))
+		    (count-putter (c)
+		      (declare (ignore c))
+		      (incf i)))
+	     (loop :while (< byte-num source-length)
+	       :do (,getter-name getter count-putter))
 	     (setf result-length i
 		   result (make-string result-length)
 		   i 0
 		   byte-num 0)
-	     (loop :while (< byte-num source-len)
+	     (loop :while (< byte-num source-length)
 		:do (,getter-name getter putter))
 	     result))))))
 
 ;; Compibility with babel?
 
-;; @@@ Th
+;; @@@ This should probably be from the implementation or something.
 (defvar *default-character-encoding* :utf-8
   "The default encoding for characters.")
 
