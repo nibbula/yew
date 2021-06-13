@@ -14,8 +14,8 @@
     ;; :depends-on ()
     :components
     ((:file "package")
-     (:file "encoding")
-     (:file "utf8")
-     (:file "utf8b")
-     ;; (:file "char-width")
+     (:file "encoding" :depends-on ("package"))
+     (:file "utf8" :depends-on ("package" "encoding"))
+     (:file "utf8b" :depends-on ("package" "encoding"))
+     ;; (:file "char-width" :depends-on (""))
      ))
