@@ -10,7 +10,6 @@
 		#:point #:mark #:clipboard #:quit-flag #:command #:last-command)
   (:export
    #:widget
-   #:widget-bbox
    #:widget-rendition
    #:widget-box-p
    #:widget-read
@@ -37,11 +36,8 @@
     :documentation "True to flex height."))
   (:documentation "Bounding box in a character."))
 
-(defclass widget (line-editor)
-  ((bbox
-    :initarg :bbox :accessor widget-bbox :initform nil :type (or null flex-bbox)
-    :documentation "The bounding box.")
-   (rendition
+(defclass widget (line-editor flex-bbox)
+  ((rendition
     :initarg :rendition :accessor widget-rendition
     :initform (make-fatchar) :type fatchar
     :documentation "The default character rendition.")
@@ -66,15 +62,21 @@
   "Initialize a widget."
   (declare (ignore initargs))
 
-  ;; Set up a bounding box
-  (when (or (not (slot-boundp o 'bbox))
-	    (not (slot-value o 'bbox)))
-    (setf (slot-value o 'bbox)
-	  (multiple-value-bind (row col)
-	      (terminal-get-cursor-position *terminal*)
-	    (make-instance 'flex-bbox
-			   :x col :y row
-			   :width (tt-width) :height (tt-height)))))
+  ;; Set up the bounding box
+  (multiple-value-bind (row col)
+      (terminal-get-cursor-position *terminal*)
+    (when (or (not (slot-boundp o 'x))
+	      (not (slot-value o 'x)))
+      (setf (slot-value o 'x) col))
+    (when (or (not (slot-boundp o 'y))
+	      (not (slot-value o 'y)))
+      (setf (slot-value o 'y) row))
+    (when (or (not (slot-boundp o 'width))
+	      (not (slot-value o 'width)))
+      (setf (slot-value o 'width) (tt-width)))
+    (when (or (not (slot-boundp o 'height))
+	      (not (slot-value o 'height)))
+      (setf (slot-value o 'height) (tt-height))))
 
   ;; Add customized keys for widgets.
   (when (and (slot-boundp o 'rl::local-keymap)
@@ -144,9 +146,9 @@ fat-string, set unset effects to be from RENDITION."
 					  &key
 					    (buffer (rl::buf editor))
 					    (start-column
-					     (bbox-x (widget-bbox editor)))
+					     (bbox-x editor))
 					    (end-column
-					     (bbox-width (widget-bbox editor)))
+					     (bbox-width editor))
 					    spots column-spots
 					    (autowrap-delay
 					     (terminal-has-autowrap-delay
@@ -166,16 +168,16 @@ fat-string, set unset effects to be from RENDITION."
 	       (temporary-message rl::temporary-message)     ;; unnecessary?
 	       (region-active rl::region-active)
 	       (max-message-lines rl::max-message-lines)     ;; unnecessary?
-	       rendition bbox) e
-    (dbugf :rl "----------------~%")
+	       rendition) e
+    ;; (dbugf :rl "----------------~%")
     ;; Make sure buf-str uses buf.
     (when (not (eq (fat-string-string buf-str) buf))
       (setf (fat-string-string buf-str) buf))
     (let* (;; Shorter names for the box
-	   (x      (bbox-x bbox))
-	   (y      (bbox-y bbox))
-	   (width  (bbox-width bbox))
-	   (height (bbox-height bbox))
+	   (x      (bbox-x e))
+	   (y      (bbox-y e))
+	   (width  (bbox-width e))
+	   (height (bbox-height e))
 
 	   ;; @@@ settings that are likely leftover junk! :
 	   #|
@@ -228,7 +230,7 @@ fat-string, set unset effects to be from RENDITION."
       (tt-move-to y x)
 
       ;; Erase all the contents
-      (erase-bbox bbox :rendition rendition)
+      (erase-bbox e :rendition rendition)
 
       ;; @@@ unnecessary junk??
       ;; (setf new-last-line total-lines
@@ -289,36 +291,35 @@ fat-string, set unset effects to be from RENDITION."
 		      (+ x point-col)))))
 
 (defmethod update-display ((e widget))
-  (with-slots (bbox box-p) e
+  (with-slots (box-p) e
     (when box-p
-      (fui:draw-box (1- (bbox-x bbox)) (1- (bbox-y bbox))
-		    (+ (bbox-width bbox) 2) (+ (bbox-height bbox) 2)))
+      (fui:draw-box (1- (bbox-x e)) (1- (bbox-y e))
+		    (+ (bbox-width e) 2) (+ (bbox-height e) 2)))
     ;; Possibly resize the widget, if it's flexible.
-    (when (or (bbox-flex-width bbox) (bbox-flex-height bbox))
+    (when (or (bbox-flex-width e) (bbox-flex-height e))
       (let ((endings
 	     (editor-calculate-line-endings e :end-column
-					    (if (bbox-flex-width bbox)
+					    (if (bbox-flex-width e)
 						nil
-					      (bbox-width bbox)))))
-	(when (bbox-flex-width bbox)
+					      (bbox-width e)))))
+	(when (bbox-flex-width e)
 	  (let ((max-width
 		 (loop :for (pos . col) :in endings :maximize col)))
-	    (when (< (bbox-width bbox) max-width)
-	      (setf (bbox-width bbox) max-width))))
-	(when (bbox-flex-height bbox)
-	  (when (>= (length endings) (bbox-height bbox))
-	    (setf (bbox-height bbox) (1+ (length endings)))))))
+	    (when (< (bbox-width e) max-width)
+	      (setf (bbox-width e) max-width))))
+	(when (bbox-flex-height e)
+	  (when (>= (length endings) (bbox-height e))
+	    (setf (bbox-height e) (1+ (length endings)))))))
     (widget-redraw e)))
 
 (defsingle-method redraw ((e widget))
   "Clear the screen and redraw the prompt and the input line."
-  (with-slots ((keep-region-active rl::keep-region-active)
-	       bbox box-p) e
+  (with-slots ((keep-region-active rl::keep-region-active) box-p) e
     ;; (setf (rl::screen-col e) 0 (rl::screen-relative-row e) 0)
     (if box-p
-	(erase-area (1- (bbox-x bbox)) (1- (bbox-y bbox))
-		    (1+ (bbox-width bbox)) (1+ (bbox-height bbox)))
-	(erase-bbox bbox))
+	(erase-area (1- (bbox-x e)) (1- (bbox-y e))
+		    (1+ (bbox-width e)) (1+ (bbox-height e)))
+	(erase-bbox e))
     (tt-finish-output)
     (update-display e)
     (tt-finish-output)
@@ -328,19 +329,14 @@ fat-string, set unset effects to be from RENDITION."
 			             flex-width flex-height
 				     &allow-other-keys)
   ;; (declare (ignore initargs))
-  (let* ((args (append (copy-seq initargs)
-		       `(:bbox ,(make-instance 'flex-bbox
-			         :x x :y y :width width :height height
-				 :flex-width flex-width :flex-height flex-height)
-			       :box-p ,box-p)))
-	(w (apply #'make-instance 'widget args)))
-    (rl:rl :editor w)))
+  (declare (ignorable x y width height box-p flex-width flex-height))
+  (rl:rl :editor (apply #'make-instance 'widget initargs)))
 
 (defun make-widget (&key (x 0) (y 0) (width 33) (height 1) rendition box-p
 			 flex-width flex-height)
   (make-instance 'widget
-    :bbox (make-instance 'flex-bbox :x x :y y :width width :height height
-			 :flex-width flex-width :flex-height flex-height)
+    :x x :y y :width width :height height
+    :flex-width flex-width :flex-height flex-height
     :rendition (or rendition (make-fatchar))
     :box-p box-p))
 
