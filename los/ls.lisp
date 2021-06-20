@@ -2,20 +2,9 @@
 ;;; ls.lisp - list your stuff
 ;;;
 
-;; Actually I really hate this command. I'm so sick of hierarchical file
-;; systems. I want to mutate this into a tag browser to surf my metadata.
-;;
-;; I mostly just wanted to implement this old square wheel because:
-;;   - Unix ls loses at making columns out of multibyte characters.
-;;   - I wish it had slightly better column smushing behavior.
-;;     (not that this does much better yet)
-;;   - Object collecting.
-;;   - It's the command I type the most. So I want it to be in Lisp.
-;;   - I dream of someday finally "rm /usr/bin /bin".
-
 (defpackage :ls
   (:documentation
-   "This is a shitty fake implementation of the command I type the most.")
+   "This is a command I type too much.")
   (:use :cl :dlib :dlib-misc :opsys :dtime :terminal :terminal-ansi :grout
 	:table :table-print :terminal-table :fatchar :fatchar-io :theme :style
 	:magic :collections)
@@ -747,7 +736,8 @@ command for details. If LABEL-DIR is true, print directory labels."
 				sort-by reverse date-format show-size
 				size-format collect nice-table quiet
 				ignore-backups omit-headers recursive
-				signal-errors)
+				signal-errors
+				&allow-other-keys)
   "List or collect files. See !ls for a description of arguments."
   (declare (ignorable files long 1-column wide hidden directory sort-by reverse
 		      date-format show-size size-format collect nice-table quiet
@@ -839,8 +829,10 @@ command for details. If LABEL-DIR is true, print directory labels."
    (size-format lenient-choice :long-arg "size-format" :default "human"
 		:choices '("human" "bytes")
 		:help "Format to show sizes with.")
-   (collect boolean :short-arg #\c :help "Collect results as a sequence.")
-   (nice-table boolean :short-arg #\N :help "Collect results as a nice table.")
+   (collect boolean :short-arg #\c :help "Collect results as a sequence."
+    :default t :use-supplied-flag t)
+   (nice-table boolean :short-arg #\N :help "Collect results as a nice table."
+    :default nil :use-supplied-flag t)
    (quiet boolean :short-arg #\q :help "Suppress output.")
    (recursive boolean :short-arg #\R :help "Recursively list sub-directories.")
    (signal-errors boolean :short-arg #\E
@@ -851,7 +843,7 @@ command for details. If LABEL-DIR is true, print directory labels."
    (by-time boolean :short-arg #\t :help "Sort by time, newest first.")
    (ignore-backups boolean :short-arg #\B :help "Ignore files ending in ~")
    (help boolean :long-arg "help" :help "Show the help."))
-  :keys-as args
+  :args-as args
   :accepts (sequence list)
   "List files in a peculiar way that's not really compatible with the
 traditional ‘ls’ command."
@@ -875,11 +867,23 @@ traditional ‘ls’ command."
     (remf args :size-format)
     (setf args (append args '(:size-format :bytes))))
   (remf args :non-human-size)
+  (when (and (not collect-supplied-p)
+	     (not nice-table-supplied-p))
+    (when long
+      (setf (getf args :nice-table) t)))
   (when nice-table
     (setf args (append args '(:collect t))))
   (when help
     (lish::print-command-help (lish:get-command "ls"))
     (return-from !ls (values)))
+  ;; Default to collecting if the receiver accepts
+  ;; (when (and (not collect-supplied-p)
+  ;; 	     (not nice-table-supplied-p))
+  ;;   (cond
+  ;;     ((lish:accepts 'sequence)
+  ;;      (setf (getf args :collect) t))
+  ;;     ((lish:accepts 'table:table)
+  ;;      (setf (getf args :nice-table) t))))
   (flet ((thunk ()
 	   (if (and lish:*input* (listp lish:*input*))
 	       (apply #'list-files :files lish:*input* args)
