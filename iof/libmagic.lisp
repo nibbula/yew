@@ -4,7 +4,7 @@
 
 (defpackage :libmagic
   (:documentation "Simple interface to libmagic.")
-  (:use :cl :cffi :opsys)
+  (:use :cl :cffi :dlib :opsys)
   (:export
    #:+MAGIC-NONE+
    #:+MAGIC-DEBUG+
@@ -197,9 +197,10 @@ GUESS-TYPE can be one of:
 	      (magic-buffer (magic-db) buf (length thing)))
 	    ;; @@@ This is very inefficient. Is there some other way?
 	    (let ((len (length thing)))
-	      (with-foreign-object (buf :uint8 len)
-		(loop :for i :from 0 :below len
-		   :do (setf (mem-aref buf :uint8 i) (aref thing i)))
-		(magic-buffer (magic-db) buf len)))))))))
+	      (with-muffled-notes
+	        (with-foreign-object (buf :uint8 len)
+		  (loop :for i :from 0 :below len
+		    :do (setf (mem-aref buf :uint8 i) (aref thing i)))
+		  (magic-buffer (magic-db) buf len))))))))))
 
 ;; EOF

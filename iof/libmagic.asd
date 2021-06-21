@@ -10,6 +10,6 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Interface to libmagic."
-    :depends-on (:cffi :opsys)
+    :depends-on (:cffi :dlib :opsys)
     :components
     ((:file "libmagic")))
