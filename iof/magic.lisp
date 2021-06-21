@@ -17,6 +17,7 @@
 
    #:*default-database-type*
    #:use-database
+   #:ensure-database
    #:guess-content-type
    #:guess-file-type
    ))
