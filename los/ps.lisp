@@ -5,7 +5,7 @@
 (defpackage :ps
   (:documentation "Process status listing")
   (:use :cl :dlib :dlib-misc :opsys #+unix :os-unix :table :table-print :grout
-	:lish :collections :los-config :los-util)
+	:lish :collections :los-config :los-util :dtime)
   (:export
    #:!ps
    #:ps-tree
