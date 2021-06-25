@@ -146,8 +146,8 @@
 	(output-finish collect)))))
 
 #+windows
-(defun ms-file-info (file &key follow-links)
-  (declare (ignore file follow-links)))
+(defun ms-file-info (file &key follow-links collect)
+  (declare (ignore file follow-links collect)))
 
 (defun generic-file-info (file &key follow-links collect)
   (with-grout ()
@@ -249,6 +249,7 @@ Change: 2021-03-29 18:48:41.426197576 -0700
  Birth: -
 |#
 
+#+unix
 (defun stat-format-time (time)
   (if time
       (let ((ut (typecase time
