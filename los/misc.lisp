@@ -235,13 +235,16 @@
     (setf (nos:os-process-priority key id) priority)))
 
 (defmacro with-adjusted-priority ((original adjustment) &body body)
+  #+unix
   `(let ((uos:*post-fork-hook*
 	  (append uos:*post-fork-hook*
 		  (list
 		   (lambda ()
 		     (setf (nos:os-process-priority :pid (uos:getpid))
 			   (+ ,adjustment ,original)))))))
-     ,@body))
+     ,@body)
+  #-unix
+  `(progn ,@body))
 
 (defcommand nice
   ((adjustment integer :short-arg #\n :default 10
@@ -259,7 +262,6 @@ just print the current process priority."
       (let ((result (nos:os-process-priority :pid (nos:current-process-id))))
 	(format t "~d~%" result)
 	(setf *output* result))))
-
 
 (defun free-memory-table (&key in-bytes)
   (flet ((format-the-size (n width)
