@@ -1606,6 +1606,12 @@ boolean indicating visibility."
   `(progn ,@body)
   )
 
+(defun terminal-time (fd)
+  "Return the last modification time for the terminal device or NIL if we can't
+get it."
+  ;; @@@ maybe figure this out?
+  nil)
+
 (defun terminal-query (query &key max tty)
   "Output the string to the terminal and wait for a response. Read up to MAX
 characters. If we don't get anything after a while, just return what we got."
