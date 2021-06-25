@@ -1,6 +1,6 @@
-;;
-;; terminal-dumb.lisp - Dumb terminal
-;;
+;;;
+;;; terminal-dumb.lisp - Dumb terminal
+;;;
 
 (defpackage :terminal-dumb
   (:documentation "Dumb terminal")
@@ -84,6 +84,11 @@ require terminal driver support."))
 (defmethod terminal-reinitialize ((tty terminal-dumb))
   "Do any re-initialization necessary, and return the saved state."
   (values))
+
+(defmethod terminal-device-time ((tty terminal-dumb))
+  "Return the last time the terminal device was modified, or NIL if we don't
+know."
+  nil)
 
 (defmethod terminal-format ((tty terminal-dumb) fmt &rest args)
   "Output a formatted string to the terminal."
