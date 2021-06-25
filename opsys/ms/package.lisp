@@ -71,6 +71,7 @@
    #:hidden-file-name-p
    #:superfluous-file-name-p
    #:%path-absolute-p
+   #:parse-path
    #:path-parent
    #:os-pathname-namestring
    #:os-pathname-pathname
@@ -125,6 +126,7 @@
    #:get-terminal-mode
    #:reset-terminal-modes
    #:with-nonblocking-io
+   #:terminal-time
    #:terminal-query
    #:terminal-read-timeout
    #:with-terminal-signals
