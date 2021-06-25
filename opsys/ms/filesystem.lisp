@@ -45,7 +45,7 @@ of these can appear in path names.")
 - A single backslash, for example, "\directory" or "\file.txt".
 |#
 
-(defun drive-prefix-p (str)
+(defun drive-prefix-p (path)
   (and (>= (length path) 3)
        (device-letter-p (char path 0))
        (char= (char path 1) #\:)
@@ -130,7 +130,7 @@ of these can appear in path names.")
 	       t))
       (cond
 	((drive-prefix-p str)
-	 (setf (os-pathname-result result) (char str 0)
+	 (setf (os-pathname-device result) (char str 0)
 	       (os-pathname-absolute-p result) t)
 	 (next 3))
 	((is-sep)
