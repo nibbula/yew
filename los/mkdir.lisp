@@ -1,6 +1,6 @@
-;;
-;; mkdir.lisp - Make directories and files.
-;;
+;;;
+;;; mkdir.lisp - Make directories and files.
+;;;
 
 (defpackage :mkdir
   (:documentation "Make directories and files.")

@@ -1,6 +1,6 @@
-;;
-;; rm.lisp - Delete files and directories.
-;;
+;;;
+;;; rm.lisp - Delete files and directories.
+;;;
 
 (defpackage :rm
   (:documentation "Delete files and directories.")

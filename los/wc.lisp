@@ -1,6 +1,6 @@
-;;
-;; wc.lisp - Word (and other textual unit) count.
-;;
+;;;
+;;; wc.lisp - Word (and other textual unit) count.
+;;;
 
 (defpackage :wc
   (:documentation "Word (and other textual unit) count.")

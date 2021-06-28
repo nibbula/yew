@@ -1,6 +1,6 @@
-;;
-;; cut.lisp - Cut pieces from lines.
-;;
+;;;
+;;; cut.lisp - Cut pieces from lines.
+;;;
 
 (defpackage :cut
   (:documentation "Cut pieces from lines.")

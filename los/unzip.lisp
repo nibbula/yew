@@ -1,6 +1,6 @@
-;;
-;; unzip.lisp - Manipulate zip files.
-;;
+;;;
+;;; unzip.lisp - Manipulate zip files.
+;;;
 
 (defpackage :unzip
   (:documentation "Manipulate zip files.")

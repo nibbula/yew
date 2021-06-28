@@ -1,6 +1,6 @@
-;;
-;; tr.lisp - Translate characters.
-;;
+;;;
+;;; tr.lisp - Translate characters.
+;;;
 
 (defpackage :tr
   (:documentation "Translate characters.")

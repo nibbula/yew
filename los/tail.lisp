@@ -1,6 +1,6 @@
-;;
-;; tail.lisp - The back part of the animal.
-;;
+;;;
+;;; tail.lisp - The back part of the animal.
+;;;
 
 (defpackage :tail
   (:documentation "The back part of the animal.")

@@ -1,6 +1,6 @@
-;;
-;; du.lisp - disk usage
-;;
+;;;
+;;; du.lisp - disk usage
+;;;
 
 ;; TODO
 ;; - add top node directory to save/load format

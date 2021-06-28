@@ -1,6 +1,6 @@
-;;
-;; dump.lisp - dump bytes
-;;
+;;;
+;;; dump.lisp - dump bytes
+;;;
 
 (defpackage :dump
   (:documentation "Dump bytes from byte dump.")

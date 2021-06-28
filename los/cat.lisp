@@ -1,6 +1,6 @@
-;;
-;; cat.lisp - Concatenate files
-;;
+;;;
+;;; cat.lisp - Concatenate files
+;;;
 
 (defpackage :cat
   (:documentation "Concatenate files. Copy streams.")

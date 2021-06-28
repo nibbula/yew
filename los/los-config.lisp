@@ -1,6 +1,6 @@
-;;
-;; los-config.lisp - Configuration for LOS
-;;
+;;;
+;;; los-config.lisp - Configuration for LOS
+;;;
 
 (defpackage :los-config
   (:documentation "Configuration for LOS")
