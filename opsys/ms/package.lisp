@@ -72,7 +72,6 @@
    #:superfluous-file-name-p
    #:%path-absolute-p
    #:parse-path
-   #:path-parent
    #:os-pathname-namestring
    #:os-pathname-pathname
    #:lock-file
