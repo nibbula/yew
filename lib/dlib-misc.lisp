@@ -1050,24 +1050,24 @@ SUFFIX is a string to append to each row."
 	 (terpri stream)))
     rows))
 
-(defparameter *binary-size-prefixes*
+(define-constant +binary-size-prefixes+
   #(nil "kibi" "mebi" "gibi" "tebi" "pebi" "exbi" "zebi" "yobi" "buttload"))
 
-(defparameter *traditional-size-prefixes*
+(define-constant +traditional-size-prefixes+
   #(nil "kilo" "mega" "giga" "tera" "peta" "exa" "zetta" "yotta" "buttload"))
 
-(defparameter *binary-size-abbreviations*
+(define-constant +binary-size-abbreviations+
   #(nil "Ki" "Mi" "Gi" "Ti" "Pi" "Ei" "Zi" "Yi" "**"))
 
-(defparameter *traditional-size-abbreviations*
+(define-constant +traditional-size-abbreviations+
   #(nil "k" "M" "G" "T" "P" "E" "Z" "Y" "*"))
 
-(defparameter *binary-sizes*
-  (make-array '(11) :initial-contents
+(define-constant +binary-sizes+
+  #.(make-array '(11) :initial-contents
 	      (loop :for i :from 0 :to 10 :collect (expt 1024 i))))
 
-(defparameter *decimal-sizes*
-  (make-array '(11) :initial-contents
+(define-constant +decimal-sizes+
+  #.(make-array '(11) :initial-contents
 	      (loop :for i :from 0 :to 10 :collect (expt 1000 i))))
 
 (defun print-size (size &key (stream t) long unit abbrevs
@@ -1091,12 +1091,12 @@ FORMAT is the format to print the number with, which gets passed 4 values:
 FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
   (setf unit (or unit (or (and long "byte") "B")))
   (let ((prefixes (if traditional
-		      *traditional-size-prefixes*
-		      *binary-size-prefixes*))
-	(sizes (if binary *binary-sizes* *decimal-sizes*)))
+		      +traditional-size-prefixes+
+		      +binary-size-prefixes+))
+	(sizes (if binary +binary-sizes+ +decimal-sizes+)))
     (setf abbrevs (or abbrevs
-		      (if traditional *traditional-size-abbreviations*
-			  *binary-size-abbreviations*)))
+		      (if traditional +traditional-size-abbreviations+
+			  +binary-size-abbreviations+)))
     (flet ((pr (i)
 	     (let* ((divisor (svref sizes i))
 		    (n (/ size divisor))
