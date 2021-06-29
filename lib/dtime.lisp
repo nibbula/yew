@@ -76,7 +76,7 @@ defaults to the current time."
 	       date (calendar:month-name month year) year
 	       hours minutes seconds
 	       (if (< zone 0) #\+ #\-) (tz-hours zone) (tz-minutes zone)))
-      (:filename
+      ((:filename :file)
        (format nil "~d-~2,'0d-~2,'0d_~2,'0d-~2,'0d-~2,'0d"
 	       year month date hours minutes seconds))
       ((:iso :iso8601)
