@@ -42,7 +42,7 @@
     :documentation "True if this item is selected.")
    (modified
     :initarg :modified :accessor item-modified :initform nil
-    :documentation "@@@@ i dunno")
+    :documentation "The tag string if the backend thinks it's modified.")
    (filename
     :initarg :filename :accessor item-filename :initform nil
     :documentation "Name of the file?")
@@ -182,6 +182,14 @@ current line or the selected files."))
   (:documentation
    "Return true if we guess we are in a directory under this type."))
 
+#|
+(defgeneric pre-command-hook (backend)
+  (:documentation "Do something before backend commands."))
+
+(defgeneric post-command-hook (backend)
+  (:documentation "Do something after backend commands."))
+|#
+
 (defgeneric parse-line (backend line i)
   (:documentation "Take a line and add stuff to items and/or *errors*."))
 
@@ -197,6 +205,9 @@ current line or the selected files."))
 (defgeneric get-history (backend &optional files)
   (:documentation "Return a list of history entries for FILE. If FILE is nil,
 return history for the whole repository."))
+
+(defgeneric item-path-name (backend item)
+  (:documentation "Return the pathname to use for ‘item’ on ‘backend’."))
 
 ;; Generic implementations of some possibly backend specific methods.
 
@@ -273,6 +284,13 @@ return history for the whole repository."))
 	      dir command))
     result))
 
+(defun check-command (command)
+  (if (not (command-pathname command))
+      (cerror "Proceed anyway."
+	      "Looks like the ~a command isn't installed?"
+	      command)
+      t))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; CVS
 
@@ -336,7 +354,10 @@ return history for the whole repository."))
     :documentation "Saved list of remotes.")
    (saved-stashes
     :initarg :saved-stashes :accessor git-saved-stashes :initform 'unset
-    :documentation "Saved list of stashes."))
+    :documentation "Saved list of stashes.")
+   (saved-repo-dir
+    :initarg :saved-repo-dir :accessor git-saved-repo-dir :initform nil
+    :documentation "Saved directory of the repository."))
   (:default-initargs
    :name	      "git"
    :list-command      '("git" "status" "--porcelain")
@@ -366,7 +387,7 @@ return history for the whole repository."))
   (:documentation "Backend for git."))
 
 (defmethod check-existence ((type (eql :git)))
-  (and (check-dir-and-command ".git" "git")
+  (and (check-command "git")
        (equal "true" (shell-line "git" "rev-parse" "--is-inside-work-tree"))))
 
 (defun get-branch (git)
@@ -385,6 +406,11 @@ return history for the whole repository."))
 	    (lish:!_ "git --no-pager stash list"))
       (git-saved-stashes git)))
 
+(defun get-repo-dir (git)
+  (or (git-saved-repo-dir git)
+      (setf (git-saved-repo-dir git)
+	    (lish:!$ "git rev-parse --show-toplevel"))))
+
 (defmethod banner ((backend git))
   "Print something useful at the top of the screen."
   (let ((line (terminal-get-cursor-position *terminal*))
@@ -396,7 +422,7 @@ return history for the whole repository."))
 		 (tt-move-to (incf line) col)
 		 (tt-write-string (subseq str 0 (min (length str)
 						     (- (tt-width) col 1)))))))
-      (do-line "Repo:    ~a" (nos:current-directory))
+      (do-line "Repo:    ~a" (get-repo-dir backend))
       (do-line "Branch:  ~a" branch)
       (when stashes
 	(do-line "Stashes: ~d" (length stashes))
@@ -472,6 +498,14 @@ return history for the whole repository."))
 	 (when extra
 	   (setf (item-extra-lines (car items)) (nreverse extra))
 	   (setf extra nil)))))))
+
+(defmethod item-path-name ((backend git) item)
+  (let ((filename (item-filename item)))
+    (cond
+      ((nos:absolute-path-p filename)
+       filename)
+      (t
+       (nos:path-append (get-repo-dir backend) filename)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; SVN
@@ -711,12 +745,12 @@ If CONFIRM is true, ask the user for confirmation first."
 
 (defun selected-files ()
   "Return the selected files or the current line, if there's no selections."
-  (with-slots (item-count items (point inator::point)) *puca*
+  (with-slots (item-count items (point inator::point) backend) *puca*
     (let* ((files
 	    (loop :for i :from 0 :below item-count
 	       :when (item-selected (elt items i))
-	       :collect (item-filename (elt items i)))))
-      (or files (and items (list (item-filename (elt items point))))))))
+	       :collect (item-path-name backend (elt items i)))))
+      (or files (and items (list (item-path-name backend (elt items point))))))))
 
 (defun select-all ()
   (with-slots (item-count items) *puca*
