@@ -1088,7 +1088,7 @@ defaults to the current package. Return how many symbols there were."
 			  (s+ nos:*directory-separator* match-sub)
 			  (path-append dir-part-path match-sub))
 		      match-sub)))
-	    (if (and full-match (directory-p result-path))
+	    (if (and full-match (directory-p (expand-tilde result-path)))
 		(s+ result-path nos:*directory-separator*)
 		result-path)))
      :unique full-match)))
