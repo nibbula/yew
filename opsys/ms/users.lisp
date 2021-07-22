@@ -80,24 +80,19 @@ foreach (object groupMember in (IEnumerable)members)
   )
 |#
 
-(defun get-user-info (&key name id)
-  (declare (ignore name id))
-  (make-user-info :name "dan"
-		  :id 1024
-		  :full-name "Nibby Nebbulous"
-		  :home-directory "e:\\"
-		  :shell "lish"
-		  :primary-group-id 1
-		  :guid "123-456-789"
-		  :picture "D E R P!"))
-
 (defun user-name (&optional id)
   (declare (ignore id))
   "dan")
 
 (defun user-home (&optional (user (user-name)))
   (declare (ignore user))
-  "e:\\")
+  ;; @@@ This is wrong. We actually have to do a very complicated thing like: ??
+  ;; - get the process handle
+  ;; - get the process token
+  ;; - call SHGetKnownFolderPath with FOLDERID_Profile ??
+  (env "USERPROFILE")
+  ;; "e:\\"
+  )
 
 (defun user-id (&key name effective)
   "Return the ID of the user with NAME, which defaults to the current user."
@@ -108,6 +103,17 @@ foreach (object groupMember in (IEnumerable)members)
   "Return the full name of user with ID, which defaults to the current user."
   (declare (ignore id))
   "Nibby Nebbulous")
+
+(defun get-user-info (&key name id)
+  (declare (ignore name id))
+  (make-user-info :name (user-name)
+		  :id (user-id)
+		  :full-name (user-full-name)
+		  :home-directory (user-home)
+		  :shell "lish"
+		  :primary-group-id 1
+		  :guid "123-456-789"
+		  :picture "D E R P!"))
 
 (defun user-name-char-p (c)
   "Return true if C is a valid character in a user name."
