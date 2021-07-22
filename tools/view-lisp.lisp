@@ -497,8 +497,7 @@
       'object-node
       :object
       (let ((str (with-output-to-string (str)
-		   (symbol-call :lish :print-command-help cmd
-				str))))
+		   (symbol-call :lish :print-command-help cmd :stream str))))
 	(trim-trailing-newline str)
 	str)
       :open nil)))))
