@@ -24,6 +24,7 @@ make the table in the first place. For that you want the TABLE package.")
    #:table-output-cell
    #:table-output-cell-display-width
    #:table-output-sizes
+   #:default-table-output-sizes
    #:table-output-column-separator
    #:table-output-end-row
    #:table-output-row-separator
@@ -246,8 +247,11 @@ function."
 				     nil column
 				     :use-given-format use-given-format)))
 
-(defmethod table-output-sizes (renderer table)
-  ;;(dbugf :tv "Default table-output-sizes~%")
+;; This is separate from the table-output-sizes default method, so we can easily
+;; call it separately without having to find-method or whatever.
+(defun default-table-output-sizes (renderer table)
+  "Calculate the column sizes for ‘renderer’ and ‘table’ and return an array of
+sizes."
   (block nil
     (let ((col-num 0)
 	  sizes)
@@ -298,6 +302,10 @@ function."
        table)
       ;; (dbugf :tv "second round ~s~%" sizes)
       sizes)))
+
+(defmethod table-output-sizes (renderer table)
+  ;;(dbugf :tv "Default table-output-sizes~%")
+  (default-table-output-sizes renderer table))
 
 ;; Default method which does nothing.
 (defmethod table-output-footer (renderer table &key width sizes)
