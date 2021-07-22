@@ -407,6 +407,15 @@ that has START and START-P and END and END-P."
 				   :count count
 				   :key key))))
 
+(defun column-ref (table column-designator &optional (n 0))
+  "Return the column number for ‘column-designator’, which can be an integer
+or a column name as a symbol or string. For convenience ‘n’ is added to the
+result."
+  (+ n (etypecase column-designator
+	 (integer column-designator)
+	 (symbol (table-column-number (string column-designator) table))
+	 (string (table-column-number column-designator table)))))
+
 (defgeneric sub-table (table &key start-row end-row start-col end-col)
   (:documentation "Return a new table as sub-table of ‘table’, containing rows
 from ‘start-row’ to ‘end-row’, and columns from ‘start-col’ to ‘end-col’.
@@ -415,12 +424,8 @@ inclusive limit, otherwise it's an exclusive limit."))
 
 (defmethod sub-table ((table mem-table)
 		      &key (start-row 0) end-row (start-col 0) end-col)
-  (flet ((col-num (row &optional (n 0))
-	   (etypecase row
-	     (null 0)
-	     (integer row)
-	     (symbol (+ n (table-column-number (string row) table)))
-	     (string (+ n (table-column-number row table))))))
+  (flet ((col-num (col &optional (n 0))
+	   (if (null col) n (column-ref table col n))))
     (let* ((start (col-num start-col))
 	   (end (col-num end-col 1))
 	   (result
