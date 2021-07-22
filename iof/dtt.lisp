@@ -591,9 +591,13 @@ If every object in a column:
 	(warn "Don't know how to convert from a number to a ~a~%" to)
 	from)))
     (null
-     (if (null to)
-	 nil  ; ok
-	 (warn "Don't know how to convert from a NIL to a ~a~%" to)))
+     (case to
+       (nil nil)
+       (symbol nil)
+       (string "")
+       ;; (number 0) I don't think we want to do this.
+       (otherwise
+	(warn "Don't know how to convert from a NIL to a ~a~%" to))))
     (symbol
      (case to
        (number (safe-read-from-string (string from)))
@@ -609,7 +613,7 @@ If every object in a column:
   "Convert the column data in TABLE to the types in GUESSES."
   (loop :for i :from 0 :below (length guess) :do
      (table-set-column-type table i (aref guess i)))
-  (omapn (_ (loop :for i :from 0 :below (length guess) :do
+  (omapn (_ (loop :for i :from 0 :below (min (olength _) (length guess)) :do
 	       (setf (oelt _ i) (convert-data (oelt _ i) (oelt guess i)))))
 	 table))
 
