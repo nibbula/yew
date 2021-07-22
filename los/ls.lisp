@@ -704,7 +704,9 @@ command for details. If LABEL-DIR is true, print directory labels."
 					       (make-full-item _))
 					      (getf args :size-format))
 					     (get-styled-file-name _))) x)
-				 :column-names '(("Size" :right) "Name")))
+				 :columns
+				 '((:name "Size" :align :right :type number)
+				   (:name "Name"))))
 			  :print-titles nil)
 			 (mapcar
 			  (_ (grout-format
