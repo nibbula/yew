@@ -923,7 +923,7 @@ for the command-function).")
   (do-command #'backend-commit (list (selected-files))))
 
 (defun commit-interactive-command (p)
-  "Commit selected"
+  "Commit selected interactively for each change in the file."
   (declare (ignore p))
   (do-command #'backend-commit-interactive (list (selected-files))))
 
