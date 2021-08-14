@@ -939,8 +939,8 @@ The function receives a 'pick' as an argument."))
 		 :multiple multiple
 		 :sort-p t
 		 :typing-searches t
-		 :keymap *pick-file-keymap*
-		 )))
+		 :keymap (list *pick-file-keymap*
+			       *pick-list-keymap* *default-inator-keymap*))))
     (run *pick*)))
 
 (defun pick-files (&key message (directory ".") (allow-browse t) show-hidden
