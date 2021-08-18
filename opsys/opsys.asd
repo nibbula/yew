@@ -28,7 +28,7 @@
      (:file "libc" #| :depends-on ("package") |#
       :if-feature (:not :mezzano))
      ;; As you may know, :serial t is a convenient lie.
-     ;; Also in C land, libc is depends on the kernel, not the other way around.
+     ;; Also in C land, libc depends on the kernel, not the other way around.
      (:module "unix"
       :depends-on ("base" "libc")
       :serial t
