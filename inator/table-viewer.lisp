@@ -131,6 +131,10 @@ for a range of rows, or a table-point for a specific item,"
    (sizes
     :initarg :sizes :accessor sizes :initform nil
     :documentation "Pre-calculated sizes.")
+   (incremental-sizes-p
+    :initarg :incremental-sizes :accessor incremental-sizes-p
+    :initform nil :type boolean
+    :documentation "True to calculate sizes incrementally as they are viewed.")
    (separator
     :initarg :separator :accessor separator :initform " "
     :documentation "Separator between columns.")
@@ -159,12 +163,35 @@ for a range of rows, or a table-point for a specific item,"
    :cursor (make-table-point))
   (:documentation "An interactive table renderer."))
 
+(defvar *incremental-view-threshold* 100000
+  "How many rows before we switch to incrementally updating the sizes.")
+
+(defgeneric update-view-sizes (renderer table)
+  (:documentation "Update the sizes for the current view."))
+
+(defmethod update-view-sizes ((renderer viewer-table-renderer) table)
+  (with-slots (start rows sizes) renderer
+    (let* ((row-num (table-point-row start))
+	   (sub-table (table-subseq table row-num (+ row-num rows)))
+	   (new-sizes (default-table-output-sizes renderer sub-table)))
+      (if sizes
+	  (loop :for i :from 0 :below (olength sizes)
+	    :when (> (oelt new-sizes i) (oelt sizes i))
+	    :do (setf (oelt sizes i) (oelt new-sizes i)))
+	  (setf sizes new-sizes)))))
+
 (defmethod table-output-sizes ((renderer viewer-table-renderer) table)
-  ;; Cache the sizes so we don't have to recompute them every time.
-  ;; Then use the default method.
   (declare (ignorable table))
-  (or (sizes renderer)
-      (setf (sizes renderer) (call-next-method))))
+  (cond
+    ((incremental-sizes-p renderer)
+     ;; Update only the sizes that we can see.
+     (update-view-sizes renderer table)
+     (sizes renderer))
+    (t
+     ;; Cache the sizes so we don't have to recompute them every time.
+     ;; Then use the default method.
+     (or (sizes renderer)
+	 (setf (sizes renderer) (call-next-method))))))
 
 (defun in-view (renderer #| &optional row-in |#)
   ;; (with-slots (start rows) *table-viewer*
@@ -382,6 +409,8 @@ for a range of rows, or a table-point for a specific item,"
 
 ;; This is so we can hopefully handle anyting that make-table-from can throw
 ;; at us. It's not as if it's a good idea.
+;; @@@ maybe we could just use table:sub-table, but it doesn't handle
+;; hash/struct?
 (defun table-subseq (table start &optional end)
   "Return an object made from TABLE that we can do SUBSEQ on."
   (typecase (container-data table)
@@ -732,7 +761,8 @@ at which it's found or NIL if it's not found."
 (defmethod table-viewer-recalculate-sizes ((o table-viewer))
   "Recalculate the column sizes for the table."
   (with-slots (table renderer) o
-    (setf (sizes renderer) nil)
+    (unless (incremental-sizes-p renderer)
+      (setf (sizes renderer) nil))
     (table-output-sizes renderer table)))
 
 (defun resize-viewer (viewer)
@@ -937,7 +967,9 @@ at which it's found or NIL if it's not found."
     (let ((renderer (table-viewer-renderer *table-viewer*))
 	  (*long-titles* long-titles))
       (resize-viewer *table-viewer*)
-      ;; Calculate the sizes of the whole table for side effect.
+      (when (>= (olength table) *incremental-view-threshold*)
+	(setf (incremental-sizes-p renderer) t))
+      ;; Calculate the sizes of the table for side effect.
       (table-output-sizes renderer table)
       (event-loop *table-viewer*)
       (tt-move-to (1- (tt-height)) 0)
