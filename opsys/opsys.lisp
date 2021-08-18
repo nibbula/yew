@@ -642,23 +642,27 @@ just everything after the last period '.'"
     (print-unreadable-object (object stream :type t)
       (format stream "~s" (os-pathname-namestring object)))))
 
-(defgeneric path-parent (path)
+(defgeneric path-parent (path &key n)
   (:documentation
-   "Return the parent directory of ‘path’, or NIL if it doesn't have one."))
+   "Return the parent directory of ‘path’, or NIL if it doesn't have one.
+If N is given, return the Nth parent."))
 
-(defmethod path-parent ((path pathname))
-  (os-pathname-pathname (path-parent (parse-path (safe-namestring path)))))
+(defmethod path-parent ((path pathname) &key (n 1))
+  (os-pathname-pathname (path-parent (parse-path (safe-namestring path)) :n n)))
 
-(defmethod path-parent ((path string))
-  (os-pathname-namestring (path-parent (parse-path path))))
+(defmethod path-parent ((path string) &key (n 1))
+  (os-pathname-namestring (path-parent (parse-path path) :n n)))
 
-(defmethod path-parent ((path os-pathname))
-  (let ((par nil)
-	(result (copy-os-pathname path)))
-    (with-accessors ((p os-pathname-path)) result
-      (when (and p (setf par (butlast p)))
-	(setf p par)))
-    result))
+(defmethod path-parent ((path os-pathname) &key (n 1))
+  (let ((result (copy-os-pathname path)))
+    (check-type n (and fixnum unsigned-byte))
+    (cond
+      ((zerop n) path)
+      (t
+       (with-accessors ((p os-pathname-path)) result
+	 (when p
+	   (setf p (butlast p n))))
+       result))))
 
 (defosfun hidden-file-name-p (name)
   "Return true if the file NAME is normally hidden.")
