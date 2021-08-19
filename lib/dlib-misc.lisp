@@ -307,12 +307,25 @@ group-by-alist functions."
     (:hash (group-by-hash function sequence))
     ((or :list :alist) (group-by-alist function sequence))))
 
-(defun frequencies (sequence &key (test #'eql))
-  "Return a hash table with the counts of occurrences the elements of SEQUENCE.
-TEST is the hash table test function to use, which defaults to #'eql."
-  (let ((table (make-hash-table :test test)))
-    (omapn (_ (incf (gethash _ table 0))) sequence)
-    table))
+(defun frequencies (sequence &key (test #'eql) table func)
+  "Return a hash table with the counts of occurrences the elements of ‘sequence’.
+‘test’ is the hash table test function to use, which defaults to #'eql.
+If ‘table’ is given, use it as the starting table and update it's counts.
+‘func’ is a one argument function which takes the existing count and returns
+an updated count. If ‘func’ is NIL it defaults to 1+."
+  (when (and table (not (eq (coerce (hash-table-test table) 'function)
+			    (coerce test 'function))))
+    (error "The test function argument ~s doesn't match the test in the table ~
+            argument ~s." test (hash-table-test table)))
+  (let ((result-table (or table (make-hash-table :test test))))
+    ;; @@@ One would hope the compiler could do this optimization.
+    (if func
+	;; I also hope most compilers don't have to do the hash twice?
+	(omapn (_ (setf (gethash _ result-table)
+			(funcall func (gethash _ result-table 0))))
+	       sequence)
+	(omapn (_ (incf (gethash _ result-table 0))) sequence))
+    result-table))
 
 ;; @@@ We could make a generic one that returns a sequence of the same type,
 ;; but it's probably not as quick and do we need it?
