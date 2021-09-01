@@ -265,7 +265,14 @@
 (defvar *guess-func* nil
   "Function to guess content.")
 
-(defvar *default-database-type* :libmagic
+;; @@@ Bogus workaround for windows
+#-windows
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (d-add-feature :has-libmagic))
+
+(defvar *default-database-type*
+  #+has-libmagic :libmagic
+  #-has-libmagic :internal
   "Function to guess content.")
 
 (defun ensure-database ()
