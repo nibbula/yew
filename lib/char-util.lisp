@@ -9,6 +9,7 @@
    #:meta-char
    #:meta-char-p
    #:ctrl
+   #:has-control-equivalent
    #:control-char-p
    #:un-meta
    #:nice-char
@@ -45,7 +46,17 @@
 (defun ctrl (c)
   "Return the control character corresponding to the normal character."
   (declare (type character c))
-  (code-char (1+ (- (char-code (char-upcase c)) (char-code #\A)))))
+  (let ((code (1+ (- (char-code (char-upcase c)) (char-code #\A)))))
+    (when (minusp code)
+      (error "This is no control character equivalent for ~s." c))
+    (code-char code)))
+
+(defun has-control-equivalent (c)
+  "Return true if there is a control character corresponding to the character."
+  (declare (type character c))
+  (let ((code (char-code (char-upcase c))))
+    ;; This includes ? -> 127 DEL
+    (and (>= code 63) (<= code 95))))
 
 (defun control-char-p (c)
   "Return true if C is a control character. In ASCII that means anything less
