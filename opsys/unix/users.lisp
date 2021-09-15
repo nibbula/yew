@@ -169,7 +169,7 @@ user is not found."
 	    (passwd-uid pw)
 	    (error 'opsys-error
 		   :format-control "User ~s not found."
-		   :format-arguments name)))
+		   :format-arguments (list name))))
       (if effective
 	  (geteuid)
 	  (getuid))))
