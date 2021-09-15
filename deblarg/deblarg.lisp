@@ -574,10 +574,18 @@ program that messes with the terminal, we can still type at the debugger."
   (define-key *debugger-keymap* #\escape '*debugger-escape-keymap*))
 
 (defun print-condition (c)
-  (print-span
-   `((:fg-white "Condition: ")
-     (:fg-red (:underline ,(princ-to-string (type-of c))) #\newline
-	      ,(princ-to-string c) #\newline))))
+  (with-slots (term) *deblarg*
+    (when (not (ignore-errors
+		(print-span
+		 `((:fg-white "Condition: ")
+		   (:fg-red (:underline ,(princ-to-string (type-of c)))
+			    #\newline
+			    ,(princ-to-string c) #\newline)))
+		t))
+      (format term "Error printing condition ")
+      (print-unreadable-object (c term :type t :identity t))
+      (terpri term)
+      (describe c))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defmacro with-deblargger ((frame) &body body)
