@@ -70,14 +70,21 @@
     (:down			. next)
     (:left			. backward-unit)
     (:right			. forward-unit)
+    (:#\k			. previous)
+    (#\j			. next)
+    (#\h			. backward-unit)
+    (#\l			. forward-unit)
+    (#\space			. next-page)
+    (#\b			. previous-page)
     (#\<			. move-to-top)
     (#\>			. move-to-bottom)
-    (,(char-util:meta-char #\<)	. move-to-top)
-    (,(char-util:meta-char #\>)	. move-to-bottom)
-    (,(char-util:ctrl #\@)	. select)
-    (,(char-util:ctrl #\w)	. cut)
-    (,(char-util:meta-char #\w)	. copy)
-    (,(char-util:ctrl #\y)	. paste)
+    (#\/			. search-command)
+    (,(meta-char #\<)		. move-to-top)
+    (,(meta-char #\>)		. move-to-bottom)
+    (,(ctrl #\@)		. select)
+    (,(ctrl #\w)		. cut)
+    (,(meta-char #\w)		. copy)
+    (,(ctrl #\y)		. paste)
     ;;(,(char-util:ctrl #\x)	. cut)
     ;;(,(char-util:ctrl #\c)	. copy)
     ;;(,(char-util:ctrl #\v)	. paste)
@@ -88,14 +95,15 @@
     (#\M			. mark-region)
     (#\u			. unmark-item)
     (#\U			. unmark-region)
-    (#\g			. refresh)
+    (,(ctrl #\L)		. refresh)
     (#\x			. execute)
     (,(char-util:meta-char #\x)	. shell-command)
+    (#\^			. dired-up)
     (,(char-util:meta-char #\u)	. dired-up)
+    (#\c			. dired-cd)
     (#\:			. shell-command)
-    ;; (:right		        . move-right)
-    ;; (:left		        . move-left)
-    ;;(,(meta-char #\i)	        . table-info)
+    (:mouse-1			. handle-click)
+    (:mouse-3			. handle-menu)
     (#\escape			. *dired-escape-keymap*)
     (,(ctrl #\X)		. *dired-ctrl-x-keymap*)
     ))
@@ -120,7 +128,11 @@
     :documentation "The pathname of the directory we're editing.")
    (last
     :initarg :last :accessor directory-editor-last :initform nil
-    :documentation "The editor that invoked this one."))
+    :documentation "The editor that invoked this one.")
+   (click-pos
+    :initarg :click-pos :accessor click-pos :initform nil
+    :documentation
+    "Cons of X and Y position of the start of the pointer click."))
   (:default-initargs
    :keymap `(,*dired-keymap* ,table-viewer::*table-viewer-keymap*
 	     ,*default-inator-keymap*))
@@ -177,26 +189,27 @@
 
 (defmethod view-cell ((o directory-editor))
   (with-slots (directory last) o
-    (handler-bind
-	((error (lambda (c)
-		  (if (fui:popup-y-or-n-p
-		        (span-to-fat-string
-			 `((:red "Error: ") ,(apply #'format nil "~a" (list c))
-			   #\newline #\newline "Enter the debugger?"))
-			:default #\N)
-		      (invoke-debugger c)
-		      (continue c)))))
-      (let* ((name (osimplify (current-file-cell o)))
-	     (full (nos:path-append directory name)))
-	(cond
-	  ;; If we're going back up to the previous editor, just quit.
-	 ((and last (equal name "..")
-	       (equal (nos:path-to-absolute full)
-		      (dired-directory last)))
-	  (quit o))
-	 ;; Otherwise, make a new one.
-	 (t
-	  (view:view full)))))))
+    (with-simple-restart (continue "Continue with the directory editor.")
+      (handler-bind
+	  ((error (lambda (c)
+		    (if (fui:popup-y-or-n-p
+		         (span-to-fat-string
+			  `((:red "Error: ") ,(apply #'format nil "~a" (list c))
+			    #\newline #\newline "Enter the debugger?"))
+			 :default #\N)
+			(invoke-debugger c)
+			(continue c)))))
+	(let* ((name (osimplify (current-file-cell o)))
+	       (full (nos:path-append directory name)))
+	  (cond
+	    ;; If we're going back up to the previous editor, just quit.
+	    ((and last (equal name "..")
+		  (equal (nos:path-to-absolute full)
+			 (dired-directory last)))
+	     (quit o))
+	    ;; Otherwise, make a new one.
+	    (t
+	     (view:view full))))))))
 
 (defun quit-all (o)
   "Quit all recursive directory editors."
@@ -206,6 +219,24 @@
 (defmethod accept ((o directory-editor))
   "View the file."
   (view-cell o))
+
+#|
+(defun item-at (o x y)
+  (let ((r (table-viewer-renderer o)))
+    (with-slots (x y width height) r
+      )))
+
+(defun handle-click (o)
+  (with-slots (click-pos) o
+    (destructuring-bind (x . y) click-pos
+      (
+  )
+
+(defun handle-menu (o)
+  (declare (ignore o))
+  ;; @@@
+  )
+|#
 
 (defun dired-up (o)
   "Go to the parent directory."
@@ -221,7 +252,17 @@
 	       (message o "I don't know how to go up from ~s." directory))))))
     (refresh o)))
 
-#|
+(defun dired-cd (o)
+  "Go to a directory."
+  (with-slots (directory) o
+    (let ((new-dir (input-window nil '("Go to directory:" ""))))
+      (cond
+	((not (file-exists new-dir))
+	 (message o "The directory ~s doesn't exist." new-dir))
+	((not (equal new-dir directory))
+	 (setf directory new-dir))))
+    (refresh o)))
+
 (defun rename (o)
   "Change the name of the file."
   (with-slots ((renderer table-viewer::renderer)
@@ -242,9 +283,8 @@
 	       :buf (make-fat-string
 		     :string (copy-seq old-name)))))
 	(when (not (string= old-name new-name))
-	  (rename-file (path-append old-name directory)
-		       (path-append new-name directory)))))))
-|#
+	  (dired-rename-file (path-append old-name directory)
+			     (path-append new-name directory)))))))
 
 (defun new-directory (o)
   (let ((new-name (input-window "Create a new directory"
@@ -458,18 +498,19 @@ or ‘to’ exists."
 	    (setf (mark-cell row) (mark-display mark))))
 	(table-viewer-table o)))
 
-(defun input-window (title text-lines)
+(defun input-window (title text-lines #| &key widget |#)
   (prog1
       (fui:display-text
        title text-lines
-       :input-func #'(lambda (w)
-			(rl-widget:widget-read
-			 :x (+ (fui:fui-window-x w) 20)
-			 :y (+ (fui:fui-window-y w)
-			       (- (fui:fui-window-height w) 1))
-			 :width 10 :height 1
-			 :prompt ""
-			 :rendition (make-fatchar :bg :blue :fg :white))))
+       :input-func
+       #'(lambda (w)
+	   (rl-widget:widget-read
+	    :x (+ (fui:fui-window-x w) 20)
+	    :y (+ (fui:fui-window-y w)
+		  (- (fui:fui-window-height w) 1))
+	    :width 10 :height 1
+	    :prompt ""
+	    :rendition (make-fatchar :bg :blue :fg :white))))
     (tt-clear)
     (refresh *dired*)
     (tt-finish-output)))
@@ -535,6 +576,20 @@ or ‘to’ exists."
   (table-viewer-recalculate-sizes o)
   (tt-clear)
   (redraw o))
+
+(defmethod await-event ((i directory-editor))
+  "Get an event."
+  (with-slots (click-pos) i
+    (let ((result (call-next-method)))
+      (typecase result
+	(tt-mouse-button-press
+	 (setf click-pos (cons (tt-mouse-event-x result)
+			       (tt-mouse-event-y result))))
+	(tt-mouse-button-release
+	 (case (tt-mouse-button result)
+	   (1 (setf result :mouse-1))
+	   (3 (setf result :mouse-3)))))
+      result)))
 
 (defmethod update-display ((o directory-editor))
   (with-slots ((renderer table-viewer::renderer)
