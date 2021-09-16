@@ -97,7 +97,8 @@ To add data, use insert-column or collection functions."
     (when width  (setf (column-width  col) width))
     (when format (setf (column-format col) format))
     (when align  (setf (column-align  col) align))
-    (setf (table-columns table) (nconc (table-columns table) (list col)))))
+    (setf (table-columns table) (nconc (table-columns table) (list col)))
+    table))
 
 (defgeneric table-update-column-width (table col width)
   (:documentation "Update the column width, growing not shrinking.")
