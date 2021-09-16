@@ -1060,6 +1060,9 @@ Returns an integer."
     free-memory
     shared-memory
     buffer-memory
+    cached-memory
+    reclaimable-memory
+    available-memory
     total-swap
     free-swap
     processes
@@ -1103,10 +1106,67 @@ Returns an integer."
 	   :free-high-memory    freehigh
 	   :memory-unit-bytes   mem_unit))))
 
+  (defparameter *meminfo-file* "/proc/meminfo")
+
+  ;; This horrible thing exists because some of the numbers from sysinfo are
+  ;; either wrong or missing.
+  (defun bodge-memory-numbers (sysinfo)
+    (when (file-exists *meminfo-file*)
+      (let (total free shared buffers cached avail reclaimable
+	    swap-total swap-used swap-free)
+	(with-open-file (in *meminfo-file*)
+	  (macrolet
+	      ((get-var (name val)
+		 `(when (begins-with ,name line)
+		    (let ((start (length ,name)))
+		      (multiple-value-bind (i pos)
+			  (parse-integer line :start start :junk-allowed t)
+			(when (and i (/= pos start))
+			  (setf ,val i))))
+		    (return))))
+	    (loop :with line
+	      :while (setf line (read-line in nil nil))
+	      :do
+		 (block nil
+		   (get-var "MemTotal:"     total)
+		   (get-var "MemFree:"      free)
+		   (get-var "MemShared:"    shared)
+		   (get-var "MemAvailable:" avail)
+		   (get-var "Shmem:"        shared)
+		   (get-var "Buffers:"      buffers)
+		   (get-var "Cached:"       cached)
+		   (get-var "SwapTotal:"    swap-total)
+		   (get-var "SwapFree:"     swap-free)
+		   (get-var "SwapUsed:"     swap-used)
+		   (get-var "SReclaimable:" reclaimable)))))
+	;; They're always in kilobytes
+	(setf total       (* total 1024)
+	      free        (* free 1024)
+	      shared      (* shared 1024)
+	      avail       (* avail 1024)
+	      buffers     (* buffers 1024)
+	      reclaimable (* reclaimable 1024)
+	      cached      (+ (* cached 1024) reclaimable)
+	      swap-total  (* swap-total 1024)
+	      swap-free   (* swap-free 1024)
+	      swap-used   (- swap-total swap-free)
+              ;; used (- total free cached buffers)
+	      )
+	;; Fix the things
+	(setf (sysinfo-free-memory sysinfo) free
+	      (sysinfo-shared-memory sysinfo) shared
+	      (sysinfo-cached-memory sysinfo) cached
+	      (sysinfo-reclaimable-memory sysinfo) reclaimable
+	      (sysinfo-available-memory sysinfo) avail)))
+    sysinfo)
+
   (defun sysinfo ()
     (with-foreign-object (info '(:struct foreign-sysinfo))
       (syscall (real-sysinfo info))
-      (convert-sysinfo info)))
+      (let ((result (convert-sysinfo info)))
+	;; But becuse C/linux is so fuxor we also have to do:
+	(bodge-memory-numbers result)
+	result)))
 
   (defvar *sysinfo-names* nil
     "Alist of keywords and slot names of sysinfo values.")
