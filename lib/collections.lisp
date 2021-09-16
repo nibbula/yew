@@ -624,6 +624,21 @@ probably only work for ordered-collections.")
 (defmethod olast ((collection container))
   (olast (container-data collection)))
 
+(defgeneric (setf olast) (value collection)
+  (:documentation
+   "Set the last element of a collection.")
+  (:method (value (collection list))
+    (setf (car (last collection)) value))
+  (:method (value (collection vector))
+    (setf (aref collection (1- (length collection))) value))
+  (:method (value (collection sequence))
+    (setf (elt collection (1- (length collection))) value))
+  ;; @@@ Is it even useful for structs or classes?
+  )
+
+(defmethod (setf olast) (value (collection container))
+  (setf (olast (container-data collection)) value))
+
 ;; (defgeneric omap (function &rest collections)
 ;;   (:documentation
 ;; "Apply FUNCTION to each object in all COLLECTIONS. Return a new COLLECTION,
