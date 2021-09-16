@@ -497,23 +497,30 @@ inclusive limit, otherwise it's an exclusive limit."))
 (defun possibly-convert-from-alist (thing)
   "If THING is a list, and the first element looks like an alist, try to convert
 the list from an alist to a list of proper lists. If THING is not a list, just
-return it."
-  (if (and (consp thing) (consp (first thing)))
-      (flet ((alist-element-p (x) (not (null (cdr (last x))))))
-	(if (alist-element-p (first thing))
-	    (loop :for x :in thing
-	       :if (alist-element-p x)
-	       :collect (list (car x) (cdr x))
-	       :else
-	       :collect x)
-	    thing))
-      thing))
+return it. If ‘thing’ looks like a list of non-collections, convert it to a list
+of one element lists, so we can make a 1 column table."
+  (if (consp thing)
+      (cond
+	((consp (first thing))
+	 (flet ((alist-element-p (x) (not (null (cdr (last x))))))
+	   (if (alist-element-p (first thing))
+	       (loop :for x :in thing
+	         :if (alist-element-p x)
+		   :collect (list (car x) (cdr x))
+		  :else
+		    :collect x)
+	       thing)))
+	((and (not (stringp (first thing))) (collection-p (first thing)))
+	 thing)
+	(t
+	 ;; Pretend it's 1 column table.
+	 (mapcar (_ (list _)) thing)))))
 
 (defmethod make-table-from ((object list) &key column-names columns type)
   "Make a table from an alist or a list of things."
-  (let ((tt (make-instance (or type 'mem-table)
-			   :data (possibly-convert-from-alist object)))
-	(first-obj (first object)))
+  (let* ((data (possibly-convert-from-alist object))
+	 (tt (make-instance (or type 'mem-table) :data data))
+	 (first-obj (first data)))
     (cond
       (columns (setf (table-columns tt) (make-columns columns)))
       (column-names
@@ -522,14 +529,12 @@ return it."
        (loop :for c :in column-names :do
 	    (table-add-column tt c)))
       (t
-	(when first-obj
-	  (if (sequence-of-classes-p object)
-	      (set-columns-names-from-class tt first-obj)
-	      ;; @@@ This will fail if first-object is not a propper list.
-	      ;; But we should be able to take an alist.
-	      (loop :for i :from 0 :below (olength first-obj)
-		 :do (table-add-column tt (format nil "Column~d" i)
-				       :type t))))))
+       (when first-obj
+	 (if (sequence-of-classes-p object)
+	     (set-columns-names-from-class tt first-obj)
+	     (loop :for i :from 0 :below (olength first-obj)
+		   :do (table-add-column tt (format nil "Column~d" i)
+					 :type t))))))
     tt))
 
 (defmethod make-table-from ((object hash-table) &key column-names columns type)
