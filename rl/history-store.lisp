@@ -120,9 +120,8 @@ and positioned at the beginning of the file."
 	   (dl-length-at-least-p (history-head hist) 1))
        ;; We're not doing the whole thing AND we have something after the start,
        ;; meaning: there was at least one hitory line entered.
-       (and (not (zerop file-pos))
-	    (not (null (dl-prev (history-start hist)))))))
-
+       (not (and (zerop file-pos)
+		 (not (null (dl-prev (history-start hist))))))))
 
 (defmethod history-store-save ((store text-history-store)
 			       (style (eql :fancy))
