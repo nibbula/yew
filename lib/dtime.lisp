@@ -9,14 +9,16 @@ live on Earth very recently only!")
   (:use :cl :dlib :opsys :calendar)
   (:export
    ;; dtime object
-   #:dtime #:dtime-seconds #:dtime-nanoseconds #:make-dtime #:dtime-p
-   #:get-dtime #:dtime-round #:make-dtime-as #:dtime-to
+   #:dtime #:dtime-seconds #:dtime-nanoseconds #:make-dtime #:copy-dtime
+   #:dtime-p #:get-dtime #:dtime-round #:make-dtime-as #:dtime-to
    #:dtime= #:dtime/= #:dtime< #:dtime> #:dtime<= #:dtime>= #:dtime+ #:dtime-
    #:dtime-zerop #:dtime-plusp #:dtime-minusp #:dtime-min #:dtime-max
+   #:dtime-normalize #:dtime-normalize!
    ;; other stuff
    #:date-string
    #:format-date
    #:simple-parse-time
+   #:describe-duration
    #:millennia-to-time #:centuries-to-time #:decades-to-time #:years-to-time
    #:weeks-to-time #:days-to-time #:hours-to-time #:minutes-to-time
    #:time-to-millennia #:time-to-centuries #:time-to-decades #:time-to-years
@@ -284,10 +286,62 @@ The date part is considered to be the current date."
   (
 |#
 
-;; The stupid base unit of time is seconds.
-;; Anything after weeks is bogus because years are variable and poorly defined!
-;; But for this bullcrap, we use the Jullian year which is exactly 365.25.
-;; Just more of the long painful future history of time.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  ;; The stupid base unit of time is seconds.
+  ;; Anything after weeks is bogus because years are variable and poorly defined!
+  ;; But for this bullcrap, we use the Jullian year which is exactly 365.25.
+  ;; Just more of the long painful future history of time.
+  (defparameter *time-super-units*
+    #(((:millennia :millennium)      #.(* 60 60 24 (+ 365 1/4) 1000))
+      ((:centuries :century)         #.(* 60 60 24 (+ 365 1/4) 100))
+      ((:decades   :decade)          #.(* 60 60 24 (+ 365 1/4) 10))
+      ((:years     :year   :yr)      #.(* 60 60 24 (+ 365 1/4)))
+      ((:weeks     :week   :wk)      #.(* 60 60 24 7))
+      ((:days      :day    :d)       #.(* 60 60 24))
+      ((:hours     :hour   :h :hr)   #.(* 60 60))
+      ((:minutes   :minute :m :min)  60)
+      ((:seconds   :second :s)       1)))
+
+  (defun dtime-factor (unit)
+    (second (find-if (_ (member unit _)) *time-super-units* :key #'first)))
+
+  (defparameter *time-sub-units*
+    #(
+      ((:seconds      :second      :s)  #.(expt 10 0))
+      ((:deciseconds  :decisecond  :ds) #.(expt 10 1))
+      ((:centiseconds :centisecond :cs) #.(expt 10 2))
+      ((:milliseconds :millisecond :ms) #.(expt 10 3))
+      ((:microseconds :microsecond :µs) #.(expt 10 6))
+      ((:nanoseconds  :nanosecond  :ns) #.(expt 10 9))
+      ((:picoseconds  :picosecond  :ps) #.(expt 10 12))
+      ((:femtoseconds :femtosecond :fs) #.(expt 10 15))
+      ((:attoseconds  :attosecond  :as) #.(expt 10 18))
+      ((:zeptoseconds :zeptosecond :zs) #.(expt 10 21))
+      ((:yoctoseconds :yoctosecond :ys) #.(expt 10 24))
+      ))
+
+  (defun dtime-divisor (unit)
+    (second (find-if (_ (member unit _)) *time-sub-units* :key #'first))))
+
+(defun millennia-to-time (millennia) (* millennia #.(dtime-factor :millennia)))
+(defun centuries-to-time (centuries) (* centuries #.(dtime-factor :centuries)))
+(defun decades-to-time   (decades)   (* decades   #.(dtime-factor :decades)))
+(defun years-to-time     (year)      (* year      #.(dtime-factor :years)))
+(defun weeks-to-time     (weeks)     (* weeks     #.(dtime-factor :weeks)))
+(defun days-to-time      (days)      (* days      #.(dtime-factor :days)))
+(defun hours-to-time     (hours)     (* hours     #.(dtime-factor :hours)))
+(defun minutes-to-time   (minutes)   (* minutes   #.(dtime-factor :minutes)))
+
+(defun time-to-millennia (seconds) (/ seconds #.(dtime-factor :millennia)))
+(defun time-to-centuries (seconds) (/ seconds #.(dtime-factor :centuries)))
+(defun time-to-decades   (seconds) (/ seconds #.(dtime-factor :decades)))
+(defun time-to-years     (seconds) (/ seconds #.(dtime-factor :year)))
+(defun time-to-weeks     (seconds) (/ seconds #.(dtime-factor :weeks)))
+(defun time-to-days      (seconds) (/ seconds #.(dtime-factor :days)))
+(defun time-to-hours     (seconds) (/ seconds #.(dtime-factor :hours)))
+(defun time-to-minutes   (seconds) (/ seconds #.(dtime-factor :minutes)))
+
+#|
 (defun millennia-to-time (millennia) (* millennia (* 60 60 24 (+ 365 1/4) 1000)))
 (defun centuries-to-time (centuries) (* centuries (* 60 60 24 (+ 365 1/4) 100)))
 (defun decades-to-time   (decades)   (* decades   (* 60 60 24 (+ 365 1/4) 10)))
@@ -305,6 +359,7 @@ The date part is considered to be the current date."
 (defun time-to-days      (seconds) (/ seconds (* 60 60 24)))
 (defun time-to-hours     (seconds) (/ seconds (* 60 60)))
 (defun time-to-minutes   (seconds) (/ seconds 60))
+|#
 
 ;; These, for lack of a better thing, these operate on the dual time from opsys.
 ;; To do better we probably need arbitrary precision floats.
@@ -321,24 +376,8 @@ The date part is considered to be the current date."
   (multiple-value-bind (s n) (get-time)
     (make-dtime :seconds s :nanoseconds n)))
 
-(defparameter *time-units*
-  #(((:yoctoseconds  :ys :yoctosecond) #.(expt 10 24))
-    ((:zeptoseconds  :zs :zeptosecond) #.(expt 10 21))
-    ((:attoseconds   :as :attosecond)  #.(expt 10 18))
-    ((:femtoseconds  :fs :femtosecond) #.(expt 10 15))
-    ((:picoseconds   :ps :picosecond)  #.(expt 10 12))
-    ((:nanoseconds   :ns :nanosecond)  #.(expt 10 9))
-    ((:microseconds  :µs :microsecond) #.(expt 10 6))
-    ((:milliseconds  :ms :millisecond) #.(expt 10 3))
-    ((:centiseconds  :cs :centisecond) #.(expt 10 2))
-    ((:deciseconds   :ds :decisecond)  #.(expt 10 1))
-    ((:seconds       :s  :second)      #.(expt 10 0))))
-
 (defconstant +ns-per-sec+ (expt 10 9)
   "The number of nanoseconds in a second.")
-
-(defun dtime-unit-divisor (unit)
-  (second (find-if (_ (member unit _)) *time-units* :key #'first)))
 
 (defun make-dtime-as (value unit)
   (let ((divvy (dtime-unit-divisor unit)))
@@ -360,23 +399,32 @@ The date part is considered to be the current date."
   "Round off DTIME to UNIT units."
   (ecase unit
     (:millennia
-     (make-dtime :seconds (time-to-millennia (dtime-seconds time))))
+     (make-dtime
+      :seconds (truncate (dtime-seconds time) #.(dtime-factor :millennia))))
     (:centuries
-     (make-dtime :seconds (time-to-centuries (dtime-seconds time))))
+     (make-dtime
+      :seconds (truncate (dtime-seconds time) #.(dtime-factor :centuries))))
     (:decades
-     (make-dtime :seconds (time-to-decades   (dtime-seconds time))))
+     (make-dtime
+      :seconds (truncate (dtime-seconds time) #.(dtime-factor :decades))))
     ((:yr :years)
-     (make-dtime :seconds (time-to-years     (dtime-seconds time))))
+     (make-dtime
+      :seconds (truncate (dtime-seconds time) #.(dtime-factor :years))))
     ((:wk :weeks)
-     (make-dtime :seconds (time-to-weeks     (dtime-seconds time))))
+     (make-dtime
+      :seconds (truncate (dtime-seconds time) #.(dtime-factor :weeks))))
     ((:d :days)
-     (make-dtime :seconds (time-to-days      (dtime-seconds time))))
+     (make-dtime
+      :seconds (truncate (dtime-seconds time) #.(dtime-factor :days))))
     ((:h :hr :hours)
-     (make-dtime :seconds (time-to-hours     (dtime-seconds time))))
+     (make-dtime
+      :seconds (truncate (dtime-seconds time) #.(dtime-factor :hours))))
     ((:m :min :minutes)
-     (make-dtime :seconds (time-to-minutes   (dtime-seconds time))))
+     (make-dtime
+      :seconds (truncate (dtime-seconds time) #.(dtime-factor :minutes))))
     ((:s :seconds)
      (make-dtime :seconds (dtime-seconds time)))
+    ;; @@@ This isn't right. It's not rounding?
     ((:ds :decisecond :deciseconds)
      (make-dtime :seconds (dtime-seconds time)
 		 :nanoseconds (truncate (dtime-nanoseconds time) 100000000)))
@@ -408,6 +456,59 @@ The date part is considered to be the current date."
      (make-dtime :seconds (dtime-seconds time)
 		 :nanoseconds (* (dtime-nanoseconds time) (expt 10 15))))))
 
+(defun dtime-normalize (dtime)
+  "Return a new ‘dtime’ with excess whole seconds moved from the nanaoseconds
+to the seconds component."
+  (check-type dtime dtime)
+  (dtime-normalize! (copy-dtime dtime)))
+
+(defun dtime-normalize! (dtime)
+  "Modify ‘dtime’ to move excess whole seconds from the nanaoseconds to the
+seconds component."
+  (check-type dtime dtime)
+  (when (>= (dtime-nanoseconds dtime) +ns-per-sec+)
+    (let ((secs-over (truncate (dtime-nanoseconds dtime) +ns-per-sec+)))
+      (incf (dtime-seconds dtime) secs-over)
+      (decf (dtime-nanoseconds dtime) (* secs-over +ns-per-sec+))))
+  ;; @@@ Maybe we should also convert from fractional to integer components?
+  dtime)
+
+(defun describe-duration (dtime &key stream)
+  "Describe a duration in time units to ‘stream’. If stream is NIL (the default),
+return the description as a string."
+  (let* ((out (or stream (make-string-output-stream)))
+	 (norm (dtime-normalize dtime))
+	 (seconds (dtime-seconds norm))
+	 (nanos (dtime-nanoseconds norm))
+	 (once nil))
+    ;; Cut the time up into big units.
+    (loop :with rounded :and factor
+      :for u :across *time-super-units*
+      :do (setf factor (dtime-factor (caar u))
+		rounded (truncate seconds factor))
+      :when (plusp rounded)
+      :do
+	 (if once
+	       (write-char #\space out)
+	       (setf once t))
+	 (format out "~d ~(~a~)" rounded (if (> rounded 1) (caar u) (cadar u)))
+	 (decf seconds (* rounded factor)))
+    ;; Report in the largest integer sub-unit down to ns.
+    (when (not (zerop nanos))
+      (loop :with rounded :and divisor
+        :for u :across (subseq *time-sub-units* 0 6) :do
+	(when (plusp (truncate nanos
+			       (setf divisor
+				     (/ +ns-per-sec+ (dtime-divisor (caar u))))))
+	  (when once
+	    (write-char #\space out))
+	  (format out "~d ~(~a~)"
+		  (setf rounded (truncate nanos divisor))
+		  (if (> rounded 1) (caar u) (cadar u)))
+	  (decf nanos (* rounded divisor)))))
+    (when (not stream)
+      (get-output-stream-string out))))
+
 ;; This demonstrates the extent to which I don't like to write repetitive code.
 (eval-when (:compile-toplevel)
   (defun define-time-comparison-operator (op)
@@ -431,14 +532,26 @@ The date part is considered to be the current date."
 
 (def-comp-ops)
 
-;; (defgeneric dtime= (time1 time2)
-;;   (:documentation
-;;    "Return true if TIME1 = TIME2."))
+(defgeneric dtime= (time1 time2)
+  (:documentation
+   "Return true if ‘time1’ = ‘time2’."))
 
-;; (defmethod dtime= ((time1 dtime) (time2 dtime))
-;;   "Return true if TIME1 = TIME2, which should both be a dtime."
-;;   (and (= (dtime-seconds time1) (dtime-seconds time2))
-;;        (= (dtime-nanoseconds time1) (dtime-nanoseconds time2))))
+(defmethod dtime= ((time1 dtime) (time2 dtime))
+  "Return true if ‘time1’ = ‘time2’, which should both be a dtime."
+  (and (= (dtime-seconds time1) (dtime-seconds time2))
+       (= (dtime-nanoseconds time2) (dtime-nanoseconds time2))))
+
+(defgeneric dtime-equal (time1 time2)
+  (:documentation
+   "Return true if ‘time1’ = ‘time2’."))
+
+(defmethod dtime-equal ((time1 dtime) (time2 dtime))
+  "Return true if ‘time1’ = ‘time2’, which should both be a dtime. The times are
+normalized before comparison."
+  (let ((t1 (dtime-normalize time1))
+	(t2 (dtime-normalize time2)))
+    (and (= (dtime-seconds t1) (dtime-seconds t2))
+	 (= (dtime-nanoseconds t2) (dtime-nanoseconds t2)))))
 
 (defun dtime/= (time1 time2)
   "Return true if TIME1 = TIME2, which should both be a struct time."
