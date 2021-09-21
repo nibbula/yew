@@ -10,6 +10,6 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Type with alternate alphabets."
-    :depends-on (:char-util :keymap :options :rl :pick-list :inator)
+    :depends-on (:char-util :keymap :options :collections :rl :pick-list :inator)
     :components
     ((:file "altchar")))
