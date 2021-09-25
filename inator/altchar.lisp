@@ -111,25 +111,24 @@ we can use pick-list effectively."
      "⒜⒝⒞⒟⒠⒡⒢⒣⒤⒥⒦⒧⒨⒩⒪⒫⒬⒭⒮⒯⒰⒱⒲⒳⒴⒵"
      "0⑴⑵⑶⑷⑸⑹⑺⑻⑼")
     ("pəuɹnʇ"
-     ;;"Ɐ Ɔ ƎℲ⅁HIꞰꞀ⅂ꟽbNOԀ SꞱՈɅ X⅄Z" ;"ꓯꓭꓛꓷꓱꓞꓨꓧꓲꓩꓘꓶꓠꓳꓒꓤꓢꓕꓵꓥꓫꓜ"
      "ZʎXMΛ∩⊥SᴚὉԀONW˥ʞſIHƃℲƎᗡϽq∀"
      "ɒqɔpəɟɓɥᴉſ̣ןʞɯuodbɹsʇnʌʍxʎz" ; ꞁ
-     "0 ↊↋      " ; 0123456789
+     "01↊↋3456789"
      "¡ #$ ⅋ ()*+ʻ- /: <=>¿ [\\]  {|}~") ; !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~
     ("d̳o̳u̳b̳l̳e̳ ̳u̳n̳d̳e̳r̳l̳i̳n̳e̳"
      "A̳B̳C̳D̳E̳F̳G̳H̳I̳J̳K̳L̳M̳N̳O̳P̳Q̳R̳S̳T̳U̳V̳W̳X̳Y̳Z̳"
      "a̳b̳c̳d̳e̳f̳g̳h̳i̳j̳k̳l̳m̳n̳o̳p̳q̳r̳s̳t̳u̳v̳w̳x̳y̳z̳"
      "0̳1̳2̳3̳4̳5̳6̳7̳8̳9̳"
      "!̳\"̳#̳$̳%̳&̳'̳(̳)̳*̳+̳,̳-̳.̳/̳:̳;̳<̳=̳>̳?̳@̳[\̳\̳]̳^̳_̳`̳{̳|̳}̳~̳")
-    ;; "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    ;; "abcdefghijklmnopqrstuvwxyz"
-    ;; "0123456789"
-    ;; "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
     ("s̶t̶r̶i̶k̶e̶t̶h̶r̶o̶u̶g̶h̶"
      "A̶B̶C̶D̶E̶F̶G̶H̶I̶J̶K̶L̶M̶N̶O̶P̶Q̶R̶S̶T̶U̶V̶W̶X̶Y̶Z̶"
      "a̶b̶c̶d̶e̶f̶g̶h̶i̶j̶k̶l̶m̶n̶o̶p̶q̶r̶s̶t̶u̶v̶w̶x̶y̶z̶"
      "0̶1̶2̶3̶4̶5̶6̶7̶8̶9̶"
      "̶!̶\"̶#̶$̶%̶&̶'̶(̶)̶*̶+̶,̶-̶.̶/̶:̶;̶<̶=̶>̶?̶@̶[\̶\]̶^̶_̶`̶{̶|̶}̶~̶")
+    ;; "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    ;; "abcdefghijklmnopqrstuvwxyz"
+    ;; "0123456789"
+    ;; "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
 ))
 
 (defun bind-letters (keymap letters base-letters)
