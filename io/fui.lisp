@@ -318,7 +318,7 @@ Keyword arguments are:
   (with-immediate ()
     (display-text title (if justify
 			    (list text)
-			    (osplit #\newline text :omit-empty t))
+			    (osplit #\newline text :omit-empty nil))
 		  :input-func input-func
 		  :justify justify
 		  :x x :y y :width width :height height
