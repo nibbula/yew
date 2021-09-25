@@ -385,6 +385,8 @@ X Y         Top left coordinates of the window."
 
 (defun make-reverse-keymap (keymap)
   "Make table of actions and all the keys that invoke them from a keymap."
+  ;; work around a compiler bug in sbcl 2.1.8?
+  #+sbcl (declare (optimize (speed 0) (safety 0) (debug 2)))
   (let ((rev-hash (make-hash-table)) prefix)
     (declare (special prefix))
     (labels ((action-is-keymap (action)
