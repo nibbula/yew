@@ -535,24 +535,52 @@ the first time it fails to identify the image."
     (message o "~s" result))
   (tt-cursor-off))
 
+(defparameter *popi-help*
+  "Enter a pixel expression.
+Some useful variables are:
+  p        - The current pixel
+  w        - Width of the image in pixels
+  h        - Height of the image in pixels
+  i        - Sub image number
+  n        - An integer that increments for every frame
+Some useful functions or macros are:
+  (cvt number)                    - Convert a number to a pixel.
+  (px r g b &optional (a #xff)))  - Make a pixel from R G B A color components.
+  (gray value)                    - Make a gray pixel.
+  (pr pixel)                      - Pixel red component
+  (pg pixel)                      - Pixel green component
+  (pb pixel)                      - Pixel blue component
+  (pa pixel)                      - Pixel alpha component
+  (f  pixel)                      - Convert pixel component to float
+  (a x y)                         - Image pixel at coordinates X and Y.")
+
+(defun popi-help ()
+  (fui:show-text *popi-help*))
+
 (defun apply-pixel-expr (o)
   "Apply an expression to every pixel in the image."
   (tt-move-to 0 0)
   (tt-cursor-on)
   (tt-finish-output)
-  (let (form real-form func warns fails (*package* (find-package :popi)))
+  (let (form real-form raw-form func warns fails
+	(*package* (find-package :popi)))
     (declare (ignorable warns fails))
     (catch 'flanky
       (handler-case
 	  (progn
 	    ;;(setf form (list (read-from-string (rl:rl :prompt ": ") nil nil))
-	    (setf form (list (read-from-string
+	    (setf raw-form (read-from-string
 			      (rl-widget:widget-read
 			       :width 60 :height 2
 			       :flex-height t
 			       :completion-func #'completion:complete-symbol)
-			      nil nil))
-		  real-form (popi:popi-form form)
+			      nil nil)
+		  form (list raw-form))
+	    (when (and (typep raw-form '(or string symbol))
+		       (string-equal raw-form "help"))
+	      (popi-help)
+	      (throw 'flanky nil))
+	    (setf real-form (popi:popi-form form)
 		  popi:w (width o)
 		  popi:h (height o)
 		  popi:n 0

@@ -1,6 +1,6 @@
-;;
-;; view-image-popi.lisp - Something like a pixel shader.
-;;
+;;;
+;;; view-image-popi.lisp - Something like a pixel shader.
+;;;
 
 (defpackage :view-image-popi
   (:documentation "Something like a pixel shader, for the image viewer.
