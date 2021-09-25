@@ -384,7 +384,7 @@ X Y         Top left coordinates of the window."
     :x ,x :y ,y))
 
 (defun make-reverse-keymap (keymap)
-  "Make table of actiions and all the keys that invoke them from a keymap."
+  "Make table of actions and all the keys that invoke them from a keymap."
   (let ((rev-hash (make-hash-table)) prefix)
     (declare (special prefix))
     (labels ((action-is-keymap (action)
