@@ -265,8 +265,8 @@
 (defvar *guess-func* nil
   "Function to guess content.")
 
-;; @@@ Bogus workaround for windows
-#-windows
+;; @@@ Bogus workaround because most things don't have libmagic by default.
+#-(or windows darwin)
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (d-add-feature :has-libmagic))
 
