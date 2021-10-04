@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description   "Calculate and explore disk usage"
     :depends-on (:dlib :opsys :find :tree-viewer :terminal :view-generic
-		 :los-config :view)
+		 :los-config :view :unicode)
     :components
     ((:file "du")))

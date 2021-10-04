@@ -12,7 +12,7 @@
 (defpackage :du
   (:documentation "Disk usage")
   (:use :cl :dlib :dlib-misc :opsys :tree-viewer :inator :terminal :char-util
-	:keymap :view-generic)
+	:keymap :view-generic :unicode)
   (:export
    ;; Main entry point
    #:du
@@ -42,13 +42,21 @@
   (track-hard-links t)
   inodes)
 
-(defvar *du* nil)
+(defvar *du* nil "The current du inator.")
+
+(deftype small-string () `(simple-array (unsigned-byte 8)))
+
+(defun to-small-string (string)
+  (string-to-utf8-bytes string))
+
+(defun from-small-string (small-string)
+  (utf8-bytes-to-string small-string))
 
 ;(declaim (ftype (function (du-node) integer) du-node-size))
 
 (defclass du-node (tree-viewer:node)
   ((name
-    :initarg :name :accessor du-node-name :type string
+    :initarg :name :accessor du-node-name :type small-string
     :documentation "Name of the node.")
    (parent
     :initarg :parent :accessor du-node-parent :initform nil
@@ -69,7 +77,7 @@
     (error "du-node must be created with a parent.")))
 
 (defmethod node-object ((o du-node))
-  (du-node-name o))
+  (from-small-string (du-node-name o)))
 
 (defgeneric output (object stream)
   (:documentation "Output an object to a stream."))
@@ -114,7 +122,9 @@
       (when (not (integerp size))
 	(error "size must be an integer"))
       (setf result (make-instance 'du-node
-				  :name name :size size :parent parent))
+				  :name (to-small-string name)
+				  :size size
+				  :parent parent))
       (if (char= (setf c (read-char stream)) #\))
 	  (msg "end of subtree ~c~%" c)
 	  (progn
@@ -184,19 +194,21 @@
 	(loop :with i
 	   :for dir :in (slot-value o 'directories)
 	   :do
-	   (setf i (make-instance 'du-top-node :name dir :directory dir))
+	   (setf i (make-instance 'du-top-node
+				  :name (to-small-string dir)
+				  :directory dir))
 	   (push i (node-branches o))
 	   (incf (du-node-size o) (du-node-size i)))
 	(setf (node-branches o)
 	      (sort-muffled (node-branches o) #'> :key #'du-node-size)))
-      (make-instance 'du-top-node :name "" :directory nil)))
+      (make-instance 'du-top-node :name (to-small-string "") :directory nil)))
 
 (defun get-path (node)
   "Return the full pathname of NODE by walking up the tree."
   (let (path)
     (loop
        :for n = node :then (du-node-parent n)
-       :if n :do (push (du-node-name n) path) :end
+       :if n :do (push (node-object n) path) :end
        :while n)
     (apply #'nos:path-append path)))
 
@@ -245,19 +257,21 @@
 		      (declare (integer my-size))
 		      (incf size my-size)
 		      (when show-all
-			(push (make-instance 'du-file-node
-					     :name (dir-entry-name f)
-					     :parent o
-					     :size my-size)
+			(push (make-instance
+			       'du-file-node
+			       :name (to-small-string (dir-entry-name f))
+			       :parent o
+			       :size my-size)
 			      (node-branches o))))))
 		 ((and (eq type :directory)
 		       (not (equal (dir-entry-name f) ".."))
 		       (or (not exclude)
 			   (not (equal path exclude))))
 		  ;;(format t "--> ~a ~a~%" path exclude)
-		  (setf new (make-instance 'du-dir-node
-					   :name (dir-entry-name f)
-					   :parent o))
+		  (setf new (make-instance
+			     'du-dir-node
+			     :name (to-small-string (dir-entry-name f))
+			     :parent o))
 		  (push new (node-branches o))
 		  (incf size (du-node-size new)))))
 	    (setf (node-branches o)
@@ -279,7 +293,7 @@
 				(format nil "~10a ~a~%"
 					(print-size size :stream nil
 						    :traditional t)
-					name)))))
+					(from-small-string name))))))
 (defun save-file (o)
   "Save the du tree in a file."
   (save)
@@ -318,17 +332,20 @@
   (cond
     ((not (listp directories))
      (make-instance 'du-top-node
-		    :name directories :parent nil
+		    :name (to-small-string directories)
+		    :parent nil
 		    :directory (current-directory)))
     ((= (length directories) 1)
      (make-instance 'du-top-node
-		    :name (elt directories 0) :parent nil
+		    :name (to-small-string (elt directories 0))
+		    :parent nil
 		    :directory (current-directory)))
     (t
      ;; (format t "directories = ~s~%" directories)
      ;; (read-line)
      (make-instance 'du-glom-node
-		    :name "Directories" :parent nil
+		    :name (to-small-string "Directories")
+		    :parent nil
 		    :directories directories
 		    ))))
 
