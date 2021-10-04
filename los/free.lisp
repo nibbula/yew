@@ -152,6 +152,7 @@ Swap:    ~11d ~11d ~11d~%"
     table))
 
 (defparameter *bar-char* (code-char #x2592)) ; ▒
+;; (defparameter *bar-char* (code-char #x2588)) ; █
 
 (defcommand free
   ((bytes boolean :short-arg #\b :help "Show the sizes in bytes.")
@@ -208,8 +209,10 @@ Swap:    ~11d ~11d ~11d~%"
 				  (length "used/buffers/cache/free")
 				  2)
 			       #\space)
-		      (:fg-green "used/") (:fg-blue "buffers/")
-		      (:fg-yellow "cache/") (:fg-black :bold "free")
+		      (:bg-green (:fg-black "used/"))
+		      (:bg-blue  "buffers/")
+		      (:bg-yellow (:fg-black "cache/"))
+		      (:bg-white (:fg-black (:bold (:inverse "free"))))
 		      #\newline))
 	(grout-span
 	 `((:cyan "Mem")
