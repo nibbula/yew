@@ -380,7 +380,7 @@ The date part is considered to be the current date."
   "The number of nanoseconds in a second.")
 
 (defun make-dtime-as (value unit)
-  (let ((divvy (dtime-unit-divisor unit)))
+  (let ((divvy (dtime-divisor unit)))
     (when (not divvy)
       (error "Unknown unit ~s~%" unit))
     (multiple-value-bind (s leftover) (truncate value divvy)
@@ -389,7 +389,7 @@ The date part is considered to be the current date."
 		  (truncate (* leftover (/ +ns-per-sec+ divvy)))))))
 
 (defun dtime-to (dtime unit)
-  (let ((multy (dtime-unit-divisor unit)))
+  (let ((multy (dtime-divisor unit)))
     (when (not multy)
       (error "Unknown unit ~s~%" unit))
     (+ (* multy (dtime-seconds dtime))
