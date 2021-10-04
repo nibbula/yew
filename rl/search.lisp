@@ -159,7 +159,7 @@ Control-R searches again backward and Control-S searches again forward."
 	     (start-from (or (history-current-get history-context)
 			     (history-head hist)))
 	     (pos point) end c #| added |# failed escape new-hist
-	     scanner-string scanner)
+	     scanner-string scanner dont-search)
 	(labels ((redisp ()
 		   (display-search e search-string point end
 				   (format nil *isearch-prompt*
@@ -175,10 +175,7 @@ Control-R searches again backward and Control-S searches again forward."
 			 ;; temporary-message nil
 			 last-search search-string)
 		   (clear-completions e)
-		   ;; (dbugf :rl "CHOW ~s ~s ~s ~a~%"
-		   ;; 	  pos (length buf) point contexts)
-		   (redraw-display e)
-		   ))
+		   (redraw-display e)))
 	  (loop :while (not quit-now)
 	     :do
 	     ;; (when (debugging e)
@@ -187,8 +184,10 @@ Control-R searches again backward and Control-S searches again forward."
 	     (tt-finish-output)
 	     (setf c (get-a-char e))
 	     ;; (setf added nil)
+	     (setf dont-search nil)
 	     (cond
 	       ((eql c (ctrl #\G))
+		(setf temporary-message nil)
 		(use-first-context (e)
 		  (setf (history-cur hist) start-hist)
                   (setf point start-point)
@@ -204,12 +203,14 @@ Control-R searches again backward and Control-S searches again forward."
 		(setf direction :backward
 		      start-from (search-start-backward history-context)))
 	       ((eql c (ctrl #\L))
+		(setf dont-search t)
 		(redisp))
 	       ((or (eql c (ctrl #\h)) (eql c #\backspace) (eql c #\rubout))
 		(stretchy-truncate search-string
 				   (max 0 (1- (length search-string)))))
 	       ((eql c #\escape)
-		(setf escape t))
+		(setf escape t
+		      dont-search t))
 	       ((or (eql c (meta-char #\r)) (and escape (eql c #\r)))
 		;; toggle regexp search
 		(setf regexp-p (not regexp-p)
@@ -235,21 +236,22 @@ Control-R searches again backward and Control-S searches again forward."
 				      :case-insensitive-mode
 				      (use-case-insensitive-p search-string))))
 		 (setf scanner-string (copy-seq search-string))))
-	     (multiple-value-setq (new-hist pos end)
-	       (search-history e search-string direction start-from pos
-			       :regexp-scanner scanner))
-	     (if new-hist
-		 (setf (history-cur hist) new-hist
-		       point pos
-		       failed nil)
-		 (progn
-		   (setf failed t)
-		   ;; (when added
-		   ;;   (stretchy-truncate search-string
-		   ;; 		     (max 0 (1- (length search-string))))
-		   ;;   (setf pos old-pos))
-		   ;; (beep e "Not found")
-		   ))))))))
+	     (when (not dont-search)
+	       (multiple-value-setq (new-hist pos end)
+		 (search-history e search-string direction start-from pos
+				 :regexp-scanner scanner))
+	       (if new-hist
+		   (setf (history-cur hist) new-hist
+			 point pos
+			 failed nil)
+		   (progn
+		     (setf failed t)
+		     ;; (when added
+		     ;;   (stretchy-truncate search-string
+		     ;; 		     (max 0 (1- (length search-string))))
+		     ;;   (setf pos old-pos))
+		     ;; (beep e "Not found")
+		     )))))))))
 
 (defsingle isearch-backward (e)
   "Incremental search backward."
