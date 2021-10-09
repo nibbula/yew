@@ -675,7 +675,6 @@ name, not the contents. Return NIL if we don't have a guess."
 (defcfun seteuid :int (uid uid-t))
 (defcfun setegid :int (gid uid-t))
 
-;; int getgroups(int gidsetsize, gid_t grouplist[]);
 (defcfun getgroups :int (gid-set-size :int) (group-list (:pointer gid-t)))
 
 ;; getgroups vs. getgrouplist & NGROUPS_MAX .etc
@@ -693,10 +692,48 @@ name, not the contents. Return NIL if we don't have a guess."
 		   (mem-aref group-list 'gid-t i))))
     result))
 
+(defun get-groups-list ()
+  "Return a list of group IDs for the current process."
+  (let* ((size (syscall (getgroups 0 (null-pointer)))))
+    (with-foreign-object (group-list 'gid-t size)
+      (syscall (getgroups size group-list))
+      (loop :for i :from 0 :below size
+        :collect (mem-aref group-list 'gid-t i)))))
+
 (defun member-of (group)
   "Return true if the current user is a member of GROUP."
   (and (position group (get-groups)) t))
 
-;; setgroups?
+(defcfun setgroups :int (size size-t) (group-list (:pointer gid-t)))
+
+(defun set-groups (groups)
+  "Set the supplementary groups for the calling process to ‘groups’, which
+should be a list or vector of group numbers. A NIL or empty vector drops all
+supplemental groups."
+  (check-type groups (or list vector))
+  (cond
+    ((zerop (length groups))
+     (syscall (setgroups 0 (null-pointer))))
+    (t
+     (let* ((group-list (coerce groups 'list))
+	    (size (length group-list)))
+       (with-foreign-object (gid-list 'gid-t size)
+	 (loop
+	   :for i = 0 :then (1+ i)
+	   :for g :in groups
+	   :do (setf (mem-aref gid-list 'gid-t i) g))
+	 (syscall (setgroups size gid-list))))))
+  nil)
+
+(defun add-groups (groups)
+  "Add the supplementary groups in ‘groups’ to the calling process if they are
+not already there. ‘groups’ should be a list or vector of group numbers."
+  (check-type groups (or list vector))
+  (let* ((new-groups (coerce groups 'list))
+	 (old-groups (get-groups-list))
+	 (new-set (union old-groups new-groups)))
+    (set-groups new-set)))
+
+;; Linux capabilities?
 
 ;; End

@@ -394,7 +394,11 @@
    #:getsid
    #:getgroups
    #:get-groups
+   #:get-groups-list
    #:member-of
+   #:setgroups
+   #:set-groups
+   #:add-groups
 
    #:process-list
    #:process-info
