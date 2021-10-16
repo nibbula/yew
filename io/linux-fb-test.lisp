@@ -105,6 +105,26 @@
 	  (return-from munching nil)))
      (sleep .1)))
 
+(defun random-pixels ()
+  (let* ((height (framebuffer-height (context-fb *context*)))
+	 (width  (framebuffer-width (context-fb *context*))))
+    (loop :with i :of-type fixnum
+       :for y :of-type fixnum :from 0 :below height :do
+       (loop :for x :of-type fixnum :from 0 :below width :do
+	 (set-pixel x y (linux-fb:color-pixel
+			 (random #xff) (random #xff) (random #xff)))))))
+
+(defun random-color-screen ()
+  (let* ((height (framebuffer-height (context-fb *context*)))
+	 (width  (framebuffer-width (context-fb *context*)))
+	 (r (random #xff))
+	 (g (random #xff))
+	 (b (random #xff)))
+    (loop :with i :of-type fixnum
+       :for y :of-type fixnum :from 0 :below height :do
+       (loop :for x :of-type fixnum :from 0 :below width :do
+	 (set-pixel x y (linux-fb:color-pixel r g b))))))
+
 (defun clear ()
   (let* ((height (framebuffer-height (context-fb *context*)))
 	 (width  (framebuffer-width (context-fb *context*))))
