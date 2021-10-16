@@ -362,7 +362,7 @@ the VALUE."))
 (defmethod convert-color (color
 			  (from-color-model (eql :rgb8))
 			  (to-color-model (eql :rgb)))
-  (make-color :rgb8
+  (make-color :rgb
 	      :red   (/ (color-component color :red)   #xff)
 	      :green (/ (color-component color :green) #xff)
 	      :blue  (/ (color-component color :blue)  #xff)))
@@ -521,6 +521,62 @@ the VALUE."))
 	      :alpha (color-component color :alpha)))
 
 (register-color-model :rgba)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; The RGBA8 color model:
+;;
+
+(defmethod color-model-components ((color-model (eql :rgba8)))
+  '(:red :green :blue :alpha))
+
+(defmethod color-model-component ((color-model (eql :rgba8))
+				  color component-name)
+  (color-model-component :rgba color component-name))
+
+(defmethod set-color-model-component ((color-model (eql :rgba8))
+				      color component-name value)
+  (set-color-model-component :rgba color component-name value))
+
+(defmethod make-color ((color-model (eql :rgba8)) &key red green blue alpha)
+  (vector color-model red green blue alpha))
+
+(defmethod convert-color (color
+			  (from-color-model (eql :rgba))
+			  (to-color-model (eql :rgba8)))
+  (make-color :rgba8
+	      :red   (component-to-8bit (color-component color :red))
+	      :green (component-to-8bit (color-component color :green))
+	      :blue  (component-to-8bit (color-component color :blue))
+	      :alpha (component-to-8bit (color-component color :alpha))))
+
+(defmethod convert-color (color
+			  (from-color-model (eql :rgba8))
+			  (to-color-model (eql :rgba)))
+  (make-color :rgba
+	      :red   (/ (color-component color :red)   #xff)
+	      :green (/ (color-component color :green) #xff)
+	      :blue  (/ (color-component color :blue)  #xff)
+	      :alpha (/ (color-component color :alpha) #xff)))
+
+(defmethod convert-color (color (from-color-model (eql :rgba8))
+			          (to-color-model (eql :gray)))
+  (make-color :gray :value
+	      (/ (+ (color-component color :red)
+		    (color-component color :green)
+		    (color-component color :blue))
+		 3)
+	      :alpha (color-component color :alpha)))
+
+(defmethod convert-color (color (from-color-model (eql :gray))
+			          (to-color-model (eql :rgba8)))
+  (make-color :rgba8
+	      :red   (color-component color :value)
+	      :green (color-component color :value)
+	      :blue  (color-component color :value)
+	      :alpha (color-component color :alpha)))
+
+(register-color-model :rgba8)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
