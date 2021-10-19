@@ -498,6 +498,9 @@ possible."
        ;;(call-next-method)
        ))))
 
+;; @@@ clisp gives a different stream to ‘print-object’ than we give to the
+;; ‘write’ that calls it. How can we get around it?
+
 (defmethod print-object ((obj fatchar) stream)
   "Print a FATCHAR to a FAT-STRING-OUTPUT-STREAM."
   ;;(format t "stream is a ~a ~a~%" (type-of stream) stream)
