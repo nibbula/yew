@@ -121,8 +121,8 @@ and positioned at the beginning of the file."
 	(more-than-one      (dl-length-at-least-p (history-start hist) 2))
 	(something-entered  (not (null (dl-prev (rl::history-start hist)))))
 	)
-    (print-values*
-     (some-history file-is-empty any-to-save more-than-one something-entered))
+    ;; (print-values*
+    ;;  (some-history file-is-empty any-to-save more-than-one something-entered))
     (and some-history
 	 (or file-is-empty
 	     (and any-to-save
