@@ -114,6 +114,22 @@ and positioned at the beginning of the file."
    We must have at least one history entry or we're starting with a
    blank file, and we have at least one line of history to save.
    In other words, don't save an empty history to a blank file."
+  ;; (declare (ignore file-pos)) ;; @@@
+  (let ((some-history       (dl-length-at-least-p (history-head hist) 1))
+	(file-is-empty      (zerop file-pos))
+	(any-to-save        (dl-length-at-least-p (history-start hist) 1))
+	(more-than-one      (dl-length-at-least-p (history-start hist) 2))
+	(something-entered  (not (null (dl-prev (rl::history-start hist)))))
+	)
+    (print-values*
+     (some-history file-is-empty any-to-save more-than-one something-entered))
+    (and some-history
+	 (or file-is-empty
+	     (and any-to-save
+		  something-entered)
+	     more-than-one)
+	 )))
+  #|
   (and (or (dl-length-at-least-p (history-start hist) 1)
 	   (zerop file-pos))
        (or (dl-prev (history-start hist))
@@ -121,7 +137,8 @@ and positioned at the beginning of the file."
        ;; We're not doing the whole thing AND we have something after the start,
        ;; meaning: there was at least one hitory line entered.
        (not (and (zerop file-pos)
-		 (not (null (dl-prev (history-start hist))))))))
+		 (not (null (dl-prev (history-start hist)))))))
+  |#
 
 (defmethod history-store-save ((store text-history-store)
 			       (style (eql :fancy))
@@ -147,10 +164,12 @@ and positioned at the beginning of the file."
 			      :direction :output
 			      :if-does-not-exist :create
 			      :if-exists :append)
-	;; If we're starting a fresh file, write the version header.
-	(when (zerop (setf pos (file-position stream)))
-	  (format stream "~a ~a~%" *text-history-magic* *text-history-version*))
+	(setf pos (file-position stream))
 	(when (should-save-p hist pos)
+	;; If we're starting a fresh file, write the version header.
+	  (when (zerop pos)
+	    (format stream "~a ~a~%"
+		    *text-history-magic* *text-history-version*))
 	  (dl-list-do-backward
 	   ;; If we're starting a new file start from the beginning, otherwise
 	   ;; use the start of the new history nodes.
@@ -216,22 +235,25 @@ and positioned at the beginning of the file."
       (ensure-directories-exist file-name)
       (when (file-exists file-name) ;; Don't fail if the file doesn't exist.
 	(with-open-file (stream file-name :direction :input)
-	  (when (not (eq :ok (check-version stream :no-error t)))
-	    (error "History format is fancy, but the history file isn't in ~
-                    fancy format."))
-	  (let ((*read-eval* nil) (count 0))
-	    (setf (history-head hist)
-		  (make-dl-list
-		   (nreverse ;; <<-- N.B.
-		    (loop :with s
-		       ;; :while (setq s (safe-read stream nil))
-		       :while (setq s (read-history-record stream count))
-		       :do
-			 (incf count)
-		       :collect s)))
-		  (history-tail hist)  (dl-last (history-head hist))
-		  (history-start hist) (history-head hist)
-		  (history-cur hist)   (history-head hist))))))))
+	  ;; If the file is empty, just ignore it.
+	  (when (not (zerop (file-length stream)))
+	    ;; If it's not empty, it should have a version header.
+	    (when (not (eq :ok (check-version stream :no-error t)))
+	      (error "History format is fancy, but the history file isn't in ~
+                      fancy format."))
+	    (let ((*read-eval* nil) (count 0))
+	      (setf (history-head hist)
+		    (make-dl-list
+		     (nreverse ;; <<-- N.B.
+		      (loop :with s
+			    ;; :while (setq s (safe-read stream nil))
+			    :while (setq s (read-history-record stream count))
+			    :do
+			       (incf count)
+			    :collect s)))
+		    (history-tail hist)  (dl-last (history-head hist))
+		    (history-start hist) (history-head hist)
+		    (history-cur hist)   (history-head hist)))))))))
 
 ;;;;;;;;;;;;;;;;;
 ;; Simple style
@@ -292,19 +314,23 @@ and positioned at the beginning of the file."
   (declare (ignore update)) ;; @@@ implement update
   (let ((hist (get-history history-context)))
     (with-slots (file-name) store
+      (ensure-directories-exist file-name)
       (when (file-exists file-name) ;; Don't fail if the file doesn't exist.
-	(when (fancy-hist-p file-name)
-	  (error "The history file is probably in fancy format, but we're ~
-                  we're trying to load simple format."))
 	(with-open-file (stream file-name :direction :input)
-	  (setf (history-head hist)
-		(make-dl-list (nreverse ;; <<-- N.B.
-			       (loop :with line
-				  :while (setf line (read-line stream nil))
-				  :collect (make-history-entry :line line))))
-		(history-tail hist)  (dl-last (history-head hist))
-		(history-start hist) (history-head hist)
-		(history-cur hist)   (history-head hist)))))))
+	  ;; If the file is empty, just ignore it.
+	  (when (not (zerop (file-length stream)))
+	    ;; If it's not empty, it should NOT have a fancy version header.
+	    (when (fancy-hist-p file-name)
+	      (error "The history file is probably in fancy format, but we're ~
+                      we're trying to load simple format."))
+	    (setf (history-head hist)
+		  (make-dl-list (nreverse ;; <<-- N.B.
+				 (loop :with line
+				   :while (setf line (read-line stream nil))
+				   :collect (make-history-entry :line line))))
+		  (history-tail hist)  (dl-last (history-head hist))
+		  (history-start hist) (history-head hist)
+		  (history-cur hist)   (history-head hist))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Storage for format :database
