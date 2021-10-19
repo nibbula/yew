@@ -82,13 +82,13 @@
 	  (history-tail hist) lst
 	  (history-cur hist) lst)))
 
-(defun history-add (buf &key (context *history-context*) extra)
-  "Adds the content BUF as the most recent history item."
+(defun history-add (string &key (context *history-context*) extra)
+  "Adds the content ‘string’ as the most recent history item."
   (let* ((hist (get-history context)))
     (dl-push (history-head hist)
 	     ;; (copy-seq buf)
 	     (make-history-entry :time (get-universal-time)
-				 :line (copy-seq buf)
+				 :line (copy-seq string)
 				 :extra extra))
     (when (not (history-cur hist))
       (setf (history-cur hist) (history-head hist)))
@@ -198,6 +198,20 @@ from oldest to most recent."
   "Call FUNCTION with every history-entry in the history given by CONTEXT,
 from most recent to oldest."
   (dl-list-do (history-head (get-history context)) function))
+
+(defun history-line-list (&optional (context *history-context*))
+  "Return a list of history lines."
+  (let (result)
+    (dl-list-do-element
+     (history-head (get-history context))
+     (_ (push (history-entry-line (dl-content _)) result)))
+    result))
+
+(defun history-line-matches (search-string &optional (context *history-context*))
+  "Return a list of history lines that contain the ‘search-string’."
+  (mapcan (_ (let ((r (search search-string _)))
+	       (and r (list _))))
+	  (history-line-list context)))
 
 (defun show-history (&key (context *history-context*) show-time show-extra)
   "Print the history with numbers."

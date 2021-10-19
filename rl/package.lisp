@@ -62,6 +62,8 @@
    #:history-add
    #:history-current
    #:history-file-name
+   #:history-line-list
+   #:history-line-matches
    #:show-history
    #:history-table
    #:history-save
