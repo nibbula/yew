@@ -186,11 +186,13 @@ Swap:    ~11d ~11d ~11d~%"
 			 bar-width)
 		      (memory-total m)))
 	     (unused-bar
-	       (- bar-width used-bar buf-used-bar shared-used-bar))
+	       (max 0 (- bar-width used-bar buf-used-bar shared-used-bar)))
 	     (swap-bar
-	       (round (* (- (memory-total-swap m)
-			    (memory-free-swap m)) bar-width)
-		      (memory-total-swap m)))
+	       (if (zerop (memory-total-swap m))
+		   0
+		   (round (* (- (memory-total-swap m)
+				(memory-free-swap m)) bar-width)
+			  (memory-total-swap m))))
 	     (swap-unused-bar
 	       (- bar-width swap-bar)
 	       ;; (round (* (memory-free-swap m) bar-width)
@@ -214,6 +216,7 @@ Swap:    ~11d ~11d ~11d~%"
 		      (:bg-yellow (:fg-black "cache/"))
 		      (:bg-white (:fg-black (:bold (:inverse "free"))))
 		      #\newline))
+	;; (print-values* (used-bar buf-used-bar shared-used-bar unused-bar))
 	(grout-span
 	 `((:cyan "Mem")
 	   (:bold :fg-green #\[)
