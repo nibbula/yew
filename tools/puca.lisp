@@ -143,6 +143,10 @@ current line or the selected files."))
     :initarg :diff-history-head :accessor backend-diff-history-head
     :documentation
     "Command to compare a change in history to the current version.")
+   (cat-history
+    :initarg :cat-history :accessor backend-cat-history
+    :documentation
+    "Command to output the file contents from a specific history item.")
    (commit
     :initarg :commit :accessor backend-commit :type string
     :documentation "Commit the changes.")
@@ -368,6 +372,7 @@ return history for the whole repository."))
    :diff-repo	      "git diff --color --staged | pager"
    :diff-history      "git diff --color ~a ~a -- ~{~a ~} | pager"
    :diff-history-head "git diff --color ..~a -- ~{~a ~} | pager"
+   :cat-history       "git cat-file -p ~a | pager"
    :commit	      "git --no-pager commit ~{~a ~}"
    :commit-interactive "git --no-pager commit --patch ~{~a ~}"
    :update	      "git --no-pager pull ~{~a ~}"
@@ -1143,6 +1148,36 @@ for the command-function).")
     :documentation "Commit message."))
   (:documentation "An history editor item."))
 
+;; @@@ git specific
+(defun repo-relative-file (file)
+  ;; You might think this would work..
+  ;;
+  ;; (remove-prefix file (get-repo-dir (puca-backend *puca*)))
+  ;;
+  ;; but because of the trailing slash, we have to do this foolishness:
+  (let ((full (nos:parse-path file)))
+    (nos:os-pathname-namestring
+     (nos:make-os-pathname
+      :path (remove-prefix
+	     (nos:os-pathname-path full)
+	     (nos:os-pathname-path
+	      (nos:parse-path
+	       (get-repo-dir (puca-backend *puca*))))
+	     :test #'equal)))))
+;; @@@ Or we could make a os-pathname-remove-prefix ???
+
+(defgeneric history-revision-file (item file-name)
+  (:documentation
+   "Return a representation of a specific file name at the given history item
+point in time (a.k.a. revision hash).")
+  (:method ((item history) file-name)
+    ;; (info-window "moo"
+    ;; 		 (list (format nil "--> ~s ~s ~s~%"
+    ;; 			       (history-hash item)
+    ;; 			       file-name
+    ;; 			       (repo-relative-file file-name))))
+    (s+ (history-hash item) ":" (repo-relative-file file-name))))
+
 (defun make-history (&rest initargs)
   (apply #'make-instance 'history initargs))
 
@@ -1288,6 +1323,27 @@ for the command-function).")
 	    (mapcar #'prin1-to-string files))
       :relist nil :do-pause nil)))
 
+;; Imagine if we could do (with-virtual-filesystem (<revision>) …)
+
+(defun view-history-revision (p)
+  "View history revision"
+  (with-slots ((point inator::point) items files item-count) p
+    (let ((a-bunch (or (not (puca-history-files p))
+		       (> (length (puca-history-files p)) 5))))
+      (when (or (not a-bunch)
+		(popup-y-or-n-p
+		 (span-to-fat-string `("Do you really want to view "
+				       (:cyan ,(or (puca-history-files p) "ALL"))
+				       " files?"))))
+	(do-command #'backend-cat-history
+	  ;; @@@ Not sure how to do multiple yet..
+	  ;; (loop :for f :in files
+	  ;; 	:collect (history-revision-file (elt items point) f))
+	  ;; Another problem is: the file name could have changed or may
+	  ;; even be from a different repo?
+	  (list (history-revision-file (elt items point) (first files)))
+	  :relist nil :do-pause nil)))))
+
 (defun view-history-file (p)
   "View file"
   ;; (pager:pager (selected-files))
@@ -1348,7 +1404,8 @@ for the command-function).")
     (,(meta-char #\=)	. describe-key-briefly)
     (,(ctrl #\t)	. toggle-debug)
     (#\g		. relist)
-    (#\v	        . view-history-file)
+    (#\v	        . view-history-revision)
+    (#\V	        . view-history-file)
     (#\i	        . inspect-history)
     (#\a		. amend-command)
     (#\d	        . diff-history-command)
