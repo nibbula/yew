@@ -52,7 +52,17 @@
 	(tt-mouse-button-event
 	 (case (tt-mouse-button result)
 	   (:button-4 (setf result :scroll-up))
-	   (:button-5 (setf result :scroll-down)))))
+	   (:button-5 (setf result :scroll-down))
+	   ;; (t
+	   ;;  (setf result
+	   ;; 	  (keywordify
+	   ;; 	   (s+ (string (tt-mouse-button result))
+	   ;; 	       "-"
+	   ;; 	       (string
+	   ;; 		(if (typep result 'tt-mouse-button-release)
+	   ;; 		    :release
+	   ;; 		    :press))))))
+	   )))
       (setf last-event result)
       result)))
 
