@@ -194,6 +194,7 @@ fatchar:span-to-fat-string.")
 (defun make-grout (&optional (stream *standard-output* stream-provided))
   "Return an appropriate grout instance. Try to figure out what kind to make
 from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
+  (dbugf :grout "make-grout ~s ~s~%" stream stream-provided)
   (cond
     ((shell-output-accepts-grotty)
      ;; (dbugf :grout "using ansi-stream~%")
@@ -202,13 +203,13 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
     ((and (not stream-provided) *terminal*
 	  ;; crunch seems a bad choice for now
 	  (and (not (string= (type-of *terminal*) :terminal-crunch))))
-     (dbugf :grout "using generic-term *terminal*~%")
-     (make-instance 'generic-term :stream *terminal*))
+     ;; (dbugf :grout "using generic-term *terminal*~%")
+     (make-instance 'grout-generic-term :stream *terminal*))
     ((and stream-provided (typep stream 'terminal))
-     (dbugf :grout "using generic-term provided~%")
-     (make-instance 'generic-term :stream stream))
+     ;; (dbugf :grout "using generic-term provided~%")
+     (make-instance 'grout-generic-term :stream stream))
     ((has-terminal-attributes stream)
-     (dbugf :grout "using generic-term~%")
+     ;; (dbugf :grout "using generic-term~%")
      (make-instance 'grout-generic-term :stream stream))
     ((and (nos:environment-variable "EMACS")
 	  (find-package :slime))
@@ -219,14 +220,26 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
      ;; (dbugf :grout "using dumb~%")
      (make-instance 'grout-dumb :stream stream))))
 
-(defmacro with-grout ((&optional (var '*grout*) stream) &body body)
+(defmacro with-grout ((&optional (var '*grout*) (stream nil stream-provided))
+		      &body body)
   "Evaluate the body with a GROUT bound to ‘var’. Doesn't do anything if ‘var’
 is already bound, so multiple wrappings will use the same object. ‘var’ defaults
 to ‘*grout*’. Note that if you supply your own ‘var’, you will have to use the
 generic functions (i.e. %GROUT-*) directly."
-  (with-names (thunk)
+  (with-names (thunk var-value)
     `(flet ((,thunk () ,@body))
-       (if (and (boundp ',var) ,var)
+       (let* (#|(,var-sym ,var) |#
+	      (,var-value ,var))
+	 (dbugf :grout "~s ~s ~s ~s ~s ~s~%" (boundp ',var) ',var ,var-value
+		,stream-provided
+		,stream
+		(and ,stream (eq ,stream (grout-stream ,var-value))))
+	 (if (and (boundp ',var) ,var-value
+		  ;; If the stream was given and it's not the same, we have to
+		  ;; make a new grout.
+		  (or (not ,stream-provided)
+		      (and ,stream-provided
+			   (eq ,stream (grout-stream ,var-value)))))
 	   (,thunk)
 	   (let (,var)
 	     (declare (special ,var))
@@ -249,7 +262,7 @@ generic functions (i.e. %GROUT-*) directly."
 			 (,thunk)))
 		      (t
 		       (,thunk))))
-	       (when ,var (%grout-done ,var))))))))
+	       (when ,var (%grout-done ,var)))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Dumb all over. A little ugly on the side.
