@@ -18,7 +18,7 @@ Except everything besides the Git backend has not been tested in many years."
     :depends-on (:dlib :dlib-misc :opsys :dtime :keymap :char-util :rl
 		 :completion :inator :terminal :terminal-inator :fui :lish
 		 :pager :view :options :fatchar :fatchar-io :table :collections
-		 :table-viewer
+		 :table-viewer :rl-widget
 		 #+use-re :re #-use-re :cl-ppcre)
     :components
     ((:file "puca")))
