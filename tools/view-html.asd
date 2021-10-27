@@ -14,6 +14,6 @@
 		 :plump :puri #-windows :drakma
 		 :terminal :keymap :fui :pager :view-image :rl-widget
 		 :terminal-inator :fatchar :char-util :ostring :unicode
-		 :parse-util)
+		 :parse-util :magic)
     :components
     ((:file "view-html")))

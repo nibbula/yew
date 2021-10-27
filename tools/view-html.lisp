@@ -18,7 +18,7 @@
   (:documentation "View HTML as a tree.")
   (:use :cl :dlib :dlib-misc :dtime :rl :inator :file-inator :tree-viewer
 	:terminal :fui :char-util :keymap :rl-widget :collections
-	:terminal-inator :ostring)
+	:terminal-inator :ostring :parse-util :magic)
   (:export
    #:view-html
    #:*user-agent*
@@ -28,7 +28,7 @@
 (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  #-windows (add-feature :use-drakma))
+  #-windows (d-add-feature :use-drakma))
 
 #+use-drakma
 (defvar *user-agent* "Drakma"
@@ -93,6 +93,20 @@
     :initform nil :type boolean
     :documentation "True to show comments."))
   (:documentation "View the document as a tree."))
+
+(defkeymap *view-html-ctrl-x-keymap* ()
+  `((,(ctrl #\s)	. save-file)
+    (,(ctrl #\f)	. load-file)))
+
+(defkeymap *view-html-keymap* ()
+  `((,(ctrl #\x)	. *view-ctrl-x-keymap*)
+    (#\h		. history-command)
+    (#\b		. back-command)
+    (#\v		. visit-thing-command)
+    (#\c		. toggle-show-comments)
+    (#\t		. toggle-view)
+    (#\return		. ask-url-command)
+    ))
 
 (defmethod initialize-instance
     :after ((o tree-view) &rest initargs &key &allow-other-keys)
@@ -627,6 +641,108 @@ tree.")
 	   (and (nos:file-exists new)
 		(values new nil))))))))
 
+
+(defparameter *known-media-types*
+  '(application audio image message multipart text video)) ; and X-<token>
+
+(defun parse-content-type (content-type)
+  (with-parsing (content-type)
+    (sequence-of
+     (with-sub-sequence (type)
+       ;; (note ((list :type (type)))
+       (note ((list :type type))
+	     (one-or-more (is-not-element #\/))))
+     (is-element #\/)
+     (optional
+      (let (tree-str)
+	(sequence-of
+	 (with-sub-sequence (tree)
+	   (one-or-more (is-not-element #\.))
+	   ;; (setf tree-str (tree)))
+	   (setf tree-str tree))
+	 (is-element #\.)
+	 (note ((list :tree tree-str)) t))
+       ))
+     (with-sub-sequence (sub-type)
+       ;; (note ((list :sub-type (sub-type)))
+       (note ((list :sub-type sub-type))
+	     (one-or-more
+	      (when (and (peek) (not (element-in (peek) ".+;")))
+		(next-element)))))
+     (optional
+      (sequence-of
+       (is-element #\+)
+       (with-sub-sequence (suffix)
+         (note ((list :suffix suffix))
+	       (one-or-more (not (is-element #\;)))))))
+     (let (parameters name value)
+       (note (`(:parameters ,(nreverse parameters)))
+	     (zero-or-more
+	      (sequence-of
+	       (is-element #\;)
+	       (zero-or-more (is-element #\space))
+	       (with-sub-sequence (pname)
+		 (one-or-more (is-not-element #\=))
+		 (setf name pname))
+	       (is-element #\=)
+	       (with-sub-sequence (pvalue)
+		 (one-or-more (is-not-element #\;))
+		 (setf value pvalue))
+	       (push `(:name ,name :value ,value) parameters))))))))
+
+(defun content-type-from-string (string)
+  (multiple-value-bind (success ct)
+      (parse-content-type string)
+    (when success
+      (magic:make-content-type
+       :name (second (assoc :type ct))
+       :category (second (assoc :sub-type ct))
+       :properties
+       (mapcar (_ (cons (symbolify (getf _ :name))
+			(getf _ :value))) (second (assoc :parameters ct)))))))
+
+#|
+(defun convert-content (content headers)
+  ;;; @@@@ pull the charset out of a content-type and convert from the
+  ;;l encoding if we can.
+  ;; (cond
+  ;;   ())
+  (let ((ct "text/html; charset=ISO-8859-1"))
+    (multiple-value-bind (s e ss ee) (ppcre:scan "charset=(.*)$" ct)
+      (declare (ignore e))
+      (when (and s ss ee)
+	(let ((enc (keywordify (subseq ct (aref ss 0) (aref ee 0)))))
+	  (format t "~s~%" enc)
+	  (when (find enc (babel:list-character-encodings))
+	    (format t "~s~%" enc)))))))
+|#
+
+(defun web-get (uri)
+  "Get a URI using HTTP or something."
+  (multiple-value-bind (content status headers actual-uri stream close-p reason)
+      (drakma:http-request uri :user-agent *user-agent*
+			   :decode-content t)
+    (declare (ignore actual-uri stream close-p headers)) ;; @@@
+    (case status
+      (200
+       (typecase content
+	 (string content)
+	 ((array (unsigned-byte 8) *)
+	  ;; This probably means that flexi-streams couldn't figure out how to
+	  ;; decode it, so we try ourselves.
+	  ;; @@@@ @@@@@ try finish and use convert-content above
+	  ;; @@@ also fix unicode:octets-to-string etc
+	  ;; (let ((content-type (cdr (assoc :content-type headers)))
+	  ;;   (cond
+	  ;;     (equal (initial-span
+	  ;; (let ((content-type
+	  ;; 	 (content-type-from-string (cdr (assoc :content-type headers)))))
+	  ;;   (@@@@))
+	  (unicode:utf8-bytes-to-string content))
+	 (t content)))			; Just try I guess.
+      (t
+       (format t "Status code ~s: ~s" status reason)))))
+
 (defun coerce-to-parseable (file)
   "Make FILE into something parseable by PLUMP:PARSE."
   (block nil
@@ -646,7 +762,7 @@ tree.")
 		  ;;   (sb-unicode:canonically-deconfuse url))
 		  ;; and some site blacklist or something.
 		  #+use-drakma
-		  (drakma:http-request uri :user-agent *user-agent*)))))
+		  (web-get uri)))))
       ((or pathname stream)
        file)
       (null
@@ -833,20 +949,6 @@ the current view with it, but lets us back."))
     (setf view (make-instance type))
     (push view views)
     view))
-
-(defkeymap *view-html-ctrl-x-keymap* ()
-  `((,(ctrl #\s)	. save-file)
-    (,(ctrl #\f)	. load-file)))
-
-(defkeymap *view-html-keymap* ()
-  `((,(ctrl #\x)	. *view-ctrl-x-keymap*)
-    (#\h		. history-command)
-    (#\b		. back-command)
-    (#\v		. visit-thing-command)
-    (#\c		. toggle-show-comments)
-    (#\t		. toggle-view)
-    (#\return		. ask-url-command)
-    ))
 
 ;; Here we parse the whole file with PLUMP and make a tree-viewer tree out
 ;; of it.
