@@ -426,23 +426,28 @@ return history for the whole repository."))
 	(col 5)
 	(branch (get-branch backend))
 	(stashes (get-stashes backend)))
-    (labels ((do-line (fmt &rest args)
-	       (let ((str (apply #'format nil fmt args)))
-		 (tt-move-to (incf line) col)
-		 (tt-write-string (subseq str 0 (min (length str)
-						     (- (tt-width) col 1)))))))
-      (do-line "Repo:    ~a" (get-repo-dir backend))
-      (do-line "Branch:  ~a" branch)
+    (labels ((do-line (label str)
+	       (tt-move-to (incf line) col)
+	       (when label
+		 (tt-write-span
+		  `(,(themed-string '(:program :label :style) (s+ label ":")))))
+	       (tt-write-span
+		`(,(themed-string
+		    '(:program :data :style)
+		    (osubseq str 0 (min (olength str)
+					(- (tt-width) col 1))))))))
+      (do-line "Repo" (s+ "    " (get-repo-dir backend)))
+      (do-line "Branch" (s+ "  " branch))
       (when stashes
-	(do-line "Stashes: ~d" (length stashes))
+	(do-line "Stashes" (s+ " " (length stashes)))
 	(loop :for s :in stashes
-	   :do (do-line "  ~a" s)))
-      (do-line "Remotes: ")
+	   :do (do-line nil (s+ "  " s))))
+      (do-line "Remotes" " ")
       (loop :with s
 	 :for r :in (get-remotes backend)
 	 :do
 	 (setf s (split "\\s" r))
-	 (do-line "  ~a ~a ~a" (elt s 0) (elt s 2) (elt s 1)))
+	 (do-line nil (format nil "  ~a ~a ~a" (elt s 0) (elt s 2) (elt s 1))))
       (tt-move-to (incf line) col))))
 
 (defmethod get-status-list ((backend git))
