@@ -17,7 +17,7 @@
   (:documentation "A simple interface to version control.")
   (:use :cl :dlib :dlib-misc :opsys :dtime :keymap :char-util :completion
 	:inator :terminal :terminal-inator :fui :options :fatchar :fatchar-io
-	:table :table-print :collections :table-viewer :ochar
+	:table :table-print :collections :table-viewer :ochar :style
 	#+use-re :re #-use-re :ppcre)
   (:export
    ;; Main entry point
@@ -89,9 +89,12 @@
     :initarg :debug :accessor puca-debug :initform nil :type boolean
     :documentation "True to turn on debugging.")
    (universal-argument
-    :initarg :universal-argument :accessor puca-app-universal-argument
+    :initarg :universal-argument :accessor puca-universal-argument
     :initform  nil
-    :documentation "A universal argument for commands."))
+    :documentation "A universal argument for commands.")
+   (search-string
+    :initarg :search-string :accessor puca-search-string :initform nil
+    :documentation "Last search string or NIL."))
   (:default-initargs
    :point 0
    :mark nil)
@@ -233,10 +236,11 @@ return history for the whole repository."))
 	;; skip blank lines
 	((or (not match) (not words)))
 	(t
-	 (push (make-item :modified (subseq tag 0 1) :filename file) items)
+	 (setf (svref items i)
+	       (make-item :modified (subseq tag 0 1) :filename file))
 	 ;; If we've accumulated extra lines add them to this line.
 	 (when extra
-	   (setf (item-extra-lines (car items)) (nreverse extra))
+	   (setf (item-extra-lines (svref items i)) (nreverse extra))
 	   (setf extra nil)))))))
 
 (defmethod get-status-list ((backend backend))
@@ -339,11 +343,11 @@ return history for the whole repository."))
 	     (and (= (length words) 1)
 		  (= (length (first words)) 0))))
 	(t
-	 (push (make-item :modified (elt words 0)
-			  :filename (elt words 1)) items)
+	 (setf (svref items i) (make-item :modified (elt words 0)
+					  :filename (elt words 1)))
 	 ;; If we've accumulated extra lines add them to this line.
 	 (when extra
-	   (setf (item-extra-lines (first items)) (nreverse extra))
+	   (setf (item-extra-lines (svref items i)) (nreverse extra))
 	   (setf extra nil)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -498,10 +502,11 @@ return history for the whole repository."))
 	;; skip blank lines
 	((or (not match) (not words)))
 	(t
-	 (push (make-item :modified (subseq tag 0 1) :filename file) items)
+	 (setf (svref items i)
+	       (make-item :modified (subseq tag 0 1) :filename file))
 	 ;; If we've accumulated extra lines add them to this line.
 	 (when extra
-	   (setf (item-extra-lines (car items)) (nreverse extra))
+	   (setf (item-extra-lines (svref items i)) (nreverse extra))
 	   (setf extra nil)))))))
 
 (defmethod item-path-name ((backend git) item)
@@ -584,6 +589,7 @@ return history for the whole repository."))
   ;; (refresh)
   )
 
+;; @@@ I guess this should come from the theme.
 (defun item-color (status-char)
   "Set the color based on the status character."
   (case status-char
@@ -592,18 +598,29 @@ return history for the whole repository."))
     (#\C :magenta)  ; conflicts
     (t   :green)))  ; updated or other
 
+(defun search-a-matize (string default-color)
+  "Return a fat-string version of ‘string’ with the search-string indicated."
+  (with-slots (search-string) *puca*
+    (let ((pos (and search-string (search search-string string))))
+      (if pos
+	  (span-to-fat-string
+	   `(,default-color ,(subseq string 0 pos)
+	     ,(themed-string '(:program :search-match :style) search-string)
+	     ,(subseq string (+ pos (length search-string)))))
+	  string))))
+
 (defmethod draw-item ((puca puca) i)
   "Draw the item, with the appropriate color."
   (with-slots (items top first-line) *puca*
-    (let ((g (elt items i)))
+    (let ((g (svref items i)))
       (let* ((color (item-color (aref (item-modified g) 0))))
 	(tt-move-to (+ (- i top) first-line) 4)
 	;; (clrtoeol)
 	(tt-color color :default)
-	(tt-format "~a ~a ~30a"
+	(tt-format "~a ~a "
 		   (if (item-selected g) "x" " ")
-		   (item-modified g)
-		   (item-filename g)))
+		   (item-modified g))
+	(tt-write-string (search-a-matize (item-filename g) color))
 	(tt-color :default :default)
 	(when (item-extra-lines g)
 ;; Ugly inline error display:
@@ -614,7 +631,7 @@ return history for the whole repository."))
 ;; 	     (mvaddstr (+ (- i top) 3 j) 20 line)
 ;; 	     (incf j))
 	  (tt-move-to (+ (- i top) 3) 30)
-	  (tt-write-string " ****** ")))))
+	  (tt-write-string " ****** "))))))
 
 (defun draw-line (i)
   "Draw line I, with the appropriate color."
@@ -629,23 +646,24 @@ return history for the whole repository."))
   (when (not no-message)
     (message *puca* "Listing..."))
   (with-slots (items top errors item-count (point inator::point) cur extra) *puca*
-    (setf items '()
-	  errors '()
+    (setf errors '() ;; @@@ should probably get rid of this
 	  extra '())
-    (loop
-       :for line :in (get-status-list (puca-backend *puca*))
-       :and i = 0 :then (1+ i)
-       :do
-       (parse-line (puca-backend *puca*) line i))
-    (setf items (nreverse items)
-	  errors (nreverse errors))
-    (setf item-count (length items))
-    (when (>= point item-count)
-      (setf point (1- item-count)))
-    (when (>= top point)
-      (setf top (max 0 (- point 10)))))
-  (when (not no-message)
-    (message *puca* "Listing...done")))
+    (let ((status-lines (get-status-list (puca-backend *puca*))))
+      (setf items (make-array (length status-lines)))
+      (loop
+	:for line :in status-lines
+	:and i = 0 :then (1+ i)
+	:do
+	   (parse-line (puca-backend *puca*) line i))
+      (setf item-count (length items))
+      (when (>= point item-count)
+	(setf point (1- item-count)))
+      (when (and (not (zerop item-count)) (< point 0))
+	(setf point 0))
+      (when (>= top point)
+	(setf top (max 0 (- point 10)))))
+    (when (not no-message)
+      (message *puca* "Listing...done"))))
 
 (defgeneric draw-inner-screen (puca)
   (:documentation "Draw the inner part of the screen."))
@@ -753,19 +771,20 @@ If CONFIRM is true, ask the user for confirmation first."
   (with-slots (item-count items (point inator::point) backend) *puca*
     (let* ((files
 	    (loop :for i :from 0 :below item-count
-	       :when (item-selected (elt items i))
-	       :collect (item-path-name backend (elt items i)))))
-      (or files (and items (list (item-path-name backend (elt items point))))))))
+	       :when (item-selected (svref items i))
+	       :collect (item-path-name backend (svref items i)))))
+      (or files
+	  (and items (list (item-path-name backend (svref items point))))))))
 
 (defun select-all ()
   (with-slots (item-count items) *puca*
     (loop :for i :from 0 :below item-count
-       :do (setf (item-selected (elt items i)) t))))
+       :do (setf (item-selected (svref items i)) t))))
 
 (defun select-none ()
   (with-slots (item-count items) *puca*
     (loop :for i :from 0 :below item-count
-       :do (setf (item-selected (elt items i)) nil))))
+       :do (setf (item-selected (svref items i)) nil))))
 
 #|
 (defun fake-draw-screen ()
@@ -871,7 +890,7 @@ for the command-function).")
 (defun show-extra (p)
   "Show messages / errors"
   (with-slots (items) p
-    (let ((ext (and items (item-extra-lines (elt items (inator-point *puca*))))))
+    (let ((ext (and items (item-extra-lines (svref items (inator-point *puca*))))))
       (info-window "Errors"
 		   (or ext
 		       '("There are no errors." "So this is" "BLANK"))))))
@@ -1018,6 +1037,24 @@ for the command-function).")
     (when (> top 0)
       (setf top 0))))
 
+(defun scroll-down (p &optional (n 5))
+  "Scroll down by N items."
+  (with-slots ((point inator::point) item-count top bottom) p
+    (if (> top n)
+	(decf top n)
+	(setf top 0))
+    (when (>= point (+ top bottom))
+      (setf point (+ top (1- bottom))))))
+
+(defun scroll-up (p &optional (n 5))
+  "Scroll up by N items."
+  (with-slots ((point inator::point) item-count top bottom) p
+    (if (< (+ top n) item-count)
+	(incf top n)
+	(setf top (1- item-count)))
+    (when (< point top)
+      (setf point top))))
+
 (defun set-mark (p)
   "Set Mark"
   (with-slots ((point inator::point) (mark inator::mark)) p
@@ -1041,7 +1078,7 @@ for the command-function).")
   (with-slots ((point inator::point) items) p
     (when items
       (setf (item-selected (elt items point))
-	    (not (item-selected (elt items point))))
+	    (not (item-selected (svref items point))))
       (draw-line point))))
 
 (defun select-all-command (p)
@@ -1108,7 +1145,7 @@ for the command-function).")
     (osearch string (item-filename item) :test #'ochar-equal)))
 
 (defmethod search-command ((p puca-app))
-  (with-slots (items (point inator::point) top bottom) p
+  (with-slots (items (point inator::point) top bottom search-string) p
     (tt-move-to (- (tt-height) 2) 3)
     (tt-finish-output)
     (flet ((find-it (str g)
@@ -1120,12 +1157,23 @@ for the command-function).")
 		(setf top point))
 	       ((and (> (- point top) (- bottom 1)) (> bottom 1))
 		(setf top point)))))
-      (let* ((string (rl:rl :prompt " Search: " :history-context :puca-search))
-	     (item (find-it string (subseq items point))))
+      (let* ((string (rl:rl :prompt
+			    (format nil " Search~@[ [~a]~]: " search-string)
+			    :history-context :puca-search))
+	     (search (if (and search-string
+			      (zerop (length string)))
+			 search-string
+			 string))
+	     (start (if (eq (inator-last-command p)
+			    'search-command)
+			(1+ point)
+			point))
+	     (item (find-it search (subseq items start))))
+	(setf search-string search)
 	(if item
-	    (move-to (+ point item))
+	    (move-to (+ start item))
 	    ;; Try again from the beginning.
-	    (if (setf item (find-it string items))
+	    (if (setf item (find-it search items))
 		(move-to item)
 		(message p "Not found.")))))))
 
@@ -1439,6 +1487,8 @@ point in time (a.k.a. revision hash).")
     (#\<		. move-to-top)
     (,(meta-char #\>)	. move-to-bottom)
     (,(meta-char #\<)	. move-to-top)
+    (:scroll-up		. scroll-up)
+    (:scroll-down	. scroll-down)
     ;;(,(ctrl #\L)	. redraw)
     (,(code-char 12)	. redraw)
     (,(meta-char #\=)	. describe-key-briefly)
@@ -1542,6 +1592,8 @@ point in time (a.k.a. revision hash).")
     (#\<			. move-to-top)
     (,(meta-char #\>)		. move-to-bottom)
     (,(meta-char #\<)		. move-to-top)
+    (:scroll-up			. scroll-up)
+    (:scroll-down		. scroll-down)
     (#\/			. search-command)
     (,(ctrl #\@)		. set-mark)
     (,(code-char 0)		. set-mark)
@@ -1624,13 +1676,11 @@ point in time (a.k.a. revision hash).")
 (defun puca (&key backend-type)
   (let ((backend (pick-backend backend-type)))
     (if backend
-	;;(with-terminal (#| :crunch |# :curses)
-	;;(with-new-terminal (:crunch)
-	(with-terminal ()
-	  (with-inator (*puca* 'puca
-		        :keymap (list *puca-keymap* *default-inator-keymap*)
-		        :backend backend)
-	    (event-loop *puca*)))
+	(with-terminal-inator
+	    (*puca* 'puca
+	     :keymap (list *puca-keymap* *default-inator-keymap*)
+	     :backend backend)
+	  (event-loop *puca*))
 	(error
   "The current directory is not under a source control system I know about."))))
 
