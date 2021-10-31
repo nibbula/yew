@@ -15,39 +15,6 @@
    ))
 (in-package :cal)
 
-#|
-* Examples:
-
-** Customized style:
-
-cal 1 2021 | print-table -r (make-instance
-                             'terminal-table:terminal-box-table-renderer
-                              :box-style table-print::*fancy-box*
-                              :box-color :magenta :title-color :cyan :x 0)
-
-** Bigger:
-
-(defun boo ()
-  (let ((cal (cal::calendar-table)))
-    (omap
-      (_
-       (loop for i from 0 below (olength _)
-             do (setf (oelt _ i)
-                        (s+  "   " (oelt _ i) "   "))))
-      cal)
-    (omap (_ (setf (table:column-align _) :wrap
-                   (table:column-width _) 8))
-          (table:table-columns cal))
-    ;; (print (table:table-columns cal))
-    (tt-newline)
-    (table-print:output-table cal
-     (make-instance 'terminal-table:terminal-box-table-renderer :box-style
-                    table-print:*fancy-box* :box-color :magenta :title-color
-                    :cyan)
-     *terminal*)
-    (tt-finish-output)))
-|#
-
 (defun default-date (now year month)
   "Return the YEAR and MONTH defaulting to the current."
   ;; Use the current date if not given.
@@ -69,7 +36,7 @@ not given."
     (setf tab (loop
 		:with day = 1
 		:and weekday = start-weekday
-		:while (< day days)
+		:while (<= day days)
 		:collect
 		(let ((week (make-array 7 :initial-element "")))
 		  (loop :for d :from weekday :below 7
@@ -94,12 +61,11 @@ not given."
 			     :format "~v@/fatchar-io:print-string/"))))
     table))
 
-(defun print-calendar (&key year month type #|(stream *standard-output*) |#)
+(defun print-calendar (&key year month type (stream *standard-output*))
   (declare (ignore type)) ;; @@@
   (let ((now (current-date)))
     (setf (values year month) (default-date now year month))
     (let ((table (calendar-table :year year :month month :now now)))
-      ;; (format t "~s~%" tab)
       (with-grout ()
 	(let* ((table-str (with-output-to-string (str)
 			    (print-table table :stream str)))
@@ -109,7 +75,7 @@ not given."
 	       (mon-pos (round (- (/ width 2)
 				  (/ (display-length month-name) 2)))))
 	  (grout-format "~v,,,' a~a~%" mon-pos #\space month-name))
-	(grout-print-table table #| :stream stream |#))
+	(grout-print-table table :stream stream))
       table)))
 
 #+lish
@@ -277,6 +243,39 @@ not given."
 	 (error "We don't know how to do remote date setting yet.")))
       (format t "~a~%" (date-string :format :net)))
   (values))
+|#
+
+#|
+* Examples:
+
+** Customized style:
+
+cal 1 2021 | print-table -r (make-instance
+                             'terminal-table:terminal-box-table-renderer
+                              :box-style table-print::*fancy-box*
+                              :box-color :magenta :title-color :cyan :x 0)
+
+** Bigger:
+
+(defun boo ()
+  (let ((cal (cal::calendar-table)))
+    (omap
+      (_
+       (loop for i from 0 below (olength _)
+             do (setf (oelt _ i)
+                        (s+  "   " (oelt _ i) "   "))))
+      cal)
+    (omap (_ (setf (table:column-align _) :wrap
+                   (table:column-width _) 8))
+          (table:table-columns cal))
+    ;; (print (table:table-columns cal))
+    (tt-newline)
+    (table-print:output-table cal
+     (make-instance 'terminal-table:terminal-box-table-renderer :box-style
+                    table-print:*fancy-box* :box-color :magenta :title-color
+                    :cyan)
+     *terminal*)
+    (tt-finish-output)))
 |#
 
 ;; End
