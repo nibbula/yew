@@ -177,7 +177,7 @@ This allows interspersing standard input between other things."
   :accepts (or string pathname stream list)
   "Concatenate files. Copy streams."
   (when lish:*input*
-    (ctypecase lish:*input*
+    (typecase lish:*input*
       ((or string pathname stream)
        (push lish:*input* files))
       (list
