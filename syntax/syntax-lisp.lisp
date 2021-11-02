@@ -557,12 +557,13 @@ accordingly. Case can be :upper :lower :mixed or :none."
 |#
 
 (defun format-lisp-comment (comment-string stream &key columns)
-  "Output COMMENT-STRING to strea"
+  "Output ‘comment-string’ to ‘stream’."
   (with-grout (*grout* stream)
     ;; (format t "stream = ~s grout = ~s~%" stream *grout*)
-    (let ((lines (split-sequence #\newline comment-string))
-	  par s e ss ee #|prefix first-non-blank|#)
-      (dbugf :poo "2 *grout* = ~s stream = ~s~%" *grout* stream)
+    (let* ((string (regex-replace (s+ "~" #\newline "(\\s*)") comment-string ""))
+	   (lines (split-sequence #\newline string))
+	   par s e ss ee #|prefix first-non-blank|#)
+      ;;(dbugf :poo "2 *grout* = ~s stream = ~s~%" *grout* stream)
       (labels ((print-it (string-list &key prefix verbatim)
 		 "Print the STRING-LIST with word wrap justification."
 		 ;; (dbugf :poo "print-it ~s~%" string-list)
@@ -630,7 +631,7 @@ accordingly. Case can be :upper :lower :mixed or :none."
 	(loop :with l
 	   :for ll :on lines :do
 	   (setf l (car ll))
-	   (dbugf :poo "consder line ~s~%" l)
+	   ;; (dbugf :poo "consider line ~s~%" l)
 	   (cond
 	     ;; Empty line
 	     ((zerop (length l))
