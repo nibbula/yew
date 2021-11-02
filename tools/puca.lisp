@@ -809,13 +809,14 @@ If CONFIRM is true, ask the user for confirmation first."
   (apply #'terminal-format *terminal* fmt args)
   (tt-get-char))
 
-(defun info-window (title text-lines &key (justify t))
+(defun info-window (title text-lines &key (justify t) (redraw t))
   ;; @@@ Is all this clearing and refreshing necessary?
   (fui:display-text title text-lines :justify justify)
-  (tt-clear)
-  ;;(refresh)
-  (draw-screen *puca*)
-  (tt-finish-output))
+  (when redraw
+    (tt-clear)
+    ;;(refresh)
+    (draw-screen *puca*)
+    (tt-finish-output)))
 
 (defun input-window (title text-lines)
   (prog1
@@ -1184,7 +1185,7 @@ for the command-function).")
 		(move-to item)
 		(message p "Not found.")))))))
 
-(defun pause (format-string &rest args)
+(defun formatted-window (format-string &rest args)
   ;; (apply #'say format-string args)
   ;; (tt-write-string " --More--")
   (fui:show-text (apply #'format nil format-string args) :justify t))
@@ -1214,7 +1215,7 @@ for the command-function).")
 			  nil nil)
 		    result (eval form)))
 	  (condition (c)
-	    (pause "Form: ~w~%~a" form c)
+	    (formatted-window "Form: ~w~%~a" form c)
 	    (continue)))))
     (fui:show-text
      (format nil "Results:~%~s" result) ;; :x x :y y
