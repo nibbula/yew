@@ -151,7 +151,7 @@
 
 (defun generic-file-info (file &key follow-links collect)
   (with-grout ()
-    (let ((info (get-file-info file :follow-links follow-links))
+    (let ((info (file-info file :follow-links follow-links))
 	  (*output* nil))
       (with-accessors ((type file-info-type)
 		       (size file-info-size)
@@ -174,7 +174,7 @@
   #+windows :generic
   #-(or unix windows) :generic)
 
-(defun file-info (file &key follow-links (style *default-style*) collect)
+(defun print-file-info (file &key follow-links (style *default-style*) collect)
   (when (not style)
     (setf style *default-style*))
   (case style
@@ -193,8 +193,8 @@ list of strings or paths. If FOLLOW-LINKS is true, print information about the
 linked file."
   (with-grout ()
     (flet ((call-it (f)
-	     (file-info f :follow-links follow-links :style style
-			:collect collect)))
+	     (print-file-info f :follow-links follow-links :style style
+				:collect collect)))
       (typecase file-or-files
 	(list
 	 (let (results)
