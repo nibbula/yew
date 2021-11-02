@@ -556,8 +556,10 @@ accordingly. Case can be :upper :lower :mixed or :none."
 	  (print-paragraph))))))
 |#
 
+;; @@@ This needs a lot of improvement.
 (defun format-lisp-comment (comment-string stream &key columns)
-  "Output ‘comment-string’ to ‘stream’."
+  "Output ‘comment-string’ to ‘stream’ in some way which we hope is better than
+the verbatim string." ;; @@@ really describe when fixed
   (with-grout (*grout* stream)
     ;; (format t "stream = ~s grout = ~s~%" stream *grout*)
     (let* ((string (regex-replace (s+ "~" #\newline "(\\s*)") comment-string ""))
