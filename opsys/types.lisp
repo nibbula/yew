@@ -162,10 +162,10 @@ Slots are:
 ;; Maybe stupid?
 (defstruct os-pathname
   "Something simpler than a pathname."
-  path					; just a list of strings
+  path					; Just a list of strings
   absolute-p				; 
-  device				; dos drive
-  host)					; dos share
+  device				; DOS drive
+  host)					; DOS share
 
 ;; @@@ Perhaps we should rename this to process-info or something.
 (defstruct os-process
