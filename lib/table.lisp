@@ -167,6 +167,11 @@ found."
                match the number of columns in OBJECT. E.g.:
                '((:name \"foo\" :type 'number :format \"[~d]\"))"))
 
+(defmethod make-table-from ((object table) &key column-names columns type)
+  "Make a table from a table, which just returns the table."
+  (declare (ignore column-names columns type))
+  object)
+
 (defun uniform-classes (sequence)
   "Return true if every class in SEQUENCE is a subtype of the first element."
   (let ((first-type (class-of (elt sequence 0))))
