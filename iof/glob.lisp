@@ -20,12 +20,12 @@ Convert to NFA or DFA. Traverse all branches simultaneously.
 (defpackage :glob
   (:documentation "Shell style file name pattern matching.
 Main functions are:
- FNMATCH      - Checks whether a string matches a pattern.
- GLOB         - Returns a list of pathnames that match a pattern.
- PATTERN-P    - Returns true if the string might have pattern characters.
- EXPAND-TILDE - Returns the pathname with ~ home directories expanded.
+ fnmatch      - Checks whether a string matches a pattern.
+ glob         - Returns a list of pathnames that match a pattern.
+ pattern-p    - Returns true if the string might have pattern characters.
+ expand-tilde - Returns the pathname with ~ home directories expanded.
 
-The documentation for FNMATCH describes the pattern syntax a little.
+The documentation for ‘fnmatch’ describes the pattern syntax a little.
 ")
   (:use :cl :dlib :opsys :char-util)
   (:export
@@ -33,7 +33,6 @@ The documentation for FNMATCH describes the pattern syntax a little.
    #:fnmatch
    #:expand-tilde
    #:glob
-   #:wordexp
    ))
 (in-package :glob)
 
@@ -42,6 +41,8 @@ The documentation for FNMATCH describes the pattern syntax a little.
 
 ;; Maybe I should have just wrote this in terms of regexps instead. :(
 ;; I should test the speed of my code vs. re-translation to CL-PPCRE.
+;; Or even better, steal as much as possible from hayley's amazingly fast
+;; https://github.com/telekons/one-more-re-nightmare
 ;;
 ;; These are don't really do everything that the UNIX/POSIX versions do. I
 ;; only put in the features I needed for LISH.
@@ -539,7 +540,7 @@ match & dir  - f(prefix: boo) readir boo
   (char= (char path (1- (length path))) *directory-separator*))
 
 (defun dir-append (dir file)
-  "This is like a slightly simpler PATH-APPEND from OPSYS."
+  "This is like a slightly simpler ‘path-append’ from OPSYS."
   ;; (declare (type (or string null) dir file))
   (if dir
       ;; If it's the root dir "/", so we don't end up with doubled slashes.
@@ -550,12 +551,12 @@ match & dir  - f(prefix: boo) readir boo
       file))
 
 ;; This is called recursively for each directory, depth first, for exapnding
-;; GLOB patterns. Of course most of the work is done by FNMATCH.
-(defun dir-matches (path &key dir escape recursive mark-directories)
-  "Takes a PATH, which is a list of strings which are path elements, usually
-with GLOB patterns, and a directory DIR, which is a string directory path,
-without patterns, and returns a list of string paths that match the PATH in
-the directory DIR and it's subdirectories. Returns NIL if nothing matches."
+;; GLOB patterns. Of course most of the work is done by ‘fnmatch’.
+(defun dir-matches (path &key dir escape recursive mark-directories test)
+  "Takes a ‘path’, which is a list of strings which are path elements, usually
+with patterns, and a directory ‘dir’, which is a string directory path,
+without patterns, and returns a list of string paths that match the ‘path’ in
+the directory ‘dir’ and it's subdirectories. Returns NIL if nothing matches."
   (declare (type boolean escape recursive mark-directories))
   (when (not path)
     (return-from dir-matches nil))
@@ -572,7 +573,7 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 		 (s+ name *directory-separator*)
 		 name))
 	   (path-match (entry path)
-	     "True if directory entry ENTRY should match path element PATH."
+	     "True if directory ‘entry’ should match path element ‘path’."
 	     (or
 	      ;; Only match explicit current "." and parent ".." elements.
 	      ;; Only match anything like ".*" when the pattern starts with ".".
@@ -610,7 +611,11 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 					(path-match entry (cadr path))))
 	   ;; There's no further path elements, so just append the match.
 	   ;; (dbugf :glob "spoot ~s~%" name)
-	   (append-result (list (dir-append dir (decorated-name name))))
+	   (let ((full-path (dir-append dir (decorated-name name))))
+	     (when (or (not test)
+		       (and test (funcall test full-path)))
+	       (append-result (list full-path))))
+
 	   #|(setf either t) |#)
 	 (when (and is-dir (or more-path recursive-match))
 	   ;; If it's a directory, get all the sub directory matches.
@@ -620,6 +625,7 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 			       (cdr path))
 			   :dir (dir-append dir (decorated-name name))
 			   :escape escape
+			   :test test
 			   :recursive recursive))
 	   #|(setf either t) |#)
 	 ;; (when (not either)
@@ -630,16 +636,19 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
 (defparameter *dir-sep-string* (string *directory-separator*))
 
 (defun glob (pattern &key mark-directories (escape t) (sort t) braces (tilde t)
-		       twiddle limit (recursive t))
-  "PATTERN is a shell pattern as matched by FNMATCH.
-  MARK-DIRECTORIES true, means put a slash at the end of directories.
-  ESCAPE true, means allow \\ to escape the meaning of special characters.
-  SORT true, means sort file names in a directory alphabetically.
-  BRACES true, means allow braces processing.
-  TILDE true, means allow tilde processing, which gets users home directories.
-  TWIDDLE is a synonym for TILDE.
-  LIMIT as an integer, means limit the number of pathnames to LIMIT.
-  RECURSIVE true, means double stars ** match down through directories."
+		       twiddle limit (recursive t) test)
+  "Generate a list of files matching ‘pattern’, which is a matched by the
+fnmatch function. Other arguments are:
+ ‘mark-directories’  Put a slash at the end of directories.
+ ‘escape’            Allow \\ to escape the meaning of special characters.
+ ‘sort’              Sort file names in a directory alphabetically.
+ ‘braces’            Allow braces processing.
+ ‘tilde’             Allow tilde processing, which gets users home directories.
+ ‘twiddle’           A synonym for TILDE.
+ ‘limit’             An integer limit to the number of pathnames.
+ ‘recursive’         Use double stars ** to match down through directories.
+ ‘test’              A function which given a file name, returns true if it
+                     should be included in the results."
   (declare (ignore braces limit)
 	   (type boolean mark-directories escape sort tilde twiddle recursive))
   (setf tilde (or tilde twiddle))
@@ -651,27 +660,11 @@ the directory DIR and it's subdirectories. Returns NIL if nothing matches."
     (when (trailing-directory-p expanded-pattern)
       (rplaca (last path) (s+ (car (last path)) *dir-sep-string*)))
     (if sort
-	(locally
-	    #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
-	    (sort (dir-matches path :dir dir :escape escape :recursive recursive
-			       :mark-directories mark-directories)
-		  #'string<))
+	(sort-muffled (dir-matches path
+				   :dir dir :escape escape :recursive recursive
+				   :mark-directories mark-directories :test test)
+		      #'string<)
 	(dir-matches path :dir dir :escape escape :recursive recursive
-		     :mark-directories mark-directories))))
+			  :mark-directories mark-directories :test test))))
 
-;; Despite Tim Waugh's <twaugh@redhat.com> wordexp manifesto
-;; <http://cyberelk.net/tim/articles/cmdline/>, "When is a command line not a
-;; line?", I think all that shell expansion stuff is kind of stupid, even
-;; though I agree if you're going to do something complex, hackish, and
-;; important to get right, you should do it in a reusable library. I only do
-;; it, even in shell programs, when I'm forced to. It's probably much easier,
-;; clearer, more secure, more maintainable, to do the equivalent in Lisp,
-;; despite POSIX. In a POSIX shell you can usually _only_ get arithmetic
-;; evaluation, and string functions, and so on, in those weird expansions, but
-;; it doesn't mean it's good. We can do it some other way.
-;;
-;; Quite ironically most wordexp implementations just forked the shell to do it.
-(defun wordexp ()
-  (error "Don't."))
-
-;; EOF
+;; End
