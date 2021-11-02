@@ -125,6 +125,7 @@ of it.")
    #:without-notes
    #:with-muffled-notes
    #:sort-muffled
+   #:stable-sort-muffled
    ;; language-ish
    #:define-constant
    #:defconstant-to-list
@@ -320,17 +321,30 @@ Useful for making your macro 'hygenic'."
 
 ;; @@@ What are the advantages or diffreneces, if any, of using
 ;; with-muffled-notes vs without-notes?
-(defmacro with-muffled-notes (&body body)
-  "Evaluate BODY with compiler notes muffled."
-  `(locally #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
-	    ,@body))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro with-muffled-notes (&body body)
+    "Evaluate BODY with compiler notes muffled."
+    `(locally #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+	      ,@body)))
 
 ;; This is just for a particularly complaintive implementation.
-(declaim (inline sort-muffled))
-(defun sort-muffled (seq pred &rest args &key key)
-  (declare #+sbcl (sb-ext:muffle-conditions sb-ext:compiler-note)
-	   (ignorable key))
-  (apply #'sort seq pred args))
+;; (declaim (inline sort-muffled))
+;; (defun sort-muffled (seq pred &rest args &key key)
+;;   (declare #+sbcl (sb-ext:muffle-conditions sb-ext:compiler-note)
+;; 	   (ignorable key))
+;;   (apply #'sort seq pred args))
+
+(defmacro sort-muffled (&whole whole seq pred &rest args &key key)
+  "Just like ‘cl:sort’ but with compiler notes muffled."
+  (declare (ignorable seq pred args key))
+  `(with-muffled-notes
+     (sort ,@(cdr whole))))
+
+(defmacro stable-sort-muffled (&whole whole seq pred &rest args &key key)
+  "Just like ‘cl:sort’ but with compiler notes muffled."
+  (declare (ignorable seq pred args key))
+  `(with-muffled-notes
+     (stable-sort ,@(cdr whole))))
 
 ;; Make sure we have getenv
 (defun d-getenv (s)
