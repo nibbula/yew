@@ -2001,7 +2001,7 @@ it is not a symbolic link."
 	   ;; linux ext flags are so lame I can't be bothered to do them now.
 	   )))))
 
-(defun get-file-info (path &key (follow-links t))
+(defun file-info (path &key (follow-links t))
   (with-foreign-object (stat-buf '(:struct foreign-stat))
     (error-check (if follow-links
 		     (real-stat path stat-buf)

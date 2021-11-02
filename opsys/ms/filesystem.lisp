@@ -282,7 +282,7 @@ Common Lisp 1900 based universal time.")
     (when (plusp (logand attr +FILE-ATTRIBUTE-ARCHIVE+))
       (push :archive flags))))
 
-(defun get-file-info (path &key (follow-links t))
+(defun file-info (path &key (follow-links t))
   "Return information about the file described by PATH in a FILE-INFO
 structure. If FOLLOW-LINKS is true (the default), then if PATH is a symbolic
 link, return information about the file it's linked to, otherwise return

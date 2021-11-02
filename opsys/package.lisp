@@ -103,7 +103,8 @@
    #:safe-namestring
 
    ;; files
-   #:get-file-info
+   #:file-info
+   #:get-file-info ;; Deprecated
    #:file-accessible-p
    #:stream-system-handle
    #:stream-handle-direction
@@ -150,7 +151,8 @@
 
    ;; time
    #:get-time
-   #:get-os-time
+   #:os-time
+   #:get-os-time ;; Deprecated
    #:set-time
    #:timezone-name
    #:timezone-offset

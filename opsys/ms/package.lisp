@@ -53,7 +53,7 @@
    #:refresh-user-list
    #:is-administrator
    #:users-logged-in
-   #:get-file-info
+   #:file-info
    #:file-exists
    #:os-delete-file
    #:with-os-file

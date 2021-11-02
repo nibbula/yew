@@ -214,11 +214,16 @@ actually exists.")
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Files
 
-(defosfun get-file-info (path &key (follow-links t))
+(defosfun file-info (path &key (follow-links t))
   "Return information about the file described by PATH in a FILE-INFO
 structure. If FOLLOW-LINKS is true (the default), then if PATH is a symbolic
 link, return information about the file it's linked to, otherwise return
 information about the link itself.")
+
+;; Deprecated.
+;; (define-alias 'get-file-info 'file-info 'function)
+(defun get-file-info (path &key (follow-links t))
+  (file-info path :follow-links follow-links))
 
 (defosfun file-accessible-p (path &optional access)
   "Return true if a PATH is accessible with ACCESS, which is a list consisiting
@@ -769,7 +774,7 @@ CACHED can be one of :ONLY, :NO, :BUILD, :DEFAULT.
     (t ;; :no :build :default
      (or (and (eq cached :default) (cached-path cmd))
 	 (let ((table (command-cache-table *command-pathname-cache*))
-	   result info update)
+	       result info update)
 	   (loop :for dir :in (command-path-list)
 	      :do
 	      (handler-case
@@ -780,6 +785,7 @@ CACHED can be one of :ONLY, :NO, :BUILD, :DEFAULT.
 		      (pushnew (cons dir (file-info-modification-time info))
 			       (command-cache-dirs *command-pathname-cache*)
 			       :test #'equal))
+		    ;; (format t "THE SLOW CODE~%") (finish-output)
 		    (loop
 		       :with full = nil
 		       :for f :in (read-directory :dir dir) :do
@@ -1136,9 +1142,12 @@ from the system command CMD with the arguments ARGS."
   "Return the time in seconds and nanoseconds. The first value is seconds in
 so-called “universal” time. The second value is nanoseconds.")
 
-(defun get-os-time ()
+(defun os-time ()
   (multiple-value-bind (s ns) (get-time)
     (make-os-time :seconds s :nanoseconds ns)))
+
+;; Deprecated.
+(define-alias 'get-os-time 'os-time 'function)
 
 (defosfun set-time (seconds nanoseconds)
   "Set time in seconds and nanoseconds. Seconds are in so-called
