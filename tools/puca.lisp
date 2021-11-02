@@ -606,11 +606,13 @@ return history for the whole repository."))
 (defun search-a-matize (string default-color)
   "Return a fat-string version of ‘string’ with the search-string indicated."
   (with-slots (search-string) *puca*
-    (let ((pos (and search-string (search search-string string))))
+    (let ((pos (and search-string
+		    (osearch search-string string :test #'ochar-equal))))
       (if pos
 	  (span-to-fat-string
 	   `(,default-color ,(subseq string 0 pos)
-	     ,(themed-string '(:program :search-match :style) search-string)
+	     ,(themed-string '(:program :search-match :style)
+			     (subseq string pos (+ pos (length search-string))))
 	     ,(subseq string (+ pos (length search-string)))))
 	  string))))
 
