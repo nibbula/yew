@@ -397,7 +397,7 @@
 	 (progn
 	   ,@body)
        ;; (cl-jpeg:jpeg-error (c)
-       ;; 	 (pause "Error: ~a ~a" ,file-name c))
+       ;; 	 (formatted-window "Error: ~a ~a" ,file-name c))
        (error (c)
 	 (if (image-inator-debug *image-viewer*)
 	     (invoke-debugger c)
@@ -500,11 +500,12 @@ the first time it fails to identify the image."
   (tt-erase-to-eol)
   (tt-write-string (apply #'format nil format-string args)))
 
-(defun pause (format-string &rest args)
+(defun formatted-window (format-string &rest args)
   ;; (apply #'say format-string args)
   ;; (tt-write-string " --More--")
   (fui:show-text (apply #'format nil format-string args) :justify t)
-  (tt-get-key))
+  ;; (tt-get-key)
+  )
 
 (defun show-error (format-string &rest args)
   ;; (apply #'say format-string args)
@@ -596,7 +597,7 @@ Some useful functions or macros are:
 	      (setf last-func func)
 	      (rotatef image mod-buffer)))
 	(error (c)
-	  (pause "Form: ~w~%~a" form c)
+	  (formatted-window "Form: ~w~%~a" form c)
 	  ;; (sb-debug:print-backtrace)
 	  (throw 'flanky nil)
 	  #| (continue) |#
@@ -620,7 +621,7 @@ Some useful functions or macros are:
 	    (incf popi:n)
 	    (rotatef image mod-buffer))
 	(condition (c)
-	  (pause "~a~%" c)
+	  (formatted-window "~a~%" c)
 	  (throw 'flanky nil)
 	  #| (continue) |#
 	  )))
@@ -648,7 +649,7 @@ Some useful functions or macros are:
 	       (invalidate-cache o)
 	       (update-display o)))
 	(condition (c)
-	  (pause "~a~%" c)
+	  (formatted-window "~a~%" c)
 	  (throw 'flanky nil)
 	  #| (continue) |#
 	  )))
@@ -933,7 +934,7 @@ Some useful functions or macros are:
 		 (mover-forward (n) (funcall mover :forward n))
 		 (pixel-setter () (funcall setter r g b step)))
 	  ;;(declare (type fixnum r g b a))
-	  ;;(pause "zoom = ~s step = ~s" zoom step)
+	  ;;(formatted-window "zoom = ~s step = ~s" zoom step)
 	  (when (> si-y y)
 	    ;;(tt-move-to (max y (truncate (- si-y y) step)) 0))
 	    (mover-down (max y (truncate (- (+ si-y start-y) y) step))))
@@ -1082,7 +1083,7 @@ Some useful functions or macros are:
 			     (* ,comp (/ (- #xff alpha) #xff))))))))
 	  ;;(declare (type fixnum r g b a))
 	  (declare (type fixnum step ss xx yy))
-	  ;;(pause "zoom = ~s step = ~s" zoom step)
+	  ;;(formatted-window "zoom = ~s step = ~s" zoom step)
 	  (when (> si-y y)
 	    ;;(tt-move-to (max y (truncate (- si-y y) step)) 0))
 	    (mover-down (max y (truncate (- (+ si-y start-y) y) step))))
