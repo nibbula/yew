@@ -67,6 +67,7 @@ Also we really need the MOP for stuff.")
       oreverse
       onreverse
       osort
+      ostable-sort
       ofind
       ofind-if
       oposition
@@ -120,6 +121,7 @@ Also we really need the MOP for stuff.")
       oslice-from
       otake
       osort-by
+      ostable-sort-by
       ofind-with-key
       osplit
       osplit-if
@@ -1116,9 +1118,10 @@ or destroying the argument.")
 (defgeneric osort (collection predicate &key key)
   (:documentation
    "Destructively sort a collection according to the order determined by the
-predicate function. PREDICATE should return non-NIL if ARG1 is to precede ARG2.
-As in other collection functions, KEY is a function that is given the collection
-element, and should return a value to be given to PREDICATE.")
+predicate function. ‘predicate’ should return non-NIL if the first argument is
+to precede the second argument. As in other collection functions, ‘key’ is a
+function that is given the collection element, and should return a value to be
+given to ‘predicate’.")
   (:method ((collection list) predicate &key key)
     #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
     (sort collection predicate :key key))
@@ -1129,10 +1132,33 @@ element, and should return a value to be given to PREDICATE.")
     #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
     (sort collection predicate :key key)))
 
+(defgeneric ostable-sort (collection predicate &key key)
+  (:documentation
+   "Destructively sort a collection according to the order determined by the
+predicate function, with guaranteed stability. ‘predicate’ should return
+non-NIL if the first argument is to precede the second argument. As in other
+collection functions, ‘key’ is a function that is given the collection
+element, and should return a value to be given to ‘predicate’.")
+  (:method ((collection list) predicate &key key)
+    #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+    (stable-sort collection predicate :key key))
+  (:method ((collection vector) predicate &key key)
+    #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+    (stable-sort collection predicate :key key))
+  (:method ((collection sequence) predicate &key key)
+    #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+    (stable-sort collection predicate :key key)))
+
 (defmethod osort ((collection container) predicate &key key)
   #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (setf (container-data collection)
 	(osort (container-data collection) predicate :key key))
+  collection)
+
+(defmethod ostable-sort ((collection container) predicate &key key)
+  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+  (setf (container-data collection)
+	(ostable-sort (container-data collection) predicate :key key))
   collection)
 
 ;; @@@ Should we make sort-by-key also?
@@ -1141,6 +1167,12 @@ element, and should return a value to be given to PREDICATE.")
 predicate function. This is just like OSORT but with the arguments reversed for
 convenience in pipelines."
   (osort collection predicate))
+
+(defun ostable-sort-by (predicate collection)
+  "Destructively sort a collection according to the order determined by the
+predicate function, with guaranteed stability. This is just like ‘ostable-sort’
+but with the arguments reversed for convenience in pipelines."
+  (ostable-sort collection predicate))
 
 (defgeneric ofind (item collection &key from-end start end key test test-not)
   (:documentation
