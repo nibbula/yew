@@ -1307,7 +1307,7 @@ versions of the keywords used in Lisp open.
      (moo is-regular-file     :regular		  #\r "regular")
      (moo is-symbolic-link    :link		  #\l "symbolic link")
      (moo is-socket	      :socket		  #\s "socket")
-     (moo is-door	      :door		  #\d "door")
+     (moo is-door	      :door		  #\D "door")
      (moo is-whiteout	      :whiteout		  #\w "whiteout"))))
 
 (defparameter *mode-tags*
