@@ -208,6 +208,11 @@
 			 (dired-directory last)))
 	     (quit o))
 	    ;; Otherwise, make a new one.
+	    ((and (is-executable full)
+		  (eq :regular (file-info-type (file-info full))))
+	     (! full)
+	     (tt-clear)
+	     (redraw o))
 	    (t
 	     (view:view full))))))))
 
