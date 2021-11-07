@@ -207,14 +207,17 @@
 		  (equal (nos:path-to-absolute full)
 			 (dired-directory last)))
 	     (quit o))
-	    ;; Otherwise, make a new one.
+	    ;; Try to execute regular executable files?
 	    ((and (is-executable full)
 		  (eq :regular (file-info-type (file-info full))))
 	     (! full)
 	     (tt-clear)
 	     (redraw o))
 	    (t
-	     (view:view full))))))))
+	     ;; Otherwise, make a new one.
+	     (view:view full)
+	     (tt-clear)
+	     (redraw o))))))))
 
 (defun quit-all (o)
   "Quit all recursive directory editors."
