@@ -52,6 +52,7 @@
     (("application" . "json") . (:view-json :view-json))
     (("application" . "x-directory") . (:dired :dired))
     ("video"		     . (:view-video :view-video))
+    ("audio"		     . (:view-audio :view-audio))
     ("image"                 . (:view-image :view-image))
     ("text"                  . (:pager :pager))
     ))
