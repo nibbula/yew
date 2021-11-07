@@ -374,7 +374,7 @@ Second value is the scanner that was used.
 		   (grep-one-file f)
 		   (handler-case
 		       (grep-one-file f)
-		     ((or stream-error file-error) (c)
+		     ((or stream-error file-error #+sbcl type-error) (c)
 		       ;; (finish-output)
 		       (grout-finish)
 		       (let ((*print-pretty* nil))
