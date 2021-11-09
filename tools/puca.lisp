@@ -83,7 +83,7 @@
     :initarg :has-message :accessor puca-message :initform nil
     :documentation "A message to show.")
    (first-line
-    :initarg :first-line :accessor puca-first-line :initform nil 
+    :initarg :first-line :accessor puca-first-line :initform nil
     :documentation "The first line of the objects.")
    (debug
     :initarg :debug :accessor puca-debug :initform nil :type boolean
@@ -368,6 +368,9 @@ if an item was added."
    (saved-remotes
     :initarg :saved-remotes :accessor git-saved-remotes :initform nil
     :documentation "Saved list of remotes.")
+   (saved-counts
+    :initarg :saved-counts :accessor git-saved-counts :initform nil
+    :documentation "Saved list of ahead/behind counts.")
    (saved-stashes
     :initarg :saved-stashes :accessor git-saved-stashes :initform 'unset
     :documentation "Saved list of stashes.")
@@ -414,6 +417,14 @@ if an item was added."
 	    ;; (subseq (first (lish:!_ "git status -s -b --porcelain")) 3)
 	    )))
 
+(defun get-counts (git remote local)
+  (or (git-saved-counts git)
+      (setf (git-saved-counts git)
+	    (mapcar #'parse-integer
+		    (split "\\s"
+			   (lish:!- "git rev-list --left-right --count "
+				    remote "..." local))))))
+
 (defun get-remotes (git)
   (or (git-saved-remotes git)
       (setf (git-saved-remotes git)
@@ -432,10 +443,15 @@ if an item was added."
 
 (defmethod banner ((backend git))
   "Print something useful at the top of the screen."
-  (let ((line (terminal-get-cursor-position *terminal*))
-	(col 5)
-	(branch (get-branch backend))
-	(stashes (get-stashes backend)))
+  (let* ((line (terminal-get-cursor-position *terminal*))
+	 (col 5)
+	 (branch (get-branch backend))
+	 (stashes (get-stashes backend))
+	 (remotes (get-remotes backend))
+	 (remote-branch (first (split "\\s" (first remotes))))
+	 (counts (get-counts backend remote-branch branch))
+	 (behind (first counts))
+	 (ahead (second counts)))
     (labels ((do-line (label str)
 	       (tt-move-to (incf line) col)
 	       (when label
@@ -447,14 +463,16 @@ if an item was added."
 		    (osubseq str 0 (min (olength str)
 					(- (tt-width) col 1))))))))
       (do-line "Repo" (s+ "    " (get-repo-dir backend)))
-      (do-line "Branch" (s+ "  " branch))
+      (do-line "Branch"
+	(format nil "  ~a~[~:; [ahead ~:*~d]~]~[~:; [behind ~:*~d]~]"
+		branch ahead behind))
       (when stashes
 	(do-line "Stashes" (s+ " " (length stashes)))
 	(loop :for s :in stashes
 	   :do (do-line nil (s+ "  " s))))
       (do-line "Remotes" " ")
       (loop :with s
-	 :for r :in (get-remotes backend)
+	 :for r :in remotes
 	 :do
 	 (setf s (split "\\s" r))
 	 (do-line nil (format nil "  ~a ~a ~a" (elt s 0) (elt s 2) (elt s 1))))
@@ -470,6 +488,7 @@ if an item was added."
       ;; Invalidate the cache of banner info.
       (setf (git-saved-branch backend) nil
 	    (git-saved-remotes backend) nil
+	    (git-saved-counts backend) nil
 	    result
 	    (with-process-output (stream cmd-name cmd-args)
 	      (loop :while (setf line (read-line stream nil nil))
