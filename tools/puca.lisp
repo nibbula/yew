@@ -198,7 +198,8 @@ current line or the selected files."))
 |#
 
 (defgeneric parse-line (backend line i)
-  (:documentation "Take a line and add stuff to items and/or *errors*."))
+  (:documentation "Take a line and add stuff to items and/or *errors*. Return
+true if an item was added."))
 
 (defgeneric add-ignore (backend file)
   (:documentation "Add FILE to the list of ignored files."))
@@ -219,7 +220,8 @@ return history for the whole repository."))
 ;; Generic implementations of some possibly backend specific methods.
 
 (defmethod parse-line ((backend backend) line i)
-  "Parse a status line LINE for a typical RCS. I is the line number."
+  "Parse a status line LINE for a typical RCS. I is the line number. Return true
+if an item was added."
   (with-slots (items errors extra) *puca*
     (let (match words tag file)
       (multiple-value-setq (match words)
@@ -232,16 +234,19 @@ return history for the whole repository."))
 	;; If the first word is more than 1 char long, save it as extra
 	((> (length tag) 2)
 	 (push line extra)
-	 (push (format nil "~d: ~a" i line) errors))
+	 (push (format nil "~d: ~a" i line) errors)
+	 nil)
 	;; skip blank lines
-	((or (not match) (not words)))
+	((or (not match) (not words))
+	 nil)
 	(t
 	 (setf (svref items i)
 	       (make-item :modified (subseq tag 0 1) :filename file))
 	 ;; If we've accumulated extra lines add them to this line.
 	 (when extra
 	   (setf (item-extra-lines (svref items i)) (nreverse extra))
-	   (setf extra nil)))))))
+	   (setf extra nil))
+	 t)))))
 
 (defmethod get-status-list ((backend backend))
   "This is for backends which just have a fixed list command."
@@ -337,18 +342,21 @@ return history for the whole repository."))
 	;; If the first word is more than 1 char long, save it as extra
 	((> (length (first words)) 1)
 	 (push line extra)
-	 (push (format nil "~d: ~a" i line) errors))
+	 (push (format nil "~d: ~a" i line) errors)
+	 nil)
 	;; skip blank lines
 	((or (not words)
 	     (and (= (length words) 1)
-		  (= (length (first words)) 0))))
+		  (= (length (first words)) 0)))
+	 nil)
 	(t
 	 (setf (svref items i) (make-item :modified (elt words 0)
 					  :filename (elt words 1)))
 	 ;; If we've accumulated extra lines add them to this line.
 	 (when extra
 	   (setf (item-extra-lines (svref items i)) (nreverse extra))
-	   (setf extra nil)))))))
+	   (setf extra nil))
+	 t)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; GIT
@@ -402,7 +410,9 @@ return history for the whole repository."))
 (defun get-branch (git)
   (or (git-saved-branch git)
       (setf (git-saved-branch git)
-	    (subseq (first (lish:!_ "git status -s -b --porcelain")) 3))))
+	    (lish:!$ "git branch --no-color --show-current")
+	    ;; (subseq (first (lish:!_ "git status -s -b --porcelain")) 3)
+	    )))
 
 (defun get-remotes (git)
   (or (git-saved-remotes git)
@@ -486,7 +496,8 @@ return history for the whole repository."))
       result)))
 
 (defmethod parse-line ((backend git) line i)
-  "Parse a status line LINE for a typical RCS. I is the line number."
+  "Parse a status line LINE for a typical RCS. I is the line number. Return true
+if an item was added."
   (with-slots (items errors extra) *puca*
     (let (match words tag file arrow-pos)
       (multiple-value-setq (match words)
@@ -503,16 +514,19 @@ return history for the whole repository."))
 	;; If the first word is more than 1 char long, save it as extra
 	((> (length tag) 2)
 	 (push line extra)
-	 (push (format nil "~d: ~a" i line) errors))
+	 (push (format nil "~d: ~a" i line) errors)
+	 nil)
 	;; skip blank lines
-	((or (not match) (not words)))
+	((or (not match) (not words))
+	 nil)
 	(t
 	 (setf (svref items i)
 	       (make-item :modified (subseq tag 0 1) :filename file))
 	 ;; If we've accumulated extra lines add them to this line.
 	 (when extra
 	   (setf (item-extra-lines (svref items i)) (nreverse extra))
-	   (setf extra nil)))))))
+	   (setf extra nil))
+	 t)))))
 
 (defmethod item-path-name ((backend git) item)
   (let ((filename (item-filename item)))
@@ -637,8 +651,13 @@ return history for the whole repository."))
 ;; 	     :do
 ;; 	     (mvaddstr (+ (- i top) 3 j) 20 line)
 ;; 	     (incf j))
-	  (tt-move-to (+ (- i top) 3) 30)
-	  (tt-write-string " ****** "))))))
+	  ;; (tt-move-to (+ (- i top) 3) 30)
+	  ;; (tt-write-string " ****** ")
+	  (let ((indicator " *** Errors *** "))
+	    (tt-move-to (+ (- i top) 3)
+			(- (tt-width) (display-length indicator) 4))
+	    (tt-write-span `(:fg-red :bg-yellow :bold :inverse ,indicator)))
+	  )))))
 
 (defun draw-line (i)
   "Draw line I, with the appropriate color."
@@ -655,14 +674,17 @@ return history for the whole repository."))
   (with-slots (items top errors item-count (point inator::point) cur extra) *puca*
     (setf errors '() ;; @@@ should probably get rid of this
 	  extra '())
-    (let ((status-lines (get-status-list (puca-backend *puca*))))
+    (let ((status-lines (get-status-list (puca-backend *puca*)))
+	  (i 0))
+      ;; This is just an estimate, since some lines can just be errors.
       (setf items (make-array (length status-lines)))
       (loop
 	:for line :in status-lines
-	:and i = 0 :then (1+ i)
 	:do
-	   (parse-line (puca-backend *puca*) line i))
-      (setf item-count (length items))
+	   (when (parse-line (puca-backend *puca*) line i)
+	     (incf i)))
+      ;; (setf item-count (length items))
+      (setf item-count i)
       (when (>= point item-count)
 	(setf point (1- item-count)))
       (when (and (not (zerop item-count)) (< point 0))
@@ -893,15 +915,17 @@ for the command-function).")
   (with-slots (errors) p
     (info-window "All Errors"
 		 (or errors
-		     '("There are no errors." "So this is" "BLANK")))))
+		     '("There are no errors.")))))
 
 (defun show-extra (p)
   "Show messages / errors"
   (with-slots (items) p
-    (let ((ext (and items (item-extra-lines (svref items (inator-point *puca*))))))
+    (let ((ext (and items
+		    (item-extra-lines (svref items (inator-point *puca*))))))
       (info-window "Errors"
 		   (or ext
-		       '("There are no errors." "So this is" "BLANK"))))))
+		       '("There are no errors on this line."
+			 "Try pressing 'E'."))))))
 
 (defun pick-backend (&optional type)
   ;; Try find what was asked for.
