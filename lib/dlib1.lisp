@@ -64,6 +64,7 @@ of it.")
    #:package-robust-read
    #:*buffer-size*
    #:copy-stream
+   #:stream-string
    #:quote-format
    #:name-to-title
    #:print-properties
@@ -2431,6 +2432,13 @@ could be useful in case the streams support multiple element types."
        (when (> pos 0)
 	 (write-sequence buf destination :end pos))
        :while (= pos *buffer-size*))))
+
+;; See also dlib-misc: slurp
+(defun stream-string (&optional (stream *standard-input*))
+  "Return the conents of ‘stream’ as a string. ‘stream’ defaults to
+‘*standard-input*’."
+  (with-output-to-string (string-stream)
+    (copy-stream stream string-stream)))
 
 (defun quote-format (s)
   "Quote a string to send to format, so that any possible format directives
