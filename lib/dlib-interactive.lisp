@@ -17,6 +17,7 @@ be used at a REPL, but not as likely to be called by other programs.")
    #:pick-spin
    #:do-at
    #:show-features
+   #:dotted
    #:describe-environment
    #:describe-implementation
    #:describe-packages
@@ -40,7 +41,7 @@ be used at a REPL, but not as likely to be called by other programs.")
 
    #:file-matches
    #:not-file-matches			; this is inconsistent
-   #:file-filter
+   #:file-filter			;       ⋮
    #:file-filter-not			; with this, but ...
    ))					; file-does-not-match is also crap
 (in-package :dlib-interactive)		; and not-file-filter seems wrong too
@@ -206,6 +207,29 @@ defaults to 0.2."
   #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (print-columns (sort (copy-seq *features*) #'string<) :format-char #\s))
 
+;; This is mostly for pedagogic purposes. I don't really have a use for it.
+(defun dotted (stream obj colon-p at-sign-p &rest args)
+  "A format function for use with ~//, which print lists as dotted lists,
+e.g (format nil \"~/dlib-i:dotted/\" (1 2 3)) => \"(1 . (2 . (3 . ())))\"."
+  (declare (ignore colon-p at-sign-p args))
+  (typecase obj
+    (null
+     (write-string "()" stream))
+    (list
+     (write-char #\( stream)
+     (dotted stream (car obj) nil nil)
+     (write-string " . " stream)
+     (dotted stream (cdr obj) nil nil)
+     (write-char #\) stream))
+    (t
+     (write obj :stream stream))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Describers
+
+;; Note this isn't a "environment" like the Lisp evaluation environment,
+;; e.g. as passed in macro lambda lists, but rather the external environment
+;; as in Chapter 25 of the CLHS.
 (defun describe-environment (&optional (stream *standard-output*))
   "Print the Lisp environmental data."
   (print-values  '(lisp-implementation-type
