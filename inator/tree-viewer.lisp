@@ -888,7 +888,7 @@ been encountered."
   (apply #'terminal-format *terminal* format-string format-args))
 
 (defmethod message ((o tree-viewer) format-string &rest format-args)
-  (setf (message-string *viewer*)
+  (setf (message-string o)
 	(apply #'format nil format-string format-args)))
 
 (defmethod prompt ((o tree-viewer) format-string &rest format-args)
@@ -1014,43 +1014,44 @@ and indented properly for multi-line objects."
       (subseq str 0 (min 15 (length str))))))
 
 (defmethod update-display ((o tree-viewer))
-  (with-slots (root quit-flag picked-object current left top bottom
-	       bottom-node current-position current-max-right current-left
-	       message-string scroll-hint) o
-    (tagbody
-     again
-       (tt-home)
-       (tt-erase-below)
-       (setf current-position nil current-left nil current-max-right nil)
-       (let ((*display-start* nil))
-	 (display-tree *viewer* root 0))
-       ;; Reposition display if the current node is not visible.
-       ;; This can be highly inefficient if it has to reposition far,
-       ;; since it redraws the whole thing to curses, so movement code
-       ;; should try to get close and then set the scroll-hint.
-       (when (not current-position)
-	 (case scroll-hint
-	   (:down
-	    (let ((next-top (find-next-node top)))
-	      (when next-top
-		(setf top next-top)
-		(go again))))
-	   (:up
-	    (let ((prev-top (find-previous-node top)))
-	      (when prev-top
-		(setf top prev-top)
-		(go again))))
-	   (otherwise
-	    ;; Punt and start from the top.
-	    (setf top root
-		  scroll-hint :down)
-	    (go again)))))
+  (let ((*viewer* o))
+    (with-slots (root quit-flag picked-object current left top bottom
+		 bottom-node current-position current-max-right current-left
+		 message-string scroll-hint) o
+      (tagbody
+       again
+	 (tt-home)
+	 (tt-erase-below)
+	 (setf current-position nil current-left nil current-max-right nil)
+	 (let ((*display-start* nil))
+	   (display-tree o root 0))
+	 ;; Reposition display if the current node is not visible.
+	 ;; This can be highly inefficient if it has to reposition far,
+	 ;; since it redraws the whole thing to curses, so movement code
+	 ;; should try to get close and then set the scroll-hint.
+	 (when (not current-position)
+	   (case scroll-hint
+	     (:down
+	      (let ((next-top (find-next-node top)))
+		(when next-top
+		  (setf top next-top)
+		  (go again))))
+	     (:up
+	      (let ((prev-top (find-previous-node top)))
+		(when prev-top
+		  (setf top prev-top)
+		  (go again))))
+	     (otherwise
+	      ;; Punt and start from the top.
+	      (setf top root
+		    scroll-hint :down)
+	      (go again)))))
     
     (when message-string
       (show-message (quote-format message-string))
       (setf message-string nil))
 
-    (when (show-modeline *viewer*)
+    (when (show-modeline o)
       (tt-move-to (- (tt-height) 2) 0)
       (tt-erase-to-eol)
       (tt-format "~a ~a (left=~a top=~a bot=~a)"
@@ -1061,12 +1062,18 @@ and indented properly for multi-line objects."
 		 (node-abbrev bottom-node)))
 
     (when current-position
-      (tt-move-to current-position 0))))
+      (tt-move-to current-position 0)))))
 
 (defmethod finish-inator ((o tree-viewer))
   (tt-move-to (1- (tt-height)) 0)
   (tt-scroll-down 2)
   (tt-finish-output))
+
+;; Just so our *viewer* is set for clients that call the ‘event-loop’ directly
+;; instead of ‘view-tree’.
+(defmethod event-loop :around ((o tree-viewer))
+  (let ((*viewer* o))
+    (call-next-method)))
 
 (defun view-tree (tree &key viewer default-action)
   "Look at a tree, with expandable and collapsible branches."
