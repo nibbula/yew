@@ -11,8 +11,8 @@
 
 (defpackage :du
   (:documentation "Disk usage")
-  (:use :cl :dlib :dlib-misc :opsys :tree-viewer :inator :terminal :char-util
-	:keymap :view-generic :unicode)
+  (:use :cl :dlib :dlib-misc :opsys :char-util :inator :terminal
+	:keymap :view-generic :unicode :tree-viewer :table-viewer)
   (:export
    ;; Main entry point
    #:du
@@ -28,21 +28,52 @@
 
 (defvar *last-tree* nil "The last tree that was made.")
 
-;; @@@ since a tree-viewer is an inator now, we should probably just make a
-;; tree-viewer sub class?
-(defstruct du-app
-  tree					; The currently viewed tree.
-  viewer
-  show-all				; True to include files in the tree.
-  show-progress
-  exclude				; Paths to exclude.
-  reload				; True to reload.
-  (total 0)				; Current total space.
-  (max 0)				; Maximum space.
-  (track-hard-links t)
-  inodes)
+(defclass data-container ()
+  ((data
+    :initarg :data :accessor data-container-data :initform nil
+    :documentation "The contained data."))
+  (:documentation "Container for file size data."))
 
-(defvar *du* nil "The current du inator.")
+(defclass du-app ()
+  ((data
+    :initarg :data :accessor data :initform nil
+    :documentation "The currently viewed file size data.")
+   (viewer
+    :initarg :viewer :accessor viewer :initform nil
+    :documentation "The viewer inator.")
+   (show-all
+    :initarg :show-all :accessor show-all :initform t :type boolean
+    :documentation "True to include files in the tree.")
+   (show-progress
+    :initarg :show-progress :accessor show-progress :initform t
+    :type boolean
+    :documentation "True to show proress while collecting data.")
+   (exclude
+    :initarg :exclude :accessor exclude :initform '() :type list
+    :documentation "Paths to exclude.")
+   (reload
+    :initarg :reload :accessor reload :initform nil :type boolean
+    :documentation "True to reload.")
+   (total
+    :initarg :total :accessor total :initform 0 :type number
+    :documentation "Current total space in octets.")
+   (max-space
+    :initarg :max-space :accessor max-space :initform 0 :type number
+    :documentation "Maximum space in octets.")
+   (track-hard-links
+    :initarg :track-hard-links :accessor track-hard-links
+    :initform t :type boolean
+    :documentation "True to track hard links.")
+   (inodes
+    :initarg :inodes :accessor inodes
+    :documentation "File system identity table.")
+   (size-format
+    :initarg :size-format :accessor du-app-size-format :initform :human
+    :type (member :human :bytes)
+    :documentation "The format for file sizes. Of of :human or :bytes."))
+  (:documentation "Disk usage viewer."))
+
+(defvar *du* nil "The current disk us inator.")
 
 (deftype small-string () `(simple-array (unsigned-byte 8)))
 
@@ -150,15 +181,32 @@
       (decf *level*)
       result)))
 
-(defun save (&optional (filename *default-ouput-file*) (tree *last-tree*))
-  (with-open-file (stream (quote-filename filename)
-			  :direction :output :if-exists :rename)
-    (output tree stream)))
+(defclass tree-container (data-container)
+  ()
+  (:documentation "Disk usage tree data."))
 
-(defun load-tree (&optional (filename *default-ouput-file*))
+(defgeneric save (filename data)
+  (:documentation "Saved size ‘data’ to ‘filename’."))
+
+(defmethod save (filename (data tree-container))
+  "Saved size ‘data’ to ‘filename’. If ‘filename’ is NIL, use
+‘*default-ouput-file*’. If ‘data’ is empty, use ‘*last-tree*’."
+  (with-open-file (stream (quote-filename (or filename *default-ouput-file*))
+			  :direction :output :if-exists :rename)
+    (output (or data *last-tree*) stream)))
+
+(defgeneric load-data (filename data)
+  (:documentation "Load saved size ‘data’ from ‘filename’."))
+
+(defmethod load-data (filename (data tree-container))
+  "Load saved size data from ‘filename’ into ‘data’. If ‘filename’ is NIL,
+use ‘*default-ouput-file*’."
+  (when (not filename)
+    (setf filename *default-ouput-file*))
   (with-open-file (stream (quote-filename filename) :direction :input)
     (let ((*level* 0))
-      (input 'du-node stream nil))))
+      (setf (data-container-data data)
+	    (input 'du-node stream nil)))))
 
 (defclass du-file-node (du-node)
   ()
@@ -294,16 +342,29 @@
 					(print-size size :stream nil
 						    :traditional t)
 					(from-small-string name))))))
+
+(defclass du-tree-viewer (tree-viewer)
+  ()
+  (:documentation "Tree viewer for du."))
+
+(defmethod initialize-instance
+    :after ((o du-tree-viewer) &rest initargs &key &allow-other-keys)
+  "Initialize a du-tree-viewer."
+  (declare (ignore initargs))
+  ;; Open the root node so we see something.
+  (setf (node-open (tree-viewer::root o)) t))
+
 (defun save-file (o)
   "Save the du tree in a file."
-  (save)
-  (tree-viewer::message o "Saved in ~a" *default-ouput-file*))
+  (with-slots (data) o
+    (save nil data)
+    (tree-viewer::message o "Saved in ~a" *default-ouput-file*)))
 
 (defun load-file (o)
   "Load the du tree from a file."
-  (with-slots (tree reload) *du*
-    (setf tree (load-tree)
-	  reload t)
+  (with-slots (data reload) o
+    (load-data nil data)
+    (setf reload t)
     (message o "Loaded from ~a" *default-ouput-file*)
     (quit o)))
 
@@ -328,68 +389,214 @@
   `((,(ctrl #\x)	. *du-ctrl-x-keymap*)
     (#\v		. view-file)))
 
-(defun make-dir-tree (directories)
-  (cond
-    ((not (listp directories))
-     (make-instance 'du-top-node
-		    :name (to-small-string directories)
-		    :parent nil
-		    :directory (current-directory)))
-    ((= (length directories) 1)
-     (make-instance 'du-top-node
-		    :name (to-small-string (elt directories 0))
-		    :parent nil
-		    :directory (current-directory)))
-    (t
-     ;; (format t "directories = ~s~%" directories)
-     ;; (read-line)
-     (make-instance 'du-glom-node
-		    :name (to-small-string "Directories")
-		    :parent nil
-		    :directories directories
-		    ))))
+(defgeneric gather-data (directories data)
+  (:documentation "Gather size ‘data' for ‘directories’."))
+
+(defgeneric dispose-data (data)
+  (:documentation "Make data storage potentially collectible."))
+
+(defmethod gather-data (directories (data tree-container))
+  (setf (data-container-data data)
+	(cond
+	  ((not (listp directories))
+	   (make-instance 'du-top-node
+			  :name (to-small-string directories)
+			  :parent nil
+			  :directory (current-directory)))
+	  ((= (length directories) 1)
+	   (make-instance 'du-top-node
+			  :name (to-small-string (elt directories 0))
+			  :parent nil
+			  :directory (current-directory)))
+	  (t
+	   ;; (format t "directories = ~s~%" directories)
+	   ;; (read-line)
+	   (make-instance 'du-glom-node
+			  :name (to-small-string "Directories")
+			  :parent nil
+			  :directories directories)))))
+
+(defmethod dispose-data ((data tree-container))
+  ;; This is somewhat unnecessary.
+  (setf (data-container-data data) nil))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; file list
+
+(defclass table-container (data-container)
+  ((package
+    :initarg :package :accessor table-container-package #|:initform nil|#
+    :documentation "Package for path names."))
+  (:documentation "Disk usage file list data."))
+
+(defmethod initialize-instance
+    :after ((o table-container) &rest initargs &key &allow-other-keys)
+  "Initialize a table-container."
+  (declare (ignore initargs))
+  (when (or (not (slot-boundp o 'package))
+	    (not (slot-value o 'package)))
+    (setf (slot-value o 'package) (make-package (gensym "DU-TEMP")))))
+
+;; To save space, we split the path and store it as symbols in a package, but
+;; this means we have to manually delete the package to reclaim the space.
+(defmethod gather-data (directories (data table-container))
+  "Gather a list of paths and file sizes."
+  (let ((full-list
+	  (loop :for dir :in directories
+	    :nconc
+	    (let (list end new)
+	      (nos:map-directory
+	       (_ (let ((i (ignore-errors (nos:file-info _))))
+		    (when i
+		      (setf new
+			    (list
+			     (cons (nos:file-info-size i)
+				   (list
+				    (mapcar
+				    (_ (intern _ (table-container-package data)))
+				    (let ((pp (nos:parse-path _)))
+				      (if (nos:os-pathname-absolute-p pp)
+					  (cons "/" (nos:os-pathname-path pp))
+					  (nos:os-pathname-path pp)))
+				    )))))
+		      (when end
+			(rplacd end new))
+		      (setf end new)
+		      (when (null list)
+			(setf list new)))))
+	       :dir dir :recursive t ::errorp nil)
+	      list))))
+    (setf (data-container-data data)
+	  (sort ;; @@@ Would it be faster to build a sorted tree?
+	   full-list
+	   #'> :key #'car))
+    ;; (setf (data-container-data data)
+    ;; 	   full-list)
+    ))
+
+(defmethod dispose-data ((data table-container))
+  (delete-package (table-container-package data))
+  (setf (data-container-data data) nil))
+
+(defun format-path (cell width)
+  "Format a path cell."
+  ;; @@@ this is stupid & non-portable
+  (let* ((s nos:*directory-separator-string*)
+	 (absolute (string= (first cell) nos:*directory-separator-string*))
+	 (str (format nil (s+ "~:[~;" s "~]~{~a~^" s "~}")
+		      absolute
+		      (if absolute (rest cell) cell))))
+    (if width
+	(format nil "~va" width str)
+	str)))
+
+;; @@@ We should probably move the formatters (from e.g. ls, ps, du, df) to
+;; separate package, so they can be consistent and not duplicated - a.k.a DRY.
+(defun format-the-size (size &optional (format :human))
+  (flet ((human ()
+	   (remove #\space (print-size size
+				       :traditional t :stream nil :unit ""))))
+    (case format
+      (:human (human))
+      (:bytes
+       (format nil "~d" size))
+      (otherwise
+       (human)))))
+
+(defun size-formatter (n width)
+  (format nil "~v@a" width
+	  (format-the-size n (or (and *du* (du-app-size-format *du*)) :human))))
+
+(defclass du-table-viewer (table-viewer)
+  ()
+  (:documentation "Table viewer for du."))
+
+(defmethod current-cell ((o du-table-viewer))
+  (format-path (call-next-method o) nil))
+
+#|
+(defmethod initialize-instance
+    :after ((o du-table-viewer) &rest initargs &key &allow-other-keys)
+  "Initialize a du-table-viewer."
+  (declare (ignore initargs))
+  (when (slot-boundp o 'data)
+    (setf (table-viewer::table-viewer-table o)
+	  (table:make-table-from
+	   (slot-value o 'data)
+	   :columns '((:name "Size" :type number)
+		      (:name "Path" :format #'format-path))))))
+|#
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun du (&key (directories '(".")) #|follow-links tree |#
-	     (show-progress t) (all t) resume file exclude)
+	     (show-progress t) (all t) resume file exclude as-list
+	     non-human-size)
   "Show disk usage.
-DIRECTORIES   - A list of directories to start from, which defaults to the
-                current directory.
-TREE          - A previously constructed tree to use.
-SHOW-PROGRESS - True to show the progress while gathering data. Defaults to T.
-ALL           - True to show sizes for all files. Otherwise it just shows
-                directory totals. This can take much more memory.
-RESUME        - True to resume from the last time it was run.
-FILE          - Is a file to load data from.
-EXCLUDE       - Sub-tree(s) to exclude.
+ DIRECTORIES    - A list of directories to start from, which defaults to the
+                  current directory.
+ TREE           - A previously constructed tree to use.
+ SHOW-PROGRESS  - True to show the progress while gathering data. Defaults to T.
+ ALL            - True to show sizes for all files. Otherwise it just shows
+                  directory totals. This can take much more memory.
+ RESUME         - True to resume from the last time it was run.
+ FILE           - Is a file to load data from.
+ EXCLUDE        - Sub-tree(s) to exclude.
+ AS-LIST        - Show as a flat list, instead of a tree.
+ NON-HUMAN-SIZE - Show sizes in bytes.
 "  
   (let* ((*du*
-	  (make-du-app
+	  (make-instance 'du-app
 	   :show-progress show-progress
 	   :show-all all
-	   :exclude exclude)))
+	   :exclude exclude
+	   :data (make-instance (if as-list 'table-container 'tree-container))
+	   :size-format (if non-human-size :bytes :human))))
     ;;(format t "*exclude* = ~s~%" *exclude*)
-    (with-slots (tree viewer show-progress reload) *du*
-      (when resume
-	(if *last-tree*
-	    (setf tree *last-tree*)
-	    (format t "Nothing to resume.~%")))
-      (if file
-	  (setf tree (load-tree file))
-	  (if show-progress
-	      (with-terminal ()
-	        (terminal-get-size *terminal*)
-		(setf tree (or tree (make-dir-tree directories))))
-	      (setf tree (or tree (make-dir-tree directories)))))
-      (setf *last-tree* tree)
-      (loop :do
-	 (setf reload nil
-	       (node-open tree) t)
-	 (setf viewer (make-instance 'tree-viewer
-				     :root tree
-				     :bottom (- (tt-height) 2)))
-	 (push *du-keymap* (inator-keymap viewer))
-	 (view-tree tree :viewer viewer)
-	 :while reload))))
+    (with-slots (data viewer show-progress reload) *du*
+      (cond
+	(resume
+	 (if *last-tree*
+	     (progn
+	       (dispose-data data)
+	       (setf data *last-tree*))
+	     (format t "Nothing to resume.~%")))
+	(file
+	 (load-data file data))
+	(t
+	 (when *last-tree*
+	   (dispose-data *last-tree*))
+	 (if show-progress
+	     (with-terminal ()
+	       (terminal-get-size *terminal*)
+	       (when (not (data-container-data data))
+		 (gather-data directories data)))
+	     (when (not (data-container-data data))
+	       (gather-data directories data)))))
+      (setf *last-tree* data)
+      (loop :with result
+	:do
+	(setf reload nil)
+	(cond
+	  (as-list
+	   (let ((table (table:make-table-from
+			 (data-container-data data)
+			 :columns
+			 `((:name "Size" :type number :format ,#'size-formatter)
+			   (:name "Path" :format ,#'format-path)))))
+	     (view-table table :type 'du-table-viewer)
+	     (setf result table)))
+	  (t
+	   (with-terminal ()
+	     (setf viewer
+		   (make-instance 'du-tree-viewer
+				  :root (data-container-data data)
+				  :bottom (- (tt-height) 2)))
+	     (push *du-keymap* (inator-keymap viewer))
+	     (event-loop viewer)
+	     (setf result (data-container-data data)))))
+	:while reload
+	:finally (return result)))))
 
 #+lish
 (lish:defcommand du
@@ -403,12 +610,15 @@ EXCLUDE       - Sub-tree(s) to exclude.
     :help "True to resume viewing the last tree.")
    (file pathname :short-arg #\f
     :help "Load a tree from a file.")
+   (as-list boolean :short-arg #\l
+    :help "Show as a flat list, instead of a tree.")
+   (non-human-size boolean :short-arg #\h :help "Show sizes in bytes.")
    (directories directory :repeating t
     :help "Directory to show usage for."))
   :keys-as keys
   "Show disk usage."
   (when (not directories)
     (setf (getf keys :directories) '(".")))
-  (apply #'du keys))
+  (setf lish:*output* (apply #'du keys)))
 
 ;; EOF
