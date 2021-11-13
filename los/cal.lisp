@@ -169,12 +169,12 @@ not given."
 	       (if (> hour 12)
 		   (or 
 		    #+unix (uos:nl-langinfo uos::+PM-STR+)
-		    #-unix "PM"
-		    "PM")
+		    #+unix "PM"
+		    #-unix "PM")
 		   (or
 		    #+unix (uos:nl-langinfo uos::+AM-STR+)
-		    #-unix "AM"
-		    "AM"))
+		    #+unix "AM"
+		    #-unix "AM"))
 	       str))
 	     (#\r
 	      (write-string (mini-strftime "%I:%M:%S %p" time) str))
