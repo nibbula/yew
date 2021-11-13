@@ -538,7 +538,7 @@ or ‘to’ exists."
          (yes or no)? "
 	 (length to-delete) to-delete)
     (loop :for file :in to-delete :do
-      (delete-file (nos:path-append directory (osimplify file))))
+      (nos:os-delete-file (nos:path-append directory (osimplify file))))
     t))
 
 (defun execute (o)
