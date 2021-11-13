@@ -19,6 +19,7 @@
    #:view-table-file
    #:view-table-thing
    #:view-cell
+   #:current-cell
    #:view-table
    #:!view-table
    #:!print-table
@@ -958,9 +959,9 @@ at which it's found or NIL if it's not found."
 ;; @@@@@@@
 ;; (defgeneric table-viewer-for (
 
-(defun view-table (table &key long-titles)
+(defun view-table (table &key long-titles (type 'table-viewer))
   "View a table."
-  (with-terminal-inator (*table-viewer* 'table-viewer
+  (with-terminal-inator (*table-viewer* type
 			 :table table
 			 ;; :point (make-table-point)
 			 :long-titles long-titles)
