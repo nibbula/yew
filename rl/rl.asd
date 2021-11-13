@@ -6,7 +6,7 @@
   :name               "rl"
   :description        "A line editor."
   :version            "0.1.0"
-  :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
+  :author             "Nibby Nebbulous <nibbula -(. @ .)- uucp!gmail.com>"
   :licence            "GPL-3.0-only"
   :source-control     :git
   :long-description   "A line editor which is not so tiny."

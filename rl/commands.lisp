@@ -788,6 +788,12 @@ just before the cursor."
 		  (is-close-char (aref buf (1- point))))
 	     (highlight-paren e (1- point)))))))))
 
+(defun unhighlight-matching-parentheses (e)
+  "If a parenthese is highlighted, un-highlight it."
+  (with-slots (matching-char-pos) e
+    (when matching-char-pos
+      (highlight-paren e matching-char-pos :state nil))))
+
 (defun highlight-paren (e pos &key (state t))
   "Hightlight the character at ‘pos’, or un-highlight if ‘state’ is nil."
   (let* ((str (buffer-string (buf e)))
