@@ -2009,6 +2009,9 @@ SYMBOLS is a designator for a symbol or list of symbols like for EXPORT."
       (t
        (error "Symbol ~s not bound in ~s" symbol package)))))
 
+(defsetf refer-to (package symbol) (var)
+  `(setf (symbol-value (intern (string ,symbol) (find-package ,package))) ,var))
+
 ;; (defalias '#.(code-char #x203b) 'refer-to)
 
 (defun maybe-refer-to (package symbol &rest args)
