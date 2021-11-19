@@ -1506,7 +1506,12 @@ point in time (a.k.a. revision hash).")
 				      ;;:format :relative
 				      :time (history-date item)))
 	     "Message:" (oquote-format (history-message item)))
-       :justify nil))))
+       ;; :justify nil))))
+       ;; @@@ Justify messes some things up, but it also doesn't cut off long
+       ;; lines, so for now, messed up formatting is better than not visible
+       ;; text.
+       :justify t
+       :redraw nil))))
 
 ;; (defun inspect-history (p)
 ;;   (with-slots ((point inator::point) items) p
