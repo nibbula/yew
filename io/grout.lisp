@@ -68,7 +68,12 @@ that generic function with *GROUT* as it's first arg, just for API prettyness."
 	;;(ignorables (remove-if (_ (char= #\& (char (string _) 0))) args)))
 	(ignorables (lambda-list-vars args :all-p t)))
     `(progn
-       (defgeneric ,grout-generic (grout ,@args) (:documentation ,doc-string))
+       (defgeneric ,grout-generic (grout ,@args)
+         (:documentation ,doc-string)
+	 ;; Make an error catching method.
+	 (:method ((grout null) ,@args)
+	   (declare (ignorable ,@ignorables))
+	   (error "*grout* is NIL. Not inside a (with-grout () ...)?")))
        (defmacro ,grout-name (&whole ,whole-arg ,@args)
 	 (declare (ignorable ,@ignorables))
 	 ,doc-string
