@@ -11,7 +11,7 @@
     :source-control	:git
     :long-description
     "W͢͢͝h͡o͢͡ ̸͢k̵͟n̴͘ǫw̸̛s͘ ̀́w͘͢ḩ̵a҉̡͢t ̧̕h́o̵r͏̵rors̡ ̶͡͠lį̶e͟͟ ̶͝in͢ ͏t̕h̷̡͟e ͟͟d̛a͜r̕͡k̢̨ ͡h̴e͏a̷̢̡rt́͏ ̴̷͠ò̵̶f̸ U̧͘ní̛͜c͢͏o̷͏d̸͢e̡͝?͞"
-    ;; :depends-on ()
+    :depends-on (:dlib)
     :components
     ((:file "package")
      (:file "encoding" :depends-on ("package"))
