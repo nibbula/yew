@@ -11,7 +11,7 @@
    ))
 (in-package :image-png)
 
-;; Pick whether to use png-read or pngload base on which one is already loaded.
+;; Pick whether to use png-read or pngload based on which one is already loaded.
 ;; This is a horrible situation. The Lisp ecosystem mostly sucks donkey ass.
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (when (find-package :png-read)
