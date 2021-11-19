@@ -19,6 +19,15 @@
 
 ;; (declaim (optimize (debug 3)))
 
+(defvar *ignored-files*
+  `(".git")
+  "File names to ignore.")
+
+(defun ignored-file-name-p (file-name)
+  "Return true if ‘file-name’ should be ignored."
+  (or (superfluous-file-name-p file-name)
+      (and *ignored-files* (find file-name *ignored-files* :test #'equal))))
+
 ;; Of course this isn't really "safe".
 (defun safe-shell-line (command &rest args)
   ;; Handle encoding errors
@@ -422,7 +431,7 @@ Options:
 	     nil))
       (when (or (not min-depth) (>= depth min-depth))
 	(loop :for f :in dir-list
-	   :if (not (superfluous-file-name-p (dir-entry-name f))) :do
+	   :if (not (ignored-file-name-p (dir-entry-name f))) :do
 	   (let* ((n (dir-entry-name f))
 		  (full (path-append dir n))
 		  (name-matched
@@ -457,7 +466,7 @@ Options:
       (return files))
     (loop :for f :in sub-dirs
        ;;:if (not (or (equal ".." f) (equal "." f)))
-       :if (not (superfluous-file-name-p f))
+       :if (not (ignored-file-name-p f))
        :do
 ;;;	    (let ((sub (concatenate 'string dir *directory-separator* f))
        (let ((sub (s+ dir *directory-separator* f))
