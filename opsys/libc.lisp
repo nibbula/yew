@@ -41,6 +41,7 @@
    #:fscanf #:scanf #:sscanf
    #:fsetpos #:fgetpos #:fseek #:ftell
    #:perror #:setbuf #:ungetc
+   #:ctermid
 
    ;; ctype
    #-(and windows (not unix)) #:iswblank
@@ -126,6 +127,8 @@
 
 (defcfun setbuf :int (file file-ptr) (buf :string))
 (defcfun ungetc :int (file file-ptr))
+
+(defcfun ctermid :string (s :string)) ;; useless?
 
 (defcfun system :int (command :string))
 
