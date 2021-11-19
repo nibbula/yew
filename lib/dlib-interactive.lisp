@@ -29,6 +29,7 @@ be used at a REPL, but not as likely to be called by other programs.")
    #:describe-class
    #:describe-float
    #:describe-locale
+   #:describe-os-errors
 
    #:safe-set-bracketed-paste
    #:bracketed-paste-on
@@ -933,5 +934,29 @@ Tags are:~%~a" *file-tag-doc*))
   "Given a list of file names in FILE-LIST, return a sequence with only the
 files that do NOT match the tags in TAG-SEQUENCE.~%
 Tags are:~%~a" *file-tag-doc*))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; @@@ There's something wrong when there are holes in this.
+(defun describe-os-errors ()
+  "Describe the errors from system calls."
+  (let ((table
+	  #+unix
+	  (make-table-from
+	   (loop :for i :below uos:*sys-nerr*
+		 :collect
+		 (list i
+		       (or (find i uos:*errors* :key #'symbol-value) "")
+		       (uos:error-message i)))
+	   :columns '((:name "Errno" :type number)
+		      (:name "Name")
+		      (:name "Description")))
+	  #-unix
+	  (make-table-from (list 0 (s+ "I don't know for " *os*))
+			   :columns '((:name "Error" :type number)
+				      (:name "Description")))))
+    (with-grout ()
+      (grout-print-table table))
+    table))
 
 ;; EOF
