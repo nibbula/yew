@@ -26,6 +26,8 @@
    #:octets-to-string
    #:string-size-in-octets
    #:vector-size-in-chars
+   ;; encoding construction
+   #:define-string-converters
    ))
 (in-package :unicode)
 
