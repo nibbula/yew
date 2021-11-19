@@ -35,6 +35,7 @@
    ;; error handling
    #:*errno*
    #:*errors*
+   #:*sys-nerr*
    #:strerror
    #:error-message
    #:posix-error

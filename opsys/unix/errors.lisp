@@ -10,6 +10,7 @@
 ;; Error handling
 
 #+(or darwin linux freebsd netbsd) (config-feature :os-t-has-strerror-r)
+#| #+() What systems don't have sys-nerr? |# (config-feature :os-t-has-sys-nerr)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   ;; OpenBSD and FreeBSD both have a differently named errno function,
@@ -608,18 +609,17 @@
     :int (errnum :int) (strerrbuf :pointer) (buflen size-t))
 #-os-t-has-strerror-r
 (defcvar ("sys_errlist" sys-errlist) :pointer)
-#-os-t-has-strerror-r
-(defcvar ("sys_nerr" sys-nerr) :int)
+#+os-t-has-sys-nerr
+(defcvar ("sys_nerr" *sys-nerr*) :int)
 
 (defun strerror (&optional (e *errno*))
   #+os-t-has-strerror-r
   (with-foreign-pointer-as-string (s 100)
-    (strerror-r e s 100))
+    (strerror-r e s 100)) ;; @@@ wrong?!
   #-os-t-has-strerror-r
-  (if (< e sys-nerr)
+  (if (< e *sys-nerr*)
       (foreign-string-to-lisp (mem-aref sys-errlist :pointer e))
-      (format nil "Unknown error: ~d" e))
-)
+      (format nil "Unknown error: ~d" e)))
 
 (define-condition posix-error (opsys-error)
   ()
@@ -644,7 +644,7 @@
 		;; the system call has nothing to do with the program you are
 		;; running, and is just noise. If you want to know where it's
 		;; really from, just do a stack trace in the debugger.
-		;; Otherwise it's just confusing for the user. Even when the
+		;; Otherwise it's just confusing for the user, even when the
 		;; user is me, who knows damn well what the stupid system call
 		;; should have done.
 		;;
