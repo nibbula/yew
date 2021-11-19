@@ -1281,6 +1281,7 @@ i.e. the terminal is 'line buffered'."
     ;; ( 1     95 :terminal.app)
     (24    279 :mlterm)
     (41    285 :terminology)
+    (63     14 :ctx)
     ;;(65   6002 :kings-cross)
     (65   6002 :vte) ;; later?
     (83  40602 :screen)
@@ -1293,9 +1294,9 @@ i.e. the terminal is 'line buffered'."
   "Try to guess what terminal emulator we're running under."
   (or (emulator tty)
       (setf (emulator tty)
-	    (destructuring-bind (type firmware rom)
+	    (destructuring-bind (type firmware rom &rest rest)
 		(query-parameters ">0c" :tty tty :timeout 0.05 :errorp nil)
-	      (declare (ignore rom))
+	      (declare (ignore rom rest))
 	      (let ((e (find type *emulators* :key #'car)))
 		(if e
 		    (make-emulator :type type
@@ -1306,6 +1307,7 @@ i.e. the terminal is 'line buffered'."
 					     :errorp nil)))
 		      (if (eql 6 (car device-attributes))
 			  ;; "suckless" terminal which doesn't do >0c
+			  ;; also fbterm which actuall does have colors
 			  (make-emulator :name :st :type 6 :firmware #x20)
 			  (make-emulator :name :unknown)))))))))
 
@@ -1322,8 +1324,9 @@ i.e. the terminal is 'line buffered'."
        ;; @@@ This is wrong for tmux, screen, and others, because it depends
        ;; on the underlying terminal. How can we figure it out?
        nil)
-      (:rxvt     nil)
-      (:st       t)			; Is this true? It has no versions?
+      (:rxvt	nil)
+      (:ctx	t)
+      (:st	t)			; Is this true? It has no versions?
       (otherwise nil))))
 
 (defmethod terminal-colors ((tty terminal-ansi-stream))
