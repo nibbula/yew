@@ -419,11 +419,13 @@ if an item was added."
 
 (defun get-counts (git remote local)
   (or (git-saved-counts git)
-      (setf (git-saved-counts git)
-	    (mapcar #'parse-integer
-		    (split "\\s"
-			   (lish:!- "git rev-list --left-right --count "
-				    remote "..." local))))))
+      (if remote
+	  (setf (git-saved-counts git)
+		(mapcar #'parse-integer
+			(split "\\s"
+			       (lish:!- "git rev-list --left-right --count "
+					remote "..." local))))
+	  '(0 0)))) ; fake
 
 (defun get-remotes (git)
   (or (git-saved-remotes git)
