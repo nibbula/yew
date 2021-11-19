@@ -1,6 +1,6 @@
-;;
-;; linux-fb.lisp - Interface to the Linux framebuffer device.
-;;
+;;;
+;;; linux-fb.lisp - Interface to the Linux framebuffer device.
+;;;
 
 (defpackage :linux-fb
   (:documentation "Interface to the Linux framebuffer device.")
@@ -226,10 +226,10 @@
 
 (defparameter *fb-visuals* nil)
 (define-to-list *fb-visuals*
-  #(#(+FB-VISUAL-MONO01+             0 "Monochr. 1=Black 0=White")
-    #(+FB-VISUAL-MONO10+             1 "Monochr. 1=White 0=Black")
+  #(#(+FB-VISUAL-MONO01+             0 "Monochrome 1=Black 0=White")
+    #(+FB-VISUAL-MONO10+             1 "Monochrome 1=White 0=Black")
     #(+FB-VISUAL-TRUECOLOR+          2 "True color")
-    #(+FB-VISUAL-PSEUDOCOLOR+        3 "Pseudo color (like atari)")
+    #(+FB-VISUAL-PSEUDOCOLOR+        3 "Pseudo color")
     #(+FB-VISUAL-DIRECTCOLOR+        4 "Direct color")
     #(+FB-VISUAL-STATIC-PSEUDOCOLOR+ 5 "Pseudo color readonly")
     #(+FB-VISUAL-FOURCC+             6 "Visual identified by a V4L2 FOURCC")))
@@ -564,9 +564,26 @@ DONE should be called when done using it to free resources."
 (defvar *context* nil
   "Current graphics context.")
 
+;; Obviously update this if add support for more formats.
+(defun check-support (fb)
+  "Error if we don't support the framebuffer format."
+  (unless (eq (framebuffer-type fb) +FB-TYPE-PACKED-PIXELS+)
+    (error "Unsupported frambuffer format: ~s"
+	   (documentation (find (framebuffer-type fb) *fb-types*
+				:key #'symbol-value)
+			  'variable)))
+  (unless (eq (framebuffer-type fb) +FB-VISUAL-TRUECOLOR+)
+    (error "Unsupported frambuffer visual: ~s"
+	   (documentation (find (framebuffer-visual fb) *fb-types*
+				:key #'symbol-value)
+			  'variable)))
+  (unless (= (framebuffer-depth fb) 32)
+    (error "Unsupported frambuffer depth: ~s" (framebuffer-depth fb))))
+
 (defun new-gc (fb)
   (let* ((nbby 8)
 	 (bytes-per-pixel (/ (framebuffer-depth fb) nbby)))
+    (check-support fb)
     (setf *context*
 	  (make-context
 	   :fb fb
