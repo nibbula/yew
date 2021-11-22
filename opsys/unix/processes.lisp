@@ -768,8 +768,8 @@ the current process."
 (defun os-process-priority (&key user pid group)
   (let (result)
     (with-priority-args (user pid group)
-      (setf (%errno) 0 ;; Set errno to 0, so fucking stupid.
-            result (getpriority which who))
+      (%set-errno 0) ;; so fucking stupid.
+      (setf result (getpriority which who))
       (when (and (= result -1) (not (zerop (errno))))
 	(error-check result))
       result)))

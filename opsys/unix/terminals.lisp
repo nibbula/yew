@@ -324,47 +324,7 @@
   (ws_xpixel :unsigned-short)		; horizontal size, pixels
   (ws_ypixel :unsigned-short))		; vertical size, pixels
 
-;; @@@ Hold off on these
-#|
-(defconstant TIOCMODG (_IOR 't'  3 :int) "get modem control state")
-(defconstant TIOCMODS (_IOW 't'  4 :int) "set modem control state")
-
-(defconstant +TIOCM_LE+	   0001		"line enable")
-(defconstant +TIOCM_DTR+   0002		"data terminal ready")
-(defconstant +TIOCM_RTS+   0004		"request to send")
-(defconstant +TIOCM_ST+	   0010		"secondary transmit")
-(defconstant +TIOCM_SR+	   0020		"secondary receive")
-(defconstant +TIOCM_CTS+   0040		"clear to send")
-(defconstant +TIOCM_CAR+   0100		"carrier detect")
-(defconstant +TIOCM_CD+	   +TIOCM_CAR+)
-(defconstant +TIOCM_RNG+   0200		"ring")
-(defconstant +TIOCM_RI+	   +TIOCM_RNG+)
-(defconstant +TIOCM_DSR+   0400		"data set ready")
-					    ; 8-10 compat
-(defconstant +TIOCEXCL+	 (_IO #\t 13)	    "set exclusive use of tty")
-(defconstant +TIOCNXCL+	 (_IO #\t 14)	    "reset exclusive use of tty")
-					    ;; 15 unused
-(defconstant +TIOCFLUSH+ (_IOW #\t 16 :int) "flush buffers")
-					    ;; 17-18 compat
-(defconstant +TIOCGETA+	 (_IOR #\t 19 (:struct termios)) "get termios struct")
-(defconstant +TIOCSETA+	 (_IOW #\t 20 (:struct termios)) "set termios struct")
-(defconstant +TIOCSETAW+ (_IOW #\t 21 (:struct termios)) "drain output, set")
-(defconstant +TIOCSETAF+ (_IOW #\t 22 (:struct termios)) "drn out, fls in, set")
-(defconstant +TIOCGETD+	 (_IOR #\t 26 int)   "get line discipline")
-(defconstant +TIOCSETD+	 (_IOW #\t 27 int)   "set line discipline")
-					     ;; 127-124 compat
-(defconstant +TIOCSBRK+	 (_IO #\t 123)	     "set break bit")
-(defconstant +TIOCCBRK+	 (_IO #\t 122)	     "clear break bit")
-(defconstant +TIOCSDTR+	 (_IO #\t 121)	     "set data terminal ready")
-(defconstant +TIOCCDTR+	 (_IO #\t 120)	     "clear data terminal ready")
-(defconstant +TIOCGPGRP+ (_IOR #\t 119 :int) "get pgrp of tty")
-(defconstant +TIOCSPGRP+ (_IOW #\t 118 :int) "set pgrp of tty")
-					     ;; 117-116 compat
-(defconstant +TIOCOUTQ+	 (_IOR #\t 115 :int) "output queue size")
- |#
-
 ;; SunOS TIOC and tIOC constants
-
 ;;#+sunos (defconstant little-tioc #.(ash 116 8)) ; 166 = (char-int #\t)
 ;;#+sunos (defconstant big-tioc    #.(ash 84  8)) ;  84 = (char-int #\T)
 ;;#+sunos (defconstant little-tioc (ash (char-int #\t) 8)) ; 166 << 8 = 42496
@@ -376,80 +336,48 @@
 
 ;; Who wouldn't love this one?
 ;; @@@ I don't understand why it doesn't work on Lispworks.
-#+(or darwin freebsd openbsd netbsd)
-(defconstant TIOCSTI #-lispworks (_IOW #\t 114 :char) "simulate terminal input")
-#+sunos   (defconstant TIOCSTI (l-tioc 23)          "simulate terminal input")
-#+linux   (defconstant TIOCSTI #x5412               "simulate terminal input")
 
-#|
-(defconstant +TIOCNOTTY+         (_IO #\t 113)	      "void tty association")
-(defconstant +TIOCPKT+	         (_IOW #\t 112 :int)  "pty: set/clear packet mode")
-(defconstant +TIOCPKT_DATA+       #x00		      "data packet")
-(defconstant +TIOCPKT_FLUSHREAD+  #x01		      "flush packet")
-(defconstant +TIOCPKT_FLUSHWRITE+ #x02		      "flush packet")
-(defconstant +TIOCPKT_STOP+       #x04		      "stop output")
-(defconstant +TIOCPKT_START+      #x08		      "start output")
-(defconstant +TIOCPKT_NOSTOP+     #x10		      "no more ^S, ^Q")
-(defconstant +TIOCPKT_DOSTOP+     #x20		      "now do ^S ^Q")
-(defconstant +TIOCPKT_IOCTL+      #x40		      "state change of pty driver")
-(defconstant +TIOCSTOP+	          (_IO #\t 111)	      "stop output, like ^S")
-(defconstant +TIOCSTART+          (_IO #\t 110)	      "start output, like ^Q")
-(defconstant +TIOCMSET+	          (_IOW #\t 109 :int) "set all modem bits")
-(defconstant +TIOCMBIS+	          (_IOW #\t 108 :int) "bis modem bits")
-(defconstant +TIOCMBIC+	          (_IOW #\t 107 :int) "bic modem bits")
-(defconstant +TIOCMGET+	          (_IOR #\t 106 :int) "get all modem bits")
-(defconstant +TIOCREMOTE+         (_IOW #\t 105 :int) "remote input editing")
-|#
+(defconstant +TIOCSTI+
+  #+(or darwin freebsd openbsd netbsd)
+  #-lispworks (_IOW #\t 114 :char)
+  #+lispworks @@@@WHY?
+  #+sunos (l-tioc 23)
+  #+linux #x5412
+  "simulate terminal input")
+
+(defconstant +TIOCCONS+
+  #+darwin (_IOW #\t 98 :int)
+  #+linux #x541D
+  "Become the virtual console.")
 
 ;; These are actually useful!
-#+(or darwin freebsd openbsd netbsd)
 (defconstant +TIOCGWINSZ+
-	   #-lispworks (_IOR #\t 104  (:struct winsize))
-	   #+lispworks #x40087468
-	   "get window size")
+  #+(or darwin freebsd openbsd netbsd)
+  #-lispworks (_IOR #\t 104 (:struct winsize))
+  #+lispworks #x40087468
+  #+sunos (b-tioc 104)
+  #+linux #x5413
+  "get window size")
 
-#+(or darwin freebsd openbsd netbsd)
 (defconstant +TIOCSWINSZ+
-	   #-lispworks (_IOW #\t 103  (:struct winsize))
-	   #+lispworks #x80087467
-	   "set window size")
-
-#+sunos (defconstant +TIOCGWINSZ+ (b-tioc 104) "get window size")
-#+sunos (defconstant +TIOCSWINSZ+ (b-tioc 103) "set window size")
-
-#+linux (defconstant +TIOCGWINSZ+ #x5413 "get window size")
-#+linux (defconstant +TIOCSWINSZ+ #x5414 "set window size")
+  #+(or darwin freebsd openbsd netbsd)
+  #-lispworks (_IOW #\t 103 (:struct winsize))
+  #+lispworks #x80087467
+  #+sunos (b-tioc 103)
+  #+linux #x5414
+  "set window size")
 
 ;; We probably need this one for login-tty.
-#+linux (defconstant +TIOCSCTTY+ #x540e "become controlling tty")
-;; sunos? (defconstant +TIOCSCTTY+ (_IO #\t 97) "become controlling tty")
-#+netbsd (defconstant +TIOCNOTTY+ (_IO #\t 113) "unset controlling tty")
-#+netbsd (defconstant +TIOCSCTTY+ (_IO #\t 97) "become controlling tty")
+(defconstant +TIOCSCTTY+
+  #+(or netbsd darwin) (_IO #\t 97)
+  #+linux #x540e
+  "become controlling tty")
 
-#|
-(defun UIOCCMD (n) "User control OP 'n'" (_IO #\u n))
-(defconstant +TIOCUCNTL+       (_IOW #\t 102 :int)	       "pty: set/clr usr cntl mode")
-(defconstant +TIOCSTAT+	       (_IO #\t 101)		       "simulate ^T status message")
-(defconstant +TIOCSCONS+       (_IO #\t 99))
-(defconstant +TIOCCONS+	       (_IOW #\t 98 :int)	       "become virtual console")
-(defconstant +TIOCSCTTY+       (_IO #\t 97)		       "become controlling tty")
-(defconstant +TIOCEXT+	       (_IOW #\t 96 :int)	       "pty: external processing")
-(defconstant +TIOCSIG+	       (_IO #\t 95)		       "pty: generate signal")
-(defconstant +TIOCDRAIN+       (_IO #\t 94)		       "wait till output drained")
-(defconstant +TIOCMSDTRWAIT+   (_IOW #\t 91 :int)	       "modem: set wait on close")
-(defconstant +TIOCMGDTRWAIT+   (_IOR #\t 90 :int)	       "modem: get wait on close")
-(defconstant +TIOCTIMESTAMP+   (_IOR #\t 89 (:struct timeval)) "enable/get timestamp of last input event")
-(defconstant +TIOCDCDTIMESTAMP+ (_IOR #\t 88, struct timeval)  "enable/get timestamp of last DCd rise")
-(defconstant +TIOCSDRAINWAIT+  (_IOW #\t 87, int)	       "set ttywait timeout")
-(defconstant +TIOCGDRAINWAIT+  (_IOR #\t 86, int)	       "get ttywait timeout")
-(defconstant +TIOCDSIMICROCODE+ (_IO #\t 85)		       "download microcode to DSI Softmodem")
-
-(defconstant +TTYDISC+	0 "termios tty line discipline")
-(defconstant +TABLDISC+	3 "tablet discipline")
-(defconstant +SLIPDISC+	4 "serial IP discipline")
-(defconstant +PPPDISC+	5 "PPP discipline")
-
-|#
+(defconstant +TIOCNOTTY+
+  #+sunos (_IO #\t 97)
+  #+(or netbsd darwin) (_IO #\t 113)
+  #+linux #x5422
+  "unset controlling tty")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Miscellaneous testing and insanity

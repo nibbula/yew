@@ -50,6 +50,8 @@
 	(config-feature :os-t-has-errno-func))
       (progn
 	(defcvar ("errno" *errno*) :int)
+	(defun %set-errno (value) ;; fake, but used by internal things
+	  (setf *errno* value))
 	(defun errno () *errno*))))
 
 (defparameter *errors* nil)
