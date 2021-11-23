@@ -235,26 +235,26 @@ indicate only a start number, or :max to indicate it extends to the end."
     :help "Files to read from."))
   :keys-as args
   "Remove sections of each line of input."
-   (when (not files)
-     (setf files (list *standard-input*)))
-   (when table
-     (remf args :table)
-     (setf args (append args '(:collect t)))
-     (setf collect t))
-   (flet ((call-cut (f)
-	    (apply #'cut-lines f args)))
-     (let (results)
-       (remf args :files)
-       (loop :for f :in files :do
-	    (if collect
-		(push (call-cut f) results)
-		(call-cut f)))
-       (when collect
-	 (setf *output* (nreverse results))
-	 (when (= (length *output*) 1)
-	   (setf *output* (first *output*)))
-	 (if table
-	     (setf *output* (make-table-from *output*))
-	     *output*)))))
+  (when (not files)
+    (setf files (list *standard-input*)))
+  (when table
+    (setf args (append args '(:collect t)))
+    (setf collect t))
+  (remf args :table) ; fake arg, remove it no matter what
+  (flet ((call-cut (f)
+	   (apply #'cut-lines f args)))
+    (let (results)
+      (remf args :files)
+      (loop :for f :in files :do
+	(if collect
+	    (push (call-cut f) results)
+	    (call-cut f)))
+      (when collect
+	(setf *output* (nreverse results))
+	(when (= (length *output*) 1)
+	  (setf *output* (first *output*)))
+	(if table
+	    (setf *output* (make-table-from *output*))
+	    *output*)))))
 
 ;; EOF
