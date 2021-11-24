@@ -238,7 +238,7 @@ indicate only a start number, or :max to indicate it extends to the end."
   (when (not files)
     (setf files (list *standard-input*)))
   (when table
-    (setf args (append args '(:collect t)))
+    (setf (getf args :collect) t)
     (setf collect t))
   (remf args :table) ; fake arg, remove it no matter what
   (flet ((call-cut (f)
