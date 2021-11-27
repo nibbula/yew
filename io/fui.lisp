@@ -310,11 +310,11 @@ waits for a key press and then returns."
 window as an argument to get input. If no INPUT-FUNC is provided it just
 waits for a key press and then returns.
 Keyword arguments are:
-- TITLE                A title for the window.
-- JUSTIFY              True to justify the text in the window.
-- X Y                  Position of the window.
-- WIDTH HEIGHT         Size of the window.
-- MIN-WIDTH MIN-HEIGHT Minimum size of the window."
+ - TITLE                A title for the window.
+ - JUSTIFY              True to justify the text in the window.
+ - X Y                  Position of the window.
+ - WIDTH HEIGHT         Size of the window.
+ - MIN-WIDTH MIN-HEIGHT Minimum size of the window."
   (with-immediate ()
     (display-text title (if justify
 			    (list text)
