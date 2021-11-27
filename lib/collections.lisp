@@ -1821,6 +1821,9 @@ REPLACEMENT.")
   ;; is maybe why this is a bad idea in the first place.
   (:method ((thing vector) item) (vector-push-extend item thing) thing))
 
+(defmethod opush-element ((collection container) item)
+  (opush-element (container-data collection) item))
+
 (defmacro opush (collection item)
   "Prepend ITEM to COLLECTION and return COLLECTION."
   `(setf ,collection (opush-element ,collection ,item)))
