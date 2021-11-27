@@ -51,6 +51,7 @@ Style structures have the following slots:
    #:*eol-style*
    #:*eat-whitespace*
    #:*first-row-labels*
+   #:*string-package*
    ;; style struct
    #:style
    #:make-style
@@ -239,6 +240,10 @@ or :both.")
 ;; - What about when input-quote-style :double and: 23,"","->"","",
 ;; - :eol-style :any
 
+(defvar *string-package* nil
+  "A package to ‘intern’ strings for saving space. Use if strings-as-symbols is
+set in the style.")
+
 (defun read-row (stream &key (style +csv-default+))
   (when (not style)
     (setf style +csv-default+))
@@ -256,7 +261,10 @@ or :both.")
 	       (when (or (eql eat-whitespace :trailing)
 			 (eql eat-whitespace :both))
 		 (setf str (string-right-trim *whitespace-chars* str)))
-	       (push (if strings-as-symbols (intern str) str) row))))
+	       (push (if (and strings-as-symbols *string-package*)
+			 (intern str *string-package*)
+			 str)
+		     row))))
       (handler-case
 	(loop :with c
 	       :and quoting
@@ -355,23 +363,36 @@ or :both.")
 (defun read-file (file-or-stream &key (style +csv-default+))
   "Read the whole stream returning the rows as a list. Use the given style
 which defaults to +csv-default+. If first-row-labels is true in the style
-then the second value is the labels."
+then the second value is the labels. If style-strings-as-symbols is set in the
+style, use *string-package* or a temporary package to intern strings."
   (with-open-file-or-stream (stream file-or-stream :direction :input)
-    (let (labels recs)
-      (when (style-first-row-labels style)
-	(setf labels (read-row stream :style style)))
-      (setf recs
-	    (loop :with rec
-	       :do (setf rec (read-row stream :style style))
-	       :while (not (eql rec :eof))
-	       :collect rec))
-      (values recs labels))))
+    (let (labels recs temp-package)
+      (flet ((read-rows ()
+	       (when (style-first-row-labels style)
+		 (setf labels (read-row stream :style style)))
+               (setf recs
+		     (loop :with rec
+		       :do (setf rec (read-row stream :style style))
+		       :while (not (eql rec :eof))
+		       :collect rec))))
+	(if (style-strings-as-symbols style)
+	    (unwind-protect
+		 (let ((*string-package*
+			 (or *string-package*
+			     (setf temp-package
+				   (make-package (gensym "dtt"))))))
+		   ;; (format t "*string-package* = ~s~%" *string-package*)
+		   (read-rows))
+	      (when temp-package
+		(delete-package temp-package)))
+	    (progn
+	      ;; (format t "strings-as-symbols = ~s~%"
+	      ;; 	      (style-strings-as-symbols style))
+	      (read-rows)))
+	(values recs labels)))))
 
-;; What the flying flapper pans is wrong with me???
 ;; @@@ Of course this should be somewhere else, probably syntax-lisp.
 ;; And it maybe it should make the actual number while we're at it?
-;; We could also pull the macros out of here for general utility in making
-;; simple quick and dirty parsers.
 (defun potential-number-p (string &key junk-allowed)
   (let ((i 0) results)
     (macrolet ((optional (&body body)
@@ -529,6 +550,10 @@ If every object in a column:
 		       (when (not (potential-number-p e))
 			 ;; (format t "number -> string~%")
 			 (setf (aref guess i) 'string)))
+		      (symbol
+		       (when (not (potential-number-p (string e)))
+			 ;; (format t "number -> string~%")
+			 (setf (aref guess i) 'symbol)))
 		      (otherwise
 		       ;; (format t "number -> ~s~%" (type-of e))
 		       (setf (aref guess i) (type-of e)))))
@@ -547,6 +572,28 @@ If every object in a column:
 			     ;; (format t "new string~%")
 			     (setf (aref guess i) 'string))))
 		      (string #| still strings |# )
+		      (symbol #| maybe ok |# )
+		      (otherwise
+		       ;; (format t "string -> ~s~%" (type-of e))
+		       (setf (aref guess i) t)
+		       ;; It's not uniform so just stop.
+		       (return nil))))
+		   (symbol
+		    (case (aref guess i)
+		      (number
+		       (when (not (potential-number-p (string e)))
+			 ;; (format t "string -> number~%")
+			 (setf (aref guess i) 'symbol)))
+		      ((nil)
+		       (if (potential-number-p (string e))
+			   (progn
+			     ;; (format t "string -> number~%")
+			     (setf (aref guess i) 'number))
+			   (progn
+			     ;; (format t "new string~%")
+			     (setf (aref guess i) 'symbol))))
+		      (symbol #| still strings |# )
+		      (string #| maybe ok |# )
 		      (otherwise
 		       ;; (format t "string -> ~s~%" (type-of e))
 		       (setf (aref guess i) t)
@@ -575,11 +622,16 @@ If every object in a column:
 
 (defun convert-data (from to)
   "Return FROM converted to type TO, or leave it alone and warn if we can't."
+  (flet ((symbolize (s)
+	   (if *string-package*
+	       (intern s *string-package*)
+	       (make-symbol s))))
   (typecase from
     (string
      (case to
        (number (safe-read-from-string from))
        (string from)
+       (symbol (symbolize from))
        (t
 	(warn "Don't know how to convert from a string to a ~a~%" to)
 	from)))
@@ -587,6 +639,7 @@ If every object in a column:
      (case to
        (number from)
        (string (princ-to-string from))
+       (symbol (symbolize (princ-to-string from)))
        (t
 	(warn "Don't know how to convert from a number to a ~a~%" to)
 	from)))
@@ -607,7 +660,7 @@ If every object in a column:
 	(warn "Don't know how to convert from a NIL to a ~a~%" to))))
     (t
      (warn "Don't know how to convert from a ~s to a ~a~%" (type-of from) to)
-     from)))
+     from))))
 
 (defun set-column-type-guesses (table guess)
   "Convert the column data in TABLE to the types in GUESSES."
@@ -645,7 +698,8 @@ If every object in a column:
    (guess-types boolean :short-arg #\g :help "Guess column data types.")
    (first-row-labels boolean :short-arg #\l :default t
     :help "True to use the first row of the table as labels, not data.")
-   (strings-as-symbols boolean :short-arg #\S :help "Save strings as symbols.")
+   (strings-as-symbols boolean :short-arg #\S
+    :help "Save strings as symbols. This can help save space.")
    (style choice :short-arg #\s :default 'csv-default
 	  :choices (mapcar (_ (string-downcase (car _))) *styles*)
 	  ;; :test #'symbolify
