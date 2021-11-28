@@ -843,8 +843,7 @@ command for details. If LABEL-DIR is true, print directory labels."
    (by-extension boolean :short-arg #\X :help "Sort by file name extension.")
    (by-size boolean :short-arg #\S :help "Sort by size, largest first.")
    (by-time boolean :short-arg #\t :help "Sort by time, newest first.")
-   (ignore-backups boolean :short-arg #\B :help "Ignore files ending in ~")
-   (help boolean :long-arg "help" :help "Show the help."))
+   (ignore-backups boolean :short-arg #\B :help "Ignore files ending in ~"))
   :args-as args
   :accepts (sequence list)
   "List files in a peculiar way that's not really compatible with the
@@ -875,9 +874,6 @@ traditional ‘ls’ command."
       (setf (getf args :nice-table) t)))
   (when nice-table
     (setf args (append args '(:collect t))))
-  (when help
-    (lish::print-command-help (lish:get-command "ls"))
-    (return-from !ls (values)))
   ;; Default to collecting if the receiver accepts
   ;; (when (and (not collect-supplied-p)
   ;; 	     (not nice-table-supplied-p))
