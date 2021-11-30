@@ -256,6 +256,7 @@ dashes (a.k.a. #\\hyphen-minus), convert it to the symbol |-|."
 (defun view-org (file)
   "View an org-mode FILE with the tree viewer."
   (let ((tree (read-org-mode-file file)))
+    (setf (node-open tree) t)
     (view-tree tree :viewer (make-instance 'org-viewer :root tree
 					   :file-name file))))
 
