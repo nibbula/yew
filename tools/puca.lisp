@@ -1090,8 +1090,8 @@ for the command-function).")
     (when (> top 0)
       (setf top 0))))
 
-(defun scroll-down (p &optional (n 5))
-  "Scroll down by N items."
+(defun scroll-up (p &optional (n 5))
+  "Scroll up by N items."
   (with-slots ((point inator::point) item-count top bottom) p
     (if (> top n)
 	(decf top n)
@@ -1099,8 +1099,8 @@ for the command-function).")
     (when (>= point (+ top bottom))
       (setf point (+ top (1- bottom))))))
 
-(defun scroll-up (p &optional (n 5))
-  "Scroll up by N items."
+(defun scroll-down (p &optional (n 5))
+  "Scroll down by N items."
   (with-slots ((point inator::point) item-count top bottom) p
     (if (< (+ top n) item-count)
 	(incf top n)
