@@ -90,6 +90,9 @@ limited only by availabile memory. It's probably a bad idea to set it to T.")
   "Buffered output."
   row col string moved)
 
+;; @@@ Since scrollback can be implemented in terms of other terminal ops,
+;; we should probably pull scrollback out into a non-backend specific class.
+
 (defclass scrollback (ordered-collection)
   ((lines
     :initarg :lines :accessor scrollback-lines :initform #() :type vector
@@ -2084,7 +2087,7 @@ handler cases."
   (event-cond (display)
     (:key-release (code #|state|#)
 		  (let* ((sym (keycode->keysym display code 0))
-			 (sym-name (gethash sym *keysym-names*)))
+			 (sym-name (keysym-name sym)))
 		    (dbugf :tx11 "code ~s sym ~s name ~s ~s~%" code sym sym-name
 			   (eq sym-name key))
 		    (eq sym-name key))
@@ -2152,7 +2155,8 @@ handler cases."
 	(:key-press
 	 (event-slots (slots code state)
 	   (let* ((sym (keycode->keysym display code 0))
-		  (sym-name (gethash sym *keysym-names*))
+		  ;; (sym-name (gethash sym *keysym-names*))
+		  (sym-name (keysym-name sym))
 		  (chr (keycode->character display code state)))
 	     ;; @@@ the keyword is pretty bogus, maybe we should drop it?
 	     ;; (format t "code ~s state ~x sym ~s ~s chr ~s~%" code state
@@ -2175,7 +2179,7 @@ handler cases."
 			    ;; control character, do a prefixed symbol.
 			    ;; But with more special cases!
 			    (case sym-name
-			      (:space #\nul)
+			      (keysyms::|space| #\nul)
 			      (t
 			       (modifier-prefixed sym-name state))))))
 		(when (logtest state +mod-1-mask+)
@@ -2189,7 +2193,7 @@ handler cases."
 			  (modifier-prefixed sym-name state)
 			  ;; special translations
 			  (case sym-name
-			    (:escape #\escape)
+			    (keysyms::|Escape| #\escape)
 			    (t sym-name)))))
 	       (t
 		;; Try to return something at least
