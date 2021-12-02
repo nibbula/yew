@@ -629,7 +629,7 @@ know."
 	   (:background        . ,background)
 	   (:cursor-rendition  . ,cursor-rendition)
 	   (:allow-send-events . ,allow-send-events)))
-	args new-term x-term)
+	args new-term #| x-term |#)
     (setf arg-list (delete-if-not #'cdr arg-list))
     (loop :for (key . val) :in arg-list :do
        (push val args)
@@ -639,7 +639,7 @@ know."
     (when (not function)
       (setf function (_ (symbol-call :lish :lish))))
     (when use-crunch
-      (setf x-term new-term
+      (setf #| x-term new-term |#
 	    new-term
 	    (make-instance
 	     'terminal-crunch:terminal-crunch
@@ -869,7 +869,8 @@ to blank with."
 	(t ;; Attrs and maybe colors too
 	 (let (bold faint dim italic underline blink inverse reverse standout
 	       invisible crossed-out double-underline inverted dimmed
-	       (use-font font))
+	       ;; (use-font font)
+	       )
 	   (loop :for a :in attrs :do
 	      (case a
 		(:bold             (setf bold t))
@@ -916,10 +917,13 @@ to blank with."
 		  ;; (format t "fg ~s bg ~s~%" fg bg)
 		  ;; (finish-output *standard-output*)
 		  (%terminal-color tty fg bg))
+		 #| @@@ Not done yet
 		 ((and italic italic-font)
 		  (setf use-font italic-font))
 		 ((and bold bold-font)
-		  (setf use-font bold-font)))
+		  (setf use-font bold-font))
+		 |#
+		 )
 	       (draw-thing tty plain-string :x col :y row)
 	       (when (and bold (not bold-font))
 		 ;; Overstrike for bold
