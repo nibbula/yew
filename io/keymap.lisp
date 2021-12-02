@@ -106,7 +106,7 @@ Keymap stacks:
   "Initialize the map of KEYMAP from the alist MAP."
   (when (and map (consp map))
     (setf (keymap-map keymap)
-	  (alist-to-hash-table map (make-hash-table))))
+	  (alist-to-hash-table map :table (make-hash-table))))
   keymap)
 
 ;; @@@ Make the map be an alist under a certain threshold of population, but

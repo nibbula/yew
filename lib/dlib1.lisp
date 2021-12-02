@@ -1064,10 +1064,20 @@ value, if you want to delete the first item."
 	      (rplacd x (cons item (cdr x)))
 	      x)))))
 
-(defun alist-to-hash-table (alist &optional (table (make-hash-table)))
+(defun alist-to-hash-table (alist &key (table (make-hash-table))
+				    check-for-duplicates)
   "Load a hash table with data from an association list."
-  (loop :for i :in alist
-	:do (setf (gethash (car i) table) (cdr i)))
+  (macrolet ((add-loop (check)
+	       `(loop :for (key . value) :in alist
+		  :do
+		  ,@check
+		  (setf (gethash key table) value))))
+    (if check-for-duplicates
+	(add-loop ((multiple-value-bind (val exists) (gethash key table)
+		     (declare (ignore val))
+		     (when exists
+		       (warn "Duplicate key in hash table: ~a ~a." key value)))))
+	(add-loop nil)))
   table)
 
 (defun plist-to-hash-table (plist &optional (table (make-hash-table)))

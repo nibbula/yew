@@ -61,7 +61,7 @@
 				 "zaserve.asd"
 				 "cl-gamepad-visualizer.asd"
 				 ))
-		       (make-hash-table :test #'equal))
+		       :table (make-hash-table :test #'equal))
   "Systems that mess things up. Usually extra code in the ASD file.")
 
 (defstruct sw
@@ -204,6 +204,8 @@ Do NOT try to load a .asd file directly with CL:LOAD. Always use ASDF:LOAD-ASD."
 	    ,@body)
        (setf (symbol-function 'asdf::register-system-definition)
 	     *saved-register-system-definition*))))
+
+;; ql-dist:install
 
 (defun gather (&key all)
   (when all
