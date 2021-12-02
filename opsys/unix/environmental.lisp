@@ -1246,7 +1246,7 @@ Returns an integer."
   (defun bodge-memory-numbers (sysinfo)
     (when (file-exists *meminfo-file*)
       (let (total free shared buffers cached avail reclaimable
-	    swap-total swap-used swap-free)
+	    swap-total #| swap-used |# swap-free)
 	(with-open-file (in *meminfo-file*)
 	  (macrolet
 	      ((get-var (name val)
@@ -1270,7 +1270,7 @@ Returns an integer."
 		   (get-var "Cached:"       cached)
 		   (get-var "SwapTotal:"    swap-total)
 		   (get-var "SwapFree:"     swap-free)
-		   (get-var "SwapUsed:"     swap-used)
+		   ;; (get-var "SwapUsed:"     swap-used)
 		   (get-var "SReclaimable:" reclaimable)))))
 	;; They're always in kilobytes
 	(setf total       (* total 1024)
@@ -1282,7 +1282,7 @@ Returns an integer."
 	      cached      (+ (* cached 1024) reclaimable)
 	      swap-total  (* swap-total 1024)
 	      swap-free   (* swap-free 1024)
-	      swap-used   (- swap-total swap-free)
+	      ;;swap-used   (- swap-total swap-free)
               ;; used (- total free cached buffers)
 	      )
 	;; Fix the things
