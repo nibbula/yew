@@ -1,6 +1,6 @@
-;;
-;; color-names.lisp - Names for your sensations.
-;;
+;;;
+;;; color-names.lisp - Names for your sensations.
+;;;
 
 ;; (let (#+sbcl (sb-ext:*on-package-variance* '(:warn t :error nil)))
 ;;   (dlib:without-warning ; STFU
