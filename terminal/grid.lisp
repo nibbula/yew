@@ -6,7 +6,7 @@
   (:documentation
    "Character grid for terminals. This isn't a terminal type, just things for
 other terminals to use.")
-  (:use :cl :char-util :ochar :fatchar :fatchar-io)
+  (:use :cl :char-util :collections :ochar :fatchar :fatchar-io)
   (:export
    #:grid-char
    #:grid-char-c
@@ -277,9 +277,17 @@ z    (flet ((add-grid-char (char)
     (make-fat-string :string result))))
 |#
 
+(defun null-char (char)
+  "Return true if ‘char’ is #\nul."
+  (char= #.(code-char 0) char))
+
+(defun not-null-char (char)
+  "Return true if ‘char’ is #\nul."
+  (char/= #.(code-char 0) char))
+
 (defun grid-to-fat-string (s &key (start 0) end null-as keep-nulls)
   "Return a fat-string equivalent to S. S can be a grid-string or a grid-char."
-  (let* ((len (length s)) ;; (grid-string-character-length s))
+  (let* ((len (olength s)) ;; (grid-string-character-length s))
 	 (result (make-array len
 			     :element-type 'fatchar
 			     :initial-element (make-fatchar)))
@@ -310,7 +318,8 @@ z    (flet ((add-grid-char (char)
 	       (character
 		(when (or output-start
 			  ;; (char/= (grid-char-c char) #.(code-char 0)))
-			  (or (char/= (grid-char-c char) #.(code-char 0))
+			  ;; (or (char/= (grid-char-c char) #.(code-char 0))
+			  (or (not-null-char (grid-char-c char))
 			      keep-nulls))
 		  (when (not output-start)
 		    (setf output-start i))
@@ -328,19 +337,20 @@ z    (flet ((add-grid-char (char)
 		(loop :for c :across (grid-char-c char)
 		   :do
 		   (when (or output-start
-			     (char/= (grid-char-c char) #.(code-char 0))
+			     ;; (char/= (grid-char-c char) #.(code-char 0))
+			     (not-null-char (grid-char-c char))
 			     keep-nulls)
 		     (when (not output-start)
 		       (setf output-start i))
 		     (setf (aref result j)
-			   (make-fatchar :c     (or c null-as)
+			   (make-fatchar :c     (if (null-char c) null-as c)
 					 :fg    (grid-char-fg    char)
 					 :bg    (grid-char-bg    char)
 					 :attrs (grid-char-attrs char)
 					 :line  (grid-char-line  char)))
 		     (when (not output-end)
 		       (setf output-end
-			     (if c nil j)))
+			     (if (null-char c) nil j)))
 		     (incf j)))))))
       (etypecase s
 	(null result)
