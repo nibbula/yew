@@ -65,7 +65,7 @@
      (setf (fatchar-fg (aref fat i)) color)
      (pushnew attr (fatchar-attrs (aref fat i)))))
 
-;; I might be nice if we could highlight the unfiltered match in the unfiltered
+;; It might be nice if we could highlight the unfiltered match in the unfiltered
 ;; line, but I have no idea how to do it.
 (defun print-match (use-color pattern scanner line
 		    filtered-pattern filtered-line)
@@ -145,6 +145,24 @@ removeed."
   file
   line-number
   line)
+
+(defmethod print-object ((object grep-result) stream)
+  "Print a grep-result to STREAM."
+  (with-slots (file line-number line) object
+    (cond
+      ((or *print-readably* *print-escape*)
+       (call-next-method))
+      ((typep stream '(or terminal:terminal terminal:terminal-stream
+		       fatchar-io:fat-string-output-stream))
+       (print-object
+	(span-to-fat-string
+	 `((:magenta ,file) (:cyan ":")
+	   (:white ,line-number) (:cyan ":")
+	   (:green ,line))
+	 :unknown-func #'princ-to-string)
+	stream))
+      (t
+       (format stream "~a:~a:~a" file line-number line)))))
 
 (eval-when (:compile-toplevel)
   (defmacro with-grep-source ((source filename) &body body)
