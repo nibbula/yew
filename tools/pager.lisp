@@ -2117,19 +2117,29 @@ byte-pos."
 (defun eval-expression-command (pager)
   "Prompt for an expression an evaluate it."
   (with-simple-restart (abort "Go back to the pager.")
-    (fui:display-text
-     "Eval results"
-     (list (with-output-to-string (stream)
-	     (prog1
-		 (let ((*standard-output* stream))
-		   (tiny-repl:tiny-repl :prompt-string "Eval: "
-					:quietly t :once t
-					:output stream))
-	       (redraw pager)
-	       (update-display pager)
-	       ;; (setf (tt-input-mode) :char)
-	       )))
-     :justify nil :min-width 16))
+    (handler-case
+	(fui:display-text
+	 "Eval results"
+	 (list (with-output-to-string (stream)
+		 (prog1
+		     (let ((*standard-output* stream))
+		       (tiny-repl:tiny-repl :prompt-string "Eval: "
+					    :quietly t :once t
+					    :output stream))
+		   (redraw pager)
+		   (update-display pager)
+		   ;; (setf (tt-input-mode) :char)
+		   )))
+	 :justify nil :min-width 16)
+      (error (c)
+	(if (fui:popup-y-or-n-p
+	     (span-to-fat-string
+	      `((:red "Error: ") ,(apply #'format nil "~a" (list c))
+		#\newline #\newline "Enter the debugger?"))
+	     :default #\N)
+	    (invoke-debugger c)
+	    ;; (continue)
+	    (invoke-restart (find-restart 'abort))))))
   (redraw pager))
 
 (defun help-key (pager)
