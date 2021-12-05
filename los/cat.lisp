@@ -174,14 +174,19 @@ This allows interspersing standard input between other things."
 #+lish
 (lish:defcommand cat
   ((files pathname :repeating t :help "Files to concatenate to the output."))
-  :accepts (or string pathname stream list)
+  ;; :accepts (or string pathname stream list)
+  :accepts t
   "Concatenate files. Copy streams."
   (when lish:*input*
     (typecase lish:*input*
       ((or string pathname stream)
        (push lish:*input* files))
       (list
-       (setf files (append (list lish:*input*) files)))))
-  (apply #'cat files))
+       (setf files (append (list lish:*input*) files)))
+      (t
+       (princ lish:*input*)
+       (terpri))))
+  (apply #'cat files)
+  (setf lish:*output* lish:*input*))
 
 ;; EOF
