@@ -166,6 +166,7 @@ of it.")
    #:with-dbugf
    #:with-dbugf-to
    #:without-dbug
+   #:dbugf-toggle
    #:dump-values
    ;; Environment features
    #:*host*
@@ -2208,6 +2209,30 @@ FILE is a file to redirect *dbug-output* to, and therefore also DBUGF messages."
 (defmacro without-dbug (&body body)
   "Evaluate the BODY without printing any debugging messages."
   `(let ((*dbug* nil)) ,@body))
+
+(defun dbugf-toggle (&rest facility)
+  "Toggle debugging facilities with the given tags."
+  (labels ((toggle-one (fac)
+	     (setf *dbug-facility*
+		   (if (find fac *dbug-facility*)
+		       (remove fac *dbug-facility*)
+		       (nconc *dbug-facility* (list fac)))))
+	   (toggle (fac)
+	     (typecase fac
+	       (boolean
+		(maybe-not fac))
+	       (symbol
+		(toggle-one fac))
+	       (list
+		(loop :for f :in fac :do (toggle f)))
+	       (t
+		(maybe-not fac))))
+	   (maybe-not (fac)
+             (cerror "Yeah."
+		     "Did you really mean to toggle a ~s?" (type-of fac))
+	     (toggle-one fac)))
+    (toggle facility)
+    *dbug-facility*))
 
 (defmacro dump-values (&rest args)
   "Print the names and values of the arguments, like NAME=value."
