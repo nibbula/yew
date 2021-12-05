@@ -78,7 +78,9 @@
 (defun debugger-backtrace-lines (n)
   (loop 
 ;;;     :with f = *saved-frame* #| (sbcl-start-frame) |#
-     :with f = (deblargger-current-frame *deblarg*)
+     :with f = (if *deblarg* ;; so we can be called from outside the debugger
+		   (deblargger-current-frame *deblarg*)
+		   (debugger-internal-frame))
      :for i :from 1 :to n
      :collect
      (cons (sb-di:frame-number f)

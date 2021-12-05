@@ -27,7 +27,9 @@
 |#
 
 (defun debugger-backtrace-lines (n)
-  (with-slots (current-frame) *deblarg*
+  (let ((current-frame
+	  (or (and *deblarg* (deblargger-current-frame *deblarg*))
+	      (debugger-internal-frame))))
     (loop :with i = 0
        :for b :in (ccl::backtrace-as-list)
        :if (>= i current-frame)

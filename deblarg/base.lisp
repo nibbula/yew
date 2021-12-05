@@ -82,7 +82,7 @@
 ;; in the debugger.
 
 (defun debugger-print-string (string)
-  (with-slots (term) *deblarg*
+  (let ((term (or (and *deblarg* (deblargger-term *deblarg*)) *terminal*)))
     (typecase string
       (string (princ string term))
       (fatchar-string
@@ -95,7 +95,10 @@
   ;; with something else before it gets to print-object.
   ;;(princ (span-to-fat-string span) *terminal*)
   (render-fatchar-string (span-to-fatchar-string span)
-			 :terminal (deblargger-term *deblarg*)))
+			 :terminal
+			 (if *deblarg*
+			     (deblargger-term *deblarg*)
+			     terminal:*terminal*)))
 
 (defun display-value (v stream)
   "Display V in a way which hopefully won't mess up the display. Also errors
@@ -124,6 +127,7 @@ are indicated instead of being signaled."
 	 (osubseq str 0 (min (olength str) (- width 4)))
 	 str))
     ;;(terpri *terminal*)
-    (terminal-write-char (deblargger-term *deblarg*) #\newline)))
+    (terminal-write-char (or (and *deblarg* (deblargger-term *deblarg*))
+			     *terminal*) #\newline)))
 
 ;; EOF
