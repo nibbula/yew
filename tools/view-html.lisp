@@ -396,24 +396,25 @@
 (defun new-block (view &key string)
   (with-slots (blocks max-line) view
     (with-slots (x y z str) *textify-state*
-      (finish-output str)
-      (let* ((out-str (or string (get-output-stream-string str)))
-	     (just (justify-text
-		    (ostring-trim *ascii-whitespace* out-str)
-		    :cols (tt-width) :stream nil))
-	     ;; (lines (split-sequence #\newline just))
-	     (lines (osplit #\newline just))
-	     (height (length lines))
-	     (width (loop :for l :in lines
-		       :maximize (char-util:display-length l))))
-	(dbugf :html "new block ~a ~a~%" out-str just)
-	(push (make-blok :x x :y y :z z
-		       :width width
-		       :height height
-		       :background :black ;; @@@
-		       :lines lines) blocks)
-	(incf y height)
-	(setf max-line (max y max-line))))))
+      (when str ;; only when there's already been some output
+	(finish-output str)
+	(let* ((out-str (or string (get-output-stream-string str)))
+	       (just (justify-text
+		      (ostring-trim *ascii-whitespace* out-str)
+		      :cols (tt-width) :stream nil))
+	       ;; (lines (split-sequence #\newline just))
+	       (lines (osplit #\newline just))
+	       (height (length lines))
+	       (width (loop :for l :in lines
+			    :maximize (char-util:display-length l))))
+	  (dbugf :html "new block ~a ~a~%" out-str just)
+	  (push (make-blok :x x :y y :z z
+			   :width width
+			   :height height
+			   :background :black ;; @@@
+			   :lines lines) blocks)
+	  (incf y height)
+	  (setf max-line (max y max-line)))))))
 
 (defmacro with-new-block ((view) &body body)
   `(progn
