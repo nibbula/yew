@@ -50,7 +50,7 @@ The documentation for ‘fnmatch’ describes the pattern syntax a little.
 (declaim (type (vector string) +special-chars+))
 (define-constant +special-chars+ #("[*?" "[*?{}" "[*?~" "[*?{}~")
   "Array of strings that have special meaning for glob patterns. Indexed bitwise
-for braces and tildes.")
+for braces and tildes." 'vector-equal)
 
 (defstruct char-class
   "A class of characters, defined by a function. "
@@ -64,10 +64,10 @@ for braces and tildes.")
   "Named character classes.")
 
 (define-constant +space-chars+ (vector #\space #\tab #\newline (ctrl #\L) #\vt)
-  "Characters in the space character class.")
+  "Characters in the space character class." 'vector-equal)
 
 (define-constant +punct-chars+ "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
-  "Characters in the space character class.")
+  "Characters in the space character class." 'equal)
 
 (defstruct char-set
   "A set of characters. Can have ranges, classes and individual characters.

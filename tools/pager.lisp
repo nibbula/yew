@@ -58,7 +58,7 @@ The shell command takes any number of file names.
 ;; 		   (compilation-speed 0)))
 
 (define-constant +digits+ #(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
-  "For reading the numeric argument." #'equalp)
+  "For reading the numeric argument." 'equalp)
 
 (defparameter *default-text-pager-prompt* "%&%f line %l of %L%&"
   "Default prompt for text.")

@@ -211,7 +211,7 @@ https://en.wikipedia.org/wiki/Calculating_the_day_of_the_week#Sakamoto's_methods
 
 (define-constant +month-offset+ #(0 3 2 5 0 3 5 1 4 6 2 4)
   "Month offset for day-of-week calculations based on Zeller's method, where
-the year starts with March.")
+the year starts with March." 'vector-equal)
 
 (defmethod calendar-day-of-week ((calendar gregorian) year month day)
   "Return the day of the week for a Gregorian date."

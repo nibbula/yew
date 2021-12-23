@@ -130,6 +130,7 @@ of it.")
    ;; language-ish
    #:define-constant
    #:defconstant-to-list
+   #:vector-equal
    #:define-alias #:defalias
    ;; #-(or lispworks clasp) #:#.(code-char #x039B) #\greek_capital_letter_lamda
    #:_ #:__
@@ -1427,66 +1428,29 @@ can be provided, which are usually passed to the underlying function."
   #-(or ccl sbcl clisp cmu ecl lispworks abcl clasp mezzano)
   (missing-implementation 'overwhelming-permission))
 
-;; Be forewarned! You will not get any more stupid defconstant warnings!
-;; You will undoubtedly suffer the scourge of the silently workring!
-;; Always test code that you are giving to someone else on a fresh lisp
-;; unpolluted by your inrgratuous frobbery.
 
-;; Stolen from alexandria:
+(defun same-with-warning (name new test)
+  "If ‘name’ is bound, return it's value, but but warn if ‘new’ is different
+from it according to ‘test’. Return ‘new’ if name isn't bound."
+  (if (boundp name)
+      (let ((old (symbol-value name)))
+	(unless (funcall test old new)
+	  (warn "Not redefining ~s from ~s to ~s." name old new))
+	old)
+      new))
 
-#| I really hate this:
-(defun %reevaluate-constant (name value test)
-  (if (not (boundp name))
-      value
-      (let ((old (symbol-value name))
-	    (new value))
-	(if (not (constantp name))
-	    (prog1 new
-	      (cerror "Try to redefine the variable as a constant."
-		      "~@<~S is an already bound non-constant variable ~
-                       whose value is ~S.~:@>" name old))
-	    (if (funcall test old new)
-		old
-		(restart-case
-		    (error "~@<~S is an already defined constant whose value ~
-                              ~S is not equal to the provided initial value ~S ~
-                              under ~S.~:@>" name old new test)
-		  (ignore ()
-		    :report "Retain the current value."
-		    old)
-		  (continue ()
-		    :report "Try to redefine the constant."
-		    new)))))))
+(defmacro define-constant (name value &optional doc (test ''equal))
+  "Like ‘defconstant’ but don't actually redefine the constant. If the ‘value’
+is equal according to ‘test’, which defaults to ‘equal’, then don't even
+complain. Otherwise just warn, and don't redefine it."
+  `(cl:defconstant ,name (same-with-warning ',name ,value ,test)
+     ,@(when doc (list doc))))
 
-(defmacro define-constant (name initial-value &optional documentation
-			   (test ''eql))
-  "Ensures that the global variable named by NAME is a constant with a value
-that is equal under TEST to the result of evaluating INITIAL-VALUE. TEST is a
-/function designator/ that defaults to EQL. If DOCUMENTATION is given, it
-becomes the documentation string of the constant.
-
-Signals an error if NAME is already a bound non-constant variable.
-
-Signals an error if NAME is already a constant variable whose value is not
-equal under TEST to result of evaluating INITIAL-VALUE."
-  (declare (ignore test))
-  `(defconstant ,name (%reevaluate-constant ',name ,initial-value ,test)
-     ,@(when documentation `(,documentation))))
-
-|#
-
-;; Back to the olde shite:
-
-(defmacro define-constant (name value &optional doc (test 'equal))
-  "Like defconstant but don't warn on re-definitions."
-  (declare (ignore test))
-  #-ccl
-  `(cl:defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
-     ,@(when doc (list doc)))
-  #+ccl
-  (eval-when (:compile-toplevel :load-toplevel :execute)
-  `(cl:defconstant ,name ,value ,@(when doc (list doc))))
-  )
+(defun vector-equal (a b)
+  "A not very discriminating vector equality. Tests that lengths are the same
+and elements are equal."
+  (and (= (length a) (length b))
+       (every #'equal a b)))
 
 ;; On other lisps just use the real one.
 ;;#-(or sbcl clisp ccl cmu lispworks ecl abcl)

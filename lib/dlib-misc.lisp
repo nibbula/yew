@@ -1064,24 +1064,36 @@ SUFFIX is a string to append to each row."
     rows))
 
 (define-constant +binary-size-prefixes+
-  #(nil "kibi" "mebi" "gibi" "tebi" "pebi" "exbi" "zebi" "yobi" "buttload"))
+  #(nil "kibi" "mebi" "gibi" "tebi" "pebi" "exbi" "zebi" "yobi" "buttload")
+  "Standard prefixes for sizes in bits."
+  'vector-equal)
 
 (define-constant +traditional-size-prefixes+
-  #(nil "kilo" "mega" "giga" "tera" "peta" "exa" "zetta" "yotta" "buttload"))
+  #(nil "kilo" "mega" "giga" "tera" "peta" "exa" "zetta" "yotta" "buttload")
+  "Traditional prefixes for sizes in bits."
+  'vector-equal)
 
 (define-constant +binary-size-abbreviations+
-  #(nil "Ki" "Mi" "Gi" "Ti" "Pi" "Ei" "Zi" "Yi" "**"))
+  #(nil "Ki" "Mi" "Gi" "Ti" "Pi" "Ei" "Zi" "Yi" "**")
+  "Abbreviations for standard sizes in bits."
+  'vector-equal)
 
 (define-constant +traditional-size-abbreviations+
-  #(nil "k" "M" "G" "T" "P" "E" "Z" "Y" "*"))
+  #(nil "k" "M" "G" "T" "P" "E" "Z" "Y" "*")
+  "Traditional abbreviations for standard sizes in bits."
+  'vector-equal)
 
 (define-constant +binary-sizes+
   #.(make-array '(11) :initial-contents
-	      (loop :for i :from 0 :to 10 :collect (expt 1024 i))))
+	      (loop :for i :from 0 :to 10 :collect (expt 1024 i)))
+  "Binary bit size multipliers."
+  'vector-equal)
 
 (define-constant +decimal-sizes+
   #.(make-array '(11) :initial-contents
-	      (loop :for i :from 0 :to 10 :collect (expt 1000 i))))
+	      (loop :for i :from 0 :to 10 :collect (expt 1000 i)))
+  "Decimal bit size multipliers."
+  'vector-equal)
 
 (defun print-size (size &key (stream t) long unit abbrevs
 			  (traditional t)
