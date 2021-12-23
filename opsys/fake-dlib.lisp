@@ -1,12 +1,13 @@
-;;
-;; fake-dlib.lisp - Stuff from dlib to eliminate the dependency.
-;;
+;;;
+;;; fake-dlib.lisp - Stuff from dlib to eliminate the dependency.
+;;;
 
 ;; This is doomed code. An irksome workaround to detach this pod from the
 ;; mothership.
-;;
-;; @@@ Is it even worth it to swap in the few things from uiop or
-;; alexandria, since they're hidden dependencies?
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (when (not (getf opsys-config:*config* :use-fake-dlib))
+    (error "Configured not use use fake-dlib but loading it anyway?")))
 
 (defpackage :fake-dlib
   (:documentation
@@ -30,6 +31,7 @@ will disappear, when we resolve the issues with dlib.")
    #:define-constant
    #:defconstant-to-list
    #-lispworks #:with-unique-names
+   #:with-names
    #:without-warning
    #:define-alias
    #:defalias
@@ -52,15 +54,40 @@ will disappear, when we resolve the issues with dlib.")
    ))
 (in-package :fake-dlib)
 
-(defmacro define-constant (name value &optional doc (test 'equal))
-  "Like defconstant but don't warn on re-definitions."
-  (declare (ignore test))
-  #-ccl
-  `(cl:defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
-     ,@(when doc (list doc)))
-  #+ccl
-  (eval-when (:compile-toplevel :load-toplevel :execute)
-  `(cl:defconstant ,name ,value ,@(when doc (list doc)))))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun d-add-feature (f)
+    "Add a feature named by the given string to *FEATURES*"
+    (assert f)
+    (if (stringp f)
+	;;(nconc *features* (list (intern (string-upcase f) :keyword)))
+	;;(nconc *features* (list f))))
+	(pushnew (intern (string-upcase f) :keyword) *features*)
+	(pushnew f *features*)))
+
+  (defmacro has-feature (f)
+    "For when #+feature isn't what you want."
+    `(find ,f *features*))
+
+  (defun d-remove-feature (f)
+    "Remove a feature from *FEATURES*"
+    (setq *features* (delete f *features*))))
+
+(defun same-with-warning (name new test)
+  "If ‘name’ is bound, return it's value, but but warn if ‘new’ is different
+from it according to ‘test’. Return ‘new’ if name isn't bound."
+  (if (boundp name)
+      (let ((old (symbol-value name)))
+	(unless (funcall test old new)
+	  (warn "Not redefining ~s from ~s to ~s." name old new))
+	old)
+      new))
+
+(defmacro define-constant (name value &optional doc (test ''equal))
+  "Like ‘defconstant’ but don't actually redefine the constant. If the ‘value’
+is equal according to ‘test’, which defaults to ‘equal’, then don't even
+complain. Otherwise just warn, and don't redefine it."
+  `(cl:defconstant ,name (same-with-warning ',name ,value ,test)
+     ,@(when doc (list doc))))
 
 (defmacro defconstant-to-list (list-var constant-array)
   "Define constants and put the names in LIST-VAR."
@@ -82,6 +109,11 @@ Useful for making your macro 'hygenic'."
 	    :collect `(,n (gensym (symbol-name ',n))))
      ,@body))
 
+(setf (macro-function 'with-names)
+      (macro-function 'with-unique-names)
+      (documentation 'with-names 'function)
+      (documentation 'with-unique-names 'function))
+
 (defmacro without-warning (&body body)
   "Get rid of stupid warnings that you don't want to see.
  Just wrap your code with this. Too bad it won't always work."
@@ -91,7 +123,6 @@ Useful for making your macro 'hygenic'."
 		  #-ccl (muffle-warning)
 		  )))
      ,@body))
-
 
 ;; Ideally we would be able to make aliases for these:
 ;;   variable structure type package method-combination setf function
@@ -190,12 +221,15 @@ Otherwise, return N."
   "Return a symbol, interned in PACKAGE, represented by STRING, after possibly
 doing conventional case conversion. The main reason for this function is to
 wrap the case conversion on implementations that need it. If NO-NEW is true,
-never create a new symbol, and return NIL if the symbol doesn't already exist."
+never create a new symbol, and return NIL if the symbol doesn't already exist.
+Package can be NIL in which case it returns an un-interned symbol."
   (etypecase string
     (string
      (if no-new
 	 (find-symbol (string-upcase string) package)
-	 (intern (string-upcase string) package)))
+	 (if package
+	     (intern (string-upcase string) package)
+	     (make-symbol string))))
     (symbol
      string)))
 
@@ -216,23 +250,27 @@ never create a new symbol, and return NIL if the symbol doesn't already exist."
 
 (defalias 'symbol-call 'not-so-funcall)
 
-(defvar *mop-package*
-  #+(or (and clisp mop) abcl) :mop
-  #+sbcl                      :sb-mop
-  #+(or cmu gcl)              :pcl
-  #+ccl                       :ccl
-  #+lispworks                 :hcl
-  #+(or ecl clasp)            :clos
-  #+cormanlisp                :cl
-  #-(or mop sbcl cmu ccl lispworks gcl ecl clasp cormanlisp abcl)
-  (error "GET THE MOP!!")
+(defparameter *mop-package*
+  #+(or (and clisp mop) abcl excl) :mop
+  #+sbcl :sb-mop
+  #+(or cmu gcl) :pcl
+  #+ccl :ccl
+  #+lispworks :hcl
+  #+(or ecl clasp) :clos
+  #+cormanlisp :cl
+  #+mezzano :mezzano.clos
+  #-(or mop sbcl cmu ccl lispworks gcl ecl clasp cormanlisp abcl mezzano excl
+        clasp)
+  (error "GIVE ME MOP!!")
   "The package in which the traditional Meta Object Protocol resides.")
+
+#+(or (and clisp mop) sbcl cmu gcl ccl ecl mezzano excl) (d-add-feature :has-mop)
 
 ;; So we can just say mop: on any implementation?
 (#+sbcl sb-ext:without-package-locks
  #+clisp ext:without-package-lock #+clisp ()
  #-(or sbcl clisp) progn
- #-cmu (defalias :mop (find-package *mop-package*)))
+ #-(or cmu excl) (defalias :mop (find-package *mop-package*)))
 
 ;; The size of this should really be taken from the system's page size or
 ;; some other known thing which is optimal for the system.
@@ -245,14 +283,18 @@ never create a new symbol, and return NIL if the symbol doesn't already exist."
 					 (errorp t)
 					 element-type)
   "Copy data from reading from SOURCE and writing to DESTINATION, until we get
-an EOF on SOURCE."
-  ;; We could try to make *buffer-size* be the minimum of the file size
+an EOF on SOURCE. If ERRORP is true, signal an error if the element types are
+not the same. Use ELEMENT-TYPE as the specific element type for copying, which
+could be useful in case the streams support multiple element types."
+  ;; ^^^ We could try to make *buffer-size* be the minimum of the file size
   ;; (if it's a file) and the page size, but I'm pretty sure that the stat
   ;; call and possible file I/O is way more inefficient than wasting less than
   ;; 4k of memory to momentarily. Of course we could mmap it, but it should
   ;; end up doing approximately that anyway and the system should have a
   ;; better idea of how big is too big, window sizing and all that. Also,
-  ;; that's way more complicated.
+  ;; that's way more complicated. Even this comment is too much. Let's just
+  ;; imagine that a future IDE will collapse or footnotify comments tagged
+  ;; with "^^^".
   (when (and errorp
 	     (not (eql (stream-element-type source)
 		       (stream-element-type destination))))
@@ -270,16 +312,56 @@ an EOF on SOURCE."
 	 (write-sequence buf destination :end pos))
        :while (= pos *buffer-size*))))
 
-(defun s+ (s &rest rest)
+(defun s+ (&rest rest)
   "Return a string which is the arguments concatenated as if output by PRINC."
   ;; This is usually slower:
   ;; (labels ((as-string (s) (if (stringp s) s (princ-to-string s))))
   ;;   (apply #'concatenate 'string (as-string s) (mapcar #'as-string rest))))
-  (if rest
-      (with-output-to-string (result)
-	(princ s result)
-	(loop :for x :in rest :do (princ x result)))
-      (princ-to-string s)))
+  (macrolet ((to-string (x)
+	       `(if (stringp ,x) ,x (princ-to-string ,x))))
+    (cond
+      ((null rest) (make-string 0))
+      (t
+       ;; Here's 3 different possible versions.
+       ;; This should pick the one that's fastest for the implementation.
+       ;; Currently version 1 is fastest for ECL, and version 3 seems fastest
+       ;; for others I tested: CCL, CLISP, ECL.
+       ;;
+       ;; Version 1: string streams
+       #+ecl
+       (with-output-to-string (result)
+	 (loop :for x :in rest :do (princ x result)))
+       ;;
+       ;; Version 2: adjustable strings
+       ;;
+       ;; (let ((result (make-array 0 :element-type 'character
+       ;; 			       :fill-pointer 0 :adjustable t
+       ;; 			       :initial-element (code-char 0)))
+       ;; 	   (new-size 0)
+       ;; 	   (old-len 0)
+       ;; 	   (str ""))
+       ;;   (declare (type fixnum new-size)
+       ;; 		(type string str))
+       ;;   (loop :for s :in rest :do
+       ;; 	  (setf str (if (stringp s) s (princ-to-string s))
+       ;; 		old-len (fill-pointer result)
+       ;; 		new-size (+ old-len (length str)))
+       ;; 	  (when (>= new-size (array-total-size result))
+       ;; 	    (setf result (adjust-array result new-size)))
+       ;; 	  (incf (fill-pointer result) (length str))
+       ;; 	  (setf (subseq result old-len new-size) str))
+       ;;   result)
+       ;;
+       ;; Version 3: reduce by concatenate
+       #-ecl
+       (if (not (cdr rest))
+	   ;; reduce only works for at least 2 elements
+	   (to-string (car rest))
+	   (reduce (lambda (a b)
+		     (concatenate 'string
+				  (if (stringp a) a (princ-to-string a))
+				  (if (stringp b) b (princ-to-string b))))
+		   rest))))))
 
 (defmacro _ (&rest exprs)
   "Shorthand for single argument lambda. The single argument is named '_'."
@@ -294,23 +376,51 @@ the sequence NOT-IN."
     (subseq sequence 0 (position-if #'(lambda (c) (find c not-in)) sequence))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
+  ;; This is useful implementing wrappers or methods for various standard
+  ;; functions that take START and END keywords.
+  ;; @@@ I would like to not have to pass: start start-p end end-p
+  ;; but then I would have to export them from here. :(
+  (defmacro %call-with-start-and-end (func args)
+    "Call func with args and START and END keywords, assume that an environemnt
+that has START and START-P and END and END-P."
+    `(if start-p
+	 (if end-p
+	     (,func ,@args :start start :end end)
+	     (,func ,@args :start start))
+       (if end-p
+	   (,func ,@args ::end end)
+	   (,func ,@args))))
+
+  (defun bag-position (bag seq &key
+				 (start nil start-p)
+				 (end nil end-p)
+				 test test-not key)
+    (%call-with-start-and-end
+     position-if
+     (#'(lambda (c)
+	  (position c bag :test test :test-not test-not))
+	seq :key key)))
+
   (defmacro call-looker (function sep seq start end test key)
     "Call FUNCTION, which is likely to be POSITION or SEARCH. Make START, END,
 and TEST be the appropriate keywords."
     (let ((base
 	   `(,function ,sep ,seq
 		       ,@(when key `(:key ,key))
-		       ,@(if (eq function 'position)
+		       ,@(if (or (eq function 'position)
+				 (eq function 'bag-position))
 			     '(:start) '(:start2))
 		       ,start
 		       ,@(when end
-			       `(,(if (eq function 'position)
+			       `(,(if (or (eq function 'position)
+					  (eq function 'bag-position))
 				      :end :end2)
 				  ,end)))))
       `(if ,test ,(append base (list :test test)) ,base)))
 
   (defun split-sequence (sep seq &key
 			 omit-empty coalesce-separators remove-empty-subseqs
+			 bag
 			 (start 0) end test key #| count |#)
     "Split the sequence SEQ into subsequences separated by SEP. Return a list of
 the subsequences. SEP can be a sequence itself, which means the whole sequence
@@ -321,7 +431,7 @@ is the separator. If :omit-empty is true, then don't return empty subsequnces.
     (declare (type boolean omit-empty coalesce-separators remove-empty-subseqs))
     (setf omit-empty (or omit-empty coalesce-separators remove-empty-subseqs))
     (let* ((sep-is-seq (typecase sep (vector t) (list t) (t nil)))
-	   (sep-len (if sep-is-seq (length sep) 1))
+	   (sep-len (if (and sep-is-seq (not bag)) (length sep) 1))
 	   (seq-len (if omit-empty (length seq) 0)))
       (declare (type boolean sep-is-seq))
       (declare (type fixnum sep-len seq-len))
@@ -357,23 +467,29 @@ is the separator. If :omit-empty is true, then don't return empty subsequnces.
 	  (when (and test (< sep-len 1))
 	    (setf sep-len 1 sep '(nil))) ; fake separator!
 	  (if sep-is-seq
-	      (if omit-empty
-		  (if test
-		      (loopy search t)
-		      (loopy search t))
-		  (if test
-		      (loopy search nil)
-		      (loopy search nil)))
-	      (if omit-empty
-		  (if test
-		      (loopy position t)
-		      (loopy position t))
-		  (if test
-		      (loopy position nil)
-		      (loopy position nil)))))))))
+              (if omit-empty
+                  (if test
+                      (if bag
+                          (loopy bag-position t)
+                          (loopy search t))
+                      (if bag
+                          (loopy bag-position t)
+                          (loopy search t)))
+                  (if test
+                      (if bag
+                          (loopy bag-position nil)
+                          (loopy search nil))
+                      (if bag
+                          (loopy bag-position nil)
+                          (loopy search nil))))
+              (if omit-empty
+                  (if test
+                      (loopy position t)
+                      (loopy position t))
+                  (if test
+                      (loopy position nil)
+                      (loopy position nil)))))))))
 
-;; @@@ compare vs. the ones in alexandria?
-;; The difference between using using search or mismatch seems quite negligible.
 (defun begins-with (prefix thing &key (test #'eql))
   "True if THAT begins with THIS."
   (let ((pos (search prefix thing :test test)))
@@ -387,16 +503,14 @@ is the separator. If :omit-empty is true, then don't return empty subsequnces.
        :with node = result
        :until (null node)
        :do
-       (if (consp (car node))		      ; If the left side is a cons
-	   (progn
-	     (when (cdar node)		      ; If it has more sub-lists
-	       (push (cdar node) (cdr node))) ; move the sub-list up
-	     ;; Move contents of the one element list, up one
-	     (setf (car node) (caar node)))
-	   ;; Move on to the next item at the top level
-	   (setf node (cdr node)))
-       ;;(format t "~s~%" node) 
-       )
+       (cond
+         ((consp (car node))		      ; If the left side is a cons
+	   (when (cdar node)		      ; If it has more sub-lists
+	     (push (cdar node) (cdr node)))   ; move the sub-list up
+	   ;; Move contents of the one element list, up one
+	   (setf (car node) (caar node)))
+	 (t ;; Move on to the next item at the top level
+	  (setf node (cdr node)))))
     ;; Get rid of any fake NILs in the results
     (if preserve-nils
 	result
@@ -414,6 +528,8 @@ matches SYMBOL."
 	 :key (_ (slot-definition-name _))
 	 :test (lambda (a b)
 		 (search (symbol-name a) (symbol-name b) :test #'equalp)))))
+
+#+excl (mop:finalize-inheritance (find-class 'simple-condition))
 
 (defparameter +simple-condition-format-control-slot+
   (find-slot-name 'simple-condition
@@ -435,5 +551,7 @@ matches SYMBOL."
   "Eliminate the stupid debugging."
   (declare (ignore facility fmt args))
   '(values))
+
+(de
 
 ;; EOF

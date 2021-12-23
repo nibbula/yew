@@ -10,6 +10,5 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Stuff from dlib to eliminate the dependency."
-    ;; :depends-on () DON'T ADD DEPENDENCIES.
     :components
     ((:file "fake-dlib")))
