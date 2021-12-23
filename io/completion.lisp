@@ -471,6 +471,7 @@ arguments for that function, otherwise return NIL."
       (push #\) result)
       (nreverse result))))
 
+#|
 (defun function-help-show-doc (symbol cols)
   (let (result)
     (labels ((maybe-doc (obj type)
@@ -514,7 +515,26 @@ arguments for that function, otherwise return NIL."
 			     result)))
 		 (nreverse result)
 		 )))
-      (print-doc symbol nil 'function))))
+      (print-doc symbol nil 'function)
+      )))
+|#
+
+(defun function-help-show-doc (symbol cols)
+  (let (result)
+    (labels ((maybe-doc (obj type)
+	       (without-warning (documentation obj type)))
+	     (print-doc (sym doc-type)
+	       (when (maybe-doc sym doc-type)
+		 (push #\newline result)
+		 (push (fatchar-io:with-output-to-fat-string (stream)
+			 (format-comment-text
+			  (make-instance 'lisp-token
+					 :object (maybe-doc sym doc-type))
+			  stream
+			  :columns cols))
+		       result))
+	       (nreverse result)))
+      (print-doc symbol 'function))))
 
 (defun function-help (symbol expr-number &key width
 					   (show-doc (> *completion-count* 2)))
