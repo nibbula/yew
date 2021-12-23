@@ -152,7 +152,7 @@ of it.")
    #:maybe-refer-to
    ;; #-(or lispworks clasp) #:#.(code-char #x203B)?
    ;; #:@
-   #:with-internal-slots
+   #:with-internal-slots #:with-internal-accessors
    #:ignore-conditions #:ignore-some-conditions
    #:find-slot-name
    #:defmethod-quiet
@@ -2056,11 +2056,31 @@ package doesn't exist or isn't bound."
 
 ;; This probably violates what people consider good design.
 ;; @@@ This could probably use more error checking?
-(defmacro with-internal-slots ((&rest slot-names) object package &body body)
-  "Like WITH-SLOTS but getting using the slot names internal to PACKAGE."
-  `(with-slots (,@(mapcar (lambda (x) (list x (intern (symbol-name x) package)))
-			  slot-names)) ,object
-     ,@body))
+(defmacro with-internal-slots ((&rest slot-names) object class-or-package
+			       &body body)
+  "Like ‘with-slots’ but using the package internal slot names.
+If ‘class-or-package’ is a keyword, assume it's a package designator, otherwise
+assume it's a class name whose symbol-package we use."
+  (let ((package (if (keywordp class-or-package)
+		     class-or-package
+		     (symbol-package class-or-package))))
+    `(with-slots (,@(mapcar (lambda (x)
+			      (list x (intern (symbol-name x) package)))
+			    slot-names)) ,object
+       ,@body)))
+
+(defmacro with-internal-accessors ((&rest slot-names) object class-or-package
+			       &body body)
+  "Like ‘with-accessor’ but using package internal accessor names.
+If ‘class-or-package’ is a keyword, assume it's a package designator, otherwise
+assume it's a class name whose symbol-package we use."
+  (let ((package (if (keywordp class-or-package)
+		     class-or-package
+		     (symbol-package class-or-package))))
+    `(with-accessors (,@(mapcar (lambda (x)
+				  (list x (intern (symbol-name x) package)))
+				slot-names)) ,object
+       ,@body)))
 
 (defmacro ignore-conditions ((&rest conditions) &body body)
   "If body signals a condition type in CONDITIONS, return the values NIL and
@@ -2071,6 +2091,12 @@ the condition."
 	  :collect `(,cc (c) (values nil c)))))
 
 (defalias 'ignore-some-conditions 'ignore-conditions)
+
+#+(or)
+(defmacro nvl (form default &key (condition 'error))
+  "Evaluate ‘form’ and if ‘condition’ is signaled, return ‘default’. ‘condition’
+defaults to 'error."
+  `(handler-case ,form (,condition () ,default)))
 
 (defmacro defmethod-quiet (name &rest args)
   "Same as defmethod, but don't complain."
