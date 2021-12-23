@@ -751,7 +751,7 @@ tree.")
       (string
        (let* ((path (pathname (nos:quote-filename file)))
 	      uri)
-	 (or (and path (nos:file-exists path) path)
+	 (or (and path (nos:file-exists file) path)
 	     (and (setf uri (handler-case
 				(puri:parse-uri file)
 			      (puri:uri-parse-error (c)
@@ -773,7 +773,7 @@ tree.")
 		      (return nil))))))))
 
 (defun load-document (location)
-  "Load the document at LOCATION."
+  "Load the document at ‘location’."
   ;; (with-slots ((root tree-viewer::root)) *viewer*
   ;;   (let* ((document (or (coerce-to-parseable location)
   ;; 			 (return-from load-document nil)))
@@ -784,8 +784,11 @@ tree.")
   ;;     ;; (register-visit location)
   ;;     tree)))
   (with-slots (document) *html-viewer*
-    (let ((parseable-document (or (coerce-to-parseable location)
-				  (return-from load-document nil))))
+    ;; (let ((parseable-document (or (coerce-to-parseable location)
+    ;; 				  (return-from load-document nil))))
+    (let ((parseable-document (coerce-to-parseable location)))
+      (when (not parseable-document)
+	(error "~s doesn't seem like something we can handle." location))
       (setf document (plump:parse parseable-document)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
