@@ -399,6 +399,7 @@ style, use *string-package* or a temporary package to intern strings."
 		 "If BODY doesn't evaluate to true, restore the point."
 		 (with-unique-names (start result)
 		   `(let ((,start i) ,result)
+		      (declare (ignorable ,result))
 		      (when (not (setf ,result (progn ,@body)))
 			(setf i ,start))
 		      t)))
@@ -406,6 +407,7 @@ style, use *string-package* or a temporary package to intern strings."
 		 "BODY must evaluate true."
 		 (with-unique-names (start result)
 		   `(let ((,start i) ,result)
+		      (declare (ignorable ,result))
 		      (when (not (setf ,result (progn ,@body)))
 			(setf i ,start))
 		      ,result)))
@@ -413,6 +415,7 @@ style, use *string-package* or a temporary package to intern strings."
 		 "Every form of BODY must be true."
 		 (with-unique-names (start result)
 		   `(let ((,start i) ,result)
+		      (declare (ignorable ,result))
 		      (when (not (setf ,result (and ,@body)))
 			(setf i ,start))
 		      ,result)))
@@ -532,8 +535,11 @@ If every object in a column:
     ;; @@@ wouldn't it be faster to go through by row?
     (loop
        :with e
-       :for col :in (table-columns table)
+       ;; :for col :in (table-columns table)
+       ;; :for i = 0 :then (1+ i)
+       :for col = (table-columns table) :then (cdr col)
        :for i = 0 :then (1+ i)
+       :while col
        :do
        (block nil
 	 (omapn (_
