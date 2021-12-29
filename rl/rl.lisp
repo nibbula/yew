@@ -471,7 +471,7 @@ Keyword arguments:
 		  (finish-output)
 		  ;;(describe buf *debug-io*)
 		  (when auto-suggest-p
-		    (auto-suggest e))
+		    (auto-suggest-command e))
 		  (update-display e)
 		  (tt-finish-output)
 		  (when debugging

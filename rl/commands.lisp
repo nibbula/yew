@@ -1204,10 +1204,10 @@ the current line, or NIL if there is none."
 	     (return
 	       (osubseq (history-entry-line entry) (olength line)))))))))
 
-(defgeneric auto-suggest (e)
+(defgeneric auto-suggest-command (e)
   (:documentation "Calculate a suggested ending for the current line."))
 
-(defsingle-method auto-suggest (e)
+(defsingle-method auto-suggest-command (e)
   "Pick a suggestion from the history, using history-prefix-match-ending."
   (with-slots (buf auto-suggest-style suggestion) e
     (setf suggestion (history-prefix-match-ending e)
