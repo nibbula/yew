@@ -170,7 +170,7 @@ terminal."
 	 (prefix (or (completion-result-prefix comp-result) ""))
 	 ;; (prefix-height (or (and prefix (figure-content-rows e prefix)) 0))
 	 )
-    (declare (ignorable end-x column-size content-cols))
+    (declare (ignorable end-x column-size content-cols content-rows))
     (multiple-value-setq (content-rows content-cols column-size)
       (print-columns-sizer comp-list :columns cols))
 
