@@ -248,6 +248,7 @@
    #:fstat
    #+(or linux freebsd) #:fstatat
    #:file-info
+   #:with-stat-buffer
    #:+S_IFMT+ #:+S_IFIFO+ #:+S_IFCHR+ #:+S_IFDIR+ #:+S_IFBLK+ #:+S_IFREG+
    #:+S_IFLNK+ #:+S_IFSOCK+ #:+S_IFWHT+ #:+S_ISUID+ #:+S_ISGID+ #:+S_ISVTX+
    #:+S_IRUSR+ #:+S_IWUSR+ #:+S_IXUSR+

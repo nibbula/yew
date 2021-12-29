@@ -1921,39 +1921,62 @@ versions of the keywords used in Lisp open.
       :int (fd :int) (path :string) (buf (:pointer (:struct foreign-stat)))
       (flags :int)))
 
-(defun stat (path)
-  (with-foreign-object (stat-buf '(:struct foreign-stat))
-    (error-check (real-stat path stat-buf) "~s" path)
-    (convert-stat stat-buf)))
-
-(defun lstat (path)
-  (with-foreign-object (stat-buf '(:struct foreign-stat))
-    (error-check (real-lstat path stat-buf) "~s" path)
-    (convert-stat stat-buf)))
-
-(defun fstat (fd)
-  (with-foreign-object (stat-buf '(:struct foreign-stat))
-    (error-check (real-fstat fd stat-buf) "~s" fd)
-    (convert-stat stat-buf)))
-
-(defun fstatat (fd path flags)
-  (with-foreign-object (stat-buf '(:struct foreign-stat))
-    (error-check (real-fstatat fd path stat-buf flags) "~s" path)
-    (convert-stat stat-buf)))
-
 (defvar *statbuf* nil
   "Just some space to put file status in. It's just to make file-exists, 
 quicker. We don't care what's in it.")
 
+;; In filesystem scanning loops sometimes allocating a statbuf everytime
+;; is too much overhead on some implementations, so wrap this around such
+;; code where it matters.
+(defmacro with-stat-buffer (() &body body)
+  "Wrap this around operations that use stat in loop, like file-exists, etc.
+to possibly reduce the overhead slightly."
+  `(unwind-protect
+	(progn
+	  (setf *statbuf* (foreign-alloc '(:struct foreign-stat)))
+	  ,@body)
+     (foreign-free *statbuf*)))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro with-a-statbuf (() &body body)
+    "Wrap code that needs a statbuf with this, then use *statbuf*."
+    (with-names (bunsen)
+      `(flet ((,bunsen () ,@body))
+	 (if *statbuf*
+	     (,bunsen)
+	     (with-foreign-object (*statbuf* '(:struct foreign-stat))
+	       (,bunsen)))))))
+
+(defun stat (path)
+  (with-a-statbuf ()
+    (error-check (real-stat path *statbuf*) "~s" path)
+    (convert-stat *statbuf*)))
+
+(defun lstat (path)
+  (with-a-statbuf ()
+    (error-check (real-lstat path *statbuf*) "~s" path)
+    (convert-stat *statbuf*)))
+
+(defun fstat (fd)
+  (with-a-statbuf ()
+    (error-check (real-fstat fd *statbuf*) "~s" fd)
+    (convert-stat *statbuf*)))
+
+(defun fstatat (fd path flags)
+  (with-a-statbuf ()
+    (error-check (real-fstatat fd path *statbuf* flags) "~s" path)
+    (convert-stat *statbuf*)))
+
 ;; Sadly I find the need to do this because probe-file might be losing.
+;; But the whole idea of checking for existence separately from opening it,
+;; is probably flawed and prone to race conditions.
 (defun file-exists (filename)
   "Check that a file with FILENAME exists at the moment. But it might not exist
 for long."
   ;; (when (not (stringp (setf filename (safe-namestring filename))))
   ;;   (error "FILENAME should be a string or pathname."))
-  (when (not *statbuf*)
-    (setf *statbuf* (foreign-alloc '(:struct foreign-stat))))
-  (= 0 (real-stat (safe-namestring filename) *statbuf*)))
+  (with-a-statbuf ()
+    (= 0 (real-stat (safe-namestring filename) *statbuf*))))
 
 (defcfun ("readlink" real-readlink) ssize-t (path :string)
 	 (buf (:pointer :unsigned-char)) (bufsize size-t))
