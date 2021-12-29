@@ -147,6 +147,7 @@
   (:documentation "Render a box table to a terminal."))
 
 (defmethod write-box-line ((renderer terminal-box-table-renderer) style sizes)
+  (declare (ignore style sizes))
   (with-slots (box-color x y) renderer
     (cond
       (y (terminal-move-to *destination* y (or x 0)))
@@ -156,6 +157,7 @@
 
 (defmethod table-output-cell ((renderer terminal-box-table-renderer)
 			      table cell width justification row column)
+  (declare (ignorable table cell width justification column))
   (with-slots (alternate-row-bg) renderer
     (terminal-color *destination*
 		    :default ;; nil
