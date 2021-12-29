@@ -12,12 +12,13 @@
     :long-description   "The cessation of the repetition of ‘Never Again’."
     :defsystem-depends-on (:opsys-config)
     :depends-on ((:feature (:not :mezzano) :cffi)
-		 :opsys-config :unicode
+		 :dlib :opsys-config :unicode
 		 (:feature (:and (:or :windows :win32) (:not :unix) (:not :ccl))
 			   :cffi-libffi)
 		 :trivial-gray-streams
-		 (:feature :dlib :dlib)
-		 (:feature (:not :dlib) :fake-dlib))
+		 ;; (:feature (:not :use-fake-dlib) :dlib)
+		 ;; (:feature :use-fake-dlib :fake-dlib)
+		 )
     :components
     ((:module "base"
       :pathname ""
