@@ -172,7 +172,7 @@ function."
 
 (defmethod table-format-cell (renderer table cell row column
 			      &key width justification (use-given-format t))
-  (declare (ignore row))
+  (declare (ignore renderer row))
   (let ((given-format (when (< column (length (table-columns table)))
 			(column-format (oelt (table-columns table) column))))
 	op fmt field)
@@ -767,7 +767,7 @@ resized to fit in this, and the whole row is trimmed to this."
 
     ;; Set up the column justification.
     ;; This makes the sizes elements be: (width :justification).
-    (loop :with name :and justification
+    (loop :with name #| :and justification |#
        :for i :from 0 :below (length sizes)
        :for col = (column-name-list table) :then (cdr col)
        :do
@@ -784,8 +784,8 @@ resized to fit in this, and the whole row is trimmed to this."
        ;; 		   name (first (car col))))
        ;; 	   (setf justification :left
        ;; 		 name (car col)))
-       (setf justification
-	     (or (column-align (oelt (table-columns table) i)) :left)
+       (setf #| justification
+             (or (column-align (oelt (table-columns table) i)) :left) |#
 	     name (car col))
        (setf (aref sizes i)
 	     ;; (list (if all-zero
@@ -938,7 +938,7 @@ resized to fit in this, and the whole row is trimmed to this."
 
 (defmethod table-output-header ((renderer text-box-table-renderer) table
 				&key width sizes)
-  (declare (ignore width))
+  (declare (ignore table width))
   (write-box-line renderer
    (box-style-top (text-box-table-renderer-box-style renderer)) sizes))
 
@@ -1048,7 +1048,7 @@ resized to fit in this, and the whole row is trimmed to this."
 
 (defmethod table-output-footer ((renderer text-box-table-renderer) table
 				&key width sizes)
-  (declare (ignore width))
+  (declare (ignore table width))
   (with-slots (box-style) renderer
     (write-box-line renderer (box-style-bottom box-style) sizes)))
 
