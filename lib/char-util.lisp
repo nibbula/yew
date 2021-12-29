@@ -167,7 +167,8 @@ than space and delete."
 :NFD, :NFC, :NFKD, or :NFKC."
   #+sbcl (sb-unicode:normalize-string string form)
   ;; #-(or sbcl) (declare (ignore string form))
-  ;; #-(or sbcl) (error "Missing implementation: normalize-string")
+  ;; because uax-15 doesn't load on cmucl
+  #+cmucl (error "Missing implementation: normalize-string")
   #-sbcl (uax-15:normalize string form)
   )
 

@@ -12,7 +12,7 @@
     :long-description   "General utilites for characters."
     :depends-on (:dlib :stretchy :ochar :unicode
 		       #-sbcl :cl-unicode
-		       #-sbcl :uax-15
+		       #-(or sbcl cmucl) :uax-15
 		       )
     :components
     ((:file "char-util")))
