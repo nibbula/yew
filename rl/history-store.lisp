@@ -88,14 +88,15 @@ doesn't match, or if NO-ERROR is true, return a keyword indicating what
 happened (:magic-bad :version-bad :ok). Assumes that stream is open for reading
 and positioned at the beginning of the file."
   (block nil
-    (let ((s (make-string 4)) i)
+    (let ((s (make-string 4)) #| i |#)
       (read-sequence s stream :end 4)
       (when (string/= s *text-history-magic*)
 	(if no-error
 	    (return :bad-magic)
 	    (error "Bad magic tag ~s in history file." s)))
       (when (/= *text-history-version*
-		(setq i (parse-integer (setq s (read-line stream)))))
+		;; (setq i (parse-integer (setq s (read-line stream)))))
+		(parse-integer (setq s (read-line stream))))
 	(if no-error
 	    (return :bad-version)
 	    (error "Bad version number ~s in history file." s))))
