@@ -158,9 +158,10 @@ element, and should return a value to be given to PREDICATE."
 satisfies the test TEST or TEST-NOT, as appropriate."
   (let (result)
     (if (or start end)
-	(let ((offset 0) full-len piece-len)
+	(let ((offset 0) #| full-len |# piece-len)
 	  (when (not end)
-	    (setf end (setf full-len (olength cs))))
+	    ;; (setf end (setf full-len (olength cs))))
+	    (setf end (olength cs)))
 	  (omapn (lambda (piece)
 		   (when (and (<= start (+ offset
 					   (setf piece-len (olength piece))))
