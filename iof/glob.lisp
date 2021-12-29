@@ -2,21 +2,6 @@
 ;;; glob.lisp - Shell style file name pattern matching
 ;;;
 
-;; ToDo:
-;;  - ALL or OMIT-HIDDEN option to not omit files starting with '.'
-;;  - Fix exponential behavior:
-#|
-in ~/src/lisp/glob-test:
-touch !(make-string 100 :initial-element #\a)
-(glob "a*a*a*a*a*b")
-
-Convert to NFA or DFA. Traverse all branches simultaneously.
-(a )       (* )         (a )       (* )      (a )       (* )
-(a 'a') -> (* 'a') +--> (a 'a') -> (*
-                    \-> (* 'a')
-
-|#
-
 (defpackage :glob
   (:documentation "Shell style file name pattern matching.
 Main functions are:
@@ -36,16 +21,17 @@ The documentation for ‘fnmatch’ describes the pattern syntax a little.
    ))
 (in-package :glob)
 
+;; ToDo:
+;;  - ALL or OMIT-HIDDEN option to not omit files starting with '.'
+;;  - Fix exponential behavior, e.g:
+;;    touch !(make-string 100 :initial-element #\a)
+;;    (glob "a*a*a*a*a*b")
+
 ;; (declaim (optimize (speed 0) (safety 3) (debug 3)
 ;; 		   (space 0) (compilation-speed 0)))
 
-;; Maybe I should have just wrote this in terms of regexps instead. :(
-;; I should test the speed of my code vs. re-translation to CL-PPCRE.
-;; Or even better, steal as much as possible from hayley's amazingly fast
-;; https://github.com/telekons/one-more-re-nightmare
-;;
-;; These are don't really do everything that the UNIX/POSIX versions do. I
-;; only put in the features I needed for LISH.
+;; These are don't really do everything that the UNIX/POSIX versions do.
+;; I only put in the features I needed.
 
 (declaim (type (vector string) +special-chars+))
 (define-constant +special-chars+ #("[*?" "[*?{}" "[*?~" "[*?{}~")
