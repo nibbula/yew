@@ -90,7 +90,9 @@
    :name "Julian")
   (:documentation "The Julian calendar system for Earth."))
 
-(defmethod calendar-months ((calendar julian) year) 12)
+(defmethod calendar-months ((calendar julian) year)
+  (declare (ignore year))
+  12)
 
 (defmethod calendar-month-names ((calendar julian) year context format)
   (declare (ignore year))
@@ -130,7 +132,7 @@
 (defmethod calendar-weekday-name ((calendar julian) weekday context format)
   (when (or (< weekday 1) (> weekday (calendar-week-days calendar)))
     (error "Invalid week day number: ~s" weekday))
-  (aref (calendar-weekday-names calendar) (1- weekday)))
+  (aref (calendar-weekday-names calendar context format) (1- weekday)))
 
 ;; See
 ;; https://www.tondering.dk/claus/cal/chrweek.php
@@ -151,10 +153,9 @@
    :name "Gregorian")
   (:documentation "The Gregorian calendar system for Earth. "))
 
-(defmethod calendar-months ((calendar gregorian) year) 12)
-
-(defgeneric calendar-leap-year-p (calendar year)
-  (:documentation "Return true if YEAR is a leap year."))
+(defmethod calendar-months ((calendar gregorian) year)
+  (declare (ignore year))
+  12)
 
 (defmethod calendar-leap-year-p ((calendar gregorian) year)
   "Return true if YEAR is a leap year."
