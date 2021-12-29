@@ -565,6 +565,7 @@ the verbatim string." ;; @@@ really describe when fixed
     (let* ((string (regex-replace (s+ "~" #\newline "(\\s*)") comment-string ""))
 	   (lines (split-sequence #\newline string))
 	   par s e ss ee #|prefix first-non-blank|#)
+      (declare (ignorable s e))
       ;;(dbugf :poo "2 *grout* = ~s stream = ~s~%" *grout* stream)
       (labels ((print-it (string-list &key prefix verbatim)
 		 "Print the STRING-LIST with word wrap justification."
