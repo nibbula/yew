@@ -811,7 +811,7 @@ at which it's found or NIL if it's not found."
 	       :string
 	       (process-ansi-colors
 		(make-fatchar-string
-		 (with-terminal-output-to-string (:ansi)
+		 (with-terminal-output-to-string () ;; :ansi
 		   (table-print:print-table
 		    (table-info-table table)
 		    :renderer (make-instance
@@ -850,7 +850,7 @@ at which it's found or NIL if it's not found."
 		 :string
 		 (process-ansi-colors
 		  (make-fatchar-string
-		   (with-terminal-output-to-string (:ansi)
+		   (with-terminal-output-to-string () ;; :ansi
 		     (table-print:print-table
 		      (record-info-table table
 					 (oelt table (table-point-row point)))
