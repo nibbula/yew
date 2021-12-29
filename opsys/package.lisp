@@ -100,6 +100,7 @@
    #:list-to-command-path
    #:set-command-path-list
    #:quote-filename
+   #:unquote-filename
    #:safe-namestring
 
    ;; files

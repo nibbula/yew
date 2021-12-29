@@ -276,9 +276,30 @@ standard functions that take a pathname designator, such as OPEN."
       result)))
 |#
 
+(defun unquote-filename (namestring)
+  "Assuming a filename was quoted. This is useful to get back to the real file
+name after it was a pathname. If given a pathname, it just returns it.
+If your normal string filename with characters that need quoting in namestrings,
+got turned into a namestring, you should do this before passing it to things
+that expect an O/S filename string, like many things in OPSYS.
+Unfortunately if you do this to an O/S filename string, it can make it invalid."
+  (typecase namestring
+    (pathname namestring)
+    (string
+     (with-output-to-string (str)
+       (loop :for i :from 0 :below (max 0 (1- (length namestring))) :do
+	 (cond
+	   ((and (char= (char namestring i) #\\)
+		 (position (char namestring (1+ i)) *need-quoting*))
+	    (princ (char namestring (1+ i)) str)
+	    (incf i))
+	   (t
+	    (princ (char namestring i) str))))
+       (princ (char namestring (1- (length namestring))) str)))))
+
 (declaim (ftype (function (t) string) safe-namestring))
 (defun safe-namestring (pathname)
-  "Like NAMESTRING, but if pathname is a string, just return it. This is
+  "Like CL:NAMESTRING, but if pathname is a string, just return it. This is
 useful for accepting pathnames or strings in case namestring would interpret
 any characters in strings specially."
   (etypecase pathname
