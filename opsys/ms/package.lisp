@@ -97,6 +97,9 @@
    #:check-jobs
    #:get-time
    #:set-time
+   #:get-time-zone-information
+   #:timezone-name
+   #:timezone-offset
    #:listen-for
    #:%create-event-set
    #:%destroy-event-set

@@ -1,6 +1,6 @@
-;;
-;; ms/time.lisp - Windows interface to time and timers
-;;
+;;;
+;;; ms/time.lisp - Windows interface to time and timers
+;;;
 
 (in-package :opsys-ms)
 
@@ -15,6 +15,17 @@
   (milliseconds WORD))
 (defctype PSYSTEMTIME (:pointer (:struct SYSTEMTIME)))
 (defctype LPSYSTEMTIME (:pointer (:struct SYSTEMTIME)))
+
+(defcstruct TIME_ZONE_INFORMATION
+  (bias          LONG)			; difference in minutes from UTC
+  (standard-name WCHAR :count 32)
+  (standard-date (:struct SYSTEMTIME))
+  (standard-bias LONG)
+  (daylight-name WCHAR :count 32)
+  (daylight-date (:struct SYSTEMTIME))
+  (daylight-bias LONG))
+(defctype PTIME_ZONE_INFORMATION (:pointer (:struct TIME_ZONE_INFORMATION)))
+(defctype LPTIME_ZONE_INFORMATION (:pointer (:struct TIME_ZONE_INFORMATION)))
 
 (defcfun ("GetSystemTimeAsFileTime" %get-system-time-as-file-time)
     :void
@@ -131,5 +142,87 @@ so-called “universal” time. The second value is nanoseconds."
 	    (setf ,var (get-timer))
 	    ,@body)
        (when ,var (replace-timer ,var)))))
+
+;; Time zone
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconstant +TIME-ZONE-ID-UNKNOWN+  0 "Doesn't use daylight saving time.")
+  (defconstant +TIME-ZONE-ID-STANDARD+ 1 "In the standard time.")
+  (defconstant +TIME-ZONE-ID-DAYLIGHT+ 2 "In the daylight savings time.")
+  (defconstant +TIME-ZONE-ID-INVALID+  #xffffffff
+    "Getting the timezone failed."))
+
+(defcfun ("GetTimeZoneInformation" %get-time-zone-information)
+  DWORD
+  (time-zone-information LPTIME_ZONE_INFORMATION))
+
+(defstruct timezone-info
+  bias				; The seconds west of UTC 
+  standard-name			; The name of the standard time zone
+  standard-bias			; Seconds to add to the bias for standard time
+  standard-date			; Date of transition to standard time
+  daylight-name			; The name of the daylight savings time zone
+  daylight-date			; Date of transition to daylight savings time
+  daylight-bias			; Seconds to add to the bias for daylight time
+  daylight-savings-p)		; True if daylight-savings is active.
+
+(defun get-time-zone-information ()
+  ;; (with-foreign-objects ((tz '(:struct TIME_ZONE_INFORMATION))
+  ;; 			 (time '(:struct FILETIME)))
+  (with-foreign-object (tz '(:struct TIME_ZONE_INFORMATION))
+    (let ((status (%get-time-zone-information tz))
+	  result)
+      (with-foreign-slots ((bias standard-name standard-date standard-bias
+			    daylight-name daylight-date daylight-bias)
+			   tz (:struct TIME_ZONE_INFORMATION))
+	(setf result
+	      (make-timezone-info
+	       :bias bias
+	       ;; :standard-name (rtrim (wide-string-to-lisp standard-name 32))
+	       ;; @@@ it seems to be null terminated?
+	       :standard-name (wide-string-to-lisp standard-name)
+	       :standard-date standard-date
+	       ;; @@@ it's not a pointer so we can't actually convert it
+	       ;; without allocating another c struct. Is it worth it?
+	       ;; (progn
+	       ;; 	 (%system-time-to-file-time standard-date time)
+	       ;; 	 (filetime-to-universal-time
+	       ;; 	  (convert-from-foreign time '(:struct FILETIME)))
+	       ;; 	 )
+	       :standard-bias standard-bias
+	       ;; :daylight-name (rtrim (wide-string-to-lisp daylight-name 32))
+	       :daylight-name (wide-string-to-lisp daylight-name)
+	       :daylight-date daylight-date
+	       ;; (progn
+	       ;; 	 (%system-time-to-file-time daylight-date time)
+	       ;; 	 (filetime-to-universal-time
+	       ;; 	  (convert-from-foreign time '(:struct FILETIME)))
+	       ;; 	 )
+	       :daylight-bias daylight-bias))
+	(case status
+          ((#.+TIME-ZONE-ID-UNKNOWN+ #.+TIME-ZONE-ID-STANDARD+)
+	   #|nothing special|#)
+          (#.+TIME-ZONE-ID-DAYLIGHT+
+	   (setf (timezone-info-daylight-savings-p result) t))
+          (#.+TIME-ZONE-ID-INVALID+
+	   (error 'windows-error
+		  :error-code (get-last-error)
+		  :format-control "Failed to get the time zone."))))
+      result)))
+
+(defun timezone-name ()
+  "Return the current timezone name."
+  (let ((tz (get-time-zone-information)))
+    (if (timezone-info-daylight-savings-p tz)
+	(timezone-info-daylight-name tz)
+	(timezone-info-standard-name tz))))
+
+(defun timezone-offset ()
+  "Return the time zone seconds west of UTC."
+  (let ((tz (get-time-zone-information)))
+    (* 60 (+ (timezone-info-bias tz)
+	     (if (timezone-info-daylight-savings-p tz)
+		 (timezone-info-daylight-bias tz)
+		 (timezone-info-standard-bias tz))))))
 
 ;; End
