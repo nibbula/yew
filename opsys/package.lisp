@@ -115,6 +115,7 @@
    #:with-os-file
    #:set-file-time
    #:make-symbolic-link
+   #:symbolic-link-target
 
    ;; locking
    #:with-locked-file

@@ -347,6 +347,7 @@
    #:symlink
    #:symlinkat
    #:make-symbolic-link
+   #:symbolic-link-target
    
    ;; signals
    #:*signal-count*

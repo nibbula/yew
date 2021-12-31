@@ -1,6 +1,6 @@
-;;
-;; ms/filesystem.lisp - Windows interface to files and filesystems
-;;
+;;;
+;;; ms/filesystem.lisp - Windows interface to files and filesystems
+;;;
 
 (in-package :opsys-ms)
 
@@ -324,6 +324,31 @@ for long."
 		       :format-control "file-exists failed.")))
 	  t))))
 
+;; Things for %get-final-path-name-by-handle flags:
+(defconstant +FILE-NAME-NORMALIZED+ #x0 "Normalize it.")
+(defconstant +FILE-NAME-OPENED+     #x8 "Give the name it was opened with.")
+(defconstant +VOLUME-NAME-DOS+      #x0 "Use a DOS drive letter.")
+(defconstant +VOLUME-NAME-GUID+     #x1 "Use a GUID volume.")
+(defconstant +VOLUME-NAME-NONE+     #x4 "Don't even put a drive.")
+(defconstant +VOLUME-NAME-NT+       #x2 "Add the device path.")
+
+(defcfun ("GetFinalPathNameByHandleW" %get-final-path-name-by-handle)
+  DWORD
+  (file HANDLE)
+  (file-path LPSTR)
+  (file-path-size DWORD)
+  (flags DWORD))
+
+(defun get-handle-path (handle)
+  (with-foreign-object (name 'WCHAR +MAX-PATH+)
+    (let ((returned-chars
+	    (%get-final-path-name-by-handle handle name +MAX-PATH+ 0)))
+      (when (zerop returned-chars)
+	(error 'windows-error
+	       :error-code (get-last-error)
+	       :format-control "get-handle-path failed."))
+      (wide-string-to-lisp name))))
+
 (defcfun ("DeleteFileW" %delete-file)
     BOOL
   (file-name LPCTSTR))
@@ -482,6 +507,7 @@ opened on PATHNAME with ACCESS. Arguments are as in the arguments to
 	   (syscall (%close-handle ,var)))))))
 
 ;; @@@ the if-* handling isn't exactly right yet
+(eval-when (:compile-toplevel :load-toplevel :execute)
 (defmacro with-os-file ((var pathname &key
 			     (direction :input)
 			     if-exists
@@ -535,7 +561,7 @@ versions of the keywords used in Lisp open.
 					       +FILE-END+)))
 	      ,@body)
 	 (when (and ,var (not (= (pointer-address ,var) +INVALID-HANDLE-VALUE+)))
-	   (syscall (%close-handle ,var)))))))
+	   (syscall (%close-handle ,var))))))))
 
 (defmacro as-32bit-unsigned (n) `(logand (1- (expt 2 32)) (lognot (1- (- ,n)))))
 (defconstant +STD-INPUT-HANDLE+  (as-32bit-unsigned -10)) ; CONIN$
@@ -643,7 +669,14 @@ Developer Mode has to be enabled.")
 
 (defun make-symbolic-link (from to)
   "Make a symbolic link from FROM to TO."
-  (syscall (%create-symbolic-link from to 0)))
+  (with-wide-string (w-from from)
+    (with-wide-string (w-to to)
+      (syscall (%create-symbolic-link w-from w-to 0)))))
+
+(defun symbolic-link-target (link-name)
+  "Return the target of the symbolic link."
+  (with-os-file (handle link-name)
+    (get-handle-path handle)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories

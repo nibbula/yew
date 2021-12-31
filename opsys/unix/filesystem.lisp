@@ -1996,6 +1996,10 @@ it is not a symbolic link."
 		nil
 		(error 'posix-error :error-code err)))))))
 
+(defun symbolic-link-target (link-name)
+  "Return the target of the symbolic link."
+  (readlink link-name))
+
 (defun convert-file-info (stat-buf)
   (if (and (pointerp stat-buf) (null-pointer-p stat-buf))
       nil

@@ -363,6 +363,9 @@ time can be :NOW to use the current time.")
 (defosfun make-symbolic-link (from to)
   "Make a symbolic link from FROM to TO.")
 
+(defosfun symbolic-link-target (link-name)
+  "Return the target of the symbolic link.")
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
 

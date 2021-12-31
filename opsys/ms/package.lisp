@@ -1,6 +1,6 @@
-;;
-;; ms/package.lisp - Interface to Microsoft systems.
-;;
+;;;
+;;; ms/package.lisp - Interface to Microsoft systems.
+;;;
 
 ;; Notes:
 ;;  - Don't try to apdapt Unix concepts to windows (e.g. signals), or vice
@@ -59,6 +59,7 @@
    #:with-os-file
    #:set-file-time
    #:make-symbolic-link
+   #:symbolic-link-target
    #:read-directory
    #:map-directory
    #:change-directory
