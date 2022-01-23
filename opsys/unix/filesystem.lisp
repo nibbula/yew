@@ -3398,7 +3398,7 @@ objects should be stored."
 	 (multiple-value-bind (fs err)
 	     (ignore-errors (statfs (mount-entry-dir entry)))
 	   (if err
-	       (if (eql (opsys-error-code err) +EACCES+)
+	       (if (member (opsys-error-code err) `(,+EACCES+ ,+EPERM+))
 		   ;; If we can't access the mount point, just ignore it.
 		   (make-filesystem-info
 		    :device-name     (mount-entry-fsname entry)
