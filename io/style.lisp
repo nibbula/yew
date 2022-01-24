@@ -7,6 +7,7 @@
   (:use :cl :dlib :theme :fatchar :opsys :grout)
   (:export
    #:styled-string
+   #:styled-span
    #:styled-char
    #:char-style
    #:themed-string
@@ -66,9 +67,9 @@
 	(setf result (append (fatchar::span-start :attr char) result)))
       (nreverse result))))
 
-(defun themed-string (theme-item string)
+(defun themed-string (theme-item string &key (theme *theme*))
   "Return a string or a fat-string with the style from THEME-ITEM applied to it."
-  (styled-string (and theme-item (theme-value *theme* theme-item)) string))
+  (styled-string (and theme-item (theme-value theme theme-item)) string))
 
 (defun styled-file-name (name &key type object)
   "Return a stylized string for a file NAME and TYPE. The TYPE values are from
