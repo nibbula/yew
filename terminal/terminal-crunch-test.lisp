@@ -5,11 +5,12 @@
 (defpackage :terminal-crunch-test
   (:documentation "Tests for terminal-crunch.")
   (:use :cl :dlib :dlib-misc :terminal :terminal-crunch :terminal-ansi :fatchar
-	:table :table-print :rl :lish)
+	:table :table-print :rl :lish :dtime)
   (:import-from :terminal-crunch #:dump-hashes #:dump-screen)
   (:export
    #:test-1 #:test-2 #:test-3 #:test-4 #:test-5 #:test-6 #:test-7 #:test-8
-   #:test-hashing
+   #:test-hashing #:test-hash-1
+   #:test-zerg-1 #:test-zerg-2
    ))
 (in-package :terminal-crunch-test)
 
@@ -250,7 +251,9 @@
 	     ("integers 3"   #xdeadbeefcafebabe #x1010101010101010)
 	     ("numbers 1"    0.0 0.0000001)
 	     ;; Did I ever mention I hate floating point?
-	     ("numbers 2"    123213123.0 123213123.00001)
+	     ;; This would be expected to fail 
+	     ;; ("numbers 2"    123213123.0 123213123.00001)
+	     ("numbers 2"    213123.0 213123.01)
 	     ("numbers 3"    123213123.0d0 123213123.00001d0)
 	     ("numbers 4"    ,pi ,(sqrt 2))
 	     ("numbers 5"    ,(+ 22 (sqrt -1203211.123)) ,(sqrt -1))
@@ -291,6 +294,39 @@
 	:column-names '("Type" "Value 1" "Hash 1" 
 			"Value 2" "Hash 2" "Bad?"))))))
 
+(defun test-hash-1 (&optional (n 50))
+  (let* ((colors (length dcolor:*simple-colors*))
+	 (attrs (length fatchar::*known-attrs*))
+	 (start-time (get-dtime))
+	 (elapsed)
+	 (hash-size (* (tt-width) (tt-height)))
+	 (hash-count (* hash-size n))
+	 (pre-done))
+    (labels ((random-color ()
+	       (elt dcolor:*simple-colors* (random colors)))
+	     (random-attr ()
+	       (elt fatchar::*known-attrs* (random attrs)))
+	     (random-char ()
+	       (terminal-crunch::make-grid-char
+		:c (code-char (random #xff))
+		:fg (random-color)
+		:bg (random-color)
+		:attrs (when (zerop (random 10))
+			 (list (random-attr))))))
+      (setf pre-done (make-array hash-size))
+      (loop :for i :below hash-size
+	    :do (setf (aref pre-done i) (random-char)))
+      (loop
+	:repeat n
+	:do
+	   (loop
+	     :for c :across pre-done
+	     :do (terminal-crunch::hash-thing c)))
+      (setf elapsed (dtime- (dtime:get-dtime) start-time))
+      (describe-duration elapsed)
+      (format t "Hashes per second ~s~%"
+	      (coerce (/ hash-count (dtime-to elapsed :seconds)) 'float)))))
+
 (defun test-8 (device-name)
   "Test RL in Lish."
   (with-open-file (oo device-name :direction :io :if-exists :append)
@@ -308,8 +344,30 @@
 	(with-dbugf '(:crunch :terminal)
 	  (lish:lish :terminal-type :crunch))))))
 
-;; (defun test-zerg ()
-;;   (
+(defun test-zerg-1 (&key (type :crunch) (n 50))
+  (with-terminal (type)
+    (with-immediate ()
+      (loop :repeat n :do
+	(tt-home)
+	;; (tt-erase-below)
+	(loop :for y :from 0 :below (tt-height) :do
+	  (loop :for x :from 0 :below (tt-width) :do
+	    ;; (tt-write-char-at y x (code-char c))))
+	    (tt-write-char-at y x
+	      (code-char (+ (char-code #\A)
+			    (random (- (char-code #\Z) (char-code #\A))))))))
+	(tt-finish-output)))))
 
+(defun test-zerg-2 (&key (type :crunch) (n 50))
+  (with-terminal (type)
+    (with-immediate ()
+      (loop :repeat n :do
+	(loop :for c :from (char-code #\A) :to (char-code #\Z) :do
+	  (tt-home)
+	  ;; (tt-erase-below)
+	  (loop :for y :from 0 :below (tt-height) :do
+	    (loop :for x :from 0 :below (tt-width) :do
+	      (tt-write-char-at y x (code-char c))))
+	  (tt-finish-output))))))
 
 ;; EOF

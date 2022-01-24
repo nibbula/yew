@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description   "Tests for terminal-crunch."
     :depends-on (:dlib :dlib-misc :terminal :terminal-crunch :terminal-ansi
-		 :fatchar :table :table-print :rl :lish)
+		 :fatchar :table :table-print :rl :lish :dtime :tiny-repl)
     :components
     ((:file "terminal-crunch-test")))
