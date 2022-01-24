@@ -5,7 +5,7 @@
 (defpackage :grep
   (:documentation "Regular expression search in streams.")
   (:use :cl :cl-ppcre :opsys :dlib :grout :fatchar :stretchy
-	:char-util :collections :table)
+	:char-util :collections :table :theme :style)
   (:export
    #:grep
    #:grep-files
@@ -146,23 +146,44 @@ removeed."
   line-number
   line)
 
+(defparameter *grep-theme*
+  (let ((tt (make-theme 'grep-default
+			:title "Grep default theme."
+			:description "Theme for the grep command.")))
+    (set-theme-items
+     tt
+     `((:program :grep :filename :style)    (:magenta)
+       (:program :grep :line-number :style) (:white)
+       (:program :grep :line :style)        (:green)
+       (:program :grep :separator :style)   (:cyan)))
+    tt))
+
 (defmethod print-object ((object grep-result) stream)
   "Print a grep-result to STREAM."
   (with-slots (file line-number line) object
-    (cond
-      ((or *print-readably* *print-escape*)
-       (call-next-method))
-      ((typep stream '(or terminal:terminal terminal:terminal-stream
-		       fatchar-io:fat-string-output-stream))
-       (print-object
-	(span-to-fat-string
-	 `((:magenta ,file) (:cyan ":")
-	   (:white ,line-number) (:cyan ":")
-	   (:green ,line))
-	 :unknown-func #'princ-to-string)
-	stream))
-      (t
-       (format stream "~a:~a:~a" file line-number line)))))
+    (let* ((tt (list *theme* *grep-theme*))
+	   (colon (styled-span
+		   (theme-value tt '(:program :grep :separator :style))
+		   ":")))
+      (cond
+	((or *print-readably* *print-escape*)
+	 (call-next-method))
+	((typep stream '(or terminal:terminal terminal:terminal-stream
+			 fatchar-io:fat-string-output-stream))
+	 (print-object
+	  (span-to-fat-string
+	   `(,(styled-span (theme-value tt '(:program :grep :filename :style))
+			   file)
+	     ,colon
+	     ,(styled-span (theme-value tt '(:program :grep :line-number :style))
+			   line-number)
+	     ,colon
+	     ,(styled-span (theme-value tt '(:program :grep :line :style))
+			   line))
+	     :unknown-func #'princ-to-string)
+	   stream))
+	(t
+	 (format stream "~a:~a:~a" file line-number line))))))
 
 (eval-when (:compile-toplevel)
   (defmacro with-grep-source ((source filename) &body body)
