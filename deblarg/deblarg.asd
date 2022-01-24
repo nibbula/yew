@@ -6,7 +6,7 @@
     :name               "deblarg"
     :description        "Command line Lisp debugger."
     :version            "0.2.0"
-    :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
+    :author             "Nibby Nebbulous <nibbula -(. @ .)- uucp!gmail.com>"
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description
@@ -20,13 +20,17 @@ quite lacking of features."
     (:dlib :char-util :keymap :table-print :opsys :terminal :terminal-ansi
      :terminal-crunch :terminal-table :rl :collections :fatchar :fatchar-io
      :tiny-repl #+sbcl :sb-introspect :reader-ext :source-path)
-    :serial t
     :components
     ((:file "package")
-     (:file "base")
-     (:file "deblarg-sbcl"   :if-feature :sbcl)
-     (:file "deblarg-ccl"    :if-feature :ccl)
-     (:file "deblarg-ecl"    :if-feature :ecl)
-     (:file "deblarg-clisp"  :if-feature :clisp)
-     (:file "deblarg-others" :if-feature (:not (:or :sbcl :ccl :ecl :clisp)))
-     (:file "deblarg")))
+     (:file "base" :depends-on ("package"))
+     (:file "deblarg" :depends-on ("base" "package"))
+     (:module "impl"
+      :pathname ""
+      :depends-on ("package" "base" "deblarg")
+      :components
+      ((:file "deblarg-sbcl"   :if-feature :sbcl)
+       (:file "deblarg-ccl"    :if-feature :ccl)
+       (:file "deblarg-ecl"    :if-feature :ecl)
+       (:file "deblarg-clisp"  :if-feature :clisp)
+       (:file "deblarg-others" :if-feature
+	      (:not (:or :sbcl :ccl :ecl :clisp)))))))

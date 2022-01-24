@@ -4,6 +4,13 @@
 
 (in-package :deblarg)
 
+(defclass ccl-deblargger (deblargger)
+  ()
+  (:documentation "Deblarger for CCL."))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (setf *deblargger-implementation-class* 'ccl-deblargger))
+
 #|
 (defun debugger-backtrace-lines (n)
   "Our own backtrace for CCL."
@@ -26,9 +33,9 @@
        :while (< i n))))
 |#
 
-(defun debugger-backtrace-lines (n)
+(defmethod debugger-backtrace-lines ((d ccl-deblargger) n)
   (let ((current-frame
-	  (or (and *deblarg* (deblargger-current-frame *deblarg*))
+	  (or (and d (debugger-current-frame d))
 	      (debugger-internal-frame))))
     (loop :with i = 0
        :for b :in (ccl::backtrace-as-list)
@@ -40,7 +47,7 @@
        (incf i)
        :while (< i (+ current-frame n)))))
 
-(defun debugger-wacktrace (n)
+(defmethod debugger-backtrace ((d ccl-deblargger) n)
   "Our own backtrace for CCL."
   (declare (ignore n))			; @@@
   (let ((frames '()) (*print-readably* nil))
@@ -105,7 +112,7 @@
 	      (ccl:function-source-note func))
 	  (ccl:function-source-note func)))))
 
-(defun debugger-show-source (n)
+(defmethod debugger-show-source ((d ccl-deblargger) n)
   (when (not n)
     (setf n 0))
   (let ((*print-readably* nil))
@@ -128,8 +135,9 @@
 		   (read-sequence str stream)
 		   (format *debug-io* "~a~%" str)))))))))))
 
-(defun debugger-source-path (frame &optional (window-size 10))
-  (declare (ignore window-size)) ; @@@
+(defmethod debugger-source-path ((d ccl-deblargger) frame
+				 #| &optional (window-size 10) |#)
+  ;; (declare (ignore window-size)) ; @@@
   (let ((note (debugger-source-note frame)))
     (cond
       ((not note)
@@ -139,7 +147,8 @@
       (t
        ":Internal"))))
 
-(defun debugger-source (frame &optional (window-size 10))
+(defmethod debugger-source ((d ccl-deblargger) frame
+			    &optional (source-height 10))
   (let ((note (debugger-source-note frame)))
     (if (not note)
 	(list "Sorry, I can't figure it out.")
@@ -155,11 +164,11 @@
 	       (read-sequence str stream)
 	     (format nil "~a~%" str)))))))) |#
 	     (loop :with line
-		:for i :from 1 :to window-size
+		:for i :from 1 :to source-height
 		:while (setf line (read-line stream nil nil))
 		:collect line)))))))
 
-(defun debugger-show-locals (n)
+(defmethod debugger-show-locals ((d ccl-deblargger) n)
   (let ((*print-readably* nil))
     (multiple-value-bind (pointer context) (get-frame n)
       (loop :for (name . value) :in (ccl:frame-named-variables pointer context)
@@ -170,7 +179,7 @@
 	 ;; (format *debug-io* "~a = ~a~%" name value)
 	 ))))
 
-(defun debugger-backtrace (n)
+(defmethod debugger-old-backtrace ((d ccl-deblargger) n)
   "Output a list of execution stack contexts. Try to limit it to the
 innermost N contexts, if we can."
   (loop :with i = 0
@@ -187,40 +196,35 @@ innermost N contexts, if we can."
   ;;  #+ccl ccl:*top-error-frame*
   0)
 
-(defun debugger-up-frame (&optional (count 1))
-  (with-slots (current-frame) *deblarg*
+(defmethod debugger-up-frame ((d ccl-deblargger) &optional (count 1))
+  (with-slots (current-frame) d
     (when (> current-frame 0)
       (decf current-frame (or count 1)))))
 
-(defun debugger-down-frame (&optional (count 1))
-  (with-slots (current-frame) *deblarg*
+(defmethod debugger-down-frame ((d ccl-deblargger) &optional (count 1))
+  (with-slots (current-frame) d
     (incf current-frame (or count 1))))
 
-(defun debugger-set-frame (frame)
-  (with-slots (current-frame) *deblarg*
+(defmethod debugger-set-frame ((d ccl-deblargger) frame)
+  (with-slots (current-frame) d
     (setf current-frame frame)))
 
-(defun debugger-top-frame (count)
+(defmethod debugger-top-frame ((d ccl-deblargger) count)
   (declare (ignore count))
-  (with-slots (current-frame) *deblarg*
+  (with-slots (current-frame) d
     (setf current-frame 0))) ;; XXX wrong?
 
-(defun debugger-eval-in-frame (form n)
+(defmethod debugger-eval-in-frame ((d ccl-deblargger) form n)
   (multiple-value-bind (pointer context) (get-frame n)
     (let ((vars (ccl:frame-named-variables pointer context)))
       (eval `(let ,(loop :for (var . val) :in vars :collect `(,var ',val))
                (declare (ignorable ,@(mapcar #'car vars)))
                ,form)))))
 
-(defun activate-stepper (&key quietly)
-  "Activate the setpper."
-  (declare (ignore quietly))
-  (values))
-
-(defun debugger-hook ()
+(defmethod debugger-hook ((d (eql 'ccl-deblargger)))
   *debugger-hook*)
 
-(defun set-debugger-hook (function)
+(defmethod debugger-set-hook ((d (eql 'ccl-deblargger)) function)
   (setf *debugger-hook* function
 	ccl:*break-hook* function))
 

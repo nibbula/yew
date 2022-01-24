@@ -14,60 +14,87 @@
  (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Implementation specifc functions are:
 ;;
+;; Implementation specifc methods
+;;
+
 ;; For line mode:
-;;
-;; debugger-backtrace n          - Show N frames of normal backtrace
-;; debugger-wacktrace n          - Alternate backtrace
-;; debugger-show-source n        - Show the source for frame N
-;; debugger-show-locals n        - Show local variables for frame N
-;; debugger-internal-frame       - Return the best approximation of the error
-;;                                 frame.
-;; debugger-eval-in-frame n form - Return the result of evaluating FORM in
-;;                                 frame N.
+
+(def-debug backtrace (n)
+  "Output a list of execution stack contexts. Try to limit it to the
+innermost N contexts, if we can.")
+
+(def-debug old-backtrace (n)
+  "An old style backtrace in case the normal one doesn't work for you.")
+
+(def-debug show-source (n)
+  "Show the source for frame N.")
+
+(def-debug show-locals (n)
+  "Show the local variables for frame N.")
+
+(def-debug eval-in-frame (n form)
+  "Return the result of evaluating FORM in frame N.")
+
+(def-debug up-frame (&optional count)
+  "Move the current frame up by ‘count’ which defaults to 1.")
+
+(def-debug down-frame (&optional count)
+  "Move the current frame down by ‘count’ which defaults to 1.")
+
+(def-debug set-frame (frame)
+  "Set the current frame to ‘frame’.")
+
+(def-debug top-frame (count)
+  "Set the current frame to the top frame.")
+
+(def-debug hook ()
+  "Return the current debugger hook." :no-object t)
+
+(def-debug set-hook (symbol)
+  "Set the debugger hook to the function named by ‘symbol’." :no-object t)
+
 ;; For visual mode:
-;;
-;; debugger-source frame source-height
-;; debugger-source-path frame
-;; debugger-backtrace-lines n
+
+(def-debug source (frame &optional source-height)
+  "Return up to ‘source-height’ lines of source code for ‘frame’ if we can.")
+
+(def-debug source-path (frame)
+  "Return the name of the source file for ‘frame’ if we can.")
+
+(def-debug backtrace-lines (n)
+  "Return ‘n’ lines of backtrace from the current frame.")
+
+(def-debug activate-stepper (&key quietly)
+  "Activate the stepper." :no-object t :quiet t)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
 ;; Implementation independent functions
+;;
 
 ;; Visual mode
 
-(defparameter *box_drawings_light_horizontal*
-  #+(or sbcl cmu) #\box_drawings_light_horizontal
-  #+(or ccl lispworks) #\U+2500
-  #-(or sbcl cmu ccl lispworks) #\-)
-
-(defparameter *box_drawings_light_vertical_and_left*
-  #+(or sbcl cmu) #\box_drawings_light_vertical_and_left
-  #+(or ccl lispworks) #\U+2524
-  #-(or sbcl cmu ccl lispworks) #\|)
-
-(defparameter *box_drawings_light_vertical_and_right*
-  #+(or sbcl cmu) #\box_drawings_light_vertical_and_right
-  #+(or ccl lispworks) #\U+251C
-  #-(or sbcl cmu ccl lispworks) #\|)
+(defconstant +box_drawings_light_horizontal+         (code-char #x2500)) ; ─
+(defconstant +box_drawings_light_vertical_and_left+  (code-char #x2524)) ; ┤
+(defconstant +box_drawings_light_vertical_and_right+ (code-char #x251c)) ; ├
 
 (defun horizontal-line (tt &optional note)
   (terminal-color tt :blue :default)
   (if note
       (progn
 	(terminal-write-string tt (s+
-			     *box_drawings_light_horizontal*
-			     *box_drawings_light_horizontal*
-			     *box_drawings_light_vertical_and_left*))
+			     +box_drawings_light_horizontal+
+			     +box_drawings_light_horizontal+
+			     +box_drawings_light_vertical_and_left+))
 	(terminal-color tt :white :black)
 	(terminal-write-string tt (s+ " " note " "))
 	(terminal-color tt :blue :default)
-	(terminal-write-char tt *box_drawings_light_vertical_and_right*)
+	(terminal-write-char tt +box_drawings_light_vertical_and_right+)
 	(terminal-format tt "~v,,,va"
 		   (- (terminal-window-columns tt) (length (s+ note)) 6)
-		   *box_drawings_light_horizontal*
-		   *box_drawings_light_horizontal*)
+		   +box_drawings_light_horizontal+
+		   +box_drawings_light_horizontal+)
 	(terminal-color tt :default :default)
 	(terminal-write-char tt #\newline))
       ;; no note, just a line
@@ -75,8 +102,8 @@
       	(terminal-color tt :blue :default)
 	(terminal-format tt "~v,,,va~%"
 		   (1- (terminal-window-columns tt))
-		   *box_drawings_light_horizontal*
-		   *box_drawings_light_horizontal*)
+		   +box_drawings_light_horizontal+
+		   +box_drawings_light_horizontal+)
 	(terminal-color tt :default :default))))
 
 (defun sanitize-line (line)
@@ -121,17 +148,17 @@
 	       (command-top (- (terminal-window-rows tt) (1- command-height)))
 	       (src (or
 		     ;; (ignore-errors
-		     ;;   (debugger-source current-frame source-height))
+		     ;;   (dd-source current-frame source-height))
 		     (handler-case
-			 (debugger-source current-frame source-height)
+			 (dd-source current-frame source-height)
 		       (condition (c)
 			 (list (format nil "~w" c))))
 		     '("Unavailable.")))
 	       (path (or (ignore-errors
-			   (debugger-source-path current-frame))
+			   (dd-source-path current-frame))
 			 '("Unknown")))
 	       (stack (or (ignore-errors
-			    (debugger-backtrace-lines stack-height))
+			    (dd-backtrace-lines stack-height))
 			  '("????"))))
 	  ;; Source area
 	  ;;(terminal-clear tt)
@@ -208,12 +235,12 @@
 
 (defun debugger-up-frame-command (&optional foo)
   (declare (ignore foo))
-  (debugger-up-frame)
+  (dd-up-frame)
   (visual))
 
 (defun debugger-down-frame-command (&optional foo)
   (declare (ignore foo))
-  (debugger-down-frame)
+  (dd-down-frame)
   (visual))
 
 (defun list-restarts (rs)
@@ -230,15 +257,11 @@
 	 (terpri term))
        (incf i))))
 
-;; @@@ This hackishly knows too much about RL.
 (defun debugger-prompt (e p)
   (declare (ignore e))
-  (when (deblargger-visual-mode *deblarg*)
+  (when (debugger-visual-mode *deblarg*)
     (visual))
-  ;; (fresh-line *debug-io*)
   (let ((string (format nil "Debug ~d~a" *repl-level* p)))
-    ;; (rl::editor-write-string e string)
-    ;; (finish-output *debug-io*)
     (format t "~a" string)
     t))
 
@@ -383,36 +406,39 @@ keep the current automatic restarts set, otherwise clear them."
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *base-commands*
     #((backtrace  (:b) "Backtrace stack."
-       (debugger-backtrace (read-arg repl-state)))
+       (print-span '((:underline "Backtrace") #\: #\newline))
+       (dd-backtrace (read-arg repl-state)))
       (wacktrace  (:w) "Wacktrace."
        (print-span '((:underline "Backtrace") #\: #\newline))
-       (debugger-wacktrace (read-arg repl-state)))
+       (dd-backtrace (read-arg repl-state)))
+      (old-backtrace  (:ob) "Old backtrace."
+       (dd-old-backtrace (read-arg repl-state)))
       (restarts   (:r) "Show restarts." (list-restarts restarts))
       (source     (:src)
        "Show source for a frame N, which defaults to the current frame."
-       (debugger-show-source (read-arg repl-state)))
+       (dd-show-source (read-arg repl-state)))
       (locals     (:l)
        "Show local variables for frame N, which defaults to the current frame."
-       (debugger-show-locals (read-arg repl-state)))
+       (dd-show-locals (read-arg repl-state)))
       (snargle    (:z) "Snargle" (debugger-snargle (read-arg repl-state)))
       (visual     (:v) "Toggle visual mode."
        (toggle-visual-mode (read-arg repl-state)))
       (up-frame   (:u) "Up a frame."
-       (debugger-up-frame (read-arg repl-state)))
+       (dd-up-frame (read-arg repl-state)))
       (down-frame (:d) "Down a frame."
-       (debugger-down-frame (read-arg repl-state)))
+       (dd-down-frame (read-arg repl-state)))
       (set-frame  (:f) "Set the frame."
-       (debugger-set-frame (read-arg repl-state)))
+       (dd-set-frame (read-arg repl-state)))
       (top        (:t) "Go to the top frame."
-       (debugger-top-frame (read-arg repl-state)))
+       (dd-top-frame (read-arg repl-state)))
       (eval-in    (:ev) "Evaluate in frame N."
        (eval-print
 	(multiple-value-list
 	 (let ((arg2 (read-arg repl-state))
 	       (arg1 (read-arg repl-state)))
-	 (debugger-eval-in-frame arg1 arg2)))))
+	 (dd-eval-in-frame arg1 arg2)))))
       (error      (:e)   "Show the error again."
-       (print-condition (deblargger-condition *deblarg*)))
+       (print-condition (debugger-condition *deblarg*)))
       (abort      (:a :abort :pop)   "Abort to top level."
        (do-restart 'abort restarts))
       (continue   (:c)   "Invoke continue restart."
@@ -421,9 +447,9 @@ keep the current automatic restarts set, otherwise clear them."
        (restart-until (read-arg repl-state) restarts))
       (auto-restart-clear (:arc) "Clear the automatic restart."
        (clear-auto-restart))
-      ;; (next       (:n)   (debugger-next))
-      ;; (step       (:s)   (debugger-step))
-      ;; (out        (:o)   (debugger-out))
+      ;; (next       (:n)   (dd-next))
+      ;; (step       (:s)   (dd-step))
+      ;; (out        (:o)   (dd-out))
       (alias      (:ali :alias) "Define a alias command."
        (defalias (read-arg repl-state) (read-arg repl-state)))
       (help       (:h :help) "Show this help." (debugger-help))
@@ -459,7 +485,7 @@ keep the current automatic restarts set, otherwise clear them."
 ;; handled it.
 (defun debugger-interceptor (value repl-state)
   "Handle special debugger commands, which are usually keywords."
-  (let ((restarts (cdr (compute-restarts (deblargger-condition *deblarg*)))))
+  (let ((restarts (cdr (compute-restarts (debugger-condition *deblarg*)))))
     (cond
       ;; We use keywords as commands, just in case you have a variable or some
       ;; other symbol clash. I dunno. I 'spose we could use regular symbols,
@@ -588,12 +614,9 @@ program that messes with the terminal, we can still type at the debugger."
       (describe c))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defmacro with-deblargger ((frame) &body body)
+  (defmacro with-deblargger ((frame condition) &body body)
     `(let ((*deblarg*
-	    (make-deblargger
-	     :condition c
-	     :saved-frame (or ,frame (debugger-internal-frame))
-	     :current-frame (or ,frame (debugger-internal-frame)))))
+	     (make-deblargger :condition ,condition :saved-frame ,frame)))
        (when (not *thread*)
 	 ;; @@@ This isn't really thread local yet.
 	 (setf *thread* (make-thread)))
@@ -605,7 +628,7 @@ program that messes with the terminal, we can still type at the debugger."
 (defun deblarg (c hook &optional frame)
   "Entry point for the debugger, used as the debugger hook."
   (declare (ignore hook))		;@@@ wrong
-  (with-deblargger (frame)
+  (with-deblargger (frame c)
     (with-slots (condition) *deblarg*
       (with-slots (repeat-condition repeat-restart) *thread*
 	(when repeat-restart
@@ -642,13 +665,13 @@ program that messes with the terminal, we can still type at the debugger."
 		(*print-circle* nil))
 	    (print-condition c)
 	    (list-restarts (compute-restarts c))
-	    (terminal-finish-output (deblargger-term *deblarg*))
+	    (terminal-finish-output (debugger-term *deblarg*))
 	    (tiny-repl :interceptor #'debugger-interceptor
 		       :prompt-func #'debugger-prompt
 		       :keymap *debugger-keymap*
 		       :output *debug-io*
 		       :debug t
-		       :terminal (deblargger-term *deblarg*)
+		       :terminal (debugger-term *deblarg*)
 		       :no-announce t))))
 ;;;    (Format *debug-io* "Exiting the debugger level ~d~%" *repl-level*)
       (reset-visual))))
@@ -664,27 +687,27 @@ program that messes with the terminal, we can still type at the debugger."
   (when (and (not (in-emacs-p)) (not (active-p)))
     (when (not quietly)
       (format *debug-io* "Activating the DEBLARGger.~%"))
-    (set-debugger-hook 'deblarg)
-    (activate-stepper :quietly quietly)))
+    (dd-set-hook 'deblarg)
+    (dd-activate-stepper :quietly quietly)))
 
 (defun deactivate (&key quietly #| full |#)
   (when (and (not (in-emacs-p)) (active-p))
     (when (not quietly)
       (format *debug-io* "Deactivating the DEBLARGger.~%"))
-    (set-debugger-hook *saved-debugger-hook*)))
+    (dd-set-hook *saved-debugger-hook*)))
 
 (defun toggle ()
   "Toggle the debugger on and off."
   (when (not (in-emacs-p))
-    (if (eq (debugger-hook) 'deblarg)
-	(set-debugger-hook *saved-debugger-hook*)
+    (if (eq (dd-hook) 'deblarg)
+	(dd-set-hook *saved-debugger-hook*)
 	(progn
-	  (setf *saved-debugger-hook* (debugger-hook))
-	  (set-debugger-hook 'deblarg)))))
+	  (setf *saved-debugger-hook* (dd-hook))
+	  (dd-set-hook 'deblarg)))))
 
 (defun active-p ()
   "Return true if the debugger is set to activate."
-  (eq (debugger-hook) 'deblarg))
+  (eq (dd-hook) 'deblarg))
 
 ;; Remove temporary features
 #+tbd-has-breakpoints (d-remove-feature :tdb-has-breakpoints)

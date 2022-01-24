@@ -11,6 +11,24 @@
 #+sbcl (eval-when (:compile-toplevel)
 	 (d-add-feature :tdb-has-breakpoints))
 
+(defclass sbcl-deblargger (deblargger)
+  ()
+  (:documentation "Deblargger for SBCL."))
+
+(defmethod initialize-instance
+    :after ((o sbcl-deblargger) &rest initargs &key &allow-other-keys)
+  "Initialize a sbcl-deblargger."
+  (declare (ignore initargs))
+  (when (or (not (slot-boundp o 'saved-frame))
+	    (not (slot-value o 'saved-frame)))
+    (setf (slot-value o 'saved-frame) (debugger-internal-frame)))
+  (when (or (not (slot-boundp o 'current-frame))
+	    (not (slot-value o 'current-frame)))
+    (setf (slot-value o 'current-frame) (slot-value o 'saved-frame))))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (setf *deblargger-implementation-class* 'sbcl-deblargger))
+
 (defun print-frame (f &optional (stream *debug-io*))
   "Print a frame."
   (labels ((print-lambda-list (f arg-list)
@@ -47,17 +65,19 @@
   ;; introduced sometime after 1.0.57
   (let ((sym (find-symbol "BACKTRACE-START-FRAME" :sb-debug)))
     (if sym
-     (funcall sym :debugger-frame)
-     (sb-di:top-frame))))
+	(funcall sym :debugger-frame)
+	(sb-di:top-frame))))
 
-(defun debugger-wacktrace (n)
-  "Our own backtrace for SBCL."
+(defmethod debugger-backtrace ((d sbcl-deblargger) n)
+  "Output a list of execution stack contexts. Try to limit it to the
+innermost N contexts, if we can."
   ;; (or *saved-frame* (sb-di:top-frame))
   (loop
      ;; @@@ It might be nice to do this, but then the counts are all off.
      ;; :with f = (sbcl-start-frame)
      ;; :with f = *current-frame*
-     :with f = (sb-di:top-frame)
+     ;; :with f = (sb-di:top-frame)
+     :with f = (debugger-saved-frame d)
      :and i = 0
      :do
      ;; (format *debug-io* "~3d " (sb-di:frame-number f))
@@ -75,12 +95,14 @@
      (incf i)
      :until (or (not f) (and n (>= i n)))))
 
-(defun debugger-backtrace-lines (n)
+(defmethod debugger-backtrace-lines ((d sbcl-deblargger) n)
   (loop 
 ;;;     :with f = *saved-frame* #| (sbcl-start-frame) |#
      :with f = (if *deblarg* ;; so we can be called from outside the debugger
-		   (deblargger-current-frame *deblarg*)
-		   (debugger-internal-frame))
+		   (debugger-current-frame *deblarg*)
+		   ;; (debugger-internal-frame)
+		   (debugger-saved-frame d)
+		   )
      :for i :from 1 :to n
      :collect
      (cons (sb-di:frame-number f)
@@ -89,7 +111,7 @@
      (setf f (sb-di:frame-down f))
      :while f))
 
-(defun debugger-eval-in-frame (form n)
+(defmethod debugger-eval-in-frame ((d sbcl-deblargger) form n)
   (let ((frame (frame-number-or-current n)))
     (funcall (the function
 		  (sb-di:preprocess-for-eval form
@@ -152,7 +174,7 @@
 	 ))))
 |#
 
-(defun debugger-source-path (frame)
+(defmethod debugger-source-path ((d sbcl-deblargger) frame)
 #|  (let* ((fun (sb-di:code-location-debug-fun
 	       (sb-di:frame-code-location frame)))
 	 (src (and fun (sb-introspect:find-definition-source
@@ -226,7 +248,8 @@
        )
     result))
 
-(defun debugger-source (frame &optional (window-size 10))
+(defmethod debugger-source ((d sbcl-deblargger) frame
+			    &optional (source-height 10))
   (let* ((loc (sb-di:frame-code-location frame))
 	 ;;(fun (and loc (sb-di:code-location-debug-fun loc)))
 	 ;;(src (and fun (sb-introspect:find-definition-source
@@ -256,7 +279,7 @@
 	 :and file-pos = offset
 	 :and line-end
 	 :while (and (setf line (read-line stream nil nil))
-		     (or (< i window-size)
+		     (or (< i source-height)
 			 (< file-pos end)))
 	 :do
 	 (setf line-end (+ file-pos (1+ (olength line))))
@@ -274,36 +297,37 @@
 	   (push line lines)))
       (setf lines (nreverse lines))
       (subseq lines first-line
-	      (min (length lines) (max 0 (- i window-size)))))))
+	      (min (length lines) (max 0 (- i source-height)))))))
 
-(defun debugger-show-source (n)
+(defmethod debugger-show-source ((d sbcl-deblargger) n)
   (let ((frame
 	 (cond
 	   ((numberp n) (frame-number n))
-	   (t (deblargger-current-frame *deblarg*)))))
+	   (t (debugger-current-frame d)))))
     ;;(format t "~s~%" (debugger-source frame))))
-    (loop :for s :in (debugger-source frame)
+    (loop :for s :in (debugger-source d frame)
        :do (format t "~a~%" s))))
 
 (defun frame-number (n)
   "Return the internal frame object given a frame number."
   (let ((result 
-	 (loop :with f = (sb-di:top-frame)
+	  (loop :with f = (debugger-saved-frame *deblarg*) ; (sb-di:top-frame)
 	    :for fn :from 0 :below n
 	    :do (setf f (sb-di:frame-down f))
 	    :finally (return f))))
-    (assert (= (sb-di:frame-number result) n))
+    (assert (= (sb-di:frame-number result)
+	       (+ (sb-di:frame-number (debugger-saved-frame *deblarg*)) n)))
     result))
 
 (defun frame-number-or-current (&optional
-				  (n (deblargger-current-frame *deblarg*)))
+				  (n (debugger-current-frame *deblarg*)))
   "Return the frame numbered N, or the current frame, or the top frame."
   (cond
     ((numberp n) (frame-number n))
     ((sb-di:frame-p n) n)
     (t (frame-number 0))))
 
-(defun debugger-show-locals (n)
+(defmethod debugger-show-locals ((d sbcl-deblargger) n)
   (if n
       (format *debug-io* "Locals for frame ~s:~%" n)
       (format *debug-io* "Locals for current frame:~%"))
@@ -321,7 +345,7 @@
                       (sb-di:debug-var-id v)
                       (sb-di:debug-var-value v cur))))))))
 
-(defun debugger-backtrace (n)
+(defmethod debugger-old-backtrace ((d sbcl-deblargger) n)
   "Output a list of execution stack contexts. Try to limit it to the
 innermost N contexts, if we can."
   #+sbcl
@@ -334,26 +358,26 @@ innermost N contexts, if we can."
   ;;  #+sbcl (sbcl-wacktrace)
   )
 
-(declaim (inline debugger-internal-frame))
+;; (declaim (inline debugger-internal-frame))
 (defun debugger-internal-frame ()
   (or sb-debug::*stack-top-hint* (sb-di::top-frame)))
 
-(defun debugger-up-frame (&optional (count 1))
+(defmethod debugger-up-frame ((d sbcl-deblargger) &optional (count 1))
   (declare (ignore count))
-  (with-slots (current-frame) *deblarg*
+  (with-slots (current-frame) d
     (let ((next (sb-di:frame-up current-frame)))
       (if next
 	  (setf current-frame next)))))
 
-(defun debugger-down-frame (&optional (count 1))
+(defmethod debugger-down-frame ((d sbcl-deblargger) &optional (count 1))
   (declare (ignore count))
-  (with-slots (current-frame) *deblarg*
+  (with-slots (current-frame) d
     (let ((next (sb-di:frame-down current-frame)))
       (if next
 	  (setf current-frame next)))))
 
-(defun debugger-set-frame (frame)
-  (with-slots (current-frame) *deblarg*
+(defmethod debugger-set-frame ((d sbcl-deblargger) frame)
+  (with-slots (current-frame) d
     (cond
       ((or (not frame) (and (numberp frame) (= frame 0)))
        (sb-di:top-frame))
@@ -364,9 +388,9 @@ innermost N contexts, if we can."
       (t
        (format *debug-io* "No such frame ~s~%" frame)))))
 
-(defun debugger-top-frame (count)
+(defmethod debugger-top-frame ((d sbcl-deblargger) count)
   (declare (ignore count))
-  (with-slots (current-frame saved-frame) *deblarg*
+  (with-slots (current-frame saved-frame) d
     (setf current-frame saved-frame)))
 
 ;; Stepping
@@ -392,7 +416,7 @@ innermost N contexts, if we can."
 	  (sb-ext::*stepper-hook* nil))
       (invoke-debugger c))))
 
-(defun activate-stepper (&key quietly)
+(defmethod activate-stepper ((d (eql 'sbcl-deblargger)) &key quietly)
   "Activate the setpper."
   (setf sb-ext::*stepper-hook* 'stepper)
   (when (not quietly)
@@ -466,10 +490,10 @@ innermost N contexts, if we can."
     (nice-print-table rows '("#" "Act" "Kind" "What" "Info")
 		      :stream *debug-io*)))
 
-(defun debugger-hook ()
+(defmethod debugger-hook ((d (eql 'sbcl-deblargger)))
   sb-ext:*invoke-debugger-hook*)
 
-(defun set-debugger-hook (function)
+(defmethod debugger-set-hook ((d (eql 'sbcl-deblargger)) function)
   (setf sb-ext:*invoke-debugger-hook* function))
 
 ;; EOF

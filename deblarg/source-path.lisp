@@ -242,7 +242,9 @@ Return the form and the source-map."
   (:method ((list list) i)
     (< i (loop for e on list
                count t)))
-  (:method ((sexp t) i) nil))
+  (:method ((sexp t) i)
+    (declare (ignore i))
+    nil))
 
 (defgeneric sexp-ref (sexp i)
   (:method ((s list) i) (elt s i)))

@@ -4,14 +4,12 @@
 
 (in-package :deblarg)
 
-(defun debugger-wacktrace (n)
-  (declare (ignore n)) (debugger-sorry "wacktrace"))
+(defclass ecl-deblargger (deblargger)
+  ()
+  (:documentation "Deblargger for ECL."))
 
-(defun debugger-show-source (n)
-  (declare (ignore n)) (debugger-sorry "show source"))
-
-(defun debugger-show-locals (n)
-  (declare (ignore n)) (debugger-sorry "show locals"))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (setf *deblargger-implementation-class* 'ecl-deblargger))
 
 (defparameter *stack-base* 0)
 
@@ -49,7 +47,7 @@ stack frame number FRAME."
 	  (format stream ")"))
 	(format stream "~s" func))))
 
-(defun debugger-wacktrace (n)
+(defmethod debugger-backtrace ((d ecl-deblargger) n)
   (loop
      :with top = (if n (min n (si::ihs-top)) (si::ihs-top))
      :for frame :from top :above 1
@@ -61,7 +59,7 @@ stack frame number FRAME."
 			       (with-output-to-fat-string (str)
 				 (print-frame frame str)))))))
 
-(defun debugger-backtrace (n)
+(defmethod debugger-old-backtrace ((d ecl-deblargger) n)
   ;; (loop :for i :from 0 :below (min (si::ihs-top) n)
   ;;    :do (format *debug-io* "~a ~a~%" (si::ihs-fun i) #|(ecl-args i)|#))
   (let* ((top (if n (min n (si::ihs-top)) (si::ihs-top)))
@@ -75,17 +73,11 @@ stack frame number FRAME."
   ;; We don't want to be sorry here, so just be wrong.
   #-(or sbcl ccl) nil)
 
-(defun activate-stepper (&key quietly)
-  "Activate the setpper."
-  (declare (ignore quietly))
-  (values))
-
-(defun debugger-hook ()
+(defmethod debugger-hook ((d (eql 'ecl-deblargger)))
   ;; *debugger-hook*
   ext:*invoke-debugger-hook*)
 
-(defun set-debugger-hook (function)
-  (setf ;; *debugger-hook* function
-	ext:*invoke-debugger-hook* function))
+(defmethod debugger-set-hook ((d (eql 'ecl-deblargger)) function)
+  (setf ext:*invoke-debugger-hook* function))
 
 ;; EOF

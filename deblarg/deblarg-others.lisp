@@ -5,17 +5,15 @@
 
 (in-package :deblarg)
 
-(defun debugger-wacktrace (n)
-  (declare (ignore n)) (debugger-sorry "wacktrace"))
+(defclass other-deblargger (deblargger)
+  ()
+  (:documentation "Deblargger for other implementations."))
 
-(defun debugger-show-source (n)
-  (declare (ignore n)) (debugger-sorry "show source"))
-
-(defun debugger-show-locals (n)
-  (declare (ignore n)) (debugger-sorry "show locals"))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (setf *deblargger-implementation-class* 'ecl-deblargger))
 
 ;; As you may know, this is quite implementation specific.
-(defun debugger-backtrace (n)
+(defmethod debugger-backtrace ((d other-deblargger) n)
   "Output a list of execution stack contexts. Try to limit it to the
 innermost N contexts, if we can."
   #+cmu (if n (debug:backtrace n) (debug:backtrace))
@@ -33,15 +31,15 @@ innermost N contexts, if we can."
   ;; We don't want to be sorry here, so just be wrong.
   #-(or sbcl ccl) nil)
 
-(defun activate-stepper (&key quietly)
+(defmethod activate-stepper ((d other-deblargger) &key quietly)
   "Activate the setpper."
   (declare (ignore quietly))
   (values))
 
-(defun debugger-hook ()
+(defmethod debugger-hook ((d (eql 'other-deblagger)))
   *debugger-hook*)
 
-(defun set-debugger-hook (function)
+(defun set-debugger-hook ((d (eql 'other-deblargger)) function)
   (setf *debugger-hook* function))
 
 ;; EOF

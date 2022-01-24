@@ -12,20 +12,73 @@
   repeat-condition
   repeat-restart)
 
-(defstruct deblargger
-  "Debugger state."
-  current-frame
-  saved-frame
-  condition
-  term
-  (visual-mode nil :type boolean)
-  visual-term)
+(defclass deblargger ()
+  ((current-frame
+    :initarg :current-frame :accessor debugger-current-frame :initform nil
+    :documentation "The which the debugger is looking at.")
+   (saved-frame
+    :initarg :saved-frame :accessor debugger-saved-frame :initform nil
+    :documentation "The frame which the debugger was entered from.")
+   (condition
+    :initarg :condition :accessor debugger-condition :initform nil
+    :type (or condition null)
+    :documentation "The condition which got us in here.")
+   (term
+    :initarg :term :accessor debugger-term  :type terminal
+    :documentation "The terminal for debugger I/O.")
+   (visual-mode
+    :initarg :visual-mode :accessor debugger-visual-mode
+    :initform nil :type boolean
+    :documentation "True if we are in visual mode.")
+   (visual-term
+    :initarg :visual-term :accessor debugger-visual-term
+    :initform nil :type (or terminal null)
+    :documentation "The terminal for visual mode."))
+  (:documentation "I don't debug much, but when I do, I deblarg."))
 
 (defvar *deblarg* nil
   "The current debugger instance.")
 
 (defvar *thread* nil
   "Per thread state.")
+
+(defvar *deblargger-implementation-class* nil
+  "The class name for the implementation type.")
+
+(defun debugger-sorry (x)
+  "What to say when we can't do something."
+  (format *debug-io* "~%Sorry, don't know how to ~a on ~a. ~
+		       Snarf some slime!~%" x (lisp-implementation-type)))
+
+(defun make-deblargger (&rest args)
+  "Make a deblargger instance of the appropriate implentation type and return it.
+‘args’ are given as arguments to make-instance."
+  (apply #'make-instance *deblargger-implementation-class*
+	 args))
+
+(defmacro def-debug (name (&rest args) doc-string &key no-object quiet)
+  "Defines a debugger generic function along with a macro that calls that
+generic function with ‘*deblarg*' as it's first arg. If ‘no-object’ is true,
+the first arg is eql specialized by ‘*deblargger-implementation-class*’.
+If ‘quiet’ is true, the default method doesn't apologize."
+  (let ((dd-name (symbolify (s+ "DD-" name)))
+	(generic-name (symbolify (s+ "DEBUGGER-" name)))
+	(whole-arg (gensym "DEF-DEBUG-WHOLE-ARG"))
+	(ignorables (lambda-list-vars args :all-p t))
+	(first-arg (if no-object
+		       '*deblargger-implementation-class*
+		       '*deblarg*)))
+    `(progn
+       (defgeneric ,generic-name (tt ,@args)
+	 (:documentation ,doc-string)
+	 (:method (d ,@args)
+	   (declare (ignore d) (ignorable ,@ignorables))
+	   ;; A default apology.
+	   ,@(unless quiet `((debugger-sorry ',generic-name)))))
+       (defmacro ,dd-name (&whole ,whole-arg ,@args)
+	 (declare (ignorable ,@ignorables))
+	 ,doc-string
+	 (append (list ',generic-name ',first-arg) (cdr ,whole-arg))))))
 
 ;; (defvar *interceptor-condition* nil
 ;;   "The condition that happened.")
@@ -44,7 +97,7 @@
     `(flet ((,thunk () ,@body))
        (if *dont-use-a-new-term*
 	   (progn
-	     (setf (deblargger-term ,d) *terminal*)
+	     (setf (debugger-term ,d) *terminal*)
 	     (,thunk))
 	   (let ((fd (nos:stream-system-handle *debug-io*))
 		 device-name)
@@ -56,12 +109,12 @@
 				     :device-name device-name
 				     :output-stream
 				     (make-broadcast-stream *debug-io*))
-		   (setf (deblargger-term ,d) *debug-term*)
+		   (setf (debugger-term ,d) *debug-term*)
 		   (,thunk))
 		 (with-new-terminal ((pick-a-terminal-type) *debug-term*
 				     :output-stream
 				     (make-broadcast-stream *debug-io*))
-		   (setf (deblargger-term ,d) *debug-term*)
+		   (setf (debugger-term ,d) *debug-term*)
 		   (,thunk))))))))
 
 (defmacro with-debugger-io ((d) &body body)
@@ -73,16 +126,11 @@
 	   (with-new-debugger-io (,d)
 	     (,thunk))))))
 
-(defun debugger-sorry (x)
-  "What to say when we can't do something."
-  (format *debug-io* "~%Sorry, don't know how to ~a on ~a. ~
-		       Snarf some slime!~%" x (lisp-implementation-type)))
-
 ;; @@@ Figure out some way to make these respect *debug-io*, even when not
 ;; in the debugger.
 
 (defun debugger-print-string (string)
-  (let ((term (or (and *deblarg* (deblargger-term *deblarg*)) *terminal*)))
+  (let ((term (or (and *deblarg* (debugger-term *deblarg*)) *terminal*)))
     (typecase string
       (string (princ string term))
       (fatchar-string
@@ -97,7 +145,7 @@
   (render-fatchar-string (span-to-fatchar-string span)
 			 :terminal
 			 (if *deblarg*
-			     (deblargger-term *deblarg*)
+			     (debugger-term *deblarg*)
 			     terminal:*terminal*)))
 
 (defun display-value (v stream)
@@ -114,6 +162,7 @@ are indicated instead of being signaled."
 		stream))
 	(t (prin1 v stream)))
     (error (c)
+      :interactive nil
       (declare (ignore c))
       (return-from display-value
 	(format nil "<<Error printing a ~a>>" (type-of v))))))
@@ -127,7 +176,7 @@ are indicated instead of being signaled."
 	 (osubseq str 0 (min (olength str) (- width 4)))
 	 str))
     ;;(terpri *terminal*)
-    (terminal-write-char (or (and *deblarg* (deblargger-term *deblarg*))
+    (terminal-write-char (or (and *deblarg* (debugger-term *deblarg*))
 			     *terminal*) #\newline)))
 
 ;; EOF
