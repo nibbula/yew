@@ -151,7 +151,7 @@ If ‘quiet’ is true, the default method doesn't apologize."
 (defun display-value (v stream)
   "Display V in a way which hopefully won't mess up the display. Also errors
 are indicated instead of being signaled."
-  (restart-case
+  (handler-case
       (typecase v
 	;; Make strings with weird characters not screw up the display.
 	(string
@@ -162,7 +162,6 @@ are indicated instead of being signaled."
 		stream))
 	(t (prin1 v stream)))
     (error (c)
-      :interactive nil
       (declare (ignore c))
       (return-from display-value
 	(format nil "<<Error printing a ~a>>" (type-of v))))))
