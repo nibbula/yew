@@ -85,12 +85,18 @@ systems, this means \".\" and \"..\"."
 	       (end)
 	       t))))))
 
+;; @@@ this doesn't addres the quoting issues
 (defun os-pathname-namestring (os-path)
   "Return a namestring for an os-pathname."
   (check-type os-path os-pathname)
   (format nil "~:[~;/~]~{~a~^/~}" (os-pathname-absolute-p os-path)
 	  (os-pathname-path os-path)))
 
+(defmethod os-namestring ((path os-pathname))
+  "Return a namestring for an os-pathname."
+  (os-pathname-namestring path))
+
+;; @@@ this doesn't addres the quoting issues
 (defun os-pathname-pathname (os-path)
   "Return a pathname for an os-pathname."
   (check-type os-path os-pathname)
@@ -209,19 +215,21 @@ C library function getcwd."
   "Make a directory relative to a file descriptor."
   (fd :int) (path :string) (mode mode-t))
 
-(defun make-directory (path &key (mode #o755))
+(defmethod make-directory ((path string) &key (mode #o755))
   "Make a directory."
   ;; The #x1ff is because mkdir can fail if any other than the low nine bits
   ;; of the mode are set.
-  (syscall (mkdir (safe-namestring path) (logand #x1ff (or mode #o777)))))
+  ;; (syscall (mkdir (safe-namestring path) (logand #x1ff (or mode #o777)))))
+  (syscall (mkdir path (logand #x1ff (or mode #o777)))))
 
 (defcfun rmdir :int
   "Remove a directory."
   (path :string))
 
-(defun delete-directory (path)
+(defmethod delete-directory ((path string))
   "Delete a directory."
-  (syscall (rmdir (safe-namestring path))))
+  ;; (syscall (rmdir (safe-namestring path))))
+  (syscall (rmdir path)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directory reading
@@ -996,19 +1004,21 @@ according to WHENCE, where WHENCE is one of:~%~{~a~%~}"
   (fd :int) (iov (:pointer (:struct foreign-iovec))) (iov-count :int)
   (offset off-t))
 
-(defun os-delete-file (path)
+(defmethod os-delete-file ((path string))
   "Delete a file."
-  (syscall (posix-unlink (safe-namestring path))))
+  ;; (syscall (posix-unlink (safe-namestring path))))
+  (syscall (posix-unlink path)))
 
 (defcfun ("rename" posix-rename) :int
   "Rename the file ‘from’ to the file ‘to’. If ‘to’ exists, it will be lost."
   (old-path :string) (new-path :string))
 
-(defun os-rename-file (from to)
+(defmethod os-rename-file ((from string) (to string))
   "Rename the file ‘from’ to the file ‘to’. Doesn't monkey with the names,
 which should be a strings. It doesn't operate on streams. CAUTION: If ‘to’
 already exists, it will be replaced, effectively deleting it."
-  (syscall (posix-rename (safe-namestring from) (safe-namestring to))))
+  ;; (syscall (posix-rename (safe-namestring from) (safe-namestring to))))
+  (syscall (posix-rename from to)))
 
 ;; @@@ Renamed.
 ;; (defalias simple-delete-file os-delete-file
@@ -1970,13 +1980,13 @@ to possibly reduce the overhead slightly."
 ;; Sadly I find the need to do this because probe-file might be losing.
 ;; But the whole idea of checking for existence separately from opening it,
 ;; is probably flawed and prone to race conditions.
-(defun file-exists (filename)
+(defmethod file-exists ((path string))
   "Check that a file with FILENAME exists at the moment. But it might not exist
 for long."
   ;; (when (not (stringp (setf filename (safe-namestring filename))))
   ;;   (error "FILENAME should be a string or pathname."))
   (with-a-statbuf ()
-    (= 0 (real-stat (safe-namestring filename) *statbuf*))))
+    (= 0 (real-stat (safe-namestring path) *statbuf*))))
 
 (defcfun ("readlink" real-readlink) ssize-t (path :string)
 	 (buf (:pointer :unsigned-char)) (bufsize size-t))
@@ -1996,7 +2006,7 @@ it is not a symbolic link."
 		nil
 		(error 'posix-error :error-code err)))))))
 
-(defun symbolic-link-target (link-name)
+(defmethod symbolic-link-target ((link-name string))
   "Return the target of the symbolic link."
   (readlink link-name))
 
@@ -2044,7 +2054,7 @@ it is not a symbolic link."
 	   ;; linux ext flags are so lame I can't be bothered to do them now.
 	   )))))
 
-(defun file-info (path &key (follow-links t))
+(defmethod file-info ((path string) &key (follow-links t))
   (with-foreign-object (stat-buf '(:struct foreign-stat))
     (error-check (if follow-links
 		     (real-stat path stat-buf)
@@ -2060,7 +2070,7 @@ it is not a symbolic link."
 
 (defcfun ("access" real-access) :int (path :string) (mode :int))
 
-(defun file-accessible-p (path &optional (access :read))
+(defmethod file-accessible-p ((path string) &optional (access :read))
   "Return true if a PATH is accessible with ACCESS, which is a list consisiting
 of the keywords :READ, :WRITE, or :EXECUTE. ACCESS defaults to :READ. Because of
 race conditions, and many other peculiarities, it's best not to call this, since
@@ -2136,10 +2146,11 @@ something accessible now may not be accessible later."
 (defcfun sync :void
   "Make sure write caches are written.")
 
-(defun directory-p (path)
+(defmethod directory-p ((path string))
   "Return true if PATH is a directory."
   (handler-case
       (let (info)
+	#|
 	(typecase path
 	  ;; (file-stream
 	  ;;  ;; We can't use stream-system-handle because it's in opsys and
@@ -2154,6 +2165,8 @@ something accessible now may not be accessible later."
 	   (return-from directory-p nil))
 	  ((or string pathname)
 	   (setf info (stat path))))
+	|#
+	(setf info (stat path))
 	(and (is-directory (file-status-mode info))))
     (posix-error (c)
       (when (not (find (opsys-error-code c)
@@ -2162,7 +2175,7 @@ something accessible now may not be accessible later."
 
 ;; @@@ I should probably make all implementations use my code, so things behave
 ;; uniformly, especially with regards to errors, but first it should tested.
-(defun probe-directory (dir)
+(defmethod probe-directory ((dir string))
   "Something like probe-file but for directories."
   ;; #+clisp (ext:probe-directory (make-pathname
   ;; 				:directory (ext:absolute-pathname dir)))
@@ -2199,7 +2212,7 @@ If linkpath is absolute, then new-dir-fd is ignored."
 (defun symlinkat (target new-dir-fd link-path)
   (syscall (real-symlinkat target new-dir-fd link-path)))
 
-(defun make-symbolic-link (from to)
+(defmethod make-symbolic-link ((from string) (to string))
   "Make a symbolic link from FROM to TO."
   (syscall (real-symlink to from)))
 
@@ -2367,7 +2380,7 @@ symbolica link, set the times on the link instead of the pointed to file."
 	(syscall (real-utimensat dir-fd path tv
 				 (if set-link-p +AT-SYMLINK-NOFOLLOW+ 0))))))
 
-(defun set-file-time (path &key access-time modification-time)
+(defmethod set-file-time ((path string) &key access-time modification-time)
   "Set the given times on PATH. The times are OS-TIME structures. Either
 time can be :NOW to use the current time."
   (flet ((flank (time)

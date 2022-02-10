@@ -83,6 +83,7 @@
    #:os-pathname-absolute-p
    #:os-pathname-device
    #:os-pathname-host
+   #:path-designator
    #:make-os-pathname
    #:copy-os-pathname
 

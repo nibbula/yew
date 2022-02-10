@@ -17,6 +17,10 @@
 ;;    language. We would like these to be optional.
 ;;  - Be implemented in opsys-base, if they are needed to be used by the
 ;;    system specific packages, and are generic enough.
+;;  - Be a generic function, which is defined in generic.lisp and imported and
+;;    re-exported from opsys and into the system specific package, with method
+;;    definitions here and/or in the system specific package. It should be
+;;    specified if the system specific package must implement some methods.
 ;;
 ;; Conventions:
 ;;
@@ -25,14 +29,15 @@
 ;;    struct instead of a Lisp struct.
 ;;
 ;;  - In foreign-* structs, use the C names, e.g. with underscores, for slot
-;;    names, (e.g. "tv_usec"). If the C equivalent would be StudlyCapped,
-;;    like on windows, do that. This makes it easier to translate from C code.
+;;    names, (e.g. "tv_usec"). This makes it easier to translate from C code,
+;;    and follow along with the C documentation. If the C equivalent would be
+;;    CamelCased, like on Windows, see the conventions in ms/package.lisp.
 ;;
 ;;  - If there's a C struct that callers need to access, provide a lisp struct
 ;;    instead. This avoids having to access it carefully with CFFI macros,
 ;;    memory freeing issues, and type conversion issues.
 ;;
-;;  - Put +plus-earmuffs+ on constants. Put *star-earmuffs* on variables.
+;;  - Put +plus-earmuffs+ on constants. Put *star-earmuffs* on dynamic variables.
 
 (in-package :opsys)
 
@@ -214,22 +219,48 @@ actually exists.")
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Files
 
-(defosfun file-info (path &key (follow-links t))
-  "Return information about the file described by PATH in a FILE-INFO
-structure. If FOLLOW-LINKS is true (the default), then if PATH is a symbolic
-link, return information about the file it's linked to, otherwise return
-information about the link itself.")
+;; Unless otherwise specified, functions that take a file name should be
+;; able to take a ‘path-designator’. But note that that doesn't include
+;; a ‘cl:pathname’. In general, the system specific code just implements the
+;; string method, and we provide the os-pathname method here.
+
+(defmethod os-namestring ((path string))
+  path)
+
+(defmethod os-namestring ((path pathname))
+  ;; (safe-namestring path)
+  (namestring path)
+  )
+
+(defmethod file-info (path &key (follow-links t))
+  (file-info (os-namestring path) :follow-links follow-links))
 
 ;; Deprecated.
 ;; (define-alias 'get-file-info 'file-info 'function)
 (defun get-file-info (path &key (follow-links t))
   (file-info path :follow-links follow-links))
 
-(defosfun file-accessible-p (path &optional access)
-  "Return true if a PATH is accessible with ACCESS, which is a list consisiting
-of the keywords :READ, :WRITE, or :EXECUTE. ACCESS defaults to :READ. Because of
-race conditions, and many other peculiarities, it's best not to call this, since
-something accessible now may not be accessible later.")
+(defmethod file-accessible-p (path &optional access)
+  (file-accessible-p (os-namestring path) access))
+
+(defmethod file-exists (path)
+  (file-exists (os-namestring path)))
+
+(defmethod os-delete-file (path)
+  (os-delete-file (os-namestring path)))
+
+(defmethod os-rename-file (from to)
+  (os-rename-file (os-namestring from) (os-namestring to)))
+
+(defmethod set-file-time (path &key access-time modification-time)
+  (set-file-time (os-namestring path) :access-time access-time
+		 :modification-time modification-time))
+
+(defmethod make-symbolic-link (from to)
+  (make-symbolic-link (os-namestring from) (os-namestring to)))
+
+(defmethod symbolic-link-target (link-name)
+  (symbolic-link-target (os-namestring link-name)))
 
 ;; (defmacro with-temp-file ((var &optional template) &body body)
 ;;   "Evaluate the body with the variable VAR bound to a POSIX file descriptor with a temporary name. The file is supposedly removed after this form is done."
@@ -330,20 +361,6 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
 (defosfun stream-handle-direction (handle)
   "Return a direction for an stream handle, or NIL if there isn't one.")
 
-;; Sadly I find the need to do this because probe-file might be losing.
-(defosfun file-exists (filename)
-  "Check that a file with FILENAME exists at the moment. But it might not exist
-for long.")
-
-(defosfun os-delete-file (pathname)
-  "Delete a file. Doesn't monkey with the name, which should be a string.
-Doesn't operate on streams.")
-
-(defosfun os-rename-file (from to)
-  "Rename a file called ‘from’ to be called ‘to’. Doesn't monkey with the names,
-which should be a strings. It doesn't operate on streams. CAUTION: If ‘to’
-already exists, it will be replaced, effectively deleting it.")
-
 (defosfun with-os-file ((var filename &key
 			     (direction :input)
 			     (if-exists :error)
@@ -355,16 +372,6 @@ versions of the keywords used in Lisp open.
   IF-EXISTS         - supports :ERROR and :APPEND.
   IF-DOES-NOT-EXIST - supports :ERROR, and :CREATE.
 ")
-
-(defosfun set-file-time (path &key access-time modification-time)
-  "Set the given times on PATH. The times are OS-TIME structures. Either
-time can be :NOW to use the current time.")
-
-(defosfun make-symbolic-link (from to)
-  "Make a symbolic link from FROM to TO.")
-
-(defosfun symbolic-link-target (link-name)
-  "Return the target of the symbolic link.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Directories
@@ -419,20 +426,23 @@ if not given.")
   ;; @@@ should we mention umask?
   "The default POSIX style permissions for creating a directory.")
 
-(defosfun make-directory (path &key (mode *default-directory-mode*))
-  "Make a directory.")
+(defmethod make-directory (path &key (mode *default-directory-mode*))
+  (make-directory (os-namestring path) :mode mode))
 
-(defosfun delete-directory (path)
-  "Delete a directory.")
+(defmethod delete-directory (path)
+  (delete-directory (os-namestring path)))
 
-(defosfun probe-directory (dir)
-  "Something like probe-file but for directories.")
+(defmethod probe-directory (dir)
+  (probe-directory (os-namestring dir)))
 
-(defosfun directory-p (path)
-  "Return true if PATH is a directory.")
+(defmethod directory-p (path)
+  (directory-p (os-namestring path)))
 
-(defun ensure-directory (directory
-			 &key (make-parents t) (mode *default-directory-mode*))
+(defmethod directory-p (stream) nil)
+
+(defmethod ensure-directory ((directory string)
+			     &key (make-parents t)
+			       (mode *default-directory-mode*))
   "If DIRECTORY doesn't exist, create it.
  - MAKE-PARENTS   If true, create the parent diretories. (default t)
  - MODE           POSIX style permissions mode for created directories.
@@ -447,6 +457,11 @@ if not given.")
 	     (cerror "Create ~s?" "Parent directory ~s doen't exist."
 		     prefix))
 	   (make-directory prefix :mode mode)))))
+
+(defmethod ensure-directory (directory &key (make-parents t)
+					 (mode *default-directory-mode*))
+  (ensure-directory (os-namestring directory)
+		    :make-parents make-parents :mode mode))
 
 (defosfun without-access-errors (&body body)
   "Evaluate the body while ignoring typical file access error from system
@@ -471,6 +486,9 @@ calls. Returns NIL when there is an error.")
 	       (and (function-defined '#:make-directory :ext)
 		    (function-defined '#:delete-directory :ext)))
 	      (config-feature :os-t-has-new-dir)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Paths
 
 ;; This is a workaround for not depending on split-sequence.
 ;; so instead of (split-sequence *directory-separator* p :omit-empty t)
@@ -546,6 +564,8 @@ calls. Returns NIL when there is an error.")
     (pathname
      (let ((dir (pathname-directory path)))
        (and dir (eq :absolute (car dir)))))
+    (os-pathname
+     (%path-absolute-p (os-pathname-namestring path)))
     (string
      (%path-absolute-p path))
     (null nil)))
@@ -581,15 +601,25 @@ return the file portion."
 	    path			 ; there was no separator
 	    (subseq our-path file-start)))))
 
-(defun path-directory-name (path)
-  "Return the directory portion of a PATH. This is similar to DIRECTORY-NAMESTRING."
-  (check-type path (or string pathname))
-  (clip-path path :dir))
+(defmethod path-directory-name (path)
+  (clip-path (os-namestring path) :dir))
+
 (setf (symbol-function 'dirname) #'path-directory-name)
 
-(defun path-file-name (path)
+#|
+(defmethod path-file-name ((path string))
   "Return the last portion of a PATH. This is similar to FILE-NAMESTRING."
- (clip-path (or (and (pathnamep path) (safe-namestring path)) path) :file))
+  (clip-path (or (and (pathnamep path) (safe-namestring path)) path) :file))
+
+(defmethod path-file-name ((path pathname))
+  "Return the last portion of a PATH. This is similar to FILE-NAMESTRING."
+  (clip-path (safe-namestring path) :file))
+|#
+
+(defmethod path-file-name (path)
+  "Return the last portion of a PATH. This is similar to FILE-NAMESTRING."
+  (clip-path (os-namestring path) :file))
+
 (setf (symbol-function 'basename) #'path-file-name)
 
 ;;*directory-separator*
@@ -635,6 +665,7 @@ just everything after the last period '.'"
 	 (pos (position #\. our-path :from-end t)))
     (when (and pos (/= pos 0)) (subseq our-path (1+ pos)))))
 
+;; @@@ or maybe os-pathname-parse
 (defosfun parse-path (path)
   "Return an os-pathname for path.")
 
@@ -649,11 +680,6 @@ just everything after the last period '.'"
   (with-slots (path) object
     (print-unreadable-object (object stream :type t)
       (format stream "~s" (os-pathname-namestring object)))))
-
-(defgeneric path-parent (path &key n)
-  (:documentation
-   "Return the parent directory of ‘path’, or NIL if it doesn't have one.
-If N is given, return the Nth parent."))
 
 (defmethod path-parent ((path pathname) &key (n 1))
   (os-pathname-pathname (path-parent (parse-path (safe-namestring path)) :n n)))

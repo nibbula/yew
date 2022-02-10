@@ -1,6 +1,6 @@
-;;
-;; ms.lisp - Interface to Microsoft systems.
-;;
+;;;
+;;; ms.lisp - Interface to Microsoft systems.
+;;;
 
 (in-package :opsys-ms)
 

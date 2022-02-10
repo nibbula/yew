@@ -224,20 +224,21 @@
 (deftests (opsys-unix-dir-1 :doc "Test directories.")
   "Test a bunch of directory stuff."
   (let ((test-dir (format nil "floop~s" (random *unlikely*)))
-	(start-dir (uos:current-directory))
+	(start-dir (nos:current-directory))
 	result)
     (unwind-protect
 	 (progn
-	   (uos:make-directory test-dir)
-	   (setf result (and (uos:directory-p test-dir)
-			     (uos:probe-directory test-dir)))
-	   (uos:change-directory test-dir)
+	   ;; (uos:make-directory test-dir)
+	   (nos:make-directory test-dir)
+	   (setf result (and (nos:directory-p test-dir)
+			     (nos:probe-directory test-dir)))
+	   (nos:change-directory test-dir)
 	   (setf result
 		 (and result
-		      (equal (uos:current-directory)
+		      (equal (nos:current-directory)
 			     (format nil "~a/~a" start-dir test-dir)))))
-      (uos:change-directory start-dir)
-      (uos:delete-directory test-dir))
+      (nos:change-directory start-dir)
+      (nos:delete-directory test-dir))
     result))
 
 #|

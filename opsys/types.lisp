@@ -167,6 +167,11 @@ Slots are:
   device				; DOS drive
   host)					; DOS share
 
+(deftype path-designator ()
+  "Things that we consider to name a file. Note that we don't include
+cl:pathname or streams."
+  `(or string os-pathname))
+
 ;; @@@ Perhaps we should rename this to process-info or something.
 (defstruct os-process
   "Information about a system process."

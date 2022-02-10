@@ -13,8 +13,8 @@
 (defpackage :opsys
   (:documentation "Generic interface to operating system functionality.")
   (:nicknames :nos)
-  (:use :cl :cffi :fake-dlib :opsys-base :trivial-gray-streams
-	:libc
+  (:use :cl :cffi :fake-dlib :opsys-base :opsys-generic
+        :trivial-gray-streams :libc
 	#+unix :os-unix
 	#+(and windows (not unix)) :os-ms)
   (:export
@@ -275,8 +275,11 @@
 ))) ;; without-warning
 
 ;; Re-export things from opsys-base
-
 (do-external-symbols (sym :opsys-base)
+  (export sym :opsys))
+
+;; Re-export things from opsys-generic
+(do-external-symbols (sym :opsys-generic)
   (export sym :opsys))
 
 ;; End

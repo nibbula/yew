@@ -25,6 +25,7 @@
       :serial t
       :components ((:file "base")
 		   (:file "types")
+		   (:file "generic")
 		   (:file "os-stream-base")))
      (:file "libc" #| :depends-on ("package") |#
       :if-feature (:not :mezzano))

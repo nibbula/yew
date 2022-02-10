@@ -19,7 +19,7 @@
 
 (defpackage :opsys-unix
   (:documentation "Interface to UNIX-like systems.")
-  (:use :cl :cffi :fake-dlib :opsys-base :libc)
+  (:use :cl :cffi :fake-dlib :opsys-base :opsys-generic :libc)
   (:nicknames :os-unix :uos)
   (:export
    ;; defining macros
@@ -185,14 +185,10 @@
    #:pathconf
    #:get-path-max
    #:current-directory
-   #:make-directory
-   #:delete-directory
    #:dirent-name
    #:dirent-type
    #:read-directory
    #:map-directory
-   #:directory-p
-   #:probe-directory
    #:without-access-errors
 
    ;; files (low level)
@@ -247,12 +243,10 @@
    #:lstat
    #:fstat
    #+(or linux freebsd) #:fstatat
-   #:file-info
    #:with-stat-buffer
    #:+S_IFMT+ #:+S_IFIFO+ #:+S_IFCHR+ #:+S_IFDIR+ #:+S_IFBLK+ #:+S_IFREG+
    #:+S_IFLNK+ #:+S_IFSOCK+ #:+S_IFWHT+ #:+S_ISUID+ #:+S_ISGID+ #:+S_ISVTX+
    #:+S_IRUSR+ #:+S_IWUSR+ #:+S_IXUSR+
-   #:file-accessible-p
    #:is-user-readable
    #:is-user-writable
    #:is-user-executable
@@ -278,9 +272,6 @@
    #:file-type-name
    #:file-type-symbol
    #:symbolic-mode
-   #:file-exists
-   #:os-delete-file
-   #:os-rename-file
    #:readlink
 
    #:UF_SETTABLE #:UF_NODUMP #:UF_IMMUTABLE #:UF_APPEND #:UF_OPAQUE
@@ -343,11 +334,8 @@
    #:+AT-FDCWD+ #:+AT-SYMLINK-NOFOLLOW+
    #:utimes
    #:utimensat
-   #:set-file-time
    #:symlink
    #:symlinkat
-   #:make-symbolic-link
-   #:symbolic-link-target
    
    ;; signals
    #:*signal-count*
