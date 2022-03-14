@@ -1242,38 +1242,46 @@ pipelines."
 Return the leftmost if FROM-END is true, or of the rightmost if FROM-END is
 false. If no element satifies the test, NIL is returned.")
   (:method (item (collection list)
-	    &key from-end test test-not key
+	    &key from-end
+	      (test nil test-p)
+	      (test-not nil test-not-p)
+	      key
 	      (start nil start-p)
 	      (end nil end-p))
     (declare (ignorable start start-p end end-p))
-    (call-with-start-and-end position (item collection
-					    :from-end from-end :test test
-					    :test-not test-not :key key)))
+    (call-with-start-end-test position (item collection
+					     :from-end from-end :key key)))
   (:method (item (collection vector)
-	    &key from-end test test-not key
+	    &key from-end
+	      (test nil test-p)
+	      (test-not nil test-not-p)
+	      key
 	      (start nil start-p)
 	      (end nil end-p))
     (declare (ignorable start start-p end end-p))
-    (call-with-start-and-end position (item collection
-					    :from-end from-end :test test
-					    :test-not test-not :key key)))
+    (call-with-start-end-test position (item collection
+					     :from-end from-end :key key)))
   (:method (item (collection sequence)
-	    &key from-end test test-not key
+	    &key from-end
+	      (test nil test-p)
+	      (test-not nil test-not-p)
+	      key
 	      (start nil start-p)
 	      (end nil end-p))
     (declare (ignorable start start-p end end-p))
-    (call-with-start-and-end position (item collection
-					    :from-end from-end :test test
-					    :test-not test-not :key key))))
+    (call-with-start-end-test position (item collection
+					    :from-end from-end :key key))))
 
 (defmethod oposition (item (collection container)
-		      &key from-end test test-not key
+		      &key from-end
+			(test nil test-p)
+			(test-not nil test-not-p)
+			key
 			(start nil start-p)
 			(end nil end-p))
   (declare (ignorable start start-p end end-p))
-  (call-with-start-and-end position (item (container-data collection)
-					  :from-end from-end :test test
-					  :test-not test-not :key key)))
+  (call-with-start-end-test position (item (container-data collection)
+					   :from-end from-end :key key)))
 
 (defgeneric oposition-if (predicate collection &key from-end start end key)
   (:documentation
@@ -1939,7 +1947,6 @@ COLLECTION-1 and COLLECTION-2.")
 	(with-member-func (memb :finder hash-member)
 	  (setf result
 		(loop
-		   :with value
 		   :for k :being :the :hash-keys :of collection-1
 		   :when (funcall memb k collection-2)
 		   :collect (cons k (gethash k collection-1))
