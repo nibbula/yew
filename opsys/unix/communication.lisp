@@ -34,7 +34,7 @@
   (iov_base :pointer)
   (iov_len size-t))
 
-#+linux
+#+(and linux (not (and excl 32-bit)))
 (progn
   (defctype loff-t :unsigned-long-long)
 

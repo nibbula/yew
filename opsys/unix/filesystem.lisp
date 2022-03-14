@@ -195,9 +195,8 @@ C library function getcwd."
 
 (defun current-directory ()
   "Return the full path of the current working directory as a string."
-  ;; I would like to use EXT:CD, but it puts an extra slash at the end.
-  #+(or clisp sbcl cmu) (libc-getcwd)
-  #+excl (excl:current-directory)
+  #+(or clisp sbcl cmu excl) (libc-getcwd)
+  ;; #+excl (excl:current-directory)
   #+(or openmcl ccl) (ccl::current-directory-name)
   #+ecl (libc-getcwd) ;; (ext:getcwd)
   ;; #+cmu (ext:default-directory)
@@ -2179,15 +2178,15 @@ something accessible now may not be accessible later."
   "Something like probe-file but for directories."
   ;; #+clisp (ext:probe-directory (make-pathname
   ;; 				:directory (ext:absolute-pathname dir)))
-  #+(or sbcl ccl cmu clisp ecl)
+  #+(or sbcl ccl cmu clisp ecl excl)
   ;; Let's be more specific: it must be a directory.
   (directory-p dir)
   #+(or lispworks abcl) ;; @@@ Really?
   ;; On some implementations probe-file can handle directories the way I want.
   (probe-file dir)
-  #-(or clisp sbcl ccl cmu ecl lispworks abcl)
+  #-(or clisp sbcl ccl cmu ecl lispworks abcl excl)
   (declare (ignore dir))
-  #-(or clisp sbcl ccl cmu ecl lispworks abcl)
+  #-(or clisp sbcl ccl cmu ecl lispworks abcl excl)
   (missing-implementation 'probe-directory))
 
 (defcfun ("symlink" real-symlink) :int
@@ -3411,7 +3410,7 @@ objects should be stored."
 	 (multiple-value-bind (fs err)
 	     (ignore-errors (statfs (mount-entry-dir entry)))
 	   (if err
-	       (if (member (opsys-error-code err) `(,+EACCES+ ,+EPERM+))
+	       (if (member (opsys-error-code err) `(,+EACCES+ ,+EPERM+ 0))
 		   ;; If we can't access the mount point, just ignore it.
 		   (make-filesystem-info
 		    :device-name     (mount-entry-fsname entry)

@@ -1439,7 +1439,10 @@ on ‘octets-p’."
 	      (return partial)
 	      (go AGAIN)))
 	 ;; Nothing availabile
-	 ((= status 0)
+	 ((or (= status 0)
+	      ;; This can happen on some implementations like Allegro,
+	      ;; presumbably if the posix-read is messed with.
+	      (and (= status -1) (= *errno* 0)))
 	  (when (> fail-count fail-max)
 	    (cerror "Try again?" "Reapeatedly got nothing.")
 	    (setf fail-count 0))

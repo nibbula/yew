@@ -113,7 +113,9 @@ interrupted by a signal or something else stupid."
 		 (setf ret-val
 		       (unix-select (1+ nfds) read-fds write-fds err-fds tv))
 		 (setf end-time (gettimeofday))
-		 :while (and (= ret-val -1) (= *errno* +EINTR+)
+		 :while (and (= ret-val -1) (or (= *errno* +EINTR+)
+						(= *errno* 0))
+			     (not (or *got-sigwinch* *got-tstp*))
 			     ;; @@@ some systems we might need to check EAGAIN?
 			     (timeval-plusp
 			      (setf elapsed (timeval-sub end-time start-time))))

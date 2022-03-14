@@ -341,6 +341,7 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
        (multiple-value-bind (in out) (funcall *stream-handles-func* stream)
 	 (if (eql direction :output)
 	     out in)))))
+  #+excl (declare (ignore direction))
   #+excl
   (cond
     ((typep stream 'excl::terminal-simple-stream)
@@ -438,7 +439,9 @@ if not given.")
 (defmethod directory-p (path)
   (directory-p (os-namestring path)))
 
-(defmethod directory-p (stream) nil)
+(defmethod directory-p ((path stream))
+  (declare (ignore stream))
+  nil)
 
 (defmethod ensure-directory ((directory string)
 			     &key (make-parents t)

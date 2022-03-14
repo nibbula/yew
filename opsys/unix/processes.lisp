@@ -991,7 +991,8 @@ wait. Returns NILs if nothing changed."
 		;; 				   +WAIT-NO-HANG+))))
       (cond
 	((< pid 0)
-	 (if (= *errno* +ECHILD+)
+	 (if (or (= *errno* +ECHILD+)
+		 (= *errno* 0))		; sort of a buggy on Allegro?
 	     (progn
 	       ;;(format t "Nothing to wait for~%")
 	       (return-from check-jobs (values nil nil nil)))
