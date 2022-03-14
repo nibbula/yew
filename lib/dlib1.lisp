@@ -62,7 +62,7 @@ of it.")
    #:clean-read-from-string
    #:package-robust-read-from-string
    #:package-robust-read
-   #:*buffer-size*
+   ;; #:*buffer-size*
    #:copy-stream
    #:stream-string
    #:quote-format
@@ -1478,7 +1478,7 @@ and elements are equal."
 (defgeneric define-alias (alias original alias-type)
   (:documentation "Define the symbol ALIAS as another name for ORIGINAL.")
   (:method (alias (original symbol) (alias-type t))
-    (declare (ignore alias original))
+    (declare (ignore alias #-excl original))
     (error "We don't know how to make an alias for a ~S yet." alias-type))
   (:method (alias (original symbol) (alias-type (eql 'compiler-macro)))
     "Make an alias for a compiler macro."
@@ -1844,7 +1844,8 @@ A utility for debugging DEBUG-FUNCTION-ARGLIST."
 		(and (listp args) (strings-to-symbols args)))
   #+abcl (sys::arglist fun)
   #+ecl (ext:function-lambda-list fun)
-  #-(or sbcl ccl clisp cmu lispworks abcl ecl)
+  #+excl (excl:arglist fun)
+  #-(or sbcl ccl clisp cmu lispworks abcl ecl excl)
   (multiple-value-bind (exp closure-p name)
       (function-lambda-expression fun)
     (declare (ignore closure-p name))
