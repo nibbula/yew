@@ -1482,6 +1482,11 @@ on ‘octets-p’."
 	     (incf fail-count)
 	     (sleep *time-quanta*)
 	     (go AGAIN))
+	    ((or (= *errno* +EWOULDBLOCK+))
+	     ;; Nothing there yet.
+	     (incf fail-count)
+	     (sleep *time-quanta*)
+	     (go AGAIN))
 	    ((or (= *errno* +EINTR+) (= *errno* +EAGAIN+))
 	     ;; If it's just normal plusering, go again.
 	     (incf error-count)
