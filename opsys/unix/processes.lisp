@@ -1140,10 +1140,6 @@ wait. Returns NILs if nothing changed."
       "Get if capabilities are kept when switching UIDs from 0.")
     #(+PR-SET-KEEPCAPS+		8
       "Set if capabilities are kept when switching UIDs from 0.")
-    #(+PR-GET-KEEPCAPS+		7
-      "Get if capabilities are kept when switching UIDs from 0.")
-    #(+PR-SET-KEEPCAPS+		8
-      "Set if capabilities are kept when switching UIDs from 0.")
     #(+PR-GET-FPEMU+		9
       "Get floating point emulation control bits.")
     #(+PR-SET-FPEMU+		10
