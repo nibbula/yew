@@ -339,9 +339,9 @@
 ;; @@@ I don't understand why it doesn't work on Lispworks.
 
 (defconstant +TIOCSTI+
-  #+(or darwin freebsd openbsd netbsd)
-  #-lispworks (_IOW #\t 114 :char)
-  #+lispworks @@@@WHY?
+  #+(or darwin freebsd openbsd netbsd) (_IOW #\t 114 :char)
+  ;; #-lispworks (_IOW #\t 114 :char)
+  ;; #+lispworks @@@@WHY?
   #+sunos (l-tioc 23)
   #+linux #x5412
   "simulate terminal input")
@@ -353,17 +353,17 @@
 
 ;; These are actually useful!
 (defconstant +TIOCGWINSZ+
-  #+(or darwin freebsd openbsd netbsd)
-  #-lispworks (_IOR #\t 104 (:struct winsize))
-  #+lispworks #x40087468
+  #+(or darwin freebsd openbsd netbsd) (_IOR #\t 104 (:struct winsize))
+  ;; #-lispworks (_IOR #\t 104 (:struct winsize))
+  ;; #+lispworks #x40087468
   #+sunos (b-tioc 104)
   #+linux #x5413
   "get window size")
 
 (defconstant +TIOCSWINSZ+
-  #+(or darwin freebsd openbsd netbsd)
-  #-lispworks (_IOW #\t 103 (:struct winsize))
-  #+lispworks #x80087467
+  #+(or darwin freebsd openbsd netbsd) (_IOW #\t 103 (:struct winsize))
+  ;; #-lispworks (_IOW #\t 103 (:struct winsize))
+  ;; #+lispworks #x80087467
   #+sunos (b-tioc 103)
   #+linux #x5414
   "set window size")
