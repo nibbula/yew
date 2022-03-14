@@ -10,7 +10,7 @@
   (:documentation "Deblargger for other implementations."))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (setf *deblargger-implementation-class* 'ecl-deblargger))
+  (setf *deblargger-implementation-class* 'other-deblargger))
 
 ;; As you may know, this is quite implementation specific.
 (defmethod debugger-backtrace ((d other-deblargger) n)
@@ -23,7 +23,9 @@ innermost N contexts, if we can."
      :for f :in (sys:backtrace)
      :do (format *debug-io* "~(~3d ~a~)~%" i (sys:frame-to-string f)) (incf i)
      :while (or (null n) (and (numberp n) (< i n))))
-  #-(or cmu clisp lispworks ecl abcl)
+  #+excl
+  (top-level.debug:zoom *debug-io* :count n)
+  #-(or cmu clisp lispworks ecl abcl excl)
   (debugger-sorry "backtrace"))
 
 (declaim (inline debugger-internal-frame))
@@ -36,10 +38,10 @@ innermost N contexts, if we can."
   (declare (ignore quietly))
   (values))
 
-(defmethod debugger-hook ((d (eql 'other-deblagger)))
+(defmethod debugger-hook ((d (eql 'other-deblargger)))
   *debugger-hook*)
 
-(defun set-debugger-hook ((d (eql 'other-deblargger)) function)
+(defmethod debugger-set-hook ((d (eql 'other-deblargger)) function)
   (setf *debugger-hook* function))
 
 ;; EOF
