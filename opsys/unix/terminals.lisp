@@ -284,6 +284,7 @@
   (defmacro _IOW  (g n ty) `(_IOC +IOC_IN+    ,g ,n ,(foreign-type-size ty)))
   (defmacro _IOWR (g n ty) `(_IOC +IOC_INOUT+ ,g ,n ,(foreign-type-size ty))))
 
+;; See also io/linux-console.lisp for VT/console/keyboard specific stuff.
 #+linux
 (progn
   (defconstant +IOC_NRBITS+   8)
