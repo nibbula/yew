@@ -1,6 +1,6 @@
-;;
-;; unix/macros.lisp - Macros for the unix interface
-;;
+;;;
+;;; unix/macros.lisp - Macros for the unix interface
+;;;
 
 (in-package :opsys-unix)
 
