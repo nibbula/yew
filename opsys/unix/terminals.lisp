@@ -1676,6 +1676,7 @@ FLAGS is an bit-wise or of:
     ;; @@@@@
   ))
 
+#-cmucl
 (defcfun ("forkpty" real-forkpty) :int
   "Create a process and establish the slave pseudo-terminal as it's controlling
 terminal."
@@ -1684,6 +1685,7 @@ terminal."
   (termios-pointer (:pointer (:struct termios)))
   (winsize-pointer (:pointer (:struct winsize))))
 
+#-cmucl
 (defun forkpty (&key termios winsize)
   "Create a process and establish the slave pseudo-terminal as it's controlling
 terminal. "
