@@ -34,7 +34,7 @@ pathnames, or satisfy ‘is-binary.’."
 	   (if (and (is-binary source) (not all-binary-out))
 	       (make-instance 'utf8b-input-stream :input-stream source)
 	       source))
-	 (buffer-size dlib:*buffer-size*)
+	 (buffer-size dlib::*buffer-size*)
 	 (outputs)
 	 (buf (make-array buffer-size
 			  :element-type (stream-element-type input)))
@@ -79,7 +79,7 @@ pathnames, or satisfy ‘is-binary.’."
 		 :for out :in outputs
 		 :do
 		    (write-sequence buf out :end pos)))
-	     :while (= pos *buffer-size*)))
+	     :while (= pos buffer-size)))
       (finish-output)
       (loop :for s :in to-close :do
 	(close s)))))
