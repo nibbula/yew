@@ -206,7 +206,10 @@ defaults to 0.2."
 (defun show-features ()
   "Print the features list nicely."
   #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
-  (print-columns (sort (copy-seq *features*) #'string<) :format-char #\s))
+  (with-grout ()
+    (print-columns (sort (copy-seq *features*) #'string<)
+		   :format-char #\s
+		   :columns (grout-width))))
 
 ;; This is mostly for pedagogic purposes. I don't really have a use for it.
 (defun dotted (stream obj colon-p at-sign-p &rest args)
