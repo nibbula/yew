@@ -186,13 +186,18 @@
 
 ;; This is so we can use the #_ reader macro on openmcl without it interfering
 ;; with other lisps. On other lisps we define it to do nothing.
-#-openmcl (eval-when (:execute)
-	    #. (set-dispatch-macro-character
-		#\# #\_
-		(flet ((pr (stream subchar arg)
-			 (declare (ignore subchar arg))
-			 (read stream t nil t)))
-		  (setf (fdefinition '|#_-reader|) (function pr)))))
+;;
+;; @@@ This is a bad idea, since it tries to modify the current and perhaps
+;; only system readtable, for the sake of implementation specific syntax, which
+;; we could invoke some other way, and which fails on other implementations,
+;; such as Allegro.
+;; #-openmcl (eval-when (:execute)
+;; 	    #. (set-dispatch-macro-character
+;; 		#\# #\_
+;; 		(flet ((pr (stream subchar arg)
+;; 			 (declare (ignore subchar arg))
+;; 			 (read stream t nil t)))
+;; 		  (setf (fdefinition '|#_-reader|) (function pr)))))
 
 ;; Constant defining macros.
 
