@@ -46,6 +46,7 @@ The shell command takes any number of file names.
    #:with-pager
    #:with-pager*
    #:pager
+   #:binary-pager
    #:resume
    #:browse
    #+lish #:!pager
@@ -2473,6 +2474,14 @@ Options are:
     (t
      (error "The pager doesn't know how to deal with a ~w"
 	    (type-of file-or-files)))))
+
+(defun binary-pager (&optional (file-or-files (pick-file) files-supplied-p)
+		     &rest options)
+  "Just like pager, but starting in binary mode. Maybe useful for calling as
+a view method."
+  (if files-supplied-p
+      (apply #'pager file-or-files :binary t options)
+      (funcall #'pager :binary t)))
 
 ;; @@@ Run in a thread:
 ;;
