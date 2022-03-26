@@ -454,8 +454,10 @@ keep the current automatic restarts set, otherwise clear them."
        (defalias (read-arg repl-state) (read-arg repl-state)))
       (help       (:h :help) "Show this help." (debugger-help))
       (quit       (:q :quit) "Quit the whatever."
-       (when (y-or-n-p "Really quit?")
-	 (format *debug-io* "We quit.~%"))))))
+       (when (y-or-n-p "Really quit? ")
+	 (format *debug-io* "We quit.~%")
+	 (finish-output)
+	 (dlib:exit-system))))))
 (define-commands *base-commands*)
 
 #+tdb-has-breakpoints
