@@ -2370,6 +2370,7 @@ q - Abort")
 	    (*trace-output* ,str-name)
 	    ;; This doesn't seem to work on clisp :(
 	    (*debug-io* (make-two-way-stream *standard-input* ,str-name))
+	    ;; (*terminal-io* (make-two-way-stream *standard-input* ,str-name))
 	    )
        (prog1 (with-simple-restart
 		  (continue "View the output so far in the pager anyway.")
