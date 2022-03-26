@@ -2118,6 +2118,7 @@ byte-pos."
 
 (defun eval-expression-command (pager)
   "Prompt for an expression an evaluate it."
+  (tt-move-to (1- (tt-height)) 0)
   (with-simple-restart (abort "Go back to the pager.")
     (handler-case
 	(fui:display-text
