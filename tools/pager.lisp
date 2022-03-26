@@ -149,6 +149,7 @@ The shell command takes any number of file names.
     (#\9		. digit-argument)
     (#\escape		. *escape-keymap*)
     (#\:		. read-command)
+    (#\!		. shell-command)
     (,(meta-char #\x)	. eval-expression-command)
     (,(meta-char #\esc)	. eval-expression-command)
     (#\^                . keep-lines)
@@ -2142,6 +2143,25 @@ byte-pos."
 	    ;; (continue)
 	    (invoke-restart (find-restart 'abort))))))
   (redraw pager))
+
+
+(defun shell-command (pager)
+  "Run a shell command."
+  (declare (ignore pager))
+  (tt-move-to (1- (tt-height)) 0)
+  (tt-erase-to-eol)
+  (tt-normal)
+  (if (find-package :lish)
+      (progv (list (intern "*POST-COMMAND-HOOK*" :lish))
+	  (list (list (lambda (cmd type)
+			(declare (ignore cmd type))
+			;; (setf (refer-to :lish :lish-exit-flag) t)
+			(funcall (intern "LISHITY-SPLIT" :lish)))))
+	(symbol-call :lish :lish :prompt "! " :debug t :init-file nil))
+      (nos:system-command (rl:rl :prompt "! ")))
+  (format t "[Press Enter]~%")
+  (finish-output)
+  (tt-get-key))
 
 (defun help-key (pager)
   "Sub-command for help commands."
