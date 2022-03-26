@@ -202,7 +202,7 @@ The REPL also has a few commands:
 
 (defun repl-read (state)
   (with-slots (editor debug prompt-func prompt-string got-error more
-	       terminal terminal-name terminal-class keymap) state
+	       terminal terminal-name terminal-class keymap quietly) state
     (let ((result nil)
 	  (pre-str nil)
 	  (str nil))
@@ -216,7 +216,10 @@ The REPL also has a few commands:
 		   :terminal-class terminal-class
 		   :history-context :repl
 		   :accept-does-newline nil
-		   :partial-line-indicator rl:*default-partial-line-indicator*
+		   :partial-line-indicator
+		   (if quietly
+		       nil
+		       rl:*default-partial-line-indicator*)
 		   :re-edit re-edit
 		   :prompt (or (and (ostringp prompt) prompt) *default-prompt*)
 		   :output-prompt-func (and (or (symbolp prompt)
