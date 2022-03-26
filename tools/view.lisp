@@ -51,6 +51,7 @@
     (("text" . "neox")       . (:neox :neox-on-file))
     (("application" . "json") . (:view-json :view-json))
     (("application" . "x-directory") . (:dired :dired))
+    (("application" . "octet-stream") . (:pager :binary-pager))
     ("video"		     . (:view-video :view-video))
     ("audio"		     . (:view-audio :view-audio))
     ("image"                 . (:view-image :view-image))
