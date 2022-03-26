@@ -2,13 +2,6 @@
 ;;; du.lisp - disk usage
 ;;;
 
-;; TODO
-;; - add top node directory to save/load format
-;; - make it harder to exit, ask for confirmation?
-;; - update a directory?
-;; - improved progress indication
-;; - old fashioned du compatibility
-
 (defpackage :du
   (:documentation "Disk usage")
   (:use :cl :dlib :dlib-misc :opsys :char-util :inator :terminal
@@ -20,6 +13,13 @@
    #:*last-tree*
    ))
 (in-package :du)
+
+;; TODO
+;; - add top node directory to save/load format
+;; - make it harder to exit, ask for confirmation?
+;; - update a directory?
+;; - improved progress indication
+;; - old fashioned du compatibility
 
 (declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
 
@@ -34,6 +34,28 @@
     :documentation "The contained data."))
   (:documentation "Container for file size data."))
 
+(defgeneric gather-data (directories data)
+  (:documentation "Gather size ‘data' for ‘directories’."))
+
+(defgeneric dispose-data (data)
+  (:documentation "Make data storage potentially collectible."))
+
+(defgeneric save (filename data)
+  (:documentation "Saved size ‘data’ to ‘filename’."))
+
+(defgeneric load-data (filename data)
+  (:documentation "Load saved size ‘data’ from ‘filename’."))
+
+(defclass du-viewer ()
+  ()
+  (:documentation "A viewer for disk usage data."))
+
+(defgeneric point-item (viewer)
+  (:documentation "Return the directory the point is in."))
+
+(defgeneric reload-current-item (viewer)
+  (:documentation "Reload the current item in the viewer."))
+
 (defclass du-app ()
   ((data
     :initarg :data :accessor data :initform nil
@@ -41,6 +63,9 @@
    (viewer
     :initarg :viewer :accessor viewer :initform nil
     :documentation "The viewer inator.")
+   (directories
+    :initarg :directories :accessor directories :initform nil :type list
+    :documentation "The list of directories we're showing usage for.")
    (show-all
     :initarg :show-all :accessor show-all :initform t :type boolean
     :documentation "True to include files in the tree.")
@@ -185,18 +210,12 @@
   ()
   (:documentation "Disk usage tree data."))
 
-(defgeneric save (filename data)
-  (:documentation "Saved size ‘data’ to ‘filename’."))
-
 (defmethod save (filename (data tree-container))
   "Saved size ‘data’ to ‘filename’. If ‘filename’ is NIL, use
 ‘*default-ouput-file*’. If ‘data’ is empty, use ‘*last-tree*’."
   (with-open-file (stream (quote-filename (or filename *default-ouput-file*))
 			  :direction :output :if-exists :rename)
     (output (or data *last-tree*) stream)))
-
-(defgeneric load-data (filename data)
-  (:documentation "Load saved size ‘data’ from ‘filename’."))
 
 (defmethod load-data (filename (data tree-container))
   "Load saved size data from ‘filename’ into ‘data’. If ‘filename’ is NIL,
@@ -343,7 +362,7 @@ use ‘*default-ouput-file*’."
 						    :traditional t)
 					(from-small-string name))))))
 
-(defclass du-tree-viewer (tree-viewer)
+(defclass du-tree-viewer (tree-viewer du-viewer)
   ()
   (:documentation "Tree viewer for du."))
 
@@ -353,47 +372,6 @@ use ‘*default-ouput-file*’."
   (declare (ignore initargs))
   ;; Open the root node so we see something.
   (setf (node-open (tree-viewer::root o)) t))
-
-(defun save-file (o)
-  "Save the du tree in a file."
-  (with-slots (data) o
-    (save nil data)
-    (tree-viewer::message o "Saved in ~a" *default-ouput-file*)))
-
-(defun load-file (o)
-  "Load the du tree from a file."
-  (with-slots (data reload) o
-    (load-data nil data)
-    (setf reload t)
-    (message o "Loaded from ~a" *default-ouput-file*)
-    (quit o)))
-
-(defun view-file (o)
-  "View the file with the pager."
-  (terminal-end *terminal*)
-  (handler-case
-      (view (get-path (tree-viewer::current o)))
-    (simple-error (c)
-      (message o "Error: ~a" c)))
-  (terminal-start *terminal*)
-  (tt-clear)
-  (tt-finish-output)
-  ;;(refresh)
-  )
-
-(defkeymap *du-ctrl-x-keymap* ()
-  `((,(ctrl #\s)	. save-file)
-    (,(ctrl #\f)	. load-file)))
-
-(defkeymap *du-keymap* ()
-  `((,(ctrl #\x)	. *du-ctrl-x-keymap*)
-    (#\v		. view-file)))
-
-(defgeneric gather-data (directories data)
-  (:documentation "Gather size ‘data' for ‘directories’."))
-
-(defgeneric dispose-data (data)
-  (:documentation "Make data storage potentially collectible."))
 
 (defmethod gather-data (directories (data tree-container))
   (setf (data-container-data data)
@@ -417,8 +395,17 @@ use ‘*default-ouput-file*’."
 			  :directories directories)))))
 
 (defmethod dispose-data ((data tree-container))
-  ;; This is somewhat unnecessary.
+  ;; This is somewhat unnecessary unless your data is large, and can of course
+  ;; be ineffective if there're
   (setf (data-container-data data) nil))
+
+(defmethod point-item ((viewer du-tree-viewer))
+  "Return the directory the point is in for a tree-container."
+  (get-path (tree-viewer::current viewer)))
+
+(defmethod reload-current-item ((view du-tree-viewer))
+  ;; @@@
+  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; file list
@@ -437,6 +424,24 @@ use ‘*default-ouput-file*’."
 	    (not (slot-value o 'package)))
     (setf (slot-value o 'package) (make-package (gensym "DU-TEMP")))))
 
+(defun gather-item (file data)
+  (let ((info (ignore-errors (nos:file-info file))))
+    (when info
+      (cons (nos:file-info-size info)
+	    (list
+	     (mapcar
+	      (_ (intern _ (table-container-package data)))
+	      (let ((pp (nos:parse-path file)))
+		(if (nos:os-pathname-absolute-p pp)
+		    (cons "/" (nos:os-pathname-path pp))
+		    (nos:os-pathname-path pp)))))))))
+
+(defun sort-data (data)
+  (setf (data-container-data data)
+	(sort ;; @@@ Would it be faster to build a sorted tree?
+	 (data-container-data data)
+	 #'> :key #'car)))
+
 ;; To save space, we split the path and store it as symbols in a package, but
 ;; this means we have to manually delete the package to reclaim the space.
 (defmethod gather-data (directories (data table-container))
@@ -446,6 +451,7 @@ use ‘*default-ouput-file*’."
 	    :nconc
 	    (let (list end new)
 	      (nos:map-directory
+	       #|
 	       (_ (let ((i (ignore-errors (nos:file-info _))))
 		    (when i
 		      (setf new
@@ -464,14 +470,25 @@ use ‘*default-ouput-file*’."
 		      (setf end new)
 		      (when (null list)
 			(setf list new)))))
+	       |#
+	       (_ (let ((i (gather-item _ data)))
+		    (when i
+		      (setf new (list i))
+		      (when end
+			(rplacd end new))
+		      (setf end new)
+		      (when (null list)
+			(setf list new)))))
 	       :dir dir :recursive t ::errorp nil)
 	      list))))
-    (setf (data-container-data data)
-	  (sort ;; @@@ Would it be faster to build a sorted tree?
-	   full-list
-	   #'> :key #'car))
+    ;; (setf (data-container-data data)
+    ;; 	  (sort ;; @@@ Would it be faster to build a sorted tree?
+    ;; 	   full-list
+    ;; 	   #'> :key #'car))
     ;; (setf (data-container-data data)
     ;; 	   full-list)
+    (setf (data-container-data data) full-list)
+    (sort-data data)
     ))
 
 (defmethod dispose-data ((data table-container))
@@ -507,12 +524,22 @@ use ‘*default-ouput-file*’."
   (format nil "~v@a" width
 	  (format-the-size n (or (and *du* (du-app-size-format *du*)) :human))))
 
-(defclass du-table-viewer (table-viewer)
+(defclass du-table-viewer (table-viewer du-viewer)
   ()
   (:documentation "Table viewer for du."))
 
 (defmethod current-cell ((o du-table-viewer))
   (format-path (call-next-method o) nil))
+
+(defmethod point-item ((viewer du-table-viewer))
+  "Return the directory the point is in for a tree-container."
+  (current-cell viewer))
+
+(defmethod reload-current-item ((viewer du-table-viewer))
+  (setf (current-cell viewer)
+	(gather-item (point-item viewer) (data *du*)))
+  ;; (sort-data ???)
+  )
 
 #|
 (defmethod initialize-instance
@@ -528,6 +555,61 @@ use ‘*default-ouput-file*’."
 |#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun save-file (o)
+  "Save the du tree in a file."
+  (with-slots (data) o
+    (save nil data)
+    (tree-viewer::message o "Saved in ~a" *default-ouput-file*)))
+
+(defun load-file (o)
+  "Load the du tree from a file."
+  (with-slots (data reload) o
+    (load-data nil data)
+    (setf reload t)
+    (message o "Loaded from ~a" *default-ouput-file*)
+    (quit o)))
+
+(defun view-file (o)
+  "View the file with “view”."
+  (terminal-end *terminal*)
+  (handler-case
+      (view (get-path (tree-viewer::current o)))
+    (simple-error (c)
+      (message o "Error: ~a" c)))
+  (terminal-start *terminal*)
+  (tt-clear)
+  (tt-finish-output))
+
+(defkeymap *du-ctrl-x-keymap* ()
+  `((,(ctrl #\s)	. save-file)
+    (,(ctrl #\f)	. load-file)))
+
+(defkeymap *du-keymap* ()
+  `((,(ctrl #\x)	. *du-ctrl-x-keymap*)
+    (#\v		. view-file)
+    (#\g		. reload-item)
+    (#\G		. reload-all)))
+
+(defun reload-all (o)
+  "Reload all the data."
+  (declare (ignore o)) ;; unfortunately separate
+  (with-slots (reload data directories) *du*
+    (when (fui:popup-y-or-n-p
+	   "Are you sure you want to recompute the all sizes?")
+      (dispose-data data)
+      (gather-data directories data)
+      (setf reload t))))
+
+(defun reload-item (o)
+  "Reload the current item."
+  (declare (ignore o)) ;; unfortunately separate
+  (with-slots (reload viewer data) *du*
+    (when (fui:popup-y-or-n-p
+	   (format nil "Are you sure you want to recompute the sizes for ~s?"
+		   (point-item data)))
+      (reload-current-item viewer)
+      (setf reload t))))
 
 (defun du (&key (directories '(".")) #|follow-links tree |#
 	     (show-progress t) (all t) resume file exclude as-list
@@ -551,6 +633,7 @@ use ‘*default-ouput-file*’."
 	   :show-all all
 	   :exclude exclude
 	   :data (make-instance (if as-list 'table-container 'tree-container))
+	   :directories directories
 	   :size-format (if non-human-size :bytes :human))))
     ;;(format t "*exclude* = ~s~%" *exclude*)
     (with-slots (data viewer show-progress reload) *du*
