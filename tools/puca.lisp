@@ -491,6 +491,7 @@ if an item was added."
       (setf (git-saved-branch backend) nil
 	    (git-saved-remotes backend) nil
 	    (git-saved-counts backend) nil
+	    (git-saved-stashes backend) 'unset
 	    result
 	    (with-process-output (stream cmd-name cmd-args)
 	      (loop :while (setf line (read-line stream nil nil))
@@ -892,16 +893,15 @@ If CONFIRM is true, ask the user for confirmation first."
   (if (typep (puca-backend *puca*) 'git)
       (do-literal-command "git stash push ~{\"~a\" ~}" (list (selected-files)))
       (info-window "Error"
-		   `(,(format nil "I don't know how to stash on ~s"
+		   `(,(format nil "I don't know how to stash push on ~s"
 			      (type-of (puca-backend *puca*)))))))
 
 (defun stash-pop ()
   "Pop the top git stash."
   (if (typep (puca-backend *puca*) 'git)
-      (do-literal-command "git stash pop ~{\"~a\" ~}" (list (selected-files))
-			  :confirm t)
+      (do-literal-command "git stash pop" '() :confirm t)
       (info-window "Error"
-		   `(,(format nil "I don't know how to stash on ~s"
+		   `(,(format nil "I don't know how to stash pop on ~s"
 			      (type-of (puca-backend *puca*)))))))
 
 
