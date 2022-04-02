@@ -9,6 +9,7 @@
   (:export
    #:df
    #:!df
+   #:bogus-filesystem-p
    ))
 (in-package :df)
 
