@@ -140,5 +140,6 @@ BYTE-SETTER, which takes an (unsigned-byte 8)."
     (%put-utf8-char our-char-getter our-byte-setter)))
 
 (define-string-converters "UTF8")
+(register-encoding :utf8)
 
 ;; End

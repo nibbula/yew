@@ -9,6 +9,40 @@
 ;; <https://arxiv.org/pdf/2010.03090.pdf> Maybe even in-place, low copying,
 ;; versions?
 
+(defparameter *encodings* nil
+  "List of registered encodings.")
+
+;; (defstruct encoding
+;;   name
+;;   description)
+;;
+;; (defun register-encoding (encoding)
+;;  "Add the ‘encoding’ to the list of encodings. ‘encoding’ should be a encoding
+;; struct."
+;;   (check-type encoding 'encoding)
+;;   (pushnew encoding *encodings*))
+
+(defun register-encoding (encoding)
+  "Add the ‘encoding’ to the list of encodings. ‘encoding’ should probably
+be a keyword."
+  (check-type encoding keyword)
+  (pushnew encoding *encodings*))
+
+(defun function-name (type charset-name &optional (package *package*))
+  "Return the name of the function of ‘type’ for ‘charset’."
+  (symbolify
+   (case type
+     (:encoding (s+ "STRING-TO-" charset-name "-BYTES"))
+     (:decoding (s+ charset-name "-BYTES-TO-STRING"))
+     (:foreign-encoding (s+ "STRING-TO-FOREIGN-" charset-name))
+     (:foreign-decoding (s+ "FOREIGN-TO-STRING-" charset-name))
+     (:putter   (s+ "%PUT-" charset-name "-CHAR"))
+     (:getter   (s+ "%GET-" charset-name "-CHAR"))
+     (:length   (s+ "%LENGTH-IN-" charset-name "-BYTES"))
+     (otherwise
+      (error "Bad type of encoding function name: ~s" type)))
+   :package package))
+
 (defmacro define-string-converters (charset-name)
   "Define two functions ‘string-to-<charset-name>-bytes’ and
 ‘<charset-name>-bytes-to-string.’. They use 3 functions or macros which must be
@@ -31,11 +65,11 @@ is happening. So:
 %length-in-<charset-name>-bytes returns how many bytes are needed to represent
 ‘code’.
 "
-  (let ((encode-func (symbolify (s+ "STRING-TO-" charset-name "-BYTES")))
-	(decode-func (symbolify (s+ charset-name "-BYTES-TO-STRING")))
-	(putter-name (symbolify (s+ "%PUT-" charset-name "-CHAR")))
-	(getter-name (symbolify (s+ "%GET-" charset-name "-CHAR")))
-	(length-name (symbolify (s+ "%LENGTH-IN-" charset-name "-BYTES"))))
+  (let ((encode-func (function-name :encoding charset-name))
+	(decode-func (function-name :decoding charset-name))
+	(putter-name (function-name :putter   charset-name))
+	(getter-name (function-name :getter   charset-name))
+	(length-name (function-name :length   charset-name)))
     `(progn
        (defun ,encode-func (string)
 	 "Return a vector of (unsigned-byte 8) representing the STRING."
@@ -92,6 +126,7 @@ of characters they represent."
 		:do (,getter-name getter putter))
 	     result))))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Compibility with babel?
 
 ;; @@@ This should probably be from the implementation or something.
@@ -101,6 +136,10 @@ of characters they represent."
 (defvar *suppress-character-coding-errors* nil
   "If true, don't signal encoding errors. Instead use the default replacement
 character for the encoding.")
+
+(defun list-character-encodings ()
+  "Does what it says."
+  *encodings*)
 
 (defun octets-to-string (vector &key
 				  (encoding *default-character-encoding*)

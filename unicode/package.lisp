@@ -28,6 +28,8 @@
    #:vector-size-in-chars
    ;; encoding construction
    #:define-string-converters
+   #:*encodings*
+   #:register-encoding
    ))
 (in-package :unicode)
 

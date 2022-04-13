@@ -180,5 +180,6 @@ integer codepoint."
     (%put-utf8b-char our-char-getter our-byte-setter)))
 
 (define-string-converters "UTF8B")
+(register-encoding :utf8b)
 
 ;; End
