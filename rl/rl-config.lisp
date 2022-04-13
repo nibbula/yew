@@ -9,7 +9,7 @@
 (in-package :rl-config)
 
 ;; (declaim (optimize (debug 2)))
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+(declaim (optimize (speed 1) (safety 3) (debug 3) (space 1) (compilation-speed 1)))
 
 ;; (defvar *configuration* nil)
 ;; (setf *configuration* nil)
