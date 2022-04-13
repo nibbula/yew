@@ -717,9 +717,8 @@ generic functions (i.e. %GROUT-*) directly."
 	      ;; (finish-output *debug-io*)
 	      (setf (slot-value o 'own-term) t)
 	      (make-instance
-	       (find-terminal-class-for-type (pick-a-terminal-type))
-	       :start-at-current-line t)
-	      )))
+	       (find-terminal-class-for-type (platform-default-terminal-type))
+	       :start-at-current-line t))))
   (when (slot-value o 'own-term)
     (terminal-start (slot-value o 'term))))
 
