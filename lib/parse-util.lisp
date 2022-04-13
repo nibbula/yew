@@ -27,6 +27,9 @@ Result macros:
    (with-sub-sequence (name) ...)
                        Make name be a function that returns the current
                        sub-sequence, which the macro encloses.
+   (note-part (x) ...) Combination of note and with-sub-sequence, like:
+                       (with-sub-sequence (x)
+                          (note ((x)) ...))
 
 Element functions are:
    (peek)                        Return the next element.
@@ -57,6 +60,7 @@ See parse-util-test for examples.
    #:one-of
    #:note
    #:with-sub-sequence
+   #:note-part
    #:with-parsing
    ;; functions
    #:peek
@@ -252,6 +256,11 @@ from the start of the macro to the current point."
        (symbol-macrolet ((,name (osubseq (state-sequence *state*)
 					 ,start (state-i *state*))))
 	 ,@body))))
+
+(defmacro note-part ((&optional (name (gensym "NAME"))) &body body)
+  "Combination of note and with-sub-sequence."
+  `(with-sub-sequence (,name)
+     (note ((,name)) ,@body)))
 
 (defmacro with-parsing ((sequence &key junk-allowed track-next) &body body)
   "Use the parsing utilites on STRING and return the results."
