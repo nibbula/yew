@@ -396,7 +396,9 @@ try to figure it out."
   "List of known image format tags.")
 
 (defun load-image-format (format-tag)
-  (asdf:load-system (s+ "image-" (string-downcase format-tag))))
+  #+quicklisp (ql:quickload (s+ "image-" (string-downcase format-tag)))
+  #-quicklisp (asdf:load-system (s+ "image-" (string-downcase format-tag)))
+  )
 
 (defun load-known-formats ()
   "Load all the image formats we know about. This is useful to make sure
