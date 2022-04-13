@@ -982,14 +982,70 @@ use in pipelines, and without the END argument. See also OSLICE."
 pipelines, and maybe easier to remember."
   (osubseq collection 0 n))
 
-#|
-@@@ You know the business...
+;; @@@ Is the initial value going to work??
+(defgeneric oreduce (function collection
+		     &key key from-end start end initial-value)
+  (:documentation
+   "Apply ‘function’ to pairs of the elements of ‘collection’ and the results
+of the previous application. The ‘function’ must take two arguments which are
+either elements of ‘collection’ or the result of itself and an element, or no
+arguments.")
+  (:method (function (collection list)
+	     &key key from-end (start nil start-p) (end nil end-p)
+	       (initial-value nil ivp))
+    (declare (ignorable start start-p end end-p))
+    (if ivp
+	(call-with-start-and-end reduce (function collection
+				         :key key :from-end from-end
+				         :initial-value initial-value))
+	(call-with-start-and-end reduce (function collection
+				         :key key :from-end from-end))))
+  (:method (function (collection vector)
+	     &key key from-end (start nil start-p) (end nil end-p)
+	       (initial-value nil ivp))
+    (declare (ignorable start start-p end end-p))
+    (if ivp
+	(call-with-start-and-end reduce (function collection
+				         :key key :from-end from-end
+				         :initial-value initial-value))
+	(call-with-start-and-end reduce (function collection
+				         :key key :from-end from-end))))
+  (:method (function (collection sequence)
+	     &key key from-end (start nil start-p) (end nil end-p)
+	       (initial-value nil ivp))
+    (declare (ignorable start start-p end end-p))
+    (if ivp
+	(call-with-start-and-end reduce (function collection
+					 :key key :from-end from-end
+					 :initial-value initial-value))
+	(call-with-start-and-end reduce (function collection
+					 :key key :from-end from-end))))
+  ;; @@@ I think might be useless because of ordering instability.
+  #|
+  (:method ((function (collection hash-table)
+	     &key key from-end (start nil start-p) (end nil end-p)
+	       initial-value))
+    (declare (ignorable start start-p end end-p)
+	     (ignore from-end))		; ignore this for now
+    (let ((i 0)
+	  )
+      (declare (type fixnum i))
+    (with-hash-table-iterator (next collection)
+      (multiple-value-bind (more? key value) (next)
+	(unless more? (return))
+	))
+    collection)
+  |#
+  ;; Doing it for structs and objects just seems weirdly unlikely.
+  )
 
-(defgeneric oreduce (collection ...)
-  (:documentation "")
-  (:method ((collection XX))
-	    ))
-|#
+(defmethod oreduce (function (collection container)
+		    &key key from-end (start nil start-p) (end nil end-p)
+		      initial-value)
+  (declare (ignorable start start-p end end-p))
+  (call-with-start-and-end reduce (function (container-data collection)
+				   :key key :from-end from-end
+				   :initial-value initial-value)))
 
 (defgeneric ocount (item collection &key from-end start end key test test-not)
   (:documentation "Return the number of elements of COLLECTION, bounded by START
