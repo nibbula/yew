@@ -440,7 +440,7 @@ if not given.")
   (directory-p (os-namestring path)))
 
 (defmethod directory-p ((path stream))
-  (declare (ignore stream))
+  (declare (ignore path))
   nil)
 
 (defmethod ensure-directory ((directory string)
