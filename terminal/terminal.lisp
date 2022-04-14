@@ -171,8 +171,7 @@ loaded, it registers its type in *TERMINAL-TYPES*, which is used to find the
 class. WITH-TERMINAL calls PICK-A-TERMINAL-TYPE to get its terminal type,
 which further consults PLATFORM-DEFAULT-TERMINAL-TYPE, to try to come up with
 a reasonable terminal. The terminal type keyword can be given to WITH-TERMINAL,
-or *DEFAULT-TERMINAL-TYPE* can be set, to pick a specific terminal. This idea
-is that this can be set by the user.
+or *DEFAULT-TERMINAL-TYPE* can be set by the user, to pick a specific type.
 
 # Terminal functionality
 
@@ -309,7 +308,7 @@ subclasses.")
      :for tt :in *terminal-types*
      :when (evenp i) :collect tt))
 
-(defun terminal-type-based-on-environemt ()
+(defun terminal-type-based-on-environment ()
   (cond
     ((equal (environment-variable "TERM") "dumb")
      :dumb)
@@ -317,11 +316,11 @@ subclasses.")
 
 (defun platform-default-terminal-type ()
   "Return the platform default terminal type for the current circumstance."
-  ;; #+(and windows unix) (terminal-type-based-on-environemt)
+  ;; #+(and windows unix) (terminal-type-based-on-environment)
   #+windows (if (environment-variable "TERM")
-		(terminal-type-based-on-environemt)
+		(terminal-type-based-on-environment)
 		:ms)
-  #+(and unix (not windows)) (terminal-type-based-on-environemt)
+  #+(and unix (not windows)) (terminal-type-based-on-environment)
   #-(or windows unix) :ansi)
 
 (defun pick-a-terminal-type ()
