@@ -327,6 +327,9 @@ subclasses.")
   "Pick some terminal type. Hopefully appropriate, but perhaps semi-arbitrary."
   (let ((platform-default (platform-default-terminal-type)))
     (or *default-terminal-type*
+	;; Default to :crunch if it's loaded.
+	(and (find-package :terminal-crunch) :crunch)
+	;; Otherwise the platform default.
 	(if (find-terminal-class-for-type platform-default)
 	    platform-default
 	    ;; This picks :ansi-stream if nothing else is loaded.
