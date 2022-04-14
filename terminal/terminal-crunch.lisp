@@ -494,7 +494,8 @@ two values ROW and COLUMN."
 ;; might be too small on some platforms.
 ;; (defconstant +cut-off+ #xffffffffffffffff)
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defconstant +cut-off+ most-positive-fixnum))
+  (defconstant +cut-off+ most-positive-fixnum)
+  (defconstant +cut-off-shift+ (- (integer-length +cut-off+))))
 
 (defparameter *keyword-differentiator*
   #.(loop :with i = 0
@@ -527,10 +528,31 @@ two values ROW and COLUMN."
 
   (defun fnv-like-hash-seed () *fnv64-offset*)
   (declaim (ftype (function () fixnum) bix-hash-seed))
-  (defun fnv-like-hash (integer value)
+  (defun fnv-like-hash-fixnum (integer value)
     (declare (type fixnum integer value))
     (logand (* (logxor value integer) *fnv64-prime*) +cut-off+))
-  (declaim (ftype (function (fixnum fixnum) fixnum) fnv-like-hash))
+  (declaim (ftype (function (fixnum fixnum) fixnum) fnv-like-hash-fixnum))
+  (defun fnv-like-hash-integer (integer value)
+    (declare (type integer integer)
+	     (type fixnum value))
+    (let ((v value)
+	  (i integer))
+      (loop :do
+	(setf v (logand (* (logxor v i) *fnv64-prime*) +cut-off+))
+	:while (> i +cut-off+)
+	:do
+	(setf i (ash +cut-off+ +cut-off-shift+)))
+      v))
+  (declaim (ftype (function (integer fixnum) fixnum) fnv-like-hash-integer))
+  (defun fnv-like-hash-float (f value)
+    (multiple-value-bind (i-significand i-exponent i-sign)
+	(integer-decode-float f)
+      (let ((v value))
+	(setf v (fnv-like-hash-integer i-significand v)
+	      v (fnv-like-hash-integer i-exponent v)
+	      v (fnv-like-hash-integer i-sign v))
+	v)))
+  (declaim (ftype (function (float fixnum) fixnum) fnv-like-hash-float))
 
   ;;(defun sxhash-hash-seed () #xCBF29CE484222325)
   (defun sxhash-hash-seed () #.(logand most-positive-fixnum #xCBF29CE484222325))
@@ -550,10 +572,31 @@ two values ROW and COLUMN."
 
   (defun fnv-like-hash-seed () *fnv32-offset*)
   (declaim (ftype (function () fixnum) bix-hash-seed))
-  (defun fnv-like-hash (integer value)
+  (defun fnv-like-hash-fixnum (integer value)
     (declare (type fixnum integer value))
     (logand (* (logxor value integer) *fnv32-prime*) +cut-off+))
-  (declaim (ftype (function (fixnum fixnum) fixnum) fnv-like-hash))
+  (declaim (ftype (function (fixnum fixnum) fixnum) fnv-like-hash-fixnum))
+  (defun fnv-like-hash-integer (integer value)
+    (declare (type integer integer)
+	     (type fixnum value))
+    (let ((v value)
+	  (i integer))
+      (loop :do
+	(setf v (logand (* (logxor v i) *fnv64-prime*) +cut-off+))
+	:while (> i +cut-off+)
+	:do
+	(setf i (ash +cut-off+ +cut-off-shift+)))
+      v))
+  (declaim (ftype (function (integer fixnum) fixnum) fnv-like-hash-integer))
+  (defun fnv-like-hash-float (f value)
+    (multiple-value-bind (i-significand i-exponent i-sign)
+	(integer-decode-float f)
+      (let ((v value))
+	(fnv-like-hash-integer i-significand v)
+	(fnv-like-hash-integer i-exponent v)
+	(fnv-like-hash-integer i-sign v)
+	v)))
+  (declaim (ftype (function (float fixnum) fixnum) fnv-like-hash-float))
 
   ;;(defun sxhash-hash-seed () #xCBF29CE484222325)
   (defun sxhash-hash-seed () #.(logand most-positive-fixnum #x1F2347E1))
@@ -566,17 +609,21 @@ two values ROW and COLUMN."
 (defmacro hash-thing-with (thing value hash-func hash-seed-func)
   (declare (optimize (speed 3) (safety 0)))
   (with-names (hv c)
+    (let ((f-func (symbolify (s+ hash-func "-FIXNUM")))
+	  (i-func (symbolify (s+ hash-func "-INTEGER")))
+	  (fl-func (symbolify (s+ hash-func "-FLOAT"))))
     `(typecase ,thing
-       (character (,hash-func (char-code ,thing) ,value))
-       (integer   (,hash-func ,thing ,value))
-       ;; If it is a more complicated number than an integer, defer to sxhash
-       ;; since how to do it properly can be architecture dependent, such as
-       ;; getting the bits out of a float.
+       (character (,f-func (char-code ,thing) ,value))
+       (fixnum    (,f-func ,thing ,value))
+       (integer   (,i-func ,thing ,value))
+       (float     (,fl-func ,thing ,value))
+       ;; If it is a more complicated number than an fixnum, integer, or float,
+       ;; defer to sxhash.
        (number    (logand (+ value (sxhash thing)) +cut-off+))
        ;; Add in *keyword-differentiator* so keywods hash to different values
        ;; than the hash of their symbol names.
        (keyword   (hash-thing (symbol-name ,thing)
-			      (,hash-func *keyword-differentiator* ,value)))
+			      (,f-func *keyword-differentiator* ,value)))
        (array ;; also string of course
 	(loop :with ,hv fixnum = (or ,value (,hash-seed-func))
 	   :for ,c :across ,thing
@@ -615,7 +662,7 @@ two values ROW and COLUMN."
 		   #-sbcl (sxhash ,thing))
 	     ,hv))
 	  (t
-	   (error "I don't know how to hash a ~s." (type-of ,thing))))))))
+	   (error "I don't know how to hash a ~s." (type-of ,thing)))))))))
 
 (defun hash-thing (thing &optional (value (fnv-like-hash-seed)))
   (hash-thing-with thing value fnv-like-hash fnv-like-hash-seed))
@@ -1776,6 +1823,14 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
      ;; both
      8)))
 
+;; @@@ see if this helps performance
+(defun fake-output-cost (tty op &rest params)
+  (declare (ignore tty))
+  (case op
+    (:write-fatchar 1)
+    (:write-fatchar-string (length (first params)))
+    (t 1)))
+
 (defun update-line (tty line)
   (let* ((old-line (aref (screen-lines (old-screen tty)) line))
 	 (new-line (aref (screen-lines (new-screen tty)) line))
@@ -1809,7 +1864,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 
 	       ;; Cost of writing this char (@@@ as if it was new)
 	       (incf change-cost
-		     (output-cost wtty :write-fatchar
+		     (fake-output-cost wtty :write-fatchar
 				  ;; (aref new-line i)
 				  ;; @@@ faked, should convert ^^
 				  (make-fatchar)
@@ -1842,7 +1897,7 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
       ;; but what is a good heuristic for when we do?
       (when (> (length changes) (/ (length new-line) 2))
 	(setf new-line-cost
-	      (output-cost wtty :write-fatchar-string new-line))))
+	      (fake-output-cost wtty :write-fatchar-string new-line))))
 
     ;; (dbugf :crunch "new-line-cost ~a change-cost ~s~%~
     ;;                 first-change ~s last-change ~a~%~
