@@ -643,27 +643,27 @@ or ‘to’ exists."
 	(tt-move-to (+ y (table-point-row cursor)) x)))))
 
 (defun dired (&optional (directory (nos:current-directory)))
-  (when (not *no-warning*)
-    (fui:show-text *warning* :justify nil
-			     :y (round (- (/ (tt-height) 2) 11/2))))
-  (let ((top-level (not *dired*))
-	(*no-warning* t))
-    (flet ((body ()
-	    (with-terminal-inator (*dired* 'directory-editor
-				   :directory directory
-				   :last *dired*)
-	      (update-items *dired*)
-	      (inator:resize *dired*)
-	      (table-print:table-output-sizes (table-viewer-renderer *dired*)
-					      (table-viewer-table *dired*))
-	      (event-loop *dired*)
-	      (tt-move-to (1- (tt-height)) 0))))
-      (if top-level
-	  (with-terminal ()
+  (with-terminal ()
+    (when (not *no-warning*)
+      (fui:show-text *warning* :justify nil
+			       :y (round (- (/ (tt-height) 2) 11/2))))
+    (let ((top-level (not *dired*))
+	  (*no-warning* t))
+      (flet ((body ()
+	       (with-terminal-inator (*dired* 'directory-editor
+					      :directory directory
+					      :last *dired*)
+		 (update-items *dired*)
+		 (inator:resize *dired*)
+		 (table-print:table-output-sizes (table-viewer-renderer *dired*)
+						 (table-viewer-table *dired*))
+		 (event-loop *dired*)
+		 (tt-move-to (1- (tt-height)) 0))))
+	(if top-level
 	    (catch 'quit-all
 	      (body))
-	    (tt-move-to (1- (tt-height)) 0))
-	  (body)))))
+	    (body))))
+    (tt-move-to (1- (tt-height)) 0)))
 
 #+lish
 (lish:defcommand dired
