@@ -105,13 +105,15 @@ If ‘quiet’ is true, the default method doesn't apologize."
 	       (setf device-name (nos:file-handle-terminal-name fd)))
 	     (if device-name
 		 ;; @@@ Could we just use *terminal*?
-		 (with-new-terminal ((pick-a-terminal-type) *debug-term*
+		 (with-new-terminal ((platform-default-terminal-type)
+				     *debug-term*
 				     :device-name device-name
 				     :output-stream
 				     (make-broadcast-stream *debug-io*))
 		   (setf (debugger-term ,d) *debug-term*)
 		   (,thunk))
-		 (with-new-terminal ((pick-a-terminal-type) *debug-term*
+		 (with-new-terminal ((platform-default-terminal-type)
+				     *debug-term*
 				     :output-stream
 				     (make-broadcast-stream *debug-io*))
 		   (setf (debugger-term ,d) *debug-term*)
