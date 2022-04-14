@@ -59,15 +59,20 @@
   (modified nil :type boolean)		; true if the entry has be edited
   extra)				; plist of extra things to save
 
-(defvar *history* '() "Line history of some sort.")
-(defvar *history-context* nil "The current dynamic context.")
+(defvar *history* '()
+  "An alist of (:<context-tag> . <struct history>) for storing all the history
+contexts. The contexts are so that different line editor instances can share
+history, for example different inators with different command line syntaxes.")
+
+(defvar *history-context* nil
+  "The current dynamic context.")
 
 (defun get-history (&optional (context *history-context*))
-  "Get the history records for CONTEXT, which should probably be a keyword."
+  "Get the history records for ‘context’, which should probably be a keyword."
   (cdr (assoc context *history*)))
 
 (defun history-init (&optional (context *history-context*))
-  "Initialize history for CONTEXT."
+  "Initialize history for ‘context’."
   (let ((context-hist (assoc context *history*)))
     (when (not context-hist)
       (let ((l (make-dl-list)))
