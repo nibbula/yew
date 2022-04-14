@@ -255,10 +255,12 @@ dashes (a.k.a. #\\hyphen-minus), convert it to the symbol |-|."
 
 (defun view-org (file)
   "View an org-mode FILE with the tree viewer."
-  (let ((tree (read-org-mode-file file)))
-    (setf (node-open tree) t)
-    (view-tree tree :viewer (make-instance 'org-viewer :root tree
-					   :file-name file))))
+  (with-terminal ()
+    (let ((tree (read-org-mode-file file)))
+      (setf (node-open tree) t)
+      (view-tree tree :viewer (make-instance 'org-viewer
+					     :root tree
+					     :file-name file)))))
 
 (defclass org-viewer (tree-viewer file-inator)
   ()
@@ -299,13 +301,14 @@ dashes (a.k.a. #\\hyphen-minus), convert it to the symbol |-|."
 		     org-files)))
   (block nil
     (with-file-list (file org-files)
-      (let ((tree (read-org-mode-file file)))
-	(when (= 1 (length (multiple-value-list
-			    (view-tree tree
-				       :viewer (make-instance
-						'org-viewer
-						:root tree
-						:file-name file)))))
-	  (return))))))
+      (with-terminal ()
+	(let ((tree (read-org-mode-file file)))
+	  (when (= 1 (length (multiple-value-list
+			      (view-tree tree
+					 :viewer (make-instance
+						  'org-viewer
+						  :root tree
+						  :file-name file)))))
+	    (return)))))))
 
 ;; EOF
