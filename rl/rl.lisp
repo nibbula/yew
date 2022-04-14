@@ -429,7 +429,8 @@ Keyword arguments:
        (run-hooks *entry-hook*)
 
        ;; Set the prompt
-       (setf (prompt-string e) prompt (prompt-func e) output-prompt-func
+       (setf (prompt-string e) prompt
+	     (prompt-func e) output-prompt-func
 	     (right-prompt e) right-prompt)
        (when string
 	 ;; @@@ It might be nice to get a better error if string is not
@@ -472,10 +473,8 @@ Keyword arguments:
 		  ;;(describe buf *debug-io*)
 		  (when auto-suggest-p
 		    (auto-suggest-command e))
-		  (update-display e)
-		  (tt-finish-output)
 		  (when debugging
-		    (message e "~d ~d [~d x ~d] ~a ~w"
+		    (message-prepend e "~d ~d [~d x ~d] ~a ~w~%"
 			     (screen-col e) (screen-relative-row e)
 			     (terminal-window-columns terminal)
 			     (terminal-window-rows terminal)
@@ -484,7 +483,12 @@ Keyword arguments:
 			     ;;   (terminal-crunch::start-line *terminal*))
 			     ;;point command)
 			     command (inator-contexts e))
+		    ;; (setf keep-message t)
+		    )
+		  (update-display e)
+		  (when debugging
 		    (show-message-log e))
+		  (tt-finish-output)
 		  (unhighlight-matching-parentheses e)
 		  ;; @@ Is this really where I want it?
 		  (when (line-editor-output-callback e)

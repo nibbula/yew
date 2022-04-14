@@ -34,7 +34,7 @@
   (loop :for i :from 0 :below 8
      :for dd :in (line-editor-debug-log e)
      :do
-     (tt-move-to (+ 10 i) 40)		; The “only” place we should call this
+     (tt-move-to (+ 10 i) 40)	; The “only” place we should call move-to
      (tt-erase-to-eol)
      (tt-write-string dd))
   (tt-bold nil)
@@ -807,6 +807,11 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 					   (line-editor-terminal e))))))
     ;; (redraw-display e)
     ))
+
+(defun message-prepend (e fmt &rest args)
+  (tmp-message e "~a~a" (with-output-to-fat-string (fs)
+			  (apply #'format fs fmt args))
+	       (temporary-message e)))
 
 (defmethod message ((e line-editor) fmt &rest args)
   (apply #'tmp-message e fmt args))
