@@ -958,19 +958,22 @@ the current view with it, but lets us back."))
 ;; of it.
 
 (defun view-html (&optional file)
-  (let ((*html-viewer* (or *html-viewer* (make-instance 'html-viewer))))
-    (unwind-protect
-	 (with-slots (document view views) *html-viewer*
-	   (make-view)
-	   (load-document file)
-	   (make-location-current file)
-	   (view-document view)
-	   ;; Loop to allow view switching. We exit when view-loop returns false.
-	   (loop :while (view-loop view)
-	      :do (setf (inator-quit-flag view) nil
-			(switch-view-p view) nil)))
-      (when (streamp file)
-	(close file)))))
+  (with-terminal ()
+    (with-immediate ()
+      (let ((*html-viewer* (or *html-viewer* (make-instance 'html-viewer))))
+	(unwind-protect
+	     (with-slots (document view views) *html-viewer*
+	       (make-view)
+	       (load-document file)
+	       (make-location-current file)
+	       (view-document view)
+	       ;; Loop to allow view switching. We exit when view-loop returns
+	       ;; false.
+	       (loop :while (view-loop view)
+		     :do (setf (inator-quit-flag view) nil
+			       (switch-view-p view) nil)))
+	  (when (streamp file)
+	    (close file)))))))
 
 #+lish
 (lish:defcommand view-html
