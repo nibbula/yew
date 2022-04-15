@@ -192,7 +192,7 @@ or a system command, designated by either a string, or a list of
   (view-file (ostring-simplify thing)))
 
 (defmethod view ((thing pathname))
-  (view-file thing))
+  (view-file (namestring thing)))
 
 (defmethod view ((thing stream))
   (view-file thing))
