@@ -735,8 +735,8 @@ command for details. If LABEL-DIR is true, print directory labels."
 	       (print-it list)))))))
 
 (defun list-files (&rest args &key files long 1-column wide hidden directory
-				sort-by reverse date-format show-size
-				size-format collect nice-table quiet
+				case-insensitive sort-by reverse date-format
+				show-size size-format collect nice-table quiet
 				ignore-backups omit-headers recursive
 				signal-errors
 				&allow-other-keys)
@@ -750,6 +750,8 @@ command for details. If LABEL-DIR is true, print directory labels."
 	  (getf args :files) files))
   (when (not sort-by)
     (setf (getf args :sort-by) :name))
+  (when (and case-insensitive (eql (keywordify (getf args :sort-by)) :name))
+    (setf (getf args :sort-by) :iname))
   (when (not date-format)
     (setf (getf args :date-format) :normal))
   (when (getf args :nice-table)
@@ -816,6 +818,8 @@ command for details. If LABEL-DIR is true, print directory labels."
    (hidden boolean :short-arg #\a :help "True to list hidden files.")
    (directory boolean :short-arg #\d
     :help "True to list the directory itself, not its contents.")
+   (case-insensitive boolean :short-arg #\C
+    :help "Sorting by name is case insensitive.")
    (sort-by choice :long-arg "sort" :help "Field to sort by."
     :default "name"
     ;; :choices ''("none" "name" "size" "access-time" "creation-time"
