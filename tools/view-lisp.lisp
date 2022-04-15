@@ -1,11 +1,12 @@
-;;
-;; view-lisp.lisp - View things in the Lisp system.
-;;
+;;;
+;;; view-lisp.lisp - View things in the Lisp system.
+;;;
 
 (defpackage :view-lisp
   (:documentation "View things in the Lisp system.")
   (:use :cl :dlib :tree-viewer :dlib-interactive :syntax :syntax-lisp
-	:terminal :collections :fatchar :fatchar-io :completion :ochar :ostring)
+	:terminal :collections :fatchar :fatchar-io :completion :ochar :ostring
+	:view-generic)
   (:export
    #:view-lisp
    ))
@@ -370,6 +371,9 @@
       'system-node
       :object (asdf:registered-system s)
       :open nil)))
+
+(defmethod view ((thing asdf:cl-source-file))
+  (view (asdf:component-pathname thing)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Class nodes
