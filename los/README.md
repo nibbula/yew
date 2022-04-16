@@ -20,6 +20,8 @@ The they should be designed such that:
   - If there's no reason to deviate from the POSIX command, don't. Don't do
     anything that would be overly surprising people familiar with POSIX.
   - Use grout for output, so output is adaptable.
+  - They should be able to run sensibly outside the shell. e.g. as a link
+    to a Lish executable.
 
 The separation between interactive and programmatic invocation, helps
 alleviate the tension between scripting and interactive features, allows user
