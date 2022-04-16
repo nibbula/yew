@@ -1154,7 +1154,7 @@ Some useful functions or macros are:
 	))))
 
 (defun print-image (file &key zoom width height errorp use-full)
-  (let ((t-width (tt-width))
+  (let ((t-width (with-terminal () (tt-width)))
 	;;(t-height (tt-height))
 	(bg-color (lookup-color :black)))
     (with-terminal (:ansi-stream *terminal* :output-stream *standard-output*)
