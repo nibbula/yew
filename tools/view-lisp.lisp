@@ -372,7 +372,8 @@
       :object (asdf:registered-system s)
       :open nil)))
 
-(defmethod view ((thing asdf:cl-source-file))
+;; (defmethod view ((thing asdf:cl-source-file))
+(defmethod view ((thing asdf:component))
   (view (asdf:component-pathname thing)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
