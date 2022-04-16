@@ -155,6 +155,10 @@ of these can appear in path names.")
 	    (and absolute-p (not device))
 	    (os-pathname-path os-path))))
 
+(defmethod os-namestring ((path os-pathname))
+  "Return a namestring for an os-pathname."
+  (os-pathname-namestring path))
+
 (defun os-pathname-pathname (os-path)
   "Return a pathname for an os-pathname."
   (check-type os-path os-pathname)
@@ -282,7 +286,7 @@ Common Lisp 1900 based universal time.")
     (when (plusp (logand attr +FILE-ATTRIBUTE-ARCHIVE+))
       (push :archive flags))))
 
-(defun file-info (path &key (follow-links t))
+(defmethod file-info ((path string) &key (follow-links t))
   "Return information about the file described by PATH in a FILE-INFO
 structure. If FOLLOW-LINKS is true (the default), then if PATH is a symbolic
 link, return information about the file it's linked to, otherwise return
@@ -308,10 +312,10 @@ information about the link itself."
 
 (defconstant +INVALID-FILE-ATTRIBUTES+ #xffffffff)
 
-(defun file-exists (filename)
+(defmethod file-exists ((path string))
   "Check that a file with FILENAME exists at the moment. But it might not exist
 for long."
-  (with-wide-string (w-file (safe-namestring filename))
+  (with-wide-string (w-file (safe-namestring path))
     ;; I'm really just guessing with this whole thing. For example, are there
     ;; any other errors which would constitute being not found?
     (let ((result (%get-file-attributes w-file)))
@@ -353,11 +357,20 @@ for long."
     BOOL
   (file-name LPCTSTR))
 
-(defun os-delete-file (pathname)
+(defmethod os-delete-file ((path string))
   "Delete a file. Doesn't monkey with the name, which should be a string.
 Doesn't operate on streams."
-  (with-wide-string (w-path (safe-namestring pathname))
+  (with-wide-string (w-path (safe-namestring path))
     (syscall (%delete-file w-path))))
+
+(defmethod os-rename-file ((from string) (to string))
+  "Rename the file ‘from’ to the file ‘to’. Doesn't monkey with the names,
+which should be a strings. It doesn't operate on streams. CAUTION: If ‘to’
+already exists, it will be replaced, effectively deleting it."
+  ;; (syscall (posix-rename (safe-namestring from) (safe-namestring to))))
+  ;; (syscall (posix-rename from to))
+  (declare (ignore from to))
+  (missing-implementation 'os-rename-file))
 
 ;; For sahre-mode
 (defconstant +FILE-SHARE-READ+   #x00000001)
@@ -618,7 +631,7 @@ versions of the keywords used in Lisp open.
  (file-information       LPVOID)
  (buffer-size            DWORD))
 
-(defun set-file-time (path &key access-time modification-time)
+(defmethod set-file-time ((path string) &key access-time modification-time)
   "Set the given times on PATH. The times are OS-TIME structures. Either
 time can be :NOW to use the current time."
   #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
@@ -667,13 +680,13 @@ Developer Mode has to be enabled.")
   (target-file-name :string)
   (flags DWORD))
 
-(defun make-symbolic-link (from to)
+(defmethod make-symbolic-link ((from string) (to string))
   "Make a symbolic link from FROM to TO."
   (with-wide-string (w-from from)
     (with-wide-string (w-to to)
       (syscall (%create-symbolic-link w-from w-to 0)))))
 
-(defun symbolic-link-target (link-name)
+(defmethod symbolic-link-target ((link-name string))
   "Return the target of the symbolic link."
   (with-os-file (handle link-name)
     (get-handle-path handle)))
@@ -732,7 +745,7 @@ if not given."
   (path-name LPCTSTR)
   (security-attributes LPSECURITY_ATTRIBUTES))
 
-(defun make-directory (path &key (mode #o755))
+(defmethod make-directory ((path string) &key (mode #o755))
   "Make a directory."
   (declare (ignore mode))
   (with-wide-string (w-path path)
@@ -742,17 +755,17 @@ if not given."
     BOOL
   (path-name LPCTSTR))
 
-(defun delete-directory (path)
+(defmethod delete-directory ((path string))
   "Delete a directory."
   (with-wide-string (w-path path)
     (syscall (%remove-directory w-path))))
 
-(defun directory-p (path)
+(defmethod directory-p ((path string))
   "Return true if PATH is a directory."
   (typecase path
     ;; @@@ We should try to do better, at least for file-streams
     ;; or os-streams.
-    (stream (return-from directory-p nil))
+    ;; (stream (return-from directory-p nil))
     ((or string pathname)
      (with-wide-string (w-file path)
        (let (result)
@@ -769,7 +782,7 @@ if not given."
 		 nil)))))))
 
 ;; This has similar issues as file-exists.
-(defun probe-directory (dir)
+(defmethod probe-directory ((dir string))
   "Something like probe-file but for directories."
   (with-wide-string (w-file dir)
     (let ((result (%get-file-attributes w-file)))

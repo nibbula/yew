@@ -32,8 +32,6 @@
   (milliseconds DWORD)
   (wake-mask DWORD))
 
-(defconstant +STILL-ACTIVE+ 259)
-
 (defcfun ("MsgWaitForMultipleObjectsEx" %msg-wait-for-multiple-objects-ex)
     DWORD
   (count	  DWORD)		; in

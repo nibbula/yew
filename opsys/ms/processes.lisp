@@ -359,6 +359,8 @@ around the time of the call."
 (defvar *all-process-handles* nil
   "List of all active process handles we created.")
 
+(defconstant +STILL-ACTIVE+ 259)
+
 (defun wait-and-chill (handle)
   "Wait for jobs to do something."
   (let ((handle-count (length *all-process-handles*))

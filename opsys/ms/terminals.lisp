@@ -1610,6 +1610,7 @@ boolean indicating visibility."
   "Return the last modification time for the terminal device or NIL if we can't
 get it."
   ;; @@@ maybe figure this out?
+  (declare (ignore fd))
   nil)
 
 (defun terminal-query (query &key max tty)
