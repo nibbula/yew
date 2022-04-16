@@ -13,12 +13,18 @@
 
 (declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
 
+(defun ascii-graphic-char-p (c)
+  "ASCII only version."
+  (let ((cc (char-code c)))
+    (and (>= cc 32) (< cc 126))))
+
 ;; I'm not really sure how good this is yet.
-(defun strings-file-16 (file &key (minimum-string-length 4))
+(defun strings-file-16 (file &key (minimum-string-length 4) ascii-only)
   (with-open-file-or-stream (stream file :direction :input
 				    :element-type '(unsigned-byte 8))
     (let (#| (s (make-stretchy-vector 100 :element-type '(unsigned-byte 8))) |#
 	  (us (make-stretchy-vector 100 :element-type '(unsigned-byte 16)))
+	  (gcp (if ascii-only #'ascii-graphic-char-p #'graphic-char-p))
 	  c cc c1 c2 (last-was-good t) (count 0))
       (flet ((read-16-char ()
 	       (setf c nil cc nil
@@ -33,7 +39,7 @@
 		   (setf c (logior (ash c1 8) c2))
 		   (when (< c char-code-limit)
 		     (setf cc (code-char c))
-		     (when (or (graphic-char-p cc)
+		     (when (or (funcall gcp cc)
 			       (char= cc #\newline))
 		       (setf last-was-good t)
 		       (stretchy-append us c)))))
@@ -55,10 +61,11 @@
       ;; (format t "count = ~s~%" count)
       )))
 
-(defun strings-file (file &key (minimum-string-length 4))
+(defun strings-file (file &key (minimum-string-length 4) ascii-only)
   (with-open-file-or-stream (stream file :direction :input
 				    :element-type '(unsigned-byte 8))
     (let ((s (make-stretchy-vector 100 :element-type '(unsigned-byte 8)))
+	  (gcp (if ascii-only #'ascii-graphic-char-p #'graphic-char-p))
 	  c cc)
       (loop
 	 ;;:and last-was-good
@@ -66,7 +73,7 @@
 	 :do
 	 (setf cc (code-char c))
 	 (cond
-	   ((or (graphic-char-p cc)
+	   ((or (funcall gcp cc)
 		(char= cc #\newline))
 	    (stretchy-append s c)
 	    ;;(format t "c = ~a~%" cc)
@@ -109,6 +116,9 @@
    (utf-16 boolean
     :short-arg  #\u
     :help       "True to pretend strings might be in UTF-16.")
+   (ascii-only boolean
+    :short-arg  #\A
+    :help       "Look for ASCII strings only.")
    (files	pathname
     :default	"-"
     :repeating	t
@@ -118,7 +128,9 @@
   (loop :for f :in (or files (list *standard-input*))
      :do
      (if utf-16
-       (strings-file-16 f :minimum-string-length minimum-string-length)
-       (strings-file f :minimum-string-length minimum-string-length))))
+       (strings-file-16 f :minimum-string-length minimum-string-length
+			  :ascii-only ascii-only)
+       (strings-file f :minimum-string-length minimum-string-length
+		       :ascii-only ascii-only))))
 
 ;; EOF
