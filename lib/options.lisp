@@ -34,15 +34,12 @@ For example:
    #:defoption))
 (in-package :options)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
-		   (compilation-speed 0)))
-
 (defclass option ()
   ((name
     :initarg :name :accessor option-name
     :documentation "Name of the option.")
    (value
-    :initarg :value :accessor option-value  
+    :initarg :value :accessor option-value
     :documentation "Value of the option.")
    (documentation
     :initarg :documentation :accessor option-documentation
@@ -62,18 +59,36 @@ For example:
    )
   (:documentation "Options mixin."))
 
+(defvar *prototypes* (make-hash-table :test #'equal)
+  "A table of prototypes for classes. The key is a class-name.
+The value is a list of options.")
+
+(defun class-prototype (class)
+  "Return the prototype for ‘class’, or NIL if there isn't one."
+  (gethash (class-name class) *prototypes*))
+
+(defun add-option (class name type args)
+  "Add an option named ‘name’ with the given ‘type’ and other properties in
+‘args’ to the prototype for ‘class’."
+    (push (nconc (list type :name name) args)
+	  (gethash (class-name (find-class class)) *prototypes*)))
+
+(defun class-options (class)
+  "Return a list of the options for ‘class’."
+  (loop :with p
+    :for c :in (mop:compute-class-precedence-list class)
+    :when (setf p (class-prototype c))
+    :nconc (if (atom p) (list p) p)))
+
 (defmethod initialize-options ((o options-mixin))
-  (let* ((package (symbol-package (class-name (class-of o))))
-	 (prototype-name (symbolify
-			  (s+ "*" (class-name (class-of o)) "-prototype*")
-			  :package package))
-	 (prototype (and (boundp prototype-name)
-			 (symbol-value prototype-name))))
-    (loop :for option :in prototype :do
-       (when (not (find (getf (cddr option) :name) (options o)
+  (let* ((options (class-options (class-of o))))
+    (when (not options)
+      (warn "There are no options for ~s." (class-name (class-of o))))
+    (loop :for option :in options :do
+       (when (not (find (getf (cdr option) :name) (options o)
 			:key #'option-name :test #'equalp))
-	 (push (apply #'make-instance (second option)
-		      (cddr option))
+	 (push (apply #'make-instance (first option)
+		      (cdr option))
 	       (options o))))))
 
 (defmethod initialize-instance
@@ -113,11 +128,11 @@ For example:
 ;; This is pretty messed up.
 ;;
 ;; When we define an option we squirrel away it's details in a *global*
-;; variable for it's containing class. Then, when we create an object with
-;; options, we intuit it's varible name from the object's class name and
-;; package, and instantiate the options, with the initargs given here.
+;; hashtable keyed by class. Then, when we create an object with options, we
+;; look up the prototype in the hash table and instantiate the options, with
+;; the initargs given here.
 ;;
-;; I would like to hang these on a class allocated slot, but there's no
+;; It might be nice to hang these on a class allocated slot, but there's no
 ;; instance around at the time we're defining them.
 ;;
 ;; The stupid thing is this: if the defoption is done after the object is
@@ -125,11 +140,8 @@ For example:
 ;; when we first try to access them.
 
 (defmacro defoption (class name type &rest args)
-  "Define an option of type TYPE, named NAME for THING, with the initargs ARGS."
-  (let* ((package (symbol-package class))
-	 (prototype (symbolify (s+ "*" class "-prototype*")
-			       :package package))
-	 (sym (symbolify (s+ class "-" name)))
+  "Define an option of ‘type’, named ‘name’ for ‘class’, with the initargs ‘args’."
+  (let* ((sym (symbolify (s+ class "-" name)))
 	 (name-string (string-downcase name)))
     `(progn
        ;; Access options as if they were in the containing object.
@@ -141,7 +153,7 @@ For example:
 	 (:documentation ,(s+ "Set the value of " name-string ".")))
        (defmethod (setf ,sym) (value (obj ,class))
 	 (set-option obj ,name-string value))
-       (push '(,*package* ,type :name ,name-string ,@args) ,prototype))))
+       (add-option ',class ,name-string ',type ',args))))
 
 ;; “I have run out of options patterns.”
 
