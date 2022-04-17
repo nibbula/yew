@@ -82,8 +82,9 @@ The value is a list of options.")
 
 (defmethod initialize-options ((o options-mixin))
   (let* ((options (class-options (class-of o))))
-    (when (not options)
-      (warn "There are no options for ~s." (class-name (class-of o))))
+    ;; This isn't useful. The whole point is we can add options later.
+    ;; (when (not options)
+    ;;   (warn "There are no options for ~s." (class-name (class-of o))))
     (loop :for option :in options :do
        (when (not (find (getf (cdr option) :name) (options o)
 			:key #'option-name :test #'equalp))
