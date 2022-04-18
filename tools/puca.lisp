@@ -27,11 +27,6 @@
    ))
 (in-package :puca)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
-		   (compilation-speed 0)))
-;; (declaim (optimize (speed 3) (safety 0) (debug 1) (space 0)
-;; 		   (compilation-speed 0)))
-
 (defclass puca-item ()
   ()
   (:documentation "A generic item."))
@@ -108,7 +103,8 @@
 File status view:
 A header describes properties of the repository. Lines consist of a
 status code, and a file/object name. Keys operate on the file on the
-current line or the selected files."))
+current line or the selected files. Universal argument will override
+using the selected files and only use the current line."))
 
 (defparameter *puca-prototype* nil
   "Prototype PUCA options.")
@@ -818,13 +814,15 @@ If CONFIRM is true, ask the user for confirmation first."
   (values))
 
 (defun selected-files ()
-  "Return the selected files or the current line, if there's no selections."
-  (with-slots (item-count items (point inator::point) backend) *puca*
+  "Return the selected files or the current line, if there's no selections.
+If the universal-argument is set, just return the current line."
+  (with-slots (item-count items (point inator::point) backend
+	       universal-argument) *puca*
     (let* ((files
 	    (loop :for i :from 0 :below item-count
 	       :when (item-selected (svref items i))
 	       :collect (item-path-name backend (svref items i)))))
-      (or files
+      (or (and (not universal-argument) files)
 	  (and items (list (item-path-name backend (svref items point))))))))
 
 (defun select-all ()
@@ -986,7 +984,7 @@ for the command-function).")
   "Diff"
   (declare (ignore p))
   (do-command #'backend-diff (list (selected-files))
-	      :relist nil :do-pause nil))
+    :relist nil :do-pause nil))
 
 (defun diff-repo-command (p)
   "Diff against commited (-r HEAD)"
@@ -1672,6 +1670,7 @@ point in time (a.k.a. revision hash).")
     (,(meta-char #\escape) 	. eval-expression)
     (,(ctrl #\t)		. toggle-debug)
     (#\w                	. what-command)
+    (,(ctrl #\u)		. universal-argument)
     (#\escape			. *puca-escape-keymap*)))
 
 (defparameter *puca-escape-keymap* (build-escape-map *puca-keymap*))
@@ -1706,15 +1705,29 @@ point in time (a.k.a. revision hash).")
                         backend command." (nice-char key) action))
 	(message p "~a is not defined" (nice-char key)))))
 
+(defun universal-argument (p)
+  "Set the universal argument."
+  (with-slots (universal-argument) p
+    (setf universal-argument
+	  (if universal-argument
+	      (* 4 universal-argument)
+	      4))
+    (message p "C-u ~a" universal-argument)))
+
 ;; (defmethod default-action ((p puca))
 ;;   (message p "Event not bound ~s" (inator-command p)))
 
 (defmethod update-display ((p puca-app))
-  (with-slots ((point inator::point) top first-line bottom debug) p
+  (with-slots ((point inator::point) top first-line bottom debug
+	       universal-argument) p
     (draw-screen p)
     (when debug
-      (message p "point = ~s top = ~s first-line ~s bottom = ~s"
-	       point top first-line bottom))
+      (message p "point = ~s top = ~s first-line ~s bottom = ~s arg ~s ~
+                  last-cmd ~s"
+	       point top first-line bottom universal-argument
+	       (inator-command p)))
+    (when (not (eq (inator-command p) 'universal-argument))
+      (setf universal-argument nil))
     (tt-move-to (+ (- point top) first-line) 2)))
 
 (defmethod start-inator ((p puca-app))
