@@ -169,17 +169,26 @@ using the selected files and only use the current line."))
     :initarg :history-all :accessor backend-history-all
     :documentation "Get the history for all changes.")
    (ignore-file
-    :initarg :ignore-file :accessor backend-ignore-file  :type string
+    :initarg :ignore-file :accessor backend-ignore-file :type string
     :documentation "File which contains a list of files to ignore.")
    (amend
     :initarg :amend :accessor backend-amend
     :documentation "Ammend the last commit message.")
    (amend-file
     :initarg :amend-file :accessor backend-amend-file
-    :documentation "Ammend the last commit message for specific files."))
+    :documentation "Ammend the last commit message for specific files.")
+   (list-branches
+    :initarg :list-branches :accessor backend-list-branches :type string
+    :documentation "List existing branches.")
+   (switch-branch
+    :initarg :switch-branch :accessor backend-switch-branch :type string
+    :documentation "Switch to another branch."))
   (:documentation "A generic version control back end."))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
 ;; Things a backend may want / need to implement.
+;;
 
 (defgeneric check-existence (type)
   (:documentation
@@ -213,7 +222,16 @@ return history for the whole repository."))
 (defgeneric item-path-name (backend item)
   (:documentation "Return the pathname to use for ‘item’ on ‘backend’."))
 
+(defgeneric list-branches (backend)
+  (:documentation "Return a list of branches."))
+
+;; (defgeneric switch-branch (backend)
+;;   )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
 ;; Generic implementations of some possibly backend specific methods.
+;;
 
 (defmethod parse-line ((backend backend) line i)
   "Parse a status line LINE for a typical RCS. I is the line number. Return true
@@ -299,6 +317,11 @@ if an item was added."
 	      "Looks like the ~a command isn't installed?"
 	      command)
       t))
+
+(defmethod list-branches ((backend backend))
+  ;; This default method assumes the list brances command prints the branches
+  ;; one per line.
+  (lish:!_ (backend-list-branches backend)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; CVS
@@ -399,7 +422,10 @@ if an item was added."
                         "--pretty=format:%h%x00%ae%x00%ct%x00%B%x1a")
    :ignore-file	      ".gitignore"
    :amend	      "git --no-pager commit --amend"
-   :amend-file        "git --no-pager commit --amend ~{\"~a\" ~}")
+   :amend-file        "git --no-pager commit --amend ~{\"~a\" ~}"
+   :list-branches     "git --no-pager branch --no-color --list --no-column"
+   :switch-branch     "git switch ~a"
+   )
   (:documentation "Backend for git."))
 
 (defmethod check-existence ((type (eql :git)))
@@ -553,6 +579,15 @@ if an item was added."
        filename)
       (t
        (nos:path-append (get-repo-dir backend) filename)))))
+
+(defmethod list-branches ((backend git))
+  ;; The git specific version, trims spaces removes a leading "*"
+  (let ((branches (lish:!_ (backend-list-branches backend))))
+    (mapcar (_ (let ((b (trim _)))
+		 (if (char= (char b 0) #\*)
+		     (subseq b 2)
+		     b)))
+	    branches)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; SVN
@@ -1031,6 +1066,22 @@ for the command-function).")
   "Amend last commit message for selected"
   (declare (ignore p))
   (do-command #'backend-amend-file (list (selected-files))))
+
+(defun pick-branch (p)
+  (let* ((branches (list-branches (puca-backend p)))
+         (ww (loop :for line :in branches
+		   :maximize (char-util:display-length line))))
+    (pick-list:pick-list
+     branches
+     :popup t
+     :x (- (truncate (tt-width) 2) (truncate ww 2))
+     :y (- (truncate (tt-height) 2) (truncate (length branches) 2)))))
+
+(defun switch-branch-command (p)
+  "Switch branch"
+  (let ((branch (pick-branch p)))
+    (when branch
+      (do-command #'backend-switch-branch (list branch)))))
 
 (defun view-file (p)
   "View file"
@@ -1618,21 +1669,31 @@ point in time (a.k.a. revision hash).")
   `((#\q			. quit)
     (#\Q			. quit)
     (#\?			. help)
-    (#\h			. history-command)
-    (#\H			. history-all-command)
     (#\a			. add-command)
-    (#\r			. reset-command)
-    (#\k			. checkout-command)
+    (#\b			. switch-branch-command)
+    (#\c			. commit-command)
     (#\d			. diff-command)
     (#\D			. diff-repo-command)
-    (#\c			. commit-command)
-    (#\u        		. update-command)
-    (#\U        		. update-all-command)
-    (#\P        		. push-command)
+    (#\e			. show-extra)
+    (#\E			. show-errors)
+    (#\g			. relist)
+    (#\h			. history-command)
+    (#\H			. history-all-command)
     (#\i        		. add-ignore-command)
     (#\I			. commit-interactive-command)
+    (#\k			. checkout-command)
     (#\m			. amend-file-command)
+    (#\P        		. push-command)
+    (#\r			. reset-command)
+    (#\s			. select-all-command)
+    (#\S			. select-none-command)
+    (#\u        		. update-command)
+    (#\U        		. update-all-command)
     (#\v        		. view-file)
+    (#\w                	. what-command)
+    (#\X			. toggle-region)
+    (#\x			. toggle-line)
+    (#\space			. toggle-line)
     (:UP        		. previous)
     (,(code-char 16)		. previous)
     (,(ctrl #\p)       		. previous)
@@ -1653,15 +1714,7 @@ point in time (a.k.a. revision hash).")
     (#\/			. search-command)
     (,(ctrl #\@)		. set-mark)
     (,(code-char 0)		. set-mark)
-    (#\X			. toggle-region)
-    (#\space			. toggle-line)
-    (#\x			. toggle-line)
     (#\return			. toggle-line)
-    (#\s			. select-all-command)
-    (#\S			. select-none-command)
-    (#\g			. relist)
-    (#\e			. show-extra)
-    (#\E			. show-errors)
     (#\:			. extended-command)
     (#\-			. set-option-command)
     ;;(,(ctrl #\L)		. redraw)
@@ -1669,7 +1722,6 @@ point in time (a.k.a. revision hash).")
     (,(meta-char #\=)		. describe-key-briefly)
     (,(meta-char #\escape) 	. eval-expression)
     (,(ctrl #\t)		. toggle-debug)
-    (#\w                	. what-command)
     (,(ctrl #\u)		. universal-argument)
     (#\escape			. *puca-escape-keymap*)))
 
