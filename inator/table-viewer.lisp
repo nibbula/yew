@@ -5,7 +5,7 @@
 (defpackage :table-viewer
   (:documentation "View tables.")
   (:use :cl :dlib :collections :table :table-print :keymap :inator :terminal
-	:terminal-inator :dtt :char-util :fui :fatchar :fatchar-io :grout
+	:terminal-inator :char-util :fui :fatchar :fatchar-io :grout
 	:terminal-table :ostring :view-generic)
   (:export
    #:viewer-table-renderer
@@ -16,13 +16,9 @@
    #:table-point
    #:table-point-row
    #:table-point-col
-   #:view-table-file
-   #:view-table-thing
    #:view-cell
    #:current-cell
    #:view-table
-   #:!view-table
-   #:!print-table
    ))
 (in-package :table-viewer)
 
@@ -975,65 +971,5 @@ at which it's found or NIL if it's not found."
       (event-loop *table-viewer*)
       (tt-move-to (1- (tt-height)) 0)
       (table-viewer-selection renderer))))
-
-(defmacro with-coerced-table ((var thing &key column-names) &body body)
-  "Evalute BODY with VAR bound to THING coerced into a table. Don't do anything
-if THING or lish:*input* NIL."
-  (with-unique-names (thunk)
-    `(let ((,var (or ,thing lish:*input*)))
-       (flet ((,thunk () ,@body))
-	 (when ,var
-	   (typecase ,var
-	     (table)
-	     ((or string pathname stream)
-	      (setf ,var (read-table ,var :column-names ,column-names)))
-	     ((or list array hash-table structure-object)
-	      (setf ,var (make-table-from ,var :column-names ,column-names)))
-	     (t
-	      ;; @@@ check with find-method?
-	      (setf ,var (make-table-from ,var :column-names ,column-names))))
-	   (,thunk))))))
-
-#+lish
-(lish:defcommand print-table
-  ((long-titles boolean :short-arg #\l
-    :help "True to show full column titles.")
-   (column-names list :short-arg #\c
-    :help "List of column titles for the table.")
-   (renderer object :short-arg #\r :help "Table renderer to use.")
-   (table object :help "Table to print."))
-  :accepts '(table sequence hash-table structure-object)
-  "Print a table to the terminal."
-  (with-coerced-table (tab table :column-names column-names)
-    (with-grout ()
-      (if renderer
-	  (grout-print-table tab :long-titles long-titles :renderer renderer)
-	  (grout-print-table tab :long-titles long-titles)))
-    (setf lish:*output* tab)))
-
-(defun view-table-file (file-name)
-  "View the contents of FILE-NAME as a table."
-  (view-table (read-table file-name)))
-
-(defun view-table-thing (thing &key long-titles)
-  "View the THING as a table."
-  (with-coerced-table (tab thing)
-    (view-table tab :long-titles long-titles)))
-
-(defmethod view ((thing table))
-  (view-table thing))
-
-#+lish
-(lish:defcommand view-table
-  ((long-titles boolean :short-arg #\l :default nil
-    :help "True to show full column titles.")
-   (table object :optional t :help "Table to view."))
-  :accepts '(or table sequence hash-table structure-object)
-  "View a table. Pass or pipe it either a table:table object, or something which
-has a table:make-table-from method, which by default are lists, hash-tables,
-arrays, and structures. If it's a string or pathname, try to read a table from
-the file."
-  :accepts '(table sequence hash-table structure-object)
-  (view-table-thing table :long-titles long-titles))
 
 ;; EOF
