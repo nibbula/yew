@@ -305,7 +305,7 @@ If PRINT is nil, don't print any output. The default is T."
    (words boolean :short-arg #\w :help "True to words.")
    (lines boolean :short-arg #\l :help "True to count lines.")
    (print boolean :short-arg #\p :default t :help "True to print counts.")
-   (collect boolean :short-arg #\c :help "True to collect results.")
+   (collect boolean :short-arg #\C :help "True to collect results.")
    (signal-errors boolean :short-arg #\E
     :help "True to signal errors. Otherwise print them to *error-output*.")
    (files pathname :repeating t :help "Files to count."))
