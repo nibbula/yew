@@ -82,6 +82,9 @@ EVENT-LOOP with an INATOR sub-class instance.")
    #:*inator*
    #:run
    #:invoke
+
+   ;; Misc
+   #:*clipboard*
    ))
 (in-package :inator)
 
@@ -102,6 +105,9 @@ EVENT-LOOP with an INATOR sub-class instance.")
     :initarg :clipboard :accessor inator-clipboard
     :documentation "A saved piece of the edited thing for copying."))
   (:documentation "A context for editing operations."))
+
+(defvar *clipboard* nil
+  "A place to copy and paste, if you'd like.")
 
 ;; Some struct-like generics:
 
@@ -287,8 +293,8 @@ not call process-event with it."))
 (defmethod call-command ((inator inator) function args)
   "Default method to invoke inator commands. This can be useful to extend
 command invocation, or have something done on every command. The default
-is just to call function with the INATOR as the first argument and the list ARGS
-as the subsequent arguments."
+is just to call ‘function’ with the ‘inator’ as the first argument and the
+list ‘args’ as the subsequent arguments."
   (apply function inator args))
 
 ;; @@@ This is quite hairy and not really reflected in keymap.lisp
