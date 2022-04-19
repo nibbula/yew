@@ -91,6 +91,27 @@ The slots of the editing context are bound in the body."
 	  (apply (post-name function) e args)))
       (apply function e args)))
 
+(defun add-to-clipboard (string)
+  "Add ‘string’ the to global clipboard."
+  (push string *clipboard*))
+
+(defun clear-clipboard ()
+  "Clear the global clipboard."
+  (setf *clipboard* nil))
+
+(defun clipboard-as-string ()
+  "Return the clipboard as a string."
+  (with-output-to-string (str)
+    (labels ((do-str (s)
+	       (princ (fatchar-string-to-string s) str)))
+      (typecase *clipboard*
+	(string
+	 (do-str *clipboard*))
+	(list
+	 (mapc (_ (do-str _) (princ #\newline str)) *clipboard*))
+	(t
+	 (format str "(~s ~s)" (type-of *clipboard*) *clipboard*))))))
+
 ;; @@@ Perhaps this should be merged with one in completion?
 (defun scan-over (e dir &key func not-in action)
   "If FUNC is provied move over characters for which FUNC is true.
@@ -276,21 +297,15 @@ and move forward a character."
 
 (defsingle-method next-page ((e line-editor))
   (with-slots (temporary-message max-message-lines message-lines message-top) e
-    ;; (dbugf :rlp "next-page ~s~%" message-lines)
     (when (and temporary-message (plusp message-lines))
       (when (> message-lines (+ message-top max-message-lines))
 	(setf message-top (min (1- message-lines)
-			       (+ message-top (1- max-message-lines)))))
-      ;; (dbugf :rlp "message-top ~s~%" message-top)
-      )))
+			       (+ message-top (1- max-message-lines))))))))
 
 (defsingle-method previous-page ((e line-editor))
   (with-slots (temporary-message max-message-lines message-lines message-top) e
-    ;; (dbugf :rlp "previous-page ~s~%" message-lines)
     (when (and temporary-message (plusp message-lines))
-      (setf message-top (max 0 (- message-top max-message-lines)))
-      ;; (dbugf :rlp "message-top ~s~%" message-top)
-      )))
+      (setf message-top (max 0 (- message-top max-message-lines))))))
 
 (defsingle message-home (e)
   "Scroll the message to the beginning."
@@ -443,13 +458,18 @@ current buffer."
 
 (defmulti copy-region (e)
   "Copy the text between the insertion point and the mark to the clipboard."
-  (with-slots (buf copy-region-sets-selection) e
+  (declare (ignorable e))
+  :pre (clear-clipboard)
+  :post
+  (with-slots (copy-region-sets-selection) e
+    (when copy-region-sets-selection
+      ;; @@@ Trying to copy the attributes is stupid right?
+      (setf (tt-selection) (clipboard-as-string))))
+  (with-slots (buf) e
     (let* ((start (min mark point))
 	   (end (min (max mark point) (fill-pointer buf))))
       (setf clipboard (subseq buf start end))
-      (when copy-region-sets-selection
-	;; @@@ Trying to copy the attributes is stupid right?
-	(setf (tt-selection) (fatchar-string-to-string clipboard))))))
+      (add-to-clipboard (subseq buf start end)))))
 
 (defmulti-method copy ((e line-editor))
   (copy-region e))
@@ -469,11 +489,14 @@ current buffer."
 (defmulti kill-region (e)
   "Delete the text between the insertion point and the mark, and put it in
 the clipboard."
+  (declare (ignorable e))
+  :pre (clear-clipboard)
   (with-slots (buf) e
     (let* ((start (min mark point))
 	   (end (min (max mark point) (fill-pointer buf))))
       (setf clipboard (subseq buf start end)
 	    point start)
+      (add-to-clipboard (subseq buf start end))
       (buffer-delete e start end point))))
 
 (defmulti exchange-point-and-mark (e)
@@ -599,10 +622,11 @@ Don't update the display."
       (clear-completions e))))
 
 (defmulti yank (e)
-  (when clipboard
-    (let ((len (length clipboard)))
-      (insert e clipboard)
-      (incf point len))))
+  (let ((clip (or clipboard (clipboard-as-string))))
+    (when clip
+      (let ((len (length clip)))
+	(insert e clip)
+	(incf point len)))))
 
 (defmulti-method paste ((e line-editor))
   (yank e))
