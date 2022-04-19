@@ -7,8 +7,8 @@
 (declaim #.`(optimize ,.(getf rl-config::*config* :optimization-settings)))
 
 (defmacro with-external ((e) &body body)
-  "Do BODY outside the editor E, making sure that the terminal and display are
-in proper condition."
+  "Do ‘body’ outside the editor ‘e’, making sure that the terminal and display
+are in proper condition."
   (with-names (result)
     `(let (,result)
        ;;(finish-output (terminal-output-stream (line-editor-terminal ,e)))
@@ -19,16 +19,42 @@ in proper condition."
        ,result)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun pre-name (name)
+    (symbolify (s+ name "-PRE") :package (symbol-package name)))
+  (defun post-name (name)
+    (symbolify (s+ name "-POST") :package (symbol-package name)))
+
   (defmacro defmulti (name args &body body)
     "Define a command that should be called for each editing context.
-The slots of the editing context are bound in the body."
+The slots of the editing context are bound in the body, as in with-context.
+A clause starting with :pre or :post at the beginning of the body are run
+before and after the body, respectively."
     (with-decls-and-body (body)
-      `(progn
-	 (defun ,name ,args
-	   ,@doc-and-decls
-	   (with-context ()
-	     ,@fixed-body))
-	 (setf (get ',name 'multiple) t))))
+      (let (pre post)
+	(when (and (keywordp (car fixed-body)) (eq (car fixed-body) :pre))
+	  (setf pre (list
+		     `(progn
+			(defun ,(pre-name name) ,args
+			  ,@doc-and-decls
+			  ,(second fixed-body))
+			(setf (get ',name 'pre) ',(pre-name name))))
+		fixed-body (nthcdr 2 fixed-body)))
+	(when (and (keywordp (car fixed-body)) (eq (car fixed-body) :post))
+	  (setf post (list
+		      `(progn
+			 (defun ,(post-name name) ,args
+			   ,@doc-and-decls
+			   ,(second fixed-body))
+			 (setf (get ',name 'post) ',(post-name name))))
+		fixed-body (nthcdr 2 fixed-body)))
+	`(progn
+	   (defun ,name ,args
+	     ,@doc-and-decls
+	     (with-context ()
+	       ,@fixed-body))
+	   (setf (get ',name 'multiple) t)
+	   ,@pre
+	   ,@post))))
 
   (defmacro defmulti-method (name args &body body)
     "Define a command that should be called for each editing context.
@@ -56,8 +82,13 @@ The slots of the editing context are bound in the body."
 (defmethod call-command ((e line-editor) function args)
   "Command invoker that handles calling commands for multiple editing contexts."
   (if (get function 'multiple)
-      (do-contexts (e)
-	(apply function e args))
+      (progn
+	(when (get function 'pre)
+	  (apply (pre-name function) e args))
+	(do-contexts (e)
+	  (apply function e args))
+	(when (get function 'post)
+	  (apply (post-name function) e args)))
       (apply function e args)))
 
 ;; @@@ Perhaps this should be merged with one in completion?
