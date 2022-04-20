@@ -1457,7 +1457,7 @@ Returns the the open stream or NIL."
     (error 'directory-error
 	   :format-control "~a is a directory."
 	   :format-arguments (list filename)))
-  (etypecase filename
+  (typecase filename
     (stream
      (when (and binary (not (eq (stream-element-type filename)
 				'(unsigned-byte 8))))
@@ -1468,12 +1468,15 @@ Returns the the open stream or NIL."
      (if binary
 	 (open (quote-filename filename) :direction :input
 	       :element-type '(unsigned-byte 8))
-	 (make-instance 'utf8b-stream:utf8b-input-stream
-			:input-stream
-			(open (quote-filename filename) :direction :input
-			      :element-type '(unsigned-byte 8)))
+	 (progn
+	   (make-instance 'utf8b-stream:utf8b-input-stream
+			  :input-stream
+			  (open (quote-filename filename) :direction :input
+			      :element-type '(unsigned-byte 8))))
 	 ;; (open (quote-filename filename) :direction :input)
-	 ))))
+	 ))
+    (t
+     (error "Sorry, I don't know how to open a ~s" (type-of filename)))))
 
 ;; #+sbcl :external-format
 ;; ;;#+sbcl '(:utf-8 :replacement #\replacement_character)
@@ -2324,7 +2327,8 @@ q - Abort")
     (loop :while (eq 'do-over
 		     (setf result
 			   (catch 'do-over
-			     (%page files :pager pager :close-me close-me
+			     (%page files :pager pager
+					  :close-me close-me
 					  :suspended suspended
 					  :options options)))))
     result))
@@ -2344,6 +2348,8 @@ q - Abort")
      ;; But if it's explicitly a pathname then try to open it.
      (page thing :options options))
     (sequence
+     (page thing :options options))
+    (stream
      (page thing :options options))
     (t
      (with-input-from-string (str (prin1-to-string thing))
