@@ -818,6 +818,7 @@ CACHED can be one of :ONLY, :NO, :BUILD, :DEFAULT.
 			       (command-cache-dirs *command-pathname-cache*)
 			       :test #'equal))
 		    ;; (format t "THE SLOW CODE~%") (finish-output)
+		    #|
 		    (loop
 		       :with full = nil
 		       :for f :in (read-directory :dir dir) :do
@@ -834,6 +835,28 @@ CACHED can be one of :ONLY, :NO, :BUILD, :DEFAULT.
 			     (when (and update
 					(not (gethash f table)))
 			       (setf (gethash f table) dir)))
+			 (opsys-error (c) (declare (ignore c)))))
+		    |#
+		    ;; Unlike the above code which is slow, due to stat-ing
+		    ;; every file, this just assumes a regular file can
+		    ;; be executable.
+		    (loop
+		       :with full = nil :and name
+		       :for f :in (read-directory :dir dir :full t) :do
+		       (handler-case
+			   (when (eq (dir-entry-type f) :regular)
+			     (setf full (s+ dir *directory-separator*
+					    (dir-entry-name f))
+				   name (dir-entry-name f))
+			     (when (command-test #'equal cmd name)
+			       (when (not result)
+				 (setf result full
+				       (gethash cmd table) dir))
+			       (when (not update)
+				 (return-from command-pathname result)))
+			     (when (and update
+					(not (gethash name table)))
+			       (setf (gethash name table) dir)))
 			 (opsys-error (c) (declare (ignore c))))))
 		(opsys-error (c) (declare (ignore c)))))
 	   result)))))
