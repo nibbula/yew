@@ -436,10 +436,18 @@ if not given.")
 (defmethod probe-directory (dir)
   (probe-directory (os-namestring dir)))
 
-(defmethod directory-p (path)
+;; (defmethod directory-p ((path string))
+;;   (directory-p (os-namestring path)))
+
+(defmethod directory-p ((path pathname))
   (directory-p (os-namestring path)))
 
 (defmethod directory-p ((path stream))
+  (declare (ignore path))
+  ;; @@@ maybe there's some possibility to have directory streams
+  nil)
+
+(defmethod directory-p (path)
   (declare (ignore path))
   nil)
 
