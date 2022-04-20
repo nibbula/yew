@@ -553,9 +553,12 @@ If every object in a column:
 		       (setf (aref guess i) 'number))
 		      (number #| still a number |#)
 		      (string
-		       (when (not (potential-number-p e))
-			 ;; (format t "number -> string~%")
-			 (setf (aref guess i) 'string)))
+		       ;; There's a number in mixed in with strings, so
+		       ;; unfortunately we have to put it to T.
+		       ;; (when (not (potential-number-p e))
+		       ;; 	 ;; (format t "number -> string~%")
+		       ;; 	 (setf (aref guess i) 'string))
+		       (setf (aref guess i) t))
 		      (symbol
 		       (when (not (potential-number-p (string e)))
 			 ;; (format t "number -> string~%")
@@ -610,7 +613,7 @@ If every object in a column:
 		      ((or (eq (type-of e) (aref guess i))
 			   (typep e (aref guess i)))
 		       #| We're still okay, I suppose. |#)
-		      ((subtypep e (aref guess i))
+		      ((subtypep (type-of e) (aref guess i))
 		       ;; Set it to a more specific type
 		       ;; (setf (aref guess i) (type-of e))
 		       ;; @@@ actually don't
