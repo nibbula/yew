@@ -91,67 +91,166 @@
     #+(and darwin 64-bit-target) :int64
     #-(and darwin 64-bit-target) :int32)
 
-(defcvar (#+darwin "__stdinp"  #-darwin "stdin"  *stdin*)  file-ptr)
-(defcvar (#+darwin "__stdoutp" #-darwin "stdout" *stdout*) file-ptr)
-(defcvar (#+darwin "__stderrp" #-darwin "stderr" *stderr*) file-ptr)
+(defcvar (#+darwin "__stdinp"  #-darwin "stdin"  *stdin*) file-ptr
+  "Standard input stream FILE pointer.")
+(defcvar (#+darwin "__stdoutp" #-darwin "stdout" *stdout*) file-ptr
+  "Standard output stream FILE pointer.")
+(defcvar (#+darwin "__stderrp" #-darwin "stderr" *stderr*) file-ptr
+  "Standard error stream FILE pointer.")
 
-(defcfun fopen file-ptr (path :string) (mode :string))
-(defcfun fclose :int (file file-ptr))
-#-windows (defcfun fileno :int (file file-ptr))
-(defcfun fflush :int (file file-ptr))
-(defcfun fgetc :int (file file-ptr))
-(defcfun getc :int (file file-ptr))
-(defcfun getchar :int)
-(defcfun fgets :string (str :string) (size :int) (file file-ptr))
-(defcfun gets :string (str :string))
-(defcfun printf :int (format :string) &rest)
-(defcfun fprintf :int (file file-ptr) (format :string) &rest)
-(defcfun sprintf :int (str :string) (format :string) &rest)
-(defcfun snprintf :int (str :string) (size size-t) (format :string) &rest)
-(defcfun fputc :int (c :int) (file file-ptr))
-(defcfun putc :int (c :int) (file file-ptr))
-(defcfun putchar :int (c :int))
-(defcfun fputs :int (s :string) (file file-ptr))
-(defcfun puts :int (s :string))
-(defcfun fread size-t (ptr :pointer) (size size-t) (nitems size-t)
-	 (file file-ptr))
-(defcfun fwrite size-t (ptr :pointer) (size size-t) (nitems size-t)
-	 (file file-ptr))
-(defcfun fscanf :int (file file-ptr) (format :string) &rest)
-(defcfun scanf :int  (format :string) &rest)
-(defcfun sscanf :int (s :string) (format :string) &rest)
+(defcfun fopen file-ptr
+  "Open the file named by the string ‘path’. Return the stream or a null pointer
+if it fails."
+(path :string) (mode :string))
+(defcfun fclose :int
+  "Close the given FILE pointer. Return 0 if successful, other"
+  (file file-ptr))
+#-windows (defcfun fileno :int
+  "Return the file descriptor of a FILE." (file file-ptr))
+(defcfun fflush :int
+  "Force buffered output to be written, or discard buffered input."
+  (file file-ptr))
+(defcfun fgetc :int
+  "Get the next character from the stream."
+  (file file-ptr))
+(defcfun getc :int
+  "Get the next character from the stream."
+  (file file-ptr))
+(defcfun getchar :int
+  "Get the next character from the standard input *stdin*.")
+(defcfun fgets :string
+  "Read ‘size’ characters from ‘file’ into ‘string’, until a newline."
+  (str :string) (size :int) (file file-ptr))
+(defcfun gets :string
+  "Read from *stdin* into ‘str’ until a newline or EOF."
+  (str :string))
+(defcfun printf :int
+  "Formatted output to *stdout* as decribed by the string ‘format’ and the rest
+of the arguments."
+  (format :string) &rest)
+(defcfun fprintf :int
+  "Formatted output to ‘file’ as decribed by the string ‘format’ and the rest
+of the arguments."
+  (file file-ptr) (format :string) &rest)
+(defcfun sprintf :int
+  "Formatted output to the string ‘str’ as decribed by the string ‘format’ and
+the rest of the arguments."
+  (str :string) (format :string) &rest)
+(defcfun snprintf :int
+  "Formatted output of at most ‘size’ bytes to the string ‘str’ as decribed by
+the string ‘format’ and the rest of the arguments."
+  (str :string) (size size-t) (format :string) &rest)
+(defcfun fputc :int
+  "Write a character ‘c’ to ‘file’."
+  (c :int) (file file-ptr))
+(defcfun putc :int
+  "Write a character ‘c’ to ‘file’."
+  (c :int) (file file-ptr))
+(defcfun putchar :int
+  "Write a character ‘c’ to *stdout*."
+  (c :int))
+(defcfun fputs :int
+  "Write a string ‘s’ to stream ‘file’."
+  (s :string) (file file-ptr))
+(defcfun puts :int
+  "Write a string ‘s’ and a newline to *stdout*."
+  (s :string))
+(defcfun fread size-t
+  "Read ‘nitems’ of size ‘size’ into ‘ptr’ from ‘file’."
+  (ptr :pointer) (size size-t) (nitems size-t) (file file-ptr))
+(defcfun fwrite size-t
+  "Write ‘nitems’ of size ‘size’ into ‘ptr’ to ‘file’."
+  (ptr :pointer) (size size-t) (nitems size-t) (file file-ptr))
+(defcfun fscanf :int
+  "Read formatted input from ‘file’, according to the string ‘format’ into the
+rest of the arguments."
+  (file file-ptr) (format :string) &rest)
+(defcfun scanf :int
+  "Read formatted input from *stdin*, according to the string ‘format’ into the
+rest of the arguments."
+  (format :string) &rest)
+(defcfun sscanf :int
+  "Read formatted input from string ‘s’, according to the string ‘format’ into
+the rest of the arguments."
+  (s :string) (format :string) &rest)
 
-(defcfun fsetpos :int (file file-ptr) (pos fpos-t))
-(defcfun fgetpos :int (file file-ptr) (pos fpos-t))
-(defcfun fseek :int (file file-ptr) (offset :long) (whence :int))
-(defcfun ftell :int (file file-ptr))
+(defcfun fsetpos :int
+  "Set the position in ‘file’ to ‘pos’."
+  (file file-ptr) (pos fpos-t))
+(defcfun fgetpos :int
+  "Get the position in ‘file’ to ‘pos’."
+  (file file-ptr) (pos fpos-t))
+(defcfun fseek :int
+  "Move the position in ‘file’ to ‘offset’ according to ‘whence’."
+  (file file-ptr) (offset :long) (whence :int))
+(defcfun ftell :int
+  "Return the position in ‘file’."
+  (file file-ptr))
 
-(defcfun perror :void (s :string))
+(defcfun perror :void
+  "Print a description of the last error to *stderr* prefixed by the string ‘s’."
+  (s :string))
 
-(defcfun setbuf :int (file file-ptr) (buf :string))
-(defcfun ungetc :int (file file-ptr))
+(defcfun setbuf :int
+  "Set the buffer for stream ‘file’ to ‘buf’ of BUFSIZ bytes. If ‘buf’ is a
+null-pointer, the stream is unbuffered."
+  (file file-ptr) (buf :string))
+(defcfun ungetc :int
+  "Make the character ‘c’ available for reading from ‘file’."
+  (c :int)
+  (file file-ptr))
 
-(defcfun ctermid :string (s :string)) ;; useless?
+(defcfun ctermid :string
+  "Return a string that names the controlling terminal for the process. If ‘s’
+is given, put it at most L_cetermid characters of the name in it. Otherwise
+it returns a “static” buffer."
+  (s :string)) ;; useless?
 
-(defcfun system :int (command :string))
+(defcfun system :int
+  "Run the string ‘command’ as a command to system shell."
+  (command :string))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ctype & wctype - character classification from the standard C library
 
 (defctype wint-t :int32)
 
-(defcfun iswalnum :int (wc wint-t))
-(defcfun iswalpha :int (wc wint-t))
-#-windows (defcfun iswblank :int (wc wint-t))
-(defcfun iswcntrl :int (wc wint-t))
-(defcfun iswdigit :int (wc wint-t))
-(defcfun iswgraph :int (wc wint-t))
-(defcfun iswlower :int (wc wint-t))
-(defcfun iswprint :int (wc wint-t))
-(defcfun iswpunct :int (wc wint-t))
-(defcfun iswspace :int (wc wint-t))
-(defcfun iswupper :int (wc wint-t))
-(defcfun iswxdigit :int (wc wint-t))
+(defcfun iswalnum :int
+  "Return non-zero if the wide character ‘wc’ is alpha-numeric."
+  (wc wint-t))
+(defcfun iswalpha :int
+  "Return non-zero if the wide character ‘wc’ is alphabetic."
+  (wc wint-t))
+#-windows (defcfun iswblank :int
+  "Return non-zero if the wide character ‘wc’ is blank."
+  (wc wint-t))
+(defcfun iswcntrl :int
+  "Return non-zero if the wide character ‘wc’ is a control character."
+  (wc wint-t))
+(defcfun iswdigit :int
+  "Return non-zero if the wide character ‘wc’ is a digit."
+  (wc wint-t))
+(defcfun iswgraph :int
+  "Return non-zero if the wide character ‘wc’ is a graphic character."
+  (wc wint-t))
+(defcfun iswlower :int
+  "Return non-zero if the wide character ‘wc’ is a lower case character."
+  (wc wint-t))
+(defcfun iswprint :int
+  "Return non-zero if the wide character ‘wc’ is a printing character."
+  (wc wint-t))
+(defcfun iswpunct :int
+  "Return non-zero if the wide character ‘wc’ is a punctuation character."
+  (wc wint-t))
+(defcfun iswspace :int
+  "Return non-zero if the wide character ‘wc’ is a space character."
+  (wc wint-t))
+(defcfun iswupper :int
+  "Return non-zero if the wide character ‘wc’ is an upper case character."
+  (wc wint-t))
+(defcfun iswxdigit :int
+  "Return non-zero if the wide character ‘wc’ is a hexadecimal digit."
+  (wc wint-t))
 
 ;; I think these are not standard. BSD?
 ;;(defcfun iswrune :int (wc wint-t))
@@ -162,19 +261,45 @@
 ;;(defcfun iswphonogram :int (wc wint-t))
 ;;(defcfun iswspecial :int (wc wint-t))
 
-(defcfun isalnum :int (c :int))
-(defcfun isalpha :int (c :int))
-#-windows (defcfun isascii :int (c :int))
-#-windows (defcfun isblank :int (c :int))
-(defcfun iscntrl :int (c :int))
-(defcfun isdigit :int (c :int))
-(defcfun isgraph :int (c :int))
-(defcfun islower :int (c :int))
-(defcfun isprint :int (c :int))
-(defcfun ispunct :int (c :int))
-(defcfun isspace :int (c :int))
-(defcfun isupper :int (c :int))
-(defcfun isxdigit :int (c :int))
+(defcfun isalnum :int
+  "Return non-zero if the character ‘c’ is alpha-numeric."
+  (c :int))
+(defcfun isalpha :int
+  "Return non-zero if the character ‘c’ is alphabetic."
+  (c :int))
+#-windows (defcfun isascii :int
+  "Return non-zero if the character ‘c’ is 7-bit ASCII."
+  (c :int))
+#-windows (defcfun isblank :int
+  "Return non-zero if the character ‘c’ is blank."
+  (c :int))
+(defcfun iscntrl :int
+  "Return non-zero if the character ‘c’ is a control character."
+  (c :int))
+(defcfun isdigit :int
+  "Return non-zero if the character ‘c’ is a digit."
+  (c :int))
+(defcfun isgraph :int
+  "Return non-zero if the character ‘c’ is a graphic character."
+  (c :int))
+(defcfun islower :int
+  "Return non-zero if the character ‘c’ is a lower case character."
+  (c :int))
+(defcfun isprint :int
+  "Return non-zero if the character ‘c’ is a printing character."
+  (c :int))
+(defcfun ispunct :int
+  "Return non-zero if the character ‘c’ is a punctuation character."
+  (c :int))
+(defcfun isspace :int
+  "Return non-zero if the character ‘c’ is a space character."
+  (c :int))
+(defcfun isupper :int
+  "Return non-zero if the character ‘c’ is an upper case character."
+  (c :int))
+(defcfun isxdigit :int
+  "Return non-zero if the character ‘c’ is a hexadecimal digit."
+  (c :int))
 
 ;; Non-standard.
 ;;(defcfun ishexnumber :int (c :int))
