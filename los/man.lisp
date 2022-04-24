@@ -218,20 +218,23 @@ Return a list of (<entry> <section>), or just ENTRY if something goes wrong."
   "Manual entry."
   ()
   (:default-initargs
-   :test #'arg-choice-compare
+   ;; :test #'arg-choice-compare
+   :test #'string=
    :choice-func #'get-manual-entries))
 
 ;; @@@ This needs work
 (defcommand man
-   ((apropos string :short-arg #\k :help "Search page titles for a string.")
-    (section manual-section :short-arg #\s :help "Show page from section.")
-    (all boolean :short-arg #\a :help "Show all matching pages.")
-    (rehash boolean :short-arg #\r :help "Re-calculate caches.")
+   ((apropos   string :short-arg #\k :help "Search page titles for a string.")
+    (section   manual-section :short-arg #\s :help "Show page from section.")
+    (all       boolean :short-arg #\a :help "Show all matching pages.")
+    (rehash    boolean :short-arg #\r :help "Re-calculate caches.")
     (use-pager boolean :short-arg #\p :default t
      :help "True to view the output in the pager.")
     (path string :short-arg #\M
      :help "Colon separated path to search for pages.")
-    (entry manual-entry :optional t :help "Name of manual entry."))
+    ;; (entry manual-entry :optional t :help "Name of manual entry.")
+    (entry manual-entry :help "Name of manual entry.")
+    )
   "Display a manual page for a command. With -k search for a matching page."
   :accepts '(arg-manual-entry)
   (when (not (or entry apropos))
@@ -282,6 +285,7 @@ Return a list of (<entry> <section>), or just ENTRY if something goes wrong."
       (when stream
 	(close stream)))))
 
+;; @@@ This is only here because manual-entry completion fails for the above
 (defcommand crap
   ((use-pager boolean :short-arg #\p :default t
    :help "True to view the output in the pager.")
