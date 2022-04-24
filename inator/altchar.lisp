@@ -7,7 +7,6 @@
   (:use :cl :char-util :keymap :options :collections :rl :pick-list :inator)
   (:export
    #:altchar-mode
-   #:exit-altchar-mode
    #:altchar-insert-command
    #:pick-altchar
    #:pick-altchar-command
@@ -187,6 +186,12 @@ we can use pick-list effectively."
        (aref (alphabet-punctuation alphabet) pos))
       (t c))))
 
+(defgeneric altchar-insert-command (editor)
+  (:documentation
+   "Insert the version of the character in last-event from the alternative
+character set, if a character set is active and there is a character defined.
+Otherwise insert the normal character."))
+
 (defmulti-method altchar-insert-command ((e line-editor))
   (let ((set (line-editor-character-set e)))
     (when set
@@ -220,12 +225,16 @@ we can use pick-list effectively."
     (message e "Altchar mode ~:[off~;on~]." (line-editor-altchar-mode e))))
 
 (defun pick-altchar ()
+  "Pick which alternate character set to use."
   (pick-list (loop :for a :in *alphabets* :collect a)))
 
 (defun pick-altchar-command (e)
+  "Pick which alternate character set to use an editor."
   (setf (line-editor-character-set e) (pick-altchar)))
 
 (defun bind-keys ()
+  "Bind the keys for toggling altchar-mode and picking a character set, in the
+global default keymap for the line editor."
   (keymap:set-key #\a 'altchar-mode rl::*ctlx-keymap*)
   (keymap:set-key (ctrl #\a) 'pick-altchar-command rl::*ctlx-keymap*)
   (values))
