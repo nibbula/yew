@@ -64,7 +64,8 @@
 
 (defcommand snip
   ((pattern	string #| regexp |# :optional nil
-    :help "A regular expression to search for or an integer byte offset.")
+;;    :help "A regular expression to search for or an integer byte offset.")
+    :help "A regular expression to search for.")
    (source	input-stream-or-filename :default '*standard-input*
     :help "Input file or stream to read from.")
    (before	boolean :short-arg #\b :long-arg "before":default nil
