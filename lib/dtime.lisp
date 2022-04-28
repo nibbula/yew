@@ -64,6 +64,81 @@ live on Earth very recently only!")
     (+ (* multy (dtime-seconds dtime))
        (/ (dtime-nanoseconds dtime) (/ +ns-per-sec+ multy)))))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  ;; The stupid base unit of time is seconds.
+  ;; Anything after weeks is bogus because years are variable and poorly defined!
+  ;; But for this bullcrap, we use the Jullian year which is exactly 365.25.
+  ;; Just more of the long painful future history of time.
+  (defparameter *time-super-units*
+    #(((:millennia :millennium)      #.(* 60 60 24 (+ 365 1/4) 1000))
+      ((:centuries :century)         #.(* 60 60 24 (+ 365 1/4) 100))
+      ((:decades   :decade)          #.(* 60 60 24 (+ 365 1/4) 10))
+      ((:years     :year   :yr)      #.(* 60 60 24 (+ 365 1/4)))
+      ((:weeks     :week   :wk)      #.(* 60 60 24 7))
+      ((:days      :day    :d)       #.(* 60 60 24))
+      ((:hours     :hour   :h :hr)   #.(* 60 60))
+      ((:minutes   :minute :m :min)  60)
+      ((:seconds   :second :s)       1)))
+
+  (defun dtime-factor (unit)
+    (second (find-if (_ (member unit _)) *time-super-units* :key #'first)))
+
+  (defparameter *time-sub-units*
+    #(
+      ((:seconds      :second      :s)  #.(expt 10 0))
+      ((:deciseconds  :decisecond  :ds) #.(expt 10 1))
+      ((:centiseconds :centisecond :cs) #.(expt 10 2))
+      ((:milliseconds :millisecond :ms) #.(expt 10 3))
+      ((:microseconds :microsecond :µs) #.(expt 10 6))
+      ((:nanoseconds  :nanosecond  :ns) #.(expt 10 9))
+      ((:picoseconds  :picosecond  :ps) #.(expt 10 12))
+      ((:femtoseconds :femtosecond :fs) #.(expt 10 15))
+      ((:attoseconds  :attosecond  :as) #.(expt 10 18))
+      ((:zeptoseconds :zeptosecond :zs) #.(expt 10 21))
+      ((:yoctoseconds :yoctosecond :ys) #.(expt 10 24))
+      ))
+
+  (defun dtime-divisor (unit)
+    (second (find-if (_ (member unit _)) *time-sub-units* :key #'first))))
+
+(defun millennia-to-time (millennia) (* millennia #.(dtime-factor :millennia)))
+(defun centuries-to-time (centuries) (* centuries #.(dtime-factor :centuries)))
+(defun decades-to-time   (decades)   (* decades   #.(dtime-factor :decades)))
+(defun years-to-time     (year)      (* year      #.(dtime-factor :years)))
+(defun weeks-to-time     (weeks)     (* weeks     #.(dtime-factor :weeks)))
+(defun days-to-time      (days)      (* days      #.(dtime-factor :days)))
+(defun hours-to-time     (hours)     (* hours     #.(dtime-factor :hours)))
+(defun minutes-to-time   (minutes)   (* minutes   #.(dtime-factor :minutes)))
+
+(defun time-to-millennia (seconds) (/ seconds #.(dtime-factor :millennia)))
+(defun time-to-centuries (seconds) (/ seconds #.(dtime-factor :centuries)))
+(defun time-to-decades   (seconds) (/ seconds #.(dtime-factor :decades)))
+(defun time-to-years     (seconds) (/ seconds #.(dtime-factor :year)))
+(defun time-to-weeks     (seconds) (/ seconds #.(dtime-factor :weeks)))
+(defun time-to-days      (seconds) (/ seconds #.(dtime-factor :days)))
+(defun time-to-hours     (seconds) (/ seconds #.(dtime-factor :hours)))
+(defun time-to-minutes   (seconds) (/ seconds #.(dtime-factor :minutes)))
+
+#|
+(defun millennia-to-time (millennia) (* millennia (* 60 60 24 (+ 365 1/4) 1000)))
+(defun centuries-to-time (centuries) (* centuries (* 60 60 24 (+ 365 1/4) 100)))
+(defun decades-to-time   (decades)   (* decades   (* 60 60 24 (+ 365 1/4) 10)))
+(defun years-to-time     (year)      (* year      (* 60 60 24 (+ 365 1/4))))
+(defun weeks-to-time     (weeks)     (* weeks     (* 60 60 24 7)))
+(defun days-to-time      (days)      (* days      (* 60 60 24)))
+(defun hours-to-time     (hours)     (* hours     (* 60 60)))
+(defun minutes-to-time   (minutes)   (* minutes   60))
+
+(defun time-to-millennia (seconds) (/ seconds (* 60 60 24 (+ 365 1/4) 1000)))
+(defun time-to-centuries (seconds) (/ seconds (* 60 60 24 (+ 365 1/4) 100)))
+(defun time-to-decades   (seconds) (/ seconds (* 60 60 24 (+ 365 1/4) 10)))
+(defun time-to-years     (seconds) (/ seconds (* 60 60 24 (+ 365 1/4))))
+(defun time-to-weeks     (seconds) (/ seconds (* 60 60 24 7)))
+(defun time-to-days      (seconds) (/ seconds (* 60 60 24)))
+(defun time-to-hours     (seconds) (/ seconds (* 60 60)))
+(defun time-to-minutes   (seconds) (/ seconds 60))
+|#
+
 (defun dtime-round (time unit)
   "Round off DTIME to UNIT units."
   (ecase unit
@@ -565,81 +640,6 @@ The date part is considered to be the current date."
 (defun simple-parse-date (string)
   ""
   (
-|#
-
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  ;; The stupid base unit of time is seconds.
-  ;; Anything after weeks is bogus because years are variable and poorly defined!
-  ;; But for this bullcrap, we use the Jullian year which is exactly 365.25.
-  ;; Just more of the long painful future history of time.
-  (defparameter *time-super-units*
-    #(((:millennia :millennium)      #.(* 60 60 24 (+ 365 1/4) 1000))
-      ((:centuries :century)         #.(* 60 60 24 (+ 365 1/4) 100))
-      ((:decades   :decade)          #.(* 60 60 24 (+ 365 1/4) 10))
-      ((:years     :year   :yr)      #.(* 60 60 24 (+ 365 1/4)))
-      ((:weeks     :week   :wk)      #.(* 60 60 24 7))
-      ((:days      :day    :d)       #.(* 60 60 24))
-      ((:hours     :hour   :h :hr)   #.(* 60 60))
-      ((:minutes   :minute :m :min)  60)
-      ((:seconds   :second :s)       1)))
-
-  (defun dtime-factor (unit)
-    (second (find-if (_ (member unit _)) *time-super-units* :key #'first)))
-
-  (defparameter *time-sub-units*
-    #(
-      ((:seconds      :second      :s)  #.(expt 10 0))
-      ((:deciseconds  :decisecond  :ds) #.(expt 10 1))
-      ((:centiseconds :centisecond :cs) #.(expt 10 2))
-      ((:milliseconds :millisecond :ms) #.(expt 10 3))
-      ((:microseconds :microsecond :µs) #.(expt 10 6))
-      ((:nanoseconds  :nanosecond  :ns) #.(expt 10 9))
-      ((:picoseconds  :picosecond  :ps) #.(expt 10 12))
-      ((:femtoseconds :femtosecond :fs) #.(expt 10 15))
-      ((:attoseconds  :attosecond  :as) #.(expt 10 18))
-      ((:zeptoseconds :zeptosecond :zs) #.(expt 10 21))
-      ((:yoctoseconds :yoctosecond :ys) #.(expt 10 24))
-      ))
-
-  (defun dtime-divisor (unit)
-    (second (find-if (_ (member unit _)) *time-sub-units* :key #'first))))
-
-(defun millennia-to-time (millennia) (* millennia #.(dtime-factor :millennia)))
-(defun centuries-to-time (centuries) (* centuries #.(dtime-factor :centuries)))
-(defun decades-to-time   (decades)   (* decades   #.(dtime-factor :decades)))
-(defun years-to-time     (year)      (* year      #.(dtime-factor :years)))
-(defun weeks-to-time     (weeks)     (* weeks     #.(dtime-factor :weeks)))
-(defun days-to-time      (days)      (* days      #.(dtime-factor :days)))
-(defun hours-to-time     (hours)     (* hours     #.(dtime-factor :hours)))
-(defun minutes-to-time   (minutes)   (* minutes   #.(dtime-factor :minutes)))
-
-(defun time-to-millennia (seconds) (/ seconds #.(dtime-factor :millennia)))
-(defun time-to-centuries (seconds) (/ seconds #.(dtime-factor :centuries)))
-(defun time-to-decades   (seconds) (/ seconds #.(dtime-factor :decades)))
-(defun time-to-years     (seconds) (/ seconds #.(dtime-factor :year)))
-(defun time-to-weeks     (seconds) (/ seconds #.(dtime-factor :weeks)))
-(defun time-to-days      (seconds) (/ seconds #.(dtime-factor :days)))
-(defun time-to-hours     (seconds) (/ seconds #.(dtime-factor :hours)))
-(defun time-to-minutes   (seconds) (/ seconds #.(dtime-factor :minutes)))
-
-#|
-(defun millennia-to-time (millennia) (* millennia (* 60 60 24 (+ 365 1/4) 1000)))
-(defun centuries-to-time (centuries) (* centuries (* 60 60 24 (+ 365 1/4) 100)))
-(defun decades-to-time   (decades)   (* decades   (* 60 60 24 (+ 365 1/4) 10)))
-(defun years-to-time     (year)      (* year      (* 60 60 24 (+ 365 1/4))))
-(defun weeks-to-time     (weeks)     (* weeks     (* 60 60 24 7)))
-(defun days-to-time      (days)      (* days      (* 60 60 24)))
-(defun hours-to-time     (hours)     (* hours     (* 60 60)))
-(defun minutes-to-time   (minutes)   (* minutes   60))
-
-(defun time-to-millennia (seconds) (/ seconds (* 60 60 24 (+ 365 1/4) 1000)))
-(defun time-to-centuries (seconds) (/ seconds (* 60 60 24 (+ 365 1/4) 100)))
-(defun time-to-decades   (seconds) (/ seconds (* 60 60 24 (+ 365 1/4) 10)))
-(defun time-to-years     (seconds) (/ seconds (* 60 60 24 (+ 365 1/4))))
-(defun time-to-weeks     (seconds) (/ seconds (* 60 60 24 7)))
-(defun time-to-days      (seconds) (/ seconds (* 60 60 24)))
-(defun time-to-hours     (seconds) (/ seconds (* 60 60)))
-(defun time-to-minutes   (seconds) (/ seconds 60))
 |#
 
 (defun describe-duration (dtime &key stream)
