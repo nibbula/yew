@@ -22,6 +22,8 @@
 
 (use-foreign-library "kernel32.dll")
 (use-foreign-library "user32.dll")
+;;(use-foreign-library "advapi32.dll")
+(use-foreign-library "secur32.dll")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Constants widely used
