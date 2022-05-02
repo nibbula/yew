@@ -69,8 +69,11 @@
 (defun user-id (&key name effective)
   "Return the ID of the user with NAME, which defaults to the current user."
   (declare (ignore name effective))
-  (or (ignore-errors (user-name-with-format +NAME-UNIQUE-ID+))
-      (ignore-errors (user-name-with-format +NAME-SAM-COMPATIBLE+))))
+  ;; -1 ;; @@@ bogus, but other code expects a number, so what to do??
+  1 ;; @@@ bogus, but other code expects a number, so what to do??
+  ;; (or (ignore-errors (user-name-with-format +NAME-UNIQUE-ID+))
+  ;;     (ignore-errors (user-name-with-format +NAME-SAM-COMPATIBLE+)))
+  )
 
 (defun user-name-with-format (format &optional id)
   "Return the full name of user with ID, which defaults to the current user."
@@ -90,6 +93,27 @@
   (declare (ignore id))
   (or (ignore-errors (user-name-with-format +NAME-DISPLAY+)) ""))
 
+;; @@@ This is not guaranteed to work and could be totally wrong.
+;; There's probably a more proper way to get it.
+;; The of course there's pulling the pictures out if it.
+
+(defun account-picture-filename ()
+  "Return the file name of the account picture."
+  (let* ((path
+	  (make-os-pathname
+	   :device "C"
+	   :path `("Users" ,(user-name) "AppData" "Roaming" "Microsoft"
+		   "Windows" "AccountPictures")))
+	 (dir (os-pathname-namestring path))
+	 (file
+	   (when (file-exists dir)
+	   (find-if (_ (ends-with ".accountpicture-ms" _))
+		    (read-directory :dir dir)))))
+    ;; we can't use glob here :(
+    ;; (firat (glob (os-namstring path)))))
+    (when file
+      (s+ dir *directory-separator* file))))
+
 (defun get-user-info (&key name id)
   "Return a user structure from the user database. You can look up by either
 NAME or ID. If you specifiy both, it just uses the ID. If you specify neither,
@@ -99,10 +123,10 @@ it signals an error."
 		  :id (user-id)
 		  :full-name (user-full-name)
 		  :home-directory (user-home)
-		  :shell "lish"
-		  :primary-group-id 1
+		  :shell "lish"		; fake
+		  :primary-group-id 1	; fake
 		  :guid (ignore-errors (user-name-with-format +NAME-UNIQUE-ID+))
-		  :picture "<a lovely non-privacy-violating picture of you>"))
+		  :picture (account-picture-filename)))
 
 (defun user-name-char-p (c)
   "Return true if C is a valid character in a user name."
