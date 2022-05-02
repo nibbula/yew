@@ -188,8 +188,8 @@ of these can appear in path names.")
 (defun os-pathname-namestring (os-path)
   "Return a namestring for an os-pathname."
   (check-type os-path os-pathname)
-  (with-slots (path absolute-p device host) os-path
-    (format nil "~:[~;~c:\\~]~:[~;\\~]~{~a~^\\~}"
+  (with-internal-slots (path absolute-p device host) os-path :opsys-base
+    (format nil "~:[~;~:*~:@(~a~):\\~]~:[~;\\~]~{~a~^\\~}"
 	    device
 	    (and absolute-p (not device))
 	    (os-pathname-path os-path))))
@@ -727,6 +727,9 @@ Developer Mode has to be enabled.")
 
 (defmethod symbolic-link-target ((link-name string))
   "Return the target of the symbolic link."
+  ;; @@@ We get unreachable code warnings because of the design of with-os-file
+  ;; which I guess we should fix or muffle there.
+  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (with-os-file (handle link-name)
     (get-handle-path handle)))
 
