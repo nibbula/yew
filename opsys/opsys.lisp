@@ -680,6 +680,10 @@ just everything after the last period '.'"
 (defosfun parse-path (path)
   "Return an os-pathname for path.")
 
+(defun os-pathname (path)
+  "Return an os-pathname for path."
+  (parse-path path))
+
 (defosfun os-pathname-namestring (os-path)
   "Return a namestring for an os-pathname.")
 
