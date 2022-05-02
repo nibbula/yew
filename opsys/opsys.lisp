@@ -501,35 +501,6 @@ calls. Returns NIL when there is an error.")
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Paths
 
-;; This is a workaround for not depending on split-sequence.
-;; so instead of (split-sequence *directory-separator* p :omit-empty t)
-(declaim (ftype (function (t) list)))
-(defun split-path (path)
-  "Return a list of components of PATH."
-  (let* ((our-path (safe-namestring path))
-	 (len (length our-path))
-	 result)
-    (declare (type string our-path) (type fixnum len))
-    (when (and (plusp len)
-	       (char= (char our-path 0) *directory-separator*))
-      (setf result (list (string *directory-separator*))))
-    (if (zerop len)
-	(list our-path)
-	(append result
-		(loop :with i fixnum = 0 :and piece
-		   :while (< i len) :do
-		   (setf piece
-			 (with-output-to-string (str)
-			   (loop :while (and (< i len)
-					     (char/= (char our-path i)
-						     *directory-separator*))
-			      :do
-			      (princ (char our-path i) str)
-			      (incf i))))
-		   :if (and piece (/= (length piece) 0))
-		   :collect piece
-		   :do (incf i))))))
-
 (defosfun path-to-absolute (path)
   "Return the PATH converted into an absolute path.")
 
