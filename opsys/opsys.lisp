@@ -530,41 +530,11 @@ calls. Returns NIL when there is an error.")
 		   :collect piece
 		   :do (incf i))))))
 
-(defun path-to-absolute (path)
-  "Return the PATH converted into an absolute path."
-  ;; Make sure path is a string.
-  (let* ((our-path (etypecase path
-		    (null (return-from path-to-absolute nil))
-		    (string path)
-		    (pathname (safe-namestring path))))
-	 (p (if (and (plusp (length our-path))
-		     (char= *directory-separator* (char our-path 0)))
-		our-path		; already absolute
-		(concatenate 'string (current-directory)
-			     (string *directory-separator*) our-path)))
-	 (pp (split-path p)))
-    (declare (type string our-path) (type list pp))
-      (macrolet
-	  ((get-rid-of (str snip)
-	     "Get rid of occurances of STR by snipping back to SNIP, which
-              is a numerical expression in terms of the current position POS."
-	     `(loop :with start = 0 :and pos
-		 :while (setq pos (position ,str pp
-					    :start start :test #'equal))
-		 :do (setq pp (concatenate 'list
-					   (subseq pp 0 (max 0 ,snip))
-					   (subseq pp (1+ pos)))))))
-	;; Get rid of relative elemets, "." and ".."
-	(get-rid-of "." pos)
-	(get-rid-of ".." (1- pos)))
-      (if (<= (length pp) 1)
-	  (string *directory-separator*)
-	  (with-output-to-string (str)
-	    (loop :for e :in (cdr pp) :do
-	       (write-char *directory-separator* str)
-	       (write-string e str))))))
+(defosfun path-to-absolute (path)
+  "Return the PATH converted into an absolute path.")
 
-(setf (symbol-function 'abspath) #'path-to-absolute)
+;; (setf (symbol-function 'abspath) #'path-to-absolute)
+(defalias 'abspath 'path-to-absolute)
 
 (defosfun %path-absolute-p (path)
   "Return true if PATH is an absolute path.")

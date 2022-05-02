@@ -75,6 +75,7 @@
    #:hidden-file-name-p
    #:superfluous-file-name-p
    #:%path-absolute-p
+   #:path-to-absolute
    #:parse-path
    #:os-pathname-namestring
    #:os-pathname-pathname

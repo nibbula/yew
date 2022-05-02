@@ -46,6 +46,7 @@ of these can appear in path names.")
 |#
 
 (defun drive-prefix-p (path)
+  "Return true if ‘path’ has a drive prefix."
   (and (>= (length path) 3)
        (device-letter-p (char path 0))
        (char= (char path 1) #\:)
@@ -57,6 +58,44 @@ of these can appear in path names.")
     (and path (stringp path) (not (zerop len))
 	 (or (char= *directory-separator* (char path 0))
 	     (drive-prefix-p path)))))
+
+(defun maybe-unc-p (path)
+  "Return true if ‘path’ might be a UNC path."
+  (and (char= (char path 0) *directory-separator*)
+       (char= (char path 1) *directory-separator*)))
+
+(defun path-to-absolute (path)
+  "Return the PATH converted into an absolute path."
+  ;; Make sure path is a string.
+  (let* ((our-path (etypecase path
+		    (null (return-from path-to-absolute nil))
+		    (string path)
+		    (pathname (safe-namestring path))))
+	 (p (if (%path-absolute-p path)
+		our-path		; already absolute
+		(concatenate 'string (current-directory)
+			     (string *directory-separator*) our-path)))
+	 (pp (split-path p)))
+    (declare (type string our-path) (type list pp))
+    (macrolet
+	((get-rid-of (str snip)
+	   "Get rid of occurances of STR by snipping back to SNIP, which
+              is a numerical expression in terms of the current position POS."
+	   `(loop :with start = 0 :and pos
+		  :while (setq pos (position ,str pp
+					     :start start :test #'equal))
+		  :do (setq pp (concatenate 'list
+					    (subseq pp 0 (max 0 ,snip))
+					    (subseq pp (1+ pos)))))))
+      ;; Get rid of relative elemets, "." and ".."
+      (get-rid-of "." pos)
+      (get-rid-of ".." (1- pos)))
+    (with-output-to-string (str)
+      (when (maybe-unc-p p)
+	(write-string "\\" str))
+      (loop :for e :in (cdr pp) :do
+	(write-char *directory-separator* str)
+	(write-string e str)))))
 
 #|
 

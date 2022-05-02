@@ -176,6 +176,7 @@
    ;; directories
    #:hidden-file-name-p
    #:superfluous-file-name-p
+   #:path-to-absolute
    #:%path-absolute-p
    #:parse-path
    #:os-pathname-namestring
