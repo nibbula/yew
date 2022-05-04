@@ -41,6 +41,7 @@ Also we really need the MOP for stuff.")
       omap
       omapk
       omapn
+      omapcan
       omap-as
       mappable-p
       collection-p
@@ -674,8 +675,7 @@ sequence.")
        (funcall function
 		(and
 		 (slot-boundp collection (mop:slot-definition-name slot))
-		 (slot-value collection (mop:slot-definition-name slot))
-		 ))))
+		 (slot-value collection (mop:slot-definition-name slot))))))
   (:method (function (collection standard-object))
     (loop :for slot :in (mop:class-slots (class-of collection))
        :collect
@@ -759,6 +759,63 @@ values.")
   (omapn function (container-data collection)))
 
 ;; @@@ Maybe we should make an omapkn too?
+
+(defgeneric omapcan (function collection)
+  (:documentation
+   "Apply ‘function’ to successive elements of ‘collection’, conceptually
+applying ‘nconc’ to results. Simlar to mapcan, but takes collections as
+arguments.")
+  (:method (function (collection list))
+    (let (end result item new)
+      ;; Like mapcan, but doesn't require function to return a list.
+      (omapn (lambda (_)
+	       (when (setf item (funcall function _))
+                 (setf new (if (listp item) item (list item)))
+                 (when end
+                   (rplacd end new))
+                 (setf end (last new))
+                 (when (null result)
+                   (setf result new))))
+             collection)
+      result))
+  (:method (function (collection vector))
+    (let (end result item new (len 0))
+      (declare (type fixnum len))
+      ;; Like the list method, but keeps track of the length, so we can make
+      ;; the result array quicker.
+      (omapn (lambda (_)
+	       (when (setf item (funcall function _))
+                 (setf new (if (listp item)
+			       (prog1 item
+				 (incf len (length item)))
+			       (prog1 (list item)
+				 (incf len))))
+                  (when end
+                    (rplacd end new))
+                  (setf end (last new))
+                  (when (null result)
+                    (setf result new))))
+             collection)
+      (make-array len :element-type (array-element-type collection)
+		      :initial-contents result)))
+  ;; (:method (function (collection sequence))
+  ;;   )
+  (:method (function (collection hash-table))
+    (let ((result (make-hash-table
+		   :test (hash-table-test collection)
+		   :size (hash-table-size collection)
+		   :rehash-size (hash-table-rehash-size collection)
+		   :rehash-threshold (hash-table-rehash-threshold collection)))
+	  item)
+      (omapk (lambda (_)
+	       (when (setf item (funcall function _))
+		 (setf (gethash (oelt item 0) result) (oelt item 1))))
+             collection)
+      result)))
+;; Structure and standard object versions don't seem useful.
+
+(defmethod omapcan (function (collection container))
+  (omapcan function (container-data collection)))
 
 ;; @@@ The has the problems of combinatoric method explosion, so we only support
 ;; a few values for type.
