@@ -238,17 +238,6 @@ linked file."
       (setf lish:*output* (apply #'finfo files args))
       (apply #'finfo files args)))
 
-#|
-  File: /dev/pts/1
-  Size: 0               Blocks: 0          IO Block: 1024   character special file
-Device: 18h/24d Inode: 4           Links: 1     Device type: 88,1
-Access: (0620/crw--w----)  Uid: ( 1024/     dan)   Gid: (    5/     tty)
-Access: 2021-04-17 03:08:11.374197577 -0700
-Modify: 2021-04-17 03:38:16.374197577 -0700
-Change: 2021-03-29 18:48:41.426197576 -0700
- Birth: -
-|#
-
 #+unix
 (defun stat-format-time (time)
   (if time
