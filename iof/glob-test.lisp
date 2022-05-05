@@ -4,7 +4,7 @@
 
 (defpackage :glob-test
   (:documentation "Test glob package")
-  (:use :cl :test :glob :opsys)
+  (:use :cl :test :glob :opsys :dlib)
   (:export
    ;; Main entry point
    #:run
@@ -150,36 +150,39 @@
   (fnmatch "foo\\?bar" "foo\\?bar" :escape nil)
   )
 
-(cffi:defcstruct foreign-glob-t
-  (gl_pathc nos:size-t)
-  (gl_matchc :int)
-  (gl_offs nos:size-t)
-  (gl_flags :int)
-  (gl_pathv (:pointer :string)) ;; char **
-  ;; We don't really care about all those callback functions.
-  (gl_errfunc :pointer)   ;; int (*gl_errfunc)(const char *, int);
-  (gl_closedir :pointer)  ;; void (*gl_closedir)(void *);
-  (gl_readdir :pointer)   ;; struct dirent *(*gl_readdir)(void *);
-  (gl_opendir :pointer)   ;; void *(*gl_opendir)(const char *);
-  (gl_lstat :pointer)     ;; int (*gl_lstat)(const char *, struct stat *);
-  (gl_stat :pointer)      ;; int (*gl_stat)(const char *, struct stat *);
-  )
+#+unix (d-add-feature :t-has-system-glob)
 
-;; Reference the C functions
-(cffi:defcfun ("fnmatch" real-fnmatch) :int (pattern :string) (string :string)
-	      (flags :int))
-(cffi:defcallback glob-error :int ((epath :string) (eerrno :int))
-  (format *error-output* "Glob error ~d for path ~s.~%" eerrno epath))
-(cffi:defcfun ("glob" real-glob) :int (pattern :string) (flags :int)
-	      (errfunc :pointer) (pglob (:pointer (:struct foreign-glob-t))))
-(cffi:defcfun globfree :void (pglob (:pointer (:struct foreign-glob-t))))
-(defun system-glob (pattern &optional (flags 0))
-  (cffi:with-foreign-object (pglob '(:struct foreign-glob-t))
-    (real-glob pattern flags (cffi:callback glob-error) pglob)
-    (cffi:with-foreign-slots ((gl_pathc gl_pathv) pglob
-			      (:struct foreign-glob-t))
-      (loop :for i :from 0 :below gl_pathc
-	 :collect (cffi:mem-aref gl_pathv :string i)))))
+#+t-has-system-glob
+(progn
+  (cffi:defcstruct foreign-glob-t
+    (gl_pathc nos:size-t)
+    (gl_matchc :int)
+    (gl_offs nos:size-t)
+    (gl_flags :int)
+    (gl_pathv (:pointer :string)) ;; char **
+    ;; We don't really care about all those callback functions.
+    (gl_errfunc :pointer) ;; int (*gl_errfunc)(const char *, int);
+    (gl_closedir :pointer) ;; void (*gl_closedir)(void *);
+    (gl_readdir :pointer)  ;; struct dirent *(*gl_readdir)(void *);
+    (gl_opendir :pointer)  ;; void *(*gl_opendir)(const char *);
+    (gl_lstat :pointer)	   ;; int (*gl_lstat)(const char *, struct stat *);
+    (gl_stat :pointer))	   ;; int (*gl_stat)(const char *, struct stat *);
+
+  ;; Reference the C functions
+  (cffi:defcfun ("fnmatch" real-fnmatch) :int (pattern :string) (string :string)
+	        (flags :int))
+  (cffi:defcallback glob-error :int ((epath :string) (eerrno :int))
+    (format *error-output* "Glob error ~d for path ~s.~%" eerrno epath))
+  (cffi:defcfun ("glob" real-glob) :int (pattern :string) (flags :int)
+    (errfunc :pointer) (pglob (:pointer (:struct foreign-glob-t))))
+  (cffi:defcfun globfree :void (pglob (:pointer (:struct foreign-glob-t))))
+  (defun system-glob (pattern &optional (flags 0))
+    (cffi:with-foreign-object (pglob '(:struct foreign-glob-t))
+      (real-glob pattern flags (cffi:callback glob-error) pglob)
+      (cffi:with-foreign-slots ((gl_pathc gl_pathv) pglob
+				(:struct foreign-glob-t))
+	(loop :for i :from 0 :below gl_pathc
+	      :collect (cffi:mem-aref gl_pathv :string i))))))
 
 (defparameter *test-dir* "zxcv")
 
@@ -188,42 +191,47 @@
     (format stm "foo~%")))
 
 (defun trailing-directory-p (name)
-  (char= #\/ (char name (1- (length name)))))
+  (char= *directory-separator* (char name (1- (length name)))))
 
 (defun make-dir-tree (tree)
   (loop :for f :in tree :do
-     (if (trailing-directory-p f)
-	 (make-directory f)
-	 (touch f))))
+    (if (trailing-directory-p f)
+	(make-directory f)
+	(touch f))))
 
 (defun delete-dir-tree (tree)
   (loop :for f :in (reverse tree) :do
-     (if (trailing-directory-p f)
-	 (delete-directory f)
-	 (delete-file f))))
+    (if (trailing-directory-p f)
+	(delete-directory f)
+	(delete-file f))))
+
+(defun fix-path (path)
+  "Fix the path so it's right for the OS."
+  (substitute *directory-separator* #\/ path))
 
 (defparameter *tree-1*
-  '("foo"
-    "one"
-    "two"
-    "boo/"
-    "boo/baz"
-    "boo/foo"
-    "boo/bar/"
-    "boo/bar/corge"
-    "boo/bar/gralt.c"
-    "zoo/"
-    "zoo/bar"
-    "zoo/foo"
-    "zoo/baz/"
-    "zoo/baz/lemon"
-    "zoo/baz/foo"
-    "zoo/baz/bark.c"
-    "zoo/baz/pippy.c/"
-    "zoo/baz/pippy.c/fuzz"
-    "zoo/quux/"
-    "zoo/quux/pidge.c"
-    "zoo/quux/snoo"))
+  (mapcar #'fix-path
+	  '("foo"
+	    "one"
+	    "two"
+	    "boo/"
+	    "boo/baz"
+	    "boo/foo"
+	    "boo/bar/"
+	    "boo/bar/corge"
+	    "boo/bar/gralt.c"
+	    "zoo/"
+	    "zoo/bar"
+	    "zoo/foo"
+	    "zoo/baz/"
+	    "zoo/baz/lemon"
+	    "zoo/baz/foo"
+	    "zoo/baz/bark.c"
+	    "zoo/baz/pippy.c/"
+	    "zoo/baz/pippy.c/fuzz"
+	    "zoo/quux/"
+	    "zoo/quux/pidge.c"
+	    "zoo/quux/snoo")))
 
 (defun glob-setup ()
   (make-directory *test-dir*)
@@ -246,44 +254,51 @@
   #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (sort x #'string<))
 
+(defun p-equal (p1 p2)
+  "Test that fixes the paths in the second list."
+  (equal p1 (mapcar #'fix-path p2)))
+
+(defun p-glob (string)
+  "Glob that fixes the paths."
+  (glob (fix-path string)))
+
 (deftests (glob :setup glob-setup
 		:takedown glob-takedown
 		:doc "Tests of globbing.")
-  (equal (muffle-sort (glob "*oo/b*/*.c"))
-	 '("boo/bar/gralt.c" "zoo/baz/bark.c" "zoo/baz/pippy.c"))
-  (equal (muffle-sort (glob "*/*/*.c"))
-	 '("boo/bar/gralt.c" "zoo/baz/bark.c" "zoo/baz/pippy.c"
-	   "zoo/quux/pidge.c"))
-  (equal (muffle-sort (glob "*/*/*"))
-	 '("boo/bar/corge" "boo/bar/gralt.c" "zoo/baz/bark.c"
-	   "zoo/baz/foo" "zoo/baz/lemon" "zoo/baz/pippy.c" "zoo/quux/pidge.c"
-	   "zoo/quux/snoo"))
-  (equal (muffle-sort (glob "*/*/*[^c]"))
-	 '("boo/bar/corge" "zoo/baz/foo" "zoo/baz/lemon" "zoo/quux/snoo"))
-  (equal (in-directory ("boo") (muffle-sort (glob "../*/*/*.c")))
-	 '("../boo/bar/gralt.c" "../zoo/baz/bark.c" "../zoo/baz/pippy.c"
-	   "../zoo/quux/pidge.c"))
-)
+  (p-equal (muffle-sort (p-glob "*oo/b*/*.c"))
+	   '("boo/bar/gralt.c" "zoo/baz/bark.c" "zoo/baz/pippy.c"))
+  (p-equal (muffle-sort (p-glob "*/*/*.c"))
+	   '("boo/bar/gralt.c" "zoo/baz/bark.c" "zoo/baz/pippy.c"
+	     "zoo/quux/pidge.c"))
+  (p-equal (muffle-sort (p-glob "*/*/*"))
+	   '("boo/bar/corge" "boo/bar/gralt.c" "zoo/baz/bark.c"
+	     "zoo/baz/foo" "zoo/baz/lemon" "zoo/baz/pippy.c" "zoo/quux/pidge.c"
+	     "zoo/quux/snoo"))
+  (p-equal (muffle-sort (p-glob "*/*/*[^c]"))
+	   '("boo/bar/corge" "zoo/baz/foo" "zoo/baz/lemon" "zoo/quux/snoo"))
+  (p-equal (in-directory ("boo") (muffle-sort (p-glob "../*/*/*.c")))
+	   '("../boo/bar/gralt.c" "../zoo/baz/bark.c" "../zoo/baz/pippy.c"
+	     "../zoo/quux/pidge.c")))
 
 (deftests (globstar :setup glob-setup
 		   :takedown glob-takedown
 		   :doc "Tests of recursive globbing.")
-  (equal (muffle-sort (glob "z*/**/*.c"))
-	 '("zoo/baz/bark.c" "zoo/baz/pippy.c" "zoo/quux/pidge.c"))
-  (equal (muffle-sort (glob "**/*.c"))
-	 '("boo/bar/gralt.c" "zoo/baz/bark.c" "zoo/baz/pippy.c"
-	   "zoo/quux/pidge.c"))
-  ;; (equal (muffle-sort (glob "**"))
+  (p-equal (muffle-sort (p-glob "z*/**/*.c"))
+	   '("zoo/baz/bark.c" "zoo/baz/pippy.c" "zoo/quux/pidge.c"))
+  (p-equal (muffle-sort (p-glob "**/*.c"))
+	   '("boo/bar/gralt.c" "zoo/baz/bark.c" "zoo/baz/pippy.c"
+	     "zoo/quux/pidge.c"))
+  ;; (p-equal (muffle-sort (p-glob "**"))
   ;; 	 '("boo/bar/corge" "boo/bar/gralt.c" "zoo/baz/bark.c"
   ;; 	   "zoo/baz/foo" "zoo/baz/lemon" "zoo/baz/pippy.c" "zoo/quux/pidge.c"
   ;; 	   "zoo/quux/snoo"))
-  (equal (muffle-sort (glob "**/*[^c]"))
-	 '("boo" "boo/bar" "boo/bar/corge" "boo/baz" "boo/foo" "foo" "one" "two"
-	   "zoo" "zoo/bar" "zoo/baz" "zoo/baz/foo" "zoo/baz/lemon"
-	   "zoo/baz/pippy.c/fuzz" "zoo/foo" "zoo/quux" "zoo/quux/snoo"))
-  (equal (in-directory ("boo") (muffle-sort (glob "../**/*.c")))
-	 '("../boo/bar/gralt.c" "../zoo/baz/bark.c" "../zoo/baz/pippy.c"
-	   "../zoo/quux/pidge.c")))
+  (p-equal (muffle-sort (p-glob "**/*[^c]"))
+	   '("boo" "boo/bar" "boo/bar/corge" "boo/baz" "boo/foo" "foo" "one"
+	     "two" "zoo" "zoo/bar" "zoo/baz" "zoo/baz/foo" "zoo/baz/lemon"
+	     "zoo/baz/pippy.c/fuzz" "zoo/foo" "zoo/quux" "zoo/quux/snoo"))
+  (p-equal (in-directory ("boo") (muffle-sort (p-glob "../**/*.c")))
+	   '("../boo/bar/gralt.c" "../zoo/baz/bark.c" "../zoo/baz/pippy.c"
+	     "../zoo/quux/pidge.c")))
 
 (deftests (glob-all)
   fnmatch-strings fnmatch-qmark fmatch-charset fnmatch-star fnmatch-escape
@@ -291,5 +306,7 @@
 
 (defun run ()
   (run-group-name 'glob-all :verbose t))
+
+#+unix (d-remove-feature :t-has-system-glob)
 
 ;; EOF

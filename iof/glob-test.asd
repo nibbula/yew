@@ -10,7 +10,7 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Test glob package."
-    :depends-on (:glob :test)
+    :depends-on (:glob :test :dlib :opsys)
     :components
     ((:file "glob-test"))
     :perform (asdf:test-op (o c) (uiop:symbol-call :glob-test :run-tests)))
