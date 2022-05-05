@@ -39,10 +39,11 @@ Also we really need the MOP for stuff.")
       olength-at-least-p
       olast
       omap
+      omap-as
       omapk
       omapn
       omapcan
-      omap-as
+      omapcan-as
       mappable-p
       collection-p
       keyed-collection-p
@@ -687,6 +688,41 @@ sequence.")
 (defmethod omap (function (collection container))
   (omap function (container-data collection)))
 
+;; @@@ The has the problems of combinatoric method explosion, so we only support
+;; a few values for type.
+
+(defgeneric omap-as (type function collection)
+  (:documentation
+   "Apply ‘function’ to successive elements of ‘collection’. Collect return
+values into a ‘type’ and return it.")
+  (:method ((type (eql 'nil)) function collection)
+    (omapn function collection))
+  (:method ((type (eql 'list)) function collection)
+    (let ((results '()))
+      (omapn (lambda (_) (push (funcall function _) results)) collection)
+      (nreverse results)))
+  (:method ((type (eql 'vector)) function collection)
+    (let ((results
+	    (make-collection type :size (olength collection)
+				  :element-type t)) ; @@@ yet another problem
+	  (i 0))
+      (omapn (lambda (_)
+	       (setf (oelt results i) (funcall function _))
+	       (incf i))
+	     collection)
+      results))
+  (:method ((type (eql 'string)) function collection)
+    (let ((results (make-collection type :size (olength collection)))
+	  (i 0))
+      (omapn (lambda (_)
+	       (setf (oelt results i) (funcall function _))
+	       (incf i))
+	     collection)
+      results)))
+
+(defmethod omap-as (type function (collection container))
+  (omap-as type function (container-data collection)))
+
 (defgeneric omapk (function keyed-collection) ;; should be &rest collections
   (:documentation
    "Return a sequence of the results of applying FUNCTION to successive elements
@@ -760,13 +796,9 @@ values.")
 
 ;; @@@ Maybe we should make an omapkn too?
 
-(defgeneric omapcan (function collection)
-  (:documentation
-   "Apply ‘function’ to successive elements of ‘collection’, conceptually
-applying ‘nconc’ to results. Simlar to mapcan, but takes collections as
-arguments.")
-  (:method (function (collection list))
-    (let (end result item new)
+;; @@@ Note: mapcan-<x>like are not hygenic, so just for use here.
+(defmacro mapcan-listlike (() &body body)
+  `(let (end result item new)
       ;; Like mapcan, but doesn't require function to return a list.
       (omapn (lambda (_)
 	       (when (setf item (funcall function _))
@@ -777,80 +809,90 @@ arguments.")
                  (when (null result)
                    (setf result new))))
              collection)
-      result))
+     ,@body))
+
+(defmacro mapcan-vectorlike (() &body body)
+  `(let (end result item new (len 0))
+     (declare (type fixnum len))
+     ;; Like the list method, but keeps track of the length, so we can make
+     ;; the result array quicker.
+     (omapn (lambda (_)
+	      (when (setf item (funcall function _))
+                (setf new (if (listp item)
+			      (prog1 item
+				(incf len (length item)))
+			      (prog1 (list item)
+				(incf len))))
+                (when end
+                  (rplacd end new))
+                (setf end (last new))
+                (when (null result)
+                  (setf result new))))
+            collection)
+     ,@body))
+
+(defmacro mapcan-hashlike (hash-table)
+  `(let ((result ,hash-table)
+	 item)
+     (omapk (lambda (_)
+	      (when (setf item (funcall function _))
+		(setf (gethash (oelt item 0) result) (oelt item 1))))
+            collection)
+     result))
+
+(defgeneric omapcan-as (type function collection)
+  (:documentation
+   "Apply ‘function’ to successive elements of ‘collection’, conceptually
+applying ‘nconc’ to results. Simlar to mapcan, but takes collections as
+arguments. Return a collection of ‘type’.")
+  (:method ((type (eql 'list)) function collection)
+    (mapcan-listlike () result))
+  (:method ((type (eql 'vector)) function collection)
+    (mapcan-vectorlike ()
+      (make-array len :element-type (array-element-type collection)
+		      :initial-contents result)))
+  (:method ((type (eql 'string)) function collection)
+    (mapcan-vectorlike ()
+      ;; is this sufficient? or should we make-string?
+      (make-array len :element-type 'character
+		      :initial-contents result)))
+;; (:method (function (collection sequence))
+;;   )
+  (:method ((type (eql 'hash-table)) function collection)
+    (mapcan-hashlike
+     (make-hash-table
+      :test #'equal
+      :size (olength collection)))))
+;; Structure and standard object versions don't seem useful.
+
+;; I don't think this is necessary
+;; (defmethod omapcan-as (type function (collection container))
+;;   (omapcan-as type function (container-data collection)))
+
+(defgeneric omapcan (function collection)
+  (:documentation
+   "Apply ‘function’ to successive elements of ‘collection’, conceptually
+applying ‘nconc’ to results. Simlar to mapcan, but takes collections as
+arguments.")
+  (:method (function (collection list))
+    (mapcan-listlike () result))
   (:method (function (collection vector))
-    (let (end result item new (len 0))
-      (declare (type fixnum len))
-      ;; Like the list method, but keeps track of the length, so we can make
-      ;; the result array quicker.
-      (omapn (lambda (_)
-	       (when (setf item (funcall function _))
-                 (setf new (if (listp item)
-			       (prog1 item
-				 (incf len (length item)))
-			       (prog1 (list item)
-				 (incf len))))
-                  (when end
-                    (rplacd end new))
-                  (setf end (last new))
-                  (when (null result)
-                    (setf result new))))
-             collection)
+    (mapcan-vectorlike ()
       (make-array len :element-type (array-element-type collection)
 		      :initial-contents result)))
   ;; (:method (function (collection sequence))
   ;;   )
   (:method (function (collection hash-table))
-    (let ((result (make-hash-table
-		   :test (hash-table-test collection)
-		   :size (hash-table-size collection)
-		   :rehash-size (hash-table-rehash-size collection)
-		   :rehash-threshold (hash-table-rehash-threshold collection)))
-	  item)
-      (omapk (lambda (_)
-	       (when (setf item (funcall function _))
-		 (setf (gethash (oelt item 0) result) (oelt item 1))))
-             collection)
-      result)))
+    (mapcan-hashlike
+     (make-hash-table
+      :test (hash-table-test collection)
+      :size (hash-table-size collection)
+      :rehash-size (hash-table-rehash-size collection)
+      :rehash-threshold (hash-table-rehash-threshold collection)))))
 ;; Structure and standard object versions don't seem useful.
 
 (defmethod omapcan (function (collection container))
   (omapcan function (container-data collection)))
-
-;; @@@ The has the problems of combinatoric method explosion, so we only support
-;; a few values for type.
-
-(defgeneric omap-as (type function collection)
-  (:documentation
-   "Apply ‘function’ to successive elements of ‘collection’. Collect return
-values into a ‘type’ and return it.")
-  (:method ((type (eql 'nil)) function collection)
-    (omapn function collection))
-  (:method ((type (eql 'list)) function collection)
-    (let ((results '()))
-      (omapn (lambda (_) (push (funcall function _) results)) collection)
-      (nreverse results)))
-  (:method ((type (eql 'vector)) function collection)
-    (let ((results
-	    (make-collection type :size (olength collection)
-				  :element-type t)) ; @@@ yet another problem
-	  (i 0))
-      (omapn (lambda (_)
-	       (setf (oelt results i) (funcall function _))
-	       (incf i))
-	     collection)
-      results))
-  (:method ((type (eql 'string)) function collection)
-    (let ((results (make-collection type :size (olength collection)))
-	  (i 0))
-      (omapn (lambda (_)
-	       (setf (oelt results i) (funcall function _))
-	       (incf i))
-	     collection)
-      results)))
-
-(defmethod omap-as (type function (collection container))
-  (omap-as type function (container-data collection)))
 
 ;; This has the parallel sequence feature from normal MAP, but can't use
 ;; generic dispatch on the collections.
