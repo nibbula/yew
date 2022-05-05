@@ -151,6 +151,14 @@ systems, this means \".\" and \"..\"."
 		     :name name
 		     :type type))))
 
+(defmethod path-root ((path string))
+  (when (%path-absolute-p path)
+    *directory-separator-string*))
+
+(defmethod path-root ((path os-pathname))
+  (when (os-pathname-absolute-p path)
+    *directory-separator-string*))
+
 ;; We need to use the posix version if there's no better way to do it
 ;; on the implementation.
 ;#+openmcl (config-feature :os-t-use-chdir)

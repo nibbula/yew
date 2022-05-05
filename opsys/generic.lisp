@@ -26,6 +26,7 @@
    #:path-parent
    #:path-directory-name
    #:path-file-name
+   #:path-root
    ))
 (in-package :opsys-generic)
 
@@ -119,5 +120,10 @@ If N is given, return the Nth parent."))
 (defgeneric path-file-name (path)
   (:documentation
    "Return the last portion of a ‘path’. This is similar to ‘file-namestring’."))
+
+(defgeneric path-root (path)
+  (:documentation
+   "If the path is absolute, return the root directory of a ‘path’, otherwise
+return NIL."))
 
 ;; End

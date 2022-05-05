@@ -218,6 +218,34 @@ of these can appear in path names.")
 		     :name name
 		     :type type))))
 
+(defmethod path-root ((path string))
+  (when (%path-absolute-p path)
+    (cond
+      ((maybe-unc-p path)
+       (let ((first-sep (position #\\ path :start 2)))
+	 (if first-sep
+	     (s+ (subseq path 0 first-sep) "\\")
+	     path))) ;; There's nothing after the host?
+      ((drive-prefix-p path)
+       (let ((first-sep (position #\\ path)))
+	 (if first-sep
+	     (s+ (subseq path 0 first-sep) "\\")
+	     path))) ;; There's nothing after the drive?
+      (t
+       *directory-separator-string*))))
+
+(defmethod path-root ((path os-pathname))
+  (when (os-pathname-absolute-p path)
+    (cond
+      ((os-pathname-device path)
+       (s+ (os-pathname-device path) ":\\"))
+      ((os-pathname-host path)
+       ;; \\host\share\
+       (s+ "\\\\" (os-pathname-host path) "\\"
+	   (first (os-pathname-path path)) "\\"))
+      (t
+       *directory-separator-string*))))
+
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *file-attributes* nil "FILE_ATTRIBUTE_* constants")
 

@@ -82,6 +82,7 @@
    #:path-absolute-p #:absolute-path-p
    #:path-directory-name #:dirname
    #:path-file-name #:basename
+   #:path-root
    #:path-append
    #:path-snip-ext
    #:path-extension
