@@ -59,6 +59,8 @@
    #:os-time-nanoseconds
    #:os-time< #:os-time<= #:os-time> #:os-time>= #:os-time= #:os-time/=
 
+   #:file-type
+   #:*file-type-char*
    #:file-info
    #:file-info-p
    #:make-file-info

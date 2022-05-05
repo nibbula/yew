@@ -110,6 +110,14 @@ Slot are:
   "Most general category of a file in a file system."
   `(member :regular :directory :link :device :other))
 
+(defparameter *file-type-char*
+  `((:regular   . #\r)
+    (:directory . #\d)
+    (:link      . #\l)
+    (:device    . #\v)
+    (:other     . #\x))
+  "An alist of file-type to character abbreviation.")
+
 ;; Whatever
 (defstruct file-info
   "File information.
