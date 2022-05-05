@@ -12,12 +12,13 @@ Main functions are:
 
 The documentation for ‘fnmatch’ describes the pattern syntax a little.
 ")
-  (:use :cl :dlib :opsys :char-util)
+  (:use :cl :dlib :opsys :collections :char-util)
   (:export
    #:pattern-p
    #:fnmatch
    #:expand-tilde
    #:glob
+   #:glob+
    ))
 (in-package :glob)
 
@@ -639,10 +640,10 @@ fnmatch function. Other arguments are:
 	   (type boolean mark-directories escape sort tilde twiddle recursive))
   (setf tilde (or tilde twiddle))
   (let* ((expanded-pattern (if tilde (expand-tilde pattern) pattern))
-	 (path (split-sequence *directory-separator* expanded-pattern
-			       :omit-empty t))
-	 (dir (when (char= (char expanded-pattern 0) *directory-separator*)
-		*dir-sep-string*)))
+	 (os-path (os-pathname expanded-pattern))
+	 (path (os-pathname-path os-path))
+	 (dir (when (path-absolute-p os-path)
+		(path-root os-path))))
     (when (trailing-directory-p expanded-pattern)
       (rplaca (last path) (s+ (car (last path)) *dir-sep-string*)))
     (if sort

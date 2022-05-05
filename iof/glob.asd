@@ -20,7 +20,7 @@ Main functions are:
 The documentation for FNMATCH describes the pattern syntax a little.
 
 Another great example of how to poorly reinvent something stupid."
-    :depends-on (:opsys :dlib)
+    :depends-on (:dlib :opsys :collections :char-util)
     :components
     ((:file "glob"))
     :in-order-to ((asdf:test-op (asdf:test-op :glob-test))))
