@@ -574,8 +574,6 @@ return the file portion."
 
 (setf (symbol-function 'basename) #'path-file-name)
 
-;;*directory-separator*
-
 (defun path-append (first-path &rest paths)
   "Append the elements PATHS to FIRST-PATH. Put a directory separator between
 them if there isn't one already."
