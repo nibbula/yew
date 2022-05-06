@@ -40,7 +40,7 @@ of these can appear in path names.")
 	 (<= (char-code c) (char-code #\Z)))))
 
 #|
-- A UNC name of any format, which always starts with two backslashs ("\\").
+- A UNC name of any format, which always starts with two backslashes ("\\").
 - A disk designator with a backslash, for example "C:\" or "d:\".
 - A single backslash, for example, "\directory" or "\file.txt".
 |#
@@ -61,7 +61,8 @@ of these can appear in path names.")
 
 (defun maybe-unc-p (path)
   "Return true if ‘path’ might be a UNC path."
-  (and (char= (char path 0) *directory-separator*)
+  (and (>= (length path) 2)
+       (char= (char path 0) *directory-separator*)
        (char= (char path 1) *directory-separator*)))
 
 (defun path-to-absolute (path)
@@ -152,9 +153,10 @@ of these can appear in path names.")
     (labels ((is-sep () (char= #\\ (char str i)))
 	     (note (x) (push x (os-pathname-path result)))
 	     (start () (setf start i))
-	     (end ()
+	     (end (&key no-note)
 	       (when start
-		 (note (subseq str start i))
+		 (unless no-note
+		   (note (subseq str start i)))
 		 (setf start nil)
 		 t))
 	     (done ()
@@ -162,7 +164,7 @@ of these can appear in path names.")
 	       (setf (os-pathname-path result)
 		     (nreverse (os-pathname-path result)))
 	       (return-from parse-path result))
-	     (next (&optional n)
+	     (next (&optional (n 1))
 	       (incf i n)
 	       (when (>= i (length str))
 		 (done))
@@ -172,6 +174,16 @@ of these can appear in path names.")
 	 (setf (os-pathname-device result) (char str 0)
 	       (os-pathname-absolute-p result) t)
 	 (next 3))
+	((maybe-unc-p str)
+	 (setf (os-pathname-absolute-p result) t)
+	 (next 2)
+	 (if (>= i (length str))
+	     (done)
+	     (progn
+	       (start)
+	       (loop :while (and (not (is-sep)) (next)))
+	       (setf (os-pathname-host result) (subseq str start i))
+	       (end :no-note t))))
 	((is-sep)
 	 (setf (os-pathname-absolute-p result) t)
 	 (next)))
@@ -189,9 +201,11 @@ of these can appear in path names.")
   "Return a namestring for an os-pathname."
   (check-type os-path os-pathname)
   (with-internal-slots (path absolute-p device host) os-path :opsys-base
-    (format nil "~:[~;~:*~:@(~a~):\\~]~:[~;\\~]~{~a~^\\~}"
+    ;; (format nil "~:[~;~:*~:@(~a~):\\~]~:[~;\\~]~:[~;~:*~a\\]~{~a~^\\~}"
+    (format nil "~:[~;~:*~:@(~a~):\\~]~:[~;\\~]~:[~;\\~:*~a\\~]~{~a~^\\~}"
 	    device
 	    (and absolute-p (not device))
+	    host
 	    (os-pathname-path os-path))))
 
 (defmethod os-namestring ((path os-pathname))
