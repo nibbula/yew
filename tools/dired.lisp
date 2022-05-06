@@ -210,7 +210,9 @@
 	    ;; Try to execute regular executable files?
 	    ((and (is-executable full)
 		  (eq :regular (file-info-type (file-info full))))
-	     (! full)
+	     ;; (!= full)
+	     (lish:shell-eval (lish::expr-from-args (list full))
+			      :no-expansions t)
 	     (tt-clear)
 	     (redraw o))
 	    (t
