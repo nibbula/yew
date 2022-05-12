@@ -13,13 +13,17 @@
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *doc*
 "Scripts are a list of (address form). Forms are Lisp code to execute when the
-line matches the address.
+line matches the address. If no address matches, the line is printed. Whatever
+the form returns is converted to a string, like with princ-to-string,
+and used as the line. If the command returns NIL, the line is not output.
 
 Addresses:
   Form                 Type      Description
   ──────────────────── ───────── ──────────────────────────────────────────────
   number               integer   Line ‘number’.
   :last                keyword   The last line.
+  t                    symbol    Every line.
+  nil                  symbol    No line. Done before reading lines.
   \"regexp\"             string    A line matching ‘regexp’.
   (first last)         cons      The range of line from ‘first’ address to
                                  ‘last’ address.
@@ -27,14 +31,15 @@ Addresses:
   (first :mod number) cons       ‘first’ address, until the line number is
                                  evenly divisible by ‘number’.
 
-It the form, the following can be used:
+In the form, the following can be used:
 
 Variables:
-  count               The current line count.
-  line                The text of the current line.
-  clip                A string for copying and pasting.
+  count         The current line count.
+  line          The text of the current line.
+  clip          A string for copying and pasting.
+  eof-p         True if we're at the last line. Same as :last address.
 
-Special functions:
+Functions:
   Form                           Description
   ────────────────────────────── ──────────────────────────────────────────────
   (stop)                         Stop processing the stream.
@@ -45,9 +50,7 @@ Special functions:
   (p &optional thing)            Print ‘thing’ or the current line.
   (split regex &optional thing)  Split ‘thing’ or the current line, by ‘regex’.
   (w &optional n)                After split, return the Nth thing.
-
-Whatever the command returns is converted to a string, like with princ-to-string,
-and used as the line. If the command returns NIL, the line is deleted."))
+"))
 
 (setf (documentation (find-package :sed) t)
       (s+ "Stream editor." #\newline *doc*))
@@ -63,7 +66,7 @@ and used as the line. If the command returns NIL, the line is deleted."))
 ;; split, which is what most people really use awk for.
 
 (defparameter +range-types+ '(:plus :mod))
-(defparameter +symbol-typs+ '(:last))
+(defparameter +symbol-typs+ '(:last t))
 
 (defclass address ()
   ((negated
@@ -73,7 +76,7 @@ and used as the line. If the command returns NIL, the line is deleted."))
 
 (defclass null-address (address)
   ()
-  (:documentation "An address that matches any line."))
+  (:documentation "An address that matches no line."))
 
 (defclass single-value-address (address)
   ((value :initarg :value :accessor address-value :initform nil))
@@ -173,7 +176,7 @@ end number."))
 the currrent line number. ‘eof-p’ is true if we're at the last line."))
 
 (defmethod address-matches ((address null-address) line count eof-p)
-  t)
+  nil)
 
 (defmethod address-matches ((address line-number-address) line count eof-p)
   (= count (address-value address)))
@@ -192,8 +195,9 @@ the currrent line number. ‘eof-p’ is true if we're at the last line."))
     (and result t)))
 
 (defmethod address-matches ((address symbol-address) line count eof-p)
-  (case address
-    (:last eof-p)))
+  (case (address-value address)
+    (:last eof-p)
+    ((t) t)))
 
 (defmethod address-matches ((address range-address) line count eof-p)
   (with-slots (start end active) address
@@ -229,6 +233,8 @@ the currrent line number. ‘eof-p’ is true if we're at the last line."))
      (case form
        (:last
 	(make-instance 'symbol-address :value :last))
+       ((t)
+	(make-instance 'symbol-address :value t))
        (otherwise
 	(error "Unknown symbol address ~s" form))))
     (string (make-instance 'regex-address
@@ -399,6 +405,7 @@ symbols we need for a command form."
 	  (%line             (flurb 'line))
 	  (%next             (flurb 'next))
 	  (%clip             (flurb 'clip))
+	  (%eof-p            (flurb 'eof-p))
 	  (%stop-flag        (flurb 'stop-flag))
 	  (%stop             (flurb 'stop))
 	  (%next-line        (flurb 'next-line))
@@ -416,9 +423,10 @@ symbols we need for a command form."
 	      (,%line sed::line)
 	      (,%next sed::next)
 	      (,%clip sed::clip)
+	      (,%eof-p sed::eof-p)
 	      (,%stop-flag sed::stop-flag))
 	     state
-	   (declare (ignorable ,%count ,%line ,%next ,%clip ,%stop-flag))
+	   (declare (ignorable ,%count ,%line ,%next ,%clip ,%eof-p ,%stop-flag))
 	   (flet ((,%stop () (funcall 'sed::stop))
 		  (,%next-line () (funcall 'sed::next-line))
 		  (,%append-next-line () (funcall 'sed::append-next-line))
@@ -568,43 +576,61 @@ delete the backup file at the end."
     (error "in-place doesn't make sense with collect."))
   (let* ((*state* (make-state :input input :output output :collect collect))
 	 ;; (code-package (make-code-package))
+	 (preface nil)
 	 (prepared
 	  (loop :for (addr form)
 		:in (or (and script-file (append (read-script script-file)
 						 script))
 			script)
-		:collect (cons (make-address addr)
-			       (compile-form form #|code-package|#))))
+		:if (null addr)
+                  :do (push (compile-form form) preface)
+                :else
+		  :collect (cons (make-address addr)
+				 (compile-form form #|code-package|#))))
 	 close-output close-input)
+    (when preface
+      (setf preface (nreverse preface)))
     ;; (format t "prepared ~s~%" prepared)
     (unwind-protect
 	(with-slots (count line next stop-flag eof-p missing-newline) *state*
-	  (when (and (or (stringp output) (pathnamep output))
-		     (not collect))
-	    (setf close-output t
-		  (state-output-name *state*) output
-		  output (open-output output in-place)
-		  (state-output *state*) output))
-	  (when collect
-	    (setf (state-output *state*) '()))
-	  (when (or (stringp input) (pathnamep input))
-	    (setf close-input t
-		  (state-input-name *state*) input
-		  input (open input :direction :input)
-		  (state-input *state*) input))
-	  (loop :with result
-	   :do
-	   (next-line)
-	   :while (and line (not stop-flag))
-	   :do
-	     (loop :for (address . func) :in prepared :do
-	       (setf result line)
-	       (when (address-matches address line count eof-p)
-		 (setf result (funcall func *state*)))
-	       (when (and result (not quiet))
-		 (if (and missing-newline eof-p)
-		     (put-string result output)
-		     (put-line result output))))))
+	  (flet ((maybe-print-result (result)
+		   (when (and result (not quiet))
+		     (if (and missing-newline eof-p)
+			 (put-string result output)
+			 (put-line result output)))))
+	    (when (and (or (stringp output) (pathnamep output))
+		       (not collect))
+	      (setf close-output t
+		    (state-output-name *state*) output
+		    output (open-output output in-place)
+		    (state-output *state*) output))
+	    (when collect
+	      (setf (state-output *state*) '()))
+	    (when (or (stringp input) (pathnamep input))
+	      (setf close-input t
+		    (state-input-name *state*) input
+		    input (open input :direction :input)
+		    (state-input *state*) input))
+	    (when preface
+	      (loop :with result
+		    :for func :in preface
+		    :do
+		       (setf result (funcall func *state*))
+		       (maybe-print-result result)))
+	    (loop :with result :and matches
+		  :do
+		     (next-line)
+		  :while (and line (not stop-flag))
+		  :do
+		     (setf matches nil
+			   result line)
+		     (loop :for (address . func) :in prepared :do
+		       (when (address-matches address line count eof-p)
+			 (setf result (funcall func *state*)
+			       matches t)
+			 (maybe-print-result result)))
+		     (when (not matches)
+		       (maybe-print-result result)))))
       (when (and input close-input)
 	(close input))
       (when (and output close-output)
@@ -713,6 +739,7 @@ appended.")
   "Stream editor."
   (when in-place
     (setf separate t))
+  ;; (format t "expr = ~s~%files = ~s~%" expression files)
   (cond
    ((and files (not separate))
     ;; Treat all input files as one stream.
@@ -730,18 +757,28 @@ appended.")
 		   :collect collect))
 	(map nil (_ (close _)) streams)))
     lish:*output*)
+   ((null files)
+    (setf lish:*output*
+	  (edit-stream expression
+		       :input *standard-input*
+		       :output *standard-output*
+		       :quiet quiet
+		       :in-place in-place
+		       :backup-pattern backup-pattern
+		       :delete-backup delete-backup
+		       :collect collect)))
    (t
     (setf lish:*output*
 	  (loop :for f :in files
 	    ;; @@@ we should pull the compiling out, so it's only done once
-		:collect
-		(edit-stream expression
-			     :input f
-			     :output (if in-place f *standard-output*)
-			     :quiet quiet
-			     :in-place in-place
-			     :backup-pattern backup-pattern
-			     :delete-backup delete-backup
-			     :collect collect))))))
+	    :collect
+	    (edit-stream expression
+			 :input f
+			 :output (if in-place f *standard-output*)
+			 :quiet quiet
+			 :in-place in-place
+			 :backup-pattern backup-pattern
+			 :delete-backup delete-backup
+			 :collect collect))))))
 
 ;; End
