@@ -795,7 +795,8 @@ CACHED can be one of :ONLY, :NO, :BUILD, :DEFAULT.
 		       :with full = nil :and name
 		       :for f :in (read-directory :dir dir :full t) :do
 		       (handler-case
-			   (when (eq (dir-entry-type f) :regular)
+			   (when (or (eq (dir-entry-type f) :regular)
+				     (eq (dir-entry-type f) :link))
 			     (setf full (s+ dir *directory-separator*
 					    (dir-entry-name f))
 				   name (dir-entry-name f))
