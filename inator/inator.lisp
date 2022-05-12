@@ -123,10 +123,50 @@ EVENT-LOOP with an INATOR sub-class instance.")
 ;; 				    &allow-other-keys)
 ;;   (apply #'make-instance 'editing-context keys))
 
+;;(defkeymap *default-inator-keymap* (:default-binding 'default-action)
+;; @@@ The problem is if there is default binding then it stops other
+;; keymaps from inheriting an event. I think if you want a default binding
+;; you should probably add it explicitly.
+(defkeymap *default-inator-keymap* ()
+  `((,(ctrl #\n)	. next)
+    (,(ctrl #\p)	. previous)
+    (,(ctrl #\f)	. forward-unit)
+    (,(ctrl #\b)	. backward-unit)
+    (,(meta-char #\f)	. forward-multiple)
+    (,(meta-char #\b)	. backward-multiple)
+    (,(ctrl #\v)	. next-page)
+    (:page-down		. next-page)
+    (,(meta-char #\v)	. previous-page)
+    (:page-up		. previous-page)
+    (,(ctrl #\a)	. move-to-beginning)
+    (,(ctrl #\e)	. move-to-end)
+    (:home		. move-to-beginning)
+    (:end		. move-to-end)
+    (,(meta-char #\<)	. move-to-top)
+    (,(meta-char #\>)	. move-to-bottom)
+    (:c-home		. move-to-top)
+    (:c-end		. move-to-bottom)
+    (,(ctrl #\s)	. search-command)
+    (,(meta-char #\s)	. sort-command)	; ?
+    (,(meta-char #\j)	. jump-command)	; ?
+    (,(meta-char #\=)   . describe-key-briefly)
+    (#\return		. accept)
+    (,(ctrl #\l)	. redraw)
+    (,(ctrl #\g)	. quit)
+    (:resize		. resize)
+    (#\escape		. *default-inator-escape-keymap*)
+    ))
+
+(defparameter *default-inator-escape-keymap*
+  (build-escape-map *default-inator-keymap*))
+
 (defclass base-inator ()
   ((keymap
-    :initarg :keymap :accessor inator-keymap
+    :initarg :keymap :accessor inator-keymap :initform nil
     :documentation "What to do when a key is pressed.")
+   (default-keymap
+    :initarg :default-keymap :accessor inator-default-keymap :initform nil
+    :documentation "Keymap to push if the keymap isn't given.")
    (contexts
     :initarg :contexts :accessor inator-contexts
     :documentation "A set of contexts for editing.")
@@ -142,6 +182,8 @@ EVENT-LOOP with an INATOR sub-class instance.")
    (views
     :initarg :views :accessor inator-views
     :documentation "A set of views of the inator."))
+  (:default-initargs
+   :default-keymap *default-inator-keymap*)
   (:documentation
    "Have some kind of editing style interaction."))
 
@@ -225,43 +267,6 @@ not call process-event with it."))
 (defgeneric resize (inator)
   (:documentation "Called when we get a resize event."))
 
-;;(defkeymap *default-inator-keymap* (:default-binding 'default-action)
-;; @@@ The problem is if there is default binding then it stops other
-;; keymaps from inheriting an event. I think if you want a default binding
-;; you should probably add it explicitly.
-(defkeymap *default-inator-keymap* ()
-  `((,(ctrl #\n)	. next)
-    (,(ctrl #\p)	. previous)
-    (,(ctrl #\f)	. forward-unit)
-    (,(ctrl #\b)	. backward-unit)
-    (,(meta-char #\f)	. forward-multiple)
-    (,(meta-char #\b)	. backward-multiple)
-    (,(ctrl #\v)	. next-page)
-    (:page-down		. next-page)
-    (,(meta-char #\v)	. previous-page)
-    (:page-up		. previous-page)
-    (,(ctrl #\a)	. move-to-beginning)
-    (,(ctrl #\e)	. move-to-end)
-    (:home		. move-to-beginning)
-    (:end		. move-to-end)
-    (,(meta-char #\<)	. move-to-top)
-    (,(meta-char #\>)	. move-to-bottom)
-    (:c-home		. move-to-top)
-    (:c-end		. move-to-bottom)
-    (,(ctrl #\s)	. search-command)
-    (,(meta-char #\s)	. sort-command)	; ?
-    (,(meta-char #\j)	. jump-command)	; ?
-    (,(meta-char #\=)   . describe-key-briefly)
-    (#\return		. accept)
-    (,(ctrl #\l)	. redraw)
-    (,(ctrl #\g)	. quit)
-    (:resize		. resize)
-    (#\escape		. *default-inator-escape-keymap*)
-    ))
-
-(defparameter *default-inator-escape-keymap*
-  (build-escape-map *default-inator-keymap*))
-
 (defgeneric read-key-sequence (inator)
   (:documentation "Read a key sequence from the inator input."))
 
@@ -275,8 +280,10 @@ not call process-event with it."))
     :after ((o inator) &rest initargs &key &allow-other-keys)
   "Initialize a inator."
   (declare (ignore initargs))
-  (when (not (slot-boundp o 'keymap))
-    (setf (slot-value o 'keymap) *default-inator-keymap*)))
+  ;; If the keymap isn't given in an initarg, push the default one.
+  (when (and (not (slot-boundp o 'keymap))
+	     (slot-boundp o 'default-keymap))
+    (push (slot-value o 'default-keymap) (slot-value o 'keymap))))
 
 (defmethod start-inator ((inator inator))
   "Default method which does nothing."
