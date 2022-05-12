@@ -52,7 +52,10 @@
 
 (add-keymap *default-inator-escape-keymap* *table-viewer-escape-keymap*)
 
+;; @@@ maybe there should be a point class in inator?
 (defstruct table-point
+  "A character grid location of the cursor in a table. This is usually at
+the start of a cell."
   row
   col)
 
