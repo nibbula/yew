@@ -2036,7 +2036,7 @@ assume it's a class name whose symbol-package we use."
 
 (defmacro with-internal-accessors ((&rest slot-names) object class-or-package
 			       &body body)
-  "Like ‘with-accessor’ but using package internal accessor names.
+  "Like ‘with-accessors’ but using package internal accessor names.
 If ‘class-or-package’ is a keyword, assume it's a package designator, otherwise
 assume it's a class name whose symbol-package we use."
   (let ((package (if (keywordp class-or-package)
