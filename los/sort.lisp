@@ -50,7 +50,7 @@
 	 (if reverse
 	     (if ignore-case #'string-greaterp #'string>)
 	     (if ignore-case #'string-lessp #'string<))))
-    (flet ((get-lines (stream)
+    (flet ((get-the-lines (stream)
 	     (setf lines
 		   (nconc
 		    (loop :with line
@@ -71,14 +71,14 @@
       (if files
 	  (loop :for f :in files :do
 	     (with-open-file (stream f :direction :input)
-	       (get-lines stream)))
+	       (get-the-lines stream)))
 	  (if (and lish:*input* (typep lish:*input* 'sequence))
 	      (progn
 		(dbugf :accepts "sort getting input from *input*~%")
 		(setf lines lish:*input*))
 	      (progn
 		(dbugf :accepts "sort getting input from *standard-input*~%")
-		(get-lines *standard-input*))))
+		(get-the-lines *standard-input*))))
       (if numeric
 	  (if sequence
 	      (progn
