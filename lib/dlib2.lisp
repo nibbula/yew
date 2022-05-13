@@ -108,6 +108,10 @@ matches SYMBOL."
 
 #+sbcl (declaim (sb-ext:unmuffle-conditions style-warning))
 
+#+has-package-locks
+(eval-when (:load-toplevel :execute)
+  (d-lock-package :dlib))
+
 #+debug-rc (progn (format t "2") (force-output *standard-output*))
 
 ;; EOF

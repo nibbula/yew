@@ -17,14 +17,9 @@
            OPSYS and thus the FAKE-DLIB."))
 
 (defpackage :dlib
-  (:documentation
-   "Utilities of redundant doom.
-The existance of this is probbaly a societal logistic problem of Lisp
-programmers, that will likely eventually have to be dealt with. I apologize for
-my addition to the problem, and hope I can some day contribute to the solution
-of it.")
+  (:documentation "Redundant utilities.")
   (:use :common-lisp
-	;; We must have the MOP!!! Don't ever drop the MOP!
+	;; Don't drop the MOP.
 	#+(or (and clisp mop) abcl excl) :mop
 	#+sbcl :sb-mop
 	#+cmu :pcl
@@ -34,8 +29,8 @@ of it.")
 	;; extensions
 	#+sbcl :sb-ext
 	)
-   #+lispworks (:shadow #:lambda-list #:with-unique-names)
-  #-the-real-fake-dlib (:nicknames :fake-dlib) ; Crazy Sauce!
+  #+lispworks (:shadow #:lambda-list #:with-unique-names)
+  #-the-real-fake-dlib (:nicknames :fake-dlib) ; crazy sauce
   (:export
    ;; bootstrapping System-ish
    #:d-getenv
@@ -59,9 +54,9 @@ of it.")
    #:fancy-read-from-string
    #:safe-read-from-string
    #:safe-read
-   #:clean-read-from-string
-   #:package-robust-read-from-string
-   #:package-robust-read
+   ;; #:clean-read-from-string
+   ;; #:package-robust-read-from-string
+   ;; #:package-robust-read
    ;; #:*buffer-size*
    #:copy-stream
    #:stream-string
@@ -146,6 +141,9 @@ of it.")
    #:with-package
    #:ensure-exported
    #:without-package-variance
+   #:d-lock-package
+   #:d-unlock-package
+   #:d-package-locked-p
    #:shortest-package-nick
    #:not-so-funcall #:symbol-call
    #:refer-to
@@ -181,10 +179,6 @@ of it.")
   )
 )
 (in-package :dlib)
-
-(declaim (optimize (debug 3)))
-;; (declaim (optimize (speed 3) (safety 0) (debug 0) (space 0)
-;; 		   (compilation-speed 0)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   ;; This should be "pure" Common Lisp, since it's compile time, e.g. we can't
@@ -235,8 +229,6 @@ later versions.")
     "Add a feature named by the given string to *FEATURES*"
     (assert f)
     (if (stringp f)
-	;;(nconc *features* (list (intern (string-upcase f) :keyword)))
-	;;(nconc *features* (list f))))
 	(pushnew (intern (string-upcase f) :keyword) *features*)
 	(pushnew f *features*)))
   ;; or one could use:
@@ -887,7 +879,8 @@ just return SEQUENCE. Elements are compared with TEST which defaults to EQL."
 (defun s6+ (&rest rest)
   (format nil "~{~a~}" rest))
 
-;; This seems likely to make things faster on any implementation.
+;; This seems likely to make things faster on any implementation,
+;; but probably never happens.
 (define-compiler-macro s+ (&whole whole &rest rest)
   "Special case for all string arguments."
   (cond
@@ -898,7 +891,7 @@ just return SEQUENCE. Elements are compared with TEST which defaults to EQL."
 
 (defparameter *ascii-whitespace*
   ;;#(#\tab #\newline #-gcl #\vt #\page #\return #\space)
-  #(#\tab #\newline #.(code-char 11) #\page #\return #\space)
+  #(#\space #\tab #\newline #\return #.(code-char 11) #\page)
   "Characters considered whitespace in ASCII.")
 
 #|
@@ -1943,6 +1936,29 @@ SYMBOLS is a designator for a symbol or list of symbols like for EXPORT."
      (without-warning ,@body))
   #-sbcl
   `(progn ,@body))
+
+ #+(or sbcl excl clisp) (d-add-feature :has-package-locks)
+
+(defun d-lock-package (package)
+  "Lock the package designamed by ‘package’."
+  #+sbcl (lock-package package)
+  #+excl (setf (package-definition-lock package) t)
+  #+clisp (setf (ext:package-lock package) t)
+  #-(or sbcl excl clisp) (missing-implementation d-lock-package))
+
+(defun d-unlock-package (package)
+  "Unlock the package designamed by ‘package’."
+  #+sbcl (unlock-package package)
+  #+excl (setf (package-definition-lock package) nil)
+  #+clisp (setf (ext:package-lock package) nil)
+  #-(or sbcl excl clisp) (missing-implementation d-unlock-package))
+
+(defun d-package-locked-p (package)
+  "Return true if ‘package’ is locked."
+  #+sbcl (package-locked-p package)
+  #+excl (package-definition-lock package)
+  #+clisp (ext:package-lock package)
+  #-(or sbcl excl clisp) (missing-implementation d-package-locked-p))
 
 #| How about not a macro?
 
