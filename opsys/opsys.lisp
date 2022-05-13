@@ -1667,4 +1667,8 @@ environment variables."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+#+has-package-locks
+(eval-when (:load-toplevel :execute)
+  (d-lock-package :opsys))
+
 ;; EOF
