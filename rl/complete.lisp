@@ -308,9 +308,17 @@ Return the completion result, or NIL if there wasn't one."
 				    (subseq str start-from (first-point e))
 				    str)
 		       (first-point e) nil))
-	     (comp (completion-result-completion result))
-	     (replace-pos (completion-result-insert-position result))
-	     (unique (completion-result-unique result)))
+	     (comp)
+	     (replace-pos)
+	     (unique))
+	(when (or (null result) (not (completion-result-p result)))
+	  (message e "Completion function ~a returned a bogus result: ~s ~s."
+		   function (type-of result) result)
+	  (return-from complete nil))
+	(setf comp (completion-result-completion result)
+	      replace-pos (completion-result-insert-position result)
+	      unique (completion-result-unique result))
+
 	;; (dbugf :completion "result = ~a ~s~%" (type-of result) result)
 	;; (dbugf :completion "(last-completion-not-unique-count e) ~s~%~
         ;;                       (last-command-was-completion e) ~s~%"
