@@ -83,6 +83,8 @@ DRAW-FUNCTION takes:
 		   :do
 		   (,@draw-it (truncate x) (truncate y) stroke)))))))))
 
+;; @@@ This assumes coordinates must be fixnums. It should probably let the
+;; drawing function decide.
 (defun draw-rectangle (start-x start-y end-x end-y &key stroke fill)
   (let* ((top    (max 0 (min end-y start-y)))
 	 ;; (bottom (min (max end-yy start-y) (aa-buffer-height buf)))
@@ -127,7 +129,7 @@ DRAW-FUNCTION takes:
 
 (defun circle-points (function ix iy cx cy pix)
   (flet ((sett (x y)
-	   (funcall function (+ cx x) (+ cy y)) pix))
+	   (funcall function (+ cx x) (+ cy y) pix)))
     (let* ((x  (- ix cx))
 	   (y  (- iy cy))
 	   (nx (- x))
@@ -143,9 +145,9 @@ DRAW-FUNCTION takes:
 
 (defun circle-points-fill (function ix iy cx cy r pix fill over)
   (flet ((seto (x y)
-	   (funcall function (+ cx x) (+ cy y)) pix)
+	   (funcall function (+ cx x) (+ cy y) pix))
 	 (seti (x y)
-	   (funcall function (+ cx x) (+ cy y)) fill))
+	   (funcall function (+ cx x) (+ cy y) fill)))
     (let* ((x  (- ix cx))
 	   (y  (- iy cy))
 	   (nx (- x))
