@@ -62,28 +62,9 @@ NIL, so we don't assume what's come before.")
     :documentation "Position in the sequence."))
   (:documentation "An editing location in the line editor."))
 
-(defmethod object-at (spot)
-  (aref (buf (spot-editor spot)) (spot-position spot)))
-
-(defmethod (setf object-at) (value spot)
-  (setf (aref (buf (spot-editor spot)) (spot-position spot)) value))
-
-(defun make-point (n)
-  (make-instance 'line-editing-spot :position n))
-
 (defclass line-editing-spot-range (spot-range)
   ()
   (:documentation "A range of characters in the line editor buffer."))
-
-(defmethod make-spot-range ((start line-editing-spot) (end line-editing-spot))
-  (make-instance 'line-editing-spot-range :start start :end end))
-
-(defmethod range-objects ((spot-range line-editing-spot-range))
-  (with-slots ((start spot::start) (end spot::end)) spot-range
-    (assert (eq (spot-editor start) (spot-editor end)))
-    (subseq (buf (spot-editor (spot-range-start start)))
-	   (spot-range-start spot-range)
-	   (spot-range-end spot-range))))
 
 (defclass line-editing-context (editing-context)
   ()
@@ -92,25 +73,6 @@ NIL, so we don't assume what's come before.")
    :mark nil
    :clipboard nil)
   (:documentation "Editing context for the line editor."))
-
-(defmethod print-object ((object line-editing-context) stream)
-  "Print a line-editing-context to STREAM."
-  (with-slots (point mark clipboard) object
-    (print-unreadable-object (object stream :type t)
-      (format stream "~s ~s ~a" point mark
-	      (typecase clipboard
-		(fatchar-string (make-fat-string :string clipboard))
-		(t clipboard))))))
-
-(defun make-contexts (&key (n 1) copy-from)
-  (if copy-from
-      (make-array n :element-type 'line-editing-context
-		  :initial-contents
-		  (map 'list (_ (copy-editing-context _)) copy-from)
-		  :adjustable t)
-      (make-array n :element-type 'editing-context
-		  :initial-element (make-instance 'line-editing-context)
-		  :adjustable t)))
 
 (defvar *line-editor* nil
   "The last line editor that was instantiated. This is for debugging, since
@@ -251,6 +213,11 @@ works for database formats.")
     :initarg :saved-line
     :initform nil
     :documentation "Current line, saved when navigating history.")
+   (match-element
+    :initarg :match-element :accessor match-element :initform nil
+    :documentation
+    "History line element the match is on for match navigation, or NIL if there
+is none.")
 
    ;; Undo
    (undo-history
@@ -453,7 +420,11 @@ Otherwise the region is deactivated every command loop.")
    (pushed-buffers
     :initarg :pushed-buffers :accessor pushed-buffers
     :initform nil :type list
-    :documentation "List of buffers and points to go back to editing."))
+    :documentation "List of buffers and points to go back to editing.")
+   (line-ending-cache
+    :initarg :line-ending-cache :accessor line-ending-cache
+    :initform nil
+    :documentation "Cache of the results of calculate-line-endings."))
   (:default-initargs
     :contexts (make-contexts)
     :non-word-chars *default-non-word-chars*
@@ -510,6 +481,53 @@ Otherwise the region is deactivated every command loop.")
 
   ;; Set the current dynamic var.
   (setf *line-editor* e))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Spot methods
+
+(defmethod object-at (spot)
+  (aref (buf (spot-editor spot)) (spot-position spot)))
+
+(defmethod (setf object-at) (value spot)
+  (setf (aref (buf (spot-editor spot)) (spot-position spot)) value))
+
+(defun make-point (n)
+  (make-instance 'line-editing-spot :position n))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Spot range methods
+
+(defmethod make-spot-range ((start line-editing-spot) (end line-editing-spot))
+  (make-instance 'line-editing-spot-range :start start :end end))
+
+(defmethod range-objects ((spot-range line-editing-spot-range))
+  (with-slots ((start spot::start) (end spot::end)) spot-range
+    (assert (eq (spot-editor start) (spot-editor end)))
+    (subseq (buf (spot-editor (spot-range-start start)))
+	   (spot-range-start spot-range)
+	   (spot-range-end spot-range))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Context methods
+
+(defmethod print-object ((object line-editing-context) stream)
+  "Print a line-editing-context to STREAM."
+  (with-slots (point mark clipboard) object
+    (print-unreadable-object (object stream :type t)
+      (format stream "~s ~s ~a" point mark
+	      (typecase clipboard
+		(fatchar-string (make-fat-string :string clipboard))
+		(t clipboard))))))
+
+(defun make-contexts (&key (n 1) copy-from)
+  (if copy-from
+      (make-array n :element-type 'line-editing-context
+		  :initial-contents
+		  (map 'list (_ (copy-editing-context _)) copy-from)
+		  :adjustable t)
+      (make-array n :element-type 'editing-context
+		  :initial-element (make-instance 'line-editing-context)
+		  :adjustable t)))
 
 (declaim (ftype (function (line-editor) fixnum) first-point)
 	 (inline first-point))
@@ -593,6 +611,8 @@ and clipboard bound."
       (setf (inator-point new) point
 	    (inator-mark new) mark))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defgeneric freshen (e)
   (:documentation
    "Make something fresh. Make it's state like it just got initialized,
@@ -652,6 +672,18 @@ but perhaps reuse some resources."))
 	 (setf (buf ,e) ,saved-buf
 	       (inator-contexts ,editor) ,saved-contexts
 	       (line-editor-region-active ,editor) ,saved-region-active)))))
+
+(defmethod point-line-number (e point)
+  "Return the abstract line number of ‘point’ in the editor."
+  )
+
+(defmethod point-coordinates (e point)
+  "Return the screen line and column number of ‘point’ in the editor."
+  )
+
+(defmethod coordinates-point (e line column)
+  "Return the point at the ‘line’ and ‘column’ coordinates in the editor."
+  )
 
 ;; For use in external commands.
 
