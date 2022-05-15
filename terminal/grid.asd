@@ -10,6 +10,6 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Grid characters for terminals."
-    :depends-on (:dlib :char-util :fatchar :fatchar-io)
+    :depends-on (:dlib :collections :char-util :fatchar :fatchar-io :dcolor)
     :components
     ((:file "grid")))

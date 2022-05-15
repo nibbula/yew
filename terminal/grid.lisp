@@ -6,7 +6,7 @@
   (:documentation
    "Character grid for terminals. This isn't a terminal type, just things for
 other terminals to use.")
-  (:use :cl :char-util :collections :ochar :fatchar :fatchar-io)
+  (:use :cl :char-util :collections :ochar :fatchar :fatchar-io :dcolor)
   (:export
    #:grid-char
    #:grid-char-c
@@ -49,13 +49,21 @@ other terminals to use.")
 ;; So, grid-char is like a fatchar with coalesced graphemes.
 ;; @@@ Someday do the experiment to make them a class and see what happens.
 
-(defstruct grid-char
+(defstruct (grid-char (:copier nil))
   "A grapheme with attributes."
   (c nil :type (or null character string))
   (fg nil)
   (bg nil)
   (line 0 :type fixnum)
   (attrs nil :type list))
+
+(defun copy-grid-char (c)
+  "Return a new copy of the grid-char ‘c’."
+  (make-grid-char :c     (grid-char-c c)
+		  :fg    (copy-color (grid-char-fg c))
+		  :bg    (copy-color (grid-char-bg c))
+		  :line  (grid-char-line c)
+		  :attrs (copy-list (grid-char-attrs c))))
 
 (deftype grid-string (&optional n) `(vector grid-char ,(or n '*)))
 (defun make-grid-string (n) (make-array n :element-type 'grid-char))
@@ -83,13 +91,13 @@ other terminals to use.")
   (:documentation
    "Return true if the two fatchars have the same colors and attributes.")
   (:method ((a grid-char) (b grid-char))
-    (and (equal (grid-char-fg a) (grid-char-fg b))
-	 (equal (grid-char-bg a) (grid-char-bg b))
+    (and (equalp (grid-char-fg a) (grid-char-fg b))
+	 (equalp (grid-char-bg a) (grid-char-bg b))
 	 (not (set-exclusive-or (grid-char-attrs a) (grid-char-attrs b)
 				:test #'eq))))
   (:method ((a grid-char) (b fatchar))
-    (and (equal (grid-char-fg a) (fatchar-fg b))
-	 (equal (grid-char-bg a) (fatchar-bg b))
+    (and (equalp (grid-char-fg a) (fatchar-fg b))
+	 (equalp (grid-char-bg a) (fatchar-bg b))
 	 (not (set-exclusive-or (grid-char-attrs a) (fatchar-attrs b)
 				:test #'eq)))))
 
@@ -109,15 +117,15 @@ other terminals to use.")
   (:documentation "Set the grid-char CHAR to VALUE.")
   (:method ((char grid-char) (value grid-char))
     (setf (grid-char-c char)     (grid-char-c value)
-	  (grid-char-fg char)    (grid-char-fg value)
-	  (grid-char-bg char)    (grid-char-bg value)
-	  (grid-char-attrs char) (grid-char-attrs value)
+	  (grid-char-fg char)    (copy-color (grid-char-fg value))
+	  (grid-char-bg char)    (copy-color (grid-char-bg value))
+	  (grid-char-attrs char) (copy-list (grid-char-attrs value))
 	  (grid-char-line char)  (grid-char-line value)))
   (:method ((char grid-char) (value fatchar))
     (setf (grid-char-c char)     (fatchar-c value)
-	  (grid-char-fg char)    (fatchar-fg value)
-	  (grid-char-bg char)    (fatchar-bg value)
-	  (grid-char-attrs char) (fatchar-attrs value)
+	  (grid-char-fg char)    (copy-color (fatchar-fg value))
+	  (grid-char-bg char)    (copy-color (fatchar-bg value))
+	  (grid-char-attrs char) (copy-list (fatchar-attrs value))
 	  (grid-char-line char)  (fatchar-line value))))
 
 ;;; @@@ crunch may have to change to this rendition
@@ -133,9 +141,9 @@ RENDITION is a fatchar to take effects from."
     (fatchar-string
      ;; Take the attributes from the first character only.
      (if (not (zerop (length grapheme)))
-	 (make-grid-char :fg    (fatchar-fg    (elt grapheme 0))
-			 :bg    (fatchar-bg    (elt grapheme 0))
-			 :attrs (fatchar-attrs (elt grapheme 0))
+	 (make-grid-char :fg    (copy-color (fatchar-fg (elt grapheme 0)))
+			 :bg    (copy-color (fatchar-bg (elt grapheme 0)))
+			 :attrs (copy-list (fatchar-attrs (elt grapheme 0)))
 			 :line  (fatchar-line  (elt grapheme 0))
 			 :c (if (= 1 (length grapheme))
 				(fatchar-c (elt grapheme 0))
@@ -149,9 +157,9 @@ RENDITION is a fatchar to take effects from."
 			      (0 nil)
 			      (1 (char grapheme 0))
 			      (t grapheme))
-			 :fg (fatchar-fg rendition)
-			 :bg (fatchar-bg rendition)
-			 :attrs (fatchar-attrs rendition))
+			 :fg (copy-color (fatchar-fg rendition))
+			 :bg (copy-color (fatchar-bg rendition))
+			 :attrs (copy-list (fatchar-attrs rendition)))
 	 (make-grid-char :c (case (length grapheme)
 			      (0 nil)
 			      (1 (char grapheme 0))
@@ -163,9 +171,9 @@ RENDITION is a fatchar to take effects from."
     (character
      (if rendition ;; @@@
 	 (make-grid-char :c grapheme
-			 :fg (fatchar-fg rendition)
-			 :bg (fatchar-bg rendition)
-			 :attrs (fatchar-attrs rendition))
+			 :fg (copy-color (fatchar-fg rendition))
+			 :bg (copy-color (fatchar-bg rendition))
+			 :attrs (copy-list (fatchar-attrs rendition)))
 	 (make-grid-char :c grapheme)))))
 
 ;; @@@ should probably rename to set-fat-char-from-grid-char or something
@@ -178,9 +186,9 @@ RENDITION is a fatchar to take effects from."
 	       (null (code-char 0))))) ;; @@@ o'really?
     ;; (assert (characterp cc))
     (setf (fatchar-c fc)     cc
-	  (fatchar-fg fc)    (grid-char-fg gc)
-	  (fatchar-bg fc)    (grid-char-bg gc)
-	  (fatchar-attrs fc) (grid-char-attrs gc)
+	  (fatchar-fg fc)    (copy-color (grid-char-fg gc))
+	  (fatchar-bg fc)    (copy-color (grid-char-bg gc))
+	  (fatchar-attrs fc) (copy-list (grid-char-attrs gc))
 	  (fatchar-line fc)  (grid-char-line gc))
     fc))
 
@@ -307,9 +315,9 @@ z    (flet ((add-grid-char (char)
 		  (when (not output-start)
 		    (setf output-start i))
 		  (setf (aref result j)
-			(make-fatchar :fg    (grid-char-fg    char)
-				      :bg    (grid-char-bg    char)
-				      :attrs (grid-char-attrs char)
+			(make-fatchar :fg    (copy-color (grid-char-fg char))
+				      :bg    (copy-color (grid-char-bg char))
+				      :attrs (copy-list (grid-char-attrs char))
 				      :line  (grid-char-line  char)
 				      :c null-as))
 		  (when (not output-end)
@@ -325,9 +333,9 @@ z    (flet ((add-grid-char (char)
 		    (setf output-start i))
 		  (setf (aref result j)
 			(make-fatchar :c     (or (grid-char-c char) null-as)
-				      :fg    (grid-char-fg    char)
-				      :bg    (grid-char-bg    char)
-				      :attrs (grid-char-attrs char)
+				      :fg    (copy-color (grid-char-fg char))
+				      :bg    (copy-color (grid-char-bg char))
+				      :attrs (copy-list (grid-char-attrs char))
 				      :line  (grid-char-line  char)))
 		  (when (not output-end)
 		    (setf output-end
@@ -344,9 +352,10 @@ z    (flet ((add-grid-char (char)
 		       (setf output-start i))
 		     (setf (aref result j)
 			   (make-fatchar :c     (if (null-char c) null-as c)
-					 :fg    (grid-char-fg    char)
-					 :bg    (grid-char-bg    char)
-					 :attrs (grid-char-attrs char)
+					 :fg    (copy-color (grid-char-fg char))
+					 :bg    (copy-color (grid-char-bg char))
+					 :attrs (copy-list
+						 (grid-char-attrs char))
 					 :line  (grid-char-line  char)))
 		     (when (not output-end)
 		       (setf output-end
