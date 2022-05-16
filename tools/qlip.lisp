@@ -258,8 +258,8 @@ Do NOT try to load a .asd file directly with CL:LOAD. Always use ASDF:LOAD-ASD."
 	     :circle t
 	     :readably t :pretty nil :level nil :length nil :array t))))
 
-(defun generate ()
-  (let ((data (gather)))
+(defun generate (&key all)
+  (let ((data (gather :all all)))
     ;; (break)
     (write-system-data (ql-dist:enabled-dists) data *system-cache-file*))
   (format t "Wrote ~s.~%" *system-cache-file*))
@@ -324,10 +324,12 @@ Do NOT try to load a .asd file directly with CL:LOAD. Always use ASDF:LOAD-ASD."
 
 #+lish
 (lish:defcommand qlip
-  ((generate boolean :short-arg #\g :help "Generate the system data cache."))
+  ((generate boolean :short-arg #\g :help "Generate the system data cache.")
+   (all boolean :short-arg #\a
+    :help "Download all quicklisp systems when generating."))
   "Quicklisp interface program."
   (cond
-    (generate (generate))
+    (generate (generate :all all))
     (t (qlip))))
 
 ;; End
