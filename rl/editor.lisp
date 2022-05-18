@@ -675,14 +675,27 @@ but perhaps reuse some resources."))
 
 (defmethod point-line-number (e point)
   "Return the abstract line number of ‘point’ in the editor."
+  (declare (ignore e point))
   )
 
 (defmethod point-coordinates (e point)
   "Return the screen line and column number of ‘point’ in the editor."
-  )
+  (declare (ignore e point))
+#|
+  (let ((endings (line-ending-cache e)))
+    (if endings
+	@@@@@
+	(let ((spots (list (list point))))
+	  (setf (line-ending-cache e)
+		(editor-calculate-line-endings e :spots spots))
+	  (cdr (assoc point spots)))))
+|#
+)
+
 
 (defmethod coordinates-point (e line column)
   "Return the point at the ‘line’ and ‘column’ coordinates in the editor."
+  (declare (ignore e line column))
   )
 
 ;; For use in external commands.
