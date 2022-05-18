@@ -1944,21 +1944,24 @@ SYMBOLS is a designator for a symbol or list of symbols like for EXPORT."
   #+sbcl (lock-package package)
   #+excl (setf (package-definition-lock package) t)
   #+clisp (setf (ext:package-lock package) t)
-  #-(or sbcl excl clisp) (missing-implementation d-lock-package))
+  #-(or sbcl excl clisp) (declare (ignore package))
+  #-(or sbcl excl clisp) (missing-implementation 'd-lock-package))
 
 (defun d-unlock-package (package)
   "Unlock the package designamed by ‘package’."
   #+sbcl (unlock-package package)
   #+excl (setf (package-definition-lock package) nil)
   #+clisp (setf (ext:package-lock package) nil)
-  #-(or sbcl excl clisp) (missing-implementation d-unlock-package))
+  #-(or sbcl excl clisp) (declare (ignore package))
+  #-(or sbcl excl clisp) (missing-implementation 'd-unlock-package))
 
 (defun d-package-locked-p (package)
   "Return true if ‘package’ is locked."
   #+sbcl (package-locked-p package)
   #+excl (package-definition-lock package)
   #+clisp (ext:package-lock package)
-  #-(or sbcl excl clisp) (missing-implementation d-package-locked-p))
+  #-(or sbcl excl clisp) (declare (ignore package))
+  #-(or sbcl excl clisp) (missing-implementation 'd-package-locked-p))
 
 #| How about not a macro?
 
