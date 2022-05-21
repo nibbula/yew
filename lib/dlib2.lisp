@@ -88,7 +88,9 @@ CASE sets the temporarily sets the READTABLE-CASE, which should be one of:
   "Return the symbol which is the name of the slot in CLASS whose symbol-name
 matches SYMBOL."
   (mop:slot-definition-name
-   (find symbol (mop:class-slots (find-class class))
+   (find symbol (mop:class-slots (if (symbolp class)
+				     (find-class class)
+				     class))
 	 :key (_ (mop:slot-definition-name _))
 	 :test (lambda (a b)
 		 (search (symbol-name a) (symbol-name b) :test #'equalp)))))
