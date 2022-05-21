@@ -25,7 +25,7 @@ using temporary packages, but it's slow and maybe doesn't even work. I haven't
 come up with any fallback for PACKAGE-ROBUST-READ*.
 
 Another way to do it is to have a whole separate read implementation. For this
-we currently use the Eclector package.
+we currently use the Eclector library.
 
 If you have *READ-INTERN*, :has-read-intern should be in features, before
 loading this.
@@ -43,7 +43,8 @@ loading this.
 		;;#:*read-intern*
 		#:*client*
 		#:interpret-symbol
-		#:find-character)
+		#:find-character
+		#:make-structure-instance)
   (:export
    #:clean-read-from-string
    #:safe-clean-read-from-string
@@ -52,6 +53,7 @@ loading this.
    #:package-robust-read
    #:robust-read
    #:flexible-read
+   #:flexible-read-from-string
    ))
 (in-package :reader-ext)
 
@@ -70,11 +72,11 @@ package if it doesn't. If DIRT-PILE is NIL, return a packageless symbol."
 #-has-read-intern
 (progn
   (defclass unicode-reader ()
-    ()
+     ()
     (:documentation "A reader that reads unicode character names."))
 
   (defmethod find-character ((client unicode-reader) name)
-    (character-named name :try-lisp-names-p t))
+    (character-named (string name) :try-lisp-names-p t))
 
   (defclass robust-unicode-reader (unicode-reader)
     ()
@@ -83,93 +85,56 @@ package if it doesn't. If DIRT-PILE is NIL, return a packageless symbol."
 #\replacement_character for any unknown names."))
 
   (defmethod find-character ((client robust-unicode-reader) name)
-    (or (character-named name :try-lisp-names-p t)
+    (or (character-named (string name) :try-lisp-names-p t)
 	(code-char #XFFFD)))
 
-  ;; @@@ maybe use this when make-structure-instance is in the quicklisp version.
-#|
   (defclass practical-reader ()
     ()
     (:documentation "A reader that can usually read structures."))
 
-  ;; Making a structure of which all you know is the name, seems to be rife
-  ;; with subtle problems. None of the solutions presented here are completely
-  ;; satisfactory. Implementation specific code may function best, but is
-  ;; susceptable to drift. Portable code can't be assured to do the job
-  ;; perfectly.
+  ;; see make-structure.lisp
+  #+(and (not has-read-intern) (or sbcl ccl ecl clisp))
+  (eval-when (:compile-toplevel :load-toplevel :execute)
+    (defmacro %make-structure (s-name arglist)
+      `(let* ((class (find-class ,s-name))
+	      (struct (allocate-instance class))
+	      ;; (package (symbol-package ,s-name))
+	      )
+	 (loop :for (slot value) :on ,arglist :by #'cddr
+               :do (setf (slot-value struct
+				     ;; (intern
+				     ;;  (string
+				     ;;   (find-slot-name class slot)
+				     ;;  package)
+				     (find-slot-name class slot))
+			 value))
+	 struct)))
 
-  ;; Not the similarity of the implementation specific code. I think if Common
-  ;; Lisp would have just included a way to retrieve the constructor, this
-  ;; would be able to be portable. I know in the old days, for maximum
-  ;; efficiency, you might want to toss everything about a struct, but since
-  ;; structs are now classes too, you could only do that in very extreme cases.
+  #+(and (not has-read-intern) (not (or sbcl ccl ecl clisp)))
+  (error
+   "Sorry, make-structure-instance hasn't been implemented yet for your Lisp.")
 
   (defmethod make-structure-instance ((client practical-reader)
 				      name initargs)
-    "Make a structure of type NAME with constructor arguments INITARGS."
-    (cond
-      #+sbcl
-      ((let ((classoid (sb-kernel:find-classoid name nil)))
-	 (unless (typep classoid 'sb-kernel:structure-classoid)
-	   (%reader-error stream 'sharp-s-not-structure-type :body body))
-	 (let ((default-constructor (sb-kernel:dd-default-constructor
-				     (sb-kernel:layout-info
-				      (sb-kernel:classoid-layout classoid)))))
-	   (unless default-constructor
-	     (error "The ~s structure does not have a default constructor."
-		    name))
-	   (apply (fdefinition default-constructor) initargs))))
-      #+ccl
-      ((let ((structure-definition (gethash name ccl::%defstructs%)))
-	 (unless structure-definition
-	   (%reader-error stream 'sharp-s-not-structure-type :body body))
-	 (let ((default-constructor (ccl::sd-constructor structure-definition)))
-	   (unless default-constructor
-	     (error "The ~s structure does not have a default constructor."
-		    name))
-	   (apply (fdefinition default-constructor) initargs))))
-      ;; Some implementations will fail to make-instance for structs with a NIL
-      ;; constructor. Some won't fail. I don't think it's specified. But also
-      ;; the arguments could be incorrect. We really don't have any portable
-      ;; way of knowing.
-      ((catch 'some-error
-	 (handler-case
-	     ;; Since this will mask errors, we probably need to check the
-	     ;; arguments ourselves with the MOP?
-	     (apply #'make-instance class initargs)
-	   (error (c)
-	     (declare (ignore c))
-	     (throw 'some-error nil)))))
-      ;; See if we can just guess the constructor name.
-      ;; This is probably a bad idea, since it could have been redefined to
-      ;; anything.
-      ((let ((maker (find-symbol (concatenate 'string "MAKE-"
-					      (string-upcase name))
-				 (symbol-package name))))
-	 (and maker (fboundp maker)
-	      (apply maker initargs))))
-      ;; We have no other way of getting the constructor name or even knowing if
-      ;; it has one. So we have to take the worst option: defer to the host
-      ;; implementaion. Of course this means if you use this code for writing an
-      ;; implementation, and don't change this, #S processing code will become
-      ;; hidden in your image.
-      (t
-       (cl:read-from-string (format nil "#S~s" `(,name ,@initargs))))))
-|#
+  "Make an instance of structure ‘name’, with slots initialized by ‘initargs’,
+‘initargs’ should be a plist like (slot-name value slot-name value ...).
+‘name’ should be a symbol of which the package is probably ignored."
+    (%make-structure name initargs))
 
   (defvar *dirt-pile* nil
     "A package to pile dirt into.")
 
-  (defclass clean-reader (unicode-reader #| practical-working-reader |#)
+  (defclass clean-reader (unicode-reader practical-reader)
     ()
     (:documentation "A reader that doesn't pollute packages."))
 
-  #+sbcl (declaim (sb-ext:muffle-conditions sb-ext:compiler-note))
+  ;; #+sbcl (declaim (sb-ext:muffle-conditions sb-ext:compiler-note))
   (defmethod interpret-symbol ((client clean-reader) input-stream
 			       package-name symbol-name internp)
-    (declare (ignore client input-stream internp))
+    (declare (ignore client input-stream internp)
+	     #+sbcl (sb-ext:muffle-conditions sb-ext:compiler-note))
     (interninator symbol-name package-name *dirt-pile*))
-  #+sbcl (declaim (sb-ext:unmuffle-conditions sb-ext:compiler-note))
+  ;; #+sbcl (declaim (sb-ext:unmuffle-conditions sb-ext:compiler-note))
 
   (defparameter *clean-client* (make-instance 'clean-reader)
     "A ‘client’ for the clean reader."))
@@ -262,7 +227,7 @@ un-interned symbol."
 
 #-has-read-intern
 (progn
-  (defclass robust-reader (robust-unicode-reader)
+  (defclass robust-reader (robust-unicode-reader practical-reader)
     ()
     (:documentation "A reader that doesn't fail on unknown packages."))
 
@@ -292,9 +257,48 @@ un-interned symbol."
 	#-has-read-intern (*client* *robust-client*))
     (read stream eof-error-p eof-value recursive-p)))
 
+;; Define a customizable reader interface which give you at least as much
+;; control as *read-intern*.
 
-;; #-has-read-intern
-;; (defun flexible-read (
+#-has-read-intern
+(progn
+  (defclass flexible-reader (unicode-reader practical-reader)
+    ()
+    (:documentation "A reader with a customizable intern."))
+
+  (defparameter *flexible-client* (make-instance 'flexible-reader)
+    "A ‘client’ for the flexible reader.")
+
+  (defvar *flexible-intern* nil
+    "The dynmaic intern function for the flexible reader.")
+
+  (defmethod interpret-symbol ((client flexible-reader) input-stream
+			       package-name symbol-name internp)
+    (declare (ignore client input-stream internp))
+    (funcall *flexible-intern* symbol-name package-name)))
+
+(defun flexible-read (&key stream eof-error-p eof-value recursive-p
+			intern-function)
+  "A read which can be customized by providing an ‘intern’ function to use
+when the reader wants to call ‘intern’ a symbol. Note that it uses keywods
+instead of the traditional optional arguments."
+  (let (#+has-read-intern (*read-intern* intern-function)
+	#-has-read-intern (*client* *flexible-client*)
+	#-has-read-intern (*flexible-intern* intern-function))
+    (read stream eof-error-p eof-value recursive-p)))
+
+(defun flexible-read-from-string (&key string eof-error-p eof-value
+				    (start 0) end preserve-whitespace
+				    intern-function)
+  "A read which can be customized by providing an ‘intern’ function to use
+when the reader wants to call ‘intern’ a symbol. Note that it uses keywods
+instead of the traditional optional arguments."
+  (let (#+has-read-intern (*read-intern* intern-function)
+	#-has-read-intern (*client* *flexible-client*)
+	#-has-read-intern (*flexible-intern* intern-function))
+    (read-from-string string eof-error-p eof-value
+		      :start start :end end
+		      :preserve-whitespace preserve-whitespace)))
 
 #+sbcl (declaim (sb-ext:unmuffle-conditions style-warning))
 
