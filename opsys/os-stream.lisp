@@ -660,4 +660,8 @@ use of throw), the file is automatically closed."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+#+has-package-locks
+(eval-when (:load-toplevel :execute)
+  (d-lock-package :opsys))
+
 ;; EOF
