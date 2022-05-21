@@ -809,8 +809,8 @@ confirmation first."
 	;; (debug-msg "command ~s" command)
 	(lish:! command)
 	(when do-pause
-	  (write-string "[Press Return]")
-	  (terpri)
+	  (write-line "[Press Return]")
+	  (finish-output)
 	  (read-line))
 	;; (terminal-start *terminal*)
 	(terminal-reinitialize *terminal*)
