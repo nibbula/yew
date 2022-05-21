@@ -1942,7 +1942,7 @@ SYMBOLS is a designator for a symbol or list of symbols like for EXPORT."
 (defun d-lock-package (package)
   "Lock the package designamed by ‘package’."
   #+sbcl (lock-package package)
-  #+excl (setf (package-definition-lock package) t)
+  #+excl (setf (excl:package-definition-lock package) t)
   #+clisp (setf (ext:package-lock package) t)
   #-(or sbcl excl clisp) (declare (ignore package))
   #-(or sbcl excl clisp) (missing-implementation 'd-lock-package))
@@ -1950,7 +1950,7 @@ SYMBOLS is a designator for a symbol or list of symbols like for EXPORT."
 (defun d-unlock-package (package)
   "Unlock the package designamed by ‘package’."
   #+sbcl (unlock-package package)
-  #+excl (setf (package-definition-lock package) nil)
+  #+excl (setf (excl:package-definition-lock package) nil)
   #+clisp (setf (ext:package-lock package) nil)
   #-(or sbcl excl clisp) (declare (ignore package))
   #-(or sbcl excl clisp) (missing-implementation 'd-unlock-package))
@@ -1958,7 +1958,7 @@ SYMBOLS is a designator for a symbol or list of symbols like for EXPORT."
 (defun d-package-locked-p (package)
   "Return true if ‘package’ is locked."
   #+sbcl (package-locked-p package)
-  #+excl (package-definition-lock package)
+  #+excl (excl:package-definition-lock package)
   #+clisp (ext:package-lock package)
   #-(or sbcl excl clisp) (declare (ignore package))
   #-(or sbcl excl clisp) (missing-implementation 'd-package-locked-p))
