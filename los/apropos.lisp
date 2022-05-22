@@ -24,12 +24,36 @@
   (:method ((thing t))
     (grout-format "~s~%" thing)))
 
-(defun symbol-apropos (thing &key package external-only collect)
+(defun compound-scanner (regexp)
+  (let* ((pos 0)
+	 (expanded-regexp
+	   (with-output-to-string (str)
+	     ;; case insensitve and at the start or after a -
+	     (write-string "(^|[-*+%!])" str)
+	     (loop :with found
+	       :do
+	       (setf found nil)
+	       (multiple-value-bind (s e #| ss ee |#)
+		   (ppcre:scan "(\\S)-(\\S)" regexp :start pos)
+		 (when s
+		   (write-string (subseq regexp pos (1+ s)) str)
+		   (write-string "[^-]*-" str)
+		   (setf pos (1- e)
+			 found t)))
+	       :while (and found (< pos (1- (length regexp)))))
+	     (write-string (subseq regexp pos) str))))
+    (ppcre:create-scanner expanded-regexp :case-insensitive-mode t)))
+
+(defun symbol-apropos (thing &key package external-only collect compound)
   (let* ((thing-string (princ-to-string thing))
 	 (scanner
-	  (ppcre:create-scanner
-	   ;; thing-string :case-insensitive-mode (not (functionp thing))))
-	   thing-string :case-insensitive-mode t))
+	   (cond
+	     (compound
+	      (compound-scanner thing-string))
+	     (t
+	      (ppcre:create-scanner
+	       ;; thing-string :case-insensitive-mode (not (functionp thing))))
+	       thing-string :case-insensitive-mode t))))
 	 (table (make-hash-table))
 	 matches did-one results)
     ;; We use a hash table since symbols are frequently duplicated in packages,
@@ -126,7 +150,7 @@
 
 ;; Maybe it would be cool to have a tree browser output version?
 
-(defun mondo-apropos (&key thing types package external-only collect)
+(defun mondo-apropos (&key thing types package external-only collect compound)
   "Look for stuff you can do."
   (when (not thing)
     (error "But apropos what?"))
@@ -136,7 +160,8 @@
 	(when (and (setf result
 			 (symbol-apropos thing :package package
 					 :external-only external-only
-					 :collect collect))
+					 :collect collect
+					 :compound compound))
 		   collect)
 	  (push `(:lisp . ,result) results)))
 
@@ -211,6 +236,8 @@
    (type symbol :short-arg #\t
     :help "Limit search to this type of thing.")
    (collect boolean :short-arg #\c :help "Collect results into lists.")
+   (compound boolean :short-arg #\C
+    :help "Use compound prefix matching for Lisp symbols, e.g. w-o-t-s.")
    (thing object :help "Like what?"))
   :args-as args
   "Words given but not taken."
@@ -223,8 +250,10 @@
     (if collect
 	(setf *output*
 	      (mondo-apropos :thing thing :types types :package package
-			     :external-only external-only :collect collect))
+			     :external-only external-only :collect collect
+			     :compound compound))
 	(mondo-apropos :thing thing :types types :package package
-		       :external-only external-only :collect collect))))
+		       :external-only external-only :collect collect
+		       :compound compound))))
 
 ;; EOF
