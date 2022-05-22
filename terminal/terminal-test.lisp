@@ -52,7 +52,8 @@
 		 offset)
 	      (- (truncate (z-width) 2)
 		 (truncate (display-length text) 2)))
-  (tt-format text))
+  (let ((str (format nil text)))
+    (tt-write-string text :end (min (tt-width) (display-length str)))))
 
 (defun prompt-next (&key
 		      (message "Press Q to quit, anything else to continue.")
@@ -101,39 +102,50 @@
     ,@body
     (prompt-next :position ,position)))
 
+(defparameter *top-left*
+  #("X <---"
+    "^"
+    "|"
+    "|"))
+(defparameter *top-right*
+  #("---> X"
+    "     ^"
+    "     |"
+    "     |"))
+(defparameter *bottom-left*
+  #("|"
+    "|"
+    "v"
+    "X <---"))
+(defparameter *bottom-right*
+  #("     |"
+    "     |"
+    "     v"
+    "---> X"))
+
+(defun put-at (row col thing)
+  "Put a ‘thing’ at ‘row’ and ‘col’. Don't ouput spaces. Clip to the screen.
+‘thing’ should be an array of strings."
+  (tt-move-to row col)
+  (loop
+    :for s :across thing
+    :for y := row :then (1+ y)
+    :do
+    (loop
+      :for c :across s
+      :for x := col :then (1+ x)
+      :do
+      (when (and (char/= #\space c)
+		 (>= y 0) (< y (tt-height))
+		 (>= x 0) (< x (tt-width)))
+	(tt-write-char-at y x c)))))
+
 (defun test-screen-size-draw ()
   (tt-clear) (tt-home)
-  ;; upper left
-  (tt-format "X <---~%^~%|~%|")
-  ;;(case (tt-get-key) ((#\Q #\q) (throw 'quit nil)))
-
-  ;; lower left
-  (tt-move-to (- (z-height) 4) 0)
-  (tt-format "|~%|~%v~%X <---")
-  ;;(case (tt-get-key) ((#\Q #\q) (throw 'quit nil)))
-
-  ;; upper right
-  (tt-move-to 0 (- (z-width) 6))
-  (tt-format "---> X")
-  (tt-move-to 1 (- (z-width) 1)) (tt-format "^")
-  (tt-move-to 2 (- (z-width) 1)) (tt-format "|")
-  (tt-move-to 3 (- (z-width) 1)) (tt-format "|")
-  ;;(case (tt-get-key) ((#\Q #\q) (throw 'quit nil)))
-
-  ;; lower right
-  (tt-move-to (- (z-height) 4)
-	      (- (z-width) 1))
-  (tt-format "|")
-  (tt-move-to (- (z-height) 3)
-	      (- (z-width) 1))
-  (tt-format "|")
-  (tt-move-to (- (z-height) 2)
-	      (- (z-width) 1))
-  (tt-format "V")
-  (tt-move-to (- (z-height) 1)
-	      (- (z-width) 6))
-  (tt-format "---> X")
-  ;;(case (tt-get-key) ((#\Q #\q) (throw 'quit nil)))
+  (put-at 0 0 *top-left*)
+  (put-at 0 (- (tt-width) 6) *top-right*)
+  (put-at (- (tt-height) 4) 0 *bottom-left*)
+  (put-at (- (tt-height) 4) (- (tt-width) 6) *bottom-right*)
 
   ;; message
   (center "There should be an 'X' in every corner of the screen.~%" 0)
