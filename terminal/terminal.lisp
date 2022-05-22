@@ -810,6 +810,9 @@ when given that event alone. The starting state is to allow no events.")
 (deftt events-supported ()
   "Return a list of events this terminal supports.")
 
+(deftt set-events (events)
+  "Set the set of events enabled to ‘events’.")
+
 ;; Provide a default method which returns nil. Of course key events are implict.
 (defmethod terminal-events-supported (terminal)
   "Return a list of events this terminal supports."
@@ -822,7 +825,7 @@ when given that event alone. The starting state is to allow no events.")
 
 (defmethod terminal-enable-events (terminal events)
   "Enable the EVENTS and return true if the terminal supports the events."
-  (with-slots (events-enabled) terminal
+  (with-accessors ((events-enabled terminal-events-enabled)) terminal
     (let (result)
       (loop :for e :in (if (atom events) (list events) events)
 	 :do
@@ -836,7 +839,7 @@ when given that event alone. The starting state is to allow no events.")
 
 (defmethod terminal-disable-events (terminal events)
   "Disable the EVENTS and return true if the terminal supports the events."
-  (with-slots (events-enabled) terminal
+  (with-accessors ((events-enabled terminal-events-enabled)) terminal
     (let (result)
       (loop :for e :in (if (atom events) (list events) events)
 	 :do
@@ -847,6 +850,20 @@ when given that event alone. The starting state is to allow no events.")
 	    (when (terminal-disable-event terminal e)
 	      (setf result t)))))
       result)))
+
+(defmethod terminal-set-events (terminal events)
+  "Set the set of events enabled on ‘terminal’ to ‘events’."
+  (with-accessors ((events-enabled terminal-events-enabled)) terminal
+    (let ((to-enable  (set-difference events events-enabled))
+	  (to-disable (set-difference events-enabled events)))
+      ;; (dbugf :event "enabled = ~s~%" events-enabled)
+      ;; (dbugf :event "to-enable = ~s~%" to-enable)
+      ;; (dbugf :event "to-disable = ~s~%" to-disable)
+      (when to-disable
+	(terminal-disable-events terminal to-disable))
+      (when to-enable
+	(terminal-enable-events terminal to-enable)))
+    events-enabled))
 
 (defgeneric terminal-enable-event (tty event)
   (:documentation
@@ -866,13 +883,17 @@ when given that event alone. The starting state is to allow no events.")
 
 (defmacro with-enabled-events ((events &key (tty '*terminal*)) &body body)
   "Evaluate BODY with EVENTS enabled for TTY which defaults to *TERMINAL*."
-  (with-names (tt ev)
-    `(let ((,tt ,tty) (,ev ,events))
+  (with-names (tt ev saved-events)
+    `(let* ((,tt ,tty)
+	    (,ev ,events)
+	    (,saved-events (copy-seq (terminal-events-enabled ,tt))))
        (unwind-protect
 	    (progn
 	      (terminal-enable-events ,tt ,ev)
 	      ,@body)
-	 (terminal-disable-events ,tt ,ev)))))
+	 ;; Turn off events that are now on which weren't in the starting state.
+	 ;; (dbugf :event "saved-events = ~s~%" ,saved-events)
+	 (terminal-set-events ,tt ,saved-events)))))
 
 (defmacro with-saved-cursor ((tty) &body body)
   "Save the cursor position, evaluate the body forms, and restore the cursor
