@@ -1100,6 +1100,14 @@ drawing, which will get overwritten."
       (tt-disable-events '(:mouse-buttons :mouse-motion :resize))
       (tt-enable-events saved-events))))
 
+(defun test-events ()
+  (format t "~&before: ~s" (terminal-events-enabled *terminal*))
+  (with-immediate ()
+    (with-enabled-events ('(:mouse-buttons))
+      (format t "~&during: ~s" (terminal-events-enabled *terminal*))
+      (print (tt-get-key))))
+  (format t "~&after: ~s" (terminal-events-enabled *terminal*)))
+
 (defun test-autowrap ()
   (blurp ()
     (let ((width (z-width))
