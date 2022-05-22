@@ -1627,6 +1627,10 @@ XTerm or something."
   "Return true if the terminal delays automatic wrapping at the end of a line."
   nil)
 
+(defmethod terminal-events-enabled ((tty terminal-crunch))
+  "Allow event and return true if the terminal can allow event."
+  (terminal-events-enabled (terminal-wrapped-terminal tty)))
+
 (defmethod terminal-enable-event ((tty terminal-crunch) event)
   "Allow event and return true if the terminal can allow event."
   (terminal-enable-event (terminal-wrapped-terminal tty) event))
