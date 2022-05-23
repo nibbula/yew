@@ -29,6 +29,7 @@ How to use:
     (theme-value *theme* '(:command :not-found :style))
   or set it like:
     (setf (theme-value *theme* '(:command :not-found :style)) '(:yellow))
+  It can also take a list of themes, and returns the first value set.
 
   Or use the simpler ‘value’ accessor for the current theme.
 
@@ -269,17 +270,36 @@ If the path doesn't exist, it is created."
 	      (error
 	       "Attempt to set the value of an existing non-value node."))))))
 
+;; @@@ This is mostly useless now. Maybe we should just make different
+;; theme-node-value methods?
+(defun node-value (node)
+  "Given a theme-node ‘node’, return it's value."
+  (cond
+    ((typep node 'theme-value-node)
+     (theme-node-value node))
+    ((and (eq (type-of node) 'theme-node)
+	  (theme-children node))
+     ;; @@@ We could return the whole sub-tree?
+     )))
+
 (defmethod theme-value ((theme theme) item)
-  "Return the value in THEME given by the node path ITEM,"
+  "Return the value in ‘theme’ given by the node path ‘item’. The second value
+indicates if the node was found, to distinguish NIL values."
   (let ((node (get-node theme item)))
-    (when node
-      (cond
-	((typep node 'theme-value-node)
-	 (theme-node-value node))
-	((and (eq (type-of node) 'theme-node)
-	      (theme-children node))
-	 ;; @@@ could return the whole sub-tree
-	 )))))
+    (if node
+	(values (node-value node) t)
+	(values nil nil))))
+
+(defmethod theme-value ((theme list) item)
+  "Return the value in ‘theme’ given by the node path ‘item’. The second value
+indicates if the node was found, to distinguish NIL values. This version gets
+the first present value in a list of themes."
+  (loop
+    :with node
+    :for tt :in theme
+    :when (setf node (get-node tt item))
+      :return (values (node-value node) t))
+  (values nil nil))
 
 (defmethod (setf theme-value) (value (theme theme) item)
   "Setter for theme node values."
@@ -448,22 +468,6 @@ this loses information, such as descriptions and titles."
        (loop :for n :in (theme-children theme) :do
 	  (print-theme-node n :stream stream :max-size max-size)))))
   (values))
-
-#| Probably should be somewhere else, since theme is a dependency of lish
-   so it won't normally be loaded?
-
-#+lish
-(lish:defcommand print-theme
-  ((theme object :default '*theme* :help "The theme to print.")
-   (as-tree boolean :short-arg #\t :help "Print a a tree.")
-   (readably boolean :short-arg #\r
-    :help "Print as a Lisp object that can read by READ."))
-  "Print a description of a theme."
-  (when (not theme)
-    (setf theme (or lish:*input* *theme*)))
-  (print-theme theme :as-tree as-tree :readably readably)
-  (setf lish:*output* theme))
-|#
 
 (defun make-theme (name &rest keys &key title description)
   "Make a new theme named NAME. If TITLE isn't given it's set from name."
@@ -774,15 +778,18 @@ Something like the default setting of typical GNU tools."))))
       (:command :function	    :style) ()
       (:command-arg :existing-path :style) (:underline)
       ;; Programs
-      (:program :modeline             :style)     (:standout)
-      (:program :search-match         :style)     (:underline)
-      (:program :empty-line-indicator :style)     (:normal)
-      (:program :empty-line-indicator :character) #\~
-      (:program :selection            :style)     (:standout)
-      (:program :label		       :style)     ()
-      (:program :data		       :style)     ()
-      (:program :meter		       :character) #.(code-char #x2592)
-      (:program :suggestion           :style)     ()
+      (:program :modeline                 :style)     (:standout)
+      (:program :search-match             :style)     (:underline)
+      (:program :empty-line-indicator     :style)     (:normal)
+      (:program :empty-line-indicator     :character) #\~
+      (:program :selection                :style)     (:standout)
+      (:program :label		          :style)     ()
+      (:program :data		          :style)     ()
+      (:program :meter		          :character) #.(code-char #x2592)
+      (:program :suggestion               :style)     ()
+      ;; (:program :return-value-indicator   :string)    "⇒"
+      ;; (:program :return-value-indicator   :style)     (:cyan)
+      ;; (:program :multiple-value-indicator :string)    ";"
       )))
 
 (defun set-theme-defaults-for-monochrome-light (theme)
