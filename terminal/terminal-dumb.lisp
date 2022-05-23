@@ -74,11 +74,13 @@ require terminal driver support."))
 (defmethod terminal-end ((tty terminal-dumb) &optional state)
   "Put the terminal back to the way it was before we called terminal-start."
   (declare (ignore state))
-  )
+  (finish-output (terminal-output-stream tty))
+  (values))
 
 (defmethod terminal-done ((tty terminal-dumb) &optional state)
   "Forget about the whole terminal thing and stuff."
   (declare (ignore state))
+  (terminal-end tty)
   (values))
 
 (defmethod terminal-reinitialize ((tty terminal-dumb))
