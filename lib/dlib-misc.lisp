@@ -83,6 +83,7 @@
    #:safe-file-length
    #:slurp
    #:slurp-binary
+   #:byte-vector-8
    #:spit
    #:spit-append
    #:spit-binary
@@ -1457,6 +1458,15 @@ text into lisp and have it be stored as lines of words."
     (type-error (c)
       (declare (ignore c)))))
 
+(defun unsigned-byte-8-p (x)
+  "Type predicate for (unsigned-byte 8)."
+  (typep x '(unsigned-byte 8)))
+
+(deftype byte-vector-8 ()
+  "A vector which every element is an (unsigned-byte 8)."
+  '(or (vector (unsigned-byte 8))
+       (vector (satisfies unsigned-byte-8-p))))
+
 (defparameter *slurp-buffer-size* 4096)
 
 ;; This is kind of some duplication from stuff in lish/piping.lisp.
@@ -1569,14 +1579,16 @@ it doesn't exist, create it."
       (t
        (princ object stream)))))
 
-(defun spit-binary (file object &key count)
-  "Output a vector of octets to FILE. OBJECT must be a
-(vector (unsigned-byte 8)). If COUNT is non-nil, only write that many elements."
+(defun spit-binary (file object &key count append)
+  "Output a vector of octets to ‘file’. ‘object’ should be a ‘byte-vector-8’.
+If ‘count’ is non-nil, only write that many elements. If ‘append’ is true, the
+file is created if it doesn't exist, or appended if it does."
   (with-open-file (stream file :direction :output
 			       :if-does-not-exist :create
-			       :if-exists :append
+			       :if-exists (if append :append :error)
 			       :element-type '(unsigned-byte 8))
-    (assert (typep object '(vector (unsigned-byte 8))))
+    (assert (typep object '(or (vector (unsigned-byte 8))
+			       (vector (satisfies unsigned-byte-8-p)))))
     (if count
 	(write-sequence object stream :start 0 :end count)
 	(write-sequence object stream))))
