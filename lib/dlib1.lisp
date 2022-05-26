@@ -1942,7 +1942,11 @@ SYMBOLS is a designator for a symbol or list of symbols like for EXPORT."
 (defun d-lock-package (package)
   "Lock the package designamed by ‘package’."
   #+sbcl (lock-package package)
-  #+excl (setf (excl:package-definition-lock package) t)
+  #+excl (setf (excl:package-definition-lock
+		(if (packagep package)
+		    package
+		    (find-package package)))
+	       t)
   #+clisp (setf (ext:package-lock package) t)
   #-(or sbcl excl clisp) (declare (ignore package))
   #-(or sbcl excl clisp) (missing-implementation 'd-lock-package))
