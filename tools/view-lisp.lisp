@@ -369,7 +369,7 @@
      :collect
      (make-instance
       'system-node
-      :object (asdf:registered-system s)
+      :object (asdf::registered-system s)
       :open nil)))
 
 ;; (defmethod view ((thing asdf:cl-source-file))
