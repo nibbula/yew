@@ -3,7 +3,7 @@
 ;;;
 
 (defpackage :tiny-repl
-  (:use :common-lisp :terminal :rl :keymap :dlib :dlib-misc :ostring)
+  (:use :common-lisp :dlib :terminal :keymap :dlib-misc :ostring)
   (:documentation "A not-so-tiny REPL that works with RL.")
   (:export
    #:tiny-repl
@@ -69,7 +69,7 @@
 	       #-ccl *lisp-implementation-nickname*
 	       pkg
 	       (> *repl-level* 0) *repl-level*
-	       (if (and prompt-supplied p) p *default-prompt*))))
+	       (if (and prompt-supplied p) p rl:*default-prompt*))))
 
 (defstruct repl-state
   "Internal state of the REPL. Slots are:
@@ -207,24 +207,25 @@ The REPL also has a few commands:
 	  (pre-str nil)
 	  (str nil))
       (flet ((call-rl (prompt re-edit)
-	       (rl :eof-value 'repl-real-eof
-		   :quit-value 'repl-quit
-		   :editor editor
-		   :keymap keymap
-		   :terminal terminal
-		   :terminal-name terminal-name
-		   :terminal-class terminal-class
-		   :history-context :repl
-		   :accept-does-newline nil
-		   :partial-line-indicator
-		   (if quietly
-		       nil
-		       rl:*default-partial-line-indicator*)
-		   :re-edit re-edit
-		   :prompt (or (and (ostringp prompt) prompt) *default-prompt*)
-		   :output-prompt-func (and (or (symbolp prompt)
-						(functionp prompt))
-					    prompt))))
+	       (rl:rl :eof-value 'repl-real-eof
+		      :quit-value 'repl-quit
+		      :editor editor
+		      :keymap keymap
+		      :terminal terminal
+		      :terminal-name terminal-name
+		      :terminal-class terminal-class
+		      :history-context :repl
+		      :accept-does-newline nil
+		      :partial-line-indicator
+		      (if quietly
+			  nil
+			  rl:*default-partial-line-indicator*)
+		      :re-edit re-edit
+		      :prompt (or (and (ostringp prompt) prompt)
+				  rl:*default-prompt*)
+		      :output-prompt-func (and (or (symbolp prompt)
+						   (functionp prompt))
+					       prompt))))
       (loop
 	 :do
 	 ;; (dbugf :repl "editor before = ~a~%" editor)
@@ -371,7 +372,7 @@ TERMINAL-NAME and TERMINAL-TYPE should be in the environment."
 	     (dbugf :repl "We made a terminal? ~s~%" *terminal*)
 	     (,thunk)))))))
 
-(defvar *default-terminal-type* :crunch)
+;; (defvar *default-terminal-type* :crunch)
 
 (defun tiny-repl (&key prompt-func prompt-string
 		    (no-announce #+sbcl t #-sbcl nil no-announce-supplied-p)
@@ -424,7 +425,7 @@ to quit everything. Arguments are:
 	 (old-debugger-hook *debugger-hook*)
 	 ;; (start-level (incf *repl-level*))
 	 start-level
-	 (*history-context* :repl))
+	 (rl:*history-context* :repl))
     (when (not theme:*theme*)
       (setf theme:*theme* (theme:default-theme)))
 

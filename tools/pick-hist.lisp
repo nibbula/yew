@@ -5,7 +5,7 @@
 (defpackage :pick-hist
   (:documentation
    "Pick a history item using pick-list. Meant as an edtior command.")
-  (:use :cl :dlib :collections :terminal :inator :rl :pick-list)
+  (:use :cl :dlib :collections :terminal :inator :pick-list)
   ;; We use a bunch of internal RL stuff.
   (:import-from :rl
 		#:use-first-context
@@ -13,6 +13,8 @@
 		#:buf
 		#:history-context
 		#:history-head
+		#:history-entry-extra
+		#:history-entry-line
 		#:get-history
 		#:buffer-delete
 		#:buffer-insert

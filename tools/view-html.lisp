@@ -16,7 +16,7 @@
 
 (defpackage :view-html
   (:documentation "View HTML as a tree.")
-  (:use :cl :dlib :dlib-misc :dtime :rl :inator :file-inator :tree-viewer
+  (:use :cl :dlib :dlib-misc :dtime :inator :file-inator :tree-viewer
 	:terminal :fui :char-util :keymap :rl-widget :collections
 	:terminal-inator :ostring :parse-util :magic)
   (:export
