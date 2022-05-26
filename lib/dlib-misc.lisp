@@ -87,7 +87,7 @@
    #:spit
    #:spit-append
    #:spit-binary
-   #:file-contents
+   ;; #:file-contents
    #:confirm
    #:get-file-local-variables
    #:read-limited-line
@@ -1594,8 +1594,9 @@ file is created if it doesn't exist, or appended if it does."
 	(write-sequence object stream))))
 
 ;; This seems less sploodgey than the whole slurp/spit/barf metaphor.
-(defalias 'file-contents 'slurp)
-(defsetf file-contents (file) (string) `(spit ,file ,string))
+;; But unfortunately it's in cl-user in Allegro.
+;; (defalias 'file-contents 'slurp)
+;; (defsetf file-contents (file) (string) `(spit ,file ,string))
 
 (defun confirm (action &key (output *standard-output*)
 			 (input *standard-input*)
