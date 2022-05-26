@@ -93,7 +93,7 @@ package if it doesn't. If DIRT-PILE is NIL, return a packageless symbol."
     (:documentation "A reader that can usually read structures."))
 
   ;; see make-structure.lisp
-  #+(and (not has-read-intern) (or sbcl ccl ecl clisp))
+  #+(and (not has-read-intern) (or sbcl ccl ecl clisp excl))
   (eval-when (:compile-toplevel :load-toplevel :execute)
     (defmacro %make-structure (s-name arglist)
       `(let* ((class (find-class ,s-name))
@@ -110,7 +110,7 @@ package if it doesn't. If DIRT-PILE is NIL, return a packageless symbol."
 			 value))
 	 struct)))
 
-  #+(and (not has-read-intern) (not (or sbcl ccl ecl clisp)))
+  #+(and (not has-read-intern) (not (or sbcl ccl ecl clisp excl)))
   (error
    "Sorry, make-structure-instance hasn't been implemented yet for your Lisp.")
 
