@@ -8,8 +8,6 @@
 ;; nature, treating various data structures uniformly has many potential
 ;; performance pitfalls.
 
-;; (declaim (optimize (debug 2)))
-
 ;; @@@ The ‘o’ prefix is rather ugly. We should entertain other naming ideas.
 
 (eval-when (:compile-toplevel :load-toplevel :execute)

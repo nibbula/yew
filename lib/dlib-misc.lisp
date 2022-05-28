@@ -94,8 +94,8 @@
    ))
 (in-package :dlib-misc)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 1)
-		   (compilation-speed 2)))
+;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 1)
+;; 		   (compilation-speed 2)))
 
 #+clisp
 (defun load-again (module &rest other-args &key &allow-other-keys)
