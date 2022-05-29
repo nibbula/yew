@@ -5,7 +5,7 @@
 (defpackage :grep
   (:documentation "Regular expression search in streams.")
   (:use :cl :cl-ppcre :opsys :dlib :grout :fatchar :stretchy
-	:char-util :collections :table :theme :style)
+	:char-util :collections :table :theme :style :view-generic)
   (:export
    #:grep
    #:grep-files
@@ -184,6 +184,11 @@ removeed."
 	   stream))
 	(t
 	 (format stream "~a:~a:~a" file line-number line))))))
+
+(defmethod view ((thing grep-result))
+  (when (find-package :pager)
+    (symbol-call :pager :pager (vector (grep-result-file thing)
+				       (grep-result-line-number thing)))))
 
 (eval-when (:compile-toplevel)
   (defmacro with-grep-source ((source filename) &body body)
