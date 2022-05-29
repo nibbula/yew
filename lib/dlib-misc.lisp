@@ -1406,24 +1406,65 @@ with the same name. If it's a macro, pass MACRO as true, mmkay?"
        (when sys
 	 (asdf:system-depends-on sys))))))
 
-(defun all-system-dependencies (system)
-  "Return a list of all recursive dependencies of a loaded ASDF SYSTEM."
-  (let (use-list)
-    (declare (special use-list))
-    (labels ((sub-deps (sys)
-               (let (results)
-                 (loop :with sub
-                    :for s :in (system-depends-list sys)
-                    :do
-                      (when (not (find s use-list :test #'equalp))
-			(when (atom s)
-			  (push s use-list)
-			  (push s results))
-			(when (setf sub (sub-deps s))
-			  (setf results (append results sub)))))
-                 results)))
-      (sub-deps system))
-    use-list))
+;; (defun all-system-dependencies (system)
+;;   "Return a list of all recursive dependencies of a loaded ASDF SYSTEM."
+;;   (let (use-list)
+;;     (declare (special use-list))
+;;     (labels ((sub-deps (sys)
+;;                (let (results)
+;;                  (loop :with sub
+;;                     :for s :in (system-depends-list sys)
+;;                     :do
+;;                       (when (not (find s use-list :test #'equalp))
+;; 			(when (atom s)
+;; 			  (push s use-list)
+;; 			  (push s results))
+;; 			(when (setf sub (sub-deps s))
+;; 			  (setf results (append results sub)))))
+;;                  results)))
+;;       (sub-deps system))
+;;     use-list))
+
+(defun all-system-dependencies (system &key sort-p names-p)
+  "Return a list of systems of all recursive dependencies for the designanted
+ASDF ‘system’. ‘system’ can be a list, in which case the dependencies of the
+systems are merged without duplicates. If ‘sort-p’ is true sort the list by
+name. If ‘names-p’ is true return system names instead of system objects."
+  (let ((tab (make-hash-table :test #'equal))
+        (results))
+    (labels
+	((do-deps (system dep-list)
+           (loop
+	     :with spec
+	     :for dep in dep-list
+	     :when (setf spec (asdf/find-component::resolve-dependency-spec
+			       system dep))
+	       :do (add-system spec)))
+	 (add-dependencies (system)
+	   (do-deps system (asdf:system-defsystem-depends-on system))
+	   (do-deps system (asdf:system-depends-on system)))
+         (add-system (system)
+	   (let ((name (asdf:component-name system)))
+           (when (not (gethash name tab))
+             (setf (gethash name tab) t)
+             (push system results)
+	     (add-dependencies system)))))
+      (typecase system
+	(list
+	 (dolist (s system)
+	   (add-dependencies (asdf:find-system s))))
+	((or symbol string asdf:system)
+	 (add-dependencies (asdf:find-system system)))
+	(t
+	 (error "System is a not a known type: ~s" system)))
+      (when names-p
+	(setf results (mapcar #'asdf:component-name results)))
+      (when sort-p
+	(setf results (sort results #'string<
+			    :key (if names-p
+				     #'identity
+				     #'asdf:component-name))))
+      results)))
 
 (defun system-pathnames (system)
   "Return a list of pathnames that are components of SYSTEM, including the
