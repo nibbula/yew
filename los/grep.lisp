@@ -26,6 +26,8 @@
 (defparameter +color-loop+
     '#1=(:red :yellow :blue :green :magenta :cyan :white . #1#))
 
+(defparameter *grep-error-output* nil)
+
 #|
 (defun print-fat-line (fat-line)
   (let ((part (make-array 10 :element-type 'character
@@ -387,7 +389,7 @@ Second value is the scanner that was used.
 		     (output-stream *standard-output*)
 		     count extended fixed ignore-case quiet invert
 		     line-number files-with-match files-without-match
-		     use-color collect no-filename signal-errors
+		     use-color collect no-filename signal-errors print-errors
 		     unicode-normalize unicode-remove-combining filter)
   "Call GREP with PATTERN on FILES. Arguments are:
   FILES       - A list of files to search.
@@ -397,7 +399,8 @@ Second value is the scanner that was used.
   (declare (ignorable count extended ignore-case invert
 		      recursive line-number use-color fixed
 		      unicode-normalize unicode-remove-combining filter)) ;; @@@
-  (let (results scanner result)
+  (let ((*grep-error-output* (if print-errors *error-output* nil))
+	results scanner result)
     (labels ((call-grep (pattern stream &optional args)
 	       "Call grep with the same arguments we got."
 	       (if args
@@ -422,7 +425,7 @@ Second value is the scanner that was used.
 		       ;; (finish-output)
 		       (grout-finish)
 		       (let ((*print-pretty* nil))
-			 (format *error-output*
+			 (format *grep-error-output*
 				 "~a: ~a ~a~%" f (type-of c) c))
 		       (invoke-restart 'continue))))))
       ;;(with-term-if (use-color output-stream)
@@ -456,21 +459,34 @@ Second value is the scanner that was used.
 				;; seemingly at random, since it's data
 				;; dependant and a rare coincidence.
 				(grout-finish)
-				(format *error-output*
+				(format *grep-error-output*
 					"~a: No such file or directory~%" f))))
 			(t
-			 (let ((info (get-file-info f)))
-			   (if (and (eq :directory (file-info-type info))
-				    (= (length files) 1))
+			 (cond
+			   ((eq :directory (file-info-type (get-file-info f)))
+			    (cond
+			      (recursive
+			       (let ((kw (copy-list keywords))
+				     (dir-list
+				       (nos:read-directory :dir f
+							   :omit-hidden t)))
+				 (when dir-list
+				   (setf (getf kw :files)
+					 (mapcar (_ (nos:path-append f _))
+						 dir-list))
+				   (setf result
+					 (apply #'grep-files pattern kw)))))
+			      ((= (length files) 1)
 			       ;; Don't bother complaining about directories if
 			       ;; we have more than one file.
 			       (if signal-errors
 				   (error "~a: Is a directory~%" f)
 				   (progn
 				     (grout-finish)
-				     (format *error-output*
-					     "~a: Is a directory~%" f)))
-			       (grep-with-handling f)))))
+				     (format *grep-error-output*
+					     "~a: Is a directory~%" f))))))
+			   (t
+			    (grep-with-handling f)))))
 		      (cond
 			((and result files-with-match (not quiet))
 			 (grout-format "~a~%" f))
@@ -616,13 +632,17 @@ explanation the other arguments."
    (use-color boolean
     :short-arg #\C :default t
     :help "Highlight substrings in color.")
+   (recursive boolean :short-arg #\r
+    :help "Recursively search directories.")
    (collect boolean
     :short-arg #\c
     :default '(lish:accepts :sequence)
     :use-supplied-flag t
     :help "Collect matches in a sequence.")
    (signal-errors boolean :short-arg #\E
-    :help "Signal errors. Otherwise print them to *error-output*.")
+    :help "Signal errors.")
+   (print-errors boolean :short-arg #\P
+    :help "Print errors *error-output*.")
    (positions boolean :short-arg #\p
     :help "Send positions to Lish output. Equivalent to -nqc, except
 it's only quiet if the receiving command accepts sequences.")
@@ -700,8 +720,10 @@ it's only quiet if the receiving command accepts sequences.")
 			 :line-number line-number
 			 :quiet quiet
 			 :use-color use-color
+			 :recursive recursive
 			 :collect collect
 			 :signal-errors signal-errors
+			 :print-errors print-errors
 			 :unicode-normalize unicode-normalize
 			 :unicode-remove-combining unicode-remove-combining
 			 :filter filter))))
