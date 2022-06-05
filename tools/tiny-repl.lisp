@@ -105,9 +105,6 @@
   (quietly      nil     :type boolean)
   (partial-line-indicator rl:*default-partial-line-indicator*))
 
-(defvar +newline-string+ (string #\newline)
-  "So we don't have to keep making one.")
-
 (defun read-arg (state)
   "For interceptors to get arguments. First value is the argument.
  Second value is true if we got an EOF."
@@ -275,8 +272,8 @@ The REPL also has a few commands:
 	 :do
 	 (setf pre-str
 	       (if (stringp pre-str)
-		   (s+ pre-str str #\newline)
-		   (s+ str #\newline)))
+		   (s+ pre-str str +newline-string+)
+		   (s+ str +newline-string+)))
 	 ;; (dbugf :repl "set pre-str = ~w~%" pre-str)
 	 ;; (dbugf :repl "Do CONTINUE~%")
 	 )
