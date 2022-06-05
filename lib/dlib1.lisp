@@ -80,6 +80,7 @@
    #:remove-suffix
    #:s+
    #:*ascii-whitespace* #:*unicode-whitespace-codes* #:*whitespace*
+   #:+newline-string+
    #:ltrim #:rtrim #:trim
    #:join-by-string
    #:join-by
@@ -254,7 +255,24 @@ later versions.")
 Useful for making your macro 'hygenic'."
     `(let ,(loop :for n :in names
 	      :collect `(,n (gensym (symbol-name ',n))))
-       ,@body)))
+       ,@body))
+
+  (defun same-with-warning (name new test)
+    "If ‘name’ is bound, return it's value, but but warn if ‘new’ is different
+from it according to ‘test’. Return ‘new’ if name isn't bound."
+    (if (boundp name)
+	(let ((old (symbol-value name)))
+	  (unless (funcall test old new)
+	    (warn "Not redefining ~s from ~s to ~s." name old new))
+	  old)
+	new))
+
+  (defmacro define-constant (name value &optional doc (test ''equal))
+    "Like ‘defconstant’ but don't actually redefine the constant. If the ‘value’
+is equal according to ‘test’, which defaults to ‘equal’, then don't even
+complain. Otherwise just warn, and don't redefine it."
+    `(cl:defconstant ,name (same-with-warning ',name ,value ,test)
+       ,@(when doc (list doc)))))
 
 ;; Because we don't have alias up here yet.
 (setf (macro-function 'with-names)
@@ -931,6 +949,9 @@ On SBCL we can generate the list by:
 
 (defparameter *whitespace* *ascii-whitespace*)
 
+(define-constant +newline-string+ (string #\newline)
+  "Just a newline as a string, so we don't have to keep multiple copies of it.")
+
 (defun ltrim (string &optional (character-bag *whitespace*))
   "Trim characters CHARACTER-BAG in from the left of STRING. STRING can be any
 sequence of characters. CHARACTER-BAG defaults to *WHITESPACE*."
@@ -1447,24 +1468,6 @@ can be provided, which are usually passed to the underlying function."
   #+mezzano t				; sort of?
   #-(or ccl sbcl clisp cmu ecl lispworks abcl clasp mezzano)
   (missing-implementation 'overwhelming-permission))
-
-
-(defun same-with-warning (name new test)
-  "If ‘name’ is bound, return it's value, but but warn if ‘new’ is different
-from it according to ‘test’. Return ‘new’ if name isn't bound."
-  (if (boundp name)
-      (let ((old (symbol-value name)))
-	(unless (funcall test old new)
-	  (warn "Not redefining ~s from ~s to ~s." name old new))
-	old)
-      new))
-
-(defmacro define-constant (name value &optional doc (test ''equal))
-  "Like ‘defconstant’ but don't actually redefine the constant. If the ‘value’
-is equal according to ‘test’, which defaults to ‘equal’, then don't even
-complain. Otherwise just warn, and don't redefine it."
-  `(cl:defconstant ,name (same-with-warning ',name ,value ,test)
-     ,@(when doc (list doc))))
 
 (defun vector-equal (a b)
   "A not very discriminating vector equality. Tests that lengths are the same
