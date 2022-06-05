@@ -554,6 +554,10 @@ TYPE should be one of the types registerd in *TERMINAL-TYPES*. Cleans up
 afterward."
   `(%with-terminal (,type ,var t ,@initargs) ,@body))
 
+(defvar *default-terminal-methods-error* nil
+  "True to have default terminal methods throw an error, which can be useful
+for development.")
+
 (defmacro deftt (name (&rest args) doc-string)
   "Defines a terminal generic function along with a macro that calls that
 generic function with *TERMINAL* as it's first arg, for API prettyness."
@@ -563,7 +567,11 @@ generic function with *TERMINAL* as it's first arg, for API prettyness."
 	;;(ignorables (remove-if (_ (char= #\& (char (string _) 0))) args)))
 	(ignorables (lambda-list-vars args :all-p t)))
     `(progn
-       (defgeneric ,tt-generic (tt ,@args) (:documentation ,doc-string))
+       (defgeneric ,tt-generic (tt ,@args) (:documentation ,doc-string)
+	 (:method (tt ,@args)
+	   (declare (ignore ,@(lambda-list-vars args :all-p t)))
+	   (when  *default-terminal-methods-error*
+	     (error "The terminal is missing a method."))))
        (defmacro ,tt-name (&whole ,whole-arg ,@args)
 	 (declare (ignorable ,@ignorables))
 	 ,doc-string
