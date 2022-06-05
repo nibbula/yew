@@ -2366,6 +2366,8 @@ links highlight differently?"
   (multiple-value-bind (result got-eof)
       (with-interrupts-handled (stream)
 	(read-until (terminal-file-descriptor stream) #\newline))
+    (when (and result (not (zerop (length result))))
+      (remove-suffix result +newline-string+))
     (values (or result "")
 	    got-eof)))
 
