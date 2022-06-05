@@ -20,6 +20,7 @@
    #:file-item-modification-date
    #:file-item-size
    #:file-item-type
+   #:item-full-path
    ))
 (in-package :ls)
 
