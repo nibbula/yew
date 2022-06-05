@@ -26,7 +26,7 @@ The they should be designed such that:
 The separation between interactive and programmatic invocation, helps
 alleviate the tension between scripting and interactive features, allows user
 customization, removes clutter from the command arguments, and preserves
-compatibility. If you want to change the command line arguments to suite your
+compatibility. If you want to change the command line arguments to suit your
 use, you can do so easily, and it shouldn't affect anything else.
 
 *Note* that this depends on [yew](https://github.com/nibbula/yew) and is infrequently updated from there.
