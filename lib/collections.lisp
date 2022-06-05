@@ -2036,29 +2036,126 @@ the modified COLLECTION.")
 ;; This is so we can get the decisions outside the body of loop, which should
 ;; presumably be faster. Also it's nice to factor out the argument choosing.
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defmacro with-member-func ((func &key (finder 'find)) &body body)
+  (defmacro with-member-func ((func &key (finder 'find) type) &body body)
     "Evaluate the body with FUNC set an appropriate member function given KEY,
 TEST, and TEST-NOT. Use finder as the name of the member testing function,
 which defaults to FIND. Note that this macro is un-hygenic."
     `(labels
-	 ((memb              (x seq) (,finder x seq))
-	  (memb-key          (x seq) (,finder x seq :key key))
-	  (memb-test         (x seq) (,finder x seq :test test))
-	  (memb-test-not     (x seq) (,finder x seq :test-not test-not))
-	  (memb-test-key     (x seq) (,finder x seq :key key :test test))
-	  (memb-test-not-key (x seq) (,finder x seq :key key
-					      :test-not test-not)))
+	 ((memb (x seq)
+	    (declare (type ,type seq))
+	    (,finder x seq))
+	  (memb-key (x seq)
+	    (declare (type ,type seq)
+		     (type (function (t) t) key))
+	    (,finder x seq :key key))
+	  (memb-test (x seq)
+	    (declare (type ,type seq)
+		     (type (function (t t) t) test))
+	    (,finder x seq :test test))
+	  (memb-test-not (x seq)
+	    (declare (type ,type seq)
+		     (type (function (t t) t) test-not))
+	    (,finder x seq :test-not test-not))
+	  (memb-test-key (x seq)
+	    (declare (type ,type seq)
+		     (type (function (t) t) key)
+		     (type (function (t t) t) test))
+	    (,finder x seq :key key :test test))
+	  (memb-test-not-key (x seq)
+	    (declare (type ,type seq)
+		     (type (function (t) t) key)
+		     (type (function (t t) t) test-not))
+	    (,finder x seq :key key :test-not test-not)))
+       (declare (ftype (function (t ,type) t)
+		       memb memb-key memb-test memb-test-not memb-test-key
+		       memb-test-not-key))
        (let ((,func
 	      (cond
 		((and test test-not)
-		 (error "Both :test and :test-not provided."))
+		 (error "Both :test and :test-not provided.")
+		 #'memb)
 		(test
 		 (if key #'memb-test-key #'memb-test))
 		(test-not
 		 (if key #'memb-test-not-key #'memb-test-not))
 		(t
 		 (if key #'memb-key #'memb)))))
+	 (declare (type (function (t ,type) t) ,func))
 	 ,@body))))
+
+#|
+(defun oint1 (collection-1 collection-2 &key key test test-not)
+  (declare (optimize (speed 3) (safety 0) (debug 0))
+	   (type vector collection-1)
+	   (type vector collection-2)
+	   (dynamic-extent key test test-not))
+  (let ((count 0) result)
+    (declare (type fixnum count)
+	     ;; (type (function (t) t) key)
+	     ;; (type (function (t t) t) test test-not)
+	     )
+    (with-member-func (memb :type vector)
+      (setf result
+	    (loop
+	      :for i :from 0 :below (min (length collection-1)
+					 (length collection-2))
+	      :when (funcall memb (aref collection-1 i) collection-2)
+	      :collect (if key
+			   (funcall key (aref collection-1 i))
+			   (aref collection-1 i))
+	      :and :do (incf count))))
+      (when (plusp count)
+	(make-array count :element-type (array-element-type collection-1)
+		    :initial-contents result))))
+
+(defun oint2 (collection-1 collection-2 &key key test test-not)
+  (declare (optimize (speed 3) (safety 0) (debug 0))
+	   (dynamic-extent key test test-not))
+  (let* ((count 0)
+	 (len (min (length collection-1) (length collection-2)))
+	 (result (make-array len
+			     :element-type (array-element-type collection-1)
+			     ;; :initial-element (aref collection-1 0)
+			     :adjustable t))
+	 (thingy (if key
+		     (lambda (a i) (funcall key (aref a i)))
+		     (lambda (a i) (aref a i)))))
+    (declare (type fixnum count len)
+	     (type vector result)
+	     (type (function (vector fixnum) t) thingy))
+    (with-member-func (memb :type vector)
+      (loop
+	:for i :from 0 :below len
+	:when (funcall memb (aref collection-1 i) collection-2)
+	:do
+	   (setf (aref result i) (funcall thingy collection-1 i))
+	   (incf count))
+      (when (plusp count)
+	(adjust-array result count
+		      :element-type (array-element-type collection-1))))))
+
+It doesn't seem to make much difference if we pre-make an ajustable array,
+rather than to accumulate into a list.
+
+So why is this 1 or 2 orders of magnitude slower than the list version?
+
+(defun test-1 (n l)
+  (time
+   (dotimes (i (round n))
+     (let ((l1 (coerce (loop repeat l collect (random 10)) 'vector))
+	   (l2 (coerce (loop repeat l collect (+ (random 10) 5)) 'vector)))
+       (oint1 l1 l2))))
+  (time
+   (dotimes (i (round n))
+     (let ((l1 (coerce (loop repeat l collect (random 10)) 'vector))
+	   (l2 (coerce (loop repeat l collect (+ (random 10) 5)) 'vector)))
+       (oint2 l1 l2))))
+  (time
+   (dotimes (i (round n))
+     (let ((l1 (loop repeat l collect (random 10)))
+	   (l2 (loop repeat l collect (+ (random 10) 5))))
+       (intersection l1 l2)))))
+|#
 
 (defgeneric ointersection (collection-1 collection-2 &key key test test-not)
   (:documentation
@@ -2076,7 +2173,7 @@ COLLECTION-1 and COLLECTION-2.")
   (:method ((collection-1 vector)
 	    (collection-2 vector) &key key test test-not)
     (let ((count 0) result)
-      (with-member-func (memb)
+      (with-member-func (memb :type vector)
 	(setf result
 	      (loop
 		 :for i :from 0 :below (min (length collection-1)
@@ -2097,7 +2194,7 @@ COLLECTION-1 and COLLECTION-2.")
 	       ;; We can't really do anything with test/test-not because it's
 	       ;; part of the hash-table.
 	       (if key (gethash (funcall key k) tab) (gethash k tab))))
-	(with-member-func (memb :finder hash-member)
+	(with-member-func (memb :finder hash-member :type hash-table)
 	  (setf result
 		(loop
 		   :for k :being :the :hash-keys :of collection-1
@@ -2154,7 +2251,72 @@ COLLECTION-2."))
 (defgeneric ounion (collection-1 collection-2 &key key test test-not)
   (:documentation
    "Return a collection that contains every element that occurs in either
-COLLECTION-1 or COLLECTION-2."))
+COLLECTION-1 or COLLECTION-2.")
+  (:method ((collection-1 list)
+	    (collection-2 list) &key key test test-not)
+    (cond
+      (test
+       (union collection-1 collection-2 :key key :test test))
+      (test-not
+       (union collection-1 collection-2 :key key :test-not test-not))
+      (t
+       (union collection-1 collection-2 :key key))))
+  (:method ((collection-1 vector)
+	    (collection-2 vector) &key key test test-not)
+    ;; @@@ we should probably just use a hash table if the vectors are long
+    ;; enough
+    (let ((count 0) to-add (result #()))
+      (declare (type fixnum count)
+	       (type vector result)
+	       (type list to-add))
+      (multiple-value-bind (shorter longer)
+	  (if (< (length collection-1) (length collection-2))
+	      (values collection-1 collection-2)
+	      (values collection-2 collection-1))
+	(declare (type vector shorter longer))
+	(with-member-func (memb :type vector)
+	  (setf to-add
+		(loop
+		  :for i :from 0 :below (length longer)
+		  :when (not (funcall memb (aref longer i) shorter))
+		  :collect (if key
+			       (funcall key (aref longer i))
+			       (aref longer i))
+		  :and :do (incf count))))
+	(when (plusp count)
+	  (setf result
+		(make-array (+ count (length shorter))
+			    :element-type (array-element-type collection-1)))
+	  (setf (subseq result 0) to-add
+		(subseq result count) shorter))
+	result)))
+  (:method ((collection-1 hash-table)
+	    (collection-2 hash-table) &key key test test-not)
+    (when test-not
+      (error "TEST-NOT can't be used for hash tables."))
+    ;; We could use ‘test’ for the new table's test, but that would be a
+    ;; would really be a somewhat different meaning, that might no be intuitive.
+    (when test
+      (error "TEST can't be used for hash tables."))
+    (let ((result (dlib:copy-hash-table collection-1)))
+      (macrolet
+	  ((looper (value-expr)
+	     `(with-hash-table-iterator (get-entry collection-2)
+		(loop
+		  (multiple-value-bind (ok hash-key value) (get-entry)
+		    (if ok
+			(setf (gethash hash-key result) ,value-expr)
+			(return)))))))
+	(if key
+	    (looper (funcall key value))
+	    (looper value)))
+      result)))
+
+(defmethod ounion ((collection-1 container)
+		   (collection-2 container) &key key test test-not)
+  (ounion (container-data collection-1)
+	  (container-data collection-1)
+	  :key key :test test :test-not test-not))
 
 (defgeneric onunion (collection-1 collection-2 &key key test test-not)
   (:documentation
