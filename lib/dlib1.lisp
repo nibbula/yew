@@ -91,6 +91,7 @@
    #:plist-to-hash-table
    #:hash-table-to-alist
    #:hash-table-to-plist
+   #:copy-hash-table
    #:get-plist-values
    #:do-plist
    #:do-alist
@@ -1095,6 +1096,32 @@ value, if you want to delete the first item."
   (loop :for key :being :the :hash-keys :of hash-table
 	:collect key
 	:collect (gethash key hash-table)))
+
+(defun copy-hash-table (hash-table &key test size
+                                     rehash-size rehash-threshold
+				     key)
+  "Return a copy of ‘hash-table’. If any of ‘test’, ‘size’, ‘rehash-size’,
+or ‘rehash-threshold’ are given, they override the value from the source table.
+If ‘key’ is given, it should be function to call on the old entry value, which
+results in the new entry value."
+  (let ((result
+	  (make-hash-table
+	   :test (or test (hash-table-test hash-table))
+	   :size (or size (hash-table-size hash-table))
+	   :rehash-size (or rehash-size (hash-table-rehash-size hash-table))
+	   :rehash-threshold (or rehash-threshold
+				 (hash-table-rehash-threshold hash-table)))))
+    (macrolet ((looper (value-expr)
+		 `(with-hash-table-iterator (get-entry hash-table)
+		    (loop
+		      (multiple-value-bind (ok hash-key value) (get-entry)
+			(if ok
+			    (setf (gethash hash-key result) ,value-expr)
+			    (return)))))))
+      (if key
+	  (looper (funcall key value))
+	  (looper value)))
+    result))
 
 (defun get-plist-values (properties from-plist)
   "Return a list of the values of the PROPERTIES from the plist FROM-PLIST."
