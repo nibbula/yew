@@ -13,7 +13,8 @@
 (defpackage :terminal-ansi
   (:documentation "Standard terminal (ANSI).")
   (:use :cl :cffi :dlib :dlib-misc :terminal :char-util :opsys
-	:trivial-gray-streams :fatchar :dcolor :terminal-dumb :terminal-crunch
+	:trivial-gray-streams :fatchar :dcolor :ansi :terminal-dumb
+	:terminal-crunch
 	#+unix :opsys-unix
 	#+windows :opsys-ms)
   (:export
@@ -22,7 +23,6 @@
    #:terminal-color-mixin
    ;; extensions:
    #:describe-terminal
-   #:+csi+ #:+st+ #:+osc+
    #:query-parameters #:query-string
    #:with-raw
    #:write-double-width-line
@@ -48,45 +48,6 @@
 
 (defvar *default-device-name* *default-console-device-name*
   "The default device to create a terminal on.")
-
-(define-constant +csi+ (s+ #\escape #\[)
-  "Control Sequence Introducer. Hooking up control sequences since 1970.")
-(define-constant +st+  (s+ #\escape #\\)
-  "String terminator. Death to strings.")
-(define-constant +osc+ (s+ #\escape #\])
-  "Operating System Command. C'est vrai? o_O")
-(define-constant +dcs+ (s+ #\escape #\p)
-  "Device Control String")
-
-(defparameter *attributes*
-  '((:normal	       . 22)		; not bold or faint
-    (:bold	       . 1)
-    (:faint	       . 2)
-    (:dim	       . 2)
-    (:italic	       . 3)
-    (:underline	       . 4)
-    (:blink	       . 5)
-    (:inverse	       . 7)
-    (:reverse	       . 7)
-    (:standout	       . 7)
-    (:invisible	       . 8)
-    (:crossed-out      . 9)
-    (:double-underline . 21)))
-
-(defparameter *attributes-off*
-  '((:all	       . 0)		; No attributes
-    (:bold	       . 22)
-    (:faint	       . 22)
-    (:dim	       . 22)
-    (:italic	       . 23)
-    (:underline	       . 24)
-    (:blink	       . 25)
-    (:inverse	       . 27)
-    (:reverse	       . 27)
-    (:standout	       . 27)
-    (:invisible	       . 28)
-    (:crossed-out      . 29)
-    (:double-underline . 24)))		; same as not underline
 
 (defclass terminal-color-mixin ()
   ((line-buffered-p
@@ -2250,31 +2211,7 @@ links highlight differently?"
 
 ;; character output stream methods
 
-;; Blarg! The hideous cursor position problem again.
-;; We could just do:
-;;   (terminal-move-to-col stream column)
-;; but it's WRONG, because it doesn't erase. So to be fast, it would seem we
-;; could either make a tt-erase-area, or have full screen contents knowledge.
-;; Even modern terminal emulators (such as libvte) don't do erase area
-;; currently, and full screen contents knowledge is in crunch, not here.
-;; So, to be correct, we would have to be slow and just output spaces.
-;; Unfortunately, even outputting spaces requires knowing what column we're at,
-;; which we can't currently. Even doing the old counting newlines,
-;; backspaces, and tabs is unlikely to work, for the usual reasons.
-;; So fuck it. Let's not implement any of the column dependent methods.
-;; The sad thing is that we *should* be able to implement better column
-;; tracking than most streams. Although even with full screen contents we
-;; *still* won't know if something not under our control does output. Even with
-;; everything under our control, we *still* won't know exactly what the terminal
-;; does with the output, unless we ask it.
-;;
-;; (defmethod stream-advance-to-column ((stream terminal-ansi) column)
-;;   ;; @@@
-;;   t)
-
-;; !!!! The above comment seems somehat wrong now, since we gave in and started
-;; !!!! tracking the fake-column thing. In any case, let's just try doing it.
-
+;; This is quite likely to be wrongish, as fake-column is wrongish.
 (defmethod stream-advance-to-column ((stream terminal-ansi) column)
   (with-accessors ((fake-column terminal-fake-column)
 		   (window-columns terminal-window-columns)) stream
