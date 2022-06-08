@@ -15,9 +15,6 @@
 
 (declaim #.`(optimize ,.(getf terminal-config::*config* :optimization-settings)))
 
-;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
-;; 		   (compilation-speed 0)))
-
 (defparameter *basic-colors*
   '(:black :red :green :yellow :blue :magenta :cyan :white))
 
@@ -720,7 +717,8 @@ drawing, which will get overwritten."
 	(tt-write-string (subseq str 0 (min (1- width) (length str))))
 	(tt-write-char #\newline)
 	(tt-finish-output))
-     (tt-format "The screen should have only numbers above.~%"))))
+     (tt-format "The screen should have only numbers above.~%")))
+  t)
 
 (defun junk-block (height)
   (let ((junk "#%_.")
@@ -1021,7 +1019,9 @@ drawing, which will get overwritten."
   (tt-home)
   (tt-clear)
   (tt-write-line "Try clicking, dragging, and scrolling with the mouse.")
-  (tt-write-line "Press 'q' to quit.")
+  (tt-write-line "'m' - Toggle motion events")
+  (tt-write-line "'c' - Clear the screen")
+  (tt-write-line "'q' - Quit")
   (flet ((clear-modeline ()
 	   (tt-move-to (1- (z-height)) 0)
 	   (tt-color :default :default)
@@ -1031,9 +1031,10 @@ drawing, which will get overwritten."
 	   (tt-color :default :default)
 	   (tt-erase-to-eol)
 	   (tt-format "~s" e)))
+    (let ((events-type :mouse-buttons))
     (unwind-protect
 	 (with-immediate ()
-	   (tt-enable-events :mouse-buttons)
+	   (tt-enable-events events-type)
 	   (loop :with e :and color = :default :and quit-flag
 	      :while (not quit-flag)
 	      :do
@@ -1063,14 +1064,30 @@ drawing, which will get overwritten."
 		      (tt-move-to y x)
 		      (tt-color color :default)
 		      (tt-write-char #\X)))))
+		(tt-mouse-motion
+		 (let ((x (tt-mouse-event-x e))
+		       (y (tt-mouse-event-y e)))
+		   (write-modeline e)
+		   (tt-move-to y x)
+		   (tt-color :white :default)
+		   (tt-write-char #\.)))
 		(character
 		 (cond
 		   ((or (equal e #\q) (equal e #\Q))
 		    (setf quit-flag t))
+		   ((eql e #\m)
+		    (tt-disable-events events-type)
+		    (setf events-type
+			  (if (eq events-type :mouse-buttons)
+			      :mouse-motion
+			      :mouse-buttons))
+		    (tt-enable-events events-type))
 		   ((eql e #\c)
 		    (tt-clear)))))
 	      (tt-finish-output)))
-      (tt-disable-events :mouse-buttons))))
+      ;; disable both just in case
+      (tt-disable-events :mouse-motion)
+      (tt-disable-events :mouse-buttons)))))
 
 (defun test-input ()
   (tt-home)
@@ -1270,16 +1287,16 @@ same as the current and NO-NEW is true."
 	  (prompt-next))
 	(menu-loop *menu*)))))
 
-(defun churn ()
-  (let ((class :ansi #| (ask-class) |# ))
-    (when class
+(defun churn (&optional (class :ansi))
+  (when (or class #| (ask-class) |#)
+    (with-simple-restart (quit "Quit testing the terminal")
       (with-new-terminal (class)
 	(terminal-get-size *terminal*)
 	;;(test-basics)
 	(loop
-	   :do
-	   (asdf:load-system :terminal-test)
-	   :while (test-scrolling-region)))
+	  :do
+	     (asdf:load-system :terminal-test)
+	  :while (test-scrolling-region)))
       (format t "~%All done.~%"))))
 
 #+lish
