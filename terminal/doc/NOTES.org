@@ -1,0 +1,164 @@
+Terminal Notes                                        -*- org -*-
+
+* Development
+** Adding methods / terminal capabilities
+   If you add a method to the generic terminal class, you must consider adding
+   methods to all direct subclasses. You should also add some code that tests
+   it in terminal-test. It can be significant work to add a method to every
+   type, so consider if it's really necessary.
+
+   I think it is important to try to keep the terminal protocol and not have
+   methods that only apply to very few terminals. If you want to add an
+   experimental feature to a terminal, you can just add it to the sub-class
+   first, then if it's really of use to all terminals, add it to the
+   generic. Another option for a gradually featured terminal, is to sub-class
+   it from terminal-dumb, but this seems problematic for most things.
+** Making a new terminal type
+   Probably the easiest thing to do is just copy the closest terminal type.
+   For most cases I can imagine, sub-classing a type doesn't seem workable,
+   since you are usually targeting a different output medium.
+   Consider the idea that for most cases the terminal should be a stream that
+   should be able to be used as =*standard-output*= or even =*terminal-io*=.
+
+   For wrapping types, most methods can probably just start off calling the
+   wrapped terminal method.
+* Philosophy
+** What is a terminal?
+   Since it's rare anymore to use a hardware terminal, one might wonder what
+   is a terminal even? The terminal packages here somewhat blur the
+   traditional notion of a terminal. We think of a terminal as something like
+   a user interface object that is at least a character grid and character
+   input. It also seems to have the benefit of compatibility with a long
+   history of software, and supports a wide range of use cases.
+* Taxonomy
+  What's all this then?
+
+  We name the pieces of terminal software like this:
+
+   - The terminal protocol
+     The API as defined by terminal.lisp.
+
+   - Terminals
+     Instances of ‘terminal’ which are operated by the terminal protocol.
+     - Renderer
+       A terminal that displays the result somehow.
+     - Adapter
+       A terminal that interfaces to some other layer of terminal software.
+     - Wrapper
+       A terminal that interfaces to another terminal.
+
+   - Emulator streams
+     An IO stream that converts in-stream escape sequences to terminal
+     protocol, and converts the input into appropriate key sequences.
+     This is specific to , but in practice we really only care about ANSI
+     escape sequences as extened by xterm and similar.
+
+  The categories of renderer, adpadter, and wrapper can overlap, and in
+  particular the distinction between a renderer and adapter is a little
+  blurry. Generally we consider a renderer, something that has to draw
+  characters on something that doesn't have an existing character grid.
+
+  ansi       - An adapter from terminal protocol to ANSI escapes sequences.
+	       The normal interface to terminal emulators.
+  crunch     - A wrapper that optimizes terminal protocol.
+               Terminal output optimizer, like curses.
+	       Usually wrapped around terminal-ansi or terminal-ms.
+  curses     - An adapter using the curses library as a backend driver to a
+               terminal or terminal emulator.
+  dumb       - An interface that is just an input and output stream, without
+               effects.
+  dumb-color - Just like dumb but with color from terminal-ansi. This is
+	       useful for just getting colors into streams.
+  ms         - An interface to to the Microsoft console.
+  x11        - A renderer to X11 protocol. Something like xterm, but without
+               the escape code emulation and sub-process wrapping.
+
+  In our terminology, traditional terminal emulator programs liek xterm,
+  Terminal.app, and Windows console, would be a emulator stream and renderer.
+  Except that they of course don't use our terminal protocol internally.
+
+** Emulator interfaces
+   They are designed to be used by a program already running inside a
+   terminal emulator.
+*** Escape code based
+    These end up sending escape sequences in the output to a terminal emulator.
+**** terminal-ansi
+     terminal-ansi -> terminal emulator -> window system -> you
+*** API based
+**** terminal-ms
+     terminal-ms -> console -> Windows -> you
+
+     terminal-ms runs inside a console and doesn't use escape sequences but
+     rather the Windows console API.
+**** terminal-curses
+     terminal-ansi -> curses library -> terminal emulator -> window system -> you
+     This could also be considered escape code based.
+** Renderers
+   Graphic backends
+   Actually we should just have terminal-graf, with the possible exception
+*** terminal-x11
+    terminal-x11 -> CLX -> X server -> you
+*** terminal-gdi
+    terminal-gdi -> Windows -> you
+*** terminal-gl
+    terminal-gl -> GL library -> ??? -> you
+*** terminal-clim
+    Draw on a clim widget/surface??
+** Software interfaces
+   Terminals that use other software as a back-end or output device
+*** terminal-web
+    terminal-web -> web socket -> js term -> browser -> window system -> you
+*** terminal-emacs
+    terminal-emacs -> swank-connection -> emacs buffer -> you
+** Compatability shims
+*** terminal-dumb, terminal-dumb-color
+    terminal-dumb -> arbitrary programs ... -> you
+
+    Isn't exactly a terminal, since it doesn't really have any features of a
+    terminal, but rather facilitates running programs inside something like
+    emacs that just expects an input and output stream.
+** Optimizers
+*** terminal-crunch
+    terminal-crunch -> terminal-<X> -> ... -> you
+
+    Is quite different because it's a wrapper and requires another terminal
+    class. In one sense it's like curses, but it only works with other Lisp
+    terminal drivers and doesn't know anything about escape codes.
+** Other
+*** terminal-sub
+    A way to divide terminals into regions.
+* Future / Roadmap
+** Presentations
+   A rough sketch of a plan:
+
+   - Make a presentation class for holding presented objects, e.g. ls:file-items
+     which are used by the ls command.
+
+   - Make a 2d spatial tree that links the presentation objects and the terminal
+     grid.
+
+   - Make a terminal subclass to which presentation objects can be output,
+     and a protocol to access them.
+
+   It's probably not too much work to make a proof of concept with this.
+   Unfortunately to make it work nicely with the shell, it has to be able to
+   handle mixed output from Lisp commands/functions and external processes.
+   So probably these further steps are likely needed:
+
+   - Add pseduo-terminal functions to opsys.
+
+   - Make a stream class that's a translator from ANSI terminal escapes to
+     terminal methods calls.
+
+   - Make a terminal subclass that ties these together, providing a
+     pseudo-terminal with ANSI translation, which uses another terminal class
+     for output.
+
+   - Make a subclass that is both an ANSI pseudo-terminal and a presentation
+     output stream, which should then be sufficient for running the shell
+     with presentations in an external terminal emulator.
+
+* COMMENT MeTaDaTa
+creation date: [2020-03-02 02:16:08]
+creator: "Nibby Nebbulous"
+tags: terminal lisp
