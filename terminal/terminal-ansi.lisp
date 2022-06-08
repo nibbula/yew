@@ -1529,7 +1529,7 @@ Attributes are usually keywords."
 	  (when (not (zerop (logand cb #b01000))) (push :meta    modifiers))
 	  (when (not (zerop (logand cb #b10000))) (push :control modifiers))
 	  (if motion
-	      (if button
+	      (if (not (eq button :release))
 		  (progn
 		    (assert (not (eq button :release)))
 		    (make-instance 'tt-mouse-button-motion
