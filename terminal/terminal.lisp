@@ -459,6 +459,8 @@ know."))
   (apply #'make-instance type :output-stream stream args))
 
 ;; @@@ Could this be simplified?
+;; @@@ Also consider not generating the unused cases when they're constant
+;; instead of muffling the deleted code warnings.
 (defmacro %with-terminal ((&optional type
 				     (var '*terminal*)
 				     (new-p nil)
@@ -471,38 +473,42 @@ Cleans up afterward."
        (let* ((,new-type (or ,type *default-terminal-type*
 			     (pick-a-terminal-type)))
 	      (,term-class
-	       (if ,new-p
-		   ;; If we're making a new one, use a given type or
-		   ;; get the type from the existing *terminal*.
-		   (or
-		    (if ,new-type
-			(find-terminal-class-for-type ,new-type)
-			(and ,var (typep ,var 'terminal:terminal)
-			     (class-of ,var)))
-		    (error
-		     "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
-		   ;; If we're not making a new one, use the given type
-		   ;; or and existing variable, or lastly, the default.
-		   (or (and ,type
-			    (find-terminal-class-for-type ,type))
-		       (and ,var (typep ,var 'terminal:terminal)
-			    (class-of ,var))
-		       (and *default-terminal-type*
-			    ;; (find-terminal-class-for-type ,type))
-			    (find-terminal-class-for-type
-			     *default-terminal-type*))
-		       (let ((tt (pick-a-terminal-type)))
-			 (and tt
-			      (find-terminal-class-for-type tt)))
+		(with-muffled-notes ;; for deleted code
+		  (if ,new-p
+		      ;; If we're making a new one, use a given type or
+		      ;; get the type from the existing *terminal*.
+		      (or
+		       (if ,new-type
+			   (find-terminal-class-for-type ,new-type)
+			   (and ,var (typep ,var 'terminal:terminal)
+				(class-of ,var)))
 		       (error
-			"Provide a type or set *DEFAULT-TERMINAL-TYPE*."))))
-	      (,make-it (or ,new-p
-			    (or (not ,var)
-				(and ,var (not (typep ,var ,term-class))))))
-
-	      (,var (if ,make-it
+			"Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
+		      ;; If we're not making a new one, use the given type
+		      ;; or and existing variable, or lastly, the default.
+		      (or (and ,type
+			       (find-terminal-class-for-type ,type))
+			  (and ,var (typep ,var 'terminal:terminal)
+			       (class-of ,var))
+			  (and *default-terminal-type*
+			       ;; (find-terminal-class-for-type ,type))
+			       (find-terminal-class-for-type
+				*default-terminal-type*))
+			  (let ((tt (pick-a-terminal-type)))
+			    (and tt
+				 (find-terminal-class-for-type tt)))
+			  (error
+			   "Provide a type or set *DEFAULT-TERMINAL-TYPE*.")))))
+	      (,make-it
+		(with-muffled-notes ;; for deleted code
+		    (or ,new-p
+			(or (not ,var)
+			    (and ,var (not (typep ,var ,term-class)))))))
+	      (,var
+		(with-muffled-notes ;; for deleted code
+		    (if ,make-it
 			(make-instance ,term-class ,@initargs)
-			,var))
+			,var)))
 	      ;; (*standard-output* ,var)
 	      ;; (*standard-input* ,var)
 	      ,result
@@ -528,11 +534,13 @@ Cleans up afterward."
 		(setf ,terminal-state (terminal-start ,var))
 		;;(dbugf :terminal "start terminal-state = ~s~%" ,terminal-state)
 		(setf ,result (progn ,@body)))
-	   (if ,make-it
-	       (terminal-done ,var ,terminal-state)
-	       (progn
-		 ;;(dbugf :terminal "end terminal-state = ~s~%" ,terminal-state)
-		 (terminal-end ,var ,terminal-state))))
+	   (with-muffled-notes ;; for deleted code
+	       (if ,make-it
+		   (terminal-done ,var ,terminal-state)
+		   (progn
+		     ;;(dbugf :terminal "end terminal-state = ~s~%"
+		     ;;       ,terminal-state)
+		     (terminal-end ,var ,terminal-state)))))
 	 ,result))))
 
 (defmacro with-terminal ((&optional type
