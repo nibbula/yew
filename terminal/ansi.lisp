@@ -7,7 +7,7 @@
 
 Things that can apply to various things using ANSI terminal protocol, including
 modern xterm style functionality.")
-  (:use :cl :terminal)
+  (:use :cl :dlib :terminal)
   (:export
    ;; Character sequences
    #:+csi+
