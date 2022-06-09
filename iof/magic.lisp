@@ -4,7 +4,7 @@
 
 (defpackage :magic
   (:documentation "Content sniffer.")
-  (:use :cl :dlib :opsys :stretchy :dlib-misc)
+  (:use :cl :dlib :opsys :stretchy :dlib-misc :parse-util)
   (:export
    #:content-type
    #:content-type-name
@@ -14,6 +14,7 @@
    #:content-type-encoding
    #:content-type-properties
    #:make-content-type
+   #:content-type-from-string
 
    #:*default-database-type*
    #:use-database
@@ -35,7 +36,7 @@
     :video :chemical)
   "Reasonable media categories.")
 
-(defvar *content-types* nil
+(defparameter *content-types* nil
   "Table of content type name to content-type.")
 
 (defstruct content-type
@@ -154,7 +155,7 @@
     :after ((o content-file) &rest initargs &key &allow-other-keys)
   "Initialize a content-file."
   (declare (ignore initargs))
-  (when (slot-boundp o 'name)
+  (when (not (slot-boundp o 'name))
     (error "Must have a file name."))
   (setf (slot-value o 'stream) (open (slot-value o 'name))))
 
@@ -211,11 +212,68 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun parse-content-type (content-type)
+  (with-parsing (content-type)
+    (sequence-of
+     (with-sub-sequence (type)
+       ;; (note ((list :type (type)))
+       (note ((list :type type))
+	     (one-or-more (is-not-element #\/))))
+     (is-element #\/)
+     (optional
+      (let (tree-str)
+	(sequence-of
+	 (with-sub-sequence (tree)
+	   (one-or-more (is-not-element #\.))
+	   ;; (setf tree-str (tree)))
+	   (setf tree-str tree))
+	 (is-element #\.)
+	 (note ((list :tree tree-str)) t))
+       ))
+     (with-sub-sequence (sub-type)
+       ;; (note ((list :sub-type (sub-type)))
+       (note ((list :sub-type sub-type))
+	     (one-or-more
+	      (when (and (peek) (not (element-in (peek) ".+;")))
+		(next-element)))))
+     (optional
+      (sequence-of
+       (is-element #\+)
+       (with-sub-sequence (suffix)
+         (note ((list :suffix suffix))
+	       (one-or-more (not (is-element #\;)))))))
+     (let (parameters name value)
+       (note (`(:parameters ,(nreverse parameters)))
+	     (zero-or-more
+	      (sequence-of
+	       (is-element #\;)
+	       (zero-or-more (is-element #\space))
+	       (with-sub-sequence (pname)
+		 (one-or-more (is-not-element #\=))
+		 (setf name pname))
+	       (is-element #\=)
+	       (with-sub-sequence (pvalue)
+		 (one-or-more (is-not-element #\;))
+		 (setf value pvalue))
+	       (push `(:name ,name :value ,value) parameters))))))))
+
+(defun content-type-from-string (string)
+  (multiple-value-bind (success ct)
+      (parse-content-type string)
+    (when success
+      (make-content-type
+       :name (second (assoc :sub-type ct))
+       :category (second (assoc :type ct))
+       :properties
+       (mapcar (_ (cons (symbolify (getf _ :name))
+			(getf _ :value))) (second (assoc :parameters ct)))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defun guess-buffer-content (buffer)
   (declare (ignore buffer))
   ;; @@@ traverse nodes of the easy tree
   ;; stop if we got to a match, and return it
-  
   )
 
 (defun guess-stream-content (stream)
@@ -249,6 +307,9 @@
     (:buffer (guess-buffer-content thing))
     (:file (guess-file-content thing))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; using libmagic
+
 (defun libmagic-guess-content (thing type)
   (let* ((mime (not-so-funcall :libmagic :guess-content thing type :mime))
 	 (m (split-sequence #\/ mime))
@@ -262,17 +323,69 @@
      :encoding
      (not-so-funcall :libmagic :guess-content thing type :encoding))))
 
-(defvar *guess-func* nil
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; using the file command
+
+(defun trim-trailing-newline (str)
+  (when (and str (not (zerop (length str)))
+	     (char= (elt str (1- (length str))) #\newline))
+    (subseq str 0 (1- (length str)))))
+
+(defun command-output-string (command args file)
+  "Return a string with the output from ‘command’ with aruments ‘args’.
+If ‘file’ is a stream provide it a standard input to the command, otherwise
+make ‘file’ be the last argument."
+  (let* ((stream
+	   (if (streamp file)
+	       (nos:pipe-program command args :in-stream file)
+	       (nos:pipe-program command (append args (list file)))))
+	 (result (slurp stream)))
+    (close stream)
+    (trim-trailing-newline result)))
+
+(defun filemagic-mime (file)
+  (command-output-string
+   "file" `("--raw" "-b" #+darwin "-I" #+linux "-i") file))
+
+(defun filemagic-description (file)
+  (command-output-string "file" `("--raw" "-b") file))
+
+(defun filemagic-guess-content (thing thing-type)
+  (flet ((get-it (f)
+	   (let* ((mime (filemagic-mime f))
+		  (desc (filemagic-description f))
+		  (result (content-type-from-string mime)))
+	     (setf (content-type-description result) desc)
+	     result)))
+    (ccase thing-type
+      (:file
+       (when (not (nos:file-exists thing))
+	 (error "File not found ~s" thing))
+       (get-it thing))
+      (:buffer
+       (error "Sorry, guessing buffer content isn't done yet.")
+       ;; (flexi-streams:with-input-from-sequence (stream thing)
+       ;; 	 (get-it stream))
+       ))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defparameter *guess-func* nil
   "Function to guess content.")
 
 ;; @@@ Bogus workaround because most things don't have libmagic by default.
-#-(or windows darwin)
+#+(or linux freebsd)
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (d-add-feature :has-libmagic))
 
-(defvar *default-database-type*
+#+(or darwin)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (d-add-feature :has-filemagic))
+
+(defparameter *default-database-type*
   #+has-libmagic :libmagic
-  #-has-libmagic :internal
+  #+has-filemagic :filemagic
+  #-(or has-libmagic has-filemagic) :internal
   "Function to guess content.")
 
 (defun ensure-database ()
@@ -284,7 +397,11 @@
     (:libmagic
      (when (not (find-package :libmagic))
        (asdf:load-system :libmagic))
-     (setf *guess-func* #'libmagic-guess-content))))
+     (setf *guess-func* #'libmagic-guess-content))
+    (:filemagic
+     ;; (when (not (find-package :filemagic))
+     ;;   (asdf:load-system :filemagic))
+     (setf *guess-func* #'filemagic-guess-content))))
 
 (defgeneric guess-content-type (thing)
   (:documentation "Guess the content type of something."))

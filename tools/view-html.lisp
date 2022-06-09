@@ -18,7 +18,7 @@
   (:documentation "View HTML as a tree.")
   (:use :cl :dlib :dlib-misc :dtime :inator :file-inator :tree-viewer
 	:terminal :fui :char-util :keymap :rl-widget :collections
-	:terminal-inator :ostring :parse-util :magic)
+	:terminal-inator :ostring #| :parse-util |# :magic)
   (:export
    #:view-html
    #:*user-agent*
@@ -646,6 +646,7 @@ tree.")
 (defparameter *known-media-types*
   '(application audio image message multipart text video)) ; and X-<token>
 
+#|
 (defun parse-content-type (content-type)
   (with-parsing (content-type)
     (sequence-of
@@ -701,6 +702,7 @@ tree.")
        :properties
        (mapcar (_ (cons (symbolify (getf _ :name))
 			(getf _ :value))) (second (assoc :parameters ct)))))))
+|#
 
 #|
 (defun convert-content (content headers)

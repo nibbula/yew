@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description
     "Try to figure out the type of content by examining it and looking for matches in a database."
-    :depends-on (:dlib :opsys :stretchy :dlib-misc)
+    :depends-on (:dlib :opsys :stretchy :dlib-misc :parse-util)
     :components
     ((:file "magic")))
