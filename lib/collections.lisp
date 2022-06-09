@@ -76,6 +76,7 @@ Also we really need the MOP for stuff.")
       omismatch
       oreplace
       osubstitute
+      onsubstitute
       oconcatenate
       oconcatenate-as
       omerge
@@ -1505,11 +1506,221 @@ matching subsequence is returned.")
   (:method ((collection XX))
 	    ))
 
-(defgeneric osubstitute (collection ...)
-  (:documentation "")
-  (:method ((collection XX))
-	    ))
 |#
+
+(defgeneric osubstitute (new-item old-item collection
+			 &key from-end test test-not start end count key)
+  (:documentation
+   "Return a copy of the collection in which each element that satisfies the
+test has been replaced with ‘new-item’.")
+  (:method (new-item old-item (collection list)
+	    &key from-end
+	      (test nil test-p)
+	      (test-not nil test-not-p)
+	      (start nil start-p)
+	      (end nil end-p)
+	      count key)
+    (call-with-start-end-test substitute
+      (new-item old-item collection :from-end from-end :count count :key key)))
+  (:method (new-item old-item (collection vector)
+	    &key from-end
+	      (test nil test-p)
+	      (test-not nil test-not-p)
+	      (start nil start-p)
+	      (end nil end-p)
+	      count key)
+    (call-with-start-end-test substitute
+      (new-item old-item collection :from-end from-end :count count :key key)))
+  (:method (new-item old-item (collection sequence)
+	    &key from-end
+	      (test nil test-p)
+	      (test-not nil test-not-p)
+	      (start nil start-p)
+	      (end nil end-p)
+	      count key)
+    (call-with-start-end-test substitute
+      (new-item old-item collection :from-end from-end :count count :key key)))
+  (:method (new-item old-item (collection hash-table)
+	    &key from-end test test-not start end count key)
+    (declare (ignore from-end start end count)) ;; @@@ shouldn't ignore count
+    (let ((result (dlib:copy-hash-table collection))
+	  (val))
+      (with-hash-table-iterator (get-entry collection)
+	(loop
+	  (multiple-value-bind (ok hash-key value) (get-entry)
+	    (if ok
+		(progn
+		  (setf val (if key
+				(funcall key value)
+				value))
+		  (when (cond
+			  (test (funcall test old-item val))
+			  (test-not (not (funcall test-not old-item val)))
+			  (t
+			   (funcall (fdefinition (hash-table-test collection))
+				    old-item val)))
+		    (setf (gethash hash-key result) new-item)))
+		(return)))))
+      result))
+  ;; I think for structs it's not too unreasonable to do a shallow copy.
+  (:method (new-item old-item (collection structure-object)
+	    &key from-end test test-not start end count key)
+    (declare (ignore from-end start end count)) ;; @@@ shouldn't ignore these
+    (let ((result (dlib:shallow-copy-object collection)))
+      (loop
+	:with value
+	:for slot :in (mop:class-slots (class-of collection))
+	:when (slot-boundp collection (mop:slot-definition-name slot))
+	:do
+	   (setf value (slot-value collection (mop:slot-definition-name slot))
+		 value (if key
+			   (funcall key value)
+			   value))
+	   (when (cond
+		   (test (funcall test old-item value))
+		   (test-not (not (funcall test-not old-item value)))
+		   (t (eql old-item value)))
+	     (setf (slot-value result (mop:slot-definition-name slot))
+		   new-item)))
+      result))
+  ;; I don't think these copying methods make sense for class-oids
+  #|
+  (:method (new-item old-item (collection standard-object)
+	    &key from-end test test-not start end count key)
+    (declare (ignore from-end start end count)) ;; @@@ shouldn't ignore these
+    (let (val)
+      (loop :for slot :in (mop:class-slots (class-of collection))
+        :when (slot-boundp collection (mop:slot-definition-name slot))
+        :do
+	(setf value (slot-value collection (mop:slot-definition-name slot))
+	      value (if key
+		      (funcall key value)
+		      value))
+	  (when (cond
+		  (test (funcall test old-item val))
+		  (test-not (not (funcall test-not old-item val)))
+		  (t (eql old-item val)))
+	    (setf (slot-value collection (mop:slot-definition-name slot))
+		  new-item)))
+      collection))
+  |#
+  )
+
+#|
+(defmethod osubstitute (new-item old-item (collection container)
+			&key from-end
+			  (test nil test-p)
+			  (test-not nil test-not-p)
+			  (start nil start-p)
+			  (end nil end-p)
+			  count key)
+  (call-with-start-end-test osubstitute
+    (new-item old-item (container-data collection)
+     :from-end from-end :count count :key key)))
+|#
+
+(defgeneric onsubstitute (new-item old-item collection
+			  &key from-end test test-not start end count key)
+  (:documentation
+   "Return a copy of the collection in which each element that satisfies the
+test has been replaced with ‘new-item’.")
+  (:method (new-item old-item (collection list)
+	    &key from-end
+	      (test nil test-p)
+	      (test-not nil test-not-p)
+	      (start nil start-p)
+	      (end nil end-p)
+	      count key)
+    (call-with-start-end-test nsubstitute
+      (new-item old-item collection :from-end from-end :count count :key key)))
+  (:method (new-item old-item (collection vector)
+	    &key from-end
+	      (test nil test-p)
+	      (test-not nil test-not-p)
+	      (start nil start-p)
+	      (end nil end-p)
+	      count key)
+    (call-with-start-end-test nsubstitute
+      (new-item old-item collection :from-end from-end :count count :key key)))
+  (:method (new-item old-item (collection sequence)
+	    &key from-end
+	      (test nil test-p)
+	      (test-not nil test-not-p)
+	      (start nil start-p)
+	      (end nil end-p)
+	      count key)
+    (call-with-start-end-test nsubstitute
+      (new-item old-item collection :from-end from-end :count count :key key)))
+  (:method (new-item old-item (collection hash-table)
+	    &key from-end test test-not start end count key)
+    (declare (ignore from-end start end count)) ;; @@@ shouldn't ignore count
+    (let (val)
+      (with-hash-table-iterator (get-entry collection)
+	(loop
+	  (multiple-value-bind (ok hash-key value) (get-entry)
+	    (if ok
+		(progn
+		  (setf val (if key
+				(funcall key value)
+				value))
+		  (when (cond
+			  (test (funcall test old-item val))
+			  (test-not (not (funcall test-not old-item val)))
+			  (t
+			   (funcall (fdefinition (hash-table-test collection))
+				    old-item val)))
+		    (setf (gethash hash-key collection) new-item)))
+		(return)))))
+      collection))
+  (:method (new-item old-item (collection structure-object)
+	    &key from-end test test-not start end count key)
+    (declare (ignore from-end start end count)) ;; @@@ shouldn't ignore these
+    (loop
+      :with value
+      :for slot :in (mop:class-slots (class-of collection))
+      :when (slot-boundp collection (mop:slot-definition-name slot))
+      :do
+	 (setf value (slot-value collection (mop:slot-definition-name slot))
+	       value (if key
+			 (funcall key value)
+			 value))
+	 (when (cond
+		 (test (funcall test old-item value))
+		 (test-not (not (funcall test-not old-item value)))
+		 (t (eql old-item value)))
+	   (setf (slot-value collection (mop:slot-definition-name slot))
+		 new-item)))
+      collection)
+  (:method (new-item old-item (collection standard-object)
+	    &key from-end test test-not start end count key)
+    (declare (ignore from-end start end count)) ;; @@@ shouldn't ignore these
+    (loop
+      :with value
+      :for slot :in (mop:class-slots (class-of collection))
+      :when (slot-boundp collection (mop:slot-definition-name slot))
+      :do
+      (setf value (slot-value collection (mop:slot-definition-name slot))
+	    value (if key
+		      (funcall key value)
+		      value))
+      (when (cond
+	      (test (funcall test old-item value))
+	      (test-not (not (funcall test-not old-item value)))
+	      (t (eql old-item value)))
+	(setf (slot-value collection (mop:slot-definition-name slot))
+	      new-item)))
+    collection))
+
+(defmethod onsubstitute (new-item old-item (collection container)
+			 &key from-end
+			   (test nil test-p)
+			   (test-not nil test-not-p)
+			   (start nil start-p)
+			   (end nil end-p)
+			   count key)
+  (call-with-start-end-test onsubstitute
+    (new-item old-item (container-data collection)
+     :from-end from-end :count count :key key)))
 
 (defgeneric oconcatenate (first-collection &rest collections)
   (:documentation
