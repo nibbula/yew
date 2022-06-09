@@ -431,6 +431,54 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 	      :from-end from-end
 	      :key key)))
 
+(defmethod osubstitute ((new-item character)
+			(old-item character) (collection fat-string)
+			 &key from-end
+			   (test nil test-p)
+			   (test-not nil test-not-p)
+			   (start nil start-p)
+			   (end nil end-p)
+			   count key)
+  (call-with-start-end-test osubstitute
+    ((make-fatchar :c new-item) (make-fatchar :c old-item)
+     collection :from-end from-end :count count :key key)))
+
+(defmethod onsubstitute ((new-item character)
+			(old-item character) (collection fat-string)
+			 &key from-end
+			   (test nil test-p)
+			   (test-not nil test-not-p)
+			   (start nil start-p)
+			   (end nil end-p)
+			   count key)
+  (call-with-start-end-test onsubstitute
+    ((make-fatchar :c new-item) (make-fatchar :c old-item)
+     collection :from-end from-end :count count :key key)))
+
+(defmethod osubstitute ((new-item fatchar)
+			(old-item fatchar) (collection fat-string)
+			 &key from-end
+			   (test nil test-p)
+			   (test-not nil test-not-p)
+			   (start nil start-p)
+			   (end nil end-p)
+			   count key)
+  (call-with-start-end-test osubstitute
+    (new-item old-item (fat-string-string collection)
+     :from-end from-end :count count :key key)))
+
+(defmethod onsubstitute ((new-item fatchar)
+			(old-item fatchar) (collection fat-string)
+			 &key from-end
+			   (test nil test-p)
+			   (test-not nil test-not-p)
+			   (start nil start-p)
+			   (end nil end-p)
+			   count key)
+  (call-with-start-end-test onsubstitute
+    (new-item old-item (fat-string-string collection)
+     :from-end from-end :count count :key key)))
+
 (defmethod osearch ((collection-1 fat-string) (collection-2 fat-string)
 		    &rest args
 		    &key from-end test test-not key start1 start2 end1 end2)
