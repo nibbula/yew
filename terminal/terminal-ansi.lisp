@@ -1079,9 +1079,6 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-inverse ((tty terminal-color-mixin) state)
   (terminal-escape-sequence tty "m" (if state "7" "27")))
 
-(defparameter *colors*
-  #(:black :red :green :yellow :blue :magenta :cyan :white nil :default))
-
 (defun typical-report-ending (string)
   "A tag function for terminal report that ends in ^G or +ST+."
   (let (pos)

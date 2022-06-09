@@ -16,6 +16,7 @@ modern xterm style functionality.")
    #:+dsc+
    #:*attributes*
    #:*attributes-off*
+   #:*colors*
    ;; 
    ))
 (in-package :ansi)
@@ -58,5 +59,8 @@ modern xterm style functionality.")
     (:invisible	       . 28)
     (:crossed-out      . 29)
     (:double-underline . 24)))		; same as not underline
+
+(defparameter *colors*
+  #(:black :red :green :yellow :blue :magenta :cyan :white nil :default))
 
 ;; End
