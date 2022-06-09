@@ -344,11 +344,13 @@
   ;; #+lispworks @@@@WHY?
   #+sunos (l-tioc 23)
   #+linux #x5412
+  #-(or darwin freebsd openbsd netbsd sunos linux) 0
   "simulate terminal input")
 
 (defconstant +TIOCCONS+
   #+darwin (_IOW #\t 98 :int)
   #+linux #x541D
+  #-(or darwin linux) 0
   "Become the virtual console.")
 
 ;; These are actually useful!
@@ -358,6 +360,7 @@
   ;; #+lispworks #x40087468
   #+sunos (b-tioc 104)
   #+linux #x5413
+  #-(or darwin freebsd openbsd netbsd sunos linux) 0
   "get window size")
 
 (defconstant +TIOCSWINSZ+
@@ -366,18 +369,21 @@
   ;; #+lispworks #x80087467
   #+sunos (b-tioc 103)
   #+linux #x5414
+  #-(or darwin freebsd openbsd netbsd sunos linux) 0
   "set window size")
 
 ;; We probably need this one for login-tty.
 (defconstant +TIOCSCTTY+
   #+(or netbsd darwin) (_IO #\t 97)
   #+linux #x540e
+  #-(or netbsd darwin linux) 0
   "become controlling tty")
 
 (defconstant +TIOCNOTTY+
   #+sunos (_IO #\t 97)
   #+(or netbsd darwin) (_IO #\t 113)
   #+linux #x5422
+  #-(or sunos netbsd darwin linxu) 0
   "unset controlling tty")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

@@ -199,21 +199,28 @@ from the system command CMD with the arguments ARGS."
 
 |#
 
+#+freebsd (defconstant +MAXHOSTNAMELEN+ 256)
+
+(defparameter *host-name-max*
+  #+linux (uos:sysconf uos::+sc-host-name-max+)
+  #+freebsd +MAXHOSTNAMELEN+
+  #-(or linux freebsd) 256)
+
 (defcfun ("getdomainname" real-getdomainname) :int (name :string) (len size-t))
 (defun getdomainname ()
-  (let ((len (uos:sysconf uos::+sc-host-name-max+)))
+  (let ((len *host-name-max*))
     (with-foreign-pointer-as-string (name len)
       (syscall (real-getdomainname name len)))))
 
 (defcfun ("gethostname" real-gethostname) :int (name :string) (len size-t))
 (defun gethostname ()
-  (let ((len (uos:sysconf uos::+sc-host-name-max+)))
+  (let ((len *host-name-max*))
     (with-foreign-pointer-as-string (name len)
       (syscall (real-getdomainname name len)))))
 
 (defcfun ("sethostname" real-sethostname) :int (name :string) (len size-t))
 (defun sethostname (name)
-  (let ((len (uos:sysconf uos::+sc-host-name-max+)))
+  (let ((len *host-name-max*))
     (with-foreign-string ((host byte-size) name)
       (when (> byte-size len)
 	(error 'opsys-error
@@ -224,7 +231,7 @@ from the system command CMD with the arguments ARGS."
 
 (defcfun ("setdomainname" real-setdomainname) :int (name :string) (len size-t))
 (defun setdomainname (name)
-  (let ((len (uos:sysconf uos::+sc-host-name-max+)))
+  (let ((len *host-name-max*))
     (with-foreign-string ((host byte-size) name)
       (when (> byte-size len)
 	(error 'opsys-error

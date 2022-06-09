@@ -17,7 +17,11 @@
   ;; instead of a variable.
   #+(or openbsd freebsd netbsd)
   (progn
-    #+(or openbsd freebsd netbsd) (defcfun ("__errno" errno-func) (:pointer :int))
+    #+(or openbsd netbsd)
+    (defcfun ("__errno" errno-func) (:pointer :int))
+    #+freebsd
+    (defcfun ("__error" errno-func) (:pointer :int))
+
     (defun %errno ()
       (let ((p (errno-func)))
 	(when (not (null-pointer-p p))
