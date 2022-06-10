@@ -51,16 +51,17 @@
 
 ;; @@@ fix not to be lame? see below
 (defun lame-select (fds timeout &key retry)
-  "See if a set of file descriptors are available. FDS is a list of lists of
+  "See if a set of file descriptors are available. ‘fds’ is a list of lists of
 file descriptors and actions, where action is one of: :read :write :error, e.g.:
-((23 :read) (12 :write :error)). TIMEOUT is the number of micro-seconds after
-which to return if nothing changed. If RETRY is true, keep trying if we are
-interrupted by a signal or something else stupid."
+((23 :read) (12 :write :error)). ‘timeout’ is the number of micro-seconds after
+which to return if nothing changed. If ‘timeout’ is NIL, wait indefinitely.
+If ‘retry’ is true, keep trying if we are interrupted by a signal or something
+else stupid."
   ;; (format t "NFDBITS = ~s~%" NFDBITS)
   ;; (format t "howmany(FD_SETSIZE,NFDBITS) = ~s~%" (howmany FD_SETSIZE NFDBITS))
   ;; (format t "+fd-count+ = ~s~%" +fd-count+)
   ;; (format t "sizeof(fd_set) = ~s~%" (foreign-type-size 'fd_set))
-  (let ((nfds 0) ret-val results time-left)
+  (let ((nfds 0) ret-val results time-left sec frac)
     (with-foreign-objects ((read-fds :uint32 +fd-count+)
  			   (write-fds :uint32 +fd-count+)
  			   (err-fds :uint32 +fd-count+)
@@ -95,34 +96,39 @@ interrupted by a signal or something else stupid."
       ;; 	    (princ (if (= 0 (fd-isset i err-fds)) #\0 #\1)))
       ;; (terpri)
       (with-foreign-slots ((tv_sec tv_usec) tv (:struct foreign-timeval))
-	(multiple-value-bind (sec frac) (truncate timeout)
-	  (setf time-left
-		(make-timeval :seconds sec
-			      :micro-seconds (truncate (* frac 1000000)))
-		tv_sec sec
-		tv_usec (timeval-micro-seconds time-left))
-	  ;; (let ((usec (truncate (* frac 1000000))))
-	  ;;   (dbugf :select "nfds ~s sec ~s usec ~s ~g ~s~%"
-	  ;; 	   nfds sec usec usec (type-of usec))
-	  ;;   (dbugf :select "timveval sec ~s usec ~s~%"
-	  ;; 	   tv_sec tv_usec))
-	  (if retry
-	      (loop :with elapsed :and start-time :and end-time
-		 :do
-		 (setf start-time (gettimeofday))
-		 (setf ret-val
-		       (unix-select (1+ nfds) read-fds write-fds err-fds tv))
-		 (setf end-time (gettimeofday))
-		 :while (and (= ret-val -1) (or (= *errno* +EINTR+)
-						(= *errno* 0))
-			     (not (or *got-sigwinch* *got-tstp*))
-			     ;; @@@ some systems we might need to check EAGAIN?
-			     (timeval-plusp
-			      (setf elapsed (timeval-sub end-time start-time))))
-		 :do (setf time-left (timeval-sub time-left elapsed)))
-	      ;; no retry loop
-	      (setf ret-val
-		    (unix-select (1+ nfds) read-fds write-fds err-fds tv)))))
+	(cond
+	  (timeout
+	   (multiple-value-setq (sec frac) (truncate timeout))
+	   (setf time-left
+		 (make-timeval :seconds sec
+			       :micro-seconds (truncate (* frac 1000000)))
+		 tv_sec sec
+		 tv_usec (timeval-micro-seconds time-left)))
+	  (t
+	   ;; no timeout, wait for something to happen
+	   (setf tv (null-pointer))))
+	;; (let ((usec (truncate (* frac 1000000))))
+	;;   (dbugf :select "nfds ~s sec ~s usec ~s ~g ~s~%"
+	;; 	   nfds sec usec usec (type-of usec))
+	;;   (dbugf :select "timveval sec ~s usec ~s~%"
+	;; 	   tv_sec tv_usec))
+	(if retry
+	    (loop :with elapsed :and start-time :and end-time
+	      :do
+	        (setf start-time (gettimeofday))
+		(setf ret-val
+		      (unix-select (1+ nfds) read-fds write-fds err-fds tv))
+		(setf end-time (gettimeofday))
+	      :while (and (= ret-val -1) (or (= *errno* +EINTR+)
+					     (= *errno* 0))
+			  (not (or *got-sigwinch* *got-tstp*))
+			  ;; @@@ some systems we might need to check EAGAIN?
+			  (timeval-plusp
+			   (setf elapsed (timeval-sub end-time start-time))))
+	      :do (setf time-left (timeval-sub time-left elapsed)))
+	    ;; no retry loop
+	    (setf ret-val
+		  (unix-select (1+ nfds) read-fds write-fds err-fds tv))))
       (when (= -1 ret-val)
 	(cond
 	  (*got-sigwinch*
