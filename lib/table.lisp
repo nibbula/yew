@@ -45,8 +45,8 @@
    ))
 (in-package :table)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3)
-		   (space 0) (compilation-speed 0)))
+;; (declaim (optimize (speed 0) (safety 3) (debug 3)
+;; 		   (space 0) (compilation-speed 0)))
 
 (defstruct column
   "Description of a table column.
