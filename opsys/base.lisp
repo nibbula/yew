@@ -52,6 +52,14 @@
    #:terminal-mode-raw
    #:terminal-mode-timeout
 
+   #:window-size
+   #:window-size-p
+   #:make-window-size
+   #:window-size-rows
+   #:window-size-columns
+   #:window-size-width
+   #:window-size-height
+
    #:os-time
    #:os-time-p
    #:make-os-time

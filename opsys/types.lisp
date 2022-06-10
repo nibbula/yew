@@ -62,6 +62,13 @@ Slot are:
   (raw     nil :type boolean)
   (timeout nil :type (or null integer)))
 
+(defstruct window-size
+  "Window size for terminals."
+  (rows    0 :type fixnum)		; in character cells
+  (columns 0 :type fixnum)		; in character cells
+  (width   0 :type fixnum)		; horizontal size in pixels
+  (height  0 :type fixnum))		; vertical size in pixels
+
 ;; I can't tell you how much I dislike these units.
 (defstruct os-time
   "Time in Common Lisp universal time seconds, and nanoseconds."
