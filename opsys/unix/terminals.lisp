@@ -383,7 +383,7 @@
   #+sunos (_IO #\t 97)
   #+(or netbsd darwin) (_IO #\t 113)
   #+linux #x5422
-  #-(or sunos netbsd darwin linxu) 0
+  #-(or sunos netbsd darwin linux) 0
   "unset controlling tty")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
