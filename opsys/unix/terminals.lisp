@@ -325,6 +325,18 @@
   (ws_xpixel :unsigned-short)		; horizontal size, pixels
   (ws_ypixel :unsigned-short))		; vertical size, pixels
 
+(defun window-size-to-foreign (ws-lisp ws-foreign)
+  "Set the foreign (:struct winsize) in ‘ws-foreign’ from the lisp window-size
+struct in ‘ws-lisp’."
+  (setf (foreign-slot-value ws-foreign '(:struct winsize) 'ws_col)
+	(or (window-size-rows ws-lisp) 0)
+	(foreign-slot-value ws-foreign '(:struct winsize) 'ws_row)
+	(or (window-size-columns ws-lisp) 0)
+	(foreign-slot-value ws-foreign '(:struct winsize) 'ws_xpixel)
+	(or (window-size-width ws-lisp) 0)
+	(foreign-slot-value ws-foreign '(:struct winsize) 'ws_ypixel)
+	(or (window-size-height ws-lisp) 0)))
+
 ;; SunOS TIOC and tIOC constants
 ;;#+sunos (defconstant little-tioc #.(ash 116 8)) ; 166 = (char-int #\t)
 ;;#+sunos (defconstant big-tioc    #.(ash 84  8)) ;  84 = (char-int #\T)
