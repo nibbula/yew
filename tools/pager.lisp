@@ -53,8 +53,8 @@ The shell command takes any number of file names.
    ))
 (in-package :pager)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
-		   (compilation-speed 0)))
+;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
+;; 		   (compilation-speed 0)))
 ;; (declaim (optimize (speed 3) (safety 0) (debug 1) (space 1)
 ;; 		   (compilation-speed 0)))
 
