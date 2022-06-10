@@ -9,7 +9,7 @@
 (in-package :rl-config)
 
 ;; (declaim (optimize (debug 2)))
-(declaim (optimize (speed 1) (safety 3) (debug 3) (space 1) (compilation-speed 1)))
+;;(declaim (optimize (speed 1) (safety 3) (debug 3) (space 1) (compilation-speed 1)))
 
 ;; (defvar *configuration* nil)
 ;; (setf *configuration* nil)
@@ -28,8 +28,8 @@
     "Default optimization settings for each file/compilation unit?."
     ;; If we don't have at least debug 2, then most compilers won't save
     ;; the function arguments.
-    ;; `((debug 2)))))
-    '((speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))))
+    `((debug 2)))))
+    ;; '((speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))))
 
 
 ;;(configure :verbose t)
