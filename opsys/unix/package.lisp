@@ -626,6 +626,7 @@
    #:getch
    #:with-nonblocking-io
    #:terminal-read-timeout
+   #:openpty
 
    ;; old fashioned tty ioctls
    #:winsize
@@ -651,6 +652,7 @@
    #:set-terminal-mode
    #:get-terminal-mode
    #:get-window-size
+   #:get-window-size-struct
    #:slurp-terminal
    #:reset-terminal-modes
    #:terminal-time
@@ -658,6 +660,7 @@
    #:with-terminal-signals
    #:control-char
    #:set-control-char
+   #:open-pseudo-terminal
 
    ;; testing
    #:terminal-test

@@ -846,6 +846,36 @@ characters. If we don't get anything after a while, just return what we got."
       ,*sane-susp* ,*sane-time* ,*sane-werase*)))
 )
 
+(defun set-sane (sane)
+  "Set the C termios struct ‘sane’ to a supposedly sane state."
+  (with-foreign-slots ((c_iflag c_oflag c_cflag c_lflag c_cc
+			c_ispeed c_ospeed)
+		       sane (:struct termios))
+    (setf c_iflag *sane-iflag*)
+    (setf c_oflag *sane-oflag*)
+    (setf c_cflag *sane-cflag*)
+    (setf c_lflag *sane-lflag*)
+    (setf (mem-aref c_cc :unsigned-char +VDISCARD+) *sane-discard*)
+#-linux	  (setf (mem-aref c_cc :unsigned-char +VDSUSP+)   *sane-dsusp*)
+    (setf (mem-aref c_cc :unsigned-char +VEOF+)     *sane-eof*)
+    (setf (mem-aref c_cc :unsigned-char +VEOL+)     *sane-eol*)
+    (setf (mem-aref c_cc :unsigned-char +VEOL2+)    +sane-eol2+)
+    (setf (mem-aref c_cc :unsigned-char +VERASE+)   *sane-erase*)
+    (setf (mem-aref c_cc :unsigned-char +VINTR+)    *sane-intr*)
+    (setf (mem-aref c_cc :unsigned-char +VKILL+)    *sane-kill*)
+    (setf (mem-aref c_cc :unsigned-char +VLNEXT+)   *sane-lnext*)
+    (setf (mem-aref c_cc :unsigned-char +VMIN+)     *sane-min*)
+    (setf (mem-aref c_cc :unsigned-char +VQUIT+)    *sane-quit*)
+    (setf (mem-aref c_cc :unsigned-char +VREPRINT+) *sane-reprint*)
+    (setf (mem-aref c_cc :unsigned-char +VSTART+)   *sane-start*)
+#+darwin  (setf (mem-aref c_cc :unsigned-char +VSTATUS+)  *sane-status*)
+    (setf (mem-aref c_cc :unsigned-char +VSTOP+)    *sane-stop*)
+    (setf (mem-aref c_cc :unsigned-char +VSUSP+)    *sane-susp*)
+    (setf (mem-aref c_cc :unsigned-char +VTIME+)    *sane-time*)
+    (setf (mem-aref c_cc :unsigned-char +VWERASE+)  *sane-werase*)
+    (setf c_ispeed *sane-ispeed*)
+    (setf c_ospeed *sane-ospeed*)))
+
 (defun sane (&key (device "/dev/tty") file-descriptor)
   "Reset standard input to sane modes."
   (when (not (boundp '*sanity*))
@@ -857,37 +887,10 @@ characters. If we don't get anything after a while, just return what we got."
 	      sane (foreign-alloc '(:struct termios)))
 	(when (< tty 0)
 	  (error "Error opening ~a ~d~%" device tty))
-
-	(with-foreign-slots ((c_iflag c_oflag c_cflag c_lflag c_cc
-			      c_ispeed c_ospeed)
-			     sane (:struct termios))
-	  (setf c_iflag *sane-iflag*)
-	  (setf c_oflag *sane-oflag*)
-	  (setf c_cflag *sane-cflag*)
-	  (setf c_lflag *sane-lflag*)
-	  (setf (mem-aref c_cc :unsigned-char +VDISCARD+) *sane-discard*)
-#-linux	  (setf (mem-aref c_cc :unsigned-char +VDSUSP+)   *sane-dsusp*)
-	  (setf (mem-aref c_cc :unsigned-char +VEOF+)     *sane-eof*)
-	  (setf (mem-aref c_cc :unsigned-char +VEOL+)     *sane-eol*)
-	  (setf (mem-aref c_cc :unsigned-char +VEOL2+)    +sane-eol2+)
-	  (setf (mem-aref c_cc :unsigned-char +VERASE+)   *sane-erase*)
-	  (setf (mem-aref c_cc :unsigned-char +VINTR+)    *sane-intr*)
-	  (setf (mem-aref c_cc :unsigned-char +VKILL+)    *sane-kill*)
-	  (setf (mem-aref c_cc :unsigned-char +VLNEXT+)   *sane-lnext*)
-	  (setf (mem-aref c_cc :unsigned-char +VMIN+)     *sane-min*)
-	  (setf (mem-aref c_cc :unsigned-char +VQUIT+)    *sane-quit*)
-	  (setf (mem-aref c_cc :unsigned-char +VREPRINT+) *sane-reprint*)
-	  (setf (mem-aref c_cc :unsigned-char +VSTART+)   *sane-start*)
-#+darwin  (setf (mem-aref c_cc :unsigned-char +VSTATUS+)  *sane-status*)
-	  (setf (mem-aref c_cc :unsigned-char +VSTOP+)    *sane-stop*)
-	  (setf (mem-aref c_cc :unsigned-char +VSUSP+)    *sane-susp*)
-	  (setf (mem-aref c_cc :unsigned-char +VTIME+)    *sane-time*)
-	  (setf (mem-aref c_cc :unsigned-char +VWERASE+)  *sane-werase*)
-	  (setf c_ispeed *sane-ispeed*)
-	  (setf c_ospeed *sane-ospeed*)
-
-	  (when (= -1 (tcsetattr tty +TCSANOW+ sane))
-	    (error "Can't set sane mode. errno = ~d" *errno*))))
+	
+	(set-sane sane)
+	(when (= -1 (tcsetattr tty +TCSANOW+ sane))
+	  (error "Can't set sane mode. errno = ~d" *errno*)))
       ;; close the terminal
       (when (and tty (>= tty 0) (not file-descriptor))
 	(posix-close tty))
@@ -1153,6 +1156,72 @@ The individual settings override the settings in MODE."
 	  (error "Can't set terminal mode. ~d ~d" *errno* tty)))
       (foreign-free new-mode))))
 
+;; @@@ make set-terminal-mode call this
+(defun convert-terminal-mode (mode c-mode)
+  "Convert a terminal-mode struct to a C termio struct."
+  (set-sane c-mode)
+  (with-foreign-slots ((c_lflag c_iflag c_oflag c_cc) c-mode
+		       (:struct termios))
+    (labels
+	((char-mode (state)
+	   (if state
+	       (progn
+		 ;; We assume with character mode you want relatively
+		 ;; raw characters.
+		 (setf c_iflag
+		       (logand c_iflag
+			       (lognot (logior +ISTRIP+ +INLCR+
+					       +IGNCR+ +ICRNL+ +IXON+
+					       +IXOFF+))))
+		 ;; Turn off "cannonical" input.
+		 ;; Stuck in input modes of the ancients?
+		 ;; We are the new canon!
+		 (setf c_lflag
+		       (logand c_lflag
+			       (lognot (logior +ICANON+ +IEXTEN+))))
+		 ;; Do we really need these?
+		 (setf c_oflag
+		       (logior c_oflag +ONLCR+ +OPOST+))
+		 ;; These are the default values, but we set them since
+		 ;; otherwise a read might not immediately return a
+		 ;; char.
+		 (setf (mem-aref c_cc :char +VMIN+) 1)
+		 (setf (mem-aref c_cc :char +VTIME+) 0))
+	       (progn
+		 (setf c_iflag (logior c_iflag +ICRNL+ #| +IXON+ |#))
+		 (setf c_oflag (logior c_oflag +ONLCR+ +OPOST+))
+		 (setf c_lflag (logior c_lflag +ICANON+ +IEXTEN+)))))
+	 (echo-mode (state)
+	   (setf c_lflag
+		 (if state
+		     (logior c_lflag +ECHO+)
+		     (logand c_lflag (lognot +ECHO+)))))
+	 (raw-mode (state)
+	   ;; Raw means the same as character mode AND don't process
+	   ;; signals or do output processing.
+	   (if state
+	       (progn
+		 (setf c_lflag (logand c_lflag (lognot +ISIG+)))
+		 (setf c_oflag (logand c_oflag (lognot +OPOST+))))
+	       (progn
+		 (setf c_lflag (logior c_lflag +ISIG+))
+		 (setf c_oflag (logior c_oflag +OPOST+)))))
+	 (set-timeout (timeout)
+	   (if timeout
+	       (progn
+		 (char-mode t) ;; char mode must be on
+		 (setf (mem-aref c_cc :char +VMIN+) 0)
+		 (setf (mem-aref c_cc :char +VTIME+) timeout))
+	       (progn
+		 (setf (mem-aref c_cc :char +VMIN+) 1)
+		 (setf (mem-aref c_cc :char +VTIME+) 0)))))
+
+      ;; Order is important here.
+      (echo-mode (terminal-mode-echo mode))
+      (char-mode (not (terminal-mode-line mode)))
+      (raw-mode (terminal-mode-raw mode))
+      (set-timeout (terminal-mode-timeout mode)))))
+
 (defun get-terminal-mode (tty)
   "Return a TERMINAL-MODE structure with the current terminal settings."
   (let ((new-mode (foreign-alloc '(:struct termios)))
@@ -1187,6 +1256,18 @@ The individual settings override the settings in MODE."
     (values
      (foreign-slot-value ws '(:struct winsize) 'ws_col)
      (foreign-slot-value ws '(:struct winsize) 'ws_row))))
+
+(defun get-window-size-struct (tty-fd)
+  "Get the window size from the terminal file descriptor ‘tty-fd’, and return
+a window-size struct."
+  (with-foreign-object (ws '(:struct winsize))
+    (when (< (posix-ioctl tty-fd +TIOCGWINSZ+ ws) 0)
+      (error "Can't get the tty window size."))
+    (make-window-size
+     :rows    (foreign-slot-value ws '(:struct winsize) 'ws_row)
+     :columns (foreign-slot-value ws '(:struct winsize) 'ws_col)
+     :width   (foreign-slot-value ws '(:struct winsize) 'ws_xpixel)
+     :height  (foreign-slot-value ws '(:struct winsize) 'ws_ypixel))))
 
 (defun slurp-terminal (tty &key timeout)
   "Read until EOF. Return a string of the results. TTY is a file descriptor."
@@ -1679,13 +1760,14 @@ FLAGS is an bit-wise or of:
 ;; These do the whole rigamarole for you:
 ;; @@@ but do they really require -lutil ?
 
-;; (defcfun ("openpty" real-openpty) :int
-;;   (master (:pointer :int))
-;;   (slave (:pointer :int))
-;;   (name (:pointer :char))
-;;   (termios-pointer (:pointer (:struct termios)))
-;;   (winsize-pointer (:pointer (:struct winsize))))
+(defcfun ("openpty" real-openpty) :int
+  (master (:pointer :int))
+  (slave (:pointer :int))
+  (name (:pointer :char))
+  (termios-pointer (:pointer (:struct termios)))
+  (winsize-pointer (:pointer (:struct winsize))))
 
+#|
 (defun openpty ()
   "Create a pseudo-terminal with theand return the master and slave"
   (let ((master (syscall (getpt))))
@@ -1693,6 +1775,27 @@ FLAGS is an bit-wise or of:
     (syscall (unlockpt master))
     ;; @@@@@
   ))
+|#
+
+(defun open-pseudo-terminal (&key terminal-mode window-size)
+  "Open a pseudo-terminal an return the master and slave file descriptors.
+If given, set the new slave terminal from the ‘terminal-mode’ struct and
+the ‘window-size’ struct."
+  (with-foreign-objects ((master :int)
+			 (slave :int)
+			 (c-winsize '(:struct winsize))
+			 (c-termios '(:struct termios)))
+    (when window-size
+      (window-size-to-foreign window-size c-winsize))
+
+    (when terminal-mode
+      (convert-terminal-mode terminal-mode c-termios))
+
+    (syscall (real-openpty master slave (null-pointer)
+			   (if terminal-mode c-termios (null-pointer))
+			   (if window-size c-winsize (null-pointer))))
+    (values (mem-ref master :int)
+	    (mem-ref slave :int))))
 
 #-cmucl
 (defcfun ("forkpty" real-forkpty) :int
