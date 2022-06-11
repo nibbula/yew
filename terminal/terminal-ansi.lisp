@@ -1233,19 +1233,20 @@ i.e. the terminal is 'line buffered'."
 ;; @@@ This whole technique is crap. Why can't every terminal just report it's
 ;; colors????
 (defparameter *emulators*
-  #((19    330 :xterm)
-    ( 0    115 :konsole) ;; or maybe qterminal
+  #((19     330 :xterm)
+    ( 0     115 :konsole) ;; or maybe qterminal
     ;; ( 0     95 :iterm)
-    ( 1   3600 :vte)
+    ( 1    3600 :vte)
     ;; ( 1     95 :terminal.app)
-    (24    279 :mlterm)
-    (41    285 :terminology)
-    (63     14 :ctx)
+    (24     279 :mlterm)
+    (41     285 :terminology)
+    (63      14 :ctx)
     ;;(65   6002 :kings-cross)
-    (65   6002 :vte) ;; later?
-    (83  40602 :screen)
-    (84      0 :tmux)
-    (85     95 :rxvt)
+    (65    6002 :vte) ;; later?
+    (83   40602 :screen)
+    (84       0 :tmux)
+    (85      95 :rxvt)
+    (#x434c 420 :lisp-term)		; joining the junk
     )
   "Data for terminal emualtors.")
 
@@ -1283,9 +1284,10 @@ i.e. the terminal is 'line buffered'."
        ;; @@@ This is wrong for tmux, screen, and others, because it depends
        ;; on the underlying terminal. How can we figure it out?
        nil)
-      (:rxvt	nil)
-      (:ctx	t)
-      (:st	t)			; Is this true? It has no versions?
+      (:rxvt	  nil)
+      (:ctx	  t)
+      (:st	  t)			; Is this true? It has no versions?
+      (:lisp-term t)
       (otherwise nil))))
 
 (defmethod terminal-colors ((tty terminal-ansi-stream))
