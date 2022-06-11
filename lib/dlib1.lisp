@@ -672,9 +672,9 @@ REPLACEMENT."
 (defun displaced-subseq (array start &optional end)
   "Like subseq, but returns a displaced array. Try not to use this."
   (make-array (- (or end (length array)) start)
-	      :element-type (array-element-type array)
-	      :displaced-to array
-	      :displaced-index-offset start))
+              :element-type (array-element-type array)
+              :displaced-to array
+              :displaced-index-offset start))
 
 (defun copy-array-into (to from)
   "Copy the contents of the array FROM to TO. They must be the same size."
