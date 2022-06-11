@@ -151,7 +151,8 @@ it yet.")
     (multiple-value-bind (cols rows)
 	(get-window-size (terminal-file-descriptor tty))
       (setf (terminal-window-rows tty) rows
-	    (terminal-window-columns tty) cols))))
+	    (terminal-window-columns tty) cols)
+      (values rows cols))))
 
 (defun add-typeahead (tty thing)
   "Add THING to the typeahead buffer of TTY."

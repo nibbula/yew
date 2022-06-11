@@ -760,12 +760,12 @@ sizes. It only copies the smaller of the two regions."
 (defmethod terminal-get-size ((tty terminal-crunch))
   "Get the window size from the wrapped terminal and store it in tty."
   (with-slots ((wtty wrapped-terminal)) tty
-    (terminal-get-size wtty)
-    ;; (dbugf :crunch "get-size ~s ~s~%"
-    ;; 	   (terminal-window-rows wtty)
-    ;; 	   (terminal-window-columns wtty))
-    ;; Potentially resize the screens
-    (update-size tty)))
+    (multiple-value-prog1 (terminal-get-size wtty)
+      ;; (dbugf :crunch "get-size ~s ~s~%"
+      ;; 	   (terminal-window-rows wtty)
+      ;; 	   (terminal-window-columns wtty))
+      ;; Potentially resize the screens
+      (update-size tty))))
 
 (defmethod terminal-char-at ((tty terminal-crunch) row col)
   "Return the character at ROW and COL of terminal, or NIL if there is none or
