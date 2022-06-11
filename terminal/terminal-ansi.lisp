@@ -1457,38 +1457,6 @@ Attributes are usually keywords."
   ;;(read-terminal-char tty))
   (get-char tty))
 
-(defparameter *key-tag*
-  '((#\A . :up) 			; Arrow keys
-    (#\B . :down)
-    (#\C . :right)
-    (#\D . :left)
-    (#\E . :center)			; center of the keypad
-    (#\F . :end)
-    (#\H . :home)			; Movement keys
-    (#\P . :f1)				; function keys
-    (#\Q . :f2)
-    (#\R . :f3)
-    (#\S . :f4)
-    (#\Z . :back-tab)			; non-standard
-    ))
-
-(defparameter *key-num*
-  '((1  . :home)			; linux console
-    (2  . :insert)			; Editing keys
-    (3  . :delete)
-    (4  . :end)				; linux console
-    (5  . :page-up)
-    (6  . :page-down)
-    (15 . :f5)				; Function keys
-    (17 . :f6)
-    (18 . :f7)
-    (19 . :f8)
-    (20 . :f9)
-    (21 . :f10)
-    (23 . :f11)
-    (24 . :f12)
-    (200 . :bracketed-paste)))
-
 (defun modifier-prefixed (symbol params)
   "Return a keyword of SYMBOL prefixed by modifiers determined in PARAMS."
   (if (second params)
