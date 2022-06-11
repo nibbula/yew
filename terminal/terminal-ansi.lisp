@@ -1368,7 +1368,7 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-set-scrolling-region ((tty terminal-ansi-stream) start end)
   (if (and (not start) (not end))
       (terminal-escape-sequence tty "r")
-      (if (or (< start 0) (> end (terminal-window-rows tty)))
+      (if (or (< start 0) (> end (1- (terminal-window-rows tty))))
 	  (cerror "Just try it anyway."
 		  "The scrolling region doesn't fit in the screen.")
 	  (terminal-escape-sequence tty "r" (1+ start) (1+ end)))))
