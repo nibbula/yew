@@ -940,24 +940,42 @@ Tags are:~%~a" *file-tag-doc*))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Never let them tell you "no" because of stupid C/Unix.
+(defun find-nerr (&optional (limit 5))
+  "Try to determine sys_nerr by testing."
+  (let (start)
+    (loop
+      :with count = 0
+      :for i :from 0 :below 1000 :do
+	 (if (begins-with "Unknown err" (nos:error-message i))
+	     (progn
+	       (when (zerop count) (setf start i))
+	       (incf count))
+	     (setf count 0))
+	 (when (> count limit)
+	   ;; (format t "~s ~s~%" start count)
+	   (return)))
+    start))
+
 ;; @@@ There's something wrong when there are holes in this.
 (defun describe-os-errors ()
   "Describe the errors from system calls."
-  (let ((table
-	  #+unix
-	  (make-table-from
-	   (loop :for i :below uos:*sys-nerr*
-		 :collect
-		 (list i
-		       (or (find i uos:*errors* :key #'symbol-value) "")
-		       (uos:error-message i)))
-	   :columns '((:name "Errno" :type number)
-		      (:name "Name")
-		      (:name "Description")))
-	  #-unix
-	  (make-table-from (list 0 (s+ "I don't know for " *os*))
-			   :columns '((:name "Error" :type number)
-				      (:name "Description")))))
+  (let* ((nerr (or (ignore-errors uos:*sys-nerr*) (find-nerr)))
+	 (table
+	   #+unix
+	   (make-table-from
+	    (loop :for i :below nerr
+		  :collect
+		  (list i
+			(or (find i uos:*errors* :key #'symbol-value) "")
+			(uos:error-message i)))
+	    :columns '((:name "Errno" :type number)
+		       (:name "Name")
+		       (:name "Description")))
+	   #-unix
+	   (make-table-from (list 0 (s+ "I don't know for " *os*))
+			    :columns '((:name "Error" :type number)
+				       (:name "Description")))))
     (with-grout ()
       (grout-print-table table))
     table))
