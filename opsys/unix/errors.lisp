@@ -10,7 +10,9 @@
 ;; Error handling
 
 #+(or darwin linux freebsd netbsd) (config-feature :os-t-has-strerror-r)
-#| #+() What systems don't have sys-nerr? |# (config-feature :os-t-has-sys-nerr)
+#| #+() What systems don't have sys-nerr? |#
+;; glibc made this hidden so we can't really use it, but see dlib-i
+(config-feature :os-t-has-sys-nerr)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   ;; OpenBSD and FreeBSD both have a differently named errno function,
