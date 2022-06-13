@@ -12,19 +12,25 @@
 (in-package :lisp-term)
 
 (defstruct term
-  master
-  slave
-  slave-name
-  out-term
-  ansi
-  (quit-flag nil :type boolean)
-  input-buffer)
+  "State for the terminal emulator."
+  master				; File descriptor of the control side
+  slave					; File descriptor of the terminal side
+  pid					; Process ID of the child
+  out-term				; Terminal for output (and input)
+  ansi					; The emulator stream
+  (quit-flag nil :type boolean)		; True to stop
+  input-buffer)				; Foreign byte buffer for input
 
-(defvar *term* nil)
+(defvar *term* nil
+  "The dynamic state.")
 
-(defvar *buf-size* 1024)
+(defvar *buf-size* 1024
+  "Size of buffer for reading from the pty.")
 
 (defun use-the-fd (fd)
+  "Use the file descriptor ‘fd’ as the processes controlling terminal and the
+standard input, output, and error. Also put the process in it's own session.
+Finally close the original ‘fd’."
   (let ((pid (uos:getpid)))
     (declare (ignore pid))
     (uos:setsid)
@@ -46,7 +52,8 @@
     :do (posix-close i)))
 
 (defun run-the-program (fd program &optional args #| (environment nil env-p) |#)
-  "Run the ‘program’ in the terminal slaved ‘fd’ with ‘args’."
+  "Run the ‘program’ in the terminal slave ‘fd’ with ‘args’ as the list of
+string arguments."
   (let* ((cmd-and-args (cons program args))
 	 (argc (length cmd-and-args))
 	 child-pid)
@@ -97,7 +104,50 @@
     ;; @@@ how about an error check?
     (uos:posix-write master input-buffer (length bytes))))
 
+(defun process-keys (term)
+  "Process any key input coming from the terminal."
+  (with-slots (master slave pid out-term ansi quit-flag input-buffer) term
+    (let (key)
+      (loop
+	:while (terminal-listen-for out-term 0)
+	:do
+	   (dbug "before get-key~%")
+	   (setf key (terminal-get-key out-term))
+	   (dbug "key ~s ~s~%" key (ignore-errors (char-code key)))
+	   (cond
+	     ((keywordp key)
+	      (cond
+		((eq key :s-f12) ;; escape hatch
+		 (setf quit-flag t)
+		 (uos:kill pid uos:+SIGKILL+)
+		 (uos::wait-and-report pid))
+		((eq key :resize)
+		 (dbug " ---- RESIZE ---- ~%")
+		 (let ((rows (terminal-window-rows out-term))
+		       (cols (terminal-window-columns out-term)))
+		   (uos:set-window-size-struct
+		    slave
+		    (nos:make-window-size :rows rows :columns cols))))
+		(t
+		 (let ((s (key-string ansi key)))
+		   (when s
+		     (loop
+		       :for c :across s
+		       :for i := 0 :then (1+ i)
+		       :do
+			  (setf (mem-aref input-buffer :unsigned-char i) c))
+		     (uos:posix-write master input-buffer (length s)))))))
+	     ((characterp key)
+	      (setf (cffi:mem-ref input-buffer :unsigned-char)
+		    (char-code key))
+	      (dbug "write char ~s~%" (char-name key))
+	      (uos:posix-write master input-buffer 1)))))))
+
+;; Currently this is like screen or tmux, but with only one process, so it's
+;; only really useful for testing our emulation.
+
 (defun emulate (device &key (program "/bin/bash"))
+  "Run ‘program’ in a terminal on ‘device’."
   (let* ((out-term (make-instance 'terminal-ansi
 				  :device-name device))
 	 (ansi (make-instance 'ansi-terminal:ansi-stream
@@ -106,9 +156,10 @@
 	 (*term* (make-term
 		  :out-term out-term
 		  :ansi ansi))
-	 fds master slave tty input key buf pid)
+	 fds master slave tty input buf pid)
     (unwind-protect
       (progn
+	(terminal-enable-event out-term '(:resize :mouse-buttons))
 	(terminal-start out-term)
 	(multiple-value-setq (master slave)
 	  (uos:open-pseudo-terminal
@@ -127,7 +178,8 @@
 	      buf (cffi:make-shareable-byte-vector *buf-size*))
 
 	(dbug "before run~%")
-	(setf pid (run-the-program slave program))
+	(setf pid (run-the-program slave program)
+	      (term-pid *term*) pid)
 	(dbug "after run~%")
 
 	(with-foreign-object (status-ptr :int 1)
@@ -141,6 +193,8 @@
 		 (finish-output ansi)
 		 (terminal-finish-output out-term)
 		 (dbug "before select ~s~%" fds)
+		 ;; (when (terminal-listen-for out-term 0)
+		 ;;   (process-keys *term*))
                  (setf results (uos:lame-select fds nil))
 		 (dbug "after select = ~s~%" results)
 		 (when (/= 0 (uos::real-waitpid pid status-ptr
@@ -155,75 +209,53 @@
 		   (setf (term-quit-flag *term*) t))
 		 (dbug "before io loop~%")
                  (loop :for r :in results :do
-		   (cond
-                     ;; output from the master
-                     ((eq (car r) master)
-		      (case (second r)
-			(:read
-			 (dbug "reading from master~%")
-			 (let ((rr (uos:posix-read master bufp *buf-size*)))
-			   (dbug "got from master ~s~%" rr)
-			   (cond
-                             ((eql rr -1)
-			      (case uos:*errno*
-				(uos:+EAGAIN+
-				 #| no prob |#
-				 )
-				(t
-				 (format *debug-io* "read error ~s ~s~%"
-					 uos:*errno*
-					 (nos:error-message uos:*errno*)))))
-                             ((eql rr 0)
-                              ;; nothing read?
-                              )
-                             ((plusp rr)
-                              ;; Feed to the the ANSI emulator
-			      (dbug "hanky ~s~%" (type-of buf))
-                              (write-sequence
-			       (unicode:utf8b-bytes-to-string
-				(displaced-subseq buf 0 rr))
-			       ansi)
-			      ;; (finish-output ansi)
-			      (dbug "hokay~%")
-			      ))))
-			(:write
-			 (dbug "master writable?~%"))
-			(t
-			 (dbug "master something else? ~s~%" (second r)))))
+                   ;; output from the master
+		   (when (eq (car r) master)
+		     (case (second r)
+		       (:read
+			(dbug "reading from master~%")
+			(let ((rr (uos:posix-read master bufp *buf-size*)))
+			  (dbug "got from master ~s~%" rr)
+			  (cond
+                            ((eql rr -1)
+			     (case uos:*errno*
+			       (uos:+EAGAIN+
+				#| no prob |#
+				)
+			       (t
+				(format *debug-io* "read error ~s ~s~%"
+					uos:*errno*
+					(nos:error-message uos:*errno*)))))
+                            ((eql rr 0)
+                             ;; nothing read?
+                             )
+                            ((plusp rr)
+                             ;; Feed to the the ANSI emulator
+			     (dbug "hanky ~s~%" (type-of buf))
+                             (write-sequence
+			      (unicode:utf8b-bytes-to-string
+			       (displaced-subseq buf 0 rr))
+			      ansi)
+			     ;; (finish-output ansi)
+			     (dbug "hokay~%")
+			     ))))
+		       (:write
+			(dbug "master writable?~%"))
+		       (t
+			(dbug "master something else? ~s~%" (second r)))))
 
                      ;; Input from the outer terminal
-                     ((eq (car r) tty)
-		      (case (second r)
-			(:read
-			 (dbug "before get-key~%")
-			 (setf key (terminal-get-key out-term))
-			 (dbug "key ~s ~s~%" key (ignore-errors (char-code key)))
-			 (cond
-			   ((keywordp key)
-                            (cond
-			      ((eq key :s-f12) ;; escape hatch
-			       (setf (term-quit-flag *term*) t)
-			       (uos:kill pid uos:+SIGKILL+)
-			       (uos::wait-and-report pid))
-			      (t
-			       (let ((s (key-string ansi key)))
-				 (when s
-				   (loop
-				     :for c :across s
-				     :for i := 0 :then (1+ i)
-				     :do
-				     (setf (mem-aref input :unsigned-char i) c))
-				   (uos:posix-write master input (length s)))))))
-                           ((characterp key)
-                            (setf (cffi:mem-ref input :unsigned-char)
-				  (char-code key))
-			    (dbug "write ~s~%" (char-name key))
-                            (uos:posix-write master input 1))))
-			(:write
-			 (finish-output ansi)
-			 (terminal-finish-output out-term))
-			(t
-			 (dbug "tty ~s~%" (second r)))))))))))))
+		   (when (eq (car r) tty)
+		     (case (second r)
+		       (:read
+			(dbug "tty read~%")
+			(process-keys *term*))
+		       (:write
+			(dbug "tty write~%")
+			(finish-output ansi)
+			(terminal-finish-output out-term))
+		       (t
+			(dbug "tty ~s~%" (second r))))))))))))
       (cffi:foreign-free input)
       (uos:posix-close slave)
       (uos:posix-close master)
