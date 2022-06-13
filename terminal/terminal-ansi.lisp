@@ -754,6 +754,7 @@ Report parameters are returned as values. Report is assumed to be in the form:
 |#
 
 (defun %write-string/line (tty str func start end)
+  ;; (dbug "start ~s end ~s~%" start end)
   (when (not (and (and start (zerop start)) (and end (zerop end))))
     (let ((stream (terminal-output-stream tty)))
       (when (and (translate-alternate-characters tty)
@@ -771,6 +772,7 @@ Report parameters are returned as values. Report is assumed to be in the form:
 				  &key start end)
   "Output a string to the terminal. Flush output if it contains a newline,
 i.e. the terminal is 'line buffered'."
+  ;; (dbug "start ~s end ~s~%" start end)
   (%write-string/line tty str #'write-string start end)
   (when (and (line-buffered-p tty)
 	     (apply #'position `(#\newline ,str
@@ -1624,16 +1626,18 @@ and add the characters the typeahead."
 	c)))
 
 (defmethod terminal-listen-for ((tty terminal-ansi) seconds)
-  (let (result) ;; @@@ I think this "result" is superfluous.
-    (when (eq (with-resize
-		  (with-interrupts-handled (tty)
-		    (with-terminal-signals ()
-		      (setf result (listen-for
-				    seconds (terminal-file-descriptor tty))))))
-	      :resize)
-      (dbugf :resize "terminal-ansi resized in listen~%")
-      (add-typeahead tty :resize)
-      (setf result t))
+  (let (result)
+    (cond
+      ((typeahead tty)
+       (setf result t))
+      ((eq (with-resize
+	       (with-interrupts-handled (tty)
+		 (with-terminal-signals ()
+		   (setf result (listen-for
+				 seconds (terminal-file-descriptor tty))))))
+	   :resize)
+       (dbugf :resize "terminal-ansi resized in listen~%")
+       (add-typeahead tty :resize)))
     result))
 
 (defmethod terminal-input-mode ((tty terminal-ansi))
