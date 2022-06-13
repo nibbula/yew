@@ -365,7 +365,6 @@ struct in ‘ws-lisp’."
   #-(or darwin linux) 0
   "Become the virtual console.")
 
-;; These are actually useful!
 (defconstant +TIOCGWINSZ+
   #+(or darwin freebsd openbsd netbsd) (_IOR #\t 104 (:struct winsize))
   ;; #-lispworks (_IOR #\t 104 (:struct winsize))
@@ -384,7 +383,6 @@ struct in ‘ws-lisp’."
   #-(or darwin freebsd openbsd netbsd sunos linux) 0
   "set window size")
 
-;; We probably need this one for login-tty.
 (defconstant +TIOCSCTTY+
   #+(or netbsd darwin) (_IO #\t 97)
   #+linux #x540e
@@ -443,6 +441,7 @@ experiments directly with the terminal emulator."
   (format t "You're talking directly to the terminal now.~c~c"
 	  #\return #\linefeed)
   (format t "Press <ESC> four times in a row to stop.~c~c" #\return #\linefeed)
+  (finish-output)
   (let ((escape 0) c)
     (loop :while (< escape 4)
        :do
@@ -1050,17 +1049,17 @@ descriptor FD."
   "Evaluate the BODY with signal handlers set appropriately for reading from
 a terminal."
   (with-names (thunk)
-  `(flet ((,thunk () ,@body))
-     (if (not *handlers-set*)
-	 (let ((*handlers-set* t))
-	   ;; If a ^Z handler is active, don't overrride it.
-	   (if (not (member (signal-action +SIGTSTP+) '(:default :ignore)))
-	       (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler))
-		 (,thunk))
-	       (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
-				      (+SIGTSTP+  . tstp-handler))
-		 (,thunk))))
-	 (,thunk)))))
+    `(flet ((,thunk () ,@body))
+       (if (not *handlers-set*)
+	   (let ((*handlers-set* t))
+	     ;; If a ^Z handler is active, don't overrride it.
+	     (if (not (member (signal-action +SIGTSTP+) '(:default :ignore)))
+		 (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler))
+		   (,thunk))
+		 (with-signal-handlers ((+SIGWINCH+ . sigwinch-handler)
+					(+SIGTSTP+  . tstp-handler))
+		   (,thunk))))
+	   (,thunk)))))
 
 ;; I'm not really sure if this is a good interface. ☹
 (defun set-terminal-mode (tty &key
@@ -1268,6 +1267,14 @@ a window-size struct."
      :columns (foreign-slot-value ws '(:struct winsize) 'ws_col)
      :width   (foreign-slot-value ws '(:struct winsize) 'ws_xpixel)
      :height  (foreign-slot-value ws '(:struct winsize) 'ws_ypixel))))
+
+(defun set-window-size-struct (tty-fd size)
+  "Set the window size on the terminal file descriptor ‘tty-fd’, to the
+window-size struct ‘size’."
+  (with-foreign-object (ws '(:struct winsize))
+    (window-size-to-foreign size ws)
+    (when (< (posix-ioctl tty-fd +TIOCSWINSZ+ ws) 0)
+      (error "Can't set the tty window size."))))
 
 (defun slurp-terminal (tty &key timeout)
   "Read until EOF. Return a string of the results. TTY is a file descriptor."

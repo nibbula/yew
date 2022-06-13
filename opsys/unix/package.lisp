@@ -653,6 +653,7 @@
    #:get-terminal-mode
    #:get-window-size
    #:get-window-size-struct
+   #:set-window-size-struct
    #:slurp-terminal
    #:reset-terminal-modes
    #:terminal-time
