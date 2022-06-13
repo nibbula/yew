@@ -4,7 +4,7 @@
 
 (defpackage :view-image
   (:documentation "Image viewer")
-  (:use :cl :dlib :dlib-misc :dtime :keymap :char-util :terminal :terminal-ansi
+  (:use :cl :dlib :dtime :keymap :char-util :terminal :terminal-ansi
 	:terminal-crunch :inator :terminal-inator :magic :grout :image
 	:image-ops :dcolor)
   (:export
