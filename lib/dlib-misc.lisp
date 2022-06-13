@@ -49,6 +49,7 @@
    #:print-columns-array
    #:print-columns
    #:print-size
+   #:center
 
    ;; spin
    #:*default-spin-string*
@@ -1138,6 +1139,34 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
 	 (when (< size (svref sizes (1+ i)))
 	   (return-from print-size (pr i))))
       (pr 9))))
+
+(defun center (object width &key (pad-char #\space))
+  "Return a string with ‘object’ surrounded by approximately equal amounts of
+‘pad-char’ on either side to fill up ‘width’ characters. ‘pad-char’ defaults
+to #\space. The object is converted to a string with princ-to-string. If the
+printed object is larger than the ‘width’, the whole is string is returned.
+This works for unicode characters that can occupy variable amounts of fixed
+width character cells, with the exception that if the width of ‘pad-char’
+isn't 1, the result will potentially not be exactly ‘width’ wide."
+  (let ((pad-len (display-length pad-char)))
+    (when (zerop pad-len)
+      (error "pad-char can't be zero width."))
+    (let* ((s (princ-to-string object))
+	   (len (display-length s)))
+      (cond
+	((>= len width)
+	 s)
+	(t
+	 (let* ((half (round width 2))
+		(half-str (round len 2))
+		(front-pad (- half half-str))
+		(back-pad (- width front-pad len)))
+	   (with-output-to-string (str)
+	     (loop :for i :from 0 :below front-pad :by pad-len
+		   :do (write-char pad-char str))
+	     (write-string s str)
+	     (loop :for i :from 0 :below back-pad :by pad-len
+		   :do (write-char pad-char str)))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; spin
