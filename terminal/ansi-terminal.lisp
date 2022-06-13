@@ -3,7 +3,13 @@
 ;;;
 
 (defpackage :ansi-terminal
-  (:documentation "ANSI terminal emulation")
+  (:documentation "ANSI terminal emulation
+
+This provides a stream that emulates an ANSI terminal in terms of the terminal
+protocol. Given a terminal object, it turns xterm-like escape sequences into
+terminal protocol calls. You can write to the stream and it will operate the
+terminal. Keys pressed on the terminal will be available to be read as
+appropriate xterm escape sequences.")
   (:use :cl :dlib :collections :terminal :ansi :fatchar :stretchy
         :trivial-gray-streams)
   (:export
@@ -29,7 +35,8 @@
     :escape-minus		       ; -
     :escape-dot			       ; .
     :escape-slash		       ; /
-    ;; most processing
+    :single-shift-g2		       ; ^[ N <char>
+    :single-shift-g3		       ; ^[ O <char>
     :control			       ; aka CSI
     :system                            ; aka OSC
     :device                            ; aka DCS
@@ -43,10 +50,66 @@
     )
   "Emulator states.")
 
+#|──────────────────────────────────────────────────────────────────────────╮ 
+ │ Character set terminology:                                               │
+ │                                                                          │
+ │ From ECMA-48:                                                            │
+ │                                                                          │
+ │ 7 bit                                                                    │
+ │   C0  #x00 - #x1f    Control characters                                  │
+ │   G0  #x21 - #x7e    Graphic characters                                  │
+ │ 8 bit                                                                    │
+ │   C1  #x80 - #x9f    Control characters  (or Esc + #x40 - #x5f in 7 bit) │
+ │   G1  #xa1 - #xfe    Graphic characters                                  │
+ │                                                                          │
+ │ From DEC VTXXX manuals?                                                  │
+ │                                                                          │
+ │ 7 bit                                                                    │
+ │   GL  #x20 - #x7e    Graphic characters (left side)                      │
+ │ 8 bit                                                                    │
+ │   GR  #xa1 - #xfe    Graphic characters (right side)                     │
+ │                                                                          │
+ │ G1, G2, G3                                                               │
+ │   93 character sets that can be loaded into GL or GR                     │
+ │                                                                          │
+ │ These include:                                                           │
+ │                                                                          │
+ │ DEC Multinational Character Set                                          │
+ │ DEC Special Graphics Character Set                                       │
+ │ National Replacement Character Sets (many)                               │
+ │                                                                          │
+ │ The national character sets usually are like an overlay on G0, that are  │
+ │ only a few characters.                                                   │
+ ╰──────────────────────────────────────────────────────────────────────────|#
+
 (defparameter *charsets* '(:G0 :G1 :G2 :G3)
   "Terminal character sets.")
 
-(defparameter *max-param* 100
+(defparameter *dec-multinational-gr*
+  (s+ "¡¢£ ¥ §¤©ª«    "
+      "°±²³ µ¶· ¹º»¼½ ¿"
+      "ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏ"
+      " ÑÒÓÔÕÖŒØÙÚÛÜÝ ß"
+      "àáâãäåæçèéêëìíîï"
+      " ñòóôõöœøùúûüý "))
+
+(defparameter *unicode-gr*
+  (s+ "¡¢£¤¥¦§¨©ª«¬ ®¯"
+      "°±²³´µ¶·¸¹º»¼½¾¿"
+      "ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏ"
+      "ÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞß"
+      "àáâãäåæçèéêëìíîï"
+      "ðñòóôõö÷øùúûüýþ"))
+
+(defparameter *dec-graphics-gl*
+  (s+ " !\"#$%&'()*+,-./"
+      "0123456789:;<=>?"
+      "@ABCDEFGHIJKLMNO"
+      "PQRSTUVWXYZ[\\]^ "
+      "◆▒␉␌␍␊°±␤␋┘┐┌└┼⎺"
+      "⎻─⎼⎽├┤┴┬│≤≥π≠£·"))
+
+(Defparameter *max-param* 100
   "If you have more parameters than this, it's fail.")
 
 (defclass ansi-stream (fundamental-binary-input-stream
@@ -310,12 +373,14 @@ symbol, or a mode number."))))
 
 (defun key-string (stream key)
   "Return a bytes vector for the keyword ‘key’."
+  (dbug "key-string application-cursor-keys ~s~%"
+	(mode-value (mode stream 'application-cursor-keys)))
   (let (tag-key num-key c)
     (when (setf c (car (or (setf tag-key (rassoc key *key-tag*))
 			   (setf num-key (rassoc key *key-num*)))))
       (cond
 	(tag-key
-	 (if (mode stream 'application-cursor-keys)
+	 (if (mode-value (mode stream 'application-cursor-keys))
 	     (vector (char-code #\escape) (char-code #\O) (char-code c))
 	     (vector (char-code #\escape) (char-code #\[) (char-code c))))
 	(num-key
@@ -464,8 +529,10 @@ symbol, or a mode number."))))
 	 (terminal-scroll-down terminal 1))
 	(#x45				; 'E'  NEL    Next Line
 	 (terminal-newline terminal))
-	(#x48)	  ; H  HTS    Horizontal Tab Set
-	(#x4d)	  ; M  RI     Reverse Index
+	(#x48				; 'H'  HTS    Horizontal Tab Set
+	 )
+	(#x4d				; 'M'  RI     Reverse index
+	 (terminal-scroll-up terminal 1))
 	;; Guarded areas seem like a bad idea, so we just ignore it.
 	(#x56)				; 'V'  SPA    Start of guarded area
 	(#x57)				; 'W'  EPA    End of guarded area
@@ -490,9 +557,9 @@ symbol, or a mode number."))))
 	(#x39				; '9' Forward index
 	 (terminal-scroll-down terminal 1))
 	(#x3d				; '=' Application keypad
-	 )
-	(#x3e				; '>' Normal keyap
-	 )
+	 (setf (mode stream 'application-keypad) t))
+	(#x3e				; '>' Normal keypad
+	 (setf (mode stream 'application-keypad) nil))
 	(#x46				; 'F' Cursor to lower left
 	 (terminal-move-to terminal (1- (terminal-window-rows terminal)) 0))
 	(#x63				; 'c' Full reset
@@ -547,6 +614,38 @@ symbol, or a mode number."))))
     |#
     (setf (state stream) new-state)))
 
+(defun escape-space (stream thing out)
+  (declare (ignore out))
+  (with-slots (8-bit-controls state) stream
+    (case thing
+      (#x46				; 'F' send 7-bit control responses
+       (setf (8-bit-controls stream) nil))
+      (#x47				; 'G' send 8-bit control responses
+       (setf (8-bit-controls stream) t))
+      (#x4c)				; 'L' set ANSI conformance level 1
+      (#x4d)				; 'M' set ANSI conformance level 2
+      (#x4e))				; 'N' set ANSI conformance level 3
+    (setf state :start)))
+
+(defun escape-hash (stream thing out)
+  (declare (ignore out))
+  (with-slots (state) stream
+    (case thing
+      (#x33)				; '3' Double height line top half
+      (#x34)				; '4' Double height line bottom half
+      (#x35)				; '5' Single width line
+      (#x36)				; '6' Double width line
+      (#x38))				; '8' Screen alignment test
+    (setf state :start)))
+
+(defun escape-percent (stream thing out)
+  (declare (ignore out))
+  (with-slots (state) stream
+    (case thing
+      (#x40)				; '@' default character set
+      (#x47))				; 'G' UTF-8 character set
+    (setf state :start)))
+
 (defun widen-string (string)
   "In case ‘string’ is a base-char string, as can be returned by certain 
 functions like ‘format’, turn it into a ‘character’ string."
@@ -590,15 +689,19 @@ functions like ‘format’, turn it into a ‘character’ string."
 (defun set-ansi-modes (stream value)
   "Set the modes in the current parameters in ‘stream’ to ‘value’. Set the
 public or private modes depending on the prefix slot in ‘stream’."
+  (dbug "set-ansi-modes~%")
   (let ((modes
-	  (loop :for i :from 1 :below (param-count stream)
+	  (loop :for i :from 1 :to (param-count stream)
 		:collect (param stream i))))
+    (dbug "set-ansi-modes ~s ~s~%" modes (params stream))
     (if (eql (prefix stream) #x3f) ; ?
 	;; Private mode reset
 	(loop :for m :in modes :do
+	  (dbug "set private mode ~s to ~a~%"  (mode-name (mode stream m)) value)
 	  (setf (mode stream m) value))
 	;; Reset mode (which I call public)
 	(loop :for m :in modes :do
+	  (dbug "set public mode ~s to ~a~%" (mode-name (mode stream m)) value)
 	  (setf (public-mode stream m) value)))))
 
 ;; This is a very irregular control. It can read arbitrary data.
@@ -694,7 +797,7 @@ public or private modes depending on the prefix slot in ‘stream’."
 	(#x46 ; 'F' Previous line
 	 (terminal-scroll-up tty (or (param stream 1) 1)))
 	(#x47 ; 'G' Goto column
-	 (terminal-move-to-col tty (or (param stream 1) 1)))
+	 (terminal-move-to-col tty (1- (or (param stream 1) 1))))
 	(#x48 ; 'H' Cursor position
 	 ;; (format *debug-io* "move-to ~s ~s~%"
 	 ;; 	 (1- (or (param stream 1) 1))
@@ -731,7 +834,7 @@ public or private modes depending on the prefix slot in ‘stream’."
 	 ;; @@@
 	 )
 	(#x50 ; 'P' Delete char
-	 (terminal-insert-char tty (or (param stream 1) 1)))
+	 (terminal-delete-char tty (or (param stream 1) 1)))
 	(#x53 ; 'S' Scroll up
 	 ;; @@@
 	 )
@@ -753,9 +856,9 @@ public or private modes depending on the prefix slot in ‘stream’."
 	(#x60 ; '`' character position absolute - variable # of params
 	 (cond
 	   ((param stream 2)
-	    (terminal-move-to tty (param stream 2) (param stream 1)))
+	    (terminal-move-to tty (1- (param stream 2)) (1- (param stream 1))))
 	   (t
-	    (terminal-move-to-col tty (or (param stream 1) 1)))))
+	    (terminal-move-to-col tty (1- (or (param stream 1) 1))))))
 	(#x61 ; 'a' character position relative
 	 (cond
 	   ((param stream 2)
@@ -778,7 +881,7 @@ public or private modes depending on the prefix slot in ‘stream’."
 	(#x64 ; 'd' line position absolute
 	 (cond
 	   ((param stream 2)
-	    (terminal-move-to tty (param stream 1) (param stream 2)))
+	    (terminal-move-to tty (1- (param stream 1)) (1- (param stream 2))))
 	   (t
 	    ;; @@@ we don't have move-to-row
 	    ;; (terminal-move-to-row tty (or (param stream 1) 1))
@@ -786,13 +889,13 @@ public or private modes depending on the prefix slot in ‘stream’."
 	(#x65 ; 'e' line position relative
 	 (cond
 	   ((param stream 2)
-	    (terminal-move-to tty (param stream 2) (param stream 1)))
+	    (terminal-move-to tty (1- (param stream 2)) (1- (param stream 1))))
 	   (t
 	    ;; @@@ we don't have move-to-row
 	    ;; (terminal-move-to-row tty (or (param stream 1) 1))
 	    )))
 	(#x66 ; 'f' Horizontal and vertical position
-	 (terminal-move-to tty (param stream 1) (param stream 2)))
+	 (terminal-move-to tty (1- (param stream 1)) (1- (param stream 2))))
 	(#x67 ; 'g' Tab clear
 	 (case (or (param stream 1) 0)
 	   (0
@@ -805,7 +908,7 @@ public or private modes depending on the prefix slot in ‘stream’."
 	 (set-ansi-modes stream t))
 	(#x69 ; 'i' media copy
 	 (let ((modes
-		 (loop :for i :from 1 :below (param-count stream)
+		 (loop :for i :from 1 :to (param-count stream)
 		       :collect (param stream i))))
 	   (when (null modes)
 	     (setf modes '(0)))
@@ -836,7 +939,8 @@ public or private modes depending on the prefix slot in ‘stream’."
 	    (multiple-value-bind (row col)
 		(terminal-get-cursor-position tty)
 	      (dbug "cursor pos report ~s ~s~%" row col)
-	      (pushback stream (format nil "~a~a;~aR" +csi+ row col))))))
+	      (pushback stream (format nil "~a~a;~aR"
+				       +csi+ (1+ row) (1+ col)))))))
 	(#x71 ; 'q' load LEDs
 	 (case (or (param stream 1) 0)
 	   (0) ; clear all
@@ -893,18 +997,24 @@ public or private modes depending on the prefix slot in ‘stream’."
 	    ))))
       (setf state new-state))))
 
+;; The main entry point to emulation.
+
 (defmethod filter ((stream ansi-stream) (thing integer))
   (with-slots ((tty terminal) state control-type charset data
 	       8-bit-controls) stream
     ;; (format *debug-io* "state ~s ~x ~a~%" state thing
     ;; 	    (char-name (code-char thing)))
-    (dbug "state ~s ~x ~a~%" state thing
+    (dbug "state ~s #x~x ~a~%" state thing
 	  (char-name (code-char thing)))
+    ;; (terminal-finish-output tty)
+    ;; (dbug "~&--> ")
+    ;; (read-line *debug-io*)
     ;;(with-output-to-string (out)
     (let ((out tty))
       (case state
 	(:start
 	 (clear-params stream)
+	 (setf control-type :control)
 	 (cond
 	   ;; 7-bit controls C0
 	   ;; 0-31
@@ -1006,11 +1116,26 @@ public or private modes depending on the prefix slot in ‘stream’."
 		    :start)))
 	 (:escape-open
 	  (escape-open stream thing out))
-	(t
-	 (error "Unknown state ~s" state))))))
+	 (:escape-space
+	  (escape-space stream thing out))
+	 (:escape-hash
+	  (escape-hash stream thing out))
+	 (:escape-percent
+	  (escape-percent stream thing out))
+	 (:single-shift-g2
+	  ;; @@@ just write out the char until we have charsets
+	  (write-char (code-char thing) out)
+	  (setf state :start))
+	 (:single-shift-g3
+	  ;; @@@ just write out the char until we have charsets
+	  (write-char (code-char thing) out)
+	  (setf state :start))
+	 (t
+	  (error "Unknown state ~s" state))))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Stream methods
+#|──────────────────────────────────────────────────────────────────────────┤#
+ │ Stream methods
+ ╰|#
 
 ;; common methods
 
@@ -1112,8 +1237,9 @@ integer as the result."
      		       (displaced-subseq string (or start 0)))))
   string)
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; stream methods for terminal-ansi, which is also an input stream.
+#|──────────────────────────────────────────────────────────────────────────┤#
+ │ Input stream methods.
+ ╰|#
 
 (defmethod stream-clear-input ((stream ansi-stream))
   ;; @@@ This isn't exactly right either.
@@ -1188,7 +1314,7 @@ stream is at end-of-file."
   ;; function.
   (unread-char (ansi-stream-terminal stream) character))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+#|──────────────────────────────────────────────────────────────────────────|#
 
 (defun make-stream (&optional (terminal *terminal*))
   (make-instance 'ansi-stream :terminal terminal))
