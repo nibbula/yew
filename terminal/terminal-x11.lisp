@@ -2084,6 +2084,7 @@ handler cases."
 
 (defun discard-key-release (display key)
   "Discard a key-relase event for key."
+  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (event-cond (display)
     (:key-release (code #|state|#)
 		  (let* ((sym (keycode->keysym display code 0))
