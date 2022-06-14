@@ -1603,6 +1603,12 @@ Attributes are usually keywords."
 	  (list attributes)
 	  (keyword (list attributes)))))
 
+(defmethod terminal-set-rendition ((tty terminal-crunch) fatchar)
+  "Set the colors and attributes given in the ‘fatchar’."
+  (setf (attrs tty) (copy-list (fatchar-attrs fatchar))
+	(fg tty) (dcolor:copy-color (fatchar-fg fatchar))
+	(bg tty) (dcolor:copy-color (fatchar-bg fatchar))))
+
 (defmethod terminal-title ((tty terminal-crunch))
   (terminal-title (terminal-wrapped-terminal tty)))
 
