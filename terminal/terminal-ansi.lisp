@@ -1375,26 +1375,46 @@ i.e. the terminal is 'line buffered'."
 		  "The scrolling region doesn't fit in the screen.")
 	  (terminal-escape-sequence tty "r" (1+ start) (1+ end)))))
 
+(defun write-attributes (attributes stream)
+  "Write the middle part of a control sequence for setting ‘attributes’ to
+‘stream’."
+  (let ((did-one nil))
+    (etypecase attributes
+      (list
+       (loop :with n :and first = t
+	     :for a :in attributes :do
+		(when (setf n (assoc a *attributes*))
+		  (if first
+                      (setf first nil)
+                      (write-char #\; stream))
+		  (format stream "~d" (cdr n))
+		  (setf did-one t))))
+      (keyword
+       (let ((n (assoc attributes *attributes*)))
+	 (when n
+	   (princ (cdr n) stream)
+	   (setf did-one t)))))
+    did-one))
+
 (defmethod terminal-set-attributes ((tty terminal-color-mixin) attributes)
   "Set the attributes given in the list. If NIL turn off all attributes.
 Attributes are usually keywords."
   (with-slots ((stream terminal::output-stream)) tty
-    (etypecase attributes
-      (list
-       (write-string +csi+ stream)
-       (loop :with n :and first = t
-	  :for a :in attributes :do
-	  (when (setf n (assoc a *attributes*))
-	    (if first
-		(setf first nil)
-		(write-char #\; stream))
-	    (terminal-raw-format tty "~d" (cdr n))))
-       (write-char #\m stream))
-      (keyword
-       (let ((n (assoc attributes *attributes*)))
-	 (when n
-	   (terminal-escape-sequence tty "m" (cdr n))))))
-    nil))
+    (write-string +csi+ stream)
+    (write-attributes attributes stream)
+    (write-char #\m stream))
+  nil)
+
+(defmethod terminal-set-rendition ((tty terminal-color-mixin) fatchar)
+  "Set the colors and attributes given in the fatchar."
+  (with-slots ((stream terminal::output-stream)) tty
+    (write-string +csi+ stream)
+    (write-string "0;" stream)
+    (when (write-attributes (fatchar-attrs fatchar) stream)
+      (write-char #\; stream))
+    (%terminal-color tty (fatchar-fg fatchar) (fatchar-bg fatchar) :unwrapped t)
+    (write-char #\m stream))
+  nil)
 
 (defmethod terminal-finish-output ((tty terminal-ansi-stream))
   ;; (when (maybe-refer-to :cl-user :*duh*)
