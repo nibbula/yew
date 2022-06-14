@@ -10,7 +10,7 @@ protocol. Given a terminal object, it turns xterm-like escape sequences into
 terminal protocol calls. You can write to the stream and it will operate the
 terminal. Keys pressed on the terminal will be available to be read as
 appropriate xterm escape sequences.")
-  (:use :cl :dlib :collections :terminal :ansi :fatchar :stretchy
+  (:use :cl :dlib :collections :terminal :ansi :fatchar :stretchy :dcolor
         :trivial-gray-streams)
   (:export
    #:ansi-stream
@@ -82,8 +82,10 @@ appropriate xterm escape sequences.")
  │ only a few characters.                                                   │
  ╰──────────────────────────────────────────────────────────────────────────|#
 
-(defparameter *charsets* '(:G0 :G1 :G2 :G3)
-  "Terminal character sets.")
+(defconstant +G0+ 0 "Graphic character set 0.")
+(defconstant +G1+ 1 "Graphic character set 1.")
+(defconstant +G2+ 2 "Graphic character set 2.")
+(defconstant +G3+ 3 "Graphic character set 2.")
 
 (defparameter *dec-multinational-gr*
   (s+ "¡¢£ ¥ §¤©ª«    "
@@ -105,9 +107,25 @@ appropriate xterm escape sequences.")
   (s+ " !\"#$%&'()*+,-./"
       "0123456789:;<=>?"
       "@ABCDEFGHIJKLMNO"
-      "PQRSTUVWXYZ[\\]^ "
+      "PQRSTUVWXYZ[\\]^" (code-char #xa0) ; no-break_space
       "◆▒␉␌␍␊°±␤␋┘┐┌└┼⎺"
       "⎻─⎼⎽├┤┴┬│≤≥π≠£·"))
+
+(defparameter *normal-gl*
+  (let ((a (make-array 94)))
+    (loop :for c :from #x21 :to #x7e
+	  :for i :from 0
+	  :do (setf (aref a i) (code-char c)))
+    a)
+  "The normal GL character set.")
+
+(defparameter *normal-gr*
+  (let ((a (make-array 94)))
+    (loop :for c :from #xa1 :to #xfe
+	  :for i :from 0
+	  :do (setf (aref a i) (code-char c)))
+    a)
+  "The normal GR character set.")
 
 (Defparameter *max-param* 100
   "If you have more parameters than this, it's fail.")
@@ -142,10 +160,19 @@ appropriate xterm escape sequences.")
     :initarg :data :accessor ansi-stream-data
     :initform (make-stretchy-vector 40)
     :documentation "Data parameter.")
-   (charset
-    :initarg :charset :accessor charset
-    :initform :G0 #| :type `(member ,@*charsets*) |#
-    :documentation "Current character set.")
+   (device-command
+    :initarg :device-command :accessor device-command :initform nil
+    :documentation "Device control command type we're in.")
+   (left-charset
+    :initarg :left-charset :accessor left-charset :initform +G0+
+    :documentation "GL charset.")
+   (right-charset
+    :initarg :right-charset :accessor right-charset :initarg +G1+
+    :documentation "GR charset.")
+   (charsets
+    :initarg :charsets :accessor charsets
+    :initform (make-array 4)
+    :documentation "Current character sets.")
    (8-bit-controls ;; @@@ maybe should be in modes?
     :initarg :8-bit-controls :accessor 8-bit-controls
     :initform nil :type boolean
@@ -321,11 +348,23 @@ symbol, or a mode number."))))
  │ Parameters 
  ╰|#
 
-(defun param (stream n)
-  "Return parameter number ‘n’. Return NIL if parameter ‘n’ isn't set."
+(defun param (stream n &key default)
+  "Return parameter number ‘n’. If parameter ‘n’ isn't set return ‘default’
+or NIL if default isn't given."
   (with-slots (params) stream
-    (when (<= n (fill-pointer params))
-      (aref (params stream) (1- n)))))	; ANSI parameters are 1 indexed
+    (if (<= n (fill-pointer params))
+	(aref (params stream) (1- n))	; ANSI parameters are 1 indexed
+	default)))
+
+(defun param-index (stream n &key default)
+  "Return parameter number ‘n’ to be used as an index. This adjusts for terminal
+parameters being 1 indexed vs. 0 indexed. If parameter ‘n’ isn't set, return
+‘default’ if it's given, or NIL if it's not. Note that without ‘default’ set,
+this assumes the parameter is a number."
+  (with-slots (params) stream
+    (if (<= n (fill-pointer params))
+	(1- (aref (params stream) (1- n)))
+	default)))
 
 (defun set-param (stream n value)
   (with-slots (params) stream
@@ -408,7 +447,7 @@ symbol, or a mode number."))))
 (defparameter *name* (map 'vector #'char-code "Lisp-Term"))
 
 (defun single-byte-control (stream thing out)
-  (with-slots ((tty terminal) charset state) stream
+  (with-slots ((tty terminal) left-charset charsets state) stream
     (case thing
       (#x05				; ^E ENQ  Terminal status (answerback)
        ;;(write-string *name* out)
@@ -430,9 +469,9 @@ symbol, or a mode number."))))
       (#x0d				; ^M CR   Carriage return
        (terminal-move-to-col tty 0))
       (#x0e				; ^N LS0  Shift out
-       (setf charset :G1))
+       (setf left-charset (aref charsets +G1+)))
       (#x0f				; ^O LS0  Shift in
-       (setf charset :G0))
+       (setf left-charset (aref charsets +G0+)))
       (#x1b				; ^[ ESC  Escape
        (setf state :escape))
       (#x20				; Space
@@ -494,7 +533,7 @@ symbol, or a mode number."))))
   (pushback stream (format nil "~a=42c" +csi+)))
 
 (defun escape-control (stream thing out)
-  (with-slots (terminal state) stream
+  (with-slots (terminal state charsets left-charset right-charset) stream
     (let ((new-state :start))
       (case thing
 	;; Prefixes
@@ -523,7 +562,7 @@ symbol, or a mode number."))))
 	(#x4f				; 'O'  SS3    Single Shift of G3
 	 (setf new-state :single-shift-g3))
 	(#x50				; 'P'  DCS    Device Control String
-	 (setf new-state :device-control))
+	 (setf new-state :device))
 	;; Immediate
 	(#x44				; 'D'  IND    Index
 	 (terminal-scroll-down terminal 1))
@@ -569,82 +608,49 @@ symbol, or a mode number."))))
 	(#x6d				; 'm' Memory unlock
 	 )
 	(#x6e				; 'n' G2 charset to GL
-	 )
+	 (setf left-charset (aref charsets +g2+)))
 	(#x6f				; 'o' G3 charset to GL
-	 )
+	 (setf left-charset (aref charsets +g3+)))
 	(#x7c				; '|' G3 charset to GR
-	 )
+	 (setf right-charset (aref charsets +g3+)))
 	(#x7d				; '}' G2 charset to GR
-	 )
+	 (setf right-charset (aref charsets +g2+)))
 	(#x7e				; '~' G1 charset to GR
-	 ))
+	 (setf right-charset (aref charsets +g1+))))
       (setf state new-state))))
 
-(defun escape-open (stream thing out)
-  (declare (ignore thing out))
-  (let ((new-state :start))
-    ;; messed up and mostly pointless, except for the line drawing set
-    #|
-    (case thing
-      (#x41)		      ; 'A' United Kingdom (UK)
-      (#x42)		      ; 'B' United States (USASCII)
-      (#x34)		      ; '4' Dutch
-      ((#x42 #x35))	      ; 'C' or '5' Finnish
-      ((#x52 #x66))	      ; 'R' or 'f' French
-      ((#x51 #x39))	      ; 'Q' or '9' French Canadian
-      (#x4b)		      ; 'K' German
-      ((#x22 #x3e))	      ; '"' '>' Greek
-      ((#x25 #x3d))	      ; '%' '=' Hebrew
-      (#x59)		      ; 'Y' Italian
-      ((#x60 #x45 #x54))      ; '`' , 'E' or '6' Norwegian/Danish
-      ((#x25 #x36))	      ; '%' '6' portuguese
-      (#x5a)		      ; 'Z' Spanish
-      ((#x48 #x37))	      ; 'H' or '7' Swedish
-      (#x3d)		      ; '=' Swiss
-      ((#x25 #x32))	      ; '%' '2' Turkish
-      (#x30)		      ; '0' DEC Special Character and Line Drawing Set
-      (#x3c)		      ; '<' DEC Supplemental
-      (#x3e)		      ; '>' DEC Technical
-      ((#x25 #x35))	      ; '%' '5' DEC Supplemental Graphics
-      ((#x26 #x34))	      ; '&' '4' DEC Cyrillic
-      ((#x22 #x3f))	      ; '"' '?' DEC Greek
-      ((#x22 #x34))	      ; '"' '4' DEC Hebrew
-      (#x25)		      ; '%' '0' DEC Turkish
-    )
-    |#
-    (setf (state stream) new-state)))
-
-(defun escape-space (stream thing out)
-  (declare (ignore out))
-  (with-slots (8-bit-controls state) stream
-    (case thing
-      (#x46				; 'F' send 7-bit control responses
-       (setf (8-bit-controls stream) nil))
-      (#x47				; 'G' send 8-bit control responses
-       (setf (8-bit-controls stream) t))
-      (#x4c)				; 'L' set ANSI conformance level 1
-      (#x4d)				; 'M' set ANSI conformance level 2
-      (#x4e))				; 'N' set ANSI conformance level 3
-    (setf state :start)))
-
-(defun escape-hash (stream thing out)
-  (declare (ignore out))
-  (with-slots (state) stream
-    (case thing
-      (#x33)				; '3' Double height line top half
-      (#x34)				; '4' Double height line bottom half
-      (#x35)				; '5' Single width line
-      (#x36)				; '6' Double width line
-      (#x38))				; '8' Screen alignment test
-    (setf state :start)))
-
-(defun escape-percent (stream thing out)
-  (declare (ignore out))
-  (with-slots (state) stream
-    (case thing
-      (#x40)				; '@' default character set
-      (#x47))				; 'G' UTF-8 character set
-    (setf state :start)))
+(defun find-charset (code)
+  "Return the charset for ‘code’."
+  (or
+   (case code
+     (#x41)		      ; 'A' United Kingdom (UK)
+     (#x42		      ; 'B' United States (USASCII)
+      *normal-gl*)
+     (#x34)		      ; '4' Dutch
+     ((#x43 #x35))	      ; 'C' or '5' Finnish
+     ((#x52 #x66))	      ; 'R' or 'f' French
+     ((#x51 #x39))	      ; 'Q' or '9' French Canadian
+     (#x4b)		      ; 'K' German
+     ;;((#x22 #x3e))	      ; '"' '>' Greek
+     ;; ((#x25 #x3d))	      ; '%' '=' Hebrew
+     ;; (#x59)		      ; 'Y' Italian
+     ;; ((#x60 #x45 #x54))      ; '`' , 'E' or '6' Norwegian/Danish
+     ;; ((#x25 #x36))	      ; '%' '6' portuguese
+     ;; (#x5a)		      ; 'Z' Spanish
+     ;; ((#x48 #x37))	      ; 'H' or '7' Swedish
+     ;; (#x3d)		      ; '=' Swiss
+     ;; ((#x25 #x32))	      ; '%' '2' Turkish
+     (#x30		      ; '0' DEC Special Character and Line Drawing Set
+      *dec-graphics-gl*)
+     (#x3c)		      ; '<' DEC Supplemental
+     (#x3e)		      ; '>' DEC Technical
+     ;; ((#x25 #x35))	      ; '%' '5' DEC Supplemental Graphics
+     ;; ((#x26 #x34))	      ; '&' '4' DEC Cyrillic
+     ;; ((#x22 #x3f))	      ; '"' '?' DEC Greek
+     ;; ((#x22 #x34))	      ; '"' '4' DEC Hebrew
+     ;; (#x25)		      ; '%' '0' DEC Turkish
+     )
+   *normal-gl*)) ;; mostly moot
 
 (defun widen-string (string)
   "In case ‘string’ is a base-char string, as can be returned by certain 
@@ -706,60 +712,197 @@ public or private modes depending on the prefix slot in ‘stream’."
 
 ;; This is a very irregular control. It can read arbitrary data.
 ;; It has non-numeric parameters. It selects different subsequent paramter
-;; formats, base in previous parameters, etc.
+;; formats, based on previous parameters, etc.
+;; But when we get in here, all that stuff should be in the ‘data’ slot.
 (defun system-control (stream thing out)
   (declare (ignore thing out))
-  ;; @@@ totally not done
-  (case (param stream 1)
-    (0 ; Change icon name and window title
-     )
-    (1 ; Change icon name
-     )
-    (2 ; Change window title
-     )
-    (3 ; Set X proptery on top-level window
-     )
-    (4 ; Change or report color number
-       ; (or <color-number> '?') ';' (or <color-spec> '?')  
-     )
-    (5 ; Change or report special color number
-       ; (or <color-number> '?') ';' (or <color-spec> '?')  
-     )
-    (6 ; Enable/disbale special color number
-       ; (or <color-number> '?') ';' (or <color-spec> '?')  
-     )
-    (46 ; Change log file
-     )
-    (50 ; Set font
-     )
-    (51 ; Emacs shell!! WTF?
-     )
-    (52 ; Manipulate selection data
-     )
-    (104 ; Reset color number
-     )
-    (105 ; Reset special color number
-     )
-    (106 ; enable/disable special color number
-     )
-    (110) ; Reset VT100 text foreground color
-    (111) ; Reset VT100 text background color
-    (112) ; Reset text cursor color
-    (113) ; Reset mouse foreground color
-    (114) ; Reset mouse background color
-    (115) ; Reset Tektronix foreground color
-    (116) ; Reset Tektronix background color
-    (117) ; Reset highlight color
-    (118) ; Reset Tektronix cursor color
-    (119) ; Reset highlight foreground color
-    (#x49) ; 'I' Set icon to file?
-    (#x6c) ; 'l' Set window title, shelltool and dtterm
-    (#x4c) ; 'L' Set icon label, shelltool and dtterm
-  ))
+  (with-slots ((tty terminal) data) stream
+    (case (param stream 1)
+      (0 ; Change icon name and window title
+       (if (= (aref data 0) #x3f) ;; '?'
+	   ;; report the title
+	   (pushback stream (terminal-title tty))
+	   ;; set the title
+	   (setf (terminal-title tty) (unicode:utf8b-bytes-to-string data))))
+      (1 ; Change icon name
+       ;; @@@ we would have to add or change a method for this
+       )
+      (2 ; Change window title
+       (if (= (aref data 0) #x3f) ;; '?'
+	   ;; report the title
+	   (pushback stream (terminal-title tty))
+	   ;; set the title
+	   (setf (terminal-title tty) (unicode:utf8b-bytes-to-string data))))
+      (3 ; Set X proptery on top-level window
+       ;; @@@ I'm not sure this is even a good idea. Also we're no necessarily
+       ;; running on X11.
+       )
+      (4 ; Change or report color number
+       ;; (or <color-number> '?') ';' (or <color-spec> '?')
+       ;; Color numbers are:
+       ;;    0-7   normal ANSI color
+       ;;    8-15  bright ANSI color
+       ;;   16-256 color table (88 or 256)
+       ;; Color specs are:
+       ;;   a color name (like from X11 rgb.txt)
+       ;;   something XParseColor can understand
+       )
+      (5 ; Change or report special color number
+       ;; (or <color-number> '?') ';' (or <color-spec> '?')
+       ;; Special color numbers are:
+       ;;   0 color for bold
+       ;;   1 color for underline
+       ;;   2 color for blink
+       ;;   3 color for reverse
+       ;;   4 color for italic
+       )
+      (6 ; Enable/disbale special color number
+       ;; (or <color-number> '?') ';' (or <color-spec> '?')
+       ;; These
+       ;;    0  resource colorBDMode (BOLD).
+       ;;    1  resource colorULMode (UNDERLINE).
+       ;;    2  resource colorBLMode (BLINK).
+       ;;    3  resource colorRVMode (REVERSE).
+       ;;    4  resource colorITMode (ITALIC).
+       ;;    5  resource colorAttrMode (Override ANSI).
+       )
+      (10 ; Set/Get VT100 text foreground color
+       (if (= (aref data 0) #x3f) ; '?'
+	   (pushback stream
+		     (color-to-xcolor (terminal-window-foreground tty)))
+	   (setf (terminal-window-foreground tty)
+		 (xcolor-to-color (unicode:utf8b-bytes-to-string data)))))
+      (11 ; Set/Get VT100 text background color
+       (if (= (aref data 0) #x3f) ; '?'
+	   (pushback stream
+		     (color-to-xcolor (terminal-window-background tty)))
+	   (setf (terminal-window-background tty)
+		 (xcolor-to-color (unicode:utf8b-bytes-to-string data)))))
+      (12 ; Set/Get text cursor color
+       ;; We would need a new terminal method for this.
+       ;; Not all terminals would support it.
+       )
+      (13 ; Set/Get mouse foreground color
+       ;; We would need a new terminal method for this.
+       ;; Not all terminals would support it.
+       )
+      (14 ; Set/Get mouse background color
+       ;; We would need a new terminal method for this.
+       ;; Not all terminals would support it.
+       )
+      (15 ; Set/Get Tektronix foreground color
+       ;; I don't think we're gonna do Tektronix emulation.
+       )
+      (16) ; Set/Get Tektronix background color
+      (17 ; Set/Get highlight color
+       ;; We would need a new terminal method for this.
+       ;; Not all terminals would support it.
+       )
+      (18) ; Set/Get Tektronix cursor color
+      (19 ; Set/Get highlight foreground color
+       ;; We would need a new terminal method for this.
+       ;; Not all terminals would support it.
+       )
+      (46 ; Change log file
+       ;; Is this even useful? Or a good idea?
+       )
+      (50 ; Set font
+       ;; The data is of the format
+       ;; '#' [0-9]+       A relative index into the font menu
+       ;; '#' [+-] [0-9]+  An absolute index into the font menu
+       ;; '#' ' ' <font name> ??? maybe
+       )
+      (51 ; Emacs shell!! WTF?
+       )
+      (52 ; Manipulate selection data
+       ;; This has two sub parameters:
+       ;;
+       ;; <selection type> which is one of:
+       ;;   'c' clipboard
+       ;;   'p' primary
+       ;;   'q' secondary
+       ;;   's' select
+       ;;   '0' cut buffer 0
+       ;;   '1' cut buffer 1
+       ;;   '2' cut buffer 2
+       ;;   '3' cut buffer 3
+       ;;   '4' cut buffer 4
+       ;;   '5' cut buffer 5
+       ;;   '6' cut buffer 6
+       ;;   '7' cut buffer 7
+       ;; and
+       ;;
+       ;; <selection data> encoded in base64, or a '?' to report it.
+       ;; If the selection isn't a '?' or base64 string, the selection is
+       ;; cleared.
+       )
+      (104 ; Reset color number
+       ;; same color numbers as OSC 4
+       ;; If no color given, reset the entire table.
+       )
+      (105 ; Reset special color number
+       ;; same color numbers as OSC 5
+       )
+      (106 ; enable/disable special color number
+       ;; same color numbers as OSC 6
+       )
+      ;; These reset methods assume we knew what it was to start with.
+      ;; Since we're just in the middle, we can't without adding a new method
+      ;; to ask the back end.
+      (110) ; Reset VT100 text foreground color
+      (111) ; Reset VT100 text background color
+      (112) ; Reset text cursor color
+      (113) ; Reset mouse foreground color
+      (114) ; Reset mouse background color
+      (115) ; Reset Tektronix foreground color
+      (116) ; Reset Tektronix background color
+      (117) ; Reset highlight color
+      (118) ; Reset Tektronix cursor color
+      (119) ; Reset highlight foreground color
+      (#x49) ; 'I' Set icon to file?
+      (#x6c) ; 'l' Set window title, shelltool and dtterm
+      (#x4c) ; 'L' Set icon label, shelltool and dtterm
+      )))
 
 (defun device-control (stream thing out)
-  (declare (ignore stream thing out))
-  )
+  (declare (ignore thing out))
+  (with-slots ((tty terminal) state data device-command) stream
+    (let ((new-state :start))
+      (case device-command
+	(:user-keys
+	 )
+	(:status-request
+	 (case (aref data 0)
+	   (#x6d ; 'm' SGR
+	    )
+	   (#x22 ; '"'
+	    (case (aref data 1)
+	      (#x70 ; 'p'  DECSCL @@@ ?
+	       )
+	      (#x71 ; 'q'  DECSCA @@@ ?
+	       )))
+	   (#x20 ; space
+	    (case (aref data 1)
+	      (#x71 ; 'q'  DECSCUSR @@@ ?
+	       )))
+	   (#x72 ; 'r' DECSTBM
+	    )
+	   (#x73 ; 's' DECSLRM
+	    )
+	   (#x74 ; 't' DECSLPP
+	    )
+	   (#x24 ; '$'
+	    (case (aref data 1)
+	      (#x7c ; '|'  DECSCPP
+	       )))
+	   (#x2a ; '*'
+	    (case (aref data 1)
+	      (#x7c ; '|'  DECSNLS
+	       )))))
+	(:presentation-status)
+	(:terminfo-set)
+	(:terminfo-get))
+      (setf state new-state))))
 
 (defun control (stream thing out)
   (with-slots (state (tty terminal) prefix) stream
@@ -782,22 +925,22 @@ public or private modes depending on the prefix slot in ‘stream’."
 
 	;; Not prefixes
 	(#x40 ; '@' Insert blank characters
-	 (terminal-insert-char tty (or (param stream 1) 1)))
+	 (terminal-insert-char tty (param stream 1 :default 1)))
 	(#x41 ; 'A' Cursor up
-	 (terminal-up tty (or (param stream 1) 1)))
+	 (terminal-up tty (param stream 1 :default 1)))
 	(#x42 ; 'B' Cursor down
-	 (terminal-down tty (or (param stream 1) 1)))
-	(#x43 ; 'C' Cursor down
-	 (terminal-forward tty (or (param stream 1) 1)))
+	 (terminal-down tty (param stream 1 :default 1)))
+	(#x43 ; 'C' Cursor forward
+	 (terminal-forward tty (param stream 1 :default 1)))
 	(#x44 ; 'D' Cursor backward
-	 (terminal-backward tty (or (param stream 1) 1)))
+	 (terminal-backward tty (param stream 1 :default 1)))
 	(#x45 ; 'E' Cursor next line
-	 (dotimes (i (or (param stream 1) 1))
+	 (dotimes (i (param stream 1 :default 1))
 	   (terminal-newline tty)))
 	(#x46 ; 'F' Previous line
-	 (terminal-scroll-up tty (or (param stream 1) 1)))
+	 (terminal-scroll-up tty (param stream 1 :default 1)))
 	(#x47 ; 'G' Goto column
-	 (terminal-move-to-col tty (1- (or (param stream 1) 1))))
+	 (terminal-move-to-col tty (param-index stream 1 :default 0)))
 	(#x48 ; 'H' Cursor position
 	 ;; (format *debug-io* "move-to ~s ~s~%"
 	 ;; 	 (1- (or (param stream 1) 1))
@@ -805,16 +948,16 @@ public or private modes depending on the prefix slot in ‘stream’."
 	 ;; (format *debug-io* "params ~s ~s~%"
 	 ;; 	 (params stream) (fill-pointer (params stream)))
 	 (dbug "move-to ~s ~s~%"
-	       (1- (or (param stream 1) 1))
-	       (1- (or (param stream 2) 1)))
+	       (param-index stream 1 :default 0)
+	       (param-index stream 2 :default 0))
 	 (dbug "params ~s ~s~%"
 	       (params stream) (fill-pointer (params stream)))
-	 (terminal-move-to tty (1- (or (param stream 1) 1))
-			       (1- (or (param stream 2) 1))))
+	 (terminal-move-to tty (param-index stream 1 :default 0)
+			       (param-index stream 2 :default 0)))
 	(#x49 ; 'I' Cursor tab
-	 (terminal-format tty "~v,,,va" (or (param stream 1) 1) #\tab #\tab))
+	 (terminal-format tty "~v,,,va" (param stream 1 :default 1) #\tab #\tab))
 	(#x4a ; 'J' Erase
-	 (case (or (param stream 1) 0)
+	 (case (param stream 1 :default 0)
 	   (0 (terminal-erase-below tty))
 	   (1 (terminal-erase-above tty))
 	   (2
@@ -823,7 +966,7 @@ public or private modes depending on the prefix slot in ‘stream’."
 	   (3
 	    (tt-clear :saved-p t))))
 	(#x4b ; 'K' Erase in line
-	 (case (or (param stream 1) 0)
+	 (case (param stream 1 :default 0)
 	   (0 (terminal-erase-to-eol tty))
 	   (1 #| erase to left |#)
 	   (2 (terminal-erase-line tty))))
@@ -834,7 +977,7 @@ public or private modes depending on the prefix slot in ‘stream’."
 	 ;; @@@
 	 )
 	(#x50 ; 'P' Delete char
-	 (terminal-delete-char tty (or (param stream 1) 1)))
+	 (terminal-delete-char tty (param stream 1 :default 1)))
 	(#x53 ; 'S' Scroll up
 	 ;; @@@
 	 )
@@ -845,10 +988,10 @@ public or private modes depending on the prefix slot in ‘stream’."
 	    ;; @@@ mouse highlight tracking
 	    )
 	   (t ;; Scroll down
-	    (terminal-scroll-down tty (or (param stream 1) 1)))))
+	    (terminal-scroll-down tty (param stream 1 :default 1)))))
 	(#x58 ; 'X' Erase characters
 	 ;; @@@ is erase char really the space as spamming spaces
-	 (terminal-format tty "~v,,,va" (or (param stream 1) 1)
+	 (terminal-format tty "~v,,,va" (param stream 1 :default 1)
 			  #\space #\space))
 	(#x5a ; 'Z' Back tab
 	 ;; @@@
@@ -856,19 +999,21 @@ public or private modes depending on the prefix slot in ‘stream’."
 	(#x60 ; '`' character position absolute - variable # of params
 	 (cond
 	   ((param stream 2)
-	    (terminal-move-to tty (1- (param stream 2)) (1- (param stream 1))))
+	    (terminal-move-to tty
+			      (param-index stream 2)
+			      (param-index stream 1)))
 	   (t
-	    (terminal-move-to-col tty (1- (or (param stream 1) 1))))))
+	    (terminal-move-to-col tty (param-index stream 1)))))
 	(#x61 ; 'a' character position relative
 	 (cond
 	   ((param stream 2)
 	    (terminal-up tty (param stream 2))
 	    (terminal-forward tty (param stream 1)))
 	   (t
-	    (terminal-forward tty (or (param stream 1) 1)))))
+	    (terminal-forward tty (param stream 1 :default 1)))))
 	(#x62 ; 'b' repeat preceding character
 	 ;; @@@ but how can we know the preceding character?
-	 (terminal-format tty "~v,,,va" (or (param stream 1) 1)
+	 (terminal-format tty "~v,,,va" (param stream 1 :default 1)
 			  #\space #\space))
 	(#x63 ; 'c' Send device attributes
 	 (cond
@@ -881,7 +1026,8 @@ public or private modes depending on the prefix slot in ‘stream’."
 	(#x64 ; 'd' line position absolute
 	 (cond
 	   ((param stream 2)
-	    (terminal-move-to tty (1- (param stream 1)) (1- (param stream 2))))
+	    (terminal-move-to tty (param-index stream 1)
+			          (param-index stream 2)))
 	   (t
 	    ;; @@@ we don't have move-to-row
 	    ;; (terminal-move-to-row tty (or (param stream 1) 1))
@@ -889,15 +1035,15 @@ public or private modes depending on the prefix slot in ‘stream’."
 	(#x65 ; 'e' line position relative
 	 (cond
 	   ((param stream 2)
-	    (terminal-move-to tty (1- (param stream 2)) (1- (param stream 1))))
+	    (terminal-move-to tty (param-index stream 2) (param-index stream 1)))
 	   (t
 	    ;; @@@ we don't have move-to-row
 	    ;; (terminal-move-to-row tty (or (param stream 1) 1))
 	    )))
 	(#x66 ; 'f' Horizontal and vertical position
-	 (terminal-move-to tty (1- (param stream 1)) (1- (param stream 2))))
+	 (terminal-move-to tty (param-index stream 1) (param-index stream 2)))
 	(#x67 ; 'g' Tab clear
-	 (case (or (param stream 1) 0)
+	 (case (param stream 1 :default 0)
 	   (0
 	    ;; @@@ clear current column tab stop
 	    )
@@ -942,7 +1088,7 @@ public or private modes depending on the prefix slot in ‘stream’."
 	      (pushback stream (format nil "~a~a;~aR"
 				       +csi+ (1+ row) (1+ col)))))))
 	(#x71 ; 'q' load LEDs
-	 (case (or (param stream 1) 0)
+	 (case (param stream 1 :default 0)
 	   (0) ; clear all
 	   (1) ; light num lock
 	   (2) ; light caps lock
@@ -955,12 +1101,11 @@ public or private modes depending on the prefix slot in ‘stream’."
 	 (cond
 	   ;; Set scrolling region
 	   ((/= (param-count stream) 5) 
-	    (let ((p1 (param stream 1))
-		  (p2 (param stream 2)))
-	      (terminal-set-scrolling-region
-	       tty
-	       (if p1 (1- p1) 0)
-	       (if p2 (1- p2) (1- (terminal-window-rows tty))))))
+	    (let ((p1 (param-index stream 1 :default 0))
+		  (p2 (param-index stream 2 :default
+			     (1- (terminal-window-rows tty)))))
+	      (dbug "set scrolling region ~s ~s~%" p1 p2)
+	      (terminal-set-scrolling-region tty p1 p2)))
 	   ;; rectangular attribute change
 	   (t
 	    ;; @@@
@@ -975,7 +1120,73 @@ public or private modes depending on the prefix slot in ‘stream’."
 	    )))
 	(#x74 ; 't' window manipulation
 	 ;; @@@
-	 )
+	 (case (param stream 1)
+	   (1) ;; de-iconify window
+	   (2) ;; iconify window
+	   (3) ;; move window to x = p2 y = p3
+	   (4) ;; resize window to width = p2 height = p3 in pixels
+	   (5) ;; raise window to front
+	   (6) ;; lower window to bottom
+	   (7) ;; refresh the window
+	   (8) ;; resize the text to width = p2 height = p3 in characters
+	   (9 ;; maximize
+	    (case (param stream 2)
+	      (0) ;; restore maximized window
+	      (1) ;; maximize window
+	      (2) ;; maximize vertically
+	      (3))) ;; maximize horizontally
+	   (10 ;; full-screen
+	    (case (param stream 2)
+	      (0) ;; undo full screen
+	      (1) ;; change to full screen
+	      (2))) ;; toggle full screen
+	   (11 ;; report window state
+	    ;; not iconified ^[[1t
+	    ;; iconified ^[[2t
+	    )
+	   (13 ;; report window position
+	    ;; ^[[ 3 ; <x> ; <y> t
+	    (case (param stream 2)
+	      (2) ;; report text area position
+	      (t))) ;; report window position
+	   (14
+	    ;; ^[[ 4 ; <height> ; <width> t
+	    (case (param stream 2)
+	      (2) ;; report window size in pixels
+	      (t))) ;; report text size in pixels
+	   (15 ;; report size of the screen in pixels
+            ;; ^[[ 5 ; <height> ; <width> t
+	    )
+	   (16 ;; report xterm character size in pixels
+            ;; ^[[ 6 ; <height> ; <width> t
+	    )
+           (18 ;; report size of the text area in characters
+	    ;; ^[[ 8 ; <height> ; <width> t
+	    )
+	   (19 ;; report the size of the screen in characters
+	    ;; ^[[ 9 ; <height> ; <width> t
+	    )
+	   (20 ;; report window's icon label
+            ;; ^[] L <label> ^[\
+	    )
+	   (21 ;; report window's title
+            ;; ^[] l <label> ^[\
+	    )
+           (22
+	    (case (param stream 2)
+	      (0) ; save icon and window title on stack
+	      (1) ; save icon title on stack
+	      (2))) ; save window title on stack
+           (23
+	    (case (param stream 2)
+	      (0) ;; restore icon and window title from stack
+              (1) ;; restore icon title from stack
+              (2))) ;; restore window title from stack
+	   (t
+	    (let ((p1 (param stream 1)))
+	      (when (and p1 (>= p1 24))
+		;; resize to <p1> lines
+		)))))
 	(#x75 ; u Restore cursor
 	 (cond
 	   ;; save cursor
@@ -1000,8 +1211,8 @@ public or private modes depending on the prefix slot in ‘stream’."
 ;; The main entry point to emulation.
 
 (defmethod filter ((stream ansi-stream) (thing integer))
-  (with-slots ((tty terminal) state control-type charset data
-	       8-bit-controls) stream
+  (with-slots ((tty terminal) state control-type left-charset right-charset
+	       charsets data 8-bit-controls) stream
     ;; (format *debug-io* "state ~s ~x ~a~%" state thing
     ;; 	    (char-name (code-char thing)))
     (dbug "state ~s #x~x ~a~%" state thing
@@ -1100,7 +1311,34 @@ public or private modes depending on the prefix slot in ‘stream’."
 	    (new-param stream)
 	    (add-to-param stream thing))
 	   (t
-	    (device-control stream thing out))))
+	    (case thing
+              (#x24 ; '$'
+	       (setf new-state :device-dollar))
+	      (#x2b ; '+'
+	       (setf new-state :device-plus))
+	      (#x7c ; '|'
+	       (setf device-command :user-keys
+		     new-state :data))))))
+	(:device-dollar
+	 (case thing
+	   (#x71 ; 'q' Request status string
+	    (setf device-command :status-request
+		  state :data))
+	   (#x74 ; 't' Restore/get presentation status
+	    (setf device-command :presentation-status
+		  state :data))
+	   (t
+	    (setf state :start))))
+	(:device-plus
+	 (case thing
+	   (#x70 ; 'p' Set termcap/terminfo data
+	    (setf device-command :terminfo-set
+		  state :data))
+	   (#x71 ; 'q' Request termcap/terminfo data
+	    (setf device-command :terminfo-get
+		  state :data))
+	   (t
+	    (setf state :start))))
 	(:data
 	 (case thing
 	   (#x7 ; ^G
@@ -1115,13 +1353,49 @@ public or private modes depending on the prefix slot in ‘stream’."
 		    control-type
 		    :start)))
 	 (:escape-open
-	  (escape-open stream thing out))
+	  (setf (aref charsets +G0+) (find-charset thing))
+	  (setf state :start))
 	 (:escape-space
-	  (escape-space stream thing out))
+	  (case thing
+	    (#x46			; 'F' send 7-bit control responses
+	     (setf (8-bit-controls stream) nil))
+	    (#x47			; 'G' send 8-bit control responses
+	     (setf (8-bit-controls stream) t))
+	    (#x4c)			; 'L' set ANSI conformance level 1
+	    (#x4d)			; 'M' set ANSI conformance level 2
+	    (#x4e))			; 'N' set ANSI conformance level 3
+	  (setf state :start))
 	 (:escape-hash
-	  (escape-hash stream thing out))
+	  (case thing
+	    (#x33)			; '3' Double height line top half
+	    (#x34)			; '4' Double height line bottom half
+	    (#x35)			; '5' Single width line
+	    (#x36)			; '6' Double width line
+	    (#x38))			; '8' Screen alignment test
+	  (setf state :start))
 	 (:escape-percent
-	  (escape-percent stream thing out))
+	  (case thing
+	    (#x40)			; '@' default character set
+	    (#x47))			; 'G' UTF-8 character set
+	  (setf state :start))
+	 (:escape-close
+	  (setf (aref charsets +g1+) (find-charset thing))
+	  (setf state :start))
+	 (:escape-star
+	  (setf (aref charsets +g2+) (find-charset thing))
+	  (setf state :start))
+	 (:escape-plus
+	  (setf (aref charsets +g3+) (find-charset thing))
+	  (setf state :start))
+	 (:escape-minus
+	  (setf (aref charsets +g1+) (find-charset thing))
+	  (setf state :start))
+	 (:escape-dot
+	  (setf (aref charsets +g2+) (find-charset thing))
+	  (setf state :start))
+	 (:escape-slash
+	  (setf (aref charsets +g3+) (find-charset thing))
+	  (setf state :start))
 	 (:single-shift-g2
 	  ;; @@@ just write out the char until we have charsets
 	  (write-char (code-char thing) out)
