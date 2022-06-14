@@ -25,7 +25,7 @@
        ,@defs)))
 
 ;; Keep this around in case we ever want to regenerate this file.
-#+nil-sometimes-get-pushed-on-features
+#+nil-sometimes-gets-pushed-on-features
 (defun mulge-names (&optional (file "/usr/share/X11/rgb.txt"))
   (let ((n 0) start comp r g b name)
     (flet ((get-component (l)
