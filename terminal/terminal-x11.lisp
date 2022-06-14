@@ -560,13 +560,17 @@ COLUMN."
 
 (defmethod terminal-start ((tty terminal-x11))
   "Set up the terminal for reading a character at a time without echoing."
-  (with-slots (#| (file-descriptor	   terminal::file-descriptor)
+  (with-slots ((file-descriptor	   terminal::file-descriptor)
+	       #|
 	       (device-name   	   terminal::device-name)
 	       (output-stream 	   terminal::output-stream) |#
-	       saved-mode input-mode) tty
+	       saved-mode input-mode display) tty
     (setf saved-mode input-mode
 	  input-mode :char)
     ;; We don't need a file-descriptor or output-stream or a device-name right?
+    (setf file-descriptor
+	  (nos:stream-system-handle
+	   (xlib::display-input-stream display)))
     (terminal-get-size tty)
     saved-mode))
 
