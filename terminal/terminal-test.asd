@@ -10,7 +10,7 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Test the generic terminal library."
-    :depends-on (:dlib :terminal
+    :depends-on (:dlib :terminal :dcolor :char-util :fatchar
 		       ;; :terminal-ansi
 		       ;; :terminal-curses
 		       )
