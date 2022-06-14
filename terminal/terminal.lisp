@@ -81,6 +81,7 @@
    #:tt-window-background	  #:terminal-window-background
    #:tt-beep			  #:terminal-beep
    #:tt-set-attributes            #:terminal-set-attributes
+   #:tt-set-rendition             #:terminal-set-rendition
    #:tt-set-scrolling-region	  #:terminal-set-scrolling-region
    #:tt-finish-output		  #:terminal-finish-output
    #:tt-get-char		  #:terminal-get-char
@@ -231,6 +232,7 @@ Movement functions are usual row first then column.
   tt-inverse
   tt-color
   tt-set-attributes
+  tt-set-rendition
   tt-has-attribute
   tt-colors
 
@@ -695,6 +697,8 @@ support color, or NIL if it can't be determined.")
 (deftt set-attributes (attributes)
   "Set the attributes given in the list. If NIL turn off all attributes.
 Attributes are usually keywords.")
+(deftt set-rendition (fatchar)
+  "Set the colors and attributes given in the ‘fatchar’.")
 (deftt set-scrolling-region (start end)
   "Set the scrolling region starting at row START and ending at END.")
 (deftt finish-output ()
