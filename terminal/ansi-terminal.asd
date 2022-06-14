@@ -10,7 +10,7 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "ANSI terminal emulation"
-    :depends-on (:dlib :collections :fatchar :fatchar-io :terminal :ansi
+    :depends-on (:dlib :collections :fatchar :fatchar-io :terminal :ansi :dcolor
 		 :stretchy :trivial-gray-streams)
     :components
     ((:file "ansi-terminal")))
