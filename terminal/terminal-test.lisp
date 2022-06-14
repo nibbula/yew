@@ -4,7 +4,7 @@
 
 (defpackage :terminal-test
   (:documentation "Test the generic terminal library.")
-  (:use :cl :dlib :terminal :dcolor :char-util)
+  (:use :cl :dlib :terminal :dcolor :char-util :fatchar)
   (:export
    #:run
    #:menu
@@ -291,7 +291,24 @@
        (when (eq a :invisible)
 	 (tt-format " <-- ~a" (string-capitalize a)))
        (tt-newline))
-    (tt-normal))
+    (tt-normal)
+    (tt-newline)
+
+    ;; Test set-rendition with attrs and colors
+    (tt-format "Attributes mixed with colors:~%")
+    (loop :with attrs
+      :for fg :in *basic-colors* :do
+      (tt-set-rendition (make-fatchar :attrs attrs :fg fg))
+      (tt-format "Normal")
+      (loop
+        :for a :in '(:bold :underline :double-underline) :do
+        (tt-set-rendition (make-fatchar :attrs (push a attrs) :fg fg))
+        (tt-format " ~a" (string-capitalize a)))
+      (loop :with a
+        :while (pop attrs) :do
+        (tt-set-rendition (make-fatchar :attrs attrs :fg fg))
+        (tt-format " ~a" (string-capitalize (or (car attrs) "Normal"))))
+      (tt-newline)))
 
   #| Too ugly
   (blurp ()
@@ -374,6 +391,7 @@
 	 (tt-color :default nil)
 	 (tt-write-span '((:yellow "Yellow") " "))
 	 (tt-write-string "Normal")))))
+
   (blurp ()
     (let ((original-bg
 	   (or (tt-window-background)
