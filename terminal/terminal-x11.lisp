@@ -1050,7 +1050,7 @@ to blank with."
 			   (scroll-one-line))
 			 (progn ;; delayed wrap
 			   (dbugf :tx11 "Delayed wrap~%")
-			   (incf cursor-row)
+			   ;; (incf cursor-row) @@@ not really?
 			   (setf cursor-column 0 changed t)
 			   (set-moved tty))))))
 	       (next-line ()
