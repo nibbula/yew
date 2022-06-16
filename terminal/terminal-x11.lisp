@@ -2199,7 +2199,8 @@ handler cases."
 			  ;; special translations
 			  (case sym-name
 			    (keysyms::|Escape| #\escape)
-			    (t sym-name)))))
+			    (t
+			     (keywordify sym-name))))))
 	       (t
 		;; Try to return something at least
 		(setf result (or chr sym-name sym code))))
