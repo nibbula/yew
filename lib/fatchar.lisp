@@ -80,8 +80,8 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 (defun copy-fatchar-effects (from to)
   "Copy the effects from the fatchar FROM to the fatchar TO and return it."
   (assert (and from to (fatchar-p from) (fatchar-p to)))
-  (setf (fatchar-fg    to) (fatchar-fg   from)
-	(fatchar-bg    to) (fatchar-bg   from)
+  (setf (fatchar-fg    to) (copy-color (fatchar-fg from))
+	(fatchar-bg    to) (copy-color (fatchar-bg from))
 	(fatchar-line  to) (fatchar-line from)
 	(fatchar-attrs to) (copy-list (fatchar-attrs from)))
   to)
