@@ -1515,6 +1515,106 @@ fatchar string. The grammar is something like: "
 		     result i)))
 	  (setf (gethash pixel *color-cache*) result)))))
 
+(defun ansi-params-to-fatchar (fatchar params)
+  "Take a list of ANSI attribute parameter numbers, and a ‘fatchar’, and modify
+the fatchar according to ‘params’. Return four values:
+  the modified fatchar,
+  a list of attributes added,
+  a list of attributes removed,
+  a new foreground or :unset if it wasn't changed,
+  a new background or :unset.
+
+Indexed pallet colors are looked up in *xterm-256-color-table*, which should
+have a reasonable default, but of course can be bound for customized colors.
+
+Note that this doesn't do any error checking on color values."
+  (let ((attrs (copy-list (fatchar-attrs fatchar)))
+	(fg :unset)
+	(bg :unset)
+	added removed hi-color hi-color-type r g b)
+    (labels ((remove-attr (a)
+	       (when (find a (fatchar-attrs fatchar))
+		 (pushnew a removed))
+	       (setf attrs (delete a attrs)))
+	     (remove-attrs (l)
+	       (mapcar #'remove-attr l))
+	     (add-attr (a)
+	       (pushnew a added)
+	       (pushnew a attrs)))
+      (loop :for p :in params :do
+        (cond
+	  ((and hi-color (not hi-color-type))
+	   (case p
+	     (2 (setf hi-color-type :3-color))
+	     (5 (setf hi-color-type :1-color))))
+	  ((eq hi-color-type :1-color)
+	   (if (eq hi-color :fg)
+	       (setf fg (aref *xterm-256-color-table* p))
+	       (setf bg (aref *xterm-256-color-table* p)))
+	   (setf hi-color nil hi-color-type nil))
+	  ((eq hi-color-type :3-color)
+	   (cond
+	     ((not r) (setf r p))
+	     ((not g) (setf g p))
+	     ((not b) (setf b p)
+	      (if (eq hi-color :fg)
+		  (setf fg (make-color :rgb8 :red r :green g :blue b))
+		  (setf bg (make-color :rgb8 :red r :green g :blue b)))
+	      (setf hi-color nil hi-color-type nil r nil g nil b nil))))
+	  (t
+	   (case p
+	     (0
+	      ;; Remove all the attrs that were the original.
+	      (remove-attrs (fatchar-attrs fatchar))
+	      ;; And any that were added.
+	      (remove-attrs attrs)
+	      (setf added nil fg nil bg nil))
+	     (1  (add-attr :bold))
+	     (2  (add-attr :dim))
+	     (3  (add-attr :italic))
+	     (4  (add-attr :underline))
+	     (5  (add-attr :blink))
+	     (7  (add-attr :inverse))
+	     (8  (add-attr :invisible))
+	     (9  (add-attr :crossed-out))
+	     (21 (add-attr :double-underline))
+	     (22 (remove-attr :bold))
+	     (23 (remove-attr :italic))
+	     (24 (remove-attr :underline))
+	     (25 (remove-attr :blink))
+	     (27 (remove-attr :inverse))
+	     (28 (remove-attr :invisible))
+	     (29 (remove-attr :crossed-out))
+	     (30 (setf fg :black))
+	     (31 (setf fg :red))
+	     (32 (setf fg :green))
+	     (33 (setf fg :yellow))
+	     (34 (setf fg :blue))
+	     (35 (setf fg :magenta))
+	     (36 (setf fg :cyan))
+	     (37 (setf fg :white))
+	     (38 (setf hi-color :fg))
+	     (39 (setf fg nil))
+	     (40 (setf bg :black))
+	     (41 (setf bg :red))
+	     (42 (setf bg :green))
+	     (43 (setf bg :yellow))
+	     (44 (setf bg :blue))
+	     (45 (setf bg :magenta))
+	     (46 (setf bg :cyan))
+	     (47 (setf bg :white))
+	     (48 (setf hi-color :bg))
+	     (49 (setf bg nil))
+	     (otherwise
+	      #| just ignore unknown colors or attrs |#)))))
+      (when (or added removed)
+	(setf (fatchar-attrs fatchar) attrs))
+      (when (not (eq fg :unset))
+	(setf (fatchar-fg fatchar) fg))
+      (when (not (eq bg :unset))
+	(setf (fatchar-bg fatchar) bg))
+      (values fatchar added removed fg bg))))
+
 ;;; ^[[00m	normal
 ;;; ^[[01;34m	bold, blue fg
 ;;; ^[[m	normal
@@ -1522,8 +1622,8 @@ fatchar string. The grammar is something like: "
 ;;; ^[[1m	bold
 
 (defun grok-ansi-color (str &key (start 0))
-  "Take an ostring with an ANSI terminal color escape sequence, starting after
-the ^[[ and return NIL if there was no valid sequence, or an the values of
+  "Take the ostring ‘str’ with an ANSI terminal color escape sequence, starting
+after the ^[[ and return NIL if there was no valid sequence, or an the values of
 an integer offset to after the sequence, the foreground, background and a list
 of attributes. NIL stands for whatever the default is, and :UNSET means that
 they were not set in this string."
@@ -1779,7 +1879,7 @@ a fat-string, or a fatchar."
         (declare (fixnum index))
         (let ((char (ochar string index)))
           (cond ((ochar= char #\-)
-                 (setq minusp t)
+                 (setf minusp t)
                  (incf index))
                 ((ochar= char #\+)
                  (incf index))))
@@ -1788,7 +1888,7 @@ a fat-string, or a fatchar."
          (let* ((char (ochar string index))
                 (weight (odigit-char-p char radix)))
            (cond (weight
-                  (setq result (+ weight (* result radix))
+                  (setf result (+ weight (* result radix))
                         found-digit t))
                  (junk-allowed (return nil))
                  ((whitespace-p (osimplify char))
