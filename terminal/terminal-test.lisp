@@ -296,19 +296,25 @@
 
     ;; Test set-rendition with attrs and colors
     (tt-format "Attributes mixed with colors:~%")
-    (loop :with attrs
-      :for fg :in *basic-colors* :do
-      (tt-set-rendition (make-fatchar :attrs attrs :fg fg))
-      (tt-format "Normal")
-      (loop
-        :for a :in '(:bold :underline :double-underline) :do
-        (tt-set-rendition (make-fatchar :attrs (push a attrs) :fg fg))
-        (tt-format " ~a" (string-capitalize a)))
-      (loop :with a
-        :while (pop attrs) :do
+    (flet ((attr-name (a)
+	     (string-capitalize
+	      ;; the full name is too long
+	      (if (eq a :double-underline) :double-u a))))
+      (loop :with attrs
+        :for fg :in *basic-colors* :do
         (tt-set-rendition (make-fatchar :attrs attrs :fg fg))
-        (tt-format " ~a" (string-capitalize (or (car attrs) "Normal"))))
-      (tt-newline)))
+        (tt-format "Normal")
+        (loop
+          :for a :in '(:bold :underline :double-underline :inverse) :do
+          (tt-write-char #\space)
+          (tt-set-rendition (make-fatchar :attrs (push a attrs) :fg fg))
+          (tt-format "~a" (attr-name a)))
+        (loop :with a
+          :while (pop attrs) :do
+          (tt-write-char #\space)
+          (tt-set-rendition (make-fatchar :attrs attrs :fg fg))
+          (tt-format "~a" (attr-name (or (car attrs) "Normal"))))
+        (tt-newline))))
 
   #| Too ugly
   (blurp ()
@@ -390,7 +396,23 @@
 	 (tt-color :magenta nil) (tt-write-string "Magenta ")
 	 (tt-color :default nil)
 	 (tt-write-span '((:yellow "Yellow") " "))
-	 (tt-write-string "Normal")))))
+	 (tt-write-string "Normal")
+
+	 (incf line)
+	 (tt-move-to (incf line) 30)
+	 (tt-write-string "Normal")
+	 (tt-forward)
+	 (tt-color :red nil)
+	 (tt-write-string "Red FG")
+	 (tt-forward)
+	 (tt-color nil :blue)
+	 (tt-write-string "Red FG Blue BG")
+	 (tt-forward)
+	 (tt-color nil nil)
+	 (tt-write-string "Both NIL")
+	 (tt-forward)
+	 (tt-color :default :default)
+	 (tt-write-string "Both default")))))
 
   (blurp ()
     (let ((original-bg
