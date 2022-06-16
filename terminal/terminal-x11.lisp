@@ -1973,6 +1973,12 @@ Attributes are usually keywords."
 	  (warn "Unsupported attribute ~a" attributes))
 	(setf (fatchar-attrs rendition) (list attributes))))))
 
+(defmethod terminal-set-rendition ((tty terminal-x11) fatchar)
+"Set the colors and attributes given in the ‘fatchar’."
+  (with-slots (rendition) tty
+    (flush-buffer tty)
+    (setf rendition (copy-fatchar-effects fatchar rendition))))
+
 (defmethod terminal-finish-output ((tty terminal-x11))
   (flush-buffer tty)
   (display-finish-output (display tty)))
