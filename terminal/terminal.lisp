@@ -645,62 +645,96 @@ handled by fatchar:span-to-fat-string."
   (tt-write-span span))
 
 (deftt move-to-col (column) "Move the cursor to COLUMN.")
+
 (deftt beginning-of-line () "Move the cursor to the beginning of the line.")
+
 (deftt delete-char (n) "Delete N characters in front of the cursor.")
+
 (deftt insert-char (n) "Insert N blank characters in front of the cursor.")
+
 (deftt backward (&optional n) "Move the cursor backward N characters.")
+
 (deftt forward (&optional n) "Move the cursor forward N character.")
+
 (deftt up (&optional n) "Move the cursor up N rows.")
+
 (deftt down (&optional n) "Move the cursor down N rows.")
+
 (deftt scroll-down (n)
   "Move the cursor down N rows. If at the bottom of the screen or scrolling
 region, scroll the screen down.")
+
 (deftt scroll-up (n)
   "Move the cursor up N rows. If at the top of the screen or scrolling region,
 scroll the screen up.")
+
 (deftt erase-to-eol () "Erase from the cursor to the end of the current row.")
+
 (deftt erase-line () "Erase the whole row the cursor is on.")
+
 (deftt erase-above () "Erase everything above the row the cursor is on.")
+
 (deftt erase-below () "Erase everything below the row the cursor is on.")
+
 (deftt clear (&key saved-p)
   "Erase the entire screen. If SAVED-P is true, also clear the 'saved' lines
 scrolled off the top, if the terminal allows it")
+
 (deftt home () "Move the cursor to the first row and column.")
+
 (deftt cursor-off () "Try to make the cursor invisible.")
+
 (deftt cursor-on () "Try to make the cursor visible.")
+
 (deftt standout (state)
   "Turn the standout attribute on or off, depending on the boolean STATE.")
+
 (deftt normal () "Reset the text attributes to normal.")
+
 (deftt underline (state)
   "Turn the underline attribute on or off, depending on the boolean STATE.")
+
 (deftt bold (state)
   "Turn the underline attribute on or off, depending on the boolean STATE.")
+
 (deftt inverse (state)
   "Turn the inverse attribute on or off, depending on the boolean STATE.")
+
 (deftt color (fg bg)
-  "Set the text foreground color to FG, and the background attribute to BG.")
+  "Set the text foreground color to ‘fg’, and the background color to ‘bg’.
+The color should be a ‘dcolor’, or NIL to not change that component from the
+current. Use ‘:default’ for the terminal's default value. Whether the color is
+set, or exactly what it's set to, depends on the terminal subclass.")
+
 (deftt colors ()
   "Return the number of colors the terminal supports. Return 0 if it doesn't
 support color, or NIL if it can't be determined.")
+
 (deftt window-foreground ()
   "Return the window foreground color, which is probably also the default text foreground color.")
 (defgeneric (setf terminal-window-foreground) (color tt)
   (:documentation
    "Set the window foreground color, which is probably also the default text foreground color."))
+
 (deftt window-background ()
   "Return the window bacground color.")
 (defgeneric (setf terminal-window-background) (color tt)
   (:documentation
    "Set the window background color."))
+
 (deftt beep ()
   "Make the terminal emit a sound, or perhaps flash the screen.")
+
 (deftt set-attributes (attributes)
   "Set the attributes given in the list. If NIL turn off all attributes.
 Attributes are usually keywords.")
+
 (deftt set-rendition (fatchar)
   "Set the colors and attributes given in the ‘fatchar’.")
+
 (deftt set-scrolling-region (start end)
   "Set the scrolling region starting at row START and ending at END.")
+
 (deftt finish-output ()
   "Attempts to ensure that any buffered output is sent to the terminal.")
 ; (deftt get-row () "")
