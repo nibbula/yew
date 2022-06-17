@@ -81,6 +81,7 @@
    #:tt-window-background	  #:terminal-window-background
    #:tt-beep			  #:terminal-beep
    #:tt-set-attributes            #:terminal-set-attributes
+   #:tt-set-attribute             #:terminal-set-attribute
    #:tt-set-rendition             #:terminal-set-rendition
    #:tt-set-scrolling-region	  #:terminal-set-scrolling-region
    #:tt-finish-output		  #:terminal-finish-output
@@ -731,6 +732,9 @@ Attributes are usually keywords.")
 
 (deftt set-rendition (fatchar)
   "Set the colors and attributes given in the ‘fatchar’.")
+
+(deftt set-attribute (attribute &optional state)
+  "Turn the given ‘attribute’ on or off, according to the boolean ‘state’.")
 
 (deftt set-scrolling-region (start end)
   "Set the scrolling region starting at row START and ending at END.")
