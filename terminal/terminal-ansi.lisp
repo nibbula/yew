@@ -1405,6 +1405,16 @@ Attributes are usually keywords."
     (write-char #\m stream))
   nil)
 
+(defmethod terminal-set-attribute ((tty terminal-color-mixin) attribute
+				   &optional (state t))
+  "Turn the given ‘attribute’ on or off, according to the boolean ‘state’."
+  (with-slots ((stream terminal::output-stream)) tty
+    (let ((param
+	    (cdr (assoc attribute (if state *attributes* *attributes-off*)))))
+      (when param
+	(terminal-escape-sequence tty "m" param))))
+  nil)
+
 (defmethod terminal-set-rendition ((tty terminal-color-mixin) fatchar)
   "Set the colors and attributes given in the fatchar."
   (with-slots ((stream terminal::output-stream)) tty
