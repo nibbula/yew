@@ -660,8 +660,8 @@ processing."
   (when (and state (not *acs-table*))
     (make-acs-table))
   (if state
-      (terminal-escape-sequence tty "(0")
-      (terminal-escape-sequence tty "(B")
+      (terminal-raw-format tty "~c(0" #\escape)
+      (terminal-raw-format tty "~c(B" #\escape)
       ))
 
 (defvar *allow-resize* nil
