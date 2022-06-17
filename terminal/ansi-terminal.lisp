@@ -104,7 +104,7 @@ appropriate xterm escape sequences.")
       "ðñòóôõö÷øùúûüýþ"))
 
 (defparameter *dec-graphics-gl*
-  (s+ " !\"#$%&'()*+,-./"
+   (s+ "!\"#$%&'()*+,-./"
       "0123456789:;<=>?"
       "@ABCDEFGHIJKLMNO"
       "PQRSTUVWXYZ[\\]^" (code-char #xa0) ; no-break_space
@@ -333,7 +333,14 @@ symbol, or a mode number."))))
   ;; We could, in theory, do the terminal-start in here, but I think it's
   ;; best left to callers discretion when to do that.
   (setf (modes o) (copy-hash-table *modes*)
-	(public-modes o) (copy-hash-table *public-modes*)))
+	(public-modes o) (copy-hash-table *public-modes*))
+  ;; Set up the character sets.
+  (setf (aref (charsets o) +G0+) *normal-gl*
+	(aref (charsets o) +G1+) *normal-gr*
+	(aref (charsets o) +G2+) *dec-graphics-gl*
+	(aref (charsets o) +G3+) *unicode-gr*
+	(left-charset o) +G0+
+	(right-charset o) +G1+))
 
 (defun pushback (stream bytes)
   "Send a vector of bytes back to the application for status reporting, etc."
@@ -469,14 +476,15 @@ this assumes the parameter is a number."
       (#x0d				; ^M CR   Carriage return
        (terminal-move-to-col tty 0))
       (#x0e				; ^N LS0  Shift out
-       (setf left-charset (aref charsets +G1+)))
+       (setf left-charset +G1+))
       (#x0f				; ^O LS0  Shift in
-       (setf left-charset (aref charsets +G0+)))
+       (setf left-charset +G0+))
       (#x1b				; ^[ ESC  Escape
        (setf state :escape))
       (#x20				; Space
        (write-char #\space out))
       (t
+       ;; @@@ Is this right?
        (write-char #\space out)))))
 
 (defun send-device-attributes (stream out &optional (parameter 0))
@@ -608,15 +616,15 @@ this assumes the parameter is a number."
 	(#x6d				; 'm' Memory unlock
 	 )
 	(#x6e				; 'n' G2 charset to GL
-	 (setf left-charset (aref charsets +g2+)))
+	 (setf left-charset +g2+))
 	(#x6f				; 'o' G3 charset to GL
-	 (setf left-charset (aref charsets +g3+)))
+	 (setf left-charset +g3+))
 	(#x7c				; '|' G3 charset to GR
-	 (setf right-charset (aref charsets +g3+)))
+	 (setf right-charset +g3+))
 	(#x7d				; '}' G2 charset to GR
-	 (setf right-charset (aref charsets +g2+)))
+	 (setf right-charset +g2+))
 	(#x7e				; '~' G1 charset to GR
-	 (setf right-charset (aref charsets +g1+))))
+	 (setf right-charset +g1+)))
       (setf state new-state))))
 
 (defun find-charset (code)
@@ -1208,6 +1216,50 @@ public or private modes depending on the prefix slot in ‘stream’."
 	    ))))
       (setf state new-state))))
 
+#|
+(loop for c across ansi-terminal::*dec-graphics-gl*
+for i from 0
+do
+(format t "~2s ~2x ~:c ~s~%" i (+ i #x20) c
+   (rassoc (code-char (+ i #x20)) terminal-ansi::*acs-table-data*)))
+|#
+
+(defun output-char (stream char out)
+  "Output a character that's not in a control sequence."
+  (with-slots (left-charset right-charset charsets 8-bit-controls) stream
+    (cond
+      ;; low control chars C0
+      ((<= char #x1f)
+       ;; This shouldn't happen, because they're handled by single-char-control
+       ;; @@@ maybe an assert?
+       (error "Tried to output a control as a non-control."))
+      ((= char #x20) ;; space is always space
+       (write-char #\space out))
+      ;; graphic chars in GL
+      ((<= #x21 char #x7e) ; '!' - '~'
+       ;; (dbug "output GL char~%")
+       (write-char (aref (aref charsets left-charset) (- char #x21)) out))
+      ((= #x7f char)
+       ;; @@@ what should we do with ^?
+       )
+      ((<= #x80 char #xa0) ; 8 bit controls
+       ;; @@@ actually handled in filter
+       (when 8-bit-controls
+	 ;; @@@
+	 ))
+      ;; graphic chars in GR
+      ((<= #xa1 char #xfe) ; '¡' - 'þ'
+       ;; (dbug "output GR char~%")
+       (write-char (aref (aref charsets right-charset) (- char #xa1)) out))
+      ((= #xff char)
+       ;; @@@ what should we do with #xff 'ÿ'
+       (write-char (code-char char) out))
+      (t
+       ;; (error "char wan't an 8-bit byte? but a ~a" (type-of char))
+       ;; @@@ actually we get unicode chars > #xff here
+       (write-char (code-char char) out)
+       ))))
+
 ;; The main entry point to emulation.
 
 (defmethod filter ((stream ansi-stream) (thing integer))
@@ -1265,7 +1317,9 @@ public or private modes depending on the prefix slot in ‘stream’."
 	       (write-char (code-char thing) out))))
 	   ;; not in either 7-bit or 8-bit control range
 	   (t
-	    (write-char (code-char thing) out))))
+	    (output-char stream thing out)
+	    ;; (write-char (code-char thing) out))
+	   )))
 	(:escape
 	 (escape-control stream thing out))
 	(:control
