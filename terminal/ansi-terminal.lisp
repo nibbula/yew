@@ -672,11 +672,14 @@ functions like ‘format’, turn it into a ‘character’ string."
   "Get rid of real escapes in ‘string’ to make it safe for debugging printing."
   (osubstitute (code-char #x241b) #\escape (widen-string string)))
 
+(define-constant +blank-fatchar+ (make-fatchar) "Yerp." #'equalp)
+
 ;; Slow cheat for now until we can refactor grok-ansi-color.
 ;; Probably a good refactoring spot would be a list of parameter numbers.
 (defun set-attributes (stream out)
   "Set the character attributes given what's in the parameters."
   (declare (ignore out))
+  #|
   (with-slots (state (tty terminal)) stream
     (let* ((esc-str (format nil "~c[~{~a~^;~}mX"
 			    #\escape
@@ -699,6 +702,39 @@ functions like ‘format’, turn it into a ‘character’ string."
       ;; (format *debug-io* "fc ~s~%" c)
       (dbug "fc ~s~%" c)
       )))
+  |#
+  (with-slots ((tty terminal)) stream
+    (let ((fc (make-fatchar :attrs '(all-ball)))
+	  (params
+	    (loop :for i :from 1 :to (param-count stream)
+		  :collect (param stream i))))
+      (multiple-value-bind (new-fc added removed new-fg new-bg)
+	  (fatchar::ansi-params-to-fatchar fc params)
+	(cond
+	  ((not (find 'all-ball (fatchar-attrs new-fc)))
+	   (when (eq new-fg :unset)
+	     (setf new-fg nil))
+	   (when (eq new-bg :unset)
+	     (setf new-bg nil))
+	   (terminal-set-rendition tty (make-fatchar
+					:fg new-fg :bg new-bg
+					:attrs (fatchar-attrs new-fc)))
+	   (dbug "[][][] blanked the monkey [][][]~%"))
+	  (t
+	   (when (eq new-fg :unset)
+	     (setf new-fg nil))
+	   (when (eq new-bg :unset)
+	     (setf new-bg nil))
+	   (when (or new-fg new-bg)
+	     (dbug "color to ~s ~s~%" new-fg new-bg)
+	     (terminal-color tty new-fg new-bg))
+	   ;; (terminal-color tty new-fg new-bg)
+	   (dbug "attributes added to ~s~%" added)
+	   (dbug "attributes removed to ~s~%" removed)
+	   (loop :for a :in added
+		 :do (terminal-set-attribute tty a t))
+	   (loop :for a :in removed
+		 :do (terminal-set-attribute tty a nil))))))))
 
 (defun set-ansi-modes (stream value)
   "Set the modes in the current parameters in ‘stream’ to ‘value’. Set the
