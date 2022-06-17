@@ -1144,12 +1144,91 @@ i.e. the terminal is 'line buffered'."
   (terminal-raw-format tty "~a104~a" +osc+ +st+))
 
 (defun %terminal-color (tty fg bg &key unwrapped)
+  (let (ncolors did-intro did-one)
+    (when fg
+      (let ((fg-pos (and (keywordp fg) (position fg *colors*)))
+	    (structured-fg-p (structured-color-p fg)))
+	(when (and (keywordp fg) (not fg-pos))
+	  (error "Forground ~a is not a known color." fg))
+	(when (or structured-fg-p)
+	  (setf ncolors (terminal-colors tty)))
+	(when (not unwrapped)
+	  (terminal-raw-format tty +csi+)
+	  (setf did-intro t))
+	(when structured-fg-p
+	  (case ncolors
+	    (#.(* 256 256 256)
+	     (let ((c (convert-color-to fg :rgb8)))
+	       (terminal-raw-format tty "38;2;~d;~d;~d"
+				    (color-component c :red)
+				    (color-component c :green)
+				    (color-component c :blue))
+	       (setf did-one t)))
+	    (256
+	     (let ((c (convert-color-to fg :rgb8)))
+	       (terminal-raw-format tty "38;5;~d"
+				    (get-nearest-xterm-color-index c))
+	       (setf did-one t)))
+	    (88
+	     (let ((c (convert-color-to fg :rgb8)))
+	       (terminal-raw-format tty "38;5;~d"
+				    (get-nearest-xterm-color-index c))
+	       (setf did-one t)))
+	    (16)
+	    (0)
+	    (otherwise #| what? |#)))
+	(when (and fg fg-pos)
+	  (terminal-raw-format tty "~d" (+ 30 fg-pos))
+	  (setf did-one t))))
+    (when bg
+      (let ((bg-pos (and (keywordp bg) (position bg *colors*)))
+	    (structured-bg-p (structured-color-p bg)))
+	(when (and (keywordp bg) (not bg-pos))
+	  (error "Background ~a is not a known color." bg))
+	(when (and structured-bg-p (null ncolors))
+	  (setf ncolors (terminal-colors tty)))
+	(when (and (not unwrapped) (not did-intro))
+	  (terminal-raw-format tty +csi+))
+	(when structured-bg-p
+	  (when did-one (write-char #\; (terminal-output-stream tty)))
+	  (case ncolors
+	    (#.(* 256 256 256)
+	     (let ((c (convert-color-to bg :rgb8)))
+	       (terminal-raw-format tty "48;2;~d;~d;~d"
+				    (color-component c :red)
+				    (color-component c :green)
+				    (color-component c :blue))
+	       (setf did-one t)))
+	    (256
+	     (let ((c (convert-color-to bg :rgb8)))
+	       (terminal-raw-format tty "48;5;~d"
+				    (get-nearest-xterm-color-index c))
+	       (setf did-one t)))
+	    (88
+	     (let ((c (convert-color-to bg :rgb8)))
+	       (terminal-raw-format tty "48;5;~d"
+				    (get-nearest-xterm-color-index c))
+	       (setf did-one t)))
+	    (16)
+	    (0)
+	    (otherwise
+	     )))
+	(when (and bg bg-pos)
+	  (if did-one (write-char #\; (terminal-output-stream tty)))
+	  (terminal-raw-format tty "~d" (+ 40 bg-pos))
+	  (setf did-one t))))
+    (when (and (not unwrapped) did-one)
+      (terminal-raw-format tty "m"))))
+
+;; @@@ older version
+#|
+(defun %terminal-color (tty fg bg &key unwrapped)
   (let ((fg-pos (and (keywordp fg) (position fg *colors*)))
-	(bg-pos (and (keywordp bg) (position bg *colors*)))
-	did-one
-	(structured-fg-p (structured-color-p fg))
-	(structured-bg-p (structured-color-p bg))
-	ncolors)
+        (bg-pos (and (keywordp bg) (position bg *colors*)))
+        did-one
+        (structured-fg-p (structured-color-p fg))
+        (structured-bg-p (structured-color-p bg))
+        ncolors)
     (when (and (keywordp fg) (not fg-pos))
       (error "Forground ~a is not a known color." fg))
     (when (and (keywordp bg) (not bg-pos))
@@ -1160,46 +1239,46 @@ i.e. the terminal is 'line buffered'."
       (terminal-raw-format tty +csi+))
     (when structured-fg-p
       (case ncolors
-	(#.(* 256 256 256)
-	   (let ((c (convert-color-to fg :rgb8)))
-	     (terminal-raw-format tty "38;2;~d;~d;~d"
-				  (color-component c :red)
-				  (color-component c :green)
-				  (color-component c :blue))
-	     (setf did-one t)))
-	(256
-	 (let ((c (convert-color-to fg :rgb8)))
-	   (terminal-raw-format tty "38;5;~d" (get-nearest-xterm-color-index c))
-	   (setf did-one t)))
-	(88
-	 (let ((c (convert-color-to fg :rgb8)))
-	   (terminal-raw-format tty "38;5;~d" (get-nearest-xterm-color-index c))
-	   (setf did-one t)))
-	(16)
-	(0)
-	(otherwise #| what? |#)))
+        (#.(* 256 256 256)
+         (let ((c (convert-color-to fg :rgb8)))
+           (terminal-raw-format tty "38;2;~d;~d;~d"
+                                (color-component c :red)
+                                (color-component c :green)
+                                (color-component c :blue))
+           (setf did-one t)))
+        (256
+         (let ((c (convert-color-to fg :rgb8)))
+           (terminal-raw-format tty "38;5;~d" (get-nearest-xterm-color-index c))
+           (setf did-one t)))
+        (88
+         (let ((c (convert-color-to fg :rgb8)))
+           (terminal-raw-format tty "38;5;~d" (get-nearest-xterm-color-index c))
+           (setf did-one t)))
+        (16)
+        (0)
+        (otherwise #| what? |#)))
     (when structured-bg-p
       (when did-one (write-char #\; (terminal-output-stream tty)))
       (case ncolors
-	(#.(* 256 256 256)
-	   (let ((c (convert-color-to bg :rgb8)))
-	     (terminal-raw-format tty "48;2;~d;~d;~d"
-				  (color-component c :red)
-				  (color-component c :green)
-				  (color-component c :blue))
-	     (setf did-one t)))
-	(256
-	 (let ((c (convert-color-to bg :rgb8)))
-	   (terminal-raw-format tty "48;5;~d" (get-nearest-xterm-color-index c))
-	   (setf did-one t)))
-	(88
-	 (let ((c (convert-color-to bg :rgb8)))
-	   (terminal-raw-format tty "48;5;~d" (get-nearest-xterm-color-index c))
-	   (setf did-one t)))
-	(16)
-	(0)
-	(otherwise
-	 )))
+        (#.(* 256 256 256)
+         (let ((c (convert-color-to bg :rgb8)))
+           (terminal-raw-format tty "48;2;~d;~d;~d"
+                                (color-component c :red)
+                                (color-component c :green)
+                                (color-component c :blue))
+           (setf did-one t)))
+        (256
+         (let ((c (convert-color-to bg :rgb8)))
+           (terminal-raw-format tty "48;5;~d" (get-nearest-xterm-color-index c))
+           (setf did-one t)))
+        (88
+         (let ((c (convert-color-to bg :rgb8)))
+           (terminal-raw-format tty "48;5;~d" (get-nearest-xterm-color-index c))
+           (setf did-one t)))
+        (16)
+        (0)
+        (otherwise
+         )))
     (cond
       ((and fg bg fg-pos bg-pos)
        (terminal-raw-format tty "~d;~d" (+ 30 fg-pos) (+ 40 bg-pos)))
@@ -1211,6 +1290,7 @@ i.e. the terminal is 'line buffered'."
        (terminal-raw-format tty "~d" (+ 40 bg-pos))))
     (when (not unwrapped)
       (terminal-raw-format tty "m"))))
+|#
 
 (defmethod terminal-color ((tty terminal-color-mixin) fg bg)
   (%terminal-color tty fg bg))
@@ -1419,9 +1499,9 @@ Attributes are usually keywords."
   "Set the colors and attributes given in the fatchar."
   (with-slots ((stream terminal::output-stream)) tty
     (write-string +csi+ stream)
-    (write-string "0;" stream)
+    (write-string "0;" stream)		; @@@ sometims useless extra ';'
     (when (write-attributes (fatchar-attrs fatchar) stream)
-      (write-char #\; stream))
+      (write-char #\; stream))		; @@@ sometims useless extra ';'
     (%terminal-color tty (fatchar-fg fatchar) (fatchar-bg fatchar) :unwrapped t)
     (write-char #\m stream))
   nil)

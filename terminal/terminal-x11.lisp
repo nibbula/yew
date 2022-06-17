@@ -1203,18 +1203,20 @@ changed the screen contents."
   ;; (format t "%terminal-color fg ~s bg ~s~%" fg bg)
   (with-slots (draw-gc rendition) tty
     (flush-buffer tty)
-    (let ((fg-pos (and (keywordp fg) (position fg *colors*)))
-	  (bg-pos (and (keywordp bg) (position bg *colors*))))
-      (when (and (keywordp fg) (not fg-pos))
-	(error "Forground ~a is not a known color." fg))
-      (when (and (keywordp bg) (not bg-pos))
-	(error "Background ~a is not a known color." bg))
-      (setf (gcontext-foreground draw-gc)
-	    (color-pixel tty (color-from-rendition tty fg :fg)))
-      (setf (gcontext-background draw-gc)
-	    (color-pixel tty (color-from-rendition tty bg :bg)))
-      (setf (fatchar-fg rendition) fg
-	    (fatchar-bg rendition) bg))))
+    (when fg
+      (let ((fg-pos (and (keywordp fg) (position fg *colors*))))
+	(when (and (keywordp fg) (not fg-pos))
+	  (error "Forground ~a is not a known color." fg))
+	(setf (gcontext-foreground draw-gc)
+	      (color-pixel tty (color-from-rendition tty fg :fg)))
+	(setf (fatchar-fg rendition) fg)))
+    (when bg
+      (let ((bg-pos (and (keywordp bg) (position bg *colors*))))
+	(when (and (keywordp bg) (not bg-pos))
+	  (error "Background ~a is not a known color." bg))
+	(setf (gcontext-background draw-gc)
+	      (color-pixel tty (color-from-rendition tty bg :bg)))
+	(setf (fatchar-bg rendition) bg)))))
 
 #|
 (defun %draw-fat-unit (tty unit &key copy x y)

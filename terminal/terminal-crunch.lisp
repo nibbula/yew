@@ -1570,8 +1570,10 @@ i.e. the terminal is 'line buffered'."
 |#
 
 (defmethod terminal-color ((tty terminal-crunch-stream) fg bg)
-  (setf (fg tty) (dcolor:copy-color fg)
-	(bg tty) (dcolor:copy-color bg)))
+  (when fg
+    (setf (fg tty) (dcolor:copy-color fg)))
+  (when bg
+    (setf (bg tty) (dcolor:copy-color bg))))
 
 (defmethod terminal-colors ((tty terminal-crunch-stream))
   ;; Just call the wrapped one.
