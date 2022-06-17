@@ -10,6 +10,7 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "The outer part of terminal emulator."
-    :depends-on (:dlib :opsys :terminal :terminal-ansi :ansi-terminal)
+    :depends-on (:dlib :opsys :terminal :terminal-ansi :ansi-terminal
+		 :terminal-x11)
     :components
     ((:file "lisp-term")))

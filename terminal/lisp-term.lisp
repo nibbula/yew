@@ -4,8 +4,7 @@
 
 (defpackage :lisp-term
   (:documentation "The outer part of a terminal emulator.")
-  (:use :cl :dlib :terminal :ansi-terminal :cffi :opsys :opsys-unix
-        :terminal-ansi)
+  (:use :cl :dlib :terminal :ansi-terminal :cffi :opsys :opsys-unix)
   (:export
    #:emulate
    ))
@@ -111,7 +110,8 @@ string arguments."
       (loop
 	:while (terminal-listen-for out-term 0)
 	:do
-	   (dbug "before get-key~%")
+	   ;; (dbug "before get-key~%")
+	   (terminal-finish-output out-term)
 	   (setf key (terminal-get-key out-term))
 	   (dbug "key ~s ~s~%" key (ignore-errors (char-code key)))
 	   (cond
@@ -127,7 +127,8 @@ string arguments."
 		       (cols (terminal-window-columns out-term)))
 		   (uos:set-window-size-struct
 		    slave
-		    (nos:make-window-size :rows rows :columns cols))))
+		    (nos:make-window-size :rows rows :columns cols))
+		   (uos:kill pid uos:+SIGWINCH+)))
 		(t
 		 (let ((s (key-string ansi key)))
 		   (when s
@@ -138,17 +139,25 @@ string arguments."
 			  (setf (mem-aref input-buffer :unsigned-char i) c))
 		     (uos:posix-write master input-buffer (length s)))))))
 	     ((characterp key)
-	      (setf (cffi:mem-ref input-buffer :unsigned-char)
-		    (char-code key))
-	      (dbug "write char ~s~%" (char-name key))
-	      (uos:posix-write master input-buffer 1)))))))
+	      (case key
+		(#\etx
+		 ;; wrong?
+		 (dbug " --- ^C ---~%")
+		 (uos:kill (- pid) uos:+SIGINT+))
+		(t
+		 (setf (cffi:mem-ref input-buffer :unsigned-char)
+		       (char-code key))
+		 (dbug "write char ~s~%" (char-name key))
+		 (uos:posix-write master input-buffer 1)))))))))
 
 ;; Currently this is like screen or tmux, but with only one process, so it's
 ;; only really useful for testing our emulation.
 
-(defun emulate (device &key (program "/bin/bash"))
+(defun emulate (&key (program "/bin/bash") x (device (uos:ttyname 0)))
   "Run ‘program’ in a terminal on ‘device’."
-  (let* ((out-term (make-instance 'terminal-ansi
+  (let* ((out-term (make-instance (if x
+				      'terminal-x11:terminal-x11
+				      'terminal-ansi:terminal-ansi)
 				  :device-name device))
 	 (ansi (make-instance 'ansi-terminal:ansi-stream
 			      :terminal out-term
@@ -159,8 +168,8 @@ string arguments."
 	 fds master slave tty input buf pid)
     (unwind-protect
       (progn
-	(terminal-enable-event out-term '(:resize :mouse-buttons))
 	(terminal-start out-term)
+	(terminal-enable-event out-term '(:resize :mouse-buttons))
 	(multiple-value-setq (master slave)
 	  (uos:open-pseudo-terminal
 	   :window-size (nos:make-window-size
@@ -171,15 +180,18 @@ string arguments."
 	      (term-slave *term*) slave
 	      tty (terminal-file-descriptor (term-out-term *term*)))
 	(dbug "tty fd = ~s~%" tty)
-	(setf fds `((,tty :read)
+	(setf fds `((,tty :read #|:write|#)
 		    (,master :read))
 	       input (cffi:foreign-alloc :unsigned-char :count 100)
 	      (term-input-buffer *term*) input
 	      buf (cffi:make-shareable-byte-vector *buf-size*))
 
 	(dbug "before run~%")
-	(setf pid (run-the-program slave program)
-	      (term-pid *term*) pid)
+	(let ((all-args (lish::shell-words-to-list
+			 (lish::shell-expr-words
+			  (lish:shell-read program)))))
+	  (setf pid (run-the-program slave (car all-args) (cdr all-args))
+		(term-pid *term*) pid))
 	(dbug "after run~%")
 
 	(with-foreign-object (status-ptr :int 1)
@@ -193,8 +205,8 @@ string arguments."
 		 (finish-output ansi)
 		 (terminal-finish-output out-term)
 		 (dbug "before select ~s~%" fds)
-		 ;; (when (terminal-listen-for out-term 0)
-		 ;;   (process-keys *term*))
+		 (when (terminal-listen-for out-term 0)
+		   (process-keys *term*))
                  (setf results (uos:lame-select fds nil))
 		 (dbug "after select = ~s~%" results)
 		 (when (/= 0 (uos::real-waitpid pid status-ptr
@@ -207,7 +219,7 @@ string arguments."
 		   (dbug "wait ~s~%" (uos::wait-return-status
 				      (mem-ref status-ptr :int)))
 		   (setf (term-quit-flag *term*) t))
-		 (dbug "before io loop~%")
+		 ;; (dbug "before io loop~%")
                  (loop :for r :in results :do
                    ;; output from the master
 		   (when (eq (car r) master)
@@ -231,13 +243,13 @@ string arguments."
                              )
                             ((plusp rr)
                              ;; Feed to the the ANSI emulator
-			     (dbug "hanky ~s~%" (type-of buf))
+			     ;; (dbug "hanky ~s~%" (type-of buf))
                              (write-sequence
 			      (unicode:utf8b-bytes-to-string
 			       (displaced-subseq buf 0 rr))
 			      ansi)
 			     ;; (finish-output ansi)
-			     (dbug "hokay~%")
+			     ;; (dbug "hokay~%")
 			     ))))
 		       (:write
 			(dbug "master writable?~%"))
