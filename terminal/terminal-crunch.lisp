@@ -1603,6 +1603,14 @@ Attributes are usually keywords."
 	  (list attributes)
 	  (keyword (list attributes)))))
 
+(defmethod terminal-set-attribute ((tty terminal-crunch) attribute
+				   &optional (state t))
+  "Turn the given ‘attribute’ on or off, according to the boolean ‘state’."
+  (if state
+      (pushnew attribute (attrs tty))
+      (setf (attrs tty) (remove attribute (attrs tty))))
+  nil)
+
 (defmethod terminal-set-rendition ((tty terminal-crunch) fatchar)
   "Set the colors and attributes given in the ‘fatchar’."
   (setf (attrs tty) (copy-list (fatchar-attrs fatchar))
