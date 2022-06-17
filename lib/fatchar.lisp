@@ -1533,14 +1533,23 @@ Note that this doesn't do any error checking on color values."
 	(bg :unset)
 	added removed hi-color hi-color-type r g b)
     (labels ((remove-attr (a)
-	       (when (find a (fatchar-attrs fatchar))
-		 (pushnew a removed))
+	       ;; (when (find a (fatchar-attrs fatchar))
+	       ;; 	 (pushnew a removed))
+	       (pushnew a removed)
 	       (setf attrs (delete a attrs)))
 	     (remove-attrs (l)
 	       (mapcar #'remove-attr l))
 	     (add-attr (a)
 	       (pushnew a added)
-	       (pushnew a attrs)))
+	       (pushnew a attrs))
+	     (clear ()
+	       ;; Remove all the attrs that were the original.
+	       (remove-attrs (fatchar-attrs fatchar))
+	       ;; And any that were added.
+	       (remove-attrs attrs)
+	       (setf added nil
+		     (fatchar-attrs fatchar) '()
+		     fg :default bg :default)))
       (loop :for p :in params :do
         (cond
 	  ((and hi-color (not hi-color-type))
@@ -1563,12 +1572,7 @@ Note that this doesn't do any error checking on color values."
 	      (setf hi-color nil hi-color-type nil r nil g nil b nil))))
 	  (t
 	   (case p
-	     (0
-	      ;; Remove all the attrs that were the original.
-	      (remove-attrs (fatchar-attrs fatchar))
-	      ;; And any that were added.
-	      (remove-attrs attrs)
-	      (setf added nil fg nil bg nil))
+	     (0  (clear))
 	     (1  (add-attr :bold))
 	     (2  (add-attr :dim))
 	     (3  (add-attr :italic))
@@ -1594,7 +1598,7 @@ Note that this doesn't do any error checking on color values."
 	     (36 (setf fg :cyan))
 	     (37 (setf fg :white))
 	     (38 (setf hi-color :fg))
-	     (39 (setf fg nil))
+	     (39 (setf fg :default))
 	     (40 (setf bg :black))
 	     (41 (setf bg :red))
 	     (42 (setf bg :green))
@@ -1604,7 +1608,7 @@ Note that this doesn't do any error checking on color values."
 	     (46 (setf bg :cyan))
 	     (47 (setf bg :white))
 	     (48 (setf hi-color :bg))
-	     (49 (setf bg nil))
+	     (49 (setf bg :default))
 	     (otherwise
 	      #| just ignore unknown colors or attrs |#)))))
       (when (or added removed)
@@ -1613,6 +1617,8 @@ Note that this doesn't do any error checking on color values."
 	(setf (fatchar-fg fatchar) fg))
       (when (not (eq bg :unset))
 	(setf (fatchar-bg fatchar) bg))
+      (when (not params)
+	(clear))
       (values fatchar added removed fg bg))))
 
 ;;; ^[[00m	normal
