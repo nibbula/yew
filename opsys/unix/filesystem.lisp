@@ -141,9 +141,16 @@ systems, this means \".\" and \"..\"."
     (let* ((name (car (last path)))
 	   (pos (position #\. name :from-end t))
 	   (type nil))
-      (when (setf pos (position #\. name :from-end t))
-	(setf name (subseq name 0 pos)
-	      type (subseq name (1+ pos))))
+      ;; This is trouble. When we have a name like ".foo", should we
+      ;; have name be "" or nil, and type be "foo", or should we have
+      ;; name be ".foo" and type be nil? It seems more popular to have
+      ;; it the second way, so that's what we'll do, and just recommend
+      ;; that you don't every go back to old pathnames.
+      (when (and pos (plusp pos))
+	(setf type (subseq name (1+ pos))
+	      name (subseq name 0 pos)))
+      ;; This doesn't even address issues such as :version or
+      ;; *default-pathname-defaults* etc.
       (make-pathname :host host
 		     :device device
 		     :directory `(,(if absolute-p :absolute :relative)
