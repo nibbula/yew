@@ -225,7 +225,10 @@ function that generates the branches."))
 		  (if (typep x 'node)
 		      x
 		      (make-instance (type-of node)
-		       :object x :open t :func (node-func node))))
+				     :object x
+				     ;; :open t
+				     :open nil
+				     :func (node-func node))))
 	      (funcall (node-func node) (node-object node)))
       nil))
 
@@ -238,7 +241,9 @@ function that generates the branches."))
 (defun make-dynamic-tree (thing func)
   "Return a dynamic tree for THING, where FUNC is a function (FUNC THING)
 which returns a list of the branches of THING."
-  (make-dynamic-node :object thing :func func :open t))
+  ;; (make-dynamic-node :object thing :func func :open t)
+  (make-dynamic-node :object thing :func func :open nil)
+  )
 
 ;; Dynamic cached node
 
@@ -291,7 +296,7 @@ generating function, so it will be called only the first time."))
 ;; List based trees
 
 (defun convert-tree (tree &key (level 0) (type 'object-node))
-  "Convert a list based TREE to a node based tree. "
+  "Convert a list based ‘tree’ to a node based tree."
   (flet ((make-branch (n)
 	   (convert-tree n :level (1+ level) :type type))
 	 (make-leaf (n)
