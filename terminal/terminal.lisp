@@ -53,6 +53,7 @@
    #:tt-fresh-line		  #:terminal-fresh-line
    #:tt-move-to			  #:terminal-move-to
    #:tt-move-to-col		  #:terminal-move-to-col
+   #:tt-move-to-row		  #:terminal-move-to-row
    #:tt-beginning-of-line	  #:terminal-beginning-of-line
    #:tt-delete-char		  #:terminal-delete-char
    #:tt-insert-char		  #:terminal-insert-char
@@ -62,6 +63,8 @@
    #:tt-down			  #:terminal-down
    #:tt-scroll-down		  #:terminal-scroll-down
    #:tt-scroll-up		  #:terminal-scroll-up
+   #:tt-scroll-screen-down	  #:terminal-scroll-screen-down
+   #:tt-scroll-screen-up	  #:terminal-scroll-screen-up
    #:tt-erase-to-eol		  #:terminal-erase-to-eol
    #:tt-erase-line		  #:terminal-erase-line
    #:tt-erase-above		  #:terminal-erase-above
@@ -205,6 +208,7 @@ Movement functions are usual row first then column.
 
   tt-move-to
   tt-move-to-col
+  tt-move-to-row
   tt-beginning-of-line
   tt-backward
   tt-forward
@@ -645,7 +649,9 @@ handled by fatchar:span-to-fat-string."
   (tt-move-to row column)
   (tt-write-span span))
 
-(deftt move-to-col (column) "Move the cursor to COLUMN.")
+(deftt move-to-col (column) "Move the cursor to ‘column’.")
+
+(deftt move-to-row (row) "Move the cursor to ‘row’.")
 
 (deftt beginning-of-line () "Move the cursor to the beginning of the line.")
 
@@ -668,6 +674,14 @@ region, scroll the screen down.")
 (deftt scroll-up (n)
   "Move the cursor up N rows. If at the top of the screen or scrolling region,
 scroll the screen up.")
+
+(deftt scroll-screen-down (&optional n)
+  "Scroll the whole screen or scrolling region down ‘n’ lines without moving
+the cursor.")
+
+(deftt scroll-screen-up (&optional n)
+  "Scroll the whole screen or scrolling region up ‘n’ lines without moving
+the cursor.")
 
 (deftt erase-to-eol () "Erase from the cursor to the end of the current row.")
 
