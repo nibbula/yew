@@ -80,6 +80,11 @@ appropriate xterm escape sequences.")
  │                                                                          │
  │ The national character sets usually are like an overlay on G0, that are  │
  │ only a few characters.                                                   │
+ ├──────────────────────────────────────────────────────────────────────────┤
+ │ Character sets are an historic relic from the pre-unicode days, which    │
+ │ are't really useful anymore, so it's a shame we have to go through all   │
+ │ this, just to make sure old things work. But of course that describes    │
+ │ almost everything about terminals.                                       │
  ╰──────────────────────────────────────────────────────────────────────────|#
 
 (defconstant +G0+ 0 "Graphic character set 0.")
@@ -143,7 +148,7 @@ appropriate xterm escape sequences.")
    (state
     :initarg :state :accessor state
     :initform :start #| :type `(member ,@*states*) |#
-    :documentation "State of the emulator.")
+    :documentation "State code of the emulator.")
    (params
     :initarg :param :accessor params
     :initform (make-array *max-param* :fill-pointer 0)
@@ -184,7 +189,10 @@ appropriate xterm escape sequences.")
     :documentation "“Private” modes.")
    (public-modes
     :initarg :modes :accessor public-modes
-    :documentation "Not so private modes."))
+    :documentation "Not so private modes.")
+   (last-char
+    :initarg :last-char :accessor last-char :initform #\nul :type character
+    :documentation "The last character that was output."))
   (:documentation "An IO stream that emulates an ANSI terminal."))
 
 #|──────────────────────────────────────────────────────────────────────────┤#
@@ -434,6 +442,22 @@ this assumes the parameter is a number."
 
 #|──────────────────────────────────────────────────────────────────────────|#
 
+(defvar *break-on-unknown-controls* nil)
+
+(defun unknown (x &rest other)
+  (when *break-on-unknown-controls*
+    (cerror "Yeah, so what?"
+	    "Got an unknown control ~s ~:[~2*~;#x~x ~@c~]~{ ~a~}" x
+	    (numberp x) x (when (numberp x) (code-char x))
+	    other)))
+
+(defun unimplemented (x &rest other)
+  (when *break-on-unknown-controls*
+    (cerror "Yeah, so what?"
+	    "Got an un-implemented control ~s ~:[~2*~;#x~x ~@c~]~{ ~a~}" x
+	    (numberp x) x (when (numberp x) (code-char x))
+	    other)))
+
 (defgeneric filter (stream thing)
   (:documentation "Filter an object through the emulator."))
 
@@ -451,22 +475,28 @@ this assumes the parameter is a number."
 	:do (filter stream (char-code b)))
   )
 
-(defparameter *name* (map 'vector #'char-code "Lisp-Term"))
+(defparameter *name* (map 'vector #'char-code "Lisp-Term")
+  "The name of the terminal type, returned in query reports.")
 
 (defun single-byte-control (stream thing out)
-  (with-slots ((tty terminal) left-charset charsets state) stream
+  "Process the signle byte control ‘thing’. ‘stream’ is the ansi-stream, and
+‘out’ is the output stream."
+  (with-slots ((tty terminal) left-charset charsets state last-char) stream
     (case thing
       (#x05				; ^E ENQ  Terminal status (answerback)
-       ;;(write-string *name* out)
-       (pushback stream *name*)
-       )
+       ;; @@@ This is probably an annoyingly common mistake, so maybe we
+       ;; should leave it blank. Like if you cat a binary file you don't
+       ;; want a bunch of <terminal-name> ending up in your prompt.
+       ;; Other reports are much harder to accidentally generate.
+       (pushback stream *name*))
       (#x07				; ^G BEL  Bell
        (terminal-beep tty))
       (#x08				; ^H BS   Backspace
        (terminal-backward tty))
       (#x09				; ^I HT   Horizontal Tab
        ;; @@@ unless we want to maintain our own tab stops
-       (write-char #\tab out))
+       (write-char #\tab out)
+       (setf last-char #\tab))
       (#x0a				; ^J LF   Line feed
        (terminal-scroll-down tty 1))
       (#x0b				; ^K VT   Vertical tab
@@ -482,10 +512,13 @@ this assumes the parameter is a number."
       (#x1b				; ^[ ESC  Escape
        (setf state :escape))
       (#x20				; Space
-       (write-char #\space out))
+       (write-char #\space out)
+       (setf last-char #\space))
       (t
        ;; @@@ Is this right?
-       (write-char #\space out)))))
+       (unknown thing "single byte control")
+       (write-char #\space out)
+       (setf last-char #\space)))))
 
 (defun send-device-attributes (stream out &optional (parameter 0))
   (declare (ignore out))
@@ -541,6 +574,8 @@ this assumes the parameter is a number."
   (pushback stream (format nil "~a=42c" +csi+)))
 
 (defun escape-control (stream thing out)
+  "Process the escape control ‘thing’. ‘stream’ is the ansi-stream, and
+‘out’ is the output stream. Associated with the :escape state."
   (with-slots (terminal state charsets left-charset right-charset) stream
     (let ((new-state :start))
       (case thing
@@ -577,12 +612,14 @@ this assumes the parameter is a number."
 	(#x45				; 'E'  NEL    Next Line
 	 (terminal-newline terminal))
 	(#x48				; 'H'  HTS    Horizontal Tab Set
-	 )
+	 (unimplemented #x48 "horizontal tab set"))
 	(#x4d				; 'M'  RI     Reverse index
 	 (terminal-scroll-up terminal 1))
 	;; Guarded areas seem like a bad idea, so we just ignore it.
-	(#x56)				; 'V'  SPA    Start of guarded area
-	(#x57)				; 'W'  EPA    End of guarded area
+	(#x56				; 'V'  SPA    Start of guarded area
+	 (unimplemented #x56 "start of guarded area"))
+	(#x57				; 'W'  EPA    End of guarded area
+	 (unimplemented #x57 "end of guarded area"))
 	(#x58			        ; 'X'  SOS    Start of string
 	 ;; @@@ eat characters until something ???
 	 (setf new-state :string))
@@ -590,11 +627,14 @@ this assumes the parameter is a number."
 	 (send-device-attributes stream out))
 	(#x5b			        ; ^[[  CSI   Control sequence introducer
 	 (setf new-state :control))
-	(#x5c)				; ^[\  ST    String terminator
+	(#x5c				; ^[\  ST    String terminator
+	 (unknown #x5c "string terminator should occur by itself?"))
 	(#x5d				; ^[]  OSC   Operating system command
 	 (setf new-state :system))
-	(#x5e)			        ; ^[^  PM    Privacy message
-	(#x5f)			        ; ^[_  APC   Application program command
+	(#x5e			        ; ^[^  PM    Privacy message
+	 (unimplemented #x5e "privacy message"))
+	(#x5f			        ; ^[_  APC   Application program command
+	 (unimplemented #x5f "application program command"))
 	(#x36			        ; '6' Back index
 	 (terminal-scroll-up terminal 1))
 	(#x37				; '7' Save cursor
@@ -612,9 +652,9 @@ this assumes the parameter is a number."
 	(#x63				; 'c' Full reset
 	 (terminal-reset terminal))
 	(#x6c				; 'l' Memory lock
-	 )
+	 (unimplemented #x6c "memory lock"))
 	(#x6d				; 'm' Memory unlock
-	 )
+	 (unimplemented #x6d "memory unlock"))
 	(#x6e				; 'n' G2 charset to GL
 	 (setf left-charset +g2+))
 	(#x6f				; 'o' G3 charset to GL
@@ -624,7 +664,9 @@ this assumes the parameter is a number."
 	(#x7d				; '}' G2 charset to GR
 	 (setf right-charset +g2+))
 	(#x7e				; '~' G1 charset to GR
-	 (setf right-charset +g1+)))
+	 (setf right-charset +g1+))
+	(otherwise
+	 (unknown thing "escape control")))
       (setf state new-state))))
 
 (defun find-charset (code)
@@ -759,156 +801,176 @@ public or private modes depending on the prefix slot in ‘stream’."
 ;; formats, based on previous parameters, etc.
 ;; But when we get in here, all that stuff should be in the ‘data’ slot.
 (defun system-control (stream thing out)
+  "Process the system control ‘thing’. ‘stream’ is the ansi-stream, and
+‘out’ is the output stream. Associated with the :system state. Usually after
+an +OSC+ is read."
   (declare (ignore thing out))
-  (with-slots ((tty terminal) data) stream
-    (case (param stream 1)
-      (0 ; Change icon name and window title
-       (if (= (aref data 0) #x3f) ;; '?'
-	   ;; report the title
-	   (pushback stream (terminal-title tty))
-	   ;; set the title
-	   (setf (terminal-title tty) (unicode:utf8b-bytes-to-string data))))
-      (1 ; Change icon name
-       ;; @@@ we would have to add or change a method for this
-       )
-      (2 ; Change window title
-       (if (= (aref data 0) #x3f) ;; '?'
-	   ;; report the title
-	   (pushback stream (terminal-title tty))
-	   ;; set the title
-	   (setf (terminal-title tty) (unicode:utf8b-bytes-to-string data))))
-      (3 ; Set X proptery on top-level window
-       ;; @@@ I'm not sure this is even a good idea. Also we're no necessarily
-       ;; running on X11.
-       )
-      (4 ; Change or report color number
-       ;; (or <color-number> '?') ';' (or <color-spec> '?')
-       ;; Color numbers are:
-       ;;    0-7   normal ANSI color
-       ;;    8-15  bright ANSI color
-       ;;   16-256 color table (88 or 256)
-       ;; Color specs are:
-       ;;   a color name (like from X11 rgb.txt)
-       ;;   something XParseColor can understand
-       )
-      (5 ; Change or report special color number
-       ;; (or <color-number> '?') ';' (or <color-spec> '?')
-       ;; Special color numbers are:
-       ;;   0 color for bold
-       ;;   1 color for underline
-       ;;   2 color for blink
-       ;;   3 color for reverse
-       ;;   4 color for italic
-       )
-      (6 ; Enable/disbale special color number
-       ;; (or <color-number> '?') ';' (or <color-spec> '?')
-       ;; These
-       ;;    0  resource colorBDMode (BOLD).
-       ;;    1  resource colorULMode (UNDERLINE).
-       ;;    2  resource colorBLMode (BLINK).
-       ;;    3  resource colorRVMode (REVERSE).
-       ;;    4  resource colorITMode (ITALIC).
-       ;;    5  resource colorAttrMode (Override ANSI).
-       )
-      (10 ; Set/Get VT100 text foreground color
-       (if (= (aref data 0) #x3f) ; '?'
-	   (pushback stream
-		     (color-to-xcolor (terminal-window-foreground tty)))
-	   (setf (terminal-window-foreground tty)
-		 (xcolor-to-color (unicode:utf8b-bytes-to-string data)))))
-      (11 ; Set/Get VT100 text background color
-       (if (= (aref data 0) #x3f) ; '?'
-	   (pushback stream
-		     (color-to-xcolor (terminal-window-background tty)))
-	   (setf (terminal-window-background tty)
-		 (xcolor-to-color (unicode:utf8b-bytes-to-string data)))))
-      (12 ; Set/Get text cursor color
-       ;; We would need a new terminal method for this.
-       ;; Not all terminals would support it.
-       )
-      (13 ; Set/Get mouse foreground color
-       ;; We would need a new terminal method for this.
-       ;; Not all terminals would support it.
-       )
-      (14 ; Set/Get mouse background color
-       ;; We would need a new terminal method for this.
-       ;; Not all terminals would support it.
-       )
-      (15 ; Set/Get Tektronix foreground color
-       ;; I don't think we're gonna do Tektronix emulation.
-       )
-      (16) ; Set/Get Tektronix background color
-      (17 ; Set/Get highlight color
-       ;; We would need a new terminal method for this.
-       ;; Not all terminals would support it.
-       )
-      (18) ; Set/Get Tektronix cursor color
-      (19 ; Set/Get highlight foreground color
-       ;; We would need a new terminal method for this.
-       ;; Not all terminals would support it.
-       )
-      (46 ; Change log file
-       ;; Is this even useful? Or a good idea?
-       )
-      (50 ; Set font
-       ;; The data is of the format
-       ;; '#' [0-9]+       A relative index into the font menu
-       ;; '#' [+-] [0-9]+  An absolute index into the font menu
-       ;; '#' ' ' <font name> ??? maybe
-       )
-      (51 ; Emacs shell!! WTF?
-       )
-      (52 ; Manipulate selection data
-       ;; This has two sub parameters:
-       ;;
-       ;; <selection type> which is one of:
-       ;;   'c' clipboard
-       ;;   'p' primary
-       ;;   'q' secondary
-       ;;   's' select
-       ;;   '0' cut buffer 0
-       ;;   '1' cut buffer 1
-       ;;   '2' cut buffer 2
-       ;;   '3' cut buffer 3
-       ;;   '4' cut buffer 4
-       ;;   '5' cut buffer 5
-       ;;   '6' cut buffer 6
-       ;;   '7' cut buffer 7
-       ;; and
-       ;;
-       ;; <selection data> encoded in base64, or a '?' to report it.
-       ;; If the selection isn't a '?' or base64 string, the selection is
-       ;; cleared.
-       )
-      (104 ; Reset color number
-       ;; same color numbers as OSC 4
-       ;; If no color given, reset the entire table.
-       )
-      (105 ; Reset special color number
-       ;; same color numbers as OSC 5
-       )
-      (106 ; enable/disable special color number
-       ;; same color numbers as OSC 6
-       )
-      ;; These reset methods assume we knew what it was to start with.
-      ;; Since we're just in the middle, we can't without adding a new method
-      ;; to ask the back end.
-      (110) ; Reset VT100 text foreground color
-      (111) ; Reset VT100 text background color
-      (112) ; Reset text cursor color
-      (113) ; Reset mouse foreground color
-      (114) ; Reset mouse background color
-      (115) ; Reset Tektronix foreground color
-      (116) ; Reset Tektronix background color
-      (117) ; Reset highlight color
-      (118) ; Reset Tektronix cursor color
-      (119) ; Reset highlight foreground color
-      (#x49) ; 'I' Set icon to file?
-      (#x6c) ; 'l' Set window title, shelltool and dtterm
-      (#x4c) ; 'L' Set icon label, shelltool and dtterm
-      )))
+  (with-slots ((tty terminal) data state) stream
+    (let ((new-state :start))
+      (case (param stream 1)
+	(0 ; Change icon name and window title
+	 (if (= (aref data 0) #x3f)	;; '?'
+	     ;; report the title
+	     (pushback stream (terminal-title tty))
+	     ;; set the title
+	     (setf (terminal-title tty) (unicode:utf8b-bytes-to-string data))))
+	(1 ; Change icon name
+	 ;; @@@ we would have to add or change a method for this
+	 )
+	(2 ; Change window title
+	 (if (= (aref data 0) #x3f)	;; '?'
+	     ;; report the title
+	     (pushback stream (terminal-title tty))
+	     ;; set the title
+	     (setf (terminal-title tty) (unicode:utf8b-bytes-to-string data))))
+	(3 ; Set X proptery on top-level window
+	 ;; @@@ I'm not sure this is even a good idea. Also we're not necessarily
+	 ;; running on X11.
+	 )
+	(4 ; Change or report color number
+	 ;; (or <color-number> '?') ';' (or <color-spec> '?')
+	 ;; Color numbers are:
+	 ;;    0-7   normal ANSI color
+	 ;;    8-15  bright ANSI color
+	 ;;   16-256 color table (88 or 256)
+	 ;; Color specs are:
+	 ;;   a color name (like from X11 rgb.txt)
+	 ;;   something XParseColor can understand
+	 )
+	(5 ; Change or report special color number
+	 ;; (or <color-number> '?') ';' (or <color-spec> '?')
+	 ;; Special color numbers are:
+	 ;;   0 color for bold
+	 ;;   1 color for underline
+	 ;;   2 color for blink
+	 ;;   3 color for reverse
+	 ;;   4 color for italic
+	 )
+	(6 ; Enable/disbale special color number
+	 ;; (or <color-number> '?') ';' (or <color-spec> '?')
+	 ;; These
+	 ;;    0  resource colorBDMode (BOLD).
+	 ;;    1  resource colorULMode (UNDERLINE).
+	 ;;    2  resource colorBLMode (BLINK).
+	 ;;    3  resource colorRVMode (REVERSE).
+	 ;;    4  resource colorITMode (ITALIC).
+	 ;;    5  resource colorAttrMode (Override ANSI).
+	 )
+	(10 ; Set/Get VT100 text foreground color
+	 (cond
+	   ((= (aref data 0) #x3f)	; '?'
+	    (dbug "report window foreground ~s~%"
+		  (color-to-xcolor (terminal-window-foreground tty)))
+	    (pushback stream
+		      (color-to-xcolor (terminal-window-foreground tty))))
+	   (t
+	    (dbug "set window foreground ~s~%"
+		  (unicode:utf8b-bytes-to-string data))
+	    (setf (terminal-window-foreground tty)
+		  (xcolor-to-color (unicode:utf8b-bytes-to-string data))))))
+	(11 ; Set/Get VT100 text background color
+	 (cond
+	   ((= (aref data 0) #x3f)	; '?'
+	    (dbug "report window foreground ~s~%"
+		  (color-to-xcolor (terminal-window-background tty)))
+	    (pushback stream
+		      (color-to-xcolor (terminal-window-background tty))))
+	   (t
+	    (dbug "set window foreground ~s~%"
+		  (unicode:utf8b-bytes-to-string data))
+	    (setf (terminal-window-background tty)
+		  (xcolor-to-color (unicode:utf8b-bytes-to-string data))))))
+	(12 ; Set/Get text cursor color
+	 ;; We would need a new terminal method for this.
+	 ;; Not all terminals would support it.
+	 )
+	(13 ; Set/Get mouse foreground color
+	 ;; We would need a new terminal method for this.
+	 ;; Not all terminals would support it.
+	 )
+	(14 ; Set/Get mouse background color
+	 ;; We would need a new terminal method for this.
+	 ;; Not all terminals would support it.
+	 )
+	(15 ; Set/Get Tektronix foreground color
+	 ;; I don't think we're gonna do Tektronix emulation.
+	 )
+	(16) ; Set/Get Tektronix background color
+	(17 ; Set/Get highlight color
+	 ;; We would need a new terminal method for this.
+	 ;; Not all terminals would support it.
+	 )
+	(18) ; Set/Get Tektronix cursor color
+	(19 ; Set/Get highlight foreground color
+	 ;; We would need a new terminal method for this.
+	 ;; Not all terminals would support it.
+	 )
+	(46 ; Change log file
+	 ;; Is this even useful? Or a good idea?
+	 )
+	(50 ; Set font
+	 ;; The data is of the format
+	 ;; '#' [0-9]+       A relative index into the font menu
+	 ;; '#' [+-] [0-9]+  An absolute index into the font menu
+	 ;; '#' ' ' <font name> ??? maybe
+	 )
+	(51 ; Emacs shell!! WTF?
+	 )
+	(52 ; Manipulate selection data
+	 ;; This has two sub parameters:
+	 ;;
+	 ;; <selection type> which is one of:
+	 ;;   'c' clipboard
+	 ;;   'p' primary
+	 ;;   'q' secondary
+	 ;;   's' select
+	 ;;   '0' cut buffer 0
+	 ;;   '1' cut buffer 1
+	 ;;   '2' cut buffer 2
+	 ;;   '3' cut buffer 3
+	 ;;   '4' cut buffer 4
+	 ;;   '5' cut buffer 5
+	 ;;   '6' cut buffer 6
+	 ;;   '7' cut buffer 7
+	 ;; and
+	 ;;
+	 ;; <selection data> encoded in base64, or a '?' to report it.
+	 ;; If the selection isn't a '?' or base64 string, the selection is
+	 ;; cleared.
+	 )
+	(104 ; Reset color number
+	 ;; same color numbers as OSC 4
+	 ;; If no color given, reset the entire table.
+	 )
+	(105 ; Reset special color number
+	 ;; same color numbers as OSC 5
+	 )
+	(106 ; enable/disable special color number
+	 ;; same color numbers as OSC 6
+	 )
+	;; These reset methods assume we knew what it was to start with.
+	;; Since we're just in the middle, we can't without adding a new method
+	;; to ask the back end.
+	(110)			  ; Reset VT100 text foreground color
+	(111)			  ; Reset VT100 text background color
+	(112)			  ; Reset text cursor color
+	(113)			  ; Reset mouse foreground color
+	(114)			  ; Reset mouse background color
+	(115)			  ; Reset Tektronix foreground color
+	(116)			  ; Reset Tektronix background color
+	(117)			  ; Reset highlight color
+	(118)			  ; Reset Tektronix cursor color
+	(119)			  ; Reset highlight foreground color
+	(#x49)			  ; 'I' Set icon to file?
+	(#x6c)			  ; 'l' Set window title, shelltool and dtterm
+	(#x4c)			  ; 'L' Set icon label, shelltool and dtterm
+	)
+      (setf state new-state))))
 
 (defun device-control (stream thing out)
+  "Process the device control ‘thing’. ‘stream’ is the ansi-stream, and
+‘out’ is the output stream. Associated with the :device state. Usually after an
++dcs+ is read."
   (declare (ignore thing out))
   (with-slots ((tty terminal) state data device-command) stream
     (let ((new-state :start))
@@ -949,7 +1011,10 @@ public or private modes depending on the prefix slot in ‘stream’."
       (setf state new-state))))
 
 (defun control (stream thing out)
-  (with-slots (state (tty terminal) prefix) stream
+  "Process the control ‘thing’. ‘stream’ is the ansi-stream, and ‘out’ is the
+output stream. Associated with the :control state. Usually after an +CSI+
+is read."
+  (with-slots (state (tty terminal) prefix last-char) stream
     (let ((new-state :start))
       (case thing
 	;; possible prefixes?
@@ -1015,31 +1080,27 @@ public or private modes depending on the prefix slot in ‘stream’."
 	   (1 #| erase to left |#)
 	   (2 (terminal-erase-line tty))))
 	(#x4c ; 'L' Insert line
-	 ;; @@@
-	 )
+	 (unimplemented #x4c "insert line")) ;; @@@
 	(#x4d ; 'M' Delete line
-	 ;; @@@
-	 )
+	 (unimplemented #x4d "delete line")) ;; @@@@
 	(#x50 ; 'P' Delete char
 	 (terminal-delete-char tty (param stream 1 :default 1)))
 	(#x53 ; 'S' Scroll up
-	 ;; @@@
-	 )
+	 (terminal-scroll-screen-up tty (param stream 1 :default 1)))
 	(#x54 ; 'T'
 	 (cond
 	   ((= (param-count stream) 5)
 	    ;; with 5 params? 
 	    ;; @@@ mouse highlight tracking
-	    )
+	    (unimplemented #x54 "mouse highlight tracking"))
 	   (t ;; Scroll down
-	    (terminal-scroll-down tty (param stream 1 :default 1)))))
+	    (terminal-scroll-screen-down tty (param stream 1 :default 1)))))
 	(#x58 ; 'X' Erase characters
 	 ;; @@@ is erase char really the space as spamming spaces
 	 (terminal-format tty "~v,,,va" (param stream 1 :default 1)
 			  #\space #\space))
 	(#x5a ; 'Z' Back tab
-	 ;; @@@
-	 )
+	 (unimplemented #x5a "back tab")) ;; @@@
 	(#x60 ; '`' character position absolute - variable # of params
 	 (cond
 	   ((param stream 2)
@@ -1051,14 +1112,14 @@ public or private modes depending on the prefix slot in ‘stream’."
 	(#x61 ; 'a' character position relative
 	 (cond
 	   ((param stream 2)
-	    (terminal-up tty (param stream 2))
+	    (terminal-down tty (param stream 2))
 	    (terminal-forward tty (param stream 1)))
 	   (t
 	    (terminal-forward tty (param stream 1 :default 1)))))
 	(#x62 ; 'b' repeat preceding character
-	 ;; @@@ but how can we know the preceding character?
-	 (terminal-format tty "~v,,,va" (param stream 1 :default 1)
-			  #\space #\space))
+	 (loop :repeat (param stream 1 :default 1)
+	       ;; :do (output-char stream last-char out)
+	       :do (write-char last-char out)))
 	(#x63 ; 'c' Send device attributes
 	 (cond
 	   ((null prefix)
@@ -1073,17 +1134,14 @@ public or private modes depending on the prefix slot in ‘stream’."
 	    (terminal-move-to tty (param-index stream 1)
 			          (param-index stream 2)))
 	   (t
-	    ;; @@@ we don't have move-to-row
-	    ;; (terminal-move-to-row tty (or (param stream 1) 1))
-	    )))
+	    (terminal-move-to-row tty (or (param-index stream 1) 1)))))
 	(#x65 ; 'e' line position relative
 	 (cond
 	   ((param stream 2)
-	    (terminal-move-to tty (param-index stream 2) (param-index stream 1)))
+	    (terminal-down tty (param stream 2))
+	    (terminal-forward tty (param stream 1)))
 	   (t
-	    ;; @@@ we don't have move-to-row
-	    ;; (terminal-move-to-row tty (or (param stream 1) 1))
-	    )))
+	    (terminal-down tty (param stream 1 :default 1)))))
 	(#x66 ; 'f' Horizontal and vertical position
 	 (terminal-move-to tty (param-index stream 1) (param-index stream 2)))
 	(#x67 ; 'g' Tab clear
@@ -1132,6 +1190,7 @@ public or private modes depending on the prefix slot in ‘stream’."
 	      (pushback stream (format nil "~a~a;~aR"
 				       +csi+ (1+ row) (1+ col)))))))
 	(#x71 ; 'q' load LEDs
+	 (unimplemented #x71 "load LED")
 	 (case (param stream 1 :default 0)
 	   (0) ; clear all
 	   (1) ; light num lock
@@ -1140,7 +1199,8 @@ public or private modes depending on the prefix slot in ‘stream’."
 	   (21) ; extinguish num lock
 	   (22) ; extinguish caps lock
 	   (23) ; extinguish scroll lock
-	   ))
+	   (otherwise
+	    (unknown (param stream 1 :default 0) "load LED parameter"))))
 	(#x72 ; 'r' 
 	 (cond
 	   ;; Set scrolling region
@@ -1152,18 +1212,16 @@ public or private modes depending on the prefix slot in ‘stream’."
 	      (terminal-set-scrolling-region tty p1 p2)))
 	   ;; rectangular attribute change
 	   (t
-	    ;; @@@
-	    )))
+	    (unimplemented #x72 "rectangular attribute change")))) ;; @@@
 	(#x73 ; 's'
 	 (cond
 	   ;; save cursor
 	   ((zerop (param-count stream))
 	    (terminal-save-cursor tty))
 	   ((= (param-count stream) 2)
-	    ;; @@ set left and right margins
-	    )))
+	    (unimplemented #x73 "set left and right margins")))) ;; @@@
 	(#x74 ; 't' window manipulation
-	 ;; @@@
+	 (unimplemented #x74 "window manipulation")
 	 (case (param stream 1)
 	   (1) ;; de-iconify window
 	   (2) ;; iconify window
@@ -1237,19 +1295,21 @@ public or private modes depending on the prefix slot in ‘stream’."
 	   ((zerop (param-count stream))
 	    (terminal-restore-cursor tty))
 	   ((= (param-count stream) 2)
-	    ;; @@ set margin bell volume
-	    )))
+	    (unimplemented #x75 "set margin bell volume"))))
 	(#x76 ; 'v'
-	 ;; @@@ copy rectangular area
-	 )
+	 (unimplemented #x76 "copy rectangular area")) ;; @@@
 	(#x77 ; 'w'
-	 ;; @@@
-	 )
+	 ;; presentation state report
+	 ;; filter rectangle
+	 (unimplemented #x77 "presentation state report or filter rectangle"))
 	(#x78 ; 'x' Request terminal parameters
 	 (case (param stream 1)
 	   ((0 1)
-	    ;; @@@
-	    ))))
+	    (unimplemented #x78 "request terminal parameters"))
+	   (otherwise
+	    (unknown (param stream 1) "request terminal parameters"))))
+	(otherwise
+	 (unknown thing "control sequence")))
       (setf state new-state))))
 
 #|
@@ -1262,7 +1322,9 @@ do
 
 (defun output-char (stream char out)
   "Output a character that's not in a control sequence."
-  (with-slots (left-charset right-charset charsets 8-bit-controls) stream
+  (with-slots (left-charset right-charset charsets 8-bit-controls last-char)
+      stream
+    (let ((c 0))
     (cond
       ;; low control chars C0
       ((<= char #x1f)
@@ -1270,11 +1332,14 @@ do
        ;; @@@ maybe an assert?
        (error "Tried to output a control as a non-control."))
       ((= char #x20) ;; space is always space
-       (write-char #\space out))
+       (write-char #\space out)
+       (setf last-char #\space))
       ;; graphic chars in GL
       ((<= #x21 char #x7e) ; '!' - '~'
        ;; (dbug "output GL char~%")
-       (write-char (aref (aref charsets left-charset) (- char #x21)) out))
+       (setf c (aref (aref charsets left-charset) (- char #x21)))
+       (write-char c out)
+       (setf last-char c))
       ((= #x7f char)
        ;; @@@ what should we do with ^?
        )
@@ -1282,23 +1347,28 @@ do
        ;; @@@ actually handled in filter
        (when 8-bit-controls
 	 ;; @@@
-	 ))
+	 (unimplemented char "8-bit controls")))
       ;; graphic chars in GR
       ((<= #xa1 char #xfe) ; '¡' - 'þ'
        ;; (dbug "output GR char~%")
-       (write-char (aref (aref charsets right-charset) (- char #xa1)) out))
+       (setf c (aref (aref charsets right-charset) (- char #xa1)))
+       (write-char c out)
+       (setf last-char c))
       ((= #xff char)
-       ;; @@@ what should we do with #xff 'ÿ'
-       (write-char (code-char char) out))
+       ;; @@@ what should we do with #xff 'ÿ' ?
+       (setf c (code-char char))
+       (write-char c out)
+       (setf last-char c))
       (t
        ;; (error "char wan't an 8-bit byte? but a ~a" (type-of char))
        ;; @@@ actually we get unicode chars > #xff here
-       (write-char (code-char char) out)
-       ))))
-
-;; The main entry point to emulation.
+       (setf c (code-char char))
+       (write-char c out)
+       (setf last-char c))))))
 
 (defmethod filter ((stream ansi-stream) (thing integer))
+  "This is the main entry point to the emulation state machine. ‘stream’ is an
+ansi-stream. ‘thing’ is a byte that was read."
   (with-slots ((tty terminal) state control-type left-charset right-charset
 	       charsets data 8-bit-controls) stream
     ;; (format *debug-io* "state ~s ~x ~a~%" state thing
@@ -1309,7 +1379,7 @@ do
     ;; (dbug "~&--> ")
     ;; (read-line *debug-io*)
     ;;(with-output-to-string (out)
-    (let ((out tty))
+    (let ((out tty) (c 0))
       (case state
 	(:start
 	 (clear-params stream)
@@ -1347,15 +1417,15 @@ do
 				  (dpb 1 (byte 1 6) (logand thing #x7f))
 				  out))
 		 (t
-		  (write-char (code-char thing) out))))
+		  (write-char (setf c (code-char thing)) out)
+		  (setf last-char c))))
 	      ;; not 8-bit controls
 	      (t
-	       (write-char (code-char thing) out))))
+	       (write-char (setf c (code-char thing)) out)
+	       (setf last-char c))))
 	   ;; not in either 7-bit or 8-bit control range
 	   (t
-	    (output-char stream thing out)
-	    ;; (write-char (code-char thing) out))
-	   )))
+	    (output-char stream thing out))))
 	(:escape
 	 (escape-control stream thing out))
 	(:control
@@ -1378,14 +1448,19 @@ do
 	    (case control-type
 	      (:control (control stream thing out))
 	      (:system  (system-control stream thing out))
-	      (:device  (device-control stream thing out))))))
+	      (:device  (device-control stream thing out))
+	      (otherwise
+	       (error "unknown control type ~a" control-type))))))
 	(:system
 	 (setf control-type :system)
+	 (dbug "system command~%")
 	 (cond
-	   ((> (param-count stream) 0)
+	   ((>= (param-count stream) 1)
 	    ;; We alread read the first parameter, 
+	    (dbug "system command read data~%")
 	    (setf state :data)
-	    (stretchy-truncate data))
+	    (stretchy-truncate data)
+	    (stretchy-append data thing)) ;; don't lose the first thing
 	   ((<= (char-code #\0) thing (char-code #\9))
 	    (setf state :param)
 	    (new-param stream)
@@ -1431,17 +1506,23 @@ do
 	    (setf state :start))))
 	(:data
 	 (case thing
-	   (#x7 ; ^G
-	    (setf state control-type))
+	   (#x07 ; ^G
+	    (dbug "^G data ending~%")
+	    (setf state control-type)
+	    (system-control stream thing out))
 	   (#x1b ; escape
 	    (setf state :string-terminator))
 	   (otherwise
 	    (stretchy-append data thing))))
 	 (:string-terminator
-	  (setf state
-		(if (= thing #x5c) ; '\'
-		    control-type
-		    :start)))
+	  (cond
+	    ((= thing #x5c) ; '\'
+	     (dbug "^[\ data ending")
+	     (system-control stream thing out))
+	    (t
+	     ;; It wasn't second character of the termintor, so ignore the
+	     ;; whole thing.
+	     (setf state :start))))
 	 (:escape-open
 	  (setf (aref charsets +G0+) (find-charset thing))
 	  (setf state :start))
@@ -1451,22 +1532,38 @@ do
 	     (setf (8-bit-controls stream) nil))
 	    (#x47			; 'G' send 8-bit control responses
 	     (setf (8-bit-controls stream) t))
-	    (#x4c)			; 'L' set ANSI conformance level 1
-	    (#x4d)			; 'M' set ANSI conformance level 2
-	    (#x4e))			; 'N' set ANSI conformance level 3
+	    (#x4c			; 'L' set ANSI conformance level 1
+	     (unimplemented thing "set ANSI conformance level 1"))
+	    (#x4d			; 'M' set ANSI conformance level 2
+	     (unimplemented thing "set ANSI conformance level 2"))
+	    (#x4e			; 'N' set ANSI conformance level 3
+	     (unimplemented thing "set ANSI conformance level 3"))
+	    (otherwise
+	     (unknown thing "escape space")))
 	  (setf state :start))
 	 (:escape-hash
 	  (case thing
-	    (#x33)			; '3' Double height line top half
-	    (#x34)			; '4' Double height line bottom half
-	    (#x35)			; '5' Single width line
-	    (#x36)			; '6' Double width line
-	    (#x38))			; '8' Screen alignment test
+	    (#x33			; '3' Double height line top half
+	     (unimplemented thing "double height line top half"))
+	    (#x34			; '4' Double height line bottom half
+	     (unimplemented thing "Double height line bottom half"))
+	    (#x35			; '5' Single width line
+	     (unimplemented thing "Single width line"))
+	    (#x36			; '6' Double width line
+	     (unimplemented thing "Double width line"))
+	    (#x38			; '8' Screen alignment test
+	     (unimplemented thing "Screen alignment test"))
+	    (otherwise
+	     (unknown thing "escape hash")))
 	  (setf state :start))
 	 (:escape-percent
 	  (case thing
-	    (#x40)			; '@' default character set
-	    (#x47))			; 'G' UTF-8 character set
+	    (#x40			; '@' default character set
+	     (unimplemented thing "default character set"))
+	    (#x47			; 'G' UTF-8 character set
+	     (unimplemented thing "UTF-8 character set"))
+	    (otherwise
+	     (unknown thing "escape percent")))
 	  (setf state :start))
 	 (:escape-close
 	  (setf (aref charsets +g1+) (find-charset thing))
@@ -1487,12 +1584,14 @@ do
 	  (setf (aref charsets +g3+) (find-charset thing))
 	  (setf state :start))
 	 (:single-shift-g2
-	  ;; @@@ just write out the char until we have charsets
-	  (write-char (code-char thing) out)
+	  (setf c (aref (aref charsets +G2+) (- thing #x21)))
+	  (write-char c out)
+	  (setf last-char c)
 	  (setf state :start))
 	 (:single-shift-g3
-	  ;; @@@ just write out the char until we have charsets
-	  (write-char (code-char thing) out)
+	  (setf c (aref (aref charsets +G3+) (- thing #x21)))
+	  (write-char c out)
+	  (setf last-char c)
 	  (setf state :start))
 	 (t
 	  (error "Unknown state ~s" state))))))
