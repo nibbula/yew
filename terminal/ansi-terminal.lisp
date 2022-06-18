@@ -443,6 +443,7 @@ this assumes the parameter is a number."
 #|──────────────────────────────────────────────────────────────────────────|#
 
 (defvar *break-on-unknown-controls* nil)
+(defvar *break-on-unimplemented-controls* nil)
 
 (defun unknown (x &rest other)
   (when *break-on-unknown-controls*
@@ -452,7 +453,7 @@ this assumes the parameter is a number."
 	    other)))
 
 (defun unimplemented (x &rest other)
-  (when *break-on-unknown-controls*
+  (when *break-on-unimplemented-controls*
     (cerror "Yeah, so what?"
 	    "Got an un-implemented control ~s ~:[~2*~;#x~x ~@c~]~{ ~a~}" x
 	    (numberp x) x (when (numberp x) (code-char x))
@@ -628,7 +629,7 @@ this assumes the parameter is a number."
 	(#x5b			        ; ^[[  CSI   Control sequence introducer
 	 (setf new-state :control))
 	(#x5c				; ^[\  ST    String terminator
-	 (unknown #x5c "string terminator should occur by itself?"))
+	 (unknown #x5c "string terminator should not occur by itself?"))
 	(#x5d				; ^[]  OSC   Operating system command
 	 (setf new-state :system))
 	(#x5e			        ; ^[^  PM    Privacy message
@@ -862,7 +863,9 @@ an +OSC+ is read."
 	    (dbug "report window foreground ~s~%"
 		  (color-to-xcolor (terminal-window-foreground tty)))
 	    (pushback stream
-		      (color-to-xcolor (terminal-window-foreground tty))))
+		      (s+ +osc+ 10 #\;
+			  (color-to-xcolor (terminal-window-foreground tty))
+			  (code-char 7))))
 	   (t
 	    (dbug "set window foreground ~s~%"
 		  (unicode:utf8b-bytes-to-string data))
@@ -874,7 +877,9 @@ an +OSC+ is read."
 	    (dbug "report window foreground ~s~%"
 		  (color-to-xcolor (terminal-window-background tty)))
 	    (pushback stream
-		      (color-to-xcolor (terminal-window-background tty))))
+		      (s+ +osc+ 10 #\;
+			  (color-to-xcolor (terminal-window-background tty))
+			  (code-char 7))))
 	   (t
 	    (dbug "set window foreground ~s~%"
 		  (unicode:utf8b-bytes-to-string data))
@@ -1006,7 +1011,10 @@ an +OSC+ is read."
 	      (#x7c ; '|'  DECSNLS
 	       )))))
 	(:presentation-status)
-	(:terminfo-set)
+	(:terminfo-set
+	 ;; encoded in hex
+	 ;; @@@@
+	 )
 	(:terminfo-get))
       (setf state new-state))))
 
@@ -1221,7 +1229,7 @@ is read."
 	   ((= (param-count stream) 2)
 	    (unimplemented #x73 "set left and right margins")))) ;; @@@
 	(#x74 ; 't' window manipulation
-	 (unimplemented #x74 "window manipulation")
+	 (unimplemented #x74 "window manipulation" (param stream 1))
 	 (case (param stream 1)
 	   (1) ;; de-iconify window
 	   (2) ;; iconify window
@@ -1366,6 +1374,16 @@ do
        (write-char c out)
        (setf last-char c))))))
 
+(defun control-dispatch (stream thing out)
+  "Dispatch based on a previous control type."
+  (with-slots (control-type) stream
+    (case control-type
+      (:control (control stream thing out))
+      (:system  (system-control stream thing out))
+      (:device  (device-control stream thing out))
+      (otherwise
+       (error "unknown control type ~a" control-type)))))
+
 (defmethod filter ((stream ansi-stream) (thing integer))
   "This is the main entry point to the emulation state machine. ‘stream’ is an
 ansi-stream. ‘thing’ is a byte that was read."
@@ -1445,12 +1463,7 @@ ansi-stream. ‘thing’ is a byte that was read."
 	    ;; (new-param stream)
 	    (setf state control-type))
 	   (t
-	    (case control-type
-	      (:control (control stream thing out))
-	      (:system  (system-control stream thing out))
-	      (:device  (device-control stream thing out))
-	      (otherwise
-	       (error "unknown control type ~a" control-type))))))
+	    (control-dispatch stream thing out))))
 	(:system
 	 (setf control-type :system)
 	 (dbug "system command~%")
@@ -1478,12 +1491,12 @@ ansi-stream. ‘thing’ is a byte that was read."
 	   (t
 	    (case thing
               (#x24 ; '$'
-	       (setf new-state :device-dollar))
+	       (setf state :device-dollar))
 	      (#x2b ; '+'
-	       (setf new-state :device-plus))
+	       (setf state :device-plus))
 	      (#x7c ; '|'
 	       (setf device-command :user-keys
-		     new-state :data))))))
+		     state :data))))))
 	(:device-dollar
 	 (case thing
 	   (#x71 ; 'q' Request status string
@@ -1509,7 +1522,8 @@ ansi-stream. ‘thing’ is a byte that was read."
 	   (#x07 ; ^G
 	    (dbug "^G data ending~%")
 	    (setf state control-type)
-	    (system-control stream thing out))
+	    ;; (system-control stream thing out)
+	    (control-dispatch stream thing state))
 	   (#x1b ; escape
 	    (setf state :string-terminator))
 	   (otherwise
@@ -1517,8 +1531,9 @@ ansi-stream. ‘thing’ is a byte that was read."
 	 (:string-terminator
 	  (cond
 	    ((= thing #x5c) ; '\'
-	     (dbug "^[\ data ending")
-	     (system-control stream thing out))
+	     (dbug "^[\ data ending~%")
+	     ;; (system-control stream thing out))
+	     (control-dispatch stream thing state))
 	    (t
 	     ;; It wasn't second character of the termintor, so ignore the
 	     ;; whole thing.
