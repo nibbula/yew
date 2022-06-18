@@ -1743,6 +1743,10 @@ i.e. the terminal is 'line buffered'."
   (with-cursor-movement (tty)
     (setf (cursor-column tty) col)))
 
+(defmethod terminal-move-to-row ((tty terminal-x11) row)
+  (with-cursor-movement (tty)
+    (setf (cursor-row tty) row)))
+
 (defmethod terminal-beginning-of-line ((tty terminal-x11))
   (with-cursor-movement (tty)
     (setf (cursor-column tty) 0)))
@@ -1801,9 +1805,27 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-scroll-down ((tty terminal-x11) n)
   (when (> n 0)
-    (scroll tty n)))
+    (with-slots ((y cursor-row) (height cell-height)) tty
+      (let ((start-y y))
+	(terminal-down tty n)
+	(when (> n (- height (1+ start-y)))
+	  (scroll tty (- n (- height (1+ start-y)))))))))
 
 (defmethod terminal-scroll-up ((tty terminal-x11) n)
+  (when (> n 0)
+    (with-slots ((y cursor-row)) tty
+      (let ((start-y y))
+	(terminal-up tty n)
+	(when (> n start-y)
+	  (scroll tty (- (- n start-y))))))))
+
+(defmethod terminal-scroll-screen-up ((tty terminal-x11)
+				      &optional (n 1))
+  (when (> n 0)
+    (scroll tty n)))
+
+(defmethod terminal-scroll-screen-down ((tty terminal-x11)
+					&optional (n 1))
   (when (> n 0)
     (scroll tty (- n))))
 
