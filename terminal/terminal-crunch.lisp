@@ -969,48 +969,52 @@ know."
 
 ;; @@@ this needs to be complicated by the scrolling-region
 ;; As you may know:
-#|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
-||          <Before>             ||            <After>            ||
-|| ,-- 0                         || ,--                           ||
-|| |                             || |                             ||
-|| | N lines to discard          || |                             ||
-|| |                             || |                             ||
-|| `-- n - 1                     || |                             ||
-|| ,-- n                         || |  height - N lines to keep   ||
-|| |                             || |                             ||
-|| |                             || |                             ||
-|| |  height - N lines to keep   || |                             ||
-|| |                             || |                             ||
-|| |                             || |                             ||
-|| |                             || `--                           ||
-|| |           ,--               || ,--                           ||
-|| |           |                 || |                             ||
-|| |           | N blank lines   || | N blank lines               ||
-|| |           |                 || |                             ||
-|| `-- height  `--               || `--                           ||
-||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||#
+#|────────────────────────────────────┬─────────────────────────────────────╮
+ │                                    │                                     │
+ │           <Before>                 │              <After>                │
+ │  ,-- 0                             │   ,--                               │
+ │  |                                 │   |                                 │
+ │  | N lines to discard              │   |                                 │
+ │  |                                 │   |                                 │
+ │  `-- n - 1                         │   |                                 │
+ │  ,-- n                             │   |  height - N lines to keep       │
+ │  |                                 │   |                                 │
+ │  |                                 │   |                                 │
+ │  |  height - N lines to keep       │   |                                 │
+ │  |                                 │   |                                 │
+ │  |                                 │   |                                 │
+ │  |                                 │   `--                               │
+ │  |           ,--                   │   ,--                               │
+ │  |           |                     │   |                                 │
+ │  |           | N blank lines       │   | N blank lines                   │
+ │  |           |                     │   |                                 │
+ │  `-- height  `--                   │   `--                               │
+ │                                    │                                     │
+ ╰────────────────────────────────────┴─────────────────────────────────────|#
 
 ;; scrolling back
-#|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
-||          <Before>             ||            <After>            ||
-|| ,-- 0        ,--              || ,--                           ||
-|| |            |                || |                             ||
-|| |            | N blank lines  || | N blank lines               ||
-|| |            |                || |                             ||
-|| |            `--              || `--                           ||
-|| |                             || ,-- n + 1                     ||
-|| |  height - N lines to keep   || |                             ||
-|| |                             || |                             ||
-|| |                             || |                             ||
-|| |                             || |                             ||
-|| |                             || |  height - N lines to keep   ||
-|| `-- height - n                || |                             ||
-|| ,-- (height - n) + 1          || |                             ||
-|| |                             || |                             ||
-|| | N lines to discard          || |                             ||
-|| |                             || |                             ||
-|| `-- height                    || `-- height                    ||
-||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||#
+#|────────────────────────────────────┬─────────────────────────────────────╮
+ │                                    │                                     │
+ │           <Before>                 │              <After>                │
+ │  ,-- 0        ,--                  │   ,--                               │
+ │  |            |                    │   |                                 │
+ │  |            | N blank lines      │   | N blank lines                   │
+ │  |            |                    │   |                                 │
+ │  |            `--                  │   `--                               │
+ │  |                                 │   ,-- n + 1                         │
+ │  |  height - N lines to keep       │   |                                 │
+ │  |                                 │   |                                 │
+ │  |                                 │   |                                 │
+ │  |                                 │   |                                 │
+ │  |                                 │   |  height - N lines to keep       │
+ │  `-- height - n                    │   |                                 │
+ │  ,-- (height - n) + 1              │   |                                 │
+ │  |                                 │   |                                 │
+ │  | N lines to discard              │   |                                 │
+ │  |                                 │   |                                 │
+ │  `-- height                        │   `-- height                        │
+ │                                    │                                     │
+ ╰────────────────────────────────────┴─────────────────────────────────────|#
 
 (defun index-blanker (x)
   "Blank out line index X."
@@ -1403,6 +1407,10 @@ i.e. the terminal is 'line buffered'."
   (setf (screen-x (new-screen tty))
 	(max 0 (min col (1- (screen-width (new-screen tty)))))))
 
+(defmethod terminal-move-to-row ((tty terminal-crunch-stream) row)
+  (setf (screen-y (new-screen tty))
+	(max 0 (min row (1- (screen-height (new-screen tty)))))))
+
 (defmethod terminal-beginning-of-line ((tty terminal-crunch-stream))
   (setf (screen-x (new-screen tty)) 0))
 
@@ -1481,6 +1489,14 @@ i.e. the terminal is 'line buffered'."
 	(terminal-up tty n)
 	(when (> n start-y)
 	  (scroll tty (- (- n start-y))))))))
+
+(defmethod terminal-scroll-screen-up ((tty terminal-crunch-stream)
+				      &optional (n 1))
+  (scroll tty n))
+
+(defmethod terminal-scroll-screen-down ((tty terminal-crunch-stream)
+					&optional (n 1))
+  (scroll tty (- n)))
 
 (defmethod terminal-erase-to-eol ((tty terminal-crunch-stream))
   (fill-by (aref (screen-lines (new-screen tty)) (screen-y (new-screen tty)))
