@@ -90,7 +90,7 @@ methods, and the like.
 ")
   (:nicknames :tb)
   (:use :cl :dlib :opsys :dlib-misc :dtime :char-util :keymap :pick-list
-	:glob :collections :inator :terminal :terminal-inator :fui
+	:glob :collections :inator :terminal :terminal-inator :fui :fatchar-io
 	:view-generic)
   (:export
    #:view-tree
@@ -505,6 +505,12 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
    (indent
     :initarg :indent :accessor indent :initform 2 :type integer
     :documentation "How much to indent each level.")
+   (open-indicator
+    :initarg :open-indicator :accessor open-indicator :initform #\+
+    :documentation "Indicator that a node is open.")
+   (closed-indicator
+    :initarg :closed-indicator :accessor closed-indicator :initform #\-
+    :documentation "Indicator that a node is closed.")
    (left
     :initarg :left :accessor left :initform 0 :type integer
     :documentation "Horizontal offset of the view.")
@@ -526,7 +532,9 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
     :documentation "The default action to perform when the user accepts."))
   (:default-initargs
    :keymap (list *tree-keymap*
-		 inator:*default-inator-keymap*))
+		 inator:*default-inator-keymap*)
+   :open-indicator (theme:value '(:program :tree :open-indicator))
+   :closed-indicator (theme:value '(:program :tree :closed-indicator)))
   (:documentation "A tree viewer."))
 
 (defvar *viewer* nil
@@ -942,10 +950,13 @@ been encountered."
 
 (defmethod display-prefix ((node node) level)
   "Return the normal indentation and open / close indicator."
-  (format nil "~v,,,va~c " (* level (indent *viewer*)) #\space ""
-	  (if (node-branches node)
-	      (if (node-open node) #\- #\+)
-	      #\space)))
+  (with-slots (open-indicator closed-indicator indent) *viewer*
+    (with-output-to-fat-string (str)
+      (format str "~v,,,va~/fatchar-io:print-string/ "
+	      (* level indent) #\space ""
+	      (if (node-branches node)
+		  (if (node-open node) open-indicator closed-indicator)
+		  #\space)))))
 
 (defgeneric display-node-line (node line)
   (:documentation
@@ -975,17 +986,17 @@ been encountered."
   "Display an object for a node. The object is printed to a string as
 with PRINC, and indented properly for multi-line objects."
   (with-slots (current current-left left) *viewer*
-    (let ((lines (split-sequence #\newline (princ-to-string object)))
+    (let ((lines (osplit #\newline (princ-to-string object)))
 	  (prefix (display-prefix node level)))
       (when (eq node current)
 	(setf current-left (- (display-length prefix) left))
 	(tt-bold t))
-      (display-node-line node (s+ prefix (format nil "~a~%" (first lines))))
+      (display-node-line node (fs+ prefix (first lines) #\newline))
       (when (eq node current)
 	(tt-bold nil))
       (loop :for l :in (cdr lines) :do
-	 (display-node-line node (s+ (display-indent node level)
-				     (format nil "~a~%" l)))))))
+	 (display-node-line node (fs+ (display-indent node level)
+				      l #\newline))))))
 
 (defgeneric display-node (node level)
   (:documentation "Display a node.
