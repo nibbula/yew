@@ -992,6 +992,10 @@ i.e. the terminal is 'line buffered'."
   (terminal-escape-sequence tty "G" (1+ col))
   (setf (terminal-fake-column tty) col))
 
+(defmethod terminal-move-to-row ((tty terminal-ansi-stream) row)
+  (terminal-escape-sequence tty "d" (1+ row))
+  row)
+
 (defmethod terminal-beginning-of-line ((tty terminal-ansi-stream))
   ;; (terminal-format tty "~c[G" #\escape))
   ;; How about just:
@@ -1039,6 +1043,14 @@ i.e. the terminal is 'line buffered'."
        :do (terminal-raw-format tty "~cM" #\escape)
        (incf i)
        :finally (when (line-buffered-p tty) (finish-output stream)))))
+
+(defmethod terminal-scroll-screen-up ((tty terminal-ansi-stream)
+				      &optional (n 1))
+  (terminal-escape-sequence tty "S" n))
+
+(defmethod terminal-scroll-screen-down ((tty terminal-ansi-stream)
+					&optional (n 1))
+  (terminal-escape-sequence tty "T" n))
 
 (defmethod terminal-erase-to-eol ((tty terminal-ansi-stream))
   (terminal-escape-sequence tty "K"))
