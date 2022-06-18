@@ -1016,7 +1016,11 @@ i.e. the terminal is 'line buffered'."
     ((< n -1) (terminal-escape-sequence tty negative n))))
 
 (defmethod terminal-backward ((tty terminal-ansi-stream) &optional (n 1))
-  (moverize tty n "D" "C")
+  (cond
+    ((<= 0 n 4)
+     (dotimes (i n) (write-char #\backspace (terminal-output-stream tty))))
+    (t
+     (moverize tty n "D" "C")))
   (decf (terminal-fake-column tty) n))
 
 (defmethod terminal-forward ((tty terminal-ansi-stream) &optional (n 1))
