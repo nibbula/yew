@@ -1110,7 +1110,7 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-window-foreground ((tty terminal-ansi))
   "Get the default foreground color for text."
   (let ((qq (query-string (s+ "10;?" +st+) :lead-in +osc+ :offset 5 :tty tty
-			  :ending 1
+			  :ending 0
 			  :end-tag #'typical-report-ending
 			  :timeout *report-timeout*
 			  :errorp nil
@@ -1120,7 +1120,7 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-window-background ((tty terminal-ansi))
   "Get the default background color for text."
   (let ((qq (query-string (s+ "11;?" +st+) :lead-in +osc+ :offset 5 :tty tty
-			  :ending 1
+			  :ending 0
 			  :end-tag #'typical-report-ending
 			  :timeout *report-timeout*
 			  :errorp nil
