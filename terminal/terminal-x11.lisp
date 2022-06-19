@@ -681,15 +681,17 @@ know."
 ;;   (loop :for line :across x :do
 ;;        (fill-by line (lambda () (make-grid-char :c #\x)))))
 
-(defun scroll-copy (n height array blanker)
-  "Copy ARRAY for scrolling N lines in a HEIGHT window. BLANKER is a function
-to blank with."
+(defun scroll-copy (n height array blanker start)
+  "Copy ‘array’ for scrolling ‘n’ lines in a ‘height’ window. ‘blanker’ is a
+function to blank with. ‘start’ is the line to start from, which for scrolling
+is zero, but for inserting and deleting is the current line."
   (cond
     ((plusp n)
-     (let ((new-blanks (subseq array 0 n))) ; save overwritten lines
+     ;; save overwritten lines
+     (let ((new-blanks (subseq array start (+ start n))))
        ;; Copy the retained lines up
-       (setf (subseq array 0 (- height n))
-	     (subseq array n height))
+       (setf (subseq array start (- height n))
+	     (subseq array (+ start n) height))
        ;; (dbugf :crunch "scroll-copy ~d ~d -> 0 ~d~%" n height (- height n))
        ;; Move the new blank lines in place.
        (setf (subseq array (- height n)) new-blanks)
@@ -700,17 +702,17 @@ to blank with."
 	   (new-blanks (subseq array (+ height n))))
        ;; Copy the retained lines down
        ;;(setf (subseq array (1+ offset))
-       (setf (subseq array offset)
-	     (subseq array 0 (+ height n)))
+       (setf (subseq array (+ start offset))
+	     (subseq array start (- height offset)))
        ;; Move the new blank lines in place.
-       (setf (subseq array 0 offset) new-blanks)
+       (setf (subseq array start (+ start offset)) new-blanks)
        ;; Blank out the newly blank lines
        (funcall blanker new-blanks)))))
 
 ;; @@@ It would be best to batch scrolling too. e.g. turn successive scrolls 1
 ;; into a scroll n.
 
-(defun scroll (tty n)
+(defun scroll (tty n &key (start 0))
   "Scroll by N lines."
   ;; (dbugf :crunch "(scroll ~s)~%" n)
   (with-slots ((window-rows terminal::window-rows)
@@ -724,27 +726,30 @@ to blank with."
 	  (progn
 	    (when (plusp n)
 	      (add-scrollback tty (subseq lines 0 n)))
-	    (scroll-copy n window-rows lines #'line-blanker)
+	    (scroll-copy n window-rows lines #'line-blanker start)
 	    ;; (scroll-copy n window-rows index #'index-blanker)
 	    (cond
 	      ((plusp n)
-	       (copy-area window draw-gc 0 (* cell-height n)
+	       ;; move the bottom part up
+	       (copy-area window draw-gc
+			  0 (* cell-height (+ start n))
 			  (* window-columns cell-height)
 			  (* (- window-rows n) cell-height)
 			  window
-			  0 0)
+			  0 (* cell-height start))
+	       ;; clear the newly blank area
 	       (clear-area window
 			   :x 0
 			   :y (* (- window-rows n) cell-height)
 			   :width (* window-columns cell-height)
 			   :height (* n cell-height)))
 	      (t ;; minusp
-	       (copy-area window draw-gc 0 0
+	       (copy-area window draw-gc 0 (* cell-height start)
 			  (* window-columns cell-height)
 			  (* (- window-rows abs-n) cell-height)
 			  window
-			  0 (* cell-height abs-n))
-	       (clear-area window :x 0 :y 0
+			  0 (* cell-height (+ abs-n start)))
+	       (clear-area window :x 0 :y (* start cell-height)
 			   :width (* window-columns cell-height)
 			   :height (* abs-n cell-height))
 	       )))
@@ -1751,7 +1756,7 @@ i.e. the terminal is 'line buffered'."
   (with-cursor-movement (tty)
     (setf (cursor-column tty) 0)))
 
-(defmethod terminal-delete-char ((tty terminal-x11) n)
+(defmethod terminal-delete-char ((tty terminal-x11) &optional (n 1))
   (with-slots (lines cursor-row cursor-column) tty
     (flush-buffer tty)
     (let* ((line (aref lines cursor-row))
@@ -1766,7 +1771,7 @@ i.e. the terminal is 'line buffered'."
       (clear-text tty cursor-column cursor-row
 		      (- line-len n 1) cursor-row))))
 
-(defmethod terminal-insert-char ((tty terminal-x11) n)
+(defmethod terminal-insert-char ((tty terminal-x11) &optional (n 1))
   (with-slots (lines cursor-row cursor-column) tty
     (flush-buffer tty)
     (let* ((line (aref lines cursor-row))
@@ -1780,6 +1785,12 @@ i.e. the terminal is 'line buffered'."
        :x cursor-column :y cursor-row)
       (clear-text tty cursor-column cursor-row
 		      (+ cursor-column n) cursor-row))))
+
+(defmethod terminal-delete-line ((tty terminal-x11) &optional (n 1))
+  (scroll tty n :start (cursor-row tty)))
+
+(defmethod terminal-insert-line ((tty terminal-x11) &optional (n 1))
+  (scroll tty (- n) :start (cursor-row tty)))
 
 (defmethod terminal-backward ((tty terminal-x11) &optional (n 1))
   (with-slots (cursor-column (window-columns terminal::window-columns)) tty
