@@ -1001,11 +1001,17 @@ i.e. the terminal is 'line buffered'."
   ;; How about just:
   (terminal-write-char tty #\return))
 
-(defmethod terminal-delete-char ((tty terminal-ansi-stream) n)
+(defmethod terminal-delete-char ((tty terminal-ansi-stream) &optional (n 1))
   (terminal-escape-sequence tty "P" (when (> n 1) n)))
 
-(defmethod terminal-insert-char ((tty terminal-ansi-stream) n)
+(defmethod terminal-insert-char ((tty terminal-ansi-stream) &optional (n 1))
   (terminal-escape-sequence tty "@" (when (> n 1) n)))
+
+(defmethod terminal-delete-line ((tty terminal-ansi-stream) &optional (n 1))
+  (terminal-escape-sequence tty "M" (when (> n 1) n)))
+
+(defmethod terminal-insert-line ((tty terminal-ansi-stream) &optional (n 1))
+  (terminal-escape-sequence tty "L" (when (> n 1) n)))
 
 (defun moverize (tty n positive negative)
   (cond
