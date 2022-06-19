@@ -284,7 +284,7 @@ strings, only the attributes of the first character are preserved."
    'vector))
 
 (defmethod print-object ((obj grid-char) stream)
-  "Print a FATCHAR to a FAT-STRING-OUTPUT-STREAM."
+  "Print a ‘grid-char’ to a ‘fat-string-output-stream’."
   ;;(format t "stream is a ~a ~a~%" (type-of stream) stream)
   (cond
     ((or *print-readably* *print-escape*)
@@ -968,7 +968,7 @@ know."
   (terminal-device-time (terminal-wrapped-terminal tty)))
 
 ;; @@@ this needs to be complicated by the scrolling-region
-;; As you may know:
+;; As you may know: scrolling up
 #|────────────────────────────────────┬─────────────────────────────────────╮
  │                                    │                                     │
  │           <Before>                 │              <After>                │
@@ -992,7 +992,7 @@ know."
  │                                    │                                     │
  ╰────────────────────────────────────┴─────────────────────────────────────|#
 
-;; scrolling back
+;; scrolling back or down
 #|────────────────────────────────────┬─────────────────────────────────────╮
  │                                    │                                     │
  │           <Before>                 │              <After>                │
@@ -1030,9 +1030,10 @@ know."
 ;;   (loop :for line :across x :do
 ;;        (fill-by line (lambda () (make-grid-char :c #\x)))))
 
+#|
 (defun scroll-copy (n height array blanker)
-  "Copy ARRAY for scrolling N lines in a HEIGHT window. BLANKER is a function
-to blank with."
+  "Copy ‘array’ for scrolling ‘N’ lines in a ‘height’ window. ‘blanker’ is a
+function to blank with."
   (cond
     ((plusp n)
      (let ((new-blanks (subseq array 0 n))) ; save overwritten lines
@@ -1055,6 +1056,36 @@ to blank with."
        (setf (subseq array 0 offset) new-blanks)
        ;; Blank out the newly blank lines
        (funcall blanker new-blanks)))))
+|#
+
+(defun scroll-copy (n height array blanker start)
+  "Copy ‘array’ for scrolling ‘N’ lines in a ‘height’ window. ‘blanker’ is a
+function to blank with. ‘start’ is the line to start from, which for scrolling
+is zero, but for inserting and deleting is the current line."
+  (dbugf :crunch "scroll-copy ~d ~d ~d~%" n height start)
+  (cond
+    ((plusp n) ; up
+     ;; save overwritten lines
+     (let ((new-blanks (subseq array start (+ start n))))
+       ;; Copy the retained lines up
+       (setf (subseq array start (- height n))
+	     (subseq array (+ start n) height))
+       ;; (dbugf :crunch "scroll-copy ~d ~d -> 0 ~d~%" n height (- height n))
+       ;; Move the new blank lines in place.
+       (setf (subseq array (- height n)) new-blanks)
+       ;; Blank out the newly blank lines
+       (funcall blanker new-blanks)))
+    (t ;; minusp aka down
+     (let ((offset (abs n))
+	   (new-blanks (subseq array (+ height n))))
+       ;; Copy the retained lines down
+       ;;(setf (subseq array (1+ offset))
+       (setf (subseq array (+ start offset))
+	     (subseq array start (- height offset)))
+       ;; Move the new blank lines in place.
+       (setf (subseq array start (+ start offset)) new-blanks)
+       ;; Blank out the newly blank lines
+       (funcall blanker new-blanks)))))
 
 (defun scroll (tty n)
   "Scroll by N lines."
@@ -1065,8 +1096,8 @@ to blank with."
     ;; (if-dbugf (:crunch) (dump-screen tty))
     (if (< (abs n) height)
 	(progn
-	  (scroll-copy n height lines #'line-blanker)
-	  (scroll-copy n height index #'index-blanker))
+	  (scroll-copy n height lines #'line-blanker 0)
+	  (scroll-copy n height index #'index-blanker 0))
 	(progn
 	  ;; Just erase everything
 	  (line-blanker lines)
@@ -1414,7 +1445,7 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-beginning-of-line ((tty terminal-crunch-stream))
   (setf (screen-x (new-screen tty)) 0))
 
-(defmethod terminal-delete-char ((tty terminal-crunch-stream) n)
+(defmethod terminal-delete-char ((tty terminal-crunch-stream) &optional (n 1))
   (with-slots (x y width lines) (new-screen tty)
     (clampf n 0 (- width x))
     (setf (subseq (aref lines y) x (max 0 (- width n)))
@@ -1422,7 +1453,7 @@ i.e. the terminal is 'line buffered'."
     (fill-by (aref lines y) #'blank-char :start (max 0 (- width n)))
     (note-length-based tty n :delete)))
 
-(defmethod terminal-insert-char ((tty terminal-crunch-stream) n)
+(defmethod terminal-insert-char ((tty terminal-crunch-stream) &optional (n 1))
   (with-slots (x y width lines) (new-screen tty)
     (clampf n 0 (- width x))
     (setf (subseq (aref lines y) (min (+ x n) (1- width)))
@@ -1430,6 +1461,32 @@ i.e. the terminal is 'line buffered'."
     (fill-by (aref lines y) #'blank-char :start x :end (+ x n))
     (note-length-based tty n :insert)))
 
+(defmethod terminal-delete-line ((tty terminal-crunch-stream) &optional (n 1))
+  (with-slots (y height lines index) (new-screen tty)
+    (clampf n 0 (- height y))
+    (when (not (zerop n))
+      ;; deleting lines forces the cursor to the left edge
+      (setf (screen-x (new-screen tty)) 0)
+
+      ;; deleting is like scrolling up as if the current line is the top
+      (scroll-copy n height lines #'line-blanker y)
+      (scroll-copy n height index #'index-blanker y))
+      (no-hints tty)))
+
+(defmethod terminal-insert-line ((tty terminal-crunch-stream) &optional (n 1))
+  (with-slots (y height lines index) (new-screen tty)
+    (clampf n 0 (- height y))
+    (when (not (zerop n))
+      ;; inserting lines forces the cursor to the left edge
+      (setf (screen-x (new-screen tty)) 0)
+
+      ;; inserting is like scrolling down as if the current line is the top
+      (scroll-copy (- n) height lines #'line-blanker y)
+      (scroll-copy (- n) height index #'index-blanker y))
+      (no-hints tty)))
+
+;; @@@ Actually this is wrong. We do. :(
+;;
 ;; Note that we don't have to replicate the somewhat bizarre line wrapping
 ;; behavior of real terminals or emulators. If you relied on such things in
 ;; other terminals, like terminal-ansi, than I'm sorry, but don't. On the
@@ -2278,7 +2335,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
 		(touch tty)
 		;; move the old screen lines so we update properly
 		(scroll-copy amount (screen-height old) (screen-lines old)
-			     #'line-blanker)
+			     #'line-blanker 0)
 		;;(setf start (1+ (cdr (second (first sames)))))
 		(setf start (cdr (second (first sames))))
 		;; re-compute the hashes of the lines we have to re-draw
@@ -2290,7 +2347,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
 		(terminal-scroll-up wtty amount)
 		(touch tty)
 		(scroll-copy (- amount) (screen-height old) (screen-lines old)
-			     #'line-blanker)
+			     #'line-blanker 0)
 		;; (setf end (1+ (cdr (second (car (last sames))))))
 		;; (setf end (car (second (car (last sames)))))
 		(compute-hashes old start end)
@@ -2556,7 +2613,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
 (defun dump-screen (tty)
   (let ((old-lines (screen-lines (old-screen tty)))
 	(new-lines (screen-lines (new-screen tty))))
-    (format *trace-output* "Old ~s ~s -> New ~s ~s +~s~%"
+    (format *dbug-output* "Old ~s ~s -> New ~s ~s +~s~%"
 	    (screen-x (old-screen tty))
 	    (screen-y (old-screen tty))
 	    (screen-x (new-screen tty))
@@ -2566,13 +2623,14 @@ duplicated sequences, and can have worst case O(n*m) performance."
 	   ;; (line-str (line) (grid-to-fat-string line))
 	   (line-str (line)
 	     (let (str)
-	       (with-terminal-output-to-string (:ansi-stream)
+	       ;; (with-terminal-output-to-string (#|:ansi-stream |#)
+	       (with-terminal-output-to-string (:dumb-color)
 		 (setf str (grid-to-fat-string line))
 		 (when str
 		   (tt-write-string str)))))
 	   )
       (loop :for i :from 0 :below (length old-lines) :do
-	 (format *trace-output* "[~a] [~a]~%"
+	 (format *dbug-output* "[~a] [~a]~%"
 		 (line-str (aref old-lines i))
 		 (line-str (aref new-lines i))))))
   (finish-output *trace-output*)
