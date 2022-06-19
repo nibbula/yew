@@ -760,14 +760,81 @@ drawing, which will get overwritten."
      (tt-format "The screen should have only numbers above.~%")))
   t)
 
-(defun junk-block (height)
+(defparameter *big-down-arrow*
+  #("  ||  " 
+    "  ||  " 
+    "\\ || /" 
+    " \\||/ "
+    "  \\/  "
+    ))
+
+(defparameter *big-up-arrow*
+  #("  /\\  "
+    " /||\\ "
+    "/ ||  \\"
+    "  ||  "
+    "  ||  "
+    ))
+
+(defun test-insert-delete-line ()
+  (blurp (:position :top)
+   (let* ((half-height (round (z-height) 2))
+	  ;; (half-width (round (z-width) 2))
+	  (arrow-height (length *big-down-arrow*))
+	  (arrow-width (display-length (elt *big-down-arrow* 0)))
+	  (arrow-x (- (round (z-width) 2) arrow-width))
+	  (arrow-y (- half-height arrow-height)))
+     (center "The lines should be pushed off the bottom, then pulled back up."
+	     (- (+ arrow-height 2)))
+     ;; going down
+     (tt-move-to half-height 0)
+     (junk-block half-height :relative t)
+     (put-at arrow-y arrow-x *big-down-arrow*)
+     (tt-get-key)
+     (loop :repeat (- (z-height) half-height) :do
+       (tt-insert-line)
+       (tt-move-to (+ arrow-y arrow-height) (+ arrow-x arrow-width))
+       (tt-erase-above)
+       (incf arrow-y)
+       (put-at arrow-y arrow-x *big-down-arrow*)
+       (tt-finish-output)
+       ;; (sleep .02)
+       (tt-get-key)
+       )
+     (tt-get-key)
+     ;; coming up
+     (tt-move-to (+ arrow-y arrow-height) (+ arrow-x arrow-width))
+     (tt-erase-above)
+     (put-at arrow-y arrow-x *big-up-arrow*)
+     (loop :repeat (- (z-height) half-height) :do
+       ;; (tt-move-to half-height half-width)
+       (tt-move-to (- half-height arrow-height) 0)
+       (tt-delete-line)
+       (decf arrow-y)
+       ;; (tt-move-to (+ arrow-y arrow-height) (+ arrow-x arrow-width))
+       ;; (put-at arrow-y arrow-x *big-up-arrow*)
+       (tt-move-to-row (1- (z-height)))
+       (junk-block 1 :relative t)
+       (tt-finish-output)
+       ;; (sleep .02)
+       (tt-get-key)
+       ))))
+
+(defun junk-block (height &key relative)
   (let ((junk "#%_.")
 	#| (half (/ (terminal-window-columns *terminal*) 2)) |#
 	(full (z-width)))
     (loop :for i :from 0 :below height :do
+       (when (and relative (not (zerop i)))
+	 (tt-newline))
        (loop :for j :from 0 :below (1- full) :do
-	  (tt-move-to i j)
-	  (tt-write-char (elt junk (random (length junk))))))))
+	  (cond
+	    (relative
+	     (tt-move-to-col j)
+	     (tt-write-char (elt junk (random (length junk)))))
+	    (t
+	     (tt-move-to i j)
+	     (tt-write-char (elt junk (random (length junk))))))))))
 
 (defun test-basics ()
   (blurp ()
@@ -1228,6 +1295,7 @@ drawing, which will get overwritten."
 ;;     ("Scrolling without newlines"    . test-scrolling-no-newline)
      ("Saved scrolled lines clear"    . test-scrolling-saved-clear)
      ("Scrolling region"              . test-scrolling-region)
+     ("Insert/Delete line"            . test-insert-delete-line)
      )))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
