@@ -245,6 +245,9 @@ string arguments."
                              ;; Feed to the the ANSI emulator
 			     ;; (dbug "hanky ~s~%" (type-of buf))
                              (write-sequence
+			      ;; @@@ Shouldn't we just be able to write bytes?
+			      ;; Also I think we get glitches when we get a
+			      ;; partial character.
 			      (unicode:utf8b-bytes-to-string
 			       (displaced-subseq buf 0 rr))
 			      ansi)
