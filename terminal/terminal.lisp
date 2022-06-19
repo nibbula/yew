@@ -57,6 +57,8 @@
    #:tt-beginning-of-line	  #:terminal-beginning-of-line
    #:tt-delete-char		  #:terminal-delete-char
    #:tt-insert-char		  #:terminal-insert-char
+   #:tt-delete-line		  #:terminal-delete-line
+   #:tt-insert-line		  #:terminal-insert-line
    #:tt-backward		  #:terminal-backward
    #:tt-forward			  #:terminal-forward
    #:tt-up			  #:terminal-up
@@ -227,6 +229,8 @@ Movement functions are usual row first then column.
   tt-clear
   tt-delete-char
   tt-insert-char
+  tt-insert-line
+  tt-delete-line
 
 ### Attribute functions
 
@@ -655,9 +659,17 @@ handled by fatchar:span-to-fat-string."
 
 (deftt beginning-of-line () "Move the cursor to the beginning of the line.")
 
-(deftt delete-char (n) "Delete N characters in front of the cursor.")
+(deftt delete-char (&optional n)
+  "Delete N characters in front of the cursor.")
 
-(deftt insert-char (n) "Insert N blank characters in front of the cursor.")
+(deftt insert-char (&optional n)
+  "Insert N blank characters in front of the cursor.")
+
+(deftt delete-line (&optional n)
+  "Delete N lines in front of the cursor.")
+
+(deftt insert-line (&optional n)
+  "Insert N blank lines in front of the cursor.")
 
 (deftt backward (&optional n) "Move the cursor backward N characters.")
 
