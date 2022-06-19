@@ -43,10 +43,6 @@ appropriate xterm escape sequences.")
     :param			       ; reading a numeric parameter
     :data			       ; reading until a terminator: ^G or ^[\
     :string-terminator		       ; waiting for a \
-    :control-space		       ; CSI p1 space ...
-    :control-hash		       ; CSI # ...
-    :control-double-quote	       ; CSI p1 ... " ...
-    :control-dollar		       ; CSI p1 ... $ ...
     )
   "Emulator states.")
 
@@ -154,9 +150,10 @@ appropriate xterm escape sequences.")
     :initform (make-array *max-param* :fill-pointer 0)
     :type vector
     :documentation "Vector of parameters.")
-   (prefix
-    :initarg :prefix :accessor prefix :initform nil 
-    :documentation "Current prefix for controls. Probably one of: ? > = ! #")
+   (prefixes
+    :initarg :prefix :accessor prefixes :initform nil
+    :documentation
+    "A list of prefixes for controls. Probably one of: ? > = ! # $")
    (control-type
     :initarg :control-type :accessor control-type :initform :control
     :type (member :control :system :device)
@@ -187,28 +184,119 @@ appropriate xterm escape sequences.")
    (modes
     :initarg :modes :accessor modes
     :documentation "“Private” modes.")
-   (public-modes
-    :initarg :modes :accessor public-modes
-    :documentation "Not so private modes.")
+   (standard-modes
+    :initarg :modes :accessor standard-modes
+    :documentation "Not so private modes. Modes in some standard.")
    (last-char
     :initarg :last-char :accessor last-char :initform #\nul :type character
     :documentation "The last character that was output."))
   (:documentation "An IO stream that emulates an ANSI terminal."))
 
+(defvar *stream* nil
+  "The current dynamic terminal emulator stream.")
+
 #|──────────────────────────────────────────────────────────────────────────┤#
  │ Modes 
  ╰|#
 
+(defclass mode-table ()
+  ((table
+    :initarg :table :accessor mode-table-table
+    :documentation "Hash table of modes.")
+   (property
+    :initarg :property :accessor mode-table-property
+    :documentation "Symbol property for storing the ID number.")))
+
+(defclass standard-mode-table (mode-table) ; aka ANSI mode
+  ()
+  (:default-initargs
+   :property 'standard-mode-number)
+  (:documentation "Standardized modes."))
+
+(defclass private-mode-table (mode-table) ; aka DEC private mode
+  ()
+  (:default-initargs
+   :property 'mode-number)
+  (:documentation "DEC private mode. Now it's just normal non-standard modes."))
+
+(defclass mode ()
+  ((number
+    :initarg :number :accessor mode-number :initform 0 :type fixnum
+    :documentation "ID number of the mode. Use in control sequences.")
+   (name
+    :initarg :name :accessor mode-name
+    :documentation "Name of the mode.")
+   (off-name
+    :initarg :off-name :accessor mode-off-name
+    :documentation "The name for when it's turned off.")
+   (read-only
+    :initarg :read-only :accessor mode-read-only :initform nil :type boolean
+    :documentation "True if we shouldn't change it.")
+   (value
+    :initarg :value :accessor mode-value
+    :documentation
+    "Value of the mode. Also the default value if in the prototype table."))
+  (:documentation
+   "Settings / preferences / options for the terminal."))
+
+(defgeneric %mode (id table)
+  (:documentation "Get the mode setting for ‘id’ in ‘table’."))
+
+(defmethod %mode ((id number) (table mode-table))
+  "Return the mode setting for ‘id’ in ‘table’. "
+  (gethash id (mode-table-table table)))
+
+(defmethod %mode ((id symbol) (table mode-table))
+  "Return the mode setting for ‘id’ in ‘table’."
+  (gethash (get id (mode-table-property table)) (mode-table-table table)))
+
+(defmethod (setf %mode) (value (id number) (table mode-table))
+  "Set the mode setting value for ‘id’ in ‘table’."
+  (let ((m (gethash id (mode-table-table table))))
+    (setf (mode-value m) value)
+    ;; Call the action function if it's defined.
+    (when (fboundp (mode-name m))
+      (funcall (mode-name m) value))))
+
+(defmethod (setf %mode) (value (id symbol) (table mode-table))
+  "Set the mode setting value for ‘id’ in ‘table’."
+  (let ((m (gethash (get id (mode-table-property table))
+		    (mode-table-table table))))
+    (setf (mode-value m) value)
+    ;; Call the action function if it's defined.
+    (when (fboundp (mode-name m))
+      (funcall (mode-name m) value))))
+
+(defvar *non-existent* (gensym "floaty"))
+
+(defgeneric %has-mode (id table)
+  (:documentation
+   "Return true if the mode ‘id’ is defined in ‘table’."))
+
+(defmethod %has-mode ((id number) (table mode-table))
+  "Return true if we know about the mode with ‘id’."
+  (not (eq *non-existent*
+	   (gethash id (mode-table-table table) *non-existent*))))
+
+(defmethod %has-mode ((id symbol) (table mode-table))
+  "Return true if we know about the mode with ‘id’."
+  (not (eq *non-existent*
+	   (gethash (get id (mode-table-property table))
+		    (mode-table-table table) *non-existent*))))
+
+#|
 (defstruct mode
   "Settings / preferences / options for the terminal. Used to be DIP switches."
   (number 0 :type fixnum)
   name
   off-name
+  (read-only nil :type boolean)		; true if we shouldn't change it
   (value nil :type boolean))		; doubles as the default value
 
 (defmacro def-mode-set (name)		; living in a dry town
   (let ((setter-name (symbolify (s+ "set-" name)))
 	(accessor-name (symbolify (s+ name "s")))
+	(existence-name (symbolify (s+ "has-" name)))
 	(prop-name (symbolify (s+ name "-number"))))
   `(progn
      (defun ,name (stream id)
@@ -233,29 +321,54 @@ symbol, or a mode number."
 	 (when (fboundp (mode-name m))
 	   (funcall (mode-name m) stream value))))
 
+     (defvar *non-existent* (gensym "floaty"))
+
+     (defun ,existence-name (id)
+       "Return true if we know about the mode with ‘id’."
+       (not (eq *non-existent*
+		(typecase id
+		  (number
+		   (gethash id (,accessor-name stream) *non-existent*))
+		  (symbol
+		   (gethash (get id ',prop-name) (,accessor-name stream)
+			    *non-existent*))))))
+
+     (defun ,default-name (stream id)
+       "Return the default mode setting for ‘id’ in ‘stream’. ‘id’ can be a mode
+name symbol, or a mode number."
+       (typecase id
+	 (number
+	  (gethash id (,accessor-name stream)))
+	 (symbol
+	  (gethash (get id ',prop-name) (,accessor-name stream)))))
+
      (defsetf ,name ,setter-name
        "Set the mode setting value for ‘id’ in ‘stream’. ‘id’ can be a mode name
 symbol, or a mode number."))))
 
 (def-mode-set mode)
 (def-mode-set public-mode)
+|#
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defun make-mode-table (mode-list)
+  (defun make-mode-hash-table (mode-list)
     "Make a hash table of node structs from ‘list’."
     (let ((table (make-hash-table)))
       (loop
 	:for (num name off-name value) :in mode-list
 	:do
-	   (setf (gethash num table) (make-mode :number num
-						:name name
-						:off-name off-name
-						:value value))
-	   (setf (get name 'mode-number) num))
+	   (setf (gethash num table)
+		 (make-instance 'mode
+				:number num
+				:name name
+				:off-name off-name
+				:read-only nil
+				:value value))
+	   (setf (get name 'mode-number) num)) ;; @@@ what about standard-modes
       table)))
 
 (defparameter *modes*
-  (make-mode-table
+  (make-mode-hash-table
     ;; num  name                          off-name                       default
     `((1    application-cursor-keys       "normal cursor keys"            nil)
       (2    vt100-emulation               "vt52 emulation"                t)
@@ -318,16 +431,71 @@ symbol, or a mode number."))))
       (1061 pc-keyboard                   "vt220 keyboard"                t)
       (2004 bracketed-paste               "no bracketed paste"            nil))))
 
-(defparameter *public-modes*
-  (make-mode-table
-    ;; num  name                          off-name                       default
+;; @@@ ctlseqs.txt says these are read-only, but are they?
+;; Set read-only values:
+;; (setf (mode-read-only (gethash 13 *modes*)) t) ; blinking-cursor
+;;       (mode-read-only (gethash 14 *modes*)) t) ; blinking-cursor-xor
+
+(defparameter *modes-defaults*
+  (make-instance 'private-mode-table
+		 :table *modes*
+		 :property 'mode-number))
+
+(defparameter *standard-modes*
+  (make-mode-hash-table
+    ;; num  name             off-name               default
     `((2  keyboard-action    "no keyboard action"   nil)
       (4  insert-mode        "replace mode"         nil)
       (12 send/recieve-mode  "no send/receive mode" nil)
       (20 automatic-newline  "normal linefeed"      nil))))
 
-(defun show-cursor (stream value)
-  (with-slots ((tty terminal)) stream
+(defparameter *standard-modes-defaults*
+  (make-instance 'standard-mode-table
+		 :table *standard-modes*
+		 :property 'standard-mode-number))
+
+;; private modes
+
+(defun mode (stream id)
+  "Return the mode setting for ‘id’ in ‘stream’."
+  (%mode id (modes stream)))
+
+(defun set-mode (stream id value)
+  "Set the mode for ‘id’ in ‘stream’ to ‘value’."
+  (setf (%mode id (modes stream)) value))
+
+(defsetf mode set-mode)
+
+(defun has-mode (stream id)
+  (%has-mode id (modes stream)))
+
+(defun mode-default (id)
+  "Return the default mode for ‘id’ in ‘stream’."
+  (%mode id *modes-defaults*))
+
+;; standard modes
+
+(defun standard-mode (stream id)
+  "Return the standard mode setting for ‘id’ in ‘stream’."
+  (%mode id (standard-modes stream)))
+
+(defun set-standard-mode (stream id value)
+  "Set the standard mode for ‘id’ in ‘stream’ to ‘value’."
+  (setf (%mode id (standard-modes stream)) value))
+
+(defsetf standard-mode set-standard-mode)
+
+(defun has-standard-mode (stream id)
+  (%has-mode id (standard-modes stream)))
+
+(defun standard-mode-default (id)
+  "Return the default standard mode for ‘id’ in ‘stream’."
+  (%mode id *standard-modes-defaults*))
+
+;; Custom mode functions
+
+(defun show-cursor (value)
+  (with-slots ((tty terminal)) *stream*
     (if value
 	(terminal-cursor-on tty)
 	(terminal-cursor-off tty))))
@@ -340,8 +508,15 @@ symbol, or a mode number."))))
   (declare (ignore initargs))
   ;; We could, in theory, do the terminal-start in here, but I think it's
   ;; best left to callers discretion when to do that.
-  (setf (modes o) (copy-hash-table *modes*)
-	(public-modes o) (copy-hash-table *public-modes*))
+  (setf (modes o)
+	(make-instance 'mode-table
+		       :table (copy-hash-table *modes*)
+		       :property 'mode-number)
+	(standard-modes o)
+	(make-instance 'standard-mode-table
+		       :table (copy-hash-table *standard-modes*)
+		       :property 'standard-mode-number))
+
   ;; Set up the character sets.
   (setf (aref (charsets o) +G0+) *normal-gl*
 	(aref (charsets o) +G1+) *normal-gr*
@@ -420,6 +595,25 @@ this assumes the parameter is a number."
   (with-slots (params) stream
     (setf (fill-pointer params) 0
 	  (aref params (fill-pointer params)) 0)))
+
+#|──────────────────────────────────────────────────────────────────────────┤#
+ │ Prefixes
+ │
+ │ Probably one of:
+ │  ' ' '!'  '"'  '#'  '$'  '''  '*'  '='  '>'  '?'
+ ╰|#
+
+(defun has-prefix (stream prefix)
+  "Return true if ‘prefix’ is set in ‘stream’."
+  (and (find prefix (prefixes stream)) t))
+
+(defun add-prefix (stream prefix)
+  "Add ‘prefix’ to the list of prefixes in ‘stream’."
+  (pushnew prefix (prefixes stream))) 
+
+(defun clear-prefixes (stream)
+  "Clear the list of prefixes in ‘stream’."
+  (setf (prefixes stream) nil))
 
 #|──────────────────────────────────────────────────────────────────────────┤#
  │ Keys
@@ -580,7 +774,7 @@ this assumes the parameter is a number."
   (with-slots (terminal state charsets left-charset right-charset) stream
     (let ((new-state :start))
       (case thing
-	;; Prefixes
+	;; non CSI Prefixes
 	(#x20				; space
 	 (setf new-state :escape-space))
 	(#x23				; '#'
@@ -781,21 +975,21 @@ functions like ‘format’, turn it into a ‘character’ string."
 
 (defun set-ansi-modes (stream value)
   "Set the modes in the current parameters in ‘stream’ to ‘value’. Set the
-public or private modes depending on the prefix slot in ‘stream’."
+standard or private modes depending on the prefix slot in ‘stream’."
   (dbug "set-ansi-modes~%")
   (let ((modes
 	  (loop :for i :from 1 :to (param-count stream)
 		:collect (param stream i))))
     (dbug "set-ansi-modes ~s ~s~%" modes (params stream))
-    (if (eql (prefix stream) #x3f) ; ?
+    (if (has-prefix stream #x3f) ; ?
 	;; Private mode reset
 	(loop :for m :in modes :do
 	  (dbug "set private mode ~s to ~a~%"  (mode-name (mode stream m)) value)
 	  (setf (mode stream m) value))
-	;; Reset mode (which I call public)
+	;; Reset mode (which I call standard)
 	(loop :for m :in modes :do
-	  (dbug "set public mode ~s to ~a~%" (mode-name (mode stream m)) value)
-	  (setf (public-mode stream m) value)))))
+	  (dbug "set standard mode ~s to ~a~%" (mode-name (mode stream m)) value)
+	  (setf (standard-mode stream m) value)))))
 
 ;; This is a very irregular control. It can read arbitrary data.
 ;; It has non-numeric parameters. It selects different subsequent paramter
@@ -1022,22 +1216,13 @@ an +OSC+ is read."
   "Process the control ‘thing’. ‘stream’ is the ansi-stream, and ‘out’ is the
 output stream. Associated with the :control state. Usually after an +CSI+
 is read."
-  (with-slots (state (tty terminal) prefix last-char) stream
+  (with-slots (state (tty terminal) last-char 8-bit-controls) stream
     (let ((new-state :start))
       (case thing
-	;; possible prefixes?
-	(#x20 ; space
-	 (setf new-state :control-space))
-	(#x22 ; '"'
-	 (setf new-state :control-double-quote))
-	(#x23 ; '#'
-	 (setf new-state :control-hash))
-	(#x24 ; '$'
-	 (setf new-state :control-dollar))
-
 	;; prefixes
-	((#x21 #x3d #x3e #x3f) ; = ! > ?
-	 (setf prefix thing)
+	;; ' ' '!'  '"'  '#'  '$'  '''  '*'  '='  '>'  '?'
+	((#x20 #x21 #x22 #x23 #x24 #x27 #x2a #x3d #x3e #x3f)
+	 (add-prefix stream thing)
 	 (setf new-state :control))
 
 	;; Not prefixes
@@ -1088,9 +1273,11 @@ is read."
 	   (1 #| erase to left |#)
 	   (2 (terminal-erase-line tty))))
 	(#x4c ; 'L' Insert line
-	 (unimplemented #x4c "insert line")) ;; @@@
+	 ;; (unimplemented #x4c "insert line")) ;; @@@
+	 (terminal-insert-line (param stream 1 :default 1)))
 	(#x4d ; 'M' Delete line
-	 (unimplemented #x4d "delete line")) ;; @@@@
+	 ;; (unimplemented #x4d "delete line")) ;; @@@@
+	 (terminal-delete-line (param stream 1 :default 1)))
 	(#x50 ; 'P' Delete char
 	 (terminal-delete-char tty (param stream 1 :default 1)))
 	(#x53 ; 'S' Scroll up
@@ -1130,11 +1317,11 @@ is read."
 	       :do (write-char last-char out)))
 	(#x63 ; 'c' Send device attributes
 	 (cond
-	   ((null prefix)
+	   ((null (prefixes stream))
 	    (send-device-attributes stream out (param stream 1)))
-	   ((= prefix #x3d) ; =
+	   ((has-prefix stream #x3d) ; =
 	    (send-device-attributes-3 stream out (param stream 1)))
-	   ((= prefix #x3e) ; >
+	   ((has-prefix stream #x3e) ; >
 	    (send-device-attributes-2 stream out (param stream 1)))))
 	(#x64 ; 'd' line position absolute
 	 (cond
@@ -1197,18 +1384,107 @@ is read."
 	      (dbug "cursor pos report ~s ~s~%" row col)
 	      (pushback stream (format nil "~a~a;~aR"
 				       +csi+ (1+ row) (1+ col)))))))
-	(#x71 ; 'q' load LEDs
-	 (unimplemented #x71 "load LED")
-	 (case (param stream 1 :default 0)
-	   (0) ; clear all
-	   (1) ; light num lock
-	   (2) ; light caps lock
-	   (3) ; light scroll lock
-	   (21) ; extinguish num lock
-	   (22) ; extinguish caps lock
-	   (23) ; extinguish scroll lock
-	   (otherwise
-	    (unknown (param stream 1 :default 0) "load LED parameter"))))
+	(#x70 ; 'p' various settings and reports
+	 (cond
+	   ;; Set pointer mode
+	   ((has-prefix stream #x3e) ; '>'
+	    (unimplemented #x3e "set pointer mode")
+	    (case (param stream 1 :default 1)
+	      (0) ;; never hide
+	      (1) ;; hide if not tracking mouse
+	      (2) ;; always hide, except when focus in/out
+	      (3) ;; always hide
+	      ))
+	   ;; Soft terminal reset
+	   ((has-prefix stream #x21) ; '!'
+	    (unimplemented #x21 "soft-reset"))
+	   ;; Set conformance level
+	   ((has-prefix stream #x22) ; '"'
+	    (unimplemented #x21 "set conformance level")
+	    (case (param stream 1)
+	      (61) ; VT100
+	      (62) ; VT200
+	      (63) ; VT300
+	      (64) ; VT400
+	      (65)) ; VT500
+	    ;; Set 7 or 8 bit controls
+	    (when (> (param-count stream) 1)
+	      (setf 8-bit-controls
+		    (case (param stream 2 :default 1)
+		      (0 t)
+		      (1 nil)
+		      (2 t)))))
+	   ((has-prefix stream #x24) ; '$'
+	    (cond
+	      ;; '?' Ps '$' - Request DEC private mode
+	      ((has-prefix stream #x3f) ; '?'
+	       (let* ((p1 (param stream 1))
+		      (m (cond
+			   ((has-mode stream p1)
+			    (let ((default (mode-default p1)))
+			      (if (mode-read-only default)
+				  (if (mode-value default)
+				      3	; permanently set
+				      4) ; permanently reset
+				  (if (eq (mode-value (mode stream p1))
+					  default)
+				      1	   ; set
+				      2)))) ; reset
+			   (t 0)))) ;; not recognized
+		 (pushback stream (s+ +CSI+ #\? p1 #\; m #\$ #\y))))
+	      (t ; Ps '$' 'p' - Request ANSI mode
+	       (let* ((p1 (param stream 1))
+		      (m (cond
+			   ((has-standard-mode stream p1)
+			    (let ((default (standard-mode-default p1)))
+			      (if (mode-read-only default)
+				  (if (mode-value default)
+				      3	; permanently set
+				      4) ; permanently reset
+				  (if (eq (mode-value (standard-mode stream p1))
+					  default)
+				      1	   ; set
+				      2)))) ; reset
+			   (t 0)))) ;; not recognized
+		 (pushback stream (s+ +CSI+ p1 #\; m))))))
+	   ((has-prefix stream #x23) ; '#'
+	    (unimplemented #x23 "push video attributes"))))
+	(#x71 ; 'q' more random settings
+	 (cond
+	   ((has-prefix stream #x20) ; ' ' Set cursor style
+	    (unimplemented #x71 "set cursor style")
+	    (case (param stream 1 :default 1)
+               (0) ;; blinking block
+               (1) ;; blinking block (default)
+               (2) ;; steady block
+               (3) ;; blinking underline
+               (4) ;; steady underline
+               (5) ;; blinking bar (xterm)
+               (6) ;; steady bar (xterm)
+	       (otherwise
+		(unknown (param stream 1) "set cursor style"))))
+	   ((has-prefix stream #x22) ; '"' Set protection attribute
+	    (unimplemented #x71 "set protection attribute")
+	    (case (param stream 1 :default 0)
+               (0) ;; can erase
+               (1) ;; can't erase
+               (2) ;; can erase
+	       (otherwise
+		(unknown (param stream 1) "set protection attribute"))))
+	   ((has-prefix stream #x23) ; '#' pop attributes
+	    (unimplemented #x71 "pop attributes"))
+	   (t ;  load LEDs
+	    (unimplemented #x71 "load LED")
+	    (case (param stream 1 :default 0)
+	      (0) ; clear all
+	      (1) ; light num lock
+	      (2) ; light caps lock
+	      (3) ; light scroll lock
+	      (21) ; extinguish num lock
+	      (22) ; extinguish caps lock
+	      (23) ; extinguish scroll lock
+	      (otherwise
+	       (unknown (param stream 1 :default 0) "load LED parameter"))))))
 	(#x72 ; 'r' 
 	 (cond
 	   ;; Set scrolling region
@@ -1387,8 +1663,9 @@ do
 (defmethod filter ((stream ansi-stream) (thing integer))
   "This is the main entry point to the emulation state machine. ‘stream’ is an
 ansi-stream. ‘thing’ is a byte that was read."
-  (with-slots ((tty terminal) state control-type left-charset right-charset
-	       charsets data 8-bit-controls) stream
+  (let ((*stream* stream))
+    (with-slots ((tty terminal) state control-type left-charset right-charset
+		 charsets data 8-bit-controls) stream
     ;; (format *debug-io* "state ~s ~x ~a~%" state thing
     ;; 	    (char-name (code-char thing)))
     (dbug "state ~s #x~x ~a~%" state thing
@@ -1401,6 +1678,7 @@ ansi-stream. ‘thing’ is a byte that was read."
       (case state
 	(:start
 	 (clear-params stream)
+	 (clear-prefixes stream)
 	 (setf control-type :control)
 	 (cond
 	   ;; 7-bit controls C0
@@ -1609,7 +1887,7 @@ ansi-stream. ‘thing’ is a byte that was read."
 	  (setf last-char c)
 	  (setf state :start))
 	 (t
-	  (error "Unknown state ~s" state))))))
+	  (error "Unknown state ~s" state)))))))
 
 #|──────────────────────────────────────────────────────────────────────────┤#
  │ Stream methods
