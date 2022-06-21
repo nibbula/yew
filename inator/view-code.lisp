@@ -20,28 +20,15 @@ This is a somewhat weird experiment, and not very useful yet.
 ;; @@@ It might be cool if we could use the pretty-printer to figure out
 ;; how to group expressions into lines, but of course then they would lose
 ;; collapsability unless we mutated the viewer somehow.
+;; @@@ see lab/pprint-color.lisp for why we would probably need a modified
+;; pretty printer.
 
 (defmethod display-node ((node code-node) level)
-  (let ((prefix (format nil "~v,,,va~c "
-			(* level (tree-viewer::indent *viewer*)) #\space ""
-			(if (node-branches node)
-			    (if (node-open node) #\- #\+)
-			    #\space))))
-    ;; (tt-format "~v,,,va~c "
-    ;; 	     (* level (tree-viewer::indent *viewer*)) #\space ""
-    ;; 	     (if (node-branches node)
-    ;; 		 (if (node-open node) #\- #\+)
-    ;; 		 #\space))
-    ;; (setf (tb::current-left tb::*viewer*) (char-util:display-length prefix))
-    ;; (setf (tb::current-left tb::*viewer*)
-    ;; 	  (+ (char-util:display-length prefix)
-    ;; 	     (second (multiple-value-list
-    ;; 		      (terminal:terminal-get-cursor-position *terminal*)))))
+  (let ((prefix (display-prefix node level)))
     (tt-write-string prefix)
     (setf (tb::current-left tb::*viewer*)
 	  (second (multiple-value-list
-		   (terminal:terminal-get-cursor-position *terminal*))))
-    )
+		   (terminal:terminal-get-cursor-position *terminal*)))))
   (flet ((get-name (n) (node-object (first (node-branches n))))
 	 (get-args (n)
 	   (let ((arg-node (second (node-branches n))))
@@ -95,27 +82,28 @@ This is a somewhat weird experiment, and not very useful yet.
 (defvar *safer-readtable* nil)
 
 (defun safer-read (stream)
-  (when (not *safer-readtable*)
-    (setf *safer-readtable* (copy-readtable))
-    ;; This should make it so that #. neither evals or errors but just
-    ;;; reads the thing, unlike setting *read-eval* false.
-    (set-dispatch-macro-character #\# #\. #'fake-reader *safer-readtable*))
-  (let ((*readtable* *safer-readtable*))
-    (package-robust-read stream nil nil)))
+  (with-simple-restart (abort "Don't bother reading this thing.")
+    (when (not *safer-readtable*)
+      (setf *safer-readtable* (copy-readtable))
+      ;; This should make it so that #. neither evals or errors but just
+      ;; reads the thing, unlike setting *read-eval* false.
+      (set-dispatch-macro-character #\# #\. #'fake-reader *safer-readtable*))
+    (let ((*readtable* *safer-readtable*))
+      (package-robust-read stream nil nil))))
 
 (defun view-code (&optional (file (pick-list:pick-file)))
   "This shows why s-exps are cool."
-  (with-open-file (stm file)
-    ;; (view-tree
-    (let ((editor (make-instance 'tree-editor :node-type 'code-node)))
-      (edit-tree
-       (convert-tree
-	(append (list file)
-		(loop :with exp
-		   :while (setf exp (safer-read stm))
-		   :collect exp))
-	:type 'code-node)
-       :editor editor))))
+  (with-simple-restart (abort "Give up viewing this file.")
+    (with-open-file (stm file)
+      (let ((editor (make-instance 'tree-editor :node-type 'code-node)))
+	(edit-tree
+	 (convert-tree
+	  (append (list file)
+		  (loop :with exp
+			:while (setf exp (safer-read stm))
+			:collect exp))
+	  :type 'code-node)
+	 :editor editor)))))
 
 #+lish
 (lish:defcommand view-code
