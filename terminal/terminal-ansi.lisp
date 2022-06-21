@@ -1469,13 +1469,16 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-beep ((tty terminal-ansi-stream))
   (terminal-write-char tty #\bel))		; Not #\bell!!
 
-(defmethod terminal-set-scrolling-region ((tty terminal-ansi-stream) start end)
-  (if (and (not start) (not end))
-      (terminal-escape-sequence tty "r")
+(defmethod terminal-set-scrolling-region ((tty terminal-ansi-stream)
+					  &optional start end)
+  (if (and start end)
       (if (or (< start 0) (> end (1- (terminal-window-rows tty))))
-	  (cerror "Just try it anyway."
-		  "The scrolling region doesn't fit in the screen.")
-	  (terminal-escape-sequence tty "r" (1+ start) (1+ end)))))
+	  (progn
+	    (cerror "Just try it anyway."
+		    "The scrolling region doesn't fit in the screen.")
+	    (terminal-escape-sequence tty "r" (1+ start) (1+ end)))
+	  (terminal-escape-sequence tty "r" (1+ start) (1+ end)))
+      (terminal-escape-sequence tty "r")))
 
 (defun write-attributes (attributes stream)
   "Write the middle part of a control sequence for setting ‘attributes’ to
