@@ -762,7 +762,7 @@ Attributes are usually keywords.")
 (deftt set-attribute (attribute &optional state)
   "Turn the given ‘attribute’ on or off, according to the boolean ‘state’.")
 
-(deftt set-scrolling-region (start end)
+(deftt set-scrolling-region (&optional start end)
   "Set the scrolling region starting at row START and ending at END.")
 
 (deftt finish-output ()
