@@ -9,6 +9,9 @@
   (:import-from :inator
 		#:point #:mark #:clipboard #:quit-flag #:command #:last-command)
   (:export
+   #:flex-bbox
+   #:bbox-x #:bbox-y
+   #:bbox-width #:bbox-flex-width #:bbox-height #:bbox-flex-height
    #:widget
    #:widget-rendition
    #:widget-box-p
