@@ -1667,8 +1667,9 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-beep ((tty terminal-crunch-stream))
   (incf (screen-beep-count (new-screen tty))))
 
-(defmethod terminal-set-scrolling-region ((tty terminal-crunch-stream) start end)
-  (setf (screen-scrolling-region (new-screen tty) ) (cons start end)))
+(defmethod terminal-set-scrolling-region ((tty terminal-crunch-stream)
+					  &optional start end)
+  (setf (screen-scrolling-region (new-screen tty)) (cons start end)))
 
 (defmethod terminal-set-attributes ((tty terminal-crunch) attributes)
   "Set the attributes given in the list. If NIL turn off all attributes.
