@@ -44,15 +44,16 @@ object-node."))
     (when (not widget)
       (setf widget
 	    (make-instance 'widget
-			   :bbox (make-instance 'rl-widget::bbox
-						:x 0 :y 0
-						:width 33 :height 1)
+			   :x 0 :y 0
+			   :width 33 :height 1
 			   :completion-func #'completion:complete-symbol)))))
 
 (defun set-box (e &key (x 0) (y 0) (width 33) (height 1))
-  (setf (widget-bbox (widget e))
-	(make-instance 'rl-widget::bbox
-		       :x x :y y :width width :height height)))
+  (let ((w (widget e)))
+    (setf (bbox-x w) x
+	  (bbox-y w) y
+	  (bbox-width w) width
+	  (bbox-height w) height)))
 
 (defun value-string (value)
   (when value
