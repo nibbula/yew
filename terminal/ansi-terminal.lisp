@@ -1274,13 +1274,17 @@ is read."
 	   (2 (terminal-erase-line tty))))
 	(#x4c ; 'L' Insert line
 	 ;; (unimplemented #x4c "insert line")) ;; @@@
-	 (terminal-insert-line (param stream 1 :default 1)))
+	 (dbug "insert ~s line~:*~p~%" (param stream 1 :default 1))
+	 (terminal-insert-line tty (param stream 1 :default 1)))
 	(#x4d ; 'M' Delete line
 	 ;; (unimplemented #x4d "delete line")) ;; @@@@
-	 (terminal-delete-line (param stream 1 :default 1)))
+	 (dbug "delete ~s line~:*~p~%" (param stream 1 :default 1))
+	 (terminal-delete-line tty (param stream 1 :default 1)))
 	(#x50 ; 'P' Delete char
+	 (dbug "delete ~s char~:*~p~%" (param stream 1 :default 1))
 	 (terminal-delete-char tty (param stream 1 :default 1)))
 	(#x53 ; 'S' Scroll up
+	 (dbug "scroll up ~s~%" (param stream 1 :default 1))
 	 (terminal-scroll-screen-up tty (param stream 1 :default 1)))
 	(#x54 ; 'T'
 	 (cond
@@ -1491,7 +1495,7 @@ is read."
 	   ((/= (param-count stream) 5) 
 	    (let ((p1 (param-index stream 1 :default 0))
 		  (p2 (param-index stream 2 :default
-			     (1- (terminal-window-rows tty)))))
+				   (1- (terminal-window-rows tty)))))
 	      (dbug "set scrolling region ~s ~s~%" p1 p2)
 	      (terminal-set-scrolling-region tty p1 p2)))
 	   ;; rectangular attribute change
