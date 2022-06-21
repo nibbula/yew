@@ -307,7 +307,7 @@ number or a column name. Return the results."))
     ;; table
     ))
 
-(defgeneric map-column-as (column type function table)
+(defgeneric map-column-as (type column function table)
   (:documentation
    "Call ‘function’ with the value for row of ‘column’ in ‘table’. ‘column’ can
 be a number or a column name. Return the results as a ‘type’."))
