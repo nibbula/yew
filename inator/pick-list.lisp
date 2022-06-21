@@ -146,17 +146,12 @@ The function receives a 'pick' as an argument."))
     (#\return		  . accept)
     (#\newline		  . accept)
     (#\space		  . pick-list-toggle-item)
-    ;; (,(ctrl #\X)	  . pick-list-toggle-region)
     (,(ctrl #\X)	  . *pick-list-ctrl-x-keymap*)
-    ;; (,(ctrl #\N)	  . pick-list-next-line)
     (:down		  . next)
-    ;; (,(ctrl #\P)	  . pick-list-previous-line)
     (:up		  . previous)
     (#\>		  . move-to-bottom)
-    ;; (,(meta-char #\>) . pick-list-end-of-list)
     (:end		  . move-to-bottom)
     (#\<		  . move-to-top)
-    ;; (,(meta-char #\<) . move-to-top)
     (:home		  . move-to-top)
     (,(ctrl #\F)	  . next-page)
     (,(ctrl #\V)	  . next-page)
@@ -169,7 +164,8 @@ The function receives a 'pick' as an argument."))
     (,(ctrl #\A)	  . shift-beginning)
     (,(ctrl #\E)	  . shift-end)
     (#\?		  . help)
-    (,(ctrl #\@)	  . pick-list-set-mark)
+    (,(ctrl #\@)	  . select)
+    (,(meta-char #\w)	  . copy)
     (,(ctrl #\R)	  . search-backward-command)
     (:press		  . handle-press)
     (:release		  . handle-release)
@@ -284,12 +280,27 @@ The function receives a 'pick' as an argument."))
 	  (setf result (delete point result))
 	  (push point result)))))
 
-(defun pick-list-set-mark (pick)
-  "Set the mark to where the point is."
-  (setf (inator-mark pick) (inator-point pick)))
+;; (defun pick-list-set-mark (pick)
+;;   "Set the mark to where the point is."
+;;   (setf (inator-mark pick) (inator-point pick)))
 
 (defun pick-list-toggle-region (pick)
   "Toggle the items in the region."
+  (with-slots (multiple mark point result) pick
+    (when (and multiple mark)
+      (loop :for i :from (min mark point)
+	    :to (max mark point)
+	    :do
+	    (if (position i result)
+		(setf result (delete i result))
+	        (push i result))))))
+
+(defmethod select ((pick pick))
+  "Set the mark to where the point is."
+  (setf (inator-mark pick) (inator-point pick)))
+
+(defmethod copy ((pick pick))
+  "Toggle selecting the items in the region."
   (with-slots (multiple mark point result) pick
     (when (and multiple mark)
       (loop :for i :from (min mark point)
