@@ -18,6 +18,8 @@
   out-term				; Terminal for output (and input)
   ansi					; The emulator stream
   (quit-flag nil :type boolean)		; True to stop
+  (step-p nil :type boolean)		; True to single step
+  debug-term				; Terminal for debugging I/O
   input-buffer)				; Foreign byte buffer for input
 
 (defvar *term* nil
@@ -103,9 +105,50 @@ string arguments."
     ;; @@@ how about an error check?
     (uos:posix-write master input-buffer (length bytes))))
 
+(defun single-step-write (buffer)
+  "Step through output for debugging."
+  (with-slots (ansi debug-term) *term*
+    (let ((i 0)
+	  (len (length buffer))
+	  key)
+      (flet ((getter ()
+	       (when (< i len)
+		 (prog1 (aref buffer i)
+		   (incf i))))
+	     (setter (c)
+	       (write-char c ansi)))
+	(loop :while (and (< i len) (not (eql #\q key))) :do
+	  (terminal-save-cursor debug-term)
+	  (terminal-move-to debug-term 12 60)
+	  (terminal-write-span debug-term '(:red ">> "))
+	  ;; flush output to the underlying terminal
+	  (when (eq (ansi-terminal::state ansi) :start)
+	    (terminal-finish-output (ansi-terminal::ansi-stream-terminal ansi)))
+	  (with-immediate ()
+	    (setf key (terminal-get-key debug-term)))
+	  (terminal-move-to debug-term 12 60)
+	  (terminal-write-string debug-term "   ")
+	  (terminal-restore-cursor debug-term)
+	  (terminal-finish-output debug-term)
+	  (unicode:get-utf8b-char #'getter #'setter))
+	(when (eql key #\q)
+	  ;; output the remaining bytes without further mugicha
+	  (loop :while (< i len) :do
+	    (unicode:get-utf8b-char #'getter #'setter)))))))
+
+(defun safer-utf8-write (buffer)
+  ;; @@@ Shouldn't we just be able to write bytes? Also I think we get glitches
+  ;; when we get a partial character.
+  ;;
+  ;; We should detect if we're in the
+  ;; middle of a character, and see if we can read enough more bytes to finish
+  ;; out the character, before converting and sending.
+  (write-sequence (unicode:utf8b-bytes-to-string buffer) (term-ansi *term*)))
+
 (defun process-keys (term)
   "Process any key input coming from the terminal."
-  (with-slots (master slave pid out-term ansi quit-flag input-buffer) term
+  (with-slots (master slave pid out-term ansi quit-flag step-p debug-term
+	       input-buffer) term
     (let (key)
       (loop
 	:while (terminal-listen-for out-term 0)
@@ -121,6 +164,12 @@ string arguments."
 		 (setf quit-flag t)
 		 (uos:kill pid uos:+SIGKILL+)
 		 (uos::wait-and-report pid))
+		((eq key :s-f1) ;; toggle debugging single step
+		 (if debug-term
+		     (progn
+		       (setf step-p (not step-p))
+		       (dbug "Turning single stepping ~:[OFF~;ON~]~%" step-p))
+		     (warn "Single stepping won't work without a debug-term.")))
 		((eq key :resize)
 		 (dbug " ---- RESIZE ---- ~%")
 		 (let ((rows (terminal-window-rows out-term))
@@ -153,8 +202,16 @@ string arguments."
 ;; Currently this is like screen or tmux, but with only one process, so it's
 ;; only really useful for testing our emulation.
 
-(defun emulate (&key (program "/bin/bash") x (device (uos:ttyname 0)))
+(defun emulate (&key (program "/bin/bash") x device debug-term)
   "Run ‘program’ in a terminal on ‘device’."
+  (cond
+    ((or x device)
+     ;; If we are using a separate terminal, use the current terminal as
+     ;; the debug device
+     (setf debug-term *terminal*))
+    (t
+     ;; When not using X11 or given a separate device, use the current tty.
+     (setf device (uos:ttyname 0))))
   (let* ((out-term (make-instance (if x
 				      'terminal-x11:terminal-x11
 				      'terminal-ansi:terminal-ansi)
@@ -164,7 +221,9 @@ string arguments."
 			      :pushback-function #'push-it))
 	 (*term* (make-term
 		  :out-term out-term
-		  :ansi ansi))
+		  :ansi ansi
+		  :debug-term debug-term))
+	 (dlib:*dbug-output* (or debug-term dlib:*dbug-output*))
 	 fds master slave tty input buf pid)
     (unwind-protect
       (progn
@@ -244,16 +303,12 @@ string arguments."
                             ((plusp rr)
                              ;; Feed to the the ANSI emulator
 			     ;; (dbug "hanky ~s~%" (type-of buf))
-                             (write-sequence
-			      ;; @@@ Shouldn't we just be able to write bytes?
-			      ;; Also I think we get glitches when we get a
-			      ;; partial character.
-			      (unicode:utf8b-bytes-to-string
-			       (displaced-subseq buf 0 rr))
-			      ansi)
-			     ;; (finish-output ansi)
-			     ;; (dbug "hokay~%")
-			     ))))
+			     (if (term-step-p *term*)
+				 (single-step-write (displaced-subseq buf 0 rr))
+				 (safer-utf8-write (displaced-subseq buf 0 rr))
+				 ;; (finish-output ansi)
+				 ;; (dbug "hokay~%")
+				 )))))
 		       (:write
 			(dbug "master writable?~%"))
 		       (t
