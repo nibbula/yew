@@ -1983,7 +1983,8 @@ i.e. the terminal is 'line buffered'."
     (bell display)
     (display-finish-output display)))
 
-(defmethod terminal-set-scrolling-region ((tty terminal-x11) start end)
+(defmethod terminal-set-scrolling-region ((tty terminal-x11)
+					  &optional start end)
   (with-slots (scrolling-region) tty
     (if (and (not start) (not end))
 	(setf scrolling-region nil)
