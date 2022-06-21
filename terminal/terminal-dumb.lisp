@@ -215,7 +215,8 @@ know."
 (defmethod terminal-beep ((tty terminal-dumb))
   (declare (ignore tty)))
 
-(defmethod terminal-set-scrolling-region ((tty terminal-dumb) start end)
+(defmethod terminal-set-scrolling-region ((tty terminal-dumb)
+					  &optional start end)
   (declare (ignore tty start end)))
 
 (defmethod terminal-set-attributes ((tty terminal-dumb) attributes)
