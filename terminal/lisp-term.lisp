@@ -245,6 +245,13 @@ string arguments."
 	      (term-input-buffer *term*) input
 	      buf (cffi:make-shareable-byte-vector *buf-size*))
 
+	(when (typep out-term 'terminal-ansi:terminal-ansi)
+	  (nos:set-terminal-mode
+	   (terminal-file-descriptor out-term)
+	   :raw t))
+
+	;;(break)
+
 	(dbug "before run~%")
 	(let ((all-args (lish::shell-words-to-list
 			 (lish::shell-expr-words
@@ -329,6 +336,11 @@ string arguments."
       (cffi:foreign-free input)
       (uos:posix-close slave)
       (uos:posix-close master)
+      ;; We shouldn't have to do this, right?
+      ;; (when (typep out-term 'terminal-ansi:terminal-ansi)
+      ;; 	(nos:set-terminal-mode
+      ;; 	 (terminal-file-descriptor out-term)
+      ;; 	 :raw nil))
       (terminal-done out-term))))
 
 ;; End
