@@ -875,6 +875,16 @@ drawing, which will get overwritten."
      (junk-block height)
      (loop :for i :from 0 :below height :do
 	(tt-move-to i half)
+	(tt-erase-to-bol))
+     (tt-move-to height 0)
+     (tt-write-string "Above here should be blank.")))
+
+  (blurp ()
+   (let ((height 8)
+	 (half (truncate (z-width) 2)))
+     (junk-block height)
+     (loop :for i :from 0 :below height :do
+	(tt-move-to i half)
 	(tt-erase-line))
      (tt-move-to height 0)
      (tt-write-string "Everything above here should be blank.")))
