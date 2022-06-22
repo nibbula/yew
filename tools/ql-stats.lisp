@@ -6,6 +6,10 @@
   (:documentation "Grab Quicklisp statistics files.")
   (:use :cl :dlib :collections :dlib-misc :glob :table-viewer)
   (:export
+   #:get-month
+   #:get-year
+   #:get-all
+   #:view-it
    #:!ql-stats
    ))
 (in-package :ql-stats)
@@ -56,7 +60,7 @@ directory.")
 	 (or *data-directory* (nos:cache-dir "ql-stats"))
 	 "*" "*.csv")))
 
-(defun get-month (year month)
+(defun download-month (year month)
   "Download the data for ‘year’ ane ‘month’ into it's cache file."
   (let ((file-name (stat-file year month)))
     (nos:ensure-directory (nos:path-directory-name file-name))
@@ -78,7 +82,7 @@ directory.")
   "Make sure the file for ‘year’ and ‘month’ is downloaded."
   (let ((file-name (stat-file year month)))
     (when (not (nos:file-exists file-name))
-      (get-month year month))))
+      (download-month year month))))
 
 (defun current-month ()
   "Return the current month number."
@@ -96,12 +100,6 @@ directory.")
   "Read the table for ‘year’ and ‘month’."
   (read-table-file (stat-file year month)))
 
-(defun view-month (&optional (month (1- (current-month))) (year (current-year)))
-  "View statistics for ‘month’ in the current year. ‘month’ defaults to the
-current month."
-  (ensure-month year month)
-  (table-viewer:view-table (read-month-table year month) :type 'stats-viewer))
-
 (defun add-table (from to)
   "Add the download counts from table ‘from’ to ‘to’."
   (when (not (typep (container-data to) 'list))
@@ -117,8 +115,14 @@ current month."
 	     (incf (oelt to-row 1) (oelt from-row 1))))
 	 from))
 
-(defun view-year (&optional (year (current-year)))
-  "View a full year of statistics."
+(defun get-month (&optional (month (1- (current-month))) (year (current-year)))
+  "Return statistics for ‘month’ in the current year. ‘month’ defaults to the
+current month."
+  (ensure-month year month)
+  (read-month-table year month))
+
+(defun get-year (&optional (year (current-year)))
+  "Return a full year of statistics."
   (let (year-table)
     (loop :with month = 0
       :do
@@ -133,12 +137,12 @@ current month."
 	    (t
 	     (add-table (read-month-table year month) year-table)))))
       :while (<= month 12))
-    (table-viewer:view-table year-table :type 'stats-viewer)))
+    year-table))
 
-;; This doesn't really view all, but just what you've already downloaded, which
+;; This doesn't really get all, but just what you've already downloaded, which
 ;; might be nothing.
-(defun view-all ()
-  "View all statistics that are already downloaded."
+(defun get-all ()
+  "Return all statistics that are already downloaded."
   (let (full-table)
     (loop :with year :and month
       :for file :in (stat-files) :do
@@ -149,27 +153,39 @@ current month."
 	       (read-table-file file)))
 	(t
 	 (add-table (read-table-file file) full-table))))
-    (table-viewer:view-table full-table :type 'stats-viewer)))
+    full-table))
+
+(defun view-it (table)
+  "View the ‘table’ in a custom stats-viewer."
+  (table-viewer:view-table table :type 'stats-viewer))
 
 #+lish
 (lish:defcommand ql-stats
   ((month number :short-arg #\m :help "View statistics for a month.")
    (year number :short-arg #\y :help "View statistics for a year.")
-   (all boolean :short-arg #\a :help "View statistics for all cached files."))
+   (all boolean :short-arg #\a :help "View statistics for all cached files.")
+   (collect boolean :short-arg #\c
+    :help (s+ "Just collect the data and return it as a table. Don't run the "
+              "viewer.")))
   "Show Quicklisp download statistics."
-  (cond
-    ((and all (or month year))
-     (error
-      "Sorry, I can't do a specific month (-m) or year (-y) with all (-a)."))
-    (all
-     (view-all))
-    ((and month year)
-     (view-month month year))
-    (year
-     (view-year year))
-    (month
-     (view-month month))
-    (t
-     (view-month))))
+  (let ((table
+	  (cond
+	    ((and all (or month year))
+	     (error
+	      "Sorry, I can't do a specific month (-m) or year (-y) with all ~
+               (-a)."))
+	    (all
+	     (get-all))
+	    ((and month year)
+	     (get-month month year))
+	    (year
+	     (get-year year))
+	    (month
+	     (get-month month))
+	    (t
+	     (get-month)))))
+    (when (not collect)
+      (view-it table))
+    (setf lish:*output* table)))
 
 ;; End
