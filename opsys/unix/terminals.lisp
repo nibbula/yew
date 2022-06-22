@@ -1098,14 +1098,13 @@ The individual settings override the settings in MODE."
 						     +IXOFF+))))
 		       ;; Turn off "cannonical" input.
 		       ;; Stuck in input modes of the ancients?
-		       ;; We are the new canon!
+		       ;; You are the canon!
 		       (setf c_lflag
 			     (logand c_lflag
 				     (lognot (logior +ICANON+ +IEXTEN+))))
-		       ;; Do we really need these?
+		       ;; Yes we probably really need these.
 		       (setf c_oflag
-			     (logior c_oflag +ONLCR+ +OPOST+))
-		       ;; These are the default values, but we set them since
+		             (logior c_oflag +ONLCR+ +OPOST+))
 		       ;; otherwise a read might not immediately return a
 		       ;; char.
 		       (setf (mem-aref c_cc :char +VMIN+) 1)
@@ -1178,7 +1177,7 @@ The individual settings override the settings in MODE."
 		 (setf c_lflag
 		       (logand c_lflag
 			       (lognot (logior +ICANON+ +IEXTEN+))))
-		 ;; Do we really need these?
+		 ;; Yes we probably really need these.
 		 (setf c_oflag
 		       (logior c_oflag +ONLCR+ +OPOST+))
 		 ;; These are the default values, but we set them since
