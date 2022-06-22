@@ -1065,6 +1065,9 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-erase-to-eol ((tty terminal-ansi-stream))
   (terminal-escape-sequence tty "K"))
 
+(defmethod terminal-erase-to-bol ((tty terminal-ansi-stream))
+  (terminal-escape-sequence tty "1K"))
+
 (defmethod terminal-erase-line ((tty terminal-ansi-stream))
   (terminal-escape-sequence tty "2K"))
 

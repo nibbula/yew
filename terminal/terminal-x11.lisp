@@ -1848,6 +1848,13 @@ i.e. the terminal is 'line buffered'."
 		(1- window-columns) cursor-row :erase t)
     (draw-cursor tty)))
 
+(defmethod terminal-erase-to-bol ((tty terminal-x11))
+  (with-slots (cursor-column cursor-row
+               (window-columns terminal::window-columns)) tty
+    (flush-buffer tty)
+    (clear-text tty 0 cursor-row cursor-column cursor-row :erase t)
+    (draw-cursor tty)))
+
 (defmethod terminal-erase-line ((tty terminal-x11))
   (with-slots (cursor-column cursor-row
                (window-columns terminal::window-columns)) tty

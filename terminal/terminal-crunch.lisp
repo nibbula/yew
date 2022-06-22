@@ -1561,6 +1561,12 @@ i.e. the terminal is 'line buffered'."
 	   :start (screen-x (new-screen tty)))
   (note-single-line tty))
 
+(defmethod terminal-erase-to-bol ((tty terminal-crunch-stream))
+  (fill-by (aref (screen-lines (new-screen tty)) (screen-y (new-screen tty)))
+	   #'blank-char
+	   :start 0 :end (screen-x (new-screen tty)))
+  (note-single-line tty))
+
 (defmethod terminal-erase-line ((tty terminal-crunch-stream))
   (fill-by (aref (screen-lines (new-screen tty)) (screen-y (new-screen tty)))
 	   #'blank-char)

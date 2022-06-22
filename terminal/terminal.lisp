@@ -68,6 +68,7 @@
    #:tt-scroll-screen-down	  #:terminal-scroll-screen-down
    #:tt-scroll-screen-up	  #:terminal-scroll-screen-up
    #:tt-erase-to-eol		  #:terminal-erase-to-eol
+   #:tt-erase-to-bol		  #:terminal-erase-to-bol
    #:tt-erase-line		  #:terminal-erase-line
    #:tt-erase-above		  #:terminal-erase-above
    #:tt-erase-below		  #:terminal-erase-below
@@ -223,6 +224,7 @@ Movement functions are usual row first then column.
 ### Erasing and editing functions:
 
   tt-erase-to-eol
+  tt-erase-to-bol
   tt-erase-line
   tt-erase-above
   tt-erase-below
@@ -695,7 +697,11 @@ the cursor.")
   "Scroll the whole screen or scrolling region up ‘n’ lines without moving
 the cursor.")
 
-(deftt erase-to-eol () "Erase from the cursor to the end of the current row.")
+(deftt erase-to-eol ()
+  "Erase from the cursor to the end of the current row.")
+
+(deftt erase-to-bol ()
+  "Erase from the cursor to the beginning of the current row.")
 
 (deftt erase-line () "Erase the whole row the cursor is on.")
 
