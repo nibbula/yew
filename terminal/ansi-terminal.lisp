@@ -1270,14 +1270,12 @@ is read."
 	(#x4b ; 'K' Erase in line
 	 (case (param stream 1 :default 0)
 	   (0 (terminal-erase-to-eol tty))
-	   (1 #| erase to left |#)
+	   (1 (terminal-erase-to-bol tty))
 	   (2 (terminal-erase-line tty))))
 	(#x4c ; 'L' Insert line
-	 ;; (unimplemented #x4c "insert line")) ;; @@@
 	 (dbug "insert ~s line~:*~p~%" (param stream 1 :default 1))
 	 (terminal-insert-line tty (param stream 1 :default 1)))
 	(#x4d ; 'M' Delete line
-	 ;; (unimplemented #x4d "delete line")) ;; @@@@
 	 (dbug "delete ~s line~:*~p~%" (param stream 1 :default 1))
 	 (terminal-delete-line tty (param stream 1 :default 1)))
 	(#x50 ; 'P' Delete char
@@ -1295,9 +1293,12 @@ is read."
 	   (t ;; Scroll down
 	    (terminal-scroll-screen-down tty (param stream 1 :default 1)))))
 	(#x58 ; 'X' Erase characters
-	 ;; @@@ is erase char really the space as spamming spaces
+	 ;; @@@ Erase char isn't really the space as spamming spaces.
+	 ;; But we would have to add a terminal method.
+	 (terminal-save-cursor tty)
 	 (terminal-format tty "~v,,,va" (param stream 1 :default 1)
-			  #\space #\space))
+			  #\space #\space)
+	 (terminal-restore-cursor tty))
 	(#x5a ; 'Z' Back tab
 	 (unimplemented #x5a "back tab")) ;; @@@
 	(#x60 ; '`' character position absolute - variable # of params
