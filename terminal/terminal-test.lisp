@@ -50,7 +50,8 @@
 	      (- (truncate (z-width) 2)
 		 (truncate (display-length text) 2)))
   (let ((str (format nil text)))
-    (tt-write-string text :end (min (tt-width) (display-length str)))))
+    (tt-write-string text :end (min (tt-width) (length str)
+				    (display-length str)))))
 
 (defun prompt-next (&key
 		      (message "Press Q to quit, anything else to continue.")
