@@ -3457,9 +3457,10 @@ objects should be stored."
        :collect
        (progn
 	 (multiple-value-bind (fs err)
-	     (ignore-errors (statfs (mount-entry-dir entry)))
+	     (ignore-errors (statfs (c-escape (mount-entry-dir entry))))
 	   (if err
-	       (if (member (opsys-error-code err) `(,+EACCES+ ,+EPERM+ 0))
+	       (if (member (opsys-error-code err)
+			   `(,+EACCES+ ,+EPERM+ ,+ENOENT+ 0))
 		   ;; If we can't access the mount point, just ignore it.
 		   (make-filesystem-info
 		    :device-name     (mount-entry-fsname entry)
