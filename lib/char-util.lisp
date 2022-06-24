@@ -46,21 +46,26 @@
 (defun ctrl (c)
   "Return the control character corresponding to the normal character."
   (declare (type character c))
-  (let ((code (1+ (- (char-code (char-upcase c)) (char-code #\A)))))
-    (when (minusp code)
-      (error "This is no control character equivalent for ~s." c))
-    (code-char code)))
+  (let ((code (char-code c)))
+    (cond
+      ((<= 64 code 95)			; '@' - '_'
+       (code-char (- code 64)))
+      ((<= 97 code 122)			; 'a' - 'z'
+       (code-char (- code 96)))
+      ((= code 63)			; '?'
+       (code-char 127))			; ^? or #\rubout
+      (t
+       (error "There is no control character equivalent for ~s." c)))))
 
 (defun has-control-equivalent (c)
   "Return true if there is a control character corresponding to the character."
   (declare (type character c))
-  (let ((code (char-code (char-upcase c))))
-    ;; This includes ? -> 127 DEL
-    (and (>= code 63) (<= code 95))))
+  (or (<= 63 (char-code c) 95)		; '?' - '_'
+      (<= 97 (char-code c) 122)))	; 'a' - 'z'
 
 (defun control-char-p (c)
   "Return true if C is a control character. In ASCII that means anything less
-than space and delete."
+than space, and delete."
   (and (characterp c)
        (let ((cc (char-code c)))
 	 ;; Sadly ASCII / UTF-8 specific.
