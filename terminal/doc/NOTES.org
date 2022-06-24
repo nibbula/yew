@@ -49,9 +49,9 @@ Terminal Notes                                        -*- org -*-
 
    - Emulator streams
      An IO stream that converts in-stream escape sequences to terminal
-     protocol, and converts the input into appropriate key sequences.
-     This is specific to , but in practice we really only care about ANSI
-     escape sequences as extened by xterm and similar.
+     protocol, and converts the input into appropriate key sequences. This is
+     specific to a terminal type, but in practice we really only care about
+     ANSI escape sequences as extened by xterm and similar.
 
   The categories of renderer, adpadter, and wrapper can overlap, and in
   particular the distinction between a renderer and adapter is a little
@@ -93,6 +93,15 @@ Terminal Notes                                        -*- org -*-
 **** terminal-curses
      terminal-ansi -> curses library -> terminal emulator -> window system -> you
      This could also be considered escape code based.
+** Emulator streams
+   ansi-terminal.lisp
+
+   terminal-<X> -> ansi-terminal -> terminal-<X> -> ... -> whatever
+       │                                │
+       ╰─────────the same object────────╯
+
+   We can hook this up to be standard in/out/err/etc to a process that
+   wants to run in terminal.
 ** Renderers
    Graphic backends
    Actually we should just have terminal-graf, with the possible exception
@@ -140,23 +149,11 @@ Terminal Notes                                        -*- org -*-
    - Make a terminal subclass to which presentation objects can be output,
      and a protocol to access them.
 
-   It's probably not too much work to make a proof of concept with this.
-   Unfortunately to make it work nicely with the shell, it has to be able to
-   handle mixed output from Lisp commands/functions and external processes.
-   So probably these further steps are likely needed:
+   - Make a subclass that provides ANSI emulation running in pseudo-terminal
+     with a presentation terminal.
 
-   - Add pseduo-terminal functions to opsys.
-
-   - Make a stream class that's a translator from ANSI terminal escapes to
-     terminal methods calls.
-
-   - Make a terminal subclass that ties these together, providing a
-     pseudo-terminal with ANSI translation, which uses another terminal class
-     for output.
-
-   - Make a subclass that is both an ANSI pseudo-terminal and a presentation
-     output stream, which should then be sufficient for running the shell
-     with presentations in an external terminal emulator.
+   - Make sure the shell sets up it's terminal as the standard I/O terminal
+     for subprocesses, not the host Lisp's standard I/O.
 
 * COMMENT MeTaDaTa
 creation date: [2020-03-02 02:16:08]
