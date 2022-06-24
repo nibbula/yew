@@ -3432,7 +3432,7 @@ objects should be stored."
 				     (or (char= b #\space) (char= b #\tab)))))
       (make-mount-entry
        :fsname (first words)
-       :dir    (second words)
+       :dir    (c-escape (second words))
        :type   (third words)
        :opts   (fourth words)
        :freq   (fifth words)
@@ -3457,7 +3457,7 @@ objects should be stored."
        :collect
        (progn
 	 (multiple-value-bind (fs err)
-	     (ignore-errors (statfs (c-escape (mount-entry-dir entry))))
+	     (ignore-errors (statfs (mount-entry-dir entry)))
 	   (if err
 	       (if (member (opsys-error-code err)
 			   `(,+EACCES+ ,+EPERM+ ,+ENOENT+ 0))
