@@ -488,7 +488,9 @@ modified in place, or a new string."
 		  (setf backslash t)
 		  (add c)))))
     (if new
-	new
+	(progn
+	  (setf (fill-pointer new) out)
+	  new)
 	(if (< out len)
 	    ;; This sort of foils our whole strategy.
 	    (subseq string 0 out)
