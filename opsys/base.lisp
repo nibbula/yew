@@ -20,6 +20,7 @@
    #:quote-filename
    #:safe-namestring
    #:split-path
+   #:c-escape
 
    ;; Things in types.lisp:
    #:dir-entry
@@ -381,5 +382,116 @@ any characters in strings specially."
 		   :if (and piece (/= (length piece) 0))
 		   :collect piece
 		   :do (incf i))))))
+
+(defun c-escape (string)
+  "Convert C backslash escapes in ‘string’. Returns either string, possibly
+modified in place, or a new string."
+  (let ((in 0) (out 0) (len (length string)) new u-start)
+    (declare (type fixnum in out))
+    (labels ((add (c)
+	     (if new
+		 (if (< out (length new))
+		     (setf (char new out) c)
+		     (vector-push-extend c new))
+		 (setf (char string out) c))
+	     (incf out))
+	   (get-c ()
+	     (prog1 (char string in)
+	       (incf in)))
+	   (uget-c ()
+	     (let ((cc (get-c)))
+	       (when (or (not (digit-char-p cc 16))
+			 (> in len))
+		 (error "Incomplete C universal character name ~s"
+			(subseq string u-start
+				(min (length string) in))))
+	       cc))
+	   (realloc ()
+	     (setf new (make-array (+ (length string) 5)
+				   :element-type 'character
+				   :initial-contents string
+				   :fill-pointer out
+				   :adjustable t))))
+      (loop
+	:with backslash = nil :and c
+	:while (< in len)
+	:do
+	(setf c (get-c))
+	(if backslash
+	    (progn
+	      (case c
+		(#\a (add (code-char 7))) ; #\bel
+		(#\b (add (code-char 8))) ; #\backspace
+		(#\e (add (code-char 27))) ; #\escape [non-standard]
+		(#\f (add (code-char 12))) ; #\page
+		(#\n (add (code-char 10))) ; #\newline
+		(#\r (add (code-char 13))) ; #\return
+		(#\t (add (code-char 9)))  ; #\tab
+		(#\v (add (code-char 11))) ; #\vt
+		((#\\ #\") (add c))	   ; pre-done ?
+		((#\' #\?) (add c))	   ; really?
+		(#\x
+		 ;; any number of hex digits, until non-hex digit, making a byte
+		 (multiple-value-bind (result pos)
+		     (parse-integer string :start in
+					   :radix 16
+					   :junk-allowed nil)
+		   (when (not new)
+		     (realloc))
+		   (setf in pos)
+	           (add (code-char result))))
+		(#\u ;; 4 hex digits makeing a unicode code point <= #x9999
+		 (setf u-start in)
+		 (add (code-char
+		       (logior
+			(ash (digit-char-p (uget-c) 16) 12)
+			(ash (digit-char-p (uget-c) 16) 8)
+			(ash (digit-char-p (uget-c) 16) 4)
+			     (digit-char-p (uget-c) 16)))))
+		(#\U ;; 8 hex digits makeing a unicode code point <= #x99999999
+		 (setf u-start in)
+		 (let ((code (logior
+			      (ash (digit-char-p (uget-c) 16) 28)
+			      (ash (digit-char-p (uget-c) 16) 24)
+			      (ash (digit-char-p (uget-c) 16) 20)
+			      (ash (digit-char-p (uget-c) 16) 16)
+			      (ash (digit-char-p (uget-c) 16) 12)
+			      (ash (digit-char-p (uget-c) 16) 8)
+			      (ash (digit-char-p (uget-c) 16) 4)
+			      (digit-char-p (uget-c) 16))))
+		   (when (> code char-code-limit)
+		     (error "Character escape outside of code range #x~x" code))
+		   (add (code-char code))))
+		(t
+		 ;; Octal escape
+		 (let ((cc (char-code c)))
+		   (cond
+		     ((<= (char-code (digit-char 0)) cc
+			  (char-code (digit-char 7)))
+		      (let ((start (1- in))
+			    (end (min len (+ in 2))))
+			;; (format t "chow: (subseq ~d ~d) ~s => ~s~%"
+			;; 	start end cc
+			;; 	(subseq string start end))
+			(multiple-value-bind (n pos)
+			    (parse-integer string :start start :end end
+						  :radix 8 :junk-allowed t)
+			  (setf in pos)
+			  ;; (format t "n = ~s in = ~s~%" n in)
+			  (add (code-char n)))))
+		     (t
+		      (error "Unknown C escape char \\~c #\\~:*~:c [#x~x]"
+			     c cc))))))
+	      (setf backslash nil))
+	      ;; Not a backslash
+	      (if (char= c #\\)
+		  (setf backslash t)
+		  (add c)))))
+    (if new
+	new
+	(if (< out len)
+	    ;; This sort of foils our whole strategy.
+	    (subseq string 0 out)
+	    string))))
 
 ;; EOF
