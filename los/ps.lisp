@@ -9,6 +9,8 @@
   (:export
    #:!ps
    #:ps-tree
+   #:describe-processes
+   #:ps
    ))
 (in-package :ps)
 
@@ -502,6 +504,17 @@ user, pid, ppid, size, command."
 ;;   ;;   (:documentation "User name."))
 ;;   )
 
+(defun describe-processes (&key matching show-kernel-processes user long quiet)
+  (if long
+      (ps-long :matching matching
+	       :show-kernel-processes show-kernel-processes
+	       :user user :print (not quiet))
+      (ps-short :matching matching
+		:show-kernel-processes show-kernel-processes
+		:user user :print (not quiet))))
+
+(defalias 'ps 'describe-processes)
+
 #+lish
 (lish:defcommand ps
   ((matching string :help "Only show processes matching this.")
@@ -513,13 +526,9 @@ user, pid, ppid, size, command."
    (long boolean :short-arg #\l :help "True to show the long output.")
    (quiet boolean :short-arg #\q :help "True to suppress printing output."))
   "Process status."
-  (setf *output*
-	(if long
-	    (ps-long :matching matching
-		     :show-kernel-processes show-kernel-processes
-		     :user user :print (not quiet))
-	    (ps-short :matching matching
-		      :show-kernel-processes show-kernel-processes
-		      :user user :print (not quiet)))))
+  (setf *output* (describe-processes
+		  :matching matching
+		  :show-kernel-processes show-kernel-processes
+		  :user user :quiet quiet :long long)))
 
 ;; EOF
