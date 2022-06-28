@@ -695,13 +695,19 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-beginning-of-line ((tty terminal-curses))
   (terminal-move-to-col tty 0))
 
-(defmethod terminal-delete-char ((tty terminal-curses) n)
+(defmethod terminal-delete-char ((tty terminal-curses) &optional (n 1))
   (dotimes (i n)
     (delch)))
 
-(defmethod terminal-insert-char ((tty terminal-curses) n)
+(defmethod terminal-insert-char ((tty terminal-curses) &optional (n 1))
   (dotimes (i n)
     (insch (char-code #\space))))
+
+(defmethod terminal-delete-line ((tty terminal-curses) &optional (n 1))
+  (insdelln n))
+
+(defmethod terminal-insert-line ((tty terminal-curses) &optional (n 1))
+  (insdelln n))
 
 (defmethod terminal-backward ((tty terminal-curses) &optional (n 1))
   (move (getcury (screen tty)) (- (getcurx (screen tty)) n)))
@@ -733,6 +739,12 @@ i.e. the terminal is 'line buffered'."
   
 (defmethod terminal-erase-to-eol ((tty terminal-curses))
   (clrtoeol))
+
+(defmethod terminal-erase-to-bol ((tty terminal-curses))
+  (let ((x (getcurx (screen tty)))
+	(y (getcury (screen tty))))
+    (mvaddstr y 0 (format nil "~va" x #\space))
+    (move y x)))
 
 (defmethod terminal-erase-line ((tty terminal-curses))
   (let ((x (getcurx (screen tty)))
@@ -856,7 +868,8 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-beep ((tty terminal-curses))
   (beep))
 
-(defmethod terminal-set-scrolling-region ((tty terminal-curses) start end)
+(defmethod terminal-set-scrolling-region ((tty terminal-curses)
+					  &optional start end)
   (if (and (not start) (not end))
       ;; Is this sensible? Or should we just unset 'scrollok'?
       (setscrreg 0 (1- *lines*))
@@ -994,7 +1007,12 @@ Attributes are usually keywords."
   (loop :with n :for a :in attributes :do
      (when (setf n (assoc a *attributes*))
        (attron (cdr n)))))
-     
+
+(defmethod terminal-set-rendition ((tty terminal-curses) fatchar)
+  "Set the colors and attributes given in the fatchar."
+  (terminal-set-attributes tty (fatchar-attrs fatchar))
+  (terminal-color tty (fatchar-fg fatchar) (fatchar-bg fatchar)))
+
 (defmethod terminal-alternate-characters ((tty terminal-curses) state)
   (setf (translate-alternate-characters tty) state)
   (when (and state (not *acs-table*))
