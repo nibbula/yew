@@ -341,7 +341,8 @@ strings, only the attributes of the first character are preserved."
 (defun nul-char ()
   (copy-fatchar *nul-char*))
 
-(defclass terminal-crunch-stream (terminal-stream terminal-wrapper)
+(defclass terminal-crunch-stream (terminal-stream terminal-wrapper
+				  terminal-retained)
   ((old-screen
     :initarg :old-screen :accessor old-screen :initform nil
     :documentation "The screen that's currently displayed on the device")
@@ -2482,6 +2483,10 @@ duplicated sequences, and can have worst case O(n*m) performance."
   (when (saved-pos tty)
     (setf (screen-x (new-screen tty)) (car (saved-pos tty))
 	  (screen-y (new-screen tty)) (cdr (saved-pos tty)))))
+
+(defmethod terminal-output-line ((terminal terminal-crunch) n)
+  "Return output line ‘n’ of ‘terminal’ as a fat-string."
+  (grid-to-fat-string (aref (screen-lines (new-screen terminal)) n)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; stream methods
