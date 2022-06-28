@@ -365,7 +365,7 @@
 (defclass systems-node (cached-dynamic-node) ())
 (defun systems-contents (node)
   (declare (ignore node))
-  (loop :for s :in (asdf:registered-systems)
+  (loop :for s :in (sort (asdf:registered-systems) #'string<)
      :collect
      (make-instance
       'system-node
@@ -459,7 +459,9 @@
 (defclass classes-node (cached-dynamic-node) ())
 (defun classes-contents (node)
   (declare (ignore node))
-  (loop :for sc :in (subclasses (find-class 'standard-object))
+  (loop :for sc :in (sort (copy-list (subclasses (find-class 'standard-object)))
+			  #'string< :key (_ (string-downcase
+					     (prin1-to-string (class-name _)))))
      :collect (make-instance 'class-node :object sc :open nil)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -543,10 +545,10 @@
     :object "Packages"
     :open nil
     :branches
-    (loop :for p :in (list-all-packages)
+    (loop :for p :in (sort (mapcar #'package-name (list-all-packages)) #'string<)
        :collect
        (make-cached-dynamic-node
-	:object (package-name p)
+	:object p
 	:func #'package-contents
 	:open nil)))
    (make-instance
