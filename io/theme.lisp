@@ -114,6 +114,7 @@ Creating and customizing themes:
    #:set-theme-defaults-for-16-color
    #:set-theme-defaults-for-monochrome-dark
    #:default-theme-monochrome-light
+   #:default-theme-monochrome-dark
    #:default-theme-16-color
    ))
 (in-package :theme)
@@ -726,7 +727,8 @@ Something like the default setting of typical GNU tools."))))
 (defun default-theme-16-color ()
   "Default theme for 16-color"
   (let ((theme (default-theme)))
-    (set-theme-defaults-for-16-color theme)))
+    (set-theme-defaults-for-16-color theme)
+    theme))
 
 (defun set-theme-defaults-for-monochrome-dark (theme)
   (set-theme-items theme
@@ -789,6 +791,9 @@ Something like the default setting of typical GNU tools."))))
       (:program :data		          :style)     ()
       (:program :meter		          :character) #.(code-char #x2592)
       (:program :suggestion               :style)     ()
+      (:program :table :current-cell      :style)     (:inverse)
+      (:program :tree :open-indicator)    "-"
+      (:program :tree :closed-indicator)  "+"
       ;; (:program :return-value-indicator   :string)    "⇒"
       ;; (:program :return-value-indicator   :style)     (:cyan)
       ;; (:program :multiple-value-indicator :string)    ";"
@@ -800,12 +805,14 @@ Something like the default setting of typical GNU tools."))))
 (defun default-theme-monochrome-dark ()
   "Default theme for monochrome with a dark background."
   (let ((theme (default-theme)))
-    (set-theme-defaults-for-monochrome-dark theme)))
+    (set-theme-defaults-for-monochrome-dark theme)
+    theme))
 
 (defun default-theme-monochrome-light ()
   "Default theme for monochrome with a light background."
   (let ((theme (default-theme)))
-    (set-theme-defaults-for-monochrome-dark theme)))
+    (set-theme-defaults-for-monochrome-dark theme)
+    theme))
 
 ;; @@@ We should probably make a default monochrome theme.
 ;; And default light backgroud themes.
