@@ -488,19 +488,21 @@ drawing, which will get overwritten."
 		  (fill string (code-char #x2500) :end str-len)
 		  (make-string str-len
 			      :initial-element (code-char #x2500))))) ; ─
+    (tt-alternate-characters t)
     (tt-move-to y x)
-    (tt-write-char (code-char #x250c))	; ┌
+    (tt-write-char (code-char #x250c))	   ; ┌
     (tt-write-string str :end str-len)
-    (tt-write-char (code-char #x2510))	; ┐
+    (tt-write-char (code-char #x2510))	   ; ┐
     (loop :for iy :from (1+ y) :below (+ y (1- height)) :do
        (tt-move-to iy x)
-       (tt-write-char (code-char #x2502)) ; │
+       (tt-write-char (code-char #x2502))  ; │
        (tt-move-to iy (+ x (1- width)))
        (tt-write-char (code-char #x2502))) ; │
     (tt-move-to (+ y (1- height)) x)
-    (tt-write-char (code-char #x2514))	; └
+    (tt-write-char (code-char #x2514))	   ; └
     (tt-write-string str :end str-len)
-    (tt-write-char (code-char #x2518)))) ; ┘
+    (tt-write-char (code-char #x2518))     ; ┘
+    (tt-alternate-characters nil)))
 
 (defun test-boxes ()
   "Test drawing boxes."
