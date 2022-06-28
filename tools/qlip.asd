@@ -10,6 +10,7 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Quicklisp package interface."
-    :depends-on (:dlib :opsys :inator :table-viewer :tree-viewer :fui)
+    :depends-on (:dlib :opsys :inator :table-viewer :tree-viewer :fui
+		 :reader-ext)
     :components
     ((:file "qlip")))

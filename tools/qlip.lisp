@@ -4,7 +4,7 @@
 
 (defpackage :qlip
   (:documentation "Quicklisp packaginator.")
-  (:use :cl :dlib :opsys :inator :fui)
+  (:use :cl :dlib :opsys :inator :fui :reader-ext)
   (:export
    #:generate
    #:qlip
@@ -274,7 +274,9 @@ Do NOT try to load a .asd file directly with CL:LOAD. Always use ASDF:LOAD-ASD."
   "Read the system data cache from FILE and return it."
   (with-open-file (stream file :direction :input)
     (with-standard-io-syntax
-      (let* ((result (safe-read stream))
+      ;; (let* ((result (safe-read stream))
+      (let* ((*read-eval* nil)
+	     (result (package-robust-read stream))
 	     (magic   (elt result 0))
 	     (version (elt result 1))
 	     (dists   (elt result 2))
