@@ -6,7 +6,7 @@
   (:documentation "View things in the Lisp system.")
   (:use :cl :dlib :tree-viewer :dlib-interactive :syntax :syntax-lisp
 	:terminal :collections :fatchar :fatchar-io :completion :ochar :ostring
-	:view-generic)
+	:view-generic :terminal-utils)
   (:export
    #:view-lisp
    ))
@@ -404,6 +404,13 @@
      :collect
      (make-instance 'class-node :object c)))
 
+(defclass class-slots-node (object-node)
+  ()
+  (:documentation "Node for slot descriptions."))
+
+(defmethod display-object ((node class-slots-node) object level)
+  (display-fat-object node object level))
+
 (defun class-node-contents (class)
   (when (not (mop-call "class-finalized-p" class))
     (mop-call "finalize-inheritance" class))
@@ -414,12 +421,11 @@
     :branches
     (list
      (make-instance
-      'object-node
+      ;; 'object-node
+      'class-slots-node
       :object
-      (let ((str (with-output-to-string (*standard-output*)
-		   (describe-class class))))
-	(when (eql (char str (1- (length str))) #\newline)
-	  (setf (char str (1- (length str))) #\space))
+      (let ((str (with-terminal-output-to-fat-string (:trim t)
+		   (describe-class class *terminal*))))
 	str)
       :open nil)))
    (make-instance
