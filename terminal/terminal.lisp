@@ -479,8 +479,9 @@ know."))
 				     (new-p nil)
 				     &rest initargs)
 			  &body body)
-  "Evaluate the body with VAR possibly set to a new terminal depending on NEW-P.
-Cleans up afterward."
+  "This implements ‘with-terminal’ and ‘with-new-terminal’. The arguments are
+the same, with the addition of ‘new-p’, which if true, always makes a new
+terminal."
   (with-names (result make-it term-class new-type terminal-state)
     `(progn
        (let* ((,new-type (or ,type *default-terminal-type*
@@ -560,19 +561,20 @@ Cleans up afterward."
 				    (var '*terminal*)
 				    &rest initargs)
 			 &body body)
-  "Evaluate the body with VAR set to a terminal indicated by TYPE. If VAR is
-already a terminal of that type, use it. TYPE should be one of the types
-registerd in *TERMINAL-TYPES*. Initialized the terminal and cleans up
-afterward."
+  "Evaluate the body with ‘var’ set to a terminal indicated by ‘type’. If ‘var’
+is already a terminal of that type, use it. ‘type’ should be one of the types
+registerd in ‘*terminal-types*’. The terminal is initialized and cleaned up
+afterward, with ‘initargs’ are passed on to make-instance if it's called."
   `(%with-terminal (,type ,var nil ,@initargs) ,@body))
 
 (defmacro with-new-terminal ((&optional type
 					(var '*terminal*)
 					&rest initargs)
 			     &body body)
-  "Evaluate the body with VAR set to a new terminal indicated by TYPE.
-TYPE should be one of the types registerd in *TERMINAL-TYPES*. Cleans up
-afterward."
+  "Evaluate the body with ‘var’ set to a new terminal indicated by ‘type’.
+‘type’ should be one of the types registerd in ‘*terminal-types*’. The terminal
+is initialized and cleaned up afterward, with ‘initargs’ are passed on to
+make-instance."
   `(%with-terminal (,type ,var t ,@initargs) ,@body))
 
 (defvar *default-terminal-methods-error* nil
