@@ -150,8 +150,10 @@ loading this library.")
    #:getyx
    ;; color & attributes
    #:start-color #:has-colors #:can-change-color #:init-pair
-   #:attron #:wattron #:attroff #:wattroff #:attrset #:wattrset #:color-set
-   #:wcolor-set #:standend #:wstandend #:standout #:wstandout #:bkgd #:wbkgd
+   #:attron #:wattron #:attroff #:wattroff #:attrset #:wattrset
+   #:attr-get #:wattr-get
+   #:color-set #:wcolor-set #:standend #:wstandend #:standout #:wstandout
+   #:bkgd #:wbkgd
    #:bkgdset #:wbkgdset #:getbkgd
    #:color-pair #:pair-number
    #:init-extended-pair #:init-extended-color
@@ -170,8 +172,7 @@ loading this library.")
    #:flushinp
    ;; terminfo
    #:tigetstr #:tigetflag #:tigetnum
-   )
-)
+   ))
 (in-package :curses)
 
 (defvar *this-is-it* t "The only one.") ; Yes, but actually, no.
@@ -1173,6 +1174,19 @@ of these, in which case it returns ERR."
 (defcfun wattrset :int
   "Sets the current attributes of the given window to ATTRS."
   (win window-ptr :in) (attrs :int))
+
+(defcfun attr-get :int
+  "Get the current attributes and color pair."
+  (attrs (:pointer attr-t))
+  (pair (:pointer :short))
+  (opts (:pointer :void)))
+
+(defcfun wattr-get :int
+  "Get the current attributes and color pair."
+  (win window-ptr :in)
+  (attrs (:pointer attr-t))
+  (pair (:pointer :short))
+  (opts (:pointer :void)))
 
 (defcfun color-set :int
   "Sets the current color of the given window to the foreground/background
