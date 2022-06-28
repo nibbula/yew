@@ -199,7 +199,7 @@ fatchar:span-to-fat-string.")
 (defun make-grout (&optional (stream *standard-output* stream-provided))
   "Return an appropriate grout instance. Try to figure out what kind to make
 from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
-  (dbugf :grout "make-grout ~s ~s~%" stream stream-provided)
+  ;; (dbugf :grout "make-grout ~s ~s~%" stream stream-provided)
   (cond
     ((shell-output-accepts-grotty)
      ;; (dbugf :grout "using ansi-stream~%")
@@ -211,7 +211,7 @@ from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
      ;; (dbugf :grout "using generic-term *terminal*~%")
      (make-instance 'grout-generic-term :stream *terminal*))
     ((and stream-provided (typep stream 'terminal))
-     ;; (dbugf :grout "using generic-term provided~%")
+     ;; (dbugf :grout "using generic-term provided ~s~%" (type-of stream))
      (make-instance 'grout-generic-term :stream stream))
     ((has-terminal-attributes stream)
      ;; (dbugf :grout "using generic-term~%")
@@ -235,10 +235,10 @@ generic functions (i.e. %GROUT-*) directly."
     `(flet ((,thunk () ,@body))
        (let* (#|(,var-sym ,var) |#
 	      (,var-value ,var))
-	 (dbugf :grout "~s ~s ~s ~s ~s ~s~%" (boundp ',var) ',var ,var-value
-		,stream-provided
-		,stream
-		(and ,stream (eq ,stream (grout-stream ,var-value))))
+	 ;; (dbugf :grout "~s ~s ~s ~s ~s ~s~%" (boundp ',var) ',var ,var-value
+	 ;; 	,stream-provided
+	 ;; 	,stream
+	 ;; 	(and ,stream (eq ,stream (grout-stream ,var-value))))
 	 (if (and (boundp ',var) ,var-value
 		  ;; If the stream was given and it's not the same, we have to
 		  ;; make a new grout.
