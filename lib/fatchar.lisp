@@ -870,8 +870,9 @@ functions."
 					     :test #'ochar=
 					     )))
 			  (fat-string-string string))))
-    (make-fat-string :string (subseq (fat-string-string string)
-				     (or pos 0)))))
+    (if pos
+	(make-fat-string :string (subseq (fat-string-string string) pos))
+	(make-fat-string :length 0))))
 
 (defmethod ostring-right-trim (character-bag (string fat-string))
   (let ((pos (position-if #'(lambda (c)
@@ -882,10 +883,9 @@ functions."
 					     )))
 			  (fat-string-string string)
 			  :from-end t)))
-    (make-fat-string
-     :string (subseq (fat-string-string string) 0
-		     (or (and pos (1+ pos))
-			 (length (fat-string-string string)))))))
+    (if pos
+	(make-fat-string :string (subseq (fat-string-string string) 0 (1+ pos)))
+	(make-fat-string :length 0))))
 
 (defmethod ostring-trim (character-bag (string fat-string))
   (ostring-left-trim character-bag (ostring-right-trim character-bag string)))
