@@ -28,10 +28,12 @@
    #:terminal-start-at-current-line ;; #:start-at-current-line
    #:terminal-wrapper
    #:terminal-wrapped-terminal      ;; #:wrapped-terminal
+   #:terminal-retained
    #:terminal-events-enabled	    ;; #:events-enabled
    #:terminal-get-size		    ; @@@ "get" is stupid
    #:terminal-get-cursor-position
    #:terminal-device-time
+   #:terminal-output-line
    #:terminal-char-at		  #:tt-char-at
    #:terminal-start
    #:terminal-end
@@ -401,6 +403,11 @@ current line.")
   (:documentation
    "A terminal that uses another terminal inside of it, but isn't a subclass."))
 
+(defclass terminal-retained ()
+  ()
+  (:documentation
+   "A terminal that retains the state of it's display."))
+
 (defun has-terminal-attributes (stream)
   "Return true if we should treat `STREAM` as if it has terminal attributes."
   (or
@@ -459,6 +466,11 @@ or terminal-done."))
   (:documentation
    "Return the last time the terminal device was modified, or NIL if we don't
 know."))
+
+(defgeneric terminal-output-line (terminal n)
+  (:documentation
+   "Return output line ‘n’ of ‘terminal’ as a fat-string. Works on retained
+terminals."))
 
 ;; (defmacro with-terminal-stream ((var stream) &body body)
 ;;   "Evaluate the body with VAR set to a new terminal-stream."
@@ -999,6 +1011,7 @@ position. Return the primary result of evaluating the body."
 	   (terminal-restore-cursor ,tty))
 	 ,result-sym))))
 
+;; @@@ move to terminal-utils?
 (defmacro with-terminal-output-to-string
     ((&optional (type :ansi-stream)) &body body)
   "Evaluate the body with *TERMINAL* bound to a terminal-stream which outputs to
