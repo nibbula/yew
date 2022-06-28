@@ -335,6 +335,9 @@ two values ROW and COLUMN."
       (t
        (parse-cursor-position result)))))
 
+;; (defmethod terminal-get-cursor-position ((tty terminal-ansi-stream))
+;;   (values 0 (terminal-fake-column tty)))
+
 ;; Just for debugging
 ; (defun terminal-report-size ()
 ;   (let ((tty (line-editor-terminal *line-editor*)))
@@ -979,6 +982,11 @@ i.e. the terminal is 'line buffered'."
   (terminal-write-char tty #\newline))
 
 (defmethod terminal-fresh-line ((tty terminal-ansi-stream))
+  (when (not (zerop (terminal-fake-column tty)))
+    (terminal-write-char tty #\newline)
+    t))
+
+(defmethod terminal-fresh-line ((tty terminal-ansi))
   (when (not (zerop (second (multiple-value-list
 			     (terminal-get-cursor-position tty)))))
     (terminal-write-char tty #\newline)
