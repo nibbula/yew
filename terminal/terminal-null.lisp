@@ -73,6 +73,10 @@ terminal-crunch:with-terminal-output-to-fat-string.")
 (defmethod (setf terminal-selection) (selection (tty terminal-null) &key type)
   (declare (ignore selection tty type)))
 
+(defmethod terminal-has-attribute ((tty terminal-null) attribute)
+  (declare (ignore tty attribute))
+  t)
+
 #|──────────────────────────────────────────────────────────────────────────┤#
  │ Stream methods.
  ╰|#
