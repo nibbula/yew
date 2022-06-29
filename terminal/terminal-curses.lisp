@@ -587,7 +587,6 @@ set.")
 
 (defun %terminal-write-char (tty char &key reset)
   "Output a character to the terminal."
-  ;; @@@ unicode!
   (dbugf :curses "howdy ~s ~s~%" reset char)
   (with-slots ((cc fatchar::c)
 	       (fg fatchar::fg)
@@ -602,22 +601,19 @@ set.")
       	  (when replacement
       	    (setf c replacement))))
 
-      (terminal-color tty fg bg)
       (if (or fg bg attrs)
 	  (progn
-	    ;; (when (or fg bg)
-	    ;;   ;; (terminal-color tty (or fg :default) (or bg :default)))
-	    ;;   (dbugf :curses "chippy ~s ~s~%" fg bg)
+	    (when (or fg bg)
+	      (terminal-color tty fg bg)) 
 	    (when attrs
 	      (loop :with n
 		 :for a :in attrs :do
 		 (when (setf n (assoc a *attributes*))
 		   (attron (cdr n))))))
-	  (when reset
-	    (dbugf :curses "neow~%")
+	  (progn
 	    (attrset +a-normal+)
-	    (color-set 0 (cffi:null-pointer))
-	    ))
+	    ;; color pair 0 is default
+	    (color-set 0 (cffi:null-pointer))))
       (when (not (zerop line))
 	(attron +A-ALTCHARSET+)
 	(setf c (line-char line)))
@@ -663,8 +659,6 @@ i.e. the terminal is 'line buffered'."
 	       	       (terminal-write-char tty cc))
 	       	   (terminal-write-char tty (line-char line)))
 	       (progn
-		 ;;(terminal-raw-format tty "~c[0m" #\escape)
-		 ;; (%terminal-write-char tty c :reset nil)))
 		 (%terminal-write-char tty c :reset nil)))
 	   (setf last-c c))
 	 (incf i))
@@ -808,20 +802,69 @@ i.e. the terminal is 'line buffered'."
       (attron +a-reverse+)
       (attroff +a-reverse+)))
 
+(defun get-rendition (tty)
+  (cffi:with-foreign-objects ((attrs 'curses::attr-t)
+			      (pair :short 2)
+			      (int-pair :int))
+    (attr-get attrs pair int-pair)
+    (let ((color (pair-color (color-izer tty) (cffi:mem-aref int-pair :int))))
+      (make-fatchar
+       :attrs
+       (loop :for a :in *attributes*
+	     :when (logand (cffi:mem-ref attrs 'curses::attr-t) (cdr a))
+	     :collect (car a))
+       :fg (car color)
+       :bg (cdr color)))))
+
+(defun get-current-pair (tty)
+  (cffi:with-foreign-objects ((attrs 'curses::attr-t)
+			      (pair :short 2)
+			      (int-pair :int))
+    (attr-get attrs pair int-pair)
+    ;; (values (cffi:mem-aref pair :short 0) (cffi:mem-aref pair :short 1))))
+    (let ((color (pair-color (color-izer tty) (cffi:mem-aref int-pair :int))))
+      (values (car color) (cdr color)))))
+
 (defmethod terminal-color ((tty terminal-curses) fg bg)
   ;; This defaulting is bullcrap. But so is curses defaulting.
   ;; See man default_colors.
-  (when (or (null fg) (eq fg :default))
-    (setf fg (default-fg tty)))
-  (when (or (null bg) (eq bg :default))
-    (setf bg (default-bg tty)))
-  (let ((fg-num (color-number (color-izer tty) fg))
-	(bg-num (color-number (color-izer tty) bg)))
-    (when (and fg-num bg-num)
-      (let ((pair (or (color-index tty fg-num bg-num)
-		      (make-color-pair (color-izer tty) fg-num bg-num))))
-	(when pair
-	  (color-set pair (cffi:null-pointer)))))))
+  (flet ((get-or-make-pair (fg-num bg-num)
+	   "Get an existing pair for ‘fg’ and ‘bg’, or make a new one."
+	   (dbugf :curses "get-or-make-pair ~s ~s~%" fg-num bg-num)
+	   (or (color-index tty fg-num bg-num)
+	       (make-color-pair (color-izer tty) fg-num bg-num))))
+    (let (fg-num bg-num pair)
+      (when fg
+	(when (eq fg :default)
+	  (setf fg (default-fg tty)))
+	(setf fg-num (color-number (color-izer tty) fg)))
+
+      (when bg
+	(when (eq bg :default)
+	  (setf bg (default-bg tty)))
+	(setf bg-num (color-number (color-izer tty) bg)))
+
+      (dbugf :curses "terminal-color fg-num ~s bg-num ~s~%" fg-num bg-num)
+
+      (cond
+	((and fg-num bg-num)
+	 (setf pair (get-or-make-pair fg-num bg-num))
+	 (when pair
+	   (color-set pair (cffi:null-pointer))))
+	(fg-num
+	 (dbugf :curses "get-current-pair ~s~%"
+		(multiple-value-list (get-current-pair tty)))
+	 (setf pair (get-or-make-pair fg-num
+		      (second (multiple-value-list (get-current-pair tty)))))
+	 (when pair
+	   (color-set pair (cffi:null-pointer))))
+	(bg-num
+	 (dbugf :curses "get-current-pair ~s~%"
+		(multiple-value-list (get-current-pair tty)))
+	 (setf pair (get-or-make-pair (get-current-pair tty) bg-num))
+	 (when pair
+	   (color-set pair (cffi:null-pointer))))
+	(t #| Both nil, so don't do anything |#)))))
 
 (defmethod terminal-colors ((tty terminal-curses))
   (declare (ignore tty))
