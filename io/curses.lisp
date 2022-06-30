@@ -121,6 +121,8 @@ loading this library.")
    #:mousemask #:getmouse #:ungetmouse #:mouseinterval
    ;; output
    #:addch #:waddch #:mvaddch #:mvwaddch #:echochar #:wechochar
+   #:add-wch #:wadd-wch #:mvadd-wch #:mvwadd-wch #:echo-wchar #:wecho-wchar
+   #:setcchar #:getcchar
    #:addstr #:addnstr #:mvaddstr #:mvaddnstr #:waddstr
    #:waddnstr #:mvaddstr #:mvwaddstr #:mvaddnstr #:mvwaddnstr
    #:addnwstr #:waddnwstr
@@ -307,7 +309,9 @@ loading this library.")
 
 (defcstruct cchar-t
   (attr attr-t)
-  (chars wchar-t :count 5))
+  (chars wchar-t :count 5)
+  (ext-color :int) ;; added later?
+  )
 (defctype cchar-t-ptr (:pointer (:struct cchar-t))) ; (cchar-t *)
 
 (defconstant +ERR+ -1 "Return value usually indicating an error.")
@@ -789,6 +793,18 @@ as a click. Return the previous setting. -1 makes no change. 0 disables it."
 		      :int (win window-ptr) (y :int) (x :int) (wch cchar-t-ptr))
 #-curses-dont-use-wide (defcfun echo-wchar :int (wch cchar-t-ptr))
 #-curses-dont-use-wide (defcfun wecho-wchar :int (win window-ptr) (wch cchar-t-ptr))
+#-curses-dont-use-wide (defcfun setcchar :int
+			 (wcval cchar-t-ptr)
+			 (wch (:pointer wchar-t))
+			 (attrs attr-t)
+			 (color-pair :short)
+			 (opts (:pointer :void)))
+#-curses-dont-use-wide (defcfun getcchar :int
+			 (wcval cchar-t-ptr)
+			 (wch (:pointer wchar-t))
+			 (attrs (:pointer attr-t))
+			 (color-pair (:pointer :short))
+			 (opts (:pointer :void)))
 
 ;; strings
 (defcfun addstr :int (str :string :in))
