@@ -213,10 +213,10 @@ The REPL also has a few commands:
 		      :terminal-class terminal-class
 		      :history-context :repl
 		      :accept-does-newline nil
-		      :partial-line-indicator
-		      (if quietly
-			  nil
-			  rl:*default-partial-line-indicator*)
+		      :partial-line-indicator nil
+		      ;; (if quietly
+		      ;; 	  nil
+		      ;; 	  rl:*default-partial-line-indicator*)
 		      :re-edit re-edit
 		      :prompt (or (and (ostringp prompt) prompt)
 				  rl:*default-prompt*)
@@ -384,7 +384,7 @@ TERMINAL-NAME and TERMINAL-TYPE should be in the environment."
 to quit everything. Arguments are:
  PROMPT-FUNC    -- A RL prompt function, which is called with a with
                    an instance of RL:LINE-EDITOR and a prompt string.
- PROMPT-STRING  -- 
+ PROMPT-STRING  -- A prompt to pass to RL.
  NO-ANNOUNCE    -- True to supress the announcement on starting.
  TERMINAL       -- An already created terminal to use.
  TERMINAL-NAME  -- Name of a system terminal device to read from.
