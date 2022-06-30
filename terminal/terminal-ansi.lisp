@@ -936,7 +936,6 @@ newline in it."
 		       (write-char cc stream))
 		   (write-char (line-char line) stream))
 	       (progn
-		 ;;(terminal-raw-format tty "~c[0m" #\escape)
 		 (%terminal-write-char tty c :reset nil)))
 	   (setf last-c c)
 	   (when (char= cc #\newline)
