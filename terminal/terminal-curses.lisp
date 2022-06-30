@@ -1053,6 +1053,7 @@ Attributes are usually keywords."
 
 (defmethod terminal-set-rendition ((tty terminal-curses) fatchar)
   "Set the colors and attributes given in the fatchar."
+  (attrset +a-normal+)
   (terminal-set-attributes tty (fatchar-attrs fatchar))
   (terminal-color tty (fatchar-fg fatchar) (fatchar-bg fatchar)))
 
