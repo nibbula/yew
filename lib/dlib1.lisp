@@ -1615,7 +1615,7 @@ ORIGINAL is something that a define-alias method is defined for."
 
 (defmacro __ ((&rest args) &body body)
   "Extra bogus shorthand for lambda, but with auto ignored args. Arguments whose
-names start with #\_ are ignored."
+names start with ‘_’ are ignored."
   (let ((ignore-list
 	 (loop :for a :in args
 	    :when (char= #\_ (char (symbol-name a) 0))
