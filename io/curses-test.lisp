@@ -250,10 +250,10 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-#+curses-use-wide
+#-curses-dont-use-wide
 (defun test-wchar-1 ()
   (clear)
-  (let ((chars
+  (let ((wide-chars
 	 #+(or sbcl cmu)
 	 `(#\black_left-pointing_triangle
 	   #\black_smiling_face
@@ -279,17 +279,48 @@
 	   ,(code-char #x1f341)
 	   ,(code-char 0))
 	 ))
-    (with-foreign-object (str :int (length chars))
-      (loop :with i = 0 :for c :in chars :do
+    ;; addnwstr with wchar_t
+    #|
+    (with-foreign-object (str :int (length wide-chars))
+      (loop :with i = 0 :for c :in wide-chars :do
 	 (setf (mem-aref str :int i) (char-code c))
 	 (incf i))
-      (setf (mem-aref str :int (1- (length chars))) 0)
+      (setf (mem-aref str :int (1- (length wide-chars))) 0)
       (move 10 10)
-      (addnwstr str (1- (length chars)))))
+      (addnwstr str (1- (length wide-chars))))
+    |#
+
+    ;; add_wchar with cchar
+    (move 11 10)
+    #|
+    (with-foreign-object (c '(:struct curses::cchar-t))
+      (with-foreign-slots ((curses::attr curses::chars curses::ext-color) c
+			   (:struct curses::cchar-t))
+	(map nil
+	     (lambda (x)
+	       (setf (mem-aref curses::chars 'curses::wchar-t 0)
+		     (char-code x)
+		     (mem-aref curses::chars 'curses::wchar-t 1)
+		     0)
+	       (curses:add-wch c))
+	     wide-chars))))
+     |#
+
+    ;; add-wch with cchar
+    (let ((pair 0) (attrs 0))
+      (with-foreign-objects ((c '(:struct curses::cchar-t))
+			     (wide :int 2))
+
+	(map nil (lambda (x)
+		   (setf (mem-aref wide :int 0) (char-code x))
+		   (setcchar c wide attrs pair (null-pointer))
+		   (add-wch c))
+	     wide-chars))))
+
   (refresh)
   (getch))
 
-#+curses-use-wide
+#-curses-dont-use-wide
 (defun wa (wide-string)
   (with-foreign-object (fstr :int (1+ (length wide-string)))
       (loop :with i = 0 :for c :across wide-string :do
@@ -298,7 +329,7 @@
       (setf (mem-aref fstr :int (length wide-string)) 0)
       (addnwstr fstr (length wide-string))))
 
-#+curses-use-wide
+#-curses-dont-use-wide
 (defparameter *block*
   '("░░░░░░░░"
     "░▒▒▒▒▒▒░"
@@ -308,7 +339,7 @@
     "░▒▒▒▒▒▒░"
     "░░░░░░░░"))
 
-#+curses-use-wide
+#-curses-dont-use-wide
 (defun draw-block (y x)
   (move y x)
   (loop :with i = y
@@ -317,19 +348,19 @@
      (move (incf i) x))
   (refresh))
 
-#+curses-use-wide
+#-curses-dont-use-wide
 (defstruct blook
   color
   x y
   xinc yinc)
 
-#+curses-use-wide
+#-curses-dont-use-wide
 (defun show-blook (b)
   (attron (color-pair (blook-color b)))
   (draw-block (blook-y b) (blook-x b))
   (attroff (color-pair (blook-color b))))
 
-#+curses-use-wide
+#-curses-dont-use-wide
 (defun test-wchar-2 ()
   (clear)
   (let ((blocks
@@ -373,20 +404,21 @@
 
 ;; On some implementations, such as CCL and ECL you need to call setlocale
 ;; before this will work.
-#+curses-use-wide
+#-curses-dont-use-wide
 (defun test-wchar ()
-  ;; (initscr)
-  ;; (cbreak)
-  ;; (noecho)
-  ;; (nonl)
-  ;; (typeahead -1)
+  (initscr)
+  (cbreak)
+  (noecho)
+  (nonl)
+  (typeahead -1)
+
   (init-colors)
   (test-wchar-1)
   (test-wchar-2)
-  ;; (endwin)
+  (endwin)
   )
 
-#+curses-use-wide
+#-curses-dont-use-wide
 (defun test-wchar-in ()
   (erase)
   (move 0 0)
@@ -412,6 +444,13 @@
 	 (when (> line (1- *lines*))
 	   (setf line 3)
 	   (move 3 0))))))
+
+;; (defun test-direct-color ()
+;;   (let ((pair 65))
+;;     (loop :for i :from 0 :to 80 :do
+;;       (init-extended-color color r g b)
+;;       (init-extended-pair pair fg bg)
+;;   )
 
 (defun test-keys ()
   "See what curses thinks a key is."
@@ -613,10 +652,11 @@
     ("Alternate character set"  . test-acs)
     ("Window borders"           . test-borders)
     ("Random cursor movement"   . test-random)
-    #+curses-use-wide
+    #-curses-dont-use-wide
     ("Wide character output"    . test-wchar)
-    #+curses-use-wide
+    #-curses-dont-use-wide
     ("Wide character input"     . test-wchar-in)
+    ("Test direct color"        . test-direct-color)
     ("Keys"			. test-keys)
     ("Mouse"			. test-mouse)
     ("Mouse 2"			. test-mouse-2)
@@ -648,7 +688,7 @@
   (test-acs)
   (test-borders)
   (test-random)
-  #+curses-use-wide (test-wchar))
+  #-curses-dont-use-wide (test-wchar))
 
 (defun menu ()
   (call-test #'menu-loop)
