@@ -306,7 +306,7 @@
         (tt-set-rendition (make-fatchar :attrs attrs :fg fg))
         (tt-format "Normal")
         (loop
-          :for a :in '(:bold :underline :double-underline :inverse) :do
+          :for a :in '(:bold :underline :double-underline :reverse) :do
           (tt-write-char #\space)
           (tt-set-rendition (make-fatchar :attrs (push a attrs) :fg fg))
           (tt-format "~a" (attr-name a)))
