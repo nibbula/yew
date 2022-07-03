@@ -1114,6 +1114,17 @@ versions of the keywords used in Lisp open.
 
 (defcfun mkstemp :int (template :string))
 
+(defun mkdtemp (template)
+  (cffi:with-foreign-string
+      (template-foreign  template)
+    (let ((result (cffi:foreign-funcall "mkdtemp" :pointer template-foreign :pointer)))
+      (if (cffi:null-pointer-p result)
+          (error 'posix-error
+                 :error-code (errno)
+                 :format-control "~s"
+                 :format-arguments (list template))
+          (nth-value 0 (cffi:foreign-string-to-lisp result))))))
+
 ;; what about ioctl defines?
 
 #+(or darwin linux freebsd openbsd netbsd)

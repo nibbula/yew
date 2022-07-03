@@ -234,6 +234,7 @@
    #:with-posix-file
    #:with-os-file
    #:mkstemp
+   #:mkdtemp
    #:fcntl
    #:get-file-descriptor-flags
    #:fsync
