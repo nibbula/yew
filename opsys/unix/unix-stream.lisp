@@ -398,7 +398,8 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 |#
 
 (defclass unix-character-io-stream (unix-character-input-stream
-				    unix-character-output-stream)
+				    unix-character-output-stream
+				    os-character-io-stream #| @@@ |#)
   ()
   (:documentation "Your useful friend on the other end."))
 
@@ -473,7 +474,8 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
   seq)
 
 (defclass unix-binary-io-stream (unix-binary-input-stream
-				 unix-binary-output-stream)
+				 unix-binary-output-stream
+				 os-binary-io-stream #| @@@ |#)
   ()
   (:documentation "Your useful friend on the other end."))
 

@@ -167,8 +167,8 @@ system functions."))
   (:documentation
    "An os-stream that does output of characters."))
 
-(defclass os-character-io-stream (os-character-input-stram
-				  os-character-output-stram)
+(defclass os-character-io-stream (os-character-input-stream
+				  os-character-output-stream)
   ()
   (:documentation
    "An os-stream that does input and output of characters."))

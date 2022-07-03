@@ -125,16 +125,18 @@
 
 (defun make-os-stream-from-handle (handle
 				   &key
+				     direction
 				     (element-type 'base-char)
 				     (external-format 'default))
-  (declare (ignore external-format))
   "Return an os-stream using the system file handle HANDLE. The direction is
 determined from the handle.
    Defined keywords:
     :ELEMENT-TYPE - the type of object to read or write, default BASE-CHAR"
+  (declare (ignore external-format))
   (make-instance
-   (os-stream-type-for (stream-handle-direction handle)
-		       element-type)
+   (os-stream-system-type
+    (os-stream-type-for (or direction (stream-handle-direction handle))
+			element-type))
    :handle handle))
 
 (defmacro with-os-stream ((stream filespec &rest options) &body body)
