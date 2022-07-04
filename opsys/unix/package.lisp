@@ -224,7 +224,8 @@
    #:posix-read
    #:posix-write
    #:posix-ioctl
-   #:posix-unlink #+(or linux freebsd) #:posix-unlinkat
+   #:posix-unlink
+   #+(or linux freebsd openbsd netbsd) #:posix-unlinkat
    #:posix-lseek
    #:posix-pread
    #:posix-pwrite
@@ -235,7 +236,14 @@
    #:posix-rename
    #:with-posix-file
    #:with-os-file
+   #:with-temporary-thing
+   #:with-temporary-directory
+   #:with-temporary-file
+   #:mkdtemp
    #:mkstemp
+   #:mkostemp
+   #:mkstemps
+   #:mkostemps
    #:fcntl
    #:get-file-descriptor-flags
    #:fsync

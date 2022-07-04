@@ -978,6 +978,9 @@ calls. Returns NIL when there is an error."
 #+(or darwin freebsd openbsd netbsd linux)
 (defconstant +O_ACCMODE+ #x0003 "Mask for access modes.")
 
+;; @@@ The "posix-" prefix for open, close, read, write make a little sense,
+;; but do we really need it on the others, e.g. ioctl?
+
 (defcfun ("open" posix-open)   :int
   #.(format nil
      "Open a file named PATH. FLAGS is an integer which can have bits set as
@@ -1025,6 +1028,9 @@ according to WHENCE, where WHENCE is one of:~%~{~a~%~}"
 (defcfun ("pwrite" posix-pwrite) ssize-t
   (fd :int) (buf :pointer) (nbytes size-t) (offset off-t))
 (defcfun ("unlink" posix-unlink) :int (path :string))
+
+(defconstant +AT-REMOVEDIR+ #x200
+  "Value for flags in unlinkat to remove a directory.")
 
 #+(or linux freebsd openbsd netbsd)
 (progn
@@ -1116,7 +1122,220 @@ versions of the keywords used in Lisp open.
     `(with-posix-file (,var ,filename ,flags)
        ,@body)))
 
-(defcfun mkstemp :int (template :string))
+(defcfun ("mkstemp" real-mkstemp) :int (template :string))
+(defcfun ("mkostemp" real-mkostemp) :int (template :string) (flags :int))
+(defcfun ("mkstemps" real-mkstemps) :int (template :string) (suffixlen :int))
+(defcfun ("mkostemps" real-mkostemps) :int (template :string) (suffixlen :int)
+	 (flags :int))
+(defcfun ("mkdtemp" real-mkdtemp) :int (template :string))
+
+(defparameter *fake-alphabet*
+  "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+
+(defparameter *default-random-length* 6
+  "How long the random part of temporary things are.")
+
+;; This tries to approximate the way glibc makes random file parts.
+;; This isn't clever.
+(defun fake-random-string (&key (salt 0) (length *default-random-length*))
+  "Generate an insecure fake random string of ‘length’ characters,
+salted with ‘salt’ which should probably be an integer of less than 32 bits."
+  (let ((result (make-string length))
+	(fuzz (random (ash 1 (* length 8))))
+	(alphabet-length (length *fake-alphabet*)))
+    (setf fuzz (logxor fuzz salt))
+    (loop :for i :from 0 :below length
+      :do
+      (setf (char result i) (char *fake-alphabet* (mod fuzz alphabet-length))
+	    fuzz (truncate fuzz alphabet-length)))
+    result))
+
+(defun random-open (parent-fd prefix salt
+		    &key dirp suffix
+		      (random-length *default-random-length*)
+		      (flags 0))
+  "Open a randomly named thing in directory with file descriptor ‘parent-fd’,
+named ‘prefix’, then ‘random-lengh’ random characters, followed by ‘suffix’. Mix
+‘salt’ into the randomness, ‘salt’ is usually the PID. If ‘dirp’ is true, make
+a directory, otherwise make a regular file. ‘flags’ are flags given to the open
+system call.
+
+Returns two values, the name of the file or directory, and an open file
+descriptor."
+  (let (name fd (i 0))
+    (loop
+      :with %flags = (logior +O_RDWR+ +O_CREAT+ +O_EXCL+ (or flags 0))
+      :and mode = (logior S_IRUSR S_IWUSR (if dirp S_IXUSR 0))
+      :do
+      (setf name (s+ prefix (fake-random-string
+			     :salt salt
+			     :length (or random-length *default-random-length*))
+		     (or suffix ""))
+	    fd (if dirp
+		   (progn
+		     (syscall (mkdirat parent-fd name mode))
+		     ;; @@@ stupidly a race condition can happen here
+		     (syscall (posix-openat parent-fd name
+					    (logior %flags
+						    #+linux +O_PATH+
+						    #-linux 0)
+					    mode)))
+		   (syscall (posix-openat parent-fd name %flags mode))))
+      (incf i)
+      :while (and (= fd -1) (= *errno* +EEXIST+) (< i #.(expt 62 3))))
+    (when (>= i #.(expt 62 3))
+      ;; @@@ make continuable?
+      (error "Too many attempts to open a ~:[file~;directory~] with prefix ~s."
+	     dirp prefix))
+    ;; mkdirat returns zero on success, not a file descriptor, so set fd to
+    ;; an invalid value.
+    (when (and dirp (zerop fd))
+      (setf fd nil))
+    (values name fd)))
+
+;; @@@ On linux one could do a more secure and race free temporary file with
+;; openat and O_TMPFILE.
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *temp-doc*
+    "Evaluate ‘body’ with ~a. The name is
+contructed by concatenating ‘prefix’ if non-nil, ‘length’ random characters,
+and ‘suffix’ if non-nil.
+
+Arguments are:
+  ~a
+
+Kewords parameters:
+  ‘dirp’      If true, make a directory, otherwise a regular file.
+  ‘parent’    Specifiy the parent directory, which defaults to the current
+              directory, unless ‘prefix’ is an absolute path.
+  ‘cleanup’   A function to be called after evaluating ‘body’.
+  ‘remove’    If true, remove the thing afterwards. If a directory isn't
+              empty, it won't be removed. In that case, use a ‘cleanup’
+              function.
+  ‘flags’     Extra flags passed to open."))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro with-temporary-thing ((thing-name thing-fd
+				   &key prefix
+				     (length *default-random-length*)
+				     suffix dirp parent
+				     cleanup remove (flags 0))
+				  &body body)
+    #.(format nil *temp-doc*
+	      "an open temporary file or directory"
+ "‘thing-name’  A symbol which will be set to the the name.
+  ‘thing-fd’    A symbol which will be set to an open file descriptor.")
+    (with-names (%prefix %suffix %parent %cleanup %dirp parent-fd #|pid|#)
+      (let* ((name (or thing-name (gensym "NAME")))
+	     (fd   (or thing-fd  (gensym "FD")))
+	     (remove-clause
+	       (when remove
+		 ;; @@@ It might be nice to have a restart, but should we really
+		 ;; move doing rm:rmdir in here or on a restart?
+		 `((syscall (posix-unlinkat ,parent-fd ,name
+					    (if ,%dirp +AT-REMOVEDIR+ 0)))))))
+	`(let ((,%prefix (or ,prefix ""))
+	       (,%suffix ,suffix)
+	       (,%parent ,parent)
+	       (,%cleanup ,cleanup)
+	       (,%dirp ,dirp)
+	       ;; (,pid (ash (getpid) 32))
+	       (,parent-fd -1)
+	       (,name)
+	       (,fd -1))
+	   (when (null ,%parent)
+	     (setf ,%parent (if (%path-absolute-p ,%prefix)
+				"/"
+				(uos:current-directory))))
+	   (unwind-protect
+	      (progn
+		(setf ,parent-fd (syscall (posix-open ,%parent
+						      #+linux +O_PATH+
+						      #-linux 0
+						      0)))
+		(multiple-value-setq (,name ,fd)
+		  (random-open ,parent-fd ,%prefix (ash (getpid) 32) #|,pid|#
+			       :dirp ,%dirp
+			       :suffix ,%suffix
+			       :flags ,flags
+			       :random-length ,length))
+		,@body)
+	     (when ,%cleanup
+	       (funcall ,%cleanup ,fd ,parent-fd))
+	     ,@remove-clause
+	     (when (and ,fd (/= ,fd -1))
+	       (syscall (posix-close ,fd)))
+	     (when (/= ,parent-fd -1)
+	       (syscall (posix-close ,parent-fd))))))))
+
+;; @@@ Consider making it easy to openat an os-stream.
+;; @@@ Consider how to use both a name and fd. I guess you could just use
+;; with-temporary-thing directly.
+  (defmacro with-temporary-directory ((dir-var
+				       &key prefix suffix parent as-fd cleanup
+					 (remove t) (flags 0) length)
+				      &body body)
+    #.(format nil *temp-doc*
+	      "a temporary directory created"
+"‘dir-var’   A symbol which will be set to the the name or file descriptor.")
+    `(with-temporary-thing (,@(if as-fd (list nil dir-var) (list dir-var nil))
+			    :prefix ,prefix :suffix ,suffix :parent ,parent
+			    :cleanup ,cleanup :remove ,remove :flags ,flags
+			    :length ,length :dirp t)
+       ,@body))
+
+  (defmacro with-temporary-file ((file-var
+				  &key prefix suffix parent as-fd cleanup
+				    (remove t) (flags 0) length)
+				 &body body)
+    #.(format nil *temp-doc*
+	      "a temporary file"
+"‘file-var’   A symbol which will be set to the the name or file descriptor.")
+    `(with-temporary-thing (,@(if as-fd (list nil file-var) (list file-var nil))
+			    :prefix ,prefix :suffix ,suffix :parent ,parent
+			    :cleanup ,cleanup :remove ,remove :flags ,flags
+			    :length ,length)
+       ,@body)))
+
+(defun mkdtemp (template)
+  "Something like POSIX mkdtemp. Using this has various problems. It's
+recommended to use with-temporary-directory instead."
+  (with-temporary-directory (name :prefix template :remove nil)
+    name))
+
+(defun mkstemp (template)
+  "Something like POSIX mkstemp. Using this has various problems. It's
+recommended to use with-temporary-file instead."
+  (with-temporary-file (name :prefix template :remove nil)
+    name))
+
+(defun mkostemp (template flags)
+  "Something like POSIX mkostemp. Using this has various problems. It's
+recommended to use with-temporary-file instead."
+  (with-temporary-file (name :prefix template :remove nil :flags flags)
+    name))
+
+(defun mkstemps (template suffixlen)
+  "Something like POSIX mkstemps. Using this has various problems. It's
+recommended to use with-temporary-file instead."
+  (let ((end (- (length template) suffixlen)))
+    (with-temporary-file (name :prefix (subseq template 0 (- end 6))
+			       :remove nil
+			       :suffix (subseq template end)
+			       :remove nil)
+      name)))
+
+(defun mkostemps (template suffixlen flags)
+  "Something like POSIX mkostemps. Using this has various problems. It's
+recommended to use with-temporary-file instead."
+  (let ((end (- (length template) suffixlen)))
+    (with-temporary-file (name :prefix (subseq template 0 (- end 6))
+			       :remove nil
+			       :suffix (subseq template end)
+			       :remove nil
+			       :flags flags)
+      name)))
 
 ;; what about ioctl defines?
 

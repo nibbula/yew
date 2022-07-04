@@ -241,6 +241,47 @@
       (nos:delete-directory test-dir))
     result))
 
+(deftests (opsys-unix-temp-1 :doc "Test making temporary things.")
+  "Test making temporary files and directories."
+  (with-temporary-directory (dir :prefix "Woo")
+    (uos::directory-p dir))
+  (with-temporary-file (file :prefix "Woo")
+    (uos::file-exists file))
+  (with-temporary-directory (dir :prefix "Woo")
+    (and (uos::directory-p dir)
+	 (with-temporary-directory (dir :prefix "Woo")
+	   (and (uos::directory-p dir)
+		(with-temporary-directory (dir :prefix "Woo")
+		  (and (uos::directory-p dir)
+		       (with-temporary-directory (dir :prefix "Woo")
+			 (uos::directory-p dir))))))))
+  (with-temporary-directory (dir :prefix "Woo")
+    (let (files)
+      (loop :for i :from 1 :to 10000 :do
+        (with-temporary-file (file :prefix "Waa" :parent dir :remove nil)
+	  (uos::file-exists file)
+	  (push file files)))
+      (mapcar (lambda (x) (delete-file (s+ dir "/" x))) files)))
+  (let (files)
+    (with-temporary-directory (dir :prefix "Woo" :remove t
+				   :cleanup
+				   (lambda (fd dir-fd)
+				     (declare (ignore fd dir-fd))
+				     (mapcar (lambda (x)
+					       (delete-file x))
+					     files)))
+      (loop :for i :from 1 :to 1000 :do
+        (with-temporary-thing (name fd :prefix "Wat" :parent dir :remove nil)
+	  (push (concatenate 'string dir "/" name) files)
+	  (let ((str (format nil "yup~%")))
+	    (cffi:with-foreign-string (s str)
+              (uos:posix-write fd s (length str)))))))
+    t)
+  (with-temporary-file (f :length 20 :suffix ".tmp")
+    (and (uos::file-exists f)
+	 (= 24 (length f)))))
+
+
 #|
 (deftests (opsys-unix-read-dir-1 :doc "Test directories.")
   "Test a reading directories."
@@ -477,6 +518,7 @@
   opsys-unix-time-1
   opsys-unix-users-1
   opsys-unix-dir-1
+  opsys-unix-temp-1
   opsys-unix-pipe-1
   )
 
