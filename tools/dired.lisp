@@ -273,6 +273,13 @@
 	 (setf directory new-dir))))
     (refresh o)))
 
+;; As an alternative to rename, it seems like it would be cool to do
+;; multi-cursor editing of file names. Unfortunately it seems like it would
+;; require some complicated inator/editor machinery that we don't have yet.
+;; Some possibilities might be: an abstract editor over file names,
+;; making a bunch of widgets and feeding them events, a one widget overlay
+;; editor with disjoint lines?
+
 (defun rename (o)
   "Change the name of the file."
   (with-slots ((renderer table-viewer::renderer)
@@ -284,14 +291,14 @@
 		 (start table-viewer::start)
 		 (rows table-viewer::rows)
 		 (cursor table-viewer::cursor)) renderer
+      ;; we need to go to the file name cell, so we can get it's point
       (let* ((old-name (ochar:osimplify (current-file-cell o)))
 	     (new-name
-	     (rl-widget:widget-read
-	       :x (table-point-col cursor)
-	       :y (table-point-row cursor)
-	       :width (- (tt-width) (table-point-col cursor))
-	       :buf (make-fat-string
-		     :string (copy-seq old-name)))))
+	       (rl-widget:widget-read
+		:x (table-point-col cursor)
+		:y (table-point-row cursor)
+		:width (- (tt-width) (table-point-col cursor))
+		:buf (make-fatchar-string old-name))))
 	(when (not (string= old-name new-name))
 	  (dired-rename-file (path-append old-name directory)
 			     (path-append new-name directory)))))))
