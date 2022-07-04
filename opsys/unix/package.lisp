@@ -183,6 +183,8 @@
    #:os-pathname-pathname
    ;;#:dir-entry-inode
    #:change-directory
+   #:chdir
+   #:fchdir
    #:pathconf
    #:get-path-max
    #:current-directory

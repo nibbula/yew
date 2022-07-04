@@ -170,10 +170,14 @@ systems, this means \".\" and \"..\"."
 ;; on the implementation.
 ;#+openmcl (config-feature :os-t-use-chdir)
 ;#+os-t-use-chdir (defcfun chdir :int (path :string))
-#+(or openmcl sbcl abcl)
+;#+(or openmcl sbcl abcl)
 (defcfun chdir :int
   "Change the working directory."
   (path :string))
+
+(defcfun fchdir :int
+  "Change the working directory to a file descriptor."
+  (fd :int))
 
 ;; The real question is should this munge *default-pathname-defaults* ?
 ;; On implementations where "load" works from *default-pathname-defaults*
