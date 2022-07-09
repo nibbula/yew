@@ -95,6 +95,11 @@ NIL, unset the VAR, using unsetenv."
 (defsetf env set-environment-variable
     "Set the environtment variable named VAR to the string VALUE.")
 
+(defun unsetenv (var)
+  "Remove the environtment variable named VAR."
+  (declare (type string-designator var))
+  (set-environment-variable var nil))
+
 (defcstruct foreign-processor-arch
   (processor-architecture WORD)
   (reserved WORD))

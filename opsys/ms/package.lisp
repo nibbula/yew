@@ -37,6 +37,7 @@
    #:environment
    #:environment-variable
    #:env
+   #:unsetenv
    #:memory-page-size
    #:processor-count
    #:system-info-names
