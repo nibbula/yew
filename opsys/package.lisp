@@ -25,6 +25,7 @@
    #:environment
    #:environment-variable
    #:env
+   #:unsetenv
    #:lisp-args
    #:memory-page-size
    #:processor-count
