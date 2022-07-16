@@ -47,7 +47,7 @@
     (("text" . "html")       . (:view-html :view-html))
     (("application" . "xml") . (:view-html :view-html))
     (("text" . "org")        . (:view-org :view-org))
-    (("text" . "csv")        . (:table-viewer :view-table-thing))
+    (("text" . "csv")        . (:view-table :view-table-thing))
     (("text" . "neox")       . (:neox :neox-on-file))
     (("application" . "json") . (:view-json :view-json))
     (("application" . "x-directory") . (:dired :dired))
