@@ -33,82 +33,6 @@
    size
    name)
 
-;; (defun process-list ()
-;;   "Returns a list of lists of process data, consisting of:
-;;user, pid, ppid, size, command."
-;;   (sysctl
-
-#|
-     %cpu       percentage CPU usage (alias pcpu)
-     %mem       percentage memory usage (alias pmem)
-     acflag     accounting flag (alias acflg)
-     args       command and arguments
-     comm       command
-     command    command and arguments
-     cpu        short-term CPU usage factor (for scheduling)
-     etime      elapsed running time
-     flags      the process flags, in hexadecimal (alias f)
-     gid        processes group id (alias group)
-     inblk      total blocks read (alias inblock)
-     jobc       job control count
-     ktrace     tracing flags
-     ktracep    tracing vnode
-     lim        memoryuse limit
-     logname    login name of user who started the session
-     lstart     time started
-     majflt     total page faults
-     minflt     total page reclaims
-     msgrcv     total messages received (reads from pipes/sockets)
-     msgsnd     total messages sent (writes on pipes/sockets)
-     nice       nice value (alias ni)
-     nivcsw     total involuntary context switches
-     nsigs      total signals taken (alias nsignals)
-     nswap      total swaps in/out
-     nvcsw      total voluntary context switches
-     nwchan     wait channel (as an address)
-     oublk      total blocks written (alias oublock)
-     p_ru       resource usage (valid only for zombie)
-     paddr      swap address
-     pagein     pageins (same as majflt)
-     pgid       process group number
-     pid        process ID
-     ppid       parent process ID
-     pri        scheduling priority
-     re         core residency time (in seconds; 127 = infinity)
-     rgid       real group ID
-     rss        resident set size
-     ruid       real user ID
-     ruser      user name (from ruid)
-     sess       session ID
-     sig        pending signals (alias pending)
-     sigmask    blocked signals (alias blocked)
-     sl         sleep time (in seconds; 127 = infinity)
-     start      time started
-     state      symbolic process state (alias stat)
-     svgid      saved gid from a setgid executable
-     svuid      saved UID from a setuid executable
-     tdev       control terminal device number
-     time       accumulated CPU time, user + system (alias cputime)
-     tpgid      control terminal process group ID
-     tsess      control terminal session ID
-     tsiz       text size (in Kbytes)
-     tt         control terminal name (two letter abbreviation)
-     tty        full name of control terminal
-     ucomm      name to be used for accounting
-     uid        effective user ID
-     upr        scheduling priority on return from system call (alias usrpri)
-     user       user name (from UID)
-     utime      user CPU time (alias putime)
-     vsz        virtual size in Kbytes (alias vsize)
-     wchan      wait channel (as a symbolic name)
-     wq         total number of workqueue threads
-     wqb        number of blocked workqueue threads
-     wqr        number of running workqueue threads
-     wql        workqueue limit status (C = constrained thread limit, T = total thread limit)
-     xstat      exit or stop status (valid only for stopped or zombie process)
-
-|#
-
 (defvar *ps-args*
   #+solaris
   '("ps" ("-Ay" "-o" "user=" "-o" "pid=" "-o" "ppid=" "-o" "vsz=" "-o" "args="))
@@ -263,33 +187,6 @@ user, pid, ppid, size, command."
 	       (format t "~va" level ""))
 	     (format t "~s~%" x))))))
 
-;; (x 0 1 x)
-;; (x 1 2 x)
-;; (x 1 3 x)
-;; (x 1 6 x)
-;; (x 3 4 x)
-;; (x 3 5 x)
-;; (x 0 7 x)
-;;
-;; ((x 0 1 x) (x 1 2 x) (x 1 3 x) (x 1 6 x) (x 3 4 x) (x 3 5 x) (x 0 7 x))
-;;
-;; (0 (1 (2 3 (4 5) 6) 7))
-;; 0
-;;  1
-;;   2
-;;   3
-;;    4
-;;    5
-;;   6
-;;  7
-
-;; This is just for a particularly complaintive implementation.
-;; (declaim (inline sort-muffled))
-;; (defun sort-muffled (seq pred &rest args &key key)
-;;   (declare #+sbcl (sb-ext:muffle-conditions sb-ext:compiler-note)
-;; 	   (ignorable key))
-;;   (apply #'sort seq pred args))
-
 (defun ps-tree ()
   (format t "~6d ~8a ~8@a ~{~a ~}~%" "PID" "User" "Size" '("Command"))
   (let* ((plist (sort-muffled (copy-list (list-processes)) #'<
@@ -338,11 +235,6 @@ user, pid, ppid, size, command."
     ;; (tree-viewer:view-tree tree)
     ))
 
-;; (defun user-filter (user list)
-;;   (loop :for p :in list
-;;      :when (
-;;   )
-
 #+lish
 (lish:defcommand ps-tree ()
   "Show a tree of processes."
@@ -370,6 +262,55 @@ user, pid, ppid, size, command."
        :trailing-spaces nil)))
   (values))
 
+;; @@@ Maybe fix opsys to use classes. This is very bogus.
+
+(defun process-id (p)
+  (etypecase p
+    (short-process (short-process-pid p))
+    #+unix (unix-process (uos:unix-process-id p))
+    #+windows (ms-process (ms:ms-process-pid p))))
+
+(defun process-name (p)
+  (etypecase p
+    (short-process (short-process-name p))
+    #+unix (unix-process (uos:unix-process-command p))
+    #+windows (ms-process (ms:ms-process-name p))))
+
+(defun process-uid (p)
+  (etypecase p
+    (short-process (user-id :name (short-process-user p)))
+    #+unix (unix-process (uos:unix-process-user-id p))
+    #+windows (ms-process 0)))
+
+(defun process-user (p)
+  (etypecase p
+    (short-process (short-process-user p))
+    #+unix (unix-process (user-name (uos:unix-process-id p)))
+    #+windows (ms-process "")))
+
+(defun filter (list matching user)
+  "Filter out processes from ‘list’ which don't match ‘matching’ and are not
+owned by ‘user’."
+  #+windows (declare (ignore user)) ;; @@@ fix opsys to get the user
+  (let ((matching-num (or (and (integerp matching) matching)
+			  (ignore-errors (parse-integer matching))))
+	uid)
+    #+unix
+    (when user
+      (setf uid (if (numberp user) user (user-id :name user))
+	    list (remove-if-not (_ (= uid _)) list :key #'process-uid)))
+    (if matching
+	(remove-if-not
+	 (lambda (p)
+	   (or (and matching-num
+		    (= matching-num (process-id p)))
+	       (and (stringp matching)
+		    (some (_ (search matching _ :test #'equalp))
+			  (append (list (process-user p))
+				  (list (process-name p)))))))
+	 list)
+	list)))
+
 (defun ps-short (&key matching show-kernel-processes (print t) user)
   "Process status: Reformat the output of the \"ps\" command."
   (with-grout ()
@@ -378,33 +319,12 @@ user, pid, ppid, size, command."
 			(list-processes
 			 :show-kernel-processes show-kernel-processes))
 		       #'> :key #'short-process-size))
-	   (matching-num (or (and (integerp matching) matching)
-			     (ignore-errors (parse-integer matching))))
-	   (out-list
-	    (if matching
-		(loop :for p :in proc-list
-		   :if (or (and matching-num
-				(= matching-num (short-process-pid p)))
-			   (and (stringp matching)
-				(some
-				 (_ (search matching _ :test #'equalp))
-				 (append (list (short-process-user p))
-					 (list (short-process-name p))))))
-		   :collect (list (short-process-user p)
-				  (short-process-pid p)
-				  ;;(ps-print-size (short-process-size p))
-				  (short-process-size p)
-				  (short-process-name p)))
-		(loop :for p :in proc-list
-		   :collect (list (short-process-user p)
-				  (short-process-pid p)
-				  ;;(ps-print-size (short-process-size p))
-				  (short-process-size p)
-				  (short-process-name p)))))
+	   (out-list (loop :for p :in (filter proc-list matching user)
+			   :collect (list (short-process-user p)
+					  (short-process-pid p)
+					  (short-process-size p)
+					  (short-process-name p))))
 	   table)
-      (when user
-	(setf out-list (delete-if (_ (not (equalp (oelt _ 0) user)))
-				  out-list)))
       (setf table (make-table-from
 		   out-list
 		   :columns
@@ -413,16 +333,13 @@ user, pid, ppid, size, command."
 		     (:name "Size" :align :right :type number
 		      :format ,#'ps-print-size-with-width)
 		     (:name "Command"))))
-      ;; (table-set-column-type table 1 'number)
-      ;; (table-set-column-type table 2 'number)
-      ;; (table-set-column-format table 2 #'ps-print-size-with-width)
       (when print
 	(grout-print-table table :trailing-spaces nil))
       table)))
 
 (defun ps-long (&key matching show-kernel-processes (print t) user)
   "Process status: Reformat the output of the \"ps\" command."
-  (declare (ignore matching #-linux show-kernel-processes user))
+  (declare (ignore #-linux show-kernel-processes))
   (with-grout ()
     (let* ((proc-list
 	    #-linux (system-process-list)
@@ -430,8 +347,9 @@ user, pid, ppid, size, command."
 			(system-process-list)
 			(remove 0 (system-process-list)
 				:key #'unix-process-text-size)))
+	   (out-list (filter proc-list matching user))
 	   table)
-      (setf table (make-table-from proc-list))
+      (setf table (make-table-from out-list))
       #+unix
       (progn
 	(let ((i 0))
@@ -457,7 +375,7 @@ user, pid, ppid, size, command."
 				"~2,'0d:~2,'0d:~2,'0d"
 				(:hrs :min :sec)
 				:time (truncate (,x p) (expt 10 7))))))))
-	  (loop :for p :in proc-list :do
+	  (loop :for p :in out-list :do
 	       (fix-time wos::ms-process-creation-time)
 	       (fix-time wos::ms-process-exit-time)
 	       (fix-time wos::ms-process-kernel-time)
@@ -478,9 +396,6 @@ user, pid, ppid, size, command."
 				   ("Min WS" :right)
 				   ("Name")
 				   ("File"))
-	   ;; :for type :in '(number number number number string string
-	   ;; 		     string string number number number number
-	   ;; 		     string string)
 	   :do (setf (table:column-name col) name
 		     (table:column-align col) align)))
       (when print
