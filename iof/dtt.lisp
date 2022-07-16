@@ -560,7 +560,7 @@ If every object in a column:
 		       ;; 	 (setf (aref guess i) 'string))
 		       (setf (aref guess i) t))
 		      (symbol
-		       (when (not (potential-number-p (string e)))
+		       (when (not (potential-number-p (princ-to-string e)))
 			 ;; (format t "number -> string~%")
 			 (setf (aref guess i) 'symbol)))
 		      (otherwise
@@ -590,7 +590,7 @@ If every object in a column:
 		   (symbol
 		    (case (aref guess i)
 		      (number
-		       (when (not (potential-number-p (string e)))
+		       (when (not (potential-number-p (princ-to-string e)))
 			 ;; (format t "string -> number~%")
 			 (setf (aref guess i) 'symbol)))
 		      ((nil)
