@@ -98,6 +98,21 @@
    #:process-list
    #:system-process-list
    #:system-process-type
+   #:ms-process
+   #:ms-process-pid
+   #:ms-process-parent-pid
+   #:ms-process-thread-count
+   #:ms-process-priority-class
+   #:ms-process-creation-time
+   #:ms-process-exit-time
+   #:ms-process-kernel-time
+   #:ms-process-user-time
+   #:ms-process-gui-resources
+   #:ms-process-handle-count
+   #:ms-process-max-working-set
+   #:ms-process-min-working-set
+   #:ms-process-name
+   #:ms-process-command
    #:wait-and-chill
    #:check-jobs
    #:get-time
