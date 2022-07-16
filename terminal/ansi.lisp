@@ -13,7 +13,7 @@ modern xterm style functionality.")
    #:+csi+
    #:+st+
    #:+osc+
-   #:+dsc+
+   #:+dcs+
    #:*attributes*
    #:*attributes-off*
    #:*colors*
