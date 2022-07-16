@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description   "Pick a character."
     :depends-on (:dlib :stretchy :char-util :keymap
-		 :inator :terminal :terminal-inator :cl-ppcre)
+		 :inator :fatchar :terminal :terminal-inator :cl-ppcre)
     :components
     ((:file "char-picker")))

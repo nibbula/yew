@@ -5,7 +5,7 @@
 (defpackage :char-picker
   (:documentation "Pick characters that may be otherwise hard to type.")
   (:use :cl :dlib :stretchy :char-util :dlib-misc :keymap :inator
-	:terminal :terminal-inator :cl-ppcre)
+	:fatchar :terminal :terminal-inator :cl-ppcre)
   (:export
    #:char-picker
    #:!char-picker
@@ -66,12 +66,18 @@ searching through the list of characters. Type the key on the left to pick the
 character.
 "))
 
+;; @@@ consider using ◌ for displaying combining characters
 (defun write-special-char (c)
   (let ((thing c))
     (ctypecase c
-      (integer   (tt-write-char (setf thing (code-char c))))
-      (character (tt-write-char c))
-      (string    (tt-write-string c)))
+      (integer
+       (tt-write-char (setf thing (code-char c))))
+      (character
+       (if (combining-char-p c)
+	   (tt-write-char (make-fatchar :c (s+ (code-char #x25cc) c))) ; ◌
+	   (tt-write-char c)))
+      (string
+       (tt-write-string c)))
 
     ;; (dotimes (i (max 1 (- 5 (display-length thing))))
     ;;   (tt-write-char #\space))
