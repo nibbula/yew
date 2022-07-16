@@ -4,8 +4,9 @@
 
 (defpackage :ps
   (:documentation "Process status listing")
-  (:use :cl :dlib :dlib-misc :opsys #+unix :os-unix :table :table-print :grout
-	:lish :collections :los-config :los-util :dtime)
+  (:use :cl :dlib :dlib-misc :opsys #+unix :os-unix #+windows :os-ms
+        :table :table-print :grout :lish :collections :los-config :los-util
+        :dtime)
   (:export
    #:!ps
    #:ps-tree
@@ -268,13 +269,13 @@ user, pid, ppid, size, command."
   (etypecase p
     (short-process (short-process-pid p))
     #+unix (unix-process (uos:unix-process-id p))
-    #+windows (ms-process (ms:ms-process-pid p))))
+    #+windows (ms-process (wos:ms-process-pid p))))
 
 (defun process-name (p)
   (etypecase p
     (short-process (short-process-name p))
     #+unix (unix-process (uos:unix-process-command p))
-    #+windows (ms-process (ms:ms-process-name p))))
+    #+windows (ms-process (wos:ms-process-name p))))
 
 (defun process-uid (p)
   (etypecase p
@@ -293,12 +294,11 @@ user, pid, ppid, size, command."
 owned by ‘user’."
   #+windows (declare (ignore user)) ;; @@@ fix opsys to get the user
   (let ((matching-num (or (and (integerp matching) matching)
-			  (ignore-errors (parse-integer matching))))
-	uid)
+			  (ignore-errors (parse-integer matching)))))
     #+unix
     (when user
-      (setf uid (if (numberp user) user (user-id :name user))
-	    list (remove-if-not (_ (= uid _)) list :key #'process-uid)))
+      (let ((uid (if (numberp user) user (user-id :name user))))
+	(setf list (remove-if-not (_ (= uid _)) list :key #'process-uid))))
     (if matching
 	(remove-if-not
 	 (lambda (p)
