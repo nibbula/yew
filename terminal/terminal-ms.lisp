@@ -734,8 +734,9 @@ know."
 (defmethod terminal-beep ((tty terminal-ms))
   (terminal-write-char tty #\bel)) ; Not #\bell!!
 
-(defmethod terminal-set-scrolling-region ((tty terminal-ms) start end)
+(defmethod terminal-set-scrolling-region ((tty terminal-ms) &optional start end)
   (declare (ignore start end))
+  ;; @@@ implement me
   )
 
 (defmethod terminal-finish-output ((tty terminal-ms))
