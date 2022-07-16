@@ -960,7 +960,7 @@ Tags are:~%~a" *file-tag-doc*))
 ;; @@@ There's something wrong when there are holes in this.
 (defun describe-os-errors ()
   "Describe the errors from system calls."
-  (let* ((nerr (or (ignore-errors uos:*sys-nerr*) (find-nerr)))
+  (let* (#+unix (nerr (or (ignore-errors uos:*sys-nerr*) (find-nerr)))
 	 (table
 	   #+unix
 	   (make-table-from
