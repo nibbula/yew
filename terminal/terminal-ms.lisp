@@ -421,6 +421,34 @@ know."
 		      :right (- width n) :bottom (1+ y)
 		      :x (+ x n) :y y))))
 
+(defmethod terminal-delete-line ((tty terminal-ms) &optional (n 1))
+  (with-slots ((fd terminal::file-descriptor)) tty
+    (when (> n 0)
+      (multiple-value-bind (col row width height attr top)
+	  (get-console-info fd)
+	(declare (ignore attr col top))
+	;; @@@ Maybe if the n is bigger than rest of the screen we can just
+	;; clear? also applies to insert-line below
+	(scroll-console fd
+			:left 0 :right width
+			:top (min (+ row n) (1- height))
+			:bottom (1- height)
+			:x 0
+			:y row)))))
+
+(defmethod terminal-insert-line ((tty terminal-ms) &optional (n 1))
+  (with-slots ((fd terminal::file-descriptor)) tty
+    (when (> n 0)
+      (multiple-value-bind (col row width height attr top)
+	  (get-console-info fd)
+	(declare (ignore attr col top))
+	(scroll-console fd
+			:left 0 :right width
+			:top row
+			:bottom (max (- (1- height) n) row)
+			:x 0
+			:y (min (+ row n) (1- height)))))))
+
 (defun move-offset (tty offset-x offset-y)
   "Move the cursor to the offset, clamped to the current screen."
   ;; (dbugf :ms "move-offset tty = ~s ~s ~s~%" tty offset-x offset-y)
@@ -529,8 +557,8 @@ know."
 	(set-cursor-state fd :size saved-cursor-size :visible t)))))
 
 (defmethod terminal-standout ((tty terminal-ms) state)
-  (with-slots ((fd terminal::file-descriptor) standout standout-use-color
-	       saved-attrs) tty
+  (with-slots ((fd terminal::file-descriptor) standout inverse
+	       standout-use-color saved-attrs) tty
     (when (not (eq state standout))
       (if state
 	  (progn
@@ -545,6 +573,10 @@ know."
 	    (if standout-use-color
 		(progn
 		  (set-console-attribute fd saved-attrs)
+		  ;; If inverse was on and we're turning off standout,
+		  ;; effectively turn on inverse.
+		  (when inverse
+		    (%terminal-inverse tty t))
 		  (setf saved-attrs nil))
 		(%terminal-inverse tty nil))))
       (setf standout state))))
