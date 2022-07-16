@@ -401,7 +401,7 @@ know."
 (defmethod terminal-beginning-of-line ((tty terminal-ms))
   (terminal-move-to-col tty 0))
 
-(defmethod terminal-delete-char ((tty terminal-ms) n)
+(defmethod terminal-delete-char ((tty terminal-ms) &optional (n 1))
   (with-slots ((fd terminal::file-descriptor)) tty
     (multiple-value-bind (x y width height) (get-console-info fd)
       (declare (ignore height))
@@ -410,7 +410,7 @@ know."
 		      :right width :bottom y
 		      :x x :y y))))
 
-(defmethod terminal-insert-char ((tty terminal-ms) n)
+(defmethod terminal-insert-char ((tty terminal-ms) &optional (n 1))
   "Insert N blanks."
   (with-slots ((fd terminal::file-descriptor)) tty
     (multiple-value-bind (x y width height) (get-console-info fd)
