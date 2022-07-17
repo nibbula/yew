@@ -120,7 +120,7 @@ DIR is :forward or :backward. E is a line-editor.
 If ACTION is given, it's called with the substring scanned over and replaces
 it with ACTION's return value."
   (when (and (not func) not-in)
-    (setf func #'(lambda (c) (not (position c not-in)))))
+    (setf func #'(lambda (c) (not (oposition c not-in)))))
   (with-slots (buf) e
     (with-context ()
       (let (cc)
@@ -154,7 +154,7 @@ it with ACTION's return value."
   "Move the insertion point to the beginning of the previous word or the
 beginning of the buffer if there is no word."
   (with-slots (non-word-chars keep-region-active) e
-    (scan-over e :backward :func #'(lambda (c) (position c non-word-chars)))
+    (scan-over e :backward :func #'(lambda (c) (oposition c non-word-chars)))
     (scan-over e :backward :not-in non-word-chars)
     (setf keep-region-active t)))
 
@@ -173,7 +173,7 @@ and move backward a word."
   "Move the insertion point to the end of the next word or the end of the
 buffer if there is no word."
   (with-slots (non-word-chars keep-region-active) e
-    (scan-over e :forward :func #'(lambda (c) (position c non-word-chars)))
+    (scan-over e :forward :func #'(lambda (c) (oposition c non-word-chars)))
     (scan-over e :forward :not-in non-word-chars)
     (setf keep-region-active t)))
 
@@ -184,12 +184,12 @@ suggestion, insert one word from it."
   (with-slots (non-word-chars keep-region-active buf suggestion) e
     (cond
       ((< point (fill-pointer buf))
-       (scan-over e :forward :func (_ (position _ non-word-chars)))
+       (scan-over e :forward :func (_ (oposition _ non-word-chars)))
        (scan-over e :forward :not-in non-word-chars))
       (suggestion
        (let ((pos 0))
 	 (setf pos (scan-over-string suggestion pos :forward
-				     :function (_ (position _ non-word-chars)))
+				     :function (_ (oposition _ non-word-chars)))
 	       pos (scan-over-string suggestion pos :forward
 				     :not-in non-word-chars))
 	 (insert e (osubseq suggestion 0 (clamp pos 0 (olength suggestion))))
@@ -572,7 +572,7 @@ Don't update the display."
 (defmulti backward-kill-word (e)
   (with-slots (buf non-word-chars) e
     (let ((start point))
-      (scan-over e :backward :func #'(lambda (c) (position c non-word-chars)))
+      (scan-over e :backward :func #'(lambda (c) (oposition c non-word-chars)))
       (scan-over e :backward :not-in non-word-chars)
       (let ((region-str (subseq buf point start)))
 	(setf clipboard region-str)
@@ -581,7 +581,7 @@ Don't update the display."
 (defmulti kill-word (e)
   (with-slots (buf non-word-chars) e
     (let ((start point))
-      (scan-over e :forward :func #'(lambda (c) (position c non-word-chars)))
+      (scan-over e :forward :func #'(lambda (c) (oposition c non-word-chars)))
       (scan-over e :forward :not-in non-word-chars)
       (when (< point (length buf))
 	(incf point))
@@ -592,12 +592,12 @@ Don't update the display."
 
 (defmulti kill-line (e)
   (with-slots (buf) e
-    (let ((end (or (position #\newline buf :start point :key #'fatchar-c)
+    (let ((end (or (oposition #\newline buf :start point)
 		   (fill-pointer buf))))
       ;; If we're sitting on a newline, kill that.
       (when (and (= end point)
 		 (< point (fill-pointer buf))
-		 (char= #\newline (simplify-char (aref buf point))))
+		 (ochar= #\newline (aref buf point)))
 	(incf end))
       (setf clipboard (if (eq (inator-last-command e) 'kill-line)
 			  (oconcatenate clipboard (osubseq buf point end))
@@ -606,8 +606,7 @@ Don't update the display."
 
 (defmulti backward-kill-line (e)
   (with-slots (buf) e
-    (let ((start (or (position #\newline buf
-			       :from-end t :end point :key #'fatchar-c)
+    (let ((start (or (oposition #\newline buf :from-end t :end point)
 		     0)))
       (when (> point 0)
 	(when (not (zerop start))
@@ -634,7 +633,7 @@ Don't update the display."
 (defun forward-word-action (e action)
   (with-context ()
     (with-slots (buf non-word-chars) e
-      (scan-over e :forward :func #'(lambda (c) (position c non-word-chars)))
+      (scan-over e :forward :func #'(lambda (c) (oposition c non-word-chars)))
       (scan-over e :forward :not-in non-word-chars :action action)
       (when (< point (length buf))
 	(incf point)))))
@@ -676,27 +675,27 @@ is none."
 		point old-point))))))
 
 (defmulti downcase-region (e &optional beginning end)
-  (apply-char-action-to-region e #'char-downcase
+  (apply-char-action-to-region e #'ochar-downcase
 			       (or beginning mark)
 			       (or end point)))
 
 (defmulti upcase-region (e &optional beginning end)
-  (apply-char-action-to-region e #'char-upcase
+  (apply-char-action-to-region e #'ochar-upcase
 			       (or beginning mark)
 			       (or end point)))
 
 (defmulti downcase-word (e)
-  (forward-word-action e #'(lambda (c) (char-downcase c))))
+  (forward-word-action e #'(lambda (c) (ochar-downcase c))))
 
 (defmulti upcase-word (e)
-  (forward-word-action e #'(lambda (c) (char-upcase c))))
+  (forward-word-action e #'(lambda (c) (ochar-upcase c))))
 
 (defmulti capitalize-word (e)
   (let (bonk)
     (forward-word-action e #'(lambda (c)
 			       (if (not bonk)
-				   (progn (setf bonk t) (char-upcase c))
-				   (char-downcase c))))))
+				   (progn (setf bonk t) (ochar-upcase c))
+				   (ochar-downcase c))))))
 
 (defmulti un-studly-cap (e)
   "Convert from StupidVarName to stupid-var-name."
@@ -708,11 +707,11 @@ is none."
 	 (setf c (buffer-char buf point))
 	 (scan-over
 	  e :forward
-	  :func #'(lambda (c) (and (alpha-char-p c) (upper-case-p c))))
+	  :func #'(lambda (c) (and (oalpha-char-p c) (oupper-case-p c))))
 	 ;;(message-pause e "first point = ~s ~s" point c)
 	 (scan-over
 	  e :forward
-	  :func #'(lambda (c) (and (alpha-char-p c) (lower-case-p c))))
+	  :func #'(lambda (c) (and (oalpha-char-p c) (olower-case-p c))))
 	 (when (>= point (olength buf))
 	   (downcase-region e start (1- point))
 	   (return))
@@ -724,14 +723,14 @@ is none."
 	   (return))
 	 (setf c (buffer-char buf point))
 	 ;;(message-pause e "third point ~s ~s" point c)
-	 (when (and (alpha-char-p c) (upper-case-p c))
+	 (when (and (oalpha-char-p c) (oupper-case-p c))
 	   (insert e #\-)
 	   (incf point))
 	 (when (>= point (olength buf))
 	   (return))
 	 (setf c (buffer-char buf point))
 	 ;;(message-pause e "fourth point ~s ~s" point c)
-	 :while (and (alpha-char-p c) (upper-case-p c)))
+	 :while (and (oalpha-char-p c) (oupper-case-p c)))
       (record-undo e 'boundary))))
 
 (defmulti delete-horizontal-space (e)
@@ -740,11 +739,11 @@ is none."
     (let ((origin point) start end)
       (setf origin point)
       (scan-over e :forward
-		 :func #'(lambda (c) (position c dlib::*whitespace*)))
+		 :func #'(lambda (c) (oposition c dlib::*whitespace*)))
       (setf end point
 	    point origin)
       (scan-over e :backward
-		 :func #'(lambda (c) (position c dlib::*whitespace*)))
+		 :func #'(lambda (c) (oposition c dlib::*whitespace*)))
       (setf start point)
       (delete-region e start end))))
 
@@ -774,7 +773,7 @@ Don't do anything with less than 2 characters."
 		    (write-char #\" str)
 		    (loop :for i :from start :below end
 		       :do
-			 (if (char= (buffer-char buf i) #\")
+			 (if (ochar= (buffer-char buf i) #\")
 			     (progn
 			       (write-char #\\ str)
 			       (write-char #\" str))
@@ -815,10 +814,9 @@ in order, \"{open}{close}...\".")
 (defun flash-paren (e)
   "Move the cursor momentarily to the matching opening character for the one
 just before the cursor."
-  (with-slots (buf) e
+  (with-slots (buf-str) e
     (with-context ()
-      (let* ((str (buffer-string buf))
-	     (ppos (matching-paren-position str :position point)))
+      (let* ((ppos (matching-paren-position buf-str :position point)))
 	(if ppos
 	    (let ((saved-point point))
 	      (setf point ppos)
@@ -851,27 +849,30 @@ just before the cursor."
 
 (defun highlight-paren (e pos &key (state t))
   "Hightlight the character at ‘pos’, or un-highlight if ‘state’ is nil."
-  (let* ((str (buffer-string (buf e)))
-	 (ppos 0))
-    (when (< pos (length str))
-      (setf ppos (matching-paren-position str :position pos
-					      :char (osimplify (aref str pos))))
-      (log-message e "pos = ~s ppos = ~s" pos ppos)
-      (when ppos
-	(with-slots (matching-char-pos saved-matching-char) e
-	  (cond
-	    (state
-	     ;; (add-attr :bold (aref (buf e) ppos))
-	     (setf saved-matching-char (copy-fatchar (aref (buf e) ppos))
-		   matching-char-pos pos)
-	     (styled-char (theme:theme-value theme:*theme*
-			   '(:program :editor :paren-highlight :style))
-			  (aref (buf e) ppos)))
-	     (t
-	      ;; (remove-attr :bold (aref (buf e) ppos))
-	      (setf matching-char-pos nil
-		    (aref (buf e) ppos) saved-matching-char
-		    saved-matching-char nil))))))))
+  (with-slots (buf-str) e
+    (let* ((ppos 0))
+      (when (< pos (olength buf-str))
+	(setf ppos (matching-paren-position
+		    buf-str
+		    :position pos
+		    :char (osimplify (ochar buf-str pos))))
+	(log-message e "pos = ~s ppos = ~s" pos ppos)
+	(when ppos
+	  (with-slots (matching-char-pos saved-matching-char) e
+	    (cond
+	      (state
+	       ;; (add-attr :bold (aref (buf e) ppos))
+	       (setf saved-matching-char (copy-fatchar (aref (buf e) ppos))
+		     matching-char-pos pos)
+	       (styled-char (theme:theme-value
+			     theme:*theme*
+			     '(:program :editor :paren-highlight :style))
+			    (aref (buf e) ppos)))
+	      (t
+	       ;; (remove-attr :bold (aref (buf e) ppos))
+	       (setf matching-char-pos nil
+		     (aref (buf e) ppos) saved-matching-char
+		     saved-matching-char nil)))))))))
 
 (defsingle finish-line (e)
   "Add any missing close parentheses and accept the line."
@@ -1048,18 +1049,19 @@ just before the cursor."
     (with-slots (point) (aref contexts 0)
       (let* ((fc (and (< point (length buf))
 		      (aref buf point)))
-	     (char (and fc (fatchar-c fc)))
-	     (code (and char (char-code char)))
+	     ;; (char (and fc (fatchar-c fc)))
+	     (code (and fc (multiple-value-list (ochar-code fc))))
 	     (coords (point-coords e point))
 	     (row (car coords))
 	     (col (cdr coords)))
 	(if fc
-	    (tmp-message e "~s of ~s Row: ~s Column: ~s Char: '~a' ~a ~s #x~x"
+	    (tmp-message e "~s of ~s Row: ~s Column: ~s Char: '~a' ~
+                            ~{~a~^ ~} ~{~s~^ ~} ~{#x~x~^ ~}"
 			 point (length buf)
 			 ;; screen-relative-row screen-col
 			 row col
 			 fc
-			 (and char (char-name char))
+			 (and fc (multiple-value-list (ochar-name fc)))
 			 code code)
 	    (tmp-message e "~s of ~s Row: ~s Column: ~s"
 			 point (length buf)
@@ -1303,9 +1305,9 @@ non-whitespace character."
 	(scan-over e :backward
 		   :func (lambda (c)
 			   (and (ochar/= c #\newline)
-				(position c dlib::*whitespace*))))
+				(oposition c dlib::*whitespace*))))
 	(and (not (zerop point))
-	     (char= (buffer-char (buf e) (1- point)) #\newline))))))
+	     (ochar= (buffer-char (buf e) (1- point)) #\newline))))))
 
 (defun indent-a-line (e)
   (with-context ()
@@ -1331,8 +1333,8 @@ non-whitespace character."
 	     :do
 	       (cond
 		 ((or (= point len)
-		      (not (position (buffer-char buf point)
-				     dlib::*whitespace*)))
+		      (not (oposition (buffer-char buf point)
+				      dlib::*whitespace*)))
 		  (buffer-insert e point #\space point)
 		  (incf point))
 		 (t
