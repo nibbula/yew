@@ -338,10 +338,17 @@ subclasses.")
   #+(and unix (not windows)) (terminal-type-based-on-environment)
   #-(or windows unix) :ansi)
 
+(defun use-dumb-p ()
+  "Return true if we should probably use a dumb terminal type."
+  (or (nos:env "EMACS")
+      (begins-with "dumb" (nos:env "TERM"))))
+
 (defun pick-a-terminal-type ()
   "Pick some terminal type. Hopefully appropriate, but perhaps semi-arbitrary."
   (let ((platform-default (platform-default-terminal-type)))
     (or *default-terminal-type*
+	;; Use dumb if it looks like we have to.
+	(and (use-dumb-p) :dumb)
 	;; Default to :crunch if it's loaded.
 	(and (find-package :terminal-crunch) :crunch)
 	;; Otherwise the platform default.
