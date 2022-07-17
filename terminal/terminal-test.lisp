@@ -315,7 +315,9 @@
           (tt-write-char #\space)
           (tt-set-rendition (make-fatchar :attrs attrs :fg fg))
           (tt-format "~a" (attr-name (or (car attrs) "Normal"))))
-        (tt-newline))))
+        (tt-newline)))
+    (tt-normal)
+    (tt-color :default :default))
 
   #| Too ugly
   (blurp ()
