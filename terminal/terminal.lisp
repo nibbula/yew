@@ -340,7 +340,7 @@ subclasses.")
 
 (defun use-dumb-p ()
   "Return true if we should probably use a dumb terminal type."
-  (or (nos:env "EMACS")
+  (or (nos:env "EMACS") (nos:env "INSIDE_EMACS")
       (begins-with "dumb" (nos:env "TERM"))))
 
 (defun pick-a-terminal-type ()
