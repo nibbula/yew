@@ -56,7 +56,7 @@
 ;; fatchar-string-to-span, but it doesn't seem obvious. Maybe someday we'll
 ;; overhaul all the span stuff.
 (defun char-style (char)
-  "Returnt the style of CHAR."
+  "Return the style of CHAR."
   (when (fatchar-p char)
     (let (result)
       (when (fatchar-fg char)
