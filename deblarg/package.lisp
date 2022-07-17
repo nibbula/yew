@@ -7,8 +7,8 @@
    "A crappy half-assed debugger for your enjoyment and frustration. But at
 least you can type things using RL.")
   (:use :cl :dlib :char-util :table :table-print :keymap :terminal
-	:terminal-ansi :terminal-table :rl :collections :fatchar :fatchar-io
-	:tiny-repl #+sbcl :sb-introspect :reader-ext :source-path)
+	:terminal-ansi :terminal-table :rl :collections :ochar :fatchar
+        :fatchar-io :tiny-repl #+sbcl :sb-introspect :reader-ext :source-path)
   (:export
    #:deblargger
    #:deblargger-current-frame

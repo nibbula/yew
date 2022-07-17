@@ -4,7 +4,8 @@
 
 (defpackage :fatchar-io
   (:documentation "Outputing fat characters and fat strings as streams.")
-  (:use :cl :dlib :stretchy :char-util :fatchar :terminal :trivial-gray-streams)
+  (:use :cl :dlib :stretchy :char-util :ochar :fatchar :terminal
+        :trivial-gray-streams)
   (:export
    #:render-fat-string
    #:render-fatchar
@@ -18,6 +19,7 @@
    #:write-fat-string
    #:with-output-to-fat-string
    #:fs+
+   #:join-by-fat-string
    #:*print-control-char-with-caret*
    ))
 (in-package :fatchar-io)
@@ -61,19 +63,22 @@
 	 (setf fg (fatchar-fg c) bg (fatchar-bg c))
 	 (tt-color (or fg :default) (or bg :default)))
        (if (and *print-control-char-with-caret*
-		(not (char-util::graphic-char-p (fatchar-c c)))
-		(not (or (eql (fatchar-c c) #\tab)
-			 (eql (fatchar-c c) #\newline))))
+		(characterp (fatchar-c c))
+		(not (ographic-char-p (fatchar-c c)))
+		(not (or (ochar= (fatchar-c c) #\tab)
+			 (ochar= (fatchar-c c) #\newline))))
 	   ;; @@@ We should probably use something from char-util, but then
 	   ;; display-length might have to be more complicated.
 	   (cond
-	     ((char-util::control-char-graphic (fatchar-c c))
+	     ((control-char-graphic (fatchar-c c))
 	      (tt-write-char #\^)
 	      (tt-write-char
-	       (code-char (+ (char-code (fatchar-c c)) (char-code #\@)))))
+	       (code-char (+ (ochar-code c) (ochar-code #\@)))))
 	     (t
-	      (tt-format "\\~o" (fatchar-c c))))
-	   (tt-write-char (fatchar-c c)))
+	      (tt-format "\\~o" (ochar-code c))))
+	   (etypecase (fatchar-c c)
+	     (character (tt-write-char (fatchar-c c)))
+	     (string (tt-write-string (fatchar-c c)))))
        (incf i))
     (tt-normal)))
 
@@ -112,7 +117,9 @@
     ;; This can potentially handle attributes we don't know about.
     (tt-set-attributes (fatchar-attrs c))
     (tt-color (or (fatchar-fg c) :default) (or (fatchar-bg c) :default))
-    (tt-write-char (fatchar-c c))
+    (etypecase (fatchar-c c)
+      (character (tt-write-char (fatchar-c c)))
+      (string (tt-write-string (fatchar-c c))))
     ;; It would be more efficient if we didn't have to do this, or even better
     ;; if we could temporarily change the color and then change it back to what
     ;; it was before, but not all terminal have the ability to efficiently query
@@ -337,7 +344,7 @@ colinc, and the space character for padchar.
        (fatchar
 	(stretchy-append (fat-string-string stream) (copy-fatchar c))
 	(incf (fat-string-output-stream-column stream))
-	(when (char= (fatchar-c c) #\newline)
+	(when (ochar= c #\newline)
 	  (setf (fat-string-output-stream-column stream) 0)))
        (character
 	(stretchy-append (fat-string-string stream) (make-fatchar :c c))
@@ -352,7 +359,10 @@ colinc, and the space character for padchar.
 	(terminal-write-char stream c))))
     (t
      (typecase c
-       (fatchar	(write-char (fatchar-c c) stream))
+       (fatchar
+	(etypecase (fatchar-c c)
+	  (character (write-char (fatchar-c c) stream))
+	  (string (write-string (fatchar-c c) stream))))
        (character (write-char c stream))))))
 
 (defmethod stream-write-char ((stream fat-string-output-stream) character)
@@ -386,9 +396,11 @@ possible."
 	   :do
 	   (setf c (aref (fat-string-string string) src-i))
 	   ;;(stretchy-set (fat-string-string stream) i (make-fatchar :c c))
-	   (stretchy-set (fat-string-string stream) dst-i c)
+	   ;; (stretchy-set (fat-string-string stream) dst-i c)
+	   (stretchy-set (fat-string-string stream) dst-i (copy-fatchar c))
 	   (incf (fat-string-output-stream-column stream))
-	   (when (char= (fatchar-c c) #\newline)
+	   ;; (when (char= (fatchar-c c) #\newline)
+	   (when (ochar= c #\newline)
 	     (setf (fat-string-output-stream-column stream) 0))
 	   (incf src-i)))
        (string
@@ -520,8 +532,9 @@ possible."
     (t
      ;; (dbugf :fatchar "NLURB not so good ~s ~s~%"
      ;; 	    (type-of obj) (type-of stream))
-     (write-char (fatchar-c obj) stream)
-     )))
+     (etypecase (fatchar-c obj)
+       (character (write-char (fatchar-c obj) stream))
+       (string (write-string (fatchar-c obj) stream))))))
 
 (defmacro with-output-to-fat-string ((var &optional string) &body body)
   `(let* ((,var (make-instance 'fat-string-output-stream
@@ -541,5 +554,45 @@ result."
   (with-output-to-fat-string (result)
     (princ s result)
     (loop :for x :in rest :do (princ x result))))
+
+;; ‘join-by*’ methods from dlib
+
+(defgeneric join-by-fat-string (sequence connector &key &allow-other-keys)
+  (:documentation
+   "Return a fat-string with ‘connector’ between every element of ‘sequence’."))
+
+(define-constant +join-by-doc+
+  "Return a fat-string with a ‘connector’ between every element of ‘sequence’.
+This is basically the reverse of ‘split-sequence’.")
+
+(defmethod join-by-fat-string ((sequence list) connector &key &allow-other-keys)
+  #.+join-by-doc+
+  (with-output-to-fat-string (str)
+    (loop :with first = t
+       :for e :in sequence
+       :if first
+	 :do (setf first nil)
+       :else
+	 :do (princ connector str)
+       :end
+       :do (princ e str))))
+
+(defmethod join-by-fat-string ((sequence vector) connector
+			       &key &allow-other-keys)
+  #.+join-by-doc+
+  (with-output-to-fat-string (str)
+    (loop :with first = t
+       :for e :across sequence
+       :if first
+	 :do (setf first nil)
+       :else
+	 :do (princ connector str)
+       :end
+       :do (princ e str))))
+
+(defmethod join-by ((type (eql 'fat-string)) sequence connector
+		    &key &allow-other-keys)
+  #.+join-by-doc+
+  (join-by-fat-string sequence connector))
 
 ;; EOF

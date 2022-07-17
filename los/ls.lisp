@@ -6,8 +6,8 @@
   (:documentation
    "This is a command I type too much.")
   (:use :cl :dlib :dlib-misc :opsys :dtime :terminal :terminal-ansi :grout
-	:table :table-print :terminal-table :fatchar :fatchar-io :theme :style
-	:magic :collections)
+	:table :table-print :terminal-table :ochar :fatchar :fatchar-io :theme
+        :style :magic :collections)
   (:export
    #:!ls
    #:ls
@@ -415,7 +415,8 @@ by nos:read-directory."))
       (uos:symbolic-mode mode)
       (let ((s (fatchar-io:fs+ (uos:symbolic-mode mode))))
 	(flet ((check-w (n tag)
-		 (when (eql (fatchar-c (oelt s n)) #\w)
+		 ;; (when (eql (fatchar-c (oelt s n)) #\w)
+		 (when (ochar= (oelt s n) #\w)
 		   (setf (oelt s n)
 			 (copy-fatchar
 			  (oelt (themed-string `(:file :type ,tag :style) #\w)

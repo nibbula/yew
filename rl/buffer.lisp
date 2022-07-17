@@ -22,7 +22,8 @@
 
 (defun buffer-char (buf i)
   "Return the character at position I in buffer BUF."
-  (fatchar-c (aref buf i)))
+  ;; @@@ previously we returned the fatchar-c of it
+  (aref buf i))
 
 (defun set-buffer-char (buf i c)
   "Set the character at position I in buffer BUF to C."
@@ -173,6 +174,12 @@
       (record-undo e 'replacement pos
 		   (make-fatchar-string (buffer-char buf pos)) point)
       (setf (aref buf pos) (make-fatchar :c c))))
+  (:method ((e line-editor) pos (c fatchar) point)
+    (with-slots (buf) e
+      (record-undo e 'replacement pos
+		   (make-fatchar-string (buffer-char buf pos))
+		   point)
+      (setf (aref buf pos) (copy-fatchar c))))
   (:method ((e line-editor) pos (s string) point)
     (with-slots (buf) e
       (let ((len (length s))

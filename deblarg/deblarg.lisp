@@ -116,8 +116,8 @@ innermost N contexts, if we can.")
 	      (omapn (lambda (c)
 		       (typecase c
 			 (fatchar
-			  (setf dc (char-util:displayable-char (fatchar-c c)))
-			  (if (equal dc (fatchar-c c))
+			  (setf dc (char-util:displayable-char (osimplify c)))
+			  (if (and (characterp dc) (ochar= dc c))
 			      (princ c stream)
 			      (typecase dc
 				(character
@@ -188,7 +188,7 @@ innermost N contexts, if we can.")
 	  (horizontal-line tt)
 	  ;; Command area
 	  (terminal-set-scrolling-region tt command-top
-					 (terminal-window-rows tt))
+					 (1- (terminal-window-rows tt)))
 	  (terminal-move-to tt (1- (terminal-window-rows tt)) 0)
 	  (terminal-finish-output tt))))))
 

@@ -10,7 +10,7 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Outputing fat characters."
-    :depends-on (:dlib :stretchy :char-util :fatchar :terminal
+    :depends-on (:dlib :stretchy :char-util :ochar :fatchar :terminal
 		 :trivial-gray-streams)
     :components
     ((:file "fatchar-io")))

@@ -103,8 +103,9 @@ for various operations through the OUTPUT-COST methods.
 	 (grid-char-same-effects a b)
 	 (= (grid-char-line a) (grid-char-line b))))
   (:method ((a grid-char) (b fatchar))
-    (and (characterp (grid-char-c a))
-	 (char= (grid-char-c a) (fatchar-c b))
+    (and ;; (characterp (grid-char-c a))
+	 ;; (ochar= (grid-char-c a) (fatchar-c b))
+         (equal (grid-char-c a) (fatchar-c b))
 	 (grid-char-same-effects a b)
 	 (= (grid-char-line a) (fatchar-line b)))))
 

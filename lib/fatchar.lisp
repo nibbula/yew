@@ -57,12 +57,53 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 ;;(declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
 ;;(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
+(deftype grapheme ()
+  "What a user thinks of as a character. One or more code points treated as the
+smallest unit of written language."
+  `(or character string))
+
+(defgeneric copy-grapheme (g) #| sealed |#
+  (:documentation "Return a new copy of a grapheme.")
+  (:method ((g character)) g)
+  (:method ((g string)) (copy-seq g)))
+
+;; @@@ These methods could in theory be better than defering to equal, or
+;; using typecase, but are they really in practice?
+
+(defgeneric grapheme= (g1 g2) #| sealed |#
+  (:documentation "Return true if the graphemes are equal based on char=.")
+  (:method ((g1 character) (g2 character)) (char= g1 g2))
+  (:method ((g1 string) (g2 string)) (string= g1 g2))
+  (:method ((g1 string) (g2 character))
+    (and (= (length g1) 1) (char= (char g1 0) g2)))
+  (:method ((g1 character) (g2 string))
+    (and (= (length g2) 1) (char= (char g2 0) g1))))
+
+(defgeneric grapheme/= (g1 g2) #| sealed |#
+  (:documentation "Return true if the graphemes are equal based on char=.")
+  (:method ((g1 character) (g2 character)) (char/= g1 g2))
+  (:method ((g1 string) (g2 string)) (string/= g1 g2))
+  (:method ((g1 string) (g2 character))
+    (or (/= (length g1) 1) (char/= (char g1 0) g2)))
+  (:method ((g1 character) (g2 string))
+    (and (/= (length g2) 1) (char/= (char g2 0) g1))))
+
+(defgeneric grapheme-equal (g1 g2) #| sealed |#
+  (:documentation "Return true if the graphemes are equal based on char-equal.")
+  (:method ((g1 character) (g2 character)) (char= g1 g2))
+  (:method ((g1 string) (g2 string)) (string= g1 g2))
+  (:method ((g1 string) (g2 character))
+    (and (= (length g1) 1) (char= (char g1 0) g2)))
+  (:method ((g1 character) (g2 string))
+    (and (= (length g2) 1) (char= (char g2 0) g1))))
+
 (defconstant +default-char+ (code-char 0)
   "Default character value for fatchars.")
 
 (defstruct (fatchar (:copier nil))
   "A character with attributes."
-  (c +default-char+ :type character)
+  ;;(c +default-char+ :type character)
+  (c +default-char+ :type grapheme)
   (fg nil)
   (bg nil)
   (line 0 :type fixnum)
@@ -99,7 +140,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
   (declare (type fatchar c))
   (when c
     (make-fatchar
-     :c	    (fatchar-c c)
+     :c	    (copy-grapheme (fatchar-c c))
      :fg    (copy-color (fatchar-fg c))
      :bg    (copy-color (fatchar-bg c))
      :line  (fatchar-line c)
@@ -108,7 +149,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 (defun set-fatchar (from to)
   "Copy the effects from the fatchar FROM to the fatchar TO."
   (assert (and from to (fatchar-p from) (fatchar-p to)))
-  (setf (fatchar-c     to) (fatchar-c from)
+  (setf (fatchar-c     to) (copy-grapheme (fatchar-c from))
 	(fatchar-fg    to) (copy-color (fatchar-fg from))
 	(fatchar-bg    to) (copy-color (fatchar-bg from))
 	(fatchar-line  to) (fatchar-line from)
@@ -131,11 +172,11 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 
 (defun same-char (a b)
   "Return true if the two fatchars have the same underlying character."
-  (equal (fatchar-c a) (fatchar-c b)))
+  (grapheme= (fatchar-c a) (fatchar-c b)))
 
 (defun fatchar= (a b)
   "True if everything about a fatchar is the equivalent."
-  (and (char= (fatchar-c a) (fatchar-c b))
+  (and (grapheme= (fatchar-c a) (fatchar-c b))
        (same-effects a b)
        (= (fatchar-line a) (fatchar-line b))))
 
@@ -147,25 +188,25 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
 
 ;; @@@ Should we really do these lossy comparisons?
 (defmethod ochar= ((char-1 character) (char-2 fatchar))
-  (char= char-1 (fatchar-c char-2)))
+  (grapheme= char-1 (fatchar-c char-2)))
 
 (defmethod ochar= ((char-1 fatchar) (char-2 character))
-  (char= (fatchar-c char-1) char-2))
+  (grapheme= (fatchar-c char-1) char-2))
 
 (defmethod ochar-equal ((char-1 character) (char-2 fatchar))
-  (char-equal char-1 (fatchar-c char-2)))
+  (grapheme-equal char-1 (fatchar-c char-2)))
 
 (defmethod ochar-equal ((char-1 fatchar) (char-2 character))
-  (char-equal (fatchar-c char-1) char-2))
+  (grapheme-equal (fatchar-c char-1) char-2))
 
 (defmethod ochar/= ((char-1 fatchar) (char-2 fatchar))
   (fatchar/= char-1 char-2))
 
 (defmethod ochar/= ((char-1 fatchar) (char-2 character))
-  (char/= (fatchar-c char-1) char-2))
+  (grapheme/= (fatchar-c char-1) char-2))
 
 (defmethod ochar/= ((char-1 character) (char-2 fatchar))
-  (char/= char-1 (fatchar-c char-2)))
+  (grapheme/= char-1 (fatchar-c char-2)))
 
 (deftype fatchar-string (&optional size)
   "A string of FATCHARs."
@@ -195,6 +236,8 @@ LENGTH, you can also supply INITIAL-ELEMENT that will be copied to the initial
 elements of the string."
   (check-type string (or null fatchar-string string))
   (when (and string length)
+    ;; @@@ I guess we could if length is >= the length of the string, and we
+    ;; just use string to initialize it. But is that a good idea? or too DWIMish?
     (error "I can't both use your STRING, and make one of LENGTH."))
   (make-instance 'fat-string
 		 :string
@@ -406,18 +449,26 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 	 :key (or (and key (_ (funcall key (fatchar-c _))))
 		  #'fatchar-c))))
 
-(defmethod oposition ((item fatchar) (string string)
-		      &key from-end test test-not key
+(defmethod oposition ((item fatchar) (string vector)
+		      &key from-end
+			(test #'ochar= test-p)
+			(test-not #'ochar/= test-not-p)
+			key
 			(start nil start-p)
 			(end nil end-p))
   "Position of a fatchar in a string."
   (declare (ignorable start start-p end end-p))
-  (call-with-start-and-end
+  (when test-p
+    (setf test-not nil))
+  (when test-not-p
+    (setf test nil))
+  (when test
+    (setf test-p t))
+  (call-with-start-end-test
    position
-   ((fatchar-c item) string
-	             :from-end from-end
-	             :test test :test-not test-not
-	             :key key)))
+   (item string
+	 :from-end from-end
+	 :key key)))
 
 (defmethod oposition-if (predicate (string fat-string)
 			 &key from-end key
@@ -639,12 +690,19 @@ initial-element to make-array, or if you don't supply initial-element."
   "Make a string of fatchars from THING, which can be a string or a character."
   (let (result)
     (flet ((from-string (string)
-	     (setf result (make-fatchar-string-of-length (length string)))
-	     (loop :for i :from 0 :below (length string) :do
-		(setf (aref result i) (make-fatchar :c (char string i))))))
+	     (let ((graphemes (char-util:graphemes string)))
+	       (setf result (make-fatchar-string-of-length (length graphemes)))
+	       (loop :for g :in graphemes
+		     :for i :from 0
+		     :do (setf (aref result i)
+			       (make-fatchar
+				:c (if (= (length g) 1) (char g 0) g)))))))
       (etypecase thing
 	(string
 	 (from-string thing))
+	(fatchar
+	 (setf result (make-fatchar-string-of-length
+		       1 :initial-element (copy-fatchar thing))))
 	(character
 	 (setf result (make-fatchar-string-of-length
 		       1 :initial-element (make-fatchar :c thing))))
@@ -683,7 +741,10 @@ initial-element to make-array, or if you don't supply initial-element."
      ;;   (loop :for i :from 0 :below (length fat-string) :do
      ;; 	  (setf (aref s i) (fatchar-c (aref fat-string i))))
      ;;   s))
-     (map 'string (_ (if (fatchar-p _) (fatchar-c _) _)) string))
+     ;; (map 'string (_ (if (fatchar-p _) (fatchar-c _) _)) string))
+     (with-output-to-string (s)
+       (loop :for c :across string
+	     :do (princ (fatchar-c c) s))))
     (t string)))
 
 ;; @@@ Maybe this should be generic?
@@ -719,20 +780,28 @@ functions."
 (make-string-comparators)
 
 ;; The char= methods are pre-done.
+;; @@@ This is wrong for graphemes. How should we compare graphemes?
+;; @@@ For now we just compare as strings.
 (eval-when (:compile-toplevel)
   (defmacro make-char-comparators (prefix)
     (let ((forms
-	   (loop :with func
-	      :for f :in '(char< char> char<= char>=
-			   char-lessp char-greaterp char-equal
-			   char-not-equal char-not-lessp
-			   char-not-greaterp)
+	   (loop :with func :and c-func :and s-func
+	      :for f :in '(< > <= >=
+			   -lessp -greaterp -equal
+			   -not-equal -not-lessp
+			   -not-greaterp)
 	      :do
-	      (setf func (symbolify (s+ prefix f)))
+	      (setf func (symbolify (s+ prefix "char" f))
+                    c-func (symbolify (s+ "char" f))
+	            s-func (symbolify (s+ "string" f)))
 	      :collect `(defun ,func (a b)
-			  (funcall #',f
-				   (fatchar-c a)
-				   (fatchar-c b))))))
+			  (let ((ca (fatchar-c a))
+				(cb (fatchar-c b)))
+			    (cond
+			      ((and (characterp ca) (characterp cb))
+			       (funcall #',c-func ca cb))
+			      ((or (stringp ca) (stringp cb))
+			       (funcall #',s-func (string ca) (string cb)))))))))
       `(progn ,@forms))))
 (make-char-comparators "FAT")
 
@@ -742,21 +811,31 @@ functions."
 (eval-when (:compile-toplevel)
   (defmacro make-char-comparator-methods (prefix)
     (let ((forms
-	   (loop :with func
-	      :for f :in '(char< char> char<= char>=
-			   char-lessp char-greaterp char-equal
-			   char-not-equal char-not-lessp
-			   char-not-greaterp)
+	   (loop :with func :and c-func :and s-func
+	      :for f :in '(< > <= >=
+			   -lessp -greaterp -equal
+			   -not-equal -not-lessp
+			   -not-greaterp)
 	      :do
-	      (setf func (symbolify (s+ prefix f)))
+	      (setf func (symbolify (s+ prefix f))
+		    c-func (symbolify (s+ "char" f))
+		    s-func (symbolify (s+ "string" f)))
 	      :collect `(defmethod ,func ((a fatchar) (b fatchar))
-			  (funcall #',f
-				   (fatchar-c a)
-				   (fatchar-c b))))))
+			  (let ((ca (fatchar-c a))
+				(cb (fatchar-c b)))
+			    (cond
+			      ((and (characterp ca) (characterp cb))
+			       (funcall #',c-func ca cb))
+			      ((or (stringp ca) (stringp cb))
+			       (funcall #',s-func (string ca) (string cb)))))))))
       `(progn ,@forms))))
 (make-char-comparator-methods "O")
 
-;; All the rest that are just wrappers
+;; All the rest that are just wrappers for single chars.
+;; @@@ How should we handle graphemes?
+;; For now we say it's the quality if any pieces of the grapheme have the
+;; quality. Except for with ‘graphic-char-p’ I think it should be "every"
+;; instead of "any".
 (eval-when (:compile-toplevel)
   (defmacro make-char-wrapper-methods (prefix names)
     (let ((forms
@@ -765,32 +844,76 @@ functions."
 	      :do
 	      (setf func (symbolify (s+ prefix f)))
 	      :collect `(defmethod ,func ((character fatchar))
-			  (,f (fatchar-c character))))))
+			  (let ((c (fatchar-c character)))
+			    (etypecase c
+			      (character (,f c))
+			      (string (some #',f c))))))))
       `(progn ,@forms))))
 
 (make-char-wrapper-methods
- "OCHAR-" (alpha-char-p alphanumericp graphic-char-p
-	    upper-case-p lower-case-p both-case-p))
+ "O" (alpha-char-p alphanumericp #| graphic-char-p |#
+      upper-case-p lower-case-p both-case-p))
 
-(make-char-wrapper-methods "O" (char-code char-name))
+(defmethod ographic-char-p ((character fatchar))
+  (let ((c (fatchar-c character)))
+    (etypecase c
+      (character (graphic-char-p c))
+      (string (some #'graphic-char-p c)))))
+
+;; (make-char-wrapper-methods "O" (char-code char-name))
+
+(defmethod ochar-code ((character fatchar))
+  (let ((c (fatchar-c character)))
+    (etypecase c
+      (character (char-code c))
+      (string
+       ;; (error "Can't get a code for a multi-character grapheme.")
+       (values-list (map 'list #'char-code c))))))
+
+(defmethod ochar-name ((character fatchar))
+  (let ((c (fatchar-c character)))
+    (etypecase c
+      (character (char-name c))
+      (string
+       ;; (error "Can't get a name for a multi-character grapheme.")
+       (values-list (map 'list #'char-name c))))))
 
 (defmethod ochar-upcase ((c fatchar))
-  (let ((result (copy-fatchar c)))
-    (setf (fatchar-c result) (char-upcase (fatchar-c c)))
+  (let* ((result (copy-fatchar c))
+	 (c (fatchar-c result)))
+    (etypecase c
+      (character
+       (setf (fatchar-c result) (char-upcase c)))
+      (string
+       (setf (fatchar-c result) (string-upcase c))))
     result))
 
 (defmethod ochar-downcase ((c fatchar))
-  (let ((result (copy-fatchar c)))
-    (setf (fatchar-c result) (char-downcase (fatchar-c c)))
+  (let* ((result (copy-fatchar c))
+	 (c (fatchar-c result)))
+    (etypecase c
+      (character
+       (setf (fatchar-c result) (char-downcase c)))
+      (string
+       (setf (fatchar-c result) (string-downcase c))))
     result))
 
 (defmethod ocharacterp ((object fatchar)) T)
 (defmethod odigit-char (weight (type (eql 'fatchar)) &optional radix)
   (make-fatchar :c (if radix (digit-char weight radix) (digit-char weight))))
 
+;; For multi-char graphemes, we just use the first one.
 (defmethod odigit-char-p ((character fatchar) &optional radix)
-  (if radix (digit-char-p (fatchar-c character) radix)
-      (digit-char-p (fatchar-c character))))
+  (let ((c (fatchar-c character)))
+    (etypecase c
+      (character
+       (if radix
+	   (digit-char-p c radix)
+	   (digit-char-p c)))
+      (string
+       (if radix
+	   (digit-char-p (char c 0) radix)
+	   (digit-char-p (char c 0)))))))
 
 (defmethod ostandard-char-p ((character fatchar)) nil) ;; @@@ Right?
 
@@ -799,38 +922,43 @@ functions."
 ;; formatted bignum? Also we would have to define a limited fixed set of
 ;; attributes. So this is inherently lossy.
 (defmethod ochar-int ((character fatchar))
-  (let ((int 0)
-	;; @@@ How do a represent a NIL aka unspecified color as a number?
-	;; For now it's just black & white :(
-	(fg (or (and (fatchar-fg character)
-		     (convert-color-to
-		      (lookup-color (fatchar-fg character)) :rgb8))
-		#(:rgb8 #xff #xff #xff)))
-	(bg (or (and (fatchar-bg character)
-		     (convert-color-to
-		      (lookup-color (fatchar-bg character)) :rgb8))
-		#(:rgb8 0 0 0)))
-	(line (logior (fatchar-line character) #b1111)))
-    (flet ((add (value width)
-	     (setf int (logior (ash int width) value)))
-	   (attr-bits ()
-	     (loop :with result = 0
-		:for a :in (rest *known-attrs*)
-		:as i = 0 :then (1+ i)
-		:do
-		(when (find a (fatchar-attrs character))
-		  (setf result (logior result (ash 1 i))))
-		:finally (return result))))
-      (add (attr-bits) (length (rest *known-attrs*)))
-      (add line 4)
-      (add (color-component fg :red)   8)
-      (add (color-component fg :green) 8)
-      (add (color-component fg :blue)  8)
-      (add (color-component bg :red)   8)
-      (add (color-component bg :green) 8)
-      (add (color-component bg :blue)  8)
-      (add (char-int (fatchar-c character)) 32))
-    int))
+  (typecase (fatchar-c character)
+    (character
+     (let ((int 0)
+	   ;; @@@ How do a represent a NIL aka unspecified color as a number?
+	   ;; For now it's just black & white :(
+	   (fg (or (and (fatchar-fg character)
+			(convert-color-to
+			 (lookup-color (fatchar-fg character)) :rgb8))
+		   #(:rgb8 #xff #xff #xff)))
+	   (bg (or (and (fatchar-bg character)
+			(convert-color-to
+			 (lookup-color (fatchar-bg character)) :rgb8))
+		   #(:rgb8 0 0 0)))
+	   (line (logior (fatchar-line character) #b1111)))
+       (flet ((add (value width)
+		(setf int (logior (ash int width) value)))
+	      (attr-bits ()
+		(loop :with result = 0
+		      :for a :in (rest *known-attrs*)
+		      :as i = 0 :then (1+ i)
+		      :do
+			 (when (find a (fatchar-attrs character))
+			   (setf result (logior result (ash 1 i))))
+		      :finally (return result))))
+	 (add (attr-bits) (length (rest *known-attrs*)))
+	 (add line 4)
+	 (add (color-component fg :red)   8)
+	 (add (color-component fg :green) 8)
+	 (add (color-component fg :blue)  8)
+	 (add (color-component bg :red)   8)
+	 (add (color-component bg :green) 8)
+	 (add (color-component bg :blue)  8)
+	 (add (char-int (fatchar-c character)) 32))
+       int))
+    (string
+     ;; Do you want a Zalgo text DDOS?
+     (error "Heckin' no."))))
 
 (defmethod ocode-char (code (type (eql 'fatchar)))
   (make-fatchar :c (code-char code)))
@@ -1298,10 +1426,15 @@ The grammar is something like:
 		   :do
 		   (when (and (>= i start)
 			      (or (not end) (< i end)))
+		     ;; (format t "Kerchow ~s ~s ~s~%" fg bg c)
 		     (funcall out-func
 		      (make-fatchar :c (fatchar-c c)
-				    :fg (fatchar-fg c)
-				    :bg (fatchar-bg c)
+				    ;; @@@ Shouldn't we take the containing
+				    ;; color?
+				    ;; :fg (fatchar-fg c)
+				    ;; :bg (fatchar-bg c)
+				    :fg (or (car fg) (fatchar-fg c))
+				    :bg (or (car bg) (fatchar-bg c))
 				    :line (fatchar-line c)
 				    :attrs (union attrs (fatchar-attrs c))); <--
 		      thing))
@@ -1848,12 +1981,8 @@ a fat-string, or a fatchar."
   (fatchar-c c))
 
 (defmethod graphemes ((string fat-string))
-  ;; (dbugf :fatchar "fat grapheme ~s ~s~%" (type-of string) string)
-  (let (result)
-    (do-graphemes (g (fat-string-string string)
-		     :result-type fatchar :key fatchar-c)
-      (push g result))
-    (nreverse result)))
+  ;; It should already be graphemes.
+  (map 'list #'identity (fat-string-string string)))
 
 ;; @@@ I'm not sure this is really the best place for this. But we need it for
 ;; grok-ansi-color. It's not fatchar specific but works on ochars, but since

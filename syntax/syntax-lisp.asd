@@ -12,8 +12,9 @@
     :long-description
     "A lexer for Lisp, which is nearly the same as a lisp reader."
     :depends-on (:dlib :syntax
-		       #+use-re :re
-		       #-use-re :cl-ppcre
-		       :dlib-misc #| :esrap |# :theme :style :grout :fatchar)
+		 #+use-re :re
+		 #-use-re :cl-ppcre
+		 :dlib-misc #| :esrap |# :theme :style :grout :fatchar
+		 :collections :ochar :ostring)
     :components
     ((:file "syntax-lisp")))

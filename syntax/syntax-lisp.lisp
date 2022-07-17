@@ -8,7 +8,8 @@
   (:use :cl :dlib :syntax
 	#+use-regex :regex
 	#-use-regex :ppcre
-	:dlib-misc #| :esrap |# :theme :style :grout :fatchar)
+	:dlib-misc #| :esrap |# :theme :style :grout :collections :ochar
+	:ostring :fatchar)
   (:export
    #:lisp-syntax
    #:lisp-token
@@ -20,7 +21,7 @@
 (in-package :syntax-lisp)
 
 ;;(declaim (optimize (debug 3)))
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;;(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 (defclass lisp-syntax (syntax)
   ()
@@ -197,13 +198,13 @@ paired char at POSITION. If there is none, return nil. If POSITION is
 not provided, it defaults to the end or beginning of the string, depending if
 CHAR is an open or a close. PAIRS is an even length string of paired characters
 in order, \"{open}{close}...\". PAIRS defaults to something reasonable."
-  (declare (type string string))
+  ;; (declare (type string string))
   (let* ((starts nil) (c nil)
 	 (oc (when pairs-p (opens-and-closes pairs)))
 	 (opens (if pairs-p (first oc) "([{"))
 	 (closes (if pairs-p (second oc) ")]}"))
 	 (forward (and (position char opens) t))
-	 (end (if forward (length string) position))
+	 (end (if forward (olength string) position))
 	 (start (if forward position 0))
 	 (i start))
     ;; (format t "opens = ~s closes = ~s~%" opens closes)
@@ -212,8 +213,8 @@ in order, \"{open}{close}...\". PAIRS defaults to something reasonable."
 	     "Scan past the string."
 	     (incf i)
 	     (loop :while (and (< i end)
-			       (not (eql #\" (setf c (aref string i)))))
-		:do (when (eql c #\\)
+			       (not (ochar= #\" (setf c (ochar string i)))))
+		:do (when (ochar= c #\\)
 		      (incf i))
 		(incf i)))
 	   (eat-comment ()
@@ -221,33 +222,36 @@ in order, \"{open}{close}...\". PAIRS defaults to something reasonable."
 	     (loop :with level = 1
 		:while (and (< i end) (> level 0))
 		:do
-		  (setf c (aref string i))
+		  (setf c (ochar string i))
 		  (cond
-		    ((and (eql c #\|) (and (< i (1- end))
-					   (eql #\# (aref string (1+ i)))))
+		    ((and (ochar= c #\|)
+			  (and (< i (1- end))
+			       (ochar= #\# (ochar string (1+ i)))))
 		     (decf level))
-		    ((and (eql c #\#) (and (< i (1- end))
-					   (eql #\| (aref string (1+ i)))))
+		    ((and (ochar= c #\#)
+			  (and (< i (1- end))
+			       (ochar= #\| (ochar string (1+ i)))))
 		     (incf level)))
 		(incf i)))
 	   (eat-line-comment ()
 	     (loop :while (and (< i end)
-			       (not (eql #\newline (setf c (aref string i)))))
+			       (not (ochar= #\newline
+					    (setf c (ochar string i)))))
 		:do (incf i))))
       (cond
 	(forward
 	 (loop
 	    :while (< i end)
-	    :do (setf c (aref string i))
+	    :do (setf c (ochar string i))
 	    (cond
-	      ((position c opens) (push i starts))
-	      ((position c closes) (pop starts)
+	      ((oposition c opens) (push i starts))
+	      ((oposition c closes) (pop starts)
 	       (when (not starts)
 		 (return-from matching-paren-position i)))
-	      ((eql c #\") (eat-string))
-	      ((and (eql c #\#) (< i (- position 2))) ; # reader macro char
+	      ((ochar= c #\") (eat-string))
+	      ((and (ochar= c #\#) (< i (- position 2))) ; # reader macro char
 	       (incf i)
-	       (case (setf c (aref string i))
+	       (case (setf c (ochar string i))
 		 (#\\ (incf i))		; ignore the quoted char
 		 (#\| (eat-comment))	; scan past matched #| comments |#
 		 (#\( (push i starts)))) ; vectors, treated just like a list
@@ -257,19 +261,19 @@ in order, \"{open}{close}...\". PAIRS defaults to something reasonable."
 	(t
 	 (loop
 	    :while (< i end)
-	    :do (setf c (aref string i))
+	    :do (setf c (ochar string i))
 	    (cond
-	      ((position c opens) (push i starts))
-	      ((position c closes) (pop starts))
-	      ((eql c #\") (eat-string))
-	      ((and (eql c #\#) (< i (- end 2))) ; # reader macro char
+	      ((oposition c opens) (push i starts))
+	      ((oposition c closes) (pop starts))
+	      ((ochar= c #\") (eat-string))
+	      ((and (ochar= c #\#) (< i (- end 2))) ; # reader macro char
 	       (incf i)
-	       (case (setf c (aref string i))
+	       (case (setf c (ochar string i))
 		 (#\\ (incf i))		; ignore the quoted char
 		 (#\| (eat-comment))	; scan past matched #| comments |#
 		 (#\( (push i starts)))) ; vectors, treated just like a list
 	      ;; single line comment
-	      ((eql c #\;) (eat-line-comment)))
+	      ((ochar= c #\;) (eat-line-comment)))
 	    (incf i))
 	 (first starts))))))
 	

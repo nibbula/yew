@@ -105,7 +105,8 @@
       (setf point 0)
       (buffer-delete e 0 (olength buf) point)
       (buffer-insert e 0 str point)
-      (setf point (olength str)))))
+      ;; Maybe not the same length as str, since it's grapheme-ized.
+      (setf point (olength buf)))))
 
 (defun use-hist (e)
   "Replace the current line with the current history line."

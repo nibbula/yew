@@ -146,7 +146,7 @@ than space, and delete."
       (cc
        (if stream
 	   (princ c stream)
-	   (princ-to-string c)))
+	   c))
       (t (format stream "~s" c)))))
 
 (defun string-character-case (s)

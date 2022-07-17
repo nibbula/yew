@@ -688,7 +688,7 @@ buffer.
 	   (setf c (oelt buffer i)
 		 ;; cc (if (fatchar-p c) (fatchar-c c) c))
 		 cc (simplify-char c))
-	   (if (char= cc #\newline)
+	   (if (and (characterp cc) (char= cc #\newline))
 	       (progn
 		 (when (and (not autowrap-delay) (past-edge))
 		   (push (cons (1- i) last-col) endings)
