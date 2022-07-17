@@ -28,33 +28,6 @@
 
 (defparameter *grep-error-output* nil)
 
-#|
-(defun print-fat-line (fat-line)
-  (let ((part (make-array 10 :element-type 'character
-			  :fill-pointer 0 :adjustable t)))
-    (with-output-to-string (str part)
-      (loop :with last-attr :and last-fg
-	 :for c :across fat-line :do
-	 (when (or (not (eq (first (fatchar-attrs c)) last-attr))
-		   (not (eq (fatchar-fg c) last-fg)))
-	   (when (> (length part) 0)
-	     (grout-princ part)
-	     (setf (fill-pointer part) 0))
-	   (setf last-attr (first (fatchar-attrs c))
-		 last-fg (fatchar-fg c)))
-	 (princ (fatchar-c c) str)
-	 (if (position :underline (fatchar-attrs c))
-	     (grout-set-underline t)
-	     (grout-set-underline nil))
-	 (if (or (not (fatchar-fg c)) (eq (fatchar-fg c) :default))
-	     (grout-set-color :default :default)
-	     (grout-set-color (fatchar-fg c) :default)))
-      (when (> (length part) 0)
-	(grout-princ part))
-      (grout-set-underline nil)
-      (grout-set-color :default :default))))
-|#
-
 ;; If you want fast, don't use color.
 
 (defvar *fat-string* nil)
@@ -108,7 +81,6 @@
 			   (car color) :underline)
 	       (setf start (+ pos pattern-len)
 		     #| color (cdr color) |#)))
-	;; (print-fat-line fat-line)
 	(grout-princ *fat-string*)
 	(grout-princ #\newline))
       ;; No color
