@@ -216,7 +216,7 @@ from the system command CMD with the arguments ARGS."
 (defun gethostname ()
   (let ((len *host-name-max*))
     (with-foreign-pointer-as-string (name len)
-      (syscall (real-getdomainname name len)))))
+      (syscall (real-gethostname name len)))))
 
 (defcfun ("sethostname" real-sethostname) :int (name :string) (len size-t))
 (defun sethostname (name)
