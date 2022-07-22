@@ -240,7 +240,9 @@ end of a line and there is an auto-suggestion, accept it."
 	(incf point)
 	(when suggestion
 	  (insert e suggestion)
-	  (incf point (olength suggestion))))
+	  ;; The buffer won't necessarily be expaned by the same length as the
+	  ;; suggestion, since it's converted to graphemes.
+	  (setf point (fill-pointer buf))))
     (setf keep-region-active t)))
 
 (defmulti mark-forward-char (e)
