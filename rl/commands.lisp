@@ -594,7 +594,7 @@ Don't update the display."
 
 (defmulti kill-line (e)
   (with-slots (buf) e
-    (let ((end (or (oposition #\newline buf :start point)
+    (let ((end (or (oposition #\newline buf :start point :test #'ochar=)
 		   (fill-pointer buf))))
       ;; If we're sitting on a newline, kill that.
       (when (and (= end point)
