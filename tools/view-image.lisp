@@ -1000,12 +1000,11 @@ Some useful functions or macros are:
 				nil)
 		      (tt-write-char (code-char #x2588)) ; full_block
 		      |#
-		      (tt-color nil nil))
+		      (tt-color :default :default))
 		    (progn
 		      ;; (tt-forward 1)
 		      ;;(mover-right 1)
-		      (mover-forward 1)
-		      ))
+		      (mover-forward 1)))
 		(setf r 0 g 0 b 0 a 0))
 	     (when buffer
 	       ;; Copy the whole subimage into to buffer.
@@ -1031,10 +1030,9 @@ Some useful functions or macros are:
 				       :displaced-to data
 				       :displaced-index-offset
 				       (array-row-major-index data iy 0)))))
-	     (tt-color nil nil)
+	     (tt-color :default :default)
 	     (tt-write-char #\newline))))
-	(tt-color nil nil)
-	))))
+	(tt-color :default :default)))))
 
 (declaim (inline set-pixel-half))
 (defun set-pixel-half (r1 g1 b1 r2 g2 b2)
@@ -1119,10 +1117,9 @@ Some useful functions or macros are:
 		      (mover-forward 1))
 		    (progn
 		      (set-pixel-half r1 g1 b1 r2 g2 b2)
-		      (tt-color nil nil)))
+		      (tt-color :default :default)))
 		(setf r1 bg-r g1 bg-g b1 bg-b #| a1 0 |#
-		      r2 bg-r g2 bg-g b2 bg-b #| a2 0 |#)
-		)
+		      r2 bg-r g2 bg-g b2 bg-b #| a2 0 |#))
 	     (incf iy (* 2 step))
 	     (when buffer
 	       ;; Copy the whole subimage into to buffer.
@@ -1148,10 +1145,9 @@ Some useful functions or macros are:
 				       :displaced-to data
 				       :displaced-index-offset
 				       (array-row-major-index data iy 0)))))
-	     (tt-color nil nil)
+	     (tt-color :default :default)
 	     (tt-write-char #\newline))))
-	(tt-color nil nil)
-	))))
+	(tt-color :default :default)))))
 
 (defun print-image (file &key zoom width height errorp use-full)
   (let ((t-width (with-terminal () (tt-width)))
