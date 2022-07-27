@@ -441,13 +441,21 @@ if an item was added."
 
 (defun get-counts (git remote local)
   (or (git-saved-counts git)
-      (if remote
-	  (setf (git-saved-counts git)
-		(mapcar #'parse-integer
-			(split "\\s"
-			       (lish:!- "git rev-list --left-right --count "
-					remote "..." local))))
-	  '(0 0)))) ; fake
+      ;; @@@ Sometimes the rev-list command fails because the there isn't
+      ;; really a remote origin. But lish is messed up and won't return the
+      ;; status when we're piping output, so we stupidly just check for the
+      ;; "fatal". We should really fix lish to consistently return the unix
+      ;; result code as a secondary value for all ! constructs.
+      (setf (git-saved-counts git)
+	    (let (output)
+	      (if (and remote
+		       (not (begins-with
+			     "fatal"
+			     (setf output
+				   (lish:!- "git rev-list --left-right --count "
+					    remote "..." local)))))
+		  (mapcar #'parse-integer (split "\\s" output))
+		  '(0 0)))))) ; fake
 
 (defun get-remotes (git)
   (or (git-saved-remotes git)
