@@ -445,7 +445,8 @@ for a range of rows, or a table-point for a specific item,"
 	   (sep-len (display-length separator))
 	   ;; @@@ Hopefully this is not too slow. We should probably cache
 	   ;; it if the view start and size hasn't changed.
-	   (sub-table (table-subseq table row-num (+ row-num rows)))
+	   (sub-table (table-subseq table row-num (min (+ row-num rows)
+						       (olength table))))
 	   (*destination* (or destination *terminal*))
 	   (*max-width* width)
 	   (*trailing-spaces* t)) ;; @@@ bogus?
