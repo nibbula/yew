@@ -1276,6 +1276,13 @@ Some useful functions or macros are:
 	  (and (image-subimages image)
 	       (> (length (image-subimages image)) 1)))))
 
+(defun fix-scrolling (value)
+  (when (eq :crunch (find-terminal-type-for-class
+		     (class-name (class-of *terminal*))))
+    (funcall (fdefinition `(setf ,(intern (string :allow-scrolling)
+					  :terminal-crunch)))
+	     value *terminal*)))
+
 (defun view-image (image-designator &key file-list type own-window use-full
 				      debug)
   "View an image. The IMAGE-DESIGNATOR can be a file name, a stream, an
@@ -1349,8 +1356,10 @@ Key arguments:
       (unwind-protect
         (progn
 	  (tt-cursor-off)
+	  (fix-scrolling nil)
 	  (event-loop *image-viewer*))
-	(tt-cursor-on))
+	(tt-cursor-on)
+	(fix-scrolling t))
       (inator-quit-flag *image-viewer*))))
 
 (register-image-inator 'image-inator 1)
