@@ -89,6 +89,7 @@
    #:spit-append
    #:spit-binary
    ;; #:file-contents
+   #:write-lines
    #:confirm
    #:get-file-local-variables
    #:read-limited-line
@@ -1662,6 +1663,22 @@ file is created if it doesn't exist, or appended if it does."
     (if count
 	(write-sequence object stream :start 0 :end count)
 	(write-sequence object stream))))
+
+;; We can't put this in dlib1 where other things like get-lines are, because
+;; then it won't be able to handle generic sequences.
+(defun write-lines (file-or-stream lines)
+  "Write the collection of ‘lines’ to ‘file-or-stream’. If the file doesn't
+exist, it is created."
+  (flet ((stream-loop (stream)
+	   ;; We could do this, but it could lose the fantastical qualities of
+	   ;; the the lines.
+	   ;; (omapn (_ (write-line (princ-to-string _) stream)) lines)
+	   (omapn (_ (princ _ stream) (write-char #\newline stream)) lines)))
+    (if (streamp file-or-stream)
+	(stream-loop file-or-stream)
+	(with-open-file (stream file-or-stream
+				:direction :output :if-does-not-exist :create)
+	  (stream-loop stream)))))
 
 ;; This seems less sploodgey than the whole slurp/spit/barf metaphor.
 ;; But unfortunately it's in cl-user in Allegro.
