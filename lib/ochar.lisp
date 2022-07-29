@@ -39,6 +39,7 @@ bloatmobile to the heavens.")
    #:oboth-case-p
    #:ochar-code
    #:ochar-int
+   #:oint-char
    #:ocode-char
    #:ochar-code-limit
    #:ochar-name
@@ -198,6 +199,10 @@ with class.")
 (defgeneric ochar-int (character)
   (:documentation "Return a non-negative integer encoding of the character.")
   (:method ((character character)) (char-int character)))
+
+(defgeneric oint-char (int type)
+  (:documentation "Return a character of ‘type’ given it's integer encoding.")
+  (:method ((int integer) (type (eql 'character)))))
 
 (defgeneric ocode-char (code type) ;; Different
   (:documentation "Return a character with the given code attribute and type.")
